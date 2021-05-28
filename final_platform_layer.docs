@@ -323,6 +323,7 @@
 	@subpage page_category_video_general <br>
 	@subpage page_category_video_legacy_opengl <br>
 	@subpage page_category_video_modern_opengl <br>
+	@subpage page_category_video_vulkan <br>
 	@subpage page_category_video_software <br>
 
 	@section section_category_audio Audio
@@ -1329,7 +1330,7 @@
 
 	@subsection category_video_general_init_default Default video output
 
-	If you don't specify any settings then the video driver is automatically detected, depending on your operating system and supported hardware and software.<br>
+	If you don't specify any settings then the video backend is automatically detected, depending on your operating system and supported hardware and software.<br>
 	By default, this is most likely be legacy OpenGL - which is supported on almost every video card on any OS.<br>
 	<br>
 	But this is not the recommended way to initialize video output, because you are responsible for handling any video output yourself.<br>
@@ -1340,19 +1341,19 @@
 	}
 	@endcode
 
-	@subsection category_video_general_init_setting_driver Setting the video driver
+	@subsection category_video_general_init_setting_driver Setting the video backend
 
-	It is recommended to set at least the video driver manually, to ensure that you get either initialized with that driver properly or an error when your configuration is not supported.<br>
+	It is recommended to set at least the video backend manually, to ensure that you get either initialized with that backend properly or an error when your configuration is not supported.<br>
 	<br>
-	You do that by simply setting the @ref fplVideoDriverType field in your @ref fplVideoSettings structure which is included in the @ref fplSettings structure to the @ref fplPlatformInit() call.
+	You do that by simply setting the @ref fplVideoBackendType field in your @ref fplVideoSettings structure which is included in the @ref fplSettings structure to the @ref fplPlatformInit() call.
 	
 	@code{.c}
 	fplSettings settings;
 	fplSetDefaultSettings(&settings);
 	fplVideoSettings &videoSettings = settings.video;
 
-	// Forcing the video driver to be OpenGL
-	videoSettings.driver = fplVideoDriverType_OpenGL;
+	// Forcing the video backend to be OpenGL
+	videoSettings.backend = fplVideoBackendType_OpenGL;
 
 	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
 		// ... your code here
@@ -1363,15 +1364,15 @@
 
 	If you want to enable/disable vertical synchronization you simply set the fplVideoSettings.isVSync field respectively.
 	<br>
-	@note There is no guarantee that vertical synchronization is supported by your video device or selected driver.
+	@note There is no guarantee that vertical synchronization is supported by your video device or selected backend.
 	@note Software video output does not support vertical synchronisation!
 
-	@section category_video_general_disable Disable unneeded Video Drivers
+	@section category_video_general_disable Disable unneeded video backends
 
-	To compile out certain video drivers, you simply specify the **FPL_NO_VIDEO_[Name of the video driver]** preprocessor directive.<br>
-	But the @ref fplVideoDriverType in question is never removed from the enumeration - keep that in mind!<br>
+	To compile out certain video backends, you simply specify the **FPL_NO_VIDEO_[Name of the video backend]** preprocessor directive.<br>
+	But the @ref fplVideoBackendType in question is never removed from the enumeration - keep that in mind!<br>
 
-	Example (Disable OpenGL Video Driver):
+	Example (Disable OpenGL video backend):
 
 	@code{.c}
 	#define FPL_NO_VIDEO_OPENGL
@@ -1394,8 +1395,8 @@
 
 	@section category_video_general_notes Notes
 
-	Driver types stored in the @ref fplVideoDriverType enumeration are not filtered away, even when you disable it by a preprocessor directive!<br>
-	Keep that in mind when you initialize the video device.<br>
+	Backend types stored in the @ref fplVideoBackendType enumeration are not filtered away, even when you disable it by a preprocessor directive!<br>
+	Keep that in mind when you initialize the video backend.<br>
 	<br>
 	If needed you can use @ref fplSetDefaultVideoSettings() to fill in just the default video settings inside the @ref fplVideoSettings structure.<br>
 */
@@ -1406,7 +1407,7 @@
 
 	@section section_category_video_legacy_opengl_init Initialize Legacy OpenGL
 
-	To initialize a legacy OpenGL (up to GL version 2.1) rendering context you simply set the @ref fplInitFlags_Video flag in the @ref fplPlatformInit() call and change the video driver type to @ref fplVideoDriverType_OpenGL and set the @ref fplOpenGLVideoSettings.compabilityFlags to @ref fplOpenGLCompabilityFlags_Legacy .<br>
+	To initialize a legacy OpenGL (up to GL version 2.1) rendering context you simply set the @ref fplInitFlags_Video flag in the @ref fplPlatformInit() call and change the video backend type to @ref fplVideoBackendType_OpenGL and set the @ref fplOpenGLSettings.compabilityFlags to @ref fplOpenGLCompabilityFlags_Legacy .<br>
 	<br>
 	This will work in ~99% on all supported platforms - if not please post an issue for that platform/configuration/video-card ;-)
 
@@ -1415,8 +1416,8 @@
 	fplSetDefaultSettings(&settings);
 	fplVideoSettings &videoSettings = settings.video;
 
-	// Forcing the video driver to be legacy OpenGL
-	videoSettings.driver = fplVideoDriverType_OpenGL;
+	// Forcing the video backend to be legacy OpenGL
+	videoSettings.backend = fplVideoBackendType_OpenGL;
 	videoSettings.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
 
 	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
@@ -1443,10 +1444,10 @@
 
 	@section section_category_video_modern_opengl_init Initialize a modern OpenGL Rendering Context
 
-	To initialize a modern OpenGL (3.0+) rendering context, you simply set the @ref fplInitFlags_Video flag in the @ref fplPlatformInit() call and change the video driver type to @ref fplVideoDriverType_OpenGL and setup the following parameters:<br>
-	- Set the @ref fplOpenGLVideoSettings.majorVersion to 3 or higher
-	- Set the @ref fplOpenGLVideoSettings.minorVersion to 0 or higher
-	- Set the @ref fplOpenGLVideoSettings.compabilityFlags to either a @ref fplOpenGLCompabilityFlags_Core or @ref fplOpenGLCompabilityFlags_Compability
+	To initialize a modern OpenGL (3.0+) rendering context, you simply set the @ref fplInitFlags_Video flag in the @ref fplPlatformInit() call and change the video backend type to @ref fplVideoBackendType_OpenGL and setup the following parameters:<br>
+	- Set the @ref fplOpenGLSettings.majorVersion to 3 or higher
+	- Set the @ref fplOpenGLSettings.minorVersion to 0 or higher
+	- Set the @ref fplOpenGLSettings.compabilityFlags to either a @ref fplOpenGLCompabilityFlags_Core or @ref fplOpenGLCompabilityFlags_Compability
 	- Optionally add the @ref fplOpenGLCompabilityFlags_Forward flag for removing obsolete functions
 
 	@code{.c}
@@ -1454,8 +1455,8 @@
 	fplSetDefaultSettings(&settings);
 	fplVideoSettings &videoSettings = settings.video;
 
-	// Forcing the video driver to be modern OpenGL with Core profile and for GL version 3.3
-	videoSettings.driver = fplVideoDriverType_OpenGL;
+	// Forcing the video backend to be modern OpenGL with Core profile and for GL version 3.3
+	videoSettings.backend = fplVideoBackendType_OpenGL;
 	videoSettings.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
 	videoSettings.graphics.opengl.majorVersion = 3;
 	videoSettings.graphics.opengl.minorVersion = 3;
@@ -1484,15 +1485,15 @@
 	@subsection subsection_category_video_modern_opengl_multisampling Multisample anti-aliasing (MSAA)
 
 	In a modern OpenGL context, you can activate multi-sampling-antialiasing (MSAA) to get smooth edges with few performance costs out-of-the-box.<br>
-	By default, multisampling is disabled. To enable it, you simply set your desired multi-sampling count in @ref fplOpenGLVideoSettings.multiSamplingCount .<br>
+	By default, multisampling is disabled. To enable it, you simply set your desired multi-sampling count in @ref fplOpenGLSettings.multiSamplingCount .<br>
 
 	@code{.c}
 	fplSettings settings;
 	fplSetDefaultSettings(&settings);
 	fplVideoSettings &videoSettings = settings.video;
 
-	// Forcing the video driver to be modern OpenGL with Core profile and for GL version 3.3
-	videoSettings.driver = fplVideoDriverType_OpenGL;
+	// Forcing the video backend to be modern OpenGL with Core profile and for GL version 3.3
+	videoSettings.backend = fplVideoBackendType_OpenGL;
 	videoSettings.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
 	videoSettings.graphics.opengl.majorVersion = 3;
 	videoSettings.graphics.opengl.minorVersion = 3;
@@ -1512,12 +1513,149 @@
 */
 
 /*!
+	@page page_category_video_vulkan Vulkan
+	@tableofcontents
+	
+	@section section_category_video_vulkan_init Initialize Vulkan
+	
+	Initializing Vulkan is different than initializing other graphics APIs such as OpenGL, but FPL helps you in the first steps.
+	
+	The very first thing you need is a Vulkan Instance (<a href="https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkInstance.html">VkInstance</a>).
+	
+	Secondly you require a Vulkan Surface (<a href="https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkSurfaceKHR.html">VkSurfaceKHR</a>) to present the graphical result to the screen.
+	
+	FPL can create the Instance and the Surface for you.
+	
+	The surface creation is mandatory, but an exiting instance can optionally be passed to the @ref fplSettings structure if needed.
+	
+	- @ref section_category_video_vulkan_init_full
+	- @ref section_category_video_vulkan_init_surfaceonly
+	
+	@section section_category_video_vulkan_init_full Create a Vulkan Instance and a Surface
+	
+	First you have to create a @ref fplSettings structure and initialize it with default settings using @ref fplSetDefaultSettings().
+	
+	Second you set the @ref fplVideoSettings.backend to @ref fplVideoBackendType_Vulkan .
+
+	We can reference the @ref fplVulkanSettings type stored in @ref fplGraphicsApiSettings.vulkan for convenience usage later.
+	
+	@code{.c}
+	fplSettings settings;
+	fplSetDefaultSettings(&settings);
+	
+	// Reference of the video settings
+	fplVideoSettings *videoSettings = &settings.video;
+
+	// Forcing the video backend to Vulkan
+	videoSettings->backend = fplVideoBackendType_Vulkan;
+	
+	// Reference of the vulkan settings for later usage
+	fplVulkanSettings *vulkanSettings = &videoSettings.graphics.vulkan;
+	@endcode
+	
+	@subsection subsection_category_video_vulkan_init_full_versions Fill in the application, engine and api versions
+	
+	@code{.c}
+	fplVulkanSettings *vulkanSettings = &videoSettings.graphics.vulkan;
+
+	vulkanSettings->appName = "The name of your application";
+	vulkanSettings->appVersion = fplStructInit(fplVersionInfo, "1.0.0", "1", "0", "0"); // Version of your application
+
+	vulkanSettings->engineName = "The name of your engine";
+	vulkanSettings->engineVersion = fplStructInit(fplVersionInfo, "1.0.0", "1", "0", "0"); // Version of your engine
+
+	vulkanSettings->apiVersion = fplStructInit(fplVersionInfo, "1.1.0", "1", "1", "0"); // Preferred Vulkan API version (should be greater or equal than 1.1.0)
+	@endcode
+	
+	@subsection subsection_category_video_vulkan_init_full_validationmode Choose a Vulkan validation mode
+	
+	@code{.c}
+	static void VulkanValidationLayerCallback(void *userData, const char *message, const VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, const VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT *debugUtilsMessengerCallbackData) {
+		fplConsoleFormatOut("Vulkan Validation: %s\n", message);
+	}
+	
+	fplVulkanSettings *vulkanSettings = &videoSettings.graphics.vulkan;
+
+	vulkanSettings->validationLayerMode = fplVulkanValidationLayerMode_Disabled; // Do not use the Vulkan Validation Layer as an instance extension
+	
+	// or
+	vulkanSettings->validationLayerMode = fplVulkanValidationLayerMode_Logging; // Enable Vulkan Validation Layer as an instance extension and log everything to FPL directly, using the FPL logging system
+
+	// or
+	vulkanSettings->validationLayerMode = fplVulkanValidationLayerMode_User; // Enable Vulkan Validation Layer as an instance extension and let the user handle the logging
+	vulkanSettings->validationLayerCallback = VulkanValidationLayerCallback; // The user callback
+	vulkanSettings->userData = (void *)YourUserData; // The user data passed to the callback
+	@endcode
+	
+	Continue with @ref section_category_video_vulkan_usage
+	
+	@section section_category_video_vulkan_init_surfaceonly Create a Vulkan Surface from an existing Instance
+	
+	If you already have a Vulkan Instance (VkInstance), you can simply pass that to the @ref fplVulkanSettings.instanceHandle field and initialize FPL with @ref fplPlatformInit():
+	
+	@code{.c}
+	VkInstance yourVulkanInstance;
+	
+	fplVulkanSettings *vulkanSettings = &videoSettings.graphics.vulkan;
+
+	vulkanSettings->instance = yourVulkanInstance; // Pass in your vulkan instance to FPL
+	
+	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
+		// ... Vulkan Surface is created now and are ready to use
+	}
+	@endcode
+	
+	Continue with @ref section_category_video_vulkan_usage
+	
+	@section section_category_video_vulkan_usage Vulkan Usage
+	
+	After you have created a Vulkan Instance and a Surface, you can query it by calling @ref fplGetVideoSurface() directly after @ref fplPlatformInit():
+	
+	@code{.c}
+	if (fplPlatformInit(fplInitFlags_All, &settings)) {
+		// Get video surface
+		const fplVideoSurface *surface = fplGetVideoSurface();
+		fplAssert(surface != fpl_null);
+		
+		// Get the VkInstance and VkSurfaceKHR
+		VkInstance instanceHandle = (VkInstance)surface->vulkan.instanceHandle;
+		VkSurfaceKHR surfaceHandle = (VkSurfaceKHR)surface->vulkan.surfaceKHR;
+		fplAssert(instanceHandle != VK_NULL_HANDLE);
+		fplAssert(surfaceHandle != VK_NULL_HANDLE);
+
+		// ... continue the Vulkan initialization process
+	}
+	@endcode
+
+	After that, the typical Vulkan process continues:
+	- Finding the physical device (<a href="https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkPhysicalDevice.html">VkPhysicalDevice</a>)
+	- Creating a logical device (<a href="https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkDevice.html">VkDevice</a>)
+	- Find the right queue families, surface formats, frame buffer formats, etc.
+	- Creating a <a href="https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkSwapchainKHR.html">VkSwapChainKHR</a> with <a href="https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkImageView.html">VkImageView</a>, etc.
+	- Creating the full pipeline with <a href="https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkCommandPool.html">VkCommandPool</a>, <a href="https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkCommandBuffer.html">VkCommandBuffer</a>, etc.
+	
+	See the FPL_Vulkan demo for more details or learn more about Vulkan: <a href="https://vulkan-tutorial.com/">Vulkan-Tutorials</a>
+	
+	@section section_category_video_vulkan_allocator Memory Allocator
+	
+	If you have an existing memory allocator for Vulkan, you can pass that to FPL before calling @ref fplPlatformInit():
+	
+	@code{.c}
+	VkAllocationCallbacks *yourMemoryAllocator;
+	
+	fplVulkanSettings *vulkanSettings = &videoSettings.graphics.vulkan;
+
+	vulkanSettings->allocator = (void *)yourMemoryAllocator; // Pass in your memory allocator
+	@endcode
+*/
+
+/*!
 	@page page_category_video_software Software Output
 	@tableofcontents
 
 	@section section_category_video_software_init Initialize a software backbuffer
 
-	To initialize software rendering output, you simply set the @ref fplInitFlags_Video flag in the @ref fplPlatformInit() call and change the video driver type to @ref fplVideoDriverType_Software.<br>
+	To initialize software rendering output, you simply set the @ref fplInitFlags_Video flag in the @ref fplPlatformInit() call and change the video backend type to @ref fplVideoBackendType_Software.<br>
 	Call @ref fplGetVideoBackBuffer() to get access to the pixel data.
 
 	@code{.c}
@@ -1525,8 +1663,8 @@
 	fplSetDefaultSettings(&settings);
 	fplVideoSettings &videoSettings = settings.video;
 
-	// Forcing the video driver to be software
-	videoSettings.driver = fplVideoDriverType_Software;
+	// Forcing the video backend to be software
+	videoSettings.backend = fplVideoBackendType_Software;
 
 	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
 		// Video software backbuffer is ready
@@ -1626,7 +1764,7 @@
 	@section section_category_video_software_notes Notes
 
 	- There is no software rendering functions built-in! If you want to draw for example a circle, you have to roll out your drawCircle() function - which may use Bresenham as its base or something.<br>
-	- Vertical synchronization is not supported for software video drivers!
+	- Vertical synchronization is not supported for software video backends!
 */
 
 /*!
@@ -1687,27 +1825,27 @@
 
 	@note Please see the @ref section_category_audio_general_notes for possible limitations!
 
-	@section section_category_audio_general_choosing_driver Choosing the audio driver
+	@section section_category_audio_general_choosing_driver Choosing the audio backend
 
-	By default, FPL uses the first available audio driver which is supported on your platform.<br>
-	If you want to force FPL to use a certain audio driver, you can do this by changing the @ref fplAudioSettings.driver field in the @ref fplAudioSettings structure:<br>
+	By default, FPL uses the first available audio backend which is supported on your platform.<br>
+	If you want to force FPL to use a certain audio backend, you can do this by changing the @ref fplAudioSettings.backend field in the @ref fplAudioSettings structure:<br>
 
 	@code{.c}
 	fplSettings settings;
 	fplSetDefaultSettings(&settings);
 	fplAudioSettings &audioSettings = settings.audio;
 
-	// Forcing to use the DirectSound audio driver
-	audioSettings.driver = fplAudioDriverType_DirectSound;
+	// Forcing to use the DirectSound audio backend
+	audioSettings.backend = fplAudioBackendType_DirectSound;
 
 	if (fplPlatformInit(fplInitFlags_Audio, &settings)) {
 		// ... your code here
 	}
 	@endcode
 
-	It is recommended to use the default @ref fplAudioDriverType_Auto which uses the first supported audio driver.
+	It is recommended to use the default @ref fplAudioBackendType_Auto which uses the first supported audio backend.
 
-	@warning If your platform/system does not support the desired driver the audio and platform initialization will fail!
+	@warning If your platform/system does not support the desired backend, the audio and platform initialization will fail!
 
 	@section section_category_audio_general_autoplay Automatic play/stop of audio samples playback
 
@@ -1756,7 +1894,7 @@
 
 	- @ref fplGetAudioHardwareFormat()
 	- @ref fplGetAudioBufferSizeInFrames()
-	- @ref fplGetAudioDriverName()
+	- @ref fplGetAudioBackendName()
 	- @ref fplGetAudioFormatName()
 	- @ref fplGetAudioSampleSizeInBytes()
 	- @ref fplGetAudioFrameSizeInBytes()
@@ -1970,7 +2108,7 @@
 	}
 
 	// or just print it out
-	const char *cpuArchString = fplGetArchName(cpuArch);
+	const char *cpuArchString = fplCPUGetArchName(cpuArch);
 	fplConsoleFormatOut("CPU Architecture: %s\n", cpuArchString);
 	@endcode
 	
@@ -3301,7 +3439,7 @@
 	For example, Linux is a POSIX-based platform so it uses POSIX libraries, such as pthread / X11, etc.
 	The pthread and X11 implementation are separated, so other Unix-based platforms can use that implementation without any problem.
 	<br>
-	On top of that FPL implements multiple audio and video drivers, so that all platforms can playback audio and render using a supported graphics API.<br>
+	On top of that FPL implements multiple audio and video backends, so that all platforms can playback audio and render using a supported graphics API.<br>
 
 	@subsection subsection_faq_limitations Does FPL have some limitations?
 	Yes, it does have some limitations, because it cannot do everything for you:
@@ -3587,13 +3725,13 @@
 		<tr>
 			<td>Video</td>
 			<td>FPL_NO_VIDEO_OPENGL</td>
-			<td>Define this to disable the OpenGL Video Driver.</td>
+			<td>Define this to disable the OpenGL video backend.</td>
 			<td>Not set by default</td>
 		</tr>
 		<tr>
 			<td>Video</td>
 			<td>FPL_NO_VIDEO_SOFTWARE</td>
-			<td>Define this to disable the Software Video Driver.</td>
+			<td>Define this to disable the Software video backend.</td>
 			<td>Not set by default</td>
 		</tr>
 
@@ -4058,7 +4196,7 @@
 		int main(int argc, char **args) {
 			int result = 0;
 			fplSettings settings = fplMakeDefaultSettings();
-			settings.video.driver = fplVideoDriverType_OpenGL;
+			settings.video.backend = fplVideoBackendType_OpenGL;
 			fplCopyString("FPL Modern OpenGL", settings.window.title, fplArrayCount(settings.window.title));
 			settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
 			settings.video.graphics.opengl.majorVersion = 3;

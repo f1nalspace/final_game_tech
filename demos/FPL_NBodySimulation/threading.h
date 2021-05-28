@@ -33,11 +33,11 @@ struct ThreadPoolState {
 inline void ThreadPoolWorkerThreadProc(const fplThreadHandle *thread, void *data) {
 	ThreadPoolState *state = static_cast<ThreadPoolState *>(data);
 	ThreadPoolTask task;
-	while (true) {
+	while(true) {
 		fplMutexLock(&state->queueMutex);
-		while (true) {
-			if (!state->queue.empty()) break;
-			if (state->stopped) return;
+		while(true) {
+			if(!state->queue.empty()) break;
+			if(state->stopped) return;
 			fplConditionWait(&state->queueCondition, &state->queueMutex, FPL_TIMEOUT_INFINITE);
 		}
 		task = state->queue.front();
@@ -59,16 +59,18 @@ public:
 		_state.threadCount = threadCount;
 		fplMutexInit(&_state.queueMutex);
 		fplConditionInit(&_state.queueCondition);
-		for (size_t workerIndex = 0; workerIndex < threadCount; ++workerIndex) {
+		for(size_t workerIndex = 0; workerIndex < threadCount; ++workerIndex) {
 			_state.threads[workerIndex] = fplThreadCreate(ThreadPoolWorkerThreadProc, &_state);
 		}
 	}
-	ThreadPool() :
+	ThreadPool():
 		ThreadPool(ThreadPool::GetConcurrencyThreadCount()) {
 	}
 	~ThreadPool() {
 		fplMutexLock(&_state.queueMutex);
 		_state.stopped = true;
+		_state.pendingCount = 0;
+		_state.queue.clear();
 		fplConditionBroadcast(&_state.queueCondition);
 		fplMutexUnlock(&_state.queueMutex);
 
@@ -76,37 +78,40 @@ public:
 
 		fplConditionDestroy(&_state.queueCondition);
 		fplMutexDestroy(&_state.queueMutex);
+		_state = {};
 	}
 
-	ThreadPool(const ThreadPool&) = delete;
-	ThreadPool& operator=(const ThreadPool&) = delete;
-	ThreadPool(ThreadPool&&) = delete;
-	ThreadPool& operator=(ThreadPool&&) = delete;
+	ThreadPool(const ThreadPool &) = delete;
+	ThreadPool &operator=(const ThreadPool &) = delete;
+	ThreadPool(ThreadPool &&) = delete;
+	ThreadPool &operator=(ThreadPool &&) = delete;
 
 	inline void AddTask(const ThreadPoolTask &task) {
 		_state.queue.push_back(task);
 	}
 
 	inline void WaitUntilDone() {
+		fplAssert(_state.queueMutex.isValid);
 		fplMutexLock(&_state.queueMutex);
 		fplConditionBroadcast(&_state.queueCondition);
 		fplMutexUnlock(&_state.queueMutex);
-		while (fplAtomicLoadU64(&_state.pendingCount) > 0) {
+		for(size_t i = 0; i < _state.threadCount; ++i) {
+			fplAssert(_state.threads[i] != fpl_null);
+		}
+		while(fplAtomicLoadU64(&_state.pendingCount) > 0) {
 			fplThreadYield();
 		}
 	}
 
-
-
 	inline void CreateTasks(const size_t itemCount, const thread_pool_task_function &func, const float deltaTime) {
-		if (itemCount == 0) return;
+		if(itemCount == 0) return;
 
 		const size_t threads_size = _state.threadCount;
 		const size_t itemsPerTask = fplMax((size_t)1, itemCount / threads_size);
 
 		fplMutexLock(&_state.queueMutex);
 		size_t tasks_added = 0;
-		for (size_t itemIndex = 0; itemIndex < itemCount; itemIndex += itemsPerTask, ++tasks_added) {
+		for(size_t itemIndex = 0; itemIndex < itemCount; itemIndex += itemsPerTask, ++tasks_added) {
 			ThreadPoolTask task = {};
 			task.func = func;
 			task.deltaTime = deltaTime;

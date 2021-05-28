@@ -65,7 +65,7 @@ License:
 #endif
 
 typedef struct PlaybackAudioFormat {
-	char driverName[FPL_MAX_NAME_LENGTH];
+	char backendName[FPL_MAX_NAME_LENGTH];
 	fplAudioDeviceFormat deviceFormat;
 } PlaybackAudioFormat;
 
@@ -203,8 +203,8 @@ static bool StartPlayback(AudioContext *context) {
 	
 	fplAudioDeviceFormat *actualDeviceFormat = &playbackFormat->deviceFormat;
 
-	const char *outDriver = ma_get_backend_name(context->maDevice.pContext->backend);
-	fplCopyString(outDriver, playbackFormat->driverName, fplArrayCount(playbackFormat->driverName));
+	const char *outBackendName = ma_get_backend_name(context->maDevice.pContext->backend);
+	fplCopyString(outBackendName, playbackFormat->backendName, fplArrayCount(playbackFormat->backendName));
 	actualDeviceFormat->channels = context->maDevice.playback.channels;
 	actualDeviceFormat->periods = context->maDevice.playback.internalPeriods;
 	actualDeviceFormat->sampleRate = context->maDevice.sampleRate;
@@ -218,8 +218,8 @@ static bool StartPlayback(AudioContext *context) {
 
 	fplGetAudioHardwareFormat(&playbackFormat->deviceFormat);
 	const fplSettings *settings = fplGetCurrentSettings();
-	const char *outDriver = fplGetAudioDriverName(settings->audio.driver);
-	fplCopyString(outDriver, playbackFormat->driverName, fplArrayCount(playbackFormat->driverName));
+	const char *outBackendName = fplGetAudioBackendName(settings->audio.backend);
+	fplCopyString(outBackendName, playbackFormat->backendName, fplArrayCount(playbackFormat->backendName));
 #endif
 	
 	return(true);
@@ -301,7 +301,7 @@ int main(int argc, char **args) {
 #else
 	systemName = "FPL";
 #endif
-	fplConsoleFormatOut("Playing %lu audio sources (%s, %s, %s, %lu Hz, %lu channels, %lu frames, %lu periods)\n", audioContext->system.playItems.count, systemName, playbackFormat->driverName, formatName, playbackFormat->deviceFormat.sampleRate, playbackFormat->deviceFormat.channels, playbackFormat->deviceFormat.bufferSizeInFrames, playbackFormat->deviceFormat.periods);
+	fplConsoleFormatOut("Playing %lu audio sources (%s, %s, %s, %lu Hz, %lu channels, %lu frames, %lu periods)\n", audioContext->system.playItems.count, systemName, playbackFormat->backendName, formatName, playbackFormat->deviceFormat.sampleRate, playbackFormat->deviceFormat.channels, playbackFormat->deviceFormat.bufferSizeInFrames, playbackFormat->deviceFormat.periods);
 
 	// Wait for any key presses
 	fplConsoleFormatOut("Press any key to stop playback\n");

@@ -26,6 +26,9 @@ License:
 #define FPL_ENTRYPOINT
 // Use FPL as DLL client and import every public function
 #define FPL_DLLIMPORT
+// Disable video and audio
+#define FPL_NO_VIDEO
+#define FPL_NO_AUDIO
 // Include the FPL header file
 #include <final_platform_layer.h>
 

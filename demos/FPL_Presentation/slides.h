@@ -183,9 +183,9 @@ namespace FPLPresentationData {
 
 	namespace Intro {
 		static const char* Talk = {
-			"Hello!"
-			"My name is Torsten Spaete. I am a professional software engineer with over 20 years of experience."
-			"Today I would like to introduce you to a project I have been working on for a few years now."
+			"Hi there!"
+			"My name is Torsten Spaete. I am a professional software engineer with over 20 years of programming experience."
+			"Today I would like to introduce you to a project I have been working on for quite a while now."
 			"It's a platform abstraction library written in C99 called 'Final-Platform-Layer'."
 		};
 
@@ -203,16 +203,17 @@ namespace FPLPresentationData {
 
 	namespace WhatIsAPAL {
 		static const char* Talk = {
-			"Before i continue, i will first give a brief overview "
-
-			"Any operating system has special systems/functions to access certain things,"
-			"such as memory, files, threads, etc., or give you access to hardware devices,"
-			"such as graphics cards, audio devices, etc."
+			"Before I continue, I want to explain first what a platform abstraction layer is and why it is important."
+			""
+			"Any operating system has different APIs for accessing low-level systems or hardware devices, such as graphics cards, audio devices, input devices, etc."
+			"For example, to create a thread on windows you have to call the function \"CreateThread\"."
+			"On Linux, it's a different function called \"pthread_create\"."
+			"Both do the same thing: Creating and starting a thread, but each function requires different arguments and handles."
+			""
+			"But to play audio, for example, it's a different story, because each platform has numerous drivers, which are always very hard to program."
 			""
 			"A platform abstraction layer (or short 'PAL') is a development library, written in a low-level language such as 'C',"
-			"that gives you access to such systems or functions in a platform-independent way."
-			""
-			"Such libraries are built so that you can write code once, that runs on every supported platform."
+			"that provides a platform-independent API that uses the platform-specific functions, drivers, and handles, but lets you write code that runs on all supported platforms."
 		};
 
 		static BlockDefinition Blocks[] = {
@@ -232,11 +233,12 @@ namespace FPLPresentationData {
 
 	namespace WhatIsFPL {
 		static const char* Talk = {
-			"Final-Platform-Layer (or short 'FPL') is a lightweight platform-abstraction-layer written in C99, which provides a powerful and easy-to-use API,"
-			"for working with low-level and hardware systems such as audio, video, memory, window, timing, input-systems and many more."
-			"Its main usage is multimedia and game development but can be used for writing any kind of application."
+			"Final-Platform-Layer (or short 'FPL') is a lightweight platform-abstraction-layer written in C99, that provides a powerful and easy-to-use API,"
+			"for accessing low-level and hardware devices, such as audio, video, memory, window, input, threads, and many more."
+			""
+			"Its main usage is multimedia and game development but can be used to write any kind of application."
 			"'FPL' is designed to be fast in compile and run time and can be integrated however you like."
-			"You statically link it, you can link it on runtime or you can include the full source."
+			"You can statically link it, you can link it on runtime or you can include the full source code."
 		};
 
 		static BlockDefinition Blocks[] = {

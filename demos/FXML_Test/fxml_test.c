@@ -23,9 +23,7 @@ License:
 */
 
 #include <string.h>
-#include <assert.h>
 #include <stdio.h>
-#include <assert.h>
 
 #if 0
 #define _CRTDBG_MAP_ALLOC
@@ -40,6 +38,8 @@ static void MyFree(void *ptr);
 #define FXML_MALLOC MyMalloc
 #define FXML_FREE MyFree
 #include <final_xml.h>
+
+#define TEST_ASSERT(exp) if(!(exp)) {*(int *)0 = 0;}
 
 #define FORCE_MEMORY_MALLOC 1
 #define ENABLE_MEMORY_PROTECTION 1
@@ -65,8 +65,8 @@ static void *MyMalloc(const size_t size) {
 	void *overflow = (uint8_t *)base + pageSize + dataSize;
 	void *underflow = (uint8_t *)base;
 	DWORD dummy;
-	assert(VirtualProtect(overflow, pageSize, PAGE_READWRITE | PAGE_GUARD, &dummy));
-	assert(VirtualProtect(underflow, pageSize, PAGE_READWRITE | PAGE_GUARD, &dummy));
+	TEST_ASSERT(VirtualProtect(overflow, pageSize, PAGE_READWRITE | PAGE_GUARD, &dummy));
+	TEST_ASSERT(VirtualProtect(underflow, pageSize, PAGE_READWRITE | PAGE_GUARD, &dummy));
 #else
 	void *result = VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 #endif
@@ -127,24 +127,24 @@ static bool fxmlTestSuccess(const char *xmlStream) {
 }
 
 static void UnitTests() {
-	assert(!fxmlTestSuccess(""));
-	assert(!fxmlTestSuccess("b"));
-	assert(!fxmlTestSuccess("<b"));
-	assert(!fxmlTestSuccess("<b>"));
-	assert(!fxmlTestSuccess("</b>"));
-	assert(!fxmlTestSuccess("< b></b>"));
-	assert(!fxmlTestSuccess("<b></ b>"));
-	assert(!fxmlTestSuccess("< b></ b>"));
-	assert(!fxmlTestSuccess("<b>< /b>"));
-	assert(!fxmlTestSuccess("<a></a><b></b>"));
-	assert(fxmlTestSuccess("<b ></b >"));
-	assert(fxmlTestSuccess("<b></b>"));
-	assert(fxmlTestSuccess("<b/>"));
-	assert(fxmlTestSuccess("<b />"));
-	assert(fxmlTestSuccess("<r><a/></r>"));
-	assert(fxmlTestSuccess("<r><a/><b/></r>"));
-	assert(fxmlTestSuccess("<x>&quot;</x>"));
-	assert(fxmlTestSuccess("<surname>&#352;umbera</surname>"));
+	TEST_ASSERT(!fxmlTestSuccess(""));
+	TEST_ASSERT(!fxmlTestSuccess("b"));
+	TEST_ASSERT(!fxmlTestSuccess("<b"));
+	TEST_ASSERT(!fxmlTestSuccess("<b>"));
+	TEST_ASSERT(!fxmlTestSuccess("</b>"));
+	TEST_ASSERT(!fxmlTestSuccess("< b></b>"));
+	TEST_ASSERT(!fxmlTestSuccess("<b></ b>"));
+	TEST_ASSERT(!fxmlTestSuccess("< b></ b>"));
+	TEST_ASSERT(!fxmlTestSuccess("<b>< /b>"));
+	TEST_ASSERT(!fxmlTestSuccess("<a></a><b></b>"));
+	TEST_ASSERT(fxmlTestSuccess("<b ></b >"));
+	TEST_ASSERT(fxmlTestSuccess("<b></b>"));
+	TEST_ASSERT(fxmlTestSuccess("<b/>"));
+	TEST_ASSERT(fxmlTestSuccess("<b />"));
+	TEST_ASSERT(fxmlTestSuccess("<r><a/></r>"));
+	TEST_ASSERT(fxmlTestSuccess("<r><a/><b/></r>"));
+	TEST_ASSERT(fxmlTestSuccess("<x>&quot;</x>"));
+	TEST_ASSERT(fxmlTestSuccess("<surname>&#352;umbera</surname>"));
 }
 
 static void ManualTest() {
@@ -186,7 +186,7 @@ static void FileTest(const char *filePath) {
 	fxmlContext ctx = FXML_ZERO_INIT;
 	FILE *f = fxml_null;
 	bool r = fopen_s(&f, filePath, "rb") == 0;
-	assert(r);
+	TEST_ASSERT(r);
 	fseek(f, 0, SEEK_END);
 	size_t size = ftell(f);
 	fseek(f, 0, SEEK_SET);

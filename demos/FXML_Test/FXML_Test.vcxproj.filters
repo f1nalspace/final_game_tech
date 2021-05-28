@@ -6,4 +6,7 @@
   <ItemGroup>
     <Xml Include="level1.tmx" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\final_xml.h" />
+  </ItemGroup>
 </Project>

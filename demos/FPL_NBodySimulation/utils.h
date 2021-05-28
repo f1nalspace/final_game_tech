@@ -6,7 +6,6 @@
 
 #include <stdio.h>
 #include <algorithm>
-#include <intrin.h>
 #include <stdarg.h>
 
 #define force_inline fpl_force_inline

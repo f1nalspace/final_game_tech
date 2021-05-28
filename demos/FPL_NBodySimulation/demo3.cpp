@@ -10,15 +10,41 @@
 #include "render.h"
 
 namespace Demo3 {
-	ParticleSimulation::ParticleSimulation() :
-		gravity(V2f(0, 0)) {
+#if PARTICLE_VALIDATION
+	static void ValidateParticles(const std::vector<Particle> &particles) {
+		for(size_t particleIndex = 0; particleIndex < particles.size(); ++particleIndex) {
+			const Particle &particle = particles[particleIndex];
+
+			bool isInGrid = SPHIsPositionInGrid(particle.cellIndex.x, particle.cellIndex.y);
+			fplAssert(isInGrid);
+
+			float l = Vec2Length(particle.velocity);
+			fplAssert(l < 1000);
+
+			Vec2f cur = particle.curPosition;
+
+			float apron = 1.0f;
+			float halfW = kSPHBoundaryHalfWidth + apron;
+			float halfH = kSPHBoundaryHalfHeight + apron;
+
+			fplAssert(cur.x > -halfW && cur.x < halfW);
+			fplAssert(cur.y > -halfH && cur.y < halfH);
+		}
+	}
+#else
+#define ValidateParticles(particles)
+#endif
+
+	ParticleSimulation::ParticleSimulation():
+		gravity(V2f(0, 0)),
+		externalForce(V2f(0, 0)) {
 		particles.reserve(kSPHMaxParticleCount);
 		cells = new Cell[kSPHGridTotalCount];
 		_isMultiThreading = workerPool.GetThreadCount() > 1;
 	}
 
 	ParticleSimulation::~ParticleSimulation() {
-		for (size_t bodyIndex = 0; bodyIndex < bodies.size(); ++bodyIndex) {
+		for(size_t bodyIndex = 0; bodyIndex < bodies.size(); ++bodyIndex) {
 			delete bodies[bodyIndex];
 		}
 		delete cells;
@@ -40,7 +66,7 @@ namespace Demo3 {
 		stats.maxCellParticleCount = std::max(count, stats.maxCellParticleCount);
 	}
 
-	void ParticleSimulation::RemoveParticleFromGrid(Particle & particle, const size_t particleIndex) {
+	void ParticleSimulation::RemoveParticleFromGrid(Particle &particle, const size_t particleIndex) {
 		Vec2i cellIndex = particle.cellIndex;
 		size_t cellOffset = SPHComputeCellOffset(cellIndex.x, cellIndex.y);
 
@@ -56,29 +82,29 @@ namespace Demo3 {
 		stats.maxCellParticleCount = std::max(count, stats.maxCellParticleCount);
 	}
 
-	void ParticleSimulation::AddPlane(const Vec2f & normal, const float distance) {
+	void ParticleSimulation::AddPlane(const Vec2f &normal, const float distance) {
 		Plane *plane = new Plane(normal, distance);
 		bodies.push_back(plane);
 	}
 
-	void ParticleSimulation::AddCircle(const Vec2f & pos, const float radius) {
+	void ParticleSimulation::AddCircle(const Vec2f &pos, const float radius) {
 		bodies.push_back(new Circle(pos, radius));
 	}
 
-	void ParticleSimulation::AddLineSegment(const Vec2f & a, const Vec2f & b) {
+	void ParticleSimulation::AddLineSegment(const Vec2f &a, const Vec2f &b) {
 		bodies.push_back(new LineSegment(a, b));
 	}
 
 	void ParticleSimulation::AddPolygon(const size_t vertexCount, const Vec2f *verts) {
 		std::vector<Vec2f> polyVerts;
-		for (size_t i = 0; i < vertexCount; ++i) {
+		for(size_t i = 0; i < vertexCount; ++i) {
 			polyVerts.push_back(verts[i]);
 		}
 		bodies.push_back(new Poly(polyVerts));
 	}
 
 	void ParticleSimulation::ClearBodies() {
-		for (int bodyIndex = 0; bodyIndex < bodies.size(); ++bodyIndex) {
+		for(int bodyIndex = 0; bodyIndex < bodies.size(); ++bodyIndex) {
 			Body *body = bodies[bodyIndex];
 			delete body;
 		}
@@ -86,7 +112,7 @@ namespace Demo3 {
 	}
 
 	void ParticleSimulation::ClearParticles() {
-		for (size_t cellIndex = 0; cellIndex < kSPHGridTotalCount; ++cellIndex) {
+		for(size_t cellIndex = 0; cellIndex < kSPHGridTotalCount; ++cellIndex) {
 			Cell *cell = &cells[cellIndex];
 			assert(cell != nullptr);
 			cell->indices.clear();
@@ -113,8 +139,8 @@ namespace Demo3 {
 
 	void ParticleSimulation::AddVolume(const Vec2f &center, const Vec2f &force, const int countX, const int countY, const float spacing) {
 		Vec2f offset = V2f(countX * spacing, countY * spacing) * 0.5f;
-		for (int yIndex = 0; yIndex < countY; ++yIndex) {
-			for (int xIndex = 0; xIndex < countX; ++xIndex) {
+		for(int yIndex = 0; yIndex < countY; ++yIndex) {
+			for(int xIndex = 0; xIndex < countX; ++xIndex) {
 				Vec2f p = V2f((float)xIndex, (float)yIndex) * spacing;
 				p += V2f(spacing * 0.5f, spacing * 0.5f);
 				p += center - offset;
@@ -131,20 +157,20 @@ namespace Demo3 {
 	}
 
 	void ParticleSimulation::NeighborSearch(const size_t startIndex, const size_t endIndex, const float deltaTime) {
-		for (size_t particleIndexA = startIndex; particleIndexA <= endIndex; ++particleIndexA) {
+		for(size_t particleIndexA = startIndex; particleIndexA <= endIndex; ++particleIndexA) {
 			Particle &particleA = particles[particleIndexA];
 			particleA.neighbors.clear();
 			Vec2i &cellIndex = particleA.cellIndex;
-			for (int y = -1; y <= 1; ++y) {
-				for (int x = -1; x <= 1; ++x) {
+			for(int y = -1; y <= 1; ++y) {
+				for(int x = -1; x <= 1; ++x) {
 					int cellPosX = cellIndex.x + x;
 					int cellPosY = cellIndex.y + y;
-					if (SPHIsPositionInGrid(cellPosX, cellPosY)) {
+					if(SPHIsPositionInGrid(cellPosX, cellPosY)) {
 						size_t cellOffset = SPHComputeCellOffset(cellPosX, cellPosY);
 						Cell *cell = &cells[cellOffset];
 						size_t particleCountInCell = cell->indices.size();
-						if (particleCountInCell > 0) {
-							for (size_t index = 0; index < particleCountInCell; ++index) {
+						if(particleCountInCell > 0) {
+							for(size_t index = 0; index < particleCountInCell; ++index) {
 								size_t particleIndexB = cell->indices[index];
 								particleA.neighbors.push_back(particleIndexB);
 							}
@@ -156,11 +182,11 @@ namespace Demo3 {
 	}
 
 	void ParticleSimulation::DensityAndPressure(const size_t startIndex, const size_t endIndex, const float deltaTime) {
-		for (size_t particleIndex = startIndex; particleIndex <= endIndex; ++particleIndex) {
+		for(size_t particleIndex = startIndex; particleIndex <= endIndex; ++particleIndex) {
 			Particle &particle = particles[particleIndex];
 			particle.density = particle.nearDensity = 0;
 			size_t neighborCount = particle.neighbors.size();
-			for (size_t index = 0; index < neighborCount; ++index) {
+			for(size_t index = 0; index < neighborCount; ++index) {
 				size_t neighborIndex = particle.neighbors[index];
 				Particle &neighbor = particles[neighborIndex];
 				SPHComputeDensity(params, particle.curPosition, neighbor.curPosition, &particle.density);
@@ -170,13 +196,13 @@ namespace Demo3 {
 	}
 
 	void ParticleSimulation::ViscosityForces(const size_t startIndex, const size_t endIndex, const float deltaTime) {
-		for (size_t particleIndex = startIndex; particleIndex <= endIndex; ++particleIndex) {
+		for(size_t particleIndex = startIndex; particleIndex <= endIndex; ++particleIndex) {
 			Particle &particle = particles[particleIndex];
 			size_t neighborCount = particle.neighbors.size();
-			for (size_t index = 0; index < neighborCount; ++index) {
+			for(size_t index = 0; index < neighborCount; ++index) {
 				size_t neighborIndex = particle.neighbors[index];
 				Particle &neighbor = particles[neighborIndex];
-				Vec2f force = V2f(0,0);
+				Vec2f force = V2f(0, 0);
 				SPHComputeViscosityForce(params, particle.curPosition, neighbor.curPosition, particle.velocity, neighbor.velocity, &force);
 				particle.velocity -= force * deltaTime * 0.5f;
 				neighbor.velocity += force * deltaTime * 0.5f;
@@ -185,14 +211,14 @@ namespace Demo3 {
 	}
 
 	void ParticleSimulation::DeltaPositions(const size_t startIndex, const size_t endIndex, const float deltaTime) {
-		for (size_t particleIndex = startIndex; particleIndex <= endIndex; ++particleIndex) {
+		for(size_t particleIndex = startIndex; particleIndex <= endIndex; ++particleIndex) {
 			Particle &particle = particles[particleIndex];
-			Vec2f accumulatedDelta = V2f(0,0);
+			Vec2f accumulatedDelta = V2f(0, 0);
 			size_t neighborCount = particle.neighbors.size();
-			for (size_t index = 0; index < neighborCount; ++index) {
+			for(size_t index = 0; index < neighborCount; ++index) {
 				size_t neighborIndex = particle.neighbors[index];
 				Particle &neighbor = particles[neighborIndex];
-				Vec2f delta = V2f(0,0);
+				Vec2f delta = V2f(0, 0);
 				SPHComputeDelta(params, particle.curPosition, neighbor.curPosition, &particle.pressure, deltaTime, &delta);
 				neighbor.curPosition += delta * 0.5f;
 				accumulatedDelta -= delta * 0.5f;
@@ -204,18 +230,18 @@ namespace Demo3 {
 	void ParticleSimulation::UpdateEmitter(ParticleEmitter *emitter, const float deltaTime) {
 		const float spacing = params.particleSpacing;
 		const float invDeltaTime = 1.0f / deltaTime;
-		if (emitter->isActive) {
+		if(emitter->isActive) {
 			const float rate = 1.0f / emitter->rate;
 			emitter->elapsed += deltaTime;
 			emitter->totalElapsed += deltaTime;
-			if (emitter->elapsed >= rate) {
+			if(emitter->elapsed >= rate) {
 				emitter->elapsed = 0;
 				Vec2f acceleration = emitter->direction * emitter->speed * invDeltaTime;
 				Vec2f dir = Vec2Cross(1.0f, emitter->direction);
 				int count = (int)floor(emitter->radius / spacing);
 				float halfSize = (float)count * spacing * 0.5f;
 				Vec2f offset = dir * (float)count * spacing * 0.5f;
-				for (int index = 0; index < count; ++index) {
+				for(int index = 0; index < count; ++index) {
 					Vec2f p = dir * (float)index * spacing;
 					p += dir * spacing * 0.5f;
 					p += emitter->position - offset;
@@ -224,7 +250,7 @@ namespace Demo3 {
 					AddParticle(p, acceleration);
 				}
 			}
-			if (emitter->totalElapsed >= emitter->duration) {
+			if(emitter->totalElapsed >= emitter->duration) {
 				emitter->isActive = false;
 			}
 		}
@@ -237,7 +263,7 @@ namespace Demo3 {
 		// Emitters
 		{
 			auto startClock = std::chrono::high_resolution_clock::now();
-			for (size_t emitterIndex = 0; emitterIndex < emitters.size(); ++emitterIndex) {
+			for(size_t emitterIndex = 0; emitterIndex < emitters.size(); ++emitterIndex) {
 				ParticleEmitter *emitter = &emitters[emitterIndex];
 				UpdateEmitter(emitter, deltaTime);
 			}
@@ -245,23 +271,27 @@ namespace Demo3 {
 			stats.time.emitters = std::chrono::duration_cast<std::chrono::nanoseconds>(deltaClock).count() * nanosToMilliseconds;
 		}
 
+		ValidateParticles(particles);
+
 		// Integrate forces
 		{
 			auto startClock = std::chrono::high_resolution_clock::now();
-			for (size_t particleIndex = 0; particleIndex < particles.size(); ++particleIndex) {
+			for(size_t particleIndex = 0; particleIndex < particles.size(); ++particleIndex) {
 				Particle &particle = particles[particleIndex];
 				particle.acceleration += gravity + externalForce;
 				particle.velocity += particle.acceleration * deltaTime;
-				particle.acceleration = V2f(0,0);
+				particle.acceleration = V2f(0, 0);
 			}
 			auto deltaClock = std::chrono::high_resolution_clock::now() - startClock;
 			stats.time.integration = std::chrono::duration_cast<std::chrono::nanoseconds>(deltaClock).count() * nanosToMilliseconds;
 		}
 
+		ValidateParticles(particles);
+
 		// Viscosity force
 		{
 			auto startClock = std::chrono::high_resolution_clock::now();
-			if (useMultiThreading) {
+			if(useMultiThreading) {
 				workerPool.CreateTasks(particles.size(), [=](const size_t startIndex, const size_t endIndex, const float deltaTime) {
 					this->ViscosityForces(startIndex, endIndex, deltaTime);
 				}, deltaTime);
@@ -273,10 +303,12 @@ namespace Demo3 {
 			stats.time.viscosityForces = std::chrono::duration_cast<std::chrono::nanoseconds>(deltaClock).count() * nanosToMilliseconds;
 		}
 
+		ValidateParticles(particles);
+
 		// Predict
 		{
 			auto startClock = std::chrono::high_resolution_clock::now();
-			for (size_t particleIndex = 0; particleIndex < particles.size(); ++particleIndex) {
+			for(size_t particleIndex = 0; particleIndex < particles.size(); ++particleIndex) {
 				Particle &particle = particles[particleIndex];
 				particle.prevPosition = particle.curPosition;
 				particle.curPosition += particle.velocity * deltaTime;
@@ -285,14 +317,16 @@ namespace Demo3 {
 			stats.time.predict = std::chrono::duration_cast<std::chrono::nanoseconds>(deltaClock).count() * nanosToMilliseconds;
 		}
 
+		ValidateParticles(particles);
+
 		// Update grid
 		{
 			auto startClock = std::chrono::high_resolution_clock::now();
-			for (size_t particleIndex = 0; particleIndex < particles.size(); ++particleIndex) {
+			for(size_t particleIndex = 0; particleIndex < particles.size(); ++particleIndex) {
 				Particle &particle = particles[particleIndex];
 				Vec2i newCellIndex = SPHComputeCellIndex(particle.curPosition);
 				Vec2i oldCellIndex = particle.cellIndex;
-				if (newCellIndex.x != oldCellIndex.x || newCellIndex.y != oldCellIndex.y) {
+				if(newCellIndex.x != oldCellIndex.x || newCellIndex.y != oldCellIndex.y) {
 					RemoveParticleFromGrid(particle, particleIndex);
 					InsertParticleIntoGrid(particle, particleIndex);
 				}
@@ -301,10 +335,12 @@ namespace Demo3 {
 			stats.time.updateGrid = std::chrono::duration_cast<std::chrono::nanoseconds>(deltaClock).count() * nanosToMilliseconds;
 		}
 
+		ValidateParticles(particles);
+
 		// Neighbor search
 		{
 			auto startClock = std::chrono::high_resolution_clock::now();
-			if (useMultiThreading) {
+			if(useMultiThreading) {
 				workerPool.CreateTasks(particles.size(), [=](const size_t startIndex, const size_t endIndex, const float deltaTime) {
 					this->NeighborSearch(startIndex, endIndex, deltaTime);
 				}, deltaTime);
@@ -314,7 +350,7 @@ namespace Demo3 {
 			}
 			stats.minParticleNeighborCount = kSPHMaxParticleNeighborCount;
 			stats.maxParticleNeighborCount = 0;
-			for (size_t particleIndex = 0; particleIndex < particles.size(); ++particleIndex) {
+			for(size_t particleIndex = 0; particleIndex < particles.size(); ++particleIndex) {
 				Particle &particle = particles[particleIndex];
 				size_t neighborCount = particle.neighbors.size();
 				stats.minParticleNeighborCount = std::min(neighborCount, stats.minParticleNeighborCount);
@@ -324,25 +360,29 @@ namespace Demo3 {
 			stats.time.neighborSearch = std::chrono::duration_cast<std::chrono::nanoseconds>(deltaClock).count() * nanosToMilliseconds;
 		}
 
+		ValidateParticles(particles);
+
 		// Density and pressure
 		{
 			auto startClock = std::chrono::high_resolution_clock::now();
-			if (useMultiThreading) {
+			if(useMultiThreading) {
 				workerPool.CreateTasks(particles.size(), [=](const size_t startIndex, const size_t endIndex, const float deltaTime) {
 					this->DensityAndPressure(startIndex, endIndex, deltaTime);
 				}, deltaTime);
 				workerPool.WaitUntilDone();
 			} else {
-				this->DensityAndPressure(0, particles.size(), deltaTime);
+				this->DensityAndPressure(0, particles.size() - 1, deltaTime);
 			}
 			auto deltaClock = std::chrono::high_resolution_clock::now() - startClock;
 			stats.time.densityAndPressure = std::chrono::duration_cast<std::chrono::nanoseconds>(deltaClock).count() * nanosToMilliseconds;
 		}
 
+		ValidateParticles(particles);
+
 		// Calculate delta position
 		{
 			auto startClock = std::chrono::high_resolution_clock::now();
-			if (useMultiThreading) {
+			if(useMultiThreading) {
 				workerPool.CreateTasks(particles.size(), [=](const size_t startIndex, const size_t endIndex, const float deltaTime) {
 					this->DeltaPositions(startIndex, endIndex, deltaTime);
 				}, deltaTime);
@@ -354,14 +394,16 @@ namespace Demo3 {
 			stats.time.deltaPositions = std::chrono::duration_cast<std::chrono::nanoseconds>(deltaClock).count() * nanosToMilliseconds;
 		}
 
+		ValidateParticles(particles);
+
 		// Solve collisions
 		{
 			auto startClock = std::chrono::high_resolution_clock::now();
-			for (size_t particleIndex = 0; particleIndex < particles.size(); ++particleIndex) {
+			for(size_t particleIndex = 0; particleIndex < particles.size(); ++particleIndex) {
 				Particle &particle = particles[particleIndex];
-				for (size_t bodyIndex = 0; bodyIndex < bodies.size(); ++bodyIndex) {
+				for(size_t bodyIndex = 0; bodyIndex < bodies.size(); ++bodyIndex) {
 					Body *body = bodies[bodyIndex];
-					switch (body->type) {
+					switch(body->type) {
 						case BodyType::BodyType_Plane:
 						{
 							Plane *plane = static_cast<Plane *>(body);
@@ -389,11 +431,15 @@ namespace Demo3 {
 			stats.time.collisions = std::chrono::duration_cast<std::chrono::nanoseconds>(deltaClock).count() * nanosToMilliseconds;
 		}
 
+		ValidateParticles(particles);
+
 		// Recalculate velocity for next frame
-		for (size_t particleIndex = 0; particleIndex < particles.size(); ++particleIndex) {
+		for(size_t particleIndex = 0; particleIndex < particles.size(); ++particleIndex) {
 			Particle &particle = particles[particleIndex];
 			particle.velocity = (particle.curPosition - particle.prevPosition) * invDt;
 		}
+
+		ValidateParticles(particles);
 	}
 
 	void ParticleSimulation::Render(Render::CommandBuffer *commandBuffer, const float worldToScreenScale) {
@@ -402,34 +448,34 @@ namespace Demo3 {
 		Render::PushRectangle(commandBuffer, V2f(-kSPHBoundaryHalfWidth, -kSPHBoundaryHalfHeight), V2f(kSPHBoundaryHalfWidth, kSPHBoundaryHalfHeight) * 2.0f, domainColor, false, 1.0f);
 
 		// Grid fill
-		for (int yIndexInner = 0; yIndexInner < kSPHGridCountY; ++yIndexInner) {
-			for (int xIndexInner = 0; xIndexInner < kSPHGridCountX; ++xIndexInner) {
+		for(int yIndexInner = 0; yIndexInner < kSPHGridCountY; ++yIndexInner) {
+			for(int xIndexInner = 0; xIndexInner < kSPHGridCountX; ++xIndexInner) {
 				size_t cellOffset = SPHComputeCellOffset(xIndexInner, yIndexInner);
 				Cell *cell = &cells[cellOffset];
 				Vec2f innerP = kSPHGridOrigin + V2f((float)xIndexInner, (float)yIndexInner) * kSPHGridCellSize;
 				Vec2f innerSize = V2f(kSPHGridCellSize, kSPHGridCellSize);
-				if (cell->indices.size() > 0) {
+				if(cell->indices.size() > 0) {
 					Render::PushRectangle(commandBuffer, innerP, innerSize, ColorLightGray, true);
 				}
 			}
 		}
 
 		// Grid lines
-		for (int yIndex = 0; yIndex < kSPHGridCountY; ++yIndex) {
+		for(int yIndex = 0; yIndex < kSPHGridCountY; ++yIndex) {
 			Vec2f startP = kSPHGridOrigin + V2f(0, (float)yIndex) * kSPHGridCellSize;
 			Vec2f endP = kSPHGridOrigin + V2f((float)kSPHGridCountX, (float)yIndex) * kSPHGridCellSize;
 			Render::PushLine(commandBuffer, startP, endP, ColorDarkGray, 1.0f);
 		}
-		for (int xIndex = 0; xIndex < kSPHGridCountX; ++xIndex) {
+		for(int xIndex = 0; xIndex < kSPHGridCountX; ++xIndex) {
 			Vec2f startP = kSPHGridOrigin + V2f((float)xIndex, 0) * kSPHGridCellSize;
 			Vec2f endP = kSPHGridOrigin + V2f((float)xIndex, (float)kSPHGridCountY) * kSPHGridCellSize;
 			Render::PushLine(commandBuffer, startP, endP, ColorDarkGray, 1.0f);
 		}
 
 		// Bodies
-		for (int bodyIndex = 0; bodyIndex < bodies.size(); ++bodyIndex) {
+		for(int bodyIndex = 0; bodyIndex < bodies.size(); ++bodyIndex) {
 			Body *body = bodies[bodyIndex];
-			switch (body->type) {
+			switch(body->type) {
 				case BodyType::BodyType_Plane:
 				{
 					Plane *plane = static_cast<Plane *>(body);
@@ -458,8 +504,8 @@ namespace Demo3 {
 		}
 
 		// Particles
-		if (particles.size() > 0) {
-			for (int particleIndex = 0; particleIndex < particles.size(); ++particleIndex) {
+		if(particles.size() > 0) {
+			for(int particleIndex = 0; particleIndex < particles.size(); ++particleIndex) {
 				Particle *particle = &particles[particleIndex];
 				particle->color = SPHGetParticleColor(params.restDensity, particle->density, particle->pressure, particle->velocity);
 			}
@@ -473,9 +519,30 @@ namespace Demo3 {
 		}
 	}
 
-	Particle::Particle(const Vec2f & position) :
+#if 0
+	Vec2f acceleration;
+	Vec2f velocity;
+	Vec2f prevPosition;
+	Vec2f curPosition;
+	Vec2i cellIndex;
+	Vec4f color;
+	float density;
+	float nearDensity;
+	float pressure;
+	float nearPressure;
+#endif
+
+	Particle::Particle(const Vec2f &position):
+		acceleration(V2f(0, 0)),
+		velocity(V2f(0, 0)),
 		prevPosition(position),
-		curPosition(position) {
+		curPosition(position),
+		cellIndex(V2i(-1, -1)),
+		color(V4f(0, 0, 0, 0)),
+		density(0),
+		nearDensity(0),
+		pressure(0),
+		nearPressure(0) {
 		neighbors.reserve(kSPHMaxParticleNeighborCount);
 	}
 

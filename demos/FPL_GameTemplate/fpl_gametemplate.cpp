@@ -21,6 +21,7 @@ License:
 
 #define FPL_IMPLEMENTATION
 #define FPL_LOGGING
+#define FPL_NO_VIDEO_VULKAN
 #include <final_platform_layer.h>
 
 #include <string.h>

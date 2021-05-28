@@ -10,7 +10,7 @@ Requirements:
 	- C++/11 Compiler
 	- Platform x64 or x86_64
 	- Final Platform Layer
-	- FFmpeg-4.3.1 or higher (Release, Full, Shared, Win64: https://www.gyan.dev/ffmpeg/builds/)
+	- FFmpeg-4.4 or higher (Release, Full, Shared, Win64: https://www.gyan.dev/ffmpeg/builds/)
 
 Author:
 	Torsten Spaete
@@ -124,6 +124,7 @@ License:
 #define FPL_IMPLEMENTATION
 #define FPL_LOGGING
 #define FPL_LOG_TO_DEBUGOUT
+#define FPL_NO_VIDEO_VULKAN
 #include <final_platform_layer.h>
 
 #include <assert.h> // assert
@@ -1079,8 +1080,8 @@ struct AudioFormat {
 	uint32_t periods;
 	//! Format
 	fplAudioFormatType type;
-	//! Driver
-	fplAudioDriverType driver;
+	//! Backend
+	fplAudioBackendType backend;
 };
 
 struct AudioContext {
@@ -1096,7 +1097,7 @@ struct AudioContext {
 	double audioDiffAbgCoef;
 	double audioDiffThreshold;
 
-	fplAudioDriverType driver;
+	fplAudioBackendType backend;
 
 	SwrContext *softwareResampleCtx;
 	Frame *pendingAudioFrame;
@@ -2834,13 +2835,13 @@ static void RenderOSD(PlayerState *state, const Mat4f &proj, const float w, cons
 		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
 		osdPos += V2f(0, -osdFontSize);
 
-		const char* audioDriverName = fplGetAudioDriverName(state->audio.audioTarget.driver);
+		const char* audioBackendName = fplGetAudioBackendName(state->audio.audioTarget.backend);
 		const char* audioFormatName = fplGetAudioFormatName(state->audio.audioTarget.type);
 
 		uint32_t bufferSize = state->audio.audioTarget.bufferSizeInBytes;
 		uint32_t frameSize = fplGetAudioFrameSizeInBytes(state->audio.audioTarget.type, state->audio.audioTarget.channels);
 
-		fplFormatString(osdTextBuffer, fplArrayCount(osdTextBuffer), "Audio: %s, %s, %u channels, %u Hz", audioDriverName, audioFormatName, state->audio.audioTarget.channels, state->audio.audioTarget.sampleRate);
+		fplFormatString(osdTextBuffer, fplArrayCount(osdTextBuffer), "Audio: %s, %s, %u channels, %u Hz", audioBackendName, audioFormatName, state->audio.audioTarget.channels, state->audio.audioTarget.sampleRate);
 		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
 		osdPos += V2f(0, -osdFontSize);
 	}
@@ -3348,7 +3349,7 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 	audio.audioTarget.channels = targetChannelCount;
 	audio.audioTarget.sampleRate = targetSampleRate;
 	audio.audioTarget.type = nativeAudioFormat.type;
-	audio.audioTarget.driver = nativeAudioFormat.driver;
+	audio.audioTarget.backend = nativeAudioFormat.backend;
 	audio.audioTarget.bufferSizeInBytes = ffmpeg.av_samples_get_buffer_size(nullptr, audio.audioTarget.channels, audio.audioTarget.sampleRate, targetSampleFormat, 1);
 
 	AVSampleFormat inputSampleFormat = audioCodexCtx->sample_fmt;
@@ -3535,12 +3536,12 @@ int main(int argc, char **argv) {
 
 	fplCopyString("FPL FFmpeg Demo", settings.window.title, fplArrayCount(settings.window.title));
 #if USE_HARDWARE_RENDERING
-	settings.video.driver = fplVideoDriverType_OpenGL;
+	settings.video.backend = fplVideoBackendType_OpenGL;
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
 	settings.video.graphics.opengl.majorVersion = 3;
 	settings.video.graphics.opengl.minorVersion = 3;
 #else
-	settings.video.driver = fplVideoDriverType_Software;
+	settings.video.backend = fplVideoBackendType_Software;
 #endif
 	settings.video.isAutoSize = false;
 	settings.video.isVSync = false;

@@ -28,4 +28,7 @@ License:
 
 #define FPL_IMPLEMENTATION // Include the implementation
 #define FPL_NO_ENTRYPOINT // Disable any point entry inclusion
+// Disable video and audio
+#define FPL_NO_VIDEO
+#define FPL_NO_AUDIO
 #include <final_platform_layer.h>

@@ -14,6 +14,10 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2021-05-27
+	- Enabled logging by default
+	- Do not typedef GLchar and GLsizeiptr, GLintptr when already included
+
 	## 2020-04-20
 	- Rotating example for legacy and modern
 
@@ -43,7 +47,9 @@ License:
 #define MODERN_OPENGL 1 // Enable this to use OpenGL 3.3+
 
 #define FPL_IMPLEMENTATION
+#define FPL_LOGGING
 #define FPL_NO_VIDEO_SOFTWARE
+#define FPL_NO_VIDEO_VULKAN
 #define FPL_NO_AUDIO
 #include <final_platform_layer.h>
 
@@ -59,9 +65,17 @@ License:
 #define APIENTRYP APIENTRY *
 
 #include <stddef.h>
+
+// In GL.h there might be already a GLsizeiptr
+#if !defined(GL_VERSION_1_5)
 typedef ptrdiff_t GLsizeiptr;
 typedef ptrdiff_t GLintptr;
+#endif
+
+// In GL.h there might be already a GLchar
+#if !defined(GL_VERSION_2_0)
 typedef char GLchar;
+#endif
 
 #ifndef GL_CONTEXT_PROFILE_MASK
 
@@ -141,21 +155,21 @@ static PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation = NULL;
 static PFNGLUNIFORM1IPROC glUniform1i = NULL;
 static PFNGLUNIFORMMATRIX4FV glUniformMatrix4fv = NULL;
 
-// @TODO(final): Add a FPL function for retrieving a proc from the current video driver
+// @TODO(final): Add a FPL function for retrieving a proc from the current video backend
 #if defined(FPL_PLATFORM_WINDOWS)
 static void *GLProcAddress(const char *name) {
 	fpl__VideoState *videoState = (fpl__VideoState *)fpl__global__AppState->video.mem;
 	fplAssert(videoState != NULL);
-	fplAssert(videoState->win32.opengl.api.wglGetProcAddress != NULL);
-	void *result = videoState->win32.opengl.api.wglGetProcAddress(name);
+	fplAssert(videoState->activeBackend.win32_opengl.api.wglGetProcAddress != NULL);
+	void *result = videoState->activeBackend.win32_opengl.api.wglGetProcAddress(name);
 	return(result);
 }
 #else
 static void *GLProcAddress(const char *name) {
 	fpl__VideoState *videoState = (fpl__VideoState *)fpl__global__AppState->video.mem;
 	fplAssert(videoState != NULL);
-	fplAssert(videoState->x11.opengl.api.glXGetProcAddress != NULL);
-	void *result = videoState->x11.opengl.api.glXGetProcAddress((const GLubyte *)name);
+	fplAssert(videoState->activeBackend.x11_opengl.api.glXGetProcAddress != NULL);
+	void *result = videoState->activeBackend.x11_opengl.api.glXGetProcAddress((const GLubyte *)name);
 	return(result);
 }
 #endif
@@ -525,8 +539,14 @@ static bool RunModern() {
 
 int main(int argc, char **args) {
 	int result = 0;
+
+	fplLogSettings logSettings = fplZeroInit;
+	logSettings.maxLevel = fplLogLevel_All;
+	logSettings.writers[0].flags = fplLogWriterFlags_StandardConsole;
+	fplSetLogSettings(&logSettings);
+
 	fplSettings settings = fplMakeDefaultSettings();
-	settings.video.driver = fplVideoDriverType_OpenGL;
+	settings.video.backend = fplVideoBackendType_OpenGL;
 #if MODERN_OPENGL
 	fplCopyString("FPL Modern OpenGL", settings.window.title, fplArrayCount(settings.window.title));
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
@@ -538,7 +558,7 @@ int main(int argc, char **args) {
 	fplCopyString("FPL Legacy OpenGL", settings.window.title, fplArrayCount(settings.window.title));
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
 #endif
-	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
+	if (fplPlatformInit(fplInitFlags_Video | fplInitFlags_Console, &settings)) {
 		const char *version = (const char *)glGetString(GL_VERSION);
 		const char *vendor = (const char *)glGetString(GL_VENDOR);
 		const char *renderer = (const char *)glGetString(GL_RENDERER);

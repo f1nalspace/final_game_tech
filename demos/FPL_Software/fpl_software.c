@@ -14,6 +14,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2021-05-16
+	- Use fplPollEvents() instead
+
 	## 2020-04-20
 	- Much better rendering
 
@@ -38,7 +41,9 @@ License:
 -------------------------------------------------------------------------------
 */
 
-#define FPL_ENTRYPOINT // Force the inclusion of the entry point
+#define FPL_IMPLEMENTATION
+#define FPL_NO_VIDEO_OPENGL
+#define FPL_NO_VIDEO_VULKAN
 #include <final_platform_layer.h>
 
 #include <final_math.h>
@@ -65,7 +70,7 @@ static uint8_t RandomByte(RandomSeries *series) {
 int main(int argc, char **args) {
 	fplSettings settings = fplMakeDefaultSettings();
 	fplCopyString("Software Rendering Example", settings.window.title, fplArrayCount(settings.window.title));
-	settings.video.driver = fplVideoDriverType_Software;
+	settings.video.backend = fplVideoBackendType_Software;
 	settings.video.isAutoSize = true;
 	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
 		RandomSeries series = { 1337 };
@@ -75,8 +80,8 @@ int main(int argc, char **args) {
 		Vec2f rectVel = V2fInit(200.0f, 200.0f);
 		Vec2f rectPos = V2fInit(rectRadius.w, rectRadius.h);
 		while (fplWindowUpdate()) {
-			fplEvent ev;
-			while (fplPollEvent(&ev)) {}
+			fplPollEvents();
+
 			fplVideoBackBuffer *backBuffer = fplGetVideoBackBuffer();
 
 			// World

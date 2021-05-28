@@ -58,6 +58,8 @@ License:
 
 #define FPL_IMPLEMENTATION
 #define FPL_NO_AUDIO
+#define FPL_NO_VIDEO_VULKAN
+#define FPL_NO_VIDEO_OPENGL
 #include <final_platform_layer.h>
 
 // Custom types to save a bit of typing :D
@@ -891,10 +893,10 @@ int main(int argc, char **argv) {
 	settings.window.isResizable = false;
 
 #if USE_OPENGL_NO_RAYTRACE
-	settings.video.driver = fplVideoDriverType_OpenGL;
+	settings.video.backend = fplVideoBackendType_OpenGL;
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
 #else
-	settings.video.driver = fplVideoDriverType_Software;
+	settings.video.backend = fplVideoBackendType_Software;
 #endif
 
 	if (fplPlatformInit(fplInitFlags_All, &settings)) {

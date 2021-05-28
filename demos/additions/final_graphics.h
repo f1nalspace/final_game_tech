@@ -93,9 +93,9 @@ extern void BackbufferDrawRect(fplVideoBackBuffer *backBuffer, const float x0, c
 	maxX = ClampBackBufferPosition(maxX, 0, w - 1);
 	minY = ClampBackBufferPosition(minY, 0, h - 1);
 	maxY = ClampBackBufferPosition(maxY, 0, h - 1);
-	for (int yp = minY; yp <= maxY; ++yp) {
+	for (int yp = minY; yp < maxY; ++yp) {
 		uint32_t *pixel = backBuffer->pixels + yp * backBuffer->width + minX;
-		for (int xp = minX; xp <= maxX; ++xp) {
+		for (int xp = minX; xp < maxX; ++xp) {
 			*pixel++ = color;
 		}
 	}

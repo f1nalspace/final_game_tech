@@ -28,6 +28,7 @@ License:
 */
 
 #define FPL_IMPLEMENTATION
+#define FPL_NO_VIDEO_VULKAN
 #include <final_platform_layer.h>
 
 int main(int argc, char **args) {

@@ -56,8 +56,8 @@ int main(int argc, char **args){
 	// Create default settings
 	fplSettings settings = fplMakeDefaultSettings();
 
-	// Overwrite the video driver
-	settings.video.driver = fplVideoDriverType_OpenGL;
+	// Overwrite the video backend
+	settings.video.backend = fplVideoBackendType_OpenGL;
 
 	// Legacy OpenGL
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
@@ -133,7 +133,44 @@ SOFTWARE.
 	@tableofcontents
 
 	## v0.9.7-beta
-	- XXX
+
+	### Short
+	- Added Vulkan support
+	- Added seamless window resizing support for Win32
+	- Added query functions for accessing video backend handles
+	- Improved video system stability
+	- Improved console window handling for Win32
+	- Fixed some major & minor bugs
+
+	### Detail
+	- New: Added structs fplVideoRequirements, fplVideoRequirementsVulkan
+	- New: Added function fplGetVideoRequirements() to query any requirements for a particular video backend
+	- New: Added macro fplAssertPtr() for simply (exp != fpl_null) assertions
+	- New: Added typedef fplVulkanValidationLayerCallback
+	- New: Added enums fplVulkanValidationLayerMode, fplVulkanValidationSeverity
+	- New: Added struct fplVulkanSettings
+	- New: Added structs fplVideoWindow, fplVideoWindowWin32, fplVideoWindowX11
+	- New: Added structs fplVideoSurface, fplVideoSurfaceOpenGL, fplVideoSurfaceVulkan
+	- New: Added function fplGetVideoSurface() for query the current @ref fplVideoSurface
+	- New[#48]: Added function fplGetVideoProcedure() for query functions from the active video backend
+	- New[#18]: [Win32] Support for message proc fibers to support seamless window resize -> works only with fplPollEvents()
+	- New[#105]: [Win32] Added support for creating and using a console in addition to a window
+	- New[#31]: [Win32] Added support for Vulkan
+	- New[#32]: [X11] Added support for Vulkan
+
+	- Changed: Changed video system to use jump tables instead, to support more backends in the future
+	- Changed: Added field @ref fplVulkanSettings to @ref fplGraphicsApiSettings
+	- Changed[#116]: AudioDriver/VideoDriver renamed to AudioBackend/VideoBackend
+	- Changed[#98]: [Win32] Use YieldProcessor instead of SwitchToThread for fplThreadYield()
+	- Changed[#111]: [Win32] Use SetConsoleTitle with @ref fplConsoleSettings.title
+	- Changed[#113]: [Win32] Properly show window on initialize (Foreground, Focus)
+
+	- Fixed[#109]: fplS32ToString is not working anymore
+	- Fixed[#121]: fplMutexHandle isValid flag was never working properly
+	- Fixed[#122]: Compile errors on Arm32/C99 for "asm volatile"
+	- Fixed[#123]: Compile error for wrong usage of fplStructInit in fplCPUID() for non-x86 architectures
+	- Fixed[#110]: [Win32] Erasing of background when no video driver hides window always
+	- Fixed[#114]: [Win32] Console window does not appear at the very first
 
 	## v0.9.6-beta
 	### Features
@@ -1555,7 +1592,7 @@ SOFTWARE.
 #endif // FPL_PLATFORM
 
 // Assembler keyword is compiler specific
-#if defined(FPL_COMPILER_CLANG)
+#if defined(FPL_COMPILER_CLANG) || defined(FPL_COMPILER_GCC)
 #define fpl__m_Asm __asm__
 #elif defined(FPL_COMPILER_MSVC)
 #define fpl__m_Asm __asm
@@ -1922,6 +1959,9 @@ SOFTWARE.
 #	if !defined(FPL_NO_VIDEO_OPENGL)
 #		define FPL__SUPPORT_VIDEO_OPENGL
 #	endif
+#	if !defined(FPL_NO_VIDEO_VULKAN)
+#		define FPL__SUPPORT_VIDEO_VULKAN
+#	endif
 #	if !defined(FPL_NO_VIDEO_SOFTWARE)
 #		define FPL__SUPPORT_VIDEO_SOFTWARE
 #	endif
@@ -1961,6 +2001,9 @@ SOFTWARE.
 #	if defined(FPL__SUPPORT_VIDEO_OPENGL)
 #		undef FPL__SUPPORT_VIDEO_OPENGL
 #	endif
+#	if defined(FPL__SUPPORT_VIDEO_VULKAN)
+#		undef FPL__SUPPORT_VIDEO_VULKAN
+#	endif
 #	if defined(FPL__SUPPORT_VIDEO_SOFTWARE)
 #		undef FPL__SUPPORT_VIDEO_SOFTWARE
 #	endif
@@ -1977,6 +2020,9 @@ SOFTWARE.
 #	define FPL__ENABLE_VIDEO
 #	if defined(FPL__SUPPORT_VIDEO_OPENGL)
 #		define FPL__ENABLE_VIDEO_OPENGL
+#	endif
+#	if defined(FPL__SUPPORT_VIDEO_VULKAN)
+#		define FPL__ENABLE_VIDEO_VULKAN
 #	endif
 #	if defined(FPL__SUPPORT_VIDEO_SOFTWARE)
 #		define FPL__ENABLE_VIDEO_SOFTWARE
@@ -2037,6 +2083,8 @@ SOFTWARE.
 #define fplStaticAssert(exp) fpl__m_StaticAssert(exp)
 //! Always crashes the application with a null-pointer assignment, when the specified expression evaluates to @c false
 #define fplAlwaysAssert(exp) if(!(exp)) {*(int *)0 = 0;}
+//! Breaks when the specified pointer is @ref fpl_null
+#define fplAssertPtr(ptr) fpl__m_Assert((ptr) != fpl_null)
 
 //
 // Debug-Break
@@ -2307,6 +2355,8 @@ struct IUnknown;
 typedef uint64_t fpl__Win32Guid[4];
 //! A win32 handle (opaque, min 4/8 bytes)
 typedef void *fpl__Win32Handle;
+//! A win32 instance handle (opaque, min 4/8 bytes)
+typedef fpl__Win32Handle fpl__Win32InstanceHandle;
 //! A win32 library handle (opaque, min 4/8 bytes)
 typedef fpl__Win32Handle fpl__Win32LibraryHandle;
 //! A win32 filehandle (opaque, min 4/8 bytes)
@@ -2321,6 +2371,12 @@ typedef fpl__Win32Handle fpl__Win32SignalHandle;
 typedef void *fpl__Win32ConditionVariable;
 //! A win32 semaphore handle (opaque, min 4/8 bytes)
 typedef fpl__Win32Handle fpl__Win32SemaphoreHandle;
+//! A win32 window handle (opaque, min 4/8 bytes)
+typedef fpl__Win32Handle fpl__Win32WindowHandle;
+//! A win32 device context (opaque, min 4/8 bytes)
+typedef fpl__Win32Handle fpl__Win32DeviceContext;
+//! A win32 rendering context (opaque, min 4/8 bytes)
+typedef fpl__Win32Handle fpl__Win32RenderingContext;
 
 #	endif // FPL_PLATFORM_WINDOWS
 
@@ -2343,6 +2399,23 @@ typedef uint64_t fpl__POSIXConditionVariable[16];
 
 #	endif // FPL_SUBPLATFORM_POSIX
 
+#	if defined(FPL_SUBPLATFORM_X11)
+
+//! A X11 Display (opaque, 4/8 bytes)
+typedef void *fpl__X11Display;
+//! A X11 window (opaque, 4 bytes)
+typedef int fpl__X11Window;
+//! A X11 Visual (opaque, 4/8 bytes)
+typedef void *fpl__X11Visual;
+//! A X11 GC (opaque, 4/8 bytes)
+typedef void *fpl__X11GC;
+//! A X11 Image (opaque, 4/8 bytes)
+typedef void *fpl__X11Image;
+//! A GLX Context (opaque, 4/8 bytes)
+typedef void *fpl__GLXContext;
+
+#	endif // FPL_SUBPLATFORM_X11
+
 #	if defined(FPL_PLATFORM_LINUX)
 
 //! A Linux signal handle (opaque, min 4 bytes)
@@ -2358,6 +2431,8 @@ typedef int fpl__LinuxSignalHandle;
 typedef GUID fpl__Win32Guid;
 //! A win32 handle
 typedef HANDLE fpl__Win32Handle;
+//! A win32 instance handle
+typedef HINSTANCE fpl__Win32InstanceHandle;
 //! A win32 library handle
 typedef HMODULE fpl__Win32LibraryHandle;
 //! A win32 thread handle
@@ -2372,6 +2447,12 @@ typedef HANDLE fpl__Win32SignalHandle;
 typedef CONDITION_VARIABLE fpl__Win32ConditionVariable;
 //! A win32 semaphore handle
 typedef HANDLE fpl__Win32SemaphoreHandle;
+//! A win32 window handle
+typedef HWND fpl__Win32WindowHandle;
+//! A win32 device context
+typedef HDC fpl__Win32DeviceContext;
+//! A win32 rendering context
+typedef HGLRC fpl__Win32RenderingContext;
 
 #	endif // FPL_PLATFORM_WINDOWS
 
@@ -2393,6 +2474,24 @@ typedef sem_t fpl__POSIXSemaphoreHandle;
 typedef pthread_cond_t fpl__POSIXConditionVariable;
 
 #	endif // FPL_SUBPLATFORM_POSIX
+
+#	if defined(FPL_SUBPLATFORM_X11)
+
+//! A X11 Display
+typedef Display *fpl__X11Display;
+//! A X11 window
+typedef Window fpl__X11Window;
+//! A X11 Visual
+typedef Visual *fpl__X11Visual;
+//! A X11 GC
+typedef GC fpl__X11GC;
+//! A X11 Image
+typedef XImage *fpl__X11Image;
+//! A GLX Context (opaque, 4/8 bytes)
+typedef void *fpl__GLXContext;
+
+#	endif // FPL_SUBPLATFORM_X11
+
 
 #	if defined(FPL_PLATFORM_LINUX)
 
@@ -3343,20 +3442,22 @@ typedef enum fplPlatformResultType {
 */
 fpl_common_api const char *fplGetPlatformResultName(const fplPlatformResultType type);
 
-//! An enumeration of video driver types
-typedef enum fplVideoDriverType {
-	//! No video driver
-	fplVideoDriverType_None = 0,
-	//! OpenGL
-	fplVideoDriverType_OpenGL,
+//! An enumeration of video backend types
+typedef enum fplVideoBackendType {
+	//! No video backend
+	fplVideoBackendType_None = 0,
 	//! Software
-	fplVideoDriverType_Software,
+	fplVideoBackendType_Software,
+	//! OpenGL
+	fplVideoBackendType_OpenGL,
+	//! Vulkan
+	fplVideoBackendType_Vulkan,
 
-	//! First @ref fplVideoDriverType
-	fplVideoDriverType_First = fplVideoDriverType_None,
-	//! Last @ref fplVideoDriverType
-	fplVideoDriverType_Last = fplVideoDriverType_Software,
-} fplVideoDriverType;
+	//! First @ref fplVideoBackendType
+	fplVideoBackendType_First = fplVideoBackendType_None,
+	//! Last @ref fplVideoBackendType
+	fplVideoBackendType_Last = fplVideoBackendType_Vulkan,
+} fplVideoBackendType;
 
 #if defined(FPL__ENABLE_VIDEO_OPENGL)
 //! An enumeration of OpenGL compability flags
@@ -3372,7 +3473,7 @@ typedef enum fplOpenGLCompabilityFlags {
 } fplOpenGLCompabilityFlags;
 
 //! A structure that contains OpenGL video settings
-typedef struct fplOpenGLVideoSettings {
+typedef struct fplOpenGLSettings {
 	//! Compability flags
 	fplOpenGLCompabilityFlags compabilityFlags;
 	//! Desired major version
@@ -3381,25 +3482,87 @@ typedef struct fplOpenGLVideoSettings {
 	uint32_t minorVersion;
 	//! Multisampling count
 	uint8_t multiSamplingCount;
-} fplOpenGLVideoSettings;
+} fplOpenGLSettings;
 #endif // FPL__ENABLE_VIDEO_OPENGL
+
+#if defined(FPL__ENABLE_VIDEO_VULKAN)
+
+//! The debug callback called when the validation layer writes something
+typedef void (fplVulkanValidationLayerCallback)(void *userData, const char *message, const uint32_t messageSeverity, const uint32_t messageType, const void *debugUtilsMessengerCallbackData);
+
+//! The validation layer modes for Vulkan
+typedef enum fplVulkanValidationLayerMode {
+	//! Do not use the validation
+	fplVulkanValidationLayerMode_Disabled = 0,
+	//! Enable validations and print out validations to the FPL logging system
+	fplVulkanValidationLayerMode_Logging,
+	//! Enable validations and use @ref fplVulkanValidationLayerCallback to call back to to the user
+	fplVulkanValidationLayerMode_User,
+} fplVulkanValidationLayerMode;
+
+//! The validation layer logging severity for Vulkan
+typedef enum fplVulkanValidationSeverity {
+	//! Log nothing
+	fplVulkanValidationSeverity_Off = 0,
+	//! Log error only
+	fplVulkanValidationSeverity_Error = 1,
+	//! Log warning and error
+	fplVulkanValidationSeverity_Warning = 2,
+	//! Log warning, error, infos
+	fplVulkanValidationSeverity_Info = 3,
+	//! Log warning, error, info, verbose
+	fplVulkanValidationSeverity_Verbose = 4,
+	//! Log out everything
+	fplVulkanValidationSeverity_All = INT32_MAX,
+} fplVulkanValidationSeverity;
+
+//! A structure that contains Vulkan video settings
+typedef struct fplVulkanSettings {
+	//! The application version (Only required if @ref fplVulkanSettings.instanceHandle is @ref fpl_null)
+	fplVersionInfo appVersion;
+	//! The engine version (Only required if @ref fplVulkanSettings.instanceHandle is @ref fpl_null)
+	fplVersionInfo engineVersion;
+	//! The preferred Vulkan api version (Only required if @ref fplVulkanSettings.instanceHandle is @ref fpl_null)
+	fplVersionInfo apiVersion;
+	//! The application name (Only required if @ref fplVulkanSettings.instanceHandle is @ref fpl_null)
+	const char *appName;
+	//! The engine name (Only required if @ref fplVulkanSettings.instanceHandle is @ref fpl_null)
+	const char *engineName;
+	//! The vulkan instance (VkInstance), when null it will be automatically created
+	void *instanceHandle;
+	//! The vulkan allocator (VkAllocationCallbacks)
+	const void *allocator;
+	//! The validation layer callback (Only used when @ref fplVulkanSettings.validationLayerMode is set to @ref fplVulkanValidationLayerMode_User and FPL created the VkInstance)
+	fplVulkanValidationLayerCallback *validationLayerCallback;
+	//! User data passed to any callbacks
+	void *userData;
+	//! The @ref fplVulkanValidationLayerMode
+	fplVulkanValidationLayerMode validationLayerMode;
+	//! The @ref fplVulkanValidationSeverity
+	fplVulkanValidationSeverity validationSeverity;
+} fplVulkanSettings;
+#endif // FPL__ENABLE_VIDEO_VULKAN
 
 //! A union that contains graphics api settings
 typedef union fplGraphicsApiSettings {
 #if defined(FPL__ENABLE_VIDEO_OPENGL)
 	//! OpenGL settings
-	fplOpenGLVideoSettings opengl;
+	fplOpenGLSettings opengl;
 #endif
-	//! Dummy field when no graphics drivers are available
+#if defined(FPL__ENABLE_VIDEO_VULKAN)
+	//! Vulkan settings
+	fplVulkanSettings vulkan;
+#endif
+	//! Field for preventing union to be empty
 	int dummy;
 } fplGraphicsApiSettings;
 
-//! A structure that contains video settings such as driver, v-sync, API-settings, etc.
+//! A structure that contains video settings such as backend, v-sync, API-settings, etc.
 typedef struct fplVideoSettings {
 	//! Graphics API settings
 	fplGraphicsApiSettings graphics;
-	//! Video driver type
-	fplVideoDriverType driver;
+	//! video backend type
+	fplVideoBackendType backend;
 	//! Is vertical synchronization enabled. Usable only for hardware rendering!
 	fpl_b32 isVSync;
 	//! Is backbuffer automatically resized. Usable only for software rendering!
@@ -3414,22 +3577,22 @@ typedef struct fplVideoSettings {
 */
 fpl_common_api void fplSetDefaultVideoSettings(fplVideoSettings *video);
 
-//! An enumeration of audio driver types
-typedef enum fplAudioDriverType {
-	//! No audio driver
-	fplAudioDriverType_None = 0,
-	//! Auto detection
-	fplAudioDriverType_Auto,
+//! An enumeration of audio backend types
+typedef enum fplAudioBackendType {
+	//! No audio backend
+	fplAudioBackendType_None = 0,
+	//! Auto detect
+	fplAudioBackendType_Auto,
 	//! DirectSound
-	fplAudioDriverType_DirectSound,
+	fplAudioBackendType_DirectSound,
 	//! ALSA
-	fplAudioDriverType_Alsa,
+	fplAudioBackendType_Alsa,
 
-	//! First @ref fplAudioDriverType
-	fplAudioDriverType_First = fplAudioDriverType_None,
-	//! Last @ref fplAudioDriverType
-	fplAudioDriverType_Last = fplAudioDriverType_Alsa,
-} fplAudioDriverType;
+	//! First @ref fplAudioBackendType
+	fplAudioBackendType_First = fplAudioBackendType_None,
+	//! Last @ref fplAudioBackendType
+	fplAudioBackendType_Last = fplAudioBackendType_Alsa,
+} fplAudioBackendType;
 
 //! An enumeration of audio format types
 typedef enum fplAudioFormatType {
@@ -3498,8 +3661,8 @@ typedef struct fplAudioDeviceFormat {
 	fpl_b32 preferExclusiveMode;
 	//! Default fields
 	fplAudioDefaultFields defaultFields;
-	//! Audio driver
-	fplAudioDriverType driver;
+	//! Audio backend
+	fplAudioBackendType backend;
 } fplAudioDeviceFormat;
 
 //! A structure containing audio target format configurations, such as type, sample rate, channels, etc.
@@ -3522,7 +3685,7 @@ typedef struct fplAudioTargetFormat {
 	fpl_b32 preferExclusiveMode;
 } fplAudioTargetFormat;
 
-//! A union containing a id of the underlying driver
+//! A union containing a id of the underlying backend
 typedef union fplAudioDeviceID {
 #if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
 	//! DirectShow Device GUID
@@ -3532,7 +3695,7 @@ typedef union fplAudioDeviceID {
 	//! ALSA Device ID
 	char alsa[256];
 #endif
-	//! Dummy field (When no drivers are available)
+	//! Field for preventing union to be empty
 	int dummy;
 } fplAudioDeviceID;
 
@@ -3545,20 +3708,20 @@ typedef struct fplAudioDeviceInfo {
 } fplAudioDeviceInfo;
 
 #if defined(FPL__ENABLE_AUDIO_ALSA)
-//! A structure containing settings for the ALSA audio driver
+//! A structure containing settings for the ALSA audio backend
 typedef struct fplAlsaAudioSettings {
 	//! Disable the usage of MMap in ALSA
 	fpl_b32 noMMap;
 } fplAlsaAudioSettings;
 #endif
 
-//! A union containing driver specific audio settings
+//! A union containing backend specific audio settings
 typedef union fplSpecificAudioSettings {
 #if defined(FPL__ENABLE_AUDIO_ALSA)
 	//! Alsa specific settings
 	fplAlsaAudioSettings alsa;
 #endif
-	//! Dummy field (When no drivers are available)
+	//! Field for preventing union to be empty
 	int dummy;
 } fplSpecificAudioSettings;
 
@@ -3573,7 +3736,7 @@ typedef union fplSpecificAudioSettings {
 */
 typedef uint32_t(fpl_audio_client_read_callback)(const fplAudioDeviceFormat *deviceFormat, const uint32_t frameCount, void *outputSamples, void *userData);
 
-//! A structure containing audio settings, such as format, device info, callbacks, driver, etc.
+//! A structure containing audio settings, such as format, device info, callbacks, backend, etc.
 typedef struct fplAudioSettings {
 	//! The target format
 	fplAudioTargetFormat targetFormat;
@@ -3585,8 +3748,8 @@ typedef struct fplAudioSettings {
 	fpl_audio_client_read_callback *clientReadCallback;
 	//! User data pointer for client read callback
 	void *userData;
-	//! The targeted driver
-	fplAudioDriverType driver;
+	//! The targeted backend
+	fplAudioBackendType backend;
 	//! Start playing of audio samples after platform initialization automatically
 	fpl_b32 startAuto;
 	//! Stop playing of audio samples before platform release automatically
@@ -3701,6 +3864,19 @@ typedef struct fplWindowSettings {
 */
 fpl_common_api void fplSetDefaultWindowSettings(fplWindowSettings *window);
 
+//! A structure containing the title and options for the console
+typedef struct fplConsoleSettings {
+	//! Console title
+	char title[FPL_MAX_NAME_LENGTH];
+} fplConsoleSettings;
+
+/**
+* @brief Resets the given console settings container to default settings
+* @param console The target @ref fplConsoleSettings structure
+* @note This will not change any console settings! To change the actual settings you have to pass the entire @ref fplSettings container to an argument in @ref fplPlatformInit().
+*/
+fpl_common_api void fplSetDefaultConsoleSettings(fplConsoleSettings *console);
+
 //! A structure containing input settings
 typedef struct fplInputSettings {
 	//! Frequency in ms for detecting new or removed controllers (Default: 200)
@@ -3760,6 +3936,8 @@ typedef struct fplSettings {
 	fplAudioSettings audio;
 	//! Input settings
 	fplInputSettings input;
+	//! Console settings
+	fplConsoleSettings console;
 	//! Memory settings
 	fplMemorySettings memory;
 } fplSettings;
@@ -3897,7 +4075,7 @@ FPL_ENUM_AS_FLAGS_OPERATORS(fplLogWriterFlags);
 
 //! A structure containing console logging properties
 typedef struct fplLogWriterConsole {
-	//! Dummy field
+	//! Field for preventing struct to be empty
 	int dummy;
 } fplLogWriterConsole;
 
@@ -4156,7 +4334,8 @@ typedef union fplWallClock {
 		//! Query performance count
 		uint64_t qpc;
 	} win32;
-#elif defined(FPL_SUBPLATFORM_POSIX)
+#endif
+#if defined(FPL_SUBPLATFORM_POSIX)
 	//! POSIX specifics
 	struct {
 		//! Number of seconds
@@ -4164,10 +4343,9 @@ typedef union fplWallClock {
 		//! Number of nanoseconds
 		int64_t nanoSeconds;
 	} posix;
-#else
-	//! Unused
-	uint64_t unused;
 #endif
+	//! Field for preventing union to be empty
+	uint64_t unused;
 } fplWallClock;
 
 /**
@@ -4252,7 +4430,7 @@ typedef uint32_t fplThreadState;
 typedef enum fplThreadPriority {
 	//! Unknown priority
 	fplThreadPriority_Unknown = -10,
-	
+
 	//! Idle priority (Only when nothing is going on)
 	fplThreadPriority_Idle = -2,
 	//! Low priority
@@ -4365,10 +4543,10 @@ typedef union fplInternalMutexHandle {
 
 //! The mutex handle structure
 typedef struct fplMutexHandle {
-	//! The internal mutex handle
-	fplInternalMutexHandle internalHandle;
 	//! Is it valid
 	fpl_b32 isValid;
+	//! The internal mutex handle
+	fplInternalMutexHandle internalHandle;
 } fplMutexHandle;
 
 //! A union containing the internal signal handle for any platform
@@ -4406,7 +4584,9 @@ typedef union fplInternalConditionVariable {
 #elif defined(FPL_SUBPLATFORM_POSIX)
 	//! POSIX condition variable
 	fpl__POSIXConditionVariable posixCondition;
-#endif	//! Dummy field
+#endif
+	//! Field for preventing union to be empty
+	int dummy;
 } fplInternalConditionVariable;
 
 //! The condition variable structure
@@ -6300,17 +6480,110 @@ typedef struct fplVideoBackBuffer {
 	fpl_b32 useOutputRect;
 } fplVideoBackBuffer;
 
+#if defined(FPL__ENABLE_VIDEO_VULKAN)
+//! Stores the surface properties for the Vulkan video backend
+typedef struct fplVideoSurfaceVulkan {
+	//! The Vulkan Instance (VkInstance)
+	void *instance;
+	//! The Vulkan Surface KHR (VkSurfaceKHR)
+	void *surfaceKHR;
+} fplVideoSurfaceVulkan;
+#endif
+
+#if defined(FPL__ENABLE_VIDEO_OPENGL)
+//! Stores the surface properties for the OpenGL video backend
+typedef struct fplVideoSurfaceOpenGL {
+	//! The OpenGL rendering context (HGLRC or XRC)
+	void *renderingContext;
+} fplVideoSurfaceOpenGL;
+#endif
+
+#if defined(FPL_PLATFORM_WINDOWS)
+//! Stores the window properties for Win32
+typedef struct fplVideoWindowWin32 {
+	//! The window handle
+	fpl__Win32WindowHandle windowHandle;
+	//! The device context
+	fpl__Win32DeviceContext deviceContext;
+} fplVideoWindowWin32;
+#endif
+
+#if defined(FPL_SUBPLATFORM_X11)
+//! Stores the window properties X11
+typedef struct fplVideoWindowX11 {
+	//! The window handle
+	fpl__X11Window window;
+	//! The display handle
+	fpl__X11Display display;
+	//! The visual handle
+	fpl__X11Visual visual;
+	//! The screen id
+	int screen;
+} fplVideoWindowX11;
+#endif // FPL_SUBPLATFORM_X11
+
+//! Stores the video window handles
+typedef union fplVideoWindow {
+#if defined(FPL_PLATFORM_WINDOWS)
+	fplVideoWindowWin32 win32;
+#elif defined(FPL_SUBPLATFORM_X11)
+	fplVideoWindowX11 x11;
+#endif
+	//! Field for preventing union to be empty
+	int dummy;
+} fplVideoWindow;
+
+//! Stores the surface properties for the active video backend
+typedef struct fplVideoSurface {
+	//! The video window
+	fplVideoWindow window;
+
+#if defined(FPL__ENABLE_VIDEO_VULKAN)
+	//! The Vulkan surface properties
+	fplVideoSurfaceVulkan vulkan;
+#endif
+
+#if defined(FPL__ENABLE_VIDEO_OPENGL)
+	//! The OpenGL surface properties
+	fplVideoSurfaceOpenGL opengl;
+#endif
+
+	//! Field for preventing union to be empty
+	int dummy;
+} fplVideoSurface;
+
+#if defined(FPL__ENABLE_VIDEO_VULKAN)
+//! Stores the requirements for the Vulkan video backend
+typedef struct fplVideoRequirementsVulkan {
+	//! The required instance extensions
+	const char *instanceExtensions[2];
+	//! The number of required instance extensions
+	uint32_t instanceExtensionCount;
+} fplVideoRequirementsVulkan;
+#endif // FPL__ENABLE_VIDEO_VULKAN
+
+
+//! Stores the video requirements for the desired video backend
+typedef union fplVideoRequirements {
+#if defined(FPL__ENABLE_VIDEO_VULKAN)
+	//! The requirements for Vulkan backend
+	fplVideoRequirementsVulkan vulkan;
+#endif // FPL__ENABLE_VIDEO_VULKAN
+	//! Field for preventing union to be empty
+	int dummy;
+} fplVideoRequirements;
+
 /**
-* @brief Gets the current video driver
-* @return Returns the current video driver type @ref fplVideoDriverType
+* @brief Gets the current video backend
+* @return Returns the current video backend type @ref fplVideoBackendType
 */
-fpl_common_api fplVideoDriverType fplGetVideoDriver();
+fpl_common_api fplVideoBackendType fplGetVideoBackendType();
 /**
-* @brief Gets a string that represents the given video driver
-* @param driver The video driver type @ref fplVideoDriverType
-* @return Returns a string for the given video driver type
+* @brief Gets a string that represents the given video backend
+* @param backendType The video backend type @ref fplVideoBackendType
+* @return Returns a string for the given video backend type
 */
-fpl_common_api const char *fplGetVideoDriverName(fplVideoDriverType driver);
+fpl_common_api const char *fplGetVideoBackendName(fplVideoBackendType backendType);
 /**
 * @brief Retrieves the pointer to the current video backbuffer.
 * @return Returns the pointer to the current @ref fplVideoBackBuffer.
@@ -6329,6 +6602,27 @@ fpl_common_api bool fplResizeVideoBackBuffer(const uint32_t width, const uint32_
 * @brief Forces the window to be redrawn or to swap the back/front buffer.
 */
 fpl_common_api void fplVideoFlip();
+
+/**
+* @brief Gets the procedure by the specified name from the active video backend
+* @param procName The name of the procedure.
+* @return Returns the function pointer of the procedure.
+*/
+fpl_common_api const void *fplGetVideoProcedure(const char *procName);
+
+/**
+* @brief Gets the current @ref fplVideoSurface that stores all handles used for the active video backend.
+* @return The resulting @ref fplVideoSurface reference.
+*/
+fpl_common_api const fplVideoSurface *fplGetVideoSurface();
+
+/**
+* @brief Gets the video requirements for the specified video backend.
+* @param backendType The @ref fplVideoBackendType
+* @param requirements The reference to the @ref fplVideoRequirements
+* @return Returns true when the @ref fplVideoRequirements are filled out, false otherwise.
+*/
+fpl_common_api bool fplGetVideoRequirements(const fplVideoBackendType backendType, fplVideoRequirements *requirements);
 
 /** @} */
 #endif // FPL__ENABLE_VIDEO
@@ -6362,8 +6656,8 @@ typedef enum fplAudioResultType {
 	fplAudioResultType_ApiFailed,
 	//! The platform is not initialized
 	fplAudioResultType_PlatformNotInitialized,
-	//! The audio driver is already initialized
-	fplAudioResultType_DriverAlreadyInitialized,
+	//! The audio backend is already initialized
+	fplAudioResultType_BackendAlreadyInitialized,
 	//! The @ref fplAudioFormatType is not set
 	fplAudioResultType_UnsetAudioFormat,
 	//! The number of audio channels is not set
@@ -6382,10 +6676,10 @@ typedef enum fplAudioResultType {
 } fplAudioResultType;
 
 /**
-* @brief Gets the current audio driver
-* @return Returns the current audio driver type @ref fplAudioDriverType
+* @brief Gets the current audio backend type
+* @return Returns the current audio backend type @ref fplAudioBackendType
 */
-fpl_common_api fplAudioDriverType fplGetAudioDriver();
+fpl_common_api fplAudioBackendType fplGetAudioBackendType();
 /**
 * @brief Start playing asynchronous audio.
 * @return Returns the audio result @ref fplAudioResultType
@@ -6430,11 +6724,11 @@ fpl_common_api uint32_t fplGetAudioSampleSizeInBytes(const fplAudioFormatType fo
 */
 fpl_common_api const char *fplGetAudioFormatName(const fplAudioFormatType format);
 /**
-* @brief Gets the string that represents the given audio driver type.
-* @param driver The audio driver type @ref fplAudioDriverType
-* @return Returns a string for the given audio driver type
+* @brief Gets the string that represents the given audio backend type.
+* @param backendType The audio backend type @ref fplAudioBackendType
+* @return Returns a string for the given audio backend type
 */
-fpl_common_api const char *fplGetAudioDriverName(fplAudioDriverType driver);
+fpl_common_api const char *fplGetAudioBackendName(fplAudioBackendType backendType);
 /**
 * @brief Computes the total number of frames for given sample rate and buffer size.
 * @param sampleRate The sample rate in Hz
@@ -6545,20 +6839,26 @@ fpl_main int main(int argc, char **args);
 //
 // FPL uses several implementation blocks to structure things in categories.
 // Each block has its own ifdef definition to collapse it down if needed.
-// But the baseline structure is the follow:
+// But the baseline structure is the following:
 //
+// - Compiler settings (Disable warnings, etc.)
 // - Platform Constants & Types (All required structs, Constants, Global variables, etc.)
 // - Common implementations
 // - Actual platform implementations (Win32, Linux)
 // - Sub platform implementations (X11, POSIX, STD)
-// - Driver implementations (Video: OpenGL/Software, Audio: DirectSound/Alsa)
+// - Backend implementations (Video: OpenGL/Software/Vulkan, Audio: DirectSound/Alsa)
 // - Systems (Audio, Video, Window systems)
 // - Core (Init & Release of the specific platform by selection)
 //
 // You can use the following strings to search for implementation blocks - including the > prefix:
 //
-// > PLATFORM_CONSTANTS
+// > COMPILER_CONFIG
+// > PLATFORM_INCLUDES
 //
+// > INTERNAL_TOP
+// > INTERNAL_LOGGING
+//
+// > PLATFORM_CONSTANTS
 // > UTILITY_FUNCTIONS
 //
 // > TYPES
@@ -6572,21 +6872,23 @@ fpl_main int main(int argc, char **args);
 // > COMMON
 //
 // > WIN32_PLATFORM
-// > LINUX_PLATFORM
-//
-// > POSIX_SUBPLATFORM
-// > X11_SUBPLATFORM
-//
+// > POSIX_SUBPLATFORM (Linux, Unix)
 // > STD_STRINGS_SUBPLATFORM
 // > STD_CONSOLE_SUBPLATFORM
+// > X11_SUBPLATFORM
+// > LINUX_PLATFORM
+// > UNIX_PLATFORM
 //
-// > VIDEO_DRIVERS
-// > VIDEO_DRIVER_OPENGL_WIN32
-// > VIDEO_DRIVER_OPENGL_X11
-// > VIDEO_DRIVER_SOFTWARE_WIN32
+// > VIDEO_BACKENDS
+// > VIDEO_BACKEND_OPENGL_WIN32
+// > VIDEO_BACKEND_OPENGL_X11
+// > VIDEO_BACKEND_SOFTWARE_WIN32
+// > VIDEO_BACKEND_SOFTWARE_X11
+// > VIDEO_BACKEND_VULKAN
 //
-// > AUDIO_DRIVERS
-// > AUDIO_DRIVER_DIRECTSOUND
+// > AUDIO_BACKENDS
+// > AUDIO_BACKEND_DIRECTSOUND
+// > AUDIO_BACKEND_ALSA
 //
 // > SYSTEM_AUDIO_L1
 // > SYSTEM_VIDEO_L1
@@ -6599,40 +6901,68 @@ fpl_main int main(int argc, char **args);
 #if (defined(FPL_IMPLEMENTATION) || FPL_IS_IDE) && !defined(FPL__IMPLEMENTED)
 #define FPL__IMPLEMENTED
 
-// Module constants used for logging
-#define FPL__MODULE_CORE "Core"
-#define FPL__MODULE_FILES "Files"
-#define FPL__MODULE_THREADING "Threading"
-#define FPL__MODULE_MEMORY "Memory"
-#define FPL__MODULE_WINDOW "Window"
-#define FPL__MODULE_LIBRARIES "Libraries"
-#define FPL__MODULE_OS "OS"
-#define FPL__MODULE_HARDWARE "Hardware"
-#define FPL__MODULE_STRINGS "Strings"
-#define FPL__MODULE_PATHS "Paths"
-#define FPL__MODULE_ARGS "Arguments"
-
-#define FPL__MODULE_AUDIO "Audio"
-#define FPL__MODULE_AUDIO_DIRECTSOUND "DirectSound"
-#define FPL__MODULE_AUDIO_ALSA "ALSA"
-
-#define FPL__MODULE_VIDEO "Video"
-#define FPL__MODULE_VIDEO_OPENGL "OpenGL"
-#define FPL__MODULE_VIDEO_SOFTWARE "Software"
-
-#define FPL__MODULE_WIN32 "Win32"
-#define FPL__MODULE_XINPUT "XInput"
-
-#define FPL__MODULE_LINUX "Linux"
-#define FPL__MODULE_UNIX "Unix"
-#define FPL__MODULE_POSIX "POSIX"
-#define FPL__MODULE_PTHREAD "pthread"
-#define FPL__MODULE_X11 "X11"
-#define FPL__MODULE_GLX "GLX"
+// ############################################################################
+//
+// > COMPILER_CONFIG
+//
+// ############################################################################
+#if !defined(FPL__COMPILER_CONFIG_DEFINED)
+#define FPL__COMPILER_CONFIG_DEFINED
 
 //
-// Platform includes (Implementation)
+// Compiler warnings
 //
+#if defined(FPL_COMPILER_MSVC)
+
+	// Start to overwrite warning settings (MSVC)
+#	pragma warning( push )
+
+	// Disable noexcept compiler warning for C++
+#	pragma warning( disable : 4577 )
+	// Disable "switch statement contains 'default' but no 'case' labels" compiler warning for C++
+#	pragma warning( disable : 4065 )
+	// Disable "conditional expression is constant" warning
+#	pragma warning( disable : 4127 )
+	// Disable "unreferenced formal parameter" warning
+#	pragma warning( disable : 4100 )
+	// Disable "nonstandard extension used: nameless struct/union" warning
+#	pragma warning( disable : 4201 )
+	// Disable "local variable is initialized but not referenced" warning
+#	pragma warning( disable : 4189 )
+	// Disable "nonstandard extension used: non-constant aggregate initializer" warning
+#	pragma warning( disable : 4204 )
+
+#elif defined(FPL_COMPILER_GCC)
+
+	// Start to overwrite warning settings (GCC)
+#	pragma GCC diagnostic push
+// Disable warning -Wunused-variable
+#	pragma GCC diagnostic ignored "-Wunused-variable"
+// Disable warning -Wunused-function
+#	pragma GCC diagnostic ignored "-Wunused-function"
+
+#elif defined(FPL_COMPILER_CLANG)
+
+	// Start to overwrite warning settings (Clang)
+#	pragma clang diagnostic push
+
+// Disable warning -Wunused-variable
+#	pragma clang diagnostic ignored "-Wunused-variable"
+// Disable warning -Wunused-function
+#	pragma clang diagnostic ignored "-Wunused-function"
+
+#endif // FPL_COMPILER
+
+#endif // FPL__COMPILER_CONFIG_DEFINED
+
+// ############################################################################
+//
+// > PLATFORM_INCLUDES
+//
+// ############################################################################
+#if !defined(FPL__PLATFORM_INCLUDES_DEFINED)
+#define FPL__PLATFORM_INCLUDES_DEFINED
+
 #if !defined(FPL__HAS_PLATFORM_INCLUDES)
 #	define FPL__HAS_PLATFORM_INCLUDES
 
@@ -6697,7 +7027,6 @@ fplStaticAssert(sizeof(fpl__LinuxSignalHandle) >= sizeof(int));
 // Compiler Includes
 //
 #if defined(FPL_COMPILER_MSVC)
-//#	include <immintrin.h> // _xgetbv
 #	include <intrin.h> // __cpuid, _Interlocked*
 #elif defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG)
 #	if defined(FPL_ARCH_X86) || defined(FPL_ARCH_X64)
@@ -6705,43 +7034,54 @@ fplStaticAssert(sizeof(fpl__LinuxSignalHandle) >= sizeof(int));
 #	endif // X86 or X64
 #endif
 
-//
-// Compiler warnings
-//
-#if defined(FPL_COMPILER_MSVC)
-	//! Start to overwrite warning settings (MSVC)
-#	pragma warning( push )
-
-	//! Disable noexcept compiler warning for C++
-#	pragma warning( disable : 4577 )
-	//! Disable "switch statement contains 'default' but no 'case' labels" compiler warning for C++
-#	pragma warning( disable : 4065 )
-	//! Disable "conditional expression is constant" warning
-#	pragma warning( disable : 4127 )
-	//! Disable "unreferenced formal parameter" warning
-#	pragma warning( disable : 4100 )
-	//! Disable "nonstandard extension used: nameless struct/union" warning
-#	pragma warning( disable : 4201 )
-	//! Disable "local variable is initialized but not referenced" warning
-#	pragma warning( disable : 4189 )
-	//! Disable "nonstandard extension used: non-constant aggregate initializer" warning
-#	pragma warning( disable : 4204 )
-#elif defined(FPL_COMPILER_CLANG)
-	//! Start to overwrite warning settings (Clang)
-#	pragma clang diagnostic push
-
-// Disable warning -Wunused-variable
-#	pragma clang diagnostic ignored "-Wunused-variable"
-// Disable warning -Wunused-function
-#	pragma clang diagnostic ignored "-Wunused-function"
-#endif // FPL_COMPILER
-
 // Only include C-Runtime functions when CRT is enabled
 #if !defined(FPL_NO_CRT)
 #	include <stdio.h> // stdin, stdout, stderr, fprintf, vfprintf, vsnprintf, getchar
 #	include <stdlib.h> // wcstombs, mbstowcs, getenv
 #	include <locale.h> // setlocale, struct lconv, localeconv
 #endif
+
+#endif // FPL__PLATFORM_INCLUDES_DEFINED
+
+// ############################################################################
+//
+// > INTERNAL_TOP
+//
+// ############################################################################
+#if !defined(FPL__INTERNAL_TOP_DEFINED)
+#define FPL__INTERNAL_TOP_DEFINED
+
+// Module constants used for logging
+#define FPL__MODULE_CORE "Core"
+#define FPL__MODULE_FILES "Files"
+#define FPL__MODULE_THREADING "Threading"
+#define FPL__MODULE_MEMORY "Memory"
+#define FPL__MODULE_WINDOW "Window"
+#define FPL__MODULE_LIBRARIES "Libraries"
+#define FPL__MODULE_OS "OS"
+#define FPL__MODULE_HARDWARE "Hardware"
+#define FPL__MODULE_STRINGS "Strings"
+#define FPL__MODULE_PATHS "Paths"
+#define FPL__MODULE_ARGS "Arguments"
+
+#define FPL__MODULE_AUDIO "Audio"
+#define FPL__MODULE_AUDIO_DIRECTSOUND "DirectSound"
+#define FPL__MODULE_AUDIO_ALSA "ALSA"
+
+#define FPL__MODULE_VIDEO "Video"
+#define FPL__MODULE_VIDEO_OPENGL "OpenGL"
+#define FPL__MODULE_VIDEO_VULKAN "Vulkan"
+#define FPL__MODULE_VIDEO_SOFTWARE "Software"
+
+#define FPL__MODULE_WIN32 "Win32"
+#define FPL__MODULE_XINPUT "XInput"
+
+#define FPL__MODULE_LINUX "Linux"
+#define FPL__MODULE_UNIX "Unix"
+#define FPL__MODULE_POSIX "POSIX"
+#define FPL__MODULE_PTHREAD "pthread"
+#define FPL__MODULE_X11 "X11"
+#define FPL__MODULE_GLX "GLX"
 
 //
 // Enum macros
@@ -6753,11 +7093,18 @@ fplStaticAssert(sizeof(fpl__LinuxSignalHandle) >= sizeof(int));
 // Internal memory
 //
 fpl_internal void *fpl__AllocateMemory(const fplMemoryAllocationSettings *allocSettings, const size_t size, const size_t alignment);
-fpl_internal void fpl__ReleaseMemory(const fplMemoryAllocationSettings * allocSettings, void *ptr); 
+fpl_internal void fpl__ReleaseMemory(const fplMemoryAllocationSettings *allocSettings, void *ptr);
 
+#endif // FPL__INTERNAL_TOP_DEFINED
+
+// ############################################################################
 //
-// Internal logging system
+// > INTERNAL_LOGGING
 //
+// ############################################################################
+#if !defined(FPL__INTERNAL_LOGGING_DEFINED)
+#define FPL__INTERNAL_LOGGING_DEFINED
+
 #define FPL__MODULE_CONCAT(mod, format) "[" mod "] " format
 
 #if defined(FPL__ENABLE_LOGGING)
@@ -6876,32 +7223,7 @@ fpl_internal void fpl__LogWriteVarArgs(const char *funcName, const int lineNumbe
 #define FPL__ERROR(mod, format, ...) FPL__M_ERROR(FPL_FUNCTION_NAME, __LINE__, mod, format, ## __VA_ARGS__)
 #define FPL__WARNING(mod, format, ...) FPL__M_WARNING(FPL_FUNCTION_NAME, __LINE__, mod, format, ## __VA_ARGS__)
 
-//
-// Debug out
-//
-
-#if defined(FPL_PLATFORM_WINDOWS)
-fpl_platform_api void fplDebugOut(const char *text) {
-	wchar_t buffer[FPL_MAX_BUFFER_LENGTH];
-	fplUTF8StringToWideString(text, fplGetStringLength(text), buffer, fplArrayCount(buffer));
-	OutputDebugStringW(buffer);
-}
-#else
-fpl_platform_api void fplDebugOut(const char *text) {
-	fplConsoleOut(text);
-}
-#endif
-
-fpl_common_api void fplDebugFormatOut(const char *format, ...) {
-	if(format != fpl_null) {
-		char buffer[FPL_MAX_BUFFER_LENGTH];
-		va_list argList;
-		va_start(argList, format);
-		fplFormatStringArgs(buffer, fplArrayCount(buffer), format, argList);
-		va_end(argList);
-		fplDebugOut(buffer);
-	}
-}
+#endif // FPL__INTERNAL_LOGGING_DEFINED
 
 // ############################################################################
 //
@@ -7369,6 +7691,16 @@ typedef FPL__FUNC_WIN32_SetCapture(fpl__win32_func_SetCapture);
 typedef FPL__FUNC_WIN32_ReleaseCapture(fpl__win32_func_ReleaseCapture);
 #define FPL__FUNC_WIN32_ScreenToClient(name) BOOL WINAPI name(HWND hWnd, LPPOINT lpPoint)
 typedef FPL__FUNC_WIN32_ScreenToClient(fpl__win32_func_ScreenToClient);
+#define FPL__FUNC_WIN32_BeginPaint(name) HDC WINAPI name(_In_ HWND hWnd, _Out_ LPPAINTSTRUCT lpPaint)
+typedef FPL__FUNC_WIN32_BeginPaint(fpl__win32_func_BeginPaint);
+#define FPL__FUNC_WIN32_EndPaint(name) BOOL WINAPI name(_In_ HWND hWnd, _In_ CONST PAINTSTRUCT *lpPaint)
+typedef FPL__FUNC_WIN32_EndPaint(fpl__win32_func_EndPaint);
+#define FPL__FUNC_WIN32_SetForegroundWindow(name) BOOL WINAPI name(_In_ HWND hWnd)
+typedef FPL__FUNC_WIN32_SetForegroundWindow(fpl__win32_func_SetForegroundWindow);
+#define FPL__FUNC_WIN32_SetFocus(name) HWND WINAPI name(_In_opt_ HWND hWnd)
+typedef FPL__FUNC_WIN32_SetFocus(fpl__win32_func_SetFocus);
+#define FPL__FUNC_WIN32_SetTimer(name) UINT_PTR WINAPI name(_In_opt_ HWND hWnd, _In_ UINT_PTR nIDEvent, _In_ UINT uElapse, _In_opt_ TIMERPROC lpTimerFunc)
+typedef FPL__FUNC_WIN32_SetTimer(fpl__win32_func_SetTimer);
 
 // OLE32
 #define FPL__FUNC_WIN32_CoInitializeEx(name) HRESULT WINAPI name(LPVOID pvReserved, DWORD  dwCoInit)
@@ -7469,6 +7801,11 @@ typedef struct fpl__Win32UserApi {
 	fpl__win32_func_SetCapture *SetCapture;
 	fpl__win32_func_ReleaseCapture *ReleaseCapture;
 	fpl__win32_func_ScreenToClient *ScreenToClient;
+	fpl__win32_func_BeginPaint *BeginPaint;
+	fpl__win32_func_EndPaint *EndPaint;
+	fpl__win32_func_SetForegroundWindow *SetForegroundWindow;
+	fpl__win32_func_SetFocus *SetFocus;
+	fpl__win32_func_SetTimer *SetTimer;
 } fpl__Win32UserApi;
 
 typedef struct fpl__Win32OleApi {
@@ -7594,6 +7931,11 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_SetCapture, SetCapture);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_ReleaseCapture, ReleaseCapture);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_ScreenToClient, ScreenToClient);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_BeginPaint, BeginPaint);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_EndPaint, EndPaint);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_SetForegroundWindow, SetForegroundWindow);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_SetFocus, SetFocus);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_SetTimer, SetTimer);
 
 		// GDI32
 		const char *gdiLibraryName = "gdi32.dll";
@@ -7633,6 +7975,7 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 // Win32 unicode dependend stuff
 #define FPL__WIN32_CLASSNAME L"FPLWindowClassW"
 #define FPL__WIN32_UNNAMED_WINDOW L"Unnamed FPL Unicode Window"
+#define FPL__WIN32_UNNAMED_CONSOLE L"Unnamed FPL Unicode Console"
 #if defined(FPL_ARCH_X64)
 #	define fpl__win32_SetWindowLongPtr fpl__global__AppState->win32.winApi.user.SetWindowLongPtrW
 #else
@@ -7657,10 +8000,6 @@ typedef struct fpl__Win32XInputState {
 	LARGE_INTEGER lastDeviceSearchTime;
 } fpl__Win32XInputState;
 
-typedef struct fpl__Win32ConsoleState {
-	fpl_b32 isAllocated;
-} fpl__Win32ConsoleState;
-
 typedef struct fpl__Win32InitState {
 	HINSTANCE appInstance;
 } fpl__Win32InitState;
@@ -7668,7 +8007,6 @@ typedef struct fpl__Win32InitState {
 typedef struct fpl__Win32AppState {
 	fpl__Win32XInputState xinput;
 	fpl__Win32Api winApi;
-	fpl__Win32ConsoleState console;
 } fpl__Win32AppState;
 
 #if defined(FPL__ENABLE_WINDOW)
@@ -7684,6 +8022,8 @@ typedef struct fpl__Win32LastWindowInfo {
 typedef struct fpl__Win32WindowState {
 	wchar_t windowClass[256];
 	fpl__Win32LastWindowInfo lastFullscreenInfo;
+	void *mainFiber;
+	void *messageFiber;
 	HWND windowHandle;
 	HDC deviceContext;
 	HCURSOR defaultCursor;
@@ -7834,20 +8174,20 @@ typedef FPL__FUNC_PTHREAD_sem_getvalue(fpl__pthread_func_sem_getvalue);
 
 typedef struct fpl__PThreadApi {
 	void *libHandle;
-	
+
 	// pthread_t
 	fpl__pthread_func_pthread_self *pthread_self;
 	fpl__pthread_func_pthread_setschedparam *pthread_setschedparam;
 	fpl__pthread_func_pthread_getschedparam *pthread_getschedparam;
 	fpl__pthread_func_pthread_setschedprio *pthread_setschedprio;
-	
+
 	fpl__pthread_func_pthread_create *pthread_create;
 	fpl__pthread_func_pthread_kill *pthread_kill;
 	fpl__pthread_func_pthread_join *pthread_join;
 	fpl__pthread_func_pthread_exit *pthread_exit;
 	fpl__pthread_func_pthread_yield *pthread_yield;
 	fpl__pthread_func_pthread_timedjoin_np *pthread_timedjoin_np;
-	
+
 	// pthread_attr_t
 	fpl__pthread_func_pthread_attr_init *pthread_attr_init;
 	fpl__pthread_func_pthread_attr_getschedparam *pthread_attr_getschedparam;
@@ -7916,7 +8256,7 @@ fpl_internal bool fpl__PThreadLoadApi(fpl__PThreadApi *pthreadApi) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_exit, pthread_exit);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_yield, pthread_yield);
 			FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_timedjoin_np, pthread_timedjoin_np);
-			
+
 			// pthread_attr_t
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_init, pthread_attr_init);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_getschedparam, pthread_attr_getschedparam);
@@ -7961,7 +8301,6 @@ fpl_internal bool fpl__PThreadLoadApi(fpl__PThreadApi *pthreadApi) {
 }
 
 typedef struct fpl__PosixInitState {
-	//! Dummy field
 	int dummy;
 } fpl__PosixInitState;
 
@@ -7977,7 +8316,6 @@ typedef struct fpl__PosixAppState {
 // ############################################################################
 #if defined(FPL_PLATFORM_LINUX)
 typedef struct fpl__LinuxInitState {
-	//! Dummy field
 	int dummy;
 } fpl__LinuxInitState;
 
@@ -8020,12 +8358,10 @@ fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl
 // ############################################################################
 #if defined(FPL_PLATFORM_UNIX)
 typedef struct fpl__UnixInitState {
-	//! Dummy field
 	int dummy;
 } fpl__UnixInitState;
 
 typedef struct fpl__UnixAppState {
-	//! Dummy field
 	int dummy;
 } fpl__UnixAppState;
 #endif // FPL_PLATFORM_UNIX
@@ -8134,6 +8470,10 @@ typedef FPL__FUNC_X11_XQueryKeymap(fpl__func_x11_XQueryKeymap);
 typedef FPL__FUNC_X11_XQueryPointer(fpl__func_x11_XQueryPointer);
 #define FPL__FUNC_X11_XConvertSelection(name) int name(Display *display, Atom selection, Atom target, Atom property, Window requestor, Time time)
 typedef FPL__FUNC_X11_XConvertSelection(fpl__func_x11_XConvertSelection);
+#define FPL__FUNC_X11_XInitThreads(name) Status name(void)
+typedef FPL__FUNC_X11_XInitThreads(fpl__func_x11_XInitThreads);
+#define FPL__FUNC_X11_XSetErrorHandler(name) XErrorHandler name(XErrorHandler *handler)
+typedef FPL__FUNC_X11_XSetErrorHandler(fpl__func_x11_XSetErrorHandler);
 
 typedef struct fpl__X11Api {
 	void *libHandle;
@@ -8183,6 +8523,8 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XQueryKeymap *XQueryKeymap;
 	fpl__func_x11_XQueryPointer *XQueryPointer;
 	fpl__func_x11_XConvertSelection *XConvertSelection;
+	fpl__func_x11_XInitThreads *XInitThreads;
+	fpl__func_x11_XSetErrorHandler *XSetErrorHandler;
 } fpl__X11Api;
 
 fpl_internal void fpl__UnloadX11Api(fpl__X11Api *x11Api) {
@@ -8254,6 +8596,8 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XQueryKeymap, XQueryKeymap);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XQueryPointer, XQueryPointer);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XConvertSelection, XConvertSelection);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XInitThreads, XInitThreads);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetErrorHandler, XSetErrorHandler);
 			x11Api->libHandle = libHandle;
 			result = true;
 		} while(0);
@@ -8282,15 +8626,18 @@ typedef struct fpl__X11Xdnd {
 	Atom format;
 } fpl__X11Xdnd;
 
+#define FPL__FUNC_X11_ErrorHandlerCallback(name) int name(Display *display, XErrorEvent *ev)
+typedef FPL__FUNC_X11_ErrorHandlerCallback(fpl__func_X11ErrorHandlerCallback);
+
 typedef struct fpl__X11WindowState {
-	Display *display;
 	fpl__X11WindowStateInfo lastWindowStateInfo;
-	int screen;
-	Window root;
 	Colormap colorMap;
+	Display *display;
+	fpl__func_X11ErrorHandlerCallback *lastErrorHandler;
+	fpl__X11Xdnd xdnd;
+	Window root;
 	Window window;
 	Visual *visual;
-	fpl__X11Xdnd xdnd;
 	Atom wmProtocols;
 	Atom wmDeleteWindow;
 	Atom wmState;
@@ -8318,12 +8665,9 @@ typedef struct fpl__X11WindowState {
 	Atom xdndSelection;
 	Atom xdndTypeList;
 	Atom textUriList;
-} fpl__X11WindowState;
-
-typedef struct fpl__X11PreWindowSetupResult {
-	Visual *visual;
+	int screen;
 	int colorDepth;
-} fpl__X11PreWindowSetupResult;
+} fpl__X11WindowState;
 
 #define FPL__XDND_VERSION 5
 
@@ -8645,21 +8989,13 @@ fpl_internal void fpl__HandleMouseWheelEvent(fpl__PlatformWindowState *windowSta
 	fpl__PushMouseWheelEvent(x, y, wheelDelta);
 }
 
-typedef union fpl__PreSetupWindowResult {
-#if defined(FPL_SUBPLATFORM_X11)
-	fpl__X11PreWindowSetupResult x11;
-#endif
-	//! Dummy field
-	int dummy;
-} fpl__PreSetupWindowResult;
-
 // @NOTE(final): Callback used for setup a window before it is created
-#define FPL__FUNC_PRE_SETUP_WINDOW(name) bool name(fpl__PlatformAppState *appState, const fplInitFlags initFlags, const fplSettings *initSettings, fpl__PreSetupWindowResult *outResult)
-typedef FPL__FUNC_PRE_SETUP_WINDOW(callback_PreSetupWindow);
+#define FPL__FUNC_PREPARE_VIDEO_WINDOW(name) bool name(fpl__PlatformAppState *appState, const fplInitFlags initFlags, const fplSettings *initSettings)
+typedef FPL__FUNC_PREPARE_VIDEO_WINDOW(callback_PreSetupWindow);
 
 // @NOTE(final): Callback used for setup a window after it was created
-#define FPL__FUNC_POST_SETUP_WINDOW(name) bool name(fpl__PlatformAppState *appState, const fplInitFlags initFlags, const fplSettings *initSettings)
-typedef FPL__FUNC_POST_SETUP_WINDOW(callback_PostSetupWindow);
+#define FPL__FUNC_FINALIZE_VIDEO_WINDOW(name) bool name(fpl__PlatformAppState *appState, const fplInitFlags initFlags, const fplSettings *initSettings)
+typedef FPL__FUNC_FINALIZE_VIDEO_WINDOW(callback_PostSetupWindow);
 
 typedef struct fpl__SetupWindowCallbacks {
 	callback_PreSetupWindow *preSetup;
@@ -9178,6 +9514,7 @@ fpl_common_api size_t fplS32ToString(const int32_t value, char *buffer, const si
 			*p++ = '-';
 		}
 		p += digitCount;// Go back to the very end, because we are writing the digits back in reverse order
+		char *lastP = p;
 
 		const char *digits = "0123456789";
 		tmp = value;
@@ -9186,7 +9523,7 @@ fpl_common_api size_t fplS32ToString(const int32_t value, char *buffer, const si
 			tmp /= 10;
 		} while(tmp != 0);
 
-		*p = 0;
+		*lastP = 0;
 	}
 
 	return (result);
@@ -9583,20 +9920,20 @@ fpl_common_api uint64_t fplCPURDTSC() {
 	// Based on: https://github.com/google/benchmark/blob/v1.1.0/src/cycleclock.h
 #if defined(FPL_ARCH_ARM64)
 	int64_t virtual_timer_value;
-	asm volatile("mrs %0, cntvct_el0" : "=r"(virtual_timer_value));
+	fplAsm volatile("mrs %0, cntvct_el0" : "=r"(virtual_timer_value));
 	return (uint64_t)virtual_timer_value;
 #elif defined(FPL_ARCH_ARM32) && (__ARM_ARCH >= 6)
 	uint32_t pmccntr;
 	uint32_t pmuseren;
 	uint32_t pmcntenset;
 	// Read the user mode perf monitor counter access permissions.
-	asm volatile("mrc p15, 0, %0, c9, c14, 0" : "=r"(pmuseren));
+	fplAsm volatile("mrc p15, 0, %0, c9, c14, 0" : "=r"(pmuseren));
 	if(pmuseren & 1) {
 		// Allows reading perfmon counters for user mode code.
-		asm volatile("mrc p15, 0, %0, c9, c12, 1" : "=r"(pmcntenset));
+		fplAsm volatile("mrc p15, 0, %0, c9, c12, 1" : "=r"(pmcntenset));
 		if(pmcntenset & 0x80000000ul) {
 			// Is it counting?
-			asm volatile("mrc p15, 0, %0, c9, c13, 0" : "=r"(pmccntr));
+			fplAsm volatile("mrc p15, 0, %0, c9, c13, 0" : "=r"(pmccntr));
 			// The counter is set up to count every 64th cycle
 			return (uint64_t)pmccntr * 64ULL;  // Should optimize to << 6
 		}
@@ -9614,7 +9951,7 @@ fpl_common_api uint64_t fplCPUXCR0() {
 
 fpl_common_api void fplCPUID(fplCPUIDLeaf *outLeaf, const uint32_t functionId) {
 	// Not supported on non-x86 platforms
-	fplStructInit(outLeaf);
+	fplClearStruct(outLeaf);
 }
 
 fpl_common_api bool fplCPUGetCapabilities(fplCPUCapabilities *outCaps) {
@@ -10143,14 +10480,27 @@ fpl_common_api void fplSetDefaultVideoSettings(fplVideoSettings *video) {
 	fplClearStruct(video);
 	video->isVSync = false;
 	video->isAutoSize = true;
-	// @NOTE(final): Auto detect video driver
+
 #if defined(FPL__ENABLE_VIDEO_OPENGL)
-	video->driver = fplVideoDriverType_OpenGL;
 	video->graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
+#endif
+
+#if defined(FPL__ENABLE_VIDEO_VULKAN)
+	video->graphics.vulkan.appVersion = fplStructInit(fplVersionInfo, "1.0.0", "1", "0", "0");
+	video->graphics.vulkan.engineVersion = fplStructInit(fplVersionInfo, "1.0.0", "1", "0", "0");
+	video->graphics.vulkan.apiVersion = fplStructInit(fplVersionInfo, "1.1.0", "1", "1", "0");
+	video->graphics.vulkan.validationLayerMode = fplVulkanValidationLayerMode_Logging;
+#endif
+
+	// @NOTE(final): Auto detect video backend
+#if defined(FPL__ENABLE_VIDEO_OPENGL)
+	video->backend = fplVideoBackendType_OpenGL;
 #elif defined(FPL__ENABLE_VIDEO_SOFTWARE)
-	video->driver = fplVideoDriverType_Software;
+	video->backend = fplVideoBackendType_Software;
+#elif defined(FPL__ENABLE_VIDEO_VULKAN)
+	video->backend = fplVideoBackendType_Vulkan;
 #else
-	video->driver = fplVideoDriverType_None;
+	video->backend = fplVideoBackendType_None;
 #endif
 }
 
@@ -10177,12 +10527,12 @@ fpl_common_api void fplSetDefaultAudioSettings(fplAudioSettings *audio) {
 	fplClearStruct(audio);
 	fplSetDefaultAudioTargetFormat(&audio->targetFormat);
 
-	audio->driver = fplAudioDriverType_None;
+	audio->backend = fplAudioBackendType_None;
 #	if defined(FPL_PLATFORM_WINDOWS) && defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
-	audio->driver = fplAudioDriverType_DirectSound;
+	audio->backend = fplAudioBackendType_DirectSound;
 #	endif
 #	if defined(FPL_PLATFORM_LINUX) && defined(FPL__ENABLE_AUDIO_ALSA)
-	audio->driver = fplAudioDriverType_Alsa;
+	audio->backend = fplAudioBackendType_Alsa;
 #	endif
 
 	audio->startAuto = true;
@@ -10201,6 +10551,12 @@ fpl_common_api void fplSetDefaultWindowSettings(fplWindowSettings *window) {
 	window->isResizable = true;
 	window->isDecorated = true;
 	window->isFloating = false;
+}
+
+fpl_common_api void fplSetDefaultConsoleSettings(fplConsoleSettings *console) {
+	FPL__CheckArgumentNullNoRet(console);
+	fplClearStruct(console);
+	console->title[0] = 0;
 }
 
 fpl_common_api void fplSetDefaultInputSettings(fplInputSettings *input) {
@@ -10258,6 +10614,32 @@ fpl_common_api const char *fplCPUGetArchName(const fplCPUArchType type) {
 	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, fplCPUArchType_First, fplCPUArchType_Last);
 	const char *result = fpl__global_ArchTypeNameTable[index];
 	return(result);
+}
+
+//
+// Debug out
+//
+#if defined(FPL_PLATFORM_WINDOWS)
+fpl_platform_api void fplDebugOut(const char *text) {
+	wchar_t buffer[FPL_MAX_BUFFER_LENGTH];
+	fplUTF8StringToWideString(text, fplGetStringLength(text), buffer, fplArrayCount(buffer));
+	OutputDebugStringW(buffer);
+}
+#else
+fpl_platform_api void fplDebugOut(const char *text) {
+	fplConsoleOut(text);
+}
+#endif
+
+fpl_common_api void fplDebugFormatOut(const char *format, ...) {
+	if(format != fpl_null) {
+		char buffer[FPL_MAX_BUFFER_LENGTH];
+		va_list argList;
+		va_start(argList, format);
+		fplFormatStringArgs(buffer, fplArrayCount(buffer), format, argList);
+		va_end(argList);
+		fplDebugOut(buffer);
+	}
 }
 #endif // FPL__COMMON_DEFINED
 
@@ -10714,6 +11096,28 @@ fpl_internal fplKeyboardModifierFlags fpl__Win32GetKeyboardModifiers(const fpl__
 	return(modifiers);
 }
 
+fpl_internal void fpl__Win32HandleMessage(const fpl__Win32Api *wapi, fpl__PlatformAppState *appState, fpl__Win32WindowState *windowState, MSG *msg) {
+	if(appState->currentSettings.window.callbacks.eventCallback != fpl_null) {
+		appState->currentSettings.window.callbacks.eventCallback(fplGetPlatformType(), windowState, &msg, appState->currentSettings.window.callbacks.eventUserData);
+	}
+	wapi->user.TranslateMessage(msg);
+	wapi->user.DispatchMessageW(msg);
+}
+
+fpl_internal void CALLBACK fpl__Win32MessageFiberProc(struct fpl__PlatformAppState *appState) {
+	fpl__Win32AppState *win32State = &appState->win32;
+	fpl__Win32WindowState *windowState = &appState->window.win32;
+	const fpl__Win32Api *wapi = &win32State->winApi;
+	wapi->user.SetTimer(appState->window.win32.windowHandle, 1, 1, 0);
+	for(;;) {
+		MSG message;
+		while(wapi->user.PeekMessageW(&message, 0, 0, 0, PM_REMOVE)) {
+			fpl__Win32HandleMessage(wapi, appState, windowState, &message);
+		}
+		SwitchToFiber(appState->window.win32.mainFiber);
+	}
+}
+
 LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	fplAssert(appState != fpl_null);
@@ -10728,6 +11132,13 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 
 	LRESULT result = 0;
 	switch(msg) {
+		case WM_TIMER:
+		{
+			if(win32Window->mainFiber != fpl_null) {
+				SwitchToFiber(win32Window->mainFiber);
+			}
+		} break;
+
 		case WM_DESTROY:
 		case WM_CLOSE:
 		{
@@ -10747,7 +11158,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			}
 
 #			if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-			if(appState->currentSettings.video.driver == fplVideoDriverType_Software) {
+			if(appState->currentSettings.video.backend == fplVideoBackendType_Software) {
 				if(appState->initSettings.video.isAutoSize) {
 					fplResizeVideoBackBuffer(newWidth, newHeight);
 				}
@@ -10954,13 +11365,22 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				msgData.wParam = wParam;
 				msgData.lParam = lParam;
 				appState->currentSettings.window.callbacks.exposedCallback(fplGetPlatformType(), win32Window, &msgData, appState->currentSettings.window.callbacks.exposedUserData);
+			} else {
+				if(appState->currentSettings.video.backend == fplVideoBackendType_None) {
+					PAINTSTRUCT ps;
+					HDC hdc = wapi->user.BeginPaint(hwnd, &ps);
+					wapi->user.EndPaint(hwnd, &ps);
+					return(0);
+				}
 			}
 		} break;
 
 		case WM_ERASEBKGND:
 		{
-			// Prevent erasing of the background always
-			return 1;
+			// Prevent erasing of the background always, but only if a video backend is being used
+			if(appState->currentSettings.video.backend != fplVideoBackendType_None) {
+				return 1;
+			}
 		} break;
 
 		default:
@@ -11041,9 +11461,8 @@ fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindo
 	const fplWindowSettings *initWindowSettings = &initSettings->window;
 
 	// Presetup window
-	fpl__PreSetupWindowResult preSetupResult = fplZeroInit;
 	if(setupCallbacks->preSetup != fpl_null) {
-		setupCallbacks->preSetup(platAppState, platAppState->initFlags, &platAppState->initSettings, &preSetupResult);
+		setupCallbacks->preSetup(platAppState, platAppState->initFlags, &platAppState->initSettings);
 	}
 
 	// Register window class
@@ -11075,6 +11494,10 @@ fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindo
 	}
 	wchar_t *windowTitle = windowTitleBuffer;
 	fplWideStringToUTF8String(windowTitle, lstrlenW(windowTitle), currentWindowSettings->title, fplArrayCount(currentWindowSettings->title));
+
+	// Create Fibers
+	windowState->mainFiber = ConvertThreadToFiber(0);
+	windowState->messageFiber = CreateFiber(0, (PFIBER_START_ROUTINE)fpl__Win32MessageFiberProc, platAppState);
 
 	// Prepare window style, size and position
 	DWORD style = fpl__Win32MakeWindowStyle(&initSettings->window);
@@ -11142,7 +11565,8 @@ fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindo
 
 	// Show window
 	wapi->user.ShowWindow(windowState->windowHandle, SW_SHOW);
-	wapi->user.UpdateWindow(windowState->windowHandle);
+	wapi->user.SetForegroundWindow(windowState->windowHandle);
+	wapi->user.SetFocus(windowState->windowHandle);
 
 	// Cursor is visible at start
 	windowState->defaultCursor = windowClass.hCursor;
@@ -11162,6 +11586,10 @@ fpl_internal void fpl__Win32ReleaseWindow(const fpl__Win32InitState *initState, 
 		wapi->user.DestroyWindow(windowState->windowHandle);
 		windowState->windowHandle = fpl_null;
 		wapi->user.UnregisterClassW(windowState->windowClass, initState->appInstance);
+	}
+	if(windowState->messageFiber != fpl_null) {
+		DeleteFiber(windowState->messageFiber);
+		windowState->messageFiber = fpl_null;
 	}
 }
 
@@ -11242,10 +11670,6 @@ fpl_internal void fpl__Win32ReleasePlatform(fpl__PlatformInitState *initState, f
 	fplAssert(appState != fpl_null);
 	fpl__Win32AppState *win32AppState = &appState->win32;
 	fpl__Win32InitState *win32InitState = &initState->win32;
-	if(win32AppState->console.isAllocated) {
-		FreeConsole();
-		win32AppState->console.isAllocated = false;
-	}
 	if(appState->initFlags & fplInitFlags_GameController) {
 		fpl__Win32UnloadXInputApi(&win32AppState->xinput.xinputApi);
 	}
@@ -11567,12 +11991,28 @@ fpl_internal bool fpl__Win32InitPlatform(const fplInitFlags initFlags, const fpl
 	}
 
 	// Init console
-	if(!(initFlags & fplInitFlags_Window) && (initFlags & fplInitFlags_Console)) {
-		HWND consoleHandle = GetConsoleWindow();
-		if(consoleHandle == fpl_null) {
-			AllocConsole();
-			win32AppState->console.isAllocated = true;
+	if(!(initFlags & fplInitFlags_Console)) {
+		// Hide console
+		HWND consoleWindow = GetConsoleWindow();
+		if(consoleWindow != fpl_null) {
+			win32AppState->winApi.user.ShowWindow(consoleWindow, SW_HIDE);
+			FreeConsole();
 		}
+	} else {
+		const fplConsoleSettings *initConsoleSettings = &initSettings->console;
+		fplConsoleSettings *currentConsoleSettings = &appState->currentSettings.console;
+
+		// Setup a console title
+		wchar_t consoleTitleBuffer[FPL_MAX_NAME_LENGTH];
+		if(fplGetStringLength(initConsoleSettings->title) > 0) {
+			fplUTF8StringToWideString(initConsoleSettings->title, fplGetStringLength(initConsoleSettings->title), consoleTitleBuffer, fplArrayCount(consoleTitleBuffer));
+		} else {
+			const wchar_t *defaultTitle = FPL__WIN32_UNNAMED_CONSOLE;
+			lstrcpynW(consoleTitleBuffer, defaultTitle, fplArrayCount(consoleTitleBuffer));
+		}
+		wchar_t *windowTitle = consoleTitleBuffer;
+		fplWideStringToUTF8String(windowTitle, lstrlenW(windowTitle), currentConsoleSettings->title, fplArrayCount(currentConsoleSettings->title));
+		SetConsoleTitleW(windowTitle);
 	}
 
 	// Init keymap
@@ -11991,7 +12431,7 @@ fpl_internal DWORD WINAPI fpl__Win32ThreadProc(void *data) {
 
 	fplThreadParameters parameters = thread->parameters;
 
-	
+
 
 	if(parameters.runFunc != fpl_null) {
 		parameters.runFunc(thread, parameters.userData);
@@ -12121,8 +12561,8 @@ fpl_platform_api void fplThreadSleep(const uint32_t milliseconds) {
 }
 
 fpl_platform_api bool fplThreadYield() {
-	bool result = SwitchToThread() == TRUE;
-	return(result);
+	YieldProcessor();
+	return(true);
 }
 
 fpl_platform_api bool fplThreadTerminate(fplThreadHandle *thread) {
@@ -12177,10 +12617,10 @@ fpl_platform_api bool fplMutexInit(fplMutexHandle *mutex) {
 		return false;
 	}
 	fplClearStruct(mutex);
+	mutex->isValid = true;
 	fplAssert(sizeof(mutex->internalHandle.win32CriticalSection) >= sizeof(CRITICAL_SECTION));
 	CRITICAL_SECTION *critSection = (CRITICAL_SECTION *)&mutex->internalHandle.win32CriticalSection;
 	InitializeCriticalSection(critSection);
-	mutex->isValid = true;
 	return true;
 }
 
@@ -13473,14 +13913,6 @@ fpl_platform_api void fplSetWindowCursorEnabled(const bool value) {
 	windowState->isCursorActive = value;
 }
 
-fpl_internal void fpl__Win32HandleMessage(const fpl__Win32Api *wapi, fpl__PlatformAppState *appState, fpl__Win32WindowState *windowState, MSG *msg) {
-	if(appState->currentSettings.window.callbacks.eventCallback != fpl_null) {
-		appState->currentSettings.window.callbacks.eventCallback(fplGetPlatformType(), windowState, &msg, appState->currentSettings.window.callbacks.eventUserData);
-	}
-	wapi->user.TranslateMessage(msg);
-	wapi->user.DispatchMessageW(msg);
-}
-
 fpl_internal bool fpl__Win32ProcessNextEvent(const fpl__Win32Api *wapi, fpl__PlatformAppState *appState, fpl__Win32WindowState *windowState) {
 	bool result = false;
 	if(windowState->windowHandle != 0) {
@@ -13528,9 +13960,13 @@ fpl_platform_api void fplPollEvents() {
 	const fpl__Win32InitState *win32InitState = &fpl__global__InitState.win32;
 	const fpl__Win32Api *wapi = &win32AppState->winApi;
 	if(windowState->windowHandle != 0) {
-		MSG msg;
-		while(wapi->user.PeekMessageW(&msg, windowState->windowHandle, 0, 0, PM_REMOVE)) {
-			fpl__Win32HandleMessage(wapi, appState, windowState, &msg);
+		if(windowState->messageFiber != fpl_null) {
+			SwitchToFiber(windowState->messageFiber);
+		} else {
+			MSG msg;
+			while(wapi->user.PeekMessageW(&msg, windowState->windowHandle, 0, 0, PM_REMOVE)) {
+				fpl__Win32HandleMessage(wapi, appState, windowState, &msg);
+			}
 		}
 	}
 	fpl__ClearInternalEvents();
@@ -14359,29 +14795,29 @@ fpl_platform_api fplThreadHandle *fplThreadCreateWithParameters(fplThreadParamet
 		thread->parameters = *parameters;
 		thread->isValid = false;
 		thread->isStopping = false;
-		
+
 		fplThreadPriority initialPriority = parameters->priority;
 
 		// Setup attributes
 		pthread_attr_t *attrPtr = fpl_null;
 		pthread_attr_t attr;
-		if (pthreadApi->pthread_attr_init(&attr) == 0) {
+		if(pthreadApi->pthread_attr_init(&attr) == 0) {
 			// Scheduler policy
 			int scheduler = -1;
-			if (initialPriority == fplThreadPriority_Idle) {
+			if(initialPriority == fplThreadPriority_Idle) {
 #if defined(SCHED_IDLE)
-				if (pthreadApi->pthread_attr_setschedpolicy(&attr, SCHED_IDLE) == 0) {
+				if(pthreadApi->pthread_attr_setschedpolicy(&attr, SCHED_IDLE) == 0) {
 					scheduler = SCHED_IDLE;
 				}
 #endif
-			} else if (initialPriority >= fplThreadPriority_High){
+			} else if(initialPriority >= fplThreadPriority_High) {
 #if defined(SCHED_FIFO)
-				if ((scheduler == -1) && (pthreadApi->pthread_attr_setschedpolicy(&attr, SCHED_FIFO) == 0)) {
+				if((scheduler == -1) && (pthreadApi->pthread_attr_setschedpolicy(&attr, SCHED_FIFO) == 0)) {
 					scheduler = SCHED_FIFO;
 				}
 #endif
 #if defined(SCHED_RR)
-				if ((scheduler == -1) && (pthreadApi->pthread_attr_setschedpolicy(&attr, SCHED_RR) == 0)) {
+				if((scheduler == -1) && (pthreadApi->pthread_attr_setschedpolicy(&attr, SCHED_RR) == 0)) {
 					scheduler = SCHED_RR;
 				}
 #endif
@@ -14389,35 +14825,35 @@ fpl_platform_api fplThreadHandle *fplThreadCreateWithParameters(fplThreadParamet
 				// @TODO(final): Is sched_getscheduler supported for all POSIX standards?
 				scheduler = sched_getscheduler(0);
 			}
-			
+
 			// Stack size
-			if (parameters->stackSize > 0) {
+			if(parameters->stackSize > 0) {
 				pthreadApi->pthread_attr_setstacksize(&attr, parameters->stackSize);
 			}
-			
+
 			// Priority
-			if (scheduler != -1) {
+			if(scheduler != -1) {
 				struct sched_param sched;
-				if (pthreadApi->pthread_attr_getschedparam(&attr, &sched) == 0) {
+				if(pthreadApi->pthread_attr_getschedparam(&attr, &sched) == 0) {
 					int maxThreadPrioCount = (fplThreadPriority_Last - fplThreadPriority_First) + 1;
 					fplAssert(maxThreadPrioCount > 0);
-					
+
 					int minPrio = sched_get_priority_min(scheduler);
 					int maxPrio = sched_get_priority_max(scheduler);
 					int range = maxPrio - minPrio;
 					int step = range / maxThreadPrioCount;
-					
+
 					int priority;
-					if (initialPriority == fplThreadPriority_Lowest) {
+					if(initialPriority == fplThreadPriority_Lowest) {
 						priority = minPrio;
-					} else if (initialPriority == fplThreadPriority_Highest) {
+					} else if(initialPriority == fplThreadPriority_Highest) {
 						priority = maxPrio;
 					} else {
 						int threadPrioNumber = (int)(initialPriority - fplThreadPriority_First) + 1;
 						priority = minPrio + threadPrioNumber * step;
-						if (priority < minPrio){
+						if(priority < minPrio) {
 							priority = minPrio;
-						} else if (priority > maxPrio){
+						} else if(priority > maxPrio) {
 							priority = maxPrio;
 						}
 					}
@@ -14426,10 +14862,10 @@ fpl_platform_api fplThreadHandle *fplThreadCreateWithParameters(fplThreadParamet
 					pthreadApi->pthread_attr_setschedparam(&attr, &sched);
 				}
 			}
-			
+
 			attrPtr = &attr;
 		}
-			
+
 		// Create thread
 		thread->currentState = fplThreadState_Starting;
 		int threadRes;
@@ -14467,57 +14903,57 @@ fpl_platform_api fplThreadPriority fplGetThreadPriority(fplThreadHandle *thread)
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
 
 	pthread_t curThread = pthreadApi->pthread_self();
-	
+
 	int currentSchedulerPolicy;
 	struct sched_param params;
-	if (pthreadApi->pthread_getschedparam(curThread, &currentSchedulerPolicy, &params) != 0) {
+	if(pthreadApi->pthread_getschedparam(curThread, &currentSchedulerPolicy, &params) != 0) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Failed getting scheduler parameters for pthread '%d'", curThread);
 		return(fplThreadPriority_Unknown);
 	}
-	
+
 	int maxThreadPrioCount = (fplThreadPriority_Last - fplThreadPriority_First) + 1;
 	fplAssert(maxThreadPrioCount > 0);
-	
+
 	int minPrio = sched_get_priority_min(currentSchedulerPolicy);
 	int maxPrio = sched_get_priority_max(currentSchedulerPolicy);
 	int range = maxPrio - minPrio;
 	int step = range / maxThreadPrioCount;
-	
+
 	int currentPrio = params.sched_priority;
-	
+
 	fplThreadPriority result;
-	if (minPrio == maxPrio || currentPrio == minPrio) {
+	if(minPrio == maxPrio || currentPrio == minPrio) {
 		result = fplThreadPriority_Lowest;
-	} else if (currentPrio == maxPrio) {
+	} else if(currentPrio == maxPrio) {
 		result = fplThreadPriority_Highest;
 	} else {
 		int index = (currentPrio - minPrio) / step;
 		fplAssert(index >= 0 && index < maxThreadPrioCount);
 		result = (fplThreadPriority)index;
 	}
-	
+
 	return(result);
 }
 
 fpl_platform_api bool fplSetThreadPriority(fplThreadHandle *thread, const fplThreadPriority newPriority) {
-	if (newPriority == fplThreadPriority_Unknown) return(false);
+	if(newPriority == fplThreadPriority_Unknown) return(false);
 	FPL__CheckPlatform(false);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
 
 	pthread_t curThread = pthreadApi->pthread_self();
-	
+
 	int currentSchedulerPolicy;
 	struct sched_param params;
-	if (pthreadApi->pthread_getschedparam(curThread, &currentSchedulerPolicy, &params) != 0) {
+	if(pthreadApi->pthread_getschedparam(curThread, &currentSchedulerPolicy, &params) != 0) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Failed getting scheduler parameters for pthread '%d'", curThread);
 		return(false);
 	}
-	
+
 	// Build policy table
 	int newSchedulerPolicies[3];
 	int schedulerPolicyCount = 0;
-	switch (newPriority){
+	switch(newPriority) {
 		case fplThreadPriority_Idle:
 		case fplThreadPriority_Low:
 		case fplThreadPriority_Normal:
@@ -14541,41 +14977,41 @@ fpl_platform_api bool fplSetThreadPriority(fplThreadHandle *thread, const fplThr
 		default:
 			break;
 	}
-	
+
 	int maxThreadPrioCount = (fplThreadPriority_Last - fplThreadPriority_First) + 1;
 	fplAssert(maxThreadPrioCount > 0);
-	
+
 	// Bring priority in range of 1-N
 	int threadPrioNumber = (int)(newPriority - fplThreadPriority_First) + 1;
-	
-	for (int i = 0; i < schedulerPolicyCount; ++i) {
+
+	for(int i = 0; i < schedulerPolicyCount; ++i) {
 		int policy = newSchedulerPolicies[i];
 		int minPrio = sched_get_priority_min(policy);
 		int maxPrio = sched_get_priority_max(policy);
 		int range = maxPrio - minPrio;
 		int step = range / maxThreadPrioCount;
-		
+
 		int priority;
-		if (newPriority == fplThreadPriority_Lowest) {
+		if(newPriority == fplThreadPriority_Lowest) {
 			priority = minPrio;
-		} else if (newPriority == fplThreadPriority_Highest) {
+		} else if(newPriority == fplThreadPriority_Highest) {
 			priority = maxPrio;
 		} else {
 			priority = minPrio + threadPrioNumber * step;
-			if (priority < minPrio){
+			if(priority < minPrio) {
 				priority = minPrio;
-			} else if (priority > maxPrio){
+			} else if(priority > maxPrio) {
 				priority = maxPrio;
 			}
 		}
 		params.sched_priority = priority;
-		if (pthreadApi->pthread_setschedparam(curThread, policy, &params) == 0) {
+		if(pthreadApi->pthread_setschedparam(curThread, policy, &params) == 0) {
 			return(true); // Finally we found a policy and priority which is supported		
 		} else {
 			FPL__WARNING(FPL__MODULE_THREADING, "Failed to set thread priority '%d' with policy '%d'", priority, policy);
 		}
 	}
-	
+
 	return(false);
 }
 
@@ -14584,7 +15020,7 @@ fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle *thread, const fplTime
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
 	bool result = false;
-	if((thread != fpl_null) && (fplGetThreadState(thread) != fplThreadState_Stopped)) {	
+	if((thread != fpl_null) && (fplGetThreadState(thread) != fplThreadState_Stopped)) {
 		pthread_t threadHandle = thread->internalHandle.posixThread;
 
 		// @NOTE(final): We optionally use the GNU extension "pthread_timedjoin_np" to support joining with a timeout.
@@ -14801,7 +15237,7 @@ fpl_platform_api bool fplSemaphoreInit(fplSemaphoreHandle *semaphore, const uint
 		return false;
 	}
 	FPL__CheckPlatform(false);
-	
+
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
 	sem_t handle;
@@ -15715,6 +16151,7 @@ fpl_internal void fpl__X11ReleaseWindow(const fpl__X11SubplatformState *subplatf
 		x11Api->XUnmapWindow(windowState->display, windowState->window);
 		FPL_LOG_DEBUG("X11", "Destroy window '%d' on display '%p'", (int)windowState->window, windowState->display);
 		x11Api->XDestroyWindow(windowState->display, windowState->window);
+		x11Api->XFlush(windowState->display);
 		windowState->window = 0;
 	}
 	if(windowState->colorMap) {
@@ -15726,6 +16163,12 @@ fpl_internal void fpl__X11ReleaseWindow(const fpl__X11SubplatformState *subplatf
 		FPL_LOG_DEBUG("X11", "Close display '%p'", windowState->display);
 		x11Api->XCloseDisplay(windowState->display);
 		windowState->display = fpl_null;
+
+#if 0
+		FPL_LOG_DEBUG("X11", "Restore previous error handler '%p'", windowState->lastErrorHandler);
+		x11Api->XSetErrorHandler(windowState->lastErrorHandler);
+#endif
+
 	}
 	fplClearStruct(windowState);
 }
@@ -16006,9 +16449,33 @@ fpl_internal void fpl__X11LoadWindowIcon(const fpl__X11Api *x11Api, fpl__X11Wind
 	x11Api->XFlush(x11WinState->display);
 }
 
+#if 0
+fpl_internal int fpl__X11ErrorHandler(Display *display, XErrorEvent *ev) {
+	FPL__CheckPlatform(0);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+
+	if(windowState->lastErrorHandler != fpl_null) {
+		return windowState->lastErrorHandler(display, ev);
+	}
+
+	return(0);
+}
+#endif
+
 fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *appState, fpl__X11SubplatformState *subplatform, fpl__X11WindowState *windowState, const fpl__SetupWindowCallbacks *setupCallbacks) {
 	fplAssert((initSettings != fpl_null) && (currentWindowSettings != fpl_null) && (appState != fpl_null) && (subplatform != fpl_null) && (windowState != fpl_null) && (setupCallbacks != fpl_null));
 	const fpl__X11Api *x11Api = &subplatform->api;
+
+	FPL_LOG_DEBUG(FPL__MODULE_X11, "Set init threads");
+	x11Api->XInitThreads();
+
+#if 0
+	FPL_LOG_DEBUG("X11", "Enable error handler");
+	windowState->lastErrorHandler = x11Api->XSetErrorHandler(fpl__X11ErrorHandler);
+#endif
 
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Open default Display");
 	windowState->display = x11Api->XOpenDisplay(fpl_null);
@@ -16027,34 +16494,28 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Got root window from display '%p' and screen '%d': %d", windowState->display, windowState->screen, (int)windowState->root);
 
 	bool usePreSetupWindow = false;
-	fpl__PreSetupWindowResult setupResult = fplZeroInit;
 	if(setupCallbacks->preSetup != fpl_null) {
 		FPL_LOG_DEBUG(FPL__MODULE_X11, "Call Pre-Setup for Window");
-		usePreSetupWindow = setupCallbacks->preSetup(appState, appState->initFlags, initSettings, &setupResult);
+		setupCallbacks->preSetup(appState, appState->initFlags, initSettings);
 	}
 
-	Visual *visual = fpl_null;
-	int colorDepth = 0;
+	Visual *visual = windowState->visual;
+	int colorDepth = windowState->colorDepth;
 	Colormap colormap;
-	if(usePreSetupWindow) {
-		FPL_LOG_DEBUG(FPL__MODULE_X11, "Got visual '%p' and color depth '%d' from pre-setup", setupResult.x11.visual, setupResult.x11.colorDepth);
-		fplAssert(setupResult.x11.visual != fpl_null);
-		visual = setupResult.x11.visual;
-		colorDepth = setupResult.x11.colorDepth;
-		colormap = x11Api->XCreateColormap(windowState->display, windowState->root, visual, AllocNone);
+	if(visual != fpl_null && colorDepth > 0) {
+		FPL_LOG_DEBUG(FPL__MODULE_X11, "Got visual '%p' and color depth '%d' from pre-setup", visual, colorDepth);
+		windowState->colorMap = colormap = x11Api->XCreateColormap(windowState->display, windowState->root, visual, AllocNone);
 	} else {
-		FPL_LOG_DEBUG(FPL__MODULE_X11, "Using default colormap, visual, color depth");
-		visual = x11Api->XDefaultVisual(windowState->display, windowState->screen);
-		colorDepth = x11Api->XDefaultDepth(windowState->display, windowState->screen);
-		colormap = x11Api->XDefaultColormap(windowState->display, windowState->screen);
+		FPL_LOG_DEBUG(FPL__MODULE_X11, "Using default visual, color depth, colormap");
+		windowState->visual = visual = x11Api->XDefaultVisual(windowState->display, windowState->screen);
+		windowState->colorDepth = colorDepth = x11Api->XDefaultDepth(windowState->display, windowState->screen);
+		windowState->colorMap = colormap = x11Api->XDefaultColormap(windowState->display, windowState->screen);
 	}
 	int flags = CWColormap | CWBackPixel | CWBorderPixel | CWEventMask | CWBitGravity | CWWinGravity;
 
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Using visual: %p", visual);
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Using color depth: %d", colorDepth);
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Using color map: %d", (int)colormap);
-
-	windowState->colorMap = colormap;
 
 	XSetWindowAttributes swa = fplZeroInit;
 	swa.colormap = colormap;
@@ -16106,8 +16567,6 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 		return false;
 	}
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Successfully created window with (Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d': %d", windowState->display, (int)windowState->root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap, (int)windowState->window);
-
-	windowState->visual = visual;
 
 	// Type atoms
 	windowState->utf8String = x11Api->XInternAtom(windowState->display, "UTF8_STRING", False);
@@ -16373,7 +16832,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 		case ConfigureNotify:
 		{
 #		if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-			if(appState->currentSettings.video.driver == fplVideoDriverType_Software) {
+			if(appState->currentSettings.video.backend == fplVideoBackendType_Software) {
 				if(appState->initSettings.video.isAutoSize) {
 					uint32_t w = (uint32_t)ev->xconfigure.width;
 					uint32_t h = (uint32_t)ev->xconfigure.height;
@@ -17647,15 +18106,108 @@ fpl_platform_api size_t fplGetInputLocale(const fplLocaleFormat targetFormat, ch
 
 // ****************************************************************************
 //
-// > VIDEO_DRIVERS
+// > VIDEO_BACKENDS
 //
 // ****************************************************************************
-#if !defined(FPL__VIDEO_DRIVERS_IMPLEMENTED) && defined(FPL__ENABLE_VIDEO)
-#	define FPL__VIDEO_DRIVERS_IMPLEMENTED
+#if !defined(FPL__VIDEO_BACKENDS_IMPLEMENTED) && defined(FPL__ENABLE_VIDEO)
+#	define FPL__VIDEO_BACKENDS_IMPLEMENTED
+
+//
+// Video Backend Abstraction
+//
+
+// Video data used for every backend (Software backbuffer for now)
+typedef struct fpl__VideoData {
+#if defined(FPL__ENABLE_VIDEO_SOFTWARE)
+	fplVideoBackBuffer backbuffer;
+#endif
+	uint64_t dummy;
+} fpl__VideoData;
+
+struct fpl__VideoBackend;
+
+#define FPL__FUNC_VIDEO_BACKEND_LOAD(name) bool name(const fpl__PlatformAppState *appState, struct fpl__VideoBackend *backend)
+typedef FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__func_VideoBackendLoad);
+
+#define FPL__FUNC_VIDEO_BACKEND_UNLOAD(name) void name(const fpl__PlatformAppState *appState, struct fpl__VideoBackend *backend)
+typedef FPL__FUNC_VIDEO_BACKEND_UNLOAD(fpl__func_VideoBackendUnload);
+
+#define FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(name) bool name(const fpl__PlatformAppState *appState, const fplVideoSettings *videoSettings, fpl__PlatformWindowState *windowState, struct fpl__VideoBackend *backend)
+typedef FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__func_VideoBackendPrepareWindow);
+
+#define FPL__FUNC_VIDEO_BACKEND_FINALIZEWINDOW(name) bool name(const fpl__PlatformAppState *appState, const fplVideoSettings *videoSettings, fpl__PlatformWindowState *windowState, struct fpl__VideoBackend *backend)
+typedef FPL__FUNC_VIDEO_BACKEND_FINALIZEWINDOW(fpl__func_VideoBackendFinalizeWindow);
+
+#define FPL__FUNC_VIDEO_BACKEND_DESTROYEDWINDOW(name) void name(const fpl__PlatformAppState *appState, struct fpl__VideoBackend *backend)
+typedef FPL__FUNC_VIDEO_BACKEND_DESTROYEDWINDOW(fpl__func_VideoBackendDestroyedWindow);
+
+#define FPL__FUNC_VIDEO_BACKEND_INITIALIZE(name) bool name(const fpl__PlatformAppState *appState, const fpl__PlatformWindowState *windowState, const fplVideoSettings *videoSettings, const fpl__VideoData *data, struct fpl__VideoBackend *backend)
+typedef FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__func_VideoBackendInitialize);
+
+#define FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(name) void name(const fpl__PlatformAppState *appState, const fpl__PlatformWindowState *windowState, struct fpl__VideoBackend *backend)
+typedef FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(fpl__func_VideoBackendShutdown);
+
+#define FPL__FUNC_VIDEO_BACKEND_PRESENT(name) void name(const fpl__PlatformAppState *appState, const fpl__PlatformWindowState *windowState, const fpl__VideoData *data, const struct fpl__VideoBackend *backend)
+typedef FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__func_VideoBackendPresent);
+
+#define FPL__FUNC_VIDEO_BACKEND_GETPROCEDURE(name) const void *name(const struct fpl__VideoBackend *backend, const char *procName)
+typedef FPL__FUNC_VIDEO_BACKEND_GETPROCEDURE(fpl__func_VideoBackendGetProcedure);
+
+#define FPL__FUNC_VIDEO_BACKEND_GETREQUIREMENTS(name) bool name(fplVideoRequirements *requirements)
+typedef FPL__FUNC_VIDEO_BACKEND_GETREQUIREMENTS(fpl__func_VideoBackendGetRequirements);
+
+typedef struct fpl__VideoContext {
+	fpl__func_VideoBackendLoad *loadFunc;
+	fpl__func_VideoBackendUnload *unloadFunc;
+	fpl__func_VideoBackendInitialize *initializeFunc;
+	fpl__func_VideoBackendShutdown *shutdownFunc;
+	fpl__func_VideoBackendPrepareWindow *prepareWindowFunc;
+	fpl__func_VideoBackendFinalizeWindow *finalizeWindowFunc;
+	fpl__func_VideoBackendDestroyedWindow *destroyedWindowFunc;
+	fpl__func_VideoBackendPresent *presentFunc;
+	fpl__func_VideoBackendGetProcedure *getProcedureFunc;
+	fpl__func_VideoBackendGetRequirements *getRequirementsFunc;
+	fpl_b32 recreateOnResize;
+} fpl__VideoContext;
+
+// Video context stubs
+fpl_internal FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__VideoBackend_Load_Stub) { return(true); }
+fpl_internal FPL__FUNC_VIDEO_BACKEND_UNLOAD(fpl__VideoBackend_Unload_Stub) {}
+fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_PrepareWindow_Stub) { return(true); }
+fpl_internal FPL__FUNC_VIDEO_BACKEND_FINALIZEWINDOW(fpl__VideoBackend_FinalizeWindow_Stub) { return(true); }
+fpl_internal FPL__FUNC_VIDEO_BACKEND_DESTROYEDWINDOW(fpl__VideoBackend_DestroyedWindow_Stub) {}
+fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Initialize_Stub) { return(false); }
+fpl_internal FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(fpl__VideoBackend_Shutdown_Stub) {}
+fpl_internal FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__VideoBackend_Present_Stub) {}
+fpl_internal FPL__FUNC_VIDEO_BACKEND_GETPROCEDURE(fpl__VideoBackend_GetProcedure_Stub) { return(fpl_null); }
+fpl_internal FPL__FUNC_VIDEO_BACKEND_GETREQUIREMENTS(fpl__VideoBackend_GetRequirements_Stub) { return(false); }
+
+fpl_internal fpl__VideoContext fpl__StubVideoContext() {
+	fpl__VideoContext result = fplZeroInit;
+	result.loadFunc = fpl__VideoBackend_Load_Stub;
+	result.unloadFunc = fpl__VideoBackend_Unload_Stub;
+	result.prepareWindowFunc = fpl__VideoBackend_PrepareWindow_Stub;
+	result.finalizeWindowFunc = fpl__VideoBackend_FinalizeWindow_Stub;
+	result.destroyedWindowFunc = fpl__VideoBackend_DestroyedWindow_Stub;
+	result.initializeFunc = fpl__VideoBackend_Initialize_Stub;
+	result.shutdownFunc = fpl__VideoBackend_Shutdown_Stub;
+	result.presentFunc = fpl__VideoBackend_Present_Stub;
+	result.getProcedureFunc = fpl__VideoBackend_GetProcedure_Stub;
+	result.getRequirementsFunc = fpl__VideoBackend_GetRequirements_Stub;
+	return(result);
+}
+
+// "VIDEOSYS" Video Backend Magic 8CC
+#define FPL__VIDEOBACKEND_MAGIC (uint64_t)0x564944454f535953
+
+typedef struct fpl__VideoBackend {
+	uint64_t magic;
+	fplVideoSurface surface;
+} fpl__VideoBackend;
 
 // ############################################################################
 //
-// > VIDEO_DRIVER_OPENGL_WIN32
+// > VIDEO_BACKEND_OPENGL_WIN32
 //
 // ############################################################################
 #if defined(FPL__ENABLE_VIDEO_OPENGL) && defined(FPL_PLATFORM_WINDOWS)
@@ -17719,14 +18271,14 @@ typedef struct fpl__Win32OpenGLApi {
 	fpl__win32_func_wglSwapIntervalEXT *wglSwapIntervalEXT;
 } fpl__Win32OpenGLApi;
 
-fpl_internal void fpl__Win32UnloadVideoOpenGLApi(fpl__Win32OpenGLApi *api) {
+fpl_internal void fpl__UnloadWin32OpenGLApi(fpl__Win32OpenGLApi *api) {
 	if(api->openglLibrary != fpl_null) {
 		FreeLibrary(api->openglLibrary);
 	}
 	fplClearStruct(api);
 }
 
-fpl_internal bool fpl__Win32LoadVideoOpenGLApi(fpl__Win32OpenGLApi *api) {
+fpl_internal bool fpl__LoadWin32OpenGLApi(fpl__Win32OpenGLApi *api) {
 	const char *openglLibraryName = "opengl32.dll";
 	bool result = false;
 	fplClearStruct(api);
@@ -17741,17 +18293,24 @@ fpl_internal bool fpl__Win32LoadVideoOpenGLApi(fpl__Win32OpenGLApi *api) {
 		result = true;
 	} while(0);
 	if(!result) {
-		fpl__Win32UnloadVideoOpenGLApi(api);
+		fpl__UnloadWin32OpenGLApi(api);
 	}
 	return(result);
 }
 
-typedef struct fpl__Win32VideoOpenGLState {
-	HGLRC renderingContext;
+typedef struct fpl__VideoBackendWin32OpenGL {
+	fpl__VideoBackend base;
 	fpl__Win32OpenGLApi api;
-} fpl__Win32VideoOpenGLState;
+	HGLRC renderingContext;
+} fpl__VideoBackendWin32OpenGL;
 
-fpl_internal LRESULT CALLBACK fpl__Win32TemporaryWindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
+fpl_internal FPL__FUNC_VIDEO_BACKEND_GETPROCEDURE(fpl__VideoBackend_Win32OpenGL_GetProcedure) {
+	const fpl__VideoBackendWin32OpenGL *nativeBackend = (const fpl__VideoBackendWin32OpenGL *)backend;
+	void *result = (void *)GetProcAddress(nativeBackend->api.openglLibrary, procName);
+	return(result);
+}
+
+fpl_internal LRESULT CALLBACK fpl__Win32OpenGLTemporaryWindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
 	fpl__Win32AppState *appState = &fpl__global__AppState->win32;
 	const fpl__Win32Api *wapi = &appState->winApi;
 	switch(message) {
@@ -17764,19 +18323,21 @@ fpl_internal LRESULT CALLBACK fpl__Win32TemporaryWindowProc(HWND hWnd, UINT mess
 	return 0;
 }
 
-fpl_internal bool fpl__Win32PreSetupWindowForOpenGL(fpl__Win32AppState *appState, fpl__Win32WindowState *windowState, const fplVideoSettings *videoSettings) {
-	const fpl__Win32Api *wapi = &appState->winApi;
+fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_Win32OpenGL_PrepareWindow) {
+	const fpl__Win32AppState *nativeAppState = &appState->win32;
+	const fpl__Win32Api *wapi = &nativeAppState->winApi;
+	fpl__Win32WindowState *nativeWindowState = &windowState->win32;
 
-	windowState->pixelFormat = 0;
+	nativeWindowState->pixelFormat = 0;
 
 	if(videoSettings->graphics.opengl.compabilityFlags != fplOpenGLCompabilityFlags_Legacy) {
 		fpl__Win32OpenGLApi glApi;
-		if(fpl__Win32LoadVideoOpenGLApi(&glApi)) {
+		if(fpl__LoadWin32OpenGLApi(&glApi)) {
 			// Register temporary window class
 			WNDCLASSEXW windowClass = fplZeroInit;
 			windowClass.cbSize = sizeof(windowClass);
 			windowClass.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
-			windowClass.lpfnWndProc = fpl__Win32TemporaryWindowProc;
+			windowClass.lpfnWndProc = fpl__Win32OpenGLTemporaryWindowProc;
 			windowClass.hInstance = GetModuleHandleW(fpl_null);
 			windowClass.hCursor = fpl__win32_LoadCursor(fpl_null, IDC_ARROW);
 			windowClass.lpszClassName = L"FPL_Temp_GL_Window";
@@ -17823,7 +18384,7 @@ fpl_internal bool fpl__Win32PreSetupWindowForOpenGL(fpl__Win32AppState *appState
 											int pixelFormat;
 											UINT numFormats;
 											if(glApi.wglChoosePixelFormatARB(tempDC, pixelAttribs, NULL, 1, &pixelFormat, &numFormats)) {
-												windowState->pixelFormat = pixelFormat;
+												nativeWindowState->pixelFormat = pixelFormat;
 											}
 										}
 										glApi.wglMakeCurrent(fpl_null, fpl_null);
@@ -17837,29 +18398,31 @@ fpl_internal bool fpl__Win32PreSetupWindowForOpenGL(fpl__Win32AppState *appState
 					wapi->user.DestroyWindow(tempWindowHandle);
 				}
 			}
-			fpl__Win32UnloadVideoOpenGLApi(&glApi);
+			fpl__UnloadWin32OpenGLApi(&glApi);
 		}
 	}
 	return(true);
 }
 
-fpl_internal bool fpl__Win32PostSetupWindowForOpenGL(fpl__Win32AppState *appState, fpl__Win32WindowState *windowState, const fplVideoSettings *videoSettings) {
-	const fpl__Win32Api *wapi = &appState->winApi;
+fpl_internal FPL__FUNC_VIDEO_BACKEND_FINALIZEWINDOW(fpl__VideoBackend_Win32OpenGL_FinalizeWindow) {
+	const fpl__Win32AppState *nativeAppState = &appState->win32;
+	const fpl__Win32Api *wapi = &nativeAppState->winApi;
+	fpl__Win32WindowState *nativeWindowState = &windowState->win32;
 
 	//
 	// Prepare window for OpenGL
 	//
-	HDC deviceContext = windowState->deviceContext;
-	HWND handle = windowState->windowHandle;
+	HDC deviceContext = nativeWindowState->deviceContext;
+	HWND handle = nativeWindowState->windowHandle;
 	PIXELFORMATDESCRIPTOR pfd = fplZeroInit;
 
-	// We may got a pixel format from the pre setup
+	// We may got a pixel format from the pre-setup
 	bool pixelFormatSet = false;
-	if(windowState->pixelFormat != 0) {
-		wapi->gdi.DescribePixelFormat(deviceContext, windowState->pixelFormat, sizeof(pfd), &pfd);
-		pixelFormatSet = wapi->gdi.SetPixelFormat(deviceContext, windowState->pixelFormat, &pfd) == TRUE;
+	if(nativeWindowState->pixelFormat != 0) {
+		wapi->gdi.DescribePixelFormat(deviceContext, nativeWindowState->pixelFormat, sizeof(pfd), &pfd);
+		pixelFormatSet = wapi->gdi.SetPixelFormat(deviceContext, nativeWindowState->pixelFormat, &pfd) == TRUE;
 		if(!pixelFormatSet) {
-			FPL__ERROR(FPL__MODULE_VIDEO_OPENGL, "Failed setting Pixelformat '%d' from pre setup", windowState->pixelFormat);
+			FPL__ERROR(FPL__MODULE_VIDEO_OPENGL, "Failed setting Pixelformat '%d' from pre setup", nativeWindowState->pixelFormat);
 		}
 	}
 	if(!pixelFormatSet) {
@@ -17887,14 +18450,32 @@ fpl_internal bool fpl__Win32PostSetupWindowForOpenGL(fpl__Win32AppState *appStat
 	return true;
 }
 
-fpl_internal bool fpl__Win32InitVideoOpenGL(const fpl__Win32AppState *appState, const fpl__Win32WindowState *windowState, const fplVideoSettings *videoSettings, fpl__Win32VideoOpenGLState *glState) {
-	const fpl__Win32Api *wapi = &appState->winApi;
-	fpl__Win32OpenGLApi *glapi = &glState->api;
+fpl_internal FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(fpl__VideoBackend_Win32OpenGL_Shutdown) {
+	const fpl__Win32AppState *nativeAppState = &appState->win32;
+
+	fpl__VideoBackendWin32OpenGL *nativeBackend = (fpl__VideoBackendWin32OpenGL *)backend;
+	const fpl__Win32OpenGLApi *glapi = &nativeBackend->api;
+
+	if(nativeBackend->renderingContext) {
+		glapi->wglMakeCurrent(fpl_null, fpl_null);
+		glapi->wglDeleteContext(nativeBackend->renderingContext);
+		nativeBackend->renderingContext = fpl_null;
+	}
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Win32OpenGL_Initialize) {
+	const fpl__Win32AppState *nativeAppState = &appState->win32;
+	const fpl__Win32WindowState *nativeWindowState = &windowState->win32;
+	const fpl__Win32Api *wapi = &nativeAppState->winApi;
+
+	fpl__VideoBackendWin32OpenGL *nativeBackend = (fpl__VideoBackendWin32OpenGL *)backend;
+
+	fpl__Win32OpenGLApi *glapi = &nativeBackend->api;
 
 	//
 	// Create opengl rendering context
 	//
-	HDC deviceContext = windowState->deviceContext;
+	HDC deviceContext = nativeWindowState->deviceContext;
 	HGLRC legacyRenderingContext = glapi->wglCreateContext(deviceContext);
 	if(!legacyRenderingContext) {
 		FPL__ERROR(FPL__MODULE_VIDEO_OPENGL, "Failed creating Legacy OpenGL Rendering Context for DC '%x')", deviceContext);
@@ -17989,7 +18570,7 @@ fpl_internal bool fpl__Win32InitVideoOpenGL(const fpl__Win32AppState *appState, 
 	}
 
 	fplAssert(activeRenderingContext != fpl_null);
-	glState->renderingContext = activeRenderingContext;
+	nativeBackend->renderingContext = activeRenderingContext;
 
 	// Set vertical syncronisation if available
 	if(glapi->wglSwapIntervalEXT != fpl_null) {
@@ -17997,22 +18578,54 @@ fpl_internal bool fpl__Win32InitVideoOpenGL(const fpl__Win32AppState *appState, 
 		glapi->wglSwapIntervalEXT(swapInterval);
 	}
 
+	backend->surface.window.win32.deviceContext = deviceContext;
+	backend->surface.window.win32.windowHandle = nativeWindowState->windowHandle;
+	backend->surface.opengl.renderingContext = (void *)activeRenderingContext;
+
 	return true;
 }
 
-fpl_internal void fpl__Win32ReleaseVideoOpenGL(fpl__Win32VideoOpenGLState *glState) {
-	const fpl__Win32OpenGLApi *glapi = &glState->api;
-	if(glState->renderingContext) {
-		glapi->wglMakeCurrent(fpl_null, fpl_null);
-		glapi->wglDeleteContext(glState->renderingContext);
-		glState->renderingContext = fpl_null;
+fpl_internal FPL__FUNC_VIDEO_BACKEND_UNLOAD(fpl__VideoBackend_Win32OpenGL_Unload) {
+	fpl__VideoBackendWin32OpenGL *nativeBackend = (fpl__VideoBackendWin32OpenGL *)backend;
+	fpl__UnloadWin32OpenGLApi(&nativeBackend->api);
+	fplClearStruct(nativeBackend);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__VideoBackend_Win32OpenGL_Load) {
+	fpl__VideoBackendWin32OpenGL *nativeBackend = (fpl__VideoBackendWin32OpenGL *)backend;
+	fplClearStruct(nativeBackend);
+	nativeBackend->base.magic = FPL__VIDEOBACKEND_MAGIC;
+	if(!fpl__LoadWin32OpenGLApi(&nativeBackend->api)) {
+		return(false);
 	}
+	return(true);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__VideoBackend_Win32OpenGL_Present) {
+	const fpl__Win32AppState *win32AppState = &appState->win32;
+	const fpl__Win32WindowState *win32WindowState = &appState->window.win32;
+	const fpl__Win32Api *wapi = &win32AppState->winApi;
+	const fpl__VideoBackendWin32OpenGL *nativeBackend = (fpl__VideoBackendWin32OpenGL *)backend;
+	wapi->gdi.SwapBuffers(win32WindowState->deviceContext);
+}
+
+fpl_internal fpl__VideoContext fpl__VideoBackend_Win32OpenGL_Construct() {
+	fpl__VideoContext result = fpl__StubVideoContext();
+	result.loadFunc = fpl__VideoBackend_Win32OpenGL_Load;
+	result.unloadFunc = fpl__VideoBackend_Win32OpenGL_Unload;
+	result.getProcedureFunc = fpl__VideoBackend_Win32OpenGL_GetProcedure;
+	result.initializeFunc = fpl__VideoBackend_Win32OpenGL_Initialize;
+	result.shutdownFunc = fpl__VideoBackend_Win32OpenGL_Shutdown;
+	result.prepareWindowFunc = fpl__VideoBackend_Win32OpenGL_PrepareWindow;
+	result.finalizeWindowFunc = fpl__VideoBackend_Win32OpenGL_FinalizeWindow;
+	result.presentFunc = fpl__VideoBackend_Win32OpenGL_Present;
+	return(result);
 }
 #endif // FPL__ENABLE_VIDEO_OPENGL && FPL_PLATFORM_WINDOWS
 
 // ############################################################################
 //
-// > VIDEO_DRIVER_OPENGL_X11
+// > VIDEO_BACKEND_OPENGL_X11
 //
 // ############################################################################
 #if defined(FPL__ENABLE_VIDEO_OPENGL) && defined(FPL_SUBPLATFORM_X11)
@@ -18105,11 +18718,10 @@ typedef struct fpl__X11VideoOpenGLApi {
 	fpl__func_glx_glXCreateWindow *glXCreateWindow;
 	fpl__func_glx_glXQueryExtension *glXQueryExtension;
 	fpl__func_glx_glXQueryExtensionsString *glXQueryExtensionsString;
-
 	fpl__func_glx_glXCreateContextAttribsARB *glXCreateContextAttribsARB;
 } fpl__X11VideoOpenGLApi;
 
-fpl_internal void fpl__X11UnloadVideoOpenGLApi(fpl__X11VideoOpenGLApi *api) {
+fpl_internal void fpl__UnloadX11OpenGLApi(fpl__X11VideoOpenGLApi *api) {
 	if(api->libHandle != fpl_null) {
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Unload Api (Library '%p')", api->libHandle);
 		dlclose(api->libHandle);
@@ -18117,7 +18729,7 @@ fpl_internal void fpl__X11UnloadVideoOpenGLApi(fpl__X11VideoOpenGLApi *api) {
 	fplClearStruct(api);
 }
 
-fpl_internal bool fpl__X11LoadVideoOpenGLApi(fpl__X11VideoOpenGLApi *api) {
+fpl_internal bool fpl__LoadX11OpenGLApi(fpl__X11VideoOpenGLApi *api) {
 	const char *libFileNames[] = {
 		"libGL.so.1",
 		"libGL.so",
@@ -18151,39 +18763,55 @@ fpl_internal bool fpl__X11LoadVideoOpenGLApi(fpl__X11VideoOpenGLApi *api) {
 			FPL_LOG_DEBUG(FPL__MODULE_GLX, , "Successfully loaded GLX Api from Library '%s'", libName);
 			break;
 		}
-		fpl__X11UnloadVideoOpenGLApi(api);
+		fpl__UnloadX11OpenGLApi(api);
 	}
 	return (result);
 }
 
-typedef struct fpl__X11VideoOpenGLState {
+typedef struct fpl__VideoBackendX11OpenGL {
+	fpl__VideoBackend base;
 	fpl__X11VideoOpenGLApi api;
 	GLXFBConfig fbConfig;
 	XVisualInfo *visualInfo;
 	GLXContext context;
 	bool isActiveContext;
-} fpl__X11VideoOpenGLState;
+} fpl__VideoBackendX11OpenGL;
 
-fpl_internal bool fpl__X11InitFrameBufferConfigVideoOpenGL(const fpl__X11Api *x11Api, const fpl__X11WindowState *windowState, const fplVideoSettings *videoSettings, fpl__X11VideoOpenGLState *glState) {
-	const fpl__X11VideoOpenGLApi *glApi = &glState->api;
+fpl_internal FPL__FUNC_VIDEO_BACKEND_GETPROCEDURE(fpl__VideoBackend_X11OpenGL_GetProcedure) {
+	const fpl__VideoBackendX11OpenGL *nativeBackend = (const fpl__VideoBackendX11OpenGL *)backend;
+	void *result = dlsym(nativeBackend->api.libHandle, procName);
+	return(result);
+}
 
-	FPL_LOG_DEBUG(FPL__MODULE_GLX, "Query GLX version for display '%p'", windowState->display);
+fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_X11OpenGL_PrepareWindow) {
+	const fpl__X11SubplatformState *nativeAppState = &appState->x11;
+	const fpl__X11Api *x11Api = &nativeAppState->api;
+
+	fpl__X11WindowState *nativeWindowState = &windowState->x11;
+	fpl__VideoBackendX11OpenGL *nativeBackend = (fpl__VideoBackendX11OpenGL *)backend;
+	fpl__X11VideoOpenGLApi *glApi = &nativeBackend->api;
+
+	Display *display = nativeWindowState->display;
+	Window window = nativeWindowState->window;
+	int screen = nativeWindowState->screen;
+
+	FPL_LOG_DEBUG(FPL__MODULE_GLX, "Query GLX version for display '%p'", display);
 	int major = 0, minor = 0;
-	if(!glApi->glXQueryVersion(windowState->display, &major, &minor)) {
-		FPL_LOG_ERROR(FPL__MODULE_GLX, "Failed querying GLX version for display '%p'", windowState->display);
+	if(!glApi->glXQueryVersion(display, &major, &minor)) {
+		FPL_LOG_ERROR(FPL__MODULE_GLX, "Failed querying GLX version for display '%p'", display);
 		return false;
 	}
-	FPL_LOG_DEBUG(FPL__MODULE_GLX, "Successfully queried GLX version for display '%p': %d.%d", windowState->display, major, minor);
+	FPL_LOG_DEBUG(FPL__MODULE_GLX, "Successfully queried GLX version for display '%p': %d.%d", display, major, minor);
 
 	// @NOTE(final): Required for AMD Drivers?
 
-	FPL_LOG_DEBUG(FPL__MODULE_GLX, "Query OpenGL extension on display '%p'", windowState->display);
-	if(!glApi->glXQueryExtension(windowState->display, fpl_null, fpl_null)) {
-		FPL__ERROR(FPL__MODULE_GLX, "OpenGL GLX Extension is not supported by the active display '%p'", windowState->display);
+	FPL_LOG_DEBUG(FPL__MODULE_GLX, "Query OpenGL extension on display '%p'", display);
+	if(!glApi->glXQueryExtension(display, fpl_null, fpl_null)) {
+		FPL__ERROR(FPL__MODULE_GLX, "OpenGL GLX Extension is not supported by the active display '%p'", display);
 		return false;
 	}
 
-	const char *extensionString = glApi->glXQueryExtensionsString(windowState->display, windowState->screen);
+	const char *extensionString = glApi->glXQueryExtensionsString(display, screen);
 	if(extensionString != fpl_null) {
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "OpenGL GLX extensions: %s", extensionString);
 	}
@@ -18234,62 +18862,56 @@ fpl_internal bool fpl__X11InitFrameBufferConfigVideoOpenGL(const fpl__X11Api *x1
 
 	if(isModern) {
 		// Use frame buffer config approach (GLX >= 1.3)
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Get framebuffer configuration from display '%p' and screen '%d'", windowState->display, windowState->screen);
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Get framebuffer configuration from display '%p' and screen '%d'", display, screen);
 		int configCount = 0;
-		GLXFBConfig *configs = glApi->glXChooseFBConfig(windowState->display, windowState->screen, attr, &configCount);
+		GLXFBConfig *configs = glApi->glXChooseFBConfig(display, screen, attr, &configCount);
 		if(configs == fpl_null || !configCount) {
-			FPL__ERROR(FPL__MODULE_GLX, "No framebuffer configuration from display '%p' and screen '%d' found!", windowState->display, windowState->screen);
-			glState->fbConfig = fpl_null;
+			FPL__ERROR(FPL__MODULE_GLX, "No framebuffer configuration from display '%p' and screen '%d' found!", display, screen);
+			nativeBackend->fbConfig = fpl_null;
 			return false;
 		}
-		glState->fbConfig = configs[0];
-		glState->visualInfo = fpl_null;
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Successfully got framebuffer configuration from display '%p' and screen '%d': %p", windowState->display, windowState->screen, glState->fbConfig);
+		nativeBackend->fbConfig = configs[0];
+		nativeBackend->visualInfo = fpl_null;
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Successfully got framebuffer configuration from display '%p' and screen '%d': %p", display, screen, nativeBackend->fbConfig);
 
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Release %d framebuffer configurations", configCount);
 		x11Api->XFree(configs);
 	} else {
 		// Use choose visual (Old way)
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Choose visual from display '%p' and screen '%d'", windowState->display, windowState->screen);
-		XVisualInfo *visualInfo = glApi->glXChooseVisual(windowState->display, windowState->screen, attr);
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Choose visual from display '%p' and screen '%d'", display, screen);
+		XVisualInfo *visualInfo = glApi->glXChooseVisual(display, screen, attr);
 		if(visualInfo == fpl_null) {
-			FPL__ERROR(FPL__MODULE_GLX, "No visual info for display '%p' and screen '%d' found!", windowState->display, windowState->screen);
+			FPL__ERROR(FPL__MODULE_GLX, "No visual info for display '%p' and screen '%d' found!", display, screen);
 			return false;
 		}
-		glState->visualInfo = visualInfo;
-		glState->fbConfig = fpl_null;
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Successfully got visual info from display '%p' and screen '%d': %p", windowState->display, windowState->screen, glState->visualInfo);
+		nativeBackend->visualInfo = visualInfo;
+		nativeBackend->fbConfig = fpl_null;
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Successfully got visual info from display '%p' and screen '%d': %p", display, screen, nativeBackend->visualInfo);
 	}
 
-	return true;
-}
-
-fpl_internal bool fpl__X11SetPreWindowSetupForOpenGL(const fpl__X11Api *x11Api, const fpl__X11WindowState *windowState, const fpl__X11VideoOpenGLState *glState, fpl__X11PreWindowSetupResult *outResult) {
-	const fpl__X11VideoOpenGLApi *glApi = &glState->api;
-
-	if(glState->fbConfig != fpl_null) {
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Get visual info from display '%p' and frame buffer config '%p'", windowState->display, glState->fbConfig);
-		XVisualInfo *visualInfo = glApi->glXGetVisualFromFBConfig(windowState->display, glState->fbConfig);
+	if(nativeBackend->fbConfig != fpl_null) {
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Get visual info from display '%p' and frame buffer config '%p'", display, nativeBackend->fbConfig);
+		XVisualInfo *visualInfo = glApi->glXGetVisualFromFBConfig(display, nativeBackend->fbConfig);
 		if(visualInfo == fpl_null) {
-			FPL__ERROR(FPL__MODULE_GLX, "Failed getting visual info from display '%p' and frame buffer config '%p'", windowState->display, glState->fbConfig);
+			FPL__ERROR(FPL__MODULE_GLX, "Failed getting visual info from display '%p' and frame buffer config '%p'", display, nativeBackend->fbConfig);
 			return false;
 		}
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Successfully got visual info from display '%p' and frame buffer config '%p': %p", windowState->display, glState->fbConfig, visualInfo);
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Successfully got visual info from display '%p' and frame buffer config '%p': %p", display, nativeBackend->fbConfig, visualInfo);
 
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Using visual: %p", visualInfo->visual);
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Using color depth: %d", visualInfo->depth);
 
-		outResult->visual = visualInfo->visual;
-		outResult->colorDepth = visualInfo->depth;
+		nativeWindowState->visual = visualInfo->visual;
+		nativeWindowState->colorDepth = visualInfo->depth;
 
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Release visual info '%p'", visualInfo);
 		x11Api->XFree(visualInfo);
-	} else if(glState->visualInfo != fpl_null) {
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Using existing visual info: %p", glState->visualInfo);
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Using visual: %p", glState->visualInfo->visual);
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Using color depth: %d", glState->visualInfo->depth);
-		outResult->visual = glState->visualInfo->visual;
-		outResult->colorDepth = glState->visualInfo->depth;
+	} else if(nativeBackend->visualInfo != fpl_null) {
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Using existing visual info: %p", nativeBackend->visualInfo);
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Using visual: %p", nativeBackend->visualInfo->visual);
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Using color depth: %d", nativeBackend->visualInfo->depth);
+		nativeWindowState->visual = nativeBackend->visualInfo->visual;
+		nativeWindowState->colorDepth = nativeBackend->visualInfo->depth;
 	} else {
 		FPL__ERROR(FPL__MODULE_GLX, "No visual info or frame buffer config defined!");
 		return false;
@@ -18298,50 +18920,61 @@ fpl_internal bool fpl__X11SetPreWindowSetupForOpenGL(const fpl__X11Api *x11Api, 
 	return true;
 }
 
-fpl_internal void fpl__X11ReleaseVideoOpenGL(const fpl__X11SubplatformState *subplatform, const fpl__X11WindowState *windowState, fpl__X11VideoOpenGLState *glState) {
-	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11VideoOpenGLApi *glApi = &glState->api;
+fpl_internal FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(fpl__VideoBackend_X11OpenGL_Shutdown) {
+	const fpl__X11SubplatformState *nativeAppState = &appState->x11;
+	const fpl__X11Api *x11Api = &nativeAppState->api;
+	const fpl__X11WindowState *nativeWindowState = &windowState->x11;
 
-	if(glState->isActiveContext) {
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Deactivate GLX rendering context for display '%p'", windowState->display);
-		glApi->glXMakeCurrent(windowState->display, 0, fpl_null);
-		glState->isActiveContext = false;
+	fpl__VideoBackendX11OpenGL *nativeBackend = (fpl__VideoBackendX11OpenGL *)backend;
+	fpl__X11VideoOpenGLApi *glApi = &nativeBackend->api;
+
+	if(nativeBackend->isActiveContext) {
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Deactivate GLX rendering context for display '%p'", nativeWindowState->display);
+		glApi->glXMakeCurrent(nativeWindowState->display, 0, fpl_null);
+		nativeBackend->isActiveContext = false;
 	}
 
-	if(glState->context != fpl_null) {
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Destroy GLX rendering context '%p' for display '%p'", glState->context, windowState->display);
-		glApi->glXDestroyContext(windowState->display, glState->context);
-		glState->context = fpl_null;
+	if(nativeBackend->context != fpl_null) {
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Destroy GLX rendering context '%p' for display '%p'", nativeBackend->context, nativeWindowState->display);
+		glApi->glXDestroyContext(nativeWindowState->display, nativeBackend->context);
+		nativeBackend->context = fpl_null;
 	}
 
-	if(glState->visualInfo != fpl_null) {
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Destroy visual info '%p' (Fallback)", glState->visualInfo);
-		x11Api->XFree(glState->visualInfo);
-		glState->visualInfo = fpl_null;
+	if(nativeBackend->visualInfo != fpl_null) {
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Destroy visual info '%p' (Fallback)", nativeBackend->visualInfo);
+		x11Api->XFree(nativeBackend->visualInfo);
+		nativeBackend->visualInfo = fpl_null;
 	}
 }
 
-fpl_internal bool fpl__X11InitVideoOpenGL(const fpl__X11SubplatformState *subplatform, const fpl__X11WindowState *windowState, const fplVideoSettings *videoSettings, fpl__X11VideoOpenGLState *glState) {
-	const fpl__X11Api *x11Api = &subplatform->api;
-	fpl__X11VideoOpenGLApi *glApi = &glState->api;
+fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Initialize) {
+	const fpl__X11SubplatformState *nativeAppState = &appState->x11;
+	const fpl__X11Api *x11Api = &nativeAppState->api;
+	const fpl__X11WindowState *nativeWindowState = &windowState->x11;
+
+	fpl__VideoBackendX11OpenGL *nativeBackend = (fpl__VideoBackendX11OpenGL *)backend;
+	fpl__X11VideoOpenGLApi *glApi = &nativeBackend->api;
+
+	Display *display = nativeWindowState->display;
+	Window window = nativeWindowState->window;
 
 	//
 	// Create legacy context
 	//
 	GLXContext legacyRenderingContext;
-	if(glState->fbConfig != fpl_null) {
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Create GLX legacy rendering context on display '%p' and frame buffer config '%p'", windowState->display, glState->fbConfig);
-		legacyRenderingContext = glApi->glXCreateNewContext(windowState->display, glState->fbConfig, GLX_RGBA_TYPE, fpl_null, 1);
+	if(nativeBackend->fbConfig != fpl_null) {
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Create GLX legacy rendering context on display '%p' and frame buffer config '%p'", display, nativeBackend->fbConfig);
+		legacyRenderingContext = glApi->glXCreateNewContext(display, nativeBackend->fbConfig, GLX_RGBA_TYPE, fpl_null, 1);
 		if(!legacyRenderingContext) {
-			FPL__ERROR(FPL__MODULE_GLX, "Failed creating GLX legacy rendering context on display '%p' and frame buffer config '%p'", windowState->display, glState->fbConfig);
+			FPL__ERROR(FPL__MODULE_GLX, "Failed creating GLX legacy rendering context on display '%p' and frame buffer config '%p'", display, nativeBackend->fbConfig);
 			goto failed_x11_glx;
 		}
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Successfully created GLX legacy rendering context '%p' on display '%p' and frame buffer config '%p'", legacyRenderingContext, windowState->display, glState->fbConfig);
-	} else if(glState->visualInfo != fpl_null) {
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Create GLX legacy rendering context on display '%p' and visual info '%p'", windowState->display, glState->visualInfo);
-		legacyRenderingContext = glApi->glXCreateContext(windowState->display, glState->visualInfo, fpl_null, 1);
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Successfully created GLX legacy rendering context '%p' on display '%p' and frame buffer config '%p'", legacyRenderingContext, display, nativeBackend->fbConfig);
+	} else if(nativeBackend->visualInfo != fpl_null) {
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Create GLX legacy rendering context on display '%p' and visual info '%p'", display, nativeBackend->visualInfo);
+		legacyRenderingContext = glApi->glXCreateContext(display, nativeBackend->visualInfo, fpl_null, 1);
 		if(!legacyRenderingContext) {
-			FPL__ERROR(FPL__MODULE_GLX, "Failed creating GLX legacy rendering context on display '%p' and visual info '%p'", windowState->display, glState->visualInfo);
+			FPL__ERROR(FPL__MODULE_GLX, "Failed creating GLX legacy rendering context on display '%p' and visual info '%p'", display, nativeBackend->visualInfo);
 			goto failed_x11_glx;
 		}
 	} else {
@@ -18352,12 +18985,12 @@ fpl_internal bool fpl__X11InitVideoOpenGL(const fpl__X11SubplatformState *subpla
 	//
 	// Activate legacy context
 	//
-	FPL_LOG_DEBUG(FPL__MODULE_GLX, "Activate GLX legacy rendering context '%p' on display '%p' and window '%d'", legacyRenderingContext, windowState->display, (int)windowState->window);
-	if(!glApi->glXMakeCurrent(windowState->display, windowState->window, legacyRenderingContext)) {
-		FPL__ERROR(FPL__MODULE_GLX, "Failed activating GLX legacy rendering context '%p' on display '%p' and window '%d'", legacyRenderingContext, windowState->display, (int)windowState->window);
+	FPL_LOG_DEBUG(FPL__MODULE_GLX, "Activate GLX legacy rendering context '%p' on display '%p' and window '%d'", legacyRenderingContext, display, (int)window);
+	if(!glApi->glXMakeCurrent(display, window, legacyRenderingContext)) {
+		FPL__ERROR(FPL__MODULE_GLX, "Failed activating GLX legacy rendering context '%p' on display '%p' and window '%d'", legacyRenderingContext, display, (int)window);
 		goto failed_x11_glx;
 	} else {
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Successfully activated GLX legacy rendering context '%p' on display '%p' and window '%d'", legacyRenderingContext, windowState->display, (int)windowState->window);
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Successfully activated GLX legacy rendering context '%p' on display '%p' and window '%d'", legacyRenderingContext, display, (int)window);
 	}
 
 	//
@@ -18366,11 +18999,11 @@ fpl_internal bool fpl__X11InitVideoOpenGL(const fpl__X11SubplatformState *subpla
 	glApi->glXCreateContextAttribsARB = (fpl__func_glx_glXCreateContextAttribsARB *)glApi->glXGetProcAddress((const GLubyte *)"glXCreateContextAttribsARB");
 
 	// Disable legacy rendering context
-	glApi->glXMakeCurrent(windowState->display, 0, fpl_null);
+	glApi->glXMakeCurrent(display, 0, fpl_null);
 
 	GLXContext activeRenderingContext;
 
-	if((videoSettings->graphics.opengl.compabilityFlags != fplOpenGLCompabilityFlags_Legacy) && (glState->fbConfig != fpl_null)) {
+	if((videoSettings->graphics.opengl.compabilityFlags != fplOpenGLCompabilityFlags_Legacy) && (nativeBackend->fbConfig != fpl_null)) {
 		// @NOTE(final): This is only available in OpenGL 3.0+
 		if(!(videoSettings->graphics.opengl.majorVersion >= 3 && videoSettings->graphics.opengl.minorVersion >= 0)) {
 			FPL__ERROR(FPL__MODULE_GLX, "You have not specified the 'majorVersion' and 'minorVersion' in the VideoSettings");
@@ -18410,167 +19043,1045 @@ fpl_internal bool fpl__X11InitVideoOpenGL(const fpl__X11SubplatformState *subpla
 		}
 		contextAttribList[contextAttribIndex] = 0;
 
-		GLXContext modernRenderingContext = glApi->glXCreateContextAttribsARB(windowState->display, glState->fbConfig, fpl_null, True, contextAttribList);
+		GLXContext modernRenderingContext = glApi->glXCreateContextAttribsARB(display, nativeBackend->fbConfig, fpl_null, True, contextAttribList);
 		if(!modernRenderingContext) {
 			FPL__ERROR(FPL__MODULE_GLX, "Warning: Failed creating Modern OpenGL Rendering Context for version (%d.%d) and compability flags (%d) -> Fallback to legacy context", videoSettings->graphics.opengl.majorVersion, videoSettings->graphics.opengl.minorVersion, videoSettings->graphics.opengl.compabilityFlags);
 
 			// Fallback to legacy rendering context
-			glApi->glXMakeCurrent(windowState->display, windowState->window, legacyRenderingContext);
+			glApi->glXMakeCurrent(display, window, legacyRenderingContext);
 			activeRenderingContext = legacyRenderingContext;
 		} else {
-			if(!glApi->glXMakeCurrent(windowState->display, windowState->window, modernRenderingContext)) {
+			if(!glApi->glXMakeCurrent(display, window, modernRenderingContext)) {
 				FPL__ERROR(FPL__MODULE_GLX, "Warning: Failed activating Modern OpenGL Rendering Context for version (%d.%d) and compability flags (%d) -> Fallback to legacy context", videoSettings->graphics.opengl.majorVersion, videoSettings->graphics.opengl.minorVersion, videoSettings->graphics.opengl.compabilityFlags);
 
 				// Destroy modern rendering context
-				glApi->glXDestroyContext(windowState->display, modernRenderingContext);
+				glApi->glXDestroyContext(display, modernRenderingContext);
 
 				// Fallback to legacy rendering context
-				glApi->glXMakeCurrent(windowState->display, windowState->window, legacyRenderingContext);
+				glApi->glXMakeCurrent(display, window, legacyRenderingContext);
 				activeRenderingContext = legacyRenderingContext;
 			} else {
 				// Destroy legacy rendering context
-				glApi->glXDestroyContext(windowState->display, legacyRenderingContext);
+				glApi->glXDestroyContext(display, legacyRenderingContext);
 				legacyRenderingContext = fpl_null;
 				activeRenderingContext = modernRenderingContext;
 			}
 		}
 	} else {
 		// Caller wants legacy context
-		glApi->glXMakeCurrent(windowState->display, windowState->window, legacyRenderingContext);
+		glApi->glXMakeCurrent(display, window, legacyRenderingContext);
 		activeRenderingContext = legacyRenderingContext;
 	}
 
 	bool result;
 
 	fplAssert(activeRenderingContext != fpl_null);
-	glState->context = activeRenderingContext;
-	glState->isActiveContext = true;
+	nativeBackend->context = activeRenderingContext;
+	nativeBackend->isActiveContext = true;
+
+	backend->surface.window.x11.display = display;
+	backend->surface.window.x11.window = window;
+	backend->surface.window.x11.visual = nativeWindowState->visual;
+	backend->surface.window.x11.screen = nativeWindowState->screen;
+	backend->surface.opengl.renderingContext = (void *)activeRenderingContext;
+
 	result = true;
+
 	goto done_x11_glx;
 
 failed_x11_glx:
 	result = false;
 
 done_x11_glx:
-	if(glState->visualInfo != fpl_null) {
+	if(nativeBackend->visualInfo != fpl_null) {
 		// If there is a cached visual info, get rid of it now - regardless of its result
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Destroy visual info '%p'", glState->visualInfo);
-		x11Api->XFree(glState->visualInfo);
-		glState->visualInfo = fpl_null;
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Destroy visual info '%p'", nativeBackend->visualInfo);
+		x11Api->XFree(nativeBackend->visualInfo);
+		nativeBackend->visualInfo = fpl_null;
 	}
 
 	if(!result) {
 		if(legacyRenderingContext) {
-			glApi->glXDestroyContext(windowState->display, legacyRenderingContext);
+			glApi->glXDestroyContext(display, legacyRenderingContext);
 		}
-		fpl__X11ReleaseVideoOpenGL(subplatform, windowState, glState);
+		fpl__VideoBackend_X11OpenGL_Shutdown(appState, windowState, backend);
 	}
 
 	return (result);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_UNLOAD(fpl__VideoBackend_X11OpenGL_Unload) {
+	fpl__VideoBackendX11OpenGL *nativeBackend = (fpl__VideoBackendX11OpenGL *)backend;
+	fpl__UnloadX11OpenGLApi(&nativeBackend->api);
+	fplClearStruct(nativeBackend);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__VideoBackend_X11OpenGL_Load) {
+	fpl__VideoBackendX11OpenGL *nativeBackend = (fpl__VideoBackendX11OpenGL *)backend;
+	fplClearStruct(nativeBackend);
+	nativeBackend->base.magic = FPL__VIDEOBACKEND_MAGIC;
+	if(!fpl__LoadX11OpenGLApi(&nativeBackend->api)) {
+		return(false);
+	}
+	return(true);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__VideoBackend_X11OpenGL_Present) {
+	const fpl__VideoBackendX11OpenGL *nativeBackend = (fpl__VideoBackendX11OpenGL *)backend;
+	const fpl__X11WindowState *x11WinState = &appState->window.x11;
+	const fpl__X11VideoOpenGLApi *glApi = &nativeBackend->api;
+	glApi->glXSwapBuffers(x11WinState->display, x11WinState->window);
+}
+
+fpl_internal fpl__VideoContext fpl__VideoBackend_X11OpenGL_Construct() {
+	fpl__VideoContext result = fpl__StubVideoContext();
+	result.loadFunc = fpl__VideoBackend_X11OpenGL_Load;
+	result.unloadFunc = fpl__VideoBackend_X11OpenGL_Unload;
+	result.getProcedureFunc = fpl__VideoBackend_X11OpenGL_GetProcedure;
+	result.initializeFunc = fpl__VideoBackend_X11OpenGL_Initialize;
+	result.shutdownFunc = fpl__VideoBackend_X11OpenGL_Shutdown;
+	result.prepareWindowFunc = fpl__VideoBackend_X11OpenGL_PrepareWindow;
+	result.presentFunc = fpl__VideoBackend_X11OpenGL_Present;
+	return(result);
 }
 #endif // FPL__ENABLE_VIDEO_OPENGL && FPL_SUBPLATFORM_X11
 
 // ############################################################################
 //
-// > VIDEO_DRIVER_SOFTWARE_X11
+// > VIDEO_BACKEND_SOFTWARE_X11
 //
 // ############################################################################
 #if defined(FPL__ENABLE_VIDEO_SOFTWARE) && defined(FPL_SUBPLATFORM_X11)
-typedef struct fpl__X11VideoSoftwareState {
+typedef struct fpl__VideoBackendX11Software {
+	fpl__VideoBackend base;
 	GC graphicsContext;
 	XImage *buffer;
-} fpl__X11VideoSoftwareState;
+} fpl__VideoBackendX11Software;
 
-#if 0
-fpl_internal bool fpl__X11SetPreWindowSetupForSoftware(const fpl__X11Api *x11Api, const fpl__X11WindowState *windowState, const fpl__X11VideoSoftwareState *softwareState, fpl__X11PreWindowSetupResult *outResult) {
-	XVisualInfo vinfo = fplZeroInit;
-	if(!x11Api->XMatchVisualInfo(windowState->display, windowState->screen, 32, DirectColor, &vinfo)) {
-		if(!x11Api->XMatchVisualInfo(windowState->display, windowState->screen, 24, DirectColor, &vinfo)) {
-			/* No proper color depth available */
-			x11Api->XCloseDisplay(windowState->display); /* Close X communication */
-			FPL__ERROR(FPL__MODULE_X11, "No visual info found for either 32 or 24-bit colors!");
-			return false;
-		}
-	}
-	outResult->visual = vinfo.visual;
-	outResult->colorDepth = vinfo.depth;
-	return true;
-}
-#endif
+fpl_internal FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(fpl__VideoBackend_X11Software_Shutdown) {
+	const fpl__X11SubplatformState *nativeAppState = &appState->x11;
+	const fpl__X11Api *x11Api = &nativeAppState->api;
+	const fpl__X11WindowState *nativeWindowState = &windowState->x11;
 
-fpl_internal void fpl__X11ReleaseVideoSoftware(const fpl__X11SubplatformState *subplatform, const fpl__X11WindowState *windowState, fpl__X11VideoSoftwareState *softwareState) {
-	const fpl__X11Api *x11Api = &subplatform->api;
+	fpl__VideoBackendX11Software *nativeBackend = (fpl__VideoBackendX11Software *)backend;
 
-	if(softwareState->buffer != fpl_null) {
+	if(nativeBackend->buffer != fpl_null) {
 		// @NOTE(final): Dont use XDestroyImage here, as it points to the backbuffer memory directly - which is released later
-		softwareState->buffer = fpl_null;
+		nativeBackend->buffer = fpl_null;
 	}
 
-	if(softwareState->graphicsContext != fpl_null) {
-		softwareState->graphicsContext = fpl_null;
+	if(nativeBackend->graphicsContext != fpl_null) {
+		nativeBackend->graphicsContext = fpl_null;
 	}
 }
 
-fpl_internal bool fpl__X11InitVideoSoftware(const fpl__X11SubplatformState *subplatform, const fpl__X11WindowState *windowState, const fplVideoSettings *videoSettings, const fplVideoBackBuffer *backbuffer, fpl__X11VideoSoftwareState *softwareState) {
-	const fpl__X11Api *x11Api = &subplatform->api;
+fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11Software_Initialize) {
+	const fpl__X11SubplatformState *nativeAppState = &appState->x11;
+	const fpl__X11Api *x11Api = &nativeAppState->api;
+	const fpl__X11WindowState *nativeWindowState = &windowState->x11;
+
+	fpl__VideoBackendX11Software *nativeBackend = (fpl__VideoBackendX11Software *)backend;
+
+	const fplVideoBackBuffer *backbuffer = &data->backbuffer;
 
 	// Based on: https://bbs.archlinux.org/viewtopic.php?id=225741
-	softwareState->graphicsContext = x11Api->XCreateGC(windowState->display, windowState->window, 0, 0);
-	if(softwareState->graphicsContext == fpl_null) {
+	nativeBackend->graphicsContext = x11Api->XCreateGC(nativeWindowState->display, nativeWindowState->window, 0, 0);
+	if(nativeBackend->graphicsContext == fpl_null) {
 		return false;
 	}
 
-	softwareState->buffer = x11Api->XCreateImage(windowState->display, windowState->visual, 24, ZPixmap, 0, (char *)backbuffer->pixels, backbuffer->width, backbuffer->height, 32, (int)backbuffer->lineWidth);
-	if(softwareState->buffer == fpl_null) {
-		fpl__X11ReleaseVideoSoftware(subplatform, windowState, softwareState);
+	nativeBackend->buffer = x11Api->XCreateImage(nativeWindowState->display, nativeWindowState->visual, 24, ZPixmap, 0, (char *)backbuffer->pixels, backbuffer->width, backbuffer->height, 32, (int)backbuffer->lineWidth);
+	if(nativeBackend->buffer == fpl_null) {
+		fpl__VideoBackend_X11Software_Shutdown(appState, windowState, backend);
 		return false;
 	}
 
 	// Initial draw pixels to the window
-	x11Api->XPutImage(windowState->display, windowState->window, softwareState->graphicsContext, softwareState->buffer, 0, 0, 0, 0, backbuffer->width, backbuffer->height);
-	x11Api->XSync(windowState->display, False);
+	x11Api->XPutImage(nativeWindowState->display, nativeWindowState->window, nativeBackend->graphicsContext, nativeBackend->buffer, 0, 0, 0, 0, backbuffer->width, backbuffer->height);
+	x11Api->XSync(nativeWindowState->display, False);
+
+	backend->surface.window.x11.display = nativeWindowState->display;
+	backend->surface.window.x11.window = nativeWindowState->window;
+	backend->surface.window.x11.visual = nativeWindowState->visual;
+	backend->surface.window.x11.screen = nativeWindowState->screen;
 
 	return (true);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__VideoBackend_X11Software_Load) {
+	fpl__VideoBackendX11Software *nativeBackend = (fpl__VideoBackendX11Software *)backend;
+	fplClearStruct(nativeBackend);
+	nativeBackend->base.magic = FPL__VIDEOBACKEND_MAGIC;
+	return(true);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_UNLOAD(fpl__VideoBackend_X11Software_Unload) {
+	fpl__VideoBackendX11Software *nativeBackend = (fpl__VideoBackendX11Software *)backend;
+	fplClearStruct(nativeBackend);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__VideoBackend_X11Software_Present) {
+	const fpl__VideoBackendX11Software *nativeBackend = (fpl__VideoBackendX11Software *)backend;
+	const fpl__X11WindowState *x11WinState = &appState->window.x11;
+	const fpl__X11Api *x11Api = &appState->x11.api;
+	const fplVideoBackBuffer *backbuffer = &data->backbuffer;
+	x11Api->XPutImage(x11WinState->display, x11WinState->window, nativeBackend->graphicsContext, nativeBackend->buffer, 0, 0, 0, 0, backbuffer->width, backbuffer->height);
+	x11Api->XSync(x11WinState->display, False);
+}
+
+fpl_internal fpl__VideoContext fpl__VideoBackend_X11Software_Construct() {
+	fpl__VideoContext result = fpl__StubVideoContext();
+	result.loadFunc = fpl__VideoBackend_X11Software_Load;
+	result.unloadFunc = fpl__VideoBackend_X11Software_Unload;
+	result.initializeFunc = fpl__VideoBackend_X11Software_Initialize;
+	result.shutdownFunc = fpl__VideoBackend_X11Software_Shutdown;
+	result.presentFunc = fpl__VideoBackend_X11Software_Present;
+	result.recreateOnResize = true;
+	return(result);
 }
 #endif // FPL__ENABLE_VIDEO_SOFTWARE && FPL_SUBPLATFORM_X11
 
 // ############################################################################
 //
-// > VIDEO_DRIVER_SOFTWARE_WIN32
+// > VIDEO_BACKEND_SOFTWARE_WIN32
 //
 // ############################################################################
 #if defined(FPL__ENABLE_VIDEO_SOFTWARE) && defined(FPL_PLATFORM_WINDOWS)
-typedef struct fpl__Win32VideoSoftwareState {
+typedef struct fpl__VideoBackendWin32Software {
+	fpl__VideoBackend base;
 	BITMAPINFO bitmapInfo;
-} fpl__Win32VideoSoftwareState;
+} fpl__VideoBackendWin32Software;
 
-fpl_internal bool fpl__Win32InitVideoSoftware(const fplVideoBackBuffer *backbuffer, fpl__Win32VideoSoftwareState *software) {
-	fplClearStruct(software);
-	software->bitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-	software->bitmapInfo.bmiHeader.biWidth = (LONG)backbuffer->width;
+fpl_internal FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(fpl__VideoBackend_Win32Software_Shutdown) {
+	fpl__VideoBackendWin32Software *nativeBackend = (fpl__VideoBackendWin32Software *)backend;
+	BITMAPINFO *bitmapInfo = &nativeBackend->bitmapInfo;
+	fplClearStruct(bitmapInfo);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Win32Software_Initialize) {
+	fpl__VideoBackendWin32Software *nativeBackend = (fpl__VideoBackendWin32Software *)backend;
+	const fplVideoBackBuffer *backbuffer = &data->backbuffer;
+	BITMAPINFO *bitmapInfo = &nativeBackend->bitmapInfo;
+	fplClearStruct(bitmapInfo);
+	bitmapInfo->bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+	bitmapInfo->bmiHeader.biWidth = (LONG)backbuffer->width;
 	// @NOTE(final): Top-down bitmap requires a negative height
-	software->bitmapInfo.bmiHeader.biHeight = -(LONG)backbuffer->height;
-	software->bitmapInfo.bmiHeader.biBitCount = 32;
-	software->bitmapInfo.bmiHeader.biCompression = BI_RGB;
-	software->bitmapInfo.bmiHeader.biPlanes = 1;
-	software->bitmapInfo.bmiHeader.biSizeImage = (DWORD)(backbuffer->height * backbuffer->lineWidth);
+	bitmapInfo->bmiHeader.biHeight = -(LONG)backbuffer->height;
+	bitmapInfo->bmiHeader.biBitCount = 32;
+	bitmapInfo->bmiHeader.biCompression = BI_RGB;
+	bitmapInfo->bmiHeader.biPlanes = 1;
+	bitmapInfo->bmiHeader.biSizeImage = (DWORD)(backbuffer->height * backbuffer->lineWidth);
 	return true;
 }
 
-fpl_internal void fpl__Win32ReleaseVideoSoftware(fpl__Win32VideoSoftwareState *software) {
-	fplClearStruct(software);
+fpl_internal FPL__FUNC_VIDEO_BACKEND_UNLOAD(fpl__VideoBackend_Win32Software_Unload) {
+	fpl__VideoBackendWin32Software *nativeBackend = (fpl__VideoBackendWin32Software *)backend;
+	fplClearStruct(nativeBackend);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__VideoBackend_Win32Software_Load) {
+	fpl__VideoBackendWin32Software *nativeBackend = (fpl__VideoBackendWin32Software *)backend;
+	fplClearStruct(nativeBackend);
+	nativeBackend->base.magic = FPL__VIDEOBACKEND_MAGIC;
+	return(true);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__VideoBackend_Win32Software_Present) {
+	const fpl__Win32AppState *win32AppState = &appState->win32;
+	const fpl__Win32WindowState *win32WindowState = &appState->window.win32;
+	const fpl__Win32Api *wapi = &win32AppState->winApi;
+	const fpl__VideoBackendWin32Software *nativeBackend = (fpl__VideoBackendWin32Software *)backend;
+	const fplVideoBackBuffer *backbuffer = &data->backbuffer;
+	fplWindowSize area;
+	if(fplGetWindowSize(&area)) {
+		int32_t targetX = 0;
+		int32_t targetY = 0;
+		int32_t targetWidth = area.width;
+		int32_t targetHeight = area.height;
+		int32_t sourceWidth = backbuffer->width;
+		int32_t sourceHeight = backbuffer->height;
+		if(backbuffer->useOutputRect) {
+			targetX = backbuffer->outputRect.x;
+			targetY = backbuffer->outputRect.y;
+			targetWidth = backbuffer->outputRect.width;
+			targetHeight = backbuffer->outputRect.height;
+			wapi->gdi.StretchDIBits(win32WindowState->deviceContext, 0, 0, area.width, area.height, 0, 0, 0, 0, fpl_null, fpl_null, DIB_RGB_COLORS, BLACKNESS);
+		}
+		wapi->gdi.StretchDIBits(win32WindowState->deviceContext, targetX, targetY, targetWidth, targetHeight, 0, 0, sourceWidth, sourceHeight, backbuffer->pixels, &nativeBackend->bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
+	}
+}
+
+fpl_internal fpl__VideoContext fpl__VideoBackend_Win32Software_Construct() {
+	fpl__VideoContext result = fpl__StubVideoContext();
+	result.loadFunc = fpl__VideoBackend_Win32Software_Load;
+	result.unloadFunc = fpl__VideoBackend_Win32Software_Unload;
+	result.initializeFunc = fpl__VideoBackend_Win32Software_Initialize;
+	result.shutdownFunc = fpl__VideoBackend_Win32Software_Shutdown;
+	result.presentFunc = fpl__VideoBackend_Win32Software_Present;
+	result.recreateOnResize = true;
+	return(result);
 }
 #endif // FPL__ENABLE_VIDEO_SOFTWARE && FPL_PLATFORM_WINDOWS
 
-#endif // FPL__VIDEO_DRIVERS_IMPLEMENTED
+// ############################################################################
+//
+// > VIDEO_BACKEND_VULKAN (Win32, X11)
+//
+// ############################################################################
+#if defined(FPL__ENABLE_VIDEO_VULKAN)
+
+#if !fplHasInclude(<vulkan/vulkan.h>) || defined(FPL_NO_PLATFORM_INCLUDES)
+
+#if defined(FPL_PLATFORM_WINDOWS)
+#	define fpl__VKAPI_CALL __stdcall
+#	define fpl__VKAPI_PTR fpl__VKAPI_CALL
+#	define fpl__VKAPI_ATTR
+#else
+#	define fpl__VKAPI_CALL
+#	define fpl__VKAPI_PTR fpl__VKAPI_CALL
+#	define fpl__VKAPI_ATTR
+#endif
+
+#define FPL__VK_NULL_HANDLE fpl_null
+
+#define FPL__VK_MAX_EXTENSION_NAME_SIZE 256
+#define FPL__VK_MAX_DESCRIPTION_SIZE 256
+
+#define FPL__VK_MAKE_VERSION(major, minor, patch) \
+    ((((uint32_t)(major)) << 22) | (((uint32_t)(minor)) << 12) | ((uint32_t)(patch)))
+
+typedef enum fpl__VkResult {
+	FPL__VK_SUCCESS = 0,
+	FPL__VK_RESULT_MAX_ENUM = 0x7FFFFFFF
+} fpl__VkResult;
+typedef uint32_t fpl__VkFlags;
+typedef uint32_t fpl__VkBool32;
+
+typedef void fpl__VkAllocationCallbacks;
+
+typedef void *fpl__VkInstance;
+typedef void *fpl__VkSurfaceKHR;
+typedef void *fpl__VkPhysicalDevice;
+
+typedef enum fpl__VkStructureType {
+	FPL__VK_STRUCTURE_TYPE_APPLICATION_INFO = 0,
+	FPL__VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO = 1,
+	FPL__VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR = 1000004000,
+	FPL__VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR = 1000009000,
+	FPL__VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT = 1000128002,
+	FPL__VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT = 1000128004,
+	FPL__VK_STRUCTURE_TYPE_MAX_ENUM = 0x7FFFFFFF
+} fpl__VkStructureType;
+
+typedef struct fpl__VkApplicationInfo {
+	fpl__VkStructureType sType;
+	const void *pNext;
+	const char *pApplicationName;
+	uint32_t applicationVersion;
+	const char *pEngineName;
+	uint32_t engineVersion;
+	uint32_t apiVersion;
+} fpl__VkApplicationInfo;
+
+typedef fpl__VkFlags fpl__VkInstanceCreateFlags;
+
+typedef struct fpl__VkInstanceCreateInfo {
+	fpl__VkStructureType sType;
+	const void *pNext;
+	fpl__VkInstanceCreateFlags flags;
+	const fpl__VkApplicationInfo *pApplicationInfo;
+	uint32_t enabledLayerCount;
+	const char *const *ppEnabledLayerNames;
+	uint32_t enabledExtensionCount;
+	const char *const *ppEnabledExtensionNames;
+} fpl__VkInstanceCreateInfo;
+
+typedef struct fpl__VkExtensionProperties {
+	char extensionName[FPL__VK_MAX_EXTENSION_NAME_SIZE];
+	uint32_t specVersion;
+} fpl__VkExtensionProperties;
+
+typedef struct fpl__VkLayerProperties {
+	char layerName[FPL__VK_MAX_EXTENSION_NAME_SIZE];
+	uint32_t specVersion;
+	uint32_t implementationVersion;
+	char description[FPL__VK_MAX_DESCRIPTION_SIZE];
+} fpl__VkLayerProperties;
+
+// Core procs (opaque)
+typedef fpl__VkResult(fpl__VKAPI_PTR *fpl__func_vkCreateInstance)(const fpl__VkInstanceCreateInfo *pCreateInfo, const fpl__VkAllocationCallbacks *pAllocator, fpl__VkInstance *pInstance);
+typedef void (fpl__VKAPI_PTR *fpl__func_vkDestroyInstance)(fpl__VkInstance instance, const fpl__VkAllocationCallbacks *pAllocator);
+typedef void *(fpl__VKAPI_PTR *fpl__func_vkGetInstanceProcAddr)(fpl__VkInstance instance, const char *pName);
+typedef fpl__VkResult(fpl__VKAPI_PTR *fpl__func_vkEnumerateInstanceExtensionProperties)(const char *pLayerName, uint32_t *pPropertyCount, fpl__VkExtensionProperties *pProperties);
+typedef fpl__VkResult(fpl__VKAPI_PTR *fpl__func_vkEnumerateInstanceLayerProperties)(uint32_t *pPropertyCount, fpl__VkLayerProperties *pProperties);
+
+// Surface KHR procs (opaque)
+typedef void (fpl__VKAPI_PTR *fpl__func_vkDestroySurfaceKHR)(fpl__VkInstance instance, fpl__VkSurfaceKHR surface, const fpl__VkAllocationCallbacks *pAllocator);
+
+#if defined(FPL_PLATFORM_WINDOWS)
+
+typedef fpl__VkFlags fpl__VkWin32SurfaceCreateFlagsKHR;
+typedef struct fpl__VkWin32SurfaceCreateInfoKHR {
+	fpl__VkStructureType sType;
+	const void *pNext;
+	fpl__VkWin32SurfaceCreateFlagsKHR flags;
+	fpl__Win32InstanceHandle hinstance;
+	fpl__Win32WindowHandle hwnd;
+} fpl__VkWin32SurfaceCreateInfoKHR;
+
+typedef fpl__VkResult(fpl__VKAPI_PTR *fpl__func_vkCreateWin32SurfaceKHR)(fpl__VkInstance instance, const fpl__VkWin32SurfaceCreateInfoKHR *pCreateInfo, const fpl__VkAllocationCallbacks *pAllocator, fpl__VkSurfaceKHR *pSurface);
+typedef fpl__VkBool32(fpl__VKAPI_PTR *fpl__func_vkGetPhysicalDeviceWin32PresentationSupportKHR)(fpl__VkPhysicalDevice physicalDevice, uint32_t queueFamilyIndex);
+
+#elif defined(FPL_SUBPLATFORM_X11)
+
+typedef fpl__VkFlags fpl__VkXlibSurfaceCreateFlagsKHR;
+typedef struct fpl__VkXlibSurfaceCreateInfoKHR {
+	fpl__VkStructureType sType;
+	const void *pNext;
+	fpl__VkXlibSurfaceCreateFlagsKHR flags;
+	fpl__X11Display *dpy;
+	fpl__X11Window window;
+} fpl__VkXlibSurfaceCreateInfoKHR;
+
+typedef fpl__VkResult(fpl__VKAPI_PTR *fpl__func_vkCreateXlibSurfaceKHR)(fpl__VkInstance instance, const fpl__VkXlibSurfaceCreateInfoKHR *pCreateInfo, const fpl__VkAllocationCallbacks *pAllocator, fpl__VkSurfaceKHR *pSurface);
+typedef fpl__VkBool32(fpl__VKAPI_PTR *fpl__func_vkGetPhysicalDeviceXlibPresentationSupportKHR)(fpl__VkPhysicalDevice physicalDevice, uint32_t queueFamilyIndex);
+
+#endif
+
+typedef void *fpl__VkDebugUtilsMessengerEXT;
+
+typedef enum fpl__VkDebugUtilsMessageSeverityFlagBitsEXT {
+	FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT = 0x00000001,
+	FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT = 0x00000010,
+	FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT = 0x00000100,
+	FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT = 0x00001000,
+	FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_FLAG_BITS_MAX_ENUM_EXT = 0x7FFFFFFF
+} fpl__VkDebugUtilsMessageSeverityFlagBitsEXT;
+typedef fpl__VkFlags fpl__VkDebugUtilsMessageSeverityFlagsEXT;
+
+typedef enum fpl__VkDebugUtilsMessageTypeFlagBitsEXT {
+	FPL__VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT = 0x00000001,
+	FPL__VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT = 0x00000002,
+	FPL__VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT = 0x00000004,
+	FPL__VK_DEBUG_UTILS_MESSAGE_TYPE_FLAG_BITS_MAX_ENUM_EXT = 0x7FFFFFFF
+} fpl__VkDebugUtilsMessageTypeFlagBitsEXT;
+typedef fpl__VkFlags fpl__VkDebugUtilsMessageTypeFlagsEXT;
+
+typedef struct fpl__VkDebugUtilsLabelEXT {
+	fpl__VkStructureType sType;
+	const void *pNext;
+	const char *pLabelName;
+	float color[4];
+} fpl__VkDebugUtilsLabelEXT;
+
+typedef void fpl__VkDebugUtilsObjectNameInfoEXT;
+typedef fpl__VkFlags fpl__VkDebugUtilsMessengerCallbackDataFlagsEXT;
+typedef struct fpl__VkDebugUtilsMessengerCallbackDataEXT {
+	fpl__VkStructureType sType;
+	const void *pNext;
+	fpl__VkDebugUtilsMessengerCallbackDataFlagsEXT flags;
+	const char *pMessageIdName;
+	int32_t messageIdNumber;
+	const char *pMessage;
+	uint32_t queueLabelCount;
+	const fpl__VkDebugUtilsLabelEXT *pQueueLabels;
+	uint32_t cmdBufLabelCount;
+	const fpl__VkDebugUtilsLabelEXT *pCmdBufLabels;
+	uint32_t objectCount;
+	const fpl__VkDebugUtilsObjectNameInfoEXT *pObjects;
+} fpl__VkDebugUtilsMessengerCallbackDataEXT;
+
+typedef fpl__VkFlags fpl__VkDebugUtilsMessengerCreateFlagsEXT;
+
+typedef fpl__VkBool32(fpl__VKAPI_PTR *fpl__func_vkDebugUtilsMessengerCallbackEXT) (
+	fpl__VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+	fpl__VkDebugUtilsMessageTypeFlagsEXT messageTypes,
+	const fpl__VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
+	void *pUserData);
+
+typedef struct fpl__VkDebugUtilsMessengerCreateInfoEXT {
+	fpl__VkStructureType sType;
+	const void *pNext;
+	fpl__VkDebugUtilsMessengerCreateFlagsEXT flags;
+	fpl__VkDebugUtilsMessageSeverityFlagsEXT messageSeverity;
+	fpl__VkDebugUtilsMessageTypeFlagsEXT messageType;
+	fpl__func_vkDebugUtilsMessengerCallbackEXT pfnUserCallback;
+	void *pUserData;
+} fpl__VkDebugUtilsMessengerCreateInfoEXT;
+
+typedef fpl__VkResult(fpl__VKAPI_PTR *fpl__func_vkCreateDebugUtilsMessengerEXT)(fpl__VkInstance instance, const fpl__VkDebugUtilsMessengerCreateInfoEXT *pCreateInfo, const fpl__VkAllocationCallbacks *pAllocator, fpl__VkDebugUtilsMessengerEXT *pMessenger);
+typedef void (fpl__VKAPI_PTR *fpl__func_vkDestroyDebugUtilsMessengerEXT)(fpl__VkInstance instance, fpl__VkDebugUtilsMessengerEXT messenger, const fpl__VkAllocationCallbacks *pAllocator);
+
+#else
+
+#	if defined(FPL_PLATFORM_WINDOWS)
+#		define VK_USE_PLATFORM_WIN32_KHR
+#	elif defined(FPL_SUBPLATFORM_X11)
+#		define VK_USE_PLATFORM_XLIB_KHR
+#	endif
+
+#	if !defined(FPL_NO_RUNTIME_LINKING)
+#		define VK_NO_PROTOTYPES
+#	endif
+#	include <vulkan/vulkan.h>
+
+#	define fpl__VKAPI_CALL VKAPI_CALL
+#	define fpl__VKAPI_PTR VKAPI_PTR
+#	define fpl__VKAPI_ATTR VKAPI_ATTR
+
+#	define FPL__VK_STRUCTURE_TYPE_APPLICATION_INFO VK_STRUCTURE_TYPE_APPLICATION_INFO
+#	define FPL__VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO
+#	define FPL__VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR
+#	define FPL__VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR
+#	define FPL__VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT
+
+#	define FPL__VK_SUCCESS VK_SUCCESS
+#	define FPL__VK_NULL_HANDLE VK_NULL_HANDLE
+
+#	define FPL__VK_MAKE_VERSION(major, minor, patch) VK_MAKE_VERSION(major, minor, patch)
+
+typedef VkResult fpl__VkResult;
+typedef VkFlags fpl__VkFlags;
+typedef VkBool32 fpl__VkBool32;
+
+typedef VkAllocationCallbacks fpl__VkAllocationCallbacks;
+
+typedef VkInstance fpl__VkInstance;
+typedef VkSurfaceKHR fpl__VkSurfaceKHR;
+typedef VkPhysicalDevice fpl__VkPhysicalDevice;
+
+typedef VkApplicationInfo fpl__VkApplicationInfo;
+typedef VkInstanceCreateInfo fpl__VkInstanceCreateInfo;
+
+// Core procs
+typedef PFN_vkCreateInstance fpl__func_vkCreateInstance;
+typedef PFN_vkDestroyInstance fpl__func_vkDestroyInstance;
+typedef PFN_vkGetInstanceProcAddr fpl__func_vkGetInstanceProcAddr;
+typedef PFN_vkEnumerateInstanceExtensionProperties fpl__func_vkEnumerateInstanceExtensionProperties;
+typedef PFN_vkEnumerateInstanceLayerProperties fpl__func_vkEnumerateInstanceLayerProperties;
+
+// Instance procs
+typedef PFN_vkDestroySurfaceKHR fpl__func_vkDestroySurfaceKHR;
+#if defined(FPL_PLATFORM_WINDOWS)
+typedef VkWin32SurfaceCreateInfoKHR fpl__VkWin32SurfaceCreateInfoKHR;
+typedef PFN_vkCreateWin32SurfaceKHR fpl__func_vkCreateWin32SurfaceKHR;
+typedef PFN_vkGetPhysicalDeviceWin32PresentationSupportKHR fpl__func_vkGetPhysicalDeviceWin32PresentationSupportKHR;
+#elif defined(FPL_SUBPLATFORM_X11)
+typedef VkXlibSurfaceCreateInfoKHR fpl__VkXlibSurfaceCreateInfoKHR;
+typedef PFN_vkCreateXlibSurfaceKHR fpl__func_vkCreateXlibSurfaceKHR;
+typedef PFN_vkGetPhysicalDeviceXlibPresentationSupportKHR fpl__func_vkGetPhysicalDeviceXlibPresentationSupportKHR;
+#endif
+
+typedef VkDebugUtilsMessageSeverityFlagBitsEXT fpl__VkDebugUtilsMessageSeverityFlagBitsEXT;
+typedef VkDebugUtilsMessageSeverityFlagsEXT fpl__VkDebugUtilsMessageSeverityFlagsEXT;
+#	define FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT
+#	define FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT
+#	define FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT
+#	define FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT
+#	define FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_FLAG_BITS_MAX_ENUM_EXT VK_DEBUG_UTILS_MESSAGE_SEVERITY_FLAG_BITS_MAX_ENUM_EXT
+typedef VkDebugUtilsMessageTypeFlagBitsEXT fpl__VkDebugUtilsMessageTypeFlagBitsEXT;
+typedef VkDebugUtilsMessageTypeFlagsEXT fpl__VkDebugUtilsMessageTypeFlagsEXT;
+#	define	FPL__VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT
+#	define	FPL__VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT
+#	define	FPL__VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT
+#	define	FPL__VK_DEBUG_UTILS_MESSAGE_TYPE_FLAG_BITS_MAX_ENUM_EXT VK_DEBUG_UTILS_MESSAGE_TYPE_FLAG_BITS_MAX_ENUM_EXT
+typedef VkDebugUtilsMessengerCallbackDataEXT fpl__VkDebugUtilsMessengerCallbackDataEXT;
+typedef VkDebugUtilsMessengerEXT fpl__VkDebugUtilsMessengerEXT;
+typedef PFN_vkDebugUtilsMessengerCallbackEXT fpl__func_vkDebugUtilsMessengerCallbackEXT;
+typedef VkDebugUtilsMessengerCreateInfoEXT fpl__VkDebugUtilsMessengerCreateInfoEXT;
+
+typedef PFN_vkCreateDebugUtilsMessengerEXT fpl__func_vkCreateDebugUtilsMessengerEXT;
+typedef PFN_vkDestroyDebugUtilsMessengerEXT fpl__func_vkDestroyDebugUtilsMessengerEXT;
+
+#endif // !fplHasInclude(<vulkan/vulkan.h>) || defined(FPL_NO_PLATFORM_INCLUDES)
+
+typedef struct fpl__VulkanApi {
+	fplDynamicLibraryHandle libraryHandle;
+	fpl__func_vkCreateInstance vkCreateInstance;
+	fpl__func_vkDestroyInstance vkDestroyInstance;
+	fpl__func_vkGetInstanceProcAddr vkGetInstanceProcAddr;
+	fpl__func_vkEnumerateInstanceExtensionProperties vkEnumerateInstanceExtensionProperties;
+	fpl__func_vkEnumerateInstanceLayerProperties vkEnumerateInstanceLayerProperties;
+} fpl__VulkanApi;
+
+fpl_internal void fpl__UnloadVulkanApi(fpl__VulkanApi *api) {
+	if(api->libraryHandle.isValid) {
+		fplDynamicLibraryUnload(&api->libraryHandle);
+	}
+	fplClearStruct(api);
+}
+
+fpl_internal bool fpl__LoadVulkanApi(fpl__VulkanApi *api) {
+
+	fplClearStruct(api);
+
+#if defined(FPL_NO_RUNTIME_LINKING)
+	api->vkCreateInstance = vkCreateInstance;
+	api->vkDestroyInstance = vkDestroyInstance;
+	api->vkGetInstanceProcAddr = vkGetInstanceProcAddr;
+	api->vkEnumerateInstanceExtensionProperties = vkEnumerateInstanceExtensionProperties;
+	api->vkEnumerateInstanceLayerProperties = vkEnumerateInstanceLayerProperties;
+
+	return(true);
+#else
+
+#	if defined(FPL_PLATFORM_WINDOWS)
+	const char *libraryNames[] = {
+		"vulkan-1.dll"
+	};
+#	elif defined(FPL_SUBPLATFORM_POSIX)
+	const char *libraryNames[] = {
+		"libvulkan.so",
+		"libvulkan.so.1"
+	};
+#	else
+	FPL__WARNING(FPL__MODULE_VIDEO_VULKAN, "Unsupported Platform!"); \
+		return(false);
+#	endif
+
+#	define FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libName, target, type, name) \
+		(target)->name = (type)fplGetDynamicLibraryProc(&libHandle, #name); \
+		if ((target)->name == fpl_null) { \
+			FPL__WARNING(FPL__MODULE_VIDEO_VULKAN, "Failed getting procedure address '%s' from library '%s'", #name, libName); \
+			continue; \
+		}
+
+	bool result = false;
+	int libraryCount = fplArrayCount(libraryNames);
+	for(int i = 0; i < libraryCount; ++i) {
+		const char *libraryName = libraryNames[i];
+
+		if(api->libraryHandle.isValid) {
+			fplDynamicLibraryUnload(&api->libraryHandle);
+		}
+		fplClearStruct(api);
+
+		fplDynamicLibraryHandle libHandle = fplZeroInit;
+		if(!fplDynamicLibraryLoad(libraryName, &libHandle)) {
+			continue;
+		}
+		api->libraryHandle = libHandle;
+
+		FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libraryName, api, fpl__func_vkCreateInstance, vkCreateInstance);
+		FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libraryName, api, fpl__func_vkDestroyInstance, vkDestroyInstance);
+FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libraryName, api, fpl__func_vkGetInstanceProcAddr, vkGetInstanceProcAddr);
+FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libraryName, api, fpl__func_vkEnumerateInstanceExtensionProperties, vkEnumerateInstanceExtensionProperties);
+FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libraryName, api, fpl__func_vkEnumerateInstanceLayerProperties, vkEnumerateInstanceLayerProperties);
+
+result = true;
+break;
+	}
+
+	if(!result) {
+		fpl__UnloadVulkanApi(api);
+	}
+
+#	undef FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE
+
+	return(result);
+#endif // FPL_NO_RUNTIME_LINKING
+}
+
+typedef struct fpl__VulkanDebugMessengerUserData {
+	fplVulkanValidationLayerCallback *userCallback;
+	fplVulkanValidationLayerMode validationMode;
+	void *userData;
+} fpl__VulkanDebugMessengerUserData;
+
+typedef struct fpl__VideoBackendVulkan {
+	fpl__VideoBackend base;
+	fpl__VulkanApi api;
+	fpl__VkInstance instanceHandle;
+	fpl__VkSurfaceKHR surfaceHandle;
+	fpl__VkDebugUtilsMessengerEXT debugMessenger;
+	fpl__VulkanDebugMessengerUserData debugMessengerUserData;
+	const fpl__VkAllocationCallbacks *allocator;
+	fpl_b32 isInstanceUserDefined;
+} fpl__VideoBackendVulkan;
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_GETPROCEDURE(fpl__VideoBackend_Vulkan_GetProcedure) {
+	const fpl__VideoBackendVulkan *nativeBackend = (const fpl__VideoBackendVulkan *)backend;
+	const fpl__VulkanApi *api = &nativeBackend->api;
+	if(api->libraryHandle.isValid) {
+		return fplGetDynamicLibraryProc(&api->libraryHandle, procName);
+	}
+	return(fpl_null);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_GETREQUIREMENTS(fpl__VideoBackend_Vulkan_GetRequirements) {
+	FPL__CheckArgumentNull(requirements, false);
+	fplClearStruct(requirements);
+
+	fplAssert(requirements->vulkan.instanceExtensionCount < fplArrayCount(requirements->vulkan.instanceExtensions));
+	requirements->vulkan.instanceExtensions[requirements->vulkan.instanceExtensionCount++] = "VK_KHR_surface";
+#if defined(FPL_PLATFORM_WINDOWS)
+	fplAssert(requirements->vulkan.instanceExtensionCount < fplArrayCount(requirements->vulkan.instanceExtensions));
+	requirements->vulkan.instanceExtensions[requirements->vulkan.instanceExtensionCount++] = "VK_KHR_win32_surface";
+#elif defined(FPL_SUBPLATFORM_X11)
+	fplAssert(requirements->vulkan.instanceExtensionCount < fplArrayCount(requirements->vulkan.instanceExtensions));
+	requirements->vulkan.instanceExtensions[requirements->vulkan.instanceExtensionCount++] = "VK_KHR_xlib_surface";
+#else
+	return(false);
+#endif
+	return(true);
+}
+
+fpl_internal uint32_t fpl__VersionInfoToVulkanVersion(const fplVersionInfo *versionInfo) {
+	uint32_t major = fplStringToS32(versionInfo->major);
+	uint32_t minor = fplStringToS32(versionInfo->minor);
+	uint32_t patch = fplStringToS32(versionInfo->fix);
+	uint32_t result = FPL__VK_MAKE_VERSION(major, minor, patch);
+	return(result);
+}
+
+fpl_internal const char *fpl__GetVulkanMessageSeverityName(const fpl__VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity) {
+	switch(messageSeverity) {
+		case FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT: return "ERROR";
+		case FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT: return "WARNING";
+		case FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT: return "INFO";
+		case FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT: return "VERBOSE";
+		default: return "Unknown";
+	}
+}
+
+fpl_internal fpl__VKAPI_ATTR fpl__VkBool32 fpl__VKAPI_CALL fpl__VulkanDebugCallback(fpl__VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, fpl__VkDebugUtilsMessageTypeFlagsEXT messageType, const fpl__VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, void *pUserData) {
+	fpl__VulkanDebugMessengerUserData *data = (fpl__VulkanDebugMessengerUserData *)pUserData;
+	const char *message = pCallbackData->pMessage;
+	if(data->validationMode == fplVulkanValidationLayerMode_Logging) {
+		if(messageSeverity == FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
+			FPL_LOG_ERROR(FPL__MODULE_VIDEO_VULKAN, "Validation: %s", message);
+		else if(messageSeverity == FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
+			FPL_LOG_WARN(FPL__MODULE_VIDEO_VULKAN, "Validation: %s", message);
+		else if(messageSeverity == FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT)
+			FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Validation: %s", message);
+		else if(messageSeverity == FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT)
+			FPL_LOG_DEBUG(FPL__MODULE_VIDEO_VULKAN, "Validation: %s", message);
+		else {
+			FPL_LOG_DEBUG(FPL__MODULE_VIDEO_VULKAN, "Validation: %s", message);
+		}
+	} else if(data->validationMode == fplVulkanValidationLayerMode_User) {
+		fplAssert(data->userCallback != fpl_null);
+		data->userCallback(data->userData, message, messageSeverity, messageType, pCallbackData);
+	}
+	return 0;
+}
+
+fpl_internal void fpl__VulkanDestroyDebugMessenger(fpl__VideoBackendVulkan *nativeBackend) {
+	if(nativeBackend->debugMessenger != fpl_null) {
+		FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Destroy Vulkan Debug Messenger '%p'", nativeBackend->debugMessenger);
+		const fpl__VulkanApi *api = &nativeBackend->api;
+		fpl__func_vkDestroyDebugUtilsMessengerEXT destroyFunc = (fpl__func_vkDestroyDebugUtilsMessengerEXT)api->vkGetInstanceProcAddr(nativeBackend->instanceHandle, "vkDestroyDebugUtilsMessengerEXT");
+		fplAssert(destroyFunc != fpl_null);
+		destroyFunc(nativeBackend->instanceHandle, nativeBackend->debugMessenger, nativeBackend->allocator);
+		nativeBackend->debugMessenger = fpl_null;
+	}
+	fplClearStruct(&nativeBackend->debugMessengerUserData);
+}
+
+fpl_internal bool fpl__VulkanCreateDebugMessenger(const fplVulkanSettings *settings, fpl__VideoBackendVulkan *nativeBackend) {
+	fpl__VkDebugUtilsMessageSeverityFlagsEXT severities = 0;
+	switch(settings->validationSeverity) {
+		case fplVulkanValidationSeverity_Error:
+			severities = FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+			break;
+		case fplVulkanValidationSeverity_Warning:
+			severities = FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT | FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT;
+			break;
+		case fplVulkanValidationSeverity_Info:
+			severities = FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT | FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT;
+			break;
+		case fplVulkanValidationSeverity_Verbose:
+		case fplVulkanValidationSeverity_All:
+			severities = FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT | FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT | FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT;
+			break;
+		case fplVulkanValidationSeverity_Off:
+		default:
+			return(false);
+	}
+
+	fpl__VulkanDebugMessengerUserData *userData = &nativeBackend->debugMessengerUserData;
+	userData->userCallback = settings->validationLayerCallback;
+	userData->userData = settings->userData;
+	userData->validationMode = settings->validationLayerMode;
+
+	// @TODO(final): Message type filtering in fplVulkanSettings
+	fpl__VkDebugUtilsMessageTypeFlagsEXT messageTypes =
+		FPL__VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+		FPL__VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+		FPL__VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+
+	fpl__VkDebugUtilsMessengerCreateInfoEXT createInfo = fplZeroInit;
+	createInfo.sType = FPL__VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+	createInfo.messageSeverity = severities;
+	createInfo.messageType = messageTypes;
+	createInfo.pfnUserCallback = fpl__VulkanDebugCallback;
+	createInfo.pUserData = userData;
+
+	const fpl__VulkanApi *api = &nativeBackend->api;
+
+	fpl__func_vkCreateDebugUtilsMessengerEXT createFunc = (fpl__func_vkCreateDebugUtilsMessengerEXT)api->vkGetInstanceProcAddr(nativeBackend->instanceHandle, "vkCreateDebugUtilsMessengerEXT");
+	if(createFunc == fpl_null) {
+		FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "Vulkan instance proc 'vkCreateDebugUtilsMessengerEXT' not found! Maybe the instance extension 'VK_EXT_debug_utils' was not set?");
+		return(false);
+	}
+
+	FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Create Vulkan Debug Messenger for Instance '%p' with severity flags of '%lu'", nativeBackend->instanceHandle, severities);
+	fpl__VkResult creationResult = createFunc(nativeBackend->instanceHandle, &createInfo, nativeBackend->allocator, &nativeBackend->debugMessenger);
+	if(creationResult != FPL__VK_SUCCESS) {
+		FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "Failed creating Vulkan Debug Messenger for Instance '%p' with severity flags of '%lu' -> (VkResult: %d)!", nativeBackend->instanceHandle, severities, creationResult);
+		return(false);
+	}
+
+	return(true);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_Vulkan_PrepareWindow) {
+	fpl__VideoBackendVulkan *nativeBackend = (fpl__VideoBackendVulkan *)backend;
+	if(videoSettings->graphics.vulkan.instanceHandle == fpl_null) {
+
+		const fpl__VulkanApi *api = &nativeBackend->api;
+
+		nativeBackend->allocator = fpl_null;
+		nativeBackend->instanceHandle = fpl_null;
+		nativeBackend->isInstanceUserDefined = false;
+
+		fplVideoRequirements requirements = fplZeroInit;
+		if(!fpl__VideoBackend_Vulkan_GetRequirements(&requirements) || requirements.vulkan.instanceExtensionCount == 0) {
+			FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "Failed getting required instance extensions for creating an Vulkan instance!");
+			return(false);
+		}
+
+		// @TODO(final): Validate vulkan video settings
+
+		// @TODO(final): Validate required instance extensions and layers
+
+		const char *enabledValidationLayers[4] = fplZeroInit;
+		const char *enabledInstanceExtensions[8] = fplZeroInit;
+		uint32_t enabledValidationLayerCount = 0;
+		uint32_t enabledInstanceExtensionCount = 0;
+		if(videoSettings->graphics.vulkan.validationLayerMode != fplVulkanValidationLayerMode_Disabled) {
+			enabledValidationLayers[enabledValidationLayerCount++] = "VK_LAYER_KHRONOS_validation";
+			enabledInstanceExtensions[enabledInstanceExtensionCount++] = "VK_EXT_debug_utils"; // VK_EXT_debug_utils is always supported
+		}
+		for(uint32_t i = 0; i < requirements.vulkan.instanceExtensionCount; ++i) {
+			fplAssert(enabledInstanceExtensionCount < fplArrayCount(enabledInstanceExtensions));
+			enabledInstanceExtensions[enabledInstanceExtensionCount++] = requirements.vulkan.instanceExtensions[i];
+		}
+
+		fpl__VkApplicationInfo applicationInfo = fplZeroInit;
+		applicationInfo.sType = FPL__VK_STRUCTURE_TYPE_APPLICATION_INFO;
+		applicationInfo.pApplicationName = videoSettings->graphics.vulkan.appName;
+		applicationInfo.pEngineName = videoSettings->graphics.vulkan.engineName;
+		applicationInfo.apiVersion = fpl__VersionInfoToVulkanVersion(&videoSettings->graphics.vulkan.apiVersion);
+		applicationInfo.engineVersion = fpl__VersionInfoToVulkanVersion(&videoSettings->graphics.vulkan.engineVersion);
+		applicationInfo.applicationVersion = fpl__VersionInfoToVulkanVersion(&videoSettings->graphics.vulkan.appVersion);
+
+		fpl__VkInstanceCreateInfo instanceCreateInfo = fplZeroInit;
+		instanceCreateInfo.sType = FPL__VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+		instanceCreateInfo.pApplicationInfo = &applicationInfo;
+		instanceCreateInfo.enabledExtensionCount = enabledInstanceExtensionCount;
+		instanceCreateInfo.ppEnabledExtensionNames = enabledInstanceExtensions;
+		instanceCreateInfo.enabledLayerCount = enabledValidationLayerCount;
+		instanceCreateInfo.ppEnabledLayerNames = enabledValidationLayers;
+
+		const fpl__VkAllocationCallbacks *allocator = (const fpl__VkAllocationCallbacks *)videoSettings->graphics.vulkan.allocator;
+
+		FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Create Vulkan Instance with %lu extensions and %lu layers", instanceCreateInfo.enabledExtensionCount, instanceCreateInfo.enabledLayerCount);
+		fpl__VkInstance instance = fpl_null;
+		fpl__VkResult creationResult = api->vkCreateInstance(&instanceCreateInfo, allocator, &instance);
+		if(creationResult != FPL__VK_SUCCESS) {
+			FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "Failed creating Vulkan Instance with %lu extensions and %lu layers -> (VkResult: %d)!", instanceCreateInfo.enabledExtensionCount, instanceCreateInfo.enabledLayerCount, creationResult);
+			return(false);
+		}
+
+		nativeBackend->allocator = allocator;
+		nativeBackend->instanceHandle = instance;
+		nativeBackend->isInstanceUserDefined = false;
+
+		// Debug utils
+		if(videoSettings->graphics.vulkan.validationLayerMode != fplVulkanValidationLayerMode_Disabled) {
+			if(!fpl__VulkanCreateDebugMessenger(&videoSettings->graphics.vulkan, nativeBackend)) {
+				FPL__WARNING(FPL__MODULE_VIDEO_VULKAN, "The debug messenger could not be created, no validation message are printed");
+			}
+		}
+
+		return(true);
+	} else {
+		// Instance passed by user
+		nativeBackend->allocator = (const fpl__VkAllocationCallbacks *)videoSettings->graphics.vulkan.allocator;
+		nativeBackend->instanceHandle = (fpl__VkInstance)videoSettings->graphics.vulkan.instanceHandle;
+		nativeBackend->isInstanceUserDefined = true;
+		return(true);
+	}
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_FINALIZEWINDOW(fpl__VideoBackend_Vulkan_FinalizeWindow) {
+	return(true);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(fpl__VideoBackend_Vulkan_Shutdown) {
+	fpl__VideoBackendVulkan *nativeBackend = (fpl__VideoBackendVulkan *)backend;
+
+	const fpl__VulkanApi *api = &nativeBackend->api;
+
+	if(nativeBackend->surfaceHandle != FPL__VK_NULL_HANDLE) {
+		fpl__func_vkDestroySurfaceKHR destroyProc = (fpl__func_vkDestroySurfaceKHR)api->vkGetInstanceProcAddr(nativeBackend->instanceHandle, "vkDestroySurfaceKHR");
+		fplAssert(destroyProc != fpl_null);
+
+		FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Destroy Vulkan Surface '%p'", nativeBackend->surfaceHandle);
+		destroyProc(nativeBackend->instanceHandle, nativeBackend->surfaceHandle, nativeBackend->allocator);
+
+		nativeBackend->surfaceHandle = FPL__VK_NULL_HANDLE;
+	}
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Vulkan_Initialize) {
+	fpl__VideoBackendVulkan *nativeBackend = (fpl__VideoBackendVulkan *)backend;
+
+	const fpl__VulkanApi *api = &nativeBackend->api;
+
+	if(nativeBackend->instanceHandle == FPL__VK_NULL_HANDLE) {
+		FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "Cannot create a Vulkan surface without a Vulkan instance!");
+		return(false);
+	}
+
+	fpl__VkSurfaceKHR surfaceHandle = FPL__VK_NULL_HANDLE;
+
+#if defined(FPL_PLATFORM_WINDOWS)
+	FPL_LOG_DEBUG(FPL__MODULE_VIDEO_VULKAN, "Query Vulkan Instance Proc 'vkCreateWin32SurfaceKHR' for instance '%p'", nativeBackend->instanceHandle);
+	fpl__func_vkCreateWin32SurfaceKHR createProc = (fpl__func_vkCreateWin32SurfaceKHR)api->vkGetInstanceProcAddr(nativeBackend->instanceHandle, "vkCreateWin32SurfaceKHR");
+	if(createProc == fpl_null) {
+		FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "Vulkan instance proc 'vkCreateWin32SurfaceKHR' not found! Maybe the instance extension 'VK_KHR_win32_surface' was not set?");
+		return(false);
+	}
+
+	fpl__VkWin32SurfaceCreateInfoKHR creationInfo = fplZeroInit;
+	creationInfo.sType = FPL__VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
+	creationInfo.hinstance = fpl__global__InitState.win32.appInstance;
+	creationInfo.hwnd = windowState->win32.windowHandle;
+
+	FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Create Vulkan Win32 Surface for hwnd '%p', hinstance '%p' and Vulkan instance '%p'", creationInfo.hwnd, creationInfo.hinstance, nativeBackend->instanceHandle);
+	fpl__VkResult creationResult = createProc(nativeBackend->instanceHandle, &creationInfo, nativeBackend->allocator, &surfaceHandle);
+	if(creationResult != FPL__VK_SUCCESS) {
+		FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "Failed creating vulkan surface KHR for Win32 -> (VkResult: %d)!", creationResult);
+		return(false);
+	}
+#elif defined(FPL_SUBPLATFORM_X11)
+	FPL_LOG_DEBUG(FPL__MODULE_VIDEO_VULKAN, "Query Vulkan Instance Proc 'vkCreateXlibSurfaceKHR' for instance '%p'", nativeBackend->instanceHandle);
+	fpl__func_vkCreateXlibSurfaceKHR createProc = (fpl__func_vkCreateXlibSurfaceKHR)api->vkGetInstanceProcAddr(nativeBackend->instanceHandle, "vkCreateXlibSurfaceKHR");
+	if(createProc == fpl_null) {
+		FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "Vulkan instance proc 'vkCreateXlibSurfaceKHR' not found! Maybe the instance extension 'VK_KHR_xlib_surface' was not set?");
+		return(false);
+	}
+
+	fpl__VkXlibSurfaceCreateInfoKHR creationInfo = fplZeroInit;
+	creationInfo.sType = FPL__VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR;
+	creationInfo.dpy = (fpl__X11Display *)windowState->x11.display;
+	creationInfo.window = windowState->x11.window;
+
+	FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Create Vulkan X11 Surface for display '%p', window '%d' and Vulkan instance '%p'", creationInfo.dpy, creationInfo.window, nativeBackend->instanceHandle);
+	fpl__VkResult creationResult = createProc(nativeBackend->instanceHandle, &creationInfo, nativeBackend->allocator, &surfaceHandle);
+	if(creationResult != FPL__VK_SUCCESS) {
+		FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "Failed creating vulkan surface KHR for X11 -> (VkResult: %d)!", creationResult);
+		return(false);
+	}
+#else
+	FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "Unsupported Platform!");
+	return(false);
+#endif
+
+	fplAssert(surfaceHandle != FPL__VK_NULL_HANDLE);
+	nativeBackend->surfaceHandle = surfaceHandle;
+
+	backend->surface.vulkan.instance = nativeBackend->instanceHandle;
+	backend->surface.vulkan.surfaceKHR = nativeBackend->surfaceHandle;
+
+#if defined(FPL_PLATFORM_WINDOWS)
+	backend->surface.window.win32.windowHandle = windowState->win32.windowHandle;
+	backend->surface.window.win32.deviceContext = windowState->win32.deviceContext;
+#elif defined(FPL_SUBPLATFORM_X11)
+	backend->surface.window.x11.display = windowState->x11.display;
+	backend->surface.window.x11.window = windowState->x11.window;
+	backend->surface.window.x11.screen = windowState->x11.screen;
+	backend->surface.window.x11.visual = windowState->x11.visual;
+#endif
+
+	return(true);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_DESTROYEDWINDOW(fpl__VideoBackend_Vulkan_DestroyedWindow) {
+	fpl__VideoBackendVulkan *nativeBackend = (fpl__VideoBackendVulkan *)backend;
+
+	// Destroy Vulkan Debug Messenger
+	if(!nativeBackend->isInstanceUserDefined && nativeBackend->instanceHandle != fpl_null && nativeBackend->debugMessenger != fpl_null) {
+		fpl__VulkanDestroyDebugMessenger(nativeBackend);
+	}
+
+	// Destroy Vulkan instance
+	const fpl__VulkanApi *api = &nativeBackend->api;
+	if(!nativeBackend->isInstanceUserDefined && nativeBackend->instanceHandle != fpl_null) {
+		FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Destroy Vulkan Instance '%p'", nativeBackend->instanceHandle);
+		api->vkDestroyInstance(nativeBackend->instanceHandle, nativeBackend->allocator);
+		nativeBackend->instanceHandle = fpl_null;
+	}
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_UNLOAD(fpl__VideoBackend_Vulkan_Unload) {
+	fpl__VideoBackendVulkan *nativeBackend = (fpl__VideoBackendVulkan *)backend;
+
+	// Unload core api
+	fpl__UnloadVulkanApi(&nativeBackend->api);
+
+	// Clear everything
+	fplClearStruct(nativeBackend);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__VideoBackend_Vulkan_Load) {
+	fpl__VideoBackendVulkan *nativeBackend = (fpl__VideoBackendVulkan *)backend;
+
+	// Clear and set magic id
+	fplClearStruct(nativeBackend);
+	nativeBackend->base.magic = FPL__VIDEOBACKEND_MAGIC;
+
+	// Load core api
+	if(!fpl__LoadVulkanApi(&nativeBackend->api)) {
+		return(false);
+	}
+
+	return(true);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__VideoBackend_Vulkan_Present) {
+	const fpl__VideoBackendVulkan *nativeBackend = (const fpl__VideoBackendVulkan *)backend;
+}
+
+fpl_internal fpl__VideoContext fpl__VideoBackend_Vulkan_Construct() {
+	fpl__VideoContext result = fpl__StubVideoContext();
+	result.loadFunc = fpl__VideoBackend_Vulkan_Load;
+	result.unloadFunc = fpl__VideoBackend_Vulkan_Unload;
+	result.getProcedureFunc = fpl__VideoBackend_Vulkan_GetProcedure;
+	result.initializeFunc = fpl__VideoBackend_Vulkan_Initialize;
+	result.shutdownFunc = fpl__VideoBackend_Vulkan_Shutdown;
+	result.prepareWindowFunc = fpl__VideoBackend_Vulkan_PrepareWindow;
+	result.finalizeWindowFunc = fpl__VideoBackend_Vulkan_FinalizeWindow;
+	result.destroyedWindowFunc = fpl__VideoBackend_Vulkan_DestroyedWindow;
+	result.presentFunc = fpl__VideoBackend_Vulkan_Present;
+	result.getRequirementsFunc = fpl__VideoBackend_Vulkan_GetRequirements;
+	return(result);
+}
+
+#endif // FPL__ENABLE_VIDEO_VULKAN
+
+
+#endif // FPL__VIDEO_BACKENDS_IMPLEMENTED
 
 // ****************************************************************************
 //
-// > AUDIO_DRIVERS
+// > AUDIO_BACKENDS
 //
 // ****************************************************************************
-#if !defined(FPL__AUDIO_DRIVERS_IMPLEMENTED) && defined(FPL__ENABLE_AUDIO)
-#	define FPL__AUDIO_DRIVERS_IMPLEMENTED
+#if !defined(FPL__AUDIO_BACKENDS_IMPLEMENTED) && defined(FPL__ENABLE_AUDIO)
+#	define FPL__AUDIO_BACKENDS_IMPLEMENTED
 
 typedef enum fpl__AudioDeviceState {
 	fpl__AudioDeviceState_Uninitialized = 0,
@@ -18616,7 +20127,7 @@ fpl_internal bool fpl__IsAudioDeviceStarted(fpl__CommonAudioState *audioState);
 
 // ############################################################################
 //
-// > AUDIO_DRIVER_DIRECTSOUND
+// > AUDIO_BACKEND_DIRECTSOUND
 //
 // ############################################################################
 #if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
@@ -18744,7 +20255,7 @@ fpl_internal bool fpl__AudioReleaseDirectSound(const fpl__CommonAudioState *comm
 
 	if(dsoundState->directSound != fpl_null) {
 		IDirectSound_Release(dsoundState->directSound);
-	}
+}
 
 	fpl__UnloadDirectSoundApi(&dsoundState->api);
 
@@ -18852,7 +20363,7 @@ fpl_internal fplAudioResultType fpl__AudioInitDirectSound(const fplAudioSettings
 
 	// Set internal format
 	fplAudioDeviceFormat internalFormat = fplZeroInit;
-	internalFormat.driver = fplAudioDriverType_DirectSound;
+	internalFormat.backend = fplAudioBackendType_DirectSound;
 	if(fpl__Win32IsEqualGuid(actualFormat->SubFormat, FPL__GUID_KSDATAFORMAT_SUBTYPE_IEEE_FLOAT)) {
 		if(actualFormat->Format.wBitsPerSample == 64) {
 			internalFormat.type = fplAudioFormatType_F64;
@@ -19102,7 +20613,7 @@ fpl_internal void fpl__AudioRunMainLoopDirectSound(const fpl__CommonAudioState *
 
 // ############################################################################
 //
-// > AUDIO_DRIVER_ALSA
+// > AUDIO_BACKEND_ALSA
 //
 // ############################################################################
 #if defined(FPL__ENABLE_AUDIO_ALSA)
@@ -19733,7 +21244,7 @@ fpl_internal fplAudioFormatType fpl__MapAlsaFormatToAudioFormat(snd_pcm_format_t
 fpl_internal fplAudioResultType fpl__AudioInitAlsa(const fplAudioSettings *audioSettings, const fplAudioDeviceFormat *targetFormat, fpl__CommonAudioState *commonAudio, fpl__AlsaAudioState *alsaState) {
 	snd_pcm_hw_params_t *hardwareParams = fpl_null;
 	snd_pcm_sw_params_t *softwareParams = fpl_null;
-	
+
 #	define FPL__ALSA_INIT_ERROR(ret, format, ...) do { \
 		if (softwareParams != fpl_null) fpl__ReleaseTemporaryMemory(softwareParams); \
 		if (hardwareParams != fpl_null) fpl__ReleaseTemporaryMemory(hardwareParams); \
@@ -19878,7 +21389,7 @@ fpl_internal fplAudioResultType fpl__AudioInitAlsa(const fplAudioSettings *audio
 	if(!audioSettings->specific.alsa.noMMap) {
 		if(alsaApi->snd_pcm_hw_params_set_access(alsaState->pcmDevice, hardwareParams, SND_PCM_ACCESS_MMAP_INTERLEAVED) == 0) {
 			alsaState->isUsingMMap = true;
-		} else {		
+		} else {
 			FPL_LOG_ERROR("ALSA", "Failed setting MMap access mode for device '%s', trying fallback to standard mode!", deviceName);
 		}
 	}
@@ -19889,7 +21400,7 @@ fpl_internal fplAudioResultType fpl__AudioInitAlsa(const fplAudioSettings *audio
 	}
 
 	fplAudioDeviceFormat internalFormat = fplZeroInit;
-	internalFormat.driver = fplAudioDriverType_Alsa;
+	internalFormat.backend = fplAudioBackendType_Alsa;
 
 	//
 	// Format
@@ -19924,9 +21435,9 @@ fpl_internal fplAudioResultType fpl__AudioInitAlsa(const fplAudioSettings *audio
 	} else {
 		foundFormat = preferredFormat;
 	}
-	
+
 	fpl__ReleaseTemporaryMemory(formatMask);
-	
+
 	if(foundFormat == SND_PCM_FORMAT_UNKNOWN) {
 		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "No supported audio format for device '%s' found!", deviceName);
 	}
@@ -20030,7 +21541,7 @@ fpl_internal fplAudioResultType fpl__AudioInitAlsa(const fplAudioSettings *audio
 	fplAssert(internalFormat.channels <= 2);
 
 #undef FPL__ALSA_INIT_ERROR
-	
+
 	fpl__ReleaseTemporaryMemory(softwareParams);
 	fpl__ReleaseTemporaryMemory(hardwareParams);
 
@@ -20080,17 +21591,17 @@ fpl_internal uint32_t fpl__GetAudioDevicesAlsa(fpl__AlsaAudioState *alsaState, f
 			free(name);
 		}
 		++ppNextDeviceHint;
-	}
+		}
 	alsaApi->snd_device_name_free_hint((void **)ppDeviceHints);
 	if(capacityOverflow > 0) {
 		FPL__ERROR(FPL__MODULE_AUDIO_ALSA, "Capacity of '%lu' for audio device infos has been reached. '%lu' audio devices are not included in the result", maxDeviceCount, capacityOverflow);
 	}
 	return(result);
-}
+	}
 
 #endif // FPL__ENABLE_AUDIO_ALSA
 
-#endif // FPL__AUDIO_DRIVERS_IMPLEMENTED
+#endif // FPL__AUDIO_BACKENDS_IMPLEMENTED
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 //
@@ -20113,7 +21624,7 @@ fpl_globalvar const char *fpl__global_audioResultTypeNameTable[] = {
 	"No Audio-Device found", // fplAudioResultType_NoDeviceFound,
 	"Api failure", // fplAudioResultType_ApiFailed,
 	"Platform not initialized", // fplAudioResultType_PlatformNotInitialized,
-	"Driver already initialized", // fplAudioResultType_DriverAlreadyInitialized,
+	"Backend already initialized", // fplAudioResultType_BackendAlreadyInitialized,
 	"Audio format was not set", // fplAudioResultType_UnsetAudioFormat,
 	"Number of audio channels was not set", // fplAudioResultType_UnsetAudioChannels,
 	"Audio sample rate was not set", // fplAudioResultType_UnsetAudioSampleRate,
@@ -20177,8 +21688,8 @@ typedef struct fpl__AudioState {
 	fpl__AudioEvent wakeupEvent;
 	volatile fplAudioResultType workResult;
 
-	fplAudioDriverType activeDriver;
-	bool isAsyncDriver;
+	fplAudioBackendType backendType;
+	bool isAsyncBackend;
 
 	union {
 #	if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
@@ -20200,18 +21711,18 @@ fpl_internal fpl__AudioState *fpl__GetAudioState(fpl__PlatformAppState *appState
 }
 
 fpl_internal void fpl__StopAudioDeviceMainLoop(fpl__AudioState *audioState) {
-	fplAssert(audioState->activeDriver > fplAudioDriverType_Auto);
-	switch(audioState->activeDriver) {
+	fplAssert(audioState->backendType > fplAudioBackendType_Auto);
+	switch(audioState->backendType) {
 
 #	if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
-		case fplAudioDriverType_DirectSound:
+		case fplAudioBackendType_DirectSound:
 		{
 			fpl__AudioStopMainLoopDirectSound(&audioState->dsound);
 		} break;
 #	endif
 
 #	if defined(FPL__ENABLE_AUDIO_ALSA)
-		case fplAudioDriverType_Alsa:
+		case fplAudioBackendType_Alsa:
 		{
 			fpl__AudioStopMainLoopAlsa(&audioState->alsa);
 		} break;
@@ -20219,23 +21730,23 @@ fpl_internal void fpl__StopAudioDeviceMainLoop(fpl__AudioState *audioState) {
 
 		default:
 			break;
-	}
+}
 }
 
 fpl_internal bool fpl__ReleaseAudioDevice(fpl__AudioState *audioState) {
-	fplAssert(audioState->activeDriver > fplAudioDriverType_Auto);
+	fplAssert(audioState->backendType > fplAudioBackendType_Auto);
 	bool result = false;
-	switch(audioState->activeDriver) {
+	switch(audioState->backendType) {
 
 #	if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
-		case fplAudioDriverType_DirectSound:
+		case fplAudioBackendType_DirectSound:
 		{
 			result = fpl__AudioReleaseDirectSound(&audioState->common, &audioState->dsound);
 		} break;
 #	endif
 
 #	if defined(FPL__ENABLE_AUDIO_ALSA)
-		case fplAudioDriverType_Alsa:
+		case fplAudioBackendType_Alsa:
 		{
 			result = fpl__AudioReleaseAlsa(&audioState->common, &audioState->alsa);
 		} break;
@@ -20248,19 +21759,19 @@ fpl_internal bool fpl__ReleaseAudioDevice(fpl__AudioState *audioState) {
 }
 
 fpl_internal bool fpl__StopAudioDevice(fpl__AudioState *audioState) {
-	fplAssert(audioState->activeDriver > fplAudioDriverType_Auto);
+	fplAssert(audioState->backendType > fplAudioBackendType_Auto);
 	bool result = false;
-	switch(audioState->activeDriver) {
+	switch(audioState->backendType) {
 
 #	if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
-		case fplAudioDriverType_DirectSound:
+		case fplAudioBackendType_DirectSound:
 		{
 			result = fpl__AudioStopDirectSound(&audioState->dsound);
 		} break;
 #	endif
 
 #	if defined(FPL__ENABLE_AUDIO_ALSA)
-		case fplAudioDriverType_Alsa:
+		case fplAudioBackendType_Alsa:
 		{
 			result = fpl__AudioStopAlsa(&audioState->alsa);
 		} break;
@@ -20273,19 +21784,19 @@ fpl_internal bool fpl__StopAudioDevice(fpl__AudioState *audioState) {
 }
 
 fpl_internal fplAudioResultType fpl__StartAudioDevice(fpl__AudioState *audioState) {
-	fplAssert(audioState->activeDriver > fplAudioDriverType_Auto);
+	fplAssert(audioState->backendType > fplAudioBackendType_Auto);
 	fplAudioResultType result = fplAudioResultType_Failed;
-	switch(audioState->activeDriver) {
+	switch(audioState->backendType) {
 
 #	if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
-		case fplAudioDriverType_DirectSound:
+		case fplAudioBackendType_DirectSound:
 		{
 			result = fpl__AudioStartDirectSound(&audioState->common, &audioState->dsound);
 		} break;
 #	endif
 
 #	if defined(FPL__ENABLE_AUDIO_ALSA)
-		case fplAudioDriverType_Alsa:
+		case fplAudioBackendType_Alsa:
 		{
 			result = fpl__AudioStartAlsa(&audioState->common, &audioState->alsa);
 		} break;
@@ -20298,18 +21809,18 @@ fpl_internal fplAudioResultType fpl__StartAudioDevice(fpl__AudioState *audioStat
 }
 
 fpl_internal void fpl__RunAudioDeviceMainLoop(fpl__AudioState *audioState) {
-	fplAssert(audioState->activeDriver > fplAudioDriverType_Auto);
-	switch(audioState->activeDriver) {
+	fplAssert(audioState->backendType > fplAudioBackendType_Auto);
+	switch(audioState->backendType) {
 
 #	if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
-		case fplAudioDriverType_DirectSound:
+		case fplAudioBackendType_DirectSound:
 		{
 			fpl__AudioRunMainLoopDirectSound(&audioState->common, &audioState->dsound);
 		} break;
 #	endif
 
 #	if defined(FPL__ENABLE_AUDIO_ALSA)
-		case fplAudioDriverType_Alsa:
+		case fplAudioBackendType_Alsa:
 		{
 			fpl__AudioRunMainLoopAlsa(&audioState->common, &audioState->alsa);
 		} break;
@@ -20320,10 +21831,10 @@ fpl_internal void fpl__RunAudioDeviceMainLoop(fpl__AudioState *audioState) {
 	}
 }
 
-fpl_internal bool fpl__IsAudioDriverAsync(fplAudioDriverType audioDriver) {
-	switch(audioDriver) {
-		case fplAudioDriverType_DirectSound:
-		case fplAudioDriverType_Alsa:
+fpl_internal bool fpl__IsAudioBackendAsync(const fplAudioBackendType backendType) {
+	switch(backendType) {
+		case fplAudioBackendType_DirectSound:
+		case fplAudioBackendType_Alsa:
 			return false;
 		default:
 			return false;
@@ -20364,7 +21875,7 @@ fpl_internal void fpl__AudioWorkerThread(const fplThreadHandle *thread, void *da
 	fpl__AudioState *audioState = (fpl__AudioState *)data;
 	fpl__CommonAudioState *commonAudioState = &audioState->common;
 	fplAssert(audioState != fpl_null);
-	fplAssert(audioState->activeDriver != fplAudioDriverType_None);
+	fplAssert(audioState->backendType != fplAudioBackendType_None);
 
 #if defined(FPL_PLATFORM_WINDOWS)
 	wapi->ole.CoInitializeEx(fpl_null, 0);
@@ -20469,9 +21980,9 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 	const fpl__Win32Api *wapi = &fpl__global__AppState->win32.winApi;
 #endif
 
-	if(audioState->activeDriver != fplAudioDriverType_None) {
+	if(audioState->backendType != fplAudioBackendType_None) {
 		fpl__ReleaseAudio(audioState);
-		return fplAudioResultType_DriverAlreadyInitialized;
+		return fplAudioResultType_BackendAlreadyInitialized;
 	}
 
 	fplAudioDeviceFormat actualTargetFormat = fplZeroInit;
@@ -20502,35 +22013,35 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 		return fplAudioResultType_Failed;
 	}
 
-	// Prope drivers
-	fplAudioDriverType propeDrivers[16];
-	uint32_t driverCount = 0;
-	if(audioSettings->driver == fplAudioDriverType_Auto) {
-		// @NOTE(final): Add all audio drivers here, regardless of the platform.
-		propeDrivers[driverCount++] = fplAudioDriverType_DirectSound;
-		propeDrivers[driverCount++] = fplAudioDriverType_Alsa;
+	// Prope backends
+	fplAudioBackendType propeBackendTypes[16];
+	uint32_t backendCount = 0;
+	if(audioSettings->backend == fplAudioBackendType_Auto) {
+		// @NOTE(final): Add all audio backends here, regardless of the platform.
+		propeBackendTypes[backendCount++] = fplAudioBackendType_DirectSound;
+		propeBackendTypes[backendCount++] = fplAudioBackendType_Alsa;
 	} else {
-		// @NOTE(final): Forced audio driver
-		propeDrivers[driverCount++] = audioSettings->driver;
+		// @NOTE(final): Forced audio backend
+		propeBackendTypes[backendCount++] = audioSettings->backend;
 	}
 	fplAudioResultType initResult = fplAudioResultType_Failed;
-	for(uint32_t driverIndex = 0; driverIndex < driverCount; ++driverIndex) {
-		fplAudioDriverType propeDriver = propeDrivers[driverIndex];
+	for(uint32_t backendIndex = 0; backendIndex < backendCount; ++backendIndex) {
+		fplAudioBackendType propeBackendType = propeBackendTypes[backendIndex];
 
 		initResult = fplAudioResultType_Failed;
-		switch(propeDriver) {
+		switch(propeBackendType) {
 #		if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
-			case fplAudioDriverType_DirectSound:
+			case fplAudioBackendType_DirectSound:
 			{
 				initResult = fpl__AudioInitDirectSound(audioSettings, &actualTargetFormat, &audioState->common, &audioState->dsound);
 				if(initResult != fplAudioResultType_Success) {
 					fpl__AudioReleaseDirectSound(&audioState->common, &audioState->dsound);
-				}
-			} break;
+	}
+} break;
 #		endif
 
 #		if defined(FPL__ENABLE_AUDIO_ALSA)
-			case fplAudioDriverType_Alsa:
+			case fplAudioBackendType_Alsa:
 			{
 				initResult = fpl__AudioInitAlsa(audioSettings, &actualTargetFormat, &audioState->common, &audioState->alsa);
 				if(initResult != fplAudioResultType_Success) {
@@ -20543,8 +22054,8 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 				break;
 		}
 		if(initResult == fplAudioResultType_Success) {
-			audioState->activeDriver = propeDriver;
-			audioState->isAsyncDriver = fpl__IsAudioDriverAsync(propeDriver);
+			audioState->backendType = propeBackendType;
+			audioState->isAsyncBackend = fpl__IsAudioBackendAsync(propeBackendType);
 			break;
 		}
 	}
@@ -20554,7 +22065,7 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 		return initResult;
 	}
 
-	if(!audioState->isAsyncDriver) {
+	if(!audioState->isAsyncBackend) {
 		// Create and start worker thread
 		fplThreadParameters audioThreadParams = fplZeroInit;
 		audioThreadParams.priority = fplThreadPriority_RealTime;
@@ -20589,40 +22100,38 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #if defined(FPL__ENABLE_VIDEO)
 
+typedef union fpl__ActiveVideoBackend {
+	fpl__VideoBackend base;
+
 #if defined(FPL_PLATFORM_WINDOWS)
-typedef union fpl__Win32VideoState {
 #	if defined(FPL__ENABLE_VIDEO_OPENGL)
-	fpl__Win32VideoOpenGLState opengl;
+	fpl__VideoBackendWin32OpenGL win32_opengl;
 #	endif
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-	fpl__Win32VideoSoftwareState software;
+	fpl__VideoBackendWin32Software win32_software;
 #	endif
-} fpl__Win32VideoState;
-#endif // FPL_PLATFORM_WINDOWS
+#endif
 
 #if defined(FPL_SUBPLATFORM_X11)
-typedef union fpl__X11VideoState {
 #	if defined(FPL__ENABLE_VIDEO_OPENGL)
-	fpl__X11VideoOpenGLState opengl;
+	fpl__VideoBackendX11OpenGL x11_opengl;
 #	endif
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-	fpl__X11VideoSoftwareState software;
+	fpl__VideoBackendX11Software x11_software;
 #	endif
-} fpl__X11VideoState;
-#endif // FPL_SUBPLATFORM_X11
+#endif
+
+#if defined(FPL__ENABLE_VIDEO_VULKAN)
+	fpl__VideoBackendVulkan vulkan;
+#endif
+
+} fpl__ActiveVideoBackend;
 
 typedef struct fpl__VideoState {
-	fplVideoDriverType activeDriver;
-#	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-	fplVideoBackBuffer softwareBackbuffer;
-#	endif
-
-#	if defined(FPL_PLATFORM_WINDOWS)
-	fpl__Win32VideoState win32;
-#	endif
-#	if defined(FPL_SUBPLATFORM_X11)
-	fpl__X11VideoState x11;
-#	endif
+	fpl__VideoContext context;
+	fpl__VideoData data;
+	fplVideoBackendType backendType;
+	fpl__ActiveVideoBackend activeBackend;
 } fpl__VideoState;
 
 fpl_internal fpl__VideoState *fpl__GetVideoState(fpl__PlatformAppState *appState) {
@@ -20634,39 +22143,35 @@ fpl_internal fpl__VideoState *fpl__GetVideoState(fpl__PlatformAppState *appState
 	return(result);
 }
 
-fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
+fpl_internal void fpl__DestroySurfaceBackend(fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
+	const fpl__VideoContext *ctx = &videoState->context;
+	fplAssert(ctx->destroyedWindowFunc != fpl_null);
+	ctx->destroyedWindowFunc(appState, &videoState->activeBackend.base);
+}
+
+fpl_internal void fpl__UnloadVideoBackend(fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
+	const fpl__VideoContext *ctx = &videoState->context;
+	fplAssert(ctx->unloadFunc != fpl_null);
+	ctx->unloadFunc(appState, &videoState->activeBackend.base);
+	fplClearStruct(videoState);
+}
+
+fpl_internal bool fpl__LoadVideoBackend(fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
+	const fpl__VideoContext *ctx = &videoState->context;
+	fplAssert(ctx->loadFunc != fpl_null);
+	bool result = ctx->loadFunc(appState, &videoState->activeBackend.base);
+	return(result);
+}
+
+fpl_internal void fpl__ShutdownVideoBackend(fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
 	fplAssert(appState != fpl_null);
 	if(videoState != fpl_null) {
-		switch(videoState->activeDriver) {
-#		if defined(FPL__ENABLE_VIDEO_OPENGL)
-			case fplVideoDriverType_OpenGL:
-			{
-#			if defined(FPL_PLATFORM_WINDOWS)
-				fpl__Win32ReleaseVideoOpenGL(&videoState->win32.opengl);
-#			elif defined(FPL_SUBPLATFORM_X11)
-				fpl__X11ReleaseVideoOpenGL(&appState->x11, &appState->window.x11, &videoState->x11.opengl);
-#			endif
-			} break;
-#		endif // FPL__ENABLE_VIDEO_OPENGL
-
-#		if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-			case fplVideoDriverType_Software:
-			{
-#			if defined(FPL_PLATFORM_WINDOWS)
-				fpl__Win32ReleaseVideoSoftware(&videoState->win32.software);
-#			elif defined(FPL_SUBPLATFORM_X11)
-				fpl__X11ReleaseVideoSoftware(&appState->x11, &appState->window.x11, &videoState->x11.software);
-#			endif
-			} break;
-#		endif // FPL__ENABLE_VIDEO_SOFTWARE
-
-			default:
-			{
-			} break;
-		}
+		const fpl__VideoContext *ctx = &videoState->context;
+		fplAssert(ctx->shutdownFunc != fpl_null);
+		ctx->shutdownFunc(appState, &appState->window, &videoState->activeBackend.base);
 
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-		fplVideoBackBuffer *backbuffer = &videoState->softwareBackbuffer;
+		fplVideoBackBuffer *backbuffer = &videoState->data.backbuffer;
 		if(backbuffer->pixels != fpl_null) {
 			fpl__ReleaseDynamicMemory(backbuffer->pixels);
 		}
@@ -20675,65 +22180,17 @@ fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__Video
 	}
 }
 
-fpl_internal void fpl__ReleaseVideoState(fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
-	switch(videoState->activeDriver) {
-#	if defined(FPL__ENABLE_VIDEO_OPENGL)
-		case fplVideoDriverType_OpenGL:
-		{
-#		if defined(FPL_PLATFORM_WINDOWS)
-			fpl__Win32UnloadVideoOpenGLApi(&videoState->win32.opengl.api);
-#		elif defined(FPL_SUBPLATFORM_X11)
-			videoState->x11.opengl.fbConfig = fpl_null;
-			fpl__X11UnloadVideoOpenGLApi(&videoState->x11.opengl.api);
-#		endif
-		}; break;
-#	endif
-
-#	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-		case fplVideoDriverType_Software:
-		{
-			// Nothing todo
-		}; break;
-#	endif
-
-		default:
-			break;
-	}
-	fplClearStruct(videoState);
-}
-
-fpl_internal bool fpl__LoadVideoState(const fplVideoDriverType driver, fpl__VideoState *videoState) {
-	bool result = true;
-
-	switch(driver) {
-#	if defined(FPL__ENABLE_VIDEO_OPENGL)
-		case fplVideoDriverType_OpenGL:
-		{
-#		if defined(FPL_PLATFORM_WINDOWS)
-			result = fpl__Win32LoadVideoOpenGLApi(&videoState->win32.opengl.api);
-#		elif defined(FPL_SUBPLATFORM_X11)
-			result = fpl__X11LoadVideoOpenGLApi(&videoState->x11.opengl.api);
-#		endif
-		}; break;
-#	endif
-
-		default:
-			break;
-	}
-	return(result);
-}
-
-fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideoSettings *videoSettings, const uint32_t windowWidth, const uint32_t windowHeight, fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
-	// @NOTE(final): Video drivers are platform independent, so we cannot have to same system as audio.
+fpl_internal bool fpl__InitializeVideoBackend(const fplVideoBackendType backendType, const fplVideoSettings *videoSettings, const uint32_t windowWidth, const uint32_t windowHeight, fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
+	// @NOTE(final): video backends are platform independent, so we cannot have to same system as audio.
 	fplAssert(appState != fpl_null);
 	fplAssert(videoState != fpl_null);
 
-	videoState->activeDriver = driver;
+	const fpl__VideoContext *ctx = &videoState->context;
 
 	// Allocate backbuffer context if needed
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-	if(driver == fplVideoDriverType_Software) {
-		fplVideoBackBuffer *backbuffer = &videoState->softwareBackbuffer;
+	if(backendType == fplVideoBackendType_Software) {
+		fplVideoBackBuffer *backbuffer = &videoState->data.backbuffer;
 		backbuffer->width = windowWidth;
 		backbuffer->height = windowHeight;
 		backbuffer->pixelStride = sizeof(uint32_t);
@@ -20742,12 +22199,12 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 		backbuffer->pixels = (uint32_t *)fpl__AllocateDynamicMemory(size, 4);
 		if(backbuffer->pixels == fpl_null) {
 			FPL__ERROR(FPL__MODULE_VIDEO_SOFTWARE, "Failed allocating video software backbuffer of size %xu bytes", size);
-			fpl__ShutdownVideo(appState, videoState);
+			fpl__ShutdownVideoBackend(appState, videoState);
 			return false;
-		}
+}
 
-		// Clear to black by default
-		// @NOTE(final): Bitmap is top-down, 0xAABBGGRR
+// Clear to black by default
+// @NOTE(final): Bitmap is top-down, 0xAABBGGRR
 		uint32_t *p = backbuffer->pixels;
 		for(uint32_t y = 0; y < backbuffer->height; ++y) {
 			uint32_t color = 0xFF000000;
@@ -20758,42 +22215,55 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 	}
 #	endif // FPL__ENABLE_VIDEO_SOFTWARE
 
-	bool videoInitResult = false;
-	switch(driver) {
-#	if defined(FPL__ENABLE_VIDEO_OPENGL)
-		case fplVideoDriverType_OpenGL:
-		{
-#		if defined(FPL_PLATFORM_WINDOWS)
-			videoInitResult = fpl__Win32InitVideoOpenGL(&appState->win32, &appState->window.win32, videoSettings, &videoState->win32.opengl);
-#		elif defined(FPL_SUBPLATFORM_X11)
-			videoInitResult = fpl__X11InitVideoOpenGL(&appState->x11, &appState->window.x11, videoSettings, &videoState->x11.opengl);
-#		endif
-		} break;
-#	endif // FPL__ENABLE_VIDEO_OPENGL
-
-#	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-		case fplVideoDriverType_Software:
-		{
-#		if defined(FPL_PLATFORM_WINDOWS)
-			videoInitResult = fpl__Win32InitVideoSoftware(&videoState->softwareBackbuffer, &videoState->win32.software);
-#		elif defined(FPL_SUBPLATFORM_X11)
-			videoInitResult = fpl__X11InitVideoSoftware(&appState->x11, &appState->window.x11, videoSettings, &videoState->softwareBackbuffer, &videoState->x11.software);
-#		endif
-		} break;
-#	endif // FPL__ENABLE_VIDEO_SOFTWARE
-
-		default:
-		{
-			FPL__ERROR(FPL__MODULE_VIDEO, "Unsupported video driver '%s' for this platform", fplGetVideoDriverName(videoSettings->driver));
-		} break;
-	}
+	fplAssert(ctx->initializeFunc != fpl_null);
+	bool videoInitResult = ctx->initializeFunc(appState, &appState->window, videoSettings, &videoState->data, &videoState->activeBackend.base);
 	if(!videoInitResult) {
 		fplAssert(fplGetErrorCount() > 0);
-		fpl__ShutdownVideo(appState, videoState);
+		fpl__ShutdownVideoBackend(appState, videoState);
 		return false;
 	}
 
 	return true;
+}
+
+fpl_internal fpl__VideoContext fpl__ConstructVideoContext(const fplVideoBackendType backendType) {
+	switch(backendType) {
+#if defined(FPL__ENABLE_VIDEO_OPENGL)
+		case fplVideoBackendType_OpenGL:
+		{
+#	if defined(FPL_PLATFORM_WINDOWS)
+			return fpl__VideoBackend_Win32OpenGL_Construct();
+#	elif defined(FPL_SUBPLATFORM_X11)
+			return fpl__VideoBackend_X11OpenGL_Construct();
+#	endif
+		} break;
+#endif
+
+#if defined(FPL__ENABLE_VIDEO_VULKAN)
+		case fplVideoBackendType_Vulkan:
+		{
+			return fpl__VideoBackend_Vulkan_Construct();
+		} break;
+#endif
+
+#if defined(FPL__ENABLE_VIDEO_SOFTWARE)
+		case fplVideoBackendType_Software:
+		{
+#	if defined(FPL_PLATFORM_WINDOWS)
+			return fpl__VideoBackend_Win32Software_Construct();
+#	elif defined(FPL_SUBPLATFORM_X11)
+			return fpl__VideoBackend_X11Software_Construct();
+#	endif
+		} break;
+#endif
+
+		default:
+		{
+			// No backend found, just return a stub
+			FPL__ERROR(FPL__MODULE_VIDEO, "The video backend '%s' is not supported for this platform", fplGetVideoBackendName(backendType));
+			return(fpl__StubVideoContext());
+		} break;
+	}
 }
 #endif // FPL__ENABLE_VIDEO
 
@@ -20806,74 +22276,46 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 //
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #if defined(FPL__ENABLE_WINDOW)
-fpl_internal FPL__FUNC_PRE_SETUP_WINDOW(fpl__PreSetupWindowDefault) {
+fpl_internal FPL__FUNC_PREPARE_VIDEO_WINDOW(fpl__PrepareVideoWindowDefault) {
 	fplAssert(appState != fpl_null);
-	bool result = false;
 
 #	if defined(FPL__ENABLE_VIDEO)
 	if(initFlags & fplInitFlags_Video) {
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
-		switch(initSettings->video.driver) {
-#		if defined(FPL__ENABLE_VIDEO_OPENGL)
-			case fplVideoDriverType_OpenGL:
-			{
-#			if defined(FPL_PLATFORM_WINDOWS)
-				if(!fpl__Win32PreSetupWindowForOpenGL(&appState->win32, &appState->window.win32, &initSettings->video)) {
-					return false;
-				}
-#			endif
-#			if defined(FPL_SUBPLATFORM_X11)
-				if(fpl__X11InitFrameBufferConfigVideoOpenGL(&appState->x11.api, &appState->window.x11, &initSettings->video, &videoState->x11.opengl)) {
-					result = fpl__X11SetPreWindowSetupForOpenGL(&appState->x11.api, &appState->window.x11, &videoState->x11.opengl, &outResult->x11);
-				}
-#			endif
-			} break;
-#		endif // FPL__ENABLE_VIDEO_OPENGL
-
-#		if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-			case fplVideoDriverType_Software:
-			{
-#			if defined(FPL_SUBPLATFORM_X11) && 0
-				result = fpl__X11SetPreWindowSetupForSoftware(&appState->x11.api, &appState->window.x11, &videoState->x11.software, &outResult->x11);
-#			endif
-			} break;
-#		endif // FPL__ENABLE_VIDEO_OPENGL
-
-			default:
-			{
-			} break;
+		if(videoState->context.prepareWindowFunc != fpl_null) {
+			bool result = videoState->context.prepareWindowFunc(appState, &initSettings->video, &appState->window, &videoState->activeBackend.base);
+			return(result);
 		}
 	}
 #	endif // FPL__ENABLE_VIDEO
 
-	return(result);
+	return(true);
 }
 
-fpl_internal FPL__FUNC_POST_SETUP_WINDOW(fpl__PostSetupWindowDefault) {
+fpl_internal FPL__FUNC_FINALIZE_VIDEO_WINDOW(fpl__FinalizeVideoWindowDefault) {
 	fplAssert(appState != fpl_null);
 
 #if defined(FPL__ENABLE_VIDEO)
 	if(initFlags & fplInitFlags_Video) {
-		switch(initSettings->video.driver) {
-#		if defined(FPL__ENABLE_VIDEO_OPENGL)
-			case fplVideoDriverType_OpenGL:
-			{
-#			if defined(FPL_PLATFORM_WINDOWS)
-				if(!fpl__Win32PostSetupWindowForOpenGL(&appState->win32, &appState->window.win32, &initSettings->video)) {
-					return false;
-				}
-#			endif
-			} break;
-#		endif // FPL__ENABLE_VIDEO_OPENGL
-
-			default:
-			{
-			} break;
+		fpl__VideoState *videoState = fpl__GetVideoState(appState);
+		if(videoState->context.finalizeWindowFunc != fpl_null) {
+			bool result = videoState->context.finalizeWindowFunc(appState, &initSettings->video, &appState->window, &videoState->activeBackend.base);
+			return(result);
 		}
-	}
+		}
 #endif // FPL__ENABLE_VIDEO
 
-	return false;
+	return true;
+	}
+
+fpl_internal void fpl__ReleaseWindow(const fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
+	if(appState != fpl_null) {
+#	if defined(FPL_PLATFORM_WINDOWS)
+		fpl__Win32ReleaseWindow(&initState->win32, &appState->win32, &appState->window.win32);
+#	elif defined(FPL_SUBPLATFORM_X11)
+		fpl__X11ReleaseWindow(&appState->x11, &appState->window.x11);
+#	endif
+	}
 }
 
 fpl_internal bool fpl__InitWindow(const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *appState, const fpl__SetupWindowCallbacks *setupCallbacks) {
@@ -20886,16 +22328,6 @@ fpl_internal bool fpl__InitWindow(const fplSettings *initSettings, fplWindowSett
 #	endif
 	}
 	return (result);
-}
-
-fpl_internal void fpl__ReleaseWindow(const fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
-	if(appState != fpl_null) {
-#	if defined(FPL_PLATFORM_WINDOWS)
-		fpl__Win32ReleaseWindow(&initState->win32, &appState->win32, &appState->window.win32);
-#	elif defined(FPL_SUBPLATFORM_X11)
-		fpl__X11ReleaseWindow(&appState->x11, &appState->window.x11);
-#	endif
-	}
 }
 #endif // FPL__ENABLE_WINDOW
 
@@ -20947,25 +22379,25 @@ fpl_common_api const char *fplGetAudioFormatName(const fplAudioFormatType format
 	return(result);
 }
 
-#define FPL__AUDIODRIVERTYPE_COUNT FPL__ENUM_COUNT(fplAudioDriverType_First, fplAudioDriverType_Last)
-fpl_globalvar const char *fpl__globalAudioDriverNameTable[] = {
-	"None", // No audio driver
-	"Automatic", // Automatic driver detection
+#define FPL__AUDIOBACKENDTYPE_COUNT FPL__ENUM_COUNT(fplAudioBackendType_First, fplAudioBackendType_Last)
+fpl_globalvar const char *fpl__globalAudioBackendNameTable[] = {
+	"None", // No audio backend
+	"Automatic", // Automatic backend detection
 	"DirectSound", // DirectSound
 	"ALSA", // Alsa
 };
-fplStaticAssert(fplArrayCount(fpl__globalAudioDriverNameTable) == FPL__AUDIODRIVERTYPE_COUNT);
+fplStaticAssert(fplArrayCount(fpl__globalAudioBackendNameTable) == FPL__AUDIOBACKENDTYPE_COUNT);
 
-fpl_common_api fplAudioDriverType fplGetAudioDriver() {
-	FPL__CheckPlatform(fplAudioDriverType_None);
+fpl_common_api fplAudioBackendType fplGetAudioBackendType() {
+	FPL__CheckPlatform(fplAudioBackendType_None);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	fplAudioDriverType result = appState->currentSettings.audio.driver;
+	fplAudioBackendType result = appState->currentSettings.audio.backend;
 	return(result);
 }
 
-fpl_common_api const char *fplGetAudioDriverName(fplAudioDriverType driver) {
-	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(driver, fplAudioDriverType_First, fplAudioDriverType_Last);
-	const char *result = fpl__globalAudioDriverNameTable[index];
+fpl_common_api const char *fplGetAudioBackendName(fplAudioBackendType backendType) {
+	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(backendType, fplAudioBackendType_First, fplAudioBackendType_Last);
+	const char *result = fpl__globalAudioBackendNameTable[index];
 	return(result);
 }
 
@@ -21086,11 +22518,11 @@ fpl_common_api fplAudioResultType fplStopAudio() {
 
 		fpl__AudioSetDeviceState(commonAudioState, fpl__AudioDeviceState_Stopping);
 
-		if(audioState->isAsyncDriver) {
-			// Asynchronous drivers (Has their own thread)
+		if(audioState->isAsyncBackend) {
+			// Asynchronous backends (Has their own thread)
 			fpl__StopAudioDevice(audioState);
 		} else {
-			// Synchronous drivers
+			// Synchronous backends
 
 			// The audio worker thread is most likely in a wait state, so let it stop properly.
 			fpl__StopAudioDeviceMainLoop(audioState);
@@ -21144,12 +22576,12 @@ fpl_common_api fplAudioResultType fplPlayAudio() {
 
 		fpl__AudioSetDeviceState(commonAudioState, fpl__AudioDeviceState_Starting);
 
-		if(audioState->isAsyncDriver) {
-			// Asynchronous drivers (Has their own thread)
+		if(audioState->isAsyncBackend) {
+			// Asynchronous backends (Has their own thread)
 			fpl__StartAudioDevice(audioState);
 			fpl__AudioSetDeviceState(commonAudioState, fpl__AudioDeviceState_Started);
 		} else {
-			// Synchronous drivers
+			// Synchronous backends
 			fpl__SetAudioEvent(&audioState->wakeupEvent);
 
 			// Wait for the worker thread to finish starting the device.
@@ -21178,7 +22610,7 @@ fpl_common_api bool fplGetAudioHardwareFormat(fplAudioDeviceFormat *outFormat) {
 fpl_common_api bool fplSetAudioClientReadCallback(fpl_audio_client_read_callback *newCallback, void *userData) {
 	FPL__CheckPlatform(false);
 	fpl__AudioState *audioState = fpl__GetAudioState(fpl__global__AppState);
-	if((audioState != fpl_null) && (audioState->activeDriver > fplAudioDriverType_Auto)) {
+	if((audioState != fpl_null) && (audioState->backendType > fplAudioBackendType_Auto)) {
 		if(fpl__AudioGetDeviceState(&audioState->common) == fpl__AudioDeviceState_Stopped) {
 			audioState->common.clientReadCallback = newCallback;
 			audioState->common.clientUserData = userData;
@@ -21198,17 +22630,17 @@ fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo *devices, uint32_t
 		return 0;
 	}
 	uint32_t result = 0;
-	if(audioState->activeDriver > fplAudioDriverType_Auto) {
-		switch(audioState->activeDriver) {
+	if(audioState->backendType > fplAudioBackendType_Auto) {
+		switch(audioState->backendType) {
 #		if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
-			case fplAudioDriverType_DirectSound:
+			case fplAudioBackendType_DirectSound:
 			{
 				result = fpl__GetAudioDevicesDirectSound(&audioState->dsound, devices, maxDeviceCount);
 			} break;
 #		endif
 
 #		if defined(FPL__ENABLE_AUDIO_ALSA)
-			case fplAudioDriverType_Alsa:
+			case fplAudioBackendType_Alsa:
 			{
 				result = fpl__GetAudioDevicesAlsa(&audioState->alsa, devices, maxDeviceCount);
 			} break;
@@ -21216,8 +22648,8 @@ fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo *devices, uint32_t
 
 			default:
 				break;
-		}
 	}
+}
 	return(result);
 }
 #endif // FPL__ENABLE_AUDIO
@@ -21232,38 +22664,41 @@ fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo *devices, uint32_t
 //
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #if defined(FPL__ENABLE_VIDEO)
-#define FPL__VIDEODRIVERTYPE_COUNT FPL__ENUM_COUNT(fplVideoDriverType_First, fplVideoDriverType_Last)
-fpl_globalvar const char *fpl__globalVideoDriverTypeNameTable[] = {
-	"None", // fplVideoDriverType_None
-	"OpenGL", // fplVideoDriverType_OpenGL
-	"Software", // fplVideoDriverType_Software
+#define FPL__VIDEOBACKENDTYPE_COUNT FPL__ENUM_COUNT(fplVideoBackendType_First, fplVideoBackendType_Last)
+fpl_globalvar const char *fpl__globalVideoBackendNameTable[FPL__VIDEOBACKENDTYPE_COUNT] = {
+	"None", // fplVideoBackendType_None
+	"Software", // fplVideoBackendType_Software
+	"OpenGL", // fplVideoBackendType_OpenGL
+	"Vulkan", // fplVideoBackendType_Vulkan
 };
-fplStaticAssert(fplArrayCount(fpl__globalVideoDriverTypeNameTable) == FPL__VIDEODRIVERTYPE_COUNT);
 
-fpl_common_api const char *fplGetVideoDriverName(fplVideoDriverType driver) {
-	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(driver, fplVideoDriverType_First, fplVideoDriverType_Last);
-	const char *result = fpl__globalVideoDriverTypeNameTable[index];
+fpl_common_api const char *fplGetVideoBackendName(fplVideoBackendType backendType) {
+	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(backendType, fplVideoBackendType_First, fplVideoBackendType_Last);
+	const char *result = fpl__globalVideoBackendNameTable[index];
 	return(result);
 }
 
-fpl_common_api fplVideoDriverType fplGetVideoDriver() {
-	FPL__CheckPlatform(fplVideoDriverType_None);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	fplVideoDriverType result = appState->currentSettings.video.driver;
-	return(result);
+fpl_common_api fplVideoBackendType fplGetVideoBackendType() {
+	FPL__CheckPlatform(fplVideoBackendType_None);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__VideoState *videoState = fpl__GetVideoState(appState);
+	if(videoState != fpl_null) {
+		return(videoState->backendType);
+	}
+	return(fplVideoBackendType_None);
 }
 
 fpl_common_api fplVideoBackBuffer *fplGetVideoBackBuffer() {
 	FPL__CheckPlatform(fpl_null);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__VideoState *videoState = fpl__GetVideoState(appState);
 	fplVideoBackBuffer *result = fpl_null;
-	if(appState->video.mem != fpl_null) {
-		fpl__VideoState *videoState = fpl__GetVideoState(appState);
-#	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-		if(appState->currentSettings.video.driver == fplVideoDriverType_Software) {
-			result = &videoState->softwareBackbuffer;
+	if(videoState != fpl_null) {
+#if defined(FPL__ENABLE_VIDEO_SOFTWARE)
+		if(appState->currentSettings.video.backend == fplVideoBackendType_Software) {
+			result = &videoState->data.backbuffer;
 		}
-#	endif
+#endif
 	}
 	return(result);
 }
@@ -21274,12 +22709,11 @@ fpl_common_api bool fplResizeVideoBackBuffer(const uint32_t width, const uint32_
 	fpl__VideoState *videoState = fpl__GetVideoState(appState);
 	bool result = false;
 	if(videoState != fpl_null) {
-#	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-		if(videoState->activeDriver == fplVideoDriverType_Software) {
-			fpl__ShutdownVideo(appState, videoState);
-			result = fpl__InitVideo(fplVideoDriverType_Software, &appState->currentSettings.video, width, height, appState, videoState);
+		fplVideoBackendType backendType = videoState->backendType;
+		if(backendType != fplVideoBackendType_None && videoState->context.recreateOnResize) {
+			fpl__ShutdownVideoBackend(appState, videoState);
+			result = fpl__InitializeVideoBackend(videoState->backendType, &appState->currentSettings.video, width, height, appState, videoState);
 		}
-#	endif
 	}
 	return (result);
 }
@@ -21288,74 +22722,42 @@ fpl_common_api void fplVideoFlip() {
 	FPL__CheckPlatformNoRet();
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__VideoState *videoState = fpl__GetVideoState(appState);
-	if(videoState != fpl_null) {
-#	if defined(FPL_PLATFORM_WINDOWS)
-		const fpl__Win32AppState *win32AppState = &appState->win32;
-		const fpl__Win32WindowState *win32WindowState = &appState->window.win32;
-		const fpl__Win32Api *wapi = &win32AppState->winApi;
-		switch(appState->currentSettings.video.driver) {
-#		if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-			case fplVideoDriverType_Software:
-			{
-				const fpl__Win32VideoSoftwareState *software = &videoState->win32.software;
-				const fplVideoBackBuffer *backbuffer = &videoState->softwareBackbuffer;
-				fplWindowSize area;
-				if(fplGetWindowSize(&area)) {
-					int32_t targetX = 0;
-					int32_t targetY = 0;
-					int32_t targetWidth = area.width;
-					int32_t targetHeight = area.height;
-					int32_t sourceWidth = backbuffer->width;
-					int32_t sourceHeight = backbuffer->height;
-					if(backbuffer->useOutputRect) {
-						targetX = backbuffer->outputRect.x;
-						targetY = backbuffer->outputRect.y;
-						targetWidth = backbuffer->outputRect.width;
-						targetHeight = backbuffer->outputRect.height;
-						wapi->gdi.StretchDIBits(win32WindowState->deviceContext, 0, 0, area.width, area.height, 0, 0, 0, 0, fpl_null, fpl_null, DIB_RGB_COLORS, BLACKNESS);
-					}
-					wapi->gdi.StretchDIBits(win32WindowState->deviceContext, targetX, targetY, targetWidth, targetHeight, 0, 0, sourceWidth, sourceHeight, backbuffer->pixels, &software->bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
-				}
-			} break;
-#		endif
-
-#		if defined(FPL__ENABLE_VIDEO_OPENGL)
-			case fplVideoDriverType_OpenGL:
-			{
-				wapi->gdi.SwapBuffers(win32WindowState->deviceContext);
-			} break;
-#		endif
-
-			default:
-				break;
-		}
-#	elif defined(FPL_SUBPLATFORM_X11)
-		const fpl__X11WindowState *x11WinState = &appState->window.x11;
-		switch(appState->currentSettings.video.driver) {
-#		if defined(FPL__ENABLE_VIDEO_OPENGL)
-			case fplVideoDriverType_OpenGL:
-			{
-				const fpl__X11VideoOpenGLApi *glApi = &videoState->x11.opengl.api;
-				glApi->glXSwapBuffers(x11WinState->display, x11WinState->window);
-			} break;
-#		endif
-
-#		if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-			case fplVideoDriverType_Software:
-			{
-				const fpl__X11Api *x11Api = &appState->x11.api;
-				const fpl__X11VideoSoftwareState *softwareState = &videoState->x11.software;
-				const fplVideoBackBuffer *backbuffer = &videoState->softwareBackbuffer;
-				x11Api->XPutImage(x11WinState->display, x11WinState->window, softwareState->graphicsContext, softwareState->buffer, 0, 0, 0, 0, backbuffer->width, backbuffer->height);
-				x11Api->XSync(x11WinState->display, False);
-			} break;
-#		endif
-
-			default:
-				break;
-		}
-#	endif // FPL_PLATFORM || FPL_SUBPLATFORM
+	if(videoState != fpl_null && videoState->backendType != fplVideoBackendType_None) {
+		fplAssert(videoState->context.presentFunc != fpl_null);
+		videoState->context.presentFunc(appState, &appState->window, &videoState->data, &videoState->activeBackend.base);
 	}
+}
+
+fpl_common_api const void *fplGetVideoProcedure(const char *procName) {
+	FPL__CheckPlatform(fpl_null);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__VideoState *videoState = fpl__GetVideoState(appState);
+	const void *result = fpl_null;
+	if(videoState != fpl_null && videoState->backendType != fplVideoBackendType_None) {
+		fplAssert(videoState->context.getProcedureFunc != fpl_null);
+		result = videoState->context.getProcedureFunc(&videoState->activeBackend.base, procName);
+	}
+	return(result);
+}
+
+fpl_common_api const fplVideoSurface *fplGetVideoSurface() {
+	FPL__CheckPlatform(fpl_null);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__VideoState *videoState = fpl__GetVideoState(appState);
+	const fplVideoSurface *result = fpl_null;
+	if(videoState != fpl_null && videoState->backendType != fplVideoBackendType_None) {
+		result = &videoState->activeBackend.base.surface;
+	}
+	return(result);
+}
+
+fpl_common_api bool fplGetVideoRequirements(const fplVideoBackendType backendType, fplVideoRequirements *requirements) {
+	fpl__VideoContext context = fpl__ConstructVideoContext(backendType);
+	bool result = false;
+	if(context.getRequirementsFunc != fpl_null) {
+		result = context.getRequirementsFunc(requirements);
+	}
+	return(result);
 }
 #endif // FPL__ENABLE_VIDEO
 
@@ -21394,13 +22796,13 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 	}
 #	endif
 
-	// Shutdown video (Release context only)
+	// Shutdown video backend
 #	if defined(FPL__ENABLE_VIDEO)
 	{
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
 		if(videoState != fpl_null) {
-			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Shutdown Video for Driver '%s'", fplGetVideoDriverName(videoState->activeDriver));
-			fpl__ShutdownVideo(appState, videoState);
+			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Shutdown Video Backend '%s'", fplGetVideoBackendName(videoState->backendType));
+			fpl__ShutdownVideoBackend(appState, videoState);
 		}
 	}
 #	endif
@@ -21414,13 +22816,16 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 	}
 #	endif
 
-	// Release video state
+	// Release video backend
 #	if defined(FPL__ENABLE_VIDEO)
 	{
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
 		if(videoState != fpl_null) {
-			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release Video for Driver '%s'", fplGetVideoDriverName(videoState->activeDriver));
-			fpl__ReleaseVideoState(appState, videoState);
+			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Destroy surface for Video Backend '%s'", fplGetVideoBackendName(videoState->backendType));
+			fpl__DestroySurfaceBackend(appState, videoState);
+
+			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release Video Backend '%s'", fplGetVideoBackendName(videoState->backendType));
+			fpl__UnloadVideoBackend(appState, videoState);
 		}
 	}
 #	endif
@@ -21459,7 +22864,7 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 	}
 	initState->initResult = fplPlatformResultType_NotInitialized;
 	initState->isInitialized = false;
-}
+		}
 
 #define FPL__PLATFORMTYPE_COUNT FPL__ENUM_COUNT(fplPlatformType_First, fplPlatformType_Last)
 fpl_globalvar const char *fpl__globalPlatformTypeNameTable[] = {
@@ -21555,24 +22960,32 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 	appState->initFlags = initFlags;
 	if(initSettings != fpl_null) {
 		appState->initSettings = *initSettings;
-	} else {
+} else {
 		fplSetDefaultSettings(&appState->initSettings);
 	}
 	appState->currentSettings = appState->initSettings;
 
 	FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully allocated Platform App State Memory of size '%zu'", platformAppStateSize);
 
-	// Window is required for video always
+	// Application types
+#	if defined(FPL_APPTYPE_WINDOW)
+	appState->initFlags |= fplInitFlags_Window;
+#	elif defined(FPL_APPTYPE_CONSOLE)
+	appState->initFlags |= fplInitFlags_Console;
+#	endif
+
+	// Force the inclusion of window when Video flags is set or remove the video flags when video is disabled
 #	if defined(FPL__ENABLE_VIDEO)
 	if(appState->initFlags & fplInitFlags_Video) {
 		appState->initFlags |= fplInitFlags_Window;
 	}
+#	else
+	appState->initFlags = (fplInitFlags)(appState->initFlags & ~fplInitFlags_Video);
 #	endif
+
+	// Window flag are removed when windowing is disabled
 #	if !defined(FPL__ENABLE_WINDOW)
 	appState->initFlags = (fplInitFlags)(appState->initFlags & ~fplInitFlags_Window);
-#	endif
-#	if defined(FPL_APPTYPE_CONSOLE)
-	appState->initFlags |= fplInitFlags_Console;
 #	endif
 
 	// Initialize sub-platforms
@@ -21597,7 +23010,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 			return(fpl__SetPlatformResult(fplPlatformResultType_FailedPlatform));
 		}
 		FPL_LOG_DEBUG("Core", "Successfully initialized X11 Subplatform");
-	}
+		}
 #	endif // FPL_SUBPLATFORM_X11
 
 	// Initialize the actual platform (There can only be one at a time!)
@@ -21621,23 +23034,30 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 	// Init video state
 #	if defined(FPL__ENABLE_VIDEO)
 	if(appState->initFlags & fplInitFlags_Video) {
-		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init video state:");
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Video State");
 		appState->video.mem = (uint8_t *)platformAppStateMemory + videoMemoryOffset;
 		appState->video.memSize = sizeof(fpl__VideoState);
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
 		fplAssert(videoState != fpl_null);
 
-		fplVideoDriverType videoDriver = appState->initSettings.video.driver;
-		const char *videoDriverString = fplGetVideoDriverName(videoDriver);
-		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Load Video API for Driver '%s':", videoDriverString);
+		fplVideoBackendType videoBackendType = appState->initSettings.video.backend;
+
+		// Construct video context (Function table)
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Construct Video Context:");
+		videoState->context = fpl__ConstructVideoContext(videoBackendType);
+		videoState->backendType = videoBackendType;
+
+		// Load video backend (API)
+		const char *videoBackendName = fplGetVideoBackendName(videoBackendType);
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Load Video API for Backend '%s':", videoBackendName);
 		{
-			if(!fpl__LoadVideoState(videoDriver, videoState)) {
-				FPL__CRITICAL(FPL__MODULE_CORE, "Failed loading Video API for Driver '%s'!", videoDriverString);
+			if(!fpl__LoadVideoBackend(appState, videoState)) {
+				FPL__CRITICAL(FPL__MODULE_CORE, "Failed loading Video API for Backend '%s'!", videoBackendName);
 				fpl__ReleasePlatformStates(initState, appState);
 				return(fpl__SetPlatformResult(fplPlatformResultType_FailedVideo));
 			}
 		}
-		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully loaded Video API for Driver '%s'", videoDriverString);
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully loaded Video API for Backend '%s'", videoBackendName);
 	}
 #	endif // FPL__ENABLE_VIDEO
 
@@ -21646,8 +23066,8 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 	if(appState->initFlags & fplInitFlags_Window) {
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Window:");
 		fpl__SetupWindowCallbacks winCallbacks = fplZeroInit;
-		winCallbacks.postSetup = fpl__PostSetupWindowDefault;
-		winCallbacks.preSetup = fpl__PreSetupWindowDefault;
+		winCallbacks.preSetup = fpl__PrepareVideoWindowDefault;
+		winCallbacks.postSetup = fpl__FinalizeVideoWindowDefault;
 		if(!fpl__InitWindow(&appState->initSettings, &appState->currentSettings.window, appState, &winCallbacks)) {
 			FPL__CRITICAL(FPL__MODULE_CORE, "Failed initializing Window!");
 			fpl__ReleasePlatformStates(initState, appState);
@@ -21664,14 +23084,14 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 		fplAssert(videoState != fpl_null);
 		fplWindowSize windowSize = fplZeroInit;
 		fplGetWindowSize(&windowSize);
-		const char *videoDriverName = fplGetVideoDriverName(appState->initSettings.video.driver);
-		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Video with Driver '%s':", videoDriverName);
-		if(!fpl__InitVideo(appState->initSettings.video.driver, &appState->initSettings.video, windowSize.width, windowSize.height, appState, videoState)) {
-			FPL__CRITICAL(FPL__MODULE_CORE, "Failed initialization video with settings (Driver=%s, Width=%d, Height=%d)", videoDriverName, windowSize.width, windowSize.height);
+		const char *videoBackendName = fplGetVideoBackendName(appState->initSettings.video.backend);
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Video with Backend '%s':", videoBackendName);
+		if(!fpl__InitializeVideoBackend(appState->initSettings.video.backend, &appState->initSettings.video, windowSize.width, windowSize.height, appState, videoState)) {
+			FPL__CRITICAL(FPL__MODULE_CORE, "Failed initialization Video with Backend '%s' with settings (Width=%d, Height=%d)", videoBackendName, windowSize.width, windowSize.height);
 			fpl__ReleasePlatformStates(initState, appState);
 			return(fpl__SetPlatformResult(fplPlatformResultType_FailedVideo));
 		}
-		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully initialized Video Driver '%s'", videoDriverName);
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully initialized Video with Backend '%s'", videoBackendName);
 	}
 #	endif // FPL__ENABLE_VIDEO
 
@@ -21680,16 +23100,16 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 	if(appState->initFlags & fplInitFlags_Audio) {
 		appState->audio.mem = (uint8_t *)platformAppStateMemory + audioMemoryOffset;
 		appState->audio.memSize = sizeof(fpl__AudioState);
-		const char *audioDriverName = fplGetAudioDriverName(appState->initSettings.audio.driver);
-		FPL_LOG_DEBUG("Core", "Init Audio with Driver '%s':", audioDriverName);
+		const char *audioBackendName = fplGetAudioBackendName(appState->initSettings.audio.backend);
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Audio with Backend '%s':", audioBackendName);
 		fpl__AudioState *audioState = fpl__GetAudioState(appState);
 		fplAssert(audioState != fpl_null);
 		fplAudioResultType initAudioResult = fpl__InitAudio(&appState->initSettings.audio, audioState);
 		if(initAudioResult != fplAudioResultType_Success) {
 			const char *initAudioResultName = fplGetAudioResultName(initAudioResult);
 			const char *audioFormatName = fplGetAudioFormatName(initSettings->audio.targetFormat.type);
-			FPL__CRITICAL("Core", "Failed initialization audio with settings (Driver=%s, Format=%s, SampleRate=%d, Channels=%d) -> %s",
-				audioDriverName,
+			FPL__CRITICAL(FPL__MODULE_CORE, "Failed initialization audio with Backend '%s' settings (Format=%s, SampleRate=%d, Channels=%d) -> %s",
+				audioBackendName,
 				audioFormatName,
 				initSettings->audio.targetFormat.sampleRate,
 				initSettings->audio.targetFormat.channels,
@@ -21697,14 +23117,14 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 			fpl__ReleasePlatformStates(initState, appState);
 			return(fpl__SetPlatformResult(fplPlatformResultType_FailedAudio));
 		}
-		FPL_LOG_DEBUG("Core", "Successfully initialized Audio Driver '%s'", audioDriverName);
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully initialized Audio with Backend '%s'", audioBackendName);
 
 		// Auto play audio if needed
 		if(appState->initSettings.audio.startAuto && (appState->initSettings.audio.clientReadCallback != fpl_null)) {
-			FPL_LOG_DEBUG("Core", "Play Audio (Auto)");
+			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Play Audio (Auto)");
 			fplAudioResultType playResult = fplPlayAudio();
 			if(playResult != fplAudioResultType_Success) {
-				FPL__CRITICAL("Core", "Failed auto-play of audio, code: %d!", playResult);
+				FPL__CRITICAL(FPL__MODULE_CORE, "Failed auto-play of audio, code: %d!", playResult);
 				fpl__ReleasePlatformStates(initState, appState);
 				return(fpl__SetPlatformResult(fplPlatformResultType_FailedAudio));
 			}
@@ -21714,7 +23134,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 
 	initState->isInitialized = true;
 	return(fpl__SetPlatformResult(fplPlatformResultType_Success));
-}
+		}
 
 fpl_common_api fplPlatformType fplGetPlatformType() {
 	fplPlatformType result;
@@ -21735,6 +23155,9 @@ fpl_common_api fplPlatformType fplGetPlatformType() {
 #if defined(FPL_COMPILER_MSVC)
 //! Reset MSVC warning settings
 #	pragma warning( pop )
+#elif defined(FPL_COMPILER_GCC)
+//! Reset GCC warning settings
+#	pragma GCC diagnostic pop
 #elif defined(FPL_COMPILER_CLANG)
 //! Reset Clang warning settings
 #	pragma clang diagnostic pop
@@ -21897,6 +23320,40 @@ fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseAnsiArguments(LPS
 	return(result);
 }
 
+#if !defined(FPL_NO_CRT)
+#	include <stdio.h>
+#endif
+
+fpl_internal void fpl__Win32FreeConsole() {
+	HWND consoleHandle = GetConsoleWindow();
+	if(consoleHandle != fpl_null) {
+		FreeConsole();
+	}
+}
+
+fpl_internal void fpl__Win32InitConsole() {
+	HWND consoleHandle = GetConsoleWindow();
+	if(consoleHandle == fpl_null) {
+		// Create or attach console
+		AllocConsole();
+		AttachConsole(GetCurrentProcessId());
+
+		// Redirect out/in/err to console
+		HANDLE hConOut = CreateFileW(L"CONOUT$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+		HANDLE hConIn = CreateFileW(L"CONIN$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+		SetStdHandle(STD_OUTPUT_HANDLE, hConOut);
+		SetStdHandle(STD_ERROR_HANDLE, hConOut);
+		SetStdHandle(STD_INPUT_HANDLE, hConIn);
+
+#if !defined(FPL_NO_CRT)
+		FILE *dummy;
+		freopen_s(&dummy, "CONIN$", "r", stdin);
+		freopen_s(&dummy, "CONOUT$", "w", stderr);
+		freopen_s(&dummy, "CONOUT$", "w", stdout);
+#endif
+	}
+}
+
 #		if defined(FPL_NO_CRT)
 //
 // Win32 without CRT
@@ -21904,19 +23361,24 @@ fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseAnsiArguments(LPS
 #			if defined(FPL_APPTYPE_WINDOW)
 #				if defined(UNICODE)
 void __stdcall wWinMainCRTStartup(void) {
+	fpl__Win32InitConsole();
 	LPWSTR argsW = GetCommandLineW();
 	int result = wWinMain(GetModuleHandleW(fpl_null), fpl_null, argsW, SW_SHOW);
+	fpl__Win32FreeConsole();
 	ExitProcess(result);
 }
 #				else
 void __stdcall WinMainCRTStartup(void) {
+	fpl__Win32InitConsole();
 	LPSTR argsA = GetCommandLineA();
 	int result = WinMain(GetModuleHandleA(fpl_null), fpl_null, argsA, SW_SHOW);
+	fpl__Win32FreeConsole();
 	ExitProcess(result);
 }
 #				endif // UNICODE
 #			elif defined(FPL_APPTYPE_CONSOLE)
 void __stdcall mainCRTStartup(void) {
+	fpl__Win32InitConsole();
 	fpl__Win32CommandLineUTF8Arguments args;
 #	if defined(UNICODE)
 	LPWSTR argsW = GetCommandLineW();
@@ -21927,8 +23389,9 @@ void __stdcall mainCRTStartup(void) {
 #	endif
 	int result = main(args.count, args.args);
 	fplMemoryFree(args.mem);
+	fpl__Win32FreeConsole();
 	ExitProcess(result);
-}
+	}
 #			else
 #				error "Application type not set!"
 #			endif // FPL_APPTYPE
@@ -21939,16 +23402,20 @@ void __stdcall mainCRTStartup(void) {
 //
 #			if defined(UNICODE)
 int WINAPI wWinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPWSTR cmdLine, int cmdShow) {
+	fpl__Win32InitConsole();
 	fpl__Win32CommandLineUTF8Arguments args = fpl__Win32ParseWideArguments(cmdLine);
 	int result = main(args.count, args.args);
 	fplMemoryFree(args.mem);
+	fpl__Win32FreeConsole();
 	return(result);
 }
 #			else
 int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine, int cmdShow) {
+	fpl__Win32InitConsole();
 	fpl__Win32CommandLineUTF8Arguments args = fpl__Win32ParseAnsiArguments(cmdLine);
 	int result = main(args.count, args.args);
 	fplMemoryFree(args.mem);
+	fpl__Win32FreeConsole();
 	return(result);
 }
 #			endif // UNICODE

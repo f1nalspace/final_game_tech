@@ -78,6 +78,7 @@ License:
 #define FPL_ENTRYPOINT
 #define FPL_NO_AUDIO
 #define FPL_NO_PLATFORM_INCLUDES
+#define FPL_NO_VIDEO_VULKAN
 #include <final_platform_layer.h>
 
 #define FGL_IMPLEMENTATION
@@ -85,6 +86,8 @@ License:
 
 #include <chrono>
 #include <stack>
+
+#define PARTICLE_VALIDATION 0
 
 #include "app.cpp"
 #include "utils.h"
@@ -96,7 +99,7 @@ static Application *globalApp = nullptr;
 static float lastFrameTime = 0.0f;
 static uint64_t lastFrameCycles = 0;
 static uint64_t lastCycles = 0;
-static std::chrono::time_point<std::chrono::steady_clock> lastFrameClock;
+static fplWallClock lastFrameClock;
 
 static void OpenGLPopVertexIndexArray(std::stack<Render::VertexIndexArrayHeader *> &stack) {
 	if (stack.size() > 0) {
@@ -485,7 +488,7 @@ int main(int argc, char **args) {
 	fplSettings settings = fplMakeDefaultSettings();
 	settings.window.windowSize.width = kWindowWidth;
 	settings.window.windowSize.height = kWindowHeight;
-	settings.video.driver = fplVideoDriverType_OpenGL;
+	settings.video.backend = fplVideoBackendType_OpenGL;
 	fplFormatString(settings.window.title, fplArrayCount(settings.window.title), "NBody Simulation v%s", kAppVersion);
 	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
 		if (fglLoadOpenGL(true)) {
@@ -500,6 +503,8 @@ int main(int argc, char **args) {
 			}
 
 			app->Init();
+			
+			lastFrameClock = fplGetWallClock();
 
 			while (fplWindowUpdate()) {
 				fplEvent ev;
@@ -536,13 +541,11 @@ int main(int argc, char **args) {
 
 				fplVideoFlip();
 
-				auto endFrameClock = std::chrono::high_resolution_clock::now();
-				auto durationClock = endFrameClock - lastFrameClock;
+				fplWallClock endFrameClock = fplGetWallClock();
+				lastFrameTime = (float)fplGetWallDelta(lastFrameClock, endFrameClock);
 				lastFrameClock = endFrameClock;
-				uint64_t frameTimeInNanos = std::chrono::duration_cast<std::chrono::nanoseconds>(durationClock).count();
-				lastFrameTime = frameTimeInNanos / (float)1000000000;
 
-				uint64_t endCycles = __rdtsc();
+				uint64_t endCycles = fplCPURDTSC();
 				lastFrameCycles = endCycles - lastCycles;
 				lastCycles = endCycles;
 			}

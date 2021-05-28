@@ -137,6 +137,7 @@ License:
 
 #define FPL_IMPLEMENTATION
 #define FPL_LOGGING
+#define FPL_NO_VIDEO_VULKAN
 #include <final_platform_layer.h>
 
 #include <string.h>
@@ -678,7 +679,7 @@ namespace level {
 		targetLayer->mapHeight = utils::StringToInt(fxmlGetAttributeValue(childTag, "height"));
 		targetLayer->data = (uint32_t *)fmemPush(memory, sizeof(uint32_t) * targetLayer->mapWidth * targetLayer->mapHeight, fmemPushFlags_Clear);
 		targetLayer->opacity = utils::StringToFloat(fxmlGetAttributeValue(childTag, "opacity"), 1.0f);
-		fxmlTag *dataTag = fxmlFindTagByName(childTag, "data");
+		const fxmlTag *dataTag = fxmlFindTagByName(childTag, "data");
 		if (dataTag != nullptr) {
 			const char *encodingStr = fxmlGetAttributeValue(dataTag, "encoding");
 			if (strcmp(encodingStr, "csv") == 0) {
@@ -766,7 +767,7 @@ namespace level {
 								break;
 						}
 
-						fxmlTag *propertiesTag = fxmlFindTagByName(childTag, "properties");
+						const fxmlTag *propertiesTag = fxmlFindTagByName(childTag, "properties");
 						if (propertiesTag != nullptr) {
 							fxmlTag *propTag = propertiesTag->firstChild;
 							while (propTag != nullptr) {
@@ -818,7 +819,7 @@ namespace level {
 		outTileset.tileCount = utils::StringToInt(fxmlGetAttributeValue(tilesetTag, "tilecount"));
 		outTileset.columns = utils::StringToInt(fxmlGetAttributeValue(tilesetTag, "columns"));
 		outTileset.tileUVs = nullptr;
-		fxmlTag *imageTag = fxmlFindTagByName(tilesetTag, "image");
+		const fxmlTag *imageTag = fxmlFindTagByName(tilesetTag, "image");
 		if (imageTag != nullptr) {
 			const char *source = fxmlGetAttributeValue(imageTag, "source");
 			fplCopyString(source, outTileset.image.source, fplArrayCount(outTileset.image.source));
@@ -844,7 +845,7 @@ namespace level {
 
 	static bool ParseLevel(fxmlTag *root, LevelData &level, fmemMemoryBlock *memory) {
 		bool result = false;
-		fxmlTag *mapTag = fxmlFindTagByName(root, "map");
+		const fxmlTag *mapTag = fxmlFindTagByName(root, "map");
 		if (mapTag == nullptr) {
 			return false;
 		}
@@ -893,8 +894,8 @@ namespace level {
 		return(true);
 	}
 
-	static const char *GetNodeValue(fxmlTag *rootTag, const char *nodeName) {
-		fxmlTag *foundTag = fxmlFindTagByName(rootTag, nodeName);
+	static const char *GetNodeValue(const fxmlTag *rootTag, const char *nodeName) {
+		const fxmlTag *foundTag = fxmlFindTagByName(rootTag, nodeName);
 		if (foundTag != nullptr) {
 			return foundTag->value;
 		}
@@ -912,7 +913,7 @@ namespace level {
 			if (fxmlInitFromMemory(fileData.data, fileData.info.size, &ctx)) {
 				fxmlTag root = {};
 				if (fxmlParse(&ctx, &root)) {
-					fxmlTag *creepDefinitionsTag = fxmlFindTagByName(&root, "CreepDefinitions");
+					const fxmlTag *creepDefinitionsTag = fxmlFindTagByName(&root, "CreepDefinitions");
 					if (creepDefinitionsTag != nullptr) {
 						for (fxmlTag *creepTag = creepDefinitionsTag->firstChild; creepTag; creepTag = creepTag->nextSibling) {
 							if (strcmp("CreepData", creepTag->name) == 0) {
@@ -1014,7 +1015,7 @@ namespace level {
 				fxmlTag root = {};
 				if (fxmlParse(&ctx, &root)) {
 					size_t towerIndex = 0;
-					fxmlTag *towerDefinitionsTag = fxmlFindTagByName(&root, "TowerDefinitions");
+					const fxmlTag *towerDefinitionsTag = fxmlFindTagByName(&root, "TowerDefinitions");
 					if (towerDefinitionsTag != nullptr) {
 						for (fxmlTag *towerTag = towerDefinitionsTag->firstChild; towerTag; towerTag = towerTag->nextSibling) {
 							if (strcmp("TowerData", towerTag->name) == 0) {
@@ -1027,13 +1028,13 @@ namespace level {
 								towerData->unlockRadius = MaxTileSize * utils::StringToFloat(GetNodeValue(towerTag, "unlockRadius"));
 
 								{
-									fxmlTag *partsTag = fxmlFindTagByName(towerTag, "parts");
+									const fxmlTag *partsTag = fxmlFindTagByName(towerTag, "parts");
 									if (partsTag != nullptr) {
 										LoadPartDefinitions(partsTag, fplArrayCount(towerData->parts), &towerData->partCount, towerData->parts);
 									}
 								}
 
-								fxmlTag *tubesTag = fxmlFindTagByName(towerTag, "tubes");
+								const fxmlTag *tubesTag = fxmlFindTagByName(towerTag, "tubes");
 								if (tubesTag != nullptr) {
 									for (fxmlTag *tubeTag = tubesTag->firstChild; tubeTag; tubeTag = tubeTag->nextSibling) {
 										if (strcmp("tube", tubeTag->name) == 0) {
@@ -1042,7 +1043,7 @@ namespace level {
 											*tubeData = {};
 											tubeData->length = utils::StringToFloat(GetNodeValue(tubeTag, "length"));
 											tubeData->offset = utils::StringToVec2(GetNodeValue(tubeTag, "offset"));
-											fxmlTag *partsTag = fxmlFindTagByName(tubeTag, "parts");
+											const fxmlTag *partsTag = fxmlFindTagByName(tubeTag, "parts");
 											if (partsTag != nullptr) {
 												LoadPartDefinitions(partsTag, fplArrayCount(tubeData->parts), &tubeData->partCount, tubeData->parts);
 											}
@@ -1065,7 +1066,7 @@ namespace level {
 									towerData->enemyLockOnMode = EnemyLockTargetMode::Any;
 								}
 								towerData->costs = utils::StringToInt(fxmlGetAttributeValue(towerTag, "costs"));
-								fxmlTag *bulletTag = fxmlFindTagByName(towerTag, "bullet");
+								const fxmlTag *bulletTag = fxmlFindTagByName(towerTag, "bullet");
 								if (bulletTag != nullptr) {
 									towerData->bullet.renderRadius = MaxTileSize * utils::StringToFloat(GetNodeValue(bulletTag, "renderRadius"));
 									towerData->bullet.collisionRadius = MaxTileSize * utils::StringToFloat(GetNodeValue(bulletTag, "collisionRadius"));
@@ -1093,7 +1094,7 @@ namespace level {
 			if (fxmlInitFromMemory(fileData.data, fileData.info.size, &ctx)) {
 				fxmlTag root = {};
 				if (fxmlParse(&ctx, &root)) {
-					fxmlTag *waveDefinitionsTag = fxmlFindTagByName(&root, "WaveDefinitions");
+					const fxmlTag *waveDefinitionsTag = fxmlFindTagByName(&root, "WaveDefinitions");
 					if (waveDefinitionsTag != nullptr) {
 						for (fxmlTag *waveTag = waveDefinitionsTag->firstChild; waveTag; waveTag = waveTag->nextSibling) {
 							if (strcmp("WaveData", waveTag->name) == 0) {
@@ -1105,7 +1106,7 @@ namespace level {
 								waveData->startupCooldown = utils::StringToFloat(GetNodeValue(waveTag, "startupCooldown"));
 								waveData->spawnerCount = 0;
 								waveData->completionBounty = utils::StringToInt(GetNodeValue(waveTag, "completionBounty"));
-								fxmlTag *spawnersTag = fxmlFindTagByName(waveTag, "spawners");
+								const fxmlTag *spawnersTag = fxmlFindTagByName(waveTag, "spawners");
 								if (spawnersTag != nullptr) {
 									for (fxmlTag *spawnTag = spawnersTag->firstChild; spawnTag; spawnTag = spawnTag->nextSibling) {
 										if (strcmp("SpawnData", spawnTag->name) == 0) {

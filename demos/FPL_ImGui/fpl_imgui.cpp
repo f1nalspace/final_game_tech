@@ -52,6 +52,7 @@ License:
 #define FPL_IMPLEMENTATION
 #define FPL_NO_AUDIO
 #define FPL_LOGGING
+#define FPL_NO_VIDEO_VULKAN
 #include <final_platform_layer.h>
 
 // @TODO(final): Use final_dynamic_opengl here, so we dont need any linking like any other opengl demo
@@ -316,7 +317,7 @@ int main(int argc, char **args) {
 	fplCopyString("ImGUI Example", settings.window.title, fplArrayCount(settings.window.title));
 	settings.window.windowSize.width = 1280;
 	settings.window.windowSize.height = 720;
-	settings.video.driver = fplVideoDriverType_OpenGL;
+	settings.video.backend = fplVideoBackendType_OpenGL;
 	if(fplPlatformInit(fplInitFlags_Video, &settings)) {
 		displayCount = fplGetDisplays(displays, fplArrayCount(displays));
 

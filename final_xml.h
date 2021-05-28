@@ -75,7 +75,7 @@ SOFTWARE.
 
 /*!
 	\file final_xml.h
-	\version v0.2.0 alpha
+	\version v0.3.0 alpha
 	\author Torsten Spaete
 	\brief Final XML (FXML) - A open source C99 single file header xml parser library.
 */
@@ -83,6 +83,15 @@ SOFTWARE.
 /*!
 	\page page_changelog Changelog
 	\tableofcontents
+
+	## v0.3.0 alpha:
+	- Added typedef fxmlErrorType to fxmlContext
+	- Fixed missing error validation
+	- Fixed FXML_ASSERT was removing loading code in release builds
+	- Fixed missing const for fxmlFindTagByName
+	- Fixed missing const for fxmlFindAttributeByName
+	- Fixed missing const for fxmlGetAttributeValue
+	- Fixed missing const for fxmlGetTagValue
 
 	## v0.2.0 alpha:
 	- Fixed critical crash when allocating memory (Wrong capacity)
@@ -128,16 +137,16 @@ SOFTWARE.
 // Malloc functions override
 #ifndef FXML_MALLOC
 #	include <malloc.h>
-#	define FXML_MALLOC malloc
-#	define FXML_FREE free
+#	define FXML_MALLOC(size) malloc(size)
+#	define FXML_FREE(ptr) free(ptr)
 #endif
 #ifndef FXML_MEMSET
 #	include <string.h>
-#	define FXML_MEMSET memset
+#	define FXML_MEMSET(dst, value, size) memset(dst, value, size)
 #endif
 #ifndef FXML_ASSERT
 #	include <assert.h>
-#	define FXML_ASSERT assert
+#	define FXML_ASSERT(exp) assert(exp)
 #endif
 
 // Useful macros
@@ -181,8 +190,8 @@ extern "C" {
 	} fxmlMemory;
 
 	typedef struct fxmlTag {
-		char *name;
-		char *value;
+		const char *name;
+		const char *value;
 		struct fxmlTag *parent;
 		struct fxmlTag *nextSibling;
 		struct fxmlTag *prevSibling;
@@ -194,6 +203,38 @@ extern "C" {
 		bool isClosed;
 	} fxmlTag;
 
+	typedef enum fxmlErrorType {
+		fxmlErrorType_None = 0,
+
+		fxmlErrorType_OutOfMemory,
+		fxmlErrorType_StringDecodingFailed,
+		fxmlErrorType_UnexpectedChar,
+		fxmlErrorType_RootTagMissing,
+		fxmlErrorType_TagNotClosed,
+		fxmlErrorType_ExpectNamespaceIdent,
+
+		fxmlErrorType_ExpectCommentStart,
+		fxmlErrorType_ExpectCommentEnd,
+		fxmlErrorType_CommentParseError,
+
+		fxmlErrorType_ExpectDeclarationIdent,
+		fxmlErrorType_ExpectDeclarationBegin,
+		fxmlErrorType_ExpectDeclarationEnd,
+		fxmlErrorType_DeclarationParseError,
+
+		fxmlErrorType_ExpectAttributeAssignment,
+		fxmlErrorType_ExpectAttributeQuote,
+		fxmlErrorType_AttributesParseError,
+
+		fxmlErrorType_ExpectTagStart,
+		fxmlErrorType_ExpectTagEnd,
+		fxmlErrorType_ExpectTagIdent,
+		fxmlErrorType_TagNameTooLong,
+		fxmlErrorType_ClosingTagMismatch,
+		fxmlErrorType_InvalidTagChar,
+		fxmlErrorType_TagParseError,
+	} fxmlErrorType;
+
 	typedef struct fxmlContext {
 		const void *data;
 		const char *ptr;
@@ -202,16 +243,17 @@ extern "C" {
 		fxmlMemory *lastMem;
 		fxmlTag *root;
 		fxmlTag *curParent;
+		fxmlErrorType errorType;
 		bool isError;
 	} fxmlContext;
 
 	fxml_api bool fxmlInitFromMemory(const void *data, const size_t dataSize, fxmlContext *outContext);
 	fxml_api bool fxmlParse(fxmlContext *context, fxmlTag *outRoot);
 	fxml_api void fxmlFree(fxmlContext *context);
-	fxml_api fxmlTag *fxmlFindTagByName(fxmlTag *tag, const char *name);
-	fxml_api fxmlTag *fxmlFindAttributeByName(fxmlTag *tag, const char *name);
-	fxml_api const char *fxmlGetAttributeValue(fxmlTag *tag, const char *attrName);
-	fxml_api const char *fxmlGetTagValue(fxmlTag *tag, const char *tagName);
+	fxml_api const fxmlTag *fxmlFindTagByName(const fxmlTag *tag, const char *name);
+	fxml_api const fxmlTag *fxmlFindAttributeByName(const fxmlTag *tag, const char *name);
+	fxml_api const char *fxmlGetAttributeValue(const fxmlTag *tag, const char *attrName);
+	fxml_api const char *fxmlGetTagValue(const fxmlTag *tag, const char *tagName);
 
 #ifdef __cplusplus
 }
@@ -255,17 +297,17 @@ extern "C" {
 	}
 
 	static bool fxml__IsEqualString(const char *a, const char *b) {
-		if ((a == fxml_null) && (b == fxml_null)) {
+		if((a == fxml_null) && (b == fxml_null)) {
 			return true;
 		}
-		if (a == fxml_null || b == fxml_null) {
+		if(a == fxml_null || b == fxml_null) {
 			return false;
 		}
-		while (true) {
-			if (!*a && !*b) {
+		while(true) {
+			if(!*a && !*b) {
 				break;
 			}
-			if ((!*a && *b) || (*a && !*b) || (*a != *b)) {
+			if((!*a && *b) || (*a && !*b) || (*a != *b)) {
 				return false;
 			}
 			++a;
@@ -274,18 +316,27 @@ extern "C" {
 		return(true);
 	}
 
+	static void fxml__ReportError(fxmlContext *context, const fxmlErrorType type) {
+		if(!context->isError) {
+			context->isError = true;
+			context->errorType = type;
+		}
+
+		// TODO(final): Log the error out
+	}
+
 	static size_t fxml__ComputeBlockSize(const size_t minSize, const size_t blockSize) {
 		size_t result = blockSize;
-		while (result < minSize) {
+		while(result < minSize) {
 			result *= 2;
 		}
 		return(result);
 	}
 
 	static void fxml__FreeMemory(fxmlContext *context) {
-		if (context != fxml_null) {
+		if(context != fxml_null) {
 			fxmlMemory *mem = context->firstMem;
-			while (mem != fxml_null) {
+			while(mem != fxml_null) {
 				fxmlMemory *next = mem->next;
 				void *blockBase = mem;
 				FXML_FREE(blockBase);
@@ -297,20 +348,24 @@ extern "C" {
 	static void *fxml__AllocMemory(fxmlContext *context, const size_t size, const size_t allocCount) {
 		// Find block which have the required space first
 		fxmlMemory *mem = context->firstMem;
-		while (mem != fxml_null) {
-			if ((mem->used + size) <= mem->capacity) {
+		while(mem != fxml_null) {
+			if((mem->used + size) <= mem->capacity) {
 				break;
 			}
 			mem = mem->next;
 		}
 
-		if (mem == fxml_null) {
+		if(mem == fxml_null) {
 			// Allocate new block
 			size_t allocationSize = size * allocCount;
 			size_t headerMemorySize = sizeof(fxmlMemory) + FXML__BLOCK_PADDING;
 			size_t blockSize = fxml__ComputeBlockSize(headerMemorySize + allocationSize, FXML__MIN_ALLOC_SIZE);
 			void *blockBase = FXML_MALLOC(blockSize);
-			FXML_ASSERT(blockBase != fxml_null);
+			if(blockBase == fxml_null) {
+				fxml__ReportError(context, fxmlErrorType_OutOfMemory);
+				return(fxml_null);
+			}
+
 			FXML_MEMSET(blockBase, 0, blockSize);
 
 			fxmlMemory *newBlock = (fxmlMemory *)blockBase;
@@ -321,7 +376,7 @@ extern "C" {
 
 			FXML_ASSERT(newBlock->capacity >= allocationSize);
 
-			if (context->lastMem == fxml_null) {
+			if(context->lastMem == fxml_null) {
 				context->firstMem = context->lastMem = newBlock;
 			} else {
 				fxmlMemory *lastMem = (fxmlMemory *)context->lastMem;
@@ -341,70 +396,84 @@ extern "C" {
 
 	static fxmlTag *fxml__AllocTag(fxmlContext *context) {
 		fxmlTag *mem = (fxmlTag *)fxml__AllocMemory(context, sizeof(fxmlTag), FXML__MIN_TAG_ALLOC_COUNT);
+		if(mem == fxml_null) {
+			fxml__ReportError(context, fxmlErrorType_OutOfMemory);
+			return(fxml_null);
+		}
 		return(mem);
 	}
 
-	static char *fxml__AllocString(fxmlContext *context, const fxmlString *str) {
+	static const char *fxml__AllocString(fxmlContext *context, const fxmlString *str) {
 		size_t requiredLen = str->len + 1;
 		size_t requiredSize = sizeof(char) * requiredLen;
 		char *mem = (char *)fxml__AllocMemory(context, requiredSize, 1);
+		if(mem == fxml_null) {
+			fxml__ReportError(context, fxmlErrorType_OutOfMemory);
+			return(fxml_null);
+		}
 		size_t len = str->len;
 		memcpy_s(mem, len + 1, str->start, len);
 		return(mem);
 	}
 
-	static char *fxml__AllocStringDecode(fxmlContext *context, const fxmlString *str) {
+	static const char *fxml__AllocStringDecode(fxmlContext *context, const fxmlString *str) {
 		size_t requiredLen = (str->len * 1) + 1;
 		size_t requiredSize = sizeof(char) * requiredLen;
 		char *mem = (char *)fxml__AllocMemory(context, requiredSize, 1);
+		if(mem == fxml_null) {
+			fxml__ReportError(context, fxmlErrorType_OutOfMemory);
+			return(fxml_null);
+		}
+
 		const char *src = str->start;
 		const char *srcEnd = str->start + str->len;
 		const char *srcPartStart = str->start;
 		char *dst = mem;
-		while (src < srcEnd) {
-			if (*src == '&') {
+		while(src < srcEnd) {
+			if(*src == '&') {
 				++src;
-				if (*src == '#') {
+				if(*src == '#') {
 					++src;
 					uint64_t escapeCode = 0;
-					if (!fxml__IsNumeric(*src)) {
+					if(!fxml__IsNumeric(*src)) {
 						context->isError = true;
 						goto done;
 					}
-					while (fxml__IsNumeric(*src)) {
+					while(fxml__IsNumeric(*src)) {
 						uint32_t v = *src - '0';
 						escapeCode = escapeCode * 10 + v;
 						++src;
 					}
-					if (escapeCode > 0 && escapeCode < 256) {
+					if(escapeCode > 0 && escapeCode < 256) {
 						*dst++ = (char)escapeCode;
 					}
-				} else if (fxml__IsAlpha(*src)) {
+				} else if(fxml__IsAlpha(*src)) {
 					char symbolName[16 + 1];
 					const char *symbolStart = src;
 					size_t symbolLen = 0;
-					while (fxml__IsAlpha(*src)) {
+					while(fxml__IsAlpha(*src)) {
 						size_t symbolIndex = src - symbolStart;
-						if (symbolIndex < FXML_ARRAYCOUNT(symbolName)) {
+						if(symbolIndex < FXML_ARRAYCOUNT(symbolName)) {
 							symbolName[symbolIndex] = *src;
 							++symbolLen;
 						}
 						++src;
 					}
 					symbolName[symbolLen] = 0;
-					if (fxml__IsEqualString(symbolName, "quot")) {
+					if(fxml__IsEqualString(symbolName, "quot")) {
 						*dst++ = '\"';
-					} else if (fxml__IsEqualString(symbolName, "apos")) {
+					} else if(fxml__IsEqualString(symbolName, "apos")) {
 						*dst++ = '\'';
-					} else if (fxml__IsEqualString(symbolName, "amp")) {
+					} else if(fxml__IsEqualString(symbolName, "amp")) {
 						*dst++ = '&';
-					} else if (fxml__IsEqualString(symbolName, "lt")) {
+					} else if(fxml__IsEqualString(symbolName, "lt")) {
 						*dst++ = '<';
-					} else if (fxml__IsEqualString(symbolName, "gt")) {
+					} else if(fxml__IsEqualString(symbolName, "gt")) {
 						*dst++ = '>';
 					}
 				}
-				if (*src != ';') {
+				if(*src != ';') {
+					fxml__ReportError(context, fxmlErrorType_StringDecodingFailed);
 					context->isError = true;
 					goto done;
 				}
@@ -422,10 +491,10 @@ extern "C" {
 	}
 
 	fxml_api bool fxmlInitFromMemory(const void *data, const size_t dataSize, fxmlContext *outContext) {
-		if (data == fxml_null || dataSize == 0) {
+		if(data == fxml_null || dataSize == 0) {
 			return false;
 		}
-		if (outContext == fxml_null) {
+		if(outContext == fxml_null) {
 			return false;
 		}
 
@@ -437,65 +506,71 @@ extern "C" {
 		return(true);
 	}
 
-	static void fxml__ParseIdent(fxmlContext *context, fxmlString *outIdent) {
-		FXML_ASSERT(fxml__IsAlpha(*context->ptr));
+	static bool fxml__ParseIdent(fxmlContext *context, fxmlString *outIdent) {
+		if(!fxml__IsAlpha(*context->ptr)) {
+			return(false);
+		}
 		const char *start = context->ptr;
 		++context->ptr;
-		while (fxml__IsAlphaNumeric(*context->ptr) || *context->ptr == '_' || *context->ptr == '-') {
+		while(fxml__IsAlphaNumeric(*context->ptr) || *context->ptr == '_' || *context->ptr == '-') {
 			++context->ptr;
 		}
-		if (outIdent != fxml_null) {
+		if(outIdent != fxml_null) {
 			outIdent->start = start;
 			outIdent->len = context->ptr - start;
 		}
+		return(true);
 	}
 
 	static bool fxml__ParseAttribute(fxmlContext *context, fxmlString *outName, fxmlString *outValue) {
-		bool result = false;
-		if (fxml__IsAlpha(*context->ptr)) {
-			fxml__ParseIdent(context, outName);
-			if (context->ptr[0] == ':') {
-				++context->ptr;
-				fxml__ParseIdent(context, fxml_null);
-				outName->len = context->ptr - outName->start;
-			}
-
-			if (*context->ptr != '=') {
-				context->isError = true;
-				return false;
-			}
-			++context->ptr;
-
-			if (*context->ptr != '\"') {
-				context->isError = true;
-				return false;
-			}
-			++context->ptr;
-
-			outValue->start = context->ptr;
-			while (*context->ptr && (*context->ptr != '\"')) {
-				++context->ptr;
-			}
-			outValue->len = context->ptr - outValue->start;
-
-			if (*context->ptr != '\"') {
-				context->isError = true;
-				return false;
-			}
-			++context->ptr;
-			result = true;
+		if(!fxml__IsAlpha(*context->ptr)) {
+			// NOTE(final): No attribute is not an error
+			return(false);
 		}
-		return(result);
+		fxml__ParseIdent(context, outName);
+		if(context->ptr[0] == ':') {
+			++context->ptr;
+			if(!fxml__IsAlpha(context->ptr[0]) || !fxml__ParseIdent(context, fxml_null)) {
+				fxml__ReportError(context, fxmlErrorType_ExpectNamespaceIdent);
+				return(false);
+			}
+			outName->len = context->ptr - outName->start;
+		}
+
+		if(*context->ptr != '=') {
+			fxml__ReportError(context, fxmlErrorType_ExpectAttributeAssignment);
+			return false;
+		}
+		++context->ptr;
+
+		if(*context->ptr != '\"') {
+			fxml__ReportError(context, fxmlErrorType_ExpectAttributeQuote);
+			return false;
+		}
+		++context->ptr;
+
+		outValue->start = context->ptr;
+		while(*context->ptr && (*context->ptr != '\"')) {
+			++context->ptr;
+		}
+		outValue->len = context->ptr - outValue->start;
+
+		if(*context->ptr != '\"') {
+			fxml__ReportError(context, fxmlErrorType_ExpectAttributeQuote);
+			return false;
+		}
+		++context->ptr;
+		return(true);
 	}
 
 	static void fxml__SkipWhitespaces(fxmlContext *context) {
-		while (!context->isError && fxml__IsWhitespace(*context->ptr)) {
+		while(!context->isError && fxml__IsWhitespace(*context->ptr)) {
 			++context->ptr;
 		}
 	}
 
 	static void fxml__AddAttribute(fxmlTag *parent, fxmlTag *attr) {
-		if (parent->lastAttribute == fxml_null) {
+		if(parent->lastAttribute == fxml_null) {
 			parent->firstAttribute = parent->lastAttribute = attr;
 		} else {
 			attr->prevSibling = parent->lastAttribute;
@@ -505,15 +580,19 @@ extern "C" {
 
 	}
 
-	static void fxml__ParseAttributes(fxmlContext *context, fxmlTag *parent) {
-		while (!context->isError && *context->ptr) {
+	static bool fxml__ParseAttributes(fxmlContext *context, fxmlTag *parent) {
+		while(!context->isError && *context->ptr) {
 			fxml__SkipWhitespaces(context);
 			fxmlString attrName = FXML_ZERO_INIT;
 			fxmlString attrValue = FXML_ZERO_INIT;
-			if (!fxml__ParseAttribute(context, &attrName, &attrValue)) {
+			if(!fxml__ParseAttribute(context, &attrName, &attrValue)) {
 				break;
 			} else {
 				fxmlTag *attr = fxml__AllocTag(context);
+				if(attr == fxml_null) {
+					fxml__ReportError(context, fxmlErrorType_OutOfMemory);
+					return(false);
+				}
 				attr->type = fxmlTagType_Attribute;
 				attr->name = fxml__AllocString(context, &attrName);
 				attr->value = fxml__AllocStringDecode(context, &attrValue);
@@ -521,10 +600,11 @@ extern "C" {
 			}
 		}
 		fxml__SkipWhitespaces(context);
+		return(true);
 	}
 
 	static void fxml__AddChild(fxmlTag *parent, fxmlTag *child) {
-		if (parent->lastChild == fxml_null) {
+		if(parent->lastChild == fxml_null) {
 			parent->firstChild = parent->lastChild = child;
 		} else {
 			child->prevSibling = parent->lastChild;
@@ -533,25 +613,27 @@ extern "C" {
 		}
 	}
 
-	static void fxml__ParseComment(fxmlContext *context) {
-		FXML_ASSERT(context->ptr[0] == '<');
-		FXML_ASSERT(context->ptr[1] == '!');
+	static bool fxml__ParseComment(fxmlContext *context) {
+		if(context->ptr[0] != '<' || context->ptr[1] != '!') {
+			fxml__ReportError(context, fxmlErrorType_ExpectCommentStart);
+			return(false);
+		}
 		context->ptr += 2;
 
-		if (context->ptr[0] != '-' || context->ptr[1] != '-') {
-			context->isError = true;
-			return;
+		if(context->ptr[0] != '-' || context->ptr[1] != '-') {
+			fxml__ReportError(context, fxmlErrorType_ExpectCommentStart);
+			return(false);
 		}
 		context->ptr += 2;
 
 		fxmlString comment = FXML_ZERO_INIT;
 		comment.start = context->ptr;
-		while (!context->isError && *context->ptr) {
-			if (context->ptr[0] == '-') {
-				if (context->ptr[1] == '-') {
-					if (context->ptr[2] != '>') {
-						context->isError = true;
-						return;
+		while(!context->isError && *context->ptr) {
+			if(context->ptr[0] == '-') {
+				if(context->ptr[1] == '-') {
+					if(context->ptr[2] != '>') {
+						fxml__ReportError(context, fxmlErrorType_ExpectCommentEnd);
+						return(false);
 					} else {
 						break;
 					}
@@ -562,39 +644,58 @@ extern "C" {
 		comment.len = context->ptr - comment.start;
 
 		fxmlTag *commentTag = fxml__AllocTag(context);
+		if(commentTag == fxml_null) {
+			fxml__ReportError(context, fxmlErrorType_OutOfMemory);
+			return(false);
+		}
+
 		commentTag->value = fxml__AllocStringDecode(context, &comment);
 		commentTag->type = fxmlTagType_Comment;
 
 		FXML_ASSERT(context->curParent != fxml_null);
+
 		fxml__AddChild(context->curParent, commentTag);
 
-		if (context->ptr[0] != '-' || context->ptr[1] != '-' || context->ptr[2] != '>') {
-			context->isError = true;
-			return;
+		if(context->ptr[0] != '-' || context->ptr[1] != '-' || context->ptr[2] != '>') {
+			fxml__ReportError(context, fxmlErrorType_ExpectCommentEnd);
+			return(false);
 		}
 		context->ptr += 3;
+		return(true);
 	}
 
 	static fxmlTag *fxml__ParseDeclaration(fxmlContext *context) {
-		FXML_ASSERT(context->ptr[0] == '<');
-		FXML_ASSERT(context->ptr[1] == '?');
+		if(context->ptr[0] != '<' || context->ptr[1] != '?') {
+			fxml__ReportError(context, fxmlErrorType_ExpectDeclarationBegin);
+			return(fxml_null);
+		}
+
 		context->ptr += 2;
 
-		if (!fxml__IsAlpha(*context->ptr)) {
-			context->isError = true;
-			return fxml_null;
-		}
 		fxmlString declName = FXML_ZERO_INIT;
-		fxml__ParseIdent(context, &declName);
+		if(!fxml__IsAlpha(*context->ptr) || !fxml__ParseIdent(context, &declName)) {
+			fxml__ReportError(context, fxmlErrorType_ExpectDeclarationIdent);
+			return(fxml_null);
+		}
 
 		fxmlTag *declTag = fxml__AllocTag(context);
+		if(declTag == fxml_null) {
+			fxml__ReportError(context, fxmlErrorType_OutOfMemory);
+			return(fxml_null);
+		}
+
 		declTag->name = fxml__AllocString(context, &declName);
 		declTag->type = fxmlTagType_Declaration;
-		fxml__ParseAttributes(context, declTag);
+		if(!fxml__ParseAttributes(context, declTag)) {
+			fxml__ReportError(context, fxmlErrorType_AttributesParseError);
+			return(fxml_null);
+		}
+
 		fxml__AddChild(context->root, declTag);
 
-		if (context->ptr[0] != '?' || context->ptr[1] != '>') {
-			return fxml_null;
+		if(context->ptr[0] != '?' || context->ptr[1] != '>') {
+			fxml__ReportError(context, fxmlErrorType_ExpectDeclarationEnd);
+			return(fxml_null);
 		}
 		context->ptr += 2;
 
@@ -614,38 +715,56 @@ extern "C" {
 		char tagName[256];
 	} fxml__ParseTagResult;
 
-	static void fxml__ParseTag(fxmlContext *context, fxml__ParseTagResult *outResult) {
+	static bool fxml__ParseTag(fxmlContext *context, fxml__ParseTagResult *outResult) {
+		if(context->ptr[0] != '<') {
+			fxml__ReportError(context, fxmlErrorType_ExpectTagStart);
+			return(false);
+		}
+
 		outResult->mode = fxml__ParseTagMode_Open;
 		outResult->tag = fxml_null;
 		outResult->tagName[0] = 0;
 
-		FXML_ASSERT(context->ptr[0] == '<');
 		context->ptr++;
-		if (context->ptr[0] == '/') {
+		if(context->ptr[0] == '/') {
 			outResult->mode = fxml__ParseTagMode_Close;
 			context->ptr++;
 		}
-		if (!fxml__IsAlpha(*context->ptr)) {
-			context->isError = true;
-			return;
-		}
-		fxmlString identStr = FXML_ZERO_INIT;
-		fxml__ParseIdent(context, &identStr);
 
-		FXML_ASSERT(identStr.len < (FXML_ARRAYCOUNT(outResult->tagName) + 1));
-		for (size_t i = 0; i < identStr.len; ++i) {
+		fxmlString identStr = FXML_ZERO_INIT;
+		if(!fxml__IsAlpha(*context->ptr) || !fxml__ParseIdent(context, &identStr)) {
+			fxml__ReportError(context, fxmlErrorType_ExpectTagIdent);
+			return(false);
+		}
+
+		size_t requiredTagNameLength = identStr.len + 1;
+		if(requiredTagNameLength > FXML_ARRAYCOUNT(outResult->tagName)) {
+			fxml__ReportError(context, fxmlErrorType_TagNameTooLong);
+			return(false);
+		}
+
+		for(size_t i = 0; i < identStr.len; ++i) {
 			outResult->tagName[i] = *(identStr.start + i);
 		}
 		outResult->tagName[identStr.len] = 0;
 
-		if (context->ptr[0] == ':') {
+		if(context->ptr[0] == ':') {
+			// First ident was namespace, parse real ident
 			context->ptr++;
-			fxml__ParseIdent(context, fxml_null);
+			if(!fxml__IsAlpha(context->ptr[0]) || !fxml__ParseIdent(context, fxml_null)) {
+				fxml__ReportError(context, fxmlErrorType_ExpectNamespaceIdent);
+				return(false);
+			}
 			identStr.len = context->ptr - identStr.start;
 		}
 
-		if (outResult->mode != fxml__ParseTagMode_Close) {
+		if(outResult->mode != fxml__ParseTagMode_Close) {
 			fxmlTag *tag = fxml__AllocTag(context);
+			if(tag == fxml_null) {
+				fxml__ReportError(context, fxmlErrorType_OutOfMemory);
+				return(false);
+			}
+
 			tag->type = fxmlTagType_Element;
 			tag->name = fxml__AllocString(context, &identStr);
 			tag->parent = context->curParent;
@@ -653,8 +772,12 @@ extern "C" {
 			outResult->tag = tag;
 			fxml__AddChild(context->curParent, tag);
 
-			fxml__ParseAttributes(context, tag);
-			if (context->ptr[0] == '/') {
+			if(!fxml__ParseAttributes(context, tag)) {
+				fxml__ReportError(context, fxmlErrorType_AttributesParseError);
+				return(false);
+			}
+
+			if(context->ptr[0] == '/') {
 				outResult->mode = fxml__ParseTagMode_OpenAndClose;
 				tag->isClosed = true;
 				++context->ptr;
@@ -663,16 +786,17 @@ extern "C" {
 			fxml__SkipWhitespaces(context);
 		}
 
-		if (context->ptr[0] != '>') {
-			context->isError = true;
-			return;
+		if(context->ptr[0] != '>') {
+			fxml__ReportError(context, fxmlErrorType_ExpectTagEnd);
+			return(false);
 		}
 		context->ptr++;
+		return(true);
 	}
 
 	static void fxml__ParseInnerText(fxmlContext *context, fxmlTag *tag) {
 		const char *start = context->ptr;
-		while (!context->isError && context->ptr[0] && context->ptr[0] != '<') {
+		while(!context->isError && context->ptr[0] && context->ptr[0] != '<') {
 			++context->ptr;
 		}
 		fxmlString value = FXML_ZERO_INIT;
@@ -684,18 +808,18 @@ extern "C" {
 	fxml_api bool fxmlParse(fxmlContext *context, fxmlTag *outRoot) {
 		// Read unicode BOM
 		bool isUTF8 = false;
-		if (context->size >= 4) {
+		if(context->size >= 4) {
 			uint8_t *p = (uint8_t *)context->ptr;
-			if (p[0] == 0xFF && p[1] == 0xFE) {
+			if(p[0] == 0xFF && p[1] == 0xFE) {
 				// Error: UTF-16LE not supported
 				context->isError = true;
 				return false;
-			} else if (p[0] == 0xFE && p[1] == 0xFF) {
+			} else if(p[0] == 0xFE && p[1] == 0xFF) {
 				// Error: UTF-16BE not supported
 				context->isError = true;
 				return false;
 			}
-			if (p[0] == 0xEF && p[1] == 0xBB && p[2] == 0xBF) {
+			if(p[0] == 0xEF && p[1] == 0xBB && p[2] == 0xBF) {
 				// UTF-8 BOM detected
 				context->ptr += 3;
 				isUTF8 = true;
@@ -705,43 +829,53 @@ extern "C" {
 		outRoot->type = fxmlTagType_Root;
 		context->root = outRoot;
 		context->curParent = outRoot;
-		while (!context->isError && *context->ptr) {
+		while(!context->isError && *context->ptr) {
 			char c = context->ptr[0];
 			bool readAhead = true;
-			switch (c) {
+			switch(c) {
 				case '<':
 				{
-					if (context->ptr[1] == '?') {
+					if(context->ptr[1] == '?') {
 						fxmlTag *declTag = fxml__ParseDeclaration(context);
+						if(context->isError) {
+							fxml__ReportError(context, fxmlErrorType_DeclarationParseError);
+							break;
+						}
 						const char *encoding = fxmlGetAttributeValue(declTag, "encoding");
-						if (fxml__IsEqualString(encoding, "UTF-8") || fxml__IsEqualString(encoding, "utf-8")) {
+						if(fxml__IsEqualString(encoding, "UTF-8") || fxml__IsEqualString(encoding, "utf-8")) {
 							isUTF8 = true;
 						}
 						readAhead = false;
-					} else if (context->ptr[1] == '/' || fxml__IsAlpha(context->ptr[1])) {
+					} else if(context->ptr[1] == '/' || fxml__IsAlpha(context->ptr[1])) {
 						fxml__ParseTagResult tagRes = FXML_ZERO_INIT;
-						fxml__ParseTag(context, &tagRes);
-						if (tagRes.mode == fxml__ParseTagMode_Open) {
+						if(!fxml__ParseTag(context, &tagRes)) {
+							fxml__ReportError(context, fxmlErrorType_TagParseError);
+							break;
+						}
+						if(tagRes.mode == fxml__ParseTagMode_Open) {
 							fxml__ParseInnerText(context, tagRes.tag);
 							context->curParent = tagRes.tag;
-						} else if (tagRes.mode == fxml__ParseTagMode_Close) {
-							if (!fxml__IsEqualString(context->curParent->name, tagRes.tagName)) {
-								// Error: Closing tag name does not match
-								context->isError = true;
+						} else if(tagRes.mode == fxml__ParseTagMode_Close) {
+							if(!fxml__IsEqualString(context->curParent->name, tagRes.tagName)) {
+								fxml__ReportError(context, fxmlErrorType_ClosingTagMismatch);
 								break;
 							}
 							context->curParent->isClosed = true;
-							if (context->curParent->parent != fxml_null) {
+							if(context->curParent->parent != fxml_null) {
 								context->curParent = context->curParent->parent;
 							} else {
 								context->curParent = context->root;
 							}
 						}
 						readAhead = false;
-					} else if (context->ptr[1] == '!') {
-						fxml__ParseComment(context);
+					} else if(context->ptr[1] == '!') {
+						if(!fxml__ParseComment(context)) {
+							fxml__ReportError(context, fxmlErrorType_CommentParseError);
+							break;
+						}
 						readAhead = false;
 					} else {
+						fxml__ReportError(context, fxmlErrorType_UnexpectedChar);
 						return false;
 					}
 				} break;
@@ -751,45 +885,48 @@ extern "C" {
 
 				} break;
 			}
-			if (readAhead) {
+			if(readAhead) {
 				++context->ptr;
 			}
 		}
 
-		if (context->curParent == context->root) {
+		if(context->curParent == context->root) {
 			context->curParent->isClosed = true;
 		}
 
 		fxmlTag *testChild = context->root->firstChild;
 		int elementCount = 0;
-		while (testChild != fxml_null) {
-			if (testChild->type == fxmlTagType_Element) {
+		while(testChild != fxml_null) {
+			if(testChild->type == fxmlTagType_Element) {
 				++elementCount;
 			}
 			testChild = testChild->nextSibling;
 		}
-		if (elementCount != 1) {
-			// No root tag found
-			context->isError = true;
+		if(elementCount != 1) {
+			fxml__ReportError(context, fxmlErrorType_RootTagMissing); // No root tag found
+			return(false);
 		}
-		if (!context->curParent->isClosed) {
-			// Last tag not closed
-			context->isError = true;
+		if(!context->curParent->isClosed) {
+
+			fxml__ReportError(context, fxmlErrorType_TagNotClosed); // Last tag not closed
+			return(false);
 		}
 
 		return(!context->isError);
 	}
 
 	fxml_api void fxmlFree(fxmlContext *context) {
-		fxml__FreeMemory(context);
+		if(context != fxml_null) {
+			fxml__FreeMemory(context);
+		}
 	}
 
-	fxml_api fxmlTag *fxmlFindTagByName(fxmlTag *tag, const char *name) {
-		fxmlTag *result = fxml_null;
-		if (tag != fxml_null) {
-			fxmlTag *searchTag = tag->firstChild;
-			while (searchTag != fxml_null) {
-				if (searchTag->type == fxmlTagType_Element && fxml__IsEqualString(searchTag->name, name)) {
+	fxml_api const fxmlTag *fxmlFindTagByName(const fxmlTag *tag, const char *name) {
+		const fxmlTag *result = fxml_null;
+		if(tag != fxml_null) {
+			const fxmlTag *searchTag = tag->firstChild;
+			while(searchTag != fxml_null) {
+				if(searchTag->type == fxmlTagType_Element && fxml__IsEqualString(searchTag->name, name)) {
 					result = searchTag;
 					break;
 				}
@@ -799,12 +936,12 @@ extern "C" {
 		return(result);
 	}
 
-	fxml_api fxmlTag *fxmlFindAttributeByName(fxmlTag *tag, const char *name) {
-		fxmlTag *result = fxml_null;
-		if (tag != fxml_null) {
-			fxmlTag *searchAttr = tag->firstAttribute;
-			while (searchAttr != fxml_null) {
-				if (searchAttr->type == fxmlTagType_Attribute && fxml__IsEqualString(searchAttr->name, name)) {
+	fxml_api const fxmlTag *fxmlFindAttributeByName(const fxmlTag *tag, const char *name) {
+		const fxmlTag *result = fxml_null;
+		if(tag != fxml_null) {
+			const fxmlTag *searchAttr = tag->firstAttribute;
+			while(searchAttr != fxml_null) {
+				if(searchAttr->type == fxmlTagType_Attribute && fxml__IsEqualString(searchAttr->name, name)) {
 					result = searchAttr;
 					break;
 				}
@@ -814,24 +951,24 @@ extern "C" {
 		return(result);
 	}
 
-	fxml_api const char *fxmlGetAttributeValue(fxmlTag *tag, const char *attrName) {
-		fxmlTag *foundAttr = fxmlFindAttributeByName(tag, attrName);
-		if (foundAttr != fxml_null) {
+	fxml_api const char *fxmlGetAttributeValue(const fxmlTag *tag, const char *attrName) {
+		const fxmlTag *foundAttr = fxmlFindAttributeByName(tag, attrName);
+		if(foundAttr != fxml_null) {
 			return foundAttr->value;
 		}
 		return fxml_null;
 	}
 
-	fxml_api const char *fxmlGetTagValue(fxmlTag *tag, const char *tagName) {
-		fxmlTag *foundTag = fxmlFindTagByName(tag, tagName);
-		if (foundTag != fxml_null) {
+	fxml_api const char *fxmlGetTagValue(const fxmlTag *tag, const char *tagName) {
+		const fxmlTag *foundTag = fxmlFindTagByName(tag, tagName);
+		if(foundTag != fxml_null) {
 			return foundTag->value;
 		}
 		return fxml_null;
 	}
 
 #ifdef __cplusplus
-	}
+}
 #endif // __cplusplus
 
 #endif // FXML_IMPLEMENTATION

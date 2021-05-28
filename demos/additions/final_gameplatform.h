@@ -276,7 +276,7 @@ static uint32_t GameAudioPlayback(const fplAudioDeviceFormat *outFormat, const u
 
 extern int GameMain(const GameConfiguration &config) {
 	fplSettings settings = fplMakeDefaultSettings();
-	settings.video.driver = fplVideoDriverType_OpenGL;
+	settings.video.backend = fplVideoBackendType_OpenGL;
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
 	settings.video.isVSync = true;
 	if (config.audioSampleRate > 0) {
