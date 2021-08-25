@@ -289,7 +289,10 @@ extern int GameMain(const GameConfiguration &config) {
 		settings.audio.targetFormat.channels = config.audioChannels;
 	fplWideStringToUTF8String(config.title, wcslen(config.title), settings.window.title, fplArrayCount(settings.window.title));
 
-	if(!fplPlatformInit(fplInitFlags_All, &settings)) {
+	fplInitFlags initFlags = fplInitFlags_All;
+	initFlags &= ~fplInitFlags_Console;
+
+	if(!fplPlatformInit(initFlags, &settings)) {
 		return -1;
 	}
 
