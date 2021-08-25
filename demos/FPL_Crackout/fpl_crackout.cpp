@@ -16,6 +16,11 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2021-08-25
+	- Replaced game music with a better fitting track
+	- Added menu music
+	- Added license.txt for assets
+
 	## 2019-06-23
 	- Modify the bounce normal for ball vs paddle, based on projection
 	- Made the brick assets 50 % smaller to fit the pixel style
@@ -305,8 +310,10 @@ struct Assets {
 	FontAsset fontMenu;
 	FontAsset fontHud;
 	AudioSource *ballHitSound;
-	AudioSource *music;
-	AudioPlayItemID musicPlayId;
+	AudioSource *gameMusic;
+	AudioSource *menuMusic;
+	AudioPlayItemID gameMusicPlayId;
+	AudioPlayItemID menuMusicPlayId;
 };
 
 enum class GameMode {
@@ -382,8 +389,6 @@ inline int RandomInt(int size) {
 	int result = rand() % size;
 	return(result);
 }
-
-
 
 static void ClearWorld(b2World* world) {
 	b2Body* body = world->GetBodyList();
@@ -658,9 +663,10 @@ static void LoadLevel(GameState& state, int levelSeed) {
 
 	GlueBallOnPaddle(state, &state.ball.ball);
 
-	// Play music
-	AudioSystemStopOne(state.audioSys, state.assets.musicPlayId);
-	state.assets.musicPlayId = AudioSystemPlaySource(state.audioSys, state.assets.music, true, 0.5f);
+	// Play music (Stop previous ones first)
+	AudioSystemStopOne(state.audioSys, state.assets.gameMusicPlayId);
+	AudioSystemStopOne(state.audioSys, state.assets.menuMusicPlayId);
+	state.assets.gameMusicPlayId = AudioSystemPlaySource(state.audioSys, state.assets.gameMusic, true, 0.5f);
 }
 
 
@@ -717,7 +723,9 @@ static bool LoadAssets(GameState& state) {
 
 	LoadSound(state.audioSys, state.dataPath, "bounce_44100hz.wav", state.assets.ballHitSound);
 
-	LoadSound(state.audioSys, state.dataPath, "music_44100hz.mp3", state.assets.music);
+	LoadSound(state.audioSys, state.dataPath, "music_44100hz.ogg", state.assets.gameMusic);
+
+	LoadSound(state.audioSys, state.dataPath, "menu_44100hz.wav", state.assets.menuMusic);
 
 	return true;
 }
@@ -771,6 +779,9 @@ static bool InitGame(GameState& state) {
 #if 1
 	state.mode = GameMode::Title;
 	state.menu = {};
+
+	// Play menu music
+	state.assets.menuMusicPlayId = AudioSystemPlaySource(state.audioSys, state.assets.menuMusic, true, 0.5f);
 #else
 	StartGame(state);
 #endif
@@ -1076,6 +1087,9 @@ extern void GameInput(GameMemory& gameMemory, const Input& input) {
 static void UpdatePlayMode(GameState& state, const Input& input) {
 	// Game over?
 	if (state.lifes == 0) {
+		AudioSystemStopOne(state.audioSys, state.assets.gameMusicPlayId);
+		AudioSystemStopOne(state.audioSys, state.assets.menuMusicPlayId);
+		state.assets.menuMusicPlayId = AudioSystemPlaySource(state.audioSys, state.assets.menuMusic, true, 0.5f);
 		state.mode = GameMode::GameOver;
 		return;
 	}

@@ -1,0 +1,13 @@
+Acknowledgments & Licenses:
+
+Menu loop sound by Brandon Morris (CC0):
+https://opengameart.org/content/loading-screen-loop
+
+Game music by Jan125 (CC-BY 4.0):
+https://opengameart.org/content/artblock
+
+Bounce sound by Torsten Spaete (CC0):
+Made with a 8-bit sound generator
+
+Hemi Head Font by by Typodermic Fonts (Free for non-commercial use):
+https://www.dafont.com/hemi-head.font
