@@ -7,3 +7,6 @@
 *.otf binary
 *.dll binary
 *.lib binary
+*.wav binary
+*.ogg binary
+*.mp3 binary
