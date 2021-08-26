@@ -213,7 +213,7 @@ namespace FPLPresentationData {
 			"But to play audio, for example, it's a different story, because each platform has numerous drivers, which are always very hard to program."
 			""
 			"A platform abstraction layer (or short 'PAL') is a development library, written in a low-level language such as 'C',"
-			"that provides a platform-independent API that uses the platform-specific functions, drivers, and handles, but lets you write code that runs on all supported platforms."
+			"that implements all this drivers and specific functions, but lets you write code once, that runs on all supported platforms."
 		};
 
 		static BlockDefinition Blocks[] = {
@@ -248,8 +248,8 @@ namespace FPLPresentationData {
 				"is an lightweight PAL written in C99,\n"
 				"providing a powerful and easy to use API,\n"
 				"for working with low-level and hardware systems\n"
-				"such as audio, video, memory, window, timing,\n"
-				"input-systems and many more.\n",
+				"such as audio, video, memory, window, threading,\n"
+				"I/O and many more.\n",
 				HorizontalAlignment::Left
 			),
 		};
@@ -261,14 +261,14 @@ namespace FPLPresentationData {
 		static const char* Talk = {
 			"C/C++ has very limited access to the underlying platform."
 			"Even in modern C++, you still don't have direct access to a lot of systems."
-			"To access low-level systems, you either need to use third-party libraries or write platform-specific codes for Win32, Linux, Mac, etc. directly."
+			"To access low-level systems, such as audio or video, you either need to use third-party libraries or write platform-specific codes for Win32, Linux, Mac, etc. directly."
 			""
-			"Of course, there are existing PALs on the internet, but most of them have a lot of issues."
-			"- The source-codes contain dozens of translation units which slow down compile time enormously."
-			"- Almost all, are designed not to include the full source within your application and force you either to static or runtime linked pre-compiled releases. (the reason for that is simple: compile times!)."
-			"- In some development environments, it won't compile with a statically linked release"
+			"Of course, there is already a few PALs on the internet, but most of them have the same issue:"
+			"- The source-codes contain dozens of translation units which slows down compile time enormously"
+			"- Almost all, are designed not to include the full source within your application and force you either to static or runtime linked pre-compiled releases"
+			"- Some even don't allow statically linked and force you to dynamic linking"
 			"- You have limited or no control over memory allocations"
-			"- Most of it has too many dependencies (build-systems, third-party libraries)"
+			"- Most of it has too many dependencies (build-systems, third-party libraries, etc.)"
 		};
 
 		static BlockDefinition Blocks[] = {
