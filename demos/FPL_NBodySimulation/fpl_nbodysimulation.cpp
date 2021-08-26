@@ -37,6 +37,9 @@ Todo:
 	- Migrate to modern opengl 3.3+
 
 Changelog:
+	# 2021-08-26:
+	- Fixed weird crash on fplPlatformInit() due to wrong macro configuration for main include vs translation unit
+
 	#1.4.3:
 	- Migrated to FPL 0.9.2.0 beta
 
@@ -75,10 +78,12 @@ License:
 	Copyright (c) 2017-2021 Torsten Spaete
 	MIT License (See LICENSE file)
 */
-#define FPL_ENTRYPOINT
+#define FPL_LOGGING
 #define FPL_NO_AUDIO
 #define FPL_NO_PLATFORM_INCLUDES
 #define FPL_NO_VIDEO_VULKAN
+
+#define FPL_ENTRYPOINT
 #include <final_platform_layer.h>
 
 #define FGL_IMPLEMENTATION
