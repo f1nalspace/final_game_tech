@@ -120,7 +120,7 @@ SOFTWARE.
 
 /*!
 	@file final_platform_layer.h
-	@version v0.9.7-beta
+	@version v0.9.8-beta
 	@author Torsten Spaete
 	@brief Final Platform Layer (FPL) - A C99 Single-Header-File Platform Abstraction Library
 */
@@ -131,6 +131,15 @@ SOFTWARE.
 /*!
 	@page page_changelog Changelog
 	@tableofcontents
+
+	## v0.9.8-beta
+
+	### Short
+	- Added useful functions for multithreading
+
+	### Detail
+	- New: Added function GetAvailableThreadCount() that returns the number of available threads
+	- New: Added function GetUserThreadCount() that returns the number of used/active threads
 
 	## v0.9.7-beta
 
@@ -4609,6 +4618,16 @@ fpl_common_api fplThreadState fplGetThreadState(fplThreadHandle *thread);
 * @return Returns the immutable pointer to the @ref fplThreadHandle .
 */
 fpl_common_api const fplThreadHandle *fplGetMainThread();
+/**
+* @brief Gets the number of available threads.
+* @return Returns the number of available threads.
+*/
+fpl_common_api size_t GetAvailableThreadCount();
+/**
+* @brief Gets the number of used/active threads.
+* @return Returns the number of used/acvtive threads.
+*/
+fpl_common_api size_t GetUsedThreadCount();
 /**
 * @brief Gets the thread id for the current thread.
 * @return Returns the thread id for the current thread.
@@ -10167,6 +10186,28 @@ fpl_common_api fplThreadState fplGetThreadState(fplThreadHandle *thread) {
 
 fpl_common_api const fplThreadHandle *fplGetMainThread() {
 	const fplThreadHandle *result = &fpl__global__ThreadState.mainThread;
+	return(result);
+}
+
+fpl_common_api size_t GetAvailableThreadCount() {
+	size_t result = 0;
+	for (size_t threadIndex = 0; threadIndex < FPL_MAX_THREAD_COUNT; ++threadIndex) {
+		fplThreadState state = (fplThreadState)fplAtomicLoadU32((volatile uint32_t *)&fpl__global__ThreadState.threads[threadIndex].currentState);
+		if (state == fplThreadState_Stopped) {
+			++result;
+		}
+	}
+	return(result);
+}
+
+fpl_common_api size_t GetUsedThreadCount() {
+	size_t result = 0;
+	for (size_t threadIndex = 0; threadIndex < FPL_MAX_THREAD_COUNT; ++threadIndex) {
+		fplThreadState state = (fplThreadState)fplAtomicLoadU32((volatile uint32_t *)&fpl__global__ThreadState.threads[threadIndex].currentState);
+		if (state != fplThreadState_Stopped) {
+			++result;
+		}
+	}
 	return(result);
 }
 
