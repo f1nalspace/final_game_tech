@@ -2245,33 +2245,33 @@
 
 	@subsection subsection_category_io_binaryfiles_read_open Opening a Binary File
 
-	To open a binary file, simply declare a @ref fplFileHandle somewhere and call fplOpenBinaryFile() with a valid UTF-8 path to open it.<br>
+	To open a binary file, simply declare a @ref fplFileHandle somewhere and call fplFileOpenBinary() with a valid UTF-8 path to open it.<br>
 
 	@code{.c}
 	fplFileHandle fileHandle;
-	if (fplOpenBinaryFile("myimage.jpg", &fileHandle)) {
+	if (fplFileOpenBinary("myimage.jpg", &fileHandle)) {
 
 		// ... read data
 
-		fplCloseFile(&fileHandle);
+		fplFileClose(&fileHandle);
 	}
 	@endcode
 
-	@note Call @ref fplCloseFile() to close a file when you are done.
+	@note Call @ref fplFileClose() to close a file when you are done.
 
 	@subsection subsection_category_io_binaryfiles_read_readblock Reading from the file
 
-	To read a block of n-bytes from the file starting from the current file position, simply call @ref fplReadFileBlock() with your filehandle and a buffer to read into.<br>
+	To read a block of n-bytes from the file starting from the current file position, simply call @ref fplFileReadBlock() with your filehandle and a buffer to read into.<br>
 
 	@code{.c}
 	struct jpeg_header; // defined somewhere
 	fplFileHandle fileHandle;
-	if (fplOpenBinaryFile("myimage.jpg", &fileHandle)) {
+	if (fplFileOpenBinary("myimage.jpg", &fileHandle)) {
 		size_t read;
 
 		// Read the first 4 characters
 		char fourCC[4];
-		read = fplReadFileBlock(&fileHandle, 4, fourCC, sizeof(fourCC));
+		read = fplFileReadBlock(&fileHandle, 4, fourCC, sizeof(fourCC));
 		fplAssert(read == 4);
 
 		// or
@@ -2279,9 +2279,9 @@
 		// Read a JPEG-Header
 		jpeg_header jpegHeader;
 		size_t read;
-		read = fplReadFileBlock(&fileHandle, sizeof(jpegHeader), &jpegHeader, sizeof(jpegHeader));
+		read = fplFileReadBlock(&fileHandle, sizeof(jpegHeader), &jpegHeader, sizeof(jpegHeader));
 		fplAssert(read == sizeof(jpegHeader));
-		fplCloseFile(&fileHandle);
+		fplFileClose(&fileHandle);
 	}
 	@endcode
 
@@ -2289,38 +2289,38 @@
 
 	@subsection subsection_category_io_binaryfiles_write_create Creating a Binary File
 
-	To create a binary file, simply declare a @ref fplFileHandle somewhere and call fplCreateBinaryFile() with a valid UTF-8 path to open it.<br>
+	To create a binary file, simply declare a @ref fplFileHandle somewhere and call fplFileCreateBinary() with a valid UTF-8 path to open it.<br>
 	If the file already exists, it will be overridden automatically.<br>
 
 	@code{.c}
 	fplFileHandle fileHandle;
-	if (fplCreateBinaryFile("myimage.jpg", &fileHandle)) {
+	if (fplFileCreateBinary("myimage.jpg", &fileHandle)) {
 
 		// ... write data
 
-		fplCloseFile(&fileHandle);
+		fplFileClose(&fileHandle);
 	}
 	@endcode
 
-	@note Call @ref fplCloseFile() to close a file when you are done.
+	@note Call @ref fplFileClose() to close a file when you are done.
 
 	@subsection subsection_category_io_binaryfiles_write_writeblock Writing to the file
 
-	To write n-bytes of memory into an opened file beginning at the current file position, simply call @ref fplWriteFileBlock() with your filehandle and the buffer you want to write.<br>
+	To write n-bytes of memory into an opened file beginning at the current file position, simply call @ref fplFileWriteBlock() with your filehandle and the buffer you want to write.<br>
 
 	@code{.c}
 	fplFileHandle fileHandle;
 	char *saveGameFilePath = ...
-	if (fplCreateBinaryFile(saveGameFilePath, &fileHandle)) {
+	if (fplFileCreateBinary(saveGameFilePath, &fileHandle)) {
 		char savegameFourCC[4] = {'S', 'A', 'V', 'E'};
 		uint8_t *savegameDataPtr = ...;
 		size_t savegameDataSize = ...;
 
 		// Write a savegame
-		fplWriteFileBlock(&fileHandle, savegameFourCC, 4);
-		fplWriteFileBlock(&fileHandle, savegameDataPtr, savegameDataSize);
+		fplFileWriteBlock(&fileHandle, savegameFourCC, 4);
+		fplFileWriteBlock(&fileHandle, savegameDataPtr, savegameDataSize);
 
-		fplCloseFile(&fileHandle);
+		fplFileClose(&fileHandle);
 	}
 	@endcode
 
@@ -2328,33 +2328,33 @@
 
 	@subsection subsection_category_io_binaryfiles_pos_get Getting the current file position
 
-	Call @ref fplGetFilePosition() to get the current file position from a opened @ref fplFileHandle .
+	Call @ref fplFileGetPosition() to get the current file position from a opened @ref fplFileHandle .
 
 	@code{.c}
 	fplFileHandle fileHandle = ...
-	size_t curPos = fplGetFilePosition(&fileHandle);
+	size_t curPos = fplFileGetPosition(&fileHandle);
 	@endcode
 
 	@subsection subsection_category_io_binaryfiles_pos_set Setting the current file position (Seeking)
 
-	Call @ref fplSetFilePosition() to set the current file position on a opened @ref fplFileHandle .<br>
+	Call @ref fplFileSetPosition() to set the current file position on a opened @ref fplFileHandle .<br>
 
 	@code{.c}
 	fplFileHandle fileHandle = ...
 	// Seek 4-bytes forwards from the current position
-	fplSetFilePosition(&fileHandle, 4, fplFilePositionMode_Current);
+	fplFileSetPosition(&fileHandle, 4, fplFilePositionMode_Current);
 
 	// Seek 8-bytes backwards from the current position
-	fplSetFilePosition(&fileHandle, -4, fplFilePositionMode_Current);
+	fplFileSetPosition(&fileHandle, -4, fplFilePositionMode_Current);
 
 	// Seek to the 128-byte from the beginning (Absolute seeking)
-	fplSetFilePosition(&fileHandle, 128, fplFilePositionMode_Beginning);
+	fplFileSetPosition(&fileHandle, 128, fplFilePositionMode_Beginning);
 
 	// Seek to the start of the file
-	fplSetFilePosition(&fileHandle, 0, fplFilePositionMode_Beginning);
+	fplFileSetPosition(&fileHandle, 0, fplFilePositionMode_Beginning);
 
 	// Seek to the end of the file (Get file length)
-	size_t fileLength = fplSetFilePosition(&fileHandle, 0, fplFilePositionMode_End);
+	size_t fileLength = fplFileSetPosition(&fileHandle, 0, fplFilePositionMode_End);
 	@endcode
 
 	@section section_category_io_binaryfiles_32vs64 Default vs 32-bit vs 64-bit
@@ -2369,32 +2369,32 @@
 	@subsection section_category_io_binaryfiles_32vs64_default Default
 
 	Uses either 32-bit or the 64-bit, depending on the compiled CPU architecture:<br>
-	- @ref fplSetFilePosition() maps to @ref fplSetFilePosition32() or fplSetFilePosition64()
-	- @ref fplGetFilePosition() maps to @ref fplSetFilePosition32() or fplSetFilePosition64()
-	- @ref fplReadFileBlock() maps to @ref fplReadFileBlock32() or fplReadFileBlock64()
-	- @ref fplWriteFileBlock() maps to @ref fplWriteFileBlock32() or fplWriteFileBlock64()
-	- @ref fplGetFileSizeFromPath() maps to @ref fplGetFileSizeFromPath32() or fplGetFileSizeFromPath64()
-	- @ref fplGetFileSizeFromHandle() maps to @ref fplGetFileSizeFromHandle32() or fplGetFileSizeFromHandle64()
+	- @ref fplFileSetPosition() maps to @ref fplFileSetPosition32() or fplFileSetPosition64()
+	- @ref fplFileGetPosition() maps to @ref fplFileGetPosition32() or fplFileGetPosition64()
+	- @ref fplFileReadBlock() maps to @ref fplFileReadBlock32() or fplFileReadBlock64()
+	- @ref fplFileWriteBlock() maps to @ref fplFileWriteBlock32() or fplFileWriteBlock64()
+	- @ref fplFileGetSizeFromPath() maps to @ref fplFileGetSizeFromPath32() or fplFileGetSizeFromPath64()
+	- @ref fplFileGetSizeFromHandle() maps to @ref fplFileGetSizeFromHandle32() or fplFileGetSizeFromHandle64()
 	
 	@subsection section_category_io_binaryfiles_32vs64_32 32-bit
 
 	Limited to 32-bit:<br>
-	- @ref fplSetFilePosition32()
-	- @ref fplSetFilePosition32()
-	- @ref fplReadFileBlock32()
-	- @ref fplWriteFileBlock32()
-	- @ref fplGetFileSizeFromPath32()
-	- @ref fplGetFileSizeFromHandle32()
+	- @ref fplFileSetPosition32()
+	- @ref fplFileSetPosition32()
+	- @ref fplFileReadBlock32()
+	- @ref fplFileWriteBlock32()
+	- @ref fplFileGetSizeFromPath32()
+	- @ref fplFileGetSizeFromHandle32()
 
 	@subsection section_category_io_binaryfiles_32vs64_64 64-bit
 
 	Up to 2-TB (64-bit):<br>
-	- @ref fplSetFilePosition64()
-	- @ref fplSetFilePosition64()
-	- @ref fplReadFileBlock64()
-	- @ref fplWriteFileBlock64()
-	- @ref fplGetFileSizeFromPath64()
-	- @ref fplGetFileSizeFromHandle64()
+	- @ref fplFileSetPosition64()
+	- @ref fplFileSetPosition64()
+	- @ref fplFileReadBlock64()
+	- @ref fplFileWriteBlock64()
+	- @ref fplFileGetSizeFromPath64()
+	- @ref fplFileGetSizeFromHandle64()
 */
 
 /*!
@@ -2578,10 +2578,10 @@
 
 	@subsection subsection_category_io_paths_traversing_findfiles Finding files by wildcard
 
-	Use @ref fplListDirBegin() to start finding files in a path.<br>
+	Use @ref fplDirectoryListBegin() to start finding files in a path.<br>
 	If this function succeeds, the result for the first match is written into the @ref fplFileEntry structure.<br>
 	<br>
-	After this you repeatly call @ref fplListDirNext(), to get the next match into @ref fplFileEntry structure - until the function returns false.<br>
+	After this you repeatly call @ref fplDirectoryListNext(), to get the next match into @ref fplFileEntry structure - until the function returns false.<br>
 
 	<b>Example:</b>
 	@code{.c}
@@ -2591,20 +2591,20 @@
 
 	// Find all .so files (For-loop style)
 	fileCount = 0;
-	for(bool hasEntry = fplListDirBegin(sourcePath, "*.so", &entry); hasEntry; hasEntry = fplListDirNext(&entry)) {
+	for(bool hasEntry = fplDirectoryListBegin(sourcePath, "*.so", &entry); hasEntry; hasEntry = fplDirectoryListNext(&entry)) {
 		// ... do something with entry.name
 		++fileCount;
 	}
 
 	// Find all .so files (While style)
 	fileCount = 0;
-	if (fplListDirBegin(sourcePath, "*.so", &entry)) {
+	if (fplDirectoryListBegin(sourcePath, "*.so", &entry)) {
 		// The first file was found
 		// ... do something with entry.name
 		++fileCount;
 
 		// Loop until no file is found
-		while (fplListDirNext(&entry)) {
+		while (fplDirectoryListNext(&entry)) {
 			// ... do something with entry.name
 			++fileCount;
 		}
@@ -2613,24 +2613,24 @@
 	// Find all .so files (For-loop style, break out after reaching a limit of maximum allowed files)
 	size_t maxFileCount = ...
 	fileCount = 0;
-	for(bool hasEntry = fplListDirBegin(sourcePath, "*.so", &entry); hasEntry; hasEntry = fplListDirNext(&entry)) {
+	for(bool hasEntry = fplDirectoryListBegin(sourcePath, "*.so", &entry); hasEntry; hasEntry = fplDirectoryListNext(&entry)) {
 		if (fileCount < maxFileCount) {
 			// ... do something with entry.name
 		} else {
 			// Release resources, when we exit out the iteration
-			fplListDirEnd(&entry);
+			fplDirectoryListEnd(&entry);
 			break;
 		}
 		++fileCount;
 	}
 	@endcode
 
-	@note When @ref fplListDirBegin or @ref fplListDirNext does not find any match, the internal resources are released automatically.
-	@warning If you manually stop the iteration, please call @ref fplListDirEnd() to release its internal resources - otherwise you may leak memory!
+	@note When @ref fplDirectoryListBegin() or @ref fplDirectoryListNext() does not find any match, the internal resources are released automatically.
+	@warning If you manually stop the iteration, please call @ref fplDirectoryListEnd() to release its internal resources - otherwise you may leak memory!
 
 	@subsection subsection_category_io_paths_traversing_traversefiles Recursively get all files in a directory
 
-	There is no recursion support built-in in FPL, but you can easily make one using @ref fplListDirBegin() .<br>
+	There is no recursion support built-in in FPL, but you can easily make one using @ref fplDirectoryListBegin() .<br>
 	Just iterate through the file entries, which are already explained here: @ref subsection_category_io_paths_traversing_findfiles <br>
 	You can check @ref fplFileEntry.type ,to check for either a @ref fplFileEntryType_Directory or a @ref fplFileEntryType_File type to start a recursion or not.<br>
 
@@ -2649,7 +2649,7 @@
 
 	static void GetFilesFromDirectory(const char *rootPath, const bool recursive, file_list_t *outList) {
 		fplEntry entry;
-		for(bool hasEntry = fplListDirBegin(rootPath, "*", &entry); hasEntry; hasEntry = fplListDirNext(&entry)) {
+		for(bool hasEntry = fplDirectoryListBegin(rootPath, "*", &entry); hasEntry; hasEntry = fplDirectoryListNext(&entry)) {
 			char path[FPL_MAX_PATH_LENGTH];
 			fplPathCombine(path, fplArrayCount(path), 2, rootPath, entry.name);
 			if (entry.type == fplFileEntryType_Directory && recursive) {
