@@ -136,7 +136,7 @@ SOFTWARE.
 
 	### Overview
 	- Added useful functions for multithreading
-	- Renamed File/IO functions to match naming scheme
+	- Renamed tons of functions to match naming scheme
 
 	### Details
 
@@ -161,6 +161,7 @@ SOFTWARE.
 	- Changed: Renamed function fplListDirBegin() to fplDirectoryListBegin()
 	- Changed: Renamed function fplListDirNext() to fplDirectoryListNext()
 	- Changed: Renamed function fplListDirEnd() to fplDirectoryListEnd()
+	- Changed: Renamed function fplGetPlatformResultName() to fplPlatformGetResultName()
 
 	## v0.9.7-beta
 
@@ -3470,7 +3471,7 @@ typedef enum fplPlatformResultType {
 * @return Returns the string representation of a platform result type.
 * @see @ref section_category_initialization_result
 */
-fpl_common_api const char *fplGetPlatformResultName(const fplPlatformResultType type);
+fpl_common_api const char *fplPlatformGetResultName(const fplPlatformResultType type);
 
 //! An enumeration of video backend types
 typedef enum fplVideoBackendType {
@@ -10655,7 +10656,7 @@ fpl_globalvar const char *fpl__global_platformResultTypeNameTable[] = {
 };
 fplStaticAssert(fplArrayCount(fpl__global_platformResultTypeNameTable) == FPL__PLATFORMRESULTTYPE_COUNT);
 
-fpl_common_api const char *fplGetPlatformResultName(const fplPlatformResultType type) {
+fpl_common_api const char *fplPlatformGetResultName(const fplPlatformResultType type) {
 	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, fplPlatformResultType_First, fplPlatformResultType_Last);
 	const char *result = fpl__global_platformResultTypeNameTable[index];
 	return(result);

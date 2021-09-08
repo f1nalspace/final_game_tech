@@ -2866,7 +2866,7 @@ int main(int argc, char **argv) {
 	fplConsoleFormatOut("-> Initialize %s Platform\n", platformName);
 	if(!fplPlatformInit(initFlags, &settings)) {
 		fplPlatformResultType resultType = fplGetPlatformResult();
-		const char *resultName = fplGetPlatformResultName(resultType);
+		const char *resultName = fplPlatformGetResultName(resultType);
 		fplConsoleFormatError("Failed to initialize FPL '%s'!\n", resultName);
 		goto cleanup;
 	}

@@ -458,7 +458,7 @@
 		fplPlatformRelease();
 	} else {
 		fplPlatformResultType initResult = fplGetPlatformResult();
-		const char *initResultStr = fplGetPlatformResultName(initResult);
+		const char *initResultStr = fplPlatformGetResultName(initResult);
 		const char *errStr = fplGetLastError();
 		fplConsoleFormatError("FPL-ERROR[%s]: %s\n", initResultStr, errStr);
 	}
