@@ -360,7 +360,7 @@ namespace FPLPresentationData {
 				"- Macros (debug break, assertions, CPU features, memory etc.)\n"
 				"- Window creation and handling (Win32/X11)\n"
 				"- Event and input polling (keyboard/mouse/gamepad)\n"
-				"- Video initialization and output (software, OpenGL, etc.)\n"
+				"- Video initialization and output (software, OpenGL, Vulkan, etc.)\n"
 				"- Asynchronous audio playback (DirectSound, ALSA, etc.)\n"
 				"- IO (console, paths, files, directories, etc.)\n"
 				"- Memory allocation\n"
