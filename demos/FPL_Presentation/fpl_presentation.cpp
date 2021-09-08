@@ -530,11 +530,11 @@ struct FontAtlas {
 
 	static b32 LoadFromFile(FontAtlas *outAtlas, const char *filePath, const int fontIndex, const float fontSize, const uint32_t minChar, const uint32_t maxChar, const uint32_t minBitmapSize = 256, const uint32_t maxBitmapSize = 8192) {
 		fplFileHandle fontFile;
-		if(fplOpenBinaryFile(filePath, &fontFile)) {
-			uint32_t fileSize = fplGetFileSizeFromHandle32(&fontFile);
+		if(fplFileOpenBinary(filePath, &fontFile)) {
+			uint32_t fileSize = fplFileGetSizeFromHandle32(&fontFile);
 			uint8_t *fontData = (uint8_t *)fplMemoryAllocate(fileSize);
-			fplReadFileBlock32(&fontFile, fileSize, fontData, fileSize);
-			fplCloseFile(&fontFile);
+			fplFileReadBlock32(&fontFile, fileSize, fontData, fileSize);
+			fplFileClose(&fontFile);
 			b32 result = LoadFromMemory(outAtlas, fontData, fontIndex, fontSize, minChar, maxChar, minBitmapSize, maxBitmapSize);
 			fplMemoryFree(fontData);
 			return(result);
@@ -592,11 +592,11 @@ struct LoadedFont {
 
 	static b32 LoadFromFile(LoadedFont *outFont, const char *filePath, const int fontIndex, const float fontSize, const uint32_t minChar, const uint32_t maxChar, const uint32_t minBitmapSize = 256, const uint32_t maxBitmapSize = 8192) {
 		fplFileHandle fontFile;
-		if(fplOpenBinaryFile(filePath, &fontFile)) {
-			uint32_t fileSize = fplGetFileSizeFromHandle32(&fontFile);
+		if(fplFileOpenBinary(filePath, &fontFile)) {
+			uint32_t fileSize = fplFileGetSizeFromHandle32(&fontFile);
 			uint8_t *fontData = (uint8_t *)fplMemoryAllocate(fileSize);
-			fplReadFileBlock32(&fontFile, fileSize, fontData, fileSize);
-			fplCloseFile(&fontFile);
+			fplFileReadBlock32(&fontFile, fileSize, fontData, fileSize);
+			fplFileClose(&fontFile);
 			b32 result = LoadFromMemory(outFont, fontData, fontIndex, fontSize, minChar, maxChar, minBitmapSize, maxBitmapSize);
 			fplMemoryFree(fontData);
 			return(result);
@@ -683,11 +683,11 @@ struct LoadedImage {
 
 	static b32 LoadFromFile(LoadedImage *outImage, const char *filePath) {
 		fplFileHandle fontFile;
-		if(fplOpenBinaryFile(filePath, &fontFile)) {
-			uint32_t fileSize = fplGetFileSizeFromHandle32(&fontFile);
+		if(fplFileOpenBinary(filePath, &fontFile)) {
+			uint32_t fileSize = fplFileGetSizeFromHandle32(&fontFile);
 			uint8_t *bytes = (uint8_t *)fplMemoryAllocate(fileSize);
-			fplReadFileBlock32(&fontFile, fileSize, bytes, fileSize);
-			fplCloseFile(&fontFile);
+			fplFileReadBlock32(&fontFile, fileSize, bytes, fileSize);
+			fplFileClose(&fontFile);
 			b32 result = LoadFromMemory(outImage, bytes, fileSize);
 			fplMemoryFree(bytes);
 			return(result);

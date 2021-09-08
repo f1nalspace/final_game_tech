@@ -465,11 +465,11 @@ static bool LoadFontFromFile(const char* dataPath, const char* filename, const u
 	fplFileHandle file;
 	uint8_t* ttfBuffer = fpl_null;
 	uint32_t ttfBufferSize = 0;
-	if (fplOpenBinaryFile(filePath, &file)) {
-		ttfBufferSize = fplGetFileSizeFromHandle32(&file);
+	if (fplFileOpenBinary(filePath, &file)) {
+		ttfBufferSize = fplFileGetSizeFromHandle32(&file);
 		ttfBuffer = (uint8_t*)fplMemoryAllocate(ttfBufferSize);
-		fplReadFileBlock32(&file, ttfBufferSize, ttfBuffer, ttfBufferSize);
-		fplCloseFile(&file);
+		fplFileReadBlock32(&file, ttfBufferSize, ttfBuffer, ttfBufferSize);
+		fplFileClose(&file);
 	}
 
 	if (ttfBuffer != nullptr) {
@@ -610,10 +610,10 @@ static GLuint LoadTexture(const char* dataPath, const char* filename) {
 	fplPathCombine(filePath, fplArrayCount(filePath), 2, dataPath, filename);
 
 	fplFileHandle file = {};
-	if (fplOpenBinaryFile(filePath, &file)) {
-		uint32_t dataSize = fplGetFileSizeFromHandle32(&file);
+	if (fplFileOpenBinary(filePath, &file)) {
+		uint32_t dataSize = fplFileGetSizeFromHandle32(&file);
 		uint8_t* data = (uint8_t*)fplMemoryAllocate(dataSize);
-		fplReadFileBlock32(&file, dataSize, data, dataSize);
+		fplFileReadBlock32(&file, dataSize, data, dataSize);
 		int w, h, components;
 		stbi_set_flip_vertically_on_load(0);
 		uint8_t* pixels = stbi_load_from_memory(data, (int)dataSize, &w, &h, &components, 4);
@@ -622,7 +622,7 @@ static GLuint LoadTexture(const char* dataPath, const char* filename) {
 			stbi_image_free(pixels);
 		}
 		fplMemoryFree(data);
-		fplCloseFile(&file);
+		fplFileClose(&file);
 	}
 	return(result);
 }

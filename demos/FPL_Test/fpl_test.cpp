@@ -975,34 +975,34 @@ static void TestFiles() {
 	}
 	ftMsg("Test File Size\n");
 	{
-		uint32_t emptySize = fplGetFileSizeFromPath32(testNotExistingFile);
+		uint32_t emptySize = fplFileGetSizeFromPath32(testNotExistingFile);
 		ftAssertU32Equals(0, emptySize);
-		uint32_t existingSize = fplGetFileSizeFromPath32(testExistingFile);
+		uint32_t existingSize = fplFileGetSizeFromPath32(testExistingFile);
 		ftAssert(existingSize > 0);
 	}
 	ftMsg("Test Directory Iterations without filter\n");
 	{
 		fplFileEntry fileEntry = {};
-		for (bool r = fplListDirBegin(testRootPath, "*.*", &fileEntry); r; r = fplListDirNext(&fileEntry)) {
+		for (bool r = fplDirectoryListBegin(testRootPath, "*.*", &fileEntry); r; r = fplDirectoryListNext(&fileEntry)) {
 			ftMsg("%s\n", fileEntry.name);
 		}
-		fplListDirEnd(&fileEntry);
+		fplDirectoryListEnd(&fileEntry);
 	}
 	ftMsg("Test Directory Iterations with all filter\n");
 	{
 		fplFileEntry fileEntry = {};
-		for (bool r = fplListDirBegin(testRootPath, "*", &fileEntry); r; r = fplListDirNext(&fileEntry)) {
+		for (bool r = fplDirectoryListBegin(testRootPath, "*", &fileEntry); r; r = fplDirectoryListNext(&fileEntry)) {
 			ftMsg("%s\n", fileEntry.name);
 		}
-		fplListDirEnd(&fileEntry);
+		fplDirectoryListEnd(&fileEntry);
 	}
 	ftMsg("Test Directory Iterations with root filter '%s'\n", testRootFilter);
 	{
 		fplFileEntry fileEntry = {};
-		bool r = fplListDirBegin(testRootPath, testRootFilter, &fileEntry);
+		bool r = fplDirectoryListBegin(testRootPath, testRootFilter, &fileEntry);
 		ftMsg("%s\n", fileEntry.name);
 		ftIsTrue(r);
-		fplListDirEnd(&fileEntry);
+		fplDirectoryListEnd(&fileEntry);
 	}
 	}
 

@@ -319,11 +319,11 @@ extern bool LoadFontFromFile(const char *dataPath, const char *filename, const u
 	fplFileHandle file;
 	uint8_t *ttfBuffer = fpl_null;
 	uint32_t ttfBufferSize = 0;
-	if(fplOpenBinaryFile(filePath, &file)) {
-		ttfBufferSize = fplGetFileSizeFromHandle32(&file);
+	if(fplFileOpenBinary(filePath, &file)) {
+		ttfBufferSize = fplFileGetSizeFromHandle32(&file);
 		ttfBuffer = (uint8_t *)fplMemoryAllocate(ttfBufferSize);
-		fplReadFileBlock32(&file, ttfBufferSize, ttfBuffer, ttfBufferSize);
-		fplCloseFile(&file);
+		fplFileReadBlock32(&file, ttfBufferSize, ttfBuffer, ttfBufferSize);
+		fplFileClose(&file);
 	}
 
 	if(ttfBuffer != nullptr) {

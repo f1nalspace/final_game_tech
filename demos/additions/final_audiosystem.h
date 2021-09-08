@@ -275,8 +275,8 @@ static AudioFileFormat PropeAudioFileFormat(const char *filePath) {
 	AudioFileFormat result = AudioFileFormat_None;
 	if(filePath != fpl_null) {
 		fplFileHandle file;
-		if(fplOpenBinaryFile(filePath, &file)) {
-			size_t fileSize = fplGetFileSizeFromHandle32(&file);
+		if(fplFileOpenBinary(filePath, &file)) {
+			size_t fileSize = fplFileGetSizeFromHandle32(&file);
 
 			size_t initialBufferSize = fplMin(MAX_AUDIO_PROBE_BYTES_COUNT, fileSize);
 			uint8_t *probeBuffer = (uint8_t *)fplMemoryAllocate(initialBufferSize);
@@ -285,8 +285,8 @@ static AudioFileFormat PropeAudioFileFormat(const char *filePath) {
 			bool requiresMoreData;
 			do {
 				requiresMoreData = false;
-				fplSetFilePosition32(&file, 0, fplFilePositionMode_Beginning);
-				if(fplReadFileBlock32(&file, (uint32_t)currentBufferSize, probeBuffer, (uint32_t)currentBufferSize) == currentBufferSize) {
+				fplFileSetPosition32(&file, 0, fplFilePositionMode_Beginning);
+				if(fplFileReadBlock32(&file, (uint32_t)currentBufferSize, probeBuffer, (uint32_t)currentBufferSize) == currentBufferSize) {
 					if(TestWaveHeader(probeBuffer, currentBufferSize)) {
 						result = AudioFileFormat_Wave;
 						break;
@@ -315,7 +315,7 @@ static AudioFileFormat PropeAudioFileFormat(const char *filePath) {
 
 
 			fplMemoryFree(probeBuffer);
-			fplCloseFile(&file);
+			fplFileClose(&file);
 		}
 	}
 	return(result);

@@ -106,11 +106,11 @@ extern TextureData LoadTextureData(const char *dataPath, const char *filename) {
 	fplPathCombine(filePath, fplArrayCount(filePath), 2, dataPath, filename);
 
 	fplFileHandle file;
-	if (fplOpenBinaryFile(filePath, &file)) {
-		uint32_t fileLen = fplGetFileSizeFromHandle32(&file);
+	if (fplFileOpenBinary(filePath, &file)) {
+		uint32_t fileLen = fplFileGetSizeFromHandle32(&file);
 		uint8_t *fileBuffer = (uint8_t *)fplMemoryAllocate(fileLen);
 		if (fileBuffer != nullptr) {
-			if (fplReadFileBlock32(&file, fileLen, fileBuffer, fileLen) == fileLen) {
+			if (fplFileReadBlock32(&file, fileLen, fileBuffer, fileLen) == fileLen) {
 				int imageWidth = 0;
 				int imageHeight = 0;
 				int imageComponents = 0;
@@ -131,7 +131,7 @@ extern TextureData LoadTextureData(const char *dataPath, const char *filename) {
 		} else {
 			fplConsoleFormatError("Failed allocating memory of size '%lu'!\n", fileLen);
 		}
-		fplCloseFile(&file);
+		fplFileClose(&file);
 	} else {
 		fplConsoleFormatError("Image file '%s' could not be found!\n", filePath);
 	}

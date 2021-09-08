@@ -389,14 +389,14 @@ namespace utils {
 	static FileContents LoadEntireFile(const char *filePath, fmemMemoryBlock *memory) {
 		FileContents result = {};
 		fplFileHandle file;
-		if (fplOpenBinaryFile(filePath, &file)) {
-			result.info.size = fplGetFileSizeFromHandle32(&file);
+		if (fplFileOpenBinary(filePath, &file)) {
+			result.info.size = fplFileGetSizeFromHandle32(&file);
 			fplFileTimeStamps timestamps = {};
-			fplGetFileTimestampsFromHandle(&file, &timestamps);
+			fplFileGetTimestampsFromHandle(&file, &timestamps);
 			result.info.modifyDate = timestamps.lastModifyTime;
 			result.data = (uint8_t *)fmemPush(memory, result.info.size, fmemPushFlags_None);
-			fplReadFileBlock32(&file, (uint32_t)result.info.size, result.data, (uint32_t)result.info.size);
-			fplCloseFile(&file);
+			fplFileReadBlock32(&file, (uint32_t)result.info.size, result.data, (uint32_t)result.info.size);
+			fplFileClose(&file);
 		}
 		return(result);
 	}
@@ -404,12 +404,12 @@ namespace utils {
 	static FileInfo LoadFileInfo(const char *filePath) {
 		FileInfo result = {};
 		fplFileHandle file;
-		if (fplOpenBinaryFile(filePath, &file)) {
-			result.size = fplGetFileSizeFromHandle32(&file);
+		if (fplFileOpenBinary(filePath, &file)) {
+			result.size = fplFileGetSizeFromHandle32(&file);
 			fplFileTimeStamps timestamps = {};
-			fplGetFileTimestampsFromHandle(&file, &timestamps);
+			fplFileGetTimestampsFromHandle(&file, &timestamps);
 			result.modifyDate = timestamps.lastModifyTime;
-			fplCloseFile(&file);
+			fplFileClose(&file);
 		}
 		return(result);
 	}

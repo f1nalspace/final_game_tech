@@ -180,16 +180,16 @@ extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, P
 extern bool LoadWaveFromFile(const char *filePath, PCMWaveData *outWave) {
 	bool result = false;
 	fplFileHandle file;
-	if(fplOpenBinaryFile(filePath, &file)) {
-		size_t length = fplGetFileSizeFromHandle32(&file);
+	if(fplFileOpenBinary(filePath, &file)) {
+		size_t length = fplFileGetSizeFromHandle32(&file);
 		uint8_t *contents = (uint8_t *)fplMemoryAllocate(length);
 		if(contents != fpl_null) {
-			if(fplReadFileBlock32(&file, (uint32_t)length, contents, (uint32_t)length) == length) {
+			if(fplFileReadBlock32(&file, (uint32_t)length, contents, (uint32_t)length) == length) {
 				result = LoadWaveFromBuffer(contents, length, outWave);
 			}
 			fplMemoryFree(contents);
 		}
-		fplCloseFile(&file);
+		fplFileClose(&file);
 	}
 	return(result);
 }

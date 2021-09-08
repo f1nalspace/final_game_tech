@@ -134,12 +134,33 @@ SOFTWARE.
 
 	## v0.9.8-beta
 
-	### Short
+	### Overview
 	- Added useful functions for multithreading
+	- Renamed File/IO functions to match naming scheme
 
-	### Detail
+	### Details
+
+	#### Features
 	- New: Added function GetAvailableThreadCount() that returns the number of available threads
 	- New: Added function GetUserThreadCount() that returns the number of used/active threads
+
+	#### Breaking Changes
+	- Changed: Renamed function fplOpenBinaryFile() to fplFileOpenBinary()
+	- Changed: Renamed function fplCreateBinaryFile() to fplFileCreateBinary()
+	- Changed: Renamed functions fplReadFileBlock*() to fplFileReadBlock*()
+	- Changed: Renamed functions fplWriteFileBlock*() to fplFileWriteBlock*()
+	- Changed: Renamed functions fplSetFilePosition*() to fplFileSetPosition*()
+	- Changed: Renamed functions fplGetFilePosition*() to fplFileGetPosition*()
+	- Changed: Renamed function fplFlushFile() to fplFileFlush()
+	- Changed: Renamed function fplCloseFile() to fplFileClose()
+	- Changed: Renamed functions fplGetFileSizeFromPath*() to fplFileGetSizeFromPath*()
+	- Changed: Renamed functions fplGetFileSizeFromHandle*() to fplFileGetSizeFromHandle*()
+	- Changed: Renamed function fplGetFileTimestampsFromPath() to fplFileGetTimestampsFromPath()
+	- Changed: Renamed function fplGetFileTimestampsFromHandle() to fplFileGetTimestampsFromHandle()
+	- Changed: Renamed function fplSetFileTimestamps() to fplFileSetTimestamps()
+	- Changed: Renamed function fplListDirBegin() to fplDirectoryListBegin()
+	- Changed: Renamed function fplListDirNext() to fplDirectoryListNext()
+	- Changed: Renamed function fplListDirEnd() to fplDirectoryListEnd()
 
 	## v0.9.7-beta
 
@@ -5217,7 +5238,7 @@ typedef struct fplFileEntry {
 * @return Returns true when the binary file was opened, false otherwise.
 * @see @ref subsection_category_io_binaryfiles_read_open
 */
-fpl_platform_api bool fplOpenBinaryFile(const char *filePath, fplFileHandle *outHandle);
+fpl_platform_api bool fplFileOpenBinary(const char *filePath, fplFileHandle *outHandle);
 /**
 * @brief Create a binary file for writing to the given string path and returns the handle of it.
 * @param filePath The file path
@@ -5225,7 +5246,7 @@ fpl_platform_api bool fplOpenBinaryFile(const char *filePath, fplFileHandle *out
 * @return Returns true when the binary file was created, false otherwise.
 * @see @ref subsection_category_io_binaryfiles_write_create
 */
-fpl_platform_api bool fplCreateBinaryFile(const char *filePath, fplFileHandle *outHandle);
+fpl_platform_api bool fplFileCreateBinary(const char *filePath, fplFileHandle *outHandle);
 /**
 * @brief Reads a block from the given file and returns the number of bytes read.
 * @param fileHandle The pointer to the @ref fplFileHandle structure
@@ -5236,7 +5257,7 @@ fpl_platform_api bool fplCreateBinaryFile(const char *filePath, fplFileHandle *o
 * @note Supports max size of 2^31
 * @see @ref subsection_category_io_binaryfiles_read_readblock
 */
-fpl_platform_api uint32_t fplReadFileBlock32(const fplFileHandle *fileHandle, const uint32_t sizeToRead, void *targetBuffer, const uint32_t maxTargetBufferSize);
+fpl_platform_api uint32_t fplFileReadBlock32(const fplFileHandle *fileHandle, const uint32_t sizeToRead, void *targetBuffer, const uint32_t maxTargetBufferSize);
 /**
 * @brief Reads a block from the given file and returns the number of bytes read.
 * @param fileHandle The pointer to the @ref fplFileHandle structure
@@ -5247,7 +5268,7 @@ fpl_platform_api uint32_t fplReadFileBlock32(const fplFileHandle *fileHandle, co
 * @note Supports max size of 2^63
 * @see @ref subsection_category_io_binaryfiles_read_readblock
 */
-fpl_platform_api uint64_t fplReadFileBlock64(const fplFileHandle *fileHandle, const uint64_t sizeToRead, void *targetBuffer, const uint64_t maxTargetBufferSize);
+fpl_platform_api uint64_t fplFileReadBlock64(const fplFileHandle *fileHandle, const uint64_t sizeToRead, void *targetBuffer, const uint64_t maxTargetBufferSize);
 /**
 * @brief Reads a block from the given file and returns the number of bytes read.
 * @param fileHandle The pointer to the @ref fplFileHandle structure
@@ -5258,7 +5279,7 @@ fpl_platform_api uint64_t fplReadFileBlock64(const fplFileHandle *fileHandle, co
 * @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes
 * @see @ref subsection_category_io_binaryfiles_read_readblock
 */
-fpl_platform_api size_t fplReadFileBlock(const fplFileHandle *fileHandle, const size_t sizeToRead, void *targetBuffer, const size_t maxTargetBufferSize);
+fpl_platform_api size_t fplFileReadBlock(const fplFileHandle *fileHandle, const size_t sizeToRead, void *targetBuffer, const size_t maxTargetBufferSize);
 /**
 * @brief Writes a block to the given file and returns the number of written bytes.
 * @param fileHandle The pointer to the filehandle @ref fplFileHandle
@@ -5268,7 +5289,7 @@ fpl_platform_api size_t fplReadFileBlock(const fplFileHandle *fileHandle, const 
 * @note Supports max size of 2^31
 * @see @ref subsection_category_io_binaryfiles_write_writeblock
 */
-fpl_platform_api uint32_t fplWriteFileBlock32(const fplFileHandle *fileHandle, void *sourceBuffer, const uint32_t sourceSize);
+fpl_platform_api uint32_t fplFileWriteBlock32(const fplFileHandle *fileHandle, void *sourceBuffer, const uint32_t sourceSize);
 /**
 * @brief Writes a block to the given file and returns the number of written bytes.
 * @param fileHandle The pointer to the filehandle @ref fplFileHandle
@@ -5278,7 +5299,7 @@ fpl_platform_api uint32_t fplWriteFileBlock32(const fplFileHandle *fileHandle, v
 * @note Supports max size of 2^63
 * @see @ref subsection_category_io_binaryfiles_write_writeblock
 */
-fpl_platform_api uint64_t fplWriteFileBlock64(const fplFileHandle *fileHandle, void *sourceBuffer, const uint64_t sourceSize);
+fpl_platform_api uint64_t fplFileWriteBlock64(const fplFileHandle *fileHandle, void *sourceBuffer, const uint64_t sourceSize);
 /**
 * @brief Writes a block to the given file and returns the number of written bytes.
 * @param fileHandle The pointer to the filehandle @ref fplFileHandle
@@ -5288,7 +5309,7 @@ fpl_platform_api uint64_t fplWriteFileBlock64(const fplFileHandle *fileHandle, v
 * @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes
 * @see @ref subsection_category_io_binaryfiles_write_writeblock
 */
-fpl_common_api size_t fplWriteFileBlock(const fplFileHandle *fileHandle, void *sourceBuffer, const size_t sourceSize);
+fpl_common_api size_t fplFileWriteBlock(const fplFileHandle *fileHandle, void *sourceBuffer, const size_t sourceSize);
 /**
 * @brief Sets the current file position by the given position, depending on the mode it's absolute or relative.
 * @param fileHandle The pointer to the @ref fplFileHandle structure
@@ -5297,7 +5318,7 @@ fpl_common_api size_t fplWriteFileBlock(const fplFileHandle *fileHandle, void *s
 * @note Supports max size of 2^31
 * @see @ref subsection_category_io_binaryfiles_pos_set
 */
-fpl_platform_api uint32_t fplSetFilePosition32(const fplFileHandle *fileHandle, const int32_t position, const fplFilePositionMode mode);
+fpl_platform_api uint32_t fplFileSetPosition32(const fplFileHandle *fileHandle, const int32_t position, const fplFilePositionMode mode);
 /**
 * @brief Sets the current file position by the given position, depending on the mode it's absolute or relative.
 * @param fileHandle The pointer to the @ref fplFileHandle structure
@@ -5306,7 +5327,7 @@ fpl_platform_api uint32_t fplSetFilePosition32(const fplFileHandle *fileHandle, 
 * @note Supports max size of 2^63
 * @see @ref subsection_category_io_binaryfiles_pos_set
 */
-fpl_platform_api uint64_t fplSetFilePosition64(const fplFileHandle *fileHandle, const int64_t position, const fplFilePositionMode mode);
+fpl_platform_api uint64_t fplFileSetPosition64(const fplFileHandle *fileHandle, const int64_t position, const fplFilePositionMode mode);
 /**
 * @brief Sets the current file position by the given position, depending on the mode it's absolute or relative.
 * @param fileHandle The pointer to the @ref fplFileHandle structure
@@ -5315,7 +5336,7 @@ fpl_platform_api uint64_t fplSetFilePosition64(const fplFileHandle *fileHandle, 
 * @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes
 * @see @ref subsection_category_io_binaryfiles_pos_set
 */
-fpl_common_api size_t fplSetFilePosition(const fplFileHandle *fileHandle, const intptr_t position, const fplFilePositionMode mode);
+fpl_common_api size_t fplFileSetPosition(const fplFileHandle *fileHandle, const intptr_t position, const fplFilePositionMode mode);
 /**
 * @brief Gets the current file position in bytes.
 * @param fileHandle The pointer to the @ref fplFileHandle structure
@@ -5323,7 +5344,7 @@ fpl_common_api size_t fplSetFilePosition(const fplFileHandle *fileHandle, const 
 * @note Supports max size of 2^31
 * @see @ref subsection_category_io_binaryfiles_pos_get
 */
-fpl_platform_api uint32_t fplGetFilePosition32(const fplFileHandle *fileHandle);
+fpl_platform_api uint32_t fplFileGetPosition32(const fplFileHandle *fileHandle);
 /**
 * @brief Gets the current file position in bytes.
 * @param fileHandle The pointer to the @ref fplFileHandle structure
@@ -5331,7 +5352,7 @@ fpl_platform_api uint32_t fplGetFilePosition32(const fplFileHandle *fileHandle);
 * @note Supports max size of 2^63
 * @see @ref subsection_category_io_binaryfiles_pos_get
 */
-fpl_platform_api uint64_t fplGetFilePosition64(const fplFileHandle *fileHandle);
+fpl_platform_api uint64_t fplFileGetPosition64(const fplFileHandle *fileHandle);
 /**
 * @brief Gets the current file position in bytes.
 * @param fileHandle The pointer to the @ref fplFileHandle structure
@@ -5339,19 +5360,19 @@ fpl_platform_api uint64_t fplGetFilePosition64(const fplFileHandle *fileHandle);
 * @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes
 * @see @ref subsection_category_io_binaryfiles_pos_get
 */
-fpl_common_api size_t fplGetFilePosition(const fplFileHandle *fileHandle);
+fpl_common_api size_t fplFileGetPosition(const fplFileHandle *fileHandle);
 /**
 * @brief Flushes the buffers of the given file and causes all buffered data to be written to a file.
 * @param fileHandle The pointer to the @ref fplFileHandle structure
 * @return Returns true when file buffer was flushed, false otherwise.
 */
-fpl_platform_api bool fplFlushFile(fplFileHandle *fileHandle);
+fpl_platform_api bool fplFileFlush(fplFileHandle *fileHandle);
 /**
 * @brief Closes the given file and releases the underlying resources and clears the handle to zero.
 * @param fileHandle The pointer to the @ref fplFileHandle structure
 * @see @ref subsection_category_io_binaryfiles_read_open
 */
-fpl_platform_api void fplCloseFile(fplFileHandle *fileHandle);
+fpl_platform_api void fplFileClose(fplFileHandle *fileHandle);
 
 /**
 * @brief Gets the file size in bytes for the given file.
@@ -5359,63 +5380,63 @@ fpl_platform_api void fplCloseFile(fplFileHandle *fileHandle);
 * @return Returns the file size in bytes or zero.
 * @note Supports max size of 2^31
 */
-fpl_platform_api uint32_t fplGetFileSizeFromPath32(const char *filePath);
+fpl_platform_api uint32_t fplFileGetSizeFromPath32(const char *filePath);
 /**
 * @brief Gets the file size in bytes for the given file.
 * @param filePath The path to the file
 * @return Returns the file size in bytes or zero.
 * @note Supports max size of 2^63
 */
-fpl_platform_api uint64_t fplGetFileSizeFromPath64(const char *filePath);
+fpl_platform_api uint64_t fplFileGetSizeFromPath64(const char *filePath);
 /**
 * @brief Gets the file size in bytes for the given file.
 * @param filePath The path to the file
 * @return Returns the file size in bytes or zero.
 * @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes
 */
-fpl_platform_api size_t fplGetFileSizeFromPath(const char *filePath);
+fpl_platform_api size_t fplFileGetSizeFromPath(const char *filePath);
 /**
 * @brief Gets the file size in bytes for an opened file.
 * @param fileHandle The pointer to the @ref fplFileHandle structure
 * @return Returns the file size in bytes or zero.
 * @note Supports max size of 2^31
 */
-fpl_platform_api uint32_t fplGetFileSizeFromHandle32(const fplFileHandle *fileHandle);
+fpl_platform_api uint32_t fplFileGetSizeFromHandle32(const fplFileHandle *fileHandle);
 /**
 * @brief Gets the file size in bytes for an opened file.
 * @param fileHandle The pointer to the @ref fplFileHandle structure
 * @return Returns the file size in bytes or zero.
 * @note Supports max size of 2^63
 */
-fpl_platform_api uint64_t fplGetFileSizeFromHandle64(const fplFileHandle *fileHandle);
+fpl_platform_api uint64_t fplFileGetSizeFromHandle64(const fplFileHandle *fileHandle);
 /**
 * @brief Gets the file size in bytes for an opened file.
 * @param fileHandle The pointer to the @ref fplFileHandle structure
 * @return Returns the file size in bytes or zero.
 * @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes
 */
-fpl_common_api size_t fplGetFileSizeFromHandle(const fplFileHandle *fileHandle);
+fpl_common_api size_t fplFileGetSizeFromHandle(const fplFileHandle *fileHandle);
 /**
 * @brief Gets the timestamps for the given file
 * @param filePath The path to the file
 * @param outStamps The pointer to the @ref fplFileTimeStamps structure
 * @return Returns true when the function succeeded, false otherwise.
 */
-fpl_platform_api bool fplGetFileTimestampsFromPath(const char *filePath, fplFileTimeStamps *outStamps);
+fpl_platform_api bool fplFileGetTimestampsFromPath(const char *filePath, fplFileTimeStamps *outStamps);
 /**
 * @brief Gets the timestamps for an opened file
 * @param fileHandle The pointer to the @ref fplFileHandle structure
 * @param outStamps The pointer to the @ref fplFileTimeStamps structure
 * @return Returns true when the function succeeded, false otherwise.
 */
-fpl_platform_api bool fplGetFileTimestampsFromHandle(const fplFileHandle *fileHandle, fplFileTimeStamps *outStamps);
+fpl_platform_api bool fplFileGetTimestampsFromHandle(const fplFileHandle *fileHandle, fplFileTimeStamps *outStamps);
 /**
 * @brief Sets the timestamps for the given file
 * @param filePath The path to the file
 * @param timeStamps The pointer to the @ref fplFileTimeStamps structure
 * @return Returns true when the function succeeded, false otherwise.
 */
-fpl_platform_api bool fplSetFileTimestamps(const char *filePath, const fplFileTimeStamps *timeStamps);
+fpl_platform_api bool fplFileSetTimestamps(const char *filePath, const fplFileTimeStamps *timeStamps);
 /**
 * @brief Checks if the file exists and returns a boolean indicating the existence.
 * @param filePath The path to the file
@@ -5472,7 +5493,7 @@ fpl_platform_api bool fplDirectoryRemove(const char *path);
 * @note When no initial entry is found, the resources are automatically cleaned up.
 * @see @ref section_category_io_paths_traversing
 */
-fpl_platform_api bool fplListDirBegin(const char *path, const char *filter, fplFileEntry *entry);
+fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter, fplFileEntry *entry);
 /**
 * @brief Gets the next file entry from iterating through files/directories.
 * @param entry The pointer to the @ref fplFileEntry structure
@@ -5481,14 +5502,14 @@ fpl_platform_api bool fplListDirBegin(const char *path, const char *filter, fplF
 * @note When no entries are found, the resources are automatically cleaned up.
 * @see @ref section_category_io_paths_traversing
 */
-fpl_platform_api bool fplListDirNext(fplFileEntry *entry);
+fpl_platform_api bool fplDirectoryListNext(fplFileEntry *entry);
 /**
 * @brief Releases opened resources from iterating through files/directories.
 * @param entry The pointer to the @ref fplFileEntry structure
 * @note It's safe to call this when the file entry is already closed.
 * @see @ref section_category_io_paths_traversing
 */
-fpl_platform_api void fplListDirEnd(fplFileEntry *entry);
+fpl_platform_api void fplDirectoryListEnd(fplFileEntry *entry);
 
 /** @} */
 
@@ -7342,14 +7363,14 @@ fpl_internal size_t fpl__ParseTextFile(const char *filePath, const char **wildca
 	// We allocate the line buffer on the stack because we do not know how large the line will be on compile time
 	size_t result = 0;
 	fplFileHandle fileHandle = fplZeroInit;
-	if(fplOpenBinaryFile(filePath, &fileHandle)) {
+	if(fplFileOpenBinary(filePath, &fileHandle)) {
 		char *line = (char *)fpl__AllocateTemporaryMemory(maxLineSize, 8);
 		char buffer[FPL_MAX_BUFFER_LENGTH];
 		const size_t maxBufferSize = fplArrayCount(buffer) - 1;
 		size_t bytesRead = 0;
 		size_t posLineBytes = 0;
 		bool done = false;
-		while(!done && ((bytesRead = fplReadFileBlock(&fileHandle, maxBufferSize, &buffer[0], maxBufferSize)) > 0)) {
+		while(!done && ((bytesRead = fplFileReadBlock(&fileHandle, maxBufferSize, &buffer[0], maxBufferSize)) > 0)) {
 			buffer[bytesRead] = 0;
 			char *start = &buffer[0];
 			char *p = start;
@@ -7404,7 +7425,7 @@ fpl_internal size_t fpl__ParseTextFile(const char *filePath, const char **wildca
 			}
 		}
 		fpl__ReleaseTemporaryMemory(line);
-		fplCloseFile(&fileHandle);
+		fplFileClose(&fileHandle);
 	}
 	return(result);
 }
@@ -10217,51 +10238,51 @@ fpl_common_api size_t GetUsedThreadCount() {
 #if !defined(FPL__COMMON_FILES_DEFINED)
 #define FPL__COMMON_FILES_DEFINED
 
-fpl_common_api size_t fplReadFileBlock(const fplFileHandle *fileHandle, const size_t sizeToRead, void *targetBuffer, const size_t maxTargetBufferSize) {
+fpl_common_api size_t fplFileReadBlock(const fplFileHandle *fileHandle, const size_t sizeToRead, void *targetBuffer, const size_t maxTargetBufferSize) {
 #if defined(FPL_CPU_64BIT)
-	return fplReadFileBlock64(fileHandle, sizeToRead, targetBuffer, maxTargetBufferSize);
+	return fplFileReadBlock64(fileHandle, sizeToRead, targetBuffer, maxTargetBufferSize);
 #else
-	return fplReadFileBlock32(fileHandle, (uint32_t)sizeToRead, targetBuffer, (uint32_t)maxTargetBufferSize);
+	return fplFileReadBlock32(fileHandle, (uint32_t)sizeToRead, targetBuffer, (uint32_t)maxTargetBufferSize);
 #endif
 }
 
-fpl_common_api size_t fplWriteFileBlock(const fplFileHandle *fileHandle, void *sourceBuffer, const size_t sourceSize) {
+fpl_common_api size_t fplFileWriteBlock(const fplFileHandle *fileHandle, void *sourceBuffer, const size_t sourceSize) {
 #if defined(FPL_CPU_64BIT)
-	return fplWriteFileBlock64(fileHandle, sourceBuffer, sourceSize);
+	return fplFileWriteBlock64(fileHandle, sourceBuffer, sourceSize);
 #else
-	return fplWriteFileBlock32(fileHandle, sourceBuffer, (uint32_t)sourceSize);
+	return fplFileWriteBlock32(fileHandle, sourceBuffer, (uint32_t)sourceSize);
 #endif
 }
 
-fpl_common_api size_t fplSetFilePosition(const fplFileHandle *fileHandle, const intptr_t position, const fplFilePositionMode mode) {
+fpl_common_api size_t fplFileSetPosition(const fplFileHandle *fileHandle, const intptr_t position, const fplFilePositionMode mode) {
 #if defined(FPL_CPU_64BIT)
-	return fplSetFilePosition64(fileHandle, position, mode);
+	return fplFileSetPosition64(fileHandle, position, mode);
 #else
-	return fplSetFilePosition32(fileHandle, (int32_t)position, mode);
+	return fplFileSetPosition32(fileHandle, (int32_t)position, mode);
 #endif
 }
 
-fpl_common_api size_t fplGetFilePosition(const fplFileHandle *fileHandle) {
+fpl_common_api size_t fplFileGetPosition(const fplFileHandle *fileHandle) {
 #if defined(FPL_CPU_64BIT)
-	return fplGetFilePosition64(fileHandle);
+	return fplFileGetPosition64(fileHandle);
 #else
-	return fplGetFilePosition32(fileHandle);
+	return fplFileGetPosition32(fileHandle);
 #endif
 }
 
-fpl_common_api size_t fplGetFileSizeFromPath(const char *filePath) {
+fpl_common_api size_t fplFileGetSizeFromPath(const char *filePath) {
 #if defined(FPL_CPU_64BIT)
-	return fplGetFileSizeFromPath64(filePath);
+	return fplFileGetSizeFromPath64(filePath);
 #else
-	return fplGetFileSizeFromPath32(filePath);
+	return fplFileGetSizeFromPath32(filePath);
 #endif
 }
 
-fpl_common_api size_t fplGetFileSizeFromHandle(const fplFileHandle *fileHandle) {
+fpl_common_api size_t fplFileGetSizeFromHandle(const fplFileHandle *fileHandle) {
 #if defined(FPL_CPU_64BIT)
-	return fplGetFileSizeFromHandle64(fileHandle);
+	return fplFileGetSizeFromHandle64(fileHandle);
 #else
-	return fplGetFileSizeFromHandle32(fileHandle);
+	return fplFileGetSizeFromHandle32(fileHandle);
 #endif
 }
 
@@ -13024,7 +13045,7 @@ fpl_internal FILETIME fpl__Win32ConvertUnixTimestampToFileTime(const fplFileTime
 	return(empty);
 }
 
-fpl_platform_api bool fplOpenBinaryFile(const char *filePath, fplFileHandle *outHandle) {
+fpl_platform_api bool fplFileOpenBinary(const char *filePath, fplFileHandle *outHandle) {
 	FPL__CheckArgumentNull(outHandle, false);
 	if(filePath != fpl_null) {
 		wchar_t filePathWide[FPL_MAX_PATH_LENGTH];
@@ -13040,7 +13061,7 @@ fpl_platform_api bool fplOpenBinaryFile(const char *filePath, fplFileHandle *out
 	return false;
 }
 
-fpl_platform_api bool fplCreateBinaryFile(const char *filePath, fplFileHandle *outHandle) {
+fpl_platform_api bool fplFileCreateBinary(const char *filePath, fplFileHandle *outHandle) {
 	FPL__CheckArgumentNull(outHandle, false);
 	if(filePath != fpl_null) {
 		wchar_t filePathWide[FPL_MAX_PATH_LENGTH];
@@ -13056,7 +13077,7 @@ fpl_platform_api bool fplCreateBinaryFile(const char *filePath, fplFileHandle *o
 	return false;
 }
 
-fpl_platform_api uint32_t fplReadFileBlock32(const fplFileHandle *fileHandle, const uint32_t sizeToRead, void *targetBuffer, const uint32_t maxTargetBufferSize) {
+fpl_platform_api uint32_t fplFileReadBlock32(const fplFileHandle *fileHandle, const uint32_t sizeToRead, void *targetBuffer, const uint32_t maxTargetBufferSize) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sizeToRead, 0);
 	FPL__CheckArgumentNull(targetBuffer, 0);
@@ -13073,7 +13094,7 @@ fpl_platform_api uint32_t fplReadFileBlock32(const fplFileHandle *fileHandle, co
 	return(result);
 }
 
-fpl_platform_api uint64_t fplReadFileBlock64(const fplFileHandle *fileHandle, const uint64_t sizeToRead, void *targetBuffer, const uint64_t maxTargetBufferSize) {
+fpl_platform_api uint64_t fplFileReadBlock64(const fplFileHandle *fileHandle, const uint64_t sizeToRead, void *targetBuffer, const uint64_t maxTargetBufferSize) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sizeToRead, 0);
 	FPL__CheckArgumentNull(targetBuffer, 0);
@@ -13103,7 +13124,7 @@ fpl_platform_api uint64_t fplReadFileBlock64(const fplFileHandle *fileHandle, co
 	return(result);
 }
 
-fpl_platform_api uint32_t fplWriteFileBlock32(const fplFileHandle *fileHandle, void *sourceBuffer, const uint32_t sourceSize) {
+fpl_platform_api uint32_t fplFileWriteBlock32(const fplFileHandle *fileHandle, void *sourceBuffer, const uint32_t sourceSize) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sourceSize, 0);
 	FPL__CheckArgumentNull(sourceBuffer, 0);
@@ -13120,7 +13141,7 @@ fpl_platform_api uint32_t fplWriteFileBlock32(const fplFileHandle *fileHandle, v
 	return(result);
 }
 
-fpl_platform_api uint64_t fplWriteFileBlock64(const fplFileHandle *fileHandle, void *sourceBuffer, const uint64_t sourceSize) {
+fpl_platform_api uint64_t fplFileWriteBlock64(const fplFileHandle *fileHandle, void *sourceBuffer, const uint64_t sourceSize) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sourceSize, 0);
 	FPL__CheckArgumentNull(sourceBuffer, 0);
@@ -13149,7 +13170,7 @@ fpl_platform_api uint64_t fplWriteFileBlock64(const fplFileHandle *fileHandle, v
 	return(result);
 }
 
-fpl_platform_api uint32_t fplSetFilePosition32(const fplFileHandle *fileHandle, const int32_t position, const fplFilePositionMode mode) {
+fpl_platform_api uint32_t fplFileSetPosition32(const fplFileHandle *fileHandle, const int32_t position, const fplFilePositionMode mode) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint32_t result = 0;
 	if(fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
@@ -13167,7 +13188,7 @@ fpl_platform_api uint32_t fplSetFilePosition32(const fplFileHandle *fileHandle, 
 	return(result);
 }
 
-fpl_platform_api uint64_t fplSetFilePosition64(const fplFileHandle *fileHandle, const int64_t position, const fplFilePositionMode mode) {
+fpl_platform_api uint64_t fplFileSetPosition64(const fplFileHandle *fileHandle, const int64_t position, const fplFilePositionMode mode) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint64_t result = 0;
 	if(fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
@@ -13188,7 +13209,7 @@ fpl_platform_api uint64_t fplSetFilePosition64(const fplFileHandle *fileHandle, 
 	return(result);
 }
 
-fpl_platform_api uint32_t fplGetFilePosition32(const fplFileHandle *fileHandle) {
+fpl_platform_api uint32_t fplFileGetPosition32(const fplFileHandle *fileHandle) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	if(fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
@@ -13200,7 +13221,7 @@ fpl_platform_api uint32_t fplGetFilePosition32(const fplFileHandle *fileHandle) 
 	return 0;
 }
 
-fpl_platform_api uint64_t fplGetFilePosition64(const fplFileHandle *fileHandle) {
+fpl_platform_api uint64_t fplFileGetPosition64(const fplFileHandle *fileHandle) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint64_t result = 0;
 	if(fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
@@ -13215,7 +13236,7 @@ fpl_platform_api uint64_t fplGetFilePosition64(const fplFileHandle *fileHandle) 
 	return 0;
 }
 
-fpl_platform_api bool fplFlushFile(fplFileHandle *fileHandle) {
+fpl_platform_api bool fplFileFlush(fplFileHandle *fileHandle) {
 	FPL__CheckArgumentNull(fileHandle, false);
 	if(fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
@@ -13225,7 +13246,7 @@ fpl_platform_api bool fplFlushFile(fplFileHandle *fileHandle) {
 	return(false);
 }
 
-fpl_platform_api void fplCloseFile(fplFileHandle *fileHandle) {
+fpl_platform_api void fplFileClose(fplFileHandle *fileHandle) {
 	if((fileHandle != fpl_null) && (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE)) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
 		CloseHandle(win32FileHandle);
@@ -13233,7 +13254,7 @@ fpl_platform_api void fplCloseFile(fplFileHandle *fileHandle) {
 	}
 }
 
-fpl_platform_api uint32_t fplGetFileSizeFromPath32(const char *filePath) {
+fpl_platform_api uint32_t fplFileGetSizeFromPath32(const char *filePath) {
 	uint32_t result = 0;
 	if(filePath != fpl_null) {
 		wchar_t filePathWide[FPL_MAX_PATH_LENGTH];
@@ -13248,7 +13269,7 @@ fpl_platform_api uint32_t fplGetFileSizeFromPath32(const char *filePath) {
 	return(result);
 }
 
-fpl_platform_api uint64_t fplGetFileSizeFromPath64(const char *filePath) {
+fpl_platform_api uint64_t fplFileGetSizeFromPath64(const char *filePath) {
 	uint64_t result = 0;
 	if(filePath != fpl_null) {
 		wchar_t filePathWide[FPL_MAX_PATH_LENGTH];
@@ -13265,7 +13286,7 @@ fpl_platform_api uint64_t fplGetFileSizeFromPath64(const char *filePath) {
 	return(result);
 }
 
-fpl_platform_api uint32_t fplGetFileSizeFromHandle32(const fplFileHandle *fileHandle) {
+fpl_platform_api uint32_t fplFileGetSizeFromHandle32(const fplFileHandle *fileHandle) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint32_t result = 0;
 	if(fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
@@ -13276,7 +13297,7 @@ fpl_platform_api uint32_t fplGetFileSizeFromHandle32(const fplFileHandle *fileHa
 	return(result);
 }
 
-fpl_platform_api uint64_t fplGetFileSizeFromHandle64(const fplFileHandle *fileHandle) {
+fpl_platform_api uint64_t fplFileGetSizeFromHandle64(const fplFileHandle *fileHandle) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint64_t result = 0;
 	if(fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
@@ -13289,7 +13310,7 @@ fpl_platform_api uint64_t fplGetFileSizeFromHandle64(const fplFileHandle *fileHa
 	return(result);
 }
 
-fpl_platform_api bool fplGetFileTimestampsFromPath(const char *filePath, fplFileTimeStamps *outStamps) {
+fpl_platform_api bool fplFileGetTimestampsFromPath(const char *filePath, fplFileTimeStamps *outStamps) {
 	FPL__CheckArgumentNull(outStamps, false);
 	if(filePath != fpl_null) {
 		wchar_t filePathWide[FPL_MAX_PATH_LENGTH];
@@ -13312,7 +13333,7 @@ fpl_platform_api bool fplGetFileTimestampsFromPath(const char *filePath, fplFile
 	return(false);
 }
 
-fpl_platform_api bool fplGetFileTimestampsFromHandle(const fplFileHandle *fileHandle, fplFileTimeStamps *outStamps) {
+fpl_platform_api bool fplFileGetTimestampsFromHandle(const fplFileHandle *fileHandle, fplFileTimeStamps *outStamps) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentNull(outStamps, 0);
 	if(fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
@@ -13329,7 +13350,7 @@ fpl_platform_api bool fplGetFileTimestampsFromHandle(const fplFileHandle *fileHa
 	return(false);
 }
 
-fpl_platform_api bool fplSetFileTimestamps(const char *filePath, const fplFileTimeStamps *timeStamps) {
+fpl_platform_api bool fplFileSetTimestamps(const char *filePath, const fplFileTimeStamps *timeStamps) {
 	FPL__CheckArgumentNull(timeStamps, false);
 	if(filePath != fpl_null) {
 		wchar_t filePathWide[FPL_MAX_PATH_LENGTH];
@@ -13475,7 +13496,7 @@ fpl_internal void fpl__Win32FillFileEntry(const char *rootPath, const WIN32_FIND
 	entry->timeStamps.lastAccessTime = fpl__Win32ConvertFileTimeToUnixTimestamp(&findData->ftLastAccessTime);
 	entry->timeStamps.lastModifyTime = fpl__Win32ConvertFileTimeToUnixTimestamp(&findData->ftLastWriteTime);
 }
-fpl_platform_api bool fplListDirBegin(const char *path, const char *filter, fplFileEntry *entry) {
+fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter, fplFileEntry *entry) {
 	FPL__CheckArgumentNull(path, false);
 	FPL__CheckArgumentNull(entry, false);
 	if(fplGetStringLength(filter) == 0) {
@@ -13508,7 +13529,7 @@ fpl_platform_api bool fplListDirBegin(const char *path, const char *filter, fplF
 	}
 	return(result);
 }
-fpl_platform_api bool fplListDirNext(fplFileEntry *entry) {
+fpl_platform_api bool fplDirectoryListNext(fplFileEntry *entry) {
 	FPL__CheckArgumentNull(entry, false);
 	bool result = false;
 	if(entry->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
@@ -13529,7 +13550,7 @@ fpl_platform_api bool fplListDirNext(fplFileEntry *entry) {
 	}
 	return(result);
 }
-fpl_platform_api void fplListDirEnd(fplFileEntry *entry) {
+fpl_platform_api void fplDirectoryListEnd(fplFileEntry *entry) {
 	FPL__CheckArgumentNullNoRet(entry);
 	if(entry->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
 		HANDLE searchHandle = entry->internalHandle.win32FileHandle;
@@ -15437,7 +15458,7 @@ fpl_platform_api void fplMemoryFree(void *ptr) {
 //
 // POSIX Files
 //
-fpl_platform_api bool fplOpenBinaryFile(const char *filePath, fplFileHandle *outHandle) {
+fpl_platform_api bool fplFileOpenBinary(const char *filePath, fplFileHandle *outHandle) {
 	FPL__CheckArgumentNull(outHandle, false);
 	if(filePath != fpl_null) {
 		int posixFileHandle;
@@ -15454,7 +15475,7 @@ fpl_platform_api bool fplOpenBinaryFile(const char *filePath, fplFileHandle *out
 	return false;
 }
 
-fpl_platform_api bool fplCreateBinaryFile(const char *filePath, fplFileHandle *outHandle) {
+fpl_platform_api bool fplFileCreateBinary(const char *filePath, fplFileHandle *outHandle) {
 	FPL__CheckArgumentNull(outHandle, false);
 	if(filePath != fpl_null) {
 		int posixFileHandle;
@@ -15490,7 +15511,7 @@ fpl_platform_api size_t fpl__PosixWriteFileBlock(const fplFileHandle *fileHandle
 	return(result);
 }
 
-fpl_platform_api uint32_t fplReadFileBlock32(const fplFileHandle *fileHandle, const uint32_t sizeToRead, void *targetBuffer, const uint32_t maxTargetBufferSize) {
+fpl_platform_api uint32_t fplFileReadBlock32(const fplFileHandle *fileHandle, const uint32_t sizeToRead, void *targetBuffer, const uint32_t maxTargetBufferSize) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sizeToRead, 0);
 	FPL__CheckArgumentNull(targetBuffer, 0);
@@ -15510,7 +15531,7 @@ fpl_platform_api uint32_t fplReadFileBlock32(const fplFileHandle *fileHandle, co
 	return(result);
 }
 
-fpl_platform_api uint64_t fplReadFileBlock64(const fplFileHandle *fileHandle, const uint64_t sizeToRead, void *targetBuffer, const uint64_t maxTargetBufferSize) {
+fpl_platform_api uint64_t fplFileReadBlock64(const fplFileHandle *fileHandle, const uint64_t sizeToRead, void *targetBuffer, const uint64_t maxTargetBufferSize) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sizeToRead, 0);
 	FPL__CheckArgumentNull(targetBuffer, 0);
@@ -15541,7 +15562,7 @@ fpl_platform_api uint64_t fplReadFileBlock64(const fplFileHandle *fileHandle, co
 	return(result);
 }
 
-fpl_platform_api uint32_t fplWriteFileBlock32(const fplFileHandle *fileHandle, void *sourceBuffer, const uint32_t sourceSize) {
+fpl_platform_api uint32_t fplFileWriteBlock32(const fplFileHandle *fileHandle, void *sourceBuffer, const uint32_t sourceSize) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sourceSize, 0);
 	FPL__CheckArgumentNull(sourceBuffer, 0);
@@ -15561,7 +15582,7 @@ fpl_platform_api uint32_t fplWriteFileBlock32(const fplFileHandle *fileHandle, v
 	return(result);
 }
 
-fpl_platform_api uint64_t fplWriteFileBlock64(const fplFileHandle *fileHandle, void *sourceBuffer, const uint64_t sourceSize) {
+fpl_platform_api uint64_t fplFileWriteBlock64(const fplFileHandle *fileHandle, void *sourceBuffer, const uint64_t sourceSize) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sourceSize, 0);
 	FPL__CheckArgumentNull(sourceBuffer, 0);
@@ -15590,7 +15611,7 @@ fpl_platform_api uint64_t fplWriteFileBlock64(const fplFileHandle *fileHandle, v
 	return(result);
 }
 
-fpl_platform_api uint32_t fplSetFilePosition32(const fplFileHandle *fileHandle, const int32_t position, const fplFilePositionMode mode) {
+fpl_platform_api uint32_t fplFileSetPosition32(const fplFileHandle *fileHandle, const int32_t position, const fplFilePositionMode mode) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint32_t result = 0;
 	if(fileHandle->internalHandle.posixFileHandle) {
@@ -15607,7 +15628,7 @@ fpl_platform_api uint32_t fplSetFilePosition32(const fplFileHandle *fileHandle, 
 	return(result);
 }
 
-fpl_platform_api uint64_t fplSetFilePosition64(const fplFileHandle *fileHandle, const int64_t position, const fplFilePositionMode mode) {
+fpl_platform_api uint64_t fplFileSetPosition64(const fplFileHandle *fileHandle, const int64_t position, const fplFilePositionMode mode) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint64_t result = 0;
 	if(fileHandle->internalHandle.posixFileHandle) {
@@ -15624,7 +15645,7 @@ fpl_platform_api uint64_t fplSetFilePosition64(const fplFileHandle *fileHandle, 
 	return(result);
 }
 
-fpl_platform_api uint32_t fplGetFilePosition32(const fplFileHandle *fileHandle) {
+fpl_platform_api uint32_t fplFileGetPosition32(const fplFileHandle *fileHandle) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint32_t result = 0;
 	if(fileHandle->internalHandle.posixFileHandle) {
@@ -15637,7 +15658,7 @@ fpl_platform_api uint32_t fplGetFilePosition32(const fplFileHandle *fileHandle) 
 	return(result);
 }
 
-fpl_platform_api uint64_t fplGetFilePosition64(const fplFileHandle *fileHandle) {
+fpl_platform_api uint64_t fplFileGetPosition64(const fplFileHandle *fileHandle) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint64_t result = 0;
 	if(fileHandle->internalHandle.posixFileHandle) {
@@ -15650,7 +15671,7 @@ fpl_platform_api uint64_t fplGetFilePosition64(const fplFileHandle *fileHandle) 
 	return(result);
 }
 
-fpl_platform_api bool fplFlushFile(fplFileHandle *fileHandle) {
+fpl_platform_api bool fplFileFlush(fplFileHandle *fileHandle) {
 	FPL__CheckArgumentNull(fileHandle, false);
 	bool result = false;
 	if(fileHandle->internalHandle.posixFileHandle) {
@@ -15660,7 +15681,7 @@ fpl_platform_api bool fplFlushFile(fplFileHandle *fileHandle) {
 	return(result);
 }
 
-fpl_platform_api void fplCloseFile(fplFileHandle *fileHandle) {
+fpl_platform_api void fplFileClose(fplFileHandle *fileHandle) {
 	if((fileHandle != fpl_null) && fileHandle->internalHandle.posixFileHandle) {
 		int posixFileHandle = fileHandle->internalHandle.posixFileHandle;
 		close(posixFileHandle);
@@ -15668,7 +15689,7 @@ fpl_platform_api void fplCloseFile(fplFileHandle *fileHandle) {
 	}
 }
 
-fpl_platform_api uint32_t fplGetFileSizeFromPath32(const char *filePath) {
+fpl_platform_api uint32_t fplFileGetSizeFromPath32(const char *filePath) {
 	uint32_t result = 0;
 	if(filePath != fpl_null) {
 		int posixFileHandle;
@@ -15686,7 +15707,7 @@ fpl_platform_api uint32_t fplGetFileSizeFromPath32(const char *filePath) {
 	return(result);
 }
 
-fpl_platform_api uint64_t fplGetFileSizeFromPath64(const char *filePath) {
+fpl_platform_api uint64_t fplFileGetSizeFromPath64(const char *filePath) {
 	uint64_t result = 0;
 	if(filePath != fpl_null) {
 		int posixFileHandle;
@@ -15704,7 +15725,7 @@ fpl_platform_api uint64_t fplGetFileSizeFromPath64(const char *filePath) {
 	return(result);
 }
 
-fpl_platform_api uint32_t fplGetFileSizeFromHandle32(const fplFileHandle *fileHandle) {
+fpl_platform_api uint32_t fplFileGetSizeFromHandle32(const fplFileHandle *fileHandle) {
 	uint32_t result = 0;
 	if(fileHandle != fpl_null && fileHandle->internalHandle.posixFileHandle) {
 		int posixFileHandle = fileHandle->internalHandle.posixFileHandle;
@@ -15717,7 +15738,7 @@ fpl_platform_api uint32_t fplGetFileSizeFromHandle32(const fplFileHandle *fileHa
 	return(result);
 }
 
-fpl_platform_api uint64_t fplGetFileSizeFromHandle64(const fplFileHandle *fileHandle) {
+fpl_platform_api uint64_t fplFileGetSizeFromHandle64(const fplFileHandle *fileHandle) {
 	uint64_t result = 0;
 	if(fileHandle != fpl_null && fileHandle->internalHandle.posixFileHandle) {
 		int posixFileHandle = fileHandle->internalHandle.posixFileHandle;
@@ -15735,7 +15756,7 @@ fpl_internal uint64_t fpl__PosixConvertTimeToUnixTimeStamp(const time_t secs) {
 	return(result);
 }
 
-fpl_platform_api bool fplGetFileTimestampsFromPath(const char *filePath, fplFileTimeStamps *outStamps) {
+fpl_platform_api bool fplFileGetTimestampsFromPath(const char *filePath, fplFileTimeStamps *outStamps) {
 	FPL__CheckArgumentNull(outStamps, false);
 	bool result = false;
 	if(filePath != fpl_null) {
@@ -15750,7 +15771,7 @@ fpl_platform_api bool fplGetFileTimestampsFromPath(const char *filePath, fplFile
 	return(result);
 }
 
-fpl_platform_api bool fplGetFileTimestampsFromHandle(const fplFileHandle *fileHandle, fplFileTimeStamps *outStamps) {
+fpl_platform_api bool fplFileGetTimestampsFromHandle(const fplFileHandle *fileHandle, fplFileTimeStamps *outStamps) {
 	FPL__CheckArgumentNull(fileHandle, false);
 	FPL__CheckArgumentNull(outStamps, false);
 	bool result = false;
@@ -15767,7 +15788,7 @@ fpl_platform_api bool fplGetFileTimestampsFromHandle(const fplFileHandle *fileHa
 	return(result);
 }
 
-fpl_platform_api bool fplSetFileTimestamps(const char *filePath, const fplFileTimeStamps *timeStamps) {
+fpl_platform_api bool fplFileSetTimestamps(const char *filePath, const fplFileTimeStamps *timeStamps) {
 	// @IMPLEMENT(final/POSIX): fplSetFileTimestamps
 	return(false);
 }
@@ -15917,7 +15938,7 @@ fpl_internal void fpl__PosixFillFileEntry(struct dirent *dp, fplFileEntry *entry
 	}
 }
 
-fpl_platform_api bool fplListDirBegin(const char *path, const char *filter, fplFileEntry *entry) {
+fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter, fplFileEntry *entry) {
 	FPL__CheckArgumentNull(path, false);
 	FPL__CheckArgumentNull(entry, false);
 	DIR *dir = opendir(path);
@@ -15931,11 +15952,11 @@ fpl_platform_api bool fplListDirBegin(const char *path, const char *filter, fplF
 	entry->internalHandle.posixDirHandle = dir;
 	entry->internalRoot.rootPath = path;
 	entry->internalRoot.filter = filter;
-	bool result = fplListDirNext(entry);
+	bool result = fplDirectoryListNext(entry);
 	return(result);
 }
 
-fpl_platform_api bool fplListDirNext(fplFileEntry *entry) {
+fpl_platform_api bool fplDirectoryListNext(fplFileEntry *entry) {
 	FPL__CheckArgumentNull(entry, false);
 	bool result = false;
 	if(entry->internalHandle.posixDirHandle != fpl_null) {
@@ -15962,7 +15983,7 @@ fpl_platform_api bool fplListDirNext(fplFileEntry *entry) {
 	return(result);
 }
 
-fpl_platform_api void fplListDirEnd(fplFileEntry *entry) {
+fpl_platform_api void fplDirectoryListEnd(fplFileEntry *entry) {
 	FPL__CheckArgumentNullNoRet(entry);
 	if(entry->internalHandle.posixDirHandle != fpl_null) {
 		DIR *dirHandle = (DIR *)entry->internalHandle.posixDirHandle;
