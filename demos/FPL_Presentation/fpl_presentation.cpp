@@ -1108,6 +1108,7 @@ struct Slide {
 	LinkedList<Element> elements;
 	SlideVariables vars;
 	BackgroundStyle background;
+	Quaternion rotation;
 	Vec2f size;
 	StringTable *strings;
 	const char *name;
@@ -1994,7 +1995,7 @@ static void ShowSlideshow(App &app, const uint32_t slideIndex, const bool withTr
 		// Offset starts at the left of the first slide and goes to the middle to the left of the last slide
 		Vec2f moveDir = V2f(1, 0);
 		Vec2f targetSlidePos = GetSlidePositionForSlide(app.presentation, slideIndex, moveDir);
-		Quaternion targetCubeRot = QuatIdentity();
+		Quaternion targetCubeRot = slide->rotation;
 
 		if (withTransition) {
 			app.state.targetOffset = targetSlidePos;
@@ -2033,8 +2034,6 @@ static void JumpToPrevSlide(App &app) {
 		ShowSlideshow(app, state.activeSlideIndex - 1, true);
 	}
 }
-
-
 
 static void AddTextBlock(Renderer &renderer, Slide &slide, const Vec2f &offset, const char *text, const char *fontName, const float fontSize, const float lineHeight, const TextStyle &style, const HorizontalAlignment hAlign, const VerticalAlignment vAlign) {
 	const LoadedFont *font = renderer.FindFont(fontName, fontSize);
@@ -2103,6 +2102,7 @@ static void AddSlideFromDefinition(Renderer &renderer, Presentation &presentatio
 	const float padding = inPresentation.padding;
 
 	Slide *slide = presentation.AddSlide(presentation.size, inSlide.name);
+	slide->rotation = inSlide.rotation;
 	slide->background = inSlide.background;
 
 	Rect2f area = AddHeaderAndFooter(slide, inPresentation.header, inPresentation.footer);

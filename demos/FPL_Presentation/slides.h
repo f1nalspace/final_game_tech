@@ -82,11 +82,12 @@ struct SlideDefinition {
 	const char* name;
 	BlockDefinition blocks[MaxBlockCount];
 	BackgroundStyle background;
+	Quaternion rotation;
 	size_t count;
 };
 
 template<size_t N>
-static SlideDefinition MakeSlideDef(const char* name, BlockDefinition(&blocks)[N], const BackgroundStyle& background) {
+static SlideDefinition MakeSlideDef(const char* name, BlockDefinition(&blocks)[N], const BackgroundStyle& background, const Quaternion &rotation) {
 	fplAssert(N < MaxBlockCount);
 	SlideDefinition result = {};
 	result.name = name;
@@ -94,6 +95,7 @@ static SlideDefinition MakeSlideDef(const char* name, BlockDefinition(&blocks)[N
 	for(size_t i = 0; i < N; ++i) {
 		result.blocks[i] = blocks[i];
 	}
+	result.rotation = rotation;
 	result.count = N;
 	return(result);
 }
@@ -198,7 +200,9 @@ namespace FPLPresentationData {
 			),
 		};
 
-		static const SlideDefinition Slide = MakeSlideDef("Introduction", Blocks, GetBackground());
+		static Quaternion Rot = QuatIdentity();
+
+		static const SlideDefinition Slide = MakeSlideDef("Introduction", Blocks, GetBackground(), Rot);
 	};
 
 	namespace WhatIsAPAL {
@@ -228,7 +232,9 @@ namespace FPLPresentationData {
 			),
 		};
 
-		static const SlideDefinition Slide = MakeSlideDef("What is a PAL", Blocks, GetBackground());
+		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(45), V3f(1, 1, 0));
+
+		static const SlideDefinition Slide = MakeSlideDef("What is a PAL", Blocks, GetBackground(), Rot);
 	};
 
 	namespace WhatIsFPL {
@@ -254,7 +260,9 @@ namespace FPLPresentationData {
 			),
 		};
 
-		static const SlideDefinition Slide = MakeSlideDef("What is FPL", Blocks, GetBackground());
+		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(-45), V3f(0, 1, 1));
+
+		static const SlideDefinition Slide = MakeSlideDef("What is FPL", Blocks, GetBackground(), Rot);
 	};
 
 	namespace Motivation {
@@ -292,7 +300,10 @@ namespace FPLPresentationData {
 				HorizontalAlignment::Left, FeaturesFontSize
 			),
 		};
-		static const SlideDefinition Slide = MakeSlideDef("Motivation", Blocks, GetBackground());
+
+		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(70), V3f(1, 0.1, 0.0));
+
+		static const SlideDefinition Slide = MakeSlideDef("Motivation", Blocks, GetBackground(), Rot);
 	};
 
 	namespace Goals {
@@ -320,7 +331,10 @@ namespace FPLPresentationData {
 				HorizontalAlignment::Left, FeaturesFontSize * 1.1f
 			),
 		};
-		static const SlideDefinition Slide = MakeSlideDef("Goals of FPL", Blocks, GetBackground());
+
+		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(-30), V3f(1, 0, 1.0));
+
+		static const SlideDefinition Slide = MakeSlideDef("Goals of FPL", Blocks, GetBackground(), Rot);
 	};
 
 	namespace WhyFPL {
@@ -343,7 +357,10 @@ namespace FPLPresentationData {
 				HorizontalAlignment::Left, FeaturesFontSize * 1.1f
 			),
 		};
-		static const SlideDefinition Slide = MakeSlideDef("Why FPL", Blocks, GetBackground());
+
+		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(-60), V3f(0.0f, 0.0f, 1.0f));
+
+		static const SlideDefinition Slide = MakeSlideDef("Why FPL", Blocks, GetBackground(), Rot);
 	};
 
 	namespace FeaturesOfFPL {
@@ -371,7 +388,10 @@ namespace FPLPresentationData {
 				HorizontalAlignment::Left, FeaturesFontSize
 			),
 		};
-		static const SlideDefinition Slide = MakeSlideDef("Features of FPL", Blocks, GetBackground());
+
+		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(30), V3f(0.0f, 1.0f, 0.1f));
+
+		static const SlideDefinition Slide = MakeSlideDef("Features of FPL", Blocks, GetBackground(), Rot);
 	};
 
 	namespace Magic {
@@ -386,7 +406,10 @@ namespace FPLPresentationData {
 				HorizontalAlignment::Left, FeaturesFontSize * 4
 			),			
 		};
-		static const SlideDefinition Slide = MakeSlideDef("How it works", Blocks, GetBackground());
+
+		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(-15), V3f(0.7f, 0.6f, 0.3f));
+
+		static const SlideDefinition Slide = MakeSlideDef("How it works", Blocks, GetBackground(), Rot);
 	};
 
 	namespace HowItWorks {
@@ -405,7 +428,10 @@ namespace FPLPresentationData {
 				HorizontalAlignment::Left, FeaturesFontSize
 			),
 		};
-		static const SlideDefinition Slide = MakeSlideDef("How it actually works", Blocks, GetBackground());
+
+		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(45), V3f(0.5f, 0.5f, 0.5f));
+
+		static const SlideDefinition Slide = MakeSlideDef("How it actually works", Blocks, GetBackground(), Rot);
 	};
 
 	namespace Links {
@@ -445,7 +471,10 @@ namespace FPLPresentationData {
 				HorizontalAlignment::Left, FeaturesFontSize, V4f(0.0f, 0.8f, 0.2f, 1.0f)
 			),
 		};
-		static const SlideDefinition Slide = MakeSlideDef("Links", Blocks, GetBackground());
+
+		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(-45), V3f(1.0f, 0, 0));
+
+		static const SlideDefinition Slide = MakeSlideDef("Links", Blocks, GetBackground(), Rot);
 	};
 
 	namespace Demos {
@@ -465,7 +494,10 @@ namespace FPLPresentationData {
 				HorizontalAlignment::Center, FeaturesFontSize, V4f(0.0f, 0.8f, 0.2f, 1.0f)
 			),
 		};
-		static const SlideDefinition Slide = MakeSlideDef("Demos!", Blocks, GetBackground());
+
+		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(75), V3f(0.0f, 1.0f, 0));
+
+		static const SlideDefinition Slide = MakeSlideDef("Demos!", Blocks, GetBackground(), Rot);
 	};
 
 	namespace Thanks {
@@ -480,7 +512,10 @@ namespace FPLPresentationData {
 				HorizontalAlignment::Center
 			),
 		};
-		static const SlideDefinition Slide = MakeSlideDef("Thanks!", Blocks, GetBackground());
+
+		static Quaternion Rot = QuatIdentity();
+
+		static const SlideDefinition Slide = MakeSlideDef("Thanks!", Blocks, GetBackground(), Rot);
 	};
 
 	static const SlideDefinition Slides[] = {
