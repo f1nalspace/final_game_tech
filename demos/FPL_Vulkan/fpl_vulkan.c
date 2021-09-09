@@ -11,6 +11,7 @@ Description:
 Requirements:
 	- C99 Compiler
 	- Final Platform Layer
+	- Vulkan Header
 
 Author:
 	Torsten Spaete
@@ -19,6 +20,9 @@ Todo:
 	- Let it at least draw something, because clearing to blue is boring
 
 Changelog:
+	## 2021-09-09
+	- Fixed validation layer was not disabled when VULKANDEMO_USE_VALIDATION_LAYER is set to 0
+
 	## 2021-05-17
 	- Initial version
 
@@ -37,7 +41,7 @@ License:
 
 #define VULKANDEMO_FPL_VIDEO_MODE VULKANDEMO_FPL_VIDEO_MODE_FULL
 
-#define VULKANDEMO_USE_VALIDATION_LAYER 1
+#define VULKANDEMO_USE_VALIDATION_LAYER 0
 #define VULKANDEMO_VALIDATION_LAYER_SEVERITY VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT
 
 //
@@ -2851,8 +2855,14 @@ int main(int argc, char **argv) {
 	settings.video.graphics.vulkan.appVersion = fplStructInit(fplVersionInfo, "", "1", "0", "0");
 	settings.video.graphics.vulkan.appName = "FPL-Vulkan-Demo";
 	settings.video.graphics.vulkan.engineName = "FPL-Vulkan-Demo";
+
+#if VULKANDEMO_USE_VALIDATION_LAYER
 	settings.video.graphics.vulkan.validationLayerMode = fplVulkanValidationLayerMode_Logging;
 	settings.video.graphics.vulkan.validationSeverity = fplVulkanValidationSeverity_All;
+#else
+	settings.video.graphics.vulkan.validationLayerMode = fplVulkanValidationLayerMode_Disabled;
+#endif
+
 #elif VULKANDEMO_FPL_VIDEO_MODE == VULKANDEMO_FPL_VIDEO_MODE_SURFACE_ONLY
 	// We want FPL only to create the surface for us
 	settings.video.graphics.vulkan.instanceHandle = state->instance.instanceHandle;
