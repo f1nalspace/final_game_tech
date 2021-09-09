@@ -269,7 +269,8 @@ static void RunLegacy() {
 		float aspect = windowArea.width / (float)windowArea.height;
 		Mat4f proj = Mat4PerspectiveRH(DegreesToRadians(35), aspect, 0.1f, 100.0f);
 		Mat4f camera = Mat4LookAtRH(V3fInit(2, 2, 3), V3fInit(0, 0, 0), V3fInit(0, 1, 0));
-		Mat4f model = Mat4RotationY(rot);
+		Quaternion quat = QuatFromAngleAxis(rot, V3fInit(0.0f, 1.0f, 0.0f));
+		Mat4f model = QuatToMat4(quat);
 		Mat4f vp = Mat4Mult(proj, camera);
 		Mat4f mvp = Mat4Mult(vp, model);
 
@@ -315,7 +316,7 @@ static void RunLegacy() {
 		lastFrameTime = endFrameTime;
 
 		float dt = fplMin((float)frameDuration, DT);
-		
+
 		rot += 0.5f * dt;
 	}
 }
@@ -500,7 +501,8 @@ static bool RunModern() {
 		float aspect = windowArea.width / (float)windowArea.height;
 		Mat4f proj = Mat4PerspectiveRH(DegreesToRadians(35), aspect, 0.1f, 100.0f);
 		Mat4f camera = Mat4LookAtRH(V3fInit(2, 2, 3), V3fInit(0, 0, 0), V3fInit(0, 1, 0));
-		Mat4f model = Mat4RotationY(rot);
+		Quaternion quat = QuatFromAngleAxis(rot, V3fInit(0.0f, 1.0f, 0.0f));
+		Mat4f model = QuatToMat4(quat);
 		Mat4f vp = Mat4Mult(proj, camera);
 		Mat4f mvp = Mat4Mult(vp, model);
 
@@ -520,13 +522,13 @@ static bool RunModern() {
 		glDrawArrays(GL_TRIANGLE_FAN, 0, fplArrayCount(FloorVerts));
 
 		fplVideoFlip();
-				
+
 		fplWallClock endFrameTime = fplGetWallClock();
 		double frameDuration = fplGetWallDelta(lastFrameTime, endFrameTime);
 		lastFrameTime = endFrameTime;
 
 		float dt = fplMin((float)frameDuration, DT);
-		
+
 		++frameIndex;
 		rot += 0.5f * dt;
 	}
@@ -574,7 +576,7 @@ int main(int argc, char **args) {
 
 		fplPlatformRelease();
 		result = 0;
-	} else {
+} else {
 		result = -1;
 	}
 	return(result);
