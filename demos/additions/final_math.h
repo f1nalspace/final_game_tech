@@ -1066,6 +1066,43 @@ fpl_force_inline float QuatDot(const Quaternion a, const Quaternion b) {
 	return(result);
 }
 
+fpl_force_inline Mat4f QuatToMat4(const Quaternion q) {
+	// https://www.euclideanspace.com/maths/geometry/rotations/conversions/quaternionToMatrix/index.htm
+
+	float sqw = q.w * q.w;
+	float sqx = q.x * q.x;
+	float sqy = q.y * q.y;
+	float sqz = q.z * q.z;
+
+	float tmp1, tmp2;
+
+	// invs (inverse square length) is only required if quaternion is not already normalised
+	float invs = 1.0f / (sqx + sqy + sqz + sqw);
+
+	Mat4f result = M4fDefault();
+
+	result.r[0][0] = (sqx - sqy - sqz + sqw) * invs; // since sqw + sqx + sqy + sqz =1/invs*invs
+	result.r[1][1] = (-sqx + sqy - sqz + sqw) * invs;
+	result.r[2][2] = (-sqx - sqy + sqz + sqw) * invs;
+
+	tmp1 = q.x * q.y;
+	tmp2 = q.z * q.w;
+	result.r[1][0] = 2.0f * (tmp1 + tmp2) * invs;
+	result.r[0][1] = 2.0f * (tmp1 - tmp2) * invs;
+
+	tmp1 = q.x * q.z;
+	tmp2 = q.y * q.w;
+	result.r[2][0] = 2.0f * (tmp1 - tmp2) * invs;
+	result.r[0][2] = 2.0f * (tmp1 + tmp2) * invs;
+
+	tmp1 = q.y * q.z;
+	tmp2 = q.x * q.w;
+	result.r[2][1] = 2.0f * (tmp1 + tmp2) * invs;
+	result.r[1][2] = 2.0f * (tmp1 - tmp2) * invs;
+
+	return(result);
+}
+
 fpl_force_inline float QuatLength(const Quaternion q) {
 	float result = SquareRoot(QuatDot(q, q));
 	return(result);
