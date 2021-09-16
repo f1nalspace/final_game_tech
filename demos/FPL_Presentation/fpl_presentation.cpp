@@ -1230,6 +1230,8 @@ struct PresentationState {
 
 constexpr float CubeRadius = 0.5f;
 
+constexpr float SlideAnimationDuration = 1.5f;
+
 constexpr int SpacesForTabstop = 2;
 
 struct App {
@@ -2003,12 +2005,11 @@ static void ShowSlideshow(App &app, const uint32_t slideIndex, const bool withTr
 			app.state.startRotation = app.state.currentRotation;
 			app.state.targetRotation = targetCubeRot;
 			float duration;
-			const float maxDuration = 1.0f;
 			if (app.state.slideAnimation.IsActive()) {
 				float remaining = fplMax(0, app.state.slideAnimation.duration - app.state.slideAnimation.currentTime);
-				duration = fplMax(0, fplMin(maxDuration - remaining, maxDuration));
+				duration = fplMax(0, fplMin(SlideAnimationDuration - remaining, SlideAnimationDuration));
 			} else {
-				duration = maxDuration;
+				duration = SlideAnimationDuration;
 			}
 			app.state.slideAnimation.ResetAndStart(duration, false, Easings::EaseInOutExpo);
 		} else {

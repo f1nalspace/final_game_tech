@@ -301,7 +301,7 @@ namespace FPLPresentationData {
 			),
 		};
 
-		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(70), V3f(1, 0.1, 0.0));
+		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(70), V3f(1, 0.1f, 0.0f));
 
 		static const SlideDefinition Slide = MakeSlideDef("Motivation", Blocks, GetBackground(), Rot);
 	};
