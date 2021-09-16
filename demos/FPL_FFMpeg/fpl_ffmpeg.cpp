@@ -383,6 +383,7 @@ static void FlushPacketQueue(PacketQueue &queue) {
 	queue.size = 0;
 	queue.duration = 0;
 	fplMutexUnlock(&queue.lock);
+	fplAtomicExchangeS32(&globalMemStats.usedPackets, 0);
 }
 
 static void DestroyPacketQueue(PacketQueue &queue) {
@@ -513,6 +514,7 @@ static void FreeFrameData(Frame *frame) {
 static void FreeFrame(Frame *frame) {
 	FreeFrameData(frame);
 	ffmpeg.av_frame_free(&frame->frame);
+	fplAtomicFetchAndAddS32(&globalMemStats.allocatedFrames, -1);
 }
 
 struct FrameQueue {
