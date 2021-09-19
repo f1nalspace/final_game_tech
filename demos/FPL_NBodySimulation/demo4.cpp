@@ -34,7 +34,9 @@ namespace Demo4 {
 		}
 	}
 #else
-#define ValidateParticles(particles, indices, count)
+#	ifndef ValidateParticles
+#		define ValidateParticles(...)
+#	endif
 #endif
 
 	ParticleSimulation::ParticleSimulation():

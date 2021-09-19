@@ -31,7 +31,9 @@ namespace Demo1 {
 		}
 	}
 #else
-#define ValidateParticles(particles)
+#	ifndef ValidateParticles
+#		define ValidateParticles(...)
+#	endif
 #endif
 
 	Grid::Grid(const size_t maxCellCount) {
