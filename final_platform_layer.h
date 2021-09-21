@@ -20690,6 +20690,7 @@ typedef struct fpl__AlsaBufferScale {
 fpl_globalvar fpl__AlsaBufferScale fpl__globalAlsaBufferScales[] = {
 	fplStructInit(fpl__AlsaBufferScale, "*bcm2835 IEC958/HDMI*", 2.0f),
 	fplStructInit(fpl__AlsaBufferScale, "*bcm2835 ALSA*", 2.0f),
+	fplStructInit(fpl__AlsaBufferScale, "*bcm2835 HDMI*", 2.0f),
 };
 
 fpl_internal float fpl__AlsaGetBufferScale(const char *deviceName) {
