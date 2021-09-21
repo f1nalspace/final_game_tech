@@ -144,6 +144,9 @@ SOFTWARE.
 	- New: Added function GetAvailableThreadCount() that returns the number of available threads
 	- New: Added function GetUserThreadCount() that returns the number of used/active threads
 
+	#### Internal Changes
+	- Changed: [ALSA] Use *bcm2835* device pattern for buffer scale instead of individual ones
+
 	#### Breaking Changes
 	- Changed: Renamed function fplOpenBinaryFile() to fplFileOpenBinary()
 	- Changed: Renamed function fplCreateBinaryFile() to fplFileCreateBinary()
@@ -20688,9 +20691,7 @@ typedef struct fpl__AlsaBufferScale {
 } fpl__AlsaBufferScale;
 
 fpl_globalvar fpl__AlsaBufferScale fpl__globalAlsaBufferScales[] = {
-	fplStructInit(fpl__AlsaBufferScale, "*bcm2835 IEC958/HDMI*", 2.0f),
-	fplStructInit(fpl__AlsaBufferScale, "*bcm2835 ALSA*", 2.0f),
-	fplStructInit(fpl__AlsaBufferScale, "*bcm2835 HDMI*", 2.0f),
+	fplStructInit(fpl__AlsaBufferScale, "*bcm2835*", 2.0f),
 };
 
 fpl_internal float fpl__AlsaGetBufferScale(const char *deviceName) {
