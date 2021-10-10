@@ -7745,6 +7745,8 @@ typedef FPL__FUNC_WIN32_SetForegroundWindow(fpl__win32_func_SetForegroundWindow)
 typedef FPL__FUNC_WIN32_SetFocus(fpl__win32_func_SetFocus);
 #define FPL__FUNC_WIN32_SetTimer(name) UINT_PTR WINAPI name(_In_opt_ HWND hWnd, _In_ UINT_PTR nIDEvent, _In_ UINT uElapse, _In_opt_ TIMERPROC lpTimerFunc)
 typedef FPL__FUNC_WIN32_SetTimer(fpl__win32_func_SetTimer);
+#define FPL__FUNC_WIN32_GetSysColorBrush(name) HBRUSH WINAPI name(_In_ int nIndex)
+typedef FPL__FUNC_WIN32_GetSysColorBrush(fpl__win32_func_GetSysColorBrush);
 
 // OLE32
 #define FPL__FUNC_WIN32_CoInitializeEx(name) HRESULT WINAPI name(LPVOID pvReserved, DWORD  dwCoInit)
@@ -7850,6 +7852,7 @@ typedef struct fpl__Win32UserApi {
 	fpl__win32_func_SetForegroundWindow *SetForegroundWindow;
 	fpl__win32_func_SetFocus *SetFocus;
 	fpl__win32_func_SetTimer *SetTimer;
+	fpl__win32_func_GetSysColorBrush *GetSysColorBrush;
 } fpl__Win32UserApi;
 
 typedef struct fpl__Win32OleApi {
@@ -7980,6 +7983,7 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_SetForegroundWindow, SetForegroundWindow);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_SetFocus, SetFocus);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_SetTimer, SetTimer);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetSysColorBrush, GetSysColorBrush);
 
 		// GDI32
 		const char *gdiLibraryName = "gdi32.dll";
@@ -11535,7 +11539,10 @@ fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindo
 	WNDCLASSEXW windowClass = fplZeroInit;
 	windowClass.cbSize = sizeof(windowClass);
 	windowClass.hInstance = GetModuleHandleA(fpl_null);
-	windowClass.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+
+	// @TODO(final): Make default window background color configurable (take X11 into account as well)
+	windowClass.hbrBackground = wapi->user.GetSysColorBrush(COLOR_BACKGROUND);
+
 	windowClass.cbSize = sizeof(windowClass);
 	windowClass.style = CS_HREDRAW | CS_VREDRAW;
 	windowClass.hCursor = fpl__win32_LoadCursor(windowClass.hInstance, IDC_ARROW);
