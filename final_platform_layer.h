@@ -10732,7 +10732,7 @@ fpl_common_api void fplDebugFormatOut(const char *format, ...) {
 #if defined(FPL__ENABLE_WINDOW)
 
 fpl_internal DWORD fpl__Win32MakeWindowStyle(const fplWindowSettings *settings) {
-	DWORD result = WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
+	DWORD result = WS_CLIPSIBLINGS | WS_CLIPCHILDREN | WS_VISIBLE;
 	if(settings->isFullscreen || !settings->isDecorated) {
 		result |= WS_POPUP;
 	} else {
