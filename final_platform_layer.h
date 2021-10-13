@@ -149,6 +149,7 @@ SOFTWARE.
 
 	#### Bugfixes
 	- Fixed[#130]: [Win32] Main fiber was never properly released
+	- Fixed[#131]: [Win32] Console window was not shown the second time fplPlatformInit() was called
 
 	#### Breaking Changes
 	- Changed: Renamed function fplOpenBinaryFile() to fplFileOpenBinary()
@@ -12070,29 +12071,30 @@ fpl_internal bool fpl__Win32InitPlatform(const fplInitFlags initFlags, const fpl
 		fpl__Win32LoadXInputApi(&win32AppState->xinput.xinputApi);
 	}
 
-	// Init console
-	if(!(initFlags & fplInitFlags_Console)) {
-		// Hide console
-		HWND consoleWindow = GetConsoleWindow();
-		if(consoleWindow != fpl_null) {
-			win32AppState->winApi.user.ShowWindow(consoleWindow, SW_HIDE);
-			FreeConsole();
-		}
-	} else {
-		const fplConsoleSettings *initConsoleSettings = &initSettings->console;
-		fplConsoleSettings *currentConsoleSettings = &appState->currentSettings.console;
+	// Show/Hide console
+	HWND consoleWindow = GetConsoleWindow();
+	if(consoleWindow != fpl_null) {
+		bool showConsole = (initFlags & fplInitFlags_Console);
+		if(showConsole) {
+			const fplConsoleSettings *initConsoleSettings = &initSettings->console;
+			fplConsoleSettings *currentConsoleSettings = &appState->currentSettings.console;
 
-		// Setup a console title
-		wchar_t consoleTitleBuffer[FPL_MAX_NAME_LENGTH];
-		if(fplGetStringLength(initConsoleSettings->title) > 0) {
-			fplUTF8StringToWideString(initConsoleSettings->title, fplGetStringLength(initConsoleSettings->title), consoleTitleBuffer, fplArrayCount(consoleTitleBuffer));
+			// Setup a console title
+			wchar_t consoleTitleBuffer[FPL_MAX_NAME_LENGTH];
+			if(fplGetStringLength(initConsoleSettings->title) > 0) {
+				fplUTF8StringToWideString(initConsoleSettings->title, fplGetStringLength(initConsoleSettings->title), consoleTitleBuffer, fplArrayCount(consoleTitleBuffer));
+			} else {
+				const wchar_t *defaultTitle = FPL__WIN32_UNNAMED_CONSOLE;
+				lstrcpynW(consoleTitleBuffer, defaultTitle, fplArrayCount(consoleTitleBuffer));
+			}
+			wchar_t *windowTitle = consoleTitleBuffer;
+			fplWideStringToUTF8String(windowTitle, lstrlenW(windowTitle), currentConsoleSettings->title, fplArrayCount(currentConsoleSettings->title));
+			SetConsoleTitleW(windowTitle);
+
+			win32AppState->winApi.user.ShowWindow(consoleWindow, SW_SHOW);
 		} else {
-			const wchar_t *defaultTitle = FPL__WIN32_UNNAMED_CONSOLE;
-			lstrcpynW(consoleTitleBuffer, defaultTitle, fplArrayCount(consoleTitleBuffer));
+			win32AppState->winApi.user.ShowWindow(consoleWindow, SW_HIDE);
 		}
-		wchar_t *windowTitle = consoleTitleBuffer;
-		fplWideStringToUTF8String(windowTitle, lstrlenW(windowTitle), currentConsoleSettings->title, fplArrayCount(currentConsoleSettings->title));
-		SetConsoleTitleW(windowTitle);
 	}
 
 	// Init keymap
