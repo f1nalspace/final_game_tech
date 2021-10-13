@@ -12048,7 +12048,7 @@ fpl_internal bool fpl__Win32InitPlatform(const fplInitFlags initFlags, const fpl
 	win32InitState->appInstance = GetModuleHandleA(fpl_null);
 	fpl__Win32AppState *win32AppState = &appState->win32;
 
-	// @NOTE(final): Expect kernel32.lib to be linked always, so VirtualAlloc and LoadLibrary will always work.
+	// @NOTE(final): Expect kernel32.lib to be linked always, so VirtualAlloc, LoadLibrary, CreateThread, etc. will always work.
 
 	// Get main thread infos
 	HANDLE mainThreadHandle = GetCurrentThread();
@@ -23041,7 +23041,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 	appState->initFlags = initFlags;
 	if(initSettings != fpl_null) {
 		appState->initSettings = *initSettings;
-} else {
+	} else {
 		fplSetDefaultSettings(&appState->initSettings);
 	}
 	appState->currentSettings = appState->initSettings;
