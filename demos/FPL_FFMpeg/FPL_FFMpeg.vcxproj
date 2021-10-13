@@ -171,7 +171,6 @@
     <ClInclude Include="defines.h" />
     <ClInclude Include="ffmpeg.h" />
     <ClInclude Include="fontdata.h" />
-    <ClInclude Include="maths.h" />
     <ClInclude Include="shaders.h" />
     <ClInclude Include="utils.h" />
   </ItemGroup>

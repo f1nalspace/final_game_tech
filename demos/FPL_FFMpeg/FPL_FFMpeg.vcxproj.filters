@@ -2,7 +2,6 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClInclude Include="utils.h" />
-    <ClInclude Include="maths.h" />
     <ClInclude Include="shaders.h" />
     <ClInclude Include="defines.h" />
     <ClInclude Include="ffmpeg.h" />
