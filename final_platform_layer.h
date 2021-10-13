@@ -170,6 +170,8 @@ SOFTWARE.
 	- Changed: Renamed function fplListDirNext() to fplDirectoryListNext()
 	- Changed: Renamed function fplListDirEnd() to fplDirectoryListEnd()
 	- Changed: Renamed function fplGetPlatformResultName() to fplPlatformGetResultName()
+	- Changed: Replaced enum flag fplVulkanValidationLayerMode_User with fplVulkanValidationLayerMode_Optional
+	- Changed: Replaced enum flag fplVulkanValidationLayerMode_Callback with fplVulkanValidationLayerMode_Required
 
 	## v0.9.7-beta
 
