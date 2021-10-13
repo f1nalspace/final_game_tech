@@ -147,6 +147,9 @@ SOFTWARE.
 	#### Internal Changes
 	- Changed: [ALSA] Use *bcm2835* device pattern for buffer scale instead of individual ones
 
+	#### Bugfixes
+	- Fixed[#130]: [Win32] Main fiber was never properly released
+
 	#### Breaking Changes
 	- Changed: Renamed function fplOpenBinaryFile() to fplFileOpenBinary()
 	- Changed: Renamed function fplCreateBinaryFile() to fplFileCreateBinary()
@@ -11664,6 +11667,10 @@ fpl_internal void fpl__Win32ReleaseWindow(const fpl__Win32InitState *initState, 
 		DeleteFiber(windowState->messageFiber);
 		windowState->messageFiber = fpl_null;
 	}
+	if(windowState->mainFiber != fpl_null) {
+		ConvertFiberToThread();
+		windowState->mainFiber = fpl_null;
+	}
 }
 
 #endif // FPL__ENABLE_WINDOW
@@ -14033,7 +14040,7 @@ fpl_platform_api void fplPollEvents() {
 	const fpl__Win32InitState *win32InitState = &fpl__global__InitState.win32;
 	const fpl__Win32Api *wapi = &win32AppState->winApi;
 	if(windowState->windowHandle != 0) {
-		if(windowState->messageFiber != fpl_null) {
+		if(windowState->mainFiber != fpl_null && windowState->messageFiber != fpl_null) {
 			SwitchToFiber(windowState->messageFiber);
 		} else {
 			MSG msg;
