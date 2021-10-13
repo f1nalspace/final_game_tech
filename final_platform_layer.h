@@ -150,6 +150,7 @@ SOFTWARE.
 	#### Bugfixes
 	- Fixed[#130]: [Win32] Main fiber was never properly released
 	- Fixed[#131]: [Win32] Console window was not shown the second time fplPlatformInit() was called
+	- Fixed[#124]: [Video/Vulkan] Fallback when creation with validation failed
 
 	#### Breaking Changes
 	- Changed: Renamed function fplOpenBinaryFile() to fplFileOpenBinary()
@@ -3532,10 +3533,10 @@ typedef void (fplVulkanValidationLayerCallback)(void *userData, const char *mess
 typedef enum fplVulkanValidationLayerMode {
 	//! Do not use the validation
 	fplVulkanValidationLayerMode_Disabled = 0,
-	//! Enable validations and print out validations to the FPL logging system
-	fplVulkanValidationLayerMode_Logging,
-	//! Enable validations and use @ref fplVulkanValidationLayerCallback to call back to to the user
-	fplVulkanValidationLayerMode_User,
+	//! Enable validations when its possible
+	fplVulkanValidationLayerMode_Optional,
+	//! Enable validations and stop when its not supported
+	fplVulkanValidationLayerMode_Required,
 } fplVulkanValidationLayerMode;
 
 //! The validation layer logging severity for Vulkan
@@ -10563,7 +10564,7 @@ fpl_common_api void fplSetDefaultVideoSettings(fplVideoSettings *video) {
 	video->graphics.vulkan.appVersion = fplStructInit(fplVersionInfo, "1.0.0", "1", "0", "0");
 	video->graphics.vulkan.engineVersion = fplStructInit(fplVersionInfo, "1.0.0", "1", "0", "0");
 	video->graphics.vulkan.apiVersion = fplStructInit(fplVersionInfo, "1.1.0", "1", "1", "0");
-	video->graphics.vulkan.validationLayerMode = fplVulkanValidationLayerMode_Logging;
+	video->graphics.vulkan.validationLayerMode = fplVulkanValidationLayerMode_Disabled;
 #endif
 
 	// @NOTE(final): Auto detect video backend
@@ -19635,6 +19636,9 @@ typedef VkPhysicalDevice fpl__VkPhysicalDevice;
 typedef VkApplicationInfo fpl__VkApplicationInfo;
 typedef VkInstanceCreateInfo fpl__VkInstanceCreateInfo;
 
+typedef VkExtensionProperties fpl__VkExtensionProperties;
+typedef VkLayerProperties fpl__VkLayerProperties;
+
 // Core procs
 typedef PFN_vkCreateInstance fpl__func_vkCreateInstance;
 typedef PFN_vkDestroyInstance fpl__func_vkDestroyInstance;
@@ -19746,12 +19750,12 @@ fpl_internal bool fpl__LoadVulkanApi(fpl__VulkanApi *api) {
 
 		FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libraryName, api, fpl__func_vkCreateInstance, vkCreateInstance);
 		FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libraryName, api, fpl__func_vkDestroyInstance, vkDestroyInstance);
-FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libraryName, api, fpl__func_vkGetInstanceProcAddr, vkGetInstanceProcAddr);
-FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libraryName, api, fpl__func_vkEnumerateInstanceExtensionProperties, vkEnumerateInstanceExtensionProperties);
-FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libraryName, api, fpl__func_vkEnumerateInstanceLayerProperties, vkEnumerateInstanceLayerProperties);
+		FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libraryName, api, fpl__func_vkGetInstanceProcAddr, vkGetInstanceProcAddr);
+		FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libraryName, api, fpl__func_vkEnumerateInstanceExtensionProperties, vkEnumerateInstanceExtensionProperties);
+		FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libraryName, api, fpl__func_vkEnumerateInstanceLayerProperties, vkEnumerateInstanceLayerProperties);
 
-result = true;
-break;
+		result = true;
+		break;
 	}
 
 	if(!result) {
@@ -19829,7 +19833,9 @@ fpl_internal const char *fpl__GetVulkanMessageSeverityName(const fpl__VkDebugUti
 fpl_internal fpl__VKAPI_ATTR fpl__VkBool32 fpl__VKAPI_CALL fpl__VulkanDebugCallback(fpl__VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, fpl__VkDebugUtilsMessageTypeFlagsEXT messageType, const fpl__VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, void *pUserData) {
 	fpl__VulkanDebugMessengerUserData *data = (fpl__VulkanDebugMessengerUserData *)pUserData;
 	const char *message = pCallbackData->pMessage;
-	if(data->validationMode == fplVulkanValidationLayerMode_Logging) {
+	if(data->userCallback != fpl_null) {
+		data->userCallback(data->userData, message, messageSeverity, messageType, pCallbackData);
+	} else {
 		if(messageSeverity == FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
 			FPL_LOG_ERROR(FPL__MODULE_VIDEO_VULKAN, "Validation: %s", message);
 		else if(messageSeverity == FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
@@ -19841,9 +19847,6 @@ fpl_internal fpl__VKAPI_ATTR fpl__VkBool32 fpl__VKAPI_CALL fpl__VulkanDebugCallb
 		else {
 			FPL_LOG_DEBUG(FPL__MODULE_VIDEO_VULKAN, "Validation: %s", message);
 		}
-	} else if(data->validationMode == fplVulkanValidationLayerMode_User) {
-		fplAssert(data->userCallback != fpl_null);
-		data->userCallback(data->userData, message, messageSeverity, messageType, pCallbackData);
 	}
 	return 0;
 }
@@ -19935,15 +19938,60 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_Vulkan_Prep
 
 		// @TODO(final): Validate vulkan video settings
 
-		// @TODO(final): Validate required instance extensions and layers
+		//
+		// Validate required instance extensions and layers
+		//
+		bool supportsDebugUtils = false;
+
+		fpl__VkExtensionProperties *supportedInstanceExtensions = fpl_null;
+		uint32_t supportedInstanceExtensionCount = 0;
+		api->vkEnumerateInstanceExtensionProperties(fpl_null, &supportedInstanceExtensionCount, fpl_null);
+		if(supportedInstanceExtensionCount > 0) {
+			supportedInstanceExtensions = (fpl__VkExtensionProperties *)fpl__AllocateTemporaryMemory(sizeof(fpl__VkExtensionProperties) * supportedInstanceExtensionCount, 16);
+			api->vkEnumerateInstanceExtensionProperties(fpl_null, &supportedInstanceExtensionCount, supportedInstanceExtensions);
+			for(uint32_t i = 0; i < supportedInstanceExtensionCount; ++i) {
+				if(fplIsStringEqual(supportedInstanceExtensions[i].extensionName, "VK_EXT_debug_utils")) {
+					supportsDebugUtils = true;
+				}
+			}
+			fpl__ReleaseTemporaryMemory(supportedInstanceExtensions);
+		}
+
+		bool supportsValidationLayer = false;
+
+		fpl__VkLayerProperties *supportedLayers = fpl_null;
+		uint32_t supportedLayerCount = 0;
+		api->vkEnumerateInstanceLayerProperties(&supportedLayerCount, fpl_null);
+		if(supportedLayerCount > 0) {
+			supportedLayers = (fpl__VkLayerProperties *)fpl__AllocateTemporaryMemory(sizeof(fpl__VkLayerProperties) * supportedLayerCount, 16);
+			api->vkEnumerateInstanceLayerProperties(&supportedLayerCount, supportedLayers);
+			for(uint32_t i = 0; i < supportedLayerCount; ++i) {
+				if(fplIsStringEqual(supportedLayers[i].layerName, "VK_LAYER_KHRONOS_validation")) {
+					supportsValidationLayer = true;
+				}
+			}
+			fpl__ReleaseTemporaryMemory(supportedInstanceExtensions);
+		}
 
 		const char *enabledValidationLayers[4] = fplZeroInit;
 		const char *enabledInstanceExtensions[8] = fplZeroInit;
 		uint32_t enabledValidationLayerCount = 0;
 		uint32_t enabledInstanceExtensionCount = 0;
 		if(videoSettings->graphics.vulkan.validationLayerMode != fplVulkanValidationLayerMode_Disabled) {
-			enabledValidationLayers[enabledValidationLayerCount++] = "VK_LAYER_KHRONOS_validation";
-			enabledInstanceExtensions[enabledInstanceExtensionCount++] = "VK_EXT_debug_utils"; // VK_EXT_debug_utils is always supported
+			if(videoSettings->graphics.vulkan.validationLayerMode == fplVulkanValidationLayerMode_Required) {
+				if(!supportsDebugUtils) {
+					FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "VK_EXT_debug_utils instance extension is not supported!");
+					return(false);
+				}
+				if(!supportsValidationLayer) {
+					FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "VK_LAYER_KHRONOS_validation instance layer is not supported!");
+					return(false);
+				}
+			}
+			if(supportsDebugUtils && supportsValidationLayer) {
+				enabledValidationLayers[enabledValidationLayerCount++] = "VK_LAYER_KHRONOS_validation";
+				enabledInstanceExtensions[enabledInstanceExtensionCount++] = "VK_EXT_debug_utils";
+			}
 		}
 		for(uint32_t i = 0; i < requirements.vulkan.instanceExtensionCount; ++i) {
 			fplAssert(enabledInstanceExtensionCount < fplArrayCount(enabledInstanceExtensions));
@@ -19983,7 +20031,12 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_Vulkan_Prep
 		// Debug utils
 		if(videoSettings->graphics.vulkan.validationLayerMode != fplVulkanValidationLayerMode_Disabled) {
 			if(!fpl__VulkanCreateDebugMessenger(&videoSettings->graphics.vulkan, nativeBackend)) {
-				FPL__WARNING(FPL__MODULE_VIDEO_VULKAN, "The debug messenger could not be created, no validation message are printed");
+				if(videoSettings->graphics.vulkan.validationLayerMode == fplVulkanValidationLayerMode_Optional) {
+					FPL__WARNING(FPL__MODULE_VIDEO_VULKAN, "The debug messenger could not be created, no validation message are printed");
+				} else {
+					FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "The debug messenger could not be created, stop vulkan initialization!");
+					return(false);
+				}
 			}
 		}
 

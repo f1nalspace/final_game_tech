@@ -20,6 +20,9 @@ Todo:
 	- Let it at least draw something, because clearing to blue is boring
 
 Changelog:
+	## 2021-10-13
+	- Reflect FPL API changes
+
 	## 2021-09-09
 	- Fixed validation layer was not disabled when VULKANDEMO_USE_VALIDATION_LAYER is set to 0
 
@@ -2857,7 +2860,7 @@ int main(int argc, char **argv) {
 	settings.video.graphics.vulkan.engineName = "FPL-Vulkan-Demo";
 
 #if VULKANDEMO_USE_VALIDATION_LAYER
-	settings.video.graphics.vulkan.validationLayerMode = fplVulkanValidationLayerMode_Logging;
+	settings.video.graphics.vulkan.validationLayerMode = fplVulkanValidationLayerMode_Optional;
 	settings.video.graphics.vulkan.validationSeverity = fplVulkanValidationSeverity_All;
 #else
 	settings.video.graphics.vulkan.validationLayerMode = fplVulkanValidationLayerMode_Disabled;
