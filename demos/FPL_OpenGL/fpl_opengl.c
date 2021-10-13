@@ -14,6 +14,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2021-10-13
+	- Fixed [#119]: Automatically fallback to legacy when modern OpenGL is not available
+
 	## 2021-05-27
 	- Enabled logging by default
 	- Do not typedef GLchar and GLsizeiptr, GLintptr when already included
@@ -43,8 +46,6 @@ License:
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
-
-#define MODERN_OPENGL 1 // Enable this to use OpenGL 3.3+
 
 #define FPL_IMPLEMENTATION
 #define FPL_LOGGING
@@ -539,6 +540,22 @@ static bool RunModern() {
 	return true;
 }
 
+bool IsModernOpenGLSupported() {
+	fplSettings settings = fplMakeDefaultSettings();
+	settings.video.backend = fplVideoBackendType_OpenGL;
+	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
+	settings.video.graphics.opengl.majorVersion = 3;
+	settings.video.graphics.opengl.minorVersion = 3;
+	settings.video.graphics.opengl.multiSamplingCount = 0;
+	settings.video.isVSync = true;
+	bool result = false;
+	if(fplPlatformInit(fplInitFlags_Video, &settings)) {
+		result = true;
+		fplPlatformRelease();
+	}
+	return(result);
+}
+
 int main(int argc, char **args) {
 	int result = 0;
 
@@ -549,34 +566,35 @@ int main(int argc, char **args) {
 
 	fplSettings settings = fplMakeDefaultSettings();
 	settings.video.backend = fplVideoBackendType_OpenGL;
-#if MODERN_OPENGL
-	fplCopyString("FPL Modern OpenGL", settings.window.title, fplArrayCount(settings.window.title));
-	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
-	settings.video.graphics.opengl.majorVersion = 3;
-	settings.video.graphics.opengl.minorVersion = 3;
-	settings.video.graphics.opengl.multiSamplingCount = 4;
-	settings.video.isVSync = true;
-#else
-	fplCopyString("FPL Legacy OpenGL", settings.window.title, fplArrayCount(settings.window.title));
-	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
-#endif
-	if (fplPlatformInit(fplInitFlags_Video | fplInitFlags_Console, &settings)) {
+
+	bool supportsModernOpenGL = IsModernOpenGLSupported();
+	if(supportsModernOpenGL) {
+		fplCopyString("FPL Modern OpenGL", settings.window.title, fplArrayCount(settings.window.title));
+		settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
+		settings.video.graphics.opengl.majorVersion = 3;
+		settings.video.graphics.opengl.minorVersion = 3;
+		settings.video.graphics.opengl.multiSamplingCount = 4;
+		settings.video.isVSync = true;
+	} else {
+		fplCopyString("FPL Legacy OpenGL", settings.window.title, fplArrayCount(settings.window.title));
+		settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
+	}
+
+	if(fplPlatformInit(fplInitFlags_Video | fplInitFlags_Console, &settings)) {
 		const char *version = (const char *)glGetString(GL_VERSION);
 		const char *vendor = (const char *)glGetString(GL_VENDOR);
 		const char *renderer = (const char *)glGetString(GL_RENDERER);
 		fplConsoleFormatOut("OpenGL version: %s\n", version);
 		fplConsoleFormatOut("OpenGL vendor: %s\n", vendor);
 		fplConsoleFormatOut("OpenGL renderer: %s\n", renderer);
-
-#if MODERN_OPENGL
-		RunModern();
-#else
-		RunLegacy();
-#endif
-
+		if(supportsModernOpenGL) {
+			RunModern();
+		} else {
+			RunLegacy();
+		}
 		fplPlatformRelease();
 		result = 0;
-} else {
+	} else {
 		result = -1;
 	}
 	return(result);
