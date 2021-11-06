@@ -21,6 +21,9 @@ Todo:
 	- Multiple audio tracks
 
 Changelog:
+	## 2021-11-06
+	- Proper FFT power spectrum and audio bin drawing
+
 	## 2021-03-13
 	- Samples and FFT visualization for realtime audio
 
@@ -143,15 +146,17 @@ typedef struct AudioFramesChunk {
 	AudioFrameIndex count;
 } AudioFramesChunk;
 
-#define MAX_AUDIO_BIN_COUNT 128
+#define MAX_AUDIO_BIN_COUNT MAX_AUDIO_FRAMES_CHUNK_FRAMES
 typedef struct AudioVisualization {
 	AudioFramesChunk videoAudioChunks[2]; // 0 = Render, 1 = New
 	FFTDouble fftInput[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
 	FFTDouble fftOutput[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
-	double magnitudes[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
+	double currentMagnitudes[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
+	double lastMagnitudes[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
 	double windowCoeffs[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
+	double powerSpectrum[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
 	double maxPeaks[MAX_AUDIO_BIN_COUNT];
-	double bins[MAX_AUDIO_BIN_COUNT + 1];
+	double bins[MAX_AUDIO_BIN_COUNT];
 	volatile uint32_t hasVideoAudioChunk;
 } AudioVisualization;
 
@@ -369,34 +374,82 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 			// Window multiplier (Hamming for smoother visualization)
 			double windowMultiplier = visualization->windowCoeffs[i];
 
+			double fftSample = sampleValue * windowMultiplier;
+			fplAssert(fftSample >= -1.0 && fftSample <= 1.0);
+
 			// Write samples to FFT input
-			visualization->fftInput[i].real = sampleValue * windowMultiplier;
+			visualization->fftInput[i].real = fftSample;
 			visualization->fftInput[i].imag = 0;
 		}
 
 		// Forward FFT
-		ForwardFFT(visualization->fftInput, frameCount, false, visualization->fftOutput);
+		ForwardFFT(visualization->fftInput, frameCount, visualization->fftOutput);
 
-		// Save magnitudes for FFT output
-		double invFrameCount = 1.0 / (double)frameCount;
-		for(uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
-			double re = fabs(visualization->fftOutput[frameIndex].real);
-			double im = fabs(visualization->fftOutput[frameIndex].imag);
-			double magnitude = sqrt(re * re + im * im);
-			double normalized = magnitude * 2.0 * invFrameCount;
-			visualization->magnitudes[frameIndex] = normalized;
+		uint32_t halfFFT = frameCount / 2;
+
+		double minDB = -60.0;
+		double maxDB = 10.0;
+
+		// Compute magnitudes
+		double maxMagnitude = 0.0;
+		for(uint32_t frameIndex = 0; frameIndex < halfFFT; ++frameIndex) {
+			double re = visualization->fftOutput[frameIndex].real;
+			double im = visualization->fftOutput[frameIndex].imag;
+			double magnitude = fabs(sqrt(re * re + im * im));
+
+			visualization->lastMagnitudes[frameIndex] = visualization->currentMagnitudes[frameIndex];
+			visualization->currentMagnitudes[frameIndex] = magnitude;
+
+			if(magnitude > maxMagnitude) {
+				maxMagnitude = magnitude;
+			}
+		}
+
+		// Normalize the magnitudes
+		double invMaxMag = maxMagnitude > 0 ? 1.0 / maxMagnitude : 0.0;
+		for(uint32_t frameIndex = 0; frameIndex < halfFFT; ++frameIndex) {
+			visualization->currentMagnitudes[frameIndex] *= invMaxMag;
+		}
+
+		// TODO(final): Convert to dB
+		// https://www.youtube.com/watch?v=2b1c8e4pAD4
+		for(uint32_t frameIndex = 0; frameIndex < halfFFT; ++frameIndex) {
+			double magnitude = visualization->currentMagnitudes[frameIndex];
+			//double dB = AmplitudeToDecibel(magnitude);
+			//double power = (dB - 30.0) / 30.0;
+			//visualization->magnitudes[frameIndex] = power;
+		}
+
+		// Smooth magnitude
+		double magSmooth = 0.1;
+		for(uint32_t frameIndex = 0; frameIndex < halfFFT; ++frameIndex) {
+#if 1
+			double lastMagnitude = visualization->lastMagnitudes[frameIndex];
+			double currentMagnitude = visualization->currentMagnitudes[frameIndex];
+			double newMagnitude = lastMagnitude * (1.0 - magSmooth) + currentMagnitude * magSmooth;
+#else
+			double newMagnitude = visualization->currentMagnitudes[frameIndex];
+#endif
+			visualization->currentMagnitudes[frameIndex] = newMagnitude;
+		}
+
+		// Compute power spectrum
+		for(uint32_t frameIndex = 0; frameIndex < halfFFT; ++frameIndex) {
+			double magnitude = visualization->currentMagnitudes[frameIndex];
+			double dB = AmplitudeToDecibel(magnitude);
+			double power = DecibelToPower(dB, minDB, maxDB);
+			visualization->powerSpectrum[frameIndex] = power;
 		}
 
 		// Reset and evaluate max peaks
 		uint32_t binCount = MAX_AUDIO_BIN_COUNT;
 		for(uint32_t i = 0; i < binCount; ++i) {
-			visualization->maxPeaks[i] = -INFINITY;
+			visualization->maxPeaks[i] = 0.0;
 		}
-		double sampleRatePerFrame = (double)demo->targetAudioFormat.sampleRate / (double)frameCount;
-		for(uint32_t frameIndex = 0; frameIndex < frameCount / 2; ++frameIndex) {
-			double magnitude = visualization->magnitudes[frameIndex];
-			double freq = frameIndex * sampleRatePerFrame;
-			for(uint32_t binIndex = 0; binIndex < (binCount + 1); ++binIndex) {
+		for(uint32_t frameIndex = 0; frameIndex < halfFFT; ++frameIndex) {
+			double magnitude = visualization->currentMagnitudes[frameIndex];
+			double freq = frameIndex * (double)demo->targetAudioFormat.sampleRate / (double)frameCount;
+			for(uint32_t binIndex = 0; binIndex < (binCount - 1); ++binIndex) {
 				if((freq > visualization->bins[binIndex]) && (freq <= visualization->bins[binIndex + 1])) {
 					if(magnitude > visualization->maxPeaks[binIndex]) {
 						visualization->maxPeaks[binIndex] = magnitude;
@@ -409,7 +462,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 #if 1
 		// Draw samples
 		{
-			float spacing = 3.0f;
+			float spacing = 4.0f;
 			float totalSpacing = spacing * (frameCount - 1);
 			float barMaxWidth = spectrumDim.w / (float)frameCount;
 			float barWidth = (spectrumDim.w - totalSpacing) / (float)frameCount;
@@ -439,66 +492,54 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 					} break;
 				}
 
-				float barMaxHeight = spectrumDim.h * 0.5f;
+				float barMaxHeight = spectrumDim.h * 0.25f;
 				float barHeight = sampleValue * barMaxHeight;
 				float barX = spectrumPos.x + i * barWidth + i * spacing;
-				float barY = spectrumPos.y + spectrumDim.h * 0.5f;
-				RenderRectangle(barX, barY + barHeight * 0.5f, barX + barWidth, barY - barHeight * 0.5f, (Vec4f) { 1, 1, 0, 1 }, 1.0f);
+				float barY = spectrumPos.y + barMaxHeight * 0.5f;
+				RenderQuad(barX, barY + barHeight * 0.5f, barX + barWidth, barY - barHeight * 0.5f, (Vec4f) { 1, 1, 0, 1 });
 			}
 		}
 #endif
 
 
-#if 0
-		// Draw FFT bins/peaks (Is incorrect)
+#if 1
+		// Draw power spectrum
 		{
-			float fitFactor = 1.0f;
-			float spacing = 4.0f;
-			float totalSpacing = spacing * (binCount - 1);
-			float barMaxWidth = spectrumDim.w / (float)binCount;
-			float barMaxHeight = spectrumDim.h;
-			float barWidth = (spectrumDim.w - totalSpacing) / (float)binCount;
-			float barY = spectrumPos.y + barMaxHeight;
-
-			for(uint32_t binIndex = 0; binIndex < binCount; ++binIndex) {
-				double maxPeak = visualization->maxPeaks[binIndex];
-				double db = AmplitudeToDecibel(maxPeak);
-				double minDB = -90.0;
-				if(db < minDB) db = minDB;
-				float sampleValue = (float)(db / minDB);
-
-				// https://dsp.stackexchange.com/questions/32076/fft-to-spectrum-in-decibel
-
-				float barX = spectrumPos.x + binIndex * barWidth + binIndex * spacing;
-				float barHeight = sampleValue * barMaxHeight;
-				RenderQuad(barX, barY, barX + barWidth, barY - barHeight, (Vec4f) { 0, 1, 0, 0.1f });
+			float spacing = 2.0f;
+			float totalSpacing = spacing * (halfFFT - 1);
+			float barMaxWidth = spectrumDim.w / (float)halfFFT;
+			float barMaxHeight = spectrumDim.h * 0.4f;
+			float barWidth = (spectrumDim.w - totalSpacing) / (float)halfFFT;
+			float barY = spectrumPos.y + spectrumDim.h * 0.25f + barMaxHeight;
+			// https://dsp.stackexchange.com/questions/32076/fft-to-spectrum-in-decibel
+			for(uint32_t frameIndex = 0; frameIndex < halfFFT; ++frameIndex) {
+				double magnitude = visualization->powerSpectrum[frameIndex];
+				float barScale = (float)magnitude;
+				float barX = spectrumPos.x + frameIndex * barWidth + frameIndex * spacing;
+				float barHeight = barScale * barMaxHeight;
+				RenderQuad(barX, barY, barX + barWidth, barY - barHeight, (Vec4f) { 0, 1, 0, 0.5 });
 			}
 		}
 #endif
 
 #if 1
-		// Draw raw FFT
+		// Draw FFT bins/peaks
 		{
-			uint32_t fftCount = frameCount;
-			float spacing = 6.0f;
-			float totalSpacing = spacing * (fftCount - 1);
-			float barMaxWidth = spectrumDim.w / (float)fftCount;
-			float barMaxHeight = spectrumDim.h;
-			float barWidth = (spectrumDim.w - totalSpacing) / (float)fftCount;
-			float barY = spectrumPos.y + barMaxHeight;
+			float fitFactor = 1.0f;
+			float spacing = 4.0f;
+			float totalSpacing = spacing * (binCount - 1);
+			float barMaxWidth = spectrumDim.w / (float)binCount;
+			float barMaxHeight = spectrumDim.h * 0.4f;
+			float barWidth = (spectrumDim.w - totalSpacing) / (float)binCount;
+			float barBottom = spectrumPos.y + spectrumDim.h;
 
-			float magScale = 2.0f;
-
-			// https://dsp.stackexchange.com/questions/32076/fft-to-spectrum-in-decibel
-
-			for(uint32_t frameIndex = 0; frameIndex < fftCount; ++frameIndex) {
-				//FFTDouble fft = visualization->fftOutput[frameIndex];
-				//double magnitude = sqrt(fft.real * fft.real + fft.imag * fft.imag);
-				double magnitude = visualization->magnitudes[frameIndex];
-				float sampleValue = (float)magnitude * magScale;
-				float barX = spectrumPos.x + frameIndex * barWidth + frameIndex * spacing;
-				float barHeight = sampleValue * barMaxHeight;
-				RenderQuad(barX, barY, barX + barWidth, barY - barHeight, (Vec4f) { 0, 1, 0, 1 });
+			for(uint32_t binIndex = 0; binIndex < binCount; ++binIndex) {
+				double maxPeak = visualization->maxPeaks[binIndex];
+				double db = AmplitudeToDecibel(maxPeak);
+				double power = DecibelToPower(db, minDB, maxDB);
+				float barX = spectrumPos.x + binIndex * barWidth + binIndex * spacing;
+				float barHeight = (float)power * barMaxHeight;
+				RenderQuad(barX, barBottom, barX + barWidth, barBottom - barHeight, (Vec4f) { 1.0f, 0.0, 0.0f, 0.5f });
 			}
 		}
 #endif
@@ -899,15 +940,16 @@ static void ReleaseVisualization(AudioDemo *demo) {
 
 static bool InitializeVisualization(AudioDemo *demo) {
 	// Initialize frequency bins
-	uint32_t frequencyBinCount = fplArrayCount(demo->visualization.bins);
-	for(uint32_t i = 0; i < frequencyBinCount; ++i) {
-		double freq = i * (double)demo->targetAudioFormat.sampleRate / (double)frequencyBinCount;
-		demo->visualization.maxPeaks[i] = 0;
-		demo->visualization.bins[i] = freq;
+	for(uint32_t binIndex = 0; binIndex < MAX_AUDIO_BIN_COUNT - 1; ++binIndex) {
+		double freq = binIndex * (double)demo->targetAudioFormat.sampleRate / (double)MAX_AUDIO_BIN_COUNT;
+		demo->visualization.maxPeaks[binIndex] = 0;
+		demo->visualization.bins[binIndex] = freq;
 	}
+	demo->visualization.bins[MAX_AUDIO_BIN_COUNT - 1] = demo->targetAudioFormat.sampleRate; // nyquist
 
 	// Init window coefficients
-	HammingWindowFunction(demo->visualization.windowCoeffs, fplArrayCount(demo->visualization.fftInput));
+	uint32_t N = fplArrayCount(demo->visualization.fftInput);
+	HammingWindowFunction(demo->visualization.windowCoeffs, N);
 
 	return(true);
 }
@@ -993,7 +1035,7 @@ int main(int argc, char **args) {
 	fplAssert(loadedDeviceCount == deviceCount);
 	// Use first audio device
 	if(loadedDeviceCount > 0) {
-		for (uint32_t deviceIndex = 0; deviceIndex < loadedDeviceCount; ++deviceIndex) {
+		for(uint32_t deviceIndex = 0; deviceIndex < loadedDeviceCount; ++deviceIndex) {
 			fplAudioDeviceInfo *audioDeviceInfo = audioDeviceInfos + deviceIndex;
 			fplDebugFormatOut("AudioDevice[%lu] %s\n", deviceIndex, audioDeviceInfo->name);
 		}
@@ -1030,7 +1072,7 @@ int main(int argc, char **args) {
 	}
 
 		// Initialze playback latency
-	demo->maxPlaybackFrameLatency = demo->targetAudioFormat.bufferSizeInFrames / demo->targetAudioFormat.periods;	
+	demo->maxPlaybackFrameLatency = demo->targetAudioFormat.bufferSizeInFrames / demo->targetAudioFormat.periods;
 
 #if OPT_PLAYBACK == OPT_PLAYBACK_STREAMBUFFER
 	AudioFrameIndex streamBufferFrames = 0;
