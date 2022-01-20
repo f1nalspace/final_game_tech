@@ -380,14 +380,16 @@ extern int GameMain(const GameConfiguration &config) {
 		int frameIndex = 0;
 
 		while(!IsGameExiting(gameMem) && fplWindowUpdate()) {
-			// Window size
+			// Get window size
 			fplWindowSize winArea;
 			if(fplGetWindowSize(&winArea)) {
 				newInput->windowSize.x = winArea.width;
 				newInput->windowSize.y = winArea.height;
 			}
 
-			// Remember previous state
+			//
+			// Compute new input state
+			//
 			newInput->fixedDeltaTime = (float)TargetDeltaTime;
 			newInput->dynamicFrameTime = (float)lastFrameTime;
 			newInput->framesPerSeconds = (float)framesPerSecond;
@@ -454,10 +456,12 @@ extern int GameMain(const GameConfiguration &config) {
 				updateCount = frameCount = 0;
 			}
 
-			// Input
+			// Game Input
 			GameInput(gameMem, *newInput);
 
-			// Timing
+			//
+			// Compute frame times and update accumulator
+			//
 			lastTime = currTime;
 			currTime = fplGetTimeInSecondsHP();
 			lastFrameTime = currTime - lastTime;
@@ -465,7 +469,9 @@ extern int GameMain(const GameConfiguration &config) {
 			frameAccumulator += lastFrameTime;
 			framesPerSecond = lastFrameTime > 0 ? 1.0 / lastFrameTime : 0;
 
+			//
 			// Game Updates
+			//
 			while(frameAccumulator >= TargetDeltaTime) {
 				GameUpdate(gameMem, *newInput);
 				frameAccumulator -= TargetDeltaTime;
@@ -473,7 +479,9 @@ extern int GameMain(const GameConfiguration &config) {
 				++updateCount;
 			}
 
-			// Render
+			//
+			// Game Render
+			//
 			ResetRenderState(renderState);
 
 			float alpha = (float)frameAccumulator / (float)TargetDeltaTime;
@@ -483,7 +491,9 @@ extern int GameMain(const GameConfiguration &config) {
 			fplVideoFlip();
 			++frameCount;
 
+			//
 			// FPS-Timer
+			//
 			if((fplGetTimeInMillisecondsLP() - lastFPSTime) >= 1000) {
 #if 0
 				char charBuffer[256];
