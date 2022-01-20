@@ -389,7 +389,7 @@ extern int GameMain(const GameConfiguration &config) {
 
 			// Remember previous state
 			newInput->fixedDeltaTime = (float)TargetDeltaTime;
-			newInput->dynamicFrameTime = lastFrameTime;
+			newInput->dynamicFrameTime = (float)lastFrameTime;
 			newInput->framesPerSeconds = (float)framesPerSecond;
 			newInput->defaultControllerIndex = oldInput->defaultControllerIndex;
 			Controller *oldKeyboardController = &oldInput->keyboard;
