@@ -216,7 +216,7 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 	GameState *state = gameMemory.game;
 	assert(state != nullptr);
 
-	const float dt = input.deltaTime;
+	const float dt = input.fixedDeltaTime;
 
 	World &world = state->world;
 	Entity &player = world.player;
@@ -333,12 +333,6 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 	}
 }
 
-extern void GameUpdateAndRender(GameMemory &gameMemory, const Input &input, const float alpha) {
-	GameInput(gameMemory, input);
-	GameUpdate(gameMemory, input);
-	GameRender(gameMemory, alpha);
-}
-
 #define FINAL_GAMEPLATFORM_IMPLEMENTATION
 #include <final_gameplatform.h>
 
@@ -346,7 +340,6 @@ int main(int argc, char *argv[]) {
 	GameConfiguration config = {};
 	config.title = L"FPL Demo | GameTemplate";
 	config.disableInactiveDetection = true;
-	config.noUpdateRenderSeparation = true;
 	int result = GameMain(config);
 	return(result);
 }

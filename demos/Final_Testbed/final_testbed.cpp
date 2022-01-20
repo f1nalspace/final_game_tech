@@ -120,7 +120,7 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 	}
 	GameState *state = gameMemory.game;
 	fplAssert(state != nullptr);
-	state->angle += input.deltaTime * 0.1f;
+	state->angle += input.fixedDeltaTime * 0.1f;
 }
 
 static Rect2f ComputeAspectRect(Vec2f targetSize, Vec2f sourceSize, Ratio sourceRatio) {

@@ -16,6 +16,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2022-01-20
+	- Use variable frame rate for paddle moving instead to prevent over-speeding when V-Sync is enabled, or V-Blanks are more than 60 Hz
+
 	## 2021-08-25
 	- Replaced game music with a better fitting track
 	- Added menu music
@@ -1018,6 +1021,11 @@ extern void GameInput(GameMemory& gameMemory, const Input& input) {
 	GameState* state = gameMemory.game;
 	fplAssert(state != nullptr);
 
+	// @NOTE(final): We have to the dynamic frame time, because box2d uses its own timing system to lock the physics to a fixed number of updates
+	// When enabled V-Sync this works great, but only when the number of blanks matches the target frame rate of 60 hz.
+	// But with V-Sync disabled, GameInput may be called much more often, so we account for that by using the dynamic frame rate instead.
+	double vdt = input.dynamicFrameTime;
+
 	if (input.defaultControllerIndex > -1) {
 		fplAssert(input.defaultControllerIndex < fplArrayCount(input.controllers));
 		const Controller* controller = &input.controllers[input.defaultControllerIndex];
@@ -1031,13 +1039,13 @@ extern void GameInput(GameMemory& gameMemory, const Input& input) {
 				if (controller->isAnalog) {
 					float x = controller->analogMovement.x;
 					if (Abs(x) > 0) {
-						paddle.body->ApplyLinearImpulse(paddle.speed * b2Vec2(x, 0), paddle.body->GetPosition(), true);
+						paddle.body->ApplyLinearImpulse(paddle.speed * vdt * b2Vec2(x, 0), paddle.body->GetPosition(), true);
 					}
 				} else {
 					if (IsDown(controller->moveLeft)) {
-						paddle.body->ApplyLinearImpulse(paddle.speed * b2Vec2(-1, 0), paddle.body->GetPosition(), true);
+						paddle.body->ApplyLinearImpulse(paddle.speed * vdt * b2Vec2(-1, 0), paddle.body->GetPosition(), true);
 					} else if (IsDown(controller->moveRight)) {
-						paddle.body->ApplyLinearImpulse(paddle.speed * b2Vec2(1, 0), paddle.body->GetPosition(), true);
+						paddle.body->ApplyLinearImpulse(paddle.speed * vdt * b2Vec2(1, 0), paddle.body->GetPosition(), true);
 					}
 				}
 
@@ -1171,7 +1179,7 @@ static void UpdatePlayMode(GameState& state, const Input& input) {
 	}
 
 	// Run physics simulation
-	state.world->Step(input.deltaTime, 10, 10);
+	state.world->Step(input.fixedDeltaTime, 10, 10);
 	state.world->ClearForces();
 }
 
@@ -1495,9 +1503,6 @@ extern void GameRender(GameMemory& gameMemory, const float alpha) {
 	}
 }
 
-extern void GameUpdateAndRender(GameMemory& gameMemory, const Input& input, const float alpha) {
-}
-
 #define FINAL_GAMEPLATFORM_IMPLEMENTATION
 #include <final_gameplatform.h>
 
@@ -1507,7 +1512,6 @@ int main(int argc, char* argv[]) {
 	GameConfiguration config = {};
 	config.title = L"FPL Demo | Crackout";
 	config.hideMouseCursor = true;
-	config.noUpdateRenderSeparation = false;
 	config.audioSampleRate = 44100;
 	int result = GameMain(config);
 	return(result);

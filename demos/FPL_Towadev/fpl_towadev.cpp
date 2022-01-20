@@ -1938,7 +1938,7 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 	if (state->isSlowDown) {
 		assert(state->slowdownTimer[1] > 0);
 		if (state->slowdownTimer[0] > 0.0f) {
-			state->slowdownTimer[0] -= input.deltaTime;
+			state->slowdownTimer[0] -= input.fixedDeltaTime;
 		} else {
 			state->slowdownTimer[0] = 0;
 			if (state->wave.state != state->waveStateAfterSlowdown) {
@@ -1948,7 +1948,7 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 		float t = 1.0f - (state->slowdownTimer[0] / state->slowdownTimer[1]);
 		dtScale = ScalarLerp(1.0f, t, state->slowdownScale);
 	}
-	const float dt = input.deltaTime * dtScale;
+	const float dt = input.fixedDeltaTime * dtScale;
 
 	state->deltaTime = dt;
 	state->framesPerSecond = input.framesPerSeconds;
@@ -2396,9 +2396,6 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 	game::DrawControls(*state, renderState);
 }
 
-extern void GameUpdateAndRender(GameMemory &gameMemory, const Input &input, const float alpha) {
-}
-
 #define FINAL_GAMEPLATFORM_IMPLEMENTATION
 #include <final_gameplatform.h>
 
@@ -2406,7 +2403,6 @@ int main(int argc, char *argv[]) {
 	GameConfiguration config = {};
 	config.title = L"FPL Demo | Towadev";
 	config.disableInactiveDetection = true;
-	config.noUpdateRenderSeparation = false;
 	gamelog::Verbose("Startup game application '%s'", config.title);
 	int result = GameMain(config);
 	return(result);

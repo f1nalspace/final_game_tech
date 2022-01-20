@@ -78,7 +78,8 @@ struct Mouse {
 };
 
 struct Input {
-	float deltaTime;
+	float fixedDeltaTime;
+	float dynamicFrameTime;
 	float framesPerSeconds;
 	int frameIndex;
 	union {
