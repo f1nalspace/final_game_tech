@@ -2397,9 +2397,6 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 }
 
 extern void GameUpdateAndRender(GameMemory &gameMemory, const Input &input, const float alpha) {
-	GameInput(gameMemory, input);
-	GameUpdate(gameMemory, input);
-	GameRender(gameMemory, alpha);
 }
 
 #define FINAL_GAMEPLATFORM_IMPLEMENTATION
@@ -2409,7 +2406,7 @@ int main(int argc, char *argv[]) {
 	GameConfiguration config = {};
 	config.title = L"FPL Demo | Towadev";
 	config.disableInactiveDetection = true;
-	config.noUpdateRenderSeparation = true;
+	config.noUpdateRenderSeparation = false;
 	gamelog::Verbose("Startup game application '%s'", config.title);
 	int result = GameMain(config);
 	return(result);
