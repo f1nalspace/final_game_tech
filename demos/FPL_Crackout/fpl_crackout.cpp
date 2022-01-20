@@ -1024,7 +1024,7 @@ extern void GameInput(GameMemory& gameMemory, const Input& input) {
 	// @NOTE(final): We have to the dynamic frame time, because box2d uses its own timing system to lock the physics to a fixed number of updates
 	// When enabled V-Sync this works great, but only when the number of blanks matches the target frame rate of 60 hz.
 	// But with V-Sync disabled, GameInput may be called much more often, so we account for that by using the dynamic frame rate instead.
-	double vdt = input.dynamicFrameTime;
+	const float vdt = input.dynamicFrameTime;
 
 	if (input.defaultControllerIndex > -1) {
 		fplAssert(input.defaultControllerIndex < fplArrayCount(input.controllers));
