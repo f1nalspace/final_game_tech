@@ -133,7 +133,7 @@ const float BottomAreaDepth = WorldRadius.y * 0.25f;
 const float AreaHalfWidth = WorldRadius.x - FrameRadius * 2.0f;
 const float AreaHalfHeight = WorldRadius.y - FrameRadius * 0.5f - BottomAreaDepth;
 
-constexpr float PaddleSpeed = 100.0f;
+constexpr float PaddleSpeed = 5000.0f;
 const Vec2f PaddleRadius = V2fInit(BallRadius * 3, BallRadius);
 const float PaddleLineY = -WorldRadius.y + PaddleRadius.y;
 const float PaddleGlueOffsetY = PaddleRadius.y * 2 + BallRadius * 0.25f;
