@@ -9,6 +9,10 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
+	## 2022-01-23
+	- Proper game timing is accumulated delta time method
+	- Configurable vsync
+
 	## 2019-01-31
 	- Center window on center from nearest display
 
@@ -35,11 +39,12 @@ License:
 
 struct GameConfiguration {
 	const wchar_t *title;
-	bool hideMouseCursor;
-	bool disableInactiveDetection;
 	uint32_t audioSampleRate;
 	uint32_t audioChannels;
 	fplAudioFormatType audioFormat;
+	bool hideMouseCursor;
+	bool disableInactiveDetection;
+	bool disableVerticalSync;
 };
 
 extern int GameMain(const GameConfiguration &config);
@@ -277,7 +282,7 @@ extern int GameMain(const GameConfiguration &config) {
 	fplSettings settings = fplMakeDefaultSettings();
 	settings.video.backend = fplVideoBackendType_OpenGL;
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
-	settings.video.isVSync = false;
+	settings.video.isVSync = !config.disableVerticalSync;
 	if (config.audioSampleRate > 0) {
 		settings.audio.targetFormat.sampleRate = config.audioSampleRate;
 		settings.audio.targetFormat.bufferSizeInFrames = fplGetAudioBufferSizeInFrames(settings.audio.targetFormat.sampleRate, settings.audio.targetFormat.bufferSizeInMilliseconds);
