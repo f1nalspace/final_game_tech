@@ -340,6 +340,7 @@ struct MenuRenderState {
 typedef const char* MenuID;
 
 struct MenuState {
+	float bgMoveTime;
 	int itemIndex;
 	int itemCount;
 	MenuID hotID;
@@ -1058,7 +1059,9 @@ extern void GameInput(GameMemory& gameMemory, const Input& input) {
 			{
 				if (WasPressed(controller->actionDown) || WasPressed(controller->actionStart)) {
 					state->mode = GameMode::Menu;
+					float oldbgMoveTime = state->menu.bgMoveTime;
 					state->menu = {};
+					state->menu.bgMoveTime = oldbgMoveTime;
 					state->menu.section = MenuSection::Main;
 				}
 			} break;
@@ -1194,6 +1197,8 @@ extern void GameUpdate(GameMemory& gameMemory, const Input& input) {
 
 	if (state->mode == GameMode::Play) {
 		UpdatePlayMode(*state, input);
+	} else if(state->mode == GameMode::Title || state->mode == GameMode::Menu || state->mode == GameMode::GameOver) {
+		state->menu.bgMoveTime += input.fixedDeltaTime;
 	}
 }
 
@@ -1203,11 +1208,15 @@ static void DrawField(GameState& state) {
 	// Background
 	{
 		GLuint bgTex = PointerToValue<GLuint>(state.assets.bgTextures[BackgroundType::Default].texture);
-		float uMax = (float)(int)(WorldRadius.x / FrameRadius);
-		float vMax = (float)(int)(WorldRadius.y / FrameRadius);
+		float uMove = (float)Sine(state.menu.bgMoveTime * 0.5f) * 5.5f;
+		float vMove = (float)Sine(state.menu.bgMoveTime * 1.3f) * -2.65f;
+		float uMin = uMove;
+		float vMin = vMove;
+		float uMax = (float)(int)(WorldRadius.x / FrameRadius) + uMove;
+		float vMax = (float)(int)(WorldRadius.y / FrameRadius) + vMove;
 		UVRect bgUV = BackgroundUVs[BackgroundType::Default];
 		glColor4f(1, 1, 1, 1);
-		DrawSprite(bgTex, WorldRadius.x - FrameRadius * 2, WorldRadius.y - FrameRadius, 0.0f, vMax, uMax, 0.0f, 0, -FrameRadius);
+		DrawSprite(bgTex, WorldRadius.x - FrameRadius * 2, WorldRadius.y - FrameRadius, uMin, vMax, uMax, vMin, 0, -FrameRadius);
 	}
 
 	// Frame
