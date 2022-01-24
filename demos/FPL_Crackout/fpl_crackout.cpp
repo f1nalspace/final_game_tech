@@ -1401,7 +1401,7 @@ static void DrawPlayMode(GameState &state) {
 
 	if(state.totalBricks > 0) {
 		int levelPercentage = 100 - (int)((state.remainingBricks / (double)state.totalBricks) * 100);
-		fplFormatString(textBuffer, fplArrayCount(textBuffer), "Level: %d (%d %s)", (state.levelsCompleted + 1), levelPercentage, "%");
+		fplFormatString(textBuffer, fplArrayCount(textBuffer), "Level: %d - %d %s", (state.levelsCompleted + 1), levelPercentage, "%");
 	} else {
 		fplFormatString(textBuffer, fplArrayCount(textBuffer), "Level: %d", (state.levelsCompleted + 1));
 	}
