@@ -1127,7 +1127,7 @@ static void UpdatePlayMode(GameState &state, const Input &input) {
 	}
 
 	// Make all bricks dynamic when hit
-	const float hitStrength = 1.5f;
+	const float hitStrength = 2.5f;
 	for(size_t i = 0; i < state.remainingBricks; ++i) {
 		Entity &brickEntity = state.activeBricks[i];
 		Brick &brick = brickEntity.brick;
