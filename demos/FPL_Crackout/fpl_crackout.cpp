@@ -18,6 +18,7 @@ Author:
 Changelog:
 	## 2022-01-20
 	- Use variable frame rate for paddle moving instead to prevent over-speeding when V-Sync is enabled, or V-Blanks are more than 60 Hz
+	- Change restitution for field borders to zero, so the paddle wont bounce anymore
 
 	## 2021-08-25
 	- Replaced game music with a better fitting track
@@ -425,7 +426,7 @@ static void LoadLevel(GameState& state, int levelSeed) {
 		bodyDef.fixedRotation = true;
 
 		b2FixtureDef fixtureDef = b2FixtureDef();
-		fixtureDef.restitution = 1.0f;
+		fixtureDef.restitution = 0.0f;
 		fixtureDef.friction = 0.0f;
 		fixtureDef.density = 1.0f;
 
@@ -563,7 +564,7 @@ static void LoadLevel(GameState& state, int levelSeed) {
 		fixtureDef = b2FixtureDef();
 		fixtureDef.shape = &limiterShape;
 		fixtureDef.restitution = 0.0f;
-		fixtureDef.friction = 1.0f;
+		fixtureDef.friction = 0.0f;
 		fixtureDef.density = 1.0f;
 		fixtureDef.filter.maskBits = 0x0000;
 		body->CreateFixture(&fixtureDef);
