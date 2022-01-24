@@ -78,6 +78,17 @@ extern void DrawTextFont(const char *text, const size_t textLen, const LoadedFon
 				Vec2f uvMin = quad.uvMin;
 				Vec2f uvMax = quad.uvMax;
 
+#if 0
+				glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+				glBegin(GL_LINE_LOOP);
+				glVertex2f(offset.x + size.x * 0.5f, offset.y + size.y * -0.5f);
+				glVertex2f(offset.x + size.x * -0.5f, offset.y + size.y * -0.5f);
+				glVertex2f(offset.x + size.x * -0.5f, offset.y + size.y * 0.5f);
+				glVertex2f(offset.x + size.x * 0.5f, offset.y + size.y * 0.5f);
+				glEnd();
+				glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+#endif
+
 				DrawSprite(fontTexture, size.x * 0.5f, size.y * 0.5f, uvMin.x, uvMin.y, uvMax.x, uvMax.y, offset.x, offset.y);
 
 				advance = GetFontCharacterAdvance(fontDesc, at, atNext) * maxCharHeight;
