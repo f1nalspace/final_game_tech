@@ -61,5 +61,8 @@
     <ClInclude Include="..\additions\final_utils.h">
       <Filter>additions</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\final_font.h">
+      <Filter>dependencies</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

@@ -14,13 +14,11 @@ License:
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
+#if 0
+
 #define FPL_IMPLEMENTATION
 #define FPL_NO_VIDEO_VULKAN
 #include <final_platform_layer.h>
-
-#define FINAL_FONTLOADER_IMPLEMENTATION
-#define FINAL_FONTLOADER_BETTERQUALITY 1
-#include <final_fontloader.h>
 
 #define FINAL_GAMEPLATFORM_IMPLEMENTATION
 #include <final_gameplatform.h>
@@ -278,3 +276,39 @@ int main(int argc, char **argv) {
 	int result = GameMain(config);
 	return(result);
 }
+
+#endif
+
+// Final-Font Test
+#if 1
+#define FPL_IMPLEMENTATION
+#define FPL_NO_VIDEO_VULKAN
+#include <final_platform_layer.h>
+
+#define FGL_IMPLEMENTATION
+#include <final_dynamic_opengl.h>
+
+#define FNT_IMPLEMENTATION
+#include <final_font.h>
+
+int main(int argc, char **argv) {
+	size_t x = sizeof(fntFontBitmap);
+
+	fplSettings settings = fplMakeDefaultSettings();
+	if(fplPlatformInit(fplInitFlags_All, &settings)) {
+		if(fglLoadOpenGL(true)) {
+
+			while(fplWindowUpdate()) {
+				fplEvent ev;
+				while(fplPollEvent(&ev)) {
+
+				}
+			}
+
+			fglUnloadOpenGL();
+		}
+		fplPlatformRelease();
+	}
+	return (0);
+}
+#endif

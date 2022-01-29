@@ -23,6 +23,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\final_dynamic_opengl.h" />
+    <ClInclude Include="..\..\final_font.h" />
     <ClInclude Include="..\..\final_memory.h" />
     <ClInclude Include="..\..\final_platform_layer.h" />
     <ClInclude Include="..\..\final_xml.h" />
