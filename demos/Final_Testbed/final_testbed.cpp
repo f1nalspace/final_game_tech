@@ -158,6 +158,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 		fplAssert(state->debugFont.type == AssetType::Font);
 		const LoadedFont &font = state->debugFont.font.data;
 		PushTexture(renderState, &state->debugFont.font.texture, font.atlasAlphaBitmap, font.atlasWidth, font.atlasHeight, 1, TextureFilterType::Linear, TextureWrapMode::ClampToEdge, false, false);
+		state->debugFont.loadState = AssetLoadState::Loaded;
 	}
 
 	PushViewport(renderState, state->viewport.x, state->viewport.y, state->viewport.w, state->viewport.h);
