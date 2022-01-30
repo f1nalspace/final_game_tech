@@ -24,20 +24,11 @@
 #include <stdlib.h> // NULL
 #include <stdbool.h> // bool
 
-#define fnt_null NULL
-
-//! Macro for initialize a struct to zero
-#if defined(FNT_IS_C99)
-#	define FNT_ZERO_INIT {0}
-#else
-#	define FNT_ZERO_INIT {}
-#endif
-
 #if defined(FNT_AS_PRIVATE)
-	//! API functions exported as static
+		//! API functions exported as static
 #	define fnt_api static
 #else
-	//! API functions exported as extern
+		//! API functions exported as extern
 #	define fnt_api extern
 #endif
 
@@ -135,20 +126,15 @@ extern "C" {
 		uint32_t codePointCount;
 	} fntFontPage;
 
-// See: https://en.wikipedia.org/wiki/Code_point
-#define FNT_UNICODE_PAGE_COUNT 17
-#define FNT_UNICODE_POINT_COUNT 65536
-#define FNT_MAX_UNICODE_POINT_COUNT (FNT_UNICODE_POINT_COUNT * FNT_UNICODE_PAGE_COUNT)
-
 	typedef struct fntFontAtlas {
-		//! The font info
-		fntFontInfo info;
 		//! The array of font pages
 		fntFontPage *pages;
 		//! The array of bitmaps
 		fntFontBitmap *bitmaps;
 		//! The array of code-points mapped to a font page number starting from 1 to N, zero means not-set
 		uint32_t *codePointsToPageIndices;
+		//! The font size in pixels
+		float fontSize;
 		//! The number of pages
 		uint32_t pageCount;
 		//! The number of bitmaps
@@ -158,16 +144,17 @@ extern "C" {
 	typedef struct fntFontContext {
 		fntFontInfo info;
 		fntFontData data;
+		uint32_t maxBitmapSize;
 	} fntFontContext;
 
-	fnt_api bool fntLoadFont(const fntFontData *data, fntFontInfo *info, const uint32_t fontIndex, const float fontSize);
-	fnt_api void fntFreeFont(fntFontInfo *info);
+	fnt_api bool fntLoadFontInfo(const fntFontData *data, fntFontInfo *info, const uint32_t fontIndex, const float fontSize);
+	fnt_api void fntFreeFontInfo(fntFontInfo *info);
 
-	fnt_api fntFontContext *fntCreateFontContext(const fntFontData *data, const fntFontInfo *info);
+	fnt_api fntFontContext *fntCreateFontContext(const fntFontData *data, const fntFontInfo *info, const uint32_t maxBitmapSize);
 	fnt_api void fntFreeFontContext(fntFontContext *context);
 
-	fnt_api fntFontAtlas *fntCreateFontAtlas(const fntFontInfo *info);
-	fnt_api bool fntAddToFontAtlas(const fntFontContext *context, fntFontAtlas *atlas);
+	fnt_api fntFontAtlas *fntCreateFontAtlas();
+	fnt_api bool fntAddToFontAtlas(fntFontContext *context, fntFontAtlas *atlas, const uint32_t codePointIndex, const uint32_t codePointCount);
 	fnt_api void fntFreeFontAtlas(fntFontAtlas *atlas);
 
 #ifdef __cplusplus
@@ -184,6 +171,22 @@ extern "C" {
 #if defined(FNT_IMPLEMENTATION) && !defined(FNT_IMPLEMENTED)
 #	define FNT_IMPLEMENTED
 
+//! Macro for initialize a struct to zero
+#if defined(FNT_IS_C99)
+#	define FNT__ZERO_INIT {0}
+#else
+#	define FNT__ZERO_INIT {}
+#endif
+
+// See: https://en.wikipedia.org/wiki/Code_point
+#define FNT__UNICODE_PAGE_COUNT 17
+#define FNT__UNICODE_POINT_COUNT 65536
+#define FNT__MAX_UNICODE_POINT_COUNT (FNT__UNICODE_POINT_COUNT * FNT__UNICODE_PAGE_COUNT)
+
+#define FNT__MIN_BITMAP_SIZE 32
+
+#define FNT__MIN_FONT_SIZE 4
+
 #define STBTT_STATIC
 #define STB_TRUETYPE_IMPLEMENTATION
 #include <stb/stb_truetype.h>
@@ -197,10 +200,50 @@ extern "C" {
 		stbtt_fontinfo sinfo;
 	} fnt__STBFontContext;
 
-	fnt_api bool fntLoadFont(const fntFontData *data, fntFontInfo *info, const uint32_t fontIndex, const float fontSize) {
-		if(data == fnt_null || info == fnt_null) {
-			return(false);
-		}
+	static bool fnt__IsValidFontInfo(const fntFontInfo *info) {
+		if(info == NULL) return(false);
+		if(info->size < FNT__MIN_FONT_SIZE) return(false);
+		if(info->name == NULL) return(false);
+		return(true);
+	}
+
+	static bool fnt__IsValidFontData(const fntFontData *data) {
+		if(data == NULL) return(false);
+		if(data->size == 0) return(false);
+		if(data->data == NULL) return(false);
+		return(true);
+	}
+
+	static bool fnt__IsValidFontAtlas(const fntFontAtlas *atlas) {
+		if(atlas == NULL) return(false);
+
+		if(atlas->codePointsToPageIndices == NULL) return(false);
+
+		if(atlas->fontSize < FNT__MIN_FONT_SIZE) return(false);
+
+		return(true);
+	}
+
+	static bool fnt__IsValidFontContext(const fntFontContext *context) {
+		if(context == NULL) return(false);
+
+		const fnt__STBFontContext *internalCtx = (const fnt__STBFontContext *)context;
+
+		if(context->maxBitmapSize < FNT__MIN_BITMAP_SIZE) return(false);
+
+		if(!fnt__IsValidFontInfo(&context->info)) return(false);
+
+		if(!fnt__IsValidFontData(&context->data)) return(false);
+
+		if(internalCtx->sinfo.data != context->data.data) return(false);
+
+		return(true);
+	}
+
+	fnt_api bool fntLoadFontInfo(const fntFontData *data, fntFontInfo *info, const uint32_t fontIndex, const float fontSize) {
+		if(!fnt__IsValidFontData(data)) return(false);
+		if(info == NULL) return(false);
+		if(fontSize < FNT__MIN_FONT_SIZE) return(false);
 
 		int fontOffset = stbtt_GetFontOffsetForIndex(data->data, fontIndex);
 		if(fontOffset < 0) {
@@ -235,82 +278,91 @@ extern "C" {
 		return(true);
 	}
 
-	fnt_api void fntFreeFont(fntFontInfo *info) {
-		if(info != fnt_null) {
+	fnt_api void fntFreeFontInfo(fntFontInfo *info) {
+		if(info != NULL) {
 			FNT_MEMSET(info, 0, sizeof(*info));
 		}
 	}
 
 	fnt_api void fntFreeFontAtlas(fntFontAtlas *atlas) {
-		if(atlas != fnt_null) return;
+		if(atlas == NULL) return;
 
-		if(atlas->pages != fnt_null) {
+		if(atlas->pages != NULL) {
 			FNT_FREE(atlas->pages);
-			atlas->pages = fnt_null;
+			atlas->pages = NULL;
 		}
 
-		if(atlas->bitmaps != fnt_null) {
+		if(atlas->bitmaps != NULL) {
 			FNT_FREE(atlas->bitmaps);
-			atlas->bitmaps = fnt_null;
+			atlas->bitmaps = NULL;
 		}
 
-		if(atlas->codePointsToPageIndices != fnt_null) {
+		if(atlas->codePointsToPageIndices != NULL) {
 			FNT_FREE(atlas->codePointsToPageIndices);
-			atlas->codePointsToPageIndices = fnt_null;
+			atlas->codePointsToPageIndices = NULL;
 		}
 	}
 
-	fnt_api fntFontAtlas *fntCreateFontAtlas(const fntFontInfo *info) {
+	fnt_api fntFontAtlas *fntCreateFontAtlas() {
 		fntFontAtlas *result = (fntFontAtlas *)FNT_MALLOC(sizeof(fntFontAtlas));
 		FNT_MEMSET(result, 0, sizeof(*result));
 
-		result->codePointsToPageIndices = (uint32_t *)FNT_MALLOC(sizeof(uint32_t) * FNT_MAX_UNICODE_POINT_COUNT);
-		FNT_MEMSET(result->codePointsToPageIndices, 0, sizeof(uint32_t) * FNT_MAX_UNICODE_POINT_COUNT);
-
-		result->info = *info;
+		result->codePointsToPageIndices = (uint32_t *)FNT_MALLOC(sizeof(uint32_t) * FNT__MAX_UNICODE_POINT_COUNT);
+		FNT_MEMSET(result->codePointsToPageIndices, 0, sizeof(uint32_t) * FNT__MAX_UNICODE_POINT_COUNT);
 
 		return(result);
 	}
 
-	fnt_api bool fntAddToFontAtlas(const fntFontContext *context, fntFontAtlas *atlas) {
-		if(context == fnt_null || atlas == fnt_null) {
-			return(false);
-		}
-		if(context->data.data == fnt_null || context->data.size == 0) {
-			return(false);
-		}
+	fnt_api bool fntAddToFontAtlas(fntFontContext *context, fntFontAtlas *atlas, const uint32_t codePointStart, const uint32_t codePointCount) {
+		if(!fnt__IsValidFontContext(context) || !fnt__IsValidFontAtlas(atlas)) return(false);
+
+		if((codePointCount == 0) || ((uint64_t)codePointStart + (uint64_t)codePointCount > (uint64_t)FNT__MAX_UNICODE_POINT_COUNT)) return(false);
 
 		fnt__STBFontContext *internalCtx = (fnt__STBFontContext *)context;
+
+		const float fontSize = context->info.size;
+
+		stbtt_fontinfo *sinfo = &internalCtx->sinfo;
+
+		stbtt_packedchar *packedChars = (stbtt_packedchar *)FNT_MALLOC(sizeof(stbtt_packedchar) * codePointCount);
+
+		stbtt_pack_range range = FNT__ZERO_INIT;
+		range.font_size = fontSize;
+		range.num_chars = codePointCount;
+		range.first_unicode_codepoint_in_range = codePointStart;
+		range.chardata_for_range = packedChars;
+
+		FNT_FREE(packedChars);
 
 		return(true);
 	}
 
-	fnt_api fntFontContext *fntCreateFontContext(const fntFontData *data, const fntFontInfo *info) {
-		if(data == fnt_null || info == fnt_null) {
-			return(fnt_null);
-		}
+	fnt_api fntFontContext *fntCreateFontContext(const fntFontData *data, const fntFontInfo *info, const uint32_t maxBitmapSize) {
+		if(!fnt__IsValidFontData(data) || !fnt__IsValidFontInfo(info))return(NULL);
+		if(maxBitmapSize < FNT__MIN_BITMAP_SIZE) return(NULL);
 
 		int fontOffset = stbtt_GetFontOffsetForIndex(data->data, info->fontIndex);
 		if(fontOffset < 0) {
-			return(fnt_null);
+			return(NULL);
 		}
 
 		stbtt_fontinfo sinfo;
 		if(!stbtt_InitFont(&sinfo, data->data, fontOffset)) {
-			return(fnt_null);
+			return(NULL);
 		}
 
 		fnt__STBFontContext *result = (fnt__STBFontContext *)FNT_MALLOC(sizeof(fnt__STBFontContext));
 		FNT_MEMSET(result, 0, sizeof(*result));
 		result->base.data = *data;
 		result->base.info = *info;
+		result->base.maxBitmapSize = maxBitmapSize;
 		result->sinfo = sinfo;
 
 		return(&result->base);
 	}
 
 	fnt_api void fntFreeFontContext(fntFontContext *context) {
-		if(context != fnt_null) {
+		if(context != NULL) {
 			fnt__STBFontContext *internalCtx = (fnt__STBFontContext *)context;
 			FNT_FREE(internalCtx);
 		}
