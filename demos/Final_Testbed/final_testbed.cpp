@@ -309,14 +309,17 @@ int main(int argc, char **argv) {
 					fntFontData fontData = fplZeroInit;
 					fontData.size = size;
 					fontData.data = data;
+					fontData.name = fontName;
 
 					fntFontInfo fontInfo = fplZeroInit;
 					if(fntLoadFontInfo(&fontData, &fontInfo, 0, 40.0f)) {
-						fntFontAtlas *atlas = fntCreateFontAtlas();
+						fntFontAtlas *atlas = fntCreateFontAtlas(&fontInfo);
 						if(atlas != fpl_null) {
 							fntFontContext *ctx = fntCreateFontContext(&fontData, &fontInfo, 512);
 							if(ctx != fpl_null) {
-								fntAddToFontAtlas(ctx, atlas, 32, 128);
+								for (uint32_t i = 0; i < 20; ++i) {
+									fntAddToFontAtlas(ctx, atlas, 32, 128);
+								}
 								fntFreeFontContext(ctx);
 							}
 							fntFreeFontAtlas(atlas);
