@@ -14,11 +14,13 @@ License:
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
-#if 0
-
 #define FPL_IMPLEMENTATION
 #define FPL_NO_VIDEO_VULKAN
 #include <final_platform_layer.h>
+
+#define FINAL_FONTLOADER_IMPLEMENTATION
+#define FINAL_FONTLOADER_BETTERQUALITY 1
+#include <final_fontloader.h>
 
 #define FINAL_GAMEPLATFORM_IMPLEMENTATION
 #include <final_gameplatform.h>
@@ -39,7 +41,7 @@ enum class AssetType {
 	Font
 };
 
-enum class AssetLoadState: int32_t {
+enum class AssetLoadState : int32_t {
 	Failed = -1,
 	Unloaded = 0,
 	ToUpload,
@@ -66,7 +68,7 @@ static bool Init(GameState &state) {
 	state.debugFont.type = AssetType::Font;
 	state.debugFont.loadState = AssetLoadState::Unloaded;
 	size_t fontDataSize = fplArrayCount(fontDataArray);
-	if(LoadFontFromMemory(fontDataArray, fontDataSize, 0, 36.0f, 32, 128, 512, 512, false, &state.debugFont.font.data)) {
+	if (LoadFontFromMemory(fontDataArray, fontDataSize, 0, 36.0f, 32, 128, 512, 512, false, &state.debugFont.font.data)) {
 		state.debugFont.loadState = AssetLoadState::ToUpload;
 	}
 	state.angle = 0.0f;
@@ -80,7 +82,7 @@ static void Kill(GameState *state) {
 extern bool GameInit(GameMemory &gameMemory) {
 	GameState *state = (GameState *)fmemPush(gameMemory.memory, sizeof(GameState), fmemPushFlags_Clear);
 	gameMemory.game = state;
-	if(!Init(*state)) {
+	if (!Init(*state)) {
 		GameRelease(gameMemory);
 		return(false);
 	}
@@ -89,7 +91,7 @@ extern bool GameInit(GameMemory &gameMemory) {
 
 extern void GameRelease(GameMemory &gameMemory) {
 	GameState *state = gameMemory.game;
-	if(state != nullptr) {
+	if (state != nullptr) {
 		Kill(state);
 	}
 }
@@ -101,7 +103,7 @@ extern bool IsGameExiting(GameMemory &gameMemory) {
 }
 
 extern void GameInput(GameMemory &gameMemory, const Input &input) {
-	if(!input.isActive) {
+	if (!input.isActive) {
 		return;
 	}
 	GameState *state = gameMemory.game;
@@ -113,7 +115,7 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 }
 
 extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
-	if(!input.isActive) {
+	if (!input.isActive) {
 		return;
 	}
 	GameState *state = gameMemory.game;
@@ -123,19 +125,19 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 
 static Rect2f ComputeAspectRect(Vec2f targetSize, Vec2f sourceSize, Ratio sourceRatio) {
 	float aspect_ratio;
-	if(sourceRatio.numerator == 0.0) {
+	if (sourceRatio.numerator == 0.0) {
 		aspect_ratio = 0.0f;
 	} else {
 		aspect_ratio = (float)ComputeRatio(sourceRatio);
 	}
-	if(aspect_ratio <= 0.0f) {
+	if (aspect_ratio <= 0.0f) {
 		aspect_ratio = 1.0f;
 	}
 	aspect_ratio *= sourceSize.w / sourceSize.h;
 
 	float height = targetSize.h;
 	float width = height * aspect_ratio;
-	if(width > targetSize.w) {
+	if (width > targetSize.w) {
 		width = targetSize.w;
 		height = width / aspect_ratio;
 	}
@@ -152,7 +154,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 	fplAssert(state != nullptr);
 	RenderState &renderState = *gameMemory.render;
 
-	if(state->debugFont.loadState == AssetLoadState::ToUpload) {
+	if (state->debugFont.loadState == AssetLoadState::ToUpload) {
 		fplAssert(state->debugFont.type == AssetType::Font);
 		const LoadedFont &font = state->debugFont.font.data;
 		PushTexture(renderState, &state->debugFont.font.texture, font.atlasAlphaBitmap, font.atlasWidth, font.atlasHeight, 1, TextureFilterType::Linear, TextureWrapMode::ClampToEdge, false, false);
@@ -209,7 +211,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 
 	Vec2f min = Vec4MultMat4(imageRotMat, V4fInitXY(verts[0], 0.0f, 1.0f)).xy;
 	Vec2f max = min;
-	for(int i = 1; i < fplArrayCount(verts); ++i) {
+	for (int i = 1; i < fplArrayCount(verts); ++i) {
 		Vec2f v = Vec4MultMat4(imageRotMat, V4fInitXY(verts[i], 0.0f, 1.0f)).xy;
 		min = V2fMin(min, v);
 		max = V2fMax(max, v);
@@ -219,7 +221,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 
 	float factor = 1.0f;
 	float rotatedAspect = rotatedSize.w / rotatedSize.h;
-	if(rotatedAspect > containerAspect) {
+	if (rotatedAspect > containerAspect) {
 		factor = maxSize.w / rotatedSize.w;
 	} else {
 		factor = maxSize.h / rotatedSize.h;
@@ -270,78 +272,9 @@ extern void GameUpdateAndRender(GameMemory &gameMemory, const Input &input, cons
 
 int main(int argc, char **argv) {
 	GameConfiguration config = {};
-	config.title = L"Final´s Testbed";
+	config.title = L"Final?s Testbed";
 	config.hideMouseCursor = false;
 	config.disableInactiveDetection = true;
 	int result = GameMain(config);
 	return(result);
 }
-
-#endif
-
-// Final-Font Test
-#if 1
-#define FPL_IMPLEMENTATION
-#define FPL_NO_VIDEO_VULKAN
-#include <final_platform_layer.h>
-
-#define FGL_IMPLEMENTATION
-#include <final_dynamic_opengl.h>
-
-#define FNT_IMPLEMENTATION
-#include <final_font.h>
-
-int main(int argc, char **argv) {
-	fplSettings settings = fplMakeDefaultSettings();
-	if(fplPlatformInit(fplInitFlags_All, &settings)) {
-		if(fglLoadOpenGL(true)) {
-
-			const char *fontFilePath = "c:/windows/fonts/l_10646.ttf";
-			const char *fontName = "Lucida Sans Unicode";
-			if(fplFileExists(fontFilePath)) {
-				fplFileHandle file;
-				if(fplFileOpenBinary(fontFilePath, &file)) {
-					size_t size = fplFileGetSizeFromHandle(&file);
-					uint8_t *data = (uint8_t *)malloc(size);
-					fplFileReadBlock(&file, size, data, size);
-					fplFileClose(&file);
-
-					fntFontData fontData = fplZeroInit;
-					fontData.size = size;
-					fontData.data = data;
-					fontData.name = fontName;
-
-					fntFontInfo fontInfo = fplZeroInit;
-					if(fntLoadFontInfo(&fontData, &fontInfo, 0, 40.0f)) {
-						fntFontAtlas *atlas = fntCreateFontAtlas(&fontInfo);
-						if(atlas != fpl_null) {
-							fntFontContext *ctx = fntCreateFontContext(&fontData, &fontInfo, 512);
-							if(ctx != fpl_null) {
-								for (uint32_t i = 0; i < 20; ++i) {
-									fntAddToFontAtlas(ctx, atlas, 32, 128);
-								}
-								fntFreeFontContext(ctx);
-							}
-							fntFreeFontAtlas(atlas);
-						}
-						fntFreeFontInfo(&fontInfo);
-					}
-
-					free(data);
-				}
-			}
-
-			while(fplWindowUpdate()) {
-				fplEvent ev;
-				while(fplPollEvent(&ev)) {
-
-				}
-			}
-
-			fglUnloadOpenGL();
-		}
-		fplPlatformRelease();
-	}
-	return (0);
-}
-#endif
