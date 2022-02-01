@@ -2,21 +2,6 @@
 #define FNT_INCLUDE_H
 
 //
-// C99 detection
-//
-// https://en.wikipedia.org/wiki/C99#Version_detection
-// Visual Studio 2015+
-#if !defined(__cplusplus) && ((defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L)) || (defined(_MSC_VER) && (_MSC_VER >= 1900)))
-	//! Detected C99 compiler
-#	define FNT_IS_C99
-#elif defined(__cplusplus)
-	//! Detected C++ compiler
-#	define FNT_IS_CPP
-#else
-#	error "This C/C++ compiler is not supported!"
-#endif
-
-//
 // Includes
 //
 #include <stddef.h> // ptrdiff_t
@@ -25,10 +10,10 @@
 #include <stdbool.h> // bool
 
 #if defined(FNT_AS_PRIVATE)
-		//! API functions exported as static
+	//! API functions exported as static
 #	define fnt_api static
 #else
-		//! API functions exported as extern
+	//! API functions exported as extern
 #	define fnt_api extern
 #endif
 
@@ -40,14 +25,25 @@
 #define FNT_FREE(block) free(block)
 #endif
 
+// Memset
 #if !defined(FNT_MEMSET)
 #include <string.h>
 #define FNT_MEMSET(dst, value, size) memset(dst, value, size)
 #endif
 
+// Assert
 #if !defined(FNT_ASSERT)
 #include <assert.h>
 #define FNT_ASSERT(exp) assert(exp)
+#endif
+
+// File I/O
+#if !defined(FNT_FILE_HANDLE)
+#include <stdio.h>
+#define FNT_FILE_HANDLE FILE *
+#define FNT_CREATE_BINARY_FILE(filePath, fileHandle) (fopen_s(fileHandle, filePath, "wb") == 0)
+#define FNT_WRITE_TO_FILE(fileHandle, buffer, size) fwrite(buffer, size, 1, fileHandle)
+#define FNT_CLOSE_FILE(fileHandle) fclose(fileHandle)
 #endif
 
 // ****************************************************************************
@@ -68,29 +64,31 @@ extern "C" {
 		size_t size;
 	} fntFontData;
 
-	typedef enum fntFontBitmapFormat {
+	typedef enum fntBitmapFormat {
 		//! 8-bit alpha only
 		fntFontBitmapFormat_Alpha8 = 0,
 		//! 32-bit RGBA
 		fntFontBitmapFormat_RGBA8
-	} fntFontBitmapFormat;
+	} fntBitmapFormat;
 
-	typedef struct fntFontBitmap {
+	typedef struct fntBitmap {
 		//! The pixels from top-to-bottom
 		const uint8_t *pixels;
 		//! The format
-		fntFontBitmapFormat format;
+		fntBitmapFormat format;
 		//! The width in pixels
 		uint16_t width;
 		//! The height in pixels
 		uint16_t height;
-	} fntFontBitmap;
+	} fntBitmap;
 
 	typedef struct fntFontInfo {
 		//! The font name
 		const char *name;
 		//! The font size
-		float size;
+		float fontSize;
+		//! The font height to scale factor
+		float heightToScale;
 		//! The ascent from the baseline in range of 0.0 to 1.0
 		float ascent;
 		//! The descent from the baseline in range of 0.0 to -1.0
@@ -124,16 +122,20 @@ extern "C" {
 	} fntVec2;
 
 	typedef struct fntFontGlyph {
-		//! The start and end texture coordinates in range of 0.0 to 1.0
-		fntVec2 texcoords[2];
-		//! The baseline offset in range of -1.0 to 1.0
-		fntVec2 offsets[2];
-		//! The size in range of 0.0 to 1.0
-		fntVec2 size;
-		//! The horizontal advancement in range of 0.0 to 1.0
+		//! The baseline offsets in pixels
+		fntVec2 baselineOffsets[2];
+		//! The horizontal advancement in pixels
 		float horizontalAdvance;
 		//! The code point for validation
 		uint32_t codePoint;
+		//! The width in the bitmap
+		uint16_t width;
+		//! The height in the bitmap
+		uint16_t height;
+		//! The X position in the bitmap
+		uint16_t bitmapX;
+		//! The Y position in the bitmap
+		uint16_t bitmapY;
 	} fntFontGlyph;
 
 	typedef struct fntFontPage {
@@ -153,15 +155,13 @@ extern "C" {
 		//! The array of font pages
 		fntFontPage *pages;
 		//! The array of alpha bitmaps
-		fntFontBitmap *bitmaps;
+		fntBitmap *bitmaps;
 		//! The array of code-points mapped to a font page number starting from 1 to N, zero means not-set
 		uint32_t *codePointsToPageIndices;
 		//! The number of pages
 		uint32_t pageCount;
 		//! The number of bitmaps
 		uint32_t bitmapCount;
-		//! The font size in pixels (For debug only)
-		float fontSize;
 	} fntFontAtlas;
 
 	typedef struct fntFontContext {
@@ -180,6 +180,8 @@ extern "C" {
 	fnt_api bool fntAddToFontAtlas(fntFontContext *context, fntFontAtlas *atlas, const uint32_t codePointIndex, const uint32_t codePointCount);
 	fnt_api void fntFreeFontAtlas(fntFontAtlas *atlas);
 
+	fnt_api bool fntSaveBitmapToFile(const fntBitmap *bitmap, const char *filePath);
+
 #ifdef __cplusplus
 }
 #endif
@@ -194,6 +196,14 @@ extern "C" {
 #if defined(FNT_IMPLEMENTATION) && !defined(FNT_IMPLEMENTED)
 #	define FNT_IMPLEMENTED
 
+#if !defined(__cplusplus) && ((defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L)) || (defined(_MSC_VER) && (_MSC_VER >= 1900)))
+#	define FNT_IS_C99
+#elif defined(__cplusplus)
+#	define FNT_IS_CPP
+#else
+#	error "This C/C++ compiler is not supported!"
+#endif
+
 //! Macro for initialize a struct to zero
 #if defined(FNT_IS_C99)
 #	define FNT__ZERO_INIT {0}
@@ -202,8 +212,7 @@ extern "C" {
 #endif
 
 // See: https://en.wikipedia.org/wiki/Code_point
-// See: https://stackoverflow.com/questions/5924105/how-many-characters-can-be-mapped-with-unicode
-#define FNT__MAX_UNICODE_POINT_COUNT 137929
+#define FNT__MAX_UNICODE_POINT_COUNT 65536 * 17
 
 #define FNT__MIN_BITMAP_SIZE 32
 
@@ -212,6 +221,10 @@ extern "C" {
 #define STBTT_STATIC
 #define STB_TRUETYPE_IMPLEMENTATION
 #include <stb/stb_truetype.h>
+
+#define STBI_WRITE_NO_STDIO
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <stb/stb_image_write.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -235,7 +248,7 @@ extern "C" {
 
 	static bool fnt__IsValidFontInfo(const fntFontInfo *info) {
 		if (info == NULL) return(false);
-		if (info->size < FNT__MIN_FONT_SIZE) return(false);
+		if (info->fontSize < FNT__MIN_FONT_SIZE) return(false);
 		if (info->name == NULL) return(false);
 		return(true);
 	}
@@ -251,8 +264,6 @@ extern "C" {
 		if (atlas == NULL) return(false);
 
 		if (atlas->codePointsToPageIndices == NULL) return(false);
-
-		if (atlas->fontSize < FNT__MIN_FONT_SIZE) return(false);
 
 		return(true);
 	}
@@ -311,9 +322,6 @@ extern "C" {
 
 		uint32_t endCodePointPastOne = codePointStart + codePointCount;
 
-		float scaleToPixels = stbtt_ScaleForPixelHeight(fontInfo, atlas->fontSize);
-		float oneTexel = 1.0f / (float)context->base.maxBitmapSize;
-
 		fntFontPage *newPage = newPages + pageIndex;
 		FNT_MEMSET(newPage, 0, sizeof(*newPage));
 		newPage->bitmapIndex = bitmapIndex;
@@ -330,30 +338,19 @@ extern "C" {
 
 			fntFontGlyph *targetGlyph = newPage->glyphs + glyphIndex;
 
-			int32_t w = (packedChar->x1 - packedChar->x0) + 1;
-			int32_t h = (packedChar->y1 - packedChar->y0) + 1;
+			uint16_t w = (packedChar->x1 - packedChar->x0) + 1;
+			uint16_t h = (packedChar->y1 - packedChar->y0) + 1;
 
-			float sizeW = (float)w * scaleToPixels;
-			float sizeH = (float)h * scaleToPixels;
+			float xoffset0 = packedChar->xoff;
+			float yoffset0 = packedChar->yoff;
+			float xoffset1 = packedChar->xoff2;
+			float yoffset1 = packedChar->yoff2;
 
-			float u0 = packedChar->x0 * oneTexel;
-			float v0 = packedChar->y0 * oneTexel;
-			float u1 = packedChar->x1 * oneTexel;
-			float v1 = packedChar->y1 * oneTexel;
-
-			float xoffset0 = packedChar->xoff * scaleToPixels;
-			float yoffset0 = packedChar->yoff * scaleToPixels;
-			float xoffset1 = packedChar->xoff2 * scaleToPixels;
-			float yoffset1 = packedChar->yoff2 * scaleToPixels;
-
-			float horizontalAdvance = packedChar->xadvance * scaleToPixels;
-
-			targetGlyph->offsets[0] = fnt__MakeVec2(xoffset0, yoffset0);
-			targetGlyph->offsets[1] = fnt__MakeVec2(xoffset1, yoffset1);
-			targetGlyph->texcoords[0] = fnt__MakeVec2(u0, v0);
-			targetGlyph->texcoords[1] = fnt__MakeVec2(u1, v1);
-			targetGlyph->size = fnt__MakeVec2(sizeW, sizeH);
-			targetGlyph->horizontalAdvance = horizontalAdvance;
+			targetGlyph->width = w;
+			targetGlyph->height = h;
+			targetGlyph->baselineOffsets[0] = fnt__MakeVec2(xoffset0, yoffset0);
+			targetGlyph->baselineOffsets[1] = fnt__MakeVec2(xoffset1, yoffset1);
+			targetGlyph->horizontalAdvance = packedChar->xadvance;
 			targetGlyph->codePoint = codePoint;
 		}
 
@@ -368,7 +365,7 @@ extern "C" {
 					uint32_t codePointA = codePointStart + codePointIndexA;
 					uint32_t codePointB = codePointStart + codePointIndexB;
 					int kerningRaw = stbtt_GetCodepointKernAdvance(fontInfo, (int)codePointA, (int)codePointB);
-					float kerning = (float)kerningRaw * scaleToPixels;
+					float kerning = (float)kerningRaw;
 					newPage->kerningTable[codePointIndexA * codePointCount + codePointIndexB] = kerning;
 				}
 			}
@@ -421,7 +418,8 @@ extern "C" {
 		FNT_MEMSET(info, 0, sizeof(*info));
 		info->fontIndex = fontIndex;
 		info->name = data->name;
-		info->size = fontSize;
+		info->fontSize = fontSize;
+		info->heightToScale = pixelScale;
 		info->ascent = ascentRaw * rawToPercentage;
 		info->descent = descentRaw * rawToPercentage;
 		info->spaceAdvance = spaceAdvanceRaw * rawToPercentage;
@@ -468,8 +466,6 @@ extern "C" {
 		}
 		FNT_MEMSET(pageIndices, 0, sizeof(uint32_t) * FNT__MAX_UNICODE_POINT_COUNT);
 
-		result->fontSize = info->size;
-
 		return(result);
 	}
 
@@ -478,18 +474,18 @@ extern "C" {
 		FNT_ASSERT(width >= FNT__MIN_BITMAP_SIZE);
 		FNT_ASSERT(height >= FNT__MIN_BITMAP_SIZE);
 
-		// @TODO(final): Collapse into one memory allocation (fntFontBitmap + pixels)
+		// @TODO(final): Collapse into one memory allocation (fntBitmap + pixels)
 
 		uint32_t oldCount = atlas->bitmapCount;
 		uint32_t newCount = oldCount + 1;
-		fntFontBitmap *newBitmaps = (fntFontBitmap *)FNT_REALLOC(atlas->bitmaps, sizeof(fntFontBitmap) * newCount);
+		fntBitmap *newBitmaps = (fntBitmap *)FNT_REALLOC(atlas->bitmaps, sizeof(fntBitmap) * newCount);
 		if (newBitmaps == NULL) return(UINT32_MAX);
 
 		uint32_t index = oldCount;
 
 		size_t bitmapLen = sizeof(uint8_t) * width * height;
 
-		fntFontBitmap *newBitmap = newBitmaps + index;
+		fntBitmap *newBitmap = newBitmaps + index;
 		newBitmap->width = width;
 		newBitmap->height = height;
 		newBitmap->format = fntFontBitmapFormat_Alpha8;
@@ -509,7 +505,7 @@ extern "C" {
 
 		fnt__STBFontContext *internalCtx = (fnt__STBFontContext *)context;
 
-		const float fontSize = context->info.size;
+		const float fontSize = context->info.fontSize;
 
 		stbtt_fontinfo *sinfo = &internalCtx->sinfo;
 
@@ -532,7 +528,7 @@ extern "C" {
 				internalCtx->bitmapIndex = fnt__AddBitmap(atlas, context->maxBitmapSize, context->maxBitmapSize);
 
 				FNT_ASSERT(internalCtx->bitmapIndex < atlas->bitmapCount);
-				fntFontBitmap *bitmap = atlas->bitmaps + internalCtx->bitmapIndex;
+				fntBitmap *bitmap = atlas->bitmaps + internalCtx->bitmapIndex;
 
 				FNT_MEMSET(packCtx, 0, sizeof(*packCtx));
 				fnt__NewPack(internalCtx, (uint8_t *)bitmap->pixels);
@@ -626,6 +622,28 @@ extern "C" {
 			fnt__FinishPack(internalCtx);
 			FNT_FREE(internalCtx);
 		}
+	}
+
+	typedef struct {
+		FNT_FILE_HANDLE handle;
+	} fnt__SaveBitmapFileContext;
+
+	static void fnt__SaveBitmapDataFunc(void *context, void *data, int size) {
+		fnt__SaveBitmapFileContext *fileContext = (fnt__SaveBitmapFileContext *)context;
+		FNT_WRITE_TO_FILE(fileContext->handle, data, size);
+	}
+
+	fnt_api bool fntSaveBitmapToFile(const fntBitmap *bitmap, const char *filePath) {
+		fnt__SaveBitmapFileContext context = FNT__ZERO_INIT;
+		if (!FNT_CREATE_BINARY_FILE(filePath, &context.handle)) {
+			return(false);
+		}
+
+		int components = bitmap->format == fntFontBitmapFormat_Alpha8 ? 1 : 3;
+		stbi_write_bmp_to_func(fnt__SaveBitmapDataFunc, &context, bitmap->width, bitmap->height, components, bitmap->pixels);
+
+		FNT_CLOSE_FILE(context.handle);
+		return(true);
 	}
 
 #ifdef __cplusplus
