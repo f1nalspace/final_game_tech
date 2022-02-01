@@ -29,7 +29,7 @@ int main(int argc, char **argv) {
 					fontData.name = fontName;
 
 					fntFontInfo fontInfo = fplZeroInit;
-					if(fntLoadFontInfo(&fontData, &fontInfo, 0, 40.0f)) {
+					if(fntLoadFontInfo(&fontData, &fontInfo, 0, 80.0f)) {
 						fntFontAtlas *atlas = fntCreateFontAtlas(&fontInfo);
 						if(atlas != fpl_null) {
 							fntFontContext *ctx = fntCreateFontContext(&fontData, &fontInfo, 512);
@@ -37,6 +37,23 @@ int main(int argc, char **argv) {
 								fntAddToFontAtlas(ctx, atlas, 33, 127);
 								fntReleaseFontContext(ctx);
 							}
+
+							char homePath[FPL_MAX_PATH_LENGTH];
+							fplGetHomePath(homePath, sizeof(homePath));
+
+							char bitmapFilePath[FPL_MAX_PATH_LENGTH];
+
+							char bitmapFilename[100];
+							for (uint32_t bitmapIndex = 0; bitmapIndex < atlas->bitmapCount; ++bitmapIndex) {
+								const fntBitmap *bitmap = atlas->bitmaps + bitmapIndex;
+
+								fplFormatString(bitmapFilename, sizeof(bitmapFilename), "font_bitmap%lu.bmp", bitmapIndex);
+
+								fplPathCombine(bitmapFilePath, sizeof(bitmapFilePath), 3, homePath, "Downloads", bitmapFilename);
+
+								fntSaveBitmapToFile(bitmap, bitmapFilePath);
+							}
+
 							fntFreeFontAtlas(atlas);
 						}
 						fntFreeFontInfo(&fontInfo);

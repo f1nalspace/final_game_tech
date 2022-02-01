@@ -9,7 +9,7 @@
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <LocalDebuggerCommandArguments>"$(PUBLIC)\Videos\Event-Horizon-3.mp4"</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>"$(PUBLIC)\Videos\Architects - Livestream-Concert - The Royal Albert Hall - 2020-11-21.mp4"</LocalDebuggerCommandArguments>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
