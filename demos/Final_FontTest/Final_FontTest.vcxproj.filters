@@ -1,0 +1,22 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="final_fontdemo.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="dependencies">
+      <UniqueIdentifier>{f387ca52-2233-4d4f-bc9f-f0c1eb8d48bc}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\final_dynamic_opengl.h">
+      <Filter>dependencies</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\final_font.h">
+      <Filter>dependencies</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\final_platform_layer.h">
+      <Filter>dependencies</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>
