@@ -89,11 +89,11 @@ extern "C" {
 		float fontSize;
 		//! The font height to scale factor
 		float heightToScale;
-		//! The ascent from the baseline in range of 0.0 to 1.0
+		//! The ascent from the baseline in pixels
 		float ascent;
-		//! The descent from the baseline in range of 0.0 to -1.0
+		//! The descent from the baseline in pixels
 		float descent;
-		//! The horizontal advancement for the space character in range of 0.0 to 1.0
+		//! The horizontal advancement for the space character in pixels
 		float spaceAdvance;
 		//! The font index
 		uint32_t fontIndex;
@@ -230,7 +230,7 @@ extern "C" {
 extern "C" {
 #endif
 
-	typedef struct fnt__STBFontContext {
+	typedef struct {
 		fntFontContext base;
 		stbtt_fontinfo sinfo;
 
@@ -405,10 +405,6 @@ extern "C" {
 
 		float pixelScale = stbtt_ScaleForPixelHeight(&sinfo, fontSize);
 
-		float invFontSize = 1.0f / fontSize;
-
-		float rawToPercentage = pixelScale * invFontSize;
-
 		// Get metrics
 		int ascentRaw, descentRaw, lineGapRaw;
 		int spaceAdvanceRaw, leftSideBearing;
@@ -420,9 +416,9 @@ extern "C" {
 		info->name = data->name;
 		info->fontSize = fontSize;
 		info->heightToScale = pixelScale;
-		info->ascent = ascentRaw * rawToPercentage;
-		info->descent = descentRaw * rawToPercentage;
-		info->spaceAdvance = spaceAdvanceRaw * rawToPercentage;
+		info->ascent = ascentRaw * pixelScale;
+		info->descent = descentRaw * pixelScale;
+		info->spaceAdvance = spaceAdvanceRaw * pixelScale;
 
 		return(true);
 	}
