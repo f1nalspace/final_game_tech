@@ -1,3 +1,141 @@
+/***
+final_font.h
+
+-------------------------------------------------------------------------------
+	About
+-------------------------------------------------------------------------------
+
+A open source single header file bitmap font atlas creator.
+
+This library is designed to load a TTF/TTC font and create font/bitmaps atlases from it.
+It can be used to extract each glyph individually or prepare it for graphics rendering applications, such as engines or games.
+
+The only dependencies are built-in operating system libraries, a C99 complaint compiler and the STB_truetype.h library.
+
+Required linking is bare minimum:
+	Win32: Link to kernel32.lib
+	Unix/Linux: Link to ld.so
+
+-------------------------------------------------------------------------------
+	Getting started
+-------------------------------------------------------------------------------
+
+- Drop this file into your main C/C++ project and include it in one place you do the rendering.
+- Define FNT_IMPLEMENTATION before including this header file in that translation unit.
+
+- Load your font file/stream into the @ref fntFontData structure (size, data, name)
+
+@code{.c}
+size_t font_data_length = GetFileSizeFromFile("arial.ttf");
+uint8_t *font_data = (uint8_t *)malloc(font_data_length);
+LoadFontFileIntoArray("arial.ttf", font_data, font_data_length);
+
+fntFontData fontData;
+fontData.size = (size_t)font_data_length; // Get size of the font data
+fontData.data = (const uint8_t *)font_data; // Get pointer to the data of the font
+fontData.name = "Arial"; // Just any name, must not match the actual name but is required
+@endcode
+
+- Load the font informations for a particular font-size and font-index into @ref fntFontInfo struct, such as ascent, descent, space advance, etc.
+
+@code{.c}
+fntFontData fontData;
+fntFontInfo fontInfo;
+uint32_t fontIndex = 0;
+float fontSize = 42.0f;
+if (fntLoadFontInfo(&fontData, &fontInfo, fontIndex, fontSize)) {
+	// ...
+	fntFreeFontInfo(&fontInfo);
+}
+@endcode
+
+- Create a font atlas with the loaded fntFontInfo
+	> fntCreateFontAtlas()
+
+- Create a font context with the loaded fntFontData and fntFontInfo
+	> fntCreateFontContext()
+
+- Add your unicode point ranges to to the context and the atlas, that will create the bitmaps automatically and compute all relevant informations
+	> fntAddToFontAtlas()
+
+- Release the font context
+	> fntReleaseFontContext()
+
+- Release the font atlas
+	-> fntFreeFontAtlas()
+
+- Release the font info
+	-> fntFreeFontInfo()
+
+-------------------------------------------------------------------------------
+	License
+-------------------------------------------------------------------------------
+
+Final Font is released under the following license:
+
+MIT License
+
+Copyright (c) 2022 Torsten Spaete
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+***/
+
+/*!
+	\file final_font.h
+	\version v0.1.0 alpha
+	\author Torsten Spaete
+	\brief Final Font (FNT) - A open source C99 single header file bitmap font atlas creator library.
+*/
+
+// ****************************************************************************
+//
+// > Changelog
+//
+// ****************************************************************************
+
+/*!
+	\page page_changelog Changelog
+	\tableofcontents
+
+	# v0.1.0 alpha:
+	- Initial version
+*/
+
+// ****************************************************************************
+//
+// > TODO
+//
+// ****************************************************************************
+
+/*!
+	\page page_todo Todo
+	\tableofcontents
+
+	- Custom allocator support
+*/
+
+
+// ****************************************************************************
+//
+// > Header
+//
+// ****************************************************************************
 #ifndef FNT_INCLUDE_H
 #define FNT_INCLUDE_H
 
@@ -31,6 +169,12 @@
 #define FNT_MEMSET(dst, value, size) memset(dst, value, size)
 #endif
 
+// Strings
+#if !defined(FNT_STRLEN)
+#include <string.h>
+#define FNT_STRLEN(s) strlen(s)
+#endif
+
 // Assert
 #if !defined(FNT_ASSERT)
 #include <assert.h>
@@ -46,11 +190,7 @@
 #define FNT_CLOSE_FILE(fileHandle) fclose(fileHandle)
 #endif
 
-// ****************************************************************************
-//
-// > API
-//
-// ****************************************************************************
+// API
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -141,8 +281,6 @@ extern "C" {
 	typedef struct fntFontPage {
 		//! The array of font glyphs
 		fntFontGlyph *glyphs;
-		//! The kerning table for the code-point pairs (N * N)
-		float *kerningTable;
 		//! The index of the bitmap
 		uint32_t bitmapIndex;
 		//! The first code point
@@ -158,6 +296,8 @@ extern "C" {
 		fntBitmap *bitmaps;
 		//! The array of code-points mapped to a font page number starting from 1 to N, zero means not-set
 		uint32_t *codePointsToPageIndices;
+		//! The kerning table for all code point pairs, mapping a uint64_t key that builds up a code-point pair to the actual kerning value
+		float *kerningTable;
 		//! The number of pages
 		uint32_t pageCount;
 		//! The number of bitmaps
@@ -176,11 +316,56 @@ extern "C" {
 	fnt_api fntFontContext *fntCreateFontContext(const fntFontData *data, const fntFontInfo *info, const uint32_t maxBitmapSize);
 	fnt_api void fntReleaseFontContext(fntFontContext *context);
 
-	fnt_api fntFontAtlas *fntCreateFontAtlas(const fntFontInfo *info);
+	fnt_api bool fntInitFontAtlas(const fntFontInfo *info, fntFontAtlas *atlas);
 	fnt_api bool fntAddToFontAtlas(fntFontContext *context, fntFontAtlas *atlas, const uint32_t codePointIndex, const uint32_t codePointCount);
 	fnt_api void fntFreeFontAtlas(fntFontAtlas *atlas);
 
 	fnt_api bool fntSaveBitmapToFile(const fntBitmap *bitmap, const char *filePath);
+
+	typedef union fntKerningKey {
+		struct {
+			uint32_t a;
+			uint32_t b;
+		};
+		uint64_t value;
+	} fntKerningKey;
+
+	typedef struct fntKerningTableEntry {
+		fntKerningKey key;
+		float value;
+	} fntKerningTableEntry;
+
+	typedef struct fntKerningTable {
+		fntKerningTableEntry *entries;
+		uint32_t capacity;
+		uint32_t count;
+	} fntKerningTable;
+
+	fnt_api bool fntComputeAtlasKernings(const fntFontContext *context, fntFontAtlas *atlas);
+
+	typedef struct fntFontQuad {
+		fntVec2 uv[2];
+		fntVec2 rect[2];
+		//! The index of the bitmap
+		uint32_t bitmapIndex;
+		//! The code point
+		uint32_t codePoint;
+	} fntFontQuad;
+
+	// Top-Left aligned, Top-Down is default
+	typedef enum fntComputeQuadsFlags {
+		fntComputeQuadsFlags_None = 0,
+		fntComputeQuadsFlags_Cartesian = 1 << 0,
+		fntComputeQuadsFlags_AlignHorizontalLeft = 1 << 1,
+		fntComputeQuadsFlags_AlignHorizontalCenter = 1 << 2,
+		fntComputeQuadsFlags_AlignHorizontalRight = 1 << 3,
+		fntComputeQuadsFlags_AlignVerticalTop = 1 << 4,
+		fntComputeQuadsFlags_AlignVerticalMiddle = 1 << 5,
+		fntComputeQuadsFlags_AlignVerticalBottom = 1 << 6,
+	} fntComputeQuadsFlags;
+
+	fnt_api size_t fntGetQuadCountFromUTF8(const fntFontAtlas *atlas, const char *utf8);
+	fnt_api bool fntComputeQuadsFromUTF8(const fntFontAtlas *atlas, const fntFontInfo *info, const char *utf8, const float charHeight, const fntComputeQuadsFlags flags, const size_t numQuads, fntFontQuad *outQuads, fntVec2 *outSize);
 
 #ifdef __cplusplus
 }
@@ -212,7 +397,7 @@ extern "C" {
 #endif
 
 // See: https://en.wikipedia.org/wiki/Code_point
-#define FNT__MAX_UNICODE_POINT_COUNT 65536 * 17
+#define FNT__MAX_UNICODE_POINT_COUNT 0xFFFF
 
 #define FNT__MIN_BITMAP_SIZE 32
 
@@ -318,8 +503,6 @@ extern "C" {
 
 		size_t glyphsSize = sizeof(fntFontGlyph) * codePointCount;
 
-		size_t kerningTableSize = sizeof(float) * codePointCount * codePointCount;
-
 		uint32_t endCodePointPastOne = codePointStart + codePointCount;
 
 		fntFontPage *newPage = newPages + pageIndex;
@@ -328,7 +511,6 @@ extern "C" {
 		newPage->codePointStart = codePointStart;
 		newPage->codePointCount = codePointCount;
 		newPage->glyphs = (fntFontGlyph *)FNT_MALLOC(glyphsSize);
-		newPage->kerningTable = (float *)FNT_MALLOC(kerningTableSize);
 
 		FNT_MEMSET(newPage->glyphs, 0, glyphsSize);
 		for (uint32_t glyphIndex = 0; glyphIndex < codePointCount; ++glyphIndex) {
@@ -358,29 +540,11 @@ extern "C" {
 			atlas->codePointsToPageIndices[codePointIndex] = pageIndex + 1; // We store page (index +1) instead, so zero is invalid
 		}
 
-		FNT_MEMSET(newPage->kerningTable, 0, kerningTableSize);
-		for (uint32_t codePointIndexA = 0; codePointIndexA < codePointCount; ++codePointIndexA) {
-			for (uint32_t codePointIndexB = 0; codePointIndexB < codePointCount; ++codePointIndexB) {
-				if (codePointIndexA != codePointIndexB) {
-					uint32_t codePointA = codePointStart + codePointIndexA;
-					uint32_t codePointB = codePointStart + codePointIndexB;
-					int kerningRaw = stbtt_GetCodepointKernAdvance(fontInfo, (int)codePointA, (int)codePointB);
-					float kerning = (float)kerningRaw;
-					newPage->kerningTable[codePointIndexA * codePointCount + codePointIndexB] = kerning;
-				}
-			}
-		}
-
 		return(pageIndex);
 	}
 
 	static void fnt__FreePage(fntFontPage *page) {
 		FNT_ASSERT(page != NULL);
-
-		if (page->kerningTable != NULL) {
-			FNT_FREE(page->kerningTable);
-			page->kerningTable = NULL;
-		}
 
 		if (page->glyphs != NULL) {
 			FNT_FREE(page->glyphs);
@@ -446,23 +610,26 @@ extern "C" {
 			FNT_FREE(atlas->codePointsToPageIndices);
 			atlas->codePointsToPageIndices = NULL;
 		}
+
+		if (atlas->kerningTable != NULL) {
+			FNT_FREE(atlas->kerningTable);
+			atlas->kerningTable = NULL;
+		}
 	}
 
-	fnt_api fntFontAtlas *fntCreateFontAtlas(const fntFontInfo *info) {
-		if (info == NULL) return(NULL);
+	fnt_api bool fntInitFontAtlas(const fntFontInfo *info, fntFontAtlas *atlas) {
+		if (info == NULL || atlas == NULL) return(false);
 
-		fntFontAtlas *result = (fntFontAtlas *)FNT_MALLOC(sizeof(fntFontAtlas));
-		if (result == NULL) return(NULL);
-		FNT_MEMSET(result, 0, sizeof(*result));
-
-		uint32_t *pageIndices = result->codePointsToPageIndices = (uint32_t *)FNT_MALLOC(sizeof(uint32_t) * FNT__MAX_UNICODE_POINT_COUNT);
+		uint32_t *pageIndices = (uint32_t *)FNT_MALLOC(sizeof(uint32_t) * FNT__MAX_UNICODE_POINT_COUNT);
 		if (pageIndices == NULL) {
-			fntFreeFontAtlas(result);
-			return(NULL);
+			return(false);
 		}
 		FNT_MEMSET(pageIndices, 0, sizeof(uint32_t) * FNT__MAX_UNICODE_POINT_COUNT);
 
-		return(result);
+		FNT_MEMSET(atlas, 0, sizeof(*atlas));
+		atlas->codePointsToPageIndices = pageIndices;
+
+		return(true);
 	}
 
 	static uint32_t fnt__AddBitmap(fntFontAtlas *atlas, const uint32_t width, const uint32_t height) {
@@ -612,12 +779,204 @@ extern "C" {
 		return(&result->base);
 	}
 
+	fnt_api bool fntComputeAtlasKernings(const fntFontContext *context, fntFontAtlas *atlas) {
+		if (context == NULL || atlas == NULL) return(false);
+
+		fnt__STBFontContext *internalCtx = (fnt__STBFontContext *)context;
+
+		const stbtt_fontinfo *sinfo = &internalCtx->sinfo;
+
+		const float heightToScale = internalCtx->base.info.heightToScale;
+
+		// Compute total glyph count for all pages
+		uint32_t totalGlyphCount = 0;
+		for (uint32_t pageIndex = 0; pageIndex < atlas->pageCount; ++pageIndex) {
+			const fntFontPage *page = atlas->pages + pageIndex;
+			totalGlyphCount += page->codePointCount;
+		}
+
+		const uint32_t pageCount = atlas->pageCount;
+
+		// Compute kerning pairs
+		size_t kerningPairCount = 0;
+		for (uint32_t pageIndexA = 0; pageIndexA < pageCount; ++pageIndexA) {
+			const fntFontPage *pageA = atlas->pages + pageIndexA;
+			for (uint32_t pageIndexB = 0; pageIndexB < pageCount; ++pageIndexB) {
+				const fntFontPage *pageB = atlas->pages + pageIndexB;
+				for (uint32_t glyphIndexA = 0; glyphIndexA < pageA->codePointCount; ++glyphIndexA) {
+					for (uint32_t glyphIndexB = 0; glyphIndexB < pageB->codePointCount; ++glyphIndexB) {
+						uint32_t codePointA = pageA->codePointStart + glyphIndexA;
+						uint32_t codePointB = pageB->codePointStart + glyphIndexB;
+						float kerning = 0.0f;
+						if (codePointA != codePointB) {
+							int kerningRaw = stbtt_GetCodepointKernAdvance(sinfo, (int)codePointA, (int)codePointB);
+							kerning = (float)kerningRaw * heightToScale;
+						}
+
+						uint64_t codePointHash = (uint64_t)codePointA | ((uint64_t)codePointB << 32);
+
+						// @TODO(final): Insert into hash table
+
+						++kerningPairCount;
+					}
+				}
+			}
+		}
+		FNT_ASSERT(kerningPairCount == (totalGlyphCount * totalGlyphCount));
+
+		return(true);
+	}
+
 	fnt_api void fntReleaseFontContext(fntFontContext *context) {
 		if (context != NULL) {
 			fnt__STBFontContext *internalCtx = (fnt__STBFontContext *)context;
 			fnt__FinishPack(internalCtx);
 			FNT_FREE(internalCtx);
 		}
+	}
+
+	// See: https://bjoern.hoehrmann.de/utf-8/decoder/dfa/
+	static const uint8_t fnt__global__UTF8_DecodeTable[] = {
+		0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, // 00..1f
+		0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, // 20..3f
+		0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, // 40..5f
+		0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, // 60..7f
+		1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9, // 80..9f
+		7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7, // a0..bf
+		8,8,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2, // c0..df
+		0xa,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x3,0x4,0x3,0x3, // e0..ef
+		0xb,0x6,0x6,0x6,0x5,0x8,0x8,0x8,0x8,0x8,0x8,0x8,0x8,0x8,0x8,0x8, // f0..ff
+		0x0,0x1,0x2,0x3,0x5,0x8,0x7,0x1,0x1,0x1,0x4,0x6,0x1,0x1,0x1,0x1, // s0..s0
+		1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,0,1,0,1,1,1,1,1,1, // s1..s2
+		1,2,1,1,1,1,1,2,1,2,1,1,1,1,1,1,1,1,1,1,1,1,1,2,1,1,1,1,1,1,1,1, // s3..s4
+		1,2,1,1,1,1,1,1,1,2,1,1,1,1,1,1,1,1,1,1,1,1,1,3,1,3,1,1,1,1,1,1, // s5..s6
+		1,3,1,1,1,1,1,3,1,3,1,1,1,1,1,1,1,3,1,1,1,1,1,1,1,1,1,1,1,1,1,1, // s7..s8
+	};
+
+	typedef enum fnt__UTF8State {
+		fnt__UTF8State_Accept = 0,
+		fnt__UTF8State_Reject = 1,
+	} fnt__UTF8State;
+
+	inline uint32_t fnt__TestDecodeUTF8(uint32_t *state, const uint32_t byte) {
+		uint32_t type = fnt__global__UTF8_DecodeTable[byte];
+		*state = fnt__global__UTF8_DecodeTable[256 + *state * 16 + type];
+		return *state;
+	}
+
+	inline uint32_t fnt__DecodeUTF8(uint32_t *state, uint32_t *codePoint, const uint32_t byte) {
+		uint32_t type = fnt__global__UTF8_DecodeTable[byte];
+		*codePoint = (*state != fnt__UTF8State_Accept) ? (byte & 0x3fu) | (*codePoint << 6) : (0xff >> type) & (byte);
+		*state = fnt__global__UTF8_DecodeTable[256 + *state * 16 + type];
+		return *state;
+	}
+
+	static size_t fnt__CountUTF8String(const char *text) {
+		const uint8_t *s = (const uint8_t *)text;
+		size_t count;
+		uint32_t state = 0;
+		for (count = 0; *s; ++s) {
+			if (fnt__TestDecodeUTF8(&state, *s) == fnt__UTF8State_Accept) {
+				++count;
+			}
+		}
+		if (state == fnt__UTF8State_Accept) {
+			return(count);
+		} else {
+			return(0); // Malformed UTF-8 string
+		}
+	}
+
+	fnt_api size_t fntGetQuadCountFromUTF8(const fntFontAtlas *atlas, const char *utf8) {
+		if (utf8 == NULL) return(0);
+		size_t result = fnt__CountUTF8String(utf8);
+		return(result);
+	}
+
+	fnt_api bool fntComputeQuadsFromUTF8(const fntFontAtlas *atlas, const fntFontInfo *info, const char *utf8, const float charHeight, const fntComputeQuadsFlags flags, const size_t maxQuadCount, fntFontQuad *outQuads, fntVec2 *outSize) {
+		if (atlas == NULL || info == NULL || utf8 == NULL || charHeight <= 0.0f || maxQuadCount == 0)  return(false);
+
+		size_t codePointCount = fnt__CountUTF8String(utf8);
+		if (codePointCount == 0 || maxQuadCount < codePointCount) return(false);
+
+		const uint8_t *s = (const uint8_t *)utf8;
+		uint32_t codePointIndex;
+		uint32_t codePoint;
+		uint32_t state = 0;
+		const fntFontPage *currentPage = NULL;
+		const fntBitmap *currentBitmap = NULL;
+		uint32_t currentPageNum = 0;
+		uint32_t currentBitmapIndex = UINT32_MAX;
+		for (codePointIndex = 0; *s; ++s) {
+			if (fnt__DecodeUTF8(&state, &codePoint, *s) == fnt__UTF8State_Accept) {
+				uint32_t pageNum = atlas->codePointsToPageIndices[codePoint];
+				if (pageNum == 0) {
+					// TODO: Page not found, use a substitute character instead
+					codePoint = 32;
+				}
+				if (codePoint == 32) {
+					// TODO: Space-character
+				} else {
+					FNT_ASSERT(pageNum > 0);
+					if (currentPageNum != pageNum) {
+						uint32_t pageIndex = pageNum - 1;
+						FNT_ASSERT(pageIndex < atlas->pageCount);
+						currentPage = atlas->pages + pageIndex;
+						currentPageNum = pageNum;
+					}
+
+					FNT_ASSERT(currentPage != NULL);
+
+					uint32_t bitmapIndex = currentPage->bitmapIndex;
+
+					if (currentBitmapIndex != bitmapIndex) {
+						FNT_ASSERT(bitmapIndex < atlas->bitmapCount);
+						currentBitmapIndex = bitmapIndex;
+						currentBitmap = atlas->bitmaps + bitmapIndex;
+					}
+
+					FNT_ASSERT(currentBitmap != NULL);
+
+					const uint16_t bitmapWidth = currentBitmap->width;
+					const uint16_t bitmapHeight = currentBitmap->height;
+					const float texelU = 1.0f / (float)bitmapWidth;
+					const float texelV = 1.0f / (float)bitmapHeight;
+
+					FNT_ASSERT(codePoint >= currentPage->codePointStart && codePoint < currentPage->codePointStart + currentPage->codePointCount);
+
+					uint32_t glyphIndex = codePoint - currentPage->codePointStart;
+					const fntFontGlyph *glyph = currentPage->glyphs + glyphIndex;
+
+					float u0 = (float)glyph->bitmapX * texelU;
+					float v0 = (float)glyph->bitmapY * texelV;
+					float u1 = (float)(glyph->bitmapX + glyph->width) * texelU;
+					float v1 = (float)(glyph->bitmapY + glyph->height) * texelV;
+
+					float xoffset0 = glyph->baselineOffsets[0].x * info->heightToScale * charHeight;
+					float yoffset0 = glyph->baselineOffsets[0].y * info->heightToScale * charHeight;
+					float xoffset1 = glyph->baselineOffsets[1].x * info->heightToScale * charHeight;
+					float yoffset1 = glyph->baselineOffsets[1].y * info->heightToScale * charHeight;
+
+					float width = xoffset1 - xoffset0;
+					float height = yoffset1 - yoffset0;
+
+					if (outQuads != NULL) {
+						fntFontQuad *quad = &outQuads[codePointIndex];
+						quad->bitmapIndex = bitmapIndex;
+						quad->codePoint = codePoint;
+						quad->uv[0] = fnt__MakeVec2(u0, v0);
+						quad->uv[1] = fnt__MakeVec2(u1, v1);
+						quad->rect[0] = fnt__MakeVec2(xoffset0, yoffset0);
+						quad->rect[1] = fnt__MakeVec2(xoffset1, yoffset1);
+					}
+
+					// @TODO(final): Compute x and y advancement
+				}
+				++codePointIndex;
+			}
+		}
+
+		return(true);
 	}
 
 	typedef struct {
@@ -643,7 +1002,7 @@ extern "C" {
 	}
 
 #ifdef __cplusplus
-}
+	}
 #endif
 
 #endif // FNT_IMPLEMENTATION

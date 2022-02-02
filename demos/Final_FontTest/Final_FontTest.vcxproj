@@ -161,6 +161,7 @@
     <ClInclude Include="..\..\final_dynamic_opengl.h" />
     <ClInclude Include="..\..\final_font.h" />
     <ClInclude Include="..\..\final_platform_layer.h" />
+    <ClInclude Include="..\dependencies\stb\stb_truetype.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
