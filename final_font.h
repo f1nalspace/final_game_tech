@@ -167,6 +167,7 @@ SOFTWARE.
 #if !defined(FNT_MEMSET)
 #include <string.h>
 #define FNT_MEMSET(dst, value, size) memset(dst, value, size)
+#define FNT_MEMCOPY(dst, src, size) memcpy(dst, src, size)
 #endif
 
 // Strings
@@ -289,15 +290,34 @@ extern "C" {
 		uint32_t codePointCount;
 	} fntFontPage;
 
+	typedef union fntKerningKey {
+		struct {
+			uint16_t a;
+			uint16_t b;
+		};
+		uint32_t value;
+	} fntKerningKey;
+
+	typedef struct fntKerningTableEntry {
+		fntKerningKey key;
+		float value;
+	} fntKerningTableEntry;
+
+	typedef struct fntKerningTable {
+		fntKerningTableEntry *entries;
+		uint32_t capacity;
+		uint32_t count;
+	} fntKerningTable;
+
 	typedef struct fntFontAtlas {
+		//! The kerning table for all code point pairs, mapping a uint64_t key that builds up a code-point pair to the actual kerning value
+		fntKerningTable kerningTable;
 		//! The array of font pages
 		fntFontPage *pages;
 		//! The array of alpha bitmaps
 		fntBitmap *bitmaps;
 		//! The array of code-points mapped to a font page number starting from 1 to N, zero means not-set
 		uint32_t *codePointsToPageIndices;
-		//! The kerning table for all code point pairs, mapping a uint64_t key that builds up a code-point pair to the actual kerning value
-		float *kerningTable;
 		//! The number of pages
 		uint32_t pageCount;
 		//! The number of bitmaps
@@ -322,24 +342,6 @@ extern "C" {
 
 	fnt_api bool fntSaveBitmapToFile(const fntBitmap *bitmap, const char *filePath);
 
-	typedef union fntKerningKey {
-		struct {
-			uint32_t a;
-			uint32_t b;
-		};
-		uint64_t value;
-	} fntKerningKey;
-
-	typedef struct fntKerningTableEntry {
-		fntKerningKey key;
-		float value;
-	} fntKerningTableEntry;
-
-	typedef struct fntKerningTable {
-		fntKerningTableEntry *entries;
-		uint32_t capacity;
-		uint32_t count;
-	} fntKerningTable;
 
 	fnt_api bool fntComputeAtlasKernings(const fntFontContext *context, fntFontAtlas *atlas);
 
@@ -485,6 +487,127 @@ extern "C" {
 		}
 	}
 
+	static uint32_t fnt__NextPowerOfTwo(const uint32_t input) {
+		uint32_t x = input;
+		x--;
+		x |= x >> 1;
+		x |= x >> 2;
+		x |= x >> 4;
+		x |= x >> 8;
+		x |= x >> 16;
+		x++;
+		return(x);
+	}
+
+	static void fnt__InitKerningTable(fntKerningTable *kerningTable) {
+		FNT_ASSERT(kerningTable != NULL);
+		FNT_MEMSET(kerningTable, 0, sizeof(*kerningTable));
+	}
+
+	static void fnt__FreeKerningTable(fntKerningTable *kerningTable) {
+		FNT_ASSERT(kerningTable != NULL);
+		if (kerningTable->entries != NULL) {
+			FNT_FREE(kerningTable->entries);
+		}
+		FNT_MEMSET(kerningTable, 0, sizeof(*kerningTable));
+	}
+
+	static bool fnt__ResizeKerningTable(fntKerningTable *kerningTable, const uint32_t newCapacity);
+
+	static bool fnt__InsertIntoKerningTable(fntKerningTable *kerningTable, const fntKerningKey key, const float value) {
+		if (kerningTable->capacity == 0 || kerningTable->count == kerningTable->capacity) {
+			uint32_t newCapacity;
+			if (kerningTable->capacity > 0)
+				newCapacity = kerningTable->capacity * 2;
+			else
+				newCapacity = 1024;
+			bool r = fnt__ResizeKerningTable(kerningTable, newCapacity);
+			if (!r) return(false);
+		}
+
+		uint32_t probeCount = 0;
+
+		uint32_t hash = key.value;
+		uint32_t index = (uint32_t)(hash % (uint64_t)kerningTable->capacity);
+		uint32_t initialIndex = index;
+		do {
+			++probeCount;
+			fntKerningTableEntry *entry = kerningTable->entries + index;
+			if (entry->key.value == key.value) {
+				return(false); // Duplicate key
+			} else if (entry->key.value == 0) {
+				entry->key = key;
+				entry->value = value;
+				++kerningTable->count;
+				return(true);
+			}
+			index = (index + 1) % kerningTable->capacity;
+		} while (index != initialIndex);
+		return(false); // Not enough space
+	}
+
+	static float fnt__GetKerningValue(const fntKerningTable *kerningTable, const fntKerningKey key) {
+		uint32_t hash = key.value;
+		uint32_t index = (uint32_t)(hash % kerningTable->capacity);
+		uint32_t initialIndex = index;
+		uint32_t probeCount = 0;
+		do {
+			++probeCount;
+			fntKerningTableEntry *entry = kerningTable->entries + index;
+			if (entry->key.value == 0) {
+				return(0.0f);
+			}
+			if (entry->key.value == key.value) {
+				return(entry->value);
+			}
+			index = (index + 1) % kerningTable->capacity;
+		} while (index != initialIndex);
+		return(0.0f);
+	}
+
+	static bool fnt__ResizeKerningTable(fntKerningTable *kerningTable, const uint32_t newCapacity) {
+		FNT_ASSERT(kerningTable != NULL);
+
+		size_t newEntriesSize = sizeof(fntKerningTableEntry) * newCapacity;
+		fntKerningTableEntry *newEntries = (fntKerningTableEntry *)FNT_MALLOC(newEntriesSize);
+		if (newEntries == NULL) return(false);
+
+		fntKerningTable newTable = FNT__ZERO_INIT;
+		newTable.capacity = newCapacity;
+		newTable.entries = newEntries;
+
+		// Empty kerning table
+		if (kerningTable->entries == NULL) {
+			FNT_MEMSET(newEntries, 0, newEntriesSize);
+			*kerningTable = newTable;
+			return(true);
+		}
+
+		size_t oldCapacity = kerningTable->capacity;
+		for (uint32_t oldIndex = 0; oldIndex < oldCapacity; ++oldIndex) {
+			const fntKerningTableEntry *entry = kerningTable->entries + oldIndex;
+			if (entry->key.value != 0) {
+				fntKerningKey key = entry->key;
+				float value = entry->value;
+
+				bool r = fnt__InsertIntoKerningTable(&newTable, key, value);
+				FNT_ASSERT(r);
+				if (!r) {
+					FNT_FREE(newEntries);
+					return(false);
+				}
+			}
+		}
+
+		// Free old entries
+		FNT_FREE(kerningTable->entries);
+
+		// Copy new table back
+		*kerningTable = newTable;
+
+		return(true);
+	}
+
 	static uint32_t fnt__AddPage(const fnt__STBFontContext *context, fntFontAtlas *atlas, const uint32_t bitmapIndex, const uint32_t codePointStart, const uint32_t codePointCount, const stbtt_packedchar *packedChars) {
 		FNT_ASSERT(atlas != NULL);
 		FNT_ASSERT(bitmapIndex != UINT32_MAX);
@@ -611,10 +734,7 @@ extern "C" {
 			atlas->codePointsToPageIndices = NULL;
 		}
 
-		if (atlas->kerningTable != NULL) {
-			FNT_FREE(atlas->kerningTable);
-			atlas->kerningTable = NULL;
-		}
+		fnt__FreeKerningTable(&atlas->kerningTable);
 	}
 
 	fnt_api bool fntInitFontAtlas(const fntFontInfo *info, fntFontAtlas *atlas) {
@@ -628,6 +748,8 @@ extern "C" {
 
 		FNT_MEMSET(atlas, 0, sizeof(*atlas));
 		atlas->codePointsToPageIndices = pageIndices;
+
+		fnt__InitKerningTable(&atlas->kerningTable);
 
 		return(true);
 	}
@@ -798,7 +920,9 @@ extern "C" {
 		const uint32_t pageCount = atlas->pageCount;
 
 		// Compute kerning pairs
-		size_t kerningPairCount = 0;
+		uint32_t pairCount = totalGlyphCount * totalGlyphCount;
+		uint32_t kerningTableCapacity = fnt__NextPowerOfTwo(pairCount);
+		fnt__ResizeKerningTable(&atlas->kerningTable, kerningTableCapacity);
 		for (uint32_t pageIndexA = 0; pageIndexA < pageCount; ++pageIndexA) {
 			const fntFontPage *pageA = atlas->pages + pageIndexA;
 			for (uint32_t pageIndexB = 0; pageIndexB < pageCount; ++pageIndexB) {
@@ -812,17 +936,17 @@ extern "C" {
 							int kerningRaw = stbtt_GetCodepointKernAdvance(sinfo, (int)codePointA, (int)codePointB);
 							kerning = (float)kerningRaw * heightToScale;
 						}
-
-						uint64_t codePointHash = (uint64_t)codePointA | ((uint64_t)codePointB << 32);
-
-						// @TODO(final): Insert into hash table
-
-						++kerningPairCount;
+						if (codePointA != codePointB) {
+							fntKerningKey key;
+							key.a = codePointA;
+							key.b = codePointB;
+							bool r = fnt__InsertIntoKerningTable(&atlas->kerningTable, key, kerning);
+							FNT_ASSERT(r);
+						}
 					}
 				}
 			}
 		}
-		FNT_ASSERT(kerningPairCount == (totalGlyphCount * totalGlyphCount));
 
 		return(true);
 	}
@@ -909,6 +1033,20 @@ extern "C" {
 		uint32_t currentBitmapIndex = UINT32_MAX;
 		for (codePointIndex = 0; *s; ++s) {
 			if (fnt__DecodeUTF8(&state, &codePoint, *s) == fnt__UTF8State_Accept) {
+
+				uint32_t nextState = 0;
+				uint32_t nextCodePoint = 0;
+				uint32_t hasNextCodePoint = 0;
+				const uint8_t *tmp = s;
+				int tmpLen = 0;
+				while (*++tmp && tmpLen < 4) {
+					if (fnt__DecodeUTF8(&state, &nextCodePoint, *tmp) == fnt__UTF8State_Accept) {
+						hasNextCodePoint = 1;
+						break;
+					}
+					++tmpLen;
+				}
+
 				uint32_t pageNum = atlas->codePointsToPageIndices[codePoint];
 				if (pageNum == 0) {
 					// TODO: Page not found, use a substitute character instead
@@ -968,6 +1106,14 @@ extern "C" {
 						quad->uv[1] = fnt__MakeVec2(u1, v1);
 						quad->rect[0] = fnt__MakeVec2(xoffset0, yoffset0);
 						quad->rect[1] = fnt__MakeVec2(xoffset1, yoffset1);
+					}
+
+					float kerning = 0.0f;
+					if (hasNextCodePoint) {
+						fntKerningKey kerningKey;
+						kerningKey.a = (uint16_t)codePoint;
+						kerningKey.b = (uint16_t)nextCodePoint;
+						kerning = fnt__GetKerningValue(&atlas->kerningTable, kerningKey);
 					}
 
 					// @TODO(final): Compute x and y advancement
