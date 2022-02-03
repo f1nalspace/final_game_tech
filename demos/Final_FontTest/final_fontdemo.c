@@ -29,7 +29,7 @@ int main(int argc, char **argv) {
 					fontData.name = fontName;
 
 					fntFontInfo fontInfo = fplZeroInit;
-					if (fntLoadFontInfo(&fontData, &fontInfo, 0, 80.0f)) {
+					if (fntLoadFontInfo(&fontData, &fontInfo, 0, 160.0f)) {
 						fntFontAtlas atlas = fplZeroInit;
 						if (fntInitFontAtlas(&fontInfo, &atlas)) {
 							fntFontContext *ctx = fntCreateFontContext(&fontData, &fontInfo, 512);

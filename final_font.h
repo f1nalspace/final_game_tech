@@ -290,33 +290,27 @@ extern "C" {
 		uint32_t codePointCount;
 	} fntFontPage;
 
-	typedef union fntKerningKey {
-		struct {
-			uint16_t a;
-			uint16_t b;
-		};
-		uint32_t value;
-	} fntKerningKey;
-
-	typedef struct fntKerningTableEntry {
-		fntKerningKey key;
-		float value;
-	} fntKerningTableEntry;
-
-	typedef struct fntKerningTable {
-		fntKerningTableEntry *entries;
-		uint32_t capacity;
-		uint32_t count;
-	} fntKerningTable;
+	typedef struct fntKerningPagePair {
+		//! The index to the first kerning pair
+		size_t firstIndex;
+		//! The number of kerning pairs
+		size_t pairCount;
+		//! The first page index
+		uint32_t pageIndexA;
+		//! The second page index
+		uint32_t pageIndexB;
+	} fntKerningPagePair;
 
 	typedef struct fntFontAtlas {
-		//! The kerning table for all code point pairs, mapping a uint64_t key that builds up a code-point pair to the actual kerning value
-		fntKerningTable kerningTable;
+		//! The kerning table for all pages, each pair of pages has N x N code-point pairs
+		float *kerningValues;
+		//! The kerning page pairs, so we can fast go from a page-pair to kerning table start
+		fntKerningPagePair *kerningPages;
 		//! The array of font pages
 		fntFontPage *pages;
 		//! The array of alpha bitmaps
 		fntBitmap *bitmaps;
-		//! The array of code-points mapped to a font page number starting from 1 to N, zero means not-set
+		//! The array of code-points mapped to a font page number in range of 1 to N, zero means not-set
 		uint32_t *codePointsToPageIndices;
 		//! The number of pages
 		uint32_t pageCount;
@@ -324,11 +318,7 @@ extern "C" {
 		uint32_t bitmapCount;
 	} fntFontAtlas;
 
-	typedef struct fntFontContext {
-		fntFontInfo info;
-		fntFontData data;
-		uint32_t maxBitmapSize;
-	} fntFontContext;
+	typedef void *fntFontContext;
 
 	fnt_api bool fntLoadFontInfo(const fntFontData *data, fntFontInfo *info, const uint32_t fontIndex, const float fontSize);
 	fnt_api void fntFreeFontInfo(fntFontInfo *info);
@@ -418,10 +408,11 @@ extern "C" {
 #endif
 
 	typedef struct {
-		fntFontContext base;
+		fntFontInfo info;
+		fntFontData data;
 		stbtt_fontinfo sinfo;
-
 		stbtt_pack_context currentPackContext;
+		uint32_t maxBitmapSize;
 		uint32_t bitmapIndex;
 		uint32_t hasPackContext;
 	} fnt__STBFontContext;
@@ -434,39 +425,39 @@ extern "C" {
 	}
 
 	static bool fnt__IsValidFontInfo(const fntFontInfo *info) {
-		if (info == NULL) return(false);
-		if (info->fontSize < FNT__MIN_FONT_SIZE) return(false);
-		if (info->name == NULL) return(false);
+		if(info == NULL) return(false);
+		if(info->fontSize < FNT__MIN_FONT_SIZE) return(false);
+		if(info->name == NULL) return(false);
 		return(true);
 	}
 
 	static bool fnt__IsValidFontData(const fntFontData *data) {
-		if (data == NULL) return(false);
-		if (data->size == 0) return(false);
-		if (data->data == NULL) return(false);
+		if(data == NULL) return(false);
+		if(data->size == 0) return(false);
+		if(data->data == NULL) return(false);
 		return(true);
 	}
 
 	static bool fnt__IsValidFontAtlas(const fntFontAtlas *atlas) {
-		if (atlas == NULL) return(false);
+		if(atlas == NULL) return(false);
 
-		if (atlas->codePointsToPageIndices == NULL) return(false);
+		if(atlas->codePointsToPageIndices == NULL) return(false);
 
 		return(true);
 	}
 
 	static bool fnt__IsValidFontContext(const fntFontContext *context) {
-		if (context == NULL) return(false);
+		if(context == NULL) return(false);
 
 		const fnt__STBFontContext *internalCtx = (const fnt__STBFontContext *)context;
 
-		if (context->maxBitmapSize < FNT__MIN_BITMAP_SIZE) return(false);
+		if(internalCtx->maxBitmapSize < FNT__MIN_BITMAP_SIZE) return(false);
 
-		if (!fnt__IsValidFontInfo(&context->info)) return(false);
+		if(!fnt__IsValidFontInfo(&internalCtx->info)) return(false);
 
-		if (!fnt__IsValidFontData(&context->data)) return(false);
+		if(!fnt__IsValidFontData(&internalCtx->data)) return(false);
 
-		if (internalCtx->sinfo.data != context->data.data) return(false);
+		if(internalCtx->sinfo.data != internalCtx->data.data) return(false);
 
 		return(true);
 	}
@@ -475,137 +466,16 @@ extern "C" {
 		FNT_ASSERT(internalCtx != NULL);
 		FNT_ASSERT(pixels != NULL);
 		stbtt_pack_context *packCtx = &internalCtx->currentPackContext;
-		stbtt_PackBegin(packCtx, (unsigned char *)pixels, internalCtx->base.maxBitmapSize, internalCtx->base.maxBitmapSize, 0, 1, NULL);
+		stbtt_PackBegin(packCtx, (unsigned char *)pixels, internalCtx->maxBitmapSize, internalCtx->maxBitmapSize, 0, 1, NULL);
 		internalCtx->hasPackContext = 1;
 	}
 
 	static void fnt__FinishPack(fnt__STBFontContext *internalCtx) {
 		FNT_ASSERT(internalCtx != NULL);
-		if (internalCtx->hasPackContext) {
+		if(internalCtx->hasPackContext) {
 			stbtt_PackEnd(&internalCtx->currentPackContext);
 			internalCtx->hasPackContext = 0;
 		}
-	}
-
-	static uint32_t fnt__NextPowerOfTwo(const uint32_t input) {
-		uint32_t x = input;
-		x--;
-		x |= x >> 1;
-		x |= x >> 2;
-		x |= x >> 4;
-		x |= x >> 8;
-		x |= x >> 16;
-		x++;
-		return(x);
-	}
-
-	static void fnt__InitKerningTable(fntKerningTable *kerningTable) {
-		FNT_ASSERT(kerningTable != NULL);
-		FNT_MEMSET(kerningTable, 0, sizeof(*kerningTable));
-	}
-
-	static void fnt__FreeKerningTable(fntKerningTable *kerningTable) {
-		FNT_ASSERT(kerningTable != NULL);
-		if (kerningTable->entries != NULL) {
-			FNT_FREE(kerningTable->entries);
-		}
-		FNT_MEMSET(kerningTable, 0, sizeof(*kerningTable));
-	}
-
-	static bool fnt__ResizeKerningTable(fntKerningTable *kerningTable, const uint32_t newCapacity);
-
-	static bool fnt__InsertIntoKerningTable(fntKerningTable *kerningTable, const fntKerningKey key, const float value) {
-		if (kerningTable->capacity == 0 || kerningTable->count == kerningTable->capacity) {
-			uint32_t newCapacity;
-			if (kerningTable->capacity > 0)
-				newCapacity = kerningTable->capacity * 2;
-			else
-				newCapacity = 1024;
-			bool r = fnt__ResizeKerningTable(kerningTable, newCapacity);
-			if (!r) return(false);
-		}
-
-		uint32_t probeCount = 0;
-
-		uint32_t hash = key.value;
-		uint32_t index = (uint32_t)(hash % (uint64_t)kerningTable->capacity);
-		uint32_t initialIndex = index;
-		do {
-			++probeCount;
-			fntKerningTableEntry *entry = kerningTable->entries + index;
-			if (entry->key.value == key.value) {
-				return(false); // Duplicate key
-			} else if (entry->key.value == 0) {
-				entry->key = key;
-				entry->value = value;
-				++kerningTable->count;
-				return(true);
-			}
-			index = (index + 1) % kerningTable->capacity;
-		} while (index != initialIndex);
-		return(false); // Not enough space
-	}
-
-	static float fnt__GetKerningValue(const fntKerningTable *kerningTable, const fntKerningKey key) {
-		uint32_t hash = key.value;
-		uint32_t index = (uint32_t)(hash % kerningTable->capacity);
-		uint32_t initialIndex = index;
-		uint32_t probeCount = 0;
-		do {
-			++probeCount;
-			fntKerningTableEntry *entry = kerningTable->entries + index;
-			if (entry->key.value == 0) {
-				return(0.0f);
-			}
-			if (entry->key.value == key.value) {
-				return(entry->value);
-			}
-			index = (index + 1) % kerningTable->capacity;
-		} while (index != initialIndex);
-		return(0.0f);
-	}
-
-	static bool fnt__ResizeKerningTable(fntKerningTable *kerningTable, const uint32_t newCapacity) {
-		FNT_ASSERT(kerningTable != NULL);
-
-		size_t newEntriesSize = sizeof(fntKerningTableEntry) * newCapacity;
-		fntKerningTableEntry *newEntries = (fntKerningTableEntry *)FNT_MALLOC(newEntriesSize);
-		if (newEntries == NULL) return(false);
-
-		fntKerningTable newTable = FNT__ZERO_INIT;
-		newTable.capacity = newCapacity;
-		newTable.entries = newEntries;
-
-		// Empty kerning table
-		if (kerningTable->entries == NULL) {
-			FNT_MEMSET(newEntries, 0, newEntriesSize);
-			*kerningTable = newTable;
-			return(true);
-		}
-
-		size_t oldCapacity = kerningTable->capacity;
-		for (uint32_t oldIndex = 0; oldIndex < oldCapacity; ++oldIndex) {
-			const fntKerningTableEntry *entry = kerningTable->entries + oldIndex;
-			if (entry->key.value != 0) {
-				fntKerningKey key = entry->key;
-				float value = entry->value;
-
-				bool r = fnt__InsertIntoKerningTable(&newTable, key, value);
-				FNT_ASSERT(r);
-				if (!r) {
-					FNT_FREE(newEntries);
-					return(false);
-				}
-			}
-		}
-
-		// Free old entries
-		FNT_FREE(kerningTable->entries);
-
-		// Copy new table back
-		*kerningTable = newTable;
-
-		return(true);
 	}
 
 	static uint32_t fnt__AddPage(const fnt__STBFontContext *context, fntFontAtlas *atlas, const uint32_t bitmapIndex, const uint32_t codePointStart, const uint32_t codePointCount, const stbtt_packedchar *packedChars) {
@@ -616,7 +486,7 @@ extern "C" {
 		uint32_t oldCount = atlas->pageCount;
 		uint32_t newCount = oldCount + 1;
 		fntFontPage *newPages = (fntFontPage *)FNT_REALLOC(atlas->pages, sizeof(fntFontPage) * newCount);
-		if (newPages == NULL) return(UINT32_MAX);
+		if(newPages == NULL) return(UINT32_MAX);
 		atlas->pages = newPages;
 		atlas->pageCount = newCount;
 
@@ -636,7 +506,7 @@ extern "C" {
 		newPage->glyphs = (fntFontGlyph *)FNT_MALLOC(glyphsSize);
 
 		FNT_MEMSET(newPage->glyphs, 0, glyphsSize);
-		for (uint32_t glyphIndex = 0; glyphIndex < codePointCount; ++glyphIndex) {
+		for(uint32_t glyphIndex = 0; glyphIndex < codePointCount; ++glyphIndex) {
 			uint32_t codePoint = codePointStart + glyphIndex;
 
 			const stbtt_packedchar *packedChar = packedChars + glyphIndex;
@@ -659,7 +529,7 @@ extern "C" {
 			targetGlyph->codePoint = codePoint;
 		}
 
-		for (uint32_t codePointIndex = codePointStart; codePointIndex < endCodePointPastOne; ++codePointIndex) {
+		for(uint32_t codePointIndex = codePointStart; codePointIndex < endCodePointPastOne; ++codePointIndex) {
 			atlas->codePointsToPageIndices[codePointIndex] = pageIndex + 1; // We store page (index +1) instead, so zero is invalid
 		}
 
@@ -669,24 +539,24 @@ extern "C" {
 	static void fnt__FreePage(fntFontPage *page) {
 		FNT_ASSERT(page != NULL);
 
-		if (page->glyphs != NULL) {
+		if(page->glyphs != NULL) {
 			FNT_FREE(page->glyphs);
 			page->glyphs = NULL;
 		}
 	}
 
 	fnt_api bool fntLoadFontInfo(const fntFontData *data, fntFontInfo *info, const uint32_t fontIndex, const float fontSize) {
-		if (!fnt__IsValidFontData(data)) return(false);
-		if (info == NULL) return(false);
-		if (fontSize < FNT__MIN_FONT_SIZE) return(false);
+		if(!fnt__IsValidFontData(data)) return(false);
+		if(info == NULL) return(false);
+		if(fontSize < FNT__MIN_FONT_SIZE) return(false);
 
 		int fontOffset = stbtt_GetFontOffsetForIndex(data->data, fontIndex);
-		if (fontOffset < 0) {
+		if(fontOffset < 0) {
 			return(false);
 		}
 
 		stbtt_fontinfo sinfo;
-		if (!stbtt_InitFont(&sinfo, data->data, fontOffset)) {
+		if(!stbtt_InitFont(&sinfo, data->data, fontOffset)) {
 			return(false);
 		}
 
@@ -711,45 +581,51 @@ extern "C" {
 	}
 
 	fnt_api void fntFreeFontInfo(fntFontInfo *info) {
-		if (info != NULL) {
+		if(info != NULL) {
 			FNT_MEMSET(info, 0, sizeof(*info));
 		}
 	}
 
 	fnt_api void fntFreeFontAtlas(fntFontAtlas *atlas) {
-		if (atlas == NULL) return;
+		if(atlas == NULL) return;
 
-		if (atlas->pages != NULL) {
+		if(atlas->pages != NULL) {
 			FNT_FREE(atlas->pages);
 			atlas->pages = NULL;
 		}
 
-		if (atlas->bitmaps != NULL) {
+		if(atlas->bitmaps != NULL) {
 			FNT_FREE(atlas->bitmaps);
 			atlas->bitmaps = NULL;
 		}
 
-		if (atlas->codePointsToPageIndices != NULL) {
+		if(atlas->codePointsToPageIndices != NULL) {
 			FNT_FREE(atlas->codePointsToPageIndices);
 			atlas->codePointsToPageIndices = NULL;
 		}
 
-		fnt__FreeKerningTable(&atlas->kerningTable);
+		if(atlas->kerningValues != NULL) {
+			FNT_FREE(atlas->kerningValues);
+			atlas->kerningValues = NULL;
+		}
+
+		if(atlas->kerningPages != NULL) {
+			FNT_FREE(atlas->kerningPages);
+			atlas->kerningPages = NULL;
+		}
 	}
 
 	fnt_api bool fntInitFontAtlas(const fntFontInfo *info, fntFontAtlas *atlas) {
-		if (info == NULL || atlas == NULL) return(false);
+		if(info == NULL || atlas == NULL) return(false);
 
 		uint32_t *pageIndices = (uint32_t *)FNT_MALLOC(sizeof(uint32_t) * FNT__MAX_UNICODE_POINT_COUNT);
-		if (pageIndices == NULL) {
+		if(pageIndices == NULL) {
 			return(false);
 		}
 		FNT_MEMSET(pageIndices, 0, sizeof(uint32_t) * FNT__MAX_UNICODE_POINT_COUNT);
 
 		FNT_MEMSET(atlas, 0, sizeof(*atlas));
 		atlas->codePointsToPageIndices = pageIndices;
-
-		fnt__InitKerningTable(&atlas->kerningTable);
 
 		return(true);
 	}
@@ -764,7 +640,7 @@ extern "C" {
 		uint32_t oldCount = atlas->bitmapCount;
 		uint32_t newCount = oldCount + 1;
 		fntBitmap *newBitmaps = (fntBitmap *)FNT_REALLOC(atlas->bitmaps, sizeof(fntBitmap) * newCount);
-		if (newBitmaps == NULL) return(UINT32_MAX);
+		if(newBitmaps == NULL) return(UINT32_MAX);
 
 		uint32_t index = oldCount;
 
@@ -784,13 +660,13 @@ extern "C" {
 	}
 
 	fnt_api bool fntAddToFontAtlas(fntFontContext *context, fntFontAtlas *atlas, const uint32_t codePointStart, const uint32_t codePointCount) {
-		if (!fnt__IsValidFontContext(context) || !fnt__IsValidFontAtlas(atlas)) return(false);
+		if(!fnt__IsValidFontContext(context) || !fnt__IsValidFontAtlas(atlas)) return(false);
 
-		if ((codePointCount == 0) || ((uint64_t)codePointStart + (uint64_t)codePointCount > (uint64_t)FNT__MAX_UNICODE_POINT_COUNT)) return(false);
+		if((codePointCount == 0) || ((uint64_t)codePointStart + (uint64_t)codePointCount > (uint64_t)FNT__MAX_UNICODE_POINT_COUNT)) return(false);
 
 		fnt__STBFontContext *internalCtx = (fnt__STBFontContext *)context;
 
-		const float fontSize = context->info.fontSize;
+		const float fontSize = internalCtx->info.fontSize;
 
 		stbtt_fontinfo *sinfo = &internalCtx->sinfo;
 
@@ -808,9 +684,9 @@ extern "C" {
 
 		stbtt_pack_context *packCtx = &internalCtx->currentPackContext;
 
-		while (remainingCodePointCount > 0) {
-			if (internalCtx->bitmapIndex == UINT32_MAX) {
-				internalCtx->bitmapIndex = fnt__AddBitmap(atlas, context->maxBitmapSize, context->maxBitmapSize);
+		while(remainingCodePointCount > 0) {
+			if(internalCtx->bitmapIndex == UINT32_MAX) {
+				internalCtx->bitmapIndex = fnt__AddBitmap(atlas, internalCtx->maxBitmapSize, internalCtx->maxBitmapSize);
 
 				FNT_ASSERT(internalCtx->bitmapIndex < atlas->bitmapCount);
 				fntBitmap *bitmap = atlas->bitmaps + internalCtx->bitmapIndex;
@@ -829,8 +705,8 @@ extern "C" {
 			range.first_unicode_codepoint_in_range = currentCodePointStart;
 			range.chardata_for_range = currentPackedChars;
 
-			int packResult = stbtt_PackFontRanges(packCtx, context->data.data, context->info.fontIndex, &range, 1);
-			if (packResult) {
+			int packResult = stbtt_PackFontRanges(packCtx, internalCtx->data.data, internalCtx->info.fontIndex, &range, 1);
+			if(packResult) {
 				totalPageCodePointCount += range.num_chars;
 				remainingCodePointCount -= range.num_chars;
 				FNT_ASSERT(remainingCodePointCount == 0);
@@ -841,15 +717,15 @@ extern "C" {
 				break; // Finished, but leave bitmap intact
 			} else {
 				uint32_t numChars = 0;
-				for (uint32_t charIndex = 0; charIndex < (uint32_t)range.num_chars; ++charIndex) {
+				for(uint32_t charIndex = 0; charIndex < (uint32_t)range.num_chars; ++charIndex) {
 					stbtt_packedchar *packedChar = currentPackedChars + charIndex;
-					if (packedChar->x0 == 0 && packedChar->x1 == 0 && packedChar->y0 == 0 && packedChar->y1 == 0) {
+					if(packedChar->x0 == 0 && packedChar->x1 == 0 && packedChar->y0 == 0 && packedChar->y1 == 0) {
 						break;
 					}
 					++numChars;
 				}
 
-				if (numChars == 0) {
+				if(numChars == 0) {
 					// Page is complete, start another page
 					stbtt_packedchar *pagePackedChars = packedChars + pageCodePointIndex;
 					fnt__AddPage(internalCtx, atlas, bitmapIndex, pageCodePointStart, totalPageCodePointCount, pagePackedChars);
@@ -876,83 +752,114 @@ extern "C" {
 	}
 
 	fnt_api fntFontContext *fntCreateFontContext(const fntFontData *data, const fntFontInfo *info, const uint32_t maxBitmapSize) {
-		if (!fnt__IsValidFontData(data) || !fnt__IsValidFontInfo(info))return(NULL);
-		if (maxBitmapSize < FNT__MIN_BITMAP_SIZE) return(NULL);
+		if(!fnt__IsValidFontData(data) || !fnt__IsValidFontInfo(info))return(NULL);
+		if(maxBitmapSize < FNT__MIN_BITMAP_SIZE) return(NULL);
 
 		int fontOffset = stbtt_GetFontOffsetForIndex(data->data, info->fontIndex);
-		if (fontOffset < 0) {
+		if(fontOffset < 0) {
 			return(NULL);
 		}
 
 		stbtt_fontinfo sinfo;
-		if (!stbtt_InitFont(&sinfo, data->data, fontOffset)) {
+		if(!stbtt_InitFont(&sinfo, data->data, fontOffset)) {
 			return(NULL);
 		}
 
 		fnt__STBFontContext *result = (fnt__STBFontContext *)FNT_MALLOC(sizeof(fnt__STBFontContext));
 		FNT_MEMSET(result, 0, sizeof(*result));
-		result->base.data = *data;
-		result->base.info = *info;
-		result->base.maxBitmapSize = maxBitmapSize;
+		result->data = *data;
+		result->info = *info;
+		result->maxBitmapSize = maxBitmapSize;
 		result->sinfo = sinfo;
 
 		result->bitmapIndex = UINT32_MAX;
 
-		return(&result->base);
+		return((void *)result);
 	}
 
 	fnt_api bool fntComputeAtlasKernings(const fntFontContext *context, fntFontAtlas *atlas) {
-		if (context == NULL || atlas == NULL) return(false);
+		if(context == NULL || atlas == NULL) return(false);
 
 		fnt__STBFontContext *internalCtx = (fnt__STBFontContext *)context;
 
 		const stbtt_fontinfo *sinfo = &internalCtx->sinfo;
 
-		const float heightToScale = internalCtx->base.info.heightToScale;
-
-		// Compute total glyph count for all pages
-		uint32_t totalGlyphCount = 0;
-		for (uint32_t pageIndex = 0; pageIndex < atlas->pageCount; ++pageIndex) {
-			const fntFontPage *page = atlas->pages + pageIndex;
-			totalGlyphCount += page->codePointCount;
-		}
+		const float heightToScale = internalCtx->info.heightToScale;
 
 		const uint32_t pageCount = atlas->pageCount;
 
+		// Compute the maximum number of code points from all pages
+		uint32_t maxCodePointCount = 0;
+		for(uint32_t pageIndex = 0; pageIndex < pageCount; ++pageIndex) {
+			const fntFontPage *page = atlas->pages + pageIndex;
+			uint32_t count = page->codePointCount;
+			if(count > maxCodePointCount) maxCodePointCount = count;
+		}
+
+		// Compute total kerning pair count for all page pairs
+		uint32_t pagePairCount = pageCount * pageCount;
+		uint32_t kerningPairCountPerPage = maxCodePointCount * maxCodePointCount;
+
+		size_t kerningValuesStride = sizeof(float) * kerningPairCountPerPage;
+
+		// Allocate kerning value and page pairs
+		size_t valuesSize = kerningValuesStride * pagePairCount;
+		float *values = (float *)FNT_MALLOC(valuesSize);
+		if(values == NULL) {
+			return(false);
+		}
+		FNT_MEMSET(values, 0, valuesSize);
+		size_t pagePairsSize = sizeof(fntKerningPagePair) * pagePairCount;
+		fntKerningPagePair *pagePairs = (fntKerningPagePair *)FNT_MALLOC(pagePairsSize);
+		if(pagePairs == NULL) {
+			FNT_FREE(values);
+			return(false);
+		}
+		FNT_MEMSET(pagePairs, 0, pagePairsSize);
+
 		// Compute kerning pairs
-		uint32_t pairCount = totalGlyphCount * totalGlyphCount;
-		uint32_t kerningTableCapacity = fnt__NextPowerOfTwo(pairCount);
-		fnt__ResizeKerningTable(&atlas->kerningTable, kerningTableCapacity);
-		for (uint32_t pageIndexA = 0; pageIndexA < pageCount; ++pageIndexA) {
+		size_t valuesIndex = 0;
+		for(uint32_t pageIndexA = 0; pageIndexA < pageCount; ++pageIndexA) {
 			const fntFontPage *pageA = atlas->pages + pageIndexA;
-			for (uint32_t pageIndexB = 0; pageIndexB < pageCount; ++pageIndexB) {
+			for(uint32_t pageIndexB = 0; pageIndexB < pageCount; ++pageIndexB) {
 				const fntFontPage *pageB = atlas->pages + pageIndexB;
-				for (uint32_t glyphIndexA = 0; glyphIndexA < pageA->codePointCount; ++glyphIndexA) {
-					for (uint32_t glyphIndexB = 0; glyphIndexB < pageB->codePointCount; ++glyphIndexB) {
+
+				size_t pagePairCount = pageA->codePointCount * pageB->codePointCount;
+
+				size_t pagePairIndex = pageIndexA * pageCount + pageIndexB;
+				fntKerningPagePair *pagePair = pagePairs + pagePairIndex;
+				pagePair->firstIndex = valuesIndex;
+				pagePair->pageIndexA = pageIndexA;
+				pagePair->pageIndexB = pageIndexB;
+				pagePair->pairCount = pagePairCount;
+
+				float *pagePairValues = values + valuesIndex;
+
+				for(uint32_t glyphIndexA = 0; glyphIndexA < pageA->codePointCount; ++glyphIndexA) {
+					for(uint32_t glyphIndexB = 0; glyphIndexB < pageB->codePointCount; ++glyphIndexB) {
 						uint32_t codePointA = pageA->codePointStart + glyphIndexA;
 						uint32_t codePointB = pageB->codePointStart + glyphIndexB;
 						float kerning = 0.0f;
-						if (codePointA != codePointB) {
+						if(codePointA != codePointB) {
 							int kerningRaw = stbtt_GetCodepointKernAdvance(sinfo, (int)codePointA, (int)codePointB);
 							kerning = (float)kerningRaw * heightToScale;
 						}
-						if (codePointA != codePointB) {
-							fntKerningKey key;
-							key.a = codePointA;
-							key.b = codePointB;
-							bool r = fnt__InsertIntoKerningTable(&atlas->kerningTable, key, kerning);
-							FNT_ASSERT(r);
-						}
+						size_t valueIndex = glyphIndexA * maxCodePointCount + glyphIndexB;
+						pagePairValues[valueIndex] = kerning;
 					}
 				}
+				valuesIndex += kerningPairCountPerPage;
 			}
 		}
+
+		atlas->kerningValues = values;
+		atlas->kerningPages = pagePairs;
 
 		return(true);
 	}
 
 	fnt_api void fntReleaseFontContext(fntFontContext *context) {
-		if (context != NULL) {
+		if(context != NULL) {
 			fnt__STBFontContext *internalCtx = (fnt__STBFontContext *)context;
 			fnt__FinishPack(internalCtx);
 			FNT_FREE(internalCtx);
@@ -999,12 +906,12 @@ extern "C" {
 		const uint8_t *s = (const uint8_t *)text;
 		size_t count;
 		uint32_t state = 0;
-		for (count = 0; *s; ++s) {
-			if (fnt__TestDecodeUTF8(&state, *s) == fnt__UTF8State_Accept) {
+		for(count = 0; *s; ++s) {
+			if(fnt__TestDecodeUTF8(&state, *s) == fnt__UTF8State_Accept) {
 				++count;
 			}
 		}
-		if (state == fnt__UTF8State_Accept) {
+		if(state == fnt__UTF8State_Accept) {
 			return(count);
 		} else {
 			return(0); // Malformed UTF-8 string
@@ -1012,16 +919,16 @@ extern "C" {
 	}
 
 	fnt_api size_t fntGetQuadCountFromUTF8(const fntFontAtlas *atlas, const char *utf8) {
-		if (utf8 == NULL) return(0);
+		if(utf8 == NULL) return(0);
 		size_t result = fnt__CountUTF8String(utf8);
 		return(result);
 	}
 
 	fnt_api bool fntComputeQuadsFromUTF8(const fntFontAtlas *atlas, const fntFontInfo *info, const char *utf8, const float charHeight, const fntComputeQuadsFlags flags, const size_t maxQuadCount, fntFontQuad *outQuads, fntVec2 *outSize) {
-		if (atlas == NULL || info == NULL || utf8 == NULL || charHeight <= 0.0f || maxQuadCount == 0)  return(false);
+		if(atlas == NULL || info == NULL || utf8 == NULL || charHeight <= 0.0f || maxQuadCount == 0)  return(false);
 
 		size_t codePointCount = fnt__CountUTF8String(utf8);
-		if (codePointCount == 0 || maxQuadCount < codePointCount) return(false);
+		if(codePointCount == 0 || maxQuadCount < codePointCount) return(false);
 
 		const uint8_t *s = (const uint8_t *)utf8;
 		uint32_t codePointIndex;
@@ -1031,16 +938,16 @@ extern "C" {
 		const fntBitmap *currentBitmap = NULL;
 		uint32_t currentPageNum = 0;
 		uint32_t currentBitmapIndex = UINT32_MAX;
-		for (codePointIndex = 0; *s; ++s) {
-			if (fnt__DecodeUTF8(&state, &codePoint, *s) == fnt__UTF8State_Accept) {
+		for(codePointIndex = 0; *s; ++s) {
+			if(fnt__DecodeUTF8(&state, &codePoint, *s) == fnt__UTF8State_Accept) {
 
 				uint32_t nextState = 0;
 				uint32_t nextCodePoint = 0;
 				uint32_t hasNextCodePoint = 0;
 				const uint8_t *tmp = s;
 				int tmpLen = 0;
-				while (*++tmp && tmpLen < 4) {
-					if (fnt__DecodeUTF8(&state, &nextCodePoint, *tmp) == fnt__UTF8State_Accept) {
+				while(*++tmp && tmpLen < 4) {
+					if(fnt__DecodeUTF8(&state, &nextCodePoint, *tmp) == fnt__UTF8State_Accept) {
 						hasNextCodePoint = 1;
 						break;
 					}
@@ -1048,15 +955,15 @@ extern "C" {
 				}
 
 				uint32_t pageNum = atlas->codePointsToPageIndices[codePoint];
-				if (pageNum == 0) {
+				if(pageNum == 0) {
 					// TODO: Page not found, use a substitute character instead
 					codePoint = 32;
 				}
-				if (codePoint == 32) {
+				if(codePoint == 32) {
 					// TODO: Space-character
 				} else {
 					FNT_ASSERT(pageNum > 0);
-					if (currentPageNum != pageNum) {
+					if(currentPageNum != pageNum) {
 						uint32_t pageIndex = pageNum - 1;
 						FNT_ASSERT(pageIndex < atlas->pageCount);
 						currentPage = atlas->pages + pageIndex;
@@ -1067,7 +974,7 @@ extern "C" {
 
 					uint32_t bitmapIndex = currentPage->bitmapIndex;
 
-					if (currentBitmapIndex != bitmapIndex) {
+					if(currentBitmapIndex != bitmapIndex) {
 						FNT_ASSERT(bitmapIndex < atlas->bitmapCount);
 						currentBitmapIndex = bitmapIndex;
 						currentBitmap = atlas->bitmaps + bitmapIndex;
@@ -1098,7 +1005,7 @@ extern "C" {
 					float width = xoffset1 - xoffset0;
 					float height = yoffset1 - yoffset0;
 
-					if (outQuads != NULL) {
+					if(outQuads != NULL) {
 						fntFontQuad *quad = &outQuads[codePointIndex];
 						quad->bitmapIndex = bitmapIndex;
 						quad->codePoint = codePoint;
@@ -1109,11 +1016,8 @@ extern "C" {
 					}
 
 					float kerning = 0.0f;
-					if (hasNextCodePoint) {
-						fntKerningKey kerningKey;
-						kerningKey.a = (uint16_t)codePoint;
-						kerningKey.b = (uint16_t)nextCodePoint;
-						kerning = fnt__GetKerningValue(&atlas->kerningTable, kerningKey);
+					if(hasNextCodePoint) {
+						
 					}
 
 					// @TODO(final): Compute x and y advancement
@@ -1136,7 +1040,7 @@ extern "C" {
 
 	fnt_api bool fntSaveBitmapToFile(const fntBitmap *bitmap, const char *filePath) {
 		fnt__SaveBitmapFileContext context = FNT__ZERO_INIT;
-		if (!FNT_CREATE_BINARY_FILE(filePath, &context.handle)) {
+		if(!FNT_CREATE_BINARY_FILE(filePath, &context.handle)) {
 			return(false);
 		}
 
