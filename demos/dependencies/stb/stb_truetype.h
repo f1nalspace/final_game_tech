@@ -570,6 +570,9 @@ typedef struct
    unsigned short x0,y0,x1,y1; // coordinates of bbox in bitmap
    float xoff,yoff,xadvance;
    float xoff2,yoff2;
+#if defined(FINAL_STBTT_PACKEDCHAR_CODEPOINT)
+   unsigned int codePoint;
+#endif
 } stbtt_packedchar;
 
 typedef struct stbtt_pack_context stbtt_pack_context;
@@ -4072,6 +4075,9 @@ STBTT_DEF int stbtt_PackFontRangesRenderIntoRects(stbtt_pack_context *spc, const
             bc->yoff     =       (float)  y0 * recip_v + sub_y;
             bc->xoff2    =                (x0 + r->w) * recip_h + sub_x;
             bc->yoff2    =                (y0 + r->h) * recip_v + sub_y;
+#if defined(FINAL_STBTT_PACKEDCHAR_CODEPOINT)
+            bc->codePoint = codepoint;
+#endif
          } else {
             return_value = 0; // if any fail, report failure
          }
