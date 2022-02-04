@@ -13,7 +13,7 @@ int main(int argc, char **argv) {
 	fplCopyString("Final Demo - Fonts", settings.window.title, sizeof(settings.window.title));
 	if (fplPlatformInit(fplInitFlags_All, &settings)) {
 		if (fglLoadOpenGL(true)) {
-			const char *fontFilePath = "c:/windows/fonts/l_10646.ttf";
+			const char *fontFilePath = "c:/windows/fonts/arial.ttf";
 			const char *fontName = "Lucida Sans Unicode";
 			if (fplFileExists(fontFilePath)) {
 				fplFileHandle file;
