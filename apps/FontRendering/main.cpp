@@ -23,7 +23,7 @@ struct BakedCodePoint {
 int main(int argc, char *argv[]) {
 	fplSettings settings = {};
 	fplSetDefaultSettings(&settings);
-	settings.video.driver = fplVideoDriverType_OpenGL;
+	settings.video.backend = fplVideoBackendType_OpenGL;
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
 	if(fplPlatformInit(fplInitFlags_Video, &settings)) {
 		glEnable(GL_DEPTH_TEST);
@@ -47,11 +47,11 @@ int main(int argc, char *argv[]) {
 		GLuint ftex = 0;
 
 		fplFileHandle fontFile;
-		if(fplOpenBinaryFile("c:/windows/fonts/times.ttf", &fontFile)) {
-			uint32_t fileSize = fplGetFileSizeFromHandle32(&fontFile);
+		if(fplFileOpenBinary("c:/windows/fonts/times.ttf", &fontFile)) {
+			uint32_t fileSize = fplFileGetSizeFromHandle32(&fontFile);
 			uint8_t *ttf_buffer = (uint8_t *)fplMemoryAllocate(fileSize);
-			fplReadFileBlock32(&fontFile, fileSize, ttf_buffer, fileSize);
-			fplCloseFile(&fontFile);
+			fplFileReadBlock32(&fontFile, fileSize, ttf_buffer, fileSize);
+			fplFileClose(&fontFile);
 
 			uint8_t *temp_bitmap = (uint8_t *)fplMemoryAllocate(AtlasWidth * AtlasHeight);
 			stbtt_BakeFontBitmap(ttf_buffer, 0, FontHeight, temp_bitmap, AtlasWidth, AtlasHeight, CharFirst, CharLast, bakedChars);
