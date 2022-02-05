@@ -21,5 +21,6 @@
     <ClInclude Include="..\dependencies\stb\stb_truetype.h">
       <Filter>dependencies</Filter>
     </ClInclude>
+    <ClInclude Include="font_avril_sans_regular.h" />
   </ItemGroup>
 </Project>

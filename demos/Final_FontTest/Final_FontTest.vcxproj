@@ -162,6 +162,7 @@
     <ClInclude Include="..\..\final_font.h" />
     <ClInclude Include="..\..\final_platform_layer.h" />
     <ClInclude Include="..\dependencies\stb\stb_truetype.h" />
+    <ClInclude Include="font_avril_sans_regular.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
