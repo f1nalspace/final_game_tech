@@ -5,14 +5,30 @@ final_font.h
 	About
 -------------------------------------------------------------------------------
 
-A open source single header file bitmap font atlas creator.
+An open source single-header-library bitmap font atlas generator.
 
 This library is designed to load a TTF/TTC font and create font/bitmaps atlases from it.
-It can be used to extract each glyph individually or prepare it for graphics rendering applications, such as engines or games.
+The main purpose of this library is to prepare for rendering fonts for custom rendering engines.
+It supports multiple code-ranges in a single atlas
 
-The only dependencies are built-in operating system libraries, a C99 complaint compiler and the STB_truetype.h library.
+-------------------------------------------------------------------------------
+	Limitations
+-------------------------------------------------------------------------------
 
-Required linking is bare minimum:
+- Performance of kerning factor loading is really poor, due to the N^2+N algorythmn used.
+  Its recommend to compute this in a offline process.
+
+-------------------------------------------------------------------------------
+	Dependencies
+-------------------------------------------------------------------------------
+
+- Built-in operating system libraries
+
+- C99 complaint or C++ compiler
+
+- STB_truetype.h
+
+- Bare minimum linking:
 	Win32: Link to kernel32.lib
 	Unix/Linux: Link to ld.so
 
