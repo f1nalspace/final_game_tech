@@ -29,21 +29,21 @@ static UnicodeRange g__unicodeRanges[] = {
 int main(int argc, char **argv) {
 	fplSettings settings = fplMakeDefaultSettings();
 	fplCopyString("Final Demo - Fonts", settings.window.title, sizeof(settings.window.title));
-	if(fplPlatformInit(fplInitFlags_All, &settings)) {
-		if(fglLoadOpenGL(true)) {
+	if (fplPlatformInit(fplInitFlags_All, &settings)) {
+		if (fglLoadOpenGL(true)) {
 			fntFontData fontData = fplZeroInit;
 			fontData.size = fontAvrilSansRegularLength;
 			fontData.data = fontAvrilSansRegularPtr;
 			fontData.name = fontAvrilSansRegularName;
 
 			fntFontInfo fontInfo = fplZeroInit;
-			if(fntLoadFontInfo(&fontData, &fontInfo, 0, 120.0f)) {
+			if (fntLoadFontInfo(&fontData, &fontInfo, 0, 120.0f)) {
 				fntFontAtlas atlas = fplZeroInit;
-				if(fntInitFontAtlas(&fontInfo, &atlas)) {
+				if (fntInitFontAtlas(&fontInfo, &atlas)) {
 					fntFontContext *ctx = fntCreateFontContext(&fontData, &fontInfo, 512);
-					if(ctx != fpl_null) {
+					if (ctx != fpl_null) {
 
-						for(uint32_t i = 0; i < fplArrayCount(g__unicodeRanges); ++i) {
+						for (uint32_t i = 0; i < fplArrayCount(g__unicodeRanges); ++i) {
 							uint32_t range = g__unicodeRanges[i].to - g__unicodeRanges[i].from;
 							fntAddToFontAtlas(ctx, &atlas, g__unicodeRanges[i].from, range);
 						}
@@ -77,7 +77,7 @@ int main(int argc, char **argv) {
 					char bitmapFilePath[FPL_MAX_PATH_LENGTH];
 
 					char bitmapFilename[100];
-					for(uint32_t bitmapIndex = 0; bitmapIndex < atlas.bitmapCount; ++bitmapIndex) {
+					for (uint32_t bitmapIndex = 0; bitmapIndex < atlas.bitmapCount; ++bitmapIndex) {
 						const fntBitmap *bitmap = atlas.bitmaps + bitmapIndex;
 						fplFormatString(bitmapFilename, sizeof(bitmapFilename), "font_bitmap%lu.bmp", bitmapIndex);
 						fplPathCombine(bitmapFilePath, sizeof(bitmapFilePath), 3, homePath, "Downloads", bitmapFilename);
@@ -90,9 +90,9 @@ int main(int argc, char **argv) {
 			}
 		}
 
-		while(fplWindowUpdate()) {
+		while (fplWindowUpdate()) {
 			fplEvent ev;
-			while(fplPollEvent(&ev)) {
+			while (fplPollEvent(&ev)) {
 			}
 		}
 
