@@ -10,14 +10,14 @@
 
 #include "font_avril_sans_regular.h"
 
-typedef struct UnicodeRange {
-	uint32_t from;
-	uint32_t to;
-} UnicodeRange;
+typedef struct CodePointRange {
+	uint16_t from;
+	uint16_t to;
+} CodePointRange;
 
 // https://stackoverflow.com/a/30200250
 // http://www.localizingjapan.com/blog/2012/01/20/regular-expressions-for-japanese-text/
-static UnicodeRange g__unicodeRanges[] = {
+static CodePointRange g__unicodeRanges[] = {
 	{33, 126},			// ASCII
 	//{0x3000, 0x303f},	// Japanese-style punctuation
 	//{0x3040, 0x309f},	// Hiragana
@@ -36,16 +36,20 @@ int main(int argc, char **argv) {
 			fontData.data = fontAvrilSansRegularPtr;
 			fontData.name = fontAvrilSansRegularName;
 
+			const fntFontSize fontSize = { 128.0f };
+
 			fntFontInfo fontInfo = fplZeroInit;
-			if (fntLoadFontInfo(&fontData, &fontInfo, 0, 120.0f)) {
+			if (fntLoadFontInfo(&fontData, &fontInfo, 0)) {
 				fntFontAtlas atlas = fplZeroInit;
 				if (fntInitFontAtlas(&fontInfo, &atlas)) {
 					fntFontContext *ctx = fntCreateFontContext(&fontData, &fontInfo, 512);
 					if (ctx != fpl_null) {
 
 						for (uint32_t i = 0; i < fplArrayCount(g__unicodeRanges); ++i) {
-							uint32_t range = g__unicodeRanges[i].to - g__unicodeRanges[i].from;
-							fntAddToFontAtlas(ctx, &atlas, g__unicodeRanges[i].from, range);
+							uint16_t range = g__unicodeRanges[i].to - g__unicodeRanges[i].from;
+							fntCodePoint from = { g__unicodeRanges[i].from };
+							fntCodePoint end = { g__unicodeRanges[i].to };
+							fntAddToFontAtlas(ctx, &atlas, fontSize, from, end);
 						}
 
 						// @TODO(final): This is really slow, make this an offline tool!
@@ -59,17 +63,19 @@ int main(int argc, char **argv) {
 					const char japAnimeText[] = { 0xe3, 0x82, 0xa2, 0xe3, 0x83, 0x8b, 0xe3, 0x83, 0xa1, 0 }; // A ni me, 3 characters
 					const char japAnimeAndKanaText[] = { 0xe3, 0x82, 0xa2, 0xe3, 0x83, 0x8b, 0xe3, 0x83, 0xa1, 0x20, 0x61, 0x6e, 0x69, 0x6d, 0x65, 0 }; // A ni me anime, 9 characters
 
-					size_t quadCount0 = fntGetQuadCountFromUTF8(&atlas, helloWorldText);
-					size_t quadCount1 = fntGetQuadCountFromUTF8(&atlas, japAnimeText);
-					size_t quadCount2 = fntGetQuadCountFromUTF8(&atlas, japAnimeAndKanaText);
+					size_t quadCount0 = fntGetQuadCountFromUTF8(helloWorldText);
+					size_t quadCount1 = fntGetQuadCountFromUTF8(japAnimeText);
+					size_t quadCount2 = fntGetQuadCountFromUTF8(japAnimeAndKanaText);
 
 					fntFontQuad fontQuads[16];
 					fntVec2 quadsSize;
 					bool r;
 
-					r = fntComputeQuadsFromUTF8(&atlas, &fontInfo, helloWorldText, 20.0f, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsSize);
-					r = fntComputeQuadsFromUTF8(&atlas, &fontInfo, japAnimeText, 20.0f, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsSize);
-					r = fntComputeQuadsFromUTF8(&atlas, &fontInfo, japAnimeAndKanaText, 20.0f, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsSize);
+					const float targetCharHeight = 20.0f;
+
+					r = fntComputeQuadsFromUTF8(&atlas, &fontInfo, helloWorldText, fontSize, targetCharHeight, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsSize);
+					r = fntComputeQuadsFromUTF8(&atlas, &fontInfo, japAnimeText, fontSize, targetCharHeight, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsSize);
+					r = fntComputeQuadsFromUTF8(&atlas, &fontInfo, japAnimeAndKanaText, fontSize, targetCharHeight, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsSize);
 
 					char homePath[FPL_MAX_PATH_LENGTH];
 					fplGetHomePath(homePath, sizeof(homePath));
