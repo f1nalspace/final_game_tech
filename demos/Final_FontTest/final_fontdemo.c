@@ -35,75 +35,76 @@ int main(int argc, char **argv) {
 			fontData.size = fontAvrilSansRegularLength;
 			fontData.data = fontAvrilSansRegularPtr;
 			fontData.name = fontAvrilSansRegularName;
+			fontData.index = 0;
 
 			const fntFontSize fontSize = { 128.0f };
 
-			fntFontInfo fontInfo = fplZeroInit;
-			if (fntLoadFontInfo(&fontData, &fontInfo, 0)) {
-				fntFontAtlas atlas = fplZeroInit;
-				if (fntInitFontAtlas(&fontInfo, &atlas)) {
-					fntFontContext *ctx = fntCreateFontContext(&fontData, &fontInfo, 512);
-					if (ctx != fpl_null) {
-
-						for (uint32_t i = 0; i < fplArrayCount(g__unicodeRanges); ++i) {
-							uint16_t range = g__unicodeRanges[i].to - g__unicodeRanges[i].from;
-							fntCodePoint from = { g__unicodeRanges[i].from };
-							fntCodePoint end = { g__unicodeRanges[i].to };
-							fntAddToFontAtlas(ctx, &atlas, fontSize, from, end);
-						}
-
-						// @TODO(final): This is really slow, make this an offline tool!
-						//fntComputeAtlasKernings(ctx, &atlas);
-
-						fntReleaseFontContext(ctx);
+			fntFontAtlas atlas = fplZeroInit;
+			if (fntInitFontAtlas(&atlas, &fontData, fontSize)) {
+				fntFontContext *ctx = fntCreateFontContext(512);
+				if (ctx != NULL) {
+					for (uint32_t i = 0; i < fplArrayCount(g__unicodeRanges); ++i) {
+						uint16_t range = g__unicodeRanges[i].to - g__unicodeRanges[i].from;
+						fntCodePoint from = { g__unicodeRanges[i].from };
+						fntCodePoint end = { g__unicodeRanges[i].to };
+						fntAddToFontAtlas(ctx, &atlas, &fontData, fontSize, from, end);
 					}
-
-					// UTF8-Encode (https://onlineunicodetools.com/convert-unicode-to-utf8)
-					const char *helloWorldText = "Hello World!";
-					const char japAnimeText[] = { 0xe3, 0x82, 0xa2, 0xe3, 0x83, 0x8b, 0xe3, 0x83, 0xa1, 0 }; // A ni me, 3 characters
-					const char japAnimeAndKanaText[] = { 0xe3, 0x82, 0xa2, 0xe3, 0x83, 0x8b, 0xe3, 0x83, 0xa1, 0x20, 0x61, 0x6e, 0x69, 0x6d, 0x65, 0 }; // A ni me anime, 9 characters
-
-					size_t quadCount0 = fntGetQuadCountFromUTF8(helloWorldText);
-					size_t quadCount1 = fntGetQuadCountFromUTF8(japAnimeText);
-					size_t quadCount2 = fntGetQuadCountFromUTF8(japAnimeAndKanaText);
-
-					fntFontQuad fontQuads[16];
-					fntVec2 quadsSize;
-					bool r;
-
-					const float targetCharHeight = 20.0f;
-
-					r = fntComputeQuadsFromUTF8(&atlas, &fontInfo, helloWorldText, fontSize, targetCharHeight, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsSize);
-					r = fntComputeQuadsFromUTF8(&atlas, &fontInfo, japAnimeText, fontSize, targetCharHeight, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsSize);
-					r = fntComputeQuadsFromUTF8(&atlas, &fontInfo, japAnimeAndKanaText, fontSize, targetCharHeight, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsSize);
-
-					char homePath[FPL_MAX_PATH_LENGTH];
-					fplGetHomePath(homePath, sizeof(homePath));
-
-					char bitmapFilePath[FPL_MAX_PATH_LENGTH];
-
-					char bitmapFilename[100];
-					for (uint32_t bitmapIndex = 0; bitmapIndex < atlas.bitmapCount; ++bitmapIndex) {
-						const fntBitmap *bitmap = atlas.bitmaps + bitmapIndex;
-						fplFormatString(bitmapFilename, sizeof(bitmapFilename), "font_bitmap%lu.bmp", bitmapIndex);
-						fplPathCombine(bitmapFilePath, sizeof(bitmapFilePath), 3, homePath, "Downloads", bitmapFilename);
-						fntSaveBitmapToFile(bitmap, bitmapFilePath);
-					}
-
-					fntFreeFontAtlas(&atlas);
+					fntReleaseFontContext(ctx);
 				}
-				fntFreeFontInfo(&fontInfo);
-			}
-		}
 
-		while (fplWindowUpdate()) {
-			fplEvent ev;
-			while (fplPollEvent(&ev)) {
-			}
-		}
+				// UTF8-Encode (https://onlineunicodetools.com/convert-unicode-to-utf8)
+				const char *helloWorldText = "Hello World!";
+				const char *testText = "Five Wax Quacking Zephyrs";
+				const char japAnimeText[] = { 0xe3, 0x82, 0xa2, 0xe3, 0x83, 0x8b, 0xe3, 0x83, 0xa1, 0 }; // A ni me, 3 characters
+				const char japAnimeAndKanaText[] = { 0xe3, 0x82, 0xa2, 0xe3, 0x83, 0x8b, 0xe3, 0x83, 0xa1, 0x20, 0x61, 0x6e, 0x69, 0x6d, 0x65, 0 }; // A ni me anime, 9 characters
 
-		fglUnloadOpenGL();
+				const float targetCharHeight = 20.0f;
+
+				fntFontQuad fontQuads[32];
+				fntVec2 quadsSize;
+				size_t quadCount;
+				bool r;
+
+				quadCount = fntGetQuadCountFromUTF8(helloWorldText);
+				fplAssert(quadCount == 12);
+				r = fntComputeQuadsFromUTF8(&atlas, helloWorldText, fontSize, targetCharHeight, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsSize);
+
+				quadCount = fntGetQuadCountFromUTF8(testText);
+				fplAssert(quadCount == 25);
+				r = fntComputeQuadsFromUTF8(&atlas, testText, fontSize, targetCharHeight, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsSize);
+
+				quadCount = fntGetQuadCountFromUTF8(japAnimeText);
+				fplAssert(quadCount == 3);
+				r = fntComputeQuadsFromUTF8(&atlas, japAnimeText, fontSize, targetCharHeight, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsSize);
+
+				quadCount = fntGetQuadCountFromUTF8(japAnimeAndKanaText);
+				fplAssert(quadCount == 9);
+				r = fntComputeQuadsFromUTF8(&atlas, japAnimeAndKanaText, fontSize, targetCharHeight, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsSize);
+
+				char homePath[FPL_MAX_PATH_LENGTH];
+				fplGetHomePath(homePath, sizeof(homePath));
+
+				char bitmapFilePath[FPL_MAX_PATH_LENGTH];
+
+				char bitmapFilename[100];
+				for (uint32_t bitmapIndex = 0; bitmapIndex < atlas.bitmapCount; ++bitmapIndex) {
+					const fntBitmap *bitmap = atlas.bitmaps + bitmapIndex;
+					fplFormatString(bitmapFilename, sizeof(bitmapFilename), "font_bitmap%lu.bmp", bitmapIndex);
+					fplPathCombine(bitmapFilePath, sizeof(bitmapFilePath), 3, homePath, "Downloads", bitmapFilename);
+					fntSaveBitmapToFile(bitmap, bitmapFilePath);
+				}
+
+				while (fplWindowUpdate()) {
+					fplEvent ev;
+					while (fplPollEvent(&ev)) {
+					}
+				}
+
+				fntFreeFontAtlas(&atlas);
+			}
+			fglUnloadOpenGL();
+		}
+		fplPlatformRelease();
 	}
-	fplPlatformRelease();
 	return (0);
 }
