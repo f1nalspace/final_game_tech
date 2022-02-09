@@ -294,7 +294,9 @@ extern "C" {
 
 	typedef struct fntFontGlyph {
 		//! The baseline offset in pixels
-		fntVec2 baselineOffset;
+		fntVec2 offset;
+		//! The size in pixels
+		fntVec2 size;
 		//! The bitmap rectangle
 		fntBitmapRect bitmapRect;
 		//! The default advancement to any next character in pixels
@@ -373,7 +375,7 @@ extern "C" {
 	} fntComputeQuadsFlags;
 
 	fnt_api size_t fntGetQuadCountFromUTF8(const char *utf8);
-	fnt_api bool fntComputeQuadsFromUTF8(const fntFontAtlas *atlas, const char *utf8, const fntFontSize fontSize, const float charHeight, const fntComputeQuadsFlags flags, const size_t numQuads, fntFontQuad *outQuads, fntVec2 *outSize);
+	fnt_api bool fntComputeQuadsFromUTF8(const fntFontAtlas *atlas, const char *utf8, const float charHeight, const fntComputeQuadsFlags flags, const size_t numQuads, fntFontQuad *outQuads, fntVec2 *outSize);
 
 #ifdef __cplusplus
 }
@@ -429,7 +431,7 @@ extern "C" {
 	static void fnt__FreeNotNull(void *ptr) {
 		if (ptr != NULL)
 			FNT_FREE(ptr);
-}
+	}
 
 	typedef struct {
 		stbtt_pack_context currentPackContext;
@@ -464,6 +466,7 @@ extern "C" {
 		FNT_ASSERT(internalCtx != NULL);
 		FNT_ASSERT(pixels != NULL);
 		stbtt_pack_context *packCtx = &internalCtx->currentPackContext;
+		stbtt_PackSetOversampling(packCtx, 4, 4);
 		stbtt_PackBegin(packCtx, (unsigned char *)pixels, internalCtx->maxBitmapSize, internalCtx->maxBitmapSize, 0, 1, NULL);
 		internalCtx->hasPackContext = 1;
 	}
@@ -547,8 +550,8 @@ extern "C" {
 		for (uint32_t whitespaceCodeIndex = 0; whitespaceCodeIndex < numWhitespaceCodePoints; ++whitespaceCodeIndex) {
 			uint32_t whitespaceCodePoint = fnt__global__whitespaceCodepointsMap[whitespaceCodeIndex];
 
-			int advanceRaw, leftSideBearing;
-			stbtt_GetCodepointHMetrics(sinfo, whitespaceCodePoint, &advanceRaw, &leftSideBearing);
+			int advanceRaw, leftSideBearingRaw;
+			stbtt_GetCodepointHMetrics(sinfo, whitespaceCodePoint, &advanceRaw, &leftSideBearingRaw);
 
 			FNT_ASSERT(whitespaceCodePoint < FNT__MAX_UNICODE_POINT_COUNT);
 			whitespaceStates[whitespaceCodePoint] = fntWhiteSpaceState_WhiteSpace;
@@ -697,17 +700,25 @@ extern "C" {
 
 			fntFontGlyph *targetGlyph = glyphs + index;
 
-			uint16_t w = (packedChar->x1 - packedChar->x0) + 1;
-			uint16_t h = (packedChar->y1 - packedChar->y0) + 1;
+			float x0 = packedChar->xoff;
+			float y0 = packedChar->yoff;
+			float x1 = packedChar->xoff2;
+			float y1 = packedChar->yoff2;
 
-			float xoffset = packedChar->xoff;
-			float yoffset = packedChar->yoff;
+			float w = (float)(packedChar->x1 - packedChar->x0);
+			float h = (float)(packedChar->y1 - packedChar->y0);
 
+			float xoffset = x0 + lsb;
+			float yoffset = y1; // Needs to be flipped!
+
+			// Bitmap coordinates (UV)
 			targetGlyph->bitmapRect.x = packedChar->x0;
 			targetGlyph->bitmapRect.y = packedChar->y0;
-			targetGlyph->bitmapRect.width = w;
-			targetGlyph->bitmapRect.height = h;
-			targetGlyph->baselineOffset = fnt__MakeVec2(xoffset, yoffset);
+			targetGlyph->bitmapRect.width = (uint16_t)(packedChar->x1 - packedChar->x0);
+			targetGlyph->bitmapRect.height = (uint16_t)(packedChar->y1 - packedChar->y0);
+
+			targetGlyph->offset = fnt__MakeVec2(xoffset, yoffset);
+			targetGlyph->size = fnt__MakeVec2(w, h);
 			targetGlyph->horizontalAdvance = advance;
 			targetGlyph->leftSideBearing = lsb;
 			targetGlyph->bitmapIndex = bitmapIndex;
@@ -938,11 +949,51 @@ extern "C" {
 		return(result);
 	}
 
-	fnt_api bool fntComputeQuadsFromUTF8(const fntFontAtlas *atlas, const char *utf8, const fntFontSize fontSize, const float maxCharHeight, const fntComputeQuadsFlags flags, const size_t maxQuadCount, fntFontQuad *outQuads, fntVec2 *outSize) {
-		if (fnt__IsValidFontAtlas(atlas) || utf8 == NULL || fontSize.f32 <= FNT__MIN_FONT_SIZE || maxCharHeight <= 0.0f || maxQuadCount == 0)  return(false);
+	static void fntComputeQuad(const fntFontGlyph *glyph, const fntVec2 texel, const uint32_t bitmapIndex, const float scale, const float xOffset, const float yOffset, fntFontQuad *outQuad, fntVec2 *outSize) {
+		float u0 = (float)glyph->bitmapRect.x * texel.u;
+		float v0 = (float)glyph->bitmapRect.y * texel.v;
+		float u1 = (float)(glyph->bitmapRect.x + glyph->bitmapRect.width) * texel.u;
+		float v1 = (float)(glyph->bitmapRect.y + glyph->bitmapRect.height) * texel.v;
+		fntVec2 uv0 = fnt__MakeVec2(u0, v0);
+		fntVec2 uv1 = fnt__MakeVec2(u1, v1);
+
+		fntVec2 size = fnt__MakeVec2(glyph->size.w * scale, glyph->size.h * scale);
+		float lsb = glyph->leftSideBearing * scale;
+
+		fntVec2 offset = fnt__MakeVec2(xOffset, yOffset);
+		offset.x += glyph->offset.x * scale;
+		offset.y += glyph->offset.y * scale;
+
+		outQuad->uv[0] = uv0;
+		outQuad->uv[1] = uv1;
+		outQuad->rect[0] = fnt__MakeVec2(offset.x, offset.y);
+		outQuad->rect[1] = fnt__MakeVec2(offset.x + size.w, offset.y + size.h);
+		outQuad->bitmapIndex = bitmapIndex;
+		outQuad->codePoint = glyph->codePoint;
+
+		*outSize = size;
+	}
+
+	fnt_api bool fntComputeQuadsFromUTF8(const fntFontAtlas *atlas, const char *utf8, const float maxCharHeight, const fntComputeQuadsFlags flags, const size_t maxQuadCount, fntFontQuad *outQuads, fntVec2 *outSize) {
+		if (!fnt__IsValidFontAtlas(atlas) || utf8 == NULL || maxCharHeight <= 0.0f || maxQuadCount == 0)  return(false);
 
 		size_t codePointCount = fnt__CountUTF8String(utf8);
 		if (codePointCount == 0 || maxQuadCount < codePointCount) return(false);
+
+		if (outQuads != NULL) {
+			FNT_MEMSET(outQuads, 0, sizeof(fntFontQuad) * codePointCount);
+		}
+
+		if (outSize != NULL) {
+			outSize->x = outSize->y = 0;
+		}
+
+		const float invFontSize = 1.0f / atlas->fontSize.f32;
+
+		float scale = invFontSize * maxCharHeight;
+
+		float ascent = atlas->ascent * scale;
+		float descent = atlas->descent * scale;
 
 		const uint8_t *s = (const uint8_t *)utf8;
 		uint32_t codePointIndex;
@@ -952,6 +1003,10 @@ extern "C" {
 		const fntBitmap *currentBitmap = NULL;
 		uint32_t currentPageNum = 0;
 		uint32_t currentBitmapIndex = UINT32_MAX;
+		float xPos = 0.0f;
+		float yPos = 0.0f;
+		float totalWidth = 0.0f;
+		float totalHeight = (atlas->ascent + atlas->descent) * invFontSize * maxCharHeight;
 		for (codePointIndex = 0; *s; ++s) {
 			if (fnt__DecodeUTF8(&state, &codePoint, *s) == fnt__UTF8State_Accept) {
 
@@ -983,6 +1038,8 @@ extern "C" {
 
 				if (fnt__IsCodePointWhiteSpace(atlas, codePoint)) {
 					// TODO: Whitespace-character
+					float whitespaceAdvancement = atlas->whitespaceTable.advancements[codePoint];
+					xPos += whitespaceAdvancement * scale;
 				} else {
 					FNT_ASSERT(pageNumA > 0);
 
@@ -1003,6 +1060,8 @@ extern "C" {
 					uint32_t glyphIndex = codePoint - codePointStart;
 					const fntFontGlyph *glyph = currentPage->glyphs + glyphIndex;
 
+					FNT_ASSERT(glyph->codePoint.u16 == codePoint);
+
 					// Bitmap change
 					uint32_t bitmapIndex = glyph->bitmapIndex;
 					if (currentBitmapIndex != bitmapIndex) {
@@ -1016,32 +1075,19 @@ extern "C" {
 					const uint16_t bitmapHeight = currentBitmap->height;
 					const float texelU = 1.0f / (float)bitmapWidth;
 					const float texelV = 1.0f / (float)bitmapHeight;
+					fntVec2 texel = fnt__MakeVec2(texelU, texelV);
 
-					FNT_ASSERT(glyph->codePoint.u16 == codePoint);
+					float advance = glyph->horizontalAdvance * scale;
 
-					float u0 = (float)glyph->bitmapRect.x * texelU;
-					float v0 = (float)glyph->bitmapRect.y * texelV;
-					float u1 = (float)(glyph->bitmapRect.x + glyph->bitmapRect.width) * texelU;
-					float v1 = (float)(glyph->bitmapRect.y + glyph->bitmapRect.height) * texelV;
+					fntVec2 quadSize;
+					fntFontQuad fontQuad;
+					fntComputeQuad(glyph, texel, bitmapIndex, scale, xPos, yPos, &fontQuad, &quadSize);
 
-					float w = (u1 - u0) * maxCharHeight;
-					float h = (v1 - v0) * maxCharHeight;
-
-					// TODO(tspaete): Compute X/Y offset
-					float xoffset0 = 0;
-					float yoffset0 = 0;
-
-					float xoffset1 = xoffset0 + w;
-					float yoffset1 = yoffset0 + h;
+					//advance = quadSize.w;
 
 					if (outQuads != NULL) {
 						fntFontQuad *quad = &outQuads[codePointIndex];
-						quad->bitmapIndex = bitmapIndex;
-						quad->codePoint.u16 = codePoint;
-						quad->uv[0] = fnt__MakeVec2(u0, v0);
-						quad->uv[1] = fnt__MakeVec2(u1, v1);
-						quad->rect[0] = fnt__MakeVec2(xoffset0, yoffset0);
-						quad->rect[1] = fnt__MakeVec2(xoffset1, yoffset1);
+						*quad = fontQuad;
 					}
 
 					// We only support kerning inside the same page
@@ -1052,13 +1098,20 @@ extern "C" {
 						FNT_ASSERT(codePointIndexA < codePointCount);
 						FNT_ASSERT(codePointIndexB < codePointCount);
 						uint32_t kerningIndex = codePointIndexA * codePointCount + codePointIndexB;
-						kerning = currentPage->kerningValues[kerningIndex];
+						float kerningUniform = currentPage->kerningValues[kerningIndex] * invFontSize;
+						kerning = kerningUniform * maxCharHeight;
 					}
 
-					// @TODO(final): Compute x and y advancement
+					totalWidth += quadSize.w;
+					xPos += advance;// + kerning;
 				}
 				++codePointIndex;
 			}
+		}
+
+		if (outSize != NULL) {
+			outSize->w = totalWidth;
+			outSize->h = totalHeight;
 		}
 
 		return(true);
@@ -1087,7 +1140,7 @@ extern "C" {
 	}
 
 #ifdef __cplusplus
-	}
+}
 #endif
 
 #endif // FNT_IMPLEMENTATION
