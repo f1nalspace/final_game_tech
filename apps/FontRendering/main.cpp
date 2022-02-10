@@ -17,7 +17,7 @@ struct BakedCodePoint {
 	float xoffset;
 	float yoffset;
 	float xadvance;
-	unsigned char c;
+	int codePoint;
 };
 
 int main(int argc, char *argv[]) {
@@ -25,7 +25,7 @@ int main(int argc, char *argv[]) {
 	fplSetDefaultSettings(&settings);
 	settings.video.backend = fplVideoBackendType_OpenGL;
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
-	if(fplPlatformInit(fplInitFlags_Video, &settings)) {
+	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
 		glEnable(GL_DEPTH_TEST);
 		glDepthFunc(GL_LEQUAL);
 
@@ -34,33 +34,35 @@ int main(int argc, char *argv[]) {
 
 		glEnable(GL_TEXTURE_2D);
 
-		constexpr int AtlasWidth = 512;
-		constexpr int AtlasHeight = 512;
+		constexpr int AtlasWidth = 2048;
+		constexpr int AtlasHeight = 2048;
 		constexpr int CharFirst = 32;
 		constexpr int CharLast = 255;
-		constexpr float FontHeight = 24.0f;
+		constexpr float FontHeight = 128.0f;
 		constexpr float PixelToUnits = 1.0f / FontHeight;
 		constexpr int CharCount = (CharLast - CharFirst) + 1;
+
 		stbtt_bakedchar *bakedChars = (stbtt_bakedchar *)fplMemoryAllocate(CharCount * sizeof(stbtt_bakedchar));
 		BakedCodePoint *bakedCodePoints = (BakedCodePoint *)fplMemoryAllocate(CharCount * sizeof(BakedCodePoint));
+		float *kerningTable = (float *)fplMemoryAllocate(CharCount * CharCount * sizeof(float));
 
 		GLuint ftex = 0;
 
 		fplFileHandle fontFile;
-		if(fplFileOpenBinary("c:/windows/fonts/times.ttf", &fontFile)) {
+		if (fplFileOpenBinary("c:/windows/fonts/arial.ttf", &fontFile)) {
 			uint32_t fileSize = fplFileGetSizeFromHandle32(&fontFile);
 			uint8_t *ttf_buffer = (uint8_t *)fplMemoryAllocate(fileSize);
 			fplFileReadBlock32(&fontFile, fileSize, ttf_buffer, fileSize);
 			fplFileClose(&fontFile);
 
 			uint8_t *temp_bitmap = (uint8_t *)fplMemoryAllocate(AtlasWidth * AtlasHeight);
-			stbtt_BakeFontBitmap(ttf_buffer, 0, FontHeight, temp_bitmap, AtlasWidth, AtlasHeight, CharFirst, CharLast, bakedChars);
+			stbtt_BakeFontBitmap(ttf_buffer, 0, FontHeight, temp_bitmap, AtlasWidth, AtlasHeight, CharFirst, CharCount, bakedChars);
 
 			float ipw = 1.0f / AtlasWidth, iph = 1.0f / AtlasHeight;
-			for(int charIndex = 0; charIndex < CharCount; ++charIndex) {
+			for (int charIndex = 0; charIndex < CharCount; ++charIndex) {
 				const stbtt_bakedchar *b = bakedChars + charIndex;
 				BakedCodePoint *cp = bakedCodePoints + charIndex;
-				cp->c = charIndex + CharFirst;
+				cp->codePoint = CharFirst + charIndex;
 				cp->w = (b->x1 - b->x0) * PixelToUnits;
 				cp->h = (b->y1 - b->y0) * PixelToUnits;
 				cp->xoffset = b->xoff * PixelToUnits;
@@ -72,26 +74,51 @@ int main(int argc, char *argv[]) {
 				cp->t1 = b->y1 * iph;
 			}
 
+			int fontOffset = stbtt_GetFontOffsetForIndex(ttf_buffer, 0);
+
+			stbtt_fontinfo fontInfo;
+			stbtt_InitFont(&fontInfo, ttf_buffer, fontOffset);
+
+			int ascentRaw, descentRaw, lineGapRaw;
+			stbtt_GetFontVMetrics(&fontInfo, &ascentRaw, &descentRaw, &lineGapRaw);
+
+			float rawToPixels = stbtt_ScaleForPixelHeight(&fontInfo, FontHeight);
+
+			for (int charIndexA = 0; charIndexA < CharCount; ++charIndexA) {
+				for (int charIndexB = 0; charIndexB < CharCount; ++charIndexB) {
+					if (charIndexA == charIndexB) continue;
+
+					int codePointA = CharFirst + charIndexA;
+					int codePointB = CharFirst + charIndexB;
+
+					int kerningRaw = stbtt_GetCodepointKernAdvance(&fontInfo, codePointA, codePointB);
+
+					float kerning = (float)kerningRaw * rawToPixels * PixelToUnits;
+
+					kerningTable[charIndexA * CharCount + charIndexB] = kerning;
+				}
+			}
+
 			glGenTextures(1, &ftex);
 			glBindTexture(GL_TEXTURE_2D, ftex);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, 512, 512, 0, GL_ALPHA, GL_UNSIGNED_BYTE, temp_bitmap);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, AtlasWidth, AtlasHeight, 0, GL_ALPHA, GL_UNSIGNED_BYTE, temp_bitmap);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			fplMemoryFree(temp_bitmap);
 		}
 
 		bool topDown = false;
 
-		while(fplWindowUpdate()) {
+		while (fplWindowUpdate()) {
 			fplEvent ev;
-			while(fplPollEvent(&ev)) {
-				switch(ev.type) {
+			while (fplPollEvent(&ev)) {
+				switch (ev.type) {
 					case fplEventType_Keyboard:
 					{
-						switch(ev.keyboard.type) {
+						switch (ev.keyboard.type) {
 							case fplKeyboardEventType_Button:
 							{
-								if(ev.keyboard.buttonState == fplButtonState_Release) {
-									if(ev.keyboard.mappedKey == fplKey_Space) {
+								if (ev.keyboard.buttonState == fplButtonState_Release) {
+									if (ev.keyboard.mappedKey == fplKey_Space) {
 										topDown = !topDown;
 									}
 								}
@@ -102,7 +129,7 @@ int main(int argc, char *argv[]) {
 			}
 
 			fplWindowSize winSize;
-			if(!fplGetWindowSize(&winSize)) {
+			if (!fplGetWindowSize(&winSize)) {
 				winSize = { 0,0 };
 			}
 
@@ -115,7 +142,7 @@ int main(int argc, char *argv[]) {
 			glMatrixMode(GL_PROJECTION);
 			glLoadIdentity();
 
-			if(topDown) {
+			if (topDown) {
 				glOrtho(0.0f, w, h, 0, 0.0f, 1.0f);
 			} else {
 				glOrtho(0.0f, w, 0, h, 0.0f, 1.0f);
@@ -124,7 +151,7 @@ int main(int argc, char *argv[]) {
 			glMatrixMode(GL_MODELVIEW);
 			glLoadIdentity();
 
-			float lw = fplMin(w, h) * 0.25f;
+			float lw = fplMin(w, h) * 1.0f;
 			glColor4f(1, 1, 0, 0.25f);
 			glLineWidth(1);
 			glBegin(GL_LINES);
@@ -135,20 +162,26 @@ int main(int argc, char *argv[]) {
 			glEnd();
 			glLineWidth(1);
 
-			float fontScale = 64.0f;
+			float fontScale = 128.0f;
 
-			const char *text = "öÖ^Final-Platform-Layer";
+			//const char *text = "öÖ^Final-Platform-Layer";
+			//const char *text = "Bitte!";
+			const char *text = "Five Wax Quacking Zephyrs";
 
-			float x = w * 0.5f;
-			float y = h * 0.5f;
-			while(*text) {
-				uint8_t c = (uint8_t)*text;
-				if(c >= CharFirst && *text <= CharLast) {
-					int charIndex = c - CharFirst;
+			size_t textLen = strlen(text);
+
+			const float ipw = 1.0f / AtlasWidth, iph = 1.0f / AtlasHeight;
+			float xNormal = w * 0.1f;
+			float xKerned = w * 0.1f;
+			float yNormal = h * 0.1f;
+			float yKerned = h * 0.2f;
+			for (int textIndex = 0; textIndex < textLen; ++textIndex) {
+				int codePoint = (int)text[textIndex];
+				if (codePoint >= CharFirst && codePoint <= CharLast) {
+					int codePointIndex = codePoint - CharFirst;
 					stbtt_aligned_quad q0, q1;
 
-					const stbtt_bakedchar *b0 = bakedChars + charIndex;
-					float ipw = 1.0f / AtlasWidth, iph = 1.0f / AtlasHeight;
+					const stbtt_bakedchar *b0 = bakedChars + codePointIndex;
 					float xoffset = b0->xoff * PixelToUnits;
 					float yoffset = b0->yoff * PixelToUnits;
 					float boundW = (b0->x1 - b0->x0) * PixelToUnits;
@@ -157,7 +190,7 @@ int main(int argc, char *argv[]) {
 
 					q0.x0 = xoffset * fontScale;
 					q0.x1 = q0.x0 + boundW * fontScale;
-					if(topDown) {
+					if (topDown) {
 						q0.y0 = yoffset * fontScale;
 						q0.y1 = q0.y0 + boundH * fontScale;
 					} else {
@@ -169,14 +202,14 @@ int main(int argc, char *argv[]) {
 					q0.s1 = b0->x1 * ipw;
 					q0.t1 = b0->y1 * iph;
 
-					const BakedCodePoint *b1 = bakedCodePoints + charIndex;
+					const BakedCodePoint *b1 = bakedCodePoints + codePointIndex;
 					q1.s0 = b1->s0;
 					q1.t0 = b1->t0;
 					q1.s1 = b1->s1;
 					q1.t1 = b1->t1;
 					q1.x0 = b1->xoffset * fontScale;
 					q1.x1 = q1.x0 + b1->w * fontScale;
-					if(topDown) {
+					if (topDown) {
 						q1.y0 = b1->yoffset * fontScale;
 						q1.y1 = q1.y0 + b1->h * fontScale;
 					} else {
@@ -185,7 +218,7 @@ int main(int argc, char *argv[]) {
 					}
 					float advance1 = b1->xadvance;
 
-					assert(b1->c == c);
+					assert(b1->codePoint == codePoint);
 					assert(q0.s0 == q1.s0);
 					assert(q0.s1 == q1.s1);
 					assert(q0.t0 == q1.t0);
@@ -195,34 +228,61 @@ int main(int argc, char *argv[]) {
 					assert(q0.y0 == q1.y0);
 					assert(q0.y1 == q1.y1);
 
-#if 0
-					q1 = q0;
-					advance1 = advance0;
-#endif
-
+					// Normal
 					glBindTexture(GL_TEXTURE_2D, ftex);
 					glColor4f(1, 1, 1, 1);
 					glBegin(GL_QUADS);
-					glTexCoord2f(q1.s1, q1.t1); glVertex2f(x + q1.x1, y + q1.y1);
-					glTexCoord2f(q1.s0, q1.t1); glVertex2f(x + q1.x0, y + q1.y1);
-					glTexCoord2f(q1.s0, q1.t0); glVertex2f(x + q1.x0, y + q1.y0);
-					glTexCoord2f(q1.s1, q1.t0); glVertex2f(x + q1.x1, y + q1.y0);
+					glTexCoord2f(q1.s1, q1.t1); glVertex2f(xNormal + q1.x1, yNormal + q1.y1);
+					glTexCoord2f(q1.s0, q1.t1); glVertex2f(xNormal + q1.x0, yNormal + q1.y1);
+					glTexCoord2f(q1.s0, q1.t0); glVertex2f(xNormal + q1.x0, yNormal + q1.y0);
+					glTexCoord2f(q1.s1, q1.t0); glVertex2f(xNormal + q1.x1, yNormal + q1.y0);
 					glEnd();
 					glBindTexture(GL_TEXTURE_2D, 0);
 
-					glColor4f(0, 1.0f, 0.0f, 1.0f);
+					glColor4f(1.0f, 0.0f, 0.0f, 1.0f);
 					glLineWidth(1.0f);
 					glBegin(GL_LINE_LOOP);
-					glVertex2f(x + q1.x1, y + q1.y1);
-					glVertex2f(x + q1.x0, y + q1.y1);
-					glVertex2f(x + q1.x0, y + q1.y0);
-					glVertex2f(x + q1.x1, y + q1.y0);
+					glVertex2f(xNormal + q1.x1, yNormal + q1.y1);
+					glVertex2f(xNormal + q1.x0, yNormal + q1.y1);
+					glVertex2f(xNormal + q1.x0, yNormal + q1.y0);
+					glVertex2f(xNormal + q1.x1, yNormal + q1.y0);
 					glEnd();
 					glLineWidth(1.0f);
 
-					x += advance1 * fontScale;
+					// Kerned
+					glBindTexture(GL_TEXTURE_2D, ftex);
+					glColor4f(1, 1, 1, 1);
+					glBegin(GL_QUADS);
+					glTexCoord2f(q1.s1, q1.t1); glVertex2f(xKerned + q1.x1, yKerned + q1.y1);
+					glTexCoord2f(q1.s0, q1.t1); glVertex2f(xKerned + q1.x0, yKerned + q1.y1);
+					glTexCoord2f(q1.s0, q1.t0); glVertex2f(xKerned + q1.x0, yKerned + q1.y0);
+					glTexCoord2f(q1.s1, q1.t0); glVertex2f(xKerned + q1.x1, yKerned + q1.y0);
+					glEnd();
+					glBindTexture(GL_TEXTURE_2D, 0);
+
+					glColor4f(0.0f, 1.0f, 0.0f, 1.0f);
+					glLineWidth(1.0f);
+					glBegin(GL_LINE_LOOP);
+					glVertex2f(xKerned + q1.x1, yKerned + q1.y1);
+					glVertex2f(xKerned + q1.x0, yKerned + q1.y1);
+					glVertex2f(xKerned + q1.x0, yKerned + q1.y0);
+					glVertex2f(xKerned + q1.x1, yKerned + q1.y0);
+					glEnd();
+					glLineWidth(1.0f);
+
+					float kerning = 0.0f;
+					if (textIndex < textLen - 1) {
+						int nextCodePoint = (int)text[textIndex + 1];
+						if (nextCodePoint >= CharFirst && nextCodePoint <= CharLast) {
+							int kerningIndexA = codePointIndex;
+							int kerningIndexB = nextCodePoint - CharFirst;
+							kerning = kerningTable[kerningIndexA * CharCount + kerningIndexB];
+						}
+					}
+
+					xNormal += advance1 * fontScale;
+					xKerned += (advance1 + kerning) * fontScale;
 				}
-				++text;
 			}
 
 			fplVideoFlip();
