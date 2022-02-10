@@ -20,6 +20,18 @@ struct BakedCodePoint {
 	int codePoint;
 };
 
+struct TextPos {
+	float x;
+	float y;
+};
+
+struct TextBounds {
+	float left;
+	float top;
+	float right;
+	float bottom;
+};
+
 int main(int argc, char *argv[]) {
 	fplSettings settings = {};
 	fplSetDefaultSettings(&settings);
@@ -41,10 +53,14 @@ int main(int argc, char *argv[]) {
 		constexpr float FontHeight = 128.0f;
 		constexpr float PixelToUnits = 1.0f / FontHeight;
 		constexpr int CharCount = (CharLast - CharFirst) + 1;
+		constexpr float ipw = 1.0f / AtlasWidth, iph = 1.0f / AtlasHeight;
 
-		stbtt_bakedchar *bakedChars = (stbtt_bakedchar *)fplMemoryAllocate(CharCount * sizeof(stbtt_bakedchar));
 		BakedCodePoint *bakedCodePoints = (BakedCodePoint *)fplMemoryAllocate(CharCount * sizeof(BakedCodePoint));
 		float *kerningTable = (float *)fplMemoryAllocate(CharCount * CharCount * sizeof(float));
+
+		float ascent = 0.0f;
+		float descent = 0.0f;
+		float lineGap = 0.0f;
 
 		GLuint ftex = 0;
 
@@ -55,12 +71,32 @@ int main(int argc, char *argv[]) {
 			fplFileReadBlock32(&fontFile, fileSize, ttf_buffer, fileSize);
 			fplFileClose(&fontFile);
 
-			uint8_t *temp_bitmap = (uint8_t *)fplMemoryAllocate(AtlasWidth * AtlasHeight);
-			stbtt_BakeFontBitmap(ttf_buffer, 0, FontHeight, temp_bitmap, AtlasWidth, AtlasHeight, CharFirst, CharCount, bakedChars);
+			int fontOffset = stbtt_GetFontOffsetForIndex(ttf_buffer, 0);
 
-			float ipw = 1.0f / AtlasWidth, iph = 1.0f / AtlasHeight;
+			stbtt_fontinfo fontInfo;
+			stbtt_InitFont(&fontInfo, ttf_buffer, fontOffset);
+
+			uint8_t *temp_bitmap = (uint8_t *)fplMemoryAllocate(AtlasWidth * AtlasHeight);
+
+			stbtt_packedchar *packedChars = (stbtt_packedchar *)fplMemoryAllocate(CharCount * sizeof(stbtt_bakedchar));
+
+			stbtt_pack_context packCtx;
+
+			stbtt_pack_range packRng = {};
+			packRng.font_size = FontHeight;
+			packRng.first_unicode_codepoint_in_range = CharFirst;
+			packRng.num_chars = CharCount;
+			packRng.chardata_for_range = packedChars;
+
+			stbtt_PackSetOversampling(&packCtx, 4, 4);
+			stbtt_PackBegin(&packCtx, temp_bitmap, AtlasWidth, AtlasHeight, 0, 0, fpl_null);
+			stbtt_PackFontRanges(&packCtx, ttf_buffer, 0, &packRng, 1);
+			stbtt_PackEnd(&packCtx);
+
+			//stbtt_BakeFontBitmap(ttf_buffer, 0, FontHeight, temp_bitmap, AtlasWidth, AtlasHeight, CharFirst, CharCount, bakedChars);
+
 			for (int charIndex = 0; charIndex < CharCount; ++charIndex) {
-				const stbtt_bakedchar *b = bakedChars + charIndex;
+				const stbtt_packedchar *b = packedChars + charIndex;
 				BakedCodePoint *cp = bakedCodePoints + charIndex;
 				cp->codePoint = CharFirst + charIndex;
 				cp->w = (b->x1 - b->x0) * PixelToUnits;
@@ -74,15 +110,14 @@ int main(int argc, char *argv[]) {
 				cp->t1 = b->y1 * iph;
 			}
 
-			int fontOffset = stbtt_GetFontOffsetForIndex(ttf_buffer, 0);
-
-			stbtt_fontinfo fontInfo;
-			stbtt_InitFont(&fontInfo, ttf_buffer, fontOffset);
+			float rawToPixels = stbtt_ScaleForPixelHeight(&fontInfo, FontHeight);
 
 			int ascentRaw, descentRaw, lineGapRaw;
 			stbtt_GetFontVMetrics(&fontInfo, &ascentRaw, &descentRaw, &lineGapRaw);
 
-			float rawToPixels = stbtt_ScaleForPixelHeight(&fontInfo, FontHeight);
+			ascent = ascentRaw * rawToPixels * PixelToUnits;
+			descent = descentRaw * rawToPixels * PixelToUnits;
+			lineGap = lineGapRaw * rawToPixels * PixelToUnits;
 
 			for (int charIndexA = 0; charIndexA < CharCount; ++charIndexA) {
 				for (int charIndexB = 0; charIndexB < CharCount; ++charIndexB) {
@@ -103,6 +138,8 @@ int main(int argc, char *argv[]) {
 			glBindTexture(GL_TEXTURE_2D, ftex);
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, AtlasWidth, AtlasHeight, 0, GL_ALPHA, GL_UNSIGNED_BYTE, temp_bitmap);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
+			fplMemoryFree(packedChars);
 			fplMemoryFree(temp_bitmap);
 		}
 
@@ -167,85 +204,67 @@ int main(int argc, char *argv[]) {
 			//const char *text = "öÖ^Final-Platform-Layer";
 			//const char *text = "Bitte!";
 			const char *text = "Five Wax Quacking Zephyrs";
-
 			size_t textLen = strlen(text);
 
-			const float ipw = 1.0f / AtlasWidth, iph = 1.0f / AtlasHeight;
-			float xNormal = w * 0.1f;
-			float xKerned = w * 0.1f;
-			float yNormal = h * 0.1f;
-			float yKerned = h * 0.2f;
+			TextPos normalPos = { w * 0.1f, h * 0.5f };
+			TextPos kernedPos = { w * 0.1f, h * 0.375f };
+			TextBounds normalBounds = { normalPos.x, normalPos.y, normalPos.x, normalPos.y };
+			TextBounds kernedBounds = { kernedPos.x, kernedPos.y, kernedPos.x, kernedPos.y };
 			for (int textIndex = 0; textIndex < textLen; ++textIndex) {
 				int codePoint = (int)text[textIndex];
 				if (codePoint >= CharFirst && codePoint <= CharLast) {
 					int codePointIndex = codePoint - CharFirst;
-					stbtt_aligned_quad q0, q1;
+					stbtt_aligned_quad quad;
 
-					const stbtt_bakedchar *b0 = bakedChars + codePointIndex;
-					float xoffset = b0->xoff * PixelToUnits;
-					float yoffset = b0->yoff * PixelToUnits;
-					float boundW = (b0->x1 - b0->x0) * PixelToUnits;
-					float boundH = (b0->y1 - b0->y0) * PixelToUnits;
-					float advance0 = b0->xadvance * PixelToUnits;
+					const BakedCodePoint *b = bakedCodePoints + codePointIndex;
 
-					q0.x0 = xoffset * fontScale;
-					q0.x1 = q0.x0 + boundW * fontScale;
+					float quadWidth = b->w * fontScale;
+					float quadHeight = b->h * fontScale;
+
+					quad.s0 = b->s0;
+					quad.t0 = b->t0;
+					quad.s1 = b->s1;
+					quad.t1 = b->t1;
+					quad.x0 = b->xoffset * fontScale;
+					quad.x1 = quad.x0 + b->w * fontScale;
 					if (topDown) {
-						q0.y0 = yoffset * fontScale;
-						q0.y1 = q0.y0 + boundH * fontScale;
+						quad.y0 = b->yoffset * fontScale;
+						quad.y1 = quad.y0 + b->h * fontScale;
 					} else {
-						q0.y0 = -yoffset * fontScale;
-						q0.y1 = q0.y0 - boundH * fontScale;
+						quad.y0 = -b->yoffset * fontScale;
+						quad.y1 = quad.y0 - b->h * fontScale;
 					}
-					q0.s0 = b0->x0 * ipw;
-					q0.t0 = b0->y0 * iph;
-					q0.s1 = b0->x1 * ipw;
-					q0.t1 = b0->y1 * iph;
 
-					const BakedCodePoint *b1 = bakedCodePoints + codePointIndex;
-					q1.s0 = b1->s0;
-					q1.t0 = b1->t0;
-					q1.s1 = b1->s1;
-					q1.t1 = b1->t1;
-					q1.x0 = b1->xoffset * fontScale;
-					q1.x1 = q1.x0 + b1->w * fontScale;
-					if (topDown) {
-						q1.y0 = b1->yoffset * fontScale;
-						q1.y1 = q1.y0 + b1->h * fontScale;
-					} else {
-						q1.y0 = -b1->yoffset * fontScale;
-						q1.y1 = q1.y0 - b1->h * fontScale;
-					}
-					float advance1 = b1->xadvance;
+					float normalLeft = normalPos.x + quad.x0;
+					float normalRight = normalPos.x + quad.x1;
+					float normalTop = normalPos.y + quad.y1;
+					float normalBottom = normalPos.y + quad.y0;
 
-					assert(b1->codePoint == codePoint);
-					assert(q0.s0 == q1.s0);
-					assert(q0.s1 == q1.s1);
-					assert(q0.t0 == q1.t0);
-					assert(q0.t1 == q1.t1);
-					assert(q0.x0 == q1.x0);
-					assert(q0.x1 == q1.x1);
-					assert(q0.y0 == q1.y0);
-					assert(q0.y1 == q1.y1);
+					float kernedLeft = kernedPos.x + quad.x0;
+					float kernedRight = kernedPos.x + quad.x1;
+					float kernedTop = kernedPos.y + quad.y1;
+					float kernedBottom = kernedPos.y + quad.y0;
+
+					float advance = b->xadvance;
 
 					// Normal
 					glBindTexture(GL_TEXTURE_2D, ftex);
 					glColor4f(1, 1, 1, 1);
 					glBegin(GL_QUADS);
-					glTexCoord2f(q1.s1, q1.t1); glVertex2f(xNormal + q1.x1, yNormal + q1.y1);
-					glTexCoord2f(q1.s0, q1.t1); glVertex2f(xNormal + q1.x0, yNormal + q1.y1);
-					glTexCoord2f(q1.s0, q1.t0); glVertex2f(xNormal + q1.x0, yNormal + q1.y0);
-					glTexCoord2f(q1.s1, q1.t0); glVertex2f(xNormal + q1.x1, yNormal + q1.y0);
+					glTexCoord2f(quad.s1, quad.t1); glVertex2f(normalRight, normalTop);
+					glTexCoord2f(quad.s0, quad.t1); glVertex2f(normalLeft, normalTop);
+					glTexCoord2f(quad.s0, quad.t0); glVertex2f(normalLeft, normalBottom);
+					glTexCoord2f(quad.s1, quad.t0); glVertex2f(normalRight, normalBottom);
 					glEnd();
 					glBindTexture(GL_TEXTURE_2D, 0);
 
 					glColor4f(1.0f, 0.0f, 0.0f, 1.0f);
 					glLineWidth(1.0f);
 					glBegin(GL_LINE_LOOP);
-					glVertex2f(xNormal + q1.x1, yNormal + q1.y1);
-					glVertex2f(xNormal + q1.x0, yNormal + q1.y1);
-					glVertex2f(xNormal + q1.x0, yNormal + q1.y0);
-					glVertex2f(xNormal + q1.x1, yNormal + q1.y0);
+					glVertex2f(normalRight, normalTop);
+					glVertex2f(normalLeft, normalTop);
+					glVertex2f(normalLeft, normalPos.y + quad.y0);
+					glVertex2f(normalRight, normalBottom);
 					glEnd();
 					glLineWidth(1.0f);
 
@@ -253,20 +272,20 @@ int main(int argc, char *argv[]) {
 					glBindTexture(GL_TEXTURE_2D, ftex);
 					glColor4f(1, 1, 1, 1);
 					glBegin(GL_QUADS);
-					glTexCoord2f(q1.s1, q1.t1); glVertex2f(xKerned + q1.x1, yKerned + q1.y1);
-					glTexCoord2f(q1.s0, q1.t1); glVertex2f(xKerned + q1.x0, yKerned + q1.y1);
-					glTexCoord2f(q1.s0, q1.t0); glVertex2f(xKerned + q1.x0, yKerned + q1.y0);
-					glTexCoord2f(q1.s1, q1.t0); glVertex2f(xKerned + q1.x1, yKerned + q1.y0);
+					glTexCoord2f(quad.s1, quad.t1); glVertex2f(kernedRight, kernedTop);
+					glTexCoord2f(quad.s0, quad.t1); glVertex2f(kernedLeft, kernedTop);
+					glTexCoord2f(quad.s0, quad.t0); glVertex2f(kernedLeft, kernedBottom);
+					glTexCoord2f(quad.s1, quad.t0); glVertex2f(kernedRight, kernedBottom);
 					glEnd();
 					glBindTexture(GL_TEXTURE_2D, 0);
 
 					glColor4f(0.0f, 1.0f, 0.0f, 1.0f);
 					glLineWidth(1.0f);
 					glBegin(GL_LINE_LOOP);
-					glVertex2f(xKerned + q1.x1, yKerned + q1.y1);
-					glVertex2f(xKerned + q1.x0, yKerned + q1.y1);
-					glVertex2f(xKerned + q1.x0, yKerned + q1.y0);
-					glVertex2f(xKerned + q1.x1, yKerned + q1.y0);
+					glVertex2f(kernedRight, kernedTop);
+					glVertex2f(kernedLeft, kernedTop);
+					glVertex2f(kernedLeft, kernedBottom);
+					glVertex2f(kernedRight, kernedBottom);
 					glEnd();
 					glLineWidth(1.0f);
 
@@ -280,10 +299,40 @@ int main(int argc, char *argv[]) {
 						}
 					}
 
-					xNormal += advance1 * fontScale;
-					xKerned += (advance1 + kerning) * fontScale;
+					normalPos.x += advance * fontScale;
+					kernedPos.x += (advance + kerning) * fontScale;
+
+					normalBounds.left = fplMin(normalBounds.left, normalLeft);
+					normalBounds.right = fplMax(normalBounds.right, normalRight);
+					normalBounds.top = fplMax(normalBounds.top, fplMax(normalTop, normalBottom));
+					normalBounds.bottom = fplMin(normalBounds.bottom, fplMin(normalTop, normalBottom));
+
+					kernedBounds.left = fplMin(kernedBounds.left, kernedLeft);
+					kernedBounds.right = fplMax(kernedBounds.right, kernedRight);
+					kernedBounds.top = fplMax(kernedBounds.top, fplMax(kernedTop, kernedBottom));
+					kernedBounds.bottom = fplMin(kernedBounds.bottom, fplMin(kernedTop, kernedBottom));
 				}
 			}
+
+			glColor4f(0.0f, 0.0f, 1.0f, 1.0f);
+			glLineWidth(1.0f);
+			glBegin(GL_LINE_LOOP);
+			glVertex2f(normalBounds.right, normalBounds.top);
+			glVertex2f(normalBounds.left, normalBounds.top);
+			glVertex2f(normalBounds.left, normalBounds.bottom);
+			glVertex2f(normalBounds.right, normalBounds.bottom);
+			glEnd();
+			glLineWidth(1.0f);
+
+			glColor4f(0.0f, 1.0f, 1.0f, 1.0f);
+			glLineWidth(1.0f);
+			glBegin(GL_LINE_LOOP);
+			glVertex2f(kernedBounds.right, kernedBounds.top);
+			glVertex2f(kernedBounds.left, kernedBounds.top);
+			glVertex2f(kernedBounds.left, kernedBounds.bottom);
+			glVertex2f(kernedBounds.right, kernedBounds.bottom);
+			glEnd();
+			glLineWidth(1.0f);
 
 			fplVideoFlip();
 		}
