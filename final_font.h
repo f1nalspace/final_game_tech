@@ -372,7 +372,7 @@ extern "C" {
 		fntComputeQuadsFlags_None = 0,
 		fntComputeQuadsFlags_Cartesian = 1 << 0,
 		fntComputeQuadsFlags_AlignLeft = 1 << 1,
-		fntComputeQuadsFlags_AlignBottom = 1 << 2,
+		fntComputeQuadsFlags_AlignToDescent = 1 << 2,
 	} fntComputeQuadsFlags;
 
 	fnt_api size_t fntGetQuadCountFromUTF8(const char *utf8);
@@ -945,7 +945,7 @@ extern "C" {
 		return(result);
 	}
 
-	static void fnt__ComputeQuad(const fntFontGlyph *glyph, const fntVec2 texel, const uint32_t bitmapIndex, const float scale, const float xOffset, const float yOffset, const fntComputeQuadsFlags flags, fntFontQuad *outQuad) {
+	static void fnt__ComputeQuad(const fntFontGlyph *glyph, const fntVec2 texel, const uint32_t bitmapIndex, const float scale, fntFontQuad *outQuad) {
 		float u0 = (float)glyph->bitmapRect.x * texel.u;
 		float v0 = (float)glyph->bitmapRect.y * texel.v;
 		float u1 = (float)(glyph->bitmapRect.x + glyph->bitmapRect.width) * texel.u;
@@ -955,19 +955,10 @@ extern "C" {
 
 		fntVec2 size = fnt__MakeVec2(glyph->size.w * scale, glyph->size.h * scale);
 
-		fntVec2 offset = fnt__MakeVec2(xOffset, yOffset);
-		offset.x += glyph->offset.x * scale;
-		offset.y += glyph->offset.y * scale;
+		fntVec2 offset = fnt__MakeVec2(glyph->offset.x * scale, glyph->offset.y * scale);
 
-		float yFlip;
-		if (flags & fntComputeQuadsFlags_Cartesian) {
-			yFlip = -1.0f;
-		} else {
-			yFlip = 1.0f;
-		}
-
-		fntVec2 coords0 = fnt__MakeVec2(offset.x, offset.y * yFlip);
-		fntVec2 coords1 = fnt__MakeVec2(offset.x + size.w, (offset.y + size.h) * yFlip);
+		fntVec2 coords0 = fnt__MakeVec2(offset.x, offset.y);
+		fntVec2 coords1 = fnt__MakeVec2(offset.x + size.w, offset.y + size.h);
 
 		FNT_MEMSET(outQuad, 0, sizeof(*outQuad));
 		outQuad->uv[0] = uv0;
@@ -1092,28 +1083,39 @@ extern "C" {
 					float advance = glyph->horizontalAdvance * scale;
 
 					fntFontQuad fontQuad;
-					fnt__ComputeQuad(glyph, texel, bitmapIndex, scale, xPos, yPos, flags, &fontQuad);
+					fnt__ComputeQuad(glyph, texel, bitmapIndex, scale, &fontQuad);
 
-					if (flags & fntComputeQuadsFlags_AlignBottom) {
-						if (flags & fntComputeQuadsFlags_Cartesian) {
-							fontQuad.coords[0].y -= descent;
-							fontQuad.coords[1].y -= descent;
-						} else {
-							fontQuad.coords[0].y += descent;
-							fontQuad.coords[1].y += descent;
-						}
+					if (flags & fntComputeQuadsFlags_Cartesian) {
+						fontQuad.coords[0].y *= -1.0f;
+						fontQuad.coords[1].y *= -1.0f;
 					}
+
+					// Move quad into absolute coordinates
+					fontQuad.coords[0].x += xPos;
+					fontQuad.coords[1].x += xPos;
+					fontQuad.coords[0].y += yPos;
+					fontQuad.coords[1].y += yPos;
 
 					if (codePointIndex == 0) {
 						bounds.left = fontQuad.coords[0].x;
 						bounds.right = fontQuad.coords[1].x;
-						bounds.top = fontQuad.coords[0].y;
-						bounds.bottom = fontQuad.coords[1].y;
+						if (flags & fntComputeQuadsFlags_Cartesian) {
+							bounds.top = fontQuad.coords[1].y;
+							bounds.bottom = fontQuad.coords[0].y;
+						} else {
+							bounds.top = fontQuad.coords[0].y;
+							bounds.bottom = fontQuad.coords[1].y;
+						}
 					} else {
-						bounds.left = FNT__MIN(bounds.left, FNT__MIN(fontQuad.coords[0].x, fontQuad.coords[1].x));
-						bounds.right = FNT__MAX(bounds.right, FNT__MAX(fontQuad.coords[0].x, fontQuad.coords[1].x));
-						bounds.top = FNT__MIN(bounds.top, FNT__MIN(fontQuad.coords[0].y, fontQuad.coords[1].y));
-						bounds.bottom = FNT__MAX(bounds.bottom, FNT__MAX(fontQuad.coords[0].y, fontQuad.coords[1].y));
+						bounds.left = FNT__MIN(bounds.left, fontQuad.coords[0].x);
+						bounds.right = FNT__MAX(bounds.right, fontQuad.coords[1].x);
+						if (flags & fntComputeQuadsFlags_Cartesian) {
+							bounds.top = FNT__MIN(bounds.top, fontQuad.coords[1].y);
+							bounds.bottom = FNT__MAX(bounds.bottom, fontQuad.coords[0].y);
+						} else {
+							bounds.top = FNT__MIN(bounds.top, fontQuad.coords[0].y);
+							bounds.bottom = FNT__MAX(bounds.bottom, fontQuad.coords[1].y);
+						}
 					}
 
 					if (outQuads != NULL) {
@@ -1144,23 +1146,35 @@ extern "C" {
 				float deltaX = bounds.left;
 				for (uint32_t i = 0; i < codePointIndex; ++i) {
 					outQuads[i].coords[0].x -= deltaX;
-					outQuads[i].coords[1].x -= deltaX;			
+					outQuads[i].coords[1].x -= deltaX;
 				}
 				bounds.left -= deltaX;
 				bounds.right -= deltaX;
 			}
 		}
 
+		if (flags & fntComputeQuadsFlags_AlignToDescent) {
+			float deltaY;
+			if (flags & fntComputeQuadsFlags_Cartesian) {
+				deltaY = -descent;
+			} else {
+				deltaY = descent;
+			}
+			if (outQuads != NULL) {
+				for (uint32_t i = 0; i < codePointIndex; ++i) {
+					outQuads[i].coords[0].y += deltaY;
+					outQuads[i].coords[1].y += deltaY;
+				}
+			}
+			bounds.top += deltaY;
+			bounds.bottom += deltaY;
+		}
+
 		if (outBounds != NULL) {
 			outBounds->left = bounds.left;
 			outBounds->right = bounds.right;
-			if (flags & fntComputeQuadsFlags_Cartesian) {
-				outBounds->top = bounds.bottom;
-				outBounds->bottom = bounds.top;
-			} else {
-				outBounds->top = bounds.top;
-				outBounds->bottom = bounds.bottom;
-			}
+			outBounds->top = bounds.top;
+			outBounds->bottom = bounds.bottom;
 		}
 
 		return(true);

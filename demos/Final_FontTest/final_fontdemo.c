@@ -168,6 +168,21 @@ int main(int argc, char **argv) {
 				while (fplWindowUpdate()) {
 					fplEvent ev;
 					while (fplPollEvent(&ev)) {
+						switch (ev.type) {
+							case fplEventType_Keyboard:
+							{
+								switch (ev.keyboard.type) {
+									case fplKeyboardEventType_Button:
+									{
+										if (ev.keyboard.buttonState == fplButtonState_Release) {
+											if (ev.keyboard.mappedKey == fplKey_Space) {
+												topDown = !topDown;
+											}
+										}
+									} break;
+								}
+							} break;
+						}
 					}
 
 					fplWindowSize winSize;
@@ -206,7 +221,7 @@ int main(int argc, char **argv) {
 						flags |= fntComputeQuadsFlags_Cartesian;
 					}
 
-					//flags |= fntComputeQuadsFlags_AlignBottom;
+					//flags |= fntComputeQuadsFlags_AlignToDescent;
 					//flags |= fntComputeQuadsFlags_AlignLeft;
 
 					quadCount = fntGetQuadCountFromUTF8(text);
@@ -247,7 +262,7 @@ int main(int argc, char **argv) {
 						}
 
 						for (uint32_t quadIndex = 0; quadIndex < quadCount; ++quadIndex) {
-							fntFontQuad *fontQuad = fontQuads + quadIndex;							
+							fntFontQuad *fontQuad = fontQuads + quadIndex;
 
 							float x0 = textX + fontQuad->coords[0].x;
 							float y0 = textY + fontQuad->coords[0].y;
