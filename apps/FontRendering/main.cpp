@@ -214,7 +214,7 @@ int main(int argc, char *argv[]) {
 				int codePoint = (int)text[textIndex];
 				if (codePoint >= CharFirst && codePoint <= CharLast) {
 					int codePointIndex = codePoint - CharFirst;
-					stbtt_aligned_quad quad;
+					stbtt_aligned_quad quad = {};
 
 					const BakedCodePoint *b = bakedCodePoints + codePointIndex;
 
@@ -227,12 +227,16 @@ int main(int argc, char *argv[]) {
 					quad.t1 = b->t1;
 					quad.x0 = b->xoffset * fontScale;
 					quad.x1 = quad.x0 + b->w * fontScale;
+					assert(quadWidth == (quad.x1 - quad.x0));
+
 					if (topDown) {
 						quad.y0 = b->yoffset * fontScale;
 						quad.y1 = quad.y0 + b->h * fontScale;
+						assert(quadHeight == (quad.y1 - quad.y0));
 					} else {
 						quad.y0 = -b->yoffset * fontScale;
 						quad.y1 = quad.y0 - b->h * fontScale;
+						assert(quadHeight == (quad.y0 - quad.y1));
 					}
 
 					float normalLeft = normalPos.x + quad.x0;
