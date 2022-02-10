@@ -114,7 +114,7 @@ int main(int argc, char **argv) {
 				const float targetCharHeight = 20.0f;
 
 				fntFontQuad fontQuads[32];
-				fntVec2 quadsSize;
+				fntBounds quadsBounds;
 				size_t quadCount;
 
 #if 0
@@ -122,22 +122,22 @@ int main(int argc, char **argv) {
 
 				quadCount = fntGetQuadCountFromUTF8(helloWorldText);
 				fplAssert(quadCount == 12);
-				r = fntComputeQuadsFromUTF8(&atlas, helloWorldText, targetCharHeight, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsSize);
+				r = fntComputeQuadsFromUTF8(&atlas, helloWorldText, targetCharHeight, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsBounds);
 				fplAssert(r == true);
 
 				quadCount = fntGetQuadCountFromUTF8(testText);
 				fplAssert(quadCount == 25);
-				r = fntComputeQuadsFromUTF8(&atlas, testText, targetCharHeight, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsSize);
+				r = fntComputeQuadsFromUTF8(&atlas, testText, targetCharHeight, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsBounds);
 				fplAssert(r == true);
 
 				quadCount = fntGetQuadCountFromUTF8(japAnimeText);
 				fplAssert(quadCount == 3);
-				r = fntComputeQuadsFromUTF8(&atlas, japAnimeText, targetCharHeight, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsSize);
+				r = fntComputeQuadsFromUTF8(&atlas, japAnimeText, targetCharHeight, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsBounds);
 				fplAssert(r == true);
 
 				quadCount = fntGetQuadCountFromUTF8(japAnimeAndKanaText);
 				fplAssert(quadCount == 9);
-				r = fntComputeQuadsFromUTF8(&atlas, japAnimeAndKanaText, targetCharHeight, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsSize);
+				r = fntComputeQuadsFromUTF8(&atlas, japAnimeAndKanaText, targetCharHeight, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsBounds);
 				fplAssert(r == true);
 #endif
 
@@ -163,6 +163,8 @@ int main(int argc, char **argv) {
 				glClearColor(0.7f, 0.3f, 0.1f, 1.0f);
 				glMatrixMode(GL_MODELVIEW);
 
+				bool topDown = false;
+
 				while (fplWindowUpdate()) {
 					fplEvent ev;
 					while (fplPollEvent(&ev)) {
@@ -177,8 +179,12 @@ int main(int argc, char **argv) {
 					float h = (float)winSize.height * 0.5f;
 
 					glLoadIdentity();
-					glOrtho(-w, w, -h, h, -1.0f, 1.0f);
-					glScalef(4.0f, 4.0f, 4.0f);
+					if (topDown) {
+						glOrtho(-w, w, h, -h, -1.0f, 1.0f);
+					} else {
+						glOrtho(-w, w, -h, h, -1.0f, 1.0f);
+					}
+					glScalef(1.0f, 1.0f, 1.0f);
 
 					glClear(GL_COLOR_BUFFER_BIT);
 
@@ -190,20 +196,27 @@ int main(int argc, char **argv) {
 					glVertex2f(0.0f, h);
 					glEnd();
 
-					const char *text = "Bitte!";
+					const char *text = "Biy Ax";
+
+					float textX = 0.0f;
+					float textY = 0.0f;
+
+					fntComputeQuadsFlags flags = fntComputeQuadsFlags_None;
+					if (!topDown) {
+						flags |= fntComputeQuadsFlags_Cartesian;
+					}
+
+					//flags |= fntComputeQuadsFlags_AlignBottom;
+					//flags |= fntComputeQuadsFlags_AlignLeft;
 
 					quadCount = fntGetQuadCountFromUTF8(text);
-					if (fntComputeQuadsFromUTF8(&atlas, text, fontSize.f32, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsSize)) {
-
-						float textX = 0.0f;
-						float textY = 0.0f;
-
+					if (fntComputeQuadsFromUTF8(&atlas, text, fontSize.f32, flags, fplArrayCount(fontQuads), fontQuads, &quadsBounds)) {
 						glColor3f(0.0f, 1.0f, 0.0f);
 						glBegin(GL_LINE_LOOP);
-						glVertex2f(textX + quadsSize.w, textY + quadsSize.h);
-						glVertex2f(textX, textY + quadsSize.h);
-						glVertex2f(textX, textY);
-						glVertex2f(textX + quadsSize.w, textY);
+						glVertex2f(textX + quadsBounds.right, textY + quadsBounds.top);
+						glVertex2f(textX + quadsBounds.left, textY + quadsBounds.top);
+						glVertex2f(textX + quadsBounds.left, textY + quadsBounds.bottom);
+						glVertex2f(textX + quadsBounds.right, textY + quadsBounds.bottom);
 						glEnd();
 
 						for (uint32_t quadIndex = 0; quadIndex < quadCount; ++quadIndex) {
@@ -214,36 +227,55 @@ int main(int argc, char **argv) {
 							float u1 = fontQuad->uv[1].u;
 							float v1 = fontQuad->uv[1].v;
 
-							float x0 = fontQuad->rect[0].x;
-							float y0 = fontQuad->rect[0].y;
-							float x1 = fontQuad->rect[1].x;
-							float y1 = fontQuad->rect[1].y;
+							float x0 = textX + fontQuad->coords[0].x;
+							float y0 = textY + fontQuad->coords[0].y;
+							float x1 = textX + fontQuad->coords[1].x;
+							float y1 = textY + fontQuad->coords[1].y;
 
 							GLuint textureId = fontTextures[fontQuad->bitmapIndex];
 							glEnable(GL_TEXTURE_2D);
 							glBindTexture(GL_TEXTURE_2D, textureId);
 							glColor3f(1.0f, 1.0f, 1.0f);
 							glBegin(GL_QUADS);
-							glTexCoord2f(u1, v0); glVertex2f(x1, y1);
-							glTexCoord2f(u0, v0); glVertex2f(x0, y1);
-							glTexCoord2f(u0, v1); glVertex2f(x0, y0);
-							glTexCoord2f(u1, v1); glVertex2f(x1, y0);
+							glTexCoord2f(u1, v1); glVertex2f(x1, y1);
+							glTexCoord2f(u0, v1); glVertex2f(x0, y1);
+							glTexCoord2f(u0, v0); glVertex2f(x0, y0);
+							glTexCoord2f(u1, v0); glVertex2f(x1, y0);
 							glEnd();
 							glBindTexture(GL_TEXTURE_2D, 0);
 							glDisable(GL_TEXTURE_2D);
 						}
+
+						for (uint32_t quadIndex = 0; quadIndex < quadCount; ++quadIndex) {
+							fntFontQuad *fontQuad = fontQuads + quadIndex;							
+
+							float x0 = textX + fontQuad->coords[0].x;
+							float y0 = textY + fontQuad->coords[0].y;
+							float x1 = textX + fontQuad->coords[1].x;
+							float y1 = textY + fontQuad->coords[1].y;
+
+							glColor3f(1.0f, 1.0f, 1.0f);
+							glBegin(GL_LINE_LOOP);
+							glVertex2f(x1, y1);
+							glVertex2f(x0, y1);
+							glVertex2f(x0, y0);
+							glVertex2f(x1, y0);
+							glEnd();
+						}
 					}
 
 #if 0
-					glBindTexture(GL_TEXTURE_2D, textureId);
+					glEnable(GL_TEXTURE_2D);
+					glBindTexture(GL_TEXTURE_2D, fontTextures[1]);
 					glColor3f(1.0f, 1.0f, 1.0f);
 					glBegin(GL_QUADS);
-					glTexCoord2f(1.0f, 0.0f); glVertex2f(0.9f, 0.9f);
-					glTexCoord2f(0.0f, 0.0f); glVertex2f(-0.9f, 0.9f);
-					glTexCoord2f(0.0f, 1.0f); glVertex2f(-0.9f, -0.9f);
-					glTexCoord2f(1.0f, 1.0f); glVertex2f(0.9f, -0.9f);
+					glTexCoord2f(1.0f, 0.0f); glVertex2f(w, h);
+					glTexCoord2f(0.0f, 0.0f); glVertex2f(-w, h);
+					glTexCoord2f(0.0f, 1.0f); glVertex2f(-w, -h);
+					glTexCoord2f(1.0f, 1.0f); glVertex2f(w, -h);
 					glEnd();
 					glBindTexture(GL_TEXTURE_2D, 0);
+					glDisable(GL_TEXTURE_2D);
 #endif
 
 					fplVideoFlip();
