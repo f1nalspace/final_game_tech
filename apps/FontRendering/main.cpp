@@ -88,8 +88,7 @@ int main(int argc, char *argv[]) {
 			packRng.num_chars = CharCount;
 			packRng.chardata_for_range = packedChars;
 
-			stbtt_PackSetOversampling(&packCtx, 4, 4);
-			stbtt_PackBegin(&packCtx, temp_bitmap, AtlasWidth, AtlasHeight, 0, 0, fpl_null);
+			stbtt_PackBegin(&packCtx, temp_bitmap, AtlasWidth, AtlasHeight, 0, 1, fpl_null);
 			stbtt_PackFontRanges(&packCtx, ttf_buffer, 0, &packRng, 1);
 			stbtt_PackEnd(&packCtx);
 
@@ -137,13 +136,15 @@ int main(int argc, char *argv[]) {
 			glGenTextures(1, &ftex);
 			glBindTexture(GL_TEXTURE_2D, ftex);
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, AtlasWidth, AtlasHeight, 0, GL_ALPHA, GL_UNSIGNED_BYTE, temp_bitmap);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
 			fplMemoryFree(packedChars);
 			fplMemoryFree(temp_bitmap);
 		}
 
 		bool topDown = false;
+		bool drawBounds = false;
 
 		while (fplWindowUpdate()) {
 			fplEvent ev;
@@ -157,6 +158,8 @@ int main(int argc, char *argv[]) {
 								if (ev.keyboard.buttonState == fplButtonState_Release) {
 									if (ev.keyboard.mappedKey == fplKey_Space) {
 										topDown = !topDown;
+									} else if (ev.keyboard.mappedKey == fplKey_B) {
+										drawBounds = !drawBounds;
 									}
 								}
 							} break;
@@ -262,15 +265,17 @@ int main(int argc, char *argv[]) {
 					glEnd();
 					glBindTexture(GL_TEXTURE_2D, 0);
 
-					glColor4f(1.0f, 0.0f, 0.0f, 1.0f);
-					glLineWidth(1.0f);
-					glBegin(GL_LINE_LOOP);
-					glVertex2f(normalRight, normalTop);
-					glVertex2f(normalLeft, normalTop);
-					glVertex2f(normalLeft, normalPos.y + quad.y0);
-					glVertex2f(normalRight, normalBottom);
-					glEnd();
-					glLineWidth(1.0f);
+					if (drawBounds) {
+						glColor4f(1.0f, 0.0f, 0.0f, 1.0f);
+						glLineWidth(1.0f);
+						glBegin(GL_LINE_LOOP);
+						glVertex2f(normalRight, normalTop);
+						glVertex2f(normalLeft, normalTop);
+						glVertex2f(normalLeft, normalPos.y + quad.y0);
+						glVertex2f(normalRight, normalBottom);
+						glEnd();
+						glLineWidth(1.0f);
+					}
 
 					// Kerned
 					glBindTexture(GL_TEXTURE_2D, ftex);
@@ -283,15 +288,17 @@ int main(int argc, char *argv[]) {
 					glEnd();
 					glBindTexture(GL_TEXTURE_2D, 0);
 
-					glColor4f(0.0f, 1.0f, 0.0f, 1.0f);
-					glLineWidth(1.0f);
-					glBegin(GL_LINE_LOOP);
-					glVertex2f(kernedRight, kernedTop);
-					glVertex2f(kernedLeft, kernedTop);
-					glVertex2f(kernedLeft, kernedBottom);
-					glVertex2f(kernedRight, kernedBottom);
-					glEnd();
-					glLineWidth(1.0f);
+					if (drawBounds) {
+						glColor4f(0.0f, 1.0f, 0.0f, 1.0f);
+						glLineWidth(1.0f);
+						glBegin(GL_LINE_LOOP);
+						glVertex2f(kernedRight, kernedTop);
+						glVertex2f(kernedLeft, kernedTop);
+						glVertex2f(kernedLeft, kernedBottom);
+						glVertex2f(kernedRight, kernedBottom);
+						glEnd();
+						glLineWidth(1.0f);
+					}
 
 					float kerning = 0.0f;
 					if (textIndex < textLen - 1) {
@@ -318,25 +325,27 @@ int main(int argc, char *argv[]) {
 				}
 			}
 
-			glColor4f(0.0f, 0.0f, 1.0f, 1.0f);
-			glLineWidth(1.0f);
-			glBegin(GL_LINE_LOOP);
-			glVertex2f(normalBounds.right, normalBounds.top);
-			glVertex2f(normalBounds.left, normalBounds.top);
-			glVertex2f(normalBounds.left, normalBounds.bottom);
-			glVertex2f(normalBounds.right, normalBounds.bottom);
-			glEnd();
-			glLineWidth(1.0f);
+			if (drawBounds) {
+				glColor4f(0.0f, 0.0f, 1.0f, 1.0f);
+				glLineWidth(1.0f);
+				glBegin(GL_LINE_LOOP);
+				glVertex2f(normalBounds.right, normalBounds.top);
+				glVertex2f(normalBounds.left, normalBounds.top);
+				glVertex2f(normalBounds.left, normalBounds.bottom);
+				glVertex2f(normalBounds.right, normalBounds.bottom);
+				glEnd();
+				glLineWidth(1.0f);
 
-			glColor4f(0.0f, 1.0f, 1.0f, 1.0f);
-			glLineWidth(1.0f);
-			glBegin(GL_LINE_LOOP);
-			glVertex2f(kernedBounds.right, kernedBounds.top);
-			glVertex2f(kernedBounds.left, kernedBounds.top);
-			glVertex2f(kernedBounds.left, kernedBounds.bottom);
-			glVertex2f(kernedBounds.right, kernedBounds.bottom);
-			glEnd();
-			glLineWidth(1.0f);
+				glColor4f(0.0f, 1.0f, 1.0f, 1.0f);
+				glLineWidth(1.0f);
+				glBegin(GL_LINE_LOOP);
+				glVertex2f(kernedBounds.right, kernedBounds.top);
+				glVertex2f(kernedBounds.left, kernedBounds.top);
+				glVertex2f(kernedBounds.left, kernedBounds.bottom);
+				glVertex2f(kernedBounds.right, kernedBounds.bottom);
+				glEnd();
+				glLineWidth(1.0f);
+			}
 
 			fplVideoFlip();
 		}

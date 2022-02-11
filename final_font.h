@@ -371,12 +371,18 @@ extern "C" {
 	typedef enum fntComputeQuadsFlags {
 		fntComputeQuadsFlags_None = 0,
 		fntComputeQuadsFlags_Cartesian = 1 << 0,
-		fntComputeQuadsFlags_AlignLeft = 1 << 1,
-		fntComputeQuadsFlags_AlignToDescent = 1 << 2,
+		fntComputeQuadsFlags_WithoutKerning = 1 << 1,
+		fntComputeQuadsFlags_GlyphAdvancement = 1 << 2,
 	} fntComputeQuadsFlags;
 
+	typedef struct fntComputeQuadConfig {
+		float additionalAdvancement;
+		fntComputeQuadsFlags flags;
+	} fntComputeQuadConfig;
+
 	fnt_api size_t fntGetQuadCountFromUTF8(const char *utf8);
-	fnt_api bool fntComputeQuadsFromUTF8(const fntFontAtlas *atlas, const char *utf8, const float charHeight, const fntComputeQuadsFlags flags, const size_t numQuads, fntFontQuad *outQuads, fntBounds *outBounds);
+	fnt_api bool fntComputeQuadsFromUTF8(const fntFontAtlas *atlas, const char *utf8, const float charScale, const fntComputeQuadsFlags flags, const size_t numQuads, fntFontQuad *outQuads, fntBounds *outBounds);
+	fnt_api fntVec2 fntComputeTextSizeFromUTF8(const fntFontAtlas *atlas, const char *utf8, const float charScale, const fntComputeQuadsFlags flags);
 
 #ifdef __cplusplus
 }
@@ -470,7 +476,6 @@ extern "C" {
 		FNT_ASSERT(internalCtx != NULL);
 		FNT_ASSERT(pixels != NULL);
 		stbtt_pack_context *packCtx = &internalCtx->currentPackContext;
-		stbtt_PackSetOversampling(packCtx, 4, 4);
 		stbtt_PackBegin(packCtx, (unsigned char *)pixels, internalCtx->maxBitmapSize, internalCtx->maxBitmapSize, 0, 1, NULL);
 		internalCtx->hasPackContext = 1;
 	}
@@ -693,6 +698,9 @@ extern "C" {
 		for (uint32_t index = 0; index < glyphCount; ++index) {
 			const uint32_t codePoint = codePointStart + index;
 
+			int advanceRaw, leftSideBearingRaw;
+			stbtt_GetCodepointHMetrics(fontInfo, codePoint, &advanceRaw, &leftSideBearingRaw);
+
 			const stbtt_packedchar *packedChar = packedChars + index;
 			FNT_ASSERT(packedChar->codePoint == codePoint);
 
@@ -836,6 +844,10 @@ extern "C" {
 
 		FNT_ASSERT(currentCodePointIndex == codePointCount);
 
+#if 0
+		char outBuffer[255];
+#endif
+
 		if (page->kerningValues != NULL) {
 			for (uint32_t codePointIndexA = 0; codePointIndexA < codePointCount; ++codePointIndexA) {
 				for (uint32_t codePointIndexB = 0; codePointIndexB < codePointCount; ++codePointIndexB) {
@@ -844,6 +856,14 @@ extern "C" {
 						uint32_t codePointA = (uint32_t)codePointStart.u16 + codePointIndexA;
 						uint32_t codePointB = (uint32_t)codePointStart.u16 + codePointIndexB;
 						int kerningRaw = stbtt_GetCodepointKernAdvance(&sinfo, (int)codePointA, (int)codePointB);
+						
+#if 0
+						if (kerningRaw != 0) {
+							sprintf_s(outBuffer, sizeof(outBuffer), "Found kerning for codepoint %c vs %c: %d\n", (char)codePointA, (char)codePointB, kerningRaw);
+							OutputDebugStringA(outBuffer);
+						}
+#endif
+
 						kerning = (float)kerningRaw * rawToPixels;
 					}
 					uint32_t kerningValueIndex = codePointIndexA * codePointCount + codePointIndexB;
@@ -967,10 +987,10 @@ extern "C" {
 		outQuad->coords[1] = coords1;
 		outQuad->bitmapIndex = bitmapIndex;
 		outQuad->codePoint = glyph->codePoint;
-	}
+	}	
 
-	fnt_api bool fntComputeQuadsFromUTF8(const fntFontAtlas *atlas, const char *utf8, const float maxCharHeight, const fntComputeQuadsFlags flags, const size_t maxQuadCount, fntFontQuad *outQuads, fntBounds *outBounds) {
-		if (!fnt__IsValidFontAtlas(atlas) || utf8 == NULL || maxCharHeight <= 0.0f || maxQuadCount == 0)  return(false);
+	fnt_api bool fntComputeQuadsFromUTF8(const fntFontAtlas *atlas, const char *utf8, const float charScale, const fntComputeQuadsFlags flags, const size_t maxQuadCount, fntFontQuad *outQuads, fntBounds *outBounds) {
+		if (!fnt__IsValidFontAtlas(atlas) || utf8 == NULL || charScale <= 0.0f || maxQuadCount == 0)  return(false);
 
 		size_t codePointCount = fnt__CountUTF8String(utf8);
 		if (codePointCount == 0 || maxQuadCount < codePointCount) return(false);
@@ -985,7 +1005,7 @@ extern "C" {
 
 		const float invFontSize = 1.0f / atlas->fontSize.f32;
 
-		float scale = invFontSize * maxCharHeight;
+		float scale = invFontSize * charScale;
 
 		float ascent = atlas->ascent * scale;
 		float descent = atlas->descent * scale;
@@ -1008,6 +1028,8 @@ extern "C" {
 		fntBounds bounds;
 		bounds.left = bounds.right = xPos;
 		bounds.top = bounds.bottom = yPos;
+
+		bool advanceByWidthOnly = (flags & fntComputeQuadsFlags_GlyphAdvancement);
 
 		for (codePointIndex = 0; *s; ++s) {
 			if (fnt__DecodeUTF8(&state, &codePoint, *s) == fnt__UTF8State_Accept) {
@@ -1085,6 +1107,13 @@ extern "C" {
 					fntFontQuad fontQuad;
 					fnt__ComputeQuad(glyph, texel, bitmapIndex, scale, &fontQuad);
 
+					// Advance by the glyph width only
+					if (advanceByWidthOnly) {
+						advance = glyph->size.w * scale;
+						fontQuad.coords[0].x = 0 * scale;
+						fontQuad.coords[1].x = glyph->size.w * scale;
+					}
+
 					if (flags & fntComputeQuadsFlags_Cartesian) {
 						fontQuad.coords[0].y *= -1.0f;
 						fontQuad.coords[1].y *= -1.0f;
@@ -1124,50 +1153,47 @@ extern "C" {
 					}
 
 					// We only support kerning inside the same page
-					float kerning = 0.0f;
-					if (currentPage->kerningValues != NULL && (hasNextCodePoint && (nextCodePoint >= codePointStart && nextCodePoint < codePointEndPastOne))) {
+					if (!advanceByWidthOnly && !(flags & fntComputeQuadsFlags_WithoutKerning) && (currentPage->kerningValues != NULL && (hasNextCodePoint && (nextCodePoint >= codePointStart && nextCodePoint < codePointEndPastOne)))) {
 						uint32_t codePointIndexA = codePoint - codePointStart;
 						uint32_t codePointIndexB = nextCodePoint - codePointStart;
 						FNT_ASSERT(codePointIndexA < codePointCount);
 						FNT_ASSERT(codePointIndexB < codePointCount);
 						uint32_t kerningIndex = codePointIndexA * codePointCount + codePointIndexB;
-						float kerningUniform = currentPage->kerningValues[kerningIndex] * invFontSize;
-						kerning = kerningUniform * maxCharHeight;
+						float kerning = currentPage->kerningValues[kerningIndex] * scale;
+						advance += kerning;
 					}
 
-					xPos += advance;// + kerning;
+					xPos += advance;
 				}
 				++codePointIndex;
 			}
 		}
 
-		if (flags & fntComputeQuadsFlags_AlignLeft) {
-			if (outQuads != NULL) {
-				float deltaX = bounds.left;
-				for (uint32_t i = 0; i < codePointIndex; ++i) {
-					outQuads[i].coords[0].x -= deltaX;
-					outQuads[i].coords[1].x -= deltaX;
-				}
-				bounds.left -= deltaX;
-				bounds.right -= deltaX;
+		// Align the quads and the bounds to the left (left = 0)
+		float deltaX = bounds.left;
+		bounds.left -= deltaX;
+		bounds.right -= deltaX;
+		if (outQuads != NULL) {
+			for (uint32_t i = 0; i < codePointIndex; ++i) {
+				outQuads[i].coords[0].x -= deltaX;
+				outQuads[i].coords[1].x -= deltaX;
 			}
 		}
 
-		if (flags & fntComputeQuadsFlags_AlignToDescent) {
-			float deltaY;
-			if (flags & fntComputeQuadsFlags_Cartesian) {
-				deltaY = -descent;
-			} else {
-				deltaY = descent;
+		// Align the quads and the bounds to the bottom (bottom = 0)
+		float deltaY;
+		if (flags & fntComputeQuadsFlags_Cartesian) {
+			deltaY = -descent;
+		} else {
+			deltaY = descent;
+		}
+		bounds.top += deltaY;
+		bounds.bottom += deltaY;
+		if (outQuads != NULL) {
+			for (uint32_t i = 0; i < codePointIndex; ++i) {
+				outQuads[i].coords[0].y += deltaY;
+				outQuads[i].coords[1].y += deltaY;
 			}
-			if (outQuads != NULL) {
-				for (uint32_t i = 0; i < codePointIndex; ++i) {
-					outQuads[i].coords[0].y += deltaY;
-					outQuads[i].coords[1].y += deltaY;
-				}
-			}
-			bounds.top += deltaY;
-			bounds.bottom += deltaY;
 		}
 
 		if (outBounds != NULL) {
@@ -1178,6 +1204,17 @@ extern "C" {
 		}
 
 		return(true);
+	}
+
+	fnt_api fntVec2 fntComputeTextSizeFromUTF8(const fntFontAtlas *atlas, const char *utf8, const float charScale, const fntComputeQuadsFlags flags) {
+		fntVec2 result = FNT__ZERO_INIT;
+		size_t quadCount = fnt__CountUTF8String(utf8);
+		fntBounds bounds = FNT__ZERO_INIT;
+		if (fntComputeQuadsFromUTF8(atlas, utf8, charScale, flags, quadCount, NULL, &bounds)) {
+			result.w = FNT__MAX(bounds.right, bounds.left) - FNT__MIN(bounds.right, bounds.left);
+			result.h = FNT__MAX(bounds.bottom, bounds.top) - FNT__MIN(bounds.bottom, bounds.top);
+		}
+		return(result);
 	}
 
 	typedef struct {
@@ -1203,7 +1240,7 @@ extern "C" {
 	}
 
 #ifdef __cplusplus
-	}
+}
 #endif
 
 #endif // FNT_IMPLEMENTATION

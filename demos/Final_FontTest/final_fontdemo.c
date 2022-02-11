@@ -82,8 +82,8 @@ int main(int argc, char **argv) {
 		if (fglLoadOpenGL(true)) {
 			fntFontData fontData = fplZeroInit;
 
-			fontData = LoadFontFromFile("c:/windows/fonts/arial.ttf");
-#if 0
+			//fontData = LoadFontFromFile("c:/windows/fonts/arial.ttf");
+#if 1
 			fontData.size = fontAvrilSansRegularLength;
 			fontData.data = fontAvrilSansRegularPtr;
 			fontData.name = fontAvrilSansRegularName;
@@ -113,7 +113,7 @@ int main(int argc, char **argv) {
 
 				const float targetCharHeight = 20.0f;
 
-				fntFontQuad fontQuads[32];
+				fntFontQuad fontQuads[64];
 				fntBounds quadsBounds;
 				size_t quadCount;
 
@@ -164,6 +164,7 @@ int main(int argc, char **argv) {
 				glMatrixMode(GL_MODELVIEW);
 
 				bool topDown = false;
+				bool withKerning = true;
 
 				while (fplWindowUpdate()) {
 					fplEvent ev;
@@ -177,6 +178,8 @@ int main(int argc, char **argv) {
 										if (ev.keyboard.buttonState == fplButtonState_Release) {
 											if (ev.keyboard.mappedKey == fplKey_Space) {
 												topDown = !topDown;
+											} else if (ev.keyboard.mappedKey == fplKey_K) {
+												withKerning = !withKerning;
 											}
 										}
 									} break;
@@ -211,20 +214,35 @@ int main(int argc, char **argv) {
 					glVertex2f(0.0f, h);
 					glEnd();
 
-					const char *text = "Biy Ax";
-
-					float textX = 0.0f;
-					float textY = 0.0f;
+					//const char *text = "The quick brown fox jumps over the lazy dog";
+					const char *text = "Five Wax Quacking Zephyrs";
 
 					fntComputeQuadsFlags flags = fntComputeQuadsFlags_None;
 					if (!topDown) {
 						flags |= fntComputeQuadsFlags_Cartesian;
 					}
+					if (!withKerning) {
+						flags |= fntComputeQuadsFlags_WithoutKerning;
+					}
 
+					//flags |= fntComputeQuadsFlags_GlyphAdvancement;
 					//flags |= fntComputeQuadsFlags_AlignToDescent;
 					//flags |= fntComputeQuadsFlags_AlignLeft;
 
 					quadCount = fntGetQuadCountFromUTF8(text);
+
+
+					size_t maxQuadCount = fplArrayCount(fontQuads);
+					fplAssert(maxQuadCount >= quadCount);
+
+					float textX = 0.0f, textY = 0.0f;
+#if 0
+					// Center
+					fntVec2 textSize = fntComputeTextSizeFromUTF8(&atlas, text, fontSize.f32, flags);
+					textX -= textSize.w * 0.5f;
+					textY -= textSize.h * 0.5f;
+#endif
+
 					if (fntComputeQuadsFromUTF8(&atlas, text, fontSize.f32, flags, fplArrayCount(fontQuads), fontQuads, &quadsBounds)) {
 						glColor3f(0.0f, 1.0f, 0.0f);
 						glBegin(GL_LINE_LOOP);
@@ -269,7 +287,7 @@ int main(int argc, char **argv) {
 							float x1 = textX + fontQuad->coords[1].x;
 							float y1 = textY + fontQuad->coords[1].y;
 
-							glColor3f(1.0f, 1.0f, 1.0f);
+							glColor3f(1.0f, 0.0f, 1.0f);
 							glBegin(GL_LINE_LOOP);
 							glVertex2f(x1, y1);
 							glVertex2f(x0, y1);
@@ -294,17 +312,17 @@ int main(int argc, char **argv) {
 #endif
 
 					fplVideoFlip();
-				}
+					}
 
 				for (uint32_t bitmapIndex = 0; bitmapIndex < atlas.bitmapCount; ++bitmapIndex) {
 					glDeleteTextures(1, &fontTextures[bitmapIndex]);
 				}
 
 				fntFreeFontAtlas(&atlas);
-			}
+				}
 			fglUnloadOpenGL();
-		}
+			}
 		fplPlatformRelease();
-	}
+		}
 	return (0);
-}
+	}
