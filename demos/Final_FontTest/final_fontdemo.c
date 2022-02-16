@@ -19,6 +19,7 @@ typedef struct CodePointRange {
 // http://www.localizingjapan.com/blog/2012/01/20/regular-expressions-for-japanese-text/
 static CodePointRange g__unicodeRanges[] = {
 	{33, 126},			// ASCII
+	{161, 255},			// Extended ASCII
 	//{0x3000, 0x303f},	// Japanese-style punctuation
 	//{0x3040, 0x309f},	// Hiragana
 	//{0x30a0, 0x30ff},	// Katakana
@@ -90,11 +91,13 @@ int main(int argc, char **argv) {
 			fontData.index = 0;
 #endif
 
+			const uint32_t maxAtlasSize = 1024;
+
 			const fntFontSize fontSize = { 128.0f };
 
 			fntFontAtlas atlas = fplZeroInit;
 			if (fntInitFontAtlas(&atlas, &fontData, fontSize)) {
-				fntFontContext *ctx = fntCreateFontContext(512);
+				fntFontContext *ctx = fntCreateFontContext(maxAtlasSize);
 				if (ctx != NULL) {
 					for (uint32_t i = 0; i < fplArrayCount(g__unicodeRanges); ++i) {
 						uint16_t range = g__unicodeRanges[i].to - g__unicodeRanges[i].from;
@@ -160,7 +163,7 @@ int main(int argc, char **argv) {
 					fontTextures[bitmapIndex] = CreateRGBATextureFromAlpha(atlas.bitmaps[bitmapIndex].pixels, atlas.bitmaps[bitmapIndex].width, atlas.bitmaps[bitmapIndex].height);
 				}
 
-				glClearColor(0.7f, 0.3f, 0.1f, 1.0f);
+				glClearColor(0.3f, 0.5f, 0.7f, 1.0f);
 				glMatrixMode(GL_MODELVIEW);
 
 				bool topDown = false;
@@ -215,7 +218,7 @@ int main(int argc, char **argv) {
 					glEnd();
 
 					//const char *text = "The quick brown fox jumps over the lazy dog";
-					const char *text = "Five Wax Quacking Zephyrs";
+					const char *text = "Five WÎx Quacking Zephyrs";
 
 					fntComputeQuadsFlags flags = fntComputeQuadsFlags_None;
 					if (!topDown) {
@@ -242,8 +245,56 @@ int main(int argc, char **argv) {
 					textX -= textSize.w * 0.5f;
 					textY -= textSize.h * 0.5f;
 #endif
+					float scaledAscent = 0.0f;
+					float scaledDescent = 0.0f;
+					float scaledLineGap = 0.0f;
+					fntGetFontMetrics(&atlas, fontSize.f32, &scaledAscent, &scaledDescent, &scaledLineGap);
 
-					if (fntComputeQuadsFromUTF8(&atlas, text, fontSize.f32, flags, fplArrayCount(fontQuads), fontQuads, &quadsBounds)) {
+					float baseline = -scaledDescent;
+
+					uint32_t lineCount = 0;
+					float baselineOffset = 0;
+					if (fntComputeQuadsFromUTF8(&atlas, text, fontSize.f32, flags, fplArrayCount(fontQuads), fontQuads, &quadsBounds, &lineCount, &baselineOffset)) {
+						float lineHeight = scaledAscent - scaledDescent;
+
+						float boundsWidth = quadsBounds.right - quadsBounds.left;
+
+						// Line Top
+						glColor3f(0.0f, 0.0f, 1.0f);
+						glBegin(GL_LINE_LOOP);
+						glVertex2f(textX + quadsBounds.right, textY + 0.0f);
+						glVertex2f(textX + quadsBounds.left, textY + 0.0f);
+						glVertex2f(textX + quadsBounds.left, textY + lineHeight);
+						glVertex2f(textX + quadsBounds.right, textY + lineHeight);
+						glEnd();
+
+						// Ascent
+						glLineWidth(2.0f);
+						glColor3f(0.0f, 1.0f, 0.0f);
+						glBegin(GL_LINES);
+						glVertex2f(textX + quadsBounds.right + boundsWidth * 0.25f, textY + baseline + scaledAscent);
+						glVertex2f(textX + quadsBounds.left - boundsWidth * 0.25f, textY + baseline + scaledAscent);
+						glEnd();
+						glLineWidth(1.0f);
+
+						// Baseline
+						glLineWidth(2.0f);
+						glColor3f(1.0f, 0.0f, 0.0f);
+						glBegin(GL_LINES);
+						glVertex2f(textX + quadsBounds.right + boundsWidth * 0.25f, textY + baseline);
+						glVertex2f(textX + quadsBounds.left - boundsWidth * 0.25f, textY + baseline);
+						glEnd();
+						glLineWidth(1.0f);
+
+						// Descent
+						glLineWidth(2.0f);
+						glColor3f(0.0f, 0.0f, 1.0f);
+						glBegin(GL_LINES);
+						glVertex2f(textX + quadsBounds.right + boundsWidth * 0.25f, textY + baseline + scaledDescent);
+						glVertex2f(textX + quadsBounds.left - boundsWidth * 0.25f, textY + baseline + scaledDescent);
+						glEnd();
+						glLineWidth(1.0f);
+
 						glColor3f(0.0f, 1.0f, 0.0f);
 						glBegin(GL_LINE_LOOP);
 						glVertex2f(textX + quadsBounds.right, textY + quadsBounds.top);
@@ -312,17 +363,17 @@ int main(int argc, char **argv) {
 #endif
 
 					fplVideoFlip();
-					}
+						}
 
 				for (uint32_t bitmapIndex = 0; bitmapIndex < atlas.bitmapCount; ++bitmapIndex) {
 					glDeleteTextures(1, &fontTextures[bitmapIndex]);
 				}
 
 				fntFreeFontAtlas(&atlas);
-				}
+					}
 			fglUnloadOpenGL();
-			}
+				}
 		fplPlatformRelease();
-		}
+			}
 	return (0);
-	}
+		}
