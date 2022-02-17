@@ -155,6 +155,7 @@ SOFTWARE.
 	#### Bugfixes
 	- Fixed[#130]: [Win32] Main fiber was never properly released
 	- Fixed[#131]: [Win32] Console window was not shown the second time fplPlatformInit() was called
+	- Fixed[#134]: [Win32] Duplicate executable arguments in main() passed when CRT is disabled
 	- Fixed[#124]: [Video/Vulkan] Fallback when creation with validation failed
 
 	#### Breaking Changes
@@ -23419,7 +23420,7 @@ typedef struct fpl__Win32CommandLineUTF8Arguments {
 	uint32_t count;
 } fpl__Win32CommandLineUTF8Arguments;
 
-fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseWideArguments(LPWSTR cmdLine) {
+fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseWideArguments(LPWSTR cmdLine, const bool appendExecutable) {
 	fpl__Win32CommandLineUTF8Arguments args = fplZeroInit;
 
 	// @NOTE(final): Temporary load and unload shell32 for parsing the arguments
@@ -23427,24 +23428,31 @@ fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseWideArguments(LPW
 	if (shellapiLibrary != fpl_null) {
 		fpl__win32_func_CommandLineToArgvW *commandLineToArgvW = (fpl__win32_func_CommandLineToArgvW *)GetProcAddress(shellapiLibrary, "CommandLineToArgvW");
 		if (commandLineToArgvW != fpl_null) {
-			// Parse arguments and compute total UTF8 string length
+			// Parse executable arguments
+			int cmdLineLen = lstrlenW(cmdLine);
 			int executableFilePathArgumentCount = 0;
-			wchar_t **executableFilePathArgs = commandLineToArgvW(L"", &executableFilePathArgumentCount);
+			wchar_t **executableFilePathArgs = NULL;
 			size_t executableFilePathLen = 0;
-			for (int i = 0; i < executableFilePathArgumentCount; ++i) {
-				if (i > 0) {
-					// Include whitespace
-					executableFilePathLen++;
+			if (appendExecutable || (cmdLineLen == 0)) {
+				executableFilePathArgumentCount = 0;
+				executableFilePathArgs = commandLineToArgvW(L"", &executableFilePathArgumentCount);
+				executableFilePathLen = 0;
+				for (int i = 0; i < executableFilePathArgumentCount; ++i) {
+					if (i > 0) {
+						// Include whitespace
+						executableFilePathLen++;
+					}
+					size_t sourceLen = lstrlenW(executableFilePathArgs[i]);
+					int destLen = WideCharToMultiByte(CP_UTF8, 0, executableFilePathArgs[i], (int)sourceLen, fpl_null, 0, fpl_null, fpl_null);
+					executableFilePathLen += destLen;
 				}
-				size_t sourceLen = lstrlenW(executableFilePathArgs[i]);
-				int destLen = WideCharToMultiByte(CP_UTF8, 0, executableFilePathArgs[i], (int)sourceLen, fpl_null, 0, fpl_null, fpl_null);
-				executableFilePathLen += destLen;
 			}
 
+			// Parse arguments and add to total UTF8 string length
 			int actualArgumentCount = 0;
 			wchar_t **actualArgs = fpl_null;
 			size_t actualArgumentsLen = 0;
-			if (cmdLine != fpl_null && lstrlenW(cmdLine) > 0) {
+			if (cmdLine != fpl_null && cmdLineLen > 0) {
 				actualArgs = commandLineToArgvW(cmdLine, &actualArgumentCount);
 				for (int i = 0; i < actualArgumentCount; ++i) {
 					size_t sourceLen = lstrlenW(actualArgs[i]);
@@ -23453,23 +23461,34 @@ fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseWideArguments(LPW
 				}
 			}
 
-			// Calculate argument 
-			args.count = 1 + actualArgumentCount;
-			size_t totalStringLen = executableFilePathLen + actualArgumentsLen + args.count;
+			// Calculate argument
+			uint32_t totalArgumentCount = 0;
+			if (executableFilePathArgumentCount > 0) {
+				totalArgumentCount++;
+			}
+			totalArgumentCount += actualArgumentCount;
+
+			// @NOTE(final): We allocate one memory block that contains
+			// - The arguments as one string, each terminated by zero-character -> char*
+			// - A padding
+			// - The size of the string array -> char**
+			size_t totalStringLen = executableFilePathLen + actualArgumentsLen + totalArgumentCount;
 			size_t singleArgStringSize = sizeof(char) * (totalStringLen);
 			size_t arbitaryPadding = 64;
-			size_t argArraySize = sizeof(char **) * args.count;
+			size_t argArraySize = sizeof(char **) * totalArgumentCount;
 			size_t totalArgSize = singleArgStringSize + arbitaryPadding + argArraySize;
 
 			// @NOTE(final): We cannot use fpl__AllocateDynamicMemory here, because the main function is not called yet - therefore we dont have any fplMemorySettings set at this point.
+			args.count = totalArgumentCount;
 			args.mem = (uint8_t *)fplMemoryAllocate(totalArgSize);
-			char *argsString = (char *)args.mem;
 			args.args = (char **)((uint8_t *)args.mem + singleArgStringSize + arbitaryPadding);
 
-			// Convert executable path to UTF8
-			char *destArg = argsString;
+			// Convert executable path to UTF8 and add it, if needed
+			char *destArg = (char *)args.mem;
+			int startArgIndex = 0;
+			if (executableFilePathArgumentCount > 0)
 			{
-				args.args[0] = argsString;
+				args.args[startArgIndex++] = destArg;
 				for (int i = 0; i < executableFilePathArgumentCount; ++i) {
 					if (i > 0) {
 						*destArg++ = ' ';
@@ -23484,11 +23503,11 @@ fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseWideArguments(LPW
 				LocalFree(executableFilePathArgs);
 			}
 
-			// Convert actual arguments to UTF8
+			// Convert actual arguments to UTF8 and add it, if needed
 			if (actualArgumentCount > 0) {
 				fplAssert(actualArgs != fpl_null);
 				for (int i = 0; i < actualArgumentCount; ++i) {
-					args.args[1 + i] = destArg;
+					args.args[startArgIndex++] = destArg;
 					wchar_t *sourceArg = actualArgs[i];
 					size_t sourceArgLen = lstrlenW(sourceArg);
 					int destArgLen = WideCharToMultiByte(CP_UTF8, 0, sourceArg, (int)sourceArgLen, fpl_null, 0, fpl_null, fpl_null);
@@ -23505,7 +23524,7 @@ fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseWideArguments(LPW
 	return(args);
 }
 
-fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseAnsiArguments(LPSTR cmdLine) {
+fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseAnsiArguments(LPSTR cmdLine, const bool appendExecutable) {
 	fpl__Win32CommandLineUTF8Arguments result;
 	if (cmdLine != fpl_null) {
 		size_t ansiSourceLen = fplGetStringLength(cmdLine);
@@ -23514,11 +23533,11 @@ fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseAnsiArguments(LPS
 		wchar_t *wideCmdLine = (wchar_t *)fplMemoryAllocate(sizeof(wchar_t) * (wideDestLen + 1));
 		MultiByteToWideChar(CP_ACP, 0, cmdLine, (int)ansiSourceLen, wideCmdLine, wideDestLen);
 		wideCmdLine[wideDestLen] = 0;
-		result = fpl__Win32ParseWideArguments(wideCmdLine);
+		result = fpl__Win32ParseWideArguments(wideCmdLine, appendExecutable);
 		fplMemoryFree(wideCmdLine);
 	} else {
 		wchar_t tmp[1] = { 0 };
-		result = fpl__Win32ParseWideArguments(tmp);
+		result = fpl__Win32ParseWideArguments(tmp, appendExecutable);
 	}
 	return(result);
 }
@@ -23585,10 +23604,10 @@ void __stdcall mainCRTStartup(void) {
 	fpl__Win32CommandLineUTF8Arguments args;
 #	if defined(UNICODE)
 	LPWSTR argsW = GetCommandLineW();
-	args = fpl__Win32ParseWideArguments(argsW);
+	args = fpl__Win32ParseWideArguments(argsW, false);
 #	else
 	LPSTR argsA = GetCommandLineA();
-	args = fpl__Win32ParseAnsiArguments(argsA);
+	args = fpl__Win32ParseAnsiArguments(argsA, false);
 #	endif
 	int result = main(args.count, args.args);
 	fplMemoryFree(args.mem);
@@ -23606,7 +23625,7 @@ void __stdcall mainCRTStartup(void) {
 #			if defined(UNICODE)
 int WINAPI wWinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPWSTR cmdLine, int cmdShow) {
 	fpl__Win32InitConsole();
-	fpl__Win32CommandLineUTF8Arguments args = fpl__Win32ParseWideArguments(cmdLine);
+	fpl__Win32CommandLineUTF8Arguments args = fpl__Win32ParseWideArguments(cmdLine, true);
 	int result = main(args.count, args.args);
 	fplMemoryFree(args.mem);
 	fpl__Win32FreeConsole();
@@ -23615,7 +23634,7 @@ int WINAPI wWinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPWSTR cmdLin
 #			else
 int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine, int cmdShow) {
 	fpl__Win32InitConsole();
-	fpl__Win32CommandLineUTF8Arguments args = fpl__Win32ParseAnsiArguments(cmdLine);
+	fpl__Win32CommandLineUTF8Arguments args = fpl__Win32ParseAnsiArguments(cmdLine, true);
 	int result = main(args.count, args.args);
 	fplMemoryFree(args.mem);
 	fpl__Win32FreeConsole();
