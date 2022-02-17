@@ -157,6 +157,7 @@ SOFTWARE.
 	- Fixed[#131]: [Win32] Console window was not shown the second time fplPlatformInit() was called
 	- Fixed[#134]: [Win32] Duplicate executable arguments in main() passed when CRT is disabled
 	- Fixed[#124]: [Video/Vulkan] Fallback when creation with validation failed
+	- Fixed[#135]: Stackoverflow in fpl__PushError_Formatted() when FPL_USERFUNC_vsnprintf is overloaded
 
 	#### Breaking Changes
 	- Changed: Renamed function fplOpenBinaryFile() to fplFileOpenBinary()
@@ -7264,8 +7265,10 @@ fpl_internal void fpl__LogWriteArgs(const char *funcName, const int lineNumber, 
 	va_list listCopy;
 	va_copy(listCopy, argList);
 	char buffer[FPL_MAX_BUFFER_LENGTH];
-	fplFormatStringArgs(buffer, fplArrayCount(buffer), format, listCopy);
-	fpl__LogWrite(funcName, lineNumber, level, buffer);
+	size_t formattedLen = fplFormatStringArgs(buffer, fplArrayCount(buffer), format, listCopy);
+	if (formattedLen > 0) {
+		fpl__LogWrite(funcName, lineNumber, level, buffer);
+	}
 	va_end(listCopy);
 }
 
@@ -9171,12 +9174,13 @@ fpl_internal void fpl__PushError_Formatted(const char *funcName, const int lineN
 	if (level <= fplLogLevel_Error) {
 		fpl__ErrorState *state = &fpl__global__LastErrorState;
 		char buffer[FPL__MAX_LAST_ERROR_STRING_LENGTH] = fplZeroInit;
-		fplFormatStringArgs(buffer, fplArrayCount(buffer), format, argList);
-		size_t messageLen = fplGetStringLength(buffer);
-		fplAssert(state->count < FPL__MAX_ERRORSTATE_COUNT);
-		size_t errorIndex = state->count;
-		state->count = (state->count + 1) % FPL__MAX_ERRORSTATE_COUNT;
-		fplCopyStringLen(buffer, messageLen, state->errors[errorIndex], FPL__MAX_LAST_ERROR_STRING_LENGTH);
+		size_t formattedLen = fplFormatStringArgs(buffer, fplArrayCount(buffer), format, argList);
+		if (formattedLen > 0) {
+			fplAssert(state->count < FPL__MAX_ERRORSTATE_COUNT);
+			size_t errorIndex = state->count;
+			state->count = (state->count + 1) % FPL__MAX_ERRORSTATE_COUNT;
+			fplCopyStringLen(buffer, formattedLen, state->errors[errorIndex], FPL__MAX_LAST_ERROR_STRING_LENGTH);
+		}
 	}
 
 #if defined(FPL__ENABLE_LOGGING)
