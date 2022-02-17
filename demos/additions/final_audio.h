@@ -117,7 +117,7 @@ static void PushWaveError(PCMWaveData* outWave, const char* format, ...) {
 	outWave->lastError[0] = 0;
 	va_list argList;
 	va_start(argList, format);
-	fplFormatStringArgs(outWave->lastError, fplArrayCount(outWave->lastError), format, argList);
+	fplStringFormatArgs(outWave->lastError, fplArrayCount(outWave->lastError), format, argList);
 	va_end(argList);
 }
 

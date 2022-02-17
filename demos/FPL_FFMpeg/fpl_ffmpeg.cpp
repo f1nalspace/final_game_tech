@@ -171,7 +171,7 @@ static const char *GetGLErrorString(const GLenum err) {
 		case GL_OUT_OF_MEMORY:
 			return "GL_OUT_OF_MEMORY";
 		default:
-			fplFormatString(glErrorCodeBuffer, fplArrayCount(glErrorCodeBuffer), "%u", err);
+			fplStringFormat(glErrorCodeBuffer, fplArrayCount(glErrorCodeBuffer), "%u", err);
 			return (const char *)glErrorCodeBuffer;
 	}
 }
@@ -2788,7 +2788,7 @@ static void RenderOSD(PlayerState *state, const Mat4f &proj, const float w, cons
 	const char *filename = fplExtractFileName(state->filePathOrUrl);
 
 	// [State: Filename]
-	fplFormatString(osdTextBuffer, fplArrayCount(osdTextBuffer), "%s: %s", stateMsg, filename);
+	fplStringFormat(osdTextBuffer, fplArrayCount(osdTextBuffer), "%s: %s", stateMsg, filename);
 	PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
 	osdPos += V2f(0, -osdFontSize);
 
@@ -2806,15 +2806,15 @@ static void RenderOSD(PlayerState *state, const Mat4f &proj, const float w, cons
 		int totalMinutes = (int)(clockLength / 60.0) % 60;
 		int totalHours = (int)(clockLength / 60.0 / 60.0);
 
-		fplFormatString(osdTextBuffer, fplArrayCount(osdTextBuffer), "Time: %02d:%02d:%02d:%03d", currentHours, currentMinutes, currentSeconds, currentMillis);
+		fplStringFormat(osdTextBuffer, fplArrayCount(osdTextBuffer), "Time: %02d:%02d:%02d:%03d", currentHours, currentMinutes, currentSeconds, currentMillis);
 		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
 		osdPos += V2f(0, -osdFontSize);
 
-		fplFormatString(osdTextBuffer, fplArrayCount(osdTextBuffer), "Frames: %d", numFrames);
+		fplStringFormat(osdTextBuffer, fplArrayCount(osdTextBuffer), "Frames: %d", numFrames);
 		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
 		osdPos += V2f(0, -osdFontSize);
 
-		fplFormatString(osdTextBuffer, fplArrayCount(osdTextBuffer), "Length: %02d:%02d:%02d:%03d", totalHours, totalMinutes, totalSeconds, totalMillis);
+		fplStringFormat(osdTextBuffer, fplArrayCount(osdTextBuffer), "Length: %02d:%02d:%02d:%03d", totalHours, totalMinutes, totalSeconds, totalMillis);
 		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
 		osdPos += V2f(0, -osdFontSize);
 	}
@@ -2833,7 +2833,7 @@ static void RenderOSD(PlayerState *state, const Mat4f &proj, const float w, cons
 		AVPixelFormat pixFormat  = state->video.stream.codecContext->pix_fmt;
 		const char *pixelFormatName = ffmpeg.av_get_pix_fmt_name(pixFormat);
 			
-		fplFormatString(osdTextBuffer, fplArrayCount(osdTextBuffer), "Video: %s, %ux%u, %s, %.2f frames/s", videoInfos, width, height, pixelFormatName, frameRate);
+		fplStringFormat(osdTextBuffer, fplArrayCount(osdTextBuffer), "Video: %s, %ux%u, %s, %.2f frames/s", videoInfos, width, height, pixelFormatName, frameRate);
 		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
 		osdPos += V2f(0, -osdFontSize);
 
@@ -2843,7 +2843,7 @@ static void RenderOSD(PlayerState *state, const Mat4f &proj, const float w, cons
 		uint32_t bufferSize = state->audio.audioTarget.bufferSizeInBytes;
 		uint32_t frameSize = fplGetAudioFrameSizeInBytes(state->audio.audioTarget.type, state->audio.audioTarget.channels);
 
-		fplFormatString(osdTextBuffer, fplArrayCount(osdTextBuffer), "Audio: %s, %s, %u channels, %u Hz", audioBackendName, audioFormatName, state->audio.audioTarget.channels, state->audio.audioTarget.sampleRate);
+		fplStringFormat(osdTextBuffer, fplArrayCount(osdTextBuffer), "Audio: %s, %s, %u channels, %u Hz", audioBackendName, audioFormatName, state->audio.audioTarget.channels, state->audio.audioTarget.sampleRate);
 		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
 		osdPos += V2f(0, -osdFontSize);
 	}
@@ -2856,7 +2856,7 @@ static void RenderOSD(PlayerState *state, const Mat4f &proj, const float w, cons
 		int32_t allocatedPackets = globalMemStats.allocatedPackets;
 		int32_t usedPackets = globalMemStats.usedPackets;
 
-		fplFormatString(osdTextBuffer, fplArrayCount(osdTextBuffer), "Queue A/V: %d/%d, Packets U/A: %d/%d", audioQueueCount, videoQueueCount, usedPackets, allocatedPackets);
+		fplStringFormat(osdTextBuffer, fplArrayCount(osdTextBuffer), "Queue A/V: %d/%d, Packets U/A: %d/%d", audioQueueCount, videoQueueCount, usedPackets, allocatedPackets);
 		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
 		osdPos += V2f(0, -osdFontSize);
 	}

@@ -1237,10 +1237,10 @@ static void RenderApp(AppState* appState, const InputState* input, const uint32_
 	wchar_t wideTextBuffer[256];
 	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 	if (appState->renderMode == RenderMode::KeyboardAndMouse) {
-		fplFormatString(textBuffer, fplArrayCount(textBuffer), "Keyboard: %s (%s)", keyDefinitions->name, (appState->usePolling ? "Use polling" : "Use events"));
+		fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Keyboard: %s (%s)", keyDefinitions->name, (appState->usePolling ? "Use polling" : "Use events"));
 	} else if (appState->renderMode == RenderMode::Gamepad) {
 		const char* controllerName = input->gamepadState.deviceName;
-		fplFormatString(textBuffer, fplArrayCount(textBuffer), "Gamepad: %s (%s)", (controllerName == fpl_null ? "No controller detected" : controllerName), (appState->usePolling ? "Use polling" : "Use events"));
+		fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Gamepad: %s (%s)", (controllerName == fpl_null ? "No controller detected" : controllerName), (appState->usePolling ? "Use polling" : "Use events"));
 	}
 	fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
 	DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, 0, h - osdFontHeight, osdFontHeight, 0.0f, 0.0f);
@@ -1404,7 +1404,7 @@ static void RenderApp(AppState* appState, const InputState* input, const uint32_
 			{
 				char textBuffer[256];
 				wchar_t wideTextBuffer[256];
-				fplFormatString(textBuffer, fplArrayCount(textBuffer), "Input: (%zu chars)", input->textLen);
+				fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Input: (%zu chars)", input->textLen);
 				fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
 				DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, inputPos.x, inputPos.y + consoleFontHeight * 1.5f, osdFontHeight, 1.0f, 1.0f);
 			}

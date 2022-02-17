@@ -494,7 +494,7 @@ int main(int argc, char **args) {
 	settings.window.windowSize.width = kWindowWidth;
 	settings.window.windowSize.height = kWindowHeight;
 	settings.video.backend = fplVideoBackendType_OpenGL;
-	fplFormatString(settings.window.title, fplArrayCount(settings.window.title), "NBody Simulation v%s", kAppVersion);
+	fplStringFormat(settings.window.title, fplArrayCount(settings.window.title), "NBody Simulation v%s", kAppVersion);
 	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
 		if (fglLoadOpenGL(true)) {
 			Application *app = globalApp = new DemoApplication();

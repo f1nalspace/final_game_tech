@@ -42,7 +42,7 @@ inline std::string StringFormat(const char *format, ...) {
 	char buffer[1024];
 	va_list vaList;
 	va_start(vaList, format);
-	fplFormatStringArgs(buffer, fplArrayCount(buffer), format, vaList);
+	fplStringFormatArgs(buffer, fplArrayCount(buffer), format, vaList);
 	va_end(vaList);
 	std::string result = buffer;
 	return(result);

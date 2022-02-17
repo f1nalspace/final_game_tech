@@ -173,7 +173,7 @@ namespace gamelog {
 
 	static void Write(const LogLevel level, const char *format, va_list argList) {
 		char msg[1024];
-		fplFormatStringArgs(msg, fplArrayCount(msg), format, argList);
+		fplStringFormatArgs(msg, fplArrayCount(msg), format, argList);
 		if (level == LogLevel::Fatal)
 			fplDebugOut("Fatal: ");
 		else if (level == LogLevel::Error)
@@ -1720,31 +1720,31 @@ namespace game {
 		const FontAsset &font = state.assets.hudFont;
 		{
 			char text[256];
-			fplFormatString(text, fplArrayCount(text), "%s", state.level.activeId);
+			fplStringFormat(text, fplArrayCount(text), "%s", state.level.activeId);
 			Vec2f textPos = V2fInit(hudOriginX + WorldRadiusW, hudOriginY - hudPadding - hudFontHeight * 0.5f);
 			PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, 0.0f, 0.0f, TextBackColor);
 			PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(textPos.x, textPos.y), hudFontHeight, 0.0f, 0.0f, TextForeColor);
 
-			fplFormatString(text, fplArrayCount(text), "Wave: %d / %zu", (state.wave.activeIndex + 1), state.assets.waveDefinitionCount);
+			fplStringFormat(text, fplArrayCount(text), "Wave: %d / %zu", (state.wave.activeIndex + 1), state.assets.waveDefinitionCount);
 			textPos.y -= hudFontHeight;
 			PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, 0.0f, 0.0f, TextBackColor);
 			PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(textPos.x, textPos.y), hudFontHeight, 0.0f, 0.0f, TextForeColor);
 
-			fplFormatString(text, fplArrayCount(text), "Enemies: %zu / %zu", state.enemies.count, state.wave.totalEnemyCount);
+			fplStringFormat(text, fplArrayCount(text), "Enemies: %zu / %zu", state.enemies.count, state.wave.totalEnemyCount);
 			textPos.y -= hudFontHeight;
 			PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, 0.0f, 0.0f, TextBackColor);
 			PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(textPos.x, textPos.y), hudFontHeight, 0.0f, 0.0f, TextForeColor);
 		}
 		{
 			char text[256];
-			fplFormatString(text, fplArrayCount(text), "$: %d", state.stats.money);
+			fplStringFormat(text, fplArrayCount(text), "$: %d", state.stats.money);
 			Vec2f textPos = V2fInit(hudOriginX + hudPadding, hudOriginY - hudPadding - hudFontHeight * 0.5f);
 			PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, 1.0f, 0.0f, TextBackColor);
 			PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(textPos.x, textPos.y), hudFontHeight, 1.0f, 0.0f, TextForeColor);
 		}
 		{
 			char text[256];
-			fplFormatString(text, fplArrayCount(text), "HP: %d", state.stats.lifes);
+			fplStringFormat(text, fplArrayCount(text), "HP: %d", state.stats.lifes);
 			Vec2f textPos = V2fInit(hudOriginX + WorldWidth - hudPadding, hudOriginY - hudPadding - hudFontHeight * 0.5f);
 			PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, -1.0f, 0.0f, TextBackColor);
 			PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(textPos.x, textPos.y), hudFontHeight, -1.0f, 0.0f, TextForeColor);
@@ -1817,7 +1817,7 @@ namespace game {
 			const TowerData &towerData = state.assets.towerDefinitions[state.towers.selectedIndex];
 			Vec2f textPos = V2fInit(ControlsOriginX + ControlsWidth - lineWidthWorld - buttonMargin, ControlsOriginY + ControlsHeight * 0.5f);
 			char textBuffer[256];
-			fplFormatString(textBuffer, fplArrayCount(textBuffer), "[%s / $%d]", towerData.id, towerData.costs);
+			fplStringFormat(textBuffer, fplArrayCount(textBuffer), "[%s / $%d]", towerData.id, towerData.costs);
 			PushText(renderState, textBuffer, fplGetStringLength(textBuffer), &font.desc, &font.texture, V2fInit(textPos.x, textPos.y), fontHeight, -1.0f, 0.0f, TextForeColor);
 		}
 
@@ -2355,7 +2355,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 	if (state->wave.state == WaveState::Starting) {
 		const FontAsset &font = state->assets.overlayFont;
 		char text[128];
-		fplFormatString(text, fplArrayCount(text), "%d", (int)ceilf(state->wave.warmupTimer));
+		fplStringFormat(text, fplArrayCount(text), "%d", (int)ceilf(state->wave.warmupTimer));
 		Vec2f textPos = V2fInit(0, 0);
 		float overlayFontHeight = WorldWidth * 0.25f;
 		float foffset = overlayFontHeight * 0.01f;
@@ -2374,18 +2374,18 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 	if (state->isDebugRendering) {
 		const FontAsset &font = state->assets.hudFont;
 		char text[256];
-		fplFormatString(text, fplArrayCount(text), "Enemies: %03zu/%03zu, Bullets: %03zu, Towers: %03zu, Spawners: %03zu", state->enemies.count, state->wave.totalEnemyCount, state->bullets.count, state->towers.activeCount, state->spawners.count);
+		fplStringFormat(text, fplArrayCount(text), "Enemies: %03zu/%03zu, Bullets: %03zu, Towers: %03zu, Spawners: %03zu", state->enemies.count, state->wave.totalEnemyCount, state->bullets.count, state->towers.activeCount, state->spawners.count);
 		Vec4f textColor = V4fInit(1, 1, 1, 1);
 		float padding = MaxTileSize * 0.1f;
 		Vec2f textPos = V2fInit(dim.gridOriginX + padding, dim.gridOriginY + padding);
 		float fontHeight = MaxTileSize * 0.5f;
 		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(textPos.x, textPos.y), fontHeight, 1.0f, 1.0f, textColor);
 
-		fplFormatString(text, fplArrayCount(text), "Game Memory: %zu / %zu", gameMemory.memory->used, gameMemory.memory->size);
+		fplStringFormat(text, fplArrayCount(text), "Game Memory: %zu / %zu", gameMemory.memory->used, gameMemory.memory->size);
 		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(textPos.x + dim.gridWidth - padding * 2.0f, textPos.y + fontHeight * 2), fontHeight, -1.0f, 1.0f, textColor);
-		fplFormatString(text, fplArrayCount(text), "Render Memory: %zu / %zu", gameMemory.render->lastMemoryUsage, gameMemory.render->memory.size);
+		fplStringFormat(text, fplArrayCount(text), "Render Memory: %zu / %zu", gameMemory.render->lastMemoryUsage, gameMemory.render->memory.size);
 		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(textPos.x + dim.gridWidth - padding * 2.0f, textPos.y + fontHeight * 1), fontHeight, -1.0f, 1.0f, textColor);
-		fplFormatString(text, fplArrayCount(text), "Fps: %.5f, Delta: %.5f", state->framesPerSecond, state->deltaTime);
+		fplStringFormat(text, fplArrayCount(text), "Fps: %.5f, Delta: %.5f", state->framesPerSecond, state->deltaTime);
 		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(textPos.x + dim.gridWidth - padding * 2.0f, textPos.y), fontHeight, -1.0f, 1.0f, textColor);
 	}
 

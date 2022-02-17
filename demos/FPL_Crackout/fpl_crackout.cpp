@@ -1396,18 +1396,18 @@ static void DrawPlayMode(GameState &state) {
 	// HUD
 	glColor4f(0, 0, 0, 1);
 
-	fplFormatString(textBuffer, fplArrayCount(textBuffer), "Lifes: %d", state.lifes);
+	fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Lifes: %d", state.lifes);
 	DrawTextFont(textBuffer, fplGetStringLength(textBuffer), &state.assets.fontHud.desc, fontTexId, -WorldRadius.x + FrameRadius * 2.0f + textFrameMargin, textTopMiddle, textSize, 1.0f, 0.0f);
 
 	if(state.totalBricks > 0) {
 		int levelPercentage = 100 - (int)((state.remainingBricks / (double)state.totalBricks) * 100);
-		fplFormatString(textBuffer, fplArrayCount(textBuffer), "Level: %d - %d %s", (state.levelsCompleted + 1), levelPercentage, "%");
+		fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Level: %d - %d %s", (state.levelsCompleted + 1), levelPercentage, "%");
 	} else {
-		fplFormatString(textBuffer, fplArrayCount(textBuffer), "Level: %d", (state.levelsCompleted + 1));
+		fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Level: %d", (state.levelsCompleted + 1));
 	}
 	DrawTextFont(textBuffer, fplGetStringLength(textBuffer), &state.assets.fontHud.desc, fontTexId, 0, textTopMiddle, textSize, 0.0f, 0.0f);
 
-	fplFormatString(textBuffer, fplArrayCount(textBuffer), "Score: %d", state.score);
+	fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Score: %d", state.score);
 	size_t textCount = fplGetStringLength(textBuffer);
 	Vec2f textBounds = GetTextSize(textBuffer, textCount, &state.assets.fontHud.desc, textSize);
 	DrawTextFont(textBuffer, textCount, &state.assets.fontHud.desc, fontTexId, WorldRadius.x - FrameRadius * 2.0f - textFrameMargin - textBounds.w, textTopMiddle, textSize, 1.0f, 0.0f);
