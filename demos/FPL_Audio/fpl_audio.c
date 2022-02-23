@@ -183,7 +183,7 @@ typedef struct AudioDemo {
 
 static void UpdateTitle(AudioDemo *demo) {
 	char titleBuffer[256];
-	fplFormatString(titleBuffer, fplArrayCount(titleBuffer), "FPL Demo | Audio");
+	fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "FPL Demo | Audio");
 	fplSetWindowTitle(titleBuffer);
 }
 

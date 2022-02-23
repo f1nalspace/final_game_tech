@@ -177,6 +177,8 @@ SOFTWARE.
 	- Changed: Renamed function fplListDirNext() to fplDirectoryListNext()
 	- Changed: Renamed function fplListDirEnd() to fplDirectoryListEnd()
 	- Changed: Renamed function fplGetPlatformResultName() to fplPlatformGetResultName()
+	- Changed: Renamed function fplFormatString() to fplStrngFormat()
+	- Changed: Renamed function fplFormatStringArgs() to fplStrngFormatArgs()
 	- Changed: Replaced enum flag fplVulkanValidationLayerMode_User with fplVulkanValidationLayerMode_Optional
 	- Changed: Replaced enum flag fplVulkanValidationLayerMode_Callback with fplVulkanValidationLayerMode_Required
 
@@ -5085,7 +5087,7 @@ fpl_platform_api size_t fplUTF8StringToWideString(const char *utf8Source, const 
 * @return Returns the number of required/written characters, excluding the null-terminator
 * @note This is most likely just a wrapper call to vsnprintf()
 */
-fpl_common_api size_t fplFormatString(char *destBuffer, const size_t maxDestBufferLen, const char *format, ...);
+fpl_common_api size_t fplStringFormat(char *destBuffer, const size_t maxDestBufferLen, const char *format, ...);
 /**
 * @brief Fills out the given destination string buffer with a formatted string, using the format specifier and the arguments list.
 * @param destBuffer The destination string buffer
@@ -5095,7 +5097,7 @@ fpl_common_api size_t fplFormatString(char *destBuffer, const size_t maxDestBuff
 * @return Returns the number of required/written characters, excluding the null-terminator
 * @note This is most likely just a wrapper call to vsnprintf()
 */
-fpl_common_api size_t fplFormatStringArgs(char *destBuffer, const size_t maxDestBufferLen, const char *format, va_list argList);
+fpl_common_api size_t fplStringFormatArgs(char *destBuffer, const size_t maxDestBufferLen, const char *format, va_list argList);
 
 /**
 * @brief Converts the given string into a 32-bit integer constrained by string length
@@ -7265,7 +7267,7 @@ fpl_internal void fpl__LogWriteArgs(const char *funcName, const int lineNumber, 
 	va_list listCopy;
 	va_copy(listCopy, argList);
 	char buffer[FPL_MAX_BUFFER_LENGTH];
-	size_t formattedLen = fplFormatStringArgs(buffer, fplArrayCount(buffer), format, listCopy);
+	size_t formattedLen = fplStringFormatArgs(buffer, fplArrayCount(buffer), format, listCopy);
 	if (formattedLen > 0) {
 		fpl__LogWrite(funcName, lineNumber, level, buffer);
 	}
@@ -7531,7 +7533,7 @@ fpl_internal void fpl__ParseVersionString(const char *versionStr, fplVersionInfo
 #	endif
 
 fpl_internal const char *fpl__Win32FormatGuidString(char *buffer, const size_t maxBufferLen, const GUID *guid) {
-	fplFormatString(buffer, maxBufferLen, "{%08lX-%04hX-%04hX-%02hhX%02hhX-%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX}",
+	fplStringFormat(buffer, maxBufferLen, "{%08lX-%04hX-%04hX-%02hhX%02hhX-%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX}",
 		guid->Data1, guid->Data2, guid->Data3,
 		guid->Data4[0], guid->Data4[1], guid->Data4[2], guid->Data4[3],
 		guid->Data4[4], guid->Data4[5], guid->Data4[6], guid->Data4[7]);
@@ -9174,7 +9176,7 @@ fpl_internal void fpl__PushError_Formatted(const char *funcName, const int lineN
 	if (level <= fplLogLevel_Error) {
 		fpl__ErrorState *state = &fpl__global__LastErrorState;
 		char buffer[FPL__MAX_LAST_ERROR_STRING_LENGTH] = fplZeroInit;
-		size_t formattedLen = fplFormatStringArgs(buffer, fplArrayCount(buffer), format, argList);
+		size_t formattedLen = fplStringFormatArgs(buffer, fplArrayCount(buffer), format, argList);
 		if (formattedLen > 0) {
 			fplAssert(state->count < FPL__MAX_ERRORSTATE_COUNT);
 			size_t errorIndex = state->count;
@@ -9547,7 +9549,7 @@ fpl_common_api char *fplCopyString(const char *source, char *dest, const size_t 
 	return(result);
 }
 
-fpl_common_api size_t fplFormatStringArgs(char *destBuffer, const size_t maxDestBufferLen, const char *format, va_list argList) {
+fpl_common_api size_t fplStringFormatArgs(char *destBuffer, const size_t maxDestBufferLen, const char *format, va_list argList) {
 	FPL__CheckArgumentNull(format, 0);
 
 	va_list listCopy;
@@ -9583,11 +9585,11 @@ fpl_common_api size_t fplFormatStringArgs(char *destBuffer, const size_t maxDest
 	return(result);
 }
 
-fpl_common_api size_t fplFormatString(char *destBuffer, const size_t maxDestBufferLen, const char *format, ...) {
+fpl_common_api size_t fplStringFormat(char *destBuffer, const size_t maxDestBufferLen, const char *format, ...) {
 	FPL__CheckArgumentNull(format, 0);
 	va_list argList;
 	va_start(argList, format);
-	size_t result = fplFormatStringArgs(destBuffer, maxDestBufferLen, format, argList);
+	size_t result = fplStringFormatArgs(destBuffer, maxDestBufferLen, format, argList);
 	va_end(argList);
 	return(result);
 }
@@ -9679,7 +9681,7 @@ fpl_common_api void fplConsoleFormatOut(const char *format, ...) {
 	char buffer[FPL_MAX_BUFFER_LENGTH];
 	va_list argList;
 	va_start(argList, format);
-	size_t len = fplFormatStringArgs(buffer, fplArrayCount(buffer), format, argList);
+	size_t len = fplStringFormatArgs(buffer, fplArrayCount(buffer), format, argList);
 	va_end(argList);
 	if (len > 0) {
 		fplConsoleOut(buffer);
@@ -9691,7 +9693,7 @@ fpl_common_api void fplConsoleFormatError(const char *format, ...) {
 	char buffer[FPL_MAX_BUFFER_LENGTH];
 	va_list argList;
 	va_start(argList, format);
-	size_t len = fplFormatStringArgs(buffer, fplArrayCount(buffer), format, argList);
+	size_t len = fplStringFormatArgs(buffer, fplArrayCount(buffer), format, argList);
 	va_end(argList);
 	if (len > 0) {
 		fplConsoleError(buffer);
@@ -10763,7 +10765,7 @@ fpl_common_api void fplDebugFormatOut(const char *format, ...) {
 		char buffer[FPL_MAX_BUFFER_LENGTH];
 		va_list argList;
 		va_start(argList, format);
-		fplFormatStringArgs(buffer, fplArrayCount(buffer), format, argList);
+		fplStringFormatArgs(buffer, fplArrayCount(buffer), format, argList);
 		va_end(argList);
 		fplDebugOut(buffer);
 	}
@@ -11051,7 +11053,7 @@ fpl_internal void fpl__Win32UpdateGameControllers(const fplSettings *settings, c
 					if (!xinputState->isConnected[controllerIndex]) {
 						// Connected
 						xinputState->isConnected[controllerIndex] = true;
-						fplFormatString(xinputState->deviceNames[controllerIndex], fplArrayCount(xinputState->deviceNames[controllerIndex]), "XInput-Device [%d]", controllerIndex);
+						fplStringFormat(xinputState->deviceNames[controllerIndex], fplArrayCount(xinputState->deviceNames[controllerIndex]), "XInput-Device [%d]", controllerIndex);
 
 						fplEvent ev = fplZeroInit;
 						ev.type = fplEventType_Gamepad;
@@ -12402,7 +12404,7 @@ fpl_platform_api bool fplOSGetVersionInfos(fplOSVersionInfos *outInfos) {
 			fplS32ToString((int32_t)info.dwMinorVersion, outInfos->osVersion.minor, fplArrayCount(outInfos->osVersion.minor));
 			fplS32ToString(0, outInfos->osVersion.fix, fplArrayCount(outInfos->osVersion.fix));
 			fplS32ToString((int32_t)info.dwBuildNumber, outInfos->osVersion.build, fplArrayCount(outInfos->osVersion.build));
-			fplFormatString(outInfos->osVersion.fullName, fplArrayCount(outInfos->osVersion.fullName), "%u.%u.%u.%u", info.dwMajorVersion, info.dwMinorVersion, 0, info.dwBuildNumber);
+			fplStringFormat(outInfos->osVersion.fullName, fplArrayCount(outInfos->osVersion.fullName), "%u.%u.%u.%u", info.dwMajorVersion, info.dwMinorVersion, 0, info.dwBuildNumber);
 			const char *versionName = fpl__Win32GetVersionName(info.dwMajorVersion, info.dwMinorVersion);
 			fplCopyString(versionName, outInfos->osName, fplArrayCount(outInfos->osName));
 			return(true);
@@ -12427,7 +12429,7 @@ fpl_platform_api bool fplOSGetVersionInfos(fplOSVersionInfos *outInfos) {
 			fplS32ToString((int32_t)infoEx.dwMinorVersion, outInfos->osVersion.minor, fplArrayCount(outInfos->osVersion.minor));
 			fplS32ToString(0, outInfos->osVersion.fix, fplArrayCount(outInfos->osVersion.fix));
 			fplS32ToString((int32_t)infoEx.dwBuildNumber, outInfos->osVersion.build, fplArrayCount(outInfos->osVersion.build));
-			fplFormatString(outInfos->osVersion.fullName, fplArrayCount(outInfos->osVersion.fullName), "%u.%u.%u.%u", infoEx.dwMajorVersion, infoEx.dwMinorVersion, 0, infoEx.dwBuildNumber);
+			fplStringFormat(outInfos->osVersion.fullName, fplArrayCount(outInfos->osVersion.fullName), "%u.%u.%u.%u", infoEx.dwMajorVersion, infoEx.dwMinorVersion, 0, infoEx.dwBuildNumber);
 			const char *versionName = fpl__Win32GetVersionName(infoEx.dwMajorVersion, infoEx.dwMinorVersion);
 			fplCopyString(versionName, outInfos->osName, fplArrayCount(outInfos->osName));
 			return(true);
@@ -12447,7 +12449,7 @@ fpl_platform_api bool fplOSGetVersionInfos(fplOSVersionInfos *outInfos) {
 			fplS32ToString((int32_t)minor, outInfos->osVersion.minor, fplArrayCount(outInfos->osVersion.minor));
 			fplS32ToString(0, outInfos->osVersion.fix, fplArrayCount(outInfos->osVersion.fix));
 			fplS32ToString((int32_t)build, outInfos->osVersion.build, fplArrayCount(outInfos->osVersion.build));
-			fplFormatString(outInfos->osVersion.fullName, fplArrayCount(outInfos->osVersion.fullName), "%u.%u.%u.%u", major, minor, 0, build);
+			fplStringFormat(outInfos->osVersion.fullName, fplArrayCount(outInfos->osVersion.fullName), "%u.%u.%u.%u", major, minor, 0, build);
 			const char *versionName = fpl__Win32GetVersionName(major, minor);
 			fplCopyString(versionName, outInfos->osName, fplArrayCount(outInfos->osName));
 			return(true);
@@ -14236,7 +14238,7 @@ fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
 				if (xinputState->xinputApi.XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
 					if (!xinputState->isConnected[controllerIndex]) {
 						xinputState->isConnected[controllerIndex] = true;
-						fplFormatString(xinputState->deviceNames[controllerIndex], fplArrayCount(xinputState->deviceNames[controllerIndex]), "XInput-Device [%d]", controllerIndex);
+						fplStringFormat(xinputState->deviceNames[controllerIndex], fplArrayCount(xinputState->deviceNames[controllerIndex]), "XInput-Device [%d]", controllerIndex);
 					}
 					const XINPUT_GAMEPAD *newPadState = &controllerState.Gamepad;
 					fplGamepadState *targetPadState = &outStates->deviceStates[controllerIndex];

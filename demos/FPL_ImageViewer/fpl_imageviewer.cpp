@@ -919,9 +919,9 @@ static void UpdateWindowTitle(ViewerState* state) {
 	if (state->activeFileIndex > -1) {
 		const char* filterName = state->filters[state->activeFilter].name;
 		const char* picFilename = fplExtractFileName(state->pictureFiles[state->activeFileIndex].filePath);
-		fplFormatString(titleBuffer, fplArrayCount(titleBuffer), "%s v%s - %s [%d / %zu] {%s}", VER_PRODUCTNAME_STR, VER_PRODUCTVERSION_STR, picFilename, (state->activeFileIndex + 1), state->pictureFileCount, filterName);
+		fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "%s v%s - %s [%d / %zu] {%s}", VER_PRODUCTNAME_STR, VER_PRODUCTVERSION_STR, picFilename, (state->activeFileIndex + 1), state->pictureFileCount, filterName);
 	} else {
-		fplFormatString(titleBuffer, fplArrayCount(titleBuffer), "%s v%s - No pictures found", VER_PRODUCTNAME_STR, VER_PRODUCTVERSION_STR);
+		fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "%s v%s - No pictures found", VER_PRODUCTNAME_STR, VER_PRODUCTVERSION_STR);
 	}
 	fplSetWindowTitle(titleBuffer);
 }
