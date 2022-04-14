@@ -1605,53 +1605,53 @@ static void TestStrings() {
 
 	ftMsg("Test format ansi string\n");
 	{
-		size_t res = fplFormatString(nullptr, 0, nullptr);
+		size_t res = fplStringFormat(nullptr, 0, nullptr);
 		ftExpects(0, res);
 	}
 	{
 		char buffer[1];
-		size_t res = fplFormatString(buffer, 0, "");
+		size_t res = fplStringFormat(buffer, 0, "");
 		ftExpects(0, res);
 	}
 	{
 		char buffer[1];
-		size_t res = fplFormatString(buffer, fplArrayCount(buffer), "A");
+		size_t res = fplStringFormat(buffer, fplArrayCount(buffer), "A");
 		ftExpects(0, res);
 	}
 	{
 		char buffer[2];
-		size_t res = fplFormatString(buffer, fplArrayCount(buffer), "A");
+		size_t res = fplStringFormat(buffer, fplArrayCount(buffer), "A");
 		ftExpects(1, res);
 		bool matches = fplIsStringEqualLen("A", 1, buffer, 1);
 		ftExpects(true, matches);
 	}
 	{
 		char buffer[5];
-		size_t res = fplFormatString(buffer, fplArrayCount(buffer), "Hello");
+		size_t res = fplStringFormat(buffer, fplArrayCount(buffer), "Hello");
 		ftExpects(0, res);
 	}
 	{
 		char buffer[6];
-		size_t res = fplFormatString(buffer, fplArrayCount(buffer), "Hello");
+		size_t res = fplStringFormat(buffer, fplArrayCount(buffer), "Hello");
 		ftExpects(5, res);
 		bool r = fplIsStringEqualLen("Hello", 5, buffer, 5);
 		ftExpects(true, r);
 	}
 	{
 		char buffer[6];
-		size_t res = fplFormatString(buffer, fplArrayCount(buffer), "%s", "Hello");
+		size_t res = fplStringFormat(buffer, fplArrayCount(buffer), "%s", "Hello");
 		ftExpects(5, res);
 		bool r = fplIsStringEqualLen("Hello", 5, buffer, 5);
 		ftExpects(true, r);
 	}
 	{
 		char buffer[20];
-		size_t res = fplFormatString(buffer, fplArrayCount(buffer), "%4xd-%2d-%2d %2d:%2d:%2d", 2009, 11, 17, 13, 47, 25);
+		size_t res = fplStringFormat(buffer, fplArrayCount(buffer), "%4xd-%2d-%2d %2d:%2d:%2d", 2009, 11, 17, 13, 47, 25);
 		ftExpects(0, res);
 	}
 	{
 		char buffer[20];
-		size_t res = fplFormatString(buffer, fplArrayCount(buffer), "%4d-%2d-%2d %2d:%2d:%2d", 2009, 11, 17, 13, 47, 25);
+		size_t res = fplStringFormat(buffer, fplArrayCount(buffer), "%4d-%2d-%2d %2d:%2d:%2d", 2009, 11, 17, 13, 47, 25);
 		ftExpects(19, res);
 		bool r = fplIsStringEqual("2009-11-17 13:47:25", buffer);
 		ftExpects(true, r);

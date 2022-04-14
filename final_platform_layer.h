@@ -155,7 +155,9 @@ SOFTWARE.
 	#### Bugfixes
 	- Fixed[#130]: [Win32] Main fiber was never properly released
 	- Fixed[#131]: [Win32] Console window was not shown the second time fplPlatformInit() was called
+	- Fixed[#134]: [Win32] Duplicate executable arguments in main() passed when CRT is disabled
 	- Fixed[#124]: [Video/Vulkan] Fallback when creation with validation failed
+	- Fixed[#135]: Stackoverflow in fpl__PushError_Formatted() when FPL_USERFUNC_vsnprintf is overloaded
 
 	#### Breaking Changes
 	- Changed: Renamed function fplOpenBinaryFile() to fplFileOpenBinary()
@@ -175,6 +177,8 @@ SOFTWARE.
 	- Changed: Renamed function fplListDirNext() to fplDirectoryListNext()
 	- Changed: Renamed function fplListDirEnd() to fplDirectoryListEnd()
 	- Changed: Renamed function fplGetPlatformResultName() to fplPlatformGetResultName()
+	- Changed: Renamed function fplFormatString() to fplStrngFormat()
+	- Changed: Renamed function fplFormatStringArgs() to fplStrngFormatArgs()
 	- Changed: Replaced enum flag fplVulkanValidationLayerMode_User with fplVulkanValidationLayerMode_Optional
 	- Changed: Replaced enum flag fplVulkanValidationLayerMode_Callback with fplVulkanValidationLayerMode_Required
 
@@ -5083,7 +5087,7 @@ fpl_platform_api size_t fplUTF8StringToWideString(const char *utf8Source, const 
 * @return Returns the number of required/written characters, excluding the null-terminator
 * @note This is most likely just a wrapper call to vsnprintf()
 */
-fpl_common_api size_t fplFormatString(char *destBuffer, const size_t maxDestBufferLen, const char *format, ...);
+fpl_common_api size_t fplStringFormat(char *destBuffer, const size_t maxDestBufferLen, const char *format, ...);
 /**
 * @brief Fills out the given destination string buffer with a formatted string, using the format specifier and the arguments list.
 * @param destBuffer The destination string buffer
@@ -5093,7 +5097,7 @@ fpl_common_api size_t fplFormatString(char *destBuffer, const size_t maxDestBuff
 * @return Returns the number of required/written characters, excluding the null-terminator
 * @note This is most likely just a wrapper call to vsnprintf()
 */
-fpl_common_api size_t fplFormatStringArgs(char *destBuffer, const size_t maxDestBufferLen, const char *format, va_list argList);
+fpl_common_api size_t fplStringFormatArgs(char *destBuffer, const size_t maxDestBufferLen, const char *format, va_list argList);
 
 /**
 * @brief Converts the given string into a 32-bit integer constrained by string length
@@ -7263,8 +7267,10 @@ fpl_internal void fpl__LogWriteArgs(const char *funcName, const int lineNumber, 
 	va_list listCopy;
 	va_copy(listCopy, argList);
 	char buffer[FPL_MAX_BUFFER_LENGTH];
-	fplFormatStringArgs(buffer, fplArrayCount(buffer), format, listCopy);
-	fpl__LogWrite(funcName, lineNumber, level, buffer);
+	size_t formattedLen = fplStringFormatArgs(buffer, fplArrayCount(buffer), format, listCopy);
+	if (formattedLen > 0) {
+		fpl__LogWrite(funcName, lineNumber, level, buffer);
+	}
 	va_end(listCopy);
 }
 
@@ -7527,7 +7533,7 @@ fpl_internal void fpl__ParseVersionString(const char *versionStr, fplVersionInfo
 #	endif
 
 fpl_internal const char *fpl__Win32FormatGuidString(char *buffer, const size_t maxBufferLen, const GUID *guid) {
-	fplFormatString(buffer, maxBufferLen, "{%08lX-%04hX-%04hX-%02hhX%02hhX-%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX}",
+	fplStringFormat(buffer, maxBufferLen, "{%08lX-%04hX-%04hX-%02hhX%02hhX-%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX}",
 		guid->Data1, guid->Data2, guid->Data3,
 		guid->Data4[0], guid->Data4[1], guid->Data4[2], guid->Data4[3],
 		guid->Data4[4], guid->Data4[5], guid->Data4[6], guid->Data4[7]);
@@ -9170,12 +9176,13 @@ fpl_internal void fpl__PushError_Formatted(const char *funcName, const int lineN
 	if (level <= fplLogLevel_Error) {
 		fpl__ErrorState *state = &fpl__global__LastErrorState;
 		char buffer[FPL__MAX_LAST_ERROR_STRING_LENGTH] = fplZeroInit;
-		fplFormatStringArgs(buffer, fplArrayCount(buffer), format, argList);
-		size_t messageLen = fplGetStringLength(buffer);
-		fplAssert(state->count < FPL__MAX_ERRORSTATE_COUNT);
-		size_t errorIndex = state->count;
-		state->count = (state->count + 1) % FPL__MAX_ERRORSTATE_COUNT;
-		fplCopyStringLen(buffer, messageLen, state->errors[errorIndex], FPL__MAX_LAST_ERROR_STRING_LENGTH);
+		size_t formattedLen = fplStringFormatArgs(buffer, fplArrayCount(buffer), format, argList);
+		if (formattedLen > 0) {
+			fplAssert(state->count < FPL__MAX_ERRORSTATE_COUNT);
+			size_t errorIndex = state->count;
+			state->count = (state->count + 1) % FPL__MAX_ERRORSTATE_COUNT;
+			fplCopyStringLen(buffer, formattedLen, state->errors[errorIndex], FPL__MAX_LAST_ERROR_STRING_LENGTH);
+		}
 	}
 
 #if defined(FPL__ENABLE_LOGGING)
@@ -9542,7 +9549,7 @@ fpl_common_api char *fplCopyString(const char *source, char *dest, const size_t 
 	return(result);
 }
 
-fpl_common_api size_t fplFormatStringArgs(char *destBuffer, const size_t maxDestBufferLen, const char *format, va_list argList) {
+fpl_common_api size_t fplStringFormatArgs(char *destBuffer, const size_t maxDestBufferLen, const char *format, va_list argList) {
 	FPL__CheckArgumentNull(format, 0);
 
 	va_list listCopy;
@@ -9578,11 +9585,11 @@ fpl_common_api size_t fplFormatStringArgs(char *destBuffer, const size_t maxDest
 	return(result);
 }
 
-fpl_common_api size_t fplFormatString(char *destBuffer, const size_t maxDestBufferLen, const char *format, ...) {
+fpl_common_api size_t fplStringFormat(char *destBuffer, const size_t maxDestBufferLen, const char *format, ...) {
 	FPL__CheckArgumentNull(format, 0);
 	va_list argList;
 	va_start(argList, format);
-	size_t result = fplFormatStringArgs(destBuffer, maxDestBufferLen, format, argList);
+	size_t result = fplStringFormatArgs(destBuffer, maxDestBufferLen, format, argList);
 	va_end(argList);
 	return(result);
 }
@@ -9674,7 +9681,7 @@ fpl_common_api void fplConsoleFormatOut(const char *format, ...) {
 	char buffer[FPL_MAX_BUFFER_LENGTH];
 	va_list argList;
 	va_start(argList, format);
-	size_t len = fplFormatStringArgs(buffer, fplArrayCount(buffer), format, argList);
+	size_t len = fplStringFormatArgs(buffer, fplArrayCount(buffer), format, argList);
 	va_end(argList);
 	if (len > 0) {
 		fplConsoleOut(buffer);
@@ -9686,7 +9693,7 @@ fpl_common_api void fplConsoleFormatError(const char *format, ...) {
 	char buffer[FPL_MAX_BUFFER_LENGTH];
 	va_list argList;
 	va_start(argList, format);
-	size_t len = fplFormatStringArgs(buffer, fplArrayCount(buffer), format, argList);
+	size_t len = fplStringFormatArgs(buffer, fplArrayCount(buffer), format, argList);
 	va_end(argList);
 	if (len > 0) {
 		fplConsoleError(buffer);
@@ -10758,7 +10765,7 @@ fpl_common_api void fplDebugFormatOut(const char *format, ...) {
 		char buffer[FPL_MAX_BUFFER_LENGTH];
 		va_list argList;
 		va_start(argList, format);
-		fplFormatStringArgs(buffer, fplArrayCount(buffer), format, argList);
+		fplStringFormatArgs(buffer, fplArrayCount(buffer), format, argList);
 		va_end(argList);
 		fplDebugOut(buffer);
 	}
@@ -11046,7 +11053,7 @@ fpl_internal void fpl__Win32UpdateGameControllers(const fplSettings *settings, c
 					if (!xinputState->isConnected[controllerIndex]) {
 						// Connected
 						xinputState->isConnected[controllerIndex] = true;
-						fplFormatString(xinputState->deviceNames[controllerIndex], fplArrayCount(xinputState->deviceNames[controllerIndex]), "XInput-Device [%d]", controllerIndex);
+						fplStringFormat(xinputState->deviceNames[controllerIndex], fplArrayCount(xinputState->deviceNames[controllerIndex]), "XInput-Device [%d]", controllerIndex);
 
 						fplEvent ev = fplZeroInit;
 						ev.type = fplEventType_Gamepad;
@@ -12397,7 +12404,7 @@ fpl_platform_api bool fplOSGetVersionInfos(fplOSVersionInfos *outInfos) {
 			fplS32ToString((int32_t)info.dwMinorVersion, outInfos->osVersion.minor, fplArrayCount(outInfos->osVersion.minor));
 			fplS32ToString(0, outInfos->osVersion.fix, fplArrayCount(outInfos->osVersion.fix));
 			fplS32ToString((int32_t)info.dwBuildNumber, outInfos->osVersion.build, fplArrayCount(outInfos->osVersion.build));
-			fplFormatString(outInfos->osVersion.fullName, fplArrayCount(outInfos->osVersion.fullName), "%u.%u.%u.%u", info.dwMajorVersion, info.dwMinorVersion, 0, info.dwBuildNumber);
+			fplStringFormat(outInfos->osVersion.fullName, fplArrayCount(outInfos->osVersion.fullName), "%u.%u.%u.%u", info.dwMajorVersion, info.dwMinorVersion, 0, info.dwBuildNumber);
 			const char *versionName = fpl__Win32GetVersionName(info.dwMajorVersion, info.dwMinorVersion);
 			fplCopyString(versionName, outInfos->osName, fplArrayCount(outInfos->osName));
 			return(true);
@@ -12422,7 +12429,7 @@ fpl_platform_api bool fplOSGetVersionInfos(fplOSVersionInfos *outInfos) {
 			fplS32ToString((int32_t)infoEx.dwMinorVersion, outInfos->osVersion.minor, fplArrayCount(outInfos->osVersion.minor));
 			fplS32ToString(0, outInfos->osVersion.fix, fplArrayCount(outInfos->osVersion.fix));
 			fplS32ToString((int32_t)infoEx.dwBuildNumber, outInfos->osVersion.build, fplArrayCount(outInfos->osVersion.build));
-			fplFormatString(outInfos->osVersion.fullName, fplArrayCount(outInfos->osVersion.fullName), "%u.%u.%u.%u", infoEx.dwMajorVersion, infoEx.dwMinorVersion, 0, infoEx.dwBuildNumber);
+			fplStringFormat(outInfos->osVersion.fullName, fplArrayCount(outInfos->osVersion.fullName), "%u.%u.%u.%u", infoEx.dwMajorVersion, infoEx.dwMinorVersion, 0, infoEx.dwBuildNumber);
 			const char *versionName = fpl__Win32GetVersionName(infoEx.dwMajorVersion, infoEx.dwMinorVersion);
 			fplCopyString(versionName, outInfos->osName, fplArrayCount(outInfos->osName));
 			return(true);
@@ -12442,7 +12449,7 @@ fpl_platform_api bool fplOSGetVersionInfos(fplOSVersionInfos *outInfos) {
 			fplS32ToString((int32_t)minor, outInfos->osVersion.minor, fplArrayCount(outInfos->osVersion.minor));
 			fplS32ToString(0, outInfos->osVersion.fix, fplArrayCount(outInfos->osVersion.fix));
 			fplS32ToString((int32_t)build, outInfos->osVersion.build, fplArrayCount(outInfos->osVersion.build));
-			fplFormatString(outInfos->osVersion.fullName, fplArrayCount(outInfos->osVersion.fullName), "%u.%u.%u.%u", major, minor, 0, build);
+			fplStringFormat(outInfos->osVersion.fullName, fplArrayCount(outInfos->osVersion.fullName), "%u.%u.%u.%u", major, minor, 0, build);
 			const char *versionName = fpl__Win32GetVersionName(major, minor);
 			fplCopyString(versionName, outInfos->osName, fplArrayCount(outInfos->osName));
 			return(true);
@@ -14231,7 +14238,7 @@ fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
 				if (xinputState->xinputApi.XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
 					if (!xinputState->isConnected[controllerIndex]) {
 						xinputState->isConnected[controllerIndex] = true;
-						fplFormatString(xinputState->deviceNames[controllerIndex], fplArrayCount(xinputState->deviceNames[controllerIndex]), "XInput-Device [%d]", controllerIndex);
+						fplStringFormat(xinputState->deviceNames[controllerIndex], fplArrayCount(xinputState->deviceNames[controllerIndex]), "XInput-Device [%d]", controllerIndex);
 					}
 					const XINPUT_GAMEPAD *newPadState = &controllerState.Gamepad;
 					fplGamepadState *targetPadState = &outStates->deviceStates[controllerIndex];
@@ -23419,7 +23426,7 @@ typedef struct fpl__Win32CommandLineUTF8Arguments {
 	uint32_t count;
 } fpl__Win32CommandLineUTF8Arguments;
 
-fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseWideArguments(LPWSTR cmdLine) {
+fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseWideArguments(LPWSTR cmdLine, const bool appendExecutable) {
 	fpl__Win32CommandLineUTF8Arguments args = fplZeroInit;
 
 	// @NOTE(final): Temporary load and unload shell32 for parsing the arguments
@@ -23427,24 +23434,31 @@ fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseWideArguments(LPW
 	if (shellapiLibrary != fpl_null) {
 		fpl__win32_func_CommandLineToArgvW *commandLineToArgvW = (fpl__win32_func_CommandLineToArgvW *)GetProcAddress(shellapiLibrary, "CommandLineToArgvW");
 		if (commandLineToArgvW != fpl_null) {
-			// Parse arguments and compute total UTF8 string length
+			// Parse executable arguments
+			int cmdLineLen = lstrlenW(cmdLine);
 			int executableFilePathArgumentCount = 0;
-			wchar_t **executableFilePathArgs = commandLineToArgvW(L"", &executableFilePathArgumentCount);
+			wchar_t **executableFilePathArgs = NULL;
 			size_t executableFilePathLen = 0;
-			for (int i = 0; i < executableFilePathArgumentCount; ++i) {
-				if (i > 0) {
-					// Include whitespace
-					executableFilePathLen++;
+			if (appendExecutable || (cmdLineLen == 0)) {
+				executableFilePathArgumentCount = 0;
+				executableFilePathArgs = commandLineToArgvW(L"", &executableFilePathArgumentCount);
+				executableFilePathLen = 0;
+				for (int i = 0; i < executableFilePathArgumentCount; ++i) {
+					if (i > 0) {
+						// Include whitespace
+						executableFilePathLen++;
+					}
+					size_t sourceLen = lstrlenW(executableFilePathArgs[i]);
+					int destLen = WideCharToMultiByte(CP_UTF8, 0, executableFilePathArgs[i], (int)sourceLen, fpl_null, 0, fpl_null, fpl_null);
+					executableFilePathLen += destLen;
 				}
-				size_t sourceLen = lstrlenW(executableFilePathArgs[i]);
-				int destLen = WideCharToMultiByte(CP_UTF8, 0, executableFilePathArgs[i], (int)sourceLen, fpl_null, 0, fpl_null, fpl_null);
-				executableFilePathLen += destLen;
 			}
 
+			// Parse arguments and add to total UTF8 string length
 			int actualArgumentCount = 0;
 			wchar_t **actualArgs = fpl_null;
 			size_t actualArgumentsLen = 0;
-			if (cmdLine != fpl_null && lstrlenW(cmdLine) > 0) {
+			if (cmdLine != fpl_null && cmdLineLen > 0) {
 				actualArgs = commandLineToArgvW(cmdLine, &actualArgumentCount);
 				for (int i = 0; i < actualArgumentCount; ++i) {
 					size_t sourceLen = lstrlenW(actualArgs[i]);
@@ -23453,23 +23467,34 @@ fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseWideArguments(LPW
 				}
 			}
 
-			// Calculate argument 
-			args.count = 1 + actualArgumentCount;
-			size_t totalStringLen = executableFilePathLen + actualArgumentsLen + args.count;
+			// Calculate argument
+			uint32_t totalArgumentCount = 0;
+			if (executableFilePathArgumentCount > 0) {
+				totalArgumentCount++;
+			}
+			totalArgumentCount += actualArgumentCount;
+
+			// @NOTE(final): We allocate one memory block that contains
+			// - The arguments as one string, each terminated by zero-character -> char*
+			// - A padding
+			// - The size of the string array -> char**
+			size_t totalStringLen = executableFilePathLen + actualArgumentsLen + totalArgumentCount;
 			size_t singleArgStringSize = sizeof(char) * (totalStringLen);
 			size_t arbitaryPadding = 64;
-			size_t argArraySize = sizeof(char **) * args.count;
+			size_t argArraySize = sizeof(char **) * totalArgumentCount;
 			size_t totalArgSize = singleArgStringSize + arbitaryPadding + argArraySize;
 
 			// @NOTE(final): We cannot use fpl__AllocateDynamicMemory here, because the main function is not called yet - therefore we dont have any fplMemorySettings set at this point.
+			args.count = totalArgumentCount;
 			args.mem = (uint8_t *)fplMemoryAllocate(totalArgSize);
-			char *argsString = (char *)args.mem;
 			args.args = (char **)((uint8_t *)args.mem + singleArgStringSize + arbitaryPadding);
 
-			// Convert executable path to UTF8
-			char *destArg = argsString;
+			// Convert executable path to UTF8 and add it, if needed
+			char *destArg = (char *)args.mem;
+			int startArgIndex = 0;
+			if (executableFilePathArgumentCount > 0)
 			{
-				args.args[0] = argsString;
+				args.args[startArgIndex++] = destArg;
 				for (int i = 0; i < executableFilePathArgumentCount; ++i) {
 					if (i > 0) {
 						*destArg++ = ' ';
@@ -23484,11 +23509,11 @@ fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseWideArguments(LPW
 				LocalFree(executableFilePathArgs);
 			}
 
-			// Convert actual arguments to UTF8
+			// Convert actual arguments to UTF8 and add it, if needed
 			if (actualArgumentCount > 0) {
 				fplAssert(actualArgs != fpl_null);
 				for (int i = 0; i < actualArgumentCount; ++i) {
-					args.args[1 + i] = destArg;
+					args.args[startArgIndex++] = destArg;
 					wchar_t *sourceArg = actualArgs[i];
 					size_t sourceArgLen = lstrlenW(sourceArg);
 					int destArgLen = WideCharToMultiByte(CP_UTF8, 0, sourceArg, (int)sourceArgLen, fpl_null, 0, fpl_null, fpl_null);
@@ -23505,7 +23530,7 @@ fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseWideArguments(LPW
 	return(args);
 }
 
-fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseAnsiArguments(LPSTR cmdLine) {
+fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseAnsiArguments(LPSTR cmdLine, const bool appendExecutable) {
 	fpl__Win32CommandLineUTF8Arguments result;
 	if (cmdLine != fpl_null) {
 		size_t ansiSourceLen = fplGetStringLength(cmdLine);
@@ -23514,11 +23539,11 @@ fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseAnsiArguments(LPS
 		wchar_t *wideCmdLine = (wchar_t *)fplMemoryAllocate(sizeof(wchar_t) * (wideDestLen + 1));
 		MultiByteToWideChar(CP_ACP, 0, cmdLine, (int)ansiSourceLen, wideCmdLine, wideDestLen);
 		wideCmdLine[wideDestLen] = 0;
-		result = fpl__Win32ParseWideArguments(wideCmdLine);
+		result = fpl__Win32ParseWideArguments(wideCmdLine, appendExecutable);
 		fplMemoryFree(wideCmdLine);
 	} else {
 		wchar_t tmp[1] = { 0 };
-		result = fpl__Win32ParseWideArguments(tmp);
+		result = fpl__Win32ParseWideArguments(tmp, appendExecutable);
 	}
 	return(result);
 }
@@ -23585,10 +23610,10 @@ void __stdcall mainCRTStartup(void) {
 	fpl__Win32CommandLineUTF8Arguments args;
 #	if defined(UNICODE)
 	LPWSTR argsW = GetCommandLineW();
-	args = fpl__Win32ParseWideArguments(argsW);
+	args = fpl__Win32ParseWideArguments(argsW, false);
 #	else
 	LPSTR argsA = GetCommandLineA();
-	args = fpl__Win32ParseAnsiArguments(argsA);
+	args = fpl__Win32ParseAnsiArguments(argsA, false);
 #	endif
 	int result = main(args.count, args.args);
 	fplMemoryFree(args.mem);
@@ -23606,7 +23631,7 @@ void __stdcall mainCRTStartup(void) {
 #			if defined(UNICODE)
 int WINAPI wWinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPWSTR cmdLine, int cmdShow) {
 	fpl__Win32InitConsole();
-	fpl__Win32CommandLineUTF8Arguments args = fpl__Win32ParseWideArguments(cmdLine);
+	fpl__Win32CommandLineUTF8Arguments args = fpl__Win32ParseWideArguments(cmdLine, true);
 	int result = main(args.count, args.args);
 	fplMemoryFree(args.mem);
 	fpl__Win32FreeConsole();
@@ -23615,7 +23640,7 @@ int WINAPI wWinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPWSTR cmdLin
 #			else
 int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine, int cmdShow) {
 	fpl__Win32InitConsole();
-	fpl__Win32CommandLineUTF8Arguments args = fpl__Win32ParseAnsiArguments(cmdLine);
+	fpl__Win32CommandLineUTF8Arguments args = fpl__Win32ParseAnsiArguments(cmdLine, true);
 	int result = main(args.count, args.args);
 	fplMemoryFree(args.mem);
 	fpl__Win32FreeConsole();
