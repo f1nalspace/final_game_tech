@@ -37,6 +37,10 @@ Todo:
 	- Migrate to modern opengl 3.3+
 
 Changelog:
+	# 2022-04-14:
+	- Fixed thread pool free was broken
+	- Fixed demos was never freed
+
 	# 2021-08-26:
 	- Fixed weird crash on fplPlatformInit() due to wrong macro configuration for main include vs translation unit
 

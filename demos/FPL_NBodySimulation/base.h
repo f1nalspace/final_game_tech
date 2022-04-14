@@ -7,6 +7,7 @@
 
 class BaseSimulation {
 public:
+	virtual ~BaseSimulation() {};
 	virtual void ResetStats() = 0;
 	virtual void ClearBodies() = 0;
 	virtual void ClearParticles() = 0;

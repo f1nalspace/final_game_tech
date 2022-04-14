@@ -49,7 +49,13 @@ DemoApplication::DemoApplication() :
 	activeScenarioIndex(0),
 	simulationActive(true),
 	demoIndex(0),
-	demo(nullptr) {
+	demo(nullptr),
+	keyStates(),
+	osdFont(FontAtlas()),
+	chartFont(FontAtlas()),
+	chartFontTexture(nullptr),
+	osdFontTexture(nullptr)
+{
 
 	demoStats.reserve(kDemoCount);
 	benchmarkActive = false;

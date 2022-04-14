@@ -126,6 +126,7 @@ namespace Demo1 {
 		}
 		delete _workerPool;
 		delete _grid;
+		BaseSimulation::~BaseSimulation();
 	}
 
 	void ParticleSimulation::AddExternalForces(const Vec2f &force) {
