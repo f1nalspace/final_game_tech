@@ -38,7 +38,7 @@ int main(int argc, char *argv[]) {
 		constexpr int AtlasHeight = 512;
 		constexpr int CharFirst = 32;
 		constexpr int CharLast = 255;
-		constexpr float FontHeight = 24.0f;
+		constexpr float FontHeight = 52.0f;
 		constexpr float PixelToUnits = 1.0f / FontHeight;
 		constexpr int CharCount = (CharLast - CharFirst) + 1;
 		stbtt_bakedchar *bakedChars = (stbtt_bakedchar *)fplMemoryAllocate(CharCount * sizeof(stbtt_bakedchar));
@@ -47,7 +47,7 @@ int main(int argc, char *argv[]) {
 		GLuint ftex = 0;
 
 		fplFileHandle fontFile;
-		if(fplFileOpenBinary("c:/windows/fonts/times.ttf", &fontFile)) {
+		if(fplFileOpenBinary("c:/windows/fonts/arial.ttf", &fontFile)) {
 			uint32_t fileSize = fplFileGetSizeFromHandle32(&fontFile);
 			uint8_t *ttf_buffer = (uint8_t *)fplMemoryAllocate(fileSize);
 			fplFileReadBlock32(&fontFile, fileSize, ttf_buffer, fileSize);
