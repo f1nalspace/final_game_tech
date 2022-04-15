@@ -11523,7 +11523,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 fpl_internal HICON fpl__Win32LoadIconFromImageSource(const fpl__Win32Api *wapi, const HINSTANCE appInstance, const fplImageSource *imageSource) {
 	fplAssert(imageSource != fpl_null);
 	HICON result = 0;
-	if (imageSource->width > 0 && imageSource->height > 0 && imageSource->data > 0) {
+	if (imageSource->width > 0 && imageSource->height > 0 && imageSource->data != fpl_null) {
 		BITMAPV5HEADER bi = fplZeroInit;
 		bi.bV5Size = sizeof(bi);
 		bi.bV5Width = (LONG)imageSource->width;
