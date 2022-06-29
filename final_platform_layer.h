@@ -158,6 +158,7 @@ SOFTWARE.
 	- Fixed[#134]: [Win32] Duplicate executable arguments in main() passed when CRT is disabled
 	- Fixed[#124]: [Video/Vulkan] Fallback when creation with validation failed
 	- Fixed[#135]: Stackoverflow in fpl__PushError_Formatted() when FPL_USERFUNC_vsnprintf is overloaded
+	- Fixed[#136]: Video initialization failed due to wrong @ref fplGraphicsApiSettings union
 
 	#### Breaking Changes
 	- Changed: Renamed function fplOpenBinaryFile() to fplFileOpenBinary()
@@ -3594,7 +3595,7 @@ typedef struct fplVulkanSettings {
 #endif // FPL__ENABLE_VIDEO_VULKAN
 
 //! A union that contains graphics api settings
-typedef union fplGraphicsApiSettings {
+typedef struct fplGraphicsApiSettings {
 #if defined(FPL__ENABLE_VIDEO_OPENGL)
 	//! OpenGL settings
 	fplOpenGLSettings opengl;
