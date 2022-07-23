@@ -21525,7 +21525,6 @@ fpl_internal fplAudioResultType fpl__AudioInitAlsa(const fplAudioSettings *audio
 	//
 	float bufferSizeScaleFactor = 1.0f;
 	if ((targetFormat->defaultFields & fplAudioDefaultFields_BufferSize) == fplAudioDefaultFields_BufferSize) {
-		// @TODO(final): Do not allocate snd_pcm_info_t on the stack, use temporary memory instead
 		size_t pcmInfoSize = alsaApi->snd_pcm_info_sizeof();
 		snd_pcm_info_t *pcmInfo = (snd_pcm_info_t *)fpl__AllocateTemporaryMemory(pcmInfoSize, 8);
 		if (pcmInfo == fpl_null) {
