@@ -744,7 +744,8 @@ extern "C" {
 			float w = (float)(packedChar->xoff2 - packedChar->xoff);
 			float h = (float)(packedChar->yoff2 - packedChar->yoff);
 
-			float advance = packedChar->xadvance;
+			//float advance = packedChar->xadvance;
+			float advance = rawToPixels * advanceRaw;
 
 			// Bitmap coordinates (UV)
 			targetGlyph->bitmapRect.x = (uint16_t)packedChar->x0;

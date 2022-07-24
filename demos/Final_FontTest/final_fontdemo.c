@@ -8,7 +8,8 @@
 #define FNT_IMPLEMENTATION
 #include <final_font.h>
 
-#include "font_avril_sans_regular.h"
+//#include "font_avril_sans_regular.h"
+#include "font_sulfur_point_regular.h"
 
 typedef struct CodePointRange {
 	uint16_t from;
@@ -85,9 +86,9 @@ int main(int argc, char **argv) {
 
 			//fontData = LoadFontFromFile("c:/windows/fonts/arial.ttf");
 #if 1
-			fontData.size = fontAvrilSansRegularLength;
-			fontData.data = fontAvrilSansRegularPtr;
-			fontData.name = fontAvrilSansRegularName;
+			fontData.size = fontSulphurPointRegularSize;
+			fontData.data = fontSulphurPointRegularData;
+			fontData.name = fontSulphurPointRegularName;
 			fontData.index = 0;
 #endif
 
@@ -152,7 +153,7 @@ int main(int argc, char **argv) {
 				char bitmapFilename[100];
 				for (uint32_t bitmapIndex = 0; bitmapIndex < atlas.bitmapCount; ++bitmapIndex) {
 					const fntBitmap *bitmap = atlas.bitmaps + bitmapIndex;
-					fplFormatString(bitmapFilename, sizeof(bitmapFilename), "font_bitmap%lu.bmp", bitmapIndex);
+					fplStringFormat(bitmapFilename, sizeof(bitmapFilename), "font_bitmap%lu.bmp", bitmapIndex);
 					fplPathCombine(bitmapFilePath, sizeof(bitmapFilePath), 3, homePath, "Downloads", bitmapFilename);
 					fntSaveBitmapToFile(bitmap, bitmapFilePath);
 				}
@@ -218,7 +219,7 @@ int main(int argc, char **argv) {
 					glEnd();
 
 					//const char *text = "The quick brown fox jumps over the lazy dog";
-					const char *text = "Five WÎx Quacking Zephyrs";
+					const char *text = "Five Wax Quacking Zephyrs";
 
 					fntComputeQuadsFlags flags = fntComputeQuadsFlags_None;
 					if (!topDown) {
@@ -233,7 +234,6 @@ int main(int argc, char **argv) {
 					//flags |= fntComputeQuadsFlags_AlignLeft;
 
 					quadCount = fntGetQuadCountFromUTF8(text);
-
 
 					size_t maxQuadCount = fplArrayCount(fontQuads);
 					fplAssert(maxQuadCount >= quadCount);
@@ -258,6 +258,8 @@ int main(int argc, char **argv) {
 						float lineHeight = scaledAscent - scaledDescent;
 
 						float boundsWidth = quadsBounds.right - quadsBounds.left;
+
+						textX -= boundsWidth * 0.5f;
 
 						// Line Top
 						glColor3f(0.0f, 0.0f, 1.0f);

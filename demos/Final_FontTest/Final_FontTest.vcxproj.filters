@@ -22,5 +22,6 @@
       <Filter>dependencies</Filter>
     </ClInclude>
     <ClInclude Include="font_avril_sans_regular.h" />
+    <ClInclude Include="font_sulfur_point_regular.h" />
   </ItemGroup>
 </Project>
