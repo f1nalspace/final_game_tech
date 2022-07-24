@@ -276,7 +276,9 @@ extern "C" {
 
 	typedef struct fntFontSize {
 		//! The font size in pixels
-		float f32;
+		float value;
+		//! The inverse font size in pixels, to scale dimensions into range of 0.0 to 1.0
+		float inverse;
 	} fntFontSize;
 
 	typedef struct fntCodePoint {
@@ -407,6 +409,8 @@ extern "C" {
 		uint32_t lineCount;
 	} fntTextSize;
 
+	fnt_api fntFontSize fntCreateFontSize(const float size);
+
 	fnt_api bool fntGetFontMetrics(const fntFontAtlas *atlas, const float charScale, float *outAscent, float *outDescent, float *outLineGap);
 
 	fnt_api size_t fntGetQuadCountFromUTF8(const char *utf8);
@@ -465,7 +469,12 @@ extern "C" {
 
 #ifdef __cplusplus
 extern "C" {
-#endif	
+#endif
+
+	static bool fnt__IsValidFontSize(const fntFontSize size) {
+		if (size.value < FNT__MIN_FONT_SIZE || size.inverse == 0) return(false);
+		return(true);
+	}
 
 	static void fnt__FreeNotNull(void *ptr) {
 		if (ptr != NULL)
@@ -610,7 +619,7 @@ extern "C" {
 	}
 
 	fnt_api bool fntInitFontAtlas(fntFontAtlas *atlas, const fntFontData *fontData, const fntFontSize fontSize) {
-		if (atlas == NULL || !fnt__IsValidFontData(fontData) || fontSize.f32 < FNT__MIN_FONT_SIZE) return(false);
+		if (atlas == NULL || !fnt__IsValidFontData(fontData) || !fnt__IsValidFontSize(fontSize)) return(false);
 
 		int fontOffset = stbtt_GetFontOffsetForIndex(fontData->data, fontData->index);
 		if (fontOffset < 0) {
@@ -622,7 +631,7 @@ extern "C" {
 			return(false);
 		}
 
-		const float rawToPixels = stbtt_ScaleForPixelHeight(&sinfo, fontSize.f32);
+		const float rawToPixels = stbtt_ScaleForPixelHeight(&sinfo, fontSize.value);
 
 		// Get vertical metrics
 		int ascentRaw, descentRaw, lineGapRaw;
@@ -642,7 +651,7 @@ extern "C" {
 		atlas->descent = descentRaw * rawToPixels;
 		atlas->lineGap = lineGapRaw * rawToPixels;
 
-		fnt__InitWhiteSpaceTable(&atlas->whitespaceTable, &sinfo, fontSize.f32);
+		fnt__InitWhiteSpaceTable(&atlas->whitespaceTable, &sinfo, fontSize.value);
 
 		return(true);
 	}
@@ -654,24 +663,27 @@ extern "C" {
 
 		// @TODO(final): Collapse into one memory allocation (fntBitmap + pixels)
 
+		size_t bitmapLen = sizeof(uint8_t) * width * height;
+
 		uint32_t oldCount = atlas->bitmapCount;
 		uint32_t newCount = oldCount + 1;
 		fntBitmap *newBitmaps = (fntBitmap *)FNT_REALLOC(atlas->bitmaps, sizeof(fntBitmap) * newCount);
+		atlas->bitmaps = newBitmaps;
+		atlas->bitmapCount = newCount;
 		if (newBitmaps == NULL) return(UINT32_MAX);
+
+		uint8_t *pixels = (uint8_t *)FNT_MALLOC(bitmapLen);
+		if (pixels == NULL) return(UINT32_MAX);
+		FNT_MEMSET(pixels, 0, bitmapLen);
 
 		uint32_t index = oldCount;
 
-		size_t bitmapLen = sizeof(uint8_t) * width * height;
-
 		fntBitmap *newBitmap = newBitmaps + index;
+		fplClearStruct(newBitmap);
 		newBitmap->width = width;
 		newBitmap->height = height;
 		newBitmap->format = fntFontBitmapFormat_Alpha8;
-		newBitmap->pixels = (uint8_t *)FNT_MALLOC(bitmapLen);
-		FNT_MEMSET((uint8_t *)newBitmap->pixels, 0, bitmapLen);
-
-		atlas->bitmaps = newBitmaps;
-		atlas->bitmapCount = newCount;
+		newBitmap->pixels = pixels;
 
 		return(index);
 	}
@@ -741,11 +753,10 @@ extern "C" {
 			float x1 = packedChar->xoff2;
 			float y1 = packedChar->yoff2;
 
-			float w = (float)(packedChar->xoff2 - packedChar->xoff);
-			float h = (float)(packedChar->yoff2 - packedChar->yoff);
+			float w = packedChar->xoff2 - packedChar->xoff;
+			float h = packedChar->yoff2 - packedChar->yoff;
 
-			//float advance = packedChar->xadvance;
-			float advance = rawToPixels * advanceRaw;
+			float advance = packedChar->xadvance;
 
 			// Bitmap coordinates (UV)
 			targetGlyph->bitmapRect.x = (uint16_t)packedChar->x0;
@@ -762,7 +773,7 @@ extern "C" {
 	}
 
 	fnt_api bool fntAddToFontAtlas(fntFontContext *context, fntFontAtlas *atlas, const fntFontData *fontData, const fntFontSize fontSize, const fntCodePoint codePointStart, const fntCodePoint codePointEnd) {
-		if (context == NULL || !fnt__IsValidFontAtlas(atlas) || !fnt__IsValidFontData(fontData) || (fontSize.f32 < FNT__MIN_FONT_SIZE)) return(false);
+		if (context == NULL || !fnt__IsValidFontAtlas(atlas) || !fnt__IsValidFontData(fontData) || !fnt__IsValidFontSize(fontSize)) return(false);
 
 		if (codePointStart.u16 == 0 || codePointEnd.u16 == 0 || codePointEnd.u16 < codePointStart.u16) return(false);
 
@@ -776,7 +787,7 @@ extern "C" {
 			return(false);
 		}
 
-		const float rawToPixels = stbtt_ScaleForPixelHeight(&sinfo, fontSize.f32);
+		const float rawToPixels = stbtt_ScaleForPixelHeight(&sinfo, fontSize.value);
 
 		fnt__STBFontContext *internalCtx = (fnt__STBFontContext *)context;
 		FNT_ASSERT(internalCtx->maxBitmapSize > 0);
@@ -819,7 +830,7 @@ extern "C" {
 			stbtt_packedchar *currentPackedChars = packedChars + currentCodePointIndex;
 
 			stbtt_pack_range range = FNT__ZERO_INIT;
-			range.font_size = fontSize.f32;
+			range.font_size = fontSize.value;
 			range.num_chars = remainingCodePointCount;
 			range.first_unicode_codepoint_in_range = currentCodePointStart;
 			range.chardata_for_range = currentPackedChars;
@@ -1044,9 +1055,7 @@ extern "C" {
 		if (outBaselineOffset != NULL)
 			*outBaselineOffset = 0;
 
-		const float invFontSize = 1.0f / atlas->fontSize.f32;
-
-		float scale = invFontSize * charScale;
+		float scale = atlas->fontSize.inverse * charScale;
 
 		float ascent = atlas->ascent * scale;
 		float descent = atlas->descent * scale;
@@ -1328,12 +1337,18 @@ extern "C" {
 		return(true);
 	}
 
+	fnt_api fntFontSize fntCreateFontSize(const float size) {
+		fntFontSize result;
+		result.value = size;
+		result.inverse = (size > 0) ? 1.0f / size : 0.0f;
+		return(result);
+	}
+
 	fnt_api bool fntGetFontMetrics(const fntFontAtlas *atlas, const float charScale, float *outAscent, float *outDescent, float *outLineGap) {
 		if (!fnt__IsValidFontAtlas(atlas)) {
 			return(false);
 		}
-		const float invFontSize = 1.0f / atlas->fontSize.f32;
-		const float scale = invFontSize * charScale;
+		const float scale = atlas->fontSize.inverse * charScale;
 		*outAscent = atlas->ascent * scale;
 		*outDescent = atlas->descent * scale;
 		*outLineGap = atlas->lineGap * scale;

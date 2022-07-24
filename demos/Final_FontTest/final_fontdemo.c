@@ -94,7 +94,7 @@ int main(int argc, char **argv) {
 
 			const uint32_t maxAtlasSize = 1024;
 
-			const fntFontSize fontSize = { 128.0f };
+			const fntFontSize fontSize = fntCreateFontSize(128.0f);
 
 			fntFontAtlas atlas = fplZeroInit;
 			if (fntInitFontAtlas(&atlas, &fontData, fontSize)) {
@@ -248,13 +248,13 @@ int main(int argc, char **argv) {
 					float scaledAscent = 0.0f;
 					float scaledDescent = 0.0f;
 					float scaledLineGap = 0.0f;
-					fntGetFontMetrics(&atlas, fontSize.f32, &scaledAscent, &scaledDescent, &scaledLineGap);
+					fntGetFontMetrics(&atlas, fontSize.value, &scaledAscent, &scaledDescent, &scaledLineGap);
 
 					float baseline = -scaledDescent;
 
 					uint32_t lineCount = 0;
 					float baselineOffset = 0;
-					if (fntComputeQuadsFromUTF8(&atlas, text, fontSize.f32, flags, fplArrayCount(fontQuads), fontQuads, &quadsBounds, &lineCount, &baselineOffset)) {
+					if (fntComputeQuadsFromUTF8(&atlas, text, fontSize.value, flags, fplArrayCount(fontQuads), fontQuads, &quadsBounds, &lineCount, &baselineOffset)) {
 						float lineHeight = scaledAscent - scaledDescent;
 
 						float boundsWidth = quadsBounds.right - quadsBounds.left;
