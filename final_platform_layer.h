@@ -138,6 +138,7 @@ SOFTWARE.
 	- Added useful functions for multithreading
 	- Added support for changing the default window background color
 	- Renamed tons of functions to match naming scheme
+	- Several Bugfixes for Win32/X11/Vulkan
 
 	### Details
 
@@ -157,6 +158,7 @@ SOFTWARE.
 	- Fixed[#131]: [Win32] Console window was not shown the second time fplPlatformInit() was called
 	- Fixed[#134]: [Win32] Duplicate executable arguments in main() passed when CRT is disabled
 	- Fixed[#124]: [Video/Vulkan] Fallback when creation with validation failed
+	- Fixed[#138]: [X11] Compile error in function fpl__X11InitWindow, initSettings was not found
 	- Fixed[#135]: Stackoverflow in fpl__PushError_Formatted() when FPL_USERFUNC_vsnprintf is overloaded
 	- Fixed[#136]: Video initialization failed due to wrong @ref fplGraphicsApiSettings union
 
@@ -16626,6 +16628,8 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	FPL_LOG_DEBUG("X11", "Enable error handler");
 	windowState->lastErrorHandler = x11Api->XSetErrorHandler(fpl__X11ErrorHandler);
 #endif
+
+	const fplWindowSettings *initWindowSettings = &initSettings->window;
 
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Open default Display");
 	windowState->display = x11Api->XOpenDisplay(fpl_null);
