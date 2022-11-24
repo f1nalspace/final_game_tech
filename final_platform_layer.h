@@ -162,6 +162,7 @@ SOFTWARE.
 	- Fixed[#138]: [X11] Compile error in function fpl__X11InitWindow, initSettings was not found
 	- Fixed[#135]: Stackoverflow in fpl__PushError_Formatted() when FPL_USERFUNC_vsnprintf is overloaded
 	- Fixed[#136]: Video initialization failed due to wrong @ref fplGraphicsApiSettings union
+	- Fixed[#139]: Assertion on machine with 32 logical cores -> fplThreadHandle array capacity too small
 
 	#### Breaking Changes
 	- Changed: Renamed function fplOpenBinaryFile() to fplFileOpenBinary()
@@ -9306,7 +9307,7 @@ fpl_internal void fpl__ArgumentRangeError(const char *funcName, const int line, 
 
 #if !defined(FPL_MAX_THREAD_COUNT)
 	// Maximum number of active threads you can have in your process
-#	define FPL_MAX_THREAD_COUNT 64
+#	define FPL_MAX_THREAD_COUNT 256
 #endif
 
 #if !defined(FPL_MAX_SIGNAL_COUNT)
