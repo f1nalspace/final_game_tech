@@ -61,6 +61,7 @@ namespace Demo4 {
 		delete particleIndexes;
 		delete particleDatas;
 		delete cells;
+		BaseSimulation::~BaseSimulation();
 	}
 
 	void ParticleSimulation::InsertParticleIntoGrid(const size_t particleIndex) {

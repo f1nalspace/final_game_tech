@@ -206,6 +206,7 @@
 
 	@subsection usage_requirements_unix Unix/Linux
 	- Link against "libld.so"
+	- Compiler parameter "-pthread" (<a href="https://gcc.gnu.org/onlinedocs/gcc/Preprocessor-Options.html#Preprocessor-Options">GCC Preprocessor Options</a>)
 
 	@subsection usage_requirements_crt C-Runtime optional
 	By default, FPL uses the CRT (C-Runtime-Library) for functions such as vsnprintf(), but its usage is optional.<br>

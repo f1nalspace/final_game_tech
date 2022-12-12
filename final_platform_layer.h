@@ -138,6 +138,7 @@ SOFTWARE.
 	- Added useful functions for multithreading
 	- Added support for changing the default window background color
 	- Renamed tons of functions to match naming scheme
+	- Several Bugfixes for Win32/X11/Vulkan
 
 	### Details
 
@@ -157,7 +158,11 @@ SOFTWARE.
 	- Fixed[#131]: [Win32] Console window was not shown the second time fplPlatformInit() was called
 	- Fixed[#134]: [Win32] Duplicate executable arguments in main() passed when CRT is disabled
 	- Fixed[#124]: [Video/Vulkan] Fallback when creation with validation failed
+	- Fixed[#137]: [POSIX] pthread_yield is not always present, so it may fail the FPL startup
+	- Fixed[#138]: [X11] Compile error in function fpl__X11InitWindow, initSettings was not found
 	- Fixed[#135]: Stackoverflow in fpl__PushError_Formatted() when FPL_USERFUNC_vsnprintf is overloaded
+	- Fixed[#136]: Video initialization failed due to wrong @ref fplGraphicsApiSettings union
+	- Fixed[#139]: Assertion on machine with 32 logical cores -> fplThreadHandle array capacity too small
 
 	#### Breaking Changes
 	- Changed: Renamed function fplOpenBinaryFile() to fplFileOpenBinary()
@@ -3594,7 +3599,7 @@ typedef struct fplVulkanSettings {
 #endif // FPL__ENABLE_VIDEO_VULKAN
 
 //! A union that contains graphics api settings
-typedef union fplGraphicsApiSettings {
+typedef struct fplGraphicsApiSettings {
 #if defined(FPL__ENABLE_VIDEO_OPENGL)
 	//! OpenGL settings
 	fplOpenGLSettings opengl;
@@ -8360,7 +8365,7 @@ fpl_internal bool fpl__PThreadLoadApi(fpl__PThreadApi *pthreadApi) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_kill, pthread_kill);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_join, pthread_join);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_exit, pthread_exit);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_yield, pthread_yield);
+			FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_yield, pthread_yield);
 			FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_timedjoin_np, pthread_timedjoin_np);
 
 			// pthread_attr_t
@@ -9302,7 +9307,7 @@ fpl_internal void fpl__ArgumentRangeError(const char *funcName, const int line, 
 
 #if !defined(FPL_MAX_THREAD_COUNT)
 	// Maximum number of active threads you can have in your process
-#	define FPL_MAX_THREAD_COUNT 64
+#	define FPL_MAX_THREAD_COUNT 256
 #endif
 
 #if !defined(FPL_MAX_SIGNAL_COUNT)
@@ -11523,7 +11528,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 fpl_internal HICON fpl__Win32LoadIconFromImageSource(const fpl__Win32Api *wapi, const HINSTANCE appInstance, const fplImageSource *imageSource) {
 	fplAssert(imageSource != fpl_null);
 	HICON result = 0;
-	if (imageSource->width > 0 && imageSource->height > 0 && imageSource->data > 0) {
+	if (imageSource->width > 0 && imageSource->height > 0 && imageSource->data != fpl_null) {
 		BITMAPV5HEADER bi = fplZeroInit;
 		bi.bV5Size = sizeof(bi);
 		bi.bV5Width = (LONG)imageSource->width;
@@ -15201,7 +15206,12 @@ fpl_platform_api bool fplThreadYield() {
 	FPL__CheckPlatform(false);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
-	bool result = (pthreadApi->pthread_yield() == 0);
+	bool result;
+	if (pthreadApi->pthread_yield != fpl_null) {
+		result = (pthreadApi->pthread_yield() == 0);
+	} else {
+		result = (sched_yield() == 0);
+	}
 	return(result);
 }
 
@@ -16625,6 +16635,8 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	FPL_LOG_DEBUG("X11", "Enable error handler");
 	windowState->lastErrorHandler = x11Api->XSetErrorHandler(fpl__X11ErrorHandler);
 #endif
+
+	const fplWindowSettings *initWindowSettings = &initSettings->window;
 
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Open default Display");
 	windowState->display = x11Api->XOpenDisplay(fpl_null);
@@ -21524,7 +21536,6 @@ fpl_internal fplAudioResultType fpl__AudioInitAlsa(const fplAudioSettings *audio
 	//
 	float bufferSizeScaleFactor = 1.0f;
 	if ((targetFormat->defaultFields & fplAudioDefaultFields_BufferSize) == fplAudioDefaultFields_BufferSize) {
-		// @TODO(final): Do not allocate snd_pcm_info_t on the stack, use temporary memory instead
 		size_t pcmInfoSize = alsaApi->snd_pcm_info_sizeof();
 		snd_pcm_info_t *pcmInfo = (snd_pcm_info_t *)fpl__AllocateTemporaryMemory(pcmInfoSize, 8);
 		if (pcmInfo == fpl_null) {
