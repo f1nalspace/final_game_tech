@@ -139,6 +139,7 @@ SOFTWARE.
 	- Added support for changing the default window background color
 	- Renamed tons of functions to match naming scheme
 	- Several Bugfixes for Win32/X11/Vulkan
+	- Several Bugfixes in Demos
 
 	### Details
 
@@ -154,6 +155,7 @@ SOFTWARE.
 	- Changed: [ALSA] Use *bcm2835* device pattern for buffer scale instead of individual ones
 
 	#### Bugfixes
+	- Fixed[#140]: [FMPEG Demo] Fixed crash in UploadTexture when linesize is not the same as frame width
 	- Fixed[#130]: [Win32] Main fiber was never properly released
 	- Fixed[#131]: [Win32] Console window was not shown the second time fplPlatformInit() was called
 	- Fixed[#134]: [Win32] Duplicate executable arguments in main() passed when CRT is disabled
