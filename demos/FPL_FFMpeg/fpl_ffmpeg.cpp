@@ -16,6 +16,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2022-12-19
+	- Fixed crash in UploadTexture when linesize is not the same as frame width
+
 	## 2021-02-24
 	- Support for non win32 platforms by loading to .so libraries instead
 	- No more fixed ffmpeg library names anymore, use the AV_MAJOR
@@ -1022,8 +1025,22 @@ static void UploadTexture(VideoContext &video, const AVFrame *sourceNativeFrame)
 				VideoTexture &targetTexture = video.targetTextures[textureIndex];
 				uint8_t *data = LockVideoTexture(targetTexture);
 				assert(data != nullptr);
+
+				uint32_t w = (textureIndex == 0) ? sourceNativeFrame->width : sourceNativeFrame->width / 2;
 				uint32_t h = (textureIndex == 0) ? sourceNativeFrame->height : sourceNativeFrame->height / 2;
-				fplMemoryCopy(sourceNativeFrame->data[textureIndex], sourceNativeFrame->linesize[textureIndex] * h, data);
+
+				assert(targetTexture.width == w);
+				assert(targetTexture.height == h);
+
+				uint32_t lineSize = sourceNativeFrame->linesize[textureIndex];
+				size_t copySize = targetTexture.width;
+
+				uint8_t *target = data;
+				for (uint32_t y = 0; y < h; ++y) {
+					fplMemoryCopy(sourceNativeFrame->data[textureIndex] + y * lineSize, copySize, target);
+					target += targetTexture.rowSize;
+				}
+
 				UnlockVideoTexture(targetTexture);
 			}
 			break;
