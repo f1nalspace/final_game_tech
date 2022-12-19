@@ -162,6 +162,7 @@ SOFTWARE.
 	- Fixed[#124]: [Video/Vulkan] Fallback when creation with validation failed
 	- Fixed[#137]: [POSIX] pthread_yield is not always present, so it may fail the FPL startup
 	- Fixed[#138]: [X11] Compile error in function fpl__X11InitWindow, initSettings was not found
+	- Fixed[#141]: fplMemoryCopy() was wrong for 16-bit optimized operations
 	- Fixed[#135]: Stackoverflow in fpl__PushError_Formatted() when FPL_USERFUNC_vsnprintf is overloaded
 	- Fixed[#136]: Video initialization failed due to wrong @ref fplGraphicsApiSettings union
 	- Fixed[#139]: Assertion on machine with 32 logical cores -> fplThreadHandle array capacity too small
@@ -9853,7 +9854,7 @@ fpl_common_api void fplMemoryCopy(const void *sourceMem, const size_t sourceSize
 	} else if (sourceSize % 4 == 0) {
 		FPL__MEMORY_COPY(uint32_t, sourceMem, sourceSize, targetMem, FPL__MEM_SHIFT_32, FPL__MEM_MASK_32);
 	} else if (sourceSize % 2 == 0) {
-		FPL__MEMORY_COPY(uint16_t, sourceMem, sourceSize, targetMem, FPL__MEM_SHIFT_32, FPL__MEM_MASK_32);
+		FPL__MEMORY_COPY(uint16_t, sourceMem, sourceSize, targetMem, FPL__MEM_SHIFT_16, FPL__MEM_MASK_16);
 	} else {
 		FPL__MEMORY_COPY(uint8_t, sourceMem, sourceSize, targetMem, 0, 0);
 	}
