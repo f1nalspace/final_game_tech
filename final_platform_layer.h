@@ -152,6 +152,7 @@ SOFTWARE.
 	- New: [Window/X11] Support for custom background color
 
 	#### Internal Changes
+	- Changed[#95]: Platform support for fplMemorySet, fplMemoryClear, fplMemoryCopy (See FPL_NO_MEMORY_MACROS / FPL_USE_MEMORY_MACROS for more details)
 	- Changed: [ALSA] Use *bcm2835* device pattern for buffer scale instead of individual ones
 
 	#### Bugfixes
@@ -2182,6 +2183,22 @@ fpl_internal fpl_force_inline void fpl__m_DebugBreak() { __asm__ __volatile__(".
 
 //! Stops the debugger on this line always
 #define fplDebugBreak() fpl__m_DebugBreak()
+
+/** @} */
+
+//
+// Memory macros
+//
+
+/**
+* @defgroup Memory macros
+* @brief This category contains memory configurations
+* @{
+*/
+
+#if !defined(FPL_NO_MEMORY_MACROS) || defined(FPL_FORCE_MEMORY_MACROS)
+#	define FPL__ENABLE_MEMORY_MACROS
+#endif
 
 /** @} */
 
@@ -9767,14 +9784,14 @@ fpl_common_api void fplMemoryAlignedFree(void *ptr) {
 			} \
 			T *dataBlock = (T *)(memory); \
 			T *dataBlockEnd = (T *)(memory) + (size >> shift); \
-			while (dataBlock != dataBlockEnd) { \
+			while (dataBlock < dataBlockEnd) { \
 				*dataBlock++ = setValue; \
 				setBytes += sizeof(T); \
 			} \
 		} \
 		uint8_t *data8 = (uint8_t *)memory + setBytes; \
 		uint8_t *data8End = (uint8_t *)memory + size; \
-		while (data8 != data8End) { \
+		while (data8 < data8End) { \
 			*data8++ = value; \
 		} \
 	} while (0);
@@ -9785,14 +9802,14 @@ fpl_common_api void fplMemoryAlignedFree(void *ptr) {
 		if (sizeof(T) > sizeof(uint8_t)) { \
 			T *dataBlock = (T *)(memory); \
 			T *dataBlockEnd = (T *)(memory) + (size >> shift); \
-			while (dataBlock != dataBlockEnd) { \
+			while (dataBlock < dataBlockEnd) { \
 				*dataBlock++ = 0; \
 				clearBytes += sizeof(T); \
 			} \
 		} \
 		uint8_t *data8 = (uint8_t *)memory + clearBytes; \
 		uint8_t *data8End = (uint8_t *)memory + size; \
-		while (data8 != data8End) { \
+		while (data8 < data8End) { \
 			*data8++ = 0; \
 		} \
 	} while (0);
@@ -9804,22 +9821,23 @@ fpl_common_api void fplMemoryAlignedFree(void *ptr) {
 			const T *sourceDataBlock = (const T *)(source); \
 			const T *sourceDataBlockEnd = (const T *)(source) + (sourceSize >> shift); \
 			T *destDataBlock = (T *)(dest); \
-			while (sourceDataBlock != sourceDataBlockEnd) { \
+			while (sourceDataBlock < sourceDataBlockEnd) { \
 				*destDataBlock++ = *sourceDataBlock++; \
 				copiedBytes += sizeof(T); \
 			} \
 		} \
 		const uint8_t *sourceData8 = (const uint8_t *)source + copiedBytes; \
-		const uint8_t *sourceData8End = (const uint8_t *)source + sourceSize; \
-		uint8_t *destData8 = (uint8_t *)dest + copiedBytes; \
-		while (sourceData8 != sourceData8End) { \
-			*destData8++ = *sourceData8++; \
-		} \
+        const uint8_t *sourceData8End = (const uint8_t *)source + sourceSize; \
+        uint8_t *destData8 = (uint8_t *)dest + copiedBytes; \
+        while (sourceData8 < sourceData8End) { \
+            *destData8++ = *sourceData8++; \
+        } \
 	} while (0);
 
 fpl_common_api void fplMemorySet(void *mem, const uint8_t value, const size_t size) {
 	FPL__CheckArgumentNullNoRet(mem);
 	FPL__CheckArgumentZeroNoRet(size);
+#if defined(FPL__ENABLE_MEMORY_MACROS)
 	if (size % 8 == 0) {
 		FPL__MEMORY_SET(uint64_t, mem, size, FPL__MEM_SHIFT_64, FPL__MEM_MASK_64, value);
 	} else if (size % 4 == 0) {
@@ -9829,11 +9847,17 @@ fpl_common_api void fplMemorySet(void *mem, const uint8_t value, const size_t si
 	} else {
 		FPL__MEMORY_SET(uint8_t, mem, size, 0, 0, value);
 	}
+#elif defined(FPL_PLATFORM_WINDOWS)
+	FillMemory(mem, size, value);
+#else
+	memset(mem, value, size);
+#endif
 }
 
 fpl_common_api void fplMemoryClear(void *mem, const size_t size) {
 	FPL__CheckArgumentNullNoRet(mem);
 	FPL__CheckArgumentZeroNoRet(size);
+#if defined(FPL__ENABLE_MEMORY_MACROS)
 	if (size % 8 == 0) {
 		FPL__MEMORY_CLEAR(uint64_t, mem, size, FPL__MEM_SHIFT_64, FPL__MEM_MASK_64);
 	} else if (size % 4 == 0) {
@@ -9843,12 +9867,18 @@ fpl_common_api void fplMemoryClear(void *mem, const size_t size) {
 	} else {
 		FPL__MEMORY_CLEAR(uint8_t, mem, size, 0, 0);
 	}
+#elif defined(FPL_PLATFORM_WINDOWS)
+	ZeroMemory(mem, size);
+#else
+	memset(mem, 0, size);
+#endif
 }
 
 fpl_common_api void fplMemoryCopy(const void *sourceMem, const size_t sourceSize, void *targetMem) {
 	FPL__CheckArgumentNullNoRet(sourceMem);
 	FPL__CheckArgumentZeroNoRet(sourceSize);
 	FPL__CheckArgumentNullNoRet(targetMem);
+#if defined(FPL__ENABLE_MEMORY_MACROS)
 	if (sourceSize % 8 == 0) {
 		FPL__MEMORY_COPY(uint64_t, sourceMem, sourceSize, targetMem, FPL__MEM_SHIFT_64, FPL__MEM_MASK_64);
 	} else if (sourceSize % 4 == 0) {
@@ -9858,6 +9888,11 @@ fpl_common_api void fplMemoryCopy(const void *sourceMem, const size_t sourceSize
 	} else {
 		FPL__MEMORY_COPY(uint8_t, sourceMem, sourceSize, targetMem, 0, 0);
 	}
+#elif defined(FPL_PLATFORM_WINDOWS)
+	CopyMemory(targetMem, sourceMem, sourceSize);
+#else
+	memcpy(targetMem, sourceMem, sourceSize);
+#endif
 }
 #endif // FPL__COMMON_MEMORY_DEFINED
 
