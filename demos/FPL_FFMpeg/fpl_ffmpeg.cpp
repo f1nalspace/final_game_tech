@@ -21,6 +21,7 @@ Changelog:
 	- Fixed[#143]: Crash for videos with 6-channel audio
 	- Implemented[#142]: Allow playback of http/https streams from the arguments
 	- Changed: Use a dolby test-video as default debug argument in the visual studio project
+	- Fixed: Sart packet queue was not adding the flush packet on startup when assertions are compiled out
 
 	## 2021-02-24
 	- Support for non win32 platforms by loading to .so libraries instead
@@ -487,9 +488,8 @@ static bool PushFlushPacket(PacketQueue &queue) {
 }
 
 static void StartPacketQueue(PacketQueue &queue) {
-	//fplMutexLock(&queue.lock);
-	assert(PushFlushPacket(queue));
-	//fplMutexUnlock(&queue.lock);
+	bool r = PushFlushPacket(queue);
+	assert(r == true);
 }
 
 //
