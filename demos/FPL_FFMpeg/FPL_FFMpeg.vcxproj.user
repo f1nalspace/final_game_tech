@@ -9,11 +9,11 @@
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <LocalDebuggerCommandArguments>"$(PUBLIC)\Videos\Event-Horizon-3.mp4"</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>"https://libfpl.org/testvideos/Amaze-Dolby-thedigitaltheater.mp4"</LocalDebuggerCommandArguments>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <LocalDebuggerCommandArguments>"$(PUBLIC)\Videos\Event-Horizon-3.mp4"</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>"https://libfpl.org/testvideos/Amaze-Dolby-thedigitaltheater.mp4"</LocalDebuggerCommandArguments>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
   </PropertyGroup>
 </Project>

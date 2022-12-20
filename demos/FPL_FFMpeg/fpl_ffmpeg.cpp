@@ -20,6 +20,7 @@ Changelog:
 	- Fixed[#140]: Crash in UploadTexture when linesize is not the same as frame width
 	- Fixed[#143]: Crash for videos with 6-channel audio
 	- Implemented[#142]: Allow playback of http/https streams from the arguments
+	- Changed: Use a dolby test-video as default debug argument in the visual studio project
 
 	## 2021-02-24
 	- Support for non win32 platforms by loading to .so libraries instead
