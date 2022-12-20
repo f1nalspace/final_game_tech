@@ -17,7 +17,8 @@ Author:
 
 Changelog:
 	## 2022-12-19
-	- Fixed crash in UploadTexture when linesize is not the same as frame width
+	- Fixed[#140]: Crash in UploadTexture when linesize is not the same as frame width
+	- Fixed[#143]: Crash for videos with 6-channel audio
 
 	## 2021-02-24
 	- Support for non win32 platforms by loading to .so libraries instead
@@ -3358,9 +3359,10 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 	uint32_t nativeBufferSizeInBytes = fplGetAudioBufferSizeInBytes(nativeAudioFormat.type, nativeAudioFormat.channels, nativeAudioFormat.bufferSizeInFrames);
 
 	AVSampleFormat targetSampleFormat = MapAudioFormatType(nativeAudioFormat.type);
-	// @TODO(final): Map target audio channels to channel layout
-	int targetChannelCount = nativeAudioFormat.channels;
+
+	// @TODO(final): Map channels to AV channel layout
 	uint64_t targetChannelLayout = AV_CH_LAYOUT_STEREO;
+	int targetChannelCount = nativeAudioFormat.channels;
 	assert(targetChannelCount == 2);
 	int targetSampleRate = nativeAudioFormat.sampleRate;
 	audio.audioTarget = {};
@@ -3372,11 +3374,9 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 	audio.audioTarget.bufferSizeInBytes = ffmpeg.av_samples_get_buffer_size(nullptr, audio.audioTarget.channels, audio.audioTarget.sampleRate, targetSampleFormat, 1);
 
 	AVSampleFormat inputSampleFormat = audioCodexCtx->sample_fmt;
+	uint64_t inputChannelLayout = audioCodexCtx->channel_layout;
 	int inputChannelCount = audioCodexCtx->channels;
-	// @TODO(final): Map input audio channels to channel layout
-	uint64_t inputChannelLayout = AV_CH_LAYOUT_STEREO;
 	int inputSampleRate = audioCodexCtx->sample_rate;
-	assert(inputChannelCount == 2);
 	audio.audioSource = {};
 	audio.audioSource.channels = inputChannelCount;
 	audio.audioSource.sampleRate = inputSampleRate;
