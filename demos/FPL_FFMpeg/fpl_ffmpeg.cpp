@@ -3605,6 +3605,33 @@ static void ReleaseMedia(PlayerState &state) {
 		ffmpeg.avformat_close_input(&state.formatCtx);
 		state.formatCtx = nullptr;
 	}
+
+	state.externalClock = {};
+	state.seek = {};
+
+	state.filePathOrUrl = nullptr;
+	state.streamLength = 0;
+
+	state.frameLastPTS = state.frameLastDelay = state.frameTimer = state.maxFrameDuration = state.pauseClock = 0;
+	state.pauseNumFrames = 0;
+
+	state.syncType = AVSyncType::ExternalClock;
+	state.forceRefresh = 0;
+
+	state.state = PlayingState::Unloaded;
+
+	state.loop = 0;
+	state.readPauseReturn = 0;
+	state.step = 0;
+	state.frame_drops_early = 0;
+	state.frame_drops_late = 0;
+
+	state.isInfiniteBuffer = false;
+	state.isRealTime = false;
+	state.isPaused = false;
+	state.lastPaused = false;
+	state.isFullscreen = false;
+	state.seekByBytes = false;
 }
 
 static bool LoadMedia(PlayerState &state, const char *mediaURL, const fplAudioDeviceFormat &nativeAudioFormat) {
