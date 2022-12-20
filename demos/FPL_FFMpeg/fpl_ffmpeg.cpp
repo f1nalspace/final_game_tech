@@ -23,6 +23,7 @@ Changelog:
 	- New[#142]: Allow playback of http/https streams from the arguments
 	- Changed: Use a dolby test-video as default debug argument in the visual studio project
 	- Fixed: Sart packet queue was not adding the flush packet on startup when assertions are compiled out
+	- New: Support for unloading and loading media/player state, so we can load different media at any time
 
 	## 2021-02-24
 	- Support for non win32 platforms by loading to .so libraries instead
@@ -399,6 +400,7 @@ static void DestroyPacketQueue(PacketQueue &queue) {
 	fplSignalDestroy(&queue.freeSignal);
 	fplSignalDestroy(&queue.addedSignal);
 	fplMutexDestroy(&queue.lock);
+	queue = {};
 }
 
 static bool InitPacketQueue(PacketQueue &queue) {
@@ -572,6 +574,7 @@ static void DestroyFrameQueue(FrameQueue &queue) {
 		Frame *frame = queue.frames + i;
 		FreeFrame(frame);
 	}
+	queue = {};
 }
 
 static Frame *PeekFrameQueue(FrameQueue &queue) {
@@ -690,6 +693,7 @@ static void DestroyReader(ReaderContext &reader) {
 	fplSignalDestroy(&reader.resumeSignal);
 	fplSignalDestroy(&reader.stopSignal);
 	fplMutexDestroy(&reader.lock);
+	reader = {};
 }
 
 static void StopReader(ReaderContext &reader) {
@@ -763,6 +767,7 @@ static void DestroyDecoder(Decoder &decoder) {
 	fplSignalDestroy(&decoder.resumeSignal);
 	fplSignalDestroy(&decoder.stopSignal);
 	fplMutexDestroy(&decoder.lock);
+	decoder = {};
 }
 
 static void StartDecoder(Decoder &decoder, fpl_run_thread_callback *decoderThreadFunc) {
@@ -997,6 +1002,8 @@ struct VideoContext {
 
 	SwsContext *softwareScaleCtx;
 	uint32_t targetTextureCount;
+
+	bool32 isValid;
 };
 
 static void FlipSourcePicture(uint8_t *srcData[8], int srcLineSize[8], int height) {
@@ -1131,6 +1138,8 @@ struct AudioContext {
 	uint32_t maxConversionAudioBufferSize;
 	uint32_t conversionAudioFramesRemaining;
 	uint32_t conversionAudioFrameIndex;
+
+	bool32 isValid;
 };
 
 static AVSampleFormat MapAudioFormatType(const fplAudioFormatType format) {
@@ -1718,20 +1727,23 @@ static void PushTextToBuffer(FontBuffer &buffer, const FontInfo &info, const cha
 //
 // Player
 //
-constexpr uint32_t MAX_STREAM_COUNT = 8;
+enum class PlayingState : int32_t {
+	Failed = -1,
+	Unloaded = 0,
+	Loaded,
+	Playing,
+	Paused,
+	Finished
+};
+
 struct PlayerState {
 	ReaderContext reader;
-	MediaStream streams[MAX_STREAM_COUNT];
 	VideoContext video;
 	AudioContext audio;
 	PlayerSettings settings;
 
-	FontInfo fontInfo;
-	FontBuffer fontBuffer;
-
 	Clock externalClock;
 	SeekState seek;
-	fplWindowSize viewport;
 
 	AVFormatContext *formatCtx;
 
@@ -1743,16 +1755,18 @@ struct PlayerState {
 	double frameTimer;
 	double maxFrameDuration;
 	double pauseClock;
+	int64_t pauseNumFrames;
 
 	AVSyncType syncType;
 	volatile uint32_t forceRefresh;
+
+	PlayingState state;
 
 	int loop;
 	int readPauseReturn;
 	int step;
 	int frame_drops_early;
 	int frame_drops_late;
-	int64_t pauseNumFrames;
 
 	bool32 isInfiniteBuffer;
 	bool32 isRealTime;
@@ -1762,12 +1776,87 @@ struct PlayerState {
 	bool32 seekByBytes;
 };
 
+static void ReleaseMedia(PlayerState &state);
+static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const fplAudioDeviceFormat &nativeAudioFormat);
+
+static void VideoDecodingThreadProc(const fplThreadHandle *thread, void *userData);
+static void AudioDecodingThreadProc(const fplThreadHandle *thread, void *userData);
+static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData);
+static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData);
+
+static void StopMedia(PlayerState &state) {
+	// Stop audio
+	if (state.audio.isValid) {
+		fplStopAudio();
+	}
+
+	// Stop reader
+	StopReader(state.reader);
+
+	// Stop decoders
+	if (state.video.isValid) {
+		StopDecoder(state.video.decoder);
+	}
+	if (state.audio.isValid) {
+		StopDecoder(state.audio.decoder);
+	}
+
+	// Release media
+	ReleaseMedia(state);
+};
+
+static bool PlayMedia(PlayerState &state, const char *mediaURL, const fplAudioDeviceFormat &nativeAudioFormat) {
+	if (!LoadMedia(state, mediaURL, nativeAudioFormat)) {
+		return false;
+	}
+
+	// Start decoders
+	if (state.video.isValid) {
+		StartDecoder(state.video.decoder, VideoDecodingThreadProc);
+	}
+	if (state.audio.isValid) {
+		StartDecoder(state.audio.decoder, AudioDecodingThreadProc);
+	}
+
+	// Start reader
+	StartReader(state.reader, PacketReadThreadProc, &state);
+
+	// Start playing audio
+	if (state.audio.isValid) {
+		fplSetAudioClientReadCallback(AudioReadCallback, &state.audio);
+		fplPlayAudio();
+	}
+
+	return true;
+}
+
 static void ReleasePlayer(PlayerState &state) {
+	StopMedia(state);
+	state = {};
+}
+
+static void InitPlayer(PlayerState &state) {
+	InitPlayerSettings(state.settings);
+	state.isInfiniteBuffer = state.settings.isInfiniteBuffer;
+	state.loop = state.settings.isLoop ? 1 : 0;
+}
+
+struct AppState {
+	PlayerState player;
+	FontInfo fontInfo;
+	FontBuffer fontBuffer;
+	fplAudioDeviceFormat nativeAudioFormat;
+	fplWindowSize viewport;
+};
+
+static void ReleaseApp(AppState &state) {
+	ReleasePlayer(state.player);
+
 	ReleaseFontBuffer(state.fontBuffer);
 	ReleaseFontInfo(state.fontInfo);
 }
 
-static bool InitPlayer(PlayerState &state) {
+static bool InitApp(AppState &state) {
 	//
 	// OpenGL
 	//
@@ -1784,26 +1873,19 @@ static bool InitPlayer(PlayerState &state) {
 	glEnable(GL_CULL_FACE);
 #endif
 
-//
-// Font Info
-//
+	// Font Info
 	uint32_t firstChar = ' ';
 	uint32_t charCount = '~' - firstChar;
 	if (!LoadFontInfo(sulphurPointRegularData, sulphurPointRegularDataSize, 1024, 1024, firstChar, charCount, 40.0f, &state.fontInfo)) {
-		ReleasePlayer(state);
+		ReleaseApp(state);
 		return(false);
 	}
 
 	// Font Buffer
 	state.fontBuffer = AllocFontBuffer(state.fontInfo.atlasWidth, state.fontInfo.atlasHeight, state.fontInfo.atlasBitmap);
 
-
-	//
-	// Settings
-	//
-	InitPlayerSettings(state.settings);
-	state.isInfiniteBuffer = state.settings.isInfiniteBuffer;
-	state.loop = state.settings.isLoop ? 1 : 0;
+	// Player
+	InitPlayer(state.player);
 
 	return(true);
 }
@@ -1824,13 +1906,13 @@ static bool StreamHasEnoughPackets(const AVStream *stream, const int streamIndex
 
 static AVSyncType GetMasterSyncType(const PlayerState *state) {
 	if (state->syncType == AVSyncType::VideoMaster) {
-		if (state->video.stream.isValid) {
+		if (state->video.isValid) {
 			return AVSyncType::VideoMaster;
 		} else {
 			return AVSyncType::AudioMaster;
 		}
 	} else if (state->syncType == AVSyncType::AudioMaster) {
-		if (state->audio.stream.isValid) {
+		if (state->audio.isValid) {
 			return AVSyncType::AudioMaster;
 		} else {
 			return AVSyncType::ExternalClock;
@@ -1841,18 +1923,18 @@ static AVSyncType GetMasterSyncType(const PlayerState *state) {
 }
 
 static double GetMasterFrameRate(const PlayerState *state) {
-	if (state->video.stream.isValid && state->video.stream.stream->avg_frame_rate.den != 0)
+	if (state->video.isValid && state->video.stream.stream->avg_frame_rate.den != 0)
 		return av_q2d(state->video.stream.stream->avg_frame_rate);
-	if (state->audio.stream.isValid && state->audio.stream.stream->avg_frame_rate.den != 0)
+	if (state->audio.isValid && state->audio.stream.stream->avg_frame_rate.den != 0)
 		return av_q2d(state->audio.stream.stream->avg_frame_rate);
 	else
 		return 0.0;
 }
 
 static const AVStream *GetMasterStream(const PlayerState *state) {
-	if (state->video.stream.isValid && state->video.stream.stream->avg_frame_rate.den != 0)
+	if (state->video.isValid && state->video.stream.stream->avg_frame_rate.den != 0)
 		return state->video.stream.stream;
-	if (state->audio.stream.isValid && state->audio.stream.stream->avg_frame_rate.den != 0)
+	if (state->audio.isValid && state->audio.stream.stream->avg_frame_rate.den != 0)
 		return state->audio.stream.stream;
 	else
 		return nullptr;
@@ -1875,11 +1957,11 @@ static double GetMasterClock(const PlayerState *state) {
 }
 
 static void UpdateExternalClockSpeed(PlayerState *state) {
-	if ((state->video.stream.isValid && state->video.decoder.packetsQueue.packetCount <= EXTERNAL_CLOCK_MIN_FRAMES) ||
-		(state->audio.stream.isValid && state->audio.decoder.packetsQueue.packetCount <= EXTERNAL_CLOCK_MIN_FRAMES)) {
+	if ((state->video.isValid && state->video.decoder.packetsQueue.packetCount <= EXTERNAL_CLOCK_MIN_FRAMES) ||
+		(state->audio.isValid && state->audio.decoder.packetsQueue.packetCount <= EXTERNAL_CLOCK_MIN_FRAMES)) {
 		SetClockSpeed(state->externalClock, fplMax(EXTERNAL_CLOCK_SPEED_MIN, state->externalClock.speed - EXTERNAL_CLOCK_SPEED_STEP));
-	} else if ((!state->video.stream.isValid || (state->video.decoder.packetsQueue.packetCount > EXTERNAL_CLOCK_MAX_FRAMES)) &&
-		(!state->audio.stream.isValid || (state->audio.decoder.packetsQueue.packetCount > EXTERNAL_CLOCK_MAX_FRAMES))) {
+	} else if ((!state->video.isValid || (state->video.decoder.packetsQueue.packetCount > EXTERNAL_CLOCK_MAX_FRAMES)) &&
+		(!state->audio.isValid || (state->audio.decoder.packetsQueue.packetCount > EXTERNAL_CLOCK_MAX_FRAMES))) {
 		SetClockSpeed(state->externalClock, fplMin(EXTERNAL_CLOCK_SPEED_MAX, state->externalClock.speed + EXTERNAL_CLOCK_SPEED_STEP));
 	} else {
 		double speed = state->externalClock.speed;
@@ -2285,7 +2367,7 @@ static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, cons
 
 	uint32_t result = 0;
 
-	if (audio->stream.isValid) {
+	if (audio->isValid) {
 		uint8_t *conversionAudioBuffer = audio->conversionAudioBuffer;
 		uint32_t maxConversionAudioBufferSize = audio->maxConversionAudioBufferSize;
 
@@ -2537,7 +2619,7 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 			if (seekResult < 0) {
 				// @TODO(final): Log seek error
 			} else {
-				if (state->audio.stream.isValid) {
+				if (state->audio.isValid) {
 					FlushPacketQueue(state->audio.decoder.packetsQueue);
 					PushFlushPacket(state->audio.decoder.packetsQueue);
 
@@ -2545,7 +2627,7 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 					fplSignalSet(&state->audio.decoder.resumeSignal);
 				}
 
-				if (state->video.stream.isValid) {
+				if (state->video.isValid) {
 					FlushPacketQueue(state->video.decoder.packetsQueue);
 					PushFlushPacket(state->video.decoder.packetsQueue);
 
@@ -2586,8 +2668,8 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 		int64_t startTime = AV_NOPTS_VALUE;
 
 		if (!state->isPaused &&
-			(!state->audio.stream.isValid || (state->audio.decoder.finishedSerial == state->audio.decoder.packetsQueue.serial && GetFrameQueueRemainingCount(state->audio.decoder.frameQueue) == 0)) &&
-			(!state->video.stream.isValid || (state->video.decoder.finishedSerial == state->video.decoder.packetsQueue.serial && GetFrameQueueRemainingCount(state->video.decoder.frameQueue) == 0))) {
+			(!state->audio.isValid || (state->audio.decoder.finishedSerial == state->audio.decoder.packetsQueue.serial && GetFrameQueueRemainingCount(state->audio.decoder.frameQueue) == 0)) &&
+			(!state->video.isValid || (state->video.decoder.finishedSerial == state->video.decoder.packetsQueue.serial && GetFrameQueueRemainingCount(state->video.decoder.frameQueue) == 0))) {
 			if ((state->loop == -1) || (state->loop > 0)) {
 				if (state->loop > 0) {
 					--state->loop;
@@ -2605,10 +2687,10 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 			int res = ffmpeg.av_read_frame(formatCtx, &srcPacket);
 			if (res < 0) {
 				if ((res == AVERROR_EOF || ffmpeg.avio_feof(formatCtx->pb)) && !reader.isEOF) {
-					if (video.stream.isValid) {
+					if (video.isValid) {
 						PushNullPacket(video.decoder.packetsQueue, video.stream.streamIndex);
 					}
-					if (audio.stream.isValid) {
+					if (audio.isValid) {
 						PushNullPacket(audio.decoder.packetsQueue, audio.stream.streamIndex);
 					}
 					reader.isEOF = true;
@@ -2671,6 +2753,14 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 	FPL_LOG_INFO("App", "Reader thread stopped.\n");
 }
 
+static void CloseStreamComponent(MediaStream &outStream) {
+	if (outStream.codecContext != nullptr) {
+		ffmpeg.av_freep(outStream.codecContext);
+	}
+	outStream = {};
+	outStream.streamIndex = -1;
+}
+
 static bool OpenStreamComponent(const char *mediaFilePath, const int32_t streamIndex, AVStream *stream, MediaStream &outStream) {
 	// Get codec name
 	char codecName[5] = {};
@@ -2717,7 +2807,6 @@ static bool OpenStreamComponent(const char *mediaFilePath, const int32_t streamI
 	// @TODO(final): Why do we need to set the discard flag to default here?
 	stream->discard = AVDISCARD_DEFAULT;
 
-	outStream.isValid = true;
 	outStream.stream = stream;
 	outStream.streamIndex = streamIndex;
 
@@ -2778,7 +2867,9 @@ static DisplayRect CalculateDisplayRect(const int screenLeft, const int screenTo
 	return(result);
 }
 
-static void RenderOSD(PlayerState *state, const Mat4f &proj, const float w, const float h) {
+static void RenderOSD(AppState *state, const Mat4f &proj, const float w, const float h) {
+	const PlayerState *playerState = &state->player;
+
 	ClearFontBuffer(state->fontBuffer);
 
 	char osdTextBuffer[256];
@@ -2790,23 +2881,23 @@ static void RenderOSD(PlayerState *state, const Mat4f &proj, const float w, cons
 	Vec2f osdPos = V2f(0.0f, h - fontBaseline);
 
 	const char *stateMsg = "Playing";
-	double frameRate = fplMax(0.0, GetMasterFrameRate(state));
-	double clockLength = fplMax(0.0, state->streamLength);
+	double frameRate = fplMax(0.0, GetMasterFrameRate(playerState));
+	double clockLength = fplMax(0.0, playerState->streamLength);
 	int64_t numFrames;
 	double clockCurrent;
-	if (state->isPaused) {
+	if (playerState->isPaused) {
 		stateMsg = "Paused";
-		numFrames = state->pauseNumFrames;
-		clockCurrent = state->pauseClock;
+		numFrames = playerState->pauseNumFrames;
+		clockCurrent = playerState->pauseClock;
 	} else {
-		clockCurrent = GetMasterClock(state);
+		clockCurrent = GetMasterClock(playerState);
 		if (isnan(clockCurrent) || clockCurrent < 0) clockCurrent = 0;
 		numFrames = frameRate != 0 ? (int64_t)(clockCurrent / (1.0f / frameRate)) : 0;
 		fplAssert(numFrames >= 0);
 		fplAssert(!isnan(clockCurrent));
 	}
 
-	const char *filename = fplExtractFileName(state->filePathOrUrl);
+	const char *filename = fplExtractFileName(playerState->filePathOrUrl);
 
 	// [State: Filename]
 	fplStringFormat(osdTextBuffer, fplArrayCount(osdTextBuffer), "%s: %s", stateMsg, filename);
@@ -2849,25 +2940,25 @@ static void RenderOSD(PlayerState *state, const Mat4f &proj, const float w, cons
 		videoInfos = "Software";
 #endif
 
-		if (state->video.stream.isValid) {
-			double frameRate = av_q2d(state->video.stream.stream->avg_frame_rate);
-			uint32_t width = state->video.stream.codecContext->width;
-			uint32_t height = state->video.stream.codecContext->height;
-			AVPixelFormat pixFormat = state->video.stream.codecContext->pix_fmt;
+		if (playerState->video.isValid) {
+			double frameRate = av_q2d(playerState->video.stream.stream->avg_frame_rate);
+			uint32_t width = playerState->video.stream.codecContext->width;
+			uint32_t height = playerState->video.stream.codecContext->height;
+			AVPixelFormat pixFormat = playerState->video.stream.codecContext->pix_fmt;
 			const char *pixelFormatName = ffmpeg.av_get_pix_fmt_name(pixFormat);
-			const char *videoCodecDesc = state->video.stream.codec->long_name;
+			const char *videoCodecDesc = playerState->video.stream.codec->long_name;
 			fplStringFormat(osdTextBuffer, fplArrayCount(osdTextBuffer), "Video: %s, %ux%u, %s, %.2f frames/s, %s", videoInfos, width, height, pixelFormatName, frameRate, videoCodecDesc);
 			PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
 			osdPos += V2f(0, -osdFontSize);
 		}
 
-		if (state->audio.stream.isValid) {
-			const char *audioBackendName = fplGetAudioBackendName(state->audio.audioTarget.backend);
-			const char *audioFormatName = fplGetAudioFormatName(state->audio.audioTarget.type);
-			const char *audioCodecDesc = state->audio.stream.codec->long_name;
-			uint32_t bufferSize = state->audio.audioTarget.bufferSizeInBytes;
-			uint32_t frameSize = fplGetAudioFrameSizeInBytes(state->audio.audioTarget.type, state->audio.audioTarget.channels);
-			fplStringFormat(osdTextBuffer, fplArrayCount(osdTextBuffer), "Audio: %s, %s, %u channels, %u Hz, %s", audioBackendName, audioFormatName, state->audio.audioTarget.channels, state->audio.audioTarget.sampleRate, audioCodecDesc);
+		if (playerState->audio.isValid) {
+			const char *audioBackendName = fplGetAudioBackendName(playerState->audio.audioTarget.backend);
+			const char *audioFormatName = fplGetAudioFormatName(playerState->audio.audioTarget.type);
+			const char *audioCodecDesc = playerState->audio.stream.codec->long_name;
+			uint32_t bufferSize = playerState->audio.audioTarget.bufferSizeInBytes;
+			uint32_t frameSize = fplGetAudioFrameSizeInBytes(playerState->audio.audioTarget.type, playerState->audio.audioTarget.channels);
+			fplStringFormat(osdTextBuffer, fplArrayCount(osdTextBuffer), "Audio: %s, %s, %u channels, %u Hz, %s", audioBackendName, audioFormatName, playerState->audio.audioTarget.channels, playerState->audio.audioTarget.sampleRate, audioCodecDesc);
 			PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
 			osdPos += V2f(0, -osdFontSize);
 		}
@@ -2876,8 +2967,8 @@ static void RenderOSD(PlayerState *state, const Mat4f &proj, const float w, cons
 	// Debug shit
 	{
 		osdPos = V2f(0, osdFontSize * 0.5f);
-		int32_t videoQueueCount = state->video.decoder.frameQueue.count;
-		int32_t audioQueueCount = state->audio.decoder.frameQueue.count;
+		int32_t videoQueueCount = playerState->video.decoder.frameQueue.count;
+		int32_t audioQueueCount = playerState->audio.decoder.frameQueue.count;
 		int32_t allocatedPackets = globalMemStats.allocatedPackets;
 		int32_t usedPackets = globalMemStats.usedPackets;
 
@@ -2916,17 +3007,19 @@ static void RenderOSD(PlayerState *state, const Mat4f &proj, const float w, cons
 #endif // USE_HARDWARE_RENDERING
 }
 
-static void RenderVideoFrame(PlayerState *state) {
+static void RenderVideoFrame(AppState *state) {
 	assert(state != nullptr);
 
-	VideoContext &video = state->video;
+	PlayerState *playerState = &state->player;
+
+	VideoContext &video = playerState->video;
 	Frame *vp = fpl_null;
 
-	bool hasVideo = state->video.stream.isValid;
+	bool hasVideo = playerState->video.isValid;
 
 	if (hasVideo) {
-		int readIndex = state->video.decoder.frameQueue.readIndex;
-		vp = PeekFrameQueueLast(state->video.decoder.frameQueue);
+		int readIndex = playerState->video.decoder.frameQueue.readIndex;
+		vp = PeekFrameQueueLast(playerState->video.decoder.frameQueue);
 		bool wasUploaded = false;
 		if (!vp->isUploaded) {
 			UploadTexture(video, vp->frame);
@@ -2987,13 +3080,13 @@ static void RenderVideoFrame(PlayerState *state) {
 
 	if (hasVideo) {
 		// Update vertex array buffer with new rectangle
-		glBindBuffer(GL_ARRAY_BUFFER, state->video.vertexBufferId);
+		glBindBuffer(GL_ARRAY_BUFFER, playerState->video.vertexBufferId);
 		glBufferData(GL_ARRAY_BUFFER, fplArrayCount(vertexData) * sizeof(float), vertexData, GL_STREAM_DRAW);
 		glBindBuffer(GL_ARRAY_BUFFER, 0);
 		CheckGLError();
 
 		// Enable vertex array buffer
-		glBindVertexArray(state->video.vao);
+		glBindVertexArray(playerState->video.vao);
 		CheckGLError();
 
 		// Enable textures
@@ -3007,7 +3100,7 @@ static void RenderVideoFrame(PlayerState *state) {
 		CheckGLError();
 
 		// Enable shader
-		const VideoShader *shader = state->video.activeShader;
+		const VideoShader *shader = playerState->video.activeShader;
 		glUseProgram(shader->programId);
 		glUniformMatrix4fv(shader->uniform_uniProjMat, 1, GL_FALSE, proj.m);
 		glUniform1iv(shader->uniform_uniTextures, (GLsizei)MAX_TARGET_TEXTURE_COUNT, textureIndices);
@@ -3105,103 +3198,105 @@ static double ComputeVideoDelay(const PlayerState *state, const double delay) {
 	return(result);
 }
 
-static void VideoRefresh(PlayerState *state, double &remainingTime, int &displayCount) {
-	if (!state->isPaused && GetMasterSyncType(state) == AVSyncType::ExternalClock && state->isRealTime) {
-		UpdateExternalClockSpeed(state);
+static void VideoRefresh(AppState *state, double &remainingTime, int &displayCount) {
+	PlayerState *player = &state->player;
+
+	if (!player->isPaused && GetMasterSyncType(player) == AVSyncType::ExternalClock && player->isRealTime) {
+		UpdateExternalClockSpeed(player);
 	}
-	if (state->video.stream.isValid) {
+	if (player->video.isValid) {
 	retry:
-		if (GetFrameQueueRemainingCount(state->video.decoder.frameQueue) > 0) {
+		if (GetFrameQueueRemainingCount(player->video.decoder.frameQueue) > 0) {
 			// Dequeue the current and the last picture
-			Frame *lastvp = PeekFrameQueueLast(state->video.decoder.frameQueue);
-			Frame *vp = PeekFrameQueue(state->video.decoder.frameQueue);
+			Frame *lastvp = PeekFrameQueueLast(player->video.decoder.frameQueue);
+			Frame *vp = PeekFrameQueue(player->video.decoder.frameQueue);
 
 			// Serials from frame and packet queue must match
-			if (vp->serial != state->video.decoder.packetsQueue.serial) {
-				NextReadable(state->video.decoder.frameQueue);
+			if (vp->serial != player->video.decoder.packetsQueue.serial) {
+				NextReadable(player->video.decoder.frameQueue);
 				goto retry;
 			}
 
 			// Reset frame timer when serial from current and last frame are different
 			if (lastvp->serial != vp->serial) {
-				state->frameTimer = ffmpeg.av_gettime_relative() / (double)AV_TIME_BASE;
+				player->frameTimer = ffmpeg.av_gettime_relative() / (double)AV_TIME_BASE;
 			}
 
 			// Just display the last shown frame
-			if (state->isPaused) {
+			if (player->isPaused) {
 				goto display;
 			}
 
 			// Compute duration and delay
-			double lastDuration = GetFrameDuration(state, lastvp, vp);
-			double delay = ComputeVideoDelay(state, lastDuration);
+			double lastDuration = GetFrameDuration(player, lastvp, vp);
+			double delay = ComputeVideoDelay(player, lastDuration);
 
 			// Compute remaining time if have time left to display the frame
 			double time = ffmpeg.av_gettime_relative() / (double)AV_TIME_BASE;
-			if (time < state->frameTimer + delay) {
-				remainingTime = fplMin(state->frameTimer + delay - time, remainingTime);
+			if (time < player->frameTimer + delay) {
+				remainingTime = fplMin(player->frameTimer + delay - time, remainingTime);
 				goto display;
 			}
 
 			// Accumulate frame timer by the computed delay
-			state->frameTimer += delay;
+			player->frameTimer += delay;
 
 			// Reset frame timer when frametimer is out-of-sync
-			if (delay > 0 && time - state->frameTimer > AV_SYNC_THRESHOLD_MAX) {
-				state->frameTimer = time;
+			if (delay > 0 && time - player->frameTimer > AV_SYNC_THRESHOLD_MAX) {
+				player->frameTimer = time;
 			}
 
 			// @TODO(final): Why do we need to lock the frame queue here?
-			fplMutexLock(&state->video.decoder.frameQueue.lock);
+			fplMutexLock(&player->video.decoder.frameQueue.lock);
 			if (!isnan(vp->pts)) {
-				UpdateVideoClock(state, vp->pts, vp->serial);
+				UpdateVideoClock(player, vp->pts, vp->serial);
 			}
-			fplMutexUnlock(&state->video.decoder.frameQueue.lock);
+			fplMutexUnlock(&player->video.decoder.frameQueue.lock);
 
 			// When we got more than one frame we may drop this frame entirely
-			if (GetFrameQueueRemainingCount(state->video.decoder.frameQueue) > 1) {
-				Frame *nextvp = PeekFrameQueueNext(state->video.decoder.frameQueue);
-				double duration = GetFrameDuration(state, vp, nextvp);
-				if (!state->step && (state->settings.frameDrop > 0 || (state->settings.frameDrop && GetMasterSyncType(state) != AVSyncType::VideoMaster)) && time > state->frameTimer + duration) {
-					state->frame_drops_late++;
-					NextReadable(state->video.decoder.frameQueue);
+			if (GetFrameQueueRemainingCount(player->video.decoder.frameQueue) > 1) {
+				Frame *nextvp = PeekFrameQueueNext(player->video.decoder.frameQueue);
+				double duration = GetFrameDuration(player, vp, nextvp);
+				if (!player->step && (player->settings.frameDrop > 0 || (player->settings.frameDrop && GetMasterSyncType(player) != AVSyncType::VideoMaster)) && time > player->frameTimer + duration) {
+					player->frame_drops_late++;
+					NextReadable(player->video.decoder.frameQueue);
 
 #if PRINT_FRAME_DROPS
-					FPL_LOG_INFO("App", "Frame drops: %d/%d\n", state->frame_drops_early, state->frame_drops_late);
+					FPL_LOG_INFO("App", "Frame drops: %d/%d\n", player->frame_drops_early, player->frame_drops_late);
 #endif
 					goto retry;
 				}
 			}
 
 			// Get to next readable frame in the queue and force the refresh of the frame
-			NextReadable(state->video.decoder.frameQueue);
-			state->forceRefresh = 1;
+			NextReadable(player->video.decoder.frameQueue);
+			player->forceRefresh = 1;
 
-			if (state->step && !state->isPaused) {
-				StreamTogglePause(state);
+			if (player->step && !player->isPaused) {
+				StreamTogglePause(player);
 			}
 		}
 
 	display:
-		if (!state->settings.isVideoDisabled && state->forceRefresh && state->video.decoder.frameQueue.readIndexShown) {
+		if (!player->settings.isVideoDisabled && player->forceRefresh && player->video.decoder.frameQueue.readIndexShown) {
 			RenderVideoFrame(state);
 			displayCount++;
 		} else {
-			if (state->video.decoder.frameQueue.count < state->video.decoder.frameQueue.capacity) {
+			if (player->video.decoder.frameQueue.count < player->video.decoder.frameQueue.capacity) {
 				// @TODO(final): This is not great, but a fix to not wait forever in the video decoding thread
-				fplSignalSet(&state->video.decoder.frameQueue.signal);
+				fplSignalSet(&player->video.decoder.frameQueue.signal);
 			}
 		}
 	} else {
 		RenderVideoFrame(state);
 	}
-	state->forceRefresh = 0;
+	player->forceRefresh = 0;
 
 #if PRINT_CLOCKS
-	double masterClock = GetMasterClock(state);
-	double audioClock = GetClock(state->audio.clock);
-	double videoClock = GetClock(state->video.clock);
-	double extClock = GetClock(state->externalClock);
+	double masterClock = GetMasterClock(player);
+	double audioClock = GetClock(player->audio.clock);
+	double videoClock = GetClock(player->video.clock);
+	double extClock = GetClock(player->externalClock);
 	fplDebugFormatOut("M: %7.2f, A: %7.2f, V: %7.2f, E: %7.2f\n", masterClock, audioClock, videoClock, extClock);
 #endif
 }
@@ -3212,7 +3307,7 @@ static int DecodeInterruptCallback(void *opaque) {
 	return(result);
 }
 
-static void ReleaseVideoContext(VideoContext &video) {
+static void ReleaseVideo(VideoContext &video) {
 #if USE_HARDWARE_RENDERING
 	glDeleteProgram(video.basicShader.programId);
 	video.basicShader.programId = 0;
@@ -3235,6 +3330,7 @@ static void ReleaseVideoContext(VideoContext &video) {
 	if (video.stream.codecContext != nullptr) {
 		ffmpeg.avcodec_free_context(&video.stream.codecContext);
 	}
+	video = {};
 }
 
 static bool InitializeVideo(PlayerState &state, const char *mediaFilePath) {
@@ -3357,7 +3453,6 @@ static bool InitializeVideo(PlayerState &state, const char *mediaFilePath) {
 static void ReleaseAudio(AudioContext &audio) {
 	if (audio.conversionAudioBuffer != nullptr) {
 		fplMemoryAlignedFree(audio.conversionAudioBuffer);
-		audio.conversionAudioBuffer = nullptr;
 	}
 	if (audio.softwareResampleCtx != nullptr) {
 		ffmpeg.swr_free(&audio.softwareResampleCtx);
@@ -3365,6 +3460,7 @@ static void ReleaseAudio(AudioContext &audio) {
 	if (audio.stream.codecContext != nullptr) {
 		ffmpeg.avcodec_free_context(&audio.stream.codecContext);
 	}
+	audio = {};
 }
 
 static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const fplAudioDeviceFormat &nativeAudioFormat) {
@@ -3440,26 +3536,34 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 
 static void ReleaseMedia(PlayerState &state) {
 	DestroyDecoder(state.audio.decoder);
+	CloseStreamComponent(state.audio.stream);
 	ReleaseAudio(state.audio);
+
 	DestroyDecoder(state.video.decoder);
-	ReleaseVideoContext(state.video);
+	CloseStreamComponent(state.video.stream);
+	ReleaseVideo(state.video);
+
 	DestroyReader(state.reader);
+
 	if (state.formatCtx != nullptr) {
 		ffmpeg.avformat_close_input(&state.formatCtx);
+		state.formatCtx = nullptr;
 	}
 }
 
-static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const fplAudioDeviceFormat &nativeAudioFormat) {
-	bool isURL = fplIsStringMatchWildcard(mediaFilePath, "http://*") || fplIsStringMatchWildcard(mediaFilePath, "https://*");
+static bool LoadMedia(PlayerState &state, const char *mediaURL, const fplAudioDeviceFormat &nativeAudioFormat) {
+	bool isURL = fplIsStringMatchWildcard(mediaURL, "http://*") || fplIsStringMatchWildcard(mediaURL, "https://*");
 	
-	if (!isURL && !fplFileExists(mediaFilePath)){
-		FPL_LOG_ERROR("App", "Media file '%s' does not exists!\n", mediaFilePath);
+	if (!isURL && !fplFileExists(mediaURL)){
+		FPL_LOG_ERROR("App", "Media file '%s' does not exists!\n", mediaURL);
 		return(false);
 	}
 
+	state.state = PlayingState::Unloaded;
+
 	// Open media file
-	if (ffmpeg.avformat_open_input(&state.formatCtx, mediaFilePath, nullptr, nullptr) != 0) {
-		FPL_LOG_ERROR("App", "Failed opening media file '%s'!\n", mediaFilePath);
+	if (ffmpeg.avformat_open_input(&state.formatCtx, mediaURL, nullptr, nullptr) != 0) {
+		FPL_LOG_ERROR("App", "Failed opening media file '%s'!\n", mediaURL);
 		goto release;
 	}
 
@@ -3469,7 +3573,7 @@ static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const fplAu
 
 	// Retrieve stream information
 	if (ffmpeg.avformat_find_stream_info(state.formatCtx, nullptr) < 0) {
-		FPL_LOG_ERROR("App", "Failed getting stream informations for media file '%s'!\n", mediaFilePath);
+		FPL_LOG_ERROR("App", "Failed getting stream informations for media file '%s'!\n", mediaURL);
 		goto release;
 	}
 
@@ -3477,7 +3581,7 @@ static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const fplAu
 	state.streamLength = state.formatCtx->duration / (double)AV_TIME_BASE;
 
 	// Dump information about file into standard error
-	ffmpeg.av_dump_format(state.formatCtx, 0, mediaFilePath, 0);
+	ffmpeg.av_dump_format(state.formatCtx, 0, mediaURL, 0);
 
 	// Dont limit the queues when we are playing realtime based media, like internet streams, etc.
 	state.isRealTime = IsRealTime(state.formatCtx);
@@ -3494,13 +3598,13 @@ static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const fplAu
 			case AVMEDIA_TYPE_VIDEO:
 			{
 				if (state.video.stream.streamIndex == -1 && !state.settings.isVideoDisabled) {
-					OpenStreamComponent(mediaFilePath, streamIndex, stream, state.video.stream);
+					state.video.stream.isValid = OpenStreamComponent(mediaURL, streamIndex, stream, state.video.stream);
 				}
 			} break;
 			case AVMEDIA_TYPE_AUDIO:
 			{
 				if (state.audio.stream.streamIndex == -1 && !state.settings.isAudioDisabled) {
-					OpenStreamComponent(mediaFilePath, streamIndex, stream, state.audio.stream);
+					state.audio.stream.isValid = OpenStreamComponent(mediaURL, streamIndex, stream, state.audio.stream);
 				}
 			} break;
 		}
@@ -3508,26 +3612,28 @@ static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const fplAu
 
 	// No streams found
 	if ((!state.video.stream.isValid) && (!state.audio.stream.isValid)) {
-		FPL_LOG_ERROR("App", "No video or audio stream in media file '%s' found!\n", mediaFilePath);
+		FPL_LOG_ERROR("App", "No video or audio stream in media file '%s' found!\n", mediaURL);
 		goto release;
 	}
 
 	// We need to initialize the reader first before we allocate stream specific stuff
 	if (!InitReader(state.reader)) {
-		FPL_LOG_ERROR("App", "Failed initializing reader file '%s'!\n", mediaFilePath);
+		FPL_LOG_ERROR("App", "Failed initializing reader file '%s'!\n", mediaURL);
 		goto release;
 	}
 
 	// Allocate audio related resources
 	if (state.audio.stream.isValid) {
-		if (!InitializeAudio(state, mediaFilePath, nativeAudioFormat)) {
+		state.audio.isValid = InitializeAudio(state, mediaURL, nativeAudioFormat);
+		if (!state.audio.isValid) {
 			goto release;
 		}
 	}
 
 	// Allocate video related resources
 	if (state.video.stream.isValid) {
-		if (!InitializeVideo(state, mediaFilePath)) {
+		state.video.isValid = InitializeVideo(state, mediaURL);
+		if (!state.video.isValid) {
 			goto release;
 		}
 	}
@@ -3543,7 +3649,7 @@ static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const fplAu
 	state.seekByBytes = !!(state.formatCtx->iformat->flags & AVFMT_TS_DISCONT) && strcmp("ogg", state.formatCtx->iformat->name);
 
 	// Save file path
-	state.filePathOrUrl = mediaFilePath;
+	state.filePathOrUrl = mediaURL;
 
 	return true;
 
@@ -3577,7 +3683,7 @@ int main(int argc, char **argv) {
 		return -1;
 	}
 
-	const char *mediaFilePath = argv[1];
+	const char *mediaURL = argv[1];
 
 	fplSettings settings = fplMakeDefaultSettings();
 
@@ -3609,7 +3715,8 @@ int main(int argc, char **argv) {
 	}
 #endif
 
-	PlayerState state = {};
+	AppState state = {};
+	PlayerState &playerState = state.player;
 
 	int refreshCount = 0;
 	double lastTime = 0;
@@ -3617,13 +3724,12 @@ int main(int argc, char **argv) {
 	double lastRefreshTime = 0;
 
 	// Init
-	if (!InitPlayer(state)) {
+	if (!InitApp(state)) {
 		goto release;
 	}
 
 	// Get native audio format
-	fplAudioDeviceFormat nativeAudioFormat;
-	if (!fplGetAudioHardwareFormat(&nativeAudioFormat)) {
+	if (!fplGetAudioHardwareFormat(&state.nativeAudioFormat)) {
 		goto release;
 	}
 
@@ -3639,30 +3745,18 @@ int main(int argc, char **argv) {
 	ffmpeg.av_init_packet(&globalFlushPacket);
 	globalFlushPacket.data = (uint8_t *)&globalFlushPacket;
 
-	// Load media
-	if (!LoadMedia(state, mediaFilePath, nativeAudioFormat)) {
+	// Play media
+	if (!PlayMedia(playerState, mediaURL, state.nativeAudioFormat)) {
 		goto release;
-	}
-
-	// Start decoder and reader
-	if (state.video.stream.isValid) {
-		StartDecoder(state.video.decoder, VideoDecodingThreadProc);
-	}
-	if (state.audio.stream.isValid) {
-		StartDecoder(state.audio.decoder, AudioDecodingThreadProc);
-	}
-	StartReader(state.reader, PacketReadThreadProc, &state);
-
-	// Start playing audio
-	if (state.audio.stream.isValid) {
-		fplSetAudioClientReadCallback(AudioReadCallback, &state.audio);
-		fplPlayAudio();
 	}
 
 	//
 	// App loop
 	//
 	fplGetWindowSize(&state.viewport);
+
+	// TODO: Make constant!
+	const double SeekStep = 5.0f;
 
 	lastTime = fplGetTimeInSecondsHP();
 	remainingTime = 0.0;
@@ -3672,10 +3766,6 @@ int main(int argc, char **argv) {
 		//
 		// Handle events
 		//
-
-		// TODO: Make constant!
-		const double SeekStep = 5.0f;
-
 		fplEvent ev = {};
 		while (fplPollEvent(&ev)) {
 			switch (ev.type) {
@@ -3686,12 +3776,18 @@ int main(int argc, char **argv) {
 							switch (ev.keyboard.mappedKey) {
 								case fplKey_Space:
 								{
-									TogglePause(&state);
+									TogglePause(&playerState);
 								} break;
 
 								case fplKey_F:
 								{
-									ToggleFullscreen(&state);
+									ToggleFullscreen(&playerState);
+								} break;
+
+								case fplKey_R:
+								{
+									StopMedia(playerState);
+									PlayMedia(playerState, mediaURL, state.nativeAudioFormat);
 								} break;
 
 								case fplKey_Left:
@@ -3699,7 +3795,7 @@ int main(int argc, char **argv) {
 								{
 									// TODO(final): Make seeking thread-safe!
 									double seekRelative = (ev.keyboard.mappedKey == fplKey_Left) ? -SeekStep : SeekStep;
-									SeekRelative(&state, seekRelative);
+									SeekRelative(&playerState, seekRelative);
 								} break;
 							}
 						}
@@ -3710,7 +3806,7 @@ int main(int argc, char **argv) {
 					if (ev.window.type == fplWindowEventType_Resized) {
 						state.viewport.width = ev.window.size.width;
 						state.viewport.height = ev.window.size.height;
-						state.forceRefresh = 1;
+						playerState.forceRefresh = 1;
 					}
 				} break;
 			}
@@ -3724,7 +3820,7 @@ int main(int argc, char **argv) {
 			fplThreadSleep(msToSleep);
 		}
 		remainingTime = DEFAULT_REFRESH_RATE;
-		if (!state.isPaused || state.forceRefresh) {
+		if (!playerState.isPaused || playerState.forceRefresh) {
 			VideoRefresh(&state, remainingTime, refreshCount);
 #if PRINT_VIDEO_REFRESH
 			fplDebugFormatOut("Video refresh: %d\n", ++refreshCount);
@@ -3752,23 +3848,9 @@ int main(int argc, char **argv) {
 
 
 release:
-	// Stop audio
-	if (state.audio.stream.isValid) {
-		fplStopAudio();
-	}
+	ReleaseApp(state);
 
-	// Stop reader and decoders
-	StopReader(state.reader);
-	if (state.video.stream.isValid) {
-		StopDecoder(state.video.decoder);
-	}
-	if (state.audio.stream.isValid) {
-		StopDecoder(state.audio.decoder);
-	}
-
-	ReleaseMedia(state);
 	ReleaseFFMPEG(ffmpeg);
-	ReleasePlayer(state);
 
 	// Release platform
 #if USE_HARDWARE_RENDERING
