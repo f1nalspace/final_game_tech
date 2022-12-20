@@ -19,7 +19,8 @@ Changelog:
 	## 2022-12-19
 	- Fixed[#140]: Crash in UploadTexture when linesize is not the same as frame width
 	- Fixed[#143]: Crash for videos with 6-channel audio
-	- Implemented[#142]: Allow playback of http/https streams from the arguments
+	- New[#145]: Added support for playing non-video streams
+	- New[#142]: Allow playback of http/https streams from the arguments
 	- Changed: Use a dolby test-video as default debug argument in the visual studio project
 	- Fixed: Sart packet queue was not adding the flush packet on startup when assertions are compiled out
 
@@ -2847,25 +2848,29 @@ static void RenderOSD(PlayerState *state, const Mat4f &proj, const float w, cons
 #else
 		videoInfos = "Software";
 #endif
-		double frameRate = av_q2d(state->video.stream.stream->avg_frame_rate);
-		uint32_t width = state->video.stream.codecContext->width;
-		uint32_t height = state->video.stream.codecContext->height;
-		AVPixelFormat pixFormat  = state->video.stream.codecContext->pix_fmt;
-		const char *pixelFormatName = ffmpeg.av_get_pix_fmt_name(pixFormat);
-			
-		fplStringFormat(osdTextBuffer, fplArrayCount(osdTextBuffer), "Video: %s, %ux%u, %s, %.2f frames/s", videoInfos, width, height, pixelFormatName, frameRate);
-		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
-		osdPos += V2f(0, -osdFontSize);
 
-		const char* audioBackendName = fplGetAudioBackendName(state->audio.audioTarget.backend);
-		const char* audioFormatName = fplGetAudioFormatName(state->audio.audioTarget.type);
+		if (state->video.stream.isValid) {
+			double frameRate = av_q2d(state->video.stream.stream->avg_frame_rate);
+			uint32_t width = state->video.stream.codecContext->width;
+			uint32_t height = state->video.stream.codecContext->height;
+			AVPixelFormat pixFormat = state->video.stream.codecContext->pix_fmt;
+			const char *pixelFormatName = ffmpeg.av_get_pix_fmt_name(pixFormat);
+			const char *videoCodecDesc = state->video.stream.codec->long_name;
+			fplStringFormat(osdTextBuffer, fplArrayCount(osdTextBuffer), "Video: %s, %ux%u, %s, %.2f frames/s, %s", videoInfos, width, height, pixelFormatName, frameRate, videoCodecDesc);
+			PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
+			osdPos += V2f(0, -osdFontSize);
+		}
 
-		uint32_t bufferSize = state->audio.audioTarget.bufferSizeInBytes;
-		uint32_t frameSize = fplGetAudioFrameSizeInBytes(state->audio.audioTarget.type, state->audio.audioTarget.channels);
-
-		fplStringFormat(osdTextBuffer, fplArrayCount(osdTextBuffer), "Audio: %s, %s, %u channels, %u Hz", audioBackendName, audioFormatName, state->audio.audioTarget.channels, state->audio.audioTarget.sampleRate);
-		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
-		osdPos += V2f(0, -osdFontSize);
+		if (state->audio.stream.isValid) {
+			const char *audioBackendName = fplGetAudioBackendName(state->audio.audioTarget.backend);
+			const char *audioFormatName = fplGetAudioFormatName(state->audio.audioTarget.type);
+			const char *audioCodecDesc = state->audio.stream.codec->long_name;
+			uint32_t bufferSize = state->audio.audioTarget.bufferSizeInBytes;
+			uint32_t frameSize = fplGetAudioFrameSizeInBytes(state->audio.audioTarget.type, state->audio.audioTarget.channels);
+			fplStringFormat(osdTextBuffer, fplArrayCount(osdTextBuffer), "Audio: %s, %s, %u channels, %u Hz, %s", audioBackendName, audioFormatName, state->audio.audioTarget.channels, state->audio.audioTarget.sampleRate, audioCodecDesc);
+			PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
+			osdPos += V2f(0, -osdFontSize);
+		}
 	}
 
 	// Debug shit
@@ -2913,20 +2918,35 @@ static void RenderOSD(PlayerState *state, const Mat4f &proj, const float w, cons
 
 static void RenderVideoFrame(PlayerState *state) {
 	assert(state != nullptr);
-	int readIndex = state->video.decoder.frameQueue.readIndex;
-	Frame *vp = PeekFrameQueueLast(state->video.decoder.frameQueue);
+
 	VideoContext &video = state->video;
-	bool wasUploaded = false;
-	if (!vp->isUploaded) {
-		UploadTexture(video, vp->frame);
-		vp->isUploaded = true;
-		wasUploaded = true;
+	Frame *vp = fpl_null;
+
+	bool hasVideo = state->video.stream.isValid;
+
+	if (hasVideo) {
+		int readIndex = state->video.decoder.frameQueue.readIndex;
+		vp = PeekFrameQueueLast(state->video.decoder.frameQueue);
+		bool wasUploaded = false;
+		if (!vp->isUploaded) {
+			UploadTexture(video, vp->frame);
+			vp->isUploaded = true;
+			wasUploaded = true;
+		}
 	}
 
 	// Calculate display rect (Top-Down)
 	int w = state->viewport.width;
 	int h = state->viewport.height;
-	DisplayRect rect = CalculateDisplayRect(0, 0, w, h, vp->width, vp->height, vp->sar);
+	int32_t frameWidth = w;
+	int32_t frameHeight = h;
+	AVRational sar = fplStructInit(AVRational, 1, 1);
+	if (vp != fpl_null) {
+		frameWidth = vp->width;
+		frameHeight = vp->height;
+		sar = vp->sar;
+	}
+	DisplayRect rect = CalculateDisplayRect(0, 0, w, h, frameWidth, frameHeight, sar);
 
 #if USE_HARDWARE_RENDERING
 	Mat4f proj = Mat4OrthoRH(0.0f, (float)w, 0.0f, (float)h, 0.0f, 1.0f);
@@ -2937,8 +2957,8 @@ static void RenderVideoFrame(PlayerState *state) {
 	float uMin = 0.0f;
 	float vMin = 0.0f;
 #if USE_GL_RECTANGLE_TEXTURES
-	float uMax = (float)vp->width;
-	float vMax = (float)vp->height;
+	float uMax = (float)frameWidth;
+	float vMax = (float)frameHeight;
 #else
 	float uMax = 1.0f;
 	float vMax = 1.0f;
@@ -2965,50 +2985,52 @@ static void RenderVideoFrame(PlayerState *state) {
 	glDisable(GL_BLEND);
 #endif
 
-	// Update vertex array buffer with new rectangle
-	glBindBuffer(GL_ARRAY_BUFFER, state->video.vertexBufferId);
-	glBufferData(GL_ARRAY_BUFFER, fplArrayCount(vertexData) * sizeof(float), vertexData, GL_STREAM_DRAW);
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
-	CheckGLError();
+	if (hasVideo) {
+		// Update vertex array buffer with new rectangle
+		glBindBuffer(GL_ARRAY_BUFFER, state->video.vertexBufferId);
+		glBufferData(GL_ARRAY_BUFFER, fplArrayCount(vertexData) * sizeof(float), vertexData, GL_STREAM_DRAW);
+		glBindBuffer(GL_ARRAY_BUFFER, 0);
+		CheckGLError();
 
-	// Enable vertex array buffer
-	glBindVertexArray(state->video.vao);
-	CheckGLError();
+		// Enable vertex array buffer
+		glBindVertexArray(state->video.vao);
+		CheckGLError();
 
-	// Enable textures
-	int textureIndices[MAX_TARGET_TEXTURE_COUNT] = {};
-	for (uint32_t textureIndex = 0; textureIndex < video.targetTextureCount; ++textureIndex) {
-		const VideoTexture &targetTexture = video.targetTextures[textureIndex];
-		glActiveTexture(GL_TEXTURE0 + textureIndex);
-		glBindTexture(targetTexture.target, targetTexture.id);
-		textureIndices[textureIndex] = textureIndex;
+		// Enable textures
+		int textureIndices[MAX_TARGET_TEXTURE_COUNT] = {};
+		for (uint32_t textureIndex = 0; textureIndex < video.targetTextureCount; ++textureIndex) {
+			const VideoTexture &targetTexture = video.targetTextures[textureIndex];
+			glActiveTexture(GL_TEXTURE0 + textureIndex);
+			glBindTexture(targetTexture.target, targetTexture.id);
+			textureIndices[textureIndex] = textureIndex;
+		}
+		CheckGLError();
+
+		// Enable shader
+		const VideoShader *shader = state->video.activeShader;
+		glUseProgram(shader->programId);
+		glUniformMatrix4fv(shader->uniform_uniProjMat, 1, GL_FALSE, proj.m);
+		glUniform1iv(shader->uniform_uniTextures, (GLsizei)MAX_TARGET_TEXTURE_COUNT, textureIndices);
+		glUniform1f(shader->uniform_uniTextureOffsetY, vMax);
+		glUniform1f(shader->uniform_uniTextureScaleY, -1.0f);
+		CheckGLError();
+
+		// Draw quad
+		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, nullptr);
+		CheckGLError();
+
+		// Disable shader
+		glUseProgram(0);
+
+		// Disable textures
+		for (int textureIndex = (int)video.targetTextureCount - 1; textureIndex >= 0; textureIndex--) {
+			const VideoTexture &targetTexture = video.targetTextures[textureIndex];
+			glActiveTexture(GL_TEXTURE0 + textureIndex);
+			glBindTexture(targetTexture.target, 0);
+		}
+
+		glBindVertexArray(0);
 	}
-	CheckGLError();
-
-	// Enable shader
-	const VideoShader *shader = state->video.activeShader;
-	glUseProgram(shader->programId);
-	glUniformMatrix4fv(shader->uniform_uniProjMat, 1, GL_FALSE, proj.m);
-	glUniform1iv(shader->uniform_uniTextures, (GLsizei)MAX_TARGET_TEXTURE_COUNT, textureIndices);
-	glUniform1f(shader->uniform_uniTextureOffsetY, vMax);
-	glUniform1f(shader->uniform_uniTextureScaleY, -1.0f);
-	CheckGLError();
-
-	// Draw quad
-	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, nullptr);
-	CheckGLError();
-
-	// Disable shader
-	glUseProgram(0);
-
-	// Disable textures
-	for (int textureIndex = (int)video.targetTextureCount - 1; textureIndex >= 0; textureIndex--) {
-		const VideoTexture &targetTexture = video.targetTextures[textureIndex];
-		glActiveTexture(GL_TEXTURE0 + textureIndex);
-		glBindTexture(targetTexture.target, 0);
-	}
-
-	glBindVertexArray(0);
 
 #if USE_GL_BLENDING
 	// Re-Enable blending
@@ -3170,6 +3192,8 @@ static void VideoRefresh(PlayerState *state, double &remainingTime, int &display
 				fplSignalSet(&state->video.decoder.frameQueue.signal);
 			}
 		}
+	} else {
+		RenderVideoFrame(state);
 	}
 	state->forceRefresh = 0;
 
@@ -3439,8 +3463,7 @@ static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const fplAu
 		goto release;
 	}
 
-	state.streamLength = state.formatCtx->duration / (double)AV_TIME_BASE;
-
+	// Setup decode interrupt callback
 	state.formatCtx->interrupt_callback.callback = DecodeInterruptCallback;
 	state.formatCtx->interrupt_callback.opaque = &state;
 
@@ -3449,6 +3472,9 @@ static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const fplAu
 		FPL_LOG_ERROR("App", "Failed getting stream informations for media file '%s'!\n", mediaFilePath);
 		goto release;
 	}
+
+	// Get duration in seconds
+	state.streamLength = state.formatCtx->duration / (double)AV_TIME_BASE;
 
 	// Dump information about file into standard error
 	ffmpeg.av_dump_format(state.formatCtx, 0, mediaFilePath, 0);
