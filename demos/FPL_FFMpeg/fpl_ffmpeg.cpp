@@ -20,6 +20,7 @@ Changelog:
 	- Fixed[#140]: Crash in UploadTexture when linesize is not the same as frame width
 	- Fixed[#143]: Crash for videos with 6-channel audio
 	- New[#145]: Added support for playing non-video streams
+	- New[#144]: Added support for drag & drop media files into the window
 	- New[#142]: Allow playback of http/https streams from the arguments
 	- Changed: Use a dolby test-video as default debug argument in the visual studio project
 	- Fixed: Sart packet queue was not adding the flush packet on startup when assertions are compiled out
@@ -3884,12 +3885,19 @@ int main(int argc, char **argv) {
 						}
 					}
 				} break;
+
 				case fplEventType_Window:
 				{
 					if (ev.window.type == fplWindowEventType_Resized) {
 						state.viewport.width = ev.window.size.width;
 						state.viewport.height = ev.window.size.height;
 						playerState.forceRefresh = 1;
+					} else if (ev.window.type == fplWindowEventType_DroppedFiles) {
+						if (ev.window.dropFiles.fileCount > 0) {
+							const char *droppedFilePath = ev.window.dropFiles.files[0];
+							StopMedia(playerState);
+							PlayMedia(playerState, droppedFilePath, state.nativeAudioFormat);
+						}
 					}
 				} break;
 			}
