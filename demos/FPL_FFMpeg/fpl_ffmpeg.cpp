@@ -24,6 +24,8 @@ Changelog:
 	- Changed: Use a dolby test-video as default debug argument in the visual studio project
 	- Fixed: Sart packet queue was not adding the flush packet on startup when assertions are compiled out
 	- New: Support for unloading and loading media/player state, so we can load different media at any time
+	- New: Support for AV_PIX_FMT_YUVJ420P
+	- New: Automatic use software decoding, when the specific pixel format is not supported in GLSL
 
 	## 2021-02-24
 	- Support for non win32 platforms by loading to .so libraries instead
@@ -110,6 +112,7 @@ Features/Planned:
 		[x] GLSL (YUV420P for now)
 		[x] Slow CPU implementation (YUV420P for now)
 		[ ] SIMD YUV420P implementation
+		[ ] YUV422 support
 	[ ] Audio format conversion (Downsampling, Upsampling, S16 > F32 etc.)
 		[ ] Slow CPU implementation
 		[ ] SIMD implementation
@@ -516,12 +519,8 @@ static AVFrame *AllocateFrame() {
 	return(result);
 }
 
-static void FreeFrameData(Frame *frame) {
-	ffmpeg.av_frame_unref(frame->frame);
-}
-
 static void FreeFrame(Frame *frame) {
-	FreeFrameData(frame);
+	ffmpeg.av_frame_unref(frame->frame);
 	ffmpeg.av_frame_free(&frame->frame);
 	fplAtomicFetchAndAddS32(&globalMemStats.allocatedFrames, -1);
 }
@@ -636,7 +635,9 @@ static void NextReadable(FrameQueue &queue) {
 		return;
 	}
 
-	FreeFrameData(&queue.frames[queue.readIndex]);
+	AVFrame *frame = queue.frames[queue.readIndex].frame;
+	ffmpeg.av_frame_unref(frame);
+
 	queue.readIndex = (queue.readIndex + 1) % queue.capacity;
 
 	fplMutexLock(&queue.lock);
@@ -1006,6 +1007,56 @@ struct VideoContext {
 	bool32 isValid;
 };
 
+static bool HasShaderForPixelFormat(const AVPixelFormat pixelFormat) {
+#if USE_HARDWARE_RENDERING && USE_GLSL_IMAGE_FORMAT_DECODING
+	switch (pixelFormat) {
+		case AVPixelFormat::AV_PIX_FMT_YUV420P:
+		case AVPixelFormat::AV_PIX_FMT_YUVJ420P:
+			return true;
+		default:
+			return false;
+	}
+#endif
+	return false;
+}
+
+static bool IsPlanarYUVFormat(const AVPixelFormat pixelFormat) {
+	switch (pixelFormat) {
+		// planar YUV 4:2:0, 12bpp, (1 Cr & Cb sample per 2x2 Y samples)
+		case AVPixelFormat::AV_PIX_FMT_YUV420P:
+		// planar YUV 4:2:2, 16bpp, (1 Cr & Cb sample per 2x1 Y samples)
+		case AVPixelFormat::AV_PIX_FMT_YUV422P:
+		// planar YUV 4:4:4, 24bpp, (1 Cr & Cb sample per 1x1 Y samples)
+		case AVPixelFormat::AV_PIX_FMT_YUV444P:
+		// planar YUV 4:1:0,  9bpp, (1 Cr & Cb sample per 4x4 Y samples)
+		case AVPixelFormat::AV_PIX_FMT_YUV410P:
+		// planar YUV 4:1:1, 12bpp, (1 Cr & Cb sample per 4x1 Y samples)
+		case AVPixelFormat::AV_PIX_FMT_YUV411P:
+
+		// planar YUV 4:2:0, 12bpp, full scale (JPEG), deprecated in favor of AV_PIX_FMT_YUV420P and setting color_range
+		case AVPixelFormat::AV_PIX_FMT_YUVJ420P:
+		// planar YUV 4:2:2, 16bpp, full scale (JPEG), deprecated in favor of AV_PIX_FMT_YUV422P and setting color_range
+		case AVPixelFormat::AV_PIX_FMT_YUVJ422P:
+		// planar YUV 4:4:4, 24bpp, full scale (JPEG), deprecated in favor of AV_PIX_FMT_YUV444P and setting color_range
+		case AVPixelFormat::AV_PIX_FMT_YUVJ444P:
+
+		// planar YUV 4:2:0, 12bpp, 1 plane for Y and 1 plane for the UV components, which are interleaved (first byte U and the following byte V)
+		case AVPixelFormat::AV_PIX_FMT_NV12:
+		// planar YUV 4:2:0, 12bpp, 1 plane for Y and 1 plane for the UV components, which are interleaved (first byte V and the following byte U)
+		case AVPixelFormat::AV_PIX_FMT_NV21:
+
+		// planar YUV 4:4:0 (1 Cr & Cb sample per 1x2 Y samples)
+		case AVPixelFormat::AV_PIX_FMT_YUV440P:
+		// planar YUV 4:4:0 full scale (JPEG), deprecated in favor of AV_PIX_FMT_YUV440P and setting color_range
+		case AVPixelFormat::AV_PIX_FMT_YUVJ440P:
+		// planar YUV 4:2:0, 20bpp, (1 Cr & Cb sample per 2x2 Y & A samples)
+		case AVPixelFormat::AV_PIX_FMT_YUVA420P:
+			return true;
+		default:
+			return false;
+	}
+}
+
 static void FlipSourcePicture(uint8_t *srcData[8], int srcLineSize[8], int height) {
 	int h0 = srcLineSize[0];
 	for (int i = 0; i < 8; ++i) {
@@ -1028,37 +1079,46 @@ static void FlipSourcePicture(uint8_t *srcData[8], int srcLineSize[8], int heigh
 
 static void UploadTexture(VideoContext &video, const AVFrame *sourceNativeFrame) {
 	AVCodecContext *videoCodecCtx = video.stream.codecContext;
-#if USE_HARDWARE_RENDERING && USE_GLSL_IMAGE_FORMAT_DECODING
-	switch (sourceNativeFrame->format) {
-		case AVPixelFormat::AV_PIX_FMT_YUV420P:
-			assert(video.targetTextureCount == 3);
-			for (uint32_t textureIndex = 0; textureIndex < video.targetTextureCount; ++textureIndex) {
-				VideoTexture &targetTexture = video.targetTextures[textureIndex];
-				uint8_t *data = LockVideoTexture(targetTexture);
-				assert(data != nullptr);
 
-				uint32_t w = (textureIndex == 0) ? sourceNativeFrame->width : sourceNativeFrame->width / 2;
-				uint32_t h = (textureIndex == 0) ? sourceNativeFrame->height : sourceNativeFrame->height / 2;
+	AVPixelFormat pixelFormat = (AVPixelFormat)sourceNativeFrame->format;
 
-				assert(targetTexture.width == w);
-				assert(targetTexture.height == h);
+#if USE_HARDWARE_RENDERING
+	if (IsPlanarYUVFormat(pixelFormat) && HasShaderForPixelFormat(pixelFormat)) {
+		switch (pixelFormat) {
+			case AVPixelFormat::AV_PIX_FMT_YUV420P:
+			case AVPixelFormat::AV_PIX_FMT_YUVJ420P:
+				assert(video.targetTextureCount == 3);
+				for (uint32_t textureIndex = 0; textureIndex < video.targetTextureCount; ++textureIndex) {
+					VideoTexture &targetTexture = video.targetTextures[textureIndex];
 
-				uint32_t lineSize = sourceNativeFrame->linesize[textureIndex];
-				size_t copySize = targetTexture.width;
+					uint8_t *data = LockVideoTexture(targetTexture);
 
-				uint8_t *target = data;
-				for (uint32_t y = 0; y < h; ++y) {
-					fplMemoryCopy(sourceNativeFrame->data[textureIndex] + y * lineSize, copySize, target);
-					target += targetTexture.rowSize;
+					assert(data != nullptr);
+
+					uint32_t w = (textureIndex == 0) ? sourceNativeFrame->width : sourceNativeFrame->width / 2;
+					uint32_t h = (textureIndex == 0) ? sourceNativeFrame->height : sourceNativeFrame->height / 2;
+
+					assert(targetTexture.width == w);
+					assert(targetTexture.height == h);
+
+					uint32_t lineSize = sourceNativeFrame->linesize[textureIndex];
+					size_t copySize = targetTexture.width;
+
+					uint8_t *target = data;
+					for (uint32_t y = 0; y < h; ++y) {
+						fplMemoryCopy(sourceNativeFrame->data[textureIndex] + y * lineSize, copySize, target);
+						target += targetTexture.rowSize;
+					}
+
+					UnlockVideoTexture(targetTexture);
 				}
-
-				UnlockVideoTexture(targetTexture);
-			}
-			break;
-		default:
-			break;
+				return;
+			default:
+				break;
+		}
 	}
-#else
+#endif
+
 	assert(video.targetTextureCount == 1);
 	VideoTexture &targetTexture = video.targetTextures[0];
 	assert(targetTexture.width == sourceNativeFrame->width);
@@ -1083,17 +1143,19 @@ static void UploadTexture(VideoContext &video, const AVFrame *sourceNativeFrame)
 #	if USE_HARDWARE_RENDERING
 	flags |= ConversionFlags::DstBGRA;
 #	endif
-	switch (sourceNativeFrame->format) {
+
+	switch (pixelFormat) {
 		case AVPixelFormat::AV_PIX_FMT_YUV420P:
+		case AVPixelFormat::AV_PIX_FMT_YUVJ420P:
 			ConvertYUV420PToRGB32(dstData, dstLineSize, targetTexture.width, targetTexture.height, srcData, srcLineSize, flags);
 			break;
 		default:
 			ffmpeg.sws_scale(video.softwareScaleCtx, (uint8_t const *const *)srcData, srcLineSize, 0, videoCodecCtx->height, dstData, dstLineSize);
 			break;
-	}
+}
 #endif
+
 	UnlockVideoTexture(targetTexture);
-#endif
 }
 
 //
@@ -3368,35 +3430,29 @@ static bool InitializeVideo(PlayerState &state, const char *mediaFilePath) {
 		return false;
 	}
 
-#if USE_HARDWARE_RENDERING && USE_GLSL_IMAGE_FORMAT_DECODING
-	switch (videoCodexCtx->pix_fmt) {
-		case AVPixelFormat::AV_PIX_FMT_YUV420P:
-		{
-			state.video.activeShader = &state.video.yuv420pShader;
-			state.video.targetTextureCount = 3;
-			if (!InitVideoTexture(state.video.targetTextures[0], videoCodexCtx->width, videoCodexCtx->height, 8)) {
-				return false;
-			}
-			if (!InitVideoTexture(state.video.targetTextures[1], videoCodexCtx->width / 2, videoCodexCtx->height / 2, 8)) {
-				return false;
-			}
-			if (!InitVideoTexture(state.video.targetTextures[2], videoCodexCtx->width / 2, videoCodexCtx->height / 2, 8)) {
-				return false;
-			}
-		} break;
-		default:
-		{
-			state.video.activeShader = &state.video.basicShader;
-			state.video.targetTextureCount = 1;
-			if (!InitVideoTexture(state.video.targetTextures[0], videoCodexCtx->width, videoCodexCtx->height, 32)) {
-				return false;
-			}
-		} break;
+	AVPixelFormat pixelFormat = videoCodexCtx->pix_fmt;
+
+#if USE_HARDWARE_RENDERING
+	if (IsPlanarYUVFormat(pixelFormat) && HasShaderForPixelFormat(pixelFormat)) {
+		state.video.activeShader = &state.video.yuv420pShader;
+		state.video.targetTextureCount = 3;
+		if (!InitVideoTexture(state.video.targetTextures[0], videoCodexCtx->width, videoCodexCtx->height, 8)) {
+			return false;
+		}
+		if (!InitVideoTexture(state.video.targetTextures[1], videoCodexCtx->width / 2, videoCodexCtx->height / 2, 8)) {
+			return false;
+		}
+		if (!InitVideoTexture(state.video.targetTextures[2], videoCodexCtx->width / 2, videoCodexCtx->height / 2, 8)) {
+			return false;
+		}
+	} else {
+		state.video.activeShader = &state.video.basicShader;
+		state.video.targetTextureCount = 1;
+		if (!InitVideoTexture(state.video.targetTextures[0], videoCodexCtx->width, videoCodexCtx->height, 32)) {
+			return false;
+		}
 	}
 #else
-#	if USE_HARDWARE_RENDERING
-	state.video.activeShader = &state.video.basicShader;
-#	endif
 	state.video.targetTextureCount = 1;
 	if (!InitVideoTexture(state.video.targetTextures[0], videoCodexCtx->width, videoCodexCtx->height, 32)) {
 		return false;
