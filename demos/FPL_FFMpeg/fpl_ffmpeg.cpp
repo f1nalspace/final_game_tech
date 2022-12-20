@@ -19,6 +19,7 @@ Changelog:
 	## 2022-12-19
 	- Fixed[#140]: Crash in UploadTexture when linesize is not the same as frame width
 	- Fixed[#143]: Crash for videos with 6-channel audio
+	- Implemented[#142]: Allow playback of http/https streams from the arguments
 
 	## 2021-02-24
 	- Support for non win32 platforms by loading to .so libraries instead
@@ -3424,9 +3425,9 @@ static void ReleaseMedia(PlayerState &state) {
 }
 
 static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const fplAudioDeviceFormat &nativeAudioFormat) {
-	// @TODO(final): Custom IO!
+	bool isURL = fplIsStringMatchWildcard(mediaFilePath, "http://*") || fplIsStringMatchWildcard(mediaFilePath, "https://*");
 	
-	if (!fplFileExists(mediaFilePath)){
+	if (!isURL && !fplFileExists(mediaFilePath)){
 		FPL_LOG_ERROR("App", "Media file '%s' does not exists!\n", mediaFilePath);
 		return(false);
 	}
