@@ -19,6 +19,7 @@ Changelog:
 	## 2022-12-19
 	- Fixed[#140]: Crash in UploadTexture when linesize is not the same as frame width
 	- Fixed[#143]: Crash for videos with 6-channel audio
+	- New[#147]: Async loading of media
 	- New[#145]: Added support for playing non-video streams
 	- New[#144]: Added support for drag & drop media files into the window
 	- New[#142]: Allow playback of http/https streams from the arguments
@@ -991,8 +992,8 @@ struct VideoContext {
 	MediaStream stream;
 	Decoder decoder;
 	Clock clock;
-	VideoTexture targetTextures[MAX_TARGET_TEXTURE_COUNT];
 
+	VideoTexture targetTextures[MAX_TARGET_TEXTURE_COUNT];
 #if USE_HARDWARE_RENDERING
 	VideoShader basicShader;
 	VideoShader yuv420pShader;
@@ -1005,6 +1006,10 @@ struct VideoContext {
 	SwsContext *softwareScaleCtx;
 	uint32_t targetTextureCount;
 
+	volatile int32_t requireRelease;
+	volatile int32_t requireInit;
+
+	bool isRenderingInitialized;
 	bool32 isValid;
 };
 
@@ -1703,9 +1708,8 @@ static Vec2f ComputeTextSize(const FontInfo &info, const char *text, const float
 		result += V2f(glyph.advance * scale, 0.0f);
 		++s;
 	}
+	return result;
 }
-
-
 
 static void PushTextToBuffer(FontBuffer &buffer, const FontInfo &info, const char *text, const float scale, const Vec2f &position, const Vec4f &color, const TextRenderMode mode) {
 	uint32_t textLen = (uint32_t)fplGetStringLength(text);
@@ -1793,9 +1797,13 @@ static void PushTextToBuffer(FontBuffer &buffer, const FontInfo &info, const cha
 enum class PlayingState : int32_t {
 	Failed = -1,
 	Unloaded = 0,
+	Loading,
 	Loaded,
 	Playing,
 	Paused,
+	Stopping,
+	Stopped,
+	Unloading,
 	Finished
 };
 
@@ -1839,15 +1847,58 @@ struct PlayerState {
 	bool32 seekByBytes;
 };
 
-static void ReleaseMedia(PlayerState &state);
-static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const fplAudioDeviceFormat &nativeAudioFormat);
+static void ReleaseMedia(PlayerState &state, const PlayingState finishState, const uint32_t mainThreadId);
+static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const fplAudioDeviceFormat &nativeAudioFormat, const uint32_t mainThreadId);
 
 static void VideoDecodingThreadProc(const fplThreadHandle *thread, void *userData);
 static void AudioDecodingThreadProc(const fplThreadHandle *thread, void *userData);
 static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData);
+static void LoadMediaThreadProc(const fplThreadHandle *thread, void *userData);
 static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData);
 
-static void StopMedia(PlayerState &state) {
+static bool InitializeVideoRendering(VideoContext &video, const AVCodecContext *videoCodexCtx);
+static void ReleaseVideoRendering(VideoContext &video);
+
+static void SetPlayingState(PlayerState &state, const PlayingState playingState) {
+	fplAtomicExchangeS32((volatile int32_t *) & state.state, (int32_t)playingState);
+	state.forceRefresh = 1;
+}
+
+static PlayingState GetPlayingState(PlayerState &state) {
+	PlayingState result = (PlayingState)fplAtomicLoadS32((volatile int32_t *)&state.state);
+	return result;
+}
+
+static const char *GetPlayingStateText(const PlayingState state) {
+	switch (state) {
+		case PlayingState::Failed:
+			return "Failed";
+		case PlayingState::Unloaded:
+			return "Unloaded";
+		case PlayingState::Loading:
+			return "Loading";
+		case PlayingState::Loaded:
+			return "Loaded";
+		case PlayingState::Playing:
+			return "Playing";
+		case PlayingState::Paused:
+			return "Paused";
+		case PlayingState::Stopping:
+			return "Stopping";
+		case PlayingState::Stopped:
+			return "Stopped";
+		case PlayingState::Unloading:
+			return "Unloading";
+		case PlayingState::Finished:
+			return "Finished";
+		default:
+			return "-";
+	}
+}
+
+static void StopAndReleaseMedia(PlayerState &state, const uint32_t mainThreadId) {
+	SetPlayingState(state, PlayingState::Stopping);
+
 	// Stop audio
 	if (state.audio.isValid) {
 		fplStopAudio();
@@ -1864,14 +1915,21 @@ static void StopMedia(PlayerState &state) {
 		StopDecoder(state.audio.decoder);
 	}
 
+	SetPlayingState(state, PlayingState::Stopped);
+
 	// Release media
-	ReleaseMedia(state);
+	ReleaseMedia(state, PlayingState::Unloaded, mainThreadId);
 };
 
-static bool PlayMedia(PlayerState &state, const char *mediaURL, const fplAudioDeviceFormat &nativeAudioFormat) {
-	if (!LoadMedia(state, mediaURL, nativeAudioFormat)) {
+static bool LoadAndPlayMedia(PlayerState &state, const char *mediaURL, const fplAudioDeviceFormat &nativeAudioFormat, const uint32_t mainThreadId) {
+	fplAssert(state.state == PlayingState::Unloaded || state.state == PlayingState::Failed);
+
+	if (!LoadMedia(state, mediaURL, nativeAudioFormat, mainThreadId)) {
+		fplAssert(state.state == PlayingState::Failed);
 		return false;
 	}
+
+	SetPlayingState(state, PlayingState::Playing);
 
 	// Start decoders
 	if (state.video.isValid) {
@@ -1893,8 +1951,8 @@ static bool PlayMedia(PlayerState &state, const char *mediaURL, const fplAudioDe
 	return true;
 }
 
-static void ReleasePlayer(PlayerState &state) {
-	StopMedia(state);
+static void ReleasePlayer(PlayerState &state, const uint32_t mainThreadId) {
+	StopAndReleaseMedia(state, mainThreadId);
 	state = {};
 }
 
@@ -1904,22 +1962,87 @@ static void InitPlayer(PlayerState &state) {
 	state.loop = state.settings.isLoop ? 1 : 0;
 }
 
+struct LoadState {
+	fplThreadHandle *thread;
+	fplSignalHandle loadSignal;
+	fplSignalHandle stopSignal;
+	fplMutexHandle mutex;
+	const char *url;
+	volatile int32_t state;
+	volatile int32_t stopRequest;
+	bool32 isValid;
+};
+
 struct AppState {
 	PlayerState player;
 	FontInfo fontInfo;
 	FontBuffer fontBuffer;
 	fplAudioDeviceFormat nativeAudioFormat;
 	fplWindowSize viewport;
+	LoadState loadState;	
+	uint32_t mainThreadId;
 };
 
-static void ReleaseApp(AppState &state) {
-	ReleasePlayer(state.player);
+static void ReleaseLoadState(AppState &state) {
+	LoadState &loadState = state.loadState;
+	if (loadState.thread != fpl_null) {
+		loadState.stopRequest = 1;
+		fplSignalSet(&loadState.stopSignal);
+		fplThreadWaitForOne(loadState.thread, 1000);
+		fplThreadTerminate(loadState.thread);
+		loadState.thread = fpl_null;
+	}
+	fplSignalDestroy(&loadState.stopSignal);
+	fplSignalDestroy(&loadState.loadSignal);
+	fplMutexDestroy(&loadState.mutex);
+	loadState = {};
+}
+
+static bool InitLoadState(AppState &state) {
+	LoadState &loadState = state.loadState;
+	loadState = {};
+	if (!fplMutexInit(&loadState.mutex)) {
+		goto failed;
+	}
+	if (!fplSignalInit(&loadState.loadSignal, fplSignalValue_Unset) ||
+		!fplSignalInit(&loadState.stopSignal, fplSignalValue_Unset)) {
+		goto failed;
+	}
+	loadState.thread = fplThreadCreate(LoadMediaThreadProc, &state);
+	if (loadState.thread == fpl_null) {
+		goto failed;
+	}
+	loadState.isValid = true;
+	return true;
+failed:
+	ReleaseLoadState(state);
+	return false;
+}
+
+static void LoadMediaAsync(AppState &state, const char *url) {
+	LoadState &loadState = state.loadState;
+	if (loadState.isValid) {
+		fplMutexLock(&loadState.mutex);
+		loadState.url = url;
+		loadState.state = 1;
+		fplMutexUnlock(&loadState.mutex);
+		fplSignalSet(&loadState.loadSignal);
+	}
+}
+
+static void ReleaseApp(AppState &state, const uint32_t mainThreadId) {
+	ReleaseLoadState(state);
+		
+	ReleasePlayer(state.player, mainThreadId);
 
 	ReleaseFontBuffer(state.fontBuffer);
 	ReleaseFontInfo(state.fontInfo);
 }
 
 static bool InitApp(AppState &state) {
+	const fplThreadHandle *mainThread = fplGetMainThread();
+	state.mainThreadId = mainThread->id;
+
 	//
 	// OpenGL
 	//
@@ -1940,7 +2063,7 @@ static bool InitApp(AppState &state) {
 	uint32_t firstChar = ' ';
 	uint32_t charCount = '~' - firstChar;
 	if (!LoadFontInfo(sulphurPointRegularData, sulphurPointRegularDataSize, 1024, 1024, firstChar, charCount, 40.0f, &state.fontInfo)) {
-		ReleaseApp(state);
+		ReleaseApp(state, state.mainThreadId);
 		return(false);
 	}
 
@@ -1949,6 +2072,9 @@ static bool InitApp(AppState &state) {
 
 	// Player
 	InitPlayer(state.player);
+
+	// Load state
+	InitLoadState(state);
 
 	return(true);
 }
@@ -2581,6 +2707,10 @@ static void StreamTogglePause(PlayerState *state) {
 
 		fplAssert(state->pauseNumFrames >= 0);
 		fplAssert(!isnan(state->pauseClock));
+
+		SetPlayingState(*state, PlayingState::Paused);
+	} else {
+		SetPlayingState(*state, PlayingState::Playing);
 	}
 }
 
@@ -2931,113 +3061,127 @@ static DisplayRect CalculateDisplayRect(const int screenLeft, const int screenTo
 }
 
 static void RenderOSD(AppState *state, const Mat4f &proj, const float w, const float h) {
-	const PlayerState *playerState = &state->player;
+	PlayerState *playerState = &state->player;
 
 	ClearFontBuffer(state->fontBuffer);
 
 	char osdTextBuffer[256];
 
 	float osdFontSize = (float)h / 40.0f;
+	float largeOsdFontSize = (float)h / 20.0f;
 	float fontHeight = osdFontSize * (state->fontInfo.ascent + state->fontInfo.descent);
 	float fontBaseline = osdFontSize * state->fontInfo.ascent;
 	float fontLineHeight = fontHeight * 1.25f;
 	Vec2f osdPos = V2f(0.0f, h - fontBaseline);
+	Vec2f centerPos = V2f(w * 0.5f, h * 0.5f);
 
-	const char *stateMsg = "Playing";
-	double frameRate = fplMax(0.0, GetMasterFrameRate(playerState));
-	double clockLength = fplMax(0.0, playerState->streamLength);
-	int64_t numFrames;
-	double clockCurrent;
-	if (playerState->isPaused) {
-		stateMsg = "Paused";
-		numFrames = playerState->pauseNumFrames;
-		clockCurrent = playerState->pauseClock;
-	} else {
-		clockCurrent = GetMasterClock(playerState);
-		if (isnan(clockCurrent) || clockCurrent < 0) clockCurrent = 0;
-		numFrames = frameRate != 0 ? (int64_t)(clockCurrent / (1.0f / frameRate)) : 0;
-		fplAssert(numFrames >= 0);
-		fplAssert(!isnan(clockCurrent));
-	}
+	PlayingState playState = GetPlayingState(*playerState);
+
+	int64_t numFrames = 0;
+	double clockCurrent = 0;
+	double clockLength = 0;
+	double frameRate = 0;
+	const char *stateMsg = GetPlayingStateText(playState);
+	if (playState >= PlayingState::Loaded && playState <= PlayingState::Paused) {
+		frameRate = fplMax(0.0, GetMasterFrameRate(playerState));
+		clockLength = fplMax(0.0, playerState->streamLength);
+		if (playerState->isPaused) {
+			numFrames = playerState->pauseNumFrames;
+			clockCurrent = playerState->pauseClock;
+		} else {
+			clockCurrent = GetMasterClock(playerState);
+			if (isnan(clockCurrent) || clockCurrent < 0) clockCurrent = 0;
+			numFrames = frameRate != 0 ? (int64_t)(clockCurrent / (1.0f / frameRate)) : 0;
+			fplAssert(numFrames >= 0);
+			fplAssert(!isnan(clockCurrent));
+		}
+	}	
 
 	const char *filename = fplExtractFileName(playerState->filePathOrUrl);
 
-	// [State: Filename]
-	fplStringFormat(osdTextBuffer, fplArrayCount(osdTextBuffer), "%s: %s", stateMsg, filename);
-	PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
-	osdPos += V2f(0, -osdFontSize);
-
-	// Round to milliseconds, we dont care about nanoseconds
-	double clockCurrentSecondsRoundAsMillis = round(clockCurrent * 1000.0) / 1000.0;
-
-	{
-		int currentMillis = (int)(clockCurrentSecondsRoundAsMillis * 1000.0) % 1000;
-		int currentSeconds = (int)clockCurrentSecondsRoundAsMillis % 60;
-		int currentMinutes = (int)(clockCurrentSecondsRoundAsMillis / 60.0) % 60;
-		int currentHours = (int)(clockCurrentSecondsRoundAsMillis / 60.0 / 60.0);
-
-		int totalMillis = (int)(clockLength * 1000.0) % 1000;
-		int totalSeconds = (int)clockLength % 60;
-		int totalMinutes = (int)(clockLength / 60.0) % 60;
-		int totalHours = (int)(clockLength / 60.0 / 60.0);
-
-		fplStringFormat(osdTextBuffer, fplArrayCount(osdTextBuffer), "Time: %02d:%02d:%02d:%03d", currentHours, currentMinutes, currentSeconds, currentMillis);
+	if (filename == fpl_null) {
+		fplStringFormat(osdTextBuffer, fplArrayCount(osdTextBuffer), "No media loaded");
+		Vec2f textSize = ComputeTextSize(state->fontInfo, osdTextBuffer, largeOsdFontSize);
+		osdPos = centerPos - textSize * 0.5f;
+		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, largeOsdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Bottom);
+	} else {
+		// [State: Filename]
+		fplStringFormat(osdTextBuffer, fplArrayCount(osdTextBuffer), "%s: %s", stateMsg, filename);
 		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
 		osdPos += V2f(0, -osdFontSize);
 
-		fplStringFormat(osdTextBuffer, fplArrayCount(osdTextBuffer), "Frames: %d", numFrames);
-		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
-		osdPos += V2f(0, -osdFontSize);
+		// Round to milliseconds, we dont care about nanoseconds
+		double clockCurrentSecondsRoundAsMillis = round(clockCurrent * 1000.0) / 1000.0;
 
-		fplStringFormat(osdTextBuffer, fplArrayCount(osdTextBuffer), "Length: %02d:%02d:%02d:%03d", totalHours, totalMinutes, totalSeconds, totalMillis);
-		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
-		osdPos += V2f(0, -osdFontSize);
-	}
+		{
+			int currentMillis = (int)(clockCurrentSecondsRoundAsMillis * 1000.0) % 1000;
+			int currentSeconds = (int)clockCurrentSecondsRoundAsMillis % 60;
+			int currentMinutes = (int)(clockCurrentSecondsRoundAsMillis / 60.0) % 60;
+			int currentHours = (int)(clockCurrentSecondsRoundAsMillis / 60.0 / 60.0);
 
-	// States
-	{
-		const char* videoInfos;
+			int totalMillis = (int)(clockLength * 1000.0) % 1000;
+			int totalSeconds = (int)clockLength % 60;
+			int totalMinutes = (int)(clockLength / 60.0) % 60;
+			int totalHours = (int)(clockLength / 60.0 / 60.0);
+
+			fplStringFormat(osdTextBuffer, fplArrayCount(osdTextBuffer), "Time: %02d:%02d:%02d:%03d", currentHours, currentMinutes, currentSeconds, currentMillis);
+			PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
+			osdPos += V2f(0, -osdFontSize);
+
+			fplStringFormat(osdTextBuffer, fplArrayCount(osdTextBuffer), "Frames: %d", numFrames);
+			PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
+			osdPos += V2f(0, -osdFontSize);
+
+			fplStringFormat(osdTextBuffer, fplArrayCount(osdTextBuffer), "Length: %02d:%02d:%02d:%03d", totalHours, totalMinutes, totalSeconds, totalMillis);
+			PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
+			osdPos += V2f(0, -osdFontSize);
+		}
+
+		// States
+		{
+			const char *videoInfos;
 #if USE_HARDWARE_RENDERING
-		videoInfos = "OpenGL";
+			videoInfos = "OpenGL";
 #else
-		videoInfos = "Software";
+			videoInfos = "Software";
 #endif
 
-		if (playerState->video.isValid) {
-			double frameRate = av_q2d(playerState->video.stream.stream->avg_frame_rate);
-			uint32_t width = playerState->video.stream.codecContext->width;
-			uint32_t height = playerState->video.stream.codecContext->height;
-			AVPixelFormat pixFormat = playerState->video.stream.codecContext->pix_fmt;
-			const char *pixelFormatName = ffmpeg.av_get_pix_fmt_name(pixFormat);
-			const char *videoCodecDesc = playerState->video.stream.codec->long_name;
-			fplStringFormat(osdTextBuffer, fplArrayCount(osdTextBuffer), "Video: %s, %ux%u, %s, %.2f frames/s, %s", videoInfos, width, height, pixelFormatName, frameRate, videoCodecDesc);
+			if (playerState->video.isValid) {
+				double frameRate = av_q2d(playerState->video.stream.stream->avg_frame_rate);
+				uint32_t width = playerState->video.stream.codecContext->width;
+				uint32_t height = playerState->video.stream.codecContext->height;
+				AVPixelFormat pixFormat = playerState->video.stream.codecContext->pix_fmt;
+				const char *pixelFormatName = ffmpeg.av_get_pix_fmt_name(pixFormat);
+				const char *videoCodecDesc = playerState->video.stream.codec->long_name;
+				fplStringFormat(osdTextBuffer, fplArrayCount(osdTextBuffer), "Video: %s, %ux%u, %s, %.2f frames/s, %s", videoInfos, width, height, pixelFormatName, frameRate, videoCodecDesc);
+				PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
+				osdPos += V2f(0, -osdFontSize);
+			}
+
+			if (playerState->audio.isValid) {
+				const char *audioBackendName = fplGetAudioBackendName(playerState->audio.audioTarget.backend);
+				const char *audioFormatName = fplGetAudioFormatName(playerState->audio.audioTarget.type);
+				const char *audioCodecDesc = playerState->audio.stream.codec->long_name;
+				uint32_t bufferSize = playerState->audio.audioTarget.bufferSizeInBytes;
+				uint32_t frameSize = fplGetAudioFrameSizeInBytes(playerState->audio.audioTarget.type, playerState->audio.audioTarget.channels);
+				fplStringFormat(osdTextBuffer, fplArrayCount(osdTextBuffer), "Audio: %s, %s, %u channels, %u Hz, %s", audioBackendName, audioFormatName, playerState->audio.audioTarget.channels, playerState->audio.audioTarget.sampleRate, audioCodecDesc);
+				PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
+				osdPos += V2f(0, -osdFontSize);
+			}
+		}
+
+		// Debug shit
+		{
+			osdPos = V2f(0, osdFontSize * 0.5f);
+			int32_t videoQueueCount = playerState->video.decoder.frameQueue.count;
+			int32_t audioQueueCount = playerState->audio.decoder.frameQueue.count;
+			int32_t allocatedPackets = globalMemStats.allocatedPackets;
+			int32_t usedPackets = globalMemStats.usedPackets;
+
+			fplStringFormat(osdTextBuffer, fplArrayCount(osdTextBuffer), "Queue A/V: %d/%d, Packets U/A: %d/%d", audioQueueCount, videoQueueCount, usedPackets, allocatedPackets);
 			PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
 			osdPos += V2f(0, -osdFontSize);
 		}
-
-		if (playerState->audio.isValid) {
-			const char *audioBackendName = fplGetAudioBackendName(playerState->audio.audioTarget.backend);
-			const char *audioFormatName = fplGetAudioFormatName(playerState->audio.audioTarget.type);
-			const char *audioCodecDesc = playerState->audio.stream.codec->long_name;
-			uint32_t bufferSize = playerState->audio.audioTarget.bufferSizeInBytes;
-			uint32_t frameSize = fplGetAudioFrameSizeInBytes(playerState->audio.audioTarget.type, playerState->audio.audioTarget.channels);
-			fplStringFormat(osdTextBuffer, fplArrayCount(osdTextBuffer), "Audio: %s, %s, %u channels, %u Hz, %s", audioBackendName, audioFormatName, playerState->audio.audioTarget.channels, playerState->audio.audioTarget.sampleRate, audioCodecDesc);
-			PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
-			osdPos += V2f(0, -osdFontSize);
-		}
-	}
-
-	// Debug shit
-	{
-		osdPos = V2f(0, osdFontSize * 0.5f);
-		int32_t videoQueueCount = playerState->video.decoder.frameQueue.count;
-		int32_t audioQueueCount = playerState->audio.decoder.frameQueue.count;
-		int32_t allocatedPackets = globalMemStats.allocatedPackets;
-		int32_t usedPackets = globalMemStats.usedPackets;
-
-		fplStringFormat(osdTextBuffer, fplArrayCount(osdTextBuffer), "Queue A/V: %d/%d, Packets U/A: %d/%d", audioQueueCount, videoQueueCount, usedPackets, allocatedPackets);
-		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
-		osdPos += V2f(0, -osdFontSize);
 	}
 
 #if USE_HARDWARE_RENDERING
@@ -3080,7 +3224,7 @@ static void RenderVideoFrame(AppState *state) {
 
 	bool hasVideo = playerState->video.isValid;
 
-	if (hasVideo) {
+	if (hasVideo && video.isRenderingInitialized) {
 		int readIndex = playerState->video.decoder.frameQueue.readIndex;
 		vp = PeekFrameQueueLast(playerState->video.decoder.frameQueue);
 		bool wasUploaded = false;
@@ -3141,7 +3285,7 @@ static void RenderVideoFrame(AppState *state) {
 	glDisable(GL_BLEND);
 #endif
 
-	if (hasVideo) {
+	if (hasVideo && video.isRenderingInitialized) {
 		// Update vertex array buffer with new rectangle
 		glBindBuffer(GL_ARRAY_BUFFER, playerState->video.vertexBufferId);
 		glBufferData(GL_ARRAY_BUFFER, fplArrayCount(vertexData) * sizeof(float), vertexData, GL_STREAM_DRAW);
@@ -3267,7 +3411,7 @@ static void VideoRefresh(AppState *state, double &remainingTime, int &displayCou
 	if (!player->isPaused && GetMasterSyncType(player) == AVSyncType::ExternalClock && player->isRealTime) {
 		UpdateExternalClockSpeed(player);
 	}
-	if (player->video.isValid) {
+	if (player->video.isValid && player->video.isRenderingInitialized) {
 	retry:
 		if (GetFrameQueueRemainingCount(player->video.decoder.frameQueue) > 0) {
 			// Dequeue the current and the last picture
@@ -3370,8 +3514,8 @@ static int DecodeInterruptCallback(void *opaque) {
 	return(result);
 }
 
-static void ReleaseVideo(VideoContext &video) {
-#if USE_HARDWARE_RENDERING
+static void ReleaseVideoRendering(VideoContext &video) {
+	#if USE_HARDWARE_RENDERING
 	glDeleteProgram(video.basicShader.programId);
 	video.basicShader.programId = 0;
 	glDeleteBuffers(1, &video.indexBufferId);
@@ -3387,6 +3531,96 @@ static void ReleaseVideo(VideoContext &video) {
 	}
 	video.targetTextureCount = 0;
 
+	video.requireRelease = 0;
+	video.isRenderingInitialized = false;
+}
+
+static bool InitializeVideoRendering(VideoContext &video, const AVCodecContext *videoCodexCtx) {
+	AVPixelFormat pixelFormat = videoCodexCtx->pix_fmt;
+
+#if USE_HARDWARE_RENDERING
+	if (IsPlanarYUVFormat(pixelFormat) && HasShaderForPixelFormat(pixelFormat)) {
+		video.activeShader = &video.yuv420pShader;
+		video.targetTextureCount = 3;
+		if (!InitVideoTexture(video.targetTextures[0], videoCodexCtx->width, videoCodexCtx->height, 8)) {
+			goto failed;
+		}
+		if (!InitVideoTexture(video.targetTextures[1], videoCodexCtx->width / 2, videoCodexCtx->height / 2, 8)) {
+			goto failed;
+		}
+		if (!InitVideoTexture(video.targetTextures[2], videoCodexCtx->width / 2, videoCodexCtx->height / 2, 8)) {
+			goto failed;
+		}
+	} else {
+		video.activeShader = &video.basicShader;
+		video.targetTextureCount = 1;
+		if (!InitVideoTexture(video.targetTextures[0], videoCodexCtx->width, videoCodexCtx->height, 32)) {
+			goto failed;
+		}
+	}
+
+	// Allocate VAO
+	glGenVertexArrays(1, &video.vao);
+	glBindVertexArray(video.vao);
+	CheckGLError();
+
+	// Allocate 4 vertices
+	uint32_t verticesSize = 4 * 4 * sizeof(float);
+	glGenBuffers(1, &video.vertexBufferId);
+	glBindBuffer(GL_ARRAY_BUFFER, video.vertexBufferId);
+	glBufferData(GL_ARRAY_BUFFER, verticesSize, nullptr, GL_STREAM_DRAW);
+	CheckGLError();
+
+	uint32_t indicesSize = fplArrayCount(videoQuadIndices) * sizeof(*videoQuadIndices);
+	glGenBuffers(1, &video.indexBufferId);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, video.indexBufferId);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, indicesSize, videoQuadIndices, GL_STATIC_DRAW);
+	CheckGLError();
+
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 4, (GLvoid *)0);
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 4, (GLvoid *)(sizeof(float) * 2));
+	CheckGLError();
+
+	glBindVertexArray(0);
+
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+	if (!LoadVideoShader(video.basicShader, BasicShaderSource::Vertex, BasicShaderSource::Fragment, BasicShaderSource::Name)) {
+		goto failed;
+	}
+	if (!LoadVideoShader(video.yuv420pShader, YUV420PShaderSource::Vertex, YUV420PShaderSource::Fragment, YUV420PShaderSource::Name)) {
+		goto failed;
+	}
+
+	CheckGLError();
+#else
+	video.targetTextureCount = 1;
+	if (!InitVideoTexture(video.targetTextures[0], videoCodexCtx->width, videoCodexCtx->height, 32)) {
+		goto failed;
+	}
+#endif
+
+	video.requireInit = 0;
+	video.isRenderingInitialized = true;
+	return true;
+
+failed:
+	ReleaseVideoRendering(video);
+	video.requireInit = 0;
+	return false;
+}
+
+static void ReleaseVideo(VideoContext &video, const uint32_t mainThreadId) {
+	uint32_t localThreadId = fplGetCurrentThreadId();
+	if (localThreadId == mainThreadId) {
+		ReleaseVideoRendering(video);
+	} else {
+		video.requireRelease = 1;
+	}
+	video.requireInit = 0;
 	if (video.softwareScaleCtx != nullptr) {
 		ffmpeg.sws_freeContext(video.softwareScaleCtx);
 	}
@@ -3396,14 +3630,14 @@ static void ReleaseVideo(VideoContext &video) {
 	video = {};
 }
 
-static bool InitializeVideo(PlayerState &state, const char *mediaFilePath) {
+static bool InitializeVideo(PlayerState &state, const char *mediaFilePath, const uint32_t mainThreadId) {
 	VideoContext &video = state.video;
 	AVCodecContext *videoCodexCtx = video.stream.codecContext;
 
 	// Init video decoder
 	if (!InitDecoder(video.decoder, &state, &state.reader, &video.stream, MAX_VIDEO_FRAME_QUEUE_COUNT, 1)) {
 		FPL_LOG_ERROR("App", "Failed initialize video decoder for media file '%s'!\n", mediaFilePath);
-		return false;
+		goto failed;
 	}
 
 	AVPixelFormat targetPixelFormat;
@@ -3431,80 +3665,25 @@ static bool InitializeVideo(PlayerState &state, const char *mediaFilePath) {
 		return false;
 	}
 
-	AVPixelFormat pixelFormat = videoCodexCtx->pix_fmt;
-
-#if USE_HARDWARE_RENDERING
-	if (IsPlanarYUVFormat(pixelFormat) && HasShaderForPixelFormat(pixelFormat)) {
-		state.video.activeShader = &state.video.yuv420pShader;
-		state.video.targetTextureCount = 3;
-		if (!InitVideoTexture(state.video.targetTextures[0], videoCodexCtx->width, videoCodexCtx->height, 8)) {
-			return false;
-		}
-		if (!InitVideoTexture(state.video.targetTextures[1], videoCodexCtx->width / 2, videoCodexCtx->height / 2, 8)) {
-			return false;
-		}
-		if (!InitVideoTexture(state.video.targetTextures[2], videoCodexCtx->width / 2, videoCodexCtx->height / 2, 8)) {
-			return false;
+	uint32_t localThreadId = fplGetCurrentThreadId();
+	if (localThreadId == mainThreadId) {
+		if (!InitializeVideoRendering(video, videoCodexCtx)) {
+			FPL_LOG_ERROR("Video", "Failed to initialize video rendering for file '%s'!\n", mediaFilePath);
+			goto failed;
 		}
 	} else {
-		state.video.activeShader = &state.video.basicShader;
-		state.video.targetTextureCount = 1;
-		if (!InitVideoTexture(state.video.targetTextures[0], videoCodexCtx->width, videoCodexCtx->height, 32)) {
-			return false;
-		}
+		video.requireInit = 1;
 	}
-#else
-	state.video.targetTextureCount = 1;
-	if (!InitVideoTexture(state.video.targetTextures[0], videoCodexCtx->width, videoCodexCtx->height, 32)) {
-		return false;
-	}
-#endif
-
-#if USE_HARDWARE_RENDERING
-	// Allocate VAO
-	glGenVertexArrays(1, &state.video.vao);
-	glBindVertexArray(state.video.vao);
-	CheckGLError();
-
-	// Allocate 4 vertices
-	uint32_t verticesSize = 4 * 4 * sizeof(float);
-	glGenBuffers(1, &state.video.vertexBufferId);
-	glBindBuffer(GL_ARRAY_BUFFER, state.video.vertexBufferId);
-	glBufferData(GL_ARRAY_BUFFER, verticesSize, nullptr, GL_STREAM_DRAW);
-	CheckGLError();
-
-	uint32_t indicesSize = fplArrayCount(videoQuadIndices) * sizeof(*videoQuadIndices);
-	glGenBuffers(1, &state.video.indexBufferId);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, state.video.indexBufferId);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, indicesSize, videoQuadIndices, GL_STATIC_DRAW);
-	CheckGLError();
-
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 4, (GLvoid *)0);
-	glEnableVertexAttribArray(1);
-	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 4, (GLvoid *)(sizeof(float) * 2));
-	CheckGLError();
-
-	glBindVertexArray(0);
-
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-	if (!LoadVideoShader(state.video.basicShader, BasicShaderSource::Vertex, BasicShaderSource::Fragment, BasicShaderSource::Name)) {
-		return false;
-	}
-	if (!LoadVideoShader(state.video.yuv420pShader, YUV420PShaderSource::Vertex, YUV420PShaderSource::Fragment, YUV420PShaderSource::Name)) {
-		return false;
-	}
-
-	CheckGLError();
-#endif
 
 	state.frameTimer = 0.0;
 	state.frameLastPTS = 0.0;
 	state.frameLastDelay = 40e-3;
 
 	return true;
+
+failed:
+	ReleaseVideo(state.video, mainThreadId);
+	return false;
 }
 
 static void ReleaseAudio(AudioContext &audio) {
@@ -3527,7 +3706,7 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 	// Init audio decoder
 	if (!InitDecoder(audio.decoder, &state, &state.reader, &audio.stream, MAX_AUDIO_FRAME_QUEUE_COUNT, 1)) {
 		FPL_LOG_ERROR("App", "Failed initialize audio decoder for media file '%s'!\n", mediaFilePath);
-		return false;
+		goto failed;
 	}
 
 	if ((state.formatCtx->iformat->flags & (AVFMT_NOBINSEARCH | AVFMT_NOGENSEARCH | AVFMT_NO_BYTE_SEEK)) && !state.formatCtx->iformat->read_seek) {
@@ -3553,9 +3732,11 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 	audio.audioTarget.bufferSizeInBytes = ffmpeg.av_samples_get_buffer_size(nullptr, audio.audioTarget.channels, audio.audioTarget.sampleRate, targetSampleFormat, 1);
 
 	AVSampleFormat inputSampleFormat = audioCodexCtx->sample_fmt;
-	uint64_t inputChannelLayout = audioCodexCtx->channel_layout;
+
 	int inputChannelCount = audioCodexCtx->channels;
 	int inputSampleRate = audioCodexCtx->sample_rate;
+	uint64_t inputChannelLayout = audioCodexCtx->channel_layout;
+
 	audio.audioSource = {};
 	audio.audioSource.channels = inputChannelCount;
 	audio.audioSource.sampleRate = inputSampleRate;
@@ -3578,7 +3759,10 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 		inputSampleRate,
 		0,
 		nullptr);
-	ffmpeg.swr_init(audio.softwareResampleCtx);
+	if (ffmpeg.swr_init(audio.softwareResampleCtx) < 0) {
+		FPL_LOG_ERROR("App", "Failed initialize audio resampling context for media file '%s'!\n", mediaFilePath);
+		goto failed;
+	}
 
 	// Allocate conversion buffer in native format, this must be big enough to hold one AVFrame worth of data.
 	int lineSize;
@@ -3589,16 +3773,22 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 	audio.conversionAudioFramesRemaining = 0;
 
 	return true;
+
+failed:
+	ReleaseAudio(state.audio);
+	return false;
 }
 
-static void ReleaseMedia(PlayerState &state) {
+static void ReleaseMedia(PlayerState &state, const PlayingState finishState, const uint32_t mainThreadId) {
+	SetPlayingState(state, PlayingState::Unloading);
+
 	DestroyDecoder(state.audio.decoder);
 	CloseStreamComponent(state.audio.stream);
 	ReleaseAudio(state.audio);
 
 	DestroyDecoder(state.video.decoder);
 	CloseStreamComponent(state.video.stream);
-	ReleaseVideo(state.video);
+	ReleaseVideo(state.video, mainThreadId);
 
 	DestroyReader(state.reader);
 
@@ -3619,8 +3809,6 @@ static void ReleaseMedia(PlayerState &state) {
 	state.syncType = AVSyncType::ExternalClock;
 	state.forceRefresh = 0;
 
-	state.state = PlayingState::Unloaded;
-
 	state.loop = 0;
 	state.readPauseReturn = 0;
 	state.step = 0;
@@ -3633,9 +3821,13 @@ static void ReleaseMedia(PlayerState &state) {
 	state.lastPaused = false;
 	state.isFullscreen = false;
 	state.seekByBytes = false;
+
+	SetPlayingState(state, finishState);
 }
 
-static bool LoadMedia(PlayerState &state, const char *mediaURL, const fplAudioDeviceFormat &nativeAudioFormat) {
+static bool LoadMedia(PlayerState &state, const char *mediaURL, const fplAudioDeviceFormat &nativeAudioFormat, const uint32_t mainThreadId) {
+	fplAssert(state.state == PlayingState::Unloaded || state.state == PlayingState::Failed);
+
 	bool isURL = fplIsStringMatchWildcard(mediaURL, "http://*") || fplIsStringMatchWildcard(mediaURL, "https://*");
 	
 	if (!isURL && !fplFileExists(mediaURL)){
@@ -3643,7 +3835,9 @@ static bool LoadMedia(PlayerState &state, const char *mediaURL, const fplAudioDe
 		return(false);
 	}
 
-	state.state = PlayingState::Unloaded;
+	state.filePathOrUrl = mediaURL;
+
+	SetPlayingState(state, PlayingState::Loading);
 
 	// Open media file
 	if (ffmpeg.avformat_open_input(&state.formatCtx, mediaURL, nullptr, nullptr) != 0) {
@@ -3716,7 +3910,7 @@ static bool LoadMedia(PlayerState &state, const char *mediaURL, const fplAudioDe
 
 	// Allocate video related resources
 	if (state.video.stream.isValid) {
-		state.video.isValid = InitializeVideo(state, mediaURL);
+		state.video.isValid = InitializeVideo(state, mediaURL, mainThreadId);
 		if (!state.video.isValid) {
 			goto release;
 		}
@@ -3732,13 +3926,12 @@ static bool LoadMedia(PlayerState &state, const char *mediaURL, const fplAudioDe
 	// Seek init
 	state.seekByBytes = !!(state.formatCtx->iformat->flags & AVFMT_TS_DISCONT) && strcmp("ogg", state.formatCtx->iformat->name);
 
-	// Save file path
-	state.filePathOrUrl = mediaURL;
+	SetPlayingState(state, PlayingState::Loaded);
 
 	return true;
 
 release:
-	ReleaseMedia(state);
+	ReleaseMedia(state, PlayingState::Failed, mainThreadId);
 	return false;
 }
 
@@ -3759,15 +3952,47 @@ static void SeekRelative(PlayerState *state, double incr) {
 	}
 }
 
+static void LoadMediaThreadProc(const fplThreadHandle *thread, void *userData) {
+	AppState *state = (AppState *)userData;
+
+	LoadState &loadState = state->loadState;
+	
+	fplSignalHandle *waitSignals[] = {
+		// Loader should terminate
+		&loadState.stopSignal,
+		// Loader can load a new url
+		&loadState.loadSignal,
+	};
+
+	for (;;) {
+		fplSignalWaitForAny(waitSignals, fplArrayCount(waitSignals), sizeof(fplSignalHandle *), FPL_TIMEOUT_INFINITE);
+
+		if (loadState.stopRequest) {
+			break;
+		}
+
+		if (fplAtomicLoadS32(&loadState.state) == 1) {
+			fplMutexLock(&loadState.mutex);
+			StopAndReleaseMedia(state->player, state->mainThreadId);
+			if (fplGetStringLength(loadState.url) > 0) {
+				LoadAndPlayMedia(state->player, loadState.url, state->nativeAudioFormat, state->mainThreadId);
+			}
+			loadState.url = fpl_null;
+			loadState.state = 0;
+			fplMutexUnlock(&loadState.mutex);
+		}
+	}
+}
+
 int main(int argc, char **argv) {
 	int result = 0;
 
-	if (argc < 2) {
+	/*if (argc < 2) {
 		FPL_LOG_CRITICAL("App", "Media file argument missing!");
 		return -1;
-	}
+	}*/
 
-	const char *mediaURL = argv[1];
+	const char *mediaURL = argc == 2 ? argv[1] : nullptr;
 
 	fplSettings settings = fplMakeDefaultSettings();
 
@@ -3829,9 +4054,9 @@ int main(int argc, char **argv) {
 	ffmpeg.av_init_packet(&globalFlushPacket);
 	globalFlushPacket.data = (uint8_t *)&globalFlushPacket;
 
-	// Play media
-	if (!PlayMedia(playerState, mediaURL, state.nativeAudioFormat)) {
-		goto release;
+	// Load and play media, when we have a media url
+	if (fplGetStringLength(mediaURL) > 0) {
+		LoadMediaAsync(state, mediaURL);
 	}
 
 	//
@@ -3870,8 +4095,8 @@ int main(int argc, char **argv) {
 
 								case fplKey_R:
 								{
-									StopMedia(playerState);
-									PlayMedia(playerState, mediaURL, state.nativeAudioFormat);
+									const char *media = playerState.filePathOrUrl;
+									LoadMediaAsync(state, media);
 								} break;
 
 								case fplKey_Left:
@@ -3895,12 +4120,19 @@ int main(int argc, char **argv) {
 					} else if (ev.window.type == fplWindowEventType_DroppedFiles) {
 						if (ev.window.dropFiles.fileCount > 0) {
 							const char *droppedFilePath = ev.window.dropFiles.files[0];
-							StopMedia(playerState);
-							PlayMedia(playerState, droppedFilePath, state.nativeAudioFormat);
+							LoadMediaAsync(state, droppedFilePath);
 						}
 					}
 				} break;
 			}
+		}
+
+		// Release and/or Init
+		if (playerState.video.requireRelease) {
+			ReleaseVideoRendering(playerState.video);
+		}
+		if (playerState.video.requireInit) {
+			InitializeVideoRendering(playerState.video, playerState.video.stream.codecContext);
 		}
 
 		//
@@ -3937,9 +4169,8 @@ int main(int argc, char **argv) {
 #endif
 	}
 
-
 release:
-	ReleaseApp(state);
+	ReleaseApp(state, state.mainThreadId);
 
 	ReleaseFFMPEG(ffmpeg);
 
