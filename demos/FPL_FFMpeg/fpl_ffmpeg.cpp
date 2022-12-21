@@ -19,6 +19,7 @@ Changelog:
 	## 2022-12-19
 	- Fixed[#140]: Crash in UploadTexture when linesize is not the same as frame width
 	- Fixed[#143]: Crash for videos with 6-channel audio
+	- Fixed[#146]: Stuttering when playing a video without a audio channel layout
 	- New[#147]: Async loading of media
 	- New[#145]: Added support for playing non-video streams
 	- New[#144]: Added support for drag & drop media files into the window
@@ -3736,6 +3737,9 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 	int inputChannelCount = audioCodexCtx->channels;
 	int inputSampleRate = audioCodexCtx->sample_rate;
 	uint64_t inputChannelLayout = audioCodexCtx->channel_layout;
+	if (inputChannelLayout == 0) {
+		inputChannelLayout = ffmpeg.av_get_default_channel_layout(inputChannelCount);
+	}
 
 	audio.audioSource = {};
 	audio.audioSource.channels = inputChannelCount;
