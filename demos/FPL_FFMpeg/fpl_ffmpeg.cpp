@@ -399,6 +399,9 @@ static void FlushPacketQueue(PacketQueue &queue) {
 	queue.duration = 0;
 	fplMutexUnlock(&queue.lock);
 	fplAtomicExchangeS32(&globalMemStats.usedPackets, 0);
+#if PRINT_FLUSHES
+	fplConsoleFormatOut("PacketQueue flushed: %d\n", queue.serial);
+#endif
 }
 
 static void DestroyPacketQueue(PacketQueue &queue) {
@@ -645,6 +648,21 @@ static void NextReadable(FrameQueue &queue) {
 
 	fplMutexLock(&queue.lock);
 	queue.count--;
+	fplSignalSet(&queue.signal);
+	fplMutexUnlock(&queue.lock);
+}
+
+static void FlushFrameQueue(FrameQueue &queue) {
+	fplMutexLock(&queue.lock);
+	for (uint32_t i = 0; i < queue.capacity; ++i) {
+		AVFrame *frame = queue.frames[i].frame;
+		if (frame != fpl_null)
+			ffmpeg.av_frame_unref(frame);
+	}
+	queue.readIndex = 0;
+	queue.readIndexShown = 0;
+	queue.writeIndex = 0;
+	queue.count = 0;
 	fplSignalSet(&queue.signal);
 	fplMutexUnlock(&queue.lock);
 }
@@ -2228,6 +2246,9 @@ static DecodeResult DecodeFrame(ReaderContext &reader, Decoder &decoder, AVFrame
 				} else if (ret == AVERROR_EOF) {
 					decoder.finishedSerial = decoder.pktSerial;
 					ffmpeg.avcodec_flush_buffers(codecCtx);
+#if PRINT_FLUSHES
+					fplConsoleFormatOut("AVCodec flushed for serial %d\n", decoder.pktSerial);
+#endif
 					return DecodeResult::EndOfStream;
 				} else if (ret == AVERROR(EAGAIN)) {
 					// This will continue sending packets until the frame is complete
@@ -2257,6 +2278,9 @@ static DecodeResult DecodeFrame(ReaderContext &reader, Decoder &decoder, AVFrame
 		if (pkt != nullptr) {
 			if (IsFlushPacket(pkt)) {
 				ffmpeg.avcodec_flush_buffers(decoder.stream->codecContext);
+#if PRINT_FLUSHES
+				fplConsoleFormatOut("AVCodec flushed for serial %d\n", decoder.pktSerial);
+#endif
 				decoder.finishedSerial = 0;
 				decoder.next_pts = decoder.start_pts;
 				decoder.next_pts_tb = decoder.start_pts_tb;
@@ -2808,7 +2832,9 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 			if (state->seek.rel < 0) {
 				seekFlags |= AVSEEK_FLAG_BACKWARD;
 			}
-			fplDebugFormatOut("Seek to: %llu %llu %llu (%f %f %f)\n", seekMin, seekTarget, seekMax, seekMinSeconds, seekTargetSeconds, seekMaxSeconds);
+#if PRINT_SEEKES
+			fplConsoleFormatOut("Seek to: %llu %llu %llu (%f %f %f)\n", seekMin, seekTarget, seekMax, seekMinSeconds, seekTargetSeconds, seekMaxSeconds);
+#endif
 			int seekResult = ffmpeg.avformat_seek_file(formatCtx, -1, seekMin, seekTarget, seekMax, seekFlags);
 			if (seekResult < 0) {
 				// @TODO(final): Log seek error
@@ -2888,6 +2914,7 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 						PushNullPacket(audio.decoder.packetsQueue, audio.stream.streamIndex);
 					}
 					reader.isEOF = true;
+					SetPlayingState(*state, PlayingState::Finished);
 				}
 				if (formatCtx->pb != nullptr && formatCtx->pb->error) {
 					// @TODO(final): Handle error
@@ -3225,10 +3252,11 @@ static void RenderVideoFrame(AppState *state) {
 
 	bool hasVideo = playerState->video.isValid;
 
+	int readIndex = playerState->video.decoder.frameQueue.readIndex;
+	bool wasUploaded = false;
 	if (hasVideo && video.isRenderingInitialized) {
-		int readIndex = playerState->video.decoder.frameQueue.readIndex;
 		vp = PeekFrameQueueLast(playerState->video.decoder.frameQueue);
-		bool wasUploaded = false;
+		wasUploaded = false;
 		if (!vp->isUploaded) {
 			UploadTexture(video, vp->frame);
 			vp->isUploaded = true;

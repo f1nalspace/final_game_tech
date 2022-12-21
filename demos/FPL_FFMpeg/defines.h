@@ -9,6 +9,8 @@
 #define PRINT_CLOCKS 0
 #define PRINT_PTS 0
 #define PRINT_FPS 0
+#define PRINT_FLUSHES 0
+#define PRINT_SEEKES 0
 
 // Rendering mode (Hardware or Software)
 #define USE_HARDWARE_RENDERING 1
