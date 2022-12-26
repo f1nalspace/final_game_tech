@@ -18,7 +18,8 @@ extern "C" {
 }
 
 //
-// Generic Version Func:
+// FFMPEG function macros for 5.1.2:
+// 
 // FFmpeg are based on modules, each module have its own _version() function.
 // The signature are identical, so we define one function signature here and use it everywhere
 //
@@ -29,9 +30,6 @@ typedef FFMPEG_GET_LIB_VERSION_FUNC(ffmpeg_get_lib_version_func);
 // AVFormat
 //
 
-// av_register_all
-#define FFMPEG_AV_REGISTER_ALL_FUNC(name) void name(void)
-typedef FFMPEG_AV_REGISTER_ALL_FUNC(ffmpeg_av_register_all_func);
 // avformat_network_init
 #define FFMPEG_AVFORMAT_NETWORK_INIT_FUNC(name) int name(void)
 typedef FFMPEG_AVFORMAT_NETWORK_INIT_FUNC(ffmpeg_avformat_network_init_func);
@@ -42,7 +40,7 @@ typedef FFMPEG_AVFORMAT_NETWORK_DEINIT_FUNC(ffmpeg_avformat_network_deinit_func)
 #define FFMPEG_AVFORMAT_CLOSE_INPUT_FUNC(name) void name(struct AVFormatContext **s)
 typedef FFMPEG_AVFORMAT_CLOSE_INPUT_FUNC(ffmpeg_avformat_close_input_func);
 // avformat_open_input
-#define FFMPEG_AVFORMAT_OPEN_INPUT_FUNC(name) int name(struct AVFormatContext **ps, const char *url, struct AVInputFormat *fmt, struct AVDictionary **options)
+#define FFMPEG_AVFORMAT_OPEN_INPUT_FUNC(name) int name(AVFormatContext **ps, const char *url, const AVInputFormat *fmt, AVDictionary **options)
 typedef FFMPEG_AVFORMAT_OPEN_INPUT_FUNC(ffmpeg_avformat_open_input_func);
 // avformat_find_stream_info
 #define FFMPEG_AVFORMAT_FIND_STREAM_INFO_FUNC(name) int name(struct AVFormatContext *ic, struct AVDictionary **options)
@@ -63,7 +61,7 @@ typedef FFMPEG_AVFORMAT_SEEK_FILE_FUNC(ffmpeg_avformat_seek_file_func);
 #define FFMPEG_AVFORMAT_MATCH_STREAM_SPECIFIER_FUNC(name) int name(struct AVFormatContext *s, struct AVStream *st, const char *spec)
 typedef FFMPEG_AVFORMAT_MATCH_STREAM_SPECIFIER_FUNC(ffmpeg_avformat_match_stream_specifier_func);
 // av_find_best_stream
-#define FFMPEG_AV_FIND_BEST_STREAM_FUNC(name) int name(struct AVFormatContext *ic, enum AVMediaType type, int wanted_stream_nb, int related_stream, struct AVCodec **decoder_ret, int flags)
+#define FFMPEG_AV_FIND_BEST_STREAM_FUNC(name) int name(AVFormatContext *ic, enum AVMediaType type, int wanted_stream_nb, int related_stream, const AVCodec **decoder_ret, int flags)
 typedef FFMPEG_AV_FIND_BEST_STREAM_FUNC(ffmpeg_av_find_best_stream_func);
 // av_guess_sample_aspect_ratio
 #define FFMPEG_AV_GUESS_SAMPLE_ASPECT_RATIO_FUNC(name) struct AVRational name(struct AVFormatContext *format, struct AVStream *stream, struct AVFrame *frame)
@@ -109,7 +107,7 @@ typedef FFMPEG_AVCODEC_ALLOC_CONTEXT3_FUNC(ffmpeg_avcodec_alloc_context3_func);
 #define FFMPEG_AVCODEC_PARAMETERS_TO_CONTEXT_FUNC(name) int name(struct AVCodecContext *codec, const struct AVCodecParameters *par)
 typedef FFMPEG_AVCODEC_PARAMETERS_TO_CONTEXT_FUNC(ffmpeg_avcodec_parameters_to_context_func);
 // avcodec_find_decoder
-#define FFMPEG_AVCODEC_FIND_DECODER_FUNC(name) AVCodec *name(enum AVCodecID id)
+#define FFMPEG_AVCODEC_FIND_DECODER_FUNC(name) const AVCodec *name(enum AVCodecID id)
 typedef FFMPEG_AVCODEC_FIND_DECODER_FUNC(ffmpeg_avcodec_find_decoder_func);
 // avcodec_open2
 #define FFMPEG_AVCODEC_OPEN2_FUNC(name) int name(AVCodecContext *avctx, const AVCodec *codec, AVDictionary **options)
@@ -129,11 +127,11 @@ typedef FFMPEG_AV_PACKET_ALLOC_FUNC(ffmpeg_av_packet_alloc_func);
 // av_packet_free
 #define FFMPEG_AV_PACKET_FREE_FUNC(name) void name(AVPacket **pkt)
 typedef FFMPEG_AV_PACKET_FREE_FUNC(ffmpeg_av_packet_free_func);
-// av_init_packet
-#define FFMPEG_AV_INIT_PACKET_FUNC(name) void name(AVPacket *pkt)
-typedef FFMPEG_AV_INIT_PACKET_FUNC(ffmpeg_av_init_packet_func);
+// av_new_packet
+#define FFMPEG_AV_NEW_PACKET_FUNC(name) int name(AVPacket *pkt, int size)
+typedef FFMPEG_AV_NEW_PACKET_FUNC(ffmpeg_av_new_packet_func);
 // avcodec_find_decoder_by_name
-#define FFMPEG_AVCODEC_FIND_DECODER_BY_NAME_FUNC(name) AVCodec *name(const char *cname)
+#define FFMPEG_AVCODEC_FIND_DECODER_BY_NAME_FUNC(name) const AVCodec *name(const char *cname)
 typedef FFMPEG_AVCODEC_FIND_DECODER_BY_NAME_FUNC(ffmpeg_avcodec_find_decoder_by_name_func);
 // avsubtitle_free
 #define FFMPEG_AVSUBTITLE_FREE_FUNC(name) void name(AVSubtitle *sub)
@@ -186,9 +184,6 @@ typedef FFMPEG_AV_IMAGE_GET_LINESIZE_FUNC(ffmpeg_av_image_get_linesize_func);
 // av_image_fill_arrays
 #define FFMPEG_AV_IMAGE_FILL_ARRAYS_FUNC(name) int name(uint8_t *dst_data[4], int dst_linesize[4], const uint8_t *src, enum AVPixelFormat pix_fmt, int width, int height, int align)
 typedef FFMPEG_AV_IMAGE_FILL_ARRAYS_FUNC(ffmpeg_av_image_fill_arrays_func);
-// av_get_channel_layout_nb_channels
-#define FFMPEG_AV_GET_CHANNEL_LAYOUT_NB_CHANNELS_FUNC(name) int name(uint64_t channel_layout)
-typedef FFMPEG_AV_GET_CHANNEL_LAYOUT_NB_CHANNELS_FUNC(ffmpeg_av_get_channel_layout_nb_channels_func);
 // av_gettime_relative
 #define FFMPEG_AV_GETTIME_RELATIVE_FUNC(name) int64_t name(void)
 typedef FFMPEG_AV_GETTIME_RELATIVE_FUNC(ffmpeg_av_gettime_relative_func);
@@ -222,9 +217,9 @@ typedef FFMPEG_AV_FREEP_FUNC(ffmpeg_av_freep_func);
 // av_get_packed_sample_fmt
 #define FFMPEG_AV_GET_PACKED_SAMPLE_FMT_FUNC(name) enum AVSampleFormat name(enum AVSampleFormat sample_fmt)
 typedef FFMPEG_AV_GET_PACKED_SAMPLE_FMT_FUNC(ffmpeg_av_get_packed_sample_fmt_func);
-// av_get_default_channel_layout
-#define FFMPEG_AV_GET_DEFAULT_CHANNEL_LAYOUT_FUNC(name) int64_t name(int nb_channels)
-typedef FFMPEG_AV_GET_DEFAULT_CHANNEL_LAYOUT_FUNC(ffmpeg_av_get_default_channel_layout_func);
+// av_channel_layout_default
+#define FFMPEG_AV_CHANNEL_LAYOUT_DEFAULT_FUNC(name) void name(AVChannelLayout *ch_layout, int nb_channels)
+typedef FFMPEG_AV_CHANNEL_LAYOUT_DEFAULT_FUNC(ffmpeg_av_channel_layout_default_func);
 // av_usleep
 #define FFMPEG_AV_USLEEP_FUNC(name) int name(unsigned usec)
 typedef FFMPEG_AV_USLEEP_FUNC(ffmpeg_av_usleep_func);
@@ -281,8 +276,8 @@ typedef FFMPEG_SWS_FREE_CONTEXT_FUNC(ffmpeg_sws_freeContext_func);
 //
 
 // swr_alloc_set_opts_func
-#define FFMPEG_SWR_ALLOC_SET_OPTS(name) struct SwrContext *name(struct SwrContext *s, int64_t out_ch_layout, enum AVSampleFormat out_sample_fmt, int out_sample_rate, int64_t  in_ch_layout, enum AVSampleFormat  in_sample_fmt, int  in_sample_rate, int log_offset, void *log_ctx)
-typedef FFMPEG_SWR_ALLOC_SET_OPTS(ffmpeg_swr_alloc_set_opts_func);
+#define FFMPEG_SWR_ALLOC_SET_OPTS2(name) int name(struct SwrContext **ps, AVChannelLayout *out_ch_layout, enum AVSampleFormat out_sample_fmt, int out_sample_rate, AVChannelLayout *in_ch_layout, enum AVSampleFormat  in_sample_fmt, int  in_sample_rate, int log_offset, void *log_ctx)
+typedef FFMPEG_SWR_ALLOC_SET_OPTS2(ffmpeg_swr_alloc_set_opts2_func);
 // swr_free
 #define FFMPEG_SWR_FREE(name) void name(struct SwrContext **s)
 typedef FFMPEG_SWR_FREE(ffmpeg_swr_free_func);
@@ -311,7 +306,6 @@ struct FFMPEGContext {
 	fplDynamicLibraryHandle swResampleLib;
 
 	// Format
-	ffmpeg_av_register_all_func *av_register_all;
 	ffmpeg_get_lib_version_func* avformat_version;
 	ffmpeg_avformat_network_init_func* avformat_network_init;
 	ffmpeg_avformat_network_deinit_func* avformat_network_deinit;
@@ -341,18 +335,18 @@ struct FFMPEGContext {
 	ffmpeg_avcodec_parameters_to_context_func* avcodec_parameters_to_context;
 	ffmpeg_avcodec_find_decoder_func* avcodec_find_decoder;
 	ffmpeg_avcodec_open2_func* avcodec_open2;
-	ffmpeg_av_packet_unref_func* av_packet_unref;
 	ffmpeg_avcodec_receive_frame_func* avcodec_receive_frame;
 	ffmpeg_avcodec_send_packet_func* avcodec_send_packet;
 	ffmpeg_av_packet_alloc_func* av_packet_alloc;
 	ffmpeg_av_packet_free_func* av_packet_free;
-	ffmpeg_av_init_packet_func* av_init_packet;
+	ffmpeg_av_packet_ref_func* av_packet_ref;
+	ffmpeg_av_packet_unref_func* av_packet_unref;
+	ffmpeg_av_new_packet_func* av_new_packet;
 	ffmpeg_avsubtitle_free_func* avsubtitle_free;
 	ffmpeg_avcodec_find_decoder_by_name_func* avcodec_find_decoder_by_name;
 	ffmpeg_av_packet_move_ref_func* av_packet_move_ref;
 	ffmpeg_avcodec_flush_buffers_func* avcodec_flush_buffers;
 	ffmpeg_avcodec_decode_subtitle2_func* avcodec_decode_subtitle2;
-	ffmpeg_av_packet_ref_func* av_packet_ref;
 	ffmpeg_av_rdft_init_func* av_rdft_init;
 	ffmpeg_av_rdft_calc_func* av_rdft_calc;
 	ffmpeg_av_rdft_end_func* av_rdft_end;
@@ -366,7 +360,6 @@ struct FFMPEGContext {
 	ffmpeg_av_image_get_buffer_size_func* av_image_get_buffer_size;
 	ffmpeg_av_image_get_linesize_func* av_image_get_linesize;
 	ffmpeg_av_image_fill_arrays_func* av_image_fill_arrays;
-	ffmpeg_av_get_channel_layout_nb_channels_func* av_get_channel_layout_nb_channels;
 	ffmpeg_av_gettime_relative_func* av_gettime_relative;
 	ffmpeg_av_gettime_func* av_gettime;
 	ffmpeg_av_get_media_type_string_func* av_get_media_type_string;
@@ -378,7 +371,7 @@ struct FFMPEGContext {
 	ffmpeg_av_free_func* av_free;
 	ffmpeg_av_freep_func* av_freep;
 	ffmpeg_av_get_packed_sample_fmt_func* av_get_packed_sample_fmt;
-	ffmpeg_av_get_default_channel_layout_func* av_get_default_channel_layout;
+	ffmpeg_av_channel_layout_default_func* av_channel_layout_default;
 	ffmpeg_av_usleep_func* av_usleep;
 	ffmpeg_av_strdup_func* av_strdup;
 	ffmpeg_av_log2_func* av_log2;
@@ -399,7 +392,7 @@ struct FFMPEGContext {
 
 	// SWR
 	ffmpeg_get_lib_version_func* swresample_version;
-	ffmpeg_swr_alloc_set_opts_func* swr_alloc_set_opts;
+	ffmpeg_swr_alloc_set_opts2_func* swr_alloc_set_opts2;
 	ffmpeg_swr_free_func* swr_free;
 	ffmpeg_swr_convert_func* swr_convert;
 	ffmpeg_swr_init_func* swr_init;
@@ -493,7 +486,6 @@ static bool LoadFFMPEG(FFMPEGContext& ffmpeg) {
 // AVFormat
 //
 #if !USE_FFMPEG_STATIC_LINKING
-	FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.av_register_all, ffmpeg_av_register_all_func, "av_register_all");
 	FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.avformat_version, ffmpeg_get_lib_version_func, "avformat_version");
 	FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.avformat_network_init, ffmpeg_avformat_network_init_func, "avformat_network_init");
 	FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.avformat_network_deinit, ffmpeg_avformat_network_deinit_func, "avformat_network_deinit");
@@ -516,7 +508,6 @@ static bool LoadFFMPEG(FFMPEGContext& ffmpeg) {
 	FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.avio_size, ffmpeg_avio_size_func, "avio_size");
 	FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.avio_seek, ffmpeg_avio_seek_func, "avio_seek");
 #else
-	ffmpeg.av_register_all = av_register_all;
 	ffmpeg.avformat_version = avformat_version;
 	ffmpeg.avformat_network_init = avformat_network_init;
 	ffmpeg.avformat_network_deinit = avformat_network_deinit;
@@ -550,18 +541,18 @@ static bool LoadFFMPEG(FFMPEGContext& ffmpeg) {
 	FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.avcodec_parameters_to_context, ffmpeg_avcodec_parameters_to_context_func, "avcodec_parameters_to_context");
 	FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.avcodec_find_decoder, ffmpeg_avcodec_find_decoder_func, "avcodec_find_decoder");
 	FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.avcodec_open2, ffmpeg_avcodec_open2_func, "avcodec_open2");
-	FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.av_packet_unref, ffmpeg_av_packet_unref_func, "av_packet_unref");
 	FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.avcodec_receive_frame, ffmpeg_avcodec_receive_frame_func, "avcodec_receive_frame");
 	FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.avcodec_send_packet, ffmpeg_avcodec_send_packet_func, "avcodec_send_packet");
 	FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.av_packet_alloc, ffmpeg_av_packet_alloc_func, "av_packet_alloc");
 	FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.av_packet_free, ffmpeg_av_packet_free_func, "av_packet_free");
-	FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.av_init_packet, ffmpeg_av_init_packet_func, "av_init_packet");
+	FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.av_packet_ref, ffmpeg_av_packet_ref_func, "av_packet_ref");
+	FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.av_packet_unref, ffmpeg_av_packet_unref_func, "av_packet_unref");
+	FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.av_new_packet, ffmpeg_av_new_packet_func, "av_new_packet");
 	FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.avsubtitle_free, ffmpeg_avsubtitle_free_func, "avsubtitle_free");
 	FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.avcodec_find_decoder_by_name, ffmpeg_avcodec_find_decoder_by_name_func, "avcodec_find_decoder_by_name");
 	FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.av_packet_move_ref, ffmpeg_av_packet_move_ref_func, "av_packet_move_ref");
 	FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.avcodec_flush_buffers, ffmpeg_avcodec_flush_buffers_func, "avcodec_flush_buffers");
 	FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.avcodec_decode_subtitle2, ffmpeg_avcodec_decode_subtitle2_func, "avcodec_decode_subtitle2");
-	FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.av_packet_ref, ffmpeg_av_packet_ref_func, "av_packet_ref");
 
 	FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.av_rdft_init, ffmpeg_av_rdft_init_func, "av_rdft_init");
 	FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.av_rdft_calc, ffmpeg_av_rdft_calc_func, "av_rdft_calc");
@@ -573,23 +564,23 @@ static bool LoadFFMPEG(FFMPEGContext& ffmpeg) {
 	ffmpeg.avcodec_parameters_to_context = avcodec_parameters_to_context;
 	ffmpeg.avcodec_find_decoder = avcodec_find_decoder;
 	ffmpeg.avcodec_open2 = avcodec_open2;
-	ffmpeg.av_packet_unref = av_packet_unref;
 	ffmpeg.avcodec_receive_frame = avcodec_receive_frame;
 	ffmpeg.avcodec_send_packet = avcodec_send_packet;
 	ffmpeg.av_packet_alloc = av_packet_alloc;
 	ffmpeg.av_packet_free = av_packet_free;
-	ffmpeg.av_init_packet = av_init_packet;
+	ffmpeg.av_packet_ref = av_packet_ref;
+	ffmpeg.av_packet_unref = av_packet_unref;
+	ffmpeg.av_new_packet = av_new_packet;
 	ffmpeg.avsubtitle_free = avsubtitle_free;
 	ffmpeg.avcodec_find_decoder_by_name = avcodec_find_decoder_by_name;
 	ffmpeg.av_packet_move_ref = av_packet_move_ref;
 	ffmpeg.avcodec_flush_buffers = avcodec_flush_buffers;
 	ffmpeg.avcodec_decode_subtitle2 = avcodec_decode_subtitle2;
-	ffmpeg.av_packet_ref = av_packet_ref;
 	ffmpeg.av_rdft_init = av_rdft_init;
 	ffmpeg.av_rdft_calc = av_rdft_calc;
 	ffmpeg.av_rdft_end = av_rdft_end;
 #endif
-	
+
 	//
 	// AVUtil
 	//
@@ -602,7 +593,6 @@ static bool LoadFFMPEG(FFMPEGContext& ffmpeg) {
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_image_get_buffer_size, ffmpeg_av_image_get_buffer_size_func, "av_image_get_buffer_size");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_image_get_linesize, ffmpeg_av_image_get_linesize_func, "av_image_get_linesize");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_image_fill_arrays, ffmpeg_av_image_fill_arrays_func, "av_image_fill_arrays");
-	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_get_channel_layout_nb_channels, ffmpeg_av_get_channel_layout_nb_channels_func, "av_get_channel_layout_nb_channels");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_gettime_relative, ffmpeg_av_gettime_relative_func, "av_gettime_relative");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_gettime, ffmpeg_av_gettime_func, "av_gettime");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_get_media_type_string, ffmpeg_av_get_media_type_string_func, "av_get_media_type_string");
@@ -614,7 +604,7 @@ static bool LoadFFMPEG(FFMPEGContext& ffmpeg) {
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_free, ffmpeg_av_freep_func, "av_free");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_freep, ffmpeg_av_freep_func, "av_freep");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_get_packed_sample_fmt, ffmpeg_av_get_packed_sample_fmt_func, "av_get_packed_sample_fmt");
-	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_get_default_channel_layout, ffmpeg_av_get_default_channel_layout_func, "av_get_default_channel_layout");
+	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_channel_layout_default, ffmpeg_av_channel_layout_default_func, "av_channel_layout_default");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_usleep, ffmpeg_av_usleep_func, "av_usleep");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_strdup, ffmpeg_av_strdup_func, "av_strdup");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_log2, ffmpeg_av_log2_func, "av_log2");
@@ -634,7 +624,6 @@ static bool LoadFFMPEG(FFMPEGContext& ffmpeg) {
 	ffmpeg.av_image_get_buffer_size = av_image_get_buffer_size;
 	ffmpeg.av_image_get_linesize = av_image_get_linesize;
 	ffmpeg.av_image_fill_arrays = av_image_fill_arrays;
-	ffmpeg.av_get_channel_layout_nb_channels = av_get_channel_layout_nb_channels;
 	ffmpeg.av_gettime_relative = av_gettime_relative;
 	ffmpeg.av_gettime = av_gettime;
 	ffmpeg.av_get_media_type_string = av_get_media_type_string;
@@ -646,7 +635,7 @@ static bool LoadFFMPEG(FFMPEGContext& ffmpeg) {
 	ffmpeg.av_free = av_free;
 	ffmpeg.av_freep = av_freep;
 	ffmpeg.av_get_packed_sample_fmt = av_get_packed_sample_fmt;
-	ffmpeg.av_get_default_channel_layout = av_get_default_channel_layout;
+	ffmpeg.av_channel_layout_default = av_channel_layout_default;
 	ffmpeg.av_usleep = av_usleep;
 	ffmpeg.av_strdup = av_strdup;
 	ffmpeg.av_log2 = av_log2;
@@ -681,14 +670,14 @@ static bool LoadFFMPEG(FFMPEGContext& ffmpeg) {
 	//
 #if !USE_FFMPEG_STATIC_LINKING
 	FFMPEG_GET_FUNCTION_ADDRESS(swResampleLib, swResampleLibFile, ffmpeg.swresample_version, ffmpeg_get_lib_version_func, "swresample_version");
-	FFMPEG_GET_FUNCTION_ADDRESS(swResampleLib, swResampleLibFile, ffmpeg.swr_alloc_set_opts, ffmpeg_swr_alloc_set_opts_func, "swr_alloc_set_opts");
+	FFMPEG_GET_FUNCTION_ADDRESS(swResampleLib, swResampleLibFile, ffmpeg.swr_alloc_set_opts2, ffmpeg_swr_alloc_set_opts2_func, "swr_alloc_set_opts2");
 	FFMPEG_GET_FUNCTION_ADDRESS(swResampleLib, swResampleLibFile, ffmpeg.swr_free, ffmpeg_swr_free_func, "swr_free");
 	FFMPEG_GET_FUNCTION_ADDRESS(swResampleLib, swResampleLibFile, ffmpeg.swr_convert, ffmpeg_swr_convert_func, "swr_convert");
 	FFMPEG_GET_FUNCTION_ADDRESS(swResampleLib, swResampleLibFile, ffmpeg.swr_init, ffmpeg_swr_init_func, "swr_init");
 	FFMPEG_GET_FUNCTION_ADDRESS(swResampleLib, swResampleLibFile, ffmpeg.swr_set_compensation, ffmpeg_swr_set_compensation_func, "swr_set_compensation");
 #else
 	ffmpeg.swresample_version = swresample_version;
-	ffmpeg.swr_alloc_set_opts = swr_alloc_set_opts;
+	ffmpeg.swr_alloc_set_opts2 = swr_alloc_set_opts2;
 	ffmpeg.swr_free = swr_free;
 	ffmpeg.swr_convert = swr_convert;
 	ffmpeg.swr_init = swr_init;

@@ -29,7 +29,7 @@
 
 #include "libavutil/version.h"
 
-#include "version_major.h"
+#include "libavformat/version_major.h"
 
 #define LIBAVFORMAT_VERSION_MINOR  27
 #define LIBAVFORMAT_VERSION_MICRO 100
