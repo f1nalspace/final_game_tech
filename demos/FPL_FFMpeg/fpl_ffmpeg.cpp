@@ -323,185 +323,171 @@ constexpr int AV_SAMPLE_CORRECTION_PERCENT_MAX = 10;
 //
 // Packet Queue
 //
-static AVPacket globalFlushPacket = {};
-
 struct PacketList {
-	AVPacket packet;
-	PacketList *next;
+	AVPacket *packet;
 	int32_t serial;
 };
 
 struct PacketQueue {
 	fplMutexHandle lock;
-	fplSignalHandle addedSignal;
-	fplSignalHandle freeSignal;
-	PacketList *first;
-	PacketList *last;
+	fplConditionVariable condition;
+	AVFifo *list;
 	uint64_t size;
 	uint64_t duration;
 	int32_t packetCount;
 	int32_t serial;
+	int32_t abortRequest;
 };
 
-static bool IsFlushPacket(PacketList *packet) {
-	assert(packet != nullptr);
-	bool result = (packet->packet.data == (uint8_t *)&globalFlushPacket);
-	return(result);
-}
+static bool PushPacketPrivate(PacketQueue &queue, AVPacket *pkt) {
+	fplAssert(pkt != nullptr);
 
-static PacketList *AllocatePacket(PacketQueue &queue) {
-	PacketList *packet = (PacketList *)ffmpeg.av_mallocz(sizeof(PacketList));
-	if (packet == nullptr) {
-		return nullptr;
+	if (queue.abortRequest) {
+		return false;
 	}
-	fplAtomicFetchAndAddS32(&globalMemStats.allocatedPackets, 1);
-	return(packet);
-}
 
-static void DestroyPacket(PacketQueue &queue, PacketList *packet) {
-	ffmpeg.av_freep(packet);
-	fplAtomicFetchAndAddS32(&globalMemStats.allocatedPackets, -1);
-}
+	PacketList newList = {};
+	newList.packet = pkt;
+	newList.serial = queue.serial;
 
-static void ReleasePacketData(PacketList *packet) {
-	if (!IsFlushPacket(packet)) {
-		ffmpeg.av_packet_unref(&packet->packet);
+	int ret = ffmpeg.av_fifo_write(queue.list, &newList, 1);
+	if (ret < 0) {
+		return false;
 	}
+
+	queue.packetCount++;
+	queue.size += newList.packet->size + sizeof(newList);
+	queue.duration += newList.packet->duration;
+
+	fplConditionSignal(&queue.condition);
+
+	return true;
 }
 
-static void ReleasePacket(PacketQueue &queue, PacketList *packet) {
-	ReleasePacketData(packet);
-	DestroyPacket(queue, packet);
-	fplSignalSet(&queue.freeSignal);
-}
+static bool PushPacket(PacketQueue &queue, AVPacket *pkt) {
+	fplAssert(pkt != nullptr);
 
-static bool AquirePacket(PacketQueue &queue, PacketList *&packet) {
-	bool result = false;
-	packet = AllocatePacket(queue);
-	if (packet != nullptr) {
-		result = true;
+	// Allocate new packet
+	AVPacket *newPacket = ffmpeg.av_packet_alloc();
+	if (newPacket == nullptr) {
+		ffmpeg.av_packet_unref(pkt);
+		return false;
 	}
-	return(result);
+
+	// Clone packet
+	ffmpeg.av_packet_move_ref(newPacket, pkt);
+
+	// Push into the queue
+	bool res;
+	fplMutexLock(&queue.lock);
+	res = PushPacketPrivate(queue, newPacket);
+	fplMutexUnlock(&queue.lock);
+
+	// Release when queue insertion failed
+	if (!res) {
+		ffmpeg.av_packet_free(&newPacket);
+	}
+
+	return res;
 }
 
 static void FlushPacketQueue(PacketQueue &queue) {
+	PacketList list;
 	fplMutexLock(&queue.lock);
-	PacketList *p = queue.first;
-	while (p != nullptr) {
-		PacketList *n = p->next;
-		ReleasePacketData(p);
-		DestroyPacket(queue, p);
-		p = n;
+	while (ffmpeg.av_fifo_read(queue.list, &list, 1) >= 0) {
+		ffmpeg.av_packet_free(&list.packet);
 	}
-	queue.first = queue.last = nullptr;
 	queue.packetCount = 0;
 	queue.size = 0;
 	queue.duration = 0;
+	queue.serial++;
 	fplMutexUnlock(&queue.lock);
-	fplAtomicExchangeS32(&globalMemStats.usedPackets, 0);
-#if PRINT_FLUSHES
-	fplConsoleFormatOut("PacketQueue flushed: %d\n", queue.serial);
-#endif
+}
+
+static void AbortPacketQueue(PacketQueue &queue) {
+	fplMutexLock(&queue.lock);
+	queue.abortRequest = 1;
+	fplConditionSignal(&queue.condition);
+	fplMutexUnlock(&queue.lock);
 }
 
 static void DestroyPacketQueue(PacketQueue &queue) {
 	FlushPacketQueue(queue);
-	fplSignalDestroy(&queue.freeSignal);
-	fplSignalDestroy(&queue.addedSignal);
+	ffmpeg.av_fifo_freep2(&queue.list);
+	fplConditionDestroy(&queue.condition);
 	fplMutexDestroy(&queue.lock);
 	queue = {};
 }
 
 static bool InitPacketQueue(PacketQueue &queue) {
+	queue = {};
+	queue.list =  ffmpeg.av_fifo_alloc2(1, sizeof(PacketList), AV_FIFO_FLAG_AUTO_GROW);
+	if (queue.list == nullptr) {
+		return false;
+	}
 	if (!fplMutexInit(&queue.lock)) {
 		return false;
 	}
-	if (!fplSignalInit(&queue.addedSignal, fplSignalValue_Unset)) {
+	if (!fplConditionInit(&queue.condition)) {
 		return false;
 	}
-	if (!fplSignalInit(&queue.freeSignal, fplSignalValue_Unset)) {
-		return false;
-	}
+	queue.abortRequest = 1;
 	return true;
 }
 
-static void PushPacket(PacketQueue &queue, PacketList *packet) {
-	fplMutexLock(&queue.lock);
-	{
-		packet->next = nullptr;
-		if (IsFlushPacket(packet)) {
-			queue.serial++;
-		}
-		packet->serial = queue.serial;
-		if (queue.first == nullptr) {
-			queue.first = packet;
-		}
-		if (queue.last != nullptr) {
-			assert(queue.last->next == nullptr);
-			queue.last->next = packet;
-		}
-		queue.last = packet;
-		queue.size += packet->packet.size + sizeof(*packet);
-		queue.duration += packet->packet.duration;
-		fplAtomicFetchAndAddS32(&queue.packetCount, 1);
-		fplAtomicFetchAndAddS32(&globalMemStats.usedPackets, 1);
-		fplSignalSet(&queue.addedSignal);
-	}
-	fplMutexUnlock(&queue.lock);
+
+
+
+
+static bool PushNullPacket(PacketQueue &queue, AVPacket *pkt, int streamIndex) {
+	fplAssert(pkt != nullptr);
+	pkt->stream_index = streamIndex;
+	return PushPacket(queue, pkt);
 }
 
-static bool PopPacket(PacketQueue &queue, PacketList *&packet) {
-	bool result = false;
+enum class ReadPacketResult : int {
+	Aborted = -1,
+	Empty = 0,
+	Success = 1,
+};
+
+static ReadPacketResult PopPacket(PacketQueue &queue, AVPacket *pkt, bool block, int *serial) {
+	PacketList list;
+	ReadPacketResult res;
+
 	fplMutexLock(&queue.lock);
-	{
-		if (queue.first != nullptr) {
-			PacketList *p = queue.first;
-			PacketList *n = p->next;
-			queue.first = n;
-			p->next = nullptr;
-			packet = p;
-			queue.duration -= packet->packet.duration;
-			queue.size -= packet->packet.size + sizeof(*packet);
-			if (queue.first == nullptr) {
-				queue.last = nullptr;
+	for (;;) {
+		if (queue.abortRequest) {
+			res = ReadPacketResult::Aborted;
+			break;
+		}
+		if (ffmpeg.av_fifo_read(queue.list, &list, 1) >= 0) {
+			queue.packetCount--;
+			queue.size -= list.packet->size + sizeof(list);
+			queue.duration -= list.packet->duration;
+			ffmpeg.av_packet_move_ref(pkt, list.packet);
+			if (serial != nullptr) {
+				*serial = list.serial;
 			}
-			fplAtomicFetchAndAddS32(&queue.packetCount, -1);
-			fplAtomicFetchAndAddS32(&globalMemStats.usedPackets, -1);
-			result = true;
+			ffmpeg.av_packet_free(&list.packet);
+			res = ReadPacketResult::Success;
+			break;
+		} else if (!block) {
+			res = ReadPacketResult::Empty;
+			break;
+		} else {
+			fplConditionWait(&queue.condition, &queue.lock, FPL_TIMEOUT_INFINITE);
 		}
 	}
 	fplMutexUnlock(&queue.lock);
-	return(result);
-}
-
-static bool PushNullPacket(PacketQueue &queue, int streamIndex) {
-	bool result = false;
-	PacketList *packet = nullptr;
-	if (AquirePacket(queue, packet)) {
-		ffmpeg.av_init_packet(&packet->packet);
-		packet->packet.data = nullptr;
-		packet->packet.size = 0;
-		packet->packet.stream_index = streamIndex;
-		PushPacket(queue, packet);
-		result = true;
-	}
-	return(result);
-}
-
-static bool PushFlushPacket(PacketQueue &queue) {
-	bool result = false;
-	PacketList *packet = nullptr;
-	if (AquirePacket(queue, packet)) {
-		packet->packet = globalFlushPacket;
-		PushPacket(queue, packet);
-		result = true;
-	}
-	return(result);
+	return res;
 }
 
 static void StartPacketQueue(PacketQueue &queue) {
-	bool r = PushFlushPacket(queue);
-	assert(r == true);
+	fplMutexLock(&queue.lock);
+	queue.abortRequest = 0;
+	queue.serial++;
+	fplMutexUnlock(&queue.lock);
 }
 
 //
@@ -4072,10 +4058,6 @@ int main(int argc, char **argv) {
 		goto release;
 	}
 	
-	// Init flush packet
-	ffmpeg.av_init_packet(&globalFlushPacket);
-	globalFlushPacket.data = (uint8_t *)&globalFlushPacket;
-
 	// Load and play media, when we have a media url
 	if (fplGetStringLength(mediaURL) > 0) {
 		LoadMediaAsync(state, mediaURL);
