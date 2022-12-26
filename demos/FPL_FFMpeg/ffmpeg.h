@@ -6,15 +6,16 @@
 // FFMPEG headers and function prototypes
 //
 extern "C" {
+#	include <libavutil/avutil.h>
+#	include <libavutil/imgutils.h>
+#	include <libavutil/time.h>
+#	include <libavutil/version.h>
+#	include <libavutil/fifo.h>
 #	include <libavcodec/avcodec.h>
 #	include <libavcodec/avfft.h>
 #	include <libavformat/avformat.h>
-#	include <libavutil/avutil.h>
-#	include <libavutil/imgutils.h>
 #	include <libswscale/swscale.h>
 #	include <libswresample/swresample.h>
-#	include <libavutil/time.h>
-#	include <libavutil/version.h>
 }
 
 //
@@ -250,8 +251,18 @@ typedef FFMPEG_AV_GET_PIX_FMT_STRING_FUNC(ffmpeg_av_get_pix_fmt_string_func);
 // av_get_pix_fmt_name
 #define FFMPEG_AV_GET_PIX_FMT_NAME_FUNC(name) const char* name(enum AVPixelFormat pix_fmt)
 typedef FFMPEG_AV_GET_PIX_FMT_NAME_FUNC(ffmpeg_av_get_pix_fmt_name_func);
-
-
+// av_fifo_write
+#define FFMPEG_AV_FIFO_WRITE_FUNC(name) int name(AVFifo *f, const void *buf, size_t nb_elems)
+typedef FFMPEG_AV_FIFO_WRITE_FUNC(ffmpeg_av_fifo_write_func);
+// av_fifo_alloc2
+#define FFMPEG_AV_FIFO_ALLOC2_FUNC(name) AVFifo *name(size_t elems, size_t elem_size, unsigned int flags)
+typedef FFMPEG_AV_FIFO_ALLOC2_FUNC(ffmpeg_av_fifo_alloc2_func);
+// av_fifo_read
+#define FFMPEG_AV_FIFO_READ_FUNC(name) int name(AVFifo *f, void *buf, size_t nb_elems)
+typedef FFMPEG_AV_FIFO_READ_FUNC(ffmpeg_av_fifo_read_func);
+// av_fifo_freep2
+#define FFMPEG_AV_FIFO_FREEP2_FUNC(name) void name(AVFifo **f)
+typedef FFMPEG_AV_FIFO_FREEP2_FUNC(ffmpeg_av_fifo_freep2_func);
 
 //
 // SWS
@@ -382,6 +393,10 @@ struct FFMPEGContext {
 	ffmpeg_av_log_func* av_log;
 	ffmpeg_av_get_pix_fmt_string_func* av_get_pix_fmt_string;
 	ffmpeg_av_get_pix_fmt_name_func* av_get_pix_fmt_name;
+	ffmpeg_av_fifo_write_func *av_fifo_write;
+	ffmpeg_av_fifo_alloc2_func *av_fifo_alloc2;
+	ffmpeg_av_fifo_read_func *av_fifo_read;
+	ffmpeg_av_fifo_freep2_func *av_fifo_freep2;
 
 	// SWS
 	ffmpeg_get_lib_version_func* swscale_version;
@@ -615,6 +630,10 @@ static bool LoadFFMPEG(FFMPEGContext& ffmpeg) {
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_log, ffmpeg_av_log_func, "av_log");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_get_pix_fmt_string, ffmpeg_av_get_pix_fmt_string_func, "av_get_pix_fmt_string");	
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_get_pix_fmt_name, ffmpeg_av_get_pix_fmt_name_func, "av_get_pix_fmt_name");
+	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_fifo_write, ffmpeg_av_fifo_write_func, "av_fifo_write");	
+	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_fifo_alloc2, ffmpeg_av_fifo_alloc2_func, "av_fifo_alloc2");	
+	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_fifo_read, ffmpeg_av_fifo_read_func, "av_fifo_read");	
+	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_fifo_freep2, ffmpeg_av_fifo_freep2_func, "av_fifo_freep2");	
 #else	
 	ffmpeg.avutil_version = avutil_version;
 	ffmpeg.av_frame_alloc = av_frame_alloc;
@@ -646,6 +665,10 @@ static bool LoadFFMPEG(FFMPEGContext& ffmpeg) {
 	ffmpeg.av_log = av_log;
 	ffmpeg.av_get_pix_fmt_string = av_get_pix_fmt_string;
 	ffmpeg.av_get_pix_fmt_name = av_get_pix_fmt_name;
+	ffmpeg.av_fifo_write = av_fifo_write;
+	ffmpeg.av_fifo_alloc2 = av_fifo_alloc2;
+	ffmpeg.av_fifo_read = av_fifo_read;
+	ffmpeg.av_fifo_freep2 = av_fifo_freep2;
 #endif
 
 	//
