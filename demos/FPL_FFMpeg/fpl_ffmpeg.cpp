@@ -3250,18 +3250,23 @@ static void RenderVideoFrame(AppState *state) {
 	VideoContext &video = playerState->video;
 	Frame *vp = fpl_null;
 
-	bool hasVideo = playerState->video.isValid;
+	PlayingState playState = GetPlayingState(*playerState);
 
-	int readIndex = playerState->video.decoder.frameQueue.readIndex;
-	bool wasUploaded = false;
-	if (hasVideo && video.isRenderingInitialized) {
-		vp = PeekFrameQueueLast(playerState->video.decoder.frameQueue);
-		wasUploaded = false;
-		if (!vp->isUploaded) {
-			UploadTexture(video, vp->frame);
-			vp->isUploaded = true;
-			wasUploaded = true;
+	bool hasVideo = false;
+
+	if (playState == PlayingState::Playing || playState == PlayingState::Paused) {
+		hasVideo = playerState->video.isValid;
+		if (hasVideo && video.isRenderingInitialized) {
+			int readIndex = playerState->video.decoder.frameQueue.readIndex;
+			vp = PeekFrameQueueLast(playerState->video.decoder.frameQueue);
+			bool wasUploaded = false;
+			if (!vp->isUploaded) {
+				UploadTexture(video, vp->frame);
+				vp->isUploaded = true;
+				wasUploaded = true;
+			}
 		}
+
 	}
 
 	// Calculate display rect (Top-Down)
