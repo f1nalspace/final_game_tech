@@ -677,7 +677,7 @@ static int32_t GetFrameQueueRemainingCount(const FrameQueue &queue) {
 struct MediaStream {
 	AVStream *stream;
 	AVCodecContext *codecContext;
-	AVCodec *codec;
+	const AVCodec *codec;
 	int32_t streamIndex;
 	bool32 isValid;
 };
@@ -2642,8 +2642,9 @@ static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, cons
 				//
 				// Convert samples
 				//
+				const AVChannelLayout sourceChannelLayout = audioFrame->frame->ch_layout;
 				const uint32_t sourceSampleCount = audioFrame->frame->nb_samples;
-				const uint32_t sourceChannels = audioFrame->frame->channels;
+				const uint32_t sourceChannels = sourceChannelLayout.nb_channels;
 				const uint32_t sourceFrameCount = sourceSampleCount;
 				uint8_t **sourceSamples = audioFrame->frame->extended_data;
 				// @TODO(final): Support for converting planar audio samples
@@ -3040,14 +3041,8 @@ static bool IsRealTime(AVFormatContext *s) {
 		!strcmp(s->iformat->name, "sdp")) {
 		return true;
 	}
-
-#if !FF_API_FORMAT_FILENAME
-	const char* filename = s->filename;
-#else
-	const char* filename = s->url;
-#endif
-
-	if (s->pb && (!strncmp(filename, "rtp:", 4) || !strncmp(filename, "udp:", 4))) {
+	const char* url = s->url;
+	if (s->pb && (!strncmp(url, "rtp:", 4) || !strncmp(url, "udp:", 4))) {
 		return true;
 	}
 	return false;
@@ -3737,6 +3732,8 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 	AudioContext &audio = state.audio;
 	AVCodecContext *audioCodexCtx = audio.stream.codecContext;
 
+	AVChannelLayout targetChannelLayout = fplStructInit(AVChannelLayout);
+
 	// Init audio decoder
 	if (!InitDecoder(audio.decoder, &state, &state.reader, &audio.stream, MAX_AUDIO_FRAME_QUEUE_COUNT, 1)) {
 		FPL_LOG_ERROR("App", "Failed initialize audio decoder for media file '%s'!\n", mediaFilePath);
@@ -3753,9 +3750,9 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 	AVSampleFormat targetSampleFormat = MapAudioFormatType(nativeAudioFormat.type);
 
 	// @TODO(final): Map channels to AV channel layout
-	uint64_t targetChannelLayout = AV_CH_LAYOUT_STEREO;
 	int targetChannelCount = nativeAudioFormat.channels;
 	assert(targetChannelCount == 2);
+	ffmpeg.av_channel_layout_default(&targetChannelLayout, targetChannelCount);
 	int targetSampleRate = nativeAudioFormat.sampleRate;
 	audio.audioTarget = {};
 	audio.audioTarget.periods = nativeAudioFormat.periods;
@@ -3766,13 +3763,9 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 	audio.audioTarget.bufferSizeInBytes = ffmpeg.av_samples_get_buffer_size(nullptr, audio.audioTarget.channels, audio.audioTarget.sampleRate, targetSampleFormat, 1);
 
 	AVSampleFormat inputSampleFormat = audioCodexCtx->sample_fmt;
-
-	int inputChannelCount = audioCodexCtx->channels;
+	AVChannelLayout inputChannelLayout = audioCodexCtx->ch_layout;
+	int inputChannelCount = inputChannelLayout.nb_channels;
 	int inputSampleRate = audioCodexCtx->sample_rate;
-	uint64_t inputChannelLayout = audioCodexCtx->channel_layout;
-	if (inputChannelLayout == 0) {
-		inputChannelLayout = ffmpeg.av_get_default_channel_layout(inputChannelCount);
-	}
 
 	audio.audioSource = {};
 	audio.audioSource.channels = inputChannelCount;
@@ -3787,15 +3780,10 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 	audio.audioDiffThreshold = nativeBufferSizeInBytes / (double)audio.audioTarget.bufferSizeInBytes;
 
 	// Create software resample context and initialize
-	audio.softwareResampleCtx = ffmpeg.swr_alloc_set_opts(nullptr,
-		targetChannelLayout,
-		targetSampleFormat,
-		targetSampleRate,
-		inputChannelLayout,
-		inputSampleFormat,
-		inputSampleRate,
-		0,
-		nullptr);
+	if (ffmpeg.swr_alloc_set_opts2(&audio.softwareResampleCtx, &targetChannelLayout, targetSampleFormat, targetSampleRate, &inputChannelLayout, inputSampleFormat, inputSampleRate, 0, nullptr) < 0) {
+		FPL_LOG_ERROR("App", "Failed to allocate software audio resampling context for media file '%s'!\n", mediaFilePath);
+		goto failed;
+	}
 	if (ffmpeg.swr_init(audio.softwareResampleCtx) < 0) {
 		FPL_LOG_ERROR("App", "Failed initialize audio resampling context for media file '%s'!\n", mediaFilePath);
 		goto failed;
@@ -4084,9 +4072,6 @@ int main(int argc, char **argv) {
 		goto release;
 	}
 	
-	// Register all codecs and formats
-	ffmpeg.av_register_all();
-
 	// Init flush packet
 	ffmpeg.av_init_packet(&globalFlushPacket);
 	globalFlushPacket.data = (uint8_t *)&globalFlushPacket;
