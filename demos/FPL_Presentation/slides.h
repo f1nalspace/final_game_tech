@@ -434,6 +434,33 @@ namespace FPLPresentationData {
 		static const SlideDefinition Slide = MakeSlideDef("How it actually works", Blocks, GetBackground(), Rot);
 	};
 
+	namespace Limitations {
+		static const char* Talk = {
+			""
+		};
+
+		static BlockDefinition Blocks[] = {
+			MakeTextDef(
+				V2f(0.0f,0.0f),V2f(1.0f,1.0f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				"FPL is lightweight, so it can´t anything for you, so there are a few limitations:",
+				HorizontalAlignment::Left, FeaturesFontSize
+			),
+			MakeTextDef(
+				V2f(0.0f,0.0f),V2f(1.0f,1.0f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				"- No rendering or drawing functions\n* you have to load the graphics driver and do the drawing yourself\n"
+				"\n"
+				"- No audio format or sample conversion\n* you have to convert the samples in the correct format yourself\n"
+				"\n"
+				"- Single window support\n* FPL supports one single window only, for now",
+				HorizontalAlignment::Left, FeaturesFontSize
+			),
+		};
+
+		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(33), V3f(-0.5f, 0.5f, 0.25f));
+
+		static const SlideDefinition Slide = MakeSlideDef("Limitations", Blocks, GetBackground(), Rot);
+	};
+
 	namespace Links {
 		static const char* Talk = {
 			""
@@ -528,6 +555,7 @@ namespace FPLPresentationData {
 		FeaturesOfFPL::Slide,
 		Magic::Slide,
 		HowItWorks::Slide,
+		Limitations::Slide,
 		Links::Slide,
 		Demos::Slide,
 		Thanks::Slide
