@@ -267,8 +267,8 @@ namespace FPLPresentationData {
 
 	namespace Motivation {
 		static const char* Talk = {
-			"C/C++ has very limited access to the underlying platform."
-			"Even in modern C++, you still don't have direct access to a lot of systems."
+			"C has very limited access to the underlying platform."
+			"Even in modern C++, you still don't have direct access to a lot of systems at all."
 			"To access low-level systems, such as audio or video, you either need to use third-party libraries or write platform-specific codes for Win32, Linux, Mac, etc. directly."
 			""
 			"Of course, there is already a few PALs on the internet, but most of them have the same issue:"
@@ -508,7 +508,7 @@ namespace FPLPresentationData {
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
 				V2f(),V2f(1,1),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				"Thank you for trying out FPL!",
+				"Thank you for your time!",
 				HorizontalAlignment::Center
 			),
 		};
@@ -565,7 +565,7 @@ namespace FPLPresentationData {
 		/* font */ {FontResources::Arimo.name, 24.0f, 1.15f, FPLPresentationData::HeaderStyle},
 		/* height */ 32.0f,
 		/* leftText */ "%SLIDE_NAME%",
-		/* centerText */ "Copyright (C) 2021 Torsten Spaete",
+		/* centerText */ "Copyright (C) 2017-2023 Torsten Spaete",
 		/* rightText */ "Page %SLIDE_NUM% of %SLIDE_COUNT%",
 		/* padding */ V2f(2,3),
 	};
