@@ -140,6 +140,7 @@ SOFTWARE.
 	- Renamed tons of functions to match naming scheme
 	- Several Bugfixes for Win32/X11/Vulkan
 	- Several Bugfixes in Demos
+	- Several Improvements for Win32
 
 	### Details
 
@@ -150,6 +151,9 @@ SOFTWARE.
 	- New: Added field background as @ref fplColor32 to @ref fplWindowSettings
 	- New: [Window/Win32] Support for custom background color
 	- New: [Window/X11] Support for custom background color
+
+	#### Improvements
+	- Improved: [Win32] Console handling is more stable now
 
 	#### Internal Changes
 	- Changed[#95]: Platform support for fplMemorySet, fplMemoryClear, fplMemoryCopy (See FPL_NO_MEMORY_MACROS / FPL_USE_MEMORY_MACROS for more details)
@@ -12182,29 +12186,31 @@ fpl_internal bool fpl__Win32InitPlatform(const fplInitFlags initFlags, const fpl
 	}
 
 	// Show/Hide console
+	bool showConsole = (initFlags & fplInitFlags_Console);
 	HWND consoleWindow = GetConsoleWindow();
-	if (consoleWindow != fpl_null) {
-		bool showConsole = (initFlags & fplInitFlags_Console);
-		if (showConsole) {
-			const fplConsoleSettings *initConsoleSettings = &initSettings->console;
-			fplConsoleSettings *currentConsoleSettings = &appState->currentSettings.console;
-
-			// Setup a console title
-			wchar_t consoleTitleBuffer[FPL_MAX_NAME_LENGTH];
-			if (fplGetStringLength(initConsoleSettings->title) > 0) {
-				fplUTF8StringToWideString(initConsoleSettings->title, fplGetStringLength(initConsoleSettings->title), consoleTitleBuffer, fplArrayCount(consoleTitleBuffer));
-			} else {
-				const wchar_t *defaultTitle = FPL__WIN32_UNNAMED_CONSOLE;
-				lstrcpynW(consoleTitleBuffer, defaultTitle, fplArrayCount(consoleTitleBuffer));
-			}
-			wchar_t *windowTitle = consoleTitleBuffer;
-			fplWideStringToUTF8String(windowTitle, lstrlenW(windowTitle), currentConsoleSettings->title, fplArrayCount(currentConsoleSettings->title));
-			SetConsoleTitleW(windowTitle);
-
-			win32AppState->winApi.user.ShowWindow(consoleWindow, SW_SHOW);
-		} else {
+	if (!showConsole) {
+		if (consoleWindow != fpl_null) {
 			win32AppState->winApi.user.ShowWindow(consoleWindow, SW_HIDE);
+		} else {
+			FreeConsole();
 		}
+	} else if (consoleWindow != fpl_null) {
+		const fplConsoleSettings *initConsoleSettings = &initSettings->console;
+		fplConsoleSettings *currentConsoleSettings = &appState->currentSettings.console;
+
+		// Setup a console title
+		wchar_t consoleTitleBuffer[FPL_MAX_NAME_LENGTH];
+		if (fplGetStringLength(initConsoleSettings->title) > 0) {
+			fplUTF8StringToWideString(initConsoleSettings->title, fplGetStringLength(initConsoleSettings->title), consoleTitleBuffer, fplArrayCount(consoleTitleBuffer));
+		} else {
+			const wchar_t *defaultTitle = FPL__WIN32_UNNAMED_CONSOLE;
+			lstrcpynW(consoleTitleBuffer, defaultTitle, fplArrayCount(consoleTitleBuffer));
+		}
+		wchar_t *windowTitle = consoleTitleBuffer;
+		fplWideStringToUTF8String(windowTitle, lstrlenW(windowTitle), currentConsoleSettings->title, fplArrayCount(currentConsoleSettings->title));
+		SetConsoleTitleW(windowTitle);
+
+		win32AppState->winApi.user.ShowWindow(consoleWindow, SW_SHOW);
 	}
 
 	// Init keymap
