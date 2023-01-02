@@ -18,6 +18,11 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2023-01-02
+	- Improved block text of slides a bit
+	- Added limitations slide
+	- Fixed crash when application is minized
+
 	## 2021-02-28
 	- Updated all slices, written talks
 
@@ -2339,13 +2344,14 @@ int main(int argc, char **argv) {
 				if (!fplIsWindowRunning())
 					break;
 
-				fplWindowSize winSize = fplZeroInit;
-				fplGetWindowSize(&winSize);
-				fplAssert(winSize.width > 0 && winSize.height > 0);
-
 				UpdateFrame(app, dt);
 
-				RenderFrame(app, V2iInit(winSize.width, winSize.height));
+				fplWindowSize winSize = fplZeroInit;
+				fplGetWindowSize(&winSize);
+
+				if (winSize.width > 0 && winSize.height > 0) {
+					RenderFrame(app, V2iInit(winSize.width, winSize.height));
+				}
 
 				fplVideoFlip();
 
