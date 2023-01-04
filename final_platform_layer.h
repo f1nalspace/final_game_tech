@@ -163,7 +163,6 @@ SOFTWARE.
 	- Changed: [ALSA] Use *bcm2835* device pattern for buffer scale instead of individual ones
 
 	#### Bugfixes
-	- Fixed[#140]: [FMPEG Demo] Crash in UploadTexture when linesize is not the same as frame width
 	- Fixed[#130]: [Win32] Main fiber was never properly released
 	- Fixed[#131]: [Win32] Console window was not shown the second time fplPlatformInit() was called
 	- Fixed[#134]: [Win32] Duplicate executable arguments in main() passed when CRT is disabled
