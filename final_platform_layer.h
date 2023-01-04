@@ -138,41 +138,40 @@ SOFTWARE.
 	- Added useful functions for multithreading
 	- Added support for changing the default window background color
 	- Added support for preventing the screensaver for kicking-in
-	- Several Bugfixes for Win32/X11/Vulkan
-	- Several Bugfixes in Demos
-	- Several Improvements for Win32
+	- Several Bugfixes for several platforms
+	- Several Bugfixes for several audio backends
+	- Several Improvements for platforms
 	- Renamed tons of functions to match naming scheme
 
 	### Details
 
-	#### Features
+	#### Core
 	- New: Added function GetAvailableThreadCount() that returns the number of available threads
 	- New: Added function GetUsedThreadCount() that returns the number of used/active threads
 	- New: Added union fplColor32 for representing a 32-bit color value
 	- New: Added field background as @ref fplColor32 to @ref fplWindowSettings
 	- New: Added fields isScreenSaverPrevented/isMonitorPowerPrevented to configure, if monitor-off or screensaver is prevented
-	- New: [Window/Win32] Support for preventing the screensaver
-	- New: [Window/X11] Support for custom background color
-	- New[#150]: [Window/Win32] Support for custom background color
-
-	#### Improvements
-	- Improved: [Win32] Console handling is more stable now
-
-	#### Internal Changes
+	- Fixed[#135]: Stackoverflow in fpl__PushError_Formatted() when FPL_USERFUNC_vsnprintf is overloaded
+	- Fixed[#139]: Assertion on machine with 32 logical cores -> fplThreadHandle array capacity too small
+	- Fixed[#141]: fplMemoryCopy() was wrong for 16-bit optimized operations
 	- Changed[#95]: Platform support for fplMemorySet, fplMemoryClear, fplMemoryCopy (See FPL_NO_MEMORY_MACROS / FPL_USE_MEMORY_MACROS for more details)
-	- Changed: [ALSA] Use *bcm2835* device pattern for buffer scale instead of individual ones
 
-	#### Bugfixes
-	- Fixed[#130]: [Win32] Main fiber was never properly released
-	- Fixed[#131]: [Win32] Console window was not shown the second time fplPlatformInit() was called
+	#### Platform
+	- New[#150]: [Win32] Prevent screensaver for kicking-in
+	- Fixed[#127]: [Win32/Window] Incorrect initial window background color
+	- Fixed[#130]: [Win32/Window] Main fiber was never properly released
+	- Fixed[#131]: [Win32/Console] Console window was not shown the second time fplPlatformInit() was called
 	- Fixed[#134]: [Win32] Duplicate executable arguments in main() passed when CRT is disabled
-	- Fixed[#124]: [Video/Vulkan] Fallback when creation with validation failed
 	- Fixed[#137]: [POSIX] pthread_yield is not always present, so it may fail the FPL startup
 	- Fixed[#138]: [X11] Compile error in function fpl__X11InitWindow, initSettings was not found
-	- Fixed[#141]: fplMemoryCopy() was wrong for 16-bit optimized operations
-	- Fixed[#135]: Stackoverflow in fpl__PushError_Formatted() when FPL_USERFUNC_vsnprintf is overloaded
+
+	#### Audio
+	- Changed: [Audio/ALSA] Use *bcm2835* device pattern for buffer scale instead of individual ones
+	
+	#### Video
+	- Fixed[#124]: [Video/Vulkan] Fallback when creation with validation failed
 	- Fixed[#136]: Video initialization failed due to wrong @ref fplGraphicsApiSettings union
-	- Fixed[#139]: Assertion on machine with 32 logical cores -> fplThreadHandle array capacity too small
+	- Improvement[#148]: Refactoring of video backends
 
 	#### Breaking Changes
 	- Changed: Renamed function fplOpenBinaryFile() to fplFileOpenBinary()
