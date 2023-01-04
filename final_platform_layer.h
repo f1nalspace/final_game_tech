@@ -137,10 +137,11 @@ SOFTWARE.
 	### Overview
 	- Added useful functions for multithreading
 	- Added support for changing the default window background color
-	- Renamed tons of functions to match naming scheme
+	- Added support for preventing the screensaver for kicking-in
 	- Several Bugfixes for Win32/X11/Vulkan
 	- Several Bugfixes in Demos
 	- Several Improvements for Win32
+	- Renamed tons of functions to match naming scheme
 
 	### Details
 
@@ -149,8 +150,10 @@ SOFTWARE.
 	- New: Added function GetUsedThreadCount() that returns the number of used/active threads
 	- New: Added union fplColor32 for representing a 32-bit color value
 	- New: Added field background as @ref fplColor32 to @ref fplWindowSettings
-	- New: [Window/Win32] Support for custom background color
+	- New: Added fields isScreenSaverPrevented/isMonitorPowerPrevented to configure, if monitor-off or screensaver is prevented
+	- New: [Window/Win32] Support for preventing the screensaver
 	- New: [Window/X11] Support for custom background color
+	- New[#150]: [Window/Win32] Support for custom background color
 
 	#### Improvements
 	- Improved: [Win32] Console handling is more stable now
@@ -160,7 +163,6 @@ SOFTWARE.
 	- Changed: [ALSA] Use *bcm2835* device pattern for buffer scale instead of individual ones
 
 	#### Bugfixes
-	- Fixed[#140]: [FMPEG Demo] Crash in UploadTexture when linesize is not the same as frame width
 	- Fixed[#130]: [Win32] Main fiber was never properly released
 	- Fixed[#131]: [Win32] Console window was not shown the second time fplPlatformInit() was called
 	- Fixed[#134]: [Win32] Duplicate executable arguments in main() passed when CRT is disabled
@@ -3966,6 +3968,10 @@ typedef struct fplWindowSettings {
 	fpl_b32 isFloating;
 	//! Is window in fullscreen mode
 	fpl_b32 isFullscreen;
+	//! Is screen saver prevented (true: prevents the screensaver to kick-in, false: system behavior)
+	fpl_b32 isScreenSaverPrevented;
+	//! Is monitor power change prevented (true: prevents the monitor for powering off automatically, false: system behavior)
+	fpl_b32 isMonitorPowerPrevented;
 } fplWindowSettings;
 
 /**
@@ -10727,6 +10733,8 @@ fpl_common_api void fplSetDefaultWindowSettings(fplWindowSettings *window) {
 	window->isResizable = true;
 	window->isDecorated = true;
 	window->isFloating = false;
+	window->isScreenSaverPrevented = false;
+	window->isMonitorPowerPrevented = false;
 }
 
 fpl_common_api void fplSetDefaultConsoleSettings(fplConsoleSettings *console) {
@@ -11560,6 +11568,19 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			}
 		} break;
 
+		case WM_SYSCOMMAND:
+		{
+			WPARAM masked = wParam & 0xFFF0;
+			switch (masked) {
+				case SC_SCREENSAVE:
+				case SC_MONITORPOWER: {
+					if (appState->currentSettings.window.isScreenSaverPrevented || appState->currentSettings.window.isMonitorPowerPrevented) {
+						return 0;
+					}
+				} break;
+			}
+		} break;
+
 		default:
 			break;
 	}
@@ -12222,6 +12243,15 @@ fpl_internal bool fpl__Win32InitPlatform(const fplInitFlags initFlags, const fpl
 			vk = i;
 		}
 		appState->window.keyMap[i] = fpl__Win32TranslateVirtualKey(&win32AppState->winApi, vk);
+	}
+#	endif
+
+	// Hint for windows to know, that the application is in use always
+#	if defined(FPL__ENABLE_WINDOW)
+	if (initSettings->window.isMonitorPowerPrevented || initSettings->window.isScreenSaverPrevented) {
+		SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED);
+	} else {
+		SetThreadExecutionState(ES_CONTINUOUS);
 	}
 #	endif
 
