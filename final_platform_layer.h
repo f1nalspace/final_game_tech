@@ -169,8 +169,11 @@ SOFTWARE.
 	- Changed: [Audio/ALSA] Use *bcm2835* device pattern for buffer scale instead of individual ones
 	
 	#### Video
-	- Fixed[#124]: [Video/Vulkan] Fallback when creation with validation failed
+	- New: Added field libraryFile to @ref fplOpenGLSettings, for passing in a custom driver library file for OpenGL
+	- New: Added field libraryFile to @ref fplVulkanSettings, for passing in a custom driver library file for Vulkan
+	- New[#117]: Support for passing in a driver dll for OpenGL/Vulkan
 	- Fixed[#136]: Video initialization failed due to wrong @ref fplGraphicsApiSettings union
+	- Fixed[#124]: [Video/Vulkan] Fallback when creation with validation failed
 	- Improvement[#148]: Refactoring of video backends
 
 	#### Breaking Changes
@@ -3554,6 +3557,8 @@ typedef enum fplOpenGLCompabilityFlags {
 
 //! A structure that contains OpenGL video settings
 typedef struct fplOpenGLSettings {
+	//! Custom OpenGL driver library file name/path (null = Default OpenGL library)
+	const char *libraryFile;
 	//! Compability flags
 	fplOpenGLCompabilityFlags compabilityFlags;
 	//! Desired major version
@@ -3604,6 +3609,8 @@ typedef struct fplVulkanSettings {
 	fplVersionInfo engineVersion;
 	//! The preferred Vulkan api version (Only required if @ref fplVulkanSettings.instanceHandle is @ref fpl_null)
 	fplVersionInfo apiVersion;
+	//! Custom Vulkan driver library file name/path (null = Default Vulkan library)
+	const char *libraryFile;
 	//! The application name (Only required if @ref fplVulkanSettings.instanceHandle is @ref fpl_null)
 	const char *appName;
 	//! The engine name (Only required if @ref fplVulkanSettings.instanceHandle is @ref fpl_null)
@@ -10663,10 +10670,12 @@ fpl_common_api void fplSetDefaultVideoSettings(fplVideoSettings *video) {
 	video->isAutoSize = true;
 
 #if defined(FPL__ENABLE_VIDEO_OPENGL)
+	video->graphics.opengl.libraryFile = fpl_null;
 	video->graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
 #endif
 
 #if defined(FPL__ENABLE_VIDEO_VULKAN)
+	video->graphics.vulkan.libraryFile = fpl_null;
 	video->graphics.vulkan.appVersion = fplStructInit(fplVersionInfo, "1.0.0", "1", "0", "0");
 	video->graphics.vulkan.engineVersion = fplStructInit(fplVersionInfo, "1.0.0", "1", "0", "0");
 	video->graphics.vulkan.apiVersion = fplStructInit(fplVersionInfo, "1.1.0", "1", "1", "0");
@@ -18522,18 +18531,20 @@ fpl_internal void fpl__UnloadWin32OpenGLApi(fpl__Win32OpenGLApi *api) {
 	fplClearStruct(api);
 }
 
-fpl_internal bool fpl__LoadWin32OpenGLApi(fpl__Win32OpenGLApi *api) {
-	const char *openglLibraryName = "opengl32.dll";
+fpl_internal bool fpl__LoadWin32OpenGLApi(fpl__Win32OpenGLApi *api, const char *libraryName) {
+	if (fplGetStringLength(libraryName) == 0) {
+		libraryName = "opengl32.dll";
+	}
 	bool result = false;
 	fplClearStruct(api);
 	do {
 		HMODULE openglLibrary = fpl_null;
-		FPL__WIN32_LOAD_LIBRARY(FPL__MODULE_VIDEO_OPENGL, openglLibrary, openglLibraryName);
+		FPL__WIN32_LOAD_LIBRARY(FPL__MODULE_VIDEO_OPENGL, openglLibrary, libraryName);
 		api->openglLibrary = openglLibrary;
-		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_VIDEO_OPENGL, openglLibrary, openglLibraryName, api, fpl__win32_func_wglGetProcAddress, wglGetProcAddress);
-		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_VIDEO_OPENGL, openglLibrary, openglLibraryName, api, fpl__win32_func_wglCreateContext, wglCreateContext);
-		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_VIDEO_OPENGL, openglLibrary, openglLibraryName, api, fpl__win32_func_wglDeleteContext, wglDeleteContext);
-		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_VIDEO_OPENGL, openglLibrary, openglLibraryName, api, fpl__win32_func_wglMakeCurrent, wglMakeCurrent);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_VIDEO_OPENGL, openglLibrary, libraryName, api, fpl__win32_func_wglGetProcAddress, wglGetProcAddress);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_VIDEO_OPENGL, openglLibrary, libraryName, api, fpl__win32_func_wglCreateContext, wglCreateContext);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_VIDEO_OPENGL, openglLibrary, libraryName, api, fpl__win32_func_wglDeleteContext, wglDeleteContext);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_VIDEO_OPENGL, openglLibrary, libraryName, api, fpl__win32_func_wglMakeCurrent, wglMakeCurrent);
 		result = true;
 	} while (0);
 	if (!result) {
@@ -18576,7 +18587,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_Win32OpenGL
 
 	if (videoSettings->graphics.opengl.compabilityFlags != fplOpenGLCompabilityFlags_Legacy) {
 		fpl__Win32OpenGLApi glApi;
-		if (fpl__LoadWin32OpenGLApi(&glApi)) {
+		if (fpl__LoadWin32OpenGLApi(&glApi, videoSettings->graphics.opengl.libraryFile)) {
 			// Register temporary window class
 			WNDCLASSEXW windowClass = fplZeroInit;
 			windowClass.cbSize = sizeof(windowClass);
@@ -18837,9 +18848,10 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_UNLOAD(fpl__VideoBackend_Win32OpenGL_Unload
 
 fpl_internal FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__VideoBackend_Win32OpenGL_Load) {
 	fpl__VideoBackendWin32OpenGL *nativeBackend = (fpl__VideoBackendWin32OpenGL *)backend;
+	const fplVideoSettings *videoSettings = &appState->currentSettings.video;
 	fplClearStruct(nativeBackend);
 	nativeBackend->base.magic = FPL__VIDEOBACKEND_MAGIC;
-	if (!fpl__LoadWin32OpenGLApi(&nativeBackend->api)) {
+	if (!fpl__LoadWin32OpenGLApi(&nativeBackend->api, videoSettings->graphics.opengl.libraryFile)) {
 		return(false);
 	}
 	return(true);
@@ -18973,13 +18985,19 @@ fpl_internal void fpl__UnloadX11OpenGLApi(fpl__X11VideoOpenGLApi *api) {
 	fplClearStruct(api);
 }
 
-fpl_internal bool fpl__LoadX11OpenGLApi(fpl__X11VideoOpenGLApi *api) {
-	const char *libFileNames[] = {
-		"libGL.so.1",
-		"libGL.so",
-	};
+fpl_internal bool fpl__LoadX11OpenGLApi(fpl__X11VideoOpenGLApi *api, const char *libraryName) {
+	uint32_t libFileCount = 0;
+	
+	const char *libFileNames[4];
+	if (fplGetStringLength(libraryName) > 0) {
+		libFileNames[libFileCount++] = libraryName;
+	} else {
+		libFileNames[libFileCount++] = "libGL.so.1";
+		libFileNames[libFileCount++] = "libGL.so";
+	}
+
 	bool result = false;
-	for (uint32_t index = 0; index < fplArrayCount(libFileNames); ++index) {
+	for (uint32_t index = 0; index < libFileCount; ++index) {
 		const char *libName = libFileNames[index];
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Load GLX Api from Library: %s", libName);
 		do {
@@ -19362,9 +19380,10 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_UNLOAD(fpl__VideoBackend_X11OpenGL_Unload) 
 
 fpl_internal FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__VideoBackend_X11OpenGL_Load) {
 	fpl__VideoBackendX11OpenGL *nativeBackend = (fpl__VideoBackendX11OpenGL *)backend;
+	const fplVideoSettings *videoSettings = &appState->currentSettings.video;
 	fplClearStruct(nativeBackend);
 	nativeBackend->base.magic = FPL__VIDEOBACKEND_MAGIC;
-	if (!fpl__LoadX11OpenGLApi(&nativeBackend->api)) {
+	if (!fpl__LoadX11OpenGLApi(&nativeBackend->api, videoSettings->graphics.opengl.libraryFile)) {
 		return(false);
 	}
 	return(true);
@@ -19595,9 +19614,31 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_Win32Software_Construct() {
     ((((uint32_t)(major)) << 22) | (((uint32_t)(minor)) << 12) | ((uint32_t)(patch)))
 
 typedef enum fpl__VkResult {
+	FPL__VK_ERROR_OUT_OF_HOST_MEMORY = -1,
+	FPL__VK_ERROR_OUT_OF_DEVICE_MEMORY = -2,
+	FPL__VK_ERROR_INITIALIZATION_FAILED = -3,
+	FPL__VK_ERROR_DEVICE_LOST = -4,
+	FPL__VK_ERROR_MEMORY_MAP_FAILED = -5,
+	FPL__VK_ERROR_LAYER_NOT_PRESENT = -6,
+	FPL__VK_ERROR_EXTENSION_NOT_PRESENT = -7,
+	FPL__VK_ERROR_FEATURE_NOT_PRESENT = -8,
+	FPL__VK_ERROR_INCOMPATIBLE_DRIVER = -9,
+	FPL__VK_ERROR_TOO_MANY_OBJECTS = -10,
+	FPL__VK_ERROR_FORMAT_NOT_SUPPORTED = -11,
+	FPL__VK_ERROR_FRAGMENTED_POOL = -12,
+	FPL__VK_ERROR_UNKNOWN = -13,
+
 	FPL__VK_SUCCESS = 0,
+
+	FPL__VK_NOT_READY = 1,
+	FPL__VK_TIMEOUT = 2,
+	FPL__VK_EVENT_SET = 3,
+	FPL__VK_EVENT_RESET = 4,
+	FPL__VK_INCOMPLETE = 5,	
+
 	FPL__VK_RESULT_MAX_ENUM = 0x7FFFFFFF
 } fpl__VkResult;
+
 typedef uint32_t fpl__VkFlags;
 typedef uint32_t fpl__VkBool32;
 
@@ -19779,12 +19820,36 @@ typedef void (fpl__VKAPI_PTR *fpl__func_vkDestroyDebugUtilsMessengerEXT)(fpl__Vk
 #	define FPL__VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR
 #	define FPL__VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT
 
-#	define FPL__VK_SUCCESS VK_SUCCESS
+typedef enum fpl__VkResult {
+	FPL__VK_ERROR_OUT_OF_HOST_MEMORY = VK_ERROR_OUT_OF_HOST_MEMORY,
+	FPL__VK_ERROR_OUT_OF_DEVICE_MEMORY = VK_ERROR_OUT_OF_DEVICE_MEMORY,
+	FPL__VK_ERROR_INITIALIZATION_FAILED = VK_ERROR_INITIALIZATION_FAILED,
+	FPL__VK_ERROR_DEVICE_LOST = VK_ERROR_DEVICE_LOST,
+	FPL__VK_ERROR_MEMORY_MAP_FAILED = VK_ERROR_MEMORY_MAP_FAILED,
+	FPL__VK_ERROR_LAYER_NOT_PRESENT = VK_ERROR_LAYER_NOT_PRESENT,
+	FPL__VK_ERROR_EXTENSION_NOT_PRESENT = VK_ERROR_EXTENSION_NOT_PRESENT,
+	FPL__VK_ERROR_FEATURE_NOT_PRESENT = VK_ERROR_FEATURE_NOT_PRESENT,
+	FPL__VK_ERROR_INCOMPATIBLE_DRIVER = VK_ERROR_INCOMPATIBLE_DRIVER,
+	FPL__VK_ERROR_TOO_MANY_OBJECTS = VK_ERROR_TOO_MANY_OBJECTS,
+	FPL__VK_ERROR_FORMAT_NOT_SUPPORTED = VK_ERROR_FORMAT_NOT_SUPPORTED,
+	FPL__VK_ERROR_FRAGMENTED_POOL = VK_ERROR_FRAGMENTED_POOL,
+	FPL__VK_ERROR_UNKNOWN = VK_ERROR_UNKNOWN,
+
+	FPL__VK_SUCCESS = VK_SUCCESS,
+
+	FPL__VK_NOT_READY = VK_NOT_READY,
+	FPL__VK_TIMEOUT = VK_TIMEOUT,
+	FPL__VK_EVENT_SET = VK_EVENT_SET,
+	FPL__VK_EVENT_RESET = VK_EVENT_RESET,
+	FPL__VK_INCOMPLETE = VK_INCOMPLETE,	
+
+	FPL__VK_RESULT_MAX_ENUM = VK_RESULT_MAX_ENUM
+} fpl__VkResult;
+
 #	define FPL__VK_NULL_HANDLE VK_NULL_HANDLE
 
 #	define FPL__VK_MAKE_VERSION(major, minor, patch) VK_MAKE_VERSION(major, minor, patch)
 
-typedef VkResult fpl__VkResult;
 typedef VkFlags fpl__VkFlags;
 typedef VkBool32 fpl__VkBool32;
 
@@ -19858,7 +19923,7 @@ fpl_internal void fpl__UnloadVulkanApi(fpl__VulkanApi *api) {
 	fplClearStruct(api);
 }
 
-fpl_internal bool fpl__LoadVulkanApi(fpl__VulkanApi *api) {
+fpl_internal bool fpl__LoadVulkanApi(fpl__VulkanApi *api, const char *libraryName) {
 
 	fplClearStruct(api);
 
@@ -19868,25 +19933,28 @@ fpl_internal bool fpl__LoadVulkanApi(fpl__VulkanApi *api) {
 	api->vkGetInstanceProcAddr = vkGetInstanceProcAddr;
 	api->vkEnumerateInstanceExtensionProperties = vkEnumerateInstanceExtensionProperties;
 	api->vkEnumerateInstanceLayerProperties = vkEnumerateInstanceLayerProperties;
-
 	return(true);
+#endif
+
+	uint32_t libraryCount = 0;
+
+	const char *libraryNames[4];
+	if (fplGetStringLength(libraryName) > 0) {
+		libraryNames[libraryCount++] = libraryName;
+	} else {
+		// Automatic detection of vulkan library
+#if defined(FPL_PLATFORM_WINDOWS)
+		libraryNames[libraryCount++] = "vulkan-1.dll";
+#elif defined(FPL_SUBPLATFORM_POSIX)
+		libraryNames[libraryCount++] = "libvulkan.so";
+		libraryNames[libraryCount++] = "libvulkan.so.1";
 #else
-
-#	if defined(FPL_PLATFORM_WINDOWS)
-	const char *libraryNames[] = {
-		"vulkan-1.dll"
-	};
-#	elif defined(FPL_SUBPLATFORM_POSIX)
-	const char *libraryNames[] = {
-		"libvulkan.so",
-		"libvulkan.so.1"
-	};
-#	else
-	FPL__WARNING(FPL__MODULE_VIDEO_VULKAN, "Unsupported Platform!"); \
+		FPL__WARNING(FPL__MODULE_VIDEO_VULKAN, "Unsupported Platform!");
 		return(false);
-#	endif
+#endif
+	}
 
-#	define FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libName, target, type, name) \
+#define FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libName, target, type, name) \
 		(target)->name = (type)fplGetDynamicLibraryProc(&libHandle, #name); \
 		if ((target)->name == fpl_null) { \
 			FPL__WARNING(FPL__MODULE_VIDEO_VULKAN, "Failed getting procedure address '%s' from library '%s'", #name, libName); \
@@ -19894,8 +19962,7 @@ fpl_internal bool fpl__LoadVulkanApi(fpl__VulkanApi *api) {
 		}
 
 	bool result = false;
-	int libraryCount = fplArrayCount(libraryNames);
-	for (int i = 0; i < libraryCount; ++i) {
+	for (uint32_t i = 0; i < libraryCount; ++i) {
 		const char *libraryName = libraryNames[i];
 
 		if (api->libraryHandle.isValid) {
@@ -19923,10 +19990,9 @@ fpl_internal bool fpl__LoadVulkanApi(fpl__VulkanApi *api) {
 		fpl__UnloadVulkanApi(api);
 	}
 
-#	undef FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE
+#undef FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE
 
 	return(result);
-#endif // FPL_NO_RUNTIME_LINKING
 }
 
 typedef struct fpl__VulkanDebugMessengerUserData {
@@ -19945,6 +20011,49 @@ typedef struct fpl__VideoBackendVulkan {
 	const fpl__VkAllocationCallbacks *allocator;
 	fpl_b32 isInstanceUserDefined;
 } fpl__VideoBackendVulkan;
+
+fpl_internal const char *fpl__GetVulkanResultString(const fpl__VkResult result) {
+	switch (result) {
+		case FPL__VK_ERROR_OUT_OF_HOST_MEMORY:
+			return "Out of Host-Memory";
+		case FPL__VK_ERROR_OUT_OF_DEVICE_MEMORY:
+			return "Out of Device-Memory";
+		case FPL__VK_ERROR_INITIALIZATION_FAILED:
+			return "Initialization failed";
+		case FPL__VK_ERROR_DEVICE_LOST:
+			return "Device lost";
+		case FPL__VK_ERROR_MEMORY_MAP_FAILED:
+			return "Memory map failed";
+		case FPL__VK_ERROR_LAYER_NOT_PRESENT:
+			return "Layer not present";
+		case FPL__VK_ERROR_EXTENSION_NOT_PRESENT:
+			return "Extension not present";
+		case FPL__VK_ERROR_FEATURE_NOT_PRESENT:
+			return "Feature not present";
+		case FPL__VK_ERROR_INCOMPATIBLE_DRIVER:
+			return "Incompatible driver";
+		case FPL__VK_ERROR_TOO_MANY_OBJECTS:
+			return "Too many objects";
+		case FPL__VK_ERROR_FORMAT_NOT_SUPPORTED:
+			return "Format not supported";
+		case FPL__VK_ERROR_FRAGMENTED_POOL:
+			return "Fragmented pool";
+		case FPL__VK_SUCCESS:
+			return "Success";
+		case FPL__VK_NOT_READY:
+			return "Not-Ready";
+		case FPL__VK_TIMEOUT:
+			return "Timeout";
+		case FPL__VK_EVENT_SET:
+			return "Event-Set";
+		case FPL__VK_EVENT_RESET:
+			return "Event-Reset";
+		case FPL__VK_INCOMPLETE:
+			return "Incomplete";
+		default:
+			return "Unknown";
+	}
+}
 
 fpl_internal FPL__FUNC_VIDEO_BACKEND_GETPROCEDURE(fpl__VideoBackend_Vulkan_GetProcedure) {
 	const fpl__VideoBackendVulkan *nativeBackend = (const fpl__VideoBackendVulkan *)backend;
@@ -20072,7 +20181,7 @@ fpl_internal bool fpl__VulkanCreateDebugMessenger(const fplVulkanSettings *setti
 	}
 
 	FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Create Vulkan Debug Messenger for Instance '%p' with severity flags of '%lu'", nativeBackend->instanceHandle, severities);
-	fpl__VkResult creationResult = createFunc(nativeBackend->instanceHandle, &createInfo, nativeBackend->allocator, &nativeBackend->debugMessenger);
+	fpl__VkResult creationResult = (fpl__VkResult)createFunc(nativeBackend->instanceHandle, &createInfo, nativeBackend->allocator, &nativeBackend->debugMessenger);
 	if (creationResult != FPL__VK_SUCCESS) {
 		FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "Failed creating Vulkan Debug Messenger for Instance '%p' with severity flags of '%lu' -> (VkResult: %d)!", nativeBackend->instanceHandle, severities, creationResult);
 		return(false);
@@ -20179,9 +20288,10 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_Vulkan_Prep
 
 		FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Create Vulkan Instance with %lu extensions and %lu layers", instanceCreateInfo.enabledExtensionCount, instanceCreateInfo.enabledLayerCount);
 		fpl__VkInstance instance = fpl_null;
-		fpl__VkResult creationResult = api->vkCreateInstance(&instanceCreateInfo, allocator, &instance);
+		fpl__VkResult creationResult = (fpl__VkResult)api->vkCreateInstance(&instanceCreateInfo, allocator, &instance);
 		if (creationResult != FPL__VK_SUCCESS) {
-			FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "Failed creating Vulkan Instance with %lu extensions and %lu layers -> (VkResult: %d)!", instanceCreateInfo.enabledExtensionCount, instanceCreateInfo.enabledLayerCount, creationResult);
+			const char *creationError = fpl__GetVulkanResultString(creationResult);
+			FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "Failed creating Vulkan Instance with %lu extensions and %lu layers -> (VkResult: %d, Error: %s)!", instanceCreateInfo.enabledExtensionCount, instanceCreateInfo.enabledLayerCount, creationResult, creationError);
 			return(false);
 		}
 
@@ -20257,7 +20367,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Vulkan_Initial
 	creationInfo.hwnd = windowState->win32.windowHandle;
 
 	FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Create Vulkan Win32 Surface for hwnd '%p', hinstance '%p' and Vulkan instance '%p'", creationInfo.hwnd, creationInfo.hinstance, nativeBackend->instanceHandle);
-	fpl__VkResult creationResult = createProc(nativeBackend->instanceHandle, &creationInfo, nativeBackend->allocator, &surfaceHandle);
+	fpl__VkResult creationResult = (fpl__VkResult)createProc(nativeBackend->instanceHandle, &creationInfo, nativeBackend->allocator, &surfaceHandle);
 	if (creationResult != FPL__VK_SUCCESS) {
 		FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "Failed creating vulkan surface KHR for Win32 -> (VkResult: %d)!", creationResult);
 		return(false);
@@ -20334,13 +20444,14 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_UNLOAD(fpl__VideoBackend_Vulkan_Unload) {
 
 fpl_internal FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__VideoBackend_Vulkan_Load) {
 	fpl__VideoBackendVulkan *nativeBackend = (fpl__VideoBackendVulkan *)backend;
+	const fplVideoSettings *videoSettings = &appState->currentSettings.video;
 
 	// Clear and set magic id
 	fplClearStruct(nativeBackend);
 	nativeBackend->base.magic = FPL__VIDEOBACKEND_MAGIC;
 
 	// Load core api
-	if (!fpl__LoadVulkanApi(&nativeBackend->api)) {
+	if (!fpl__LoadVulkanApi(&nativeBackend->api, videoSettings->graphics.vulkan.libraryFile)) {
 		return(false);
 	}
 
