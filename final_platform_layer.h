@@ -18530,18 +18530,20 @@ fpl_internal void fpl__UnloadWin32OpenGLApi(fpl__Win32OpenGLApi *api) {
 	fplClearStruct(api);
 }
 
-fpl_internal bool fpl__LoadWin32OpenGLApi(fpl__Win32OpenGLApi *api) {
-	const char *openglLibraryName = "opengl32.dll";
+fpl_internal bool fpl__LoadWin32OpenGLApi(fpl__Win32OpenGLApi *api, const char *libraryName) {
+	if (fplGetStringLength(libraryName) == 0) {
+		libraryName = "opengl32.dll";
+	}
 	bool result = false;
 	fplClearStruct(api);
 	do {
 		HMODULE openglLibrary = fpl_null;
-		FPL__WIN32_LOAD_LIBRARY(FPL__MODULE_VIDEO_OPENGL, openglLibrary, openglLibraryName);
+		FPL__WIN32_LOAD_LIBRARY(FPL__MODULE_VIDEO_OPENGL, openglLibrary, libraryName);
 		api->openglLibrary = openglLibrary;
-		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_VIDEO_OPENGL, openglLibrary, openglLibraryName, api, fpl__win32_func_wglGetProcAddress, wglGetProcAddress);
-		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_VIDEO_OPENGL, openglLibrary, openglLibraryName, api, fpl__win32_func_wglCreateContext, wglCreateContext);
-		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_VIDEO_OPENGL, openglLibrary, openglLibraryName, api, fpl__win32_func_wglDeleteContext, wglDeleteContext);
-		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_VIDEO_OPENGL, openglLibrary, openglLibraryName, api, fpl__win32_func_wglMakeCurrent, wglMakeCurrent);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_VIDEO_OPENGL, openglLibrary, libraryName, api, fpl__win32_func_wglGetProcAddress, wglGetProcAddress);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_VIDEO_OPENGL, openglLibrary, libraryName, api, fpl__win32_func_wglCreateContext, wglCreateContext);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_VIDEO_OPENGL, openglLibrary, libraryName, api, fpl__win32_func_wglDeleteContext, wglDeleteContext);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_VIDEO_OPENGL, openglLibrary, libraryName, api, fpl__win32_func_wglMakeCurrent, wglMakeCurrent);
 		result = true;
 	} while (0);
 	if (!result) {
@@ -18584,7 +18586,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_Win32OpenGL
 
 	if (videoSettings->graphics.opengl.compabilityFlags != fplOpenGLCompabilityFlags_Legacy) {
 		fpl__Win32OpenGLApi glApi;
-		if (fpl__LoadWin32OpenGLApi(&glApi)) {
+		if (fpl__LoadWin32OpenGLApi(&glApi, videoSettings->graphics.opengl.libraryFile)) {
 			// Register temporary window class
 			WNDCLASSEXW windowClass = fplZeroInit;
 			windowClass.cbSize = sizeof(windowClass);
@@ -18845,9 +18847,10 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_UNLOAD(fpl__VideoBackend_Win32OpenGL_Unload
 
 fpl_internal FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__VideoBackend_Win32OpenGL_Load) {
 	fpl__VideoBackendWin32OpenGL *nativeBackend = (fpl__VideoBackendWin32OpenGL *)backend;
+	const fplVideoSettings *videoSettings = &appState->currentSettings.video;
 	fplClearStruct(nativeBackend);
 	nativeBackend->base.magic = FPL__VIDEOBACKEND_MAGIC;
-	if (!fpl__LoadWin32OpenGLApi(&nativeBackend->api)) {
+	if (!fpl__LoadWin32OpenGLApi(&nativeBackend->api, videoSettings->graphics.opengl.libraryFile)) {
 		return(false);
 	}
 	return(true);
@@ -18981,13 +18984,19 @@ fpl_internal void fpl__UnloadX11OpenGLApi(fpl__X11VideoOpenGLApi *api) {
 	fplClearStruct(api);
 }
 
-fpl_internal bool fpl__LoadX11OpenGLApi(fpl__X11VideoOpenGLApi *api) {
-	const char *libFileNames[] = {
-		"libGL.so.1",
-		"libGL.so",
-	};
+fpl_internal bool fpl__LoadX11OpenGLApi(fpl__X11VideoOpenGLApi *api, const char *libraryName) {
+	uint32_t libFileCount = 0;
+	
+	const char *libFileNames[4];
+	if (fplGetStringLength(libraryName) > 0) {
+		libFileNames[libFileCount++] = libraryName;
+	} else {
+		libFileNames[libFileCount++] = "libGL.so.1";
+		libFileNames[libFileCount++] = "libGL.so";
+	}
+
 	bool result = false;
-	for (uint32_t index = 0; index < fplArrayCount(libFileNames); ++index) {
+	for (uint32_t index = 0; index < libFileCount; ++index) {
 		const char *libName = libFileNames[index];
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Load GLX Api from Library: %s", libName);
 		do {
@@ -19370,9 +19379,10 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_UNLOAD(fpl__VideoBackend_X11OpenGL_Unload) 
 
 fpl_internal FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__VideoBackend_X11OpenGL_Load) {
 	fpl__VideoBackendX11OpenGL *nativeBackend = (fpl__VideoBackendX11OpenGL *)backend;
+	const fplVideoSettings *videoSettings = &appState->currentSettings.video;
 	fplClearStruct(nativeBackend);
 	nativeBackend->base.magic = FPL__VIDEOBACKEND_MAGIC;
-	if (!fpl__LoadX11OpenGLApi(&nativeBackend->api)) {
+	if (!fpl__LoadX11OpenGLApi(&nativeBackend->api, videoSettings->graphics.opengl.libraryFile)) {
 		return(false);
 	}
 	return(true);
