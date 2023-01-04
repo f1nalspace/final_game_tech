@@ -169,6 +169,8 @@ SOFTWARE.
 	- Changed: [Audio/ALSA] Use *bcm2835* device pattern for buffer scale instead of individual ones
 	
 	#### Video
+	- New: Added field libraryFile to @ref fplOpenGLSettings, for passing in a custom driver library file for OpenGL
+	- New: Added field libraryFile to @ref fplVulkanSettings, for passing in a custom driver library file for Vulkan
 	- Fixed[#124]: [Video/Vulkan] Fallback when creation with validation failed
 	- Fixed[#136]: Video initialization failed due to wrong @ref fplGraphicsApiSettings union
 	- Improvement[#148]: Refactoring of video backends
@@ -3554,6 +3556,8 @@ typedef enum fplOpenGLCompabilityFlags {
 
 //! A structure that contains OpenGL video settings
 typedef struct fplOpenGLSettings {
+	//! Custom OpenGL driver library file name/path (null = Default OpenGL library)
+	const char *libraryFile;
 	//! Compability flags
 	fplOpenGLCompabilityFlags compabilityFlags;
 	//! Desired major version
@@ -3604,6 +3608,8 @@ typedef struct fplVulkanSettings {
 	fplVersionInfo engineVersion;
 	//! The preferred Vulkan api version (Only required if @ref fplVulkanSettings.instanceHandle is @ref fpl_null)
 	fplVersionInfo apiVersion;
+	//! Custom Vulkan driver library file name/path (null = Default Vulkan library)
+	const char *libraryFile;
 	//! The application name (Only required if @ref fplVulkanSettings.instanceHandle is @ref fpl_null)
 	const char *appName;
 	//! The engine name (Only required if @ref fplVulkanSettings.instanceHandle is @ref fpl_null)
@@ -10663,10 +10669,12 @@ fpl_common_api void fplSetDefaultVideoSettings(fplVideoSettings *video) {
 	video->isAutoSize = true;
 
 #if defined(FPL__ENABLE_VIDEO_OPENGL)
+	video->graphics.opengl.libraryFile = fpl_null;
 	video->graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
 #endif
 
 #if defined(FPL__ENABLE_VIDEO_VULKAN)
+	video->graphics.vulkan.libraryFile = fpl_null;
 	video->graphics.vulkan.appVersion = fplStructInit(fplVersionInfo, "1.0.0", "1", "0", "0");
 	video->graphics.vulkan.engineVersion = fplStructInit(fplVersionInfo, "1.0.0", "1", "0", "0");
 	video->graphics.vulkan.apiVersion = fplStructInit(fplVersionInfo, "1.1.0", "1", "1", "0");
