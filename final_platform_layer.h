@@ -20291,7 +20291,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_Vulkan_Prep
 		fpl__VkResult creationResult = (fpl__VkResult)api->vkCreateInstance(&instanceCreateInfo, allocator, &instance);
 		if (creationResult != FPL__VK_SUCCESS) {
 			const char *creationError = fpl__GetVulkanResultString(creationResult);
-			FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "Failed creating Vulkan Instance with %lu extensions and %lu layers -> (VkResult: %d, Error: %s)!", instanceCreateInfo.enabledExtensionCount, instanceCreateInfo.enabledLayerCount, creationResult);
+			FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "Failed creating Vulkan Instance with %lu extensions and %lu layers -> (VkResult: %d, Error: %s)!", instanceCreateInfo.enabledExtensionCount, instanceCreateInfo.enabledLayerCount, creationResult, creationError);
 			return(false);
 		}
 
