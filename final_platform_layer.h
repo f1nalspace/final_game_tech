@@ -19876,7 +19876,7 @@ fpl_internal void fpl__UnloadVulkanApi(fpl__VulkanApi *api) {
 	fplClearStruct(api);
 }
 
-fpl_internal bool fpl__LoadVulkanApi(fpl__VulkanApi *api) {
+fpl_internal bool fpl__LoadVulkanApi(fpl__VulkanApi *api, const char *libraryName) {
 
 	fplClearStruct(api);
 
@@ -19886,25 +19886,28 @@ fpl_internal bool fpl__LoadVulkanApi(fpl__VulkanApi *api) {
 	api->vkGetInstanceProcAddr = vkGetInstanceProcAddr;
 	api->vkEnumerateInstanceExtensionProperties = vkEnumerateInstanceExtensionProperties;
 	api->vkEnumerateInstanceLayerProperties = vkEnumerateInstanceLayerProperties;
-
 	return(true);
+#endif
+
+	uint32_t libraryCount = 0;
+
+	const char *libraryNames[4];
+	if (fplGetStringLength(libraryName) > 0) {
+		libraryNames[libraryCount++] = libraryName;
+	} else {
+		// Automatic detection of vulkan library
+#if defined(FPL_PLATFORM_WINDOWS)
+		libraryNames[libraryCount++] = "vulkan-1.dll";
+#elif defined(FPL_SUBPLATFORM_POSIX)
+		libraryNames[libraryCount++] = "libvulkan.so";
+		libraryNames[libraryCount++] = "libvulkan.so.1";
 #else
-
-#	if defined(FPL_PLATFORM_WINDOWS)
-	const char *libraryNames[] = {
-		"vulkan-1.dll"
-	};
-#	elif defined(FPL_SUBPLATFORM_POSIX)
-	const char *libraryNames[] = {
-		"libvulkan.so",
-		"libvulkan.so.1"
-	};
-#	else
-	FPL__WARNING(FPL__MODULE_VIDEO_VULKAN, "Unsupported Platform!"); \
+		FPL__WARNING(FPL__MODULE_VIDEO_VULKAN, "Unsupported Platform!");
 		return(false);
-#	endif
+#endif
+	}
 
-#	define FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libName, target, type, name) \
+#define FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libName, target, type, name) \
 		(target)->name = (type)fplGetDynamicLibraryProc(&libHandle, #name); \
 		if ((target)->name == fpl_null) { \
 			FPL__WARNING(FPL__MODULE_VIDEO_VULKAN, "Failed getting procedure address '%s' from library '%s'", #name, libName); \
@@ -19912,8 +19915,7 @@ fpl_internal bool fpl__LoadVulkanApi(fpl__VulkanApi *api) {
 		}
 
 	bool result = false;
-	int libraryCount = fplArrayCount(libraryNames);
-	for (int i = 0; i < libraryCount; ++i) {
+	for (uint32_t i = 0; i < libraryCount; ++i) {
 		const char *libraryName = libraryNames[i];
 
 		if (api->libraryHandle.isValid) {
@@ -19941,10 +19943,9 @@ fpl_internal bool fpl__LoadVulkanApi(fpl__VulkanApi *api) {
 		fpl__UnloadVulkanApi(api);
 	}
 
-#	undef FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE
+#undef FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE
 
 	return(result);
-#endif // FPL_NO_RUNTIME_LINKING
 }
 
 typedef struct fpl__VulkanDebugMessengerUserData {
@@ -20352,13 +20353,14 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_UNLOAD(fpl__VideoBackend_Vulkan_Unload) {
 
 fpl_internal FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__VideoBackend_Vulkan_Load) {
 	fpl__VideoBackendVulkan *nativeBackend = (fpl__VideoBackendVulkan *)backend;
+	const fplVideoSettings *videoSettings = &appState->currentSettings.video;
 
 	// Clear and set magic id
 	fplClearStruct(nativeBackend);
 	nativeBackend->base.magic = FPL__VIDEOBACKEND_MAGIC;
 
 	// Load core api
-	if (!fpl__LoadVulkanApi(&nativeBackend->api)) {
+	if (!fpl__LoadVulkanApi(&nativeBackend->api, videoSettings->graphics.vulkan.libraryFile)) {
 		return(false);
 	}
 
