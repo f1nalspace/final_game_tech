@@ -139,6 +139,8 @@ SOFTWARE.
 	- Added support for changing the default window background color
 	- Renamed tons of functions to match naming scheme
 	- Several Bugfixes for Win32/X11/Vulkan
+	- Several Bugfixes in Demos
+	- Several Improvements for Win32
 
 	### Details
 
@@ -150,16 +152,22 @@ SOFTWARE.
 	- New: [Window/Win32] Support for custom background color
 	- New: [Window/X11] Support for custom background color
 
+	#### Improvements
+	- Improved: [Win32] Console handling is more stable now
+
 	#### Internal Changes
+	- Changed[#95]: Platform support for fplMemorySet, fplMemoryClear, fplMemoryCopy (See FPL_NO_MEMORY_MACROS / FPL_USE_MEMORY_MACROS for more details)
 	- Changed: [ALSA] Use *bcm2835* device pattern for buffer scale instead of individual ones
 
 	#### Bugfixes
+	- Fixed[#140]: [FMPEG Demo] Crash in UploadTexture when linesize is not the same as frame width
 	- Fixed[#130]: [Win32] Main fiber was never properly released
 	- Fixed[#131]: [Win32] Console window was not shown the second time fplPlatformInit() was called
 	- Fixed[#134]: [Win32] Duplicate executable arguments in main() passed when CRT is disabled
 	- Fixed[#124]: [Video/Vulkan] Fallback when creation with validation failed
 	- Fixed[#137]: [POSIX] pthread_yield is not always present, so it may fail the FPL startup
 	- Fixed[#138]: [X11] Compile error in function fpl__X11InitWindow, initSettings was not found
+	- Fixed[#141]: fplMemoryCopy() was wrong for 16-bit optimized operations
 	- Fixed[#135]: Stackoverflow in fpl__PushError_Formatted() when FPL_USERFUNC_vsnprintf is overloaded
 	- Fixed[#136]: Video initialization failed due to wrong @ref fplGraphicsApiSettings union
 	- Fixed[#139]: Assertion on machine with 32 logical cores -> fplThreadHandle array capacity too small
@@ -2179,6 +2187,22 @@ fpl_internal fpl_force_inline void fpl__m_DebugBreak() { __asm__ __volatile__(".
 
 //! Stops the debugger on this line always
 #define fplDebugBreak() fpl__m_DebugBreak()
+
+/** @} */
+
+//
+// Memory macros
+//
+
+/**
+* @defgroup Memory macros
+* @brief This category contains memory configurations
+* @{
+*/
+
+#if !defined(FPL_NO_MEMORY_MACROS) || defined(FPL_FORCE_MEMORY_MACROS)
+#	define FPL__ENABLE_MEMORY_MACROS
+#endif
 
 /** @} */
 
@@ -9764,14 +9788,14 @@ fpl_common_api void fplMemoryAlignedFree(void *ptr) {
 			} \
 			T *dataBlock = (T *)(memory); \
 			T *dataBlockEnd = (T *)(memory) + (size >> shift); \
-			while (dataBlock != dataBlockEnd) { \
+			while (dataBlock < dataBlockEnd) { \
 				*dataBlock++ = setValue; \
 				setBytes += sizeof(T); \
 			} \
 		} \
 		uint8_t *data8 = (uint8_t *)memory + setBytes; \
 		uint8_t *data8End = (uint8_t *)memory + size; \
-		while (data8 != data8End) { \
+		while (data8 < data8End) { \
 			*data8++ = value; \
 		} \
 	} while (0);
@@ -9782,14 +9806,14 @@ fpl_common_api void fplMemoryAlignedFree(void *ptr) {
 		if (sizeof(T) > sizeof(uint8_t)) { \
 			T *dataBlock = (T *)(memory); \
 			T *dataBlockEnd = (T *)(memory) + (size >> shift); \
-			while (dataBlock != dataBlockEnd) { \
+			while (dataBlock < dataBlockEnd) { \
 				*dataBlock++ = 0; \
 				clearBytes += sizeof(T); \
 			} \
 		} \
 		uint8_t *data8 = (uint8_t *)memory + clearBytes; \
 		uint8_t *data8End = (uint8_t *)memory + size; \
-		while (data8 != data8End) { \
+		while (data8 < data8End) { \
 			*data8++ = 0; \
 		} \
 	} while (0);
@@ -9801,22 +9825,23 @@ fpl_common_api void fplMemoryAlignedFree(void *ptr) {
 			const T *sourceDataBlock = (const T *)(source); \
 			const T *sourceDataBlockEnd = (const T *)(source) + (sourceSize >> shift); \
 			T *destDataBlock = (T *)(dest); \
-			while (sourceDataBlock != sourceDataBlockEnd) { \
+			while (sourceDataBlock < sourceDataBlockEnd) { \
 				*destDataBlock++ = *sourceDataBlock++; \
 				copiedBytes += sizeof(T); \
 			} \
 		} \
 		const uint8_t *sourceData8 = (const uint8_t *)source + copiedBytes; \
-		const uint8_t *sourceData8End = (const uint8_t *)source + sourceSize; \
-		uint8_t *destData8 = (uint8_t *)dest + copiedBytes; \
-		while (sourceData8 != sourceData8End) { \
-			*destData8++ = *sourceData8++; \
-		} \
+        const uint8_t *sourceData8End = (const uint8_t *)source + sourceSize; \
+        uint8_t *destData8 = (uint8_t *)dest + copiedBytes; \
+        while (sourceData8 < sourceData8End) { \
+            *destData8++ = *sourceData8++; \
+        } \
 	} while (0);
 
 fpl_common_api void fplMemorySet(void *mem, const uint8_t value, const size_t size) {
 	FPL__CheckArgumentNullNoRet(mem);
 	FPL__CheckArgumentZeroNoRet(size);
+#if defined(FPL__ENABLE_MEMORY_MACROS)
 	if (size % 8 == 0) {
 		FPL__MEMORY_SET(uint64_t, mem, size, FPL__MEM_SHIFT_64, FPL__MEM_MASK_64, value);
 	} else if (size % 4 == 0) {
@@ -9826,11 +9851,17 @@ fpl_common_api void fplMemorySet(void *mem, const uint8_t value, const size_t si
 	} else {
 		FPL__MEMORY_SET(uint8_t, mem, size, 0, 0, value);
 	}
+#elif defined(FPL_PLATFORM_WINDOWS)
+	FillMemory(mem, size, value);
+#else
+	memset(mem, value, size);
+#endif
 }
 
 fpl_common_api void fplMemoryClear(void *mem, const size_t size) {
 	FPL__CheckArgumentNullNoRet(mem);
 	FPL__CheckArgumentZeroNoRet(size);
+#if defined(FPL__ENABLE_MEMORY_MACROS)
 	if (size % 8 == 0) {
 		FPL__MEMORY_CLEAR(uint64_t, mem, size, FPL__MEM_SHIFT_64, FPL__MEM_MASK_64);
 	} else if (size % 4 == 0) {
@@ -9840,21 +9871,32 @@ fpl_common_api void fplMemoryClear(void *mem, const size_t size) {
 	} else {
 		FPL__MEMORY_CLEAR(uint8_t, mem, size, 0, 0);
 	}
+#elif defined(FPL_PLATFORM_WINDOWS)
+	ZeroMemory(mem, size);
+#else
+	memset(mem, 0, size);
+#endif
 }
 
 fpl_common_api void fplMemoryCopy(const void *sourceMem, const size_t sourceSize, void *targetMem) {
 	FPL__CheckArgumentNullNoRet(sourceMem);
 	FPL__CheckArgumentZeroNoRet(sourceSize);
 	FPL__CheckArgumentNullNoRet(targetMem);
+#if defined(FPL__ENABLE_MEMORY_MACROS)
 	if (sourceSize % 8 == 0) {
 		FPL__MEMORY_COPY(uint64_t, sourceMem, sourceSize, targetMem, FPL__MEM_SHIFT_64, FPL__MEM_MASK_64);
 	} else if (sourceSize % 4 == 0) {
 		FPL__MEMORY_COPY(uint32_t, sourceMem, sourceSize, targetMem, FPL__MEM_SHIFT_32, FPL__MEM_MASK_32);
 	} else if (sourceSize % 2 == 0) {
-		FPL__MEMORY_COPY(uint16_t, sourceMem, sourceSize, targetMem, FPL__MEM_SHIFT_32, FPL__MEM_MASK_32);
+		FPL__MEMORY_COPY(uint16_t, sourceMem, sourceSize, targetMem, FPL__MEM_SHIFT_16, FPL__MEM_MASK_16);
 	} else {
 		FPL__MEMORY_COPY(uint8_t, sourceMem, sourceSize, targetMem, 0, 0);
 	}
+#elif defined(FPL_PLATFORM_WINDOWS)
+	CopyMemory(targetMem, sourceMem, sourceSize);
+#else
+	memcpy(targetMem, sourceMem, sourceSize);
+#endif
 }
 #endif // FPL__COMMON_MEMORY_DEFINED
 
@@ -12144,29 +12186,31 @@ fpl_internal bool fpl__Win32InitPlatform(const fplInitFlags initFlags, const fpl
 	}
 
 	// Show/Hide console
+	bool showConsole = (initFlags & fplInitFlags_Console);
 	HWND consoleWindow = GetConsoleWindow();
-	if (consoleWindow != fpl_null) {
-		bool showConsole = (initFlags & fplInitFlags_Console);
-		if (showConsole) {
-			const fplConsoleSettings *initConsoleSettings = &initSettings->console;
-			fplConsoleSettings *currentConsoleSettings = &appState->currentSettings.console;
-
-			// Setup a console title
-			wchar_t consoleTitleBuffer[FPL_MAX_NAME_LENGTH];
-			if (fplGetStringLength(initConsoleSettings->title) > 0) {
-				fplUTF8StringToWideString(initConsoleSettings->title, fplGetStringLength(initConsoleSettings->title), consoleTitleBuffer, fplArrayCount(consoleTitleBuffer));
-			} else {
-				const wchar_t *defaultTitle = FPL__WIN32_UNNAMED_CONSOLE;
-				lstrcpynW(consoleTitleBuffer, defaultTitle, fplArrayCount(consoleTitleBuffer));
-			}
-			wchar_t *windowTitle = consoleTitleBuffer;
-			fplWideStringToUTF8String(windowTitle, lstrlenW(windowTitle), currentConsoleSettings->title, fplArrayCount(currentConsoleSettings->title));
-			SetConsoleTitleW(windowTitle);
-
-			win32AppState->winApi.user.ShowWindow(consoleWindow, SW_SHOW);
-		} else {
+	if (!showConsole) {
+		if (consoleWindow != fpl_null) {
 			win32AppState->winApi.user.ShowWindow(consoleWindow, SW_HIDE);
+		} else {
+			FreeConsole();
 		}
+	} else if (consoleWindow != fpl_null) {
+		const fplConsoleSettings *initConsoleSettings = &initSettings->console;
+		fplConsoleSettings *currentConsoleSettings = &appState->currentSettings.console;
+
+		// Setup a console title
+		wchar_t consoleTitleBuffer[FPL_MAX_NAME_LENGTH];
+		if (fplGetStringLength(initConsoleSettings->title) > 0) {
+			fplUTF8StringToWideString(initConsoleSettings->title, fplGetStringLength(initConsoleSettings->title), consoleTitleBuffer, fplArrayCount(consoleTitleBuffer));
+		} else {
+			const wchar_t *defaultTitle = FPL__WIN32_UNNAMED_CONSOLE;
+			lstrcpynW(consoleTitleBuffer, defaultTitle, fplArrayCount(consoleTitleBuffer));
+		}
+		wchar_t *windowTitle = consoleTitleBuffer;
+		fplWideStringToUTF8String(windowTitle, lstrlenW(windowTitle), currentConsoleSettings->title, fplArrayCount(currentConsoleSettings->title));
+		SetConsoleTitleW(windowTitle);
+
+		win32AppState->winApi.user.ShowWindow(consoleWindow, SW_SHOW);
 	}
 
 	// Init keymap
