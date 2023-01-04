@@ -11566,6 +11566,19 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			}
 		} break;
 
+		case WM_SYSCOMMAND:
+		{
+			WPARAM masked = wParam & 0xFFF0;
+			switch (masked) {
+				case SC_SCREENSAVE:
+				case SC_MONITORPOWER: {
+					if (appState->currentSettings.window.isScreenSaverPrevented || appState->currentSettings.window.isMonitorPowerPrevented) {
+						return 0;
+					}
+				} break;
+			}
+		} break;
+
 		default:
 			break;
 	}
@@ -12228,6 +12241,15 @@ fpl_internal bool fpl__Win32InitPlatform(const fplInitFlags initFlags, const fpl
 			vk = i;
 		}
 		appState->window.keyMap[i] = fpl__Win32TranslateVirtualKey(&win32AppState->winApi, vk);
+	}
+#	endif
+
+	// Hint for windows to know, that the application is in use always
+#	if defined(FPL__ENABLE_WINDOW)
+	if (initSettings->window.isMonitorPowerPrevented || initSettings->window.isScreenSaverPrevented) {
+		SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED);
+	} else {
+		SetThreadExecutionState(ES_CONTINUOUS);
 	}
 #	endif
 
