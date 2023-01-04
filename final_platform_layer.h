@@ -137,10 +137,11 @@ SOFTWARE.
 	### Overview
 	- Added useful functions for multithreading
 	- Added support for changing the default window background color
-	- Renamed tons of functions to match naming scheme
+	- Added support for preventing the screensaver for kicking-in
 	- Several Bugfixes for Win32/X11/Vulkan
 	- Several Bugfixes in Demos
 	- Several Improvements for Win32
+	- Renamed tons of functions to match naming scheme
 
 	### Details
 
@@ -149,8 +150,10 @@ SOFTWARE.
 	- New: Added function GetUsedThreadCount() that returns the number of used/active threads
 	- New: Added union fplColor32 for representing a 32-bit color value
 	- New: Added field background as @ref fplColor32 to @ref fplWindowSettings
-	- New: [Window/Win32] Support for custom background color
+	- New: Added fields isScreenSaverPrevented/isMonitorPowerPrevented to configure, if monitor-off or screensaver is prevented
+	- New: [Window/Win32] Support for preventing the screensaver
 	- New: [Window/X11] Support for custom background color
+	- New[#150]: [Window/Win32] Support for custom background color
 
 	#### Improvements
 	- Improved: [Win32] Console handling is more stable now
