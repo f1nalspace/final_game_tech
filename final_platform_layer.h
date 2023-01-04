@@ -171,8 +171,9 @@ SOFTWARE.
 	#### Video
 	- New: Added field libraryFile to @ref fplOpenGLSettings, for passing in a custom driver library file for OpenGL
 	- New: Added field libraryFile to @ref fplVulkanSettings, for passing in a custom driver library file for Vulkan
-	- Fixed[#124]: [Video/Vulkan] Fallback when creation with validation failed
+	- New[#117]: Support for passing in a driver dll for OpenGL/Vulkan
 	- Fixed[#136]: Video initialization failed due to wrong @ref fplGraphicsApiSettings union
+	- Fixed[#124]: [Video/Vulkan] Fallback when creation with validation failed
 	- Improvement[#148]: Refactoring of video backends
 
 	#### Breaking Changes
