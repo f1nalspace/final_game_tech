@@ -20181,7 +20181,7 @@ fpl_internal bool fpl__VulkanCreateDebugMessenger(const fplVulkanSettings *setti
 	}
 
 	FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Create Vulkan Debug Messenger for Instance '%p' with severity flags of '%lu'", nativeBackend->instanceHandle, severities);
-	fpl__VkResult creationResult = createFunc(nativeBackend->instanceHandle, &createInfo, nativeBackend->allocator, &nativeBackend->debugMessenger);
+	fpl__VkResult creationResult = (fpl__VkResult)createFunc(nativeBackend->instanceHandle, &createInfo, nativeBackend->allocator, &nativeBackend->debugMessenger);
 	if (creationResult != FPL__VK_SUCCESS) {
 		FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "Failed creating Vulkan Debug Messenger for Instance '%p' with severity flags of '%lu' -> (VkResult: %d)!", nativeBackend->instanceHandle, severities, creationResult);
 		return(false);
@@ -20288,9 +20288,10 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_Vulkan_Prep
 
 		FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Create Vulkan Instance with %lu extensions and %lu layers", instanceCreateInfo.enabledExtensionCount, instanceCreateInfo.enabledLayerCount);
 		fpl__VkInstance instance = fpl_null;
-		fpl__VkResult creationResult = api->vkCreateInstance(&instanceCreateInfo, allocator, &instance);
+		fpl__VkResult creationResult = (fpl__VkResult)api->vkCreateInstance(&instanceCreateInfo, allocator, &instance);
 		if (creationResult != FPL__VK_SUCCESS) {
-			FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "Failed creating Vulkan Instance with %lu extensions and %lu layers -> (VkResult: %d)!", instanceCreateInfo.enabledExtensionCount, instanceCreateInfo.enabledLayerCount, creationResult);
+			const char *creationError = fpl__GetVulkanResultString(creationResult);
+			FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "Failed creating Vulkan Instance with %lu extensions and %lu layers -> (VkResult: %d, Error: %s)!", instanceCreateInfo.enabledExtensionCount, instanceCreateInfo.enabledLayerCount, creationResult);
 			return(false);
 		}
 
@@ -20366,7 +20367,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Vulkan_Initial
 	creationInfo.hwnd = windowState->win32.windowHandle;
 
 	FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Create Vulkan Win32 Surface for hwnd '%p', hinstance '%p' and Vulkan instance '%p'", creationInfo.hwnd, creationInfo.hinstance, nativeBackend->instanceHandle);
-	fpl__VkResult creationResult = createProc(nativeBackend->instanceHandle, &creationInfo, nativeBackend->allocator, &surfaceHandle);
+	fpl__VkResult creationResult = (fpl__VkResult)createProc(nativeBackend->instanceHandle, &creationInfo, nativeBackend->allocator, &surfaceHandle);
 	if (creationResult != FPL__VK_SUCCESS) {
 		FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "Failed creating vulkan surface KHR for Win32 -> (VkResult: %d)!", creationResult);
 		return(false);
