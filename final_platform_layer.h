@@ -19627,14 +19627,18 @@ typedef enum fpl__VkResult {
 	FPL__VK_ERROR_FORMAT_NOT_SUPPORTED = -11,
 	FPL__VK_ERROR_FRAGMENTED_POOL = -12,
 	FPL__VK_ERROR_UNKNOWN = -13,
+
 	FPL__VK_SUCCESS = 0,
+
 	FPL__VK_NOT_READY = 1,
 	FPL__VK_TIMEOUT = 2,
 	FPL__VK_EVENT_SET = 3,
 	FPL__VK_EVENT_RESET = 4,
-	FPL__VK_INCOMPLETE = 5,
+	FPL__VK_INCOMPLETE = 5,	
+
 	FPL__VK_RESULT_MAX_ENUM = 0x7FFFFFFF
 } fpl__VkResult;
+
 typedef uint32_t fpl__VkFlags;
 typedef uint32_t fpl__VkBool32;
 
@@ -19816,12 +19820,36 @@ typedef void (fpl__VKAPI_PTR *fpl__func_vkDestroyDebugUtilsMessengerEXT)(fpl__Vk
 #	define FPL__VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR
 #	define FPL__VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT
 
-#	define FPL__VK_SUCCESS VK_SUCCESS
+typedef enum fpl__VkResult {
+	FPL__VK_ERROR_OUT_OF_HOST_MEMORY = VK_ERROR_OUT_OF_HOST_MEMORY,
+	FPL__VK_ERROR_OUT_OF_DEVICE_MEMORY = VK_ERROR_OUT_OF_DEVICE_MEMORY,
+	FPL__VK_ERROR_INITIALIZATION_FAILED = VK_ERROR_INITIALIZATION_FAILED,
+	FPL__VK_ERROR_DEVICE_LOST = VK_ERROR_DEVICE_LOST,
+	FPL__VK_ERROR_MEMORY_MAP_FAILED = VK_ERROR_MEMORY_MAP_FAILED,
+	FPL__VK_ERROR_LAYER_NOT_PRESENT = VK_ERROR_LAYER_NOT_PRESENT,
+	FPL__VK_ERROR_EXTENSION_NOT_PRESENT = VK_ERROR_EXTENSION_NOT_PRESENT,
+	FPL__VK_ERROR_FEATURE_NOT_PRESENT = VK_ERROR_FEATURE_NOT_PRESENT,
+	FPL__VK_ERROR_INCOMPATIBLE_DRIVER = VK_ERROR_INCOMPATIBLE_DRIVER,
+	FPL__VK_ERROR_TOO_MANY_OBJECTS = VK_ERROR_TOO_MANY_OBJECTS,
+	FPL__VK_ERROR_FORMAT_NOT_SUPPORTED = VK_ERROR_FORMAT_NOT_SUPPORTED,
+	FPL__VK_ERROR_FRAGMENTED_POOL = VK_ERROR_FRAGMENTED_POOL,
+	FPL__VK_ERROR_UNKNOWN = VK_ERROR_UNKNOWN,
+
+	FPL__VK_SUCCESS = VK_SUCCESS,
+
+	FPL__VK_NOT_READY = VK_NOT_READY,
+	FPL__VK_TIMEOUT = VK_TIMEOUT,
+	FPL__VK_EVENT_SET = VK_EVENT_SET,
+	FPL__VK_EVENT_RESET = VK_EVENT_RESET,
+	FPL__VK_INCOMPLETE = VK_INCOMPLETE,	
+
+	FPL__VK_RESULT_MAX_ENUM = VK_RESULT_MAX_ENUM
+} fpl__VkResult;
+
 #	define FPL__VK_NULL_HANDLE VK_NULL_HANDLE
 
 #	define FPL__VK_MAKE_VERSION(major, minor, patch) VK_MAKE_VERSION(major, minor, patch)
 
-typedef VkResult fpl__VkResult;
 typedef VkFlags fpl__VkFlags;
 typedef VkBool32 fpl__VkBool32;
 
@@ -19983,6 +20011,49 @@ typedef struct fpl__VideoBackendVulkan {
 	const fpl__VkAllocationCallbacks *allocator;
 	fpl_b32 isInstanceUserDefined;
 } fpl__VideoBackendVulkan;
+
+fpl_internal const char *fpl__GetVulkanResultString(const fpl__VkResult result) {
+	switch (result) {
+		case FPL__VK_ERROR_OUT_OF_HOST_MEMORY:
+			return "Out of Host-Memory";
+		case FPL__VK_ERROR_OUT_OF_DEVICE_MEMORY:
+			return "Out of Device-Memory";
+		case FPL__VK_ERROR_INITIALIZATION_FAILED:
+			return "Initialization failed";
+		case FPL__VK_ERROR_DEVICE_LOST:
+			return "Device lost";
+		case FPL__VK_ERROR_MEMORY_MAP_FAILED:
+			return "Memory map failed";
+		case FPL__VK_ERROR_LAYER_NOT_PRESENT:
+			return "Layer not present";
+		case FPL__VK_ERROR_EXTENSION_NOT_PRESENT:
+			return "Extension not present";
+		case FPL__VK_ERROR_FEATURE_NOT_PRESENT:
+			return "Feature not present";
+		case FPL__VK_ERROR_INCOMPATIBLE_DRIVER:
+			return "Incompatible driver";
+		case FPL__VK_ERROR_TOO_MANY_OBJECTS:
+			return "Too many objects";
+		case FPL__VK_ERROR_FORMAT_NOT_SUPPORTED:
+			return "Format not supported";
+		case FPL__VK_ERROR_FRAGMENTED_POOL:
+			return "Fragmented pool";
+		case FPL__VK_SUCCESS:
+			return "Success";
+		case FPL__VK_NOT_READY:
+			return "Not-Ready";
+		case FPL__VK_TIMEOUT:
+			return "Timeout";
+		case FPL__VK_EVENT_SET:
+			return "Event-Set";
+		case FPL__VK_EVENT_RESET:
+			return "Event-Reset";
+		case FPL__VK_INCOMPLETE:
+			return "Incomplete";
+		default:
+			return "Unknown";
+	}
+}
 
 fpl_internal FPL__FUNC_VIDEO_BACKEND_GETPROCEDURE(fpl__VideoBackend_Vulkan_GetProcedure) {
 	const fpl__VideoBackendVulkan *nativeBackend = (const fpl__VideoBackendVulkan *)backend;
