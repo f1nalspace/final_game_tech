@@ -3966,6 +3966,10 @@ typedef struct fplWindowSettings {
 	fpl_b32 isFloating;
 	//! Is window in fullscreen mode
 	fpl_b32 isFullscreen;
+	//! Is screen saver prevented (true: prevents the screensaver to kick-in, false: system behavior)
+	fpl_b32 isScreenSaverPrevented;
+	//! Is monitor power change prevented (true: prevents the monitor for powering off automatically, false: system behavior)
+	fpl_b32 isMonitorPowerPrevented;
 } fplWindowSettings;
 
 /**
@@ -10727,6 +10731,8 @@ fpl_common_api void fplSetDefaultWindowSettings(fplWindowSettings *window) {
 	window->isResizable = true;
 	window->isDecorated = true;
 	window->isFloating = false;
+	window->isScreenSaverPrevented = false;
+	window->isMonitorPowerPrevented = false;
 }
 
 fpl_common_api void fplSetDefaultConsoleSettings(fplConsoleSettings *console) {
