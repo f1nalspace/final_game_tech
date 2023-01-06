@@ -414,6 +414,8 @@ struct FFMPEGContext {
 	ffmpeg_swr_set_compensation_func* swr_set_compensation;
 };
 
+static FFMPEGContext ffmpeg = {};
+
 static void ReleaseFFMPEG(FFMPEGContext& ffmpeg) {
 #if !USE_FFMPEG_STATIC_LINKING
 	fplDynamicLibraryUnload(&ffmpeg.swResampleLib);

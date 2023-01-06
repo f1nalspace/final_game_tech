@@ -168,9 +168,13 @@
     <ClInclude Include="..\..\final_dynamic_opengl.hpp" />
     <ClInclude Include="..\..\final_platform_layer.h" />
     <ClInclude Include="..\dependencies\stb\stb_truetype.h" />
+    <ClInclude Include="constants.h" />
+    <ClInclude Include="decoder.h" />
     <ClInclude Include="defines.h" />
     <ClInclude Include="ffmpeg.h" />
     <ClInclude Include="fontdata.h" />
+    <ClInclude Include="framequeue.h" />
+    <ClInclude Include="packetqueue.h" />
     <ClInclude Include="shaders.h" />
     <ClInclude Include="utils.h" />
   </ItemGroup>
