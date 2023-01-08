@@ -149,9 +149,6 @@ License:
 #include "defines.h"
 #include "utils.h"
 #include "ffmpeg.h"
-#include "packetqueue.h"
-#include "framequeue.h"
-#include "decoder.h"
 #include "constants.h"
 
 #include "fontdata.h" // sulphur-point-regular font

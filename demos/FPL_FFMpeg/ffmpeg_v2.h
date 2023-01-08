@@ -1,5 +1,5 @@
-#ifndef FFMPEG_H
-#define FFMPEG_H
+#ifndef FFMPEG_API
+#define FFMPEG_API
 
 #include <final_platform_layer.h>
 
@@ -424,12 +424,14 @@ typedef struct FFMPEGContext {
 	ffmpeg_swr_convert_func* swr_convert;
 	ffmpeg_swr_init_func* swr_init;
 	ffmpeg_swr_set_compensation_func* swr_set_compensation;
+
+	fpl_b32 isValid;
 } FFMPEGContext;
 
 FFMPEG_API void FFMPEGRelease(FFMPEGContext *ffmpeg);
 FFMPEG_API bool FFMPEGInit(FFMPEGContext *ffmpeg);
 
-#endif // FFMPEG_H
+#endif // FFMPEG_API
 
 #if (defined(FFMPEG_IMPLEMENTATION) && !defined(FFMPEG_IMPLEMENTED)) || defined(FPL_IS_IDE)
 #define FFMPEG_IMPLEMENTED
@@ -437,14 +439,14 @@ FFMPEG_API bool FFMPEGInit(FFMPEGContext *ffmpeg);
 #define _FFMPEG_GET_FUNCTION_ADDRESS(libHandle, libName, target, type, name) \
 	target = (type *)fplGetDynamicLibraryProc(&libHandle, name); \
 	if (target == nullptr) { \
-		return false; \
+		goto failed; \
 	}
 
 #define _FFMPEG_CHECK_VERSION(libName, libFileName, versionFunc, headerVersion) \
 	do { \
 		int dllVersion = versionFunc(); \
 		if (!_IsFFMPEGVersionEqual(dllVersion, headerVersion)) { \
-			return false; \
+			goto failed; \
 		} \
 	} while (0);
 
@@ -466,6 +468,7 @@ static fplDynamicLibraryHandle _FFMPEGLoadLibrary(const char* filePath) {
 }
 
 FFMPEG_API void FFMPEGRelease(FFMPEGContext *ffmpeg) {
+	if (ffmpeg == fpl_null) return;
 #if !USE_FFMPEG_STATIC_LINKING
 	fplDynamicLibraryUnload(&ffmpeg->swResampleLib);
 	fplDynamicLibraryUnload(&ffmpeg->swScaleLib);
@@ -473,9 +476,14 @@ FFMPEG_API void FFMPEGRelease(FFMPEGContext *ffmpeg) {
 	fplDynamicLibraryUnload(&ffmpeg->avCodecLib);
 	fplDynamicLibraryUnload(&ffmpeg->avFormatLib);
 #endif
+	fplClearStruct(ffmpeg);
 }
 
 FFMPEG_API bool FFMPEGInit(FFMPEGContext *ffmpeg) {
+	if (ffmpeg == fpl_null) {
+		return false;
+	}
+	fplClearStruct(ffmpeg);
 
 #define _FFMPEG_STR_HELPER(x) #x
 #define _FFMPEG_STR(x) _FFMPEG_STR_HELPER(x)
@@ -744,7 +752,13 @@ FFMPEG_API bool FFMPEGInit(FFMPEGContext *ffmpeg) {
 	_FFMPEG_CHECK_VERSION("SWscale", swScaleLibFile, ffmpeg->swscale_version, LIBSWSCALE_VERSION_INT);
 	_FFMPEG_CHECK_VERSION("SWresample", swResampleLibFile, ffmpeg->swresample_version, LIBSWRESAMPLE_VERSION_INT);
 	
+	ffmpeg->isValid = true;
+
 	return true;
+
+failed:
+	FFMPEGRelease(ffmpeg);
+	return false;
 }
 
 #endif // FFMPEG_IMPLEMENTATION

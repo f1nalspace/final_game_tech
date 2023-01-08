@@ -15,10 +15,9 @@
       <Filter>dependencies</Filter>
     </ClInclude>
     <ClInclude Include="fontdata.h" />
-    <ClInclude Include="packetqueue.h" />
-    <ClInclude Include="framequeue.h" />
     <ClInclude Include="constants.h" />
-    <ClInclude Include="decoder.h" />
+    <ClInclude Include="mediaplayer.h" />
+    <ClInclude Include="ffmpeg_v2.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="fpl_ffmpeg.cpp" />
