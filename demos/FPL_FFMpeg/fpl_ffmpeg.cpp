@@ -142,6 +142,53 @@ License:
 #define FPL_NO_VIDEO_VULKAN
 #include <final_platform_layer.h>
 
+#if 1
+#define FMP_IMPLEMENTATION
+#define FMP_PRIVATE
+#include "mediaplayer.h"
+int main(int argc, char **argv) {
+	if (argc < 2)
+		return -1;
+
+	const char *url = argv[1];
+
+	int result = -1;
+
+	fmpContext *ctx = fpl_null;
+
+	fmpMediaInfo mediaInfo = fplZeroInit;
+
+	if (!fplPlatformInit(fplInitFlags_Console, fpl_null)) {
+		goto cleanup;
+	}
+
+	ctx = (fmpContext *)fplMemoryAllocate(sizeof(fmpContext));
+	if (ctx == fpl_null) {
+		goto cleanup;
+	}
+
+	if (!fmpInit(ctx)) {
+		goto cleanup;
+	}
+	
+	if (!fmpGetMediaInfo(ctx, url, &mediaInfo)) {
+		goto cleanup;
+	}
+
+	result = 0;
+
+cleanup:
+	if (ctx != fpl_null) {
+		fmpRelease(ctx);
+		fplMemoryFree(ctx);
+	}
+
+	fplPlatformRelease();
+
+	return result;
+}
+#else
+
 #include <assert.h> // assert
 
 #include <final_math.h>
@@ -4164,3 +4211,5 @@ release:
 
 	return(0);
 }
+
+#endif
