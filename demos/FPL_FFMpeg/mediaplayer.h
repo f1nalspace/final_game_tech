@@ -42,18 +42,11 @@ typedef struct fmpString {
 } fmpString;
 
 
-typedef struct fmpMemory {
-	struct fmpMemory *next;
-	void *base;
-	size_t size;
-	size_t offset;
-} fmpMemory;
-
 #define FMP_MEMORY_ALLOCATE_FUNC(name) void *name(const size_t size, void *user)
 typedef FMP_MEMORY_ALLOCATE_FUNC(fmp_memory_allocate_func);
-#define FMP_MEMORY_REALLOCATE_FUNC(name) void *name(void *base, const size_t size, void *user)
+#define FMP_MEMORY_REALLOCATE_FUNC(name) void *name(void *ptr, const size_t size, void *user)
 typedef FMP_MEMORY_REALLOCATE_FUNC(fmp_memory_reallocate_func);
-#define FMP_MEMORY_FREE_FUNC(name) void name(void *mem, void *user)
+#define FMP_MEMORY_FREE_FUNC(name) void name(void *ptr, void *user)
 typedef FMP_MEMORY_FREE_FUNC(fmp_memory_free_func);
 
 typedef struct fmpMemoryAllocator {
@@ -305,11 +298,63 @@ FMP_API fmpMediaState fmpGetMediaState(fmpContext *context);
 //
 // > Memory
 //
+typedef struct __fmpMemory {
+	struct __fmpMemory *next;
+	void *ptr;
+	size_t size;
+	size_t used;
+} __fmpMemory;
+
 static void *__fmpAllocateMemory(const fmpMemoryAllocator *allocator, const size_t size) {
-	return allocator->alloc(size, allocator->user);
+	fplAssertPtr(allocator);
+	fplAssert(size > 0);
+	size_t totalSize = sizeof(__fmpMemory) + sizeof(uintptr_t) + size;
+	void *base = allocator->alloc(totalSize, allocator->user);
+	if (base == fpl_null) {
+		return fpl_null;
+	}
+	__fmpMemory *mem = (__fmpMemory *)base;
+	mem->next = fpl_null;
+	mem->size = size;
+	mem->used = size;
+	mem->ptr = (uint8_t *)base + sizeof(__fmpMemory) + sizeof(uintptr_t);
+	return mem->ptr;
 }
+
+static void *__fmpReallocateMemory(const fmpMemoryAllocator *allocator, void *ptr, const size_t newSize) {
+	fplAssertPtr(allocator);
+	fplAssert(newSize > 0);
+
+	void *previousBase = fpl_null;
+	size_t previousSize = 0;
+	if (ptr != fpl_null) {
+		previousBase = (uint8_t *)ptr - (sizeof(uintptr_t) + sizeof(__fmpMemory));
+		__fmpMemory *prevMem = (__fmpMemory *)previousBase;
+		fplAssert(ptr == prevMem->ptr);
+		previousSize = prevMem->used;
+	}
+
+	size_t totalSize = sizeof(__fmpMemory) + sizeof(uintptr_t) + newSize;
+	void *newBase = allocator->realloc(previousBase, totalSize, allocator->user);
+	if (newBase == fpl_null) {
+		return fpl_null;
+	}
+	__fmpMemory *newMem = (__fmpMemory *)newBase;
+	newMem->next = fpl_null;
+	newMem->size = newSize;
+	newMem->used = previousSize;
+	newMem->ptr = (uint8_t *)newBase + sizeof(__fmpMemory) + sizeof(uintptr_t);
+	
+	return newMem->ptr;
+}
+
 static void __fmpFreeMemory(const fmpMemoryAllocator *allocator, void *ptr) {
-	allocator->free(ptr, allocator->user);
+	fplAssertPtr(allocator);
+	fplAssertPtr(ptr);
+	void *base = (uint8_t *)ptr - (sizeof(uintptr_t) + sizeof(__fmpMemory));
+	__fmpMemory *mem = (__fmpMemory *)base;
+	fplAssert(ptr == mem->ptr);
+	allocator->free(base, allocator->user);
 }
 
 //
@@ -357,29 +402,40 @@ static fmpString __fmpCopyString(const fmpMemoryAllocator *allocator, const char
 //
 // Default allocator
 //
-static void *__fmpAVAllocate(const size_t size, void *user) {
-	const FFMPEGContext *ffmpeg = (const FFMPEGContext *)user;
-	void *result = ffmpeg->av_mallocz(size);
+static void *__fmpDefaultAllocate(const size_t size, void *user) {
+	fplAssert(size > 0);
+	void *result = fplMemoryAllocate(size);
 	return result;
 }
 
-static void *__fmpAVRealloc(void *base, const size_t size, void *user) {
-	const FFMPEGContext *ffmpeg = (const FFMPEGContext *)user;
-	void *result = ffmpeg->av_realloc(base, size);
-	return result;
+static void *__fmpDefaultRealloc(void *ptr, const size_t size, void *user) {
+	fplAssert(size > 0);
+	void *newBase = fplMemoryAllocate(size);
+	if (newBase == fpl_null) {
+		return fpl_null;
+	}
+	if (ptr != fpl_null) {
+		__fmpMemory *mem = (__fmpMemory *)ptr;
+		uint8_t *address = (uint8_t *)mem->ptr - (sizeof(uintptr_t) + sizeof(__fmpMemory));
+		fplAssert(address == (uint8_t *)mem);
+		size_t blockSize = mem->size + sizeof(uintptr_t) + sizeof(__fmpMemory);
+		size_t copySize = fplMin(size, blockSize);
+		fplMemoryCopy(ptr, copySize, newBase);
+		fplMemoryFree(ptr);
+	}
+	return newBase;
 }
 
-static void __fmpAVFree(void *ptr, void *user) {
-	const FFMPEGContext *ffmpeg = (const FFMPEGContext *)user;
-	ffmpeg->av_freep(ptr);
+static void __fmpDefaultFree(void *ptr, void *user) {
+	fplAssertPtr(ptr);
+	fplMemoryFree(ptr);
 }
 
-static fmpMemoryAllocator __fmpCreateAVAllocator(FFMPEGContext *ffmpeg) {
+static fmpMemoryAllocator __fmpCreateDefaultAllocator() {
 	fmpMemoryAllocator result = fplZeroInit;
-	result.user = ffmpeg;
-	result.alloc = __fmpAVAllocate;
-	result.realloc = __fmpAVRealloc;
-	result.free = __fmpAVFree;
+	result.alloc = __fmpDefaultAllocate;
+	result.realloc = __fmpDefaultRealloc;
+	result.free = __fmpDefaultFree;
 	return result;
 }
 
@@ -986,7 +1042,7 @@ FMP_API fmpResult fmpInit(fmpContext *context, const fmpMemoryAllocator *allocat
 	if (allocator != fpl_null && allocator->alloc != fpl_null && allocator->realloc != fpl_null && allocator->free != fpl_null)
 		context->allocator = *allocator;
 	else
-		context->allocator = __fmpCreateAVAllocator(&context->ffmpeg);
+		context->allocator = __fmpCreateDefaultAllocator();
 
 	context->isValid = true;
 
@@ -1010,7 +1066,7 @@ static fmpLanguageInfo __fmpGetLanguageInfo(const fmpMemoryAllocator *allocator,
 	AVDictionaryEntry *lang = ffmpeg->av_dict_get(dict, "language", fpl_null, 0);
 	size_t valueLen;
 	if (lang != fpl_null && (valueLen = fplGetStringLength(lang->value)) > 0) {
-		strncpy_s(result.iso639_2, fplMin(3, valueLen), lang->value, fplArrayCount(result.iso639_2));
+		__fmpCopyZeroTerminatedString(lang->value, valueLen, result.iso639_2, fplArrayCount(result.iso639_2));
 	}
 
 	const char *nameTags[] = { "title", "description", "handler" };
@@ -1066,11 +1122,12 @@ static fmpCodecInfo __fmpGetCodecInfo(const fmpMemoryAllocator *allocator, const
 FMP_API void fmpReleaseMediaInfo(const fmpContext *context, fmpMediaInfo *media) {
 	if (context == fpl_null || !context->isValid || media == fpl_null)
 		return;
+	const fmpMemoryAllocator *allocator = &context->allocator;
 	for (uint32_t i = 0; i < media->streamCount; ++i) {
-		__fmpFreeLanguageInfo(&context->allocator, &media->streams[i].language);
-		__fmpFreeCodecInfo(&context->allocator, &media->streams[i].codec);
+		__fmpFreeLanguageInfo(allocator, &media->streams[i].language);
+		__fmpFreeCodecInfo(allocator, &media->streams[i].codec);
 	}
-	__fmpFreeString(&context->allocator, &media->url);
+	__fmpFreeString(allocator, &media->url);
 	fplClearStruct(media);
 }
 
@@ -1188,7 +1245,7 @@ release:
 		}
 		ffmpeg->avformat_free_context(formatCtx);
 	}
-	if (!result) {
+	if (result != fmpResult_Success) {
 		fmpReleaseMediaInfo(context, media);
 	}
 	return result;
