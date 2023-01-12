@@ -109,8 +109,8 @@ typedef FFMPEG_AVIO_FEOF_FUNC(ffmpeg_avio_feof_func);
 #define FFMPEG_AV_FIND_PROGRAM_FROM_STREAM_FUNC(name) AVProgram *name(AVFormatContext *ic, AVProgram *last, int s)
 typedef FFMPEG_AV_FIND_PROGRAM_FROM_STREAM_FUNC(ffmpeg_av_find_program_from_stream_func);
 // av_format_inject_global_side_data
-#define FFMPEG_AVFORMAT_INJECT_GLOBAL_SIDE_DATA_FUNC(name) void name(AVFormatContext *s)
-typedef FFMPEG_AVFORMAT_INJECT_GLOBAL_SIDE_DATA_FUNC(ffmpeg_av_format_inject_global_side_data_func);
+#define FFMPEG_AV_FORMAT_INJECT_GLOBAL_SIDE_DATA_FUNC(name) void name(AVFormatContext *s)
+typedef FFMPEG_AV_FORMAT_INJECT_GLOBAL_SIDE_DATA_FUNC(ffmpeg_av_format_inject_global_side_data_func);
 // avio_size
 #define FFMPEG_AVIO_SIZE_FUNC(name) int64_t name(AVIOContext *s)
 typedef FFMPEG_AVIO_SIZE_FUNC(ffmpeg_avio_size_func);
@@ -250,6 +250,12 @@ typedef FFMPEG_AV_GET_PACKED_SAMPLE_FMT_FUNC(ffmpeg_av_get_packed_sample_fmt_fun
 // av_channel_layout_default
 #define FFMPEG_AV_CHANNEL_LAYOUT_DEFAULT_FUNC(name) void name(AVChannelLayout *ch_layout, int nb_channels)
 typedef FFMPEG_AV_CHANNEL_LAYOUT_DEFAULT_FUNC(ffmpeg_av_channel_layout_default_func);
+// av_channel_layout_copy
+#define FFMPEG_AV_CHANNEL_LAYOUT_COPY_FUNC(name) int name(AVChannelLayout *dst, const AVChannelLayout *src)
+typedef FFMPEG_AV_CHANNEL_LAYOUT_COPY_FUNC(ffmpeg_av_channel_layout_copy_func);
+// av_channel_layout_uninit
+#define FFMPEG_AV_CHANNEL_LAYOUT_UNINIT_FUNC(name) void name(AVChannelLayout *channel_layout)
+typedef FFMPEG_AV_CHANNEL_LAYOUT_UNINIT_FUNC(ffmpeg_av_channel_layout_uninit_func);
 // av_usleep
 #define FFMPEG_AV_USLEEP_FUNC(name) int name(unsigned usec)
 typedef FFMPEG_AV_USLEEP_FUNC(ffmpeg_av_usleep_func);
@@ -432,6 +438,8 @@ typedef struct FFMPEGContext {
 	ffmpeg_av_freep_func* av_freep;
 	ffmpeg_av_get_packed_sample_fmt_func* av_get_packed_sample_fmt;
 	ffmpeg_av_channel_layout_default_func* av_channel_layout_default;
+	ffmpeg_av_channel_layout_copy_func *av_channel_layout_copy;
+	ffmpeg_av_channel_layout_uninit_func *av_channel_layout_uninit;
 	ffmpeg_av_usleep_func* av_usleep;
 	ffmpeg_av_strdup_func* av_strdup;
 	ffmpeg_av_log2_func* av_log2;
@@ -707,6 +715,8 @@ FFMPEG_API bool FFMPEGInit(FFMPEGContext *ffmpeg) {
 	_FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg->av_freep, ffmpeg_av_freep_func, "av_freep");
 	_FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg->av_get_packed_sample_fmt, ffmpeg_av_get_packed_sample_fmt_func, "av_get_packed_sample_fmt");
 	_FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg->av_channel_layout_default, ffmpeg_av_channel_layout_default_func, "av_channel_layout_default");
+	_FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg->av_channel_layout_copy, ffmpeg_av_channel_layout_copy_func, "av_channel_layout_copy");
+	_FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg->av_channel_layout_uninit, ffmpeg_av_channel_layout_uninit_func, "av_channel_layout_uninit");
 	_FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg->av_usleep, ffmpeg_av_usleep_func, "av_usleep");
 	_FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg->av_strdup, ffmpeg_av_strdup_func, "av_strdup");
 	_FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg->av_log2, ffmpeg_av_log2_func, "av_log2");
@@ -751,6 +761,8 @@ FFMPEG_API bool FFMPEGInit(FFMPEGContext *ffmpeg) {
 	ffmpeg->av_freep = av_freep;
 	ffmpeg->av_get_packed_sample_fmt = av_get_packed_sample_fmt;
 	ffmpeg->av_channel_layout_default = av_channel_layout_default;
+	ffmpeg->av_channel_layout_copy = av_channel_layout_copy;
+	ffmpeg->av_channel_layout_uninit = av_channel_layout_uninit;
 	ffmpeg->av_usleep = av_usleep;
 	ffmpeg->av_strdup = av_strdup;
 	ffmpeg->av_log2 = av_log2;

@@ -158,6 +158,8 @@ int main(int argc, char **argv) {
 
 	fmpMediaInfo mediaInfo = fplZeroInit;
 
+	fmpMediaOptions options = fplZeroInit;
+
 	if (!fplPlatformInit(fplInitFlags_Console, fpl_null)) {
 		goto cleanup;
 	}
@@ -175,6 +177,12 @@ int main(int argc, char **argv) {
 		goto cleanup;
 	}
 	fmpReleaseMediaInfo(ctx, &mediaInfo);
+
+	if (fmpLoadMediaByFile(ctx, url, &options) != fmpResult_Success) {
+		goto cleanup;
+	}
+
+	fmpUnloadMedia(ctx);
 
 	result = 0;
 
