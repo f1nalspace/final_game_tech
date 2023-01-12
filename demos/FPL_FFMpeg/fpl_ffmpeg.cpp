@@ -167,13 +167,14 @@ int main(int argc, char **argv) {
 		goto cleanup;
 	}
 
-	if (!fmpInit(ctx)) {
+	if (!fmpInit(ctx, fpl_null)) {
 		goto cleanup;
 	}
 	
 	if (!fmpGetMediaInfo(ctx, url, &mediaInfo)) {
 		goto cleanup;
 	}
+	fmpReleaseMediaInfo(ctx, &mediaInfo);
 
 	result = 0;
 

@@ -232,6 +232,9 @@ typedef FFMPEG_AV_MALLOC_FUNC(ffmpeg_av_malloc_func);
 // av_mallocz
 #define FFMPEG_AV_MALLOCZ_FUNC(name) void *name(size_t size) av_malloc_attrib av_alloc_size(1)
 typedef FFMPEG_AV_MALLOCZ_FUNC(ffmpeg_av_mallocz_func);
+// av_realloc
+#define FFMPEG_AV_REALLOC_FUNC(name) void *name(void *ptr, size_t size) av_alloc_size(2)
+typedef FFMPEG_AV_REALLOC_FUNC(ffmpeg_av_realloc_func);
 // av_fast_malloc
 #define FFMPEG_AV_FAST_MALLOC_FUNC(name) void name(void *ptr, unsigned int *size, size_t min_size)
 typedef FFMPEG_AV_FAST_MALLOC_FUNC(ffmpeg_av_fast_malloc_func);
@@ -423,6 +426,7 @@ typedef struct FFMPEGContext {
 	ffmpeg_av_samples_get_buffer_size_func* av_samples_get_buffer_size;
 	ffmpeg_av_malloc_func* av_malloc;
 	ffmpeg_av_mallocz_func* av_mallocz;
+	ffmpeg_av_realloc_func* av_realloc;
 	ffmpeg_av_fast_malloc_func* av_fast_malloc;
 	ffmpeg_av_free_func* av_free;
 	ffmpeg_av_freep_func* av_freep;
@@ -697,6 +701,7 @@ FFMPEG_API bool FFMPEGInit(FFMPEGContext *ffmpeg) {
 	_FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg->av_samples_get_buffer_size, ffmpeg_av_samples_get_buffer_size_func, "av_samples_get_buffer_size");
 	_FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg->av_malloc, ffmpeg_av_malloc_func, "av_malloc");
 	_FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg->av_mallocz, ffmpeg_av_mallocz_func, "av_mallocz");
+	_FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg->av_realloc, ffmpeg_av_realloc_func, "av_realloc");
 	_FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg->av_fast_malloc, ffmpeg_av_fast_malloc_func, "av_fast_malloc");
 	_FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg->av_free, ffmpeg_av_freep_func, "av_free");
 	_FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg->av_freep, ffmpeg_av_freep_func, "av_freep");
@@ -740,6 +745,7 @@ FFMPEG_API bool FFMPEGInit(FFMPEGContext *ffmpeg) {
 	ffmpeg->av_samples_get_buffer_size = av_samples_get_buffer_size;
 	ffmpeg->av_malloc = av_malloc;
 	ffmpeg->av_mallocz = av_mallocz;
+	ffmpeg->av_realloc = av_realloc;
 	ffmpeg->av_fast_malloc = av_fast_malloc;
 	ffmpeg->av_free = av_free;
 	ffmpeg->av_freep = av_freep;

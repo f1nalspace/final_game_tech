@@ -36,6 +36,33 @@
 // Max number of streams in a media or url
 #define FMP_MAX_STREAM_COUNT 8
 
+typedef struct fmpString {
+	char *data;
+	size_t len;
+} fmpString;
+
+
+typedef struct fmpMemory {
+	struct fmpMemory *next;
+	void *base;
+	size_t size;
+	size_t offset;
+} fmpMemory;
+
+#define FMP_MEMORY_ALLOCATE_FUNC(name) void *name(const size_t size, void *user)
+typedef FMP_MEMORY_ALLOCATE_FUNC(fmp_memory_allocate_func);
+#define FMP_MEMORY_REALLOCATE_FUNC(name) void *name(void *base, const size_t size, void *user)
+typedef FMP_MEMORY_REALLOCATE_FUNC(fmp_memory_reallocate_func);
+#define FMP_MEMORY_FREE_FUNC(name) void name(void *mem, void *user)
+typedef FMP_MEMORY_FREE_FUNC(fmp_memory_free_func);
+
+typedef struct fmpMemoryAllocator {
+	fmp_memory_allocate_func *alloc;
+	fmp_memory_reallocate_func *realloc;
+	fmp_memory_free_func *free;
+	void *user;
+} fmpMemoryAllocator;
+
 typedef struct fmpPacket {
 	AVPacket *pkt;
 	int32_t serial;
@@ -142,8 +169,8 @@ typedef enum fmpStreamType {
 } fmpStreamType;
 
 typedef struct fmpCodecInfo {
-	char name[64 + 1];
-	char fourcc[4 + 1];
+	fmpString name;
+	char fourcc[4];
 	uint64_t id;
 } fmpCodecInfo;
 
@@ -164,8 +191,8 @@ typedef struct fmpAudioInfo {
 } fmpAudioInfo;
 
 typedef struct fmpLanguageInfo {
-	char name[32 + 1];
-	char iso639_2[3 + 1];
+	fmpString name;
+	char iso639_2[3];
 } fmpLanguageInfo;
 
 typedef struct fmpStreamInfo {
@@ -181,14 +208,12 @@ typedef struct fmpStreamInfo {
 
 typedef struct fmpMediaInfo {
 	fmpStreamInfo streams[FMP_MAX_STREAM_COUNT];
-	const char *url;
+	fmpString url;
 	uint32_t streamCount;
 } fmpMediaInfo;
 
-typedef struct fmpContext {
-	FFMPEGContext ffmpeg;
-
-	fmpMediaInfo mediaInfo;
+typedef struct fmpMediaContext {
+	fmpMediaInfo info;
 
 	fmpStream audioStream;
 	fmpStream videoStream;
@@ -197,19 +222,65 @@ typedef struct fmpContext {
 	fmpClock audioClock;
 	fmpClock videoClock;
 	fmpClock subtitleClock;
+	fmpClock externalClock;
+
+	struct fmpContext *context;
 
 	AVFormatContext *formatCtx;
 
+	fmpClockSyncType syncType;
+
+	fpl_b32 isValid;
+} fmpMediaContext;
+
+typedef enum fmpMediaState {
+	fmpMediaState_Error = -1,
+	fmpMediaState_NotInitialized = 0,
+	fmpMediaState_Unloaded,
+	fmpMediaState_Loading,
+	fmpMediaState_Loaded,
+	fmpMediaState_Playing,
+	fmpMediaState_Paused,
+} fmpMediaState;
+
+typedef struct fmpContext {
+	FFMPEGContext ffmpeg;
+	fmpMediaContext media;
+	fmpMemoryAllocator allocator;
+	volatile fmpMediaState state;
 	fpl_b32 isValid;
 } fmpContext;
 
-FMP_API bool fmpInit(fmpContext *context);
+typedef enum fmpResult {
+	fmpResult_UnknownError = INT32_MIN,
+
+	fmpResult_FailedToInitialize = -100,
+	fmpResult_MediaNotSupported,
+	fmpResult_TooManyStreams,
+	fmpResult_FileNotFound,
+
+	fmpResult_NotEnoughMemory = -50,
+
+	fmpResult_InvalidArguments = -20,
+
+	fmpResult_ContextAlreadyInitialized = -1,
+
+	fmpResult_ContextNotInitialized = 0,
+
+	fmpResult_Success = 1,
+} fmpResult;
+
+FMP_API fmpResult fmpInit(fmpContext *context, const fmpMemoryAllocator *allocator);
 FMP_API void fmpRelease(fmpContext *context);
 
-FMP_API bool fmpGetMediaInfo(fmpContext *context, const char *url, fmpMediaInfo *media);
+FMP_API fmpResult fmpGetMediaInfo(const fmpContext *context, const char *url, fmpMediaInfo *media);
+FMP_API void fmpReleaseMediaInfo(const fmpContext *context, fmpMediaInfo *media);
 
-FMP_API bool fmpLoadMedia(fmpContext *context, const char *url);
+FMP_API fmpResult fmpLoadMediaByFile(fmpContext *context, const char *filePath);
+FMP_API fmpResult fmpLoadMediaByURL(fmpContext *context, const char *url);
 FMP_API void fmpUnloadMedia(fmpContext *context);
+
+FMP_API fmpMediaState fmpGetMediaState(fmpContext *context);
 
 #endif // FMP_API
 
@@ -218,6 +289,208 @@ FMP_API void fmpUnloadMedia(fmpContext *context);
 
 #define FFMPEG_IMPLEMENTATION
 #include "ffmpeg_v2.h"
+
+// No AV correction is done if too big error
+#define __FMP_AV_NOSYNC_THRESHOLD 10.0
+
+// ??
+#define __FMP_EXTERNAL_CLOCK_MIN_FRAMES 2
+#define __FMP_EXTERNAL_CLOCK_MAX_FRAMES 10
+
+// external clock speed adjustment constants for realtime sources based on buffer fullness
+#define __FMP_EXTERNAL_CLOCK_SPEED_MIN  0.900
+#define __FMP_EXTERNAL_CLOCK_SPEED_MAX  1.010
+#define __FMP_EXTERNAL_CLOCK_SPEED_STEP 0.001
+
+//
+// > Memory
+//
+static void *__fmpAllocateMemory(const fmpMemoryAllocator *allocator, const size_t size) {
+	return allocator->alloc(size, allocator->user);
+}
+static void __fmpFreeMemory(const fmpMemoryAllocator *allocator, void *ptr) {
+	allocator->free(ptr, allocator->user);
+}
+
+//
+// > Strings
+//
+static size_t __fmpCopyZeroTerminatedString(const char *source, const size_t sourceLen, char *target, const size_t maxTargetLen) {
+	if (source == fpl_null || sourceLen == 0 || target == fpl_null || maxTargetLen == 0) 
+		return 0;
+	if (maxTargetLen < sourceLen)
+		return 0;
+	size_t result = 0;
+	while (result < sourceLen) {
+		target[result] = source[result];
+		++result;
+	}
+	if (result < maxTargetLen)
+		target[result++] = '\0';
+	return result;
+}
+
+static void __fmpFreeString(const fmpMemoryAllocator *allocator, fmpString *str) {
+	fplAssertPtr(allocator);
+	fplAssertPtr(str);
+	if (str->data != fpl_null) {
+		// TODO(final): This is very inefficient to always free a single string, use a block allocation scheme instead!
+		__fmpFreeMemory(allocator, str->data);
+	}
+	fplClearStruct(str);
+}
+
+static fmpString __fmpCopyString(const fmpMemoryAllocator *allocator, const char *source, const size_t len) {
+	fplAssertPtr(allocator);
+	fmpString result = fplZeroInit;
+	if (len > 0) {
+		// TODO(final): This is very inefficient to always allocate a single string, use a block allocation scheme instead!
+		size_t dataLen = len + 1;
+		result.data = (char *)__fmpAllocateMemory(allocator, sizeof(char) * dataLen);
+		result.len = len;
+		size_t copied = __fmpCopyZeroTerminatedString(source, len, result.data, dataLen);
+		fplAssert(copied == dataLen);
+	}
+	return result;
+}
+
+//
+// Default allocator
+//
+static void *__fmpAVAllocate(const size_t size, void *user) {
+	const FFMPEGContext *ffmpeg = (const FFMPEGContext *)user;
+	void *result = ffmpeg->av_mallocz(size);
+	return result;
+}
+
+static void *__fmpAVRealloc(void *base, const size_t size, void *user) {
+	const FFMPEGContext *ffmpeg = (const FFMPEGContext *)user;
+	void *result = ffmpeg->av_realloc(base, size);
+	return result;
+}
+
+static void __fmpAVFree(void *ptr, void *user) {
+	const FFMPEGContext *ffmpeg = (const FFMPEGContext *)user;
+	ffmpeg->av_freep(ptr);
+}
+
+static fmpMemoryAllocator __fmpCreateAVAllocator(FFMPEGContext *ffmpeg) {
+	fmpMemoryAllocator result = fplZeroInit;
+	result.user = ffmpeg;
+	result.alloc = __fmpAVAllocate;
+	result.realloc = __fmpAVRealloc;
+	result.free = __fmpAVFree;
+	return result;
+}
+
+//
+// Utils
+//
+fpl_force_inline void __fmpSetSafeMediaState(fmpContext *context, const fmpMediaState state) {
+	fplAtomicExchangeS32((volatile int32_t *)&context->state, (int32_t)state);
+}
+
+fpl_force_inline fmpMediaState __fmpGetSafeMediaState(fmpContext *context) {
+	return (fmpMediaState)fplAtomicLoadS32((volatile int32_t *)&context->state);
+}
+
+//
+// Clock
+//
+static double __fmpGetClock(const FFMPEGContext *ffmpeg, fmpClock *c) {
+	if (*c->queueSerial != c->serial) {
+		return NAN;
+	}
+	if (c->paused) {
+		return c->pts;
+	} else {
+		double time = ffmpeg->av_gettime_relative() / 1000000.0;
+		return c->ptsDrift + time - (time - c->lastUpdated) * (1.0 - c->speed);
+	}
+}
+
+static void __fmpSetClockTime(fmpClock *c, double pts, int serial, double time) {
+	c->pts = pts;
+	c->lastUpdated = time;
+	c->ptsDrift = c->pts - time;
+	c->serial = serial;
+}
+
+static void __fmpSetClock(const FFMPEGContext *ffmpeg, fmpClock *c, double pts, int serial) {
+	double time = ffmpeg->av_gettime_relative() / 1000000.0;
+	__fmpSetClockTime(c, pts, serial, time);
+}
+
+static void __fmpSetClockSpeed(const FFMPEGContext *ffmpeg, fmpClock *c, double speed) {
+	double pts = __fmpGetClock(ffmpeg, c);
+	__fmpSetClock(ffmpeg, c, pts, c->serial);
+	c->speed = speed;
+}
+
+static void __fmpInitClock(const FFMPEGContext *ffmpeg, fmpClock *c, int *queue_serial) {
+	c->speed = 1.0;
+	c->paused = 0;
+	c->queueSerial = queue_serial;
+	__fmpSetClock(ffmpeg, c, NAN, -1);
+}
+
+static void __fmpSyncClockToSlave(const FFMPEGContext *ffmpeg, fmpClock *c, fmpClock *slave)
+{
+	double clock = __fmpGetClock(ffmpeg, c);
+	double slave_clock = __fmpGetClock(ffmpeg, slave);
+	if (!isnan(slave_clock) && (isnan(clock) || fabs(clock - slave_clock) > __FMP_AV_NOSYNC_THRESHOLD)) {
+		__fmpSetClock(ffmpeg, c, slave_clock, slave->serial);
+	}
+}
+
+static fmpClockSyncType __fmpGetMasterSyncType(fmpMediaContext *ctx) {
+	if (ctx->syncType == fmpClockSyncType_VideoMaster) {
+		if (ctx->videoStream.isValid)
+			return fmpClockSyncType_VideoMaster;
+		else
+			return fmpClockSyncType_AudioMaster;
+	} else if (ctx->syncType == fmpClockSyncType_AudioMaster && ctx->audioStream.isValid) {
+		return fmpClockSyncType_AudioMaster;
+	}
+	return fmpClockSyncType_ExternalClock;
+}
+
+/* get the current master clock value */
+static double __fmpGetMasterClock(fmpMediaContext *ctx) {
+	double val;
+	const FFMPEGContext *ffmpeg = &ctx->context->ffmpeg;
+	fmpClockSyncType syncType = __fmpGetMasterSyncType(ctx);
+	switch (syncType) {
+		case fmpClockSyncType_VideoMaster:
+			val = __fmpGetClock(ffmpeg, &ctx->videoClock);
+			break;
+		case fmpClockSyncType_AudioMaster:
+			val = __fmpGetClock(ffmpeg, &ctx->audioClock);
+			break;
+		default:
+			val = __fmpGetClock(ffmpeg, &ctx->externalClock);
+			break;
+	}
+	return val;
+}
+
+static void __fmpCheckExternalClockSpeed(fmpMediaContext *ctx) {
+	const FFMPEGContext *ffmpeg = &ctx->context->ffmpeg;
+	fmpStream *videoStream = &ctx->videoStream;
+	fmpStream *audioStream = &ctx->audioStream;
+	if (videoStream->isValid && videoStream->packetQueue.packetCount <= __FMP_EXTERNAL_CLOCK_MIN_FRAMES ||
+		audioStream->isValid && audioStream->packetQueue.packetCount <= __FMP_EXTERNAL_CLOCK_MIN_FRAMES) {
+		__fmpSetClockSpeed(ffmpeg, &ctx->externalClock, FFMAX(__FMP_EXTERNAL_CLOCK_SPEED_MIN, ctx->externalClock.speed - __FMP_EXTERNAL_CLOCK_SPEED_STEP));
+	} else if ((!videoStream->isValid || videoStream->packetQueue.packetCount > __FMP_EXTERNAL_CLOCK_MAX_FRAMES) &&
+		       (!audioStream->isValid || audioStream->packetQueue.packetCount > __FMP_EXTERNAL_CLOCK_MAX_FRAMES)) {
+		__fmpSetClockSpeed(ffmpeg, &ctx->externalClock, FFMIN(__FMP_EXTERNAL_CLOCK_SPEED_MAX, ctx->externalClock.speed + __FMP_EXTERNAL_CLOCK_SPEED_STEP));
+	} else {
+		double speed = ctx->externalClock.speed;
+		if (speed != 1.0) {
+			__fmpSetClockSpeed(ffmpeg, &ctx->externalClock, speed + __FMP_EXTERNAL_CLOCK_SPEED_STEP * (1.0 - speed) / fabs(1.0 - speed));
+		}
+	}
+}
 
 //
 // > Packet-Queue
@@ -695,15 +968,29 @@ static int DecoderDecodeFrame(fmpDecoder *decoder, AVFrame *frame, AVSubtitle *s
 	}
 }
 
-FMP_API bool fmpInit(fmpContext *context) {
-	if (context == fpl_null || context->isValid)
-		return false;
+//
+// Context
+//
+FMP_API fmpResult fmpInit(fmpContext *context, const fmpMemoryAllocator *allocator) {
+	if (context == fpl_null) 
+		return fmpResult_InvalidArguments;
+	if (context->isValid) 
+		return fmpResult_ContextAlreadyInitialized;
+
 	fplClearStruct(context);
+
 	if (!FFMPEGInit(&context->ffmpeg)) {
-		return false;
+		return fmpResult_FailedToInitialize;
 	}
+
+	if (allocator != fpl_null && allocator->alloc != fpl_null && allocator->realloc != fpl_null && allocator->free != fpl_null)
+		context->allocator = *allocator;
+	else
+		context->allocator = __fmpCreateAVAllocator(&context->ffmpeg);
+
 	context->isValid = true;
-	return true;
+
+	return fmpResult_Success;
 }
 
 FMP_API void fmpRelease(fmpContext *context) {
@@ -713,79 +1000,126 @@ FMP_API void fmpRelease(fmpContext *context) {
 	fplClearStruct(context);
 }
 
-static fmpLanguageInfo __fmpGetLanguageInfo(FFMPEGContext *ffmpeg, AVDictionary *dict) {
+static void __fmpFreeLanguageInfo(const fmpMemoryAllocator *allocator, fmpLanguageInfo *info) {
+	__fmpFreeString(allocator, &info->name);
+}
+
+static fmpLanguageInfo __fmpGetLanguageInfo(const fmpMemoryAllocator *allocator, const FFMPEGContext *ffmpeg, AVDictionary *dict) {
 	fmpLanguageInfo result = fplZeroInit;
 
 	AVDictionaryEntry *lang = ffmpeg->av_dict_get(dict, "language", fpl_null, 0);
-	if (lang != fpl_null && fplGetStringLength(lang->value) > 0) {
-		fplCopyString(lang->value, result.iso639_2, fplArrayCount(result.iso639_2));
+	size_t valueLen;
+	if (lang != fpl_null && (valueLen = fplGetStringLength(lang->value)) > 0) {
+		strncpy_s(result.iso639_2, fplMin(3, valueLen), lang->value, fplArrayCount(result.iso639_2));
 	}
 
-	const char *nameTags[] = {"title", "description", "handler"};
+	const char *nameTags[] = { "title", "description", "handler" };
 	for (int i = 0; i < fplArrayCount(nameTags); ++i) {
 		AVDictionaryEntry *entry = ffmpeg->av_dict_get(dict, nameTags[i], fpl_null, 0);
-		if (entry != fpl_null && fplGetStringLength(entry->value) > 0) {
-			fplCopyString(entry->value, result.name, fplArrayCount(result.name));
+		size_t len;
+		if (entry != fpl_null && (len = fplGetStringLength(entry->value)) > 0) {
+			result.name = __fmpCopyString(allocator, entry->value, len);
 			break;
 		}
 	}
 
-	if (fplGetStringLength(result.name) == 0) {
+	if (result.name.len == 0) {
 		// @TODO(final): Translate ISO639-2 code to a language name
 	}
 
 	return result;
 }
-static fmpCodecInfo __fmpGetCodecInfo(FFMPEGContext *ffmpeg, AVCodecParameters *params) {
+
+static void __fmpFreeCodecInfo(const fmpMemoryAllocator *allocator, fmpCodecInfo *info) {
+	__fmpFreeString(allocator, &info->name);
+}
+
+static fmpCodecInfo __fmpGetCodecInfo(const fmpMemoryAllocator *allocator, const FFMPEGContext *ffmpeg, const AVCodecParameters *params) {
 	fmpCodecInfo result = fplZeroInit;
 
 	AVCodecID codecID = params->codec_id;
 	uint32_t codecTag = params->codec_tag;
 
 	const char *name = ffmpeg->avcodec_get_name(codecID);
-	if (fplGetStringLength(name) > 0) {
-		fplCopyString(name, result.name, fplArrayCount(result.name));
+	size_t len;
+	if ((len = fplGetStringLength(name)) > 0) {
+		result.name = __fmpCopyString(allocator, name, len);
 	}
 
-	result.fourcc[0] = (char)((codecTag >> 0) & 0xFF);
-	result.fourcc[1] = (char)((codecTag >> 8) & 0xFF);
-	result.fourcc[2] = (char)((codecTag >> 16) & 0xFF);
-	result.fourcc[3] = (char)((codecTag >> 24) & 0xFF);
+	if (fplIsLittleEndian()) {
+		result.fourcc[0] = (char)((codecTag >> 0) & 0xFF);
+		result.fourcc[1] = (char)((codecTag >> 8) & 0xFF);
+		result.fourcc[2] = (char)((codecTag >> 16) & 0xFF);
+		result.fourcc[3] = (char)((codecTag >> 24) & 0xFF);
+	} else {
+		result.fourcc[0] = (char)((codecTag >> 24) & 0xFF);
+		result.fourcc[1] = (char)((codecTag >> 16) & 0xFF);
+		result.fourcc[2] = (char)((codecTag >> 8) & 0xFF);
+		result.fourcc[3] = (char)((codecTag >> 0) & 0xFF);
+	}
+
 	result.fourcc[4] = '\0';
 
 	return result;
 }
 
+FMP_API void fmpReleaseMediaInfo(const fmpContext *context, fmpMediaInfo *media) {
+	if (context == fpl_null || !context->isValid || media == fpl_null)
+		return;
+	for (uint32_t i = 0; i < media->streamCount; ++i) {
+		__fmpFreeLanguageInfo(&context->allocator, &media->streams[i].language);
+		__fmpFreeCodecInfo(&context->allocator, &media->streams[i].codec);
+	}
+	__fmpFreeString(&context->allocator, &media->url);
+	fplClearStruct(media);
+}
 
-FMP_API bool fmpGetMediaInfo(fmpContext *context, const char *url, fmpMediaInfo *media) {
-	if (context == fpl_null || !context->isValid || fplGetStringLength(url) == 0 || media == fpl_null)
-		return false;
+FMP_API fmpResult fmpGetMediaInfo(const fmpContext *context, const char *url, fmpMediaInfo *media) {
+	if (context == fpl_null || fplGetStringLength(url) == 0 || media == fpl_null)
+		return fmpResult_InvalidArguments;
+	if (!context->isValid)
+		return fmpResult_ContextNotInitialized;
 
-	bool result = false;
+	fmpResult result = fmpResult_UnknownError;
 
-	FFMPEGContext *ffmpeg = &context->ffmpeg;
+	const fmpMemoryAllocator *allocator = &context->allocator;
+
+	const FFMPEGContext *ffmpeg = &context->ffmpeg;
 
 	AVFormatContext *formatCtx;
 
 	int openRes = -1;
 
 	formatCtx = ffmpeg->avformat_alloc_context();
-	if (formatCtx == fpl_null)
+	if (formatCtx == fpl_null) {
+		result = fmpResult_NotEnoughMemory;
 		goto release;
+	}
 
 	openRes = ffmpeg->avformat_open_input(&formatCtx, url, fpl_null, fpl_null);
 	if (openRes < 0) {
+		result = fmpResult_MediaNotSupported;
 		goto release;
 	}
 
 	int streamInfoRes = ffmpeg->avformat_find_stream_info(formatCtx, fpl_null);
 	if (streamInfoRes < 0) {
+		result = fmpResult_MediaNotSupported;
+		goto release;
+	}
+
+	if (formatCtx->nb_streams > FMP_MAX_STREAM_COUNT) {
+		result = fmpResult_TooManyStreams;
 		goto release;
 	}
 
 	fplClearStruct(media);
 
+	size_t urlLen = fplGetStringLength(url);
+	media->url = __fmpCopyString(&context->allocator, url, urlLen);
+
 	media->streamCount = formatCtx->nb_streams;
+
 	for (uint32_t streamIndex = 0; streamIndex < media->streamCount; ++streamIndex) {
 		const AVStream *st = formatCtx->streams[streamIndex];
 		enum AVMediaType codecType = st->codecpar->codec_type;
@@ -800,13 +1134,13 @@ FMP_API bool fmpGetMediaInfo(fmpContext *context, const char *url, fmpMediaInfo 
 			if (ffmpeg->av_dict_get_string(st->metadata, &buffer, '|', '\n') == 0) {
 				fplDebugFormatOut("Stream[%lu]:\n%s\n", streamIndex, buffer);
 				ffmpeg->av_freep(&buffer);
-			}
 	}
+}
 #endif
 
-		info->language = __fmpGetLanguageInfo(ffmpeg, st->metadata);
+		info->language = __fmpGetLanguageInfo(allocator, ffmpeg, st->metadata);
 
-		info->codec = __fmpGetCodecInfo(ffmpeg, st->codecpar);
+		info->codec = __fmpGetCodecInfo(allocator, ffmpeg, st->codecpar);
 
 		switch (codecType) {
 			case AVMEDIA_TYPE_VIDEO:
@@ -816,11 +1150,11 @@ FMP_API bool fmpGetMediaInfo(fmpContext *context, const char *url, fmpMediaInfo 
 				info->video.sampleAspectRatio = st->codecpar->sample_aspect_ratio;
 				if (info->video.sampleAspectRatio.num) {
 					ffmpeg->av_reduce(
-						&info->video.displayAspectRatio.num, 
-						&info->video.displayAspectRatio.den, 
-						st->codecpar->width * (int64_t)info->video.sampleAspectRatio.num, 
-						st->codecpar->height * (int64_t)info->video.sampleAspectRatio.den, 
-						1024 * 1024);
+						&info->video.displayAspectRatio.num,
+						&info->video.displayAspectRatio.den,
+						st->codecpar->width * (int64_t)info->video.sampleAspectRatio.num,
+						st->codecpar->height * (int64_t)info->video.sampleAspectRatio.den,
+						1024ULL * 1024ULL);
 				}
 				info->video.width = st->codecpar->width;
 				info->video.height = st->codecpar->height;
@@ -845,7 +1179,7 @@ FMP_API bool fmpGetMediaInfo(fmpContext *context, const char *url, fmpMediaInfo 
 		}
 }
 
-	result = true;
+	result = fmpResult_Success;
 
 release:
 	if (formatCtx != fpl_null) {
@@ -854,17 +1188,90 @@ release:
 		}
 		ffmpeg->avformat_free_context(formatCtx);
 	}
+	if (!result) {
+		fmpReleaseMediaInfo(context, media);
+	}
 	return result;
 }
 
-FMP_API bool fmpLoadMedia(fmpContext *context, const char *url) {
-	if (context == fpl_null || !context->isValid)
-		return false;
-	return false;
+static void __fmpUnloadMediaContext(fmpMediaContext *media) {
+	// @TODO(final): Proper unload code
+}
+
+static fmpResult __fmpLoadMediaIntoContext(fmpMediaContext *media, const char *pathOrURL) {
+
+	fmpContext *context = media->context;
+
+	// Unload media if needed
+	fmpMediaState state = __fmpGetSafeMediaState(context);
+	if (state > fmpMediaState_Unloaded) {
+		__fmpUnloadMediaContext(media);
+	}
+
+	fplAssert(__fmpGetSafeMediaState(context) == fmpMediaState_Unloaded);
+
+	fplClearStruct(media);
+	media->context = context;
+
+	__fmpSetSafeMediaState(context, fmpMediaState_Loading);
+
+	fmpResult loadResult = fmpResult_Success;
+
+	// @TODO(final): Proper load code
+
+	if (loadResult == fmpResult_Success) {
+		__fmpSetSafeMediaState(context, fmpMediaState_Loaded);
+		return fmpResult_Success;
+	} else {
+		__fmpUnloadMediaContext(media);
+		__fmpSetSafeMediaState(context, fmpMediaState_Error);
+		return loadResult;
+	}
 }
 
 FMP_API void fmpUnloadMedia(fmpContext *context) {
+	if (context == fpl_null || !context->isValid) 
+		return;
 
+	fmpMediaState state = __fmpGetSafeMediaState(context);
+	if (state <= fmpMediaState_Unloaded) 
+		return;
+
+	const FFMPEGContext *ffmpeg = &context->ffmpeg;
+
+	fmpMediaContext *media = &context->media;
+
+	__fmpUnloadMediaContext(media);
+
+	fplClearStruct(media);
+}
+
+FMP_API fmpResult fmpLoadMediaByURL(fmpContext *context, const char *url) {
+	if (context == fpl_null || fplGetStringLength(url) == 0) 
+		return fmpResult_InvalidArguments;
+	if (!context->isValid) 
+		return fmpResult_ContextNotInitialized;
+	fmpMediaContext *media = &context->media;
+	fmpResult result = __fmpLoadMediaIntoContext(media, url);
+	return result;
+}
+
+FMP_API fmpResult fmpLoadMediaByFile(fmpContext *context, const char *filePath) {
+	if (context == fpl_null || fplGetStringLength(filePath) == 0) 
+		return fmpResult_InvalidArguments;
+	if (!context->isValid) 
+		return fmpResult_ContextNotInitialized;
+	if (!fplFileExists(filePath))
+		return fmpResult_FileNotFound;
+	fmpResult result = __fmpLoadMediaIntoContext(&context->media, filePath);
+	return result;
+}
+
+FMP_API fmpMediaState fmpGetMediaState(fmpContext *context) {
+	if (context == fpl_null || !context->isValid)
+		return fmpMediaState_NotInitialized;
+	fmpMediaState result = __fmpGetSafeMediaState(context);
+	return result;
 }
 
 #endif // FMP_IMPLEMENTATION
