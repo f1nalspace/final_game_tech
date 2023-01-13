@@ -160,6 +160,8 @@ int main(int argc, char **argv) {
 
 	fmpMediaOptions options = fplZeroInit;
 
+	fmpMediaSource source = fplZeroInit;
+
 	if (!fplPlatformInit(fplInitFlags_Console, fpl_null)) {
 		goto cleanup;
 	}
@@ -172,16 +174,18 @@ int main(int argc, char **argv) {
 	if (!fmpInit(ctx, fpl_null)) {
 		goto cleanup;
 	}
+
+	source.type = fmpMediaSourceType_URL;
+	source.url.url = url;
 	
-	if (!fmpGetMediaInfo(ctx, url, &mediaInfo)) {
+	if (fmpGetMediaInfo(ctx, &source, &mediaInfo) != fmpResult_Success) {
 		goto cleanup;
 	}
 	fmpReleaseMediaInfo(ctx, &mediaInfo);
 
-	if (fmpLoadMediaByFile(ctx, url, &options) != fmpResult_Success) {
+	if (fmpLoadMedia(ctx, &source, &options) != fmpResult_Success) {
 		goto cleanup;
 	}
-
 	fmpUnloadMedia(ctx);
 
 	result = 0;
