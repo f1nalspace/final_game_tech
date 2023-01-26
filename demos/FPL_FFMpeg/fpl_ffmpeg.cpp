@@ -162,6 +162,12 @@ int main(int argc, char **argv) {
 
 	fmpMediaSource source = fplZeroInit;
 
+	fmpMediaContext *media = fpl_null;
+
+	fmpPacket packet = {};
+
+	fmpFrame frame = {};
+
 	if (!fplPlatformInit(fplInitFlags_Console, fpl_null)) {
 		goto cleanup;
 	}
@@ -183,14 +189,50 @@ int main(int argc, char **argv) {
 	}
 	fmpReleaseMediaInfo(ctx, &mediaInfo);
 
-	if (fmpLoadMedia(ctx, &source, &options) != fmpResult_Success) {
+	if (fmpLoadMedia(ctx, &source, &options, &media) != fmpResult_Success) {
 		goto cleanup;
 	}
-	fmpUnloadMedia(ctx);
+	if (!fmpInitPacket(ctx, &packet))
+		goto cleanup;
+
+	if (!fmpInitFrame(ctx, &frame))
+		goto cleanup;
+
+	uint32_t packetCount = 0;
+	while (fmpReadPacket(ctx, media, &packet) == fmpResult_Success) {
+		switch (packet.type) {
+			case fmpStreamType_Video:
+				fplConsoleFormatOut("Read video packet '%lu', pos: '%lld', pts: '%.8f', dts: '%.8f'\n", packetCount, packet.pos, packet.pts, packet.dts);
+				break;
+			case fmpStreamType_Audio:
+				fplConsoleFormatOut("Read audio packet '%lu', pos: '%lld', pts: '%.8f', dts: '%.8f'\n", packetCount, packet.pos, packet.pts, packet.dts);
+				break;
+			case fmpStreamType_Subtitle:
+				fplConsoleFormatOut("Read subtitle packet '%lu', pos: '%lld', pts: '%.8f', dts: '%.8f'\n", packetCount, packet.pos, packet.pts, packet.dts);
+				break;
+			default:
+				fplConsoleFormatOut("Skip unknown packet '%lu', pos: '%lld', pts: '%.8f', dts: '%.8f'\n", packetCount, packet.pos, packet.pts, packet.dts);
+				break;
+		}
+
+		fmpResult decodeRes;
+		while ((decodeRes = fmpDecodeFrame(ctx, media, &frame, &packet)) == fmpResult_Success) {
+			fmpCloseFrame(ctx, &frame);
+		}
+
+		fmpClosePacket(ctx, &packet);
+		++packetCount;
+	}
 
 	result = 0;
 
 cleanup:
+	fmpReleaseFrame(ctx, &frame);
+
+	fmpReleasePacket(ctx, &packet);
+
+	fmpUnloadMedia(ctx, &media);
+
 	if (ctx != fpl_null) {
 		fmpRelease(ctx);
 		fplMemoryFree(ctx);
