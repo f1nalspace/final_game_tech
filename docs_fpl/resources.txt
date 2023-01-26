@@ -2,3 +2,5 @@ https://mariuszbartosik.com/opengl-4-x-initialization-in-windows-without-a-frame
 
 Audio API Quick Start Guide
 https://habr.com/en/post/663352/
+
+https://github.com/FFmpeg/FFmpeg/tree/release/5.1/doc/examples
