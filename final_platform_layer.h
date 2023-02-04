@@ -151,6 +151,7 @@ SOFTWARE.
 	- New: Added union fplColor32 for representing a 32-bit color value
 	- New: Added field background as @ref fplColor32 to @ref fplWindowSettings
 	- New: Added fields isScreenSaverPrevented/isMonitorPowerPrevented to configure, if monitor-off or screensaver is prevented
+	- New: Added struct fplElapsedTime storing the total in seconds and milliseconds
 	- Fixed[#135]: Stackoverflow in fpl__PushError_Formatted() when FPL_USERFUNC_vsnprintf is overloaded
 	- Fixed[#139]: Assertion on machine with 32 logical cores -> fplThreadHandle array capacity too small
 	- Fixed[#141]: fplMemoryCopy() was wrong for 16-bit optimized operations
@@ -196,6 +197,9 @@ SOFTWARE.
 	- Changed: Renamed function fplGetPlatformResultName() to fplPlatformGetResultName()
 	- Changed: Renamed function fplFormatString() to fplStrngFormat()
 	- Changed: Renamed function fplFormatStringArgs() to fplStrngFormatArgs()
+	- Changed: Renamed function fplGetWallClock() to fplTimestampQuery()
+	- Changed: Renamed function fplGetWallDelta() to fplTimestampElapsed()
+	- Changed: Renamed struct fplWallClock to fplTimestamp
 	- Changed: Replaced enum flag fplVulkanValidationLayerMode_User with fplVulkanValidationLayerMode_Optional
 	- Changed: Replaced enum flag fplVulkanValidationLayerMode_Callback with fplVulkanValidationLayerMode_Required
 
@@ -4450,13 +4454,15 @@ fpl_common_api void fplConsoleFormatError(const char *format, ...);
 */
 // ----------------------------------------------------------------------------
 
-//! A structure storing the wallclock, used for time-measurements only.
-typedef union fplWallClock {
+//! A structure storing a timestamp, used for delta measurements only.
+typedef union fplTimestamp {
 #if defined(FPL_PLATFORM_WINDOWS)
 	//! Win32 specifics
 	struct {
 		//! Query performance count
 		uint64_t qpc;
+		//! Tick count
+		uint32_t ticks;
 	} win32;
 #endif
 #if defined(FPL_SUBPLATFORM_POSIX)
@@ -4470,19 +4476,27 @@ typedef union fplWallClock {
 #endif
 	//! Field for preventing union to be empty
 	uint64_t unused;
-} fplWallClock;
+} fplTimestamp;
+
+//! A structure for storing the elapsed time in either seconds or milliseconds
+typedef struct fplElapsedTime {
+	//! Elapsed time in seconds
+	double seconds;
+	//! Elapsed time in milliseconds
+	uint64_t milliseconds;
+} fplElapsedTime;
 
 /**
-* @brief Gets the current wall clock in high precision (micro/nanoseconds) used for time-measurements only.
-* @return Returns a @ref fplWallClock containing some fixed starting point (OS start, System start, etc).
-* @note Can only be used to calculate a difference in time!
+* @brief Gets the current @ref fplTimestamp with most precision, used for delta measurements only.
+* @return Returns a @ref fplTimestamp containing some fixed starting point (OS start, System start, etc).
+* @note Use @ref fplTimestampElapsed() to get the elapsed time.
 */
-fpl_platform_api fplWallClock fplGetWallClock();
+fpl_platform_api fplTimestamp fplTimestampQuery();
 /**
-* @brief Gets the delta value from two @ref fplWallClock values as seconds.
-* @return Returns the resulting number of seconds.
+* @brief Gets the delta value from two @ref fplTimestamp values in seconds.
+* @return Returns the resulting @ref fplElapsedTime.
 */
-fpl_platform_api double fplGetWallDelta(const fplWallClock start, const fplWallClock finish);
+fpl_platform_api fplElapsedTime fplTimestampElapsed(const fplTimestamp start, const fplTimestamp finish);
 /**
 * @brief Gets the current system clock in seconds in high precision (micro/nanoseconds).
 * @return Returns the number of seconds since some fixed starting point (OS start, System start, etc).
@@ -8148,6 +8162,7 @@ typedef struct fpl__Win32XInputState {
 
 typedef struct fpl__Win32InitState {
 	HINSTANCE appInstance;
+	LARGE_INTEGER qpf;
 } fpl__Win32InitState;
 
 typedef struct fpl__Win32AppState {
@@ -12188,10 +12203,15 @@ fpl_internal bool fpl__Win32InitPlatform(const fplInitFlags initFlags, const fpl
 	fplAssert(appState != fpl_null);
 
 	fpl__Win32InitState *win32InitState = &initState->win32;
-	win32InitState->appInstance = GetModuleHandleA(fpl_null);
 	fpl__Win32AppState *win32AppState = &appState->win32;
 
 	// @NOTE(final): Expect kernel32.lib to be linked always, so VirtualAlloc, LoadLibrary, CreateThread, etc. will always work.
+
+	// Get application instance handle
+	win32InitState->appInstance = GetModuleHandleA(fpl_null);
+
+	// Query performance frequency and store it once, it will never change during runtime
+	QueryPerformanceFrequency(&win32InitState->qpf);
 
 	// Get main thread infos
 	HANDLE mainThreadHandle = GetCurrentThread();
@@ -13757,20 +13777,32 @@ fpl_platform_api size_t fplGetHomePath(char *destPath, const size_t maxDestLen) 
 //
 // Win32 Timings
 //
-fpl_platform_api fplWallClock fplGetWallClock() {
-	fplWallClock result = fplZeroInit;
-	LARGE_INTEGER time;
-	QueryPerformanceCounter(&time);
-	result.win32.qpc = (uint64_t)time.QuadPart;
+fpl_platform_api fplTimestamp fplTimestampQuery() {
+	const fpl__Win32InitState *initState = &fpl__global__InitState.win32;
+	fplTimestamp result = fplZeroInit;
+	if (initState->qpf.QuadPart > 0) {
+		LARGE_INTEGER time;
+		QueryPerformanceCounter(&time);
+		result.win32.qpc = (uint64_t)time.QuadPart;
+	} else {
+		result.win32.ticks = GetTickCount();
+	}
 	return(result);
 }
 
-fpl_platform_api double fplGetWallDelta(const fplWallClock start, const fplWallClock finish) {
+fpl_platform_api fplElapsedTime fplTimestampElapsed(const fplTimestamp start, const fplTimestamp finish) {
 	const fpl__Win32InitState *initState = &fpl__global__InitState.win32;
-	LARGE_INTEGER freq;
-	QueryPerformanceFrequency(&freq);
-	uint64_t delta = finish.win32.qpc - start.win32.qpc;
-	double result = delta / (double)freq.QuadPart;
+	fplElapsedTime result = fplZeroInit;
+	LARGE_INTEGER freq = initState->qpf;
+	if (freq.QuadPart > 0) {
+		uint64_t delta = finish.win32.qpc - start.win32.qpc;
+		result.seconds = delta / (double)freq.QuadPart;
+		result.milliseconds = (delta * 1000) / freq.QuadPart;
+	} else {
+		uint32_t delta = finish.win32.ticks - start.win32.ticks;
+		result.seconds = delta / 1000.0;
+		result.milliseconds = delta;
+	}
 	return(result);
 }
 
@@ -14930,8 +14962,8 @@ fpl_platform_api void fplAtomicStoreS64(volatile int64_t *dest, const int64_t va
 //
 // POSIX Timings
 //
-fpl_platform_api fplWallClock fplGetWallClock() {
-	fplWallClock result = fplZeroInit;
+fpl_platform_api fplTimestamp fplTimestampQuery() {
+	fplTimestamp result = fplZeroInit;
 	struct timespec t;
 	clock_gettime(CLOCK_MONOTONIC, &t);
 	result.posix.seconds = (uint64_t)t.tv_sec;
@@ -14939,14 +14971,16 @@ fpl_platform_api fplWallClock fplGetWallClock() {
 	return(result);
 }
 
-fpl_platform_api double fplGetWallDelta(const fplWallClock start, const fplWallClock finish) {
+fpl_platform_api fplElapsedTime fplTimestampElapsed(const fplTimestamp start, const fplTimestamp finish) {
 	uint64_t deltaSeconds = finish.posix.seconds - start.posix.seconds;
 	int64_t deltaNanos = finish.posix.nanoSeconds - start.posix.nanoSeconds;
 	if (deltaNanos < 0) {
 		--deltaSeconds;
 		deltaNanos += 1000000000L;
 	}
-	double result = (double)deltaSeconds + ((double)deltaNanos * 1e-9);
+	fplElapsedTime result;
+	result.seconds = (double)deltaSeconds + ((double)deltaNanos * 1e-9);
+	result.milliseconds = deltaSeconds * 1000 + (deltaNanos / 1e-6);
 	return(result);
 }
 

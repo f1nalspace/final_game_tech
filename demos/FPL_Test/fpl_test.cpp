@@ -1739,32 +1739,35 @@ static void TestInlining() {
 }
 
 static void TestTimes() {
-	ftMsg("Test fplWallClock and fplGetWallDelta\n");
+	ftMsg("Test fplTimestampQuery and fplTimestampElapsed\n");
 	// 0.5 secs
 	{
-		fplWallClock start = fplGetWallClock();
+		fplTimestamp start = fplTimestampQuery();
 		fplThreadSleep(500);
-		fplWallClock ende = fplGetWallClock();
-		double delta = fplGetWallDelta(start, ende);
-		ftAssert(delta >= 0.5 && delta < 0.75);
+		fplTimestamp ende = fplTimestampQuery();
+		fplElapsedTime delta = fplTimestampElapsed(start, ende);
+		ftAssert(delta.seconds >= 0.5 && delta.seconds < 0.75);
+		ftAssert(delta.milliseconds >= 500 && delta.milliseconds < 750);
 	}
 
 	// 1.0 secs
 	{
-		fplWallClock start = fplGetWallClock();
+		fplTimestamp start = fplTimestampQuery();
 		fplThreadSleep(750);
-		fplWallClock ende = fplGetWallClock();
-		double delta = fplGetWallDelta(start, ende);
-		ftAssert(delta >= 0.75 && delta < 1.0);
+		fplTimestamp ende = fplTimestampQuery();
+		fplElapsedTime delta = fplTimestampElapsed(start, ende);
+		ftAssert(delta.seconds >= 0.75 && delta.seconds < 1.0);
+		ftAssert(delta.milliseconds >= 750 && delta.milliseconds < 1000);
 	}
 
 	// 1.5 secs
 	{
-		fplWallClock start = fplGetWallClock();
+		fplTimestamp start = fplTimestampQuery();
 		fplThreadSleep(1500);
-		fplWallClock ende = fplGetWallClock();
-		double delta = fplGetWallDelta(start, ende);
-		ftAssert(delta >= 1.5 && delta < 1.75);
+		fplTimestamp ende = fplTimestampQuery();
+		fplElapsedTime delta = fplTimestampElapsed(start, ende);
+		ftAssert(delta.seconds >= 1.5 && delta.seconds < 1.75);
+		ftAssert(delta.milliseconds >= 1500 && delta.milliseconds < 1750);
 	}
 }
 

@@ -108,7 +108,7 @@ static Application *globalApp = nullptr;
 static float lastFrameTime = 0.0f;
 static uint64_t lastFrameCycles = 0;
 static uint64_t lastCycles = 0;
-static fplWallClock lastFrameClock;
+static fplTimestamp lastFrameClock;
 
 static void OpenGLPopVertexIndexArray(std::stack<Render::VertexIndexArrayHeader *> &stack) {
 	if (stack.size() > 0) {
@@ -513,7 +513,7 @@ int main(int argc, char **args) {
 
 			app->Init();
 			
-			lastFrameClock = fplGetWallClock();
+			lastFrameClock = fplTimestampQuery();
 
 			while (fplWindowUpdate()) {
 				fplEvent ev;
@@ -550,8 +550,9 @@ int main(int argc, char **args) {
 
 				fplVideoFlip();
 
-				fplWallClock endFrameClock = fplGetWallClock();
-				lastFrameTime = (float)fplGetWallDelta(lastFrameClock, endFrameClock);
+				fplTimestamp endFrameClock = fplTimestampQuery();
+				fplElapsedTime elapsed = fplTimestampElapsed(lastFrameClock, endFrameClock);
+				lastFrameTime = (float)elapsed.seconds;
 				lastFrameClock = endFrameClock;
 
 				uint64_t endCycles = fplCPURDTSC();

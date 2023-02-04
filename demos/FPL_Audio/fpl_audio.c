@@ -1123,7 +1123,7 @@ int main(int argc, char **args) {
 
 		// Loop
 		double totalTime = 0.0;
-		fplWallClock lastTime = fplGetWallClock();
+		fplTimestamp lastTime = fplTimestampQuery();
 		while(fplWindowUpdate()) {
 			fplEvent ev;
 			while(fplPollEvent(&ev)) {
@@ -1150,9 +1150,9 @@ int main(int argc, char **args) {
 			Render(demo, winSize.width, winSize.height, totalTime);
 			fplVideoFlip();
 
-			fplWallClock curTime = fplGetWallClock();
-			double frameTime = fplGetWallDelta(lastTime, curTime);
-			totalTime += frameTime;
+			fplTimestamp curTime = fplTimestampQuery();
+			fplElapsedTime frameTime = fplTimestampElapsed(lastTime, curTime);
+			totalTime += frameTime.seconds;
 			lastTime = curTime;
 		}
 
