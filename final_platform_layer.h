@@ -4462,7 +4462,7 @@ typedef union fplTimestamp {
 		//! Query performance count
 		uint64_t qpc;
 		//! Tick count
-		uint32_t ticks;
+		uint64_t ticks;
 	} win32;
 #endif
 #if defined(FPL_SUBPLATFORM_POSIX)
