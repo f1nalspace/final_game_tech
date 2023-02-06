@@ -1918,10 +1918,10 @@ int main(int argc, char** argv) {
 									bool isActiveKeyRepeat;
 									if (activeKey != ev.keyboard.mappedKey) {
 										activeKey = ev.keyboard.mappedKey;
-										activeKeyStart = fplGetTimeInMillisecondsLP();
+										activeKeyStart = fplTimeMilliseconds();
 										isActiveKeyRepeat = false;
 									} else {
-										isActiveKeyRepeat = (fplGetTimeInMillisecondsLP() - activeKeyStart) >= ActiveKeyThreshold;
+										isActiveKeyRepeat = (fplTimeMilliseconds() - activeKeyStart) >= ActiveKeyThreshold;
 									}
 									if (ev.keyboard.mappedKey == fplKey_Left) {
 										if (activeKey == ev.keyboard.mappedKey && isActiveKeyRepeat) {

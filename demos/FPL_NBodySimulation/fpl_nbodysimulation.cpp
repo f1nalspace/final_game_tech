@@ -551,8 +551,8 @@ int main(int argc, char **args) {
 				fplVideoFlip();
 
 				fplTimestamp endFrameClock = fplTimestampQuery();
-				fplElapsedTime elapsed = fplTimestampElapsed(lastFrameClock, endFrameClock);
-				lastFrameTime = (float)elapsed.seconds;
+				double elapsed = fplTimestampElapsed(lastFrameClock, endFrameClock);
+				lastFrameTime = (float)elapsed;
 				lastFrameClock = endFrameClock;
 
 				uint64_t endCycles = fplCPURDTSC();

@@ -734,7 +734,7 @@ static bool InitGame(GameState &state) {
 	fplExtractFilePath(state.dataPath, state.dataPath, fplArrayCount(state.dataPath));
 	fplPathCombine(state.dataPath, fplArrayCount(state.dataPath), 2, state.dataPath, "data");
 
-	srand((int)fplGetTimeInMillisecondsLP());
+	srand((int)fplTimeMilliseconds());
 
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LEQUAL);

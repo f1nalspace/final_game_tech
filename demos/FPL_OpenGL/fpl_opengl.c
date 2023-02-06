@@ -313,10 +313,10 @@ static void RunLegacy() {
 		fplVideoFlip();
 
 		fplTimestamp endFrameTime = fplTimestampQuery();
-		fplElapsedTime frameDuration = fplTimestampElapsed(lastFrameTime, endFrameTime);
+		double frameDuration = fplTimestampElapsed(lastFrameTime, endFrameTime);
 		lastFrameTime = endFrameTime;
 
-		float dt = fplMin((float)frameDuration.seconds, DT);
+		float dt = fplMin((float)frameDuration, DT);
 
 		rot += 0.5f * dt;
 	}
@@ -525,10 +525,10 @@ static bool RunModern() {
 		fplVideoFlip();
 
 		fplTimestamp endFrameTime = fplTimestampQuery();
-		fplElapsedTime frameDuration = fplTimestampElapsed(lastFrameTime, endFrameTime);
+		double frameDuration = fplTimestampElapsed(lastFrameTime, endFrameTime);
 		lastFrameTime = endFrameTime;
 
-		float dt = fplMin((float)frameDuration.seconds, DT);
+		float dt = fplMin((float)frameDuration, DT);
 
 		++frameIndex;
 		rot += 0.5f * dt;

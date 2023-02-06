@@ -1745,9 +1745,8 @@ static void TestTimes() {
 		fplTimestamp start = fplTimestampQuery();
 		fplThreadSleep(500);
 		fplTimestamp ende = fplTimestampQuery();
-		fplElapsedTime delta = fplTimestampElapsed(start, ende);
-		ftAssert(delta.seconds >= 0.5 && delta.seconds < 0.75);
-		ftAssert(delta.milliseconds >= 500 && delta.milliseconds < 750);
+		double delta = fplTimestampElapsed(start, ende);
+		ftAssert(delta >= 0.5 && delta < 0.75);
 	}
 
 	// 1.0 secs
@@ -1755,9 +1754,8 @@ static void TestTimes() {
 		fplTimestamp start = fplTimestampQuery();
 		fplThreadSleep(750);
 		fplTimestamp ende = fplTimestampQuery();
-		fplElapsedTime delta = fplTimestampElapsed(start, ende);
-		ftAssert(delta.seconds >= 0.75 && delta.seconds < 1.0);
-		ftAssert(delta.milliseconds >= 750 && delta.milliseconds < 1000);
+		double delta = fplTimestampElapsed(start, ende);
+		ftAssert(delta >= 0.75 && delta < 1.0);
 	}
 
 	// 1.5 secs
@@ -1765,9 +1763,8 @@ static void TestTimes() {
 		fplTimestamp start = fplTimestampQuery();
 		fplThreadSleep(1500);
 		fplTimestamp ende = fplTimestampQuery();
-		fplElapsedTime delta = fplTimestampElapsed(start, ende);
-		ftAssert(delta.seconds >= 1.5 && delta.seconds < 1.75);
-		ftAssert(delta.milliseconds >= 1500 && delta.milliseconds < 1750);
+		double delta = fplTimestampElapsed(start, ende);
+		ftAssert(delta >= 1.5 && delta < 1.75);
 	}
 }
 

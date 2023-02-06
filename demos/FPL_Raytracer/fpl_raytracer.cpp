@@ -804,7 +804,7 @@ static void InitRaytracer(Raytracer &raytracer, const u32 raytraceWidth, const u
 	raytracer.halfPixelSize.w = 0.5f / (f32)raytraceImage.width;
 	raytracer.halfPixelSize.h = 0.5f / (f32)raytraceImage.height;
 
-	//raytracer.rnd = RandomSeed(fplGetTimeInMillisecondsLP() % U64_MAX);
+	//raytracer.rnd = RandomSeed(fplTimeMilliseconds() % U64_MAX);
 	raytracer.rnd = RandomSeed(1337);
 	raytracer.settings.maxBounceCount = 4;
 	raytracer.settings.raysPerPixelCount = 32;
