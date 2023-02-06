@@ -2464,6 +2464,17 @@ typedef fpl__Win32Handle fpl__Win32WindowHandle;
 typedef fpl__Win32Handle fpl__Win32DeviceContext;
 //! A win32 rendering context (opaque, min 4/8 bytes)
 typedef fpl__Win32Handle fpl__Win32RenderingContext;
+//! A win32 structure for storing a large integer for QPC (opaque, 8 bytes)
+typedef union fpl__Win32LargeInteger {
+	//! 64-bit part
+	int64_t QuadPart;
+	struct {
+		//! 32-bit low part
+		int32_t LowPart;
+		//! 32-bit high part
+		int32_t HighPart;
+	};
+} fpl__Win32LargeInteger;
 
 #	endif // FPL_PLATFORM_WINDOWS
 
@@ -2540,6 +2551,8 @@ typedef HWND fpl__Win32WindowHandle;
 typedef HDC fpl__Win32DeviceContext;
 //! A win32 rendering context
 typedef HGLRC fpl__Win32RenderingContext;
+//! A win32 structure for storing a large integer for QPC
+typedef LARGE_INTEGER fpl__Win32LargeInteger;
 
 #	endif // FPL_PLATFORM_WINDOWS
 
@@ -4459,13 +4472,12 @@ typedef union fplTimestamp {
 #if defined(FPL_PLATFORM_WINDOWS)
 	//! Win32 specifics
 	struct {
-		//! Query performance count
-		uint64_t qpc;
-		//! Tick count
+		//! Query performance count in 10th nanoseconds
+		fpl__Win32LargeInteger qpc;
+		//! Tick count in milliseconds
 		uint64_t ticks;
 	} win32;
-#endif
-#if defined(FPL_SUBPLATFORM_POSIX)
+#elif defined(FPL_SUBPLATFORM_POSIX)
 	//! POSIX specifics
 	struct {
 		//! Number of seconds
@@ -13783,9 +13795,9 @@ fpl_platform_api fplTimestamp fplTimestampQuery() {
 	if (initState->qpf.QuadPart > 0) {
 		LARGE_INTEGER time;
 		QueryPerformanceCounter(&time);
-		result.win32.qpc = (uint64_t)time.QuadPart;
+		result.win32.qpc.QuadPart = time.QuadPart;
 	} else {
-		result.win32.ticks = GetTickCount();
+		result.win32.ticks = GetTickCount64();
 	}
 	return(result);
 }
@@ -13795,11 +13807,11 @@ fpl_platform_api fplElapsedTime fplTimestampElapsed(const fplTimestamp start, co
 	fplElapsedTime result = fplZeroInit;
 	LARGE_INTEGER freq = initState->qpf;
 	if (freq.QuadPart > 0) {
-		uint64_t delta = finish.win32.qpc - start.win32.qpc;
+		uint64_t delta = finish.win32.qpc.QuadPart - start.win32.qpc.QuadPart;
 		result.seconds = delta / (double)freq.QuadPart;
 		result.milliseconds = (delta * 1000) / freq.QuadPart;
 	} else {
-		uint32_t delta = finish.win32.ticks - start.win32.ticks;
+		uint64_t delta = finish.win32.ticks - start.win32.ticks;
 		result.seconds = delta / 1000.0;
 		result.milliseconds = delta;
 	}
