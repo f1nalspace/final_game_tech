@@ -19,7 +19,7 @@ struct ThreadPoolTask {
 	thread_pool_task_function func;
 };
 
-constexpr size_t MAX_THREADPOOL_THREAD_COUNT = 16;
+constexpr size_t MAX_THREADPOOL_THREAD_COUNT = 128;
 struct ThreadPoolState {
 	fplThreadHandle *threads[MAX_THREADPOOL_THREAD_COUNT];
 	size_t threadCount;
