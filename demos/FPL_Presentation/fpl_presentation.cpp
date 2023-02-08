@@ -2243,7 +2243,7 @@ int main(int argc, char **argv) {
 	settings.video.isVSync = true;
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
 	settings.video.graphics.opengl.multiSamplingCount = 16;
-	if (fplPlatformInit(fplInitFlags_All, &settings)) {
+	if (fplPlatformInit(fplInitFlags_All & ~fplInitFlags_Console, &settings)) {
 		if (fglLoadOpenGL(true)) {
 			glDisable(GL_DEPTH_TEST);
 

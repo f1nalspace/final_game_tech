@@ -186,16 +186,16 @@ namespace FPLPresentationData {
 	namespace Intro {
 		static const char* Talk = {
 			"Hi there!"
-			"My name is Torsten Spaete. I am a professional software engineer with over 20 years of programming experience."
-			"Today I would like to introduce you to a project I have been working on for quite a while now."
-			"It's a platform abstraction library written in C99 called 'Final-Platform-Layer'."
+			"My name is Torsten. I am a professional software engineer with over 30 years of programming experience."
+			"Today, I want to introduce you to a project that I have been working on for quite some time."
+			"A lightweight platform abstraction library written in C99 called 'Final-Platform-Layer'."
 		};
 
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
 				V2f(),V2f(1,1),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
 				"Introducing Final-Platform-Layer (FPL)\n"
-				"A lightweight Platform-Abstraction-Library written in C99\n",
+				"A lightweight Platform-Abstraction-Library written in 'C99'\n",
 				HorizontalAlignment::Center
 			),
 		};
@@ -209,15 +209,14 @@ namespace FPLPresentationData {
 		static const char* Talk = {
 			"Before I continue, I want to explain first what a platform abstraction layer is and why it is important."
 			""
-			"Any operating system has different APIs for accessing low-level systems or hardware devices, such as graphics cards, audio devices, input devices, etc."
-			"For example, to create a thread on windows you have to call the function \"CreateThread\"."
-			"On Linux, it's a different function called \"pthread_create\"."
-			"Both do the same thing: Creating and starting a thread, but each function requires different arguments and handles."
+			"Any operating system has different ways for accessing low-level systems or hardware devices, such as graphics cards, audio devices, input devices, etc."
+			"Some are very easy to access, some are complicated and some are so complicated,"
+			"that you have to know and call driver functions directly - requiring to write thousands lines of codes."
 			""
-			"But to play audio, for example, it's a different story, because each platform has numerous drivers, which are always very hard to program."
+			"A platform abstraction layer (or short 'PAL') is a development library, written in a low-level language such as 'C' or 'C++',"
+			"that implements most of these drivers and functions for you and makes it easy-to-use in a nice clean API."
 			""
-			"A platform abstraction layer (or short 'PAL') is a development library, written in a low-level language such as 'C',"
-			"that implements all this drivers and specific functions, but lets you write code once, that runs on all supported platforms."
+			"In addition everything is abstracted in a way, that makes it platform-independent - meaning you write code once and runs on all supported platforms."
 		};
 
 		static BlockDefinition Blocks[] = {
@@ -225,7 +224,7 @@ namespace FPLPresentationData {
 				V2f(),V2f(1,1),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
 				"A platform abstraction layer (or short 'PAL')\n"
 				"is a development library,\n"
-				"written in a low-level language such as C,\n"
+				"written in a low-level language such as 'C' or 'C++',\n"
 				"used to access hardware and low-level systems\n"
 				"in a platform-independent way.\n",
 				HorizontalAlignment::Left
@@ -242,9 +241,10 @@ namespace FPLPresentationData {
 			"Final-Platform-Layer (or short 'FPL') is a lightweight platform-abstraction-layer written in C99, that provides a powerful and easy-to-use API,"
 			"for accessing low-level and hardware devices, such as audio, video, memory, window, input, threads, and many more."
 			""
-			"Its main usage is multimedia and game development but can be used to write any kind of application."
-			"'FPL' is designed to be fast in compile and run time and can be integrated however you like."
-			"You can statically link it, you can link it on runtime or you can include the full source code."
+			"Its main usage is multimedia and game development but can be used to write any kind of software."
+			""
+			"'FPL' is designed to be very fast, in compile and run time and can be integrated however you like."
+			"You can statically link it, you can dynamically link it or you can include the full source code."
 		};
 
 		static BlockDefinition Blocks[] = {
@@ -253,7 +253,7 @@ namespace FPLPresentationData {
 				"Final-Platform-Layer (or short 'FPL')\n"
 				"is an lightweight PAL written in C99,\n"
 				"providing a powerful and easy to use API,\n"
-				"for working with low-level and hardware systems\n"
+				"for accessing low-level and hardware systems\n"
 				"such as audio, video, memory, window, threading,\n"
 				"I/O and many more.\n",
 				HorizontalAlignment::Left
@@ -269,22 +269,27 @@ namespace FPLPresentationData {
 		static const char* Talk = {
 			"C has very limited access to the underlying platform."
 			"Even in modern C++, you still don't have direct access to a lot of systems at all."
-			"To access low-level systems, such as audio or video, you either need to use third-party libraries or write platform-specific codes for Win32, Linux, Mac, etc. directly."
 			""
-			"Of course, there is already a few PALs on the internet, but most of them have the same issue:"
-			"- The source-codes contain dozens of translation units which slows down compile time enormously"
-			"- Almost all, are designed not to include the full source within your application and force you either to static or runtime linked pre-compiled releases"
-			"- Some even don't allow statically linked and force you to dynamic linking"
-			"- You have limited or no control over memory allocations"
-			"- Most of it has too many dependencies (build-systems, third-party libraries, etc.)"
+			"To access low-level systems and hardware, such as audio, video, etc. you either need to use third-party libraries"
+			"or write platform-specific codes for every platform and every hardware device yourself."
+			""
+			"Of course, there already exists a few PALs on the internet, but most of them have the same issue:"
+			"- The source-codes contains dozens of translation units, which slows down compile time enormously"
+			"- Almost all are designed to not include the full source within your application and therefore force you to either static or runtime linked with pre-compiled binaries"
+			"- Some even, don't allow static linking at all"
+			"- Limited or no control over memory allocations, so passing in your own memory-allocator is not possible"
+			"- C-Runtime library requirement"
+			"- Too many dependencies (build-systems, third-party libraries, etc.)"
+			"- Bad API design"
+			"- Not very well documented"
 		};
 
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
 				V2f(0.05f, 0.0f),V2f(0.9f, 0.25),MakeAlign(HorizontalAlignment::Left),
-				"C/C++ has very limited access to the underlying platform,\n"
-				"so you have either use third-party libraries to access the platform or\n"
-				"write platform specific codes directly.\n",
+				"'C' or '/C++' has very limited access to the underlying platform,\n"
+				"so you have either use third-party libraries or\n"
+				"write specific platform or hardware codes yourself.\n",
 				HorizontalAlignment::Left
 			),
 
@@ -296,7 +301,8 @@ namespace FPLPresentationData {
 				"- Limited control over the allocated memory\n"
 				"- Statically linking is madness or not supported at all\n"
 				"- Including the full source is not supported\n"
-				"- Too many dependencies\n",
+				"- Too many dependencies\n"
+				"- Not very well documented\n",
 				HorizontalAlignment::Left, FeaturesFontSize
 			),
 		};
@@ -308,12 +314,17 @@ namespace FPLPresentationData {
 
 	namespace Goals {
 		static const char* Talk = {
-			"That builds up the following goals:"
+			"That builts up the following goals:"
+			""
 			"- It should compile very fast, even in slow environments"
 			"- It should not require any third-party dependencies and have bare minimum linking requirements"
-			"- It should use a fixed memory footprint and give the user control over any memory allocations"
-			"- It should support runtime and static linking and can be integrated with full source"
-			"- It starts with good default settings but can be changed by the user"
+			"- It should use a fixed memory footprint and give the user control over memory allocations"
+			"- It should support dynamic, runtime and static linking and can be integrated with full source"
+			"- It should not hide any data and let the user decide how to integrate it"
+			"- It starts with good default settings, but can be changed by the user"
+			"- It should not require the CRT (C-Runtime-Library)"
+			"- It should have good documentation with lots of example-codes and samples"
+			"- It should be fully open-source without limitations"
 		};
 
 		static BlockDefinition Blocks[] = {
@@ -327,6 +338,7 @@ namespace FPLPresentationData {
 				"- Supports runtime or static linking or full-source inclusion\n"
 				"- C-Runtime library should not be required\n"
 				"- Configurable with good defaults\n"
+				"- Good documentation with lots of samples\n"
 				"- Public open source\n",
 				HorizontalAlignment::Left, FeaturesFontSize * 1.1f
 			),
@@ -339,7 +351,17 @@ namespace FPLPresentationData {
 
 	namespace WhyFPL {
 		static const char* Talk = {
+			"Why FPL?"
 			""
+			"- You get access to low-level systems in a well designed, and clean API"
+			"- It is one file, that contains the full source code and the header inclusion, making it very flexible how it can be integrated"
+			"- Its written in pure C99, so that it stays simple and can be compiled everywhere
+			"- Also it is 100% C++ compabible"
+			"- It compiles very fast, even on slower machines"
+			"- It has almost no compile and linking requirements, because it uses runtime linking by default"
+			"- You have control over most of the memory and the memory is handled very gracefully"
+			"- It is stateless, meaning the user does not have to provide any application states"
+			"- It is MIT-Licensed, so you can even use it in commercial software without any limitations",
 		};
 
 		static BlockDefinition Blocks[] = {
