@@ -2041,6 +2041,22 @@ static void JumpToPrevSlide(App &app) {
 	}
 }
 
+static void JumpToFirstSlide(App &app) {
+	PresentationState &state = app.state;
+	size_t slideCount = app.presentation.slides.Count();
+	if (slideCount > 0) {
+		ShowSlideshow(app, 0, true);
+	}
+}
+
+static void JumpToLastSlide(App &app) {
+	PresentationState &state = app.state;
+	size_t slideCount = app.presentation.slides.Count();
+	if (slideCount > 0) {
+		ShowSlideshow(app, (uint32_t)(slideCount - 1), true);
+	}
+}
+
 static void AddTextBlock(Renderer &renderer, Slide &slide, const Vec2f &offset, const char *text, const char *fontName, const float fontSize, const float lineHeight, const TextStyle &style, const HorizontalAlignment hAlign, const VerticalAlignment vAlign) {
 	const LoadedFont *font = renderer.FindFont(fontName, fontSize);
 	Vec2f pos = offset;
@@ -2334,6 +2350,14 @@ int main(int argc, char **argv) {
 
 									case fplKey_PageDown:
 										JumpToNextSlide(app);
+										break;
+
+									case fplKey_Home:
+										JumpToFirstSlide(app);
+										break;
+
+									case fplKey_End:
+										JumpToLastSlide(app);
 										break;
 								}
 							}
