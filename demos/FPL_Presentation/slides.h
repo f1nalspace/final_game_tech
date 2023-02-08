@@ -160,6 +160,8 @@ namespace FPLPresentationData {
 	static BackgroundStyle Background11 = MakeBackground(RGBAToLinearHex24(0x000000), RGBAToLinearHex24(0xB7006A));
 	static BackgroundStyle Background12 = MakeBackground(RGBAToLinearHex24(0x000000), RGBAToLinearHex24(0x59227A));
 
+	static BackgroundStyle Background13 = MakeBackground(RGBAToLinearHex24(0x000000), RGBAToLinearHex24(0x33AE3B));
+
 	static BackgroundStyle Backgrounds[] = {
 		Background1,
 		Background2,
@@ -173,6 +175,7 @@ namespace FPLPresentationData {
 		Background10,
 		Background11,
 		Background12,
+		Background13,
 	};
 
 	static int BackgroundIndex = 0;
@@ -355,7 +358,7 @@ namespace FPLPresentationData {
 			""
 			"- You get access to low-level systems in a well designed, and clean API"
 			"- It is one file, that contains the full source code and the header inclusion, making it very flexible how it can be integrated"
-			"- Its written in pure C99, so that it stays simple and can be compiled everywhere
+			"- Its written in pure C99, so that it stays simple and can be compiled everywhere"
 			"- Also it is 100% C++ compabible"
 			"- It compiles very fast, even on slower machines"
 			"- It has almost no compile and linking requirements, because it uses runtime linking by default"
