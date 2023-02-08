@@ -198,7 +198,7 @@ namespace FPLPresentationData {
 			MakeTextDef(
 				V2f(),V2f(1,1),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
 				"Introducing Final-Platform-Layer (FPL)\n"
-				"A lightweight Platform-Abstraction-Library written in 'C99'\n",
+				"A lightweight Platform-Abstraction-Library written in C99\n",
 				HorizontalAlignment::Center
 			),
 		};
@@ -216,7 +216,7 @@ namespace FPLPresentationData {
 			"Some are very easy to access, some are complicated and some are so complicated,"
 			"that you have to know and call driver functions directly - requiring to write thousands lines of codes."
 			""
-			"A platform abstraction layer (or short 'PAL') is a development library, written in a low-level language such as 'C' or 'C++',"
+			"A platform abstraction layer (or short 'PAL') is a development library, written in a low-level language such as C or C++,"
 			"that implements most of these drivers and functions for you and makes it easy-to-use in a nice clean API."
 			""
 			"In addition everything is abstracted in a way, that makes it platform-independent - meaning you write code once and runs on all supported platforms."
@@ -227,7 +227,7 @@ namespace FPLPresentationData {
 				V2f(),V2f(1,1),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
 				"A platform abstraction layer (or short 'PAL')\n"
 				"is a development library,\n"
-				"written in a low-level language such as 'C' or 'C++',\n"
+				"written in a low-level language such as C or C++,\n"
 				"used to access hardware and low-level systems\n"
 				"in a platform-independent way.\n",
 				HorizontalAlignment::Left
@@ -290,7 +290,7 @@ namespace FPLPresentationData {
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
 				V2f(0.05f, 0.0f),V2f(0.9f, 0.25),MakeAlign(HorizontalAlignment::Left),
-				"'C' or '/C++' has very limited access to the underlying platform,\n"
+				"C or /C++ has very limited access to the underlying platform,\n"
 				"so you have either use third-party libraries or\n"
 				"write specific platform or hardware codes yourself.\n",
 				HorizontalAlignment::Left
