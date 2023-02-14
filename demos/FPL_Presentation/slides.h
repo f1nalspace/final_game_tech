@@ -217,9 +217,9 @@ namespace FPLPresentationData {
 			"that you have to know and call driver functions directly - requiring to write thousands lines of codes."
 			""
 			"A platform abstraction layer (or short 'PAL') is a development library, written in a low-level language such as C or C++,"
-			"that implements most of these drivers and functions for you and makes it easy-to-use in a nice clean API."
+			"that implements the common drivers and functions for you and makes it easy-to-use in a nice clean API."
 			""
-			"In addition everything is abstracted in a way, that makes it platform-independent - meaning you write code once and runs on all supported platforms."
+			"In addition everything is abstracted in a way, that makes it platform-independent - meaning you can write code only once that runs everywhere."
 		};
 
 		static BlockDefinition Blocks[] = {
@@ -242,11 +242,11 @@ namespace FPLPresentationData {
 	namespace WhatIsFPL {
 		static const char* Talk = {
 			"Final-Platform-Layer (or short 'FPL') is a lightweight platform-abstraction-layer written in C99, that provides a powerful and easy-to-use API,"
-			"for accessing low-level and hardware devices, such as audio, video, memory, window, input, threads, and many more."
+			"for accessing low-level and hardware devices: audio, video, memory, window-management, input, threads, and many more."
 			""
-			"Its main usage is multimedia and game development but can be used to write any kind of software."
+			"Its main usage is multimedia development, but can be used to write any kind of software."
 			""
-			"'FPL' is designed to be very fast, in compile and run time and can be integrated however you like."
+			"FPL is designed to be very fast, in compile and run time and can be integrated however you like."
 			"You can statically link it, you can dynamically link it or you can include the full source code."
 		};
 
@@ -273,18 +273,19 @@ namespace FPLPresentationData {
 			"C has very limited access to the underlying platform."
 			"Even in modern C++, you still don't have direct access to a lot of systems at all."
 			""
-			"To access low-level systems and hardware, such as audio, video, etc. you either need to use third-party libraries"
-			"or write platform-specific codes for every platform and every hardware device yourself."
+			"To access hardware and low-level systems, such as audio, video, etc. you either need to use third-party libraries,"
+			"or write specific codes for every platform and every hardware device yourself."
 			""
-			"Of course, there already exists a few PALs on the internet, but most of them have the same issue:"
+			"Of course, they already exists a few PALs on the internet, but most of them have the same issue:"
+			""
 			"- The source-codes contains dozens of translation units, which slows down compile time enormously"
 			"- Almost all are designed to not include the full source within your application and therefore force you to either static or runtime linked with pre-compiled binaries"
 			"- Some even, don't allow static linking at all"
+			"- Statically linked versions are often incompatible with your development environment"
 			"- Limited or no control over memory allocations, so passing in your own memory-allocator is not possible"
-			"- C-Runtime library requirement"
-			"- Too many dependencies (build-systems, third-party libraries, etc.)"
-			"- Bad API design"
-			"- Not very well documented"
+			"- They have too many dependencies (build-systems, third-party libraries, etc.)"
+			"- Some have very bad API design or are very hard to use"
+			"- Some are not very well documented"
 		};
 
 		static BlockDefinition Blocks[] = {
