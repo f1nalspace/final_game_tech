@@ -61,12 +61,11 @@ private:
 	ThreadPoolState _state;
 public:
 	ThreadPool(const size_t threadCount) {
-		assert(threadCount <= MAX_THREADPOOL_THREAD_COUNT);
 		_state = {};
-		_state.threadCount = threadCount;
+		_state.threadCount = fplMax(fplMin(threadCount, MAX_THREADPOOL_THREAD_COUNT), 1);
 		fplMutexInit(&_state.queueMutex);
 		fplConditionInit(&_state.queueCondition);
-		for(size_t workerIndex = 0; workerIndex < threadCount; ++workerIndex) {
+		for(size_t workerIndex = 0; workerIndex < _state.threadCount; ++workerIndex) {
 			_state.threads[workerIndex] = fplThreadCreate(ThreadPoolWorkerThreadProc, &_state);
 		}
 	}
