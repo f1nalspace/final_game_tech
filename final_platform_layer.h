@@ -23267,8 +23267,8 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 		fplMemoryAlignedFree(appState);
 		fpl__global__AppState = fpl_null;
 	}
-	initState->initResult = fplPlatformResultType_NotInitialized;
-	initState->isInitialized = false;
+
+	fplClearStruct(initState);
 }
 
 #define FPL__PLATFORMTYPE_COUNT FPL__ENUM_COUNT(fplPlatformType_First, fplPlatformType_Last)
