@@ -149,6 +149,8 @@ SOFTWARE.
 	- New: Added function GetAvailableThreadCount() that returns the number of available threads
 	- New: Added function GetUsedThreadCount() that returns the number of used/active threads
 	- New: Added union fplColor32 for representing a 32-bit color value
+	- New: Added typedef fplMilliseconds that specifies milliseconds as 64-bit integer
+	- New: Added typedef fplSeconds that specifies seconds as 64-bit floating point
 	- New: Added field background as @ref fplColor32 to @ref fplWindowSettings
 	- New: Added fields isScreenSaverPrevented/isMonitorPowerPrevented to configure, if monitor-off or screensaver is prevented
 	- Fixed[#135]: Stackoverflow in fpl__PushError_Formatted() when FPL_USERFUNC_vsnprintf is overloaded
@@ -197,9 +199,9 @@ SOFTWARE.
 	- Changed: Renamed function fplFormatString() to fplStrngFormat()
 	- Changed: Renamed function fplFormatStringArgs() to fplStrngFormatArgs()
 	- Changed: Renamed function fplGetWallClock() to fplTimestampQuery()
+	- Changed: Renamed function fplGetTimeInMilliseconds() to fplMillisecondsQuery()
 	- Changed: Renamed function fplGetWallDelta() to fplTimestampElapsed()
 	- Changed: Renamed struct fplWallClock to fplTimestamp
-	- Changed: Renamed function fplGetTimeInMilliseconds() to fplTimeMilliseconds()
 	- Changed: Removed obsolete functions fplGetTimeInSeconds*()
 	- Changed: Removed obsolete functions fplGetTimeInMillisecondsHP()
 	- Changed: Removed obsolete functions fplGetTimeInMillisecondsLP()
@@ -4499,6 +4501,12 @@ typedef uint32_t fplTimeoutValue;
 //! Infinite timeout constant
 #define FPL_TIMEOUT_INFINITE UINT32_MAX
 
+//! A type definition for seconds / 64-bit.
+typedef double fplSeconds;
+
+//! A type definition for milliseconds / 64-bit.
+typedef uint64_t fplMilliseconds;
+
 /**
 * @brief Gets the current @ref fplTimestamp with most precision, used for time delta measurements only.
 * @return Returns the resulting @ref fplTimestamp.
@@ -4506,15 +4514,15 @@ typedef uint32_t fplTimeoutValue;
 */
 fpl_platform_api fplTimestamp fplTimestampQuery();
 /**
-* @brief Gets the delta value from two @ref fplTimestamp values in seconds.
-* @return Returns the resulting elapsed time in seconds.
-*/
-fpl_platform_api double fplTimestampElapsed(const fplTimestamp start, const fplTimestamp finish);
-/**
 * @brief Gets the current system clock in milliseconds, since some fixed starting point (OS start, System start, etc), used for time delta measurements only.
-* @return Returns the number of milliseconds.
+* @return Returns the number of milliseconds as @ref fplMilliseconds.
 */
-fpl_platform_api uint64_t fplTimeMilliseconds();
+fpl_platform_api fplMilliseconds fplMillisecondsQuery();
+/**
+* @brief Gets the delta value from two @ref fplTimestamp values in seconds.
+* @return Returns the resulting elapsed time in seconds as @ref fplSeconds.
+*/
+fpl_platform_api fplSeconds fplTimestampElapsed(const fplTimestamp start, const fplTimestamp finish);
 
 /** @} */
 
@@ -11832,7 +11840,7 @@ fpl_internal bool fpl__Win32ThreadWaitForMultiple(fplThreadHandle **threads, con
 
 	// @NOTE(final): WaitForMultipleObjects does not work for us here, because each thread will close its handle automatically
 	// So we screw it and use a simple while loop and wait until either the timeout has been reached or all threads has been stopped.
-	uint64_t startTime = fplTimeMilliseconds();
+	fplMilliseconds startTime = fplMillisecondsQuery();
 	size_t minThreads = waitForAll ? count : 1;
 	size_t stoppedThreads = 0;
 	while (stoppedThreads < minThreads) {
@@ -11847,7 +11855,7 @@ fpl_internal bool fpl__Win32ThreadWaitForMultiple(fplThreadHandle **threads, con
 			break;
 		}
 		if (timeout != FPL_TIMEOUT_INFINITE) {
-			if ((fplTimeMilliseconds() - startTime) >= timeout) {
+			if ((fplMillisecondsQuery() - startTime) >= timeout) {
 				break;
 			}
 		}
@@ -13767,22 +13775,22 @@ fpl_platform_api fplTimestamp fplTimestampQuery() {
 	return(result);
 }
 
-fpl_platform_api double fplTimestampElapsed(const fplTimestamp start, const fplTimestamp finish) {
+fpl_platform_api fplSeconds fplTimestampElapsed(const fplTimestamp start, const fplTimestamp finish) {
 	const fpl__Win32InitState *initState = &fpl__global__InitState.win32;
-	double result = 0.0;
+	fplSeconds result;
 	LARGE_INTEGER freq = initState->qpf;
 	if (freq.QuadPart > 0) {
 		uint64_t delta = finish.win32.qpc.QuadPart - start.win32.qpc.QuadPart;
-		result = delta / (double)freq.QuadPart;
+		result = (fplSeconds)(delta / (double)freq.QuadPart);
 	} else {
 		uint64_t delta = finish.win32.ticks - start.win32.ticks;
-		result = delta / 1000.0;
+		result = (fplSeconds)(delta / 1000.0);
 	}
 	return(result);
 }
 
-fpl_platform_api uint64_t fplTimeMilliseconds() {
-	uint64_t result = GetTickCount64();
+fpl_platform_api fplMilliseconds fplMillisecondsQuery() {
+	fplMilliseconds result = (fplMilliseconds)GetTickCount64();
 	return(result);
 }
 
@@ -14696,7 +14704,7 @@ fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle **threads, con
 		}
 	}
 
-	uint64_t startTime = fplTimeMilliseconds();
+	fplMilliseconds startTime = fplMillisecondsQuery();
 	bool result = false;
 	while (completeCount < minCount) {
 		for (uint32_t index = 0; index < maxCount; ++index) {
@@ -14714,7 +14722,7 @@ fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle **threads, con
 			}
 			fplThreadSleep(10);
 		}
-		if ((timeout != FPL_TIMEOUT_INFINITE) && (fplTimeMilliseconds() - startTime) >= timeout) {
+		if ((timeout != FPL_TIMEOUT_INFINITE) && (fplMillisecondsQuery() - startTime) >= timeout) {
 			result = false;
 			break;
 		}
@@ -14913,21 +14921,21 @@ fpl_platform_api fplTimestamp fplTimestampQuery() {
 	return(result);
 }
 
-fpl_platform_api double fplTimestampElapsed(const fplTimestamp start, const fplTimestamp finish) {
+fpl_platform_api fplSeconds fplTimestampElapsed(const fplTimestamp start, const fplTimestamp finish) {
 	uint64_t deltaSeconds = finish.posix.seconds - start.posix.seconds;
 	int64_t deltaNanos = finish.posix.nanoSeconds - start.posix.nanoSeconds;
 	if (deltaNanos < 0) {
 		--deltaSeconds;
 		deltaNanos += 1000000000L;
 	}
-	double result = (double)deltaSeconds + ((double)deltaNanos * 1e-9);
+	fplSeconds result = (fplSeconds)deltaSeconds + ((fplSeconds)deltaNanos * 1e-9);
 	return(result);
 }
 
-fpl_platform_api uint64_t fplTimeMilliseconds() {
+fpl_platform_api fplMilliseconds fplMillisecondsQuery() {
 	struct timeval  tv;
 	gettimeofday(&tv, fpl_null);
-	uint64_t result = tv.tv_sec * 1000 + ((uint64_t)tv.tv_usec / 1000);
+	fplMilliseconds result = (fplMilliseconds)(tv.tv_sec * 1000 + ((uint64_t)tv.tv_usec / 1000));
 	return(result);
 }
 
@@ -17923,8 +17931,8 @@ fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl
 	// https://gist.github.com/jasonwhite/c5b2048c15993d285130
 	// https://github.com/Tasssadar/libenjoy/blob/master/src/libenjoy_linux.c
 
-	if (((controllersState->lastCheckTime == 0) || ((fplTimeMilliseconds() - controllersState->lastCheckTime) >= settings->input.controllerDetectionFrequency)) || !useEvents) {
-		controllersState->lastCheckTime = fplTimeMilliseconds();
+	if (((controllersState->lastCheckTime == 0) || ((fplMillisecondsQuery() - controllersState->lastCheckTime) >= settings->input.controllerDetectionFrequency)) || !useEvents) {
+		controllersState->lastCheckTime = fplMillisecondsQuery();
 
 		//
 		// Detect new controllers

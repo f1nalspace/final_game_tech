@@ -380,7 +380,7 @@ extern int GameMain(const GameConfiguration &config) {
 		fplTimestamp lastTime = fplZeroInit;
 		double lastFrameTime = TargetDeltaTime;
 
-		uint64_t lastFPSTime = fplTimeMilliseconds();
+		uint64_t lastFPSTime = fplMillisecondsQuery();
 		double framesPerSecond = 0.0;
 		int frameIndex = 0;
 
@@ -457,7 +457,7 @@ extern int GameMain(const GameConfiguration &config) {
 				frameAccumulator = TargetDeltaTime;
 
 				framesPerSecond = 0.0f;
-				lastFPSTime = fplTimeMilliseconds();
+				lastFPSTime = fplMillisecondsQuery();
 				updateCount = frameCount = 0;
 			}
 
@@ -502,13 +502,13 @@ extern int GameMain(const GameConfiguration &config) {
 			//
 			// FPS-Timer
 			//
-			if((fplTimeMilliseconds() - lastFPSTime) >= 1000) {
+			if((fplMillisecondsQuery() - lastFPSTime) >= 1000) {
 #if 0
 				char charBuffer[256];
 				fplFormatString(charBuffer, fplArrayCount(charBuffer), "Fps: %d, Ups: %d\n", frameCount, updateCount);
 				OutputDebugStringA(charBuffer);
 #endif
-				lastFPSTime = fplTimeMilliseconds();
+				lastFPSTime = fplMillisecondsQuery();
 				frameCount = 0;
 				updateCount = 0;
 			}
