@@ -205,6 +205,7 @@ SOFTWARE.
 	- Changed: Removed obsolete functions fplGetTimeInMillisecondsLP()
 	- Changed: Replaced enum flag fplVulkanValidationLayerMode_User with fplVulkanValidationLayerMode_Optional
 	- Changed: Replaced enum flag fplVulkanValidationLayerMode_Callback with fplVulkanValidationLayerMode_Required
+	- Changed: Moved fplTimeoutValue and FPL_TIMEOUT_INFINITE to time sections
 
 	## v0.9.7-beta
 
@@ -4493,6 +4494,11 @@ typedef union fplTimestamp {
 	uint64_t unused;
 } fplTimestamp;
 
+//! A type definition for a timeout value in milliseconds
+typedef uint32_t fplTimeoutValue;
+//! Infinite timeout constant
+#define FPL_TIMEOUT_INFINITE UINT32_MAX
+
 /**
 * @brief Gets the current @ref fplTimestamp with most precision, used for time delta measurements only.
 * @return Returns the resulting @ref fplTimestamp.
@@ -4519,11 +4525,6 @@ fpl_platform_api uint64_t fplTimeMilliseconds();
 * @{
 */
 // ----------------------------------------------------------------------------
-
-//! A type definition for a timeout value in milliseconds
-typedef uint32_t fplTimeoutValue;
-//! Infinite timeout constant
-#define FPL_TIMEOUT_INFINITE UINT32_MAX
 
 //! An enumeration of thread states
 typedef enum fplThreadStates {
