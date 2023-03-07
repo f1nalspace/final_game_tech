@@ -306,7 +306,9 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 
 	AudioFrameIndex frameCount = visualization->videoAudioChunks[0].count;
 
-	uint8_t *chunkSamples = visualization->videoAudioChunks[0].samples;
+	AudioFramesChunk *chunk = &visualization->videoAudioChunks[0];
+
+	uint8_t *chunkSamples = chunk->samples;
 
 	if(demo->useRealTimeSamples) {
 		if(fplAtomicIsCompareAndSwapU32(&visualization->hasVideoAudioChunk, 2, 3)) {
@@ -330,11 +332,13 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 			size_t totalSizeToCopy = remainingChunkFrames * frameSize;
 			size_t chunkSamplesOffset = framesPlayed * frameSize;
 			const uint8_t *p = fullAudioBuffer->samples + chunkSamplesOffset;
+			fplAssert(fullAudioBuffer->bufferSize >= totalSizeToCopy);
 			fplMemoryCopy(p, totalSizeToCopy, chunkSamples);
 		}
 
 		if(remainingChunkFrames < MAX_AUDIO_FRAMES_CHUNK_FRAMES) {
 			size_t totalSizeToClear = MAX_AUDIO_FRAMES_CHUNK_FRAMES * frameSize;
+			fplAssert(chunk->count >= MAX_AUDIO_FRAMES_CHUNK_FRAMES);
 			fplMemoryClear(chunkSamples, totalSizeToClear);
 		}
 
