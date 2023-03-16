@@ -1739,31 +1739,31 @@ static void TestInlining() {
 }
 
 static void TestTimes() {
-	ftMsg("Test fplWallClock and fplGetWallDelta\n");
+	ftMsg("Test fplTimestampQuery and fplTimestampElapsed\n");
 	// 0.5 secs
 	{
-		fplWallClock start = fplGetWallClock();
+		fplTimestamp start = fplTimestampQuery();
 		fplThreadSleep(500);
-		fplWallClock ende = fplGetWallClock();
-		double delta = fplGetWallDelta(start, ende);
+		fplTimestamp ende = fplTimestampQuery();
+		double delta = fplTimestampElapsed(start, ende);
 		ftAssert(delta >= 0.5 && delta < 0.75);
 	}
 
 	// 1.0 secs
 	{
-		fplWallClock start = fplGetWallClock();
+		fplTimestamp start = fplTimestampQuery();
 		fplThreadSleep(750);
-		fplWallClock ende = fplGetWallClock();
-		double delta = fplGetWallDelta(start, ende);
+		fplTimestamp ende = fplTimestampQuery();
+		double delta = fplTimestampElapsed(start, ende);
 		ftAssert(delta >= 0.75 && delta < 1.0);
 	}
 
 	// 1.5 secs
 	{
-		fplWallClock start = fplGetWallClock();
+		fplTimestamp start = fplTimestampQuery();
 		fplThreadSleep(1500);
-		fplWallClock ende = fplGetWallClock();
-		double delta = fplGetWallDelta(start, ende);
+		fplTimestamp ende = fplTimestampQuery();
+		double delta = fplTimestampElapsed(start, ende);
 		ftAssert(delta >= 1.5 && delta < 1.75);
 	}
 }

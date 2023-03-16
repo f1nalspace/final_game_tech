@@ -1608,7 +1608,7 @@ int main(int argc, char* argv[]) {
 								input.mouseStates[(int)ev.mouse.mouseButton] = ev.mouse.buttonState;
 							} else if (ev.mouse.type == fplMouseEventType_Wheel) {
 								input.mouseWheelDelta = ev.mouse.wheelDelta;
-								input.lastMouseWheelUpdateTime = fplGetTimeInMillisecondsLP();
+								input.lastMouseWheelUpdateTime = fplMillisecondsQuery();
 							}
 						} break;
 
@@ -1715,7 +1715,7 @@ int main(int argc, char* argv[]) {
 				// Reset mouse wheel delta after half a second
 				uint64_t maxWheelShowTime = 500;
 				if (input.lastMouseWheelUpdateTime > 0) {
-					if (fplGetTimeInMillisecondsLP() - input.lastMouseWheelUpdateTime >= maxWheelShowTime) {
+					if (fplMillisecondsQuery() - input.lastMouseWheelUpdateTime >= maxWheelShowTime) {
 						input.lastMouseWheelUpdateTime = 0;
 						input.mouseWheelDelta = 0.0f;
 					}
@@ -1724,12 +1724,12 @@ int main(int argc, char* argv[]) {
 				// Cursor blinking
 				uint64_t maxCursorShowTime = 500;
 				if (input.lastTextCursorBlinkTime == 0) {
-					input.lastTextCursorBlinkTime = fplGetTimeInMillisecondsLP();
+					input.lastTextCursorBlinkTime = fplMillisecondsQuery();
 					input.showTextCursor = true;
 				} else {
-					if ((fplGetTimeInMillisecondsLP() - input.lastTextCursorBlinkTime) >= maxCursorShowTime) {
+					if ((fplMillisecondsQuery() - input.lastTextCursorBlinkTime) >= maxCursorShowTime) {
 						input.showTextCursor = !input.showTextCursor;
-						input.lastTextCursorBlinkTime = fplGetTimeInMillisecondsLP();
+						input.lastTextCursorBlinkTime = fplMillisecondsQuery();
 					}
 				}
 

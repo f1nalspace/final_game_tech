@@ -2327,7 +2327,8 @@ int main(int argc, char **argv) {
 			app.entropy = RandomSeed(1337);
 
 			float dt = 1.0f / 60.0f;
-			double lastTime = fplGetTimeInSecondsHP();
+			fplTimestamp startTime = fplTimestampQuery();
+			fplTimestamp currentTime = startTime;
 			while (fplWindowUpdate()) {
 				fplEvent ev;
 				while (fplPollEvent(&ev)) {
@@ -2379,9 +2380,9 @@ int main(int argc, char **argv) {
 
 				fplVideoFlip();
 
-				double currentTime = fplGetTimeInSecondsHP();
-				dt = (float)(currentTime - lastTime);
-				lastTime = currentTime;
+				currentTime = fplTimestampQuery();
+				dt = (float)fplTimestampElapsed(startTime, currentTime);
+				startTime = currentTime;
 			}
 
 			if (fplIsWindowFullscreen()) {

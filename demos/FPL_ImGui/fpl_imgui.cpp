@@ -325,7 +325,8 @@ int main(int argc, char **args) {
 
 		ImGuiIO& io = ImGui::GetIO();
 
-		double lastTime = fplGetTimeInSecondsHP();
+		fplTimestamp lastTime = fplTimestampQuery();
+		fplTimestamp currentTime = fplZeroInit;
 		float lastDeltaTime = 1.0f / 60.0f;
 
 		while(fplWindowUpdate()) {
@@ -383,8 +384,9 @@ int main(int argc, char **args) {
 
 			fplVideoFlip();
 
-			double currentTime = fplGetTimeInSecondsHP();
-			lastDeltaTime = lastTime > 0.0 ? (float)(currentTime - lastTime) : (float)(1.0f / 60.0f);
+			currentTime = fplTimestampQuery();
+			double elapsedTime = fplTimestampElapsed(lastTime, currentTime);
+			lastDeltaTime = elapsedTime > 0.0 ? (float)elapsedTime : (float)(1.0f / 60.0f);
 			lastTime = currentTime;
 		}
 

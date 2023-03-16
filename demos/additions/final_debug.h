@@ -25,14 +25,14 @@ typedef enum DebugType {
 } DebugType;
 
 typedef struct DebugEvent {
+	fplTimestamp time;
 	uint64_t cycles;
-	uint64_t time;
 	char *guid;
 	uint16_t threadID;
 	uint16_t coreIndex;
 	uint8_t type;
 } DebugEvent;
-fplStaticAssert(sizeof(DebugEvent) % 32 == 0);
+fplStaticAssert(sizeof(DebugEvent) % 8 == 0);
 
 #define MAX_DEBUG_EVENT_COUNT (16 * 65536)
 
@@ -117,7 +117,7 @@ static void RecordDebugEvent(DebugType type, char* guid) {
 	fplAssert(eventIndex < fplArrayCount(globalDebugTable->events[0]));
 	DebugEvent *ev = globalDebugTable->events[arrayIndex_EventIndex >> 32] + eventIndex;
 	ev->cycles = fplCPURDTSC();
-	ev->time = fplGetTimeInSecondsHP();
+	ev->time = fplTimestampQuery();
 	ev->type = (uint8_t)type;
 	ev->coreIndex = 0;
 	ev->threadID = (uint16_t)fplGetCurrentThreadId();
