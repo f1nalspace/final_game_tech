@@ -149,6 +149,8 @@ SOFTWARE.
 	- New: Added function GetAvailableThreadCount() that returns the number of available threads
 	- New: Added function GetUsedThreadCount() that returns the number of used/active threads
 	- New: Added union fplColor32 for representing a 32-bit color value
+	- New: Added typedef fplMilliseconds that specifies milliseconds as 64-bit integer
+	- New: Added typedef fplSeconds that specifies seconds as 64-bit floating point
 	- New: Added field background as @ref fplColor32 to @ref fplWindowSettings
 	- New: Added fields isScreenSaverPrevented/isMonitorPowerPrevented to configure, if monitor-off or screensaver is prevented
 	- Fixed[#135]: Stackoverflow in fpl__PushError_Formatted() when FPL_USERFUNC_vsnprintf is overloaded
@@ -196,8 +198,16 @@ SOFTWARE.
 	- Changed: Renamed function fplGetPlatformResultName() to fplPlatformGetResultName()
 	- Changed: Renamed function fplFormatString() to fplStrngFormat()
 	- Changed: Renamed function fplFormatStringArgs() to fplStrngFormatArgs()
+	- Changed: Renamed function fplGetWallClock() to fplTimestampQuery()
+	- Changed: Renamed function fplGetTimeInMilliseconds() to fplMillisecondsQuery()
+	- Changed: Renamed function fplGetWallDelta() to fplTimestampElapsed()
+	- Changed: Renamed struct fplWallClock to fplTimestamp
+	- Changed: Removed obsolete functions fplGetTimeInSeconds*()
+	- Changed: Removed obsolete functions fplGetTimeInMillisecondsHP()
+	- Changed: Removed obsolete functions fplGetTimeInMillisecondsLP()
 	- Changed: Replaced enum flag fplVulkanValidationLayerMode_User with fplVulkanValidationLayerMode_Optional
 	- Changed: Replaced enum flag fplVulkanValidationLayerMode_Callback with fplVulkanValidationLayerMode_Required
+	- Changed: Moved fplTimeoutValue and FPL_TIMEOUT_INFINITE to time sections
 
 	## v0.9.7-beta
 
@@ -2460,6 +2470,17 @@ typedef fpl__Win32Handle fpl__Win32WindowHandle;
 typedef fpl__Win32Handle fpl__Win32DeviceContext;
 //! A win32 rendering context (opaque, min 4/8 bytes)
 typedef fpl__Win32Handle fpl__Win32RenderingContext;
+//! A win32 structure for storing a large integer for QPC (opaque, 8 bytes)
+typedef union fpl__Win32LargeInteger {
+	//! 64-bit part
+	int64_t QuadPart;
+	struct {
+		//! 32-bit low part
+		int32_t LowPart;
+		//! 32-bit high part
+		int32_t HighPart;
+	};
+} fpl__Win32LargeInteger;
 
 #	endif // FPL_PLATFORM_WINDOWS
 
@@ -2536,6 +2557,8 @@ typedef HWND fpl__Win32WindowHandle;
 typedef HDC fpl__Win32DeviceContext;
 //! A win32 rendering context
 typedef HGLRC fpl__Win32RenderingContext;
+//! A win32 structure for storing a large integer for QPC
+typedef LARGE_INTEGER fpl__Win32LargeInteger;
 
 #	endif // FPL_PLATFORM_WINDOWS
 
@@ -4450,16 +4473,17 @@ fpl_common_api void fplConsoleFormatError(const char *format, ...);
 */
 // ----------------------------------------------------------------------------
 
-//! A structure storing the wallclock, used for time-measurements only.
-typedef union fplWallClock {
+//! A structure storing a timestamp, used for delta measurements only.
+typedef union fplTimestamp {
 #if defined(FPL_PLATFORM_WINDOWS)
 	//! Win32 specifics
 	struct {
-		//! Query performance count
-		uint64_t qpc;
+		//! Query performance count in 10th nanoseconds
+		fpl__Win32LargeInteger qpc;
+		//! Tick count in milliseconds
+		uint64_t ticks;
 	} win32;
-#endif
-#if defined(FPL_SUBPLATFORM_POSIX)
+#elif defined(FPL_SUBPLATFORM_POSIX)
 	//! POSIX specifics
 	struct {
 		//! Number of seconds
@@ -4470,55 +4494,35 @@ typedef union fplWallClock {
 #endif
 	//! Field for preventing union to be empty
 	uint64_t unused;
-} fplWallClock;
+} fplTimestamp;
+
+//! A type definition for a timeout value in milliseconds
+typedef uint32_t fplTimeoutValue;
+//! Infinite timeout constant
+#define FPL_TIMEOUT_INFINITE UINT32_MAX
+
+//! A type definition for seconds / 64-bit.
+typedef double fplSeconds;
+
+//! A type definition for milliseconds / 64-bit.
+typedef uint64_t fplMilliseconds;
 
 /**
-* @brief Gets the current wall clock in high precision (micro/nanoseconds) used for time-measurements only.
-* @return Returns a @ref fplWallClock containing some fixed starting point (OS start, System start, etc).
-* @note Can only be used to calculate a difference in time!
+* @brief Gets the current @ref fplTimestamp with most precision, used for time delta measurements only.
+* @return Returns the resulting @ref fplTimestamp.
+* @note Use @ref fplTimestampElapsed() to get the elapsed time.
 */
-fpl_platform_api fplWallClock fplGetWallClock();
+fpl_platform_api fplTimestamp fplTimestampQuery();
 /**
-* @brief Gets the delta value from two @ref fplWallClock values as seconds.
-* @return Returns the resulting number of seconds.
+* @brief Gets the current system clock in milliseconds, since some fixed starting point (OS start, System start, etc), used for time delta measurements only.
+* @return Returns the number of milliseconds as @ref fplMilliseconds.
 */
-fpl_platform_api double fplGetWallDelta(const fplWallClock start, const fplWallClock finish);
+fpl_platform_api fplMilliseconds fplMillisecondsQuery();
 /**
-* @brief Gets the current system clock in seconds in high precision (micro/nanoseconds).
-* @return Returns the number of seconds since some fixed starting point (OS start, System start, etc).
-* @note Can only be used to calculate a difference in time!
+* @brief Gets the delta value from two @ref fplTimestamp values in seconds.
+* @return Returns the resulting elapsed time in seconds as @ref fplSeconds.
 */
-fpl_platform_api double fplGetTimeInSecondsHP();
-/**
-* @brief Gets the current system clock in seconds in low precision (seconds).
-* @return Returns the number of seconds since some fixed starting point (OS start, System start, etc).
-* @note Can only be used to calculate a difference in time!
-*/
-fpl_platform_api uint64_t fplGetTimeInSecondsLP();
-/**
-* @brief Gets the current system clock in seconds in default precision.
-* @return Returns the number of seconds since some fixed starting point (OS start, System start, etc).
-* @note Can only be used to calculate a difference in time. There is no guarantee to get high precision here, use for high precision @ref fplGetTimeInSecondsHP() instead!
-*/
-fpl_platform_api double fplGetTimeInSeconds();
-/**
-* @brief Gets the current system clock in milliseconds in high precision (micro/nanoseconds)
-* @return Returns the number of milliseconds since some fixed starting point (OS start, System start, etc).
-* @note Can only be used to calculate a difference in time!
-*/
-fpl_platform_api double fplGetTimeInMillisecondsHP();
-/**
-* @brief Gets the current system clock in milliseconds in low precision (milliseconds)
-* @return Returns the number of milliseconds since some fixed starting point (OS start, System start, etc).
-* @note Can only be used to calculate a difference in time!
-*/
-fpl_platform_api uint64_t fplGetTimeInMillisecondsLP();
-/**
-* @brief Gets the current system clock in milliseconds in default precision.
-* @return Returns the number of milliseconds since some fixed starting point (OS start, System start, etc).
-* @note Can only be used to calculate a difference in time!
-*/
-fpl_platform_api uint64_t fplGetTimeInMilliseconds();
+fpl_platform_api fplSeconds fplTimestampElapsed(const fplTimestamp start, const fplTimestamp finish);
 
 /** @} */
 
@@ -4529,11 +4533,6 @@ fpl_platform_api uint64_t fplGetTimeInMilliseconds();
 * @{
 */
 // ----------------------------------------------------------------------------
-
-//! A type definition for a timeout value in milliseconds
-typedef uint32_t fplTimeoutValue;
-//! Infinite timeout constant
-#define FPL_TIMEOUT_INFINITE UINT32_MAX
 
 //! An enumeration of thread states
 typedef enum fplThreadStates {
@@ -8148,6 +8147,7 @@ typedef struct fpl__Win32XInputState {
 
 typedef struct fpl__Win32InitState {
 	HINSTANCE appInstance;
+	LARGE_INTEGER qpf;
 } fpl__Win32InitState;
 
 typedef struct fpl__Win32AppState {
@@ -11840,7 +11840,7 @@ fpl_internal bool fpl__Win32ThreadWaitForMultiple(fplThreadHandle **threads, con
 
 	// @NOTE(final): WaitForMultipleObjects does not work for us here, because each thread will close its handle automatically
 	// So we screw it and use a simple while loop and wait until either the timeout has been reached or all threads has been stopped.
-	uint64_t startTime = fplGetTimeInMillisecondsLP();
+	fplMilliseconds startTime = fplMillisecondsQuery();
 	size_t minThreads = waitForAll ? count : 1;
 	size_t stoppedThreads = 0;
 	while (stoppedThreads < minThreads) {
@@ -11855,7 +11855,7 @@ fpl_internal bool fpl__Win32ThreadWaitForMultiple(fplThreadHandle **threads, con
 			break;
 		}
 		if (timeout != FPL_TIMEOUT_INFINITE) {
-			if ((fplGetTimeInMillisecondsLP() - startTime) >= timeout) {
+			if ((fplMillisecondsQuery() - startTime) >= timeout) {
 				break;
 			}
 		}
@@ -12188,10 +12188,15 @@ fpl_internal bool fpl__Win32InitPlatform(const fplInitFlags initFlags, const fpl
 	fplAssert(appState != fpl_null);
 
 	fpl__Win32InitState *win32InitState = &initState->win32;
-	win32InitState->appInstance = GetModuleHandleA(fpl_null);
 	fpl__Win32AppState *win32AppState = &appState->win32;
 
 	// @NOTE(final): Expect kernel32.lib to be linked always, so VirtualAlloc, LoadLibrary, CreateThread, etc. will always work.
+
+	// Get application instance handle
+	win32InitState->appInstance = GetModuleHandleA(fpl_null);
+
+	// Query performance frequency and store it once, it will never change during runtime
+	QueryPerformanceFrequency(&win32InitState->qpf);
 
 	// Get main thread infos
 	HANDLE mainThreadHandle = GetCurrentThread();
@@ -13757,58 +13762,35 @@ fpl_platform_api size_t fplGetHomePath(char *destPath, const size_t maxDestLen) 
 //
 // Win32 Timings
 //
-fpl_platform_api fplWallClock fplGetWallClock() {
-	fplWallClock result = fplZeroInit;
-	LARGE_INTEGER time;
-	QueryPerformanceCounter(&time);
-	result.win32.qpc = (uint64_t)time.QuadPart;
-	return(result);
-}
-
-fpl_platform_api double fplGetWallDelta(const fplWallClock start, const fplWallClock finish) {
+fpl_platform_api fplTimestamp fplTimestampQuery() {
 	const fpl__Win32InitState *initState = &fpl__global__InitState.win32;
-	LARGE_INTEGER freq;
-	QueryPerformanceFrequency(&freq);
-	uint64_t delta = finish.win32.qpc - start.win32.qpc;
-	double result = delta / (double)freq.QuadPart;
+	fplTimestamp result = fplZeroInit;
+	if (initState->qpf.QuadPart > 0) {
+		LARGE_INTEGER time;
+		QueryPerformanceCounter(&time);
+		result.win32.qpc.QuadPart = time.QuadPart;
+	} else {
+		result.win32.ticks = GetTickCount64();
+	}
 	return(result);
 }
 
-fpl_platform_api double fplGetTimeInSecondsHP() {
+fpl_platform_api fplSeconds fplTimestampElapsed(const fplTimestamp start, const fplTimestamp finish) {
 	const fpl__Win32InitState *initState = &fpl__global__InitState.win32;
-	LARGE_INTEGER time, freq;
-	QueryPerformanceCounter(&time);
-	QueryPerformanceFrequency(&freq);
-	double result = time.QuadPart / (double)freq.QuadPart;
+	fplSeconds result;
+	LARGE_INTEGER freq = initState->qpf;
+	if (freq.QuadPart > 0) {
+		uint64_t delta = finish.win32.qpc.QuadPart - start.win32.qpc.QuadPart;
+		result = (fplSeconds)(delta / (double)freq.QuadPart);
+	} else {
+		uint64_t delta = finish.win32.ticks - start.win32.ticks;
+		result = (fplSeconds)(delta / 1000.0);
+	}
 	return(result);
 }
 
-fpl_platform_api uint64_t fplGetTimeInSecondsLP() {
-	uint64_t result = (uint64_t)GetTickCount64() / 1000;
-	return(result);
-}
-
-fpl_platform_api double fplGetTimeInSeconds() {
-	double result = fplGetTimeInSecondsHP();
-	return(result);
-}
-
-fpl_platform_api double fplGetTimeInMillisecondsHP() {
-	const fpl__Win32InitState *initState = &fpl__global__InitState.win32;
-	LARGE_INTEGER time, freq;
-	QueryPerformanceCounter(&time);
-	QueryPerformanceFrequency(&freq);
-	double result = (time.QuadPart / (double)freq.QuadPart) * 1000.0;
-	return(result);
-}
-
-fpl_platform_api uint64_t fplGetTimeInMillisecondsLP() {
-	uint64_t result = GetTickCount64();
-	return(result);
-}
-
-fpl_platform_api uint64_t fplGetTimeInMilliseconds() {
-	uint64_t result = fplGetTimeInMillisecondsLP();
+fpl_platform_api fplMilliseconds fplMillisecondsQuery() {
+	fplMilliseconds result = (fplMilliseconds)GetTickCount64();
 	return(result);
 }
 
@@ -14722,7 +14704,7 @@ fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle **threads, con
 		}
 	}
 
-	uint64_t startTime = fplGetTimeInMilliseconds();
+	fplMilliseconds startTime = fplMillisecondsQuery();
 	bool result = false;
 	while (completeCount < minCount) {
 		for (uint32_t index = 0; index < maxCount; ++index) {
@@ -14740,7 +14722,7 @@ fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle **threads, con
 			}
 			fplThreadSleep(10);
 		}
-		if ((timeout != FPL_TIMEOUT_INFINITE) && (fplGetTimeInMilliseconds() - startTime) >= timeout) {
+		if ((timeout != FPL_TIMEOUT_INFINITE) && (fplMillisecondsQuery() - startTime) >= timeout) {
 			result = false;
 			break;
 		}
@@ -14930,8 +14912,8 @@ fpl_platform_api void fplAtomicStoreS64(volatile int64_t *dest, const int64_t va
 //
 // POSIX Timings
 //
-fpl_platform_api fplWallClock fplGetWallClock() {
-	fplWallClock result = fplZeroInit;
+fpl_platform_api fplTimestamp fplTimestampQuery() {
+	fplTimestamp result = fplZeroInit;
 	struct timespec t;
 	clock_gettime(CLOCK_MONOTONIC, &t);
 	result.posix.seconds = (uint64_t)t.tv_sec;
@@ -14939,53 +14921,21 @@ fpl_platform_api fplWallClock fplGetWallClock() {
 	return(result);
 }
 
-fpl_platform_api double fplGetWallDelta(const fplWallClock start, const fplWallClock finish) {
+fpl_platform_api fplSeconds fplTimestampElapsed(const fplTimestamp start, const fplTimestamp finish) {
 	uint64_t deltaSeconds = finish.posix.seconds - start.posix.seconds;
 	int64_t deltaNanos = finish.posix.nanoSeconds - start.posix.nanoSeconds;
 	if (deltaNanos < 0) {
 		--deltaSeconds;
 		deltaNanos += 1000000000L;
 	}
-	double result = (double)deltaSeconds + ((double)deltaNanos * 1e-9);
+	fplSeconds result = (fplSeconds)deltaSeconds + ((fplSeconds)deltaNanos * 1e-9);
 	return(result);
 }
 
-fpl_platform_api double fplGetTimeInSecondsHP() {
-	// @TODO(final/POSIX): Do we need to take the performance frequency into account?
-	struct timespec t;
-	clock_gettime(CLOCK_MONOTONIC, &t);
-	double result = (double)t.tv_sec + ((double)t.tv_nsec * 1e-9);
-	return(result);
-}
-
-fpl_platform_api uint64_t fplGetTimeInSecondsLP() {
-	uint64_t result = (uint64_t)time(fpl_null);
-	return(result);
-}
-
-fpl_platform_api double fplGetTimeInSeconds() {
+fpl_platform_api fplMilliseconds fplMillisecondsQuery() {
 	struct timeval  tv;
 	gettimeofday(&tv, fpl_null);
-	double result = (double)tv.tv_sec + ((double)tv.tv_usec * 1e-6);
-	return(result);
-}
-
-fpl_platform_api double fplGetTimeInMillisecondsHP() {
-	struct timespec t;
-	clock_gettime(CLOCK_MONOTONIC, &t);
-	double result = ((double)t.tv_sec + ((double)t.tv_nsec * 1e-9)) * 1000.0;
-	return(result);
-}
-
-fpl_platform_api uint64_t fplGetTimeInMillisecondsLP() {
-	uint64_t result = (uint64_t)time(fpl_null) * 1000;
-	return(result);
-}
-
-fpl_platform_api uint64_t fplGetTimeInMilliseconds() {
-	struct timeval  tv;
-	gettimeofday(&tv, fpl_null);
-	uint64_t result = tv.tv_sec * 1000 + ((uint64_t)tv.tv_usec / 1000);
+	fplMilliseconds result = (fplMilliseconds)(tv.tv_sec * 1000 + ((uint64_t)tv.tv_usec / 1000));
 	return(result);
 }
 
@@ -17981,8 +17931,8 @@ fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl
 	// https://gist.github.com/jasonwhite/c5b2048c15993d285130
 	// https://github.com/Tasssadar/libenjoy/blob/master/src/libenjoy_linux.c
 
-	if (((controllersState->lastCheckTime == 0) || ((fplGetTimeInMillisecondsLP() - controllersState->lastCheckTime) >= settings->input.controllerDetectionFrequency)) || !useEvents) {
-		controllersState->lastCheckTime = fplGetTimeInMillisecondsLP();
+	if (((controllersState->lastCheckTime == 0) || ((fplMillisecondsQuery() - controllersState->lastCheckTime) >= settings->input.controllerDetectionFrequency)) || !useEvents) {
+		controllersState->lastCheckTime = fplMillisecondsQuery();
 
 		//
 		// Detect new controllers

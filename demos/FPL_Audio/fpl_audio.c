@@ -306,7 +306,9 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 
 	AudioFrameIndex frameCount = visualization->videoAudioChunks[0].count;
 
-	uint8_t *chunkSamples = visualization->videoAudioChunks[0].samples;
+	AudioFramesChunk *chunk = &visualization->videoAudioChunks[0];
+
+	uint8_t *chunkSamples = chunk->samples;
 
 	if(demo->useRealTimeSamples) {
 		if(fplAtomicIsCompareAndSwapU32(&visualization->hasVideoAudioChunk, 2, 3)) {
@@ -330,11 +332,13 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 			size_t totalSizeToCopy = remainingChunkFrames * frameSize;
 			size_t chunkSamplesOffset = framesPlayed * frameSize;
 			const uint8_t *p = fullAudioBuffer->samples + chunkSamplesOffset;
+			fplAssert(fullAudioBuffer->bufferSize >= totalSizeToCopy);
 			fplMemoryCopy(p, totalSizeToCopy, chunkSamples);
 		}
 
 		if(remainingChunkFrames < MAX_AUDIO_FRAMES_CHUNK_FRAMES) {
 			size_t totalSizeToClear = MAX_AUDIO_FRAMES_CHUNK_FRAMES * frameSize;
+			fplAssert(chunk->count >= MAX_AUDIO_FRAMES_CHUNK_FRAMES);
 			fplMemoryClear(chunkSamples, totalSizeToClear);
 		}
 
@@ -599,8 +603,8 @@ static uint32_t AudioPlayback(const fplAudioDeviceFormat *outFormat, const uint3
 		uint32_t numFramesPlayed = fplAtomicFetchAndAddU32(&demo->numFramesPlayed, result);
 
 		if(demo->useRealTimeSamples) {
-			const uint32_t updateInterval = 1000 / 60;
-			if((framesToCopy >= MAX_AUDIO_FRAMES_CHUNK_FRAMES) && ((fplGetTimeInMillisecondsLP() - demo->lastVideoAudioChunkUpdateTime) >= updateInterval)) {
+			const uint64_t updateInterval = 1000 / 60;
+			if((framesToCopy >= MAX_AUDIO_FRAMES_CHUNK_FRAMES) && ((fplMillisecondsQuery() - demo->lastVideoAudioChunkUpdateTime) >= updateInterval)) {
 				if(fplAtomicIsCompareAndSwapU32(&visualization->hasVideoAudioChunk, 0, 1)) {
 					visualization->videoAudioChunks[1].index = numFramesPlayed;
 					visualization->videoAudioChunks[1].count = MAX_AUDIO_FRAMES_CHUNK_FRAMES;
@@ -608,7 +612,7 @@ static uint32_t AudioPlayback(const fplAudioDeviceFormat *outFormat, const uint3
 					fplMemoryCopy(outputSamples, chunkSamplesSize, visualization->videoAudioChunks[1].samples);
 					fplAtomicExchangeU32(&visualization->hasVideoAudioChunk, 2);
 				}
-				demo->lastVideoAudioChunkUpdateTime = fplGetTimeInMillisecondsLP();
+				demo->lastVideoAudioChunkUpdateTime = fplMillisecondsQuery();
 			}
 		}
 	}
@@ -632,7 +636,7 @@ static bool StreamAudio(const fplAudioDeviceFormat *format, const uint32_t maxFr
 	bool canStreamWrite = LockFreeRingBufferCanWrite(streamRingBuffer, &availableStreamSpace);
 
 	if(canStreamWrite && (availableStreamSpace % frameSize) == 0) {
-		uint64_t timeStart = fplGetTimeInMillisecondsLP();
+		uint64_t timeStart = fplMillisecondsQuery();
 
 		AudioFrameIndex numOfAvailableFrames = (AudioFrameIndex)fplMax(0, availableStreamSpace / frameSize);
 
@@ -657,7 +661,7 @@ static bool StreamAudio(const fplAudioDeviceFormat *format, const uint32_t maxFr
 		uint32_t lastNumFramesStreamed = fplAtomicFetchAndAddU32(&demo->numFramesStreamed, writtenFrames);
 
 		if(outDuration != fpl_null) {
-			uint64_t delta = fplGetTimeInMilliseconds() - timeStart;
+			uint64_t delta = fplMillisecondsQuery() - timeStart;
 			*outDuration = (uint32_t)delta;
 		}
 
@@ -799,7 +803,7 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 	const float maxBufferThreshold = 0.75f; // In percentage range of 0 to 1
 
 	bool ignoreWait = false;
-	uint64_t startTime = fplGetTimeInMillisecondsLP();
+	uint64_t startTime = fplMillisecondsQuery();
 	while(!demo->isStreamingThreadStopped) {
 		// Load source and play it if needed
 		if(demo->trackList.changedPending) {
@@ -836,7 +840,7 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 					fplAtomicStoreS32(&track->state, AudioTrackState_Failed);
 				}
 				demo->trackList.changedPending = false;
-				startTime = fplGetTimeInMillisecondsLP();
+				startTime = fplMillisecondsQuery();
 			} else {
 				fplAlwaysAssert(!"Invalid code path!");
 			}
@@ -845,12 +849,12 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 		// Wait if needed
 		bool wait = !ignoreWait;
 		if(wait || !currentEntry.canIgnoreWait) {
-			uint64_t deltaTime = fplGetTimeInMillisecondsLP() - startTime;
+			uint64_t deltaTime = fplMillisecondsQuery() - startTime;
 			if(deltaTime < currentEntry.delay) {
 				fplThreadSleep(1);
 				continue;
 			}
-			startTime = fplGetTimeInMillisecondsLP();
+			startTime = fplMillisecondsQuery();
 		}
 
 		if(ignoreWait) {
@@ -1123,7 +1127,7 @@ int main(int argc, char **args) {
 
 		// Loop
 		double totalTime = 0.0;
-		fplWallClock lastTime = fplGetWallClock();
+		fplTimestamp lastTime = fplTimestampQuery();
 		while(fplWindowUpdate()) {
 			fplEvent ev;
 			while(fplPollEvent(&ev)) {
@@ -1150,8 +1154,8 @@ int main(int argc, char **args) {
 			Render(demo, winSize.width, winSize.height, totalTime);
 			fplVideoFlip();
 
-			fplWallClock curTime = fplGetWallClock();
-			double frameTime = fplGetWallDelta(lastTime, curTime);
+			fplTimestamp curTime = fplTimestampQuery();
+			double frameTime = fplTimestampElapsed(lastTime, curTime);
 			totalTime += frameTime;
 			lastTime = curTime;
 		}
