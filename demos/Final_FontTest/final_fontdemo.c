@@ -111,7 +111,8 @@ int main(int argc, char **argv) {
 
 				// UTF8-Encode (https://onlineunicodetools.com/convert-unicode-to-utf8)
 				const char *helloWorldText = "Hello World!";
-				const char *testText = "Five Wax Quacking Zephyrs";
+				const char *fiveWaxText = "Five Wax Quacking Zephyrs";
+				const char *brownFoxText = "The quick brown fox jumps over the lazy dog";
 				const char japAnimeText[] = { 0xe3, 0x82, 0xa2, 0xe3, 0x83, 0x8b, 0xe3, 0x83, 0xa1, 0 }; // A ni me, 3 characters
 				const char japAnimeAndKanaText[] = { 0xe3, 0x82, 0xa2, 0xe3, 0x83, 0x8b, 0xe3, 0x83, 0xa1, 0x20, 0x61, 0x6e, 0x69, 0x6d, 0x65, 0 }; // A ni me anime, 9 characters
 
@@ -218,8 +219,7 @@ int main(int argc, char **argv) {
 					glVertex2f(0.0f, h);
 					glEnd();
 
-					//const char *text = "The quick brown fox jumps over the lazy dog";
-					const char *text = "Five Wax Quacking Zephyrs";
+					const char *text = brownFoxText;
 
 					fntComputeQuadsFlags flags = fntComputeQuadsFlags_None;
 					if (!topDown) {
