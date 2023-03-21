@@ -365,17 +365,17 @@ int main(int argc, char **argv) {
 #endif
 
 					fplVideoFlip();
-						}
+				}
 
 				for (uint32_t bitmapIndex = 0; bitmapIndex < atlas.bitmapCount; ++bitmapIndex) {
 					glDeleteTextures(1, &fontTextures[bitmapIndex]);
 				}
 
 				fntFreeFontAtlas(&atlas);
-					}
-			fglUnloadOpenGL();
-				}
-		fplPlatformRelease();
 			}
-	return (0);
+			fglUnloadOpenGL();
 		}
+		fplPlatformRelease();
+	}
+	return (0);
+}
