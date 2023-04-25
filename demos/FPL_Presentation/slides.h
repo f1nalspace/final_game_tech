@@ -565,7 +565,7 @@ namespace FPLPresentationData {
 		/* font */ {FontResources::Arimo.name, 24.0f, 1.15f, FPLPresentationData::HeaderStyle},
 		/* height */ 32.0f,
 		/* leftText */ "%SLIDE_NAME%",
-		/* centerText */ "Copyright (C) 2021 Torsten Spaete",
+		/* centerText */ "Copyright (C) 2017-2023 Torsten Spaete",
 		/* rightText */ "Page %SLIDE_NUM% of %SLIDE_COUNT%",
 		/* padding */ V2f(2,3),
 	};
