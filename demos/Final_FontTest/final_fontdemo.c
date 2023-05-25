@@ -8,7 +8,7 @@
 #define FNT_IMPLEMENTATION
 #include <final_font.h>
 
-//#include "font_avril_sans_regular.h"
+#include "font_avril_sans_regular.h"
 #include "font_sulfur_point_regular.h"
 
 typedef struct CodePointRange {
@@ -21,10 +21,10 @@ typedef struct CodePointRange {
 static CodePointRange g__unicodeRanges[] = {
 	{33, 126},			// ASCII
 	{161, 255},			// Extended ASCII
-	//{0x3000, 0x303f},	// Japanese-style punctuation
-	//{0x3040, 0x309f},	// Hiragana
-	//{0x30a0, 0x30ff},	// Katakana
-	//{0xff00, 0xffef},	// Full-width roman characters and half-width katakana
+	{0x3000, 0x303f},	// Japanese-style punctuation
+	{0x3040, 0x309f},	// Hiragana
+	{0x30a0, 0x30ff},	// Katakana
+	{0xff00, 0xffef},	// Full-width roman characters and half-width katakana
 	//{0x4e00, 0x9faf},	// CJK unifed ideographs - Common and uncommon kanji
 };
 
@@ -84,12 +84,22 @@ int main(int argc, char **argv) {
 		if (fglLoadOpenGL(true)) {
 			fntFontData fontData = fplZeroInit;
 
-			//fontData = LoadFontFromFile("c:/windows/fonts/arial.ttf");
 #if 1
+			fontData = LoadFontFromFile("c:/windows/fonts/arial.ttf");
+#endif
+
+#if 0
 			fontData.size = fontSulphurPointRegularSize;
 			fontData.data = fontSulphurPointRegularData;
 			fontData.name = fontSulphurPointRegularName;
 			fontData.index = 0;
+#endif
+
+#if 0
+			fontData.size = fontAvrilSansRegularLength;
+			fontData.data = fontAvrilSansRegularData;
+			fontData.name = fontAvrilSansRegularName;
+			fontData.index = 0;			
 #endif
 
 			const uint32_t maxAtlasSize = 1024;
@@ -122,28 +132,31 @@ int main(int argc, char **argv) {
 				fntBounds quadsBounds;
 				size_t quadCount;
 
-#if 0
-				bool r;
+#if 1
+				{
 
-				quadCount = fntGetQuadCountFromUTF8(helloWorldText);
-				fplAssert(quadCount == 12);
-				r = fntComputeQuadsFromUTF8(&atlas, helloWorldText, targetCharHeight, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsBounds);
-				fplAssert(r == true);
+					bool r;
 
-				quadCount = fntGetQuadCountFromUTF8(testText);
-				fplAssert(quadCount == 25);
-				r = fntComputeQuadsFromUTF8(&atlas, testText, targetCharHeight, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsBounds);
-				fplAssert(r == true);
+					quadCount = fntGetQuadCountFromUTF8(helloWorldText);
+					fplAssert(quadCount == 12);
+					r = fntComputeQuadsFromUTF8(&atlas, helloWorldText, targetCharHeight, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsBounds, NULL, NULL);
+					fplAssert(r == true);
 
-				quadCount = fntGetQuadCountFromUTF8(japAnimeText);
-				fplAssert(quadCount == 3);
-				r = fntComputeQuadsFromUTF8(&atlas, japAnimeText, targetCharHeight, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsBounds);
-				fplAssert(r == true);
+					quadCount = fntGetQuadCountFromUTF8(japAnimeText);
+					fplAssert(quadCount == 3);
+					r = fntComputeQuadsFromUTF8(&atlas, japAnimeText, targetCharHeight, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsBounds, NULL, NULL);
+					fplAssert(r == true);
 
-				quadCount = fntGetQuadCountFromUTF8(japAnimeAndKanaText);
-				fplAssert(quadCount == 9);
-				r = fntComputeQuadsFromUTF8(&atlas, japAnimeAndKanaText, targetCharHeight, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsBounds);
-				fplAssert(r == true);
+					quadCount = fntGetQuadCountFromUTF8(japAnimeAndKanaText);
+					fplAssert(quadCount == 9);
+					r = fntComputeQuadsFromUTF8(&atlas, japAnimeAndKanaText, targetCharHeight, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsBounds, NULL, NULL);
+					fplAssert(r == true);
+
+					quadCount = fntGetQuadCountFromUTF8(fiveWaxText);
+					fplAssert(quadCount == 25);
+					r = fntComputeQuadsFromUTF8(&atlas, fiveWaxText, targetCharHeight, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsBounds, NULL, NULL);
+					fplAssert(r == true);
+				}
 #endif
 
 				char homePath[FPL_MAX_PATH_LENGTH];
@@ -219,7 +232,7 @@ int main(int argc, char **argv) {
 					glVertex2f(0.0f, h);
 					glEnd();
 
-					const char *text = brownFoxText;
+					const char *text = japAnimeText;
 
 					fntComputeQuadsFlags flags = fntComputeQuadsFlags_None;
 					if (!topDown) {
