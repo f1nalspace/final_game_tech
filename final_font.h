@@ -966,13 +966,13 @@ extern "C" {
 	} fnt__UTF8State;
 
 	inline uint32_t fnt__TestDecodeUTF8(uint32_t *state, const uint32_t byte) {
-		uint32_t type = fnt__global__UTF8_DecodeTable[byte];
+		uint8_t type = fnt__global__UTF8_DecodeTable[byte];
 		*state = fnt__global__UTF8_DecodeTable[256 + *state * 16 + type];
 		return *state;
 	}
 
 	inline uint32_t fnt__DecodeUTF8(uint32_t *state, uint32_t *codePoint, const uint32_t byte) {
-		uint32_t type = fnt__global__UTF8_DecodeTable[byte];
+		uint8_t type = fnt__global__UTF8_DecodeTable[byte];
 		*codePoint = (*state != fnt__UTF8State_Accept) ? (byte & 0x3fu) | (*codePoint << 6) : (0xff >> type) & (byte);
 		*state = fnt__global__UTF8_DecodeTable[256 + *state * 16 + type];
 		return *state;
@@ -985,13 +985,19 @@ extern "C" {
 
 		for (prev = 0, current = 0; *s; prev = current, ++s) {
 			uint32_t r = fnt__TestDecodeUTF8(&current, *s);
-			if (r == fnt__UTF8State_Accept) {
-				++count;
-			} else {
-				current = fnt__UTF8State_Accept;
-				if (prev != fnt__UTF8State_Accept) {
-					--s;
-				}
+			switch (r) {
+				case fnt__UTF8State_Accept:
+				{
+					++count;
+				} break;
+
+				case fnt__UTF8State_Reject:
+				{
+					current = fnt__UTF8State_Accept;
+					if (prev != fnt__UTF8State_Accept) {
+						--s;
+					}
+				} break;
 			}
 		}
 
@@ -1085,17 +1091,6 @@ extern "C" {
 		uint32_t currentDecodingState, prevDecodingState;
 		for (codePointIndex = 0, currentDecodingState = 0, prevDecodingState = 0; *s; prevDecodingState = currentDecodingState, ++s) {
 			uint32_t d = fnt__DecodeUTF8(&currentDecodingState, &codePoint, *s);
-			if (d != fnt__UTF8State_Reject && d != fnt__UTF8State_Accept) {
-				// Special case for extended ascii-set
-				if (*s >= 128 && *s <= 255) {
-					codePoint = (uint32_t)*s;
-				} else {
-					codePoint = spaceCodePoint;
-				}
-				// Reset decoding state
-				d = fnt__UTF8State_Accept;
-				currentDecodingState = prevDecodingState = 0;
-			}
 			if (d == fnt__UTF8State_Reject) {
 				currentDecodingState = fnt__UTF8State_Accept;
 				if (prevDecodingState != fnt__UTF8State_Accept) {
