@@ -59,3 +59,16 @@ struct TextStyle {
 	Vec2f shadowOffset;
 	b32 drawShadow;
 };
+
+enum class ImageResourceType {
+	FPLLogo128x128 = 0,
+	FPLLogo512x512,
+	FPLFeaturesImage,
+};
+
+struct ImageResource {
+	const uint8_t *bytes;
+	const char *name;
+	const size_t length;
+	ImageResourceType type;
+};

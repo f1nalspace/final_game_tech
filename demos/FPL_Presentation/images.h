@@ -1,6 +1,6 @@
 #pragma once
 
-#include <stdint.h>
+#include "types.h"
 
 //
 // FPL Logo (512x512)
@@ -1474,3 +1474,8 @@ const uint64_t data_fplLogo128x128ImageData[684] = {
 const size_t sizeOf_fplLogo128x128ImageData = 5472;
 const size_t blockSizeOf_fplLogo128x128ImageData = 5472;
 const uint8_t *ptr_fplLogo128x128ImageData = (uint8_t *)data_fplLogo128x128ImageData;
+
+namespace ImageResources {
+	static ImageResource FPLLogo128x128 = { ptr_fplLogo128x128ImageData, "FPL Logo 128x128", sizeOf_fplLogo128x128ImageData, ImageResourceType::FPLLogo128x128 };
+	static ImageResource FPLLogo512x512 = { ptr_fplLogo512x512ImageData, "FPL Logo 512x512", sizeOf_fplLogo512x512ImageData, ImageResourceType::FPLLogo512x512 };
+}

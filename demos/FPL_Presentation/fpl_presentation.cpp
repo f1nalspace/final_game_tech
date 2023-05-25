@@ -620,23 +620,8 @@ struct LoadedFont {
 	}
 };
 
-enum class ImageResourceType {
-	FPLLogo128x128 = 0,
-	FPLLogo512x512,
-	FPLFeaturesImage,
-};
 
-struct ImageResource {
-	const uint8_t *bytes;
-	const char *name;
-	const size_t length;
-	ImageResourceType type;
-};
 
-namespace ImageResources {
-	static ImageResource FPLLogo128x128 = { ptr_fplLogo128x128ImageData, "FPL Logo 128x128", sizeOf_fplLogo128x128ImageData, ImageResourceType::FPLLogo128x128 };
-	static ImageResource FPLLogo512x512 = { ptr_fplLogo512x512ImageData, "FPL Logo 512x512", sizeOf_fplLogo512x512ImageData, ImageResourceType::FPLLogo512x512 };
-}
 
 struct ImageID {
 	const char *name;

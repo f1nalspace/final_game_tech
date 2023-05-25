@@ -6,6 +6,7 @@
 
 #include "types.h"
 #include "fonts.h"
+#include "images.h"
 
 static const float CodeFontSize = 17.0f;
 static const float FeaturesFontSize = 32.0f;
@@ -73,6 +74,18 @@ static BlockDefinition MakeImageDef(const Vec2f& pos, const Vec2f& size, BlockAl
 	result.type = BlockType::Image;
 	result.image.name = imageName;
 	result.image.size = imageSize;
+	result.image.keepAspect = keepAspect;
+	return(result);
+}
+
+static BlockDefinition MakeImageDef(const Vec2f& pos, const Vec2f& size, BlockAlignment contentAlignment, const ImageResource &imageResource, const bool keepAspect) {
+	BlockDefinition result = {};
+	result.pos = pos;
+	result.size = size;
+	result.contentAlignment = contentAlignment;
+	result.type = BlockType::Image;
+	result.image.name = imageResource.name;
+	result.image.size = V2f(1.0f, 1.0f);
 	result.image.keepAspect = keepAspect;
 	return(result);
 }
@@ -430,7 +443,10 @@ namespace FPLPresentationData {
 				V2f(0.0f,0.0f),V2f(1.0f,1.0f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
 				"Magic!",
 				HorizontalAlignment::Left, FeaturesFontSize * 4
-			),			
+			),
+			MakeImageDef(
+				V2f(0.0f, 0.0f), V2f(1.0f, 1.0f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle), ImageResources::FPLLogo128x128, true
+			)
 		};
 
 		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(-15), V3f(0.7f, 0.6f, 0.3f));
