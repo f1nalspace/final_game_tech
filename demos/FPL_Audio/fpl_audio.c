@@ -21,6 +21,9 @@ Todo:
 	- Multiple audio tracks
 
 Changelog:
+	## 2023-05-28
+	- Fixed crash/assert when audio visualization chunk is not ready yet
+
 	## 2021-11-06
 	- Proper FFT power spectrum and audio bin drawing
 
@@ -336,9 +339,8 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 			fplMemoryCopy(p, totalSizeToCopy, chunkSamples);
 		}
 
-		if(remainingChunkFrames < MAX_AUDIO_FRAMES_CHUNK_FRAMES) {
+		if(remainingChunkFrames < MAX_AUDIO_FRAMES_CHUNK_FRAMES && chunk->count >= MAX_AUDIO_FRAMES_CHUNK_FRAMES) {
 			size_t totalSizeToClear = MAX_AUDIO_FRAMES_CHUNK_FRAMES * frameSize;
-			fplAssert(chunk->count >= MAX_AUDIO_FRAMES_CHUNK_FRAMES);
 			fplMemoryClear(chunkSamples, totalSizeToClear);
 		}
 
