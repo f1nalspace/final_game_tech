@@ -84,10 +84,39 @@ int main(int argc, char **argv) {
 		if (fglLoadOpenGL(true)) {
 			fntFontData fontData = fplZeroInit;
 
+			// Load unicode font from downloads folders (Due to legal limitations, the font is not included)
 #if 1
-			fontData = LoadFontFromFile("c:/windows/fonts/arial.ttf");
+			{
+				size_t len = fplGetHomePath(fpl_null, 0) + 1;
+				char *homePath = fplStackAllocate(sizeof(char) * len);
+				fplGetHomePath(homePath, len);
+
+				len = fplPathCombine(fpl_null, 0, 3, homePath, "Downloads", "arial-unicode-ms.ttf") + 1;
+				char *fontFilePath = fplStackAllocate(sizeof(char) * len);
+				fplPathCombine(fontFilePath, len, 3, homePath, "Downloads", "arial-unicode-ms.ttf");
+
+				fontData = LoadFontFromFile(fontFilePath);
+			}
 #endif
 
+			// Load arial font windows folder
+#if 0
+#if defined(FPL_PLATFORM_WINDOWS)
+			{
+				size_t len = GetWindowsDirectoryA(fpl_null, 0) + 1;
+				char *winPath = fplStackAllocate(sizeof(char) * len);
+				GetWindowsDirectoryA(winPath, len);
+
+				len = fplPathCombine(fpl_null, 0, 3, winPath, "fonts", "arial.ttf") + 1;
+				char *fontFilePath = fplStackAllocate(sizeof(char) * len);
+				fplPathCombine(fontFilePath, len, 3, winPath, "fonts", "arial.ttf");
+
+				fontData = LoadFontFromFile(fontFilePath);
+			}
+#endif
+#endif
+
+			// Use Sulphur Point Regular font
 #if 0
 			fontData.size = fontSulphurPointRegularSize;
 			fontData.data = fontSulphurPointRegularData;
@@ -95,11 +124,12 @@ int main(int argc, char **argv) {
 			fontData.index = 0;
 #endif
 
+			// Use Avril Sans Regular font
 #if 0
 			fontData.size = fontAvrilSansRegularLength;
 			fontData.data = fontAvrilSansRegularData;
 			fontData.name = fontAvrilSansRegularName;
-			fontData.index = 0;			
+			fontData.index = 0;
 #endif
 
 			const uint32_t maxAtlasSize = 1024;
