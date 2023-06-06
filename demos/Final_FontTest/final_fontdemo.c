@@ -11,23 +11,6 @@
 #include "font_avril_sans_regular.h"
 #include "font_sulfur_point_regular.h"
 
-typedef struct CodePointRange {
-	uint16_t from;
-	uint16_t to;
-} CodePointRange;
-
-// https://stackoverflow.com/a/30200250
-// http://www.localizingjapan.com/blog/2012/01/20/regular-expressions-for-japanese-text/
-static CodePointRange g__unicodeRanges[] = {
-	{33, 126},			// ASCII
-	{161, 255},			// Extended ASCII
-	{0x3000, 0x303f},	// Japanese-style punctuation
-	{0x3040, 0x309f},	// Hiragana
-	{0x30a0, 0x30ff},	// Katakana
-	{0xff00, 0xffef},	// Full-width roman characters and half-width katakana
-	//{0x4e00, 0x9faf},	// CJK unifed ideographs - Common and uncommon kanji
-};
-
 static GLuint CreateRGBATextureFromAlpha(const uint8_t *alphaPixels, const uint32_t width, const uint32_t height) {
 	GLuint result = 0;
 	uint32_t *rgbaPixels = (uint32_t *)malloc(sizeof(uint32_t) * width * height);
@@ -59,33 +42,77 @@ static GLuint CreateRGBATextureFromAlpha(const uint8_t *alphaPixels, const uint3
 	return(result);
 }
 
-static fntFontData LoadFontFromFile(const char *filePath) {
-	fntFontData result = fplZeroInit;
+typedef struct FontRange {
+	const char *name;
+	uint16_t from;
+	uint16_t to;
+} FontRange;
 
+typedef struct FontDataTable {
+	fntFontData *datas;
+	uint32_t count;
+} FontDataTable;
+
+static void AddFontData(FontDataTable *table, const fntFontData *data) {
+	uint32_t oldCount = table->count;
+	uint32_t newCount = oldCount + 1;
+
+	fntFontData *datas = realloc(table->datas, sizeof(fntFontData) * newCount);
+	datas[oldCount] = *data;
+
+	table->datas = datas;
+	table->count = newCount;
+}
+
+static void AddFontFile(FontDataTable *table, const char *name, const char *filePath) {
 	fplFileHandle file;
 	if (fplFileOpenBinary(filePath, &file)) {
 		size_t len = fplFileGetSizeFromHandle(&file);
-		uint8_t *data = (uint8_t *)malloc(len);
-		fplFileReadBlock(&file, len, data, len);
+		uint8_t *contents = (uint8_t *)malloc(len);
+		fplFileReadBlock(&file, len, contents, len);
 		fplFileClose(&file);
 
-		result.name = filePath;
-		result.index = 0;
-		result.data = data;
-		result.size = len;
+		fntFontData data = fplZeroInit;
+		data.name = name;
+		data.index = 0;
+		data.data = contents;
+		data.size = len;
+		AddFontData(table, &data);
 	}
-	return(result);
 }
 
+const char *arialUnicodeFontName = "Arial Unicode";
+const char *arialFontName = "Arial";
+
 int main(int argc, char **argv) {
+	fntFontData fonts[] = {
+		fplStructInit(fntFontData, fontSulphurPointRegularData, fontSulphurPointRegularName, 0, 0),
+	};
+
+	// https://stackoverflow.com/a/30200250
+	// http://www.localizingjapan.com/blog/2012/01/20/regular-expressions-for-japanese-text/
+	FontRange fontRanges[] = {
+		{fontSulphurPointRegularName, 33, 126},			// ASCII
+		{fontSulphurPointRegularName, 161, 255},			// Extended ASCII
+		{arialUnicodeFontName, 0x3000, 0x303f},	// Japanese-style punctuation
+		{arialUnicodeFontName, 0x3040, 0x309f},	// Hiragana
+		{arialUnicodeFontName, 0x30a0, 0x30ff},	// Katakana
+		{arialUnicodeFontName, 0xff00, 0xffef},	// Full-width roman characters and half-width katakana
+		//{fontSulphurPointRegularName, 0x4e00, 0x9faf},	// CJK unifed ideographs - Common and uncommon kanji
+	};
+
+	const uint32_t maxAtlasSize = 1024;
+
+	const fntFontSize fontSize = fntCreateFontSize(128.0f);
+
+	FontDataTable fontTable = fplZeroInit;
+
 	fplSettings settings = fplMakeDefaultSettings();
 	fplCopyString("Final Demo - Fonts", settings.window.title, sizeof(settings.window.title));
 	if (fplPlatformInit(fplInitFlags_All, &settings)) {
 		if (fglLoadOpenGL(true)) {
-			fntFontData fontData = fplZeroInit;
-
-			// Load unicode font from downloads folders (Due to legal limitations, the font is not included)
 #if 1
+			// Load unicode font from downloads folders (Due to legal limitations, the font is not included)
 			{
 				size_t len = fplGetHomePath(fpl_null, 0) + 1;
 				char *homePath = fplStackAllocate(sizeof(char) * len);
@@ -95,13 +122,13 @@ int main(int argc, char **argv) {
 				char *fontFilePath = fplStackAllocate(sizeof(char) * len);
 				fplPathCombine(fontFilePath, len, 3, homePath, "Downloads", "arial-unicode-ms.ttf");
 
-				fontData = LoadFontFromFile(fontFilePath);
+				AddFontFile(&fontTable, arialUnicodeFontName, fontFilePath);
 			}
 #endif
 
-			// Load arial font windows folder
-#if 0
+#if 1
 #if defined(FPL_PLATFORM_WINDOWS)
+			// Load arial font windows folder
 			{
 				size_t len = GetWindowsDirectoryA(fpl_null, 0) + 1;
 				char *winPath = fplStackAllocate(sizeof(char) * len);
@@ -111,40 +138,64 @@ int main(int argc, char **argv) {
 				char *fontFilePath = fplStackAllocate(sizeof(char) * len);
 				fplPathCombine(fontFilePath, len, 3, winPath, "fonts", "arial.ttf");
 
-				fontData = LoadFontFromFile(fontFilePath);
+				AddFontFile(&fontTable, arialFontName, fontFilePath);
 			}
 #endif
 #endif
 
+#if 1
 			// Use Sulphur Point Regular font
-#if 0
-			fontData.size = fontSulphurPointRegularSize;
-			fontData.data = fontSulphurPointRegularData;
-			fontData.name = fontSulphurPointRegularName;
-			fontData.index = 0;
+			{
+				fntFontData fontData = fplZeroInit;
+				fontData.size = fontSulphurPointRegularSize;
+				fontData.data = fontSulphurPointRegularData;
+				fontData.name = fontSulphurPointRegularName;
+				fontData.index = 0;
+				AddFontData(&fontTable, &fontData);
+			}
 #endif
 
+#if 1
 			// Use Avril Sans Regular font
-#if 0
-			fontData.size = fontAvrilSansRegularLength;
-			fontData.data = fontAvrilSansRegularData;
-			fontData.name = fontAvrilSansRegularName;
-			fontData.index = 0;
+			{
+				fntFontData fontData = fplZeroInit;
+				fontData.size = fontAvrilSansRegularLength;
+				fontData.data = fontAvrilSansRegularData;
+				fontData.name = fontAvrilSansRegularName;
+				fontData.index = 0;
+				AddFontData(&fontTable, &fontData);
+			}
 #endif
-
-			const uint32_t maxAtlasSize = 1024;
-
-			const fntFontSize fontSize = fntCreateFontSize(128.0f);
 
 			fntFontAtlas atlas = fplZeroInit;
-			if (fntInitFontAtlas(&atlas, &fontData, fontSize)) {
+			if (fntInitFontAtlas(&atlas)) {
 				fntFontContext *ctx = fntCreateFontContext(maxAtlasSize);
-				if (ctx != NULL) {
-					for (uint32_t i = 0; i < fplArrayCount(g__unicodeRanges); ++i) {
-						uint16_t range = g__unicodeRanges[i].to - g__unicodeRanges[i].from;
-						fntCodePoint from = { g__unicodeRanges[i].from };
-						fntCodePoint end = { g__unicodeRanges[i].to };
-						fntAddToFontAtlas(ctx, &atlas, &fontData, fontSize, from, end);
+				if (ctx != fpl_null) {
+					for (uint32_t i = 0; i < fplArrayCount(fontRanges); ++i) {
+						const char *fontName = fontRanges[i].name;
+						fntCodePoint from = { fontRanges[i].from };
+						fntCodePoint end = { fontRanges[i].to };
+
+						uint32_t fontIndex = fntGetFontIndex(&atlas, fontName, fontSize);
+						if (fontIndex == UINT32_MAX) {
+
+							// Find font data from name
+							const fntFontData *foundData = fpl_null;
+							for (uint32_t tableIndex = 0; tableIndex < fontTable.count; ++tableIndex) {
+								if (fnt__IsEqualFontName(fontName, fontTable.datas[tableIndex].name)) {
+									foundData = &fontTable.datas[tableIndex];
+									break;
+								}
+							}
+
+							// Add font when we found data
+							if (foundData != fpl_null) {
+								fontIndex = fntAddFont(&atlas, foundData, fontSize);
+							}
+						}
+						if (fontIndex != UINT32_MAX) {
+							fntAddCodePoints(ctx, &atlas, fontIndex, from, end);
+						}
 					}
 					fntReleaseFontContext(ctx);
 				}
@@ -153,7 +204,7 @@ int main(int argc, char **argv) {
 				const char *helloWorldText = "Hello World!";
 				const char *fiveWaxText = "Five Wax Quacking Zephyrs";
 				const char *brownFoxText = "The quick brown fox jumps over the lazy dog";
-				const char japAnimeText[] = { 0xe3, 0x82, 0xa2, 0xe3, 0x83, 0x8b, 0xe3, 0x83, 0xa1, 0 }; // A ni me, 3 characters
+				const char japAnimeText[] = { 0xe3, 0x82, 0xa2, 0xe3, 0x83, 0x8b, 0xe3, 0x83, 0xa1, 0}; // A ni me, 3 characters
 				const char japAnimeAndKanaText[] = { 0xe3, 0x82, 0xa2, 0xe3, 0x83, 0x8b, 0xe3, 0x83, 0xa1, 0x20, 0x61, 0x6e, 0x69, 0x6d, 0x65, 0 }; // A ni me anime, 9 characters
 
 				const float targetCharHeight = 20.0f;
@@ -288,17 +339,28 @@ int main(int argc, char **argv) {
 					textX -= textSize.w * 0.5f;
 					textY -= textSize.h * 0.5f;
 #endif
-					float scaledAscent = 0.0f;
-					float scaledDescent = 0.0f;
-					float scaledLineGap = 0.0f;
-					fntGetFontMetrics(&atlas, fontSize.value, &scaledAscent, &scaledDescent, &scaledLineGap);
+					float bestScaledAscent = 0.0f;
+					float bestScaledDescent = 0.0f;
+					float bestScaledLineGap = 0.0f;
+					for (uint32_t fontIndex = 0; fontIndex < atlas.fontCount; ++fontIndex) {
+						float scaledAscent = 0.0f;
+						float scaledDescent = 0.0f;
+						float scaledLineGap = 0.0f;
+						if (fntGetFontMetrics(&atlas, fontIndex, fontSize.value, &scaledAscent, &scaledDescent, &scaledLineGap)) {
+							if (scaledAscent > bestScaledAscent && scaledDescent > bestScaledDescent && scaledLineGap > bestScaledLineGap) {
+								bestScaledAscent = scaledAscent;
+								bestScaledDescent = scaledDescent;
+								bestScaledLineGap = scaledLineGap;
+							}
+						}
+					}
 
-					float baseline = -scaledDescent;
+					float baseline = -bestScaledAscent;
 
 					uint32_t lineCount = 0;
 					float baselineOffset = 0;
 					if (fntComputeQuadsFromUTF8(&atlas, text, fontSize.value, flags, fplArrayCount(fontQuads), fontQuads, &quadsBounds, &lineCount, &baselineOffset)) {
-						float lineHeight = scaledAscent - scaledDescent;
+						float lineHeight = bestScaledAscent - bestScaledDescent;
 
 						float boundsWidth = quadsBounds.right - quadsBounds.left;
 
@@ -317,8 +379,8 @@ int main(int argc, char **argv) {
 						glLineWidth(2.0f);
 						glColor3f(0.0f, 1.0f, 0.0f);
 						glBegin(GL_LINES);
-						glVertex2f(textX + quadsBounds.right + boundsWidth * 0.25f, textY + baseline + scaledAscent);
-						glVertex2f(textX + quadsBounds.left - boundsWidth * 0.25f, textY + baseline + scaledAscent);
+						glVertex2f(textX + quadsBounds.right + boundsWidth * 0.25f, textY + baseline + bestScaledAscent);
+						glVertex2f(textX + quadsBounds.left - boundsWidth * 0.25f, textY + baseline + bestScaledAscent);
 						glEnd();
 						glLineWidth(1.0f);
 
@@ -335,8 +397,8 @@ int main(int argc, char **argv) {
 						glLineWidth(2.0f);
 						glColor3f(0.0f, 0.0f, 1.0f);
 						glBegin(GL_LINES);
-						glVertex2f(textX + quadsBounds.right + boundsWidth * 0.25f, textY + baseline + scaledDescent);
-						glVertex2f(textX + quadsBounds.left - boundsWidth * 0.25f, textY + baseline + scaledDescent);
+						glVertex2f(textX + quadsBounds.right + boundsWidth * 0.25f, textY + baseline + bestScaledDescent);
+						glVertex2f(textX + quadsBounds.left - boundsWidth * 0.25f, textY + baseline + bestScaledDescent);
 						glEnd();
 						glLineWidth(1.0f);
 
