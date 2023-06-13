@@ -143,7 +143,7 @@ int main(int argc, char **argv) {
 			}
 #endif
 
-#if 1
+#if 0
 #if defined(FPL_PLATFORM_WINDOWS)
 			// Load arial font windows folder
 			{
