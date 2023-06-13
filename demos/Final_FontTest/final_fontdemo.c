@@ -10,6 +10,7 @@
 
 #include "font_avril_sans_regular.h"
 #include "font_sulfur_point_regular.h"
+#include "font_kleeone_regular.h"
 
 static GLuint CreateRGBATextureFromAlpha(const uint8_t *alphaPixels, const uint32_t width, const uint32_t height) {
 	GLuint result = 0;
@@ -90,19 +91,15 @@ const int MaxAtlasSize = 2048;
 int main(int argc, char **argv) {
 	int exitCode = 0;
 
-	fntFontData fonts[] = {
-		fplStructInit(fntFontData, fontSulphurPointRegularData, fontSulphurPointRegularName, 0, 0),
-	};
-
 	// https://stackoverflow.com/a/30200250
 	// http://www.localizingjapan.com/blog/2012/01/20/regular-expressions-for-japanese-text/
 	FontRange fontRanges[] = {
 		{fontSulphurPointRegularName, 33, 126},			// ASCII
 		{fontSulphurPointRegularName, 161, 255},			// Extended ASCII
-		{arialUnicodeFontName, 0x3000, 0x303f},	// Japanese-style punctuation
-		{arialUnicodeFontName, 0x3040, 0x309f},	// Hiragana
-		{arialUnicodeFontName, 0x30a0, 0x30ff},	// Katakana
-		{arialUnicodeFontName, 0xff00, 0xffef},	// Full-width roman characters and half-width katakana
+		{fontKleeOneRegularName, 0x3000, 0x303f},	// Japanese-style punctuation
+		{fontKleeOneRegularName, 0x3040, 0x309f},	// Hiragana
+		{fontKleeOneRegularName, 0x30a0, 0x30ff},	// Katakana
+		{fontKleeOneRegularName, 0xff00, 0xffef},	// Full-width roman characters and half-width katakana
 		//{fontSulphurPointRegularName, 0x4e00, 0x9faf},	// CJK unifed ideographs - Common and uncommon kanji
 	};
 
@@ -127,6 +124,10 @@ int main(int argc, char **argv) {
 
 			// We use half the texture size as the atlas size
 			uint32_t maxAtlasSize = fplMax(MinAtlasSize, fplMin(MaxAtlasSize, maxTextureSize));
+
+			//
+			// Load all required fonts
+			//
 #if 1
 
 			// Load unicode font from downloads folders (Due to legal limitations, the font is not included)
@@ -184,6 +185,18 @@ int main(int argc, char **argv) {
 			}
 #endif
 
+#if 1
+			// Use Klee One Regular font
+			{
+				fntFontData fontData = fplZeroInit;
+				fontData.size = fontKleeOneRegularSize;
+				fontData.data = fontKleeOneRegularData;
+				fontData.name = fontKleeOneRegularName;
+				fontData.index = 0;
+				AddFontData(&fontTable, &fontData);
+			}
+#endif
+
 			fntFontAtlas atlas = fplZeroInit;
 			if (fntInitFontAtlas(&atlas)) {
 				fntFontContext *ctx = fntCreateFontContext(maxAtlasSize);
@@ -221,7 +234,7 @@ int main(int argc, char **argv) {
 				const char *helloWorldText = "Hello World!";
 				const char *fiveWaxText = "Five Wax Quacking Zephyrs";
 				const char *brownFoxText = "The quick brown fox jumps over the lazy dog";
-				const char japAnimeText[] = { 0xe3, 0x82, 0xa2, 0xe3, 0x83, 0x8b, 0xe3, 0x83, 0xa1, 0}; // A ni me, 3 characters
+				const char japAnimeText[] = { 0xe3, 0x82, 0xa2, 0xe3, 0x83, 0x8b, 0xe3, 0x83, 0xa1, 0 }; // A ni me, 3 characters
 				const char japAnimeAndKanaText[] = { 0xe3, 0x82, 0xa2, 0xe3, 0x83, 0x8b, 0xe3, 0x83, 0xa1, 0x20, 0x61, 0x6e, 0x69, 0x6d, 0x65, 0 }; // A ni me anime, 9 characters
 
 				const float targetCharHeight = 20.0f;
@@ -487,19 +500,19 @@ int main(int argc, char **argv) {
 #endif
 
 					fplVideoFlip();
-				}
+						}
 
 				for (uint32_t bitmapIndex = 0; bitmapIndex < atlas.bitmapCount; ++bitmapIndex) {
 					glDeleteTextures(1, &fontTextures[bitmapIndex]);
 				}
 
 				fntFreeFontAtlas(&atlas);
-			}
+					}
 
 freeOpenGL:
 			fglUnloadOpenGL();
-		}
+				}
 		fplPlatformRelease();
-	}
+			}
 	return exitCode;
-}
+			}
