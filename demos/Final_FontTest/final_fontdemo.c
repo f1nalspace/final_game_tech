@@ -88,10 +88,29 @@ const char *arialFontName = "Arial";
 const int MinAtlasSize = 512;
 const int MaxAtlasSize = 2048;
 
+typedef struct TestString {
+	const char *text;
+	size_t len;
+} TestString;
+
+#define helloWorldText "Hello World!"
+#define fiveWaxText "Five Wax Quacking Zephyrs"
+#define brownFoxText "The quick brown fox jumps over the lazy dog"
+const char japAnimeText[] = { 0xe3, 0x82, 0xa2, 0xe3, 0x83, 0x8b, 0xe3, 0x83, 0xa1, 0 }; // A ni me, 3 characters
+const char japAnimeAndKanaText[] = { 0xe3, 0x82, 0xa2, 0xe3, 0x83, 0x8b, 0xe3, 0x83, 0xa1, 0x20, 0x61, 0x6e, 0x69, 0x6d, 0x65, 0 }; // A ni me anime, 9 characters
+
+static TestString TestStrings[] = {
+	{ helloWorldText, 12 },
+	{ fiveWaxText, 25 },
+	{ brownFoxText, 43 },
+	{ japAnimeText, 3 },
+	{ japAnimeAndKanaText, 9 },
+};
+
 int main(int argc, char **argv) {
 	int exitCode = 0;
 
-	// https://stackoverflow.com/a/30200250
+// https://stackoverflow.com/a/30200250
 	// http://www.localizingjapan.com/blog/2012/01/20/regular-expressions-for-japanese-text/
 	FontRange fontRanges[] = {
 		{fontSulphurPointRegularName, 33, 126},			// ASCII
@@ -128,7 +147,7 @@ int main(int argc, char **argv) {
 			//
 			// Load all required fonts
 			//
-#if 1
+#if 0
 
 			// Load unicode font from downloads folders (Due to legal limitations, the font is not included)
 			{
@@ -166,7 +185,7 @@ int main(int argc, char **argv) {
 			{
 				fntFontData fontData = fplZeroInit;
 				fontData.size = fontSulphurPointRegularSize;
-				fontData.data = fontSulphurPointRegularData;
+				fontData.data = (const uint8_t *)fontSulphurPointRegularData;
 				fontData.name = fontSulphurPointRegularName;
 				fontData.index = 0;
 				AddFontData(&fontTable, &fontData);
@@ -178,7 +197,7 @@ int main(int argc, char **argv) {
 			{
 				fntFontData fontData = fplZeroInit;
 				fontData.size = fontAvrilSansRegularLength;
-				fontData.data = fontAvrilSansRegularData;
+				fontData.data = (const uint8_t *)fontAvrilSansRegularData;
 				fontData.name = fontAvrilSansRegularName;
 				fontData.index = 0;
 				AddFontData(&fontTable, &fontData);
@@ -190,7 +209,7 @@ int main(int argc, char **argv) {
 			{
 				fntFontData fontData = fplZeroInit;
 				fontData.size = fontKleeOneRegularSize;
-				fontData.data = fontKleeOneRegularData;
+				fontData.data = (const uint8_t *)fontKleeOneRegularData;
 				fontData.name = fontKleeOneRegularName;
 				fontData.index = 0;
 				AddFontData(&fontTable, &fontData);
@@ -231,45 +250,26 @@ int main(int argc, char **argv) {
 				}
 
 				// UTF8-Encode (https://onlineunicodetools.com/convert-unicode-to-utf8)
-				const char *helloWorldText = "Hello World!";
-				const char *fiveWaxText = "Five Wax Quacking Zephyrs";
-				const char *brownFoxText = "The quick brown fox jumps over the lazy dog";
-				const char japAnimeText[] = { 0xe3, 0x82, 0xa2, 0xe3, 0x83, 0x8b, 0xe3, 0x83, 0xa1, 0 }; // A ni me, 3 characters
-				const char japAnimeAndKanaText[] = { 0xe3, 0x82, 0xa2, 0xe3, 0x83, 0x8b, 0xe3, 0x83, 0xa1, 0x20, 0x61, 0x6e, 0x69, 0x6d, 0x65, 0 }; // A ni me anime, 9 characters
-
 				const float targetCharHeight = 20.0f;
 
 				fntFontQuad fontQuads[64];
 				fntBounds quadsBounds;
 				size_t quadCount;
 
-#if 1
+				// Validate character/quad count for test strings
+				for (int testStringIndex = 0; testStringIndex < fplArrayCount(TestStrings); ++testStringIndex)
 				{
+					TestString s = TestStrings[testStringIndex];
 
-					bool r;
-
-					quadCount = fntGetQuadCountFromUTF8(helloWorldText);
-					fplAssert(quadCount == 12);
-					r = fntComputeQuadsFromUTF8(&atlas, helloWorldText, targetCharHeight, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsBounds, NULL, NULL);
-					fplAssert(r == true);
-
-					quadCount = fntGetQuadCountFromUTF8(japAnimeText);
-					fplAssert(quadCount == 3);
-					r = fntComputeQuadsFromUTF8(&atlas, japAnimeText, targetCharHeight, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsBounds, NULL, NULL);
-					fplAssert(r == true);
-
-					quadCount = fntGetQuadCountFromUTF8(japAnimeAndKanaText);
-					fplAssert(quadCount == 9);
-					r = fntComputeQuadsFromUTF8(&atlas, japAnimeAndKanaText, targetCharHeight, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsBounds, NULL, NULL);
-					fplAssert(r == true);
-
-					quadCount = fntGetQuadCountFromUTF8(fiveWaxText);
-					fplAssert(quadCount == 25);
-					r = fntComputeQuadsFromUTF8(&atlas, fiveWaxText, targetCharHeight, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsBounds, NULL, NULL);
+					size_t quadCount = fntGetQuadCountFromUTF8(s.text);
+					fplAssert(quadCount == s.len);
+					bool r = fntComputeQuadsFromUTF8(&atlas, s.text, targetCharHeight, fntComputeQuadsFlags_None, fplArrayCount(fontQuads), fontQuads, &quadsBounds, NULL, NULL);
 					fplAssert(r == true);
 				}
-#endif
 
+				//
+				// Save font bitmaps to downloads folder
+				//
 				char homePath[FPL_MAX_PATH_LENGTH];
 				fplGetHomePath(homePath, sizeof(homePath));
 
@@ -294,6 +294,7 @@ int main(int argc, char **argv) {
 
 				bool topDown = false;
 				bool withKerning = true;
+				int activeTestStringIndex = 0;
 
 				while (fplWindowUpdate()) {
 					fplEvent ev;
@@ -309,6 +310,11 @@ int main(int argc, char **argv) {
 												topDown = !topDown;
 											} else if (ev.keyboard.mappedKey == fplKey_K) {
 												withKerning = !withKerning;
+											} else if (ev.keyboard.mappedKey >= fplKey_1 && ev.keyboard.mappedKey <= fplKey_9) {
+												int testStringIndex = ev.keyboard.mappedKey - fplKey_1;
+												if (testStringIndex < fplArrayCount(TestStrings)) {
+													activeTestStringIndex = testStringIndex;
+												}
 											}
 										}
 									} break;
@@ -343,7 +349,9 @@ int main(int argc, char **argv) {
 					glVertex2f(0.0f, h);
 					glEnd();
 
-					const char *text = japAnimeText;
+					TestString activeTestString = TestStrings[activeTestStringIndex];
+
+					const char *text = activeTestString.text;
 
 					fntComputeQuadsFlags flags = fntComputeQuadsFlags_None;
 					if (!topDown) {
@@ -500,19 +508,19 @@ int main(int argc, char **argv) {
 #endif
 
 					fplVideoFlip();
-						}
+				}
 
 				for (uint32_t bitmapIndex = 0; bitmapIndex < atlas.bitmapCount; ++bitmapIndex) {
 					glDeleteTextures(1, &fontTextures[bitmapIndex]);
 				}
 
 				fntFreeFontAtlas(&atlas);
-					}
+			}
 
 freeOpenGL:
 			fglUnloadOpenGL();
-				}
+		}
 		fplPlatformRelease();
-			}
+	}
 	return exitCode;
-			}
+}
