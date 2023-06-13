@@ -84,7 +84,12 @@ static void AddFontFile(FontDataTable *table, const char *name, const char *file
 const char *arialUnicodeFontName = "Arial Unicode";
 const char *arialFontName = "Arial";
 
+const int MinAtlasSize = 512;
+const int MaxAtlasSize = 2048;
+
 int main(int argc, char **argv) {
+	int exitCode = 0;
+
 	fntFontData fonts[] = {
 		fplStructInit(fntFontData, fontSulphurPointRegularData, fontSulphurPointRegularName, 0, 0),
 	};
@@ -101,8 +106,6 @@ int main(int argc, char **argv) {
 		//{fontSulphurPointRegularName, 0x4e00, 0x9faf},	// CJK unifed ideographs - Common and uncommon kanji
 	};
 
-	const uint32_t maxAtlasSize = 1024;
-
 	const fntFontSize fontSize = fntCreateFontSize(128.0f);
 
 	FontDataTable fontTable = fplZeroInit;
@@ -111,7 +114,21 @@ int main(int argc, char **argv) {
 	fplCopyString("Final Demo - Fonts", settings.window.title, sizeof(settings.window.title));
 	if (fplPlatformInit(fplInitFlags_All, &settings)) {
 		if (fglLoadOpenGL(true)) {
+
+			// Query max texture size
+			int maxTextureSize = 0;
+			glGetIntegerv(GL_MAX_TEXTURE_SIZE, &maxTextureSize);
+			if (maxTextureSize < MinAtlasSize) {
+				// Insufficient max texture size
+				fplConsoleFormatError("Insufficient texture size! Expect at least '%d', but got '%d'.\n", MinAtlasSize, maxTextureSize);
+				exitCode = -1;
+				goto freeOpenGL;
+			}
+
+			// We use half the texture size as the atlas size
+			uint32_t maxAtlasSize = fplMax(MinAtlasSize, fplMin(MaxAtlasSize, maxTextureSize));
 #if 1
+
 			// Load unicode font from downloads folders (Due to legal limitations, the font is not included)
 			{
 				size_t len = fplGetHomePath(fpl_null, 0) + 1;
@@ -478,9 +495,11 @@ int main(int argc, char **argv) {
 
 				fntFreeFontAtlas(&atlas);
 			}
+
+freeOpenGL:
 			fglUnloadOpenGL();
 		}
 		fplPlatformRelease();
 	}
-	return (0);
+	return exitCode;
 }
