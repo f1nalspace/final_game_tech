@@ -3642,7 +3642,7 @@ typedef struct fplVulkanSettings {
 	void *instanceHandle;
 	//! The vulkan allocator (VkAllocationCallbacks)
 	const void *allocator;
-	//! The validation layer callback (Only used when @ref fplVulkanSettings.validationLayerMode is set to @ref fplVulkanValidationLayerMode_User and FPL created the VkInstance)
+	//! The validation layer callback @ref fplVulkanValidationLayerCallback
 	fplVulkanValidationLayerCallback *validationLayerCallback;
 	//! User data passed to any callbacks
 	void *userData;
