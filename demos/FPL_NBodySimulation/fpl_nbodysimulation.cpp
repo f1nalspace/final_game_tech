@@ -37,6 +37,13 @@ Todo:
 	- Migrate to modern opengl 3.3+
 
 Changelog:
+	# 2022-04-14:
+	- Fixed thread pool free was broken
+	- Fixed demos was never freed
+
+	# 2021-08-26:
+	- Fixed weird crash on fplPlatformInit() due to wrong macro configuration for main include vs translation unit
+
 	#1.4.3:
 	- Migrated to FPL 0.9.2.0 beta
 
@@ -72,13 +79,15 @@ Changelog:
 	- Initial version
 
 License:
-	Copyright (c) 2017-2021 Torsten Spaete
+	Copyright (c) 2017-2023 Torsten Spaete
 	MIT License (See LICENSE file)
 */
-#define FPL_ENTRYPOINT
+#define FPL_LOGGING
 #define FPL_NO_AUDIO
 #define FPL_NO_PLATFORM_INCLUDES
 #define FPL_NO_VIDEO_VULKAN
+
+#define FPL_ENTRYPOINT
 #include <final_platform_layer.h>
 
 #define FGL_IMPLEMENTATION
@@ -99,7 +108,7 @@ static Application *globalApp = nullptr;
 static float lastFrameTime = 0.0f;
 static uint64_t lastFrameCycles = 0;
 static uint64_t lastCycles = 0;
-static fplWallClock lastFrameClock;
+static fplTimestamp lastFrameClock;
 
 static void OpenGLPopVertexIndexArray(std::stack<Render::VertexIndexArrayHeader *> &stack) {
 	if (stack.size() > 0) {
@@ -489,7 +498,7 @@ int main(int argc, char **args) {
 	settings.window.windowSize.width = kWindowWidth;
 	settings.window.windowSize.height = kWindowHeight;
 	settings.video.backend = fplVideoBackendType_OpenGL;
-	fplFormatString(settings.window.title, fplArrayCount(settings.window.title), "NBody Simulation v%s", kAppVersion);
+	fplStringFormat(settings.window.title, fplArrayCount(settings.window.title), "NBody Simulation v%s", kAppVersion);
 	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
 		if (fglLoadOpenGL(true)) {
 			Application *app = globalApp = new DemoApplication();
@@ -504,7 +513,7 @@ int main(int argc, char **args) {
 
 			app->Init();
 			
-			lastFrameClock = fplGetWallClock();
+			lastFrameClock = fplTimestampQuery();
 
 			while (fplWindowUpdate()) {
 				fplEvent ev;
@@ -541,8 +550,9 @@ int main(int argc, char **args) {
 
 				fplVideoFlip();
 
-				fplWallClock endFrameClock = fplGetWallClock();
-				lastFrameTime = (float)fplGetWallDelta(lastFrameClock, endFrameClock);
+				fplTimestamp endFrameClock = fplTimestampQuery();
+				double elapsed = fplTimestampElapsed(lastFrameClock, endFrameClock);
+				lastFrameTime = (float)elapsed;
 				lastFrameClock = endFrameClock;
 
 				uint64_t endCycles = fplCPURDTSC();

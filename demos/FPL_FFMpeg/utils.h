@@ -50,11 +50,11 @@ static void SaveBitmapRGB24(uint8_t *source, uint32_t width, uint32_t height, ui
 	bfh.bfOffBits = (uint32_t)(sizeof(BitmapFileHeader) + bih.biSize);
 
 	fplFileHandle handle;
-	if (fplCreateBinaryFile(targetFilePath, &handle)) {
-		fplWriteFileBlock32(&handle, &bfh, sizeof(BitmapFileHeader));
-		fplWriteFileBlock32(&handle, &bih, sizeof(BitmapInfoheader));
-		fplWriteFileBlock32(&handle, source, bih.biSizeImage);
-		fplCloseFile(&handle);
+	if (fplFileCreateBinary(targetFilePath, &handle)) {
+		fplFileWriteBlock32(&handle, &bfh, sizeof(BitmapFileHeader));
+		fplFileWriteBlock32(&handle, &bih, sizeof(BitmapInfoheader));
+		fplFileWriteBlock32(&handle, source, bih.biSizeImage);
+		fplFileClose(&handle);
 	}
 }
 

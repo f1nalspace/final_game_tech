@@ -14,7 +14,7 @@ Author:
 	Torsten Spaete
 
 License:
-	Copyright (c) 2017-2021 Torsten Spaete
+	Copyright (c) 2017-2023 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -216,7 +216,7 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 	GameState *state = gameMemory.game;
 	assert(state != nullptr);
 
-	const float dt = input.deltaTime;
+	const float dt = input.fixedDeltaTime;
 
 	World &world = state->world;
 	Entity &player = world.player;
@@ -321,22 +321,16 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 		char sizeCharsBuffer[2][32 + 1];
 		FormatSize(gameMemory.memory->used, fplArrayCount(sizeCharsBuffer[0]), sizeCharsBuffer[0]);
 		FormatSize(gameMemory.memory->size, fplArrayCount(sizeCharsBuffer[1]), sizeCharsBuffer[1]);
-		fplFormatString(text, fplArrayCount(text), "Game Memory: %s / %s bytes", sizeCharsBuffer[0], sizeCharsBuffer[1]);
+		fplStringFormat(text, fplArrayCount(text), "Game Memory: %s / %s bytes", sizeCharsBuffer[0], sizeCharsBuffer[1]);
 		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
 
 		FormatSize(renderState.lastMemoryUsage, fplArrayCount(sizeCharsBuffer[0]), sizeCharsBuffer[0]);
 		FormatSize(renderState.memory.size, fplArrayCount(sizeCharsBuffer[1]), sizeCharsBuffer[1]);
-		fplFormatString(text, fplArrayCount(text), "Render Memory: %s / %s bytes", sizeCharsBuffer[0], sizeCharsBuffer[1]);
+		fplStringFormat(text, fplArrayCount(text), "Render Memory: %s / %s bytes", sizeCharsBuffer[0], sizeCharsBuffer[1]);
 		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(blockPos.x + w, blockPos.y), fontHeight, 0.0f, -1.0f, textColor);
-		fplFormatString(text, fplArrayCount(text), "Fps: %.5f, Delta: %.5f", state->framesPerSecond[1], state->deltaTime);
+		fplStringFormat(text, fplArrayCount(text), "Fps: %.5f, Delta: %.5f", state->framesPerSecond[1], state->deltaTime);
 		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(blockPos.x + w * 2.0f, blockPos.y), fontHeight, -1.0f, -1.0f, textColor);
 	}
-}
-
-extern void GameUpdateAndRender(GameMemory &gameMemory, const Input &input, const float alpha) {
-	GameInput(gameMemory, input);
-	GameUpdate(gameMemory, input);
-	GameRender(gameMemory, alpha);
 }
 
 #define FINAL_GAMEPLATFORM_IMPLEMENTATION
@@ -346,7 +340,6 @@ int main(int argc, char *argv[]) {
 	GameConfiguration config = {};
 	config.title = L"FPL Demo | GameTemplate";
 	config.disableInactiveDetection = true;
-	config.noUpdateRenderSeparation = true;
 	int result = GameMain(config);
 	return(result);
 }

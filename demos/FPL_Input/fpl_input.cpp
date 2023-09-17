@@ -42,7 +42,7 @@ Changelog:
 	- Initial creation of this description block
 
 License:
-	Copyright (c) 2017-2021 Torsten Spaete
+	Copyright (c) 2017-2023 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -465,11 +465,11 @@ static bool LoadFontFromFile(const char* dataPath, const char* filename, const u
 	fplFileHandle file;
 	uint8_t* ttfBuffer = fpl_null;
 	uint32_t ttfBufferSize = 0;
-	if (fplOpenBinaryFile(filePath, &file)) {
-		ttfBufferSize = fplGetFileSizeFromHandle32(&file);
+	if (fplFileOpenBinary(filePath, &file)) {
+		ttfBufferSize = fplFileGetSizeFromHandle32(&file);
 		ttfBuffer = (uint8_t*)fplMemoryAllocate(ttfBufferSize);
-		fplReadFileBlock32(&file, ttfBufferSize, ttfBuffer, ttfBufferSize);
-		fplCloseFile(&file);
+		fplFileReadBlock32(&file, ttfBufferSize, ttfBuffer, ttfBufferSize);
+		fplFileClose(&file);
 	}
 
 	if (ttfBuffer != nullptr) {
@@ -610,10 +610,10 @@ static GLuint LoadTexture(const char* dataPath, const char* filename) {
 	fplPathCombine(filePath, fplArrayCount(filePath), 2, dataPath, filename);
 
 	fplFileHandle file = {};
-	if (fplOpenBinaryFile(filePath, &file)) {
-		uint32_t dataSize = fplGetFileSizeFromHandle32(&file);
+	if (fplFileOpenBinary(filePath, &file)) {
+		uint32_t dataSize = fplFileGetSizeFromHandle32(&file);
 		uint8_t* data = (uint8_t*)fplMemoryAllocate(dataSize);
-		fplReadFileBlock32(&file, dataSize, data, dataSize);
+		fplFileReadBlock32(&file, dataSize, data, dataSize);
 		int w, h, components;
 		stbi_set_flip_vertically_on_load(0);
 		uint8_t* pixels = stbi_load_from_memory(data, (int)dataSize, &w, &h, &components, 4);
@@ -622,7 +622,7 @@ static GLuint LoadTexture(const char* dataPath, const char* filename) {
 			stbi_image_free(pixels);
 		}
 		fplMemoryFree(data);
-		fplCloseFile(&file);
+		fplFileClose(&file);
 	}
 	return(result);
 }
@@ -1237,10 +1237,10 @@ static void RenderApp(AppState* appState, const InputState* input, const uint32_
 	wchar_t wideTextBuffer[256];
 	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 	if (appState->renderMode == RenderMode::KeyboardAndMouse) {
-		fplFormatString(textBuffer, fplArrayCount(textBuffer), "Keyboard: %s (%s)", keyDefinitions->name, (appState->usePolling ? "Use polling" : "Use events"));
+		fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Keyboard: %s (%s)", keyDefinitions->name, (appState->usePolling ? "Use polling" : "Use events"));
 	} else if (appState->renderMode == RenderMode::Gamepad) {
 		const char* controllerName = input->gamepadState.deviceName;
-		fplFormatString(textBuffer, fplArrayCount(textBuffer), "Gamepad: %s (%s)", (controllerName == fpl_null ? "No controller detected" : controllerName), (appState->usePolling ? "Use polling" : "Use events"));
+		fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Gamepad: %s (%s)", (controllerName == fpl_null ? "No controller detected" : controllerName), (appState->usePolling ? "Use polling" : "Use events"));
 	}
 	fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
 	DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, 0, h - osdFontHeight, osdFontHeight, 0.0f, 0.0f);
@@ -1404,7 +1404,7 @@ static void RenderApp(AppState* appState, const InputState* input, const uint32_
 			{
 				char textBuffer[256];
 				wchar_t wideTextBuffer[256];
-				fplFormatString(textBuffer, fplArrayCount(textBuffer), "Input: (%zu chars)", input->textLen);
+				fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Input: (%zu chars)", input->textLen);
 				fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
 				DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, inputPos.x, inputPos.y + consoleFontHeight * 1.5f, osdFontHeight, 1.0f, 1.0f);
 			}
@@ -1608,7 +1608,7 @@ int main(int argc, char* argv[]) {
 								input.mouseStates[(int)ev.mouse.mouseButton] = ev.mouse.buttonState;
 							} else if (ev.mouse.type == fplMouseEventType_Wheel) {
 								input.mouseWheelDelta = ev.mouse.wheelDelta;
-								input.lastMouseWheelUpdateTime = fplGetTimeInMillisecondsLP();
+								input.lastMouseWheelUpdateTime = fplMillisecondsQuery();
 							}
 						} break;
 
@@ -1715,7 +1715,7 @@ int main(int argc, char* argv[]) {
 				// Reset mouse wheel delta after half a second
 				uint64_t maxWheelShowTime = 500;
 				if (input.lastMouseWheelUpdateTime > 0) {
-					if (fplGetTimeInMillisecondsLP() - input.lastMouseWheelUpdateTime >= maxWheelShowTime) {
+					if (fplMillisecondsQuery() - input.lastMouseWheelUpdateTime >= maxWheelShowTime) {
 						input.lastMouseWheelUpdateTime = 0;
 						input.mouseWheelDelta = 0.0f;
 					}
@@ -1724,12 +1724,12 @@ int main(int argc, char* argv[]) {
 				// Cursor blinking
 				uint64_t maxCursorShowTime = 500;
 				if (input.lastTextCursorBlinkTime == 0) {
-					input.lastTextCursorBlinkTime = fplGetTimeInMillisecondsLP();
+					input.lastTextCursorBlinkTime = fplMillisecondsQuery();
 					input.showTextCursor = true;
 				} else {
-					if ((fplGetTimeInMillisecondsLP() - input.lastTextCursorBlinkTime) >= maxCursorShowTime) {
+					if ((fplMillisecondsQuery() - input.lastTextCursorBlinkTime) >= maxCursorShowTime) {
 						input.showTextCursor = !input.showTextCursor;
-						input.lastTextCursorBlinkTime = fplGetTimeInMillisecondsLP();
+						input.lastTextCursorBlinkTime = fplMillisecondsQuery();
 					}
 				}
 

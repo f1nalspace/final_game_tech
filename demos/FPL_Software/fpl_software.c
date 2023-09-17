@@ -36,7 +36,7 @@ Changelog:
 	- Forced Visual-Studio-Project to compile in C always
 
 License:
-	Copyright (c) 2017-2021 Torsten Spaete
+	Copyright (c) 2017-2023 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -68,10 +68,14 @@ static uint8_t RandomByte(RandomSeries *series) {
 }
 
 int main(int argc, char **args) {
+	fplColor32 backColor = fplCreateColorRGBA(39, 58, 91, 255);
+
 	fplSettings settings = fplMakeDefaultSettings();
 	fplCopyString("Software Rendering Example", settings.window.title, fplArrayCount(settings.window.title));
 	settings.video.backend = fplVideoBackendType_Software;
 	settings.video.isAutoSize = true;
+	settings.window.background = backColor;
+
 	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
 		RandomSeries series = { 1337 };
 		float dt = 1.0f / 60.0f;
@@ -95,22 +99,22 @@ int main(int argc, char **args) {
 			// Background
 			for (uint32_t i = 0; i < backBuffer->width * backBuffer->height; ++i) {
 				uint32_t *p = (uint32_t *)((uint8_t *)backBuffer->pixels + i * backBuffer->pixelStride);
-				*p = 0xFF000000;
+				*p = backColor.value;
 			}
 
 			// Noise
 			uint32_t stepX = 5;
 			uint32_t stepY = 5;
+			fplColor32 pixelColor = fplCreateColorRGBA(0, 0, 0, 255);
 			for (uint32_t y = 0; y < backBuffer->height; ++y) {
 				if (y % stepY == 0) {
 					uint32_t *p = (uint32_t *)((uint8_t *)backBuffer->pixels + y * backBuffer->lineWidth);
 					for (uint32_t x = 0; x < backBuffer->width; ++x) {
 						if (x % stepX == 0) {
-							uint8_t r = RandomByte(&series);
-							uint8_t g = RandomByte(&series);
-							uint8_t b = RandomByte(&series);
-							uint32_t color = (0xFF << 24) | (r << 16) | (g << 8) | b;
-							*p++ = color;
+							pixelColor.r = RandomByte(&series);
+							pixelColor.g = RandomByte(&series);
+							pixelColor.b = RandomByte(&series);
+							*p++ = pixelColor.value;
 						} else {
 							++p;
 						}

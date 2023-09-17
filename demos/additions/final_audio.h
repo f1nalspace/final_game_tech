@@ -117,7 +117,7 @@ static void PushWaveError(PCMWaveData* outWave, const char* format, ...) {
 	outWave->lastError[0] = 0;
 	va_list argList;
 	va_start(argList, format);
-	fplFormatStringArgs(outWave->lastError, fplArrayCount(outWave->lastError), format, argList);
+	fplStringFormatArgs(outWave->lastError, fplArrayCount(outWave->lastError), format, argList);
 	va_end(argList);
 }
 
@@ -194,16 +194,14 @@ static void HalfNormalizeFFT(FFTDouble* values, const size_t size) {
 	}
 }
 
-static void ForwardFFT(const FFTDouble* in, const size_t size, const bool normalized, FFTDouble* out) {
+static void ForwardFFT(const FFTDouble* in, const size_t size, FFTDouble* out) {
 	FFTCore(in, size, 1, out, FFTDirection_Forward);
-	if (normalized)
-		HalfNormalizeFFT(out, size);
+	HalfNormalizeFFT(out, size);
 }
 
-static void BackwardFFT(const FFTDouble* in, const size_t size, const bool normalized, FFTDouble* out) {
+static void BackwardFFT(const FFTDouble* in, const size_t size, FFTDouble* out) {
 	FFTCore(in, size, 1, out, FFTDirection_Backward);
-	if (normalized)
-		HalfNormalizeFFT(out, size);
+	HalfNormalizeFFT(out, size);
 }
 
 inline bool FFTScalarEquals(const double a, const double b) {
@@ -254,7 +252,20 @@ fpl_force_inline double AmplitudeToDecibel(const double amplitude) {
 }
 
 fpl_force_inline double DecibelToAmplitude(const double dB) {
-	return pow(10.0, dB / 20.0);
+	return pow(20.0, dB / 20.0);
+}
+
+fpl_force_inline double DecibelToPower(const double dB, const double min, const double max) {
+	// https://stackoverflow.com/a/9812267
+	double range = max - min;
+	double result;
+	if(dB < min) {
+		result = 0.0;
+	} else {
+		result = (dB - min) / range;
+	}
+	fplAssert(result >= 0.0 && result <= 1.0);
+	return result;
 }
 
 static void WindowFunctionCore(double* output, const size_t length, const double a0, const double a1, const double a2, const double a3, const double a4) {

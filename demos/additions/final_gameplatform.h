@@ -9,6 +9,10 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
+	## 2022-01-23
+	- Proper game timing is accumulated delta time method
+	- Configurable vsync
+
 	## 2019-01-31
 	- Center window on center from nearest display
 
@@ -21,7 +25,7 @@ Changelog:
 
 License:
 	MIT License
-	Copyright 2017-2021 Torsten Spaete
+	Copyright 2017-2023 Torsten Spaete
 */
 
 #ifndef FINAL_GAMEPLATFORM_H
@@ -35,12 +39,12 @@ License:
 
 struct GameConfiguration {
 	const wchar_t *title;
-	bool hideMouseCursor;
-	bool disableInactiveDetection;
-	bool noUpdateRenderSeparation;
 	uint32_t audioSampleRate;
 	uint32_t audioChannels;
 	fplAudioFormatType audioFormat;
+	bool hideMouseCursor;
+	bool disableInactiveDetection;
+	bool disableVerticalSync;
 };
 
 extern int GameMain(const GameConfiguration &config);
@@ -278,7 +282,7 @@ extern int GameMain(const GameConfiguration &config) {
 	fplSettings settings = fplMakeDefaultSettings();
 	settings.video.backend = fplVideoBackendType_OpenGL;
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
-	settings.video.isVSync = true;
+	settings.video.isVSync = !config.disableVerticalSync;
 	if (config.audioSampleRate > 0) {
 		settings.audio.targetFormat.sampleRate = config.audioSampleRate;
 		settings.audio.targetFormat.bufferSizeInFrames = fplGetAudioBufferSizeInFrames(settings.audio.targetFormat.sampleRate, settings.audio.targetFormat.bufferSizeInMilliseconds);
@@ -289,7 +293,10 @@ extern int GameMain(const GameConfiguration &config) {
 		settings.audio.targetFormat.channels = config.audioChannels;
 	fplWideStringToUTF8String(config.title, wcslen(config.title), settings.window.title, fplArrayCount(settings.window.title));
 
-	if(!fplPlatformInit(fplInitFlags_All, &settings)) {
+	fplInitFlags initFlags = fplInitFlags_All;
+	initFlags &= ~fplInitFlags_Console;
+
+	if(!fplPlatformInit(initFlags, &settings)) {
 		return -1;
 	}
 
@@ -365,24 +372,32 @@ extern int GameMain(const GameConfiguration &config) {
 
 		uint32_t frameCount = 0;
 		uint32_t updateCount = 0;
-		double lastTime = fplGetTimeInSecondsHP();
-		double fpsTimerInSecs = fplGetTimeInSecondsHP();
+
+
 		double frameAccumulator = TargetDeltaTime;
-		double lastFramesPerSecond = 0.0;
-		double lastFrameTime = 0.0;
+		double totalTime = 0.0;
+		fplTimestamp currTime = fplTimestampQuery();
+		fplTimestamp lastTime = fplZeroInit;
+		double lastFrameTime = TargetDeltaTime;
+
+		uint64_t lastFPSTime = fplMillisecondsQuery();
+		double framesPerSecond = 0.0;
 		int frameIndex = 0;
 
 		while(!IsGameExiting(gameMem) && fplWindowUpdate()) {
-			// Window size
+			// Get window size
 			fplWindowSize winArea;
 			if(fplGetWindowSize(&winArea)) {
 				newInput->windowSize.x = winArea.width;
 				newInput->windowSize.y = winArea.height;
 			}
 
-			// Remember previous state
-			newInput->deltaTime = (float)TargetDeltaTime;
-			newInput->framesPerSeconds = (float)lastFramesPerSecond;
+			//
+			// Compute new input state
+			//
+			newInput->fixedDeltaTime = (float)TargetDeltaTime;
+			newInput->dynamicFrameTime = (float)lastFrameTime;
+			newInput->framesPerSeconds = (float)framesPerSecond;
 			newInput->defaultControllerIndex = oldInput->defaultControllerIndex;
 			Controller *oldKeyboardController = &oldInput->keyboard;
 			Controller *newKeyboardController = &newInput->keyboard;
@@ -437,63 +452,63 @@ extern int GameMain(const GameConfiguration &config) {
 
 			if(windowActiveType[0] != windowActiveType[1]) {
 				// We dont want to have delta time jumps when game was inactive
-				lastTime = fplGetTimeInSecondsHP();
-				lastFramesPerSecond = 0.0f;
-				fpsTimerInSecs = fplGetTimeInSecondsHP();
-				updateCount = frameCount = 0;
+				currTime = lastTime = fplTimestampQuery();
+				lastFrameTime = TargetDeltaTime;
 				frameAccumulator = TargetDeltaTime;
+
+				framesPerSecond = 0.0f;
+				lastFPSTime = fplMillisecondsQuery();
+				updateCount = frameCount = 0;
 			}
 
+			// Game Input
+			GameInput(gameMem, *newInput);
+
+			//
+			// Compute frame times and update accumulator
+			//
+			lastTime = currTime;
+			currTime = fplTimestampQuery();
+			lastFrameTime = fplTimestampElapsed(lastTime, currTime);
+			if (lastFrameTime > 0.25) {
+				// Cap to 0.25 seconds to prevent death-loop
+				lastFrameTime = 0.25;
+			}
+			frameAccumulator += lastFrameTime;
+			framesPerSecond = lastFrameTime > 0 ? 1.0 / lastFrameTime : 0;
+
+			//
+			// Game Updates
+			//
+			while(frameAccumulator >= TargetDeltaTime) {
+				GameUpdate(gameMem, *newInput);
+				frameAccumulator -= TargetDeltaTime;
+				totalTime += TargetDeltaTime;
+				++updateCount;
+			}
+
+			//
+			// Game Render
+			//
 			ResetRenderState(renderState);
 
-			// Game Update
-			if(config.noUpdateRenderSeparation) {
-				float alpha;
-				if(lastFrameTime > 0) {
-					alpha = (float)lastFrameTime / (float)TargetDeltaTime;
-				} else {
-					alpha = 1.0f;
-				}
-				GameUpdateAndRender(gameMem, *newInput, alpha);
-			} else {
-				GameInput(gameMem, *newInput);
-				while(frameAccumulator >= TargetDeltaTime) {
-					GameUpdate(gameMem, *newInput);
-					frameAccumulator -= TargetDeltaTime;
-					++updateCount;
-				}
-			}
+			float alpha = (float)frameAccumulator / (float)TargetDeltaTime;
+			GameRender(gameMem, alpha);
 
-			// @TODO(final): Yield thread when we are running too fast
-			double endWorkTime = fplGetTimeInSecondsHP();
-			double workDuration = endWorkTime - lastTime;
-
-			// Render
-			if(!config.noUpdateRenderSeparation) {
-				float alpha = (float)frameAccumulator / (float)TargetDeltaTime;
-				GameRender(gameMem, alpha);
-			}
 			RenderWithOpenGL(renderState);
 			fplVideoFlip();
 			++frameCount;
 
-			// Timing
-			double endTime = fplGetTimeInSecondsHP();
-			double frameDuration = endTime - lastTime;
-			lastFrameTime = frameDuration;
-			lastFramesPerSecond = 1.0f / frameDuration;
-			if(!config.noUpdateRenderSeparation) {
-				frameAccumulator += frameDuration;
-				frameAccumulator = fplMin(0.1, frameAccumulator);
-			}
-			lastTime = endTime;
-			if(endTime >= (fpsTimerInSecs + 1.0)) {
-				fpsTimerInSecs = endTime;
+			//
+			// FPS-Timer
+			//
+			if((fplMillisecondsQuery() - lastFPSTime) >= 1000) {
 #if 0
 				char charBuffer[256];
-				fplFormatAnsiString(charBuffer, fplArrayCount(charBuffer), "Fps: %d, Ups: %d\n", frameCount, updateCount);
+				fplFormatString(charBuffer, fplArrayCount(charBuffer), "Fps: %d, Ups: %d\n", frameCount, updateCount);
 				OutputDebugStringA(charBuffer);
 #endif
+				lastFPSTime = fplMillisecondsQuery();
 				frameCount = 0;
 				updateCount = 0;
 			}

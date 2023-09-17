@@ -49,6 +49,7 @@ namespace Demo2 {
 		for(size_t bodyIndex = 0; bodyIndex < _bodies.size(); ++bodyIndex) {
 			delete _bodies[bodyIndex];
 		}
+		BaseSimulation::~BaseSimulation();
 	}
 
 	void ParticleSimulation::AddExternalForces(const Vec2f &force) {

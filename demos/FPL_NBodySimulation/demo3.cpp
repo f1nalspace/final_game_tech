@@ -47,7 +47,8 @@ namespace Demo3 {
 		for(size_t bodyIndex = 0; bodyIndex < bodies.size(); ++bodyIndex) {
 			delete bodies[bodyIndex];
 		}
-		delete cells;
+		delete[] cells;
+		BaseSimulation::~BaseSimulation();
 	}
 
 	void ParticleSimulation::InsertParticleIntoGrid(Particle &particle, const size_t particleIndex) {

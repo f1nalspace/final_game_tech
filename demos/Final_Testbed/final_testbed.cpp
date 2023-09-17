@@ -10,7 +10,7 @@ Author:
 	Torsten Spaete
 
 License:
-	Copyright (c) 2017-2021 Torsten Spaete
+	Copyright (c) 2017-2023 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -120,7 +120,7 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 	}
 	GameState *state = gameMemory.game;
 	fplAssert(state != nullptr);
-	state->angle += input.deltaTime * 0.1f;
+	state->angle += input.fixedDeltaTime * 0.1f;
 }
 
 static Rect2f ComputeAspectRect(Vec2f targetSize, Vec2f sourceSize, Ratio sourceRatio) {
@@ -158,6 +158,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 		fplAssert(state->debugFont.type == AssetType::Font);
 		const LoadedFont &font = state->debugFont.font.data;
 		PushTexture(renderState, &state->debugFont.font.texture, font.atlasAlphaBitmap, font.atlasWidth, font.atlasHeight, 1, TextureFilterType::Linear, TextureWrapMode::ClampToEdge, false, false);
+		state->debugFont.loadState = AssetLoadState::Loaded;
 	}
 
 	PushViewport(renderState, state->viewport.x, state->viewport.y, state->viewport.w, state->viewport.h);

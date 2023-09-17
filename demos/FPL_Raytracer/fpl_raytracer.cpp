@@ -39,7 +39,7 @@ Changelog:
 	- Initial version
 
 License:
-	Copyright (c) 2017-2021 Torsten Spaete
+	Copyright (c) 2017-2023 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -804,7 +804,7 @@ static void InitRaytracer(Raytracer &raytracer, const u32 raytraceWidth, const u
 	raytracer.halfPixelSize.w = 0.5f / (f32)raytraceImage.width;
 	raytracer.halfPixelSize.h = 0.5f / (f32)raytraceImage.height;
 
-	//raytracer.rnd = RandomSeed(fplGetTimeInMillisecondsLP() % U64_MAX);
+	//raytracer.rnd = RandomSeed(fplTimeMilliseconds() % U64_MAX);
 	raytracer.rnd = RandomSeed(1337);
 	raytracer.settings.maxBounceCount = 4;
 	raytracer.settings.raysPerPixelCount = 32;
@@ -881,9 +881,11 @@ static void WorkerThreadProc(const fplThreadHandle *thread, void *opaqueData) {
 int main(int argc, char **argv) {
 	RandomSeries rnd = {};
 
-	const u32 renderWidth = 1280;
-	const u32 renderHeight = 720;
-
+	const u32 tileSize = 64;
+	const u32 tileCountX = 20;
+	const u32 tileCountY = 12;
+	const u32 renderWidth = tileSize * tileCountX;
+	const u32 renderHeight = tileSize * tileCountY;
 	const u32 raytraceWidth = renderWidth;
 	const u32 raytraceHeight = renderHeight;
 
@@ -914,9 +916,9 @@ int main(int argc, char **argv) {
 		TilingInfo tilingInfo = {};
 		tilingInfo.imageW = raytraceWidth;
 		tilingInfo.imageH = raytraceHeight;
-		tilingInfo.tileSizeX = tilingInfo.tileSizeY = 64;
-		tilingInfo.tileCountX = (raytraceWidth / tilingInfo.tileSizeX) + 1;
-		tilingInfo.tileCountY = (raytraceHeight / tilingInfo.tileSizeY) + 1;
+		tilingInfo.tileSizeX = tilingInfo.tileSizeY = tileSize;
+		tilingInfo.tileCountX = tileCountX;
+		tilingInfo.tileCountY = tileCountY;
 
 		// @NOTE(final): We use the STL to make our life easier, so we need to placement-new-initialize our App structure
 		App app = {};

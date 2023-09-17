@@ -10,7 +10,7 @@ Description:
 
 License:
 	MIT License
-	Copyright 2017-2021 Torsten Spaete
+	Copyright 2017-2023 Torsten Spaete
 */
 
 #ifndef FINAL_GAME_H
@@ -78,7 +78,8 @@ struct Mouse {
 };
 
 struct Input {
-	float deltaTime;
+	float fixedDeltaTime;
+	float dynamicFrameTime;
 	float framesPerSeconds;
 	int frameIndex;
 	union {

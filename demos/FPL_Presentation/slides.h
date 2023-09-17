@@ -82,11 +82,12 @@ struct SlideDefinition {
 	const char* name;
 	BlockDefinition blocks[MaxBlockCount];
 	BackgroundStyle background;
+	Quaternion rotation;
 	size_t count;
 };
 
 template<size_t N>
-static SlideDefinition MakeSlideDef(const char* name, BlockDefinition(&blocks)[N], const BackgroundStyle& background) {
+static SlideDefinition MakeSlideDef(const char* name, BlockDefinition(&blocks)[N], const BackgroundStyle& background, const Quaternion &rotation) {
 	fplAssert(N < MaxBlockCount);
 	SlideDefinition result = {};
 	result.name = name;
@@ -94,6 +95,7 @@ static SlideDefinition MakeSlideDef(const char* name, BlockDefinition(&blocks)[N
 	for(size_t i = 0; i < N; ++i) {
 		result.blocks[i] = blocks[i];
 	}
+	result.rotation = rotation;
 	result.count = N;
 	return(result);
 }
@@ -198,7 +200,9 @@ namespace FPLPresentationData {
 			),
 		};
 
-		static const SlideDefinition Slide = MakeSlideDef("Introduction", Blocks, GetBackground());
+		static Quaternion Rot = QuatIdentity();
+
+		static const SlideDefinition Slide = MakeSlideDef("Introduction", Blocks, GetBackground(), Rot);
 	};
 
 	namespace WhatIsAPAL {
@@ -213,7 +217,7 @@ namespace FPLPresentationData {
 			"But to play audio, for example, it's a different story, because each platform has numerous drivers, which are always very hard to program."
 			""
 			"A platform abstraction layer (or short 'PAL') is a development library, written in a low-level language such as 'C',"
-			"that provides a platform-independent API that uses the platform-specific functions, drivers, and handles, but lets you write code that runs on all supported platforms."
+			"that implements all this drivers and specific functions, but lets you write code once, that runs on all supported platforms."
 		};
 
 		static BlockDefinition Blocks[] = {
@@ -228,7 +232,9 @@ namespace FPLPresentationData {
 			),
 		};
 
-		static const SlideDefinition Slide = MakeSlideDef("What is a PAL", Blocks, GetBackground());
+		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(45), V3f(1, 1, 0));
+
+		static const SlideDefinition Slide = MakeSlideDef("What is a PAL", Blocks, GetBackground(), Rot);
 	};
 
 	namespace WhatIsFPL {
@@ -248,27 +254,29 @@ namespace FPLPresentationData {
 				"is an lightweight PAL written in C99,\n"
 				"providing a powerful and easy to use API,\n"
 				"for working with low-level and hardware systems\n"
-				"such as audio, video, memory, window, timing,\n"
-				"input-systems and many more.\n",
+				"such as audio, video, memory, window, threading,\n"
+				"I/O and many more.\n",
 				HorizontalAlignment::Left
 			),
 		};
 
-		static const SlideDefinition Slide = MakeSlideDef("What is FPL", Blocks, GetBackground());
+		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(-45), V3f(0, 1, 1));
+
+		static const SlideDefinition Slide = MakeSlideDef("What is FPL", Blocks, GetBackground(), Rot);
 	};
 
 	namespace Motivation {
 		static const char* Talk = {
 			"C/C++ has very limited access to the underlying platform."
 			"Even in modern C++, you still don't have direct access to a lot of systems."
-			"To access low-level systems, you either need to use third-party libraries or write platform-specific codes for Win32, Linux, Mac, etc. directly."
+			"To access low-level systems, such as audio or video, you either need to use third-party libraries or write platform-specific codes for Win32, Linux, Mac, etc. directly."
 			""
-			"Of course, there are existing PALs on the internet, but most of them have a lot of issues."
-			"- The source-codes contain dozens of translation units which slow down compile time enormously."
-			"- Almost all, are designed not to include the full source within your application and force you either to static or runtime linked pre-compiled releases. (the reason for that is simple: compile times!)."
-			"- In some development environments, it won't compile with a statically linked release"
+			"Of course, there is already a few PALs on the internet, but most of them have the same issue:"
+			"- The source-codes contain dozens of translation units which slows down compile time enormously"
+			"- Almost all, are designed not to include the full source within your application and force you either to static or runtime linked pre-compiled releases"
+			"- Some even don't allow statically linked and force you to dynamic linking"
 			"- You have limited or no control over memory allocations"
-			"- Most of it has too many dependencies (build-systems, third-party libraries)"
+			"- Most of it has too many dependencies (build-systems, third-party libraries, etc.)"
 		};
 
 		static BlockDefinition Blocks[] = {
@@ -292,7 +300,10 @@ namespace FPLPresentationData {
 				HorizontalAlignment::Left, FeaturesFontSize
 			),
 		};
-		static const SlideDefinition Slide = MakeSlideDef("Motivation", Blocks, GetBackground());
+
+		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(70), V3f(1, 0.1f, 0.0f));
+
+		static const SlideDefinition Slide = MakeSlideDef("Motivation", Blocks, GetBackground(), Rot);
 	};
 
 	namespace Goals {
@@ -320,7 +331,10 @@ namespace FPLPresentationData {
 				HorizontalAlignment::Left, FeaturesFontSize * 1.1f
 			),
 		};
-		static const SlideDefinition Slide = MakeSlideDef("Goals of FPL", Blocks, GetBackground());
+
+		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(-30), V3f(1, 0, 1.0));
+
+		static const SlideDefinition Slide = MakeSlideDef("Goals of FPL", Blocks, GetBackground(), Rot);
 	};
 
 	namespace WhyFPL {
@@ -343,7 +357,10 @@ namespace FPLPresentationData {
 				HorizontalAlignment::Left, FeaturesFontSize * 1.1f
 			),
 		};
-		static const SlideDefinition Slide = MakeSlideDef("Why FPL", Blocks, GetBackground());
+
+		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(-60), V3f(0.0f, 0.0f, 1.0f));
+
+		static const SlideDefinition Slide = MakeSlideDef("Why FPL", Blocks, GetBackground(), Rot);
 	};
 
 	namespace FeaturesOfFPL {
@@ -360,7 +377,7 @@ namespace FPLPresentationData {
 				"- Macros (debug break, assertions, CPU features, memory etc.)\n"
 				"- Window creation and handling (Win32/X11)\n"
 				"- Event and input polling (keyboard/mouse/gamepad)\n"
-				"- Video initialization and output (software, OpenGL, etc.)\n"
+				"- Video initialization and output (software, OpenGL, Vulkan, etc.)\n"
 				"- Asynchronous audio playback (DirectSound, ALSA, etc.)\n"
 				"- IO (console, paths, files, directories, etc.)\n"
 				"- Memory allocation\n"
@@ -371,7 +388,10 @@ namespace FPLPresentationData {
 				HorizontalAlignment::Left, FeaturesFontSize
 			),
 		};
-		static const SlideDefinition Slide = MakeSlideDef("Features of FPL", Blocks, GetBackground());
+
+		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(30), V3f(0.0f, 1.0f, 0.1f));
+
+		static const SlideDefinition Slide = MakeSlideDef("Features of FPL", Blocks, GetBackground(), Rot);
 	};
 
 	namespace Magic {
@@ -386,7 +406,10 @@ namespace FPLPresentationData {
 				HorizontalAlignment::Left, FeaturesFontSize * 4
 			),			
 		};
-		static const SlideDefinition Slide = MakeSlideDef("How it works", Blocks, GetBackground());
+
+		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(-15), V3f(0.7f, 0.6f, 0.3f));
+
+		static const SlideDefinition Slide = MakeSlideDef("How it works", Blocks, GetBackground(), Rot);
 	};
 
 	namespace HowItWorks {
@@ -405,7 +428,10 @@ namespace FPLPresentationData {
 				HorizontalAlignment::Left, FeaturesFontSize
 			),
 		};
-		static const SlideDefinition Slide = MakeSlideDef("How it actually works", Blocks, GetBackground());
+
+		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(45), V3f(0.5f, 0.5f, 0.5f));
+
+		static const SlideDefinition Slide = MakeSlideDef("How it actually works", Blocks, GetBackground(), Rot);
 	};
 
 	namespace Links {
@@ -445,7 +471,10 @@ namespace FPLPresentationData {
 				HorizontalAlignment::Left, FeaturesFontSize, V4f(0.0f, 0.8f, 0.2f, 1.0f)
 			),
 		};
-		static const SlideDefinition Slide = MakeSlideDef("Links", Blocks, GetBackground());
+
+		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(-45), V3f(1.0f, 0, 0));
+
+		static const SlideDefinition Slide = MakeSlideDef("Links", Blocks, GetBackground(), Rot);
 	};
 
 	namespace Demos {
@@ -465,7 +494,10 @@ namespace FPLPresentationData {
 				HorizontalAlignment::Center, FeaturesFontSize, V4f(0.0f, 0.8f, 0.2f, 1.0f)
 			),
 		};
-		static const SlideDefinition Slide = MakeSlideDef("Demos!", Blocks, GetBackground());
+
+		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(75), V3f(0.0f, 1.0f, 0));
+
+		static const SlideDefinition Slide = MakeSlideDef("Demos!", Blocks, GetBackground(), Rot);
 	};
 
 	namespace Thanks {
@@ -480,7 +512,10 @@ namespace FPLPresentationData {
 				HorizontalAlignment::Center
 			),
 		};
-		static const SlideDefinition Slide = MakeSlideDef("Thanks!", Blocks, GetBackground());
+
+		static Quaternion Rot = QuatIdentity();
+
+		static const SlideDefinition Slide = MakeSlideDef("Thanks!", Blocks, GetBackground(), Rot);
 	};
 
 	static const SlideDefinition Slides[] = {
@@ -530,7 +565,7 @@ namespace FPLPresentationData {
 		/* font */ {FontResources::Arimo.name, 24.0f, 1.15f, FPLPresentationData::HeaderStyle},
 		/* height */ 32.0f,
 		/* leftText */ "%SLIDE_NAME%",
-		/* centerText */ "Copyright (C) 2021 Torsten Spaete",
+		/* centerText */ "Copyright (C) 2017-2023 Torsten Spaete",
 		/* rightText */ "Page %SLIDE_NUM% of %SLIDE_COUNT%",
 		/* padding */ V2f(2,3),
 	};

@@ -14,6 +14,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2021-10-13
+	- Fixed [#119]: Automatically fallback to legacy when modern OpenGL is not available
+
 	## 2021-05-27
 	- Enabled logging by default
 	- Do not typedef GLchar and GLsizeiptr, GLintptr when already included
@@ -39,12 +42,10 @@ Changelog:
 	- Forced Visual-Studio-Project to compile in C always
 
 License:
-	Copyright (c) 2017-2021 Torsten Spaete
+	Copyright (c) 2017-2023 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
-
-#define MODERN_OPENGL 1 // Enable this to use OpenGL 3.3+
 
 #define FPL_IMPLEMENTATION
 #define FPL_LOGGING
@@ -258,7 +259,7 @@ static void RunLegacy() {
 
 	glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
 
-	fplWallClock lastFrameTime = fplGetWallClock();
+	fplTimestamp lastFrameTime = fplTimestampQuery();
 	float rot = 0.0f;
 	while (fplWindowUpdate()) {
 		fplPollEvents();
@@ -269,7 +270,8 @@ static void RunLegacy() {
 		float aspect = windowArea.width / (float)windowArea.height;
 		Mat4f proj = Mat4PerspectiveRH(DegreesToRadians(35), aspect, 0.1f, 100.0f);
 		Mat4f camera = Mat4LookAtRH(V3fInit(2, 2, 3), V3fInit(0, 0, 0), V3fInit(0, 1, 0));
-		Mat4f model = Mat4RotationY(rot);
+		Quaternion quat = QuatFromAngleAxis(rot, V3fInit(0.0f, 1.0f, 0.0f));
+		Mat4f model = QuatToMat4(quat);
 		Mat4f vp = Mat4Mult(proj, camera);
 		Mat4f mvp = Mat4Mult(vp, model);
 
@@ -310,12 +312,12 @@ static void RunLegacy() {
 
 		fplVideoFlip();
 
-		fplWallClock endFrameTime = fplGetWallClock();
-		double frameDuration = fplGetWallDelta(lastFrameTime, endFrameTime);
+		fplTimestamp endFrameTime = fplTimestampQuery();
+		double frameDuration = fplTimestampElapsed(lastFrameTime, endFrameTime);
 		lastFrameTime = endFrameTime;
 
 		float dt = fplMin((float)frameDuration, DT);
-		
+
 		rot += 0.5f * dt;
 	}
 }
@@ -488,7 +490,7 @@ static bool RunModern() {
 
 	glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
 
-	fplWallClock lastFrameTime = fplGetWallClock();
+	fplTimestamp lastFrameTime = fplTimestampQuery();
 	int frameIndex = 0;
 	float rot = 0.0f;
 	while (fplWindowUpdate()) {
@@ -500,7 +502,8 @@ static bool RunModern() {
 		float aspect = windowArea.width / (float)windowArea.height;
 		Mat4f proj = Mat4PerspectiveRH(DegreesToRadians(35), aspect, 0.1f, 100.0f);
 		Mat4f camera = Mat4LookAtRH(V3fInit(2, 2, 3), V3fInit(0, 0, 0), V3fInit(0, 1, 0));
-		Mat4f model = Mat4RotationY(rot);
+		Quaternion quat = QuatFromAngleAxis(rot, V3fInit(0.0f, 1.0f, 0.0f));
+		Mat4f model = QuatToMat4(quat);
 		Mat4f vp = Mat4Mult(proj, camera);
 		Mat4f mvp = Mat4Mult(vp, model);
 
@@ -520,13 +523,13 @@ static bool RunModern() {
 		glDrawArrays(GL_TRIANGLE_FAN, 0, fplArrayCount(FloorVerts));
 
 		fplVideoFlip();
-				
-		fplWallClock endFrameTime = fplGetWallClock();
-		double frameDuration = fplGetWallDelta(lastFrameTime, endFrameTime);
+
+		fplTimestamp endFrameTime = fplTimestampQuery();
+		double frameDuration = fplTimestampElapsed(lastFrameTime, endFrameTime);
 		lastFrameTime = endFrameTime;
 
 		float dt = fplMin((float)frameDuration, DT);
-		
+
 		++frameIndex;
 		rot += 0.5f * dt;
 	}
@@ -535,6 +538,22 @@ static bool RunModern() {
 	glDeleteVertexArrays(1, &triangleVAO);
 
 	return true;
+}
+
+bool IsModernOpenGLSupported() {
+	fplSettings settings = fplMakeDefaultSettings();
+	settings.video.backend = fplVideoBackendType_OpenGL;
+	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
+	settings.video.graphics.opengl.majorVersion = 3;
+	settings.video.graphics.opengl.minorVersion = 3;
+	settings.video.graphics.opengl.multiSamplingCount = 0;
+	settings.video.isVSync = true;
+	bool result = false;
+	if(fplPlatformInit(fplInitFlags_Video, &settings)) {
+		result = true;
+		fplPlatformRelease();
+	}
+	return(result);
 }
 
 int main(int argc, char **args) {
@@ -547,31 +566,32 @@ int main(int argc, char **args) {
 
 	fplSettings settings = fplMakeDefaultSettings();
 	settings.video.backend = fplVideoBackendType_OpenGL;
-#if MODERN_OPENGL
-	fplCopyString("FPL Modern OpenGL", settings.window.title, fplArrayCount(settings.window.title));
-	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
-	settings.video.graphics.opengl.majorVersion = 3;
-	settings.video.graphics.opengl.minorVersion = 3;
-	settings.video.graphics.opengl.multiSamplingCount = 4;
-	settings.video.isVSync = true;
-#else
-	fplCopyString("FPL Legacy OpenGL", settings.window.title, fplArrayCount(settings.window.title));
-	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
-#endif
-	if (fplPlatformInit(fplInitFlags_Video | fplInitFlags_Console, &settings)) {
+
+	bool supportsModernOpenGL = IsModernOpenGLSupported();
+	if(supportsModernOpenGL) {
+		fplCopyString("FPL Modern OpenGL", settings.window.title, fplArrayCount(settings.window.title));
+		settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
+		settings.video.graphics.opengl.majorVersion = 3;
+		settings.video.graphics.opengl.minorVersion = 3;
+		settings.video.graphics.opengl.multiSamplingCount = 4;
+		settings.video.isVSync = true;
+	} else {
+		fplCopyString("FPL Legacy OpenGL", settings.window.title, fplArrayCount(settings.window.title));
+		settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
+	}
+
+	if(fplPlatformInit(fplInitFlags_Video | fplInitFlags_Console, &settings)) {
 		const char *version = (const char *)glGetString(GL_VERSION);
 		const char *vendor = (const char *)glGetString(GL_VENDOR);
 		const char *renderer = (const char *)glGetString(GL_RENDERER);
 		fplConsoleFormatOut("OpenGL version: %s\n", version);
 		fplConsoleFormatOut("OpenGL vendor: %s\n", vendor);
 		fplConsoleFormatOut("OpenGL renderer: %s\n", renderer);
-
-#if MODERN_OPENGL
-		RunModern();
-#else
-		RunLegacy();
-#endif
-
+		if(supportsModernOpenGL) {
+			RunModern();
+		} else {
+			RunLegacy();
+		}
 		fplPlatformRelease();
 		result = 0;
 	} else {

@@ -7,3 +7,12 @@
 *.otf binary
 *.dll binary
 *.lib binary
+*.wav binary
+*.ogg binary
+*.mp3 binary
+*.avi binary
+*.mpg binary
+*.m4v binary
+*.mp4 binary
+*.mkv binary
+*.pdf binary

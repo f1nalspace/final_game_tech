@@ -96,7 +96,7 @@ Todo:
 	- Diashow
 
 License:
-	Copyright (c) 2017-2021 Torsten Spaete
+	Copyright (c) 2017-2023 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -568,7 +568,7 @@ static void AddPictureFile(ViewerState* state, const char* filePath) {
 static void AddPicturesFromPath(ViewerState* state, const char* path, const bool recursive) {
 	fplFileEntry entry;
 	size_t addedPics = 0;
-	for (bool hasEntry = fplListDirBegin(path, "*", &entry); hasEntry; hasEntry = fplListDirNext(&entry)) {
+	for (bool hasEntry = fplDirectoryListBegin(path, "*", &entry); hasEntry; hasEntry = fplDirectoryListNext(&entry)) {
 		if (!hasEntry) {
 			break;
 		}
@@ -663,7 +663,7 @@ static void ClearViewPictures(ViewerState* state) {
 }
 
 static void UpdateStreamProgress(ViewPicture* pic) {
-	size_t pos = fplGetFilePosition32(&pic->fileStream.handle);
+	size_t pos = fplFileGetPosition32(&pic->fileStream.handle);
 	if (pic->fileStream.size > 0) {
 		pic->progress = pos / (float)pic->fileStream.size;
 	}
@@ -677,7 +677,7 @@ int ReadPictureStreamCallback(void* user, char* data, int size) {
 		return -1;
 	}
 	fplAssert(size >= 0);
-	uint32_t readBytes = fplReadFileBlock32(&pic->fileStream.handle, (uint32_t)size, (void*)data, (uint32_t)size);
+	uint32_t readBytes = fplFileReadBlock32(&pic->fileStream.handle, (uint32_t)size, (void*)data, (uint32_t)size);
 	UpdateStreamProgress(pic);
 	return (int)readBytes;
 }
@@ -688,7 +688,7 @@ void SkipPictureStreamCallback(void* user, int n) {
 		return;
 	}
 	ViewPicture* pic = ctx->viewPic;
-	fplSetFilePosition32(&pic->fileStream.handle, n, fplFilePositionMode_Current);
+	fplFileSetPosition32(&pic->fileStream.handle, n, fplFilePositionMode_Current);
 	UpdateStreamProgress(pic);
 }
 int EofPictureStreamCallback(void* user) {
@@ -699,7 +699,7 @@ int EofPictureStreamCallback(void* user) {
 		return 1;
 	}
 	int res = 0;
-	size_t pos = fplGetFilePosition32(&pic->fileStream.handle);
+	size_t pos = fplFileGetPosition32(&pic->fileStream.handle);
 	if (pic->fileStream.size == 0 || pos == pic->fileStream.size) {
 		res = 1;
 	}
@@ -765,15 +765,15 @@ static void LoadPictureThreadProc(const fplThreadHandle* thread, void* data) {
 				uint8_t* decodedData = fpl_null;
 
 				flogWrite("Load picture stream '%s' [%d]", loadedPic->filePath, loadedPic->fileIndex);
-				if (fplOpenBinaryFile(loadedPic->filePath, &loadedPic->fileStream.handle)) {
-					loadedPic->fileStream.size = fplGetFileSizeFromHandle32(&loadedPic->fileStream.handle);
+				if (fplFileOpenBinary(loadedPic->filePath, &loadedPic->fileStream.handle)) {
+					loadedPic->fileStream.size = fplFileGetSizeFromHandle32(&loadedPic->fileStream.handle);
 					stbi_io_callbacks callbacks;
 					callbacks.read = ReadPictureStreamCallback;
 					callbacks.skip = SkipPictureStreamCallback;
 					callbacks.eof = EofPictureStreamCallback;
 					stbi_set_flip_vertically_on_load(0);
 					decodedData = stbi_load_from_callbacks(&callbacks, &loadThread->context, &w, &h, &comp, 4);
-					fplCloseFile(&loadedPic->fileStream.handle);
+					fplFileClose(&loadedPic->fileStream.handle);
 				}
 
 				if (loadThread->shutdown || loadThread->context.canceled) {
@@ -919,9 +919,9 @@ static void UpdateWindowTitle(ViewerState* state) {
 	if (state->activeFileIndex > -1) {
 		const char* filterName = state->filters[state->activeFilter].name;
 		const char* picFilename = fplExtractFileName(state->pictureFiles[state->activeFileIndex].filePath);
-		fplFormatString(titleBuffer, fplArrayCount(titleBuffer), "%s v%s - %s [%d / %zu] {%s}", VER_PRODUCTNAME_STR, VER_PRODUCTVERSION_STR, picFilename, (state->activeFileIndex + 1), state->pictureFileCount, filterName);
+		fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "%s v%s - %s [%d / %zu] {%s}", VER_PRODUCTNAME_STR, VER_PRODUCTVERSION_STR, picFilename, (state->activeFileIndex + 1), state->pictureFileCount, filterName);
 	} else {
-		fplFormatString(titleBuffer, fplArrayCount(titleBuffer), "%s v%s - No pictures found", VER_PRODUCTNAME_STR, VER_PRODUCTVERSION_STR);
+		fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "%s v%s - No pictures found", VER_PRODUCTNAME_STR, VER_PRODUCTVERSION_STR);
 	}
 	fplSetWindowTitle(titleBuffer);
 }
@@ -1918,10 +1918,10 @@ int main(int argc, char** argv) {
 									bool isActiveKeyRepeat;
 									if (activeKey != ev.keyboard.mappedKey) {
 										activeKey = ev.keyboard.mappedKey;
-										activeKeyStart = fplGetTimeInMillisecondsLP();
+										activeKeyStart = fplMillisecondsQuery();
 										isActiveKeyRepeat = false;
 									} else {
-										isActiveKeyRepeat = (fplGetTimeInMillisecondsLP() - activeKeyStart) >= ActiveKeyThreshold;
+										isActiveKeyRepeat = (fplMillisecondsQuery() - activeKeyStart) >= ActiveKeyThreshold;
 									}
 									if (ev.keyboard.mappedKey == fplKey_Left) {
 										if (activeKey == ev.keyboard.mappedKey && isActiveKeyRepeat) {

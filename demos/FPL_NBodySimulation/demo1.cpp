@@ -31,7 +31,9 @@ namespace Demo1 {
 		}
 	}
 #else
-#define ValidateParticles(particles)
+#	ifndef ValidateParticles
+#		define ValidateParticles(...)
+#	endif
 #endif
 
 	Grid::Grid(const size_t maxCellCount) {
@@ -124,6 +126,7 @@ namespace Demo1 {
 		}
 		delete _workerPool;
 		delete _grid;
+		BaseSimulation::~BaseSimulation();
 	}
 
 	void ParticleSimulation::AddExternalForces(const Vec2f &force) {
