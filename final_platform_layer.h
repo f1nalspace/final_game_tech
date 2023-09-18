@@ -97,7 +97,7 @@ Final Platform Layer is released under the following license:
 
 MIT License
 
-Copyright (c) 2017-2021 Torsten Spaete
+Copyright (c) 2017-2023 Torsten Spaete
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -3642,7 +3642,7 @@ typedef struct fplVulkanSettings {
 	void *instanceHandle;
 	//! The vulkan allocator (VkAllocationCallbacks)
 	const void *allocator;
-	//! The validation layer callback (Only used when @ref fplVulkanSettings.validationLayerMode is set to @ref fplVulkanValidationLayerMode_User and FPL created the VkInstance)
+	//! The validation layer callback @ref fplVulkanValidationLayerCallback
 	fplVulkanValidationLayerCallback *validationLayerCallback;
 	//! User data passed to any callbacks
 	void *userData;
