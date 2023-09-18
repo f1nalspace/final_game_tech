@@ -25,7 +25,7 @@ Changelog:
 
 License:
 	MIT License
-	Copyright 2017-2021 Torsten Spaete
+	Copyright 2017-2023 Torsten Spaete
 */
 
 #ifndef FINAL_GAMEPLATFORM_H
@@ -376,11 +376,11 @@ extern int GameMain(const GameConfiguration &config) {
 
 		double frameAccumulator = TargetDeltaTime;
 		double totalTime = 0.0;
-		double currTime = fplGetTimeInSecondsHP();
-		double lastTime = 0.0;
+		fplTimestamp currTime = fplTimestampQuery();
+		fplTimestamp lastTime = fplZeroInit;
 		double lastFrameTime = TargetDeltaTime;
 
-		uint64_t lastFPSTime = fplGetTimeInMillisecondsLP();
+		uint64_t lastFPSTime = fplMillisecondsQuery();
 		double framesPerSecond = 0.0;
 		int frameIndex = 0;
 
@@ -452,12 +452,12 @@ extern int GameMain(const GameConfiguration &config) {
 
 			if(windowActiveType[0] != windowActiveType[1]) {
 				// We dont want to have delta time jumps when game was inactive
-				currTime = lastTime = fplGetTimeInSecondsHP();
+				currTime = lastTime = fplTimestampQuery();
 				lastFrameTime = TargetDeltaTime;
 				frameAccumulator = TargetDeltaTime;
 
 				framesPerSecond = 0.0f;
-				lastFPSTime = fplGetTimeInMillisecondsLP();
+				lastFPSTime = fplMillisecondsQuery();
 				updateCount = frameCount = 0;
 			}
 
@@ -468,9 +468,12 @@ extern int GameMain(const GameConfiguration &config) {
 			// Compute frame times and update accumulator
 			//
 			lastTime = currTime;
-			currTime = fplGetTimeInSecondsHP();
-			lastFrameTime = currTime - lastTime;
-			if(lastFrameTime > 0.25) lastFrameTime = 0.25; // Cap to 0.25 seconds to prevent death-loop
+			currTime = fplTimestampQuery();
+			lastFrameTime = fplTimestampElapsed(lastTime, currTime);
+			if (lastFrameTime > 0.25) {
+				// Cap to 0.25 seconds to prevent death-loop
+				lastFrameTime = 0.25;
+			}
 			frameAccumulator += lastFrameTime;
 			framesPerSecond = lastFrameTime > 0 ? 1.0 / lastFrameTime : 0;
 
@@ -499,13 +502,13 @@ extern int GameMain(const GameConfiguration &config) {
 			//
 			// FPS-Timer
 			//
-			if((fplGetTimeInMillisecondsLP() - lastFPSTime) >= 1000) {
+			if((fplMillisecondsQuery() - lastFPSTime) >= 1000) {
 #if 0
 				char charBuffer[256];
 				fplFormatString(charBuffer, fplArrayCount(charBuffer), "Fps: %d, Ups: %d\n", frameCount, updateCount);
 				OutputDebugStringA(charBuffer);
 #endif
-				lastFPSTime = fplGetTimeInMillisecondsLP();
+				lastFPSTime = fplMillisecondsQuery();
 				frameCount = 0;
 				updateCount = 0;
 			}

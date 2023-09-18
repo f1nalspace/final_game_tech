@@ -131,7 +131,7 @@ Resources:
 	- https://www.codeproject.com/tips/489450/creating-custom-ffmpeg-io-context
 
 License:
-	Copyright (c) 2017-2021 Torsten Spaete
+	Copyright (c) 2017-2023 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -4115,9 +4115,10 @@ int main(int argc, char **argv) {
 	PlayerState &playerState = state.player;
 
 	int refreshCount = 0;
-	double lastTime = 0;
+	fplTimestamp lastTime = fplZeroInit;
+	fplTimestamp lastRefreshTime = fplZeroInit;
+	fplTimestamp currentTime = fplZeroInit;
 	double remainingTime = 0;
-	double lastRefreshTime = 0;
 
 	// Init
 	if (!InitApp(state)) {
@@ -4151,9 +4152,9 @@ int main(int argc, char **argv) {
 	// TODO: Make constant!
 	const double SeekStep = 5.0f;
 
-	lastTime = fplGetTimeInSecondsHP();
+	lastTime = fplTimestampQuery();
 	remainingTime = 0.0;
-	lastRefreshTime = fplGetTimeInSecondsHP();
+	lastRefreshTime = fplTimestampQuery();
 	refreshCount = 0;
 	while (fplWindowUpdate()) {
 		//
@@ -4237,17 +4238,17 @@ int main(int argc, char **argv) {
 		}
 
 		// Update time
-		double now = fplGetTimeInSecondsHP();
-		double refreshDelta = now - lastRefreshTime;
+		currentTime = fplTimestampQuery();
+		double refreshDelta = fplTimestampElapsed(lastRefreshTime, currentTime);
 		if (refreshDelta >= 1.0) {
-			lastRefreshTime = now;
+			lastRefreshTime = currentTime;
 #if PRINT_FPS
 			fplDebugFormatOut("FPS: %d\n", refreshCount);
 #endif
 			refreshCount = 0;
 		}
-		double delta = now - lastTime;
-		lastTime = now;
+		double delta = fplTimestampElapsed(lastTime, currentTime);
+		lastTime = currentTime;
 #if PRINT_MEMORY_STATS
 		PrintMemStats();
 #endif

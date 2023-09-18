@@ -42,7 +42,7 @@ Changelog:
 	- Forced Visual-Studio-Project to compile in C always
 
 License:
-	Copyright (c) 2017-2021 Torsten Spaete
+	Copyright (c) 2017-2023 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -259,7 +259,7 @@ static void RunLegacy() {
 
 	glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
 
-	fplWallClock lastFrameTime = fplGetWallClock();
+	fplTimestamp lastFrameTime = fplTimestampQuery();
 	float rot = 0.0f;
 	while (fplWindowUpdate()) {
 		fplPollEvents();
@@ -312,8 +312,8 @@ static void RunLegacy() {
 
 		fplVideoFlip();
 
-		fplWallClock endFrameTime = fplGetWallClock();
-		double frameDuration = fplGetWallDelta(lastFrameTime, endFrameTime);
+		fplTimestamp endFrameTime = fplTimestampQuery();
+		double frameDuration = fplTimestampElapsed(lastFrameTime, endFrameTime);
 		lastFrameTime = endFrameTime;
 
 		float dt = fplMin((float)frameDuration, DT);
@@ -490,7 +490,7 @@ static bool RunModern() {
 
 	glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
 
-	fplWallClock lastFrameTime = fplGetWallClock();
+	fplTimestamp lastFrameTime = fplTimestampQuery();
 	int frameIndex = 0;
 	float rot = 0.0f;
 	while (fplWindowUpdate()) {
@@ -524,8 +524,8 @@ static bool RunModern() {
 
 		fplVideoFlip();
 
-		fplWallClock endFrameTime = fplGetWallClock();
-		double frameDuration = fplGetWallDelta(lastFrameTime, endFrameTime);
+		fplTimestamp endFrameTime = fplTimestampQuery();
+		double frameDuration = fplTimestampElapsed(lastFrameTime, endFrameTime);
 		lastFrameTime = endFrameTime;
 
 		float dt = fplMin((float)frameDuration, DT);

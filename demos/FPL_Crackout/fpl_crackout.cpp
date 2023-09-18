@@ -74,7 +74,7 @@ Todo:
 	- Re-create sprites in HD
 
 License:
-	Copyright (c) 2017-2021 Torsten Spaete
+	Copyright (c) 2017-2023 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -734,7 +734,7 @@ static bool InitGame(GameState &state) {
 	fplExtractFilePath(state.dataPath, state.dataPath, fplArrayCount(state.dataPath));
 	fplPathCombine(state.dataPath, fplArrayCount(state.dataPath), 2, state.dataPath, "data");
 
-	srand((int)fplGetTimeInMillisecondsLP());
+	srand((int)fplMillisecondsQuery());
 
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LEQUAL);

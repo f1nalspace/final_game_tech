@@ -96,7 +96,7 @@ Todo:
 	- Diashow
 
 License:
-	Copyright (c) 2017-2021 Torsten Spaete
+	Copyright (c) 2017-2023 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -1918,10 +1918,10 @@ int main(int argc, char** argv) {
 									bool isActiveKeyRepeat;
 									if (activeKey != ev.keyboard.mappedKey) {
 										activeKey = ev.keyboard.mappedKey;
-										activeKeyStart = fplGetTimeInMillisecondsLP();
+										activeKeyStart = fplMillisecondsQuery();
 										isActiveKeyRepeat = false;
 									} else {
-										isActiveKeyRepeat = (fplGetTimeInMillisecondsLP() - activeKeyStart) >= ActiveKeyThreshold;
+										isActiveKeyRepeat = (fplMillisecondsQuery() - activeKeyStart) >= ActiveKeyThreshold;
 									}
 									if (ev.keyboard.mappedKey == fplKey_Left) {
 										if (activeKey == ev.keyboard.mappedKey && isActiveKeyRepeat) {
