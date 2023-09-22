@@ -1,0 +1,26 @@
+﻿{
+  "configurations": [
+    {
+      "name": "x64-Debug",
+      "generator": "Ninja",
+      "configurationType": "Debug",
+      "inheritEnvironments": [ "msvc_x64_x64" ],
+      "buildRoot": "${projectDir}\\..\\out\\FPL_OpenGL\\${name}\\build",
+      "installRoot": "${projectDir}\\..\\out\\FPL_OpenGL\\${name}\\install",
+      "cmakeCommandArgs": "",
+      "buildCommandArgs": "",
+      "ctestCommandArgs": ""
+    },
+    {
+      "name": "x64-Release",
+      "generator": "Ninja",
+      "configurationType": "Release",
+      "inheritEnvironments": [ "msvc_x64_x64" ],
+      "buildRoot": "${projectDir}\\..\\out\\FPL_OpenGL\\${name}\\build",
+      "installRoot": "${projectDir}\\..\\out\\FPL_OpenGL\\${name}\\install",
+      "cmakeCommandArgs": "",
+      "buildCommandArgs": "",
+      "ctestCommandArgs": ""
+    }
+  ]
+}
