@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.2 FATAL_ERROR)
 
 project(FPL_OpenGL)
 
@@ -6,18 +6,18 @@ project(FPL_OpenGL)
 set(MY_DEFINES
 	-DFPL_IMPLEMENTATION
 	-DFPL_LOGGING
-	)
+)
 
 # Include directories
 set(MY_INCLUDE_DIRS
 	"../../"
 	"../additions/"
-	)
+)
 
 # Translation units
 set(MY_TRANSLATION_UNITS
 	"fpl_opengl.c"
-	)
+)
 
 # C/C++ Standard
 set(CMAKE_C_STANDARD 99)
