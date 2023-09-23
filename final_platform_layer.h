@@ -120,7 +120,7 @@ SOFTWARE.
 
 /*!
 	@file final_platform_layer.h
-	@version v0.9.8-beta
+	@version v0.9.9-beta
 	@author Torsten Spaete
 	@brief Final Platform Layer (FPL) - A C99 Single-Header-File Platform Abstraction Library
 */
@@ -131,6 +131,14 @@ SOFTWARE.
 /*!
 	@page page_changelog Changelog
 	@tableofcontents
+
+	## v0.9.9-beta
+	
+	### Overview
+	- Removed several obsolete functions
+
+	### Details
+	- Removed: Obsolete function fplFileSetTimestamps removed
 
 	## v0.9.8-beta
 
@@ -5523,13 +5531,6 @@ fpl_platform_api bool fplFileGetTimestampsFromPath(const char *filePath, fplFile
 * @return Returns true when the function succeeded, false otherwise.
 */
 fpl_platform_api bool fplFileGetTimestampsFromHandle(const fplFileHandle *fileHandle, fplFileTimeStamps *outStamps);
-/**
-* @brief Sets the timestamps for the given file
-* @param filePath The path to the file
-* @param timeStamps The pointer to the @ref fplFileTimeStamps structure
-* @return Returns true when the function succeeded, false otherwise.
-*/
-fpl_platform_api bool fplFileSetTimestamps(const char *filePath, const fplFileTimeStamps *timeStamps);
 /**
 * @brief Checks if the file exists and returns a boolean indicating the existence.
 * @param filePath The path to the file
@@ -13529,28 +13530,6 @@ fpl_platform_api bool fplFileGetTimestampsFromHandle(const fplFileHandle *fileHa
 	return(false);
 }
 
-fpl_platform_api bool fplFileSetTimestamps(const char *filePath, const fplFileTimeStamps *timeStamps) {
-	FPL__CheckArgumentNull(timeStamps, false);
-	if (filePath != fpl_null) {
-		wchar_t filePathWide[FPL_MAX_PATH_LENGTH];
-		fplUTF8StringToWideString(filePath, fplGetStringLength(filePath), filePathWide, fplArrayCount(filePathWide));
-		HANDLE win32FileHandle = CreateFileW(filePathWide, FILE_WRITE_ATTRIBUTES, FILE_SHARE_WRITE | FILE_SHARE_READ, fpl_null, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, fpl_null);
-		bool result = false;
-		if (win32FileHandle != INVALID_HANDLE_VALUE) {
-			FILETIME times[3];
-			times[0] = fpl__Win32ConvertUnixTimestampToFileTime(timeStamps->creationTime);
-			times[1] = fpl__Win32ConvertUnixTimestampToFileTime(timeStamps->lastAccessTime);
-			times[2] = fpl__Win32ConvertUnixTimestampToFileTime(timeStamps->lastModifyTime);
-			if (SetFileTime(win32FileHandle, &times[0], NULL, NULL) == TRUE) {
-				return(true);
-			}
-			CloseHandle(win32FileHandle);
-		}
-		return(result);
-	}
-	return(false);
-}
-
 fpl_platform_api bool fplFileExists(const char *filePath) {
 	bool result = false;
 	if (filePath != fpl_null) {
@@ -15915,11 +15894,6 @@ fpl_platform_api bool fplFileGetTimestampsFromHandle(const fplFileHandle *fileHa
 		}
 	}
 	return(result);
-}
-
-fpl_platform_api bool fplFileSetTimestamps(const char *filePath, const fplFileTimeStamps *timeStamps) {
-	// @IMPLEMENT(final/POSIX): fplSetFileTimestamps
-	return(false);
 }
 
 fpl_platform_api bool fplFileExists(const char *filePath) {
