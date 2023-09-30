@@ -185,10 +185,11 @@ namespace FPLPresentationData {
 
 	namespace Intro {
 		static const char* Talk = {
-			"Hi there!"
-			"My name is Torsten Spaete. I am a professional software engineer with over 20 years of programming experience."
-			"Today I would like to introduce you to a project I have been working on for quite a while now."
-			"It's a platform abstraction library written in C99 called 'Final-Platform-Layer'."
+			"Hello Everybody! I am Torsten."
+			"Today, i would like to introduce you to a project of mine,"
+			"that i have been working on for several years."
+			"It is called 'Final Platform Layer' or short FPL and"
+			"it is a platform abstraction library for C and C++."
 		};
 
 		static BlockDefinition Blocks[] = {
@@ -203,6 +204,67 @@ namespace FPLPresentationData {
 		static Quaternion Rot = QuatIdentity();
 
 		static const SlideDefinition Slide = MakeSlideDef("Introduction", Blocks, GetBackground(), Rot);
+	};
+
+	namespace WhoAmI {
+		static const char* Talk = {
+			"I am Torsten Spaete."
+			"A professional software engineer,"
+			"I have more than 25 years of programming experience."
+			""
+			"My main focus is visualization, multimedia, game and library programming."
+		};
+
+		static BlockDefinition Blocks[] = {
+			MakeTextDef(
+				V2f(),V2f(1,1),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				"I am Torsten Spaete.\n"
+				"A professional software engineer.\n"
+				"25+ years of programming experience.\n",
+				HorizontalAlignment::Center
+			),
+		};
+
+		static Quaternion Rot = QuatIdentity();
+
+		static const SlideDefinition Slide = MakeSlideDef("Who am I", Blocks, GetBackground(), Rot);		
+	};
+
+	namespace WhatIsFPL {
+		static const char* Talk = {
+			"Final-Platform-Layer (or short 'FPL') is a lightweight platform-abstraction library written in C99,"
+			"that gives you access to low-level systems, hardware devices and operating system functions,"
+			"in a platform independent and easy-to-use API."
+			""
+			"With FPL you can:"
+			"- Play audio samples on the default or custom audio device"
+			"- Create and manage a window, including creation of a video context, such as OpenGL, Vulkan or Software graphics api"
+			"- Access inputs devices, such as keyboard, mouse and gamepads"
+			"- Execute code in parallel, using several multithreading techniques"
+			"- Allocate and free memory directly on the platform, without the use of malloc or free"
+			"- Modify and query files & directories"
+			"- Query several platform and hardware informations"
+			"- and much more"
+			""
+			"Its main usage is multimedia and game development, but it can be used to write any kind of application."
+			"'FPL' is designed to be fast in compile and run time and can be integrated however you like."
+		};
+
+		static BlockDefinition Blocks[] = {
+			MakeTextDef(
+				V2f(),V2f(1,1),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				"Final-Platform-Layer (or short 'FPL')\n"
+				"is a lightweight PAL written in C99,\n"
+				"providing a powerful and easy to use API,\n"
+				"that gives you access to low-level systems, hardware devices,\n"
+				"operating system functions and many more.",
+				HorizontalAlignment::Left
+			),
+		};
+
+		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(-45), V3f(0, 1, 1));
+
+		static const SlideDefinition Slide = MakeSlideDef("What is FPL", Blocks, GetBackground(), Rot);
 	};
 
 	namespace WhatIsAPAL {
@@ -235,34 +297,6 @@ namespace FPLPresentationData {
 		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(45), V3f(1, 1, 0));
 
 		static const SlideDefinition Slide = MakeSlideDef("What is a PAL", Blocks, GetBackground(), Rot);
-	};
-
-	namespace WhatIsFPL {
-		static const char* Talk = {
-			"Final-Platform-Layer (or short 'FPL') is a lightweight platform-abstraction-layer written in C99, that provides a powerful and easy-to-use API,"
-			"for accessing low-level and hardware devices, such as audio, video, memory, window, input, threads, and many more."
-			""
-			"Its main usage is multimedia and game development but can be used to write any kind of application."
-			"'FPL' is designed to be fast in compile and run time and can be integrated however you like."
-			"You can statically link it, you can link it on runtime or you can include the full source code."
-		};
-
-		static BlockDefinition Blocks[] = {
-			MakeTextDef(
-				V2f(),V2f(1,1),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				"Final-Platform-Layer (or short 'FPL')\n"
-				"is an lightweight PAL written in C99,\n"
-				"providing a powerful and easy to use API,\n"
-				"for working with low-level and hardware systems\n"
-				"such as audio, video, memory, window, threading,\n"
-				"I/O and many more.\n",
-				HorizontalAlignment::Left
-			),
-		};
-
-		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(-45), V3f(0, 1, 1));
-
-		static const SlideDefinition Slide = MakeSlideDef("What is FPL", Blocks, GetBackground(), Rot);
 	};
 
 	namespace Motivation {
@@ -434,6 +468,29 @@ namespace FPLPresentationData {
 		static const SlideDefinition Slide = MakeSlideDef("How it actually works", Blocks, GetBackground(), Rot);
 	};
 
+	namespace Demos {
+		static const char* Talk = {
+			""
+		};
+
+		static BlockDefinition Blocks[] = {
+			MakeTextDef(
+				V2f(0.0f, 0.3f),V2f(1.0f, 0.1f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				"FPL comes with a variety of demos:",
+				HorizontalAlignment::Center, FeaturesFontSize
+			),
+			MakeTextDef(
+				V2f(0.0f, 0.4f),V2f(1.0f, 0.1f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				"https://github.com/f1nalspace/final_game_tech/tree/master/demos",
+				HorizontalAlignment::Center, FeaturesFontSize, V4f(0.0f, 0.8f, 0.2f, 1.0f)
+			),
+		};
+
+		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(75), V3f(0.0f, 1.0f, 0));
+
+		static const SlideDefinition Slide = MakeSlideDef("Demos!", Blocks, GetBackground(), Rot);
+	};
+
 	namespace Links {
 		static const char* Talk = {
 			""
@@ -477,29 +534,6 @@ namespace FPLPresentationData {
 		static const SlideDefinition Slide = MakeSlideDef("Links", Blocks, GetBackground(), Rot);
 	};
 
-	namespace Demos {
-		static const char* Talk = {
-			""
-		};
-
-		static BlockDefinition Blocks[] = {
-			MakeTextDef(
-				V2f(0.0f, 0.3f),V2f(1.0f, 0.1f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				"FPL comes with a variety of demos:",
-				HorizontalAlignment::Center, FeaturesFontSize
-			),
-			MakeTextDef(
-				V2f(0.0f, 0.4f),V2f(1.0f, 0.1f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				"https://github.com/f1nalspace/final_game_tech/tree/master/demos",
-				HorizontalAlignment::Center, FeaturesFontSize, V4f(0.0f, 0.8f, 0.2f, 1.0f)
-			),
-		};
-
-		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(75), V3f(0.0f, 1.0f, 0));
-
-		static const SlideDefinition Slide = MakeSlideDef("Demos!", Blocks, GetBackground(), Rot);
-	};
-
 	namespace Thanks {
 		static const char* Talk = {
 			""
@@ -508,7 +542,7 @@ namespace FPLPresentationData {
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
 				V2f(),V2f(1,1),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				"Thank you for trying out FPL!",
+				"Thank you for your attention!",
 				HorizontalAlignment::Center
 			),
 		};
@@ -520,7 +554,7 @@ namespace FPLPresentationData {
 
 	static const SlideDefinition Slides[] = {
 		Intro::Slide,
-		WhatIsAPAL::Slide,
+		WhoAmI::Slide,
 		WhatIsFPL::Slide,
 		Motivation::Slide,
 		Goals::Slide,
@@ -528,8 +562,8 @@ namespace FPLPresentationData {
 		FeaturesOfFPL::Slide,
 		Magic::Slide,
 		HowItWorks::Slide,
-		Links::Slide,
 		Demos::Slide,
+		Links::Slide,
 		Thanks::Slide
 	};
 
