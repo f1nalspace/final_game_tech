@@ -2020,6 +2020,22 @@ static void ShowSlideshow(App &app, const uint32_t slideIndex, const bool withTr
 	}
 }
 
+static void JumpToFirstSlide(App &app) {
+	PresentationState &state = app.state;
+	size_t slideCount = app.presentation.slides.Count();
+	if (slideCount > 0) {
+		ShowSlideshow(app, 0, true);
+	}
+}
+
+static void JumpToLastSlide(App &app) {
+	PresentationState &state = app.state;
+	size_t slideCount = app.presentation.slides.Count();
+	if (slideCount > 0) {
+		ShowSlideshow(app, slideCount - 1, true);
+	}
+}
+
 static void JumpToNextSlide(App &app) {
 	PresentationState &state = app.state;
 	size_t slideCount = app.presentation.slides.Count();
@@ -2332,6 +2348,14 @@ int main(int argc, char **argv) {
 									case fplKey_PageDown:
 									case fplKey_Right:
 										JumpToNextSlide(app);
+										break;
+
+									case fplKey_End:
+										JumpToLastSlide(app);
+										break;
+
+									case fplKey_Home:
+										JumpToFirstSlide(app);
 										break;
 								}
 							}
