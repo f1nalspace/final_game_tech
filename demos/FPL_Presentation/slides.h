@@ -210,9 +210,9 @@ namespace FPLPresentationData {
 		static const char* Talk = {
 			"I am Torsten Spaete."
 			"A professional software engineer,"
-			"I have more than 25 years of programming experience."
+			"with more than 25 years of programming experience."
 			""
-			"My main focus is visualization, multimedia, game and library programming."
+			"My main focus is data-visualization, multimedia and game programming."
 		};
 
 		static BlockDefinition Blocks[] = {
@@ -357,7 +357,7 @@ namespace FPLPresentationData {
 				"- Written in C99 with 100%% C++ compatibility\n"
 				"- Bare minimum compile and linking requirements\n"
 				"- Uses a fixed and small memory footprint\n"
-				"- Hides no data and let the user decide how to integrate it\n"
+				"- User decide how to integrate it, not the library\n"
 				"- Supports runtime or static linking or full-source inclusion\n"
 				"- C-Runtime library should not be required\n"
 				"- Configurable with good defaults\n"
