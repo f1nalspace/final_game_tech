@@ -225,7 +225,7 @@ namespace FPLPresentationData {
 			),
 		};
 
-		static Quaternion Rot = QuatIdentity();
+		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(15), V3f(1, 1, 1));
 
 		static const SlideDefinition Slide = MakeSlideDef("Who am I", Blocks, GetBackground(), Rot);		
 	};
