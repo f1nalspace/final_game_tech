@@ -2325,10 +2325,12 @@ int main(int argc, char **argv) {
 									} break;
 
 									case fplKey_PageUp:
+									case fplKey_Left:
 										JumpToPrevSlide(app);
 										break;
 
 									case fplKey_PageDown:
+									case fplKey_Right:
 										JumpToNextSlide(app);
 										break;
 								}
