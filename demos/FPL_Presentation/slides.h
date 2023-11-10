@@ -185,11 +185,9 @@ namespace FPLPresentationData {
 
 	namespace Intro {
 		static const char* Talk = {
-			"Hello Everybody! I am Torsten."
-			"Today, i would like to introduce you to a project of mine,"
-			"that i have been working on for several years."
-			"It is called 'Final Platform Layer' or short FPL and"
-			"it is a platform abstraction library for C and C++."
+			"Hi! I am Torsten."
+			"Today, i would like to introduce you to a project of mine that i have been working on for several years."
+			"It is called 'Final Platform Layer' or short FPL and is a platform abstraction library for C and C++."
 		};
 
 		static BlockDefinition Blocks[] = {
@@ -209,10 +207,9 @@ namespace FPLPresentationData {
 	namespace WhoAmI {
 		static const char* Talk = {
 			"I am Torsten Spaete."
-			"A professional software engineer,"
-			"with more than 25 years of programming experience."
+			"A professional software engineer with more than 25 years of programming experience."
 			""
-			"My main focus is data-visualization, multimedia and game programming."
+			"My main focus is data-visualization, software-architecture, multimedia and game programming."
 		};
 
 		static BlockDefinition Blocks[] = {
@@ -232,14 +229,14 @@ namespace FPLPresentationData {
 
 	namespace WhatIsFPL {
 		static const char* Talk = {
-			"Final-Platform-Layer (or short 'FPL') is a lightweight platform-abstraction library written in C99,"
-			"that gives you access to low-level systems, hardware devices and operating system functions,"
+			"Final-Platform-Layer (or short 'FPL') is a lightweight platform-abstraction library written in C99."
+			"With FPL you get access to low-level systems, hardware devices and operating system functions,"
 			"in a platform independent and easy-to-use API."
 			""
-			"With FPL you can:"
-			"- Play audio samples on the default or custom audio device"
-			"- Create and manage a window, including creation of a video context, such as OpenGL, Vulkan or Software graphics api"
-			"- Access inputs devices, such as keyboard, mouse and gamepads"
+			"For example you can:"
+			"- Play audio samples on any audio device"
+			"- Create and manage windows, including the initialization of a video graphics api, such as OpenGL, Vulkan"
+			"- Query keyboard, mouse and gamepad input"
 			"- Execute code in parallel, using several multithreading techniques"
 			"- Allocate and free memory directly on the platform, without the use of malloc or free"
 			"- Modify and query files & directories"
@@ -267,38 +264,6 @@ namespace FPLPresentationData {
 		static const SlideDefinition Slide = MakeSlideDef("What is FPL", Blocks, GetBackground(), Rot);
 	};
 
-	namespace WhatIsAPAL {
-		static const char* Talk = {
-			"Before I continue, I want to explain first what a platform abstraction layer is and why it is important."
-			""
-			"Any operating system has different APIs for accessing low-level systems or hardware devices, such as graphics cards, audio devices, input devices, etc."
-			"For example, to create a thread on windows you have to call the function \"CreateThread\"."
-			"On Linux, it's a different function called \"pthread_create\"."
-			"Both do the same thing: Creating and starting a thread, but each function requires different arguments and handles."
-			""
-			"But to play audio, for example, it's a different story, because each platform has numerous drivers, which are always very hard to program."
-			""
-			"A platform abstraction layer (or short 'PAL') is a development library, written in a low-level language such as 'C',"
-			"that implements all this drivers and specific functions, but lets you write code once, that runs on all supported platforms."
-		};
-
-		static BlockDefinition Blocks[] = {
-			MakeTextDef(
-				V2f(),V2f(1,1),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				"A platform abstraction layer (or short 'PAL')\n"
-				"is a development library,\n"
-				"written in a low-level language such as C,\n"
-				"used to access hardware and low-level systems\n"
-				"in a platform-independent way.\n",
-				HorizontalAlignment::Left
-			),
-		};
-
-		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(45), V3f(1, 1, 0));
-
-		static const SlideDefinition Slide = MakeSlideDef("What is a PAL", Blocks, GetBackground(), Rot);
-	};
-
 	namespace Motivation {
 		static const char* Talk = {
 			"C/C++ has very limited access to the underlying platform."
@@ -315,7 +280,7 @@ namespace FPLPresentationData {
 
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
-				V2f(0.05f, 0.0f),V2f(0.9f, 0.25),MakeAlign(HorizontalAlignment::Left),
+				V2f(0.05f, 0.0f),V2f(0.9f, 0.25),MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Top),
 				"C/C++ has very limited access to the underlying platform,\n"
 				"so you have either use third-party libraries to access the platform or\n"
 				"write platform specific codes directly.\n",
@@ -324,13 +289,12 @@ namespace FPLPresentationData {
 
 			MakeTextDef(
 				V2f(0.05f, 0.3f),V2f(0.9f, 0.7f),MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Top),
-				"The pre-existing PALs have a lot of issues:\n"
-				"- Huge in file count and/or size\n"
-				"- Very long compile times\n"
+				"The pre-existing PALs have a lot of disavantages:\n"
+				"- Very long compile times, due to large number of files\n"
+				"- Only static or dynamic integration is possible\n"
+				"- Not allowed to use the source directly\n"
 				"- Limited control over the allocated memory\n"
-				"- Statically linking is madness or not supported at all\n"
-				"- Including the full source is not supported\n"
-				"- Too many dependencies\n",
+				"- Bloated and/or too many dependencies\n",
 				HorizontalAlignment::Left, FeaturesFontSize
 			),
 		};
@@ -343,23 +307,25 @@ namespace FPLPresentationData {
 	namespace Goals {
 		static const char* Talk = {
 			"That builds up the following goals:"
-			"- It should compile very fast, even in slow environments"
+			"- It should be a single-file library"
+			"- It should compile very fast, even with slow hardware or in slow environments"
+			"- It should be written in C99, so its highly compatible"
 			"- It should not require any third-party dependencies and have bare minimum linking requirements"
-			"- It should use a fixed memory footprint and give the user control over any memory allocations"
+			"- It should use a small memory footprint and give the user control over any memory allocations"
 			"- It should support runtime and static linking and can be integrated with full source"
 			"- It starts with good default settings but can be changed by the user"
 		};
 
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
-				V2f(0.0, 0.0),V2f(1.0, 1.0),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				V2f(0.0, 0.0),V2f(1.0, 1.0),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
 				"- Fast compile times, even in slow environments\n"
 				"- Written in C99 with 100%% C++ compatibility\n"
 				"- Bare minimum compile and linking requirements\n"
-				"- Uses a fixed and small memory footprint\n"
-				"- User decide how to integrate it, not the library\n"
-				"- Supports runtime or static linking or full-source inclusion\n"
+				"- Uses a small memory footprint\n"
+				"- User decides how to integrate it, not the library\n"
 				"- C-Runtime library should not be required\n"
+				"- Features can be disabled, if not needed\n"
 				"- Configurable with good defaults\n"
 				"- Public open source\n",
 				HorizontalAlignment::Left, FeaturesFontSize * 1.1f
@@ -378,7 +344,7 @@ namespace FPLPresentationData {
 
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
-				V2f(0.0, 0.0),V2f(1.0, 1.0),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				V2f(0.0, 0.0),V2f(1.0, 1.0),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
 				"- You get access to low-level systems in a nice and clean API\n"
 				"- One file containing all the source code\n"
 				"- Written in pure C99 for simplicity and best portability\n"
@@ -386,7 +352,8 @@ namespace FPLPresentationData {
 				"- Has bare minimum compile and linking requirements\n"
 				"- Uses runtime linking by default, so no libs needs to be included\n"
 				"- Allows to control the memory allocations and handles memory very gracefully\n"
-				"- It is stateless, meaning the user does not have to provide any application states\n"
+				"- Multiple backends for video/audio/input/windowing\n"
+				"- Supports runtime or static linking or full-source inclusion\n"
 				"- MIT-Licensed\n",
 				HorizontalAlignment::Left, FeaturesFontSize * 1.1f
 			),
@@ -406,6 +373,7 @@ namespace FPLPresentationData {
 			MakeTextDef(
 				V2f(0,0),V2f(1.0f,1.0f),MakeAlign(HorizontalAlignment::Center),
 				"\n"
+				"- Supports dynamic linking, static linking and full source inclusion\n"
 				"- Platform detection (x86/x64/Arm, Win32/Linux/Unix, etc.)\n"
 				"- Compiler detection (MSVC/GCC/Clang/Intel)\n"
 				"- Macros (debug break, assertions, CPU features, memory etc.)\n"
@@ -458,7 +426,9 @@ namespace FPLPresentationData {
 				"\n"
 				"- Uses the pre-compiler to detect compiler/platform/hardware/driver setups\n"
 				"\n"
-				"- Prevents code-duplication by using sub-platforms (Unix vs Linux)\n",
+				"- Prevents code-duplication by using sub-platforms (Unix vs Linux)\n"
+				"\n"
+				"- Uses runtime linking by default\n",
 				HorizontalAlignment::Left, FeaturesFontSize
 			),
 		};
