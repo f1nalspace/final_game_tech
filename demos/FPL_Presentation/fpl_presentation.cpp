@@ -79,6 +79,7 @@ License:
 #define DRAW_ROTATING_CUBE 1
 #define USE_LETTERBOX_VIEWPORT 0
 #define DRAW_BOX_DEFINITIONS 0
+#define CUBE_ONLY 0
 
 template <typename T>
 struct GrowablePool {
@@ -1219,7 +1220,7 @@ struct PresentationState {
 	Quaternion startRotation;
 	Quaternion currentRotation;
 	Quaternion targetRotation;
-	
+
 	Vec2f startOffset;
 	Vec2f currentOffset;
 	Vec2f targetOffset;
@@ -1594,17 +1595,17 @@ static void RenderCube(const float rw, const float rh, const float rd, const Vec
 	// Top face (y = 1.0f)
 	// Green
 	glColor4fv(&faceColors[0].m[0]);
-	glVertex3f(right, top, far);
-	glVertex3f(left, top, far);
-	glVertex3f(left, top, near);
-	glVertex3f(right, top, near);
+	glTexCoord2f(1.0f, 1.0f); glVertex3f(right, top, far);
+	glTexCoord2f(0.0f, 1.0f); glVertex3f(left, top, far);
+	glTexCoord2f(0.0f, 0.0f); glVertex3f(left, top, near);
+	glTexCoord2f(1.0f, 0.0f); glVertex3f(right, top, near);
 
 	// Bottom face (y = -1.0f)
 	glColor4fv(&faceColors[0].m[0]);
-	glVertex3f(right, bottom, near);
-	glVertex3f(left, bottom, near);
-	glVertex3f(left, bottom, far);
-	glVertex3f(right, bottom, far);
+	glTexCoord2f(1.0f, 1.0f); glVertex3f(right, bottom, near);
+	glTexCoord2f(0.0f, 1.0f); glVertex3f(left, bottom, near);
+	glTexCoord2f(0.0f, 0.0f); glVertex3f(left, bottom, far);
+	glTexCoord2f(1.0f, 0.0f); glVertex3f(right, bottom, far);
 
 	// Front face  (z = 1.0f)
 	glColor4fv(&faceColors[1].m[0]);
@@ -1615,10 +1616,10 @@ static void RenderCube(const float rw, const float rh, const float rd, const Vec
 
 	// Back face (z = -1.0f)
 	glColor4fv(&faceColors[1].m[0]);
-	glTexCoord2f(1.0f, 1.0f); glVertex3f(right, bottom, far);
-	glTexCoord2f(0.0f, 1.0f); glVertex3f(left, bottom, far);
-	glTexCoord2f(0.0f, 0.0f); glVertex3f(left, top, far);
-	glTexCoord2f(1.0f, 0.0f); glVertex3f(right, top, far);
+	glTexCoord2f(0.0f, 0.0f); glVertex3f(right, bottom, far);
+	glTexCoord2f(1.0f, 0.0f); glVertex3f(left, bottom, far);
+	glTexCoord2f(1.0f, 1.0f); glVertex3f(left, top, far);
+	glTexCoord2f(0.0f, 1.0f); glVertex3f(right, top, far);
 
 	// Left face (x = -1.0f)
 	glColor4fv(&faceColors[2].m[0]);
@@ -1744,6 +1745,99 @@ static void RenderSlide(const Slide &slide, const Renderer &renderer) {
 			} break;
 		}
 	}
+}
+
+static void DrawRotatingCubeOnly(App &app, const Vec2i &winSize) {
+	PresentationState &state = app.state;
+	const Presentation &presentation = app.presentation;
+	Renderer &renderer = app.renderer;
+
+	float w = 256;
+	float h = 144;
+	float aspect = w / h;
+	Vec2f center = V2f(w, h) * 0.5f;
+	Mat4f orthoProj = Mat4OrthoRH(0.0f, w, h, 0.0f, -1.0f, 1.0f);
+	Mat4f perspectiveProj = Mat4PerspectiveRH(DegreesToRadians(45.0f), aspect, 0.01f, 1000.0f);
+
+	Viewport viewport = ComputeViewportByAspect(winSize, aspect);
+
+#if USE_LETTERBOX_VIEWPORT
+	glViewport(viewport.x, viewport.y, viewport.w, viewport.h);
+	glScissor(viewport.x, viewport.y, viewport.w, viewport.h);
+	renderer.cubeFramebuffer.UpdateIfNeeded(viewport.w, viewport.h);
+#else
+	glViewport(0, 0, winSize.w, winSize.h);
+	glScissor(0, 0, winSize.w, winSize.h);
+	renderer.cubeFramebuffer.UpdateIfNeeded(winSize.w, winSize.h);
+#endif
+
+	float zoom = 1.0f;
+	Mat4f scale = Mat4Scale(V3f(zoom, zoom, zoom));
+	Mat4f view = Mat4Translation(V2f(w * 0.5f, h * 0.5f)) * scale;
+	Vec2f zoomOffset = V2f(-w * 0.5f, -h * 0.5f);
+
+	const LoadedImage *cubeImage = renderer.FindImage(ImageResources::FPLLogo512x512.name);
+
+	fplAssert(winSize.w > 0 && winSize.h > 0);
+	renderer.cubeFramebuffer.Bind();
+
+	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glEnable(GL_DEPTH_TEST);
+
+	Mat4f cubeTranslation = Mat4Translation(V3f(0, 0, -3.0f));
+
+	Mat4f cubeRot = QuatToMat4(state.currentRotation);
+
+	Mat4f cubeView = cubeTranslation * cubeRot;
+	Mat4f cubeMVP = perspectiveProj * cubeView;
+	glLoadMatrixf(&cubeMVP.m[0]);
+
+
+	Vec4f colors[3] = { V4f(1.0f, 0.0f, 0.0f, 1.0f), V4f(0.0f, 1.0f, 0.0f, 1.0f), V4f(0.0f, 0.0f, 1.0f, 1.0f) };
+	RenderCube(CubeRadius, CubeRadius, CubeRadius, colors, cubeImage->textureId);
+
+	glDisable(GL_CULL_FACE);
+	glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+	glLineWidth(3.0f);
+	RenderCube(CubeRadius * 1.25f, CubeRadius * 1.25f, CubeRadius * 1.25f, colors, 0);
+	glLineWidth(1.0f);
+	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+	glEnable(GL_CULL_FACE);
+
+#if 0
+	Mat4f tempMat = perspectiveProj * cubeTranslation;
+	glLoadMatrixf(&tempMat.m[0]);
+	RenderPoint(app.pointPos, PointRadius, V4f(1, 1, 1, 1));
+	RenderPoint(app.currentCubePos, PointRadius, V4f(1, 0, 0, 1));
+
+	glLineWidth(2.0f);
+	glColor4f(1, 1, 1, 1);
+	glBegin(GL_LINES);
+	glVertex3f(0, 0, 0);
+	glVertex3fv(&app.pointPos.m[0]);
+	glEnd();
+	glLineWidth(1.0f);
+#endif
+
+	glDisable(GL_DEPTH_TEST);
+	CheckGLError();
+
+	renderer.cubeFramebuffer.Unbind();
+
+	Vec2f cubeSize = V2f(w, h);
+
+	glClearColor(0.0f, 0.0f, 0.0f, 1);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	Mat4f slideModel = Mat4Translation(V2f(0, 0) + zoomOffset);
+	Mat4f slideMVP = orthoProj * view * slideModel;
+	glLoadMatrixf(&slideMVP.m[0]);
+
+	RenderTextureQuad(renderer.cubeFramebuffer.textures[0], V2f(0, 0), cubeSize, V4f(1, 1, 1, 1));
+
+	CheckGLError();
+	glFlush();
 }
 
 static void RenderFrame(App &app, const Vec2i &winSize) {
@@ -2185,7 +2279,7 @@ static void AddSlideFromDefinition(Renderer &renderer, Presentation &presentatio
 				TextStyle textStyle = normalStyle;
 				textStyle.foregroundColor = V4f((normalStyle.foregroundColor.r + textBlock.color.r) * 0.5f, (normalStyle.foregroundColor.g + textBlock.color.g) * 0.5f, (normalStyle.foregroundColor.b + textBlock.color.b) * 0.5f, 1.0f);
 				AddTextBlock(renderer, *slide, textPos, text, normalFontName, textFontSize, textLineHeight, textStyle, textAlign, VerticalAlignment::Top);
-				} break;
+			} break;
 
 			case BlockType::Image:
 			{
@@ -2224,15 +2318,15 @@ static void AddSlideFromDefinition(Renderer &renderer, Presentation &presentatio
 #endif
 
 					AddImageBlock(renderer, *slide, imagePos, imageSize, imageBlock.name);
-					}
-				} break;
+				}
+			} break;
 
 			default:
 				break;
-			}
-
-			}
 		}
+
+	}
+}
 
 static void BuildPresentation(const PresentationDefinition &inPresentation, Renderer &renderer, Presentation &outPresentation) {
 	Vec2f slideSize = inPresentation.slideSize;
@@ -2321,6 +2415,17 @@ int main(int argc, char **argv) {
 
 			app.entropy = RandomSeed(1337);
 
+#if CUBE_ONLY
+			app.state.startOffset = app.state.currentOffset;
+			app.state.startRotation = app.state.currentRotation;
+
+			Quaternion rotZ = QuatFromAngleAxis(DegreesToRadians(360), V3f(0, 0, 1));
+			Quaternion rotY = QuatFromAngleAxis(DegreesToRadians(180), V3f(0, 1, 0));
+
+			app.state.targetRotation = QuatAdd(rotZ, rotY);
+			app.state.slideAnimation.ResetAndStart(10.0, false, Easings::EaseInOutQuart);
+#endif
+
 			float dt = 1.0f / 60.0f;
 			fplTimestamp startTime = fplTimestampQuery();
 			fplTimestamp currentTime = startTime;
@@ -2372,7 +2477,11 @@ int main(int argc, char **argv) {
 
 				UpdateFrame(app, dt);
 
+#if CUBE_ONLY
+				DrawRotatingCubeOnly(app, V2iInit(winSize.width, winSize.height));
+#else			
 				RenderFrame(app, V2iInit(winSize.width, winSize.height));
+#endif
 
 				fplVideoFlip();
 
