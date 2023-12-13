@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Real collisions</title>
+</head>
+<body>
+<canvas id="gameCanvas" width="800" height="600" tabindex="1"></canvas>
+<script type="text/javascript">
+var canvas = document.getElementById("gameCanvas");
+var ctx = canvas.getContext("2d");
+var w = canvas.width;
+var h = canvas.height;
+
+var bounds = {
+    combine: function (o, a, b) {
+        o[0] = a[0] < b[0] ? a[0] : b[0];
+        o[1] = a[1] < b[1] ? a[1] : b[1];
+        o[2] = a[2] > b[0] ? a[2] : b[2];
+        o[3] = a[3] > b[3] ? a[3] : b[3];
+    },
+    intersectsWith: function (a, b) {
+        return (a[2] >= b[0] && a[3] >= b[1]) && (a[0] <= b[2] && a[1] <= b[3]);
+    }
+};
+
+var Keys = {
+    Left: 37,
+    Right: 39,
+    Up: 38,
+    Down: 40
+};
+
+var keystate = [];
+
+canvas.addEventListener("keydown", function (e) {
+    keystate[e.keyCode ? e.keyCode : e.which] = true;
+}, false);
+canvas.addEventListener("keyup", function (e) {
+    keystate[e.keyCode ? e.keyCode : e.which] = false;
+}, false);
+
+var mouse = {x: -1, y: -1};
+var mousestate = [];
+
+var updatePos = function (x, y) {
+    mouse.x = (x - canvas.getBoundingClientRect().left) * (canvas.width / canvas.offsetWidth);
+    mouse.y = (y - canvas.getBoundingClientRect().top) * (canvas.height / canvas.offsetHeight);
+};
+
+// Add mouse listener
+canvas.addEventListener("mousemove", function (e) {
+    updatePos(e.clientX, e.clientY);
+}, false);
+canvas.addEventListener("mousedown", function (e) {
+    updatePos(e.clientX, e.clientY);
+    mousestate[e.button] = true;
+}, false);
+canvas.addEventListener("mouseup", function (e) {
+    updatePos(e.clientX, e.clientY);
+    mousestate[e.button] = false;
+}, false);
+
+function Vec2(x, y) {
+    return [x, y];
+}
+
+var vec2 = {
+    min: function (a, b) {
+        return Vec2(Math.min(a[0], b[0]), Math.min(a[1], b[1]));
+    },
+    max: function (a, b) {
+        return Vec2(Math.max(a[0], b[0]), Math.max(a[1], b[1]));
+    },
+    sub: function (v, a, b) {
+        v[0] = a[0] - b[0];
+        v[1] = a[1] - b[1];
+    },
+    add: function (v, a, b) {
+        v[0] = a[0] + b[0];
+        v[1] = a[1] + b[1];
+    },
+    dot: function (a, b) {
+        return a[0] * b[0] + a[1] * b[1];
+    },
+    invert: function (v, a) {
+        v[0] = -a[0];
+        v[1] = -a[1];
+    },
+    copy: function (v, a) {
+        v[0] = a[0];
+        v[1] = a[1];
+    },
+    multScalar: function (v, a, scalar) {
+        v[0] = a[0] * scalar;
+        v[1] = a[1] * scalar;
+    }
+};
+
+var TILE_SIZE = 64;
+
+function Map() {
+    this.size = [10, 10];
+    this.tileCount = this.size[0] * this.size[1];
+    this.tileSize = [TILE_SIZE, TILE_SIZE];
+    this.tiles = (Array.apply(null, new Array(this.tileCount))).map(function (x, i) {
+        return 0;
+    });
+}
+
+Map.prototype.setTile = function (x, y, tile) {
+    this.tiles[y * this.size[0] + x] = tile;
+};
+
+Map.prototype.getTile = function (x, y) {
+    if (x >= 0 && x < this.size[0] && y >= 0 && y < this.size[1]) {
+        return this.tiles[y * this.size[0] + x];
+    } else {
+        return 0;
+    }
+};
+
+function Player() {
+    this.size = [TILE_SIZE * 0.9, TILE_SIZE * 2];
+    this.pos = [5 * TILE_SIZE + TILE_SIZE * 0.5 - this.size[0] * 0.5, 3 * TILE_SIZE];
+    this.vel = [0, 0];
+    this.expand = [5, 5];
+    this.posCorrect = [0, 0];
+    this.onGround = false;
+    this.onGroundLast = false;
+    this.applyFriction = true;
+    this.groundFriction = 0.6; // friction with ground - 1=totally sticky, 0=ice
+    this.jumpCount = 0;
+    this.maxJumps = 2;
+    this.tryMove = false;
+    this.maxSpeed = 300;
+    this.walkSpeed = 80;
+    this.jumpPower = 25;
+}
+
+Player.prototype.getPredictedPos = function (dt) {
+    var tempX = this.vel[0];
+    var tempY = this.vel[1];
+    var newVelX = tempX * dt;
+    var newVelY = tempY * dt;
+    return [this.pos[0] + (tempX + newVelX) * 0.5 * dt, this.pos[1] + (tempY + newVelY) * 0.5 * dt];
+};
+
+Player.prototype.addForce = function (x, y) {
+    this.vel[0] += x;
+    this.vel[1] += y;
+};
+
+Player.prototype.update = function (dt) {
+    var tempX = this.vel[0];
+    var tempY = this.vel[1];
+    var newVelX = tempX * dt;
+    var newVelY = tempY * dt;
+    this.vel[0] += (newVelX + this.posCorrect[0]) * dt;
+    this.vel[1] += (newVelY + this.posCorrect[1]) * dt;
+    this.pos[0] += (tempX + this.vel[0]) * 0.5 * dt;
+    this.pos[1] += (tempY + this.vel[1]) * 0.5 * dt;
+    this.posCorrect[0] = 0;
+    this.posCorrect[1] = 0;
+};
+
+Player.prototype.canJump = function() {
+    return (this.jumpCount < this.maxJumps) && ((this.jumpCount == 0 && this.onGround) || this.jumpCount > 0 && this.vel[1] >= 0);
+};
+
+var map = new Map();
+var player = new Player();
+
+map.setTile(3, 6, 1);
+map.setTile(4, 6, 1);
+map.setTile(5, 6, 1);
+map.setTile(6, 6, 1);
+
+map.setTile(7, 5, 1);
+map.setTile(7, 4, 1);
+map.setTile(7, 3, 1);
+map.setTile(7, 6, 1);
+
+map.setTile(1, 5, 1);
+map.setTile(1, 4, 1);
+map.setTile(1, 3, 1);
+map.setTile(1, 6, 1);
+
+function drawTile(x, y, color) {
+    ctx.strokeStyle = color || "aqua";
+    ctx.strokeRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+}
+
+var isKeyDown = function (key) {
+    return keystate[key] !== undefined && keystate[key] === true;
+};
+var setKeyDown = function (key, value) {
+    keystate[key] = value;
+};
+
+var gravity = 20;
+var drawing = false;
+var tilebrush = null;
+
+var maxContacts = 100;
+var contactCount = 0;
+var contacts = (Array.apply(null, new Array(maxContacts))).map(function (x, i) {
+    return {
+
+    };
+});
+
+function createTileAABB(aabb, tx, ty) {
+    aabb[0] = tx * TILE_SIZE;
+    aabb[1] = ty * TILE_SIZE;
+    aabb[2] = tx * TILE_SIZE + TILE_SIZE;
+    aabb[3] = ty * TILE_SIZE + TILE_SIZE;
+}
+
+function createPlayerAABB(aabb, pos) {
+    aabb[0] = pos[0] - player.size[0] * 0.5;
+    aabb[1] = pos[1] - player.size[1] * 0.5;
+    aabb[2] = pos[0] + player.size[0] * 0.5;
+    aabb[3] = pos[1] + player.size[1] * 0.5;
+}
+
+function ProjBox(v, center, ext, axis, sizeAxis) {
+    var r = Math.abs(vec2.dot(axis, sizeAxis[0])) * ext[0] + Math.abs(vec2.dot(axis, sizeAxis[1])) * ext[1];
+    v[0] = -r;
+    v[1] = +r;
+}
+
+function createContact(contact, boxA, boxB) {
+    // Store boxA center and extends
+    var boxAExtends = [(boxA[2] - boxA[0]) * 0.5, (boxA[3] - boxA[1]) * 0.5];
+    var boxBExtends = [(boxB[2] - boxB[0]) * 0.5, (boxB[3] - boxB[1]) * 0.5];
+    var boxACenter = [boxA[0] + boxAExtends[0], boxA[1] + boxAExtends[1]];
+    var boxBCenter = [boxB[0] + boxBExtends[0], boxB[1] + boxBExtends[1]];
+
+    // Get relative offset between A and B (Treat A as stationary)
+    var relOffset = Vec2(0, 0);
+    vec2.sub(relOffset, boxBCenter, boxACenter);
+
+    var axis = [Vec2(1, 0), Vec2(0, 1)];
+
+    // Find smallest collision normal and distance
+    var collisionNormal = Vec2(0, 0);
+    var collisionDistance = null;
+    var index = -1;
+    for (var j = 0; j < axis.length; j++) {
+        var n = axis[j];
+
+        // Project box A and B on normal
+        var projA = Vec2(0, 0);
+        var projB = Vec2(0, 0);
+        ProjBox(projA, boxACenter, boxAExtends, n, axis);
+        ProjBox(projB, boxBCenter, boxBExtends, n, axis);
+
+        // Add relative offset to B´s projection
+        projB[0] += vec2.dot(n, relOffset);
+        projB[1] += vec2.dot(n, relOffset);
+
+        // Calculate overlap and get smallest (greatest negative) projection
+        var d0 = projA[0] - projB[1];
+        var d1 = projB[0] - projA[1];
+        var overlap = d0 > d1 ? d0 : d1;
+
+        // Store smallest (greatest negative) collision distance and normal when needed
+        if (index == -1 || overlap > collisionDistance) {
+            index = j;
+            collisionDistance = overlap;
+            vec2.copy(collisionNormal, n);
+        }
+    }
+
+    // Make sure the collision normal is always in right direction
+    if (vec2.dot(collisionNormal, relOffset) < 0) {
+        vec2.multScalar(collisionNormal, collisionNormal, -1);
+    }
+
+    // Normal needs to be to flipped!
+    vec2.multScalar(collisionNormal, collisionNormal, -1);
+
+    // Store contact normal
+    contact.normal = collisionNormal;
+    contact.distance = collisionDistance;
+}
+
+function collisionResponse(normal, dist, vel, posCorrect, dt) {
+    // get the separation and penetration separately
+    var separation = Math.max(dist, 0);
+    var penetration = Math.min(dist, 0);
+
+    // compute relative normal velocity require to be object to an exact stop at the surface
+    var nv = vec2.dot(vel, normal) + separation / dt;
+
+    // accumulate the penetration correction
+    posCorrect[0] -= normal[0] * (penetration / dt);
+    posCorrect[1] -= normal[1] * (penetration / dt);
+
+    if (nv < 0) {
+        // remove normal velocity
+        vel[0] -= normal[0] * nv;
+        vel[1] -= normal[1] * nv;
+
+        // is this some ground?
+        if (normal[1] < 0) {
+            player.onGround = true;
+
+            // friction
+            if (player.applyFriction) {
+                // get the tanget from the normal (perp vector)
+                var tangent = [-normal[1], normal[0]];
+
+                // compute the tangential velocity, scale by friction
+                var tv = vec2.dot(vel, tangent) * player.groundFriction;
+
+                // subtract that from the main velocity
+                vel[0] -= tangent[0] * tv;
+                vel[1] -= tangent[1] * tv;
+            }
+
+            if (!player.onGroundLast) {
+                // this transition occurs when this object 'lands' on the ground
+                player.jumpCount = 0;
+            }
+        }
+    }
+}
+
+function isInternalEdge(tx, ty, normal) {
+    var nextTileX = tx + normal[0];
+    var nextTileY = ty + normal[1];
+    return map.getTile(nextTileX, nextTileY) > 0;
+}
+
+function playerMapCollision(dt) {
+    contactCount = 0;
+
+    // where are we predicted to be next frame?
+    var predictedPos = player.getPredictedPos(dt);
+
+    // find min/max
+    var min = vec2.min(player.pos, predictedPos);
+    var max = vec2.max(player.pos, predictedPos);
+
+    // extend by radius
+    min[0] -= player.size[0] * 0.5;
+    min[1] -= player.size[1] * 0.5;
+    max[0] += player.size[0] * 0.5;
+    max[1] += player.size[1] * 0.5;
+
+    // extend a bit more - this helps when player is very close to boundary of one map cell
+    vec2.sub(min, min, player.expand);
+    vec2.add(max, max, player.expand);
+
+    var tx1 = (min[0] / TILE_SIZE) | 0;
+    var ty1 = (min[1] / TILE_SIZE) | 0;
+    var tx2 = ((max[0] + 0.5) / TILE_SIZE) | 0;
+    var ty2 = ((max[1] + 0.5) / TILE_SIZE) | 0;
+
+    var tileAABB = [0, 0, 0, 0];
+    var playerAABB = [0, 0, 0, 0];
+    var contact = {
+        normal: Vec2(0, 0),
+        distance: 0
+    };
+    createPlayerAABB(playerAABB, predictedPos);
+
+    // Create contacts
+    for (var y = ty1; y <= ty2; y++) {
+        for (var x = tx1; x <= tx2; x++) {
+            var tile = map.getTile(x, y);
+            if (tile > 0) {
+                createTileAABB(tileAABB, x, y);
+                var contact = contacts[contactCount];
+                createContact(contact, playerAABB, tileAABB);
+                if (!isInternalEdge(x, y, contact.normal)) {
+                    contactCount++;
+                }
+            }
+        }
+    }
+
+    // Solve contacts
+    var iterations = 4;
+    for (var j = 0; j < iterations; j++) {
+        for (var i = 0; i < contactCount; i++) {
+            var contact = contacts[i];
+            collisionResponse(contact.normal, contact.distance, player.vel, player.posCorrect, dt);
+        }
+    }
+}
+
+function update(dt) {
+    if (mousestate[0]) {
+        var mx = Math.floor(mouse.x / TILE_SIZE);
+        var my = Math.floor(mouse.y / TILE_SIZE);
+        var index = my * map.size[0] + mx;
+        if (!drawing) {
+            drawing = true;
+            if (mx >= 0 && mx < map.size[0] && my >= 0 && my < map.size[1]) {
+                tilebrush = map.tiles[index] == 1 ? 0 : 1;
+            } else {
+                tilebrush = null;
+            }
+        }
+        if (mx >= 0 && mx < map.size[0] && my >= 0 && my < map.size[1] && tilebrush != null) {
+            map.tiles[index] = tilebrush;
+        }
+    } else {
+        if (drawing) {
+            drawing = false;
+        }
+    }
+
+    player.tryMove = false;
+    var speedX = 0;
+    if (isKeyDown(Keys.Left)) {
+        speedX = -player.walkSpeed;
+    } else if (isKeyDown(Keys.Right)) {
+        speedX = player.walkSpeed;
+    }
+    if (Math.abs(speedX) > 0) {
+        player.tryMove = true;
+        player.addForce(speedX, 0);
+    }
+
+    player.addForce(0, gravity);
+
+    if (isKeyDown(Keys.Up)) {
+        if (player.canJump()) {
+            player.jumpCount++;
+            player.addForce(0, -gravity * player.jumpPower);
+        }
+        setKeyDown(Keys.Up, false);
+    }
+
+    // Clamp velocity
+    player.vel[0] = Math.max(-player.maxSpeed, Math.min(player.maxSpeed, player.vel[0]));
+    player.vel[1] = Math.max(-player.maxSpeed*2, Math.min(player.maxSpeed*2, player.vel[1]));
+
+    player.applyFriction = !player.tryMove;
+    player.onGroundLast = player.onGround;
+    player.onGround = false;
+
+    playerMapCollision(dt);
+
+    player.update(dt);
+}
+
+function render() {
+    ctx.clearRect(0, 0, w, h);
+
+    ctx.fillStyle = "black";
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.save();
+
+    for (var y = 0; y < map.size[1]; y++) {
+        for (var x = 0; x < map.size[0]; x++) {
+            ctx.strokeStyle = "grey";
+            ctx.strokeRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        }
+    }
+
+    for (var y = 0; y < map.size[1]; y++) {
+        for (var x = 0; x < map.size[0]; x++) {
+            var tile = map.tiles[y * map.size[0] + x];
+            if (tile === 1) {
+                ctx.fillStyle = "blue";
+                ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+            }
+        }
+    }
+
+
+    // Draw player
+    ctx.fillStyle = "white";
+    ctx.fillRect(player.pos[0] - player.size[0] * 0.5, player.pos[1] - player.size[1] * 0.5, player.size[0], player.size[1]);
+
+    // where are we predicted to be next frame?
+    var predictedPos = player.getPredictedPos(dt);
+
+    // find min/max
+    var min = vec2.min(player.pos, predictedPos);
+    var max = vec2.max(player.pos, predictedPos);
+
+    // extend by radius
+    min[0] -= player.size[0] * 0.5;
+    min[1] -= player.size[1] * 0.5;
+    max[0] += player.size[0] * 0.5;
+    max[1] += player.size[1] * 0.5;
+
+    // extend a bit more - this helps when player is very close to boundary of one map cell
+    vec2.sub(min, min, player.expand);
+    vec2.add(max, max, player.expand);
+
+    ctx.strokeStyle = "red";
+    ctx.strokeRect(min[0], min[1], max[0] - min[0], max[1] - min[1]);
+
+    var tx1 = (min[0] / TILE_SIZE) | 0;
+    var ty1 = (min[1] / TILE_SIZE) | 0;
+    var tx2 = ((max[0] + 0.5) / TILE_SIZE) | 0;
+    var ty2 = ((max[1] + 0.5) / TILE_SIZE) | 0;
+
+    for (var y = ty1; y <= ty2; y++) {
+        for (var x = tx1; x <= tx2; x++) {
+            drawTile(x, y);
+        }
+    }
+
+    ctx.restore();
+
+    ctx.fillStyle = "white";
+    ctx.fillText("Contacts: " + contactCount, 10, 10);
+    ctx.fillText("Jumpcount: " + player.jumpCount, 10, 26);
+    ctx.fillText("On ground: " + (player.onGround ? " yes" : "no"), 10, 42);
+    ctx.fillText("On ground last: " + (player.onGroundLast ? " yes" : "no"), 10, 58);
+}
+
+var dt = 1 / 60;
+
+(function gameLoop(msecs) {
+    window.requestAnimationFrame(gameLoop);
+    update(dt);
+    render();
+})(0);
+</script>
+</body>
+</html>

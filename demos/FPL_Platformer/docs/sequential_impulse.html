@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Tile Collisions</title>
+    <style>
+        canvas {
+            border: 1px solid black;
+        }
+    </style>
+</head>
+<body>
+<canvas id="canvas" width="600" height="400" tabindex="1"></canvas>
+<script>
+    Math.sign = function (v) {
+        if (v === 0) {
+            return 0;
+        }
+        return v >= 0 ? 1 : -1;
+    };
+
+    Math.clamp = function(value, min, max) {
+        var result = Math.max(Math.min(value, max), min);
+        return (result);
+    };
+
+    function Vec2(x, y) {
+        this.x = x || 0;
+        this.y = y || 0;
+    }
+
+    Vec2.prototype.setFrom = function (v) {
+        this.x = v.x;
+        this.y = v.y;
+        return this;
+    };
+
+    Vec2.prototype.set = function (x, y) {
+        this.x = x;
+        this.y = y;
+        return this;
+    };
+
+    Vec2.prototype.zero = function () {
+        this.x = 0;
+        this.y = 0;
+        return this;
+    };
+
+    Vec2.prototype.dot = function (v) {
+        return this.x * v.x + this.y * v.y;
+    };
+
+    Vec2.prototype.sub = function (v) {
+        this.x -= v.x;
+        this.y -= v.y;
+        return this;
+    };
+
+    Vec2.prototype.add = function (v) {
+        this.x += v.x;
+        this.y += v.y;
+        return this;
+    };
+
+    Vec2.prototype.multScalar = function (s) {
+        this.x *= s;
+        this.y *= s;
+        return this;
+    };
+
+    Vec2.prototype.addMultScalar = function (v, s) {
+        this.x += v.x * s;
+        this.y += v.y * s;
+        return this;
+    };
+
+    Vec2.prototype.addHadamard = function (a, b) {
+        this.x += a.x * b.x;
+        this.y += a.y * b.y;
+        return this;
+    };
+
+    Vec2.prototype.perpRight = function() {
+        var x = this.x, y = this.y;
+        this.x = -y;
+        this.y = x;
+        return this;
+    };
+
+    function AABB() {
+        this.pos = new Vec2();
+        this.ext = new Vec2();
+    }
+
+    var entityCounter = 0;
+    function Entity(pos, ext, invMass, friction, color) {
+        this.id = ++entityCounter;
+        this.pos = pos;
+        this.ext = ext;
+        this.invMass = invMass;
+        this.friction = friction;
+        this.color = color;
+        this.vel = new Vec2();
+        this.posCorrect = new Vec2();
+        this.onGround = false;
+        this.jumping = false;
+        this.sweptRect = {};
+        this.boundingBox = new AABB();
+    }
+
+    var canvas = document.getElementById("canvas"),
+            ctx = canvas.getContext("2d"),
+            w = canvas.width,
+            h = canvas.height,
+            keystate = [];
+
+    ctx.font = "normal 12px arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    canvas.addEventListener("keydown", function (e) {
+        keystate[e.keyCode] = true;
+    }, false);
+    canvas.addEventListener("keyup", function (e) {
+        keystate[e.keyCode] = false;
+    }, false);
+
+    var Keys = {
+        W: 87,
+        S: 83,
+        A: 65,
+        D: 68
+    };
+
+    var isKeyDown = function (key) {
+        return typeof keystate[key] != "undefined" && keystate[key] == true;
+    };
+
+    var setKeyDown = function (key, value) {
+        keystate[key] = value;
+    };
+
+    var tileTypes = {
+        None: 0,
+        Solid: 1,
+        Player: 2,
+        MoveableBox: 3
+    };
+
+    // Define static tilemap
+    var tileCountX = 16;
+    var tiles = [
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+        1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+        1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,
+        1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+        1, 1, 1, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 1,
+        1, 1, 1, 1, 0, 3, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
+    ];
+    var tileCountY = tiles.length / tileCountX;
+    var tileSize = 32;
+
+    // List of contacts and entities
+    var contacts = [];
+    var entities = [];
+
+    // Entity defintions
+    var player = null;
+    var playerExt = new Vec2(tileSize * 0.45, tileSize * 0.9);
+    var moveableBoxExt = new Vec2(tileSize * 0.4, tileSize * 0.4);
+
+    // Fixed delta time
+    var dt = 1.0 / 60.0;
+
+    // The edge normals for AABB is fixed and will never change
+    var edgeNormals = [new Vec2(0, -1), new Vec2(-1, 0), new Vec2(0, 1), new Vec2(1, 0)];
+
+    // Ground normal
+    var groundNormal = new Vec2(0, -1);
+
+    // Factor for scaling the swept AABB
+    var sweptAABBScale = 1.1;
+
+    // Epsilon required for testing against near zero
+    var epsilon = 0.00000001;
+
+    // Some draw variables
+    var drawGrid = false;
+    var drawCollidingTiles = false;
+    var drawPlayerSweptBox = false;
+    var drawContactSegments = false;
+    var drawContacts = true;
+
+    var initGame = function () {
+        var x, y, i, tile;
+
+        var playerStart = new Vec2(0, 0);
+        var boxDefinitions = [];
+        for (y = 0; y < tileCountY; y++) {
+            for (x = 0; x < tileCountX; x++) {
+                tile = tiles[y * tileCountX + x];
+                switch (tile){
+                    case tileTypes.Player:
+                        playerStart.set(x, y);
+                        break;
+                    case tileTypes.MoveableBox:
+                        boxDefinitions.push(new Vec2(x, y));
+                        break;
+                }
+            }
+        }
+
+        // Define player
+        player = new Entity(new Vec2(playerStart.x * tileSize + tileSize * 0.5, playerStart.y * tileSize - playerExt.y + tileSize), playerExt, 1, 0.3, "red");
+        entities.push(player);
+
+        // Define a moveable box
+        for (i = 0; i < boxDefinitions.length; i++) {
+            var moveableBoxStart = boxDefinitions[i];
+            var moveableBox = new Entity(new Vec2(moveableBoxStart.x * tileSize + tileSize * 0.5, moveableBoxStart.y * tileSize - moveableBoxExt.y + tileSize), moveableBoxExt, 10.0, 0.2, "green");
+            entities.push(moveableBox);
+        }
+    };
+
+    var worldToTile = function (value) {
+        return Math.floor(value / tileSize);
+    };
+
+    var createContactAABBvsAABB = function (objA, objB) {
+        var contact;
+
+        // Simple SAT-Test to calculate the normal and distance
+        var extA = new Vec2(objA.ext.x, objA.ext.y);
+        var extB = new Vec2(objB.ext.x, objB.ext.y);
+        var relPos = new Vec2().setFrom(objB.pos).sub(objA.pos);
+        var bothExtX = extA.x + extB.x;
+        var bothExtY = extA.y + extB.y;
+        var xOverlap = bothExtX - Math.abs(relPos.x);
+        var yOverlap = bothExtY - Math.abs(relPos.y);
+        var faceIndex = 0;
+        var separation = 0;
+        if (xOverlap < yOverlap) {
+            // X-Axis
+            if (relPos.x < 0) {
+                faceIndex = 1;
+            } else {
+                faceIndex = 3;
+            }
+            separation = xOverlap;
+        } else {
+            // Y-Axis
+            if (relPos.y < 0) {
+                faceIndex = 0;
+            } else {
+                faceIndex = 2;
+            }
+            separation = yOverlap;
+        }
+
+        var normal = edgeNormals[faceIndex];
+
+        var invNormal = new Vec2().setFrom(normal).multScalar(-1);
+        var perp = new Vec2(-normal.y, normal.x);
+        var invPerp = new Vec2().setFrom(perp).multScalar(-1);
+
+        // Build minkowski segment based on A extended by the player ext
+        var origin = new Vec2(0, 0);
+        var segmentMinkowski1 = new Vec2(relPos.x + normal.x * bothExtX - perp.x * bothExtX, relPos.y + normal.y * bothExtY - perp.y * bothExtY);
+        var segmentMinkowski2 = new Vec2(relPos.x + normal.x * bothExtX + perp.x * bothExtX, relPos.y + normal.y * bothExtY + perp.y * bothExtY);
+        var segmentMinkowskiAB = new Vec2().setFrom(segmentMinkowski2).sub(segmentMinkowski1);
+
+        // Get distance to origin and calculate the region on the minkowski segment
+        var distanceToOrigin = new Vec2().setFrom(origin).sub(segmentMinkowski1);
+        var regionA = segmentMinkowskiAB.dot(distanceToOrigin) / segmentMinkowskiAB.dot(segmentMinkowskiAB);
+        var percentageA = Math.max(Math.min(regionA, 1), 0);
+
+        // Build segment for A
+        var segmentA1 = new Vec2().setFrom(objA.pos).addHadamard(normal, objA.ext).addHadamard(perp, objA.ext);
+        var segmentA2 = new Vec2().setFrom(objA.pos).addHadamard(normal, objA.ext).addHadamard(invPerp, objA.ext);
+        var segmentAAB = new Vec2().setFrom(segmentA2).sub(segmentA1);
+
+        // Get closest point on segment A by the already calculated clamped region A
+        var closestOnA = new Vec2().setFrom(segmentA1).addMultScalar(segmentAAB, percentageA);
+
+        // Build segment for B
+        var segmentB1 = new Vec2().setFrom(objB.pos).addHadamard(invNormal, objB.ext).addHadamard(invPerp, objB.ext);
+        var segmentB2 = new Vec2().setFrom(objB.pos).addHadamard(invNormal, objB.ext).addHadamard(perp, objB.ext);
+        var segmentBAB = new Vec2().setFrom(segmentB2).sub(segmentB1);
+
+        // Get distance to closest point and calculate the region on the segment B
+        var distanceToClosest = new Vec2().setFrom(closestOnA).sub(segmentB1);
+        var regionB = segmentBAB.dot(distanceToClosest) / segmentBAB.dot(segmentBAB);
+        var percentageB = Math.max(Math.min(regionB, 1), 0);
+
+        // Get closest point on segment B by the already calculated clamped region B
+        var closestOnB = new Vec2().setFrom(segmentB1).addMultScalar(segmentBAB, percentageB);
+
+        // Skip all edges - required to fix ghost collisions
+        var skipEdge = false;
+        if ((regionA < epsilon || regionA > 1.0 - epsilon) || (regionB < epsilon || regionB > 1.0 - epsilon)) {
+            skipEdge = true;
+        }
+
+        // Create contact when not skipped
+        var friction, massRatio;
+        if (!skipEdge) {
+            friction = Math.sqrt(objA.friction * objB.friction);
+            massRatio = 1.0 / (objA.invMass + objB.invMass);
+            contact = {
+                id: contacts.length + 1,
+                a: objA,
+                b: objB,
+                massRatio: massRatio,
+                friction: friction,
+                distance: -separation,
+                normal: normal,
+
+                // This is just for visualization
+                segmentA: [segmentA1, segmentA2],
+                segmentB: [segmentB1, segmentB2],
+                pointA: closestOnA,
+                pointB: closestOnB
+            };
+            return contact;
+        }
+
+        return null;
+    };
+
+    var enableJump = function (entity) {
+        entity.onGround = true;
+        entity.jumping = false;
+    };
+
+    var disableJump = function (entity) {
+        entity.onGround = false;
+    };
+
+    var postSolveContact = function (contact, entityA, entityB) {
+        var normal = new Vec2().setFrom(contact.normal);
+        if (normal.dot(groundNormal) > 0) {
+            // B is major
+            enableJump(entityB);
+        } else if (normal.dot(groundNormal) < 0) {
+            // A is major (Treat normal flipped)
+            enableJump(entityA);
+        }
+    };
+
+    var isAABBvsAABB = function (a, b) {
+        var distance = new Vec2().setFrom(b.pos).sub(a.pos);
+        var ext = new Vec2().setFrom(b.ext).add(a.ext);
+        return Math.abs(distance.x) < ext.x && Math.abs(distance.y) < ext.y;
+    };
+
+    var updateGame = function () {
+        var x, y, i, j, tile, contact, entity, entityA, entityB,
+                entitySourceX, entitySourceY, entityTargetX, entityTargetY, entitySweptRect,
+                entityOccludedTilesL, entityOccludedTilesR, entityOccludedTilesT, entityOccludedTilesB, tileEntity;
+
+        // Integrate acceleration
+        for (i = 0; i < entities.length; i++) {
+            entity = entities[i];
+            if (entity.invMass > 0) {
+                entity.vel.y += tileSize / 4;
+            }
+        }
+
+        // Move player
+        if (isKeyDown(Keys.D)) {
+            player.vel.x += tileSize / 10;
+        } else if (isKeyDown(Keys.A)) {
+            player.vel.x -= tileSize / 10;
+        }
+        if (isKeyDown(Keys.W) && player.onGround && !player.jumping) {
+            player.vel.y -= tileSize / 0.125;
+            player.jumping = true;
+        }
+
+        // Update swept rects and bounding boxes
+        for (i = 0; i < entities.length; i++) {
+            entity = entities[i];
+            entitySourceX = entity.pos.x;
+            entitySourceY = entity.pos.y;
+            entityTargetX = entity.pos.x + entity.vel.x * dt;
+            entityTargetY = entity.pos.y + entity.vel.y * dt;
+            entity.sweptRect = entitySweptRect = {
+                l: Math.min(entitySourceX, entityTargetX) - entity.ext.x * sweptAABBScale,
+                t: Math.min(entitySourceY, entityTargetY) - entity.ext.y * sweptAABBScale,
+                r: Math.max(entitySourceX, entityTargetX) + entity.ext.x * sweptAABBScale,
+                b: Math.max(entitySourceY, entityTargetY) + entity.ext.y * sweptAABBScale
+            };
+            entity.boundingBox.ext.set((entitySweptRect.r - entitySweptRect.l) * 0.5, (entitySweptRect.b - entitySweptRect.t) * 0.5);
+            entity.boundingBox.pos.set(entitySweptRect.l + entity.boundingBox.ext.x, entitySweptRect.t + entity.boundingBox.ext.y);
+        }
+
+        // Clear contacts
+        contacts = [];
+
+        // Create contacts for entity against entity - unique pairs (AABB broadphase)
+        for (i = 0; i < entities.length; i++) {
+            entityA = entities[i];
+            if (entityA.invMass > 0) {
+                for (j = i + 1; j < entities.length; j++) {
+                    entityB = entities[j];
+                    if (isAABBvsAABB(entityA.boundingBox, entityB.boundingBox)) {
+                        contact = createContactAABBvsAABB(entityA, entityB);
+                        if (contact) {
+                            contacts.push(contact);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Create contacts for each entity against all potential tiles (Tilebased broadphase)
+        for (i = 0; i < entities.length; i++) {
+            entity = entities[i];
+            if (entity.invMass > 0) {
+                entitySweptRect = entity.sweptRect;
+                entityOccludedTilesL = worldToTile(entitySweptRect.l);
+                entityOccludedTilesR = worldToTile(entitySweptRect.r);
+                entityOccludedTilesT = worldToTile(entitySweptRect.t);
+                entityOccludedTilesB = worldToTile(entitySweptRect.b);
+                for (y = entityOccludedTilesT; y <= entityOccludedTilesB; y++) {
+                    for (x = entityOccludedTilesL; x <= entityOccludedTilesR; x++) {
+                        tile = tiles[y * tileCountX + x];
+                        if (tile === tileTypes.Solid) {
+                            tileEntity = {
+                                pos: new Vec2(x * tileSize + tileSize * 0.5, y * tileSize + tileSize * 0.5),
+                                ext: new Vec2(tileSize * 0.5, tileSize * 0.5),
+                                vel: new Vec2(),
+                                posCorrect: new Vec2(),
+                                invMass: 0,
+                                friction: 0.3
+                            };
+                            contact = createContactAABBvsAABB(tileEntity, entity);
+                            if (contact) {
+                                contacts.push(contact);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Solve contacts
+        var relVel, normal, tangent, remove, impulse, posCorr, separation, penetration, maxFriction, frictionImpulse;
+        for (i = 0; i < contacts.length; i++) {
+            contact = contacts[i];
+            normal = contact.normal;
+            tangent = new Vec2().setFrom(normal).perpRight();
+
+            // Get relative velocity
+            relVel = new Vec2().setFrom(contact.b.vel).sub(contact.a.vel);
+
+            // Get separation and penetration separately
+            separation = Math.max(contact.distance, 0);
+            penetration = Math.min(contact.distance, 0);
+
+            // Accumulate position correction regardless of movement
+            posCorr = penetration / dt * contact.massRatio;
+            contact.a.posCorrect.addMultScalar(normal, posCorr * contact.a.invMass);
+            contact.b.posCorrect.addMultScalar(normal, posCorr * -contact.b.invMass);
+
+            // Apply impulses to solve collisions after movement
+            remove = relVel.dot(contact.normal) + separation / dt;
+            if (remove < 0) {
+                impulse = remove * contact.massRatio;
+                contact.a.vel.addMultScalar(contact.normal, impulse * contact.a.invMass);
+                contact.b.vel.addMultScalar(contact.normal, impulse * -contact.b.invMass);
+
+                // Apply friction impulse
+                relVel = new Vec2().setFrom(contact.b.vel).sub(contact.a.vel);
+                maxFriction = impulse * contact.friction;
+                frictionImpulse = Math.clamp(relVel.dot(tangent) * contact.massRatio, maxFriction, -maxFriction);
+                contact.a.vel.addMultScalar(tangent, frictionImpulse * contact.a.invMass);
+                contact.b.vel.addMultScalar(tangent, frictionImpulse * -contact.b.invMass);
+
+                // Call post solve contact
+                postSolveContact(contact, contact.a, contact.b);
+            }
+        }
+
+        // Integrate velocity
+        for (i = 0; i < entities.length; i++) {
+            entity = entities[i];
+            if (entity.invMass > 0) {
+                entity.pos.x += (entity.vel.x + entity.posCorrect.x) * dt;
+                entity.pos.y += (entity.vel.y + entity.posCorrect.y) * dt;
+            }
+            // Reset position correction acculator
+            entity.posCorrect.zero();
+        }
+
+        // Reset ground states
+        var hasGroundContacts;
+        for (i = 0; i < entities.length; i++) {
+            entity = entities[i];
+            hasGroundContacts = false;
+            for (j = 0; j < contacts.length; j++) {
+                contact = contacts[j];
+                if (contact.a === entity) {
+                    if (contact.normal.dot(groundNormal) < 0) {
+                        hasGroundContacts = true;
+                        break;
+                    }
+                } else if (contact.b === entity) {
+                    if (contact.normal.dot(groundNormal) > 0) {
+                        hasGroundContacts = true;
+                        break;
+                    }
+                }
+            }
+            if (!hasGroundContacts) {
+                disableJump(entity);
+            }
+        }
+    };
+
+    var updateFrame = function () {
+        updateGame();
+
+        var x, y, tx, ty, tile, i, contact, entity;
+
+        ctx.clearRect(0, 0, w, h);
+
+        // Background
+        ctx.fillStyle = "white";
+        ctx.fillRect(0, 0, w, h);
+
+        // Draw tiles
+        for (y = 0; y < tileCountY; y++) {
+            for (x = 0; x < tileCountX; x++) {
+                tile = tiles[y * tileCountX + x];
+                if (tile === tileTypes.Solid) {
+                    tx = x * tileSize;
+                    ty = y * tileSize;
+                    ctx.fillStyle = "black";
+                    ctx.fillRect(tx, ty, tileSize, tileSize);
+                }
+            }
+        }
+
+        // Draw entities
+        for (i = 0; i < entities.length; i++) {
+            entity = entities[i];
+
+            ctx.fillStyle = entity.color;
+            ctx.fillRect(entity.pos.x - entity.ext.x, entity.pos.y - entity.ext.y, entity.ext.x * 2, entity.ext.y * 2);
+
+            // Draw on ground state
+            var txt = "";
+            if (entity.onGround) {
+                txt += "G";
+            }
+            if (entity.jumping) {
+                txt += "J";
+            }
+            ctx.fillStyle = "black";
+            ctx.fillText(txt, entity.pos.x, entity.pos.y);
+        }
+
+        // Determine player swept rectangle
+        var playerSourceX = player.pos.x;
+        var playerSourceY = player.pos.y;
+        var playerTargetX = player.pos.x + player.vel.x * dt;
+        var playerTargetY = player.pos.y + player.vel.y * dt;
+        var playerSweptRect = {
+            l: Math.min(playerSourceX, playerTargetX) - player.ext.x * sweptAABBScale,
+            t: Math.min(playerSourceY, playerTargetY) - player.ext.y * sweptAABBScale,
+            r: Math.max(playerSourceX, playerTargetX) + player.ext.x * sweptAABBScale,
+            b: Math.max(playerSourceY, playerTargetY) + player.ext.y * sweptAABBScale
+        };
+
+        ctx.lineWidth = 2;
+        // Draw player swept rect when enabled
+        if (drawPlayerSweptBox) {
+            ctx.strokeStyle = "orange";
+            ctx.strokeRect(playerSweptRect.l, playerSweptRect.t, (playerSweptRect.r - playerSweptRect.l), (playerSweptRect.b - playerSweptRect.t));
+        }
+        // Draw potential collision tiles when enabled
+        if (drawCollidingTiles) {
+            var playerOccludedTilesL = Math.floor(playerSweptRect.l / tileSize);
+            var playerOccludedTilesR = Math.floor(playerSweptRect.r / tileSize);
+            var playerOccludedTilesT = Math.floor(playerSweptRect.t / tileSize);
+            var playerOccludedTilesB = Math.floor(playerSweptRect.b / tileSize);
+            ctx.strokeStyle = "green";
+            for (y = playerOccludedTilesT; y <= playerOccludedTilesB; y++) {
+                for (x = playerOccludedTilesL; x <= playerOccludedTilesR; x++) {
+                    ctx.strokeRect(x * tileSize, y * tileSize, tileSize, tileSize);
+                }
+            }
+        }
+        ctx.lineWidth = 1;
+
+        // Draw grid when enabled
+        if (drawGrid) {
+            ctx.strokeStyle = "lightgrey";
+            ctx.beginPath();
+            for (y = 0; y < tileCountY; y++) {
+                ctx.moveTo(0, y * tileSize);
+                ctx.lineTo(tileCountX * tileSize, y * tileSize);
+            }
+            for (x = 0; x < tileCountX; x++) {
+                ctx.moveTo(x * tileSize, 0);
+                ctx.lineTo(x * tileSize, tileCountY * tileSize);
+            }
+            ctx.stroke();
+        }
+
+        // Draw contacts and segments when enabled
+        if (drawContacts) {
+            ctx.lineWidth = 2;
+            for (i = 0; i < contacts.length; i++) {
+                contact = contacts[i];
+
+                ctx.strokeStyle = "blue";
+                ctx.beginPath();
+                ctx.moveTo(contact.pointA.x, contact.pointA.y);
+                ctx.lineTo(contact.pointA.x + contact.normal.x * 20, contact.pointA.y + contact.normal.y * 20);
+                ctx.stroke();
+
+                if (drawContactSegments) {
+                    ctx.strokeStyle = "darkblue";
+                    ctx.beginPath();
+                    ctx.moveTo(contact.segmentA[0].x, contact.segmentA[0].y);
+                    ctx.lineTo(contact.segmentA[1].x, contact.segmentA[1].y);
+                    ctx.stroke();
+
+                    ctx.strokeStyle = "orange";
+                    ctx.beginPath();
+                    ctx.moveTo(contact.segmentB[0].x, contact.segmentB[0].y);
+                    ctx.lineTo(contact.segmentB[1].x, contact.segmentB[1].y);
+                    ctx.stroke();
+                }
+
+                ctx.fillStyle = "blue";
+                ctx.beginPath();
+                ctx.arc(contact.pointA.x, contact.pointA.y, 4, 0, Math.PI * 2, false);
+                ctx.fill();
+            }
+        }
+
+        ctx.lineWidth = 1;
+
+        // Request next frame
+        requestAnimationFrame(updateFrame);
+    };
+
+    canvas.focus();
+
+    initGame();
+
+    requestAnimationFrame(updateFrame);
+</script>
+</body>
+</html>
