@@ -134,12 +134,13 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 				switch(event.gamepad.type) {
 					case fplGamepadEventType_Connected:
 					{
+						fplClearStruct(newController);
 						newController->isConnected = true;
 						UpdateDefaultController(currentInput, controllerIndex);
 					} break;
 					case fplGamepadEventType_Disconnected:
 					{
-						newController->isConnected = false;
+						fplClearStruct(newController);
 						UpdateDefaultController(currentInput, -1);
 					} break;
 					case fplGamepadEventType_StateChanged:
