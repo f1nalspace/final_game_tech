@@ -12,38 +12,6 @@
 
 #include <final_assets.h>
 
-struct Assets {
-	FontAsset consoleFont;
-	char dataPath[1024];
-};
 
-struct Entity {
-	Vec2f position;
-	Vec2f velocity;
-	Vec2f radius;
-	Vec4f color;
-	float moveSpeed;
-	float moveDrag;
-};
-
-struct World {
-	Entity player;
-};
-
-struct GameState {
-	Assets assets;
-	World world;
-
-	Camera2D camera;
-	Mat4f viewProjection;
-	Viewport viewport;
-	Vec2f mouseWorldPos;
-
-	float deltaTime;
-	float framesPerSecond[2];
-
-	bool isExiting;
-	bool isDebugRendering;
-};
 
 #endif // FPL_GAMETEMPLATE_H
