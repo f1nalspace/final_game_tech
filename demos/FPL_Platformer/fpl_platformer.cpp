@@ -207,10 +207,11 @@ public:
 		if (width == 0 || height == 0 || solidTiles == nullptr) {
 			return UINT32_MAX;
 		}
-		if (x < 0 || y < 0 || x > ((int)width - 1) || y > ((int)height - 1)) {
+		int invY = height - 1 - y;
+		if (x < 0 || invY < 0 || x > ((int)width - 1) || invY > ((int)height - 1)) {
 			return UINT32_MAX;
 		}
-		uint32_t result = solidTiles[y * width + x];
+		uint32_t result = solidTiles[invY * width + x];
 		return result;
 	}
 
@@ -226,7 +227,7 @@ public:
 		}
 		for (uint32_t y = 0; y < height; ++y) {
 			for (uint32_t x = 0; x < width; ++x) {
-				uint32_t tile = solidTiles[y * width + x];
+				uint32_t tile = GetTile(x, y);
 				if (tile == type)
 				{
 					*outTilePos = V2iInit(x, y);
@@ -337,7 +338,7 @@ namespace TestLevel {
 		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
 		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
 		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-		1, 0, 0, 0, 0, p, 0, 0, 0, 0, 1,
+		1, 0, 0, 0, 0, p, 0, 0, 1, 0, 1,
 		1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
 	};
 
@@ -762,7 +763,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 	// Map
 	for (int y = 0; y < mapSize.h; ++y) {
 		for (int x = 0; x < mapSize.w; ++x) {
-			uint32_t tile = map.solidTiles[y * mapSize.w + x];
+			uint32_t tile = map.GetTile(x, y);
 			if (map.IsObstacle(tile)) {
 				Vec2f tilePos = mapOrigin + V2fInit(x * TileWidth, y * TileHeight);
 				PushRectangle(renderState, tilePos, TileSize, mapSolidColor, true, 1.0f);
