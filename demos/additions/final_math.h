@@ -558,6 +558,10 @@ fpl_force_inline float RoundU8ToF32(uint8_t value) {
 	return(result);
 }
 
+fpl_force_inline float SignF32(float v) {
+	return (v > 0.0f) ? 1.0f : ((v < 0.0f) ? -1.0f : 0.0f);
+}
+
 //
 // Vec2f
 //
@@ -616,6 +620,10 @@ fpl_force_inline Vec2f &operator-=(Vec2f &a, const Vec2f &b) {
 fpl_force_inline float V2fDot(const Vec2f a, const Vec2f b) {
 	float result = a.x * b.x + a.y * b.y;
 	return(result);
+}
+
+fpl_force_inline float V2fLengthSquared(const Vec2f v) {
+	return V2fDot(v, v);
 }
 
 fpl_force_inline float V2fLength(const Vec2f v) {
@@ -696,6 +704,19 @@ fpl_force_inline Vec2f V2fMin(const Vec2f a, const Vec2f b) {
 fpl_force_inline Vec2f V2fMax(const Vec2f a, const Vec2f b) {
 	Vec2f result = V2fInit(Max(a.x, b.x), Max(a.y, b.y));
 	return(result);
+}
+
+fpl_force_inline Vec2f V2fAbs(const Vec2f v) {
+	Vec2f result = V2fInit(Abs(v.x), Abs(v.y));
+	return(result);
+}
+
+fpl_force_inline Vec2f V2fMajorAxis(const Vec2f v) {
+	if (Abs(v.x) > Abs(v.y)) {
+		return V2fInit(SignF32(v.x), 0);
+	} else {
+		return V2fInit(0, SignF32(v.y));
+	}
 }
 
 //
