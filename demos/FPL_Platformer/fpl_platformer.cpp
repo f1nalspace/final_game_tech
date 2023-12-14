@@ -44,6 +44,23 @@ License:
 #include "fpl_platformer.h"
 
 //
+// Constants
+//
+constexpr float GameAspect = 16.0f / 9.0f;
+constexpr float WorldWidth = 640.0f;
+constexpr float WorldHeight = WorldWidth / GameAspect;
+constexpr float WorldRadiusW = WorldWidth * 0.5f;
+constexpr float WorldRadiusH = WorldHeight * 0.5f;
+
+constexpr float TileWidth = 32.0f;
+constexpr float TileHeight = 32.0f;
+static Vec2f TileSize = V2fInit(TileWidth, TileHeight);
+
+static Vec2f Gravity = V2fInit(0, -10.0f);
+
+static Vec2f AABBExpand = V2fInit(6.0f, 6.0f);
+
+//
 // Utils
 //
 static void FormatSize(const size_t value, const size_t maxCount, char *buffer) {
@@ -203,6 +220,24 @@ struct Map {
 	const uint32_t *solidTiles;
 
 public:
+	inline Vec2i WorldCoordsToTile(const Vec2f worldPos) const {
+		// Adjustment for negative coordinates
+		float rx = 0.0f;
+		float ry = 0.0f;
+		if (worldPos.x < 0)
+			rx = -1.0f;
+		if (worldPos.y < 0)
+			ry = -1.0f;
+		int x = (int)(worldPos.x / TileWidth + rx);
+		int y = (int)(worldPos.y / TileHeight + ry);
+		return V2iInit(x, y);
+	}
+	inline Vec2f TileCoordsToWorld(const Vec2i tilePos) const  {
+		float x = (float)tilePos.x * TileWidth;
+		float y = (float)tilePos.y * TileHeight;
+		return V2fInit(x, y);
+	}
+
 	inline uint32_t GetTile(const int32_t x, const int32_t y) const {
 		if (width == 0 || height == 0 || solidTiles == nullptr) {
 			return UINT32_MAX;
@@ -345,33 +380,7 @@ namespace TestLevel {
 	static Map Level = { Width, Height, Tiles };
 };
 
-//
-// Constants
-//
-constexpr float GameAspect = 16.0f / 9.0f;
-constexpr float WorldWidth = 640.0f;
-constexpr float WorldHeight = WorldWidth / GameAspect;
-constexpr float WorldRadiusW = WorldWidth * 0.5f;
-constexpr float WorldRadiusH = WorldHeight * 0.5f;
 
-constexpr float TileWidth = 32.0f;
-constexpr float TileHeight = 32.0f;
-static Vec2f TileSize = V2fInit(TileWidth, TileHeight);
-
-static Vec2f Gravity = V2fInit(0, -10.0f);
-
-static Vec2f AABBExpand = V2fInit(6.0f, 6.0f);
-
-static Vec2i WorldCoordsToTile(const Vec2f worldPos, const Vec2f worldHalfExtents) {
-	int x = (int)((worldPos.x + worldHalfExtents.w) / TileWidth);
-	int y = (int)((worldPos.y + worldHalfExtents.h) / TileHeight);
-	return V2iInit(x, y);
-}
-static Vec2f TileCoordsToWorld(const Vec2i tilePos, const Vec2f worldHalfExtents) {
-	float x = tilePos.x * TileWidth - worldHalfExtents.w;
-	float y = tilePos.y * TileHeight - worldHalfExtents.h;
-	return V2fInit(x, y);
-}
 
 //
 // Game
@@ -414,7 +423,7 @@ static void InitPlayer(Entity &player, const Map &map) {
 
 	Vec2i playerTilePos;
 	if (map.FindPositionByTile(TestLevel::p, &playerTilePos)) {
-		Vec2f tilePos = TileCoordsToWorld(playerTilePos, worldHalfExtents) + worldHalfExtents * 0.5f;
+		Vec2f tilePos = map.TileCoordsToWorld(playerTilePos);
 		Vec2f tileBottomCenter = tilePos + V2f(TileWidth * 0.5f, 0);
 		player.position = tileBottomCenter + V2fInit(0, player.radius.y);
 	}
@@ -509,8 +518,8 @@ static void DetectCollision(Entity &player, const Map &map, const float dt) {
 	Vec2f worldHalfExtents = V2fInit(map.width * TileWidth, map.height * TileHeight) * 0.5f;
 
 	// Get tile range min/max
-	Vec2i tileMin = WorldCoordsToTile(min, worldHalfExtents);
-	Vec2i tileMax = WorldCoordsToTile(max + V2fInitScalar(0.5f), worldHalfExtents);
+	Vec2i tileMin = map.WorldCoordsToTile(min);
+	Vec2i tileMax = map.WorldCoordsToTile(max + V2fInitScalar(0.5f));
 
 	// Player bounds
 	AABB playerAABB = { player.position, player.radius };
@@ -519,7 +528,7 @@ static void DetectCollision(Entity &player, const Map &map, const float dt) {
 	for (int y = tileMin.y; y <= tileMax.y; ++y) {
 		for (int x = tileMin.x; x <= tileMax.x; ++x) {
 			Vec2i tilePos = V2iInit(x, y);
-			Vec2f tileWorld = TileCoordsToWorld(tilePos, worldHalfExtents);
+			Vec2f tileWorld = map.TileCoordsToWorld(tilePos);
 			Vec2f aabbCenter = tileWorld + TileSize * 0.5f;
 			AABB tileAABB = { aabbCenter, TileSize * 0.5f };
 			uint32_t tile = map.GetTile(x, y);
@@ -728,16 +737,17 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 	const float h = WorldRadiusH;
 	const float dt = state->deltaTime;
 
-	Vec2f gridSize = V2fInit(w, h) * 2.0f;
-	Vec2f gridOrigin = -gridSize * 0.5f;
-	Vec4f gridColor = V4fInit(0.1f, 0.2f, 0.1f, 1.0f);
-	int gridTileCountX = (int)(gridSize.x / TileWidth);
-	int gridTileCountY = (int)(gridSize.y / TileHeight);
-
 	Vec2i mapSize = V2iInit(map.width, map.height);
 	Vec2f mapArea = V2fHadamard(TileSize, V2fInit((float)mapSize.x, (float)mapSize.y));
-	Vec2f mapOrigin = V2fInit(0,0) - mapArea * 0.5f;
+	Vec2f mapExtents = mapArea * 0.5f;
+	Vec2f mapOrigin = V2fInit(0,0);
 	Vec4f mapSolidColor = V4fInit(1.0f, 1.0f, 1.0f, 1.0f);
+
+	Vec2f gridSize = mapArea;
+	Vec2f gridOrigin = mapOrigin;
+	Vec4f gridColor = V4fInit(0.1f, 0.2f, 0.1f, 1.0f);
+	int gridTileCountX = map.width;
+	int gridTileCountY = map.height;
 
 	PushViewport(renderState, state->viewport.x, state->viewport.y, state->viewport.w, state->viewport.h);
 	PushClear(renderState, V4fInit(0, 0, 0, 1), ClearFlags::Color | ClearFlags::Depth);
@@ -776,13 +786,21 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 
 	// Mouse tile
 	Vec2f invTileSize = V2fInit(1.0f / TileWidth, 1.0f / TileHeight);
-	if (state->mouseWorldPos.x >= -w && state->mouseWorldPos.x <= w &&
-		state->mouseWorldPos.y >= -h && state->mouseWorldPos.y <= h) {
-		Vec2f gridPos = V2fInit(state->mouseWorldPos.x - gridOrigin.x, state->mouseWorldPos.y - gridOrigin.y);
-		Vec2f tilePosFloat = V2fHadamard(gridPos, invTileSize);
-		Vec2i tilePosInt = V2iInit((int)tilePosFloat.x, (int)tilePosFloat.y);
-		Vec2f p = gridOrigin + V2fHadamard(V2fInit((float)tilePosInt.x, (float)tilePosInt.y), TileSize);
+    if (state->mouseWorldPos.x >= -w && state->mouseWorldPos.x <= w &&
+        state->mouseWorldPos.y >= -h && state->mouseWorldPos.y <= h) {
+		PushRectangleCenter(renderState, state->mouseWorldPos, V2fInit(8, 8), V4fInit(1.0f, 0.0f, 0.0f, 1.0f), true, 0.0f);
+
+		Vec2i mouseTilePos = map.WorldCoordsToTile(state->mouseWorldPos);
+		Vec2f mouseWorldPos = map.TileCoordsToWorld(mouseTilePos);
+		Vec2f p = gridOrigin + mouseWorldPos;
 		PushRectangle(renderState, p, TileSize, V4fInit(1, 1, 1, 1), false, 1.0f);
+
+		const FontAsset &font = state->assets.consoleFont;
+		float fontHeight = 6.0f;
+
+		char buffer[100];
+		fplStringFormat(buffer, fplArrayCount(buffer), "%i x %i", mouseTilePos.x, mouseTilePos.y);
+		PushText(renderState, buffer, fplGetStringLength(buffer), &font.desc, &font.texture, mouseWorldPos, fontHeight, 1.0f, -1.0f, V4fInit(1, 1, 1, 1));
 	}
 
 	if (state->isDebugRendering) {
