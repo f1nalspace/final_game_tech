@@ -559,7 +559,7 @@ fpl_force_inline float RoundU8ToF32(uint8_t value) {
 }
 
 fpl_force_inline float SignF32(float v) {
-	return (v > 0.0f) ? 1.0f : ((v < 0.0f) ? -1.0f : 0.0f);
+	return (v < 0.0f) ? -1.0f : ((v > 0.0f) ? 1.0f : 0.0f);
 }
 
 //
