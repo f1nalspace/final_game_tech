@@ -58,7 +58,7 @@ static Vec2f TileSize = V2fInit(TileWidth, TileHeight);
 
 static Vec2f Gravity = V2fInit(0, -10.0f);
 
-static Vec2f AABBExpand = V2fInit(6.0f, 6.0f);
+static Vec2f AABBExpand = V2fInit(0.1f, 0.1f);
 
 //
 // Utils
@@ -156,11 +156,6 @@ struct AABB {
 	}
 };
 
-struct PointDistance {
-	Vec2f pos;
-	float dist;
-};
-
 struct Contact {
 	Vec2f normal;
 	Vec2f point;
@@ -176,39 +171,13 @@ public:
 	}
 };
 
-struct Circle {
-	Vec2f pos;
-	float radius;
+struct TileRect {
+	Vec2i min, max;
+};
 
-	inline bool Contains(const Vec2f &p) {
-		bool result = V2fLengthSquared(p - pos) < radius * radius;
-		return result;
-	}
-
-	inline float DistanceToPoint(const Vec2f &p) {
-		float len = V2fLength(p - pos);
-		float result = len - radius;
-		return result;
-	}
-
-	inline Vec2f ClosestPointOnEdge(const Vec2f &p, const float bias) {
-		Vec2f unit = V2fNormalize(p - pos);
-		Vec2f result = V2fMultScalar(unit, radius - bias) + pos;
-		return result;
-	}
-
-	inline PointDistance ClosestPointAndDistOnEdge(const Vec2f &p) {
-		Vec2f d = p - pos;
-		float distCentre = V2fLength(d);
-		float penetration = distCentre - radius;
-		if (distCentre == 0) {
-			return { pos + V2fInit(radius, 0), -radius }; // Default
-		}
-
-		// Generate point on edge
-		Vec2f poe = V2fAddMultScalar(pos, d, radius / distCentre);
-		return { poe, penetration };
-	}
+struct Projection {
+	float min;
+	float max;
 };
 
 //
@@ -293,12 +262,48 @@ namespace Collision {
 	static Vec2f RightAxis = V2fInit(1, 0);
 	static Vec2f UpAxis = V2fInit(0, 1);
 
-	static Vec2f AABBProjection(Vec2f center, Vec2f extents, Vec2f normal) {
+	static Projection AABBProjection(Vec2f center, Vec2f extents, Vec2f normal) {
 		float r = Abs(V2fDot(normal, RightAxis)) * extents.w + Abs(V2fDot(normal, UpAxis)) * extents.h;
-		return V2fInit(-r, +r);
+		return { -r, +r };
 	}
 
-	static bool AabbVsAabb(const AABB &a, const AABB &b, Contact &outContact, const Vec2i &tilePos, const Map &map, const bool checkInternal = true) {
+	static float Sign(const float value) {
+		return value >= 0.0f ? 1.0f : -1.0f;
+	}
+
+	static Vec2f GetMajorAxis(const Vec2f &v) {
+		if (Abs(v.x) > Abs(v.y)) {
+			return V2fInit(SignF32(v.x), 0);
+		} else {
+			return V2fInit(0, SignF32(v.y));
+		}
+	}
+
+	static bool AabbVsAabb_Bunny(const AABB &a, const AABB &b, Contact &outContact, const Vec2i &tilePos, const Map &map, const bool checkInternal = true) {
+		Vec2f combinedExtents = b.halfExtents + a.halfExtents;
+		Vec2f referencePosB = b.center;
+		Vec2f delta = b.center - a.center;
+
+		Vec2f point = a.center;
+		Vec2f planeNormal = GetMajorAxis(delta) * -1.0f;
+		Vec2f planeCenter = V2fHadamard(planeNormal, combinedExtents) + referencePosB;
+
+		Vec2f planeDelta = point - planeCenter;
+		float distance = V2fDot(planeDelta, planeNormal);
+
+		// Fill out contact
+		outContact.Initialize(planeNormal, distance, point);
+
+		// Check for internal collisions (internal edges)
+		if (checkInternal) {
+			return !IsInternalCollision(map, tilePos, planeNormal);
+		}
+
+		// Always return true, because with speculative contacts we want "speculative" contacts that may collide or not
+		return true;
+	}
+
+	static bool AabbVsAabb_Projection(const AABB &a, const AABB &b, Contact &outContact, const Vec2i &tilePos, const Map &map, const bool checkInternal = true) {
 		Vec2f delta = b.center - a.center;
 
 		Vec2f axes[] = {
@@ -315,17 +320,17 @@ namespace Collision {
 			Vec2f n = axes[i];
 
 			// Project A and B on normal
-			Vec2f projA = AABBProjection(a.center, a.halfExtents, n);
-			Vec2f projB = AABBProjection(b.center, b.halfExtents, n);
+			Projection projA = AABBProjection(a.center, a.halfExtents, n);
+			Projection projB = AABBProjection(b.center, b.halfExtents, n);
 
 			// Add relative offset to B´s projection
 			float relativeProjection = V2fDot(n, delta);
-			projB.x += relativeProjection;
-			projB.y += relativeProjection;
+			projB.min += relativeProjection;
+			projB.max += relativeProjection;
 
 			// Calculate overlap and get smallest (greatest negative) projection
-			float d0 = projA.x - projB.y;
-			float d1 = projB.x - projA.y;
+			float d0 = projA.min - projB.max;
+			float d1 = projB.min - projA.max;
 			float overlap = d0 > d1 ? d0 : d1;
 
 			// Store smallest (greatest negative) collision distance and normal when needed
@@ -367,14 +372,14 @@ namespace TestLevel {
 	const uint32_t p = (uint32_t)'p';
 
 	static uint32_t Tiles[Width * Height] = {
-		1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-		1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-		1, 0, 0, 0, 0, p, 0, 0, 1, 0, 1,
-		1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, p, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0,
 	};
 
 	static Map Level = { Width, Height, Tiles };
@@ -403,14 +408,19 @@ struct Entity {
 	bool applyFriction;
 	bool applyAirFriction;
 	bool jumpRequested;
+
+	inline AABB GetAABB() const {
+		AABB aabb = { position, radius };
+		return aabb;
+	}
 };
 
-constexpr float MaxSpeed = 100.0;
-constexpr float PlayerWalkSpeed = 40.0;
+constexpr float MaxSpeed = 60.0;
+constexpr float PlayerWalkSpeed = 10.0;
 constexpr float PlayerAirSpeed = PlayerWalkSpeed * 0.75f;
 constexpr float PlayerJumpVelocity = 200.0f * 1.2f;
-constexpr float PlayerGroundFriction = 0.3f;
-constexpr float PlayerAirFriction = 0.75f;
+constexpr float PlayerGroundFriction = 0.0f;
+constexpr float PlayerAirFriction = 0.0f;
 
 static void InitPlayer(Entity &player, const Map &map) {
 	player.radius = V2fInit(TileWidth * 0.4f, TileHeight * 0.8f);
@@ -464,7 +474,7 @@ static void InputPlayer(Entity &player, const Input &input) {
 	}
 }
 
-static void CollisionResponse(Entity &player, const Vec2f &normal, const float dist, const float dt) {
+static void CollisionResponse(Entity &player, const Vec2f &normal, const float dist, const float dt, const Vec2i &tilePos) {
 	// Get the separation and penetration separately, this is to stop pentration from causing the objects to ping apart
 	float separation = Max(dist, 0);
 	float penetration = Min(dist, 0);
@@ -474,6 +484,8 @@ static void CollisionResponse(Entity &player, const Vec2f &normal, const float d
 
 	// Accumulate the penetration correction, this is applied in the update function and ensures we don't add any energy to the system
 	player.positionCorrection -= V2fMultScalar(normal, penetration / dt);
+
+	fplDebugFormatOut("Collision response on normal (%.6f, %.6f), separation: %.6f, penetration: %.6f, nv: %.6f, tile: (%d x %d)\n", normal.x, normal.y, separation, penetration, nv, tilePos.x, tilePos.y);
 
 	if (nv < 0) {
 		// Remove normal velocity
@@ -498,13 +510,10 @@ static void CollisionResponse(Entity &player, const Vec2f &normal, const float d
 	}
 }
 
-static void DetectCollision(Entity &player, const Map &map, const float dt) {
-	// Predict position
-	Vec2f predictedPos = V2fAddMultScalar(player.position, player.velocity, dt);
-
+static TileRect ComputeTileRect(const Entity &player, const Map &map, const Vec2f &nextPos) {
 	// Find min/max
-	Vec2f min = V2fMin(player.position, predictedPos);
-	Vec2f max = V2fMax(player.position, predictedPos);
+	Vec2f min = V2fMin(player.position, nextPos);
+	Vec2f max = V2fMax(player.position, nextPos);
 
 	// Extent by radius
 	min -= player.radius;
@@ -514,28 +523,35 @@ static void DetectCollision(Entity &player, const Map &map, const float dt) {
 	min -= AABBExpand;
 	max += AABBExpand;
 
-	// Get world half extents
-	Vec2f worldHalfExtents = V2fInit(map.width * TileWidth, map.height * TileHeight) * 0.5f;
-
 	// Get tile range min/max
 	Vec2i tileMin = map.WorldCoordsToTile(min);
-	Vec2i tileMax = map.WorldCoordsToTile(max + V2fInitScalar(0.5f));
+	Vec2i tileMax = map.WorldCoordsToTile(max + V2fInit(0.5f, 0.5f));
+
+	return { tileMin, tileMax };
+}
+
+static void DetectCollision(Entity &player, const Map &map, const float dt) {
+	// Predict position
+	Vec2f predictedPos = V2fAddMultScalar(player.position, player.velocity, dt);
+
+	// Get tile min/max
+	TileRect tileRect = ComputeTileRect(player, map, predictedPos);
 
 	// Player bounds
-	AABB playerAABB = { player.position, player.radius };
+	AABB playerAABB = player.GetAABB();
 
 	// Collide against all solid tiles
-	for (int y = tileMin.y; y <= tileMax.y; ++y) {
-		for (int x = tileMin.x; x <= tileMax.x; ++x) {
-			Vec2i tilePos = V2iInit(x, y);
-			Vec2f tileWorld = map.TileCoordsToWorld(tilePos);
-			Vec2f aabbCenter = tileWorld + TileSize * 0.5f;
-			AABB tileAABB = { aabbCenter, TileSize * 0.5f };
+	for (int x = tileRect.min.x; x <= tileRect.max.x; ++x) {
+		for (int y = tileRect.min.y; y <= tileRect.max.y; ++y) {
 			uint32_t tile = map.GetTile(x, y);
 			if (map.IsObstacle(tile)) {
-				bool collided = Collision::AabbVsAabb(playerAABB, tileAABB, player.contact, tilePos, map);
+				Vec2i tilePos = V2iInit(x, y);
+				Vec2f tileWorld = map.TileCoordsToWorld(tilePos);
+				Vec2f aabbCenter = tileWorld + TileSize * 0.5f;
+				AABB tileAABB = { aabbCenter, TileSize * 0.5f };
+				bool collided = Collision::AabbVsAabb_Bunny(playerAABB, tileAABB, player.contact, tilePos, map);
 				if (collided) {
-					CollisionResponse(player, player.contact.normal, player.contact.distance, dt);
+					CollisionResponse(player, player.contact.normal, player.contact.distance, dt, tilePos);
 				}
 			}
 		}
@@ -548,7 +564,7 @@ static void UpdatePlayer(Entity &player, const Map &map, const float dt) {
 
 	// Air friction
 	if (player.applyAirFriction && !player.onGround[0] && Abs(player.velocity.x) > 0) {
-		player.velocity.x *= player.airFriction;
+		player.velocity.x *= (1.0f - player.airFriction);
 	}
 
 	// Clamp speed
@@ -562,7 +578,7 @@ static void UpdatePlayer(Entity &player, const Map &map, const float dt) {
 	DetectCollision(player, map, dt);
 
 	// Integrate
-	player.position = V2fAddMultScalar(player.position, player.velocity + player.positionCorrection, dt);
+	player.position += (player.velocity + player.positionCorrection) * dt;
 
 	// Clear
 	player.positionCorrection = V2fZero();
@@ -712,6 +728,9 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 	// Player
 	UpdatePlayer(player, map, dt);
 
+	// Camera
+	state->camera.offset = -player.position;
+
 	// FPS display
 	const float fpsSmoothing = 0.1f;
 
@@ -731,6 +750,8 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 
 	const Map &map = world.map;
 
+	const Entity &player = world.player;
+
 	RenderState &renderState = *gameMemory.render;
 
 	const float w = WorldRadiusW;
@@ -742,6 +763,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 	Vec2f mapExtents = mapArea * 0.5f;
 	Vec2f mapOrigin = V2fInit(0,0);
 	Vec4f mapSolidColor = V4fInit(1.0f, 1.0f, 1.0f, 1.0f);
+	Vec4f playerTileColor = V4fInit(0.3f, 0.1f, 0.7f, 1.0f);
 
 	Vec2f gridSize = mapArea;
 	Vec2f gridOrigin = mapOrigin;
@@ -775,7 +797,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 		for (int x = 0; x < mapSize.w; ++x) {
 			uint32_t tile = map.GetTile(x, y);
 			if (map.IsObstacle(tile)) {
-				Vec2f tilePos = mapOrigin + V2fInit(x * TileWidth, y * TileHeight);
+				Vec2f tilePos = V2fInit(x * TileWidth, y * TileHeight);
 				PushRectangle(renderState, tilePos, TileSize, mapSolidColor, true, 1.0f);
 			}
 		}
@@ -783,6 +805,15 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 
 	// Player
 	PushRectangleCenter(renderState, state->world.player.position, state->world.player.radius, state->world.player.color, true, 0.0f);
+
+	// Player tile rects
+	TileRect playerTileRect = ComputeTileRect(player, map, player.position + player.velocity * dt);
+	for (int y = playerTileRect.min.y; y <= playerTileRect.max.y; ++y) {
+		for (int x = playerTileRect.min.x; x <= playerTileRect.max.x; ++x) {
+			Vec2f tilePos = V2fInit(x * TileWidth, y * TileHeight);
+			PushRectangle(renderState, tilePos, TileSize, playerTileColor, false, 2.0f);
+		}
+	}
 
 	// Mouse tile
 	Vec2f invTileSize = V2fInit(1.0f / TileWidth, 1.0f / TileHeight);
