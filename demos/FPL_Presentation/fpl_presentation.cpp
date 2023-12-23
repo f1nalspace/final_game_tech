@@ -619,7 +619,7 @@ struct LoadedFont {
 enum class ImageResourceType {
 	FPLLogo128x128 = 0,
 	FPLLogo512x512,
-	FPLFeaturesImage,
+	FPLMinimumSource,
 };
 
 struct ImageResource {
@@ -632,6 +632,7 @@ struct ImageResource {
 namespace ImageResources {
 	static ImageResource FPLLogo128x128 = { ptr_fplLogo128x128ImageData, "FPL Logo 128x128", sizeOf_fplLogo128x128ImageData, ImageResourceType::FPLLogo128x128 };
 	static ImageResource FPLLogo512x512 = { ptr_fplLogo512x512ImageData, "FPL Logo 512x512", sizeOf_fplLogo512x512ImageData, ImageResourceType::FPLLogo512x512 };
+	static ImageResource FPLMinimumSource = { ptr_minimumSourceImageData, "FPL Minimum Source", sizeOf_minimumSourceImageData, ImageResourceType::FPLMinimumSource };
 }
 
 struct ImageID {
@@ -2402,6 +2403,7 @@ int main(int argc, char **argv) {
 
 			app.renderer.AddImageFromResource(ImageResources::FPLLogo128x128);
 			app.renderer.AddImageFromResource(ImageResources::FPLLogo512x512);
+			app.renderer.AddImageFromResource(ImageResources::FPLMinimumSource);
 
 #if 0
 			app.renderer.AddFontFromFile("c:/windows/fonts/arial.ttf", "Arial", 24);
