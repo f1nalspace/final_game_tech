@@ -2124,7 +2124,7 @@ static void JumpToFirstSlide(App &app) {
 
 static void JumpToLastSlide(App &app) {
 	PresentationState &state = app.state;
-	size_t slideCount = app.presentation.slides.Count();
+	uint32_t slideCount = (uint32_t)app.presentation.slides.Count();
 	if (slideCount > 0) {
 		ShowSlideshow(app, slideCount - 1, true);
 	}

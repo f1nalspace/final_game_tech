@@ -154,11 +154,12 @@ namespace FPLPresentationData {
 	static BackgroundStyle Background7 = MakeBackground(RGBAToLinearHex24(0x000000, 255), RGBAToLinearHex24(0xFDBD00, 100));
 	static BackgroundStyle Background8 = MakeBackground(RGBAToLinearHex24(0x000000, 255), RGBAToLinearHex24(0xEE7B00, 100));
 	static BackgroundStyle Background9 = MakeBackground(RGBAToLinearHex24(0x000000, 255), RGBAToLinearHex24(0xE54B0A, 100));
+	static BackgroundStyle Background10 = MakeBackground(RGBAToLinearHex24(0x000000, 255), RGBAToLinearHex24(0xE54B0A, 200));
 
 	// Red to Purple
-	static BackgroundStyle Background10 = MakeBackground(RGBAToLinearHex24(0x000000, 255), RGBAToLinearHex24(0xDC0012, 100));
-	static BackgroundStyle Background11 = MakeBackground(RGBAToLinearHex24(0x000000, 255), RGBAToLinearHex24(0xB7006A, 100));
-	static BackgroundStyle Background12 = MakeBackground(RGBAToLinearHex24(0x000000, 255), RGBAToLinearHex24(0x59227A, 100));
+	static BackgroundStyle Background11 = MakeBackground(RGBAToLinearHex24(0x000000, 255), RGBAToLinearHex24(0xDC0012, 100));
+	static BackgroundStyle Background12 = MakeBackground(RGBAToLinearHex24(0x000000, 255), RGBAToLinearHex24(0xB7006A, 100));
+	static BackgroundStyle Background13 = MakeBackground(RGBAToLinearHex24(0x000000, 255), RGBAToLinearHex24(0x59227A, 100));
 
 	static BackgroundStyle Backgrounds[] = {
 		Background1,
@@ -173,6 +174,7 @@ namespace FPLPresentationData {
 		Background10,
 		Background11,
 		Background12,
+		Background13,
 	};
 
 	static int BackgroundIndex = 0;
@@ -439,6 +441,32 @@ namespace FPLPresentationData {
 		static const SlideDefinition Slide = MakeSlideDef("How it actually works", Blocks, GetBackground(), Rot);
 	};
 
+	namespace HowToUse {
+		static const char* Talk = {
+			""
+		};
+
+		static BlockDefinition Blocks[] = {
+			MakeTextDef(
+				V2f(0.0f, 0.4f),V2f(1.0f, 0.1f),MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Middle),
+				"Using FPL is really simple\n"
+				"\n"
+				"- Copy the 'final_platform_layer.h' file into your project\n"
+				"- In your main translation unit:\n"
+				"- #define FPL_IMPLEMENTATION\n"
+				"- #include <final_platform_layer.h>\n"
+				"- Initialize and release FPL in your entry point (main):\n"
+				"- Create default or custom settings\n"
+				"- fplPlatformInit() / fplPlatformRelease()\n",
+				HorizontalAlignment::Left, FeaturesFontSize, V4f(0.0f, 0.8f, 0.2f, 1.0f)
+			),
+		};
+
+		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(75), V3f(0.0f, 1.0f, 0));
+
+		static const SlideDefinition Slide = MakeSlideDef("How to use", Blocks, GetBackground(), Rot);
+	};
+
 	namespace Demos {
 		static const char* Talk = {
 			""
@@ -533,6 +561,7 @@ namespace FPLPresentationData {
 		FeaturesOfFPL::Slide,
 		Magic::Slide,
 		HowItWorks::Slide,
+		HowToUse::Slide,
 		Demos::Slide,
 		Links::Slide,
 		Thanks::Slide
