@@ -138,27 +138,27 @@ struct PresentationDefinition {
 };
 
 namespace FPLPresentationData {
-	static BackgroundStyle DarkBlueBack = MakeBackground(RGBAToLinearRaw(0, 0, 0, 255), RGBAToLinearRaw(15, 13, 80, 255));
+	static BackgroundStyle DarkBlueBack = MakeBackground(RGBAToLinearHex24(0x000000, 255), RGBAToLinearRaw(15, 13, 80, 255));
 
 	// DarkBlue to LightBlue
-	static BackgroundStyle Background1 = MakeBackground(RGBAToLinearHex24(0x000000), RGBAToLinearHex24(0x333789));
-	static BackgroundStyle Background2 = MakeBackground(RGBAToLinearHex24(0x000000), RGBAToLinearHex24(0x1E5AA3));
-	static BackgroundStyle Background3 = MakeBackground(RGBAToLinearHex24(0x000000), RGBAToLinearHex24(0x0483AF));
+	static BackgroundStyle Background1 = MakeBackground(RGBAToLinearHex24(0x000000, 255), RGBAToLinearHex24(0x333789, 100));
+	static BackgroundStyle Background2 = MakeBackground(RGBAToLinearHex24(0x000000, 255), RGBAToLinearHex24(0x1E5AA3, 100));
+	static BackgroundStyle Background3 = MakeBackground(RGBAToLinearHex24(0x000000, 255), RGBAToLinearHex24(0x0483AF, 100));
 
 	// Green to Yellow
-	static BackgroundStyle Background4 = MakeBackground(RGBAToLinearHex24(0x000000), RGBAToLinearHex24(0x057F47));
-	static BackgroundStyle Background5 = MakeBackground(RGBAToLinearHex24(0x000000), RGBAToLinearHex24(0x7AB30B));
-	static BackgroundStyle Background6 = MakeBackground(RGBAToLinearHex24(0x000000), RGBAToLinearHex24(0xF2E500));
+	static BackgroundStyle Background4 = MakeBackground(RGBAToLinearHex24(0x000000, 255), RGBAToLinearHex24(0x057F47, 100));
+	static BackgroundStyle Background5 = MakeBackground(RGBAToLinearHex24(0x000000, 255), RGBAToLinearHex24(0x7AB30B, 100));
+	static BackgroundStyle Background6 = MakeBackground(RGBAToLinearHex24(0x000000, 255), RGBAToLinearHex24(0xF2E500, 100));
 
 	// LightOrange to DarkOrange
-	static BackgroundStyle Background7 = MakeBackground(RGBAToLinearHex24(0x000000), RGBAToLinearHex24(0xFDBD00));
-	static BackgroundStyle Background8 = MakeBackground(RGBAToLinearHex24(0x000000), RGBAToLinearHex24(0xEE7B00));
-	static BackgroundStyle Background9 = MakeBackground(RGBAToLinearHex24(0x000000), RGBAToLinearHex24(0xE54B0A));
+	static BackgroundStyle Background7 = MakeBackground(RGBAToLinearHex24(0x000000, 255), RGBAToLinearHex24(0xFDBD00, 100));
+	static BackgroundStyle Background8 = MakeBackground(RGBAToLinearHex24(0x000000, 255), RGBAToLinearHex24(0xEE7B00, 100));
+	static BackgroundStyle Background9 = MakeBackground(RGBAToLinearHex24(0x000000, 255), RGBAToLinearHex24(0xE54B0A, 100));
 
 	// Red to Purple
-	static BackgroundStyle Background10 = MakeBackground(RGBAToLinearHex24(0x000000), RGBAToLinearHex24(0xDC0012));
-	static BackgroundStyle Background11 = MakeBackground(RGBAToLinearHex24(0x000000), RGBAToLinearHex24(0xB7006A));
-	static BackgroundStyle Background12 = MakeBackground(RGBAToLinearHex24(0x000000), RGBAToLinearHex24(0x59227A));
+	static BackgroundStyle Background10 = MakeBackground(RGBAToLinearHex24(0x000000, 255), RGBAToLinearHex24(0xDC0012, 100));
+	static BackgroundStyle Background11 = MakeBackground(RGBAToLinearHex24(0x000000, 255), RGBAToLinearHex24(0xB7006A, 100));
+	static BackgroundStyle Background12 = MakeBackground(RGBAToLinearHex24(0x000000, 255), RGBAToLinearHex24(0x59227A, 100));
 
 	static BackgroundStyle Backgrounds[] = {
 		Background1,
