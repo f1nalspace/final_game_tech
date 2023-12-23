@@ -1412,11 +1412,10 @@ fpl_force_inline Vec4f RGBAToLinearSRGB(const uint8_t r, const uint8_t g, const 
 	return(result);
 }
 
-fpl_force_inline Vec4f RGBAToLinearHex24(const uint32_t hexValue24) {
+fpl_force_inline Vec4f RGBAToLinearHex24(const uint32_t hexValue24, const uint8_t a) {
 	uint8_t r = (hexValue24 >> 16) & 0xFF;
 	uint8_t g = (hexValue24 >> 8) & 0xFF;
 	uint8_t b = (hexValue24 >> 0) & 0xFF;
-	uint8_t a = 255;
 	Pixel pixel = MakePixelFromRGBA(r, g, b, a);
 	Vec4f result = PixelToLinearRaw(pixel);
 	return(result);
