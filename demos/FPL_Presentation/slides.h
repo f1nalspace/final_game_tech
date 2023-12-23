@@ -185,9 +185,9 @@ namespace FPLPresentationData {
 
 	namespace Intro {
 		static const char* Talk = {
-			"Hi! I am Torsten."
-			"Today, i would like to introduce you to a project of mine that i have been working on for several years."
-			"It is called 'Final Platform Layer' or short FPL and is a platform abstraction library for C and C++."
+			"Hi! I am Torsten"
+			"Today, i would like to introduce you to a project of mine that i have been working on for several years"
+			"It is called 'Final Platform Layer' or short FPL and is a platform abstraction library for C and C++"
 		};
 
 		static BlockDefinition Blocks[] = {
@@ -206,18 +206,18 @@ namespace FPLPresentationData {
 
 	namespace WhoAmI {
 		static const char* Talk = {
-			"I am Torsten Spaete."
-			"A professional software engineer with more than 25 years of programming experience."
+			"I am Torsten Spaete"
+			"A professional software engineer with more than 25 years of programming experience"
 			""
-			"My main focus is data-visualization, software-architecture, multimedia and game programming."
+			"My main focus is data-visualization, software-architecture, multimedia and game programming"
 		};
 
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
 				V2f(),V2f(1,1),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				"I am Torsten Spaete.\n"
-				"A professional software engineer.\n"
-				"25+ years of programming experience.\n",
+				"I am Torsten Spaete\n"
+				"A professional software engineer\n"
+				"25+ years of programming experience\n",
 				HorizontalAlignment::Center
 			),
 		};
@@ -251,8 +251,9 @@ namespace FPLPresentationData {
 			MakeTextDef(
 				V2f(),V2f(1,1),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
 				"Final-Platform-Layer (or short 'FPL')\n"
-				"is a lightweight PAL written in C99,\n"
-				"providing a powerful and easy to use API,\n"
+				"is a lightweight library written in C99.\n"
+				"\n"
+				"It provides a powerful and easy to use API,\n"
 				"that gives you access to low-level systems, hardware devices,\n"
 				"operating system functions and many more.",
 				HorizontalAlignment::Left
@@ -291,10 +292,10 @@ namespace FPLPresentationData {
 				V2f(0.05f, 0.3f),V2f(0.9f, 0.7f),MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Top),
 				"The pre-existing PALs have a lot of disavantages:\n"
 				"- Very long compile times, due to large number of files\n"
-				"- Only static or dynamic integration is possible\n"
-				"- Not allowed to use the source directly\n"
-				"- Limited control over the allocated memory\n"
-				"- Bloated and/or too many dependencies\n",
+				"- Only static or dynamic linking is possible\n"
+				"- Not allowed/possible to use the source directly\n"
+				"- Limited or no control over the allocated memory\n"
+				"- Requires build systems and dependencies\n",
 				HorizontalAlignment::Left, FeaturesFontSize
 			),
 		};
@@ -322,8 +323,8 @@ namespace FPLPresentationData {
 				"- Fast compile times, even in slow environments\n"
 				"- Written in C99 with 100%% C++ compatibility\n"
 				"- Bare minimum compile and linking requirements\n"
-				"- Uses a small memory footprint\n"
-				"- User decides how to integrate it, not the library\n"
+				"- Small memory footprint\n"
+				"- Can be integrated in any way\n"
 				"- C-Runtime library should not be required\n"
 				"- Features can be disabled, if not needed\n"
 				"- Configurable with good defaults\n"
