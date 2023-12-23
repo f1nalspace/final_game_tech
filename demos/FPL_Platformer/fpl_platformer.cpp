@@ -234,6 +234,15 @@ public:
 		return result;
 	}
 
+	inline uint32_t GetTile(const Vec2i &tilePos) const {
+		return GetTile(tilePos.x, tilePos.y);
+	}
+
+	inline bool IsTileInside(const Vec2i &tilePos) const {
+		bool result = (tilePos.x >= 0 && tilePos.x < (int)width) && (tilePos.y >= 0 && tilePos.y < (int)height);
+		return result;
+	}
+
 	inline bool IsObstacle(const uint32_t tile) const {
 		// @TODO(final): Obstacle tile mapping!
 		bool result = tile == 1;
@@ -683,9 +692,15 @@ static void LoadWorld(World &world, const Map &level) {
 	LoadPlayer(world.player, world.map);
 }
 
+struct Editor {
+	uint32_t drawTile;
+	bool isDrawing;
+};
+
 struct GameState {
 	Assets assets;
 	World world;
+	Editor editor;
 
 	Camera2D camera;
 	Mat4f projection;
@@ -776,101 +791,119 @@ extern bool IsGameExiting(GameMemory &gameMemory) {
 	return state->isExiting;
 }
 
+static void DrawTile(Map &map, const Vec2i &tilePos, const uint32_t newTile) {
+	Vec2i newOrigin = map.origin;
+	Vec2i newSizeAppend = V2iInit(0, 0);
+	Vec2i newTilePos = tilePos;
+	if (tilePos.x < 0) {
+		int xcount = abs(tilePos.x);
+		fplAssert(xcount > 0);
+		newSizeAppend.x += xcount;
+		newOrigin.x -= xcount;
+		newTilePos.x += xcount;
+	} else if (tilePos.x > ((int)map.width - 1)) {
+		int xcount = tilePos.x - ((int)map.width - 1);
+		fplAssert(xcount > 0);
+		newSizeAppend.x += xcount;
+		newTilePos.x = tilePos.x;
+	}
+	if (tilePos.y < 0) {
+		int ycount = abs(tilePos.y);
+		fplAssert(ycount > 0);
+		newSizeAppend.y += ycount;
+		newOrigin.y -= ycount;
+		newTilePos.y += ycount;
+	} else if (tilePos.y > ((int)map.height - 1)) {
+		int ycount = tilePos.y - ((int)map.height - 1);
+		fplAssert(ycount > 0);
+		newSizeAppend.y += ycount;
+		newTilePos.y = tilePos.y;
+	}
+
+	if (newSizeAppend.x > 0 || newSizeAppend.y > 0) {
+		Vec2i oldMapSize = V2iInit(map.width, map.height);
+		Vec2i newMapSize = V2iInit(map.width + newSizeAppend.x, map.height + newSizeAppend.y);
+
+		map.temporaryMemory.used = 0;
+
+		fmemMemoryBlock tempBlock;
+		fmemBeginTemporary(&map.temporaryMemory, &tempBlock);
+
+		size_t requiredOldSize = oldMapSize.w * oldMapSize.h * sizeof(uint32_t);
+		fplAssert(requiredOldSize <= tempBlock.size);
+
+		uint32_t *oldTiles = (uint32_t *)fmemPush(&tempBlock, requiredOldSize, fmemPushFlags_None);
+		fplMemoryCopy(map.solidTiles, requiredOldSize, oldTiles);
+
+		map.persistentMemory.used = 0;
+		size_t requiredNewSize = newMapSize.w * newMapSize.h * sizeof(uint32_t);
+		fplAssert(requiredNewSize <= map.persistentMemory.size);
+
+		int offsetX = 0;
+		int offsetY = 0;
+
+		if (tilePos.x >= 0 && newSizeAppend.x > 0) {
+			offsetX -= abs(newSizeAppend.x);
+		}
+
+		if (tilePos.y >= 0 && newSizeAppend.x > 0) {
+			offsetY += abs(newSizeAppend.y);
+		} else if (tilePos.y < 0) {
+			offsetY -= abs(tilePos.y);
+		}
+
+		map.width = newMapSize.w;
+		map.height = newMapSize.h;
+		map.solidTiles = (uint32_t *)fmemPush(&map.persistentMemory, requiredNewSize, fmemPushFlags_Clear);
+		for (int y = 0; y < oldMapSize.h; ++y) {
+			for (int x = 0; x < oldMapSize.w; ++x) {
+				int ox = newSizeAppend.x + x + offsetX;
+				int oy = newSizeAppend.y + y + offsetY;
+				fplAssert(ox >= 0 && ox < newMapSize.w);
+				fplAssert(oy >= 0 && oy < newMapSize.h);
+				map.solidTiles[oy * newMapSize.w + ox] = oldTiles[y * oldMapSize.w + x];
+			}
+		}
+
+		fmemEndTemporary(&map.temporaryMemory);
+	}
+
+	int invY = map.height - 1 - newTilePos.y;
+	int curTile = map.solidTiles[invY * map.width + newTilePos.x];
+	map.solidTiles[invY * map.width + newTilePos.x] = newTile;
+
+	map.origin = newOrigin;
+}
+
 static void EditorInput(GameState *state, const Input &input) {
 	Map &map = state->world.map;
+
+	Editor &editor = state->editor;
 
 	Vec2f originWorld = map.TileCoordsToWorld(map.origin);
 
 	Vec2i mouseTilePos = map.WorldCoordsToTile(state->mouseWorldPos - originWorld);
 
-	if (WasPressed(input.mouse.left)) {
-		Vec2i newOrigin = map.origin;
-		Vec2i newSizeAppend = V2iInit(0, 0);
-		Vec2i newTilePos = mouseTilePos;
-		if (mouseTilePos.x < 0) {
-			int xcount = abs(mouseTilePos.x);
-			fplAssert(xcount > 0);
-			newSizeAppend.x += xcount;
-			newOrigin.x -= xcount;
-			newTilePos.x += xcount;
-		} else if (mouseTilePos.x > ((int)map.width - 1)) {
-			int xcount = mouseTilePos.x - ((int)map.width - 1);
-			fplAssert(xcount > 0);
-			newSizeAppend.x += xcount;
-			newTilePos.x = mouseTilePos.x;
-		}
-		if (mouseTilePos.y < 0) {
-			int ycount = abs(mouseTilePos.y);
-			fplAssert(ycount > 0);
-			newSizeAppend.y += ycount;
-			newOrigin.y -= ycount;
-			newTilePos.y += ycount;
-		} else if (mouseTilePos.y > ((int)map.height - 1)) {
-			int ycount = mouseTilePos.y - ((int)map.height - 1);
-			fplAssert(ycount > 0);
-			newSizeAppend.y += ycount;
-			newTilePos.y = mouseTilePos.y;
-		}
+	if (IsDown(input.mouse.left)) {
+		if (!editor.isDrawing) {
+			editor.isDrawing = true;
 
-		if (newSizeAppend.x > 0 || newSizeAppend.y > 0) {
-			Vec2i oldMapSize = V2iInit(map.width, map.height);
-			Vec2i newMapSize = V2iInit(map.width + newSizeAppend.x, map.height + newSizeAppend.y);
-
-			map.temporaryMemory.used = 0;
-
-			fmemMemoryBlock tempBlock;
-			fmemBeginTemporary(&map.temporaryMemory, &tempBlock);
-
-			size_t requiredOldSize = oldMapSize.w * oldMapSize.h * sizeof(uint32_t);
-			fplAssert(requiredOldSize <= tempBlock.size);
-
-			uint32_t *oldTiles = (uint32_t *)fmemPush(&tempBlock, requiredOldSize, fmemPushFlags_None);
-			fplMemoryCopy(map.solidTiles, requiredOldSize, oldTiles);
-
-			map.persistentMemory.used = 0;
-			size_t requiredNewSize = newMapSize.w * newMapSize.h * sizeof(uint32_t);
-			fplAssert(requiredNewSize <= map.persistentMemory.size);
-
-			int offsetX = 0;
-			int offsetY = 0;
-
-			if (mouseTilePos.x >= 0 && newSizeAppend.x > 0) {
-				offsetX -= abs(newSizeAppend.x);
+			if (map.IsTileInside(mouseTilePos)) {
+				uint32_t tile = map.GetTile(mouseTilePos);
+				editor.drawTile = tile == 0 ? 1 : 0;
+			} else {
+				editor.drawTile = 1;
 			}
-
-			if (mouseTilePos.y >= 0 && newSizeAppend.x > 0) {
-				offsetY += abs(newSizeAppend.y);
-			} else if (mouseTilePos.y < 0) {
-				offsetY -= abs(mouseTilePos.y);
-			}
-
-			map.width = newMapSize.w;
-			map.height = newMapSize.h;
-			map.solidTiles = (uint32_t *)fmemPush(&map.persistentMemory, requiredNewSize, fmemPushFlags_Clear);
-			for (int y = 0; y < oldMapSize.h; ++y) {
-				for (int x = 0; x < oldMapSize.w; ++x) {
-					int ox = newSizeAppend.x + x + offsetX;
-					int oy = newSizeAppend.y + y + offsetY;
-					fplAssert(ox >= 0 && ox < newMapSize.w);
-					fplAssert(oy >= 0 && oy < newMapSize.h);
-					map.solidTiles[oy * newMapSize.w + ox] = oldTiles[y * oldMapSize.w + x];
-				}
-			}
-
-			fmemEndTemporary(&map.temporaryMemory);
 		}
-
-		int invY = map.height - 1 - newTilePos.y;
-		int curTile = map.solidTiles[invY * map.width + newTilePos.x];
-		int newTile;
-		if (curTile == 0) {
-			newTile = 1;
-		} else {
-			newTile = 0;
+		if (editor.isDrawing) {
+			fplAssert(editor.drawTile != UINT32_MAX);
+			DrawTile(map, mouseTilePos, editor.drawTile);
 		}
-		map.solidTiles[invY * map.width + newTilePos.x] = newTile;
-
-		map.origin = newOrigin;
+	} else {
+		if (editor.isDrawing) {
+			editor.drawTile = UINT32_MAX;
+			editor.isDrawing = false;
+		}
 	}
 }
 
@@ -933,20 +966,20 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 					dragEntity = entity;
 					break;
 				}
-}
+			}
 
 			if (dragEntity != nullptr) {
 				state->dragEntity = dragEntity;
 				state->isDragging = true;
 				state->dragStart = state->mouseWorldPos;
 			}
-			} else {
+		} else {
 			fplAssertPtr(state->dragEntity);
 			Vec2f deltaPos = state->mouseWorldPos - state->dragStart;
 			state->dragEntity->position += deltaPos;
 			state->dragStart = state->mouseWorldPos;
 		}
-		} else {
+	} else {
 		if (state->isDragging) {
 			state->isDragging = false;
 			state->dragEntity = nullptr;
@@ -1235,9 +1268,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 			PushRectangle(renderState, tilePos, TileSize, playerTileColor, false, 2.0f);
 		}
 	}
-#endif
 
-#if !COLLISION_PLAYGROUND
 	// Mouse cursor
 	PushRectangleCenter(renderState, state->mouseWorldPos, V2fInit(2, 2), V4fInit(1.0f, 0.0f, 0.0f, 1.0f), true, 0.0f);
 
