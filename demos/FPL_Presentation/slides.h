@@ -7,7 +7,7 @@
 #include "types.h"
 #include "fonts.h"
 
-static const float CodeFontSize = 17.0f;
+static const float CodeFontSize = 24.0f;
 static const float FeaturesFontSize = 32.0f;
 
 enum class BlockType {
@@ -448,17 +448,24 @@ namespace FPLPresentationData {
 
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
-				V2f(0.0f, 0.4f),V2f(1.0f, 0.1f),MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Middle),
+				V2f(0.0f, 0.1f),V2f(1.0f, 1.0f), MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Top),
 				"Using FPL is really simple\n"
 				"\n"
 				"- Copy the 'final_platform_layer.h' file into your project\n"
 				"- In your main translation unit:\n"
 				"- #define FPL_IMPLEMENTATION\n"
 				"- #include <final_platform_layer.h>\n"
-				"- Initialize and release FPL in your entry point (main):\n"
+				"- In your entry point (main):\n"
 				"- Create default or custom settings\n"
-				"- fplPlatformInit() / fplPlatformRelease()\n",
-				HorizontalAlignment::Left, FeaturesFontSize, V4f(0.0f, 0.8f, 0.2f, 1.0f)
+				"- Initialize FPL\n"
+				"- Use any code you want\n"
+				"- Release FPL",
+				HorizontalAlignment::Left, CodeFontSize, V4f(0.0f, 0.8f, 0.2f, 1.0f)
+			),
+
+			MakeImageDef(
+				V2f(-0.05f, 0.1f), V2f(1.0f, 1.0f), MakeAlign(HorizontalAlignment::Right, VerticalAlignment::Top),
+				"FPL Minimum Source", V2f(0.5f, 1.0f), true
 			),
 		};
 
