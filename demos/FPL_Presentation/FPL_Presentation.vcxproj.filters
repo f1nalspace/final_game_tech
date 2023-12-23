@@ -1,0 +1,29 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="fpl_presentation.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="dependencies">
+      <UniqueIdentifier>{f406abac-3254-4f49-a099-b49b75dcbdba}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\final_dynamic_opengl.h">
+      <Filter>dependencies</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\final_memory.h">
+      <Filter>dependencies</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\final_platform_layer.h">
+      <Filter>dependencies</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\final_xml.h">
+      <Filter>dependencies</Filter>
+    </ClInclude>
+    <ClInclude Include="images.h" />
+    <ClInclude Include="fonts.h" />
+    <ClInclude Include="slides.h" />
+    <ClInclude Include="types.h" />
+  </ItemGroup>
+</Project>
