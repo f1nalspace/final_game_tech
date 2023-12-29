@@ -273,12 +273,12 @@ namespace FPLPresentationData {
 			"Even in modern C++, you still don't have direct access to a lot of systems."
 			"To access low-level systems, such as audio or video, you either need to use third-party libraries or write platform-specific codes for Win32, Linux, Mac, etc. directly."
 			""
-			"Of course, there is already a few PALs on the internet, but most of them have the same issue:"
-			"- The source-codes contain dozens of translation units which slows down compile time enormously"
-			"- Almost all, are designed not to include the full source within your application and force you either to static or runtime linked pre-compiled releases"
-			"- Some even don't allow statically linked and force you to dynamic linking"
+			"Of course, there is already a few PALs out there, but they have a lot of issues:"
+			"- The source-codes contain dozens of translation units which slows down compilation time enormously"
+			"- All are designed to not include the full source within your application and force you either to static or dynamic linked pre-compiled releases"
 			"- You have limited or no control over memory allocations"
-			"- Most of it has too many dependencies (build-systems, third-party libraries, etc.)"
+			"- They have too many dependencies (build-systems, third-party libraries, etc.)"
+			"- There are not simple to integrate into your application or development environment"
 		};
 
 		static BlockDefinition Blocks[] = {
@@ -294,10 +294,11 @@ namespace FPLPresentationData {
 				V2f(0.05f, 0.3f),V2f(0.9f, 0.7f),MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Top),
 				"The pre-existing PALs have a lot of disavantages:\n"
 				"- Very long compile times, due to large number of files\n"
-				"- Only static or dynamic linking is possible\n"
+				"- Only static or dynamic linking possible\n"
 				"- Not allowed/possible to use the source directly\n"
 				"- Limited or no control over the allocated memory\n"
-				"- Requires build systems and dependencies\n",
+				"- Too many dependencies\n"
+				"- Not easy to integrate\n",
 				HorizontalAlignment::Left, FeaturesFontSize
 			),
 		};
@@ -323,12 +324,13 @@ namespace FPLPresentationData {
 			MakeTextDef(
 				V2f(0.0, 0.0),V2f(1.0, 1.0),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
 				"- Fast compile times, even in slow environments\n"
-				"- Written in C99 with 100%% C++ compatibility\n"
+				"- Based on C with 100%% C++ compatibility\n"
 				"- Bare minimum compile and linking requirements\n"
 				"- Small memory footprint\n"
 				"- Can be integrated in any way\n"
 				"- C-Runtime library should not be required\n"
 				"- Features can be disabled, if not needed\n"
+				"- Simple and easy to understand API\n"
 				"- Configurable with good defaults\n"
 				"- Public open source\n",
 				HorizontalAlignment::Left, FeaturesFontSize * 1.1f
@@ -355,8 +357,8 @@ namespace FPLPresentationData {
 				"- Has bare minimum compile and linking requirements\n"
 				"- Uses runtime linking by default, so no libs needs to be included\n"
 				"- Allows to control the memory allocations and handles memory very gracefully\n"
-				"- Multiple backends for video/audio/input/windowing\n"
-				"- Supports runtime or static linking or full-source inclusion\n"
+				"- Multiple backends for Video/Audio/Input/Window\n"
+				"- Supports runtime linking or static linking or even full-source inclusion\n"
 				"- MIT-Licensed\n",
 				HorizontalAlignment::Left, FeaturesFontSize * 1.1f
 			),
@@ -449,12 +451,14 @@ namespace FPLPresentationData {
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
 				V2f(0.0f, 0.1f),V2f(1.0f, 1.0f), MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Top),
-				"Using FPL is really simple\n"
+				"Using FPL is straight forward\n"
 				"\n"
 				"- Copy the 'final_platform_layer.h' file into your project\n"
+				"\n"
 				"- In your main translation unit:\n"
 				"- #define FPL_IMPLEMENTATION\n"
 				"- #include <final_platform_layer.h>\n"
+				"\n"
 				"- In your entry point (main):\n"
 				"- Create default or custom settings\n"
 				"- Initialize FPL\n"
