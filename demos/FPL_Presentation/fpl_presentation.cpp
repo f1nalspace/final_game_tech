@@ -18,6 +18,10 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2023-12-29
+	- Rewritten all slides
+	- Added more image resources
+
 	## 2021-02-28
 	- Updated all slices, written talks
 
@@ -83,6 +87,54 @@ License:
 #define USE_LETTERBOX_VIEWPORT 0
 #define DRAW_BOX_DEFINITIONS 0
 #define CUBE_ONLY 0
+
+template <typename T>
+struct GrowableArray {
+private:
+	T *base;
+	size_t capacity;
+	size_t count;
+
+	void ResizeIfNeeded() {
+		size_t newCapacity;
+		if (capacity == 0) {
+			newCapacity = 2;
+		} else if (count == capacity) {
+			newCapacity = capacity * 2;
+		} else {
+			newCapacity = capacity; // Leave untouched
+		}
+
+		if (capacity != newCapacity) {
+			T* newBase = (T*)realloc(base, sizeof(T) * newCapacity);
+			base = newBase;
+			capacity = newCapacity;
+		}
+	}
+public:
+	static GrowableArray<T> Make(const size_t capacity) {
+		GrowableArray<T> result = {};
+		result.capacity = capacity;
+		return result;
+	}
+
+	size_t Add(T value) {
+		ResizeIfNeeded();
+		fplAssert(count < capacity && base != nullptr);
+		size_t index = count;
+		base[index] = value;
+		++count;
+		return index;
+	}
+
+	size_t Count() const {
+		return count;
+	}
+
+	size_t Capacity() const {
+		return capacity;
+	}
+};
 
 template <typename T>
 struct GrowablePool {
@@ -1103,6 +1155,16 @@ struct Element {
 	ElementType type;
 };
 
+struct Sound {
+	AudioSourceID sourceId;
+	double start;
+	double duration;
+};
+
+struct GlobalVariables {
+	double currentTime;
+};
+
 struct SlideVariables {
 	const char *slideName;
 	uint32_t slideNum;
@@ -1111,6 +1173,7 @@ struct SlideVariables {
 
 struct Slide {
 	LinkedList<Element> elements;
+	GrowableArray<Sound> sounds;
 	SlideVariables vars;
 	BackgroundStyle background;
 	Quaternion rotation;
@@ -1123,6 +1186,10 @@ struct Slide {
 		Element *result = elements.Add();
 		result->type = type;
 		return(result);
+	}
+
+	void AddSound(const Sound &sound) {
+		sounds.Add(sound);
 	}
 
 	Label *AddLabel(const String &text, const Vec2f &pos, const char *fontName, const float fontSize, const HorizontalAlignment hAlign = HorizontalAlignment::Left, const VerticalAlignment vAlign = VerticalAlignment::Top, const TextStyle &style = {}) {
@@ -1231,6 +1298,8 @@ struct PresentationState {
 
 	Slide *activeSlide;
 	int32_t activeSlideIndex;
+
+	double currentTime;
 };
 
 constexpr float CubeRadius = 0.5f;
@@ -1422,7 +1491,7 @@ static void RenderStrokedQuad(const Vec2f &pos, const Vec2f &size, const Vec4f &
 	glLineWidth(1.0f);
 }
 
-static const char *ResolveText(const SlideVariables &vars, const char *source, char *buffer, size_t maxBufferLen) {
+static const char *ResolveText(const GlobalVariables &globals, const SlideVariables &vars, const char *source, char *buffer, size_t maxBufferLen) {
 	buffer[0] = 0;
 	const char *result = buffer;
 	const char *s = source;
@@ -1463,6 +1532,16 @@ static const char *ResolveText(const SlideVariables &vars, const char *source, c
 								size_t addedCount = fplGetStringLength(t);
 								bufIndex += addedCount;
 							}
+						} else if (strncmp("CURRENT_TIME", varName, varLen) == 0) {
+							int hours = (int)(globals.currentTime / 60.0 / 60.0) % 24;
+							int mins = (int)(globals.currentTime / 60.0) % 60;
+							int secs = (int)globals.currentTime % 60;
+							int msecs = (int)(globals.currentTime * 1000) % 1000;
+							char buffer[20];
+							fplStringFormat(buffer, fplArrayCount(buffer), "%02d:%02d:%02d.%03d", hours, mins, secs, msecs);
+							fplStringAppend(buffer, remainingStart, remainingBufLen);
+							size_t addedCount = fplGetStringLength(buffer);
+							bufIndex += addedCount;
 						}
 					}
 				} else {
@@ -1511,11 +1590,11 @@ static void RenderRectangle(const Vec2f &pos, const Vec2f &size, const Backgroun
 	}
 }
 
-static void RenderLabel(const LoadedFont &font, const Label &label, const SlideVariables &vars) {
+static void RenderLabel(const LoadedFont &font, const Label &label, const GlobalVariables &globals, const SlideVariables &vars) {
 	static char tmpBuffer[4096]; // @REPLACE(tspaete): Not great using a static buffer here, find a better approach
 
 	const TextStyle &style = label.style;
-	const char *text = ResolveText(vars, label.text, tmpBuffer, fplArrayCount(tmpBuffer));
+	const char *text = ResolveText(globals, vars, label.text, tmpBuffer, fplArrayCount(tmpBuffer));
 	float charHeight = label.fontSize;
 	size_t textLen = fplGetStringLength(label.text);
 	Vec2f pos = label.pos;
@@ -1706,9 +1785,11 @@ static void UpdateFrame(App &app, const float dt) {
 		state.currentOffset = state.targetOffset;
 		state.currentRotation = state.targetRotation;
 	}
+
+	state.currentTime += dt;
 }
 
-static void RenderSlide(const Slide &slide, const Renderer &renderer) {
+static void RenderSlide(const GlobalVariables &globals, const Slide &slide, const Renderer &renderer) {
 	float w = slide.size.w;
 	float h = slide.size.h;
 	Vec2f radius = V2f(w, h) * 0.5f;
@@ -1734,7 +1815,7 @@ static void RenderSlide(const Slide &slide, const Renderer &renderer) {
 				const char *fontName = label.fontName;
 				const LoadedFont *font = renderer.FindFont(fontName, label.fontSize);
 				if (font != nullptr) {
-					RenderLabel(*font, label, slide.vars);
+					RenderLabel(*font, label, globals, slide.vars);
 				}
 			} break;
 
@@ -1852,6 +1933,9 @@ static void RenderFrame(App &app, const Vec2i &winSize) {
 	const LoadedFont *debugFont = app.renderer.debugFont;
 	fplAssert(debugFont != nullptr);
 	const float debugFontSize = 30.0f;
+
+	GlobalVariables globals = {};
+	globals.currentTime = state.currentTime;
 
 	const Slide *activeSlide = state.activeSlide;
 	if (activeSlide == nullptr) {
@@ -1971,7 +2055,7 @@ static void RenderFrame(App &app, const Vec2i &winSize) {
 #endif
 
 			glLoadMatrixf(&slideMVP.m[0]);
-			RenderSlide(*slide, renderer);
+			RenderSlide(globals, *slide, renderer);
 
 			slidePos += V2f(slide->size.w, 0);
 		}
@@ -2030,6 +2114,8 @@ static Rect2f AddHeaderAndFooter(Slide *slide, const HeaderDefinition &headerDef
 	rectTop->style.background.kind = BackgroundKind::GradientVertical;
 
 	Label *fplLabelTopLeft = slide->AddLabel(headerDef.leftText, rectTop->pos + headerPadding, headerFontName, headerFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, headerFontStyle);
+
+	Label *fplTimeLabelTopCenter = slide->AddLabel("%CURRENT_TIME%", rectTop->pos + V2f(rectTop->size.w * 0.5f, rectTop->size.h - headerPadding.y), headerFontName, headerFontSize, HorizontalAlignment::Center, VerticalAlignment::Bottom, headerFontStyle);
 
 	Image *fplLogo = slide->AddImage(rectTop->pos + V2f(w - logoSize.w, 0), logoSize, ImageResources::FPLLogo128x128.name);
 
@@ -2231,7 +2317,7 @@ static void AddSlideFromDefinition(Renderer &renderer, Presentation &presentatio
 	area.pos += V2f(padding, titleLineHeight);
 
 	// Content
-	for (size_t blockIndex = 0; blockIndex < inSlide.count; ++blockIndex) {
+	for (size_t blockIndex = 0; blockIndex < inSlide.blockCount; ++blockIndex) {
 		const BlockDefinition &block = inSlide.blocks[blockIndex];
 
 		Vec2f offset = V2fHadamard(area.size, block.pos);
@@ -2330,6 +2416,12 @@ static void AddSlideFromDefinition(Renderer &renderer, Presentation &presentatio
 		}
 
 	}
+
+	// Sounds
+	for (size_t soundIndex = 0; soundIndex < inSlide.soundCount; ++soundIndex) {
+		const SoundDefinition &soundDef = inSlide.sounds[soundIndex];
+		slide->AddSound({ soundDef.id, soundDef.startTime, soundDef.length });
+	}
 }
 
 static void BuildPresentation(const PresentationDefinition &inPresentation, Renderer &renderer, Presentation &outPresentation) {
@@ -2345,164 +2437,201 @@ static void BuildPresentation(const PresentationDefinition &inPresentation, Rend
 static void QuaternionTests() {
 }
 
+static uint32_t AudioPlaybackCallback(const fplAudioDeviceFormat *outFormat, const uint32_t maxFrameCount, void *outputSamples, void *userData) {
+	return 0;
+}
+
 int main(int argc, char **argv) {
 	fplSettings settings = fplMakeDefaultSettings();
 	fplCopyString("FPL Demo | Presentation", settings.window.title, fplArrayCount(settings.window.title));
+
+	// Video settings
 	settings.video.backend = fplVideoBackendType_OpenGL;
 	settings.video.isVSync = true;
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
 	settings.video.graphics.opengl.multiSamplingCount = 16;
-	if (fplPlatformInit(fplInitFlags_All, &settings)) {
-		if (fglLoadOpenGL(true)) {
-			glDisable(GL_DEPTH_TEST);
 
-			glEnable(GL_CULL_FACE);
-			glCullFace(GL_BACK);
-			glFrontFace(GL_CCW);
+	// Audio settings
+	settings.audio.clientReadCallback = AudioPlaybackCallback;
+	settings.audio.targetFormat.sampleRate = 44100;
+	settings.audio.targetFormat.type = fplAudioFormatType_F32;
+	settings.audio.targetFormat.latencyMode = fplAudioLatencyMode_Low;
+	settings.audio.targetFormat.channels = 2;
 
-			glEnable(GL_BLEND);
-			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	bool platformInitialized = false;
+	bool openGLInitialized = false;
 
-			glEnable(GL_SCISSOR_TEST);
+	AudioSystem *audioSys = (AudioSystem *)fplMemoryAllocate(sizeof(AudioSystem));
 
-			glEnable(GL_LINE_SMOOTH);
-			glEnable(GL_POINT_SMOOTH);
+	if ((platformInitialized = fplPlatformInit(fplInitFlags_Video | fplInitFlags_Audio, &settings)) && 
+		(openGLInitialized = fglLoadOpenGL(true))) {
 
-			glDisable(GL_TEXTURE_2D);
+		fplAudioDeviceFormat audioDeviceFormat = fplZeroInit;
+		fplGetAudioHardwareFormat(&audioDeviceFormat);
 
-			glMatrixMode(GL_PROJECTION);
-			glLoadIdentity();
+		fplConsoleFormatOut("Using audio device format (%lu frequency, %lu channels, %lu frames)\n", audioDeviceFormat.sampleRate, audioDeviceFormat.channels, audioDeviceFormat.bufferSizeInFrames);
 
-			glMatrixMode(GL_MODELVIEW);
+		bool audioInitialized = AudioSystemInit(audioSys, &audioDeviceFormat);
 
-			glClearColor(0.1f, 0.2f, 0.3f, 1);
+		glDisable(GL_DEPTH_TEST);
 
-			App *appMemory = (App *)fplMemoryAllocate(sizeof(App));
-			App &app = *appMemory;
+		glEnable(GL_CULL_FACE);
+		glCullFace(GL_BACK);
+		glFrontFace(GL_CCW);
 
-			app.state.currentOffset = V2f(0, 0);
-			app.state.currentRotation = QuatIdentity();
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-			app.renderer.strings = &app.strings;
-			app.presentation.strings = &app.strings;
+		glEnable(GL_SCISSOR_TEST);
 
-			// First font is always the debug font
-			app.renderer.debugFont = app.renderer.AddFontFromResource(FontResources::BitStreamVerySans, 16.0f);
+		glEnable(GL_LINE_SMOOTH);
+		glEnable(GL_POINT_SMOOTH);
 
-			app.renderer.AddFontFromResource(FontResources::BitStreamVerySans, 32.0f);
-			app.renderer.AddFontFromResource(FontResources::BitStreamVerySans, 48.0f);
-			app.renderer.AddFontFromResource(FontResources::Arimo, 16.0f);
-			app.renderer.AddFontFromResource(FontResources::Arimo, 24.0f);
-			app.renderer.AddFontFromResource(FontResources::Arimo, 32.0f);
-			app.renderer.AddFontFromResource(FontResources::Arimo, 40.0f);
-			app.renderer.AddFontFromResource(FontResources::Arimo, 48.0f);
-			app.renderer.AddFontFromResource(FontResources::Arimo, 56.0f);
-			app.renderer.AddFontFromResource(FontResources::Arimo, 64.0f);
-			app.renderer.AddFontFromResource(FontResources::Arimo, 72.0f);
-			app.renderer.AddFontFromResource(FontResources::Arimo, 84.0f);
-			app.renderer.AddFontFromResource(FontResources::Arimo, 96.0f);
-			app.renderer.AddFontFromResource(FontResources::Arimo, 108.0f);
-			app.renderer.AddFontFromResource(FontResources::Arimo, 132.0f);
+		glDisable(GL_TEXTURE_2D);
 
-			app.renderer.AddImageFromResource(ImageResources::FPLLogo128x128);
-			app.renderer.AddImageFromResource(ImageResources::FPLLogo512x512);
-			app.renderer.AddImageFromResource(ImageResources::FPLMinimumSource);
+		glMatrixMode(GL_PROJECTION);
+		glLoadIdentity();
+
+		glMatrixMode(GL_MODELVIEW);
+
+		glClearColor(0.1f, 0.2f, 0.3f, 1);
+
+		App *appMemory = (App *)fplMemoryAllocate(sizeof(App));
+
+		App &app = *appMemory;
+		app.state.currentOffset = V2f(0, 0);
+		app.state.currentRotation = QuatIdentity();
+
+		app.renderer.strings = &app.strings;
+		app.presentation.strings = &app.strings;
+
+		// First font is always the debug font
+		app.renderer.debugFont = app.renderer.AddFontFromResource(FontResources::BitStreamVerySans, 16.0f);
+
+		app.renderer.AddFontFromResource(FontResources::BitStreamVerySans, 32.0f);
+		app.renderer.AddFontFromResource(FontResources::BitStreamVerySans, 48.0f);
+		app.renderer.AddFontFromResource(FontResources::Arimo, 16.0f);
+		app.renderer.AddFontFromResource(FontResources::Arimo, 24.0f);
+		app.renderer.AddFontFromResource(FontResources::Arimo, 32.0f);
+		app.renderer.AddFontFromResource(FontResources::Arimo, 40.0f);
+		app.renderer.AddFontFromResource(FontResources::Arimo, 48.0f);
+		app.renderer.AddFontFromResource(FontResources::Arimo, 56.0f);
+		app.renderer.AddFontFromResource(FontResources::Arimo, 64.0f);
+		app.renderer.AddFontFromResource(FontResources::Arimo, 72.0f);
+		app.renderer.AddFontFromResource(FontResources::Arimo, 84.0f);
+		app.renderer.AddFontFromResource(FontResources::Arimo, 96.0f);
+		app.renderer.AddFontFromResource(FontResources::Arimo, 108.0f);
+		app.renderer.AddFontFromResource(FontResources::Arimo, 132.0f);
+
+		app.renderer.AddImageFromResource(ImageResources::FPLLogo128x128);
+		app.renderer.AddImageFromResource(ImageResources::FPLLogo512x512);
+		app.renderer.AddImageFromResource(ImageResources::FPLMinimumSource);
 
 #if 0
-			app.renderer.AddFontFromFile("c:/windows/fonts/arial.ttf", "Arial", 24);
+		app.renderer.AddFontFromFile("c:/windows/fonts/arial.ttf", "Arial", 24);
 #endif
 
-			BuildPresentation(FPLPresentation, app.renderer, app.presentation);
+		BuildPresentation(FPLPresentation, app.renderer, app.presentation);
 
-			UpdatePresentationVariables(app.presentation);
+		UpdatePresentationVariables(app.presentation);
 
-			ShowSlideshow(app, 0, false);
+		ShowSlideshow(app, 0, false);
 
-			app.entropy = RandomSeed(1337);
+		app.entropy = RandomSeed(1337);
 
 #if CUBE_ONLY
-			app.state.startOffset = app.state.currentOffset;
-			app.state.startRotation = app.state.currentRotation;
+		app.state.startOffset = app.state.currentOffset;
+		app.state.startRotation = app.state.currentRotation;
 
-			Quaternion rotZ = QuatFromAngleAxis(DegreesToRadians(360), V3f(0, 0, 1));
-			Quaternion rotY = QuatFromAngleAxis(DegreesToRadians(180), V3f(0, 1, 0));
+		Quaternion rotZ = QuatFromAngleAxis(DegreesToRadians(360), V3f(0, 0, 1));
+		Quaternion rotY = QuatFromAngleAxis(DegreesToRadians(180), V3f(0, 1, 0));
 
-			app.state.targetRotation = QuatAdd(rotZ, rotY);
-			app.state.slideAnimation.ResetAndStart(10.0, false, Easings::EaseInOutQuart);
+		app.state.targetRotation = QuatAdd(rotZ, rotY);
+		app.state.slideAnimation.ResetAndStart(10.0, false, Easings::EaseInOutQuart);
 #endif
 
-			float dt = 1.0f / 60.0f;
-			fplTimestamp startTime = fplTimestampQuery();
-			fplTimestamp currentTime = startTime;
-			while (fplWindowUpdate()) {
-				fplEvent ev;
-				while (fplPollEvent(&ev)) {
-					if (ev.type == fplEventType_Keyboard) {
-						if (ev.keyboard.type == fplKeyboardEventType_Button) {
-							if (ev.keyboard.buttonState == fplButtonState_Release) {
-								switch (ev.keyboard.mappedKey) {
-									case fplKey_F:
-									{
-										if (!fplIsWindowFullscreen()) {
-											fplEnableWindowFullscreen();
-										} else {
-											fplDisableWindowFullscreen();
-										}
-									} break;
+		float dt = 1.0f / 60.0f;
+		fplTimestamp startTime = fplTimestampQuery();
+		fplTimestamp currentTime = startTime;
+		while (fplWindowUpdate()) {
+			fplEvent ev;
+			while (fplPollEvent(&ev)) {
+				if (ev.type == fplEventType_Keyboard) {
+					if (ev.keyboard.type == fplKeyboardEventType_Button) {
+						if (ev.keyboard.buttonState == fplButtonState_Release) {
+							switch (ev.keyboard.mappedKey) {
+								case fplKey_F:
+								{
+									if (!fplIsWindowFullscreen()) {
+										fplEnableWindowFullscreen();
+									} else {
+										fplDisableWindowFullscreen();
+									}
+								} break;
 
-									case fplKey_PageUp:
-									case fplKey_Left:
-										JumpToPrevSlide(app);
-										break;
+								case fplKey_PageUp:
+								case fplKey_Left:
+									JumpToPrevSlide(app);
+									break;
 
-									case fplKey_PageDown:
-									case fplKey_Right:
-										JumpToNextSlide(app);
-										break;
+								case fplKey_PageDown:
+								case fplKey_Right:
+									JumpToNextSlide(app);
+									break;
 
-									case fplKey_End:
-										JumpToLastSlide(app);
-										break;
+								case fplKey_End:
+									JumpToLastSlide(app);
+									break;
 
-									case fplKey_Home:
-										JumpToFirstSlide(app);
-										break;
-								}
+								case fplKey_Home:
+									JumpToFirstSlide(app);
+									break;
 							}
 						}
-					}
-				}
+	}
+}
+		}
 
-				if (!fplIsWindowRunning())
-					break;
+			if (!fplIsWindowRunning())
+				break;
 
-				fplWindowSize winSize = fplZeroInit;
-				fplGetWindowSize(&winSize);
-				fplAssert(winSize.width > 0 && winSize.height > 0);
+			fplWindowSize winSize = fplZeroInit;
+			fplGetWindowSize(&winSize);
+			fplAssert(winSize.width > 0 && winSize.height > 0);
 
-				UpdateFrame(app, dt);
+			UpdateFrame(app, dt);
 
 #if CUBE_ONLY
-				DrawRotatingCubeOnly(app, V2iInit(winSize.width, winSize.height));
+			DrawRotatingCubeOnly(app, V2iInit(winSize.width, winSize.height));
 #else			
-				RenderFrame(app, V2iInit(winSize.width, winSize.height));
+			RenderFrame(app, V2iInit(winSize.width, winSize.height));
 #endif
 
-				fplVideoFlip();
+			fplVideoFlip();
 
-				currentTime = fplTimestampQuery();
-				dt = (float)fplTimestampElapsed(startTime, currentTime);
-				startTime = currentTime;
-			}
-
-			if (fplIsWindowFullscreen()) {
-				fplDisableWindowFullscreen();
-			}
-
-			ReleaseApp(app);
-
-			fplMemoryFree(appMemory);
-		}
-		fplPlatformRelease();
+			currentTime = fplTimestampQuery();
+			dt = (float)fplTimestampElapsed(startTime, currentTime);
+			startTime = currentTime;
 	}
+
+		if (fplIsWindowFullscreen()) {
+			fplDisableWindowFullscreen();
+		}
+
+		ReleaseApp(app);
+
+		fplMemoryFree(appMemory);
+
+		if (audioInitialized)
+			AudioSystemShutdown(audioSys);
+
+		if (openGLInitialized)
+			fglUnloadOpenGL();
+	}
+
+	fplPlatformRelease();
+
+	fplMemoryFree(audioSys);
+
+	return 0;
 }
