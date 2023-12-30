@@ -57,6 +57,9 @@ License:
 #define FXML_PRIVATE
 #include <final_xml.h>
 
+#define FINAL_AUDIOSYSTEM_IMPLEMENTATION
+#include <final_audiosystem.h>
+
 #include <final_random.h>
 
 #include <final_math.h> // Vec2f, Vec4f, Mat4f, etc.

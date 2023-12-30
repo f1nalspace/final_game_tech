@@ -4,6 +4,8 @@
 
 #include <final_math.h>
 
+#include <final_audiosystem.h>
+
 typedef int32_t b32;
 
 enum class HorizontalAlignment {

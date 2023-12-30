@@ -10,6 +10,12 @@
 static const float CodeFontSize = 24.0f;
 static const float FeaturesFontSize = 32.0f;
 
+struct SoundDefinition {
+	AudioSourceID id;
+	double startTime;
+	double length;
+};
+
 enum class BlockType {
 	None = 0,
 	Text,
@@ -78,17 +84,22 @@ static BlockDefinition MakeImageDef(const Vec2f& pos, const Vec2f& size, BlockAl
 }
 
 constexpr size_t MaxBlockCount = 16;
+constexpr size_t MaxAudioSoundCount = 4;
+
 struct SlideDefinition {
 	const char* name;
 	BlockDefinition blocks[MaxBlockCount];
+	SoundDefinition sounds[MaxAudioSoundCount];
 	BackgroundStyle background;
 	Quaternion rotation;
-	size_t count;
+	size_t blockCount;
+	size_t soundCount;
 };
 
 template<size_t N>
-static SlideDefinition MakeSlideDef(const char* name, BlockDefinition(&blocks)[N], const BackgroundStyle& background, const Quaternion &rotation) {
+static SlideDefinition MakeSlideDef(const char* name, BlockDefinition(&blocks)[N], const BackgroundStyle &background, const Quaternion &rotation) {
 	fplAssert(N < MaxBlockCount);
+
 	SlideDefinition result = {};
 	result.name = name;
 	result.background = background;
@@ -96,7 +107,27 @@ static SlideDefinition MakeSlideDef(const char* name, BlockDefinition(&blocks)[N
 		result.blocks[i] = blocks[i];
 	}
 	result.rotation = rotation;
-	result.count = N;
+	result.blockCount = N;
+	return(result);
+}
+
+template<size_t NBlocks, size_t NSounds>
+static SlideDefinition MakeSlideDef(const char* name, BlockDefinition(&blocks)[NBlocks], SoundDefinition(&sounds)[NSounds], const BackgroundStyle &background, const Quaternion &rotation) {
+	fplAssert(NBlocks < MaxBlockCount);
+	fplAssert(NSounds < MaxAudioSoundCount);
+
+	SlideDefinition result = {};
+	result.name = name;
+	result.background = background;
+	for(size_t i = 0; i < NBlocks; ++i) {
+		result.blocks[i] = blocks[i];
+	}
+	for(size_t i = 0; i < NSounds; ++i) {
+		result.sounds[i] = sounds[i];
+	}
+	result.rotation = rotation;
+	result.blockCount = NBlocks;
+	result.soundCount = NSounds;
 	return(result);
 }
 
