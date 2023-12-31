@@ -1161,14 +1161,15 @@ struct Sound {
 	double duration;
 };
 
-struct GlobalVariables {
-	double currentTime;
-};
-
 struct SlideVariables {
 	const char *slideName;
+	double currentTime;
 	uint32_t slideNum;
 	uint32_t slideCount;
+};
+
+struct SlideState {
+	double currentTime;
 };
 
 struct Slide {
@@ -1181,6 +1182,7 @@ struct Slide {
 	StringTable *strings;
 	const char *name;
 	size_t numElements;
+	SlideState state;
 
 	Element *AddElement(const ElementType type) {
 		Element *result = elements.Add();
@@ -1298,8 +1300,6 @@ struct PresentationState {
 
 	Slide *activeSlide;
 	int32_t activeSlideIndex;
-
-	double currentTime;
 };
 
 constexpr float CubeRadius = 0.5f;
@@ -1491,7 +1491,7 @@ static void RenderStrokedQuad(const Vec2f &pos, const Vec2f &size, const Vec4f &
 	glLineWidth(1.0f);
 }
 
-static const char *ResolveText(const GlobalVariables &globals, const SlideVariables &vars, const char *source, char *buffer, size_t maxBufferLen) {
+static const char *ResolveText(const SlideVariables &vars, const char *source, char *buffer, size_t maxBufferLen) {
 	buffer[0] = 0;
 	const char *result = buffer;
 	const char *s = source;
@@ -1533,10 +1533,10 @@ static const char *ResolveText(const GlobalVariables &globals, const SlideVariab
 								bufIndex += addedCount;
 							}
 						} else if (strncmp("CURRENT_TIME", varName, varLen) == 0) {
-							int hours = (int)(globals.currentTime / 60.0 / 60.0) % 24;
-							int mins = (int)(globals.currentTime / 60.0) % 60;
-							int secs = (int)globals.currentTime % 60;
-							int msecs = (int)(globals.currentTime * 1000) % 1000;
+							int hours = (int)(vars.currentTime / 60.0 / 60.0) % 24;
+							int mins = (int)(vars.currentTime / 60.0) % 60;
+							int secs = (int)vars.currentTime % 60;
+							int msecs = (int)(vars.currentTime * 1000) % 1000;
 							char buffer[20];
 							fplStringFormat(buffer, fplArrayCount(buffer), "%02d:%02d:%02d.%03d", hours, mins, secs, msecs);
 							fplStringAppend(buffer, remainingStart, remainingBufLen);
@@ -1590,11 +1590,11 @@ static void RenderRectangle(const Vec2f &pos, const Vec2f &size, const Backgroun
 	}
 }
 
-static void RenderLabel(const LoadedFont &font, const Label &label, const GlobalVariables &globals, const SlideVariables &vars) {
+static void RenderLabel(const LoadedFont &font, const Label &label, const SlideVariables &vars) {
 	static char tmpBuffer[4096]; // @REPLACE(tspaete): Not great using a static buffer here, find a better approach
 
 	const TextStyle &style = label.style;
-	const char *text = ResolveText(globals, vars, label.text, tmpBuffer, fplArrayCount(tmpBuffer));
+	const char *text = ResolveText(vars, label.text, tmpBuffer, fplArrayCount(tmpBuffer));
 	float charHeight = label.fontSize;
 	size_t textLen = fplGetStringLength(label.text);
 	Vec2f pos = label.pos;
@@ -1772,6 +1772,11 @@ extern Viewport ComputeViewportByAspect(const Vec2i &screenSize, const float tar
 static void UpdateFrame(App &app, const float dt) {
 	PresentationState &state = app.state;
 
+	if (state.activeSlide != nullptr) {
+		state.activeSlide->state.currentTime += dt;
+		state.activeSlide->vars.currentTime = state.activeSlide->state.currentTime;
+	}
+
 	//
 	// Slide animation
 	// Cube rotation
@@ -1785,11 +1790,9 @@ static void UpdateFrame(App &app, const float dt) {
 		state.currentOffset = state.targetOffset;
 		state.currentRotation = state.targetRotation;
 	}
-
-	state.currentTime += dt;
 }
 
-static void RenderSlide(const GlobalVariables &globals, const Slide &slide, const Renderer &renderer) {
+static void RenderSlide(const Slide &slide, const Renderer &renderer) {
 	float w = slide.size.w;
 	float h = slide.size.h;
 	Vec2f radius = V2f(w, h) * 0.5f;
@@ -1815,7 +1818,7 @@ static void RenderSlide(const GlobalVariables &globals, const Slide &slide, cons
 				const char *fontName = label.fontName;
 				const LoadedFont *font = renderer.FindFont(fontName, label.fontSize);
 				if (font != nullptr) {
-					RenderLabel(*font, label, globals, slide.vars);
+					RenderLabel(*font, label, slide.vars);
 				}
 			} break;
 
@@ -1933,9 +1936,6 @@ static void RenderFrame(App &app, const Vec2i &winSize) {
 	const LoadedFont *debugFont = app.renderer.debugFont;
 	fplAssert(debugFont != nullptr);
 	const float debugFontSize = 30.0f;
-
-	GlobalVariables globals = {};
-	globals.currentTime = state.currentTime;
 
 	const Slide *activeSlide = state.activeSlide;
 	if (activeSlide == nullptr) {
@@ -2055,7 +2055,7 @@ static void RenderFrame(App &app, const Vec2i &winSize) {
 #endif
 
 			glLoadMatrixf(&slideMVP.m[0]);
-			RenderSlide(globals, *slide, renderer);
+			RenderSlide(*slide, renderer);
 
 			slidePos += V2f(slide->size.w, 0);
 		}
@@ -2201,6 +2201,8 @@ static void ShowSlideshow(App &app, const uint32_t slideIndex, const bool withTr
 			app.state.targetOffset = app.state.currentOffset = app.state.startOffset = targetSlidePos;
 			app.state.targetRotation = app.state.currentRotation = app.state.startRotation = targetCubeRot;
 		}
+
+		slide->state.currentTime = 0;
 	}
 }
 
@@ -2303,6 +2305,7 @@ static void AddSlideFromDefinition(Renderer &renderer, Presentation &presentatio
 	const float padding = inPresentation.padding;
 
 	Slide *slide = presentation.AddSlide(presentation.size, inSlide.name);
+	slide->state = {};
 	slide->rotation = inSlide.rotation;
 	slide->background = inSlide.background;
 
