@@ -1139,7 +1139,7 @@ struct LoadedSound {
 	AudioFormat format;
 	AudioSourceID id;
 	const char *name;
-	double duration;
+	float duration;
 };
 
 constexpr int MaxSoundCount = 128;
@@ -1168,7 +1168,7 @@ struct SoundManager {
 		sound->id = source->id;
 		sound->name = name;
 		sound->format = source->format;
-		sound->duration = source->buffer.frameCount / (double)sound->format.sampleRate;
+		sound->duration = source->buffer.frameCount / (float)sound->format.sampleRate;
 
 		numSounds++;
 
@@ -1246,19 +1246,22 @@ struct Element {
 
 struct Sound {
 	AudioSourceID sourceId;
-	double start;
-	double duration;
+	AudioPlayItemID playId;
+	const char *name;
+	float startTime;
+	float targetDuration;
+	float length;
 };
 
 struct SlideVariables {
 	const char *slideName;
-	double currentTime;
+	float currentTime;
 	uint32_t slideNum;
 	uint32_t slideCount;
 };
 
 struct SlideState {
-	double currentTime;
+	float currentTime;
 };
 
 struct Slide {
@@ -1279,8 +1282,17 @@ struct Slide {
 		return(result);
 	}
 
-	void AddSound(const Sound &sound) {
-		sounds.Add(sound);
+	size_t AddSound(const char *name, const float startTime, const float targetDuration, const float length, const AudioSourceID &id) {
+		Sound sound = {};
+		sound.name = name;
+		sound.startTime = startTime;
+		sound.targetDuration = targetDuration;
+		sound.length = length;
+		sound.sourceId = id;
+
+		size_t result = sounds.Add(sound);
+
+		return result;
 	}
 
 	Label *AddLabel(const String &text, const Vec2f &pos, const char *fontName, const float fontSize, const HorizontalAlignment hAlign = HorizontalAlignment::Left, const VerticalAlignment vAlign = VerticalAlignment::Top, const TextStyle &style = {}) {

@@ -25,9 +25,21 @@ namespace SoundResources {
 
 struct SoundDefinition {
 	const char *name;
-	double startTime;
-	double duration;
+	float startTime;
+	float targetDuration;
 };
+
+static SoundDefinition MakeSoundDef(const char *name, const float startTime, const float targetDuration = FLT_MAX) {
+	SoundDefinition result = {};
+	result.name = name;
+	result.startTime = startTime;
+	result.targetDuration = targetDuration;
+	return result;
+}
+
+static SoundDefinition MakeSoundDef(const SoundResource &resource, const float startTime = 0.0f, const float targetDuration = FLT_MAX) {
+	return MakeSoundDef(resource.name, startTime, targetDuration);
+}
 
 enum class BlockType {
 	None = 0,
@@ -245,9 +257,13 @@ namespace FPLPresentationData {
 			),
 		};
 
+		static SoundDefinition Sounds[] = {
+			MakeSoundDef(SoundResources::Test, 3.0),
+		};
+
 		static Quaternion Rot = QuatIdentity();
 
-		static const SlideDefinition Slide = MakeSlideDef("Introduction", Blocks, GetBackground(), Rot);
+		static const SlideDefinition Slide = MakeSlideDef("Introduction", Blocks, Sounds, GetBackground(), Rot);
 	};
 
 	namespace WhoAmI {
