@@ -2604,10 +2604,9 @@ int main(int argc, char **argv) {
 	settings.video.graphics.opengl.multiSamplingCount = 16;
 
 	// Audio settings
-	settings.audio.clientReadCallback = AudioPlaybackCallback;
 	settings.audio.targetFormat.sampleRate = 44100;
 	settings.audio.targetFormat.type = fplAudioFormatType_F32;
-	settings.audio.targetFormat.latencyMode = fplAudioLatencyMode_Low;
+	settings.audio.targetFormat.latencyMode = fplAudioLatencyMode_Conservative;
 	settings.audio.targetFormat.channels = 2;
 
 	bool platformInitialized = false;
@@ -2615,7 +2614,7 @@ int main(int argc, char **argv) {
 
 	AudioSystem *audioSys = (AudioSystem *)fplMemoryAllocate(sizeof(AudioSystem));
 
-	if ((platformInitialized = fplPlatformInit(fplInitFlags_Video | fplInitFlags_Audio, &settings)) && 
+	if ((platformInitialized = fplPlatformInit(fplInitFlags_Video | fplInitFlags_Audio, &settings)) &&
 		(openGLInitialized = fglLoadOpenGL(true))) {
 
 		fplAudioDeviceFormat audioDeviceFormat = fplZeroInit;
@@ -2702,7 +2701,6 @@ int main(int argc, char **argv) {
 		app.renderer.AddFontFromFile("c:/windows/fonts/arial.ttf", "Arial", 24);
 #endif
 
-		BuildPresentation(FPLPresentation, app.renderer, app.presentation);
 
 		BuildPresentation(FPLPresentation, app.renderer, app.soundMng, app.presentation);
 
@@ -2722,6 +2720,11 @@ int main(int argc, char **argv) {
 		app.state.targetRotation = QuatAdd(rotZ, rotY);
 		app.state.slideAnimation.ResetAndStart(10.0, false, Easings::EaseInOutQuart);
 #endif
+
+		if (audioInitialized) {
+			fplSetAudioClientReadCallback(AudioPlaybackCallback, audioSys);
+			fplPlayAudio();
+		}
 
 		float dt = 1.0f / 60.0f;
 		fplTimestamp startTime = fplTimestampQuery();
@@ -2761,9 +2764,9 @@ int main(int argc, char **argv) {
 									break;
 							}
 						}
-	}
-}
-		}
+					}
+				}
+			}
 
 			if (!fplIsWindowRunning())
 				break;
@@ -2785,7 +2788,7 @@ int main(int argc, char **argv) {
 			currentTime = fplTimestampQuery();
 			dt = (float)fplTimestampElapsed(startTime, currentTime);
 			startTime = currentTime;
-	}
+		}
 
 		if (fplIsWindowFullscreen()) {
 			fplDisableWindowFullscreen();
@@ -2795,8 +2798,10 @@ int main(int argc, char **argv) {
 
 		fplMemoryFree(appMemory);
 
-		if (audioInitialized)
+		if (audioInitialized) {
+			fplStopAudio();
 			AudioSystemShutdown(audioSys);
+		}
 
 		if (openGLInitialized)
 			fglUnloadOpenGL();
