@@ -127,6 +127,10 @@ public:
 		return index;
 	}
 
+	T &operator[](const size_t index) {
+		return base[index];
+	}
+
 	size_t Count() const {
 		return count;
 	}
