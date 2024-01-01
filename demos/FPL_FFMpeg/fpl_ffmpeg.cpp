@@ -16,6 +16,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2023-12-31
+	- Fixed: Memory stats was never cleared when media was stopped
+
 	## 2022-12-19
 	- Fixed[#140]: Crash in UploadTexture when linesize is not the same as frame width
 	- Fixed[#143]: Crash for videos with 6-channel audio
@@ -1938,6 +1941,8 @@ static void StopAndReleaseMedia(PlayerState &state, const uint32_t mainThreadId)
 
 	// Release media
 	ReleaseMedia(state, PlayingState::Unloaded, mainThreadId);
+
+	globalMemStats = {};
 };
 
 static bool LoadAndPlayMedia(PlayerState &state, const char *mediaURL, const fplAudioDeviceFormat &nativeAudioFormat, const uint32_t mainThreadId) {
@@ -4008,6 +4013,7 @@ static void LoadMediaThreadProc(const fplThreadHandle *thread, void *userData) {
 			break;
 		}
 
+		// @TODO(final): Replace loading state with CAS, instead of mutex lock
 		if (fplAtomicLoadS32(&loadState.state) == 1) {
 			fplMutexLock(&loadState.mutex);
 			StopAndReleaseMedia(state->player, state->mainThreadId);

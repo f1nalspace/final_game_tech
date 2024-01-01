@@ -136,8 +136,10 @@ SOFTWARE.
 	
 	### Overview
 	- Removed several obsolete functions
+	- Fixed incorrect audio format
 
 	### Details
+	- Fixed[#156]: Target audio format type and periods was never used
 	- Removed: Obsolete function fplFileSetTimestamps removed
 
 	## v0.9.8-beta
@@ -20423,6 +20425,7 @@ typedef enum fpl__AudioDeviceState {
 } fpl__AudioDeviceState;
 
 typedef struct fpl__CommonAudioState {
+	fplAudioDeviceFormat desiredFormat;
 	fplAudioDeviceFormat internalFormat;
 	fpl_audio_client_read_callback *clientReadCallback;
 	void *clientUserData;
@@ -22314,8 +22317,8 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 		return fplAudioResultType_BackendAlreadyInitialized;
 	}
 
-	fplAudioDeviceFormat actualTargetFormat = fplZeroInit;
-	fplConvertAudioTargetFormatToDeviceFormat(&audioSettings->targetFormat, &actualTargetFormat);
+	fplClearStruct(&audioState->common.desiredFormat);
+	fplConvertAudioTargetFormatToDeviceFormat(&audioSettings->targetFormat, &audioState->common.desiredFormat);
 
 	audioState->common.clientReadCallback = audioSettings->clientReadCallback;
 	audioState->common.clientUserData = audioSettings->userData;
@@ -22362,7 +22365,7 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 #		if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
 			case fplAudioBackendType_DirectSound:
 			{
-				initResult = fpl__AudioInitDirectSound(audioSettings, &actualTargetFormat, &audioState->common, &audioState->dsound);
+				initResult = fpl__AudioInitDirectSound(audioSettings, &audioState->common.desiredFormat, &audioState->common, &audioState->dsound);
 				if (initResult != fplAudioResultType_Success) {
 					fpl__AudioReleaseDirectSound(&audioState->common, &audioState->dsound);
 				}
@@ -22372,7 +22375,7 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 #		if defined(FPL__ENABLE_AUDIO_ALSA)
 			case fplAudioBackendType_Alsa:
 			{
-				initResult = fpl__AudioInitAlsa(audioSettings, &actualTargetFormat, &audioState->common, &audioState->alsa);
+				initResult = fpl__AudioInitAlsa(audioSettings, &audioState->common.desiredFormat, &audioState->common, &audioState->alsa);
 				if (initResult != fplAudioResultType_Success) {
 					fpl__AudioReleaseAlsa(&audioState->common, &audioState->alsa);
 				}
@@ -22778,7 +22781,7 @@ fpl_common_api void fplConvertAudioTargetFormatToDeviceFormat(const fplAudioTarg
 	}
 
 	// Format
-	if (outFormat->type != fplAudioFormatType_None) {
+	if (inFormat->type != fplAudioFormatType_None) {
 		outFormat->type = inFormat->type;
 	} else {
 		outFormat->type = FPL__DEFAULT_AUDIO_FORMAT;
@@ -22786,7 +22789,7 @@ fpl_common_api void fplConvertAudioTargetFormatToDeviceFormat(const fplAudioTarg
 	}
 
 	// Periods
-	if (outFormat->periods > 0) {
+	if (inFormat->periods > 0) {
 		outFormat->periods = inFormat->periods;
 	} else {
 		outFormat->periods = FPL__DEFAULT_AUDIO_PERIODS;
@@ -23436,12 +23439,12 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 		fplAudioResultType initAudioResult = fpl__InitAudio(&appState->initSettings.audio, audioState);
 		if (initAudioResult != fplAudioResultType_Success) {
 			const char *initAudioResultName = fplGetAudioResultName(initAudioResult);
-			const char *audioFormatName = fplGetAudioFormatName(initSettings->audio.targetFormat.type);
+			const char *audioFormatName = fplGetAudioFormatName(audioState->common.desiredFormat.type);
 			FPL__CRITICAL(FPL__MODULE_CORE, "Failed initialization audio with Backend '%s' settings (Format=%s, SampleRate=%d, Channels=%d) -> %s",
 				audioBackendName,
 				audioFormatName,
-				initSettings->audio.targetFormat.sampleRate,
-				initSettings->audio.targetFormat.channels,
+				audioState->common.desiredFormat.sampleRate,
+				audioState->common.desiredFormat.channels,
 				initAudioResultName);
 			fpl__ReleasePlatformStates(initState, appState);
 			return(fpl__SetPlatformResult(fplPlatformResultType_FailedAudio));
