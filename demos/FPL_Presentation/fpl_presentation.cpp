@@ -1347,6 +1347,7 @@ struct Slide {
 	}
 
 	void Release() {
+		sounds.Release();
 		elements.Release();
 	}
 };
@@ -1416,6 +1417,7 @@ constexpr int SpacesForTabstop = 2;
 struct App {
 	Presentation presentation;
 	Renderer renderer;
+	SoundManager soundMng;
 	PresentationState state;
 	StringTable strings;
 	RandomSeries entropy;
@@ -2612,6 +2614,8 @@ int main(int argc, char **argv) {
 
 		app.renderer.strings = &app.strings;
 		app.presentation.strings = &app.strings;
+
+		app.soundMng.audioSystem = audioSys;
 
 		// First font is always the debug font
 		app.renderer.debugFont = app.renderer.AddFontFromResource(FontResources::BitStreamVerySans, 16.0f);
