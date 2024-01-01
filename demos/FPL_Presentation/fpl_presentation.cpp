@@ -2422,7 +2422,7 @@ static Letterbox ComputeLetterbox(const Vec2f &screenSize, const float targetAsp
 	return(result);
 }
 
-static void AddSlideFromDefinition(Renderer &renderer, Presentation &presentation, const SlideDefinition &inSlide, const PresentationDefinition &inPresentation) {
+static void AddSlideFromDefinition(Renderer &renderer, SoundManager &soundMng, Presentation &presentation, const SlideDefinition &inSlide, const PresentationDefinition &inPresentation) {
 	const char *titleFontName = inPresentation.titleFont.name;
 	const float titleFontSize = inPresentation.titleFont.size;
 	const float titleLineHeight = inPresentation.titleFont.lineScale * inPresentation.titleFont.size;
@@ -2559,17 +2559,21 @@ static void AddSlideFromDefinition(Renderer &renderer, Presentation &presentatio
 	// Sounds
 	for (size_t soundIndex = 0; soundIndex < inSlide.soundCount; ++soundIndex) {
 		const SoundDefinition &soundDef = inSlide.sounds[soundIndex];
-		slide->AddSound({ soundDef.id, soundDef.startTime, soundDef.length });
+		const LoadedSound *loadedSound = soundMng.FindSoundByName(soundDef.name);
+		if (loadedSound != nullptr) {
+			float targetDuration = fplMin(soundDef.targetDuration, loadedSound->duration);
+			slide->AddSound(soundDef.name, soundDef.startTime, targetDuration, loadedSound->duration, loadedSound->id);
+		}
 	}
 }
 
-static void BuildPresentation(const PresentationDefinition &inPresentation, Renderer &renderer, Presentation &outPresentation) {
+static void BuildPresentation(const PresentationDefinition &inPresentation, Renderer &renderer, SoundManager &soundMng, Presentation &outPresentation) {
 	Vec2f slideSize = inPresentation.slideSize;
 	outPresentation.size = slideSize;
 	size_t slideCount = inPresentation.slideCount;
 	for (size_t slideIndex = 0; slideIndex < slideCount; ++slideIndex) {
 		const SlideDefinition &slideDef = inPresentation.slides[slideIndex];
-		AddSlideFromDefinition(renderer, outPresentation, slideDef, inPresentation);
+		AddSlideFromDefinition(renderer, soundMng, outPresentation, slideDef, inPresentation);
 	}
 }
 
@@ -2673,6 +2677,8 @@ int main(int argc, char **argv) {
 #endif
 
 		BuildPresentation(FPLPresentation, app.renderer, app.presentation);
+
+		BuildPresentation(FPLPresentation, app.renderer, app.soundMng, app.presentation);
 
 		UpdatePresentationVariables(app.presentation);
 
