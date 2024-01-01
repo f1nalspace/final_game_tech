@@ -2583,7 +2583,9 @@ static void QuaternionTests() {
 }
 
 static uint32_t AudioPlaybackCallback(const fplAudioDeviceFormat *outFormat, const uint32_t maxFrameCount, void *outputSamples, void *userData) {
-	return 0;
+	AudioSystem *audioSys = (AudioSystem *)userData;
+	uint32_t result = AudioSystemWriteFrames(audioSys, outputSamples, outFormat, maxFrameCount, true);
+	return result;
 }
 
 int main(int argc, char **argv) {
