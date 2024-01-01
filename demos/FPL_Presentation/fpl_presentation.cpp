@@ -1135,7 +1135,66 @@ struct Animation {
 	}
 };
 
+struct LoadedSound {
+	AudioFormat format;
+	AudioSourceID id;
+	const char *name;
+	double duration;
+};
 
+constexpr int MaxSoundCount = 128;
+
+struct SoundManager {
+	AudioSystem *audioSystem;
+	LoadedSound sounds[MaxSoundCount];
+	size_t numSounds;
+
+	static SoundManager Make(AudioSystem *audioSystem) {
+		SoundManager result = {};
+		result.audioSystem = audioSystem;
+		return result;
+	}
+
+	const LoadedSound *AddSoundFromFile(const char *filePath, const char *name) {
+		AudioSource *source = AudioSystemLoadFileSource(audioSystem, filePath);
+		if (source == nullptr) {
+			return nullptr;
+		}
+
+		fplAssert(numSounds < fplArrayCount(sounds));
+		LoadedSound *sound = sounds + numSounds;
+		*sound = {};
+
+		sound->id = source->id;
+		sound->name = name;
+		sound->format = source->format;
+		sound->duration = source->buffer.frameCount / (double)sound->format.sampleRate;
+
+		numSounds++;
+
+		return(sound);
+	}
+
+	inline const LoadedSound *FindSoundByName(const char *name) const {
+		const LoadedSound *result = nullptr;
+		for (size_t soundIndex = 0; soundIndex < numSounds; ++soundIndex) {
+			const LoadedSound *sound = sounds + soundIndex;
+			if (strcmp(sound->name, name) == 0) {
+				result = sound;
+				break;
+			}
+		}
+		return(result);
+	}
+
+	void Release() {
+		for (size_t soundIndex = 0; soundIndex < numSounds; ++soundIndex) {
+			LoadedSound *sound = sounds + soundIndex;
+			*sound = {};
+		}
+		numSounds = 0;
+	}
+};
 
 struct Label {
 	TextStyle style;
