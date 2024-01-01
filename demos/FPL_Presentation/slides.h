@@ -10,10 +10,23 @@
 static const float CodeFontSize = 24.0f;
 static const float FeaturesFontSize = 32.0f;
 
+struct SoundResource {
+	const char *name;
+	const char *relativeFilePath;
+};
+
+namespace SoundResources {
+	static const SoundResource Test = {"Boa - Duvet", "Boa - Duvet.mp3"};
+
+	static const SoundResource All[] = {
+		Test,
+	};
+};
+
 struct SoundDefinition {
-	AudioSourceID id;
+	const char *name;
 	double startTime;
-	double length;
+	double duration;
 };
 
 enum class BlockType {
