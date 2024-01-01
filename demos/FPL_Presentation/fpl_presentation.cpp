@@ -1876,12 +1876,28 @@ extern Viewport ComputeViewportByAspect(const Vec2i &screenSize, const float tar
 	return(result);
 }
 
+static void UpdateSounds(App &app, Slide *slide) {
+	AudioSystem *audioSys = app.soundMng.audioSystem;
+	size_t count = slide->sounds.Count();
+	for (size_t i = 0; i < count; ++i) {
+		Sound &sound = slide->sounds[i];
+		if (sound.sourceId.value > 0 && sound.playId.value == 0 && slide->state.currentTime >= sound.startTime) {
+			AudioSource *source = AudioSystemGetSourceByID(audioSys, sound.sourceId);
+			if (source != nullptr) {
+				AudioPlayItemID playId = AudioSystemPlaySource(audioSys, source, false, 1.0f);
+				sound.playId = playId;
+			}
+		}
+	}
+}
+
 static void UpdateFrame(App &app, const float dt) {
 	PresentationState &state = app.state;
 
 	if (state.activeSlide != nullptr) {
 		state.activeSlide->state.currentTime += dt;
 		state.activeSlide->vars.currentTime = state.activeSlide->state.currentTime;
+		UpdateSounds(app, state.activeSlide);
 	}
 
 	//
@@ -1890,6 +1906,7 @@ static void UpdateFrame(App &app, const float dt) {
 	//
 	Animation &slideAnim = state.slideAnimation;
 	slideAnim.Update(dt);
+
 	if (state.slideAnimation.IsActive()) {
 		state.currentOffset = V2fLerp(state.startOffset, state.slideAnimation.currentAlpha, state.targetOffset);
 		state.currentRotation = QuatLerp(state.startRotation, state.slideAnimation.currentAlpha, state.targetRotation);
@@ -2279,6 +2296,18 @@ static Slide *GetSlideFromIndex(Presentation &presentation, const uint32_t slide
 }
 
 static void ShowSlideshow(App &app, const uint32_t slideIndex, const bool withTransition) {
+	// Stop all playing sounds
+	AudioSystemStopAll(app.soundMng.audioSystem);
+
+	// Clear audio play id's from all sounds in all slides
+	auto it = app.presentation.slides.GetIterator();
+	for (Slide *slide = it.Value(); it.HasNext(); slide = it.MoveNext()) {
+		for (size_t soundIndex = 0, soundCount = slide->sounds.Count(); soundIndex < soundCount; ++soundIndex) {
+			slide->sounds[soundIndex].playId = {};
+		}
+	}
+
+	// Change slide and start animation
 	size_t slideCount = app.presentation.slides.Count();
 	if (slideCount > 0 && slideIndex < slideCount) {
 		Slide *slide = GetSlideFromIndex(app.presentation, slideIndex);
