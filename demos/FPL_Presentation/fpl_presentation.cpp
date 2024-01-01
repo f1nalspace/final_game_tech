@@ -1421,6 +1421,8 @@ struct App {
 	PresentationState state;
 	StringTable strings;
 	RandomSeries entropy;
+	String appPath;
+	String dataPath;
 };
 
 static Vec2f ComputeTextSize(const LoadedFont &font, const char *text, const size_t textLen, const float charHeight) {
@@ -2585,6 +2587,11 @@ static uint32_t AudioPlaybackCallback(const fplAudioDeviceFormat *outFormat, con
 }
 
 int main(int argc, char **argv) {
+	const char *argDataPath = nullptr;
+	if (argc >= 2) {
+		argDataPath = argv[1];
+	}
+
 	fplSettings settings = fplMakeDefaultSettings();
 	fplCopyString("FPL Demo | Presentation", settings.window.title, fplArrayCount(settings.window.title));
 
@@ -2649,6 +2656,23 @@ int main(int argc, char **argv) {
 		app.presentation.strings = &app.strings;
 
 		app.soundMng.audioSystem = audioSys;
+
+		size_t executablePathLen = fplGetExecutableFilePath(nullptr, 0);
+		app.appPath = app.strings.MakeString(executablePathLen);
+		fplGetExecutableFilePath(app.appPath, app.appPath);
+
+		size_t appPathLen = fplExtractFilePath(app.appPath, nullptr, 0);
+		app.appPath[appPathLen] = '\0';
+
+		size_t dataPathLen;
+		if ((dataPathLen = fplGetStringLength(argDataPath)) > 0) {
+			app.dataPath = (String)app.strings.MakeString(dataPathLen);
+			fplCopyString(argDataPath, app.dataPath, app.dataPath);
+		} else {
+			dataPathLen = fplPathCombine(nullptr, 0, 2, (const char *)app.appPath, "data");
+			app.dataPath = app.strings.MakeString(dataPathLen);
+			fplPathCombine(app.dataPath, app.dataPath, 2, (const char *)app.appPath, "data");
+		}
 
 		// First font is always the debug font
 		app.renderer.debugFont = app.renderer.AddFontFromResource(FontResources::BitStreamVerySans, 16.0f);
