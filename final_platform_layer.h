@@ -136,8 +136,10 @@ SOFTWARE.
 	
 	### Overview
 	- Removed several obsolete functions
+	- Fixed incorrect audio format
 
 	### Details
+	- Fixed[#156]: Target audio format type and periods was never used
 	- Removed: Obsolete function fplFileSetTimestamps removed
 
 	## v0.9.8-beta
