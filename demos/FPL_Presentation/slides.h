@@ -16,7 +16,7 @@ struct SoundResource {
 };
 
 namespace SoundResources {
-	static const SoundResource Test = {"Boa - Duvet", "Boa - Duvet.mp3"};
+	static const SoundResource Test = {"Test", "test123.mp3"};
 
 	static const SoundResource All[] = {
 		Test,
