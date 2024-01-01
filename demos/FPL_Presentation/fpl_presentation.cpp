@@ -2701,6 +2701,16 @@ int main(int argc, char **argv) {
 		app.renderer.AddFontFromFile("c:/windows/fonts/arial.ttf", "Arial", 24);
 #endif
 
+		size_t soundResourceCount = fplArrayCount(SoundResources::All);
+		for (size_t i = 0; i < soundResourceCount; ++i) {
+			const SoundResource &res = SoundResources::All[i];
+
+			size_t pathLen = fplPathCombine(nullptr, 0, 3, (const char *)app.dataPath, "sounds", res.relativeFilePath);
+			String path = app.strings.MakeString(pathLen);
+			fplPathCombine(path, path, 3, (const char *)app.dataPath, "sounds", res.relativeFilePath);
+
+			app.soundMng.AddSoundFromFile(path, SoundResources::Test.name);
+		}
 
 		BuildPresentation(FPLPresentation, app.renderer, app.soundMng, app.presentation);
 
