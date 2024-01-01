@@ -354,12 +354,26 @@ static void CheckGLError() {
 }
 
 struct String {
-	const char *base;
+	char *base;
 	size_t len;
 
-	String() {}
-	String(const char *base) { this->base = base; this->len = 0; }
-	String(const char *base, size_t len) { this->base = base; this->len = len; }
+	String() { base = nullptr; len = 0; }
+	String(const char *str) { this->base = (char *)str; this->len = 0; }
+	String(const char *str, size_t len) { this->base = (char *)str; this->len = len; }
+
+	operator const char *() { return (const char *)base; }
+
+	operator char *() { return base; }
+
+	operator const size_t() { return len; }
+
+	char &operator[](int index) {
+		return base[index];
+	}
+
+	char &operator[](size_t index) {
+		return base[index];
+	}
 };
 
 struct StringTable {
@@ -411,7 +425,14 @@ public:
 	const char *CopyString(const char *str, const size_t len) {
 		String s = MakeString(len);
 		fplCopyStringLen(str, len, (char *)s.base, len + 1);
-		const char *result = s.base;
+		const char *result = s;
+		return(result);
+	}
+
+	const char *CopyString(const String &str, const size_t len) {
+		String s = MakeString(len);
+		fplCopyStringLen(str.base, len, (char *)s.base, len + 1);
+		const char *result = s;
 		return(result);
 	}
 
@@ -427,7 +448,7 @@ public:
 			len = fplGetStringLength(str.base);
 		else
 			len = str.len - 1;
-		const char *result = CopyString(str.base, len);
+		const char *result = CopyString(str, len);
 		return(result);
 	}
 
