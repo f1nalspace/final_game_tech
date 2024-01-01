@@ -106,7 +106,7 @@ private:
 		}
 
 		if (capacity != newCapacity) {
-			T* newBase = (T*)realloc(base, sizeof(T) * newCapacity);
+			T *newBase = (T *)realloc(base, sizeof(T) * newCapacity);
 			base = newBase;
 			capacity = newCapacity;
 		}
@@ -133,6 +133,15 @@ public:
 
 	size_t Capacity() const {
 		return capacity;
+	}
+
+	void Release() {
+		T *data = base;
+		if (data != nullptr) {
+			free(data);
+		}
+		base = nullptr;
+		capacity = count = 0;
 	}
 };
 
