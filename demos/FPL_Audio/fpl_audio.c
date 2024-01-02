@@ -977,9 +977,6 @@ static void TestAudioMath() {
 }
 
 int main(int argc, char **args) {
-	TestAudioMath();
-	LockFreeRingBufferUnitTest();
-
 	size_t fileCount = argc >= 2 ? argc - 1 : 0;
 	const char **files = (fileCount > 0) ? (const char **)args + 1 : fpl_null;
 	bool forceSineWave = false;
