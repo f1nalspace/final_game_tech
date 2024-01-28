@@ -657,7 +657,7 @@ static void NextReadable(FrameQueue &queue) {
 
 static void FlushFrameQueue(FrameQueue &queue) {
 	fplMutexLock(&queue.lock);
-	for (uint32_t i = 0; i < queue.capacity; ++i) {
+	for (int32_t i = 0; i < queue.capacity; ++i) {
 		AVFrame *frame = queue.frames[i].frame;
 		if (frame != fpl_null)
 			ffmpeg.av_frame_unref(frame);
