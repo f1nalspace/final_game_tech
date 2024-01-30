@@ -240,12 +240,12 @@ namespace ui {
 	}
 
 	inline bool UIIsHot(const UIContext &ctx) {
-		bool result = ctx.hot > 0;
+		bool result = (uintptr_t)ctx.hot > 0;
 		return(result);
 	}
 
 	inline bool UIIsActive(const UIContext &ctx) {
-		bool result = ctx.active > 0;
+		bool result = (uintptr_t)ctx.active > 0;
 		return(result);
 	}
 

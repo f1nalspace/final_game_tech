@@ -16,6 +16,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2023-12-31
+	- Fixed: Memory stats was never cleared when media was stopped
+
 	## 2022-12-19
 	- Fixed[#140]: Crash in UploadTexture when linesize is not the same as frame width
 	- Fixed[#143]: Crash for videos with 6-channel audio
@@ -654,7 +657,7 @@ static void NextReadable(FrameQueue &queue) {
 
 static void FlushFrameQueue(FrameQueue &queue) {
 	fplMutexLock(&queue.lock);
-	for (uint32_t i = 0; i < queue.capacity; ++i) {
+	for (int32_t i = 0; i < queue.capacity; ++i) {
 		AVFrame *frame = queue.frames[i].frame;
 		if (frame != fpl_null)
 			ffmpeg.av_frame_unref(frame);
