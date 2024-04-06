@@ -1282,6 +1282,7 @@ struct Slide {
 	StringTable *strings;
 	const char *name;
 	size_t numElements;
+	double autoTransitionInSeconds;
 	SlideState state;
 
 	Element *AddElement(const ElementType type) {
@@ -1897,6 +1898,8 @@ static void UpdateSounds(App &app, Slide *slide) {
 	}
 }
 
+static void JumpToNextSlide(App &app);
+
 static void UpdateFrame(App &app, const float dt) {
 	PresentationState &state = app.state;
 
@@ -1904,6 +1907,13 @@ static void UpdateFrame(App &app, const float dt) {
 		state.activeSlide->state.currentTime += dt;
 		state.activeSlide->vars.currentTime = state.activeSlide->state.currentTime;
 		UpdateSounds(app, state.activeSlide);
+	}
+
+	// Auto transition
+	if (state.activeSlide != nullptr && state.activeSlide->autoTransitionInSeconds > 0.0) {
+		if (state.activeSlide->state.currentTime >= state.activeSlide->autoTransitionInSeconds) {
+			JumpToNextSlide(app);
+		}
 	}
 
 	//
@@ -2450,6 +2460,7 @@ static void AddSlideFromDefinition(Renderer &renderer, SoundManager &soundMng, P
 	slide->state = {};
 	slide->rotation = inSlide.rotation;
 	slide->background = inSlide.background;
+	slide->autoTransitionInSeconds = inSlide.autoTransitionInSeconds;
 
 	Rect2f area = AddHeaderAndFooter(slide, inPresentation.header, inPresentation.footer);
 

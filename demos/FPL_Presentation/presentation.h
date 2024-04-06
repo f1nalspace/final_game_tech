@@ -114,10 +114,11 @@ struct SlideDefinition {
 	Quaternion rotation;
 	size_t blockCount;
 	size_t soundCount;
+	double autoTransitionInSeconds;
 };
 
 template<size_t N>
-static SlideDefinition MakeSlideDef(const char* name, BlockDefinition(&blocks)[N], const BackgroundStyle& background, const Quaternion& rotation) {
+static SlideDefinition MakeSlideDef(const char* name, BlockDefinition(&blocks)[N], const BackgroundStyle& background, const Quaternion& rotation, const double autoTransitionInSeconds = 0.0) {
 	fplAssert(N < MaxBlockCount);
 
 	SlideDefinition result = {};
@@ -128,11 +129,12 @@ static SlideDefinition MakeSlideDef(const char* name, BlockDefinition(&blocks)[N
 	}
 	result.rotation = rotation;
 	result.blockCount = N;
+	result.autoTransitionInSeconds = autoTransitionInSeconds;
 	return(result);
 }
 
 template<size_t NBlocks, size_t NSounds>
-static SlideDefinition MakeSlideDef(const char* name, BlockDefinition(&blocks)[NBlocks], SoundDefinition(&sounds)[NSounds], const BackgroundStyle& background, const Quaternion& rotation) {
+static SlideDefinition MakeSlideDef(const char* name, BlockDefinition(&blocks)[NBlocks], SoundDefinition(&sounds)[NSounds], const BackgroundStyle& background, const Quaternion& rotation, const double autoTransitionInSeconds = 0.0) {
 	fplAssert(NBlocks < MaxBlockCount);
 	fplAssert(NSounds < MaxAudioSoundCount);
 
@@ -148,6 +150,7 @@ static SlideDefinition MakeSlideDef(const char* name, BlockDefinition(&blocks)[N
 	result.rotation = rotation;
 	result.blockCount = NBlocks;
 	result.soundCount = NSounds;
+	result.autoTransitionInSeconds = autoTransitionInSeconds;
 	return(result);
 }
 
