@@ -1,196 +1,28 @@
 #pragma once
 
-#include <final_platform_layer.h>
-
-#include <final_math.h>
-
-#include "types.h"
-#include "fonts.h"
+#include "presentation.h"
 
 static const float CodeFontSize = 24.0f;
 static const float FeaturesFontSize = 32.0f;
 
-struct SoundResource {
-	const char *name;
-	const char *relativeFilePath;
-};
-
 namespace SoundResources {
-	static const SoundResource Test = {"Test", "test123.mp3"};
+	static const SoundResource Intro1 = SoundResource::CreateFromFile("fpl_intro1.mp3");
+	static const SoundResource Intro2 = SoundResource::CreateFromFile("fpl_intro2.mp3");
+	static const SoundResource WhoAmi1 = SoundResource::CreateFromFile("fpl_whoami1.mp3");
+	static const SoundResource What1 = SoundResource::CreateFromFile("fpl_what1.mp3");
+	static const SoundResource What2 = SoundResource::CreateFromFile("fpl_what2.mp3");
+	static const SoundResource Motivation1 = SoundResource::CreateFromFile("fpl_motivation1.mp3");
+	static const SoundResource Motivation2 = SoundResource::CreateFromFile("fpl_motivation2.mp3");
 
 	static const SoundResource All[] = {
-		Test,
+		Intro1,
+		Intro2,
+		WhoAmi1,
+		What1,
+		What2,
+		Motivation1,
+		Motivation2,
 	};
-};
-
-struct SoundDefinition {
-	const char *name;
-	float startTime;
-	float targetDuration;
-};
-
-static SoundDefinition MakeSoundDef(const char *name, const float startTime, const float targetDuration = FLT_MAX) {
-	SoundDefinition result = {};
-	result.name = name;
-	result.startTime = startTime;
-	result.targetDuration = targetDuration;
-	return result;
-}
-
-static SoundDefinition MakeSoundDef(const SoundResource &resource, const float startTime = 0.0f, const float targetDuration = FLT_MAX) {
-	return MakeSoundDef(resource.name, startTime, targetDuration);
-}
-
-enum class BlockType {
-	None = 0,
-	Text,
-	Image,
-};
-
-struct TextBlockDefinition {
-	Vec4f color;
-	const char* text;
-	float fontSize;
-	HorizontalAlignment textAlign;
-};
-
-struct ImageBlockDefinition {
-	const char* name;
-	Vec2f size;
-	bool keepAspect;
-};
-
-struct BlockAlignment {
-	HorizontalAlignment h;
-	VerticalAlignment v;
-};
-
-static BlockAlignment MakeAlign(HorizontalAlignment h = HorizontalAlignment::Left, VerticalAlignment v = VerticalAlignment::Top) {
-	BlockAlignment result = {};
-	result.h = h;
-	result.v = v;
-	return(result);
-}
-
-struct BlockDefinition {
-	Vec2f pos;
-	Vec2f size;
-	BlockType type;
-	BlockAlignment contentAlignment;
-	union {
-		TextBlockDefinition text;
-		ImageBlockDefinition image;
-	};
-};
-
-static BlockDefinition MakeTextDef(const Vec2f& pos, const Vec2f& size, BlockAlignment contentAlignment, const char* text, const HorizontalAlignment textAlign = HorizontalAlignment::Left, const float fontSize = 0, const Vec4f &color = V4f(1,1,1,1)) {
-	BlockDefinition result = {};
-	result.pos = pos;
-	result.size = size;
-	result.contentAlignment = contentAlignment;
-	result.type = BlockType::Text;
-	result.text.text = text;
-	result.text.textAlign = textAlign;
-	result.text.fontSize = fontSize;
-	result.text.color = color;
-	return(result);
-}
-
-static BlockDefinition MakeImageDef(const Vec2f& pos, const Vec2f& size, BlockAlignment contentAlignment, const char* imageName, const Vec2f& imageSize, const bool keepAspect) {
-	BlockDefinition result = {};
-	result.pos = pos;
-	result.size = size;
-	result.contentAlignment = contentAlignment;
-	result.type = BlockType::Image;
-	result.image.name = imageName;
-	result.image.size = imageSize;
-	result.image.keepAspect = keepAspect;
-	return(result);
-}
-
-constexpr size_t MaxBlockCount = 16;
-constexpr size_t MaxAudioSoundCount = 4;
-
-struct SlideDefinition {
-	const char* name;
-	BlockDefinition blocks[MaxBlockCount];
-	SoundDefinition sounds[MaxAudioSoundCount];
-	BackgroundStyle background;
-	Quaternion rotation;
-	size_t blockCount;
-	size_t soundCount;
-};
-
-template<size_t N>
-static SlideDefinition MakeSlideDef(const char* name, BlockDefinition(&blocks)[N], const BackgroundStyle &background, const Quaternion &rotation) {
-	fplAssert(N < MaxBlockCount);
-
-	SlideDefinition result = {};
-	result.name = name;
-	result.background = background;
-	for(size_t i = 0; i < N; ++i) {
-		result.blocks[i] = blocks[i];
-	}
-	result.rotation = rotation;
-	result.blockCount = N;
-	return(result);
-}
-
-template<size_t NBlocks, size_t NSounds>
-static SlideDefinition MakeSlideDef(const char* name, BlockDefinition(&blocks)[NBlocks], SoundDefinition(&sounds)[NSounds], const BackgroundStyle &background, const Quaternion &rotation) {
-	fplAssert(NBlocks < MaxBlockCount);
-	fplAssert(NSounds < MaxAudioSoundCount);
-
-	SlideDefinition result = {};
-	result.name = name;
-	result.background = background;
-	for(size_t i = 0; i < NBlocks; ++i) {
-		result.blocks[i] = blocks[i];
-	}
-	for(size_t i = 0; i < NSounds; ++i) {
-		result.sounds[i] = sounds[i];
-	}
-	result.rotation = rotation;
-	result.blockCount = NBlocks;
-	result.soundCount = NSounds;
-	return(result);
-}
-
-struct FontDefinition {
-	const char* name;
-	float size;
-	float lineScale;
-	TextStyle style;
-};
-
-struct HeaderDefinition {
-	FontDefinition font;
-	float height;
-	const char* leftText;
-	const char* centerText;
-	const char* rightText;
-	Vec2f padding;
-};
-
-struct FooterDefinition {
-	FontDefinition font;
-	float height;
-	const char* leftText;
-	const char* centerText;
-	const char* rightText;
-	Vec2f padding;
-};
-
-struct PresentationDefinition {
-	const SlideDefinition* slides;
-	size_t slideCount;
-	Vec2f slideSize;
-	HeaderDefinition header;
-	FooterDefinition footer;
-	FontDefinition titleFont;
-	FontDefinition normalFont;
-	FontDefinition consoleFont;
-	float padding;
 };
 
 namespace FPLPresentationData {
@@ -258,7 +90,8 @@ namespace FPLPresentationData {
 		};
 
 		static SoundDefinition Sounds[] = {
-			MakeSoundDef(SoundResources::Test, 3.0),
+			MakeSoundDef(SoundResources::Intro1, 1.0),
+			MakeSoundDef(SoundResources::Intro2, 10.0),
 		};
 
 		static Quaternion Rot = QuatIdentity();
@@ -284,15 +117,19 @@ namespace FPLPresentationData {
 			),
 		};
 
+		static SoundDefinition Sounds[] = {
+			MakeSoundDef(SoundResources::WhoAmi1, 2.0),
+		};
+
 		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(15), V3f(1, 1, 1));
 
-		static const SlideDefinition Slide = MakeSlideDef("Who am I", Blocks, GetBackground(), Rot);		
+		static const SlideDefinition Slide = MakeSlideDef("Who am I", Blocks, Sounds, GetBackground(), Rot);		
 	};
 
 	namespace WhatIsFPL {
 		static const char* Talk = {
-			"Final-Platform-Layer (or short 'FPL') is a lightweight platform-abstraction library written in C99."
-			"With FPL you get access to low-level systems, hardware devices and operating system functions,"
+			"Final-Platform-Layer (or short 'FPL') is a lightweight platform-abstraction library written in C99,"
+			"that gives you access to low-level systems, hardware devices and operating system functions,"
 			"in a platform independent and easy-to-use API."
 			""
 			"For example you can:"
@@ -305,7 +142,7 @@ namespace FPLPresentationData {
 			"- Query several platform and hardware informations"
 			"- and much more"
 			""
-			"Its main usage is multimedia and game development, but it can be used to write any kind of application."
+			"Its main usage is multimedia and game development, but it can be used to write any kind of software."
 			"'FPL' is designed to be fast in compile and run time and can be integrated however you like."
 		};
 
@@ -322,9 +159,14 @@ namespace FPLPresentationData {
 			),
 		};
 
+		static SoundDefinition Sounds[] = {
+			MakeSoundDef(SoundResources::What1, 2.0),
+			MakeSoundDef(SoundResources::What2, 20.0),
+		};
+
 		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(-45), V3f(0, 1, 1));
 
-		static const SlideDefinition Slide = MakeSlideDef("What is FPL", Blocks, GetBackground(), Rot);
+		static const SlideDefinition Slide = MakeSlideDef("What is FPL", Blocks, Sounds, GetBackground(), Rot);
 	};
 
 	namespace Motivation {
@@ -333,9 +175,10 @@ namespace FPLPresentationData {
 			"Even in modern C++, you still don't have direct access to a lot of systems."
 			"To access low-level systems, such as audio or video, you either need to use third-party libraries or write platform-specific codes for Win32, Linux, Mac, etc. directly."
 			""
-			"Of course, there is already a few PALs out there, but they have a lot of issues:"
-			"- The source-codes contain dozens of translation units which slows down compilation time enormously"
-			"- All are designed to not include the full source within your application and force you either to static or dynamic linked pre-compiled releases"
+			"There are a few third-party platform abstraction libraries out there, but they have a lot of issues:"
+			"- They have very long compile times, due the large number of translation units"
+			"- They force you either to static or dynamic linked binaries"
+			"- It is not possible or not allowed to integrate the source code directly"
 			"- You have limited or no control over memory allocations"
 			"- They have too many dependencies (build-systems, third-party libraries, etc.)"
 			"- There are not simple to integrate into your application or development environment"
@@ -343,41 +186,51 @@ namespace FPLPresentationData {
 
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
-				V2f(0.05f, 0.0f),V2f(0.9f, 0.25),MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Top),
+				V2f(0.0f, 0.1f),V2f(1.0f, 1.0f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
 				"C/C++ has very limited access to the underlying platform,\n"
-				"so you have either use third-party libraries to access the platform or\n"
+				"so you have either use third-party libraries or\n"
 				"write platform specific codes directly.\n",
 				HorizontalAlignment::Left
 			),
 
 			MakeTextDef(
-				V2f(0.05f, 0.3f),V2f(0.9f, 0.7f),MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Top),
-				"The pre-existing PALs have a lot of disavantages:\n"
-				"- Very long compile times, due to large number of files\n"
-				"- Only static or dynamic linking possible\n"
-				"- Not allowed/possible to use the source directly\n"
+				V2f(0.0f, 0.4f),V2f(1.0f, 1.0f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				"Existing solutions was not working for me due to the following reasons:\n"
+				"- Not compatible with either compiler/linker/runtime\n"
+				"- Very long compile times\n"
+				"- No runtime linking\n"
+				"- Hard to integrate into my own applications\n"
 				"- Limited or no control over the allocated memory\n"
-				"- Too many dependencies\n"
-				"- Not easy to integrate\n",
+				"- Build-System requirements\n",
 				HorizontalAlignment::Left, FeaturesFontSize
 			),
 		};
 
+		static SoundDefinition Sounds[] = {
+			MakeSoundDef(SoundResources::Motivation1, 2.0),
+			MakeSoundDef(SoundResources::Motivation2, 31.0),
+		};
+
 		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(70), V3f(1, 0.1f, 0.0f));
 
-		static const SlideDefinition Slide = MakeSlideDef("Motivation", Blocks, GetBackground(), Rot);
+		static const SlideDefinition Slide = MakeSlideDef("Motivation", Blocks, Sounds, GetBackground(), Rot);
 	};
 
+#if 0
 	namespace Goals {
 		static const char* Talk = {
-			"That builds up the following goals:"
-			"- It should be a single-file library"
-			"- It should compile very fast, even with slow hardware or in slow environments"
-			"- It should be written in C99, so its highly compatible"
-			"- It should not require any third-party dependencies and have bare minimum linking requirements"
+			"That builds up the following goals for FPL:"
+			"- It should compile very fast, even in slow environments or with slow hardware"
+			"- It should be 100% compatible with C and C++"
+			"- It should not require any third-party dependencies"
+			"- It should use bare minimum linking and compile requirements"
 			"- It should use a small memory footprint and give the user control over any memory allocations"
-			"- It should support runtime and static linking and can be integrated with full source"
-			"- It starts with good default settings but can be changed by the user"
+			"- It should support any way of integration, runtime linked, static linked and can even be integrated with full-source"
+			"- It should not require the C-Runtime library"
+			"- It should have support for disabling certain features"
+			"- It should have a simple and easy-to-use API"
+			"- It should start with good default settings, but can be changed by the user"
+			"- And lastly, it should be open source"
 		};
 
 		static BlockDefinition Blocks[] = {
@@ -387,7 +240,7 @@ namespace FPLPresentationData {
 				"- Based on C with 100%% C++ compatibility\n"
 				"- Bare minimum compile and linking requirements\n"
 				"- Small memory footprint\n"
-				"- Can be integrated in any way\n"
+				"- Can be integrated in any way, including source-integration\n"
 				"- C-Runtime library should not be required\n"
 				"- Features can be disabled, if not needed\n"
 				"- Simple and easy to understand API\n"
@@ -397,29 +250,43 @@ namespace FPLPresentationData {
 			),
 		};
 
+		static SoundDefinition Sounds[] = {
+			MakeSoundDef(SoundResources::Goals1, 2.0),
+		};
+
 		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(-30), V3f(1, 0, 1.0));
 
-		static const SlideDefinition Slide = MakeSlideDef("Goals of FPL", Blocks, GetBackground(), Rot);
+		static const SlideDefinition Slide = MakeSlideDef("Goals of FPL", Blocks, Sounds, GetBackground(), Rot);
 	};
+#endif
 
 	namespace WhyFPL {
 		static const char* Talk = {
+			"Why use FPL? What are the advantages?"
 			""
+			"- It compiles very fast, even on very slow hardware"
+			"- It requires bare minimum compile and linking requirements"
+			"- It does not require any build systems"
+			"- It can be integrated however you like: static linked, runtime linked or with full-source"
+			"- It is lightweight and focus on low-level abstractions"
+			"- It allows to control the memory allocations and handles memory very gracefully\n"
+			"- It supports multiple Platform/Window/Input/Video/Audio backends"
+			"- It does not require the C-Runtime library"
+			"- It is MIT-Licensed"
 		};
 
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
-				V2f(0.0, 0.0),V2f(1.0, 1.0),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				V2f(0.0f, 0.1f),V2f(1.0f, 1.0f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				"- Everything is contained in one C-Header file (single-header-file)\n"
 				"- You get access to low-level systems in a nice and clean API\n"
-				"- One file containing all the source code\n"
-				"- Written in pure C99 for simplicity and best portability\n"
-				"- Compiles very fast on all modern C99/C++ compilers\n"
-				"- Has bare minimum compile and linking requirements\n"
-				"- Uses runtime linking by default, so no libs needs to be included\n"
-				"- Allows to control the memory allocations and handles memory very gracefully\n"
-				"- Multiple backends for Video/Audio/Input/Window\n"
-				"- Supports runtime linking or static linking or even full-source inclusion\n"
-				"- MIT-Licensed\n",
+				"- Is is written in pure C99 for simplicity and best portability\n"
+				"- It compiles blazingly fast on all modern C99/C++ compilers\n"
+				"- It uses bare minimum compile and linking requirements\n"
+				"- It does not require any third party libraries or build systems\n"
+				"- It uses runtime linking by default\n"
+				"- It supports static linking and full-source inclusion\n"
+				"- It is Open-Source and can be used in commercial software as well\n",
 				HorizontalAlignment::Left, FeaturesFontSize * 1.1f
 			),
 		};
@@ -627,7 +494,9 @@ namespace FPLPresentationData {
 		WhoAmI::Slide,
 		WhatIsFPL::Slide,
 		Motivation::Slide,
+#if 0
 		Goals::Slide,
+#endif
 		WhyFPL::Slide,
 		FeaturesOfFPL::Slide,
 		Magic::Slide,

@@ -25,5 +25,6 @@
     <ClInclude Include="fonts.h" />
     <ClInclude Include="slides.h" />
     <ClInclude Include="types.h" />
+    <ClInclude Include="presentation.h" />
   </ItemGroup>
 </Project>

@@ -175,6 +175,7 @@
     <ClInclude Include="..\..\final_xml.h" />
     <ClInclude Include="fonts.h" />
     <ClInclude Include="images.h" />
+    <ClInclude Include="presentation.h" />
     <ClInclude Include="slides.h" />
     <ClInclude Include="types.h" />
   </ItemGroup>

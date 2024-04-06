@@ -74,6 +74,10 @@ License:
 // Contains image files as byte-array (FPL-Logos)
 #include "images.h"
 
+// Presentation definition and serialization
+#define PRESENTATION_IMPLEMENTATION
+#include "presentation.h"
+
 // Contains the slide text for the FPL presentation
 #include "slides.h" // TextDefinition, SlideDefinition
 
@@ -2709,7 +2713,7 @@ int main(int argc, char **argv) {
 			String path = app.strings.MakeString(pathLen);
 			fplPathCombine(path, path, 3, (const char *)app.dataPath, "sounds", res.relativeFilePath);
 
-			app.soundMng.AddSoundFromFile(path, SoundResources::Test.name);
+			app.soundMng.AddSoundFromFile(path, res.name);
 		}
 
 		BuildPresentation(FPLPresentation, app.renderer, app.soundMng, app.presentation);
