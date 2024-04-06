@@ -82,7 +82,7 @@ namespace FPLPresentationData {
 
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
-				V2f(),V2f(1,1),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				V2f(0.0, 0.0), V2f(1.0, 1.0),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
 				"Introducing Final-Platform-Layer (FPL)\n"
 				"A lightweight Platform-Abstraction-Library written in C99\n",
 				HorizontalAlignment::Center
@@ -96,20 +96,19 @@ namespace FPLPresentationData {
 
 		static Quaternion Rot = QuatIdentity();
 
-		static const SlideDefinition Slide = MakeSlideDef("Introduction", Blocks, Sounds, GetBackground(), Rot);
+		static const SlideDefinition Slide = MakeSlideDef("Introduction", Blocks, Sounds, GetBackground(), Rot, 18.5);
 	};
 
 	namespace WhoAmI {
 		static const char* Talk = {
 			"I am Torsten Spaete"
 			"A professional software engineer with more than 25 years of programming experience"
-			""
-			"My main focus is data-visualization, software-architecture, multimedia and game programming"
+			"My main focus is data-visualization, software-architecture, multimedia and game development"
 		};
 
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
-				V2f(),V2f(1,1),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				V2f(0.0f, 0.0f), V2f(1.0f, 1.0f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
 				"I am Torsten Spaete\n"
 				"A professional software engineer\n"
 				"25+ years of programming experience\n",
@@ -123,7 +122,7 @@ namespace FPLPresentationData {
 
 		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(15), V3f(1, 1, 1));
 
-		static const SlideDefinition Slide = MakeSlideDef("Who am I", Blocks, Sounds, GetBackground(), Rot);		
+		static const SlideDefinition Slide = MakeSlideDef("Who am I", Blocks, Sounds, GetBackground(), Rot, 20.5);		
 	};
 
 	namespace WhatIsFPL {
@@ -148,7 +147,7 @@ namespace FPLPresentationData {
 
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
-				V2f(),V2f(1,1),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				V2f(0.0f, 0.0f), V2f(1.0f, 1.0f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
 				"Final-Platform-Layer (or short 'FPL')\n"
 				"is a lightweight library written in C99.\n"
 				"\n"
@@ -166,7 +165,7 @@ namespace FPLPresentationData {
 
 		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(-45), V3f(0, 1, 1));
 
-		static const SlideDefinition Slide = MakeSlideDef("What is FPL", Blocks, Sounds, GetBackground(), Rot);
+		static const SlideDefinition Slide = MakeSlideDef("What is FPL", Blocks, Sounds, GetBackground(), Rot, 19.0);
 	};
 
 	namespace Motivation {
@@ -175,34 +174,25 @@ namespace FPLPresentationData {
 			"Even in modern C++, you still don't have direct access to a lot of systems."
 			"To access low-level systems, such as audio or video, you either need to use third-party libraries or write platform-specific codes for Win32, Linux, Mac, etc. directly."
 			""
-			"There are a few third-party platform abstraction libraries out there, but they have a lot of issues:"
-			"- They have very long compile times, due the large number of translation units"
-			"- They force you either to static or dynamic linked binaries"
-			"- It is not possible or not allowed to integrate the source code directly"
-			"- You have limited or no control over memory allocations"
-			"- They have too many dependencies (build-systems, third-party libraries, etc.)"
-			"- There are not simple to integrate into your application or development environment"
+			"Existing solutions was not working for me, due to the several reasons:"
+			"- They was not compatible with either my compiler/linker/runtime configuration"
+			"- They was hard to integrate into my own applications"
+			"- They had no support for controlling the memory allocations"
+			"- They had very long compile times"
+			"- They required build-systems or other dependencies"
+			"- They had no support for including the source directly"
+			"- There was no suitable license"
 		};
 
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
-				V2f(0.0f, 0.1f),V2f(1.0f, 1.0f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				V2f(0.0f, 0.0f),V2f(1.0f, 1.0f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
 				"C/C++ has very limited access to the underlying platform,\n"
 				"so you have either use third-party libraries or\n"
-				"write platform specific codes directly.\n",
+				"write platform specific codes directly.\n"
+				"\n"
+				"Existing solutions was not working for me due to several reasons.\n",
 				HorizontalAlignment::Left
-			),
-
-			MakeTextDef(
-				V2f(0.0f, 0.4f),V2f(1.0f, 1.0f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
-				"Existing solutions was not working for me due to the following reasons:\n"
-				"- Not compatible with either compiler/linker/runtime\n"
-				"- Very long compile times\n"
-				"- No runtime linking\n"
-				"- Hard to integrate into my own applications\n"
-				"- Limited or no control over the allocated memory\n"
-				"- Build-System requirements\n",
-				HorizontalAlignment::Left, FeaturesFontSize
 			),
 		};
 
@@ -277,15 +267,18 @@ namespace FPLPresentationData {
 
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
-				V2f(0.0f, 0.1f),V2f(1.0f, 1.0f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				V2f(0.0f, 0.05f),V2f(1.0f, 1.0f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
 				"- Everything is contained in one C-Header file (single-header-file)\n"
 				"- You get access to low-level systems in a nice and clean API\n"
 				"- Is is written in pure C99 for simplicity and best portability\n"
 				"- It compiles blazingly fast on all modern C99/C++ compilers\n"
 				"- It uses bare minimum compile and linking requirements\n"
 				"- It does not require any third party libraries or build systems\n"
+				"- It does not require the C-RunTime library\n"
 				"- It uses runtime linking by default\n"
-				"- It supports static linking and full-source inclusion\n"
+				"- It supports static and dynamic linking\n"
+				"- It supports full-source inclusion as well\n"
+				"- It can be integrated in any way\n"
 				"- It is Open-Source and can be used in commercial software as well\n",
 				HorizontalAlignment::Left, FeaturesFontSize * 1.1f
 			),
