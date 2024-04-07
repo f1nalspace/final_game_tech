@@ -5,6 +5,13 @@
 static const float CodeFontSize = 24.0f;
 static const float FeaturesFontSize = 32.0f;
 
+namespace FontResources {
+	static FontResource Debug = { ptr_bitstreamVerySansFontData, sizeOf_bitstreamVerySansFontData, "Debug" };
+	static FontResource Arimo = { ptr_arimoRegularFontData, sizeOf_arimoRegularFontData, "Arimo" };
+	static FontResource SulphurPoint = { ptr_sulphurPointRegularData, sizeOf_sulphurPointRegularData, "Sulphur Point" };
+	static FontResource BitStreamVerySans = { ptr_bitstreamVerySansFontData, sizeOf_bitstreamVerySansFontData, "Bitstream Vera Sans" };
+};
+
 namespace SoundResources {
 	static const SoundResource Intro1 = SoundResource::CreateFromFile("fpl_intro1.mp3");
 	static const SoundResource Intro2 = SoundResource::CreateFromFile("fpl_intro2.mp3");
@@ -24,6 +31,48 @@ namespace SoundResources {
 		Motivation2,
 	};
 };
+
+namespace ImageResources {
+	static ImageResource FPLLogo128x128 = ImageResource::CreateFromMemory(ptr_fplLogo128x128ImageData, "FPL Logo 128x128", sizeOf_fplLogo128x128ImageData);
+	static ImageResource FPLLogo512x512 = ImageResource::CreateFromMemory(ptr_fplLogo512x512ImageData, "FPL Logo 512x512", sizeOf_fplLogo512x512ImageData);
+	static ImageResource FPLMinimumSource = ImageResource::CreateFromMemory(ptr_minimumSourceImageData, "FPL Minimum Source", sizeOf_minimumSourceImageData);
+
+	static ImageResource Card_SingleHeaderFile = ImageResource::CreateFromFile("card_single_header_file.png");
+	static ImageResource Card_C99 = ImageResource::CreateFromFile("card_c99.png");
+	static ImageResource Card_Fast = ImageResource::CreateFromFile("card_fast.png");
+	static ImageResource Card_NoDeps = ImageResource::CreateFromFile("card_no_deps.png");
+
+	static ImageResource Card_EasyToUse = ImageResource::CreateFromFile("card_easytouse.png");
+	static ImageResource Card_Lightweight = ImageResource::CreateFromFile("card_lightweight.png");
+	static ImageResource Card_Memory = ImageResource::CreateFromFile("card_memory.png");
+	static ImageResource Card_Cpp_Compatible = ImageResource::CreateFromFile("card_cpp_compatible.png");
+
+	static ImageResource Card_CleanApi = ImageResource::CreateFromFile("card_clean_api.png");
+	static ImageResource Card_FullSource = ImageResource::CreateFromFile("card_full_source.png");
+	static ImageResource Card_RuntimeLinking = ImageResource::CreateFromFile("card_runtime_linking.png");
+	static ImageResource Card_OpenSource = ImageResource::CreateFromFile("card_open_source.png");
+
+	static const ImageResource All[] = {
+		FPLLogo128x128,
+		FPLLogo512x512,
+		FPLMinimumSource,
+
+		Card_SingleHeaderFile,
+		Card_C99,
+		Card_Fast,
+		Card_NoDeps,
+
+		Card_EasyToUse,
+		Card_Lightweight,
+		Card_Memory,
+		Card_Cpp_Compatible,
+
+		Card_CleanApi,
+		Card_FullSource,
+		Card_OpenSource,
+		Card_RuntimeLinking,
+	};
+}
 
 namespace FPLPresentationData {
 	static BackgroundStyle DarkBlueBack = MakeBackground(RGBAToLinearHex24(0x000000, 255), RGBAToLinearRaw(15, 13, 80, 255));
@@ -266,6 +315,55 @@ namespace FPLPresentationData {
 		};
 
 		static BlockDefinition Blocks[] = {
+			MakeImageDef(
+				V2f(0.0f, 0.05f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				&ImageResources::Card_SingleHeaderFile, V2f(1.0f, 1.0f), true),
+				
+			MakeImageDef(
+				V2f(0.25f, 0.05f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				&ImageResources::Card_C99, V2f(1.0f, 1.0f), true),
+
+			MakeImageDef(
+				V2f(0.5f, 0.05f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				&ImageResources::Card_Fast, V2f(1.0f, 1.0f), true),
+
+			MakeImageDef(
+				V2f(0.75f, 0.05f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				&ImageResources::Card_NoDeps, V2f(1.0f, 1.0f), true),
+
+			MakeImageDef(
+				V2f(0.0f, 0.375f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				&ImageResources::Card_EasyToUse, V2f(1.0f, 1.0f), true),
+
+			MakeImageDef(
+				V2f(0.25f, 0.375f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				&ImageResources::Card_Lightweight, V2f(1.0f, 1.0f), true),
+
+			MakeImageDef(
+				V2f(0.5f, 0.375f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				&ImageResources::Card_Memory, V2f(1.0f, 1.0f), true),
+
+			MakeImageDef(
+				V2f(0.75f, 0.375f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				&ImageResources::Card_Cpp_Compatible, V2f(1.0f, 1.0f), true),
+
+			MakeImageDef(
+				V2f(0.0f, 0.7f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				&ImageResources::Card_CleanApi, V2f(1.0f, 1.0f), true),
+
+			MakeImageDef(
+				V2f(0.25f, 0.7f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				&ImageResources::Card_FullSource, V2f(1.0f, 1.0f), true),
+
+			MakeImageDef(
+				V2f(0.5f, 0.7f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				&ImageResources::Card_RuntimeLinking, V2f(1.0f, 1.0f), true),
+
+			MakeImageDef(
+				V2f(0.75f, 0.7f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				&ImageResources::Card_OpenSource, V2f(1.0f, 1.0f), true),
+
+#if 0
 			MakeTextDef(
 				V2f(0.0f, 0.05f),V2f(1.0f, 1.0f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
 				"- Everything is contained in one C-Header file (single-header-file)\n"
@@ -282,6 +380,7 @@ namespace FPLPresentationData {
 				"- It is Open-Source and can be used in commercial software as well\n",
 				HorizontalAlignment::Left, FeaturesFontSize * 1.1f
 			),
+#endif
 		};
 
 		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(-60), V3f(0.0f, 0.0f, 1.0f));
@@ -389,7 +488,7 @@ namespace FPLPresentationData {
 
 			MakeImageDef(
 				V2f(-0.05f, 0.1f), V2f(1.0f, 1.0f), MakeAlign(HorizontalAlignment::Right, VerticalAlignment::Top),
-				"FPL Minimum Source", V2f(0.5f, 1.0f), true
+				&ImageResources::FPLMinimumSource, V2f(0.5f, 1.0f), true
 			),
 		};
 

@@ -36,6 +36,36 @@ static SoundDefinition MakeSoundDef(const SoundResource& resource, const float s
 	return MakeSoundDef(resource.name, startTime, targetDuration);
 }
 
+struct ImageResource {
+	const char *name;
+	const char *relativeFilePath;
+	const uint8_t *bytes;
+	size_t length;
+
+	static ImageResource CreateFromMemory(const uint8_t *bytes, const char *name, const size_t length) {
+		ImageResource result = {};
+		result.relativeFilePath = nullptr;
+		result.name = name;
+		result.bytes = bytes;
+		result.length = length;
+		return result;
+	}
+
+	static ImageResource CreateFromFile(const char *filePath) {
+		const char *filename = fplExtractFileName(filePath);
+		ImageResource result = {};
+		result.relativeFilePath = filePath;
+		result.name = filename;
+		return result;
+	}
+};
+
+struct FontResource {
+	const uint8_t *data;
+	size_t size;
+	const char *name;
+};
+
 enum class BlockType {
 	None = 0,
 	Text,
@@ -50,7 +80,7 @@ struct TextBlockDefinition {
 };
 
 struct ImageBlockDefinition {
-	const char* name;
+	const ImageResource *imageResource;
 	Vec2f size;
 	bool keepAspect;
 };
@@ -91,13 +121,13 @@ static BlockDefinition MakeTextDef(const Vec2f& pos, const Vec2f& size, BlockAli
 	return(result);
 }
 
-static BlockDefinition MakeImageDef(const Vec2f& pos, const Vec2f& size, BlockAlignment contentAlignment, const char* imageName, const Vec2f& imageSize, const bool keepAspect) {
+static BlockDefinition MakeImageDef(const Vec2f& pos, const Vec2f& size, BlockAlignment contentAlignment, const ImageResource *imageResource, const Vec2f& imageSize, const bool keepAspect) {
 	BlockDefinition result = {};
 	result.pos = pos;
 	result.size = size;
 	result.contentAlignment = contentAlignment;
 	result.type = BlockType::Image;
-	result.image.name = imageName;
+	result.image.imageResource = imageResource;
 	result.image.size = imageSize;
 	result.image.keepAspect = keepAspect;
 	return(result);

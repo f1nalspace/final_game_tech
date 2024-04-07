@@ -19085,29 +19085,3 @@ const size_t sizeOf_bitstreamVerySansFontData = 65932;
 const size_t blockSizeOf_bitstreamVerySansFontData = 65936;
 const uint8_t *ptr_bitstreamVerySansFontData = (uint8_t *)data_bitstreamVerySansFontData;
 
-
-
-
-
-
-// We just support a couple of fonts, built-in.
-enum class FontResourceType {
-	Debug = 0,
-	Arimo,
-	SulphurPoint,
-	BitStreamVerySans,
-};
-
-struct FontResource {
-	const uint8_t *data;
-	size_t size;
-	const char *name;
-	FontResourceType type;
-};
-
-namespace FontResources {
-	static FontResource Debug = { ptr_bitstreamVerySansFontData, sizeOf_bitstreamVerySansFontData, "Debug", FontResourceType::Debug };
-	static FontResource Arimo = { ptr_arimoRegularFontData, sizeOf_arimoRegularFontData, "Arimo", FontResourceType::Arimo };
-	static FontResource SulphurPoint = { ptr_sulphurPointRegularData, sizeOf_sulphurPointRegularData, "Sulphur Point", FontResourceType::SulphurPoint };
-	static FontResource BitStreamVerySans = { ptr_bitstreamVerySansFontData, sizeOf_bitstreamVerySansFontData, "Bitstream Vera Sans", FontResourceType::BitStreamVerySans };
-};

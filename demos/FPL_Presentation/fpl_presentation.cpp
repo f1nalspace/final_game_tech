@@ -89,7 +89,7 @@ License:
 #define DRAW_VIEW_CENTER 0
 #define DRAW_ROTATING_CUBE 1
 #define USE_LETTERBOX_VIEWPORT 0
-#define DRAW_BOX_DEFINITIONS 0
+#define DRAW_BOX_DEFINITIONS 1
 #define CUBE_ONLY 0
 
 template <typename T>
@@ -709,25 +709,6 @@ struct LoadedFont {
 	}
 };
 
-enum class ImageResourceType {
-	FPLLogo128x128 = 0,
-	FPLLogo512x512,
-	FPLMinimumSource,
-};
-
-struct ImageResource {
-	const uint8_t *bytes;
-	const char *name;
-	const size_t length;
-	ImageResourceType type;
-};
-
-namespace ImageResources {
-	static ImageResource FPLLogo128x128 = { ptr_fplLogo128x128ImageData, "FPL Logo 128x128", sizeOf_fplLogo128x128ImageData, ImageResourceType::FPLLogo128x128 };
-	static ImageResource FPLLogo512x512 = { ptr_fplLogo512x512ImageData, "FPL Logo 512x512", sizeOf_fplLogo512x512ImageData, ImageResourceType::FPLLogo512x512 };
-	static ImageResource FPLMinimumSource = { ptr_minimumSourceImageData, "FPL Minimum Source", sizeOf_minimumSourceImageData, ImageResourceType::FPLMinimumSource };
-}
-
 struct ImageID {
 	const char *name;
 	size_t index;
@@ -971,14 +952,14 @@ struct Renderer {
 		if (!LoadedImage::LoadFromFile(image, filePath)) {
 			return {};
 		}
-		ImageID id = ImageID::Make(*strings, filePath, numImages++);
+		const char *name = fplExtractFileName(filePath);
+		ImageID id = ImageID::Make(*strings, name, numImages++);
 		image->id = id;
 		return(image);
 	}
 
 	const LoadedImage *FindImage(const char *name) const {
 		const LoadedImage *result = nullptr;
-
 		for (size_t imageIndex = 0; imageIndex < numImages; ++imageIndex) {
 			const LoadedImage *image = images + imageIndex;
 			if (strcmp(image->id.name, name) == 0) {
@@ -986,7 +967,6 @@ struct Renderer {
 				break;
 			}
 		}
-
 		return(result);
 	}
 
@@ -2531,7 +2511,7 @@ static void AddSlideFromDefinition(Renderer &renderer, SoundManager &soundMng, P
 			{
 				const ImageBlockDefinition imageBlock = block.image;
 
-				const LoadedImage *renderImage = renderer.FindImage(imageBlock.name);
+				const LoadedImage *renderImage = renderer.FindImage(imageBlock.imageResource->name);
 				if (renderImage != nullptr) {
 					Vec2f imagePos = blockPos;
 
@@ -2563,7 +2543,7 @@ static void AddSlideFromDefinition(Renderer &renderer, SoundManager &soundMng, P
 					slide->AddStrokedRect(imagePos, imageSize, V4f(1, 1, 0, 1), 1.0f);
 #endif
 
-					AddImageBlock(renderer, *slide, imagePos, imageSize, imageBlock.name);
+					AddImageBlock(renderer, *slide, imagePos, imageSize, imageBlock.imageResource->name);
 				}
 			} break;
 
@@ -2708,13 +2688,22 @@ int main(int argc, char **argv) {
 		app.renderer.AddFontFromResource(FontResources::Arimo, 108.0f);
 		app.renderer.AddFontFromResource(FontResources::Arimo, 132.0f);
 
-		app.renderer.AddImageFromResource(ImageResources::FPLLogo128x128);
-		app.renderer.AddImageFromResource(ImageResources::FPLLogo512x512);
-		app.renderer.AddImageFromResource(ImageResources::FPLMinimumSource);
-
 #if 0
 		app.renderer.AddFontFromFile("c:/windows/fonts/arial.ttf", "Arial", 24);
 #endif
+
+		size_t imageResourceCount = fplArrayCount(ImageResources::All);
+		for (size_t i = 0; i < imageResourceCount; ++i) {
+			const ImageResource &res = ImageResources::All[i];
+			if (res.relativeFilePath != nullptr) {
+				size_t pathLen = fplPathCombine(nullptr, 0, 3, (const char *)app.dataPath, "images", res.relativeFilePath);
+				String path = app.strings.MakeString(pathLen);
+				fplPathCombine(path, path, 3, (const char *)app.dataPath, "images", res.relativeFilePath);
+				app.renderer.AddImageFromFile(path);
+			} else {
+				app.renderer.AddImageFromResource(res);
+			}
+		}
 
 		size_t soundResourceCount = fplArrayCount(SoundResources::All);
 		for (size_t i = 0; i < soundResourceCount; ++i) {

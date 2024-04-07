@@ -61,3 +61,26 @@ struct TextStyle {
 	Vec2f shadowOffset;
 	b32 drawShadow;
 };
+
+static TextStyle MakeTextStyle(const Vec4f &foregroundColor) {
+	TextStyle result = {};
+	result.foregroundColor = foregroundColor;
+	return result;
+}
+
+static TextStyle MakeTextStyle(const Vec4f &foregroundColor, const Vec4f &backgroundColor) {
+	TextStyle result = {};
+	result.background.kind = BackgroundKind::Solid;
+	result.background.primaryColor = backgroundColor;
+	result.foregroundColor = foregroundColor;
+	return result;
+}
+
+static TextStyle MakeTextStyle(const Vec4f &foregroundColor, const BackgroundKind backgroundKind, const Vec4f &primaryBackgroundColor, const Vec4f &secondaryBackgroundColor) {
+	TextStyle result = {};
+	result.background.kind = backgroundKind;
+	result.background.primaryColor = primaryBackgroundColor;
+	result.background.secondaryColor = secondaryBackgroundColor;
+	result.foregroundColor = foregroundColor;
+	return result;
+}
