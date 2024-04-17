@@ -52,6 +52,8 @@ namespace ImageResources {
 	static ImageResource Card_RuntimeLinking = ImageResource::CreateFromFile("card_runtime_linking.png");
 	static ImageResource Card_OpenSource = ImageResource::CreateFromFile("card_open_source.png");
 
+	static ImageResource MagicHat = ImageResource::CreateFromFile("magic_hat.png");
+
 	static const ImageResource All[] = {
 		FPLLogo128x128,
 		FPLLogo512x512,
@@ -71,6 +73,8 @@ namespace ImageResources {
 		Card_FullSource,
 		Card_OpenSource,
 		Card_RuntimeLinking,
+
+		MagicHat,
 	};
 }
 
@@ -426,6 +430,10 @@ namespace FPLPresentationData {
 		};
 
 		static BlockDefinition Blocks[] = {
+			MakeImageDef(
+				V2f(-0.15f, 0.0f), V2f(1.0f, 1.0f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				&ImageResources::MagicHat, V2f(0.75f, 0.75f), true),
+
 			MakeTextDef(
 				V2f(0.0f,0.0f),V2f(1.0f,1.0f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
 				"Magic!",
