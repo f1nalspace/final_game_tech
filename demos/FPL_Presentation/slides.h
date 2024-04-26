@@ -259,62 +259,31 @@ namespace FPLPresentationData {
 		static const SlideDefinition Slide = MakeSlideDef("Motivation", Blocks, Sounds, GetBackground(), Rot);
 	};
 
-#if 0
-	namespace Goals {
-		static const char* Talk = {
-			"That builds up the following goals for FPL:"
-			"- It should compile very fast, even in slow environments or with slow hardware"
-			"- It should be 100% compatible with C and C++"
-			"- It should not require any third-party dependencies"
-			"- It should use bare minimum linking and compile requirements"
-			"- It should use a small memory footprint and give the user control over any memory allocations"
-			"- It should support any way of integration, runtime linked, static linked and can even be integrated with full-source"
-			"- It should not require the C-Runtime library"
-			"- It should have support for disabling certain features"
-			"- It should have a simple and easy-to-use API"
-			"- It should start with good default settings, but can be changed by the user"
-			"- And lastly, it should be open source"
-		};
-
-		static BlockDefinition Blocks[] = {
-			MakeTextDef(
-				V2f(0.0, 0.0),V2f(1.0, 1.0),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
-				"- Fast compile times, even in slow environments\n"
-				"- Based on C with 100%% C++ compatibility\n"
-				"- Bare minimum compile and linking requirements\n"
-				"- Small memory footprint\n"
-				"- Can be integrated in any way, including source-integration\n"
-				"- C-Runtime library should not be required\n"
-				"- Features can be disabled, if not needed\n"
-				"- Simple and easy to understand API\n"
-				"- Configurable with good defaults\n"
-				"- Public open source\n",
-				HorizontalAlignment::Left, FeaturesFontSize * 1.1f
-			),
-		};
-
-		static SoundDefinition Sounds[] = {
-			MakeSoundDef(SoundResources::Goals1, 2.0),
-		};
-
-		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(-30), V3f(1, 0, 1.0));
-
-		static const SlideDefinition Slide = MakeSlideDef("Goals of FPL", Blocks, Sounds, GetBackground(), Rot);
-	};
-#endif
-
 	namespace WhyFPL {
 		static const char* Talk = {
-			"Why use FPL? What are the advantages?"
+			"Why do you want to use FPL?"
 			""
-			"- It compiles very fast, even on very slow hardware"
+
+			"- Everything is contained in one C-Header file (single-header-file)"
+
+			"- Is is written in pure C99 for simplicity and best portability"
+
+			"- It compiles blazingly fast on all modern C99/C++ compilers"
+
 			"- It requires bare minimum compile and linking requirements"
 			"- It does not require any build systems"
-			"- It can be integrated however you like: static linked, runtime linked or with full-source"
-			"- It is lightweight and focus on low-level abstractions"
+			"- It does not require the C - RunTime library"
+
+			"- It is lightweight, has clean API and is easy to use"
+
 			"- It allows to control the memory allocations and handles memory very gracefully\n"
-			"- It supports multiple Platform/Window/Input/Video/Audio backends"
-			"- It does not require the C-Runtime library"
+
+			"- It is 100% C++ compatible\n"
+
+			"- It can be integrated however you like: static linked, dynamic linked or with full-source"
+
+			"- It uses runtime linking by default\n"
+
 			"- It is MIT-Licensed"
 		};
 
@@ -366,25 +335,6 @@ namespace FPLPresentationData {
 			MakeImageDef(
 				V2f(0.75f, 0.7f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
 				&ImageResources::Card_OpenSource, V2f(1.0f, 1.0f), true),
-
-#if 0
-			MakeTextDef(
-				V2f(0.0f, 0.05f),V2f(1.0f, 1.0f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
-				"- Everything is contained in one C-Header file (single-header-file)\n"
-				"- You get access to low-level systems in a nice and clean API\n"
-				"- Is is written in pure C99 for simplicity and best portability\n"
-				"- It compiles blazingly fast on all modern C99/C++ compilers\n"
-				"- It uses bare minimum compile and linking requirements\n"
-				"- It does not require any third party libraries or build systems\n"
-				"- It does not require the C-RunTime library\n"
-				"- It uses runtime linking by default\n"
-				"- It supports static and dynamic linking\n"
-				"- It supports full-source inclusion as well\n"
-				"- It can be integrated in any way\n"
-				"- It is Open-Source and can be used in commercial software as well\n",
-				HorizontalAlignment::Left, FeaturesFontSize * 1.1f
-			),
-#endif
 		};
 
 		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(-60), V3f(0.0f, 0.0f, 1.0f));
@@ -400,7 +350,6 @@ namespace FPLPresentationData {
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
 				V2f(0,0),V2f(1.0f,1.0f),MakeAlign(HorizontalAlignment::Center),
-				"\n"
 				"- Supports dynamic linking, static linking and full source inclusion\n"
 				"- Platform detection (x86/x64/Arm, Win32/Linux/Unix, etc.)\n"
 				"- Compiler detection (MSVC/GCC/Clang/Intel)\n"
@@ -594,9 +543,6 @@ namespace FPLPresentationData {
 		WhoAmI::Slide,
 		WhatIsFPL::Slide,
 		Motivation::Slide,
-#if 0
-		Goals::Slide,
-#endif
 		WhyFPL::Slide,
 		FeaturesOfFPL::Slide,
 		Magic::Slide,
