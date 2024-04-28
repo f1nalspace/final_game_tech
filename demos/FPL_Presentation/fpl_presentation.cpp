@@ -1633,8 +1633,8 @@ static const char *ResolveText(const SlideVariables &vars, const char *source, c
 							int mins = (int)(vars.currentTime / 60.0) % 60;
 							int secs = (int)vars.currentTime % 60;
 							int msecs = (int)(vars.currentTime * 1000) % 1000;
-							char buffer[20];
-							fplStringFormat(buffer, fplArrayCount(buffer), "%02d:%02d:%02d.%03d", hours, mins, secs, msecs);
+							char buffer[32];
+							fplStringFormat(buffer, fplArrayCount(buffer), "%02d:%02d:%02d.%03d (%.3f)", hours, mins, secs, msecs, vars.currentTime);
 							fplStringAppend(buffer, remainingStart, remainingBufLen);
 							size_t addedCount = fplGetStringLength(buffer);
 							bufIndex += addedCount;
