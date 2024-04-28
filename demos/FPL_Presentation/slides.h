@@ -34,8 +34,6 @@ namespace ImageResources {
 	static ImageResource FPLLogo128x128 = ImageResource::CreateFromMemory(ptr_fplLogo128x128ImageData, "FPL Logo 128x128", sizeOf_fplLogo128x128ImageData);
 	static ImageResource FPLLogo512x512 = ImageResource::CreateFromMemory(ptr_fplLogo512x512ImageData, "FPL Logo 512x512", sizeOf_fplLogo512x512ImageData);
 
-	static ImageResource MinimumSource = ImageResource::CreateFromFile("minimum_source.png");
-
 	static ImageResource Card_CPU = ImageResource::CreateFromFile("card_cpu.png");
 	static ImageResource Card_C_Language = ImageResource::CreateFromFile("card_c_language.png");
 	static ImageResource Card_Audio = ImageResource::CreateFromFile("card_audio.png");
@@ -48,6 +46,8 @@ namespace ImageResources {
 	static ImageResource Card_Gamepad = ImageResource::CreateFromFile("card_gamepad.png");
 
 	static ImageResource MagicHat = ImageResource::CreateFromFile("magic_hat.png");
+	static ImageResource Arigatou = ImageResource::CreateFromFile("arigatou.png");
+	static ImageResource MinimumSource = ImageResource::CreateFromFile("minimum_source.png");
 
 	static ImageResource DataVisualization = ImageResource::CreateFromFile("data-visualization.png");
 	static ImageResource GameDev = ImageResource::CreateFromFile("game_dev.png");
@@ -80,8 +80,6 @@ namespace ImageResources {
 		FPLLogo128x128,
 		FPLLogo512x512,
 		
-		MinimumSource,
-
 		Card_CPU,
 		Card_C_Language,
 		Card_Audio,
@@ -105,6 +103,9 @@ namespace ImageResources {
 		Vendor_XLib,
 
 		MagicHat,
+		Arigatou,
+		MinimumSource,
+
 		DataVisualization,
 		GameDev,
 		MultimediaDev,
@@ -623,6 +624,11 @@ namespace FPLPresentationData {
 		};
 
 		static BlockDefinition Blocks[] = {
+			MakeImageDef(
+				V2f(0.4f, 0.4f), V2f(0.6f, 0.6f), MakeAlign(HorizontalAlignment::Right, VerticalAlignment::Bottom),
+				&ImageResources::Arigatou, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.65f)
+			),
+
 			MakeTextDef(
 				V2f(),V2f(1,1),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
 				"Thank you for your attention!",
