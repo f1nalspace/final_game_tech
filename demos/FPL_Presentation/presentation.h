@@ -135,7 +135,7 @@ static BlockDefinition MakeImageDef(const Vec2f& pos, const Vec2f& size, BlockAl
 	return(result);
 }
 
-constexpr size_t MaxBlockCount = 16;
+constexpr size_t MaxBlockCount = 32;
 constexpr size_t MaxAudioSoundCount = 4;
 
 struct SlideDefinition {
