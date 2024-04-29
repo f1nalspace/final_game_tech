@@ -1,0 +1,160 @@
+namespace ExistingSolutions {
+	static const char *Talk = {
+		"Existing solutions was not working for me, due to the several reasons."
+		"- They was not compatible with either my compiler/linker/runtime configuration"
+		"- They was hard to integrate into my applications"
+		"- They had no support for controlling the memory allocations"
+		"- They required build-systems or other dependencies"
+		"- They had very long compile times"
+		"- They had no support for including the source directly"
+		"- There was no suitable license"
+	};
+
+	static BlockDefinition Blocks[] = {
+		MakeTextDef(
+			V2f(0.0f, 0.0f),V2f(1.0f, 1.0f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+			"Existing solutions was not working for me due to several reasons:\n"
+			"\n"
+			"- Not compatible with my environment\n"
+			"- Hard to integerate\n"
+			"- No control over the allocated memory\n"
+			"- Uses too much memory\n"
+			"- Required build-systems or 3rd-party dependencies\n"
+			"- Very long compile times\n"
+			"- No full source inclusion\n"
+			"- No suitable license\n",
+			HorizontalAlignment::Left
+		),
+	};
+
+	static SoundDefinition Sounds[] = {
+		MakeSoundDef(SoundResources::ExistingSolutions, 2.0),
+	};
+
+	static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(70), V3f(1, 0.1f, 0.0f));
+
+	static const SlideDefinition Slide = MakeSlideDef("Existing Solutions", Blocks, Sounds, GetBackground(), Rot, 46.0);
+};
+
+namespace Goals {
+	static const char *Talk = {
+		"For that reasons i decided to write my own with the following goals:"
+		""
+		"- It should compile very fast, even with full-source included"
+		"- It should have reasonable runtime performance"
+		"- There should be no dependencies required"
+		"- It should be easy to integrate"
+		"- It should not require a lot memory"
+		"- It should allow me to control the memory allocations"
+		"- It should be open source without limitations"
+	};
+
+	static BlockDefinition Blocks[] = {
+		MakeTextDef(
+			V2f(0.0f, 0.0f),V2f(1.0f, 1.0f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+			"So i wrote my own, with the goals of:\n"
+			"\n"
+			"- Very fast compile times and good performance\n"
+			"- Good runtime performance\n"
+			"- No dependencies required\n"
+			"- Easy to integrate\n"
+			"- Uses a small memory footage\n"
+			"- Allows to control the allocated memory\n"
+			"- Open-Source",
+			HorizontalAlignment::Left
+		),
+	};
+
+	static SoundDefinition Sounds[] = {
+		MakeSoundDef(SoundResources::Goals, 0.5),
+	};
+
+	static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(70), V3f(1, 0.1f, 0.0f));
+
+	static const SlideDefinition Slide = MakeSlideDef("Goals", Blocks, Sounds, GetBackground(), Rot, 46.0);
+};
+
+namespace WhyFPL {
+	static const char* Talk = {
+		"Why do you want to use FPL?"
+
+		"- Is is written in pure C99 for simplicity and best portability"
+
+		"- It compiles blazingly fast on all modern C99/C++ compilers"
+
+		"- It requires bare minimum compile and linking requirements"
+		"- It does not require any build systems"
+
+		"- It is lightweight, has clean API and is easy to use"
+
+		"- Everything is contained in one C-Header file (single-header-file)"
+
+		"- It allows to control the memory allocations and handles memory very gracefully\n"
+
+		"- It is 100% C++ compatible\n"
+
+		"- It can be integrated however you like"
+
+		"- It uses runtime linking by default\n"
+
+		"- It is MIT-Licensed"
+	};
+
+	static BlockDefinition Blocks[] = {
+		MakeImageDef(
+			V2f(0.0f, 0.05f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+			&ImageResources::Card_SingleHeaderFile, V2f(1.0f, 1.0f), true),
+			
+		MakeImageDef(
+			V2f(0.25f, 0.05f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+			&ImageResources::Card_C99, V2f(1.0f, 1.0f), true),
+
+		MakeImageDef(
+			V2f(0.5f, 0.05f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+			&ImageResources::Card_Fast, V2f(1.0f, 1.0f), true),
+
+		MakeImageDef(
+			V2f(0.75f, 0.05f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+			&ImageResources::Card_NoDeps, V2f(1.0f, 1.0f), true),
+
+		MakeImageDef(
+			V2f(0.0f, 0.375f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+			&ImageResources::Card_EasyToUse, V2f(1.0f, 1.0f), true),
+
+		MakeImageDef(
+			V2f(0.25f, 0.375f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+			&ImageResources::Card_Lightweight, V2f(1.0f, 1.0f), true),
+
+		MakeImageDef(
+			V2f(0.5f, 0.375f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+			&ImageResources::Card_Memory, V2f(1.0f, 1.0f), true),
+
+		MakeImageDef(
+			V2f(0.75f, 0.375f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+			&ImageResources::Card_Cpp_Compatible, V2f(1.0f, 1.0f), true),
+
+		MakeImageDef(
+			V2f(0.0f, 0.7f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+			&ImageResources::Card_CleanApi, V2f(1.0f, 1.0f), true),
+
+		MakeImageDef(
+			V2f(0.25f, 0.7f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+			&ImageResources::Card_FullSource, V2f(1.0f, 1.0f), true),
+
+		MakeImageDef(
+			V2f(0.5f, 0.7f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+			&ImageResources::Card_RuntimeLinking, V2f(1.0f, 1.0f), true),
+
+		MakeImageDef(
+			V2f(0.75f, 0.7f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+			&ImageResources::Card_OpenSource, V2f(1.0f, 1.0f), true),
+	};
+
+	static SoundDefinition Sounds[] = {
+		MakeSoundDef(SoundResources::Why, 1.0),
+	};
+
+	static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(-60), V3f(0.0f, 0.0f, 1.0f));
+
+	static const SlideDefinition Slide = MakeSlideDef("Why FPL", Blocks, Sounds, GetBackground(), Rot, 80.0f);
+};

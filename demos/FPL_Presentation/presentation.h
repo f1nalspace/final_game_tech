@@ -80,8 +80,9 @@ struct TextBlockDefinition {
 };
 
 struct ImageBlockDefinition {
-	const ImageResource *imageResource;
+	Vec4f tintColor;
 	Vec2f size;
+	const ImageResource *imageResource;
 	bool keepAspect;
 };
 
@@ -121,7 +122,7 @@ static BlockDefinition MakeTextDef(const Vec2f& pos, const Vec2f& size, BlockAli
 	return(result);
 }
 
-static BlockDefinition MakeImageDef(const Vec2f& pos, const Vec2f& size, BlockAlignment contentAlignment, const ImageResource *imageResource, const Vec2f& imageSize, const bool keepAspect) {
+static BlockDefinition MakeImageDef(const Vec2f& pos, const Vec2f& size, BlockAlignment contentAlignment, const ImageResource *imageResource, const Vec2f& imageSize, const bool keepAspect, const Vec4f &tintColor = V4f(1, 1, 1, 1)) {
 	BlockDefinition result = {};
 	result.pos = pos;
 	result.size = size;
@@ -130,10 +131,11 @@ static BlockDefinition MakeImageDef(const Vec2f& pos, const Vec2f& size, BlockAl
 	result.image.imageResource = imageResource;
 	result.image.size = imageSize;
 	result.image.keepAspect = keepAspect;
+	result.image.tintColor = tintColor;
 	return(result);
 }
 
-constexpr size_t MaxBlockCount = 16;
+constexpr size_t MaxBlockCount = 32;
 constexpr size_t MaxAudioSoundCount = 4;
 
 struct SlideDefinition {

@@ -1207,6 +1207,7 @@ struct Rect {
 
 struct ImageStyle {
 	BackgroundStyle background;
+	Vec4f tint;
 };
 
 struct Image {
@@ -1322,12 +1323,13 @@ struct Slide {
 		return(result);
 	}
 
-	Image *AddImage(const Vec2f &pos, const Vec2f &size, const char *name) {
+	Image *AddImage(const Vec2f &pos, const Vec2f &size, const char *name, const Vec4f &tint = V4f(1,1,1,1)) {
 		Element *element = AddElement(ElementType::Image);
 		Image *result = &element->image;
 		result->pos = pos;
 		result->size = size;
 		result->name = strings->CopyString(name);
+		result->style.tint = tint;
 		return(result);
 	}
 
@@ -1631,8 +1633,8 @@ static const char *ResolveText(const SlideVariables &vars, const char *source, c
 							int mins = (int)(vars.currentTime / 60.0) % 60;
 							int secs = (int)vars.currentTime % 60;
 							int msecs = (int)(vars.currentTime * 1000) % 1000;
-							char buffer[20];
-							fplStringFormat(buffer, fplArrayCount(buffer), "%02d:%02d:%02d.%03d", hours, mins, secs, msecs);
+							char buffer[32];
+							fplStringFormat(buffer, fplArrayCount(buffer), "%02d:%02d:%02d.%03d (%.3f)", hours, mins, secs, msecs, vars.currentTime);
 							fplStringAppend(buffer, remainingStart, remainingBufLen);
 							size_t addedCount = fplGetStringLength(buffer);
 							bufIndex += addedCount;
@@ -1833,7 +1835,7 @@ static void RenderImage(const LoadedImage &renderImage, const Image &image) {
 	RenderRectangle(boxPos, size, style.background, {});
 
 	// Foreground
-	RenderTextureQuad(renderImage.textureId, imagePos, size, V4f(1, 1, 1, 1));
+	RenderTextureQuad(renderImage.textureId, imagePos, size, image.style.tint);
 
 #if DRAW_IMAGE_BOUNDS
 	// Draw bounds
@@ -2392,8 +2394,8 @@ static void AddTextBlock(Renderer &renderer, Slide &slide, const Vec2f &offset, 
 	}
 }
 
-static void AddImageBlock(Renderer &renderer, Slide &slide, const Vec2f &offset, const Vec2f &size, const char *name) {
-	slide.AddImage(offset, size, name);
+static void AddImageBlock(Renderer &renderer, Slide &slide, const Vec2f &offset, const Vec2f &size, const char *name, const Vec4f &tint) {
+	slide.AddImage(offset, size, name, tint);
 }
 
 struct Letterbox {
@@ -2543,7 +2545,7 @@ static void AddSlideFromDefinition(Renderer &renderer, SoundManager &soundMng, P
 					slide->AddStrokedRect(imagePos, imageSize, V4f(1, 1, 0, 1), 1.0f);
 #endif
 
-					AddImageBlock(renderer, *slide, imagePos, imageSize, imageBlock.imageResource->name);
+					AddImageBlock(renderer, *slide, imagePos, imageSize, imageBlock.imageResource->name, imageBlock.tintColor);
 				}
 			} break;
 

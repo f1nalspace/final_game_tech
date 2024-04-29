@@ -18,8 +18,7 @@ namespace SoundResources {
 	static const SoundResource WhoAmi1 = SoundResource::CreateFromFile("fpl_whoami1.mp3");
 	static const SoundResource What1 = SoundResource::CreateFromFile("fpl_what1.mp3");
 	static const SoundResource What2 = SoundResource::CreateFromFile("fpl_what2.mp3");
-	static const SoundResource Motivation1 = SoundResource::CreateFromFile("fpl_motivation1.mp3");
-	static const SoundResource Motivation2 = SoundResource::CreateFromFile("fpl_motivation2.mp3");
+	static const SoundResource Motivation = SoundResource::CreateFromFile("fpl_motivation.mp3");
 
 	static const SoundResource All[] = {
 		Intro1,
@@ -27,50 +26,100 @@ namespace SoundResources {
 		WhoAmi1,
 		What1,
 		What2,
-		Motivation1,
-		Motivation2,
+		Motivation,
 	};
 };
 
 namespace ImageResources {
 	static ImageResource FPLLogo128x128 = ImageResource::CreateFromMemory(ptr_fplLogo128x128ImageData, "FPL Logo 128x128", sizeOf_fplLogo128x128ImageData);
 	static ImageResource FPLLogo512x512 = ImageResource::CreateFromMemory(ptr_fplLogo512x512ImageData, "FPL Logo 512x512", sizeOf_fplLogo512x512ImageData);
-	static ImageResource FPLMinimumSource = ImageResource::CreateFromMemory(ptr_minimumSourceImageData, "FPL Minimum Source", sizeOf_minimumSourceImageData);
 
-	static ImageResource Card_SingleHeaderFile = ImageResource::CreateFromFile("card_single_header_file.png");
-	static ImageResource Card_C99 = ImageResource::CreateFromFile("card_c99.png");
-	static ImageResource Card_Fast = ImageResource::CreateFromFile("card_fast.png");
-	static ImageResource Card_NoDeps = ImageResource::CreateFromFile("card_no_deps.png");
+	static ImageResource Card_CPU = ImageResource::CreateFromFile("card_cpu.png");
+	static ImageResource Card_C_Language = ImageResource::CreateFromFile("card_c_language.png");
+	static ImageResource Card_Audio = ImageResource::CreateFromFile("card_audio.png");
+	static ImageResource Card_Video = ImageResource::CreateFromFile("card_video.png");
+	static ImageResource Card_WindowManagement = ImageResource::CreateFromFile("card_window_management.png");
+	static ImageResource Card_Performance = ImageResource::CreateFromFile("card_performance.png");
+	static ImageResource Card_NoDependencies = ImageResource::CreateFromFile("card_no_deps.png");
+	static ImageResource Card_Mouse = ImageResource::CreateFromFile("card_mouse.png");
+	static ImageResource Card_Keyboard = ImageResource::CreateFromFile("card_keyboard.png");
+	static ImageResource Card_Gamepad = ImageResource::CreateFromFile("card_gamepad.png");
 
-	static ImageResource Card_EasyToUse = ImageResource::CreateFromFile("card_easytouse.png");
-	static ImageResource Card_Lightweight = ImageResource::CreateFromFile("card_lightweight.png");
-	static ImageResource Card_Memory = ImageResource::CreateFromFile("card_memory.png");
-	static ImageResource Card_Cpp_Compatible = ImageResource::CreateFromFile("card_cpp_compatible.png");
+	static ImageResource MagicHat = ImageResource::CreateFromFile("magic_hat.png");
+	static ImageResource Arigatou = ImageResource::CreateFromFile("arigatou.png");
+	static ImageResource MinimumSource = ImageResource::CreateFromFile("minimum_source.png");
 
-	static ImageResource Card_CleanApi = ImageResource::CreateFromFile("card_clean_api.png");
-	static ImageResource Card_FullSource = ImageResource::CreateFromFile("card_full_source.png");
-	static ImageResource Card_RuntimeLinking = ImageResource::CreateFromFile("card_runtime_linking.png");
-	static ImageResource Card_OpenSource = ImageResource::CreateFromFile("card_open_source.png");
+	static ImageResource DataVisualization = ImageResource::CreateFromFile("data-visualization.png");
+	static ImageResource GameDev = ImageResource::CreateFromFile("game_dev.png");
+	static ImageResource MultimediaDev = ImageResource::CreateFromFile("multimedia_dev.png");
+	static ImageResource SimulationDev = ImageResource::CreateFromFile("sim_dev.png");
+
+	static ImageResource Code = ImageResource::CreateFromFile("code.png");
+
+	static ImageResource Vendor_FreeBSD = ImageResource::CreateFromFile("vendor-freebsd.png");
+	static ImageResource Vendor_Linux = ImageResource::CreateFromFile("vendor-linux.png");
+	static ImageResource Vendor_Windows = ImageResource::CreateFromFile("vendor-windows.png");
+	static ImageResource Vendor_Raspberry = ImageResource::CreateFromFile("vendor-raspberry_pi.png");
+	static ImageResource Vendor_OpenSource = ImageResource::CreateFromFile("vendor-open_source.png");
+	static ImageResource Vendor_OpenGL = ImageResource::CreateFromFile("vendor-opengl.png");
+	static ImageResource Vendor_Vulkan = ImageResource::CreateFromFile("vendor-vulkan.png");
+	static ImageResource Vendor_DirectX = ImageResource::CreateFromFile("vendor-directx.png");
+	static ImageResource Vendor_Alsa = ImageResource::CreateFromFile("vendor-alsa.png");
+	static ImageResource Vendor_XLib = ImageResource::CreateFromFile("vendor-xlib.png");
+
+	static ImageResource Demo_ImGUI = ImageResource::CreateFromFile("demo_imgui.png");
+	static ImageResource Demo_FFMPEG = ImageResource::CreateFromFile("demo_ffmpeg.png");
+	static ImageResource Demo_NBodySimulation = ImageResource::CreateFromFile("demo_nbodysim.png");
+	static ImageResource Demo_Audio = ImageResource::CreateFromFile("demo_audio.png");
+	static ImageResource Demo_Input = ImageResource::CreateFromFile("demo_input.png");
+	static ImageResource Demo_Crackout = ImageResource::CreateFromFile("demo_crackout.png");
+	static ImageResource Demo_OpenGL = ImageResource::CreateFromFile("demo_opengl.png");
+	static ImageResource Demo_Raytracer = ImageResource::CreateFromFile("demo_raytracer.png");
 
 	static const ImageResource All[] = {
 		FPLLogo128x128,
 		FPLLogo512x512,
-		FPLMinimumSource,
+		
+		Card_CPU,
+		Card_C_Language,
+		Card_Audio,
+		Card_Video,
+		Card_WindowManagement,
+		Card_Performance,
+		Card_NoDependencies,
+		Card_Mouse,
+		Card_Keyboard,
+		Card_Gamepad,
 
-		Card_SingleHeaderFile,
-		Card_C99,
-		Card_Fast,
-		Card_NoDeps,
+		Vendor_FreeBSD,
+		Vendor_Linux,
+		Vendor_Windows,
+		Vendor_Raspberry,
+		Vendor_OpenSource,
+		Vendor_OpenGL,
+		Vendor_Vulkan,
+		Vendor_DirectX,
+		Vendor_Alsa,
+		Vendor_XLib,
 
-		Card_EasyToUse,
-		Card_Lightweight,
-		Card_Memory,
-		Card_Cpp_Compatible,
+		MagicHat,
+		Arigatou,
+		MinimumSource,
 
-		Card_CleanApi,
-		Card_FullSource,
-		Card_OpenSource,
-		Card_RuntimeLinking,
+		DataVisualization,
+		GameDev,
+		MultimediaDev,
+		SimulationDev,
+		Code,
+
+		Demo_ImGUI,
+		Demo_FFMPEG,
+		Demo_NBodySimulation,
+		Demo_Audio,
+		Demo_Input,
+		Demo_Crackout,
+		Demo_OpenGL,
+		Demo_Raytracer,
 	};
 }
 
@@ -98,6 +147,11 @@ namespace FPLPresentationData {
 	static BackgroundStyle Background12 = MakeBackground(RGBAToLinearHex24(0x000000, 255), RGBAToLinearHex24(0xB7006A, 100));
 	static BackgroundStyle Background13 = MakeBackground(RGBAToLinearHex24(0x000000, 255), RGBAToLinearHex24(0x59227A, 100));
 
+	// Purple to Brown
+	static BackgroundStyle Background14 = MakeBackground(RGBAToLinearHex24(0x000000, 255), RGBAToLinearHex24(0x237b75, 100));
+	static BackgroundStyle Background15 = MakeBackground(RGBAToLinearHex24(0x000000, 255), RGBAToLinearHex24(0x6d7b23, 100));
+	static BackgroundStyle Background16 = MakeBackground(RGBAToLinearHex24(0x000000, 255), RGBAToLinearHex24(0x7b5223, 100));
+
 	static BackgroundStyle Backgrounds[] = {
 		Background1,
 		Background2,
@@ -112,6 +166,9 @@ namespace FPLPresentationData {
 		Background11,
 		Background12,
 		Background13,
+		Background14,
+		Background15,
+		Background16,
 	};
 
 	static int BackgroundIndex = 0;
@@ -123,7 +180,7 @@ namespace FPLPresentationData {
 	}
 
 	namespace Intro {
-		static const char* Talk = {
+		static const char *Talk = {
 			"Hi! I am Torsten"
 			"Today, i would like to introduce you to a project of mine that i have been working on for several years"
 			"It is called 'Final Platform Layer' or short FPL and is a platform abstraction library for C and C++"
@@ -149,13 +206,30 @@ namespace FPLPresentationData {
 	};
 
 	namespace WhoAmI {
-		static const char* Talk = {
+		static const char *Talk = {
 			"I am Torsten Spaete"
 			"A professional software engineer with more than 25 years of programming experience"
 			"My main focus is data-visualization, software-architecture, multimedia and game development"
 		};
 
 		static BlockDefinition Blocks[] = {
+			MakeImageDef(
+				V2f(0.0f, 0.0f), V2f(0.45f, 0.45f), MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Top),
+				&ImageResources::DataVisualization, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.5f)
+			),
+			MakeImageDef(
+				V2f(0.55f, 0.0f), V2f(0.45f, 0.45f), MakeAlign(HorizontalAlignment::Right, VerticalAlignment::Top),
+				&ImageResources::MultimediaDev, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.5f)
+			),
+			MakeImageDef(
+				V2f(0.0f, 0.50f), V2f(0.45f, 0.45f), MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Bottom),
+				&ImageResources::SimulationDev, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.5f)
+			),
+			MakeImageDef(
+				V2f(0.55f, 0.50f), V2f(0.45f, 0.45f), MakeAlign(HorizontalAlignment::Right, VerticalAlignment::Bottom),
+				&ImageResources::GameDev, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.5f)
+			),
+
 			MakeTextDef(
 				V2f(0.0f, 0.0f), V2f(1.0f, 1.0f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
 				"I am Torsten Spaete\n"
@@ -171,11 +245,11 @@ namespace FPLPresentationData {
 
 		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(15), V3f(1, 1, 1));
 
-		static const SlideDefinition Slide = MakeSlideDef("Who am I", Blocks, Sounds, GetBackground(), Rot, 20.5);		
+		static const SlideDefinition Slide = MakeSlideDef("Who am I", Blocks, Sounds, GetBackground(), Rot, 20.5);
 	};
 
 	namespace WhatIsFPL {
-		static const char* Talk = {
+		static const char *Talk = {
 			"Final-Platform-Layer (or short 'FPL') is a lightweight platform-abstraction library written in C99,"
 			"that gives you access to low-level systems, hardware devices and operating system functions,"
 			"in a platform independent and easy-to-use API."
@@ -195,6 +269,11 @@ namespace FPLPresentationData {
 		};
 
 		static BlockDefinition Blocks[] = {
+			MakeImageDef(
+				V2f(0.0f, -0.1f), V2f(1.0f, 1.0f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				&ImageResources::Code, V2f(1.0f, 1.2f), false, V4f(1.0f, 1.0f, 1.0f, 0.05f)
+			),
+
 			MakeTextDef(
 				V2f(0.0f, 0.0f), V2f(1.0f, 1.0f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
 				"Final-Platform-Layer (or short 'FPL')\n"
@@ -208,29 +287,21 @@ namespace FPLPresentationData {
 		};
 
 		static SoundDefinition Sounds[] = {
-			MakeSoundDef(SoundResources::What1, 2.0),
-			MakeSoundDef(SoundResources::What2, 20.0),
+			MakeSoundDef(SoundResources::What1, 1.0),
+			MakeSoundDef(SoundResources::What2, 17.0),
 		};
 
 		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(-45), V3f(0, 1, 1));
 
-		static const SlideDefinition Slide = MakeSlideDef("What is FPL", Blocks, Sounds, GetBackground(), Rot, 19.0);
+		static const SlideDefinition Slide = MakeSlideDef("What is FPL", Blocks, Sounds, GetBackground(), Rot, 32.0);
 	};
 
 	namespace Motivation {
-		static const char* Talk = {
+		static const char *Talk = {
 			"C/C++ has very limited access to the underlying platform."
 			"Even in modern C++, you still don't have direct access to a lot of systems."
-			"To access low-level systems, such as audio or video, you either need to use third-party libraries or write platform-specific codes for Win32, Linux, Mac, etc. directly."
-			""
-			"Existing solutions was not working for me, due to the several reasons:"
-			"- They was not compatible with either my compiler/linker/runtime configuration"
-			"- They was hard to integrate into my own applications"
-			"- They had no support for controlling the memory allocations"
-			"- They had very long compile times"
-			"- They required build-systems or other dependencies"
-			"- They had no support for including the source directly"
-			"- There was no suitable license"
+			"To access low-level systems, such as audio or video or windowing systems, you either need to use third-party libraries"
+			"or write platform-specific codes directly for every platform you want to support."
 		};
 
 		static BlockDefinition Blocks[] = {
@@ -238,180 +309,137 @@ namespace FPLPresentationData {
 				V2f(0.0f, 0.0f),V2f(1.0f, 1.0f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
 				"C/C++ has very limited access to the underlying platform,\n"
 				"so you have either use third-party libraries or\n"
-				"write platform specific codes directly.\n"
-				"\n"
-				"Existing solutions was not working for me due to several reasons.\n",
+				"write platform specific codes directly.\n",
 				HorizontalAlignment::Left
 			),
 		};
 
 		static SoundDefinition Sounds[] = {
-			MakeSoundDef(SoundResources::Motivation1, 2.0),
-			MakeSoundDef(SoundResources::Motivation2, 31.0),
+			MakeSoundDef(SoundResources::Motivation, 2.0),
 		};
 
 		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(70), V3f(1, 0.1f, 0.0f));
 
-		static const SlideDefinition Slide = MakeSlideDef("Motivation", Blocks, Sounds, GetBackground(), Rot);
+		static const SlideDefinition Slide = MakeSlideDef("Motivation", Blocks, Sounds, GetBackground(), Rot, 31.0);
 	};
 
-#if 0
-	namespace Goals {
-		static const char* Talk = {
-			"That builds up the following goals for FPL:"
-			"- It should compile very fast, even in slow environments or with slow hardware"
-			"- It should be 100% compatible with C and C++"
-			"- It should not require any third-party dependencies"
-			"- It should use bare minimum linking and compile requirements"
-			"- It should use a small memory footprint and give the user control over any memory allocations"
-			"- It should support any way of integration, runtime linked, static linked and can even be integrated with full-source"
-			"- It should not require the C-Runtime library"
-			"- It should have support for disabling certain features"
-			"- It should have a simple and easy-to-use API"
-			"- It should start with good default settings, but can be changed by the user"
-			"- And lastly, it should be open source"
-		};
-
-		static BlockDefinition Blocks[] = {
-			MakeTextDef(
-				V2f(0.0, 0.0),V2f(1.0, 1.0),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
-				"- Fast compile times, even in slow environments\n"
-				"- Based on C with 100%% C++ compatibility\n"
-				"- Bare minimum compile and linking requirements\n"
-				"- Small memory footprint\n"
-				"- Can be integrated in any way, including source-integration\n"
-				"- C-Runtime library should not be required\n"
-				"- Features can be disabled, if not needed\n"
-				"- Simple and easy to understand API\n"
-				"- Configurable with good defaults\n"
-				"- Public open source\n",
-				HorizontalAlignment::Left, FeaturesFontSize * 1.1f
-			),
-		};
-
-		static SoundDefinition Sounds[] = {
-			MakeSoundDef(SoundResources::Goals1, 2.0),
-		};
-
-		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(-30), V3f(1, 0, 1.0));
-
-		static const SlideDefinition Slide = MakeSlideDef("Goals of FPL", Blocks, Sounds, GetBackground(), Rot);
-	};
-#endif
-
-	namespace WhyFPL {
-		static const char* Talk = {
-			"Why use FPL? What are the advantages?"
+	namespace Features {
+		static const char *Talk = {
+			"- The core features of FPL are:"
 			""
-			"- It compiles very fast, even on very slow hardware"
-			"- It requires bare minimum compile and linking requirements"
-			"- It does not require any build systems"
-			"- It can be integrated however you like: static linked, runtime linked or with full-source"
-			"- It is lightweight and focus on low-level abstractions"
-			"- It allows to control the memory allocations and handles memory very gracefully\n"
-			"- It supports multiple Platform/Window/Input/Video/Audio backends"
-			"- It does not require the C-Runtime library"
-			"- It is MIT-Licensed"
+			"- Is is written in pure C99 for simplicity and best portability"
+			"- No build systems or thirdparty libraries required, it works out-of-the box"
+			"- Extraordinary fast compile times, due to the single-header-file style."
+			"- It gives you control of the allocated memory and handles memory very gracefully."
+			"- Support for many compilers and platforms, including a lot of utilities and macros to work with them."
+			"- Creating and managing a window that initialize a graphics API such as OpenGL or Vulkan or even direct drawing of pixels."
+			"- Handle and process keyboard, mouse, gamepad devices through events or polling."
+			"- Playing back audio samples asynchronously."
+			"- Let the user decide how to integrate it, not force it in any way."
+			"- So it supports dynamic and static linking and full-source inclusion with private and external integration."
+			"- It also provides primitives for working with multithreaded code efficiently."
+			"- In addition it contains functions to work with consoles, files, directories."
 		};
 
 		static BlockDefinition Blocks[] = {
-			MakeImageDef(
-				V2f(0.0f, 0.05f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				&ImageResources::Card_SingleHeaderFile, V2f(1.0f, 1.0f), true),
-				
-			MakeImageDef(
-				V2f(0.25f, 0.05f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				&ImageResources::Card_C99, V2f(1.0f, 1.0f), true),
-
-			MakeImageDef(
-				V2f(0.5f, 0.05f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				&ImageResources::Card_Fast, V2f(1.0f, 1.0f), true),
-
-			MakeImageDef(
-				V2f(0.75f, 0.05f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				&ImageResources::Card_NoDeps, V2f(1.0f, 1.0f), true),
-
-			MakeImageDef(
-				V2f(0.0f, 0.375f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				&ImageResources::Card_EasyToUse, V2f(1.0f, 1.0f), true),
-
-			MakeImageDef(
-				V2f(0.25f, 0.375f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				&ImageResources::Card_Lightweight, V2f(1.0f, 1.0f), true),
-
-			MakeImageDef(
-				V2f(0.5f, 0.375f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				&ImageResources::Card_Memory, V2f(1.0f, 1.0f), true),
-
-			MakeImageDef(
-				V2f(0.75f, 0.375f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				&ImageResources::Card_Cpp_Compatible, V2f(1.0f, 1.0f), true),
-
-			MakeImageDef(
-				V2f(0.0f, 0.7f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				&ImageResources::Card_CleanApi, V2f(1.0f, 1.0f), true),
-
-			MakeImageDef(
-				V2f(0.25f, 0.7f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				&ImageResources::Card_FullSource, V2f(1.0f, 1.0f), true),
-
-			MakeImageDef(
-				V2f(0.5f, 0.7f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				&ImageResources::Card_RuntimeLinking, V2f(1.0f, 1.0f), true),
-
-			MakeImageDef(
-				V2f(0.75f, 0.7f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				&ImageResources::Card_OpenSource, V2f(1.0f, 1.0f), true),
-
-#if 0
-			MakeTextDef(
-				V2f(0.0f, 0.05f),V2f(1.0f, 1.0f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
-				"- Everything is contained in one C-Header file (single-header-file)\n"
-				"- You get access to low-level systems in a nice and clean API\n"
-				"- Is is written in pure C99 for simplicity and best portability\n"
-				"- It compiles blazingly fast on all modern C99/C++ compilers\n"
-				"- It uses bare minimum compile and linking requirements\n"
-				"- It does not require any third party libraries or build systems\n"
-				"- It does not require the C-RunTime library\n"
-				"- It uses runtime linking by default\n"
-				"- It supports static and dynamic linking\n"
-				"- It supports full-source inclusion as well\n"
-				"- It can be integrated in any way\n"
-				"- It is Open-Source and can be used in commercial software as well\n",
-				HorizontalAlignment::Left, FeaturesFontSize * 1.1f
-			),
-#endif
-		};
-
-		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(-60), V3f(0.0f, 0.0f, 1.0f));
-
-		static const SlideDefinition Slide = MakeSlideDef("Why FPL", Blocks, GetBackground(), Rot);
-	};
-
-	namespace FeaturesOfFPL {
-		static const char* Talk = {
-			""
-		};
-
-		static BlockDefinition Blocks[] = {
-			MakeTextDef(
+			/*MakeTextDef(
 				V2f(0,0),V2f(1.0f,1.0f),MakeAlign(HorizontalAlignment::Center),
-				"\n"
-				"- Supports dynamic linking, static linking and full source inclusion\n"
-				"- Platform detection (x86/x64/Arm, Win32/Linux/Unix, etc.)\n"
-				"- Compiler detection (MSVC/GCC/Clang/Intel)\n"
-				"- Macros (debug break, assertions, CPU features, memory etc.)\n"
-				"- Window creation and handling (Win32/X11)\n"
-				"- Event and input polling (keyboard/mouse/gamepad)\n"
-				"- Video initialization and output (software, OpenGL, Vulkan, etc.)\n"
-				"- Asynchronous audio playback (DirectSound, ALSA, etc.)\n"
-				"- IO (console, paths, files, directories, etc.)\n"
-				"- Memory allocation\n"
-				"- Dynamic library loading (.dll/.so)\n"
-				"- Multi threading (atomics, threads, mutexes, semaphores, conditionals, etc.)\n"
-				"- Retrieving hardware information\n"
-				"- and many more\n",
+				"- Is is written in pure C99 for simplicity and best portability.\n"
+				"- No build systems or thirdparty libraries required, it works out-of-the box.\n"
+				"- Extraordinary fast compile times.\n"
+				"- Control of the memory allocations and handles memory very gracefully.\n"
+				"- Support for many compilers and platforms.\n"
+				"- Creating and managing a window with support for many video backends.\n"
+				"- Handling and processing Keyboard, Mouse, Gamepad devices through events or polling.\n"
+				"- Asynchronous audio playback implemented for many audio backends.\n"
+				"- Let the user decide how to integrate it.\n"
+				"- Supports dynamic linking, static linking and full-source inclusion.\n"
+				"- Provides several multi threading primitives.\n"
+				"- Support for working with IO (console, files, directories, etc.).\n",
 				HorizontalAlignment::Left, FeaturesFontSize
+			),*/
+
+			MakeImageDef(
+				V2f(0.0f, 0.1f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				&ImageResources::Card_CPU, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+			),
+			MakeImageDef(
+				V2f(0.2f, 0.1f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				&ImageResources::Card_C_Language, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+			),
+			MakeImageDef(
+				V2f(0.4f, 0.1f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				&ImageResources::Card_Performance, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+			),
+			MakeImageDef(
+				V2f(0.6f, 0.1f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				&ImageResources::Card_NoDependencies, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+			),
+			MakeImageDef(
+				V2f(0.8f, 0.1f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				&ImageResources::Card_WindowManagement, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+			),
+
+			MakeImageDef(
+				V2f(0.0f, 0.5f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				&ImageResources::Card_Video, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+			),
+			MakeImageDef(
+				V2f(0.2f, 0.5f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				&ImageResources::Card_Audio, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+			),
+			MakeImageDef(
+				V2f(0.4f, 0.5f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				&ImageResources::Card_Keyboard, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+			),
+			MakeImageDef(
+				V2f(0.6f, 0.5f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				&ImageResources::Card_Mouse, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+			),
+			MakeImageDef(
+				V2f(0.8f, 0.5f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				&ImageResources::Card_Gamepad, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+			),
+
+			MakeImageDef(
+				V2f(0.0f, 0.85f), V2f(0.1f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
+				&ImageResources::Vendor_Windows, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.5f)
+			),
+			MakeImageDef(
+				V2f(0.1f, 0.85f), V2f(0.1f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
+				&ImageResources::Vendor_Linux, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.5f)
+			),
+			MakeImageDef(
+				V2f(0.2f, 0.85f), V2f(0.1f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
+				&ImageResources::Vendor_Raspberry, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.5f)
+			),
+			MakeImageDef(
+				V2f(0.3f, 0.85f), V2f(0.1f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
+				&ImageResources::Vendor_FreeBSD, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.5f)
+			),
+			MakeImageDef(
+				V2f(0.4f, 0.85f), V2f(0.1f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
+				&ImageResources::Vendor_OpenGL, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.5f)
+			),
+			MakeImageDef(
+				V2f(0.5f, 0.85f), V2f(0.1f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
+				&ImageResources::Vendor_Vulkan, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.5f)
+			),
+			MakeImageDef(
+				V2f(0.6f, 0.85f), V2f(0.1f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
+				&ImageResources::Vendor_DirectX, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.5f)
+			),
+			MakeImageDef(
+				V2f(0.7f, 0.85f), V2f(0.1f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
+				&ImageResources::Vendor_Alsa, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.5f)
+			),
+			MakeImageDef(
+				V2f(0.8f, 0.85f), V2f(0.1f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
+				&ImageResources::Vendor_XLib, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.5f)
+			),
+			MakeImageDef(
+				V2f(0.9f, 0.85f), V2f(0.1f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
+				&ImageResources::Vendor_OpenSource, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.5f)
 			),
 		};
 
@@ -421,16 +449,22 @@ namespace FPLPresentationData {
 	};
 
 	namespace Magic {
-		static const char* Talk = {
+		static const char *Talk = {
+			"How does FPL work?"
 			""
+			"It works with Magic!"
 		};
 
 		static BlockDefinition Blocks[] = {
+			MakeImageDef(
+				V2f(-0.15f, 0.0f), V2f(1.0f, 1.0f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				&ImageResources::MagicHat, V2f(0.75f, 0.75f), true),
+
 			MakeTextDef(
 				V2f(0.0f,0.0f),V2f(1.0f,1.0f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
 				"Magic!",
 				HorizontalAlignment::Left, FeaturesFontSize * 4
-			),			
+			),
 		};
 
 		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(-15), V3f(0.7f, 0.6f, 0.3f));
@@ -439,8 +473,13 @@ namespace FPLPresentationData {
 	};
 
 	namespace HowItWorks {
-		static const char* Talk = {
+		static const char *Talk = {
+			"Unfortunatly it does not with magic."
 			""
+			"It is a single-header-file-library, so it contains the full API and source for every platform"
+			"It makes heavy use of the pre-compiler to detect compiler/platform/hardware/driver setups"
+			"It prevents code-duplication by using sub-platforms"
+			"It uses runtime linking by default, so everything is automatically loaded on demand"
 		};
 
 		static BlockDefinition Blocks[] = {
@@ -463,32 +502,14 @@ namespace FPLPresentationData {
 	};
 
 	namespace HowToUse {
-		static const char* Talk = {
+		static const char *Talk = {
 			""
 		};
 
 		static BlockDefinition Blocks[] = {
-			MakeTextDef(
-				V2f(0.0f, 0.1f),V2f(1.0f, 1.0f), MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Top),
-				"Using FPL is straight forward\n"
-				"\n"
-				"- Copy the 'final_platform_layer.h' file into your project\n"
-				"\n"
-				"- In your main translation unit:\n"
-				"- #define FPL_IMPLEMENTATION\n"
-				"- #include <final_platform_layer.h>\n"
-				"\n"
-				"- In your entry point (main):\n"
-				"- Create default or custom settings\n"
-				"- Initialize FPL\n"
-				"- Use any code you want\n"
-				"- Release FPL",
-				HorizontalAlignment::Left, CodeFontSize, V4f(0.0f, 0.8f, 0.2f, 1.0f)
-			),
-
 			MakeImageDef(
-				V2f(-0.05f, 0.1f), V2f(1.0f, 1.0f), MakeAlign(HorizontalAlignment::Right, VerticalAlignment::Top),
-				&ImageResources::FPLMinimumSource, V2f(0.5f, 1.0f), true
+				V2f(0.075f, 0.0f), V2f(0.85f, 1.0f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				&ImageResources::MinimumSource, V2f(1.0f, 1.0f), false, V4f(1.0f, 1.0f, 1.0f, 0.85f)
 			),
 		};
 
@@ -498,16 +519,50 @@ namespace FPLPresentationData {
 	};
 
 	namespace Demos {
-		static const char* Talk = {
+		static const char *Talk = {
 			""
 		};
 
 		static BlockDefinition Blocks[] = {
+			MakeImageDef(
+				V2f(0.0f, 0.0f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				&ImageResources::Demo_ImGUI, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.65f)
+			),
+			MakeImageDef(
+				V2f(0.25f, 0.0f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				&ImageResources::Demo_FFMPEG, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.65f)
+			),
+			MakeImageDef(
+				V2f(0.5f, 0.0f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				&ImageResources::Demo_Audio, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.65f)
+			),
+			MakeImageDef(
+				V2f(0.75f, 0.0f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				&ImageResources::Demo_Input, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.65f)
+			),
+			MakeImageDef(
+				V2f(0.0f, 0.6f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				&ImageResources::Demo_OpenGL, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.65f)
+			),
+			MakeImageDef(
+				V2f(0.25f, 0.6f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				&ImageResources::Demo_Crackout, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.65f)
+			),
+			MakeImageDef(
+				V2f(0.5f, 0.6f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				&ImageResources::Demo_Raytracer, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.65f)
+			),
+			MakeImageDef(
+				V2f(0.75f, 0.6f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				&ImageResources::Demo_NBodySimulation, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.65f)
+			),
+
 			MakeTextDef(
 				V2f(0.0f, 0.3f),V2f(1.0f, 0.1f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
 				"FPL comes with a variety of demos:",
 				HorizontalAlignment::Center, FeaturesFontSize
 			),
+
 			MakeTextDef(
 				V2f(0.0f, 0.4f),V2f(1.0f, 0.1f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
 				"https://github.com/f1nalspace/final_game_tech/tree/master/demos",
@@ -521,7 +576,7 @@ namespace FPLPresentationData {
 	};
 
 	namespace Links {
-		static const char* Talk = {
+		static const char *Talk = {
 			""
 		};
 
@@ -564,11 +619,16 @@ namespace FPLPresentationData {
 	};
 
 	namespace Thanks {
-		static const char* Talk = {
+		static const char *Talk = {
 			""
 		};
 
 		static BlockDefinition Blocks[] = {
+			MakeImageDef(
+				V2f(0.4f, 0.4f), V2f(0.6f, 0.6f), MakeAlign(HorizontalAlignment::Right, VerticalAlignment::Bottom),
+				&ImageResources::Arigatou, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.65f)
+			),
+
 			MakeTextDef(
 				V2f(),V2f(1,1),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
 				"Thank you for your attention!",
@@ -586,11 +646,7 @@ namespace FPLPresentationData {
 		WhoAmI::Slide,
 		WhatIsFPL::Slide,
 		Motivation::Slide,
-#if 0
-		Goals::Slide,
-#endif
-		WhyFPL::Slide,
-		FeaturesOfFPL::Slide,
+		Features::Slide,
 		Magic::Slide,
 		HowItWorks::Slide,
 		HowToUse::Slide,
