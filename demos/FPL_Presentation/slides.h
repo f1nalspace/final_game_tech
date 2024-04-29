@@ -341,6 +341,7 @@ namespace FPLPresentationData {
 		};
 
 		static BlockDefinition Blocks[] = {
+			// Cards for first row
 			MakeImageDef(
 				V2f(0.0f, 0.1f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
 				&ImageResources::Card_WindowManagement, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
@@ -362,6 +363,29 @@ namespace FPLPresentationData {
 				&ImageResources::Card_Audio, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 
+			// Labels for first row
+			MakeTextDef(
+				V2f(0.0f, 0.3f), V2f(0.2f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				"Window Management", HorizontalAlignment::Left, 20.0f
+			),
+			MakeTextDef(
+				V2f(0.2f, 0.3f), V2f(0.2f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				"Input Handling", HorizontalAlignment::Left, 20.0f
+			),
+			MakeTextDef(
+				V2f(0.4f, 0.3f), V2f(0.2f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				"Gamepad Support", HorizontalAlignment::Left, 20.0f
+			),
+			MakeTextDef(
+				V2f(0.6f, 0.3f), V2f(0.2f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				"Video Initialization", HorizontalAlignment::Left, 20.0f
+			),
+			MakeTextDef(
+				V2f(0.8f, 0.3f), V2f(0.2f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				"Audio Playback", HorizontalAlignment::Left, 20.0f
+			),
+
+			// Cards for second row
 			MakeImageDef(
 				V2f(0.0f, 0.5f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
 				&ImageResources::Card_C_Language, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
@@ -382,6 +406,29 @@ namespace FPLPresentationData {
 				V2f(0.8f, 0.5f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
 				&ImageResources::Card_CPU, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
+
+			// Labels for second row
+			MakeTextDef(
+				V2f(0.0f, 0.7f), V2f(0.2f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				"Written in C99", HorizontalAlignment::Left, 20.0f
+			),
+			MakeTextDef(
+				V2f(0.2f, 0.7f), V2f(0.2f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				"High Performance", HorizontalAlignment::Left, 20.0f
+			),
+			MakeTextDef(
+				V2f(0.4f, 0.7f), V2f(0.2f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				"No Dependencies", HorizontalAlignment::Left, 20.0f
+			),
+			MakeTextDef(
+				V2f(0.6f, 0.7f), V2f(0.2f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				"Small Memory Footprint", HorizontalAlignment::Left, 20.0f
+			),
+			MakeTextDef(
+				V2f(0.8f, 0.7f), V2f(0.2f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				"Platform/Environment Support", HorizontalAlignment::Left, 20.0f
+			),
+
 
 			MakeImageDef(
 				V2f(0.0f, 0.85f), V2f(0.1f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
@@ -423,6 +470,8 @@ namespace FPLPresentationData {
 				V2f(0.9f, 0.85f), V2f(0.1f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
 				&ImageResources::Vendor_OpenSource, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.5f)
 			),
+
+			
 		};
 
 		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(30), V3f(0.0f, 1.0f, 0.1f));
