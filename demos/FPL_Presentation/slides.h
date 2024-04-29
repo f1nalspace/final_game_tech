@@ -35,14 +35,14 @@ namespace ImageResources {
 	static ImageResource FPLLogo512x512 = ImageResource::CreateFromMemory(ptr_fplLogo512x512ImageData, "FPL Logo 512x512", sizeOf_fplLogo512x512ImageData);
 
 	static ImageResource Card_CPU = ImageResource::CreateFromFile("card_cpu.png");
+	static ImageResource Card_Memory = ImageResource::CreateFromFile("card_memory.png");
 	static ImageResource Card_C_Language = ImageResource::CreateFromFile("card_c_language.png");
 	static ImageResource Card_Audio = ImageResource::CreateFromFile("card_audio.png");
 	static ImageResource Card_Video = ImageResource::CreateFromFile("card_video.png");
 	static ImageResource Card_WindowManagement = ImageResource::CreateFromFile("card_window_management.png");
 	static ImageResource Card_Performance = ImageResource::CreateFromFile("card_performance.png");
 	static ImageResource Card_NoDependencies = ImageResource::CreateFromFile("card_no_deps.png");
-	static ImageResource Card_Mouse = ImageResource::CreateFromFile("card_mouse.png");
-	static ImageResource Card_Keyboard = ImageResource::CreateFromFile("card_keyboard.png");
+	static ImageResource Card_KeyboardMouse = ImageResource::CreateFromFile("card_keyboard_mouse.png");
 	static ImageResource Card_Gamepad = ImageResource::CreateFromFile("card_gamepad.png");
 
 	static ImageResource MagicHat = ImageResource::CreateFromFile("magic_hat.png");
@@ -81,14 +81,14 @@ namespace ImageResources {
 		FPLLogo512x512,
 		
 		Card_CPU,
+		Card_Memory,
 		Card_C_Language,
 		Card_Audio,
 		Card_Video,
 		Card_WindowManagement,
 		Card_Performance,
 		Card_NoDependencies,
-		Card_Mouse,
-		Card_Keyboard,
+		Card_KeyboardMouse,
 		Card_Gamepad,
 
 		Vendor_FreeBSD,
@@ -325,80 +325,62 @@ namespace FPLPresentationData {
 
 	namespace Features {
 		static const char *Talk = {
-			"- The core features of FPL are:"
+			"The main usage of FPL is multimedia and game-development, but it can be used to write any kind of software."
 			""
-			"- Is is written in pure C99 for simplicity and best portability"
-			"- No build systems or thirdparty libraries required, it works out-of-the box"
-			"- Extraordinary fast compile times, due to the single-header-file style."
-			"- It gives you control of the allocated memory and handles memory very gracefully."
-			"- Support for many compilers and platforms, including a lot of utilities and macros to work with them."
-			"- Creating and managing a window that initialize a graphics API such as OpenGL or Vulkan or even direct drawing of pixels."
-			"- Handle and process keyboard, mouse, gamepad devices through events or polling."
-			"- Playing back audio samples asynchronously."
-			"- Let the user decide how to integrate it, not force it in any way."
-			"- So it supports dynamic and static linking and full-source inclusion with private and external integration."
-			"- It also provides primitives for working with multithreaded code efficiently."
-			"- In addition it contains functions to work with consoles, files, directories."
+			"- It creates and manages a window, including event handling for keyboard/mouse/gamepad input and many more events"
+			"- It initializes a graphics backend, such as OpenGL, Vulkan or allows to put pixels directly on the screen"
+			"- It can asynchronously play back sound samples for several multiple audio backends"
+
+			"- It is written in C99 for simplicity and best portability"
+			"- It is designed to be fast in compile and runtime"
+			"- It does not require any build-systems or thirdparty libraries"
+			"- It gives you control of memory allocations and handles memory very gracefully"
+			"- It supports many compilers and platforms and provides useful utilities fo work with them"
+			"- It can query important hardware informations, such as CPU features and more"
+			"- It is highly configurable and many features can be compiled out, if needed"
 		};
 
 		static BlockDefinition Blocks[] = {
-			/*MakeTextDef(
-				V2f(0,0),V2f(1.0f,1.0f),MakeAlign(HorizontalAlignment::Center),
-				"- Is is written in pure C99 for simplicity and best portability.\n"
-				"- No build systems or thirdparty libraries required, it works out-of-the box.\n"
-				"- Extraordinary fast compile times.\n"
-				"- Control of the memory allocations and handles memory very gracefully.\n"
-				"- Support for many compilers and platforms.\n"
-				"- Creating and managing a window with support for many video backends.\n"
-				"- Handling and processing Keyboard, Mouse, Gamepad devices through events or polling.\n"
-				"- Asynchronous audio playback implemented for many audio backends.\n"
-				"- Let the user decide how to integrate it.\n"
-				"- Supports dynamic linking, static linking and full-source inclusion.\n"
-				"- Provides several multi threading primitives.\n"
-				"- Support for working with IO (console, files, directories, etc.).\n",
-				HorizontalAlignment::Left, FeaturesFontSize
-			),*/
-
 			MakeImageDef(
 				V2f(0.0f, 0.1f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
-				&ImageResources::Card_CPU, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+				&ImageResources::Card_WindowManagement, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 			MakeImageDef(
 				V2f(0.2f, 0.1f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
-				&ImageResources::Card_C_Language, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+				&ImageResources::Card_KeyboardMouse, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 			MakeImageDef(
 				V2f(0.4f, 0.1f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
-				&ImageResources::Card_Performance, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+				&ImageResources::Card_Gamepad, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 			MakeImageDef(
 				V2f(0.6f, 0.1f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
-				&ImageResources::Card_NoDependencies, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+				&ImageResources::Card_Video, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 			MakeImageDef(
 				V2f(0.8f, 0.1f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
-				&ImageResources::Card_WindowManagement, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+				&ImageResources::Card_Audio, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 
 			MakeImageDef(
 				V2f(0.0f, 0.5f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
-				&ImageResources::Card_Video, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+				&ImageResources::Card_C_Language, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 			MakeImageDef(
 				V2f(0.2f, 0.5f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
-				&ImageResources::Card_Audio, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+				&ImageResources::Card_Performance, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 			MakeImageDef(
 				V2f(0.4f, 0.5f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
-				&ImageResources::Card_Keyboard, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+				&ImageResources::Card_NoDependencies, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 			MakeImageDef(
 				V2f(0.6f, 0.5f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
-				&ImageResources::Card_Mouse, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+				&ImageResources::Card_Memory, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 			MakeImageDef(
 				V2f(0.8f, 0.5f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
-				&ImageResources::Card_Gamepad, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+				&ImageResources::Card_CPU, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 
 			MakeImageDef(
