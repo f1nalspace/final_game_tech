@@ -532,6 +532,35 @@ namespace FPLPresentationData {
 		static const SlideDefinition Slide = MakeSlideDef("How it actually works", Blocks, GetBackground(), Rot);
 	};
 
+	namespace Limitations {
+		static const char *Talk = {
+			"FPL is lightweight, so its feature-set is limited."
+			"Therefore it can't do anything for you."
+			""
+			"- FPL initializes the video backend for you, such as OpenGL/Vulkan/Software output, but it does not provide any rendering functions."
+			"- To use any of the actual video backends, you have to include the header/library yourself and do the rendering yourself."
+			""
+			"- There is no audio sample conversion or DSP built-in, so you have to provide the samples in the correct format yourself."
+			"- But you can setup your preferred audio configuration at startup (such as buffer size, sample rate, data type and more)."
+			"- Depending on the audio hardware you don't have to do any sample conversion at all."
+			"- But you should always be prepared to do so, because not every sound device supports any sample rates or data types."
+		};
+
+		static BlockDefinition Blocks[] = {
+			MakeTextDef(
+				V2f(0.0f,0.0f),V2f(1.0f,1.0f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				"- No video rendering functions.\n"
+				"\n"
+				"- No audio sample conversion.\n",
+				HorizontalAlignment::Left, 60.0f
+			),
+		};
+
+		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(65), V3f(0.0f, 0.5f, 1.0f));
+
+		static const SlideDefinition Slide = MakeSlideDef("Limitations", Blocks, GetBackground(), Rot);
+	};
+
 	namespace HowToUse {
 		static const char *Talk = {
 			""
@@ -680,6 +709,7 @@ namespace FPLPresentationData {
 		Features::Slide,
 		Magic::Slide,
 		HowItWorks::Slide,
+		Limitations::Slide,
 		HowToUse::Slide,
 		Demos::Slide,
 		Links::Slide,
