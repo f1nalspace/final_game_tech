@@ -8,13 +8,34 @@
 #include "types.h"
 #include "fonts.h"
 
+enum class SoundResourceType : uintptr_t {
+	None = 0,
+	File,
+};
+
+struct FileSoundResource {
+	const char* relativeFilePath;
+};
+
 struct SoundResource {
 	const char* name;
-	const char* relativeFilePath;
+	SoundResourceType type;
 
-	static SoundResource CreateFromFile(const char* filePath) {
-		const char* filename = fplExtractFileName(filePath);
-		return { filename, filePath };
+	union {
+		FileSoundResource file;
+	};
+
+	static SoundResource CreateFromFile(const char *name, const char* relativeFilePath) {
+		SoundResource result = {};
+		result.type = SoundResourceType::File;
+		result.name = name;
+		result.file.relativeFilePath = relativeFilePath;
+		return result;
+	}
+
+	static SoundResource CreateFromFile(const char* relativeFilePath) {
+		const char* filename = fplExtractFileName(relativeFilePath);
+		return CreateFromFile(filename, relativeFilePath);
 	}
 };
 
@@ -36,27 +57,50 @@ static SoundDefinition MakeSoundDef(const SoundResource& resource, const float s
 	return MakeSoundDef(resource.name, startTime, targetDuration);
 }
 
+enum class ImageResourceType : uintptr_t {
+	None = 0,
+	File,
+	Memory
+};
+
+struct FileImageResource {
+	const char *relativeFilePath;
+};
+
+struct MemoryImageResource {
+	const uint8_t *data;
+	size_t length;
+};
+
 struct ImageResource {
 	const char *name;
-	const char *relativeFilePath;
-	const uint8_t *bytes;
-	size_t length;
+	ImageResourceType type;
+	
+	union {
+		FileImageResource file;
+		MemoryImageResource memory;
+	};
 
-	static ImageResource CreateFromMemory(const uint8_t *bytes, const char *name, const size_t length) {
+	static ImageResource CreateFromMemory(const char *name, const uint8_t *data, const size_t length) {
 		ImageResource result = {};
-		result.relativeFilePath = nullptr;
 		result.name = name;
-		result.bytes = bytes;
-		result.length = length;
+		result.type = ImageResourceType::Memory;
+		result.memory.data = data;
+		result.memory.length = length;
 		return result;
 	}
 
-	static ImageResource CreateFromFile(const char *filePath) {
-		const char *filename = fplExtractFileName(filePath);
+	static ImageResource CreateFromFile(const char *name, const char *relativeFilePath) {
 		ImageResource result = {};
-		result.relativeFilePath = filePath;
-		result.name = filename;
+		result.type = ImageResourceType::File;
+		result.name = name;
+		result.file.relativeFilePath = relativeFilePath;
 		return result;
+	}
+
+	static ImageResource CreateFromFile(const char *relativeFilePath) {
+		const char *filename = fplExtractFileName(relativeFilePath);
+		return CreateFromFile(filename, relativeFilePath);
 	}
 };
 

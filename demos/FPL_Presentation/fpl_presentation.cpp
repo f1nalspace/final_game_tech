@@ -720,6 +720,11 @@ struct ImageID {
 	}
 };
 
+struct ImageAsset {
+	ImageID id;
+	ImageResource resource;
+};
+
 struct LoadedImage {
 	ImageID id;
 	uint32_t width;
@@ -935,24 +940,28 @@ struct Renderer {
 		return(result);
 	}
 
-	const LoadedImage *AddImageFromResource(const ImageResource &resource) {
+	const LoadedImage *AddImageFromMemory(const char *name, const uint8_t *data, const size_t length) {
+		fplAssert(fplGetStringLength(name) > 0);
+		fplAssert(data != nullptr);
+		fplAssert(length > 0);
 		fplAssert(numImages < fplArrayCount(images));
 		LoadedImage *image = images + numImages;
-		if (!LoadedImage::LoadFromMemory(image, resource.bytes, resource.length)) {
+		if (!LoadedImage::LoadFromMemory(image, data, length)) {
 			return {};
 		}
-		ImageID id = ImageID::Make(*strings, resource.name, numImages++);
+		ImageID id = ImageID::Make(*strings, name, numImages++);
 		image->id = id;
 		return(image);
 	}
 
-	const LoadedImage *AddImageFromFile(const char *filePath) {
+	const LoadedImage *AddImageFromFile(const char *name, const char *filePath) {
+		fplAssert(fplGetStringLength(name) > 0);
+		fplAssert(fplGetStringLength(filePath) > 0);
 		fplAssert(numImages < fplArrayCount(images));
 		LoadedImage *image = images + numImages;
 		if (!LoadedImage::LoadFromFile(image, filePath)) {
 			return {};
 		}
-		const char *name = fplExtractFileName(filePath);
 		ImageID id = ImageID::Make(*strings, name, numImages++);
 		image->id = id;
 		return(image);
@@ -1143,7 +1152,7 @@ struct SoundManager {
 		return result;
 	}
 
-	const LoadedSound *AddSoundFromFile(const char *filePath, const char *name) {
+	const LoadedSound *AddSoundFromFile(const char *name, const char *filePath) {
 		AudioSource *source = AudioSystemLoadFileSource(audioSystem, filePath);
 		if (source == nullptr) {
 			return nullptr;
@@ -2697,13 +2706,20 @@ int main(int argc, char **argv) {
 		size_t imageResourceCount = fplArrayCount(ImageResources::All);
 		for (size_t i = 0; i < imageResourceCount; ++i) {
 			const ImageResource &res = ImageResources::All[i];
-			if (res.relativeFilePath != nullptr) {
-				size_t pathLen = fplPathCombine(nullptr, 0, 3, (const char *)app.dataPath, "images", res.relativeFilePath);
-				String path = app.strings.MakeString(pathLen);
-				fplPathCombine(path, path, 3, (const char *)app.dataPath, "images", res.relativeFilePath);
-				app.renderer.AddImageFromFile(path);
-			} else {
-				app.renderer.AddImageFromResource(res);
+
+			switch (res.type) {
+				case ImageResourceType::Memory:
+				{
+					app.renderer.AddImageFromMemory(res.name, res.memory.data, res.memory.length);
+				} break;
+
+				case ImageResourceType::File:
+				{
+					size_t pathLen = fplPathCombine(nullptr, 0, 3, (const char *)app.dataPath, "images", res.file.relativeFilePath);
+					String path = app.strings.MakeString(pathLen);
+					fplPathCombine(path, path, 3, (const char *)app.dataPath, "images", res.file.relativeFilePath);
+					app.renderer.AddImageFromFile(res.name, path);
+				} break;
 			}
 		}
 
@@ -2711,11 +2727,15 @@ int main(int argc, char **argv) {
 		for (size_t i = 0; i < soundResourceCount; ++i) {
 			const SoundResource &res = SoundResources::All[i];
 
-			size_t pathLen = fplPathCombine(nullptr, 0, 3, (const char *)app.dataPath, "sounds", res.relativeFilePath);
-			String path = app.strings.MakeString(pathLen);
-			fplPathCombine(path, path, 3, (const char *)app.dataPath, "sounds", res.relativeFilePath);
-
-			app.soundMng.AddSoundFromFile(path, res.name);
+			switch (res.type) {
+				case SoundResourceType::File:
+				{
+					size_t pathLen = fplPathCombine(nullptr, 0, 3, (const char *)app.dataPath, "sounds", res.file.relativeFilePath);
+					String path = app.strings.MakeString(pathLen);
+					fplPathCombine(path, path, 3, (const char *)app.dataPath, "sounds", res.file.relativeFilePath);
+					app.soundMng.AddSoundFromFile(res.name, path);
+				} break;
+			}
 		}
 
 		BuildPresentation(FPLPresentation, app.renderer, app.soundMng, app.presentation);

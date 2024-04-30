@@ -31,8 +31,8 @@ namespace SoundResources {
 };
 
 namespace ImageResources {
-	static ImageResource FPLLogo128x128 = ImageResource::CreateFromMemory(ptr_fplLogo128x128ImageData, "FPL Logo 128x128", sizeOf_fplLogo128x128ImageData);
-	static ImageResource FPLLogo512x512 = ImageResource::CreateFromMemory(ptr_fplLogo512x512ImageData, "FPL Logo 512x512", sizeOf_fplLogo512x512ImageData);
+	static ImageResource FPLLogo128x128 = ImageResource::CreateFromMemory("FPL Logo 128x128", ptr_fplLogo128x128ImageData, sizeOf_fplLogo128x128ImageData);
+	static ImageResource FPLLogo512x512 = ImageResource::CreateFromMemory("FPL Logo 512x512", ptr_fplLogo512x512ImageData, sizeOf_fplLogo512x512ImageData);
 
 	static ImageResource Card_CPU = ImageResource::CreateFromFile("card_cpu.png");
 	static ImageResource Card_Memory = ImageResource::CreateFromFile("card_memory.png");
