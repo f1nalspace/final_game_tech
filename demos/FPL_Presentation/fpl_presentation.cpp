@@ -720,9 +720,86 @@ struct ImageID {
 	}
 };
 
+struct ImageTexture {
+	uint32_t width;
+	uint32_t height;
+	GLuint textureId;
+	fpl_b32 isValid;
+
+	static ImageTexture LoadFromMemory(const uint8_t *bytes, const size_t length) {
+		int w, h, comp;
+		stbi_uc *pixels = stbi_load_from_memory((const stbi_uc *)bytes, (int)length, &w, &h, &comp, 4);
+		if (pixels == nullptr) {
+			return fplZeroInit;
+		}
+
+		GLuint textureId;
+		glGenTextures(1, &textureId);
+		glBindTexture(GL_TEXTURE_2D, textureId);
+		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glBindTexture(GL_TEXTURE_2D, 0);
+		CheckGLError();
+
+		stbi_image_free(pixels);
+
+		ImageTexture result = fplZeroInit;
+		result.width = w;
+		result.height = h;
+		result.textureId = textureId;
+		result.isValid = true;
+
+		return result;
+	}
+
+	static ImageTexture LoadFromFile(const char *filePath) {
+		fplFileHandle fontFile;
+		if (!fplFileOpenBinary(filePath, &fontFile)) {
+			return fplZeroInit;
+		}
+		uint32_t fileSize = fplFileGetSizeFromHandle32(&fontFile);
+		uint8_t *bytes = (uint8_t *)fplMemoryAllocate(fileSize);
+		fplFileReadBlock32(&fontFile, fileSize, bytes, fileSize);
+		fplFileClose(&fontFile);
+		ImageTexture result = LoadFromMemory(bytes, fileSize);
+		fplMemoryFree(bytes);
+		return result;
+	}
+
+	void Release() {
+		if (textureId > 0) {
+			glDeleteTextures(1, &textureId);
+			textureId = 0;
+		}
+	}
+};
+
+enum class AssetState: uint32_t {
+	Unloaded = 0,
+	Aquire,
+	Yield,
+	Loading,
+	Loaded,
+	Unloading,
+	Invalid = UINT32_MAX,
+};
+
 struct ImageAsset {
 	ImageID id;
-	ImageResource resource;
+	ImageTexture texture;
+	const ImageResource *resource;
+	volatile AssetState state;
+
+	static ImageAsset Create(const ImageID &id, const ImageResource *resource) {
+		ImageAsset result = {};
+		result.id = id;
+		result.resource = resource;
+		return result;
+	}
 };
 
 struct LoadedImage {
@@ -1142,12 +1219,14 @@ struct LoadedSound {
 constexpr int MaxSoundCount = 128;
 
 struct SoundManager {
-	AudioSystem *audioSystem;
 	LoadedSound sounds[MaxSoundCount];
+	AudioSystem *audioSystem;
+	const char *basePath;
 	size_t numSounds;
 
-	static SoundManager Make(AudioSystem *audioSystem) {
+	static SoundManager Make(const char *basePath, AudioSystem *audioSystem) {
 		SoundManager result = {};
+		result.basePath = basePath;
 		result.audioSystem = audioSystem;
 		return result;
 	}
