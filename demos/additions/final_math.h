@@ -460,6 +460,35 @@ typedef union Pixel {
 	uint8_t m[4];
 } Pixel;
 
+typedef struct Angle {
+	float radians;
+	float degree;
+
+#if defined(__cplusplus)
+	static Angle FromDegrees(const float degrees) {
+		return { degrees * Deg2Rad, degrees };
+	}
+
+	static Angle FromRadians(const float radians) {
+		return { radians, radians * Rad2Deg };
+	}
+#endif
+} Angle;
+
+fpl_force_inline Angle AngleFromDegrees(const float degrees) {
+	return fplStructInit(Angle, degrees, degrees * Deg2Rad);
+}
+
+fpl_force_inline Angle AngleFromRadians(const float radians) {
+	return fplStructInit(Angle, radians* Rad2Deg, radians);
+}
+
+//
+// Time
+//
+
+typedef float Seconds;
+
 //
 // Scalar
 //
