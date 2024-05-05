@@ -180,6 +180,13 @@ namespace FPLPresentationData {
 	}
 
 	namespace Intro {
+		const char *title = "Introduction";
+
+		const Angle rotationAngle = Angle::FromDegrees(0.0f);
+		const Vec3f rotationDir = V3f(1, 1, 1);
+
+		const Seconds duration = { 18.5 };
+
 		static const char *Talk = {
 			"Hi! I am Torsten"
 			"Today, i would like to introduce you to a project of mine that i have been working on for several years"
@@ -200,12 +207,19 @@ namespace FPLPresentationData {
 			MakeSoundDef(SoundResources::Intro2, 10.0),
 		};
 
-		static Quaternion Rot = QuatIdentity();
+		static Quaternion Rot = QuatFromAngleAxis(rotationAngle.radians, rotationDir);
 
-		static const SlideDefinition Slide = MakeSlideDef("Introduction", Blocks, Sounds, GetBackground(), Rot, 18.5);
+		static const SlideDefinition Slide = MakeSlideDef(title, Blocks, Sounds, GetBackground(), Rot, duration);
 	};
 
 	namespace WhoAmI {
+		const char *title = "Who am I";
+
+		const Angle rotationAngle = Angle::FromDegrees(15.0f);
+		const Vec3f rotationDir = V3f(1, 1, 1);
+
+		const Seconds duration = 20.5;
+
 		static const char *Talk = {
 			"I am Torsten Spaete"
 			"A professional software engineer with more than 25 years of programming experience"
@@ -243,12 +257,19 @@ namespace FPLPresentationData {
 			MakeSoundDef(SoundResources::WhoAmi1, 2.0),
 		};
 
-		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(15), V3f(1, 1, 1));
+		static Quaternion Rot = QuatFromAngleAxis(rotationAngle.radians, rotationDir);
 
-		static const SlideDefinition Slide = MakeSlideDef("Who am I", Blocks, Sounds, GetBackground(), Rot, 20.5);
+		static const SlideDefinition Slide = MakeSlideDef(title, Blocks, Sounds, GetBackground(), Rot, duration);
 	};
 
 	namespace WhatIsFPL {
+		const char *title = "What is FPL";
+
+		const Angle rotationAngle = Angle::FromDegrees(-45);
+		const Vec3f rotationDir = V3f(0, 1, 1);
+
+		const Seconds duration = 33.0f;
+
 		static const char *Talk = {
 			"Final-Platform-Layer (or short 'FPL') is a lightweight platform-abstraction library written in C99,"
 			"that gives you access to low-level systems, hardware devices and operating system functions,"
@@ -283,7 +304,7 @@ namespace FPLPresentationData {
 				"that gives you access to low-level systems, hardware devices,\n"
 				"operating system functions and many more.",
 				HorizontalAlignment::Left
-			),
+			)
 		};
 
 		static SoundDefinition Sounds[] = {
@@ -291,12 +312,19 @@ namespace FPLPresentationData {
 			MakeSoundDef(SoundResources::What2, 17.0),
 		};
 
-		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(-45), V3f(0, 1, 1));
+		static Quaternion Rot = QuatFromAngleAxis(rotationAngle.radians, rotationDir);
 
-		static const SlideDefinition Slide = MakeSlideDef("What is FPL", Blocks, Sounds, GetBackground(), Rot, 32.0);
+		static const SlideDefinition Slide = MakeSlideDef(title, Blocks, Sounds, GetBackground(), Rot, duration);
 	};
 
 	namespace Motivation {
+		const char *title = "Motivation";
+
+		const Angle rotationAngle = Angle::FromDegrees(70);
+		const Vec3f rotationDir = V3f(1, 0.1f, 0.0f);
+
+		const Seconds duration = 31.0;
+
 		static const char *Talk = {
 			"C/C++ has very limited access to the underlying platform."
 			"Even in modern C++, you still don't have direct access to a lot of systems."
@@ -318,12 +346,19 @@ namespace FPLPresentationData {
 			MakeSoundDef(SoundResources::Motivation, 2.0),
 		};
 
-		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(70), V3f(1, 0.1f, 0.0f));
+		static Quaternion Rot = QuatFromAngleAxis(rotationAngle.radians, rotationDir);
 
-		static const SlideDefinition Slide = MakeSlideDef("Motivation", Blocks, Sounds, GetBackground(), Rot, 31.0);
+		static const SlideDefinition Slide = MakeSlideDef(title, Blocks, Sounds, GetBackground(), Rot, duration);
 	};
 
 	namespace Features {
+		const char *title = "Features of FPL";
+
+		const Angle rotationAngle = Angle::FromDegrees(30);
+		const Vec3f rotationDir = V3f(0.0f, 1.0f, 0.1f);
+
+		const Seconds duration = 0.0;
+
 		static const char *Talk = {
 			"The main usage of FPL is multimedia and game-development, but it can be used to write any kind of software."
 			""
@@ -474,12 +509,19 @@ namespace FPLPresentationData {
 			
 		};
 
-		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(30), V3f(0.0f, 1.0f, 0.1f));
+		static Quaternion Rot = QuatFromAngleAxis(rotationAngle.radians, rotationDir);
 
-		static const SlideDefinition Slide = MakeSlideDef("Features of FPL", Blocks, GetBackground(), Rot);
+		static const SlideDefinition Slide = MakeSlideDef(title, Blocks, GetBackground(), Rot, duration);
 	};
 
 	namespace Magic {
+		const char *title = "How it works";
+
+		const Angle rotationAngle = Angle::FromDegrees(-15);
+		const Vec3f rotationDir = V3f(0.7f, 0.6f, 0.3f);
+
+		const Seconds duration = 0.0;
+
 		static const char *Talk = {
 			"How does FPL work?"
 			""
@@ -498,12 +540,19 @@ namespace FPLPresentationData {
 			),
 		};
 
-		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(-15), V3f(0.7f, 0.6f, 0.3f));
+		static Quaternion Rot = QuatFromAngleAxis(rotationAngle.radians, rotationDir);
 
-		static const SlideDefinition Slide = MakeSlideDef("How it works", Blocks, GetBackground(), Rot);
+		static const SlideDefinition Slide = MakeSlideDef(title, Blocks, GetBackground(), Rot, duration);
 	};
 
 	namespace HowItWorks {
+		const char *title = "How it actually works";
+
+		const Angle rotationAngle = Angle::FromDegrees(45);
+		const Vec3f rotationDir = V3f(0.5f, 0.5f, 0.5f);
+
+		const Seconds duration = 0.0;
+
 		static const char *Talk = {
 			"Unfortunatly it does not with magic."
 			""
@@ -527,12 +576,19 @@ namespace FPLPresentationData {
 			),
 		};
 
-		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(45), V3f(0.5f, 0.5f, 0.5f));
+		static Quaternion Rot = QuatFromAngleAxis(rotationAngle.radians, rotationDir);
 
-		static const SlideDefinition Slide = MakeSlideDef("How it actually works", Blocks, GetBackground(), Rot);
+		static const SlideDefinition Slide = MakeSlideDef(title, Blocks, GetBackground(), Rot, duration);
 	};
 
 	namespace Limitations {
+		const char *title = "Limitations";
+
+		const Angle rotationAngle = Angle::FromDegrees(65);
+		const Vec3f rotationDir = V3f(0.0f, 0.5f, 1.0f);
+
+		const Seconds duration = 0.0;
+
 		static const char *Talk = {
 			"FPL is lightweight, so its feature-set is limited."
 			"Therefore it can't do anything for you."
@@ -556,12 +612,19 @@ namespace FPLPresentationData {
 			),
 		};
 
-		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(65), V3f(0.0f, 0.5f, 1.0f));
+		static Quaternion Rot = QuatFromAngleAxis(rotationAngle.radians, rotationDir);
 
-		static const SlideDefinition Slide = MakeSlideDef("Limitations", Blocks, GetBackground(), Rot);
+		static const SlideDefinition Slide = MakeSlideDef(title, Blocks, GetBackground(), Rot, duration);
 	};
 
 	namespace HowToUse {
+		const char *title = "How to use";
+
+		const Angle rotationAngle = Angle::FromDegrees(75);
+		const Vec3f rotationDir = V3f(0.0f, 1.0f, 0);
+
+		const Seconds duration = 0.0;
+
 		static const char *Talk = {
 			""
 		};
@@ -573,12 +636,19 @@ namespace FPLPresentationData {
 			),
 		};
 
-		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(75), V3f(0.0f, 1.0f, 0));
+		static Quaternion Rot = QuatFromAngleAxis(rotationAngle.radians, rotationDir);
 
-		static const SlideDefinition Slide = MakeSlideDef("How to use", Blocks, GetBackground(), Rot);
+		static const SlideDefinition Slide = MakeSlideDef(title, Blocks, GetBackground(), Rot, duration);
 	};
 
 	namespace Demos {
+		const char *title = "Demos!";
+
+		const Angle rotationAngle = Angle::FromDegrees(-45);
+		const Vec3f rotationDir = V3f(1.0f, 0.5f, 0.25f);
+
+		const Seconds duration = 0.0;
+
 		static const char *Talk = {
 			""
 		};
@@ -630,12 +700,19 @@ namespace FPLPresentationData {
 			),
 		};
 
-		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(75), V3f(0.0f, 1.0f, 0));
+		static Quaternion Rot = QuatFromAngleAxis(rotationAngle.radians, rotationDir);
 
-		static const SlideDefinition Slide = MakeSlideDef("Demos!", Blocks, GetBackground(), Rot);
+		static const SlideDefinition Slide = MakeSlideDef(title, Blocks, GetBackground(), Rot, duration);
 	};
 
 	namespace Links {
+		const char *title = "Links";
+
+		const Angle rotationAngle = Angle::FromDegrees(65.0f);
+		const Vec3f rotationDir = V3f(1.0f, 0, 0);
+
+		const Seconds duration = 0.0;
+
 		static const char *Talk = {
 			""
 		};
@@ -673,12 +750,19 @@ namespace FPLPresentationData {
 			),
 		};
 
-		static Quaternion Rot = QuatFromAngleAxis(DegreesToRadians(-45), V3f(1.0f, 0, 0));
+		static Quaternion Rot = QuatFromAngleAxis(rotationAngle.radians, rotationDir);
 
-		static const SlideDefinition Slide = MakeSlideDef("Links", Blocks, GetBackground(), Rot);
+		static const SlideDefinition Slide = MakeSlideDef(title, Blocks, GetBackground(), Rot, duration);
 	};
 
 	namespace Thanks {
+		const char *title = "Thanks!";
+
+		const Angle rotationAngle = Angle::FromDegrees(0.0f);
+		const Vec3f rotationDir = V3f(1, 1, 1);
+
+		const Seconds duration = 0.0;
+
 		static const char *Talk = {
 			""
 		};
@@ -698,7 +782,7 @@ namespace FPLPresentationData {
 
 		static Quaternion Rot = QuatIdentity();
 
-		static const SlideDefinition Slide = MakeSlideDef("Thanks!", Blocks, GetBackground(), Rot);
+		static const SlideDefinition Slide = MakeSlideDef(title, Blocks, GetBackground(), Rot, duration);
 	};
 
 	static const SlideDefinition Slides[] = {
