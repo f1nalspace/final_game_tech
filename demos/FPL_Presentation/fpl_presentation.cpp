@@ -83,13 +83,8 @@ License:
 
 #include "types.h" // HorizontalAlignment, VerticalAlignment
 
-#define DRAW_TEXT_BOUNDS 0
-#define DRAW_IMAGE_BOUNDS 0
-#define DRAW_SLIDE_CENTER 0
-#define DRAW_VIEW_CENTER 0
 #define DRAW_ROTATING_CUBE 1
 #define USE_LETTERBOX_VIEWPORT 0
-#define DRAW_BOX_DEFINITIONS 1
 #define CUBE_ONLY 0
 
 template <typename T>
@@ -932,15 +927,37 @@ struct Framebuffer {
 	}
 };
 
+struct RenderOptions {
+	bool showTextBounds;
+	bool showImageBounds;
+	bool showElementBounds;
+	bool showSlideCenter;
+	bool showCube;
+};
+
 struct Renderer {
 	LoadedFont fonts[MaxFontCount]; // First font is always the debug font
 	LoadedImage images[MaxImagesCount];
+
+	String imagesBasePath;
+
 	const LoadedFont *debugFont;
 	StringTable *strings;
+
 	size_t numFonts;
 	size_t numImages;
 
 	Framebuffer cubeFramebuffer;
+
+	RenderOptions options;
+
+	static Renderer Init(const RenderOptions &options, StringTable *strings, const String &imagesBasePath) {
+		Renderer result = {};
+		result.options = options;
+		result.strings = strings;
+		result.imagesBasePath = imagesBasePath;
+		return result;
+	}
 
 	static int CompareFont(const void *oa, const void *ob) {
 		const LoadedFont *a = (const LoadedFont *)oa;
@@ -1224,10 +1241,10 @@ struct SoundManager {
 	const char *basePath;
 	size_t numSounds;
 
-	static SoundManager Make(const char *basePath, AudioSystem *audioSystem) {
+	static SoundManager Make(AudioSystem *audioSystem, const char *basePath) {
 		SoundManager result = {};
-		result.basePath = basePath;
 		result.audioSystem = audioSystem;
+		result.basePath = basePath;
 		return result;
 	}
 
@@ -1287,10 +1304,16 @@ struct RectStyle {
 	StrokeStyle stroke;
 };
 
+enum class RectMode {
+	None = 0,
+	BoxBounds,
+};
+
 struct Rect {
 	RectStyle style;
 	Vec2f pos;
 	Vec2f size;
+	RectMode mode;
 };
 
 struct ImageStyle {
@@ -1386,24 +1409,25 @@ struct Slide {
 		return(result);
 	}
 
-	Rect *AddRect(const Vec2f &pos, const Vec2f &size) {
+	Rect *AddRect(const Vec2f &pos, const Vec2f &size, const RectMode mode = RectMode::None) {
 		Element *element = AddElement(ElementType::Rect);
 		Rect *result = &element->rect;
 		result->pos = pos;
 		result->size = size;
+		result->mode = mode;
 		return(result);
 	}
 
-	Rect *AddFilledRect(const Vec2f &pos, const Vec2f &size, const Vec4f &color) {
-		Rect *result = AddRect(pos, size);
+	Rect *AddFilledRect(const Vec2f &pos, const Vec2f &size, const Vec4f &color, const RectMode mode = RectMode::None) {
+		Rect *result = AddRect(pos, size, mode);
 		result->style.background.kind = BackgroundKind::Solid;
 		result->style.background.primaryColor = color;
 		result->style.stroke.kind = StrokeKind::None;
 		return(result);
 	}
 
-	Rect *AddStrokedRect(const Vec2f &pos, const Vec2f &size, const Vec4f &color, const float lineWidth = 1.0) {
-		Rect *result = AddRect(pos, size);
+	Rect *AddStrokedRect(const Vec2f &pos, const Vec2f &size, const Vec4f &color, const float lineWidth = 1.0, const RectMode mode = RectMode::None) {
+		Rect *result = AddRect(pos, size, mode);
 		result->style.background.kind = BackgroundKind::None;
 		result->style.stroke.kind = StrokeKind::Solid;
 		result->style.stroke.width = lineWidth;
@@ -1431,6 +1455,12 @@ struct Presentation {
 	LinkedList<Slide> slides;
 	Vec2f size;
 	StringTable *strings;
+
+	static Presentation Init(StringTable *strings) {
+		Presentation result = {};
+		result.strings = strings;
+		return result;
+	}
 
 	Slide *AddSlide(const Vec2f &size, const char *name) {
 		Slide *result = slides.Add();
@@ -1608,7 +1638,9 @@ static void RenderTextQuads(const float x, const float y, const char *text, cons
 	}
 }
 
-static void RenderLine(const Vec2f &a, const Vec2f &b, const Vec4f &color, const float lineWidth = 1.0f) {
+static void RenderLine(const Vec2f &a, const Vec2f &b, const Vec4f &color, const float lineWidth = 1.0f, const int stippleFactor = 1, const uint16_t stipplePattern = 0xFFFF) {
+	glEnable(GL_LINE_STIPPLE);
+	glLineStipple(stippleFactor, stipplePattern);
 	glLineWidth(lineWidth);
 	glColor4fv(&color.m[0]);
 	glBegin(GL_LINES);
@@ -1616,6 +1648,7 @@ static void RenderLine(const Vec2f &a, const Vec2f &b, const Vec4f &color, const
 	glVertex2f(b.x, b.y);
 	glEnd();
 	glLineWidth(1.0f);
+	glDisable(GL_LINE_STIPPLE);
 }
 
 static void RenderFilledQuad(const Vec2f &pos, const Vec2f &size, const Vec4f &color0, const Vec4f &color1, const BackgroundKind kind) {
@@ -1765,7 +1798,10 @@ static Vec2f ComputeTextBlockSize(Renderer &renderer, Slide &slide, const char *
 	return(result);
 }
 
-static void RenderRectangle(const Vec2f &pos, const Vec2f &size, const BackgroundStyle &background, const StrokeStyle &stroke) {
+static void RenderRectangle(const RenderOptions &renderOptions, const RectMode mode, const Vec2f &pos, const Vec2f &size, const BackgroundStyle &background, const StrokeStyle &stroke) {
+	if (mode == RectMode::BoxBounds && !renderOptions.showElementBounds)
+		return;
+
 	if (background.kind != BackgroundKind::None) {
 		RenderFilledQuad(pos, size, background.primaryColor, background.secondaryColor, background.kind);
 	}
@@ -1774,7 +1810,7 @@ static void RenderRectangle(const Vec2f &pos, const Vec2f &size, const Backgroun
 	}
 }
 
-static void RenderLabel(const LoadedFont &font, const Label &label, const SlideVariables &vars) {
+static void RenderLabel(const RenderOptions &renderOptions, const LoadedFont &font, const Label &label, const SlideVariables &vars) {
 	static char tmpBuffer[4096]; // @REPLACE(tspaete): Not great using a static buffer here, find a better approach
 
 	const TextStyle &style = label.style;
@@ -1788,7 +1824,7 @@ static void RenderLabel(const LoadedFont &font, const Label &label, const SlideV
 	Vec2f textPos = boxPos + V2f(0, font.atlas.info.ascent * charHeight);
 
 	// Background
-	RenderRectangle(boxPos, size, style.background, {});
+	RenderRectangle(renderOptions, RectMode::None, boxPos, size, style.background, {});
 
 	// Shadow
 	if (style.drawShadow) {
@@ -1798,16 +1834,16 @@ static void RenderLabel(const LoadedFont &font, const Label &label, const SlideV
 	// Foreground
 	RenderTextQuads(textPos.x, textPos.y, text, textLen, charHeight, font, style.foregroundColor);
 
-#if DRAW_TEXT_BOUNDS
-	// Draw bounds
-	RenderStrokedQuad(boxPos, size, V4fInit(1, 0, 0, 1), 1.0f);
+	if (renderOptions.showTextBounds) {
+		// Draw bounds
+		RenderStrokedQuad(boxPos, size, V4fInit(1, 0, 0, 1), 1.0f);
 
-	// Draw baseline
-	Vec2f baseline = boxPos + V2f(0, size.h + font.atlas.info.descent * charHeight);
-	Vec2f ascent = baseline + V2f(0, -font.atlas.info.ascent * charHeight);
-	RenderLine(baseline, baseline + V2f(size.w, 0), V4fInit(0, 1, 0, 1), 2.0f);
-	RenderLine(ascent, ascent + V2f(size.w, 0), V4fInit(0, 0, 1, 1), 2.0f);
-#endif
+		// Draw baseline
+		Vec2f baseline = boxPos + V2f(0, size.h + font.atlas.info.descent * charHeight);
+		Vec2f ascent = baseline + V2f(0, -font.atlas.info.ascent * charHeight);
+		RenderLine(baseline, baseline + V2f(size.w, 0), V4fInit(0, 1, 0, 1), 2.0f);
+		RenderLine(ascent, ascent + V2f(size.w, 0), V4fInit(0, 0, 1, 1), 2.0f);
+	}
 }
 
 static void RenderTextureQuad(const GLuint texture, const Vec2f &pos, const Vec2f &size, const Vec4f &color) {
@@ -1911,7 +1947,7 @@ static void RenderCube(const float rw, const float rh, const float rd, const Vec
 	}
 }
 
-static void RenderImage(const LoadedImage &renderImage, const Image &image) {
+static void RenderImage(const RenderOptions &renderOptions, const LoadedImage &renderImage, const Image &image) {
 	Vec2f pos = image.pos;
 	Vec2f size = image.size;
 	Vec2f align = ComputeInlineOffset(size, HorizontalAlignment::Left, VerticalAlignment::Top);
@@ -1920,15 +1956,15 @@ static void RenderImage(const LoadedImage &renderImage, const Image &image) {
 	const ImageStyle &style = image.style;
 
 	// Background
-	RenderRectangle(boxPos, size, style.background, {});
+	RenderRectangle(renderOptions, RectMode::None, boxPos, size, style.background, {});
 
 	// Foreground
 	RenderTextureQuad(renderImage.textureId, imagePos, size, image.style.tint);
 
-#if DRAW_IMAGE_BOUNDS
-	// Draw bounds
-	RenderStrokedQuad(boxPos, size, V4fInit(1, 0, 0, 1), 1.0f);
-#endif
+	if (renderOptions.showTextBounds) {
+		// Draw bounds
+		RenderStrokedQuad(boxPos, size, V4fInit(1, 0, 0, 1), 1.0f);
+	}
 }
 
 struct Viewport {
@@ -2008,10 +2044,10 @@ static void RenderSlide(const Slide &slide, const Renderer &renderer) {
 	Vec2f radius = V2f(w, h) * 0.5f;
 	Vec2f center = radius;
 
-#if DRAW_SLIDE_CENTER
-	RenderLine(center - V2f(radius.w, 0), center + V2f(radius.w, 0), V4fInit(0.5f, 0.5f, 0.5f, 1.0f), 1.0f);
-	RenderLine(center - V2f(0, radius.h), center + V2f(0, radius.h), V4fInit(0.5f, 0.5f, 0.5f, 1.0f), 1.0f);
-#endif
+	if (renderer.options.showSlideCenter) {
+		RenderLine(center - V2f(radius.w, 0), center + V2f(radius.w, 0), V4fInit(0.5f, 0.5f, 0.5f, 1.0f), 1.0f, 1, 0x00FF);
+		RenderLine(center - V2f(0, radius.h), center + V2f(0, radius.h), V4fInit(0.5f, 0.5f, 0.5f, 1.0f), 1.0f, 1, 0x00FF);
+	}
 
 	auto it = slide.elements.GetConstIterator();
 	for (const Element *element = it.Value(); it.HasNext(); element = it.MoveNext()) {
@@ -2019,7 +2055,7 @@ static void RenderSlide(const Slide &slide, const Renderer &renderer) {
 			case ElementType::Rect:
 			{
 				const Rect &rect = element->rect;
-				RenderRectangle(rect.pos, rect.size, rect.style.background, rect.style.stroke);
+				RenderRectangle(renderer.options, rect.mode, rect.pos, rect.size, rect.style.background, rect.style.stroke);
 			} break;
 
 			case ElementType::Label:
@@ -2028,7 +2064,7 @@ static void RenderSlide(const Slide &slide, const Renderer &renderer) {
 				const char *fontName = label.fontName;
 				const LoadedFont *font = renderer.FindFont(fontName, label.fontSize);
 				if (font != nullptr) {
-					RenderLabel(*font, label, slide.vars);
+					RenderLabel(renderer.options, *font, label, slide.vars);
 				}
 			} break;
 
@@ -2038,7 +2074,7 @@ static void RenderSlide(const Slide &slide, const Renderer &renderer) {
 				const char *imageName = image.name;
 				const LoadedImage *renderImage = renderer.FindImage(imageName);
 				if (renderImage != nullptr) {
-					RenderImage(*renderImage, image);
+					RenderImage(renderer.options, *renderImage, image);
 				}
 			} break;
 		}
@@ -2192,8 +2228,7 @@ static void RenderFrame(App &app, const Vec2i &winSize) {
 		//
 		// Cube
 		//
-#if DRAW_ROTATING_CUBE
-		{
+		if (renderer.options.showCube) {
 			const LoadedImage *cubeImage = renderer.FindImage(ImageResources::FPLLogo512x512.name);
 
 			fplAssert(winSize.w > 0 && winSize.h > 0);
@@ -2242,7 +2277,6 @@ static void RenderFrame(App &app, const Vec2i &winSize) {
 
 			renderer.cubeFramebuffer.Unbind();
 		}
-#endif // DRAW_ROTATING_CUBE
 
 		glClearColor(0.1f, 0.2f, 0.3f, 1);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -2258,23 +2292,17 @@ static void RenderFrame(App &app, const Vec2i &winSize) {
 			Mat4f slideMVP = orthoProj * view * slideModel;
 			glLoadMatrixf(&slideMVP.m[0]);
 
-			RenderRectangle(V2f(0, 0), slideSize, slide->background, {});
+			RenderRectangle(renderer.options, RectMode::None, V2f(0, 0), slideSize, slide->background, {});
 
-#if DRAW_ROTATING_CUBE
-			RenderTextureQuad(renderer.cubeFramebuffer.textures[0], V2f(0, 0), slideSize, V4f(1, 1, 1, 0.2f));
-#endif
+			if (renderer.options.showCube) {
+				RenderTextureQuad(renderer.cubeFramebuffer.textures[0], V2f(0, 0), slideSize, V4f(1, 1, 1, 0.2f));
+			}
 
 			glLoadMatrixf(&slideMVP.m[0]);
 			RenderSlide(*slide, renderer);
 
 			slidePos += V2f(slide->size.w, 0);
 		}
-
-#if DRAW_VIEW_CENTER
-		glLoadMatrixf(&proj.m[0]);
-		RenderLine(center + V2f(-w * 0.25f, 0), center + V2f(w * 0.25f, 0), V4f(1, 1, 1, 1));
-		RenderLine(center + V2f(0, -h * 0.25f), center + V2f(0, h * 0.25f), V4f(1, 1, 1, 1));
-#endif
 
 #if 0
 		{
@@ -2550,9 +2578,7 @@ static void AddSlideFromDefinition(Renderer &renderer, SoundManager &soundMng, P
 		Vec2f blockPos = area.pos + offset;
 		Vec2f blockSize = V2fHadamard(area.size, block.size);
 
-#if DRAW_BOX_DEFINITIONS
-		slide->AddStrokedRect(blockPos, blockSize, V4f(1, 0, 1, 1), 2.0f);
-#endif
+		slide->AddStrokedRect(blockPos, blockSize, V4f(1, 0, 1, 1), 2.0f, RectMode::BoxBounds);
 
 		switch (block.type) {
 			case BlockType::Text:
@@ -2581,9 +2607,7 @@ static void AddSlideFromDefinition(Renderer &renderer, SoundManager &soundMng, P
 					textPos += V2fHadamard(V2f(0, 1.0f), blockSize) - V2fHadamard(V2f(0, 1.0f), textSize);
 				}
 
-#if DRAW_BOX_DEFINITIONS
-				slide->AddStrokedRect(textPos, textSize, V4f(1, 1, 0, 1), 1.0f);
-#endif
+				slide->AddStrokedRect(textPos, textSize, V4f(1, 1, 0, 1), 1.0f, RectMode::BoxBounds);
 
 				// Adjust for content alignment
 				if (textAlign == HorizontalAlignment::Center) {
@@ -2629,9 +2653,7 @@ static void AddSlideFromDefinition(Renderer &renderer, SoundManager &soundMng, P
 						imagePos += V2fHadamard(V2f(0, 1.0f), blockSize) - V2fHadamard(V2f(0, 1.0f), imageSize);
 					}
 
-#if DRAW_BOX_DEFINITIONS
-					slide->AddStrokedRect(imagePos, imageSize, V4f(1, 1, 0, 1), 1.0f);
-#endif
+					slide->AddStrokedRect(imagePos, imageSize, V4f(1, 1, 0, 1), 1.0f, RectMode::BoxBounds);
 
 					AddImageBlock(renderer, *slide, imagePos, imageSize, imageBlock.imageResource->name, imageBlock.tintColor);
 				}
@@ -2732,16 +2754,14 @@ int main(int argc, char **argv) {
 
 		glClearColor(0.1f, 0.2f, 0.3f, 1);
 
+		RenderOptions renderOptions = {};
+		renderOptions.showCube = true;
+
 		App *appMemory = (App *)fplMemoryAllocate(sizeof(App));
 
 		App &app = *appMemory;
 		app.state.currentOffset = V2f(0, 0);
 		app.state.currentRotation = QuatIdentity();
-
-		app.renderer.strings = &app.strings;
-		app.presentation.strings = &app.strings;
-
-		app.soundMng.audioSystem = audioSys;
 
 		size_t executablePathLen = fplGetExecutableFilePath(nullptr, 0);
 		app.appPath = app.strings.MakeString(executablePathLen);
@@ -2759,6 +2779,20 @@ int main(int argc, char **argv) {
 			app.dataPath = app.strings.MakeString(dataPathLen);
 			fplPathCombine(app.dataPath, app.dataPath, 2, (const char *)app.appPath, "data");
 		}
+
+		size_t soundsBasePathLen = fplPathCombine(nullptr, 0, 2, (const char *)app.dataPath, "sounds");
+		String soundsBasePath = app.strings.MakeString(soundsBasePathLen);
+		fplPathCombine(soundsBasePath, soundsBasePath, 2, (const char *)app.dataPath, "sounds");
+
+		size_t imagesBasePathLen = fplPathCombine(nullptr, 0, 2, (const char *)app.dataPath, "images");
+		String imagesBasePath = app.strings.MakeString(imagesBasePathLen);
+		fplPathCombine(imagesBasePath, imagesBasePath, 2, (const char *)app.dataPath, "images");
+
+		app.soundMng = SoundManager::Make(audioSys, soundsBasePath);
+
+		app.presentation = Presentation::Init(&app.strings);
+
+		app.renderer = Renderer::Init(renderOptions, &app.strings, imagesBasePath);
 
 		// First font is always the debug font
 		app.renderer.debugFont = app.renderer.AddFontFromResource(FontResources::BitStreamVerySans, 16.0f);
@@ -2794,9 +2828,9 @@ int main(int argc, char **argv) {
 
 				case ImageResourceType::File:
 				{
-					size_t pathLen = fplPathCombine(nullptr, 0, 3, (const char *)app.dataPath, "images", res.file.relativeFilePath);
+					size_t pathLen = fplPathCombine(nullptr, 0, 2, app.renderer.imagesBasePath, res.file.relativeFilePath);
 					String path = app.strings.MakeString(pathLen);
-					fplPathCombine(path, path, 3, (const char *)app.dataPath, "images", res.file.relativeFilePath);
+					fplPathCombine(path, path, 2, app.renderer.imagesBasePath, res.file.relativeFilePath);
 					app.renderer.AddImageFromFile(res.name, path);
 				} break;
 			}
@@ -2809,9 +2843,9 @@ int main(int argc, char **argv) {
 			switch (res.type) {
 				case SoundResourceType::File:
 				{
-					size_t pathLen = fplPathCombine(nullptr, 0, 3, (const char *)app.dataPath, "sounds", res.file.relativeFilePath);
+					size_t pathLen = fplPathCombine(nullptr, 0, 2, app.soundMng.basePath, res.file.relativeFilePath);
 					String path = app.strings.MakeString(pathLen);
-					fplPathCombine(path, path, 3, (const char *)app.dataPath, "sounds", res.file.relativeFilePath);
+					fplPathCombine(path, path, 2, app.soundMng.basePath, res.file.relativeFilePath);
 					app.soundMng.AddSoundFromFile(res.name, path);
 				} break;
 			}
