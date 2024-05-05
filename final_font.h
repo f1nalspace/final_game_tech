@@ -352,6 +352,15 @@ extern "C" {
 		fntCodePoint codePoint;
 	} fntFontGlyph;
 
+	typedef struct fntFontMetrics {
+		//! The ascent from the baseline in pixels
+		float ascent;
+		//! The descent from the baseline in pixels
+		float descent;
+		//! The linegap in pixels
+		float lineGap;
+	} fntFontMetrics;
+
 	typedef struct fntFont {
 		//! The whitespace table
 		fntWhiteSpaceTable whitespaceTable;
@@ -360,13 +369,9 @@ extern "C" {
 		// The font data
 		fntFontData data;
 		//! The font size
-		fntFontSize fontSize;
-		//! The ascent from the baseline in pixels
-		float ascent;
-		//! The descent from the baseline in pixels
-		float descent;
-		//! The linegap in pixels
-		float lineGap;
+		fntFontSize size;
+		//! The font metrics
+		fntFontMetrics metrics;
 	} fntFont;
 
 	typedef struct fntFontPage {
@@ -416,7 +421,7 @@ extern "C" {
 
 	fnt_api bool fntHasFont(fntFontAtlas *atlas, const char *name, const fntFontSize size);
 
-	fnt_api bool fntGetFontMetrics(const fntFontAtlas *atlas, const uint32_t fontIndex, const float charScale, float *outAscent, float *outDescent, float *outLineGap);
+	fnt_api bool fntGetFontMetrics(const fntFontAtlas *atlas, const uint32_t fontIndex, const float charScale, fntFontMetrics *outMetrics);
 
 	fnt_api bool fntAddCodePoints(fntFontContext *context, fntFontAtlas *atlas, const uint32_t fontIndex, const fntCodePoint codePointStart, const fntCodePoint codePointEnd);
 
@@ -671,10 +676,10 @@ extern "C" {
 		size_t nameLen = FNT_STRLEN(data->name);
 
 		FNT_MEMSET(font, 0, sizeof(*font));
-		font->fontSize = size;
-		font->ascent = ascentRaw * rawToPixels;
-		font->descent = descentRaw * rawToPixels;
-		font->lineGap = lineGapRaw * rawToPixels;
+		font->size = size;
+		font->metrics.ascent = ascentRaw * rawToPixels;
+		font->metrics.descent = descentRaw * rawToPixels;
+		font->metrics.lineGap = lineGapRaw * rawToPixels;
 		font->data = *data;
 		FNT_STRNCPY(font->name, FNT_ARRAYCOUNT(font->name), data->name, nameLen);
 
@@ -729,7 +734,7 @@ extern "C" {
 			FNT_ASSERT(atlas->fonts != NULL);
 			for (uint32_t fontIndex = 0; fontIndex < atlas->fontCount; ++fontIndex) {
 				const fntFont *testFont = atlas->fonts + fontIndex;
-				if (fnt__IsEqualFont(data->name, testFont->name, size, testFont->fontSize)) {
+				if (fnt__IsEqualFont(data->name, testFont->name, size, testFont->size)) {
 					return fontIndex; // Font already exists
 				}
 			}
@@ -788,7 +793,7 @@ extern "C" {
 		}
 		for (uint32_t fontIndex = 0; fontIndex < atlas->fontCount; ++fontIndex) {
 			const fntFont *testFont = atlas->fonts + fontIndex;
-			if (fnt__IsEqualFont(testFont->name, name, testFont->fontSize, size)) {
+			if (fnt__IsEqualFont(testFont->name, name, testFont->size, size)) {
 				return fontIndex;
 			}
 		}
@@ -801,7 +806,7 @@ extern "C" {
 		}
 		for (uint32_t fontIndex = 0; fontIndex < atlas->fontCount; ++fontIndex) {
 			const fntFont *testFont = atlas->fonts + fontIndex;
-			if (fnt__IsEqualFont(testFont->name, name, testFont->fontSize, size)) {
+			if (fnt__IsEqualFont(testFont->name, name, testFont->size, size)) {
 				return true;
 			}
 		}
@@ -946,7 +951,7 @@ extern "C" {
 			return(false);
 		}
 
-		const float rawToPixels = stbtt_ScaleForPixelHeight(&sinfo, font->fontSize.value);
+		const float rawToPixels = stbtt_ScaleForPixelHeight(&sinfo, font->size.value);
 
 		fnt__STBFontContext *internalCtx = (fnt__STBFontContext *)context;
 		FNT_ASSERT(internalCtx->maxBitmapSize > 0);
@@ -989,7 +994,7 @@ extern "C" {
 			stbtt_packedchar *currentPackedChars = packedChars + currentCodePointIndex;
 
 			stbtt_pack_range range = FNT__ZERO_INIT;
-			range.font_size = font->fontSize.value;
+			range.font_size = font->size.value;
 			range.num_chars = remainingCodePointCount;
 			range.first_unicode_codepoint_in_range = currentCodePointStart;
 			range.chardata_for_range = currentPackedChars;
@@ -1227,9 +1232,9 @@ extern "C" {
 		if (outBaselineOffset != NULL)
 			*outBaselineOffset = 0;
 
-		float defaultScale = defaultFont->fontSize.inverse * charScale;
-		float defaultAscent = defaultFont->ascent * defaultScale;
-		float defaultDescent = defaultFont->descent * defaultScale;
+		float defaultScale = defaultFont->size.inverse * charScale;
+		float defaultAscent = defaultFont->metrics.ascent * defaultScale;
+		float defaultDescent = defaultFont->metrics.descent * defaultScale;
 
 		const uint8_t *s = (const uint8_t *)utf8;
 		const fntFontPage *currentPage = NULL;
@@ -1325,9 +1330,9 @@ extern "C" {
 					FNT_ASSERT(currentPage->fontIndex >= 0 && currentPage->fontIndex < atlas->fontCount);
 					const fntFont *pageFont = atlas->fonts + currentPage->fontIndex;
 
-					float pageAscent = pageFont->ascent;
-					float pageDescent = pageFont->descent;
-					float pageScale = pageFont->fontSize.inverse * charScale;
+					float pageAscent = pageFont->metrics.ascent;
+					float pageDescent = pageFont->metrics.descent;
+					float pageScale = pageFont->size.inverse * charScale;
 
 					FNT_ASSERT(glyph->codePoint.u16 == codePoint);
 
@@ -1511,7 +1516,7 @@ extern "C" {
 		return(result);
 	}
 
-	fnt_api bool fntGetFontMetrics(const fntFontAtlas *atlas, const uint32_t fontIndex, const float charScale, float *outAscent, float *outDescent, float *outLineGap) {
+	fnt_api bool fntGetFontMetrics(const fntFontAtlas *atlas, const uint32_t fontIndex, const float charScale, fntFontMetrics *outMetrics) {
 		if (!fnt__IsValidFontAtlas(atlas)) {
 			return(false);
 		}
@@ -1524,10 +1529,14 @@ extern "C" {
 
 		const fntFont *font = atlas->fonts + fontIndex;
 
-		const float scale = font->fontSize.inverse * charScale;
-		*outAscent = font->ascent * scale;
-		*outDescent = font->descent * scale;
-		*outLineGap = font->lineGap * scale;
+		const float scale = font->size.inverse * charScale;
+
+		fntFontMetrics newMetrics = FNT__ZERO_INIT;
+		newMetrics.ascent = font->metrics.ascent * scale;
+		newMetrics.descent = font->metrics.descent * scale;
+		newMetrics.lineGap = font->metrics.lineGap * scale;
+
+		*outMetrics = newMetrics;
 		return(true);
 	}
 

@@ -381,14 +381,12 @@ int main(int argc, char **argv) {
 					float bestScaledDescent = 0.0f;
 					float bestScaledLineGap = 0.0f;
 					for (uint32_t fontIndex = 0; fontIndex < atlas.fontCount; ++fontIndex) {
-						float scaledAscent = 0.0f;
-						float scaledDescent = 0.0f;
-						float scaledLineGap = 0.0f;
-						if (fntGetFontMetrics(&atlas, fontIndex, fontSize.value, &scaledAscent, &scaledDescent, &scaledLineGap)) {
-							if (scaledAscent > bestScaledAscent && scaledDescent > bestScaledDescent && scaledLineGap > bestScaledLineGap) {
-								bestScaledAscent = scaledAscent;
-								bestScaledDescent = scaledDescent;
-								bestScaledLineGap = scaledLineGap;
+						fntFontMetrics scaledMetrics;
+						if (fntGetFontMetrics(&atlas, fontIndex, fontSize.value, &scaledMetrics)) {
+							if (scaledMetrics.ascent > bestScaledAscent && scaledMetrics.descent > bestScaledDescent && scaledMetrics.lineGap > bestScaledLineGap) {
+								bestScaledAscent = scaledMetrics.ascent;
+								bestScaledDescent = scaledMetrics.descent;
+								bestScaledLineGap = scaledMetrics.lineGap;
 							}
 						}
 					}
