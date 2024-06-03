@@ -140,6 +140,7 @@ SOFTWARE.
 
 	### Details
 	- Fixed[#156]: Target audio format type and periods was never used
+	- Fixed[#157]: Compile error for missing _countof() fplArrayCount in some scenarios
 	- Removed: Obsolete function fplFileSetTimestamps removed
 
 	## v0.9.8-beta
@@ -2250,6 +2251,9 @@ fpl_internal fpl_force_inline void fpl__m_DebugBreak() { __asm__ __volatile__(".
 #if defined(FPL__INCLUDE_ALLOCA)
 #	include <alloca.h>
 #endif
+#if !defined(FPL_NO_CRT)
+#	include <stdlib.h> // _countof
+#endif
 
 /// @cond FPL_INTERNALS
 #if !defined(UINT32_MAX)
@@ -2344,7 +2348,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 #define fplCopyStruct(src, dst) fplMemoryCopy(src, sizeof(*(src)), dst);
 
 // Array count
-#if defined(FPL_COMPILER_MSVC) && !defined(FPL_NO_CRT) // @TODO(final): Find a better way to detect no-crt inclusion!
+#if defined(_countof)
 #	define fpl__m_ArrayCount(arr) _countof(arr)
 #elif defined(ARRAY_SIZE)
 #	define fpl__m_ArrayCount(arr) ARRAY_SIZE(arr)
