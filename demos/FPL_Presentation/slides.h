@@ -360,19 +360,26 @@ namespace FPLPresentationData {
 		const Seconds duration = 0.0;
 
 		static const char *Talk = {
-			"The main usage of FPL is multimedia and game-development, but it can be used to write any kind of software."
+			"FPL was created as a replacement for small OpenGL platform abstraction libraries such as GLUT and GLFW, but grew over time to be a fully fledged platform abstraction library."
 			""
-			"- It creates and manages a window, including event handling for keyboard/mouse/gamepad input and many more events"
-			"- It initializes a graphics backend, such as OpenGL, Vulkan or allows to put pixels directly on the screen"
-			"- It can asynchronously play back sound samples for several multiple audio backends"
-
-			"- It is written in C99 for simplicity and best portability"
+			"- It is written in C99 for simplicity and best portability, but is 100% C++ compatible"
 			"- It is designed to be fast in compile and runtime"
 			"- It does not require any build-systems or thirdparty libraries"
-			"- It gives you control of memory allocations and handles memory very gracefully"
-			"- It supports many compilers and platforms and provides useful utilities fo work with them"
+			"- It supports CPU architectures: X86, X64 and ARM"
+			"- It supports the operating systems: Windows, Linux and Unix"
+			""
+			"- It can work directly in a console application, including support for writing and reading"
+			"- It can create and manage a single window for you, including the handling of events"
+			"- It can handle keyboard & mouse devices, either by events or by polling"
+			"- It can handle multiple gamepads, either by events or by polling"
+			"- When a window is used, it initializes a graphics backend, such as OpenGL, Vulkan or allows to put pixels directly on the screen"
+			"- It can asynchronously playback sound samples and detect the audio backend automatically"
 			"- It can query important hardware informations, such as CPU features and more"
+			"- It supports many compilers and platforms and provides useful utilities fo work with them"
+			"- It gives you control of memory allocations and handles memory very gracefully"
 			"- It is highly configurable and many features can be compiled out, if needed"
+			"- It provides useful primitives to work with multi threaded code"
+			"- It contains a ton of useful functions and macros"
 		};
 
 		static BlockDefinition Blocks[] = {
@@ -461,7 +468,7 @@ namespace FPLPresentationData {
 			),
 			MakeTextDef(
 				V2f(0.8f, 0.7f), V2f(0.2f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
-				"Platform/Environment Support", HorizontalAlignment::Left, 20.0f
+				"Platform Support", HorizontalAlignment::Left, 20.0f
 			),
 
 
@@ -593,13 +600,16 @@ namespace FPLPresentationData {
 			"FPL is lightweight, so its feature-set is limited."
 			"Therefore it can't do anything for you."
 			""
-			"- FPL initializes the video backend for you, such as OpenGL/Vulkan/Software output, but it does not provide any rendering functions."
-			"- To use any of the actual video backends, you have to include the header/library yourself and do the rendering yourself."
+			"FPL initializes the video backend for you, such as OpenGL/Vulkan/Software output, but it does not provide any rendering functions."
+			"To use any of the actual video backends, you have to include the header/library and do the rendering yourself."
 			""
-			"- There is no audio sample conversion or DSP built-in, so you have to provide the samples in the correct format yourself."
-			"- But you can setup your preferred audio configuration at startup (such as buffer size, sample rate, data type and more)."
-			"- Depending on the audio hardware you don't have to do any sample conversion at all."
-			"- But you should always be prepared to do so, because not every sound device supports any sample rates or data types."
+			"There is no audio sample conversion or DSP built-in, so you have to provide the samples in the correct format yourself."
+			"But you can setup your preferred audio configuration at startup (such as buffer size, sample rate, data type and more)."
+			"Depending on the audio hardware you don't have to do any sample conversion at all."
+			"But you should always be prepared to do so, because not every sound device supports any format."
+			""
+			"In addition FPL is still in active development, so not every feature for every supported platform is implemented yet."
+			"Also some platforms are not supported (e.g. MacOS), either due to missing the actual hardware or not knowing about them at all (Apple Silicon)."
 		};
 
 		static BlockDefinition Blocks[] = {
@@ -607,8 +617,14 @@ namespace FPLPresentationData {
 				V2f(0.0f,0.0f),V2f(1.0f,1.0f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
 				"- No video rendering functions.\n"
 				"\n"
-				"- No audio sample conversion.\n",
-				HorizontalAlignment::Left, 60.0f
+				"- No audio sample conversion.\n"
+				"\n"
+				"- Not everything is implemented yet.\n"
+				"\n"
+				"- Missing audio/video/window backends.\n"
+				"\n"
+				"- Platform support are limited.\n",
+				HorizontalAlignment::Left, 40.0f
 			),
 		};
 
