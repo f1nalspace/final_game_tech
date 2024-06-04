@@ -2828,9 +2828,9 @@ int main(int argc, char **argv) {
 
 				case ImageResourceType::File:
 				{
-					size_t pathLen = fplPathCombine(nullptr, 0, 2, app.renderer.imagesBasePath, res.file.relativeFilePath);
+					size_t pathLen = fplPathCombine(nullptr, 0, 2, app.renderer.imagesBasePath.base, res.file.relativeFilePath);
 					String path = app.strings.MakeString(pathLen);
-					fplPathCombine(path, path, 2, app.renderer.imagesBasePath, res.file.relativeFilePath);
+					fplPathCombine(path, path, 2, app.renderer.imagesBasePath.base, res.file.relativeFilePath);
 					app.renderer.AddImageFromFile(res.name, path);
 				} break;
 			}
