@@ -32,7 +32,9 @@ namespace Demo3 {
 		}
 	}
 #else
-#define ValidateParticles(particles)
+#	ifndef ValidateParticles
+#		define ValidateParticles(...)
+#	endif
 #endif
 
 	ParticleSimulation::ParticleSimulation():
