@@ -9801,8 +9801,8 @@ fpl_common_api void fplMemoryAlignedFree(void *ptr) {
 		size_t setBytes = 0; \
 		if (sizeof(T) > sizeof(uint8_t)) { \
 			T setValue = 0; \
-			for (int bytesIncrement = 0; bytesIncrement < sizeof(T); ++bytesIncrement) { \
-				int bitShift = bytesIncrement * 8; \
+			for (uint32_t bytesIncrement = 0; bytesIncrement < sizeof(T); ++bytesIncrement) { \
+				uint32_t bitShift = bytesIncrement * 8; \
 				setValue |= ((T)value << bitShift); \
 			} \
 			T *dataBlock = (T *)(memory); \
