@@ -10683,9 +10683,9 @@ fpl_common_api void fplSetDefaultVideoSettings(fplVideoSettings *video) {
 
 #if defined(FPL__ENABLE_VIDEO_VULKAN)
 	video->graphics.vulkan.libraryFile = fpl_null;
-	video->graphics.vulkan.appVersion = fplStructInit(fplVersionInfo, "1.0.0", "1", "0", "0", "0");
-	video->graphics.vulkan.engineVersion = fplStructInit(fplVersionInfo, "1.0.0", "1", "0", "0", "0");
-	video->graphics.vulkan.apiVersion = fplStructInit(fplVersionInfo, "1.1.0", "1", "1", "0", "0");
+	video->graphics.vulkan.appVersion = fplStructInit(fplVersionInfo, .fullName = "1.0.0", .major = "1", .minor = "0", .fix = "0", .build = "0");
+	video->graphics.vulkan.engineVersion = fplStructInit(fplVersionInfo, .fullName = "1.0.0", .major = "1", .minor = "0", .fix = "0", .build = "0");
+	video->graphics.vulkan.apiVersion = fplStructInit(fplVersionInfo, .fullName = "1.1.0", .major = "1", .minor = "1", .fix = "0", .build = "0");
 	video->graphics.vulkan.validationLayerMode = fplVulkanValidationLayerMode_Disabled;
 #endif
 
