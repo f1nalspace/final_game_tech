@@ -83,6 +83,9 @@ fnet_api bool fnetIsBigEndian() {
 	return fnet__IsBE() > 0;
 }
 
+// Swap routines by:
+// https://stackoverflow.com/a/2637138
+
 static inline uint16_t fnet__SwapU16(const uint16_t value16) {
 	uint16_t result = (value16 << 8) | (value16 >> 8);
 	return result;
