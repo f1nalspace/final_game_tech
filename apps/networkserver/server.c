@@ -6,8 +6,8 @@
 #include <final_net.h>
 
 int main(int argc, char **argv) {
-	bool isBE = fnetIsBigEndian();
+	bool isBE = fplNetworkIsBigEndian();
 	printf("Platform is %s\n", isBE ? "Big Endian" : "Little Endian");
-	fnetTest();
+	fplNetworkTest();
 	return 0;
 }
