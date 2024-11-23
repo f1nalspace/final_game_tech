@@ -5,7 +5,7 @@ final_platform_layer.h
 	About
 -------------------------------------------------------------------------------
 
-Final Platform Layer is a Single-Header-File cross-platform C development library designed to abstract the underlying platform to a simple and easy-to-use API - providing low-level access to (Window, Video, Audio, Input, File/Path IO, Threads, Memory, Hardware, etc.).
+Final Platform Layer is a Single-Header-File cross-platform C/C++ development library designed to abstract the underlying platform to a simple and easy-to-use API - providing low-level access to (Window, Video, Audio, Input, File/Path IO, Threads, Memory, Hardware, etc.).
 
 The main focus is game/media/simulation development, so the default settings will create a window, set up an OpenGL rendering context, and initialize audio playback on any platform.
 
@@ -13,7 +13,7 @@ It is written in C99 for simplicity and best portability but is C++ compatible a
 
 FPL supports the platforms Windows/Linux/Unix for the architectures x86/x64/arm.
 
-The only dependencies are built-in operating system libraries and a C99 compliant compiler.
+The only dependencies are built-in operating system libraries and a C99 or C++/11 compliant compiler.
 
 It is licensed under the MIT-License. This license allows you to use FPL freely in any software.
 
@@ -1555,9 +1555,13 @@ SOFTWARE.
 #	if (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L) || (__cplusplus >= 201103L) || (_MSC_VER >= 1900)
 		//! C++/11 compiler detected
 #		define FPL_IS_CPP11
+#	else
+		//! C++/98 compiled detected -> Not supported
+#		error "This C++ compiler is not supported, please ensure that you are compiling for C++/11 or higher!"
 #	endif
 #else
-#	error "This C/C++ compiler is not supported!"
+	//! Neither a C or C++ compiler detected
+#	error "This C/C++ compiler is not supported, please ensure that you are compiling for C99 or C++/11 or higher!"
 #endif
 
 //
