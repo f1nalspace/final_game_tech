@@ -124,6 +124,8 @@ namespace ImageResources {
 }
 
 namespace FPLPresentationData {
+	static BackgroundStyle FixedBackground = MakeBackground(RGBAToLinearHex24(0x000000, 255), RGBAToLinearHex24(0x0483AF, 100));
+
 	static BackgroundStyle DarkBlueBack = MakeBackground(RGBAToLinearHex24(0x000000, 255), RGBAToLinearRaw(15, 13, 80, 255));
 
 	// DarkBlue to LightBlue
@@ -152,31 +154,8 @@ namespace FPLPresentationData {
 	static BackgroundStyle Background15 = MakeBackground(RGBAToLinearHex24(0x000000, 255), RGBAToLinearHex24(0x6d7b23, 100));
 	static BackgroundStyle Background16 = MakeBackground(RGBAToLinearHex24(0x000000, 255), RGBAToLinearHex24(0x7b5223, 100));
 
-	static BackgroundStyle Backgrounds[] = {
-		Background1,
-		Background2,
-		Background3,
-		Background4,
-		Background5,
-		Background6,
-		Background7,
-		Background8,
-		Background9,
-		Background10,
-		Background11,
-		Background12,
-		Background13,
-		Background14,
-		Background15,
-		Background16,
-	};
-
-	static int BackgroundIndex = 0;
-
 	static BackgroundStyle GetBackground() {
-		BackgroundStyle result = Backgrounds[BackgroundIndex];
-		BackgroundIndex = (BackgroundIndex + 1) % fplArrayCount(Backgrounds);
-		return(result);
+		return FixedBackground;
 	}
 
 	namespace Intro {
@@ -479,8 +458,8 @@ namespace FPLPresentationData {
 	namespace Platforms {
 		const char *title = "Supported Platforms";
 
-		const Angle rotationAngle = Angle::FromDegrees(30);
-		const Vec3f rotationDir = V3f(0.0f, 1.0f, 0.1f);
+		const Angle rotationAngle = Angle::FromDegrees(75.0f);
+		const Vec3f rotationDir = V3f(-0.5f, 0.65f, 0.5f);
 
 		const Seconds duration = 0.0;
 
