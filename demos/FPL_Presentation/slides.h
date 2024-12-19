@@ -197,7 +197,7 @@ namespace FPLPresentationData {
 			MakeTextDef(
 				V2f(0.0, 0.0), V2f(1.0, 1.0),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
 				"Introducing Final-Platform-Layer (FPL)\n"
-				"A lightweight Platform-Abstraction-Library written in C99\n",
+				"A lightweight platform abstraction library written in C99\n",
 				HorizontalAlignment::Center
 			),
 		};
@@ -298,7 +298,7 @@ namespace FPLPresentationData {
 			MakeTextDef(
 				V2f(0.0f, 0.0f), V2f(1.0f, 1.0f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
 				"Final-Platform-Layer (or short 'FPL')\n"
-				"is a lightweight library written in C99.\n"
+				"is a lightweight library written in C99 with support for C++.\n"
 				"\n"
 				"It provides a powerful and easy to use API,\n"
 				"that gives you access to low-level systems, hardware devices,\n"
@@ -329,15 +329,15 @@ namespace FPLPresentationData {
 			"C/C++ has very limited access to the underlying platform."
 			"Even in modern C++, you still don't have direct access to a lot of systems."
 			"To access low-level systems, such as audio or video or windowing systems, you either need to use third-party libraries"
-			"or write platform-specific codes directly for every platform you want to support."
+			"or write platform-specific code directly for every platform you want to support."
 		};
 
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
 				V2f(0.0f, 0.0f),V2f(1.0f, 1.0f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
 				"C/C++ has very limited access to the underlying platform,\n"
-				"so you have either use third-party libraries or\n"
-				"write platform specific codes directly.\n",
+				"so you either have to use third-party libraries or\n"
+				"write platform specific code directly.\n",
 				HorizontalAlignment::Left
 			),
 		};
@@ -352,7 +352,7 @@ namespace FPLPresentationData {
 	};
 
 	namespace Features {
-		const char *title = "Features of FPL";
+		const char *title = "Features";
 
 		const Angle rotationAngle = Angle::FromDegrees(30);
 		const Vec3f rotationDir = V3f(0.0f, 1.0f, 0.1f);
@@ -366,7 +366,6 @@ namespace FPLPresentationData {
 			"- It is designed to be fast in compile and runtime"
 			"- It does not require any build-systems or thirdparty libraries"
 			"- It supports CPU architectures: X86, X64 and ARM"
-			"- It supports the operating systems: Windows, Linux and Unix"
 			""
 			"- It can work directly in a console application, including support for writing and reading"
 			"- It can create and manage a single window for you, including the handling of events"
@@ -429,91 +428,103 @@ namespace FPLPresentationData {
 
 			// Cards for second row
 			MakeImageDef(
-				V2f(0.0f, 0.5f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				V2f(0.0f, 0.55f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
 				&ImageResources::Card_C_Language, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 			MakeImageDef(
-				V2f(0.2f, 0.5f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				V2f(0.2f, 0.55f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
 				&ImageResources::Card_Performance, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 			MakeImageDef(
-				V2f(0.4f, 0.5f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				V2f(0.4f, 0.55f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
 				&ImageResources::Card_NoDependencies, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 			MakeImageDef(
-				V2f(0.6f, 0.5f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				V2f(0.6f, 0.55f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
 				&ImageResources::Card_Memory, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 			MakeImageDef(
-				V2f(0.8f, 0.5f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				V2f(0.8f, 0.55f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
 				&ImageResources::Card_CPU, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 
 			// Labels for second row
 			MakeTextDef(
-				V2f(0.0f, 0.7f), V2f(0.2f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				V2f(0.0f, 0.75f), V2f(0.2f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
 				"Written in C99", HorizontalAlignment::Left, 20.0f
 			),
 			MakeTextDef(
-				V2f(0.2f, 0.7f), V2f(0.2f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				V2f(0.2f, 0.75f), V2f(0.2f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
 				"High Performance", HorizontalAlignment::Left, 20.0f
 			),
 			MakeTextDef(
-				V2f(0.4f, 0.7f), V2f(0.2f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				V2f(0.4f, 0.75f), V2f(0.2f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
 				"No Dependencies", HorizontalAlignment::Left, 20.0f
 			),
 			MakeTextDef(
-				V2f(0.6f, 0.7f), V2f(0.2f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				V2f(0.6f, 0.75f), V2f(0.2f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
 				"Small Memory Footprint", HorizontalAlignment::Left, 20.0f
 			),
 			MakeTextDef(
-				V2f(0.8f, 0.7f), V2f(0.2f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
-				"Platform Support", HorizontalAlignment::Left, 20.0f
+				V2f(0.8f, 0.75f), V2f(0.2f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+				"Architecture Support", HorizontalAlignment::Left, 20.0f
 			),
+		};
 
+		static Quaternion Rot = QuatFromAngleAxis(rotationAngle.radians, rotationDir);
 
-			MakeImageDef(
-				V2f(0.0f, 0.85f), V2f(0.1f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
-				&ImageResources::Vendor_Windows, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.5f)
-			),
-			MakeImageDef(
-				V2f(0.1f, 0.85f), V2f(0.1f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
-				&ImageResources::Vendor_Linux, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.5f)
-			),
-			MakeImageDef(
-				V2f(0.2f, 0.85f), V2f(0.1f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
-				&ImageResources::Vendor_Raspberry, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.5f)
-			),
-			MakeImageDef(
-				V2f(0.3f, 0.85f), V2f(0.1f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
-				&ImageResources::Vendor_FreeBSD, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.5f)
-			),
-			MakeImageDef(
-				V2f(0.4f, 0.85f), V2f(0.1f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
-				&ImageResources::Vendor_OpenGL, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.5f)
-			),
-			MakeImageDef(
-				V2f(0.5f, 0.85f), V2f(0.1f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
-				&ImageResources::Vendor_Vulkan, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.5f)
-			),
-			MakeImageDef(
-				V2f(0.6f, 0.85f), V2f(0.1f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
-				&ImageResources::Vendor_DirectX, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.5f)
-			),
-			MakeImageDef(
-				V2f(0.7f, 0.85f), V2f(0.1f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
-				&ImageResources::Vendor_Alsa, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.5f)
-			),
-			MakeImageDef(
-				V2f(0.8f, 0.85f), V2f(0.1f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
-				&ImageResources::Vendor_XLib, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.5f)
-			),
-			MakeImageDef(
-				V2f(0.9f, 0.85f), V2f(0.1f, 0.1f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
-				&ImageResources::Vendor_OpenSource, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.5f)
-			),
+		static const SlideDefinition Slide = MakeSlideDef(title, Blocks, GetBackground(), Rot, duration);
+	};
 
-			
+	namespace Platforms {
+		const char *title = "Supported Platforms";
+
+		const Angle rotationAngle = Angle::FromDegrees(30);
+		const Vec3f rotationDir = V3f(0.0f, 1.0f, 0.1f);
+
+		const Seconds duration = 0.0;
+
+		static const char *Talk = {
+			"It supports the operating systems: Windows, Linux, Raspberry Pi and Unix"
+		};
+
+		static BlockDefinition Blocks[] = {
+			MakeImageDef(
+				V2f(0.0f, 0.2f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
+				&ImageResources::Vendor_Windows, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+			),
+			MakeImageDef(
+				V2f(0.1f, 0.2f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
+				&ImageResources::Vendor_Linux, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+			),
+			MakeImageDef(
+				V2f(0.2f, 0.2f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
+				&ImageResources::Vendor_Raspberry, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+			),
+			MakeImageDef(
+				V2f(0.3f, 0.2f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
+				&ImageResources::Vendor_FreeBSD, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+			),
+			MakeImageDef(
+				V2f(0.4f, 0.6f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
+				&ImageResources::Vendor_OpenGL, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+			),
+			MakeImageDef(
+				V2f(0.5f, 0.6f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
+				&ImageResources::Vendor_Vulkan, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+			),
+			MakeImageDef(
+				V2f(0.6f, 0.6f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
+				&ImageResources::Vendor_DirectX, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+			),
+			MakeImageDef(
+				V2f(0.7f, 0.6f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
+				&ImageResources::Vendor_Alsa, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+			),
+			MakeImageDef(
+				V2f(0.8f, 0.6f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
+				&ImageResources::Vendor_XLib, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+			),
 		};
 
 		static Quaternion Rot = QuatFromAngleAxis(rotationAngle.radians, rotationDir);
@@ -563,20 +574,20 @@ namespace FPLPresentationData {
 		static const char *Talk = {
 			"Unfortunatly it does not with magic."
 			""
-			"It is a single-header-file-library, so it contains the full API and source for every platform"
+			"It is a 'single-header-file-library', so it contains the full API and source for every platform"
 			"It makes heavy use of the pre-compiler to detect compiler/platform/hardware/driver setups"
-			"It prevents code-duplication by using sub-platforms"
+			"It prevents code duplication by using sub platforms"
 			"It uses runtime linking by default, so everything is automatically loaded on demand"
 		};
 
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
 				V2f(0.0f,0.0f),V2f(1.0f,1.0f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				"- Single-header-file library, containing the full API and source for every platform\n"
+				"- \"Single-header-file library\", containing the full API and source for every platform\n"
 				"\n"
 				"- Uses the pre-compiler to detect compiler/platform/hardware/driver setups\n"
 				"\n"
-				"- Prevents code-duplication by using sub-platforms (Unix vs Linux)\n"
+				"- Prevents code duplication by using sub platforms (Unix vs Linux)\n"
 				"\n"
 				"- Uses runtime linking by default\n",
 				HorizontalAlignment::Left, FeaturesFontSize
@@ -807,6 +818,7 @@ namespace FPLPresentationData {
 		WhatIsFPL::Slide,
 		Motivation::Slide,
 		Features::Slide,
+		Platforms::Slide,
 		Magic::Slide,
 		HowItWorks::Slide,
 		Limitations::Slide,
