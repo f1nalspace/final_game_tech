@@ -1772,14 +1772,15 @@ SOFTWARE.
 
 // Alignment keyword
 #if defined(FPL_IS_CPP11)
-#define fpl__m_AlignAs(N) alignas(N)
+#	define fpl__m_AlignAs(N) alignas(N)
 #elif defined(FPL_COMPILER_MSVC)
-#define fpl__m_AlignAs(N) __declspec(align(N))
+#	define fpl__m_AlignAs(N) __declspec(align(N))
 #elif defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG)
-#define fpl__m_AlignAs(N) __attribute__((aligned(N)))
+#	define fpl__m_AlignAs(N) __attribute__((aligned(N)))
 #else
-#define fpl__m_AlignAs(N)
+#	define fpl__m_AlignAs(N)
 #endif
+
 #define fpl__m_AlignAsAuto(N) fpl__m_AlignAs(((N) < fplMinAlignment ? fplMinAlignment : (N)))
 
 //! Structure alignment in bytes
