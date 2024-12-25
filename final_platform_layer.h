@@ -1705,7 +1705,10 @@ SOFTWARE.
 
 //
 // Platform detection
+// 
 // https://sourceforge.net/p/predef/wiki/OperatingSystems/
+// 
+// Only platforms that are supported are listed
 //
 #if defined(_WIN32) || defined(_WIN64)
 #	define FPL_PLATFORM_WINDOWS
