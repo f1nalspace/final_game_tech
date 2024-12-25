@@ -135,10 +135,15 @@ SOFTWARE.
 	## v0.9.9-beta
 	
 	### Overview
+	- Improved and extended system/platform detection macros
 	- Removed several obsolete functions
 	- Fixed incorrect audio format
 
 	### Details
+	- Improved: C/C++ detection improved
+	- Improved: Architecture detection extended (Apple, Risc-V, Mips, Sparc)
+	- Improved: CPU bits detection improved
+	- Improved: Compiler detected improved & extended (MingW, Apple, Borland, TCC, DMC, CSMC, Linaro)
 	- Fixed[#156]: Target audio format type and periods was never used
 	- Fixed[#157]: Compile error for missing _countof() fplArrayCount in some scenarios
 	- Removed: Obsolete function fplFileSetTimestamps removed
