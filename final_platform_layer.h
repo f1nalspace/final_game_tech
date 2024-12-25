@@ -1583,7 +1583,8 @@ SOFTWARE.
 #endif
 
 //
-// Architecture detection (x86, x64)
+// Architecture detection (x86, x64, arm32, arm64, apple arm64, riscv, powerpc, mips, sparc)
+// 
 // https://sourceforge.net/p/predef/wiki/Architectures/
 //
 #if defined(__x86_64__) || defined(_M_X64) || defined(__amd64__)
@@ -1591,13 +1592,23 @@ SOFTWARE.
 #elif defined(__i386__) || defined(_M_IX86) || defined(__X86__) || defined(_X86_)
 #	define FPL_ARCH_X86
 #elif defined(__aarch64__) || defined(_M_ARM64)
-#	define FPL_ARCH_ARM64
-#elif defined(__arm__) || defined(_M_ARM)
+#	if defined(__APPLE__)
+#		define FPL_ARCH_APPLE_ARM64
+#	else
+#		define FPL_ARCH_ARM64
+#	endif
+#elif defined(__arm__) || defined(_M_ARM) || defined(__ARM_ARCH_6__) || defined(__ARM_ARCH_7__) || defined(__armv7__)
 #	define FPL_ARCH_ARM32
+#elif defined(__riscv) || defined(__riscv_xlen) 
+#	define FPL_ARCH_RISCV
 #elif defined(__powerpc64__) || defined(__ppc64__) || defined(__PPC64__) || defined(_ARCH_PPC64)
 #	define FPL_ARCH_POWERPC64
 #elif defined(__powerpc__) || defined(__POWERPC__) || defined(__ppc__) || defined(__PPC__) || defined(_ARCH_PPC)
 #	define FPL_ARCH_POWERPC32
+#elif defined(__mips__) || defined(__mips64) || defined(_MIPS_ARCH)
+#	define FPL_ARCH_MIPS
+#elif defined(__sparc__) || defined(__sparcv9)
+#	define FPL_ARCH_SPARC
 #else
 #	error "This architecture is not supported!"
 #endif // FPL_ARCH
