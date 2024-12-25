@@ -1545,23 +1545,41 @@ SOFTWARE.
 // C99 detection
 //
 // https://en.wikipedia.org/wiki/C99#Version_detection
-// C99 is partially supported since MSVC 2015
-#if !defined(__cplusplus) && ((defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L)) || (defined(_MSC_VER) && (_MSC_VER >= 1900)))
-	//! C99 compiler detected
-#	define FPL_IS_C99
-#elif defined(__cplusplus)
+// 
+// NOTE: C99 is supported since MSVC 2015
+// NOTE: C11 is supported since MSVC 2019
+//
+#if defined(__cplusplus)
 	//! C++ compiler detected
 #	define FPL_IS_CPP
-#	if (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L) || (__cplusplus >= 201103L) || (_MSC_VER >= 1900)
+
+#	if (__cplusplus >= 201103L)
 		//! C++/11 compiler detected
 #		define FPL_IS_CPP11
+#	endif
+#elif defined(_MSC_VER)
+#	if (_MSC_VER >= 1900)
+		//! C99 compiler detected (MSVC)
+#		define FPL_IS_C99
+
+#		if (_MSC_VER >= 1920)
+			//! C11 compiler detected (MSVC)
+#			define FPL_IS_C11
+#		endif
+
 #	else
-		//! C++/98 compiled detected -> Not supported
-#		error "This C++ compiler is not supported, please ensure that you are compiling for C++/11 or higher!"
+#		error "This MSVC compiler does not support C99 or higher!"
+#	endif
+#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
+	//! C99 compiler detected
+#	define FPL_IS_C99
+
+#	if __STDC_VERSION__ >= 201112L
+		//! C11 compiler detected
+#		define FPL_IS_C11
 #	endif
 #else
-	//! Neither a C or C++ compiler detected
-#	error "This C/C++ compiler is not supported, please ensure that you are compiling for C99 or C++/11 or higher!"
+#	error "This C/C++ compiler is not supported!"
 #endif
 
 //
