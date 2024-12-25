@@ -1618,21 +1618,33 @@ SOFTWARE.
 //
 #if defined(_WIN32)
 #	if defined(_WIN64)
-#		define FPL__M_CPU_64BIT
+#		define FPL__M_CPU_64BIT // 64-bit system
 #	else
-#		define FPL__M_CPU_32BIT
+#		define FPL__M_CPU_32BIT // 32-bit system
 #	endif
-#elif defined(__GNUC__)
-#	if defined(__LP64__)
-#		define FPL__M_CPU_64BIT
+#elif defined(__GNUC__) || defined(__clang__)
+#	if defined(__LP64__) || defined(_LP64)
+#		define FPL__M_CPU_64BIT // 64-bit system
 #	else
-#		define FPL__M_CPU_32BIT
+#		define FPL__M_CPU_32BIT // 32-bit system
+#	endif
+#elif defined(_MSC_VER)
+#	if defined(_WIN64) || defined(_M_X64) || defined(__x86_64__)
+#		define FPL__M_CPU_64BIT // 64-bit system
+#	else
+#		define FPL__M_CPU_32BIT // 32-bit system
+#	endif
+#elif defined(__APPLE__) || defined(__linux__) || defined(__unix__)
+#	if defined(__x86_64__) || defined(__aarch64__) || defined(__ppc64__)
+#		define FPL__M_CPU_64BIT // 64-bit system
+#	else
+#		define FPL__M_CPU_32BIT // 32-bit system
 #	endif
 #else
 #	if (defined(__SIZEOF_POINTER__) && __SIZEOF_POINTER__ == 8) || (sizeof(void *) == 8)
-#		define FPL__M_CPU_64BIT
+#		define FPL__M_CPU_64BIT // 64-bit system
 #	else
-#		define FPL__M_CPU_32BIT
+#		define FPL__M_CPU_32BIT // 32-bit system
 #	endif
 #endif
 
