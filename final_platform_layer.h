@@ -1658,6 +1658,7 @@ SOFTWARE.
 
 //
 // Compiler detection
+// 
 // http://beefchunk.com/documentation/lang/c/pre-defined-c/precomp.html
 // http://nadeausoftware.com/articles/2012/10/c_c_tip_how_detect_compiler_name_and_version_using_compiler_predefined_macros
 //
@@ -1667,7 +1668,7 @@ SOFTWARE.
 #elif defined(__INTEL_COMPILER)
 	//! Intel compiler detected
 #	define FPL_COMPILER_INTEL
-#elif defined(__MINGW32__)
+#elif defined(__MINGW32__) || defined(__MINGW64__)
 	//! MingW compiler detected
 #	define FPL_COMPILER_MINGW
 #elif defined(__CC_ARM)
@@ -1679,9 +1680,27 @@ SOFTWARE.
 #elif defined(_MSC_VER)
 	//! Visual studio compiler detected
 #	define FPL_COMPILER_MSVC
+#elif defined(__APPLE__)
+	//! Apple Clang compiler detected (Xcode)
+#	define FPL_COMPILER_APPLE_CLANG
+#elif defined(__BORLANDC__)
+	//! Borland C++ compiler detected
+#	define FPL_COMPILER_BORLAND
+#elif defined(__TCC__)
+	//! Tiny C Compiler detected
+#	define FPL_COMPILER_TCC
+#elif defined(__DMC__)
+	//! Digital Mars C++ compiler detected
+#	define FPL_COMPILER_DMC
+#elif defined(__CSMC__)
+	//! COSMIC C Compiler detected
+#	define FPL_COMPILER_CSMC
+#elif defined(__LINARO__)
+	//! Huawei Linaro compiler detected
+#	define FPL_COMPILER_LINARO
 #else
 	//! No compiler detected
-#error "This compiler is not supported!"
+#	error "This compiler is not supported!"
 #endif // FPL_COMPILER
 
 //
