@@ -76,6 +76,11 @@ namespace ImageResources {
 	static ImageResource Demo_OpenGL = ImageResource::CreateFromFile("demo_opengl.png");
 	static ImageResource Demo_Raytracer = ImageResource::CreateFromFile("demo_raytracer.png");
 
+	static ImageResource Feature_SingleHeaderFile = ImageResource::CreateFromFile("singleheaderfile.png");
+	static ImageResource Feature_RuntimeLinking = ImageResource::CreateFromFile("runtimelinking.png");
+	static ImageResource Feature_PreProcessor = ImageResource::CreateFromFile("preprocessor.png");
+	static ImageResource Feature_NoCodeDuplication = ImageResource::CreateFromFile("nocodeduplication.png");
+
 	static const ImageResource All[] = {
 		FPLLogo128x128,
 		FPLLogo512x512,
@@ -120,6 +125,11 @@ namespace ImageResources {
 		Demo_Crackout,
 		Demo_OpenGL,
 		Demo_Raytracer,
+
+		Feature_SingleHeaderFile,
+		Feature_RuntimeLinking,
+		Feature_PreProcessor,
+		Feature_NoCodeDuplication,
 	};
 }
 
@@ -551,26 +561,30 @@ namespace FPLPresentationData {
 		const Seconds duration = 0.0;
 
 		static const char *Talk = {
-			"Unfortunatly it does not with magic."
+			"Of course there is no magic involved, just a few tricks."
 			""
 			"It is a 'single-header-file-library', so it contains the full API and source for every platform"
-			"It makes heavy use of the pre-compiler to detect compiler/platform/hardware/driver setups"
+			"It makes heavy use of the pre-processor to detect compiler/platform/hardware/driver setups"
 			"It prevents code duplication by using sub platforms"
 			"It uses runtime linking by default, so everything is automatically loaded on demand"
 		};
 
 		static BlockDefinition Blocks[] = {
-			MakeTextDef(
-				V2f(0.0f,0.0f),V2f(1.0f,1.0f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				"- \"Single-header-file library\", containing the full API and source for every platform\n"
-				"\n"
-				"- Uses the pre-compiler to detect compiler/platform/hardware/driver setups\n"
-				"\n"
-				"- Prevents code duplication by using sub platforms (Unix vs Linux)\n"
-				"\n"
-				"- Uses runtime linking by default\n",
-				HorizontalAlignment::Left, FeaturesFontSize
-			),
+			MakeImageDef(
+				V2f(0.05f, 0.125f), V2f(0.15f, 0.65f), MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Middle),
+				&ImageResources::Feature_SingleHeaderFile, V2f(1.0f, 1.0f), false),
+
+			MakeImageDef(
+				V2f(0.3f, 0.125f), V2f(0.15f, 0.65f), MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Middle),
+				&ImageResources::Feature_PreProcessor, V2f(1.0f, 1.0f), false),
+				
+			MakeImageDef(
+				V2f(0.55f, 0.125f), V2f(0.15f, 0.65f), MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Middle),
+				&ImageResources::Feature_NoCodeDuplication, V2f(1.0f, 1.0f), false),
+
+			MakeImageDef(
+				V2f(0.80f, 0.125f), V2f(0.15f, 0.65f), MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Middle),
+				&ImageResources::Feature_RuntimeLinking, V2f(1.0f, 1.0f), false),
 		};
 
 		static Quaternion Rot = QuatFromAngleAxis(rotationAngle.radians, rotationDir);
@@ -578,8 +592,8 @@ namespace FPLPresentationData {
 		static const SlideDefinition Slide = MakeSlideDef(title, Blocks, GetBackground(), Rot, duration);
 	};
 
-	namespace Limitations {
-		const char *title = "Limitations";
+	namespace Constraints {
+		const char *title = "Constraints";
 
 		const Angle rotationAngle = Angle::FromDegrees(65);
 		const Vec3f rotationDir = V3f(0.0f, 0.5f, 1.0f);
@@ -587,33 +601,26 @@ namespace FPLPresentationData {
 		const Seconds duration = 0.0;
 
 		static const char *Talk = {
-			"FPL is lightweight, so its feature-set is limited."
-			"Therefore it can't do anything for you."
+			"FPL is lightweight, so the feature set is limited. As a result, you'll need to provide some functionality."
 			""
-			"FPL initializes the video backend for you, such as OpenGL/Vulkan/Software output, but it does not provide any rendering functions."
-			"To use any of the actual video backends, you have to include the header/library and do the rendering yourself."
+			"Video rendering is intentionally excluded, giving users the flexibility to integrate their own solutions"
 			""
-			"There is no audio sample conversion or DSP built-in, so you have to provide the samples in the correct format yourself."
-			"But you can setup your preferred audio configuration at startup (such as buffer size, sample rate, data type and more)."
-			"Depending on the audio hardware you don't have to do any sample conversion at all."
-			"But you should always be prepared to do so, because not every sound device supports any format."
+			"Audio sample conversion is intentionally excluded, giving users the flexibility to integrate their own solutions"
 			""
-			"In addition FPL is still in active development, so not every feature for every supported platform is implemented yet."
-			"Also some platforms are not supported (e.g. MacOS), either due to missing the actual hardware or not knowing about them at all (Apple Silicon)."
+			"Platform support are limited to X86 or ARM, both with support for 32-bit or 64-bit"
+			"More platforms may be added in the future, such as MacOS, Android or server-based platforms."
 		};
 
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
 				V2f(0.0f,0.0f),V2f(1.0f,1.0f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				"- No video rendering functions.\n"
+				"- Video rendering must be provided yourself\n"
 				"\n"
-				"- No audio sample conversion.\n"
+				"- Audio sample conversion must be provided yourself\n"
 				"\n"
-				"- Not everything is implemented yet.\n"
-				"\n"
-				"- Missing audio/video/window backends.\n"
-				"\n"
-				"- Platform support are limited.\n",
+				"Platform support are constrained to:\n"
+				"- X86/X64/ARM32/ARM64\n"
+				"- Windows/Linux/Unix\n",
 				HorizontalAlignment::Left, 40.0f
 			),
 		};
@@ -726,7 +733,7 @@ namespace FPLPresentationData {
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
 				V2f(0.25f, 0.0f), V2f(0.5f, 0.1f), MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Middle),
-				"Official website (details, documentation):",
+				"Official website (details, releases, documentation):",
 				HorizontalAlignment::Left, FeaturesFontSize
 			),
 			MakeTextDef(
@@ -800,7 +807,7 @@ namespace FPLPresentationData {
 		Platforms::Slide,
 		Magic::Slide,
 		HowItWorks::Slide,
-		Limitations::Slide,
+		Constraints::Slide,
 		HowToUse::Slide,
 		Demos::Slide,
 		Links::Slide,
@@ -839,7 +846,7 @@ namespace FPLPresentationData {
 		/* font */ {FontResources::Arimo.name, 24.0f, 1.15f, FPLPresentationData::HeaderStyle},
 		/* height */ 32.0f,
 		/* leftText */ "%SLIDE_NAME%",
-		/* centerText */ "Copyright (C) 2017-2024 Torsten Spaete",
+		/* centerText */ "Copyright (C) 2017-2025 Torsten Spaete",
 		/* rightText */ "Page %SLIDE_NUM% of %SLIDE_COUNT%",
 		/* padding */ V2f(2,3),
 	};
