@@ -8,7 +8,7 @@ Description:
 	It makes heavy use of OpenGL and defines all slides in a very simple format.
 
 Requirements:
-	- C++/11 Compiler
+	- C++ Compiler
 	- Final Platform Layer
 	- Final Dynamic OpenGL
 	- STB_image
@@ -18,21 +18,11 @@ Author:
 	Torsten Spaete
 
 Changelog:
-	## 2023-12-29
-	- Rewritten all slides
-	- Added more image resources
-
-	## 2021-02-28
-	- Updated all slices, written talks
-
-	## 2020-15-05
-	- Made it much more nicer looking
-
 	## 2020-05-09
 	- Initial version
 
 License:
-	Copyright (c) 2017-2024 Torsten Spaete
+	Copyright (c) 2017-2025 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
