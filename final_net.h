@@ -128,13 +128,13 @@ fplNetwork_api uint64_t fplNetworkHostToNetU64(const uint64_t host64);
 fplNetwork_api uint64_t fplNetworkNetToHostU64(const uint64_t net64);
 
 fplNetwork_api bool fplNetworkStringToAddress4(const char *buffer, const size_t maxNameLen, fplNetworkAddress4 *outAddress);
-fplNetwork_api size_t fplNetworkAddressToString4(const fplNetworkAddress4 *address, const size_t maxBufferLen, char *outBuffer);
+fplNetwork_api int fplNetworkAddressToString4(const fplNetworkAddress4 *address, const size_t maxBufferLen, char *outBuffer);
 
 fplNetwork_api bool fplNetworkStringToAddress6(const char *buffer, const size_t maxNameLen, fplNetworkAddress6 *outAddress);
-fplNetwork_api size_t fplNetworkAddressToString6(const fplNetworkAddress6 *address, const size_t maxBufferLen, char *outBuffer);
+fplNetwork_api int fplNetworkAddressToString6(const fplNetworkAddress6 *address, const size_t maxBufferLen, char *outBuffer);
 
 fplNetwork_api bool fplNetworkStringToAddressAuto(const char *buffer, const size_t maxNameLen, fplNetworkIpAddress *outAddress);
-fplNetwork_api size_t fplNetworkAddressToStringAuto(const fplNetworkIpAddress *address, const size_t maxBufferLen, char *outBuffer);
+fplNetwork_api int fplNetworkAddressToStringAuto(const fplNetworkIpAddress *address, const size_t maxBufferLen, char *outBuffer);
 
 fplNetwork_api void fplNetworkTest();
 
@@ -144,6 +144,7 @@ fplNetwork_api void fplNetworkTest();
 #define FPL__NET_IMPL
 
 #include <string.h>
+#include <math.h>
 
 #define FPL_NETWORK__ARRAYCOUNT(arr) (sizeof(arr) / sizeof((arr)[0]))
 
@@ -301,6 +302,54 @@ static bool fpl__NetworkParseHex(const char *buffer, const size_t length, const 
 	return false;
 }
 
+static int fpl__NetworkCountDigits(const uint32_t value) {
+	if (value == 0) {
+		return 1;
+	}
+	int result = (int)log10(value) + 1;
+	return result;
+}
+
+static int fpl__NetworkCountHex(const uint32_t value) {
+	if (value == 0) {
+		return 1;
+	}
+	int result = (int)(log(value) / log(16)) + 1;
+	return result;
+}
+
+static int fpl__NetworkU8ToString(const uint8_t value, const size_t maxBufferLen, char *outBuffer) {
+	if (value == 0) {
+		if (outBuffer == NULL) {
+			return 1;
+		} else if (maxBufferLen < 1) {
+			return -1;
+		}
+		*outBuffer = '0';
+		return 1;
+	}
+
+	if (outBuffer == NULL || maxBufferLen == 0) {
+		return -1;
+	}
+
+	int digitCount = fpl__NetworkCountDigits(value);
+
+	if (maxBufferLen < digitCount) {
+		return -1;
+	}
+
+	uint8_t x = value;
+	int index = digitCount;
+	while (x > 0) {
+		outBuffer[index - 1] = '0' + (x % 10);
+		x /= 10;
+		--index;
+	}
+
+	return digitCount;
+}
+
 fplNetwork_api bool fplNetworkStringToAddress4(const char *buffer, const size_t maxBufferLen, fplNetworkAddress4 *outAddress) {
 	if (buffer == NULL || buffer == 0 || maxBufferLen < FPL_NETWORK_ADDRESS4_STRING_MIN_LENGTH || outAddress == NULL) {
 		return false;
@@ -339,15 +388,115 @@ fplNetwork_api bool fplNetworkStringToAddress4(const char *buffer, const size_t 
 	return true;
 }
 
-fplNetwork_api size_t fplNetworkAddressToString4(const fplNetworkAddress4 *address, const size_t maxBufferLen, char *outBuffer) {
-	return 0;
+fplNetwork_api int fplNetworkAddressToString4(const fplNetworkAddress4 *address, const size_t maxBufferLen, char *outBuffer) {
+	if (address == NULL) {
+		return -1;
+	}
+
+	int countA = fpl__NetworkCountDigits(address->a);
+	int countB = fpl__NetworkCountDigits(address->b);
+	int countC = fpl__NetworkCountDigits(address->c);
+	int countD = fpl__NetworkCountDigits(address->d);
+
+	int minLen = countA + 1 + countB + 1 + countC + 1 + countD;
+
+	if (outBuffer == NULL) {
+		return minLen;
+	}
+
+	if (maxBufferLen < minLen) {
+		return -1;
+	}
+
+	size_t remainingBufferLen;
+	char *p;
+	int r;
+
+	// Group A
+	remainingBufferLen = maxBufferLen;
+	p = outBuffer;
+	r = fpl__NetworkU8ToString(address->a, remainingBufferLen, p);
+	if (r == -1) {
+		return -1;
+	}
+	remainingBufferLen -= r;
+	p += r;
+	*p++ = '.';
+	--remainingBufferLen;
+
+	// Group B
+	r = fpl__NetworkU8ToString(address->b, remainingBufferLen, p);
+	if (r == -1) {
+		return -1;
+	}
+	remainingBufferLen -= r;
+	p += r;
+	*p++ = '.';
+	--remainingBufferLen;
+
+	// Group C
+	r = fpl__NetworkU8ToString(address->c, remainingBufferLen, p);
+	if (r == -1) {
+		return -1;
+	}
+	remainingBufferLen -= r;
+	p += r;
+	*p++ = '.';
+	--remainingBufferLen;
+
+	// Group D
+	r = fpl__NetworkU8ToString(address->d, remainingBufferLen, p);
+	if (r == -1) {
+		return -1;
+	}
+	remainingBufferLen -= r;
+
+	return minLen;
+}
+
+static inline fplNetworkCharToLower(const char c) {
+	return 0x20 | c;
 }
 
 fplNetwork_api bool fplNetworkStringToAddress6(const char *buffer, const size_t maxBufferLen, fplNetworkAddress6 *outAddress) {
+	// 8 Groups
+	const int groupCount = 8;
+	int groupIndex = 0;
+	size_t bufferIndex = 0;
+	char c = fplNetworkCharToLower(buffer[0]);
+	bool doubleColonSeen = false;
+	bool insideDoubleColon = false;
+	while (groupIndex < groupCount && bufferIndex < maxBufferLen) {
+		if (c == ':') {
+			if (groupIndex < groupCount - 1) {
+				if (!doubleColonSeen && bufferIndex < maxBufferLen - 1) {
+					char nextChar = buffer[bufferIndex + 1];
+					if (nextChar == ':') {
+						doubleColonSeen = true;
+						insideDoubleColon = true;
+						++bufferIndex;
+					}
+				}
+			} else {
+				// No termination separator
+				return false;
+			}
+		} if (fpl__NetworkIsHexLow(c)) {
+			while (bufferIndex < maxBufferLen) {
+				if (!fpl__NetworkIsHexLow(c)) {
+					break;
+				}
+				++bufferIndex;
+			}
+		} if (fpl__NetworkIsHexHigh(c)) {
+
+		}
+		++groupIndex;
+	}
 	return false;
 }
 
-fplNetwork_api size_t fplNetworkAddressToString6(const fplNetworkAddress6 *address, const size_t maxBufferLen, char *outBuffer) {
+fplNetwork_api int fplNetworkAddressToString6(const fplNetworkAddress6 *address, const size_t maxBufferLen, char *outBuffer) {
 	return 0;
 }
 
@@ -355,7 +504,7 @@ fplNetwork_api bool fplNetworkStringToAddressAuto(const char *buffer, const size
 	return false;
 }
 
-fplNetwork_api size_t fplNetworkAddressToStringAuto(const fplNetworkIpAddress *address, const size_t maxBufferLen, char *outBuffer) {
+fplNetwork_api int fplNetworkAddressToStringAuto(const fplNetworkIpAddress *address, const size_t maxBufferLen, char *outBuffer) {
 	return 0;
 }
 
@@ -429,61 +578,62 @@ static void fplNetwork__TestSwapU64() {
 typedef struct {
 	bool expectedSuccess;
 	fplNetworkAddress4 expectedAddress;
-	const char *str;
+	const char *inputStr;
+	const char *expectedStr;
 } fpl__NetworkAddressStringToAddressTestData4;
 
 static void fpl__NetworkAddressStringToAddressTest4() {
 	fpl__NetworkAddressStringToAddressTestData4 values[] = {
-		{false,FPL_NETWORK__ZERO,""},							// Empty
-		{false,FPL_NETWORK__ZERO," "},							// Too short
-		{false,FPL_NETWORK__ZERO,"               "},			// No data, no separators
-		{false,FPL_NETWORK__ZERO,"..."},						// No data, ony separators
-		{false,FPL_NETWORK__ZERO,"   .   .   .   "},			// No data, ony separators
-		{false,FPL_NETWORK__ZERO,"000111222333"},				// Only data without separators
-		{false,FPL_NETWORK__ZERO,"000..111..222..333"},			// Too many separators
-		{false,FPL_NETWORK__ZERO,"0000.11111.222222.333333"},	// Individual groups are wrong
+		{false,FPL_NETWORK__ZERO,"",0},							// Empty
+		{false,FPL_NETWORK__ZERO," ",0},							// Too short
+		{false,FPL_NETWORK__ZERO,"               ",0},			// No data, no separators
+		{false,FPL_NETWORK__ZERO,"...",0},						// No data, ony separators
+		{false,FPL_NETWORK__ZERO,"   .   .   .   ",0},			// No data, ony separators
+		{false,FPL_NETWORK__ZERO,"000111222333",0},				// Only data without separators
+		{false,FPL_NETWORK__ZERO,"000..111..222..333",0},			// Too many separators
+		{false,FPL_NETWORK__ZERO,"0000.11111.222222.333333",0},	// Individual groups are wrong
 
-		{false,FPL_NETWORK__ZERO,"0  .   .   .   "},			// Individual groups are whitespace
-		{false,FPL_NETWORK__ZERO,"   .0  .   .   "},			// Individual groups are whitespace
-		{false,FPL_NETWORK__ZERO,"   .   .0  .   "},			// Individual groups are whitespace
-		{false,FPL_NETWORK__ZERO,"   .   .   .0  "},			// Individual groups are whitespace
-		{false,FPL_NETWORK__ZERO,"  0.   .   .   "},			// Individual groups are whitespace
-		{false,FPL_NETWORK__ZERO,"   .  0.   .   "},			// Individual groups are whitespace
-		{false,FPL_NETWORK__ZERO,"   .   .  0.   "},			// Individual groups are whitespace
-		{false,FPL_NETWORK__ZERO,"   .   .   .  0"},			// Individual groups are whitespace
+		{false,FPL_NETWORK__ZERO,"0  .   .   .   ",0},			// Individual groups are whitespace
+		{false,FPL_NETWORK__ZERO,"   .0  .   .   ",0},			// Individual groups are whitespace
+		{false,FPL_NETWORK__ZERO,"   .   .0  .   ",0},			// Individual groups are whitespace
+		{false,FPL_NETWORK__ZERO,"   .   .   .0  ",0},			// Individual groups are whitespace
+		{false,FPL_NETWORK__ZERO,"  0.   .   .   ",0},			// Individual groups are whitespace
+		{false,FPL_NETWORK__ZERO,"   .  0.   .   ",0},			// Individual groups are whitespace
+		{false,FPL_NETWORK__ZERO,"   .   .  0.   ",0},			// Individual groups are whitespace
+		{false,FPL_NETWORK__ZERO,"   .   .   .  0",0},			// Individual groups are whitespace
 
-		{false,FPL_NETWORK__ZERO,"42 .   .   .   "},			// Individual groups are whitespace
-		{false,FPL_NETWORK__ZERO,"   .42 .   .   "},			// Individual groups are whitespace
-		{false,FPL_NETWORK__ZERO,"   .   .42 .   "},			// Individual groups are whitespace
-		{false,FPL_NETWORK__ZERO,"   .   .   .42 "},			// Individual groups are whitespace
-		{false,FPL_NETWORK__ZERO," 42.   .   .   "},			// Individual groups are whitespace
-		{false,FPL_NETWORK__ZERO,"   . 42.   .   "},			// Individual groups are whitespace
-		{false,FPL_NETWORK__ZERO,"   .   . 42.   "},			// Individual groups are whitespace
-		{false,FPL_NETWORK__ZERO,"   .   .   . 42"},			// Individual groups are whitespace
+		{false,FPL_NETWORK__ZERO,"42 .   .   .   ",0},			// Individual groups are whitespace
+		{false,FPL_NETWORK__ZERO,"   .42 .   .   ",0},			// Individual groups are whitespace
+		{false,FPL_NETWORK__ZERO,"   .   .42 .   ",0},			// Individual groups are whitespace
+		{false,FPL_NETWORK__ZERO,"   .   .   .42 ",0},			// Individual groups are whitespace
+		{false,FPL_NETWORK__ZERO," 42.   .   .   ",0},			// Individual groups are whitespace
+		{false,FPL_NETWORK__ZERO,"   . 42.   .   ",0},			// Individual groups are whitespace
+		{false,FPL_NETWORK__ZERO,"   .   . 42.   ",0},			// Individual groups are whitespace
+		{false,FPL_NETWORK__ZERO,"   .   .   . 42",0},			// Individual groups are whitespace
 
-		{false,FPL_NETWORK__ZERO,"255.   .   .   "},			// Individual groups are whitespace
-		{false,FPL_NETWORK__ZERO,"   .255.   .   "},			// Individual groups are whitespace
-		{false,FPL_NETWORK__ZERO,"   .   .255.   "},			// Individual groups are whitespace
-		{false,FPL_NETWORK__ZERO,"   .   .   .255"},			// Individual groups are whitespace
-		{false,FPL_NETWORK__ZERO,"999.   .   .   "},			// Individual groups are whitespace
-		{false,FPL_NETWORK__ZERO,"   .999.   .   "},			// Individual groups are whitespace
-		{false,FPL_NETWORK__ZERO,"   .   .999.   "},			// Individual groups are whitespace
-		{false,FPL_NETWORK__ZERO,"   .   .   .999"},			// Individual groups are whitespace
+		{false,FPL_NETWORK__ZERO,"255.   .   .   ",0},			// Individual groups are whitespace
+		{false,FPL_NETWORK__ZERO,"   .255.   .   ",0},			// Individual groups are whitespace
+		{false,FPL_NETWORK__ZERO,"   .   .255.   ",0},			// Individual groups are whitespace
+		{false,FPL_NETWORK__ZERO,"   .   .   .255",0},			// Individual groups are whitespace
+		{false,FPL_NETWORK__ZERO,"999.   .   .   ",0},			// Individual groups are whitespace
+		{false,FPL_NETWORK__ZERO,"   .999.   .   ",0},			// Individual groups are whitespace
+		{false,FPL_NETWORK__ZERO,"   .   .999.   ",0},			// Individual groups are whitespace
+		{false,FPL_NETWORK__ZERO,"   .   .   .999",0},			// Individual groups are whitespace
 
-		{false,FPL_NETWORK__ZERO,"  1.  2.  3.  4"},			// Wrong whitespaces
-		{false,FPL_NETWORK__ZERO,"1  .2  .3  .4  "},			// Wrong whitespaces
+		{false,FPL_NETWORK__ZERO,"  1.  2.  3.  4",0},			// Wrong whitespaces
+		{false,FPL_NETWORK__ZERO,"1  .2  .3  .4  ",0},			// Wrong whitespaces
 
-		{true,{100,100,100,100},"100.100.100.100"},
-		{true,{255,255,255,255},"255.255.255.255"},
-		{true,{104,157,208,239},"104.157.208.239"},
-		{true,{255,0,0,0},"255.0.0.0"},
-		{true,{0,0,0,255},"0.0.0.255"},
-		{true,{1,10,100,200},"1.10.100.200"},
-		{true,{1,10,100,53},"001.010.100.053"},
+		{true,{100,100,100,100},"100.100.100.100",0},
+		{true,{255,255,255,255},"255.255.255.255",0},
+		{true,{104,157,208,239},"104.157.208.239",0},
+		{true,{255,0,0,0},"255.0.0.0",0},
+		{true,{0,0,0,255},"0.0.0.255",0},
+		{true,{1,10,100,200},"1.10.100.200",0},
+		{true,{1,10,100,53},"001.010.100.053","1.10.100.53"},
 	};
 
 	for (size_t i = 0; i < FPL_NETWORK__ARRAYCOUNT(values); i++) {
-		const char *buffer = values[i].str;
+		const char *buffer = values[i].inputStr;
 		size_t bufferLen = strlen(buffer);
 		bool expectedSuccess = values[i].expectedSuccess;
 		fplNetworkAddress4 expectedAddress = values[i].expectedAddress;
@@ -494,6 +644,24 @@ static void fpl__NetworkAddressStringToAddressTest4() {
 		FPL_NETWORK__ASSERT(expectedAddress.b == actualAddress.b);
 		FPL_NETWORK__ASSERT(expectedAddress.c == actualAddress.c);
 		FPL_NETWORK__ASSERT(expectedAddress.d == actualAddress.d);
+	}
+
+	char buffer[32];
+	size_t maxbufferLen = 32;
+
+	for (size_t i = 0; i < FPL_NETWORK__ARRAYCOUNT(values); i++) {
+		if (!values[i].expectedSuccess) continue;
+		const char *expectedStr = values[i].expectedStr;
+		if (expectedStr == NULL) {
+			expectedStr = values[i].inputStr;
+		}
+		fplNetworkAddress4 address = values[i].expectedAddress;
+		int expectedCount = (int)strlen(expectedStr);
+		memset(buffer, 0, sizeof(buffer));
+		int actualCount = fplNetworkAddressToString4(&address, maxbufferLen, buffer);
+		FPL_NETWORK__ASSERT(expectedCount == actualCount);
+		int c = strncmp(expectedStr, buffer, expectedCount);
+		FPL_NETWORK__ASSERT(c == 0);
 	}
 }
 
@@ -507,14 +675,14 @@ typedef struct {
 static void fpl__NetworkAddressStringToAddressTest6() {
 	fpl__NetworkAddressStringToAddressTestData6 values[] = {
 		// Invalid cases:
-		{false, FPL_NETWORK__ZERO, ""},                          // Empty string
-		{false, FPL_NETWORK__ZERO, " "},                          // Whitespace only
-		{false, FPL_NETWORK__ZERO, "notanipv6address"},           // Invalid characters
-		{false, FPL_NETWORK__ZERO, "2001::abcd::1234"},           // Too many "::" shorthand
-		{false, FPL_NETWORK__ZERO, "2001:db8::1234:5678:90ab:"},  // Trailing colon
+		{false, FPL_NETWORK__ZERO, ""},								// Empty string
+		{false, FPL_NETWORK__ZERO, " "},							// Whitespace only
+		{false, FPL_NETWORK__ZERO, "notanipv6address"},				// Invalid characters
+		{false, FPL_NETWORK__ZERO, "2001::abcd::1234"},				// Too many "::" shorthand
+		{false, FPL_NETWORK__ZERO, "2001:db8::1234:5678:90ab:"},	// Trailing colon
 		{false, FPL_NETWORK__ZERO, "2001:db8:abcd:1234:5678:90ab::1234"}, // Too many segments with "::"
-		{false, FPL_NETWORK__ZERO, "2001:db8:abcd::1234::5678"},  // Invalid shorthand placement
-		{false, FPL_NETWORK__ZERO, "2001:db8:abcd:::1234:5678"},  // Invalid shorthand placement
+		{false, FPL_NETWORK__ZERO, "2001:db8:abcd::1234::5678"},	// Invalid shorthand placement
+		{false, FPL_NETWORK__ZERO, "2001:db8:abcd:::1234:5678"},	// Invalid shorthand placement
 
 		// Valid cases:
 		{true, {0x2001, 0x0db8, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000}, "2001:db8::"}, // Valid compressed
