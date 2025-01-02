@@ -349,25 +349,24 @@ namespace FPLPresentationData {
 		const Seconds duration = 0.0;
 
 		static const char *Talk = {
-			"FPL was created as a replacement for small OpenGL platform abstraction libraries such as GLUT and GLFW, but grew over time to be a fully fledged platform abstraction library."
+			"FPL was designed to make the creation of multimedia applications or games very easy."
 			""
-			"- It is written in C99 for simplicity and best portability, but is 100% C++ compatible"
+			"- It can create and manage a window for you, including the handling of events"
+			"- It can handle keyboard & mouse devices"
+			"- It can handle gamepads as well"
+			"- It can initialize a graphics backend for you, such as OpenGL, Vulkan or allows you to put pixels directly on the screen"
+			"- It can play back sound samples asynchrously"
+
+			"- It is written in C99 for simplicity and best portability, but is 100% c++ compatible"
 			"- It is designed to be fast in compile and runtime"
 			"- It does not require any build-systems or thirdparty libraries"
-			"- It supports CPU architectures: X86, X64 and ARM"
-			""
-			"- It can work directly in a console application, including support for writing and reading"
-			"- It can create and manage a single window for you, including the handling of events"
-			"- It can handle keyboard & mouse devices, either by events or by polling"
-			"- It can handle multiple gamepads, either by events or by polling"
-			"- When a window is used, it initializes a graphics backend, such as OpenGL, Vulkan or allows to put pixels directly on the screen"
-			"- It can asynchronously playback sound samples and detect the audio backend automatically"
-			"- It can query important hardware informations, such as CPU features and more"
-			"- It supports many compilers and platforms and provides useful utilities fo work with them"
 			"- It gives you control of memory allocations and handles memory very gracefully"
+
+			"- It supports the major architectures: X86, X64 and ARM"
+			"- It supports many compilers and platforms and provides useful utilities fo work with them"
 			"- It is highly configurable and many features can be compiled out, if needed"
-			"- It provides useful primitives to work with multi threaded code"
-			"- It contains a ton of useful functions and macros"
+			"- It provides useful primitives to create code that runs on different threads"
+			"- In addition it contains a ton of useful functions and macros"
 		};
 
 		static BlockDefinition Blocks[] = {
@@ -474,7 +473,7 @@ namespace FPLPresentationData {
 		const Seconds duration = 0.0;
 
 		static const char *Talk = {
-			"It supports the operating systems: Windows, Linux, Raspberry Pi and Unix"
+			"FPL supports the major operating systems, such as Windows, Linux, Raspberry Pi and Unix or BSD"
 		};
 
 		static BlockDefinition Blocks[] = {
@@ -530,8 +529,6 @@ namespace FPLPresentationData {
 		const Seconds duration = 0.0;
 
 		static const char *Talk = {
-			"How does FPL work?"
-			""
 			"It works with Magic!"
 		};
 
@@ -561,9 +558,9 @@ namespace FPLPresentationData {
 		const Seconds duration = 0.0;
 
 		static const char *Talk = {
-			"Of course there is no magic involved, just a few tricks."
+			"Of course, there is no magic involved - it uses just a few tricks."
 			""
-			"It is a 'single-header-file-library', so it contains the full API and source for every platform"
+			"FPL is a 'single-header-file-library', so it contains the full header or API and implementation for every platform in a single C file"
 			"It makes heavy use of the pre-processor to detect compiler/platform/hardware/driver setups"
 			"It prevents code duplication by using sub platforms"
 			"It uses runtime linking by default, so everything is automatically loaded on demand"
@@ -663,7 +660,7 @@ namespace FPLPresentationData {
 		const Seconds duration = 0.0;
 
 		static const char *Talk = {
-			""
+			"FPL comes with a lot of fully working demos, so you can learn how it works."
 		};
 
 		static BlockDefinition Blocks[] = {
@@ -727,7 +724,11 @@ namespace FPLPresentationData {
 		const Seconds duration = 0.0;
 
 		static const char *Talk = {
+			"If you are interested about learning more about FPL, you can visit the official website: libfpl.org"
 			""
+			"Or go to the github repository directly"
+			""
+			"If you are watching this presentation over a streaming platform, you can also find all the links in the description below."
 		};
 
 		static BlockDefinition Blocks[] = {
@@ -777,7 +778,11 @@ namespace FPLPresentationData {
 		const Seconds duration = 0.0;
 
 		static const char *Talk = {
+			"Thank you for watching this presentation and i hope you will give FPL a try."
 			""
+			"Feel free to post any questions or feedback on github or if possible, as a comment to this video."
+			""
+			"As always, keep coding!"
 		};
 
 		static BlockDefinition Blocks[] = {
