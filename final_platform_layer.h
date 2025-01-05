@@ -3839,6 +3839,8 @@ typedef enum fplAudioDefaultFields {
 	fplAudioDefaultFields_Periods = 1 << 3,
 	//! Audio format is default
 	fplAudioDefaultFields_Type = 1 << 4,
+	//! Audio layout is default
+	fplAudioDefaultFields_ChannelLayout = 1 << 5,
 } fplAudioDefaultFields;
 //! fplAudioDefaultFields operator overloads for C++
 FPL_ENUM_AS_FLAGS_OPERATORS(fplAudioDefaultFields);
@@ -3850,6 +3852,49 @@ typedef enum fplAudioLatencyMode {
 	//! Low latency
 	fplAudioLatencyMode_Low,
 } fplAudioLatencyMode;
+
+//! An enumeration of audio channel layouts
+typedef enum fplAudioChannelLayout {
+	//! Automatic channel layout (based on number of channels and/or sound device)
+	fplAudioChannelLayout_Auto = 0,
+	//! 1.0 audio channel layout (1.0, Single)
+	fplAudioChannelLayout_Mono,
+	//! 2.0 audio channel audio layout (2.0, Front)
+	fplAudioChannelLayout_Stereo,
+	//! 2.1 audio channel layout (2.1, Front/Sub)
+	fplAudioChannelLayout_2_1,
+	//! 4.0 audio channel layout (4.0, Front/Rear)
+	fplAudioChannelLayout_4_0,
+	//! 4.1 audio channel layout (4.1, Front/Rear/Sub)
+	fplAudioChannelLayout_4_1,
+	//! 5.1 audio channel layout (5.1, Front/Rear/Center/Sub)
+	fplAudioChannelLayout_5_1,
+	//! 7.1 audio channel layout (7.1, Front/Rear/Center/Side/Sub)
+	fplAudioChannelLayout_7_1,
+	//! Number of audio channel layouts
+	fplAudioChannelLayout_Count,
+	//! Unsupported audio channel layout
+	fplAudioChannelLayout_Unsupported = fplAudioChannelLayout_Count,
+	//! First audio channel layout
+	fplAudioChannelLayout_First = fplAudioChannelLayout_Auto,
+	//! Last audio channel layout
+	fplAudioChannelLayout_Last = fplAudioChannelLayout_7_1,
+} fplAudioChannelLayout;
+
+typedef enum fplAudioChannelType {
+	// No channel type
+	fplAudioChannelType_None = 0,
+	//! Front L/R
+	fplAudioChannelType_Front,
+	//! Subwoofer
+	fplAudioChannelType_Sub,
+	//! Rear L/R
+	fplAudioChannelType_Rear,
+	//! Center
+	fplAudioChannelType_Center,
+	//! Side L/R
+	fplAudioChannelType_Side,
+} fplAudioChannelType;
 
 //! A structure containing audio device format runtime properties, such as type, samplerate, channels, etc.
 typedef struct fplAudioDeviceFormat {
@@ -3863,6 +3908,8 @@ typedef struct fplAudioDeviceFormat {
 	uint32_t periods;
 	//! Format
 	fplAudioFormatType type;
+	//! Audio channel layout
+	fplAudioChannelLayout channelLayout;
 	//! Is exclusive mode preferred
 	fpl_b32 preferExclusiveMode;
 	//! Default fields
@@ -3885,6 +3932,8 @@ typedef struct fplAudioTargetFormat {
 	uint32_t periods;
 	//! Audio format (uses default of S16 when zero)
 	fplAudioFormatType type;
+	//! Audio channel layout (uses default stereo when auto)
+	fplAudioChannelLayout channelLayout;
 	//! Latency mode
 	fplAudioLatencyMode latencyMode;
 	//! Is exclusive mode preferred
