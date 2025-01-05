@@ -3914,8 +3914,6 @@ typedef struct fplAudioDeviceFormat {
 	fpl_b32 preferExclusiveMode;
 	//! Default fields
 	fplAudioDefaultFields defaultFields;
-	//! Audio backend
-	fplAudioBackendType backend;
 } fplAudioDeviceFormat;
 
 //! A structure containing audio target format configurations, such as type, sample rate, channels, etc.
@@ -20832,7 +20830,6 @@ fpl_internal fplAudioResultType fpl__AudioInitDirectSound(const fplAudioSettings
 
 	// Set internal format
 	fplAudioDeviceFormat internalFormat = fplZeroInit;
-	internalFormat.backend = fplAudioBackendType_DirectSound;
 	if (fpl__Win32IsEqualGuid(actualFormat->SubFormat, FPL__GUID_KSDATAFORMAT_SUBTYPE_IEEE_FLOAT)) {
 		if (actualFormat->Format.wBitsPerSample == 64) {
 			internalFormat.type = fplAudioFormatType_F64;
@@ -21867,7 +21864,6 @@ fpl_internal fplAudioResultType fpl__AudioInitAlsa(const fplAudioSettings *audio
 	}
 
 	fplAudioDeviceFormat internalFormat = fplZeroInit;
-	internalFormat.backend = fplAudioBackendType_Alsa;
 
 	//
 	// Format

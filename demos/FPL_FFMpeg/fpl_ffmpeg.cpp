@@ -3767,7 +3767,6 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 	audio.audioTarget.channels = targetChannelCount;
 	audio.audioTarget.sampleRate = targetSampleRate;
 	audio.audioTarget.type = nativeAudioFormat.type;
-	audio.audioTarget.backend = nativeAudioFormat.backend;
 	audio.audioTarget.bufferSizeInBytes = ffmpeg.av_samples_get_buffer_size(nullptr, audio.audioTarget.channels, audio.audioTarget.sampleRate, targetSampleFormat, 1);
 
 	AVSampleFormat inputSampleFormat = audioCodexCtx->sample_fmt;
