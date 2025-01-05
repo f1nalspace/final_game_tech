@@ -3919,9 +3919,9 @@ typedef struct fplAudioDeviceFormat {
 //! A structure containing audio target format configurations, such as type, sample rate, channels, etc.
 typedef struct fplAudioTargetFormat {
 	//! Samples per seconds (uses default of 44100 when zero)
-	uint32_t sampleRate;
+	uint16_t sampleRate;
 	//! Number of channels (uses default of 2 when zero)
-	uint32_t channels;
+	uint16_t channels;
 	//! Buffer size in frames (First choice)
 	uint32_t bufferSizeInFrames;
 	//! Buffer size in milliseconds (Second choice)
@@ -7018,7 +7018,7 @@ fpl_common_api uint32_t fplGetAudioBufferSizeInMilliseconds(uint32_t sampleRate,
 * @param channelCount The number of channels
 * @return Returns the number of bytes for one frame in bytes
 */
-fpl_common_api uint32_t fplGetAudioFrameSizeInBytes(const fplAudioFormatType format, const uint32_t channelCount);
+fpl_common_api uint32_t fplGetAudioFrameSizeInBytes(const fplAudioFormatType format, const uint16_t channelCount);
 /**
 * @brief Computes the total number of bytes for the buffer and the given parameters
 * @param format The audio format
@@ -7026,7 +7026,7 @@ fpl_common_api uint32_t fplGetAudioFrameSizeInBytes(const fplAudioFormatType for
 * @param frameCount The number of frames
 * @return Returns the total number of bytes for the buffer
 */
-fpl_common_api uint32_t fplGetAudioBufferSizeInBytes(const fplAudioFormatType format, const uint32_t channelCount, const uint32_t frameCount);
+fpl_common_api uint32_t fplGetAudioBufferSizeInBytes(const fplAudioFormatType format, const uint16_t channelCount, const uint32_t frameCount);
 /**
 * @brief Converts a @ref fplAudioTargetFormat into a @ref fplAudioDeviceFormat structure
 * @param inFormat The input format
@@ -22876,13 +22876,13 @@ fpl_common_api uint32_t fplGetAudioBufferSizeInMilliseconds(uint32_t sampleRate,
 	return(result);
 }
 
-fpl_common_api uint32_t fplGetAudioFrameSizeInBytes(const fplAudioFormatType format, const uint32_t channelCount) {
+fpl_common_api uint32_t fplGetAudioFrameSizeInBytes(const fplAudioFormatType format, const uint16_t channelCount) {
 	if (channelCount == 0) return(0);
 	uint32_t result = fplGetAudioSampleSizeInBytes(format) * channelCount;
 	return(result);
 }
 
-fpl_common_api uint32_t fplGetAudioBufferSizeInBytes(const fplAudioFormatType format, const uint32_t channelCount, const uint32_t frameCount) {
+fpl_common_api uint32_t fplGetAudioBufferSizeInBytes(const fplAudioFormatType format, const uint16_t channelCount, const uint32_t frameCount) {
 	if (channelCount == 0 || frameCount == 0) return(0);
 	uint32_t frameSize = fplGetAudioFrameSizeInBytes(format, channelCount);
 	uint32_t result = frameSize * frameCount;
