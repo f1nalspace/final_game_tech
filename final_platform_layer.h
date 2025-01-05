@@ -7034,6 +7034,18 @@ fpl_common_api uint32_t fplGetAudioBufferSizeInBytes(const fplAudioFormatType fo
 */
 fpl_common_api void fplConvertAudioTargetFormatToDeviceFormat(const fplAudioTargetFormat *inFormat, fplAudioDeviceFormat *outFormat);
 
+/**
+* @brief Returns the @ref fplAudioChannelLayout from the specified channel count
+* @param channelCount The number of channels
+*/
+fpl_common_api fplAudioChannelLayout fplGetAudioChannelLayoutFromChannels(const uint16_t channelCount);
+
+/**
+* @brief Returns the number of channels from the specified @ref fplAudioChannelLayout
+* @param channelLayout The @ref fplAudioChannelLayout
+*/
+fpl_common_api uint16_t fplGetAudioChannelsFromLayout(const fplAudioChannelLayout channelLayout);
+
 /** @} */
 #endif // FPL__ENABLE_AUDIO
 
@@ -10841,6 +10853,7 @@ fpl_common_api void fplSetDefaultAudioTargetFormat(fplAudioTargetFormat *targetF
 
 	targetFormat->preferExclusiveMode = deviceFormat.preferExclusiveMode;
 	targetFormat->channels = deviceFormat.channels;
+	targetFormat->channelLayout = deviceFormat.channelLayout;
 	targetFormat->sampleRate = deviceFormat.sampleRate;
 	targetFormat->periods = deviceFormat.periods;
 	targetFormat->type = deviceFormat.type;
@@ -20856,6 +20869,7 @@ fpl_internal fplAudioResultType fpl__AudioInitDirectSound(const fplAudioSettings
 		}
 	}
 	internalFormat.channels = actualFormat->Format.nChannels;
+	internalFormat.channelLayout = fplGetAudioChannelLayoutFromChannels(actualFormat->Format.nChannels);
 	internalFormat.sampleRate = actualFormat->Format.nSamplesPerSec;
 
 	// @NOTE(final): We divide up our playback buffer into this number of periods and let directsound notify us when one of it needs to play.
@@ -21918,6 +21932,7 @@ fpl_internal fplAudioResultType fpl__AudioInitAlsa(const fplAudioSettings *audio
 		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed setting PCM channels '%lu' for device '%s'!", internalChannels, deviceName);
 	}
 	internalFormat.channels = internalChannels;
+	internalFormat.channelLayout = fplGetAudioChannelLayoutFromChannels(internalChannels);
 
 	//
 	// Sample rate
@@ -22887,6 +22902,46 @@ fpl_common_api uint32_t fplGetAudioBufferSizeInBytes(const fplAudioFormatType fo
 	uint32_t frameSize = fplGetAudioFrameSizeInBytes(format, channelCount);
 	uint32_t result = frameSize * frameCount;
 	return(result);
+}
+
+fpl_common_api fplAudioChannelLayout fplGetAudioChannelLayoutFromChannels(const uint16_t channelCount) {
+	if (channelCount >= 8) {
+		return fplAudioChannelLayout_7_1;
+	} else if (channelCount >= 6) {
+		return fplAudioChannelLayout_5_1;
+	} else if (channelCount == 5) {
+		return fplAudioChannelLayout_4_1;
+	} else if (channelCount == 4) {
+		return fplAudioChannelLayout_4_0;
+	} else if (channelCount == 3) {
+		return fplAudioChannelLayout_2_1;
+	} else if (channelCount == 2) {
+		return fplAudioChannelLayout_Stereo;
+	} else if (channelCount == 1) {
+		return fplAudioChannelLayout_Mono;
+	} else {
+		return fplAudioChannelLayout_Unsupported;
+	}
+}
+
+#define FPL__AUDIO_CHANNEL_LAYOUT_COUNT FPL__ENUM_COUNT(fplAudioChannelLayout_First, fplAudioChannelLayout_Last)
+
+fpl_globalvar uint16_t fpl__g_audioChannelLayoutToChannelCountTable[FPL__AUDIO_CHANNEL_LAYOUT_COUNT] = {
+	2, // fplAudioChannelLayout_Auto
+	1, // fplAudioChannelLayout_Mono
+	2, // fplAudioChannelLayout_Stereo
+	3, // fplAudioChannelLayout_2_1
+	4, // fplAudioChannelLayout_4_0
+	5, // fplAudioChannelLayout_4_1
+	6, // fplAudioChannelLayout_5_1
+	8, // fplAudioChannelLayout_7_1
+};
+
+fpl_common_api uint16_t fplGetAudioChannelsFromLayout(const fplAudioChannelLayout channelLayout) {
+	fplAssert(channelLayout >= fplAudioChannelLayout_First && channelLayout <= fplAudioChannelLayout_Last);
+	uint16_t channels = fpl__g_audioChannelLayoutToChannelCountTable[channelLayout];
+	uint16_t result = fplMax(0, fplMin(channels, FPL_MAX_AUDIO_CHANNEL_COUNT));
+	return result;
 }
 
 fpl_common_api void fplConvertAudioTargetFormatToDeviceFormat(const fplAudioTargetFormat *inFormat, fplAudioDeviceFormat *outFormat) {
