@@ -3774,6 +3774,15 @@ typedef struct fplVideoSettings {
 */
 fpl_common_api void fplSetDefaultVideoSettings(fplVideoSettings *video);
 
+// Audio channel count
+#ifndef FPL_MAX_AUDIO_CHANNEL_COUNT
+#	define FPL_MAX_AUDIO_CHANNEL_COUNT 8
+#else
+#	if (FPL_MAX_AUDIO_CHANNEL_COUNT <= 0)
+#		error "Audio channel count is too small, please set FPL_MAX_AUDIO_CHANNEL_COUNT to at least 1"
+#	endif
+#endif
+
 //! An enumeration of audio backend types
 typedef enum fplAudioBackendType {
 	//! No audio backend
