@@ -22950,12 +22950,31 @@ fpl_common_api void fplConvertAudioTargetFormatToDeviceFormat(const fplAudioTarg
 
 	fplClearStruct(outFormat);
 
-	// Channels
-	if (inFormat->channels > 0) {
-		outFormat->channels = inFormat->channels;
-	} else {
-		outFormat->channels = FPL__DEFAULT_AUDIO_CHANNELS;
+	// Channels / Layout
+	if (inFormat->channels > 0 && inFormat->channelLayout != fplAudioChannelLayout_Auto) {
+		uint16_t layoutChannelCount = fplGetAudioChannelsFromLayout(inFormat->channelLayout);
+		uint16_t highestChannelCount = fplMax(layoutChannelCount, inFormat->channels);
+		outFormat->channels = fplMax(0, fplMin(highestChannelCount, FPL_MAX_AUDIO_CHANNEL_COUNT));
+		outFormat->channelLayout = fplGetAudioChannelLayoutFromChannels(outFormat->channels);
+	} else if (inFormat->channels > 0 && inFormat->channelLayout == fplAudioChannelLayout_Auto) {
+		outFormat->channels = fplMin(inFormat->channels, FPL_MAX_AUDIO_CHANNEL_COUNT);
+		outFormat->channelLayout = fplGetAudioChannelLayoutFromChannels(outFormat->channels);
+		outFormat->defaultFields |= fplAudioDefaultFields_ChannelLayout;
+	} else if (inFormat->channelLayout != fplAudioChannelLayout_Auto && inFormat->channels == 0) {
+		uint16_t layoutChannelCount = fplGetAudioChannelsFromLayout(inFormat->channelLayout);
+		if (layoutChannelCount > FPL_MAX_AUDIO_CHANNEL_COUNT) {
+			outFormat->channels = FPL_MAX_AUDIO_CHANNEL_COUNT;
+			outFormat->channelLayout = fplGetAudioChannelLayoutFromChannels(outFormat->channels);
+		} else {
+			outFormat->channels = layoutChannelCount;
+			outFormat->channelLayout = inFormat->channelLayout;
+		}
 		outFormat->defaultFields |= fplAudioDefaultFields_Channels;
+	} else {
+		outFormat->channels = 2;
+		outFormat->channelLayout = fplAudioChannelLayout_Stereo;
+		outFormat->defaultFields |= fplAudioDefaultFields_Channels;
+		outFormat->defaultFields |= fplAudioDefaultFields_ChannelLayout;
 	}
 
 	// Sample rate
