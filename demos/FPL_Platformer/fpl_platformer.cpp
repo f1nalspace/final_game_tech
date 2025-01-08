@@ -37,10 +37,6 @@ License:
 #define FINAL_ASSETS_IMPLEMENTATION
 #include <final_assets.h>
 
-#include <final_game.h>
-
-#include <final_math.h>
-
 #include "fpl_platformer.h"
 
 #define COLLISION_PLAYGROUND 0
@@ -531,8 +527,6 @@ static void CollisionResponse(Entity &player, const Vec2f &normal, const float d
 
 	// Accumulate the penetration correction, this is applied in the update function and ensures we don't add any energy to the system
 	player.positionCorrection -= V2fMultScalar(normal, penetration / dt);
-
-	fplDebugFormatOut("Collision response on normal (%.6f, %.6f), separation: %.6f, penetration: %.6f, nv: %.6f, tile: (%d x %d)\n", normal.x, normal.y, separation, penetration, nv, tilePos.x, tilePos.y);
 
 	if (nv < 0) {
 		// Remove normal velocity
@@ -1323,6 +1317,7 @@ int main(int argc, char *argv[]) {
 	GameConfiguration config = {};
 	config.title = L"FPL Demo | GameTemplate";
 	config.disableInactiveDetection = true;
+	config.disableVerticalSync = true;
 	int result = GameMain(config);
 	return(result);
 }

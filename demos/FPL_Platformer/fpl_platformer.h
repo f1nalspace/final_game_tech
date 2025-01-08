@@ -1,5 +1,5 @@
-#ifndef FPL_GAMETEMPLATE_H
-#define FPL_GAMETEMPLATE_H
+#ifndef FPL_PLATFORMER_H
+#define FPL_PLATFORMER_H
 
 #include <final_math.h>
 #include <final_geometry.h>
@@ -12,6 +12,6 @@
 
 #include <final_assets.h>
 
+#include <final_game.h>
 
-
-#endif // FPL_GAMETEMPLATE_H
+#endif // FPL_PLATFORMER_H
