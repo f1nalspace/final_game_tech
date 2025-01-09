@@ -64,12 +64,12 @@ static Vec2f AABBExpand = V2fInit(0.1f, 0.1f);
 static void FormatSize(const size_t value, const size_t maxCount, char *buffer) {
 	char *p = buffer;
 	if (value < 0) {
-		*p++;
+		p++;
 	}
 
 	size_t tmp = value;
 	do {
-		*p++;
+		p++;
 		tmp = tmp / 10;
 	} while (tmp);
 
@@ -77,7 +77,7 @@ static void FormatSize(const size_t value, const size_t maxCount, char *buffer) 
 	size_t thousandDotCount = 0;
 	tmp = value;
 	while (tmp >= 1000) {
-		*p++;
+		p++;
 		++thousandDotCount;
 		tmp = tmp / 1000;
 	}
