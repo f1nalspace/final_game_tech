@@ -492,6 +492,11 @@ struct Assets {
 	char dataPath[1024];
 };
 
+struct GroundState {
+	bool current;
+	bool last;
+};
+
 struct Entity {
 	Contact contact;
 	Vec4f color;
@@ -501,7 +506,7 @@ struct Entity {
 	Vec2f radius;
 	float groundFriction;
 	float airFriction;
-	bool onGround[2];
+	GroundState groundState;
 	bool applyFriction;
 	bool applyAirFriction;
 	bool jumpRequested;
@@ -514,6 +519,14 @@ struct Entity {
 	inline Projection Project(const Vec2f &axis) const {
 		AABB aabb = GetAABB();
 		return aabb.Project(axis);
+	}
+
+	inline bool IsGrounded() const {
+		return groundState.current;
+	}
+
+	inline bool IsAir() const {
+		return !groundState.current;
 	}
 };
 
@@ -558,7 +571,7 @@ static void InputPlayer(Entity &player, const Input &input) {
 
 #if !COLLISION_PLAYGROUND
 	// Horizontal Movement
-	float moveSpeed = player.onGround[0] ? PlayerWalkSpeed : PlayerAirSpeed;
+	float moveSpeed = player.IsGrounded() ? PlayerWalkSpeed : PlayerAirSpeed;
 	if (IsDown(controller.moveLeft)) {
 		player.velocity.x -= moveSpeed;
 	} else if (IsDown(controller.moveRight)) {
@@ -575,9 +588,17 @@ static void InputPlayer(Entity &player, const Input &input) {
 	}
 
 	// Handle requested jump only when grounded
-	if (player.onGround[0] && player.jumpRequested) {
+	if (player.IsGrounded() && player.jumpRequested) {
 		player.velocity.y = PlayerJumpVelocity;
 		player.jumpRequested = false;
+	}
+#endif
+
+#if 0
+	if (IsDown(controller.moveUp)) {
+		player.velocity.y = 100.0f;
+	} else if (IsDown(controller.moveDown)) {
+		player.velocity.y = -100.0f;
 	}
 #endif
 }
@@ -599,7 +620,7 @@ static void CollisionResponse(Entity &player, const Vec2f &normal, const float d
 
 		// Is grounded?
 		if (normal.y > 0.0f) {
-			player.onGround[0] = true;
+			player.groundState.current = true;
 
 			// Friction
 			if (player.applyFriction) {
@@ -661,7 +682,7 @@ static void DetectCollision(Entity &player, const Map &map, const float dt) {
 				Vec2i tilePos = V2iInit(x, y);
 				Vec2f tileWorld = map.TileCoordsToWorld(tilePos) + originWorld;
 				Vec2f aabbCenter = tileWorld + TileSize * 0.5f;
-				AABB tileAABB = { aabbCenter, TileSize * 0.5f };
+				AABB tileAABB = AABB::Construct(aabbCenter, TileSize * 0.5f);
 				bool collided = Collision::AabbVsAabb(tileAABB, playerAABB, player.contact, tilePos, map);
 				if (collided) {
 					CollisionResponse(player, player.contact.normal, player.contact.distance, dt, tilePos);
@@ -677,7 +698,7 @@ static void UpdatePlayer(Entity &player, const Map &map, const float dt) {
 	player.velocity += Gravity;
 
 	// Air friction
-	if (player.applyAirFriction && !player.onGround[0] && Abs(player.velocity.x) > 0) {
+	if (player.applyAirFriction && player.IsAir() && Abs(player.velocity.x) > 0) {
 		player.velocity.x *= (1.0f - player.airFriction);
 	}
 #endif
@@ -687,8 +708,8 @@ static void UpdatePlayer(Entity &player, const Map &map, const float dt) {
 
 #if !COLLISION_PLAYGROUND
 	// Grounding
-	player.onGround[1] = player.onGround[0];
-	player.onGround[0] = false;
+	player.groundState.last = player.groundState.current;
+	player.groundState.current = false;
 
 	// Collision detection
 	DetectCollision(player, map, dt);
