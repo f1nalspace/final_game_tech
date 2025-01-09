@@ -108,55 +108,118 @@ static void FormatSize(const size_t value, const size_t maxCount, char *buffer) 
 //
 // Math & Physics
 //
+struct TileRect {
+	// The minium tile coordinate
+	Vec2i min;
+	// The maximum tile coordinate
+	Vec2i max;
+};
+
+struct Projection {
+	// The smallest projection
+	float min;
+	// The largest projection
+	float max;
+};
+
 struct AABB {
 	Vec2f center;
 	Vec2f halfExtents;
 
-	inline Vec2f GetBottomLeft() {
+	const Vec2f RightAxis = V2fInit(1, 0);
+	const Vec2f UpAxis = V2fInit(0, 1);
+
+	static AABB Construct(const Vec2f &center, const Vec2f &halfExtents) {
+		AABB result = { center, halfExtents };
+		return result;
+	}
+
+	// Get bottom left corner
+	inline Vec2f GetBottomLeft() const {
 		Vec2f result = center + V2fInit(-halfExtents.x, -halfExtents.y);
 		return result;
 	}
 
-	inline Vec2f GetBottomRight() {
+	// Get bottom right corner
+	inline Vec2f GetBottomRight() const {
 		Vec2f result = center + V2fInit(halfExtents.x, -halfExtents.y);
 		return result;
 	}
 
-	inline Vec2f GetTopLeft() {
+	// Get top left corner
+	inline Vec2f GetTopLeft() const {
 		Vec2f result = center + V2fInit(-halfExtents.x, halfExtents.y);
 		return result;
 	}
 
-	inline Vec2f GetTopRight() {
+	// Get top right corner
+	inline Vec2f GetTopRight() const {
 		Vec2f result = center + V2fInit(halfExtents.x, halfExtents.y);
 		return result;
 	}
 
-	inline Vec2f GetMin() {
+	// Get minimum corner
+	inline Vec2f GetMin() const {
 		return GetBottomLeft();
 	}
 
-	inline Vec2f GetMax() {
+	// Get maximum corner
+	inline Vec2f GetMax() const {
 		return GetTopRight();
 	}
 
+	// Overwrites this AABB with specified center and half extents
 	inline void Update(const Vec2f &center, const Vec2f &halfExtents) {
 		this->center = center;
 		this->halfExtents = halfExtents;
 	}
 
-	static bool Overlap(const AABB &a, const AABB &b) {
-		Vec2f centerDelta = V2fAbs(b.center - a.center);
-		Vec2f halfExtentsSum = a.halfExtents + b.halfExtents;
+	// Returns true if the specific AABB overlaps with this AABB
+	bool IsOverlap(const AABB &b) const {
+		Vec2f centerDelta = V2fAbs(b.center - center);
+		Vec2f halfExtentsSum = halfExtents + b.halfExtents;
 		centerDelta -= halfExtentsSum;
 		bool result = centerDelta.x < 0 && centerDelta.y < 0;
 		return result;
 	}
 
-	static bool IsPointInside(const AABB &box, const Vec2f &point) {
-		Vec2f delta = point - box.center;
-		bool result = Abs(delta.x) < box.halfExtents.w && Abs(delta.y) < box.halfExtents.h;
+	// Returns true if the specific point is inside
+	bool IsPointInside(const Vec2f &point) const {
+		Vec2f delta = point - center;
+		bool result = Abs(delta.x) < halfExtents.w && Abs(delta.y) < halfExtents.h;
 		return result;
+	}
+
+	// Gets the closest point, by projecting the point to this AABB
+	Vec2f GetClosestPoint(const Vec2f &point) const {
+		Vec2f result = center;
+
+		Vec2f r = point - center;
+
+		Vec2f n;
+		float d;
+
+		// Right axis
+		n = V2fInit(1.0f, 0.0f);
+		d = V2fDot(r, n);
+		d = Min(halfExtents.w, d);
+		d = Max(-halfExtents.w, d);
+		result = V2fAddMultScalar(result, n, d);
+
+		// Up axis
+		n = V2fInit(0.0f, 1.0f);
+		d = V2fDot(r, n);
+		d = Min(halfExtents.h, d);
+		d = Max(-halfExtents.h, d);
+		result = V2fAddMultScalar(result, n, d);
+
+		return result;
+	}
+
+	// Project the extents to the specified axis
+	inline Projection Project(Vec2f axis) const {
+		float r = Abs(V2fDot(axis, RightAxis)) * halfExtents.w + Abs(V2fDot(axis, UpAxis)) * halfExtents.h;
+		return { -r, +r };
 	}
 };
 
@@ -166,8 +229,8 @@ struct Contact {
 	float impulse;
 	float distance;
 
-public:
-	inline void Initialize(const Vec2f &normal, const float distance, const Vec2f &point) {
+	// Overwrites the contact data
+	inline void Set(const Vec2f &normal, const float distance, const Vec2f &point) {
 		this->normal = normal;
 		this->point = point;
 		this->impulse = 0;
@@ -175,26 +238,27 @@ public:
 	}
 };
 
-struct TileRect {
-	Vec2i min, max;
-};
-
-struct Projection {
-	float min;
-	float max;
-};
-
 //
 // Map
 //
 struct Map {
+	// Memory handling
 	fmemMemoryBlock temporaryMemory;
 	fmemMemoryBlock persistentMemory;
+
+	// The origin in tile coordinate
 	Vec2i origin;
+
+	// The 1D tile data (width * height)
 	uint32_t *solidTiles;
+
+	// The width in tiles
 	uint32_t width;
+
+	// The height in tiles
 	uint32_t height;
-public:
+
+	// Converts the specified world position into a tile position
 	inline Vec2i WorldCoordsToTile(const Vec2f worldPos) const {
 		float wx = worldPos.x;
 		float wy = worldPos.y;
@@ -212,12 +276,15 @@ public:
 
 		return V2iInit(x, y);
 	}
+
+	// Converts the specified tile position into a world position
 	inline Vec2f TileCoordsToWorld(const Vec2i tilePos) const {
 		float x = (float)tilePos.x * TileWidth;
 		float y = (float)tilePos.y * TileHeight;
 		return V2fInit(x, y);
 	}
 
+	// Gets a tile by the specified X and Y indices, note that Y is converted into tile space
 	inline uint32_t GetTile(const int32_t x, const int32_t y) const {
 		if (width == 0 || height == 0 || solidTiles == nullptr) {
 			return UINT32_MAX;
@@ -230,21 +297,25 @@ public:
 		return result;
 	}
 
+	// Gets a tile by the specified tile position, note that Y of the tile position is converted into tile space
 	inline uint32_t GetTile(const Vec2i &tilePos) const {
 		return GetTile(tilePos.x, tilePos.y);
 	}
 
+	// Returns true if the specified tile position is inside the entire tile area
 	inline bool IsTileInside(const Vec2i &tilePos) const {
 		bool result = (tilePos.x >= 0 && tilePos.x < (int)width) && (tilePos.y >= 0 && tilePos.y < (int)height);
 		return result;
 	}
 
+	// Returns true if the specified tile is an obstacle or not
 	inline bool IsObstacle(const uint32_t tile) const {
 		// @TODO(final): Obstacle tile mapping!
 		bool result = tile == 1;
 		return result;
 	}
 
+	// Finds the first tile position from the specified tile type and returns true if found, false otherwise
 	inline bool FindPositionByTile(const uint32_t type, Vec2i *outTilePos) const {
 		if (width == 0 || height == 0 || solidTiles == nullptr) {
 			return false;
@@ -267,62 +338,30 @@ public:
 // Collision Detection
 //
 namespace Collision {
-	static Vec2f RightAxis = V2fInit(1, 0);
-	static Vec2f UpAxis = V2fInit(0, 1);
-
+	// Returns true if the specified tile by position and direction is an internal collision or not.
+	// Internal collision means that if a tile in the direction of the normal was found and both are obstacles.
+	// Such collisions must be skipped, otherwise we will get ghost collisions when walking on the floor or gliding on a wall.
 	static bool IsInternalCollision(const Map &map, const Vec2i &tilePos, const Vec2f &normal) {
 		int nextTileX = tilePos.x + (int)normal.x;
 		int nextTileY = tilePos.y + (int)normal.y;
-
+	
 		uint32_t currentTile = map.GetTile(tilePos.x, tilePos.y);
 		uint32_t nextTile = map.GetTile(nextTileX, nextTileY);
 
-		bool internalEdge = map.IsObstacle(nextTile);
+		bool internalEdge = map.IsObstacle(currentTile) && map.IsObstacle(nextTile);
 
 		return internalEdge;
 	}
 
-	static bool IsPointInsideAABB(const Vec2f &center, const Vec2f &ext, const Vec2f &point) {
-		float dx = Abs(point.x - center.x);
-		float dy = Abs(point.y - center.y);
-		bool result = dx < ext.w && dy < ext.h;
-		return result;
-	}
-
-	static Vec2f GetClosestPointOnAABB(const Vec2f &center, const Vec2f &ext, const Vec2f &point) {
-		Vec2f result = center;
-
-		Vec2f r = point - center;
-
-		Vec2f n;
-		float d;
-
-		// Right axis
-		n = V2fInit(1.0f, 0.0f);
-		d = V2fDot(r, n);
-		d = Min(ext.w, d);
-		d = Max(-ext.w, d);
-		result = V2fAddMultScalar(result, n, d);
-
-		// Up axis
-		n = V2fInit(0.0f, 1.0f);
-		d = V2fDot(r, n);
-		d = Min(ext.h, d);
-		d = Max(-ext.h, d);
-		result = V2fAddMultScalar(result, n, d);
-
-		return result;
-	}
-
-	static Projection AABBProjection(Vec2f center, Vec2f extents, Vec2f normal) {
-		float r = Abs(V2fDot(normal, RightAxis)) * extents.w + Abs(V2fDot(normal, UpAxis)) * extents.h;
-		return { -r, +r };
-	}
-
+	// Detect collision for AABB vs AABB and fill out the contact.
+	// The tile position are used to detect internal collisions, which must be skipped.
+	// Vertex contacts are skipped as well, otherwise we will get ghost collisions
 	static bool AabbVsAabb(const AABB &a, const AABB &b, Contact &outContact, const Vec2i &tilePos, const Map &map, const bool checkInternal = true) {
+		// Form minkowski box and get relative position
 		Vec2f delta = b.center - a.center;
 		Vec2f sumExtents = a.halfExtents + b.halfExtents;
 
+		// We only have two fixed axis for a AABB
 		Vec2f axes[] =
 		{
 			V2fInit(1, 0),
@@ -337,9 +376,9 @@ namespace Collision {
 		for (int i = 0; i < axesCount; ++i) {
 			Vec2f n = axes[i];
 
-			// Project A and B on normal
-			Projection projA = AABBProjection(a.center, a.halfExtents, n);
-			Projection projB = AABBProjection(b.center, b.halfExtents, n);
+			// Project A and B on axis
+			Projection projA = a.Project(n);
+			Projection projB = b.Project(n);
 
 			// Add relative offset to A´s projection
 			float relativeProjection = V2fDot(n, delta);
@@ -365,12 +404,13 @@ namespace Collision {
 		}
 
 		//
-		// Separation case: Skip vertex contacts entirely (outside of the voronoi region)
+		// Skip separation vertex contacts, because we don't want ghost collisions
+		// This works by looking a the voronoi region and skip everything which is outside
 		//
 		if (collisionDistance >= 0) {
-
 			// Get closest point and build segment from tangent
-			Vec2f closestPoint = GetClosestPointOnAABB(a.center, sumExtents, b.center);
+			AABB minkowski = AABB::Construct(a.center, sumExtents);
+			Vec2f closestPoint = minkowski.GetClosestPoint(b.center);
 			Vec2f tangent = V2fCrossL(1.0f, collisionNormal);
 			Vec2f segmentA = a.center + V2fHadamard(tangent, sumExtents);
 			Vec2f segmentB = a.center - V2fHadamard(tangent, sumExtents);
@@ -392,7 +432,7 @@ namespace Collision {
 		}
 
 		// Fill out contact
-		outContact.Initialize(collisionNormal, collisionDistance, a.center);
+		outContact.Set(collisionNormal, collisionDistance, a.center);
 
 		// Check for internal collisions (internal edges)
 		if (checkInternal) {
@@ -427,6 +467,23 @@ namespace TestLevel {
 	static Map Level = { {}, {}, {}, Tiles, Width, Height };
 };
 
+namespace InternalCollisionTestLevel {
+	constexpr uint32_t Width = 5;
+	constexpr uint32_t Height = 5;
+
+	const uint32_t p = (uint32_t)'p';
+
+	static uint32_t Tiles[Width * Height] = {
+		0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0,
+		0, 0, p, 0, 0,
+		0, 0, 1, 0, 0,
+		0, 0, 0, 0, 0,
+	};
+
+	static Map Level = { {}, {}, {}, Tiles, Width, Height };
+};
+
 //
 // Game
 //
@@ -453,6 +510,11 @@ struct Entity {
 		AABB aabb = { position, radius };
 		return aabb;
 	}
+
+	inline Projection Project(const Vec2f &axis) const {
+		AABB aabb = GetAABB();
+		return aabb.Project(axis);
+	}
 };
 
 constexpr float MaxSpeed = 100.0f;
@@ -472,7 +534,7 @@ static void LoadPlayer(Entity &player, const Map &map) {
 	Vec2f worldHalfExtents = V2fHadamard(V2fInit((float)map.width, (float)map.height), TileSize);
 
 	Vec2i playerTilePos;
-	if (map.FindPositionByTile(TestLevel::p, &playerTilePos)) {
+	if (map.FindPositionByTile(InternalCollisionTestLevel::p, &playerTilePos)) {
 		Vec2f tilePos = map.TileCoordsToWorld(playerTilePos);
 		Vec2f tileBottomCenter = tilePos + V2f(TileWidth * 0.5f, 0);
 		player.position = tileBottomCenter + V2fInit(0, player.radius.y);
@@ -684,6 +746,10 @@ static void LoadWorld(World &world, const Map &level) {
 	world.box.position = V2fInit(TileWidth * 3.0f, 0.0f);
 
 	LoadPlayer(world.player, world.map);
+
+#if COLLISION_PLAYGROUND
+	world.player.position = world.box.position + V2fInit(-world.box.radius.w, -world.box.radius.h) + V2fInit(-world.player.radius.w, -world.player.radius.h);
+#endif
 }
 
 struct Editor {
@@ -749,7 +815,7 @@ static void LoadGame(GameState *state) {
 	state->camera.offset.y = 0;
 
 	// World
-	LoadWorld(state->world, TestLevel::Level);
+	LoadWorld(state->world, InternalCollisionTestLevel::Level);
 }
 
 extern bool GameInit(GameMemory &gameMemory) {
@@ -952,11 +1018,10 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 
 			Entity *dragEntity = nullptr;
 
-			AABB aabb;
 			for (int i = 0; i < fplArrayCount(entities); ++i) {
 				Entity *entity = entities[i];
-				aabb = { entity->position, entity->radius };
-				if (AABB::IsPointInside(aabb, state->mouseWorldPos)) {
+				AABB aabb = AABB::Construct(entity->position, entity->radius);
+				if (aabb.IsPointInside(state->mouseWorldPos)) {
 					dragEntity = entity;
 					break;
 				}
@@ -1119,11 +1184,13 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 	Vec2f sumExtents = player.radius + box.radius;
 	PushRectangleCenter(renderState, box.position, sumExtents, V4f(0.25, 0.25f, 0.25f, 1.0f), false, 1.0f);
 
-	bool insideBox = Collision::IsPointInsideAABB(box.position, sumExtents, player.position);
+	AABB minkowskiBox = AABB::Construct(box.position, sumExtents);
+
+	bool insideBox = minkowskiBox.IsPointInside(player.position);
 
 	float u, v;
-	Vec2f segmentA;
-	Vec2f segmentB;
+	Vec2f segmentA = V2fZero();
+	Vec2f segmentB = V2fZero();
 	if (insideBox) {
 		//
 		// Penetration case (SAT)
@@ -1141,8 +1208,8 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 			float proj = V2fDot(deltaPos, n);
 
 			// Project A and B on normal
-			Projection projA = Collision::AABBProjection(box.position, box.radius, n);
-			Projection projB = Collision::AABBProjection(player.position, player.radius, n);
+			Projection projA = box.Project(n);
+			Projection projB = player.Project(n);
 
 			// Add relative offset to B´s projection
 			projB.min += proj;
@@ -1196,7 +1263,8 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 		// Separation case (Closest Point)
 		//
 		// Closest point on box (separated)
-		Vec2f closestPointMinkowski = Collision::GetClosestPointOnAABB(box.position, sumExtents, player.position);
+		AABB minkowskiBox = AABB::Construct(box.position, sumExtents);
+		Vec2f closestPointMinkowski = minkowskiBox.GetClosestPoint(player.position);
 		PushCircle(renderState, closestPointMinkowski, 2.0f, 8, V4fInit(0, 1, 0, 1), true, 0);
 
 		// Direction
