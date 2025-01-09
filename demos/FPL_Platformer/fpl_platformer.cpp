@@ -474,7 +474,7 @@ namespace InternalCollisionTestLevel {
 	const uint32_t p = (uint32_t)'p';
 
 	static uint32_t Tiles[Width * Height] = {
-		0, 0, 0, 0, 0,
+		0, 0, 0, 1, 0,
 		0, 0, 0, 0, 0,
 		0, 0, p, 0, 0,
 		0, 0, 1, 0, 0,
@@ -531,13 +531,16 @@ static void LoadPlayer(Entity &player, const Map &map) {
 	player.position = V2fInit(0.0f, 0.0f);
 
 #if !COLLISION_PLAYGROUND
-	Vec2f worldHalfExtents = V2fHadamard(V2fInit((float)map.width, (float)map.height), TileSize);
-
 	Vec2i playerTilePos;
 	if (map.FindPositionByTile(InternalCollisionTestLevel::p, &playerTilePos)) {
 		Vec2f tilePos = map.TileCoordsToWorld(playerTilePos);
 		Vec2f tileBottomCenter = tilePos + V2f(TileWidth * 0.5f, 0);
-		player.position = tileBottomCenter + V2fInit(0, player.radius.y);
+
+		// Move the player above the tile, but to the center
+		player.position = tileBottomCenter + V2fInit(0, player.radius.h);
+
+		// Move the player above the tile, but to the right
+		player.position = tileBottomCenter + V2fInit(TileSize.w * 0.5f - player.radius.w, player.radius.h);
 	}
 
 	player.applyFriction = true;
