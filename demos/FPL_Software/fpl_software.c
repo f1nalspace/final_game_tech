@@ -77,11 +77,14 @@ int main(int argc, char **args) {
 	settings.window.background = backColor;
 
 	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
+		fplWindowSize winSize = fplZeroInit;
+		fplGetWindowSize(&winSize);
+
 		RandomSeries series = { 1337 };
 		float dt = 1.0f / 60.0f;
-		float margin = 50;
-		Vec2f rectRadius = V2fInit(50.0f, 50.0f);
-		Vec2f rectVel = V2fInit(200.0f, 200.0f);
+		float margin = winSize.width / 50.0f;
+		Vec2f rectRadius = V2fInit(winSize.width / 25.0f, winSize.width / 25.0f);
+		Vec2f rectVel = V2fInit(rectRadius.x * 4.0f, rectRadius.y * 4.0f);
 		Vec2f rectPos = V2fInit(rectRadius.w, rectRadius.h);
 		while (fplWindowUpdate()) {
 			fplPollEvents();
