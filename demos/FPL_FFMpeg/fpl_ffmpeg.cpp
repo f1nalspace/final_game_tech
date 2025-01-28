@@ -18,6 +18,7 @@ Author:
 Changelog:
 	## 2025-01-28
 	- Fixed makefiles for CC/CMake was broken
+	- Fixed FFMPEG includes was not used in CC/CMake files
 
 	## 2023-12-31
 	- Fixed: Memory stats was never cleared when media was stopped
