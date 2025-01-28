@@ -146,6 +146,7 @@ SOFTWARE.
 	- Improved: Compiler detected improved & extended (MingW, Apple, Borland, TCC, DMC, CSMC, Linaro)
 	- Fixed: fplCreateColorRGBA() was not compiling on GCC due to inlining failing
 	- Fixed: fplCreateVideoRectFromLTRB() was not compiling on GCC due to inlining failing
+	- Fixed: FPL_Software makefiles was broken
 	- Fixed[#156]: Target audio format type and periods was never used
 	- Fixed[#157]: Compile error for missing _countof() fplArrayCount in some scenarios
 	- Removed: Obsolete function fplFileSetTimestamps removed
