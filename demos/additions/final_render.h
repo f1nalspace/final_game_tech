@@ -219,6 +219,7 @@ extern void SetMatrix(RenderState &state, const Mat4f &mat);
 extern void PopMatrix(RenderState &state);
 extern void PushRectangle(RenderState &state, const Vec2f &bottomLeft, const Vec2f &size, const Vec4f &color, const bool isFilled, const float lineWidth);
 extern void PushRectangleCenter(RenderState &state, const Vec2f &center, const Vec2f &ext, const Vec4f &color, const bool isFilled, const float lineWidth);
+extern void PushQuad(RenderState &state, const Vec2f &center, const float radius, const Vec4f &color, const bool isFilled, const float lineWidth);
 extern VertexAllocation AllocateVertices(RenderState &state, const size_t capacity, const Vec4f &color, const DrawMode drawMode, const bool isLoop, const float thickness);
 extern void PushVertices(RenderState &state, const Vec2f *verts, const size_t vertexCount, const bool copyVerts, const Vec4f &color, const DrawMode drawMode, const bool isLoop, const float thickness);
 extern void PushSprite(RenderState &state, const Vec2f &position, const Vec2f &ext, const TextureHandle texture, const Vec4f &color, const Vec2f &uvMin, const Vec2f &uvMax);
@@ -319,6 +320,11 @@ extern void PushRectangle(RenderState &state, const Vec2f &bottomLeft, const Vec
 
 extern void PushRectangleCenter(RenderState &state, const Vec2f &center, const Vec2f &ext, const Vec4f &color, const bool isFilled, const float lineWidth) {
 	PushRectangle(state, center - ext, ext * 2.0f, color, isFilled, lineWidth);
+}
+
+extern void PushQuad(RenderState &state, const Vec2f &center, const float radius, const Vec4f &color, const bool isFilled, const float lineWidth) {
+	Vec2f ext = V2fInitScalar(radius);
+	PushRectangleCenter(state, center, ext, color, isFilled, lineWidth);
 }
 
 extern VertexAllocation AllocateVertices(RenderState &state, const size_t capacity, const Vec4f &color, const DrawMode drawMode, const bool isLoop, const float thickness) {
