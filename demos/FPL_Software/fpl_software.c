@@ -14,6 +14,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2025-01-28
+	- Fixed makefiles for CC/CMake was broken
+
 	## 2021-05-16
 	- Use fplPollEvents() instead
 
