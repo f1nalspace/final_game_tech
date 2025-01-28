@@ -16,6 +16,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2025-01-28
+	- Fixed makefiles for CC/CMake was broken
+
 	## 2023-12-31
 	- Fixed: Memory stats was never cleared when media was stopped
 

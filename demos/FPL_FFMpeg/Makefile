@@ -2,7 +2,7 @@
 APP_NAME = FPL_FFMpeg
 SOURCE_FILES = fpl_ffmpeg.cpp
 LIBS = -ldl
-INCLUDES = -I../../
+INCLUDES = -I../../ -I../additions/ -I../dependencies/
 
 # Auto detect release type/platform/architecture
 DEBUG ?= 1
