@@ -144,6 +144,8 @@ SOFTWARE.
 	- Improved: Architecture detection extended (Apple, Risc-V, Mips, Sparc)
 	- Improved: CPU bits detection improved
 	- Improved: Compiler detected improved & extended (MingW, Apple, Borland, TCC, DMC, CSMC, Linaro)
+	- Fixed: fplCreateColorRGBA() was not compiling on GCC due to inlining failing
+	- Fixed: fplCreateVideoRectFromLTRB() was not compiling on GCC due to inlining failing
 	- Fixed[#156]: Target audio format type and periods was never used
 	- Fixed[#157]: Compile error for missing _countof() fplArrayCount in some scenarios
 	- Removed: Obsolete function fplFileSetTimestamps removed
@@ -4055,10 +4057,7 @@ typedef union fplColor32 {
 * @param a The alpha component in range of 0-255
 * @return The resulting @ref fplColor32
 */
-fpl_inline fplColor32 fplCreateColorRGBA(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a) {
-	fplColor32 result = fplStructInit(fplColor32, b, g, r, a);
-	return(result);
-}
+fpl_common_api fplColor32 fplCreateColorRGBA(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a);
 
 //! A structure containing window settings, such as size, title etc.
 typedef struct fplWindowSettings {
@@ -6670,10 +6669,7 @@ typedef struct fplVideoRect {
 * @param bottom The bottom position in screen units
 * @return Returns the computed video rectangle @ref fplVideoRect
 */
-fpl_inline fplVideoRect fplCreateVideoRectFromLTRB(int32_t left, int32_t top, int32_t right, int32_t bottom) {
-	fplVideoRect result = { left, top, (right - left) + 1, (bottom - top) + 1 };
-	return(result);
-}
+fpl_common_api fplVideoRect fplCreateVideoRectFromLTRB(int32_t left, int32_t top, int32_t right, int32_t bottom);
 
 //! A structure containing video backbuffer properties
 typedef struct fplVideoBackBuffer {
@@ -10913,6 +10909,15 @@ fpl_common_api void fplDebugFormatOut(const char *format, ...) {
 		fplDebugOut(buffer);
 	}
 }
+
+//
+// Color
+//
+fpl_common_api fplColor32 fplCreateColorRGBA(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a) {
+	fplColor32 result = fplStructInit(fplColor32, b, g, r, a);
+	return(result);
+}
+
 #endif // FPL__COMMON_DEFINED
 
 // ############################################################################
@@ -23166,6 +23171,11 @@ fpl_common_api bool fplGetVideoRequirements(const fplVideoBackendType backendTyp
 	if (context.getRequirementsFunc != fpl_null) {
 		result = context.getRequirementsFunc(requirements);
 	}
+	return(result);
+}
+
+fpl_inline fplVideoRect fplCreateVideoRectFromLTRB(int32_t left, int32_t top, int32_t right, int32_t bottom) {
+	fplVideoRect result = { left, top, (right - left) + 1, (bottom - top) + 1 };
 	return(result);
 }
 #endif // FPL__ENABLE_VIDEO
