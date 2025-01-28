@@ -335,114 +335,11 @@ struct Map {
 };
 
 //
-// Collision Detection
+// Tiles
 //
-namespace Collision {
-	// Returns true if the specified tile by position and direction is an internal collision or not.
-	// Internal collision means that if a tile in the direction of the normal was found and both are obstacles.
-	// Such collisions must be skipped, otherwise we will get ghost collisions when walking on the floor or gliding on a wall.
-	static bool IsInternalCollision(const Map &map, const Vec2i &tilePos, const Vec2f &normal) {
-		int nextTileX = tilePos.x + (int)normal.x;
-		int nextTileY = tilePos.y + (int)normal.y;
-	
-		uint32_t currentTile = map.GetTile(tilePos.x, tilePos.y);
-		uint32_t nextTile = map.GetTile(nextTileX, nextTileY);
-
-		bool internalEdge = map.IsObstacle(currentTile) && map.IsObstacle(nextTile);
-
-		return internalEdge;
-	}
-
-	// Detect collision for AABB vs AABB and fill out the contact.
-	// The tile position are used to detect internal collisions, which must be skipped.
-	// Vertex contacts are skipped as well, otherwise we will get ghost collisions
-	static bool AabbVsAabb(const AABB &a, const AABB &b, Contact &outContact, const Vec2i &tilePos, const Map &map, const bool checkInternal = true) {
-		// Form minkowski box and get relative position
-		Vec2f delta = b.center - a.center;
-		Vec2f sumExtents = a.halfExtents + b.halfExtents;
-
-		// We only have two fixed axis for a AABB
-		Vec2f axes[] =
-		{
-			V2fInit(1, 0),
-			V2fInit(0, 1),
-		};
-
-		Vec2f collisionNormal = V2fZero();
-		float collisionDistance = 0;
-		int index = -1;
-
-		int axesCount = fplArrayCount(axes);
-		for (int i = 0; i < axesCount; ++i) {
-			Vec2f n = axes[i];
-
-			// Project A and B on axis
-			Projection projA = a.Project(n);
-			Projection projB = b.Project(n);
-
-			// Add relative offset to A´s projection
-			float relativeProjection = V2fDot(n, delta);
-			projA.min += relativeProjection;
-			projA.max += relativeProjection;
-
-			// Calculate overlap and get smallest (greatest negative) projection
-			float d0 = projA.min - projB.max;
-			float d1 = projB.min - projA.max;
-			float overlap = d0 > d1 ? d0 : d1;
-
-			// Store smallest (greatest negative) collision distance and normal when needed
-			if (index == -1 || overlap > collisionDistance) {
-				index = i;
-				collisionDistance = overlap;
-				collisionNormal = n;
-			}
-		}
-
-		// Make sure the collision normal faces in the right direction
-		if (V2fDot(collisionNormal, delta) < 0) {
-			collisionNormal = -collisionNormal;
-		}
-
-		//
-		// Skip separation vertex contacts, because we don't want ghost collisions
-		// This works by looking a the voronoi region and skip everything which is outside
-		//
-		if (collisionDistance >= 0) {
-			// Get closest point and build segment from tangent
-			AABB minkowski = AABB::Construct(a.center, sumExtents);
-			Vec2f closestPoint = minkowski.GetClosestPoint(b.center);
-			Vec2f tangent = V2fCrossL(1.0f, collisionNormal);
-			Vec2f segmentA = a.center + V2fHadamard(tangent, sumExtents);
-			Vec2f segmentB = a.center - V2fHadamard(tangent, sumExtents);
-
-			// Get closest point on segment
-			Vec2f n = segmentB - segmentA;
-			float segmentLength = V2fDot(n, n);
-			Vec2f q = b.center;
-			Vec2f pa = q - segmentA;
-			Vec2f segmentClosest = segmentA + n * (V2fDot(pa, n) / segmentLength);
-
-			// Get barycentric coordinates and detect a edge or vertex case
-			float v = V2fDot(segmentClosest - segmentA, n) / segmentLength;
-			float u = V2fDot(segmentB - segmentClosest, n) / segmentLength;
-			bool isEdge = u >= 0 && v >= 0;
-
-			if (!isEdge)
-				return false; // Skip vertex contacts
-		}
-
-		// Fill out contact
-		outContact.Set(collisionNormal, collisionDistance, a.center);
-
-		// Check for internal collisions (internal edges)
-		if (checkInternal) {
-			return !IsInternalCollision(map, tilePos, collisionNormal);
-		}
-
-		// Always return true, because with speculative contacts we want "speculative" contacts that may collide or not
-		return true;
-	}
-}
+namespace Tiles {
+	const uint32_t PlayerPosition = (uint32_t)'p';
+};
 
 //
 // Levels
@@ -451,14 +348,14 @@ namespace TestLevel {
 	constexpr uint32_t Width = 11;
 	constexpr uint32_t Height = 8;
 
-	const uint32_t p = (uint32_t)'p';
+	const uint32_t p = Tiles::PlayerPosition;
 
 	static uint32_t Tiles[Width * Height] = {
 		1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
 		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
 		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
 		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+		1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1,
 		1, 0, 0, 0, 0, 0, p, 0, 0, 0, 1,
 		1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1,
 		1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
@@ -467,26 +364,16 @@ namespace TestLevel {
 	static Map Level = { {}, {}, {}, Tiles, Width, Height };
 };
 
-namespace InternalCollisionTestLevel {
-	constexpr uint32_t Width = 5;
-	constexpr uint32_t Height = 5;
-
-	const uint32_t p = (uint32_t)'p';
-
-	static uint32_t Tiles[Width * Height] = {
-		0, 0, 0, 1, 0,
-		0, 0, 0, 0, 0,
-		0, 0, p, 0, 0,
-		0, 0, 1, 0, 0,
-		0, 0, 0, 0, 0,
-	};
-
-	static Map Level = { {}, {}, {}, Tiles, Width, Height };
-};
-
 //
 // Game
 //
+constexpr float MaxSpeed = 100.0f;
+constexpr float PlayerWalkSpeed = 30.0f;
+constexpr float PlayerAirSpeed = 40.0f;
+constexpr float PlayerJumpVelocity = 200.0f * 1.2f;
+constexpr float PlayerGroundFriction = 0.2f;
+constexpr float PlayerAirFriction = 0.2f;
+
 struct Assets {
 	FontAsset consoleFont;
 	char dataPath[1024];
@@ -497,11 +384,51 @@ struct GroundState {
 	bool last;
 };
 
+struct SensorDefinition {
+	// Start/origin of the sensor in unit space, relative to the entity radius
+	Vec2f origin;
+	// Target unit direction
+	Vec2f targetDirection;
+	// Line color
+	Vec4f color;
+	// Minimum distance in unit space, relative to the entity radius
+	float minDistance;
+};
+
+static const SensorDefinition EntitySensorGroundLeft = { { -0.325f, 0.0f }, {0.0f, -1.0f}, {0.0f, 0.8f, 0.0f, 1.0f}, 0.8f };
+static const SensorDefinition EntitySensorGroundRight = {{ 0.325f, 0.0f }, {0.0f, -1.0f}, {0.0f, 0.7f, 0.0f, 1.0f}, 0.8f };
+static const SensorDefinition EntitySensorCeilingLeft = {{ -0.325f, 0.0f }, {0.0f, 1.0f}, {1.0f, 0.8f, 0.0f, 1.0f}, 0.8f };
+static const SensorDefinition EntitySensorCeilingRight = {{ 0.325f, 0.0f }, {0.0f, 1.0f}, {1.0f, 0.7f, 0.0f, 1.0f}, 0.8f };
+static const SensorDefinition EntitySensorWallLeft = {{ 0.0f, 0.0f }, { -1.0f, 0.0f }, {0.7f, 0.0f, 0.0f, 1.0f}, 0.4};
+static const SensorDefinition EntitySensorWallRight = {{ 0.0f, 0.0f }, { 1.0f, 0.0f }, {0.6f, 0.0f, 0.0f, 1.0f}, 0.4};
+
+static SensorDefinition EntitySensorDefinitions[6] = {
+	EntitySensorGroundLeft,
+	EntitySensorGroundRight,
+	EntitySensorCeilingLeft,
+	EntitySensorCeilingRight,
+	EntitySensorWallLeft,
+	EntitySensorWallRight,
+};
+
+struct Sensor {
+	// Color of the line
+	Vec4f color;
+	// Origin in world units
+	Vec2f origin;
+	// Target in world units
+	Vec2f target;
+	// Length in world units
+	float length;
+	// Is sensor active or not
+	fpl_b32 isActive;
+};
+
 struct Entity {
+	Sensor sensors[6];
 	Contact contact;
 	Vec4f color;
 	Vec2f position;
-	Vec2f positionCorrection;
 	Vec2f velocity;
 	Vec2f radius;
 	float groundFriction;
@@ -530,12 +457,30 @@ struct Entity {
 	}
 };
 
-constexpr float MaxSpeed = 100.0f;
-constexpr float PlayerWalkSpeed = 30.0f;
-constexpr float PlayerAirSpeed = 40.0f;
-constexpr float PlayerJumpVelocity = 200.0f * 1.2f;
-constexpr float PlayerGroundFriction = 0.2f;
-constexpr float PlayerAirFriction = 0.2f;
+static TileRect ComputeTileRect(const Entity &player, const Map &map, const Vec2f &nextPos) {
+    // Find min/max
+    Vec2f min = V2fMin(player.position, nextPos);
+    Vec2f max = V2fMax(player.position, nextPos);
+
+    // Adjust by map origin
+    Vec2f originWorld = map.TileCoordsToWorld(map.origin);
+    min -= originWorld;
+    max -= originWorld;
+
+    // Extent by radius
+    min -= player.radius;
+    max += player.radius;
+
+    // Expand a bit more to really capture all tiles
+    min -= AABBExpand;
+    max += AABBExpand;
+
+    // Get tile range min/max
+    Vec2i tileMin = map.WorldCoordsToTile(min);
+    Vec2i tileMax = map.WorldCoordsToTile(max + V2fInit(0.5f, 0.5f));
+
+    return { tileMin, tileMax };
+}
 
 static void LoadPlayer(Entity &player, const Map &map) {
 	player.radius = V2fInit(TileWidth * 0.4f, TileHeight * 0.8f);
@@ -545,7 +490,7 @@ static void LoadPlayer(Entity &player, const Map &map) {
 
 #if !COLLISION_PLAYGROUND
 	Vec2i playerTilePos;
-	if (map.FindPositionByTile(InternalCollisionTestLevel::p, &playerTilePos)) {
+	if (map.FindPositionByTile(Tiles::PlayerPosition, &playerTilePos)) {
 		Vec2f tilePos = map.TileCoordsToWorld(playerTilePos);
 		Vec2f tileBottomCenter = tilePos + V2f(TileWidth * 0.5f, 0);
 
@@ -569,7 +514,6 @@ static void LoadPlayer(Entity &player, const Map &map) {
 static void InputPlayer(Entity &player, const Input &input) {
 	const Controller &controller = (input.defaultControllerIndex == -1) ? input.controllers[0] : input.controllers[input.defaultControllerIndex];
 
-#if !COLLISION_PLAYGROUND
 	// Horizontal Movement
 	float moveSpeed = player.IsGrounded() ? PlayerWalkSpeed : PlayerAirSpeed;
 	if (IsDown(controller.moveLeft)) {
@@ -592,141 +536,50 @@ static void InputPlayer(Entity &player, const Input &input) {
 		player.velocity.y = PlayerJumpVelocity;
 		player.jumpRequested = false;
 	}
-#endif
-
-#if 0
-	if (IsDown(controller.moveUp)) {
-		player.velocity.y = 100.0f;
-	} else if (IsDown(controller.moveDown)) {
-		player.velocity.y = -100.0f;
-	}
-#endif
 }
 
-static void CollisionResponse(Entity &player, const Vec2f &normal, const float dist, const float dt, const Vec2i &tilePos) {
-	// Get the separation and penetration separately, this is to stop pentration from causing the objects to ping apart
-	float separation = Max(dist, 0);
-	float penetration = Min(dist, 0);
-
-	// Compute relative normal velocity require to be object to an exact stop at the surface
-	float nv = V2fDot(player.velocity, normal) + separation / dt;
-
-	// Accumulate the penetration correction, this is applied in the update function and ensures we don't add any energy to the system
-	player.positionCorrection -= V2fMultScalar(normal, penetration / dt);
-
-	if (nv < 0) {
-		// Remove normal velocity
-		player.velocity -= V2fMultScalar(normal, nv);
-
-		// Is grounded?
-		if (normal.y > 0.0f) {
-			player.groundState.current = true;
-
-			// Friction
-			if (player.applyFriction) {
-				// Form perpendicular vector from the normal
-				Vec2f tangent = V2fCrossR(normal, -1.0f);
-
-				// Compute the tangential velocity, scale by friction
-				float tv = V2fDot(player.velocity, tangent) * player.groundFriction;
-
-				// Subtract that from the main velocity
-				player.velocity -= V2fMultScalar(tangent, tv);
-			}
-		}
-	}
-}
-
-static TileRect ComputeTileRect(const Entity &player, const Map &map, const Vec2f &nextPos) {
-	// Find min/max
-	Vec2f min = V2fMin(player.position, nextPos);
-	Vec2f max = V2fMax(player.position, nextPos);
-
-	// Adjust by map origin
-	Vec2f originWorld = map.TileCoordsToWorld(map.origin);
-	min -= originWorld;
-	max -= originWorld;
-
-	// Extent by radius
-	min -= player.radius;
-	max += player.radius;
-
-	// Expand a bit more to really capture all tiles
-	min -= AABBExpand;
-	max += AABBExpand;
-
-	// Get tile range min/max
-	Vec2i tileMin = map.WorldCoordsToTile(min);
-	Vec2i tileMax = map.WorldCoordsToTile(max + V2fInit(0.5f, 0.5f));
-
-	return { tileMin, tileMax };
-}
-
-static void DetectCollision(Entity &player, const Map &map, const float dt) {
-	// Predict position
-	Vec2f predictedPos = V2fAddMultScalar(player.position, player.velocity, dt);
-
-	// Get tile min/max
-	TileRect tileRect = ComputeTileRect(player, map, predictedPos);
-
-	// Player bounds
-	AABB playerAABB = player.GetAABB();
-
-	Vec2f originWorld = map.TileCoordsToWorld(map.origin);
-
-	// Collide against all solid tiles
-	for (int x = tileRect.min.x; x <= tileRect.max.x; ++x) {
-		for (int y = tileRect.min.y; y <= tileRect.max.y; ++y) {
-			uint32_t tile = map.GetTile(x, y);
-			if (map.IsObstacle(tile)) {
-				Vec2i tilePos = V2iInit(x, y);
-				Vec2f tileWorld = map.TileCoordsToWorld(tilePos) + originWorld;
-				Vec2f aabbCenter = tileWorld + TileSize * 0.5f;
-				AABB tileAABB = AABB::Construct(aabbCenter, TileSize * 0.5f);
-				bool collided = Collision::AabbVsAabb(tileAABB, playerAABB, player.contact, tilePos, map);
-				if (collided) {
-					CollisionResponse(player, player.contact.normal, player.contact.distance, dt, tilePos);
-				}
-			}
-		}
+static void UpdateSensors(Entity &player, const float dt) {
+	Vec2f predictedPos = player.position + player.velocity * dt;
+	for (uint8_t index = 0; index < 6; ++index) {
+		const SensorDefinition &def = EntitySensorDefinitions[index];
+		Vec2f distance = V2fHadamard(V2fInitScalar(def.minDistance), TileSize);
+		player.sensors[index].isActive = false;
+		player.sensors[index].color = def.color;
+		player.sensors[index].origin = predictedPos + V2fHadamard(def.origin, TileSize);
+		player.sensors[index].length = Abs(V2fDot(distance, def.targetDirection));
+		player.sensors[index].target = player.sensors[index].origin + V2fMultScalar(def.targetDirection, player.sensors[index].length);
 	}
 }
 
 static void UpdatePlayer(Entity &player, const Map &map, const float dt) {
-#if !COLLISION_PLAYGROUND
 	// Gravity
-	player.velocity += Gravity;
+	//player.velocity += Gravity;
 
 	// Air friction
 	if (player.applyAirFriction && player.IsAir() && Abs(player.velocity.x) > 0) {
 		player.velocity.x *= (1.0f - player.airFriction);
 	}
-#endif
 
 	// Clamp speed
 	player.velocity.x = ScalarClamp(player.velocity.x, -MaxSpeed, MaxSpeed);
 
-#if !COLLISION_PLAYGROUND
 	// Grounding
 	player.groundState.last = player.groundState.current;
 	player.groundState.current = false;
 
-	// Collision detection
-	DetectCollision(player, map, dt);
-#endif
+	// Sensors
+	UpdateSensors(player, dt);
+
+	// Collision
 
 	// Integrate
-	player.position += (player.velocity + player.positionCorrection) * dt;
-
-	// Clear
-	player.positionCorrection = V2fZero();
+	player.position += player.velocity * dt;
 }
 
 struct World {
 	fmemMemoryBlock memory;
 	Map map;
 	Entity player;
-	Entity box;
 };
 
 // One time initialization of the map
@@ -764,16 +617,7 @@ static void InitWorld(fmemMemoryBlock *memory, World &world) {
 // Load entire world (can be called anytime)
 static void LoadWorld(World &world, const Map &level) {
 	LoadMap(world.map, level);
-
-	world.box.color = V4fInit(0.0f, 1.0f, 0.0f, 1.0f);
-	world.box.radius = V2fInit(TileWidth * 0.5f, TileHeight * 0.5f);
-	world.box.position = V2fInit(TileWidth * 3.0f, 0.0f);
-
 	LoadPlayer(world.player, world.map);
-
-#if COLLISION_PLAYGROUND
-	world.player.position = world.box.position + V2fInit(-world.box.radius.w, -world.box.radius.h) + V2fInit(-world.player.radius.w, -world.player.radius.h);
-#endif
 }
 
 struct Editor {
@@ -839,7 +683,7 @@ static void LoadGame(GameState *state) {
 	state->camera.offset.y = 0;
 
 	// World
-	LoadWorld(state->world, InternalCollisionTestLevel::Level);
+	LoadWorld(state->world, TestLevel::Level);
 }
 
 extern bool GameInit(GameMemory &gameMemory) {
@@ -1031,50 +875,8 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 	// Editor input
 	EditorInput(state, input);
 
-#if COLLISION_PLAYGROUND
-	Entity *entities[] = {
-		&state->world.player,
-		&state->world.box,
-	};
-
-	if (IsDown(input.mouse.left)) {
-		if (!state->isDragging) {
-
-			Entity *dragEntity = nullptr;
-
-			for (int i = 0; i < fplArrayCount(entities); ++i) {
-				Entity *entity = entities[i];
-				AABB aabb = AABB::Construct(entity->position, entity->radius);
-				if (aabb.IsPointInside(state->mouseWorldPos)) {
-					dragEntity = entity;
-					break;
-				}
-			}
-
-			if (dragEntity != nullptr) {
-				state->dragEntity = dragEntity;
-				state->isDragging = true;
-				state->dragStart = state->mouseWorldPos;
-			}
-		} else {
-			fplAssertPtr(state->dragEntity);
-			Vec2f deltaPos = state->mouseWorldPos - state->dragStart;
-			state->dragEntity->position += deltaPos;
-			state->dragStart = state->mouseWorldPos;
-		}
-	} else {
-		if (state->isDragging) {
-			state->isDragging = false;
-			state->dragEntity = nullptr;
-			state->dragStart = V2fZero();
-		}
-	}
-#endif
-
-#if !COLLISION_PLAYGROUND
 	// Player input
 	InputPlayer(state->world.player, input);
-#endif
 }
 
 extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
@@ -1094,11 +896,9 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 	// Player
 	UpdatePlayer(player, map, dt);
 
-#if !COLLISION_PLAYGROUND
 	// Camera
 	state->camera.offset = -player.position;
 	state->camera.scale = 1;
-#endif
 
 	// FPS display
 	const float fpsSmoothing = 0.1f;
@@ -1127,6 +927,19 @@ static void PushNormal(RenderState &renderState, const Vec2f &position, const Ve
 	PushLine(renderState, a, b, V4fInit(0.0f, 0.0f, 1.0f, 1.0f), 2.0f);
 }
 
+static void PushOrigin(RenderState &renderState, const Vec2f &origin) {
+	PushQuad(renderState, origin + V2fInit(0.0f, 2.0f), 1.0f, V4f(0.75f, 0.75f, 0.75f, 1), true, 1.0f);
+	PushQuad(renderState, origin + V2fInit(0.0f, -2.0f), 1.0f, V4f(0.75f, 0.75f, 0.75f, 1), true, 1.0f);
+	PushQuad(renderState, origin + V2fInit(-2.0f, 0.0f), 1.0f, V4f(0.75f, 0.75f, 0.75f, 1), true, 1.0f);
+	PushQuad(renderState, origin + V2fInit(2.0f, 0.0f), 1.0f, V4f(0.75f, 0.75f, 0.75f, 1), true, 1.0f);
+	PushQuad(renderState, origin, 1.0f, V4f(0.25f, 0.25f, 0.25f, 1), true, 1.0f);
+}
+
+static void PushSensor(RenderState &renderState, const Sensor &sensor, const float width = 1.0f) {
+	PushLine(renderState, sensor.origin, sensor.target, sensor.color, width);
+	PushQuad(renderState, sensor.target, 1.0f, V4f(1, 1, 1, 1), true, 1.0f);
+}
+
 extern void GameRender(GameMemory &gameMemory, const float alpha) {
 	GameState *state = gameMemory.game;
 	assert(state != nullptr);
@@ -1136,8 +949,6 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 	const Map &map = world.map;
 
 	const Entity &player = world.player;
-
-	const Entity &box = world.box;
 
 	RenderState &renderState = *gameMemory.render;
 
@@ -1171,7 +982,6 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 	PushLine(renderState, V2fInit(0.0f, -h), V2fInit(0.0f, h), V4fInit(1.0f, 0.0f, 0.0f, 0.5f), 1.0f);
 	PushLine(renderState, V2fInit(-w, 0.0f), V2fInit(w, 0.0f), V4fInit(1.0f, 0.0f, 0.0f, 0.5f), 1.0f);
 
-#if !COLLISION_PLAYGROUND
 	// Tile grid
 	for (int i = 0; i <= gridTileCountX; ++i) {
 		float xoffset = i * TileWidth;
@@ -1192,167 +1002,20 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 			}
 		}
 	}
-#endif
 
 	// Player
 	PushRectangleCenter(renderState, player.position, player.radius, player.color, false, 2.0f);
-	PushCircle(renderState, player.position, 2.0f, 8, V4fInit(1, 1, 1, 1), true, 0);
-
-#if COLLISION_PLAYGROUND
-	// Box
-	PushRectangleCenter(renderState, box.position, box.radius, box.color, false, 2.0f);
-	PushCircle(renderState, box.position, 2.0f, 8, V4fInit(1, 1, 1, 1), true, 0);
-
-	// Minkowski sum
-	Vec2f deltaPos = box.position - player.position;
-	Vec2f sumExtents = player.radius + box.radius;
-	PushRectangleCenter(renderState, box.position, sumExtents, V4f(0.25, 0.25f, 0.25f, 1.0f), false, 1.0f);
-
-	AABB minkowskiBox = AABB::Construct(box.position, sumExtents);
-
-	bool insideBox = minkowskiBox.IsPointInside(player.position);
-
-	float u, v;
-	Vec2f segmentA = V2fZero();
-	Vec2f segmentB = V2fZero();
-	if (insideBox) {
-		//
-		// Penetration case (SAT)
-		//
-		Vec2f axes[] = {
-			V2fInit(1.0f, 0.0f),
-			V2fInit(0.0f, 1.0f),
-		};
-
-		int axisIndex = -1;
-		Vec2f normal = V2fZero();
-		float distance = FLT_MAX;
-		for (int i = 0; i < fplArrayCount(axes); ++i) {
-			Vec2f n = axes[i];
-			float proj = V2fDot(deltaPos, n);
-
-			// Project A and B on normal
-			Projection projA = box.Project(n);
-			Projection projB = player.Project(n);
-
-			// Add relative offset to B´s projection
-			projB.min += proj;
-			projB.max += proj;
-
-			// Calculate overlap and get smallest (greatest negative) projection
-			float d0 = projA.min - projB.max;
-			float d1 = projB.min - projA.max;
-			float overlap = d0 > d1 ? d0 : d1;
-			if (axisIndex == -1 || overlap > distance) {
-				axisIndex = i;
-				normal = n;
-				distance = overlap;
-			}
-		}
-
-		fplAssert(axisIndex > -1);
-
-		// Make sure the collision normal faces in the right direction
-		if (V2fDot(normal, deltaPos) < 0) {
-			normal = -normal;
-		}
-
-		// Always invert normal
-		normal = -normal;
-
-		Vec2f closestPointA = box.position + V2fHadamard(normal, box.radius);
-		PushCircle(renderState, closestPointA, 2.0f, 8, V4fInit(1, 1, 0, 1), true, 0);
-
-		// Find surface segment from direction
-		Vec2f tangent = V2fCrossR(normal, -1.0f);
-		Vec2f segmentA = box.position + V2fHadamard(normal, box.radius) + V2fHadamard(tangent, -box.radius);
-		Vec2f segmentB = box.position + V2fHadamard(normal, box.radius) + V2fHadamard(tangent, box.radius);
-		PushLine(renderState, segmentA, segmentB, V4fInit(0.3f, 0.2f, 0.7f, 1.0f), 2.0f);
-
-		// Get closest point in segment
-		Vec2f q = player.position;
-		Vec2f n = segmentB - segmentA;
-		Vec2f pa = player.position - segmentA;
-		float l = V2fDot(n, n);
-		Vec2f segmentClosest = segmentA + n * (V2fDot(pa, n) / l);
-		PushCircle(renderState, segmentClosest, 2.0f, 8, V4fInit(0, 1, 1, 1), true, 0);
-
-		// Get barycentric coordinates
-		v = V2fDot(segmentClosest - segmentA, n) / l;
-		u = V2fDot(segmentB - segmentClosest, n) / l;
-
-		u = v = 0;
-	} else {
-		//
-		// Separation case (Closest Point)
-		//
-		// Closest point on box (separated)
-		AABB minkowskiBox = AABB::Construct(box.position, sumExtents);
-		Vec2f closestPointMinkowski = minkowskiBox.GetClosestPoint(player.position);
-		PushCircle(renderState, closestPointMinkowski, 2.0f, 8, V4fInit(0, 1, 0, 1), true, 0);
-
-		// Direction
-		Vec2f relativeToClosestPoint = player.position - closestPointMinkowski;
-		Vec2f direction = V2fNormalize(relativeToClosestPoint);
-		Vec2f majorDirection = V2fMajorAxis(deltaPos) * -1.0f;
-		PushNormal(renderState, closestPointMinkowski, direction);
-
-		// Get actual closest point on box
-		Vec2f specialDirection = V2fInit(SignF32(direction.x), SignF32(direction.y));
-		Vec2f closestPointA = box.position + V2fHadamard(specialDirection, box.radius);
-		PushCircle(renderState, closestPointA, 2.0f, 8, V4fInit(1, 1, 0, 1), true, 0);
-
-		// Find distance
-		float distanceToClosestPoint = V2fDot(relativeToClosestPoint, direction);
-		Vec2f closestPointB = box.position + direction * distanceToClosestPoint;
-		PushCircle(renderState, closestPointB, 2.0f, 8, V4fInit(1, 0, 0, 1), true, 0);
-
-		// Find surface segment from direction
-		Vec2f majorTangent = V2fCrossR(majorDirection, -1.0f);
-		Vec2f segmentA = box.position + V2fHadamard(majorDirection, sumExtents) + V2fHadamard(majorTangent, -sumExtents);
-		Vec2f segmentB = box.position + V2fHadamard(majorDirection, sumExtents) + V2fHadamard(majorTangent, sumExtents);
-		PushLine(renderState, segmentA, segmentB, V4fInit(0.3f, 0.2f, 0.7f, 1.0f), 2.0f);
-
-		// Get closest point in segment
-		Vec2f q = player.position;
-		Vec2f n = segmentB - segmentA;
-		Vec2f pa = player.position - segmentA;
-		float l = V2fDot(n, n);
-		Vec2f segmentClosest = segmentA + n * (V2fDot(pa, n) / l);
-		PushCircle(renderState, segmentClosest, 2.0f, 8, V4fInit(0, 1, 1, 1), true, 0);
-
-		// Get barycentric coordinates
-		v = V2fDot(segmentClosest - segmentA, n) / l;
-		u = V2fDot(segmentB - segmentClosest, n) / l;
+	PushOrigin(renderState, player.position);
+	for (uint8_t sensorIndex = 0; sensorIndex < 6; ++sensorIndex) {
+		PushSensor(renderState, player.sensors[sensorIndex]);
 	}
 
-
-
-	bool isEdge = u >= 0 && v >= 0;
-
-	const FontAsset &collisionFont = state->assets.consoleFont;
-	float collisionFontHeight = 6.0f;
-
-	char collisionTextBuffer[100];
-
-	fplStringFormat(collisionTextBuffer, fplArrayCount(collisionTextBuffer), "v: %f", v);
-	PushText(renderState, collisionTextBuffer, fplGetStringLength(collisionTextBuffer), &collisionFont.desc, &collisionFont.texture, segmentA, collisionFontHeight, 1.0f, -1.0f, V4fInit(1, 1, 1, 1));
-
-	fplStringFormat(collisionTextBuffer, fplArrayCount(collisionTextBuffer), "u: %f", u);
-	PushText(renderState, collisionTextBuffer, fplGetStringLength(collisionTextBuffer), &collisionFont.desc, &collisionFont.texture, segmentB, collisionFontHeight, 1.0f, -1.0f, V4fInit(1, 1, 1, 1));
-
-	fplStringFormat(collisionTextBuffer, fplArrayCount(collisionTextBuffer), "%s", isEdge ? "Edge" : "Vertex");
-	PushText(renderState, collisionTextBuffer, fplGetStringLength(collisionTextBuffer), &collisionFont.desc, &collisionFont.texture, box.position, collisionFontHeight, 1.0f, -1.0f, V4fInit(1, 1, 1, 1));
-#endif
-
-#if !COLLISION_PLAYGROUND
-	// Player tile rects
-	TileRect playerTileRect = ComputeTileRect(player, map, player.position + player.velocity * dt);
-	for (int y = playerTileRect.min.y; y <= playerTileRect.max.y; ++y) {
-		for (int x = playerTileRect.min.x; x <= playerTileRect.max.x; ++x) {
-			Vec2f tilePos = mapOrigin + V2fInit(x * TileWidth, y * TileHeight);
-			PushRectangle(renderState, tilePos, TileSize, playerTileColor, false, 2.0f);
-		}
+	// Sensor tiles
+	for (uint8_t sensorIndex = 0; sensorIndex < 6; ++sensorIndex) {
+		Vec2i tileIndex = map.WorldCoordsToTile(player.sensors[sensorIndex].target);
+		Vec2f tilePos = V2fFromV2i(tileIndex);
+		Vec2f worldPos = mapOrigin + V2fHadamard(tilePos, TileSize);
+		PushRectangle(renderState, worldPos, TileSize, playerTileColor, false, 2.0f);
 	}
 
 	// Mouse cursor
@@ -1372,7 +1035,6 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 	char buffer[100];
 	fplStringFormat(buffer, fplArrayCount(buffer), "%i x %i", mouseTilePos.x, mouseTilePos.y);
 	PushText(renderState, buffer, fplGetStringLength(buffer), &font.desc, &font.texture, mouseWorldPos, fontHeight, 1.0f, -1.0f, V4fInit(1, 1, 1, 1));
-#endif
 
 	if (state->isDebugRendering) {
 		SetMatrix(renderState, state->projection);
