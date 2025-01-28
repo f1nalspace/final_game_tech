@@ -151,6 +151,11 @@ fpl_force_inline Vec2f V2fInitScalar(const float value) {
 	return(result);
 }
 
+fpl_force_inline Vec2f V2fFromV2i(const Vec2i other) {
+	Vec2f result = fplStructInit(Vec2f, (float)other.x, (float)other.y);
+	return(result);
+}
+
 #if defined(__cplusplus)
 fpl_force_inline Vec2f V2f() {
 	return V2fZero();
