@@ -20506,13 +20506,95 @@ typedef enum fpl__AudioDeviceState {
 	fpl__AudioDeviceState_Stopping,
 } fpl__AudioDeviceState;
 
-typedef struct fpl__CommonAudioState {
-	fplAudioDeviceFormat desiredFormat;
+typedef enum fplAudioBackendState {
+	fplAudioBackendState_Unknown = 0,
+	fplAudioBackendState_OK = 1,
+	fplAudioBackendState_NotSupported,
+	fplAudioBackendState_DeviceStopped,
+} fplAudioBackendState;
+
+struct fpl__AudioBackend;
+
+#define FPL_AUDIO_BACKEND_INITIALIZE_FUNC(name) fplAudioBackendState name(struct fpl__AudioBackend *backend, const fplSpecificAudioSettings *audioSettings, const fplAudioDeviceFormat *targetFormat, const fplAudioDeviceInfo *targetDevice, fplAudioDeviceFormat *actualFormat)
+typedef	FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl_audio_backend_initialize_func);
+
+#define FPL_AUDIO_BACKEND_RELEASE_FUNC(name) bool name(struct fpl__AudioBackend *backend)
+typedef	FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl_audio_backend_release_func);
+
+#define FPL_AUDIO_BACKEND_IS_ASYNC_FUNC(name) bool name()
+typedef	FPL_AUDIO_BACKEND_IS_ASYNC_FUNC(fpl_audio_backend_is_async_func);
+
+#define FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(name) uint32_t name(struct fpl__AudioBackend *backend, fplAudioDeviceInfo *deviceInfos, uint32_t maxDeviceCount)
+typedef	FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl_audio_backend_get_audio_devices_func);
+
+//! Guid of a audio backend
+typedef struct fplAudioBackendID {
+	uint32_t a;
+	uint16_t b;
+	uint16_t c;
+	uint8_t d[8];
+} fplAudioBackendID;
+
+//! Audio function table
+typedef struct fplAudioFunctionTable {
+	fpl_audio_backend_initialize_func *initialize;
+	fpl_audio_backend_release_func *release;
+	fpl_audio_backend_is_async_func *isAsync;
+	fpl_audio_backend_get_audio_devices_func *getAudioDevices;
+} fplAudioFunctionTable;
+
+//! Description of a full audio backend with including of the function table
+typedef struct fplAudioBackendDescriptor {
+	union {
+		struct {
+			//! GUID of the audio backend
+			fplAudioBackendID id;
+			//! Name of the audio backend
+			const char *name;
+			//! Flag that indicates whether this backend is async or not
+			bool isAsync;
+		};
+		//! Data cannot be larger than 32-bytes
+		uint8_t data[32];
+	};
+	//! Audio function table
+	fplAudioFunctionTable funcTable;
+} fplAudioBackendDescriptor;
+
+typedef struct fplAudioBackend {
+	// Internal audio format used
 	fplAudioDeviceFormat internalFormat;
+	// Audio function table
+	fplAudioFunctionTable funcTable;
+	// Callback that is called from the user to retrieve audio frames/samples
 	fpl_audio_client_read_callback *clientReadCallback;
+	// User data that is passed to the user callback
 	void *clientUserData;
+} fplAudioBackend;
+
+typedef struct fpl__CommonAudioState {
+	// REMOVE THIS BEGIN
+	
+	// Preferred audio format by the user
+	fplAudioDeviceFormat desiredFormat;
+	// Actual audio format used
+	fplAudioDeviceFormat internalFormat;
+	// Callback that is called from the user to retrieve audio frames/samples
+	fpl_audio_client_read_callback *clientReadCallback;
+	// User data that is passed to the user callback
+	void *clientUserData;
+
+	// REMOVE THIS END
+
+	// Reference to the @ref fplAudioBackend
+	fplAudioBackend *backend;
+	// Maximum size of any audio backend in bytes, used to clean the memory on init or release
+	size_t maxBackendSize;
+	// Current audio device state
 	volatile fpl__AudioDeviceState state;
 } fpl__CommonAudioState;
+
+// TODO: Replace all fpl__CommonAudioState() usages to the fpl__AudioBackend
 
 fpl_internal uint32_t fpl__ReadAudioFramesFromClient(const fpl__CommonAudioState *commonAudio, uint32_t frameCount, void *pSamples) {
 	uint32_t framesRead = 0;
