@@ -20506,16 +20506,9 @@ typedef enum fpl__AudioDeviceState {
 	fpl__AudioDeviceState_Stopping,
 } fpl__AudioDeviceState;
 
-typedef enum fplAudioBackendState {
-	fplAudioBackendState_Unknown = 0,
-	fplAudioBackendState_OK = 1,
-	fplAudioBackendState_NotSupported,
-	fplAudioBackendState_DeviceStopped,
-} fplAudioBackendState;
-
 struct fpl__AudioBackend;
 
-#define FPL_AUDIO_BACKEND_INITIALIZE_FUNC(name) fplAudioBackendState name(struct fpl__AudioBackend *backend, const fplSpecificAudioSettings *audioSettings, const fplAudioDeviceFormat *targetFormat, const fplAudioDeviceInfo *targetDevice, fplAudioDeviceFormat *actualFormat)
+#define FPL_AUDIO_BACKEND_INITIALIZE_FUNC(name) fplAudioResultType name(struct fpl__AudioBackend *backend, const fplSpecificAudioSettings *audioSettings, const fplAudioDeviceFormat *targetFormat, const fplAudioDeviceInfo *targetDevice, fplAudioDeviceFormat *actualFormat)
 typedef	FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl_audio_backend_initialize_func);
 
 #define FPL_AUDIO_BACKEND_RELEASE_FUNC(name) bool name(struct fpl__AudioBackend *backend)
