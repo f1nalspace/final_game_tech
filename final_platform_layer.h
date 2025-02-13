@@ -20537,14 +20537,6 @@ typedef	FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl_audio_backend_main_loop_func);
 #define FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(name) uint32_t name(struct fplAudioBackend *backend, fplAudioDeviceInfo *deviceInfos, uint32_t maxDeviceCount)
 typedef	FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl_audio_backend_get_audio_devices_func);
 
-//! Guid of a audio backend
-typedef struct fplAudioBackendID {
-	uint32_t a;
-	uint16_t b;
-	uint16_t c;
-	uint8_t d[8];
-} fplAudioBackendID;
-
 //! Audio function table
 typedef struct fplAudioBackendFunctionTable {
 	fpl_audio_backend_get_audio_devices_func *getAudioDevices;
@@ -20554,31 +20546,44 @@ typedef struct fplAudioBackendFunctionTable {
 	fpl_audio_backend_stop_device_func *stopDevice;
 	fpl_audio_backend_main_loop_func *mainLoop;
 	fpl_audio_backend_stop_main_loop_func *stopMainLoop;
-	size_t padding;
+	uintptr_t padding;
 } fplAudioBackendFunctionTable;
+
+//! Guid of a audio backend
+typedef struct fplAudioBackendID {
+	uint32_t a;
+	uint16_t b;
+	uint16_t c;
+	uint8_t d[8];
+} fplAudioBackendID;
+
+//! ID and Name of a audio backend
+typedef struct fplAudioBackendDescriptorIDName {
+	//! GUID of the audio backend
+	fplAudioBackendID id;
+	//! Name of the audio backend
+	const char *name;
+} fplAudioBackendDescriptorIDName;
+
+typedef struct fplAudioBackendDescriptorHeader {
+	//! The id and name
+	fplAudioBackendDescriptorIDName idName;
+	//! The audio backend type
+	fplAudioBackendType type;
+	//! Size of the actual backend data in bytes
+	uint32_t backendSize;
+	//! Flag that indicates whether this backend is async or not
+	bool isAsync;
+	//! Flag indicating that this audio backend is valid
+	bool isValid;
+} fplAudioBackendDescriptorHeader;
 
 //! Description of a audio backend
 typedef struct fplAudioBackendDescriptor {
-	union {
-		struct {
-			//! GUID of the audio backend
-			fplAudioBackendID id;
-			//! Name of the audio backend
-			const char *name;
-			//! The audio backend type
-			fplAudioBackendType type;
-			//! Size of the actual backend data in bytes
-			uint32_t backendSize;
-			//! Flag that indicates whether this backend is async or not
-			bool isAsync;
-			// Flag indicating that this audio backend is valid
-			bool isValid;
-		};
-		//! Meta data max size
-		uint8_t data[64];
-	};
-	//! Audio backend function table
-	fplAudioBackendFunctionTable funcTable;
+	//! Header
+	fplAudioBackendDescriptorHeader header;
+	//! Table
+	fplAudioBackendFunctionTable table;
 } fplAudioBackendDescriptor;
 
 typedef struct fplAudioBackend {
@@ -20600,8 +20605,6 @@ typedef struct fplAudioBackend {
 
 //! Gets the audio backend implementation from the specified @ref fplAudioBackend, that is casted to the specified type
 #define FPL_GET_AUDIO_BACKEND_IMPL(backend, type) (type *)(((uint8_t *)(backend) + FPL_AUDIO_BACKEND_DATA_OFFSET))
-
-
 
 #endif // FPL__AUDIO_BACKEND_API_IMPLEMENTED
 
@@ -21164,14 +21167,17 @@ fpl_internal FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl__AudioBackendDirectSoundMainLo
 }
 
 fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendDirectShowDescriptor = {
-	fplStructField(fplAudioBackendDescriptor, id, { 0x618d4a47, 0x163c, 0x441d, { 0x85, 0xc6, 0x4d, 0x94, 0x33, 0x61, 0xc8, 0xb3 } }),
-	fplStructField(fplAudioBackendDescriptor, name, "DirectSound"),
-	fplStructField(fplAudioBackendDescriptor, type, fplAudioBackendType_DirectSound),
-	fplStructField(fplAudioBackendDescriptor, backendSize, sizeof(fpl__AudioBackendDirectSound)),
-	fplStructField(fplAudioBackendDescriptor, isAsync, false),
-	fplStructField(fplAudioBackendDescriptor, isValid, true),
-	fplStructField(fplAudioBackendDescriptor, funcTable,
-	{
+	fplStructField(fplAudioBackendDescriptor, header, {
+		fplStructField(fplAudioBackendDescriptorHeader, idName, {
+			fplStructField(fplAudioBackendDescriptorIDName, id, { 0x618d4a47, 0x163c, 0x441d, { 0x85, 0xc6, 0x4d, 0x94, 0x33, 0x61, 0xc8, 0xb3 } }),
+			fplStructField(fplAudioBackendDescriptorIDName, name, "DirectSound"),
+		}),
+		fplStructField(fplAudioBackendDescriptorHeader, type, fplAudioBackendType_DirectSound),
+		fplStructField(fplAudioBackendDescriptorHeader, backendSize, sizeof(fpl__AudioBackendDirectSound)),
+		fplStructField(fplAudioBackendDescriptorHeader, isAsync, false),
+		fplStructField(fplAudioBackendDescriptorHeader, isValid, true),
+	}),
+	fplStructField(fplAudioBackendDescriptor, table, {
 		fplStructField(fplAudioBackendFunctionTable, getAudioDevices, fpl__AudiobackendDirectSoundGetAudioDevices),
 		fplStructField(fplAudioBackendFunctionTable, initialize, fpl__AudiobackendDirectSoundInitialize),
 		fplStructField(fplAudioBackendFunctionTable, release, fpl__AudiobackendDirectSoundRelease),
@@ -21179,7 +21185,7 @@ fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendDirectShowDescri
 		fplStructField(fplAudioBackendFunctionTable, stopDevice, fpl__AudioBackendDirectSoundStopDevice),
 		fplStructField(fplAudioBackendFunctionTable, mainLoop, fpl__AudioBackendDirectSoundMainLoop),
 		fplStructField(fplAudioBackendFunctionTable, stopMainLoop, fpl__AudioBackendDirectSoundStopMainLoop),
-	})
+	}),
 };
 
 #endif // FPL__ENABLE_AUDIO_DIRECTSOUND
@@ -22278,7 +22284,7 @@ fpl_internal uint32_t fpl__GetAudioBackendDescriptors(const uint32_t maxDescript
 				break;
 		}
 
-		if (desc == fpl_null || !desc->isValid) {
+		if (desc == fpl_null || !desc->header.isValid) {
 			continue;
 		}
 
@@ -22304,7 +22310,7 @@ fpl_internal uint32_t fpl__GetMaxAudioBackendSize(const fplAudioSettings *settin
 	uint32_t count = fpl__GetAudioBackendDescriptors(fplArrayCount(descriptors), settings, descriptors);
 	uint32_t result = 0;
 	for (size_t i = 0; i < count; ++i) {
-		uint32_t size = descriptors[i].backendSize;
+		uint32_t size = descriptors[i].header.backendSize;
 		result = fplMax(result, size);
 	}
 	return(result);
@@ -22736,14 +22742,14 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 	fplAudioResultType initResult;
 	for (size_t backendIndex = 0; backendIndex < audioBackendCount; ++backendIndex) {
 		const fplAudioBackendDescriptor *descriptor = &descriptors[backendIndex];
-		fplAssert(descriptor->isValid);
-		initResult = descriptor->funcTable.initialize(backend, &audioSettings->specific, &backend->desiredFormat, &audioSettings->targetDevice, &backend->internalFormat);
+		fplAssert(descriptor->header.isValid && descriptor->table.initialize != fpl_null);
+		initResult = descriptor->table.initialize(backend, &audioSettings->specific, &backend->desiredFormat, &audioSettings->targetDevice, &backend->internalFormat);
 		if (initResult != fplAudioResultType_Success) {
-			descriptor->funcTable.release(backend);
+			descriptor->table.release(backend);
 		} else {
-			audioState->common.funcTable = descriptor->funcTable;
-			audioState->backendType = descriptor->type;
-			audioState->isAsyncBackend = descriptor->isAsync;
+			audioState->common.funcTable = descriptor->table;
+			audioState->backendType = descriptor->header.type;
+			audioState->isAsyncBackend = descriptor->header.isAsync;
 			break;
 		}
 	}
