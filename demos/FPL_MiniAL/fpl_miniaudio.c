@@ -15,6 +15,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2025-02-13
+	- Fixed compile errors due to changes in the audio system
+
 	## 2020-10-11
 	- Use mini audio by default
 
@@ -127,7 +130,7 @@ static void AudioPlayback_MiniAudio(ma_device* pDevice, void* pOutput, const voi
 static uint32_t AudioPlayback_FPL(const fplAudioDeviceFormat *outFormat, const uint32_t maxFrameCount, void *outputSamples, void *userData) {
 	AudioContext *audioCtx = (AudioContext *)userData;
 	AudioSystem *audioSys = &audioCtx->system;
-	AudioFrameIndex result = AudioSystemWriteFrames(audioSys, outputSamples, outFormat, maxFrameCount);
+	AudioFrameIndex result = AudioSystemWriteFrames(audioSys, outputSamples, outFormat, maxFrameCount, true);
 	return(result);
 }
 #endif
