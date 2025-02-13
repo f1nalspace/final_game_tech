@@ -2380,7 +2380,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 #	define fpl__m_ZeroInit {0}
 #	define fpl__m_StructSet(ptr, type, value) *(ptr) = (type)value
 #	define fpl__m_StructInit(type, ...) (type){__VA_ARGS__}
-#	define fpl__m_StructField(type, name, ...) .name = ## __VA_ARGS__
+#	define fpl__m_StructField(type, name, ...) .name = __VA_ARGS__
 #else
 #	define fpl__m_ZeroInit {}
 #	define fpl__m_StructSet(ptr, type, value) *(ptr) = value
