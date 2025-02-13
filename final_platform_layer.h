@@ -2380,10 +2380,12 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 #	define fpl__m_ZeroInit {0}
 #	define fpl__m_StructSet(ptr, type, value) *(ptr) = (type)value
 #	define fpl__m_StructInit(type, ...) (type){__VA_ARGS__}
+#	define fpl__m_StructField(type, name, ...) .name = ## __VA_ARGS__
 #else
 #	define fpl__m_ZeroInit {}
 #	define fpl__m_StructSet(ptr, type, value) *(ptr) = value
 #	define fpl__m_StructInit(type, ...) {__VA_ARGS__}
+#	define fpl__m_StructField(type, name, ...) __VA_ARGS__
 #endif
 
 //! Initializes a struct to zero
@@ -2392,6 +2394,8 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 #define fplStructSet fpl__m_StructSet
 //! Initializes a struct by the given type
 #define fplStructInit fpl__m_StructInit
+//! Defines a single field in a struct
+#define fplStructField fpl__m_StructField
 
 //! Returns the offset for the value to satisfy the given alignment boundary
 #define fplGetAlignmentOffset(value, alignment) ( (((alignment) > 1) && (((value) & ((alignment) - 1)) != 0)) ? ((alignment) - ((value) & (alignment - 1))) : 0)			
