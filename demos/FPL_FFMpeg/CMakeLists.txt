@@ -25,6 +25,7 @@ set(MY_INCLUDE_DIRS
 	"../../"
 	"../additions/"
 	"../dependencies/"
+	"../dependencies/ffmpeg/include/"
 	)
 
 set(MY_HEADER_FILES

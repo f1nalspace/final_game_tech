@@ -16,6 +16,11 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2025-01-28
+	- Fixed makefiles for CC/CMake was broken
+	- Fixed FFMPEG includes was not used in CC/CMake files
+	- Fixed several jump labels in main translation was not working on GCC
+
 	## 2023-12-31
 	- Fixed: Memory stats was never cleared when media was stopped
 
@@ -3554,7 +3559,7 @@ static int DecodeInterruptCallback(void *opaque) {
 }
 
 static void ReleaseVideoRendering(VideoContext &video) {
-	#if USE_HARDWARE_RENDERING
+#if USE_HARDWARE_RENDERING
 	glDeleteProgram(video.basicShader.programId);
 	video.basicShader.programId = 0;
 	glDeleteBuffers(1, &video.indexBufferId);
@@ -3576,6 +3581,9 @@ static void ReleaseVideoRendering(VideoContext &video) {
 
 static bool InitializeVideoRendering(VideoContext &video, const AVCodecContext *videoCodexCtx) {
 	AVPixelFormat pixelFormat = videoCodexCtx->pix_fmt;
+
+	uint32_t verticesSize;
+	uint32_t indicesSize;
 
 #if USE_HARDWARE_RENDERING
 	if (IsPlanarYUVFormat(pixelFormat) && HasShaderForPixelFormat(pixelFormat)) {
@@ -3604,13 +3612,13 @@ static bool InitializeVideoRendering(VideoContext &video, const AVCodecContext *
 	CheckGLError();
 
 	// Allocate 4 vertices
-	uint32_t verticesSize = 4 * 4 * sizeof(float);
+	verticesSize = 4 * 4 * sizeof(float);
 	glGenBuffers(1, &video.vertexBufferId);
 	glBindBuffer(GL_ARRAY_BUFFER, video.vertexBufferId);
 	glBufferData(GL_ARRAY_BUFFER, verticesSize, nullptr, GL_STREAM_DRAW);
 	CheckGLError();
 
-	uint32_t indicesSize = fplArrayCount(videoQuadIndices) * sizeof(*videoQuadIndices);
+	indicesSize = fplArrayCount(videoQuadIndices) * sizeof(*videoQuadIndices);
 	glGenBuffers(1, &video.indexBufferId);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, video.indexBufferId);
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, indicesSize, videoQuadIndices, GL_STATIC_DRAW);
@@ -3673,13 +3681,16 @@ static bool InitializeVideo(PlayerState &state, const char *mediaFilePath, const
 	VideoContext &video = state.video;
 	AVCodecContext *videoCodexCtx = video.stream.codecContext;
 
+	AVPixelFormat targetPixelFormat;
+
+	uint32_t localThreadId;
+
 	// Init video decoder
 	if (!InitDecoder(video.decoder, &state, &state.reader, &video.stream, MAX_VIDEO_FRAME_QUEUE_COUNT, 1)) {
 		FPL_LOG_ERROR("App", "Failed initialize video decoder for media file '%s'!\n", mediaFilePath);
 		goto failed;
 	}
 
-	AVPixelFormat targetPixelFormat;
 #if USE_HARDWARE_RENDERING
 	targetPixelFormat = AVPixelFormat::AV_PIX_FMT_RGBA;
 #else
@@ -3704,7 +3715,7 @@ static bool InitializeVideo(PlayerState &state, const char *mediaFilePath, const
 		return false;
 	}
 
-	uint32_t localThreadId = fplGetCurrentThreadId();
+	localThreadId = fplGetCurrentThreadId();
 	if (localThreadId == mainThreadId) {
 		if (!InitializeVideoRendering(video, videoCodexCtx)) {
 			FPL_LOG_ERROR("Video", "Failed to initialize video rendering for file '%s'!\n", mediaFilePath);
@@ -3742,6 +3753,22 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 	AudioContext &audio = state.audio;
 	AVCodecContext *audioCodexCtx = audio.stream.codecContext;
 
+	AVSampleFormat targetSampleFormat;
+	AVSampleFormat inputSampleFormat;
+
+	uint64_t targetChannelLayout;
+	uint64_t inputChannelLayout;
+
+	uint32_t nativeBufferSizeInBytes;
+
+	int targetChannelCount;
+	int inputChannelCount;
+
+	int targetSampleRate;
+	int inputSampleRate;
+
+	int lineSize;
+
 	// Init audio decoder
 	if (!InitDecoder(audio.decoder, &state, &state.reader, &audio.stream, MAX_AUDIO_FRAME_QUEUE_COUNT, 1)) {
 		FPL_LOG_ERROR("App", "Failed initialize audio decoder for media file '%s'!\n", mediaFilePath);
@@ -3753,15 +3780,15 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 		audio.decoder.start_pts_tb = audio.stream.stream->time_base;
 	}
 
-	uint32_t nativeBufferSizeInBytes = fplGetAudioBufferSizeInBytes(nativeAudioFormat.type, nativeAudioFormat.channels, nativeAudioFormat.bufferSizeInFrames);
+	nativeBufferSizeInBytes = fplGetAudioBufferSizeInBytes(nativeAudioFormat.type, nativeAudioFormat.channels, nativeAudioFormat.bufferSizeInFrames);
 
-	AVSampleFormat targetSampleFormat = MapAudioFormatType(nativeAudioFormat.type);
+	targetSampleFormat = MapAudioFormatType(nativeAudioFormat.type);
 
 	// @TODO(final): Map channels to AV channel layout
-	uint64_t targetChannelLayout = AV_CH_LAYOUT_STEREO;
-	int targetChannelCount = nativeAudioFormat.channels;
+	targetChannelLayout = AV_CH_LAYOUT_STEREO;
+	targetChannelCount = nativeAudioFormat.channels;
 	assert(targetChannelCount == 2);
-	int targetSampleRate = nativeAudioFormat.sampleRate;
+	targetSampleRate = nativeAudioFormat.sampleRate;
 	audio.audioTarget = {};
 	audio.audioTarget.periods = nativeAudioFormat.periods;
 	audio.audioTarget.channels = targetChannelCount;
@@ -3769,11 +3796,11 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 	audio.audioTarget.type = nativeAudioFormat.type;
 	audio.audioTarget.bufferSizeInBytes = ffmpeg.av_samples_get_buffer_size(nullptr, audio.audioTarget.channels, audio.audioTarget.sampleRate, targetSampleFormat, 1);
 
-	AVSampleFormat inputSampleFormat = audioCodexCtx->sample_fmt;
+	inputSampleFormat = audioCodexCtx->sample_fmt;
 
-	int inputChannelCount = audioCodexCtx->channels;
-	int inputSampleRate = audioCodexCtx->sample_rate;
-	uint64_t inputChannelLayout = audioCodexCtx->channel_layout;
+	inputChannelCount = audioCodexCtx->channels;
+	inputSampleRate = audioCodexCtx->sample_rate;
+	inputChannelLayout = audioCodexCtx->channel_layout;
 	if (inputChannelLayout == 0) {
 		inputChannelLayout = ffmpeg.av_get_default_channel_layout(inputChannelCount);
 	}
@@ -3806,7 +3833,6 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 	}
 
 	// Allocate conversion buffer in native format, this must be big enough to hold one AVFrame worth of data.
-	int lineSize;
 	audio.maxConversionAudioBufferSize = ffmpeg.av_samples_get_buffer_size(&lineSize, targetChannelCount, targetSampleRate, targetSampleFormat, 1);
 	audio.maxConversionAudioFrameCount = audio.maxConversionAudioBufferSize / fplGetAudioSampleSizeInBytes(nativeAudioFormat.type) / targetChannelCount;
 	audio.conversionAudioBuffer = (uint8_t *)fplMemoryAlignedAllocate(audio.maxConversionAudioBufferSize, 16);
@@ -4075,6 +4101,9 @@ int main(int argc, char **argv) {
 	fplTimestamp currentTime = fplZeroInit;
 	double remainingTime = 0;
 
+	// TODO: Make constant!
+	const double SeekStep = 5.0f;
+
 	// Init
 	if (!InitApp(state)) {
 		goto release;
@@ -4106,9 +4135,6 @@ int main(int argc, char **argv) {
 	// App loop
 	//
 	fplGetWindowSize(&state.viewport);
-
-	// TODO: Make constant!
-	const double SeekStep = 5.0f;
 
 	lastTime = fplTimestampQuery();
 	remainingTime = 0.0;
