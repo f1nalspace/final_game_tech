@@ -21,6 +21,9 @@ Todo:
 	- Multiple audio tracks
 
 Changelog:
+	## 2025-14-02
+	- Get average sample value from stereo samples
+
 	## 2023-05-28
 	- Fixed crash/assert when audio visualization chunk is not ready yet
 
