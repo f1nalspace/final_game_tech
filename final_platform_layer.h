@@ -23262,7 +23262,7 @@ fpl_common_api fplAudioChannelLayout fplGetAudioChannelLayoutFromChannels(const 
 
 #define FPL__AUDIO_CHANNEL_LAYOUT_COUNT FPL__ENUM_COUNT(fplAudioChannelLayout_First, fplAudioChannelLayout_Last)
 
-fpl_globalvar uint16_t fpl__g_audioChannelLayoutToChannelCountTable[FPL__AUDIO_CHANNEL_LAYOUT_COUNT] = {
+fpl_globalvar uint16_t fpl__g_audioChannelLayoutToChannelCountTable[] = {
 	2, // fplAudioChannelLayout_Auto
 	1, // fplAudioChannelLayout_Mono
 	2, // fplAudioChannelLayout_Stereo
@@ -23272,6 +23272,7 @@ fpl_globalvar uint16_t fpl__g_audioChannelLayoutToChannelCountTable[FPL__AUDIO_C
 	6, // fplAudioChannelLayout_5_1
 	8, // fplAudioChannelLayout_7_1
 };
+fplStaticAssert(fplArrayCount(fpl__g_audioChannelLayoutToChannelCountTable) == FPL__AUDIO_CHANNEL_LAYOUT_COUNT);
 
 fpl_common_api uint16_t fplGetAudioChannelsFromLayout(const fplAudioChannelLayout channelLayout) {
 	fplAssert(channelLayout >= fplAudioChannelLayout_First && channelLayout <= fplAudioChannelLayout_Last);
