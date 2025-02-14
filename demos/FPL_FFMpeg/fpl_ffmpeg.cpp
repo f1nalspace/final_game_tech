@@ -3749,6 +3749,27 @@ static void ReleaseAudio(AudioContext &audio) {
 	audio = {};
 }
 
+static uint64_t MapChannelLayout(const fplAudioChannelLayout layout) {
+	switch (layout) {
+		case fplAudioChannelLayout_Mono:
+			return AV_CH_LAYOUT_MONO;
+		case fplAudioChannelLayout_Stereo:
+			return AV_CH_LAYOUT_STEREO;
+		case fplAudioChannelLayout_2_1:
+			return AV_CH_LAYOUT_2_1;
+		case fplAudioChannelLayout_4_0:
+			return AV_CH_LAYOUT_4POINT0;
+		case fplAudioChannelLayout_4_1:
+			return AV_CH_LAYOUT_4POINT1;
+		case fplAudioChannelLayout_5_1:
+			return AV_CH_LAYOUT_5POINT1;
+		case fplAudioChannelLayout_7_1:
+			return AV_CH_LAYOUT_7POINT1;
+		default:
+			return AV_CH_LAYOUT_STEREO;
+	}
+}
+
 static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const fplAudioDeviceFormat &nativeAudioFormat) {
 	AudioContext &audio = state.audio;
 	AVCodecContext *audioCodexCtx = audio.stream.codecContext;
@@ -3784,10 +3805,8 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 
 	targetSampleFormat = MapAudioFormatType(nativeAudioFormat.type);
 
-	// @TODO(final): Map channels to AV channel layout
-	targetChannelLayout = AV_CH_LAYOUT_STEREO;
+	targetChannelLayout = MapChannelLayout(nativeAudioFormat.channelLayout);
 	targetChannelCount = nativeAudioFormat.channels;
-	assert(targetChannelCount == 2);
 	targetSampleRate = nativeAudioFormat.sampleRate;
 	audio.audioTarget = {};
 	audio.audioTarget.periods = nativeAudioFormat.periods;
