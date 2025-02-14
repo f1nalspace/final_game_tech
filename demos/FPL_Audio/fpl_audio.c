@@ -259,6 +259,45 @@ static void RenderRingBuffer(const Vec2f pos, const Vec2f dim, LockFreeRingBuffe
 	RenderLine(tailPos, pos.y - dim.h * 0.5f, tailPos, pos.y + dim.h * 1.5f, V4fInit(0.0f, 1.0f, 0.0f, 1.0f), 2.0f);
 }
 
+static double GetSampleValue(const fplAudioFormatType format, const uint8_t *chunkSamples, const uint32_t frameIndex, const size_t frameSize) {
+	size_t offsetToFrame = frameIndex * frameSize;
+	double sampleValue;
+	switch(format) {
+		case fplAudioFormatType_F32:
+		{
+			float *pF32 = (float *)(chunkSamples + offsetToFrame);
+			double sampleLeft = *(pF32 + 0);
+			double sampleRight = *(pF32 + 1);
+			sampleValue = 0.5 * (sampleLeft + sampleRight);
+		} break;
+
+		case fplAudioFormatType_S32:
+		{
+			int32_t *pS32 = (int32_t *)(chunkSamples + offsetToFrame);
+			int32_t sampleLeftS32 = *(pS32 + 0);
+			int32_t sampleRightS32 = *(pS32 + 0);
+			double sampleLeft = (double)sampleLeftS32 / (double)INT32_MAX;
+			double sampleRight = (double)sampleRightS32 / (double)INT32_MAX;
+			sampleValue = 0.5 * (sampleLeft + sampleRight);
+		} break;
+
+		case fplAudioFormatType_S16:
+		{
+			int16_t *pS16 = (int16_t *)(chunkSamples + offsetToFrame);
+			int16_t sampleLeftS16 = *(pS16 + 0);
+			int16_t sampleRightS16 = *(pS16 + 1);
+			double sampleLeft = (double)sampleLeftS16 / (double)INT16_MAX;
+			double sampleRight = (double)sampleRightS16 / (double)INT16_MAX;
+			sampleValue = 0.5 * (sampleLeft + sampleRight);
+		} break;
+
+		default:
+			sampleValue = 0.0;
+			break;
+	}
+	return sampleValue;
+}
+
 static void Render(AudioDemo *demo, const int screenW, const int screenH, const double currentRenderTime) {
 	uint32_t channelCount = demo->audioSys.targetFormat.channels;
 
@@ -349,33 +388,10 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 
 	if(frameCount > 0 && chunkSamples != fpl_null) {
 		//
-		// Compute FFT
+		// Compute FFT (Stereo average)
 		//
-		const uint32_t channel = 0;
 		for(uint32_t i = 0; i < frameCount; ++i) {
-			double sampleValue = 0.0;
-			switch(format) {
-				case fplAudioFormatType_F32:
-				{
-					float *pF32 = (float *)(chunkSamples + i * frameSize + channel * sampleSize);
-					float sampleF32 = *pF32;
-					sampleValue = (double)sampleF32;
-				} break;
-
-				case fplAudioFormatType_S32:
-				{
-					int32_t *pS32 = (int32_t *)(chunkSamples + i * frameSize + channel * sampleSize);
-					int32_t sampleS32 = *pS32;
-					sampleValue = (double)sampleS32 / (double)INT32_MAX;
-				} break;
-
-				case fplAudioFormatType_S16:
-				{
-					int16_t *pS16 = (int16_t *)(chunkSamples + i * frameSize + channel * sampleSize);
-					int16_t sampleS16 = *pS16;
-					sampleValue = (double)sampleS16 / (double)INT16_MAX;
-				} break;
-			}
+			double sampleValue = GetSampleValue(format, chunkSamples, i, frameSize);
 
 			// Window multiplier (Hamming for smoother visualization)
 			double windowMultiplier = visualization->windowCoeffs[i];
@@ -474,32 +490,9 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 			float barWidth = (spectrumDim.w - totalSpacing) / (float)frameCount;
 
 			for(uint32_t i = 0; i < frameCount; ++i) {
-				float sampleValue = 0.0;
-				switch(format) {
-					case fplAudioFormatType_F32:
-					{
-						float *pF32 = (float *)(chunkSamples + i * frameSize + channel * sampleSize);
-						float sampleF32 = *pF32;
-						sampleValue = sampleF32;
-					} break;
-
-					case fplAudioFormatType_S32:
-					{
-						int32_t *pS32 = (int32_t *)(chunkSamples + i * frameSize + channel * sampleSize);
-						int32_t sampleS32 = *pS32;
-						sampleValue = (float)sampleS32 / (float)INT32_MAX;
-					} break;
-
-					case fplAudioFormatType_S16:
-					{
-						int16_t *pS16 = (int16_t *)(chunkSamples + i * frameSize + channel * sampleSize);
-						int16_t sampleS16 = *pS16;
-						sampleValue = (float)sampleS16 / (float)INT16_MAX;
-					} break;
-				}
-
+				double sampleValue = GetSampleValue(format, chunkSamples, i, frameSize);
 				float barMaxHeight = spectrumDim.h * 0.25f;
-				float barHeight = sampleValue * barMaxHeight;
+				float barHeight = (float)sampleValue * barMaxHeight;
 				float barX = spectrumPos.x + i * barWidth + i * spacing;
 				float barY = spectrumPos.y + barMaxHeight * 0.5f;
 				RenderQuad(barX, barY + barHeight * 0.5f, barX + barWidth, barY - barHeight * 0.5f, (Vec4f) { 1, 1, 0, 1 });
