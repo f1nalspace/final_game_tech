@@ -23528,21 +23528,50 @@ fpl_common_api fplAudioResultType fplLoadAudio(fplAudioSettings *audioSettings) 
 		fpl__ReleaseAudio(audioState);
 	}
 
-	fplAudioBackendType backendType = audioSettings->backend;
+	fplAudioBackend *backend = (fplAudioBackend *)(((uint8_t *)fpl__global__AppState->audio.mem) + fpl__global__AppState->audio.offsetToBackend);
+	fplAssert(backend != fpl_null);
 
-	const char *audioBackendName = fplGetAudioBackendName(backendType);
-	FPL_LOG_DEBUG(FPL__MODULE_CORE, "Load Audio with Backend '%s':", audioBackendName);
+	const char *audioBackendName;
+	const char *audioFormatName;
+	const char *audioResultName;
+
+	audioBackendName = fplGetAudioBackendName(audioSettings->backend);
+	audioFormatName = fplGetAudioFormatName(audioSettings->targetFormat.type);
+	FPL_LOG_DEBUG(FPL__MODULE_CORE, "Load Audio with Backend '%s' with Target-Format (Sample Rate=%u, Channels=%u, Format='%s')", 
+		audioBackendName, 
+		audioSettings->targetFormat.sampleRate, 
+		audioSettings->targetFormat.channels, 
+		audioFormatName);
 
 	fplAudioResultType initAudioResult = fpl__InitAudio(audioSettings, audioState);
 	if (initAudioResult != fplAudioResultType_Success) {
-		return initAudioResult;
+		audioResultName = fplGetAudioResultName(initAudioResult);
+		audioFormatName = fplGetAudioFormatName(backend->desiredFormat.type);
+		FPL__CRITICAL(FPL__MODULE_CORE, "Failed loading Audio with Backend '%s' and Desired-Format (Sample Rate=%u, Channels=%u, Format='%s') -> %s",
+			audioBackendName,
+			backend->desiredFormat.sampleRate,
+			backend->desiredFormat.channels,
+			audioFormatName,
+			audioResultName);
+		fpl__ReleaseAudio(audioState);
+		return(initAudioResult);
 	}
+
+	audioBackendName = fplGetAudioBackendName(audioState->backendType);
+	audioFormatName = fplGetAudioFormatName(backend->internalFormat.type);
+	FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully loaded Audio with Backend '%s' and Internal-Format Sample Rate '%u', Channels '%u', Format '%s':", audioBackendName, backend->internalFormat.sampleRate, backend->internalFormat.channels, audioFormatName);
 
 	// Auto play audio if needed
 	if (audioSettings->startAuto && (audioSettings->clientReadCallback != fpl_null)) {
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Play Audio (Auto)");
 		fplAudioResultType playResult = fplPlayAudio();
-		return playResult;
+		audioResultName = fplGetAudioResultName(playResult);
+		if (playResult != fplAudioResultType_Success) {
+			FPL__ERROR(FPL__MODULE_CORE, "Failed playing Audio (Auto) -> %s", audioResultName);
+			fpl__ReleaseAudio(audioState);
+			return(playResult);
+		}
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully playing Audio (Auto)");
 	}
 
 	return fplAudioResultType_Success;
@@ -24120,8 +24149,13 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 		appState->audio.maxBackendSize = maxAudioBackendSize;
 		appState->audio.offsetToBackend = offsetToAudioBackend;
 
-		const char *audioBackendName = fplGetAudioBackendName(appState->initSettings.audio.backend);
-		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Audio with Backend '%s':", audioBackendName);
+		const char *audioBackendName;
+		const char *audioFormatName;
+		const char *audioResultName;
+
+		audioBackendName = fplGetAudioBackendName(appState->initSettings.audio.backend);
+		audioFormatName = fplGetAudioFormatName(appState->initSettings.audio.targetFormat.type);
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Audio with Backend '%s' and Target-Format (Sample Rate=%u, Channels=%u, Format='%s')", audioBackendName, appState->initSettings.audio.targetFormat.sampleRate, appState->initSettings.audio.targetFormat.channels, audioFormatName);
 
 		fpl__AudioState *audioState = fpl__GetAudioState(appState);
 		fplAssert(audioState != fpl_null);
@@ -24132,31 +24166,35 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 		if (!appState->initSettings.audio.manualLoad) {
 			fplAudioResultType initAudioResult = fpl__InitAudio(&appState->initSettings.audio, audioState);
 			if (initAudioResult != fplAudioResultType_Success) {
-				const char *initAudioResultName = fplGetAudioResultName(initAudioResult);
-				const char *audioFormatName = fplGetAudioFormatName(backend->desiredFormat.type);
-				FPL__CRITICAL(FPL__MODULE_CORE, "Failed initialization audio with Backend '%s' settings (Format=%s, SampleRate=%d, Channels=%d) -> %s",
+				audioResultName = fplGetAudioResultName(initAudioResult);
+				audioFormatName = fplGetAudioFormatName(backend->desiredFormat.type);
+				FPL__CRITICAL(FPL__MODULE_CORE, "Failed initialization audio with Backend '%s' and Desired-Format (SampleRate=%u, Channels=%u, Format='%s') -> %s",
 					audioBackendName,
-					audioFormatName,
 					backend->desiredFormat.sampleRate,
 					backend->desiredFormat.channels,
-					initAudioResultName);
+					audioFormatName,
+					audioResultName);
 				fpl__ReleasePlatformStates(initState, appState);
 				return(fpl__SetPlatformResult(fplPlatformResultType_FailedAudio));
 			}
-			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully initialized Audio with Backend '%s'", audioBackendName);
+			audioBackendName = fplGetAudioBackendName(audioState->backendType);
+			audioFormatName = fplGetAudioFormatName(backend->internalFormat.type);
+			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully initialized Audio with Backend '%s' and Internal-Format (Sample Rate=%u, Channels=%u, Format='%s')", audioBackendName, backend->internalFormat.sampleRate, backend->internalFormat.channels, audioFormatName);
 
 			// Auto play audio if needed
 			if (appState->initSettings.audio.startAuto && (appState->initSettings.audio.clientReadCallback != fpl_null)) {
 				FPL_LOG_DEBUG(FPL__MODULE_CORE, "Play Audio (Auto)");
 				fplAudioResultType playResult = fplPlayAudio();
+				audioResultName = fplGetAudioResultName(playResult);
 				if (playResult != fplAudioResultType_Success) {
-					FPL__CRITICAL(FPL__MODULE_CORE, "Failed auto-play of audio, code: %d!", playResult);
+					FPL__CRITICAL(FPL__MODULE_CORE, "Failed playing Audio (Auto) -> %s", audioResultName);
 					fpl__ReleasePlatformStates(initState, appState);
 					return(fpl__SetPlatformResult(fplPlatformResultType_FailedAudio));
 				}
+				FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully playing Audio (Auto)");
 			}
 		} else {
-			FPL_LOG_INFO(FPL__MODULE_CORE, "Audio backend is not initialized due to user settings");
+			FPL_LOG_INFO(FPL__MODULE_CORE, "Audio backend initialization is skipped due to user settings");
 		}
 	}
 #	endif // FPL__ENABLE_AUDIO
