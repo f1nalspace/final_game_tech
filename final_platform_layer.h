@@ -23828,7 +23828,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 #	if defined(FPL__ENABLE_VIDEO)
 	if (appState->initFlags & fplInitFlags_Video) {
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Video State with size '%zu'", videoMemoryBlock.size);
-		fplAssert(audioMemoryBlock.offset > 0);
+		fplAssert(videoMemoryBlock.offset > 0);
 		appState->video.mem = platformMemory + videoMemoryBlock.offset;
 		appState->video.memSize = videoMemoryBlock.size;
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
