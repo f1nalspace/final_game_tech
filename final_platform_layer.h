@@ -3889,20 +3889,40 @@ typedef enum fplAudioChannelLayout {
 	fplAudioChannelLayout_Last = fplAudioChannelLayout_7_1,
 } fplAudioChannelLayout;
 
-typedef enum fplAudioChannelType {
-	// No channel type
-	fplAudioChannelType_None = 0,
-	//! Front L/R
-	fplAudioChannelType_Front,
-	//! Subwoofer
-	fplAudioChannelType_Sub,
-	//! Rear L/R
-	fplAudioChannelType_Rear,
-	//! Center
-	fplAudioChannelType_Center,
-	//! Side L/R
-	fplAudioChannelType_Side,
-} fplAudioChannelType;
+typedef enum fplAudioSpeakerLayout {
+	//! No speaker set
+	fplAudioSpeakerLayout_None = 0,
+	//! Front left speaker
+	fplAudioSpeakerLayout_FrontLeft = 1 << 0,
+	//! Front right speaker
+	fplAudioSpeakerLayout_FrontRight = 1 << 1,
+	//! Front center speaker
+	fplAudioSpeakerLayout_FrontCenter = 1 << 2,
+	//! LFE speaker
+	fplAudioSpeakerLayout_LFE = 1 << 3,
+	//! Back left speaker
+	fplAudioSpeakerLayout_BackLeft = 1 << 4,
+	//! Back right speaker
+	fplAudioSpeakerLayout_BackRight = 1 << 5,
+	//! Side left speaker
+	fplAudioSpeakerLayout_SideLeft = 1 << 6,
+	//! Side right speaker
+	fplAudioSpeakerLayout_SideRight = 1 << 7,
+} fplAudioSpeakerLayout;
+//! Audio speaker layout operator overloads for C++
+FPL_ENUM_AS_FLAGS_OPERATORS(fplAudioSpeakerLayout);
+
+//! A structure storing the mapping of all audio channels to a speaker
+typedef struct fplAudioChannelsMapping {
+	//! The mapping from channel 0-7 to the speaker layout bit
+	fplAudioSpeakerLayout mapping[8];
+	//! The full audio speaker layout bit mask
+	fplAudioSpeakerLayout speakerLayout;
+	//! The audio channel layout
+	fplAudioChannelLayout channelLayout;
+	//! Number of audio channels
+	uint32_t channelCount;
+} fplAudioChannelsMapping;
 
 //! A structure containing audio device format runtime properties, such as type, samplerate, channels, etc.
 typedef struct fplAudioDeviceFormat {
