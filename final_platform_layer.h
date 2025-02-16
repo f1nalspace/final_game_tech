@@ -5,7 +5,7 @@ final_platform_layer.h
 	About
 -------------------------------------------------------------------------------
 
-Final Platform Layer is a Single-Header-File cross-platform C development library designed to abstract the underlying platform to a simple and easy-to-use API - providing low-level access to (Window, Video, Audio, Input, File/Path IO, Threads, Memory, Hardware, etc.).
+Final Platform Layer is a Single-Header-File cross-platform C/C++ development library designed to abstract the underlying platform to a simple and easy-to-use API - providing low-level access to (Window, Video, Audio, Input, File/Path IO, Threads, Memory, Hardware, etc.).
 
 The main focus is game/media/simulation development, so the default settings will create a window, set up an OpenGL rendering context, and initialize audio playback on any platform.
 
@@ -13,7 +13,7 @@ It is written in C99 for simplicity and best portability but is C++ compatible a
 
 FPL supports the platforms Windows/Linux/Unix for the architectures x86/x64/arm.
 
-The only dependencies are built-in operating system libraries and a C99 compliant compiler.
+The only dependencies are built-in operating system libraries and a C99 or C++/11 compliant compiler.
 
 It is licensed under the MIT-License. This license allows you to use FPL freely in any software.
 
@@ -135,11 +135,19 @@ SOFTWARE.
 	## v0.9.9-beta
 	
 	### Overview
+	- Improved and extended system/platform detection macros
 	- Removed several obsolete functions
 	- Fixed incorrect audio format
 
 	### Details
+	- Improved: C/C++ detection improved
+	- Improved: Architecture detection extended (Apple, Risc-V, Mips, Sparc)
+	- Improved: CPU bits detection improved
+	- Improved: Compiler detected improved & extended (MingW, Apple, Borland, TCC, DMC, CSMC, Linaro)
+	- Fixed: fplCreateColorRGBA() was not compiling on GCC due to inlining failing
+	- Fixed: fplCreateVideoRectFromLTRB() was not compiling on GCC due to inlining failing
 	- Fixed[#156]: Target audio format type and periods was never used
+	- Fixed[#157]: Compile error for missing _countof() fplArrayCount in some scenarios
 	- Removed: Obsolete function fplFileSetTimestamps removed
 
 	## v0.9.8-beta
@@ -1544,23 +1552,46 @@ SOFTWARE.
 // C99 detection
 //
 // https://en.wikipedia.org/wiki/C99#Version_detection
-// C99 is partially supported since MSVC 2015
-#if !defined(__cplusplus) && ((defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L)) || (defined(_MSC_VER) && (_MSC_VER >= 1900)))
-	//! C99 compiler detected
-#	define FPL_IS_C99
-#elif defined(__cplusplus)
+// 
+// NOTE: C99 is supported since MSVC 2015
+// NOTE: C11 is supported since MSVC 2019
+//
+#if defined(__cplusplus)
 	//! C++ compiler detected
 #	define FPL_IS_CPP
-#	if (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L) || (__cplusplus >= 201103L) || (_MSC_VER >= 1900)
+
+#	if (__cplusplus >= 201103L)
 		//! C++/11 compiler detected
 #		define FPL_IS_CPP11
+#	endif
+#elif defined(_MSC_VER)
+#	if (_MSC_VER >= 1900)
+		//! C99 compiler detected (MSVC)
+#		define FPL_IS_C99
+
+#		if (_MSC_VER >= 1920)
+			//! C11 compiler detected (MSVC)
+#			define FPL_IS_C11
+#		endif
+
+#	else
+#		error "This MSVC compiler does not support C99 or higher!"
+#	endif
+#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
+	//! C99 compiler detected
+#	define FPL_IS_C99
+
+#	if __STDC_VERSION__ >= 201112L
+		//! C11 compiler detected
+#		define FPL_IS_C11
 #	endif
 #else
 #	error "This C/C++ compiler is not supported!"
 #endif
 
 //
-// Architecture detection (x86, x64)
+// Architecture detection (x86, x64, arm32, arm64, apple arm64, riscv, powerpc, mips, sparc)
+// 
 // https://sourceforge.net/p/predef/wiki/Architectures/
 //
 #if defined(__x86_64__) || defined(_M_X64) || defined(__amd64__)
@@ -1568,13 +1599,23 @@ SOFTWARE.
 #elif defined(__i386__) || defined(_M_IX86) || defined(__X86__) || defined(_X86_)
 #	define FPL_ARCH_X86
 #elif defined(__aarch64__) || defined(_M_ARM64)
-#	define FPL_ARCH_ARM64
-#elif defined(__arm__) || defined(_M_ARM)
+#	if defined(__APPLE__)
+#		define FPL_ARCH_APPLE_ARM64
+#	else
+#		define FPL_ARCH_ARM64
+#	endif
+#elif defined(__arm__) || defined(_M_ARM) || defined(__ARM_ARCH_6__) || defined(__ARM_ARCH_7__) || defined(__armv7__)
 #	define FPL_ARCH_ARM32
+#elif defined(__riscv) || defined(__riscv_xlen) 
+#	define FPL_ARCH_RISCV
 #elif defined(__powerpc64__) || defined(__ppc64__) || defined(__PPC64__) || defined(_ARCH_PPC64)
 #	define FPL_ARCH_POWERPC64
 #elif defined(__powerpc__) || defined(__POWERPC__) || defined(__ppc__) || defined(__PPC__) || defined(_ARCH_PPC)
 #	define FPL_ARCH_POWERPC32
+#elif defined(__mips__) || defined(__mips64) || defined(_MIPS_ARCH)
+#	define FPL_ARCH_MIPS
+#elif defined(__sparc__) || defined(__sparcv9)
+#	define FPL_ARCH_SPARC
 #else
 #	error "This architecture is not supported!"
 #endif // FPL_ARCH
@@ -1584,21 +1625,33 @@ SOFTWARE.
 //
 #if defined(_WIN32)
 #	if defined(_WIN64)
-#		define FPL__M_CPU_64BIT
+#		define FPL__M_CPU_64BIT // 64-bit system
 #	else
-#		define FPL__M_CPU_32BIT
+#		define FPL__M_CPU_32BIT // 32-bit system
 #	endif
-#elif defined(__GNUC__)
-#	if defined(__LP64__)
-#		define FPL__M_CPU_64BIT
+#elif defined(__GNUC__) || defined(__clang__)
+#	if defined(__LP64__) || defined(_LP64)
+#		define FPL__M_CPU_64BIT // 64-bit system
 #	else
-#		define FPL__M_CPU_32BIT
+#		define FPL__M_CPU_32BIT // 32-bit system
+#	endif
+#elif defined(_MSC_VER)
+#	if defined(_WIN64) || defined(_M_X64) || defined(__x86_64__)
+#		define FPL__M_CPU_64BIT // 64-bit system
+#	else
+#		define FPL__M_CPU_32BIT // 32-bit system
+#	endif
+#elif defined(__APPLE__) || defined(__linux__) || defined(__unix__)
+#	if defined(__x86_64__) || defined(__aarch64__) || defined(__ppc64__)
+#		define FPL__M_CPU_64BIT // 64-bit system
+#	else
+#		define FPL__M_CPU_32BIT // 32-bit system
 #	endif
 #else
 #	if (defined(__SIZEOF_POINTER__) && __SIZEOF_POINTER__ == 8) || (sizeof(void *) == 8)
-#		define FPL__M_CPU_64BIT
+#		define FPL__M_CPU_64BIT // 64-bit system
 #	else
-#		define FPL__M_CPU_32BIT
+#		define FPL__M_CPU_32BIT // 32-bit system
 #	endif
 #endif
 
@@ -1612,6 +1665,7 @@ SOFTWARE.
 
 //
 // Compiler detection
+// 
 // http://beefchunk.com/documentation/lang/c/pre-defined-c/precomp.html
 // http://nadeausoftware.com/articles/2012/10/c_c_tip_how_detect_compiler_name_and_version_using_compiler_predefined_macros
 //
@@ -1621,7 +1675,7 @@ SOFTWARE.
 #elif defined(__INTEL_COMPILER)
 	//! Intel compiler detected
 #	define FPL_COMPILER_INTEL
-#elif defined(__MINGW32__)
+#elif defined(__MINGW32__) || defined(__MINGW64__)
 	//! MingW compiler detected
 #	define FPL_COMPILER_MINGW
 #elif defined(__CC_ARM)
@@ -1633,14 +1687,35 @@ SOFTWARE.
 #elif defined(_MSC_VER)
 	//! Visual studio compiler detected
 #	define FPL_COMPILER_MSVC
+#elif defined(__APPLE__)
+	//! Apple Clang compiler detected (Xcode)
+#	define FPL_COMPILER_APPLE_CLANG
+#elif defined(__BORLANDC__)
+	//! Borland C++ compiler detected
+#	define FPL_COMPILER_BORLAND
+#elif defined(__TCC__)
+	//! Tiny C Compiler detected
+#	define FPL_COMPILER_TCC
+#elif defined(__DMC__)
+	//! Digital Mars C++ compiler detected
+#	define FPL_COMPILER_DMC
+#elif defined(__CSMC__)
+	//! COSMIC C Compiler detected
+#	define FPL_COMPILER_CSMC
+#elif defined(__LINARO__)
+	//! Huawei Linaro compiler detected
+#	define FPL_COMPILER_LINARO
 #else
 	//! No compiler detected
-#error "This compiler is not supported!"
+#	error "This compiler is not supported!"
 #endif // FPL_COMPILER
 
 //
 // Platform detection
+// 
 // https://sourceforge.net/p/predef/wiki/OperatingSystems/
+// 
+// Only platforms that are supported are listed
 //
 #if defined(_WIN32) || defined(_WIN64)
 #	define FPL_PLATFORM_WINDOWS
@@ -1707,14 +1782,15 @@ SOFTWARE.
 
 // Alignment keyword
 #if defined(FPL_IS_CPP11)
-#define fpl__m_AlignAs(N) alignas(N)
+#	define fpl__m_AlignAs(N) alignas(N)
 #elif defined(FPL_COMPILER_MSVC)
-#define fpl__m_AlignAs(N) __declspec(align(N))
+#	define fpl__m_AlignAs(N) __declspec(align(N))
 #elif defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG)
-#define fpl__m_AlignAs(N) __attribute__((aligned(N)))
+#	define fpl__m_AlignAs(N) __attribute__((aligned(N)))
 #else
-#define fpl__m_AlignAs(N)
+#	define fpl__m_AlignAs(N)
 #endif
+
 #define fpl__m_AlignAsAuto(N) fpl__m_AlignAs(((N) < fplMinAlignment ? fplMinAlignment : (N)))
 
 //! Structure alignment in bytes
@@ -2250,6 +2326,9 @@ fpl_internal fpl_force_inline void fpl__m_DebugBreak() { __asm__ __volatile__(".
 #if defined(FPL__INCLUDE_ALLOCA)
 #	include <alloca.h>
 #endif
+#if !defined(FPL_NO_CRT)
+#	include <stdlib.h> // _countof
+#endif
 
 /// @cond FPL_INTERNALS
 #if !defined(UINT32_MAX)
@@ -2301,10 +2380,12 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 #	define fpl__m_ZeroInit {0}
 #	define fpl__m_StructSet(ptr, type, value) *(ptr) = (type)value
 #	define fpl__m_StructInit(type, ...) (type){__VA_ARGS__}
+#	define fpl__m_StructField(type, name, ...) .name = __VA_ARGS__
 #else
 #	define fpl__m_ZeroInit {}
 #	define fpl__m_StructSet(ptr, type, value) *(ptr) = value
 #	define fpl__m_StructInit(type, ...) {__VA_ARGS__}
+#	define fpl__m_StructField(type, name, ...) __VA_ARGS__
 #endif
 
 //! Initializes a struct to zero
@@ -2313,6 +2394,8 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 #define fplStructSet fpl__m_StructSet
 //! Initializes a struct by the given type
 #define fplStructInit fpl__m_StructInit
+//! Defines a single field in a struct
+#define fplStructField fpl__m_StructField
 
 //! Returns the offset for the value to satisfy the given alignment boundary
 #define fplGetAlignmentOffset(value, alignment) ( (((alignment) > 1) && (((value) & ((alignment) - 1)) != 0)) ? ((alignment) - ((value) & (alignment - 1))) : 0)			
@@ -2344,7 +2427,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 #define fplCopyStruct(src, dst) fplMemoryCopy(src, sizeof(*(src)), dst);
 
 // Array count
-#if defined(FPL_COMPILER_MSVC) && !defined(FPL_NO_CRT) // @TODO(final): Find a better way to detect no-crt inclusion!
+#if defined(_countof)
 #	define fpl__m_ArrayCount(arr) _countof(arr)
 #elif defined(ARRAY_SIZE)
 #	define fpl__m_ArrayCount(arr) ARRAY_SIZE(arr)
@@ -3707,11 +3790,13 @@ typedef enum fplAudioBackendType {
 	fplAudioBackendType_DirectSound,
 	//! ALSA
 	fplAudioBackendType_Alsa,
+	//! Custom audio backend
+	fplAudioBackendType_Custom,
 
 	//! First @ref fplAudioBackendType
 	fplAudioBackendType_First = fplAudioBackendType_None,
 	//! Last @ref fplAudioBackendType
-	fplAudioBackendType_Last = fplAudioBackendType_Alsa,
+	fplAudioBackendType_Last = fplAudioBackendType_Custom,
 } fplAudioBackendType;
 
 //! An enumeration of audio format types
@@ -3978,10 +4063,7 @@ typedef union fplColor32 {
 * @param a The alpha component in range of 0-255
 * @return The resulting @ref fplColor32
 */
-fpl_inline fplColor32 fplCreateColorRGBA(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a) {
-	fplColor32 result = fplStructInit(fplColor32, b, g, r, a);
-	return(result);
-}
+fpl_common_api fplColor32 fplCreateColorRGBA(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a);
 
 //! A structure containing window settings, such as size, title etc.
 typedef struct fplWindowSettings {
@@ -6593,10 +6675,7 @@ typedef struct fplVideoRect {
 * @param bottom The bottom position in screen units
 * @return Returns the computed video rectangle @ref fplVideoRect
 */
-fpl_inline fplVideoRect fplCreateVideoRectFromLTRB(int32_t left, int32_t top, int32_t right, int32_t bottom) {
-	fplVideoRect result = { left, top, (right - left) + 1, (bottom - top) + 1 };
-	return(result);
-}
+fpl_common_api fplVideoRect fplCreateVideoRectFromLTRB(int32_t left, int32_t top, int32_t right, int32_t bottom);
 
 //! A structure containing video backbuffer properties
 typedef struct fplVideoBackBuffer {
@@ -6794,6 +6873,8 @@ typedef enum fplAudioResultType {
 	fplAudioResultType_PlatformNotInitialized,
 	//! The audio backend is already initialized
 	fplAudioResultType_BackendAlreadyInitialized,
+	//! No audio backends found
+	fplAudioResultType_NoBackendsFound,
 	//! The @ref fplAudioFormatType is not set
 	fplAudioResultType_UnsetAudioFormat,
 	//! The number of audio channels is not set
@@ -9797,8 +9878,8 @@ fpl_common_api void fplMemoryAlignedFree(void *ptr) {
 		size_t setBytes = 0; \
 		if (sizeof(T) > sizeof(uint8_t)) { \
 			T setValue = 0; \
-			for (int bytesIncrement = 0; bytesIncrement < sizeof(T); ++bytesIncrement) { \
-				int bitShift = bytesIncrement * 8; \
+			for (uint32_t bytesIncrement = 0; bytesIncrement < sizeof(T); ++bytesIncrement) { \
+				uint32_t bitShift = bytesIncrement * 8; \
 				setValue |= ((T)value << bitShift); \
 			} \
 			T *dataBlock = (T *)(memory); \
@@ -10679,9 +10760,9 @@ fpl_common_api void fplSetDefaultVideoSettings(fplVideoSettings *video) {
 
 #if defined(FPL__ENABLE_VIDEO_VULKAN)
 	video->graphics.vulkan.libraryFile = fpl_null;
-	video->graphics.vulkan.appVersion = fplStructInit(fplVersionInfo, "1.0.0", "1", "0", "0");
-	video->graphics.vulkan.engineVersion = fplStructInit(fplVersionInfo, "1.0.0", "1", "0", "0");
-	video->graphics.vulkan.apiVersion = fplStructInit(fplVersionInfo, "1.1.0", "1", "1", "0");
+	video->graphics.vulkan.appVersion = fplStructInit(fplVersionInfo, "1.0.0", "1", "0", "0", "0");
+	video->graphics.vulkan.engineVersion = fplStructInit(fplVersionInfo, "1.0.0", "1", "0", "0", "0");
+	video->graphics.vulkan.apiVersion = fplStructInit(fplVersionInfo, "1.1.0", "1", "1", "0", "0");
 	video->graphics.vulkan.validationLayerMode = fplVulkanValidationLayerMode_Disabled;
 #endif
 
@@ -10836,6 +10917,15 @@ fpl_common_api void fplDebugFormatOut(const char *format, ...) {
 		fplDebugOut(buffer);
 	}
 }
+
+//
+// Color
+//
+fpl_common_api fplColor32 fplCreateColorRGBA(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a) {
+	fplColor32 result = fplStructInit(fplColor32, b, g, r, a);
+	return(result);
+}
+
 #endif // FPL__COMMON_DEFINED
 
 // ############################################################################
@@ -16725,7 +16815,7 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	windowState->lastWindowStateInfo.state = fplWindowState_Normal;
 	windowState->lastWindowStateInfo.visibility = fplWindowVisibilityState_Show;
 	windowState->lastWindowStateInfo.position = fplStructInit(fplWindowPosition, windowWidth, windowHeight);
-	windowState->lastWindowStateInfo.size = fplStructInit(fplWindowSize, windowX, windowY);
+	windowState->lastWindowStateInfo.size = fplStructInit(fplWindowSize, (uint32_t)windowX, (uint32_t)windowY);
 
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Create window with (Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d'", windowState->display, (int)windowState->root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap);
 	windowState->window = x11Api->XCreateWindow(windowState->display,
@@ -20410,6 +20500,116 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_Vulkan_Construct() {
 
 // ****************************************************************************
 //
+// > AUDIO_BACKEND_API
+//
+// ****************************************************************************
+#if !defined(FPL__AUDIO_BACKEND_API_IMPLEMENTED) && defined(FPL__ENABLE_AUDIO)
+#	define FPL__AUDIO_BACKEND_API_IMPLEMENTED
+
+struct fplAudioBackend;
+
+#define FPL_AUDIO_BACKEND_INITIALIZE_FUNC(name) fplAudioResultType name(struct fplAudioBackend *backend, const fplSpecificAudioSettings *audioSettings, const fplAudioDeviceFormat *targetFormat, const fplAudioDeviceInfo *targetDevice, fplAudioDeviceFormat *outputFormat)
+/*!
+* @brief Initializes the specified @ref fplAudioBackend
+* @param backend The @ref fpl__AudioBackend reference
+* @param audioSettings The @ref fplSpecificAudioSettings reference, that contains special settings for several backends
+* @param targetFormat The @ref fplAudioDeviceFormat reference, that specifies the desired audio format
+* @param outputFormat The @ref fplAudioDeviceFormat reference, that specifies the desired audio format
+* @result Returns a @ref fplAudioResultType
+*/
+typedef	FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl_audio_backend_initialize_func);
+
+#define FPL_AUDIO_BACKEND_RELEASE_FUNC(name) bool name(struct fplAudioBackend *backend)
+typedef	FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl_audio_backend_release_func);
+
+#define FPL_AUDIO_BACKEND_STOP_MAIN_LOOP_FUNC(name) void name(struct fplAudioBackend *backend)
+typedef	FPL_AUDIO_BACKEND_STOP_MAIN_LOOP_FUNC(fpl_audio_backend_stop_main_loop_func);
+
+#define FPL_AUDIO_BACKEND_STOP_DEVICE_FUNC(name) bool name(struct fplAudioBackend *backend)
+typedef	FPL_AUDIO_BACKEND_STOP_DEVICE_FUNC(fpl_audio_backend_stop_device_func);
+
+#define FPL_AUDIO_BACKEND_START_DEVICE_FUNC(name) fplAudioResultType name(struct fplAudioBackend *backend)
+typedef	FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl_audio_backend_start_device_func);
+
+#define FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(name) void name(struct fplAudioBackend *backend)
+typedef	FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl_audio_backend_main_loop_func);
+
+#define FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(name) uint32_t name(struct fplAudioBackend *backend, fplAudioDeviceInfo *deviceInfos, uint32_t maxDeviceCount)
+typedef	FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl_audio_backend_get_audio_devices_func);
+
+//! Audio function table
+typedef struct fplAudioBackendFunctionTable {
+	fpl_audio_backend_get_audio_devices_func *getAudioDevices;
+	fpl_audio_backend_initialize_func *initialize;
+	fpl_audio_backend_release_func *release;
+	fpl_audio_backend_start_device_func *startDevice;
+	fpl_audio_backend_stop_device_func *stopDevice;
+	fpl_audio_backend_main_loop_func *mainLoop;
+	fpl_audio_backend_stop_main_loop_func *stopMainLoop;
+	uintptr_t padding;
+} fplAudioBackendFunctionTable;
+
+//! Guid of a audio backend
+typedef struct fplAudioBackendID {
+	uint32_t a;
+	uint16_t b;
+	uint16_t c;
+	uint8_t d[8];
+} fplAudioBackendID;
+
+//! ID and Name of a audio backend
+typedef struct fplAudioBackendDescriptorIDName {
+	//! GUID of the audio backend
+	fplAudioBackendID id;
+	//! Name of the audio backend
+	const char *name;
+} fplAudioBackendDescriptorIDName;
+
+typedef struct fplAudioBackendDescriptorHeader {
+	//! The id and name
+	fplAudioBackendDescriptorIDName idName;
+	//! The audio backend type
+	fplAudioBackendType type;
+	//! Size of the actual backend data in bytes
+	uint32_t backendSize;
+	//! Flag that indicates whether this backend is async or not
+	bool isAsync;
+	//! Flag indicating that this audio backend is valid
+	bool isValid;
+} fplAudioBackendDescriptorHeader;
+
+//! Description of a audio backend
+typedef struct fplAudioBackendDescriptor {
+	//! Header
+	fplAudioBackendDescriptorHeader header;
+	//! Table
+	fplAudioBackendFunctionTable table;
+} fplAudioBackendDescriptor;
+
+typedef struct fplAudioBackend {
+	// Internal audio format used
+	fplAudioDeviceFormat desiredFormat;
+	// Internal audio format used
+	fplAudioDeviceFormat internalFormat;
+	// Callback that is called from the user to retrieve audio frames/samples
+	fpl_audio_client_read_callback *clientReadCallback;
+	// User data that is passed to the user callback
+	void *clientUserData;
+} fplAudioBackend;
+
+//! Padding that is applied after @ref fplAudioBackend
+#define FPL_AUDIO_BACKEND_DATA_PADDING 16
+
+//! Offset to the data after the audio backend
+#define FPL_AUDIO_BACKEND_DATA_OFFSET (sizeof(fplAudioBackend) + FPL_AUDIO_BACKEND_DATA_PADDING)
+
+//! Gets the audio backend implementation from the specified @ref fplAudioBackend, that is casted to the specified type
+#define FPL_GET_AUDIO_BACKEND_IMPL(backend, type) (type *)(((uint8_t *)(backend) + FPL_AUDIO_BACKEND_DATA_OFFSET))
+
+#endif // FPL__AUDIO_BACKEND_API_IMPLEMENTED
+
+// ****************************************************************************
+//
 // > AUDIO_BACKENDS
 //
 // ****************************************************************************
@@ -20417,29 +20617,37 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_Vulkan_Construct() {
 #	define FPL__AUDIO_BACKENDS_IMPLEMENTED
 
 typedef enum fpl__AudioDeviceState {
+	// Audio device is not initialized
 	fpl__AudioDeviceState_Uninitialized = 0,
+	// Audio device is stopped, but still initialized
 	fpl__AudioDeviceState_Stopped,
+	// Audio device is started, meaning that all the main-loop that requests samples are already running
 	fpl__AudioDeviceState_Started,
+	// Audio device is going to be started and the main-loop is going to be started as well
 	fpl__AudioDeviceState_Starting,
+	// Audio device is going to be stopped
 	fpl__AudioDeviceState_Stopping,
 } fpl__AudioDeviceState;
 
 typedef struct fpl__CommonAudioState {
-	fplAudioDeviceFormat desiredFormat;
-	fplAudioDeviceFormat internalFormat;
-	fpl_audio_client_read_callback *clientReadCallback;
-	void *clientUserData;
+	// Audio function table
+	fplAudioBackendFunctionTable funcTable;
+	// Reference to the active @ref fplAudioBackend, actual backend data starts directly after with an additional padding of @ref FPL_AUDIO_BACKEND_DATA_PADDING
+	fplAudioBackend *backend;
+	// Maximum size of a single audio backend in bytes, including the size of the @ref fplAudioBackend type
+	size_t maxBackendSize;
+	// Current audio device state
 	volatile fpl__AudioDeviceState state;
 } fpl__CommonAudioState;
 
-fpl_internal uint32_t fpl__ReadAudioFramesFromClient(const fpl__CommonAudioState *commonAudio, uint32_t frameCount, void *pSamples) {
+fpl_internal uint32_t fpl__ReadAudioFramesFromClient(const fplAudioBackend *backend, uint32_t frameCount, void *pSamples) {
 	uint32_t framesRead = 0;
-	if (commonAudio->clientReadCallback != fpl_null) {
-		framesRead = commonAudio->clientReadCallback(&commonAudio->internalFormat, frameCount, pSamples, commonAudio->clientUserData);
+	if (backend->clientReadCallback != fpl_null) {
+		framesRead = backend->clientReadCallback(&backend->internalFormat, frameCount, pSamples, backend->clientUserData);
 	}
-	uint32_t channels = commonAudio->internalFormat.channels;
+	uint32_t channels = backend->internalFormat.channels;
 	uint32_t samplesRead = framesRead * channels;
-	uint32_t sampleSize = fplGetAudioSampleSizeInBytes(commonAudio->internalFormat.type);
+	uint32_t sampleSize = fplGetAudioSampleSizeInBytes(backend->internalFormat.type);
 	uint32_t consumedBytes = samplesRead * sampleSize;
 	uint32_t remainingBytes = ((frameCount * channels) - samplesRead) * sampleSize;
 	if (remainingBytes > 0) {
@@ -20509,7 +20717,7 @@ fpl_internal bool fpl__LoadDirectSoundApi(fpl__DirectSoundApi *dsoundApi) {
 	return(result);
 }
 
-typedef struct fpl__DirectSoundAudioState {
+typedef struct fpl__AudioBackendDirectSound {
 	fpl__DirectSoundApi api;
 	LPDIRECTSOUND directSound;
 	LPDIRECTSOUNDBUFFER primaryBuffer;
@@ -20519,7 +20727,7 @@ typedef struct fpl__DirectSoundAudioState {
 	HANDLE stopEvent;
 	uint32_t lastProcessedFrame;
 	bool breakMainLoop;
-} fpl__DirectSoundAudioState;
+} fpl__AudioBackendDirectSound;
 
 typedef struct fpl__DirectSoundDeviceInfos {
 	fplAudioDeviceInfo *deviceInfos;
@@ -20549,9 +20757,11 @@ fpl_internal BOOL CALLBACK fpl__GetDeviceCallbackDirectSound(LPGUID lpGuid, LPCW
 	return TRUE;
 }
 
-fpl_internal uint32_t fpl__GetAudioDevicesDirectSound(fpl__DirectSoundAudioState *dsoundState, fplAudioDeviceInfo *deviceInfos, uint32_t maxDeviceCount) {
+fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudiobackendDirectSoundGetAudioDevices) {
+	fpl__AudioBackendDirectSound *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendDirectSound);
+
 	uint32_t result = 0;
-	const fpl__DirectSoundApi *dsoundApi = &dsoundState->api;
+	const fpl__DirectSoundApi *dsoundApi = &impl->api;
 	fpl__DirectSoundDeviceInfos infos = fplZeroInit;
 	infos.maxDeviceCount = maxDeviceCount;
 	infos.deviceInfos = deviceInfos;
@@ -20564,41 +20774,45 @@ fpl_internal uint32_t fpl__GetAudioDevicesDirectSound(fpl__DirectSoundAudioState
 	return(result);
 }
 
-fpl_internal bool fpl__AudioReleaseDirectSound(const fpl__CommonAudioState *commonAudio, fpl__DirectSoundAudioState *dsoundState) {
-	if (dsoundState->stopEvent != fpl_null) {
-		CloseHandle(dsoundState->stopEvent);
+fpl_internal FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl__AudiobackendDirectSoundRelease) {
+	fpl__AudioBackendDirectSound *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendDirectSound);
+
+	if (impl->stopEvent != fpl_null) {
+		CloseHandle(impl->stopEvent);
 	}
 
-	for (uint32_t i = 0; i < commonAudio->internalFormat.periods; ++i) {
-		if (dsoundState->notifyEvents[i]) {
-			CloseHandle(dsoundState->notifyEvents[i]);
+	for (uint32_t i = 0; i < backend->internalFormat.periods; ++i) {
+		if (impl->notifyEvents[i]) {
+			CloseHandle(impl->notifyEvents[i]);
 		}
 	}
 
-	if (dsoundState->notify != fpl_null) {
-		IDirectSoundNotify_Release(dsoundState->notify);
+	if (impl->notify != fpl_null) {
+		IDirectSoundNotify_Release(impl->notify);
 	}
 
-	if (dsoundState->secondaryBuffer != fpl_null) {
-		IDirectSoundBuffer_Release(dsoundState->secondaryBuffer);
+	if (impl->secondaryBuffer != fpl_null) {
+		IDirectSoundBuffer_Release(impl->secondaryBuffer);
 	}
 
-	if (dsoundState->primaryBuffer != fpl_null) {
-		IDirectSoundBuffer_Release(dsoundState->primaryBuffer);
+	if (impl->primaryBuffer != fpl_null) {
+		IDirectSoundBuffer_Release(impl->primaryBuffer);
 	}
 
-	if (dsoundState->directSound != fpl_null) {
-		IDirectSound_Release(dsoundState->directSound);
+	if (impl->directSound != fpl_null) {
+		IDirectSound_Release(impl->directSound);
 	}
 
-	fpl__UnloadDirectSoundApi(&dsoundState->api);
+	fpl__UnloadDirectSoundApi(&impl->api);
 
-	fplClearStruct(dsoundState);
+	fplClearStruct(impl);
 
 	return true;
 }
 
-fpl_internal fplAudioResultType fpl__AudioInitDirectSound(const fplAudioSettings *audioSettings, const fplAudioDeviceFormat *targetFormat, fpl__CommonAudioState *commonAudio, fpl__DirectSoundAudioState *dsoundState) {
+fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudiobackendDirectSoundInitialize) {
+	fpl__AudioBackendDirectSound *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendDirectSound);
+
 #ifdef __cplusplus
 	GUID guid_IID_IDirectSoundNotify = FPL__IID_IDirectSoundNotify;
 #else
@@ -20607,7 +20821,7 @@ fpl_internal fplAudioResultType fpl__AudioInitDirectSound(const fplAudioSettings
 
 #define FPL__DSOUND_INIT_ERROR(ret, format, ...) do { \
 	FPL__ERROR(FPL__MODULE_AUDIO_DIRECTSOUND, format, ## __VA_ARGS__); \
-	fpl__AudioReleaseDirectSound(commonAudio, dsoundState); \
+	fpl__AudiobackendDirectSoundRelease(backend); \
 	return ret; \
 } while (0)
 
@@ -20617,19 +20831,18 @@ fpl_internal fplAudioResultType fpl__AudioInitDirectSound(const fplAudioSettings
 	const fpl__Win32Api *apiFuncs = &win32AppState->winApi;
 
 	// Load direct sound library
-	fpl__DirectSoundApi *dsoundApi = &dsoundState->api;
+	fpl__DirectSoundApi *dsoundApi = &impl->api;
 	if (!fpl__LoadDirectSoundApi(dsoundApi)) {
 		FPL__DSOUND_INIT_ERROR(fplAudioResultType_ApiFailed, "API could not be loaded!");
 	}
 
 	// Load direct sound object
-	const fplAudioDeviceInfo *targetDevice = &audioSettings->targetDevice;
 	const GUID *deviceId = fpl_null;
 	if (fplGetStringLength(targetDevice->name) > 0) {
 		fplAssert(sizeof(GUID) == sizeof(targetDevice->id.dshow));
 		deviceId = (const GUID *)&targetDevice->id.dshow;
 	}
-	if (!SUCCEEDED(dsoundApi->DirectSoundCreate(deviceId, &dsoundState->directSound, fpl_null))) {
+	if (!SUCCEEDED(dsoundApi->DirectSoundCreate(deviceId, &impl->directSound, fpl_null))) {
 		char idString[64];
 		fpl__Win32FormatGuidString(idString, fplArrayCount(idString), deviceId);
 		FPL__DSOUND_INIT_ERROR(fplAudioResultType_NoDeviceFound, "Audio device by id '%s' could not be created!", idString);
@@ -20663,7 +20876,7 @@ fpl_internal fplAudioResultType fpl__AudioInitDirectSound(const fplAudioSettings
 	}
 
 	// The cooperative level must be set before doing anything else
-	if (FAILED(IDirectSound_SetCooperativeLevel(dsoundState->directSound, windowHandle, (targetFormat->preferExclusiveMode) ? DSSCL_EXCLUSIVE : DSSCL_PRIORITY))) {
+	if (FAILED(IDirectSound_SetCooperativeLevel(impl->directSound, windowHandle, (targetFormat->preferExclusiveMode) ? DSSCL_EXCLUSIVE : DSSCL_PRIORITY))) {
 		FPL__DSOUND_INIT_ERROR(fplAudioResultType_Failed, "Failed setting DirectSound Cooperative Level to '%s' mode!", (targetFormat->preferExclusiveMode ? "Exclusive" : "Priority"));
 	}
 
@@ -20671,12 +20884,12 @@ fpl_internal fplAudioResultType fpl__AudioInitDirectSound(const fplAudioSettings
 	DSBUFFERDESC descDSPrimary = fplZeroInit;
 	descDSPrimary.dwSize = sizeof(DSBUFFERDESC);
 	descDSPrimary.dwFlags = DSBCAPS_PRIMARYBUFFER | DSBCAPS_CTRLVOLUME;
-	if (FAILED(IDirectSound_CreateSoundBuffer(dsoundState->directSound, &descDSPrimary, &dsoundState->primaryBuffer, fpl_null))) {
+	if (FAILED(IDirectSound_CreateSoundBuffer(impl->directSound, &descDSPrimary, &impl->primaryBuffer, fpl_null))) {
 		FPL__DSOUND_INIT_ERROR(fplAudioResultType_Failed, "Failed creating primary DirectSound sound buffer!");
 	}
 
 	// Set format
-	if (FAILED(IDirectSoundBuffer_SetFormat(dsoundState->primaryBuffer, (WAVEFORMATEX *)&waveFormat))) {
+	if (FAILED(IDirectSoundBuffer_SetFormat(impl->primaryBuffer, (WAVEFORMATEX *)&waveFormat))) {
 		char subformatString[64];
 		fpl__Win32FormatGuidString(subformatString, fplArrayCount(subformatString), &waveFormat.SubFormat);
 		FPL__DSOUND_INIT_ERROR(fplAudioResultType_Failed, "Failed setting audio format for primary sound buffer to (nChannels: %d, nSamplesPerSec: %u, wBitsPerSample: %d, subformat: '%s')!", waveFormat.Format.nChannels, waveFormat.Format.nSamplesPerSec, waveFormat.Format.wBitsPerSample, subformatString);
@@ -20684,14 +20897,14 @@ fpl_internal fplAudioResultType fpl__AudioInitDirectSound(const fplAudioSettings
 
 	// Get the required size in bytes
 	DWORD requiredSize;
-	if (FAILED(IDirectSoundBuffer_GetFormat(dsoundState->primaryBuffer, fpl_null, 0, &requiredSize))) {
+	if (FAILED(IDirectSoundBuffer_GetFormat(impl->primaryBuffer, fpl_null, 0, &requiredSize))) {
 		FPL__DSOUND_INIT_ERROR(fplAudioResultType_Failed, "Failed getting format size for primary sound buffer!");
 	}
 
 	// Get actual format
 	char actualFormatData[1024];
 	WAVEFORMATEXTENSIBLE *actualFormat = (WAVEFORMATEXTENSIBLE *)actualFormatData;
-	if (FAILED(IDirectSoundBuffer_GetFormat(dsoundState->primaryBuffer, (WAVEFORMATEX *)actualFormat, requiredSize, fpl_null))) {
+	if (FAILED(IDirectSoundBuffer_GetFormat(impl->primaryBuffer, (WAVEFORMATEX *)actualFormat, requiredSize, fpl_null))) {
 		FPL__DSOUND_INIT_ERROR(fplAudioResultType_Failed, "Failed getting actual wave format from size '{%u}' for primary sound buffer!", requiredSize);
 	}
 
@@ -20731,7 +20944,7 @@ fpl_internal fplAudioResultType fpl__AudioInitDirectSound(const fplAudioSettings
 	internalFormat.bufferSizeInFrames = targetFormat->bufferSizeInFrames;
 	uint32_t bufferSizeInBytes = fplGetAudioBufferSizeInBytes(internalFormat.type, internalFormat.channels, internalFormat.bufferSizeInFrames);
 
-	commonAudio->internalFormat = internalFormat;
+	backend->internalFormat = internalFormat;
 
 	const char *internalFormatTypeName = fplGetAudioFormatName(internalFormat.type);
 	FPL_LOG(fplLogLevel_Info, FPL__MODULE_AUDIO_DIRECTSOUND,
@@ -20749,12 +20962,12 @@ fpl_internal fplAudioResultType fpl__AudioInitDirectSound(const fplAudioSettings
 	descDS.dwFlags = DSBCAPS_CTRLPOSITIONNOTIFY | DSBCAPS_GLOBALFOCUS | DSBCAPS_GETCURRENTPOSITION2;
 	descDS.dwBufferBytes = (DWORD)bufferSizeInBytes;
 	descDS.lpwfxFormat = (WAVEFORMATEX *)&waveFormat;
-	if (FAILED(IDirectSound_CreateSoundBuffer(dsoundState->directSound, &descDS, &dsoundState->secondaryBuffer, fpl_null))) {
+	if (FAILED(IDirectSound_CreateSoundBuffer(impl->directSound, &descDS, &impl->secondaryBuffer, fpl_null))) {
 		FPL__DSOUND_INIT_ERROR(fplAudioResultType_Failed, "Failed creating secondary sound buffer with buffer size of '%u' bytes", bufferSizeInBytes);
 	}
 
 	// Notifications are set up via a DIRECTSOUNDNOTIFY object which is retrieved from the buffer.
-	if (FAILED(IDirectSoundBuffer_QueryInterface(dsoundState->secondaryBuffer, guid_IID_IDirectSoundNotify, (void **)&dsoundState->notify))) {
+	if (FAILED(IDirectSoundBuffer_QueryInterface(impl->secondaryBuffer, guid_IID_IDirectSoundNotify, (void **)&impl->notify))) {
 		FPL__DSOUND_INIT_ERROR(fplAudioResultType_Failed, "Failed query direct sound notify interface");
 	}
 
@@ -20762,63 +20975,57 @@ fpl_internal fplAudioResultType fpl__AudioInitDirectSound(const fplAudioSettings
 	DWORD periodSizeInBytes = bufferSizeInBytes / internalFormat.periods;
 	DSBPOSITIONNOTIFY notifyPoints[FPL__DIRECTSOUND_MAX_PERIODS];
 	for (uint32_t i = 0; i < internalFormat.periods; ++i) {
-		dsoundState->notifyEvents[i] = CreateEventA(fpl_null, false, false, fpl_null);
-		if (dsoundState->notifyEvents[i] == fpl_null) {
-			fpl__AudioReleaseDirectSound(commonAudio, dsoundState);
-			return fplAudioResultType_Failed;
+		impl->notifyEvents[i] = CreateEventA(fpl_null, false, false, fpl_null);
+		if (impl->notifyEvents[i] == fpl_null) {
+			FPL__DSOUND_INIT_ERROR(fplAudioResultType_Failed, "Failed creating notify event for period %u", i);
 		}
 
 		// The notification offset is in bytes.
 		notifyPoints[i].dwOffset = i * periodSizeInBytes;
-		notifyPoints[i].hEventNotify = dsoundState->notifyEvents[i];
+		notifyPoints[i].hEventNotify = impl->notifyEvents[i];
 	}
-	if (FAILED(IDirectSoundNotify_SetNotificationPositions(dsoundState->notify, internalFormat.periods, notifyPoints))) {
+	if (FAILED(IDirectSoundNotify_SetNotificationPositions(impl->notify, internalFormat.periods, notifyPoints))) {
 		FPL__DSOUND_INIT_ERROR(fplAudioResultType_Failed, "Failed setting notification position for %u periods", internalFormat.periods);
 	}
 
 	// Create stop event
-	dsoundState->stopEvent = CreateEventA(fpl_null, false, false, fpl_null);
-	if (dsoundState->stopEvent == fpl_null) {
+	impl->stopEvent = CreateEventA(fpl_null, false, false, fpl_null);
+	if (impl->stopEvent == fpl_null) {
 		FPL__DSOUND_INIT_ERROR(fplAudioResultType_Failed, "Failed creating stop event");
 	}
 
 	return fplAudioResultType_Success;
 }
 
-fpl_internal void fpl__AudioStopMainLoopDirectSound(fpl__DirectSoundAudioState *dsoundState) {
-	dsoundState->breakMainLoop = true;
-	SetEvent(dsoundState->stopEvent);
-}
-
-fpl_internal bool fpl__GetCurrentFrameDirectSound(const fpl__CommonAudioState *commonAudio, fpl__DirectSoundAudioState *dsoundState, uint32_t *pCurrentPos) {
+fpl_internal bool fpl__GetCurrentFrameDirectSound(const fplAudioDeviceFormat *internalFormat, fpl__AudioBackendDirectSound *impl, uint32_t *pCurrentPos) {
 	fplAssert(pCurrentPos != fpl_null);
 	*pCurrentPos = 0;
 
-	fplAssert(dsoundState->secondaryBuffer != fpl_null);
+	fplAssert(impl->secondaryBuffer != fpl_null);
 	DWORD dwCurrentPosition;
-	if (FAILED(IDirectSoundBuffer_GetCurrentPosition(dsoundState->secondaryBuffer, fpl_null, &dwCurrentPosition))) {
+	if (FAILED(IDirectSoundBuffer_GetCurrentPosition(impl->secondaryBuffer, fpl_null, &dwCurrentPosition))) {
 		return false;
 	}
 
-	fplAssert(commonAudio->internalFormat.channels > 0);
-	*pCurrentPos = (uint32_t)dwCurrentPosition / fplGetAudioSampleSizeInBytes(commonAudio->internalFormat.type) / commonAudio->internalFormat.channels;
+	fplAssert(internalFormat->channels > 0);
+	*pCurrentPos = (uint32_t)dwCurrentPosition / fplGetAudioSampleSizeInBytes(internalFormat->type) / internalFormat->channels;
 	return true;
 }
 
-fpl_internal uint32_t fpl__GetAvailableFramesDirectSound(const fpl__CommonAudioState *commonAudio, fpl__DirectSoundAudioState *dsoundState) {
+fpl_internal uint32_t fpl__GetAvailableFramesDirectSound(const fplAudioDeviceFormat *internalFormat, fpl__AudioBackendDirectSound *impl) {
 	// Get current frame from current play position
 	uint32_t currentFrame;
-	if (!fpl__GetCurrentFrameDirectSound(commonAudio, dsoundState, &currentFrame)) {
+	if (!fpl__GetCurrentFrameDirectSound(internalFormat, impl, &currentFrame)) {
 		return 0;
 	}
 
 	// In a playback device the last processed frame should always be ahead of the current frame. The space between
 	// the last processed and current frame (moving forward, starting from the last processed frame) is the amount
 	// of space available to write.
-	uint32_t totalFrameCount = commonAudio->internalFormat.bufferSizeInFrames;
+	uint32_t totalFrameCount = internalFormat->bufferSizeInFrames;
 	uint32_t committedBeg = currentFrame;
 	uint32_t committedEnd;
-	committedEnd = dsoundState->lastProcessedFrame;
+	committedEnd = impl->lastProcessedFrame;
 	if (committedEnd <= committedBeg) {
 		committedEnd += totalFrameCount;
 	}
@@ -20829,25 +21036,25 @@ fpl_internal uint32_t fpl__GetAvailableFramesDirectSound(const fpl__CommonAudioS
 	return totalFrameCount - committedSize;
 }
 
-fpl_internal uint32_t fpl__WaitForFramesDirectSound(const fpl__CommonAudioState *commonAudio, fpl__DirectSoundAudioState *dsoundState) {
-	fplAssert(commonAudio->internalFormat.sampleRate > 0);
-	fplAssert(commonAudio->internalFormat.periods > 0);
+fpl_internal uint32_t fpl__WaitForFramesDirectSound(const fplAudioDeviceFormat *internalFormat, fpl__AudioBackendDirectSound *impl) {
+	fplAssert(internalFormat->sampleRate > 0);
+	fplAssert(internalFormat->periods > 0);
 
 	// The timeout to use for putting the thread to sleep is based on the size of the buffer and the period count.
-	DWORD timeoutInMilliseconds = (commonAudio->internalFormat.bufferSizeInFrames / (commonAudio->internalFormat.sampleRate / 1000)) / commonAudio->internalFormat.periods;
+	DWORD timeoutInMilliseconds = (internalFormat->bufferSizeInFrames / (internalFormat->sampleRate / 1000)) / internalFormat->periods;
 	if (timeoutInMilliseconds < 1) {
 		timeoutInMilliseconds = 1;
 	}
 
 	// Copy event handles so we can wait for each one
-	unsigned int eventCount = commonAudio->internalFormat.periods + 1;
+	unsigned int eventCount = internalFormat->periods + 1;
 	HANDLE pEvents[FPL__DIRECTSOUND_MAX_PERIODS + 1]; // +1 for the stop event.
-	fplMemoryCopy(dsoundState->notifyEvents, sizeof(HANDLE) * commonAudio->internalFormat.periods, pEvents);
-	pEvents[eventCount - 1] = dsoundState->stopEvent;
+	fplMemoryCopy(impl->notifyEvents, sizeof(HANDLE) * internalFormat->periods, pEvents);
+	pEvents[eventCount - 1] = impl->stopEvent;
 
-	while (!dsoundState->breakMainLoop) {
+	while (!impl->breakMainLoop) {
 		// Get available frames from directsound
-		uint32_t framesAvailable = fpl__GetAvailableFramesDirectSound(commonAudio, dsoundState);
+		uint32_t framesAvailable = fpl__GetAvailableFramesDirectSound(internalFormat, impl);
 		if (framesAvailable > 0) {
 			return framesAvailable;
 		}
@@ -20857,39 +21064,46 @@ fpl_internal uint32_t fpl__WaitForFramesDirectSound(const fpl__CommonAudioState 
 	}
 
 	// We'll get here if the loop was terminated. Just return whatever's available.
-	return fpl__GetAvailableFramesDirectSound(commonAudio, dsoundState);
+	return fpl__GetAvailableFramesDirectSound(internalFormat, impl);
 }
 
-fpl_internal bool fpl__AudioStopDirectSound(fpl__DirectSoundAudioState *dsoundState) {
-	fplAssert(dsoundState->secondaryBuffer != fpl_null);
-	if (FAILED(IDirectSoundBuffer_Stop(dsoundState->secondaryBuffer))) {
+fpl_internal FPL_AUDIO_BACKEND_STOP_DEVICE_FUNC(fpl__AudioBackendDirectSoundStopDevice) {
+	fpl__AudioBackendDirectSound *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendDirectSound);
+
+	fplAssert(impl->secondaryBuffer != fpl_null);
+
+	if (FAILED(IDirectSoundBuffer_Stop(impl->secondaryBuffer))) {
 		return false;
 	}
-	IDirectSoundBuffer_SetCurrentPosition(dsoundState->secondaryBuffer, 0);
+
+	IDirectSoundBuffer_SetCurrentPosition(impl->secondaryBuffer, 0);
+
 	return true;
 }
 
-fpl_internal fplAudioResultType fpl__AudioStartDirectSound(const fpl__CommonAudioState *commonAudio, fpl__DirectSoundAudioState *dsoundState) {
-	fplAssert(commonAudio->internalFormat.channels > 0);
-	fplAssert(commonAudio->internalFormat.periods > 0);
-	uint32_t audioSampleSizeBytes = fplGetAudioSampleSizeInBytes(commonAudio->internalFormat.type);
+fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudioBackendDirectSoundStartDevice) {
+	fpl__AudioBackendDirectSound *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendDirectSound);
+
+	fplAssert(backend->internalFormat.channels > 0);
+	fplAssert(backend->internalFormat.periods > 0);
+	uint32_t audioSampleSizeBytes = fplGetAudioSampleSizeInBytes(backend->internalFormat.type);
 	fplAssert(audioSampleSizeBytes > 0);
 
 	// Before playing anything we need to grab an initial group of samples from the client.
-	uint32_t framesToRead = commonAudio->internalFormat.bufferSizeInFrames / commonAudio->internalFormat.periods;
-	uint32_t desiredLockSize = framesToRead * commonAudio->internalFormat.channels * audioSampleSizeBytes;
+	uint32_t framesToRead = backend->internalFormat.bufferSizeInFrames / backend->internalFormat.periods;
+	uint32_t desiredLockSize = framesToRead * backend->internalFormat.channels * audioSampleSizeBytes;
 
 	void *pLockPtr;
 	DWORD actualLockSize;
 	void *pLockPtr2;
 	DWORD actualLockSize2;
 
-	if (SUCCEEDED(IDirectSoundBuffer_Lock(dsoundState->secondaryBuffer, 0, desiredLockSize, &pLockPtr, &actualLockSize, &pLockPtr2, &actualLockSize2, 0))) {
-		framesToRead = actualLockSize / audioSampleSizeBytes / commonAudio->internalFormat.channels;
-		fpl__ReadAudioFramesFromClient(commonAudio, framesToRead, pLockPtr);
-		IDirectSoundBuffer_Unlock(dsoundState->secondaryBuffer, pLockPtr, actualLockSize, pLockPtr2, actualLockSize2);
-		dsoundState->lastProcessedFrame = framesToRead;
-		if (FAILED(IDirectSoundBuffer_Play(dsoundState->secondaryBuffer, 0, 0, DSBPLAY_LOOPING))) {
+	if (SUCCEEDED(IDirectSoundBuffer_Lock(impl->secondaryBuffer, 0, desiredLockSize, &pLockPtr, &actualLockSize, &pLockPtr2, &actualLockSize2, 0))) {
+		framesToRead = actualLockSize / audioSampleSizeBytes / backend->internalFormat.channels;
+		fpl__ReadAudioFramesFromClient(backend, framesToRead, pLockPtr);
+		IDirectSoundBuffer_Unlock(impl->secondaryBuffer, pLockPtr, actualLockSize, pLockPtr2, actualLockSize2);
+		impl->lastProcessedFrame = framesToRead;
+		if (FAILED(IDirectSoundBuffer_Play(impl->secondaryBuffer, 0, 0, DSBPLAY_LOOPING))) {
 			return fplAudioResultType_Failed;
 		}
 	} else {
@@ -20898,51 +21112,82 @@ fpl_internal fplAudioResultType fpl__AudioStartDirectSound(const fpl__CommonAudi
 	return fplAudioResultType_Success;
 }
 
-fpl_internal void fpl__AudioRunMainLoopDirectSound(const fpl__CommonAudioState *commonAudio, fpl__DirectSoundAudioState *dsoundState) {
-	fplAssert(commonAudio->internalFormat.channels > 0);
-	uint32_t audioSampleSizeBytes = fplGetAudioSampleSizeInBytes(commonAudio->internalFormat.type);
+fpl_internal FPL_AUDIO_BACKEND_STOP_MAIN_LOOP_FUNC(fpl__AudioBackendDirectSoundStopMainLoop) {
+	fpl__AudioBackendDirectSound *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendDirectSound);
+	impl->breakMainLoop = true;
+	SetEvent(impl->stopEvent);
+}
+
+fpl_internal FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl__AudioBackendDirectSoundMainLoop) {
+	fpl__AudioBackendDirectSound *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendDirectSound);
+
+	fplAssert(backend->internalFormat.channels > 0);
+	uint32_t audioSampleSizeBytes = fplGetAudioSampleSizeInBytes(backend->internalFormat.type);
 	fplAssert(audioSampleSizeBytes > 0);
 
 	// Make sure the stop event is not signaled to ensure we don't end up immediately returning from WaitForMultipleObjects().
-	ResetEvent(dsoundState->stopEvent);
+	ResetEvent(impl->stopEvent);
 
 	// Main loop
-	dsoundState->breakMainLoop = false;
-	while (!dsoundState->breakMainLoop) {
+	impl->breakMainLoop = false;
+	while (!impl->breakMainLoop) {
 		// Wait until we get available frames from directsound
-		uint32_t framesAvailable = fpl__WaitForFramesDirectSound(commonAudio, dsoundState);
+		uint32_t framesAvailable = fpl__WaitForFramesDirectSound(&backend->internalFormat, impl);
 		if (framesAvailable == 0) {
 			continue;
 		}
 
 		// Don't bother grabbing more data if the device is being stopped.
-		if (dsoundState->breakMainLoop) {
+		if (impl->breakMainLoop) {
 			break;
 		}
 
 		// Lock playback buffer
-		DWORD lockOffset = dsoundState->lastProcessedFrame * commonAudio->internalFormat.channels * audioSampleSizeBytes;
-		DWORD lockSize = framesAvailable * commonAudio->internalFormat.channels * audioSampleSizeBytes;
+		DWORD lockOffset = impl->lastProcessedFrame * backend->internalFormat.channels * audioSampleSizeBytes;
+		DWORD lockSize = framesAvailable * backend->internalFormat.channels * audioSampleSizeBytes;
 		{
 			void *pLockPtr;
 			DWORD actualLockSize;
 			void *pLockPtr2;
 			DWORD actualLockSize2;
-			if (FAILED(IDirectSoundBuffer_Lock(dsoundState->secondaryBuffer, lockOffset, lockSize, &pLockPtr, &actualLockSize, &pLockPtr2, &actualLockSize2, 0))) {
-				FPL__ERROR(FPL__MODULE_AUDIO_DIRECTSOUND, "Failed to lock directsound secondary buffer '%p' for offset/size (%lu / %lu)", dsoundState->secondaryBuffer, lockOffset, lockSize);
+			if (FAILED(IDirectSoundBuffer_Lock(impl->secondaryBuffer, lockOffset, lockSize, &pLockPtr, &actualLockSize, &pLockPtr2, &actualLockSize2, 0))) {
+				FPL__ERROR(FPL__MODULE_AUDIO_DIRECTSOUND, "Failed to lock directsound secondary buffer '%p' for offset/size (%lu / %lu)", impl->secondaryBuffer, lockOffset, lockSize);
 				break;
 			}
 
 			// Read actual frames from user
-			uint32_t frameCount = actualLockSize / audioSampleSizeBytes / commonAudio->internalFormat.channels;
-			fpl__ReadAudioFramesFromClient(commonAudio, frameCount, pLockPtr);
-			dsoundState->lastProcessedFrame = (dsoundState->lastProcessedFrame + frameCount) % commonAudio->internalFormat.bufferSizeInFrames;
+			uint32_t frameCount = actualLockSize / audioSampleSizeBytes / backend->internalFormat.channels;
+			fpl__ReadAudioFramesFromClient(backend, frameCount, pLockPtr);
+			impl->lastProcessedFrame = (impl->lastProcessedFrame + frameCount) % backend->internalFormat.bufferSizeInFrames;
 
 			// Unlock playback buffer
-			IDirectSoundBuffer_Unlock(dsoundState->secondaryBuffer, pLockPtr, actualLockSize, pLockPtr2, actualLockSize2);
+			IDirectSoundBuffer_Unlock(impl->secondaryBuffer, pLockPtr, actualLockSize, pLockPtr2, actualLockSize2);
 		}
 	}
 }
+
+fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendDirectShowDescriptor = {
+	fplStructField(fplAudioBackendDescriptor, header, {
+		fplStructField(fplAudioBackendDescriptorHeader, idName, {
+			fplStructField(fplAudioBackendDescriptorIDName, id, { 0x618d4a47, 0x163c, 0x441d, { 0x85, 0xc6, 0x4d, 0x94, 0x33, 0x61, 0xc8, 0xb3 } }),
+			fplStructField(fplAudioBackendDescriptorIDName, name, "DirectSound"),
+		}),
+		fplStructField(fplAudioBackendDescriptorHeader, type, fplAudioBackendType_DirectSound),
+		fplStructField(fplAudioBackendDescriptorHeader, backendSize, sizeof(fpl__AudioBackendDirectSound)),
+		fplStructField(fplAudioBackendDescriptorHeader, isAsync, false),
+		fplStructField(fplAudioBackendDescriptorHeader, isValid, true),
+	}),
+	fplStructField(fplAudioBackendDescriptor, table, {
+		fplStructField(fplAudioBackendFunctionTable, getAudioDevices, fpl__AudiobackendDirectSoundGetAudioDevices),
+		fplStructField(fplAudioBackendFunctionTable, initialize, fpl__AudiobackendDirectSoundInitialize),
+		fplStructField(fplAudioBackendFunctionTable, release, fpl__AudiobackendDirectSoundRelease),
+		fplStructField(fplAudioBackendFunctionTable, startDevice, fpl__AudioBackendDirectSoundStartDevice),
+		fplStructField(fplAudioBackendFunctionTable, stopDevice, fpl__AudioBackendDirectSoundStopDevice),
+		fplStructField(fplAudioBackendFunctionTable, mainLoop, fpl__AudioBackendDirectSoundMainLoop),
+		fplStructField(fplAudioBackendFunctionTable, stopMainLoop, fpl__AudioBackendDirectSoundStopMainLoop),
+	}),
+};
+
 #endif // FPL__ENABLE_AUDIO_DIRECTSOUND
 
 // ############################################################################
@@ -21931,6 +22176,24 @@ fpl_internal uint32_t fpl__GetAudioDevicesAlsa(fpl__AlsaAudioState *alsaState, f
 	return(result);
 }
 
+fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendALSADescriptor = {
+	fplStructField(fplAudioBackendDescriptor, id, { 0x897c80d9, 0xc251, 0x4d48, { 0x80, 0x6e, 0x1a, 0x5b, 0x89, 0xb0, 0x97, 0x4 } }),
+	fplStructField(fplAudioBackendDescriptor, name, "ALSA"),
+	fplStructField(fplAudioBackendDescriptor, type, fplAudioBackendType_Alsa),
+	fplStructField(fplAudioBackendDescriptor, backendSize, sizeof(fpl__AudioBackendDirectSound)),
+	fplStructField(fplAudioBackendDescriptor, isAsync, false),
+	fplStructField(fplAudioBackendDescriptor, isValid, true),
+	fplStructField(fplAudioBackendDescriptor, funcTable,
+	{
+		fplStructField(fplAudioBackendFunctionTable, getAudioDevices, fpl__AudiobackendDirectSoundGetAudioDevices),
+		fplStructField(fplAudioBackendFunctionTable, initialize, fpl__AudiobackendDirectSoundInitialize),
+		fplStructField(fplAudioBackendFunctionTable, release, fpl__AudiobackendDirectSoundRelease),
+		fplStructField(fplAudioBackendFunctionTable, startDevice, fpl__AudioBackendDirectSoundStartDevice),
+		fplStructField(fplAudioBackendFunctionTable, stopDevice, fpl__AudioBackendDirectSoundStopDevice),
+		fplStructField(fplAudioBackendFunctionTable, mainLoop, fpl__AudioBackendDirectSoundMainLoop),
+		fplStructField(fplAudioBackendFunctionTable, stopMainLoop, fpl__AudioBackendDirectSoundStopMainLoop),
+	})
+};
 #endif // FPL__ENABLE_AUDIO_ALSA
 
 #endif // FPL__AUDIO_BACKENDS_IMPLEMENTED
@@ -21957,6 +22220,7 @@ fpl_globalvar const char *fpl__global_audioResultTypeNameTable[] = {
 	"Api failure", // fplAudioResultType_ApiFailed,
 	"Platform not initialized", // fplAudioResultType_PlatformNotInitialized,
 	"Backend already initialized", // fplAudioResultType_BackendAlreadyInitialized,
+	"No audio backends found", // fplAudioResultType_NoBackendsFound
 	"Audio format was not set", // fplAudioResultType_UnsetAudioFormat,
 	"Number of audio channels was not set", // fplAudioResultType_UnsetAudioChannels,
 	"Audio sample rate was not set", // fplAudioResultType_UnsetAudioSampleRate,
@@ -21964,6 +22228,93 @@ fpl_globalvar const char *fpl__global_audioResultTypeNameTable[] = {
 	"Unknown audio failure", // fplAudioResultType_Failed,
 };
 fplStaticAssert(fplArrayCount(fpl__global_audioResultTypeNameTable) == FPL__AUDIO_RESULT_TYPE_COUNT);
+
+#define FPL__AUDIO_BACKEND_TYPE_COUNT FPL__ENUM_COUNT(fplAudioBackendType_First, fplAudioResultType_Last)
+
+fpl_globalvar fplAudioBackendType fpl__global_defaultAudioBackendTypes[] = {
+	fplAudioBackendType_DirectSound,
+	fplAudioBackendType_Alsa,
+	fplAudioBackendType_Custom,
+};
+
+fpl_internal uint32_t fpl__GetAudioBackendDescriptors(const uint32_t maxDescriptorCount, const fplAudioSettings *audioSettings, fplAudioBackendDescriptor *outputDescriptors) {
+	fplAudioBackendType probeTypes[8] = fplZeroInit;
+
+	uint32_t propeTypeCount = 0;
+
+	fplAudioBackendType userBackendType = fplAudioBackendType_Auto;
+	if (audioSettings != fpl_null) {
+		userBackendType = audioSettings->backend;
+	}
+
+	if (userBackendType != fplAudioBackendType_Auto && userBackendType != fplAudioBackendType_None) {
+		probeTypes[propeTypeCount++] = userBackendType;
+	}
+	for (uint32_t i = 0; i < fplArrayCount(fpl__global_defaultAudioBackendTypes); ++i) {
+		if (userBackendType == fpl__global_defaultAudioBackendTypes[i])
+			continue;
+		probeTypes[propeTypeCount++] = fpl__global_defaultAudioBackendTypes[i];
+	}
+
+	uint32_t descriptorCount = 0;
+
+	uint32_t result = 0;
+
+	for (uint32_t propeTypeIndex = 0; propeTypeIndex < propeTypeCount; ++propeTypeIndex) {
+		fplAudioBackendType type = probeTypes[propeTypeIndex];
+		const fplAudioBackendDescriptor *desc = fpl_null;
+		switch (type) {
+			case fplAudioBackendType_None:
+			case fplAudioBackendType_Auto:
+				continue;
+
+			case fplAudioBackendType_DirectSound:
+#if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
+				desc = &fpl__global_audioBackendDirectShowDescriptor;
+#endif
+
+			case fplAudioBackendType_Alsa:
+#if defined(FPL__ENABLE_AUDIO_ALSA)
+				desc = &fpl__global_audioBackendALSADescriptor;
+#endif
+				break;
+
+			case fplAudioBackendType_Custom:
+				// TODO(final): Get audio backend descriptor from audio settings
+				break;
+		}
+
+		if (desc == fpl_null || !desc->header.isValid) {
+			continue;
+		}
+
+		uint32_t outputDescriptorIndex = descriptorCount;
+		if ((outputDescriptors != fpl_null) || (maxDescriptorCount > 0 && (descriptorCount < maxDescriptorCount))) {
+			outputDescriptors[outputDescriptorIndex] = *desc;
+			++result;
+		}
+
+		++descriptorCount;
+	}
+
+	if (outputDescriptors == fpl_null) {
+		return(descriptorCount);
+	}
+
+	return(result);
+}
+
+fpl_internal uint32_t fpl__GetMaxAudioBackendSize(const fplAudioSettings *settings) {
+	static fplAudioBackendDescriptor descriptors[8];
+	fplClearStruct(descriptors);
+	uint32_t count = fpl__GetAudioBackendDescriptors(fplArrayCount(descriptors), settings, descriptors);
+	uint32_t result = 0;
+	for (size_t i = 0; i < count; ++i) {
+		uint32_t size = descriptors[i].header.backendSize;
+		result = fplMax(result, size);
+	}
+	return(result);
+}
 
 fpl_common_api const char *fplGetAudioResultName(const fplAudioResultType type) {
 	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, fplAudioResultType_First, fplAudioResultType_Last);
@@ -22022,15 +22373,6 @@ typedef struct fpl__AudioState {
 
 	fplAudioBackendType backendType;
 	bool isAsyncBackend;
-
-	union {
-#	if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
-		fpl__DirectSoundAudioState dsound;
-#	endif
-#	if defined(FPL__ENABLE_AUDIO_ALSA)
-		fpl__AlsaAudioState alsa;
-#	endif
-	};
 } fpl__AudioState;
 
 fpl_internal fpl__AudioState *fpl__GetAudioState(fpl__PlatformAppState *appState) {
@@ -22043,6 +22385,11 @@ fpl_internal fpl__AudioState *fpl__GetAudioState(fpl__PlatformAppState *appState
 }
 
 fpl_internal void fpl__StopAudioDeviceMainLoop(fpl__AudioState *audioState) {
+	fplAssert(audioState != fpl_null && audioState->common.backend != fpl_null);
+	fplAssert(audioState->common.funcTable.stopMainLoop != fpl_null);
+	audioState->common.funcTable.stopMainLoop(audioState->common.backend);
+
+	/*
 	fplAssert(audioState->backendType > fplAudioBackendType_Auto);
 	switch (audioState->backendType) {
 
@@ -22063,9 +22410,16 @@ fpl_internal void fpl__StopAudioDeviceMainLoop(fpl__AudioState *audioState) {
 		default:
 			break;
 	}
+	*/
 }
 
 fpl_internal bool fpl__ReleaseAudioDevice(fpl__AudioState *audioState) {
+	fplAssert(audioState != fpl_null && audioState->common.backend != fpl_null);
+	fplAssert(audioState->common.funcTable.release != fpl_null);
+	bool result = audioState->common.funcTable.release(audioState->common.backend);
+	return(result);
+
+	/*
 	fplAssert(audioState->backendType > fplAudioBackendType_Auto);
 	bool result = false;
 	switch (audioState->backendType) {
@@ -22088,9 +22442,16 @@ fpl_internal bool fpl__ReleaseAudioDevice(fpl__AudioState *audioState) {
 			break;
 	}
 	return (result);
+	*/
 }
 
 fpl_internal bool fpl__StopAudioDevice(fpl__AudioState *audioState) {
+	fplAssert(audioState != fpl_null && audioState->common.backend != fpl_null);
+	fplAssert(audioState->common.funcTable.stopDevice != fpl_null);
+	bool result = audioState->common.funcTable.stopDevice(audioState->common.backend);
+	return(result);
+
+	/*
 	fplAssert(audioState->backendType > fplAudioBackendType_Auto);
 	bool result = false;
 	switch (audioState->backendType) {
@@ -22113,9 +22474,16 @@ fpl_internal bool fpl__StopAudioDevice(fpl__AudioState *audioState) {
 			break;
 	}
 	return (result);
+	*/
 }
 
 fpl_internal fplAudioResultType fpl__StartAudioDevice(fpl__AudioState *audioState) {
+	fplAssert(audioState != fpl_null && audioState->common.backend != fpl_null);
+	fplAssert(audioState->common.funcTable.startDevice != fpl_null);
+	fplAudioResultType result = audioState->common.funcTable.startDevice(audioState->common.backend);
+	return(result);
+
+	/*
 	fplAssert(audioState->backendType > fplAudioBackendType_Auto);
 	fplAudioResultType result = fplAudioResultType_Failed;
 	switch (audioState->backendType) {
@@ -22138,9 +22506,15 @@ fpl_internal fplAudioResultType fpl__StartAudioDevice(fpl__AudioState *audioStat
 			break;
 	}
 	return (result);
+	*/
 }
 
 fpl_internal void fpl__RunAudioDeviceMainLoop(fpl__AudioState *audioState) {
+	fplAssert(audioState != fpl_null && audioState->common.backend != fpl_null);
+	fplAssert(audioState->common.funcTable.mainLoop != fpl_null);
+	audioState->common.funcTable.mainLoop(audioState->common.backend);
+
+	/*
 	fplAssert(audioState->backendType > fplAudioBackendType_Auto);
 	switch (audioState->backendType) {
 
@@ -22161,8 +22535,10 @@ fpl_internal void fpl__RunAudioDeviceMainLoop(fpl__AudioState *audioState) {
 		default:
 			break;
 	}
+	*/
 }
 
+/*
 fpl_internal bool fpl__IsAudioBackendAsync(const fplAudioBackendType backendType) {
 	switch (backendType) {
 		case fplAudioBackendType_DirectSound:
@@ -22172,6 +22548,7 @@ fpl_internal bool fpl__IsAudioBackendAsync(const fplAudioBackendType backendType
 			return false;
 	}
 }
+*/
 
 fpl_internal void fpl__AudioSetDeviceState(fpl__CommonAudioState *audioState, fpl__AudioDeviceState newState) {
 	fplAtomicStoreU32((volatile uint32_t *)&audioState->state, (uint32_t)newState);
@@ -22304,6 +22681,8 @@ fpl_internal void fpl__ReleaseAudio(fpl__AudioState *audioState) {
 #endif
 }
 
+
+
 fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSettings, fpl__AudioState *audioState) {
 	fplAssert(audioState != fpl_null);
 
@@ -22317,11 +22696,17 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 		return fplAudioResultType_BackendAlreadyInitialized;
 	}
 
-	fplClearStruct(&audioState->common.desiredFormat);
-	fplConvertAudioTargetFormatToDeviceFormat(&audioSettings->targetFormat, &audioState->common.desiredFormat);
+	fplAudioBackend *backend = audioState->common.backend;
 
-	audioState->common.clientReadCallback = audioSettings->clientReadCallback;
-	audioState->common.clientUserData = audioSettings->userData;
+	// Clear backend
+	fplAssert(backend != fpl_null);
+	fplMemoryClear(backend, audioState->common.maxBackendSize);
+
+	// Convert user audio format to device format
+	fplConvertAudioTargetFormatToDeviceFormat(&audioSettings->targetFormat, &backend->desiredFormat);
+
+	backend->clientReadCallback = audioSettings->clientReadCallback;
+	backend->clientUserData = audioSettings->userData;
 
 #if defined(FPL_PLATFORM_WINDOWS)
 	wapi->ole.CoInitializeEx(fpl_null, 0);
@@ -22344,6 +22729,32 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 		fpl__ReleaseAudio(audioState);
 		return fplAudioResultType_Failed;
 	}
+
+	static fplAudioBackendDescriptor descriptors[8];
+
+	size_t audioBackendCount = fpl__GetAudioBackendDescriptors(fplArrayCount(descriptors), audioSettings, descriptors);
+
+	if (audioBackendCount == 0) {
+		fpl__ReleaseAudio(audioState);
+		return fplAudioResultType_NoBackendsFound;
+	}
+
+	fplAudioResultType initResult;
+	for (size_t backendIndex = 0; backendIndex < audioBackendCount; ++backendIndex) {
+		const fplAudioBackendDescriptor *descriptor = &descriptors[backendIndex];
+		fplAssert(descriptor->header.isValid && descriptor->table.initialize != fpl_null);
+		initResult = descriptor->table.initialize(backend, &audioSettings->specific, &backend->desiredFormat, &audioSettings->targetDevice, &backend->internalFormat);
+		if (initResult != fplAudioResultType_Success) {
+			descriptor->table.release(backend);
+		} else {
+			audioState->common.funcTable = descriptor->table;
+			audioState->backendType = descriptor->header.type;
+			audioState->isAsyncBackend = descriptor->header.isAsync;
+			break;
+		}
+	}
+
+#if 0
 
 	// Prope backends
 	fplAudioBackendType propeBackendTypes[16];
@@ -22391,6 +22802,7 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 			break;
 		}
 	}
+#endif
 
 	if (initResult != fplAudioResultType_Success) {
 		fpl__ReleaseAudio(audioState);
@@ -22712,11 +23124,12 @@ fpl_common_api const char *fplGetAudioFormatName(const fplAudioFormatType format
 }
 
 #define FPL__AUDIOBACKENDTYPE_COUNT FPL__ENUM_COUNT(fplAudioBackendType_First, fplAudioBackendType_Last)
-fpl_globalvar const char *fpl__globalAudioBackendNameTable[] = {
+fpl_globalvar const char *fpl__globalAudioBackendNameTable[FPL__AUDIOBACKENDTYPE_COUNT] = {
 	"None", // No audio backend
 	"Automatic", // Automatic backend detection
 	"DirectSound", // DirectSound
 	"ALSA", // Alsa
+	"Custom", // Custom
 };
 fplStaticAssert(fplArrayCount(fpl__globalAudioBackendNameTable) == FPL__AUDIOBACKENDTYPE_COUNT);
 
@@ -22931,25 +23344,33 @@ fpl_common_api bool fplGetAudioHardwareFormat(fplAudioDeviceFormat *outFormat) {
 	FPL__CheckArgumentNull(outFormat, false);
 	FPL__CheckPlatform(false);
 	fpl__AudioState *audioState = fpl__GetAudioState(fpl__global__AppState);
-	if (audioState != fpl_null) {
-		fplClearStruct(outFormat);
-		*outFormat = audioState->common.internalFormat;
-		return true;
+	if (audioState == fpl_null) {
+		return false;
 	}
-	return false;
+	fplAudioBackend *backend = audioState->common.backend;
+	if (backend == fpl_null) {
+		return false;
+	}
+	fplClearStruct(outFormat);
+	*outFormat = backend->internalFormat;
+	return true;
 }
 
 fpl_common_api bool fplSetAudioClientReadCallback(fpl_audio_client_read_callback *newCallback, void *userData) {
 	FPL__CheckPlatform(false);
 	fpl__AudioState *audioState = fpl__GetAudioState(fpl__global__AppState);
-	if ((audioState != fpl_null) && (audioState->backendType > fplAudioBackendType_Auto)) {
-		if (fpl__AudioGetDeviceState(&audioState->common) == fpl__AudioDeviceState_Stopped) {
-			audioState->common.clientReadCallback = newCallback;
-			audioState->common.clientUserData = userData;
-			return true;
-		}
+	fplAudioBackend *backend = audioState != fpl_null ? audioState->common.backend : fpl_null;
+	if (audioState == fpl_null || backend == fpl_null) {
+		return false;
 	}
-	return false;
+	bool invalidBackend = !(audioState->backendType > fplAudioBackendType_Auto);
+	bool notStopped = fpl__AudioGetDeviceState(&audioState->common) != fpl__AudioDeviceState_Stopped;
+	if (invalidBackend || notStopped) {
+		return false;
+	}
+	backend->clientReadCallback = newCallback;
+	backend->clientUserData = userData;
+	return true;
 }
 
 fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo *devices, uint32_t maxDeviceCount) {
@@ -22958,30 +23379,16 @@ fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo *devices, uint32_t
 	}
 	FPL__CheckPlatform(0);
 	fpl__AudioState *audioState = fpl__GetAudioState(fpl__global__AppState);
-	if (audioState == fpl_null) {
+	fplAudioBackend *backend = audioState != fpl_null ? audioState->common.backend : fpl_null;
+	if (audioState == fpl_null || backend == fpl_null) {
 		return 0;
 	}
-	uint32_t result = 0;
-	if (audioState->backendType > fplAudioBackendType_Auto) {
-		switch (audioState->backendType) {
-#		if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
-			case fplAudioBackendType_DirectSound:
-			{
-				result = fpl__GetAudioDevicesDirectSound(&audioState->dsound, devices, maxDeviceCount);
-			} break;
-#		endif
-
-#		if defined(FPL__ENABLE_AUDIO_ALSA)
-			case fplAudioBackendType_Alsa:
-			{
-				result = fpl__GetAudioDevicesAlsa(&audioState->alsa, devices, maxDeviceCount);
-			} break;
-#		endif
-
-			default:
-				break;
-		}
+	bool invalidBackend = !(audioState->backendType > fplAudioBackendType_Auto);
+	if (invalidBackend) {
+		return 0;
 	}
+	fplAssert(audioState->common.funcTable.getAudioDevices != fpl_null);
+	uint32_t result = audioState->common.funcTable.getAudioDevices(backend, devices, maxDeviceCount);
 	return(result);
 }
 #endif // FPL__ENABLE_AUDIO
@@ -23089,6 +23496,11 @@ fpl_common_api bool fplGetVideoRequirements(const fplVideoBackendType backendTyp
 	if (context.getRequirementsFunc != fpl_null) {
 		result = context.getRequirementsFunc(requirements);
 	}
+	return(result);
+}
+
+fpl_inline fplVideoRect fplCreateVideoRectFromLTRB(int32_t left, int32_t top, int32_t right, int32_t bottom) {
+	fplVideoRect result = { left, top, (right - left) + 1, (bottom - top) + 1 };
 	return(result);
 }
 #endif // FPL__ENABLE_VIDEO
@@ -23243,6 +23655,19 @@ fpl_common_api void fplPlatformRelease() {
 	FPL_LOG_DEBUG(FPL__MODULE_CORE, "Platform released");
 }
 
+typedef struct {
+	size_t offset;
+	size_t size;
+} fpl__PlatformMemoryBlock;
+
+fpl_internal void fpl__PushPlatformMemory(fpl__PlatformMemoryBlock *block, const size_t size, const size_t alignment, const size_t padding) {
+	size_t alignedSize = fplGetAlignedSize(size, alignment);
+	size_t offset = block->offset;
+	size_t addonSize = padding + alignedSize;
+	block->size += addonSize;
+	block->offset += alignedSize + padding;
+}
+
 fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSettings *initSettings) {
 	// Exit out if platform is already initialized
 	if (fpl__global__InitState.isInitialized) {
@@ -23258,37 +23683,73 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 		fplCopyStruct(&initSettings->memory, &initState->initSettings.memorySettings);
 	}
 
-	// Allocate platform app state memory (By boundary of 16-bytes)
-	size_t platformAppStateSize = fplGetAlignedSize(sizeof(fpl__PlatformAppState), 16);
+	fpl__PlatformMemoryBlock platformMemoryBlock = fplZeroInit;
+	fpl__PlatformMemoryBlock videoMemoryBlock = fplZeroInit;
+	fpl__PlatformMemoryBlock audioMemoryBlock = fplZeroInit;
 
-	// Include video/audio state memory in app state memory as well
-#if defined(FPL__ENABLE_VIDEO)
-	size_t videoMemoryOffset = 0;
+	// Compute platform memory
+	fpl__PushPlatformMemory(&platformMemoryBlock, sizeof(fpl__PlatformAppState), 16, 0);
+
+	// Compute memory for video
+#	if defined(FPL__ENABLE_VIDEO)
 	if (initFlags & fplInitFlags_Video) {
-		platformAppStateSize += FPL__ARBITARY_PADDING;
-		videoMemoryOffset = platformAppStateSize;
-		platformAppStateSize += sizeof(fpl__VideoState);
+		fpl__PushPlatformMemory(&videoMemoryBlock, sizeof(fpl__VideoState), 16, 0);
 	}
-#endif
+#	endif
 
-#if defined(FPL__ENABLE_AUDIO)
-	size_t audioMemoryOffset = 0;
+	// Compute memory for audio
+#	if defined(FPL__ENABLE_AUDIO)
+	size_t maxAudioBackendSize = 0;
+	size_t offsetToAudioBackend = 0;
 	if (initFlags & fplInitFlags_Audio) {
-		platformAppStateSize += FPL__ARBITARY_PADDING;
-		audioMemoryOffset = platformAppStateSize;
-		platformAppStateSize += sizeof(fpl__AudioState);
+		fplAudioSettings audioSettings = fplZeroInit;
+		if (initSettings != fpl_null) {
+			audioSettings = initSettings->audio;
+		} else {
+			fplSetDefaultAudioSettings(&audioSettings);
+		}
+		maxAudioBackendSize = fpl__GetMaxAudioBackendSize(&audioSettings);
+		fpl__PushPlatformMemory(&audioMemoryBlock, sizeof(fpl__AudioState), 16, FPL__ARBITARY_PADDING);
+		fpl__PushPlatformMemory(&audioMemoryBlock, maxAudioBackendSize, 16, 0);
+		offsetToAudioBackend = sizeof(fpl__AudioState) + FPL__ARBITARY_PADDING;
 	}
-#endif
+#	endif
 
-	FPL_LOG_DEBUG(FPL__MODULE_CORE, "Allocate Platform App State Memory of size '%zu':", platformAppStateSize);
+	fpl__PlatformMemoryBlock *memoryBlocks[3] = fplZeroInit;
+	uint8_t memoryBlockCount = 0;
+	memoryBlocks[memoryBlockCount++] = &platformMemoryBlock;
+#	if defined(FPL__ENABLE_VIDEO)
+	if (initFlags & fplInitFlags_Video) {
+		memoryBlocks[memoryBlockCount++] = &videoMemoryBlock;
+	}
+#	endif
+#	if defined(FPL__ENABLE_AUDIO)
+	if (initFlags & fplInitFlags_Audio) {
+		memoryBlocks[memoryBlockCount++] = &audioMemoryBlock;
+	}
+#	endif
+
+	size_t totalMemorySize = 0;
+	for (uint8_t i = 0; i < memoryBlockCount; ++i) {
+		fpl__PlatformMemoryBlock *currentBlock = memoryBlocks[i];
+		currentBlock->offset = totalMemorySize;
+		size_t memoryBlockSize = currentBlock->size;
+		totalMemorySize += memoryBlockSize;
+		if (i < memoryBlockCount - 1) {
+			totalMemorySize += FPL__ARBITARY_PADDING;
+		}
+	}
+
+	FPL_LOG_DEBUG(FPL__MODULE_CORE, "Allocate Platform Memory of size '%zu':", totalMemorySize);
 	fplAssert(fpl__global__AppState == fpl_null);
-	void *platformAppStateMemory = fplMemoryAlignedAllocate(platformAppStateSize, 16);
-	if (platformAppStateMemory == fpl_null) {
-		FPL__CRITICAL(FPL__MODULE_CORE, "Failed Allocating Platform App State Memory of size '%zu'", platformAppStateSize);
+	uint8_t *platformMemory = (uint8_t *)fplMemoryAlignedAllocate(totalMemorySize, 16);
+	if (platformMemory == fpl_null) {
+		FPL__CRITICAL(FPL__MODULE_CORE, "Failed Allocating Platform Memory of size '%zu'", totalMemorySize);
 		return(fpl__SetPlatformResult(fplPlatformResultType_FailedAllocatingMemory));
 	}
 
-	fpl__PlatformAppState *appState = fpl__global__AppState = (fpl__PlatformAppState *)platformAppStateMemory;
+	fplAssert(platformMemoryBlock.offset == 0);
+	fpl__PlatformAppState *appState = fpl__global__AppState = (fpl__PlatformAppState *)platformMemory + platformMemoryBlock.offset;
 	appState->initFlags = initFlags;
 	if (initSettings != fpl_null) {
 		appState->initSettings = *initSettings;
@@ -23297,7 +23758,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 	}
 	appState->currentSettings = appState->initSettings;
 
-	FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully allocated Platform App State Memory of size '%zu'", platformAppStateSize);
+	FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully allocated Platform Memory of size '%zu'", totalMemorySize);
 
 	// Application types
 #	if defined(FPL_APPTYPE_WINDOW)
@@ -23366,9 +23827,10 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 	// Init video state
 #	if defined(FPL__ENABLE_VIDEO)
 	if (appState->initFlags & fplInitFlags_Video) {
-		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Video State");
-		appState->video.mem = (uint8_t *)platformAppStateMemory + videoMemoryOffset;
-		appState->video.memSize = sizeof(fpl__VideoState);
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Video State with size '%zu'", videoMemoryBlock.size);
+		fplAssert(audioMemoryBlock.offset > 0);
+		appState->video.mem = platformMemory + videoMemoryBlock.offset;
+		appState->video.memSize = videoMemoryBlock.size;
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
 		fplAssert(videoState != fpl_null);
 
@@ -23430,21 +23892,31 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 	// Init Audio
 #	if defined(FPL__ENABLE_AUDIO)
 	if (appState->initFlags & fplInitFlags_Audio) {
-		appState->audio.mem = (uint8_t *)platformAppStateMemory + audioMemoryOffset;
-		appState->audio.memSize = sizeof(fpl__AudioState);
+		fplAssert(audioMemoryBlock.offset > 0);
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Audio State with size '%zu'", audioMemoryBlock.size);
+		appState->audio.mem = platformMemory + audioMemoryBlock.offset;
+		appState->audio.memSize = audioMemoryBlock.size;
+
 		const char *audioBackendName = fplGetAudioBackendName(appState->initSettings.audio.backend);
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Audio with Backend '%s':", audioBackendName);
+
 		fpl__AudioState *audioState = fpl__GetAudioState(appState);
 		fplAssert(audioState != fpl_null);
+
+		fplAudioBackend *backend = (fplAudioBackend *)((uint8_t *)appState->audio.mem + offsetToAudioBackend);
+		audioState->common.backend = backend;
+		audioState->common.maxBackendSize = maxAudioBackendSize;
+		fplAssert(backend != fpl_null);
+
 		fplAudioResultType initAudioResult = fpl__InitAudio(&appState->initSettings.audio, audioState);
 		if (initAudioResult != fplAudioResultType_Success) {
 			const char *initAudioResultName = fplGetAudioResultName(initAudioResult);
-			const char *audioFormatName = fplGetAudioFormatName(audioState->common.desiredFormat.type);
+			const char *audioFormatName = fplGetAudioFormatName(backend->desiredFormat.type);
 			FPL__CRITICAL(FPL__MODULE_CORE, "Failed initialization audio with Backend '%s' settings (Format=%s, SampleRate=%d, Channels=%d) -> %s",
 				audioBackendName,
 				audioFormatName,
-				audioState->common.desiredFormat.sampleRate,
-				audioState->common.desiredFormat.channels,
+				backend->desiredFormat.sampleRate,
+				backend->desiredFormat.channels,
 				initAudioResultName);
 			fpl__ReleasePlatformStates(initState, appState);
 			return(fpl__SetPlatformResult(fplPlatformResultType_FailedAudio));
