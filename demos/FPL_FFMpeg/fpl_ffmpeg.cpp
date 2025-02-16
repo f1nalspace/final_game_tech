@@ -17,7 +17,7 @@ Author:
 
 Changelog:
 	## 2025-02-16
-	- Only allocate a new packet when needed
+	- Only allocate a new packet when needed / fixed dropped packets was never released
 
 	## 2025-01-28
 	- Fixed makefiles for CC/CMake was broken
