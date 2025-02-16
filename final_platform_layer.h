@@ -20615,9 +20615,11 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_Vulkan_Construct() {
 #if !defined(FPL__AUDIO_BACKEND_API_IMPLEMENTED) && defined(FPL__ENABLE_AUDIO)
 #	define FPL__AUDIO_BACKEND_API_IMPLEMENTED
 
+struct fplAudioContext;
+
 struct fplAudioBackend;
 
-#define FPL_AUDIO_BACKEND_INITIALIZE_FUNC(name) fplAudioResultType name(struct fplAudioBackend *backend, const fplSpecificAudioSettings *audioSettings, const fplAudioDeviceFormat *targetFormat, const fplAudioDeviceInfo *targetDevice, fplAudioDeviceFormat *outputFormat)
+#define FPL_AUDIO_BACKEND_INITIALIZE_FUNC(name) fplAudioResultType name(struct fplAudioContext *context, struct fplAudioBackend *backend, const fplSpecificAudioSettings *audioSettings, const fplAudioDeviceFormat *targetFormat, const fplAudioDeviceInfo *targetDevice, fplAudioDeviceFormat *outputFormat)
 /*!
 * @brief Initializes the specified @ref fplAudioBackend
 * @param backend The @ref fpl__AudioBackend reference
@@ -20628,22 +20630,22 @@ struct fplAudioBackend;
 */
 typedef	FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl_audio_backend_initialize_func);
 
-#define FPL_AUDIO_BACKEND_RELEASE_FUNC(name) bool name(struct fplAudioBackend *backend)
+#define FPL_AUDIO_BACKEND_RELEASE_FUNC(name) bool name(struct fplAudioContext *context, struct fplAudioBackend *backend)
 typedef	FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl_audio_backend_release_func);
 
-#define FPL_AUDIO_BACKEND_STOP_MAIN_LOOP_FUNC(name) void name(struct fplAudioBackend *backend)
+#define FPL_AUDIO_BACKEND_STOP_MAIN_LOOP_FUNC(name) void name(struct fplAudioContext *context, struct fplAudioBackend *backend)
 typedef	FPL_AUDIO_BACKEND_STOP_MAIN_LOOP_FUNC(fpl_audio_backend_stop_main_loop_func);
 
-#define FPL_AUDIO_BACKEND_STOP_DEVICE_FUNC(name) bool name(struct fplAudioBackend *backend)
+#define FPL_AUDIO_BACKEND_STOP_DEVICE_FUNC(name) bool name(struct fplAudioContext *context, struct fplAudioBackend *backend)
 typedef	FPL_AUDIO_BACKEND_STOP_DEVICE_FUNC(fpl_audio_backend_stop_device_func);
 
-#define FPL_AUDIO_BACKEND_START_DEVICE_FUNC(name) fplAudioResultType name(struct fplAudioBackend *backend)
+#define FPL_AUDIO_BACKEND_START_DEVICE_FUNC(name) fplAudioResultType name(struct fplAudioContext *context, struct fplAudioBackend *backend)
 typedef	FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl_audio_backend_start_device_func);
 
-#define FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(name) void name(struct fplAudioBackend *backend)
+#define FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(name) void name(struct fplAudioContext *context, struct fplAudioBackend *backend)
 typedef	FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl_audio_backend_main_loop_func);
 
-#define FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(name) uint32_t name(struct fplAudioBackend *backend, fplAudioDeviceInfo *deviceInfos, uint32_t maxDeviceCount)
+#define FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(name) uint32_t name(struct fplAudioContext *context, struct fplAudioBackend *backend, fplAudioDeviceInfo *deviceInfos, uint32_t maxDeviceCount)
 typedef	FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl_audio_backend_get_audio_devices_func);
 
 //! Audio function table
@@ -20738,13 +20740,18 @@ typedef enum fpl__AudioDeviceState {
 	fpl__AudioDeviceState_Stopping,
 } fpl__AudioDeviceState;
 
+typedef struct fplAudioContext {
+	// Current audio device state
+	volatile fpl__AudioDeviceState state;
+} fplAudioContext;
+
 typedef struct fpl__CommonAudioState {
 	// Audio function table
 	fplAudioBackendFunctionTable funcTable;
 	// Reference to the active @ref fplAudioBackend, actual backend data starts directly after with an additional padding of @ref FPL_AUDIO_BACKEND_DATA_PADDING
 	fplAudioBackend *backend;
-	// Current audio device state
-	volatile fpl__AudioDeviceState state;
+	// Audio context
+	fplAudioContext context;
 } fpl__CommonAudioState;
 
 fpl_internal uint32_t fpl__ReadAudioFramesFromClient(const fplAudioBackend *backend, uint32_t frameCount, void *pSamples) {
@@ -20770,9 +20777,9 @@ static GUID FPL__GUID_KSDATAFORMAT_SUBTYPE_IEEE_FLOAT = { 0x00000003, 0x0000, 0x
 #endif
 
 // Forward declarations
-fpl_internal fpl__AudioDeviceState fpl__AudioGetDeviceState(fpl__CommonAudioState *audioState);
-fpl_internal bool fpl__IsAudioDeviceInitialized(fpl__CommonAudioState *audioState);
-fpl_internal bool fpl__IsAudioDeviceStarted(fpl__CommonAudioState *audioState);
+fpl_internal fpl__AudioDeviceState fpl__AudioGetDeviceState(fplAudioContext *context);
+fpl_internal bool fpl__IsAudioDeviceInitialized(fplAudioContext *context);
+fpl_internal bool fpl__IsAudioDeviceStarted(fplAudioContext *context);
 
 // ############################################################################
 //
@@ -20928,7 +20935,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudiobackendDirectSoundIniti
 
 #define FPL__DSOUND_INIT_ERROR(ret, format, ...) do { \
 	FPL__ERROR(FPL__MODULE_AUDIO_DIRECTSOUND, format, ## __VA_ARGS__); \
-	fpl__AudiobackendDirectSoundRelease(backend); \
+	fpl__AudiobackendDirectSoundRelease(context, backend); \
 	return ret; \
 } while (0)
 
@@ -22493,194 +22500,68 @@ fpl_internal fpl__AudioState *fpl__GetAudioState(fpl__PlatformAppState *appState
 	return(result);
 }
 
+fpl_internal fplAudioBackend *fpl__GetActiveAudioBackend(fpl__AudioState *audioState) {
+	if (audioState == fpl_null || audioState->common.backend == fpl_null) {
+		return fpl_null;
+	}
+	return audioState->common.backend;
+}
+
 fpl_internal void fpl__StopAudioDeviceMainLoop(fpl__AudioState *audioState) {
 	fplAssert(audioState != fpl_null && audioState->common.backend != fpl_null);
 	fplAssert(audioState->common.funcTable.stopMainLoop != fpl_null);
-	audioState->common.funcTable.stopMainLoop(audioState->common.backend);
-
-	/*
-	fplAssert(audioState->backendType > fplAudioBackendType_Auto);
-	switch (audioState->backendType) {
-
-#	if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
-		case fplAudioBackendType_DirectSound:
-		{
-			fpl__AudioStopMainLoopDirectSound(&audioState->dsound);
-		} break;
-#	endif
-
-#	if defined(FPL__ENABLE_AUDIO_ALSA)
-		case fplAudioBackendType_Alsa:
-		{
-			fpl__AudioStopMainLoopAlsa(&audioState->alsa);
-		} break;
-#	endif
-
-		default:
-			break;
-	}
-	*/
+	audioState->common.funcTable.stopMainLoop(&audioState->common.context, audioState->common.backend);
 }
 
 fpl_internal bool fpl__ReleaseAudioDevice(fpl__AudioState *audioState) {
 	fplAssert(audioState != fpl_null && audioState->common.backend != fpl_null);
 	fplAssert(audioState->common.funcTable.release != fpl_null);
-	bool result = audioState->common.funcTable.release(audioState->common.backend);
+	bool result = audioState->common.funcTable.release(&audioState->common.context, audioState->common.backend);
 	return(result);
-
-	/*
-	fplAssert(audioState->backendType > fplAudioBackendType_Auto);
-	bool result = false;
-	switch (audioState->backendType) {
-
-#	if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
-		case fplAudioBackendType_DirectSound:
-		{
-			result = fpl__AudioReleaseDirectSound(&audioState->common, &audioState->dsound);
-		} break;
-#	endif
-
-#	if defined(FPL__ENABLE_AUDIO_ALSA)
-		case fplAudioBackendType_Alsa:
-		{
-			result = fpl__AudioReleaseAlsa(&audioState->common, &audioState->alsa);
-		} break;
-#	endif
-
-		default:
-			break;
-	}
-	return (result);
-	*/
 }
 
 fpl_internal bool fpl__StopAudioDevice(fpl__AudioState *audioState) {
 	fplAssert(audioState != fpl_null && audioState->common.backend != fpl_null);
 	fplAssert(audioState->common.funcTable.stopDevice != fpl_null);
-	bool result = audioState->common.funcTable.stopDevice(audioState->common.backend);
+	bool result = audioState->common.funcTable.stopDevice(&audioState->common.context, audioState->common.backend);
 	return(result);
-
-	/*
-	fplAssert(audioState->backendType > fplAudioBackendType_Auto);
-	bool result = false;
-	switch (audioState->backendType) {
-
-#	if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
-		case fplAudioBackendType_DirectSound:
-		{
-			result = fpl__AudioStopDirectSound(&audioState->dsound);
-		} break;
-#	endif
-
-#	if defined(FPL__ENABLE_AUDIO_ALSA)
-		case fplAudioBackendType_Alsa:
-		{
-			result = fpl__AudioStopAlsa(&audioState->alsa);
-		} break;
-#	endif
-
-		default:
-			break;
-	}
-	return (result);
-	*/
 }
 
 fpl_internal fplAudioResultType fpl__StartAudioDevice(fpl__AudioState *audioState) {
 	fplAssert(audioState != fpl_null && audioState->common.backend != fpl_null);
 	fplAssert(audioState->common.funcTable.startDevice != fpl_null);
-	fplAudioResultType result = audioState->common.funcTable.startDevice(audioState->common.backend);
+	fplAudioResultType result = audioState->common.funcTable.startDevice(&audioState->common.context, audioState->common.backend);
 	return(result);
-
-	/*
-	fplAssert(audioState->backendType > fplAudioBackendType_Auto);
-	fplAudioResultType result = fplAudioResultType_Failed;
-	switch (audioState->backendType) {
-
-#	if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
-		case fplAudioBackendType_DirectSound:
-		{
-			result = fpl__AudioStartDirectSound(&audioState->common, &audioState->dsound);
-		} break;
-#	endif
-
-#	if defined(FPL__ENABLE_AUDIO_ALSA)
-		case fplAudioBackendType_Alsa:
-		{
-			result = fpl__AudioStartAlsa(&audioState->common, &audioState->alsa);
-		} break;
-#	endif
-
-		default:
-			break;
-	}
-	return (result);
-	*/
 }
 
 fpl_internal void fpl__RunAudioDeviceMainLoop(fpl__AudioState *audioState) {
 	fplAssert(audioState != fpl_null && audioState->common.backend != fpl_null);
 	fplAssert(audioState->common.funcTable.mainLoop != fpl_null);
-	audioState->common.funcTable.mainLoop(audioState->common.backend);
-
-	/*
-	fplAssert(audioState->backendType > fplAudioBackendType_Auto);
-	switch (audioState->backendType) {
-
-#	if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
-		case fplAudioBackendType_DirectSound:
-		{
-			fpl__AudioRunMainLoopDirectSound(&audioState->common, &audioState->dsound);
-		} break;
-#	endif
-
-#	if defined(FPL__ENABLE_AUDIO_ALSA)
-		case fplAudioBackendType_Alsa:
-		{
-			fpl__AudioRunMainLoopAlsa(&audioState->common, &audioState->alsa);
-		} break;
-#	endif
-
-		default:
-			break;
-	}
-	*/
+	audioState->common.funcTable.mainLoop(&audioState->common.context, audioState->common.backend);
 }
 
-/*
-fpl_internal bool fpl__IsAudioBackendAsync(const fplAudioBackendType backendType) {
-	switch (backendType) {
-		case fplAudioBackendType_DirectSound:
-		case fplAudioBackendType_Alsa:
-			return false;
-		default:
-			return false;
-	}
-}
-*/
-
-fpl_internal void fpl__AudioSetDeviceState(fpl__CommonAudioState *audioState, fpl__AudioDeviceState newState) {
-	fplAtomicStoreU32((volatile uint32_t *)&audioState->state, (uint32_t)newState);
+fpl_internal void fpl__AudioSetDeviceState(fplAudioContext *context, fpl__AudioDeviceState newState) {
+	fplAtomicStoreU32((volatile uint32_t *)&context->state, (uint32_t)newState);
 }
 
-fpl_internal fpl__AudioDeviceState fpl__AudioGetDeviceState(fpl__CommonAudioState *audioState) {
-	fpl__AudioDeviceState result = (fpl__AudioDeviceState)fplAtomicLoadU32((volatile uint32_t *)&audioState->state);
+fpl_internal fpl__AudioDeviceState fpl__AudioGetDeviceState(fplAudioContext *context) {
+	fpl__AudioDeviceState result = (fpl__AudioDeviceState)fplAtomicLoadU32((volatile uint32_t *)&context->state);
 	return(result);
 }
 
-fpl_internal bool fpl__IsAudioDeviceInitialized(fpl__CommonAudioState *audioState) {
-	if (audioState == fpl_null) {
+fpl_internal bool fpl__IsAudioDeviceInitialized(fplAudioContext *context) {
+	if (context == fpl_null) {
 		return false;
 	}
-	fpl__AudioDeviceState state = fpl__AudioGetDeviceState(audioState);
+	fpl__AudioDeviceState state = fpl__AudioGetDeviceState(context);
 	return(state != fpl__AudioDeviceState_Uninitialized);
 }
 
-fpl_internal bool fpl__IsAudioDeviceStarted(fpl__CommonAudioState *audioState) {
-	if (audioState == fpl_null) {
+fpl_internal bool fpl__IsAudioDeviceStarted(fplAudioContext *context) {
+	if (context == fpl_null) {
 		return false;
 	}
-	fpl__AudioDeviceState state = fpl__AudioGetDeviceState(audioState);
+	fpl__AudioDeviceState state = fpl__AudioGetDeviceState(context);
 	return(state == fpl__AudioDeviceState_Started);
 }
 
@@ -22691,9 +22572,12 @@ fpl_internal void fpl__AudioWorkerThread(const fplThreadHandle *thread, void *da
 #endif
 
 	fpl__AudioState *audioState = (fpl__AudioState *)data;
-	fpl__CommonAudioState *commonAudioState = &audioState->common;
 	fplAssert(audioState != fpl_null);
 	fplAssert(audioState->backendType != fplAudioBackendType_None);
+
+	fpl__CommonAudioState *commonAudioState = &audioState->common;
+
+	fplAudioContext *context = &commonAudioState->context;
 
 #if defined(FPL_PLATFORM_WINDOWS)
 	wapi->ole.CoInitializeEx(fpl_null, 0);
@@ -22704,7 +22588,7 @@ fpl_internal void fpl__AudioWorkerThread(const fplThreadHandle *thread, void *da
 		fpl__StopAudioDevice(audioState);
 
 		// Let the other threads know that the device has been stopped.
-		fpl__AudioSetDeviceState(commonAudioState, fpl__AudioDeviceState_Stopped);
+		fpl__AudioSetDeviceState(context, fpl__AudioDeviceState_Stopped);
 		fpl__SetAudioEvent(&audioState->stopEvent);
 
 		// We wait until the audio device gets wake up
@@ -22714,12 +22598,12 @@ fpl_internal void fpl__AudioWorkerThread(const fplThreadHandle *thread, void *da
 		audioState->workResult = fplAudioResultType_Success;
 
 		// Just break if we're terminating.
-		if (fpl__AudioGetDeviceState(commonAudioState) == fpl__AudioDeviceState_Uninitialized) {
+		if (fpl__AudioGetDeviceState(context) == fpl__AudioDeviceState_Uninitialized) {
 			break;
 		}
 
 		// Expect that the device is currently be started by the client
-		fplAssert(fpl__AudioGetDeviceState(commonAudioState) == fpl__AudioDeviceState_Starting);
+		fplAssert(fpl__AudioGetDeviceState(context) == fpl__AudioDeviceState_Starting);
 
 		// Start audio device
 		audioState->workResult = fpl__StartAudioDevice(audioState);
@@ -22729,7 +22613,7 @@ fpl_internal void fpl__AudioWorkerThread(const fplThreadHandle *thread, void *da
 		}
 
 		// The audio device is started, mark it as such
-		fpl__AudioSetDeviceState(commonAudioState, fpl__AudioDeviceState_Started);
+		fpl__AudioSetDeviceState(context, fpl__AudioDeviceState_Started);
 		fpl__SetAudioEvent(&audioState->startEvent);
 
 		// Enter audio device main loop
@@ -22754,17 +22638,19 @@ fpl_internal void fpl__ReleaseAudio(fpl__AudioState *audioState) {
 
 	fpl__CommonAudioState *commonAudioState = &audioState->common;
 
-	if (fpl__IsAudioDeviceInitialized(commonAudioState)) {
+	fplAudioContext *context = &commonAudioState->context;
+
+	if (fpl__IsAudioDeviceInitialized(context)) {
 
 		// Wait until the audio device is stopped
-		if (fpl__IsAudioDeviceStarted(commonAudioState)) {
+		if (fpl__IsAudioDeviceStarted(context)) {
 			while (fplStopAudio() == fplAudioResultType_DeviceBusy) {
 				fplThreadSleep(1);
 			}
 		}
 
 		// Putting the device into an uninitialized state will make the worker thread return.
-		fpl__AudioSetDeviceState(commonAudioState, fpl__AudioDeviceState_Uninitialized);
+		fpl__AudioSetDeviceState(context, fpl__AudioDeviceState_Uninitialized);
 
 		// Wake up the worker thread and wait for it to properly terminate.
 		fpl__SetAudioEvent(&audioState->wakeupEvent);
@@ -22810,8 +22696,12 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 	fplAssert(platformAudioState->offsetToBackend > 0);
 	fplAssert(platformAudioState->mem != fpl_null);
 
+	fpl__CommonAudioState *common = &audioState->common;
+
+	fplAudioContext *context = &common->context;
+
 	fplAudioBackend *backend = (fplAudioBackend *)((uint8_t *)platformAudioState->mem + platformAudioState->offsetToBackend);
-	audioState->common.backend = backend;
+	common->backend = backend;
 	fplAssert(backend != fpl_null);
 		
 	// Clear backend
@@ -22859,9 +22749,9 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 	for (size_t backendIndex = 0; backendIndex < audioBackendCount; ++backendIndex) {
 		const fplAudioBackendDescriptor *descriptor = &descriptors[backendIndex];
 		fplAssert(descriptor->header.isValid && descriptor->table.initialize != fpl_null);
-		initResult = descriptor->table.initialize(backend, &audioSettings->specific, &backend->desiredFormat, &audioSettings->targetDevice, &backend->internalFormat);
+		initResult = descriptor->table.initialize(context, backend, &audioSettings->specific, &backend->desiredFormat, &audioSettings->targetDevice, &backend->internalFormat);
 		if (initResult != fplAudioResultType_Success) {
-			descriptor->table.release(backend);
+			descriptor->table.release(context, backend);
 		} else {
 			audioState->common.funcTable = descriptor->table;
 			audioState->backendType = descriptor->header.type;
@@ -22869,56 +22759,6 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 			break;
 		}
 	}
-
-#if 0
-
-	// Prope backends
-	fplAudioBackendType propeBackendTypes[16];
-	uint32_t backendCount = 0;
-	if (audioSettings->backend == fplAudioBackendType_Auto) {
-		// @NOTE(final): Add all audio backends here, regardless of the platform.
-		propeBackendTypes[backendCount++] = fplAudioBackendType_DirectSound;
-		propeBackendTypes[backendCount++] = fplAudioBackendType_Alsa;
-	} else {
-		// @NOTE(final): Forced audio backend
-		propeBackendTypes[backendCount++] = audioSettings->backend;
-	}
-	fplAudioResultType initResult = fplAudioResultType_Failed;
-	for (uint32_t backendIndex = 0; backendIndex < backendCount; ++backendIndex) {
-		fplAudioBackendType propeBackendType = propeBackendTypes[backendIndex];
-
-		initResult = fplAudioResultType_Failed;
-		switch (propeBackendType) {
-#		if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
-			case fplAudioBackendType_DirectSound:
-			{
-				initResult = fpl__AudioInitDirectSound(audioSettings, &audioState->common.desiredFormat, &audioState->common, &audioState->dsound);
-				if (initResult != fplAudioResultType_Success) {
-					fpl__AudioReleaseDirectSound(&audioState->common, &audioState->dsound);
-				}
-			} break;
-#		endif
-
-#		if defined(FPL__ENABLE_AUDIO_ALSA)
-			case fplAudioBackendType_Alsa:
-			{
-				initResult = fpl__AudioInitAlsa(audioSettings, &audioState->common.desiredFormat, &audioState->common, &audioState->alsa);
-				if (initResult != fplAudioResultType_Success) {
-					fpl__AudioReleaseAlsa(&audioState->common, &audioState->alsa);
-				}
-			} break;
-#		endif
-
-			default:
-				break;
-		}
-		if (initResult == fplAudioResultType_Success) {
-			audioState->backendType = propeBackendType;
-			audioState->isAsyncBackend = fpl__IsAudioBackendAsync(propeBackendType);
-			break;
-		}
-	}
-#endif
 
 	if (initResult != fplAudioResultType_Success) {
 		fpl__ReleaseAudio(audioState);
@@ -22941,10 +22781,10 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 		// Wait for the worker thread to put the device into the stopped state.
 		fpl__WaitForAudioEvent(&audioState->stopEvent);
 	} else {
-		fpl__AudioSetDeviceState(&audioState->common, fpl__AudioDeviceState_Stopped);
+		fpl__AudioSetDeviceState(context, fpl__AudioDeviceState_Stopped);
 	}
 
-	fplAssert(fpl__AudioGetDeviceState(&audioState->common) == fpl__AudioDeviceState_Stopped);
+	fplAssert(fpl__AudioGetDeviceState(context) == fpl__AudioDeviceState_Stopped);
 
 	return(fplAudioResultType_Success);
 }
@@ -23409,11 +23249,13 @@ fpl_common_api fplAudioResultType fplStopAudio() {
 
 	fpl__CommonAudioState *commonAudioState = &audioState->common;
 
-	if (!fpl__IsAudioDeviceInitialized(commonAudioState)) {
+	fplAudioContext *context = &commonAudioState->context;
+
+	if (!fpl__IsAudioDeviceInitialized(context)) {
 		return fplAudioResultType_DeviceNotInitialized;
 	}
 
-	fpl__AudioDeviceState firstDeviceState = fpl__AudioGetDeviceState(commonAudioState);
+	fpl__AudioDeviceState firstDeviceState = fpl__AudioGetDeviceState(context);
 	if (firstDeviceState == fpl__AudioDeviceState_Stopped) {
 		return fplAudioResultType_Success;
 	}
@@ -23422,22 +23264,22 @@ fpl_common_api fplAudioResultType fplStopAudio() {
 	fplMutexLock(&audioState->lock);
 	{
 		// Check if the device is already stopped
-		if (fpl__AudioGetDeviceState(commonAudioState) == fpl__AudioDeviceState_Stopping) {
+		if (fpl__AudioGetDeviceState(context) == fpl__AudioDeviceState_Stopping) {
 			fplMutexUnlock(&audioState->lock);
 			return fplAudioResultType_DeviceAlreadyStopped;
 		}
-		if (fpl__AudioGetDeviceState(commonAudioState) == fpl__AudioDeviceState_Stopped) {
+		if (fpl__AudioGetDeviceState(context) == fpl__AudioDeviceState_Stopped) {
 			fplMutexUnlock(&audioState->lock);
 			return fplAudioResultType_DeviceAlreadyStopped;
 		}
 
 		// The device needs to be in a started state. If it's not, we just let the caller know the device is busy.
-		if (fpl__AudioGetDeviceState(commonAudioState) != fpl__AudioDeviceState_Started) {
+		if (fpl__AudioGetDeviceState(context) != fpl__AudioDeviceState_Started) {
 			fplMutexUnlock(&audioState->lock);
 			return fplAudioResultType_DeviceBusy;
 		}
 
-		fpl__AudioSetDeviceState(commonAudioState, fpl__AudioDeviceState_Stopping);
+		fpl__AudioSetDeviceState(context, fpl__AudioDeviceState_Stopping);
 
 		if (audioState->isAsyncBackend) {
 			// Asynchronous backends (Has their own thread)
@@ -23468,11 +23310,13 @@ fpl_common_api fplAudioResultType fplPlayAudio() {
 
 	fpl__CommonAudioState *commonAudioState = &audioState->common;
 
-	if (!fpl__IsAudioDeviceInitialized(commonAudioState)) {
+	fplAudioContext *context = &commonAudioState->context;
+
+	if (!fpl__IsAudioDeviceInitialized(context)) {
 		return fplAudioResultType_DeviceNotInitialized;
 	}
 
-	if (fpl__AudioGetDeviceState(commonAudioState) == fpl__AudioDeviceState_Started) {
+	if (fpl__AudioGetDeviceState(context) == fpl__AudioDeviceState_Started) {
 		return fplAudioResultType_Success;
 	}
 
@@ -23480,27 +23324,27 @@ fpl_common_api fplAudioResultType fplPlayAudio() {
 	fplMutexLock(&audioState->lock);
 	{
 		// If device is already in started/starting state we cannot start playback of it
-		if (fpl__AudioGetDeviceState(commonAudioState) == fpl__AudioDeviceState_Starting) {
+		if (fpl__AudioGetDeviceState(context) == fpl__AudioDeviceState_Starting) {
 			fplMutexUnlock(&audioState->lock);
 			return fplAudioResultType_DeviceAlreadyStarted;
 		}
-		if (fpl__AudioGetDeviceState(commonAudioState) == fpl__AudioDeviceState_Started) {
+		if (fpl__AudioGetDeviceState(context) == fpl__AudioDeviceState_Started) {
 			fplMutexUnlock(&audioState->lock);
 			return fplAudioResultType_DeviceAlreadyStarted;
 		}
 
 		// The device needs to be in a stopped state. If it's not, we just let the caller know the device is busy.
-		if (fpl__AudioGetDeviceState(commonAudioState) != fpl__AudioDeviceState_Stopped) {
+		if (fpl__AudioGetDeviceState(context) != fpl__AudioDeviceState_Stopped) {
 			fplMutexUnlock(&audioState->lock);
 			return fplAudioResultType_DeviceBusy;
 		}
 
-		fpl__AudioSetDeviceState(commonAudioState, fpl__AudioDeviceState_Starting);
+		fpl__AudioSetDeviceState(context, fpl__AudioDeviceState_Starting);
 
 		if (audioState->isAsyncBackend) {
 			// Asynchronous backends (Has their own thread)
 			fpl__StartAudioDevice(audioState);
-			fpl__AudioSetDeviceState(commonAudioState, fpl__AudioDeviceState_Started);
+			fpl__AudioSetDeviceState(context, fpl__AudioDeviceState_Started);
 		} else {
 			// Synchronous backends
 			fpl__SetAudioEvent(&audioState->wakeupEvent);
@@ -23524,7 +23368,9 @@ fpl_common_api fplAudioResultType fplLoadAudio(fplAudioSettings *audioSettings) 
 		return fplAudioResultType_SystemNotInitialized;
 	}
 
-	if (fpl__IsAudioDeviceInitialized(&audioState->common)) {
+	fplAudioContext *context = &audioState->common.context;
+
+	if (fpl__IsAudioDeviceInitialized(context)) {
 		fpl__ReleaseAudio(audioState);
 	}
 
@@ -23583,7 +23429,8 @@ fpl_common_api bool fplUnloadAudio() {
 	if (audioState == fpl_null) {
 		return false;
 	}
-	if (!fpl__IsAudioDeviceInitialized(&audioState->common)) {
+	fplAudioContext *context = &audioState->common.context;
+	if (!fpl__IsAudioDeviceInitialized(context)) {
 		return false;
 	}
 	fpl__ReleaseAudio(audioState);
@@ -23613,8 +23460,9 @@ fpl_common_api bool fplSetAudioClientReadCallback(fpl_audio_client_read_callback
 	if (audioState == fpl_null || backend == fpl_null) {
 		return false;
 	}
+	fplAudioContext *context = &audioState->common.context;
 	bool invalidBackend = !(audioState->backendType > fplAudioBackendType_Auto);
-	bool notStopped = fpl__AudioGetDeviceState(&audioState->common) != fpl__AudioDeviceState_Stopped;
+	bool notStopped = fpl__AudioGetDeviceState(context) != fpl__AudioDeviceState_Stopped;
 	if (invalidBackend || notStopped) {
 		return false;
 	}
@@ -23629,7 +23477,8 @@ fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo *devices, uint32_t
 	}
 	FPL__CheckPlatform(0);
 	fpl__AudioState *audioState = fpl__GetAudioState(fpl__global__AppState);
-	fplAudioBackend *backend = audioState != fpl_null ? audioState->common.backend : fpl_null;
+	fplAudioContext *context = &audioState->common.context;
+	fplAudioBackend *backend = fpl__GetActiveAudioBackend(audioState);
 	if (audioState == fpl_null || backend == fpl_null) {
 		return 0;
 	}
@@ -23638,7 +23487,7 @@ fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo *devices, uint32_t
 		return 0;
 	}
 	fplAssert(audioState->common.funcTable.getAudioDevices != fpl_null);
-	uint32_t result = audioState->common.funcTable.getAudioDevices(backend, devices, maxDeviceCount);
+	uint32_t result = audioState->common.funcTable.getAudioDevices(context, backend, devices, maxDeviceCount);
 	return(result);
 }
 #endif // FPL__ENABLE_AUDIO
@@ -23774,7 +23623,8 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 			fpl__AudioState *audioState = fpl__GetAudioState(fpl__global__AppState);
 			if (audioState != fpl_null) {
 				fpl__CommonAudioState *commonAudioState = &audioState->common;
-				fpl__AudioDeviceState deviceState = fpl__AudioGetDeviceState(commonAudioState);
+				fplAudioContext *context = &commonAudioState->context;
+				fpl__AudioDeviceState deviceState = fpl__AudioGetDeviceState(context);
 				if (deviceState != fpl__AudioDeviceState_Stopped) {
 					FPL_LOG_DEBUG("Core", "Stop Audio (Auto)");
 					fplStopAudio();
