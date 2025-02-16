@@ -1883,7 +1883,7 @@ struct PlayerState {
 };
 
 static void ReleaseMedia(PlayerState &state, const PlayingState finishState, const uint32_t mainThreadId);
-static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const fplAudioDeviceFormat &nativeAudioFormat, const uint32_t mainThreadId);
+static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const uint32_t mainThreadId);
 
 static void VideoDecodingThreadProc(const fplThreadHandle *thread, void *userData);
 static void AudioDecodingThreadProc(const fplThreadHandle *thread, void *userData);
@@ -1937,6 +1937,7 @@ static void StopAndReleaseMedia(PlayerState &state, const uint32_t mainThreadId)
 	// Stop audio
 	if (state.audio.isValid) {
 		fplStopAudio();
+		fplUnloadAudio();
 	}
 
 	// Stop reader
@@ -1958,10 +1959,10 @@ static void StopAndReleaseMedia(PlayerState &state, const uint32_t mainThreadId)
 	globalMemStats = {};
 };
 
-static bool LoadAndPlayMedia(PlayerState &state, const char *mediaURL, const fplAudioDeviceFormat &nativeAudioFormat, const uint32_t mainThreadId) {
+static bool LoadAndPlayMedia(PlayerState &state, const char *mediaURL, const uint32_t mainThreadId) {
 	fplAssert(state.state == PlayingState::Unloaded || state.state == PlayingState::Failed);
 
-	if (!LoadMedia(state, mediaURL, nativeAudioFormat, mainThreadId)) {
+	if (!LoadMedia(state, mediaURL, mainThreadId)) {
 		fplAssert(state.state == PlayingState::Failed);
 		return false;
 	}
@@ -2014,7 +2015,6 @@ struct AppState {
 	PlayerState player;
 	FontInfo fontInfo;
 	FontBuffer fontBuffer;
-	fplAudioDeviceFormat nativeAudioFormat;
 	fplWindowSize viewport;
 	LoadState loadState;	
 	uint32_t mainThreadId;
@@ -3774,8 +3774,9 @@ static uint64_t MapChannelLayout(const fplAudioChannelLayout layout) {
 	}
 }
 
-static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const fplAudioDeviceFormat &nativeAudioFormat) {
+static bool InitializeAudio(PlayerState &state, const char *mediaFilePath) {
 	AudioContext &audio = state.audio;
+
 	AVCodecContext *audioCodexCtx = audio.stream.codecContext;
 
 	AVSampleFormat targetSampleFormat;
@@ -3793,6 +3794,30 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 	int inputSampleRate;
 
 	int lineSize;
+
+	fplAudioDeviceFormat nativeAudioFormat = fplZeroInit;
+
+	fplAudioSettings audioSettings = fplZeroInit;
+	fplSetDefaultAudioSettings(&audioSettings);
+
+	// Overwrite target format with audio codec infos (e.g. Channels, Sample Rate, Format)
+	audioSettings.targetFormat.channels = audioCodexCtx->channels;
+	audioSettings.targetFormat.sampleRate = audioCodexCtx->sample_rate;
+	audioSettings.targetFormat.type = MapAVSampleFormat(audioCodexCtx->sample_fmt);
+
+	// Init audio system and get audio hardware format
+	fplAudioResultType loadAudioRes = fplLoadAudio(&audioSettings);
+	if (loadAudioRes != fplAudioResultType_Success) {
+		FPL_LOG_ERROR("App", "Failed initialize audio system with configuration (sample rate '%u', channels: %u, type: %s)", audioSettings.targetFormat.sampleRate, audioSettings.targetFormat.channels, fplGetAudioFormatName(audioSettings.targetFormat.type));
+		goto failed;
+	}
+
+	if (!fplGetAudioHardwareFormat(&nativeAudioFormat)) {
+		FPL_LOG_ERROR("App", "Failed retrieving audio hardware format for configuration (sample rate: %u, channels: %u, type: %s)", audioSettings.targetFormat.sampleRate, audioSettings.targetFormat.channels, fplGetAudioFormatName(audioSettings.targetFormat.type));
+		goto failed;
+	}
+
+	state.audio.backend = fplGetAudioBackendType();
 
 	// Init audio decoder
 	if (!InitDecoder(audio.decoder, &state, &state.reader, &audio.stream, MAX_AUDIO_FRAME_QUEUE_COUNT, 1)) {
@@ -3818,6 +3843,7 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 	audio.audioTarget.sampleRate = targetSampleRate;
 	audio.audioTarget.type = nativeAudioFormat.type;
 	audio.audioTarget.bufferSizeInBytes = ffmpeg.av_samples_get_buffer_size(nullptr, audio.audioTarget.channels, audio.audioTarget.sampleRate, targetSampleFormat, 1);
+	audio.audioTarget.backend = state.audio.backend;
 
 	inputSampleFormat = audioCodexCtx->sample_fmt;
 
@@ -3915,7 +3941,7 @@ static void ReleaseMedia(PlayerState &state, const PlayingState finishState, con
 	SetPlayingState(state, finishState);
 }
 
-static bool LoadMedia(PlayerState &state, const char *mediaURL, const fplAudioDeviceFormat &nativeAudioFormat, const uint32_t mainThreadId) {
+static bool LoadMedia(PlayerState &state, const char *mediaURL, const uint32_t mainThreadId) {
 	fplAssert(state.state == PlayingState::Unloaded || state.state == PlayingState::Failed);
 
 	bool isURL = fplIsStringMatchWildcard(mediaURL, "http://*") || fplIsStringMatchWildcard(mediaURL, "https://*");
@@ -3992,7 +4018,7 @@ static bool LoadMedia(PlayerState &state, const char *mediaURL, const fplAudioDe
 
 	// Allocate audio related resources
 	if (state.audio.stream.isValid) {
-		state.audio.isValid = InitializeAudio(state, mediaURL, nativeAudioFormat);
+		state.audio.isValid = InitializeAudio(state, mediaURL);
 		if (!state.audio.isValid) {
 			goto release;
 		}
@@ -4066,7 +4092,7 @@ static void LoadMediaThreadProc(const fplThreadHandle *thread, void *userData) {
 			fplMutexLock(&loadState.mutex);
 			StopAndReleaseMedia(state->player, state->mainThreadId);
 			if (fplGetStringLength(loadState.url) > 0) {
-				LoadAndPlayMedia(state->player, loadState.url, state->nativeAudioFormat, state->mainThreadId);
+				LoadAndPlayMedia(state->player, loadState.url, state->mainThreadId);
 			}
 			loadState.url = fpl_null;
 			loadState.state = 0;
@@ -4098,6 +4124,8 @@ int main(int argc, char **argv) {
 #endif
 	settings.video.isAutoSize = false;
 	settings.video.isVSync = false;
+
+	settings.audio.manualLoad = true;
 	
 	fplLogSettings log = fplZeroInit;
 	log.maxLevel = fplLogLevel_All;
@@ -4129,11 +4157,6 @@ int main(int argc, char **argv) {
 
 	// Init
 	if (!InitApp(state)) {
-		goto release;
-	}
-
-	// Get native audio format
-	if (!fplGetAudioHardwareFormat(&state.nativeAudioFormat)) {
 		goto release;
 	}
 
