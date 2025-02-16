@@ -17,7 +17,7 @@ Author:
 
 Changelog:
 	## 2025-02-16
-	- Fixed dropped packets was never released
+	- Only allocate a new packet when needed
 
 	## 2025-01-28
 	- Fixed makefiles for CC/CMake was broken
@@ -819,9 +819,13 @@ static void StopDecoder(Decoder &decoder) {
 	FlushPacketQueue(decoder.packetsQueue);
 }
 
-static void AddPacketToDecoder(Decoder &decoder, PacketList *targetPacket, AVPacket *sourcePacket) {
-	targetPacket->packet = *sourcePacket;
-	PushPacket(decoder.packetsQueue, targetPacket);
+static void AddPacketToDecoder(Decoder &decoder, AVPacket *sourcePacket) {
+	PacketList *targetPacket = nullptr;
+	if (AquirePacket(decoder.packetsQueue, targetPacket)) {
+		assert(targetPacket != nullptr);
+		targetPacket->packet = *sourcePacket;
+		PushPacket(decoder.packetsQueue, targetPacket);
+	}
 }
 
 //
@@ -2946,43 +2950,37 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 		}
 
 		if (hasPendingPacket) {
-			// Try to get new packet from the freelist
-			PacketList *targetPacket = nullptr;
-			if (AquirePacket(reader.packetQueue, targetPacket)) {
-				assert(targetPacket != nullptr);
 
 #if PRINT_QUEUE_INFOS
-				uint32_t packetIndex = fplAtomicAddAndFetchU32(&reader.readPacketCount, 1);
-				fplDebugFormatOut("Read packet %lu\n", packetIndex);
+			uint32_t packetIndex = fplAtomicAddAndFetchU32(&reader.readPacketCount, 1);
+			fplDebugFormatOut("Read packet %lu\n", packetIndex);
 #endif
 
-				// Check if packet is in play range, then queue, otherwise discard
-				int64_t streamStartTime = formatCtx->streams[srcPacket.stream_index]->start_time;
-				int64_t pktTimeStamp = (srcPacket.pts == AV_NOPTS_VALUE) ? srcPacket.dts : srcPacket.pts;
-				double timeInSeconds = (double)(pktTimeStamp - (streamStartTime != AV_NOPTS_VALUE ? streamStartTime : 0)) * av_q2d(formatCtx->streams[srcPacket.stream_index]->time_base);
-				bool pktInPlayRange = (!state->settings.duration.isValid) ||
-					((timeInSeconds / (double)AV_TIME_BASE) <= ((double)state->settings.duration.value / (double)AV_TIME_BASE));
+			// Check if packet is in play range, then queue, otherwise discard
+			int64_t streamStartTime = formatCtx->streams[srcPacket.stream_index]->start_time;
+			int64_t pktTimeStamp = (srcPacket.pts == AV_NOPTS_VALUE) ? srcPacket.dts : srcPacket.pts;
+			double timeInSeconds = (double)(pktTimeStamp - (streamStartTime != AV_NOPTS_VALUE ? streamStartTime : 0)) * av_q2d(formatCtx->streams[srcPacket.stream_index]->time_base);
+			bool pktInPlayRange = (!state->settings.duration.isValid) ||
+				((timeInSeconds / (double)AV_TIME_BASE) <= ((double)state->settings.duration.value / (double)AV_TIME_BASE));
 
-				if ((videoStream != nullptr) && (srcPacket.stream_index == videoStream->streamIndex) && pktInPlayRange) {
-					AddPacketToDecoder(video.decoder, targetPacket, &srcPacket);
+			if ((videoStream != nullptr) && (srcPacket.stream_index == videoStream->streamIndex) && pktInPlayRange) {
+				AddPacketToDecoder(video.decoder, &srcPacket);
 #if PRINT_QUEUE_INFOS
-					fplDebugFormatOut("Queued video packet %lu\n", packetIndex);
+				fplDebugFormatOut("Queued video packet %lu\n", packetIndex);
 #endif
-				} else if ((audioStream != nullptr) && (srcPacket.stream_index == audioStream->streamIndex) && pktInPlayRange) {
-					AddPacketToDecoder(audio.decoder, targetPacket, &srcPacket);
+			} else if ((audioStream != nullptr) && (srcPacket.stream_index == audioStream->streamIndex) && pktInPlayRange) {
+				AddPacketToDecoder(audio.decoder, &srcPacket);
 #if PRINT_QUEUE_INFOS
-					fplDebugFormatOut("Queued audio packet %lu\n", packetIndex);
+				fplDebugFormatOut("Queued audio packet %lu\n", packetIndex);
 #endif
-				} else {
+			} else {
 #if PRINT_QUEUE_INFOS
-					fplDebugFormatOut("Dropped packet %lu\n", packetIndex);
+				fplDebugFormatOut("Dropped packet %lu\n", packetIndex);
 #endif
-					ReleasePacket(reader.packetQueue, targetPacket);
-
-					ffmpeg.av_packet_unref(&srcPacket);
-				}
-				hasPendingPacket = false;
+				ffmpeg.av_packet_unref(&srcPacket);
 			}
+			hasPendingPacket = false;
+
 			skipWait = true;
 		}
 	}
