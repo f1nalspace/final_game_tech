@@ -23525,7 +23525,6 @@ fpl_common_api fplAudioResultType fplLoadAudio(fplAudioSettings *audioSettings) 
 	}
 
 	if (fpl__IsAudioDeviceInitialized(&audioState->common)) {
-		fplStopAudio();
 		fpl__ReleaseAudio(audioState);
 	}
 
@@ -23558,7 +23557,6 @@ fpl_common_api bool fplUnloadAudio() {
 	if (!fpl__IsAudioDeviceInitialized(&audioState->common)) {
 		return false;
 	}
-	fplStopAudio();
 	fpl__ReleaseAudio(audioState);
 	return true;
 }
