@@ -16,6 +16,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2025-02-16
+	- Fixed dropped packets was never released
+
 	## 2025-01-28
 	- Fixed makefiles for CC/CMake was broken
 	- Fixed FFMPEG includes was not used in CC/CMake files
@@ -407,6 +410,7 @@ static void FlushPacketQueue(PacketQueue &queue) {
 	queue.duration = 0;
 	fplMutexUnlock(&queue.lock);
 	fplAtomicExchangeS32(&globalMemStats.usedPackets, 0);
+	fplAtomicExchangeS32(&globalMemStats.allocatedPackets, 0);
 #if PRINT_FLUSHES
 	fplConsoleFormatOut("PacketQueue flushed: %d\n", queue.serial);
 #endif
@@ -2973,6 +2977,8 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 #if PRINT_QUEUE_INFOS
 					fplDebugFormatOut("Dropped packet %lu\n", packetIndex);
 #endif
+					ReleasePacket(reader.packetQueue, targetPacket);
+
 					ffmpeg.av_packet_unref(&srcPacket);
 				}
 				hasPendingPacket = false;
