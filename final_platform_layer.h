@@ -6995,6 +6995,8 @@ typedef enum fplAudioResultType {
 	fplAudioResultType_UnsetAudioSampleRate,
 	//! The audio buffer size is not set
 	fplAudioResultType_UnsetAudioBufferSize,
+	//! The audio device format is unsupported
+	fplAudioResultType_UnsuportedDeviceFormat,
     //! No memory available
     fplAudioResultType_OutOfMemory,
     //! Unknown error
@@ -22520,6 +22522,7 @@ fpl_globalvar const char *fpl__global_audioResultTypeNameTable[] = {
 	"Number of audio channels was not set", // fplAudioResultType_UnsetAudioChannels,
 	"Audio sample rate was not set", // fplAudioResultType_UnsetAudioSampleRate,
 	"Audio buffer sizes was not set", // fplAudioResultType_UnsetAudioBufferSize,
+	"Audio device format is unsupported", // fplAudioResultType_UnsuportedDeviceFormat,
     "No memory available", // fplAudioResultType_OutOfMemory,
     "Unknown audio failure", // fplAudioResultType_Failed,
 };
