@@ -136,6 +136,7 @@ SOFTWARE.
 	
 	### Overview
 	- Improved and extended system/platform detection macros
+	- Refactored audio system to use dispatch tables
 	- Removed several obsolete functions
 	- Fixed incorrect audio format
 
@@ -3899,10 +3900,10 @@ typedef enum fplAudioSpeakerLayout {
 	fplAudioSpeakerLayout_FrontLeft = 1 << 0,
 	//! Front right
 	fplAudioSpeakerLayout_FrontRight = 1 << 1,
-	//! LFE
-	fplAudioSpeakerLayout_LFE = 1 << 2,
 	//! Front center
-	fplAudioSpeakerLayout_FrontCenter = 1 << 3,
+	fplAudioSpeakerLayout_FrontCenter = 1 << 2,
+	//! LFE
+	fplAudioSpeakerLayout_LFE = 1 << 3,
 	//! Back left
 	fplAudioSpeakerLayout_BackLeft = 1 << 4,
 	//! Back right
@@ -3931,6 +3932,12 @@ typedef enum fplAudioSpeakerLayout {
 	fplAudioSpeakerLayout_TopBackCenter = 1 << 16,
 	//! Top back right
 	fplAudioSpeakerLayout_TopBackRight = 1 << 17,
+
+	//! Mono mask
+	fplAudioSpeakerLayout_Mono = fplAudioSpeakerLayout_FrontCenter,
+	//! Stereo mask
+	fplAudioSpeakerLayout_Stereo = fplAudioSpeakerLayout_FrontLeft | fplAudioSpeakerLayout_FrontRight,
+
 } fplAudioSpeakerLayout;
 //! Audio speaker layout operator overloads for C++
 FPL_ENUM_AS_FLAGS_OPERATORS(fplAudioSpeakerLayout);
@@ -21098,12 +21105,14 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudiobackendDirectSoundIniti
 	//
 	// Channels Mapping
 	//
+	fplAssert(internalFormat.channels < fplArrayCount(channelsMapping->mapping));
+
 	fplClearStruct(channelsMapping);
 	if (internalFormat.channels == 1) {
 		channelsMapping->channelCount = 1;
 		channelsMapping->layout = fplAudioChannelLayout_Mono;
-		channelsMapping->mask = fplAudioSpeakerLayout_FrontLeft;
-		channelsMapping->mapping[0] = fplAudioSpeakerLayout_FrontLeft;
+		channelsMapping->mask = fplAudioSpeakerLayout_FrontCenter;
+		channelsMapping->mapping[0] = fplAudioSpeakerLayout_FrontCenter;
 	} else if (internalFormat.channels == 2) {
 		channelsMapping->channelCount = 2;
 		channelsMapping->layout = fplAudioChannelLayout_Stereo;
