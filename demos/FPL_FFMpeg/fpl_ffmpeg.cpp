@@ -1217,12 +1217,17 @@ struct AudioFormat {
 	fplAudioBackendType backend;
 };
 
+struct AudioChannelMapping {
+	uint8_t channels[16];
+};
+
 struct AudioContext {
 	MediaStream stream;
 	Decoder decoder;
 	AudioFormat audioSource;
 	AudioFormat audioTarget;
 	Clock clock;
+	AudioChannelMapping channelMapping;
 	double audioClock;
 	int32_t audioClockSerial;
 	int32_t audioDiffAvgCount;
@@ -2603,8 +2608,10 @@ static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, cons
 		uint8_t *conversionAudioBuffer = audio->conversionAudioBuffer;
 		uint32_t maxConversionAudioBufferSize = audio->maxConversionAudioBufferSize;
 
-		uint32_t outputSampleStride = fplGetAudioFrameSizeInBytes(nativeFormat->type, nativeFormat->channels);
-		uint32_t maxOutputSampleBufferSize = outputSampleStride * frameCount;
+		uint32_t outputSamplesStride = fplGetAudioFrameSizeInBytes(nativeFormat->type, nativeFormat->channels);
+		uint32_t outputFormatSize = fplGetAudioFrameSizeInBytes(nativeFormat->type, 1);
+
+		uint32_t maxOutputSampleBufferSize = outputSamplesStride * frameCount;
 
 		uint32_t nativeBufferSizeInBytes = fplGetAudioBufferSizeInBytes(nativeFormat->type, nativeFormat->channels, nativeFormat->bufferSizeInFrames);
 
@@ -2613,23 +2620,30 @@ static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, cons
 		uint32_t remainingFrameCount = frameCount;
 		while (remainingFrameCount > 0) {
 			if (state->isPaused) {
-				WriteSilenceSamples(audio, remainingFrameCount, outputSampleStride, conversionAudioBuffer);
+				WriteSilenceSamples(audio, remainingFrameCount, outputSamplesStride, conversionAudioBuffer);
 			}
 
 			// Consume audio in conversion buffer before we do anything else
 			if ((audio->conversionAudioFramesRemaining) > 0) {
 				uint32_t maxFramesToRead = audio->conversionAudioFramesRemaining;
 				uint32_t framesToRead = fplMin(remainingFrameCount, maxFramesToRead);
-				size_t bytesToCopy = framesToRead * outputSampleStride;
+				size_t bytesToCopy = framesToRead * outputSamplesStride;
 
 				assert(audio->conversionAudioFrameIndex < audio->maxConversionAudioFrameCount);
-				size_t sourcePosition = audio->conversionAudioFrameIndex * outputSampleStride;
+				size_t sourcePosition = audio->conversionAudioFrameIndex * outputSamplesStride;
 				assert(sourcePosition < audio->maxConversionAudioBufferSize);
 
-				size_t destPosition = (frameCount - remainingFrameCount) * outputSampleStride;
+				size_t destPosition = (frameCount - remainingFrameCount) * outputSamplesStride;
 				assert(destPosition < maxOutputSampleBufferSize);
 
-				fplMemoryCopy(conversionAudioBuffer + sourcePosition, bytesToCopy, (uint8_t *)outputSamples + destPosition);
+				for (uint32_t frameIndex = 0; frameIndex < framesToRead; ++frameIndex) {
+					uintptr_t sourceFramePosition = sourcePosition + frameIndex * outputSamplesStride;
+					uintptr_t destFramePosition = destPosition + frameIndex * outputSamplesStride;
+					for (uint32_t channelIndex = 0; channelIndex < nativeFormat->channels; ++channelIndex) {
+						uint32_t targetChannelIndex = channelIndex;
+						fplMemoryCopy(conversionAudioBuffer + sourceFramePosition + channelIndex * outputFormatSize, outputFormatSize, (uint8_t *)outputSamples + destFramePosition + targetChannelIndex * outputFormatSize);
+					}
+				}
 
 				remainingFrameCount -= framesToRead;
 				audio->conversionAudioFrameIndex += framesToRead;
@@ -2705,7 +2719,7 @@ static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, cons
 				} else {
 					// No audio frame available, write silence for the remaining frames
 					if (remainingFrameCount > 0) {
-						WriteSilenceSamples(audio, remainingFrameCount, outputSampleStride, conversionAudioBuffer);
+						WriteSilenceSamples(audio, remainingFrameCount, outputSamplesStride, conversionAudioBuffer);
 					} else {
 						break;
 					}
@@ -2715,7 +2729,7 @@ static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, cons
 
 		// Update audio clock
 		if (!isnan(audio->audioClock)) {
-			uint32_t writtenSize = result * outputSampleStride;
+			uint32_t writtenSize = result * outputSamplesStride;
 			double pts = audio->audioClock - (double)(nativeFormat->periods * nativeBufferSizeInBytes + writtenSize) / (double)targetFormat->bufferSizeInBytes;
 			SetClockAt(audio->clock, pts, audio->audioClockSerial, audioCallbackTime / (double)AV_TIME_BASE);
 			SyncClockToSlave(state->externalClock, audio->clock);
@@ -3774,6 +3788,82 @@ static uint64_t MapChannelLayout(const fplAudioChannelLayout layout) {
 	}
 }
 
+static fplAudioSpeakerLayout BuildSpeakerLayout(const fplAudioChannelLayout layout) {
+	switch (layout) {
+		case fplAudioChannelLayout_Mono:
+			return fplAudioSpeakerLayout_FrontLeft;
+		case fplAudioChannelLayout_Stereo:
+			return fplAudioSpeakerLayout_FrontLeft | fplAudioSpeakerLayout_FrontRight;
+		case fplAudioChannelLayout_2_1:
+			return fplAudioSpeakerLayout_FrontLeft | fplAudioSpeakerLayout_FrontRight | fplAudioSpeakerLayout_LFE;
+		case fplAudioChannelLayout_4_0:
+			return fplAudioSpeakerLayout_FrontLeft | fplAudioSpeakerLayout_FrontRight | fplAudioSpeakerLayout_BackLeft | fplAudioSpeakerLayout_BackRight;
+		case fplAudioChannelLayout_4_1:
+			return fplAudioSpeakerLayout_FrontLeft | fplAudioSpeakerLayout_FrontRight | fplAudioSpeakerLayout_LFE | fplAudioSpeakerLayout_BackLeft | fplAudioSpeakerLayout_BackRight;
+		case fplAudioChannelLayout_5_1:
+			return fplAudioSpeakerLayout_FrontLeft | fplAudioSpeakerLayout_FrontRight | fplAudioSpeakerLayout_LFE | fplAudioSpeakerLayout_FrontCenter | fplAudioSpeakerLayout_BackLeft | fplAudioSpeakerLayout_BackRight;
+		case fplAudioChannelLayout_7_1:
+			return fplAudioSpeakerLayout_FrontLeft | fplAudioSpeakerLayout_FrontRight | fplAudioSpeakerLayout_LFE | fplAudioSpeakerLayout_FrontCenter | fplAudioSpeakerLayout_BackLeft | fplAudioSpeakerLayout_BackRight | fplAudioSpeakerLayout_SideLeft | fplAudioSpeakerLayout_SideRight;
+		default:
+			return fplAudioSpeakerLayout_None;
+	}
+}
+
+static uint64_t MapSpeakerLayoutToAVChannel(const fplAudioSpeakerLayout speakerLayout) {
+	switch (speakerLayout) {
+		case fplAudioSpeakerLayout_FrontLeft:
+			return AV_CH_FRONT_LEFT;
+		case fplAudioSpeakerLayout_FrontRight:
+			return AV_CH_FRONT_RIGHT;
+		case fplAudioSpeakerLayout_FrontCenter:
+			return AV_CH_FRONT_CENTER;
+		case fplAudioSpeakerLayout_LFE:
+			return AV_CH_LOW_FREQUENCY;
+		case fplAudioSpeakerLayout_BackLeft:
+			return AV_CH_BACK_LEFT;
+		case fplAudioSpeakerLayout_BackRight:
+			return AV_CH_BACK_RIGHT;
+		case fplAudioSpeakerLayout_FrontLeftOfCenter:
+			return AV_CH_FRONT_LEFT_OF_CENTER;
+		case fplAudioSpeakerLayout_FrontRightOfCenter:
+			return AV_CH_FRONT_RIGHT_OF_CENTER;
+		case fplAudioSpeakerLayout_BackCenter:
+			return AV_CH_BACK_CENTER;
+		case fplAudioSpeakerLayout_SideLeft:
+			return AV_CH_SIDE_LEFT;
+		case fplAudioSpeakerLayout_SideRight:
+			return AV_CH_SIDE_RIGHT;
+		case fplAudioSpeakerLayout_TopCenter:
+			return AV_CH_TOP_CENTER;
+		case fplAudioSpeakerLayout_TopFrontLeft:
+			return AV_CH_TOP_FRONT_LEFT;
+		case fplAudioSpeakerLayout_TopFrontCenter:
+			return AV_CH_TOP_FRONT_CENTER;
+		case fplAudioSpeakerLayout_TopFrontRight:
+			return AV_CH_TOP_FRONT_RIGHT;
+		case fplAudioSpeakerLayout_TopBackLeft:
+			return AV_CH_TOP_BACK_LEFT;
+		case fplAudioSpeakerLayout_TopBackCenter:
+			return AV_CH_TOP_BACK_CENTER;
+		case fplAudioSpeakerLayout_TopBackRight:
+			return AV_CH_TOP_BACK_RIGHT;
+		default:
+			return 0;
+	}
+}
+
+static void InitializeChannelMapping(const uint64_t channelLayout, const uint32_t channelCount, AudioChannelMapping *mapping) {
+	uint8_t maxChannelCount = fplArrayCount(mapping->channels);
+	for (uint8_t channelIndex = 0; channelIndex < channelCount; ++channelIndex) {
+		int foundChannelIndex = ffmpeg.av_get_channel_layout_channel_index(channelLayout, channelIndex + 1);
+		if (foundChannelIndex >= 0 && foundChannelIndex < maxChannelCount) {
+			mapping->channels[channelIndex] = foundChannelIndex;
+		} else {
+			mapping->channels[channelIndex] = channelIndex;
+		}
+	}
+}
+
 static bool InitializeAudio(PlayerState &state, const char *mediaFilePath) {
 	AudioContext &audio = state.audio;
 
@@ -3853,6 +3943,9 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath) {
 	if (inputChannelLayout == 0) {
 		inputChannelLayout = ffmpeg.av_get_default_channel_layout(inputChannelCount);
 	}
+
+	fplAudioSpeakerLayout speakerLayout = BuildSpeakerLayout(nativeAudioFormat.channelLayout);
+	InitializeChannelMapping(inputChannelLayout, nativeAudioFormat.channels, &audio.channelMapping);
 
 	audio.audioSource = {};
 	audio.audioSource.channels = inputChannelCount;
