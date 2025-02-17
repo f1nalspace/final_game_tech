@@ -225,6 +225,9 @@ typedef FFMPEG_AV_GET_PACKED_SAMPLE_FMT_FUNC(ffmpeg_av_get_packed_sample_fmt_fun
 // av_get_default_channel_layout
 #define FFMPEG_AV_GET_DEFAULT_CHANNEL_LAYOUT_FUNC(name) int64_t name(int nb_channels)
 typedef FFMPEG_AV_GET_DEFAULT_CHANNEL_LAYOUT_FUNC(ffmpeg_av_get_default_channel_layout_func);
+// av_get_channel_layout_channel_index
+#define FFMPEG_AV_GET_CHANNEL_LAYOUT_CHANNEL_INDEX_FUNC(name) int name(uint64_t channel_layout, uint64_t channel)
+typedef FFMPEG_AV_GET_CHANNEL_LAYOUT_CHANNEL_INDEX_FUNC(ffmpeg_av_get_channel_layout_channel_index_func);
 // av_usleep
 #define FFMPEG_AV_USLEEP_FUNC(name) int name(unsigned usec)
 typedef FFMPEG_AV_USLEEP_FUNC(ffmpeg_av_usleep_func);
@@ -379,6 +382,7 @@ struct FFMPEGContext {
 	ffmpeg_av_freep_func* av_freep;
 	ffmpeg_av_get_packed_sample_fmt_func* av_get_packed_sample_fmt;
 	ffmpeg_av_get_default_channel_layout_func* av_get_default_channel_layout;
+	ffmpeg_av_get_channel_layout_channel_index_func *av_get_channel_layout_channel_index;
 	ffmpeg_av_usleep_func* av_usleep;
 	ffmpeg_av_strdup_func* av_strdup;
 	ffmpeg_av_log2_func* av_log2;
@@ -615,6 +619,7 @@ static bool LoadFFMPEG(FFMPEGContext& ffmpeg) {
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_freep, ffmpeg_av_freep_func, "av_freep");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_get_packed_sample_fmt, ffmpeg_av_get_packed_sample_fmt_func, "av_get_packed_sample_fmt");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_get_default_channel_layout, ffmpeg_av_get_default_channel_layout_func, "av_get_default_channel_layout");
+	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_get_channel_layout_channel_index, ffmpeg_av_get_channel_layout_channel_index_func, "av_get_channel_layout_channel_index");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_usleep, ffmpeg_av_usleep_func, "av_usleep");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_strdup, ffmpeg_av_strdup_func, "av_strdup");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_log2, ffmpeg_av_log2_func, "av_log2");
