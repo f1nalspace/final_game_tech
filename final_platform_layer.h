@@ -22229,8 +22229,6 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendAlsaInitialize) 
 	fplAssert(impl != fpl_null);
 
 #	define FPL__ALSA_INIT_ERROR(ret, format, ...) do { \
-		if (softwareParams != fpl_null) fpl__ReleaseTemporaryMemory(softwareParams); \
-		if (hardwareParams != fpl_null) fpl__ReleaseTemporaryMemory(hardwareParams); \
 		FPL__ERROR(FPL__MODULE_AUDIO_ALSA, format, ## __VA_ARGS__); \
         fpl__AudioBackendAlsaRelease(context, backend); \
         return ret; \

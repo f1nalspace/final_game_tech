@@ -3887,6 +3887,8 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath) {
 
 	fplAudioDeviceFormat nativeAudioFormat = fplZeroInit;
 
+    fplAudioSpeakerLayout speakerLayout;
+
 	fplAudioSettings audioSettings = fplZeroInit;
 	fplSetDefaultAudioSettings(&audioSettings);
 
@@ -3944,7 +3946,7 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath) {
 		inputChannelLayout = ffmpeg.av_get_default_channel_layout(inputChannelCount);
 	}
 
-	fplAudioSpeakerLayout speakerLayout = BuildSpeakerLayout(nativeAudioFormat.channelLayout);
+    speakerLayout = BuildSpeakerLayout(nativeAudioFormat.channelLayout);
 	InitializeChannelMapping(inputChannelLayout, nativeAudioFormat.channels, &audio.channelMapping);
 
 	audio.audioSource = {};
