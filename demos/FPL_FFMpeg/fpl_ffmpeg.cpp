@@ -4044,13 +4044,20 @@ static bool LoadMedia(PlayerState &state, const char *mediaURL, const uint32_t m
 		return(false);
 	}
 
+	char tmpError[AV_ERROR_MAX_STRING_SIZE];
+
 	state.filePathOrUrl = mediaURL;
 
 	SetPlayingState(state, PlayingState::Loading);
 
 	// Open media file
-	if (ffmpeg.avformat_open_input(&state.formatCtx, mediaURL, nullptr, nullptr) != 0) {
-		FPL_LOG_ERROR("App", "Failed opening media file '%s'!\n", mediaURL);
+	int openInputRes = ffmpeg.avformat_open_input(&state.formatCtx, mediaURL, nullptr, nullptr);
+	if (openInputRes != 0) {
+		if (ffmpeg.av_strerror(openInputRes, tmpError, fplArrayCount(tmpError) == 0)) {
+			FPL_LOG_ERROR("App", "Failed opening media file '%s' -> %s\n", mediaURL, tmpError);
+		} else {
+			FPL_LOG_ERROR("App", "Failed opening media file '%s' -> Code: %d\n", mediaURL, openInputRes);
+		}
 		goto release;
 	}
 
