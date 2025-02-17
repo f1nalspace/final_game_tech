@@ -2636,12 +2636,16 @@ static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, cons
 				size_t destPosition = (frameCount - remainingFrameCount) * outputSamplesStride;
 				assert(destPosition < maxOutputSampleBufferSize);
 
-				for (uint32_t frameIndex = 0; frameIndex < framesToRead; ++frameIndex) {
-					uintptr_t sourceFramePosition = sourcePosition + frameIndex * outputSamplesStride;
-					uintptr_t destFramePosition = destPosition + frameIndex * outputSamplesStride;
-					for (uint32_t channelIndex = 0; channelIndex < nativeFormat->channels; ++channelIndex) {
-						uint32_t targetChannelIndex = channelIndex;
-						fplMemoryCopy(conversionAudioBuffer + sourceFramePosition + channelIndex * outputFormatSize, outputFormatSize, (uint8_t *)outputSamples + destFramePosition + targetChannelIndex * outputFormatSize);
+				if (nativeFormat->channels <= 2) {
+					fplMemoryCopy(conversionAudioBuffer + sourcePosition, bytesToCopy, (uint8_t *)outputSamples + destPosition);
+				} else {
+					for (uint32_t frameIndex = 0; frameIndex < framesToRead; ++frameIndex) {
+						uintptr_t sourceFramePosition = sourcePosition + frameIndex * outputSamplesStride;
+						uintptr_t destFramePosition = destPosition + frameIndex * outputSamplesStride;
+						for (uint32_t channelIndex = 0; channelIndex < nativeFormat->channels; ++channelIndex) {
+							uint32_t targetChannelIndex = channelIndex;
+							fplMemoryCopy(conversionAudioBuffer + sourceFramePosition + channelIndex * outputFormatSize, outputFormatSize, (uint8_t *)outputSamples + destFramePosition + targetChannelIndex * outputFormatSize);
+						}
 					}
 				}
 
