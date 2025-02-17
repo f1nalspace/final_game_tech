@@ -3864,90 +3864,90 @@ typedef enum fplAudioLatencyMode {
 
 //! An enumeration of audio channel layouts
 typedef enum fplAudioChannelLayout {
+	//! Unsupported audio channel layout
+	fplAudioChannelLayout_Unsupported = -1,
 	//! Automatic channel layout (based on number of channels and/or sound device)
-	fplAudioChannelLayout_Auto = 0,
-	//! Mono audio channel layout (1.0, Single)
+	fplAudioChannelLayout_Automatic = 0,
+	//! Mono audio channel layout (1.0, Single Channel: Front)
 	fplAudioChannelLayout_Mono,
-	//! Stereo audio channel audio layout (2.0, Front)
+	//! Stereo audio channel audio layout (2.0, 2 Channels: Front)
 	fplAudioChannelLayout_Stereo,
-	//! 2.1 audio channel layout (2.1, Front/Sub)
+	//! 2.1 audio channel layout (2.1, 3 Channels: Front/Sub)
 	fplAudioChannelLayout_2_1,
-	//! 3.0 audio channel layout (3.0, Front/Center)
+	//! 3.0 audio channel layout (3.0, 3 Channels: Front/Center)
 	fplAudioChannelLayout_3_0,
-	//! 4.0 audio channel layout (4.0, Front/Rear)
+	//! 4.0 audio channel layout (4.0, 4 Channels: Front/Rear)
 	fplAudioChannelLayout_4_0,
-	//! 4.1 audio channel layout (4.1, Front/Rear/Sub)
+	//! 4.1 audio channel layout (4.1, 5 Channels: Front/Rear/Sub)
 	fplAudioChannelLayout_4_1,
-	//! 5.1 audio channel layout (5.1, Front/Rear/Center/Sub)
+	//! 5.1 audio channel layout (5.1, 6 Channels: Front/Rear/Center/Sub)
 	fplAudioChannelLayout_5_1,
-	//! 7.1 audio channel layout (7.1, Front/Rear/Center/Side/Sub)
+	//! 7.1 audio channel layout (7.1, 8 Channels: Front/Rear/Center/Side/Sub)
 	fplAudioChannelLayout_7_1,
 	//! Number of audio channel layouts
 	fplAudioChannelLayout_Count,
-	//! Unsupported audio channel layout
-	fplAudioChannelLayout_Unsupported = fplAudioChannelLayout_Count,
 	//! First audio channel layout
-	fplAudioChannelLayout_First = fplAudioChannelLayout_Auto,
+	fplAudioChannelLayout_First = fplAudioChannelLayout_Mono,
 	//! Last audio channel layout
 	fplAudioChannelLayout_Last = fplAudioChannelLayout_7_1,
 } fplAudioChannelLayout;
 
-//! An enumeration flags of a audio speaker layout
-typedef enum fplAudioSpeakerLayout {
-	//! No speaker set
-	fplAudioSpeakerLayout_None = 0,
+//! An enumeration flags of a audio channels
+typedef enum fplAudioChannelFlags {
+	//! No or unknown audio channel
+	fplAudioChannelFlags_None = 0,
 	//! Front left
-	fplAudioSpeakerLayout_FrontLeft = 1 << 0,
+	fplAudioChannelFlags_FrontLeft = 1 << 0,
 	//! Front right
-	fplAudioSpeakerLayout_FrontRight = 1 << 1,
+	fplAudioChannelFlags_FrontRight = 1 << 1,
 	//! Front center
-	fplAudioSpeakerLayout_FrontCenter = 1 << 2,
-	//! LFE
-	fplAudioSpeakerLayout_LFE = 1 << 3,
+	fplAudioChannelFlags_FrontCenter = 1 << 2,
+	//! Low Frequency
+	fplAudioChannelFlags_LowFrequency = 1 << 3,
 	//! Back left
-	fplAudioSpeakerLayout_BackLeft = 1 << 4,
+	fplAudioChannelFlags_BackLeft = 1 << 4,
 	//! Back right
-	fplAudioSpeakerLayout_BackRight = 1 << 5,
+	fplAudioChannelFlags_BackRight = 1 << 5,
 	//! Front left of center
-	fplAudioSpeakerLayout_FrontLeftOfCenter = 1 << 6,
+	fplAudioChannelFlags_FrontLeftOfCenter = 1 << 6,
 	//! Front right of center
-	fplAudioSpeakerLayout_FrontRightOfCenter = 1 << 7,
+	fplAudioChannelFlags_FrontRightOfCenter = 1 << 7,
 	//! Front back center
-	fplAudioSpeakerLayout_BackCenter = 1 << 8,
+	fplAudioChannelFlags_BackCenter = 1 << 8,
 	//! Side left
-	fplAudioSpeakerLayout_SideLeft = 1 << 9,
+	fplAudioChannelFlags_SideLeft = 1 << 9,
 	//! Side right
-	fplAudioSpeakerLayout_SideRight = 1 << 10,
+	fplAudioChannelFlags_SideRight = 1 << 10,
 	//! Top center
-	fplAudioSpeakerLayout_TopCenter = 1 << 11,
+	fplAudioChannelFlags_TopCenter = 1 << 11,
 	//! Top front left
-	fplAudioSpeakerLayout_TopFrontLeft = 1 << 12,
+	fplAudioChannelFlags_TopFrontLeft = 1 << 12,
 	//! Top front center
-	fplAudioSpeakerLayout_TopFrontCenter = 1 << 13,
+	fplAudioChannelFlags_TopFrontCenter = 1 << 13,
 	//! Top front right
-	fplAudioSpeakerLayout_TopFrontRight = 1 << 14,
+	fplAudioChannelFlags_TopFrontRight = 1 << 14,
 	//! Top back left
-	fplAudioSpeakerLayout_TopBackLeft = 1 << 15,
+	fplAudioChannelFlags_TopBackLeft = 1 << 15,
 	//! Top back center
-	fplAudioSpeakerLayout_TopBackCenter = 1 << 16,
+	fplAudioChannelFlags_TopBackCenter = 1 << 16,
 	//! Top back right
-	fplAudioSpeakerLayout_TopBackRight = 1 << 17,
+	fplAudioChannelFlags_TopBackRight = 1 << 17,
 
 	//! Mono mask
-	fplAudioSpeakerLayout_Mono = fplAudioSpeakerLayout_FrontCenter,
+	fplAudioChannelFlags_Mono = fplAudioChannelFlags_FrontCenter,
 	//! Stereo mask
-	fplAudioSpeakerLayout_Stereo = fplAudioSpeakerLayout_FrontLeft | fplAudioSpeakerLayout_FrontRight,
+	fplAudioChannelFlags_Stereo = fplAudioChannelFlags_FrontLeft | fplAudioChannelFlags_FrontRight,
 
-} fplAudioSpeakerLayout;
+} fplAudioChannelFlags;
 //! Audio speaker layout operator overloads for C++
-FPL_ENUM_AS_FLAGS_OPERATORS(fplAudioSpeakerLayout);
+FPL_ENUM_AS_FLAGS_OPERATORS(fplAudioChannelFlags);
 
 //! A structure storing the mapping of all audio channels to a speaker
 typedef struct fplAudioChannelsMapping {
 	//! The mapping from channel 0-15 to the speaker layout bit
-	fplAudioSpeakerLayout mapping[16];
+	fplAudioChannelFlags mapping[16];
 	//! The full audio speaker layout bit mask
-	fplAudioSpeakerLayout mask;
+	fplAudioChannelFlags mask;
 	//! The audio channel layout
 	fplAudioChannelLayout layout;
 	//! Number of audio channels
@@ -20876,6 +20876,15 @@ static GUID FPL__IID_IDirectSoundNotify = { 0xb0210783, 0x89cd, 0x11d0, {0xaf, 0
 	GUID *FPL__IID_IDirectSoundNotify_Guid = &FPL__IID_IDirectSoundNotify;
 #endif
 
+fpl_globalvar const DWORD fpl__DirectSound_ChannelMask_Mono = SPEAKER_FRONT_CENTER;
+fpl_globalvar const DWORD fpl__DirectSound_ChannelMask_Stereo = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT;
+fpl_globalvar const DWORD fpl__DirectSound_ChannelMask_2_1 = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT | SPEAKER_LOW_FREQUENCY;
+fpl_globalvar const DWORD fpl__DirectSound_ChannelMask_3_0 = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT | SPEAKER_FRONT_CENTER;
+fpl_globalvar const DWORD fpl__DirectSound_ChannelMask_4_0 = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT | SPEAKER_BACK_LEFT | SPEAKER_BACK_RIGHT;
+fpl_globalvar const DWORD fpl__DirectSound_ChannelMask_4_1 = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT | SPEAKER_LOW_FREQUENCY | SPEAKER_BACK_LEFT | SPEAKER_BACK_RIGHT;
+fpl_globalvar const DWORD fpl__DirectSound_ChannelMask_5_1 = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT | SPEAKER_FRONT_CENTER | SPEAKER_LOW_FREQUENCY | SPEAKER_BACK_LEFT | SPEAKER_BACK_RIGHT;
+fpl_globalvar const DWORD fpl__DirectSound_ChannelMask_7_1 = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT | SPEAKER_FRONT_CENTER | SPEAKER_LOW_FREQUENCY | SPEAKER_BACK_LEFT | SPEAKER_BACK_RIGHT | SPEAKER_SIDE_LEFT | SPEAKER_SIDE_RIGHT;
+
 typedef struct {
 	HMODULE dsoundLibrary;
 	func_DirectSoundCreate *DirectSoundCreate;
@@ -20972,7 +20981,81 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudiobackendDirectSou
 	return(result);
 }
 
-fpl_internal fplAudioResultType fpl__CreateDirectSoundSecondaryBuffer(fpl__AudioBackendDirectSound *impl, const fplAudioDeviceFormat *sourceFormat, fplAudioDeviceFormat *outputFormat, WAVEFORMATEXTENSIBLE *outputWaveFormat, LPDIRECTSOUNDBUFFER *outputBuffer) {
+fpl_internal DWORD fpl__BuildDirectSoundChannelMapping(const uint16_t channels, const fplAudioChannelLayout layout, fplAudioChannelsMapping *mapping) {
+	fplClearStruct(mapping);
+
+	mapping->channelCount = channels;
+
+	uint16_t channelsFromLayout = fplGetAudioChannelsFromLayout(layout);
+
+	if (channelsFromLayout != channels) {
+		mapping->layout = fplGetAudioChannelLayoutFromChannels(channels);
+	} else {
+		mapping->layout = layout;
+	}
+
+	if (channels == 1 || mapping->layout == fplAudioChannelLayout_Mono) {
+		mapping->mask = fplAudioChannelFlags_FrontCenter;
+		mapping->mapping[0] = fplAudioChannelFlags_FrontCenter;
+		return fpl__DirectSound_ChannelMask_Mono;
+	} else if (channels == 2 || mapping->layout == fplAudioChannelLayout_Stereo) {
+		mapping->mask = fplAudioChannelFlags_FrontLeft | fplAudioChannelFlags_FrontRight;
+		mapping->mapping[0] = fplAudioChannelFlags_FrontLeft;
+		mapping->mapping[1] = fplAudioChannelFlags_FrontRight;
+		return fpl__DirectSound_ChannelMask_Stereo;
+	} else if (channels == 3 || mapping->layout == fplAudioChannelLayout_2_1) {
+		mapping->mask = fplAudioChannelFlags_FrontLeft | fplAudioChannelFlags_FrontRight | fplAudioChannelFlags_LowFrequency;
+		mapping->mapping[0] = fplAudioChannelFlags_FrontLeft;
+		mapping->mapping[1] = fplAudioChannelFlags_FrontRight;
+		mapping->mapping[2] = fplAudioChannelFlags_LowFrequency;
+		return fpl__DirectSound_ChannelMask_2_1;
+	} else if (channels == 3 || mapping->layout == fplAudioChannelLayout_3_0) {
+		mapping->mask = fplAudioChannelFlags_FrontLeft | fplAudioChannelFlags_FrontRight | fplAudioChannelFlags_FrontCenter;
+		mapping->mapping[0] = fplAudioChannelFlags_FrontLeft;
+		mapping->mapping[1] = fplAudioChannelFlags_FrontRight;
+		mapping->mapping[2] = fplAudioChannelFlags_FrontCenter;
+		return fpl__DirectSound_ChannelMask_3_0;
+	} else if (channels == 4 || mapping->layout == fplAudioChannelLayout_4_0) {
+		mapping->mask = fplAudioChannelFlags_FrontLeft | fplAudioChannelFlags_FrontRight | fplAudioChannelFlags_BackLeft | fplAudioChannelFlags_BackRight;
+		mapping->mapping[0] = fplAudioChannelFlags_FrontLeft;
+		mapping->mapping[1] = fplAudioChannelFlags_FrontRight;
+		mapping->mapping[2] = fplAudioChannelFlags_BackLeft;
+		mapping->mapping[3] = fplAudioChannelFlags_BackRight;
+		return fpl__DirectSound_ChannelMask_4_0;
+	} else if (channels == 5 || mapping->layout == fplAudioChannelLayout_4_1) {
+		mapping->mask = fplAudioChannelFlags_FrontLeft | fplAudioChannelFlags_FrontRight | fplAudioChannelFlags_LowFrequency | fplAudioChannelFlags_BackLeft | fplAudioChannelFlags_BackRight;
+		mapping->mapping[0] = fplAudioChannelFlags_FrontLeft;
+		mapping->mapping[1] = fplAudioChannelFlags_FrontRight;
+		mapping->mapping[2] = fplAudioChannelFlags_LowFrequency;
+		mapping->mapping[3] = fplAudioChannelFlags_BackLeft;
+		mapping->mapping[4] = fplAudioChannelFlags_BackRight;
+		return fpl__DirectSound_ChannelMask_4_1;
+	} else if (channels == 6 || mapping->layout == fplAudioChannelLayout_5_1) {
+		mapping->mask = fplAudioChannelFlags_FrontLeft | fplAudioChannelFlags_FrontRight | fplAudioChannelFlags_FrontCenter | fplAudioChannelFlags_LowFrequency | fplAudioChannelFlags_BackLeft | fplAudioChannelFlags_BackRight;
+		mapping->mapping[0] = fplAudioChannelFlags_FrontLeft;
+		mapping->mapping[1] = fplAudioChannelFlags_FrontRight;
+		mapping->mapping[2] = fplAudioChannelFlags_FrontCenter;
+		mapping->mapping[3] = fplAudioChannelFlags_LowFrequency;
+		mapping->mapping[4] = fplAudioChannelFlags_BackLeft;
+		mapping->mapping[5] = fplAudioChannelFlags_BackRight;
+		return fpl__DirectSound_ChannelMask_5_1;
+	} else if (channels >= 8 || mapping->layout == fplAudioChannelLayout_7_1) {
+		mapping->mask = fplAudioChannelFlags_FrontLeft | fplAudioChannelFlags_FrontRight | fplAudioChannelFlags_FrontCenter | fplAudioChannelFlags_LowFrequency | fplAudioChannelFlags_BackLeft | fplAudioChannelFlags_BackRight | fplAudioChannelFlags_SideLeft | fplAudioChannelFlags_SideRight;
+		mapping->mapping[0] = fplAudioChannelFlags_FrontLeft;
+		mapping->mapping[1] = fplAudioChannelFlags_FrontRight;
+		mapping->mapping[2] = fplAudioChannelFlags_FrontCenter;
+		mapping->mapping[3] = fplAudioChannelFlags_LowFrequency;
+		mapping->mapping[4] = fplAudioChannelFlags_BackLeft;
+		mapping->mapping[5] = fplAudioChannelFlags_BackRight;
+		mapping->mapping[6] = fplAudioChannelFlags_SideLeft;
+		mapping->mapping[7] = fplAudioChannelFlags_SideRight;
+		return fpl__DirectSound_ChannelMask_7_1;
+	}
+
+	return 0;
+}
+
+fpl_internal fplAudioResultType fpl__CreateDirectSoundSecondaryBuffer(fpl__AudioBackendDirectSound *impl, const fplAudioDeviceFormat *sourceFormat, fplAudioDeviceFormat *outputFormat, fplAudioChannelsMapping *outMapping, WAVEFORMATEXTENSIBLE *outputWaveFormat, LPDIRECTSOUNDBUFFER *outputBuffer) {
 	fplAssert(impl != fpl_null && sourceFormat != fpl_null && outputFormat != fpl_null && outputWaveFormat != fpl_null && outputBuffer != fpl_null);
 
 	fpl__DirectSoundApi *dsoundApi = &impl->api;
@@ -20999,6 +21082,7 @@ fpl_internal fplAudioResultType fpl__CreateDirectSoundSecondaryBuffer(fpl__Audio
 	} else {
 		waveFormat.SubFormat = FPL__GUID_KSDATAFORMAT_SUBTYPE_PCM;
 	}
+	waveFormat.dwChannelMask = fpl__BuildDirectSoundChannelMapping(sourceFormat->channels, sourceFormat->channelLayout, outMapping);
 
 	// Set format
 	if (FAILED(IDirectSoundBuffer_SetFormat(impl->primaryBuffer, (WAVEFORMATEX *)&waveFormat))) {
@@ -21048,7 +21132,7 @@ fpl_internal fplAudioResultType fpl__CreateDirectSoundSecondaryBuffer(fpl__Audio
 		}
 	}
 	internalFormat.channels = actualFormat->Format.nChannels;
-	internalFormat.channelLayout = fplGetAudioChannelLayoutFromChannels(actualFormat->Format.nChannels);
+	internalFormat.channelLayout = outMapping->layout;
 	internalFormat.sampleRate = actualFormat->Format.nSamplesPerSec;
 
 	// @NOTE(final): We divide up our playback buffer into this number of periods and let directsound notify us when one of it needs to play.
@@ -21210,30 +21294,28 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendDirectSou
 
 	WAVEFORMATEXTENSIBLE waveFormat = fplZeroInit;
 
-	fplAudioResultType bufferResType = fpl__CreateDirectSoundSecondaryBuffer(impl, targetFormat, &internalFormat, &waveFormat, &secondaryBuffer);
+	fplAssert(waveFormat.Format.nChannels < fplArrayCount(channelsMapping->mapping));
+	fplClearStruct(channelsMapping);
+
+	fplAudioResultType bufferResType = fpl__CreateDirectSoundSecondaryBuffer(impl, targetFormat, &internalFormat, channelsMapping, &waveFormat, &secondaryBuffer);
 	if (bufferResType != fplAudioResultType_Success) {
 		FPL__DSOUND_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed creating secondary DirectSound sound buffer!");
 	}
 
 	impl->secondaryBuffer = secondaryBuffer;
 
-	//
-	// Channels Mapping
-	//
-	fplAssert(waveFormat.Format.nChannels < fplArrayCount(channelsMapping->mapping));
-
-	fplClearStruct(channelsMapping);
+	/*
 	if (waveFormat.Format.nChannels == 1) {
 		channelsMapping->channelCount = 1;
 		channelsMapping->layout = fplAudioChannelLayout_Mono;
-		channelsMapping->mask = fplAudioSpeakerLayout_FrontCenter;
-		channelsMapping->mapping[0] = fplAudioSpeakerLayout_FrontCenter;
+		channelsMapping->mask = fplAudioChannelFlags_FrontCenter;
+		channelsMapping->mapping[0] = fplAudioChannelFlags_FrontCenter;
 	} else if (waveFormat.Format.nChannels == 2) {
 		channelsMapping->channelCount = 2;
 		channelsMapping->layout = fplAudioChannelLayout_Stereo;
-		channelsMapping->mask = fplAudioSpeakerLayout_FrontLeft | fplAudioSpeakerLayout_FrontRight;
-		channelsMapping->mapping[0] = fplAudioSpeakerLayout_FrontLeft;
-		channelsMapping->mapping[1] = fplAudioSpeakerLayout_FrontRight;
+		channelsMapping->mask = fplAudioChannelFlags_FrontLeft | fplAudioChannelFlags_FrontRight;
+		channelsMapping->mapping[0] = fplAudioChannelFlags_FrontLeft;
+		channelsMapping->mapping[1] = fplAudioChannelFlags_FrontRight;
 	} else {
 		const DWORD mask2_1 = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT | SPEAKER_LOW_FREQUENCY;
 		const DWORD mask4_0 = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT | SPEAKER_BACK_LEFT | SPEAKER_BACK_RIGHT;
@@ -21254,63 +21336,63 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendDirectSou
 			fplAssert(waveFormat.Format.nChannels == 3);
 			channelsMapping->channelCount = waveFormat.Format.nChannels;
 			channelsMapping->layout = fplAudioChannelLayout_2_1;
-			channelsMapping->mask = fplAudioSpeakerLayout_FrontLeft | fplAudioSpeakerLayout_FrontRight | fplAudioSpeakerLayout_LFE;
-			channelsMapping->mapping[0] = fplAudioSpeakerLayout_FrontLeft;
-			channelsMapping->mapping[1] = fplAudioSpeakerLayout_FrontRight;
-			channelsMapping->mapping[2] = fplAudioSpeakerLayout_LFE;
+			channelsMapping->mask = fplAudioChannelFlags_FrontLeft | fplAudioChannelFlags_FrontRight | fplAudioChannelFlags_LowFrequency;
+			channelsMapping->mapping[0] = fplAudioChannelFlags_FrontLeft;
+			channelsMapping->mapping[1] = fplAudioChannelFlags_FrontRight;
+			channelsMapping->mapping[2] = fplAudioChannelFlags_LowFrequency;
 		} else if (channelMask == mask4_0 || (autoDetectByChannels && waveFormat.Format.nChannels == 4)) {
 			fplAssert(waveFormat.Format.nChannels == 4);
 			channelsMapping->channelCount = waveFormat.Format.nChannels;
 			channelsMapping->layout = fplAudioChannelLayout_4_0;
-			channelsMapping->mask = fplAudioSpeakerLayout_FrontLeft | fplAudioSpeakerLayout_FrontRight | fplAudioSpeakerLayout_BackLeft| fplAudioSpeakerLayout_BackRight;
-			channelsMapping->mapping[0] = fplAudioSpeakerLayout_FrontLeft;
-			channelsMapping->mapping[1] = fplAudioSpeakerLayout_FrontRight;
-			channelsMapping->mapping[2] = fplAudioSpeakerLayout_BackLeft;
-			channelsMapping->mapping[3] = fplAudioSpeakerLayout_BackRight;
+			channelsMapping->mask = fplAudioChannelFlags_FrontLeft | fplAudioChannelFlags_FrontRight | fplAudioChannelFlags_BackLeft| fplAudioChannelFlags_BackRight;
+			channelsMapping->mapping[0] = fplAudioChannelFlags_FrontLeft;
+			channelsMapping->mapping[1] = fplAudioChannelFlags_FrontRight;
+			channelsMapping->mapping[2] = fplAudioChannelFlags_BackLeft;
+			channelsMapping->mapping[3] = fplAudioChannelFlags_BackRight;
 		} else if (channelMask == mask4_1 || (autoDetectByChannels && waveFormat.Format.nChannels == 5)) {
 			fplAssert(waveFormat.Format.nChannels == 5);
 			channelsMapping->channelCount = waveFormat.Format.nChannels;
 			channelsMapping->layout = fplAudioChannelLayout_4_1;
-			channelsMapping->mask = fplAudioSpeakerLayout_FrontLeft | fplAudioSpeakerLayout_FrontRight | fplAudioSpeakerLayout_LFE | fplAudioSpeakerLayout_BackLeft| fplAudioSpeakerLayout_BackRight;
-			channelsMapping->mapping[0] = fplAudioSpeakerLayout_FrontLeft;
-			channelsMapping->mapping[1] = fplAudioSpeakerLayout_FrontRight;
-			channelsMapping->mapping[2] = fplAudioSpeakerLayout_LFE;
-			channelsMapping->mapping[3] = fplAudioSpeakerLayout_BackLeft;
-			channelsMapping->mapping[4] = fplAudioSpeakerLayout_BackRight;
+			channelsMapping->mask = fplAudioChannelFlags_FrontLeft | fplAudioChannelFlags_FrontRight | fplAudioChannelFlags_LowFrequency | fplAudioChannelFlags_BackLeft| fplAudioChannelFlags_BackRight;
+			channelsMapping->mapping[0] = fplAudioChannelFlags_FrontLeft;
+			channelsMapping->mapping[1] = fplAudioChannelFlags_FrontRight;
+			channelsMapping->mapping[2] = fplAudioChannelFlags_LowFrequency;
+			channelsMapping->mapping[3] = fplAudioChannelFlags_BackLeft;
+			channelsMapping->mapping[4] = fplAudioChannelFlags_BackRight;
 		} else if (channelMask == mask5_1 || (autoDetectByChannels && waveFormat.Format.nChannels == 6)) {
 			fplAssert(waveFormat.Format.nChannels == 6);
 			channelsMapping->channelCount = waveFormat.Format.nChannels;
 			channelsMapping->layout = fplAudioChannelLayout_5_1;
-			channelsMapping->mask = fplAudioSpeakerLayout_FrontLeft | fplAudioSpeakerLayout_FrontRight | fplAudioSpeakerLayout_LFE | fplAudioSpeakerLayout_FrontCenter | fplAudioSpeakerLayout_BackLeft | fplAudioSpeakerLayout_BackRight;
-			channelsMapping->mapping[0] = fplAudioSpeakerLayout_FrontLeft;
-			channelsMapping->mapping[1] = fplAudioSpeakerLayout_FrontRight;
-			channelsMapping->mapping[2] = fplAudioSpeakerLayout_LFE;
-			channelsMapping->mapping[3] = fplAudioSpeakerLayout_FrontCenter;
-			channelsMapping->mapping[4] = fplAudioSpeakerLayout_BackLeft;
-			channelsMapping->mapping[5] = fplAudioSpeakerLayout_BackRight;
+			channelsMapping->mask = fplAudioChannelFlags_FrontLeft | fplAudioChannelFlags_FrontRight | fplAudioChannelFlags_LowFrequency | fplAudioChannelFlags_FrontCenter | fplAudioChannelFlags_BackLeft | fplAudioChannelFlags_BackRight;
+			channelsMapping->mapping[0] = fplAudioChannelFlags_FrontLeft;
+			channelsMapping->mapping[1] = fplAudioChannelFlags_FrontRight;
+			channelsMapping->mapping[2] = fplAudioChannelFlags_FrontCenter;
+			channelsMapping->mapping[3] = fplAudioChannelFlags_LowFrequency;
+			channelsMapping->mapping[4] = fplAudioChannelFlags_BackLeft;
+			channelsMapping->mapping[5] = fplAudioChannelFlags_BackRight;
 		} else if (channelMask == mask7_1 || (autoDetectByChannels && waveFormat.Format.nChannels == 8)) {
 			fplAssert(waveFormat.Format.nChannels == 8);
 			channelsMapping->channelCount = waveFormat.Format.nChannels;
 			channelsMapping->layout = fplAudioChannelLayout_5_1;
-			channelsMapping->mask = fplAudioSpeakerLayout_FrontLeft | fplAudioSpeakerLayout_FrontRight | fplAudioSpeakerLayout_LFE | fplAudioSpeakerLayout_FrontCenter | fplAudioSpeakerLayout_BackLeft | fplAudioSpeakerLayout_BackRight | fplAudioSpeakerLayout_SideLeft | fplAudioSpeakerLayout_SideRight;
-			channelsMapping->mapping[0] = fplAudioSpeakerLayout_FrontLeft;
-			channelsMapping->mapping[1] = fplAudioSpeakerLayout_FrontRight;
-			channelsMapping->mapping[2] = fplAudioSpeakerLayout_LFE;
-			channelsMapping->mapping[3] = fplAudioSpeakerLayout_FrontCenter;
-			channelsMapping->mapping[4] = fplAudioSpeakerLayout_BackLeft;
-			channelsMapping->mapping[5] = fplAudioSpeakerLayout_BackRight;
-			channelsMapping->mapping[6] = fplAudioSpeakerLayout_SideLeft;
-			channelsMapping->mapping[7] = fplAudioSpeakerLayout_SideRight;
+			channelsMapping->mask = fplAudioChannelFlags_FrontLeft | fplAudioChannelFlags_FrontRight | fplAudioChannelFlags_LowFrequency | fplAudioChannelFlags_FrontCenter | fplAudioChannelFlags_BackLeft | fplAudioChannelFlags_BackRight | fplAudioChannelFlags_SideLeft | fplAudioChannelFlags_SideRight;
+			channelsMapping->mapping[0] = fplAudioChannelFlags_FrontLeft;
+			channelsMapping->mapping[1] = fplAudioChannelFlags_FrontRight;
+			channelsMapping->mapping[2] = fplAudioChannelFlags_LowFrequency;
+			channelsMapping->mapping[3] = fplAudioChannelFlags_FrontCenter;
+			channelsMapping->mapping[4] = fplAudioChannelFlags_BackLeft;
+			channelsMapping->mapping[5] = fplAudioChannelFlags_BackRight;
+			channelsMapping->mapping[6] = fplAudioChannelFlags_SideLeft;
+			channelsMapping->mapping[7] = fplAudioChannelFlags_SideRight;
 		} else if (channelMask != 0) {
 			// Complicated setup, we loop through all possible flags and build the speaker layout
-			channelsMapping->mask = fplAudioSpeakerLayout_None;
+			channelsMapping->mask = fplAudioChannelFlags_None;
 
 			uint32_t detectedChannelCount = 0;
 			for (DWORD bit = minSpeakerBit; bit < maxSpeakerBit; ++bit) {
 				DWORD mask = 1 << bit;
 				if (channelMask & mask) {
 					// DirectSound and FPL has equal speaker positions, so we can use the same mask
-					fplAudioSpeakerLayout layoutForMask = (fplAudioSpeakerLayout)mask;
+					fplAudioChannelFlags layoutForMask = (fplAudioChannelFlags)mask;
 					channelsMapping->mask |= layoutForMask;
 					channelsMapping->mapping[detectedChannelCount++] = layoutForMask;
 				}
@@ -21322,9 +21404,10 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendDirectSou
 			fplAssert(channelMask == 0);
 			channelsMapping->channelCount = waveFormat.Format.nChannels;
 			channelsMapping->layout = fplAudioChannelLayout_Unsupported;
-			channelsMapping->mask = fplAudioSpeakerLayout_None;
+			channelsMapping->mask = fplAudioChannelFlags_None;
 		}
 	}
+	*/
 
 	const char *internalFormatTypeName = fplGetAudioFormatName(internalFormat.type);
 	uint32_t bufferSizeInBytes = fplGetAudioBufferSizeInBytes(internalFormat.type, internalFormat.channels, internalFormat.bufferSizeInFrames);
@@ -23117,6 +23200,7 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 			}
 			if (fallbackFields & fplAudioDefaultFields_Channels) {
 				backend->desiredFormat.channels = 2;
+				backend->desiredFormat.channelLayout = fplAudioChannelLayout_Stereo;
 			}
 			if (fallbackFields & fplAudioDefaultFields_SampleRate) {
 				backend->desiredFormat.sampleRate = 44100;
@@ -23556,7 +23640,6 @@ fpl_common_api fplAudioChannelLayout fplGetAudioChannelLayoutFromChannels(const 
 #define FPL__AUDIO_CHANNEL_LAYOUT_COUNT FPL__ENUM_COUNT(fplAudioChannelLayout_First, fplAudioChannelLayout_Last)
 
 fpl_globalvar uint16_t fpl__g_audioChannelLayoutToChannelCountTable[] = {
-	2, // fplAudioChannelLayout_Auto
 	1, // fplAudioChannelLayout_Mono
 	2, // fplAudioChannelLayout_Stereo
 	3, // fplAudioChannelLayout_2_1
@@ -23582,16 +23665,16 @@ fpl_common_api void fplConvertAudioTargetFormatToDeviceFormat(const fplAudioTarg
 	fplClearStruct(outFormat);
 
 	// Channels / Layout
-	if (inFormat->channels > 0 && inFormat->channelLayout != fplAudioChannelLayout_Auto) {
+	if (inFormat->channels > 0 && inFormat->channelLayout != fplAudioChannelLayout_Automatic) {
 		uint16_t layoutChannelCount = fplGetAudioChannelsFromLayout(inFormat->channelLayout);
 		uint16_t highestChannelCount = fplMax(layoutChannelCount, inFormat->channels);
 		outFormat->channels = fplMax(0, fplMin(highestChannelCount, FPL_MAX_AUDIO_CHANNEL_COUNT));
 		outFormat->channelLayout = fplGetAudioChannelLayoutFromChannels(outFormat->channels);
-	} else if (inFormat->channels > 0 && inFormat->channelLayout == fplAudioChannelLayout_Auto) {
+	} else if (inFormat->channels > 0 && inFormat->channelLayout == fplAudioChannelLayout_Automatic) {
 		outFormat->channels = fplMin(inFormat->channels, FPL_MAX_AUDIO_CHANNEL_COUNT);
 		outFormat->channelLayout = fplGetAudioChannelLayoutFromChannels(outFormat->channels);
 		outFormat->defaultFields |= fplAudioDefaultFields_ChannelLayout;
-	} else if (inFormat->channelLayout != fplAudioChannelLayout_Auto && inFormat->channels == 0) {
+	} else if (inFormat->channels == 0 && inFormat->channelLayout != fplAudioChannelLayout_Automatic) {
 		uint16_t layoutChannelCount = fplGetAudioChannelsFromLayout(inFormat->channelLayout);
 		if (layoutChannelCount > FPL_MAX_AUDIO_CHANNEL_COUNT) {
 			outFormat->channels = FPL_MAX_AUDIO_CHANNEL_COUNT;
