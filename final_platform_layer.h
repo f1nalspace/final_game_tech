@@ -144,6 +144,7 @@ SOFTWARE.
 	- Improved: Architecture detection extended (Apple, Risc-V, Mips, Sparc)
 	- Improved: CPU bits detection improved
 	- Improved: Compiler detected improved & extended (MingW, Apple, Borland, TCC, DMC, CSMC, Linaro)
+	- Improved[#163]: Make endianess detection for robust
 	- Fixed: fplCreateColorRGBA() was not compiling on GCC due to inlining failing
 	- Fixed: fplCreateVideoRectFromLTRB() was not compiling on GCC due to inlining failing
 	- Fixed[#156]: Target audio format type and periods was never used
@@ -2353,7 +2354,9 @@ typedef int32_t fpl_b32;
 //
 // Test sizes
 //
+
 //! @cond FPL_INTERNAL
+
 #if defined(FPL_CPU_64BIT)
 fplStaticAssert(sizeof(uintptr_t) >= sizeof(uint64_t));
 fplStaticAssert(sizeof(size_t) >= sizeof(uint64_t));
@@ -2361,6 +2364,11 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint64_t));
 fplStaticAssert(sizeof(uintptr_t) >= sizeof(uint32_t));
 fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 #endif
+
+#if CHAR_BIT != 8
+#error "Unsupported Char Size, expect 8 bits"
+#endif
+
 //! @endcond
 
 //
@@ -2405,10 +2413,6 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 #define fplIsAligned(ptr, alignment) (((uintptr_t)(const void *)(ptr)) % (alignment) == 0)
 //! Returns true when the given value is a power of two value
 #define fplIsPowerOfTwo(value) (((value) != 0) && (((value) & (~(value) + 1)) == (value)))
-//! Returns true when the given platform is big-endian
-#define fplIsBigEndian() (*(uint16_t *)"\0\xff" < 0x100)
-//! Returns true when the given platform is little-endian
-#define fplIsLittleEndian() (!fplIsBigEndian())
 //! Returns true when the given value has the given bit set
 #define fplIsBitSet(value, bit) (((value) >> (bit)) & 0x1)
 
@@ -2421,12 +2425,43 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 //! Returns the number of bytes for the given terabytes
 #define fplTeraBytes(value) ((fplGigaBytes(value) * 1024ull))
 
+//
+// Endianess
+//
+
+//! Defines the endianess types that is supported
+typedef enum fplEndianessType {
+	fplEndianessType_Little = 0x03020100ul,
+	fplEndianessType_Big = 0x03020100ul,
+} fplEndianessType;
+
+//! @cond FPL_INTERNAL
+
+typedef union {
+	unsigned char bytes[4]; 
+	uint32_t value; 
+} fplEndianess;
+
+//! The current endianess value
+fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 0, 1, 2, 3 };
+
+//! @endcond
+ 
+//! Returns true when the given platform is big-endian
+#define fplIsBigEndian() (fpl__global_endianessOrder.value == fplEndianessType_Big)
+//! Returns true when the given platform is little-endian
+#define fplIsLittleEndian() (fpl__global_endianessOrder.value == fplEndianessType_Little)
+//! Returns the unsigned 32-bit endianess that is built from (0, 1, 2, 3)
+#define fplGetEndianess32() (fpl__global_endianessOrder.value)
+
 //! Clears the given struct pointer to zero
 #define fplClearStruct(ptr) fplMemoryClear((void *)(ptr), sizeof(*(ptr)))
 //! Copies the given source struct into the destination struct
 #define fplCopyStruct(src, dst) fplMemoryCopy(src, sizeof(*(src)), dst);
 
+//
 // Array count
+//
 #if defined(_countof)
 #	define fpl__m_ArrayCount(arr) _countof(arr)
 #elif defined(ARRAY_SIZE)
