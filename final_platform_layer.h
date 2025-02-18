@@ -137,18 +137,22 @@ SOFTWARE.
 	### Overview
 	- Improved and extended system/platform detection macros
 	- Refactored audio system to use dispatch tables
+	- Support for multiple audio channels and channel mapping
 	- Removed several obsolete functions
 	- Fixed incorrect audio format
+	- Fixed compile errors for ARM/GCC compilers
 
 	### Details
-	- Improved: C/C++ detection improved
-	- Improved: Architecture detection extended (Apple, Risc-V, Mips, Sparc)
-	- Improved: CPU bits detection improved
-	- Improved: Compiler detected improved & extended (MingW, Apple, Borland, TCC, DMC, CSMC, Linaro)
+	- New[#36]: Support for multiple audio channels + channel mapping
 	- Fixed: fplCreateColorRGBA() was not compiling on GCC due to inlining failing
 	- Fixed: fplCreateVideoRectFromLTRB() was not compiling on GCC due to inlining failing
 	- Fixed[#156]: Target audio format type and periods was never used
 	- Fixed[#157]: Compile error for missing _countof() fplArrayCount in some scenarios
+	- Improved: C/C++ detection improved
+	- Improved: Architecture detection extended (Apple, Risc-V, Mips, Sparc)
+	- Improved: CPU bits detection improved
+	- Improved: Compiler detected improved & extended (MingW, Apple, Borland, TCC, DMC, CSMC, Linaro)
+	- Improved[#149]: Refactoring of audio backends to dispatch tables
 	- Removed: Obsolete function fplFileSetTimestamps removed
 
 	## v0.9.8-beta
