@@ -3981,8 +3981,8 @@ static void InitializeChannelMapping(const uint64_t channelLayout, const uint8_t
 				outputMapping->channels[ffmpegIndex] = mappedIndex;
 			}
 
-			const char *channelName = fplGetAudioChannelFlagsName(channelFlag);
-            fplConsoleFormatOut("Audio-Channel[%u]: %s\n", ffmpegIndex, channelName);
+			//const char *channelName = fplGetAudioChannelFlagsName(channelFlag);
+			//fplConsoleFormatOut("Audio-Channel[%u]: %s\n", ffmpegIndex, channelName);
 
             count++;
         }
