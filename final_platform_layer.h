@@ -23696,7 +23696,7 @@ fplStaticAssert(fplArrayCount(fpl__g_audioChannelLayoutToChannelCountTable) == F
 
 fpl_common_api uint16_t fplGetAudioChannelsFromLayout(const fplAudioChannelLayout channelLayout) {
 	fplAssert(channelLayout >= fplAudioChannelLayout_First && channelLayout <= fplAudioChannelLayout_Last);
-	uint16_t channels = fpl__g_audioChannelLayoutToChannelCountTable[channelLayout];
+	uint16_t channels = fpl__g_audioChannelLayoutToChannelCountTable[channelLayout - fplAudioChannelLayout_First];
 	uint16_t result = fplMax(0, fplMin(channels, FPL_MAX_AUDIO_CHANNEL_COUNT));
 	return result;
 }
