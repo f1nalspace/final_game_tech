@@ -21518,7 +21518,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendDirectSou
 	}
 
 	// Get supported number of channels and channel mask, when channels or layout was default
-	if (targetFormat->defaultFields & fplAudioDefaultFields_Channels || targetFormat->defaultFields & fplAudioDefaultFields_ChannelLayout) {
+	if ((targetFormat->defaultFields & fplAudioDefaultFields_Channels) && (targetFormat->defaultFields & fplAudioDefaultFields_ChannelLayout)) {
 		if ((caps.dwFlags & DSCAPS_PRIMARYSTEREO) != 0) {
 			DWORD speakerConfig;
 			if (SUCCEEDED(IDirectSound_GetSpeakerConfig(impl->directSound, &speakerConfig))) {
@@ -21536,6 +21536,9 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendDirectSou
 			channelLayout = fplAudioChannelLayout_Mono;
 		}
 		fpl__CreateChannelsMappingFromChannelMask(waveFormat.dwChannelMask, waveFormat.Format.nChannels, channelMap);
+	} else {
+		fplAssert(targetFormat->channels > 0);
+		fplAssert(targetFormat->channelLayout >= fplAudioChannelLayout_First && targetFormat->channelLayout <= fplAudioChannelLayout_Last);
 	}
 
 	// Set format
