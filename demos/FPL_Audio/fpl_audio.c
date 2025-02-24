@@ -999,10 +999,10 @@ int main(int argc, char **args) {
 	settings.video.isVSync = true;
 
 	// Set audio device format
-	settings.audio.targetFormat.type = fplAudioFormatType_S16;
+	//settings.audio.targetFormat.type = fplAudioFormatType_S16;
 
 	// Set number of channels
-	settings.audio.targetFormat.channels = 2;
+	//settings.audio.targetFormat.channels = 2;
 
 	// Set samplerate in Hz
 	//settings.audio.targetFormat.sampleRate = 11025;

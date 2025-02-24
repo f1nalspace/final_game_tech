@@ -3954,7 +3954,7 @@ static uint8_t GetChannelIndexFromInputMapping(const fplAudioChannelsMapping *in
 	return UINT8_MAX;
 }
 
-static void InitializeChannelMapping(const uint64_t channelLayout, const uint8_t channelCount, const fplAudioChannelsMapping *inputMapping, AudioChannelMapping *outputMapping) {
+static void InitializeChannelMapping(const uint64_t channelLayout, const uint16_t channelCount, const fplAudioChannelsMapping *inputMapping, AudioChannelMapping *outputMapping) {
 	int minBits = 0;
 	int maxBits = 17;
 	fplAssert(AV_CH_FRONT_LEFT == (1 << minBits));
@@ -4016,6 +4016,9 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath) {
 
 	fplAudioChannelsMapping mapping = fplZeroInit;
 
+	// Init audio system and get audio hardware format (Two tries, one with the ffmpeg format and one with a default one)
+	fplAudioResultType loadAudioRes;
+
 	fplAudioSettings audioSettings = fplZeroInit;
 	fplSetDefaultAudioSettings(&audioSettings);
 
@@ -4024,8 +4027,14 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath) {
 	audioSettings.targetFormat.sampleRate = audioCodexCtx->sample_rate;
 	audioSettings.targetFormat.type = MapAVSampleFormat(audioCodexCtx->sample_fmt);
 
-	// Init audio system and get audio hardware format
-	fplAudioResultType loadAudioRes = fplLoadAudio(&audioSettings);
+	loadAudioRes = fplLoadAudio(&audioSettings);
+
+	if (loadAudioRes != fplAudioResultType_Success) {
+		FPL_LOG_WARN("App", "FFMPEG audio format (sample rate '%u', channels: %u, type: %s) is not supported, try the default format", audioSettings.targetFormat.sampleRate, audioSettings.targetFormat.channels, fplGetAudioFormatName(audioSettings.targetFormat.type));
+		fplSetDefaultAudioSettings(&audioSettings);
+		loadAudioRes = fplLoadAudio(&audioSettings);
+	}
+
 	if (loadAudioRes != fplAudioResultType_Success) {
 		FPL_LOG_ERROR("App", "Failed initialize audio system with configuration (sample rate '%u', channels: %u, type: %s)", audioSettings.targetFormat.sampleRate, audioSettings.targetFormat.channels, fplGetAudioFormatName(audioSettings.targetFormat.type));
 		goto failed;
