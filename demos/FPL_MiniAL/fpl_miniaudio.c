@@ -15,6 +15,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2025-02-24
+	- Upgraded to latest miniaudio v0.11.22
+
 	## 2025-02-13
 	- Fixed compile errors due to changes in the audio system
 
@@ -63,6 +66,8 @@ License:
 
 #if OPT_USE_MINIAUDIO
 #	define MINIAUDIO_IMPLEMENTATION
+#	define MA_COPY_MEMORY(dst, src, size) fplMemoryCopy(src, size, dst)
+#	define MA_ZERO_MEMORY(ptr, size) fplMemoryClear(ptr, size)
 #	define MA_USE_RUNTIME_LINKING_FOR_PTHREAD
 #	include <miniaudio/miniaudio.h>
 #endif
@@ -160,6 +165,10 @@ static bool InitAudioContext(AudioContext *context, const fplAudioTargetFormat i
 	context->maDeviceConfig.dataCallback = AudioPlayback_MiniAudio;
 	context->maDeviceConfig.pUserData = context;
 	
+
+	ma_result maResult;
+
+#if 0
 	ma_backend malBackends[] = {
 		ma_backend_dsound,
 		ma_backend_wasapi,
@@ -168,10 +177,9 @@ static bool InitAudioContext(AudioContext *context, const fplAudioTargetFormat i
 		ma_backend_pulseaudio,
 	};
 	ma_uint32 malBackendCount = fplArrayCount(malBackends);
-	
-	ma_result maResult;
 
-	//maResult = ma_context_init(malBackends, malBackendCount, NULL, &context->maContext);
+	maResult = ma_context_init(malBackends, malBackendCount, NULL, &context->maContext);
+#endif
 
 	maResult = ma_context_init(NULL, 0, NULL, &context->maContext);
 
@@ -209,7 +217,7 @@ static bool InitAudioContext(AudioContext *context, const fplAudioTargetFormat i
 
 	fplClearStruct(outFormat);
 	outFormat->sampleRate = context->maDevice.playback.internalSampleRate;
-	outFormat->channels = context->maDevice.playback.internalChannels;
+	outFormat->channels = inFormat.channels;
 	outFormat->channelLayout = fplGetAudioChannelLayoutFromChannels(context->maDevice.playback.internalChannels);
 	outFormat->periods = context->maDevice.playback.internalPeriods;
 	outFormat->bufferSizeInFrames = context->maDevice.playback.internalPeriodSizeInFrames * context->maDevice.playback.internalPeriods;
@@ -279,8 +287,10 @@ int main(int argc, char **args) {
 	// Use default audio format from FPL as target format
 	fplAudioTargetFormat targetFormat = fplZeroInit;
 
-	// NOTE(final): Our test audio file is encoded in 44100 Hz and our audio system cannot up/down sample with non-even sample rates yet
+	// NOTE(final): Our test audio file is encoded in 44100 Hz, Stereo and our audio system does not support up/down sample with non-even sample rates yet
 	targetFormat.sampleRate = 44100;
+	targetFormat.channels = 2;
+	targetFormat.channelLayout = fplAudioChannelLayout_Stereo;
 
 	fplAudioDeviceFormat targetDeviceFormat = fplZeroInit;
 
