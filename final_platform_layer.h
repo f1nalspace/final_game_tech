@@ -2440,8 +2440,8 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 
 //! Defines the endianess types that is supported
 typedef enum fplEndianessType {
-	fplEndianessType_Little = 0x03020100ul,
-	fplEndianessType_Big = 0x03020100ul,
+    fplEndianessType_Little = 0x04030201,
+    fplEndianessType_Big = 0x01020304,
 } fplEndianessType;
 
 //! @cond FPL_INTERNAL
@@ -2452,7 +2452,7 @@ typedef union {
 } fplEndianess;
 
 //! The current endianess value
-fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 0, 1, 2, 3 };
+fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 
 //! @endcond
  
@@ -22508,8 +22508,8 @@ fpl_internal fplAudioFormatType fpl__MapAlsaFormatToAudioFormat(snd_pcm_format_t
 }
 
 fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendAlsaInitialize) {
-	fpl__AlsaAudioBackend *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AlsaAudioBackend);
-	fplAssert(impl != fpl_null);
+    fpl__AlsaAudioBackend *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AlsaAudioBackend);
+    fplAssert(impl != fpl_null);
 
 #	define FPL__ALSA_INIT_ERROR(ret, format, ...) do { \
 		FPL__ERROR(FPL__MODULE_AUDIO_ALSA, format, ## __VA_ARGS__); \
@@ -22556,6 +22556,8 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
         deviceInfo = *targetDevice;
     }
 
+    fplAudioShareMode shareMode = fplGetAudioShareMode(targetFormat->mode);
+
 	char deviceName[256] = fplZeroInit;
 	snd_pcm_stream_t stream = SND_PCM_STREAM_PLAYBACK;
 	int openMode = SND_PCM_NO_AUTO_RESAMPLE | SND_PCM_NO_AUTO_CHANNELS | SND_PCM_NO_AUTO_FORMAT;
@@ -22563,7 +22565,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 		const char *defaultDeviceNames[16] = fplZeroInit;
 		int defaultDeviceCount = 0;
 		defaultDeviceNames[defaultDeviceCount++] = "default";
-		if (!targetFormat->preferExclusiveMode) {
+        if (shareMode != fplAudioShareMode_Exclusive) {
 			defaultDeviceNames[defaultDeviceCount++] = "dmix";
 			defaultDeviceNames[defaultDeviceCount++] = "dmix:0";
 			defaultDeviceNames[defaultDeviceCount++] = "dmix:0,0";
@@ -22775,8 +22777,10 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed setting PCM buffer size '%lu' for device '%s'!", actualBufferSize, deviceName);
 	}
 	internalFormat.bufferSizeInFrames = actualBufferSize;
+    internalFormat.bufferSizeInMilliseconds =fplGetAudioBufferSizeInMilliseconds(internalFormat.sampleRate, internalFormat.bufferSizeInFrames);
 
 	uint32_t bufferSizeInBytes = fplGetAudioBufferSizeInBytes(internalFormat.type, internalFormat.channels, internalFormat.bufferSizeInFrames);
+    fplAssert(bufferSizeInBytes > 0);
 
 	//
 	// Periods
@@ -22838,6 +22842,80 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	return fplAudioResultType_Success;
 
 #undef FPL__ALSA_INIT_ERROR
+}
+
+fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendALSAGetAudioDeviceInfo) {
+    fpl__AlsaAudioBackend *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AlsaAudioBackend);
+    fplAssert(impl != fpl_null);
+
+    fpl__AlsaAudioApi *alsaApi = &impl->api;
+    if (alsaApi->libHandle == fpl_null) {
+        FPL__WARNING(FPL__MODULE_AUDIO_ALSA, "API is not loaded!"); \
+        return fplAudioResultType_ApiFailed;
+    }
+
+    //
+    // Open PCM Device
+    //
+    fplAudioDeviceID deviceID = fplZeroInit;
+    if (targetDevice != fpl_null) {
+        deviceID = *targetDevice;
+    }
+
+    fplAudioShareMode shareMode = fplAudioShareMode_Shared;
+
+    snd_pcm_t *pcmDevice = fpl_null;
+
+    char deviceName[256] = fplZeroInit;
+    snd_pcm_stream_t stream = SND_PCM_STREAM_PLAYBACK;
+    int openMode = SND_PCM_NO_AUTO_RESAMPLE | SND_PCM_NO_AUTO_CHANNELS | SND_PCM_NO_AUTO_FORMAT;
+    if (fplGetStringLength(deviceID.alsa) == 0) {
+        const char *defaultDeviceNames[16] = fplZeroInit;
+        int defaultDeviceCount = 0;
+        defaultDeviceNames[defaultDeviceCount++] = "default";
+        if (shareMode != fplAudioShareMode_Exclusive) {
+            defaultDeviceNames[defaultDeviceCount++] = "dmix";
+            defaultDeviceNames[defaultDeviceCount++] = "dmix:0";
+            defaultDeviceNames[defaultDeviceCount++] = "dmix:0,0";
+        }
+        defaultDeviceNames[defaultDeviceCount++] = "hw";
+        defaultDeviceNames[defaultDeviceCount++] = "hw:0";
+        defaultDeviceNames[defaultDeviceCount++] = "hw:0,0";
+
+        bool isDeviceOpen = false;
+        for (size_t defaultDeviceIndex = 0; defaultDeviceIndex < defaultDeviceCount; ++defaultDeviceIndex) {
+            const char *defaultDeviceName = defaultDeviceNames[defaultDeviceIndex];
+            FPL_LOG_DEBUG("ALSA", "Opening PCM audio device '%s'", defaultDeviceName);
+            if (alsaApi->snd_pcm_open(&pcmDevice, defaultDeviceName, stream, openMode) == 0) {
+                FPL_LOG_DEBUG("ALSA", "Successfully opened PCM audio device '%s'", defaultDeviceName);
+                isDeviceOpen = true;
+                fplCopyString(defaultDeviceName, deviceName, fplArrayCount(deviceName));
+                break;
+            } else {
+                FPL_LOG_ERROR("ALSA", "Failed opening PCM audio device '%s'!", defaultDeviceName);
+            }
+        }
+        if (!isDeviceOpen) {
+            FPL__WARNING(FPL__MODULE_AUDIO_ALSA, "No PCM audio device found!");
+            return fplAudioResultType_NoDeviceFound;
+        }
+    } else {
+        const char *forcedDeviceId = deviceID.alsa;
+        // @TODO(final/ALSA): Do we want to allow device ids to be :%d,%d so we can probe "dmix" and "hw" ?
+        if (alsaApi->snd_pcm_open(&pcmDevice, forcedDeviceId, stream, openMode) < 0) {
+            FPL__WARNING(FPL__MODULE_AUDIO_ALSA, "PCM audio device by id '%s' not found!", forcedDeviceId);
+            return fplAudioResultType_NoDeviceFound;
+        }
+        fplCopyString(forcedDeviceId, deviceName, fplArrayCount(deviceName));
+    }
+
+    if (pcmDevice != fpl_null) {
+        alsaApi->snd_pcm_close(pcmDevice);
+    }
+
+    // IMPLEMEMENT(final): [ALSA] Implement device info extended
+
+    return fplAudioResultType_Failed;
 }
 
 fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendAlsaGetAudioDevices) {
@@ -22911,6 +22989,7 @@ fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendALSADescriptor =
         fplStructField(fplAudioBackendFunctionTable, initialize, fpl__AudioBackendAlsaInitialize),
         fplStructField(fplAudioBackendFunctionTable, release, fpl__AudioBackendAlsaRelease),
         fplStructField(fplAudioBackendFunctionTable, getAudioDevices, fpl__AudioBackendAlsaGetAudioDevices),
+        fplStructField(fplAudioBackendFunctionTable, getAudioDeviceInfo, fpl__AudioBackendALSAGetAudioDeviceInfo),
         fplStructField(fplAudioBackendFunctionTable, initializeDevice, fpl__AudioBackendAlsaInitializeDevice),
         fplStructField(fplAudioBackendFunctionTable, releaseDevice, fpl__AudioBackendAlsaReleaseDevice),
         fplStructField(fplAudioBackendFunctionTable, startDevice, fpl__AudioBackendAlsaStartDevice),
@@ -24060,10 +24139,12 @@ fpl_globalvar uint16_t fpl__g_audioChannelLayoutToChannelCountTable[] = {
 fplStaticAssert(fplArrayCount(fpl__g_audioChannelLayoutToChannelCountTable) == FPL__AUDIO_CHANNEL_LAYOUT_COUNT);
 
 fpl_common_api uint16_t fplGetAudioChannelsFromLayout(const fplAudioChannelLayout channelLayout) {
-	fplAssert(channelLayout >= fplAudioChannelLayout_First && channelLayout <= fplAudioChannelLayout_Last);
-	uint16_t channels = fpl__g_audioChannelLayoutToChannelCountTable[channelLayout - fplAudioChannelLayout_First];
-	uint16_t result = fplMax(0, fplMin(channels, FPL_MAX_AUDIO_CHANNEL_COUNT));
-	return result;
+    if (channelLayout >= fplAudioChannelLayout_First && channelLayout <= fplAudioChannelLayout_Last) {
+        uint16_t channels = fpl__g_audioChannelLayoutToChannelCountTable[channelLayout - fplAudioChannelLayout_First];
+        uint16_t result = fplMax(0, fplMin(channels, FPL_MAX_AUDIO_CHANNEL_COUNT));
+        return result;
+    }
+    return 0;
 }
 
 fpl_common_api fplAudioLatencyType fplGetAudioLatencyType(const fplAudioMode mode) {
