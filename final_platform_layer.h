@@ -23389,6 +23389,123 @@ fpl_globalvar const fplAudioDefaultFields fpl__global_AudioFormat_FallbackFields
 	fplAudioDefaultFields_SampleRate | fplAudioDefaultFields_Type | fplAudioDefaultFields_Channels,
 };
 
+fpl_globalvar const fplAudioFormatType fpl__global_AudioFormat_FallbackTypes[] = {
+	fplAudioFormatType_F32,
+	fplAudioFormatType_S32,
+	fplAudioFormatType_S24,
+	fplAudioFormatType_S16,
+	fplAudioFormatType_U8,
+};
+
+fpl_globalvar const uint32_t fpl__global_AudioFormat_FallbackSampleRates[] = {
+	48000,
+	44100,
+	32100,
+	24000,
+	22050,
+};
+
+fpl_globalvar const uint16_t fpl__global_AudioFormat_FallbackChannels[] = {
+	2,
+	1,
+};
+
+fpl_internal size_t fpl__PopulateFallbackAudioFormats(const fplAudioDefaultFields defaultFields, const size_t maxOutputFormatCount, fplAudioFormatU64 *outFormats) {
+	if (defaultFields == fplAudioDefaultFields_None) {
+		return 0;
+	}
+
+	const uint32_t channelCount = fplArrayCount(fpl__global_AudioFormat_FallbackChannels);
+	const uint32_t sampleRateCount = fplArrayCount(fpl__global_AudioFormat_FallbackSampleRates);
+	const uint32_t typeCount = fplArrayCount(fpl__global_AudioFormat_FallbackTypes);
+
+	bool isDefaultChannel = defaultFields & fplAudioDefaultFields_Channels;
+	bool isDefaultType = defaultFields & fplAudioDefaultFields_Type;
+	bool isDefaultSampleRate = defaultFields & fplAudioDefaultFields_SampleRate;
+
+	size_t requiredCount = 0;
+	if (isDefaultChannel) {
+		if (requiredCount == 0)
+			requiredCount = channelCount;
+		else
+			requiredCount = requiredCount * channelCount;
+	}
+	if (isDefaultType) {
+		if (requiredCount == 0)
+			requiredCount = typeCount;
+		else
+			requiredCount = requiredCount * typeCount;
+	}
+	if (isDefaultSampleRate) {
+		if (requiredCount == 0)
+			requiredCount = sampleRateCount;
+		else
+			requiredCount = requiredCount * sampleRateCount;
+	}
+
+	if (outFormats == fpl_null) {
+		return requiredCount;
+	}
+
+	uint32_t actualChannelCount = isDefaultChannel ? channelCount : 1;
+	uint32_t actualTypeCount = isDefaultType ? typeCount : 1;
+	uint32_t actualSampleRateCount = isDefaultSampleRate ? sampleRateCount : 1;
+
+	size_t totalCount = 0;
+	for (uint32_t channelIndex = 0; channelIndex < actualChannelCount; ++channelIndex) {
+		uint16_t channel = isDefaultChannel ? fpl__global_AudioFormat_FallbackChannels[channelIndex] : 0;
+		for (uint32_t typeIndex = 0; typeIndex < actualTypeCount; ++typeIndex) {
+			fplAudioFormatType type = isDefaultType ? fpl__global_AudioFormat_FallbackTypes[typeIndex] : fplAudioFormatType_None;
+			for (uint32_t sampleRateIndex = 0; sampleRateIndex < actualSampleRateCount; ++sampleRateIndex) {
+				uint32_t sampleRate = isDefaultSampleRate ? fpl__global_AudioFormat_FallbackSampleRates[sampleRateIndex] : 0;
+				uint64_t format = fplEncodeAudioFormatU64(sampleRate, channel, type);
+				if (totalCount < maxOutputFormatCount) {
+					outFormats[totalCount++] = format;
+				} else {
+					break;
+				}
+			}
+		}
+	}
+
+	return totalCount;
+}
+
+static void formatStuff(const fplAudioTargetFormat *sourceFormat, const fplAudioDefaultFields defaultFields) {
+	fplAudioFormatU64 testFormats[64];
+
+	size_t testFormatCount = fpl__PopulateFallbackAudioFormats(defaultFields, fplArrayCount(testFormats) - 1, testFormats + 1);
+	testFormats[0] = fplEncodeAudioFormatU64(sourceFormat->sampleRate, sourceFormat->channels, sourceFormat->type);
+	++testFormatCount;
+
+	uint32_t currentSampleRate;
+	uint16_t currentChannels;
+	fplAudioFormatType currentType;
+
+	fplAudioDeviceFormat targetFormat;
+
+	bool formatFound = false;
+	for (uint32_t testFormatIndex = 0; testFormatIndex < testFormatCount; ++testFormatIndex) {
+		fplAudioFormatU64 testFormat = testFormats[testFormatIndex];
+
+		fplClearStruct(&targetFormat);
+		fplConvertAudioTargetFormatToDeviceFormat(sourceFormat, &targetFormat);
+
+		if (fplDecodeAudioFormatU64(testFormat, &currentSampleRate, &currentChannels, &currentType)) {
+			if (defaultFields & fplAudioDefaultFields_Channels) {
+				targetFormat.channels = currentChannels;
+				targetFormat.channelLayout = fplGetAudioChannelLayoutFromChannels(currentChannels);
+			}
+			if (defaultFields & fplAudioDefaultFields_Type) {
+				targetFormat.type = currentType;
+			}
+			if (defaultFields & fplAudioDefaultFields_SampleRate) {
+				targetFormat.sampleRate = currentSampleRate;
+			}
+		}
+	}
+}
+
 fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSettings, fpl__AudioState *audioState) {
 	fplAssert(audioState != fpl_null);
 
