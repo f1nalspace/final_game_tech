@@ -3897,13 +3897,25 @@ typedef enum fplAudioDefaultFields {
 //! fplAudioDefaultFields operator overloads for C++
 FPL_ENUM_AS_FLAGS_OPERATORS(fplAudioDefaultFields);
 
-//! An enumeration of audio latency modes
-typedef enum fplAudioLatencyMode {
+//! An enumeration of audio latency types
+typedef enum fplAudioLatencyType {
 	//! Conservative latency
-	fplAudioLatencyMode_Conservative = 0,
+	fplAudioLatencyType_Conservative = 0,
 	//! Low latency
-	fplAudioLatencyMode_Low,
-} fplAudioLatencyMode;
+	fplAudioLatencyType_Low,
+} fplAudioLatencyType;
+
+//! An enumeration of audio modes that combines conservative/latency and exlusive/shared
+typedef enum fplAudioMode {
+	//! Shared Conservative
+	fplAudioMode_Shared_Conservative = 0,
+	//! Exclusive Conservative
+	fplAudioMode_Exclusive_Conservative,
+	//! Shared Low Latency
+	fplAudioMode_Shared_LowLatency,
+	//! Exclusive Low Latency
+	fplAudioMode_Exclusive_LowLatency,
+} fplAudioMode;
 
 //! An enumeration of audio channel layouts
 typedef enum fplAudioChannelLayout {
@@ -4011,32 +4023,32 @@ typedef struct fplAudioDeviceFormat {
 	fplAudioFormatType type;
 	//! Audio channel layout
 	fplAudioChannelLayout channelLayout;
-	//! Is exclusive mode preferred
-	fpl_b32 preferExclusiveMode;
+	//! Audio mode
+	fplAudioMode mode;
 	//! Default fields
 	fplAudioDefaultFields defaultFields;
 } fplAudioDeviceFormat;
 
 //! A structure containing audio target format configurations, such as type, sample rate, channels, etc.
 typedef struct fplAudioTargetFormat {
-	//! Samples per seconds (uses default of 44100 when zero)
-	uint16_t sampleRate;
-	//! Number of channels (uses default of 2 when zero)
-	uint16_t channels;
-	//! Buffer size in frames (First choice)
+	//! Samples per seconds (uses default when zero)
+	uint32_t sampleRate;
+	//! Buffer size in frames (Uses default when zero, first choice)
 	uint32_t bufferSizeInFrames;
-	//! Buffer size in milliseconds (Second choice)
+	//! Buffer size in milliseconds (Uses default when zero, second choice)
 	uint32_t bufferSizeInMilliseconds;
-	//! Number of periods (uses default of 3 when zero)
-	uint32_t periods;
-	//! Audio format (uses default of S16 when zero)
+	//! Number of periods (uses default when zero)
+	uint16_t periods;
+	//! Number of channels (uses default when zero)
+	uint16_t channels;
+	//! Audio default fields flags
+	fplAudioDefaultFields defaultFields;
+	//! Audio format (uses default when zero)
 	fplAudioFormatType type;
-	//! Audio channel layout (uses default stereo when auto)
+	//! Audio channel layout (uses default when auto)
 	fplAudioChannelLayout channelLayout;
-	//! Latency mode
-	fplAudioLatencyMode latencyMode;
-	//! Is exclusive mode preferred
-	fpl_b32 preferExclusiveMode;
+	//! Audio mode
+	fplAudioMode mode;
 } fplAudioTargetFormat;
 
 //! A union containing a id of the underlying backend
@@ -4050,8 +4062,11 @@ typedef union fplAudioDeviceID {
 	char alsa[256];
 #endif
 	//! Field for preventing union to be empty
-	int dummy;
+	uint8_t dummy[256];
 } fplAudioDeviceID;
+
+//! @brief Encoded audio format in 64-bit ([63] Unused 8-bit, Type 8-bit, Channels 16-bit, Sample rate 32-bit [0]) 
+typedef uint64_t fplAudioFormatU64;
 
 //! A structure containing the name and the id of the audio device
 typedef struct fplAudioDeviceInfo {
@@ -4060,6 +4075,16 @@ typedef struct fplAudioDeviceInfo {
 	//! Device id
 	fplAudioDeviceID id;
 } fplAudioDeviceInfo;
+
+//! A structure containing the @ref fplAudioDeviceInfo and the supported formats
+typedef struct fplAudioDeviceInfoExtended {
+	//! The base @ref fplAudioDeviceInfo
+	fplAudioDeviceInfo info;
+	//! Supported audio formats
+	fplAudioFormatU64 supportedFormats[63];
+	//! Number of supported formats
+	size_t supportedFormatCount;
+} fplAudioDeviceInfoExtended;
 
 #if defined(FPL__ENABLE_AUDIO_ALSA)
 //! A structure containing settings for the ALSA audio backend
@@ -7107,6 +7132,13 @@ fpl_common_api bool fplSetAudioClientReadCallback(fpl_audio_client_read_callback
 */
 fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo *devices, uint32_t maxDeviceCount);
 /**
+* @brief Gets the full @ref fplAudioDeviceInfoExtended for the specified @ref fplAudioDeviceID
+* @param deviceId The @ref fplAudioDeviceID
+* @param outDeviceInfo The output @ref fplAudioDeviceInfoExtended
+* @return Returns a boolean indicating whether the function succeeded or not
+*/
+fpl_common_api bool fplGetAudioDeviceInfo(const fplAudioDeviceID *deviceId, fplAudioDeviceInfoExtended *outDeviceInfo);
+/**
 * @brief Computes the number of bytes required to write one sample with one channel.
 * @param format The audio format type @ref fplAudioFormatType
 * @return Returns the number of bytes for one sample with one channel
@@ -7171,6 +7203,39 @@ fpl_common_api fplAudioChannelLayout fplGetAudioChannelLayoutFromChannels(const 
 * @param channelLayout The @ref fplAudioChannelLayout
 */
 fpl_common_api uint16_t fplGetAudioChannelsFromLayout(const fplAudioChannelLayout channelLayout);
+
+/**
+* @brief Gets the @ref fplAudioLatencyType from the specified @ref fplAudioMode
+* @param mode The @ref fplAudioMode
+* @return The found @ref fplAudioLatencyType
+*/
+fpl_common_api fplAudioLatencyType fplGetAudioLatencyType(const fplAudioMode mode);
+
+/**
+* @brief Gets a value indicating whether the specified @ref fplAudioMode is in exlusive or shared mode
+* @param mode The @ref fplAudioMode
+* @return A boolean with true when the mode is exlusive or false when shared
+*/
+fpl_common_api bool fplIsAudioExlusiveMode(const fplAudioMode mode);
+
+/**
+* @brief Creates a @ref fplAudioFormatU64 from the specified sample rate, channels, type
+* @param sampleRate The sample rate in Hz
+* @param channels The number of channels
+* @param type The @ref fplAudioFormatType
+* @return The encoded @ref fplAudioFormatU64
+*/
+fpl_common_api fplAudioFormatU64 fplEncodeAudioFormatU64(const uint32_t sampleRate, const uint16_t channels, const fplAudioFormatType type);
+
+/**
+* @brief Decodes the specified @ref fplAudioFormatU64 to the specified specified sample rate, channels, type
+* @param format64 The encoded @fplAudioFormatU64
+* @param outSampleRate The output sample rate
+* @param outChannels The output channels
+* @param outType The output @ref fplAudioFormatType
+* @return A boolean indicating whether the decode was successful or not
+*/
+fpl_common_api bool fplDecodeAudioFormatU64(const fplAudioFormatU64 format64, uint32_t *outSampleRate, uint16_t *outChannels, fplAudioFormatType *outType);
 
 /** @} */
 #endif // FPL__ENABLE_AUDIO
@@ -10979,13 +11044,14 @@ fpl_common_api void fplSetDefaultAudioTargetFormat(fplAudioTargetFormat *targetF
 	fplAudioDeviceFormat deviceFormat = fplZeroInit;
 	fplConvertAudioTargetFormatToDeviceFormat(&emptyFormat, &deviceFormat);
 
-	targetFormat->preferExclusiveMode = deviceFormat.preferExclusiveMode;
+	targetFormat->mode = deviceFormat.mode;
 	targetFormat->channels = deviceFormat.channels;
 	targetFormat->channelLayout = deviceFormat.channelLayout;
 	targetFormat->sampleRate = deviceFormat.sampleRate;
 	targetFormat->periods = deviceFormat.periods;
 	targetFormat->type = deviceFormat.type;
 	targetFormat->bufferSizeInFrames = deviceFormat.bufferSizeInFrames;
+	targetFormat->defaultFields = deviceFormat.defaultFields;
 #endif // FPL__ENABLE_AUDIO
 }
 
@@ -20716,6 +20782,9 @@ typedef	FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl_audio_backend_initialize_func);
 #define FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(name) uint32_t name(struct fplAudioContext *context, struct fplAudioBackend *backend, fplAudioDeviceInfo *deviceInfos, uint32_t maxDeviceCount)
 typedef	FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl_audio_backend_get_audio_devices_func);
 
+#define FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(name) fplAudioResultType name(struct fplAudioContext *context, struct fplAudioBackend *backend, const fplAudioDeviceID *targetDevice, fplAudioDeviceInfoExtended *outDeviceInfo)
+typedef	FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl_audio_backend_get_audio_device_info_func);
+
 #define FPL_AUDIO_BACKEND_RELEASE_FUNC(name) bool name(struct fplAudioContext *context, struct fplAudioBackend *backend)
 /*!
 * @brief Releases the specified @ref fplAudioBackend
@@ -20763,6 +20832,7 @@ typedef struct fplAudioBackendFunctionTable {
 	fpl_audio_backend_initialize_func *initialize;
 	fpl_audio_backend_release_func *release;
 	fpl_audio_backend_get_audio_devices_func *getAudioDevices;
+	fpl_audio_backend_get_audio_device_info_func *getAudioDeviceInfo;
 	fpl_audio_backend_initialize_device_func *initializeDevice;
 	fpl_audio_backend_release_device_func *releaseDevice;
 	fpl_audio_backend_start_device_func *startDevice;
@@ -20980,6 +21050,89 @@ typedef struct {
 	uint32_t capacityOverflow;
 } fpl__DirectSoundDeviceInfos;
 
+typedef enum {
+	fpl__DirectSoundChannelsInfoResult_Success = 0,
+	fpl__DirectSoundChannelsInfoResult_Failed,
+	fpl__DirectSoundChannelsInfoResult_TargetFormat,
+} fpl__DirectSoundChannelInfoResult;
+
+fpl_internal uint16_t fpl__GetDirectSoundChannelsAndMapFromSpeakerConfig(const DWORD speakerConfig, DWORD *outputChannelMask, fplAudioChannelLayout *outputLayout) {
+	uint16_t channels = 0;
+	DWORD channelMask = 0;
+	fplAudioChannelLayout layout = fplAudioChannelLayout_Automatic;
+
+	if (outputChannelMask != fpl_null) {
+		channelMask = *outputChannelMask;
+	}
+
+	if (outputLayout != fpl_null) {
+		layout = *outputLayout;
+	}
+
+	switch (speakerConfig & 0xFF) {
+		case DSSPEAKER_MONO:
+			channels = 1;
+			channelMask = SPEAKER_FRONT_CENTER;
+			layout = fplAudioChannelLayout_Mono;
+			break;
+
+		case DSSPEAKER_HEADPHONE:
+		case DSSPEAKER_STEREO:
+			channels = 2;
+			channelMask = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT;
+			layout = fplAudioChannelLayout_Stereo;
+			break;
+
+		case DSSPEAKER_QUAD:
+			channels = 4;
+			channelMask = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT | SPEAKER_BACK_LEFT | SPEAKER_BACK_RIGHT;
+			layout = fplAudioChannelLayout_4_0;
+			break;
+
+		case DSSPEAKER_SURROUND:
+			channels = 4;
+			channelMask = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT | SPEAKER_FRONT_CENTER | SPEAKER_BACK_CENTER;
+			layout = fplAudioChannelLayout_4_0;
+			break;
+
+		case DSSPEAKER_5POINT1_SURROUND:
+			channels = 6;
+			channelMask = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT | SPEAKER_FRONT_CENTER | SPEAKER_LOW_FREQUENCY | SPEAKER_SIDE_LEFT | SPEAKER_SIDE_RIGHT;
+			layout = fplAudioChannelLayout_5_1;
+			break;
+
+		case DSSPEAKER_5POINT1_BACK:
+			channels = 6;
+			channelMask = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT | SPEAKER_FRONT_CENTER | SPEAKER_LOW_FREQUENCY | SPEAKER_BACK_LEFT | SPEAKER_BACK_RIGHT;
+			layout = fplAudioChannelLayout_5_1;
+			break;
+
+		case DSSPEAKER_7POINT1_SURROUND:
+			channels = 8;
+			channelMask = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT | SPEAKER_FRONT_CENTER | SPEAKER_LOW_FREQUENCY | SPEAKER_BACK_LEFT | SPEAKER_BACK_RIGHT | SPEAKER_SIDE_LEFT | SPEAKER_SIDE_RIGHT;
+			layout = fplAudioChannelLayout_7_1;
+			break;
+
+		case DSSPEAKER_7POINT1_WIDE:
+			channels = 8;
+			channelMask = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT | SPEAKER_FRONT_CENTER | SPEAKER_LOW_FREQUENCY | SPEAKER_BACK_LEFT | SPEAKER_BACK_RIGHT | SPEAKER_FRONT_LEFT_OF_CENTER | SPEAKER_FRONT_RIGHT_OF_CENTER;
+			layout = fplAudioChannelLayout_7_1;
+			break;
+		default:
+			break;
+	}
+
+	if (outputChannelMask != fpl_null) {
+		*outputChannelMask = channelMask;
+	}
+
+	if (outputLayout != fpl_null) {
+		*outputLayout = layout;
+	}
+
+	return channels;
+}
+
 fpl_internal BOOL CALLBACK fpl__GetDeviceCallbackDirectSound(LPGUID lpGuid, LPCWSTR lpwstrDescription, LPCWSTR lpwstrModule, LPVOID lpContext) {
 	fpl__DirectSoundDeviceInfos *infos = (fpl__DirectSoundDeviceInfos *)lpContext;
 	fplAssert(infos != fpl_null);
@@ -21024,7 +21177,76 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudiobackendDirectSou
 	return(result);
 }
 
-fpl_internal DWORD fpl__BuildDirectSoundChannelMapping(const uint16_t channels, const fplAudioChannelLayout layout, fplAudioChannelsMapping *mapping) {
+fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudiobackendDirectSoundGetAudioDeviceInfo) {
+	fpl__AudioBackendDirectSound *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendDirectSound);
+	fplAssert(impl != fpl_null);
+
+	fplAssert(fpl__global__AppState != fpl_null);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__Win32AppState *win32AppState = &appState->win32;
+	const fpl__Win32Api *apiFuncs = &win32AppState->winApi;
+
+	const fpl__DirectSoundApi *dsoundApi = &impl->api;
+	if (dsoundApi->dsoundLibrary == fpl_null) {
+		FPL__WARNING(FPL__MODULE_AUDIO_DIRECTSOUND, "API is not loaded!");
+		return fplAudioResultType_ApiFailed;
+	}
+
+	LPDIRECTSOUND directSound = fpl_null;
+
+	// Load direct sound object
+	const GUID *deviceId = fpl_null;
+	if (targetDevice != fpl_null) {
+		fplAssert(sizeof(GUID) == sizeof(targetDevice->dshow));
+		deviceId = (const GUID *)&targetDevice->dshow;
+	}
+	if (!SUCCEEDED(dsoundApi->DirectSoundCreate(deviceId, &directSound, fpl_null))) {
+		char idString[64];
+		fpl__Win32FormatGuidString(idString, fplArrayCount(idString), deviceId);
+		return fplAudioResultType_NoDeviceFound;
+	}
+
+	// Get either local window handle or desktop handle
+	HWND windowHandle = fpl_null;
+#	if defined(FPL__ENABLE_WINDOW)
+	if (appState->initFlags & fplInitFlags_Window) {
+		windowHandle = appState->window.win32.windowHandle;
+	}
+#	endif
+	if (windowHandle == fpl_null) {
+		windowHandle = apiFuncs->user.GetDesktopWindow();
+	}
+
+	// The cooperative level must be set before doing anything else
+	if (FAILED(IDirectSound_SetCooperativeLevel(directSound, windowHandle, DSSCL_PRIORITY))) {
+		IDirectSound_Release(directSound);
+		return fplAudioResultType_Failed;
+	}
+
+	// Get capabilities
+	DSCAPS caps = fplZeroInit;
+	caps.dwSize = sizeof(caps);
+	if (FAILED(IDirectSound_GetCaps(directSound, &caps))) {
+		IDirectSound_Release(directSound);
+		return fplAudioResultType_Failed;
+	}
+
+	// Get number of channels
+	uint16_t channels;
+	if ((caps.dwFlags & DSCAPS_PRIMARYSTEREO) != 0) {
+		DWORD speakerConfig;
+		channels = 2;
+		if (SUCCEEDED(IDirectSound_GetSpeakerConfig(directSound, &speakerConfig))) {
+			channels =  fpl__GetDirectSoundChannelsAndMapFromSpeakerConfig(speakerConfig, fpl_null, fpl_null);
+		}
+	} else {
+		channels = 1;
+	}
+
+	return fplAudioResultType_Success;
+}
+
+fpl_internal DWORD fpl__BuildDirectSoundChannelMask(const uint32_t channels, const fplAudioChannelLayout layout, fplAudioChannelsMapping *mapping) {
 	fplClearStruct(mapping);
 
 	mapping->channelCount = channels;
@@ -21319,8 +21541,9 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendDirectSou
 	}
 
 	// The cooperative level must be set before doing anything else
-	if (FAILED(IDirectSound_SetCooperativeLevel(impl->directSound, windowHandle, (targetFormat->preferExclusiveMode) ? DSSCL_EXCLUSIVE : DSSCL_PRIORITY))) {
-		FPL__DSOUND_INIT_ERROR(fplAudioResultType_Failed, "Failed setting DirectSound Cooperative Level to '%s' mode!", (targetFormat->preferExclusiveMode ? "Exclusive" : "Priority"));
+	bool isExclusive = fplIsAudioExlusiveMode(targetFormat->mode);
+	if (FAILED(IDirectSound_SetCooperativeLevel(impl->directSound, windowHandle, isExclusive ? DSSCL_EXCLUSIVE : DSSCL_PRIORITY))) {
+		FPL__DSOUND_INIT_ERROR(fplAudioResultType_Failed, "Failed setting DirectSound Cooperative Level to '%s' mode!", (isExclusive ? "Exclusive" : "Priority"));
 	}
 
 	// Create primary buffer
@@ -21685,6 +21908,7 @@ fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendDirectShowDescri
 		fplStructField(fplAudioBackendFunctionTable, initialize, fpl__AudiobackendDirectSoundInitialize),
 		fplStructField(fplAudioBackendFunctionTable, release, fpl__AudiobackendDirectSoundRelease),
 		fplStructField(fplAudioBackendFunctionTable, getAudioDevices, fpl__AudiobackendDirectSoundGetAudioDevices),
+		fplStructField(fplAudioBackendFunctionTable, getAudioDeviceInfo, fpl__AudiobackendDirectSoundGetAudioDeviceInfo),
 		fplStructField(fplAudioBackendFunctionTable, initializeDevice, fpl__AudiobackendDirectSoundInitializeDevice),
 		fplStructField(fplAudioBackendFunctionTable, releaseDevice, fpl__AudiobackendDirectSoundReleaseDevice),
 		fplStructField(fplAudioBackendFunctionTable, startDevice, fpl__AudioBackendDirectSoundStartDevice),
@@ -23701,6 +23925,46 @@ fpl_common_api uint16_t fplGetAudioChannelsFromLayout(const fplAudioChannelLayou
 	return result;
 }
 
+fpl_common_api fplAudioLatencyType fplGetAudioLatencyType(const fplAudioMode mode) {
+	switch (mode) {
+		case fplAudioMode_Exclusive_LowLatency:
+		case fplAudioMode_Shared_LowLatency:
+			return fplAudioLatencyType_Low;
+		case fplAudioMode_Exclusive_Conservative:
+		case fplAudioMode_Shared_Conservative:
+		default:
+			return fplAudioLatencyType_Conservative;
+	}
+}
+
+fpl_common_api bool fplIsAudioExlusiveMode(const fplAudioMode mode) {
+	switch (mode) {
+		case fplAudioMode_Exclusive_LowLatency:
+		case fplAudioMode_Exclusive_Conservative:
+			return true;
+		default:
+			return false;
+	}
+}
+
+fpl_common_api fplAudioFormatU64 fplEncodeAudioFormatU64(const uint32_t sampleRate, const uint16_t channels, const fplAudioFormatType type) {
+	fplAudioFormatU64 result = 0;
+	result |= ((uint64_t)sampleRate << 32);
+	result |= ((uint64_t)channels << 16);
+	result |= ((uint64_t)(type & 0xFF) << 8);
+	return result;
+}
+
+fpl_common_api bool fplDecodeAudioFormatU64(const fplAudioFormatU64 format64, uint32_t *outSampleRate, uint16_t *outChannels, fplAudioFormatType *outType) {
+	if (outSampleRate == fpl_null || outChannels == fpl_null || outType == fpl_null) {
+		return false;
+	}
+	*outSampleRate = (uint32_t)((format64 >> 32) & 0xFFFFFFFF);
+	*outChannels = (uint16_t)((format64 >> 16) & 0xFFFF);
+	*outType = (fplAudioFormatType)((format64 >> 8) & 0xFF);
+	return true;
+}
+
 fpl_common_api void fplConvertAudioTargetFormatToDeviceFormat(const fplAudioTargetFormat *inFormat, fplAudioDeviceFormat *outFormat) {
 	FPL__CheckArgumentNullNoRet(inFormat);
 	FPL__CheckArgumentNullNoRet(outFormat);
@@ -23713,6 +23977,8 @@ fpl_common_api void fplConvertAudioTargetFormatToDeviceFormat(const fplAudioTarg
 		uint16_t highestChannelCount = fplMax(layoutChannelCount, inFormat->channels);
 		outFormat->channels = fplMax(0, fplMin(highestChannelCount, FPL_MAX_AUDIO_CHANNEL_COUNT));
 		outFormat->channelLayout = fplGetAudioChannelLayoutFromChannels(outFormat->channels);
+		outFormat->defaultFields |= ((inFormat->defaultFields & fplAudioDefaultFields_Channels) ? fplAudioDefaultFields_Channels : fplAudioDefaultFields_None);
+		outFormat->defaultFields |= ((inFormat->defaultFields & fplAudioDefaultFields_ChannelLayout) ? fplAudioDefaultFields_ChannelLayout : fplAudioDefaultFields_None);
 	} else if (inFormat->channels > 0 && inFormat->channelLayout == fplAudioChannelLayout_Automatic) {
 		outFormat->channels = fplMin(inFormat->channels, FPL_MAX_AUDIO_CHANNEL_COUNT);
 		outFormat->channelLayout = fplGetAudioChannelLayoutFromChannels(outFormat->channels);
@@ -23737,6 +24003,7 @@ fpl_common_api void fplConvertAudioTargetFormatToDeviceFormat(const fplAudioTarg
 	// Sample rate
 	if (inFormat->sampleRate > 0) {
 		outFormat->sampleRate = inFormat->sampleRate;
+		outFormat->defaultFields |= ((inFormat->defaultFields & fplAudioDefaultFields_SampleRate) ? fplAudioDefaultFields_SampleRate : fplAudioDefaultFields_None);
 	} else {
 		outFormat->sampleRate = FPL__DEFAULT_AUDIO_SAMPLERATE;
 		outFormat->defaultFields |= fplAudioDefaultFields_SampleRate;
@@ -23745,6 +24012,7 @@ fpl_common_api void fplConvertAudioTargetFormatToDeviceFormat(const fplAudioTarg
 	// Format
 	if (inFormat->type != fplAudioFormatType_None) {
 		outFormat->type = inFormat->type;
+		outFormat->defaultFields |= ((inFormat->defaultFields & fplAudioDefaultFields_Type) ? fplAudioDefaultFields_Type : fplAudioDefaultFields_None);
 	} else {
 		outFormat->type = FPL__DEFAULT_AUDIO_FORMAT;
 		outFormat->defaultFields |= fplAudioDefaultFields_Type;
@@ -23753,6 +24021,7 @@ fpl_common_api void fplConvertAudioTargetFormatToDeviceFormat(const fplAudioTarg
 	// Periods
 	if (inFormat->periods > 0) {
 		outFormat->periods = inFormat->periods;
+		outFormat->defaultFields |= ((inFormat->defaultFields & fplAudioDefaultFields_Periods) ? fplAudioDefaultFields_Periods : fplAudioDefaultFields_None);
 	} else {
 		outFormat->periods = FPL__DEFAULT_AUDIO_PERIODS;
 		outFormat->defaultFields |= fplAudioDefaultFields_Periods;
@@ -23761,16 +24030,19 @@ fpl_common_api void fplConvertAudioTargetFormatToDeviceFormat(const fplAudioTarg
 	// Buffer size
 	if (inFormat->bufferSizeInFrames > 0) {
 		outFormat->bufferSizeInFrames = inFormat->bufferSizeInFrames;
+		outFormat->defaultFields |= ((inFormat->defaultFields & fplAudioDefaultFields_BufferSize) ? fplAudioDefaultFields_BufferSize : fplAudioDefaultFields_None);
 	} else if (inFormat->bufferSizeInMilliseconds > 0) {
 		outFormat->bufferSizeInFrames = fplGetAudioBufferSizeInFrames(inFormat->sampleRate, inFormat->bufferSizeInMilliseconds);
+		outFormat->defaultFields |= ((inFormat->defaultFields & fplAudioDefaultFields_BufferSize) ? fplAudioDefaultFields_BufferSize : fplAudioDefaultFields_None);
 	} else {
-		uint32_t bufferSizeInMilliseconds = (inFormat->latencyMode == fplAudioLatencyMode_Conservative) ? FPL__DEFAULT_AUDIO_BUFFERSIZE_CONSERVATIVE_IN_MSECS : FPL__DEFAULT_AUDIO_BUFFERSIZE_LOWLATENCY_IN_MSECS;
+		fplAudioLatencyType latencyType = fplGetAudioLatencyType(inFormat->mode);
+		uint32_t bufferSizeInMilliseconds = (latencyType == fplAudioLatencyType_Conservative) ? FPL__DEFAULT_AUDIO_BUFFERSIZE_CONSERVATIVE_IN_MSECS : FPL__DEFAULT_AUDIO_BUFFERSIZE_LOWLATENCY_IN_MSECS;
 		outFormat->bufferSizeInFrames = fplGetAudioBufferSizeInFrames(inFormat->sampleRate, bufferSizeInMilliseconds);
 		outFormat->defaultFields |= fplAudioDefaultFields_BufferSize;
 	}
 
-	// Exclusive mode
-	outFormat->preferExclusiveMode = inFormat->preferExclusiveMode;
+	// Mode
+	outFormat->mode = inFormat->mode;
 }
 
 fpl_common_api fplAudioResultType fplStopAudio() {
@@ -24030,6 +24302,24 @@ fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo *devices, uint32_t
 	}
 	fplAssert(audioState->common.funcTable.getAudioDevices != fpl_null);
 	uint32_t result = audioState->common.funcTable.getAudioDevices(context, backend, devices, maxDeviceCount);
+	return(result);
+}
+
+fpl_common_api bool fplGetAudioDeviceInfo(const fplAudioDeviceID *deviceId, fplAudioDeviceInfoExtended *outDeviceInfo) {
+	FPL__CheckArgumentNull(outDeviceInfo, false);
+	FPL__CheckPlatform(false);
+	fpl__AudioState *audioState = fpl__GetAudioState(fpl__global__AppState);
+	fplAudioContext *context = &audioState->common.context;
+	fplAudioBackend *backend = fpl__GetActiveAudioBackend(audioState);
+	if (audioState == fpl_null || backend == fpl_null) {
+		return 0;
+	}
+	bool invalidBackend = !(audioState->backendType > fplAudioBackendType_Auto);
+	if (invalidBackend) {
+		return 0;
+	}
+	fplAssert(audioState->common.funcTable.getAudioDeviceInfo != fpl_null);
+	bool result = audioState->common.funcTable.getAudioDeviceInfo(context, backend, deviceId, outDeviceInfo);
 	return(result);
 }
 #endif // FPL__ENABLE_AUDIO
