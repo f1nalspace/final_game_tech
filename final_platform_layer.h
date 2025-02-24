@@ -24149,14 +24149,16 @@ fpl_common_api void fplConvertAudioTargetFormatToDeviceFormat(const fplAudioTarg
 	// Buffer size
 	if (inFormat->bufferSizeInFrames > 0) {
 		outFormat->bufferSizeInFrames = inFormat->bufferSizeInFrames;
+		outFormat->bufferSizeInMilliseconds = fplGetAudioBufferSizeInMilliseconds(outFormat->sampleRate, outFormat->bufferSizeInFrames);
 		outFormat->defaultFields |= ((inFormat->defaultFields & fplAudioDefaultFields_BufferSize) ? fplAudioDefaultFields_BufferSize : fplAudioDefaultFields_None);
 	} else if (inFormat->bufferSizeInMilliseconds > 0) {
-		outFormat->bufferSizeInFrames = fplGetAudioBufferSizeInFrames(inFormat->sampleRate, inFormat->bufferSizeInMilliseconds);
+		outFormat->bufferSizeInMilliseconds = inFormat->bufferSizeInMilliseconds;
+		outFormat->bufferSizeInFrames = fplGetAudioBufferSizeInFrames(outFormat->sampleRate, inFormat->bufferSizeInMilliseconds);
 		outFormat->defaultFields |= ((inFormat->defaultFields & fplAudioDefaultFields_BufferSize) ? fplAudioDefaultFields_BufferSize : fplAudioDefaultFields_None);
 	} else {
 		fplAudioLatencyType latencyType = fplGetAudioLatencyType(inFormat->mode);
-		uint32_t bufferSizeInMilliseconds = (latencyType == fplAudioLatencyType_Conservative) ? FPL__DEFAULT_AUDIO_BUFFERSIZE_CONSERVATIVE_IN_MSECS : FPL__DEFAULT_AUDIO_BUFFERSIZE_LOWLATENCY_IN_MSECS;
-		outFormat->bufferSizeInFrames = fplGetAudioBufferSizeInFrames(inFormat->sampleRate, bufferSizeInMilliseconds);
+		outFormat->bufferSizeInMilliseconds = (latencyType == fplAudioLatencyType_Conservative) ? FPL__DEFAULT_AUDIO_BUFFERSIZE_CONSERVATIVE_IN_MSECS : FPL__DEFAULT_AUDIO_BUFFERSIZE_LOWLATENCY_IN_MSECS;
+		outFormat->bufferSizeInFrames = fplGetAudioBufferSizeInFrames(outFormat->sampleRate, outFormat->bufferSizeInMilliseconds);
 		outFormat->defaultFields |= fplAudioDefaultFields_BufferSize;
 	}
 
