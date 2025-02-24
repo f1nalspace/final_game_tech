@@ -23536,41 +23536,6 @@ fpl_internal size_t fpl__PopulateFallbackAudioFormats(const fplAudioDefaultField
 	return totalCount;
 }
 
-static void formatStuff(const fplAudioTargetFormat *sourceFormat, const fplAudioDefaultFields defaultFields) {
-	fplAudioFormatU64 testFormats[64];
-
-	size_t testFormatCount = fpl__PopulateFallbackAudioFormats(defaultFields, fplArrayCount(testFormats) - 1, testFormats + 1);
-	testFormats[0] = fplEncodeAudioFormatU64(sourceFormat->sampleRate, sourceFormat->channels, sourceFormat->type);
-	++testFormatCount;
-
-	uint32_t currentSampleRate;
-	uint16_t currentChannels;
-	fplAudioFormatType currentType;
-
-	fplAudioDeviceFormat targetFormat;
-
-	bool formatFound = false;
-	for (uint32_t testFormatIndex = 0; testFormatIndex < testFormatCount; ++testFormatIndex) {
-		fplAudioFormatU64 testFormat = testFormats[testFormatIndex];
-
-		fplClearStruct(&targetFormat);
-		fpl__SetupAudioDeviceFormat(sourceFormat, &targetFormat);
-
-		if (fplDecodeAudioFormatU64(testFormat, &currentSampleRate, &currentChannels, &currentType)) {
-			if (defaultFields & fplAudioDefaultFields_Channels) {
-				targetFormat.channels = currentChannels;
-				targetFormat.channelLayout = fplGetAudioChannelLayoutFromChannels(currentChannels);
-			}
-			if (defaultFields & fplAudioDefaultFields_Type) {
-				targetFormat.type = currentType;
-			}
-			if (defaultFields & fplAudioDefaultFields_SampleRate) {
-				targetFormat.sampleRate = currentSampleRate;
-			}
-		}
-	}
-}
-
 fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSettings, fpl__AudioState *audioState) {
 	fplAssert(audioState != fpl_null);
 
@@ -23619,7 +23584,14 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 
 	fplAudioChannelsMapping channelsMapping = fplZeroInit;
 
-	fplAudioTargetFormat testFormat = fplZeroInit;
+	fplAudioTargetFormat currentTargetFormat = fplZeroInit;
+
+	const uint32_t defaultFallbackFieldCount = fplArrayCount(fpl__global_AudioFormat_FallbackFields);
+
+	static fplAudioDefaultFields fallbackFields[16] = fplZeroInit;
+	fplAssert(fplArrayCount(fallbackFields) >= defaultFallbackFieldCount);
+
+	static fplAudioFormatU64 testFormats[64] = fplZeroInit;
 
 	fplAudioResultType resultType;
 	for (size_t backendIndex = 0; backendIndex < audioBackendCount; ++backendIndex) {
@@ -23633,46 +23605,75 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 			continue;
 		}
 
-		const uint32_t fallbackFieldCount = fplArrayCount(fpl__global_AudioFormat_FallbackFields);
-		uint32_t fallbackFieldIndex = 0;
+		// Initialize desired format once, so we can add a default field if needed
+		fpl__SetupAudioDeviceFormat(&audioSettings->targetFormat, &backend->desiredFormat);
+
+		uint32_t fallbackFieldCount = 0;
+		if (backend->desiredFormat.defaultFields != fplAudioDefaultFields_None)
+			fallbackFields[fallbackFieldCount++] = backend->desiredFormat.defaultFields;
+		for (uint32_t i = 0; i < fplArrayCount(fpl__global_AudioFormat_FallbackFields); ++i) {
+			fallbackFields[fallbackFieldCount++] = fpl__global_AudioFormat_FallbackFields[i];
+		}
 
 		resultType = fplAudioResultType_NoBackendsFound;
 
+		uint32_t fallbackFieldIndex = 0;
+
 		fplAssert(descriptor->header.isValid && descriptor->table.initializeDevice != fpl_null);
 		while (resultType != fplAudioResultType_Success && fallbackFieldIndex < fallbackFieldCount) {
-			testFormat = audioSettings->targetFormat;
+			fplAudioDefaultFields fallbackFieldsMask = fallbackFields[fallbackFieldIndex];
 
-			fplAudioDefaultFields fallbackFields = fpl__global_AudioFormat_FallbackFields[fallbackFieldIndex];
+			size_t testFormatCount = fpl__PopulateFallbackAudioFormats(fallbackFieldsMask, fplArrayCount(testFormats) - 1, testFormats);
+			testFormats[++testFormatCount] = fplEncodeAudioFormatU64(audioSettings->targetFormat.sampleRate, audioSettings->targetFormat.channels, audioSettings->targetFormat.type);
 
-			if (fallbackFields & fplAudioDefaultFields_Type) {
-				testFormat.type = fplAudioFormatType_S16;
-			}
-			if (fallbackFields & fplAudioDefaultFields_Channels) {
-				testFormat.channels = 2;
-				testFormat.channelLayout = fplAudioChannelLayout_Stereo;
-			}
-			if (fallbackFields & fplAudioDefaultFields_SampleRate) {
-				testFormat.sampleRate = 44100;
-			}
+			uint32_t currentSampleRate;
+			uint16_t currentChannels;
+			fplAudioFormatType currentType;
 
-			fpl__SetupAudioDeviceFormat(&testFormat, &backend->desiredFormat);
+			bool formatFound = false;
+			for (uint32_t testFormatIndex = 0; testFormatIndex < testFormatCount; ++testFormatIndex) {
+				fplAudioFormatU64 testFormat = testFormats[testFormatIndex];
 
-			const char *formatTypeName = fplGetAudioFormatName(backend->desiredFormat.type);
+				currentTargetFormat = audioSettings->targetFormat;
+				currentTargetFormat.defaultFields = fplAudioDefaultFields_None;
 
-			FPL_LOG_DEBUG(FPL__MODULE_AUDIO, "Initializing audio device with settings (SampleRate=%u, Channels=%u, Type='%s')", backend->desiredFormat.sampleRate, backend->desiredFormat.channels, formatTypeName);
-			fplClearStruct(&backend->internalFormat);
-			resultType = descriptor->table.initializeDevice(context, backend, &audioSettings->specific, &backend->desiredFormat, &audioSettings->targetDevice, &backend->internalFormat, &channelsMapping);
-			if (resultType != fplAudioResultType_Success) {
-				const char *resultErrorStr = fplGetAudioResultName(resultType);
-				FPL_LOG_WARN(FPL__MODULE_AUDIO, "Failed initializing audio device with settings (SampleRate=%u, Channels=%u, Type='%s') -> %s", backend->desiredFormat.sampleRate, backend->desiredFormat.channels, formatTypeName, resultErrorStr);
-				descriptor->table.releaseDevice(context, backend);
-			} else {
-				FPL_LOG_DEBUG(FPL__MODULE_AUDIO, "Successfully initialized audio device with settings (SampleRate=%u, Channels=%u, Type='%s')", backend->desiredFormat.sampleRate, backend->desiredFormat.channels, formatTypeName);
-				audioState->common.funcTable = descriptor->table;
-				audioState->common.channelsMapping = channelsMapping;
-				audioState->backendType = descriptor->header.type;
-				audioState->isAsyncBackend = descriptor->header.isAsync;
-				break;
+				if (fplDecodeAudioFormatU64(testFormat, &currentSampleRate, &currentChannels, &currentType)) {
+					if (fallbackFieldsMask & fplAudioDefaultFields_Channels) {
+						currentTargetFormat.channels = currentChannels;
+						currentTargetFormat.channelLayout = fplGetAudioChannelLayoutFromChannels(currentChannels);
+						currentTargetFormat.defaultFields |= fplAudioDefaultFields_Channels;
+						currentTargetFormat.defaultFields |= fplAudioDefaultFields_ChannelLayout;
+					}
+					if (fallbackFieldsMask & fplAudioDefaultFields_Type) {
+						currentTargetFormat.type = currentType;
+						currentTargetFormat.defaultFields |= fplAudioDefaultFields_Type;
+					}
+					if (fallbackFieldsMask & fplAudioDefaultFields_SampleRate) {
+						currentTargetFormat.sampleRate = currentSampleRate;
+						currentTargetFormat.defaultFields |= fplAudioDefaultFields_SampleRate;
+					}
+				}
+			
+				fpl__SetupAudioDeviceFormat(&currentTargetFormat, &backend->desiredFormat);
+
+				const char *formatTypeName = fplGetAudioFormatName(backend->desiredFormat.type);
+
+				FPL_LOG_DEBUG(FPL__MODULE_AUDIO, "Initializing audio device with settings (SampleRate=%u, Channels=%u, Type='%s')", backend->desiredFormat.sampleRate, backend->desiredFormat.channels, formatTypeName);
+				fplClearStruct(&backend->internalFormat);
+				resultType = descriptor->table.initializeDevice(context, backend, &audioSettings->specific, &backend->desiredFormat, &audioSettings->targetDevice, &backend->internalFormat, &channelsMapping);
+				if (resultType != fplAudioResultType_Success) {
+					const char *resultErrorStr = fplGetAudioResultName(resultType);
+					FPL_LOG_WARN(FPL__MODULE_AUDIO, "Failed initializing audio device with settings (SampleRate=%u, Channels=%u, Type='%s') -> %s", backend->desiredFormat.sampleRate, backend->desiredFormat.channels, formatTypeName, resultErrorStr);
+					descriptor->table.releaseDevice(context, backend);
+				} else {
+					FPL_LOG_DEBUG(FPL__MODULE_AUDIO, "Successfully initialized audio device with settings (SampleRate=%u, Channels=%u, Type='%s')", backend->desiredFormat.sampleRate, backend->desiredFormat.channels, formatTypeName);
+					audioState->common.funcTable = descriptor->table;
+					audioState->common.channelsMapping = channelsMapping;
+					audioState->backendType = descriptor->header.type;
+					audioState->isAsyncBackend = descriptor->header.isAsync;
+					break;
+				}
+
 			}
 
 			++fallbackFieldIndex;
