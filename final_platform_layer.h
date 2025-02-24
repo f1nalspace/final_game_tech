@@ -23670,16 +23670,12 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 					if (fallbackFieldsMask & fplAudioDefaultFields_Channels) {
 						currentTargetFormat.channels = currentChannels;
 						currentTargetFormat.channelLayout = fplGetAudioChannelLayoutFromChannels(currentChannels);
-						currentTargetFormat.defaultFields |= fplAudioDefaultFields_Channels;
-						currentTargetFormat.defaultFields |= fplAudioDefaultFields_ChannelLayout;
 					}
 					if (fallbackFieldsMask & fplAudioDefaultFields_Type) {
 						currentTargetFormat.type = currentType;
-						currentTargetFormat.defaultFields |= fplAudioDefaultFields_Type;
 					}
 					if (fallbackFieldsMask & fplAudioDefaultFields_SampleRate) {
 						currentTargetFormat.sampleRate = currentSampleRate;
-						currentTargetFormat.defaultFields |= fplAudioDefaultFields_SampleRate;
 					}
 				}
 			
