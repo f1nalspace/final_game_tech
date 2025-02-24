@@ -3009,7 +3009,8 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 
 static void CloseStreamComponent(MediaStream &outStream) {
 	if (outStream.codecContext != nullptr) {
-		ffmpeg.av_freep(outStream.codecContext);
+        ffmpeg.avcodec_free_context(&outStream.codecContext);
+        outStream.codecContext = fpl_null;
 	}
 	outStream = {};
 	outStream.streamIndex = -1;
