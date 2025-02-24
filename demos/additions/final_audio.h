@@ -58,7 +58,7 @@ typedef struct AudioStream {
 	AudioFrameIndex framesRemaining;
 } AudioStream;
 
-#define MAX_AUDIO_STATIC_BUFFER_CHANNEL_COUNT (AudioChannelIndex)2
+#define MAX_AUDIO_STATIC_BUFFER_CHANNEL_COUNT (AudioChannelIndex)8
 #define MAX_AUDIO_STATIC_BUFFER_FRAME_COUNT (AudioFrameIndex)4096
 #define MAX_AUDIO_STATIC_BUFFER_MAX_TYPE_SIZE (size_t)4
 typedef struct AudioStaticBuffer {
