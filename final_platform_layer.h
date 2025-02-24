@@ -21522,7 +21522,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendDirectSou
 		if ((caps.dwFlags & DSCAPS_PRIMARYSTEREO) != 0) {
 			DWORD speakerConfig;
 			if (SUCCEEDED(IDirectSound_GetSpeakerConfig(impl->directSound, &speakerConfig))) {
-				DWORD channelMask;
+				DWORD channelMask = 0;
 				waveFormat.Format.nChannels = fpl__GetDirectSoundChannelsAndMapFromSpeakerConfig(speakerConfig, &channelMask, &channelLayout);
 				waveFormat.dwChannelMask = channelMask;
 			} else {
