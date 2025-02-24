@@ -3945,8 +3945,8 @@ static const char* fplGetAudioChannelFlagsName(const fplAudioChannelFlags flags)
     }
 }
 
-static uint8_t GetChannelIndexFromInputMapping(const fplAudioChannelsMapping *inputMapping, const fplAudioChannelFlags channelFlag) {
-	for (uint8_t i = 0; i < inputMapping->channelCount; ++i) {
+static uint8_t GetChannelIndexFromInputMapping(const fplAudioChannelsMapping *inputMapping, const uint8_t channelCount, const fplAudioChannelFlags channelFlag) {
+	for (uint8_t i = 0; i < channelCount; ++i) {
 		if (inputMapping->mapping[i] == channelFlag) {
 			return i;
 		}
@@ -3954,7 +3954,7 @@ static uint8_t GetChannelIndexFromInputMapping(const fplAudioChannelsMapping *in
 	return UINT8_MAX;
 }
 
-static void InitializeChannelMapping(const uint64_t channelLayout, const uint16_t channelCount, const fplAudioChannelsMapping *inputMapping, AudioChannelMapping *outputMapping) {
+static void InitializeChannelMapping(const uint64_t channelLayout, const uint8_t channelCount, const fplAudioChannelsMapping *inputMapping, AudioChannelMapping *outputMapping) {
 	int minBits = 0;
 	int maxBits = 17;
 	fplAssert(AV_CH_FRONT_LEFT == (1 << minBits));
@@ -3969,7 +3969,7 @@ static void InitializeChannelMapping(const uint64_t channelLayout, const uint16_
 			fplAudioChannelFlags channelFlag = MapAVChannelToAudioChannelFlags(mask);
 
 			uint8_t ffmpegIndex = count;
-			uint8_t mappedIndex = GetChannelIndexFromInputMapping(inputMapping, channelFlag);
+			uint8_t mappedIndex = GetChannelIndexFromInputMapping(inputMapping, channelCount, channelFlag);
 
 			if (ffmpegIndex != mappedIndex) {
 				requireMapping = true;
