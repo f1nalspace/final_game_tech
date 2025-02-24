@@ -4011,22 +4011,24 @@ typedef struct fplAudioChannelsMapping {
 
 //! A structure containing audio device format runtime properties, such as type, samplerate, channels, etc.
 typedef struct fplAudioDeviceFormat {
-	//! Buffer size in frames
-	uint32_t bufferSizeInFrames;
-	//! Samples per seconds
+	//! Samples per seconds (uses default when zero)
 	uint32_t sampleRate;
-	//! Number of channels
-	uint32_t channels;
-	//! Number of periods
-	uint32_t periods;
-	//! Format
+	//! Buffer size in frames (Uses default when zero, first choice)
+	uint32_t bufferSizeInFrames;
+	//! Buffer size in milliseconds (Uses default when zero, second choice)
+	uint32_t bufferSizeInMilliseconds;
+	//! Number of channels (uses default when zero)
+	uint16_t channels;
+	//! Number of periods (uses default when zero)
+	uint16_t periods;
+	//! Audio default fields flags
+	fplAudioDefaultFields defaultFields;
+	//! Audio format (uses default when zero)
 	fplAudioFormatType type;
-	//! Audio channel layout
+	//! Audio channel layout (uses default when auto)
 	fplAudioChannelLayout channelLayout;
 	//! Audio mode
 	fplAudioMode mode;
-	//! Default fields
-	fplAudioDefaultFields defaultFields;
 } fplAudioDeviceFormat;
 
 //! A structure containing audio target format configurations, such as type, sample rate, channels, etc.
@@ -4037,10 +4039,10 @@ typedef struct fplAudioTargetFormat {
 	uint32_t bufferSizeInFrames;
 	//! Buffer size in milliseconds (Uses default when zero, second choice)
 	uint32_t bufferSizeInMilliseconds;
-	//! Number of periods (uses default when zero)
-	uint16_t periods;
 	//! Number of channels (uses default when zero)
 	uint16_t channels;
+	//! Number of periods (uses default when zero)
+	uint16_t periods;
 	//! Audio default fields flags
 	fplAudioDefaultFields defaultFields;
 	//! Audio format (uses default when zero)
