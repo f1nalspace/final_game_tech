@@ -827,8 +827,10 @@ static AudioFrameIndex MixPlayItems(AudioSystem *audioSys, const AudioFrameIndex
 				} else {
 					if(inSampleRate > outSampleRate) {
 						// @TODO(final): SinC-Downsampling (Example: 48000 to 41000)
+						fplAssert(!"Non even Downsampling not supported");
 					} else if(inSampleRate < outSampleRate) {
 						// @TODO(final): SinC-Upsampling (Example: 41000 to 48000)
+						fplAssert(!"Non even Upsampling not supported");
 					}
 				}
 			}
