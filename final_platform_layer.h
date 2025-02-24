@@ -21347,7 +21347,7 @@ fpl_internal fplAudioResultType fpl__CreateDirectSoundSecondaryBuffer(fpl__Audio
 	} else {
 		waveFormat.SubFormat = FPL__GUID_KSDATAFORMAT_SUBTYPE_PCM;
 	}
-	waveFormat.dwChannelMask = fpl__BuildDirectSoundChannelMapping(sourceFormat->channels, sourceFormat->channelLayout, outMapping);
+	waveFormat.dwChannelMask = fpl__BuildDirectSoundChannelMask(sourceFormat->channels, sourceFormat->channelLayout, outMapping);
 
 	// Set format
 	if (FAILED(IDirectSoundBuffer_SetFormat(impl->primaryBuffer, (WAVEFORMATEX *)&waveFormat))) {
