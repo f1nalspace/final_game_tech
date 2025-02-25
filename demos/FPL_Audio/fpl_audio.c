@@ -1027,11 +1027,11 @@ int main(int argc, char **args) {
 	}
 
 	// Get number of audio devices
-	uint32_t deviceCount = fplGetAudioDevices(fpl_null, 0);
+	uint32_t deviceCount = fplGetAudioDevices(0, 0, fpl_null);
 
 	// Allocate memory for audio devices and fill it
 	fplAudioDeviceInfo *audioDeviceInfos = fplMemoryAllocate(sizeof(fplAudioDeviceInfo) * deviceCount);
-	uint32_t loadedDeviceCount = fplGetAudioDevices(audioDeviceInfos, deviceCount);
+	uint32_t loadedDeviceCount = fplGetAudioDevices(deviceCount, 0, audioDeviceInfos);
 	fplAssert(loadedDeviceCount == deviceCount);
 	// Use first audio device
 	if(loadedDeviceCount > 0) {
