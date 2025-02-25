@@ -4102,7 +4102,9 @@ typedef uint64_t fplAudioFormatU64;
 //! A structure containing the name and the id of the audio device
 typedef struct fplAudioDeviceInfo {
 	//! Device name
-	char name[FPL_MAX_NAME_LENGTH];
+	char name[FPL_MAX_NAME_LENGTH - 1];
+	//! A value indicating whether this is a default device or not
+	bool isDefault;
 	//! Device id
 	fplAudioDeviceID id;
 } fplAudioDeviceInfo;
