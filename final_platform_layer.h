@@ -7078,6 +7078,8 @@ typedef enum fplAudioResultType {
 	fplAudioResultType_DeviceAlreadyStarted,
 	//! The audio device is busy/waiting
 	fplAudioResultType_DeviceBusy,
+	//! Error occured while initializing a audio device
+	fplAudioResultType_DeviceFailure,
 	//! No audio device is found
 	fplAudioResultType_NoDeviceFound,
 	//! Failed to load the audio api
@@ -7100,6 +7102,8 @@ typedef enum fplAudioResultType {
 	fplAudioResultType_UnsuportedDeviceFormat,
     //! No memory available
     fplAudioResultType_OutOfMemory,
+	//! Feature or device is not implemented
+	fplAudioResultType_NotImplemented,
     //! Unknown error
 	fplAudioResultType_Failed,
 
@@ -23136,6 +23140,7 @@ fpl_globalvar const char *fpl__global_audioResultTypeNameTable[] = {
 	"Audio-Device already stopped",// fplAudioResultType_DeviceAlreadyStopped,
 	"Audio-Device already started",// fplAudioResultType_DeviceAlreadyStarted,
 	"Audio-Device is busy", // fplAudioResultType_DeviceBusy,
+	"Audio-Device failure", // fplAudioResultType_DeviceFailure,
 	"No Audio-Device found", // fplAudioResultType_NoDeviceFound,
 	"Api failure", // fplAudioResultType_ApiFailed,
 	"Platform not initialized", // fplAudioResultType_PlatformNotInitialized,
@@ -23147,6 +23152,7 @@ fpl_globalvar const char *fpl__global_audioResultTypeNameTable[] = {
 	"Audio buffer sizes was not set", // fplAudioResultType_UnsetAudioBufferSize,
 	"Audio device format is unsupported", // fplAudioResultType_UnsuportedDeviceFormat,
     "No memory available", // fplAudioResultType_OutOfMemory,
+    "Not implemented", // fplAudioResultType_NotImplemented,
     "Unknown audio failure", // fplAudioResultType_Failed,
 };
 fplStaticAssert(fplArrayCount(fpl__global_audioResultTypeNameTable) == FPL__AUDIO_RESULT_TYPE_COUNT);
