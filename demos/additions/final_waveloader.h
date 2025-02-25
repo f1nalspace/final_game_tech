@@ -166,7 +166,7 @@ extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, P
 			} break;
 		}
 
-		if((bufferPosition + nextChunkOffset) <= bufferSize) {
+		if((bufferPosition + nextChunkOffset + sizeof(WaveChunk)) <= bufferSize) {
 			bufferPosition += nextChunkOffset;
 			chunk = (const WaveChunk *)(buffer + bufferPosition);
 		} else {
