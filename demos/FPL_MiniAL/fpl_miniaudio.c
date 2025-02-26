@@ -218,7 +218,7 @@ static bool InitAudioContext(AudioContext *context, const fplAudioTargetFormat i
 	fplClearStruct(outFormat);
 	outFormat->sampleRate = context->maDevice.playback.internalSampleRate;
 	outFormat->channels = inFormat.channels;
-	outFormat->channelLayout = fplGetAudioChannelLayoutFromChannels(context->maDevice.playback.internalChannels);
+	outFormat->channelLayout = fplGetDefaultAudioChannelLayoutFromChannels(context->maDevice.playback.internalChannels);
 	outFormat->periods = context->maDevice.playback.internalPeriods;
 	outFormat->bufferSizeInFrames = context->maDevice.playback.internalPeriodSizeInFrames * context->maDevice.playback.internalPeriods;
 	outFormat->bufferSizeInMilliseconds = fplGetAudioBufferSizeInMilliseconds(context->maDevice.playback.internalSampleRate, outFormat->bufferSizeInFrames);
