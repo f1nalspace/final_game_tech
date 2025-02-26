@@ -1217,7 +1217,7 @@ struct AudioFormat {
 	fplAudioBackendType backend;
 };
 
-struct AudioChannelMapping {
+struct AudioChannelMap {
 	uint8_t channels[16];
 	bool isActive;
 };
@@ -1228,7 +1228,7 @@ struct AudioContext {
 	AudioFormat audioSource;
 	AudioFormat audioTarget;
 	Clock clock;
-	AudioChannelMapping channelMapping;
+	AudioChannelMap channelMap;
 	double audioClock;
 	int32_t audioClockSerial;
 	int32_t audioDiffAvgCount;
@@ -2637,14 +2637,14 @@ static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, cons
 				size_t destPosition = (frameCount - remainingFrameCount) * outputSamplesStride;
 				assert(destPosition < maxOutputSampleBufferSize);
 
-				if (nativeFormat->channels <= 2 || !state->audio.channelMapping.isActive) {
+				if (nativeFormat->channels <= 2 || !state->audio.channelMap.isActive) {
 					fplMemoryCopy(conversionAudioBuffer + sourcePosition, bytesToCopy, (uint8_t *)outputSamples + destPosition);
 				} else {
 					for (uint32_t frameIndex = 0; frameIndex < framesToRead; ++frameIndex) {
 						uintptr_t sourceFramePosition = sourcePosition + frameIndex * outputSamplesStride;
 						uintptr_t destFramePosition = destPosition + frameIndex * outputSamplesStride;
 						for (uint32_t channelIndex = 0; channelIndex < nativeFormat->channels; ++channelIndex) {
-							uint32_t targetChannelIndex = state->audio.channelMapping.channels[channelIndex];
+							uint32_t targetChannelIndex = state->audio.channelMap.channels[channelIndex];
 							fplMemoryCopy(conversionAudioBuffer + sourceFramePosition + channelIndex * outputFormatSize, outputFormatSize, (uint8_t *)outputSamples + destFramePosition + targetChannelIndex * outputFormatSize);
 						}
 					}
@@ -3933,16 +3933,16 @@ static const char* fplGetAudioChannelFlagsName(const fplAudioSpeakerFlags flags)
     }
 }
 
-static uint16_t GetChannelIndexFromInputMapping(const fplAudioChannelMap *inputMapping, const uint16_t channelCount, const fplAudioSpeakerFlags channelFlag) {
+static uint16_t GetChannelIndexFromInputMapping(const fplAudioChannelMap *inChannelMap, const uint16_t channelCount, const fplAudioSpeakerFlags channelFlag) {
 	for (uint16_t i = 0; i < channelCount; ++i) {
-		if (inputMapping->speakers[i] == channelFlag) {
+		if (inChannelMap->speakers[i] == channelFlag) {
 			return i;
 		}
 	}
 	return UINT16_MAX;
 }
 
-static void InitializeChannelMapping(const uint64_t channelLayout, const uint16_t channelCount, const fplAudioChannelMap *inputMapping, AudioChannelMapping *outputMapping) {
+static void InitializeChannelMapping(const uint64_t channelLayout, const uint16_t channelCount, const fplAudioChannelMap *inChannelMap, AudioChannelMap *outChannelMap) {
 	int minBits = 0;
 	int maxBits = 17;
 	fplAssert(AV_CH_FRONT_LEFT == (1 << minBits));
@@ -3958,23 +3958,23 @@ static void InitializeChannelMapping(const uint64_t channelLayout, const uint16_
 
 			uint16_t ffmpegIndex = count;
 
-			uint16_t mappedIndex = GetChannelIndexFromInputMapping(inputMapping, channelCount, channelFlag);
+			uint16_t mappedIndex = GetChannelIndexFromInputMapping(inChannelMap, channelCount, channelFlag);
 
 			if (ffmpegIndex != mappedIndex) {
 				requireMapping = true;
 			}
 
 			if (mappedIndex == UINT16_MAX) {
-				outputMapping->channels[ffmpegIndex] = ffmpegIndex & 0xFF;
+				outChannelMap->channels[ffmpegIndex] = ffmpegIndex & 0xFF;
 			} else {
-				outputMapping->channels[ffmpegIndex] = mappedIndex & 0xFF;
+				outChannelMap->channels[ffmpegIndex] = mappedIndex & 0xFF;
 			}
 
             count++;
         }
     }
 
-	outputMapping->isActive = requireMapping;
+	outChannelMap->isActive = requireMapping;
 }
 
 static bool InitializeAudio(PlayerState &state, const char *mediaFilePath) {
@@ -4070,7 +4070,7 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath) {
 		inputChannelLayout = ffmpeg.av_get_default_channel_layout(inputChannelCount);
 	}
 
-	InitializeChannelMapping(inputChannelLayout, nativeAudioFormat.channels, &mapping, &audio.channelMapping);
+	InitializeChannelMapping(inputChannelLayout, nativeAudioFormat.channels, &mapping, &audio.channelMap);
 
 	audio.audioSource = {};
 	audio.audioSource.channels = inputChannelCount;
