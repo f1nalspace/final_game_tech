@@ -175,7 +175,7 @@ typedef struct AudioDemo {
 	AudioBuffer outputTempBuffer;			// Used for decoding the audio samples into, before its pushed to the output ring buffer
 
 	AudioSineWaveData sineWave;
-	fplAudioDeviceFormat targetAudioFormat;
+	fplAudioFormat targetAudioFormat;
 	fplThreadHandle *streamingThread;
 
 	uint64_t lastVideoAudioChunkUpdateTime;
@@ -551,7 +551,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 #endif
 }
 
-static uint32_t AudioPlayback(const fplAudioDeviceFormat *outFormat, const uint32_t maxFrameCount, void *outputSamples, void *userData) {
+static uint32_t AudioPlayback(const fplAudioFormat *outFormat, const uint32_t maxFrameCount, void *outputSamples, void *userData) {
 	//fplDebugFormatOut("Requested %lu frames\n", maxFrameCount);
 
 	AudioDemo *demo = (AudioDemo *)userData;
@@ -620,7 +620,7 @@ static uint32_t AudioPlayback(const fplAudioDeviceFormat *outFormat, const uint3
 	return(result);
 }
 
-static bool StreamAudio(const fplAudioDeviceFormat *format, const uint32_t maxFrameCount, AudioDemo *demo, uint64_t *outDuration) {
+static bool StreamAudio(const fplAudioFormat *format, const uint32_t maxFrameCount, AudioDemo *demo, uint64_t *outDuration) {
 	if(format == fpl_null || demo == fpl_null) return(false);
 	if(maxFrameCount == 0) return(false);
 

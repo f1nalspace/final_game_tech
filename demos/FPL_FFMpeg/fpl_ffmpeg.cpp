@@ -1895,7 +1895,7 @@ static void VideoDecodingThreadProc(const fplThreadHandle *thread, void *userDat
 static void AudioDecodingThreadProc(const fplThreadHandle *thread, void *userData);
 static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData);
 static void LoadMediaThreadProc(const fplThreadHandle *thread, void *userData);
-static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData);
+static uint32_t AudioReadCallback(const fplAudioFormat *nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData);
 
 static bool InitializeVideoRendering(VideoContext &video, const AVCodecContext *videoCodexCtx);
 static void ReleaseVideoRendering(VideoContext &video);
@@ -2589,7 +2589,7 @@ static void WriteSilenceSamples(AudioContext *audio, uint32_t remainingFrameCoun
 
 }
 
-static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
+static uint32_t AudioReadCallback(const fplAudioFormat *nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
 	double audioCallbackTime = (double)ffmpeg.av_gettime_relative();
 
 	// FPL Audio Frame = Audio Sample = [Left S16][Right S16]
@@ -3998,7 +3998,7 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath) {
 
 	int lineSize;
 
-	fplAudioDeviceFormat nativeAudioFormat = fplZeroInit;
+	fplAudioFormat nativeAudioFormat = fplZeroInit;
 
 	fplAudioChannelMap mapping = fplZeroInit;
 

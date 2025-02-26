@@ -177,9 +177,11 @@ SOFTWARE.
 	- Fixed: fplCreateVideoRectFromLTRB() was not compiling on GCC due to inlining failing
 	- Fixed[#156]: Target audio format type and periods was never used
 	- Fixed[#157]: Compile error for missing _countof() fplArrayCount in some scenarios
-	- Removed: Obsolete function fplFileSetTimestamps removed
+	- Removed: Removed obsolete function fplFileSetTimestamps
+	- Removed: Removed obsolete struct fplAudioTargetFormat
 	- Changed: Renamed field userData to clientUserData in @ref fplAudioSettings
-	- Changed: Replaced audio exclusive and latency mode with a single enum @ref fplAudioMode in @ref fplAudioTargetFormat and @ref fplAudioDeviceFormat
+	- Changed: Renamed fplAudioDeviceFormat to fplAudioFormat
+	- Changed: Replaced audio exclusive flag and latency mode with a single enum @ref fplAudioMode in @ref fplAudioFormat
 
 	## v0.9.8-beta
 
@@ -4072,8 +4074,8 @@ typedef struct fplAudioChannelMap {
 	fplAudioSpeakerFlags speakers[FPL_MAX_AUDIO_CHANNEL_COUNT];
 } fplAudioChannelMap;
 
-//! A structure containing audio device format runtime properties, such as type, samplerate, channels, etc.
-typedef struct fplAudioDeviceFormat {
+//! A structure containing audio format properties, such as type, samplerate, channels, etc.
+typedef struct fplAudioFormat {
 	//! Samples per seconds (uses default when zero)
 	uint32_t sampleRate;
 	//! Buffer size in frames (Uses default when zero, first choice)
@@ -4092,29 +4094,7 @@ typedef struct fplAudioDeviceFormat {
 	fplAudioChannelLayout channelLayout;
 	//! Audio mode
 	fplAudioMode mode;
-} fplAudioDeviceFormat;
-
-//! A structure containing audio target format configurations, such as type, sample rate, channels, etc.
-typedef struct fplAudioTargetFormat {
-	//! Samples per seconds (uses default when zero)
-	uint32_t sampleRate;
-	//! Buffer size in frames (Uses default when zero, first choice)
-	uint32_t bufferSizeInFrames;
-	//! Buffer size in milliseconds (Uses default when zero, second choice)
-	uint32_t bufferSizeInMilliseconds;
-	//! Number of channels (uses default when zero)
-	uint16_t channels;
-	//! Number of periods (uses default when zero)
-	uint16_t periods;
-	//! Audio default fields flags
-	fplAudioDefaultFields defaultFields;
-	//! Audio format (uses default when zero)
-	fplAudioFormatType type;
-	//! Audio channel layout (uses default when auto)
-	fplAudioChannelLayout channelLayout;
-	//! Audio mode
-	fplAudioMode mode;
-} fplAudioTargetFormat;
+} fplAudioFormat;
 
 //! A union containing a id of the underlying backend
 typedef union fplAudioDeviceID {
@@ -4173,19 +4153,19 @@ typedef union fplSpecificAudioSettings {
 
 /**
 * @brief A callback for reading audio samples from the client
-* @param deviceFormat The pointer to the @ref fplAudioDeviceFormat structure, the audio cards expects
+* @param deviceFormat The pointer to the @ref fplAudioFormat structure, the audio cards expects
 * @param frameCount The numbers if frames the client should write at max
 * @param outputSamples The pointer to the target samples
 * @param userData The pointer to the user data specified in @ref fplAudioSettings
 * @return Returns the number written frames
 * @see @ref subsection_category_audio_general_default_init_clientcallback
 */
-typedef uint32_t(fpl_audio_client_read_callback)(const fplAudioDeviceFormat *deviceFormat, const uint32_t frameCount, void *outputSamples, void *userData);
+typedef uint32_t(fpl_audio_client_read_callback)(const fplAudioFormat *deviceFormat, const uint32_t frameCount, void *outputSamples, void *userData);
 
 //! A structure containing audio settings, such as format, device info, callbacks, backend, etc.
 typedef struct fplAudioSettings {
 	//! The target format
-	fplAudioTargetFormat targetFormat;
+	fplAudioFormat targetFormat;
 	//! The target device
 	fplAudioDeviceInfo targetDevice;
 	//! Specific settings
@@ -7175,10 +7155,10 @@ fpl_common_api fplAudioResultType fplLoadAudio(fplAudioSettings *audioSettings);
 fpl_common_api bool fplUnloadAudio();
 /**
 * @brief Retrieves the native format for the current audio device.
-* @param outFormat The pointer to the @ref fplAudioDeviceFormat structure
+* @param outFormat The pointer to the @ref fplAudioFormat structure
 * @return Returns true when a hardware format was active, false otherwise.
 */
-fpl_common_api bool fplGetAudioHardwareFormat(fplAudioDeviceFormat *outFormat);
+fpl_common_api bool fplGetAudioHardwareFormat(fplAudioFormat *outFormat);
 
 /**
 * @brief Gets the audio channels mapping table.
@@ -20843,11 +20823,11 @@ typedef	FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl_audio_backend_release_func);
 * @param context The @ref fplAudioContext reference
 * @param backend The @ref fplAudioBackend reference
 * @param audioSettings The @ref fplSpecificAudioSettings reference, that contains special settings for several backends
-* @param targetFormat The @ref fplAudioDeviceFormat reference, that specifies the desired audio format
-* @param outputFormat The @ref fplAudioDeviceFormat reference, that specifies the desired audio format
+* @param targetFormat The @ref fplAudioFormat reference, that specifies the desired audio format
+* @param outputFormat The @ref fplAudioFormat reference, that specifies the desired audio format
 * @result Returns a @ref fplAudioResultType
 */
-#define FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(name) fplAudioResultType name(struct fplAudioContext *context, struct fplAudioBackend *backend, const fplSpecificAudioSettings *audioSettings, const fplAudioDeviceFormat *targetFormat, const fplAudioDeviceInfo *targetDevice, fplAudioDeviceFormat *outputFormat, fplAudioChannelMap *channelMap)
+#define FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(name) fplAudioResultType name(struct fplAudioContext *context, struct fplAudioBackend *backend, const fplSpecificAudioSettings *audioSettings, const fplAudioFormat *targetFormat, const fplAudioDeviceInfo *targetDevice, fplAudioFormat *outputFormat, fplAudioChannelMap *channelMap)
 typedef	FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl_audio_backend_initialize_device_func);
 
 #define FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(name) bool name(struct fplAudioContext *context, struct fplAudioBackend *backend)
@@ -20924,10 +20904,10 @@ typedef struct fplAudioBackendDescriptor {
 } fplAudioBackendDescriptor;
 
 typedef struct fplAudioBackend {
-	// Internal audio format used
-	fplAudioDeviceFormat desiredFormat;
-	// Internal audio format used
-	fplAudioDeviceFormat internalFormat;
+	// User audio format
+	fplAudioFormat desiredFormat;
+	// Internal audio format
+	fplAudioFormat internalFormat;
 	// Callback that is called from the user to retrieve audio frames/samples
 	fpl_audio_client_read_callback *clientReadCallback;
 	// User data that is passed to the user callback
@@ -21449,7 +21429,7 @@ fpl_internal DWORD fpl__GetWin32AudioChannelMaskFromMapping(const fplAudioChanne
 	return result;
 }
 
-fpl_internal void fpl__SetupWaveFormatDirectSound(const fplAudioDeviceFormat *sourceFormat, const fplAudioChannelMap *channelMap, WAVEFORMATEXTENSIBLE *outputWaveFormat) {
+fpl_internal void fpl__SetupWaveFormatDirectSound(const fplAudioFormat *sourceFormat, const fplAudioChannelMap *channelMap, WAVEFORMATEXTENSIBLE *outputWaveFormat) {
 	WAVEFORMATEXTENSIBLE waveFormat = fplZeroInit;
 	waveFormat.Format.cbSize = sizeof(waveFormat);
 	waveFormat.Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
@@ -21609,7 +21589,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendDirectSou
 
 	LPDIRECTSOUNDBUFFER secondaryBuffer = fpl_null;
 
-	fplAudioDeviceFormat internalFormat = fplZeroInit;
+	fplAudioFormat internalFormat = fplZeroInit;
 
 	// Get capabilities
 	DSCAPS caps = fplZeroInit;
@@ -21758,7 +21738,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendDirectSou
 #undef FPL__DSOUND_INIT_ERROR
 }
 
-fpl_internal bool fpl__GetCurrentFrameDirectSound(const fplAudioDeviceFormat *internalFormat, fpl__AudioBackendDirectSound *impl, uint32_t *pCurrentPos) {
+fpl_internal bool fpl__GetCurrentFrameDirectSound(const fplAudioFormat *internalFormat, fpl__AudioBackendDirectSound *impl, uint32_t *pCurrentPos) {
 	fplAssert(pCurrentPos != fpl_null);
 	*pCurrentPos = 0;
 
@@ -21773,7 +21753,7 @@ fpl_internal bool fpl__GetCurrentFrameDirectSound(const fplAudioDeviceFormat *in
 	return true;
 }
 
-fpl_internal uint32_t fpl__GetAvailableFramesDirectSound(const fplAudioDeviceFormat *internalFormat, fpl__AudioBackendDirectSound *impl) {
+fpl_internal uint32_t fpl__GetAvailableFramesDirectSound(const fplAudioFormat *internalFormat, fpl__AudioBackendDirectSound *impl) {
 	// Get current frame from current play position
 	uint32_t currentFrame;
 	if (!fpl__GetCurrentFrameDirectSound(internalFormat, impl, &currentFrame)) {
@@ -21797,7 +21777,7 @@ fpl_internal uint32_t fpl__GetAvailableFramesDirectSound(const fplAudioDeviceFor
 	return totalFrameCount - committedSize;
 }
 
-fpl_internal uint32_t fpl__WaitForFramesDirectSound(const fplAudioDeviceFormat *internalFormat, fpl__AudioBackendDirectSound *impl) {
+fpl_internal uint32_t fpl__WaitForFramesDirectSound(const fplAudioFormat *internalFormat, fpl__AudioBackendDirectSound *impl) {
 	fplAssert(internalFormat->sampleRate > 0);
 	fplAssert(internalFormat->periods > 0);
 
@@ -22383,7 +22363,7 @@ fpl_internal bool fpl__LoadAlsaApi(fpl__AlsaAudioApi *alsaApi) {
 	return(result);
 }
 
-fpl_internal uint32_t fpl__AudioWaitForFramesAlsa(const fplAudioDeviceFormat *deviceFormat, fpl__AlsaAudioBackend *backend, bool *requiresRestart) {
+fpl_internal uint32_t fpl__AudioWaitForFramesAlsa(const fplAudioFormat *deviceFormat, fpl__AlsaAudioBackend *backend, bool *requiresRestart) {
     fplAssert(deviceFormat != fpl_null && backend != fpl_null);
 	if (requiresRestart != fpl_null) {
 		*requiresRestart = false;
@@ -22865,7 +22845,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 		}
 	}
 
-	fplAudioDeviceFormat internalFormat = fplZeroInit;
+	fplAudioFormat internalFormat = fplZeroInit;
 
 	//
 	// Format
@@ -23183,7 +23163,7 @@ fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendALSADescriptor =
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #if defined(FPL__ENABLE_AUDIO)
 
-fpl_internal void fpl__SetupAudioDeviceFormat(const fplAudioTargetFormat *inFormat, fplAudioDeviceFormat *outFormat) {
+fpl_internal void fpl__SetupAudioDeviceFormat(const fplAudioFormat *inFormat, fplAudioFormat *outFormat) {
 	FPL__CheckArgumentNullNoRet(inFormat);
 	FPL__CheckArgumentNullNoRet(outFormat);
 
@@ -23786,7 +23766,7 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 
 	fplAudioChannelMap channelsMapping = fplZeroInit;
 
-	fplAudioTargetFormat currentTargetFormat = fplZeroInit;
+	fplAudioFormat currentTargetFormat = fplZeroInit;
 
 	const uint32_t defaultFallbackFieldCount = fplArrayCount(fpl__global_AudioFormat_FallbackFields);
 
@@ -23889,7 +23869,7 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 	}
 
 	fpl__global__AppState->currentSettings.audio.backend = audioState->backendType;
-	fplMemoryCopy(&backend->internalFormat, sizeof(fplAudioTargetFormat), &fpl__global__AppState->currentSettings.audio.targetFormat);
+	fplMemoryCopy(&backend->internalFormat, sizeof(fplAudioFormat), &fpl__global__AppState->currentSettings.audio.targetFormat);
 	fpl__global__AppState->currentSettings.audio.clientReadCallback = audioState->common.backend->clientReadCallback;
 	fpl__global__AppState->currentSettings.audio.clientUserData = audioState->common.backend->clientUserData;
 
@@ -24601,7 +24581,7 @@ fpl_common_api bool fplUnloadAudio() {
 	return true;
 }
 
-fpl_common_api bool fplGetAudioHardwareFormat(fplAudioDeviceFormat *outFormat) {
+fpl_common_api bool fplGetAudioHardwareFormat(fplAudioFormat *outFormat) {
 	FPL__CheckArgumentNull(outFormat, false);
 	FPL__CheckPlatform(false);
 	fpl__AudioState *audioState = fpl__GetAudioState(fpl__global__AppState);

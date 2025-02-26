@@ -74,7 +74,7 @@ License:
 
 typedef struct PlaybackAudioFormat {
 	char backendName[FPL_MAX_NAME_LENGTH];
-	fplAudioDeviceFormat deviceFormat;
+	fplAudioFormat deviceFormat;
 } PlaybackAudioFormat;
 
 typedef struct AudioContext {
@@ -132,10 +132,10 @@ static void AudioPlayback_MiniAudio(ma_device* pDevice, void* pOutput, const voi
 	AudioSystemWriteFrames(audioSys, pOutput, &audioCtx->playbackFormat.deviceFormat, frameCount, true);
 }
 #else
-static uint32_t AudioPlayback_FPL(const fplAudioDeviceFormat *outFormat, const uint32_t maxFrameCount, void *outputSamples, void *userData) {
+static uint32_t AudioPlayback_FPL(const fplAudioFormat *deviceFormat, const uint32_t maxFrameCount, void *outputSamples, void *userData) {
 	AudioContext *audioCtx = (AudioContext *)userData;
 	AudioSystem *audioSys = &audioCtx->system;
-	AudioFrameIndex result = AudioSystemWriteFrames(audioSys, outputSamples, outFormat, maxFrameCount, true);
+	AudioFrameIndex result = AudioSystemWriteFrames(audioSys, outputSamples, deviceFormat, maxFrameCount, true);
 	return(result);
 }
 #endif
@@ -149,7 +149,7 @@ static void ReleaseAudioContext(AudioContext *context) {
 #endif // #if OPT_USE_MINIAUDIO	
 }
 
-static bool InitAudioContext(AudioContext *context, const fplAudioTargetFormat inFormat, fplAudioDeviceFormat *outFormat) {
+static bool InitAudioContext(AudioContext *context, const fplAudioFormat inFormat, fplAudioFormat *outFormat) {
 	fplAssert(context != fpl_null);
 	context->sineWave.frequency = 440;
 	context->sineWave.toneVolume = 0.25f;
@@ -245,7 +245,7 @@ static bool StartPlayback(AudioContext *context) {
 		return(false);
 	}
 	
-	fplAudioDeviceFormat *actualDeviceFormat = &playbackFormat->deviceFormat;
+	fplAudioFormat *actualDeviceFormat = &playbackFormat->deviceFormat;
 
 	const char *outBackendName = ma_get_backend_name(context->maDevice.pContext->backend);
 	fplCopyString(outBackendName, playbackFormat->backendName, fplArrayCount(playbackFormat->backendName));
@@ -285,14 +285,14 @@ int main(int argc, char **args) {
 	bool forceSineWave = false;
 
 	// Use default audio format from FPL as target format
-	fplAudioTargetFormat targetFormat = fplZeroInit;
+	fplAudioFormat targetFormat = fplZeroInit;
 
 	// NOTE(final): Our test audio file is encoded in 44100 Hz, Stereo and our audio system does not support up/down sample with non-even sample rates yet
 	targetFormat.sampleRate = 44100;
 	targetFormat.channels = 2;
 	targetFormat.channelLayout = fplAudioChannelLayout_Stereo;
 
-	fplAudioDeviceFormat targetDeviceFormat = fplZeroInit;
+	fplAudioFormat targetDeviceFormat = fplZeroInit;
 
 	int result = -1;
 
