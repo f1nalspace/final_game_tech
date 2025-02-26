@@ -3779,39 +3779,26 @@ static uint64_t MapChannelLayout(const fplAudioChannelLayout layout) {
 			return AV_CH_LAYOUT_MONO;
 		case fplAudioChannelLayout_Stereo:
 			return AV_CH_LAYOUT_STEREO;
-		case fplAudioChannelLayout_2_1:
+		case fplAudioChannelLayout_3_0_Surround:
 			return AV_CH_LAYOUT_2_1;
-		case fplAudioChannelLayout_4_0:
+		case fplAudioChannelLayout_2_1:
+			return AV_CH_LAYOUT_2POINT1;
+		case fplAudioChannelLayout_4_0_Quad:
+			return AV_CH_LAYOUT_QUAD;
+		case fplAudioChannelLayout_4_0_Surround:
 			return AV_CH_LAYOUT_4POINT0;
 		case fplAudioChannelLayout_4_1:
 			return AV_CH_LAYOUT_4POINT1;
+		case fplAudioChannelLayout_5_0_Surround:
+			return AV_CH_LAYOUT_5POINT0;
 		case fplAudioChannelLayout_5_1:
 			return AV_CH_LAYOUT_5POINT1;
+		case fplAudioChannelLayout_6_1:
+			return AV_CH_LAYOUT_6POINT1;
 		case fplAudioChannelLayout_7_1:
 			return AV_CH_LAYOUT_7POINT1;
 		default:
 			return AV_CH_LAYOUT_STEREO;
-	}
-}
-
-static fplAudioSpeakerFlags BuildSpeakerLayout(const fplAudioChannelLayout layout) {
-	switch (layout) {
-		case fplAudioChannelLayout_Mono:
-			return fplAudioSpeakerFlags_FrontLeft;
-		case fplAudioChannelLayout_Stereo:
-			return fplAudioSpeakerFlags_FrontLeft | fplAudioSpeakerFlags_FrontRight;
-		case fplAudioChannelLayout_2_1:
-			return fplAudioSpeakerFlags_FrontLeft | fplAudioSpeakerFlags_FrontRight | fplAudioSpeakerFlags_LowFrequency;
-		case fplAudioChannelLayout_4_0:
-			return fplAudioSpeakerFlags_FrontLeft | fplAudioSpeakerFlags_FrontRight | fplAudioSpeakerFlags_BackLeft | fplAudioSpeakerFlags_BackRight;
-		case fplAudioChannelLayout_4_1:
-			return fplAudioSpeakerFlags_FrontLeft | fplAudioSpeakerFlags_FrontRight | fplAudioSpeakerFlags_LowFrequency | fplAudioSpeakerFlags_BackLeft | fplAudioSpeakerFlags_BackRight;
-		case fplAudioChannelLayout_5_1:
-			return fplAudioSpeakerFlags_FrontLeft | fplAudioSpeakerFlags_FrontRight | fplAudioSpeakerFlags_LowFrequency | fplAudioSpeakerFlags_FrontCenter | fplAudioSpeakerFlags_BackLeft | fplAudioSpeakerFlags_BackRight;
-		case fplAudioChannelLayout_7_1:
-			return fplAudioSpeakerFlags_FrontLeft | fplAudioSpeakerFlags_FrontRight | fplAudioSpeakerFlags_LowFrequency | fplAudioSpeakerFlags_FrontCenter | fplAudioSpeakerFlags_BackLeft | fplAudioSpeakerFlags_BackRight | fplAudioSpeakerFlags_SideLeft | fplAudioSpeakerFlags_SideRight;
-		default:
-			return fplAudioSpeakerFlags_None;
 	}
 }
 
