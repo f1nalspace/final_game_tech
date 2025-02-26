@@ -1580,7 +1580,7 @@ SOFTWARE.
 #define FPL_HEADER_H
 
 //
-// C99 detection
+// C++/C99 detection
 //
 // https://en.wikipedia.org/wiki/C99#Version_detection
 // 
@@ -1594,6 +1594,21 @@ SOFTWARE.
 #	if (__cplusplus >= 201103L)
 		//! C++/11 compiler detected
 #		define FPL_IS_CPP11
+#	endif
+
+#	if (__cplusplus >= 201402L)
+		//! C++/14 compiler detected
+#		define FPL_IS_CPP14
+#	endif
+
+#	if (__cplusplus >= 201703L)
+		//! C++/17 compiler detected
+#		define FPL_IS_CPP17
+#	endif
+
+#	if (__cplusplus >= 202004L)
+		//! C++/20 compiler detected
+#		define FPL_IS_CPP20
 #	endif
 #elif defined(_MSC_VER)
 #	if (_MSC_VER >= 1900)
@@ -1617,7 +1632,7 @@ SOFTWARE.
 #		define FPL_IS_C11
 #	endif
 #else
-#	error "This C/C++ compiler is not supported!"
+#	error "This C compiler is not supported!"
 #endif
 
 //
