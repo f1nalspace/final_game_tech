@@ -3802,138 +3802,138 @@ static uint64_t MapChannelLayout(const fplAudioChannelLayout layout) {
 	}
 }
 
-static uint64_t MapAudioChannelFlagsToAVChannel(const fplAudioSpeakerFlags speakerLayout) {
-	switch (speakerLayout) {
-		case fplAudioSpeakerFlags_FrontLeft:
+static uint64_t MapAudioChannelTypeToAVChannel(const fplAudioChannelType type) {
+	switch (type) {
+		case fplAudioChannelType_FrontLeft:
 			return AV_CH_FRONT_LEFT;
-		case fplAudioSpeakerFlags_FrontRight:
+		case fplAudioChannelType_FrontRight:
 			return AV_CH_FRONT_RIGHT;
-		case fplAudioSpeakerFlags_FrontCenter:
+		case fplAudioChannelType_FrontCenter:
 			return AV_CH_FRONT_CENTER;
-		case fplAudioSpeakerFlags_LowFrequency:
+		case fplAudioChannelType_LowFrequency:
 			return AV_CH_LOW_FREQUENCY;
-		case fplAudioSpeakerFlags_BackLeft:
+		case fplAudioChannelType_BackLeft:
 			return AV_CH_BACK_LEFT;
-		case fplAudioSpeakerFlags_BackRight:
+		case fplAudioChannelType_BackRight:
 			return AV_CH_BACK_RIGHT;
-		case fplAudioSpeakerFlags_FrontLeftOfCenter:
+		case fplAudioChannelType_FrontLeftOfCenter:
 			return AV_CH_FRONT_LEFT_OF_CENTER;
-		case fplAudioSpeakerFlags_FrontRightOfCenter:
+		case fplAudioChannelType_FrontRightOfCenter:
 			return AV_CH_FRONT_RIGHT_OF_CENTER;
-		case fplAudioSpeakerFlags_BackCenter:
+		case fplAudioChannelType_BackCenter:
 			return AV_CH_BACK_CENTER;
-		case fplAudioSpeakerFlags_SideLeft:
+		case fplAudioChannelType_SideLeft:
 			return AV_CH_SIDE_LEFT;
-		case fplAudioSpeakerFlags_SideRight:
+		case fplAudioChannelType_SideRight:
 			return AV_CH_SIDE_RIGHT;
-		case fplAudioSpeakerFlags_TopCenter:
+		case fplAudioChannelType_TopCenter:
 			return AV_CH_TOP_CENTER;
-		case fplAudioSpeakerFlags_TopFrontLeft:
+		case fplAudioChannelType_TopFrontLeft:
 			return AV_CH_TOP_FRONT_LEFT;
-		case fplAudioSpeakerFlags_TopFrontCenter:
+		case fplAudioChannelType_TopFrontCenter:
 			return AV_CH_TOP_FRONT_CENTER;
-		case fplAudioSpeakerFlags_TopFrontRight:
+		case fplAudioChannelType_TopFrontRight:
 			return AV_CH_TOP_FRONT_RIGHT;
-		case fplAudioSpeakerFlags_TopBackLeft:
+		case fplAudioChannelType_TopBackLeft:
 			return AV_CH_TOP_BACK_LEFT;
-		case fplAudioSpeakerFlags_TopBackCenter:
+		case fplAudioChannelType_TopBackCenter:
 			return AV_CH_TOP_BACK_CENTER;
-		case fplAudioSpeakerFlags_TopBackRight:
+		case fplAudioChannelType_TopBackRight:
 			return AV_CH_TOP_BACK_RIGHT;
 		default:
 			return 0;
 	}
 }
 
-static fplAudioSpeakerFlags MapAVChannelToAudioChannelFlags(uint64_t avChannel) {
+static fplAudioChannelType MapAVChannelToAudioChannelType(const uint64_t avChannel) {
     switch (avChannel) {
         case AV_CH_FRONT_LEFT:
-            return fplAudioSpeakerFlags_FrontLeft;
+            return fplAudioChannelType_FrontLeft;
         case AV_CH_FRONT_RIGHT:
-            return fplAudioSpeakerFlags_FrontRight;
+            return fplAudioChannelType_FrontRight;
         case AV_CH_FRONT_CENTER:
-            return fplAudioSpeakerFlags_FrontCenter;
+            return fplAudioChannelType_FrontCenter;
         case AV_CH_LOW_FREQUENCY:
-            return fplAudioSpeakerFlags_LowFrequency;
+            return fplAudioChannelType_LowFrequency;
         case AV_CH_BACK_LEFT:
-            return fplAudioSpeakerFlags_BackLeft;
+            return fplAudioChannelType_BackLeft;
         case AV_CH_BACK_RIGHT:
-            return fplAudioSpeakerFlags_BackRight;
+            return fplAudioChannelType_BackRight;
         case AV_CH_FRONT_LEFT_OF_CENTER:
-            return fplAudioSpeakerFlags_FrontLeftOfCenter;
+            return fplAudioChannelType_FrontLeftOfCenter;
         case AV_CH_FRONT_RIGHT_OF_CENTER:
-            return fplAudioSpeakerFlags_FrontRightOfCenter;
+            return fplAudioChannelType_FrontRightOfCenter;
         case AV_CH_BACK_CENTER:
-            return fplAudioSpeakerFlags_BackCenter;
+            return fplAudioChannelType_BackCenter;
         case AV_CH_SIDE_LEFT:
-            return fplAudioSpeakerFlags_SideLeft;
+            return fplAudioChannelType_SideLeft;
         case AV_CH_SIDE_RIGHT:
-            return fplAudioSpeakerFlags_SideRight;
+            return fplAudioChannelType_SideRight;
         case AV_CH_TOP_CENTER:
-            return fplAudioSpeakerFlags_TopCenter;
+            return fplAudioChannelType_TopCenter;
         case AV_CH_TOP_FRONT_LEFT:
-            return fplAudioSpeakerFlags_TopFrontLeft;
+            return fplAudioChannelType_TopFrontLeft;
         case AV_CH_TOP_FRONT_CENTER:
-            return fplAudioSpeakerFlags_TopFrontCenter;
+            return fplAudioChannelType_TopFrontCenter;
         case AV_CH_TOP_FRONT_RIGHT:
-            return fplAudioSpeakerFlags_TopFrontRight;
+            return fplAudioChannelType_TopFrontRight;
         case AV_CH_TOP_BACK_LEFT:
-            return fplAudioSpeakerFlags_TopBackLeft;
+            return fplAudioChannelType_TopBackLeft;
         case AV_CH_TOP_BACK_CENTER:
-            return fplAudioSpeakerFlags_TopBackCenter;
+            return fplAudioChannelType_TopBackCenter;
         case AV_CH_TOP_BACK_RIGHT:
-            return fplAudioSpeakerFlags_TopBackRight;
+            return fplAudioChannelType_TopBackRight;
         default:
-            return fplAudioSpeakerFlags_None;
+            return fplAudioChannelType_None;
     }
 }
 
-static const char* fplGetAudioChannelFlagsName(const fplAudioSpeakerFlags flags) {
-    switch (flags) {
-        case fplAudioSpeakerFlags_None: 
+static const char* fplGetAudioChannelTypeName(const fplAudioChannelType type) {
+    switch (type) {
+        case fplAudioChannelType_None: 
             return "None";
-        case fplAudioSpeakerFlags_FrontLeft: 
+        case fplAudioChannelType_FrontLeft: 
             return "Front Left";
-        case fplAudioSpeakerFlags_FrontRight: 
+        case fplAudioChannelType_FrontRight: 
             return "Front Right";
-        case fplAudioSpeakerFlags_FrontCenter: 
+        case fplAudioChannelType_FrontCenter: 
             return "Front Center";
-        case fplAudioSpeakerFlags_LowFrequency: 
+        case fplAudioChannelType_LowFrequency: 
             return "Low Frequency";
-        case fplAudioSpeakerFlags_BackLeft: 
+        case fplAudioChannelType_BackLeft: 
             return "Back Left";
-        case fplAudioSpeakerFlags_BackRight: 
+        case fplAudioChannelType_BackRight: 
             return "Back Right";
-        case fplAudioSpeakerFlags_FrontLeftOfCenter: 
+        case fplAudioChannelType_FrontLeftOfCenter: 
             return "Front Left Of Center";
-        case fplAudioSpeakerFlags_FrontRightOfCenter: 
+        case fplAudioChannelType_FrontRightOfCenter: 
             return "Front Right Of Center";
-        case fplAudioSpeakerFlags_BackCenter: 
+        case fplAudioChannelType_BackCenter: 
             return "Back Center";
-        case fplAudioSpeakerFlags_SideLeft: 
+        case fplAudioChannelType_SideLeft: 
             return "Side Left";
-        case fplAudioSpeakerFlags_SideRight: 
+        case fplAudioChannelType_SideRight: 
             return "Side Right";
-        case fplAudioSpeakerFlags_TopCenter: 
+        case fplAudioChannelType_TopCenter: 
             return "Top Center";
-        case fplAudioSpeakerFlags_TopFrontLeft: 
+        case fplAudioChannelType_TopFrontLeft: 
             return "Top Front Left";
-        case fplAudioSpeakerFlags_TopFrontCenter: 
+        case fplAudioChannelType_TopFrontCenter: 
             return "Top Front Center";
-        case fplAudioSpeakerFlags_TopFrontRight: 
+        case fplAudioChannelType_TopFrontRight: 
             return "Top Front Right";
-        case fplAudioSpeakerFlags_TopBackLeft: 
+        case fplAudioChannelType_TopBackLeft: 
             return "Top Back Left";
-        case fplAudioSpeakerFlags_TopBackCenter: 
+        case fplAudioChannelType_TopBackCenter: 
             return "Top Back Center";
-        case fplAudioSpeakerFlags_TopBackRight: 
+        case fplAudioChannelType_TopBackRight: 
             return "Top Back Right";
         default:
             return "Unknown";
     }
 }
 
-static uint16_t GetChannelIndexFromInputMapping(const fplAudioChannelMap *inChannelMap, const uint16_t channelCount, const fplAudioSpeakerFlags channelFlag) {
+static uint16_t GetChannelIndexFromInputMapping(const fplAudioChannelMap *inChannelMap, const uint16_t channelCount, const fplAudioChannelType channelFlag) {
 	for (uint16_t i = 0; i < channelCount; ++i) {
 		if (inChannelMap->speakers[i] == channelFlag) {
 			return i;
@@ -3954,11 +3954,11 @@ static void InitializeChannelMapping(const uint64_t channelLayout, const uint16_
     for (uint16_t i = minBits; i < maxBits; ++i) {
         uint64_t mask = (1ULL << i);
         if (channelLayout & mask) {
-			fplAudioSpeakerFlags channelFlag = MapAVChannelToAudioChannelFlags(mask);
+			fplAudioChannelType type = MapAVChannelToAudioChannelType(mask);
 
 			uint16_t ffmpegIndex = count;
 
-			uint16_t mappedIndex = GetChannelIndexFromInputMapping(inChannelMap, channelCount, channelFlag);
+			uint16_t mappedIndex = GetChannelIndexFromInputMapping(inChannelMap, channelCount, type);
 
 			if (ffmpegIndex != mappedIndex) {
 				requireMapping = true;
