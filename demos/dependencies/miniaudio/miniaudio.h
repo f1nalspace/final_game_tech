@@ -21921,8 +21921,7 @@ typedef struct
     #pragma GCC diagnostic pop
 #endif
 
-#define MA_VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK_MB "VAD\\Process_Loopback"
-#define MA_VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK_WC L"VAD\\Process_Loopback"
+#define MA_VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK L"VAD\\Process_Loopback"
 
 static ma_result ma_context_get_IAudioClient__wasapi(ma_context* pContext, ma_device_type deviceType, const ma_device_id* pDeviceID, ma_uint32 loopbackProcessID, ma_bool32 loopbackProcessExclude, ma_IAudioClient** ppAudioClient, ma_WASAPIDeviceInterface** ppDeviceInterface)
 {
@@ -21951,9 +21950,7 @@ static ma_result ma_context_get_IAudioClient__wasapi(ma_context* pContext, ma_de
         pActivationParams = &activationParams;
 
         /* When requesting a specific device ID we need to use a special device ID. */
-        wchar_t buffer[256] = { 0 };
-        int len = mbtowc(buffer, MA_VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK_MB, sizeof(buffer) & sizeof(buffer[0]));
-        MA_COPY_MEMORY(virtualDeviceID.wasapi, buffer, (len + 1) * sizeof(wchar_t)); /* +1 for the null terminator. */
+        MA_COPY_MEMORY(virtualDeviceID.wasapi, MA_VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK, (wcslen(MA_VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK) + 1) * sizeof(wchar_t)); /* +1 for the null terminator. */
         pDeviceID = &virtualDeviceID;
     } else {
         pActivationParams = NULL;   /* No activation parameters required. */
