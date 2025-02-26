@@ -7223,10 +7223,10 @@ fpl_common_api uint32_t fplGetAudioFrameSizeInBytes(const fplAudioFormatType for
 fpl_common_api uint32_t fplGetAudioBufferSizeInBytes(const fplAudioFormatType format, const uint16_t channelCount, const uint32_t frameCount);
 
 /**
-* @brief Returns the @ref fplAudioChannelLayout from the specified channel count
+* @brief Returns the default @ref fplAudioChannelLayout from the specified channel count
 * @param channelCount The number of channels
 */
-fpl_common_api fplAudioChannelLayout fplGetAudioChannelLayoutFromChannels(const uint16_t channelCount);
+fpl_common_api fplAudioChannelLayout fplGetDefaultAudioChannelLayoutFromChannels(const uint16_t channelCount);
 
 /**
 * @brief Returns the number of channels from the specified @ref fplAudioChannelLayout
@@ -22884,7 +22884,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 		FPL__ALSA_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed setting PCM channels '%lu' for device '%s'!", internalChannels, deviceName);
 	}
 	internalFormat.channels = internalChannels;
-	internalFormat.channelLayout = fplGetAudioChannelLayoutFromChannels(internalChannels);
+	internalFormat.channelLayout = fplGetDefaultAudioChannelLayoutFromChannels(internalChannels);
 
 	//
 	// Sample rate
@@ -23158,18 +23158,18 @@ fpl_internal void fpl__SetupAudioDeviceFormat(const fplAudioTargetFormat *inForm
 		uint16_t layoutChannelCount = fplGetAudioChannelsFromLayout(inFormat->channelLayout);
 		uint16_t highestChannelCount = fplMax(layoutChannelCount, inFormat->channels);
 		outFormat->channels = fplMax(0, fplMin(highestChannelCount, FPL_MAX_AUDIO_CHANNEL_COUNT));
-		outFormat->channelLayout = fplGetAudioChannelLayoutFromChannels(outFormat->channels);
+		outFormat->channelLayout = fplGetDefaultAudioChannelLayoutFromChannels(outFormat->channels);
 		outFormat->defaultFields |= ((inFormat->defaultFields & fplAudioDefaultFields_Channels) ? fplAudioDefaultFields_Channels : fplAudioDefaultFields_None);
 		outFormat->defaultFields |= ((inFormat->defaultFields & fplAudioDefaultFields_ChannelLayout) ? fplAudioDefaultFields_ChannelLayout : fplAudioDefaultFields_None);
 	} else if (inFormat->channels > 0 && inFormat->channelLayout == fplAudioChannelLayout_Automatic) {
 		outFormat->channels = fplMin(inFormat->channels, FPL_MAX_AUDIO_CHANNEL_COUNT);
-		outFormat->channelLayout = fplGetAudioChannelLayoutFromChannels(outFormat->channels);
+		outFormat->channelLayout = fplGetDefaultAudioChannelLayoutFromChannels(outFormat->channels);
 		outFormat->defaultFields |= fplAudioDefaultFields_ChannelLayout;
 	} else if (inFormat->channels == 0 && inFormat->channelLayout != fplAudioChannelLayout_Automatic) {
 		uint16_t layoutChannelCount = fplGetAudioChannelsFromLayout(inFormat->channelLayout);
 		if (layoutChannelCount > FPL_MAX_AUDIO_CHANNEL_COUNT) {
 			outFormat->channels = FPL_MAX_AUDIO_CHANNEL_COUNT;
-			outFormat->channelLayout = fplGetAudioChannelLayoutFromChannels(outFormat->channels);
+			outFormat->channelLayout = fplGetDefaultAudioChannelLayoutFromChannels(outFormat->channels);
 		} else {
 			outFormat->channels = layoutChannelCount;
 			outFormat->channelLayout = inFormat->channelLayout;
@@ -23806,7 +23806,7 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 				if (fplDecodeAudioFormatU64(testFormat, &currentSampleRate, &currentChannels, &currentType)) {
 					if (fallbackFieldsMask & fplAudioDefaultFields_Channels) {
 						currentTargetFormat.channels = currentChannels;
-						currentTargetFormat.channelLayout = fplGetAudioChannelLayoutFromChannels(currentChannels);
+						currentTargetFormat.channelLayout = fplGetDefaultAudioChannelLayoutFromChannels(currentChannels);
 					}
 					if (fallbackFieldsMask & fplAudioDefaultFields_Type) {
 						currentTargetFormat.type = currentType;
@@ -24291,7 +24291,7 @@ fpl_globalvar uint16_t fpl__global_AudioChannelLayout_To_AudioChannelCount_Table
 };
 fplStaticAssert(fplArrayCount(fpl__global_AudioChannelLayout_To_AudioChannelCount_Table) == FPL__AUDIO_CHANNEL_LAYOUT_COUNT);
 
-fpl_common_api fplAudioChannelLayout fplGetAudioChannelLayoutFromChannels(const uint16_t channelCount) {
+fpl_common_api fplAudioChannelLayout fplGetDefaultAudioChannelLayoutFromChannels(const uint16_t channelCount) {
 	if (channelCount < fplArrayCount(fpl__global_AudioChannelCount_To_AudioChannelLayout_Table)) {
 		fplAudioChannelLayout result = fpl__global_AudioChannelCount_To_AudioChannelLayout_Table[channelCount];
 		return result;
