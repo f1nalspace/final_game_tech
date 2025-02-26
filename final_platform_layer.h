@@ -136,29 +136,50 @@ SOFTWARE.
 	
 	### Overview
 	- Improved and extended system/platform detection macros
+	- Improved audio format detection
 	- Refactored audio system to use dispatch tables
-	- Support for multiple audio channels and channel mapping
+	- Support for multiple audio channels with channel layouts and channel mapping
 	- Removed several obsolete functions
-	- Fixed incorrect audio format
+	- Fixed incorrect audio format probing
 	- Fixed compile errors for ARM/GCC compilers
 
 	### Details
-	- Improved: C/C++ detection improved
-	- Improved: Architecture detection extended (Apple, Risc-V, Mips, Sparc)
-	- Improved: CPU bits detection improved
-	- Improved: Compiler detected improved & extended (MingW, Apple, Borland, TCC, DMC, CSMC, Linaro)
-	- Improved[#163]: Make endianess detection for robust
-	- New[#36]: Support for multiple audio channels + channel mapping
-	- Fixed: fplCreateColorRGBA() was not compiling on GCC due to inlining failing
-	- Fixed: fplCreateVideoRectFromLTRB() was not compiling on GCC due to inlining failing
-	- Fixed[#156]: Target audio format type and periods was never used
-	- Fixed[#157]: Compile error for missing _countof() fplArrayCount in some scenarios
+	- New: Added typedef fplAudioFormatU64 that encodes a audio format (sample rate, channels, type) as 64-bit
+	- New: Added enum fplAudioChannelLayout that stores the supported channel layouts
+	- New: Added enum fplAudioSpeakerFlags that stores the geometry of a audio channel as flags
+	- New: Added enum fplAudioMode that stores the exlusive/shared mode and the latency modes
+	- New: Added enum fplAudioShareMode that stores the supported sharing modes
+	- New: Added enum fplAudioLatencyType that stores the supported latency types
+	- New: Added struct fplAudioChannelMap that stores an array of the audio channel configuration
+	- New: Added struct fplAudioDeviceInfoExtended that stores the @ref fplAudioDeviceInfo and the supported formats as U64
+	- New: Added enum value @ref fplAudioDefaultFields_ChannelLayout to fplAudioDefaultFields
+	- New: Added function fplLoadAudio() that manually loads the audio system
+	- New: Added function fplUnloadAudio() that manually unloads/releases the audio system
+	- New: Added field manualLoad to @ref fplAudioSettings that controls the initialization behavior of the audio system
+	- New: Added function fplGetAudioDeviceInfo() that returns a @ref fplAudioDeviceInfoExtended from a device id
+	- New: Added function fplGetAudioLatencyType() that returns a @ref fplAudioLatencyType from a @ref fplAudioMode
+	- New: Added function fplGetAudioShareMode() that returns a @ref fplAudioShareMode from a @ref fplAudioMode
+	- New: Added function fplCreateAudioMode() that returns a @ref fplAudioMode from a @ref fplAudioLatencyType and @ref fplAudioShareMode
+	- New: Added function fplGetAudioChannelsFromLayout() that returns the number of channels from a @ref fplAudioChannelLayout
+	- New: Added function fplGetDefaultAudioChannelLayoutFromChannels() that returns default @ref fplAudioChannelLayout from the number of audio channels
+	- New: Added function fplEncodeAudioFormatU64() that encodes a sample rate, number of channels and type into a 64-bit
+	- New: Added function fplDecodeAudioFormatU64() that decodes a 64-bit value into a sample rate, number of channels and type
+	- New: Added function fplGetAudioDeviceInfo() that returns a @ref fplAudioDeviceInfoExtended from a @ref fplAudioDeviceID
+	- New: Added function fplGetAudioChannelsMapping() that returns the @ref fplAudioChannelMap for the active audio backend
+	- New[#36]: Support for multiple audio channels + channel layouts + channel mapping
 	- Improved: C/C++ detection improved
 	- Improved: Architecture detection extended (Apple, Risc-V, Mips, Sparc)
 	- Improved: CPU bits detection improved
 	- Improved: Compiler detected improved & extended (MingW, Apple, Borland, TCC, DMC, CSMC, Linaro)
 	- Improved[#149]: Refactoring of audio backends to dispatch tables
+	- Improved[#163]: Make endianess detection more robust
+	- Fixed: fplCreateColorRGBA() was not compiling on GCC due to inlining failing
+	- Fixed: fplCreateVideoRectFromLTRB() was not compiling on GCC due to inlining failing
+	- Fixed[#156]: Target audio format type and periods was never used
+	- Fixed[#157]: Compile error for missing _countof() fplArrayCount in some scenarios
 	- Removed: Obsolete function fplFileSetTimestamps removed
+	- Changed: Renamed field userData to clientUserData in @ref fplAudioSettings
+	- Changed: Replaced audio exclusive and latency mode with a single enum @ref fplAudioMode in @ref fplAudioTargetFormat and @ref fplAudioDeviceFormat
 
 	## v0.9.8-beta
 
