@@ -22796,9 +22796,6 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 		FPL__ALSA_INIT_ERROR(fplAudioResultType_ApiFailed, "ALSA api not loaded!");
 	}
 
-	// Initialize channel map
-	fpl__SetAudioDefaultChannelMapALSA(targetFormat->channels, targetFormat->channelLayout, channelMap);
-
 	//
 	// Open PCM Device
 	//
@@ -23001,7 +22998,10 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	internalFormat.channels = internalChannels;
 	internalFormat.channelLayout = fplGetDefaultAudioChannelLayoutFromChannels(internalChannels);
 
-	//
+    // Initialize channel map
+    fpl__SetAudioDefaultChannelMapALSA(internalFormat.channels, internalFormat.channelLayout, outputChannelMap);
+
+    //
 	// Sample rate
 	//
 
