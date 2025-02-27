@@ -137,12 +137,14 @@ SOFTWARE.
 	### Overview
 	- Improved and extended system/platform detection macros
 	- Improved audio format detection
-	- Refactored audio system to use dispatch tables
+    - Improved stability for input polling
+    - Refactored audio system to use dispatch tables
 	- Support for multiple audio channels with channel layouts and channel mapping
 	- Removed several obsolete functions
-	- Fixed incorrect audio format probing
-	- Fixed compile errors for ARM/GCC compilers
-    - Fixed vulkan backend initialization was not working anymore
+    - Renamed several audio types and functions
+    - Bugfixes in audio format probing
+    - Bugfixes for ARM/GCC compilations
+    - Bugfixes for vulkan backend initialization
 
 	### Details
 	- New: Added typedef fplAudioFormatU64 that encodes a audio format (sample rate, channels, type) as 64-bit
@@ -184,6 +186,7 @@ SOFTWARE.
 	- Changed: Renamed field userData to clientUserData in @ref fplAudioSettings
 	- Changed: Renamed fplAudioDeviceFormat to fplAudioFormat
 	- Changed: Replaced audio exclusive flag and latency mode with a single enum @ref fplAudioMode in @ref fplAudioFormat
+    - Changed: Changed default controllerDetectionFrequency from 100 ms to 1000 ms
 
 	## v0.9.8-beta
 
@@ -11128,7 +11131,7 @@ fpl_common_api void fplSetDefaultConsoleSettings(fplConsoleSettings *console) {
 fpl_common_api void fplSetDefaultInputSettings(fplInputSettings *input) {
 	FPL__CheckArgumentNullNoRet(input);
 	fplClearStruct(input);
-	input->controllerDetectionFrequency = 100;
+    input->controllerDetectionFrequency = 1000;
 }
 
 fpl_common_api void fplSetDefaultSettings(fplSettings *settings) {
