@@ -1,6 +1,6 @@
 # Project
 APP_NAME = FPL_MiniAL
-SOURCE_FILES = fpl_minial.c
+SOURCE_FILES = fpl_miniaudio.c
 LIBS = -ldl -lm
 INCLUDES = -I../../ -I../additions/ -I../dependencies/
 
@@ -17,7 +17,7 @@ ARCH_TYPE = x64
 PLAFORM_NAME = Linux
 
 # Do not modify starting
-BUILD_BASE_DIR =../bin/$(APP_NAME)
+BUILD_BASE_DIR =../build/$(APP_NAME)
 EXECUTABLE = $(APP_NAME)
 BUILD_DIR = $(BUILD_BASE_DIR)/$(PLAFORM_NAME)-$(ARCH_TYPE)-$(RELEASE_TYPE)
 
