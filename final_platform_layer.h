@@ -22781,10 +22781,12 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 
 	snd_pcm_hw_params_t *hardwareParams = fpl_null;
 	snd_pcm_sw_params_t *softwareParams = fpl_null;
+    snd_pcm_info_t *pcmInfo = fpl_null;
 
 #	define FPL__ALSA_INIT_ERROR(ret, format, ...) do { \
-		if (softwareParams != fpl_null) fpl__ReleaseTemporaryMemory(softwareParams); \
-		if (hardwareParams != fpl_null) fpl__ReleaseTemporaryMemory(hardwareParams); \
+        if (pcmInfo != fpl_null) fpl__ReleaseTemporaryMemory(pcmInfo); \
+        if (softwareParams != fpl_null) fpl__ReleaseTemporaryMemory(softwareParams); \
+        if (hardwareParams != fpl_null) fpl__ReleaseTemporaryMemory(hardwareParams); \
 		FPL__ERROR(FPL__MODULE_AUDIO_ALSA, format, ## __VA_ARGS__); \
         fpl__AudioBackendAlsaReleaseDevice(context, backend); \
         return ret; \
@@ -22799,17 +22801,18 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	//
 	// Open PCM Device
 	//
-    fplAudioDeviceInfo deviceInfo = fplZeroInit;
+    fplAudioDeviceInfo internalDevice = fplZeroInit;
+
+    const char *alsaDeviceID = fpl_null;
     if (targetDevice != fpl_null) {
-        deviceInfo = *targetDevice;
+        alsaDeviceID = targetDevice->id.alsa;
     }
 
     fplAudioShareMode shareMode = fplGetAudioShareMode(targetFormat->mode);
 
-	char deviceName[256] = fplZeroInit;
 	snd_pcm_stream_t stream = SND_PCM_STREAM_PLAYBACK;
 	int openMode = SND_PCM_NO_AUTO_RESAMPLE | SND_PCM_NO_AUTO_CHANNELS | SND_PCM_NO_AUTO_FORMAT;
-	if (fplGetStringLength(deviceInfo.id.alsa) == 0) {
+    if (alsaDeviceID == fpl_null || fplGetStringLength(alsaDeviceID) == 0) {
 		const char *defaultDeviceNames[16] = fplZeroInit;
 		int defaultDeviceCount = 0;
 		defaultDeviceNames[defaultDeviceCount++] = "default";
@@ -22829,100 +22832,109 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
             if (alsaApi->snd_pcm_open(&impl->pcmDevice, defaultDeviceName, stream, openMode) == 0) {
 				FPL_LOG_DEBUG("ALSA", "Successfully opened PCM audio device '%s'", defaultDeviceName);
 				isDeviceOpen = true;
-				fplCopyString(defaultDeviceName, deviceName, fplArrayCount(deviceName));
+                internalDevice.isDefault = true;
+                fplCopyString(defaultDeviceName, internalDevice.id.alsa, fplArrayCount(internalDevice.id.alsa));
+                fplCopyString("default", internalDevice.name, fplArrayCount(internalDevice.name));
 				break;
 			} else {
-				FPL_LOG_ERROR("ALSA", "Failed opening PCM audio device '%s'!", defaultDeviceName);
+                FPL_LOG_WARN("ALSA", "Failed opening default PCM audio device '%s'!", defaultDeviceName);
 			}
 		}
 		if (!isDeviceOpen) {
 			FPL__ALSA_INIT_ERROR(fplAudioResultType_NoDeviceFound, "No PCM audio device found!");
 		}
 	} else {
-        const char *forcedDeviceId = deviceInfo.id.alsa;
 		// @TODO(final/ALSA): Do we want to allow device ids to be :%d,%d so we can probe "dmix" and "hw" ?
-        if (alsaApi->snd_pcm_open(&impl->pcmDevice, forcedDeviceId, stream, openMode) < 0) {
-			FPL__ALSA_INIT_ERROR(fplAudioResultType_NoDeviceFound, "PCM audio device by id '%s' not found!", forcedDeviceId);
-		}
-		fplCopyString(forcedDeviceId, deviceName, fplArrayCount(deviceName));
-	}
+        if (alsaApi->snd_pcm_open(&impl->pcmDevice, alsaDeviceID, stream, openMode) < 0) {
+            FPL__ALSA_INIT_ERROR(fplAudioResultType_NoDeviceFound, "PCM audio device by id '%s' not found!", alsaDeviceID);
+        }
+        internalDevice.isDefault = fplIsStringEqual("default", alsaDeviceID);
+        fplCopyString(alsaDeviceID, internalDevice.id.alsa, fplArrayCount(internalDevice.id.alsa));
+        fplCopyString(alsaDeviceID, internalDevice.name, fplArrayCount(internalDevice.name));
+    }
 
-	//
+    const char *internalDeviceId = &internalDevice.id.alsa[0];
+
+    fplAssert(impl->pcmDevice != fpl_null);
+    fplAssert(fplGetStringLength(internalDeviceId) > 0);
+
+    //
+    // Query Device Name
+    //
+
+    size_t pcmInfoSize = alsaApi->snd_pcm_info_sizeof();
+    pcmInfo = (snd_pcm_info_t *)fpl__AllocateTemporaryMemory(pcmInfoSize, 8);
+    if (pcmInfo == fpl_null) {
+        FPL__ALSA_INIT_ERROR(fplAudioResultType_OutOfMemory, "Out of stack memory for snd_pcm_info_t!");
+    }
+
+    if (alsaApi->snd_pcm_info(impl->pcmDevice, pcmInfo) == 0) {
+        const char *pcmName = alsaApi->snd_pcm_info_get_name(pcmInfo);
+        if (fplGetStringLength(pcmName) > 0) {
+            fplCopyString(pcmName, internalDevice.name, fplArrayCount(internalDevice.name));
+            if (fplIsStringEqual("default", pcmName)) {
+                char **ppDeviceHints;
+                if (alsaApi->snd_device_name_hint(-1, "pcm", (void ***)&ppDeviceHints) == 0) {
+                    char **ppNextDeviceHint = ppDeviceHints;
+                    while (*ppNextDeviceHint != fpl_null) {
+                        char *hintName = alsaApi->snd_device_name_get_hint(*ppNextDeviceHint, "NAME");
+                        char *hintDesc = alsaApi->snd_device_name_get_hint(*ppNextDeviceHint, "DESC");
+                        char *hintIOID = alsaApi->snd_device_name_get_hint(*ppNextDeviceHint, "IOID");
+
+                        bool foundDevice = false;
+                        if (hintIOID == fpl_null || fplIsStringEqual(hintIOID, "Output")) {
+                            if (fplIsStringEqual(hintName, pcmName)) {
+                                fplCopyString(hintDesc, internalDevice.name, fplArrayCount(internalDevice.name));
+                                foundDevice = true;
+                            }
+                        }
+
+                        // Unfortunatly the hint strings are malloced, so we have to free it :(
+                        free(hintName);
+                        free(hintDesc);
+                        free(hintIOID);
+
+                        ++ppNextDeviceHint;
+
+                        if (foundDevice) {
+                            break;
+                        }
+                    }
+
+                    alsaApi->snd_device_name_free_hint((void **)ppDeviceHints);
+                }
+            }
+        }
+    }
+
+    //
 	// Buffer sizes
 	//
+
 	// Some audio devices have high latency, so using the default buffer size will not work.
 	// We have to scale the buffer sizes for special devices, such as broadcom audio (Raspberry Pi)
 	// See fpl__AlsaGetBufferScale for details
 	// Idea comes from miniaudio, which does the same thing - so the code is almost identically here
 	//
-	float bufferSizeScaleFactor = 1.0f;
-	if ((targetFormat->defaultFields & fplAudioDefaultFields_BufferSize) == fplAudioDefaultFields_BufferSize) {
-		size_t pcmInfoSize = alsaApi->snd_pcm_info_sizeof();
-		snd_pcm_info_t *pcmInfo = (snd_pcm_info_t *)fpl__AllocateTemporaryMemory(pcmInfoSize, 8);
-		if (pcmInfo == fpl_null) {
-            FPL__ALSA_INIT_ERROR(fplAudioResultType_OutOfMemory, "Out of stack memory for snd_pcm_info_t!");
-		}
-
-		// Query device name
-        if (alsaApi->snd_pcm_info(impl->pcmDevice, pcmInfo) == 0) {
-			const char *deviceName = alsaApi->snd_pcm_info_get_name(pcmInfo);
-			if (deviceName != fpl_null) {
-				if (fplIsStringEqual("default", deviceName)) {
-					// The device name "default" is useless for buffer-scaling, so we search for the real device name in the hint-table
-					char **ppDeviceHints;
-					if (alsaApi->snd_device_name_hint(-1, "pcm", (void ***)&ppDeviceHints) == 0) {
-						char **ppNextDeviceHint = ppDeviceHints;
-
-						while (*ppNextDeviceHint != fpl_null) {
-							char *hintName = alsaApi->snd_device_name_get_hint(*ppNextDeviceHint, "NAME");
-							char *hintDesc = alsaApi->snd_device_name_get_hint(*ppNextDeviceHint, "DESC");
-							char *hintIOID = alsaApi->snd_device_name_get_hint(*ppNextDeviceHint, "IOID");
-
-							bool foundDevice = false;
-							if (hintIOID == fpl_null || fplIsStringEqual(hintIOID, "Output")) {
-								if (fplIsStringEqual(hintName, deviceName)) {
-									// We found the default device and can now get the scale for the description
-									bufferSizeScaleFactor = fpl__AlsaGetBufferScale(hintDesc);
-									foundDevice = true;
-								}
-							}
-
-							// Unfortunatly the hint strings are malloced, so we have to free it :(
-							free(hintName);
-							free(hintDesc);
-							free(hintIOID);
-
-							++ppNextDeviceHint;
-
-							if (foundDevice) {
-								break;
-							}
-						}
-
-						alsaApi->snd_device_name_free_hint((void **)ppDeviceHints);
-					}
-				} else {
-					bufferSizeScaleFactor = fpl__AlsaGetBufferScale(deviceName);
-				}
-			}
-		}
-		fpl__ReleaseTemporaryMemory(pcmInfo);
+    float bufferSizeScaleFactor = 1.0f;
+    if ((targetFormat->defaultFields & fplAudioDefaultFields_BufferSize) == fplAudioDefaultFields_BufferSize) {
+        if (fplGetStringLength(internalDevice.name) > 0) {
+            bufferSizeScaleFactor = fpl__AlsaGetBufferScale(internalDevice.name);
+        }
 	}
 
 	//
 	// Get hardware parameters
 	//
-    fplAssert(impl->pcmDevice != fpl_null);
-	fplAssert(fplGetStringLength(deviceName) > 0);
 
-	FPL_LOG_DEBUG("ALSA", "Get hardware parameters from device '%s'", deviceName);
+    FPL_LOG_DEBUG("ALSA", "Get hardware parameters from device '%s'", internalDeviceId);
 	size_t hardwareParamsSize = alsaApi->snd_pcm_hw_params_sizeof();
 	hardwareParams = (snd_pcm_hw_params_t *)fpl__AllocateTemporaryMemory(hardwareParamsSize, 8);
 	fplMemoryClear(hardwareParams, hardwareParamsSize);
     if (alsaApi->snd_pcm_hw_params_any(impl->pcmDevice, hardwareParams) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed getting hardware parameters from device '%s'!", deviceName);
+        FPL__ALSA_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed getting hardware parameters from device '%s'!", internalDeviceId);
 	}
-	FPL_LOG_DEBUG("ALSA", "Successfullyy got hardware parameters from device '%s'", deviceName);
+    FPL_LOG_DEBUG("ALSA", "Successfullyy got hardware parameters from device '%s'", internalDeviceId);
 
 	//
 	// Access mode (Interleaved MMap or Standard readi/writei)
@@ -22932,12 +22944,12 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
         if (alsaApi->snd_pcm_hw_params_set_access(impl->pcmDevice, hardwareParams, SND_PCM_ACCESS_MMAP_INTERLEAVED) == 0) {
             impl->isUsingMMap = true;
 		} else {
-			FPL_LOG_ERROR("ALSA", "Failed setting MMap access mode for device '%s', trying fallback to standard mode!", deviceName);
+            FPL_LOG_ERROR("ALSA", "Failed setting MMap access mode for device '%s', trying fallback to standard mode!", internalDeviceId);
 		}
 	}
     if (!impl->isUsingMMap) {
         if (alsaApi->snd_pcm_hw_params_set_access(impl->pcmDevice, hardwareParams, SND_PCM_ACCESS_RW_INTERLEAVED) < 0) {
-			FPL__ALSA_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed setting default access mode for device '%s'!", deviceName);
+            FPL__ALSA_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed setting default access mode for device '%s'!", internalDeviceId);
 		}
 	}
 
@@ -22980,11 +22992,11 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	fpl__ReleaseTemporaryMemory(formatMask);
 
 	if (foundFormat == SND_PCM_FORMAT_UNKNOWN) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "No supported audio format for device '%s' found!", deviceName);
+        FPL__ALSA_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "No supported audio format for device '%s' found!", internalDeviceId);
 	}
 
     if (alsaApi->snd_pcm_hw_params_set_format(impl->pcmDevice, hardwareParams, foundFormat) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed setting PCM format '%s' for device '%s'!", fplGetAudioFormatName(fpl__MapAlsaFormatToAudioFormat(foundFormat)), deviceName);
+        FPL__ALSA_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed setting PCM format '%s' for device '%s'!", fplGetAudioFormatName(fpl__MapAlsaFormatToAudioFormat(foundFormat)), internalDeviceId);
 	}
 	internalFormat.type = fpl__MapAlsaFormatToAudioFormat(foundFormat);
 
@@ -22993,7 +23005,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	//
 	unsigned int internalChannels = targetFormat->channels;
     if (alsaApi->snd_pcm_hw_params_set_channels_near(impl->pcmDevice, hardwareParams, &internalChannels) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed setting PCM channels '%lu' for device '%s'!", internalChannels, deviceName);
+        FPL__ALSA_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed setting PCM channels '%lu' for device '%s'!", internalChannels, internalDeviceId);
 	}
 	internalFormat.channels = internalChannels;
 	internalFormat.channelLayout = fplGetDefaultAudioChannelLayoutFromChannels(internalChannels);
@@ -23010,7 +23022,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	unsigned int actualSampleRate = targetFormat->sampleRate;
 	fplAssert(actualSampleRate > 0);
     if (alsaApi->snd_pcm_hw_params_set_rate_near(impl->pcmDevice, hardwareParams, &actualSampleRate, 0) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed setting PCM sample rate '%lu' for device '%s'!", actualSampleRate, deviceName);
+        FPL__ALSA_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed setting PCM sample rate '%lu' for device '%s'!", actualSampleRate, internalDeviceId);
 	}
 	internalFormat.sampleRate = actualSampleRate;
 
@@ -23025,7 +23037,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	}
 	fplAssert(actualBufferSize > 0);
     if (alsaApi->snd_pcm_hw_params_set_buffer_size_near(impl->pcmDevice, hardwareParams, &actualBufferSize) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed setting PCM buffer size '%lu' for device '%s'!", actualBufferSize, deviceName);
+        FPL__ALSA_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed setting PCM buffer size '%lu' for device '%s'!", actualBufferSize, internalDeviceId);
 	}
 	internalFormat.bufferSizeInFrames = actualBufferSize;
     internalFormat.bufferSizeInMilliseconds =fplGetAudioBufferSizeInMilliseconds(internalFormat.sampleRate, internalFormat.bufferSizeInFrames);
@@ -23039,7 +23051,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	uint32_t internalPeriods = targetFormat->periods;
 	int periodsDir = 0;
     if (alsaApi->snd_pcm_hw_params_set_periods_near(impl->pcmDevice, hardwareParams, &internalPeriods, &periodsDir) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed setting PCM periods '%lu' for device '%s'!", internalPeriods, deviceName);
+        FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed setting PCM periods '%lu' for device '%s'!", internalPeriods, internalDeviceId);
 	}
 	internalFormat.periods = internalPeriods;
 
@@ -23047,11 +23059,8 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	// Hardware parameters
 	//
     if (alsaApi->snd_pcm_hw_params(impl->pcmDevice, hardwareParams) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed to install PCM hardware parameters for device '%s'!", deviceName);
+        FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed to install PCM hardware parameters for device '%s'!", internalDeviceId);
 	}
-
-	// Save internal format
-    *outputFormat = internalFormat;
 
 	//
 	// Software parameters
@@ -23060,37 +23069,41 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	softwareParams = (snd_pcm_sw_params_t *)fpl__AllocateTemporaryMemory(softwareParamsSize, 8);
 	fplMemoryClear(softwareParams, softwareParamsSize);
     if (alsaApi->snd_pcm_sw_params_current(impl->pcmDevice, softwareParams) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed to get software parameters for device '%s'!", deviceName);
+        FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed to get software parameters for device '%s'!", internalDeviceId);
 	}
 	snd_pcm_uframes_t minAvailableFrames = fpl__PrevPowerOfTwo(internalFormat.bufferSizeInFrames / internalFormat.periods);
     if (alsaApi->snd_pcm_sw_params_set_avail_min(impl->pcmDevice, softwareParams, minAvailableFrames) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed to set software available min frames of '%lu' for device '%s'!", minAvailableFrames, deviceName);
+        FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed to set software available min frames of '%lu' for device '%s'!", minAvailableFrames, internalDeviceId);
 	}
     if (!impl->isUsingMMap) {
 		snd_pcm_uframes_t threshold = internalFormat.bufferSizeInFrames / internalFormat.periods;
         if (alsaApi->snd_pcm_sw_params_set_start_threshold(impl->pcmDevice, softwareParams, threshold) < 0) {
-			FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed to set start threshold of '%lu' for device '%s'!", threshold, deviceName);
+            FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed to set start threshold of '%lu' for device '%s'!", threshold, internalDeviceId);
 		}
 	}
     if (alsaApi->snd_pcm_sw_params(impl->pcmDevice, softwareParams) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed to install PCM software parameters for device '%s'!", deviceName);
+        FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed to install PCM software parameters for device '%s'!", internalDeviceId);
 	}
 
     if (!impl->isUsingMMap) {
 		fplAssert(bufferSizeInBytes > 0);
         impl->intermediaryBuffer = fpl__AllocateDynamicMemory(bufferSizeInBytes, 16);
         if (impl->intermediaryBuffer == fpl_null) {
-			FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed allocating intermediary buffer of size '%lu' for device '%s'!", bufferSizeInBytes, deviceName);
+            FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed allocating intermediary buffer of size '%lu' for device '%s'!", bufferSizeInBytes, internalDeviceId);
 		}
 	}
 
 	// @NOTE(final): We do not support channel mapping right know, so we limit it to mono or stereo
 	fplAssert(internalFormat.channels <= 2);
 
-	fpl__ReleaseTemporaryMemory(softwareParams);
+    fpl__ReleaseTemporaryMemory(pcmInfo);
+    fpl__ReleaseTemporaryMemory(softwareParams);
 	fpl__ReleaseTemporaryMemory(hardwareParams);
 
-	return fplAudioResultType_Success;
+    *outputFormat = internalFormat;
+    *outputDevice = internalDevice;
+
+    return fplAudioResultType_Success;
 
 #undef FPL__ALSA_INIT_ERROR
 }
