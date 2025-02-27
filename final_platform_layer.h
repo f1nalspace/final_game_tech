@@ -20992,6 +20992,10 @@ static GUID FPL__GUID_ZERO = { 0x0, 0x0, 0x0, {0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
 fpl_internal void fpl__SetAudioDefaultChannelMapWin32(const uint16_t channels, const fplAudioChannelLayout layout, fplAudioChannelMap *outChannelMap) {
 	fplClearStruct(outChannelMap);
 
+    if (channels == 0 || layout == fplAudioChannelLayout_Unsupported) {
+        return;
+    }
+
 	if (channels == 1 || layout == fplAudioChannelLayout_Mono) {
 		outChannelMap->speakers[0] = fplAudioChannelType_FrontCenter;
 	} else if (channels == 2 || layout == fplAudioChannelLayout_Stereo) {
