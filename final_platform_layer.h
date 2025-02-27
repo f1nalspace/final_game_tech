@@ -142,6 +142,7 @@ SOFTWARE.
 	- Removed several obsolete functions
 	- Fixed incorrect audio format probing
 	- Fixed compile errors for ARM/GCC compilers
+    - Fixed vulkan backend initialization was not working anymore
 
 	### Details
 	- New: Added typedef fplAudioFormatU64 that encodes a audio format (sample rate, channels, type) as 64-bit
@@ -175,6 +176,7 @@ SOFTWARE.
 	- Improved[#163]: Make endianess detection more robust
 	- Fixed: fplCreateColorRGBA() was not compiling on GCC due to inlining failing
 	- Fixed: fplCreateVideoRectFromLTRB() was not compiling on GCC due to inlining failing
+    - Fixed: fpl__VideoBackend_Vulkan_PrepareWindow() was crashing due to invalid free of memory
 	- Fixed[#156]: Target audio format type and periods was never used
 	- Fixed[#157]: Compile error for missing _countof() fplArrayCount in some scenarios
 	- Removed: Removed obsolete function fplFileSetTimestamps
@@ -20529,6 +20531,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_Vulkan_Prep
 				}
 			}
 			fpl__ReleaseTemporaryMemory(supportedInstanceExtensions);
+            supportedInstanceExtensions = fpl_null;
 		}
 
 		bool supportsValidationLayer = false;
@@ -20544,7 +20547,8 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_Vulkan_Prep
 					supportsValidationLayer = true;
 				}
 			}
-			fpl__ReleaseTemporaryMemory(supportedInstanceExtensions);
+            fpl__ReleaseTemporaryMemory(supportedLayers);
+            supportedLayers = fpl_null;
 		}
 
 		const char *enabledValidationLayers[4] = fplZeroInit;
