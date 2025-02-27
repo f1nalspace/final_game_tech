@@ -7170,12 +7170,26 @@ fpl_common_api fplAudioResultType fplLoadAudio(fplAudioSettings *audioSettings);
 * @return Returns a boolean indicating whether the audio system was unloaded or not.
 */
 fpl_common_api bool fplUnloadAudio();
+
 /**
-* @brief Retrieves the native format for the current audio device.
+* @brief Retrieves the native audio format for the current audio device.
 * @param outFormat The pointer to the @ref fplAudioFormat structure
-* @return Returns true when a hardware format was active, false otherwise.
+* @return Returns true when a audio hardware format was active, false otherwise.
 */
 fpl_common_api bool fplGetAudioHardwareFormat(fplAudioFormat *outFormat);
+
+/**
+* @brief Retrieves the audio device info for the current audio device.
+* @param outFormat The pointer to the @ref fplAudioDeviceInfo structure
+* @return Returns true when a audio hardware device was active, false otherwise.
+*/
+fpl_common_api bool fplGetAudioHardwareDevice(fplAudioDeviceInfo *outDevice);
+
+/**
+* @brief Retrieves the audio device name for the current audio device.
+* @return Returns the name of the audio device when a audio hardware device was active, NULL otherwise.
+*/
+fpl_common_api const char *fplGetAudioHardwareDeviceName();
 
 /**
 * @brief Gets the audio channels mapping table.
@@ -20923,10 +20937,12 @@ typedef struct fplAudioBackendDescriptor {
 } fplAudioBackendDescriptor;
 
 typedef struct fplAudioBackend {
-	// User audio format
-	fplAudioFormat desiredFormat;
+	// Internal audio device
+	fplAudioDeviceInfo internalDevice;
 	// Internal audio format
 	fplAudioFormat internalFormat;
+	// User audio format
+	fplAudioFormat desiredFormat;
 	// Callback that is called from the user to retrieve audio frames/samples
 	fpl_audio_client_read_callback *clientReadCallback;
 	// User data that is passed to the user callback
@@ -24620,6 +24636,35 @@ fpl_common_api bool fplGetAudioHardwareFormat(fplAudioFormat *outFormat) {
 	fplClearStruct(outFormat);
 	*outFormat = backend->internalFormat;
 	return true;
+}
+
+fpl_common_api bool fplGetAudioHardwareDevice(fplAudioDeviceInfo *outDevice) {
+	FPL__CheckArgumentNull(outDevice, false);
+	FPL__CheckPlatform(false);
+	fpl__AudioState *audioState = fpl__GetAudioState(fpl__global__AppState);
+	if (audioState == fpl_null) {
+		return false;
+	}
+	fplAudioBackend *backend = audioState->common.backend;
+	if (backend == fpl_null) {
+		return false;
+	}
+	fplClearStruct(outDevice);
+	*outDevice = backend->internalDevice;
+	return true;
+}
+
+fpl_common_api const char *fplGetAudioHardwareDeviceName() {
+	FPL__CheckPlatform(fpl_null);
+	fpl__AudioState *audioState = fpl__GetAudioState(fpl__global__AppState);
+	if (audioState == fpl_null) {
+		return fpl_null;
+	}
+	fplAudioBackend *backend = audioState->common.backend;
+	if (backend == fpl_null) {
+		return fpl_null;
+	}
+	return backend->internalDevice.name;
 }
 
 fpl_common_api bool fplGetAudioChannelsMapping(fplAudioChannelMap *outMapping) {
