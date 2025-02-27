@@ -179,6 +179,7 @@ SOFTWARE.
 	- Fixed: fplCreateColorRGBA() was not compiling on GCC due to inlining failing
 	- Fixed: fplCreateVideoRectFromLTRB() was not compiling on GCC due to inlining failing
     - Fixed: fpl__VideoBackend_Vulkan_PrepareWindow() was crashing due to invalid free of memory
+	- Fixed: [Win32] fpl__Win32Guid was not properly defined when opaque API was enabled
 	- Fixed[#156]: Target audio format type and periods was never used
 	- Fixed[#157]: Compile error for missing _countof() fplArrayCount in some scenarios
 	- Removed: Removed obsolete function fplFileSetTimestamps
@@ -2625,7 +2626,12 @@ struct IUnknown;
 #	if defined(FPL_PLATFORM_WINDOWS)
 
 //! A win32 GUID (opaque, min 16 bytes)
-typedef uint64_t fpl__Win32Guid[4];
+typedef struct fpl__Win32Guid {
+	uint32_t  Data1;
+    uint16_t Data2;
+    uint16_t Data3;
+    uint8_t  Data4[ 8 ];
+} fpl__Win32Guid;
 //! A win32 handle (opaque, min 4/8 bytes)
 typedef void *fpl__Win32Handle;
 //! A win32 instance handle (opaque, min 4/8 bytes)
