@@ -7992,11 +7992,15 @@ fpl_internal void fpl__ParseVersionString(const char *versionStr, fplVersionInfo
 
 #	if defined(FPL_IS_CPP)
 #		define fpl__Win32IsEqualGuid(a, b) InlineIsEqualGUID(a, b)
+#		define fpl__Win32CopyGuid(src, dst) fplMemoryCopy(src, sizeof(*(src)), dst)
 #	else
 #		define fpl__Win32IsEqualGuid(a, b) InlineIsEqualGUID(&a, &b)
+#		define fpl__Win32CopyGuid(src, dst) fplMemoryCopy(src, sizeof(*(src)), dst)
 #	endif
 
-fpl_internal const char *fpl__Win32FormatGuidString(char *buffer, const size_t maxBufferLen, const GUID *guid) {
+fpl_globalvar const fpl__Win32Guid FPL__WIN32_GUID_ZERO = { 0x0, 0x0, 0x0, { 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 } };
+
+fpl_internal const char *fpl__Win32FormatGuidString(char *buffer, const size_t maxBufferLen, const fpl__Win32Guid *guid) {
 	fplStringFormat(buffer, maxBufferLen, "{%08lX-%04hX-%04hX-%02hhX%02hhX-%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX}",
 		guid->Data1, guid->Data2, guid->Data3,
 		guid->Data4[0], guid->Data4[1], guid->Data4[2], guid->Data4[3],
@@ -20856,11 +20860,13 @@ typedef	FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl_audio_backend_release_func);
 * @param context The @ref fplAudioContext reference
 * @param backend The @ref fplAudioBackend reference
 * @param audioSettings The @ref fplSpecificAudioSettings reference, that contains special settings for several backends
-* @param targetFormat The @ref fplAudioFormat reference, that specifies the desired audio format
-* @param outputFormat The @ref fplAudioFormat reference, that specifies the desired audio format
+* @param targetFormat The @ref fplAudioFormat reference, that specifies the target audio format
+* @param outputFormat The @ref fplAudioFormat reference, that specifies the output audio format
+* @param outputChannelMap The @ref fplAudioChannelMap reference, that specifies the output channel map
+* @param outputDevice The @ref fplAudioDeviceInfo reference, that specifies the output device info
 * @result Returns a @ref fplAudioResultType
 */
-#define FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(name) fplAudioResultType name(struct fplAudioContext *context, struct fplAudioBackend *backend, const fplSpecificAudioSettings *audioSettings, const fplAudioFormat *targetFormat, const fplAudioDeviceInfo *targetDevice, fplAudioFormat *outputFormat, fplAudioChannelMap *channelMap)
+#define FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(name) fplAudioResultType name(struct fplAudioContext *context, struct fplAudioBackend *backend, const fplSpecificAudioSettings *audioSettings, const fplAudioFormat *targetFormat, const fplAudioDeviceInfo *targetDevice, fplAudioFormat *outputFormat, fplAudioDeviceInfo *outputDevice, fplAudioChannelMap *outputChannelMap)
 typedef	FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl_audio_backend_initialize_device_func);
 
 #define FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(name) bool name(struct fplAudioContext *context, struct fplAudioBackend *backend)
@@ -21015,9 +21021,8 @@ fpl_internal uint32_t fpl__ReadAudioFramesFromClient(const fplAudioBackend *back
 
 // Global Audio GUIDs
 #if defined(FPL_PLATFORM_WINDOWS)
-static GUID FPL__GUID_KSDATAFORMAT_SUBTYPE_PCM = { 0x00000001, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71} };
-static GUID FPL__GUID_KSDATAFORMAT_SUBTYPE_IEEE_FLOAT = { 0x00000003, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71} };
-static GUID FPL__GUID_ZERO = { 0x0, 0x0, 0x0, {0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0} };
+fpl_globalvar const fpl__Win32Guid FPL__GUID_KSDATAFORMAT_SUBTYPE_PCM = { 0x00000001, 0x0000, 0x0010, { 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71 } };
+fpl_globalvar const fpl__Win32Guid FPL__GUID_KSDATAFORMAT_SUBTYPE_IEEE_FLOAT = { 0x00000003, 0x0000, 0x0010, { 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71 } };
 
 // Sets the default channel for a win32 audio backend, such directsound, wasapi, etc.
 fpl_internal void fpl__SetAudioDefaultChannelMapWin32(const uint16_t channels, const fplAudioChannelLayout layout, fplAudioChannelMap *outChannelMap) {
@@ -21175,11 +21180,13 @@ typedef struct {
 } fpl__AudioBackendDirectSound;
 
 typedef struct {
+	fpl__Win32Guid lookupID;
 	fplAudioDeviceInfo *deviceInfos;
 	uint32_t deviceInfoSize;
 	uint32_t foundDeviceCount;
 	uint32_t maxDeviceCount;
 	uint32_t capacityOverflow;
+	bool isLookup;
 } fpl__DirectSoundDeviceInfos;
 
 typedef enum {
@@ -21269,6 +21276,21 @@ fpl_internal BOOL CALLBACK fpl__GetDeviceCallbackDirectSound(LPGUID lpGuid, LPCW
 	fpl__DirectSoundDeviceInfos *infos = (fpl__DirectSoundDeviceInfos *)lpContext;
 	fplAssert(infos != fpl_null);
 	if (infos->deviceInfos != fpl_null) {
+		bool isMatch;
+		if (infos->isLookup) {
+			if (lpGuid != fpl_null) {
+				isMatch = fpl__Win32IsEqualGuid(*lpGuid, infos->lookupID);
+			} else {
+				isMatch = fpl__Win32IsEqualGuid(FPL__WIN32_GUID_ZERO, infos->lookupID);
+			}
+		} else {
+			isMatch = true;
+		}
+
+		if (!isMatch) {
+			return TRUE;
+		}
+
 		uint32_t index = infos->foundDeviceCount++;
 		if (index < infos->maxDeviceCount) {
 			fplAudioDeviceInfo *outDeviceInfo = (fplAudioDeviceInfo *)((uint8_t *)infos->deviceInfos + (infos->deviceInfoSize * index));
@@ -21277,13 +21299,18 @@ fpl_internal BOOL CALLBACK fpl__GetDeviceCallbackDirectSound(LPGUID lpGuid, LPCW
 			if (lpGuid != fpl_null) {
 				fplMemoryCopy(lpGuid, sizeof(outDeviceInfo->id.dshow), &outDeviceInfo->id.dshow);
 			}
-			outDeviceInfo->isDefault = fpl__Win32IsEqualGuid(outDeviceInfo->id.dshow, FPL__GUID_ZERO);
+			outDeviceInfo->isDefault = fpl__Win32IsEqualGuid(outDeviceInfo->id.dshow, FPL__WIN32_GUID_ZERO);
 		} else {
 			infos->capacityOverflow++;
 		}
 	} else {
 		infos->foundDeviceCount++;
 	}
+
+	if (infos->isLookup && infos->foundDeviceCount > 0) {
+		return FALSE;
+	}
+
 	return TRUE;
 }
 
@@ -21329,12 +21356,31 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudiobackendDirec
 	LPDIRECTSOUND directSound = fpl_null;
 
 	// Load direct sound object
-	const GUID *deviceId = fpl_null;
+	const fpl__Win32Guid *deviceId = fpl_null;
 	if (targetDevice != fpl_null) {
 		fplAssert(sizeof(GUID) == sizeof(targetDevice->dshow));
-		deviceId = (const GUID *)&targetDevice->dshow;
+		deviceId = &targetDevice->dshow;
 	}
-	if (!SUCCEEDED(dsoundApi->DirectSoundCreate(deviceId, &directSound, fpl_null))) {
+
+	// Query device
+	fplAudioDeviceInfo deviceInfo = fplZeroInit;
+	fpl__DirectSoundDeviceInfos infos = fplZeroInit;
+	infos.maxDeviceCount = 1;
+	infos.deviceInfos = &deviceInfo;
+	infos.capacityOverflow = 0;
+	infos.deviceInfoSize = sizeof(deviceInfo);
+	infos.isLookup = true;
+	if (deviceId != fpl_null) {
+		fpl__Win32CopyGuid(deviceId, &infos.lookupID);
+	} else {
+		fpl__Win32CopyGuid(&FPL__WIN32_GUID_ZERO, &infos.lookupID);
+	}
+	if (FAILED(dsoundApi->DirectSoundEnumerateW(fpl__GetDeviceCallbackDirectSound, &infos))) {
+		return fplAudioResultType_DeviceByIdNotFound;
+	}
+
+	// Open direct sound with device
+	if (!SUCCEEDED(dsoundApi->DirectSoundCreate((const GUID *)deviceId, &directSound, fpl_null))) {
 		char idString[64];
 		fpl__Win32FormatGuidString(idString, fplArrayCount(idString), deviceId);
 		return fplAudioResultType_NoDeviceFound;
@@ -21475,9 +21521,9 @@ fpl_internal void fpl__SetupWaveFormatDirectSound(const fplAudioFormat *sourceFo
 	waveFormat.Format.nAvgBytesPerSec = waveFormat.Format.nBlockAlign * waveFormat.Format.nSamplesPerSec;
 	waveFormat.Samples.wValidBitsPerSample = waveFormat.Format.wBitsPerSample;
 	if ((sourceFormat->type == fplAudioFormatType_F32) || (sourceFormat->type == fplAudioFormatType_F64)) {
-		waveFormat.SubFormat = FPL__GUID_KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
+		fpl__Win32CopyGuid(&FPL__GUID_KSDATAFORMAT_SUBTYPE_IEEE_FLOAT, &waveFormat.SubFormat);
 	} else {
-		waveFormat.SubFormat = FPL__GUID_KSDATAFORMAT_SUBTYPE_PCM;
+		fpl__Win32CopyGuid(&FPL__GUID_KSDATAFORMAT_SUBTYPE_PCM, &waveFormat.SubFormat);
 	}
 	waveFormat.dwChannelMask = fpl__GetWin32AudioChannelMaskFromMapping(channelMap, sourceFormat->channels);
 	*outputWaveFormat = waveFormat;
@@ -21577,23 +21623,35 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendDirectSou
 	}
 
 	// Initialize channel map
-	fpl__SetAudioDefaultChannelMapWin32(targetFormat->channels, targetFormat->channelLayout, channelMap);
+	fpl__SetAudioDefaultChannelMapWin32(targetFormat->channels, targetFormat->channelLayout, outputChannelMap);
 
 	// Convert source format to wave format
 	fplAudioChannelLayout channelLayout = targetFormat->channelLayout;
 	WAVEFORMATEXTENSIBLE waveFormat = fplZeroInit;
-	fpl__SetupWaveFormatDirectSound(targetFormat, channelMap, &waveFormat);
+	fpl__SetupWaveFormatDirectSound(targetFormat, outputChannelMap, &waveFormat);
 
-	// Load direct sound object
-	const GUID *deviceId = fpl_null;
+	// Query device
+	fplAudioDeviceInfo internalDevice = fplZeroInit;
+	fpl__DirectSoundDeviceInfos infos = fplZeroInit;
+	infos.maxDeviceCount = 1;
+	infos.deviceInfos = &internalDevice;
+	infos.deviceInfoSize = sizeof(internalDevice);
+	infos.isLookup = true;
 	if (fplGetStringLength(targetDevice->name) > 0) {
-		fplAssert(sizeof(GUID) == sizeof(targetDevice->id.dshow));
-		deviceId = (const GUID *)&targetDevice->id.dshow;
+		fpl__Win32CopyGuid(&targetDevice->id.dshow, &infos.lookupID);
+	} else {
+		fpl__Win32CopyGuid(&FPL__WIN32_GUID_ZERO, &infos.lookupID);
 	}
-	if (!SUCCEEDED(dsoundApi->DirectSoundCreate(deviceId, &impl->directSound, fpl_null))) {
+	if (FAILED(dsoundApi->DirectSoundEnumerateW(fpl__GetDeviceCallbackDirectSound, &infos))) {
+		return fplAudioResultType_DeviceByIdNotFound;
+	}
+
+	const fpl__Win32Guid *deviceId = &internalDevice.id.dshow;
+
+	if (FAILED(dsoundApi->DirectSoundCreate((const GUID *)deviceId, &impl->directSound, fpl_null))) {
 		char idString[64];
 		fpl__Win32FormatGuidString(idString, fplArrayCount(idString), deviceId);
-		FPL__DSOUND_INIT_ERROR(fplAudioResultType_NoDeviceFound, "Audio device by id '%s' could not be created!", idString);
+		FPL__DSOUND_INIT_ERROR(fplAudioResultType_DeviceByIdNotFound, "Audio device by id '%s' could not be created!", idString);
 	}
 
 	// Get either local window handle or desktop handle
@@ -21651,7 +21709,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendDirectSou
 			waveFormat.dwChannelMask = FPL__DirectSound_ChannelMask_Mono;
 			channelLayout = fplAudioChannelLayout_Mono;
 		}
-		fpl__CreateChannelsMappingFromChannelMask(waveFormat.dwChannelMask, waveFormat.Format.nChannels, channelMap);
+		fpl__CreateChannelsMappingFromChannelMask(waveFormat.dwChannelMask, waveFormat.Format.nChannels, outputChannelMap);
 	} else {
 		fplAssert(targetFormat->channels > 0);
 		fplAssert(targetFormat->channelLayout >= fplAudioChannelLayout_First && targetFormat->channelLayout <= fplAudioChannelLayout_Last);
@@ -21660,7 +21718,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendDirectSou
 	// Set format
 	if (FAILED(IDirectSoundBuffer_SetFormat(impl->primaryBuffer, (WAVEFORMATEX *)&waveFormat))) {
 		char subformatString[64];
-		fpl__Win32FormatGuidString(subformatString, fplArrayCount(subformatString), &waveFormat.SubFormat);
+		fpl__Win32FormatGuidString(subformatString, fplArrayCount(subformatString), (const fpl__Win32Guid *)&waveFormat.SubFormat);
 		FPL__DSOUND_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed setting audio format for primary sound buffer to (nChannels: %d, nSamplesPerSec: %u, wBitsPerSample: %d, subformat: '%s')!", waveFormat.Format.nChannels, waveFormat.Format.nSamplesPerSec, waveFormat.Format.wBitsPerSample, subformatString);
 	}
 
@@ -21767,6 +21825,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendDirectSou
 	}
 
 	*outputFormat = internalFormat;
+	*outputDevice = internalDevice;
 
 	return fplAudioResultType_Success;
 
@@ -23873,13 +23932,14 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 					}
 				}
 			
+				backend->internalDevice = audioSettings->targetDevice;
 				fpl__SetupAudioDeviceFormat(&currentTargetFormat, &backend->desiredFormat);
 
 				const char *formatTypeName = fplGetAudioFormatName(backend->desiredFormat.type);
 
 				FPL_LOG_DEBUG(FPL__MODULE_AUDIO, "Initializing audio device with settings (SampleRate=%u, Channels=%u, Type='%s')", backend->desiredFormat.sampleRate, backend->desiredFormat.channels, formatTypeName);
 				fplClearStruct(&backend->internalFormat);
-				resultType = descriptor->table.initializeDevice(context, backend, &audioSettings->specific, &backend->desiredFormat, &audioSettings->targetDevice, &backend->internalFormat, &channelsMapping);
+				resultType = descriptor->table.initializeDevice(context, backend, &audioSettings->specific, &backend->desiredFormat, &audioSettings->targetDevice, &backend->internalFormat, &backend->internalDevice, &channelsMapping);
 				if (resultType != fplAudioResultType_Success) {
 					const char *resultErrorStr = fplGetAudioResultName(resultType);
 					FPL_LOG_WARN(FPL__MODULE_AUDIO, "Failed initializing audio device with settings (SampleRate=%u, Channels=%u, Type='%s') -> %s", backend->desiredFormat.sampleRate, backend->desiredFormat.channels, formatTypeName, resultErrorStr);
@@ -25241,12 +25301,19 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 		appState->audio.offsetToBackend = offsetToAudioBackend;
 
 		const char *audioBackendName;
+		const char *audioDeviceName;
 		const char *audioFormatName;
 		const char *audioResultName;
 
 		audioBackendName = fplGetAudioBackendName(appState->initSettings.audio.backend);
+		audioDeviceName = appState->initSettings.audio.targetDevice.name;
 		audioFormatName = fplGetAudioFormatName(appState->initSettings.audio.targetFormat.type);
-		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Audio with Backend '%s' and Target-Format (Sample Rate=%u, Channels=%u, Format='%s')", audioBackendName, appState->initSettings.audio.targetFormat.sampleRate, appState->initSettings.audio.targetFormat.channels, audioFormatName);
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Audio with Backend '%s', Device '%s', Format (Sample Rate=%u, Channels=%u, Format='%s')", 
+			audioBackendName, 
+			audioDeviceName, 
+			appState->initSettings.audio.targetFormat.sampleRate, 
+			appState->initSettings.audio.targetFormat.channels, 
+			audioFormatName);
 
 		fpl__AudioState *audioState = fpl__GetAudioState(appState);
 		fplAssert(audioState != fpl_null);
@@ -25259,8 +25326,9 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 			if (initAudioResult != fplAudioResultType_Success) {
 				audioResultName = fplGetAudioResultName(initAudioResult);
 				audioFormatName = fplGetAudioFormatName(backend->desiredFormat.type);
-				FPL__CRITICAL(FPL__MODULE_CORE, "Failed initialization audio with Backend '%s' and Desired-Format (SampleRate=%u, Channels=%u, Format='%s') -> %s",
+				FPL__CRITICAL(FPL__MODULE_CORE, "Failed initialization Audio with Backend '%s', Device '%s', Format (SampleRate=%u, Channels=%u, Format='%s') -> %s",
 					audioBackendName,
+					audioDeviceName,
 					backend->desiredFormat.sampleRate,
 					backend->desiredFormat.channels,
 					audioFormatName,
@@ -25270,7 +25338,8 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 			}
 			audioBackendName = fplGetAudioBackendName(audioState->backendType);
 			audioFormatName = fplGetAudioFormatName(backend->internalFormat.type);
-			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully initialized Audio with Backend '%s' and Internal-Format (Sample Rate=%u, Channels=%u, Format='%s')", audioBackendName, backend->internalFormat.sampleRate, backend->internalFormat.channels, audioFormatName);
+			audioDeviceName = backend->internalDevice.name;
+			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully initialized Audio with Backend '%s', Device '%s', Format (Sample Rate=%u, Channels=%u, Format='%s')", audioBackendName, audioDeviceName, backend->internalFormat.sampleRate, backend->internalFormat.channels, audioFormatName);
 
 			// Auto play audio if needed
 			if (appState->initSettings.audio.startAuto && (appState->initSettings.audio.clientReadCallback != fpl_null)) {
