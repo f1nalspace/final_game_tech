@@ -21976,6 +21976,10 @@ fpl_internal uint32_t fpl__AlsaScaleBufferSize(const uint32_t bufferSize, const 
 fpl_internal void fpl__SetAudioDefaultChannelMapALSA(const uint16_t channels, const fplAudioChannelLayout layout, fplAudioChannelMap *outChannelMap) {
 	fplClearStruct(outChannelMap);
 
+    if (channels == 0 || layout == fplAudioChannelLayout_Unsupported) {
+        return;
+    }
+
 	if (channels == 1 || layout == fplAudioChannelLayout_Mono) {
 		outChannelMap->speakers[0] = fplAudioChannelType_FrontCenter;
 	} else if (channels == 2 || layout == fplAudioChannelLayout_Stereo) {
