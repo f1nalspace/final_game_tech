@@ -7111,6 +7111,8 @@ typedef enum fplAudioResultType {
 	fplAudioResultType_DeviceFailure,
 	//! No audio device is found
 	fplAudioResultType_NoDeviceFound,
+	//! Audio device by id was not found
+	fplAudioResultType_DeviceByIdNotFound,
 	//! Failed to load the audio api
 	fplAudioResultType_ApiFailed,
 	//! The platform is not initialized
@@ -23279,6 +23281,7 @@ fpl_globalvar const char *fpl__global_audioResultTypeNameTable[] = {
 	"Audio-Device is busy", // fplAudioResultType_DeviceBusy,
 	"Audio-Device failure", // fplAudioResultType_DeviceFailure,
 	"No Audio-Device found", // fplAudioResultType_NoDeviceFound,
+	"No Audio-Device by ID found", // fplAudioResultType_DeviceByIdNotFound
 	"Api failure", // fplAudioResultType_ApiFailed,
 	"Platform not initialized", // fplAudioResultType_PlatformNotInitialized,
 	"Backend already initialized", // fplAudioResultType_BackendAlreadyInitialized,
