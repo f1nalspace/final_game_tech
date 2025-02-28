@@ -3537,7 +3537,7 @@ fpl_platform_api size_t fplSessionGetUsername(char *nameBuffer, const size_t max
 */
 // ----------------------------------------------------------------------------
 
-//! An enumeration of architecture types
+//! Enumeration of architecture types
 typedef enum fplCPUArchType {
 	//! Unknown architecture
 	fplCPUArchType_Unknown = 0,
@@ -3558,33 +3558,101 @@ typedef enum fplCPUArchType {
 	fplCPUArchType_Last = fplCPUArchType_Arm64,
 } fplCPUArchType;
 
-//! A structure that containing the processor capabilities, like MMX,SSE,AVX etc.
+//! Enumeration of CPU types.
+typedef enum fplCPUCapabilitiesType {
+	//! Unknown type
+    fplCPUCapabilitiesType_Unknown = 0,
+	//! x86 type
+    fplCPUCapabilitiesType_X86,
+	//! ARM type
+    fplCPUCapabilitiesType_ARM,
+
+	//! First @ref fplCPUCapabilitiesType
+	fplCPUCapabilitiesType_First = fplCPUCapabilitiesType_Unknown,
+	//! Last @ref fplCPUCapabilitiesType
+	fplCPUCapabilitiesType_Last = fplCPUCapabilitiesType_ARM,
+} fplCPUCapabilitiesType;
+
+/*!
+* @brief Gets the name of the specified @ref fplCPUCapabilitiesType
+* @param type The @ref fplCPUCapabilitiesType
+* @return Returns the found name or @ref fpl_null
+*/
+fpl_common_api const char *fplGetCPUCapabilitiesTypeName(const fplCPUCapabilitiesType type);
+
+//! Container representing the capabilities of an x86 CPU
+typedef struct fplX86CPUCapabilities {
+    //! MMX support.
+    bool hasMMX;
+    //! Has SSE support.
+    bool hasSSE;
+    //! Has SSE2 support.
+    bool hasSSE2;
+    //! Has SSE3 support.
+    bool hasSSE3;
+    //! Has SSSE3 support.
+    bool hasSSSE3;
+    //! Has SSE4.1 support.
+    bool hasSSE4_1;
+    //! Has SSE4.2 support.
+    bool hasSSE4_2;
+    //! Has AVX support.
+    bool hasAVX;
+    //! Has AVX2 support.
+    bool hasAVX2;
+    //! Has AVX512 support.
+    bool hasAVX512;
+    //! Has FMA3 support.
+    bool hasFMA3;
+    //! Has EM64T support.
+    bool hasEM64T;
+    //! Has AES-NI support.
+    bool hasAES_NI;
+    //! Has SHA support.
+    bool hasSHA;
+    //! Has BMI1 support
+    bool hasBMI1;
+    //! Has BMI2 support
+    bool hasBMI2;
+    //! Has ADX support
+    bool hasADX;
+    //! Has F16C support
+    bool hasF16C;
+} fplX86CPUCapabilities;
+fplStaticAssert(sizeof(fplX86CPUCapabilities) <= 28);
+
+//! Container representing the capabilities of an ARM CPU
+typedef struct fplARMCPUCapabilities {
+    //! Has NEON support
+    bool hasNEON;
+    //! Has AES support
+    bool hasAES;
+    //! Has SHA1 support
+    bool hasSHA1;
+    //! Has SHA2 support
+    bool hasSHA2;
+    //! Has CRC32 support
+    bool hasCRC32;
+    //! Has PMULL support
+    bool hasPMULL;
+} fplARMCPUCapabilities;
+fplStaticAssert(sizeof(fplARMCPUCapabilities) <= 28);
+
+//! Container representing the capabilities of a CPU
 typedef struct fplCPUCapabilities {
-	//! Is MMX supported
-	fpl_b32 hasMMX;
-	//! Is SSE supported
-	fpl_b32 hasSSE;
-	//! Is SSE-2 supported
-	fpl_b32 hasSSE2;
-	//! Is SSE-3 supported
-	fpl_b32 hasSSE3;
-	//! Is SSSE-3 supported
-	fpl_b32 hasSSSE3;
-	//! Is SSE-4.1 supported
-	fpl_b32 hasSSE4_1;
-	//! Is SSE-4.2 supported
-	fpl_b32 hasSSE4_2;
-	//! Is AVX supported
-	fpl_b32 hasAVX;
-	//! Is AVX-2 supported
-	fpl_b32 hasAVX2;
-	//! Is AVX-512 supported
-	fpl_b32 hasAVX512;
-	//! Is FMA-3 supported
-	fpl_b32 hasFMA3;
+    //! The capabilities type
+    fplCPUCapabilitiesType type;
+    union {
+        //! x86 CPU capabilities
+        fplX86CPUCapabilities x86;
+        //! ARM CPU capabilities
+        fplARMCPUCapabilities arm;
+        //! Unused
+        uint8_t unused[28];
+    };
 } fplCPUCapabilities;
 
-//! A structure containing the 4-registers (EAX, EBX, ECX, EDX) for a CPU-Leaf.
+//! Container representing the 4-registers  for a CPU-Leaf (EAX, EBX, ECX, EDX)
 typedef union fplCPUIDLeaf {
 	struct {
 		//! The 32-bit EAX Register
@@ -3604,9 +3672,10 @@ typedef union fplCPUIDLeaf {
 * @brief Queries the x86 CPUID leaf register (EAX, EBX, ECX, EDX) for the given function id
 * @param outLeaf The target fplCPUIDLeaf reference
 * @param functionId The CPUID function id
+* @return Returns true when the specified @ref fplCPUIDLeaf was updated, false otherwise
 * @warning This function works on X86 architectures only
 */
-fpl_common_api void fplCPUID(fplCPUIDLeaf *outLeaf, const uint32_t functionId);
+fpl_common_api bool fplCPUID(fplCPUIDLeaf *outLeaf, const uint32_t functionId);
 /**
 * @brief Gets the x86 extended control register for index zero.
 * @return Returns the extended control register on x86 or zero for non-x86 architectures.
@@ -10403,10 +10472,12 @@ fpl_force_inline uint64_t fpl__m_RDTSC(void) {
 #		endif
 #	endif
 
-fpl_common_api void fplCPUID(fplCPUIDLeaf *outLeaf, const uint32_t functionId) {
+fpl_common_api bool fplCPUID(fplCPUIDLeaf *outLeaf, const uint32_t functionId) {
 #if defined(fpl__m_CPUID)
 	fpl__m_CPUID(outLeaf, functionId);
+	return true;
 #endif
+	return false;
 }
 
 fpl_common_api uint64_t fplCPUXCR0() {
@@ -10429,20 +10500,26 @@ fpl_common_api uint64_t fplCPURDTSC() {
 
 fpl_common_api bool fplCPUGetCapabilities(fplCPUCapabilities *outCaps) {
 	fplClearStruct(outCaps);
+	outCaps->type = fplCPUCapabilitiesType_X86;
 
 	fplCPUIDLeaf info0 = fplZeroInit;
 	fplCPUIDLeaf info1 = fplZeroInit;
 	fplCPUIDLeaf info7 = fplZeroInit;
+	fplCPUIDLeaf tempLeaf = fplZeroInit;
 
-	fplCPUID(&info0, 0);
+	if (!fplCPUID(&info0, 0))
+		return false;
+
 	uint32_t maxFunctionId = info0.eax;
 
 	if (1 <= maxFunctionId) {
-		fplCPUID(&info1, 1);
+		if (!fplCPUID(&info1, 1))
+			return false;
 	}
 
 	if (7 <= maxFunctionId) {
-		fplCPUID(&info7, 7);
+		if (!fplCPUID(&info7, 7))
+			return false;
 	}
 
 	bool hasXSave = fplIsBitSet(info1.ecx, 26) && fplIsBitSet(info1.ecx, 27);
@@ -10462,25 +10539,37 @@ fpl_common_api bool fplCPUGetCapabilities(fplCPUCapabilities *outCaps) {
 	bool hasAVXSupport = (xcr0 & MASK_AVX) == MASK_AVX;
 	bool hasAVX512Support = (xcr0 & MASK_AVX_512) == MASK_AVX_512;
 
-	outCaps->hasMMX = fplIsBitSet(info1.edx, 23);
+	outCaps->x86.hasMMX = fplIsBitSet(info1.edx, 23);
 
 	if (hasSSESupport) {
-		outCaps->hasSSE = fplIsBitSet(info1.edx, 25);
-		outCaps->hasSSE2 = fplIsBitSet(info1.edx, 26);
-		outCaps->hasSSE3 = fplIsBitSet(info1.ecx, 0);
-		outCaps->hasSSSE3 = fplIsBitSet(info1.ecx, 9);
-		outCaps->hasSSE4_1 = fplIsBitSet(info1.ecx, 19);
-		outCaps->hasSSE4_2 = fplIsBitSet(info1.ecx, 20);
+		outCaps->x86.hasSSE = fplIsBitSet(info1.edx, 25);
+		outCaps->x86.hasSSE2 = fplIsBitSet(info1.edx, 26);
+		outCaps->x86.hasSSE3 = fplIsBitSet(info1.ecx, 0);
+		outCaps->x86.hasSSSE3 = fplIsBitSet(info1.ecx, 9);
+		outCaps->x86.hasSSE4_1 = fplIsBitSet(info1.ecx, 19);
+		outCaps->x86.hasSSE4_2 = fplIsBitSet(info1.ecx, 20);
 	}
 
 	if (hasAVXSupport) {
-		outCaps->hasAVX = fplIsBitSet(info1.ecx, 28);
-		outCaps->hasAVX2 = fplIsBitSet(info7.ebx, 5);
+		outCaps->x86.hasAVX = fplIsBitSet(info1.ecx, 28);
+		outCaps->x86.hasAVX2 = fplIsBitSet(info7.ebx, 5);
 	}
 
 	if (hasAVX512Support) {
-		outCaps->hasAVX512 = fplIsBitSet(info7.ebx, 16);
-		outCaps->hasFMA3 = fplIsBitSet(info7.ecx, 12);
+		outCaps->x86.hasAVX512 = fplIsBitSet(info7.ebx, 16);
+	}
+
+	outCaps->x86.hasFMA3 = fplIsBitSet(info1.ecx, 12);
+
+	outCaps->x86.hasAES_NI = fplIsBitSet(info1.ecx, 25);
+    outCaps->x86.hasSHA = fplIsBitSet(info7.ebx, 29);
+    outCaps->x86.hasBMI1 = fplIsBitSet(info7.ebx, 3);
+    outCaps->x86.hasBMI2 = fplIsBitSet(info7.ebx, 8);
+    outCaps->x86.hasADX = fplIsBitSet(info7.ebx, 19);
+    outCaps->x86.hasF16C = fplIsBitSet(info1.ecx, 29);
+
+	if (fplCPUID(&tempLeaf, 0x80000001)) {
+		outCaps->x86.hasEM64T = fplIsBitSet(info1.edx, 29);
 	}
 
 	return(true);
@@ -10545,9 +10634,8 @@ fpl_common_api uint64_t fplCPUXCR0() {
 	return(0);
 }
 
-fpl_common_api void fplCPUID(fplCPUIDLeaf *outLeaf, const uint32_t functionId) {
-	// Not supported on non-x86 platforms
-	fplClearStruct(outLeaf);
+fpl_common_api bool fplCPUID(fplCPUIDLeaf *outLeaf, const uint32_t functionId) {
+	return(false);
 }
 
 fpl_common_api bool fplCPUGetCapabilities(fplCPUCapabilities *outCaps) {
@@ -11208,6 +11296,19 @@ fplStaticAssert(fplArrayCount(fpl__global_ArchTypeNameTable) == FPL__ARCHTYPE_CO
 fpl_common_api const char *fplCPUGetArchName(const fplCPUArchType type) {
 	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, fplCPUArchType_First, fplCPUArchType_Last);
 	const char *result = fpl__global_ArchTypeNameTable[index];
+	return(result);
+}
+
+#define FPL__CPU_CAPABILITIESTYPE_COUNT FPL__ENUM_COUNT(fplCPUCapabilitiesType_First, fplCPUCapabilitiesType_Last)
+fpl_globalvar const char *fpl__global_CPUCapabilitesTypeNameTable[] = {
+	"Unknown",
+	"X86",
+	"ARM",
+};
+fplStaticAssert(fplArrayCount(fpl__global_CPUCapabilitesTypeNameTable) == FPL__CPU_CAPABILITIESTYPE_COUNT);
+fpl_common_api const char *fplGetCPUCapabilitiesTypeName(const fplCPUCapabilitiesType type) {
+	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, fplCPUCapabilitiesType_First, fplCPUCapabilitiesType_Last);
+	const char *result = fpl__global_CPUCapabilitesTypeNameTable[index];
 	return(result);
 }
 
