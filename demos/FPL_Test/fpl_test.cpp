@@ -500,18 +500,35 @@ static void TestHardware() {
 
 	fplCPUCapabilities cpuCaps = {};
 	fplCPUGetCapabilities(&cpuCaps);
-	ftMsg("Processor capabilities:\n");
-	ftMsg("\tMMX: %s\n", (cpuCaps.hasMMX ? "yes" : "no"));
-	ftMsg("\tSSE: %s\n", (cpuCaps.hasSSE ? "yes" : "no"));
-	ftMsg("\tSSE2: %s\n", (cpuCaps.hasSSE2 ? "yes" : "no"));
-	ftMsg("\tSSE3: %s\n", (cpuCaps.hasSSE3 ? "yes" : "no"));
-	ftMsg("\tSSSE3: %s\n", (cpuCaps.hasSSSE3 ? "yes" : "no"));
-	ftMsg("\tSSE4.1: %s\n", (cpuCaps.hasSSE4_1 ? "yes" : "no"));
-	ftMsg("\tSSE4.2: %s\n", (cpuCaps.hasSSE4_2 ? "yes" : "no"));
-	ftMsg("\tAVX: %s\n", (cpuCaps.hasAVX ? "yes" : "no"));
-	ftMsg("\tAVX2: %s\n", (cpuCaps.hasAVX2 ? "yes" : "no"));
-	ftMsg("\tAVX512: %s\n", (cpuCaps.hasAVX512 ? "yes" : "no"));
-	ftMsg("\tFMA3: %s\n", (cpuCaps.hasFMA3 ? "yes" : "no"));
+	const char *cpuTypeName = fplGetCPUCapabilitiesTypeName(cpuCaps.type);
+	ftMsg("Processor capabilities (%s):\n", cpuTypeName);
+	if (cpuCaps.type == fplCPUCapabilitiesType_X86) {
+		ftMsg("\tMMX: %s\n", (cpuCaps.x86.hasMMX ? "yes" : "no"));
+		ftMsg("\tSSE: %s\n", (cpuCaps.x86.hasSSE ? "yes" : "no"));
+		ftMsg("\tSSE2: %s\n", (cpuCaps.x86.hasSSE2 ? "yes" : "no"));
+		ftMsg("\tSSE3: %s\n", (cpuCaps.x86.hasSSE3 ? "yes" : "no"));
+		ftMsg("\tSSSE3: %s\n", (cpuCaps.x86.hasSSSE3 ? "yes" : "no"));
+		ftMsg("\tSSE4.1: %s\n", (cpuCaps.x86.hasSSE4_1 ? "yes" : "no"));
+		ftMsg("\tSSE4.2: %s\n", (cpuCaps.x86.hasSSE4_2 ? "yes" : "no"));
+		ftMsg("\tAVX: %s\n", (cpuCaps.x86.hasAVX ? "yes" : "no"));
+		ftMsg("\tAVX2: %s\n", (cpuCaps.x86.hasAVX2 ? "yes" : "no"));
+		ftMsg("\tAVX512: %s\n", (cpuCaps.x86.hasAVX512 ? "yes" : "no"));
+		ftMsg("\tFMA3: %s\n", (cpuCaps.x86.hasFMA3 ? "yes" : "no"));
+		ftMsg("\tEM64T: %s\n", (cpuCaps.x86.hasEM64T ? "yes" : "no"));
+		ftMsg("\tAES-NI: %s\n", (cpuCaps.x86.hasAES_NI ? "yes" : "no"));
+		ftMsg("\tSHA: %s\n", (cpuCaps.x86.hasSHA ? "yes" : "no"));
+		ftMsg("\tBMI1: %s\n", (cpuCaps.x86.hasBMI1 ? "yes" : "no"));
+		ftMsg("\tBMI2: %s\n", (cpuCaps.x86.hasBMI2 ? "yes" : "no"));
+		ftMsg("\tADX: %s\n", (cpuCaps.x86.hasADX ? "yes" : "no"));
+		ftMsg("\tF16C: %s\n", (cpuCaps.x86.hasF16C ? "yes" : "no"));
+	} else if (cpuCaps.type == fplCPUCapabilitiesType_ARM) {
+		ftMsg("\tNeon: %s\n", (cpuCaps.arm.hasNEON ? "yes" : "no"));
+		ftMsg("\tAES: %s\n", (cpuCaps.arm.hasAES ? "yes" : "no"));
+		ftMsg("\tSHA1: %s\n", (cpuCaps.arm.hasSHA1 ? "yes" : "no"));
+		ftMsg("\tSHA2: %s\n", (cpuCaps.arm.hasSHA2 ? "yes" : "no"));
+		ftMsg("\tCRC32: %s\n", (cpuCaps.arm.hasCRC32 ? "yes" : "no"));
+		ftMsg("\tPMULL: %s\n", (cpuCaps.arm.hasPMULL ? "yes" : "no"));
+	}
 
 	fplMemoryInfos memInfos = {};
 	fplMemoryGetInfos(&memInfos);
