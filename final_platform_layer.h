@@ -156,8 +156,8 @@ SOFTWARE.
 	- New: Added struct fplAudioChannelMap that stores an array of the audio channel configuration
 	- New: Added struct fplAudioDeviceInfoExtended that stores the @ref fplAudioDeviceInfo and the supported formats as U64
 	- New: Added enum value @ref fplAudioDefaultFields_ChannelLayout to fplAudioDefaultFields
-	- New: Added function fplLoadAudio() that manually loads the audio system
-	- New: Added function fplUnloadAudio() that manually unloads/releases the audio system
+	- New: Added function fplAudioInit() that manually loads the audio system
+	- New: Added function fplAudioRelease() that manually unloads/releases the audio system
 	- New: Added field manualLoad to @ref fplAudioSettings that controls the initialization behavior of the audio system
 	- New: Added function fplGetAudioDeviceInfo() that returns a @ref fplAudioDeviceInfoExtended from a device id
 	- New: Added function fplGetAudioLatencyType() that returns a @ref fplAudioLatencyType from a @ref fplAudioMode
@@ -4264,7 +4264,7 @@ typedef struct fplAudioSettings {
 	fpl_b32 startAuto;
 	//! Stop playing of audio samples before platform release automatically
 	fpl_b32 stopAuto;
-	//! Manual loading the audio system by @ref fplLoadAudio() and unload using fplUnloadAudio()
+	//! Manual loading the audio system by @ref fplAudioInit() and unload using fplAudioRelease()
 	fpl_b32 manualLoad;
 } fplAudioSettings;
 
@@ -7229,16 +7229,16 @@ fpl_common_api fplAudioResultType fplPlayAudio();
 */
 fpl_common_api fplAudioResultType fplStopAudio();
 /**
-* @brief Re/Loads the audio system with the specified @ref fplAudioSettings.
-* @param The audio settings as @fplAudioSettings
+* @brief Re/Initializes the audio system with the specified @ref fplAudioSettings.
+* @param The audio settings as @ref fplAudioSettings
 * @return Returns the audio result @ref fplAudioResultType
 */
-fpl_common_api fplAudioResultType fplLoadAudio(fplAudioSettings *audioSettings);
+fpl_common_api fplAudioResultType fplAudioInit(fplAudioSettings *audioSettings);
 /**
-* @brief Unloads the audio system
+* @brief Unloads/Releases the audio system
 * @return Returns a boolean indicating whether the audio system was unloaded or not.
 */
-fpl_common_api bool fplUnloadAudio();
+fpl_common_api bool fplAudioRelease();
 
 /**
 * @brief Retrieves the native audio format for the current audio device.
@@ -7383,7 +7383,7 @@ fpl_common_api fplAudioFormatU64 fplEncodeAudioFormatU64(const uint32_t sampleRa
 
 /**
 * @brief Decodes the specified @ref fplAudioFormatU64 to the specified specified sample rate, channels, type
-* @param format64 The encoded @fplAudioFormatU64
+* @param format64 The encoded @ref fplAudioFormatU64
 * @param outSampleRate The output sample rate
 * @param outChannels The output channels
 * @param outType The output @ref fplAudioFormatType
@@ -24721,7 +24721,7 @@ fpl_common_api fplAudioResultType fplPlayAudio() {
 	return result;
 }
 
-fpl_common_api fplAudioResultType fplLoadAudio(fplAudioSettings *audioSettings) {
+fpl_common_api fplAudioResultType fplAudioInit(fplAudioSettings *audioSettings) {
 	FPL__CheckArgumentNull(audioSettings, fplAudioResultType_InvalidArguments);
 	FPL__CheckPlatform(fplAudioResultType_PlatformNotInitialized);
 	fpl__AudioState *audioState = fpl__GetAudioState(fpl__global__AppState);
@@ -24782,7 +24782,7 @@ fpl_common_api fplAudioResultType fplLoadAudio(fplAudioSettings *audioSettings) 
 	return fplAudioResultType_Success;
 }
 
-fpl_common_api bool fplUnloadAudio() {
+fpl_common_api bool fplAudioRelease() {
 	FPL__CheckPlatform(false);
 	fpl__AudioState *audioState = fpl__GetAudioState(fpl__global__AppState);
 	if (audioState == fpl_null) {

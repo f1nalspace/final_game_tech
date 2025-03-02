@@ -1943,7 +1943,7 @@ static void StopAndReleaseMedia(PlayerState &state, const uint32_t mainThreadId)
 	// Stop audio
 	if (state.audio.isValid) {
 		fplStopAudio();
-		fplUnloadAudio();
+		fplAudioRelease();
 	}
 
 	// Stop reader
@@ -4013,12 +4013,12 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath) {
 	audioSettings.targetFormat.sampleRate = audioCodexCtx->sample_rate;
 	audioSettings.targetFormat.type = MapAVSampleFormat(audioCodexCtx->sample_fmt);
 
-	loadAudioRes = fplLoadAudio(&audioSettings);
+	loadAudioRes = fplAudioInit(&audioSettings);
 
 	if (loadAudioRes != fplAudioResultType_Success) {
 		FPL_LOG_WARN("App", "FFMPEG audio format (sample rate '%u', channels: %u, type: %s) is not supported, try the default format", audioSettings.targetFormat.sampleRate, audioSettings.targetFormat.channels, fplGetAudioFormatName(audioSettings.targetFormat.type));
 		fplSetDefaultAudioSettings(&audioSettings);
-		loadAudioRes = fplLoadAudio(&audioSettings);
+		loadAudioRes = fplAudioInit(&audioSettings);
 	}
 
 	if (loadAudioRes != fplAudioResultType_Success) {
