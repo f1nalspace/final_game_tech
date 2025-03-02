@@ -4000,7 +4000,7 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath) {
 
 	fplAudioFormat nativeAudioFormat = fplZeroInit;
 
-	fplAudioChannelMap mapping = fplZeroInit;
+	fplAudioChannelMap channelMap = fplZeroInit;
 
 	// Init audio system and get audio hardware format (Two tries, one with the ffmpeg format and one with a default one)
 	fplAudioResultType loadAudioRes;
@@ -4031,7 +4031,7 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath) {
 		goto failed;
 	}
 
-	fplGetAudioChannelsMapping(&mapping);
+	fplGetAudioChannelMap(&channelMap);
 
 	state.audio.backend = fplGetAudioBackendType();
 
@@ -4070,7 +4070,7 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath) {
 		inputChannelLayout = ffmpeg.av_get_default_channel_layout(inputChannelCount);
 	}
 
-	InitializeChannelMapping(inputChannelLayout, nativeAudioFormat.channels, &mapping, &audio.channelMap);
+	InitializeChannelMapping(inputChannelLayout, nativeAudioFormat.channels, &channelMap, &audio.channelMap);
 
 	audio.audioSource = {};
 	audio.audioSource.channels = inputChannelCount;

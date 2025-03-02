@@ -168,7 +168,7 @@ SOFTWARE.
 	- New: Added function fplEncodeAudioFormatU64() that encodes a sample rate, number of channels and type into a 64-bit
 	- New: Added function fplDecodeAudioFormatU64() that decodes a 64-bit value into a sample rate, number of channels and type
 	- New: Added function fplGetAudioDeviceInfo() that returns a @ref fplAudioDeviceInfoExtended from a @ref fplAudioDeviceID
-	- New: Added function fplGetAudioChannelsMapping() that returns the @ref fplAudioChannelMap for the active audio backend
+	- New: Added function fplGetAudioChannelMap() that returns the @ref fplAudioChannelMap for the active audio backend
 	- New[#36]: Support for multiple audio channels + channel layouts + channel mapping
 	- Improved: C/C++ detection improved
 	- Improved: Architecture detection extended (Apple, Risc-V, Mips, Sparc)
@@ -7265,7 +7265,7 @@ fpl_common_api const char *fplGetAudioHardwareDeviceName();
 * @brief outMapping The pointer to the @ref fplAudioChannelMap
 * @return True true when the channels mapping was filled out, false otherwise.
 */
-fpl_common_api bool fplGetAudioChannelsMapping(fplAudioChannelMap *outMapping);
+fpl_common_api bool fplGetAudioChannelMap(fplAudioChannelMap *outMapping);
 
 /**
 * @brief Overwrites the audio client read callback.
@@ -24841,7 +24841,7 @@ fpl_common_api const char *fplGetAudioHardwareDeviceName() {
 	return backend->internalDevice.name;
 }
 
-fpl_common_api bool fplGetAudioChannelsMapping(fplAudioChannelMap *outMapping) {
+fpl_common_api bool fplGetAudioChannelMap(fplAudioChannelMap *outMapping) {
 	FPL__CheckArgumentNull(outMapping, false);
 	FPL__CheckPlatform(false);
 	fpl__AudioState *audioState = fpl__GetAudioState(fpl__global__AppState);
