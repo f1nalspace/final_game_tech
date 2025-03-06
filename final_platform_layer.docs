@@ -328,7 +328,8 @@
 	@section section_category_audio Audio
 	@subpage page_category_audio_general <br>
 	@subpage page_category_audio_writesamples <br>
-	@subpage page_category_audio_multichannel
+	@subpage page_category_audio_multichannel <br>
+	@subpage page_category_audio_manual <br>
 */
 
 /*!
@@ -1879,12 +1880,12 @@
 */
 
 /*!
-	@page page_category_audio_multichannel Multi-Channel Audio (2.1, 3.0, 3.1, 4.0, 4.1, 5.1, 6.1, 7.1, etc)
+	@page page_category_audio_multichannel Multi-Channel Audio (2.1 up to 7.1)
 	@tableofcontents
 
 	@section section_category_audio_multichannel_default_init Default initialization
 	
-	By default you don't have to setup anything in FPL, if your audio device supports multiple channels you can get the @ref fplAudioChannelLayout and number of channels from the @ref fplAudioFormat:
+	By default you don't have to setup anything in FPL, if your audio device supports multiple channels you can get the @ref fplAudioChannelLayout and the number of channels from the @ref fplAudioFormat.channels:
 
 	@code{.c}
 	fplSettings settings;
@@ -1895,19 +1896,6 @@
 	}
 	@endcode
 	
-	@section section_category_audio_multichannel_mapping Channel Mapping
-	
-	Every audio backend has its own audio channel map, that you have to respect to fill out the samples to the correct audio channel.
-	
-	You can get the audio channels map using @ref fplGetAudioChannelMap() after the audio backend has been initialized either by @ref fplPlatformInit() or @ref fplAudioInit():
-	
-	@code{.c}
-	fplAudioChannelMap channelMap = fplZeroInit;
-	if (fplGetAudioChannelsMapping(&channelMap)) {
-		// Do your own channel mapping from your source samples
-	}
-	@endcode
-
 	@section section_category_audio_multichannel_layout Setting a Audio Channel Layout
 
 	By default, FPL uses the native audio channel layout for your default sound device, by you can overwrite it by setting the @ref fplAudioFormat.layout field in the @ref fplAudioSettings structure:<br>
@@ -1929,6 +1917,84 @@
 	@endcode
 	
 	@note Note, that you have to call @ref fplGetAudioChannelMap() to get the actual audio channel mapping table, that maps each audio channel to a @ref fplAudioChannelType.
+
+	@section section_category_audio_multichannel_mapping Channel Mapping
+	
+	A channel map is a table of channel indices to a @ref fplAudioChannelType.
+	
+	If you have a @ref fplAudioChannelLayout_Stereo or even @ref fplAudioChannelLayout_Mono, you can simply use the default indices (0|1) or just zero for mono.
+	
+	As soon as you have more than two channels, you have to get the @ref fplAudioChannelMap from the current audio backend and map your source channel indices.
+	You can get the current @ref fplAudioChannelMap by calling @ref fplGetAudioChannelMap().
+	
+	This must be called, after the audio system has been initialized, either after @ref fplPlatformInit() or after @ref fplAudioInit().
+		
+	@code{.c}
+	fplAudioChannelMap channelMap = fplZeroInit;
+	if (fplGetAudioChannelMap(&channelMap)) {
+		// Do your own channel mapping from your source samples
+	}
+	@endcode
+*/
+
+/*!
+	@page page_category_audio_manual Manual Audio Initialization
+	@tableofcontents
+
+	@section section_category_audio_manual_overview Overview
+	
+	If you want to initialize and release the audio system yourself, you can call @ref fplAudioInit() and @ref fplAudioRelease() respectively.
+	
+	In addition you can set @ref fplAudioSettings.manualLoad to true, so that fplPlatformInit() won't do any audio backend initialization.
+	
+	@code{.c}
+	fplAudioSettings audioSettings;
+	fplDefaultAudioSettings(&audioSettings);
+	
+	fplSettings settings = fplZeroInit;
+	fplDefaultSettings(&settings);
+	settings.audio.manualLoad = true;
+	
+	const char *newMediaFilePath = fpl_null;
+	
+	// Initialize 
+	if (fplPlatformInit(fplInitFlags_Audio, &settings)) {
+	
+		// Main loop
+		bool isAppRunning = true;
+		while (isAppRunning) {
+		
+			// Use case: Loading media file from a request
+			MediaFormat mediaFormat = fplZeroInit;
+			if (newMediaFilePath != fpl_null && MyMediaLoad(newMediaFilePath, &mediaFormat)) {
+				fplAudioSettings newAudioSettings;
+				fplDefaultAudioSettings(&newAudioSettings);
+				newAudioSettings.channels = mediaFormat.channels;
+				newAudioSettings.format = mediaFormat.type;
+				newAudioSettings.sampleRate = mediaFormat.sampleRate;
+				
+				// Manual initialize the audio system
+				fplAudioResultType resultType = fplAudioInit(&newAudioSettings);
+				if (resultType != newAudioSettings_Success) {
+					// Handle error
+					// No need to stop release the audio system, this is done automatically
+				} else {
+					// Success, you can start the playback now
+					fplPlayAudio();
+				}
+			}
+			
+		}
+		
+		// Manually release the audio system
+		fplAudioRelease();
+	
+		// Release the platform
+		fplPlatformRelease();
+	}
+	@endcode
+
+	@warning Do not remove the @ref fplInitFlags_Audio from @ref fplPlatformInit(), otherwise the audio system initialization in @ref fplAudioInit() will always fail!
 */
 
 /*!
