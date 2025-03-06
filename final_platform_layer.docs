@@ -47,7 +47,7 @@
 	Final Platform Layer is a Single-Header-File cross-platform <b>C99</b>/<b>C++</b> development library designed to abstract the underlying platform to a very simple and easy-to-use API - providing low level access to:<br>
 	- Single Window creation and handling
 	- Graphics Software or Hardware Rendering initialization.
-	- Playback of raw Audio Samples
+	- Asynchronous Playback of Audio Samples
 	- Accessing Input Devices (Keyboard, Mouse, Gamepad)
 	- IO handling (Files, Directories, Paths)
 	- Multithreading (Threads, Mutexes, Signals, Conditions)
@@ -213,20 +213,14 @@
 	To learn how to use FPL without the CRT more details, see the page @subpage page_nocrt
 
 	@section section_usage_howtouse How to use FPL?
-	In one of your C/C++ translation-unit include this:
+	In your main C/C++ translation-unit include the header file and call @ref fplPlatformInit() and @ref fplPlatformRelease() respectively:
 
 	@code{.c}
 	#define FPL_IMPLEMENTATION
 	#include "final_platform_layer.h"
-	@endcode
 
-	You can then include this file in any other C/C++ source or header file as you would with any other header file.
-
-	Provide the typical main entry point with at least the initialization and release of the platform:
-
-	@code{.c}
 	int main(int argc, char **argv) {
-		// Initialize the platform
+		// Initialize the platform with default settings
 		if (fplPlatformInit(fplInitFlags_All, fpl_null)) {
 
 			// your code goes here
@@ -239,6 +233,10 @@
 		}
 	}
 	@endcode
+
+	You can then include this file in any other C/C++ source or header file as you would with any other header file.
+
+	Provide the typical main entry point with at least the initialization and release of the platform:
 
 	@section section_usage_multiple_translation_units How to use FPL in multiple translation units?
 
@@ -330,6 +328,8 @@
 	@section section_category_audio Audio
 	@subpage page_category_audio_general <br>
 	@subpage page_category_audio_writesamples <br>
+	@subpage page_category_audio_multichannel <br>
+	@subpage page_category_audio_manual <br>
 */
 
 /*!
@@ -1769,15 +1769,18 @@
 */
 
 /*!
-	@page page_category_audio_general Initialization & Usage
+	@page page_category_audio_general Audio Initialization & Usage
 	@tableofcontents
 
 	@section section_category_audio_general_default_init Default initialization
 
-	To initialize audio playback with default settings (Interleaved, 48 kHz, 2 Channels, signed 16-bit integer format), you have to set the @ref fplInitFlags_Audio flag in the @ref fplPlatformInit() call and ensure that audio is not disabled by a preprocessor directive **FPL_NO_AUDIO**.<br>
+	To initialize audio playback with default settings, you have to include the @ref fplInitFlags_Audio flag in the @ref fplPlatformInit() call and ensure that audio is not disabled by a preprocessor directive **FPL_NO_AUDIO**.<br>
 
 	@code{.c}
-	if (fplPlatformInit(fplInitFlags_Audio, fpl_null)) {
+	fplSettings settings;
+	fplSetDefaultSettings(&settings);
+	
+	if (fplPlatformInit(fplInitFlags_Audio, &settings)) {
 		// ... your code here
 	}
 	@endcode
@@ -1788,15 +1791,15 @@
 	This @ref fpl_audio_client_read_callback "client callback" can be set up in the @ref fplAudioSettings.clientReadCallback field from the @ref fplSettings.audio or changed by calling @ref fplSetAudioClientReadCallback() :<br>
 
 	@code{.c}
-	static uint32_t MyAudioPlaybackCallback(const fplAudioDeviceFormat *nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
+	static uint32_t MyAudioPlaybackCallback(const fplAudioFormat *nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
 		// ... Fill audio frames here
 	}
 
 	fplSettings settings;
 	fplSetDefaultSettings(&settings);
-	fplAudioSettings &audioSettings = settings->audio;
+	fplAudioSettings *audioSettings = &settings->audio;
 	audioSettings.clientReadCallback = MyAudioPlaybackCallback;
-	audioSettings.userData = // ... pointer to some user data
+	audioSettings.clientUserData = // ... pointer to some user data
 	if (fplPlatformInit(fplInitFlags_Audio, &settings)) {
 		// ... your code here
 	}
@@ -1805,9 +1808,9 @@
 	@note This step must be done before you can start playing the audio!
 	@note You can specify a user data pointer that gets passed to the client callback as well.
 
-	@section section_category_audio_general_custom_init Custom initialization
+	@section section_category_audio_general_custom_init Custom Settings
 
-	You can change several audio settings (Sample rate, Number of Channels, Format, etc.) before initializing the audio playback like this:<br>
+	You can change several audio settings (Sample rate, Number of Channels, Format, Channel layout, etc.) before initializing the audio playback like this:<br>
 
 	@code{.c}
 	fplSettings settings;
@@ -1815,9 +1818,10 @@
 	fplAudioSettings &audioSettings = settings.audio;
 	audioSettings.clientReadCallback = MyAudioPlaybackCallback;
 	audioSettings.userData = // ... pointer to some user data
-	fplAudioDeviceFormat &audioDeviceFormat = audioSettings.deviceFormat;
+	fplAudioFormat &audioDeviceFormat = audioSettings.deviceFormat;
 	audioDeviceFormat.sampleRate = 48000;
 	audioDeviceFormat.channels = 2;
+	audioDeviceFormat.layout = fplAudioChannelLayout_Stereo;
 	audioDeviceFormat.type = fplAudioFormatType_F32;
 	if (fplPlatformInit(fplInitFlags_Audio, &settings)) {
 		// ... your code here
@@ -1825,6 +1829,8 @@
 	@endcode
 
 	@note Please see the @ref section_category_audio_general_notes for possible limitations!
+	
+	@note If the @ref fplAudioChannelLayout does not match the number of channels, the layout are automatically detected by the number of channels.
 
 	@section section_category_audio_general_choosing_driver Choosing the audio backend
 
@@ -1844,7 +1850,7 @@
 	}
 	@endcode
 
-	It is recommended to use the default @ref fplAudioBackendType_Auto which uses the first supported audio backend.
+	It is recommended to use the default @ref fplAudioBackendType_Auto which tries all audio backends until a suitable is found.
 
 	@warning If your platform/system does not support the desired backend, the audio and platform initialization will fail!
 
@@ -1866,7 +1872,7 @@
 	@section section_category_audio_general_notes Notes
 
 	There is no guarantee that you get the desired audio format you specified back!<br>
-	You should always check the @ref fplAudioDeviceFormat "nativeAudioFormat" in your client callback and convert/write the correct samples the audio device expects!<br>
+	You should always check the @ref fplAudioFormat "nativeAudioFormat" in your client callback and convert/write the correct samples the audio device expects!<br>
 	<br>
 	For more details see the page: @subpage page_category_audio_writesamples <br>
 	<br>
@@ -1874,20 +1880,139 @@
 */
 
 /*!
-	@page page_category_audio_writesamples Writing audio samples
+	@page page_category_audio_multichannel Multi-Channel Audio (2.1 up to 7.1)
+	@tableofcontents
+
+	@section section_category_audio_multichannel_default_init Default initialization
+	
+	By default you don't have to setup anything in FPL, if your audio device supports multiple channels you can get the @ref fplAudioChannelLayout and the number of channels from the @ref fplAudioFormat.channels:
+
+	@code{.c}
+	fplSettings settings;
+	fplSetDefaultSettings(&settings);
+	
+	if (fplPlatformInit(fplInitFlags_Audio, &settings)) {
+		// ... your code here
+	}
+	@endcode
+	
+	@section section_category_audio_multichannel_layout Setting a Audio Channel Layout
+
+	By default, FPL uses the native audio channel layout for your default sound device, by you can overwrite it by setting the @ref fplAudioFormat.layout field in the @ref fplAudioSettings structure:<br>
+
+	@code{.c}
+	fplSettings settings;
+	fplSetDefaultSettings(&settings);
+	fplAudioSettings &audioSettings = settings.audio;
+
+	// Forcing to use a 5.1 audio channel layout with 6 channels
+	audioSettings.layout = fplAudioChannelLayout_5_1;
+	
+	// Or you can set the number of channels to 6 for 5.1 as well
+	audioSettings.channels = 6;
+
+	if (fplPlatformInit(fplInitFlags_Audio, &settings)) {
+		// ... your code here
+	}
+	@endcode
+	
+	@note Note, that you have to call @ref fplGetAudioChannelMap() to get the actual audio channel mapping table, that maps each audio channel to a @ref fplAudioChannelType.
+
+	@section section_category_audio_multichannel_mapping Channel Mapping
+	
+	A channel map is a table of channel indices to a @ref fplAudioChannelType.
+	
+	If you have a @ref fplAudioChannelLayout_Stereo or even @ref fplAudioChannelLayout_Mono, you can simply use the default indices (0|1) or just zero for mono.
+	
+	As soon as you have more than two channels, you have to get the @ref fplAudioChannelMap from the current audio backend and map your source channel indices.
+	You can get the current @ref fplAudioChannelMap by calling @ref fplGetAudioChannelMap().
+	
+	This must be called, after the audio system has been initialized, either after @ref fplPlatformInit() or after @ref fplAudioInit().
+		
+	@code{.c}
+	fplAudioChannelMap channelMap = fplZeroInit;
+	if (fplGetAudioChannelMap(&channelMap)) {
+		// Do your own channel mapping from your source samples
+	}
+	@endcode
+*/
+
+/*!
+	@page page_category_audio_manual Manual Audio Initialization
+	@tableofcontents
+
+	@section section_category_audio_manual_overview Overview
+	
+	If you want to initialize and release the audio system yourself, you can call @ref fplAudioInit() and @ref fplAudioRelease() respectively.
+	
+	In addition you can set @ref fplAudioSettings.manualLoad to true, so that fplPlatformInit() won't do any audio backend initialization.
+	
+	@code{.c}
+	fplAudioSettings audioSettings;
+	fplDefaultAudioSettings(&audioSettings);
+	
+	fplSettings settings = fplZeroInit;
+	fplDefaultSettings(&settings);
+	settings.audio.manualLoad = true;
+	
+	const char *newMediaFilePath = fpl_null;
+	
+	// Initialize 
+	if (fplPlatformInit(fplInitFlags_Audio, &settings)) {
+	
+		// Main loop
+		bool isAppRunning = true;
+		while (isAppRunning) {
+		
+			// Use case: Loading media file from a request
+			MediaFormat mediaFormat = fplZeroInit;
+			if (newMediaFilePath != fpl_null && MyMediaLoad(newMediaFilePath, &mediaFormat)) {
+				fplAudioSettings newAudioSettings;
+				fplDefaultAudioSettings(&newAudioSettings);
+				newAudioSettings.channels = mediaFormat.channels;
+				newAudioSettings.format = mediaFormat.type;
+				newAudioSettings.sampleRate = mediaFormat.sampleRate;
+				
+				// Manual initialize the audio system
+				fplAudioResultType resultType = fplAudioInit(&newAudioSettings);
+				if (resultType != newAudioSettings_Success) {
+					// Handle error
+					// No need to stop release the audio system, this is done automatically
+				} else {
+					// Success, you can start the playback now
+					fplPlayAudio();
+				}
+			}
+			
+		}
+		
+		// Manually release the audio system
+		fplAudioRelease();
+	
+		// Release the platform
+		fplPlatformRelease();
+	}
+	@endcode
+
+	@warning Do not remove the @ref fplInitFlags_Audio from @ref fplPlatformInit(), otherwise the audio system initialization in @ref fplAudioInit() will always fail!
+*/
+
+/*!
+	@page page_category_audio_writesamples Audio Samples Writing
 	@tableofcontents
 
 	@section section_category_audio_writesamples_overview Overview
 
-	To write audio samples in the audio client callback, you have to know at least four things:
+	To write audio samples in the audio client callback, you have to know the following parameters:
 	- Target format (S16, S24, F32, etc.)
-	- Target number of channels (1 = Mono, 2 = Stereo, etc.)
-	- Target sample rate (44 kHz, 48 kHz, etc.)
-	- Number of frames required
+	- Target number of channels (1 = Mono, 2 = Stereo, 4 = Quad or Surround, 6 = 5.1 etc.)
+	- Target sample rate (22050, 44100 Hz, 48000 Hz, etc.)
+	- Number of audio frames required
+	- If your sound device uses more than two channels, you have to call @ref fplGetAudioChannelMap() to get the channel mapping for each audio channel.
 
 	All these informations are provided by the @ref fpl_audio_client_read_callback callback function.<br>
 	<br>
-	Call @ref fplGetAudioHardwareFormat(), to get this information before the audio playback is started.
+	The required format are stored as an argument to your call, see @ref fplAudioFormat or call @ref fplGetAudioHardwareFormat() to get this information before the audio playback is started.
 
 	@section section_category_audio_writesamples_functions Useful functions
 
@@ -1895,6 +2020,7 @@
 
 	- @ref fplGetAudioHardwareFormat()
 	- @ref fplGetAudioBufferSizeInFrames()
+	- @ref fplGetAudioBufferSizeInMilliseconds()
 	- @ref fplGetAudioBackendName()
 	- @ref fplGetAudioFormatName()
 	- @ref fplGetAudioSampleSizeInBytes()
@@ -1904,7 +2030,7 @@
 	@section section_category_audio_writesamples_s16 Writing 16-bit signed integer samples
 
 	@code{.c}
-	static uint32_t MyAudioPlaybackCallback(const fplAudioDeviceFormat *nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
+	static uint32_t MyAudioPlaybackCallback(const fplAudioFormat *nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
 		uint32_t result = 0;
 		if (nativeFormat->type == fplAudioFormatType_S16) {
 			int16_t *outSamples = (int16_t *)outputSamples;
@@ -1921,10 +2047,11 @@
 	}
 	@endcode
 
-	@section section_category_audio_writesamples_notes Notes
+	@section section_category_audio_writesamples_notes Important Notes
 
-	- FPL does not provide any functionality for doing any kind of DSP or format conversion!<br>
-	- You are responsible for filling out the samples in the correct format your audio device expects!
+	@note FPL does not provide any functionality for doing any kind of DSP or format conversion!<br>
+	@note You are responsible for filling out the samples in the correct format your audio device expects!
+	@note Repect the audio channel map, otherwise samples may be played back on the wrong speaker!
 */
 
 /*!
@@ -4244,7 +4371,7 @@
 
 	static const float PI32 = 3.14159265359f;
 
-	static uint32_t FillAudioBuffer(const fplAudioDeviceFormat *nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
+	static uint32_t FillAudioBuffer(const fplAudioFormat *nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
 		AudioTest *audioTest = (AudioTest *)userData;
 		fplAssert(audioTest != nullptr);
 		fplAssert(nativeFormat->type == fplAudioFormatType_S16);
@@ -4312,7 +4439,7 @@
 			// Start audio playback (This will start calling clientReadCallback regulary)
 			if (fplPlayAudio() == fplAudioResult_Success) {
 				// Print out the native audio format
-				fplAudioDeviceFormat nativeFormat = fplGetAudioHardwareFormat();
+				fplAudioFormat nativeFormat = fplGetAudioHardwareFormat();
 				fplConsoleFormatOut("Audio with %lu kHz and %lu channels is playing, press any key to stop playback...\n", nativeFormat.sampleRate, nativeFormat.channels);
 				// Wait for any key presses
 				fplConsoleWaitForCharInput();

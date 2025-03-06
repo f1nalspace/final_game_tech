@@ -123,7 +123,7 @@ typedef struct AudioSystem {
 	bool isShutdown;
 } AudioSystem;
 
-extern bool AudioSystemInit(AudioSystem *audioSys, const fplAudioDeviceFormat *targetFormat);
+extern bool AudioSystemInit(AudioSystem *audioSys, const fplAudioFormat *targetFormat);
 extern void AudioSystemShutdown(AudioSystem *audioSys);
 
 extern void AudioSystemSetMasterVolume(AudioSystem *audioSys, const float newMasterVolume);
@@ -131,7 +131,7 @@ extern void AudioSystemSetMasterVolume(AudioSystem *audioSys, const float newMas
 extern AudioSource *AudioSystemAllocateSource(AudioSystem *audioSys, const AudioChannelIndex channels, const AudioHertz sampleRate, const fplAudioFormatType type, const AudioFrameIndex frameCount);
 extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const char *filePath);
 
-extern AudioFrameIndex AudioSystemWriteFrames(AudioSystem *audioSys, void *outSamples, const fplAudioDeviceFormat *outFormat, const AudioFrameIndex frameCount, const bool advance);
+extern AudioFrameIndex AudioSystemWriteFrames(AudioSystem *audioSys, void *outSamples, const fplAudioFormat *outFormat, const AudioFrameIndex frameCount, const bool advance);
 
 extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume);
 extern bool AudioSystemStopOne(AudioSystem *audioSys, const AudioPlayItemID playId);
@@ -204,7 +204,7 @@ static void FreeAudioStream(AudioMemory *memory, AudioStream *audioStream) {
 	fplClearStruct(audioStream);
 }
 
-extern bool AudioSystemInit(AudioSystem *audioSys, const fplAudioDeviceFormat *targetFormat) {
+extern bool AudioSystemInit(AudioSystem *audioSys, const fplAudioFormat *targetFormat) {
 	if(audioSys == fpl_null) {
 		return false;
 	}
@@ -827,8 +827,10 @@ static AudioFrameIndex MixPlayItems(AudioSystem *audioSys, const AudioFrameIndex
 				} else {
 					if(inSampleRate > outSampleRate) {
 						// @TODO(final): SinC-Downsampling (Example: 48000 to 41000)
+						fplAssert(!"Non even Downsampling not supported");
 					} else if(inSampleRate < outSampleRate) {
 						// @TODO(final): SinC-Upsampling (Example: 41000 to 48000)
+						fplAssert(!"Non even Upsampling not supported");
 					}
 				}
 			}
@@ -917,7 +919,7 @@ static bool FillConversionBuffer(AudioSystem *audioSys, const AudioFrameIndex ma
 	return audioSys->conversionBuffer.framesRemaining > 0;
 }
 
-extern AudioFrameIndex AudioSystemWriteFrames(AudioSystem *audioSys, void *outSamples, const fplAudioDeviceFormat *outFormat, const AudioFrameIndex frameCount, const bool advance) {
+extern AudioFrameIndex AudioSystemWriteFrames(AudioSystem *audioSys, void *outSamples, const fplAudioFormat *outFormat, const AudioFrameIndex frameCount, const bool advance) {
 	fplAssert(audioSys != NULL);
 	fplAssert(audioSys->targetFormat.sampleRate == outFormat->sampleRate);
 	fplAssert(audioSys->targetFormat.format == outFormat->type);

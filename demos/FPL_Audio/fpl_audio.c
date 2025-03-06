@@ -21,6 +21,9 @@ Todo:
 	- Multiple audio tracks
 
 Changelog:
+	## 2025-14-02
+	- Get average sample value from stereo samples
+
 	## 2023-05-28
 	- Fixed crash/assert when audio visualization chunk is not ready yet
 
@@ -172,7 +175,7 @@ typedef struct AudioDemo {
 	AudioBuffer outputTempBuffer;			// Used for decoding the audio samples into, before its pushed to the output ring buffer
 
 	AudioSineWaveData sineWave;
-	fplAudioDeviceFormat targetAudioFormat;
+	fplAudioFormat targetAudioFormat;
 	fplThreadHandle *streamingThread;
 
 	uint64_t lastVideoAudioChunkUpdateTime;
@@ -257,6 +260,45 @@ static void RenderRingBuffer(const Vec2f pos, const Vec2f dim, LockFreeRingBuffe
 
 	RenderLine(headPos, pos.y - dim.h * 0.5f, headPos, pos.y + dim.h * 1.5f, V4fInit(0.0f, 0.0f, 1.0f, 1.0f), 2.0f);
 	RenderLine(tailPos, pos.y - dim.h * 0.5f, tailPos, pos.y + dim.h * 1.5f, V4fInit(0.0f, 1.0f, 0.0f, 1.0f), 2.0f);
+}
+
+static double GetSampleValue(const fplAudioFormatType format, const uint8_t *chunkSamples, const uint32_t frameIndex, const size_t frameSize) {
+	size_t offsetToFrame = frameIndex * frameSize;
+	double sampleValue;
+	switch(format) {
+		case fplAudioFormatType_F32:
+		{
+			float *pF32 = (float *)(chunkSamples + offsetToFrame);
+			double sampleLeft = *(pF32 + 0);
+			double sampleRight = *(pF32 + 1);
+			sampleValue = 0.5 * (sampleLeft + sampleRight);
+		} break;
+
+		case fplAudioFormatType_S32:
+		{
+			int32_t *pS32 = (int32_t *)(chunkSamples + offsetToFrame);
+			int32_t sampleLeftS32 = *(pS32 + 0);
+			int32_t sampleRightS32 = *(pS32 + 0);
+			double sampleLeft = (double)sampleLeftS32 / (double)INT32_MAX;
+			double sampleRight = (double)sampleRightS32 / (double)INT32_MAX;
+			sampleValue = 0.5 * (sampleLeft + sampleRight);
+		} break;
+
+		case fplAudioFormatType_S16:
+		{
+			int16_t *pS16 = (int16_t *)(chunkSamples + offsetToFrame);
+			int16_t sampleLeftS16 = *(pS16 + 0);
+			int16_t sampleRightS16 = *(pS16 + 1);
+			double sampleLeft = (double)sampleLeftS16 / (double)INT16_MAX;
+			double sampleRight = (double)sampleRightS16 / (double)INT16_MAX;
+			sampleValue = 0.5 * (sampleLeft + sampleRight);
+		} break;
+
+		default:
+			sampleValue = 0.0;
+			break;
+	}
+	return sampleValue;
 }
 
 static void Render(AudioDemo *demo, const int screenW, const int screenH, const double currentRenderTime) {
@@ -349,33 +391,10 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 
 	if(frameCount > 0 && chunkSamples != fpl_null) {
 		//
-		// Compute FFT
+		// Compute FFT (Stereo average)
 		//
-		const uint32_t channel = 0;
 		for(uint32_t i = 0; i < frameCount; ++i) {
-			double sampleValue = 0.0;
-			switch(format) {
-				case fplAudioFormatType_F32:
-				{
-					float *pF32 = (float *)(chunkSamples + i * frameSize + channel * sampleSize);
-					float sampleF32 = *pF32;
-					sampleValue = (double)sampleF32;
-				} break;
-
-				case fplAudioFormatType_S32:
-				{
-					int32_t *pS32 = (int32_t *)(chunkSamples + i * frameSize + channel * sampleSize);
-					int32_t sampleS32 = *pS32;
-					sampleValue = (double)sampleS32 / (double)INT32_MAX;
-				} break;
-
-				case fplAudioFormatType_S16:
-				{
-					int16_t *pS16 = (int16_t *)(chunkSamples + i * frameSize + channel * sampleSize);
-					int16_t sampleS16 = *pS16;
-					sampleValue = (double)sampleS16 / (double)INT16_MAX;
-				} break;
-			}
+			double sampleValue = GetSampleValue(format, chunkSamples, i, frameSize);
 
 			// Window multiplier (Hamming for smoother visualization)
 			double windowMultiplier = visualization->windowCoeffs[i];
@@ -474,32 +493,9 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 			float barWidth = (spectrumDim.w - totalSpacing) / (float)frameCount;
 
 			for(uint32_t i = 0; i < frameCount; ++i) {
-				float sampleValue = 0.0;
-				switch(format) {
-					case fplAudioFormatType_F32:
-					{
-						float *pF32 = (float *)(chunkSamples + i * frameSize + channel * sampleSize);
-						float sampleF32 = *pF32;
-						sampleValue = sampleF32;
-					} break;
-
-					case fplAudioFormatType_S32:
-					{
-						int32_t *pS32 = (int32_t *)(chunkSamples + i * frameSize + channel * sampleSize);
-						int32_t sampleS32 = *pS32;
-						sampleValue = (float)sampleS32 / (float)INT32_MAX;
-					} break;
-
-					case fplAudioFormatType_S16:
-					{
-						int16_t *pS16 = (int16_t *)(chunkSamples + i * frameSize + channel * sampleSize);
-						int16_t sampleS16 = *pS16;
-						sampleValue = (float)sampleS16 / (float)INT16_MAX;
-					} break;
-				}
-
+				double sampleValue = GetSampleValue(format, chunkSamples, i, frameSize);
 				float barMaxHeight = spectrumDim.h * 0.25f;
-				float barHeight = sampleValue * barMaxHeight;
+				float barHeight = (float)sampleValue * barMaxHeight;
 				float barX = spectrumPos.x + i * barWidth + i * spacing;
 				float barY = spectrumPos.y + barMaxHeight * 0.5f;
 				RenderQuad(barX, barY + barHeight * 0.5f, barX + barWidth, barY - barHeight * 0.5f, (Vec4f) { 1, 1, 0, 1 });
@@ -555,7 +551,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 #endif
 }
 
-static uint32_t AudioPlayback(const fplAudioDeviceFormat *outFormat, const uint32_t maxFrameCount, void *outputSamples, void *userData) {
+static uint32_t AudioPlayback(const fplAudioFormat *outFormat, const uint32_t maxFrameCount, void *outputSamples, void *userData) {
 	//fplDebugFormatOut("Requested %lu frames\n", maxFrameCount);
 
 	AudioDemo *demo = (AudioDemo *)userData;
@@ -624,7 +620,7 @@ static uint32_t AudioPlayback(const fplAudioDeviceFormat *outFormat, const uint3
 	return(result);
 }
 
-static bool StreamAudio(const fplAudioDeviceFormat *format, const uint32_t maxFrameCount, AudioDemo *demo, uint64_t *outDuration) {
+static bool StreamAudio(const fplAudioFormat *format, const uint32_t maxFrameCount, AudioDemo *demo, uint64_t *outDuration) {
 	if(format == fpl_null || demo == fpl_null) return(false);
 	if(maxFrameCount == 0) return(false);
 
@@ -1003,10 +999,11 @@ int main(int argc, char **args) {
 	settings.video.isVSync = true;
 
 	// Set audio device format
-	settings.audio.targetFormat.type = fplAudioFormatType_S16;
+	//settings.audio.targetFormat.type = fplAudioFormatType_S16;
 
 	// Set number of channels
 	settings.audio.targetFormat.channels = 2;
+	settings.audio.targetFormat.channelLayout = fplAudioChannelLayout_Stereo;
 
 	// Set samplerate in Hz
 	//settings.audio.targetFormat.sampleRate = 11025;
@@ -1030,11 +1027,11 @@ int main(int argc, char **args) {
 	}
 
 	// Get number of audio devices
-	uint32_t deviceCount = fplGetAudioDevices(fpl_null, 0);
+	uint32_t deviceCount = fplGetAudioDevices(0, 0, fpl_null);
 
 	// Allocate memory for audio devices and fill it
 	fplAudioDeviceInfo *audioDeviceInfos = fplMemoryAllocate(sizeof(fplAudioDeviceInfo) * deviceCount);
-	uint32_t loadedDeviceCount = fplGetAudioDevices(audioDeviceInfos, deviceCount);
+	uint32_t loadedDeviceCount = fplGetAudioDevices(deviceCount, 0, audioDeviceInfos);
 	fplAssert(loadedDeviceCount == deviceCount);
 	// Use first audio device
 	if(loadedDeviceCount > 0) {

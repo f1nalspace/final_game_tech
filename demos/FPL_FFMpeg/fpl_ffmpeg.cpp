@@ -16,6 +16,14 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2025-02-16
+	- Only allocate a new packet when needed / fixed dropped packets was never released
+
+	## 2025-01-28
+	- Fixed makefiles for CC/CMake was broken
+	- Fixed FFMPEG includes was not used in CC/CMake files
+	- Fixed several jump labels in main translation was not working on GCC
+
 	## 2023-12-31
 	- Fixed: Memory stats was never cleared when media was stopped
 
@@ -402,6 +410,7 @@ static void FlushPacketQueue(PacketQueue &queue) {
 	queue.duration = 0;
 	fplMutexUnlock(&queue.lock);
 	fplAtomicExchangeS32(&globalMemStats.usedPackets, 0);
+	fplAtomicExchangeS32(&globalMemStats.allocatedPackets, 0);
 #if PRINT_FLUSHES
 	fplConsoleFormatOut("PacketQueue flushed: %d\n", queue.serial);
 #endif
@@ -657,7 +666,7 @@ static void NextReadable(FrameQueue &queue) {
 
 static void FlushFrameQueue(FrameQueue &queue) {
 	fplMutexLock(&queue.lock);
-	for (uint32_t i = 0; i < queue.capacity; ++i) {
+	for (int32_t i = 0; i < queue.capacity; ++i) {
 		AVFrame *frame = queue.frames[i].frame;
 		if (frame != fpl_null)
 			ffmpeg.av_frame_unref(frame);
@@ -810,9 +819,13 @@ static void StopDecoder(Decoder &decoder) {
 	FlushPacketQueue(decoder.packetsQueue);
 }
 
-static void AddPacketToDecoder(Decoder &decoder, PacketList *targetPacket, AVPacket *sourcePacket) {
-	targetPacket->packet = *sourcePacket;
-	PushPacket(decoder.packetsQueue, targetPacket);
+static void AddPacketToDecoder(Decoder &decoder, AVPacket *sourcePacket) {
+	PacketList *targetPacket = nullptr;
+	if (AquirePacket(decoder.packetsQueue, targetPacket)) {
+		assert(targetPacket != nullptr);
+		targetPacket->packet = *sourcePacket;
+		PushPacket(decoder.packetsQueue, targetPacket);
+	}
 }
 
 //
@@ -1204,12 +1217,18 @@ struct AudioFormat {
 	fplAudioBackendType backend;
 };
 
+struct AudioChannelMap {
+	uint8_t channels[16];
+	bool isActive;
+};
+
 struct AudioContext {
 	MediaStream stream;
 	Decoder decoder;
 	AudioFormat audioSource;
 	AudioFormat audioTarget;
 	Clock clock;
+	AudioChannelMap channelMap;
 	double audioClock;
 	int32_t audioClockSerial;
 	int32_t audioDiffAvgCount;
@@ -1870,13 +1889,13 @@ struct PlayerState {
 };
 
 static void ReleaseMedia(PlayerState &state, const PlayingState finishState, const uint32_t mainThreadId);
-static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const fplAudioDeviceFormat &nativeAudioFormat, const uint32_t mainThreadId);
+static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const uint32_t mainThreadId);
 
 static void VideoDecodingThreadProc(const fplThreadHandle *thread, void *userData);
 static void AudioDecodingThreadProc(const fplThreadHandle *thread, void *userData);
 static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData);
 static void LoadMediaThreadProc(const fplThreadHandle *thread, void *userData);
-static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData);
+static uint32_t AudioReadCallback(const fplAudioFormat *nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData);
 
 static bool InitializeVideoRendering(VideoContext &video, const AVCodecContext *videoCodexCtx);
 static void ReleaseVideoRendering(VideoContext &video);
@@ -1924,6 +1943,7 @@ static void StopAndReleaseMedia(PlayerState &state, const uint32_t mainThreadId)
 	// Stop audio
 	if (state.audio.isValid) {
 		fplStopAudio();
+		fplAudioRelease();
 	}
 
 	// Stop reader
@@ -1945,10 +1965,10 @@ static void StopAndReleaseMedia(PlayerState &state, const uint32_t mainThreadId)
 	globalMemStats = {};
 };
 
-static bool LoadAndPlayMedia(PlayerState &state, const char *mediaURL, const fplAudioDeviceFormat &nativeAudioFormat, const uint32_t mainThreadId) {
+static bool LoadAndPlayMedia(PlayerState &state, const char *mediaURL, const uint32_t mainThreadId) {
 	fplAssert(state.state == PlayingState::Unloaded || state.state == PlayingState::Failed);
 
-	if (!LoadMedia(state, mediaURL, nativeAudioFormat, mainThreadId)) {
+	if (!LoadMedia(state, mediaURL, mainThreadId)) {
 		fplAssert(state.state == PlayingState::Failed);
 		return false;
 	}
@@ -2001,7 +2021,6 @@ struct AppState {
 	PlayerState player;
 	FontInfo fontInfo;
 	FontBuffer fontBuffer;
-	fplAudioDeviceFormat nativeAudioFormat;
 	fplWindowSize viewport;
 	LoadState loadState;	
 	uint32_t mainThreadId;
@@ -2570,7 +2589,7 @@ static void WriteSilenceSamples(AudioContext *audio, uint32_t remainingFrameCoun
 
 }
 
-static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
+static uint32_t AudioReadCallback(const fplAudioFormat *nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
 	double audioCallbackTime = (double)ffmpeg.av_gettime_relative();
 
 	// FPL Audio Frame = Audio Sample = [Left S16][Right S16]
@@ -2590,8 +2609,10 @@ static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, cons
 		uint8_t *conversionAudioBuffer = audio->conversionAudioBuffer;
 		uint32_t maxConversionAudioBufferSize = audio->maxConversionAudioBufferSize;
 
-		uint32_t outputSampleStride = fplGetAudioFrameSizeInBytes(nativeFormat->type, nativeFormat->channels);
-		uint32_t maxOutputSampleBufferSize = outputSampleStride * frameCount;
+		uint32_t outputSamplesStride = fplGetAudioFrameSizeInBytes(nativeFormat->type, nativeFormat->channels);
+		uint32_t outputFormatSize = fplGetAudioFrameSizeInBytes(nativeFormat->type, 1);
+
+		uint32_t maxOutputSampleBufferSize = outputSamplesStride * frameCount;
 
 		uint32_t nativeBufferSizeInBytes = fplGetAudioBufferSizeInBytes(nativeFormat->type, nativeFormat->channels, nativeFormat->bufferSizeInFrames);
 
@@ -2600,23 +2621,34 @@ static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, cons
 		uint32_t remainingFrameCount = frameCount;
 		while (remainingFrameCount > 0) {
 			if (state->isPaused) {
-				WriteSilenceSamples(audio, remainingFrameCount, outputSampleStride, conversionAudioBuffer);
+				WriteSilenceSamples(audio, remainingFrameCount, outputSamplesStride, conversionAudioBuffer);
 			}
 
 			// Consume audio in conversion buffer before we do anything else
 			if ((audio->conversionAudioFramesRemaining) > 0) {
 				uint32_t maxFramesToRead = audio->conversionAudioFramesRemaining;
 				uint32_t framesToRead = fplMin(remainingFrameCount, maxFramesToRead);
-				size_t bytesToCopy = framesToRead * outputSampleStride;
+				size_t bytesToCopy = framesToRead * outputSamplesStride;
 
 				assert(audio->conversionAudioFrameIndex < audio->maxConversionAudioFrameCount);
-				size_t sourcePosition = audio->conversionAudioFrameIndex * outputSampleStride;
+				size_t sourcePosition = audio->conversionAudioFrameIndex * outputSamplesStride;
 				assert(sourcePosition < audio->maxConversionAudioBufferSize);
 
-				size_t destPosition = (frameCount - remainingFrameCount) * outputSampleStride;
+				size_t destPosition = (frameCount - remainingFrameCount) * outputSamplesStride;
 				assert(destPosition < maxOutputSampleBufferSize);
 
-				fplMemoryCopy(conversionAudioBuffer + sourcePosition, bytesToCopy, (uint8_t *)outputSamples + destPosition);
+				if (nativeFormat->channels <= 2 || !state->audio.channelMap.isActive) {
+					fplMemoryCopy(conversionAudioBuffer + sourcePosition, bytesToCopy, (uint8_t *)outputSamples + destPosition);
+				} else {
+					for (uint32_t frameIndex = 0; frameIndex < framesToRead; ++frameIndex) {
+						uintptr_t sourceFramePosition = sourcePosition + frameIndex * outputSamplesStride;
+						uintptr_t destFramePosition = destPosition + frameIndex * outputSamplesStride;
+						for (uint32_t channelIndex = 0; channelIndex < nativeFormat->channels; ++channelIndex) {
+							uint32_t targetChannelIndex = state->audio.channelMap.channels[channelIndex];
+							fplMemoryCopy(conversionAudioBuffer + sourceFramePosition + channelIndex * outputFormatSize, outputFormatSize, (uint8_t *)outputSamples + destFramePosition + targetChannelIndex * outputFormatSize);
+						}
+					}
+				}
 
 				remainingFrameCount -= framesToRead;
 				audio->conversionAudioFrameIndex += framesToRead;
@@ -2692,7 +2724,7 @@ static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, cons
 				} else {
 					// No audio frame available, write silence for the remaining frames
 					if (remainingFrameCount > 0) {
-						WriteSilenceSamples(audio, remainingFrameCount, outputSampleStride, conversionAudioBuffer);
+						WriteSilenceSamples(audio, remainingFrameCount, outputSamplesStride, conversionAudioBuffer);
 					} else {
 						break;
 					}
@@ -2702,7 +2734,7 @@ static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, cons
 
 		// Update audio clock
 		if (!isnan(audio->audioClock)) {
-			uint32_t writtenSize = result * outputSampleStride;
+			uint32_t writtenSize = result * outputSamplesStride;
 			double pts = audio->audioClock - (double)(nativeFormat->periods * nativeBufferSizeInBytes + writtenSize) / (double)targetFormat->bufferSizeInBytes;
 			SetClockAt(audio->clock, pts, audio->audioClockSerial, audioCallbackTime / (double)AV_TIME_BASE);
 			SyncClockToSlave(state->externalClock, audio->clock);
@@ -2937,41 +2969,37 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 		}
 
 		if (hasPendingPacket) {
-			// Try to get new packet from the freelist
-			PacketList *targetPacket = nullptr;
-			if (AquirePacket(reader.packetQueue, targetPacket)) {
-				assert(targetPacket != nullptr);
 
 #if PRINT_QUEUE_INFOS
-				uint32_t packetIndex = fplAtomicAddAndFetchU32(&reader.readPacketCount, 1);
-				fplDebugFormatOut("Read packet %lu\n", packetIndex);
+			uint32_t packetIndex = fplAtomicAddAndFetchU32(&reader.readPacketCount, 1);
+			fplDebugFormatOut("Read packet %lu\n", packetIndex);
 #endif
 
-				// Check if packet is in play range, then queue, otherwise discard
-				int64_t streamStartTime = formatCtx->streams[srcPacket.stream_index]->start_time;
-				int64_t pktTimeStamp = (srcPacket.pts == AV_NOPTS_VALUE) ? srcPacket.dts : srcPacket.pts;
-				double timeInSeconds = (double)(pktTimeStamp - (streamStartTime != AV_NOPTS_VALUE ? streamStartTime : 0)) * av_q2d(formatCtx->streams[srcPacket.stream_index]->time_base);
-				bool pktInPlayRange = (!state->settings.duration.isValid) ||
-					((timeInSeconds / (double)AV_TIME_BASE) <= ((double)state->settings.duration.value / (double)AV_TIME_BASE));
+			// Check if packet is in play range, then queue, otherwise discard
+			int64_t streamStartTime = formatCtx->streams[srcPacket.stream_index]->start_time;
+			int64_t pktTimeStamp = (srcPacket.pts == AV_NOPTS_VALUE) ? srcPacket.dts : srcPacket.pts;
+			double timeInSeconds = (double)(pktTimeStamp - (streamStartTime != AV_NOPTS_VALUE ? streamStartTime : 0)) * av_q2d(formatCtx->streams[srcPacket.stream_index]->time_base);
+			bool pktInPlayRange = (!state->settings.duration.isValid) ||
+				((timeInSeconds / (double)AV_TIME_BASE) <= ((double)state->settings.duration.value / (double)AV_TIME_BASE));
 
-				if ((videoStream != nullptr) && (srcPacket.stream_index == videoStream->streamIndex) && pktInPlayRange) {
-					AddPacketToDecoder(video.decoder, targetPacket, &srcPacket);
+			if ((videoStream != nullptr) && (srcPacket.stream_index == videoStream->streamIndex) && pktInPlayRange) {
+				AddPacketToDecoder(video.decoder, &srcPacket);
 #if PRINT_QUEUE_INFOS
-					fplDebugFormatOut("Queued video packet %lu\n", packetIndex);
+				fplDebugFormatOut("Queued video packet %lu\n", packetIndex);
 #endif
-				} else if ((audioStream != nullptr) && (srcPacket.stream_index == audioStream->streamIndex) && pktInPlayRange) {
-					AddPacketToDecoder(audio.decoder, targetPacket, &srcPacket);
+			} else if ((audioStream != nullptr) && (srcPacket.stream_index == audioStream->streamIndex) && pktInPlayRange) {
+				AddPacketToDecoder(audio.decoder, &srcPacket);
 #if PRINT_QUEUE_INFOS
-					fplDebugFormatOut("Queued audio packet %lu\n", packetIndex);
+				fplDebugFormatOut("Queued audio packet %lu\n", packetIndex);
 #endif
-				} else {
+			} else {
 #if PRINT_QUEUE_INFOS
-					fplDebugFormatOut("Dropped packet %lu\n", packetIndex);
+				fplDebugFormatOut("Dropped packet %lu\n", packetIndex);
 #endif
-					ffmpeg.av_packet_unref(&srcPacket);
-				}
-				hasPendingPacket = false;
+				ffmpeg.av_packet_unref(&srcPacket);
 			}
+			hasPendingPacket = false;
+
 			skipWait = true;
 		}
 	}
@@ -2981,7 +3009,8 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 
 static void CloseStreamComponent(MediaStream &outStream) {
 	if (outStream.codecContext != nullptr) {
-		ffmpeg.av_freep(outStream.codecContext);
+        ffmpeg.avcodec_free_context(&outStream.codecContext);
+        outStream.codecContext = fpl_null;
 	}
 	outStream = {};
 	outStream.streamIndex = -1;
@@ -3554,7 +3583,7 @@ static int DecodeInterruptCallback(void *opaque) {
 }
 
 static void ReleaseVideoRendering(VideoContext &video) {
-	#if USE_HARDWARE_RENDERING
+#if USE_HARDWARE_RENDERING
 	glDeleteProgram(video.basicShader.programId);
 	video.basicShader.programId = 0;
 	glDeleteBuffers(1, &video.indexBufferId);
@@ -3576,6 +3605,9 @@ static void ReleaseVideoRendering(VideoContext &video) {
 
 static bool InitializeVideoRendering(VideoContext &video, const AVCodecContext *videoCodexCtx) {
 	AVPixelFormat pixelFormat = videoCodexCtx->pix_fmt;
+
+	uint32_t verticesSize;
+	uint32_t indicesSize;
 
 #if USE_HARDWARE_RENDERING
 	if (IsPlanarYUVFormat(pixelFormat) && HasShaderForPixelFormat(pixelFormat)) {
@@ -3604,13 +3636,13 @@ static bool InitializeVideoRendering(VideoContext &video, const AVCodecContext *
 	CheckGLError();
 
 	// Allocate 4 vertices
-	uint32_t verticesSize = 4 * 4 * sizeof(float);
+	verticesSize = 4 * 4 * sizeof(float);
 	glGenBuffers(1, &video.vertexBufferId);
 	glBindBuffer(GL_ARRAY_BUFFER, video.vertexBufferId);
 	glBufferData(GL_ARRAY_BUFFER, verticesSize, nullptr, GL_STREAM_DRAW);
 	CheckGLError();
 
-	uint32_t indicesSize = fplArrayCount(videoQuadIndices) * sizeof(*videoQuadIndices);
+	indicesSize = fplArrayCount(videoQuadIndices) * sizeof(*videoQuadIndices);
 	glGenBuffers(1, &video.indexBufferId);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, video.indexBufferId);
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, indicesSize, videoQuadIndices, GL_STATIC_DRAW);
@@ -3673,13 +3705,16 @@ static bool InitializeVideo(PlayerState &state, const char *mediaFilePath, const
 	VideoContext &video = state.video;
 	AVCodecContext *videoCodexCtx = video.stream.codecContext;
 
+	AVPixelFormat targetPixelFormat;
+
+	uint32_t localThreadId;
+
 	// Init video decoder
 	if (!InitDecoder(video.decoder, &state, &state.reader, &video.stream, MAX_VIDEO_FRAME_QUEUE_COUNT, 1)) {
 		FPL_LOG_ERROR("App", "Failed initialize video decoder for media file '%s'!\n", mediaFilePath);
 		goto failed;
 	}
 
-	AVPixelFormat targetPixelFormat;
 #if USE_HARDWARE_RENDERING
 	targetPixelFormat = AVPixelFormat::AV_PIX_FMT_RGBA;
 #else
@@ -3704,7 +3739,7 @@ static bool InitializeVideo(PlayerState &state, const char *mediaFilePath, const
 		return false;
 	}
 
-	uint32_t localThreadId = fplGetCurrentThreadId();
+	localThreadId = fplGetCurrentThreadId();
 	if (localThreadId == mainThreadId) {
 		if (!InitializeVideoRendering(video, videoCodexCtx)) {
 			FPL_LOG_ERROR("Video", "Failed to initialize video rendering for file '%s'!\n", mediaFilePath);
@@ -3738,9 +3773,267 @@ static void ReleaseAudio(AudioContext &audio) {
 	audio = {};
 }
 
-static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const fplAudioDeviceFormat &nativeAudioFormat) {
+static uint64_t MapChannelLayout(const fplAudioChannelLayout layout) {
+	switch (layout) {
+		case fplAudioChannelLayout_Mono:
+			return AV_CH_LAYOUT_MONO;
+		case fplAudioChannelLayout_Stereo:
+			return AV_CH_LAYOUT_STEREO;
+		case fplAudioChannelLayout_3_0_Surround:
+			return AV_CH_LAYOUT_2_1;
+		case fplAudioChannelLayout_2_1:
+			return AV_CH_LAYOUT_2POINT1;
+		case fplAudioChannelLayout_4_0_Quad:
+			return AV_CH_LAYOUT_QUAD;
+		case fplAudioChannelLayout_4_0_Surround:
+			return AV_CH_LAYOUT_4POINT0;
+		case fplAudioChannelLayout_4_1:
+			return AV_CH_LAYOUT_4POINT1;
+		case fplAudioChannelLayout_5_0_Surround:
+			return AV_CH_LAYOUT_5POINT0;
+		case fplAudioChannelLayout_5_1:
+			return AV_CH_LAYOUT_5POINT1;
+		case fplAudioChannelLayout_6_1:
+			return AV_CH_LAYOUT_6POINT1;
+		case fplAudioChannelLayout_7_1:
+			return AV_CH_LAYOUT_7POINT1;
+		default:
+			return AV_CH_LAYOUT_STEREO;
+	}
+}
+
+static uint64_t MapAudioChannelTypeToAVChannel(const fplAudioChannelType type) {
+	switch (type) {
+		case fplAudioChannelType_FrontLeft:
+			return AV_CH_FRONT_LEFT;
+		case fplAudioChannelType_FrontRight:
+			return AV_CH_FRONT_RIGHT;
+		case fplAudioChannelType_FrontCenter:
+			return AV_CH_FRONT_CENTER;
+		case fplAudioChannelType_LowFrequency:
+			return AV_CH_LOW_FREQUENCY;
+		case fplAudioChannelType_BackLeft:
+			return AV_CH_BACK_LEFT;
+		case fplAudioChannelType_BackRight:
+			return AV_CH_BACK_RIGHT;
+		case fplAudioChannelType_FrontLeftOfCenter:
+			return AV_CH_FRONT_LEFT_OF_CENTER;
+		case fplAudioChannelType_FrontRightOfCenter:
+			return AV_CH_FRONT_RIGHT_OF_CENTER;
+		case fplAudioChannelType_BackCenter:
+			return AV_CH_BACK_CENTER;
+		case fplAudioChannelType_SideLeft:
+			return AV_CH_SIDE_LEFT;
+		case fplAudioChannelType_SideRight:
+			return AV_CH_SIDE_RIGHT;
+		case fplAudioChannelType_TopCenter:
+			return AV_CH_TOP_CENTER;
+		case fplAudioChannelType_TopFrontLeft:
+			return AV_CH_TOP_FRONT_LEFT;
+		case fplAudioChannelType_TopFrontCenter:
+			return AV_CH_TOP_FRONT_CENTER;
+		case fplAudioChannelType_TopFrontRight:
+			return AV_CH_TOP_FRONT_RIGHT;
+		case fplAudioChannelType_TopBackLeft:
+			return AV_CH_TOP_BACK_LEFT;
+		case fplAudioChannelType_TopBackCenter:
+			return AV_CH_TOP_BACK_CENTER;
+		case fplAudioChannelType_TopBackRight:
+			return AV_CH_TOP_BACK_RIGHT;
+		default:
+			return 0;
+	}
+}
+
+static fplAudioChannelType MapAVChannelToAudioChannelType(const uint64_t avChannel) {
+    switch (avChannel) {
+        case AV_CH_FRONT_LEFT:
+            return fplAudioChannelType_FrontLeft;
+        case AV_CH_FRONT_RIGHT:
+            return fplAudioChannelType_FrontRight;
+        case AV_CH_FRONT_CENTER:
+            return fplAudioChannelType_FrontCenter;
+        case AV_CH_LOW_FREQUENCY:
+            return fplAudioChannelType_LowFrequency;
+        case AV_CH_BACK_LEFT:
+            return fplAudioChannelType_BackLeft;
+        case AV_CH_BACK_RIGHT:
+            return fplAudioChannelType_BackRight;
+        case AV_CH_FRONT_LEFT_OF_CENTER:
+            return fplAudioChannelType_FrontLeftOfCenter;
+        case AV_CH_FRONT_RIGHT_OF_CENTER:
+            return fplAudioChannelType_FrontRightOfCenter;
+        case AV_CH_BACK_CENTER:
+            return fplAudioChannelType_BackCenter;
+        case AV_CH_SIDE_LEFT:
+            return fplAudioChannelType_SideLeft;
+        case AV_CH_SIDE_RIGHT:
+            return fplAudioChannelType_SideRight;
+        case AV_CH_TOP_CENTER:
+            return fplAudioChannelType_TopCenter;
+        case AV_CH_TOP_FRONT_LEFT:
+            return fplAudioChannelType_TopFrontLeft;
+        case AV_CH_TOP_FRONT_CENTER:
+            return fplAudioChannelType_TopFrontCenter;
+        case AV_CH_TOP_FRONT_RIGHT:
+            return fplAudioChannelType_TopFrontRight;
+        case AV_CH_TOP_BACK_LEFT:
+            return fplAudioChannelType_TopBackLeft;
+        case AV_CH_TOP_BACK_CENTER:
+            return fplAudioChannelType_TopBackCenter;
+        case AV_CH_TOP_BACK_RIGHT:
+            return fplAudioChannelType_TopBackRight;
+        default:
+            return fplAudioChannelType_None;
+    }
+}
+
+static const char* fplGetAudioChannelTypeName(const fplAudioChannelType type) {
+    switch (type) {
+        case fplAudioChannelType_None: 
+            return "None";
+        case fplAudioChannelType_FrontLeft: 
+            return "Front Left";
+        case fplAudioChannelType_FrontRight: 
+            return "Front Right";
+        case fplAudioChannelType_FrontCenter: 
+            return "Front Center";
+        case fplAudioChannelType_LowFrequency: 
+            return "Low Frequency";
+        case fplAudioChannelType_BackLeft: 
+            return "Back Left";
+        case fplAudioChannelType_BackRight: 
+            return "Back Right";
+        case fplAudioChannelType_FrontLeftOfCenter: 
+            return "Front Left Of Center";
+        case fplAudioChannelType_FrontRightOfCenter: 
+            return "Front Right Of Center";
+        case fplAudioChannelType_BackCenter: 
+            return "Back Center";
+        case fplAudioChannelType_SideLeft: 
+            return "Side Left";
+        case fplAudioChannelType_SideRight: 
+            return "Side Right";
+        case fplAudioChannelType_TopCenter: 
+            return "Top Center";
+        case fplAudioChannelType_TopFrontLeft: 
+            return "Top Front Left";
+        case fplAudioChannelType_TopFrontCenter: 
+            return "Top Front Center";
+        case fplAudioChannelType_TopFrontRight: 
+            return "Top Front Right";
+        case fplAudioChannelType_TopBackLeft: 
+            return "Top Back Left";
+        case fplAudioChannelType_TopBackCenter: 
+            return "Top Back Center";
+        case fplAudioChannelType_TopBackRight: 
+            return "Top Back Right";
+        default:
+            return "Unknown";
+    }
+}
+
+static uint16_t GetChannelIndexFromInputMapping(const fplAudioChannelMap *inChannelMap, const uint16_t channelCount, const fplAudioChannelType channelFlag) {
+	for (uint16_t i = 0; i < channelCount; ++i) {
+		if (inChannelMap->speakers[i] == channelFlag) {
+			return i;
+		}
+	}
+	return UINT16_MAX;
+}
+
+static void InitializeChannelMapping(const uint64_t channelLayout, const uint16_t channelCount, const fplAudioChannelMap *inChannelMap, AudioChannelMap *outChannelMap) {
+	int minBits = 0;
+	int maxBits = 17;
+	fplAssert(AV_CH_FRONT_LEFT == (1 << minBits));
+	fplAssert(AV_CH_TOP_BACK_RIGHT == (1 << maxBits));
+
+	bool requireMapping = false;
+
+	uint16_t count = 0;
+    for (uint16_t i = minBits; i < maxBits; ++i) {
+        uint64_t mask = (1ULL << i);
+        if (channelLayout & mask) {
+			fplAudioChannelType type = MapAVChannelToAudioChannelType(mask);
+
+			uint16_t ffmpegIndex = count;
+
+			uint16_t mappedIndex = GetChannelIndexFromInputMapping(inChannelMap, channelCount, type);
+
+			if (ffmpegIndex != mappedIndex) {
+				requireMapping = true;
+			}
+
+			if (mappedIndex == UINT16_MAX) {
+				outChannelMap->channels[ffmpegIndex] = ffmpegIndex & 0xFF;
+			} else {
+				outChannelMap->channels[ffmpegIndex] = mappedIndex & 0xFF;
+			}
+
+            count++;
+        }
+    }
+
+	outChannelMap->isActive = requireMapping;
+}
+
+static bool InitializeAudio(PlayerState &state, const char *mediaFilePath) {
 	AudioContext &audio = state.audio;
+
 	AVCodecContext *audioCodexCtx = audio.stream.codecContext;
+
+	AVSampleFormat targetSampleFormat;
+	AVSampleFormat inputSampleFormat;
+
+	uint64_t targetChannelLayout;
+	uint64_t inputChannelLayout;
+
+	uint32_t nativeBufferSizeInBytes;
+
+	int targetChannelCount;
+	int inputChannelCount;
+
+	int targetSampleRate;
+	int inputSampleRate;
+
+	int lineSize;
+
+	fplAudioFormat nativeAudioFormat = fplZeroInit;
+
+	fplAudioChannelMap channelMap = fplZeroInit;
+
+	// Init audio system and get audio hardware format (Two tries, one with the ffmpeg format and one with a default one)
+	fplAudioResultType loadAudioRes;
+
+	fplAudioSettings audioSettings = fplZeroInit;
+	fplSetDefaultAudioSettings(&audioSettings);
+
+	// Overwrite target format with audio codec infos (e.g. Channels, Sample Rate, Format)
+	audioSettings.targetFormat.channels = audioCodexCtx->channels;
+	audioSettings.targetFormat.sampleRate = audioCodexCtx->sample_rate;
+	audioSettings.targetFormat.type = MapAVSampleFormat(audioCodexCtx->sample_fmt);
+
+	loadAudioRes = fplAudioInit(&audioSettings);
+
+	if (loadAudioRes != fplAudioResultType_Success) {
+		FPL_LOG_WARN("App", "FFMPEG audio format (sample rate '%u', channels: %u, type: %s) is not supported, try the default format", audioSettings.targetFormat.sampleRate, audioSettings.targetFormat.channels, fplGetAudioFormatName(audioSettings.targetFormat.type));
+		fplSetDefaultAudioSettings(&audioSettings);
+		loadAudioRes = fplAudioInit(&audioSettings);
+	}
+
+	if (loadAudioRes != fplAudioResultType_Success) {
+		FPL_LOG_ERROR("App", "Failed initialize audio system with configuration (sample rate '%u', channels: %u, type: %s)", audioSettings.targetFormat.sampleRate, audioSettings.targetFormat.channels, fplGetAudioFormatName(audioSettings.targetFormat.type));
+		goto failed;
+	}
+
+	if (!fplGetAudioHardwareFormat(&nativeAudioFormat)) {
+		FPL_LOG_ERROR("App", "Failed retrieving audio hardware format for configuration (sample rate: %u, channels: %u, type: %s)", audioSettings.targetFormat.sampleRate, audioSettings.targetFormat.channels, fplGetAudioFormatName(audioSettings.targetFormat.type));
+		goto failed;
+	}
+
+	fplGetAudioChannelMap(&channelMap);
+
+	state.audio.backend = fplGetAudioBackendType();
 
 	// Init audio decoder
 	if (!InitDecoder(audio.decoder, &state, &state.reader, &audio.stream, MAX_AUDIO_FRAME_QUEUE_COUNT, 1)) {
@@ -3753,31 +4046,31 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 		audio.decoder.start_pts_tb = audio.stream.stream->time_base;
 	}
 
-	uint32_t nativeBufferSizeInBytes = fplGetAudioBufferSizeInBytes(nativeAudioFormat.type, nativeAudioFormat.channels, nativeAudioFormat.bufferSizeInFrames);
+	nativeBufferSizeInBytes = fplGetAudioBufferSizeInBytes(nativeAudioFormat.type, nativeAudioFormat.channels, nativeAudioFormat.bufferSizeInFrames);
 
-	AVSampleFormat targetSampleFormat = MapAudioFormatType(nativeAudioFormat.type);
+	targetSampleFormat = MapAudioFormatType(nativeAudioFormat.type);
 
-	// @TODO(final): Map channels to AV channel layout
-	uint64_t targetChannelLayout = AV_CH_LAYOUT_STEREO;
-	int targetChannelCount = nativeAudioFormat.channels;
-	assert(targetChannelCount == 2);
-	int targetSampleRate = nativeAudioFormat.sampleRate;
+	targetChannelLayout = MapChannelLayout(nativeAudioFormat.channelLayout);
+	targetChannelCount = nativeAudioFormat.channels;
+	targetSampleRate = nativeAudioFormat.sampleRate;
 	audio.audioTarget = {};
 	audio.audioTarget.periods = nativeAudioFormat.periods;
 	audio.audioTarget.channels = targetChannelCount;
 	audio.audioTarget.sampleRate = targetSampleRate;
 	audio.audioTarget.type = nativeAudioFormat.type;
-	audio.audioTarget.backend = nativeAudioFormat.backend;
 	audio.audioTarget.bufferSizeInBytes = ffmpeg.av_samples_get_buffer_size(nullptr, audio.audioTarget.channels, audio.audioTarget.sampleRate, targetSampleFormat, 1);
+	audio.audioTarget.backend = state.audio.backend;
 
-	AVSampleFormat inputSampleFormat = audioCodexCtx->sample_fmt;
+	inputSampleFormat = audioCodexCtx->sample_fmt;
 
-	int inputChannelCount = audioCodexCtx->channels;
-	int inputSampleRate = audioCodexCtx->sample_rate;
-	uint64_t inputChannelLayout = audioCodexCtx->channel_layout;
+	inputChannelCount = audioCodexCtx->channels;
+	inputSampleRate = audioCodexCtx->sample_rate;
+	inputChannelLayout = audioCodexCtx->channel_layout;
 	if (inputChannelLayout == 0) {
 		inputChannelLayout = ffmpeg.av_get_default_channel_layout(inputChannelCount);
 	}
+
+	InitializeChannelMapping(inputChannelLayout, nativeAudioFormat.channels, &channelMap, &audio.channelMap);
 
 	audio.audioSource = {};
 	audio.audioSource.channels = inputChannelCount;
@@ -3807,7 +4100,6 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 	}
 
 	// Allocate conversion buffer in native format, this must be big enough to hold one AVFrame worth of data.
-	int lineSize;
 	audio.maxConversionAudioBufferSize = ffmpeg.av_samples_get_buffer_size(&lineSize, targetChannelCount, targetSampleRate, targetSampleFormat, 1);
 	audio.maxConversionAudioFrameCount = audio.maxConversionAudioBufferSize / fplGetAudioSampleSizeInBytes(nativeAudioFormat.type) / targetChannelCount;
 	audio.conversionAudioBuffer = (uint8_t *)fplMemoryAlignedAllocate(audio.maxConversionAudioBufferSize, 16);
@@ -3867,7 +4159,7 @@ static void ReleaseMedia(PlayerState &state, const PlayingState finishState, con
 	SetPlayingState(state, finishState);
 }
 
-static bool LoadMedia(PlayerState &state, const char *mediaURL, const fplAudioDeviceFormat &nativeAudioFormat, const uint32_t mainThreadId) {
+static bool LoadMedia(PlayerState &state, const char *mediaURL, const uint32_t mainThreadId) {
 	fplAssert(state.state == PlayingState::Unloaded || state.state == PlayingState::Failed);
 
 	bool isURL = fplIsStringMatchWildcard(mediaURL, "http://*") || fplIsStringMatchWildcard(mediaURL, "https://*");
@@ -3877,13 +4169,20 @@ static bool LoadMedia(PlayerState &state, const char *mediaURL, const fplAudioDe
 		return(false);
 	}
 
+	char tmpError[AV_ERROR_MAX_STRING_SIZE];
+
 	state.filePathOrUrl = mediaURL;
 
 	SetPlayingState(state, PlayingState::Loading);
 
 	// Open media file
-	if (ffmpeg.avformat_open_input(&state.formatCtx, mediaURL, nullptr, nullptr) != 0) {
-		FPL_LOG_ERROR("App", "Failed opening media file '%s'!\n", mediaURL);
+	int openInputRes = ffmpeg.avformat_open_input(&state.formatCtx, mediaURL, nullptr, nullptr);
+	if (openInputRes != 0) {
+		if (ffmpeg.av_strerror(openInputRes, tmpError, fplArrayCount(tmpError) == 0)) {
+			FPL_LOG_ERROR("App", "Failed opening media file '%s' -> %s\n", mediaURL, tmpError);
+		} else {
+			FPL_LOG_ERROR("App", "Failed opening media file '%s' -> Code: %d\n", mediaURL, openInputRes);
+		}
 		goto release;
 	}
 
@@ -3944,7 +4243,7 @@ static bool LoadMedia(PlayerState &state, const char *mediaURL, const fplAudioDe
 
 	// Allocate audio related resources
 	if (state.audio.stream.isValid) {
-		state.audio.isValid = InitializeAudio(state, mediaURL, nativeAudioFormat);
+		state.audio.isValid = InitializeAudio(state, mediaURL);
 		if (!state.audio.isValid) {
 			goto release;
 		}
@@ -4018,7 +4317,7 @@ static void LoadMediaThreadProc(const fplThreadHandle *thread, void *userData) {
 			fplMutexLock(&loadState.mutex);
 			StopAndReleaseMedia(state->player, state->mainThreadId);
 			if (fplGetStringLength(loadState.url) > 0) {
-				LoadAndPlayMedia(state->player, loadState.url, state->nativeAudioFormat, state->mainThreadId);
+				LoadAndPlayMedia(state->player, loadState.url, state->mainThreadId);
 			}
 			loadState.url = fpl_null;
 			loadState.state = 0;
@@ -4050,6 +4349,8 @@ int main(int argc, char **argv) {
 #endif
 	settings.video.isAutoSize = false;
 	settings.video.isVSync = false;
+
+	settings.audio.manualLoad = true;
 	
 	fplLogSettings log = fplZeroInit;
 	log.maxLevel = fplLogLevel_All;
@@ -4076,13 +4377,11 @@ int main(int argc, char **argv) {
 	fplTimestamp currentTime = fplZeroInit;
 	double remainingTime = 0;
 
+	// TODO: Make constant!
+	const double SeekStep = 5.0f;
+
 	// Init
 	if (!InitApp(state)) {
-		goto release;
-	}
-
-	// Get native audio format
-	if (!fplGetAudioHardwareFormat(&state.nativeAudioFormat)) {
 		goto release;
 	}
 
@@ -4107,9 +4406,6 @@ int main(int argc, char **argv) {
 	// App loop
 	//
 	fplGetWindowSize(&state.viewport);
-
-	// TODO: Make constant!
-	const double SeekStep = 5.0f;
 
 	lastTime = fplTimestampQuery();
 	remainingTime = 0.0;

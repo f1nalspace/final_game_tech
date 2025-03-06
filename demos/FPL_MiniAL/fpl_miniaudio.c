@@ -15,6 +15,12 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2025-02-24
+	- Upgraded to latest miniaudio v0.11.22
+
+	## 2025-02-13
+	- Fixed compile errors due to changes in the audio system
+
 	## 2020-10-11
 	- Use mini audio by default
 
@@ -60,13 +66,16 @@ License:
 
 #if OPT_USE_MINIAUDIO
 #	define MINIAUDIO_IMPLEMENTATION
+#	define MA_COPY_MEMORY(dst, src, size) fplMemoryCopy(src, size, dst)
+#	define MA_ZERO_MEMORY(ptr, size) fplMemoryClear(ptr, size)
 #	define MA_USE_RUNTIME_LINKING_FOR_PTHREAD
 #	include <miniaudio/miniaudio.h>
 #endif
 
 typedef struct PlaybackAudioFormat {
 	char backendName[FPL_MAX_NAME_LENGTH];
-	fplAudioDeviceFormat deviceFormat;
+    char deviceName[FPL_MAX_NAME_LENGTH];
+	fplAudioFormat deviceFormat;
 } PlaybackAudioFormat;
 
 typedef struct AudioContext {
@@ -118,21 +127,40 @@ static ma_format MapFPLFormatToMALFormat(const fplAudioFormatType format) {
 	}
 }
 
+static fplAudioLatencyType MapMALPerformanceProfileToFPLLatencyType(const ma_performance_profile profile) {
+    switch (profile) {
+		case ma_performance_profile_low_latency:
+			return fplAudioLatencyType_Low;
+		case ma_performance_profile_conservative:
+		default:
+			return fplAudioLatencyType_Conservative;
+    }
+}
+
+static fplAudioShareMode MapMAPShareModeToFPLShareMode(const ma_share_mode shareMode) {
+    switch (shareMode) {
+		case ma_share_mode_exclusive:
+			return fplAudioShareMode_Exclusive;
+		case ma_share_mode_shared:
+		default:
+			return fplAudioShareMode_Shared;
+    }
+}
+
 static void AudioPlayback_MiniAudio(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount) {
 	AudioContext *audioCtx = (AudioContext *)pDevice->pUserData;
 	AudioSystem *audioSys = &audioCtx->system;
 	AudioSystemWriteFrames(audioSys, pOutput, &audioCtx->playbackFormat.deviceFormat, frameCount, true);
 }
 #else
-static uint32_t AudioPlayback_FPL(const fplAudioDeviceFormat *outFormat, const uint32_t maxFrameCount, void *outputSamples, void *userData) {
+static uint32_t AudioPlayback_FPL(const fplAudioFormat *deviceFormat, const uint32_t maxFrameCount, void *outputSamples, void *userData) {
+	fplAssert(userData != fpl_null);
 	AudioContext *audioCtx = (AudioContext *)userData;
 	AudioSystem *audioSys = &audioCtx->system;
-	AudioFrameIndex result = AudioSystemWriteFrames(audioSys, outputSamples, outFormat, maxFrameCount);
+	AudioFrameIndex result = AudioSystemWriteFrames(audioSys, outputSamples, deviceFormat, maxFrameCount, true);
 	return(result);
 }
 #endif
-
-
 
 static void ReleaseAudioContext(AudioContext *context) {
 	fplAssert(context != fpl_null);
@@ -141,36 +169,40 @@ static void ReleaseAudioContext(AudioContext *context) {
 #endif // #if OPT_USE_MINIAUDIO	
 }
 
-static bool InitAudioContext(AudioContext *context, const fplAudioTargetFormat targetFormat) {
-	fplAssert(context != fpl_null);
+static bool InitAudioContext(AudioContext *context, const fplAudioFormat *inFormat, PlaybackAudioFormat *playbackFormat) {
+	fplAssert(context != fpl_null && inFormat != fpl_null && playbackFormat != fpl_null);
+
+    fplClearStruct(playbackFormat);
+
 	context->sineWave.frequency = 440;
 	context->sineWave.toneVolume = 0.25f;
 	context->sineWave.duration = 0.5;
 	
 #if OPT_USE_MINIAUDIO
 	// Init audio playback (MiniAudio)
-	context->maTargtFormat = MapFPLFormatToMALFormat(targetFormat.type);
+	context->maTargtFormat = MapFPLFormatToMALFormat(inFormat->type);
 	context->maDeviceConfig = ma_device_config_init(ma_device_type_playback);
-	context->maDeviceConfig.playback.channels = targetFormat.channels;
+	context->maDeviceConfig.playback.channels = inFormat->channels;
 	context->maDeviceConfig.playback.format = context->maTargtFormat;
-	context->maDeviceConfig.sampleRate = targetFormat.sampleRate;
+	context->maDeviceConfig.sampleRate = inFormat->sampleRate;
 	context->maDeviceConfig.dataCallback = AudioPlayback_MiniAudio;
 	context->maDeviceConfig.pUserData = context;
 	
-	ma_backend malBackends[] = {
-		ma_backend_dsound,
-		ma_backend_wasapi,
-		ma_backend_winmm,
-		ma_backend_alsa,
-		ma_backend_pulseaudio,
-	};
-	ma_uint32 malBackendCount = fplArrayCount(malBackends);
-	
 	ma_result maResult;
 
-	//maResult = ma_context_init(malBackends, malBackendCount, NULL, &context->maContext);
-
-	maResult = ma_context_init(NULL, 0, NULL, &context->maContext);
+#if 0
+	// Only allow certain backends
+	ma_backend malBackends[] = {
+		ma_backend_alsa,
+        ma_backend_pulseaudio,
+        ma_backend_jack,
+        ma_backend_dsound,
+        ma_backend_wasapi,
+    };
+	maResult = ma_context_init(malBackends, fplArrayCount(malBackends), NULL, &context->maContext);
+#else
+    maResult = ma_context_init(NULL, 0, NULL, &context->maContext);
+#endif
 
 	if (maResult != MA_SUCCESS) {
 		return false;
@@ -181,8 +213,34 @@ static bool InitAudioContext(AudioContext *context, const fplAudioTargetFormat t
 		ma_context_uninit(&context->maContext);
 		return false;
 	}
+
+	fplAudioLatencyType latencyMode = MapMALPerformanceProfileToFPLLatencyType(context->maDeviceConfig.performanceProfile);
+	fplAudioShareMode shareMode = MapMAPShareModeToFPLShareMode(context->maDevice.playback.shareMode);
+
+	playbackFormat->deviceFormat.sampleRate = context->maDevice.sampleRate;
+    playbackFormat->deviceFormat.channels = context->maDevice.playback.channels;
+    playbackFormat->deviceFormat.channelLayout = fplGetDefaultAudioChannelLayoutFromChannels(context->maDevice.playback.channels);
+    playbackFormat->deviceFormat.periods = context->maDevice.playback.internalPeriods;
+    playbackFormat->deviceFormat.bufferSizeInFrames = context->maDevice.playback.internalPeriodSizeInFrames * context->maDevice.playback.internalPeriods;
+    playbackFormat->deviceFormat.bufferSizeInMilliseconds = fplGetAudioBufferSizeInMilliseconds(context->maDevice.playback.internalSampleRate, playbackFormat->deviceFormat.bufferSizeInFrames);
+    playbackFormat->deviceFormat.mode = fplCreateAudioMode(latencyMode, shareMode);
+    playbackFormat->deviceFormat.defaultFields = fplAudioDefaultFields_None;
+    playbackFormat->deviceFormat.type = MapMALFormatToFPLFormat(context->maDevice.playback.format);
+
+	const char *backendName = ma_get_backend_name(context->maDevice.pContext->backend);
+    fplCopyString(backendName, playbackFormat->backendName, fplArrayCount(playbackFormat->backendName));
+
+	const char *deviceName = context->maDevice.playback.name;
+    fplCopyString(deviceName, playbackFormat->deviceName, fplArrayCount(playbackFormat->deviceName));
 #else
-	// No need to initialize anything here for FPL
+	fplGetAudioHardwareFormat(&playbackFormat->deviceFormat);
+
+    fplAudioBackendType backendType = fplGetAudioBackendType();
+	const char *backendName = fplGetAudioBackendName(backendType);
+	fplCopyString(backendName, playbackFormat->backendName, fplArrayCount(playbackFormat->backendName));
+
+	const char *deviceName = fplGetAudioHardwareDeviceName();
+	fplCopyString(deviceName, playbackFormat->deviceName, fplArrayCount(playbackFormat->deviceName));
 #endif // OPT_USE_MINIAUDIO
 	
 	return(true);
@@ -191,35 +249,15 @@ static bool InitAudioContext(AudioContext *context, const fplAudioTargetFormat t
 static bool StartPlayback(AudioContext *context) {
 	fplAssert(context != fpl_null);
 
-	PlaybackAudioFormat *playbackFormat = &context->playbackFormat;
-	fplAssert(playbackFormat != fpl_null);
-	
-	fplClearStruct(playbackFormat);
-
 #if OPT_USE_MINIAUDIO
-	if (ma_device_start(&context->maDevice) != MA_SUCCESS) {
+    if (ma_device_start(&context->maDevice) != MA_SUCCESS) {
 		return(false);
 	}
-	
-	fplAudioDeviceFormat *actualDeviceFormat = &playbackFormat->deviceFormat;
-
-	const char *outBackendName = ma_get_backend_name(context->maDevice.pContext->backend);
-	fplCopyString(outBackendName, playbackFormat->backendName, fplArrayCount(playbackFormat->backendName));
-	actualDeviceFormat->channels = context->maDevice.playback.channels;
-	actualDeviceFormat->periods = context->maDevice.playback.internalPeriods;
-	actualDeviceFormat->sampleRate = context->maDevice.sampleRate;
-	actualDeviceFormat->type = MapMALFormatToFPLFormat(context->maDevice.playback.format);
-	actualDeviceFormat->bufferSizeInFrames = context->maDevice.playback.internalPeriodSizeInFrames * context->maDevice.playback.internalPeriods;
 #else
 	fplAudioResultType audioRes = fplPlayAudio();
 	if (audioRes != fplAudioResultType_Success) {
 		return(false);
 	}
-
-	fplGetAudioHardwareFormat(&playbackFormat->deviceFormat);
-	const fplSettings *settings = fplGetCurrentSettings();
-	const char *outBackendName = fplGetAudioBackendName(settings->audio.backend);
-	fplCopyString(outBackendName, playbackFormat->backendName, fplArrayCount(playbackFormat->backendName));
 #endif
 	
 	return(true);
@@ -240,43 +278,50 @@ int main(int argc, char **args) {
 	bool forceSineWave = false;
 
 	// Use default audio format from FPL as target format
-	fplAudioTargetFormat targetFormat;
-	fplSetDefaultAudioTargetFormat(&targetFormat);
+	fplAudioFormat targetFormat = fplZeroInit;
+
+	// NOTE(final): Our test audio file is encoded in 44100 Hz, Stereo and our audio system does not support up/down sample with non-even sample rates yet
+	targetFormat.sampleRate = 44100;
+	targetFormat.channels = 2;
+	targetFormat.channelLayout = fplAudioChannelLayout_Stereo;
 
 	int result = -1;
 
-	// Init audio context
+	// Allocate audio context
 	AudioContext *audioContext = (AudioContext*)fplMemoryAllocate(sizeof(AudioContext));
-	if (!InitAudioContext(audioContext, targetFormat)) {
-		fplConsoleFormatError("Failed initializing audio context!\n");
+	if (audioContext == fpl_null) {
+		fplConsoleFormatError("Failed allocating memory for audio context!\n");
 		goto releaseResources;
 	}
-	
+
 	// Init FPL
 	fplInitFlags initFlags = fplInitFlags_Console;
 	fplSettings settings = fplMakeDefaultSettings();
-	
+
 #if !OPT_USE_MINIAUDIO
 	settings.audio.targetFormat = targetFormat;
 	settings.audio.startAuto = false;
 	settings.audio.stopAuto = false;
-	settings.audio.userData = audioContext;
+	settings.audio.clientUserData = audioContext;
 	settings.audio.clientReadCallback = AudioPlayback_FPL;
 	initFlags |= fplInitFlags_Audio;
+#else
+	initFlags &= ~fplInitFlags_Audio;
 #endif
-	
+
 	if (!fplPlatformInit(initFlags, &settings)) {
 		fplConsoleFormatError("Failed initializing FPL with flags %d!\n", initFlags);
 		goto releaseResources;
 	}
 
-	// Init audio data
-	fplAudioDeviceFormat targetDeviceFormat;
-	fplConvertAudioTargetFormatToDeviceFormat(&targetFormat, &targetDeviceFormat);
+    if (!InitAudioContext(audioContext, &targetFormat, &audioContext->playbackFormat)) {
+		fplConsoleFormatError("Failed initializing audio context!\n");
+		goto releaseResources;
+	}
 	
 	AudioTrackList tracklist = fplZeroInit;
 
-	if(!AudioSystemInit(&audioContext->system, &targetDeviceFormat)) {
+    if(!AudioSystemInit(&audioContext->system, &audioContext->playbackFormat.deviceFormat)) {
 		fplConsoleFormatError("Failed initializing audio system!\n");
 		goto releaseResources;
 	}
@@ -295,13 +340,16 @@ int main(int argc, char **args) {
 	// Print output infos
 	PlaybackAudioFormat *playbackFormat = &audioContext->playbackFormat;
 	const char *formatName = fplGetAudioFormatName(playbackFormat->deviceFormat.type);
-	const char *systemName;
+    const char *backendName = playbackFormat->backendName;
+    const char *deviceName = playbackFormat->deviceName;
+
 #if OPT_USE_MINIAUDIO
-	systemName = "MiniAudio";
+    const char *systemName = "MiniAudio";
 #else
-	systemName = "FPL";
+    const char *systemName = "FPL";
 #endif
-	fplConsoleFormatOut("Playing %lu audio sources (%s, %s, %s, %lu Hz, %lu channels, %lu frames, %lu periods)\n", audioContext->system.playItems.count, systemName, playbackFormat->backendName, formatName, playbackFormat->deviceFormat.sampleRate, playbackFormat->deviceFormat.channels, playbackFormat->deviceFormat.bufferSizeInFrames, playbackFormat->deviceFormat.periods);
+
+    fplConsoleFormatOut("Playing %lu audio sources (%s, %s, %s, %s, %lu Hz, %lu channels, %lu frames, %lu periods)\n", audioContext->system.playItems.count, systemName, backendName, deviceName, formatName, playbackFormat->deviceFormat.sampleRate, playbackFormat->deviceFormat.channels, playbackFormat->deviceFormat.bufferSizeInFrames, playbackFormat->deviceFormat.periods);
 
 	// Wait for any key presses
 	fplConsoleFormatOut("Press any key to stop playback\n");
@@ -318,14 +366,18 @@ int main(int argc, char **args) {
 
 releaseResources:
 	// Release audio device
-	ReleaseAudioContext(audioContext);
+	if (audioContext != fpl_null) {
+		ReleaseAudioContext(audioContext);
+	}
 
 	// Release the platform
 	if (fplIsPlatformInitialized())
 		fplPlatformRelease();
 
-	// Release memory
-	fplMemoryFree(audioContext);
+	// Free audio context
+	if (audioContext != fpl_null) {
+		fplMemoryFree(audioContext);
+	}
 
 	return(result);
 }
