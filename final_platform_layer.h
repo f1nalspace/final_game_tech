@@ -4965,44 +4965,52 @@ fpl_common_api void fplErrorsClear();
 */
 // ----------------------------------------------------------------------------
 
-//! A union containing the library handle for any platform
+/*!
+* @union fplInternalDynamicLibraryHandle
+* @brief Stores the library handle for any platform.
+*/
 typedef union fplInternalDynamicLibraryHandle {
 #if defined(FPL_PLATFORM_WINDOWS)
-	//! Win32 library handle
-	fpl__Win32LibraryHandle win32LibraryHandle;
+    //! Win32 library handle.
+    fpl__Win32LibraryHandle win32LibraryHandle;
 #elif defined(FPL_SUBPLATFORM_POSIX)
-	//! POSIX library handle
-	fpl__POSIXLibraryHandle posixLibraryHandle;
+    //! POSIX library handle.
+    fpl__POSIXLibraryHandle posixLibraryHandle;
 #endif
 } fplInternalDynamicLibraryHandle;
 
-//! A structure containing the internal handle to a dynamic library
+/*!
+* @struct fplDynamicLibraryHandle
+* @brief Stores the internal handle to a dynamic library.
+*/
 typedef struct fplDynamicLibraryHandle {
-	//! Internal library handle
-	fplInternalDynamicLibraryHandle internalHandle;
-	//! Library opened successfully
-	fpl_b32 isValid;
+    //! Internal library handle.
+    fplInternalDynamicLibraryHandle internalHandle;
+    //! Library opened successfully.
+    fpl_b32 isValid;
 } fplDynamicLibraryHandle;
 
 /**
 * @brief Loads a dynamic library and returns if the load was successful or not.
-* @param libraryFilePath The path to the library with included file extension (.dll / .so)
-* @param outHandle The output handle @ref fplDynamicLibraryHandle
-* @return Returns true when the library was loaded successfully, false otherwise.
+* @param[in] libraryFilePath The path to the library with included file extension (.dll / .so) (const char*).
+* @param[out] outHandle Reference to the output handle @ref fplDynamicLibraryHandle.
+* @return Returns true when the library was loaded successfully, false otherwise (bool).
 * @see @ref section_category_dll_load
 */
 fpl_platform_api bool fplDynamicLibraryLoad(const char *libraryFilePath, fplDynamicLibraryHandle *outHandle);
+
 /**
 * @brief Returns the dynamic library procedure address for the given procedure name.
-* @param handle The @ref fplDynamicLibraryHandle handle to the loaded library
-* @param name The name of the procedure
-* @return Returns the procedure address for the given procedure name or @ref fpl_null when procedure not found or library is not loaded.
+* @param[in] handle Reference to the @ref fplDynamicLibraryHandle handle to the loaded library.
+* @param[in] name The name of the procedure (const char*).
+* @return Returns the procedure address for the given procedure name or @ref fpl_null when the procedure is not found or the library is not loaded (void*).
 * @see @ref section_category_dll_getprocaddr
 */
 fpl_platform_api void *fplGetDynamicLibraryProc(const fplDynamicLibraryHandle *handle, const char *name);
+
 /**
 * @brief Unloads the loaded library and resets the handle to zero.
-* @param handle The library handle @ref fplDynamicLibraryHandle
+* @param[in, out] handle Reference to the library handle @ref fplDynamicLibraryHandle.
 * @see @ref fplDynamicLibraryUnload
 */
 fpl_platform_api void fplDynamicLibraryUnload(fplDynamicLibraryHandle *handle);
@@ -5017,17 +5025,18 @@ fpl_platform_api void fplDynamicLibraryUnload(fplDynamicLibraryHandle *handle);
 // ----------------------------------------------------------------------------
 
 /**
-* @brief Writes the given text into the debugger output stream
-* @param text The text to write into the debugger output stream
-* @note This function will only work in IDEs such as MSVC
+* @brief Writes the given text into the debugger output stream.
+* @param[in] text The text to write into the debugger output stream (const char*).
+* @note This function will only work in IDEs such as MSVC.
 * @see @ref subsection_category_logging_debug_out
 */
 fpl_platform_api void fplDebugOut(const char *text);
+
 /**
-* @brief Writes the given formatted text into the debugger output stream
-* @param format The format used for writing into the debugger output stream
-* @param ... The dynamic arguments used for formatting the text.
-* @note This function will only work in IDEs such as MSVC
+* @brief Writes the given formatted text into the debugger output stream.
+* @param[in] format The format used for writing into the debugger output stream (const char*).
+* @param[in] ... The dynamic arguments used for formatting the text.
+* @note This function will only work in IDEs such as MSVC.
 * @see @ref subsection_category_logging_debug_out
 */
 fpl_common_api void fplDebugFormatOut(const char *format, ...);
@@ -5044,35 +5053,38 @@ fpl_common_api void fplDebugFormatOut(const char *format, ...);
 
 /**
 * @brief Writes the given text to the standard output console buffer.
-* @param text The text to write into standard output console.
-* @note This is most likely just a wrapper call to fprintf(stdout)
+* @param[in] text The text to write into the standard output console (const char*).
+* @note This is most likely just a wrapper call to fprintf(stdout).
 */
 fpl_platform_api void fplConsoleOut(const char *text);
+
 /**
 * @brief Writes the given text to the standard error console buffer.
-* @param text The text to write into standard error console.
-* @note This is most likely just a wrapper call to fprintf(stderr)
+* @param[in] text The text to write into the standard error console (const char*).
+* @note This is most likely just a wrapper call to fprintf(stderr).
 */
 fpl_platform_api void fplConsoleError(const char *text);
+
 /**
-* @brief Wait for a character to be typed in the console input and return it.
-* @note This is most likely just a wrapper call to getchar()
-* @return Returns the character typed in in the console input
+* @brief Waits for a character to be typed in the console input and returns it.
+* @note This is most likely just a wrapper call to getchar().
+* @return Returns the character typed in the console input (char).
 */
 fpl_platform_api char fplConsoleWaitForCharInput();
 
 /**
 * @brief Writes the given formatted text to the standard output console buffer.
-* @param format The format used for writing into the standard output console
-* @param ... The dynamic arguments used for formatting the text
-* @note This is most likely just a wrapper call to vfprintf(stdout)
+* @param[in] format The format used for writing into the standard output console (const char*).
+* @param[in] ... The dynamic arguments used for formatting the text.
+* @note This is most likely just a wrapper call to vfprintf(stdout).
 */
 fpl_common_api void fplConsoleFormatOut(const char *format, ...);
+
 /**
 * @brief Writes the given formatted text to the standard error console buffer.
-* @param format The format used for writing into the standard error console
-* @param ... The dynamic arguments used for formatting the text
-* @note This is most likely just a wrapper call to vfprintf(stderr)
+* @param[in] format The format used for writing into the standard error console (const char*).
+* @param[in] ... The dynamic arguments used for formatting the text.
+* @note This is most likely just a wrapper call to vfprintf(stderr).
 */
 fpl_common_api void fplConsoleFormatError(const char *format, ...);
 
@@ -5086,38 +5098,54 @@ fpl_common_api void fplConsoleFormatError(const char *format, ...);
 */
 // ----------------------------------------------------------------------------
 
-//! A structure storing a timestamp, used for delta measurements only.
+/*!
+* @union fplTimestamp
+* @brief Stores a timestamp, used for delta measurements only.
+*/
 typedef union fplTimestamp {
 #if defined(FPL_PLATFORM_WINDOWS)
-	//! Win32 specifics
-	struct {
-		//! Query performance count in 10th nanoseconds
-		fpl__Win32LargeInteger qpc;
-		//! Tick count in milliseconds
-		uint64_t ticks;
-	} win32;
+    //! Win32 specifics.
+    struct {
+        //! Query performance count in 10th nanoseconds.
+        fpl__Win32LargeInteger qpc;
+        //! Tick count in milliseconds.
+        uint64_t ticks;
+    } win32;
 #elif defined(FPL_SUBPLATFORM_POSIX)
-	//! POSIX specifics
-	struct {
-		//! Number of seconds
-		uint64_t seconds;
-		//! Number of nanoseconds
-		int64_t nanoSeconds;
-	} posix;
+    //! POSIX specifics.
+    struct {
+        //! Number of seconds.
+        uint64_t seconds;
+        //! Number of nanoseconds.
+        int64_t nanoSeconds;
+    } posix;
 #endif
-	//! Field for preventing union to be empty
-	uint64_t unused;
+    //! Field for preventing union to be empty.
+    uint64_t unused;
 } fplTimestamp;
 
-//! A type definition for a timeout value in milliseconds
+/*!
+* @typedef fplTimeoutValue
+* @brief A type definition for a timeout value in milliseconds.
+*/
 typedef uint32_t fplTimeoutValue;
-//! Infinite timeout constant
+
+/*!
+* @define FPL_TIMEOUT_INFINITE
+* @brief Infinite timeout constant.
+*/
 #define FPL_TIMEOUT_INFINITE UINT32_MAX
 
-//! A type definition for seconds / 64-bit.
+/*!
+* @typedef fplSeconds
+* @brief A type definition for seconds (64-bit).
+*/
 typedef double fplSeconds;
 
-//! A type definition for milliseconds / 64-bit.
+/*!
+* @typedef fplMilliseconds
+* @brief A type definition for milliseconds (64-bit).
+*/
 typedef uint64_t fplMilliseconds;
 
 /**
@@ -5126,13 +5154,17 @@ typedef uint64_t fplMilliseconds;
 * @note Use @ref fplTimestampElapsed() to get the elapsed time.
 */
 fpl_platform_api fplTimestamp fplTimestampQuery();
+
 /**
-* @brief Gets the current system clock in milliseconds, since some fixed starting point (OS start, System start, etc), used for time delta measurements only.
+* @brief Gets the current system clock in milliseconds, since some fixed starting point (OS start, System start, etc.), used for time delta measurements only.
 * @return Returns the number of milliseconds as @ref fplMilliseconds.
 */
 fpl_platform_api fplMilliseconds fplMillisecondsQuery();
+
 /**
 * @brief Gets the delta value from two @ref fplTimestamp values in seconds.
+* @param[in] start The starting @ref fplTimestamp.
+* @param[in] finish The ending @ref fplTimestamp.
 * @return Returns the resulting elapsed time in seconds as @ref fplSeconds.
 */
 fpl_platform_api fplSeconds fplTimestampElapsed(const fplTimestamp start, const fplTimestamp finish);
@@ -5147,476 +5179,558 @@ fpl_platform_api fplSeconds fplTimestampElapsed(const fplTimestamp start, const 
 */
 // ----------------------------------------------------------------------------
 
-//! An enumeration of thread states
+/*!
+* @enum fplThreadStates
+* @brief An enumeration of thread states.
+*/
 typedef enum fplThreadStates {
-	//! Thread is stopped
-	fplThreadState_Stopped = 0,
-	//! Thread is being started
-	fplThreadState_Starting,
-	//! Thread is still running
-	fplThreadState_Running,
-	//! Thread is being stopped
-	fplThreadState_Stopping,
+    //! Thread is stopped.
+    fplThreadState_Stopped = 0,
+    //! Thread is being started.
+    fplThreadState_Starting,
+    //! Thread is still running.
+    fplThreadState_Running,
+    //! Thread is being stopped.
+    fplThreadState_Stopping,
 } fplThreadStates;
 
-//! A type definition for mapping @ref fplThreadState into a 32-bit integer
+/*!
+* @typedef fplThreadState
+* @brief A type definition for mapping @ref fplThreadState into a 32-bit integer.
+*/
 typedef uint32_t fplThreadState;
 
-//! Defines all possible thread priorities
+/*!
+* @enum fplThreadPriority
+* @brief Defines all possible thread priorities.
+*/
 typedef enum fplThreadPriority {
-	//! Unknown priority
-	fplThreadPriority_Unknown = -10,
+    //! Unknown priority.
+    fplThreadPriority_Unknown = -10,
 
-	//! Idle priority (Only when nothing is going on)
-	fplThreadPriority_Idle = -2,
-	//! Low priority
-	fplThreadPriority_Low = -1,
-	//! Normal priority
-	fplThreadPriority_Normal = 0,
-	//! High priority
-	fplThreadPriority_High = 1,
-	//! Realtime priority (Time critical)
-	fplThreadPriority_RealTime = 2,
+    //! Idle priority (Only when nothing is going on).
+    fplThreadPriority_Idle = -2,
+    //! Low priority.
+    fplThreadPriority_Low = -1,
+    //! Normal priority.
+    fplThreadPriority_Normal = 0,
+    //! High priority.
+    fplThreadPriority_High = 1,
+    //! Realtime priority (Time critical).
+    fplThreadPriority_RealTime = 2,
 
-	//! Lowest @ref fplThreadPriority
-	fplThreadPriority_Lowest = fplThreadPriority_Idle,
-	//! Highest @ref fplThreadPriority
-	fplThreadPriority_Highest = fplThreadPriority_RealTime,
+    //! Lowest @ref fplThreadPriority.
+    fplThreadPriority_Lowest = fplThreadPriority_Idle,
+    //! Highest @ref fplThreadPriority.
+    fplThreadPriority_Highest = fplThreadPriority_RealTime,
 
-	//! First @ref fplThreadPriority
-	fplThreadPriority_First = fplThreadPriority_Lowest,
-	//! Last @ref fplThreadPriority
-	fplThreadPriority_Last = fplThreadPriority_Highest,
+    //! First @ref fplThreadPriority.
+    fplThreadPriority_First = fplThreadPriority_Lowest,
+    //! Last @ref fplThreadPriority.
+    fplThreadPriority_Last = fplThreadPriority_Highest,
 } fplThreadPriority;
 
-//! Forward declared thread handle
+/*!
+* @typedef fplThreadHandle
+* @brief Forward declared thread handle.
+*/
 typedef struct fplThreadHandle fplThreadHandle;
 
 /**
-* @brief A callback to execute user code inside another thread
-* @param thread The thread handle
-* @param data The user data pointer
+* @brief A function definition for a callback to execute user code inside another thread.
+* @param[in] thread Reference to the thread handle @ref fplThreadHandle.
+* @param[in] data Reference to the user data pointer (void*).
 */
 typedef void (fpl_run_thread_callback)(const fplThreadHandle *thread, void *data);
 
-//! A union containing the thread handle for any platform
+/*!
+* @union fplInternalThreadHandle
+* @brief Stores the thread handle for any platform.
+*/
 typedef union fplInternalThreadHandle {
 #if defined(FPL_PLATFORM_WINDOWS)
-	//! Win32 thread handle
-	fpl__Win32ThreadHandle win32ThreadHandle;
+    //! Win32 thread handle.
+    fpl__Win32ThreadHandle win32ThreadHandle;
 #elif defined(FPL_SUBPLATFORM_POSIX)
-	//! POSIX thread handle
-	fpl__POSIXThreadHandle posixThread;
+    //! POSIX thread handle.
+    fpl__POSIXThreadHandle posixThread;
 #endif
 } fplInternalThreadHandle;
 
-//! Contains creation parameters for @ref fplThreadCreateWithParameters()
+/*!
+* @struct fplThreadParameters
+* @brief Stores creation parameters for @ref fplThreadCreateWithParameters().
+*/
 typedef struct fplThreadParameters {
-	//! The user data passed to the run callback
-	void *userData;
-	//! The @ref fpl_run_thread_callback
-	fpl_run_thread_callback *runFunc;
-	//! The stack size in bytes or zero for using the default size
-	size_t stackSize;
-	//! The @ref fplThreadPriority
-	fplThreadPriority priority;
+    //! The user data passed to the run callback.
+    void *userData;
+    //! The @ref fpl_run_thread_callback.
+    fpl_run_thread_callback *runFunc;
+    //! The stack size in bytes or zero for using the default size.
+    size_t stackSize;
+    //! The @ref fplThreadPriority.
+    fplThreadPriority priority;
 } fplThreadParameters;
 
-//! The thread handle structure
+/*!
+* @struct fplThreadHandle
+* @brief Stores the thread handle structure.
+*/
 typedef struct fplThreadHandle {
-	//! The internal thread handle
-	fplInternalThreadHandle internalHandle;
-	//! The initial @ref fplThreadParameters
-	fplThreadParameters parameters;
-	//! Thread state
-	volatile fplThreadState currentState;
-	//! The identifier of the thread
-	uint32_t id;
-	//! Is this thread valid
-	volatile fpl_b32 isValid;
-	//! Is this thread stopping
-	volatile fpl_b32 isStopping;
+    //! The internal thread handle.
+    fplInternalThreadHandle internalHandle;
+    //! The initial @ref fplThreadParameters.
+    fplThreadParameters parameters;
+    //! Thread state.
+    volatile fplThreadState currentState;
+    //! The identifier of the thread.
+    uint32_t id;
+    //! Is this thread valid.
+    volatile fpl_b32 isValid;
+    //! Is this thread stopping.
+    volatile fpl_b32 isStopping;
 } fplThreadHandle;
 
 #if defined(FPL_PLATFORM_WINDOWS)
+/*!
+* @struct fpl__Win32InternalSemaphore
+* @brief Stores the Win32 internal semaphore.
+*/
 typedef struct fpl__Win32InternalSemaphore {
-	//! Semaphore handle
-	fpl__Win32SemaphoreHandle handle;
-	//! Semaphore value
-	volatile int32_t value;
+    //! Semaphore handle.
+    fpl__Win32SemaphoreHandle handle;
+    //! Semaphore value.
+    volatile int32_t value;
 } fpl__Win32InternalSemaphore;
 #endif
 
-//! A union containing the internal semaphore handle for any platform
+/*!
+* @union fplInternalSemaphoreHandle
+* @brief Stores the internal semaphore handle for any platform.
+*/
 typedef union fplInternalSemaphoreHandle {
 #if defined(FPL_PLATFORM_WINDOWS)
-	//! Win32 semaphore handle
-	fpl__Win32InternalSemaphore win32;
+    //! Win32 semaphore handle.
+    fpl__Win32InternalSemaphore win32;
 #elif defined(FPL_SUBPLATFORM_POSIX)
-	//! POSIX semaphore handle
-	fpl__POSIXSemaphoreHandle posixHandle;
+    //! POSIX semaphore handle.
+    fpl__POSIXSemaphoreHandle posixHandle;
 #endif
 } fplInternalSemaphoreHandle;
 
-//! The semaphore handle structure
+/*!
+* @struct fplSemaphoreHandle
+* @brief Stores the semaphore handle structure.
+*/
 typedef struct fplSemaphoreHandle {
-	//! The internal semaphore handle
-	fplInternalSemaphoreHandle internalHandle;
-	//! Is it valid
-	fpl_b32 isValid;
+    //! The internal semaphore handle.
+    fplInternalSemaphoreHandle internalHandle;
+    //! Is it valid.
+    fpl_b32 isValid;
 } fplSemaphoreHandle;
 
-//! A union containing the internal mutex handle for any platform
+/*!
+* @union fplInternalMutexHandle
+* @brief Stores the internal mutex handle for any platform.
+*/
 typedef union fplInternalMutexHandle {
 #if defined(FPL_PLATFORM_WINDOWS)
-	//! Win32 mutex handle
-	fpl__Win32MutexHandle win32CriticalSection;
+    //! Win32 mutex handle.
+    fpl__Win32MutexHandle win32CriticalSection;
 #elif defined(FPL_SUBPLATFORM_POSIX)
-	//! POSIX mutex handle
-	fpl__POSIXMutexHandle posixMutex;
+    //! POSIX mutex handle.
+    fpl__POSIXMutexHandle posixMutex;
 #endif
 } fplInternalMutexHandle;
 
-//! The mutex handle structure
+/*!
+* @struct fplMutexHandle
+* @brief Stores the mutex handle structure.
+*/
 typedef struct fplMutexHandle {
-	//! Is it valid
-	fpl_b32 isValid;
-	//! The internal mutex handle
-	fplInternalMutexHandle internalHandle;
+    //! Is it valid.
+    fpl_b32 isValid;
+    //! The internal mutex handle.
+    fplInternalMutexHandle internalHandle;
 } fplMutexHandle;
 
-//! A union containing the internal signal handle for any platform
+/*!
+* @union fplInternalSignalHandle
+* @brief Stores the internal signal handle for any platform.
+*/
 typedef union fplInternalSignalHandle {
 #if defined(FPL_PLATFORM_WINDOWS)
-	//! Win32 event handle
-	fpl__Win32SignalHandle win32EventHandle;
+    //! Win32 event handle.
+    fpl__Win32SignalHandle win32EventHandle;
 #elif defined(FPL_PLATFORM_LINUX)
-	//! Linux event handle
-	fpl__LinuxSignalHandle linuxEventHandle;
+    //! Linux event handle.
+    fpl__LinuxSignalHandle linuxEventHandle;
 #endif
 } fplInternalSignalHandle;
 
-//! The signal handle structure
+/*!
+* @struct fplSignalHandle
+* @brief Stores the signal handle structure.
+*/
 typedef struct fplSignalHandle {
-	//! The internal signal handle
-	fplInternalSignalHandle internalHandle;
-	//! Is it valid
-	fpl_b32 isValid;
+    //! The internal signal handle.
+    fplInternalSignalHandle internalHandle;
+    //! Is it valid.
+    fpl_b32 isValid;
 } fplSignalHandle;
 
-//! An enumeration of signal values
+/*!
+* @enum fplSignalValue
+* @brief An enumeration of signal values.
+*/
 typedef enum fplSignalValue {
-	//! Value is unset
-	fplSignalValue_Unset = 0,
-	//! Value is set
-	fplSignalValue_Set = 1,
+    //! Value is unset.
+    fplSignalValue_Unset = 0,
+    //! Value is set.
+    fplSignalValue_Set = 1,
 } fplSignalValue;
 
-//! A union containing the internal condition variable for any platform
+/*!
+* @union fplInternalConditionVariable
+* @brief Stores the internal condition variable for any platform.
+*/
 typedef union fplInternalConditionVariable {
 #if defined(FPL_PLATFORM_WINDOWS)
-	//! Win32 condition variable
-	fpl__Win32ConditionVariable win32Condition;
+    //! Win32 condition variable.
+    fpl__Win32ConditionVariable win32Condition;
 #elif defined(FPL_SUBPLATFORM_POSIX)
-	//! POSIX condition variable
-	fpl__POSIXConditionVariable posixCondition;
+    //! POSIX condition variable.
+    fpl__POSIXConditionVariable posixCondition;
 #endif
-	//! Field for preventing union to be empty
-	int dummy;
+    //! Field for preventing union to be empty.
+    int dummy;
 } fplInternalConditionVariable;
 
-//! The condition variable structure
+/*!
+* @struct fplConditionVariable
+* @brief Stores the condition variable structure.
+*/
 typedef struct fplConditionVariable {
-	//! The internal condition handle
-	fplInternalConditionVariable internalHandle;
-	//! Is it valid
-	fpl_b32 isValid;
+    //! The internal condition handle.
+    fplInternalConditionVariable internalHandle;
+    //! Is it valid.
+    fpl_b32 isValid;
 } fplConditionVariable;
 
 /**
-* @brief Gets the current thread state for the given thread
-* @param thread The thread handle @ref fplThreadHandle
-* @return Returns the current thread state @ref fplThreadState for the given thread
+* @brief Gets the current thread state for the given thread.
+* @param[in] thread Reference to the thread handle. @ref fplThreadHandle
+* @return Returns the current thread state for the given thread. @ref fplThreadState
 * @see @ref section_category_threading_threads_states
 */
 fpl_common_api fplThreadState fplGetThreadState(fplThreadHandle *thread);
+
 /**
 * @brief Gets the thread handle for the main thread.
-* @return Returns the immutable pointer to the @ref fplThreadHandle .
+* @return Returns the immutable pointer to the thread handle. @ref fplThreadHandle
 */
 fpl_common_api const fplThreadHandle *fplGetMainThread();
+
 /**
 * @brief Gets the number of available threads.
 * @return Returns the number of available threads.
 */
 fpl_common_api size_t GetAvailableThreadCount();
+
 /**
 * @brief Gets the number of used/active threads.
-* @return Returns the number of used/acvtive threads.
+* @return Returns the number of used/active threads.
 */
 fpl_common_api size_t GetUsedThreadCount();
+
 /**
 * @brief Gets the thread id for the current thread.
 * @return Returns the thread id for the current thread.
 */
 fpl_platform_api uint32_t fplGetCurrentThreadId();
+
 /**
 * @brief Creates and starts a thread and returns the handle to it.
-* @param runFunc The pointer to the @ref fpl_run_thread_callback
-* @param data The user data pointer passed to the execution function callback
-* @return Returns a pointer to the @ref fplThreadHandle structure or @ref fpl_null when the limit of active threads has been reached.
+* @param[in] runFunc Reference to the run thread callback. @ref fpl_run_thread_callback
+* @param[in] data Reference to the user data pointer passed to the execution function callback.
+* @return Returns a pointer to the thread handle structure or null when the limit of active threads has been reached. @ref fplThreadHandle @ref fpl_null
 * @warning Do not free this thread context directly!
 * @note The resources are automatically cleaned up when the thread terminates.
 * @see @ref section_category_threading_threads_create
 */
 fpl_platform_api fplThreadHandle *fplThreadCreate(fpl_run_thread_callback *runFunc, void *data);
+
 /**
-* @brief Creates and starts a thread from the specified @ref fplThreadParameters and returns the handle to it.
-* @param parameters The pointer to the @ref fplThreadParameters
-* @return Returns a pointer to the @ref fplThreadHandle structure or @ref fpl_null when the limit of active threads has been reached.
+* @brief Creates and starts a thread from the specified parameters and returns the handle to it.
+* @param[in] parameters Reference to the thread parameters. @ref fplThreadParameters
+* @return Returns a pointer to the thread handle structure or null when the limit of active threads has been reached. @ref fplThreadHandle @ref fpl_null
 * @warning Do not free this thread context directly!
 * @note The resources are automatically cleaned up when the thread terminates.
 */
 fpl_platform_api fplThreadHandle *fplThreadCreateWithParameters(fplThreadParameters *parameters);
+
 /**
-* @brief Retrieves the current thread priority from the OS from the given @ref fplThreadHandle .
-* @param thread The pointer to the @ref fplThreadHandle structure
-* @return Returns the current @ref fplThreadPriority .
+* @brief Retrieves the current thread priority from the OS for the given thread handle.
+* @param[in] thread Reference to the thread handle structure. @ref fplThreadHandle
+* @return Returns the current thread priority. @ref fplThreadPriority
 */
 fpl_platform_api fplThreadPriority fplGetThreadPriority(fplThreadHandle *thread);
+
 /**
-* @brief Changes the thread priority to the given one, for the given @ref fplThreadHandle .
-* @param thread The pointer to the @ref fplThreadHandle structure
-* @param newPriority The new @ref fplThreadPriority for the given thread
+* @brief Changes the thread priority to the given one, for the given thread handle.
+* @param[in] thread Reference to the thread handle structure. @ref fplThreadHandle
+* @param[in] newPriority The new thread priority for the given thread. @ref fplThreadPriority
 * @return Returns true when the priority was changed, false otherwise.
 */
 fpl_platform_api bool fplSetThreadPriority(fplThreadHandle *thread, const fplThreadPriority newPriority);
+
 /**
-* @brief Let the current thread sleep for the given amount of milliseconds.
-* @param milliseconds Number of milliseconds to sleep
+* @brief Lets the current thread sleep for the given amount of milliseconds.
+* @param[in] milliseconds Number of milliseconds to sleep.
 * @note There is no guarantee that the OS sleeps for the exact amount of milliseconds! This can vary based on the OS scheduler's granularity.
 */
 fpl_platform_api void fplThreadSleep(const uint32_t milliseconds);
+
 /**
-* @brief Let the current thread yield execution to another thread that is ready to run on this core.
-* @return Returns true when the functions succeed, false otherwise.
+* @brief Lets the current thread yield execution to another thread that is ready to run on this core.
+* @return Returns true when the function succeeds, false otherwise.
 */
 fpl_platform_api bool fplThreadYield();
+
 /**
 * @brief Forces the given thread to stop and release all underlying resources.
-* @param thread The pointer to the @ref fplThreadHandle structure
-* @return True when the thread was terminated, false otherwise.
+* @param[in] thread Reference to the thread handle structure. @ref fplThreadHandle
+* @return Returns true when the thread was terminated, false otherwise.
 * @warning Do not free the given thread context manually!
 * @note This thread context may get re-used for another thread in the future.
-* @note Returns true when the threads were terminated, false otherwise.
 * @see @ref section_category_threading_threads_terminate
 */
 fpl_platform_api bool fplThreadTerminate(fplThreadHandle *thread);
+
 /**
-* @brief Wait until the given thread is done running or the given timeout has been reached.
-* @param thread The pointer to the @ref fplThreadHandle structure
-* @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitely.
+* @brief Waits until the given thread is done running or the given timeout has been reached.
+* @param[in] thread Reference to the thread handle structure. @ref fplThreadHandle
+* @param[in] timeout The number of milliseconds to wait. When this is set to infinite, it will wait indefinitely. @ref fplTimeoutValue
 * @return Returns true when the thread completes or when the timeout has been reached, false otherwise.
 * @see @ref subsection_category_threading_threads_wait_single
 */
 fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle *thread, const fplTimeoutValue timeout);
+
 /**
-* @brief Wait until all given threads are done running or the given timeout has been reached.
-* @param threads The pointer to the first @ref fplThreadHandle pointer
-* @param count The number of threads
-* @param stride The size in bytes to the next thread handle. When this is set to zero, the array default is used.
-* @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitely.
+* @brief Waits until all given threads are done running or the given timeout has been reached.
+* @param[in] threads Reference to the first thread handle pointer. @ref fplThreadHandle
+* @param[in] count The number of threads.
+* @param[in] stride The size in bytes to the next thread handle. When this is set to zero, the array default is used.
+* @param[in] timeout The number of milliseconds to wait. When this is set to infinite, it will wait indefinitely. @ref fplTimeoutValue
 * @return Returns true when all threads complete or when the timeout has been reached, false otherwise.
 * @see @ref subsection_category_threading_threads_wait_all
 */
 fpl_platform_api bool fplThreadWaitForAll(fplThreadHandle **threads, const size_t count, const size_t stride, const fplTimeoutValue timeout);
+
 /**
-* @brief Wait until one of the given threads is done running or the given timeout has been reached.
-* @param threads The pointer to the first @ref fplThreadHandle pointer
-* @param count The number of threads
-* @param stride The size in bytes to the next thread handle. When this is set to zero, the array default is used.
-* @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitely.
+* @brief Waits until one of the given threads is done running or the given timeout has been reached.
+* @param[in] threads Reference to the first thread handle pointer. @ref fplThreadHandle
+* @param[in] count The number of threads.
+* @param[in] stride The size in bytes to the next thread handle. When this is set to zero, the array default is used.
+* @param[in] timeout The number of milliseconds to wait. When this is set to infinite, it will wait indefinitely. @ref fplTimeoutValue
 * @return Returns true when one thread completes or when the timeout has been reached, false otherwise.
 * @see @ref subsection_category_threading_threads_wait_any
 */
 fpl_platform_api bool fplThreadWaitForAny(fplThreadHandle **threads, const size_t count, const size_t stride, const fplTimeoutValue timeout);
-
 /**
-* @brief Initializes the given mutex
-* @param mutex The pointer to the @ref fplMutexHandle structure
+* @brief Initializes the given mutex.
+* @param[in, out] mutex Reference to the mutex handle structure. @ref fplMutexHandle
 * @return Returns true when the mutex was initialized, false otherwise.
 * @note Use @ref fplMutexDestroy() when you are done with this mutex.
 * @see @ref section_category_threading_mutexes_init
 */
 fpl_platform_api bool fplMutexInit(fplMutexHandle *mutex);
+
 /**
 * @brief Releases the given mutex and clears the structure to zero.
-* @param mutex The pointer to the @ref fplMutexHandle structure
+* @param[in, out] mutex Reference to the mutex handle structure. @ref fplMutexHandle
 * @see @ref section_category_threading_mutexes_init
 */
 fpl_platform_api void fplMutexDestroy(fplMutexHandle *mutex);
+
 /**
 * @brief Locks the given mutex and blocks any other threads.
-* @param mutex The pointer to the @ref fplMutexHandle structure
+* @param[in, out] mutex Reference to the mutex handle structure. @ref fplMutexHandle
 * @return Returns true when the mutex was locked, false otherwise.
 * @see @ref subsection_category_threading_mutexes_locking_lock
 */
 fpl_platform_api bool fplMutexLock(fplMutexHandle *mutex);
+
 /**
 * @brief Tries to lock the given mutex without blocking other threads.
-* @param mutex The pointer to the @ref fplMutexHandle structure
+* @param[in, out] mutex Reference to the mutex handle structure. @ref fplMutexHandle
 * @return Returns true when the mutex was locked, false otherwise.
 * @see @ref subsection_category_threading_mutexes_locking_probe
 */
 fpl_platform_api bool fplMutexTryLock(fplMutexHandle *mutex);
+
 /**
- * @brief Unlocks the given mutex
- * @param mutex The pointer to the @ref fplMutexHandle structure
- * @return Returns true when the mutex was unlocked, false otherwise.
- * @see @ref subsection_category_threading_mutexes_locking_unlock
- */
+* @brief Unlocks the given mutex.
+* @param[in, out] mutex Reference to the mutex handle structure. @ref fplMutexHandle
+* @return Returns true when the mutex was unlocked, false otherwise.
+* @see @ref subsection_category_threading_mutexes_locking_unlock
+*/
 fpl_platform_api bool fplMutexUnlock(fplMutexHandle *mutex);
 
 /**
-* @brief Initializes the given signal
-* @param signal The pointer to the @ref fplSignalHandle structure
-* @param initialValue The initial value the signal is set to
+* @brief Initializes the given signal.
+* @param[in, out] signal Reference to the signal handle structure. @ref fplSignalHandle
+* @param[in] initialValue The initial value the signal is set to. @ref fplSignalValue
 * @return Returns true when initialization was successful, false otherwise.
 * @note Use @ref fplSignalDestroy() when you are done with this Signal to release it.
 * @see @ref section_category_threading_signals_init
 */
 fpl_platform_api bool fplSignalInit(fplSignalHandle *signal, const fplSignalValue initialValue);
+
 /**
 * @brief Releases the given signal and clears the structure to zero.
-* @param signal The pointer to the @ref fplSignalHandle structure
+* @param[in, out] signal Reference to the signal handle structure. @ref fplSignalHandle
 * @see @ref section_category_threading_signals_init
 */
 fpl_platform_api void fplSignalDestroy(fplSignalHandle *signal);
+
 /**
-* @brief Waits until the given signal is waked up.
-* @param signal The pointer to the @ref fplSignalHandle structure
-* @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitely.
+* @brief Waits until the given signal is woken up.
+* @param[in, out] signal Reference to the signal handle structure. @ref fplSignalHandle
+* @param[in] timeout The number of milliseconds to wait. When this is set to infinite, it will wait indefinitely. @ref fplTimeoutValue
 * @return Returns true when the signal woke up or the timeout has been reached, false otherwise.
 * @see @ref subsection_category_threading_signals_wait_single
 */
 fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const fplTimeoutValue timeout);
+
 /**
-* @brief Waits until all the given signals are waked up.
-* @param signals The pointer to the first @ref fplSignalHandle pointer
-* @param count The number of signals
-* @param stride The size in bytes to the next signal handle. When this is set to zero, the array default is used.
-* @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitely.
+* @brief Waits until all the given signals are woken up.
+* @param[in, out] signals Reference to the first signal handle reference. @ref fplSignalHandle
+* @param[in] count The number of signals. @ref size_t
+* @param[in] stride The size in bytes to the next signal handle. When this is set to zero, the array default is used. @ref size_t
+* @param[in] timeout The number of milliseconds to wait. When this is set to infinite, it will wait indefinitely. @ref fplTimeoutValue
 * @return Returns true when all signals woke up or the timeout has been reached, false otherwise.
 * @see @ref subsection_category_threading_signals_wait_all
 */
 fpl_platform_api bool fplSignalWaitForAll(fplSignalHandle **signals, const size_t count, const size_t stride, const fplTimeoutValue timeout);
+
 /**
 * @brief Waits until any of the given signals wakes up or the timeout has been reached.
-* @param signals The pointer to the first @ref fplSignalHandle pointer
-* @param count The number of signals
-* @param stride The size in bytes to the next signal handle. When this is set to zero, the array default is used.
-* @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitely.
+* @param[in, out] signals Reference to the first signal handle reference. @ref fplSignalHandle
+* @param[in] count The number of signals. @ref size_t
+* @param[in] stride The size in bytes to the next signal handle. When this is set to zero, the array default is used. @ref size_t
+* @param[in] timeout The number of milliseconds to wait. When this is set to infinite, it will wait indefinitely. @ref fplTimeoutValue
 * @return Returns true when any of the signals woke up or the timeout has been reached, false otherwise.
 * @see @ref subsection_category_threading_signals_wait_any
 */
 fpl_platform_api bool fplSignalWaitForAny(fplSignalHandle **signals, const size_t count, const size_t stride, const fplTimeoutValue timeout);
+
 /**
 * @brief Sets the signal and wakes up the given signal.
-* @param signal The pointer to the @ref fplSignalHandle structure
-* @return Returns true when the signal was set and broadcasted or false otherwise.
+* @param[in, out] signal Reference to the signal handle structure. @ref fplSignalHandle
+* @return Returns true when the signal was set and broadcasted, false otherwise.
 * @see @ref section_category_threading_signals_set
 */
 fpl_platform_api bool fplSignalSet(fplSignalHandle *signal);
+
 /**
 * @brief Resets the signal.
-* @param signal The pointer to the @ref fplSignalHandle structure
+* @param[in, out] signal Reference to the signal handle structure. @ref fplSignalHandle
 * @return Returns true when the signal was reset, false otherwise.
 * @see @ref section_category_threading_signals_reset
 */
 fpl_platform_api bool fplSignalReset(fplSignalHandle *signal);
 
 /**
-* @brief Initialize
-  s the given condition
-* @param condition The pointer to the @ref fplConditionVariable structure
+* @brief Initializes the given condition.
+* @param[in, out] condition Reference to the condition variable structure. @ref fplConditionVariable
 * @return Returns true when initialization was successful, false otherwise.
 * @note Use @ref fplSignalDestroy() when you are done with this Condition Variable to release its resources.
 * @see @ref category_threading_conditions_init
 */
 fpl_platform_api bool fplConditionInit(fplConditionVariable *condition);
+
 /**
 * @brief Releases the given condition and clears the structure to zero.
-* @param condition The pointer to the @ref fplConditionVariable structure
+* @param[in, out] condition Reference to the condition variable structure. @ref fplConditionVariable
 * @see @ref category_threading_conditions_init
 */
 fpl_platform_api void fplConditionDestroy(fplConditionVariable *condition);
+
 /**
 * @brief Sleeps on the given condition and releases the mutex when done.
-* @param condition The pointer to the @ref fplConditionVariable structure
-* @param mutex The pointer to the mutex handle @ref fplMutexHandle structure
-* @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitely.
+* @param[in, out] condition Reference to the condition variable structure. @ref fplConditionVariable
+* @param[in, out] mutex Reference to the mutex handle structure. @ref fplMutexHandle
+* @param[in] timeout The number of milliseconds to wait. When this is set to infinite, it will wait indefinitely. @ref fplTimeoutValue
 * @return Returns true when the function succeeds, false otherwise.
 * @see @ref category_threading_conditions_wait_single
 */
 fpl_platform_api bool fplConditionWait(fplConditionVariable *condition, fplMutexHandle *mutex, const fplTimeoutValue timeout);
+
 /**
 * @brief Wakes up one thread that waits on the given condition.
-* @param condition The pointer to the @ref fplConditionVariable structure
+* @param[in, out] condition Reference to the condition variable structure. @ref fplConditionVariable
 * @return Returns true when the function succeeds, false otherwise.
 * @see @ref category_threading_conditions_signal
 */
 fpl_platform_api bool fplConditionSignal(fplConditionVariable *condition);
+
 /**
 * @brief Wakes up all threads that wait on the given condition.
-* @param condition The pointer to the @ref fplConditionVariable structure
+* @param[in, out] condition Reference to the condition variable structure. @ref fplConditionVariable
 * @return Returns true when the function succeeds, false otherwise.
 * @see @ref category_threading_conditions_broadcast
 */
 fpl_platform_api bool fplConditionBroadcast(fplConditionVariable *condition);
 
 /**
-* @brief Initializes the semaphore with the given initial value
-* @param semaphore The pointer to the @ref fplSemaphoreHandle structure
-* @param initialValue The initial value
-* @return Returns true when the semaphores got initialized, false otherwise.
+* @brief Initializes the semaphore with the given initial value.
+* @param[in, out] semaphore Reference to the semaphore handle structure. @ref fplSemaphoreHandle
+* @param[in] initialValue The initial value. @ref uint32_t
+* @return Returns true when the semaphore was initialized, false otherwise.
 * @see @ref category_threading_semaphores_init
 */
 fpl_platform_api bool fplSemaphoreInit(fplSemaphoreHandle *semaphore, const uint32_t initialValue);
+
 /**
-* @brief Releases the internal semaphore resources
-* @param semaphore The pointer to the @ref fplSemaphoreHandle structure
-* @warning Do not call this when a thread is still waiting on this semaphore
+* @brief Releases the internal semaphore resources.
+* @param[in, out] semaphore Reference to the semaphore handle structure. @ref fplSemaphoreHandle
+* @warning Do not call this when a thread is still waiting on this semaphore.
 * @see @ref category_threading_semaphores_init
 */
 fpl_platform_api void fplSemaphoreDestroy(fplSemaphoreHandle *semaphore);
+
 /**
 * @brief Waits for the semaphore until it gets signaled or the timeout has been reached.
-* @param semaphore The pointer to the @ref fplSemaphoreHandle structure
-* @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitely.
+* @param[in, out] semaphore Reference to the semaphore handle structure. @ref fplSemaphoreHandle
+* @param[in] timeout The number of milliseconds to wait. When this is set to infinite, it will wait indefinitely. @ref fplTimeoutValue
 * @return Returns true when the semaphore got signaled, false otherwise.
-* @note When a semaphore got signaled, the semaphore value is decreased by one.
+* @note When a semaphore gets signaled, the semaphore value is decreased by one.
 * @see @ref category_threading_semaphores_wait
 */
 fpl_platform_api bool fplSemaphoreWait(fplSemaphoreHandle *semaphore, const fplTimeoutValue timeout);
+
 /**
-* @brief Tries to wait for the semaphore until it gets signaled or return immediately.
-* @param semaphore The pointer to the @ref fplSemaphoreHandle structure
+* @brief Tries to wait for the semaphore until it gets signaled or returns immediately.
+* @param[in, out] semaphore Reference to the semaphore handle structure. @ref fplSemaphoreHandle
 * @return Returns true when the semaphore got signaled, false otherwise.
-* @note When a semaphore got signaled, the semaphore value is decreased by one.
+* @note When a semaphore gets signaled, the semaphore value is decreased by one.
 * @see @ref subsection_category_threading_semaphores_trywait
 */
 fpl_platform_api bool fplSemaphoreTryWait(fplSemaphoreHandle *semaphore);
+
 /**
-* @brief Gets the current semaphore value
-* @param semaphore The pointer to the @ref fplSemaphoreHandle structure
-* @return Returns the current semaphore value
+* @brief Gets the current semaphore value.
+* @param[in, out] semaphore Reference to the semaphore handle structure. @ref fplSemaphoreHandle
+* @return Returns the current semaphore value.
 * @see @ref category_threading_semaphores_getvalue
 */
 fpl_platform_api int32_t fplSemaphoreValue(fplSemaphoreHandle *semaphore);
+
 /**
-* @brief Increments the semaphore value by one
-* @param semaphore The pointer to the @ref fplSemaphoreHandle structure
-* @return Returns true when semaphore was incremented, false otherwise.
+* @brief Increments the semaphore value by one.
+* @param[in, out] semaphore Reference to the semaphore handle structure. @ref fplSemaphoreHandle
+* @return Returns true when the semaphore was incremented, false otherwise.
 * @see @ref category_threading_semaphores_post
 */
 fpl_platform_api bool fplSemaphoreRelease(fplSemaphoreHandle *semaphore);
