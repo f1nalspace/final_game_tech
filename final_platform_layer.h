@@ -1597,14 +1597,14 @@ SOFTWARE.
 //
 #if defined(__cplusplus)
 	/*!
-	* @define FPL_IS_CPP
+	* @def FPL_IS_CPP
 	* @brief C++ compiler detected.
 	*/
 #	define FPL_IS_CPP
 
 #	if (__cplusplus >= 201103L)
 		/*!
-		* @define FPL_IS_CPP11
+		* @def FPL_IS_CPP11
 		* @brief C++/11 compiler detected.
 		*/
 #		define FPL_IS_CPP11
@@ -1612,7 +1612,7 @@ SOFTWARE.
 
 #	if (__cplusplus >= 201402L)
 		/*!
-		* @define FPL_IS_CPP14
+		* @def FPL_IS_CPP14
 		* @brief C++/14 compiler detected.
 		*/
 #		define FPL_IS_CPP14
@@ -1620,7 +1620,7 @@ SOFTWARE.
 
 #	if (__cplusplus >= 201703L)
 		/*!
-		* @define FPL_IS_CPP17
+		* @def FPL_IS_CPP17
 		* @brief C++/17 compiler detected.
 		*/
 #		define FPL_IS_CPP17
@@ -1628,7 +1628,7 @@ SOFTWARE.
 
 #	if (__cplusplus >= 202004L)
 		/*!
-		* @define FPL_IS_CPP20
+		* @def FPL_IS_CPP20
 		* @brief C++/20 compiler detected.
 		*/
 #		define FPL_IS_CPP20
@@ -1636,14 +1636,14 @@ SOFTWARE.
 #elif defined(_MSC_VER)
 #	if (_MSC_VER >= 1900)
 		/*!
-		* @define FPL_IS_C99
+		* @def FPL_IS_C99
 		* @brief C99 compiler detected (MSVC).
 		*/
 #		define FPL_IS_C99
 
 #		if (_MSC_VER >= 1920)
 			/*!
-			* @define FPL_IS_C11
+			* @def FPL_IS_C11
 			* @brief C11 compiler detected (MSVC).
 			*/
 #			define FPL_IS_C11
@@ -1654,14 +1654,14 @@ SOFTWARE.
 #	endif
 #elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
 	/*!
-	* @define FPL_IS_C99
+	* @def FPL_IS_C99
 	* @brief C99 compiler detected.
 	*/
 #	define FPL_IS_C99
 
 #	if __STDC_VERSION__ >= 201112L
 		/*!
-		* @define FPL_IS_C11
+		* @def FPL_IS_C11
 		* @brief C11 compiler detected.
 		*/
 #		define FPL_IS_C11
@@ -1677,63 +1677,63 @@ SOFTWARE.
 //
 #if defined(__x86_64__) || defined(_M_X64) || defined(__amd64__)
 	/*!
-	* @define FPL_ARCH_X64
+	* @def FPL_ARCH_X64
 	* @brief x64 architecture detected.
 	*/
 #	define FPL_ARCH_X64
 #elif defined(__i386__) || defined(_M_IX86) || defined(__X86__) || defined(_X86_)
 	/*!
-	* @define FPL_ARCH_X86
+	* @def FPL_ARCH_X86
 	* @brief x86 architecture detected.
 	*/
 #	define FPL_ARCH_X86
 #elif defined(__aarch64__) || defined(_M_ARM64)
 #	if defined(__APPLE__)
 		/*!
-		* @define FPL_ARCH_APPLE_ARM64
+		* @def FPL_ARCH_APPLE_ARM64
 		* @brief Apple ARM64 architecture detected.
 		*/
 #		define FPL_ARCH_APPLE_ARM64
 #	else
 		/*!
-		* @define FPL_ARCH_ARM64
+		* @def FPL_ARCH_ARM64
 		* @brief ARM64 architecture detected.
 		*/
 #		define FPL_ARCH_ARM64
 #	endif
 #elif defined(__arm__) || defined(_M_ARM) || defined(__ARM_ARCH_6__) || defined(__ARM_ARCH_7__) || defined(__armv7__)
 	/*!
-	* @define FPL_ARCH_ARM32
+	* @def FPL_ARCH_ARM32
 	* @brief ARM32 architecture detected.
 	*/
 #	define FPL_ARCH_ARM32
 #elif defined(__riscv) || defined(__riscv_xlen)
 	/*!
-	* @define FPL_ARCH_RISCV
+	* @def FPL_ARCH_RISCV
 	* @brief RISC-V architecture detected.
 	*/
 #	define FPL_ARCH_RISCV
 #elif defined(__powerpc64__) || defined(__ppc64__) || defined(__PPC64__) || defined(_ARCH_PPC64)
 	/*!
-	* @define FPL_ARCH_POWERPC64
+	* @def FPL_ARCH_POWERPC64
 	* @brief PowerPC64 architecture detected.
 	*/
 #	define FPL_ARCH_POWERPC64
 #elif defined(__powerpc__) || defined(__POWERPC__) || defined(__ppc__) || defined(__PPC__) || defined(_ARCH_PPC)
 	/*!
-	* @define FPL_ARCH_POWERPC32
+	* @def FPL_ARCH_POWERPC32
 	* @brief PowerPC32 architecture detected.
 	*/
 #	define FPL_ARCH_POWERPC32
 #elif defined(__mips__) || defined(__mips64) || defined(_MIPS_ARCH)
 	/*!
-	* @define FPL_ARCH_MIPS
+	* @def FPL_ARCH_MIPS
 	* @brief MIPS architecture detected.
 	*/
 #	define FPL_ARCH_MIPS
 #elif defined(__sparc__) || defined(__sparcv9)
 	/*!
-	* @define FPL_ARCH_SPARC
+	* @def FPL_ARCH_SPARC
 	* @brief SPARC architecture detected.
 	*/
 #	define FPL_ARCH_SPARC
@@ -1778,13 +1778,13 @@ SOFTWARE.
 
 #if defined(FPL__M_CPU_64BIT)
 	/*!
-	* @define FPL_CPU_64BIT
+	* @def FPL_CPU_64BIT
 	* @brief 64-bit CPU detected.
 	*/
 #	define FPL_CPU_64BIT
 #elif defined(FPL__M_CPU_32BIT)
 	/*!
-	* @define FPL_CPU_32BIT
+	* @def FPL_CPU_32BIT
 	* @brief 32-bit CPU detected.
 	*/
 #	define FPL_CPU_32BIT
@@ -1798,73 +1798,73 @@ SOFTWARE.
 //
 #if defined(__clang__)
 	/*!
-	* @define FPL_COMPILER_CLANG
+	* @def FPL_COMPILER_CLANG
 	* @brief CLANG compiler detected.
 	*/
 #	define FPL_COMPILER_CLANG
 #elif defined(__INTEL_COMPILER)
 	/*!
-	* @define FPL_COMPILER_INTEL
+	* @def FPL_COMPILER_INTEL
 	* @brief Intel compiler detected.
 	*/
 #	define FPL_COMPILER_INTEL
 #elif defined(__MINGW32__) || defined(__MINGW64__)
 	/*!
-	* @define FPL_COMPILER_MINGW
+	* @def FPL_COMPILER_MINGW
 	* @brief MingW compiler detected.
 	*/
 #	define FPL_COMPILER_MINGW
 #elif defined(__CC_ARM)
 	/*!
-	* @define FPL_COMPILER_ARM
+	* @def FPL_COMPILER_ARM
 	* @brief ARM compiler detected.
 	*/
 #	define FPL_COMPILER_ARM
 #elif defined(__GNUC__)
 	/*!
-	* @define FPL_COMPILER_GCC
+	* @def FPL_COMPILER_GCC
 	* @brief GCC compiler detected.
 	*/
 #	define FPL_COMPILER_GCC
 #elif defined(_MSC_VER)
 	/*!
-	* @define FPL_COMPILER_MSVC
+	* @def FPL_COMPILER_MSVC
 	* @brief Visual studio compiler detected.
 	*/
 #	define FPL_COMPILER_MSVC
 #elif defined(__APPLE__)
 	/*!
-	* @define FPL_COMPILER_APPLE_CLANG
+	* @def FPL_COMPILER_APPLE_CLANG
 	* @brief Apple Clang compiler detected (Xcode).
 	*/
 #	define FPL_COMPILER_APPLE_CLANG
 #elif defined(__BORLANDC__)
 	/*!
-	* @define FPL_COMPILER_BORLAND
+	* @def FPL_COMPILER_BORLAND
 	* @brief Borland C++ compiler detected.
 	*/
 #	define FPL_COMPILER_BORLAND
 #elif defined(__TCC__)
 	/*!
-	* @define FPL_COMPILER_TCC
+	* @def FPL_COMPILER_TCC
 	* @brief Tiny C Compiler detected.
 	*/
 #	define FPL_COMPILER_TCC
 #elif defined(__DMC__)
 	/*!
-	* @define FPL_COMPILER_DMC
+	* @def FPL_COMPILER_DMC
 	* @brief Digital Mars C++ compiler detected.
 	*/
 #	define FPL_COMPILER_DMC
 #elif defined(__CSMC__)
 	/*!
-	* @define FPL_COMPILER_CSMC
+	* @def FPL_COMPILER_CSMC
 	* @brief COSMIC C Compiler detected.
 	*/
 #	define FPL_COMPILER_CSMC
 #elif defined(__LINARO__)
 	/*!
-	* @define FPL_COMPILER_LINARO
+	* @def FPL_COMPILER_LINARO
 	* @brief Huawei Linaro compiler detected.
 	*/
 #	define FPL_COMPILER_LINARO
@@ -1927,7 +1927,7 @@ SOFTWARE.
 #endif
 
 /*!
-* @define fplAsm
+* @def fplAsm
 * @brief A assembler compiler instruction (asm).
 */
 #define fplAsm fpl__m_Asm
@@ -1948,7 +1948,7 @@ SOFTWARE.
 #endif
 
 /*!
-* @define fplMinAlignment
+* @def fplMinAlignment
 * @brief Minimum structure alignment in bytes.
 * @return The minimum alignment in bytes
 */
@@ -1968,7 +1968,7 @@ SOFTWARE.
 #endif
 
 /*!
-* @define fplAlignAs
+* @def fplAlignAs
 * @brief Structure alignment in bytes.
 * @param [in] N Alignment size.
 * @return The resulting aligned value in bytes.
@@ -2066,17 +2066,17 @@ SOFTWARE.
 #endif
 
 /*!
-* @define fpl_dllimport
+* @def fpl_dllimport
 * @brief Link-library Import.
 */
 #define fpl_dllimport fpl__m_dllimport
 /*!
-* @define fpl_dllexport
+* @def fpl_dllexport
 * @brief Link-library Export.
 */
 #define fpl_dllexport fpl__m_dllexport
 /*!
-* @define fpl_dlllocal
+* @def fpl_dlllocal
 * @brief Link-library Local.
 */
 #define fpl_dlllocal fpl__m_dlllocal
@@ -2095,13 +2095,13 @@ SOFTWARE.
 #endif // FPL_API_AS_PRIVATE
 
 /*!
-* @define fpl_api
+* @def fpl_api
 * @brief API call.
 */
 #define fpl_api fpl__m_api
 
 /*!
-* @define fpl_main
+* @def fpl_main
 * @brief Main entry point API definition.
 */
 #define fpl_main
@@ -2115,12 +2115,12 @@ SOFTWARE.
 #endif
 
 /*!
-* @define fpl_platform_api
+* @def fpl_platform_api
 * @brief Platform API.
 */
 #define fpl_platform_api fpl__m_platform_api
 /*!
-* @define fpl_common_api
+* @def fpl_common_api
 * @brief Common API.
 */
 #define fpl_common_api fpl__m_common_api
@@ -2140,12 +2140,12 @@ SOFTWARE.
 #endif
 
 /*!
-* @define fpl_force_inline
+* @def fpl_force_inline
 * @brief Always inlines this function.
 */
 #define fpl_force_inline fpl__m_force_inline
 /*!
-* @define fpl_no_inline
+* @def fpl_no_inline
 * @brief Prevents inlining of this function.
 */
 #define fpl_no_inline fpl__m_no_inline
@@ -2248,14 +2248,14 @@ SOFTWARE.
 #endif
 
 /*!
-* @define FPL_IS_IDE
+* @def FPL_IS_IDE
 * @brief Is set when a IDE is active, like Intellisense or jetbrains.
 * @return A boolean indicating whether a IDE is active or not.
 */
 #define FPL_IS_IDE FPL__M_IS_IDE
 
 /*!
-* @define FPL_FUNCTION_NAME
+* @def FPL_FUNCTION_NAME
 * @brief Function name macro.
 */
 #define FPL_FUNCTION_NAME FPL__M_FUNCTION_NAME
@@ -2319,7 +2319,7 @@ SOFTWARE.
 #endif
 
 /*!
-* @define fplHasInclude
+* @def fplHasInclude
 * @brief Test for include existence.
 * @param inc Path to the include file.
 * @return A boolean indicating whether the specified include has been found or not.
@@ -2462,28 +2462,28 @@ SOFTWARE.
 #endif // FPL__ENABLE_ASSERTIONS
 
 /*!
-* @define fplAssert
+* @def fplAssert
 * @brief Breaks with a runtime assertion when the specified expression evaluates to @c false.
 * @param [in] exp Expression to evaluate.
 */
 #define fplAssert(exp) fpl__m_Assert(exp)
 
 /*!
-* @define fplStaticAssert
+* @def fplStaticAssert
 * @brief Breaks the compilation when the specified expression evaluates to @c false.
 * @param [in] exp Expression to evaluate.
 */
 #define fplStaticAssert(exp) fpl__m_StaticAssert(exp)
 
 /*!
-* @define fplAlwaysAssert
+* @def fplAlwaysAssert
 * @brief Always crashes the application with a null-pointer assignment when the specified expression evaluates to @c false.
 * @param [in] exp Expression to evaluate.
 */
 #define fplAlwaysAssert(exp) if(!(exp)) {*(int *)0 = 0;}
 
 /*!
-* @define fplAssertPtr
+* @def fplAssertPtr
 * @brief Breaks when the specified pointer is @ref fpl_null.
 * @param [in] ptr Pointer to evaluate.
 */
@@ -2526,7 +2526,7 @@ fpl_internal fpl_force_inline void fpl__m_DebugBreak() { __asm__ __volatile__(".
 #endif
 
 /*!
-* @define fplDebugBreak
+* @def fplDebugBreak
 * @brief Stops the debugger on this line always.
 */
 #define fplDebugBreak() fpl__m_DebugBreak()
@@ -2648,7 +2648,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 #define fplStructField fpl__m_StructField
 
 /*!
-* @define fplGetAlignmentOffset
+* @def fplGetAlignmentOffset
 * @brief Returns the offset for the value to satisfy the given alignment boundary.
 * @param [in] value Value to align.
 * @param [in] alignment Alignment boundary.
@@ -2657,7 +2657,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 #define fplGetAlignmentOffset(value, alignment) ( (((alignment) > 1) && (((value) & ((alignment) - 1)) != 0)) ? ((alignment) - ((value) & (alignment - 1))) : 0)			
 
 /*!
-* @define fplGetAlignedSize
+* @def fplGetAlignedSize
 * @brief Returns the given size, extended to satisfy the given alignment boundary.
 * @param [in] size Size to align.
 * @param [in] alignment Alignment boundary.
@@ -2666,7 +2666,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 #define fplGetAlignedSize(size, alignment) (((size) > 0 && (alignment) > 0) ? ((size) + fplGetAlignmentOffset(size, alignment)) : (size))
 
 /*!
-* @define fplIsAligned
+* @def fplIsAligned
 * @brief Returns true when the given pointer address is aligned to the given alignment.
 * @param [in] ptr Pointer to check.
 * @param [in] alignment Alignment boundary.
@@ -2675,7 +2675,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 #define fplIsAligned(ptr, alignment) (((uintptr_t)(const void *)(ptr)) % (alignment) == 0)
 
 /*!
-* @define fplIsPowerOfTwo
+* @def fplIsPowerOfTwo
 * @brief Returns true when the given value is a power of two.
 * @param [in] value Value to check.
 * @result True if the value is a power of two, false otherwise.
@@ -2683,7 +2683,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 #define fplIsPowerOfTwo(value) (((value) != 0) && (((value) & (~(value) + 1)) == (value)))
 
 /*!
-* @define fplIsBitSet
+* @def fplIsBitSet
 * @brief Returns true when the given value has the given bit set.
 * @param [in] value Value to check.
 * @param [in] bit Bit position to check.
@@ -2692,7 +2692,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 #define fplIsBitSet(value, bit) (((value) >> (bit)) & 0x1)
 
 /*!
-* @define fplKiloBytes
+* @def fplKiloBytes
 * @brief Returns the number of bytes for the given kilobytes.
 * @param [in] value Value in kilobytes.
 * @result Number of bytes.
@@ -2700,7 +2700,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 #define fplKiloBytes(value) (((value) * 1024ull))
 
 /*!
-* @define fplMegaBytes
+* @def fplMegaBytes
 * @brief Returns the number of bytes for the given megabytes.
 * @param [in] value Value in megabytes.
 * @result Number of bytes.
@@ -2708,7 +2708,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 #define fplMegaBytes(value) ((fplKiloBytes(value) * 1024ull))
 
 /*!
-* @define fplGigaBytes
+* @def fplGigaBytes
 * @brief Returns the number of bytes for the given gigabytes.
 * @param [in] value Value in gigabytes.
 * @result Number of bytes.
@@ -2716,7 +2716,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 #define fplGigaBytes(value) ((fplMegaBytes(value) * 1024ull))
 
 /*!
-* @define fplTeraBytes
+* @def fplTeraBytes
 * @brief Returns the number of bytes for the given terabytes.
 * @param [in] value Value in terabytes.
 * @result Number of bytes.
@@ -2751,35 +2751,35 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 //! @endcond
  
 /*!
-* @define fplIsBigEndian
+* @def fplIsBigEndian
 * @brief Returns true when the given platform is big-endian.
 * @result True if the platform is big-endian, false otherwise.
 */
 #define fplIsBigEndian() (fpl__global_endianessOrder.value == fplEndianessType_Big)
 
 /*!
-* @define fplIsLittleEndian
+* @def fplIsLittleEndian
 * @brief Returns true when the given platform is little-endian.
 * @result True if the platform is little-endian, false otherwise.
 */
 #define fplIsLittleEndian() (fpl__global_endianessOrder.value == fplEndianessType_Little)
 
 /*!
-* @define fplGetEndianess32
+* @def fplGetEndianess32
 * @brief Returns the unsigned 32-bit endianess that is built from (0, 1, 2, 3).
 * @result Unsigned 32-bit endianess.
 */
 #define fplGetEndianess32() (fpl__global_endianessOrder.value)
 
 /*!
-* @define fplClearStruct
+* @def fplClearStruct
 * @brief Clears the given struct pointer to zero.
 * @param [in] ptr Pointer to the struct.
 */
 #define fplClearStruct(ptr) fplMemoryClear((void *)(ptr), sizeof(*(ptr)))
 
 /*!
-* @define fplCopyStruct
+* @def fplCopyStruct
 * @brief Copies the given source struct into the destination struct.
 * @param [in] src Source struct pointer.
 * @param [out] dst Destination struct pointer.
@@ -2800,7 +2800,7 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 #endif
 
 /*!
-* @define fplArrayCount
+* @def fplArrayCount
 * @brief Returns the element count from a static array. This should ideally produce a compile error when passing a pointer to it.
 * @param [in] arr Array to count elements.
 * @result Element count.
@@ -2808,7 +2808,7 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 #define fplArrayCount(arr) fpl__m_ArrayCount(arr)
 
 /*!
-* @define fplOffsetOf
+* @def fplOffsetOf
 * @brief Returns the offset in bytes for the specified structure type and field name.
 * @param [in] type Structure type.
 * @param [in] field Field name.
@@ -2817,7 +2817,7 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 #define fplOffsetOf(type, field) ((size_t)(&(((type*)(0))->field)))
 
 /*!
-* @define fplMin
+* @def fplMin
 * @brief Returns the smallest value of A and B.
 * @param [in] a First value.
 * @param [in] b Second value.
@@ -2826,7 +2826,7 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 #define fplMin(a, b) ((a) < (b) ? (a) : (b))
 
 /*!
-* @define fplMax
+* @def fplMax
 * @brief Returns the biggest value of A and B.
 * @param [in] a First value.
 * @param [in] b Second value.
@@ -2841,7 +2841,7 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 #endif
 
 /*!
-* @define fplStackAllocate
+* @def fplStackAllocate
 * @brief Manually allocate the number of specified bytes of memory on the stack.
 * @param [in] size Number of bytes to allocate.
 * @return A pointer to the start of the stack memory.
@@ -3125,37 +3125,37 @@ typedef int fpl__LinuxSignalHandle;
 #endif
 
 /*!
-* @define FPL_MAX_FILENAME_LENGTH
+* @def FPL_MAX_FILENAME_LENGTH
 * @brief Maximum length of a filename.
 */
 #define FPL_MAX_FILENAME_LENGTH FPL__M_MAX_FILENAME_LENGTH
 
 /*!
-* @define FPL_MAX_PATH_LENGTH
+* @def FPL_MAX_PATH_LENGTH
 * @brief Maximum length of a path.
 */
 #define FPL_MAX_PATH_LENGTH FPL__M_MAX_PATH_LENGTH
 
 /*!
-* @define FPL_PATH_SEPARATOR
+* @def FPL_PATH_SEPARATOR
 * @brief Path separator character.
 */
 #define FPL_PATH_SEPARATOR FPL__M_PATH_SEPARATOR
 
 /*!
-* @define FPL_FILE_EXT_SEPARATOR
+* @def FPL_FILE_EXT_SEPARATOR
 * @brief File extension character.
 */
 #define FPL_FILE_EXT_SEPARATOR FPL__M_FILE_EXT_SEPARATOR
 
 /*!
-* @define FPL_MAX_NAME_LENGTH
+* @def FPL_MAX_NAME_LENGTH
 * @brief Maximum length of a name (in characters).
 */
 #define FPL_MAX_NAME_LENGTH (256)
 
 /*!
-* @define FPL_MAX_BUFFER_LENGTH
+* @def FPL_MAX_BUFFER_LENGTH
 * @brief Maximum length of an internal buffer (in bytes).
 */
 #define FPL_MAX_BUFFER_LENGTH (2048)
@@ -4576,7 +4576,7 @@ typedef enum fplAudioChannelType {
 FPL_ENUM_AS_FLAGS_OPERATORS(fplAudioChannelType);
 
 /*!
-* @define FPL_MAX_AUDIO_CHANNEL_COUNT
+* @def FPL_MAX_AUDIO_CHANNEL_COUNT
 * @brief Maximum number of audio channels.
 */
 #define FPL_MAX_AUDIO_CHANNEL_COUNT 32
@@ -5457,7 +5457,7 @@ typedef union fplTimestamp {
 typedef uint32_t fplTimeoutValue;
 
 /*!
-* @define FPL_TIMEOUT_INFINITE
+* @def FPL_TIMEOUT_INFINITE
 * @brief Infinite timeout constant.
 */
 #define FPL_TIMEOUT_INFINITE UINT32_MAX
@@ -7533,7 +7533,7 @@ fpl_platform_api void fplPollEvents();
 // ----------------------------------------------------------------------------
 
 /*!
-* @define FPL_MAX_KEYBOARD_STATE_COUNT
+* @def FPL_MAX_KEYBOARD_STATE_COUNT
 * @brief Max number of keyboard states.
 */
 #define FPL_MAX_KEYBOARD_STATE_COUNT 256
@@ -7552,7 +7552,7 @@ typedef struct fplKeyboardState {
 } fplKeyboardState;
 
 /*!
-* @define FPL_MAX_GAMEPAD_STATE_COUNT
+* @def FPL_MAX_GAMEPAD_STATE_COUNT
 * @brief Max number of gamepad states.
 */
 #define FPL_MAX_GAMEPAD_STATE_COUNT 4
