@@ -3358,97 +3358,110 @@ fpl_common_api void fplAtomicStorePtr(volatile void **dest, const void *value);
 */
 // ----------------------------------------------------------------------------
 
-//! Defines a memory block
+/*!
+* @struct fplMemoryBlock
+* @brief Stores a memory block.
+*/
 typedef struct fplMemoryBlock {
-	//! The base pointer
-	void *base;
-	//! The size of the allocated memory
-	size_t size;
+    //! The base reference.
+    void *base;
+    //! The size of the allocated memory.
+    size_t size;
 } fplMemoryBlock;
 
-//! A structure that contains informations about current memory usage
+/*!
+* @struct fplMemoryInfos
+* @brief Stores information about current memory usage.
+*/
 typedef struct fplMemoryInfos {
-	//! Size of physical installed memory in bytes
-	uint64_t installedPhysicalSize;
-	//! Total size of physical memory in bytes (May be less than size of installed physical memory, due to shared memory stuff)
-	uint64_t totalPhysicalSize;
-	//! Available physical memory in bytes
-	uint64_t freePhysicalSize;
-	//! Total size of memory cache in bytes
-	uint64_t totalCacheSize;
-	//! Available size of the memory cache in bytes
-	uint64_t freeCacheSize;
-	//! Total number of memory pages
-	uint64_t totalPageCount;
-	//! Number of available memory pages
-	uint64_t freePageCount;
-	//! Page size in bytes
-	uint64_t pageSize;
+    //! Size of physical installed memory in bytes.
+    uint64_t installedPhysicalSize;
+    //! Total size of physical memory in bytes (may be less than size of installed physical memory, due to shared memory).
+    uint64_t totalPhysicalSize;
+    //! Available physical memory in bytes.
+    uint64_t freePhysicalSize;
+    //! Total size of memory cache in bytes.
+    uint64_t totalCacheSize;
+    //! Available size of the memory cache in bytes.
+    uint64_t freeCacheSize;
+    //! Total number of memory pages.
+    uint64_t totalPageCount;
+    //! Number of available memory pages.
+    uint64_t freePageCount;
+    //! Page size in bytes.
+    uint64_t pageSize;
 } fplMemoryInfos;
 
 /**
 * @brief Clears the given memory by the given size to zero.
-* @param mem The pointer to the memory
-* @param size The number of bytes to be cleared to zero
+* @param[in] mem Reference to the memory (void*).
+* @param[in] size The number of bytes to be cleared to zero (size_t).
 * @see @ref subsection_category_memory_handling_ops_clear
 */
 fpl_common_api void fplMemoryClear(void *mem, const size_t size);
+
 /**
 * @brief Sets the given memory by the given size to the given value.
-* @param mem The pointer to the memory
-* @param value The value to be set
-* @param size The number of bytes to be set
+* @param[in] mem Reference to the memory (void*).
+* @param[in] value The value to be set (uint8_t).
+* @param[in] size The number of bytes to be set (size_t).
 * @see @ref subsection_category_memory_handling_ops_set
 */
 fpl_common_api void fplMemorySet(void *mem, const uint8_t value, const size_t size);
+
 /**
 * @brief Copies the given source memory with its length to the target memory.
-* @param sourceMem The pointer to the source memory to copy from
-* @param sourceSize The size in bytes to be copied
-* @param targetMem The pointer to the target memory to copy into
+* @param[in] sourceMem Reference to the source memory to copy from (const void*).
+* @param[in] sourceSize The size in bytes to be copied (size_t).
+* @param[out] targetMem Reference to the target memory to copy into (void*).
 * @see @ref subsection_category_memory_handling_ops_copy
 */
 fpl_common_api void fplMemoryCopy(const void *sourceMem, const size_t sourceSize, void *targetMem);
+
 /**
 * @brief Allocates memory from the operating system by the given size.
-* @param size The size to be allocated in bytes.
-* @return Returns a pointer to the newly allocated memory.
+* @param[in] size The size to be allocated in bytes (size_t).
+* @return Reference to the newly allocated memory (void*).
 * @warning Alignment is not ensured here, the OS decides how to handle this. If you want to force a specific alignment use @ref fplMemoryAlignedAllocate() instead.
 * @note The memory is guaranteed to be initialized to zero.
 * @note This function can be called without the platform to be initialized.
 * @see @ref subsection_category_memory_handling_normal_allocate
 */
 fpl_platform_api void *fplMemoryAllocate(const size_t size);
+
 /**
 * @brief Releases the memory allocated from the operating system.
-* @param ptr The pointer to the allocated memory
-* @warning This should never be called with an aligned memory pointer! For freeing aligned memory, use @ref fplMemoryAlignedFree() instead.
+* @param[in] ptr Reference to the allocated memory (void*).
+* @warning This should never be called with an aligned memory reference! For freeing aligned memory, use @ref fplMemoryAlignedFree() instead.
 * @note This function can be called without the platform to be initialized.
 * @see @ref section_category_memory_normal_free
 */
 fpl_platform_api void fplMemoryFree(void *ptr);
+
 /**
 * @brief Allocates aligned memory from the operating system by the given alignment.
-* @param size The size amount in bytes
-* @param alignment The alignment in bytes (Must be a power-of-two!)
-* @return Returns the pointer to the new allocated aligned memory.
+* @param[in] size The size amount in bytes (size_t).
+* @param[in] alignment The alignment in bytes (must be a power-of-two) (size_t).
+* @return Reference to the new allocated aligned memory (void*).
 * @note The memory is guaranteed to be initialized to zero.
 * @note This function can be called without the platform to be initialized.
 * @see @ref subsection_category_memory_handling_aligned_allocate
 */
 fpl_common_api void *fplMemoryAlignedAllocate(const size_t size, const size_t alignment);
+
 /**
 * @brief Releases the aligned memory allocated from the operating system.
-* @param ptr The pointer to the aligned allocated memory
-* @warning This should never be called with a not-aligned memory pointer! For freeing not-aligned memory, use @ref fplMemoryFree() instead.
+* @param[in] ptr Reference to the aligned allocated memory (void*).
+* @warning This should never be called with a not-aligned memory reference! For freeing not-aligned memory, use @ref fplMemoryFree() instead.
 * @note This function can be called without the platform to be initialized.
 * @see @ref subsection_category_memory_handling_aligned_free
 */
 fpl_common_api void fplMemoryAlignedFree(void *ptr);
+
 /**
 * @brief Retrieves the current system memory usage.
-* @param outInfos The target @ref fplMemoryInfos structure
-* @return Returns true when the memory infos was retrieved, false otherwise.
+* @param[out] outInfos Reference to the target @ref fplMemoryInfos structure.
+* @return Returns true when the memory info was retrieved, false otherwise (bool).
 * @see @ref section_category_hardware_memstate
 */
 fpl_platform_api bool fplMemoryGetInfos(fplMemoryInfos *outInfos);
@@ -3463,46 +3476,55 @@ fpl_platform_api bool fplMemoryGetInfos(fplMemoryInfos *outInfos);
 */
 // ----------------------------------------------------------------------------
 
-//! A type definition for mapping a part of a version number
+/*!
+* @typedef fplVersionNumberPart
+* @brief A type definition for mapping a part of a version number.
+*/
 typedef char fplVersionNumberPart[4 + 1];
 
-//! A structure that contains version informations
+/*!
+* @struct fplVersionInfo
+* @brief Stores version information.
+*/
 typedef struct fplVersionInfo {
-	//! Full name
-	char fullName[FPL_MAX_NAME_LENGTH];
-	union {
-		//! Version number parts
-		fplVersionNumberPart values[4];
-		struct {
-			//! Major version
-			fplVersionNumberPart major;
-			//! Minor version
-			fplVersionNumberPart minor;
-			//! Fix version
-			fplVersionNumberPart fix;
-			//! Build version
-			fplVersionNumberPart build;
-		};
-	};
+    //! Full name.
+    char fullName[FPL_MAX_NAME_LENGTH];
+    union {
+        //! Version number parts.
+        fplVersionNumberPart values[4];
+        struct {
+            //! Major version.
+            fplVersionNumberPart major;
+            //! Minor version.
+            fplVersionNumberPart minor;
+            //! Fix version.
+            fplVersionNumberPart fix;
+            //! Build version.
+            fplVersionNumberPart build;
+        };
+    };
 } fplVersionInfo;
 
-//! A structure that contains the version information for the operating system
+/*!
+* @struct fplOSVersionInfos
+* @brief Stores the version information for the operating system.
+*/
 typedef struct fplOSVersionInfos {
-	//! Name of the operating system
-	char osName[FPL_MAX_NAME_LENGTH];
-	//! Name of the distribution (May be empty)
-	char distributionName[FPL_MAX_NAME_LENGTH];
-	//! Version of the operating system
-	fplVersionInfo osVersion;
-	//! Version of the distribution (May be empty)
-	fplVersionInfo distributionVersion;
+    //! Name of the operating system.
+    char osName[FPL_MAX_NAME_LENGTH];
+    //! Name of the distribution (may be empty).
+    char distributionName[FPL_MAX_NAME_LENGTH];
+    //! Version of the operating system.
+    fplVersionInfo osVersion;
+    //! Version of the distribution (may be empty).
+    fplVersionInfo distributionVersion;
 } fplOSVersionInfos;
 
 /**
-* @brief Gets version informations from the operating system
-* @param outInfos The target @ref fplOSVersionInfos structure
-* @return Returns true when the infos could be retrieved, false otherwise.
-* @note This may be called without initializing the platform
+* @brief Gets version information from the operating system.
+* @param[out] outInfos Reference to the target @ref fplOSVersionInfos structure.
+* @return Returns true when the information could be retrieved, false otherwise (bool).
+* @note This may be called without initializing the platform.
 * @see @ref section_category_platform_os_version
 */
 fpl_platform_api bool fplOSGetVersionInfos(fplOSVersionInfos *outInfos);
@@ -3519,12 +3541,12 @@ fpl_platform_api bool fplOSGetVersionInfos(fplOSVersionInfos *outInfos);
 
 /**
 * @brief Gets the username of the current logged-in user from the session
-* @param nameBuffer The target buffer
-* @param maxNameBufferLen The max length of the target buffer
+* @param[in] maxNameBufferLen The max length of the target buffer
+* @param[out] nameBuffer The target buffer
 * @return Returns the number of required/written characters, excluding the null-terminator
 * @see @ref section_category_platform_os_username
 */
-fpl_platform_api size_t fplSessionGetUsername(char *nameBuffer, const size_t maxNameBufferLen);
+fpl_platform_api size_t fplSessionGetUsername(const size_t maxNameBufferLen, char *nameBuffer);
 
 /** @} */
 
@@ -3537,50 +3559,55 @@ fpl_platform_api size_t fplSessionGetUsername(char *nameBuffer, const size_t max
 */
 // ----------------------------------------------------------------------------
 
-//! Enumeration of architecture types
-typedef enum fplCPUArchType {
-	//! Unknown architecture
-	fplCPUArchType_Unknown = 0,
-	//! X86 architecture
-	fplCPUArchType_x86,
-	//! X86 with 64-bit architecture
-	fplCPUArchType_x86_64,
-	//! X64 only architecture
-	fplCPUArchType_x64,
-	//! ARM32 architecture
-	fplCPUArchType_Arm32,
-	//! ARM64 architecture
-	fplCPUArchType_Arm64,
+/*!
+* @enum fplCPUArchType
+* @brief An enumeration of architecture types.
+*/typedef enum fplCPUArchType {
+    //! Unknown architecture.
+    fplCPUArchType_Unknown = 0,
+    //! X86 architecture.
+    fplCPUArchType_x86,
+    //! X86 with 64-bit architecture.
+    fplCPUArchType_x86_64,
+    //! X64 only architecture.
+    fplCPUArchType_x64,
+    //! ARM32 architecture.
+    fplCPUArchType_Arm32,
+    //! ARM64 architecture.
+    fplCPUArchType_Arm64,
 
-	//! First @ref fplCPUArchType
-	fplCPUArchType_First = fplCPUArchType_Unknown,
-	//! Last @ref fplCPUArchType
-	fplCPUArchType_Last = fplCPUArchType_Arm64,
+    //! First @ref fplCPUArchType.
+    fplCPUArchType_First = fplCPUArchType_Unknown,
+    //! Last @ref fplCPUArchType.
+    fplCPUArchType_Last = fplCPUArchType_Arm64,
 } fplCPUArchType;
 
-//! Enumeration of CPU types.
+/*!
+* @enum fplCPUCapabilitiesType
+* @brief An enumeration of CPU types.
+*/
 typedef enum fplCPUCapabilitiesType {
-	//! Unknown type
+    //! Unknown type.
     fplCPUCapabilitiesType_Unknown = 0,
-	//! x86 type
+    //! x86 type.
     fplCPUCapabilitiesType_X86,
-	//! ARM type
+    //! ARM type.
     fplCPUCapabilitiesType_ARM,
 
-	//! First @ref fplCPUCapabilitiesType
-	fplCPUCapabilitiesType_First = fplCPUCapabilitiesType_Unknown,
-	//! Last @ref fplCPUCapabilitiesType
-	fplCPUCapabilitiesType_Last = fplCPUCapabilitiesType_ARM,
+    //! First @ref fplCPUCapabilitiesType.
+    fplCPUCapabilitiesType_First = fplCPUCapabilitiesType_Unknown,
+    //! Last @ref fplCPUCapabilitiesType.
+    fplCPUCapabilitiesType_Last = fplCPUCapabilitiesType_ARM,
 } fplCPUCapabilitiesType;
 
 /*!
-* @brief Gets the name of the specified @ref fplCPUCapabilitiesType
-* @param type The @ref fplCPUCapabilitiesType
-* @return Returns the found name or @ref fpl_null
+* @brief Gets the name of the specified @ref fplCPUCapabilitiesType.
+* @param[in] type The @ref fplCPUCapabilitiesType.
+* @return Returns the found name or @ref fpl_null (const char*).
 */
 fpl_common_api const char *fplGetCPUCapabilitiesTypeName(const fplCPUCapabilitiesType type);
 
-//! Container representing the capabilities of an x86 CPU
+//! Container representing the capabilities of an x86 CPU.
 typedef struct fplX86CPUCapabilities {
     //! MMX support.
     bool hasMMX;
@@ -3610,115 +3637,124 @@ typedef struct fplX86CPUCapabilities {
     bool hasAES_NI;
     //! Has SHA support.
     bool hasSHA;
-    //! Has BMI1 support
+    //! Has BMI1 support.
     bool hasBMI1;
-    //! Has BMI2 support
+    //! Has BMI2 support.
     bool hasBMI2;
-    //! Has ADX support
+    //! Has ADX support.
     bool hasADX;
-    //! Has F16C support
+    //! Has F16C support.
     bool hasF16C;
 } fplX86CPUCapabilities;
 fplStaticAssert(sizeof(fplX86CPUCapabilities) <= 28);
 
-//! Container representing the capabilities of an ARM CPU
+//! Container representing the capabilities of an ARM CPU.
 typedef struct fplARMCPUCapabilities {
-    //! Has NEON support
+    //! Has NEON support.
     bool hasNEON;
-    //! Has AES support
+    //! Has AES support.
     bool hasAES;
-    //! Has SHA1 support
+    //! Has SHA1 support.
     bool hasSHA1;
-    //! Has SHA2 support
+    //! Has SHA2 support.
     bool hasSHA2;
-    //! Has CRC32 support
+    //! Has CRC32 support.
     bool hasCRC32;
-    //! Has PMULL support
+    //! Has PMULL support.
     bool hasPMULL;
 } fplARMCPUCapabilities;
 fplStaticAssert(sizeof(fplARMCPUCapabilities) <= 28);
 
-//! Container representing the capabilities of a CPU
+//! Container representing the capabilities of a CPU.
 typedef struct fplCPUCapabilities {
-    //! The capabilities type
+    //! The capabilities type.
     fplCPUCapabilitiesType type;
     union {
-        //! x86 CPU capabilities
+        //! x86 CPU capabilities.
         fplX86CPUCapabilities x86;
-        //! ARM CPU capabilities
+        //! ARM CPU capabilities.
         fplARMCPUCapabilities arm;
-        //! Unused
+        //! Unused.
         uint8_t unused[28];
     };
 } fplCPUCapabilities;
+fplStaticAssert(sizeof(fplCPUCapabilities) == 32);
 
-//! Container representing the 4-registers  for a CPU-Leaf (EAX, EBX, ECX, EDX)
+//! Container representing the 4-registers for a CPU-Leaf (EAX, EBX, ECX, EDX).
 typedef union fplCPUIDLeaf {
-	struct {
-		//! The 32-bit EAX Register
-		uint32_t eax;
-		//! The 32-bit EBX Register
-		uint32_t ebx;
-		//! The 32-bit ECX Register
-		uint32_t ecx;
-		//! The 32-bit EDX Register
-		uint32_t edx;
-	};
-	//! The raw 32-bit register array
-	uint32_t raw[4];
+    struct {
+        //! The 32-bit EAX Register.
+        uint32_t eax;
+        //! The 32-bit EBX Register.
+        uint32_t ebx;
+        //! The 32-bit ECX Register.
+        uint32_t ecx;
+        //! The 32-bit EDX Register.
+        uint32_t edx;
+    };
+    //! The raw 32-bit register array.
+    uint32_t raw[4];
 } fplCPUIDLeaf;
+fplStaticAssert(sizeof(fplCPUIDLeaf) == 16);
 
 /**
-* @brief Queries the x86 CPUID leaf register (EAX, EBX, ECX, EDX) for the given function id
-* @param outLeaf The target fplCPUIDLeaf reference
-* @param functionId The CPUID function id
-* @return Returns true when the specified @ref fplCPUIDLeaf was updated, false otherwise
-* @warning This function works on X86 architectures only
+* @brief Queries the x86 CPUID leaf register (EAX, EBX, ECX, EDX) for the given function id.
+* @param[in] functionId The CPUID function id (uint32_t).
+* @param[out] outLeaf Reference to the target fplCPUIDLeaf.
+* @return Returns true when the specified @ref fplCPUIDLeaf was updated, false otherwise (bool).
+* @warning This function works on X86 architectures only.
 */
-fpl_common_api bool fplCPUID(fplCPUIDLeaf *outLeaf, const uint32_t functionId);
+fpl_common_api bool fplCPUID(const uint32_t functionId, fplCPUIDLeaf *outLeaf);
+
 /**
 * @brief Gets the x86 extended control register for index zero.
-* @return Returns the extended control register on x86 or zero for non-x86 architectures.
-* @warning This function works on X86 architectures only
+* @return Returns the extended control register on x86 or zero for non-x86 architectures (uint64_t).
+* @warning This function works on X86 architectures only.
 */
 fpl_common_api uint64_t fplCPUXCR0();
+
 /**
-* @brief Reads the current time stamp counter (RDTSC)
-* @return Returns the number of cycles since the system start or zero for non-x86 architectures.
-* @warning This function works on X86 architectures only
+* @brief Reads the current time stamp counter (RDTSC).
+* @return Returns the number of cycles since the system start or zero for non-x86 architectures (uint64_t).
+* @warning This function works on X86 architectures only.
 */
 fpl_common_api uint64_t fplCPURDTSC();
+
 /**
-* @brief Gets the string representation of the given architecture type
-* @param type The @ref fplCPUArchType enumeration value
-* @return Returns a string for the given architecture type
+* @brief Gets the string representation of the given architecture type.
+* @param[in] type The @ref fplCPUArchType enumeration value.
+* @return Returns a string for the given architecture type (const char*).
 * @see @ref section_category_hardware_cpuarch
 */
 fpl_common_api const char *fplCPUGetArchName(const fplCPUArchType type);
+
 /**
-* @brief Retrieves the total number of processor cores
-* @return Returns the total number of processor cores.
+* @brief Retrieves the total number of processor cores.
+* @return Returns the total number of processor cores (size_t).
 * @see @ref section_category_hardware_corecount
 */
 fpl_platform_api size_t fplCPUGetCoreCount();
+
 /**
-* @brief Retrieves the name of the processor
-* @param destBuffer The destination buffer
-* @param maxDestBufferLen The max length of the destination buffer
-* @return Returns the number of required/written characters, excluding the null-terminator
+* @brief Retrieves the name of the processor.
+* @param[in] maxDestBufferLen The max length of the destination buffer (size_t).
+* @param[out] destBuffer Reference to the destination buffer (char*).
+* @return Returns the number of required/written characters, excluding the null-terminator (size_t).
 * @see @ref section_category_hardware_cpuname
 */
-fpl_common_api size_t fplCPUGetName(char *destBuffer, const size_t maxDestBufferLen);
+fpl_common_api size_t fplCPUGetName(const size_t maxDestBufferLen, char *destBuffer);
+
 /**
-* @brief Gets the capabilities of the processor
-* @param outCaps Pointer to the output @ref fplCPUCapabilities
-* @return Returns true when the capabilities could be retrieved, false otherwise.
+* @brief Gets the capabilities of the processor.
+* @param[out] outCaps Reference to the output @ref fplCPUCapabilities.
+* @return Returns true when the capabilities could be retrieved, false otherwise (bool).
 * @see @ref section_category_hardware_cpucaps
 */
 fpl_common_api bool fplCPUGetCapabilities(fplCPUCapabilities *outCaps);
+
 /**
-* @brief Gets the processor architecture type
-* @return Returns the processor architecture type
+* @brief Gets the processor architecture type.
+* @return Returns the processor architecture type (fplCPUArchType).
 * @see @ref section_category_hardware_cpuarch
 */
 fpl_platform_api fplCPUArchType fplCPUGetArchitecture();
@@ -3733,777 +3769,923 @@ fpl_platform_api fplCPUArchType fplCPUGetArchitecture();
 */
 // ----------------------------------------------------------------------------
 
-//! An enumeration of initialization flags
+/*!
+* @enum fplInitFlags
+* @brief An enumeration of initialization flags.
+*/
 typedef enum fplInitFlags {
-	//! No init flags
-	fplInitFlags_None = 0,
-	//! Create a console window
-	fplInitFlags_Console = 1 << 0,
-	//! Create a single window
-	fplInitFlags_Window = 1 << 1,
-	//! Use a video backbuffer (This flag ensures that @ref fplInitFlags_Window is included always)
-	fplInitFlags_Video = 1 << 2,
-	//! Use asynchronous audio playback
-	fplInitFlags_Audio = 1 << 3,
-	//! Support for game controllers
-	fplInitFlags_GameController = 1 << 4,
-	//! All init flags
-	fplInitFlags_All = fplInitFlags_Console | fplInitFlags_Window | fplInitFlags_Video | fplInitFlags_Audio | fplInitFlags_GameController,
+    //! No init flags.
+    fplInitFlags_None = 0,
+    //! Create a console window.
+    fplInitFlags_Console = 1 << 0,
+    //! Create a single window.
+    fplInitFlags_Window = 1 << 1,
+    //! Use a video backbuffer (This flag ensures that @ref fplInitFlags_Window is included always).
+    fplInitFlags_Video = 1 << 2,
+    //! Use asynchronous audio playback.
+    fplInitFlags_Audio = 1 << 3,
+    //! Support for game controllers.
+    fplInitFlags_GameController = 1 << 4,
+    //! All init flags.
+    fplInitFlags_All = fplInitFlags_Console | fplInitFlags_Window | fplInitFlags_Video | fplInitFlags_Audio | fplInitFlags_GameController,
 } fplInitFlags;
-//! InitFlags operator overloads for C++
+//! InitFlags operator overloads for C++.
 FPL_ENUM_AS_FLAGS_OPERATORS(fplInitFlags);
 
-//! An enumeration of platform types
+/*!
+* @enum fplPlatformType
+* @brief An enumeration of platform types.
+*/
 typedef enum fplPlatformType {
-	//! Unknown platform
-	fplPlatformType_Unknown = 0,
-	//! Windows platform
-	fplPlatformType_Windows,
-	//! Linux platform
-	fplPlatformType_Linux,
-	//! Unix platform
-	fplPlatformType_Unix,
+    //! Unknown platform.
+    fplPlatformType_Unknown = 0,
+    //! Windows platform.
+    fplPlatformType_Windows,
+    //! Linux platform.
+    fplPlatformType_Linux,
+    //! Unix platform.
+    fplPlatformType_Unix,
 
-	//! First @ref fplPlatformType
-	fplPlatformType_First = fplPlatformType_Unknown,
-	//! Last @ref fplPlatformType
-	fplPlatformType_Last = fplPlatformType_Unix,
+    //! First @ref fplPlatformType.
+    fplPlatformType_First = fplPlatformType_Unknown,
+    //! Last @ref fplPlatformType.
+    fplPlatformType_Last = fplPlatformType_Unix,
 } fplPlatformType;
 
-//! An enumeration of platform result types
+/*!
+* @enum fplPlatformResultType
+* @brief An enumeration of platform result types.
+*/
 typedef enum fplPlatformResultType {
-	//! Window creation failed
-	fplPlatformResultType_FailedWindow = -6,
-	//! Audio initialization failed
-	fplPlatformResultType_FailedAudio = -5,
-	//! Video initialization failed
-	fplPlatformResultType_FailedVideo = -4,
-	//! Platform initialization failed
-	fplPlatformResultType_FailedPlatform = -3,
-	//! Failed allocating required memory
-	fplPlatformResultType_FailedAllocatingMemory = -2,
-	//! Platform is already initialized
-	fplPlatformResultType_AlreadyInitialized = -1,
-	//! Platform is not initialized
-	fplPlatformResultType_NotInitialized = 0,
-	//! Everything is fine
-	fplPlatformResultType_Success = 1,
+    //! Window creation failed.
+    fplPlatformResultType_FailedWindow = -6,
+    //! Audio initialization failed.
+    fplPlatformResultType_FailedAudio = -5,
+    //! Video initialization failed.
+    fplPlatformResultType_FailedVideo = -4,
+    //! Platform initialization failed.
+    fplPlatformResultType_FailedPlatform = -3,
+    //! Failed allocating required memory.
+    fplPlatformResultType_FailedAllocatingMemory = -2,
+    //! Platform is already initialized.
+    fplPlatformResultType_AlreadyInitialized = -1,
+    //! Platform is not initialized.
+    fplPlatformResultType_NotInitialized = 0,
+    //! Everything is fine.
+    fplPlatformResultType_Success = 1,
 
-	//! First @ref fplPlatformResultType
-	fplPlatformResultType_First = fplPlatformResultType_FailedWindow,
-	//! Last @ref fplPlatformResultType
-	fplPlatformResultType_Last = fplPlatformResultType_Success,
+    //! First @ref fplPlatformResultType.
+    fplPlatformResultType_First = fplPlatformResultType_FailedWindow,
+    //! Last @ref fplPlatformResultType.
+    fplPlatformResultType_Last = fplPlatformResultType_Success,
 } fplPlatformResultType;
 
 /**
 * @brief Gets the string representation of a platform result type.
-* @param type The platform result type as @ref fplPlatformResultType
-* @return Returns the string representation of a platform result type.
+* @param[in] type The platform result type as @ref fplPlatformResultType.
+* @return Returns the string representation of a platform result type (const char*).
 * @see @ref section_category_initialization_result
 */
 fpl_common_api const char *fplPlatformGetResultName(const fplPlatformResultType type);
 
-//! An enumeration of video backend types
+/*!
+* @enum fplVideoBackendType
+* @brief An enumeration of video backend types.
+*/
 typedef enum fplVideoBackendType {
-	//! No video backend
-	fplVideoBackendType_None = 0,
-	//! Software
-	fplVideoBackendType_Software,
-	//! OpenGL
-	fplVideoBackendType_OpenGL,
-	//! Vulkan
-	fplVideoBackendType_Vulkan,
+    //! No video backend.
+    fplVideoBackendType_None = 0,
+    //! Software video backend.
+    fplVideoBackendType_Software,
+    //! OpenGL video backend.
+    fplVideoBackendType_OpenGL,
+    //! Vulkan video backend.
+    fplVideoBackendType_Vulkan,
 
-	//! First @ref fplVideoBackendType
-	fplVideoBackendType_First = fplVideoBackendType_None,
-	//! Last @ref fplVideoBackendType
-	fplVideoBackendType_Last = fplVideoBackendType_Vulkan,
+    //! First video backend.
+    fplVideoBackendType_First = fplVideoBackendType_None,
+    //! Last video backend.
+    fplVideoBackendType_Last = fplVideoBackendType_Vulkan,
 } fplVideoBackendType;
 
 #if defined(FPL__ENABLE_VIDEO_OPENGL)
-//! An enumeration of OpenGL compability flags
+/*!
+* @enum fplOpenGLCompabilityFlags
+* @brief An enumeration of OpenGL compatibility flags.
+*/
 typedef enum fplOpenGLCompabilityFlags {
-	//! Use legacy context
-	fplOpenGLCompabilityFlags_Legacy = 0,
-	//! Use core profile
-	fplOpenGLCompabilityFlags_Core = 1 << 1,
-	//! Use compability profile
-	fplOpenGLCompabilityFlags_Compability = 1 << 2,
-	//! Remove features marked as deprecated
-	fplOpenGLCompabilityFlags_Forward = 1 << 3,
+    //! Use legacy context.
+    fplOpenGLCompabilityFlags_Legacy = 0,
+    //! Use core profile.
+    fplOpenGLCompabilityFlags_Core = 1 << 1,
+    //! Use compatibility profile.
+    fplOpenGLCompabilityFlags_Compability = 1 << 2,
+    //! Remove features marked as deprecated.
+    fplOpenGLCompabilityFlags_Forward = 1 << 3,
 } fplOpenGLCompabilityFlags;
 
-//! A structure that contains OpenGL video settings
+/*!
+* @struct fplOpenGLSettings
+* @brief Stores OpenGL video settings.
+*/
 typedef struct fplOpenGLSettings {
-	//! Custom OpenGL driver library file name/path (null = Default OpenGL library)
-	const char *libraryFile;
-	//! Compability flags
-	fplOpenGLCompabilityFlags compabilityFlags;
-	//! Desired major version
-	uint32_t majorVersion;
-	//! Desired minor version
-	uint32_t minorVersion;
-	//! Multisampling count
-	uint8_t multiSamplingCount;
+    //! Custom OpenGL driver library file name/path (null = Default OpenGL library).
+    const char *libraryFile;
+    //! Compatibility flags.
+    fplOpenGLCompabilityFlags compabilityFlags;
+    //! Desired major version.
+    uint32_t majorVersion;
+    //! Desired minor version.
+    uint32_t minorVersion;
+    //! Multisampling count.
+    uint8_t multiSamplingCount;
 } fplOpenGLSettings;
 #endif // FPL__ENABLE_VIDEO_OPENGL
 
 #if defined(FPL__ENABLE_VIDEO_VULKAN)
 
-//! The debug callback called when the validation layer writes something
+/*!
+* @brief A function definition for the debug callback called when the validation layer writes something.
+* @param[in] userData Reference to user data (void*).
+* @param[in] message The message from the validation layer (const char*).
+* @param[in] messageSeverity The severity of the message (uint32_t).
+* @param[in] messageType The type of the message (uint32_t).
+* @param[in] debugUtilsMessengerCallbackData Reference to the debug utils messenger callback data (const void*).
+*/
 typedef void (fplVulkanValidationLayerCallback)(void *userData, const char *message, const uint32_t messageSeverity, const uint32_t messageType, const void *debugUtilsMessengerCallbackData);
 
-//! The validation layer modes for Vulkan
+/*!
+* @enum fplVulkanValidationLayerMode
+* @brief An enumeration of Vulkan validation layer modes.
+*/
 typedef enum fplVulkanValidationLayerMode {
-	//! Do not use the validation
-	fplVulkanValidationLayerMode_Disabled = 0,
-	//! Enable validations when its possible
-	fplVulkanValidationLayerMode_Optional,
-	//! Enable validations and stop when its not supported
-	fplVulkanValidationLayerMode_Required,
+    //! Do not use the validation.
+    fplVulkanValidationLayerMode_Disabled = 0,
+    //! Enable validations when it's possible.
+    fplVulkanValidationLayerMode_Optional,
+    //! Enable validations and stop when it's not supported.
+    fplVulkanValidationLayerMode_Required,
 } fplVulkanValidationLayerMode;
 
-//! The validation layer logging severity for Vulkan
+/*!
+* @enum fplVulkanValidationSeverity
+* @brief An enumeration of Vulkan validation layer logging severity.
+*/
 typedef enum fplVulkanValidationSeverity {
-	//! Log nothing
-	fplVulkanValidationSeverity_Off = 0,
-	//! Log error only
-	fplVulkanValidationSeverity_Error = 1,
-	//! Log warning and error
-	fplVulkanValidationSeverity_Warning = 2,
-	//! Log warning, error, infos
-	fplVulkanValidationSeverity_Info = 3,
-	//! Log warning, error, info, verbose
-	fplVulkanValidationSeverity_Verbose = 4,
-	//! Log out everything
-	fplVulkanValidationSeverity_All = INT32_MAX,
+    //! Log nothing.
+    fplVulkanValidationSeverity_Off = 0,
+    //! Log error only.
+    fplVulkanValidationSeverity_Error = 1,
+    //! Log warning and error.
+    fplVulkanValidationSeverity_Warning = 2,
+    //! Log warning, error, and info.
+    fplVulkanValidationSeverity_Info = 3,
+    //! Log warning, error, info, and verbose.
+    fplVulkanValidationSeverity_Verbose = 4,
+    //! Log everything.
+    fplVulkanValidationSeverity_All = INT32_MAX,
 } fplVulkanValidationSeverity;
 
-//! A structure that contains Vulkan video settings
+/*!
+* @struct fplVulkanSettings
+* @brief Stores Vulkan video settings.
+*/
 typedef struct fplVulkanSettings {
-	//! The application version (Only required if @ref fplVulkanSettings.instanceHandle is @ref fpl_null)
-	fplVersionInfo appVersion;
-	//! The engine version (Only required if @ref fplVulkanSettings.instanceHandle is @ref fpl_null)
-	fplVersionInfo engineVersion;
-	//! The preferred Vulkan api version (Only required if @ref fplVulkanSettings.instanceHandle is @ref fpl_null)
-	fplVersionInfo apiVersion;
-	//! Custom Vulkan driver library file name/path (null = Default Vulkan library)
-	const char *libraryFile;
-	//! The application name (Only required if @ref fplVulkanSettings.instanceHandle is @ref fpl_null)
-	const char *appName;
-	//! The engine name (Only required if @ref fplVulkanSettings.instanceHandle is @ref fpl_null)
-	const char *engineName;
-	//! The vulkan instance (VkInstance), when null it will be automatically created
-	void *instanceHandle;
-	//! The vulkan allocator (VkAllocationCallbacks)
-	const void *allocator;
-	//! The validation layer callback @ref fplVulkanValidationLayerCallback
-	fplVulkanValidationLayerCallback *validationLayerCallback;
-	//! User data passed to any callbacks
-	void *userData;
-	//! The @ref fplVulkanValidationLayerMode
-	fplVulkanValidationLayerMode validationLayerMode;
-	//! The @ref fplVulkanValidationSeverity
-	fplVulkanValidationSeverity validationSeverity;
+    //! The application version (only required if @ref fplVulkanSettings.instanceHandle is @ref fpl_null).
+    fplVersionInfo appVersion;
+    //! The engine version (only required if @ref fplVulkanSettings.instanceHandle is @ref fpl_null).
+    fplVersionInfo engineVersion;
+    //! The preferred Vulkan API version (only required if @ref fplVulkanSettings.instanceHandle is @ref fpl_null).
+    fplVersionInfo apiVersion;
+    //! Custom Vulkan driver library file name/path (null = Default Vulkan library).
+    const char *libraryFile;
+    //! The application name (only required if @ref fplVulkanSettings.instanceHandle is @ref fpl_null).
+    const char *appName;
+    //! The engine name (only required if @ref fplVulkanSettings.instanceHandle is @ref fpl_null).
+    const char *engineName;
+    //! The Vulkan instance (VkInstance), when null it will be automatically created.
+    void *instanceHandle;
+    //! The Vulkan allocator (VkAllocationCallbacks).
+    const void *allocator;
+    //! The validation layer callback @ref fplVulkanValidationLayerCallback.
+    fplVulkanValidationLayerCallback *validationLayerCallback;
+    //! User data passed to any callbacks.
+    void *userData;
+    //! The @ref fplVulkanValidationLayerMode.
+    fplVulkanValidationLayerMode validationLayerMode;
+    //! The @ref fplVulkanValidationSeverity.
+    fplVulkanValidationSeverity validationSeverity;
 } fplVulkanSettings;
 #endif // FPL__ENABLE_VIDEO_VULKAN
 
-//! A union that contains graphics api settings
+/*!
+* @struct fplGraphicsApiSettings
+* @brief Stores graphics API settings.
+*/
 typedef struct fplGraphicsApiSettings {
 #if defined(FPL__ENABLE_VIDEO_OPENGL)
-	//! OpenGL settings
-	fplOpenGLSettings opengl;
+    //! OpenGL settings.
+    fplOpenGLSettings opengl;
 #endif
 #if defined(FPL__ENABLE_VIDEO_VULKAN)
-	//! Vulkan settings
-	fplVulkanSettings vulkan;
+    //! Vulkan settings.
+    fplVulkanSettings vulkan;
 #endif
-	//! Field for preventing union to be empty
-	int dummy;
+    //! Field for preventing union to be empty.
+    int dummy;
 } fplGraphicsApiSettings;
 
-//! A structure that contains video settings such as backend, v-sync, API-settings, etc.
+/*!
+* @struct fplVideoSettings
+* @brief Stores video settings such as backend, v-sync, API-settings, etc.
+*/
 typedef struct fplVideoSettings {
-	//! Graphics API settings
-	fplGraphicsApiSettings graphics;
-	//! video backend type
-	fplVideoBackendType backend;
-	//! Is vertical synchronization enabled. Usable only for hardware rendering!
-	fpl_b32 isVSync;
-	//! Is backbuffer automatically resized. Usable only for software rendering!
-	fpl_b32 isAutoSize;
+    //! Graphics API settings.
+    fplGraphicsApiSettings graphics;
+    //! Video backend type.
+    fplVideoBackendType backend;
+    //! Is vertical synchronization enabled. Usable only for hardware rendering!
+    fpl_b32 isVSync;
+    //! Is backbuffer automatically resized. Usable only for software rendering!
+    fpl_b32 isAutoSize;
 } fplVideoSettings;
 
 /**
-* @brief Resets the given video settings to default values
-* @param video The target @ref fplVideoSettings structure
+* @brief Resets the given video settings to default values.
+* @param[out] video Reference to the target @ref fplVideoSettings structure.
 * @note This will not change any video settings! To change the actual settings you have to pass the entire @ref fplSettings container as an argument in @ref fplPlatformInit().
 * @see @ref category_video_general_notes
 */
 fpl_common_api void fplSetDefaultVideoSettings(fplVideoSettings *video);
 
-//! An enumeration of audio backend types
+/*!
+* @enum fplAudioBackendType
+* @brief An enumeration of audio backend types.
+*/
 typedef enum fplAudioBackendType {
-	//! No audio backend
-	fplAudioBackendType_None = 0,
-	//! Auto detect
-	fplAudioBackendType_Auto,
-	//! DirectSound
-	fplAudioBackendType_DirectSound,
-	//! ALSA
-	fplAudioBackendType_Alsa,
-	//! Custom audio backend
-	fplAudioBackendType_Custom,
+    //! No audio backend.
+    fplAudioBackendType_None = 0,
+    //! Auto detect audio backend.
+    fplAudioBackendType_Auto,
+    //! DirectSound audio backend.
+    fplAudioBackendType_DirectSound,
+    //! ALSA audio backend.
+    fplAudioBackendType_Alsa,
+    //! Custom audio backend.
+    fplAudioBackendType_Custom,
 
-	//! First @ref fplAudioBackendType
-	fplAudioBackendType_First = fplAudioBackendType_None,
-	//! Last @ref fplAudioBackendType
-	fplAudioBackendType_Last = fplAudioBackendType_Custom,
+    //! First @ref fplAudioBackendType.
+    fplAudioBackendType_First = fplAudioBackendType_None,
+    //! Last @ref fplAudioBackendType.
+    fplAudioBackendType_Last = fplAudioBackendType_Custom,
 } fplAudioBackendType;
 
-//! An enumeration of audio format types
+/*!
+* @enum fplAudioFormatType
+* @brief An enumeration of audio format types.
+*/
 typedef enum fplAudioFormatType {
-	//! No audio format
-	fplAudioFormatType_None = 0,
-	//! Unsigned 8-bit integer PCM
-	fplAudioFormatType_U8,
-	//! Signed 16-bit integer PCM
-	fplAudioFormatType_S16,
-	//! Signed 24-bit integer PCM
-	fplAudioFormatType_S24,
-	//! Signed 32-bit integer PCM
-	fplAudioFormatType_S32,
-	//! Signed 64-bit integer PCM
-	fplAudioFormatType_S64,
-	//! 32-bit IEEE_FLOAT
-	fplAudioFormatType_F32,
-	//! 64-bit IEEE_FLOAT
-	fplAudioFormatType_F64,
+    //! No audio format.
+    fplAudioFormatType_None = 0,
+    //! Unsigned 8-bit integer PCM.
+    fplAudioFormatType_U8,
+    //! Signed 16-bit integer PCM.
+    fplAudioFormatType_S16,
+    //! Signed 24-bit integer PCM.
+    fplAudioFormatType_S24,
+    //! Signed 32-bit integer PCM.
+    fplAudioFormatType_S32,
+    //! Signed 64-bit integer PCM.
+    fplAudioFormatType_S64,
+    //! 32-bit IEEE_FLOAT.
+    fplAudioFormatType_F32,
+    //! 64-bit IEEE_FLOAT.
+    fplAudioFormatType_F64,
 
-	//! First @ref fplAudioFormatType
-	fplAudioFormatType_First = fplAudioFormatType_None,
-	//! Last @ref fplAudioFormatType
-	fplAudioFormatType_Last = fplAudioFormatType_F64,
+    //! First @ref fplAudioFormatType.
+    fplAudioFormatType_First = fplAudioFormatType_None,
+    //! Last @ref fplAudioFormatType.
+    fplAudioFormatType_Last = fplAudioFormatType_F64,
 } fplAudioFormatType;
 
-//! An enumeration of audio default fields
+/*!
+* @enum fplAudioDefaultFields
+* @brief An enumeration of audio default fields.
+*/
 typedef enum fplAudioDefaultFields {
-	//! No default fields
-	fplAudioDefaultFields_None = 0,
-	//! Buffer size is default
-	fplAudioDefaultFields_BufferSize = 1 << 0,
-	//! Samples per seconds is default
-	fplAudioDefaultFields_SampleRate = 1 << 1,
-	//! Number of channels is default
-	fplAudioDefaultFields_Channels = 1 << 2,
-	//! Number of periods is default
-	fplAudioDefaultFields_Periods = 1 << 3,
-	//! Audio format is default
-	fplAudioDefaultFields_Type = 1 << 4,
-	//! Audio layout is default
-	fplAudioDefaultFields_ChannelLayout = 1 << 5,
+    //! No default fields.
+    fplAudioDefaultFields_None = 0,
+    //! Buffer size is default.
+    fplAudioDefaultFields_BufferSize = 1 << 0,
+    //! Samples per second is default.
+    fplAudioDefaultFields_SampleRate = 1 << 1,
+    //! Number of channels is default.
+    fplAudioDefaultFields_Channels = 1 << 2,
+    //! Number of periods is default.
+    fplAudioDefaultFields_Periods = 1 << 3,
+    //! Audio format is default.
+    fplAudioDefaultFields_Type = 1 << 4,
+    //! Audio layout is default.
+    fplAudioDefaultFields_ChannelLayout = 1 << 5,
 } fplAudioDefaultFields;
-//! fplAudioDefaultFields operator overloads for C++
+//! fplAudioDefaultFields operator overloads for C++.
 FPL_ENUM_AS_FLAGS_OPERATORS(fplAudioDefaultFields);
 
-//! An enumeration of audio latency types
+/*!
+* @enum fplAudioLatencyType
+* @brief An enumeration of audio latency types.
+*/
 typedef enum fplAudioLatencyType {
-	//! Conservative latency
-	fplAudioLatencyType_Conservative = 0,
-	//! Low latency
-	fplAudioLatencyType_Low,
+    //! Conservative latency.
+    fplAudioLatencyType_Conservative = 0,
+    //! Low latency.
+    fplAudioLatencyType_Low,
 } fplAudioLatencyType;
 
-//! An enumeration of audio share modes
+/*!
+* @enum fplAudioShareMode
+* @brief An enumeration of audio share modes.
+*/
 typedef enum fplAudioShareMode {
-	//! Shared mode
-	fplAudioShareMode_Shared = 0,
-	//! Exlusive mode
-	fplAudioShareMode_Exclusive,
+    //! Shared mode.
+    fplAudioShareMode_Shared = 0,
+    //! Exclusive mode.
+    fplAudioShareMode_Exclusive,
 } fplAudioShareMode;
 
-//! An enumeration of audio modes that combines conservative/latency and exlusive/shared
+/*!
+* @enum fplAudioMode
+* @brief An enumeration of audio modes that combines conservative/latency and exclusive/shared.
+*/
 typedef enum fplAudioMode {
-	//! Shared Conservative
-	fplAudioMode_Shared_Conservative = 0,
-	//! Exclusive Conservative
-	fplAudioMode_Exclusive_Conservative,
-	//! Shared Low Latency
-	fplAudioMode_Shared_LowLatency,
-	//! Exclusive Low Latency
-	fplAudioMode_Exclusive_LowLatency,
+    //! Shared Conservative.
+    fplAudioMode_Shared_Conservative = 0,
+    //! Exclusive Conservative.
+    fplAudioMode_Exclusive_Conservative,
+    //! Shared Low Latency.
+    fplAudioMode_Shared_LowLatency,
+    //! Exclusive Low Latency.
+    fplAudioMode_Exclusive_LowLatency,
 } fplAudioMode;
 
-//! An enumeration of audio channel layouts
+/*!
+* @enum fplAudioChannelLayout
+* @brief An enumeration of audio channel layouts.
+*/
 typedef enum fplAudioChannelLayout {
-	//! Unsupported Audio Channel Layout
-	fplAudioChannelLayout_Unsupported = -1,
-	//! Automatic Audio Channel Layout (based on number of channels and/or sound device)
-	fplAudioChannelLayout_Automatic = 0,
-	//! Mono Audio Channel Layout (1.0, Single Channel: Front)
-	fplAudioChannelLayout_Mono,
-	//! Stereo Audio Channel Layout (2.0, 2 Channels: Front)
-	fplAudioChannelLayout_Stereo,
-	//! 2.1 Audio Channel Layout (2.1, 3 Channels: Front, LFE)
-	fplAudioChannelLayout_2_1,
-	//! 3.0 Surround Audio Channel Layout (3.0, 3 Channels: Front/F-Center)
-	fplAudioChannelLayout_3_0_Surround,
-	//! 4.0 Quad Audio Channel Layout (4.0 Quad, 4 Channels: Front/Back)
-	fplAudioChannelLayout_4_0_Quad,
-	//! 4.0 Surround Audio Channel Layout (4.0 Surround, 4 Channels: Front/F-Center/B-Center)
-	fplAudioChannelLayout_4_0_Surround,
-	//! 4.1 Audio Channel Layout (4.1, 5 Channels: Front/LFE/Back)
-	fplAudioChannelLayout_4_1,
-	//! 5.0 Audio Channel Layout (5.0, 5 Channels: Front/Center/Back)
-	fplAudioChannelLayout_5_0_Surround,
-	//! 5.1 Audio Channel Layout (5.1, 6 Channels: Front/Center/LFE/Side)
-	fplAudioChannelLayout_5_1,
-	//! 6.1 Audio Channel Layout (6.1, 7 Channels: Front/F-Center/LFE/B-Center/Side)
-	fplAudioChannelLayout_6_1,
-	//! 7.1 Audio Channel Layout (7.1, 8 Channels: Front/Center/LFE/Back/Side)
-	fplAudioChannelLayout_7_1,
-	//! First Audio Channel Layout
-	fplAudioChannelLayout_First = fplAudioChannelLayout_Mono,
-	//! Last Audio Channel Layout
-	fplAudioChannelLayout_Last = fplAudioChannelLayout_7_1,
+    //! Unsupported Audio Channel Layout.
+    fplAudioChannelLayout_Unsupported = -1,
+    //! Automatic Audio Channel Layout (based on number of channels and/or sound device).
+    fplAudioChannelLayout_Automatic = 0,
+    //! Mono Audio Channel Layout (1.0, Single Channel: Front).
+    fplAudioChannelLayout_Mono,
+    //! Stereo Audio Channel Layout (2.0, 2 Channels: Front).
+    fplAudioChannelLayout_Stereo,
+    //! 2.1 Audio Channel Layout (2.1, 3 Channels: Front, LFE).
+    fplAudioChannelLayout_2_1,
+    //! 3.0 Surround Audio Channel Layout (3.0, 3 Channels: Front/F-Center).
+    fplAudioChannelLayout_3_0_Surround,
+    //! 4.0 Quad Audio Channel Layout (4.0 Quad, 4 Channels: Front/Back).
+    fplAudioChannelLayout_4_0_Quad,
+    //! 4.0 Surround Audio Channel Layout (4.0 Surround, 4 Channels: Front/F-Center/B-Center).
+    fplAudioChannelLayout_4_0_Surround,
+    //! 4.1 Audio Channel Layout (4.1, 5 Channels: Front/LFE/Back).
+    fplAudioChannelLayout_4_1,
+    //! 5.0 Audio Channel Layout (5.0, 5 Channels: Front/Center/Back).
+    fplAudioChannelLayout_5_0_Surround,
+    //! 5.1 Audio Channel Layout (5.1, 6 Channels: Front/Center/LFE/Side).
+    fplAudioChannelLayout_5_1,
+    //! 6.1 Audio Channel Layout (6.1, 7 Channels: Front/F-Center/LFE/B-Center/Side).
+    fplAudioChannelLayout_6_1,
+    //! 7.1 Audio Channel Layout (7.1, 8 Channels: Front/Center/LFE/Back/Side).
+    fplAudioChannelLayout_7_1,
+    //! First Audio Channel Layout.
+    fplAudioChannelLayout_First = fplAudioChannelLayout_Mono,
+    //! Last Audio Channel Layout.
+    fplAudioChannelLayout_Last = fplAudioChannelLayout_7_1,
 } fplAudioChannelLayout;
 
-//! An enumeration of a audio channel types
+/*!
+* @enum fplAudioChannelType
+* @brief An enumeration of audio channel types.
+*/
 typedef enum fplAudioChannelType {
-	//! No or unknown audio channel
-	fplAudioChannelType_None = 0,
-	//! Front left
-	fplAudioChannelType_FrontLeft,
-	//! Front right
-	fplAudioChannelType_FrontRight,
-	//! Front center
-	fplAudioChannelType_FrontCenter,
-	//! Low Frequency
-	fplAudioChannelType_LowFrequency,
-	//! Back left
-	fplAudioChannelType_BackLeft,
-	//! Back right
-	fplAudioChannelType_BackRight,
-	//! Front left of center
-	fplAudioChannelType_FrontLeftOfCenter,
-	//! Front right of center
-	fplAudioChannelType_FrontRightOfCenter,
-	//! Front back center
-	fplAudioChannelType_BackCenter,
-	//! Side left
-	fplAudioChannelType_SideLeft,
-	//! Side right
-	fplAudioChannelType_SideRight,
-	//! Top center
-	fplAudioChannelType_TopCenter,
-	//! Top front left
-	fplAudioChannelType_TopFrontLeft,
-	//! Top front center
-	fplAudioChannelType_TopFrontCenter,
-	//! Top front right
-	fplAudioChannelType_TopFrontRight,
-	//! Top back left
-	fplAudioChannelType_TopBackLeft,
-	//! Top back center
-	fplAudioChannelType_TopBackCenter,
-	//! Top back right
-	fplAudioChannelType_TopBackRight,
-	//! AUX 0
-	fplAudioChannelType_AUX0,
-	//! AUX 1
-	fplAudioChannelType_AUX1,
-	//! AUX 2
-	fplAudioChannelType_AUX2,
-	//! AUX 3
-	fplAudioChannelType_AUX3,
-	//! AUX 4
-	fplAudioChannelType_AUX4,
-	//! AUX 5
-	fplAudioChannelType_AUX5,
-	//! AUX 6
-	fplAudioChannelType_AUX6,
-	//! AUX 7
-	fplAudioChannelType_AUX7,
-	//! AUX 8
-	fplAudioChannelType_AUX8,
-	//! AUX 9
-	fplAudioChannelType_AUX9,
-	//! AUX 10
-	fplAudioChannelType_AUX10,
-	//! AUX 11
-	fplAudioChannelType_AUX11,
-	//! AUX 12
-	fplAudioChannelType_AUX12,
-	//! AUX 13
-	fplAudioChannelType_AUX13,
-	//! AUX 14
-	fplAudioChannelType_AUX14,
-	//! AUX 15
-	fplAudioChannelType_AUX15,
+    //! No or unknown audio channel.
+    fplAudioChannelType_None = 0,
+    //! Front left.
+    fplAudioChannelType_FrontLeft,
+    //! Front right.
+    fplAudioChannelType_FrontRight,
+    //! Front center.
+    fplAudioChannelType_FrontCenter,
+    //! Low Frequency.
+    fplAudioChannelType_LowFrequency,
+    //! Back left.
+    fplAudioChannelType_BackLeft,
+    //! Back right.
+    fplAudioChannelType_BackRight,
+    //! Front left of center.
+    fplAudioChannelType_FrontLeftOfCenter,
+    //! Front right of center.
+    fplAudioChannelType_FrontRightOfCenter,
+    //! Back center.
+    fplAudioChannelType_BackCenter,
+    //! Side left.
+    fplAudioChannelType_SideLeft,
+    //! Side right.
+    fplAudioChannelType_SideRight,
+    //! Top center.
+    fplAudioChannelType_TopCenter,
+    //! Top front left.
+    fplAudioChannelType_TopFrontLeft,
+    //! Top front center.
+    fplAudioChannelType_TopFrontCenter,
+    //! Top front right.
+    fplAudioChannelType_TopFrontRight,
+    //! Top back left.
+    fplAudioChannelType_TopBackLeft,
+    //! Top back center.
+    fplAudioChannelType_TopBackCenter,
+    //! Top back right.
+    fplAudioChannelType_TopBackRight,
+    //! AUX 0.
+    fplAudioChannelType_AUX0,
+    //! AUX 1.
+    fplAudioChannelType_AUX1,
+    //! AUX 2.
+    fplAudioChannelType_AUX2,
+    //! AUX 3.
+    fplAudioChannelType_AUX3,
+    //! AUX 4.
+    fplAudioChannelType_AUX4,
+    //! AUX 5.
+    fplAudioChannelType_AUX5,
+    //! AUX 6.
+    fplAudioChannelType_AUX6,
+    //! AUX 7.
+    fplAudioChannelType_AUX7,
+    //! AUX 8.
+    fplAudioChannelType_AUX8,
+    //! AUX 9.
+    fplAudioChannelType_AUX9,
+    //! AUX 10.
+    fplAudioChannelType_AUX10,
+    //! AUX 11.
+    fplAudioChannelType_AUX11,
+    //! AUX 12.
+    fplAudioChannelType_AUX12,
+    //! AUX 13.
+    fplAudioChannelType_AUX13,
+    //! AUX 14.
+    fplAudioChannelType_AUX14,
+    //! AUX 15.
+    fplAudioChannelType_AUX15,
 
-	//! First
-	fplAudioChannelType_First = fplAudioChannelType_FrontLeft,
-	//! Last
-	fplAudioChannelType_Last = fplAudioChannelType_AUX15,
+    //! First audio channel type.
+    fplAudioChannelType_First = fplAudioChannelType_FrontLeft,
+    //! Last audio channel type.
+    fplAudioChannelType_Last = fplAudioChannelType_AUX15,
 } fplAudioChannelType;
 //! Audio speaker layout operator overloads for C++
 FPL_ENUM_AS_FLAGS_OPERATORS(fplAudioChannelType);
 
-//! Maximum number of audio channels
+/*!
+* @define FPL_MAX_AUDIO_CHANNEL_COUNT
+* @brief Maximum number of audio channels.
+*/
 #define FPL_MAX_AUDIO_CHANNEL_COUNT 32
 
-//! A structure storing the mapping of all audio channels to a audio speaker
+/*!
+* @struct fplAudioChannelMap
+* @brief Stores the mapping of all audio channels to an audio speaker.
+*/
 typedef struct fplAudioChannelMap {
-	//! The mapping from channel 0-31 to a audio speaker
-	fplAudioChannelType speakers[FPL_MAX_AUDIO_CHANNEL_COUNT];
+    //! The mapping from channel 0-31 to an audio speaker.
+    fplAudioChannelType speakers[FPL_MAX_AUDIO_CHANNEL_COUNT];
 } fplAudioChannelMap;
 
-//! A structure containing audio format properties, such as type, samplerate, channels, etc.
+/*!
+* @struct fplAudioFormat
+* @brief Stores audio format properties, such as type, sample rate, channels, etc.
+*/
 typedef struct fplAudioFormat {
-	//! Samples per seconds (uses default when zero)
-	uint32_t sampleRate;
-	//! Buffer size in frames (Uses default when zero, first choice)
-	uint32_t bufferSizeInFrames;
-	//! Buffer size in milliseconds (Uses default when zero, second choice)
-	uint32_t bufferSizeInMilliseconds;
-	//! Number of channels (uses default when zero)
-	uint16_t channels;
-	//! Number of periods (uses default when zero)
-	uint16_t periods;
-	//! Audio default fields flags
-	fplAudioDefaultFields defaultFields;
-	//! Audio format (uses default when zero)
-	fplAudioFormatType type;
-	//! Audio channel layout (uses default when auto)
-	fplAudioChannelLayout channelLayout;
-	//! Audio mode
-	fplAudioMode mode;
+    //! Samples per second (uses default when zero).
+    uint32_t sampleRate;
+    //! Buffer size in frames (uses default when zero, first choice).
+    uint32_t bufferSizeInFrames;
+    //! Buffer size in milliseconds (uses default when zero, second choice).
+    uint32_t bufferSizeInMilliseconds;
+    //! Number of channels (uses default when zero).
+    uint16_t channels;
+    //! Number of periods (uses default when zero).
+    uint16_t periods;
+    //! Audio default fields flags.
+    fplAudioDefaultFields defaultFields;
+    //! Audio format (uses default when zero).
+    fplAudioFormatType type;
+    //! Audio channel layout (uses default when auto).
+    fplAudioChannelLayout channelLayout;
+    //! Audio mode.
+    fplAudioMode mode;
 } fplAudioFormat;
 
-//! A union containing a id of the underlying backend
+/*!
+* @union fplAudioDeviceID
+* @brief Stores the ID of the underlying backend.
+*/
 typedef union fplAudioDeviceID {
 #if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
-	//! DirectShow Device GUID
-	fpl__Win32Guid dshow;
+    //! DirectShow Device GUID.
+    fpl__Win32Guid dshow;
 #endif
 #if defined(FPL__ENABLE_AUDIO_ALSA)
-	//! ALSA Device ID
-	char alsa[256];
+    //! ALSA Device ID.
+    char alsa[256];
 #endif
-	//! Field for preventing union to be empty
-	uint8_t dummy[256];
+    //! Field for preventing union to be empty.
+    uint8_t dummy[256];
 } fplAudioDeviceID;
 
-//! @brief Encoded audio format in 64-bit ([63] Unused 8-bit, Type 8-bit, Channels 16-bit, Sample rate 32-bit [0]) 
+/*!
+* @typedef fplAudioFormatU64
+* @brief Encoded audio format in 64-bit ([63] Unused 8-bit, Type 8-bit, Channels 16-bit, Sample rate 32-bit [0]).
+*/
 typedef uint64_t fplAudioFormatU64;
 
-//! A structure containing the name and the id of the audio device
+/*!
+* @struct fplAudioDeviceInfo
+* @brief Stores the name and the ID of the audio device.
+*/
 typedef struct fplAudioDeviceInfo {
-	//! Device name
-	char name[FPL_MAX_NAME_LENGTH - 1];
-	//! A value indicating whether this is a default device or not
-	bool isDefault;
-	//! Device id
-	fplAudioDeviceID id;
+    //! Device name.
+    char name[FPL_MAX_NAME_LENGTH - 1];
+    //! A value indicating whether this is a default device or not.
+    bool isDefault;
+    //! Device ID.
+    fplAudioDeviceID id;
 } fplAudioDeviceInfo;
 
-//! A structure containing the @ref fplAudioDeviceInfo and the supported formats
+/*!
+* @struct fplAudioDeviceInfoExtended
+* @brief Stores the @ref fplAudioDeviceInfo and the supported formats.
+*/
 typedef struct fplAudioDeviceInfoExtended {
-	//! The base @ref fplAudioDeviceInfo
-	fplAudioDeviceInfo info;
-	//! Supported audio formats
-	fplAudioFormatU64 supportedFormats[63];
-	//! Number of supported formats
-	size_t supportedFormatCount;
+    //! The base @ref fplAudioDeviceInfo.
+    fplAudioDeviceInfo info;
+    //! Supported audio formats.
+    fplAudioFormatU64 supportedFormats[63];
+    //! Number of supported formats.
+    size_t supportedFormatCount;
 } fplAudioDeviceInfoExtended;
 
 #if defined(FPL__ENABLE_AUDIO_ALSA)
-//! A structure containing settings for the ALSA audio backend
+/*!
+* @struct fplAlsaAudioSettings
+* @brief Stores settings for the ALSA audio backend.
+*/
 typedef struct fplAlsaAudioSettings {
-	//! Disable the usage of MMap in ALSA
-	fpl_b32 noMMap;
+    //! Disable the usage of MMap in ALSA.
+    fpl_b32 noMMap;
 } fplAlsaAudioSettings;
 #endif
 
-//! A union containing backend specific audio settings
+/*!
+* @union fplSpecificAudioSettings
+* @brief Stores backend-specific audio settings.
+*/
 typedef union fplSpecificAudioSettings {
 #if defined(FPL__ENABLE_AUDIO_ALSA)
-	//! Alsa specific settings
-	fplAlsaAudioSettings alsa;
+    //! ALSA-specific settings.
+    fplAlsaAudioSettings alsa;
 #endif
-	//! Field for preventing union to be empty
-	int dummy;
+    //! Field for preventing union to be empty.
+    int dummy;
 } fplSpecificAudioSettings;
 
 /**
-* @brief A callback for reading audio samples from the client
-* @param deviceFormat The pointer to the @ref fplAudioFormat structure, the audio cards expects
-* @param frameCount The numbers if frames the client should write at max
-* @param outputSamples The pointer to the target samples
-* @param userData The pointer to the user data specified in @ref fplAudioSettings
-* @return Returns the number written frames
+* @brief A function definition for a callback for reading audio samples from the client.
+* @param[in] deviceFormat Reference to the @ref fplAudioFormat structure, the audio card expects.
+* @param[in] frameCount The number of frames the client should write at max (uint32_t).
+* @param[out] outputSamples Reference to the target samples (void*).
+* @param[in] userData Reference to the user data specified in @ref fplAudioSettings (void*).
+* @return Returns the number of written frames (uint32_t).
 * @see @ref subsection_category_audio_general_default_init_clientcallback
 */
 typedef uint32_t(fpl_audio_client_read_callback)(const fplAudioFormat *deviceFormat, const uint32_t frameCount, void *outputSamples, void *userData);
 
-//! A structure containing audio settings, such as format, device info, callbacks, backend, etc.
+/*!
+* @struct fplAudioSettings
+* @brief Stores audio settings, such as format, device info, callbacks, backend, etc.
+*/
 typedef struct fplAudioSettings {
-	//! The target format
-	fplAudioFormat targetFormat;
-	//! The target device
-	fplAudioDeviceInfo targetDevice;
-	//! Specific settings
-	fplSpecificAudioSettings specific;
-	//! The callback for retrieving audio data from the client
-	fpl_audio_client_read_callback *clientReadCallback;
-	//! User data pointer for client read callback
-	void *clientUserData;
-	//! The targeted backend
-	fplAudioBackendType backend;
-	//! Start playing of audio samples after platform initialization automatically
-	fpl_b32 startAuto;
-	//! Stop playing of audio samples before platform release automatically
-	fpl_b32 stopAuto;
-	//! Manual loading the audio system by @ref fplAudioInit() and unload using fplAudioRelease()
-	fpl_b32 manualLoad;
+    //! The target format.
+    fplAudioFormat targetFormat;
+    //! The target device.
+    fplAudioDeviceInfo targetDevice;
+    //! Specific settings.
+    fplSpecificAudioSettings specific;
+    //! The callback for retrieving audio data from the client.
+    fpl_audio_client_read_callback *clientReadCallback;
+    //! User data pointer for client read callback.
+    void *clientUserData;
+    //! The targeted backend.
+    fplAudioBackendType backend;
+    //! Start playing of audio samples after platform initialization automatically.
+    fpl_b32 startAuto;
+    //! Stop playing of audio samples before platform release automatically.
+    fpl_b32 stopAuto;
+    //! Manual loading the audio system by @ref fplAudioInit() and unload using fplAudioRelease().
+    fpl_b32 manualLoad;
 } fplAudioSettings;
 
 /**
-* @brief Resets the given audio settings to default settings (S16 PCM, 48 kHz, 2 Channels)
-* @param audio The target @ref fplAudioSettings structure
-* @note This will not change any audio settings! To change the actual settings you have to pass the entire @ref fplSettings container to an argument in @ref fplPlatformInit().
+* @brief Resets the given audio settings to default settings (S16 PCM, 48 kHz, 2 Channels).
+* @param[out] audio Reference to the target @ref fplAudioSettings structure.
+* @note This will not change any audio settings! To change the actual settings you have to pass the entire @ref fplSettings container as an argument in @ref fplPlatformInit().
 * @see @ref section_category_audio_general_notes
 */
 fpl_common_api void fplSetDefaultAudioSettings(fplAudioSettings *audio);
 
-//! An enumeration of image types
+/*!
+* @enum fplImageType
+* @brief An enumeration of image types.
+*/
 typedef enum fplImageType {
-	//! No image type
-	fplImageType_None = 0,
-	//! RGBA image type
-	fplImageType_RGBA,
+    //! No image type.
+    fplImageType_None = 0,
+    //! RGBA image type.
+    fplImageType_RGBA,
 } fplImageType;
 
-//! A structure containing data for working with a image source
+/*!
+* @struct fplImageSource
+* @brief Stores data for working with an image source.
+*/
 typedef struct fplImageSource {
-	//! Pointer to the source data
-	const uint8_t *data;
-	//! Width in pixels
-	uint32_t width;
-	//! Height in pixels
-	uint32_t height;
-	//! Image type
-	fplImageType type;
+    //! Reference to the source data.
+    const uint8_t *data;
+    //! Width in pixels.
+    uint32_t width;
+    //! Height in pixels.
+    uint32_t height;
+    //! Image type.
+    fplImageType type;
 } fplImageSource;
 
 /**
-* @brief A callback executed for each raw window event
-* @param platformType The current @ref fplPlatformType
-* @param windowState The opaque window state, mapping to fpl internal window state
-* @param rawEventData The raw event data structure for the current OS (XEvent for POSIX, MSG for Win32, etc.)
-* @param userData The pointer to the specific user data specified in @ref fplWindowCallbacks
-* @return Needs to return true if the event is handled
+* @brief A function definition for a callback executed for each raw window event.
+* @param[in] platformType The current @ref fplPlatformType.
+* @param[in, out] windowState Reference to the opaque window state, mapping to fpl internal window state.
+* @param[in] rawEventData Reference to the raw event data structure for the current OS (XEvent for POSIX, MSG for Win32, etc.).
+* @param[in] userData Reference to the specific user data specified in @ref fplWindowCallbacks.
+* @return Needs to return true if the event is handled (bool).
 */
 typedef bool (fpl_window_event_callback)(const fplPlatformType platformType, void *windowState, void *rawEventData, void *userData);
 
 /**
-* @brief A callback executed when the window needs to be exposed/repainted
-* @param platformType The current @ref fplPlatformType
-* @param windowState The opaque window state, mapping to internal window state
-* @param rawEventData The raw event data structure for the current OS (XEvent for POSIX, MSG for Win32, etc.)
-* @param userData The pointer to the specific user data specified in @ref fplWindowCallbacks
-* @return Needs to return true, if the event is handled
+* @brief A function definition for a callback executed when the window needs to be exposed/repainted.
+* @param[in] platformType The current @ref fplPlatformType.
+* @param[in, out] windowState Reference to the opaque window state, mapping to internal window state.
+* @param[in] rawEventData Reference to the raw event data structure for the current OS (XEvent for POSIX, MSG for Win32, etc.).
+* @param[in] userData Reference to the specific user data specified in @ref fplWindowCallbacks.
+* @return Needs to return true if the event is handled (bool).
 */
 typedef fpl_window_event_callback fpl_window_exposed_callback;
 
-//! A structure containing the window callbacks
+/*!
+* @struct fplWindowCallbacks
+* @brief Stores the window callbacks.
+*/
 typedef struct fplWindowCallbacks {
-	//! Expose callback
-	fpl_window_exposed_callback *exposedCallback;
-	//! User data pointer for the expose callback
-	void *exposedUserData;
-	//! Expose callback
-	fpl_window_event_callback *eventCallback;
-	//! User data pointer for the event callback
-	void *eventUserData;
+    //! Expose callback.
+    fpl_window_exposed_callback *exposedCallback;
+    //! User data pointer for the expose callback.
+    void *exposedUserData;
+    //! Event callback.
+    fpl_window_event_callback *eventCallback;
+    //! User data pointer for the event callback.
+    void *eventUserData;
 } fplWindowCallbacks;
 
-//! A structure containing the size of a window
+/*!
+* @struct fplWindowSize
+* @brief Stores the size of a window.
+*/
 typedef struct fplWindowSize {
-	//! Width in screen coordinates
-	uint32_t width;
-	//! Height in screen coordinates
-	uint32_t height;
+    //! Width in screen coordinates.
+    uint32_t width;
+    //! Height in screen coordinates.
+    uint32_t height;
 } fplWindowSize;
 
-//! A structure containing the position of a window
+/*!
+* @struct fplWindowPosition
+* @brief Stores the position of a window.
+*/
 typedef struct fplWindowPosition {
-	//! Left position in screen coordinates
-	int32_t left;
-	//! Top position in screen coordinates
-	int32_t top;
+    //! Left position in screen coordinates.
+    int32_t left;
+    //! Top position in screen coordinates.
+    int32_t top;
 } fplWindowPosition;
 
-//! @brief Defines a 32-bit color in format BGRA.
+/*!
+* @union fplColor32
+* @brief Defines a 32-bit color in format BGRA.
+*/
 typedef union fplColor32 {
-	struct {
-		//! The 8-bit blue component
-		uint8_t b;
-		//! The 8-bit green component
-		uint8_t g;
-		//! The 8-bit red component
-		uint8_t r;
-		//! The 8-bit alpha component
-		uint8_t a;
-	};
-	//! The 32-bit color value in format 0xBBGGRRAA
-	uint32_t value;
-	//! The color components array, stored as B, G, R, A
-	uint8_t m[4];
+    struct {
+        //! The 8-bit blue component.
+        uint8_t b;
+        //! The 8-bit green component.
+        uint8_t g;
+        //! The 8-bit red component.
+        uint8_t r;
+        //! The 8-bit alpha component.
+        uint8_t a;
+    };
+    //! The 32-bit color value in format 0xBBGGRRAA.
+    uint32_t value;
+    //! The color components array, stored as B, G, R, A.
+    uint8_t m[4];
 } fplColor32;
 
 /**
 * @brief Creates a @ref fplColor32 from the specified r, g, b, a components.
-* @param r The red component in range of 0-255
-* @param g The green component in range of 0-255
-* @param b The blue component in range of 0-255
-* @param a The alpha component in range of 0-255
-* @return The resulting @ref fplColor32
+* @param[in] r The red component in range of 0-255 (uint8_t).
+* @param[in] g The green component in range of 0-255 (uint8_t).
+* @param[in] b The blue component in range of 0-255 (uint8_t).
+* @param[in] a The alpha component in range of 0-255 (uint8_t).
+* @return The resulting @ref fplColor32.
 */
 fpl_common_api fplColor32 fplCreateColorRGBA(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a);
 
-//! A structure containing window settings, such as size, title etc.
+/*!
+* @struct fplWindowSettings
+* @brief Stores window settings, such as size, title, etc.
+*/
 typedef struct fplWindowSettings {
-	//! Window title
-	char title[FPL_MAX_NAME_LENGTH];
-	//! Window icons (0 = Small, 1 = Large)
-	fplImageSource icons[2];
-	//! Window callbacks
-	fplWindowCallbacks callbacks;
-	//! The background @ref fplColor32 for the window when using @ref fplVideoBackendType_Software or @ref fplVideoBackendType_None. When all RGBA components are zero, the default system background color is used instead.
-	fplColor32 background;
-	//! Window size in screen coordinates
-	fplWindowSize windowSize;
-	//! Fullscreen size in screen coordinates
-	fplWindowSize fullscreenSize;
-	//! Fullscreen refresh rate in Hz
-	uint32_t fullscreenRefreshRate;
-	//! Is window resizable
-	fpl_b32 isResizable;
-	//! Is window decorated
-	fpl_b32 isDecorated;
-	//! Is floating
-	fpl_b32 isFloating;
-	//! Is window in fullscreen mode
-	fpl_b32 isFullscreen;
-	//! Is screen saver prevented (true: prevents the screensaver to kick-in, false: system behavior)
-	fpl_b32 isScreenSaverPrevented;
-	//! Is monitor power change prevented (true: prevents the monitor for powering off automatically, false: system behavior)
-	fpl_b32 isMonitorPowerPrevented;
+    //! Window title.
+    char title[FPL_MAX_NAME_LENGTH];
+    //! Window icons (0 = Small, 1 = Large).
+    fplImageSource icons[2];
+    //! Window callbacks.
+    fplWindowCallbacks callbacks;
+    //! The background @ref fplColor32 for the window when using @ref fplVideoBackendType_Software or @ref fplVideoBackendType_None. When all RGBA components are zero, the default system background color is used instead.
+    fplColor32 background;
+    //! Window size in screen coordinates.
+    fplWindowSize windowSize;
+    //! Fullscreen size in screen coordinates.
+    fplWindowSize fullscreenSize;
+    //! Fullscreen refresh rate in Hz.
+    uint32_t fullscreenRefreshRate;
+    //! Is window resizable.
+    fpl_b32 isResizable;
+    //! Is window decorated.
+    fpl_b32 isDecorated;
+    //! Is floating.
+    fpl_b32 isFloating;
+    //! Is window in fullscreen mode.
+    fpl_b32 isFullscreen;
+    //! Is screen saver prevented (true: prevents the screensaver to kick-in, false: system behavior).
+    fpl_b32 isScreenSaverPrevented;
+    //! Is monitor power change prevented (true: prevents the monitor from powering off automatically, false: system behavior).
+    fpl_b32 isMonitorPowerPrevented;
 } fplWindowSettings;
 
 /**
-* @brief Resets the given window settings container to default settings
-* @param window The target @ref fplWindowSettings structure
-* @note This will not change any window settings! To change the actual settings you have to pass the entire @ref fplSettings container to an argument in @ref fplPlatformInit().
+* @brief Resets the given window settings container to default settings.
+* @param[out] window Reference to the target @ref fplWindowSettings structure.
+* @note This will not change any window settings! To change the actual settings you have to pass the entire @ref fplSettings container as an argument in @ref fplPlatformInit().
 * @see @ref section_category_window_style_notes
 */
 fpl_common_api void fplSetDefaultWindowSettings(fplWindowSettings *window);
 
-//! A structure containing the title and options for the console
+/*!
+* @struct fplConsoleSettings
+* @brief Stores the title and options for the console.
+*/
 typedef struct fplConsoleSettings {
-	//! Console title
-	char title[FPL_MAX_NAME_LENGTH];
+    //! Console title.
+    char title[FPL_MAX_NAME_LENGTH];
 } fplConsoleSettings;
 
 /**
-* @brief Resets the given console settings container to default settings
-* @param console The target @ref fplConsoleSettings structure
-* @note This will not change any console settings! To change the actual settings you have to pass the entire @ref fplSettings container to an argument in @ref fplPlatformInit().
+* @brief Resets the given console settings container to default settings.
+* @param[out] console Reference to the target @ref fplConsoleSettings structure.
+* @note This will not change any console settings! To change the actual settings you have to pass the entire @ref fplSettings container as an argument in @ref fplPlatformInit().
 */
 fpl_common_api void fplSetDefaultConsoleSettings(fplConsoleSettings *console);
 
-//! A structure containing input settings
+/*!
+* @struct fplInputSettings
+* @brief Stores input settings.
+*/
 typedef struct fplInputSettings {
-	//! Frequency in ms for detecting new or removed controllers (Default: 200)
-	uint32_t controllerDetectionFrequency;
-	//! Disable input events entirely (Default: false)
-	fpl_b32 disabledEvents;
+    //! Frequency in ms for detecting new or removed controllers (Default: 200).
+    uint32_t controllerDetectionFrequency;
+    //! Disable input events entirely (Default: false).
+    fpl_b32 disabledEvents;
 } fplInputSettings;
 
 /**
 * @brief Resets the given input settings container to default values.
-* @param input The target @ref fplInputSettings structure
-* @note This will not change any input settings! To change the actual settings you have to pass the entire @ref fplSettings container to an argument in @ref fplPlatformInit().
+* @param[out] input Reference to the target @ref fplInputSettings structure.
+* @note This will not change any input settings! To change the actual settings you have to pass the entire @ref fplSettings container as an argument in @ref fplPlatformInit().
 * @see @ref page_category_input_config
 */
 fpl_common_api void fplSetDefaultInputSettings(fplInputSettings *input);
 
-//! Custom memory allocation callback
+/**
+* @brief A function definition for a custom memory allocation callback.
+* @param[in] userData Reference to user data (void*).
+* @param[in] size The size to be allocated (size_t).
+* @param[in] alignment The alignment in bytes (size_t).
+* @return Returns a reference to the allocated memory (void*).
+*/
 typedef void *(fpl_memory_allocate_callback)(void *userData, const size_t size, const size_t alignment);
-//! Custom memory release callback
+
+/**
+* @brief A function definition for a custom memory release callback.
+* @param[in] userData Reference to user data (void*).
+* @param[in] ptr Reference to the memory to be released (void*).
+*/
 typedef void (fpl_memory_release_callback)(void *userData, void *ptr);
 
-//! A enumeration of dynamic memory allocation modes
+/*!
+* @enum fplMemoryAllocationMode
+* @brief An enumeration of dynamic memory allocation modes.
+*/
 typedef enum fplMemoryAllocationMode {
-	//! Use OS memory allocation
-	fplMemoryAllocationMode_Automatic = 0,
-	//! Use custom memory allocation
-	fplMemoryAllocationMode_Custom,
+    //! Use OS memory allocation.
+    fplMemoryAllocationMode_Automatic = 0,
+    //! Use custom memory allocation.
+    fplMemoryAllocationMode_Custom,
 } fplMemoryAllocationMode;
 
-//! A structure for setting up memory allocation usage
+/*!
+* @struct fplMemoryAllocationSettings
+* @brief Stores settings for memory allocation usage.
+*/
 typedef struct fplMemoryAllocationSettings {
-	//! Memory allocation mode
-	fplMemoryAllocationMode mode;
-	//! Callback for allocating memory
-	fpl_memory_allocate_callback *allocateCallback;
-	//! Callback for releasing memory
-	fpl_memory_release_callback *releaseCallback;
-	//! User data passed through callbacks
-	void *userData;
+    //! Memory allocation mode.
+    fplMemoryAllocationMode mode;
+    //! Callback for allocating memory.
+    fpl_memory_allocate_callback *allocateCallback;
+    //! Callback for releasing memory.
+    fpl_memory_release_callback *releaseCallback;
+    //! User data passed through callbacks.
+    void *userData;
 } fplMemoryAllocationSettings;
 
-//! A structure for setting up memory settings for dynamic and temporary allocations
+/*!
+* @struct fplMemorySettings
+* @brief Stores memory settings for dynamic and temporary allocations.
+*/
 typedef struct fplMemorySettings {
-	//! Dynamic memory allocation settings
-	fplMemoryAllocationSettings dynamic;
-	//! Temporary memory allocation settings
-	fplMemoryAllocationSettings temporary;
+    //! Dynamic memory allocation settings.
+    fplMemoryAllocationSettings dynamic;
+    //! Temporary memory allocation settings.
+    fplMemoryAllocationSettings temporary;
 } fplMemorySettings;
 
-//! A structure containing settings, such as window, video, etc.
+/*!
+* @struct fplSettings
+* @brief Stores settings, such as window, video, etc.
+*/
 typedef struct fplSettings {
-	//! Window settings
-	fplWindowSettings window;
-	//! Video settings
-	fplVideoSettings video;
-	//! Audio settings
-	fplAudioSettings audio;
-	//! Input settings
-	fplInputSettings input;
-	//! Console settings
-	fplConsoleSettings console;
-	//! Memory settings
-	fplMemorySettings memory;
+    //! Window settings.
+    fplWindowSettings window;
+    //! Video settings.
+    fplVideoSettings video;
+    //! Audio settings.
+    fplAudioSettings audio;
+    //! Input settings.
+    fplInputSettings input;
+    //! Console settings.
+    fplConsoleSettings console;
+    //! Memory settings.
+    fplMemorySettings memory;
 } fplSettings;
 
 /**
 * @brief Resets the given settings container to default values for window, video, audio, etc.
-* @param settings The target @ref fplSettings structure
-* @note This will not change the active settings! To change the actual settings you have to pass this settings container to an argument in @ref fplPlatformInit().
+* @param[out] settings Reference to the target @ref fplSettings structure.
+* @note This will not change the active settings! To change the actual settings you have to pass this settings container as an argument in @ref fplPlatformInit().
 * @see @ref section_category_initialization_with_settings
 */
 fpl_common_api void fplSetDefaultSettings(fplSettings *settings);
+
 /**
-* @brief Creates a full settings structure containing default values
-* @return Returns a defaulted @ref fplSettings structure
+* @brief Creates a full settings structure containing default values.
+* @return Returns a defaulted @ref fplSettings structure.
 * @see @ref section_category_initialization_tips
 */
 fpl_common_api fplSettings fplMakeDefaultSettings();
+
 /**
-* @brief Gets the current settings
-* @return Returns a pointer to the @ref fplSettings structure
+* @brief Gets the current settings.
+* @return Returns a reference to the @ref fplSettings structure.
 * @see @ref section_category_initialization_tips
 */
 fpl_common_api const fplSettings *fplGetCurrentSettings();
@@ -10472,7 +10654,7 @@ fpl_force_inline uint64_t fpl__m_RDTSC(void) {
 #		endif
 #	endif
 
-fpl_common_api bool fplCPUID(fplCPUIDLeaf *outLeaf, const uint32_t functionId) {
+fpl_common_api bool fplCPUID(const uint32_t functionId, fplCPUIDLeaf *outLeaf) {
 #if defined(fpl__m_CPUID)
 	fpl__m_CPUID(outLeaf, functionId);
 	return true;
@@ -10507,18 +10689,18 @@ fpl_common_api bool fplCPUGetCapabilities(fplCPUCapabilities *outCaps) {
 	fplCPUIDLeaf info7 = fplZeroInit;
 	fplCPUIDLeaf tempLeaf = fplZeroInit;
 
-	if (!fplCPUID(&info0, 0))
+	if (!fplCPUID(0, &info0))
 		return false;
 
 	uint32_t maxFunctionId = info0.eax;
 
 	if (1 <= maxFunctionId) {
-		if (!fplCPUID(&info1, 1))
+		if (!fplCPUID(1, &info1))
 			return false;
 	}
 
 	if (7 <= maxFunctionId) {
-		if (!fplCPUID(&info7, 7))
+		if (!fplCPUID(7, &info7))
 			return false;
 	}
 
@@ -10568,23 +10750,23 @@ fpl_common_api bool fplCPUGetCapabilities(fplCPUCapabilities *outCaps) {
     outCaps->x86.hasADX = fplIsBitSet(info7.ebx, 19);
     outCaps->x86.hasF16C = fplIsBitSet(info1.ecx, 29);
 
-	if (fplCPUID(&tempLeaf, 0x80000001)) {
+	if (fplCPUID(0x80000001, &tempLeaf)) {
 		outCaps->x86.hasEM64T = fplIsBitSet(info1.edx, 29);
 	}
 
 	return(true);
 }
 
-fpl_common_api size_t fplCPUGetName(char *destBuffer, const size_t maxDestBufferLen) {
+fpl_common_api size_t fplCPUGetName(const size_t maxDestBufferLen, char *destBuffer) {
 	fplCPUIDLeaf cpuInfo = fplZeroInit;
-	fplCPUID(&cpuInfo, 0x80000000);
+	fplCPUID(0x80000000, &cpuInfo);
 	uint32_t extendedIds = cpuInfo.eax;
 
 	// Get the information associated with each extended ID. Interpret CPU brand string.
 	char cpuBrandBuffer[FPL__CPU_BRAND_BUFFER_SIZE] = fplZeroInit;
 	uint32_t max = fplMin(extendedIds, 0x80000004);
 	for (uint32_t i = 0x80000002; i <= max; ++i) {
-		fplCPUID(&cpuInfo, i);
+		fplCPUID(i, &cpuInfo);
 		uint32_t offset = (i - 0x80000002) << 4;
 		fplMemoryCopy(cpuInfo.raw, sizeof(cpuInfo), cpuBrandBuffer + offset);
 	}
@@ -10634,7 +10816,7 @@ fpl_common_api uint64_t fplCPUXCR0() {
 	return(0);
 }
 
-fpl_common_api bool fplCPUID(fplCPUIDLeaf *outLeaf, const uint32_t functionId) {
+fpl_common_api bool fplCPUID(const uint32_t functionId, fplCPUIDLeaf *outLeaf) {
 	return(false);
 }
 
@@ -10643,7 +10825,7 @@ fpl_common_api bool fplCPUGetCapabilities(fplCPUCapabilities *outCaps) {
 	return(false);
 }
 
-fpl_common_api size_t fplCPUGetName(char *destBuffer, const size_t maxDestBufferLen) {
+fpl_common_api size_t fplCPUGetName(const size_t maxDestBufferLen, char *destBuffer) {
 	// @IMPLEMENT(final): fplCPUGetName for non-x86 architectures
 	return(0);
 }
@@ -13066,7 +13248,7 @@ fpl_platform_api bool fplOSGetVersionInfos(fplOSVersionInfos *outInfos) {
 
 #define FPL__FUNC_ADV32_GetUserNameW(name) BOOL WINAPI name(LPWSTR lpBuffer, LPDWORD pcbBuffer)
 typedef FPL__FUNC_ADV32_GetUserNameW(fpl__func_adv32_GetUserNameW);
-fpl_platform_api size_t fplSessionGetUsername(char *nameBuffer, const size_t maxNameBufferLen) {
+fpl_platform_api size_t fplSessionGetUsername(const size_t maxNameBufferLen, char *nameBuffer) {
 	const char *libName = "advapi32.dll";
 	HMODULE adv32Lib = LoadLibraryA(libName);
 	if (adv32Lib == fpl_null) {
@@ -16610,19 +16792,19 @@ fpl_platform_api void fplDirectoryListEnd(fplFileEntry *entry) {
 //
 // POSIX Operating System
 //
-fpl_platform_api size_t fplSessionGetUsername(char *nameBuffer, const size_t maxNameBufferLen) {
+fpl_platform_api size_t fplSessionGetUsername(const size_t maxNameBufferLen, char *nameBuffer) {
 	uid_t uid = geteuid();
 	struct passwd *pw = getpwuid(uid);
-	size_t result = 0;
 	if (pw != fpl_null) {
-		size_t nameLen = result = fplGetStringLength(pw->pw_name);
+		size_t nameLen = fplGetStringLength(pw->pw_name);
 		if (nameLen > 0 && nameBuffer != fpl_null) {
 			size_t requiredLen = nameLen + 1;
 			FPL__CheckArgumentMin(maxNameBufferLen, requiredLen, 0);
 			fplCopyStringLen(pw->pw_name, nameLen, nameBuffer, maxNameBufferLen);
 		}
+		return(nameLen);
 	}
-	return(result);
+	return(0);
 }
 
 fpl_platform_api size_t fplCPUGetCoreCount() {
