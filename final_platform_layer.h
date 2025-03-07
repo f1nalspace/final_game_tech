@@ -5,37 +5,37 @@ final_platform_layer.h
 	About
 -------------------------------------------------------------------------------
 
-Final Platform Layer is a Single-Header-File cross-platform C/C++ development library designed to abstract the underlying platform to a simple and easy-to-use API - providing low-level access to (Window, Video, Audio, Input, File/Path IO, Threads, Memory, Hardware, etc.).
+Final Platform Layer is a single-header-file cross-platform C/C++ development library designed to abstract the underlying platform to a simple and easy-to-use API, providing low-level access to (Window, Video, Audio, Input, File/Path IO, Threads, Memory, Hardware, etc.).
 
 The main focus is game/media/simulation development, so the default settings will create a window, set up an OpenGL rendering context, and initialize audio playback on any platform.
 
 It is written in C99 for simplicity and best portability but is C++ compatible as well.
 
-FPL supports the platforms Windows/Linux/Unix for the architectures x86/x64/arm.
+FPL supports the platforms Windows/Linux/Unix for the architectures x86/x64/ARM.
 
-The only dependencies are built-in operating system libraries and a C99 or C++/11 compliant compiler.
+The only dependencies are built-in operating system libraries and a C99 or C++11 compliant compiler.
 
-It is licensed under the MIT-License. This license allows you to use FPL freely in any software.
+It is licensed under the MIT License. This license allows you to use FPL freely in any software.
 
 -------------------------------------------------------------------------------
 	Getting started
 -------------------------------------------------------------------------------
 
-- Drop this file into any C/C++ projects you want and include it in any place you want
-- In your main translation unit provide the typical main() entry point
-- Define FPL_IMPLEMENTATION in at least one translation unit before including this header file
-- Init the platform using fplPlatformInit()
-- Use the features you want
-- Release the platform when you are done using fplPlatformRelease()
+- Drop this file into any C/C++ project you want and include it in any place you want.
+- In your main translation unit, provide the typical main() entry point.
+- Define FPL_IMPLEMENTATION in at least one translation unit before including this header file.
+- Initialize the platform using fplPlatformInit().
+- Use the features you want.
+- Release the platform when you are done using fplPlatformRelease().
 
 -------------------------------------------------------------------------------
-	Usage: Hello world console application
+	Usage: Hello World Console Application
 -------------------------------------------------------------------------------
 
 #define FPL_IMPLEMENTATION
 #include <final_platform_layer.h>
 
-int main(int argc, char **args){
+int main(int argc, char **args) {
 	if (fplPlatformInit(fplInitFlags_None, fpl_null)) {
 		fplConsoleOut("Hello World!");
 		fplPlatformRelease();
@@ -46,13 +46,13 @@ int main(int argc, char **args){
 }
 
 -------------------------------------------------------------------------------
-	Usage: OpenGL legacy or modern application
+	Usage: OpenGL Legacy or Modern Application
 -------------------------------------------------------------------------------
 
 #define FPL_IMPLEMENTATION
 #include <final_platform_layer.h>
 
-int main(int argc, char **args){
+int main(int argc, char **args) {
 	// Create default settings
 	fplSettings settings = fplMakeDefaultSettings();
 
@@ -75,10 +75,10 @@ int main(int argc, char **args){
 			// Poll events
 			fplEvent ev;
 			while (fplPollEvent(&ev)) {
-				/// ...
+				// ...
 			}
 
-			// your code goes here
+			// Your code goes here
 
 			fplVideoFlip();
 		}
