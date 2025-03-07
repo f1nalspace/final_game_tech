@@ -42,7 +42,7 @@ Todo:
 
 License:
 	MIT License
-	Copyright 2017-2023 Torsten Spaete
+	Copyright 2017-2025 Torsten Spaete
 */
 
 #ifndef FINAL_AUDIOSYSTEM_H

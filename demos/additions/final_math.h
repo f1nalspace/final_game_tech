@@ -3,13 +3,13 @@ Name:
 	Final Math
 
 Description:
-	Math Library for defining/computing 2D/3D/4D Vectors, 2x2, 4x4 Matrices, etc.
+	Math Library for defining/computing 2D/3D/4D Vectors, 2x2, 3x3, 4x4 Matrices, etc.
 
 	This file is part of the final_framework.
 
 License:
 	MIT License
-	Copyright 2017-2023 Torsten Spaete
+	Copyright 2017-2025 Torsten Spaete
 
 Changelog
 	## 2020-05-15:
