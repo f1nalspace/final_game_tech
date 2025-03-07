@@ -143,7 +143,7 @@ Resources:
 	- https://www.codeproject.com/tips/489450/creating-custom-ffmpeg-io-context
 
 License:
-	Copyright (c) 2017-2023 Torsten Spaete
+	Copyright (c) 2017-2025 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
