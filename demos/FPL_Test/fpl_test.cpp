@@ -117,7 +117,7 @@ static void TestColdInit() {
 static void TestInit() {
 	ftMsg("Test InitPlatform with All init flags\n");
 	{
-		fplClearErrors();
+		fplErrorsClear();
 		bool inited = fplPlatformInit(fplInitFlags_All, nullptr);
 		ftAssert(inited);
 		fplPlatformResultType resultType = fplGetPlatformResult();
@@ -128,7 +128,7 @@ static void TestInit() {
 	}
 	ftMsg("Test InitPlatform with None init flags\n");
 	{
-		fplClearErrors();
+		fplErrorsClear();
 		bool inited = fplPlatformInit(fplInitFlags_None, fpl_null);
 		ftAssert(inited);
 		fplPlatformResultType resultType = fplGetPlatformResult();
@@ -142,7 +142,7 @@ static void TestInit() {
 	ftMsg("Test fplGetCurrentSettings in non-initialized state\n");
 	{
 		ftIsFalse(fpl__global__InitState.isInitialized);
-		fplClearErrors();
+		fplErrorsClear();
 		const fplSettings *settings = fplGetCurrentSettings();
 		ftIsNull(settings);
 		size_t errorCount = fplGetErrorCount();
@@ -172,7 +172,7 @@ static void TestOSInfos() {
 	ftMsg("Get Session User name:\n");
 	{
 		char nameBuffer[256] = {};
-		bool r = fplSessionGetUsername(nameBuffer, fplArrayCount(nameBuffer));
+		bool r = fplSessionGetUsername(fplArrayCount(nameBuffer), nameBuffer);
 		ftIsTrue(r);
 		fplConsoleFormatOut("\tCurrent Username: %s\n", nameBuffer);
 	}
@@ -491,7 +491,7 @@ static void TestPaths() {
 
 static void TestHardware() {
 	char cpuNameBuffer[1024] = {};
-	fplCPUGetName(cpuNameBuffer, fplArrayCount(cpuNameBuffer));
+	fplCPUGetName(fplArrayCount(cpuNameBuffer), cpuNameBuffer);
 	ftMsg("Processor name: %s\n", cpuNameBuffer);
 
 	size_t coreCount = fplCPUGetCoreCount();

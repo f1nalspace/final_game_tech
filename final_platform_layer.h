@@ -4953,7 +4953,7 @@ fpl_common_api size_t fplGetErrorCount();
 * @note This function can be called regardless of the initialization state!
 * @see @ref section_category_errorhandling_clear
 */
-fpl_common_api void fplClearErrors();
+fpl_common_api void fplErrorsClear();
 
 /** @} */
 
@@ -11384,7 +11384,7 @@ fpl_common_api size_t fplGetErrorCount() {
 	return (result);
 }
 
-fpl_common_api void fplClearErrors() {
+fpl_common_api void fplErrorsClear() {
 	fpl__ErrorState *errorState = &fpl__global__LastErrorState;
 	fplClearStruct(errorState);
 }
