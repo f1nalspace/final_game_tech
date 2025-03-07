@@ -3867,12 +3867,12 @@ fpl_platform_api bool fplOSGetVersionInfos(fplOSVersionInfos *outInfos);
 
 /**
 * @brief Gets the username of the current logged-in user from the session
-* @param[in] maxNameBufferLen The max length of the target buffer
 * @param[out] nameBuffer The target buffer
+* @param[in] maxNameBufferLen The max length of the target buffer
 * @return Returns the number of required/written characters, excluding the null-terminator
 * @see @ref section_category_platform_os_username
 */
-fpl_platform_api size_t fplSessionGetUsername(const size_t maxNameBufferLen, char *nameBuffer);
+fpl_platform_api size_t fplSessionGetUsername(char *nameBuffer, const size_t maxNameBufferLen);
 
 /** @} */
 
@@ -4063,12 +4063,12 @@ fpl_platform_api size_t fplCPUGetCoreCount();
 
 /**
 * @brief Retrieves the name of the processor.
-* @param[in] maxDestBufferLen The max length of the destination buffer (size_t).
 * @param[out] destBuffer Reference to the destination buffer (char*).
+* @param[in] maxDestBufferLen The max length of the destination buffer (size_t).
 * @return Returns the number of required/written characters, excluding the null-terminator (size_t).
 * @see @ref section_category_hardware_cpuname
 */
-fpl_common_api size_t fplCPUGetName(const size_t maxDestBufferLen, char *destBuffer);
+fpl_common_api size_t fplCPUGetName(char *destBuffer, const size_t maxDestBufferLen);
 
 /**
 * @brief Gets the capabilities of the processor.
@@ -11611,7 +11611,7 @@ fpl_common_api bool fplCPUGetCapabilities(fplCPUCapabilities *outCaps) {
 	return(true);
 }
 
-fpl_common_api size_t fplCPUGetName(const size_t maxDestBufferLen, char *destBuffer) {
+fpl_common_api size_t fplCPUGetName(char *destBuffer, const size_t maxDestBufferLen) {
 	fplCPUIDLeaf cpuInfo = fplZeroInit;
 	fplCPUID(0x80000000, &cpuInfo);
 	uint32_t extendedIds = cpuInfo.eax;
@@ -11679,7 +11679,7 @@ fpl_common_api bool fplCPUGetCapabilities(fplCPUCapabilities *outCaps) {
 	return(false);
 }
 
-fpl_common_api size_t fplCPUGetName(const size_t maxDestBufferLen, char *destBuffer) {
+fpl_common_api size_t fplCPUGetName(char *destBuffer, const size_t maxDestBufferLen) {
 	// @IMPLEMENT(final): fplCPUGetName for non-x86 architectures
 	return(0);
 }
@@ -14102,7 +14102,7 @@ fpl_platform_api bool fplOSGetVersionInfos(fplOSVersionInfos *outInfos) {
 
 #define FPL__FUNC_ADV32_GetUserNameW(name) BOOL WINAPI name(LPWSTR lpBuffer, LPDWORD pcbBuffer)
 typedef FPL__FUNC_ADV32_GetUserNameW(fpl__func_adv32_GetUserNameW);
-fpl_platform_api size_t fplSessionGetUsername(const size_t maxNameBufferLen, char *nameBuffer) {
+fpl_platform_api size_t fplSessionGetUsername(char *nameBuffer, const size_t maxNameBufferLen) {
 	const char *libName = "advapi32.dll";
 	HMODULE adv32Lib = LoadLibraryA(libName);
 	if (adv32Lib == fpl_null) {
@@ -17646,7 +17646,7 @@ fpl_platform_api void fplDirectoryListEnd(fplFileEntry *entry) {
 //
 // POSIX Operating System
 //
-fpl_platform_api size_t fplSessionGetUsername(const size_t maxNameBufferLen, char *nameBuffer) {
+fpl_platform_api size_t fplSessionGetUsername(char *nameBuffer, const size_t maxNameBufferLen) {
 	uid_t uid = geteuid();
 	struct passwd *pw = getpwuid(uid);
 	if (pw != fpl_null) {
