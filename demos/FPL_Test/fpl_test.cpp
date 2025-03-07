@@ -172,7 +172,7 @@ static void TestOSInfos() {
 	ftMsg("Get Session User name:\n");
 	{
 		char nameBuffer[256] = {};
-		bool r = fplSessionGetUsername(fplArrayCount(nameBuffer), nameBuffer);
+		bool r = fplSessionGetUsername(nameBuffer, fplArrayCount(nameBuffer));
 		ftIsTrue(r);
 		fplConsoleFormatOut("\tCurrent Username: %s\n", nameBuffer);
 	}
@@ -491,7 +491,7 @@ static void TestPaths() {
 
 static void TestHardware() {
 	char cpuNameBuffer[1024] = {};
-	fplCPUGetName(fplArrayCount(cpuNameBuffer), cpuNameBuffer);
+	fplCPUGetName(cpuNameBuffer, fplArrayCount(cpuNameBuffer));
 	ftMsg("Processor name: %s\n", cpuNameBuffer);
 
 	size_t coreCount = fplCPUGetCoreCount();

@@ -29,7 +29,7 @@ Application::Application() {
 	window = new ApplicationWindow();
 	commandBuffer = new Render::CommandBuffer();
 	char buffer[1024];
-	fplCPUGetName(fplArrayCount(buffer), buffer);
+	fplCPUGetName(buffer, fplArrayCount(buffer));
 	cpuName = buffer;
 }
 
