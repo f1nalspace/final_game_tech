@@ -1970,7 +1970,7 @@ SOFTWARE.
 /*!
 * @def fplAlignAs
 * @brief Structure alignment in bytes.
-* @param [in] N Alignment size.
+* @param[in] N Alignment size.
 * @return The resulting aligned value in bytes.
 */
 #define fplAlignAs(N) fpl__m_AlignAs(((N) < fplMinAlignment ? fplMinAlignment : (N)))
@@ -2464,28 +2464,28 @@ SOFTWARE.
 /*!
 * @def fplAssert
 * @brief Breaks with a runtime assertion when the specified expression evaluates to @c false.
-* @param [in] exp Expression to evaluate.
+* @param[in] exp Expression to evaluate.
 */
 #define fplAssert(exp) fpl__m_Assert(exp)
 
 /*!
 * @def fplStaticAssert
 * @brief Breaks the compilation when the specified expression evaluates to @c false.
-* @param [in] exp Expression to evaluate.
+* @param[in] exp Expression to evaluate.
 */
 #define fplStaticAssert(exp) fpl__m_StaticAssert(exp)
 
 /*!
 * @def fplAlwaysAssert
 * @brief Always crashes the application with a null-pointer assignment when the specified expression evaluates to @c false.
-* @param [in] exp Expression to evaluate.
+* @param[in] exp Expression to evaluate.
 */
 #define fplAlwaysAssert(exp) if(!(exp)) {*(int *)0 = 0;}
 
 /*!
 * @def fplAssertPtr
 * @brief Breaks when the specified pointer is @ref fpl_null.
-* @param [in] ptr Pointer to evaluate.
+* @param[in] ptr Pointer to evaluate.
 */
 #define fplAssertPtr(ptr) fpl__m_Assert((ptr) != fpl_null)
 
@@ -2650,8 +2650,8 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 /*!
 * @def fplGetAlignmentOffset
 * @brief Returns the offset for the value to satisfy the given alignment boundary.
-* @param [in] value Value to align.
-* @param [in] alignment Alignment boundary.
+* @param[in] value Value to align.
+* @param[in] alignment Alignment boundary.
 * @result Offset to satisfy the alignment boundary.
 */
 #define fplGetAlignmentOffset(value, alignment) ( (((alignment) > 1) && (((value) & ((alignment) - 1)) != 0)) ? ((alignment) - ((value) & (alignment - 1))) : 0)			
@@ -2659,8 +2659,8 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 /*!
 * @def fplGetAlignedSize
 * @brief Returns the given size, extended to satisfy the given alignment boundary.
-* @param [in] size Size to align.
-* @param [in] alignment Alignment boundary.
+* @param[in] size Size to align.
+* @param[in] alignment Alignment boundary.
 * @result Aligned size.
 */
 #define fplGetAlignedSize(size, alignment) (((size) > 0 && (alignment) > 0) ? ((size) + fplGetAlignmentOffset(size, alignment)) : (size))
@@ -2668,8 +2668,8 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 /*!
 * @def fplIsAligned
 * @brief Returns true when the given pointer address is aligned to the given alignment.
-* @param [in] ptr Pointer to check.
-* @param [in] alignment Alignment boundary.
+* @param[in] ptr Pointer to check.
+* @param[in] alignment Alignment boundary.
 * @result True if the pointer is aligned, false otherwise.
 */
 #define fplIsAligned(ptr, alignment) (((uintptr_t)(const void *)(ptr)) % (alignment) == 0)
@@ -2677,7 +2677,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 /*!
 * @def fplIsPowerOfTwo
 * @brief Returns true when the given value is a power of two.
-* @param [in] value Value to check.
+* @param[in] value Value to check.
 * @result True if the value is a power of two, false otherwise.
 */
 #define fplIsPowerOfTwo(value) (((value) != 0) && (((value) & (~(value) + 1)) == (value)))
@@ -2685,8 +2685,8 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 /*!
 * @def fplIsBitSet
 * @brief Returns true when the given value has the given bit set.
-* @param [in] value Value to check.
-* @param [in] bit Bit position to check.
+* @param[in] value Value to check.
+* @param[in] bit Bit position to check.
 * @result True if the bit is set, false otherwise.
 */
 #define fplIsBitSet(value, bit) (((value) >> (bit)) & 0x1)
@@ -2694,7 +2694,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 /*!
 * @def fplKiloBytes
 * @brief Returns the number of bytes for the given kilobytes.
-* @param [in] value Value in kilobytes.
+* @param[in] value Value in kilobytes.
 * @result Number of bytes.
 */
 #define fplKiloBytes(value) (((value) * 1024ull))
@@ -2702,7 +2702,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 /*!
 * @def fplMegaBytes
 * @brief Returns the number of bytes for the given megabytes.
-* @param [in] value Value in megabytes.
+* @param[in] value Value in megabytes.
 * @result Number of bytes.
 */
 #define fplMegaBytes(value) ((fplKiloBytes(value) * 1024ull))
@@ -2710,7 +2710,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 /*!
 * @def fplGigaBytes
 * @brief Returns the number of bytes for the given gigabytes.
-* @param [in] value Value in gigabytes.
+* @param[in] value Value in gigabytes.
 * @result Number of bytes.
 */
 #define fplGigaBytes(value) ((fplMegaBytes(value) * 1024ull))
@@ -2718,7 +2718,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 /*!
 * @def fplTeraBytes
 * @brief Returns the number of bytes for the given terabytes.
-* @param [in] value Value in terabytes.
+* @param[in] value Value in terabytes.
 * @result Number of bytes.
 */
 #define fplTeraBytes(value) ((fplGigaBytes(value) * 1024ull))
@@ -2774,15 +2774,15 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 /*!
 * @def fplClearStruct
 * @brief Clears the given struct pointer to zero.
-* @param [in] ptr Pointer to the struct.
+* @param[in] ptr Pointer to the struct.
 */
 #define fplClearStruct(ptr) fplMemoryClear((void *)(ptr), sizeof(*(ptr)))
 
 /*!
 * @def fplCopyStruct
 * @brief Copies the given source struct into the destination struct.
-* @param [in] src Source struct pointer.
-* @param [out] dst Destination struct pointer.
+* @param[in] src Source struct pointer.
+* @param[out] dst Destination struct pointer.
 */
 #define fplCopyStruct(src, dst) fplMemoryCopy(src, sizeof(*(src)), dst)
 
@@ -2802,7 +2802,7 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 /*!
 * @def fplArrayCount
 * @brief Returns the element count from a static array. This should ideally produce a compile error when passing a pointer to it.
-* @param [in] arr Array to count elements.
+* @param[in] arr Array to count elements.
 * @result Element count.
 */
 #define fplArrayCount(arr) fpl__m_ArrayCount(arr)
@@ -2810,8 +2810,8 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 /*!
 * @def fplOffsetOf
 * @brief Returns the offset in bytes for the specified structure type and field name.
-* @param [in] type Structure type.
-* @param [in] field Field name.
+* @param[in] type Structure type.
+* @param[in] field Field name.
 * @result Offset in bytes.
 */
 #define fplOffsetOf(type, field) ((size_t)(&(((type*)(0))->field)))
@@ -2819,8 +2819,8 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 /*!
 * @def fplMin
 * @brief Returns the smallest value of A and B.
-* @param [in] a First value.
-* @param [in] b Second value.
+* @param[in] a First value.
+* @param[in] b Second value.
 * @result Smallest value.
 */
 #define fplMin(a, b) ((a) < (b) ? (a) : (b))
@@ -2828,8 +2828,8 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 /*!
 * @def fplMax
 * @brief Returns the biggest value of A and B.
-* @param [in] a First value.
-* @param [in] b Second value.
+* @param[in] a First value.
+* @param[in] b Second value.
 * @result Biggest value.
 */
 #define fplMax(a, b) ((a) > (b) ? (a) : (b))
@@ -2843,7 +2843,7 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 /*!
 * @def fplStackAllocate
 * @brief Manually allocate the number of specified bytes of memory on the stack.
-* @param [in] size Number of bytes to allocate.
+* @param[in] size Number of bytes to allocate.
 * @return A pointer to the start of the stack memory.
 */
 #define fplStackAllocate(size) fpl__m_StackAllocate(size)
@@ -6743,7 +6743,7 @@ fpl_platform_api void fplDirectoryListEnd(fplFileEntry *entry);
 /**
 * @brief Gets the full path to this executable, including the executable file name.
 * @param[out] destPath The destination buffer.
-* @param[in] maxDestLen The total number of characters available in the destination buffer. @ref size_t
+* @param[in] maxDestLen The total number of characters available in the destination buffer.
 * @return Returns the number of required/written characters, excluding the null-terminator.
 * @see @ref subsection_category_io_paths_get_exepath
 */
@@ -6752,7 +6752,7 @@ fpl_platform_api size_t fplGetExecutableFilePath(char *destPath, const size_t ma
 /**
 * @brief Gets the full path to your home directory.
 * @param[out] destPath The destination buffer.
-* @param[in] maxDestLen The total number of characters available in the destination buffer. @ref size_t
+* @param[in] maxDestLen The total number of characters available in the destination buffer.
 * @return Returns the number of required/written characters, excluding the null-terminator.
 * @see @ref subsection_category_io_paths_get_home
 */
@@ -6762,7 +6762,7 @@ fpl_platform_api size_t fplGetHomePath(char *destPath, const size_t maxDestLen);
 * @brief Extracts the directory path from the given file path.
 * @param[in] sourcePath The source path to extract from.
 * @param[out] destPath The destination buffer.
-* @param[in] maxDestLen The total number of characters available in the destination buffer. @ref size_t
+* @param[in] maxDestLen The total number of characters available in the destination buffer.
 * @return Returns the number of required/written characters, excluding the null-terminator.
 * @see @ref subsection_category_io_paths_utils_extractfilepath
 */
@@ -6789,7 +6789,7 @@ fpl_common_api const char *fplExtractFileName(const char *sourcePath);
 * @param[in] filePath The file path to search for the extension.
 * @param[in] newFileExtension The new file extension.
 * @param[out] destPath The destination buffer.
-* @param[in] maxDestLen The total number of characters available in the destination buffer. @ref size_t
+* @param[in] maxDestLen The total number of characters available in the destination buffer.
 * @return Returns the number of required/written characters, excluding the null-terminator.
 * @see @ref subsection_category_io_paths_utils_changefileext
 */
@@ -6798,7 +6798,7 @@ fpl_common_api size_t fplChangeFileExtension(const char *filePath, const char *n
 /**
 * @brief Combines all given paths by the platform's path separator for a fixed number of arguments.
 * @param[out] destPath The destination buffer.
-* @param[in] maxDestPathLen The total number of characters available in the destination buffer. @ref size_t
+* @param[in] maxDestPathLen The total number of characters available in the destination buffer.
 * @param[in] pathCount The number of dynamic path arguments. @ref size_t
 * @param[in] ... The dynamic path arguments.
 * @return Returns the number of required/written characters, excluding the null-terminator.
