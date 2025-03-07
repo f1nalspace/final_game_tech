@@ -3206,8 +3206,8 @@ fpl_platform_api void fplAtomicReadWriteFence();
 
 /**
 * @brief Replaces a 32-bit unsigned integer with the given value atomically.
-* @param target The target value to write into
-* @param value The source value used for exchange
+* @param[in,out] target The target value to write into
+* @param[in] value The source value used for exchange
 * @return Returns the initial value before the replacement.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_exchange
@@ -3215,8 +3215,8 @@ fpl_platform_api void fplAtomicReadWriteFence();
 fpl_platform_api uint32_t fplAtomicExchangeU32(volatile uint32_t *target, const uint32_t value);
 /**
 * @brief Replaces a 64-bit unsigned integer with the given value atomically.
-* @param target The target value to write into
-* @param value The source value used for exchange
+* @param[in,out] target The target value to write into
+* @param[in] value The source value used for exchange
 * @return Returns the initial value before the replacement.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_exchange
@@ -3224,8 +3224,8 @@ fpl_platform_api uint32_t fplAtomicExchangeU32(volatile uint32_t *target, const 
 fpl_platform_api uint64_t fplAtomicExchangeU64(volatile uint64_t *target, const uint64_t value);
 /**
 * @brief Replaces a 32-bit signed integer with the given value atomically.
-* @param target The target value to write into
-* @param value The source value used for exchange
+* @param[in,out] target The target value to write into
+* @param[in] value The source value used for exchange
 * @return Returns the initial value before the replacement.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_exchange
@@ -3233,8 +3233,8 @@ fpl_platform_api uint64_t fplAtomicExchangeU64(volatile uint64_t *target, const 
 fpl_platform_api int32_t fplAtomicExchangeS32(volatile int32_t *target, const int32_t value);
 /**
 * @brief Replaces a 64-bit signed integer with the given value atomically.
-* @param target The target value to write into
-* @param value The source value used for exchange
+* @param[in,out] target The target value to write into
+* @param[in] value The source value used for exchange
 * @return Returns the initial value before the replacement.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_exchange
@@ -3242,8 +3242,8 @@ fpl_platform_api int32_t fplAtomicExchangeS32(volatile int32_t *target, const in
 fpl_platform_api int64_t fplAtomicExchangeS64(volatile int64_t *target, const int64_t value);
 /**
 * @brief Replaces a pointer with the given value atomically.
-* @param target The target value to write into
-* @param value The source value used for exchange
+* @param[in,out] target The target value to write into
+* @param[in] value The source value used for exchange
 * @return Returns the initial value before the replacement.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_exchange
@@ -3251,8 +3251,8 @@ fpl_platform_api int64_t fplAtomicExchangeS64(volatile int64_t *target, const in
 fpl_common_api void *fplAtomicExchangePtr(volatile void **target, const void *value);
 /**
 * @brief Replaces a size with the given value atomically.
-* @param target The target value to write into
-* @param value The source value used for exchange
+* @param[in,out] target The target value to write into
+* @param[in] value The source value used for exchange
 * @return Returns the initial value before the replacement.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_exchange
@@ -3265,8 +3265,8 @@ fpl_common_api size_t fplAtomicExchangeSize(volatile size_t *target, const size_
 
 /**
 * @brief Adds a 32-bit unsigned integer to the value by the given addend atomically.
-* @param value The target value to add to.
-* @param addend The value used for adding.
+* @param[in,out] value The target value to add to.
+* @param[in] addend The value used for adding.
 * @return Returns the initial value before the add.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_add
@@ -3274,8 +3274,8 @@ fpl_common_api size_t fplAtomicExchangeSize(volatile size_t *target, const size_
 fpl_platform_api uint32_t fplAtomicFetchAndAddU32(volatile uint32_t *value, const uint32_t addend);
 /**
 * @brief Adds a 64-bit unsigned integer to the value by the given addend atomically.
-* @param value The target value to add to.
-* @param addend The value used for adding.
+* @param[in,out] value The target value to add to.
+* @param[in] addend The value used for adding.
 * @return Returns the initial value before the add.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_add
@@ -3283,8 +3283,8 @@ fpl_platform_api uint32_t fplAtomicFetchAndAddU32(volatile uint32_t *value, cons
 fpl_platform_api uint64_t fplAtomicFetchAndAddU64(volatile uint64_t *value, const uint64_t addend);
 /**
 * @brief Adds a 32-bit signed integer to the value by the given addend atomically.
-* @param value The target value to add to.
-* @param addend The value used for adding.
+* @param[in,out] value The target value to add to.
+* @param[in] addend The value used for adding.
 * @return Returns the initial value before the add.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_add
@@ -3292,8 +3292,8 @@ fpl_platform_api uint64_t fplAtomicFetchAndAddU64(volatile uint64_t *value, cons
 fpl_platform_api int32_t fplAtomicFetchAndAddS32(volatile int32_t *value, const int32_t addend);
 /**
 * @brief Adds a 64-bit signed integer to the value by the given addend atomically.
-* @param value The target value to add to.
-* @param addend The value used for adding.
+* @param[in,out] value The target value to add to.
+* @param[in] addend The value used for adding.
 * @return Returns the initial value before the add.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_add
@@ -3301,8 +3301,8 @@ fpl_platform_api int32_t fplAtomicFetchAndAddS32(volatile int32_t *value, const 
 fpl_platform_api int64_t fplAtomicFetchAndAddS64(volatile int64_t *value, const int64_t addend);
 /**
 * @brief Adds a size to the value by the given addend atomically.
-* @param dest The target value to add to.
-* @param addend The value used for adding.
+* @param[in,out] dest The target value to add to.
+* @param[in] addend The value used for adding.
 * @return Returns the initial value before the add.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_add
@@ -3310,8 +3310,8 @@ fpl_platform_api int64_t fplAtomicFetchAndAddS64(volatile int64_t *value, const 
 fpl_common_api size_t fplAtomicFetchAndAddSize(volatile size_t *dest, const size_t addend);
 /**
 * @brief Adds a addend to the pointer atomically and returns the initial value before the add.
-* @param dest The target value to add to.
-* @param addend The value used for adding.
+* @param[in,out] dest The target value to add to.
+* @param[in] addend The value used for adding.
 * @return Returns the initial value before the add.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_add
@@ -3324,8 +3324,8 @@ fpl_common_api void *fplAtomicFetchAndAddPtr(volatile void **dest, const intptr_
 
 /**
 * @brief Adds the addend to destination 32-bit unsigned integer atomically and returns the result after the addition.
-* @param dest The target value to add to.
-* @param addend The value used for adding.
+* @param[in,out] dest The target value to add to.
+* @param[in] addend The value used for adding.
 * @return Returns the value after the addition.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_add
@@ -3333,8 +3333,8 @@ fpl_common_api void *fplAtomicFetchAndAddPtr(volatile void **dest, const intptr_
 fpl_platform_api uint32_t fplAtomicAddAndFetchU32(volatile uint32_t *dest, const uint32_t addend);
 /**
 * @brief Adds the addend to destination 64-bit unsigned integer atomically and returns the result after the addition.
-* @param dest The target value to add to.
-* @param addend The value used for adding.
+* @param[in,out] dest The target value to add to.
+* @param[in] addend The value used for adding.
 * @return Returns the value after the addition.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_add
@@ -3342,8 +3342,8 @@ fpl_platform_api uint32_t fplAtomicAddAndFetchU32(volatile uint32_t *dest, const
 fpl_platform_api uint64_t fplAtomicAddAndFetchU64(volatile uint64_t *dest, const uint64_t addend);
 /**
 * @brief Adds the addend to destination 32-bit signed integer atomically and returns the result after the addition.
-* @param dest The target value to add to.
-* @param addend The value used for adding.
+* @param[in,out] dest The target value to add to.
+* @param[in] addend The value used for adding.
 * @return Returns the value after the addition.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_add
@@ -3351,8 +3351,8 @@ fpl_platform_api uint64_t fplAtomicAddAndFetchU64(volatile uint64_t *dest, const
 fpl_platform_api int32_t fplAtomicAddAndFetchS32(volatile int32_t *dest, const int32_t addend);
 /**
 * @brief Adds the addend to destination 64-bit signed integer atomically and returns the result after the addition.
-* @param dest The target value to add to.
-* @param addend The value used for adding.
+* @param[in,out] dest The target value to add to.
+* @param[in] addend The value used for adding.
 * @return Returns the value after the addition.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_add
@@ -3360,8 +3360,8 @@ fpl_platform_api int32_t fplAtomicAddAndFetchS32(volatile int32_t *dest, const i
 fpl_platform_api int64_t fplAtomicAddAndFetchS64(volatile int64_t *dest, const int64_t addend);
 /**
 * @brief Adds the addend to destination size atomically and returns the result after the addition.
-* @param dest The target value to add to.
-* @param addend The value used for adding.
+* @param[in,out] dest The target value to add to.
+* @param[in] addend The value used for adding.
 * @return Returns the value after the addition.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_add
@@ -3369,8 +3369,8 @@ fpl_platform_api int64_t fplAtomicAddAndFetchS64(volatile int64_t *dest, const i
 fpl_common_api size_t fplAtomicAddAndFetchSize(volatile size_t *dest, const size_t addend);
 /**
 * @brief Adds the addend to destination pointer atomically and returns the result after the addition.
-* @param dest The target value to add to.
-* @param addend The value used for adding.
+* @param[in,out] dest The target value to add to.
+* @param[in] addend The value used for adding.
 * @return Returns the value after the addition.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_add
@@ -3383,48 +3383,48 @@ fpl_common_api void *fplAtomicAddAndFetchPtr(volatile void **dest, const intptr_
 
 /**
 * @brief Increments the given 32-bit unsigned integer by one atomically.
-* @param dest The target value to increment to.
-* @return Returns the value after the increment.
+* @param[in,out] dest The target value to increment to.
+* @return[in] Returns the value after the increment.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_inc
 */
 fpl_platform_api uint32_t fplAtomicIncrementU32(volatile uint32_t *dest);
 /**
 * @brief Increments the given 64-bit unsigned integer by one atomically.
-* @param dest The target value to increment to.
-* @return Returns the value after the increment.
+* @param[in,out] dest The target value to increment to.
+* @return[in] Returns the value after the increment.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_inc
 */
 fpl_platform_api uint64_t fplAtomicIncrementU64(volatile uint64_t *dest);
 /**
 * @brief Increments the given 32-bit signed integer by one atomically.
-* @param dest The target value to increment to.
-* @return Returns the value after the increment.
+* @param[in,out] dest The target value to increment to.
+* @return[in] Returns the value after the increment.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_inc
 */
 fpl_platform_api int32_t fplAtomicIncrementS32(volatile int32_t *dest);
 /**
 * @brief Increments the given 64-bit signed integer by one atomically.
-* @param dest The target value to increment to.
-* @return Returns the value after the increment.
+* @param[in,out] dest The target value to increment to.
+* @return[in] Returns the value after the increment.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_inc
 */
 fpl_platform_api int64_t fplAtomicIncrementS64(volatile int64_t *dest);
 /**
 * @brief Increments the given size by one atomically.
-* @param dest The target value to increment to.
-* @return Returns the value after the increment.
+* @param[in,out] dest The target value to increment to.
+* @return[in] Returns the value after the increment.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_inc
 */
 fpl_common_api size_t fplAtomicIncrementSize(volatile size_t *dest);
 /**
 * @brief Increments/Advances the given pointer by one atomically.
-* @param dest The target value to increment to.
-* @return Returns the next address, after the increment.
+* @param[in,out] dest The target value to increment to.
+* @return[in] Returns the next address, after the increment.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_inc
 */
@@ -3436,9 +3436,9 @@ fpl_common_api void *fplAtomicIncrementPtr(volatile void **dest);
 
 /**
 * @brief Compares a 32-bit unsigned integer with a comparand and swaps it when comparand matches the destination.
-* @param dest The target value to write into
-* @param comparand The value to compare with
-* @param exchange The value to exchange with
+* @param[in,out] dest The target value to write into
+* @param[in] comparand The value to compare with
+* @param[in] exchange The value to exchange with
 * @return Returns the value of the destination before the swap, regardless of the result.
 * @note Ensures that memory operations are completed in order.
 * @note Use @ref fplAtomicIsCompareAndSwapU32() when you want to check if the exchange has happened or not.
@@ -3447,9 +3447,9 @@ fpl_common_api void *fplAtomicIncrementPtr(volatile void **dest);
 fpl_platform_api uint32_t fplAtomicCompareAndSwapU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange);
 /**
 * @brief Compares a 64-bit unsigned integer with a comparand and swaps it when comparand matches the destination.
-* @param dest The target value to write into
-* @param comparand The value to compare with
-* @param exchange The value to exchange with
+* @param[in,out] dest The target value to write into
+* @param[in] comparand The value to compare with
+* @param[in] exchange The value to exchange with
 * @return Returns the value of the destination before the swap, regardless of the result.
 * @note Ensures that memory operations are completed in order.
 * @note Use @ref fplAtomicIsCompareAndSwapU64() when you want to check if the exchange has happened or not.
@@ -3458,9 +3458,9 @@ fpl_platform_api uint32_t fplAtomicCompareAndSwapU32(volatile uint32_t *dest, co
 fpl_platform_api uint64_t fplAtomicCompareAndSwapU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange);
 /**
 * @brief Compares a 32-bit signed integer with a comparand and swaps it when comparand matches the destination.
-* @param dest The target value to write into
-* @param comparand The value to compare with
-* @param exchange The value to exchange with
+* @param[in,out] dest The target value to write into
+* @param[in] comparand The value to compare with
+* @param[in] exchange The value to exchange with
 * @return Returns the value of the destination before the swap, regardless of the result.
 * @note Ensures that memory operations are completed in order.
 * @note Use @ref fplAtomicIsCompareAndSwapS32() when you want to check if the exchange has happened or not.
@@ -3469,9 +3469,9 @@ fpl_platform_api uint64_t fplAtomicCompareAndSwapU64(volatile uint64_t *dest, co
 fpl_platform_api int32_t fplAtomicCompareAndSwapS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange);
 /**
 * @brief Compares a 64-bit signed integer with a comparand and swaps it when comparand matches the destination.
-* @param dest The target value to write into
-* @param comparand The value to compare with
-* @param exchange The value to exchange with
+* @param[in,out] dest The target value to write into
+* @param[in] comparand The value to compare with
+* @param[in] exchange The value to exchange with
 * @return Returns the value of the destination before the swap, regardless of the result.
 * @note Ensures that memory operations are completed in order.
 * @note Use @ref fplAtomicIsCompareAndSwapS64() when you want to check if the exchange has happened or not.
@@ -3480,9 +3480,9 @@ fpl_platform_api int32_t fplAtomicCompareAndSwapS32(volatile int32_t *dest, cons
 fpl_platform_api int64_t fplAtomicCompareAndSwapS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange);
 /**
 * @brief Compares a size with a comparand and swaps it when comparand matches the destination.
-* @param dest The target value to write into
-* @param comparand The value to compare with
-* @param exchange The value to exchange with
+* @param[in,out] dest The target value to write into
+* @param[in] comparand The value to compare with
+* @param[in] exchange The value to exchange with
 * @return Returns the value of the destination before the swap, regardless of the result.
 * @note Ensures that memory operations are completed in order.
 * @note Use @ref fplAtomicIsCompareAndSwapPtr() when you want to check if the exchange has happened or not.
@@ -3491,9 +3491,9 @@ fpl_platform_api int64_t fplAtomicCompareAndSwapS64(volatile int64_t *dest, cons
 fpl_common_api size_t fplAtomicCompareAndSwapSize(volatile size_t *dest, const size_t comparand, const size_t exchange);
 /**
 * @brief Compares a pointer with a comparand and swaps it when comparand matches the destination.
-* @param dest The target value to write into
-* @param comparand The value to compare with
-* @param exchange The value to exchange with
+* @param[in,out] dest The target value to write into
+* @param[in] comparand The value to compare with
+* @param[in] exchange The value to exchange with
 * @return Returns the value of the destination before the swap, regardless of the result.
 * @note Ensures that memory operations are completed in order.
 * @note Use @ref fplAtomicIsCompareAndSwapPtr() when you want to check if the exchange has happened or not.
@@ -3503,9 +3503,9 @@ fpl_common_api void *fplAtomicCompareAndSwapPtr(volatile void **dest, const void
 
 /**
 * @brief Compares a 32-bit unsigned integer with a comparand and swaps it when comparand matches the destination and returns a bool indicating the result.
-* @param dest The target value to write into
-* @param comparand The value to compare with
-* @param exchange The value to exchange with
+* @param[in,out] dest The target value to write into
+* @param[in] comparand The value to compare with
+* @param[in] exchange The value to exchange with
 * @return Returns true when the exchange happened, false otherwise.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_cas
@@ -3513,9 +3513,9 @@ fpl_common_api void *fplAtomicCompareAndSwapPtr(volatile void **dest, const void
 fpl_platform_api bool fplAtomicIsCompareAndSwapU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange);
 /**
 * @brief Compares a 64-bit unsigned integer with a comparand and swaps it when comparand matches the destination and returns a bool indicating the result.
-* @param dest The target value to write into
-* @param comparand The value to compare with
-* @param exchange The value to exchange with
+* @param[in,out] dest The target value to write into
+* @param[in] comparand The value to compare with
+* @param[in] exchange The value to exchange with
 * @return Returns true when the exchange happened, false otherwise.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_cas
@@ -3523,9 +3523,9 @@ fpl_platform_api bool fplAtomicIsCompareAndSwapU32(volatile uint32_t *dest, cons
 fpl_platform_api bool fplAtomicIsCompareAndSwapU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange);
 /**
 * @brief Compares a 32-bit signed integer with a comparand and swaps it when comparand matches the destination and returns a bool indicating the result.
-* @param dest The target value to write into
-* @param comparand The value to compare with
-* @param exchange The value to exchange with
+* @param[in,out] dest The target value to write into
+* @param[in] comparand The value to compare with
+* @param[in] exchange The value to exchange with
 * @return Returns true when the exchange happened, false otherwise.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_cas
@@ -3533,9 +3533,9 @@ fpl_platform_api bool fplAtomicIsCompareAndSwapU64(volatile uint64_t *dest, cons
 fpl_platform_api bool fplAtomicIsCompareAndSwapS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange);
 /**
 * @brief Compares a 64-bit signed integer with a comparand and swaps it when comparand matches the destination and returns a bool indicating the result.
-* @param dest The target value to write into
-* @param comparand The value to compare with
-* @param exchange The value to exchange with
+* @param[in,out] dest The target value to write into
+* @param[in] comparand The value to compare with
+* @param[in] exchange The value to exchange with
 * @return Returns true when the exchange happened, false otherwise.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_cas
@@ -3543,9 +3543,9 @@ fpl_platform_api bool fplAtomicIsCompareAndSwapS32(volatile int32_t *dest, const
 fpl_platform_api bool fplAtomicIsCompareAndSwapS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange);
 /**
 * @brief Compares a size with a comparand and swaps it when comparand matches the destination and returns a bool indicating the result.
-* @param dest The target value to write into
-* @param comparand The value to compare with
-* @param exchange The value to exchange with
+* @param[in,out] dest The target value to write into
+* @param[in] comparand The value to compare with
+* @param[in] exchange The value to exchange with
 * @return Returns true when the exchange happened, false otherwise.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_cas
@@ -3553,9 +3553,9 @@ fpl_platform_api bool fplAtomicIsCompareAndSwapS64(volatile int64_t *dest, const
 fpl_common_api bool fplAtomicIsCompareAndSwapSize(volatile size_t *dest, const size_t comparand, const size_t exchange);
 /**
 * @brief Compares a pointer with a comparand and swaps it when comparand matches the destination and returns a bool indicating the result.
-* @param dest The target value to write into
-* @param comparand The value to compare with
-* @param exchange The value to exchange with
+* @param[in,out] dest The target value to write into
+* @param[in] comparand The value to compare with
+* @param[in] exchange The value to exchange with
 * @return Returns true when the exchange happened, false otherwise.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_cas
@@ -3568,7 +3568,7 @@ fpl_common_api bool fplAtomicIsCompareAndSwapPtr(volatile void **dest, const voi
 
 /**
 * @brief Loads the 32-bit unsigned value atomically and returns the value.
-* @param source The source value to read from
+* @param[in] source The source value to read from
 * @return Returns the atomically loaded source value
 * @note Ensures that memory operations are completed before the reading.
 * @note This may use a CAS instruction when there are no suitable compiler intrinsics found.
@@ -3577,7 +3577,7 @@ fpl_common_api bool fplAtomicIsCompareAndSwapPtr(volatile void **dest, const voi
 fpl_platform_api uint32_t fplAtomicLoadU32(volatile uint32_t *source);
 /**
 * @brief Loads the 64-bit unsigned value atomically and returns the value.
-* @param source The source value to read from
+* @param[in] source The source value to read from
 * @return Returns the atomically loaded source value
 * @note Ensures that memory operations are completed before the reading.
 * @note This may use a CAS instruction when there are no suitable compiler intrinsics found.
@@ -3586,7 +3586,7 @@ fpl_platform_api uint32_t fplAtomicLoadU32(volatile uint32_t *source);
 fpl_platform_api uint64_t fplAtomicLoadU64(volatile uint64_t *source);
 /**
 * @brief Loads the 32-bit signed value atomically and returns the value.
-* @param source The source value to read from
+* @param[in] source The source value to read from
 * @return Returns the atomically loaded source value
 * @note Ensures that memory operations are completed before the reading.
 * @note This may use a CAS instruction when there are no suitable compiler intrinsics found.
@@ -3595,7 +3595,7 @@ fpl_platform_api uint64_t fplAtomicLoadU64(volatile uint64_t *source);
 fpl_platform_api int32_t fplAtomicLoadS32(volatile int32_t *source);
 /**
 * @brief Loads the 64-bit signed value atomically and returns the value.
-* @param source The source value to read from
+* @param[in] source The source value to read from
 * @return Returns the atomically loaded source value
 * @note Ensures that memory operations are completed before the reading.
 * @note This may use a CAS instruction when there are no suitable compiler intrinsics found.
@@ -3606,7 +3606,7 @@ fpl_platform_api int64_t fplAtomicLoadS64(volatile int64_t *source);
 * @brief Loads the size value atomically and returns the value.
 * @note Ensures that memory operations are completed before the reading.
 * @note This may use a CAS instruction when there are no suitable compiler intrinsics found.
-* @param source The source value to read from
+* @param[in] source The source value to read from
 * @return Returns the atomically loaded source value
 * @see @ref category_threading_atomics_load
 */
@@ -3615,7 +3615,7 @@ fpl_common_api size_t fplAtomicLoadSize(volatile size_t *source);
 * @brief Loads the pointer value atomically and returns the value.
 * @note Ensures that memory operations are completed before the reading.
 * @note This may use a CAS instruction when there are no suitable compiler intrinsics found.
-* @param source The source value to read from
+* @param[in] source The source value to read from
 * @return Returns the atomically loaded source value
 * @see @ref category_threading_atomics_load
 */
@@ -3627,48 +3627,48 @@ fpl_common_api void *fplAtomicLoadPtr(volatile void **source);
 
 /**
 * @brief Overwrites the 32-bit unsigned value atomically.
-* @param dest The destination to write to
-* @param value The value to exchange with
+* @param[out] dest The destination to write to
+* @param[in] value The value to exchange with
 * @note Ensures that memory operations are completed before the write.
 * @see @ref category_threading_atomics_store
 */
 fpl_platform_api void fplAtomicStoreU32(volatile uint32_t *dest, const uint32_t value);
 /**
 * @brief Overwrites the 64-bit unsigned value atomically.
-* @param dest The destination to write to
-* @param value The value to exchange with
+* @param[out] dest The destination to write to
+* @param[in] value The value to exchange with
 * @note Ensures that memory operations are completed before the write.
 * @see @ref category_threading_atomics_store
 */
 fpl_platform_api void fplAtomicStoreU64(volatile uint64_t *dest, const uint64_t value);
 /**
 * @brief Overwrites the 32-bit signed value atomically.
-* @param dest The destination to write to
-* @param value The value to exchange with
+* @param[out] dest The destination to write to
+* @param[in] value The value to exchange with
 * @note Ensures that memory operations are completed before the write.
 * @see @ref category_threading_atomics_store
 */
 fpl_platform_api void fplAtomicStoreS32(volatile int32_t *dest, const int32_t value);
 /**
 * @brief Overwrites the 64-bit signed value atomically.
-* @param dest The destination to write to
-* @param value The value to exchange with
+* @param[out] dest The destination to write to
+* @param[in] value The value to exchange with
 * @note Ensures that memory operations are completed before the write.
 * @see @ref category_threading_atomics_store
 */
 fpl_platform_api void fplAtomicStoreS64(volatile int64_t *dest, const int64_t value);
 /**
 * @brief Overwrites the size value atomically.
-* @param dest The destination to write to
-* @param value The value to exchange with
+* @param[out] dest The destination to write to
+* @param[in] value The value to exchange with
 * @note Ensures that memory operations are completed before the write.
 * @see @ref category_threading_atomics_store
 */
 fpl_common_api void fplAtomicStoreSize(volatile size_t *dest, const size_t value);
 /**
 * @brief Overwrites the pointer value atomically.
-* @param dest The destination to write to
-* @param value The value to exchange with
+* @param[out] dest The destination to write to
+* @param[in] value The value to exchange with
 * @note Ensures that memory operations are completed before the write.
 * @see @ref category_threading_atomics_store
 */
