@@ -4701,41 +4701,47 @@ fpl_common_api const fplSettings *fplGetCurrentSettings();
 // ----------------------------------------------------------------------------
 
 /**
-* @brief Gets the type of the platform
-* @return Returns the @ref fplPlatformType
+* @brief Gets the type of the platform.
+* @return Returns the @ref fplPlatformType.
 * @see @ref section_category_platform_type
 */
 fpl_common_api fplPlatformType fplGetPlatformType();
+
 /**
-* @brief Gets the string representation of the given platform type
-* @param type The platform type @ref fplPlatformType
-* @return Returns the string representation for the given platform type @ref fplPlatformType
+* @brief Gets the string representation of the given platform type.
+* @param[in] type The platform type @ref fplPlatformType.
+* @return Returns the string representation for the given platform type @ref fplPlatformType (const char*).
 * @see @ref section_category_platform_type
 */
 fpl_common_api const char *fplGetPlatformName(const fplPlatformType type);
+
 /**
 * @brief Initializes the platform layer.
-* @param initFlags The init flags @ref fplInitFlags used to enable certain features, like video/audio, etc.
-* @param initSettings The @ref fplSettings structure to control the platform layer behavior or systems, if null is passed here default values are used automatically.
-* @return Returns true when it was successful, false otherwise.
-* @note @ref fplPlatformRelease() must be called when you are done! After @ref fplPlatformRelease() has been called you can call this function again if needed.
+* @param[in] initFlags The init flags @ref fplInitFlags used to enable certain features, like video/audio, etc.
+* @param[in] initSettings Reference to the @ref fplSettings structure to control the platform layer behavior or systems. If null is passed here, default values are used automatically.
+* @return Returns true when it was successful, false otherwise (bool).
+* @note @ref fplPlatformRelease() must be called when you are done! After @ref fplPlatformRelease() has been called, you can call this function again if needed.
 * @see @ref section_category_initialization_simple
 */
 fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSettings *initSettings);
+
 /**
-* @brief Gets the result type of the platform initialization
-* @return Returns the result type as @ref fplPlatformResultType
+* @brief Gets the result type of the platform initialization.
+* @return Returns the result type as @ref fplPlatformResultType.
 * @see @ref section_category_errorhandling_getplatformresult
 */
 fpl_common_api fplPlatformResultType fplGetPlatformResult();
+
 /**
 * @brief Releases the resources allocated by the platform layer.
 * @note Can only be called when @ref fplPlatformInit() was successful.
 * @see @ref section_category_initialization_release
 */
 fpl_common_api void fplPlatformRelease();
+
 /**
-* @brief Returns true when the platform is initialized, or false if not.
+* @brief Gets a value indicating whether the platform is initialized.
+* @return Returns true if the platform is initialized, false otherwise (bool).
 */
 fpl_common_api bool fplIsPlatformInitialized();
 
@@ -4749,139 +4755,162 @@ fpl_common_api bool fplIsPlatformInitialized();
 */
 // ----------------------------------------------------------------------------
 
-//! An enumeration of log levels
+/*!
+* @enum fplLogLevel
+* @brief An enumeration of log levels.
+*/
 typedef enum fplLogLevel {
-	//! All
-	fplLogLevel_All = -1,
-	//! Critical
-	fplLogLevel_Critical = 0,
-	//! Error
-	fplLogLevel_Error = 1,
-	//! Warning
-	fplLogLevel_Warning = 2,
-	//! Info
-	fplLogLevel_Info = 3,
-	//! Verbose
-	fplLogLevel_Verbose = 4,
-	//! Debug
-	fplLogLevel_Debug = 5,
-	//! Trace
-	fplLogLevel_Trace = 6,
+    //! All.
+    fplLogLevel_All = -1,
+    //! Critical.
+    fplLogLevel_Critical = 0,
+    //! Error.
+    fplLogLevel_Error = 1,
+    //! Warning.
+    fplLogLevel_Warning = 2,
+    //! Info.
+    fplLogLevel_Info = 3,
+    //! Verbose.
+    fplLogLevel_Verbose = 4,
+    //! Debug.
+    fplLogLevel_Debug = 5,
+    //! Trace.
+    fplLogLevel_Trace = 6,
 
-	//! First @ref fplLogLevel
-	fplLogLevel_First = fplLogLevel_All,
-	//! Last @ref fplLogLevel
-	fplLogLevel_Last = fplLogLevel_Trace,
+    //! First @ref fplLogLevel.
+    fplLogLevel_First = fplLogLevel_All,
+    //! Last @ref fplLogLevel.
+    fplLogLevel_Last = fplLogLevel_Trace,
 } fplLogLevel;
 
 #if defined(FPL__ENABLE_LOGGING)
+
 /**
-* @brief A callback for printing a log message
-* @param funcName The function name
-* @param lineNumber The line number
-* @param level The log level @ref fplLogLevel
-* @param message The log message string
+* @brief A function definition for a callback for printing a log message.
+* @param[in] funcName The function name (const char*).
+* @param[in] lineNumber The line number (int).
+* @param[in] level The log level @ref fplLogLevel.
+* @param[in] message The log message string (const char*).
 * @see @ref subsection_category_logging_logging_example_custom
 */
 typedef void (fpl_log_func_callback)(const char *funcName, const int lineNumber, const fplLogLevel level, const char *message);
 
-//! An enumeration of log writer flags
+/*!
+* @enum fplLogWriterFlags
+* @brief An enumeration of log writer flags.
+*/
 typedef enum fplLogWriterFlags {
-	//! No appender flags
-	fplLogWriterFlags_None = 0,
-	//! Standard-Console output
-	fplLogWriterFlags_StandardConsole = 1 << 0,
-	//! Error-Console output
-	fplLogWriterFlags_ErrorConsole = 1 << 1,
-	//! Debug output
-	fplLogWriterFlags_DebugOut = 1 << 2,
-	//! Custom output
-	fplLogWriterFlags_Custom = 1 << 3,
+    //! No appender flags.
+    fplLogWriterFlags_None = 0,
+    //! Standard-Console output.
+    fplLogWriterFlags_StandardConsole = 1 << 0,
+    //! Error-Console output.
+    fplLogWriterFlags_ErrorConsole = 1 << 1,
+    //! Debug output.
+    fplLogWriterFlags_DebugOut = 1 << 2,
+    //! Custom output.
+    fplLogWriterFlags_Custom = 1 << 3,
 } fplLogWriterFlags;
-//! Log writer flags enumeration operators
+//! Log writer flags enumeration operators.
 FPL_ENUM_AS_FLAGS_OPERATORS(fplLogWriterFlags);
 
-//! A structure containing console logging properties
+/*!
+* @struct fplLogWriterConsole
+* @brief Stores console logging properties.
+*/
 typedef struct fplLogWriterConsole {
-	//! Field for preventing struct to be empty
-	int dummy;
+    //! Field for preventing struct to be empty.
+    int dummy;
 } fplLogWriterConsole;
 
-//! A structure containing properties custom logging properties
+/*!
+* @struct fplLogWriterCustom
+* @brief Stores custom logging properties.
+*/
 typedef struct fplLogWriterCustom {
-	//! User callback
-	fpl_log_func_callback *callback;
+    //! User callback.
+    fpl_log_func_callback *callback;
 } fplLogWriterCustom;
 
-//! A structure containing log writer settings
+/*!
+* @struct fplLogWriter
+* @brief Stores log writer settings.
+*/
 typedef struct fplLogWriter {
-	//! Flags
-	fplLogWriterFlags flags;
-	//! Console
-	fplLogWriterConsole console;
-	//! Custom
-	fplLogWriterCustom custom;
+    //! Flags.
+    fplLogWriterFlags flags;
+    //! Console.
+    fplLogWriterConsole console;
+    //! Custom.
+    fplLogWriterCustom custom;
 } fplLogWriter;
 
-//! A structure containing log settings
+/*!
+* @struct fplLogSettings
+* @brief Stores log settings.
+*/
 typedef struct fplLogSettings {
 #if defined(FPL__ENABLE_LOG_MULTIPLE_WRITERS)
-	union {
-		//! All writers
-		fplLogWriter writers[6];
-		struct {
-			//! Critical writer
-			fplLogWriter criticalWriter;
-			//! Error writer
-			fplLogWriter errorWriter;
-			//! Warning writer
-			fplLogWriter warningWriter;
-			//! Info writer
-			fplLogWriter infoWriter;
-			//! Verbose writer
-			fplLogWriter verboseWriter;
-			//! Debug writer
-			fplLogWriter debugWriter;
-		};
-	};
+    union {
+        //! All writers.
+        fplLogWriter writers[6];
+        struct {
+            //! Critical writer.
+            fplLogWriter criticalWriter;
+            //! Error writer.
+            fplLogWriter errorWriter;
+            //! Warning writer.
+            fplLogWriter warningWriter;
+            //! Info writer.
+            fplLogWriter infoWriter;
+            //! Verbose writer.
+            fplLogWriter verboseWriter;
+            //! Debug writer.
+            fplLogWriter debugWriter;
+        };
+    };
 #else
-	//! Single writer
-	fplLogWriter writers[1];
+    //! Single writer.
+    fplLogWriter writers[1];
 #endif // FPL_USE_LOG_SIMPLE
-	//! Maximum log level
-	fplLogLevel maxLevel;
-	//! Is initialized (When set to false all values will be set to default values)
-	fpl_b32 isInitialized;
+    //! Maximum log level.
+    fplLogLevel maxLevel;
+    //! Is initialized (when set to false all values will be set to default values).
+    fpl_b32 isInitialized;
 } fplLogSettings;
 
 /**
-* @brief Overwrites the current log settings
-* @param params The source @ref fplLogSettings structure
+* @brief Overwrites the current log settings.
+* @param[in] params Reference to the source @ref fplLogSettings structure.
 * @note This function can be called regardless of the initialization state!
 * @see @ref section_category_logging_logging
 */
 fpl_common_api void fplSetLogSettings(const fplLogSettings *params);
+
 /**
-* @brief Gets the current log settings
-* @return Returns a pointer the @ref fplLogSettings structure
+* @brief Gets the current log settings.
+* @return Returns a reference to the @ref fplLogSettings structure.
 * @note This function can be called regardless of the initialization state!
 * @see @ref section_category_logging_logging
 */
 fpl_common_api const fplLogSettings *fplGetLogSettings();
+
 /**
-* @brief Changes the current maximum log level to the given value
-* @param maxLevel The new maximum log level @ref fplLogLevel
+* @brief Changes the current maximum log level to the given value.
+* @param[in] maxLevel The new maximum log level @ref fplLogLevel.
 * @note This function can be called regardless of the initialization state!
 * @see @ref section_category_logging_logging
 */
 fpl_common_api void fplSetMaxLogLevel(const fplLogLevel maxLevel);
+
 /**
-* @brief Gets the current maximum allowed log level
-* @return Returns the current maximum log level @ref fplLogLevel
+* @brief Gets the current maximum allowed log level.
+* @return Returns the current maximum log level @ref fplLogLevel.
 * @note This function can be called regardless of the initialization state!
 * @see @ref section_category_logging_logging
 */
 fpl_common_api fplLogLevel fplGetMaxLogLevel();
+
 #endif // FPL__ENABLE_LOGGING
 
 /** @} */
@@ -4895,29 +4924,32 @@ fpl_common_api fplLogLevel fplGetMaxLogLevel();
 // ----------------------------------------------------------------------------
 
 /**
-* @brief Gets the last internal error string
-* @return Returns the last error string or empty string when there was no error.
+* @brief Gets the last internal error string.
+* @return Returns the last error string or an empty string when there was no error (const char*).
 * @note This function can be called regardless of the initialization state!
 * @see @ref section_category_errorhandling_getlatest
 */
 fpl_common_api const char *fplGetLastError();
+
 /**
-* @brief Gets the last error string from the given index
-* @param index The index
-* @return Returns the last error string from the given index or empty when there was no error.
+* @brief Gets the last error string from the given index.
+* @param[in] index The index (size_t).
+* @return Returns the last error string from the given index or an empty string when there was no error (const char*).
 * @note This function can be called regardless of the initialization state!
 * @see @ref section_category_errorhandling_getbyindex
 */
 fpl_common_api const char *fplGetErrorByIndex(const size_t index);
+
 /**
-* @brief Gets the count of total last errors
+* @brief Gets the count of total last errors.
+* @return Returns the number of last errors or zero when there was no error (size_t).
 * @note This function can be called regardless of the initialization state!
-* @return Returns the number of last errors or zero when there was no error.
 * @see @ref section_category_errorhandling_count
 */
 fpl_common_api size_t fplGetErrorCount();
+
 /**
-* @brief Clears all the current errors in the platform
+* @brief Clears all the current errors in the platform.
 * @note This function can be called regardless of the initialization state!
 * @see @ref section_category_errorhandling_clear
 */
