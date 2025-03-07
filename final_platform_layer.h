@@ -182,12 +182,18 @@ SOFTWARE.
 	- Fixed: [Win32] fpl__Win32Guid was not properly defined when opaque API was enabled
 	- Fixed[#156]: Target audio format type and periods was never used
 	- Fixed[#157]: Compile error for missing _countof() fplArrayCount in some scenarios
-	- Removed: Removed obsolete function fplFileSetTimestamps
-	- Removed: Removed obsolete struct fplAudioTargetFormat
+	- Changed: Added stride argument to to fplGetAudioDevices()
 	- Changed: Renamed field userData to clientUserData in @ref fplAudioSettings
 	- Changed: Renamed fplAudioDeviceFormat to fplAudioFormat
+	- Changed: Renamed function fplClearErrors to fplErrorsClear
 	- Changed: Replaced audio exclusive flag and latency mode with a single enum @ref fplAudioMode in @ref fplAudioFormat
-    - Changed: Changed default controllerDetectionFrequency from 100 ms to 1000 ms
+    - Changed: Set default controllerDetectionFrequency from 100 ms to 1000 ms
+	- Changed: fplCPUCapabilities is now separated by x86 and arm features
+	- Removed: Removed obsolete function fplFileSetTimestamps
+	- Removed: Removed obsolete struct fplAudioTargetFormat
+	- Removed: Removed obsolete function fplSetDefaultAudioTargetFormat
+	- Removed: Removed obsolete function fplConvertAudioTargetFormatToDeviceFormat
+	- Removed: Removed backend field from fplAudioFormat former fplAudioDeviceFormat
 
 	## v0.9.8-beta
 
