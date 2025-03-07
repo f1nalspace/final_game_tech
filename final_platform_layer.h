@@ -5747,146 +5747,159 @@ fpl_platform_api bool fplSemaphoreRelease(fplSemaphoreHandle *semaphore);
 
 /**
 * @brief Matches the given string by the given wildcard and returns a boolean indicating the match.
-* @param source The source string
-* @param wildcard The wildcard string
-* @return Returns true when source string matches the wildcard, false otherwise.
+* @param[in] source The source string.
+* @param[in] wildcard The wildcard string.
+* @return Returns true when the source string matches the wildcard, false otherwise.
 */
 fpl_common_api bool fplIsStringMatchWildcard(const char *source, const char *wildcard);
+
 /**
 * @brief Compares two strings with constrained lengths and returns a boolean indicating the equality.
-* @param a The first string
-* @param aLen The number of characters for the first string
-* @param b The second string
-* @param bLen The number of characters for the second string
+* @param[in] a The first string.
+* @param[in] aLen The number of characters for the first string. @ref size_t
+* @param[in] b The second string.
+* @param[in] bLen The number of characters for the second string. @ref size_t
 * @return Returns true when both strings are equal, false otherwise.
-* @note Len parameters do not include the null-terminator!
+* @note Length parameters do not include the null-terminator!
 */
 fpl_common_api bool fplIsStringEqualLen(const char *a, const size_t aLen, const char *b, const size_t bLen);
+
 /**
 * @brief Compares two strings and returns a boolean indicating the equality.
-* @param a The first string
-* @param b The second string
+* @param[in] a The first string.
+* @param[in] b The second string.
 * @return Returns true when both strings are equal, false otherwise.
 */
 fpl_common_api bool fplIsStringEqual(const char *a, const char *b);
+
 /**
-* @brief Ensures that the given string always ends with a path separator with length constrained
-* @param path The target path string
-* @param maxPathLen The max length of the target path
-* @return Returns a pointer to the last written character or @ref fpl_null.
+* @brief Ensures that the given string always ends with a path separator with length constrained.
+* @param[in, out] path The target path string.
+* @param[in] maxPathLen The max length of the target path. @ref size_t
+* @return Returns a pointer to the last written character or null. @ref fpl_null
 */
 fpl_common_api char *fplEnforcePathSeparatorLen(char *path, size_t maxPathLen);
+
 /**
-* @brief Ensures that the given string always ends with a path separator
-* @param path The path string
-* @return Returns a pointer to the last written character or @ref fpl_null.
+* @brief Ensures that the given string always ends with a path separator.
+* @param[in, out] path The path string.
+* @return Returns a pointer to the last written character or null. @ref fpl_null
 * @note This function is unsafe as it does not know the maximum length of the string!
 */
 fpl_common_api char *fplEnforcePathSeparator(char *path);
+
 /**
-* @brief Appends the source string to the given buffer constrained by length
-* @param appended The appending source string
-* @param appendedLen The length of the appending source string
-* @param buffer The target buffer
-* @param maxBufferLen The max length of the target buffer
-* @return Returns a pointer to the last written character or @ref fpl_null.
+* @brief Appends the source string to the given buffer constrained by length.
+* @param[in] appended The appending source string.
+* @param[in] appendedLen The length of the appending source string. @ref size_t
+* @param[in, out] buffer The target buffer.
+* @param[in] maxBufferLen The max length of the target buffer. @ref size_t
+* @return Returns a pointer to the last written character or null. @ref fpl_null
 */
 fpl_common_api char *fplStringAppendLen(const char *appended, const size_t appendedLen, char *buffer, size_t maxBufferLen);
+
 /**
-* @brief Appends the source string to the given buffer
-* @param appended The appending source string
-* @param buffer The target buffer
-* @param maxBufferLen The max length of the target buffer
-* @return Returns a pointer to the last written character or @ref fpl_null.
+* @brief Appends the source string to the given buffer.
+* @param[in] appended The appending source string.
+* @param[in, out] buffer The target buffer.
+* @param[in] maxBufferLen The max length of the target buffer. @ref size_t
+* @return Returns a pointer to the last written character or null. @ref fpl_null
 */
 fpl_common_api char *fplStringAppend(const char *appended, char *buffer, size_t maxBufferLen);
+
 /**
 * @brief Counts the number of characters without including the zero terminator.
-* @param str The string source
-* @return Returns the number of characters of the given string or zero when the input string is fpl_null.
+* @param[in] str The string source.
+* @return Returns the number of characters of the given string or zero when the input string is null.
 */
 fpl_common_api size_t fplGetStringLength(const char *str);
+
 /**
 * @brief Copies the given source string with a constrained length into a destination string.
-* @param source The source string
-* @param sourceLen The number of characters to copy
-* @param dest The destination string buffer
-* @param maxDestLen The total number of characters available in the destination buffer
-* @return Returns the pointer to the last written character or @ref fpl_null.
-* @note Null terminator is included always.
+* @param[in] source The source string.
+* @param[in] sourceLen The number of characters to copy. @ref size_t
+* @param[in, out] dest The destination string buffer.
+* @param[in] maxDestLen The total number of characters available in the destination buffer. @ref size_t
+* @return Returns the pointer to the last written character or null. @ref fpl_null
+* @note Null terminator is always included.
 */
 fpl_common_api char *fplCopyStringLen(const char *source, const size_t sourceLen, char *dest, const size_t maxDestLen);
+
 /**
 * @brief Copies the given source string into a destination string.
-* @param source The source string
-* @param dest The destination string buffer
-* @param maxDestLen The total number of characters available in the destination buffer
-* @return Returns the pointer to the last written character or @ref fpl_null.
-* @note Null terminator is included always.
+* @param[in] source The source string.
+* @param[in, out] dest The destination string buffer.
+* @param[in] maxDestLen The total number of characters available in the destination buffer. @ref size_t
+* @return Returns the pointer to the last written character or null. @ref fpl_null
+* @note Null terminator is always included.
 */
 fpl_common_api char *fplCopyString(const char *source, char *dest, const size_t maxDestLen);
+
 /**
-* @brief Converts the given 16-bit source wide string with length in an 8-bit UTF-8 ANSI string.
-* @param wideSource The 16-bit source wide string
-* @param wideSourceLen The number of characters of the source wide string
-* @param utf8Dest The 8-bit destination ANSI string buffer
-* @param maxUtf8DestLen The total number of characters available in the destination buffer
-* @return Returns the number of required/written characters, excluding the null-terminator
-* @note Null terminator is included always.
+* @brief Converts the given 16-bit source wide string with length into an 8-bit UTF-8 ANSI string.
+* @param[in] wideSource The 16-bit source wide string. @ref wchar_t
+* @param[in] wideSourceLen The number of characters of the source wide string. @ref size_t
+* @param[in, out] utf8Dest The 8-bit destination ANSI string buffer.
+* @param[in] maxUtf8DestLen The total number of characters available in the destination buffer. @ref size_t
+* @return Returns the number of required/written characters, excluding the null-terminator.
+* @note Null terminator is always included.
 */
 fpl_platform_api size_t fplWideStringToUTF8String(const wchar_t *wideSource, const size_t wideSourceLen, char *utf8Dest, const size_t maxUtf8DestLen);
+
 /**
-* @brief Converts the given 8-bit UTF-8 source ANSI string with length in a 16-bit wide string.
-* @param utf8Source The 8-bit source ANSI string
-* @param utf8SourceLen The number of characters of the UTF-8 source ANSI string
-* @param wideDest The 16-bit destination wide string buffer
-* @param maxWideDestLen The total number of characters available in the destination buffer
-* @return Returns the number of required/written characters, excluding the null-terminator
-* @note Null terminator is included always.
+* @brief Converts the given 8-bit UTF-8 source ANSI string with length into a 16-bit wide string.
+* @param[in] utf8Source The 8-bit source ANSI string.
+* @param[in] utf8SourceLen The number of characters of the UTF-8 source ANSI string. @ref size_t
+* @param[in, out] wideDest The 16-bit destination wide string buffer. @ref wchar_t
+* @param[in] maxWideDestLen The total number of characters available in the destination buffer. @ref size_t
+* @return Returns the number of required/written characters, excluding the null-terminator.
+* @note Null terminator is always included.
 */
 fpl_platform_api size_t fplUTF8StringToWideString(const char *utf8Source, const size_t utf8SourceLen, wchar_t *wideDest, const size_t maxWideDestLen);
+
 /**
 * @brief Fills out the given destination string buffer with a formatted string, using the format specifier and variable arguments.
-* @param destBuffer The destination string buffer
-* @param maxDestBufferLen The total number of characters available in the destination buffer
-* @param format The string format
-* @param ... The variable arguments
-* @return Returns the number of required/written characters, excluding the null-terminator
-* @note This is most likely just a wrapper call to vsnprintf()
+* @param[in, out] destBuffer The destination string buffer.
+* @param[in] maxDestBufferLen The total number of characters available in the destination buffer. @ref size_t
+* @param[in] format The string format.
+* @param[in] ... The variable arguments.
+* @return Returns the number of required/written characters, excluding the null-terminator.
+* @note This is most likely just a wrapper call to vsnprintf().
 */
 fpl_common_api size_t fplStringFormat(char *destBuffer, const size_t maxDestBufferLen, const char *format, ...);
+
 /**
 * @brief Fills out the given destination string buffer with a formatted string, using the format specifier and the arguments list.
-* @param destBuffer The destination string buffer
-* @param maxDestBufferLen The total number of characters available in the destination buffer
-* @param format The string format
-* @param argList The arguments list
-* @return Returns the number of required/written characters, excluding the null-terminator
-* @note This is most likely just a wrapper call to vsnprintf()
+* @param[in, out] destBuffer The destination string buffer.
+* @param[in] maxDestBufferLen The total number of characters available in the destination buffer. @ref size_t
+* @param[in] format The string format.
+* @param[in] argList The arguments list. @ref va_list
+* @return Returns the number of required/written characters, excluding the null-terminator.
+* @note This is most likely just a wrapper call to vsnprintf().
 */
 fpl_common_api size_t fplStringFormatArgs(char *destBuffer, const size_t maxDestBufferLen, const char *format, va_list argList);
 
 /**
-* @brief Converts the given string into a 32-bit integer constrained by string length
-* @param str The source string
-* @param len The length of the source string
-* @return Returns a 32-bit integer converted from the given string
+* @brief Converts the given string into a 32-bit integer constrained by string length.
+* @param[in] str The source string.
+* @param[in] len The length of the source string. @ref size_t
+* @return Returns a 32-bit integer converted from the given string.
 */
 fpl_common_api int32_t fplStringToS32Len(const char *str, const size_t len);
 
 /**
 * @brief Converts the given string into a 32-bit integer.
-* @param str The source string
-* @return Returns a 32-bit integer converted from the given string
+* @param[in] str The source string.
+* @return Returns a 32-bit integer converted from the given string.
 */
 fpl_common_api int32_t fplStringToS32(const char *str);
 
 /**
 * @brief Converts the given 32-bit integer value into a string.
-* @param value The source value
-* @param maxBufferLen The maximum length of the buffer
-* @param buffer The target buffer
-* @return Returns the number of required/written characters, excluding the null-terminator
+* @param[in] value The source value. @ref int32_t
+* @param[in] maxBufferLen The maximum length of the buffer. @ref size_t
+* @param[in, out] buffer The target buffer.
+* @return Returns the number of required/written characters, excluding the null-terminator.
 */
 fpl_common_api size_t fplS32ToString(const int32_t value, char *buffer, const size_t maxBufferLen);
 
@@ -5900,425 +5913,492 @@ fpl_common_api size_t fplS32ToString(const int32_t value, char *buffer, const si
 */
 // ----------------------------------------------------------------------------
 
-//! A union containing the internal filehandle for any platform
+/*!
+* @union fplInternalFileHandle
+* @brief A union containing the internal filehandle for any platform.
+*/
 typedef union fplInternalFileHandle {
 #if defined(FPL_PLATFORM_WINDOWS)
-	//! Win32 filehandle
+	//! Win32 filehandle.
 	fpl__Win32FileHandle win32FileHandle;
 #elif defined(FPL_SUBPLATFORM_POSIX)
-	//! POSIX filehandle
+	//! POSIX filehandle.
 	fpl__POSIXFileHandle posixFileHandle;
 #endif
 } fplInternalFileHandle;
 
-//! The filehandle structure
+/*!
+* @struct fplFileHandle
+* @brief The filehandle structure.
+*/
 typedef struct fplFileHandle {
-	//! Internal filehandle
+	//! Internal filehandle.
 	fplInternalFileHandle internalHandle;
-	//! File opened successfully
+	//! File opened successfully.
 	fpl_b32 isValid;
 } fplFileHandle;
 
-//! An enumeration of file position modes (Beginning, Current, End)
+/*!
+* @enum fplFilePositionMode
+* @brief An enumeration of file position modes (Beginning, Current, End).
+*/
 typedef enum fplFilePositionMode {
-	//! Starts from the beginning
+	//! Starts from the beginning.
 	fplFilePositionMode_Beginning = 0,
-	//! Starts from the current position
+	//! Starts from the current position.
 	fplFilePositionMode_Current,
-	//! Starts from the end
+	//! Starts from the end.
 	fplFilePositionMode_End
 } fplFilePositionMode;
 
-//! An enumeration of file entry types (File, Directory, etc.)
+/*!
+* @enum fplFileEntryType
+* @brief An enumeration of file entry types (File, Directory, etc.).
+*/
 typedef enum fplFileEntryType {
-	//! Unknown entry type
+	//! Unknown entry type.
 	fplFileEntryType_Unknown = 0,
-	//! Entry is a file
+	//! Entry is a file.
 	fplFileEntryType_File,
-	//! Entry is a directory
+	//! Entry is a directory.
 	fplFileEntryType_Directory
 } fplFileEntryType;
 
-//! An enumeration of file permission flags
+/*!
+* @enum fplFilePermissionFlags
+* @brief An enumeration of file permission flags.
+*/
 typedef enum fplFilePermissionFlags {
-	//! All (Read, Write, Execute, Search)
+	//! All (Read, Write, Execute, Search).
 	fplFilePermissionFlags_All = 0,
-	//! CanExecute
+	//! CanExecute.
 	fplFilePermissionFlags_CanExecuteSearch = 1 << 0,
-	//! CanWrite
+	//! CanWrite.
 	fplFilePermissionFlags_CanWrite = 1 << 1,
-	//! CanRead
+	//! CanRead.
 	fplFilePermissionFlags_CanRead = 1 << 2,
 } fplFilePermissionFlags;
-//! fplFilePermissionFlags operator overloads for C++
+//! fplFilePermissionFlags operator overloads for C++.
 FPL_ENUM_AS_FLAGS_OPERATORS(fplFilePermissionFlags);
 
-//! An enumeration of file permission types
+/*!
+* @enum fplFilePermissionMasks
+* @brief An enumeration of file permission types.
+*/
 typedef enum fplFilePermissionMasks {
-	//! No mask
+	//! No mask.
 	fplFilePermissionMasks_None = 0,
-	//! User
+	//! User.
 	fplFilePermissionMasks_User = 0xFF0000,
-	//! Group
+	//! Group.
 	fplFilePermissionMasks_Group = 0x00FF00,
-	//! Owner
+	//! Owner.
 	fplFilePermissionMasks_Owner = 0x0000FF,
 } fplFilePermissionMasks;
-//! fplFilePermissionMasks operator overloads for C++
+//! fplFilePermissionMasks operator overloads for C++.
 FPL_ENUM_AS_FLAGS_OPERATORS(fplFilePermissionMasks);
 
-//! A union containing the file permissions (UMask)
+/*!
+* @union fplFilePermissions
+* @brief A union containing the file permissions (UMask).
+*/
 typedef union fplFilePermissions {
 	struct {
-		//! User flags
+		//! User flags.
 		uint8_t user;
-		//! Group flags
+		//! Group flags.
 		uint8_t group;
-		//! Owner flags
+		//! Owner flags.
 		uint8_t owner;
-		//! Unused
+		//! Unused.
 		uint8_t unused;
 	};
-	//! UMask
+	//! UMask.
 	uint32_t umask;
 } fplFilePermissions;
 
-//! An enumeratation of file attribute flags (Normal, Readonly, Hidden, etc.)
+/*!
+* @enum fplFileAttributeFlags
+* @brief An enumeration of file attribute flags (Normal, Readonly, Hidden, etc.).
+*/
 typedef enum fplFileAttributeFlags {
-	//! No attributes
+	//! No attributes.
 	fplFileAttributeFlags_None = 0,
-	//! Normal
+	//! Normal.
 	fplFileAttributeFlags_Normal = 1 << 0,
-	//! Hidden
+	//! Hidden.
 	fplFileAttributeFlags_Hidden = 1 << 1,
-	//! System
+	//! System.
 	fplFileAttributeFlags_System = 1 << 2,
-	//! Archive
+	//! Archive.
 	fplFileAttributeFlags_Archive = 1 << 3
 } fplFileAttributeFlags;
-//! FileAttributeFlags operator overloads for C++
+//! FileAttributeFlags operator overloads for C++.
 FPL_ENUM_AS_FLAGS_OPERATORS(fplFileAttributeFlags);
 
-//! A union containing the internal filehandle for any platform
+/*!
+* @union fplInternalFileEntryHandle
+* @brief A union containing the internal filehandle for any platform.
+*/
 typedef union fplInternalFileEntryHandle {
 #if defined(FPL_PLATFORM_WINDOWS)
-	//! Win32 filehandle
+	//! Win32 filehandle.
 	fpl__Win32FileHandle win32FileHandle;
 #elif defined(FPL_SUBPLATFORM_POSIX)
-	//! Posix directory handle
+	//! Posix directory handle.
 	fpl__POSIXDirHandle posixDirHandle;
 #endif
 } fplInternalFileEntryHandle;
 
-//! A structure containing the internal root file informations
+/*!
+* @struct fplInternalFileRootInfo
+* @brief A structure containing the internal root file informations.
+*/
 typedef struct fplInternalFileRootInfo {
-	//! Saved root path
+	//! Saved root path.
 	const char *rootPath;
-	//! Saved filter wildcard
+	//! Saved filter wildcard.
 	const char *filter;
 } fplInternalFileRootInfo;
 
-//! The elapsed seconds since the UNIX epoch (1970-01-01 00:00:00)
+//! The elapsed seconds since the UNIX epoch (1970-01-01 00:00:00).
 typedef uint64_t fplFileTimeStamp;
 
-//! A structure containing filestamps for creation/access/modify date
+/*!
+* @struct fplFileTimeStamps
+* @brief A structure containing filestamps for creation/access/modify date.
+*/
 typedef struct fplFileTimeStamps {
-	//! Creation timestamp
+	//! Creation timestamp.
 	fplFileTimeStamp creationTime;
-	//! Last access timestamp
+	//! Last access timestamp.
 	fplFileTimeStamp lastAccessTime;
-	//! Last modify timestamp
+	//! Last modify timestamp.
 	fplFileTimeStamp lastModifyTime;
 } fplFileTimeStamps;
 
-//! A structure containing the informations for a file or directory (name, type, attributes, etc.)
+/*!
+* @struct fplFileEntry
+* @brief A structure containing the informations for a file or directory (name, type, attributes, etc.).
+*/
 typedef struct fplFileEntry {
-	//! Name
+	//! Name.
 	char name[FPL_MAX_FILENAME_LENGTH];
-	//! Internal filehandle
+	//! Internal filehandle.
 	fplInternalFileEntryHandle internalHandle;
-	//! Internal root info
+	//! Internal root info.
 	fplInternalFileRootInfo internalRoot;
-	//! Time stamps
+	//! Time stamps.
 	fplFileTimeStamps timeStamps;
-	//! Permissions
+	//! Permissions.
 	fplFilePermissions permissions;
-	//! Entry type
+	//! Entry type.
 	fplFileEntryType type;
-	//! Attributes
+	//! Attributes.
 	fplFileAttributeFlags attributes;
-	//! Size (Zero when not a file)
+	//! Size (Zero when not a file).
 	size_t size;
 } fplFileEntry;
 
 /**
 * @brief Opens a binary file for reading from a string path and returns the handle of it.
-* @param filePath The file path
-* @param outHandle The pointer to the @ref fplFileHandle structure
+* @param[in] filePath The file path.
+* @param[out] outHandle Reference to the file handle structure. @ref fplFileHandle
 * @return Returns true when the binary file was opened, false otherwise.
 * @see @ref subsection_category_io_binaryfiles_read_open
 */
 fpl_platform_api bool fplFileOpenBinary(const char *filePath, fplFileHandle *outHandle);
+
 /**
-* @brief Create a binary file for writing to the given string path and returns the handle of it.
-* @param filePath The file path
-* @param outHandle The pointer to the @ref fplFileHandle structure
+* @brief Creates a binary file for writing to the given string path and returns the handle of it.
+* @param[in] filePath The file path.
+* @param[out] outHandle Reference to the file handle structure. @ref fplFileHandle
 * @return Returns true when the binary file was created, false otherwise.
 * @see @ref subsection_category_io_binaryfiles_write_create
 */
 fpl_platform_api bool fplFileCreateBinary(const char *filePath, fplFileHandle *outHandle);
+
 /**
 * @brief Reads a block from the given file and returns the number of bytes read.
-* @param fileHandle The pointer to the @ref fplFileHandle structure
-* @param sizeToRead The number of bytes to read
-* @param targetBuffer The target memory to write into
-* @param maxTargetBufferSize Total number of bytes available in the target buffer
+* @param[in] fileHandle Reference to the file handle structure. @ref fplFileHandle
+* @param[in] sizeToRead The number of bytes to read.
+* @param[out] targetBuffer The target memory to write into.
+* @param[in] maxTargetBufferSize Total number of bytes available in the target buffer.
 * @return Returns the number of bytes read or zero.
-* @note Supports max size of 2^31
+* @note Supports max size of 2^31.
 * @see @ref subsection_category_io_binaryfiles_read_readblock
 */
 fpl_platform_api uint32_t fplFileReadBlock32(const fplFileHandle *fileHandle, const uint32_t sizeToRead, void *targetBuffer, const uint32_t maxTargetBufferSize);
+
 /**
 * @brief Reads a block from the given file and returns the number of bytes read.
-* @param fileHandle The pointer to the @ref fplFileHandle structure
-* @param sizeToRead The number of bytes to read
-* @param targetBuffer The target memory to write into
-* @param maxTargetBufferSize Total number of bytes available in the target buffer
+* @param[in] fileHandle Reference to the file handle structure. @ref fplFileHandle
+* @param[in] sizeToRead The number of bytes to read.
+* @param[out] targetBuffer The target memory to write into.
+* @param[in] maxTargetBufferSize Total number of bytes available in the target buffer.
 * @return Returns the number of bytes read or zero.
-* @note Supports max size of 2^63
+* @note Supports max size of 2^63.
 * @see @ref subsection_category_io_binaryfiles_read_readblock
 */
 fpl_platform_api uint64_t fplFileReadBlock64(const fplFileHandle *fileHandle, const uint64_t sizeToRead, void *targetBuffer, const uint64_t maxTargetBufferSize);
+
 /**
 * @brief Reads a block from the given file and returns the number of bytes read.
-* @param fileHandle The pointer to the @ref fplFileHandle structure
-* @param sizeToRead The number of bytes to read
-* @param targetBuffer The target memory to write into
-* @param maxTargetBufferSize Total number of bytes available in the target buffer
+* @param[in] fileHandle Reference to the file handle structure. @ref fplFileHandle
+* @param[in] sizeToRead The number of bytes to read.
+* @param[out] targetBuffer The target memory to write into.
+* @param[in] maxTargetBufferSize Total number of bytes available in the target buffer.
 * @return Returns the number of bytes read or zero.
-* @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes
+* @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes.
 * @see @ref subsection_category_io_binaryfiles_read_readblock
 */
 fpl_platform_api size_t fplFileReadBlock(const fplFileHandle *fileHandle, const size_t sizeToRead, void *targetBuffer, const size_t maxTargetBufferSize);
+
 /**
 * @brief Writes a block to the given file and returns the number of written bytes.
-* @param fileHandle The pointer to the filehandle @ref fplFileHandle
-* @param sourceBuffer Source memory to read from
-* @param sourceSize Number of bytes to write
+* @param[in] fileHandle Reference to the file handle structure. @ref fplFileHandle
+* @param[in] sourceBuffer Source memory to read from.
+* @param[in] sourceSize Number of bytes to write.
 * @return Returns the number of bytes written or zero.
-* @note Supports max size of 2^31
+* @note Supports max size of 2^31.
 * @see @ref subsection_category_io_binaryfiles_write_writeblock
 */
 fpl_platform_api uint32_t fplFileWriteBlock32(const fplFileHandle *fileHandle, void *sourceBuffer, const uint32_t sourceSize);
+
 /**
 * @brief Writes a block to the given file and returns the number of written bytes.
-* @param fileHandle The pointer to the filehandle @ref fplFileHandle
-* @param sourceBuffer Source memory to read from
-* @param sourceSize Number of bytes to write
+* @param[in] fileHandle Reference to the file handle structure. @ref fplFileHandle
+* @param[in] sourceBuffer Source memory to read from.
+* @param[in] sourceSize Number of bytes to write.
 * @return Returns the number of bytes written or zero.
-* @note Supports max size of 2^63
+* @note Supports max size of 2^63.
 * @see @ref subsection_category_io_binaryfiles_write_writeblock
 */
 fpl_platform_api uint64_t fplFileWriteBlock64(const fplFileHandle *fileHandle, void *sourceBuffer, const uint64_t sourceSize);
+
 /**
 * @brief Writes a block to the given file and returns the number of written bytes.
-* @param fileHandle The pointer to the filehandle @ref fplFileHandle
-* @param sourceBuffer Source memory to read from
-* @param sourceSize Number of bytes to write
+* @param[in] fileHandle Reference to the file handle structure. @ref fplFileHandle
+* @param[in] sourceBuffer Source memory to read from.
+* @param[in] sourceSize Number of bytes to write.
 * @return Returns the number of bytes written or zero.
-* @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes
+* @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes.
 * @see @ref subsection_category_io_binaryfiles_write_writeblock
 */
 fpl_common_api size_t fplFileWriteBlock(const fplFileHandle *fileHandle, void *sourceBuffer, const size_t sourceSize);
+
 /**
 * @brief Sets the current file position by the given position, depending on the mode it's absolute or relative.
-* @param fileHandle The pointer to the @ref fplFileHandle structure
-* @param position Position in bytes
-* @param mode Position mode
-* @note Supports max size of 2^31
+* @param[in] fileHandle Reference to the file handle structure. @ref fplFileHandle
+* @param[in] position Position in bytes.
+* @param[in] mode Position mode. @ref fplFilePositionMode
+* @note Supports max size of 2^31.
 * @see @ref subsection_category_io_binaryfiles_pos_set
 */
 fpl_platform_api uint32_t fplFileSetPosition32(const fplFileHandle *fileHandle, const int32_t position, const fplFilePositionMode mode);
+
 /**
 * @brief Sets the current file position by the given position, depending on the mode it's absolute or relative.
-* @param fileHandle The pointer to the @ref fplFileHandle structure
-* @param position Position in bytes
-* @param mode Position mode
-* @note Supports max size of 2^63
+* @param[in] fileHandle Reference to the file handle structure. @ref fplFileHandle
+* @param[in] position Position in bytes.
+* @param[in] mode Position mode. @ref fplFilePositionMode
+* @note Supports max size of 2^63.
 * @see @ref subsection_category_io_binaryfiles_pos_set
 */
 fpl_platform_api uint64_t fplFileSetPosition64(const fplFileHandle *fileHandle, const int64_t position, const fplFilePositionMode mode);
+
 /**
 * @brief Sets the current file position by the given position, depending on the mode it's absolute or relative.
-* @param fileHandle The pointer to the @ref fplFileHandle structure
-* @param position Position in bytes
-* @param mode Position mode
-* @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes
+* @param[in] fileHandle Reference to the file handle structure. @ref fplFileHandle
+* @param[in] position Position in bytes.
+* @param[in] mode Position mode. @ref fplFilePositionMode
+* @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes.
 * @see @ref subsection_category_io_binaryfiles_pos_set
 */
 fpl_common_api size_t fplFileSetPosition(const fplFileHandle *fileHandle, const intptr_t position, const fplFilePositionMode mode);
+
 /**
 * @brief Gets the current file position in bytes.
-* @param fileHandle The pointer to the @ref fplFileHandle structure
+* @param[in] fileHandle Reference to the file handle structure. @ref fplFileHandle
 * @return Returns the current file position in bytes.
-* @note Supports max size of 2^31
+* @note Supports max size of 2^31.
 * @see @ref subsection_category_io_binaryfiles_pos_get
 */
 fpl_platform_api uint32_t fplFileGetPosition32(const fplFileHandle *fileHandle);
+
 /**
 * @brief Gets the current file position in bytes.
-* @param fileHandle The pointer to the @ref fplFileHandle structure
+* @param[in] fileHandle Reference to the file handle structure. @ref fplFileHandle
 * @return Returns the current file position in bytes.
-* @note Supports max size of 2^63
+* @note Supports max size of 2^63.
 * @see @ref subsection_category_io_binaryfiles_pos_get
 */
 fpl_platform_api uint64_t fplFileGetPosition64(const fplFileHandle *fileHandle);
+
 /**
 * @brief Gets the current file position in bytes.
-* @param fileHandle The pointer to the @ref fplFileHandle structure
+* @param[in] fileHandle Reference to the file handle structure. @ref fplFileHandle
 * @return Returns the current file position in bytes.
-* @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes
+* @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes.
 * @see @ref subsection_category_io_binaryfiles_pos_get
 */
 fpl_common_api size_t fplFileGetPosition(const fplFileHandle *fileHandle);
+
 /**
 * @brief Flushes the buffers of the given file and causes all buffered data to be written to a file.
-* @param fileHandle The pointer to the @ref fplFileHandle structure
-* @return Returns true when file buffer was flushed, false otherwise.
+* @param[in, out] fileHandle Reference to the file handle structure. @ref fplFileHandle
+* @return Returns true when the file buffer was flushed, false otherwise.
 */
 fpl_platform_api bool fplFileFlush(fplFileHandle *fileHandle);
+
 /**
 * @brief Closes the given file and releases the underlying resources and clears the handle to zero.
-* @param fileHandle The pointer to the @ref fplFileHandle structure
+* @param[in, out] fileHandle Reference to the file handle structure. @ref fplFileHandle
 * @see @ref subsection_category_io_binaryfiles_read_open
 */
 fpl_platform_api void fplFileClose(fplFileHandle *fileHandle);
 
 /**
 * @brief Gets the file size in bytes for the given file.
-* @param filePath The path to the file
+* @param[in] filePath The path to the file.
 * @return Returns the file size in bytes or zero.
-* @note Supports max size of 2^31
+* @note Supports max size of 2^31.
 */
 fpl_platform_api uint32_t fplFileGetSizeFromPath32(const char *filePath);
+
 /**
 * @brief Gets the file size in bytes for the given file.
-* @param filePath The path to the file
+* @param[in] filePath The path to the file.
 * @return Returns the file size in bytes or zero.
-* @note Supports max size of 2^63
+* @note Supports max size of 2^63.
 */
 fpl_platform_api uint64_t fplFileGetSizeFromPath64(const char *filePath);
+
 /**
 * @brief Gets the file size in bytes for the given file.
-* @param filePath The path to the file
+* @param[in] filePath The path to the file.
 * @return Returns the file size in bytes or zero.
-* @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes
+* @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes.
 */
 fpl_platform_api size_t fplFileGetSizeFromPath(const char *filePath);
+
 /**
 * @brief Gets the file size in bytes for an opened file.
-* @param fileHandle The pointer to the @ref fplFileHandle structure
+* @param[in] fileHandle Reference to the file handle structure. @ref fplFileHandle
 * @return Returns the file size in bytes or zero.
-* @note Supports max size of 2^31
+* @note Supports max size of 2^31.
 */
 fpl_platform_api uint32_t fplFileGetSizeFromHandle32(const fplFileHandle *fileHandle);
+
 /**
 * @brief Gets the file size in bytes for an opened file.
-* @param fileHandle The pointer to the @ref fplFileHandle structure
+* @param[in] fileHandle Reference to the file handle structure. @ref fplFileHandle
 * @return Returns the file size in bytes or zero.
-* @note Supports max size of 2^63
+* @note Supports max size of 2^63.
 */
 fpl_platform_api uint64_t fplFileGetSizeFromHandle64(const fplFileHandle *fileHandle);
+
 /**
 * @brief Gets the file size in bytes for an opened file.
-* @param fileHandle The pointer to the @ref fplFileHandle structure
+* @param[in] fileHandle Reference to the file handle structure. @ref fplFileHandle
 * @return Returns the file size in bytes or zero.
-* @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes
+* @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes.
 */
 fpl_common_api size_t fplFileGetSizeFromHandle(const fplFileHandle *fileHandle);
+
 /**
-* @brief Gets the timestamps for the given file
-* @param filePath The path to the file
-* @param outStamps The pointer to the @ref fplFileTimeStamps structure
+* @brief Gets the timestamps for the given file.
+* @param[in] filePath The path to the file.
+* @param[out] outStamps Reference to the file timestamps structure. @ref fplFileTimeStamps
 * @return Returns true when the function succeeded, false otherwise.
 */
 fpl_platform_api bool fplFileGetTimestampsFromPath(const char *filePath, fplFileTimeStamps *outStamps);
+
 /**
-* @brief Gets the timestamps for an opened file
-* @param fileHandle The pointer to the @ref fplFileHandle structure
-* @param outStamps The pointer to the @ref fplFileTimeStamps structure
+* @brief Gets the timestamps for an opened file.
+* @param[in] fileHandle Reference to the file handle structure. @ref fplFileHandle
+* @param[out] outStamps Reference to the file timestamps structure. @ref fplFileTimeStamps
 * @return Returns true when the function succeeded, false otherwise.
 */
 fpl_platform_api bool fplFileGetTimestampsFromHandle(const fplFileHandle *fileHandle, fplFileTimeStamps *outStamps);
+
 /**
 * @brief Checks if the file exists and returns a boolean indicating the existence.
-* @param filePath The path to the file
+* @param[in] filePath The path to the file.
 * @return Returns true when the file exists, false otherwise.
 */
 fpl_platform_api bool fplFileExists(const char *filePath);
+
 /**
 * @brief Copies the given source file to the target path and returns true when the copy was successful.
-* @param sourceFilePath The source file path
-* @param targetFilePath The target file path
-* @param overwrite The overwrite boolean indicating if the file can be overwritten or not
+* @param[in] sourceFilePath The source file path.
+* @param[in] targetFilePath The target file path.
+* @param[in] overwrite The overwrite boolean indicating if the file can be overwritten or not.
 * @return Returns true when the file was copied, false otherwise.
 */
 fpl_platform_api bool fplFileCopy(const char *sourceFilePath, const char *targetFilePath, const bool overwrite);
+
 /**
-* @brief Movies the given source file to the target file and returns true when the move was successful.
-* @param sourceFilePath The source file path
-* @param targetFilePath The target file path
+* @brief Moves the given source file to the target file and returns true when the move was successful.
+* @param[in] sourceFilePath The source file path.
+* @param[in] targetFilePath The target file path.
 * @return Returns true when the file was moved, false otherwise.
 */
 fpl_platform_api bool fplFileMove(const char *sourceFilePath, const char *targetFilePath);
+
 /**
 * @brief Deletes the given file without confirmation and returns true when the deletion was successful.
-* @param filePath The path to the file
+* @param[in] filePath The path to the file.
 * @return Returns true when the file was deleted, false otherwise.
 */
 fpl_platform_api bool fplFileDelete(const char *filePath);
 
 /**
 * @brief Creates all the directories in the given path.
-* @param path The path to the directory
+* @param[in] path The path to the directory.
 * @return Returns true when at least one directory was created, false otherwise.
 */
 fpl_platform_api bool fplDirectoriesCreate(const char *path);
+
 /**
 * @brief Checks if the given directory exists and returns a boolean indicating its existence.
-* @param path The path to the directory
+* @param[in] path The path to the directory.
 * @return Returns true when the directory exists, false otherwise.
 */
 fpl_platform_api bool fplDirectoryExists(const char *path);
+
 /**
 * @brief Deletes the given empty directory without confirmation and returns true when the deletion was successful.
-* @param path The path to the directory.
+* @param[in] path The path to the directory.
 * @return Returns true when the empty directory was deleted, false otherwise.
 */
 fpl_platform_api bool fplDirectoryRemove(const char *path);
+
 /**
 * @brief Iterates through files/directories in the given directory.
-* @param path The full path
-* @param filter The filter wildcard (If empty or null it will not filter anything at all)
-* @param entry The pointer to the @ref fplFileEntry structure
+* @param[in] path The full path.
+* @param[in] filter The filter wildcard (If empty or null it will not filter anything at all).
+* @param[out] entry Reference to the file entry structure. @ref fplFileEntry
 * @return Returns true when there was a first entry found, false otherwise.
 * @note This function is not recursive, so it will traverse the first level only!
 * @note When no initial entry is found, the resources are automatically cleaned up.
 * @see @ref section_category_io_paths_traversing
 */
 fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter, fplFileEntry *entry);
+
 /**
 * @brief Gets the next file entry from iterating through files/directories.
-* @param entry The pointer to the @ref fplFileEntry structure
-* @return Returns true when there was a next file otherwise false if not.
+* @param[in, out] entry Reference to the file entry structure. @ref fplFileEntry
+* @return Returns true when there was a next file, otherwise false if not.
 * @note This function is not recursive, so it will traverse the first level only!
 * @note When no entries are found, the resources are automatically cleaned up.
 * @see @ref section_category_io_paths_traversing
 */
 fpl_platform_api bool fplDirectoryListNext(fplFileEntry *entry);
+
 /**
 * @brief Releases opened resources from iterating through files/directories.
-* @param entry The pointer to the @ref fplFileEntry structure
+* @param[in, out] entry Reference to the file entry structure. @ref fplFileEntry
 * @note It's safe to call this when the file entry is already closed.
 * @see @ref section_category_io_paths_traversing
 */
@@ -6336,60 +6416,66 @@ fpl_platform_api void fplDirectoryListEnd(fplFileEntry *entry);
 
 /**
 * @brief Gets the full path to this executable, including the executable file name.
-* @param destPath The destination buffer
-* @param maxDestLen The total number of characters available in the destination buffer
-* @return Returns the number of required/written characters, excluding the null-terminator
+* @param[out] destPath The destination buffer.
+* @param[in] maxDestLen The total number of characters available in the destination buffer. @ref size_t
+* @return Returns the number of required/written characters, excluding the null-terminator.
 * @see @ref subsection_category_io_paths_get_exepath
 */
 fpl_platform_api size_t fplGetExecutableFilePath(char *destPath, const size_t maxDestLen);
+
 /**
 * @brief Gets the full path to your home directory.
-* @param destPath The destination buffer
-* @param maxDestLen The total number of characters available in the destination buffer
-* @return Returns the number of required/written characters, excluding the null-terminator
+* @param[out] destPath The destination buffer.
+* @param[in] maxDestLen The total number of characters available in the destination buffer. @ref size_t
+* @return Returns the number of required/written characters, excluding the null-terminator.
 * @see @ref subsection_category_io_paths_get_home
 */
 fpl_platform_api size_t fplGetHomePath(char *destPath, const size_t maxDestLen);
+
 /**
 * @brief Extracts the directory path from the given file path.
-* @param sourcePath The source path to extract from
-* @param destPath The destination buffer
-* @param maxDestLen The total number of characters available in the destination buffer
-* @return Returns the number of required/written characters, excluding the null-terminator
+* @param[in] sourcePath The source path to extract from.
+* @param[out] destPath The destination buffer.
+* @param[in] maxDestLen The total number of characters available in the destination buffer. @ref size_t
+* @return Returns the number of required/written characters, excluding the null-terminator.
 * @see @ref subsection_category_io_paths_utils_extractfilepath
 */
 fpl_common_api size_t fplExtractFilePath(const char *sourcePath, char *destPath, const size_t maxDestLen);
+
 /**
 * @brief Extracts the file extension from the given source path.
-* @param sourcePath The source path to extract from
+* @param[in] sourcePath The source path to extract from.
 * @return Returns the pointer to the first character of the extension.
 * @see @ref subsection_category_io_paths_utils_extractfileext
 */
 fpl_common_api const char *fplExtractFileExtension(const char *sourcePath);
+
 /**
 * @brief Extracts the file name including the file extension from the given source path.
-* @param sourcePath The source path to extract from
+* @param[in] sourcePath The source path to extract from.
 * @return Returns the pointer to the first character of the filename.
 * @see @ref subsection_category_io_paths_utils_extractfilename
 */
 fpl_common_api const char *fplExtractFileName(const char *sourcePath);
+
 /**
 * @brief Changes the file extension on the given source path and writes the result into a destination buffer.
-* @param filePath The File path to search for the extension
-* @param newFileExtension The new file extension
-* @param destPath The destination buffer
-* @param maxDestLen The total number of characters available in the destination buffer
-* @return Returns the number of required/written characters, excluding the null-terminator
+* @param[in] filePath The file path to search for the extension.
+* @param[in] newFileExtension The new file extension.
+* @param[out] destPath The destination buffer.
+* @param[in] maxDestLen The total number of characters available in the destination buffer. @ref size_t
+* @return Returns the number of required/written characters, excluding the null-terminator.
 * @see @ref subsection_category_io_paths_utils_changefileext
 */
 fpl_common_api size_t fplChangeFileExtension(const char *filePath, const char *newFileExtension, char *destPath, const size_t maxDestLen);
+
 /**
-* @brief Combines all given paths by the platforms path separator for a fixed number of arguments
-* @param destPath The destination buffer
-* @param maxDestPathLen The total number of characters available in the destination buffer
-* @param pathCount The number of dynamic path arguments
-* @param ... The dynamic path arguments
-* @return Returns the number of required/written characters, excluding the null-terminator
+* @brief Combines all given paths by the platform's path separator for a fixed number of arguments.
+* @param[out] destPath The destination buffer.
+* @param[in] maxDestPathLen The total number of characters available in the destination buffer. @ref size_t
+* @param[in] pathCount The number of dynamic path arguments. @ref size_t
+* @param[in] ... The dynamic path arguments.
+* @return Returns the number of required/written characters, excluding the null-terminator.
 * @see @ref subsection_category_io_paths_utils_pathcombine
 */
 fpl_common_api size_t fplPathCombine(char *destPath, const size_t maxDestPathLen, const size_t pathCount, ...);
