@@ -18,6 +18,7 @@ Author:
 Changelog:
 	## 2025-02-16
 	- Only allocate a new packet when needed / fixed dropped packets was never released
+	- Use fplAssert() instead of assert()
 
 	## 2025-01-28
 	- Fixed makefiles for CC/CMake was broken
@@ -153,8 +154,6 @@ License:
 #define FPL_NO_VIDEO_VULKAN
 #include <final_platform_layer.h>
 
-#include <assert.h> // assert
-
 #include <final_math.h>
 
 #include "defines.h"
@@ -206,7 +205,7 @@ static void CheckGLError() {
 	GLenum err = glGetError();
 	if (err != GL_NO_ERROR) {
 		const char *msg = GetGLErrorString(err);
-		assert(!msg);
+		fplAssert(!msg);
 	}
 }
 
@@ -355,7 +354,7 @@ struct PacketQueue {
 };
 
 static bool IsFlushPacket(PacketList *packet) {
-	assert(packet != nullptr);
+	fplAssert(packet != nullptr);
 	bool result = (packet->packet.data == (uint8_t *)&globalFlushPacket);
 	return(result);
 }
@@ -449,7 +448,7 @@ static void PushPacket(PacketQueue &queue, PacketList *packet) {
 			queue.first = packet;
 		}
 		if (queue.last != nullptr) {
-			assert(queue.last->next == nullptr);
+			fplAssert(queue.last->next == nullptr);
 			queue.last->next = packet;
 		}
 		queue.last = packet;
@@ -513,7 +512,7 @@ static bool PushFlushPacket(PacketQueue &queue) {
 
 static void StartPacketQueue(PacketQueue &queue) {
 	bool r = PushFlushPacket(queue);
-	assert(r == true);
+	fplAssert(r == true);
 }
 
 //
@@ -740,7 +739,7 @@ static void StopReader(ReaderContext &reader) {
 
 static void StartReader(ReaderContext &reader, fpl_run_thread_callback *readerThreadFunc, void *state) {
 	reader.stopRequest = 0;
-	assert(reader.thread == nullptr);
+	fplAssert(reader.thread == nullptr);
 	reader.thread = fplThreadCreate(readerThreadFunc, state);
 }
 
@@ -806,7 +805,7 @@ static void DestroyDecoder(Decoder &decoder) {
 
 static void StartDecoder(Decoder &decoder, fpl_run_thread_callback *decoderThreadFunc) {
 	StartPacketQueue(decoder.packetsQueue);
-	assert(decoder.thread == nullptr);
+	fplAssert(decoder.thread == nullptr);
 	decoder.thread = fplThreadCreate(decoderThreadFunc, &decoder);
 }
 
@@ -822,7 +821,7 @@ static void StopDecoder(Decoder &decoder) {
 static void AddPacketToDecoder(Decoder &decoder, AVPacket *sourcePacket) {
 	PacketList *targetPacket = nullptr;
 	if (AquirePacket(decoder.packetsQueue, targetPacket)) {
-		assert(targetPacket != nullptr);
+		fplAssert(targetPacket != nullptr);
 		targetPacket->packet = *sourcePacket;
 		PushPacket(decoder.packetsQueue, targetPacket);
 	}
@@ -1128,19 +1127,19 @@ static void UploadTexture(VideoContext &video, const AVFrame *sourceNativeFrame)
 		switch (pixelFormat) {
 			case AVPixelFormat::AV_PIX_FMT_YUV420P:
 			case AVPixelFormat::AV_PIX_FMT_YUVJ420P:
-				assert(video.targetTextureCount == 3);
+				fplAssert(video.targetTextureCount == 3);
 				for (uint32_t textureIndex = 0; textureIndex < video.targetTextureCount; ++textureIndex) {
 					VideoTexture &targetTexture = video.targetTextures[textureIndex];
 
 					uint8_t *data = LockVideoTexture(targetTexture);
 
-					assert(data != nullptr);
+					fplAssert(data != nullptr);
 
 					uint32_t w = (textureIndex == 0) ? sourceNativeFrame->width : sourceNativeFrame->width / 2;
 					uint32_t h = (textureIndex == 0) ? sourceNativeFrame->height : sourceNativeFrame->height / 2;
 
-					assert(targetTexture.width == w);
-					assert(targetTexture.height == h);
+					fplAssert(targetTexture.width == w);
+					fplAssert(targetTexture.height == h);
 
 					uint32_t lineSize = sourceNativeFrame->linesize[textureIndex];
 					size_t copySize = targetTexture.width;
@@ -1160,13 +1159,13 @@ static void UploadTexture(VideoContext &video, const AVFrame *sourceNativeFrame)
 	}
 #endif
 
-	assert(video.targetTextureCount == 1);
+	fplAssert(video.targetTextureCount == 1);
 	VideoTexture &targetTexture = video.targetTextures[0];
-	assert(targetTexture.width == sourceNativeFrame->width);
-	assert(targetTexture.height == sourceNativeFrame->height);
+	fplAssert(targetTexture.width == sourceNativeFrame->width);
+	fplAssert(targetTexture.height == sourceNativeFrame->height);
 
 	uint8_t *data = LockVideoTexture(targetTexture);
-	assert(data != nullptr);
+	fplAssert(data != nullptr);
 
 	int32_t dstLineSize[8] = { targetTexture.rowSize, 0 };
 	uint8_t *dstData[8] = { data, nullptr };
@@ -2221,7 +2220,7 @@ namespace DecodeResults {
 typedef DecodeResults::DecodeResultEnum DecodeResult;
 
 static DecodeResult DecodeFrame(ReaderContext &reader, Decoder &decoder, AVFrame *frame) {
-	assert(decoder.stream != nullptr);
+	fplAssert(decoder.stream != nullptr);
 	AVCodecContext *codecCtx = decoder.stream->codecContext;
 	int ret = AVERROR(EAGAIN);
 	PacketList *pkt;
@@ -2285,7 +2284,7 @@ static DecodeResult DecodeFrame(ReaderContext &reader, Decoder &decoder, AVFrame
 
 		do {
 			if (decoder.frameQueue.hasPendingPacket) {
-				assert(decoder.frameQueue.pendingPacket != nullptr);
+				fplAssert(decoder.frameQueue.pendingPacket != nullptr);
 				pkt = decoder.frameQueue.pendingPacket;
 				decoder.frameQueue.hasPendingPacket = false;
 			} else {
@@ -2322,10 +2321,10 @@ static DecodeResult DecodeFrame(ReaderContext &reader, Decoder &decoder, AVFrame
 }
 
 static void QueuePicture(Decoder &decoder, AVFrame *sourceFrame, Frame *targetFrame, const int32_t serial) {
-	assert(targetFrame != nullptr);
-	assert(targetFrame->frame != nullptr);
-	assert(targetFrame->frame->pkt_size <= 0);
-	assert(targetFrame->frame->width == 0);
+	fplAssert(targetFrame != nullptr);
+	fplAssert(targetFrame->frame != nullptr);
+	fplAssert(targetFrame->frame->pkt_size <= 0);
+	fplAssert(targetFrame->frame->width == 0);
 
 	AVStream *videoStream = decoder.stream->stream;
 
@@ -2350,14 +2349,14 @@ static void QueuePicture(Decoder &decoder, AVFrame *sourceFrame, Frame *targetFr
 
 static void VideoDecodingThreadProc(const fplThreadHandle *thread, void *userData) {
 	Decoder *decoder = (Decoder *)userData;
-	assert(decoder != nullptr);
+	fplAssert(decoder != nullptr);
 
 	ReaderContext &reader = *decoder->reader;
 
 	MediaStream *stream = decoder->stream;
-	assert(stream != nullptr);
-	assert(stream->isValid);
-	assert(stream->streamIndex > -1);
+	fplAssert(stream != nullptr);
+	fplAssert(stream->isValid);
+	fplAssert(stream->streamIndex > -1);
 
 	PlayerState *state = decoder->state;
 
@@ -2453,10 +2452,10 @@ static void VideoDecodingThreadProc(const fplThreadHandle *thread, void *userDat
 }
 
 static void QueueSamples(Decoder &decoder, AVFrame *sourceFrame, Frame *targetFrame, int32_t serial) {
-	assert(targetFrame != nullptr);
-	assert(targetFrame->frame != nullptr);
-	assert(targetFrame->frame->pkt_size <= 0);
-	assert(targetFrame->frame->nb_samples == 0);
+	fplAssert(targetFrame != nullptr);
+	fplAssert(targetFrame->frame != nullptr);
+	fplAssert(targetFrame->frame->pkt_size <= 0);
+	fplAssert(targetFrame->frame->nb_samples == 0);
 
 	AVStream *audioStream = decoder.stream->stream;
 	AVRational currentTimeBase = { 1, sourceFrame->sample_rate };
@@ -2503,17 +2502,17 @@ static int SyncronizeAudio(PlayerState *state, const uint32_t sampleCount) {
 
 static void AudioDecodingThreadProc(const fplThreadHandle *thread, void *userData) {
 	Decoder *decoder = (Decoder *)userData;
-	assert(decoder != nullptr);
+	fplAssert(decoder != nullptr);
 
 	ReaderContext &reader = *decoder->reader;
 
 	PlayerState *state = decoder->state;
-	assert(state != nullptr);
+	fplAssert(state != nullptr);
 
 	MediaStream *stream = decoder->stream;
-	assert(stream != nullptr);
-	assert(stream->isValid);
-	assert(stream->streamIndex > -1);
+	fplAssert(stream != nullptr);
+	fplAssert(stream->isValid);
+	fplAssert(stream->streamIndex > -1);
 
 	fplSignalHandle *waitSignals[] = {
 		// New packet arrived
@@ -2597,7 +2596,7 @@ static uint32_t AudioReadCallback(const fplAudioFormat *nativeFormat, const uint
 	// FFMPEG Planar audio: (Each channel a plane -> AVFrame->data[channel])
 	// FFMPEG Non-planar audio (One plane, Interleaved samples -> AVFrame->extended_data) [Left][Right],[Left][Right],..
 	AudioContext *audio = (AudioContext *)userData;
-	assert(audio != nullptr);
+	fplAssert(audio != nullptr);
 
 	Decoder &decoder = audio->decoder;
 
@@ -2630,12 +2629,12 @@ static uint32_t AudioReadCallback(const fplAudioFormat *nativeFormat, const uint
 				uint32_t framesToRead = fplMin(remainingFrameCount, maxFramesToRead);
 				size_t bytesToCopy = framesToRead * outputSamplesStride;
 
-				assert(audio->conversionAudioFrameIndex < audio->maxConversionAudioFrameCount);
+				fplAssert(audio->conversionAudioFrameIndex < audio->maxConversionAudioFrameCount);
 				size_t sourcePosition = audio->conversionAudioFrameIndex * outputSamplesStride;
-				assert(sourcePosition < audio->maxConversionAudioBufferSize);
+				fplAssert(sourcePosition < audio->maxConversionAudioBufferSize);
 
 				size_t destPosition = (frameCount - remainingFrameCount) * outputSamplesStride;
-				assert(destPosition < maxOutputSampleBufferSize);
+				fplAssert(destPosition < maxOutputSampleBufferSize);
 
 				if (nativeFormat->channels <= 2 || !state->audio.channelMap.isActive) {
 					fplMemoryCopy(conversionAudioBuffer + sourcePosition, bytesToCopy, (uint8_t *)outputSamples + destPosition);
@@ -2664,9 +2663,9 @@ static uint32_t AudioReadCallback(const fplAudioFormat *nativeFormat, const uint
 
 			// Convert entire pending frame into conversion buffer
 			if (audio->pendingAudioFrame != nullptr) {
-				assert(audio->conversionAudioFramesRemaining == 0);
+				fplAssert(audio->conversionAudioFramesRemaining == 0);
 				Frame *audioFrame = audio->pendingAudioFrame;
-				assert(audioFrame->frame != nullptr);
+				fplAssert(audioFrame->frame != nullptr);
 				audio->pendingAudioFrame = nullptr;
 
 				// Get conversion sample count
@@ -2688,7 +2687,7 @@ static uint32_t AudioReadCallback(const fplAudioFormat *nativeFormat, const uint
 				targetSamples[0] = audio->conversionAudioBuffer;
 
 				// @NOTE(final): Conversion buffer needs to be big enough to hold the samples for the frame
-				assert(conversionSampleCount <= (int)maxConversionSampleCount);
+				fplAssert(conversionSampleCount <= (int)maxConversionSampleCount);
 				int samplesPerChannel = ffmpeg.swr_convert(audio->softwareResampleCtx, (uint8_t **)targetSamples, conversionSampleCount, (const uint8_t **)sourceSamples, sourceSampleCount);
 
 				// We are done with this audio frame, release it
@@ -2812,7 +2811,7 @@ static void StepToNextFrame(PlayerState *state) {
 
 static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) {
 	PlayerState *state = (PlayerState *)userData;
-	assert(state != nullptr);
+	fplAssert(state != nullptr);
 
 	ReaderContext &reader = state->reader;
 	VideoContext &video = state->video;
@@ -2820,7 +2819,7 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 	MediaStream *videoStream = video.decoder.stream;
 	MediaStream *audioStream = audio.decoder.stream;
 	AVFormatContext *formatCtx = state->formatCtx;
-	assert(formatCtx != nullptr);
+	fplAssert(formatCtx != nullptr);
 
 	fplSignalHandle *waitSignals[] = {
 		// We got a free packet for use to read into
@@ -3032,7 +3031,7 @@ static bool OpenStreamComponent(const char *mediaFilePath, const int32_t streamI
 			break;
 		default:
 			typeName = "";
-			assert(!"Unsupported stream type!");
+			fplAssert(!"Unsupported stream type!");
 	}
 
 	// Create codec context
@@ -3277,7 +3276,7 @@ static void RenderOSD(AppState *state, const Mat4f &proj, const float w, const f
 }
 
 static void RenderVideoFrame(AppState *state) {
-	assert(state != nullptr);
+	fplAssert(state != nullptr);
 
 	PlayerState *playerState = &state->player;
 
