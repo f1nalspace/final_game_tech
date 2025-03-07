@@ -2538,7 +2538,7 @@ fpl_internal fpl_force_inline void fpl__m_DebugBreak() { __asm__ __volatile__(".
 //
 
 /**
-* @defgroup Memory macros
+* @defgroup MemoryMacros Memory Macros
 * @brief This category contains memory configurations
 * @{
 */

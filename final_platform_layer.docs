@@ -538,7 +538,7 @@
 	
 	@section section_category_errorhandling_clear Clearing the errors
 
-	Errors will never be cleared by FPL! You have to do this yourself using @ref fplClearErrors() .<br>
+	Errors will never be cleared by FPL! You have to do this yourself using @ref fplErrorsClear() .<br>
 
 	Example:
 	@code{.c}
