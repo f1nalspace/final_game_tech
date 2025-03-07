@@ -6491,26 +6491,38 @@ fpl_common_api size_t fplPathCombine(char *destPath, const size_t maxDestPathLen
 */
 // ----------------------------------------------------------------------------
 
-//! An enumeration of mapped keys (Based on MS Virtual-Key-Codes, mostly directly mapped from ASCII)
+/*!
+* @enum fplKey
+* @brief An enumeration of mapped keys (Based on MS Virtual-Key-Codes, mostly directly mapped from ASCII).
+*/
 typedef enum fplKey {
 	fplKey_None = 0,
 
 	// 0x0-0x07: Undefined
 
+	//! Backspace key.
 	fplKey_Backspace = 0x08,
+	//! Tab key.
 	fplKey_Tab = 0x09,
 
 	// 0x0A-0x0B: Reserved
 
+	//! Clear key.
 	fplKey_Clear = 0x0C,
+	//! Return key.
 	fplKey_Return = 0x0D,
 
 	// 0x0E-0x0F: Undefined
 
+	//! Shift key.
 	fplKey_Shift = 0x10,
+	//! Control key.
 	fplKey_Control = 0x11,
+	//! Alt key.
 	fplKey_Alt = 0x12,
+	//! Pause key.
 	fplKey_Pause = 0x13,
+	//! Caps Lock key.
 	fplKey_CapsLock = 0x14,
 
 	// 0x15: IME-Keys
@@ -6518,496 +6530,660 @@ typedef enum fplKey {
 	// 0x17-0x19 IME-Keys
 	// 0x1A: Undefined
 
+	//! Escape key.
 	fplKey_Escape = 0x1B,
 
 	// 0x1C-0x1F: IME-Keys
 
+	//! Space key.
 	fplKey_Space = 0x20,
+	//! Page Up key.
 	fplKey_PageUp = 0x21,
+	//! Page Down key.
 	fplKey_PageDown = 0x22,
+	//! End key.
 	fplKey_End = 0x23,
+	//! Home key.
 	fplKey_Home = 0x24,
+	//! Left arrow key.
 	fplKey_Left = 0x25,
+	//! Up arrow key.
 	fplKey_Up = 0x26,
+	//! Right arrow key.
 	fplKey_Right = 0x27,
+	//! Down arrow key.
 	fplKey_Down = 0x28,
+	//! Select key.
 	fplKey_Select = 0x29,
+	//! Print key.
 	fplKey_Print = 0x2A,
+	//! Execute key.
 	fplKey_Execute = 0x2B,
+	//! Snapshot key.
 	fplKey_Snapshot = 0x2C,
+	//! Insert key.
 	fplKey_Insert = 0x2D,
+	//! Delete key.
 	fplKey_Delete = 0x2E,
+	//! Help key.
 	fplKey_Help = 0x2F,
 
+	//! Number 0 key.
 	fplKey_0 = 0x30,
+	//! Number 1 key.
 	fplKey_1 = 0x31,
+	//! Number 2 key.
 	fplKey_2 = 0x32,
+	//! Number 3 key.
 	fplKey_3 = 0x33,
+	//! Number 4 key.
 	fplKey_4 = 0x34,
+	//! Number 5 key.
 	fplKey_5 = 0x35,
+	//! Number 6 key.
 	fplKey_6 = 0x36,
+	//! Number 7 key.
 	fplKey_7 = 0x37,
+	//! Number 8 key.
 	fplKey_8 = 0x38,
+	//! Number 9 key.
 	fplKey_9 = 0x39,
 
 	// 0x3A-0x40: Undefined
 
+	//! Letter A key.
 	fplKey_A = 0x41,
+	//! Letter B key.
 	fplKey_B = 0x42,
+	//! Letter C key.
 	fplKey_C = 0x43,
+	//! Letter D key.
 	fplKey_D = 0x44,
+	//! Letter E key.
 	fplKey_E = 0x45,
+	//! Letter F key.
 	fplKey_F = 0x46,
+	//! Letter G key.
 	fplKey_G = 0x47,
+	//! Letter H key.
 	fplKey_H = 0x48,
+	//! Letter I key.
 	fplKey_I = 0x49,
+	//! Letter J key.
 	fplKey_J = 0x4A,
+	//! Letter K key.
 	fplKey_K = 0x4B,
+	//! Letter L key.
 	fplKey_L = 0x4C,
+	//! Letter M key.
 	fplKey_M = 0x4D,
+	//! Letter N key.
 	fplKey_N = 0x4E,
+	//! Letter O key.
 	fplKey_O = 0x4F,
+	//! Letter P key.
 	fplKey_P = 0x50,
+	//! Letter Q key.
 	fplKey_Q = 0x51,
+	//! Letter R key.
 	fplKey_R = 0x52,
+	//! Letter S key.
 	fplKey_S = 0x53,
+	//! Letter T key.
 	fplKey_T = 0x54,
+	//! Letter U key.
 	fplKey_U = 0x55,
+	//! Letter V key.
 	fplKey_V = 0x56,
+	//! Letter W key.
 	fplKey_W = 0x57,
+	//! Letter X key.
 	fplKey_X = 0x58,
+	//! Letter Y key.
 	fplKey_Y = 0x59,
+	//! Letter Z key.
 	fplKey_Z = 0x5A,
 
+	//! Left Super key.
 	fplKey_LeftSuper = 0x5B,
+	//! Right Super key.
 	fplKey_RightSuper = 0x5C,
+	//! Apps key.
 	fplKey_Apps = 0x5D,
 
 	// 0x5E: Reserved
 
+	//! Sleep key.
 	fplKey_Sleep = 0x5F,
+	//! NumPad 0 key.
 	fplKey_NumPad0 = 0x60,
+	//! NumPad 1 key.
 	fplKey_NumPad1 = 0x61,
+	//! NumPad 2 key.
 	fplKey_NumPad2 = 0x62,
+	//! NumPad 3 key.
 	fplKey_NumPad3 = 0x63,
+	//! NumPad 4 key.
 	fplKey_NumPad4 = 0x64,
+	//! NumPad 5 key.
 	fplKey_NumPad5 = 0x65,
+	//! NumPad 6 key.
 	fplKey_NumPad6 = 0x66,
+	//! NumPad 7 key.
 	fplKey_NumPad7 = 0x67,
+	//! NumPad 8 key.
 	fplKey_NumPad8 = 0x68,
+	//! NumPad 9 key.
 	fplKey_NumPad9 = 0x69,
+	//! Multiply key.
 	fplKey_Multiply = 0x6A,
+	//! Add key.
 	fplKey_Add = 0x6B,
+	//! Separator key.
 	fplKey_Separator = 0x6C,
+	//! Subtract key.
 	fplKey_Substract = 0x6D,
+	//! Decimal key.
 	fplKey_Decimal = 0x6E,
+	//! Divide key.
 	fplKey_Divide = 0x6F,
+	//! Function key F1.
 	fplKey_F1 = 0x70,
+	//! Function key F2.
 	fplKey_F2 = 0x71,
+	//! Function key F3.
 	fplKey_F3 = 0x72,
+	//! Function key F4.
 	fplKey_F4 = 0x73,
+	//! Function key F5.
 	fplKey_F5 = 0x74,
+	//! Function key F6.
 	fplKey_F6 = 0x75,
+	//! Function key F7.
 	fplKey_F7 = 0x76,
+	//! Function key F8.
 	fplKey_F8 = 0x77,
+	//! Function key F9.
 	fplKey_F9 = 0x78,
+	//! Function key F10.
 	fplKey_F10 = 0x79,
+	//! Function key F11.
 	fplKey_F11 = 0x7A,
+	//! Function key F12.
 	fplKey_F12 = 0x7B,
+	//! Function key F13.
 	fplKey_F13 = 0x7C,
+	//! Function key F14.
 	fplKey_F14 = 0x7D,
+	//! Function key F15.
 	fplKey_F15 = 0x7E,
+	//! Function key F16.
 	fplKey_F16 = 0x7F,
+	//! Function key F17.
 	fplKey_F17 = 0x80,
+	//! Function key F18.
 	fplKey_F18 = 0x81,
+	//! Function key F19.
 	fplKey_F19 = 0x82,
+	//! Function key F20.
 	fplKey_F20 = 0x83,
+	//! Function key F21.
 	fplKey_F21 = 0x84,
+	//! Function key F22.
 	fplKey_F22 = 0x85,
+	//! Function key F23.
 	fplKey_F23 = 0x86,
+	//! Function key F24.
 	fplKey_F24 = 0x87,
 
 	// 0x88-8F: Unassigned
 
+	//! Num Lock key.
 	fplKey_NumLock = 0x90,
+	//! Scroll Lock key.
 	fplKey_Scroll = 0x91,
 
-	// 0x92-9x96: OEM specific
+	// 0x92-0x96: OEM specific
 	// 0x97-0x9F: Unassigned
 
+	//! Left Shift key.
 	fplKey_LeftShift = 0xA0,
+	//! Right Shift key.
 	fplKey_RightShift = 0xA1,
+	//! Left Control key.
 	fplKey_LeftControl = 0xA2,
+	//! Right Control key.
 	fplKey_RightControl = 0xA3,
+	//! Left Alt key.
 	fplKey_LeftAlt = 0xA4,
+	//! Right Alt key.
 	fplKey_RightAlt = 0xA5,
 
-	// 0xA6-0xAC: Dont care
+	// 0xA6-0xAC: Don't care
 
+	//! Volume Mute key.
 	fplKey_VolumeMute = 0xAD,
+	//! Volume Down key.
 	fplKey_VolumeDown = 0xAE,
+	//! Volume Up key.
 	fplKey_VolumeUp = 0xAF,
+	//! Media Next Track key.
 	fplKey_MediaNextTrack = 0xB0,
+	//! Media Previous Track key.
 	fplKey_MediaPrevTrack = 0xB1,
+	//! Media Stop key.
 	fplKey_MediaStop = 0xB2,
+	//! Media Play/Pause key.
 	fplKey_MediaPlayPause = 0xB3,
 
-	// 0xB4-0xB9 Dont care
+	// 0xB4-0xB9: Don't care
 
-	//! '/?' for US
+	//! '/?' for US.
 	fplKey_Oem1 = 0xBA,
-	//! '+' for any country
+	//! '+' for any country.
 	fplKey_OemPlus = 0xBB,
-	//! ',' for any country
+	//! ',' for any country.
 	fplKey_OemComma = 0xBC,
-	//! '-' for any country
+	//! '-' for any country.
 	fplKey_OemMinus = 0xBD,
-	//! '.' for any country
+	//! '.' for any country.
 	fplKey_OemPeriod = 0xBE,
-	//! '/?' for US
+	//! '/?' for US.
 	fplKey_Oem2 = 0xBF,
-	//! '`~' for US
+	//! '`~' for US.
 	fplKey_Oem3 = 0xC0,
 
-	// 0xC1-0xD7 Reserved
-	// 0xD8-0xDA Unassigned
+	// 0xC1-0xD7: Reserved
+	// 0xD8-0xDA: Unassigned
 
-	//! '[{' for US
+	//! '[{' for US.
 	fplKey_Oem4 = 0xDB,
-	//! '\|' for US
+	//! '\|' for US.
 	fplKey_Oem5 = 0xDC,
-	//! ']}' for US
+	//! ']}' for US.
 	fplKey_Oem6 = 0xDD,
-	//! ''"' for US
+	//! ''"' for US.
 	fplKey_Oem7 = 0xDE,
+	//! OEM specific key.
 	fplKey_Oem8 = 0xDF,
 
-	// 0xE0-0xFE Dont care
+	// 0xE0-0xFE: Don't care
 } fplKey;
 
-//! An enumeration of window event types (Resized, PositionChanged, etc.)
+/*!
+* @enum fplWindowEventType
+* @brief An enumeration of window event types (Resized, PositionChanged, etc.).
+*/
 typedef enum fplWindowEventType {
-	//! None window event type
+	//! None window event type.
 	fplWindowEventType_None = 0,
-	//! Window has been resized
+	//! Window has been resized.
 	fplWindowEventType_Resized,
-	//! Window got focus
+	//! Window got focus.
 	fplWindowEventType_GotFocus,
-	//! Window lost focus
+	//! Window lost focus.
 	fplWindowEventType_LostFocus,
-	//! Window has been minimized
+	//! Window has been minimized.
 	fplWindowEventType_Minimized,
-	//! Window has been maximized
+	//! Window has been maximized.
 	fplWindowEventType_Maximized,
-	//! Window has been restored
+	//! Window has been restored.
 	fplWindowEventType_Restored,
-	//! Dropped one or more files into the window
+	//! Dropped one or more files into the window.
 	fplWindowEventType_DroppedFiles,
-	//! Window was exposed
+	//! Window was exposed.
 	fplWindowEventType_Exposed,
-	//! Window was moved
+	//! Window was moved.
 	fplWindowEventType_PositionChanged,
-	//! Window was closed
+	//! Window was closed.
 	fplWindowEventType_Closed,
-	//! Window was shown
+	//! Window was shown.
 	fplWindowEventType_Shown,
-	//! Window was hidden
+	//! Window was hidden.
 	fplWindowEventType_Hidden,
 } fplWindowEventType;
 
-//! A structure containing number and dropped files informations
+/*!
+* @struct fplWindowDropFiles
+* @brief A structure containing number and dropped files informations.
+*/
 typedef struct fplWindowDropFiles {
-	//! The internal memory block
+	//! The internal memory block.
 	fplMemoryBlock internalMemory;
-	//! File paths (Do not release this memory, its automatically released after the event is processed)
+	//! File paths (Do not release this memory, it's automatically released after the event is processed).
 	const char **files;
-	//! Number of dropped in files
+	//! Number of dropped in files.
 	size_t fileCount;
 } fplWindowDropFiles;
 
-//! A structure containing window event data (Size, Position, etc.)
+/*!
+* @struct fplWindowEvent
+* @brief A structure containing window event data (Size, Position, etc.).
+*/
 typedef struct fplWindowEvent {
-	//! Window event type
+	//! Window event type.
 	fplWindowEventType type;
 	union {
-		//! Window size
+		//! Window size.
 		fplWindowSize size;
-		//! Window position
+		//! Window position.
 		fplWindowPosition position;
-		//! Drop files
+		//! Drop files.
 		fplWindowDropFiles dropFiles;
 	};
 } fplWindowEvent;
 
-//! An enumeration of button states
+/*!
+* @enum fplButtonState
+* @brief An enumeration of button states.
+*/
 typedef enum fplButtonState {
-	//! Key released
+	//! Key released.
 	fplButtonState_Release = 0,
-	//! Key pressed
+	//! Key pressed.
 	fplButtonState_Press = 1,
-	//! Key is hold down
+	//! Key is held down.
 	fplButtonState_Repeat = 2,
 } fplButtonState;
 
-//! An enumeration of keyboard event types
+/*!
+* @enum fplKeyboardEventType
+* @brief An enumeration of keyboard event types.
+*/
 typedef enum fplKeyboardEventType {
-	//! None key event type
+	//! None key event type.
 	fplKeyboardEventType_None = 0,
-	//! Key button event
+	//! Key button event.
 	fplKeyboardEventType_Button,
-	//! Character was entered
+	//! Character was entered.
 	fplKeyboardEventType_Input,
 } fplKeyboardEventType;
 
-//! An enumeration of keyboard modifier flags
+/*!
+* @enum fplKeyboardModifierFlags
+* @brief An enumeration of keyboard modifier flags.
+*/
 typedef enum fplKeyboardModifierFlags {
-	//! No modifiers
+	//! No modifiers.
 	fplKeyboardModifierFlags_None = 0,
-	//! Left alt key is down
+	//! Left alt key is down.
 	fplKeyboardModifierFlags_LAlt = 1 << 0,
-	//! Right alt key is down
+	//! Right alt key is down.
 	fplKeyboardModifierFlags_RAlt = 1 << 1,
-	//! Left ctrl key is down
+	//! Left ctrl key is down.
 	fplKeyboardModifierFlags_LCtrl = 1 << 2,
-	//! Right ctrl key is down
+	//! Right ctrl key is down.
 	fplKeyboardModifierFlags_RCtrl = 1 << 3,
-	//! Left shift key is down
+	//! Left shift key is down.
 	fplKeyboardModifierFlags_LShift = 1 << 4,
-	//! Right shift key is down
+	//! Right shift key is down.
 	fplKeyboardModifierFlags_RShift = 1 << 5,
-	//! Left super key is down
+	//! Left super key is down.
 	fplKeyboardModifierFlags_LSuper = 1 << 6,
-	//! Right super key is down
+	//! Right super key is down.
 	fplKeyboardModifierFlags_RSuper = 1 << 7,
-	//! Capslock state is active
+	//! Capslock state is active.
 	fplKeyboardModifierFlags_CapsLock = 1 << 8,
-	//! Numlock state is active
+	//! Numlock state is active.
 	fplKeyboardModifierFlags_NumLock = 1 << 9,
-	//! Scrolllock state is active
+	//! Scrolllock state is active.
 	fplKeyboardModifierFlags_ScrollLock = 1 << 10,
 } fplKeyboardModifierFlags;
-//! fplKeyboardModifierFlags operator overloads for C++
+//! fplKeyboardModifierFlags operator overloads for C++.
 FPL_ENUM_AS_FLAGS_OPERATORS(fplKeyboardModifierFlags);
 
-//! A structure containing keyboard event data (Type, Keycode, Mapped key, etc.)
+/*!
+* @struct fplKeyboardEvent
+* @brief A structure containing keyboard event data (Type, Keycode, Mapped key, etc.).
+*/
 typedef struct fplKeyboardEvent {
-	//! Raw ascii key code or 32-bit unicode for text input.
+	//! Raw ASCII key code or 32-bit Unicode for text input.
 	uint64_t keyCode;
-	//! Keyboard event type
+	//! Keyboard event type.
 	fplKeyboardEventType type;
-	//! Keyboard modifiers
+	//! Keyboard modifiers.
 	fplKeyboardModifierFlags modifiers;
-	//! Button state
+	//! Button state.
 	fplButtonState buttonState;
-	//! Mapped key
+	//! Mapped key.
 	fplKey mappedKey;
 } fplKeyboardEvent;
 
-//! An enumeration of mouse event types (Move, ButtonDown, ...)
+/*!
+* @enum fplMouseEventType
+* @brief An enumeration of mouse event types (Move, ButtonDown, etc.).
+*/
 typedef enum fplMouseEventType {
-	//! No mouse event type
+	//! No mouse event type.
 	fplMouseEventType_None,
-	//! Mouse position has been changed
+	//! Mouse position has been changed.
 	fplMouseEventType_Move,
-	//! Mouse button event
+	//! Mouse button event.
 	fplMouseEventType_Button,
-	//! Mouse wheel event
+	//! Mouse wheel event.
 	fplMouseEventType_Wheel,
 } fplMouseEventType;
 
-//! An enumeration of mouse button types (Left, Right, ...)
+/*!
+* @enum fplMouseButtonType
+* @brief An enumeration of mouse button types (Left, Right, etc.).
+*/
 typedef enum fplMouseButtonType {
-	//! No mouse button
+	//! No mouse button.
 	fplMouseButtonType_None = -1,
-	//! Left mouse button
+	//! Left mouse button.
 	fplMouseButtonType_Left = 0,
-	//! Right mouse button
+	//! Right mouse button.
 	fplMouseButtonType_Right = 1,
-	//! Middle mouse button
+	//! Middle mouse button.
 	fplMouseButtonType_Middle = 2,
-	//! Max mouse button count
+	//! Max mouse button count.
 	fplMouseButtonType_MaxCount,
 } fplMouseButtonType;
 
-//! A structure containing mouse event data (Type, Button, Position, etc.)
+/*!
+* @struct fplMouseEvent
+* @brief A structure containing mouse event data (Type, Button, Position, etc.).
+*/
 typedef struct fplMouseEvent {
-	//! Mouse event type
+	//! Mouse event type.
 	fplMouseEventType type;
-	//! Mouse button
+	//! Mouse button.
 	fplMouseButtonType mouseButton;
-	//! Button state
+	//! Button state.
 	fplButtonState buttonState;
-	//! Mouse X-Position
+	//! Mouse X-Position.
 	int32_t mouseX;
-	//! Mouse Y-Position
+	//! Mouse Y-Position.
 	int32_t mouseY;
-	//! Mouse wheel delta
+	//! Mouse wheel delta.
 	float wheelDelta;
 } fplMouseEvent;
 
-//! An enumeration of gamepad event types (Connected, Disconnected, StateChanged, etc.)
+/*!
+* @enum fplGamepadEventType
+* @brief An enumeration of gamepad event types (Connected, Disconnected, StateChanged, etc.).
+*/
 typedef enum fplGamepadEventType {
-	//! No gamepad event
+	//! No gamepad event.
 	fplGamepadEventType_None = 0,
-	//! Gamepad connected
+	//! Gamepad connected.
 	fplGamepadEventType_Connected,
-	//! Gamepad disconnected
+	//! Gamepad disconnected.
 	fplGamepadEventType_Disconnected,
-	//! Gamepad state updated
+	//! Gamepad state updated.
 	fplGamepadEventType_StateChanged,
 } fplGamepadEventType;
 
-//! A structure containing properties for a gamepad button (IsDown, etc.)
+/*!
+* @struct fplGamepadButton
+* @brief A structure containing properties for a gamepad button (IsDown, etc.).
+*/
 typedef struct fplGamepadButton {
-	//! Is button down
+	//! Is button down.
 	fpl_b32 isDown;
 } fplGamepadButton;
 
-//! An enumeration of gamepad buttons
+/*!
+* @enum fplGamepadButtonType
+* @brief An enumeration of gamepad buttons.
+*/
 typedef enum fplGamepadButtonType {
-	//! DPad up
+	//! DPad up.
 	fplGamepadButtonType_DPadUp = 0,
-	//! DPad right
+	//! DPad right.
 	fplGamepadButtonType_DPadRight,
-	//! DPad down
+	//! DPad down.
 	fplGamepadButtonType_DPadDown,
-	//! DPad left
+	//! DPad left.
 	fplGamepadButtonType_DPadLeft,
 
-	//! Action-A
+	//! Action-A.
 	fplGamepadButtonType_ActionA,
-	//! Action-B
+	//! Action-B.
 	fplGamepadButtonType_ActionB,
-	//! Action-X
+	//! Action-X.
 	fplGamepadButtonType_ActionX,
-	//! Action-Y
+	//! Action-Y.
 	fplGamepadButtonType_ActionY,
 
-	//! Start
+	//! Start.
 	fplGamepadButtonType_Start,
-	//! Back
+	//! Back.
 	fplGamepadButtonType_Back,
 
-	//! Left-Thumb
+	//! Left-Thumb.
 	fplGamepadButtonType_LeftThumb,
-	//! Right-Thumb
+	//! Right-Thumb.
 	fplGamepadButtonType_RightThumb,
 
-	//! Left-Shoulder
+	//! Left-Shoulder.
 	fplGamepadButtonType_LeftShoulder,
-	//! Right-Shoulder
+	//! Right-Shoulder.
 	fplGamepadButtonType_RightShoulder,
 } fplGamepadButtonType;
 
-//! A structure containing the entire gamepad state
+/*!
+* @struct fplGamepadState
+* @brief A structure containing the entire gamepad state.
+*/
 typedef struct fplGamepadState {
 	union {
 		struct {
-			//! Digital button up
+			//! Digital button up.
 			fplGamepadButton dpadUp;
-			//! Digital button right
+			//! Digital button right.
 			fplGamepadButton dpadRight;
-			//! Digital button down
+			//! Digital button down.
 			fplGamepadButton dpadDown;
-			//! Digital button left
+			//! Digital button left.
 			fplGamepadButton dpadLeft;
 
-			//! Action button A
+			//! Action button A.
 			fplGamepadButton actionA;
-			//! Action button B
+			//! Action button B.
 			fplGamepadButton actionB;
-			//! Action button X
+			//! Action button X.
 			fplGamepadButton actionX;
-			//! Action button Y
+			//! Action button Y.
 			fplGamepadButton actionY;
 
-			//! Start button
+			//! Start button.
 			fplGamepadButton start;
-			//! Back button
+			//! Back button.
 			fplGamepadButton back;
 
-			//! Analog left thumb button
+			//! Analog left thumb button.
 			fplGamepadButton leftThumb;
-			//! Analog right thumb button
+			//! Analog right thumb button.
 			fplGamepadButton rightThumb;
 
-			//! Left shoulder button
+			//! Left shoulder button.
 			fplGamepadButton leftShoulder;
-			//! Right shoulder button
+			//! Right shoulder button.
 			fplGamepadButton rightShoulder;
 		};
-		//! All gamepad buttons
+		//! All gamepad buttons.
 		fplGamepadButton buttons[14];
 	};
 
-	//! Device name
+	//! Device name.
 	const char *deviceName;
 
-	//! Analog left thumb X in range (-1.0 to 1.0f)
+	//! Analog left thumb X in range (-1.0 to 1.0f).
 	float leftStickX;
-	//! Analog left thumb Y in range (-1.0 to 1.0f)
+	//! Analog left thumb Y in range (-1.0 to 1.0f).
 	float leftStickY;
-	//! Analog right thumb X in range (-1.0 to 1.0f)
+	//! Analog right thumb X in range (-1.0 to 1.0f).
 	float rightStickX;
-	//! Analog right thumb Y in range (-1.0 to 1.0f)
+	//! Analog right thumb Y in range (-1.0 to 1.0f).
 	float rightStickY;
 
-	//! Analog left trigger in range (0.0 to 1.0f)
+	//! Analog left trigger in range (0.0 to 1.0f).
 	float leftTrigger;
-	//! Analog right trigger in range (0.0 to 1.0f)
+	//! Analog right trigger in range (0.0 to 1.0f).
 	float rightTrigger;
 
-	//! Is device physical connected
+	//! Is device physically connected.
 	fpl_b32 isConnected;
 	//! Is this device active, which means are any buttons pressed or positions stick changed.
 	fpl_b32 isActive;
 } fplGamepadState;
 
-//! A structure containing gamepad event data (Type, Device, State, etc.)
+/*!
+* @struct fplGamepadEvent
+* @brief A structure containing gamepad event data (Type, Device, State, etc.).
+*/
 typedef struct fplGamepadEvent {
-	//! Full gamepad state
+	//! Full gamepad state.
 	fplGamepadState state;
-	//! Device name of the controller
+	//! Device name of the controller.
 	const char *deviceName;
-	//! Gamepad event type
+	//! Gamepad event type.
 	fplGamepadEventType type;
-	//! Gamepad device index
+	//! Gamepad device index.
 	uint32_t deviceIndex;
 } fplGamepadEvent;
 
-//! An enumeration of event types (Window, Keyboard, Mouse, ...)
+/*!
+* @enum fplEventType
+* @brief An enumeration of event types (Window, Keyboard, Mouse, etc.).
+*/
 typedef enum fplEventType {
-	//! None event type
+	//! None event type.
 	fplEventType_None = 0,
-	//! Window event
+	//! Window event.
 	fplEventType_Window,
-	//! Keyboard event
+	//! Keyboard event.
 	fplEventType_Keyboard,
-	//! Mouse event
+	//! Mouse event.
 	fplEventType_Mouse,
-	//! Gamepad event
+	//! Gamepad event.
 	fplEventType_Gamepad,
 } fplEventType;
 
-//! A structure containing event data for all event types (Window, Keyboard, Mouse, etc.)
+/*!
+* @struct fplEvent
+* @brief A structure containing event data for all event types (Window, Keyboard, Mouse, etc.).
+*/
 typedef struct fplEvent {
-	//! Event type
+	//! Event type.
 	fplEventType type;
 	union {
-		//! Window event data
+		//! Window event data.
 		fplWindowEvent window;
-		//! Keyboard event data
+		//! Keyboard event data.
 		fplKeyboardEvent keyboard;
-		//! Mouse event data
+		//! Mouse event data.
 		fplMouseEvent mouse;
-		//! Gamepad event data
+		//! Gamepad event data.
 		fplGamepadEvent gamepad;
 	};
 } fplEvent;
 
 /**
 * @brief Polls the next event from the internal event queue or from the OS, handles them, and removes it from the queue.
-* @param ev The pointer to the @ref fplEvent structure
+* @param[out] ev Reference to the event structure. @ref fplEvent
 * @return Returns false when there are no events left, true otherwise.
 * @see @ref section_category_window_events_polling
 */
@@ -7015,7 +7191,7 @@ fpl_platform_api bool fplPollEvent(fplEvent *ev);
 
 /**
 * @brief Polls all the events from the OS and clears the internal event queue.
-* @warning Dont use this function if you want to handle the events. Use @ref fplPollEvent() instead!
+* @warning Don't use this function if you want to handle the events. Use @ref fplPollEvent() instead!
 * @see @ref section_category_window_events_process
 */
 fpl_platform_api void fplPollEvents();
@@ -7030,61 +7206,78 @@ fpl_platform_api void fplPollEvents();
 */
 // ----------------------------------------------------------------------------
 
-//! Max number of keyboard states
+/*!
+* @define FPL_MAX_KEYBOARD_STATE_COUNT
+* @brief Max number of keyboard states.
+*/
 #define FPL_MAX_KEYBOARD_STATE_COUNT 256
 
-//! A struct containing the full keyboard state
+/*!
+* @struct fplKeyboardState
+* @brief A struct containing the full keyboard state.
+*/
 typedef struct fplKeyboardState {
-	//! Modifier flags
+	//! Modifier flags.
 	fplKeyboardModifierFlags modifiers;
-	//! Key states
+	//! Key states.
 	fpl_b32 keyStatesRaw[FPL_MAX_KEYBOARD_STATE_COUNT];
-	//! Mapped button states
+	//! Mapped button states.
 	fplButtonState buttonStatesMapped[FPL_MAX_KEYBOARD_STATE_COUNT];
 } fplKeyboardState;
 
-//! Max number of gamepad states
+/*!
+* @define FPL_MAX_GAMEPAD_STATE_COUNT
+* @brief Max number of gamepad states.
+*/
 #define FPL_MAX_GAMEPAD_STATE_COUNT 4
 
-//! A struct containing the full state for all gamepad devices
+/*!
+* @struct fplGamepadStates
+* @brief A struct containing the full state for all gamepad devices.
+*/
 typedef struct fplGamepadStates {
-	//! Device states
+	//! Device states.
 	fplGamepadState deviceStates[FPL_MAX_GAMEPAD_STATE_COUNT];
 } fplGamepadStates;
 
-//! A struct containing the full mouse state
+/*!
+* @struct fplMouseState
+* @brief A struct containing the full mouse state.
+*/
 typedef struct fplMouseState {
-	//! Mouse button states mapped to @ref fplMouseButtonType
+	//! Mouse button states mapped to @ref fplMouseButtonType.
 	fplButtonState buttonStates[fplMouseButtonType_MaxCount];
-	//! X-Position in pixels
+	//! X-Position in pixels.
 	int32_t x;
-	//! Y-Position in pixels
+	//! Y-Position in pixels.
 	int32_t y;
 } fplMouseState;
 
 /**
 * @brief Polls the current keyboard state and writes it out into the output structure.
-* @param outState The pointer to the @ref fplKeyboardState structure
+* @param[out] outState Reference to the keyboard state structure. @ref fplKeyboardState
 * @see @ref subsection_category_input_polling_keyboard
 */
 fpl_platform_api bool fplPollKeyboardState(fplKeyboardState *outState);
+
 /**
 * @brief Polls the current gamepad states and writes it out into the output structure.
-* @param outStates The pointer to the @ref fplGamepadStates structure
+* @param[out] outStates Reference to the gamepad states structure. @ref fplGamepadStates
 * @see @ref subsection_category_input_polling_gamepad
 */
 fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates);
+
 /**
 * @brief Polls the current mouse state and writes it out into the output structure.
-* @param outState The pointer to the @ref fplMouseState structure
+* @param[out] outState Reference to the mouse state structure. @ref fplMouseState
 * @see @ref subsection_category_input_polling_mouse
 */
 fpl_platform_api bool fplPollMouseState(fplMouseState *outState);
 
 /**
 * @brief Queries the cursor position in screen coordinates, relative to the root screen.
-* @param outX The pointer to the out going X position
-* @param outY The pointer to the out going Y position
+* @param[out] outX Reference to the outgoing X position.
+* @param[out] outY Reference to the outgoing Y position.
 */
 fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY);
 
@@ -7098,167 +7291,196 @@ fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY);
 */
 // ----------------------------------------------------------------------------
 
-//! An enumeration containg the states of a window
+/*!
+* @enum fplWindowState
+* @brief An enumeration containing the states of a window.
+*/
 typedef enum fplWindowState {
-	//! Unknown state
+	//! Unknown state.
 	fplWindowState_Unknown = 0,
-	//! Normal window state
+	//! Normal window state.
 	fplWindowState_Normal,
-	//! Iconify/Minimize window state
+	//! Iconify/Minimize window state.
 	fplWindowState_Iconify,
-	//! Maximize window state
+	//! Maximize window state.
 	fplWindowState_Maximize,
-	//! Fullscreen state
+	//! Fullscreen state.
 	fplWindowState_Fullscreen,
 } fplWindowState;
 
-//! An enumeration containing the visibility state of a window
+/*!
+* @enum fplWindowVisibilityState
+* @brief An enumeration containing the visibility state of a window.
+*/
 typedef enum fplWindowVisibilityState {
-	//! Unknown state
+	//! Unknown state.
 	fplWindowVisibilityState_Unknown = 0,
-	//! Window is visible
+	//! Window is visible.
 	fplWindowVisibilityState_Show,
-	//! Window is hidden
+	//! Window is hidden.
 	fplWindowVisibilityState_Hide,
 } fplWindowVisibilityState;
 
 /**
-* @brief Gets the window running state as a boolean
-* @return Returns true when the window is running, false otherwise
+* @brief Gets the window running state as a boolean.
+* @return Returns true when the window is running, false otherwise.
 */
 fpl_platform_api bool fplIsWindowRunning();
+
 /**
-* @brief Closes the window and stops the event loop
+* @brief Closes the window and stops the event loop.
 */
 fpl_platform_api void fplWindowShutdown();
+
 /**
-* @brief Clears the internal event queue and updates input devices if needed
-* @return Returns true when the window is still active, false otherwise
+* @brief Clears the internal event queue and updates input devices if needed.
+* @return Returns true when the window is still active, false otherwise.
 */
 fpl_platform_api bool fplWindowUpdate();
+
 /**
-* @brief Enables or disables the window cursor
-* @param value The new cursor visibility state
+* @brief Enables or disables the window cursor.
+* @param[in] value The new cursor visibility state.
 */
 fpl_platform_api void fplSetWindowCursorEnabled(const bool value);
+
 /**
 * @brief Retrieves the inner window size.
-* @param outSize The pointer to the @ref fplWindowSize structure
+* @param[out] outSize Reference to the window size structure. @ref fplWindowSize
 * @return Returns true when we got the inner size from the current window, false otherwise.
 */
 fpl_platform_api bool fplGetWindowSize(fplWindowSize *outSize);
+
 /**
 * @brief Resizes the window to fit the inner size based on the given size.
-* @param width The width in screen units
-* @param height The height in screen units
+* @param[in] width The width in screen units.
+* @param[in] height The height in screen units.
 */
 fpl_platform_api void fplSetWindowSize(const uint32_t width, const uint32_t height);
+
 /**
 * @brief Gets the window resizable state as boolean.
 * @return Returns true when the window is resizable, false otherwise.
 */
 fpl_platform_api bool fplIsWindowResizable();
+
 /**
 * @brief Enables or disables the ability to resize the window.
-* @param value The new resizable state
+* @param[in] value The new resizable state.
 */
 fpl_platform_api void fplSetWindowResizeable(const bool value);
+
 /**
 * @brief Gets the window decorated state as boolean.
 * @return Returns true when the window is decorated, false otherwise.
 */
 fpl_platform_api bool fplIsWindowDecorated();
+
 /**
 * @brief Enables or disables the window decoration (Titlebar, Border, etc.).
-* @param value The new decorated state
+* @param[in] value The new decorated state.
 */
 fpl_platform_api void fplSetWindowDecorated(const bool value);
+
 /**
 * @brief Gets the window floating state as boolean.
 * @return Returns true when the window is floating, false otherwise.
 */
 fpl_platform_api bool fplIsWindowFloating();
+
 /**
-* @brief Enables or disables the window floating (Top-most)
-* @param value The new floating state
+* @brief Enables or disables the window floating (Top-most).
+* @param[in] value The new floating state.
 */
 fpl_platform_api void fplSetWindowFloating(const bool value);
+
 /**
 * @brief Enables or disables fullscreen mode based on the given size and the current display.
-* @param value The new fullscreen state
-* @param fullscreenWidth The fullscreen width in screen units. When set to zero the current display position is used.
-* @param fullscreenHeight The fullscreen height in screen units. When set to zero the current display position is used.
-* @param refreshRate The refresh rate in Hz. When set to zero the current display setting is used.
-* @return Returns true when the window was changed to the desire fullscreen mode, false otherwise.
+* @param[in] value The new fullscreen state.
+* @param[in] fullscreenWidth The fullscreen width in screen units. When set to zero the current display position is used.
+* @param[in] fullscreenHeight The fullscreen height in screen units. When set to zero the current display position is used.
+* @param[in] refreshRate The refresh rate in Hz. When set to zero the current display setting is used.
+* @return Returns true when the window was changed to the desired fullscreen mode, false otherwise.
 * @attention This may alter the display resolution or the refresh rate.
 */
 fpl_platform_api bool fplSetWindowFullscreenSize(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate);
+
 /**
 * @brief Enables or disables fullscreen mode based on the given rectangle.
-* @param value The new fullscreen state
-* @param x The left position in virtual screen coordinates
-* @param y The top position in virtual screen coordinates
-* @param width The width in virtual screen coordinates
-* @param height The height in virtual screen coordinates
+* @param[in] value The new fullscreen state.
+* @param[in] x The left position in virtual screen coordinates.
+* @param[in] y The top position in virtual screen coordinates.
+* @param[in] width The width in virtual screen coordinates.
+* @param[in] height The height in virtual screen coordinates.
 * @return Returns true when the window was changed to the rectangle, false otherwise.
 * @attention This will not alter the display resolution or the refresh rate.
 */
 fpl_platform_api bool fplSetWindowFullscreenRect(const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height);
+
 /**
-* @brief Enables fullscreen mode on the nearest display
-* @return Returns true when the window was changed to the fullscreen, false otherwise.
+* @brief Enables fullscreen mode on the nearest display.
+* @return Returns true when the window was changed to fullscreen, false otherwise.
 * @attention This will not alter the display resolution or the refresh rate.
 */
 fpl_platform_api bool fplEnableWindowFullscreen();
+
 /**
-* @brief Switches the window back to window mode
-* @return Returns true when the window was changed to the window mode, false otherwise.
+* @brief Switches the window back to window mode.
+* @return Returns true when the window was changed to window mode, false otherwise.
 * @attention This will not alter the display resolution or the refresh rate.
 */
 fpl_platform_api bool fplDisableWindowFullscreen();
+
 /**
 * @brief Gets the window fullscreen state as boolean.
 * @return Returns true when the window is in fullscreen mode, false otherwise.
 */
 fpl_platform_api bool fplIsWindowFullscreen();
+
 /**
 * @brief Retrieves the absolute window position.
-* @param outPos The pointer to the @ref fplWindowPosition structure
+* @param[out] outPos Reference to the window position structure. @ref fplWindowPosition
 * @return Returns true when we got the position, false otherwise.
 */
 fpl_platform_api bool fplGetWindowPosition(fplWindowPosition *outPos);
+
 /**
 * @brief Changes the window absolute position to the given coordinates.
-* @param left The left position in screen units
-* @param top The top position in screen units
+* @param[in] left The left position in screen units.
+* @param[in] top The top position in screen units.
 */
 fpl_platform_api void fplSetWindowPosition(const int32_t left, const int32_t top);
+
 /**
 * @brief Changes the window title to the given string.
-* @param title The title string
+* @param[in] title The title string.
 */
 fpl_platform_api void fplSetWindowTitle(const char *title);
+
 /**
-* @brief Retrieves the window title and writes it into the output string
-* @param outTitle The output title string
-* @param maxOutTitleLength The maximum length of the output title
-* @return Returns the char pointer of the last written character or fpl_null
+* @brief Retrieves the window title and writes it into the output string.
+* @param[out] outTitle The output title string.
+* @param[in] maxOutTitleLength The maximum length of the output title. @ref size_t
+* @return Returns the char pointer of the last written character or null. @ref fpl_null
 */
 fpl_common_api char *fplGetWindowTitle(char *outTitle, const size_t maxOutTitleLength);
+
 /**
-* @brief Gets the current window state
-* @return Returns the current window state
+* @brief Gets the current window state.
+* @return Returns the current window state.
 */
 fpl_platform_api fplWindowState fplGetWindowState();
+
 /**
-* @brief Changes the current window state
-* @param newState The new window state
+* @brief Changes the current window state.
+* @param[in] newState The new window state. @ref fplWindowState
 * @return Returns true when the window state was changed, false otherwise.
 */
 fpl_platform_api bool fplSetWindowState(const fplWindowState newState);
+
 /**
-* @brief Enables or Disables the input events for the window entirely.
-* @param enabled If set to true, the input handled are processed, if false no input events are handled.
+* @brief Enables or disables the input events for the window entirely.
+* @param[in] enabled If set to true, the input events are processed; if false, no input events are handled.
 * @note The text input event is always handled, regardless of this setting.
 */
 fpl_common_api void fplSetWindowInputEvents(const bool enabled);
@@ -7273,70 +7495,81 @@ fpl_common_api void fplSetWindowInputEvents(const bool enabled);
 */
 // ----------------------------------------------------------------------------
 
-//! A struct containing informations about a display
+/*!
+* @struct fplDisplayInfo
+* @brief A struct containing information about a display.
+*/
 typedef struct fplDisplayInfo {
-	//! ID of the display
+	//! ID of the display.
 	char id[FPL_MAX_NAME_LENGTH];
-	//! Virtual size in screen coordinates
+	//! Virtual size in screen coordinates.
 	fplWindowSize virtualSize;
-	//! Virtual position in screen coordinates
+	//! Virtual position in screen coordinates.
 	fplWindowPosition virtualPosition;
-	//! Actual absolute size in screen coordinates
+	//! Actual absolute size in screen coordinates.
 	fplWindowSize physicalSize;
-	//! Is primary display
+	//! Is primary display.
 	fpl_b32 isPrimary;
 } fplDisplayInfo;
 
-//! A structure containing one set of display mode settings, such as size, refresh rate, etc.
+/*!
+* @struct fplDisplayMode
+* @brief A structure containing one set of display mode settings, such as size, refresh rate, etc.
+*/
 typedef struct fplDisplayMode {
-	//! The width in screen coordinates
+	//! The width in screen coordinates.
 	uint32_t width;
-	//! The height in screen coordinates
+	//! The height in screen coordinates.
 	uint32_t height;
-	//! Color depth in bits per pixel
+	//! Color depth in bits per pixel.
 	uint32_t colorBits;
-	//! The refresh rate in Hz
+	//! The refresh rate in Hz.
 	uint32_t refreshRate;
 } fplDisplayMode;
 
 /**
-* @brief Gets the number of active displays
-* @return Returns the number of active displays
+* @brief Gets the number of active displays.
+* @return Returns the number of active displays.
 */
 fpl_platform_api size_t fplGetDisplayCount();
+
 /**
-* @brief Gets informations about all active displays
-* @param outDisplays The array of @ref fplDisplayInfo
-* @param maxDisplayCount The maximum number of display infos available in the output array
-* @return Returns the total number of active displays
+* @brief Gets information about all active displays.
+* @param[out] outDisplays The array of display information. @ref fplDisplayInfo
+* @param[in] maxDisplayCount The maximum number of display infos available in the output array. @ref size_t
+* @return Returns the total number of active displays.
 */
 fpl_platform_api size_t fplGetDisplays(fplDisplayInfo *outDisplays, const size_t maxDisplayCount);
+
 /**
-* @brief Gets information about the display for the FPL window
-* @param outInfo A pointer to a @ref fplDisplayInfo structure
+* @brief Gets information about the display for the FPL window.
+* @param[out] outInfo Reference to the display information structure. @ref fplDisplayInfo
 * @return Returns true when the display for the window was found, false otherwise.
 */
 fpl_platform_api bool fplGetWindowDisplay(fplDisplayInfo *outInfo);
+
 /**
-* @brief Gets information about the primary display
-* @param outInfo A pointer to a @ref fplDisplayInfo structure
+* @brief Gets information about the primary display.
+* @param[out] outInfo Reference to the display information structure. @ref fplDisplayInfo
 * @return Returns true when the primary display was found, false otherwise.
 */
 fpl_platform_api bool fplGetPrimaryDisplay(fplDisplayInfo *outInfo);
+
 /**
 * @brief Finds the display from a cursor position and retrieves the information for it.
-* @param x The x position in screen coordinates
-* @param y The y position in screen coordinates
-* @param outInfo A pointer to a @ref fplDisplayInfo structure
+* @param[in] x The x position in screen coordinates.
+* @param[in] y The y position in screen coordinates.
+* @param[out] outInfo Reference to the display information structure. @ref fplDisplayInfo
 * @return Returns true when the display was found, false otherwise.
 */
 fpl_platform_api bool fplGetDisplayFromPosition(const int32_t x, const int32_t y, fplDisplayInfo *outInfo);
+
 /**
-* @brief Gets the information about the available display modes for the given display id
-* @param id The display id
-* @param outModes The array of @ref fplDisplayMode
-* @param maxDisplayModeCount The maximum number of display modes available in the output array
-* @return Returns the number of found display modes
+* @brief Gets the information about the available display modes for the given display id.
+* @param[in] id The display id.
+* @param[out] outModes The array of display modes. @ref fplDisplayMode
+* @param[in] maxDisplayModeCount The maximum number of display modes available in the output array. @ref size_t
+* @return Returns the number of found display modes.
 */
 fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *outModes, const size_t maxDisplayModeCount);
 
@@ -7352,14 +7585,15 @@ fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *outMo
 
 /**
 * @brief Retrieves the current clipboard text.
-* @param dest The destination string buffer to write the clipboard text into.
-* @param maxDestLen The total number of characters available in the destination buffer.
-* @return Returns true when the clipboard contained text which is copied into the dest buffer, @ref fpl_null otherwise.
+* @param[out] dest The destination string buffer to write the clipboard text into.
+* @param[in] maxDestLen The total number of characters available in the destination buffer.
+* @return Returns true when the clipboard contained text which is copied into the destination buffer, false otherwise.
 */
 fpl_platform_api bool fplGetClipboardText(char *dest, const uint32_t maxDestLen);
+
 /**
 * @brief Overwrites the current clipboard text with the given one.
-* @param text The new clipboard string.
+* @param[in] text The new clipboard string.
 * @return Returns true when the text in the clipboard was changed, false otherwise.
 */
 fpl_platform_api bool fplSetClipboardText(const char *text);
@@ -7376,31 +7610,37 @@ fpl_platform_api bool fplSetClipboardText(const char *text);
 */
 // ----------------------------------------------------------------------------
 
-//! A structure defining a video rectangles position and size
+/*!
+* @struct fplVideoRect
+* @brief A structure defining a video rectangle's position and size.
+*/
 typedef struct fplVideoRect {
-	//! Left position in pixels
+	//! Left position in pixels.
 	int32_t x;
-	//! Top position in pixels
+	//! Top position in pixels.
 	int32_t y;
-	//! Width in pixels
+	//! Width in pixels.
 	int32_t width;
-	//! Height in pixels
+	//! Height in pixels.
 	int32_t height;
 } fplVideoRect;
 
 /**
-* @brief Makes a video rectangle from a LTRB rectangle
-* @param left The left position in screen units
-* @param top The top position in screen units
-* @param right The right position in screen units
-* @param bottom The bottom position in screen units
-* @return Returns the computed video rectangle @ref fplVideoRect
+* @brief Makes a video rectangle from a LTRB rectangle.
+* @param[in] left The left position in screen units.
+* @param[in] top The top position in screen units.
+* @param[in] right The right position in screen units.
+* @param[in] bottom The bottom position in screen units.
+* @return Returns the computed video rectangle. @ref fplVideoRect
 */
 fpl_common_api fplVideoRect fplCreateVideoRectFromLTRB(int32_t left, int32_t top, int32_t right, int32_t bottom);
 
-//! A structure containing video backbuffer properties
+/*!
+* @struct fplVideoBackBuffer
+* @brief A structure containing video backbuffer properties.
+*/
 typedef struct fplVideoBackBuffer {
-	//! The 32-bit pixel top-down array, format: 0xAABBGGRR. Do not modify before WindowUpdate
+	//! The 32-bit pixel top-down array, format: 0xAABBGGRR. Do not modify before WindowUpdate.
 	uint32_t *pixels;
 	//! The width of the backbuffer in pixels. Do not modify, it will be set automatically.
 	uint32_t width;
@@ -7410,127 +7650,153 @@ typedef struct fplVideoBackBuffer {
 	size_t pixelStride;
 	//! The width of one line in bytes. Do not modify, it will be set automatically.
 	size_t lineWidth;
-	//! The output rectangle for displaying the backbuffer (Size may not match backbuffer size!)
+	//! The output rectangle for displaying the backbuffer (Size may not match backbuffer size!).
 	fplVideoRect outputRect;
-	//! Set this to true to actually use the output rectangle
+	//! Set this to true to actually use the output rectangle.
 	fpl_b32 useOutputRect;
 } fplVideoBackBuffer;
 
 #if defined(FPL__ENABLE_VIDEO_VULKAN)
-//! Stores the surface properties for the Vulkan video backend
+/*!
+* @struct fplVideoSurfaceVulkan
+* @brief Stores the surface properties for the Vulkan video backend.
+*/
 typedef struct fplVideoSurfaceVulkan {
-	//! The Vulkan Instance (VkInstance)
+	//! The Vulkan Instance (VkInstance).
 	void *instance;
-	//! The Vulkan Surface KHR (VkSurfaceKHR)
+	//! The Vulkan Surface KHR (VkSurfaceKHR).
 	void *surfaceKHR;
 } fplVideoSurfaceVulkan;
 #endif
 
 #if defined(FPL__ENABLE_VIDEO_OPENGL)
-//! Stores the surface properties for the OpenGL video backend
+/*!
+* @struct fplVideoSurfaceOpenGL
+* @brief Stores the surface properties for the OpenGL video backend.
+*/
 typedef struct fplVideoSurfaceOpenGL {
-	//! The OpenGL rendering context (HGLRC or XRC)
+	//! The OpenGL rendering context (HGLRC or XRC).
 	void *renderingContext;
 } fplVideoSurfaceOpenGL;
 #endif
 
 #if defined(FPL_PLATFORM_WINDOWS)
-//! Stores the window properties for Win32
+/*!
+* @struct fplVideoWindowWin32
+* @brief Stores the window properties for Win32.
+*/
 typedef struct fplVideoWindowWin32 {
-	//! The window handle
+	//! The window handle.
 	fpl__Win32WindowHandle windowHandle;
-	//! The device context
+	//! The device context.
 	fpl__Win32DeviceContext deviceContext;
 } fplVideoWindowWin32;
 #endif
 
 #if defined(FPL_SUBPLATFORM_X11)
-//! Stores the window properties X11
+/*!
+* @struct fplVideoWindowX11
+* @brief Stores the window properties for X11.
+*/
 typedef struct fplVideoWindowX11 {
-	//! The window handle
+	//! The window handle.
 	fpl__X11Window window;
-	//! The display handle
+	//! The display handle.
 	fpl__X11Display display;
-	//! The visual handle
+	//! The visual handle.
 	fpl__X11Visual visual;
-	//! The screen id
+	//! The screen id.
 	int screen;
 } fplVideoWindowX11;
 #endif // FPL_SUBPLATFORM_X11
 
-//! Stores the video window handles
+/*!
+* @union fplVideoWindow
+* @brief Stores the video window handles.
+*/
 typedef union fplVideoWindow {
 #if defined(FPL_PLATFORM_WINDOWS)
 	fplVideoWindowWin32 win32;
 #elif defined(FPL_SUBPLATFORM_X11)
 	fplVideoWindowX11 x11;
 #endif
-	//! Field for preventing union to be empty
+	//! Field for preventing union to be empty.
 	int dummy;
 } fplVideoWindow;
 
-//! Stores the surface properties for the active video backend
+/*!
+* @struct fplVideoSurface
+* @brief Stores the surface properties for the active video backend.
+*/
 typedef struct fplVideoSurface {
-	//! The video window
+	//! The video window.
 	fplVideoWindow window;
 
 #if defined(FPL__ENABLE_VIDEO_VULKAN)
-	//! The Vulkan surface properties
+	//! The Vulkan surface properties.
 	fplVideoSurfaceVulkan vulkan;
 #endif
 
 #if defined(FPL__ENABLE_VIDEO_OPENGL)
-	//! The OpenGL surface properties
+	//! The OpenGL surface properties.
 	fplVideoSurfaceOpenGL opengl;
 #endif
 
-	//! Field for preventing union to be empty
+	//! Field for preventing union to be empty.
 	int dummy;
 } fplVideoSurface;
 
 #if defined(FPL__ENABLE_VIDEO_VULKAN)
-//! Stores the requirements for the Vulkan video backend
+/*!
+* @struct fplVideoRequirementsVulkan
+* @brief Stores the requirements for the Vulkan video backend.
+*/
 typedef struct fplVideoRequirementsVulkan {
-	//! The required instance extensions
+	//! The required instance extensions.
 	const char *instanceExtensions[2];
-	//! The number of required instance extensions
+	//! The number of required instance extensions.
 	uint32_t instanceExtensionCount;
 } fplVideoRequirementsVulkan;
 #endif // FPL__ENABLE_VIDEO_VULKAN
 
-
-//! Stores the video requirements for the desired video backend
+/*!
+* @union fplVideoRequirements
+* @brief Stores the video requirements for the desired video backend.
+*/
 typedef union fplVideoRequirements {
 #if defined(FPL__ENABLE_VIDEO_VULKAN)
-	//! The requirements for Vulkan backend
+	//! The requirements for Vulkan backend.
 	fplVideoRequirementsVulkan vulkan;
 #endif // FPL__ENABLE_VIDEO_VULKAN
-	//! Field for preventing union to be empty
+	//! Field for preventing union to be empty.
 	int dummy;
 } fplVideoRequirements;
 
 /**
-* @brief Gets the current video backend
-* @return Returns the current video backend type @ref fplVideoBackendType
+* @brief Gets the current video backend.
+* @return Returns the current video backend type. @ref fplVideoBackendType
 */
 fpl_common_api fplVideoBackendType fplGetVideoBackendType();
+
 /**
-* @brief Gets a string that represents the given video backend
-* @param backendType The video backend type @ref fplVideoBackendType
-* @return Returns a string for the given video backend type
+* @brief Gets a string that represents the given video backend.
+* @param[in] backendType The video backend type. @ref fplVideoBackendType
+* @return Returns a string for the given video backend type.
 */
 fpl_common_api const char *fplGetVideoBackendName(fplVideoBackendType backendType);
+
 /**
 * @brief Retrieves the pointer to the current video backbuffer.
-* @return Returns the pointer to the current @ref fplVideoBackBuffer.
+* @return Returns the pointer to the current video backbuffer. @ref fplVideoBackBuffer
 * @warning Do not release this memory by any means, otherwise you will corrupt heap memory!
 */
 fpl_common_api fplVideoBackBuffer *fplGetVideoBackBuffer();
+
 /**
 * @brief Resizes the current video backbuffer.
-* @param width The width in pixels
-* @param height The height in pixels
-* @return Returns true when video back buffer could be resized, false otherwise.
+* @param[in] width The width in pixels.
+* @param[in] height The height in pixels.
+* @return Returns true when the video backbuffer could be resized, false otherwise.
 */
 fpl_common_api bool fplResizeVideoBackBuffer(const uint32_t width, const uint32_t height);
 
@@ -7540,23 +7806,23 @@ fpl_common_api bool fplResizeVideoBackBuffer(const uint32_t width, const uint32_
 fpl_common_api void fplVideoFlip();
 
 /**
-* @brief Gets the procedure by the specified name from the active video backend
-* @param procName The name of the procedure.
+* @brief Gets the procedure by the specified name from the active video backend.
+* @param[in] procName The name of the procedure.
 * @return Returns the function pointer of the procedure.
 */
 fpl_common_api const void *fplGetVideoProcedure(const char *procName);
 
 /**
-* @brief Gets the current @ref fplVideoSurface that stores all handles used for the active video backend.
-* @return The resulting @ref fplVideoSurface reference.
+* @brief Gets the current video surface that stores all handles used for the active video backend.
+* @return The resulting video surface reference. @ref fplVideoSurface
 */
 fpl_common_api const fplVideoSurface *fplGetVideoSurface();
 
 /**
 * @brief Gets the video requirements for the specified video backend.
-* @param backendType The @ref fplVideoBackendType
-* @param requirements The reference to the @ref fplVideoRequirements
-* @return Returns true when the @ref fplVideoRequirements are filled out, false otherwise.
+* @param[in] backendType The video backend type. @ref fplVideoBackendType
+* @param[out] requirements Reference to the video requirements. @ref fplVideoRequirements
+* @return Returns true when the video requirements are filled out, false otherwise.
 */
 fpl_common_api bool fplGetVideoRequirements(const fplVideoBackendType backendType, fplVideoRequirements *requirements);
 
@@ -7572,236 +7838,254 @@ fpl_common_api bool fplGetVideoRequirements(const fplVideoBackendType backendTyp
 */
 // ----------------------------------------------------------------------------
 
-//! An enumeration of audio results
+/*!
+* @enum fplAudioResultType
+* @brief An enumeration of audio results.
+*/
 typedef enum fplAudioResultType {
-	//! No result
+	//! No result.
 	fplAudioResultType_None = 0,
-	//! Success
+	//! Success.
 	fplAudioResultType_Success,
-	//! Invalid arguments are passed to a audio function
+	//! Invalid arguments are passed to an audio function.
 	fplAudioResultType_InvalidArguments,
-	//! The audio system is not initialized
+	//! The audio system is not initialized.
 	fplAudioResultType_SystemNotInitialized,
-	//! The audio device is not initialized
+	//! The audio device is not initialized.
 	fplAudioResultType_DeviceNotInitialized,
-	//! The audio device is already stopped
+	//! The audio device is already stopped.
 	fplAudioResultType_DeviceAlreadyStopped,
-	//! The audio device is already started
+	//! The audio device is already started.
 	fplAudioResultType_DeviceAlreadyStarted,
-	//! The audio device is busy/waiting
+	//! The audio device is busy/waiting.
 	fplAudioResultType_DeviceBusy,
-	//! Error occured while initializing a audio device
+	//! Error occurred while initializing an audio device.
 	fplAudioResultType_DeviceFailure,
-	//! No audio device is found
+	//! No audio device is found.
 	fplAudioResultType_NoDeviceFound,
-	//! Audio device by id was not found
+	//! Audio device by id was not found.
 	fplAudioResultType_DeviceByIdNotFound,
-	//! Failed to load the audio api
+	//! Failed to load the audio API.
 	fplAudioResultType_ApiFailed,
-	//! The platform is not initialized
+	//! The platform is not initialized.
 	fplAudioResultType_PlatformNotInitialized,
-	//! The audio backend is already initialized
+	//! The audio backend is already initialized.
 	fplAudioResultType_BackendAlreadyInitialized,
-	//! No audio backends found
+	//! No audio backends found.
 	fplAudioResultType_NoBackendsFound,
-	//! The @ref fplAudioFormatType is not set
+	//! The audio format type is not set. @ref fplAudioFormatType
 	fplAudioResultType_UnsetAudioFormat,
-	//! The number of audio channels is not set
+	//! The number of audio channels is not set.
 	fplAudioResultType_UnsetAudioChannels,
-	//! The sample rate is not set
+	//! The sample rate is not set.
 	fplAudioResultType_UnsetAudioSampleRate,
-	//! The audio buffer size is not set
+	//! The audio buffer size is not set.
 	fplAudioResultType_UnsetAudioBufferSize,
-	//! The audio device format is unsupported
+	//! The audio device format is unsupported.
 	fplAudioResultType_UnsuportedDeviceFormat,
-    //! No memory available
-    fplAudioResultType_OutOfMemory,
-	//! Feature or device is not implemented
+	//! No memory available.
+	fplAudioResultType_OutOfMemory,
+	//! Feature or device is not implemented.
 	fplAudioResultType_NotImplemented,
-    //! Unknown error
+	//! Unknown error.
 	fplAudioResultType_Failed,
 
-	//! First @ref fplAudioResultType
+	//! First audio result type. @ref fplAudioResultType
 	fplAudioResultType_First = fplAudioResultType_None,
-	//! Last @ref fplAudioResultType
+	//! Last audio result type. @ref fplAudioResultType
 	fplAudioResultType_Last = fplAudioResultType_Failed,
 } fplAudioResultType;
 
 /**
-* @brief Gets the current audio backend type
-* @return Returns the current audio backend type @ref fplAudioBackendType
+* @brief Gets the current audio backend type.
+* @return Returns the current audio backend type. @ref fplAudioBackendType
 */
 fpl_common_api fplAudioBackendType fplGetAudioBackendType();
+
 /**
 * @brief Start playing asynchronous audio.
-* @return Returns the audio result @ref fplAudioResultType
+* @return Returns the audio result. @ref fplAudioResultType
 */
 fpl_common_api fplAudioResultType fplPlayAudio();
+
 /**
 * @brief Stop playing asynchronous audio.
-* @return Returns the audio result @ref fplAudioResultType
+* @return Returns the audio result. @ref fplAudioResultType
 */
 fpl_common_api fplAudioResultType fplStopAudio();
+
 /**
-* @brief Re/Initializes the audio system with the specified @ref fplAudioSettings.
-* @param The audio settings as @ref fplAudioSettings
-* @return Returns the audio result @ref fplAudioResultType
+* @brief Re/Initializes the audio system with the specified audio settings.
+* @param[in] audioSettings The audio settings. @ref fplAudioSettings
+* @return Returns the audio result. @ref fplAudioResultType
 */
 fpl_common_api fplAudioResultType fplAudioInit(fplAudioSettings *audioSettings);
+
 /**
-* @brief Unloads/Releases the audio system
+* @brief Unloads/Releases the audio system.
 * @return Returns a boolean indicating whether the audio system was unloaded or not.
 */
 fpl_common_api bool fplAudioRelease();
 
 /**
 * @brief Retrieves the native audio format for the current audio device.
-* @param outFormat The pointer to the @ref fplAudioFormat structure
-* @return Returns true when a audio hardware format was active, false otherwise.
+* @param[out] outFormat Reference to the audio format structure. @ref fplAudioFormat
+* @return Returns true when an audio hardware format was active, false otherwise.
 */
 fpl_common_api bool fplGetAudioHardwareFormat(fplAudioFormat *outFormat);
 
 /**
 * @brief Retrieves the audio device info for the current audio device.
-* @param outFormat The pointer to the @ref fplAudioDeviceInfo structure
-* @return Returns true when a audio hardware device was active, false otherwise.
+* @param[out] outDevice Reference to the audio device info structure. @ref fplAudioDeviceInfo
+* @return Returns true when an audio hardware device was active, false otherwise.
 */
 fpl_common_api bool fplGetAudioHardwareDevice(fplAudioDeviceInfo *outDevice);
 
 /**
 * @brief Retrieves the audio device name for the current audio device.
-* @return Returns the name of the audio device when a audio hardware device was active, NULL otherwise.
+* @return Returns the name of the audio device when an audio hardware device was active, null otherwise.
 */
 fpl_common_api const char *fplGetAudioHardwareDeviceName();
 
 /**
 * @brief Gets the audio channels mapping table.
-* @brief outMapping The pointer to the @ref fplAudioChannelMap
-* @return True true when the channels mapping was filled out, false otherwise.
+* @param[out] outMapping Reference to the audio channel map. @ref fplAudioChannelMap
+* @return Returns true when the channels mapping was filled out, false otherwise.
 */
 fpl_common_api bool fplGetAudioChannelMap(fplAudioChannelMap *outMapping);
 
 /**
 * @brief Overwrites the audio client read callback.
-* @param newCallback The pointer to the @ref fpl_audio_client_read_callback callback
-* @param userData The pointer to the client/user data
+* @param[in] newCallback Reference to the audio client read callback. @ref fpl_audio_client_read_callback
+* @param[in] userData Reference to the client/user data.
 * @return Returns true when an audio device is ready and the callback was set, false otherwise.
 * @note This has no effect when audio is already playing, you have to call it when audio is in a stopped state!
 */
 fpl_common_api bool fplSetAudioClientReadCallback(fpl_audio_client_read_callback *newCallback, void *userData);
+
 /**
 * @brief Retrieves all playback audio devices.
-* @param maxDeviceCount The total number of devices available in the devices array.
-* @param deviceInfoSize The size of a @ref fplAudioDeviceInfo
-* @param outDevices The output array of @ref fplAudioDeviceInfo
+* @param[in] maxDeviceCount The total number of devices available in the devices array.
+* @param[in] deviceInfoSize The size of an audio device info. @ref fplAudioDeviceInfo
+* @param[out] outDevices The output array of audio device info. @ref fplAudioDeviceInfo
 * @return Returns the number of devices found.
 */
 fpl_common_api uint32_t fplGetAudioDevices(const uint32_t maxDeviceCount, const uint32_t deviceInfoSize, fplAudioDeviceInfo *outDevices);
+
 /**
-* @brief Gets the full @ref fplAudioDeviceInfoExtended for the specified @ref fplAudioDeviceID
-* @param deviceId The @ref fplAudioDeviceID
-* @param outDeviceInfo The output @ref fplAudioDeviceInfoExtended
-* @return Returns a boolean indicating whether the function succeeded or not
+* @brief Gets the full audio device info extended for the specified audio device ID.
+* @param[in] deviceId The audio device ID. @ref fplAudioDeviceID
+* @param[out] outDeviceInfo The output audio device info extended. @ref fplAudioDeviceInfoExtended
+* @return Returns a boolean indicating whether the function succeeded or not.
 */
 fpl_common_api bool fplGetAudioDeviceInfo(const fplAudioDeviceID *deviceId, fplAudioDeviceInfoExtended *outDeviceInfo);
+
 /**
 * @brief Computes the number of bytes required to write one sample with one channel.
-* @param format The audio format type @ref fplAudioFormatType
-* @return Returns the number of bytes for one sample with one channel
+* @param[in] format The audio format type. @ref fplAudioFormatType
+* @return Returns the number of bytes for one sample with one channel.
 */
 fpl_common_api uint32_t fplGetAudioSampleSizeInBytes(const fplAudioFormatType format);
+
 /**
 * @brief Gets the string that represents the given audio format type.
-* @param format The audio format type @ref fplAudioFormatType
-* @return Returns a string for the given audio format type
+* @param[in] format The audio format type. @ref fplAudioFormatType
+* @return Returns a string for the given audio format type.
 */
 fpl_common_api const char *fplGetAudioFormatName(const fplAudioFormatType format);
+
 /**
 * @brief Gets the string that represents the given audio backend type.
-* @param backendType The audio backend type @ref fplAudioBackendType
-* @return Returns a string for the given audio backend type
+* @param[in] backendType The audio backend type. @ref fplAudioBackendType
+* @return Returns a string for the given audio backend type.
 */
-fpl_common_api const char *fplGetAudioBackendName(fplAudioBackendType backendType);
+fpl_common_api const char *fplGetAudioBackendName(const fplAudioBackendType backendType);
+
 /**
-* @brief Computes the total number of frames for given sample rate and buffer size.
-* @param sampleRate The sample rate in Hz
-* @param bufferSizeInMilliSeconds The buffer size in milliseconds
-* @return Returns the total number of frames for given sample rate and buffer size
+* @brief Computes the total number of frames for a given sample rate and buffer size.
+* @param[in] sampleRate The sample rate in Hz.
+* @param[in] bufferSizeInMilliSeconds The buffer size in milliseconds.
+* @return Returns the total number of frames for the given sample rate and buffer size.
 */
-fpl_common_api uint32_t fplGetAudioBufferSizeInFrames(uint32_t sampleRate, uint32_t bufferSizeInMilliSeconds);
+fpl_common_api uint32_t fplGetAudioBufferSizeInFrames(const uint32_t sampleRate, const uint32_t bufferSizeInMilliSeconds);
+
 /**
-* @brief Computes the duration in milliseconds for the given sample rate and frame count
-* @param sampleRate The sample rate in Hz
-* @param frameCount The number of frames
-* @return Returns the duration in milliseconds
+* @brief Computes the duration in milliseconds for the given sample rate and frame count.
+* @param[in] sampleRate The sample rate in Hz.
+* @param[in] frameCount The number of frames.
+* @return Returns the duration in milliseconds.
 */
-fpl_common_api uint32_t fplGetAudioBufferSizeInMilliseconds(uint32_t sampleRate, uint32_t frameCount);
+fpl_common_api uint32_t fplGetAudioBufferSizeInMilliseconds(const uint32_t sampleRate, const uint32_t frameCount);
+
 /**
 * @brief Computes the number of bytes required for one interleaved audio frame - containing all the channels.
-* @param format The audio format
-* @param channelCount The number of channels
-* @return Returns the number of bytes for one frame in bytes
+* @param[in] format The audio format. @ref fplAudioFormatType
+* @param[in] channelCount The number of channels.
+* @return Returns the number of bytes for one frame in bytes.
 */
 fpl_common_api uint32_t fplGetAudioFrameSizeInBytes(const fplAudioFormatType format, const uint16_t channelCount);
+
 /**
-* @brief Computes the total number of bytes for the buffer and the given parameters
-* @param format The audio format
-* @param channelCount The number of channels
-* @param frameCount The number of frames
-* @return Returns the total number of bytes for the buffer
+* @brief Computes the total number of bytes for the buffer and the given parameters.
+* @param[in] format The audio format. @ref fplAudioFormatType
+* @param[in] channelCount The number of channels.
+* @param[in] frameCount The number of frames.
+* @return Returns the total number of bytes for the buffer.
 */
 fpl_common_api uint32_t fplGetAudioBufferSizeInBytes(const fplAudioFormatType format, const uint16_t channelCount, const uint32_t frameCount);
 
 /**
-* @brief Returns the default @ref fplAudioChannelLayout from the specified channel count
-* @param channelCount The number of channels
+* @brief Returns the default audio channel layout from the specified channel count.
+* @param[in] channelCount The number of channels.
+* @return Returns the default audio channel layout. @ref fplAudioChannelLayout
 */
 fpl_common_api fplAudioChannelLayout fplGetDefaultAudioChannelLayoutFromChannels(const uint16_t channelCount);
 
 /**
-* @brief Returns the number of channels from the specified @ref fplAudioChannelLayout
-* @param channelLayout The @ref fplAudioChannelLayout
+* @brief Returns the number of channels from the specified audio channel layout.
+* @param[in] channelLayout The audio channel layout. @ref fplAudioChannelLayout
+* @return Returns the number of channels.
 */
 fpl_common_api uint16_t fplGetAudioChannelsFromLayout(const fplAudioChannelLayout channelLayout);
 
 /**
-* @brief Gets the @ref fplAudioLatencyType from the specified @ref fplAudioMode
-* @param mode The @ref fplAudioMode
-* @return The matching @ref fplAudioLatencyType
+* @brief Gets the audio latency type from the specified audio mode.
+* @param[in] mode The audio mode. @ref fplAudioMode
+* @return Returns the matching audio latency type. @ref fplAudioLatencyType
 */
 fpl_common_api fplAudioLatencyType fplGetAudioLatencyType(const fplAudioMode mode);
 
 /**
-* @brief Gets the @ref fplAudioShareMode from the specified @ref fplAudioMode
-* @param mode The @ref fplAudioMode
-* @return The matching @ref fplAudioShareMode
+* @brief Gets the audio share mode from the specified audio mode.
+* @param[in] mode The audio mode. @ref fplAudioMode
+* @return Returns the matching audio share mode. @ref fplAudioShareMode
 */
 fpl_common_api fplAudioShareMode fplGetAudioShareMode(const fplAudioMode mode);
 
 /**
-* @brief Creates a @ref fplAudioMode from the specified @ref fplAudioLatencyType and exclusive mode
-* @param latencyType The @ref fplAudioLatencyType
-* @param isExlusive The @ref fplAudioShareMode
-* @return The resulting @ref fplAudioMode
+* @brief Creates an audio mode from the specified audio latency type and share mode.
+* @param[in] latencyType The audio latency type. @ref fplAudioLatencyType
+* @param[in] shareMode The audio share mode. @ref fplAudioShareMode
+* @return Returns the resulting audio mode. @ref fplAudioMode
 */
 fpl_common_api fplAudioMode fplCreateAudioMode(const fplAudioLatencyType latencyType, const fplAudioShareMode shareMode);
 
 /**
-* @brief Creates a @ref fplAudioFormatU64 from the specified sample rate, channels, type
-* @param sampleRate The sample rate in Hz
-* @param channels The number of channels
-* @param type The @ref fplAudioFormatType
-* @return The encoded @ref fplAudioFormatU64
+* @brief Creates an encoded audio format from the specified sample rate, channels, and type.
+* @param[in] sampleRate The sample rate in Hz.
+* @param[in] channels The number of channels.
+* @param[in] type The audio format type. @ref fplAudioFormatType
+* @return Returns the encoded audio format. @ref fplAudioFormatU64
 */
 fpl_common_api fplAudioFormatU64 fplEncodeAudioFormatU64(const uint32_t sampleRate, const uint16_t channels, const fplAudioFormatType type);
 
 /**
-* @brief Decodes the specified @ref fplAudioFormatU64 to the specified specified sample rate, channels, type
-* @param format64 The encoded @ref fplAudioFormatU64
-* @param outSampleRate The output sample rate
-* @param outChannels The output channels
-* @param outType The output @ref fplAudioFormatType
-* @return A boolean indicating whether the decode was successful or not
+* @brief Decodes the specified encoded audio format to the specified sample rate, channels, and type.
+* @param[in] format64 The encoded audio format. @ref fplAudioFormatU64
+* @param[out] outSampleRate Reference to the output sample rate.
+* @param[out] outChannels Reference to the output channels.
+* @param[out] outType Reference to the output audio format type. @ref fplAudioFormatType
+* @return Returns a boolean indicating whether the decode was successful or not.
 */
 fpl_common_api bool fplDecodeAudioFormatU64(const fplAudioFormatU64 format64, uint32_t *outSampleRate, uint16_t *outChannels, fplAudioFormatType *outType);
 
@@ -7816,31 +8100,43 @@ fpl_common_api bool fplDecodeAudioFormatU64(const fplAudioFormatU64 format64, ui
 */
 // ----------------------------------------------------------------------------
 
-//! A enumeration of locale formats
+/**
+* @enum fplLocaleFormat
+* @brief An enumeration of locale formats.
+*/
 typedef enum fplLocaleFormat {
-	//! No locale format
+	//! No locale format.
 	fplLocaleFormat_None = 0,
-	//! ISO-639 format (de-DE, en-US, etc.)
+	//! ISO-639 format (de-DE, en-US, etc.).
 	fplLocaleFormat_ISO639,
 } fplLocaleFormat;
 
 /**
-* @brief Gets the user locale in the given target format
-* @param targetFormat Target @ref fplLocaleFormat
-* @param buffer Target string buffer for writing the locale into
-* @param maxBufferLen The maximum length of the buffer
-* @return Returns the number of required/written characters, excluding the null-terminator
+* @brief Gets the user locale in the given target format.
+* @param[in] fplLocaleFormat targetFormat Target format. @ref fplLocaleFormat
+* @param[out] char *buffer Reference to the target string buffer for writing the locale into.
+* @param[in] size_t maxBufferLen The maximum length of the buffer.
+* @return size_t The number of required/written characters, excluding the null-terminator.
 */
 fpl_platform_api size_t fplGetUserLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen);
 
 /**
-* @brief Gets the system locale in the given target format
-* @param targetFormat Target @ref fplLocaleFormat
-* @param buffer Target string buffer for writing the locale into
-* @param maxBufferLen The maximum length of the buffer
-* @return Returns the number of required/written characters, excluding the null-terminator
+* @brief Gets the system locale in the given target format.
+* @param[in] fplLocaleFormat targetFormat Target format. @ref fplLocaleFormat
+* @param[out] char *buffer Reference to the target string buffer for writing the locale into.
+* @param[in] size_t maxBufferLen The maximum length of the buffer.
+* @return size_t The number of required/written characters, excluding the null-terminator.
 */
 fpl_platform_api size_t fplGetSystemLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen);
+
+/**
+* @brief Gets the input locale in the given target format.
+* @param[in] fplLocaleFormat targetFormat Target format. @ref fplLocaleFormat
+* @param[out] char *buffer Reference to the target string buffer for writing the locale into.
+* @param[in] size_t maxBufferLen The maximum length of the buffer.
+* @return size_t The number of required/written characters, excluding the null-terminator.
+*/
+fpl_platform_api size_t fplGetInputLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen);
 
 /**
 * @brief Gets the input locale in the given target format
@@ -24851,19 +25147,19 @@ fpl_common_api fplAudioBackendType fplGetAudioBackendType() {
 	return(result);
 }
 
-fpl_common_api const char *fplGetAudioBackendName(fplAudioBackendType backendType) {
+fpl_common_api const char *fplGetAudioBackendName(const fplAudioBackendType backendType) {
 	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(backendType, fplAudioBackendType_First, fplAudioBackendType_Last);
 	const char *result = fpl__globalAudioBackendNameTable[index];
 	return(result);
 }
 
-fpl_common_api uint32_t fplGetAudioBufferSizeInFrames(uint32_t sampleRate, uint32_t bufferSizeInMilliSeconds) {
+fpl_common_api uint32_t fplGetAudioBufferSizeInFrames(const uint32_t sampleRate, const uint32_t bufferSizeInMilliSeconds) {
 	if (sampleRate == 0 || bufferSizeInMilliSeconds == 0) return(0);
 	uint32_t result = bufferSizeInMilliSeconds * sampleRate / 1000UL;
 	return(result);
 }
 
-fpl_common_api uint32_t fplGetAudioBufferSizeInMilliseconds(uint32_t sampleRate, uint32_t frameCount) {
+fpl_common_api uint32_t fplGetAudioBufferSizeInMilliseconds(const uint32_t sampleRate, const uint32_t frameCount) {
 	if (sampleRate == 0 || frameCount == 0) return(0);
 	uint32_t result = frameCount * 1000UL / sampleRate;
 	return(result);
