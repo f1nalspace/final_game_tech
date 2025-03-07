@@ -141,7 +141,7 @@ SOFTWARE.
     - Refactored audio system to use dispatch tables
 	- Support for multiple audio channels with channel layouts and channel mapping
 	- Removed several obsolete functions
-    - Renamed several audio types and functions
+    - Renamed several types and functions
     - Bugfixes in audio format probing
     - Bugfixes for ARM/GCC compilations
     - Bugfixes for vulkan backend initialization
@@ -153,12 +153,15 @@ SOFTWARE.
 	- New: Added enum fplAudioMode that stores the exlusive/shared mode and the latency modes
 	- New: Added enum fplAudioShareMode that stores the supported sharing modes
 	- New: Added enum fplAudioLatencyType that stores the supported latency types
+	- New: Added enum fplCPUCapabilitiesType that stores the CPU capabilieis type
 	- New: Added struct fplAudioChannelMap that stores an array of the audio channel configuration
 	- New: Added struct fplAudioDeviceInfoExtended that stores the @ref fplAudioDeviceInfo and the supported formats as U64
+	- New: Added struct fplX86CPUCapabilities that stores the features for a X86 based CPU
+	- New: Added struct fplARMCPUCapabilities that stores the features for a ARM based CPU
 	- New: Added enum value @ref fplAudioDefaultFields_ChannelLayout to fplAudioDefaultFields
+	- New: Added several enum values to @ref fplAudioResultType to indicate audio issues better
 	- New: Added function fplAudioInit() that manually loads the audio system
 	- New: Added function fplAudioRelease() that manually unloads/releases the audio system
-	- New: Added field manualLoad to @ref fplAudioSettings that controls the initialization behavior of the audio system
 	- New: Added function fplGetAudioDeviceInfo() that returns a @ref fplAudioDeviceInfoExtended from a device id
 	- New: Added function fplGetAudioLatencyType() that returns a @ref fplAudioLatencyType from a @ref fplAudioMode
 	- New: Added function fplGetAudioShareMode() that returns a @ref fplAudioShareMode from a @ref fplAudioMode
@@ -169,31 +172,35 @@ SOFTWARE.
 	- New: Added function fplDecodeAudioFormatU64() that decodes a 64-bit value into a sample rate, number of channels and type
 	- New: Added function fplGetAudioDeviceInfo() that returns a @ref fplAudioDeviceInfoExtended from a @ref fplAudioDeviceID
 	- New: Added function fplGetAudioChannelMap() that returns the @ref fplAudioChannelMap for the active audio backend
-	- New[#36]: Support for multiple audio channels + channel layouts + channel mapping
-	- Improved: C/C++ detection improved
-	- Improved: Architecture detection extended (Apple, Risc-V, Mips, Sparc)
-	- Improved: CPU bits detection improved
-	- Improved: Compiler detected improved & extended (MingW, Apple, Borland, TCC, DMC, CSMC, Linaro)
-	- Improved[#149]: Refactoring of audio backends to dispatch tables
-	- Improved[#163]: Make endianess detection more robust
+	- New: Added function fplGetCPUCapabilitiesTypeName() that returns the name of a @ref fplCPUCapabilitiesType
+	- New: Added field manualLoad to @ref fplAudioSettings that controls the initialization behavior of the audio system
 	- Fixed: fplCreateColorRGBA() was not compiling on GCC due to inlining failing
 	- Fixed: fplCreateVideoRectFromLTRB() was not compiling on GCC due to inlining failing
     - Fixed: fpl__VideoBackend_Vulkan_PrepareWindow() was crashing due to invalid free of memory
 	- Fixed: [Win32] fpl__Win32Guid was not properly defined when opaque API was enabled
-	- Fixed[#156]: Target audio format type and periods was never used
-	- Fixed[#157]: Compile error for missing _countof() fplArrayCount in some scenarios
 	- Changed: Added stride argument to to fplGetAudioDevices()
 	- Changed: Renamed field userData to clientUserData in @ref fplAudioSettings
 	- Changed: Renamed fplAudioDeviceFormat to fplAudioFormat
 	- Changed: Renamed function fplClearErrors to fplErrorsClear
 	- Changed: Replaced audio exclusive flag and latency mode with a single enum @ref fplAudioMode in @ref fplAudioFormat
-    - Changed: Set default controllerDetectionFrequency from 100 ms to 1000 ms
 	- Changed: fplCPUCapabilities is now separated by x86 and arm features
 	- Removed: Removed obsolete function fplFileSetTimestamps
 	- Removed: Removed obsolete struct fplAudioTargetFormat
 	- Removed: Removed obsolete function fplSetDefaultAudioTargetFormat
 	- Removed: Removed obsolete function fplConvertAudioTargetFormatToDeviceFormat
 	- Removed: Removed backend field from fplAudioFormat former fplAudioDeviceFormat
+	- Improved: C/C++ detection improved
+	- Improved: Architecture detection extended (Apple, Risc-V, Mips, Sparc)
+	- Improved: CPU bits detection improved
+
+	- New[#36]: Support for multiple audio channels + channel layouts + channel mapping
+	- Fixed[#156]: Target audio format type and periods was never used
+	- Fixed[#157]: Compile error for missing _countof() fplArrayCount in some scenarios
+    - Fixed[#164]: Changed default controllerDetectionFrequency from 100 ms to 1000 ms
+	- Fixed[#160/#158]: Building with G++ or Clang was not working anymore
+	- Improved[#161]: Compiler detected improved & extended (MingW, Apple, Borland, TCC, DMC, CSMC, Linaro)
+	- Improved[#149]: Refactoring of audio backends to dispatch tables
+	- Improved[#163]: Make endianess detection more robust
 
 	## v0.9.8-beta
 
