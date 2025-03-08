@@ -201,6 +201,7 @@ SOFTWARE.
 	- Improved[#161]: Compiler detected improved & extended (MingW, Apple, Borland, TCC, DMC, CSMC, Linaro)
 	- Improved[#149]: Refactoring of audio backends to dispatch tables
 	- Improved[#163]: Make endianess detection more robust
+	- Improved[#167]: Use improved doxygen commands such as @struct, @enum, etc.
 
 	## v0.9.8-beta
 
