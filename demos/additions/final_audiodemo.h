@@ -95,7 +95,7 @@ static bool PlayAudioTrack(AudioSystem *audioSys, AudioTrackList *tracklist, con
 			}
 		} else {
 			// Invalid state
-			fplAlwaysAssert(!"Invalid code path!");
+			FPL_NOT_IMPLEMENTED;
 		}
 		tracklist->changedPending = true;
 		return(true);
@@ -177,13 +177,14 @@ static bool LoadAudioTrackList(AudioSystem *audioSys, const char **files, const 
 					return false;
 				}
 
+				// Generate sine wave
+				source->type = AudioSourceType_Stream;
+				AudioGenerateSineWave(&waveData, source->buffer.samples, source->format.format, source->format.sampleRate, source->format.channels, source->buffer.frameCount);
+
 				uint32_t trackIndex = tracklist->count++;
 				AudioTrack *track = &tracklist->tracks[trackIndex];
 				track->sourceID = source->id;
-
-				source->type = AudioSourceType_Stream;
-
-				AudioGenerateSineWave(&waveData, source->buffer.samples, source->format.format, source->format.sampleRate, source->format.channels, source->buffer.frameCount);
+				track->state = AudioTrackState_Full;
 
 				if(autoPlay) {
 					AudioPlayItemID playID = AudioSystemPlaySource(audioSys, source, true, 1.0f);

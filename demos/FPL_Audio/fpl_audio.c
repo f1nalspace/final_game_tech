@@ -23,6 +23,7 @@ Todo:
 Changelog:
 	## 2025-03-08
 	- Fixed crash when no audio track was loaded
+	- Fixed sine wave streaming was totally broken
 
 	## 2025-02-14
 	- Get average sample value from stereo samples
@@ -375,23 +376,25 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 		}
 		fplAssert(framesPlayed <= fullAudioBuffer->frameCount);
 #endif
-		AudioFrameIndex minimumChunkFrames = fplMin(fullAudioBuffer->frameCount, MAX_AUDIO_FRAMES_CHUNK_FRAMES);
-
-		AudioFrameIndex remainingChunkFrames = fplMin(minimumChunkFrames, fullAudioBuffer->frameCount - framesPlayed);
+		AudioFrameIndex remainingFramesToPlay = framesPlayed < fullAudioBuffer->frameCount ? fullAudioBuffer->frameCount - framesPlayed : 0;
+		AudioFrameIndex remainingChunkFrames = fplMin(MAX_AUDIO_FRAMES_CHUNK_FRAMES, remainingFramesToPlay);
 		if(remainingChunkFrames > 0) {
+			size_t sourceFrameSize = fullAudioBuffer->bufferSize / fullAudioBuffer->frameCount;
+			fplAssert(sourceFrameSize == frameSize);
 			size_t totalSizeToCopy = remainingChunkFrames * frameSize;
 			size_t chunkSamplesOffset = framesPlayed * frameSize;
-			fplAssert((chunkSamplesOffset + totalSizeToCopy) <= fullAudioBuffer->bufferSize);
+			size_t endPos = chunkSamplesOffset + totalSizeToCopy;
+			fplAssert(endPos <= fullAudioBuffer->bufferSize);
 			const uint8_t *p = fullAudioBuffer->samples + chunkSamplesOffset;
 			fplMemoryCopy(p, totalSizeToCopy, chunkSamples);
 		}
 
-		if(remainingChunkFrames < minimumChunkFrames && chunk->count >= minimumChunkFrames) {
-			size_t totalSizeToClear = minimumChunkFrames * frameSize;
+		if(remainingChunkFrames < MAX_AUDIO_FRAMES_CHUNK_FRAMES && chunk->count >= MAX_AUDIO_FRAMES_CHUNK_FRAMES) {
+			size_t totalSizeToClear = MAX_AUDIO_FRAMES_CHUNK_FRAMES * frameSize;
 			fplMemoryClear(chunkSamples, totalSizeToClear);
 		}
 
-		frameCount = minimumChunkFrames;
+		frameCount = MAX_AUDIO_FRAMES_CHUNK_FRAMES;
 	}
 
 	if(frameCount > 0 && chunkSamples != fpl_null) {
@@ -404,8 +407,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 			// Window multiplier (Hamming for smoother visualization)
 			double windowMultiplier = visualization->windowCoeffs[i];
 
-			double fftSample = sampleValue * windowMultiplier;
-			fplAssert(fftSample >= -1.0 && fftSample <= 1.0);
+			double fftSample = fplMax(-1.0, fplMin(sampleValue * windowMultiplier, 1.0));
 
 			// Write samples to FFT input
 			visualization->fftInput[i].real = fftSample;
@@ -815,13 +817,17 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 			fplAssert(demo->trackList.currentIndex >= 0 && demo->trackList.currentIndex < (int32_t)demo->trackList.count);
 			AudioTrack *track = demo->trackList.tracks + demo->trackList.currentIndex;
 			AudioTrackState state = (AudioTrackState)fplAtomicLoadS32(&track->state);
-			if(state == AudioTrackState_AquireLoading) {
+			if (state == AudioTrackState_AquireLoading) {
+				// Loading file source and play it
 				fplAssert(track->outputFullBuffer.bufferSize == 0);
 				fplAssert(!track->outputFullBuffer.isAllocated);
 
+				size_t urlOrFileLen = fplGetStringLength(track->urlOrFilePath);
+				fplAssert(urlOrFileLen > 0);
+
 				fplAtomicStoreS32(&track->state, AudioTrackState_Loading);
 				AudioSource *source = AudioSystemLoadFileSource(&demo->audioSys, track->urlOrFilePath);
-				if(source != fpl_null) {
+				if (source != fpl_null) {
 					AudioBuffer *fullAudioBuffer = &track->outputFullBuffer;
 
 					// Mark as playing
@@ -837,13 +843,44 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 					fullAudioBufferFormat.sampleRate = demo->targetAudioFormat.sampleRate;
 					AllocateAudioBuffer(&demo->audioSys.memory, fullAudioBuffer, &fullAudioBufferFormat, trackFrameCount);
 
-					if(fullAudioBuffer->bufferSize > 0) {
+					if (fullAudioBuffer->bufferSize > 0) {
 						AudioFrameIndex writtenFrames = AudioSystemWriteFrames(&demo->audioSys, fullAudioBuffer->samples, &demo->targetAudioFormat, trackFrameCount, false);
 						fplAssert(writtenFrames == trackFrameCount);
 					}
 				} else {
 					fplAtomicStoreS32(&track->state, AudioTrackState_Failed);
 				}
+				demo->trackList.changedPending = false;
+				startTime = fplMillisecondsQuery();
+			} else if (state == AudioTrackState_Full) {
+				fplAssert(track->outputFullBuffer.bufferSize == 0);
+				fplAssert(!track->outputFullBuffer.isAllocated);
+				fplAssert(track->sourceID.value > 0);
+
+				AudioBuffer *fullAudioBuffer = &track->outputFullBuffer;
+				
+				AudioSource *source = AudioSystemGetSourceByID(&demo->audioSys, track->sourceID);
+				if (source == fpl_null) {
+					fplAlwaysAssert(!"Audio Source not found!");
+					continue;
+				}
+			
+				fplAtomicStoreS32(&track->state, AudioTrackState_Ready);
+				track->playID = AudioSystemPlaySource(&demo->audioSys, source, false, 1.0f);
+
+				// Allocate full audio buffer
+				AudioFrameIndex trackFrameCount = source->buffer.frameCount;
+				AudioFormat fullAudioBufferFormat = fplZeroInit;
+				fullAudioBufferFormat.channels = demo->targetAudioFormat.channels;
+				fullAudioBufferFormat.format = demo->targetAudioFormat.type;
+				fullAudioBufferFormat.sampleRate = demo->targetAudioFormat.sampleRate;
+				AllocateAudioBuffer(&demo->audioSys.memory, fullAudioBuffer, &fullAudioBufferFormat, trackFrameCount);
+
+				if (fullAudioBuffer->bufferSize > 0) {
+					AudioFrameIndex writtenFrames = AudioSystemWriteFrames(&demo->audioSys, fullAudioBuffer->samples, &demo->targetAudioFormat, trackFrameCount, false);
+					fplAssert(writtenFrames == trackFrameCount);
+				}
+				
 				demo->trackList.changedPending = false;
 				startTime = fplMillisecondsQuery();
 			} else {
@@ -997,7 +1034,7 @@ int main(int argc, char **args) {
 	AudioDemo *demo = (AudioDemo *)fplMemoryAllocate(sizeof(AudioDemo));
 	demo->sineWave.frequency = 440;
 	demo->sineWave.toneVolume = 0.25f;
-	demo->sineWave.duration = 0.5;
+	demo->sineWave.duration = 10.0;
 
 	int result = -1;
 
