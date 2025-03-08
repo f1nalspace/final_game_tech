@@ -850,7 +850,7 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 		}
 
 		// No audio track?
-		if (!HasAudioTrack(&demo)) {
+		if (!HasAudioTrack(&demo->trackList)) {
 			fplThreadSleep(100);
 			continue;
 		}
