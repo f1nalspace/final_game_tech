@@ -625,7 +625,7 @@ static uint32_t AudioPlayback(const fplAudioFormat *outFormat, const uint32_t ma
 	return(result);
 }
 
-static bool StreamAudio(const fplAudioFormat *format, const uint32_t maxFrameCount, AudioDemo *demo, uint64_t *outDuration) {
+static bool WriteAudio(const fplAudioFormat *format, const uint32_t maxFrameCount, AudioDemo *demo, uint64_t *outDuration) {
 	if(format == fpl_null || demo == fpl_null) return(false);
 	if(maxFrameCount == 0) return(false);
 
@@ -805,6 +805,8 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 	const float minBufferThreshold = 0.25f; // In percentage range of 0 to 1
 	const float maxBufferThreshold = 0.75f; // In percentage range of 0 to 1
 
+	// @TODO(final): Move the file stream loading code into the audio demo
+
 	bool ignoreWait = false;
 	uint64_t startTime = fplMillisecondsQuery();
 	while(!demo->isStreamingThreadStopped) {
@@ -850,7 +852,7 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 		}
 
 		// No audio track?
-		if (!HasAudioTrack(&demo)) {
+		if (!HasAudioTrack(&demo->trackList)) {
 			fplThreadSleep(100);
 			continue;
 		}
@@ -875,7 +877,7 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 		bool tooFast = false;
 
 		uint64_t streamDuration = 0;
-		if(StreamAudio(&demo->targetAudioFormat, currentEntry.frames, demo, &streamDuration)) {
+		if(WriteAudio(&demo->targetAudioFormat, currentEntry.frames, demo, &streamDuration)) {
 			if(streamDuration > currentEntry.delay) {
 				// We are taking too slow to stream in new audio samples
 				tooSlow = true;
@@ -1109,7 +1111,7 @@ int main(int argc, char **args) {
 	// Stream in initial frames
 	AudioFrameIndex initialFrameStreamCount = streamBufferFrames / 4;
 	fplAssert(streamBufferFrames >= initialFrameStreamCount);
-	StreamAudio(&demo->targetAudioFormat, initialFrameStreamCount, demo, fpl_null);
+	WriteAudio(&demo->targetAudioFormat, initialFrameStreamCount, demo, fpl_null);
 #endif
 
 	// Start streaming thread

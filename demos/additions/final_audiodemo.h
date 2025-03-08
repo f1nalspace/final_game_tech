@@ -66,7 +66,10 @@ static bool PlayAudioTrack(AudioSystem *audioSys, AudioTrackList *tracklist, con
 		AudioTrack *track = tracklist->tracks + index;
 		AudioTrackState state = (AudioTrackState)fplAtomicLoadS32(&track->state);
 		if(state == AudioTrackState_Unloaded) {
+			// Audio file is loaded asynchronously
 			StopAllAudioTracks(audioSys, tracklist);
+			size_t urlOrFileLen = fplGetStringLength(track->urlOrFilePath);
+			fplAssert(urlOrFileLen > 0);
 			fplAssert(track->sourceID.value == 0);
 			fplAssert(track->playID.value == 0);
 			tracklist->changedPending = true;
@@ -74,6 +77,7 @@ static bool PlayAudioTrack(AudioSystem *audioSys, AudioTrackList *tracklist, con
 			fplAtomicStoreS32(&track->state, AudioTrackState_AquireLoading);
 			return(true);
 		} else if(state == AudioTrackState_Full || state == AudioTrackState_Ready) {
+			// Audio file/stream is already loaded
 			StopAllAudioTracks(audioSys, tracklist);
 			fplAssert(track->sourceID.value > 0);
 			AudioSource *source = AudioSystemGetSourceByID(audioSys, track->sourceID);
@@ -126,15 +130,26 @@ static bool LoadAudioTrackList(AudioSystem *audioSys, const char **files, const 
 				uint32_t trackIndex = tracklist->count++;
 				AudioTrack *track = &tracklist->tracks[trackIndex];
 				fplCopyString(filePath, track->urlOrFilePath, fplArrayCount(track->urlOrFilePath));
+
 				if(autoLoad) {
 					fplConsoleFormatOut("Loading audio file '%s\n", filePath);
 					AudioSource *source = AudioSystemLoadFileSource(audioSys, filePath);
-					if(source != fpl_null) {
-						track->sourceID = source->id;
-						if(autoPlay) {
-							AudioPlayItemID playID = AudioSystemPlaySource(audioSys, source, false, 1.0f);
-							track->playID = playID;
-						}
+					if (source == fpl_null) {
+						fplConsoleFormatError("Can't load audio file '%s'!\n", filePath);
+						continue;
+					}
+
+					if (!AudioSystemAddSource(audioSys, source)) {
+						fplConsoleFormatError("Failed to add audio file '%s' as source id '%zu'!\n", filePath, source->id.value);
+						continue;
+					}
+
+					fplAssert(source->type == AudioSourceType_File);
+
+					track->sourceID = source->id;
+					if(autoPlay) {
+						AudioPlayItemID playID = AudioSystemPlaySource(audioSys, source, false, 1.0f);
+						track->playID = playID;
 					}
 				}
 
@@ -155,9 +170,18 @@ static bool LoadAudioTrackList(AudioSystem *audioSys, const char **files, const 
 			AudioFrameIndex frameCount = (AudioFrameIndex)(sampleRate * waveData.duration + 0.5);
 			AudioSource *source = AudioSystemAllocateSource(audioSys, audioSys->targetFormat.channels, audioSys->targetFormat.sampleRate, fplAudioFormatType_S16, frameCount);
 			if(source != fpl_null) {
+				fplAssert(source->type == AudioSourceType_Allocated);
+
+				if (!AudioSystemAddSource(audioSys, source)) {
+					fplConsoleFormatError("Failed to add sine wave audio source id '%zu'!\n", source->id.value);
+					return false;
+				}
+
 				uint32_t trackIndex = tracklist->count++;
 				AudioTrack *track = &tracklist->tracks[trackIndex];
 				track->sourceID = source->id;
+
+				source->type = AudioSourceType_Stream;
 
 				AudioGenerateSineWave(&waveData, source->buffer.samples, source->format.format, source->format.sampleRate, source->format.channels, source->buffer.frameCount);
 

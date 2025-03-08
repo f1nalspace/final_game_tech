@@ -59,11 +59,19 @@ typedef struct AudioSourceID {
 	uint64_t value;
 } AudioSourceID;
 
+typedef enum AudioSourceType {
+	AudioSourceType_None = 0,
+	AudioSourceType_Allocated,
+	AudioSourceType_Stream,
+	AudioSourceType_File,
+} AudioSourceType;
+
 typedef struct AudioSource {
 	AudioBuffer buffer;
 	AudioFormat format;
-	struct AudioSource *next;
+	AudioSourceType type;
 	AudioSourceID id;
+	struct AudioSource *next;
 } AudioSource;
 
 typedef struct AudioPlayItemID {
@@ -82,7 +90,7 @@ typedef struct AudioPlayItem {
 } AudioPlayItem;
 
 typedef struct AudioSources {
-	volatile size_t idCounter;
+	volatile uint64_t idCounter;
 	fplMutexHandle lock;
 	AudioSource *first;
 	AudioSource *last;
@@ -130,6 +138,8 @@ extern void AudioSystemSetMasterVolume(AudioSystem *audioSys, const float newMas
 
 extern AudioSource *AudioSystemAllocateSource(AudioSystem *audioSys, const AudioChannelIndex channels, const AudioHertz sampleRate, const fplAudioFormatType type, const AudioFrameIndex frameCount);
 extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const char *filePath);
+
+extern bool AudioSystemAddSource(AudioSystem *audioSys, AudioSource *source);
 
 extern AudioFrameIndex AudioSystemWriteFrames(AudioSystem *audioSys, void *outSamples, const fplAudioFormat *outFormat, const AudioFrameIndex frameCount, const bool advance);
 
@@ -244,6 +254,34 @@ extern void AudioSystemSetMasterVolume(AudioSystem *audioSys, const float newMas
 	audioSys->masterVolume = newMasterVolume;
 }
 
+extern bool AudioSystemAddSource(AudioSystem *audioSys, AudioSource *source) {
+	if (audioSys == fpl_null || source == fpl_null) {
+		return false;
+	}
+
+	if (source->id.value == 0) {
+		fplAssert(!"Source has no id");
+		return false;
+	}
+
+	if (AudioSystemGetSourceByID(audioSys, source->id)) {
+		fplAssert(!"Source already exists");
+		return false;
+	}
+
+	fplMutexLock(&audioSys->sources.lock);
+	source->next = fpl_null;
+	if(audioSys->sources.last == fpl_null) {
+		audioSys->sources.first = audioSys->sources.last = source;
+	} else {
+		audioSys->sources.last->next = source;
+		audioSys->sources.last = source;
+	}
+	++audioSys->sources.count;
+	fplMutexUnlock(&audioSys->sources.lock);
+
+	return true;
+}
 
 extern AudioSource *AudioSystemAllocateSource(AudioSystem *audioSys, const AudioChannelIndex channels, const AudioHertz sampleRate, const fplAudioFormatType type, const AudioFrameIndex frameCount) {
 	// Compute audio buffer
@@ -262,7 +300,10 @@ extern AudioSource *AudioSystemAllocateSource(AudioSystem *audioSys, const Audio
 		return fpl_null;
 	}
 
+	// Fill out source
 	AudioSource *result = (AudioSource *)mem;
+	result->type = AudioSourceType_Allocated;
+	result->id.value = fplAtomicIncrementU64(&audioSys->sources.idCounter);
 	result->format = audioFormat;
 	result->buffer = audioBuffer;
 	result->buffer.samples = (uint8_t *)mem + sizeof(AudioSource) + sizeof(size_t);
@@ -361,22 +402,14 @@ extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const char 
 	if(source == fpl_null) {
 		return fpl_null;
 	}
+
+	source->type = AudioSourceType_File;
+
+	// Copy samples to source
 	fplAssert(source->buffer.bufferSize >= loadedData.samplesSize);
 	fplMemoryCopy(loadedData.isamples, loadedData.samplesSize, source->buffer.samples);
-	source->id.value = fplAtomicIncrementSize(&audioSys->sources.idCounter);
 
 	FreeWave(&loadedData);
-
-	fplMutexLock(&audioSys->sources.lock);
-	source->next = fpl_null;
-	if(audioSys->sources.last == fpl_null) {
-		audioSys->sources.first = audioSys->sources.last = source;
-	} else {
-		audioSys->sources.last->next = source;
-		audioSys->sources.last = source;
-	}
-	++audioSys->sources.count;
-	fplMutexUnlock(&audioSys->sources.lock);
 
 	return(source);
 }
