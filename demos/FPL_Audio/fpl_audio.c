@@ -431,7 +431,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 
 		const uint32_t halfFFT = frameCount / 2;
 
-		const bool useLogarythmBase = false;
+		const bool useLogarythmBase = true;
 
 		// Compute raw magnitudes (We do it for the entire FFT, not just the half because i want to see all of it)
 		// Convert magnitudes into log() + Track last magnitudes for later use
@@ -441,7 +441,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 			double rawMagnitude = sqrt(re * re + im * im);
 			double magnitude;
 			if (useLogarythmBase)
-				magnitude = AmplitudeToDecibel(rawMagnitude); // log(1.0 + rawMagnitude);
+				magnitude = log(1.0 + rawMagnitude);
 			else
 				magnitude = rawMagnitude;
 			visualization->lastMagnitudes[frameIndex] = visualization->currentMagnitudes[frameIndex];
@@ -470,7 +470,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 			}
 		}
 
-		// 8.) Normalize the magnitudes into range of 0.0 to 1.0
+		// Normalize the magnitudes into range of 0.0 to 1.0
 		const double rangeMagnitude = maxMagnitude - minMagnitude;
 		for(uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
 			double magnitude = visualization->currentMagnitudes[frameIndex];
@@ -478,7 +478,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 			visualization->scaledMagnitudes[frameIndex] = scaledMagnitude;
 		}
 
-		// 9.) Reset and evaluate max peaks
+		// Reset and evaluate max peaks
 		uint32_t binCount = MAX_AUDIO_BIN_COUNT;
 		for(uint32_t binIndex = 0; binIndex < binCount - 1; ++binIndex) {
 			visualization->spectrum[binIndex] = 0.0;
@@ -499,7 +499,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 			}
 		}
 
-		// 10.) Spectrum deformations
+		// Spectrum deformations
 		const double fitFactor = 1.0;
 		for (uint32_t i = 0; i < binCount; ++i) {
 			double value = visualization->spectrum[i];
@@ -530,12 +530,12 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 			float totalSpacing = spacing * (frameCount - 1);
 			float barMaxWidth = spectrumDim.w / (float)frameCount;
 			float barWidth = (spectrumDim.w - totalSpacing) / (float)frameCount;
+			float barMaxHeight = spectrumDim.h * 0.5f;
 			for(uint32_t frameIndex = 0; frameIndex < frameCount - 1; ++frameIndex) {
 				double sampleValue = visualization->currentSamples[frameIndex];
-				float barMaxHeight = spectrumDim.h * 0.25f;
 				float barHeight = (float)sampleValue * barMaxHeight;
 				float barX = spectrumPos.x + frameIndex * barWidth + frameIndex * spacing;
-				float barY = spectrumPos.y + barMaxHeight * 0.5f;
+				float barY = spectrumPos.y + barMaxHeight * 0.25f;
 				RenderQuad(barX, barY + barHeight * 0.5f, barX + barWidth, barY - barHeight * 0.5f, (Vec4f) { 1, 1, 0, 1 });
 			}
 		}
@@ -564,13 +564,13 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 		// Draw pure FFT
 		{
 			float spacing = 4.0f;
-			float totalSpacing = spacing * (frameCount - 1);
-			float barMaxWidth = spectrumDim.w / (float)frameCount;
+			float totalSpacing = spacing * (halfFFT - 1);
+			float barMaxWidth = spectrumDim.w / (float)halfFFT;
 			float barMaxHeight = spectrumDim.h * 0.4f;
-			float barWidth = (spectrumDim.w - totalSpacing) / (float)frameCount;
+			float barWidth = (spectrumDim.w - totalSpacing) / (float)halfFFT;
 			float barBottom = spectrumPos.y + spectrumDim.h;
 
-			for(uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
+			for(uint32_t frameIndex = 0; frameIndex < halfFFT; ++frameIndex) {
 				double scaledMagnitude = visualization->scaledMagnitudes[frameIndex];
 				float barX = spectrumPos.x + frameIndex * barWidth + frameIndex * spacing;
 				float barHeight = (float)scaledMagnitude * barMaxHeight;
