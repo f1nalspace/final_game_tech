@@ -161,11 +161,13 @@ typedef struct AudioVisualization {
 	AudioFramesChunk videoAudioChunks[2]; // 0 = Render, 1 = New
 	FFTDouble fftInput[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
 	FFTDouble fftOutput[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
+	double currentSamples[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
+	double lastSamples[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
 	double currentMagnitudes[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
 	double lastMagnitudes[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
+	double scaledMagnitudes[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
 	double windowCoeffs[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
-	double powerSpectrum[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
-	double maxPeaks[MAX_AUDIO_BIN_COUNT];
+	double spectrum[MAX_AUDIO_BIN_COUNT];
 	double bins[MAX_AUDIO_BIN_COUNT];
 	volatile uint32_t hasVideoAudioChunk;
 } AudioVisualization;
@@ -322,8 +324,11 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+#if 0
+	// Draw center cross
 	RenderLine(0.0f, h * 0.5f, w, h * 0.5f, V4fInit(1.0f, 1.0f, 1.0f, 0.25f), 1.0f);
 	RenderLine(w * 0.5f, 0, w * 0.5f, h, V4fInit(1.0f, 1.0f, 1.0f, 0.25f), 1.0f);
+#endif
 
 #if OPT_PLAYBACK == OPT_PLAYBACK_STREAMBUFFER
 	LockFreeRingBuffer *streamRingBuffer = &demo->outputRingBuffer;
@@ -367,7 +372,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 	} else {
 
 #if 1
-		AudioFrameIndex framesPlayed = fplAtomicLoadU32(&demo->numFramesPlayed);
+		const AudioFrameIndex framesPlayed = fplAtomicLoadU32(&demo->numFramesPlayed);
 #else
 		double renderMsecs = currentRenderTime * 1000.0;
 		AudioFrameIndex framesPlayed = (AudioFrameIndex)(((double)demo->targetAudioFormat.sampleRate / 1000.0) * renderMsecs);
@@ -398,98 +403,125 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 	}
 
 	if(frameCount > 0 && chunkSamples != fpl_null) {
-		//
-		// Compute FFT (Stereo average)
-		//
-		for(uint32_t i = 0; i < frameCount; ++i) {
-			double sampleValue = GetSampleValue(format, chunkSamples, i, frameSize);
+		// Build FFT input samples from mono sample
+		// Apply hanning window (Coefficients are precomputed)
+		for(uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
+			// Get avg sample in range of -1.0 to 1.0
+			double sampleValue = GetSampleValue(format, chunkSamples, frameIndex, frameSize);
+			double windowMultiplier = visualization->windowCoeffs[frameIndex];
+			double adjustedSampleValue = sampleValue * windowMultiplier;
+			double clampedSample = fplMax(-1.0, fplMin(adjustedSampleValue, 1.0));
+			visualization->lastSamples[frameIndex] = visualization->currentSamples[frameIndex];
+			visualization->currentSamples[frameIndex] = clampedSample;
+			visualization->fftInput[frameIndex].real = clampedSample;
+			visualization->fftInput[frameIndex].imag = 0;
+		}
 
-			// Window multiplier (Hamming for smoother visualization)
-			double windowMultiplier = visualization->windowCoeffs[i];
-
-			double fftSample = fplMax(-1.0, fplMin(sampleValue * windowMultiplier, 1.0));
-
-			// Write samples to FFT input
-			visualization->fftInput[i].real = fftSample;
-			visualization->fftInput[i].imag = 0;
+		// Smooth out samples (just for visualization)
+		const double samplesSmooth = 0.25;
+		for(uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
+			double lastSample = visualization->lastSamples[frameIndex];
+			double currentSample = visualization->currentSamples[frameIndex];
+			double newSample = lastSample * (1.0 - samplesSmooth) + currentSample * samplesSmooth;
+			visualization->currentSamples[frameIndex] = newSample;
 		}
 
 		// Forward FFT
 		ForwardFFT(visualization->fftInput, frameCount, visualization->fftOutput);
 
-		uint32_t halfFFT = frameCount / 2;
+		const uint32_t halfFFT = frameCount / 2;
 
-		double minDB = -60.0;
-		double maxDB = 10.0;
+		const bool useLogarythmBase = false;
 
-		// Compute magnitudes
-		double maxMagnitude = 0.0;
-		for(uint32_t frameIndex = 0; frameIndex < halfFFT; ++frameIndex) {
+		// Compute raw magnitudes (We do it for the entire FFT, not just the half because i want to see all of it)
+		// Convert magnitudes into log() + Track last magnitudes for later use
+		for (uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
 			double re = visualization->fftOutput[frameIndex].real;
 			double im = visualization->fftOutput[frameIndex].imag;
-			double magnitude = fabs(sqrt(re * re + im * im));
-
+			double rawMagnitude = sqrt(re * re + im * im);
+			double magnitude;
+			if (useLogarythmBase)
+				magnitude = AmplitudeToDecibel(rawMagnitude); // log(1.0 + rawMagnitude);
+			else
+				magnitude = rawMagnitude;
 			visualization->lastMagnitudes[frameIndex] = visualization->currentMagnitudes[frameIndex];
 			visualization->currentMagnitudes[frameIndex] = magnitude;
-
-			if(magnitude > maxMagnitude) {
-				maxMagnitude = magnitude;
-			}
 		}
 
-		// Normalize the magnitudes
-		double invMaxMag = maxMagnitude > 0 ? 1.0 / maxMagnitude : 0.0;
-		for(uint32_t frameIndex = 0; frameIndex < halfFFT; ++frameIndex) {
-			visualization->currentMagnitudes[frameIndex] *= invMaxMag;
-		}
-
-		// TODO(final): Convert to dB
-		// https://www.youtube.com/watch?v=2b1c8e4pAD4
-		for(uint32_t frameIndex = 0; frameIndex < halfFFT; ++frameIndex) {
-			double magnitude = visualization->currentMagnitudes[frameIndex];
-			//double dB = AmplitudeToDecibel(magnitude);
-			//double power = (dB - 30.0) / 30.0;
-			//visualization->magnitudes[frameIndex] = power;
-		}
-
-		// Smooth magnitude
-		double magSmooth = 0.1;
-		for(uint32_t frameIndex = 0; frameIndex < halfFFT; ++frameIndex) {
-#if 1
+		// Smooth magnitudes
+		const double magSmooth = 0.2;
+		for(uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
 			double lastMagnitude = visualization->lastMagnitudes[frameIndex];
 			double currentMagnitude = visualization->currentMagnitudes[frameIndex];
 			double newMagnitude = lastMagnitude * (1.0 - magSmooth) + currentMagnitude * magSmooth;
-#else
-			double newMagnitude = visualization->currentMagnitudes[frameIndex];
-#endif
 			visualization->currentMagnitudes[frameIndex] = newMagnitude;
 		}
 
-		// Compute power spectrum
-		for(uint32_t frameIndex = 0; frameIndex < halfFFT; ++frameIndex) {
+		// Track min/max
+		double minMagnitude = visualization->currentMagnitudes[0];
+		double maxMagnitude = visualization->currentMagnitudes[0];
+		for(uint32_t frameIndex = 1; frameIndex < halfFFT; ++frameIndex) {
 			double magnitude = visualization->currentMagnitudes[frameIndex];
-			double dB = AmplitudeToDecibel(magnitude);
-			double power = DecibelToPower(dB, minDB, maxDB);
-			visualization->powerSpectrum[frameIndex] = power;
-		}
-
-		// Reset and evaluate max peaks
-		uint32_t binCount = MAX_AUDIO_BIN_COUNT;
-		for(uint32_t i = 0; i < binCount; ++i) {
-			visualization->maxPeaks[i] = 0.0;
-		}
-		for(uint32_t frameIndex = 0; frameIndex < halfFFT; ++frameIndex) {
-			double magnitude = visualization->currentMagnitudes[frameIndex];
-			double freq = frameIndex * (double)demo->targetAudioFormat.sampleRate / (double)frameCount;
-			for(uint32_t binIndex = 0; binIndex < (binCount - 1); ++binIndex) {
-				if((freq > visualization->bins[binIndex]) && (freq <= visualization->bins[binIndex + 1])) {
-					if(magnitude > visualization->maxPeaks[binIndex]) {
-						visualization->maxPeaks[binIndex] = magnitude;
-					}
-				}
+			if(magnitude > maxMagnitude) {
+				maxMagnitude = magnitude;
+			}
+			if(magnitude < minMagnitude) {
+				minMagnitude = magnitude;
 			}
 		}
 
+		// 8.) Normalize the magnitudes into range of 0.0 to 1.0
+		const double rangeMagnitude = maxMagnitude - minMagnitude;
+		for(uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
+			double magnitude = visualization->currentMagnitudes[frameIndex];
+			double scaledMagnitude = (magnitude - minMagnitude) / rangeMagnitude;
+			visualization->scaledMagnitudes[frameIndex] = scaledMagnitude;
+		}
+
+		// 9.) Reset and evaluate max peaks
+		uint32_t binCount = MAX_AUDIO_BIN_COUNT;
+		for(uint32_t binIndex = 0; binIndex < binCount - 1; ++binIndex) {
+			visualization->spectrum[binIndex] = 0.0;
+			double lowerFrequency = visualization->bins[binIndex];
+			double upperFrequency = visualization->bins[binIndex + 1];
+			uint32_t foundCount = 0;
+			for (uint32_t frameIndex = 0; frameIndex < halfFFT; ++frameIndex) {
+				double frameFreq = (frameIndex * (double)demo->targetAudioFormat.sampleRate) / (double)frameCount;
+				if (frameFreq >= lowerFrequency && frameFreq <= upperFrequency) {
+					double scaledMagnitude = visualization->scaledMagnitudes[frameIndex];
+					visualization->spectrum[binIndex] += scaledMagnitude;
+					++foundCount;
+				}
+			}
+			if (foundCount > 0) {
+				// Normalize back to 0.0 to 1.0 range
+				visualization->spectrum[binIndex] /= (double)foundCount;
+			}
+		}
+
+		// 10.) Spectrum deformations
+		const double fitFactor = 1.0;
+		for (uint32_t i = 0; i < binCount; ++i) {
+			double value = visualization->spectrum[i];
+			visualization->spectrum[i] = value * fitFactor;
+		}
+
+#if 1
+		// Draw wave form
+		{
+			float lineX = spectrumPos.x;
+			float lineY = spectrumPos.y;
+			for(uint32_t frameIndex = 0; frameIndex < frameCount - 1; ++frameIndex) {
+				double sampleValue1 = visualization->currentSamples[frameIndex + 0];
+				double sampleValue2 = visualization->currentSamples[frameIndex + 1];
+				float x1 = lineX + ((float)(frameIndex + 0) / (float)(frameCount - 1) * spectrumDim.w);
+				float x2 = lineX + ((float)(frameIndex + 1) / (float)(frameCount - 1) * spectrumDim.w);
+				float y1 = lineY + ((float)(sampleValue1 + 1.0) * (spectrumDim.h / 2.0f));
+				float y2 = lineY + ((float)(sampleValue2 + 1.0) * (spectrumDim.h / 2.0f));
+				RenderLine(x1, y1, x2, y2, (Vec4f) { 1, 1, 1, 0.5f }, 2.0f);
+			}
+		}
+#endif
 
 #if 1
 		// Draw samples
@@ -498,56 +530,50 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 			float totalSpacing = spacing * (frameCount - 1);
 			float barMaxWidth = spectrumDim.w / (float)frameCount;
 			float barWidth = (spectrumDim.w - totalSpacing) / (float)frameCount;
-
-			for(uint32_t i = 0; i < frameCount; ++i) {
-				double sampleValue = GetSampleValue(format, chunkSamples, i, frameSize);
+			for(uint32_t frameIndex = 0; frameIndex < frameCount - 1; ++frameIndex) {
+				double sampleValue = visualization->currentSamples[frameIndex];
 				float barMaxHeight = spectrumDim.h * 0.25f;
 				float barHeight = (float)sampleValue * barMaxHeight;
-				float barX = spectrumPos.x + i * barWidth + i * spacing;
+				float barX = spectrumPos.x + frameIndex * barWidth + frameIndex * spacing;
 				float barY = spectrumPos.y + barMaxHeight * 0.5f;
 				RenderQuad(barX, barY + barHeight * 0.5f, barX + barWidth, barY - barHeight * 0.5f, (Vec4f) { 1, 1, 0, 1 });
 			}
 		}
 #endif
 
-
-#if 1
-		// Draw power spectrum
+#if 0
+		// Draw max peaks
 		{
 			float spacing = 2.0f;
-			float totalSpacing = spacing * (halfFFT - 1);
-			float barMaxWidth = spectrumDim.w / (float)halfFFT;
+			float totalSpacing = spacing * (binCount - 1);
+			float barMaxWidth = spectrumDim.w / (float)binCount;
 			float barMaxHeight = spectrumDim.h * 0.4f;
-			float barWidth = (spectrumDim.w - totalSpacing) / (float)halfFFT;
+			float barWidth = (spectrumDim.w - totalSpacing) / (float)binCount;
 			float barY = spectrumPos.y + spectrumDim.h * 0.25f + barMaxHeight;
 			// https://dsp.stackexchange.com/questions/32076/fft-to-spectrum-in-decibel
-			for(uint32_t frameIndex = 0; frameIndex < halfFFT; ++frameIndex) {
-				double magnitude = visualization->powerSpectrum[frameIndex];
-				float barScale = (float)magnitude;
-				float barX = spectrumPos.x + frameIndex * barWidth + frameIndex * spacing;
-				float barHeight = barScale * barMaxHeight;
+			for(uint32_t binIndex = 0; binIndex < binCount; ++binIndex) {
+				double scaledMagnitude = visualization->spectrum[binIndex];
+				float barX = spectrumPos.x + binIndex * barWidth + binIndex * spacing;
+				float barHeight = (float)scaledMagnitude * barMaxHeight;
 				RenderQuad(barX, barY, barX + barWidth, barY - barHeight, (Vec4f) { 0, 1, 0, 0.5 });
 			}
 		}
 #endif
 
 #if 1
-		// Draw FFT bins/peaks
+		// Draw pure FFT
 		{
-			float fitFactor = 1.0f;
 			float spacing = 4.0f;
-			float totalSpacing = spacing * (binCount - 1);
-			float barMaxWidth = spectrumDim.w / (float)binCount;
+			float totalSpacing = spacing * (frameCount - 1);
+			float barMaxWidth = spectrumDim.w / (float)frameCount;
 			float barMaxHeight = spectrumDim.h * 0.4f;
-			float barWidth = (spectrumDim.w - totalSpacing) / (float)binCount;
+			float barWidth = (spectrumDim.w - totalSpacing) / (float)frameCount;
 			float barBottom = spectrumPos.y + spectrumDim.h;
 
-			for(uint32_t binIndex = 0; binIndex < binCount; ++binIndex) {
-				double maxPeak = visualization->maxPeaks[binIndex];
-				double db = AmplitudeToDecibel(maxPeak);
-				double power = DecibelToPower(db, minDB, maxDB);
-				float barX = spectrumPos.x + binIndex * barWidth + binIndex * spacing;
-				float barHeight = (float)power * barMaxHeight;
+			for(uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
+				double scaledMagnitude = visualization->scaledMagnitudes[frameIndex];
+				float barX = spectrumPos.x + frameIndex * barWidth + frameIndex * spacing;
+				float barHeight = (float)scaledMagnitude * barMaxHeight;
 				RenderQuad(barX, barBottom, barX + barWidth, barBottom - barHeight, (Vec4f) { 1.0f, 0.0, 0.0f, 0.5f });
 			}
 		}
@@ -990,14 +1016,29 @@ static void ReleaseVisualization(AudioDemo *demo) {
 
 }
 
+static void GenerateFrequencyBins(const uint32_t binCount, const uint32_t sampleRate, double *bins) {
+	const double minHearableFreq = 400.0;
+    const double maxHearableFreq = 20000.0;
+	const double nyquist = sampleRate * 0.5;
+	const double minFreq = minHearableFreq;
+	const double maxFreq = fplMin(maxHearableFreq, nyquist);
+    for (uint32_t i = 0; i < binCount - 1; i++) {
+        bins[i] = minFreq * pow(maxFreq / minFreq, (double)i / (binCount - 1));
+    }
+	bins[binCount - 1] = nyquist;
+}
+
 static bool InitializeVisualization(AudioDemo *demo) {
 	// Initialize frequency bins
+#if 1
+	GenerateFrequencyBins(MAX_AUDIO_BIN_COUNT, demo->targetAudioFormat.sampleRate, demo->visualization.bins);	
+#else
 	for(uint32_t binIndex = 0; binIndex < MAX_AUDIO_BIN_COUNT - 1; ++binIndex) {
 		double freq = binIndex * (double)demo->targetAudioFormat.sampleRate / (double)MAX_AUDIO_BIN_COUNT;
-		demo->visualization.maxPeaks[binIndex] = 0;
 		demo->visualization.bins[binIndex] = freq;
 	}
-	demo->visualization.bins[MAX_AUDIO_BIN_COUNT - 1] = demo->targetAudioFormat.sampleRate; // nyquist
+	demo->visualization.bins[MAX_AUDIO_BIN_COUNT - 1] = demo->targetAudioFormat.sampleRate * 0.5; // nyquist
+#endif
 
 	// Init window coefficients
 	uint32_t N = fplArrayCount(demo->visualization.fftInput);
