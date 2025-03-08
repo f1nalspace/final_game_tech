@@ -21,7 +21,10 @@ Todo:
 	- Multiple audio tracks
 
 Changelog:
-	## 2025-14-02
+	## 2025-03-08
+	- Fixed crash when no audio track was loaded
+
+	## 2025-02-14
 	- Get average sample value from stereo samples
 
 	## 2023-05-28
@@ -372,21 +375,23 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 		}
 		fplAssert(framesPlayed <= fullAudioBuffer->frameCount);
 #endif
-		AudioFrameIndex remainingChunkFrames = fplMin(MAX_AUDIO_FRAMES_CHUNK_FRAMES, fullAudioBuffer->frameCount - framesPlayed);
+		AudioFrameIndex minimumChunkFrames = fplMin(fullAudioBuffer->frameCount, MAX_AUDIO_FRAMES_CHUNK_FRAMES);
+
+		AudioFrameIndex remainingChunkFrames = fplMin(minimumChunkFrames, fullAudioBuffer->frameCount - framesPlayed);
 		if(remainingChunkFrames > 0) {
 			size_t totalSizeToCopy = remainingChunkFrames * frameSize;
 			size_t chunkSamplesOffset = framesPlayed * frameSize;
+			fplAssert((chunkSamplesOffset + totalSizeToCopy) <= fullAudioBuffer->bufferSize);
 			const uint8_t *p = fullAudioBuffer->samples + chunkSamplesOffset;
-			fplAssert(fullAudioBuffer->bufferSize >= totalSizeToCopy);
 			fplMemoryCopy(p, totalSizeToCopy, chunkSamples);
 		}
 
-		if(remainingChunkFrames < MAX_AUDIO_FRAMES_CHUNK_FRAMES && chunk->count >= MAX_AUDIO_FRAMES_CHUNK_FRAMES) {
-			size_t totalSizeToClear = MAX_AUDIO_FRAMES_CHUNK_FRAMES * frameSize;
+		if(remainingChunkFrames < minimumChunkFrames && chunk->count >= minimumChunkFrames) {
+			size_t totalSizeToClear = minimumChunkFrames * frameSize;
 			fplMemoryClear(chunkSamples, totalSizeToClear);
 		}
 
-		frameCount = MAX_AUDIO_FRAMES_CHUNK_FRAMES;
+		frameCount = minimumChunkFrames;
 	}
 
 	if(frameCount > 0 && chunkSamples != fpl_null) {
@@ -842,6 +847,12 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 			} else {
 				fplAlwaysAssert(!"Invalid code path!");
 			}
+		}
+
+		// No audio track?
+		if (!HasAudioTrack(&demo)) {
+			fplThreadSleep(100);
+			continue;
 		}
 
 		// Wait if needed
