@@ -182,6 +182,7 @@ SOFTWARE.
 	- Changed: Renamed field userData to clientUserData in @ref fplAudioSettings
 	- Changed: Renamed fplAudioDeviceFormat to fplAudioFormat
 	- Changed: Renamed function fplClearErrors to fplErrorsClear
+	- Changed: Renamed enum value fplPlatformResultType_FailedMemory to fplPlatformResultType_OutOfMemory
 	- Changed: Replaced audio exclusive flag and latency mode with a single enum @ref fplAudioMode in @ref fplAudioFormat
 	- Changed: fplCPUCapabilities is now separated by x86 and arm features
 	- Removed: Removed obsolete function fplFileSetTimestamps
