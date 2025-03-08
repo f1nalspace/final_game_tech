@@ -4166,7 +4166,7 @@ typedef enum fplPlatformResultType {
     //! Platform initialization failed.
     fplPlatformResultType_FailedPlatform = -3,
     //! Failed allocating required memory.
-    fplPlatformResultType_FailedAllocatingMemory = -2,
+    fplPlatformResultType_OutOfMemory = -2,
     //! Platform is already initialized.
     fplPlatformResultType_AlreadyInitialized = -1,
     //! Platform is not initialized.
@@ -12319,7 +12319,7 @@ fpl_globalvar const char *fpl__global_platformResultTypeNameTable[] = {
 	"Failed Audio", // fplPlatformResultType_FailedAudio (-5)
 	"Failed Video", // fplPlatformResultType_FailedVideo (-4)
 	"Failed Platform", // fplPlatformResultType_FailedPlatform (-3)
-	"Failed Allocating Memory", // fplPlatformResultType_FailedAllocatingMemory (-2)
+	"Out of Memory", // fplPlatformResultType_OutOfMemory (-2)
 	"Already Initialized", // fplPlatformResultType_AlreadyInitialized (-1)
 	"Not Initialized", // fplPlatformResultType_NotInitialized (0)
 	"Success", // fplPlatformResultType_Success (1)
@@ -26283,16 +26283,12 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 	fpl__PlatformMemoryBlock *memoryBlocks[3] = fplZeroInit;
 	uint8_t memoryBlockCount = 0;
 	memoryBlocks[memoryBlockCount++] = &platformMemoryBlock;
-#	if defined(FPL__ENABLE_VIDEO)
-	if (initFlags & fplInitFlags_Video) {
+	if (videoMemoryBlock.size > 0) {
 		memoryBlocks[memoryBlockCount++] = &videoMemoryBlock;
 	}
-#	endif
-#	if defined(FPL__ENABLE_AUDIO)
-	if (initFlags & fplInitFlags_Audio) {
+	if (audioMemoryBlock.size > 0) {
 		memoryBlocks[memoryBlockCount++] = &audioMemoryBlock;
 	}
-#	endif
 
 	size_t totalMemorySize = 0;
 	for (uint8_t i = 0; i < memoryBlockCount; ++i) {
@@ -26310,7 +26306,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 	uint8_t *platformMemory = (uint8_t *)fplMemoryAlignedAllocate(totalMemorySize, 16);
 	if (platformMemory == fpl_null) {
 		FPL__CRITICAL(FPL__MODULE_CORE, "Failed Allocating Platform Memory of size '%zu'", totalMemorySize);
-		return(fpl__SetPlatformResult(fplPlatformResultType_FailedAllocatingMemory));
+		return(fpl__SetPlatformResult(fplPlatformResultType_OutOfMemory));
 	}
 
 	fplAssert(platformMemoryBlock.offset == 0);
