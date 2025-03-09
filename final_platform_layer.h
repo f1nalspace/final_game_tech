@@ -199,6 +199,7 @@ SOFTWARE.
 	- Fixed[#157]: Compile error for missing _countof() fplArrayCount in some scenarios
     - Fixed[#164]: Changed default controllerDetectionFrequency from 100 ms to 1000 ms
 	- Fixed[#160/#158]: Building with G++ or Clang was not working anymore
+	- Fixed[#169]: Only audio initialization may create a window/console, which is incorrect
 	- Improved[#161]: Compiler detected improved & extended (MingW, Apple, Borland, TCC, DMC, CSMC, Linaro)
 	- Improved[#149]: Refactoring of audio backends to dispatch tables
 	- Improved[#163]: Make endianess detection more robust
@@ -13225,246 +13226,6 @@ fpl_internal HICON fpl__Win32LoadIconFromImageSource(const fpl__Win32Api *wapi, 
 	return(result);
 }
 
-fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *platAppState, fpl__Win32AppState *appState, fpl__Win32WindowState *windowState, const fpl__SetupWindowCallbacks *setupCallbacks) {
-	fplAssert(appState != fpl_null);
-	const fpl__Win32Api *wapi = &appState->winApi;
-	const fplWindowSettings *initWindowSettings = &initSettings->window;
-
-	// Presetup window
-	if (setupCallbacks->preSetup != fpl_null) {
-		setupCallbacks->preSetup(platAppState, platAppState->initFlags, &platAppState->initSettings);
-	}
-
-	// Register window class
-	WNDCLASSEXW windowClass = fplZeroInit;
-	windowClass.cbSize = sizeof(windowClass);
-	windowClass.hInstance = GetModuleHandleA(fpl_null);
-
-	// Set window background, either as system brush or custom brush which needs to be released when changed or the platform is released
-	if (initWindowSettings->background.value == 0) {
-		windowState->backgroundBrush = fpl_null;
-		windowClass.hbrBackground = wapi->user.GetSysColorBrush(COLOR_BACKGROUND);
-	} else {
-		COLORREF brushColor = RGB(initWindowSettings->background.r, initWindowSettings->background.g, initWindowSettings->background.b);
-		windowState->backgroundBrush = wapi->gdi.CreateSolidBrush(brushColor);
-		windowClass.hbrBackground = windowState->backgroundBrush;
-	}
-
-	windowClass.cbSize = sizeof(windowClass);
-	windowClass.style = CS_HREDRAW | CS_VREDRAW;
-	windowClass.hCursor = fpl__win32_LoadCursor(windowClass.hInstance, IDC_ARROW);
-	windowClass.hIconSm = fpl__Win32LoadIconFromImageSource(wapi, windowClass.hInstance, &initWindowSettings->icons[0]);
-	windowClass.hIcon = fpl__Win32LoadIconFromImageSource(wapi, windowClass.hInstance, &initWindowSettings->icons[1]);
-	windowClass.lpszClassName = FPL__WIN32_CLASSNAME;
-	windowClass.lpfnWndProc = fpl__Win32MessageProc;
-	windowClass.style |= CS_OWNDC;
-	lstrcpynW(windowState->windowClass, windowClass.lpszClassName, fplArrayCount(windowState->windowClass));
-	if (wapi->user.RegisterClassExW(&windowClass) == 0) {
-		FPL__ERROR(FPL__MODULE_WINDOW, "Failed registering window class '%s'", windowState->windowClass);
-		return false;
-	}
-
-	// Set window title
-	wchar_t windowTitleBuffer[FPL_MAX_NAME_LENGTH];
-	if (fplGetStringLength(initWindowSettings->title) > 0) {
-		fplUTF8StringToWideString(initWindowSettings->title, fplGetStringLength(initWindowSettings->title), windowTitleBuffer, fplArrayCount(windowTitleBuffer));
-	} else {
-		const wchar_t *defaultTitle = FPL__WIN32_UNNAMED_WINDOW;
-		lstrcpynW(windowTitleBuffer, defaultTitle, fplArrayCount(windowTitleBuffer));
-	}
-	wchar_t *windowTitle = windowTitleBuffer;
-	fplWideStringToUTF8String(windowTitle, lstrlenW(windowTitle), currentWindowSettings->title, fplArrayCount(currentWindowSettings->title));
-
-	// Create Fibers
-	windowState->mainFiber = ConvertThreadToFiber(0);
-	windowState->messageFiber = CreateFiber(0, (PFIBER_START_ROUTINE)fpl__Win32MessageFiberProc, platAppState);
-
-	// Prepare window style, size and position
-	DWORD style = fpl__Win32MakeWindowStyle(&initSettings->window);
-	DWORD exStyle = fpl__Win32MakeWindowExStyle(&initSettings->window);
-	if (initSettings->window.isResizable) {
-		currentWindowSettings->isResizable = true;
-	} else {
-		currentWindowSettings->isResizable = false;
-	}
-	int windowX = CW_USEDEFAULT;
-	int windowY = CW_USEDEFAULT;
-	int windowWidth;
-	int windowHeight;
-	if ((initWindowSettings->windowSize.width > 0) &&
-		(initWindowSettings->windowSize.height > 0)) {
-		RECT windowRect;
-		windowRect.left = 0;
-		windowRect.top = 0;
-		windowRect.right = initWindowSettings->windowSize.width;
-		windowRect.bottom = initWindowSettings->windowSize.height;
-		wapi->user.AdjustWindowRect(&windowRect, style, false);
-		windowWidth = windowRect.right - windowRect.left;
-		windowHeight = windowRect.bottom - windowRect.top;
-	} else {
-		// @NOTE(final): Operating system decide how big the window should be.
-		windowWidth = CW_USEDEFAULT;
-		windowHeight = CW_USEDEFAULT;
-	}
-
-	// Create window
-	windowState->windowHandle = wapi->user.CreateWindowExW(exStyle, windowClass.lpszClassName, windowTitle, style, windowX, windowY, windowWidth, windowHeight, fpl_null, fpl_null, windowClass.hInstance, fpl_null);
-	if (windowState->windowHandle == fpl_null) {
-		FPL__ERROR(FPL__MODULE_WINDOW, "Failed creating window for class '%s' and position (%d x %d) with size (%d x %d)", windowState->windowClass, windowX, windowY, windowWidth, windowHeight);
-		return false;
-	}
-
-	// Accept files as drag & drop source
-	wapi->shell.DragAcceptFiles(windowState->windowHandle, TRUE);
-
-	// Get actual window size and store results
-	currentWindowSettings->windowSize.width = windowWidth;
-	currentWindowSettings->windowSize.height = windowHeight;
-	RECT clientRect;
-	if (wapi->user.GetClientRect(windowState->windowHandle, &clientRect)) {
-		currentWindowSettings->windowSize.width = clientRect.right - clientRect.left;
-		currentWindowSettings->windowSize.height = clientRect.bottom - clientRect.top;
-	}
-
-	// Get device context so we can swap the back and front buffer
-	windowState->deviceContext = wapi->user.GetDC(windowState->windowHandle);
-	if (windowState->deviceContext == fpl_null) {
-		FPL__ERROR(FPL__MODULE_WINDOW, "Failed aquiring device context from window '%d'", windowState->windowHandle);
-		return false;
-	}
-
-	// Call post window setup callback
-	if (setupCallbacks->postSetup != fpl_null) {
-		setupCallbacks->postSetup(platAppState, platAppState->initFlags, initSettings);
-	}
-
-	// Enter fullscreen if needed
-	if (initWindowSettings->isFullscreen) {
-		fplSetWindowFullscreenSize(true, initWindowSettings->fullscreenSize.width, initWindowSettings->fullscreenSize.height, initWindowSettings->fullscreenRefreshRate);
-	}
-
-	// Show window
-	wapi->user.ShowWindow(windowState->windowHandle, SW_SHOW);
-	wapi->user.SetForegroundWindow(windowState->windowHandle);
-	wapi->user.SetFocus(windowState->windowHandle);
-
-	// Cursor is visible at start
-	windowState->defaultCursor = windowClass.hCursor;
-	windowState->isCursorActive = true;
-	platAppState->window.isRunning = true;
-
-	return true;
-}
-
-fpl_internal void fpl__Win32ReleaseWindow(const fpl__Win32InitState *initState, const fpl__Win32AppState *appState, fpl__Win32WindowState *windowState) {
-	const fpl__Win32Api *wapi = &appState->winApi;
-	if (windowState->deviceContext != fpl_null) {
-		wapi->user.ReleaseDC(windowState->windowHandle, windowState->deviceContext);
-		windowState->deviceContext = fpl_null;
-	}
-	if (windowState->windowHandle != fpl_null) {
-		wapi->user.DestroyWindow(windowState->windowHandle);
-		windowState->windowHandle = fpl_null;
-		wapi->user.UnregisterClassW(windowState->windowClass, initState->appInstance);
-	}
-	if (windowState->backgroundBrush != fpl_null) {
-		wapi->gdi.DeleteObject(windowState->backgroundBrush);
-		windowState->backgroundBrush = fpl_null;
-	}
-	if (windowState->messageFiber != fpl_null) {
-		DeleteFiber(windowState->messageFiber);
-		windowState->messageFiber = fpl_null;
-	}
-	if (windowState->mainFiber != fpl_null) {
-		ConvertFiberToThread();
-		windowState->mainFiber = fpl_null;
-	}
-}
-
-#endif // FPL__ENABLE_WINDOW
-
-fpl_internal bool fpl__Win32ThreadWaitForMultiple(fplThreadHandle **threads, const size_t count, const size_t stride, const fplTimeoutValue timeout, const bool waitForAll) {
-	FPL__CheckArgumentNull(threads, false);
-	FPL__CheckArgumentMax(count, FPL_MAX_THREAD_COUNT, false);
-	fplStaticAssert(FPL_MAX_THREAD_COUNT >= MAXIMUM_WAIT_OBJECTS);
-	const size_t actualStride = stride > 0 ? stride : sizeof(fplThreadHandle *);
-	for (size_t index = 0; index < count; ++index) {
-		fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
-		if (thread == fpl_null) {
-			FPL__ERROR(FPL__MODULE_THREADING, "Thread for index '%d' are not allowed to be null", index);
-			return false;
-		}
-		if (fplGetThreadState(thread) != fplThreadState_Stopped) {
-			if (thread->internalHandle.win32ThreadHandle == fpl_null) {
-				FPL__ERROR(FPL__MODULE_THREADING, "Thread handle for index '%d' are not allowed to be null", index);
-				return false;
-			}
-		}
-	}
-
-	// @NOTE(final): WaitForMultipleObjects does not work for us here, because each thread will close its handle automatically
-	// So we screw it and use a simple while loop and wait until either the timeout has been reached or all threads has been stopped.
-	fplMilliseconds startTime = fplMillisecondsQuery();
-	size_t minThreads = waitForAll ? count : 1;
-	size_t stoppedThreads = 0;
-	while (stoppedThreads < minThreads) {
-		stoppedThreads = 0;
-		for (size_t index = 0; index < count; ++index) {
-			fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
-			if (fplGetThreadState(thread) == fplThreadState_Stopped) {
-				++stoppedThreads;
-			}
-		}
-		if (stoppedThreads >= minThreads) {
-			break;
-		}
-		if (timeout != FPL_TIMEOUT_INFINITE) {
-			if ((fplMillisecondsQuery() - startTime) >= timeout) {
-				break;
-			}
-		}
-		fplThreadYield();
-	}
-	bool result = stoppedThreads >= minThreads;
-	return(result);
-}
-
-fpl_internal bool fpl__Win32SignalWaitForMultiple(fplSignalHandle **signals, const size_t count, const size_t stride, const fplTimeoutValue timeout, const bool waitForAll) {
-	FPL__CheckArgumentNull(signals, false);
-	FPL__CheckArgumentMax(count, FPL_MAX_SIGNAL_COUNT, false);
-	// @MEMORY(final): This wastes a lof memory, use temporary memory allocation here
-	HANDLE signalHandles[FPL_MAX_SIGNAL_COUNT];
-	const size_t actualStride = stride > 0 ? stride : sizeof(fplSignalHandle *);
-	for (uint32_t index = 0; index < count; ++index) {
-		fplSignalHandle *availableSignal = *(fplSignalHandle **)((uint8_t *)signals + index * actualStride);
-		if (availableSignal == fpl_null) {
-			FPL__ERROR(FPL__MODULE_THREADING, "Signal for index '%d' are not allowed to be null", index);
-			return false;
-		}
-		if (availableSignal->internalHandle.win32EventHandle == fpl_null) {
-			FPL__ERROR(FPL__MODULE_THREADING, "Signal handle for index '%d' are not allowed to be null", index);
-			return false;
-		}
-		HANDLE handle = availableSignal->internalHandle.win32EventHandle;
-		signalHandles[index] = handle;
-	}
-	DWORD t = timeout == FPL_TIMEOUT_INFINITE ? INFINITE : timeout;
-	DWORD code = WaitForMultipleObjects((DWORD)count, signalHandles, waitForAll ? TRUE : FALSE, t);
-	bool result = (code >= WAIT_OBJECT_0);
-	return(result);
-}
-
-fpl_internal void fpl__Win32ReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
-	fplAssert(appState != fpl_null);
-	fpl__Win32AppState *win32AppState = &appState->win32;
-	fpl__Win32InitState *win32InitState = &initState->win32;
-	if (appState->initFlags & fplInitFlags_GameController) {
-		fpl__Win32UnloadXInputApi(&win32AppState->xinput.xinputApi);
-	}
-	fpl__Win32UnloadApi(&win32AppState->winApi);
-}
-
-#if defined(FPL__ENABLE_WINDOW)
 fpl_internal fplKey fpl__Win32TranslateVirtualKey(const fpl__Win32Api *wapi, const uint64_t virtualKey) {
 	switch (virtualKey) {
 		case VK_BACK:
@@ -13745,7 +13506,262 @@ fpl_internal fplKey fpl__Win32TranslateVirtualKey(const fpl__Win32Api *wapi, con
 			return fplKey_None;
 	}
 }
-#endif
+
+fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *platAppState, fpl__Win32AppState *appState, fpl__Win32WindowState *windowState, const fpl__SetupWindowCallbacks *setupCallbacks) {
+	fplAssert(appState != fpl_null);
+	const fpl__Win32Api *wapi = &appState->winApi;
+	const fplWindowSettings *initWindowSettings = &initSettings->window;
+
+	// Init keymap
+	fplClearStruct(platAppState->window.keyMap);
+	for (int i = 0; i < 256; ++i) {
+		int vk = wapi->user.MapVirtualKeyW(MAPVK_VSC_TO_VK, i);
+		if (vk == 0) {
+			vk = i;
+		}
+		platAppState->window.keyMap[i] = fpl__Win32TranslateVirtualKey(wapi, vk);
+	}
+
+	// Hint for windows to know, that the application is in use always
+	if (initSettings->window.isMonitorPowerPrevented || initSettings->window.isScreenSaverPrevented) {
+		SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED);
+	} else {
+		SetThreadExecutionState(ES_CONTINUOUS);
+	}
+
+	// Presetup window
+	if (setupCallbacks->preSetup != fpl_null) {
+		setupCallbacks->preSetup(platAppState, platAppState->initFlags, &platAppState->initSettings);
+	}
+
+	// Register window class
+	WNDCLASSEXW windowClass = fplZeroInit;
+	windowClass.cbSize = sizeof(windowClass);
+	windowClass.hInstance = GetModuleHandleA(fpl_null);
+
+	// Set window background, either as system brush or custom brush which needs to be released when changed or the platform is released
+	if (initWindowSettings->background.value == 0) {
+		windowState->backgroundBrush = fpl_null;
+		windowClass.hbrBackground = wapi->user.GetSysColorBrush(COLOR_BACKGROUND);
+	} else {
+		COLORREF brushColor = RGB(initWindowSettings->background.r, initWindowSettings->background.g, initWindowSettings->background.b);
+		windowState->backgroundBrush = wapi->gdi.CreateSolidBrush(brushColor);
+		windowClass.hbrBackground = windowState->backgroundBrush;
+	}
+
+	windowClass.cbSize = sizeof(windowClass);
+	windowClass.style = CS_HREDRAW | CS_VREDRAW;
+	windowClass.hCursor = fpl__win32_LoadCursor(windowClass.hInstance, IDC_ARROW);
+	windowClass.hIconSm = fpl__Win32LoadIconFromImageSource(wapi, windowClass.hInstance, &initWindowSettings->icons[0]);
+	windowClass.hIcon = fpl__Win32LoadIconFromImageSource(wapi, windowClass.hInstance, &initWindowSettings->icons[1]);
+	windowClass.lpszClassName = FPL__WIN32_CLASSNAME;
+	windowClass.lpfnWndProc = fpl__Win32MessageProc;
+	windowClass.style |= CS_OWNDC;
+	lstrcpynW(windowState->windowClass, windowClass.lpszClassName, fplArrayCount(windowState->windowClass));
+	if (wapi->user.RegisterClassExW(&windowClass) == 0) {
+		FPL__ERROR(FPL__MODULE_WINDOW, "Failed registering window class '%s'", windowState->windowClass);
+		return false;
+	}
+
+	// Set window title
+	wchar_t windowTitleBuffer[FPL_MAX_NAME_LENGTH];
+	if (fplGetStringLength(initWindowSettings->title) > 0) {
+		fplUTF8StringToWideString(initWindowSettings->title, fplGetStringLength(initWindowSettings->title), windowTitleBuffer, fplArrayCount(windowTitleBuffer));
+	} else {
+		const wchar_t *defaultTitle = FPL__WIN32_UNNAMED_WINDOW;
+		lstrcpynW(windowTitleBuffer, defaultTitle, fplArrayCount(windowTitleBuffer));
+	}
+	wchar_t *windowTitle = windowTitleBuffer;
+	fplWideStringToUTF8String(windowTitle, lstrlenW(windowTitle), currentWindowSettings->title, fplArrayCount(currentWindowSettings->title));
+
+	// Create Fibers
+	windowState->mainFiber = ConvertThreadToFiber(0);
+	windowState->messageFiber = CreateFiber(0, (PFIBER_START_ROUTINE)fpl__Win32MessageFiberProc, platAppState);
+
+	// Prepare window style, size and position
+	DWORD style = fpl__Win32MakeWindowStyle(&initSettings->window);
+	DWORD exStyle = fpl__Win32MakeWindowExStyle(&initSettings->window);
+	if (initSettings->window.isResizable) {
+		currentWindowSettings->isResizable = true;
+	} else {
+		currentWindowSettings->isResizable = false;
+	}
+	int windowX = CW_USEDEFAULT;
+	int windowY = CW_USEDEFAULT;
+	int windowWidth;
+	int windowHeight;
+	if ((initWindowSettings->windowSize.width > 0) &&
+		(initWindowSettings->windowSize.height > 0)) {
+		RECT windowRect;
+		windowRect.left = 0;
+		windowRect.top = 0;
+		windowRect.right = initWindowSettings->windowSize.width;
+		windowRect.bottom = initWindowSettings->windowSize.height;
+		wapi->user.AdjustWindowRect(&windowRect, style, false);
+		windowWidth = windowRect.right - windowRect.left;
+		windowHeight = windowRect.bottom - windowRect.top;
+	} else {
+		// @NOTE(final): Operating system decide how big the window should be.
+		windowWidth = CW_USEDEFAULT;
+		windowHeight = CW_USEDEFAULT;
+	}
+
+	// Create window
+	windowState->windowHandle = wapi->user.CreateWindowExW(exStyle, windowClass.lpszClassName, windowTitle, style, windowX, windowY, windowWidth, windowHeight, fpl_null, fpl_null, windowClass.hInstance, fpl_null);
+	if (windowState->windowHandle == fpl_null) {
+		FPL__ERROR(FPL__MODULE_WINDOW, "Failed creating window for class '%s' and position (%d x %d) with size (%d x %d)", windowState->windowClass, windowX, windowY, windowWidth, windowHeight);
+		return false;
+	}
+
+	// Accept files as drag & drop source
+	wapi->shell.DragAcceptFiles(windowState->windowHandle, TRUE);
+
+	// Get actual window size and store results
+	currentWindowSettings->windowSize.width = windowWidth;
+	currentWindowSettings->windowSize.height = windowHeight;
+	RECT clientRect;
+	if (wapi->user.GetClientRect(windowState->windowHandle, &clientRect)) {
+		currentWindowSettings->windowSize.width = clientRect.right - clientRect.left;
+		currentWindowSettings->windowSize.height = clientRect.bottom - clientRect.top;
+	}
+
+	// Get device context so we can swap the back and front buffer
+	windowState->deviceContext = wapi->user.GetDC(windowState->windowHandle);
+	if (windowState->deviceContext == fpl_null) {
+		FPL__ERROR(FPL__MODULE_WINDOW, "Failed aquiring device context from window '%d'", windowState->windowHandle);
+		return false;
+	}
+
+	// Call post window setup callback
+	if (setupCallbacks->postSetup != fpl_null) {
+		setupCallbacks->postSetup(platAppState, platAppState->initFlags, initSettings);
+	}
+
+	// Enter fullscreen if needed
+	if (initWindowSettings->isFullscreen) {
+		fplSetWindowFullscreenSize(true, initWindowSettings->fullscreenSize.width, initWindowSettings->fullscreenSize.height, initWindowSettings->fullscreenRefreshRate);
+	}
+
+	// Show window
+	wapi->user.ShowWindow(windowState->windowHandle, SW_SHOW);
+	wapi->user.SetForegroundWindow(windowState->windowHandle);
+	wapi->user.SetFocus(windowState->windowHandle);
+
+	// Cursor is visible at start
+	windowState->defaultCursor = windowClass.hCursor;
+	windowState->isCursorActive = true;
+	platAppState->window.isRunning = true;
+
+	return true;
+}
+
+fpl_internal void fpl__Win32ReleaseWindow(const fpl__Win32InitState *initState, const fpl__Win32AppState *appState, fpl__Win32WindowState *windowState) {
+	const fpl__Win32Api *wapi = &appState->winApi;
+	if (windowState->deviceContext != fpl_null) {
+		wapi->user.ReleaseDC(windowState->windowHandle, windowState->deviceContext);
+		windowState->deviceContext = fpl_null;
+	}
+	if (windowState->windowHandle != fpl_null) {
+		wapi->user.DestroyWindow(windowState->windowHandle);
+		windowState->windowHandle = fpl_null;
+		wapi->user.UnregisterClassW(windowState->windowClass, initState->appInstance);
+	}
+	if (windowState->backgroundBrush != fpl_null) {
+		wapi->gdi.DeleteObject(windowState->backgroundBrush);
+		windowState->backgroundBrush = fpl_null;
+	}
+	if (windowState->messageFiber != fpl_null) {
+		DeleteFiber(windowState->messageFiber);
+		windowState->messageFiber = fpl_null;
+	}
+	if (windowState->mainFiber != fpl_null) {
+		ConvertFiberToThread();
+		windowState->mainFiber = fpl_null;
+	}
+}
+
+#endif // FPL__ENABLE_WINDOW
+
+fpl_internal bool fpl__Win32ThreadWaitForMultiple(fplThreadHandle **threads, const size_t count, const size_t stride, const fplTimeoutValue timeout, const bool waitForAll) {
+	FPL__CheckArgumentNull(threads, false);
+	FPL__CheckArgumentMax(count, FPL_MAX_THREAD_COUNT, false);
+	fplStaticAssert(FPL_MAX_THREAD_COUNT >= MAXIMUM_WAIT_OBJECTS);
+	const size_t actualStride = stride > 0 ? stride : sizeof(fplThreadHandle *);
+	for (size_t index = 0; index < count; ++index) {
+		fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
+		if (thread == fpl_null) {
+			FPL__ERROR(FPL__MODULE_THREADING, "Thread for index '%d' are not allowed to be null", index);
+			return false;
+		}
+		if (fplGetThreadState(thread) != fplThreadState_Stopped) {
+			if (thread->internalHandle.win32ThreadHandle == fpl_null) {
+				FPL__ERROR(FPL__MODULE_THREADING, "Thread handle for index '%d' are not allowed to be null", index);
+				return false;
+			}
+		}
+	}
+
+	// @NOTE(final): WaitForMultipleObjects does not work for us here, because each thread will close its handle automatically
+	// So we screw it and use a simple while loop and wait until either the timeout has been reached or all threads has been stopped.
+	fplMilliseconds startTime = fplMillisecondsQuery();
+	size_t minThreads = waitForAll ? count : 1;
+	size_t stoppedThreads = 0;
+	while (stoppedThreads < minThreads) {
+		stoppedThreads = 0;
+		for (size_t index = 0; index < count; ++index) {
+			fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
+			if (fplGetThreadState(thread) == fplThreadState_Stopped) {
+				++stoppedThreads;
+			}
+		}
+		if (stoppedThreads >= minThreads) {
+			break;
+		}
+		if (timeout != FPL_TIMEOUT_INFINITE) {
+			if ((fplMillisecondsQuery() - startTime) >= timeout) {
+				break;
+			}
+		}
+		fplThreadYield();
+	}
+	bool result = stoppedThreads >= minThreads;
+	return(result);
+}
+
+fpl_internal bool fpl__Win32SignalWaitForMultiple(fplSignalHandle **signals, const size_t count, const size_t stride, const fplTimeoutValue timeout, const bool waitForAll) {
+	FPL__CheckArgumentNull(signals, false);
+	FPL__CheckArgumentMax(count, FPL_MAX_SIGNAL_COUNT, false);
+	// @MEMORY(final): This wastes a lof memory, use temporary memory allocation here
+	HANDLE signalHandles[FPL_MAX_SIGNAL_COUNT];
+	const size_t actualStride = stride > 0 ? stride : sizeof(fplSignalHandle *);
+	for (uint32_t index = 0; index < count; ++index) {
+		fplSignalHandle *availableSignal = *(fplSignalHandle **)((uint8_t *)signals + index * actualStride);
+		if (availableSignal == fpl_null) {
+			FPL__ERROR(FPL__MODULE_THREADING, "Signal for index '%d' are not allowed to be null", index);
+			return false;
+		}
+		if (availableSignal->internalHandle.win32EventHandle == fpl_null) {
+			FPL__ERROR(FPL__MODULE_THREADING, "Signal handle for index '%d' are not allowed to be null", index);
+			return false;
+		}
+		HANDLE handle = availableSignal->internalHandle.win32EventHandle;
+		signalHandles[index] = handle;
+	}
+	DWORD t = timeout == FPL_TIMEOUT_INFINITE ? INFINITE : timeout;
+	DWORD code = WaitForMultipleObjects((DWORD)count, signalHandles, waitForAll ? TRUE : FALSE, t);
+	bool result = (code >= WAIT_OBJECT_0);
+	return(result);
+}
+
+fpl_internal void fpl__Win32ReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
+	fplAssert(appState != fpl_null);
+	fpl__Win32AppState *win32AppState = &appState->win32;
+	fpl__Win32InitState *win32InitState = &initState->win32;
+	if (appState->initFlags & fplInitFlags_GameController) {
+		fpl__Win32UnloadXInputApi(&win32AppState->xinput.xinputApi);
+	}
+	fpl__Win32UnloadApi(&win32AppState->winApi);
+}
 
 fpl_internal bool fpl__Win32InitPlatform(const fplInitFlags initFlags, const fplSettings *initSettings, fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
 	fplAssert(initState != fpl_null);
@@ -13810,27 +13826,6 @@ fpl_internal bool fpl__Win32InitPlatform(const fplInitFlags initFlags, const fpl
 
 		win32AppState->winApi.user.ShowWindow(consoleWindow, SW_SHOW);
 	}
-
-	// Init keymap
-#	if defined(FPL__ENABLE_WINDOW)
-	fplClearStruct(appState->window.keyMap);
-	for (int i = 0; i < 256; ++i) {
-		int vk = win32AppState->winApi.user.MapVirtualKeyW(MAPVK_VSC_TO_VK, i);
-		if (vk == 0) {
-			vk = i;
-		}
-		appState->window.keyMap[i] = fpl__Win32TranslateVirtualKey(&win32AppState->winApi, vk);
-	}
-#	endif
-
-	// Hint for windows to know, that the application is in use always
-#	if defined(FPL__ENABLE_WINDOW)
-	if (initSettings->window.isMonitorPowerPrevented || initSettings->window.isScreenSaverPrevented) {
-		SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED);
-	} else {
-		SetThreadExecutionState(ES_CONTINUOUS);
-	}
-#	endif
 
 	return (true);
 }
@@ -26322,25 +26317,19 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 
 	FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully allocated Platform Memory of size '%zu'", totalMemorySize);
 
-	// Application types
-#	if defined(FPL_APPTYPE_WINDOW)
-	appState->initFlags |= fplInitFlags_Window;
-#	elif defined(FPL_APPTYPE_CONSOLE)
-	appState->initFlags |= fplInitFlags_Console;
-#	endif
-
 	// Force the inclusion of window when Video flags is set or remove the video flags when video is disabled
 #	if defined(FPL__ENABLE_VIDEO)
 	if (appState->initFlags & fplInitFlags_Video) {
 		appState->initFlags |= fplInitFlags_Window;
 	}
 #	else
-	appState->initFlags = (fplInitFlags)(appState->initFlags & ~fplInitFlags_Video);
+	appState->initFlags &= ~fplInitFlags_Video;
 #	endif
 
-	// Window flag are removed when windowing is disabled
+	// Window/Video flag are removed when windowing is disabled
 #	if !defined(FPL__ENABLE_WINDOW)
-	appState->initFlags = (fplInitFlags)(appState->initFlags & ~fplInitFlags_Window);
+	appState->initFlags &= ~fplInitFlags_Window;
+	appState->initFlags &= ~fplInitFlags_Video;
 #	endif
 
 	// Initialize sub-platforms
