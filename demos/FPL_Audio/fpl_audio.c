@@ -370,11 +370,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 
 	RenderRingBuffer(streamBufferPos, streamBufferDim, streamRingBuffer);
 
-
-#if 1
-	// Draw rectangle around spectrum
-	RenderRectangle(spectrumPos.x, spectrumPos.y, spectrumPos.x + spectrumDim.w, spectrumPos.y + spectrumDim.h, (Vec4f) { 1, 1, 1, 1 }, 1.0f);
-#endif
+	RenderRectangle(spectrumPos.x, spectrumPos.y, spectrumPos.x + spectrumDim.w, spectrumPos.y + spectrumDim.h, (Vec4f) { 1, 1, 1, 0.5f }, 1.0f);
 
 	fplAudioFormatType format = demo->targetAudioFormat.type;
 	size_t sampleSize = fplGetAudioSampleSizeInBytes(format);
@@ -590,11 +586,6 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 			float barMaxHeight = spectrumDim.h * 0.25f;
 			float barStartX = spectrumPos.x;
 			float barStartY = spectrumPos.y + spectrumDim.h - barMaxHeight;
-
-#if 1
-			RenderRectangle(barStartX, barStartY, barStartX + spectrumDim.w, barStartY + barMaxHeight, (Vec4f) { 1, 0, 1, 1 }, 1.0f);
-#endif
-
 			for(uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
 				double sampleValue = visualization->scaledSamples[frameIndex];
 				float barHeight = (float)sampleValue * barMaxHeight;

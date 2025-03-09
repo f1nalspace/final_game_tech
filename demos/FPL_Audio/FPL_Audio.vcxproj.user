@@ -16,4 +16,7 @@
     <LocalDebuggerCommandArguments>"$(SolutionDir)resources\Tavs_Control_[Argofox Release].mp3"</LocalDebuggerCommandArguments>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
   </PropertyGroup>
+  <PropertyGroup>
+    <ShowAllFiles>false</ShowAllFiles>
+  </PropertyGroup>
 </Project>
