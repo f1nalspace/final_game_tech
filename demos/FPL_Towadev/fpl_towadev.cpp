@@ -158,6 +158,8 @@ License:
 
 #include <final_game.h>
 
+#include <final_fonts.h>
+
 #include "fpl_towadev.h"
 
 constexpr float ShotAngleTolerance = (Pi32 * 0.05f);
@@ -1632,15 +1634,12 @@ namespace game {
 			level::LoadWaveDefinitions(assets, WavesDataFilename, false, &tempMem);
 
 			// Fonts
-			char fontDataPath[1024];
-			const char *fontFilename = "SulphurPoint-Bold.otf";
-			fplPathCombine(fontDataPath, fplArrayCount(fontDataPath), 2, assets.dataPath, "fonts");
 			FontAsset &hudFont = assets.hudFont;
-			if (LoadFontFromFile(fontDataPath, fontFilename, 0, 36.0f, 32, 128, 512, 512, false, &hudFont.desc)) {
+			if (LoadFontFromMemory(ptr_fontSulphurPointRegular, sizeOf_fontSulphurPointRegular, 0, 36.0f, 32, 128, 512, 512, false, &hudFont.desc)) {
 				PushTexture(renderState, &hudFont.texture, hudFont.desc.atlasAlphaBitmap, hudFont.desc.atlasWidth, hudFont.desc.atlasHeight, 1, TextureFilterType::Linear, TextureWrapMode::ClampToEdge, false, false);
 			}
 			FontAsset &overlayFont = assets.overlayFont;
-			if (LoadFontFromFile(fontDataPath, fontFilename, 0, 240.0f, 32, 128, 4096, 4096, false, &overlayFont.desc)) {
+			if (LoadFontFromMemory(ptr_fontSulphurPointRegular, sizeOf_fontSulphurPointRegular, 0, 240.0f, 32, 128, 4096, 4096, false, &overlayFont.desc)) {
 				PushTexture(renderState, &overlayFont.texture, overlayFont.desc.atlasAlphaBitmap, overlayFont.desc.atlasWidth, overlayFont.desc.atlasHeight, 1, TextureFilterType::Linear, TextureWrapMode::ClampToEdge, false, false);
 			}
 

@@ -175,10 +175,10 @@
   <ItemGroup>
     <ClInclude Include="..\..\final_dynamic_opengl.hpp" />
     <ClInclude Include="..\..\final_platform_layer.h" />
+    <ClInclude Include="..\additions\final_fonts.h" />
     <ClInclude Include="..\dependencies\stb\stb_truetype.h" />
     <ClInclude Include="defines.h" />
     <ClInclude Include="ffmpeg.h" />
-    <ClInclude Include="fontdata.h" />
     <ClInclude Include="shaders.h" />
     <ClInclude Include="utils.h" />
   </ItemGroup>
