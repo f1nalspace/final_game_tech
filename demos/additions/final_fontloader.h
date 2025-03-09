@@ -25,10 +25,6 @@ Changelog:
 #ifndef FINAL_FONTLOADER_H
 #define FINAL_FONTLOADER_H
 
-#if !(defined(__cplusplus) && ((__cplusplus >= 201103L) || (defined(_MSC_VER) && _MSC_VER >= 1900)))
-#error "C++/11 compiler not detected!"
-#endif
-
 #ifndef FINAL_FONTLOADER_BETTERQUALITY
 #define FINAL_FONTLOADER_BETTERQUALITY 0
 #endif
@@ -115,7 +111,7 @@ extern void ReleaseFont(LoadedFont *font);
 extern Vec2f GetTextSize(const char *text, const size_t textLen, const LoadedFont *fontDesc, const float maxCharHeight) {
 	float xwidth = 0.0f;
 	float ymax = 0.0f;
-	if(fontDesc != nullptr && fontDesc->charCount > 0) {
+	if(fontDesc != fpl_null && fontDesc->charCount > 0) {
 		float xpos = 0.0f;
 		float ypos = 0.0f;
 		uint32_t lastChar = fontDesc->firstChar + (fontDesc->charCount - 1);
@@ -129,20 +125,20 @@ extern Vec2f GetTextSize(const char *text, const size_t textLen, const LoadedFon
 				uint32_t codePoint = at - fontDesc->firstChar;
 				const FontGlyph *glyph = fontDesc->glyphs + codePoint;
 				size = glyph->charSize;
-				offset += glyph->offset;
-				offset += V2fInit(size.x, -size.y) * 0.5f;
+				offset = V2fAdd(offset, glyph->offset);
+				offset = V2fAddMultScalar(offset, V2fInit(size.x, -size.y), 0.5f);
 				xadvance = GetFontCharacterAdvance(fontDesc, (uint32_t)at, (uint32_t)atNext);
 			} else {
 				xadvance = fontDesc->info.spaceAdvance;
 			}
 			Vec2f min = offset;
-			Vec2f max = min + V2fInit(xadvance, size.y);
+			Vec2f max = V2fAdd(min, V2fInit(xadvance, size.y));
 			xwidth += (max.x - min.x);
 			ymax = fplMax(ymax, max.y - min.h);
 			xpos += xadvance;
 		}
 	}
-	Vec2f result = V2fInit(xwidth, ymax) * maxCharHeight;
+	Vec2f result = V2fMultScalar(V2fInit(xwidth, ymax), maxCharHeight);
 	return(result);
 }
 
@@ -153,10 +149,10 @@ extern FontQuad GetFontQuad(const LoadedFont *font, const uint32_t codePoint, co
 		if(codePoint >= font->firstChar && codePoint <= lastChar) {
 			uint32_t index = codePoint - font->firstChar;
 			const FontGlyph *glyph = &font->glyphs[index];
-			Vec2f size = glyph->charSize * scale;
+			Vec2f size = V2fMultScalar(glyph->charSize, scale);
 			Vec2f offset = V2fZero();
-			offset += glyph->offset * scale;
-			offset += V2fInit(size.x, -size.y) * 0.5f;
+			offset = V2fAddMultScalar(offset, glyph->offset, scale);
+			offset = V2fAddMultScalar(offset, V2fInit(size.x, -size.y), 0.5f);
 			result.offset = offset;
 			result.size = size;
 			result.uvMin = glyph->uvMin;
@@ -276,10 +272,10 @@ extern bool LoadFontFromMemory(const void *data, const size_t dataSize, const ui
 		// Compute character size
 		int charWidthInPixels = sourceInfo->x1 - sourceInfo->x0;
 		int charHeightInPixels = sourceInfo->y1 - sourceInfo->y0;
-		destInfo->charSize = V2fInit((float)charWidthInPixels, (float)charHeightInPixels) * pixelsToUnits;
+		destInfo->charSize = V2fMultScalar(V2fInit((float)charWidthInPixels, (float)charHeightInPixels), pixelsToUnits);
 
 		// Compute offset to start/baseline in units
-		destInfo->offset = V2fInit(sourceInfo->xoff, -sourceInfo->yoff) * pixelsToUnits;
+		destInfo->offset = V2fMultScalar(V2fInit(sourceInfo->xoff, -sourceInfo->yoff), pixelsToUnits);
 	}
 
 	// Build kerning table & default advance table
@@ -367,7 +363,7 @@ extern bool LoadFontFromFile(const char *dataPath, const char *filename, const u
 		fplFileClose(&file);
 	}
 
-	if(ttfBuffer != nullptr) {
+	if(ttfBuffer != fpl_null) {
 		result = LoadFontFromMemory(ttfBuffer, ttfBufferSize, fontIndex, fontSize, firstChar, lastChar, atlasWidth, atlasHeight, loadKerning, outFont);
 		fplMemoryFree(ttfBuffer);
 	}

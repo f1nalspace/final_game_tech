@@ -12,6 +12,9 @@ License:
 	Copyright 2017-2025 Torsten Spaete
 
 Changelog
+	## 2025-03-09
+	- More Vec2f functions (Add, Sub)
+
 	## 2020-05-15:
 	- Added optional c++ methods with overloads, to make life a bit easier
 	- Added experimental quaternion struct
