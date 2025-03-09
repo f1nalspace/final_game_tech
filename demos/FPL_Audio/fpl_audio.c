@@ -21,6 +21,9 @@ Todo:
 	- Multiple audio tracks
 
 Changelog:
+	## 2025-03-09
+	- Improved visualization a lot
+
 	## 2025-03-08
 	- Fixed crash when no audio track was loaded
 	- Fixed sine wave streaming was totally broken
@@ -149,7 +152,7 @@ Visualize the samples:
 #define FINAL_BUFFER_IMPLEMENTATION
 #include <final_buffer.h>
 
-#define MAX_AUDIO_FRAMES_CHUNK_FRAMES 128
+#define MAX_AUDIO_FRAMES_CHUNK_FRAMES 256
 typedef struct AudioFramesChunk {
 	uint8_t samples[MAX_AUDIO_FRAMES_CHUNK_FRAMES * AUDIO_MAX_CHANNEL_COUNT * AUDIO_MAX_SAMPLESIZE];
 	AudioFrameIndex index;
@@ -235,7 +238,7 @@ static void RenderLine(const float x0, const float y0, const float x1, const flo
 }
 
 static void RenderRingBuffer(const Vec2f pos, const Vec2f dim, LockFreeRingBuffer *buffer) {
-	RenderRectangle(pos.x, pos.y, pos.x + dim.w, pos.y + dim.h, (Vec4f) { 1, 0, 0, 1 }, 1.0f);
+	RenderRectangle(pos.x, pos.y, pos.x + dim.w, pos.y + dim.h, (Vec4f) { 1, 1, 1, 0.5f }, 1.0f);
 
 	uint64_t bufferLen = buffer->length;
 
@@ -268,7 +271,8 @@ static void RenderRingBuffer(const Vec2f pos, const Vec2f dim, LockFreeRingBuffe
 	RenderLine(tailPos, pos.y - dim.h * 0.5f, tailPos, pos.y + dim.h * 1.5f, V4fInit(0.0f, 1.0f, 0.0f, 1.0f), 2.0f);
 }
 
-static double GetSampleValue(const fplAudioFormatType format, const uint8_t *chunkSamples, const uint32_t frameIndex, const size_t frameSize) {
+// Slowest way of converting stero samples into a mono in range of -1.0 to 1.0
+static double GetMonoSample(const fplAudioFormatType format, const uint8_t *chunkSamples, const uint32_t frameIndex, const size_t frameSize) {
 	size_t offsetToFrame = frameIndex * frameSize;
 	double sampleValue;
 	switch(format) {
@@ -317,6 +321,8 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
+
+	// Window coordinate system
 	glOrtho(0.0f, w, h, 0.0f, 0.0f, 1.0f);
 
 	glMatrixMode(GL_MODELVIEW);
@@ -324,7 +330,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-#if 0
+#if 1
 	// Draw center cross
 	RenderLine(0.0f, h * 0.5f, w, h * 0.5f, V4fInit(1.0f, 1.0f, 1.0f, 0.25f), 1.0f);
 	RenderLine(w * 0.5f, 0, w * 0.5f, h, V4fInit(1.0f, 1.0f, 1.0f, 0.25f), 1.0f);
@@ -346,13 +352,28 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 
 	AudioVisualization *visualization = &demo->visualization;
 
-	Vec2f streamBufferDim = V2fInit(w * 0.9f, h * 0.1f);
-	Vec2f streamBufferPos = V2fInit((w - streamBufferDim.w) * 0.5f, h * 0.1f);
+	const float marginW = w * 0.05f;
+	const float marginH = h * 0.05f;
+	const float maxBufferW = w - marginW * 2.0f;
+	const float maxBufferH = h * 0.1f;
+	const float bufferBarH = maxBufferH * 0.9f;
+
+	const float spectrumWidth = w - marginW * 2.0f;
+	const float spectrumHeight = h - maxBufferH - marginH * 2.0f;
+
+	Vec2f streamBufferDim = V2fInit(maxBufferW, maxBufferH);
+	Vec2f streamBufferPos = V2fInit((w - streamBufferDim.w) * 0.5f, marginH);
+
+	Vec2f spectrumDim = V2fInit(spectrumWidth, spectrumHeight);
+	Vec2f spectrumPos = V2fInit((w - spectrumDim.w) * 0.5f, h - spectrumDim.h - marginH);
+
 	RenderRingBuffer(streamBufferPos, streamBufferDim, streamRingBuffer);
 
-	Vec2f spectrumDim = V2fInit(w * 0.9f, h * 0.6f);
-	Vec2f spectrumPos = V2fInit((w - spectrumDim.w) * 0.5f, h * 0.3f);
+
+#if 1
+	// Draw rectangle around spectrum
 	RenderRectangle(spectrumPos.x, spectrumPos.y, spectrumPos.x + spectrumDim.w, spectrumPos.y + spectrumDim.h, (Vec4f) { 1, 1, 1, 1 }, 1.0f);
+#endif
 
 	fplAudioFormatType format = demo->targetAudioFormat.type;
 	size_t sampleSize = fplGetAudioSampleSizeInBytes(format);
@@ -407,7 +428,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 		// Apply hanning window (Coefficients are precomputed)
 		for(uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
 			// Get avg sample in range of -1.0 to 1.0
-			double sampleValue = GetSampleValue(format, chunkSamples, frameIndex, frameSize);
+			double sampleValue = GetMonoSample(format, chunkSamples, frameIndex, frameSize);
 			double windowMultiplier = visualization->windowCoeffs[frameIndex];
 			double adjustedSampleValue = sampleValue * windowMultiplier;
 			double clampedSample = fplMax(-1.0, fplMin(adjustedSampleValue, 1.0));
@@ -518,7 +539,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 				float x2 = lineX + ((float)(frameIndex + 1) / (float)(frameCount - 1) * spectrumDim.w);
 				float y1 = lineY + ((float)(sampleValue1 + 1.0) * (spectrumDim.h / 2.0f));
 				float y2 = lineY + ((float)(sampleValue2 + 1.0) * (spectrumDim.h / 2.0f));
-				RenderLine(x1, y1, x2, y2, (Vec4f) { 1, 1, 1, 0.5f }, 2.0f);
+				RenderLine(x1, y1, x2, y2, (Vec4f) { 0.8f, 0.25f, 0.05f, 1.0f }, 4.0f);
 			}
 		}
 #endif
@@ -566,15 +587,14 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 			float spacing = 4.0f;
 			float totalSpacing = spacing * (halfFFT - 1);
 			float barMaxWidth = spectrumDim.w / (float)halfFFT;
-			float barMaxHeight = spectrumDim.h * 0.4f;
+			float barMaxHeight = spectrumDim.h;
 			float barWidth = (spectrumDim.w - totalSpacing) / (float)halfFFT;
 			float barBottom = spectrumPos.y + spectrumDim.h;
-
 			for(uint32_t frameIndex = 0; frameIndex < halfFFT; ++frameIndex) {
 				double scaledMagnitude = visualization->scaledMagnitudes[frameIndex];
 				float barX = spectrumPos.x + frameIndex * barWidth + frameIndex * spacing;
 				float barHeight = (float)scaledMagnitude * barMaxHeight;
-				RenderQuad(barX, barBottom, barX + barWidth, barBottom - barHeight, (Vec4f) { 1.0f, 0.0, 0.0f, 0.5f });
+				RenderQuad(barX, barBottom, barX + barWidth, barBottom - barHeight, (Vec4f) { 0.0f, 1.0, 0.1f, 0.25f });
 			}
 		}
 #endif
