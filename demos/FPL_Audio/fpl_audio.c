@@ -169,6 +169,7 @@ typedef struct AudioVisualization {
 	double currentMagnitudes[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
 	double lastMagnitudes[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
 	double scaledMagnitudes[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
+	double scaledSamples[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
 	double windowCoeffs[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
 	double spectrum[MAX_AUDIO_BIN_COUNT];
 	double bins[MAX_AUDIO_BIN_COUNT];
@@ -323,14 +324,14 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 	glLoadIdentity();
 
 	// Window coordinate system
-	glOrtho(0.0f, w, h, 0.0f, 0.0f, 1.0f);
+	glOrtho(0.0f, w, 0.0f, h, 0.0f, 1.0f);
 
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-#if 1
+#if 0
 	// Draw center cross
 	RenderLine(0.0f, h * 0.5f, w, h * 0.5f, V4fInit(1.0f, 1.0f, 1.0f, 0.25f), 1.0f);
 	RenderLine(w * 0.5f, 0, w * 0.5f, h, V4fInit(1.0f, 1.0f, 1.0f, 0.25f), 1.0f);
@@ -362,10 +363,10 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 	const float spectrumHeight = h - maxBufferH - marginH * 2.0f;
 
 	Vec2f streamBufferDim = V2fInit(maxBufferW, maxBufferH);
-	Vec2f streamBufferPos = V2fInit((w - streamBufferDim.w) * 0.5f, marginH);
+	Vec2f streamBufferPos = V2fInit((w - streamBufferDim.w) * 0.5f, h - marginH - streamBufferDim.h);
 
 	Vec2f spectrumDim = V2fInit(spectrumWidth, spectrumHeight);
-	Vec2f spectrumPos = V2fInit((w - spectrumDim.w) * 0.5f, h - spectrumDim.h - marginH);
+	Vec2f spectrumPos = V2fInit((w - spectrumDim.w) * 0.5f, marginH);
 
 	RenderRingBuffer(streamBufferPos, streamBufferDim, streamRingBuffer);
 
@@ -447,7 +448,39 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 			visualization->currentSamples[frameIndex] = newSample;
 		}
 
-		// Forward FFT
+		// Track min/max samples
+		double minSamples = visualization->currentSamples[0];
+		double maxSamples = visualization->currentSamples[0];
+		for(uint32_t frameIndex = 1; frameIndex < frameCount; ++frameIndex) {
+			double sample = visualization->currentSamples[frameIndex];
+			if(sample > maxSamples) {
+				maxSamples = sample;
+			}
+			if(sample < minSamples) {
+				minSamples = sample;
+			}
+		}
+
+		const bool sampleScaling = false;
+
+		if (!sampleScaling) {
+			// No sample scaling
+			double scaleSamplesFitFactor = 2.0f;
+			for (uint32_t frameIndex = 1; frameIndex < frameCount; ++frameIndex) {
+				visualization->scaledSamples[frameIndex] = visualization->currentSamples[frameIndex] * scaleSamplesFitFactor;
+			}
+		} else {
+			// Normalize samples to be in full range of -1.0 to 1.0, just for better visualization
+			double scaleSamplesFitFactor = 0.75f;
+			double rangeSample = maxSamples - minSamples;
+			for (uint32_t frameIndex = 1; frameIndex < frameCount; ++frameIndex) {
+				double sample = visualization->currentSamples[frameIndex];
+				double scaledSample = ((sample - minSamples) / rangeSample) * scaleSamplesFitFactor;
+				visualization->scaledSamples[frameIndex] = -1.0f + scaledSample * 2.0f;
+			}
+		}
+
+		// Forward FFT using raw samples
 		ForwardFFT(visualization->fftInput, frameCount, visualization->fftOutput);
 
 		const uint32_t halfFFT = frameCount / 2;
@@ -478,7 +511,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 			visualization->currentMagnitudes[frameIndex] = newMagnitude;
 		}
 
-		// Track min/max
+		// Track min/max magnitudes
 		double minMagnitude = visualization->currentMagnitudes[0];
 		double maxMagnitude = visualization->currentMagnitudes[0];
 		for(uint32_t frameIndex = 1; frameIndex < halfFFT; ++frameIndex) {
@@ -490,6 +523,8 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 				minMagnitude = magnitude;
 			}
 		}
+
+		
 
 		// Normalize the magnitudes into range of 0.0 to 1.0
 		const double rangeMagnitude = maxMagnitude - minMagnitude;
@@ -531,14 +566,15 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 		// Draw wave form
 		{
 			float lineX = spectrumPos.x;
-			float lineY = spectrumPos.y;
+			float lineY = spectrumPos.y + spectrumDim.h * 0.5f;
+			float maxWaveFormHeight = spectrumDim.h * 0.5f;
 			for(uint32_t frameIndex = 0; frameIndex < frameCount - 1; ++frameIndex) {
-				double sampleValue1 = visualization->currentSamples[frameIndex + 0];
-				double sampleValue2 = visualization->currentSamples[frameIndex + 1];
+				double sampleValue1 = visualization->scaledSamples[frameIndex + 0];
+				double sampleValue2 = visualization->scaledSamples[frameIndex + 1];
 				float x1 = lineX + ((float)(frameIndex + 0) / (float)(frameCount - 1) * spectrumDim.w);
 				float x2 = lineX + ((float)(frameIndex + 1) / (float)(frameCount - 1) * spectrumDim.w);
-				float y1 = lineY + ((float)(sampleValue1 + 1.0) * (spectrumDim.h / 2.0f));
-				float y2 = lineY + ((float)(sampleValue2 + 1.0) * (spectrumDim.h / 2.0f));
+				float y1 = lineY + ((float)sampleValue1 * maxWaveFormHeight * 0.5f);
+				float y2 = lineY + ((float)sampleValue2 * maxWaveFormHeight * 0.5f);
 				RenderLine(x1, y1, x2, y2, (Vec4f) { 0.8f, 0.25f, 0.05f, 1.0f }, 4.0f);
 			}
 		}
@@ -551,12 +587,19 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 			float totalSpacing = spacing * (frameCount - 1);
 			float barMaxWidth = spectrumDim.w / (float)frameCount;
 			float barWidth = (spectrumDim.w - totalSpacing) / (float)frameCount;
-			float barMaxHeight = spectrumDim.h * 0.5f;
-			for(uint32_t frameIndex = 0; frameIndex < frameCount - 1; ++frameIndex) {
-				double sampleValue = visualization->currentSamples[frameIndex];
+			float barMaxHeight = spectrumDim.h * 0.25f;
+			float barStartX = spectrumPos.x;
+			float barStartY = spectrumPos.y + spectrumDim.h - barMaxHeight;
+
+#if 1
+			RenderRectangle(barStartX, barStartY, barStartX + spectrumDim.w, barStartY + barMaxHeight, (Vec4f) { 1, 0, 1, 1 }, 1.0f);
+#endif
+
+			for(uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
+				double sampleValue = visualization->scaledSamples[frameIndex];
 				float barHeight = (float)sampleValue * barMaxHeight;
-				float barX = spectrumPos.x + frameIndex * barWidth + frameIndex * spacing;
-				float barY = spectrumPos.y + barMaxHeight * 0.25f;
+				float barX = barStartX + frameIndex * barWidth + frameIndex * spacing;
+				float barY = barStartY + barMaxHeight * 0.5f;
 				RenderQuad(barX, barY + barHeight * 0.5f, barX + barWidth, barY - barHeight * 0.5f, (Vec4f) { 1, 1, 0, 1 });
 			}
 		}
@@ -589,12 +632,13 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 			float barMaxWidth = spectrumDim.w / (float)halfFFT;
 			float barMaxHeight = spectrumDim.h;
 			float barWidth = (spectrumDim.w - totalSpacing) / (float)halfFFT;
-			float barBottom = spectrumPos.y + spectrumDim.h;
+			float barStartX = spectrumPos.x;
+			float barStartY = spectrumPos.y;
 			for(uint32_t frameIndex = 0; frameIndex < halfFFT; ++frameIndex) {
 				double scaledMagnitude = visualization->scaledMagnitudes[frameIndex];
-				float barX = spectrumPos.x + frameIndex * barWidth + frameIndex * spacing;
+				float barX = barStartX + frameIndex * barWidth + frameIndex * spacing;
 				float barHeight = (float)scaledMagnitude * barMaxHeight;
-				RenderQuad(barX, barBottom, barX + barWidth, barBottom - barHeight, (Vec4f) { 0.0f, 1.0, 0.1f, 0.25f });
+				RenderQuad(barX, barStartY, barX + barWidth, barStartY + barHeight, (Vec4f) { 0.0f, 1.0, 0.1f, 0.25f });
 			}
 		}
 #endif
