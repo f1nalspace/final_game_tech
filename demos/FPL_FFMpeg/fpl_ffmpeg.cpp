@@ -2104,7 +2104,7 @@ static bool InitApp(AppState &state) {
 	// Font Info
 	uint32_t firstChar = ' ';
 	uint32_t charCount = '~' - firstChar;
-	if (!LoadFontInfo(ptr_fontSulphurPointRegular, sizeOf_fontSulphurPointRegular, 1024, 1024, firstChar, charCount, 40.0f, &state.fontInfo)) {
+	if (!LoadFontInfo(ptr_fontSulphurPointRegular, sizeOf_fontSulphurPointRegular, 1024, 1024, firstChar, charCount, 32.0f, &state.fontInfo)) {
 		ReleaseApp(state, state.mainThreadId);
 		return(false);
 	}
