@@ -4328,12 +4328,11 @@ static void LoadMediaThreadProc(const fplThreadHandle *thread, void *userData) {
 int main(int argc, char **argv) {
 	int result = 0;
 
-	/*if (argc < 2) {
-		FPL_LOG_CRITICAL("App", "Media file argument missing!");
-		return -1;
-	}*/
-
 	const char *mediaURL = argc == 2 ? argv[1] : nullptr;
+
+	if (fplGetStringLength(mediaURL) == 0) {
+		mediaURL = TEST_VIDEO_URL;
+	}
 
 	fplSettings settings = fplMakeDefaultSettings();
 
