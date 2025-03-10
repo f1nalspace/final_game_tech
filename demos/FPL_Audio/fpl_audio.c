@@ -23,6 +23,7 @@ Todo:
 Changelog:
 	## 2025-03-09
 	- Improved visualization a lot
+	- Detect default audio device properly
 
 	## 2025-03-08
 	- Fixed crash when no audio track was loaded
@@ -1168,30 +1169,32 @@ int main(int argc, char **args) {
 	//
 	// Find audio device
 	//
-	if(!fplPlatformInit(fplInitFlags_Audio, &settings)) {
-		goto done;
-	}
+	if(fplPlatformInit(fplInitFlags_Audio, &settings)) {
+		// Get number of audio devices
+		uint32_t deviceCount = fplGetAudioDevices(0, 0, fpl_null);
 
-	// Get number of audio devices
-	uint32_t deviceCount = fplGetAudioDevices(0, 0, fpl_null);
-
-	// Allocate memory for audio devices and fill it
-	fplAudioDeviceInfo *audioDeviceInfos = fplMemoryAllocate(sizeof(fplAudioDeviceInfo) * deviceCount);
-	uint32_t loadedDeviceCount = fplGetAudioDevices(deviceCount, 0, audioDeviceInfos);
-	fplAssert(loadedDeviceCount == deviceCount);
-	// Use first audio device
-	if(loadedDeviceCount > 0) {
-		for(uint32_t deviceIndex = 0; deviceIndex < loadedDeviceCount; ++deviceIndex) {
-			fplAudioDeviceInfo *audioDeviceInfo = audioDeviceInfos + deviceIndex;
-			fplDebugFormatOut("AudioDevice[%lu] %s\n", deviceIndex, audioDeviceInfo->name);
+		// Allocate memory for audio devices and fill it
+		fplAudioDeviceInfo *audioDeviceInfos = fplMemoryAllocate(sizeof(fplAudioDeviceInfo) * deviceCount);
+		uint32_t loadedDeviceCount = fplGetAudioDevices(deviceCount, 0, audioDeviceInfos);
+		fplAssert(loadedDeviceCount == deviceCount);
+		// Use first audio device
+		if(loadedDeviceCount > 0) {
+			const fplAudioDeviceInfo *defaultDeviceInfo = fpl_null;
+			for(uint32_t deviceIndex = 0; deviceIndex < loadedDeviceCount; ++deviceIndex) {
+				fplAudioDeviceInfo *audioDeviceInfo = audioDeviceInfos + deviceIndex;
+				if (audioDeviceInfo->isDefault) {
+					fplDebugFormatOut("Found default audio device[%lu] %s\n", deviceIndex, audioDeviceInfo->name);
+				}
+			}
+			if (defaultDeviceInfo != fpl_null)
+				settings.audio.targetDevice = *defaultDeviceInfo;
 		}
-		settings.audio.targetDevice = audioDeviceInfos[0];
+		fplMemoryFree(audioDeviceInfos);
+		fplPlatformRelease();
 	}
-	fplMemoryFree(audioDeviceInfos);
-	fplPlatformRelease();
 
 	// Initialize the platform with audio enabled and the settings
-	if(!fplPlatformInit(fplInitFlags_All, &settings)) {
+	if(!fplPlatformInit(fplInitFlags_Video | fplInitFlags_Audio, &settings)) {
 		goto done;
 	}
 
