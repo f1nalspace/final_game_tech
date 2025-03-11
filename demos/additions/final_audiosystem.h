@@ -138,6 +138,7 @@ extern void AudioSystemSetMasterVolume(AudioSystem *audioSys, const float newMas
 
 extern AudioSource *AudioSystemAllocateSource(AudioSystem *audioSys, const AudioChannelIndex channels, const AudioHertz sampleRate, const fplAudioFormatType type, const AudioFrameIndex frameCount);
 extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const char *filePath);
+extern AudioSource *AudioSystemLoadDataSource(AudioSystem *audioSys, const size_t dataSize, const uint8_t *data);
 
 extern bool AudioSystemAddSource(AudioSystem *audioSys, AudioSource *source);
 
@@ -317,61 +318,144 @@ extern AudioSource *AudioSystemAllocateSource(AudioSystem *audioSys, const Audio
 	return(result);
 }
 
-static AudioFileFormat PropeAudioFileFormat(const char *filePath) {
-	AudioFileFormat result = AudioFileFormat_None;
-	if(filePath != fpl_null) {
-		fplFileHandle file;
-		if(fplFileOpenBinary(filePath, &file)) {
-			size_t fileSize = fplFileGetSizeFromHandle32(&file);
-
-			size_t initialBufferSize = fplMin(MAX_AUDIO_PROBE_BYTES_COUNT, fileSize);
-			uint8_t *probeBuffer = (uint8_t *)fplMemoryAllocate(initialBufferSize);
-
-			size_t currentBufferSize = initialBufferSize;
-			bool requiresMoreData;
-			do {
-				requiresMoreData = false;
-				fplFileSetPosition32(&file, 0, fplFilePositionMode_Beginning);
-				if(fplFileReadBlock32(&file, (uint32_t)currentBufferSize, probeBuffer, (uint32_t)currentBufferSize) == currentBufferSize) {
-					if(TestWaveHeader(probeBuffer, currentBufferSize)) {
-						result = AudioFileFormat_Wave;
-						break;
-					}
-					if(TestVorbisHeader(probeBuffer, currentBufferSize)) {
-						result = AudioFileFormat_Vorbis;
-						break;
-					}
-
-					size_t mp3NewSize = 0;
-					MP3HeaderTestStatus mp3Status = TestMP3Header(probeBuffer, currentBufferSize, &mp3NewSize);
-					if(mp3Status == MP3HeaderTestStatus_Success) {
-						result = AudioFileFormat_MP3;
-						break;
-					} else if(mp3Status == MP3HeaderTestStatus_RequireMoreData) {
-						if(mp3NewSize > 0 && mp3NewSize <= fileSize) {
-							fplMemoryFree(probeBuffer);
-							currentBufferSize = mp3NewSize;
-							probeBuffer = (uint8_t *)fplMemoryAllocate(currentBufferSize);
-							requiresMoreData = true;
-						}
-					}
-				}
-			} while(requiresMoreData);
-
-
-
-			fplMemoryFree(probeBuffer);
-			fplFileClose(&file);
-		}
+static AudioFileFormat PropeAudioFileFormat(AudioSystemStream *stream) {
+	if (stream == fpl_null || stream->size == 0) {
+		return AudioFileFormat_None;
 	}
+
+	fplAssert(stream->read != fpl_null);
+	fplAssert(stream->seek != fpl_null);
+
+	size_t streamSize = stream->size;
+
+	AudioFileFormat result = AudioFileFormat_None;
+
+	size_t initialBufferSize = fplMin(MAX_AUDIO_PROBE_BYTES_COUNT, streamSize);
+	uint8_t *probeBuffer = (uint8_t *)fplMemoryAllocate(initialBufferSize);
+
+	size_t currentBufferSize = initialBufferSize;
+	bool requiresMoreData;
+	do {
+		requiresMoreData = false;
+		stream->seek(stream, 0);
+		if(stream->read(stream, currentBufferSize, probeBuffer, currentBufferSize) == currentBufferSize) {
+			if(TestWaveHeader(probeBuffer, currentBufferSize)) {
+				result = AudioFileFormat_Wave;
+				break;
+			}
+			if(TestVorbisHeader(probeBuffer, currentBufferSize)) {
+				result = AudioFileFormat_Vorbis;
+				break;
+			}
+
+			size_t mp3NewSize = 0;
+			MP3HeaderTestStatus mp3Status = TestMP3Header(probeBuffer, currentBufferSize, &mp3NewSize);
+			if(mp3Status == MP3HeaderTestStatus_Success) {
+				result = AudioFileFormat_MP3;
+				break;
+			} else if(mp3Status == MP3HeaderTestStatus_RequireMoreData) {
+				if(mp3NewSize > 0 && mp3NewSize <= streamSize) {
+					fplMemoryFree(probeBuffer);
+					currentBufferSize = mp3NewSize;
+					probeBuffer = (uint8_t *)fplMemoryAllocate(currentBufferSize);
+					requiresMoreData = true;
+				}
+			}
+		}
+	} while(requiresMoreData);
+
+	fplMemoryFree(probeBuffer);
+
 	return(result);
 }
 
-extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const char *filePath) {
-	AudioFileFormat fileFormat = PropeAudioFileFormat(filePath);
+static AudioSource *CreateAudioSourceFromPCM(AudioSystem *audioSys, const PCMWaveData *pcm, const AudioSourceType type) {
+	fplAssert(audioSys != fpl_null && pcm != fpl_null);
+
+	// Allocate one memory block for source struct, some padding and the sample data
+	AudioSource *source = AudioSystemAllocateSource(audioSys, pcm->channelCount, pcm->samplesPerSecond, pcm->formatType, pcm->frameCount);
+	if(source == fpl_null) {
+		return fpl_null;
+	}
+
+	source->type = type;
+
+	// Copy samples to source
+	fplAssert(source->buffer.bufferSize >= pcm->samplesSize);
+	fplMemoryCopy(pcm->isamples, pcm->samplesSize, source->buffer.samples);
+
+	return(source);
+}
+
+extern AudioSource *AudioSystemLoadDataSource(AudioSystem *audioSys, const size_t dataSize, const uint8_t *data) {
+	if (audioSys == fpl_null || dataSize == 0 || data == fpl_null) {
+		return fpl_null;
+	}
+
+	AudioSystemStream stream = AudioStreamCreateFromData(dataSize, data);
+
+	AudioFileFormat fileFormat = PropeAudioFileFormat(&stream);
 	if(fileFormat == AudioFileFormat_None) {
 		return fpl_null;
 	}
+
+	PCMWaveData loadedData = fplZeroInit;
+	switch(fileFormat) {
+		case AudioFileFormat_Wave:
+		{
+			if(!LoadWaveFromBuffer(data, dataSize, &loadedData)) {
+				return fpl_null;
+			}
+		} break;
+
+		case AudioFileFormat_Vorbis:
+		{
+			if(!LoadVorbisFromBuffer(data, dataSize, &loadedData)) {
+				return fpl_null;
+			}
+		} break;
+
+		case AudioFileFormat_MP3:
+		{
+			if(!LoadMP3FromBuffer(data, dataSize, &loadedData)) {
+				return fpl_null;
+			}
+		} break;
+
+		default:
+			return fpl_null;
+	}
+
+	AudioSource *source = CreateAudioSourceFromPCM(audioSys, &loadedData, AudioSourceType_File);
+	FreeWave(&loadedData);
+	return(source);
+}
+
+extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const char *filePath) {
+	if (audioSys == fpl_null || fplGetStringLength(filePath) == 0) {
+		return fpl_null;
+	}
+
+	fplFileHandle file;
+	if (!fplFileOpenBinary(filePath, &file)) {
+		return fpl_null;
+	}
+
+	size_t fileSize = fplFileGetSizeFromHandle32(&file);
+	if (fileSize == 0) {
+		fplFileClose(&file);
+		return fpl_null;
+	}
+
+	AudioSystemStream stream = AudioStreamCreateFromFileHandle(&file, fileSize);
+
+	AudioFileFormat fileFormat = PropeAudioFileFormat(&stream);
+	if(fileFormat == AudioFileFormat_None) {
+		fplFileClose(&file);
+		return fpl_null;
+	}
+
+	fplFileClose(&file);
 
 	PCMWaveData loadedData = fplZeroInit;
 	switch(fileFormat) {
@@ -397,25 +481,11 @@ extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const char 
 		} break;
 
 		default:
-			// Unsupported file format
 			return fpl_null;
-			break;
 	}
 
-	// Allocate one memory block for source struct, some padding and the sample data
-	AudioSource *source = AudioSystemAllocateSource(audioSys, loadedData.channelCount, loadedData.samplesPerSecond, loadedData.formatType, loadedData.frameCount);
-	if(source == fpl_null) {
-		return fpl_null;
-	}
-
-	source->type = AudioSourceType_File;
-
-	// Copy samples to source
-	fplAssert(source->buffer.bufferSize >= loadedData.samplesSize);
-	fplMemoryCopy(loadedData.isamples, loadedData.samplesSize, source->buffer.samples);
-
+	AudioSource *source = CreateAudioSourceFromPCM(audioSys, &loadedData, AudioSourceType_File);
 	FreeWave(&loadedData);
-
 	return(source);
 }
 
