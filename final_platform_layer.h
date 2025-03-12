@@ -2556,13 +2556,13 @@ typedef enum fplX86InstructionSetLevel {
 #	elif defined(FPL_COMPILER_ARM)
 #		define fpl__m_DebugBreak() __breakpoint(42)
 #	elif defined(FPL_ARCH_X86) || defined(FPL_ARCH_X64)
-fpl_internal fpl_force_inline void fpl__m_DebugBreak() { __asm__ __volatile__("int $03"); }
+fpl_internal fpl_force_inline void fpl__m_DebugBreak(void) { __asm__ __volatile__("int $03"); }
 #	elif defined(__thumb__)
-fpl_internal fpl_force_inline void fpl__m_DebugBreak() { __asm__ __volatile__(".inst 0xde01"); }
+fpl_internal fpl_force_inline void fpl__m_DebugBreak(void) { __asm__ __volatile__(".inst 0xde01"); }
 #	elif defined(FPL_ARCH_ARM64)
-fpl_internal fpl_force_inline void fpl__m_DebugBreak() { __asm__ __volatile__(".inst 0xd4200000"); }
+fpl_internal fpl_force_inline void fpl__m_DebugBreak(void) { __asm__ __volatile__(".inst 0xd4200000"); }
 #	elif defined(FPL_ARCH_ARM32)
-fpl_internal fpl_force_inline void fpl__m_DebugBreak() { __asm__ __volatile__(".inst 0xe7f001f0"); }
+fpl_internal fpl_force_inline void fpl__m_DebugBreak(void) { __asm__ __volatile__(".inst 0xe7f001f0"); }
 #	elif defined(FPL_COMPILER_GCC)
 #		define fpl__m_DebugBreak() __builtin_trap()
 #	else
@@ -3236,19 +3236,19 @@ typedef int fpl__LinuxSignalHandle;
 * @note This will complete previous reads before future reads and prevents the compiler from reordering memory reads across this fence.
 * @see @ref section_category_threading_atomics_barriers
 */
-fpl_platform_api void fplAtomicReadFence();
+fpl_platform_api void fplAtomicReadFence(void);
 /**
 * @brief Inserts a memory write fence/barrier.
 * @note This will complete previous writes before future writes and prevents the compiler from reordering memory writes across this fence.
 * @see @ref section_category_threading_atomics_barriers
 */
-fpl_platform_api void fplAtomicWriteFence();
+fpl_platform_api void fplAtomicWriteFence(void);
 /**
 * @brief Inserts a memory read and write fence/barrier.
 * @note This will complete previous reads and writes before future reads and writes and prevents the compiler from reordering memory access across this fence.
 * @see @ref section_category_threading_atomics_barriers
 */
-fpl_platform_api void fplAtomicReadWriteFence();
+fpl_platform_api void fplAtomicReadWriteFence(void);
 
 //
 // Exchange
@@ -4087,14 +4087,14 @@ fpl_common_api bool fplCPUID(const uint32_t functionId, fplCPUIDLeaf *outLeaf);
 * @return Returns the extended control register on x86 or zero for non-x86 architectures (uint64_t).
 * @warning This function works on X86 architectures only.
 */
-fpl_common_api uint64_t fplCPUXCR0();
+fpl_common_api uint64_t fplCPUXCR0(void);
 
 /**
 * @brief Reads the current time stamp counter (RDTSC).
 * @return Returns the number of cycles since the system start or zero for non-x86 architectures (uint64_t).
 * @warning This function works on X86 architectures only.
 */
-fpl_common_api uint64_t fplCPURDTSC();
+fpl_common_api uint64_t fplCPURDTSC(void);
 
 /**
 * @brief Gets the string representation of the given architecture type.
@@ -4109,7 +4109,7 @@ fpl_common_api const char *fplCPUGetArchName(const fplCPUArchType type);
 * @return Returns the total number of processor cores (size_t).
 * @see @ref section_category_hardware_corecount
 */
-fpl_platform_api size_t fplCPUGetCoreCount();
+fpl_platform_api size_t fplCPUGetCoreCount(void);
 
 /**
 * @brief Retrieves the name of the processor.
@@ -4133,7 +4133,7 @@ fpl_common_api bool fplCPUGetCapabilities(fplCPUCapabilities *outCaps);
 * @return Returns the processor architecture type (fplCPUArchType).
 * @see @ref section_category_hardware_cpuarch
 */
-fpl_platform_api fplCPUArchType fplCPUGetArchitecture();
+fpl_platform_api fplCPUArchType fplCPUGetArchitecture(void);
 
 /** @} */
 
@@ -5057,14 +5057,14 @@ fpl_common_api void fplSetDefaultSettings(fplSettings *settings);
 * @return Returns a defaulted @ref fplSettings structure.
 * @see @ref section_category_initialization_tips
 */
-fpl_common_api fplSettings fplMakeDefaultSettings();
+fpl_common_api fplSettings fplMakeDefaultSettings(void);
 
 /**
 * @brief Gets the current settings.
 * @return Returns a reference to the @ref fplSettings structure.
 * @see @ref section_category_initialization_tips
 */
-fpl_common_api const fplSettings *fplGetCurrentSettings();
+fpl_common_api const fplSettings *fplGetCurrentSettings(void);
 
 /** @} */
 
@@ -5081,7 +5081,7 @@ fpl_common_api const fplSettings *fplGetCurrentSettings();
 * @return Returns the @ref fplPlatformType.
 * @see @ref section_category_platform_type
 */
-fpl_common_api fplPlatformType fplGetPlatformType();
+fpl_common_api fplPlatformType fplGetPlatformType(void);
 
 /**
 * @brief Gets the string representation of the given platform type.
@@ -5106,20 +5106,20 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 * @return Returns the result type as @ref fplPlatformResultType.
 * @see @ref section_category_errorhandling_getplatformresult
 */
-fpl_common_api fplPlatformResultType fplGetPlatformResult();
+fpl_common_api fplPlatformResultType fplGetPlatformResult(void);
 
 /**
 * @brief Releases the resources allocated by the platform layer.
 * @note Can only be called when @ref fplPlatformInit() was successful.
 * @see @ref section_category_initialization_release
 */
-fpl_common_api void fplPlatformRelease();
+fpl_common_api void fplPlatformRelease(void);
 
 /**
 * @brief Gets a value indicating whether the platform is initialized.
 * @return Returns true if the platform is initialized, false otherwise (bool).
 */
-fpl_common_api bool fplIsPlatformInitialized();
+fpl_common_api bool fplIsPlatformInitialized(void);
 
 /** @} */
 
@@ -5269,7 +5269,7 @@ fpl_common_api void fplSetLogSettings(const fplLogSettings *params);
 * @note This function can be called regardless of the initialization state!
 * @see @ref section_category_logging_logging
 */
-fpl_common_api const fplLogSettings *fplGetLogSettings();
+fpl_common_api const fplLogSettings *fplGetLogSettings(void);
 
 /**
 * @brief Changes the current maximum log level to the given value.
@@ -5285,7 +5285,7 @@ fpl_common_api void fplSetMaxLogLevel(const fplLogLevel maxLevel);
 * @note This function can be called regardless of the initialization state!
 * @see @ref section_category_logging_logging
 */
-fpl_common_api fplLogLevel fplGetMaxLogLevel();
+fpl_common_api fplLogLevel fplGetMaxLogLevel(void);
 
 #endif // FPL__ENABLE_LOGGING
 
@@ -5305,7 +5305,7 @@ fpl_common_api fplLogLevel fplGetMaxLogLevel();
 * @note This function can be called regardless of the initialization state!
 * @see @ref section_category_errorhandling_getlatest
 */
-fpl_common_api const char *fplGetLastError();
+fpl_common_api const char *fplGetLastError(void);
 
 /**
 * @brief Gets the last error string from the given index.
@@ -5322,14 +5322,14 @@ fpl_common_api const char *fplGetErrorByIndex(const size_t index);
 * @note This function can be called regardless of the initialization state!
 * @see @ref section_category_errorhandling_count
 */
-fpl_common_api size_t fplGetErrorCount();
+fpl_common_api size_t fplGetErrorCount(void);
 
 /**
 * @brief Clears all the current errors in the platform.
 * @note This function can be called regardless of the initialization state!
 * @see @ref section_category_errorhandling_clear
 */
-fpl_common_api void fplErrorsClear();
+fpl_common_api void fplErrorsClear(void);
 
 /** @} */
 
@@ -5446,7 +5446,7 @@ fpl_platform_api void fplConsoleError(const char *text);
 * @note This is most likely just a wrapper call to getchar().
 * @return Returns the character typed in the console input (char).
 */
-fpl_platform_api char fplConsoleWaitForCharInput();
+fpl_platform_api char fplConsoleWaitForCharInput(void);
 
 /**
 * @brief Writes the given formatted text to the standard output console buffer.
@@ -5529,13 +5529,13 @@ typedef uint64_t fplMilliseconds;
 * @return Returns the resulting @ref fplTimestamp.
 * @note Use @ref fplTimestampElapsed() to get the elapsed time.
 */
-fpl_platform_api fplTimestamp fplTimestampQuery();
+fpl_platform_api fplTimestamp fplTimestampQuery(void);
 
 /**
 * @brief Gets the current system clock in milliseconds, since some fixed starting point (OS start, System start, etc.), used for time delta measurements only.
 * @return Returns the number of milliseconds as @ref fplMilliseconds.
 */
-fpl_platform_api fplMilliseconds fplMillisecondsQuery();
+fpl_platform_api fplMilliseconds fplMillisecondsQuery(void);
 
 /**
 * @brief Gets the delta value from two @ref fplTimestamp values in seconds.
@@ -5805,25 +5805,25 @@ fpl_common_api fplThreadState fplGetThreadState(fplThreadHandle *thread);
 * @brief Gets the thread handle for the main thread.
 * @return Returns the immutable pointer to the thread handle.
 */
-fpl_common_api const fplThreadHandle *fplGetMainThread();
+fpl_common_api const fplThreadHandle *fplGetMainThread(void);
 
 /**
 * @brief Gets the number of available threads.
 * @return Returns the number of available threads.
 */
-fpl_common_api size_t GetAvailableThreadCount();
+fpl_common_api size_t GetAvailableThreadCount(void);
 
 /**
 * @brief Gets the number of used/active threads.
 * @return Returns the number of used/active threads.
 */
-fpl_common_api size_t GetUsedThreadCount();
+fpl_common_api size_t GetUsedThreadCount(void);
 
 /**
 * @brief Gets the thread id for the current thread.
 * @return Returns the thread id for the current thread.
 */
-fpl_platform_api uint32_t fplGetCurrentThreadId();
+fpl_platform_api uint32_t fplGetCurrentThreadId(void);
 
 /**
 * @brief Creates and starts a thread and returns the handle to it.
@@ -5871,7 +5871,7 @@ fpl_platform_api void fplThreadSleep(const uint32_t milliseconds);
 * @brief Lets the current thread yield execution to another thread that is ready to run on this core.
 * @return Returns true when the function succeeds, false otherwise.
 */
-fpl_platform_api bool fplThreadYield();
+fpl_platform_api bool fplThreadYield(void);
 
 /**
 * @brief Forces the given thread to stop and release all underlying resources.
@@ -7570,7 +7570,7 @@ fpl_platform_api bool fplPollEvent(fplEvent *ev);
 * @warning Don't use this function if you want to handle the events. Use @ref fplPollEvent() instead!
 * @see @ref section_category_window_events_process
 */
-fpl_platform_api void fplPollEvents();
+fpl_platform_api void fplPollEvents(void);
 
 /** @} */
 
@@ -7701,18 +7701,18 @@ typedef enum fplWindowVisibilityState {
 * @brief Gets the window running state as a boolean.
 * @return Returns true when the window is running, false otherwise.
 */
-fpl_platform_api bool fplIsWindowRunning();
+fpl_platform_api bool fplIsWindowRunning(void);
 
 /**
 * @brief Closes the window and stops the event loop.
 */
-fpl_platform_api void fplWindowShutdown();
+fpl_platform_api void fplWindowShutdown(void);
 
 /**
 * @brief Clears the internal event queue and updates input devices if needed.
 * @return Returns true when the window is still active, false otherwise.
 */
-fpl_platform_api bool fplWindowUpdate();
+fpl_platform_api bool fplWindowUpdate(void);
 
 /**
 * @brief Enables or disables the window cursor.
@@ -7738,7 +7738,7 @@ fpl_platform_api void fplSetWindowSize(const uint32_t width, const uint32_t heig
 * @brief Gets the window resizable state as boolean.
 * @return Returns true when the window is resizable, false otherwise.
 */
-fpl_platform_api bool fplIsWindowResizable();
+fpl_platform_api bool fplIsWindowResizable(void);
 
 /**
 * @brief Enables or disables the ability to resize the window.
@@ -7750,7 +7750,7 @@ fpl_platform_api void fplSetWindowResizeable(const bool value);
 * @brief Gets the window decorated state as boolean.
 * @return Returns true when the window is decorated, false otherwise.
 */
-fpl_platform_api bool fplIsWindowDecorated();
+fpl_platform_api bool fplIsWindowDecorated(void);
 
 /**
 * @brief Enables or disables the window decoration (Titlebar, Border, etc.).
@@ -7762,7 +7762,7 @@ fpl_platform_api void fplSetWindowDecorated(const bool value);
 * @brief Gets the window floating state as boolean.
 * @return Returns true when the window is floating, false otherwise.
 */
-fpl_platform_api bool fplIsWindowFloating();
+fpl_platform_api bool fplIsWindowFloating(void);
 
 /**
 * @brief Enables or disables the window floating (Top-most).
@@ -7798,20 +7798,20 @@ fpl_platform_api bool fplSetWindowFullscreenRect(const bool value, const int32_t
 * @return Returns true when the window was changed to fullscreen, false otherwise.
 * @attention This will not alter the display resolution or the refresh rate.
 */
-fpl_platform_api bool fplEnableWindowFullscreen();
+fpl_platform_api bool fplEnableWindowFullscreen(void);
 
 /**
 * @brief Switches the window back to window mode.
 * @return Returns true when the window was changed to window mode, false otherwise.
 * @attention This will not alter the display resolution or the refresh rate.
 */
-fpl_platform_api bool fplDisableWindowFullscreen();
+fpl_platform_api bool fplDisableWindowFullscreen(void);
 
 /**
 * @brief Gets the window fullscreen state as boolean.
 * @return Returns true when the window is in fullscreen mode, false otherwise.
 */
-fpl_platform_api bool fplIsWindowFullscreen();
+fpl_platform_api bool fplIsWindowFullscreen(void);
 
 /**
 * @brief Retrieves the absolute window position.
@@ -7845,7 +7845,7 @@ fpl_common_api char *fplGetWindowTitle(char *outTitle, const size_t maxOutTitleL
 * @brief Gets the current window state.
 * @return Returns the current window state.
 */
-fpl_platform_api fplWindowState fplGetWindowState();
+fpl_platform_api fplWindowState fplGetWindowState(void);
 
 /**
 * @brief Changes the current window state.
@@ -7907,7 +7907,7 @@ typedef struct fplDisplayMode {
 * @brief Gets the number of active displays.
 * @return Returns the number of active displays.
 */
-fpl_platform_api size_t fplGetDisplayCount();
+fpl_platform_api size_t fplGetDisplayCount(void);
 
 /**
 * @brief Gets information about all active displays.
@@ -8152,7 +8152,7 @@ typedef union fplVideoRequirements {
 * @brief Gets the current video backend.
 * @return Returns the current video backend type.
 */
-fpl_common_api fplVideoBackendType fplGetVideoBackendType();
+fpl_common_api fplVideoBackendType fplGetVideoBackendType(void);
 
 /**
 * @brief Gets a string that represents the given video backend.
@@ -8166,7 +8166,7 @@ fpl_common_api const char *fplGetVideoBackendName(fplVideoBackendType backendTyp
 * @return Returns the pointer to the current video backbuffer.
 * @warning Do not release this memory by any means, otherwise you will corrupt heap memory!
 */
-fpl_common_api fplVideoBackBuffer *fplGetVideoBackBuffer();
+fpl_common_api fplVideoBackBuffer *fplGetVideoBackBuffer(void);
 
 /**
 * @brief Resizes the current video backbuffer.
@@ -8179,7 +8179,7 @@ fpl_common_api bool fplResizeVideoBackBuffer(const uint32_t width, const uint32_
 /**
 * @brief Forces the window to be redrawn or to swap the back/front buffer.
 */
-fpl_common_api void fplVideoFlip();
+fpl_common_api void fplVideoFlip(void);
 
 /**
 * @brief Gets the procedure by the specified name from the active video backend.
@@ -8192,7 +8192,7 @@ fpl_common_api const void *fplGetVideoProcedure(const char *procName);
 * @brief Gets the current video surface that stores all handles used for the active video backend.
 * @return The resulting video surface reference.
 */
-fpl_common_api const fplVideoSurface *fplGetVideoSurface();
+fpl_common_api const fplVideoSurface *fplGetVideoSurface(void);
 
 /**
 * @brief Gets the video requirements for the specified video backend.
@@ -8276,19 +8276,19 @@ typedef enum fplAudioResultType {
 * @brief Gets the current audio backend type.
 * @return Returns the current audio backend type.
 */
-fpl_common_api fplAudioBackendType fplGetAudioBackendType();
+fpl_common_api fplAudioBackendType fplGetAudioBackendType(void);
 
 /**
 * @brief Start playing asynchronous audio.
 * @return Returns the audio result.
 */
-fpl_common_api fplAudioResultType fplPlayAudio();
+fpl_common_api fplAudioResultType fplPlayAudio(void);
 
 /**
 * @brief Stop playing asynchronous audio.
 * @return Returns the audio result.
 */
-fpl_common_api fplAudioResultType fplStopAudio();
+fpl_common_api fplAudioResultType fplStopAudio(void);
 
 /**
 * @brief Re/Initializes the audio system with the specified audio settings.
@@ -8301,7 +8301,7 @@ fpl_common_api fplAudioResultType fplAudioInit(fplAudioSettings *audioSettings);
 * @brief Unloads/Releases the audio system.
 * @return Returns a boolean indicating whether the audio system was unloaded or not.
 */
-fpl_common_api bool fplAudioRelease();
+fpl_common_api bool fplAudioRelease(void);
 
 /**
 * @brief Retrieves the native audio format for the current audio device.
@@ -8321,7 +8321,7 @@ fpl_common_api bool fplGetAudioHardwareDevice(fplAudioDeviceInfo *outDevice);
 * @brief Retrieves the audio device name for the current audio device.
 * @return Returns the name of the audio device when an audio hardware device was active, null otherwise.
 */
-fpl_common_api const char *fplGetAudioHardwareDeviceName();
+fpl_common_api const char *fplGetAudioHardwareDeviceName(void);
 
 /**
 * @brief Gets the audio channels mapping table.
@@ -10537,7 +10537,7 @@ fpl_internal fplKey fpl__GetMappedKey(const fpl__PlatformWindowState *windowStat
 	return(result);
 }
 
-fpl_internal void fpl__ClearInternalEvents() {
+fpl_internal void fpl__ClearInternalEvents(void) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	fplAssert(appState != fpl_null);
 	fpl__EventQueue *eventQueue = &appState->window.eventQueue;
@@ -10943,7 +10943,7 @@ typedef struct fpl__ThreadState {
 
 fpl_globalvar fpl__ThreadState fpl__global__ThreadState = fplZeroInit;
 
-fpl_internal fplThreadHandle *fpl__GetFreeThread() {
+fpl_internal fplThreadHandle *fpl__GetFreeThread(void) {
 	fplThreadHandle *result = fpl_null;
 	for (uint32_t index = 0; index < FPL_MAX_THREAD_COUNT; ++index) {
 		fplThreadHandle *thread = fpl__global__ThreadState.threads + index;
@@ -11566,7 +11566,7 @@ fpl_common_api bool fplCPUID(const uint32_t functionId, fplCPUIDLeaf *outLeaf) {
 	return false;
 }
 
-fpl_common_api uint64_t fplCPUXCR0() {
+fpl_common_api uint64_t fplCPUXCR0(void) {
 #if defined(fpl__m_GetXCR0)
 	uint64_t result = fpl__m_GetXCR0();
 	return(result);
@@ -11575,7 +11575,7 @@ fpl_common_api uint64_t fplCPUXCR0() {
 #endif
 }
 
-fpl_common_api uint64_t fplCPURDTSC() {
+fpl_common_api uint64_t fplCPURDTSC(void) {
 #if defined(fpl__m_RDTSC)
 	uint64_t result = fpl__m_RDTSC();
 	return(result);
@@ -11687,7 +11687,7 @@ fpl_common_api size_t fplCPUGetName(char *destBuffer, const size_t maxDestBuffer
 }
 #else
 
-fpl_common_api uint64_t fplCPURDTSC() {
+fpl_common_api uint64_t fplCPURDTSC(void) {
 	// Based on: https://github.com/google/benchmark/blob/v1.1.0/src/cycleclock.h
 #if defined(FPL_ARCH_ARM64)
 	int64_t virtual_timer_value;
@@ -11715,7 +11715,7 @@ fpl_common_api uint64_t fplCPURDTSC() {
 	return (uint64_t)tv.tv_sec * 1000000ULL + (uint64_t)tv.tv_usec;
 }
 
-fpl_common_api uint64_t fplCPUXCR0() {
+fpl_common_api uint64_t fplCPUXCR0(void) {
 	// Not supported on non-x86 platforms
 	return(0);
 }
@@ -11935,12 +11935,12 @@ fpl_common_api fplThreadState fplGetThreadState(fplThreadHandle *thread) {
 	return(result);
 }
 
-fpl_common_api const fplThreadHandle *fplGetMainThread() {
+fpl_common_api const fplThreadHandle *fplGetMainThread(void) {
 	const fplThreadHandle *result = &fpl__global__ThreadState.mainThread;
 	return(result);
 }
 
-fpl_common_api size_t GetAvailableThreadCount() {
+fpl_common_api size_t GetAvailableThreadCount(void) {
 	size_t result = 0;
 	for (size_t threadIndex = 0; threadIndex < FPL_MAX_THREAD_COUNT; ++threadIndex) {
 		fplThreadState state = (fplThreadState)fplAtomicLoadU32((volatile uint32_t *)&fpl__global__ThreadState.threads[threadIndex].currentState);
@@ -11951,7 +11951,7 @@ fpl_common_api size_t GetAvailableThreadCount() {
 	return(result);
 }
 
-fpl_common_api size_t GetUsedThreadCount() {
+fpl_common_api size_t GetUsedThreadCount(void) {
 	size_t result = 0;
 	for (size_t threadIndex = 0; threadIndex < FPL_MAX_THREAD_COUNT; ++threadIndex) {
 		fplThreadState state = (fplThreadState)fplAtomicLoadU32((volatile uint32_t *)&fpl__global__ThreadState.threads[threadIndex].currentState);
@@ -12217,18 +12217,18 @@ fpl_common_api void fplSetLogSettings(const fplLogSettings *params) {
 	fpl__global__LogSettings = *params;
 	fpl__global__LogSettings.isInitialized = true;
 }
-fpl_common_api const fplLogSettings *fplGetLogSettings() {
+fpl_common_api const fplLogSettings *fplGetLogSettings(void) {
 	return &fpl__global__LogSettings;
 }
 fpl_common_api void fplSetMaxLogLevel(const fplLogLevel maxLevel) {
 	fpl__global__LogSettings.maxLevel = maxLevel;
 }
-fpl_common_api fplLogLevel fplGetMaxLogLevel() {
+fpl_common_api fplLogLevel fplGetMaxLogLevel(void) {
 	return fpl__global__LogSettings.maxLevel;
 }
 #endif
 
-fpl_common_api const char *fplGetLastError() {
+fpl_common_api const char *fplGetLastError(void) {
 	const char *result = "";
 	const fpl__ErrorState *errorState = &fpl__global__LastErrorState;
 	if (errorState->count > 0) {
@@ -12249,19 +12249,19 @@ fpl_common_api const char *fplGetErrorByIndex(const size_t index) {
 	return (result);
 }
 
-fpl_common_api size_t fplGetErrorCount() {
+fpl_common_api size_t fplGetErrorCount(void) {
 	size_t result = 0;
 	const fpl__ErrorState *errorState = &fpl__global__LastErrorState;
 	result = errorState->count;
 	return (result);
 }
 
-fpl_common_api void fplErrorsClear() {
+fpl_common_api void fplErrorsClear(void) {
 	fpl__ErrorState *errorState = &fpl__global__LastErrorState;
 	fplClearStruct(errorState);
 }
 
-fpl_common_api const fplSettings *fplGetCurrentSettings() {
+fpl_common_api const fplSettings *fplGetCurrentSettings(void) {
 	FPL__CheckPlatform(fpl_null);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	return &appState->currentSettings;
@@ -12343,7 +12343,7 @@ fpl_common_api void fplSetDefaultSettings(fplSettings *settings) {
 	fplSetDefaultInputSettings(&settings->input);
 }
 
-fpl_common_api fplSettings fplMakeDefaultSettings() {
+fpl_common_api fplSettings fplMakeDefaultSettings(void) {
 	fplSettings result;
 	fplSetDefaultSettings(&result);
 	return(result);
@@ -12494,7 +12494,7 @@ fpl_internal void fpl__Win32RestoreWindowState(const fpl__Win32Api *wapi, const 
 	}
 }
 
-fpl_internal bool fpl__Win32LeaveFullscreen() {
+fpl_internal bool fpl__Win32LeaveFullscreen(void) {
 	const fpl__PlatformAppState *platState = fpl__global__AppState;
 	fplAssert(platState != fpl_null);
 	const fpl__Win32AppState *win32State = &platState->win32;
@@ -13867,15 +13867,15 @@ fpl_internal bool fpl__Win32InitPlatform(const fplInitFlags initFlags, const fpl
 //
 // Win32 Atomics
 //
-fpl_platform_api void fplAtomicReadFence() {
+fpl_platform_api void fplAtomicReadFence(void) {
 	FPL_MEMORY_BARRIER();
 	_ReadBarrier();
 }
-fpl_platform_api void fplAtomicWriteFence() {
+fpl_platform_api void fplAtomicWriteFence(void) {
 	FPL_MEMORY_BARRIER();
 	_WriteBarrier();
 }
-fpl_platform_api void fplAtomicReadWriteFence() {
+fpl_platform_api void fplAtomicReadWriteFence(void) {
 	FPL_MEMORY_BARRIER();
 	_ReadWriteBarrier();
 }
@@ -14069,7 +14069,7 @@ fpl_internal const char *fpl__Win32GetVersionName(DWORD major, DWORD minor) {
 
 #define FPL__FUNC_NTDLL_RtlGetVersion(name) DWORD WINAPI name(PRTL_OSVERSIONINFOW lpVersionInformation)
 typedef FPL__FUNC_NTDLL_RtlGetVersion(fpl__func_ntdll_RtlGetVersionProc);
-#define FPL__FUNC_KERNEL32_GetVersion(name) DWORD WINAPI name()
+#define FPL__FUNC_KERNEL32_GetVersion(name) DWORD WINAPI name(void)
 typedef FPL__FUNC_KERNEL32_GetVersion(fpl__func_kernel32_GetVersion);
 #define FPL__FUNC_KERNEL32_GetVersionExW(name) BOOL WINAPI name(LPOSVERSIONINFOEXW lpVersionInfo)
 typedef FPL__FUNC_KERNEL32_GetVersionExW(fpl__func_kernel32_GetVersionExW);
@@ -14169,7 +14169,7 @@ fpl_platform_api size_t fplSessionGetUsername(char *nameBuffer, const size_t max
 //
 // Win32 Hardware
 //
-fpl_platform_api size_t fplCPUGetCoreCount() {
+fpl_platform_api size_t fplCPUGetCoreCount(void) {
 	SYSTEM_INFO sysInfo = fplZeroInit;
 	GetSystemInfo(&sysInfo);
 	// @NOTE(final): For now this returns the number of logical processors, which is the actual core count in most cases.
@@ -14178,7 +14178,7 @@ fpl_platform_api size_t fplCPUGetCoreCount() {
 }
 
 #define FPL__WIN32_PROCESSOR_ARCHITECTURE_ARM64 12
-fpl_platform_api fplCPUArchType fplCPUGetArchitecture() {
+fpl_platform_api fplCPUArchType fplCPUGetArchitecture(void) {
 	fplCPUArchType result;
 	SYSTEM_INFO sysInfo = fplZeroInit;
 	BOOL isWow64;
@@ -14281,7 +14281,7 @@ fpl_internal DWORD WINAPI fpl__Win32ThreadProc(void *data) {
 	ExitThread(0);
 }
 
-fpl_platform_api uint32_t fplGetCurrentThreadId() {
+fpl_platform_api uint32_t fplGetCurrentThreadId(void) {
 	DWORD threadId = GetCurrentThreadId();
 	uint32_t result = (uint32_t)threadId;
 	return(result);
@@ -14394,7 +14394,7 @@ fpl_platform_api void fplThreadSleep(const uint32_t milliseconds) {
 	Sleep((DWORD)milliseconds);
 }
 
-fpl_platform_api bool fplThreadYield() {
+fpl_platform_api bool fplThreadYield(void) {
 	YieldProcessor();
 	return(true);
 }
@@ -14735,7 +14735,7 @@ fpl_platform_api void fplConsoleError(const char *text) {
 	WriteConsoleW(handle, wideBuffer, charsToWrite, &writtenChars, fpl_null);
 }
 
-fpl_platform_api char fplConsoleWaitForCharInput() {
+fpl_platform_api char fplConsoleWaitForCharInput(void) {
 	HANDLE handle = GetStdHandle(STD_INPUT_HANDLE);
 	DWORD savedMode;
 	GetConsoleMode(handle, &savedMode);
@@ -15333,7 +15333,7 @@ fpl_platform_api size_t fplGetHomePath(char *destPath, const size_t maxDestLen) 
 //
 // Win32 Timings
 //
-fpl_platform_api fplTimestamp fplTimestampQuery() {
+fpl_platform_api fplTimestamp fplTimestampQuery(void) {
 	const fpl__Win32InitState *initState = &fpl__global__InitState.win32;
 	fplTimestamp result = fplZeroInit;
 	if (initState->qpf.QuadPart > 0) {
@@ -15360,7 +15360,7 @@ fpl_platform_api fplSeconds fplTimestampElapsed(const fplTimestamp start, const 
 	return(result);
 }
 
-fpl_platform_api fplMilliseconds fplMillisecondsQuery() {
+fpl_platform_api fplMilliseconds fplMillisecondsQuery(void) {
 	fplMilliseconds result = (fplMilliseconds)GetTickCount64();
 	return(result);
 }
@@ -15462,7 +15462,7 @@ fpl_platform_api void fplSetWindowSize(const uint32_t width, const uint32_t heig
 	}
 }
 
-fpl_platform_api bool fplIsWindowResizable() {
+fpl_platform_api bool fplIsWindowResizable(void) {
 	FPL__CheckPlatform(false);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	bool result = appState->currentSettings.window.isResizable != 0;
@@ -15486,7 +15486,7 @@ fpl_platform_api void fplSetWindowResizeable(const bool value) {
 	}
 }
 
-fpl_platform_api bool fplIsWindowDecorated() {
+fpl_platform_api bool fplIsWindowDecorated(void) {
 	FPL__CheckPlatform(false);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	bool result = appState->currentSettings.window.isDecorated != 0;
@@ -15518,7 +15518,7 @@ fpl_platform_api void fplSetWindowDecorated(const bool value) {
 	}
 }
 
-fpl_platform_api bool fplIsWindowFloating() {
+fpl_platform_api bool fplIsWindowFloating(void) {
 	FPL__CheckPlatform(false);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	bool result = appState->currentSettings.window.isFloating != 0;
@@ -15540,7 +15540,7 @@ fpl_platform_api void fplSetWindowFloating(const bool value) {
 	}
 }
 
-fpl_platform_api bool fplIsWindowFullscreen() {
+fpl_platform_api bool fplIsWindowFullscreen(void) {
 	FPL__CheckPlatform(false);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	bool result = appState->currentSettings.window.isFullscreen != 0;
@@ -15558,12 +15558,12 @@ fpl_platform_api bool fplSetWindowFullscreenRect(const bool value, const int32_t
 	return(result);
 }
 
-fpl_platform_api bool fplEnableWindowFullscreen() {
+fpl_platform_api bool fplEnableWindowFullscreen(void) {
 	bool result = fpl__Win32SetWindowFullscreen(true, INT32_MAX, INT32_MAX, 0, 0, 0, false);
 	return(result);
 }
 
-fpl_platform_api bool fplDisableWindowFullscreen() {
+fpl_platform_api bool fplDisableWindowFullscreen(void) {
 	bool result = fpl__Win32SetWindowFullscreen(false, 0, 0, 0, 0, 0, false);
 	return(result);
 }
@@ -15637,7 +15637,7 @@ fpl_platform_api void fplSetWindowPosition(const int32_t left, const int32_t top
 	}
 }
 
-fpl_platform_api fplWindowState fplGetWindowState() {
+fpl_platform_api fplWindowState fplGetWindowState(void) {
 	FPL__CheckPlatform(fplWindowState_Unknown);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__Win32AppState *win32AppState = &appState->win32;
@@ -15741,7 +15741,7 @@ fpl_platform_api bool fplPollEvent(fplEvent *ev) {
 	return(false);
 }
 
-fpl_platform_api void fplPollEvents() {
+fpl_platform_api void fplPollEvents(void) {
 	FPL__CheckPlatformNoRet();
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	fpl__Win32AppState *win32AppState = &appState->win32;
@@ -15761,7 +15761,7 @@ fpl_platform_api void fplPollEvents() {
 	fpl__ClearInternalEvents();
 }
 
-fpl_platform_api bool fplWindowUpdate() {
+fpl_platform_api bool fplWindowUpdate(void) {
 	FPL__CheckPlatform(false);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	fpl__Win32AppState *win32AppState = &appState->win32;
@@ -15776,13 +15776,13 @@ fpl_platform_api bool fplWindowUpdate() {
 	return(result);
 }
 
-fpl_platform_api bool fplIsWindowRunning() {
+fpl_platform_api bool fplIsWindowRunning(void) {
 	FPL__CheckPlatform(false);
 	bool result = fpl__global__AppState->window.isRunning != 0;
 	return(result);
 }
 
-fpl_platform_api void fplWindowShutdown() {
+fpl_platform_api void fplWindowShutdown(void) {
 	FPL__CheckPlatformNoRet();
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__Win32AppState *win32AppState = &appState->win32;
@@ -15955,7 +15955,7 @@ fpl_internal BOOL WINAPI fpl__Win32MonitorCountEnumProc(HMONITOR monitorHandle, 
 	return(TRUE);
 }
 
-fpl_platform_api size_t fplGetDisplayCount() {
+fpl_platform_api size_t fplGetDisplayCount(void) {
 	FPL__CheckPlatform(0);
 	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
 	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
@@ -16307,13 +16307,13 @@ fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle **threads, con
 #if defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG) || defined(__GNUC__)
 // @NOTE(final): See: https://gcc.gnu.org/onlinedocs/gcc/_005f_005fsync-Builtins.html#g_t_005f_005fsync-Builtins
 // @NOTE(final): There is only one barrier in POSIX (read and write)
-fpl_platform_api void fplAtomicReadFence() {
+fpl_platform_api void fplAtomicReadFence(void) {
 	__sync_synchronize();
 }
-fpl_platform_api void fplAtomicWriteFence() {
+fpl_platform_api void fplAtomicWriteFence(void) {
 	__sync_synchronize();
 }
-fpl_platform_api void fplAtomicReadWriteFence() {
+fpl_platform_api void fplAtomicReadWriteFence(void) {
 	__sync_synchronize();
 }
 
@@ -16483,7 +16483,7 @@ fpl_platform_api void fplAtomicStoreS64(volatile int64_t *dest, const int64_t va
 //
 // POSIX Timings
 //
-fpl_platform_api fplTimestamp fplTimestampQuery() {
+fpl_platform_api fplTimestamp fplTimestampQuery(void) {
 	fplTimestamp result = fplZeroInit;
 	struct timespec t;
 	clock_gettime(CLOCK_MONOTONIC, &t);
@@ -16503,7 +16503,7 @@ fpl_platform_api fplSeconds fplTimestampElapsed(const fplTimestamp start, const 
 	return(result);
 }
 
-fpl_platform_api fplMilliseconds fplMillisecondsQuery() {
+fpl_platform_api fplMilliseconds fplMillisecondsQuery(void) {
 	struct timeval  tv;
 	gettimeofday(&tv, fpl_null);
 	fplMilliseconds result = (fplMilliseconds)(tv.tv_sec * 1000 + ((uint64_t)tv.tv_usec / 1000));
@@ -16531,7 +16531,7 @@ fpl_platform_api bool fplThreadTerminate(fplThreadHandle *thread) {
 	}
 }
 
-fpl_platform_api uint32_t fplGetCurrentThreadId() {
+fpl_platform_api uint32_t fplGetCurrentThreadId(void) {
 	FPL__CheckPlatform(0);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
@@ -16805,7 +16805,7 @@ fpl_platform_api bool fplThreadWaitForAny(fplThreadHandle **threads, const size_
 	return(result);
 }
 
-fpl_platform_api bool fplThreadYield() {
+fpl_platform_api bool fplThreadYield(void) {
 	FPL__CheckPlatform(false);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
@@ -17705,7 +17705,7 @@ fpl_platform_api size_t fplSessionGetUsername(char *nameBuffer, const size_t max
 	return(0);
 }
 
-fpl_platform_api size_t fplCPUGetCoreCount() {
+fpl_platform_api size_t fplCPUGetCoreCount(void) {
 	size_t result = sysconf(_SC_NPROCESSORS_ONLN);
 	return(result);
 }
@@ -17762,7 +17762,7 @@ fpl_platform_api size_t fplGetHomePath(char *destPath, const size_t maxDestLen) 
 }
 
 
-fpl_platform_api fplCPUArchType fplCPUGetArchitecture() {
+fpl_platform_api fplCPUArchType fplCPUGetArchitecture(void) {
 	fplCPUArchType result = fplCPUArchType_Unknown;
 	struct utsname nameInfos;
 	if (uname(&nameInfos) == 0) {
@@ -17869,7 +17869,7 @@ fpl_platform_api void fplConsoleError(const char *text) {
 		fprintf(stderr, "%s", text);
 	}
 }
-fpl_platform_api char fplConsoleWaitForCharInput() {
+fpl_platform_api char fplConsoleWaitForCharInput(void) {
 	int c = getchar();
 	const char result = (c >= 0 && c < 256) ? (char)c : 0;
 	return(result);
@@ -18921,13 +18921,13 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 	}
 }
 
-fpl_platform_api bool fplIsWindowRunning() {
+fpl_platform_api bool fplIsWindowRunning(void) {
 	FPL__CheckPlatform(false);
 	bool result = fpl__global__AppState->window.isRunning;
 	return(result);
 }
 
-fpl_platform_api void fplWindowShutdown() {
+fpl_platform_api void fplWindowShutdown(void) {
 	FPL__CheckPlatformNoRet();
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	if (appState->window.isRunning) {
@@ -18985,7 +18985,7 @@ fpl_platform_api bool fplPollEvent(fplEvent *ev) {
 	return(false);
 }
 
-fpl_platform_api void fplPollEvents() {
+fpl_platform_api void fplPollEvents(void) {
 	FPL__CheckPlatformNoRet();
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
@@ -18999,7 +18999,7 @@ fpl_platform_api void fplPollEvents() {
 	fpl__ClearInternalEvents();
 }
 
-fpl_platform_api bool fplWindowUpdate() {
+fpl_platform_api bool fplWindowUpdate(void) {
 	FPL__CheckPlatform(false);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
@@ -19048,7 +19048,7 @@ fpl_platform_api void fplSetWindowSize(const uint32_t width, const uint32_t heig
 	x11Api->XFlush(windowState->display);
 }
 
-fpl_platform_api bool fplIsWindowResizable() {
+fpl_platform_api bool fplIsWindowResizable(void) {
 	// @IMPLEMENT(final/X11): fplIsWindowResizable
 	return false;
 }
@@ -19057,7 +19057,7 @@ fpl_platform_api void fplSetWindowResizeable(const bool value) {
 	// @IMPLEMENT(final/X11): fplSetWindowResizeable
 }
 
-fpl_platform_api bool fplIsWindowDecorated() {
+fpl_platform_api bool fplIsWindowDecorated(void) {
 	FPL__CheckPlatform(false);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	bool result = appState->currentSettings.window.isDecorated;
@@ -19099,7 +19099,7 @@ fpl_platform_api void fplSetWindowDecorated(const bool value) {
 	appState->currentSettings.window.isDecorated = value;
 }
 
-fpl_platform_api bool fplIsWindowFloating() {
+fpl_platform_api bool fplIsWindowFloating(void) {
 	// @IMPLEMENT(final/X11): fplIsWindowFloating
 	return false;
 }
@@ -19108,7 +19108,7 @@ fpl_platform_api void fplSetWindowFloating(const bool value) {
 	// @IMPLEMENT(final/X11): fplSetWindowFloating
 }
 
-fpl_platform_api fplWindowState fplGetWindowState() {
+fpl_platform_api fplWindowState fplGetWindowState(void) {
 	// @IMPLEMENT(final/X11): fplGetWindowState
 	return(fplWindowState_Unknown);
 }
@@ -19118,7 +19118,7 @@ fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
 	return(false);
 }
 
-fpl_platform_api size_t fplGetDisplayCount() {
+fpl_platform_api size_t fplGetDisplayCount(void) {
 	// @IMPLEMENT(final/X11): fplGetDisplayCount
 	return(0);
 }
@@ -19179,17 +19179,17 @@ fpl_platform_api bool fplSetWindowFullscreenRect(const bool value, const int32_t
 	return(false);
 }
 
-fpl_platform_api bool fplEnableWindowFullscreen() {
+fpl_platform_api bool fplEnableWindowFullscreen(void) {
 	bool result = fplSetWindowFullscreenSize(true, 0, 0, 0);
 	return(result);
 }
 
-fpl_platform_api bool fplDisableWindowFullscreen() {
+fpl_platform_api bool fplDisableWindowFullscreen(void) {
 	bool result = fplSetWindowFullscreenSize(false, 0, 0, 0);
 	return(result);
 }
 
-fpl_platform_api bool fplIsWindowFullscreen() {
+fpl_platform_api bool fplIsWindowFullscreen(void) {
 	FPL__CheckPlatform(false);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	bool result = appState->currentSettings.window.isFullscreen;
@@ -19951,7 +19951,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__VideoBackend_Present_Stub) {}
 fpl_internal FPL__FUNC_VIDEO_BACKEND_GETPROCEDURE(fpl__VideoBackend_GetProcedure_Stub) { return(fpl_null); }
 fpl_internal FPL__FUNC_VIDEO_BACKEND_GETREQUIREMENTS(fpl__VideoBackend_GetRequirements_Stub) { return(false); }
 
-fpl_internal fpl__VideoContext fpl__StubVideoContext() {
+fpl_internal fpl__VideoContext fpl__StubVideoContext(void) {
 	fpl__VideoContext result = fplZeroInit;
 	result.loadFunc = fpl__VideoBackend_Load_Stub;
 	result.unloadFunc = fpl__VideoBackend_Unload_Stub;
@@ -20381,7 +20381,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__VideoBackend_Win32OpenGL_Prese
 	wapi->gdi.SwapBuffers(win32WindowState->deviceContext);
 }
 
-fpl_internal fpl__VideoContext fpl__VideoBackend_Win32OpenGL_Construct() {
+fpl_internal fpl__VideoContext fpl__VideoBackend_Win32OpenGL_Construct(void) {
 	fpl__VideoContext result = fpl__StubVideoContext();
 	result.loadFunc = fpl__VideoBackend_Win32OpenGL_Load;
 	result.unloadFunc = fpl__VideoBackend_Win32OpenGL_Unload;
@@ -20912,7 +20912,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__VideoBackend_X11OpenGL_Present
 	glApi->glXSwapBuffers(x11WinState->display, x11WinState->window);
 }
 
-fpl_internal fpl__VideoContext fpl__VideoBackend_X11OpenGL_Construct() {
+fpl_internal fpl__VideoContext fpl__VideoBackend_X11OpenGL_Construct(void) {
 	fpl__VideoContext result = fpl__StubVideoContext();
 	result.loadFunc = fpl__VideoBackend_X11OpenGL_Load;
 	result.unloadFunc = fpl__VideoBackend_X11OpenGL_Unload;
@@ -21008,7 +21008,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__VideoBackend_X11Software_Prese
 	x11Api->XSync(x11WinState->display, False);
 }
 
-fpl_internal fpl__VideoContext fpl__VideoBackend_X11Software_Construct() {
+fpl_internal fpl__VideoContext fpl__VideoBackend_X11Software_Construct(void) {
 	fpl__VideoContext result = fpl__StubVideoContext();
 	result.loadFunc = fpl__VideoBackend_X11Software_Load;
 	result.unloadFunc = fpl__VideoBackend_X11Software_Unload;
@@ -21090,7 +21090,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__VideoBackend_Win32Software_Pre
 	}
 }
 
-fpl_internal fpl__VideoContext fpl__VideoBackend_Win32Software_Construct() {
+fpl_internal fpl__VideoContext fpl__VideoBackend_Win32Software_Construct(void) {
 	fpl__VideoContext result = fpl__StubVideoContext();
 	result.loadFunc = fpl__VideoBackend_Win32Software_Load;
 	result.unloadFunc = fpl__VideoBackend_Win32Software_Unload;
@@ -21980,7 +21980,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__VideoBackend_Vulkan_Present) {
 	const fpl__VideoBackendVulkan *nativeBackend = (const fpl__VideoBackendVulkan *)backend;
 }
 
-fpl_internal fpl__VideoContext fpl__VideoBackend_Vulkan_Construct() {
+fpl_internal fpl__VideoContext fpl__VideoBackend_Vulkan_Construct(void) {
 	fpl__VideoContext result = fpl__StubVideoContext();
 	result.loadFunc = fpl__VideoBackend_Vulkan_Load;
 	result.unloadFunc = fpl__VideoBackend_Vulkan_Unload;
@@ -25510,7 +25510,7 @@ fpl_globalvar const char *fpl__globalAudioBackendNameTable[FPL__AUDIOBACKENDTYPE
 };
 fplStaticAssert(fplArrayCount(fpl__globalAudioBackendNameTable) == FPL__AUDIOBACKENDTYPE_COUNT);
 
-fpl_common_api fplAudioBackendType fplGetAudioBackendType() {
+fpl_common_api fplAudioBackendType fplGetAudioBackendType(void) {
 	FPL__CheckPlatform(fplAudioBackendType_None);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	fplAudioBackendType result = appState->currentSettings.audio.backend;
@@ -25681,7 +25681,7 @@ fpl_common_api bool fplDecodeAudioFormatU64(const fplAudioFormatU64 format64, ui
 	return true;
 }
 
-fpl_common_api fplAudioResultType fplStopAudio() {
+fpl_common_api fplAudioResultType fplStopAudio(void) {
 	FPL__CheckPlatform(fplAudioResultType_PlatformNotInitialized);
 	fpl__AudioState *audioState = fpl__GetAudioState(fpl__global__AppState);
 	if (audioState == fpl_null) {
@@ -25742,7 +25742,7 @@ fpl_common_api fplAudioResultType fplStopAudio() {
 	return result;
 }
 
-fpl_common_api fplAudioResultType fplPlayAudio() {
+fpl_common_api fplAudioResultType fplPlayAudio(void) {
 	FPL__CheckPlatform(fplAudioResultType_PlatformNotInitialized);
 	fpl__AudioState *audioState = fpl__GetAudioState(fpl__global__AppState);
 	if (audioState == fpl_null) {
@@ -25862,7 +25862,7 @@ fpl_common_api fplAudioResultType fplAudioInit(fplAudioSettings *audioSettings) 
 	return fplAudioResultType_Success;
 }
 
-fpl_common_api bool fplAudioRelease() {
+fpl_common_api bool fplAudioRelease(void) {
 	FPL__CheckPlatform(false);
 	fpl__AudioState *audioState = fpl__GetAudioState(fpl__global__AppState);
 	if (audioState == fpl_null) {
@@ -25908,7 +25908,7 @@ fpl_common_api bool fplGetAudioHardwareDevice(fplAudioDeviceInfo *outDevice) {
 	return true;
 }
 
-fpl_common_api const char *fplGetAudioHardwareDeviceName() {
+fpl_common_api const char *fplGetAudioHardwareDeviceName(void) {
 	FPL__CheckPlatform(fpl_null);
 	fpl__AudioState *audioState = fpl__GetAudioState(fpl__global__AppState);
 	if (audioState == fpl_null) {
@@ -26011,7 +26011,7 @@ fpl_common_api const char *fplGetVideoBackendName(fplVideoBackendType backendTyp
 	return(result);
 }
 
-fpl_common_api fplVideoBackendType fplGetVideoBackendType() {
+fpl_common_api fplVideoBackendType fplGetVideoBackendType(void) {
 	FPL__CheckPlatform(fplVideoBackendType_None);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	fpl__VideoState *videoState = fpl__GetVideoState(appState);
@@ -26021,7 +26021,7 @@ fpl_common_api fplVideoBackendType fplGetVideoBackendType() {
 	return(fplVideoBackendType_None);
 }
 
-fpl_common_api fplVideoBackBuffer *fplGetVideoBackBuffer() {
+fpl_common_api fplVideoBackBuffer *fplGetVideoBackBuffer(void) {
 	FPL__CheckPlatform(fpl_null);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	fpl__VideoState *videoState = fpl__GetVideoState(appState);
@@ -26051,7 +26051,7 @@ fpl_common_api bool fplResizeVideoBackBuffer(const uint32_t width, const uint32_
 	return (result);
 }
 
-fpl_common_api void fplVideoFlip() {
+fpl_common_api void fplVideoFlip(void) {
 	FPL__CheckPlatformNoRet();
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__VideoState *videoState = fpl__GetVideoState(appState);
@@ -26073,7 +26073,7 @@ fpl_common_api const void *fplGetVideoProcedure(const char *procName) {
 	return(result);
 }
 
-fpl_common_api const fplVideoSurface *fplGetVideoSurface() {
+fpl_common_api const fplVideoSurface *fplGetVideoSurface(void) {
 	FPL__CheckPlatform(fpl_null);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__VideoState *videoState = fpl__GetVideoState(appState);
@@ -26214,7 +26214,7 @@ fpl_globalvar const char *fpl__globalPlatformTypeNameTable[] = {
 };
 fplStaticAssert(fplArrayCount(fpl__globalPlatformTypeNameTable) == FPL__PLATFORMTYPE_COUNT);
 
-fpl_common_api bool fplIsPlatformInitialized() {
+fpl_common_api bool fplIsPlatformInitialized(void) {
 	fpl__PlatformInitState *initState = &fpl__global__InitState;
 	bool result = initState->isInitialized;
 	return(result);
@@ -26226,7 +26226,7 @@ fpl_common_api const char *fplGetPlatformName(const fplPlatformType type) {
 	return(result);
 }
 
-fpl_common_api fplPlatformResultType fplGetPlatformResult() {
+fpl_common_api fplPlatformResultType fplGetPlatformResult(void) {
 	fpl__PlatformInitState *initState = &fpl__global__InitState;
 	return(initState->initResult);
 }
@@ -26237,7 +26237,7 @@ fpl_internal bool fpl__SetPlatformResult(const fplPlatformResultType resultType)
 	return(initState->initResult == fplPlatformResultType_Success);
 }
 
-fpl_common_api void fplPlatformRelease() {
+fpl_common_api void fplPlatformRelease(void) {
 	// Exit out if platform is not initialized
 	fpl__PlatformInitState *initState = &fpl__global__InitState;
 	if (!initState->isInitialized) {
@@ -26547,7 +26547,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 	return(fpl__SetPlatformResult(fplPlatformResultType_Success));
 }
 
-fpl_common_api fplPlatformType fplGetPlatformType() {
+fpl_common_api fplPlatformType fplGetPlatformType(void) {
 	fplPlatformType result;
 #if defined(FPL_PLATFORM_WINDOWS)
 	result = fplPlatformType_Windows;
@@ -26753,14 +26753,14 @@ fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseAnsiArguments(LPS
 #	include <stdio.h>
 #endif
 
-fpl_internal void fpl__Win32FreeConsole() {
+fpl_internal void fpl__Win32FreeConsole(void) {
 	HWND consoleHandle = GetConsoleWindow();
 	if (consoleHandle != fpl_null) {
 		FreeConsole();
 	}
 }
 
-fpl_internal void fpl__Win32InitConsole() {
+fpl_internal void fpl__Win32InitConsole(void) {
 	HWND consoleHandle = GetConsoleWindow();
 	if (consoleHandle == fpl_null) {
 		// Create or attach console
