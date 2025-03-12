@@ -1832,6 +1832,9 @@ static void ClearFontBuffer(FontBuffer &buffer) {
 }
 static void PushTextToBuffer(FontBuffer &buffer, const FontInfo &info, const char *text, const float scale, const Vec2f &position, const Vec4f &color, const TextRenderMode mode) {
 }
+static Vec2f ComputeTextSize(const FontInfo &info, const char *text, const float scale) {
+	return V2fZero();
+}
 #endif // USE_HARDWARE_RENDERING
 
 //
