@@ -9171,7 +9171,7 @@ fpl_internal const char *fpl__Win32FormatGuidString(char *buffer, const size_t m
 		break; \
 	}
 #define FPL__WIN32_GET_FUNCTION_ADDRESS_BREAK(mod, libHandle, libName, target, type, name) \
-	(target)->name = (type *)GetProcAddress(libHandle, #name); \
+	(target)->name = (type *)(void *)GetProcAddress(libHandle, #name); \
 	if ((target)->name == fpl_null) { \
 		FPL__WARNING(mod, "Failed getting procedure address '%s' from library '%s'", #name, libName); \
 		break; \
@@ -9711,7 +9711,7 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 #endif
 #define fpl__win32_SetWindowLong fpl__global__AppState->win32.winApi.user.SetWindowLongW
 #define fpl__win32_GetWindowLong fpl__global__AppState->win32.winApi.user.GetWindowLongW
-#if UNICODE
+#if defined(UNICODE)
 #	define fpl__win32_LoadIcon fpl__global__AppState->win32.winApi.user.LoadIconW
 #	define fpl__win32_LoadCursor fpl__global__AppState->win32.winApi.user.LoadCursorW
 #else
@@ -14080,7 +14080,7 @@ fpl_platform_api bool fplOSGetVersionInfos(fplOSVersionInfos *outInfos) {
 
 	// @NOTE(final): Prefer RtlGetVersion always, because MS might decide to totally remove GetVersion() and GetVersionEx()
 	HMODULE ntdllModule = GetModuleHandleA("ntdll");
-	fpl__func_ntdll_RtlGetVersionProc *rtlGetVersionProc = (fpl__func_ntdll_RtlGetVersionProc *)GetProcAddress(ntdllModule, "RtlGetVersion");
+	fpl__func_ntdll_RtlGetVersionProc *rtlGetVersionProc = (fpl__func_ntdll_RtlGetVersionProc *)(void *)GetProcAddress(ntdllModule, "RtlGetVersion");
 	if (rtlGetVersionProc != fpl_null) {
 		RTL_OSVERSIONINFOW info = fplZeroInit;
 		info.dwOSVersionInfoSize = sizeof(info);
@@ -14102,8 +14102,8 @@ fpl_platform_api bool fplOSGetVersionInfos(fplOSVersionInfos *outInfos) {
 		FPL__ERROR(FPL__MODULE_WIN32, "Kernel32 library could not be loaded");
 		return false;
 	}
-	fpl__func_kernel32_GetVersion *getVersionProc = (fpl__func_kernel32_GetVersion *)GetProcAddress(kernelLib, "GetVersion");
-	fpl__func_kernel32_GetVersionExW *getVersionExProc = (fpl__func_kernel32_GetVersionExW *)GetProcAddress(kernelLib, "GetVersionExW");
+	fpl__func_kernel32_GetVersion *getVersionProc = (fpl__func_kernel32_GetVersion *)(void *)GetProcAddress(kernelLib, "GetVersion");
+	fpl__func_kernel32_GetVersionExW *getVersionExProc = (fpl__func_kernel32_GetVersionExW *)(void *)GetProcAddress(kernelLib, "GetVersionExW");
 	FreeLibrary(kernelLib);
 
 	if (getVersionExProc != fpl_null) {
@@ -14153,7 +14153,7 @@ fpl_platform_api size_t fplSessionGetUsername(char *nameBuffer, const size_t max
 		FPL__ERROR(FPL__MODULE_WIN32, "Failed loading library '%s'", libName);
 		return false;
 	}
-	fpl__func_adv32_GetUserNameW *getUserNameProc = (fpl__func_adv32_GetUserNameW *)GetProcAddress(adv32Lib, "GetUserNameW");
+	fpl__func_adv32_GetUserNameW *getUserNameProc = (fpl__func_adv32_GetUserNameW *)(void *)GetProcAddress(adv32Lib, "GetUserNameW");
 	size_t result = 0;
 	if (getUserNameProc != fpl_null) {
 		wchar_t wideBuffer[FPL_MAX_BUFFER_LENGTH];
@@ -14224,7 +14224,7 @@ fpl_platform_api bool fplMemoryGetInfos(fplMemoryInfos *outInfos) {
 	if (kernel32lib == fpl_null) {
 		return false;
 	}
-	fpl__win32_kernel_func_GetPhysicallyInstalledSystemMemory *getPhysicallyInstalledSystemMemory = (fpl__win32_kernel_func_GetPhysicallyInstalledSystemMemory *)GetProcAddress(kernel32lib, "GetPhysicallyInstalledSystemMemory");
+	fpl__win32_kernel_func_GetPhysicallyInstalledSystemMemory *getPhysicallyInstalledSystemMemory = (fpl__win32_kernel_func_GetPhysicallyInstalledSystemMemory *)(void *)GetProcAddress(kernel32lib, "GetPhysicallyInstalledSystemMemory");
 	FreeLibrary(kernel32lib);
 
 	ULONGLONG installedMemorySize = 0;
@@ -20135,7 +20135,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_Win32OpenGL
 								HGLRC tempCtx = glApi.wglCreateContext(tempDC);
 								if (tempCtx != fpl_null) {
 									if (glApi.wglMakeCurrent(tempDC, tempCtx)) {
-										glApi.wglChoosePixelFormatARB = (fpl__win32_func_wglChoosePixelFormatARB *)glApi.wglGetProcAddress("wglChoosePixelFormatARB");
+										glApi.wglChoosePixelFormatARB = (fpl__win32_func_wglChoosePixelFormatARB *)(void *)glApi.wglGetProcAddress("wglChoosePixelFormatARB");
 										if (glApi.wglChoosePixelFormatARB != fpl_null) {
 											int multisampleCount = (int)videoSettings->graphics.opengl.multiSamplingCount;
 											const int pixelAttribs[] = {
@@ -20259,9 +20259,9 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Win32OpenGL_In
 	}
 
 	// Load WGL Extensions
-	glapi->wglSwapIntervalEXT = (fpl__win32_func_wglSwapIntervalEXT *)glapi->wglGetProcAddress("wglSwapIntervalEXT");
-	glapi->wglChoosePixelFormatARB = (fpl__win32_func_wglChoosePixelFormatARB *)glapi->wglGetProcAddress("wglChoosePixelFormatARB");
-	glapi->wglCreateContextAttribsARB = (fpl__win32_func_wglCreateContextAttribsARB *)glapi->wglGetProcAddress("wglCreateContextAttribsARB");
+	glapi->wglSwapIntervalEXT = (fpl__win32_func_wglSwapIntervalEXT *)(void *)glapi->wglGetProcAddress("wglSwapIntervalEXT");
+	glapi->wglChoosePixelFormatARB = (fpl__win32_func_wglChoosePixelFormatARB *)(void *)glapi->wglGetProcAddress("wglChoosePixelFormatARB");
+	glapi->wglCreateContextAttribsARB = (fpl__win32_func_wglCreateContextAttribsARB *)(void *)glapi->wglGetProcAddress("wglCreateContextAttribsARB");
 
 	// Disable legacy context
 	glapi->wglMakeCurrent(fpl_null, fpl_null);
@@ -26633,7 +26633,7 @@ fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseWideArguments(LPW
 	// @NOTE(final): Temporary load and unload shell32 for parsing the arguments
 	HMODULE shellapiLibrary = LoadLibraryA("shell32.dll");
 	if (shellapiLibrary != fpl_null) {
-		fpl__win32_func_CommandLineToArgvW *commandLineToArgvW = (fpl__win32_func_CommandLineToArgvW *)GetProcAddress(shellapiLibrary, "CommandLineToArgvW");
+		fpl__win32_func_CommandLineToArgvW *commandLineToArgvW = (fpl__win32_func_CommandLineToArgvW *)(void *)GetProcAddress(shellapiLibrary, "CommandLineToArgvW");
 		if (commandLineToArgvW != fpl_null) {
 			// Parse executable arguments
 			int cmdLineLen = lstrlenW(cmdLine);
