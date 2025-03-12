@@ -72,6 +72,8 @@ License:
 #	include <miniaudio/miniaudio.h>
 #endif
 
+#include <final_music.h>
+
 typedef struct PlaybackAudioFormat {
 	char backendName[FPL_MAX_NAME_LENGTH];
     char deviceName[FPL_MAX_NAME_LENGTH];
@@ -277,6 +279,25 @@ int main(int argc, char **args) {
 	const char** files = (fileCount > 0) ? (const char**)args + 1 : fpl_null;
 	bool forceSineWave = false;
 
+	AudioTrackSource audioTracks[8] = fplZeroInit;
+	size_t audioTrackCount = 0;
+	if (fileCount > 0) {
+		size_t maxTrackCount = fplArrayCount(audioTracks);
+		for (int i = 0; i < fplMin(maxTrackCount, fileCount); ++i) {
+			AudioTrackSource *track = &audioTracks[audioTrackCount++];
+			const char *filename = fplExtractFileName(files[i]);
+			track->type = AudioTrackSourceType_URL;
+			fplCopyString(filename, track->name, fplArrayCount(track->name));
+			fplCopyString(files[i], track->url.urlOrFilePath, fplArrayCount(track->url.urlOrFilePath));
+		}
+	} else {
+		AudioTrackSource *track = &audioTracks[audioTrackCount++];
+		track->type = AudioTrackSourceType_Data;
+		fplCopyString(name_musicTavsControlArgofox, track->name, fplArrayCount(track->name));
+		track->data.size = sizeOf_musicTavsControlArgofox;
+		track->data.data = ptr_musicTavsControlArgofox;
+	}
+
 	// Use default audio format from FPL as target format
 	fplAudioFormat targetFormat = fplZeroInit;
 
@@ -326,7 +347,7 @@ int main(int argc, char **args) {
 		goto releaseResources;
 	}
 
-	if(!LoadAudioTrackList(&audioContext->system, files, fileCount, forceSineWave, &audioContext->sineWave, LoadAudioTrackFlags_AutoLoad | LoadAudioTrackFlags_AutoPlay, &tracklist)) {
+	if(!LoadAudioTrackList(&audioContext->system, audioTracks, audioTrackCount, forceSineWave, &audioContext->sineWave, LoadAudioTrackFlags_AutoLoad | LoadAudioTrackFlags_AutoPlay, &tracklist)) {
 		fplConsoleFormatError("Failed loading tracklist for %zu files!\n", fileCount);
 		goto releaseResources;
 	}

@@ -34,6 +34,9 @@
     <ClInclude Include="..\additions\final_audiodemo.h">
       <Filter>additions</Filter>
     </ClInclude>
+    <ClInclude Include="..\additions\final_music.h">
+      <Filter>additions</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="fpl_audio.c" />

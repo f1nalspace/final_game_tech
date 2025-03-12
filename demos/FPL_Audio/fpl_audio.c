@@ -153,6 +153,8 @@ Visualize the samples:
 #define FINAL_BUFFER_IMPLEMENTATION
 #include <final_buffer.h>
 
+#include <final_music.h>
+
 #define MAX_AUDIO_FRAMES_CHUNK_FRAMES 256
 typedef struct AudioFramesChunk {
 	uint8_t samples[MAX_AUDIO_FRAMES_CHUNK_FRAMES * AUDIO_MAX_CHANNEL_COUNT * AUDIO_MAX_SAMPLESIZE];
@@ -903,12 +905,29 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 				// Loading file source and play it
 				fplAssert(track->outputFullBuffer.bufferSize == 0);
 				fplAssert(!track->outputFullBuffer.isAllocated);
-
-				size_t urlOrFileLen = fplGetStringLength(track->urlOrFilePath);
-				fplAssert(urlOrFileLen > 0);
+				fplAssert(track->source.type != AudioTrackSourceType_None);
 
 				fplAtomicStoreS32(&track->state, AudioTrackState_Loading);
-				AudioSource *source = AudioSystemLoadFileSource(&demo->audioSys, track->urlOrFilePath);
+
+				AudioSource *source = fpl_null;
+				switch (track->source.type) {
+					case AudioTrackSourceType_URL:
+					{
+						size_t urlOrFileLen = fplGetStringLength(track->source.url.urlOrFilePath);
+						fplAssert(urlOrFileLen > 0);
+						source = AudioSystemLoadFileSource(&demo->audioSys, track->source.url.urlOrFilePath);
+					} break;
+
+					case AudioTrackSourceType_Data:
+					{
+						source = AudioSystemLoadDataSource(&demo->audioSys, track->source.data.size, track->source.data.data);
+					} break;
+
+					default:
+						FPL_NOT_IMPLEMENTED;
+						break;
+				}
+
 				if (source != fpl_null) {
 					AudioBuffer *fullAudioBuffer = &track->outputFullBuffer;
 
@@ -1124,6 +1143,25 @@ int main(int argc, char **args) {
 	const char **files = (fileCount > 0) ? (const char **)args + 1 : fpl_null;
 	bool forceSineWave = false;
 
+	AudioTrackSource audioTracks[8] = fplZeroInit;
+	size_t audioTrackCount = 0;
+	if (fileCount > 0) {
+		size_t maxTrackCount = fplArrayCount(audioTracks);
+		for (int i = 0; i < fplMin(maxTrackCount, fileCount); ++i) {
+			AudioTrackSource *track = &audioTracks[audioTrackCount++];
+			const char *filename = fplExtractFileName(files[i]);
+			track->type = AudioTrackSourceType_URL;
+			fplCopyString(filename, track->name, fplArrayCount(track->name));
+			fplCopyString(files[i], track->url.urlOrFilePath, fplArrayCount(track->url.urlOrFilePath));
+		}
+	} else {
+		AudioTrackSource *track = &audioTracks[audioTrackCount++];
+		track->type = AudioTrackSourceType_Data;
+		fplCopyString(name_musicTavsControlArgofox, track->name, fplArrayCount(track->name));
+		track->data.size = sizeOf_musicTavsControlArgofox;
+		track->data.data = ptr_musicTavsControlArgofox;
+	}
+
 	// Always sine-wave
 	//fileCount = 0;
 	//forceSineWave = true;
@@ -1233,7 +1271,7 @@ int main(int argc, char **args) {
 		goto done;
 	}
 
-	if(!LoadAudioTrackList(&demo->audioSys, files, fileCount, forceSineWave, &demo->sineWave, LoadAudioTrackFlags_None, &demo->trackList)) {
+	if(!LoadAudioTrackList(&demo->audioSys, audioTracks, audioTrackCount, forceSineWave, &demo->sineWave, LoadAudioTrackFlags_None, &demo->trackList)) {
 		goto done;
 	}
 

@@ -30,6 +30,112 @@ typedef double AudioDuration;
 /// The size of a audio buffer in bytes (32-bit or 64-bit)
 typedef size_t AudioBufferSize; // The size in bytes
 
+typedef struct AudioStreamData {
+	size_t size;
+	const uint8_t *data;
+} AudioStreamData;
+
+#define AUDIO_STREAM_SEEK_ABSOLUTE_FUNC(name) size_t name(struct AudioSystemStream *stream, const intptr_t offset)
+typedef AUDIO_STREAM_SEEK_ABSOLUTE_FUNC(AudioStreamSeekAbsoluteFunc);
+
+#define AUDIO_STREAM_READ_FUNC(name) size_t name(struct AudioSystemStream *stream, const size_t sizeToRead, void *targetBuffer, const size_t maxTargetBufferSize)
+typedef AUDIO_STREAM_READ_FUNC(AudioStreamReadFunc);
+
+#define AUDIO_STREAM_GET_DATA_FUNC(name) AudioStreamData name(struct AudioSystemStream *stream)
+typedef AUDIO_STREAM_GET_DATA_FUNC(AudioStreamGetDataFunc);
+
+typedef struct AudioSystemStream {
+	AudioStreamSeekAbsoluteFunc *seek;
+	AudioStreamReadFunc *read;
+	AudioStreamGetDataFunc *getData;
+	size_t size;
+	size_t pos;
+	void *opaque;
+} AudioSystemStream;
+
+fpl_force_inline size_t AudioSystemStreamSeek(AudioSystemStream *stream, const intptr_t offset) {
+	size_t pos = stream->seek(stream, offset);
+	stream->pos = pos;
+	return pos;
+}
+
+fpl_force_inline size_t AudioSystemStreamRead(AudioSystemStream *stream, const size_t sizeToRead, void *targetBuffer, const size_t maxTargetBufferSize) {
+	size_t read = stream->read(stream, sizeToRead, targetBuffer, maxTargetBufferSize);
+	stream->pos += read;
+	return read;
+}
+
+fpl_force_inline AudioStreamData AudioSystemStreamGetData(AudioSystemStream *stream) {
+	AudioStreamData result = stream->getData(stream);
+	return result;
+}
+
+static AUDIO_STREAM_SEEK_ABSOLUTE_FUNC(AudioStreamFileSeekAbsolute) {
+	fplFileHandle *handle = (fplFileHandle *)stream->opaque;
+	return fplFileSetPosition(handle, offset, fplFilePositionMode_Beginning);
+}
+
+static AUDIO_STREAM_READ_FUNC(AudioStreamFileRead) {
+	fplFileHandle *handle = (fplFileHandle *)stream->opaque;
+	return fplFileReadBlock(handle, sizeToRead, targetBuffer, maxTargetBufferSize);
+}
+
+static AUDIO_STREAM_GET_DATA_FUNC(AudioStreamFileGetData) {
+	AudioStreamData result = fplZeroInit;
+	return result;
+}
+
+static AudioSystemStream AudioStreamCreateFromFileHandle(fplFileHandle *file, const size_t size) {
+	AudioSystemStream stream = fplZeroInit;
+	stream.size = size;
+	stream.pos = 0;
+	stream.seek = AudioStreamFileSeekAbsolute;
+	stream.read = AudioStreamFileRead;
+	stream.getData = AudioStreamFileGetData;
+	stream.opaque = file;
+	return stream;
+}
+
+static AUDIO_STREAM_SEEK_ABSOLUTE_FUNC(AudioStreamDataSeekAbsolute) {
+	const uint8_t *data = (const uint8_t *)stream->opaque;
+	if (offset >= 0 && (size_t)offset < stream->size) {
+		// Nothing todo, stream pos is already set in the API function
+		return offset;
+	}
+	return 0;
+}
+
+static AUDIO_STREAM_READ_FUNC(AudioStreamDataRead) {
+	const uint8_t *data = (const uint8_t *)stream->opaque;
+	if (targetBuffer == fpl_null || maxTargetBufferSize < sizeToRead) {
+		return 0;
+	}
+	if (stream->pos + sizeToRead > stream->size) {
+		return 0;
+	}
+	const uint8_t *src = data + stream->pos;
+	fplMemoryCopy(src, sizeToRead, targetBuffer);
+	return sizeToRead;
+}
+
+static AUDIO_STREAM_GET_DATA_FUNC(AudioStreamDataGetData) {
+	AudioStreamData result = fplZeroInit;
+	result.data = (const uint8_t *)stream->opaque;
+	result.size = stream->size;
+	return result;
+}
+
+static AudioSystemStream AudioStreamCreateFromData(const size_t size, const uint8_t *data) {
+	AudioSystemStream stream = fplZeroInit;
+	stream.size = size;
+	stream.pos = 0;
+	stream.seek = AudioStreamDataSeekAbsolute;
+	stream.read = AudioStreamDataRead;
+	stream.getData = AudioStreamDataGetData;
+	stream.opaque = (void *)data;
+	return stream;
+}
+
 typedef enum AudioFileFormat {
 	AudioFileFormat_None = 0,
 	AudioFileFormat_Wave,
