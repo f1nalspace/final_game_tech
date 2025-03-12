@@ -37,6 +37,9 @@ Todo:
 	- Migrate to modern opengl 3.3+
 
 Changelog:
+	# 2025-03-12
+	- Fixed crash when rendering circles
+
 	# 2022-04-14:
 	- Fixed thread pool free was broken
 	- Fixed demos was never freed

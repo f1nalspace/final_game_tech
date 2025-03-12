@@ -564,7 +564,7 @@ namespace Demo3 {
 
 	void Circle::Render(Render::CommandBuffer *commandBuffer) {
 		Vec4f color = ColorBlue;
-		Render::PushCircle(commandBuffer, pos, radius, color, 1.0f, false);
+		Render::PushCircle(commandBuffer, pos, radius, color, false, 1.0f);
 	}
 
 	void LineSegment::Render(Render::CommandBuffer *commandBuffer) {
