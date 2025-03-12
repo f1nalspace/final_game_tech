@@ -193,6 +193,7 @@ SOFTWARE.
 	- Improved: C/C++ detection improved
 	- Improved: Architecture detection extended (Apple, Risc-V, Mips, Sparc)
 	- Improved: CPU bits detection improved
+	- Improved: x86 instruction set level detection improved
 
 	- New[#36]: Support for multiple audio channels + channel layouts + channel mapping
 	- Fixed[#156]: Target audio format type and periods was never used
@@ -2283,29 +2284,62 @@ SOFTWARE.
 //
 // CPU Instruction Set Detection based on compiler settings
 //
+
+/*!
+* @enum fplX86InstructionSetType
+* @brief Defines the X86 instruction sets up to AVX512.
+*/
+typedef enum fplX86InstructionSetLevel {
+	//! None or not an x86 instruction set
+	fplX86InstructionSetLevel_None = 0,
+	//! 32-Bit Instructions (80386)
+	fplX86InstructionSetLevel_IA32,
+	//! SSE
+	fplX86InstructionSetLevel_SSE,
+	//! SSE + (SSE2)
+	fplX86InstructionSetLevel_SSE2,
+	//! SSE / SSE2 + (SSE3)
+	fplX86InstructionSetLevel_SSE3,
+	//! SSE / SSE2 / SSE3 + (SSSE3)
+	fplX86InstructionSetLevel_SSSE3,
+	//! SSE / SSE2 / SSE3 + (SSE4.1)
+	fplX86InstructionSetLevel_SSE4_1,
+	//! SSE / SSE2 / SSE3 / SSE4.1 + (SSE4.2)
+	fplX86InstructionSetLevel_SSE4_2,
+	//! SSE / SSE2 / SSE3 / SSE4.1 / SSE4.2 + (AVX)
+	fplX86InstructionSetLevel_AVX,
+	//! SSE / SSE2 / SSE3 / SSE4.1 / SSE4.2 / AVX + (AVX2)
+	fplX86InstructionSetLevel_AVX2,
+	//! SSE / SSE2 / SSE3 / SSE4.1 / SSE4.2 / AVX / AVX2 + (AVX512)
+	fplX86InstructionSetLevel_AVX512,
+} fplX86InstructionSetLevel;
+
 #if defined(__AVX512F__)
-#	define FPL__COMPILED_X86_CPU_INSTR_SET 9
+#	define FPL__M_X86_CPU_INSTR_SET_LEVEL fplX86InstructionSetLevel_AVX512
 #elif defined(__AVX2__)
-#	define FPL__COMPILED_X86_CPU_INSTR_SET 8
+#	define FPL__M_X86_CPU_INSTR_SET_LEVEL fplX86InstructionSetLevel_AVX2
 #elif defined(__AVX__)
-#	define FPL__COMPILED_X86_CPU_INSTR_SET 7
+#	define FPL__M_X86_CPU_INSTR_SET_LEVEL fplX86InstructionSetLevel_AVX
 #elif defined(__SSE4_2__)
-#	define FPL__COMPILED_X86_CPU_INSTR_SET 6
+#	define FPL__M_X86_CPU_INSTR_SET_LEVEL fplX86InstructionSetLevel_SSE4_2
 #elif defined(__SSE4_1__)
-#	define FPL__COMPILED_X86_CPU_INSTR_SET 5
+#	define FPL__M_X86_CPU_INSTR_SET_LEVEL fplX86InstructionSetLevel_SSE4_1
 #elif defined(__SSSE3__)
-#	define FPL__COMPILED_X86_CPU_INSTR_SET 4
+#	define FPL__M_X86_CPU_INSTR_SET_LEVEL fplX86InstructionSetLevel_SSE3
 #elif defined(__SSE3__)
-#	define FPL__COMPILED_X86_CPU_INSTR_SET 3
-#elif defined(__SSE2__) || (_M_IX86_FP >= 2)
-#	define FPL__COMPILED_X86_CPU_INSTR_SET 2
-#elif defined(__SSE__) || (_M_IX86_FP >= 1)
-#	define FPL__COMPILED_X86_CPU_INSTR_SET 1
-#elif defined(_M_IX86_FP)
-#	define FPL__COMPILED_X86_CPU_INSTR_SET _M_IX86_FP
+#	define FPL__M_X86_CPU_INSTR_SET_LEVEL fplX86InstructionSetLevel_SSSE3
+#elif defined(__SSE2__) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2) || defined(FPL_ARCH_X64)
+#	define FPL__M_X86_CPU_INSTR_SET_LEVEL fplX86InstructionSetLevel_SSE2
+#elif defined(__SSE__) || (defined(_M_IX86_FP) && _M_IX86_FP >= 1)
+#	define FPL__M_X86_CPU_INSTR_SET_LEVEL fplX86InstructionSetLevel_SSE
+#elif defined(FPL_ARCH_X86)
+#	define FPL__M_X86_CPU_INSTR_SET_LEVEL fplX86InstructionSetLevel_IA32
 #else
-#	define FPL__COMPILED_X86_CPU_INSTR_SET 0
+#	define FPL__M_X86_CPU_INSTR_SET_LEVEL fplX86InstructionSetLevel_None
 #endif
+
+//! Compiled X86 CPU Instruction Set, see: @ref fplX86InstructionSetLevel
+#define FPL_X86_CPU_INSTR_SET_LEVEL fplX86InstructionSetLevel_None
 
 //
 // Assertions
