@@ -24362,9 +24362,6 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 		}
 	}
 
-	// @NOTE(final): We do not support channel mapping right know, so we limit it to mono or stereo
-	fplAssert(internalFormat.channels <= 2);
-
     fpl__ReleaseTemporaryMemory(pcmInfo);
     fpl__ReleaseTemporaryMemory(softwareParams);
 	fpl__ReleaseTemporaryMemory(hardwareParams);
