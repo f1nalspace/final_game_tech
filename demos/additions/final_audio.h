@@ -35,13 +35,13 @@ typedef struct AudioStreamData {
 	const uint8_t *data;
 } AudioStreamData;
 
-#define AUDIO_STREAM_SEEK_ABSOLUTE_FUNC(name) size_t name(struct AudioSystemStream *stream, const intptr_t offset)
+#define AUDIO_STREAM_SEEK_ABSOLUTE_FUNC(name) size_t name(void *opaque, const intptr_t offset)
 typedef AUDIO_STREAM_SEEK_ABSOLUTE_FUNC(AudioStreamSeekAbsoluteFunc);
 
-#define AUDIO_STREAM_READ_FUNC(name) size_t name(struct AudioSystemStream *stream, const size_t sizeToRead, void *targetBuffer, const size_t maxTargetBufferSize)
+#define AUDIO_STREAM_READ_FUNC(name) size_t name(void *opaque, const size_t sizeToRead, void *targetBuffer, const size_t maxTargetBufferSize)
 typedef AUDIO_STREAM_READ_FUNC(AudioStreamReadFunc);
 
-#define AUDIO_STREAM_GET_DATA_FUNC(name) AudioStreamData name(struct AudioSystemStream *stream)
+#define AUDIO_STREAM_GET_DATA_FUNC(name) AudioStreamData name(void *opaque)
 typedef AUDIO_STREAM_GET_DATA_FUNC(AudioStreamGetDataFunc);
 
 typedef struct AudioSystemStream {
@@ -71,16 +71,19 @@ fpl_force_inline AudioStreamData AudioSystemStreamGetData(AudioSystemStream *str
 }
 
 static AUDIO_STREAM_SEEK_ABSOLUTE_FUNC(AudioStreamFileSeekAbsolute) {
+	AudioSystemStream *stream = (AudioSystemStream *)opaque;
 	fplFileHandle *handle = (fplFileHandle *)stream->opaque;
 	return fplFileSetPosition(handle, offset, fplFilePositionMode_Beginning);
 }
 
 static AUDIO_STREAM_READ_FUNC(AudioStreamFileRead) {
+	AudioSystemStream *stream = (AudioSystemStream *)opaque;
 	fplFileHandle *handle = (fplFileHandle *)stream->opaque;
 	return fplFileReadBlock(handle, sizeToRead, targetBuffer, maxTargetBufferSize);
 }
 
 static AUDIO_STREAM_GET_DATA_FUNC(AudioStreamFileGetData) {
+	AudioSystemStream *stream = (AudioSystemStream *)opaque;
 	AudioStreamData result = fplZeroInit;
 	return result;
 }
@@ -97,6 +100,7 @@ static AudioSystemStream AudioStreamCreateFromFileHandle(fplFileHandle *file, co
 }
 
 static AUDIO_STREAM_SEEK_ABSOLUTE_FUNC(AudioStreamDataSeekAbsolute) {
+	AudioSystemStream *stream = (AudioSystemStream *)opaque;
 	const uint8_t *data = (const uint8_t *)stream->opaque;
 	if (offset >= 0 && (size_t)offset < stream->size) {
 		// Nothing todo, stream pos is already set in the API function
@@ -106,6 +110,7 @@ static AUDIO_STREAM_SEEK_ABSOLUTE_FUNC(AudioStreamDataSeekAbsolute) {
 }
 
 static AUDIO_STREAM_READ_FUNC(AudioStreamDataRead) {
+	AudioSystemStream *stream = (AudioSystemStream *)opaque;
 	const uint8_t *data = (const uint8_t *)stream->opaque;
 	if (targetBuffer == fpl_null || maxTargetBufferSize < sizeToRead) {
 		return 0;
@@ -119,6 +124,7 @@ static AUDIO_STREAM_READ_FUNC(AudioStreamDataRead) {
 }
 
 static AUDIO_STREAM_GET_DATA_FUNC(AudioStreamDataGetData) {
+	AudioSystemStream *stream = (AudioSystemStream *)opaque;
 	AudioStreamData result = fplZeroInit;
 	result.data = (const uint8_t *)stream->opaque;
 	result.size = stream->size;
