@@ -4538,7 +4538,7 @@ typedef enum fplAudioChannelLayout {
     //! 7.1 Audio Channel Layout (7.1, 8 Channels: Front/Center/LFE/Back/Side).
     fplAudioChannelLayout_7_1,
     //! First Audio Channel Layout.
-    fplAudioChannelLayout_First = fplAudioChannelLayout_Mono,
+    fplAudioChannelLayout_First = fplAudioChannelLayout_Unsupported,
     //! Last Audio Channel Layout.
     fplAudioChannelLayout_Last = fplAudioChannelLayout_7_1,
 } fplAudioChannelLayout;
@@ -4620,7 +4620,7 @@ typedef enum fplAudioChannelType {
     fplAudioChannelType_AUX15,
 
     //! First audio channel type.
-    fplAudioChannelType_First = fplAudioChannelType_FrontLeft,
+    fplAudioChannelType_First = fplAudioChannelType_None,
     //! Last audio channel type.
     fplAudioChannelType_Last = fplAudioChannelType_AUX15,
 } fplAudioChannelType;
