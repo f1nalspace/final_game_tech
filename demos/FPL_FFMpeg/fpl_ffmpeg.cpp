@@ -16,6 +16,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2025-03-13
+	- Fixed linkStatus for shader linking was not checked properly
+
 	## 2025-02-16
 	- Only allocate a new packet when needed / fixed dropped packets was never released
 	- Use fplAssert() instead of assert()
@@ -245,7 +248,7 @@ static GLuint CreateShader(const char *vertexShaderSource, const char *fragmentS
 
 	int linkStatus;
 	glGetProgramiv(result, GL_LINK_STATUS, &linkStatus);
-	if (GL_LINK_STATUS == GL_FALSE) {
+	if (linkStatus == GL_FALSE) {
 		int length;
 		glGetProgramiv(result, GL_INFO_LOG_LENGTH, &length);
 		LinkShaderInfoBuffer[0] = 0;
@@ -2831,7 +2834,7 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 	};
 
 	bool skipWait = true;
-	AVPacket srcPacket;
+	AVPacket srcPacket = fplZeroInit;
 	bool hasPendingPacket = false;
 	for (;;) {
 		// Wait for any signal or skip wait
@@ -3884,51 +3887,6 @@ static fplAudioChannelType MapAVChannelToAudioChannelType(const uint64_t avChann
             return fplAudioChannelType_TopBackRight;
         default:
             return fplAudioChannelType_None;
-    }
-}
-
-static const char* fplGetAudioChannelTypeName(const fplAudioChannelType type) {
-    switch (type) {
-        case fplAudioChannelType_None: 
-            return "None";
-        case fplAudioChannelType_FrontLeft: 
-            return "Front Left";
-        case fplAudioChannelType_FrontRight: 
-            return "Front Right";
-        case fplAudioChannelType_FrontCenter: 
-            return "Front Center";
-        case fplAudioChannelType_LowFrequency: 
-            return "Low Frequency";
-        case fplAudioChannelType_BackLeft: 
-            return "Back Left";
-        case fplAudioChannelType_BackRight: 
-            return "Back Right";
-        case fplAudioChannelType_FrontLeftOfCenter: 
-            return "Front Left Of Center";
-        case fplAudioChannelType_FrontRightOfCenter: 
-            return "Front Right Of Center";
-        case fplAudioChannelType_BackCenter: 
-            return "Back Center";
-        case fplAudioChannelType_SideLeft: 
-            return "Side Left";
-        case fplAudioChannelType_SideRight: 
-            return "Side Right";
-        case fplAudioChannelType_TopCenter: 
-            return "Top Center";
-        case fplAudioChannelType_TopFrontLeft: 
-            return "Top Front Left";
-        case fplAudioChannelType_TopFrontCenter: 
-            return "Top Front Center";
-        case fplAudioChannelType_TopFrontRight: 
-            return "Top Front Right";
-        case fplAudioChannelType_TopBackLeft: 
-            return "Top Back Left";
-        case fplAudioChannelType_TopBackCenter: 
-            return "Top Back Center";
-        case fplAudioChannelType_TopBackRight: 
-            return "Top Back Right";
-        default:
-            return "Unknown";
     }
 }
 

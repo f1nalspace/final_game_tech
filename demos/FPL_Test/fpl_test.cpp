@@ -165,9 +165,9 @@ static void TestOSInfos() {
 		bool r = fplOSGetVersionInfos(&osInfos);
 		ftIsTrue(r);
 		fplConsoleFormatOut("\tName: %s\n", osInfos.osName);
-		fplConsoleFormatOut("\tVersion: %s.%s.%s.%s\n", osInfos.osVersion.major, osInfos.osVersion.minor, osInfos.osVersion.fix, osInfos.osVersion.build);
+		fplConsoleFormatOut("\tVersion: %s.%s.%s.%s\n", osInfos.osVersion.version.parts.major, osInfos.osVersion.version.parts.minor, osInfos.osVersion.version.parts.fix, osInfos.osVersion.version.parts.build);
 		fplConsoleFormatOut("\tDistribution Name: %s\n", osInfos.distributionName);
-		fplConsoleFormatOut("\tDistribution Version: %s.%s.%s.%s\n", osInfos.distributionVersion.major, osInfos.distributionVersion.minor, osInfos.distributionVersion.fix, osInfos.distributionVersion.build);
+		fplConsoleFormatOut("\tDistribution Version: %s.%s.%s.%s\n", osInfos.distributionVersion.version.parts.major, osInfos.distributionVersion.version.parts.minor, osInfos.distributionVersion.version.parts.fix, osInfos.distributionVersion.version.parts.build);
 	}
 	ftMsg("Get Session User name:\n");
 	{

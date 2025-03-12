@@ -117,9 +117,9 @@ int main(int argc, char **args) {
 					uint32_t *p = (uint32_t *)((uint8_t *)backBuffer->pixels + y * backBuffer->lineWidth);
 					for (uint32_t x = 0; x < backBuffer->width; ++x) {
 						if (x % stepX == 0) {
-							pixelColor.r = RandomByte(&series);
-							pixelColor.g = RandomByte(&series);
-							pixelColor.b = RandomByte(&series);
+							pixelColor.components.r = RandomByte(&series);
+							pixelColor.components.g = RandomByte(&series);
+							pixelColor.components.b = RandomByte(&series);
 							*p++ = pixelColor.value;
 						} else {
 							++p;
