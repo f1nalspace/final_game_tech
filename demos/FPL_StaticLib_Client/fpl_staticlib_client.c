@@ -15,6 +15,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2025-03-12
+	- Reflect api changes from FPL 0.9.9
+
 	## 2018-09-24
 	- Reflect api changes in FPL 0.9.2
 
@@ -36,8 +39,7 @@ License:
 
 int main(int argc, char **argv) {
 	if(fplPlatformInit(fplInitFlags_All, fpl_null)) {
-		fplEvent ev;
-		while(fplWindowUpdate(&ev)) {
+		while(fplWindowUpdate()) {
 			fplEvent ev;
 			while(fplPollEvent(&ev)) {}
 		}
