@@ -10778,8 +10778,8 @@ fpl_internal void fpl__ReleaseTemporaryMemory(void *ptr) {
 //
 static const uint32_t FPL__DEFAULT_AUDIO_SAMPLERATE = 44100;
 static const fplAudioFormatType FPL__DEFAULT_AUDIO_FORMAT = fplAudioFormatType_S16;
-static const uint32_t FPL__DEFAULT_AUDIO_CHANNELS = 2;
-static const uint32_t FPL__DEFAULT_AUDIO_PERIODS = 3;
+static const uint16_t FPL__DEFAULT_AUDIO_CHANNELS = 2;
+static const uint16_t FPL__DEFAULT_AUDIO_PERIODS = 3;
 static const uint32_t FPL__DEFAULT_AUDIO_BUFFERSIZE_LOWLATENCY_IN_MSECS = 10;
 static const uint32_t FPL__DEFAULT_AUDIO_BUFFERSIZE_CONSERVATIVE_IN_MSECS = 25;
 
@@ -12428,7 +12428,7 @@ fpl_common_api void fplDebugFormatOut(const char *format, ...) {
 // Color
 //
 fpl_common_api fplColor32 fplCreateColorRGBA(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a) {
-	fplColor32 result = fplStructInit(fplColor32, b, g, r, a);
+	fplColor32 result = fplStructInit(fplColor32, { b, g, r, a });
 	return(result);
 }
 
