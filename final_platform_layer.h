@@ -188,6 +188,7 @@ SOFTWARE.
 	- Changed: fplCPUCapabilities is now separated by x86 and arm features
 	- Changed: All FPL public and internal functions without arguments has now a (void) as argument
 	- Changed: fplVersionInfo has no anonymous structs/unions anymore
+	- Changed: fplColor32 has no anonymous structs/unions anymore
 	- Removed: Removed obsolete function fplFileSetTimestamps
 	- Removed: Removed obsolete struct fplAudioTargetFormat
 	- Removed: Removed obsolete function fplSetDefaultAudioTargetFormat
@@ -4882,6 +4883,7 @@ typedef struct fplWindowPosition {
 * @brief Defines a 32-bit color in format BGRA.
 */
 typedef union fplColor32 {
+	//! The BGRA components
     struct {
         //! The 8-bit blue component.
         uint8_t b;
@@ -4891,7 +4893,7 @@ typedef union fplColor32 {
         uint8_t r;
         //! The 8-bit alpha component.
         uint8_t a;
-    };
+    } components;
     //! The 32-bit color value in format 0xBBGGRRAA.
     uint32_t value;
     //! The color components array, stored as B, G, R, A.
@@ -13655,7 +13657,7 @@ fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindo
 		windowState->backgroundBrush = fpl_null;
 		windowClass.hbrBackground = wapi->user.GetSysColorBrush(COLOR_BACKGROUND);
 	} else {
-		COLORREF brushColor = RGB(initWindowSettings->background.r, initWindowSettings->background.g, initWindowSettings->background.b);
+		COLORREF brushColor = RGB(initWindowSettings->background.components.r, initWindowSettings->background.components.g, initWindowSettings->background.components.b);
 		windowState->backgroundBrush = wapi->gdi.CreateSolidBrush(brushColor);
 		windowClass.hbrBackground = windowState->backgroundBrush;
 	}
@@ -18369,7 +18371,7 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 		backgroundPixel = 0;
 	} else {
 		flags |= CWBackPixel;
-		backgroundPixel = (unsigned long)((0xFF << 24) | (initWindowSettings->background.r << 16) | (initWindowSettings->background.g << 8) | initWindowSettings->background.b);
+		backgroundPixel = (unsigned long)((0xFF << 24) | (initWindowSettings->background.components.r << 16) | (initWindowSettings->background.components.g << 8) | initWindowSettings->background.components.b);
 	}
 
 	XSetWindowAttributes swa = fplZeroInit;
