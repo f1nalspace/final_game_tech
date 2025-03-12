@@ -187,6 +187,7 @@ SOFTWARE.
 	- Changed: Replaced audio exclusive flag and latency mode with a single enum @ref fplAudioMode in @ref fplAudioFormat
 	- Changed: fplCPUCapabilities is now separated by x86 and arm features
 	- Changed: All FPL public and internal functions without arguments has now a (void) as argument
+	- Changed: fplVersionInfo has no anonymous structs/unions anymore
 	- Removed: Removed obsolete function fplFileSetTimestamps
 	- Removed: Removed obsolete struct fplAudioTargetFormat
 	- Removed: Removed obsolete function fplSetDefaultAudioTargetFormat
@@ -3867,9 +3868,9 @@ typedef char fplVersionNumberPart[4 + 1];
 typedef struct fplVersionInfo {
     //! Full name.
     char fullName[FPL_MAX_NAME_LENGTH];
+	//! Full version.
     union {
-        //! Version number parts.
-        fplVersionNumberPart values[4];
+		//! The version parts.
         struct {
             //! Major version.
             fplVersionNumberPart major;
@@ -3879,8 +3880,10 @@ typedef struct fplVersionInfo {
             fplVersionNumberPart fix;
             //! Build version.
             fplVersionNumberPart build;
-        };
-    };
+        } parts;
+        //! Version number parts.
+        fplVersionNumberPart values[4];
+    } version;
 } fplVersionInfo;
 
 /*!
@@ -9132,10 +9135,10 @@ fpl_internal void fpl__ParseVersionString(const char *versionStr, fplVersionInfo
 				++p;
 			}
 			size_t len = p - digitStart;
-			if (len <= fplArrayCount(versionInfo->values[i])) {
-				fplCopyStringLen(digitStart, len, versionInfo->values[i], fplArrayCount(versionInfo->values[i]));
+			if (len <= fplArrayCount(versionInfo->version.values[i])) {
+				fplCopyStringLen(digitStart, len, versionInfo->version.values[i], fplArrayCount(versionInfo->version.values[i]));
 			} else {
-				versionInfo->values[i][0] = 0;
+				versionInfo->version.values[i][0] = 0;
 			}
 			if (*p != '.' && *p != '-') break;
 			++p;
@@ -14159,10 +14162,10 @@ fpl_platform_api bool fplOSGetVersionInfos(fplOSVersionInfos *outInfos) {
 		RTL_OSVERSIONINFOW info = fplZeroInit;
 		info.dwOSVersionInfoSize = sizeof(info);
 		if (rtlGetVersionProc(&info) == 0) {
-			fplS32ToString((int32_t)info.dwMajorVersion, outInfos->osVersion.major, fplArrayCount(outInfos->osVersion.major));
-			fplS32ToString((int32_t)info.dwMinorVersion, outInfos->osVersion.minor, fplArrayCount(outInfos->osVersion.minor));
-			fplS32ToString(0, outInfos->osVersion.fix, fplArrayCount(outInfos->osVersion.fix));
-			fplS32ToString((int32_t)info.dwBuildNumber, outInfos->osVersion.build, fplArrayCount(outInfos->osVersion.build));
+			fplS32ToString((int32_t)info.dwMajorVersion, outInfos->osVersion.version.parts.major, fplArrayCount(outInfos->osVersion.version.parts.major));
+			fplS32ToString((int32_t)info.dwMinorVersion, outInfos->osVersion.version.parts.minor, fplArrayCount(outInfos->osVersion.version.parts.minor));
+			fplS32ToString(0, outInfos->osVersion.version.parts.fix, fplArrayCount(outInfos->osVersion.version.parts.fix));
+			fplS32ToString((int32_t)info.dwBuildNumber, outInfos->osVersion.version.parts.build, fplArrayCount(outInfos->osVersion.version.parts.build));
 			fplStringFormat(outInfos->osVersion.fullName, fplArrayCount(outInfos->osVersion.fullName), "%u.%u.%u.%u", info.dwMajorVersion, info.dwMinorVersion, 0, info.dwBuildNumber);
 			const char *versionName = fpl__Win32GetVersionName(info.dwMajorVersion, info.dwMinorVersion);
 			fplCopyString(versionName, outInfos->osName, fplArrayCount(outInfos->osName));
@@ -14184,10 +14187,10 @@ fpl_platform_api bool fplOSGetVersionInfos(fplOSVersionInfos *outInfos) {
 		OSVERSIONINFOEXW infoEx = fplZeroInit;
 		infoEx.dwOSVersionInfoSize = sizeof(infoEx);
 		if (getVersionExProc(&infoEx) == TRUE) {
-			fplS32ToString((int32_t)infoEx.dwMajorVersion, outInfos->osVersion.major, fplArrayCount(outInfos->osVersion.major));
-			fplS32ToString((int32_t)infoEx.dwMinorVersion, outInfos->osVersion.minor, fplArrayCount(outInfos->osVersion.minor));
-			fplS32ToString(0, outInfos->osVersion.fix, fplArrayCount(outInfos->osVersion.fix));
-			fplS32ToString((int32_t)infoEx.dwBuildNumber, outInfos->osVersion.build, fplArrayCount(outInfos->osVersion.build));
+			fplS32ToString((int32_t)infoEx.dwMajorVersion, outInfos->osVersion.version.parts.major, fplArrayCount(outInfos->osVersion.version.parts.major));
+			fplS32ToString((int32_t)infoEx.dwMinorVersion, outInfos->osVersion.version.parts.minor, fplArrayCount(outInfos->osVersion.version.parts.minor));
+			fplS32ToString(0, outInfos->osVersion.version.parts.fix, fplArrayCount(outInfos->osVersion.version.parts.fix));
+			fplS32ToString((int32_t)infoEx.dwBuildNumber, outInfos->osVersion.version.parts.build, fplArrayCount(outInfos->osVersion.version.parts.build));
 			fplStringFormat(outInfos->osVersion.fullName, fplArrayCount(outInfos->osVersion.fullName), "%u.%u.%u.%u", infoEx.dwMajorVersion, infoEx.dwMinorVersion, 0, infoEx.dwBuildNumber);
 			const char *versionName = fpl__Win32GetVersionName(infoEx.dwMajorVersion, infoEx.dwMinorVersion);
 			fplCopyString(versionName, outInfos->osName, fplArrayCount(outInfos->osName));
@@ -14204,10 +14207,10 @@ fpl_platform_api bool fplOSGetVersionInfos(fplOSVersionInfos *outInfos) {
 			if (dwVersion < 0x80000000) {
 				build = (DWORD)((DWORD)(HIWORD(dwVersion)));
 			}
-			fplS32ToString((int32_t)major, outInfos->osVersion.major, fplArrayCount(outInfos->osVersion.major));
-			fplS32ToString((int32_t)minor, outInfos->osVersion.minor, fplArrayCount(outInfos->osVersion.minor));
-			fplS32ToString(0, outInfos->osVersion.fix, fplArrayCount(outInfos->osVersion.fix));
-			fplS32ToString((int32_t)build, outInfos->osVersion.build, fplArrayCount(outInfos->osVersion.build));
+			fplS32ToString((int32_t)major, outInfos->osVersion.version.parts.major, fplArrayCount(outInfos->osVersion.version.parts.major));
+			fplS32ToString((int32_t)minor, outInfos->osVersion.version.parts.minor, fplArrayCount(outInfos->osVersion.version.parts.minor));
+			fplS32ToString(0, outInfos->osVersion.version.parts.fix, fplArrayCount(outInfos->osVersion.version.parts.fix));
+			fplS32ToString((int32_t)build, outInfos->osVersion.version.parts.build, fplArrayCount(outInfos->osVersion.version.parts.build));
 			fplStringFormat(outInfos->osVersion.fullName, fplArrayCount(outInfos->osVersion.fullName), "%u.%u.%u.%u", major, minor, 0, build);
 			const char *versionName = fpl__Win32GetVersionName(major, minor);
 			fplCopyString(versionName, outInfos->osName, fplArrayCount(outInfos->osName));
@@ -21682,9 +21685,9 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_GETREQUIREMENTS(fpl__VideoBackend_Vulkan_Ge
 }
 
 fpl_internal uint32_t fpl__VersionInfoToVulkanVersion(const fplVersionInfo *versionInfo) {
-	uint32_t major = fplStringToS32(versionInfo->major);
-	uint32_t minor = fplStringToS32(versionInfo->minor);
-	uint32_t patch = fplStringToS32(versionInfo->fix);
+	uint32_t major = fplStringToS32(versionInfo->version.parts.major);
+	uint32_t minor = fplStringToS32(versionInfo->version.parts.minor);
+	uint32_t patch = fplStringToS32(versionInfo->version.parts.fix);
 	uint32_t result = FPL__VK_MAKE_VERSION(major, minor, patch);
 	return(result);
 }
