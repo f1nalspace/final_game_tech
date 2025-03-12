@@ -186,6 +186,7 @@ SOFTWARE.
 	- Changed: Renamed enum value fplPlatformResultType_FailedMemory to fplPlatformResultType_OutOfMemory
 	- Changed: Replaced audio exclusive flag and latency mode with a single enum @ref fplAudioMode in @ref fplAudioFormat
 	- Changed: fplCPUCapabilities is now separated by x86 and arm features
+	- Changed: All FPL public and internal functions without arguments has now a (void) as argument
 	- Removed: Removed obsolete function fplFileSetTimestamps
 	- Removed: Removed obsolete struct fplAudioTargetFormat
 	- Removed: Removed obsolete function fplSetDefaultAudioTargetFormat
