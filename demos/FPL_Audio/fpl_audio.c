@@ -4,9 +4,17 @@ Name:
 	FPL-Demo | Audio
 
 Description:
-	This demo shows how to play music, sounds using a custom mixer.
+	This demo shows how to play music, sounds using a custom audio system/mixer.
 	It supports uncompressed PCM wave data, OGG Vorbis and MP3 Files.
-	Resampling support is limited.
+	Resampling support is limited to only even sample rates.
+
+	In addition all samples are cached in a lock-free ringbuffer and are played back properly, see AudioPlayback() for more details.
+
+	The audio tracks are streamed in and use a slow/fast detection to only cache when it needs to, see AudioStreamingThread() for more details.
+
+	To make it more appealing all audio samples are visualized in realtime with OpenGL and using several algorythms, such FFT, Windowing, Smoothing, etc.
+
+	Everything together is very complex and requires a good understanding how digital sound is played back in a computer.
 
 Requirements:
 	- C99 Compiler
