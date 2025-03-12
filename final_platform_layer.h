@@ -4627,6 +4627,13 @@ typedef enum fplAudioChannelType {
 //! Audio speaker layout operator overloads for C++
 FPL_ENUM_AS_FLAGS_OPERATORS(fplAudioChannelType);
 
+/**
+* @brief Gets the name of the specified audio channel type.
+* @param[in] type Audio channel type.
+* @return Returns the name of the audio channel type.
+*/
+fpl_common_api const char *fplGetAudioChannelTypeName(const fplAudioChannelType type);
+
 /*!
 * @def FPL_MAX_AUDIO_CHANNEL_COUNT
 * @brief Maximum number of audio channels.
@@ -8800,8 +8807,15 @@ fplStaticAssert(sizeof(fpl__LinuxSignalHandle) >= sizeof(int));
 //
 // Enum macros
 //
+
+// Get number of enum values from the specifie first and last enum value
 #define FPL__ENUM_COUNT(first, last) ((last) - (first) + 1)
+
+// Get array index for the specified enum value with the first and last enum value
 #define FPL__ENUM_VALUE_TO_ARRAY_INDEX(value, first, last) (((value) >= (first) && (value) <= (last)) ? ((value) - (first)) : 0)
+
+// Define the name for a enum value in a mapping table
+#define FPL__ENUM_NAME(str, enumValue) str
 
 //
 // Internal memory
@@ -8825,15 +8839,17 @@ fpl_internal void fpl__ReleaseMemory(const fplMemoryAllocationSettings *allocSet
 fpl_globalvar fplLogSettings fpl__global__LogSettings = fplZeroInit;
 
 #define FPL__LOGLEVEL_COUNT FPL__ENUM_COUNT(fplLogLevel_First, fplLogLevel_Last)
+fplStaticAssert(fplLogLevel_All == fplLogLevel_First);
+fplStaticAssert(fplLogLevel_Trace == fplLogLevel_Last);
 fpl_globalvar const char *fpl__LogLevelNameTable[] = {
-	"All", // fplLogLevel_All (-1)
-	"Critical", // fplLogLevel_Critical (0)
-	"Error", // fplLogLevel_Error (1)
-	"Warning", // fplLogLevel_Warning (2)
-	"Info", // fplLogLevel_Info (3)
-	"Verbose", // fplLogLevel_Verbose (4)
-	"Debug", // fplLogLevel_Debug (5)
-	"Trace", // fplLogLevel_Trace (6)
+	FPL__ENUM_NAME("All", fplLogLevel_All),
+	FPL__ENUM_NAME("Critical", fplLogLevel_Critical),
+	FPL__ENUM_NAME("Error", fplLogLevel_Error),
+	FPL__ENUM_NAME("Warning", fplLogLevel_Warning),
+	FPL__ENUM_NAME("Info", fplLogLevel_Info),
+	FPL__ENUM_NAME("Verbose", fplLogLevel_Verbose),
+	FPL__ENUM_NAME("Debug", fplLogLevel_Debug),
+	FPL__ENUM_NAME("Trace", fplLogLevel_Trace),
 };
 fplStaticAssert(fplArrayCount(fpl__LogLevelNameTable) == FPL__LOGLEVEL_COUNT);
 
@@ -12300,6 +12316,55 @@ fpl_common_api void fplSetDefaultVideoSettings(fplVideoSettings *video) {
 #endif
 }
 
+
+#define FPL__AUDIO_CHANNEL_TYPE_COUNT FPL__ENUM_COUNT(fplAudioChannelType_First, fplAudioChannelType_Last)
+fplStaticAssert(fplAudioChannelType_None == fplAudioChannelType_First);
+fplStaticAssert(fplAudioChannelType_AUX15 == fplAudioChannelType_Last);
+fpl_globalvar const char *fpl__global_audioChannelTypeNameTable[] = {
+	FPL__ENUM_NAME("None", fplAudioChannelType_None),
+	FPL__ENUM_NAME("Front Left", fplAudioChannelType_FrontLeft),
+	FPL__ENUM_NAME("Front Right", fplAudioChannelType_FrontRight),
+	FPL__ENUM_NAME("Front Center", fplAudioChannelType_FrontCenter),
+	FPL__ENUM_NAME("Low Frequency", fplAudioChannelType_LowFrequency),
+	FPL__ENUM_NAME("Back Left", fplAudioChannelType_BackLeft),
+	FPL__ENUM_NAME("Back Right", fplAudioChannelType_BackRight),
+	FPL__ENUM_NAME("Front Left Of Center", fplAudioChannelType_FrontLeftOfCenter),
+	FPL__ENUM_NAME("Front Right Of Center", fplAudioChannelType_FrontRightOfCenter),
+	FPL__ENUM_NAME("Back Center", fplAudioChannelType_BackCenter),
+	FPL__ENUM_NAME("Side Left", fplAudioChannelType_SideLeft),
+	FPL__ENUM_NAME("Side Right", fplAudioChannelType_SideRight),
+	FPL__ENUM_NAME("Top Center", fplAudioChannelType_TopCenter),
+	FPL__ENUM_NAME("Top Front Left", fplAudioChannelType_TopFrontLeft),
+	FPL__ENUM_NAME("Top Front Center", fplAudioChannelType_TopFrontCenter),
+	FPL__ENUM_NAME("Top Front Right", fplAudioChannelType_TopFrontRight),
+	FPL__ENUM_NAME("Top Back Left", fplAudioChannelType_TopBackLeft),
+	FPL__ENUM_NAME("Top Back Center", fplAudioChannelType_TopBackCenter),
+	FPL__ENUM_NAME("Top Back Right", fplAudioChannelType_TopBackRight),
+	FPL__ENUM_NAME("AUX 0", fplAudioChannelType_AUX0),
+	FPL__ENUM_NAME("AUX 1", fplAudioChannelType_AUX1),
+	FPL__ENUM_NAME("AUX 2", fplAudioChannelType_AUX2),
+	FPL__ENUM_NAME("AUX 3", fplAudioChannelType_AUX3),
+	FPL__ENUM_NAME("AUX 4", fplAudioChannelType_AUX4),
+	FPL__ENUM_NAME("AUX 5", fplAudioChannelType_AUX5),
+	FPL__ENUM_NAME("AUX 6", fplAudioChannelType_AUX6),
+	FPL__ENUM_NAME("AUX 7", fplAudioChannelType_AUX7),
+	FPL__ENUM_NAME("AUX 8", fplAudioChannelType_AUX8),
+	FPL__ENUM_NAME("AUX 9", fplAudioChannelType_AUX9),
+	FPL__ENUM_NAME("AUX 10", fplAudioChannelType_AUX10),
+	FPL__ENUM_NAME("AUX 11", fplAudioChannelType_AUX11),
+	FPL__ENUM_NAME("AUX 12", fplAudioChannelType_AUX12),
+	FPL__ENUM_NAME("AUX 13", fplAudioChannelType_AUX13),
+	FPL__ENUM_NAME("AUX 14", fplAudioChannelType_AUX14),
+	FPL__ENUM_NAME("AUX 15", fplAudioChannelType_AUX15),
+};
+fplStaticAssert(fplArrayCount(fpl__global_audioChannelTypeNameTable) == FPL__AUDIO_CHANNEL_TYPE_COUNT);
+
+fpl_common_api const char *fplGetAudioChannelTypeName(const fplAudioChannelType type) {
+	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, fplAudioChannelType_First, fplAudioChannelType_Last);
+	const char *result = fpl__global_audioChannelTypeNameTable[index];
+	return(result);
+}
+
 fpl_common_api void fplSetDefaultAudioSettings(fplAudioSettings *audio) {
 	FPL__CheckArgumentNullNoRet(audio);
 	fplClearStruct(audio);
@@ -12352,15 +12417,17 @@ fpl_common_api fplSettings fplMakeDefaultSettings(void) {
 }
 
 #define FPL__PLATFORMRESULTTYPE_COUNT FPL__ENUM_COUNT(fplPlatformResultType_First, fplPlatformResultType_Last)
+fplStaticAssert(fplPlatformResultType_FailedWindow == fplPlatformResultType_First);
+fplStaticAssert(fplPlatformResultType_Success == fplPlatformResultType_Last);
 fpl_globalvar const char *fpl__global_platformResultTypeNameTable[] = {
-	"Failed Window", // fplPlatformResultType_FailedWindow (-6)
-	"Failed Audio", // fplPlatformResultType_FailedAudio (-5)
-	"Failed Video", // fplPlatformResultType_FailedVideo (-4)
-	"Failed Platform", // fplPlatformResultType_FailedPlatform (-3)
-	"Out of Memory", // fplPlatformResultType_OutOfMemory (-2)
-	"Already Initialized", // fplPlatformResultType_AlreadyInitialized (-1)
-	"Not Initialized", // fplPlatformResultType_NotInitialized (0)
-	"Success", // fplPlatformResultType_Success (1)
+	FPL__ENUM_NAME("Failed Window", fplPlatformResultType_FailedWindow),
+	FPL__ENUM_NAME("Failed Audio", fplPlatformResultType_FailedAudio),
+	FPL__ENUM_NAME("Failed Video", fplPlatformResultType_FailedVideo),
+	FPL__ENUM_NAME("Failed Platform", fplPlatformResultType_FailedPlatform),
+	FPL__ENUM_NAME("Out of Memory", fplPlatformResultType_OutOfMemory),
+	FPL__ENUM_NAME("Already Initialized", fplPlatformResultType_AlreadyInitialized),
+	FPL__ENUM_NAME("Not Initialized", fplPlatformResultType_NotInitialized),
+	FPL__ENUM_NAME("Success", fplPlatformResultType_Success),
 };
 fplStaticAssert(fplArrayCount(fpl__global_platformResultTypeNameTable) == FPL__PLATFORMRESULTTYPE_COUNT);
 
@@ -12371,13 +12438,15 @@ fpl_common_api const char *fplPlatformGetResultName(const fplPlatformResultType 
 }
 
 #define FPL__ARCHTYPE_COUNT FPL__ENUM_COUNT(fplCPUArchType_First, fplCPUArchType_Last)
+fplStaticAssert(fplCPUArchType_Unknown == fplCPUArchType_First);
+fplStaticAssert(fplCPUArchType_Arm64 == fplCPUArchType_Last);
 fpl_globalvar const char *fpl__global_ArchTypeNameTable[] = {
-	"Unknown", // Unknown architecture
-	"x86", // X86 architecture
-	"x86_64", // X86 with 64-bit architecture
-	"x64", // X64 only architecture
-	"arm32", // ARM32 architecture
-	"arm64", // ARM64 architecture
+	FPL__ENUM_NAME("Unknown", fplCPUArchType_Unknown),
+	FPL__ENUM_NAME("x86", fplCPUArchType_x86),
+	FPL__ENUM_NAME("x86_64", fplCPUArchType_x86_64),
+	FPL__ENUM_NAME("x64", fplCPUArchType_x64),
+	FPL__ENUM_NAME("arm32", fplCPUArchType_Arm32),
+	FPL__ENUM_NAME("arm64", fplCPUArchType_Arm64),
 };
 fplStaticAssert(fplArrayCount(fpl__global_ArchTypeNameTable) == FPL__ARCHTYPE_COUNT);
 
@@ -12388,12 +12457,15 @@ fpl_common_api const char *fplCPUGetArchName(const fplCPUArchType type) {
 }
 
 #define FPL__CPU_CAPABILITIESTYPE_COUNT FPL__ENUM_COUNT(fplCPUCapabilitiesType_First, fplCPUCapabilitiesType_Last)
+fplStaticAssert(fplCPUCapabilitiesType_Unknown == fplCPUCapabilitiesType_First);
+fplStaticAssert(fplCPUCapabilitiesType_ARM == fplCPUCapabilitiesType_Last);
 fpl_globalvar const char *fpl__global_CPUCapabilitesTypeNameTable[] = {
-	"Unknown",
-	"X86",
-	"ARM",
+	FPL__ENUM_NAME("Unknown", fplCPUCapabilitiesType_Unknown),
+	FPL__ENUM_NAME("X86", fplCPUCapabilitiesType_X86),
+	FPL__ENUM_NAME("ARM", fplCPUCapabilitiesType_ARM),
 };
 fplStaticAssert(fplArrayCount(fpl__global_CPUCapabilitesTypeNameTable) == FPL__CPU_CAPABILITIESTYPE_COUNT);
+
 fpl_common_api const char *fplGetCPUCapabilitiesTypeName(const fplCPUCapabilitiesType type) {
 	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, fplCPUCapabilitiesType_First, fplCPUCapabilitiesType_Last);
 	const char *result = fpl__global_CPUCapabilitesTypeNameTable[index];
@@ -24550,30 +24622,32 @@ fpl_internal void fpl__SetupAudioDeviceFormat(const fplAudioFormat *inFormat, fp
 }
 
 #define FPL__AUDIO_RESULT_TYPE_COUNT FPL__ENUM_COUNT(fplAudioResultType_First, fplAudioResultType_Last)
+fplStaticAssert(fplAudioResultType_None == fplAudioResultType_First);
+fplStaticAssert(fplAudioResultType_Failed == fplAudioResultType_Last);
 fpl_globalvar const char *fpl__global_audioResultTypeNameTable[] = {
-	"None", // fplAudioResultType_None = 0,
-	"Success", // fplAudioResultType_Success,
-	"Invalid Arguments", // fplAudioResultType_InvalidArguments
-	"System not initialized", // fplAudioResultType_SystemNotInitialized
-	"Audio-Device not initialized",// fplAudioResultType_DeviceNotInitialized,
-	"Audio-Device already stopped",// fplAudioResultType_DeviceAlreadyStopped,
-	"Audio-Device already started",// fplAudioResultType_DeviceAlreadyStarted,
-	"Audio-Device is busy", // fplAudioResultType_DeviceBusy,
-	"Audio-Device failure", // fplAudioResultType_DeviceFailure,
-	"No Audio-Device found", // fplAudioResultType_NoDeviceFound,
-	"No Audio-Device by ID found", // fplAudioResultType_DeviceByIdNotFound
-	"Api failure", // fplAudioResultType_ApiFailed,
-	"Platform not initialized", // fplAudioResultType_PlatformNotInitialized,
-	"Backend already initialized", // fplAudioResultType_BackendAlreadyInitialized,
-	"No audio backends found", // fplAudioResultType_NoBackendsFound
-	"Audio format was not set", // fplAudioResultType_UnsetAudioFormat,
-	"Number of audio channels was not set", // fplAudioResultType_UnsetAudioChannels,
-	"Audio sample rate was not set", // fplAudioResultType_UnsetAudioSampleRate,
-	"Audio buffer sizes was not set", // fplAudioResultType_UnsetAudioBufferSize,
-	"Audio device format is unsupported", // fplAudioResultType_UnsuportedDeviceFormat,
-    "No memory available", // fplAudioResultType_OutOfMemory,
-    "Not implemented", // fplAudioResultType_NotImplemented,
-    "Unknown audio failure", // fplAudioResultType_Failed,
+	FPL__ENUM_NAME("None", fplAudioResultType_None),
+	FPL__ENUM_NAME("Success", fplAudioResultType_Success),
+	FPL__ENUM_NAME("Invalid Arguments", fplAudioResultType_InvalidArguments),
+	FPL__ENUM_NAME("System not initialized", fplAudioResultType_SystemNotInitialized),
+	FPL__ENUM_NAME("Audio-Device not initialized", fplAudioResultType_DeviceNotInitialized),
+	FPL__ENUM_NAME("Audio-Device already stopped", fplAudioResultType_DeviceAlreadyStopped),
+	FPL__ENUM_NAME("Audio-Device already started", fplAudioResultType_DeviceAlreadyStarted),
+	FPL__ENUM_NAME("Audio-Device is busy", fplAudioResultType_DeviceBusy),
+	FPL__ENUM_NAME("Audio-Device failure", fplAudioResultType_DeviceFailure),
+	FPL__ENUM_NAME("No Audio-Device found", fplAudioResultType_NoDeviceFound),
+	FPL__ENUM_NAME("No Audio-Device by ID found", fplAudioResultType_DeviceByIdNotFound),
+	FPL__ENUM_NAME("Api failure", fplAudioResultType_ApiFailed),
+	FPL__ENUM_NAME("Platform not initialized", fplAudioResultType_PlatformNotInitialized),
+	FPL__ENUM_NAME("Backend already initialized", fplAudioResultType_BackendAlreadyInitialized),
+	FPL__ENUM_NAME("No audio backends found", fplAudioResultType_NoBackendsFound),
+	FPL__ENUM_NAME("Audio format was not set", fplAudioResultType_UnsetAudioFormat),
+	FPL__ENUM_NAME("Number of audio channels was not set", fplAudioResultType_UnsetAudioChannels),
+	FPL__ENUM_NAME("Audio sample rate was not set", fplAudioResultType_UnsetAudioSampleRate),
+	FPL__ENUM_NAME("Audio buffer sizes was not set", fplAudioResultType_UnsetAudioBufferSize),
+	FPL__ENUM_NAME("Audio device format is unsupported", fplAudioResultType_UnsuportedDeviceFormat),
+    FPL__ENUM_NAME("No memory available", fplAudioResultType_OutOfMemory),
+    FPL__ENUM_NAME("Not implemented", fplAudioResultType_NotImplemented),
+    FPL__ENUM_NAME("Unknown audio failure", fplAudioResultType_Failed),
 };
 fplStaticAssert(fplArrayCount(fpl__global_audioResultTypeNameTable) == FPL__AUDIO_RESULT_TYPE_COUNT);
 
@@ -25080,7 +25154,7 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 
 	static fplAudioFormatU64 testFormats[64] = fplZeroInit;
 
-	fplAudioResultType resultType;
+	fplAudioResultType resultType = fplAudioResultType_NoBackendsFound;
 	for (size_t backendIndex = 0; backendIndex < audioBackendCount; ++backendIndex) {
 		const fplAudioBackendDescriptor *descriptor = &descriptors[backendIndex];
 
@@ -25474,36 +25548,38 @@ fpl_internal bool fpl__InitWindow(const fplSettings *initSettings, fplWindowSett
 #if defined(FPL__ENABLE_AUDIO)
 
 #define FPL__AUDIOFORMATTYPE_COUNT FPL__ENUM_COUNT(fplAudioFormatType_First, fplAudioFormatType_Last)
+fplStaticAssert(fplAudioFormatType_None == fplAudioFormatType_First);
+fplStaticAssert(fplAudioFormatType_F64 == fplAudioFormatType_Last);
 
 fpl_globalvar uint32_t fpl__globalAudioFormatSampleSizeTable[] = {
-	0, // No audio format
-	1, // Unsigned 8-bit integer PCM
-	2, // Signed 16-bit integer PCM
-	3, // Signed 24-bit integer PCM
-	4, // Signed 32-bit integer PCM
-	8, // Signed 64-bit integer PCM
-	4, // 32-bit IEEE_FLOAT
-	8, // 64-bit IEEE_FLOAT
+	FPL__ENUM_NAME(0, fplAudioFormatType_None),
+	FPL__ENUM_NAME(1, fplAudioFormatType_U8),
+	FPL__ENUM_NAME(2, fplAudioFormatType_S16),
+	FPL__ENUM_NAME(3, fplAudioFormatType_S24),
+	FPL__ENUM_NAME(4, fplAudioFormatType_S32),
+	FPL__ENUM_NAME(8, fplAudioFormatType_S64),
+	FPL__ENUM_NAME(4, fplAudioFormatType_F32),
+	FPL__ENUM_NAME(8, fplAudioFormatType_F64),
 };
 fplStaticAssert(fplArrayCount(fpl__globalAudioFormatSampleSizeTable) == FPL__AUDIOFORMATTYPE_COUNT);
-
-fpl_globalvar const char *fpl__globalAudioFormatNameTable[] = {
-	"None", // 0 = No audio format
-	"U8",	// = Unsigned 8-bit integer PCM
-	"S16",	// = Signed 16-bit integer PCM
-	"S24",	// = Signed 24-bit integer PCM
-	"S32",	// = Signed 32-bit integer PCM
-	"S64",  // = Signed 64-bit integer PCM
-	"F32",	// = 32-bit IEEE_FLOAT
-	"F64",	// = 64-bit IEEE_FLOAT
-};
-fplStaticAssert(fplArrayCount(fpl__globalAudioFormatNameTable) == FPL__AUDIOFORMATTYPE_COUNT);
 
 fpl_common_api uint32_t fplGetAudioSampleSizeInBytes(const fplAudioFormatType format) {
 	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(format, fplAudioFormatType_First, fplAudioFormatType_Last);
 	uint32_t result = fpl__globalAudioFormatSampleSizeTable[index];
 	return(result);
 }
+
+fpl_globalvar const char *fpl__globalAudioFormatNameTable[] = {
+	FPL__ENUM_NAME("None", fplAudioFormatType_None),
+	FPL__ENUM_NAME("U8", fplAudioFormatType_U8),
+	FPL__ENUM_NAME("S16", fplAudioFormatType_S16),
+	FPL__ENUM_NAME("S24", fplAudioFormatType_S24),
+	FPL__ENUM_NAME("S32", fplAudioFormatType_S32),
+	FPL__ENUM_NAME("S64", fplAudioFormatType_S64),
+	FPL__ENUM_NAME("F32", fplAudioFormatType_F32),
+	FPL__ENUM_NAME("F64", fplAudioFormatType_F64),
+};
+fplStaticAssert(fplArrayCount(fpl__globalAudioFormatNameTable) == FPL__AUDIOFORMATTYPE_COUNT);
 
 fpl_common_api const char *fplGetAudioFormatName(const fplAudioFormatType format) {
 	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(format, fplAudioFormatType_First, fplAudioFormatType_Last);
@@ -25512,12 +25588,14 @@ fpl_common_api const char *fplGetAudioFormatName(const fplAudioFormatType format
 }
 
 #define FPL__AUDIOBACKENDTYPE_COUNT FPL__ENUM_COUNT(fplAudioBackendType_First, fplAudioBackendType_Last)
+fplStaticAssert(fplAudioBackendType_None == fplAudioBackendType_First);
+fplStaticAssert(fplAudioBackendType_Custom == fplAudioBackendType_Last);
 fpl_globalvar const char *fpl__globalAudioBackendNameTable[FPL__AUDIOBACKENDTYPE_COUNT] = {
-	"None", // No audio backend
-	"Automatic", // Automatic backend detection
-	"DirectSound", // DirectSound
-	"ALSA", // Alsa
-	"Custom", // Custom
+	FPL__ENUM_NAME("None", fplAudioBackendType_None),
+	FPL__ENUM_NAME("Automatic", fplAudioBackendType_Auto),
+	FPL__ENUM_NAME("DirectSound", fplAudioBackendType_DirectSound),
+	FPL__ENUM_NAME("ALSA", fplAudioBackendType_Alsa),
+	FPL__ENUM_NAME("Custom", fplAudioBackendType_Custom),
 };
 fplStaticAssert(fplArrayCount(fpl__globalAudioBackendNameTable) == FPL__AUDIOBACKENDTYPE_COUNT);
 
@@ -25561,73 +25639,76 @@ fpl_common_api uint32_t fplGetAudioBufferSizeInBytes(const fplAudioFormatType fo
 
 #define FPL__AUDIO_CHANNEL_LAYOUT_COUNT FPL__ENUM_COUNT(fplAudioChannelLayout_First, fplAudioChannelLayout_Last)
 
+fplStaticAssert(fplAudioChannelLayout_Unsupported == fplAudioChannelLayout_First);
+fplStaticAssert(fplAudioChannelLayout_7_1 == fplAudioChannelLayout_Last);
 fpl_globalvar fplAudioChannelLayout fpl__global_AudioChannelCount_To_AudioChannelLayout_Table[] = {
-	fplAudioChannelLayout_Unsupported,	//  0 Channels
-	fplAudioChannelLayout_Mono,			//  1 Channels
-	fplAudioChannelLayout_Stereo,		//  2 Channels
-	fplAudioChannelLayout_3_0_Surround,	//  3 Channels
-	fplAudioChannelLayout_4_0_Quad,		//  4 Channels
-	fplAudioChannelLayout_5_0_Surround,	//  5 Channels
-	fplAudioChannelLayout_5_1,			//  6 Channels
-	fplAudioChannelLayout_6_1,			//  7 Channels
-	fplAudioChannelLayout_7_1,			//  8 Channels
-	fplAudioChannelLayout_7_1,			//  9 Channels
-	fplAudioChannelLayout_7_1,			// 10 Channels
-	fplAudioChannelLayout_7_1,			// 11 Channels
-	fplAudioChannelLayout_7_1,			// 12 Channels
-	fplAudioChannelLayout_7_1,			// 13 Channels
-	fplAudioChannelLayout_7_1,			// 14 Channels
-	fplAudioChannelLayout_7_1,			// 15 Channels
-	fplAudioChannelLayout_7_1,			// 16 Channels
-	fplAudioChannelLayout_7_1,			// 17 Channels
-	fplAudioChannelLayout_7_1,			// 18 Channels
-	fplAudioChannelLayout_7_1,			// 19 Channels
-	fplAudioChannelLayout_7_1,			// 20 Channels
-	fplAudioChannelLayout_7_1,			// 21 Channels
-	fplAudioChannelLayout_7_1,			// 22 Channels
-	fplAudioChannelLayout_7_1,			// 23 Channels
-	fplAudioChannelLayout_7_1,			// 24 Channels
-	fplAudioChannelLayout_7_1,			// 25 Channels
-	fplAudioChannelLayout_7_1,			// 26 Channels
-	fplAudioChannelLayout_7_1,			// 27 Channels
-	fplAudioChannelLayout_7_1,			// 28 Channels
-	fplAudioChannelLayout_7_1,			// 29 Channels
-	fplAudioChannelLayout_7_1,			// 30 Channels
-	fplAudioChannelLayout_7_1,			// 31 Channels
-	fplAudioChannelLayout_7_1,			// 32 Channels
+	FPL__ENUM_NAME(fplAudioChannelLayout_Unsupported, 0),
+	FPL__ENUM_NAME(fplAudioChannelLayout_Mono, 1),
+	FPL__ENUM_NAME(fplAudioChannelLayout_Stereo, 2),
+	FPL__ENUM_NAME(fplAudioChannelLayout_3_0_Surround, 3),
+	FPL__ENUM_NAME(fplAudioChannelLayout_4_0_Quad, 4),
+	FPL__ENUM_NAME(fplAudioChannelLayout_5_0_Surround, 5),
+	FPL__ENUM_NAME(fplAudioChannelLayout_5_1, 6),
+	FPL__ENUM_NAME(fplAudioChannelLayout_6_1, 7),
+	FPL__ENUM_NAME(fplAudioChannelLayout_7_1, 8),
+	FPL__ENUM_NAME(fplAudioChannelLayout_7_1, 9),
+	FPL__ENUM_NAME(fplAudioChannelLayout_7_1, 10),
+	FPL__ENUM_NAME(fplAudioChannelLayout_7_1, 11),
+	FPL__ENUM_NAME(fplAudioChannelLayout_7_1, 12),
+	FPL__ENUM_NAME(fplAudioChannelLayout_7_1, 13),
+	FPL__ENUM_NAME(fplAudioChannelLayout_7_1, 14),
+	FPL__ENUM_NAME(fplAudioChannelLayout_7_1, 15),
+	FPL__ENUM_NAME(fplAudioChannelLayout_7_1, 16),
+	FPL__ENUM_NAME(fplAudioChannelLayout_7_1, 17),
+	FPL__ENUM_NAME(fplAudioChannelLayout_7_1, 18),
+	FPL__ENUM_NAME(fplAudioChannelLayout_7_1, 19),
+	FPL__ENUM_NAME(fplAudioChannelLayout_7_1, 20),
+	FPL__ENUM_NAME(fplAudioChannelLayout_7_1, 21),
+	FPL__ENUM_NAME(fplAudioChannelLayout_7_1, 22),
+	FPL__ENUM_NAME(fplAudioChannelLayout_7_1, 23),
+	FPL__ENUM_NAME(fplAudioChannelLayout_7_1, 24),
+	FPL__ENUM_NAME(fplAudioChannelLayout_7_1, 25),
+	FPL__ENUM_NAME(fplAudioChannelLayout_7_1, 26),
+	FPL__ENUM_NAME(fplAudioChannelLayout_7_1, 27),
+	FPL__ENUM_NAME(fplAudioChannelLayout_7_1, 28),
+	FPL__ENUM_NAME(fplAudioChannelLayout_7_1, 29),
+	FPL__ENUM_NAME(fplAudioChannelLayout_7_1, 30),
+	FPL__ENUM_NAME(fplAudioChannelLayout_7_1, 31),
+	FPL__ENUM_NAME(fplAudioChannelLayout_7_1, 32),
 };
 fplStaticAssert(fplArrayCount(fpl__global_AudioChannelCount_To_AudioChannelLayout_Table) == (FPL_MAX_AUDIO_CHANNEL_COUNT + 1));
 
 fpl_globalvar uint16_t fpl__global_AudioChannelLayout_To_AudioChannelCount_Table[] = {
-	1, // fplAudioChannelLayout_Mono
-	2, // fplAudioChannelLayout_Stereo
-	3, // fplAudioChannelLayout_2_1
-	3, // fplAudioChannelLayout_3_0_Surround
-	4, // fplAudioChannelLayout_4_0_Quad
-	4, // fplAudioChannelLayout_4_0_Surround
-	5, // fplAudioChannelLayout_4_1
-	5, // fplAudioChannelLayout_5_0_Surround
-	6, // fplAudioChannelLayout_5_1
-	7, // fplAudioChannelLayout_6_1
-	8, // fplAudioChannelLayout_7_1
+	FPL__ENUM_NAME(0, fplAudioChannelLayout_Unsupported),
+	FPL__ENUM_NAME(0, fplAudioChannelLayout_Automatic),
+	FPL__ENUM_NAME(1, fplAudioChannelLayout_Mono),
+	FPL__ENUM_NAME(2, fplAudioChannelLayout_Stereo),
+	FPL__ENUM_NAME(3, fplAudioChannelLayout_2_1),
+	FPL__ENUM_NAME(3, fplAudioChannelLayout_3_0_Surround),
+	FPL__ENUM_NAME(4, fplAudioChannelLayout_4_0_Quad),
+	FPL__ENUM_NAME(4, fplAudioChannelLayout_4_0_Surround),
+	FPL__ENUM_NAME(5, fplAudioChannelLayout_4_1),
+	FPL__ENUM_NAME(5, fplAudioChannelLayout_5_0_Surround),
+	FPL__ENUM_NAME(6, fplAudioChannelLayout_5_1),
+	FPL__ENUM_NAME(7, fplAudioChannelLayout_6_1),
+	FPL__ENUM_NAME(8, fplAudioChannelLayout_7_1),
 };
+
 fplStaticAssert(fplArrayCount(fpl__global_AudioChannelLayout_To_AudioChannelCount_Table) == FPL__AUDIO_CHANNEL_LAYOUT_COUNT);
 
 fpl_common_api fplAudioChannelLayout fplGetDefaultAudioChannelLayoutFromChannels(const uint16_t channelCount) {
 	if (channelCount < fplArrayCount(fpl__global_AudioChannelCount_To_AudioChannelLayout_Table)) {
-		fplAudioChannelLayout result = fpl__global_AudioChannelCount_To_AudioChannelLayout_Table[channelCount];
+		fplAudioChannelLayout result =  fpl__global_AudioChannelCount_To_AudioChannelLayout_Table[channelCount];
 		return result;
 	}
 	return fplAudioChannelLayout_Unsupported;
 }
 
 fpl_common_api uint16_t fplGetAudioChannelsFromLayout(const fplAudioChannelLayout channelLayout) {
-    if (channelLayout >= fplAudioChannelLayout_First && channelLayout <= fplAudioChannelLayout_Last) {
-        uint16_t channels = fpl__global_AudioChannelLayout_To_AudioChannelCount_Table[channelLayout - fplAudioChannelLayout_First];
-        uint16_t result = fplMax(0, fplMin(channels, FPL_MAX_AUDIO_CHANNEL_COUNT));
-        return result;
-    }
-    return 0;
+    uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(channelLayout, fplAudioChannelLayout_First, fplAudioChannelLayout_Last);
+	uint16_t channels = fpl__global_AudioChannelLayout_To_AudioChannelCount_Table[index];
+    uint16_t result = fplMax(0, fplMin(channels, FPL_MAX_AUDIO_CHANNEL_COUNT));
+    return result;
 }
 
 fpl_common_api fplAudioLatencyType fplGetAudioLatencyType(const fplAudioMode mode) {
@@ -26009,11 +26090,13 @@ fpl_common_api bool fplGetAudioDeviceInfo(const fplAudioDeviceID *deviceId, fplA
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #if defined(FPL__ENABLE_VIDEO)
 #define FPL__VIDEOBACKENDTYPE_COUNT FPL__ENUM_COUNT(fplVideoBackendType_First, fplVideoBackendType_Last)
+fplStaticAssert(fplVideoBackendType_None == fplVideoBackendType_First);
+fplStaticAssert(fplVideoBackendType_Last == fplVideoBackendType_Vulkan);
 fpl_globalvar const char *fpl__globalVideoBackendNameTable[FPL__VIDEOBACKENDTYPE_COUNT] = {
-	"None", // fplVideoBackendType_None
-	"Software", // fplVideoBackendType_Software
-	"OpenGL", // fplVideoBackendType_OpenGL
-	"Vulkan", // fplVideoBackendType_Vulkan
+	FPL__ENUM_NAME("None", fplVideoBackendType_None),
+	FPL__ENUM_NAME("Software", fplVideoBackendType_Software),
+	FPL__ENUM_NAME("OpenGL", fplVideoBackendType_OpenGL),
+	FPL__ENUM_NAME("Vulkan", fplVideoBackendType_Vulkan),
 };
 
 fpl_common_api const char *fplGetVideoBackendName(fplVideoBackendType backendType) {
@@ -26217,11 +26300,13 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 }
 
 #define FPL__PLATFORMTYPE_COUNT FPL__ENUM_COUNT(fplPlatformType_First, fplPlatformType_Last)
+fplStaticAssert(fplPlatformType_Unknown == fplPlatformType_First);
+fplStaticAssert(fplPlatformType_Unix == fplPlatformType_Last);
 fpl_globalvar const char *fpl__globalPlatformTypeNameTable[] = {
-	"Unknown", // fplPlatformType_Unknown
-	"Windows", // fplPlatformType_Windows
-	"Linux", // fplPlatformType_Linux
-	"Unix", // fplPlatformType_Unix
+	FPL__ENUM_NAME("Unknown", fplPlatformType_Unknown),
+	FPL__ENUM_NAME("Windows", fplPlatformType_Windows),
+	FPL__ENUM_NAME("Linux", fplPlatformType_Linux),
+	FPL__ENUM_NAME("Unix", fplPlatformType_Unix),
 };
 fplStaticAssert(fplArrayCount(fpl__globalPlatformTypeNameTable) == FPL__PLATFORMTYPE_COUNT);
 
