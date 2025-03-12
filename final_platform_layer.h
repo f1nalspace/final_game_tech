@@ -178,6 +178,7 @@ SOFTWARE.
 	- Fixed: fplCreateVideoRectFromLTRB() was not compiling on GCC due to inlining failing
     - Fixed: fpl__VideoBackend_Vulkan_PrepareWindow() was crashing due to invalid free of memory
 	- Fixed: [Win32] fpl__Win32Guid was not properly defined when opaque API was enabled
+	- Fixed: [Win32] fplSetWindowState() was not implementing fplWindowState_Fullscreen
 	- Changed: Added stride argument to to fplGetAudioDevices()
 	- Changed: Renamed field userData to clientUserData in @ref fplAudioSettings
 	- Changed: Renamed fplAudioDeviceFormat to fplAudioFormat
@@ -15690,10 +15691,19 @@ fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
 			result = true;
 		} break;
 
+		case fplWindowState_Fullscreen:
+		{
+			if (!appState->currentSettings.window.isFullscreen)
+				result = fpl__Win32SetWindowFullscreen(true, INT32_MAX, INT32_MAX, 0, 0, 0, false);
+			else
+				result = true;
+		} break;
+
+		case fplWindowState_Unknown:
 		default:
 			break;
 	}
-	return(true);
+	return(result);
 }
 
 fpl_platform_api void fplSetWindowCursorEnabled(const bool value) {
