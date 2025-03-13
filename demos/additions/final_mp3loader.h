@@ -27,8 +27,11 @@ typedef enum MP3HeaderTestStatus {
 } MP3HeaderTestStatus;
 
 extern MP3HeaderTestStatus TestMP3Header(const uint8_t *buffer, const size_t bufferSize, size_t* requiredBufferSize);
+
 extern bool LoadMP3FromBuffer(const uint8_t *buffer, const size_t bufferSize, PCMWaveData *outWave);
 extern bool LoadMP3FromFile(const char *filePath, PCMWaveData *outWave);
+
+extern bool LoadMP3FormatFromBuffer(const uint8_t *buffer, const size_t bufferSize, PCMWaveFormat *outFormat);
 
 #endif // FINAL_MP3LOADER_H
 
@@ -69,6 +72,34 @@ extern MP3HeaderTestStatus TestMP3Header(const uint8_t *buffer, const size_t buf
 	return(MP3HeaderTestStatus_NoMP3);
 }
 
+extern bool LoadMP3FormatFromBuffer(const uint8_t *buffer, const size_t bufferSize, PCMWaveFormat *outFormat) {
+	if ((buffer == fpl_null) || (bufferSize == 0) || outFormat == fpl_null) {
+		return(false);
+	}
+	mp3dec_t dec = fplZeroInit;
+	mp3dec_file_info_t fileInfo = fplZeroInit;
+	mp3dec_load_buf(&dec, buffer, bufferSize, &fileInfo, fpl_null, fpl_null);
+
+	bool result = false;
+
+	fplClearStruct(outFormat);
+
+	if (fileInfo.samples > 0) {
+		outFormat->channelCount = fileInfo.channels;
+		outFormat->samplesPerSecond = fileInfo.hz;
+		outFormat->formatType = fplAudioFormatType_S16;
+		outFormat->bytesPerSample = fplGetAudioSampleSizeInBytes(outFormat->formatType);
+		outFormat->frameCount = (uint32_t)(fileInfo.samples / fileInfo.channels);		
+		result = true;
+	}
+
+	if (fileInfo.buffer != fpl_null) {
+		free(fileInfo.buffer);
+	}
+
+	return result;
+}
+
 extern bool LoadMP3FromBuffer(const uint8_t *buffer, const size_t bufferSize, PCMWaveData *outWave) {
 	if ((buffer == fpl_null) || (bufferSize == 0)) {
 		return(false);
@@ -82,13 +113,13 @@ extern bool LoadMP3FromBuffer(const uint8_t *buffer, const size_t bufferSize, PC
 
 	bool result = false;
 	if (fileInfo.samples > 0) {
-		outWave->channelCount = fileInfo.channels;
-		outWave->samplesPerSecond = fileInfo.hz;
-		outWave->formatType = fplAudioFormatType_S16;
-		outWave->bytesPerSample = fplGetAudioSampleSizeInBytes(outWave->formatType);
-		outWave->frameCount = (uint32_t)(fileInfo.samples / fileInfo.channels);
+		outWave->format.channelCount = fileInfo.channels;
+		outWave->format.samplesPerSecond = fileInfo.hz;
+		outWave->format.formatType = fplAudioFormatType_S16;
+		outWave->format.bytesPerSample = fplGetAudioSampleSizeInBytes(outWave->format.formatType);
+		outWave->format.frameCount = (uint32_t)(fileInfo.samples / fileInfo.channels);
 
-		size_t sampleMemorySize = outWave->bytesPerSample * outWave->channelCount * outWave->frameCount;
+		size_t sampleMemorySize = outWave->format.bytesPerSample * outWave->format.channelCount * outWave->format.frameCount;
 		outWave->samplesSize = sampleMemorySize;
 		outWave->isamples = (uint8_t *)fplMemoryAllocate(sampleMemorySize);
 		fplMemoryCopy(fileInfo.buffer, sampleMemorySize, outWave->isamples);

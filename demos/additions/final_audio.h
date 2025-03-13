@@ -15,8 +15,8 @@ typedef uint32_t AudioFrameIndex;
 /// The number of audio samples or index (32-bit)
 typedef uint32_t AudioSampleIndex;
 
-/// The number of audio channels or index (32-bit)
-typedef uint32_t AudioChannelIndex;
+/// The number of audio channels or index (16-bit)
+typedef uint16_t AudioChannelIndex;
 
 /// The audio frequency in Hertz (Hz) (32-bit)
 typedef uint32_t AudioHertz;
@@ -178,23 +178,30 @@ typedef struct AudioStaticBuffer {
 	AudioFrameIndex maxFrameCount;
 } AudioStaticBuffer;
 
-typedef struct PCMWaveData {
+typedef struct PCMWaveFormat {
 	//! Total frame count
-	AudioFrameIndex frameCount;
+	uint32_t frameCount;
 	//! Samples per second
-	AudioHertz samplesPerSecond;
+	uint32_t samplesPerSecond;
 	//! Bytes per sample
-	AudioBufferSize bytesPerSample;
+	uint32_t bytesPerSample;
 	//! Format type
 	fplAudioFormatType formatType;
 	//! Number of channels
-	AudioChannelIndex channelCount;
+	uint16_t channelCount;
+	// Padding 0
+	uint16_t padding0;
+} PCMWaveFormat;
+
+typedef struct PCMWaveData {
+	//! Format
+	PCMWaveFormat format;
 	//! Size of samples in bytes
 	AudioBufferSize samplesSize;
 	//! Samples (Interleaved)
 	void* isamples;
 	//! Last error string
-	char lastError[1024];
+	char lastError[976];
 	//! Is valid boolean flag
 	bool isValid;
 } PCMWaveData;

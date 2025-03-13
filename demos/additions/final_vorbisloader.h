@@ -23,6 +23,8 @@ extern bool TestVorbisHeader(const uint8_t *buffer, const size_t bufferSize);
 extern bool LoadVorbisFromBuffer(const uint8_t *buffer, const size_t bufferSize, PCMWaveData *outWave);
 extern bool LoadVorbisFromFile(const char *filePath, PCMWaveData *outWave);
 
+extern bool LoadVorbisFormatFromBuffer(const uint8_t *buffer, const size_t bufferSize, PCMWaveFormat *outFormat);
+
 #endif // FINAL_VORBISLOADER_H
 
 #if defined(FINAL_VORBISLOADER_IMPLEMENTATION) && !defined(FINAL_VORBISLOADER_IMPLEMENTED)
@@ -52,13 +54,13 @@ extern bool TestVorbisHeader(const uint8_t *buffer, const size_t bufferSize) {
 	return(true);
 }
 
-extern bool LoadVorbisFromBuffer(const uint8_t *buffer, const size_t bufferSize, PCMWaveData *outWave) {
-	if((buffer == fpl_null) || (bufferSize == 0)) {
+extern bool LoadVorbisFormatFromBuffer(const uint8_t *buffer, const size_t bufferSize, PCMWaveFormat *outFormat) {
+	if((buffer == fpl_null) || (bufferSize == 0) || outFormat == fpl_null) {
 		return(false);
 	}
-	if(outWave == fpl_null) {
-		return(false);
-	}
+
+	// TODO(final): Properly open vorbis file and get format, do not assume 2 channels as S16 always
+
 	int channels = 0;
 	int sampleRate = 0;
 	short *output = fpl_null;
@@ -67,13 +69,39 @@ extern bool LoadVorbisFromBuffer(const uint8_t *buffer, const size_t bufferSize,
 		return(false);
 	}
 
-	outWave->bytesPerSample = 2;
-	outWave->samplesPerSecond = sampleRate;
-	outWave->channelCount = channels;
-	outWave->formatType = fplAudioFormatType_S16;
-	outWave->frameCount = samples;
+	outFormat->bytesPerSample = 2;
+	outFormat->samplesPerSecond = sampleRate;
+	outFormat->channelCount = channels;
+	outFormat->formatType = fplAudioFormatType_S16;
+	outFormat->frameCount = samples;
 
-	size_t sampleMemorySize = outWave->bytesPerSample * outWave->channelCount * outWave->frameCount;
+	free(output);
+
+	return true;
+}
+
+extern bool LoadVorbisFromBuffer(const uint8_t *buffer, const size_t bufferSize, PCMWaveData *outWave) {
+	if((buffer == fpl_null) || (bufferSize == 0) || outWave == fpl_null) {
+		return(false);
+	}
+
+	// TODO(final): Properly open vorbis file and get format, do not assume 2 channels as S16 always
+
+	int channels = 0;
+	int sampleRate = 0;
+	short *output = fpl_null;
+	int samples = stb_vorbis_decode_memory(buffer, (int)bufferSize, &channels, &sampleRate, &output);
+	if (samples <= 0) {
+		return(false);
+	}
+
+	outWave->format.bytesPerSample = 2;
+	outWave->format.samplesPerSecond = sampleRate;
+	outWave->format.channelCount = channels;
+	outWave->format.formatType = fplAudioFormatType_S16;
+	outWave->format.frameCount = samples;
+
+	size_t sampleMemorySize = outWave->format.bytesPerSample * outWave->format.channelCount * outWave->format.frameCount;
 	outWave->samplesSize = sampleMemorySize;
 	outWave->isamples = (uint8_t *)fplMemoryAllocate(sampleMemorySize);
 	fplMemoryCopy(output, sampleMemorySize, outWave->isamples);
