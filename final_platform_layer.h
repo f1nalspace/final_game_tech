@@ -118,7 +118,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-/*!
+/**
 	@file final_platform_layer.h
 	@version v0.9.9-beta
 	@author Torsten Spaete
@@ -128,7 +128,7 @@ SOFTWARE.
 // ----------------------------------------------------------------------------
 // > CHANGELOG
 // ----------------------------------------------------------------------------
-/*!
+/**
 	@page page_changelog Changelog
 	@tableofcontents
 
@@ -1561,7 +1561,7 @@ SOFTWARE.
 	- Initial version
 */
 
-/*!
+/**
 	@page page_support_status Support/Platform Status
 	@tableofcontents
 
@@ -1617,14 +1617,14 @@ SOFTWARE.
 // @note C11 is supported since MSVC 2019.
 //
 #if defined(__cplusplus)
-	/*!
+	/**
 	* @def FPL_IS_CPP
 	* @brief C++ compiler detected.
 	*/
 #	define FPL_IS_CPP
 
 #	if (__cplusplus >= 201103L)
-		/*!
+		/**
 		* @def FPL_IS_CPP11
 		* @brief C++/11 compiler detected.
 		*/
@@ -1632,7 +1632,7 @@ SOFTWARE.
 #	endif
 
 #	if (__cplusplus >= 201402L)
-		/*!
+		/**
 		* @def FPL_IS_CPP14
 		* @brief C++/14 compiler detected.
 		*/
@@ -1640,7 +1640,7 @@ SOFTWARE.
 #	endif
 
 #	if (__cplusplus >= 201703L)
-		/*!
+		/**
 		* @def FPL_IS_CPP17
 		* @brief C++/17 compiler detected.
 		*/
@@ -1648,7 +1648,7 @@ SOFTWARE.
 #	endif
 
 #	if (__cplusplus >= 202004L)
-		/*!
+		/**
 		* @def FPL_IS_CPP20
 		* @brief C++/20 compiler detected.
 		*/
@@ -1656,14 +1656,14 @@ SOFTWARE.
 #	endif
 #elif defined(_MSC_VER)
 #	if (_MSC_VER >= 1900)
-		/*!
+		/**
 		* @def FPL_IS_C99
 		* @brief C99 compiler detected (MSVC).
 		*/
 #		define FPL_IS_C99
 
 #		if (_MSC_VER >= 1920)
-			/*!
+			/**
 			* @def FPL_IS_C11
 			* @brief C11 compiler detected (MSVC).
 			*/
@@ -1674,14 +1674,14 @@ SOFTWARE.
 		#error "This MSVC compiler does not support C99 or higher!"
 #	endif
 #elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
-	/*!
+	/**
 	* @def FPL_IS_C99
 	* @brief C99 compiler detected.
 	*/
 #	define FPL_IS_C99
 
 #	if __STDC_VERSION__ >= 201112L
-		/*!
+		/**
 		* @def FPL_IS_C11
 		* @brief C11 compiler detected.
 		*/
@@ -1697,63 +1697,63 @@ SOFTWARE.
 // https://sourceforge.net/p/predef/wiki/Architectures/
 //
 #if defined(__x86_64__) || defined(_M_X64) || defined(__amd64__)
-	/*!
+	/**
 	* @def FPL_ARCH_X64
 	* @brief x64 architecture detected.
 	*/
 #	define FPL_ARCH_X64
 #elif defined(__i386__) || defined(_M_IX86) || defined(__X86__) || defined(_X86_)
-	/*!
+	/**
 	* @def FPL_ARCH_X86
 	* @brief x86 architecture detected.
 	*/
 #	define FPL_ARCH_X86
 #elif defined(__aarch64__) || defined(_M_ARM64)
 #	if defined(__APPLE__)
-		/*!
+		/**
 		* @def FPL_ARCH_APPLE_ARM64
 		* @brief Apple ARM64 architecture detected.
 		*/
 #		define FPL_ARCH_APPLE_ARM64
 #	else
-		/*!
+		/**
 		* @def FPL_ARCH_ARM64
 		* @brief ARM64 architecture detected.
 		*/
 #		define FPL_ARCH_ARM64
 #	endif
 #elif defined(__arm__) || defined(_M_ARM) || defined(__ARM_ARCH_6__) || defined(__ARM_ARCH_7__) || defined(__armv7__)
-	/*!
+	/**
 	* @def FPL_ARCH_ARM32
 	* @brief ARM32 architecture detected.
 	*/
 #	define FPL_ARCH_ARM32
 #elif defined(__riscv) || defined(__riscv_xlen)
-	/*!
+	/**
 	* @def FPL_ARCH_RISCV
 	* @brief RISC-V architecture detected.
 	*/
 #	define FPL_ARCH_RISCV
 #elif defined(__powerpc64__) || defined(__ppc64__) || defined(__PPC64__) || defined(_ARCH_PPC64)
-	/*!
+	/**
 	* @def FPL_ARCH_POWERPC64
 	* @brief PowerPC64 architecture detected.
 	*/
 #	define FPL_ARCH_POWERPC64
 #elif defined(__powerpc__) || defined(__POWERPC__) || defined(__ppc__) || defined(__PPC__) || defined(_ARCH_PPC)
-	/*!
+	/**
 	* @def FPL_ARCH_POWERPC32
 	* @brief PowerPC32 architecture detected.
 	*/
 #	define FPL_ARCH_POWERPC32
 #elif defined(__mips__) || defined(__mips64) || defined(_MIPS_ARCH)
-	/*!
+	/**
 	* @def FPL_ARCH_MIPS
 	* @brief MIPS architecture detected.
 	*/
 #	define FPL_ARCH_MIPS
 #elif defined(__sparc__) || defined(__sparcv9)
-	/*!
+	/**
 	* @def FPL_ARCH_SPARC
 	* @brief SPARC architecture detected.
 	*/
@@ -1798,13 +1798,13 @@ SOFTWARE.
 #endif
 
 #if defined(FPL__M_CPU_64BIT)
-	/*!
+	/**
 	* @def FPL_CPU_64BIT
 	* @brief 64-bit CPU detected.
 	*/
 #	define FPL_CPU_64BIT
 #elif defined(FPL__M_CPU_32BIT)
-	/*!
+	/**
 	* @def FPL_CPU_32BIT
 	* @brief 32-bit CPU detected.
 	*/
@@ -1818,73 +1818,73 @@ SOFTWARE.
 // http://nadeausoftware.com/articles/2012/10/c_c_tip_how_detect_compiler_name_and_version_using_compiler_predefined_macros
 //
 #if defined(__clang__)
-	/*!
+	/**
 	* @def FPL_COMPILER_CLANG
 	* @brief CLANG compiler detected.
 	*/
 #	define FPL_COMPILER_CLANG
 #elif defined(__INTEL_COMPILER)
-	/*!
+	/**
 	* @def FPL_COMPILER_INTEL
 	* @brief Intel compiler detected.
 	*/
 #	define FPL_COMPILER_INTEL
 #elif defined(__MINGW32__) || defined(__MINGW64__)
-	/*!
+	/**
 	* @def FPL_COMPILER_MINGW
 	* @brief MingW compiler detected.
 	*/
 #	define FPL_COMPILER_MINGW
 #elif defined(__CC_ARM)
-	/*!
+	/**
 	* @def FPL_COMPILER_ARM
 	* @brief ARM compiler detected.
 	*/
 #	define FPL_COMPILER_ARM
 #elif defined(__GNUC__)
-	/*!
+	/**
 	* @def FPL_COMPILER_GCC
 	* @brief GCC compiler detected.
 	*/
 #	define FPL_COMPILER_GCC
 #elif defined(_MSC_VER)
-	/*!
+	/**
 	* @def FPL_COMPILER_MSVC
 	* @brief Visual studio compiler detected.
 	*/
 #	define FPL_COMPILER_MSVC
 #elif defined(__APPLE__)
-	/*!
+	/**
 	* @def FPL_COMPILER_APPLE_CLANG
 	* @brief Apple Clang compiler detected (Xcode).
 	*/
 #	define FPL_COMPILER_APPLE_CLANG
 #elif defined(__BORLANDC__)
-	/*!
+	/**
 	* @def FPL_COMPILER_BORLAND
 	* @brief Borland C++ compiler detected.
 	*/
 #	define FPL_COMPILER_BORLAND
 #elif defined(__TCC__)
-	/*!
+	/**
 	* @def FPL_COMPILER_TCC
 	* @brief Tiny C Compiler detected.
 	*/
 #	define FPL_COMPILER_TCC
 #elif defined(__DMC__)
-	/*!
+	/**
 	* @def FPL_COMPILER_DMC
 	* @brief Digital Mars C++ compiler detected.
 	*/
 #	define FPL_COMPILER_DMC
 #elif defined(__CSMC__)
-	/*!
+	/**
 	* @def FPL_COMPILER_CSMC
 	* @brief COSMIC C Compiler detected.
 	*/
 #	define FPL_COMPILER_CSMC
 #elif defined(__LINARO__)
-	/*!
+	/**
 	* @def FPL_COMPILER_LINARO
 	* @brief Huawei Linaro compiler detected.
 	*/
@@ -1947,7 +1947,7 @@ SOFTWARE.
 #	define fpl__m_Asm asm
 #endif
 
-/*!
+/**
 * @def fplAsm
 * @brief A assembler compiler instruction (asm).
 */
@@ -1968,7 +1968,7 @@ SOFTWARE.
 #	define fpl__MinAlignment 8
 #endif
 
-/*!
+/**
 * @def fplMinAlignment
 * @brief Minimum structure alignment in bytes.
 * @return The minimum alignment in bytes
@@ -1988,7 +1988,7 @@ SOFTWARE.
 #	define fpl__m_AlignAs(N)
 #endif
 
-/*!
+/**
 * @def fplAlignAs
 * @brief Structure alignment in bytes.
 * @param[in] N Alignment size.
@@ -2086,17 +2086,17 @@ SOFTWARE.
 #	endif
 #endif
 
-/*!
+/**
 * @def fpl_dllimport
 * @brief Link-library Import.
 */
 #define fpl_dllimport fpl__m_dllimport
-/*!
+/**
 * @def fpl_dllexport
 * @brief Link-library Export.
 */
 #define fpl_dllexport fpl__m_dllexport
-/*!
+/**
 * @def fpl_dlllocal
 * @brief Link-library Local.
 */
@@ -2115,13 +2115,13 @@ SOFTWARE.
 #	define fpl__m_api fpl_extern
 #endif // FPL_API_AS_PRIVATE
 
-/*!
+/**
 * @def fpl_api
 * @brief API call.
 */
 #define fpl_api fpl__m_api
 
-/*!
+/**
 * @def fpl_main
 * @brief Main entry point API definition.
 */
@@ -2135,12 +2135,12 @@ SOFTWARE.
 #	define fpl__m_common_api fpl_api
 #endif
 
-/*!
+/**
 * @def fpl_platform_api
 * @brief Platform API.
 */
 #define fpl_platform_api fpl__m_platform_api
-/*!
+/**
 * @def fpl_common_api
 * @brief Common API.
 */
@@ -2160,12 +2160,12 @@ SOFTWARE.
 #	define fpl__m_no_inline
 #endif
 
-/*!
+/**
 * @def fpl_force_inline
 * @brief Always inlines this function.
 */
 #define fpl_force_inline fpl__m_force_inline
-/*!
+/**
 * @def fpl_no_inline
 * @brief Prevents inlining of this function.
 */
@@ -2268,14 +2268,14 @@ SOFTWARE.
 #	define FPL__M_IS_IDE 0
 #endif
 
-/*!
+/**
 * @def FPL_IS_IDE
 * @brief Is set when a IDE is active, like Intellisense or jetbrains.
 * @return A boolean indicating whether a IDE is active or not.
 */
 #define FPL_IS_IDE FPL__M_IS_IDE
 
-/*!
+/**
 * @def FPL_FUNCTION_NAME
 * @brief Function name macro.
 */
@@ -2289,7 +2289,7 @@ SOFTWARE.
 // CPU Instruction Set Detection based on compiler settings
 //
 
-/*!
+/**
 * @enum fplX86InstructionSetType
 * @brief Defines the X86 instruction sets up to AVX512.
 */
@@ -2372,7 +2372,7 @@ typedef enum fplX86InstructionSetLevel {
 #	define fpl__m_HasInclude(inc) (1)
 #endif
 
-/*!
+/**
 * @def fplHasInclude
 * @brief Test for include existence.
 * @param inc Path to the include file.
@@ -2515,28 +2515,28 @@ typedef enum fplX86InstructionSetLevel {
 #	define fpl__m_StaticAssert(exp)
 #endif // FPL__ENABLE_ASSERTIONS
 
-/*!
+/**
 * @def fplAssert
 * @brief Breaks with a runtime assertion when the specified expression evaluates to @c false.
 * @param[in] exp Expression to evaluate.
 */
 #define fplAssert(exp) fpl__m_Assert(exp)
 
-/*!
+/**
 * @def fplStaticAssert
 * @brief Breaks the compilation when the specified expression evaluates to @c false.
 * @param[in] exp Expression to evaluate.
 */
 #define fplStaticAssert(exp) fpl__m_StaticAssert(exp)
 
-/*!
+/**
 * @def fplAlwaysAssert
 * @brief Always crashes the application with a null-pointer assignment when the specified expression evaluates to @c false.
 * @param[in] exp Expression to evaluate.
 */
 #define fplAlwaysAssert(exp) if(!(exp)) {*(int *)0 = 0;}
 
-/*!
+/**
 * @def fplAssertPtr
 * @brief Breaks when the specified pointer is @ref fpl_null.
 * @param[in] ptr Pointer to evaluate.
@@ -2579,7 +2579,7 @@ fpl_internal fpl_force_inline void fpl__m_DebugBreak(void) { __asm__ __volatile_
 #	endif
 #endif
 
-/*!
+/**
 * @def fplDebugBreak
 * @brief Stops the debugger on this line always.
 */
@@ -2701,7 +2701,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 //! Defines a single field in a struct
 #define fplStructField fpl__m_StructField
 
-/*!
+/**
 * @def fplGetAlignmentOffset
 * @brief Returns the offset for the value to satisfy the given alignment boundary.
 * @param[in] value Value to align.
@@ -2710,7 +2710,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 */
 #define fplGetAlignmentOffset(value, alignment) ( (((alignment) > 1) && (((value) & ((alignment) - 1)) != 0)) ? ((alignment) - ((value) & (alignment - 1))) : 0)			
 
-/*!
+/**
 * @def fplGetAlignedSize
 * @brief Returns the given size, extended to satisfy the given alignment boundary.
 * @param[in] size Size to align.
@@ -2719,7 +2719,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 */
 #define fplGetAlignedSize(size, alignment) (((size) > 0 && (alignment) > 0) ? ((size) + fplGetAlignmentOffset(size, alignment)) : (size))
 
-/*!
+/**
 * @def fplIsAligned
 * @brief Returns true when the given pointer address is aligned to the given alignment.
 * @param[in] ptr Pointer to check.
@@ -2728,7 +2728,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 */
 #define fplIsAligned(ptr, alignment) (((uintptr_t)(const void *)(ptr)) % (alignment) == 0)
 
-/*!
+/**
 * @def fplIsPowerOfTwo
 * @brief Returns true when the given value is a power of two.
 * @param[in] value Value to check.
@@ -2736,7 +2736,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 */
 #define fplIsPowerOfTwo(value) (((value) != 0) && (((value) & (~(value) + 1)) == (value)))
 
-/*!
+/**
 * @def fplIsBitSet
 * @brief Returns true when the given value has the given bit set.
 * @param[in] value Value to check.
@@ -2745,7 +2745,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 */
 #define fplIsBitSet(value, bit) (((value) >> (bit)) & 0x1)
 
-/*!
+/**
 * @def fplKiloBytes
 * @brief Returns the number of bytes for the given kilobytes.
 * @param[in] value Value in kilobytes.
@@ -2753,7 +2753,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 */
 #define fplKiloBytes(value) (((value) * 1024ull))
 
-/*!
+/**
 * @def fplMegaBytes
 * @brief Returns the number of bytes for the given megabytes.
 * @param[in] value Value in megabytes.
@@ -2761,7 +2761,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 */
 #define fplMegaBytes(value) ((fplKiloBytes(value) * 1024ull))
 
-/*!
+/**
 * @def fplGigaBytes
 * @brief Returns the number of bytes for the given gigabytes.
 * @param[in] value Value in gigabytes.
@@ -2769,7 +2769,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 */
 #define fplGigaBytes(value) ((fplMegaBytes(value) * 1024ull))
 
-/*!
+/**
 * @def fplTeraBytes
 * @brief Returns the number of bytes for the given terabytes.
 * @param[in] value Value in terabytes.
@@ -2781,7 +2781,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 // Endianess
 //
 
-/*!
+/**
 * @enum fplEndianessType
 * @brief Defines the endianess types that are supported.
 */
@@ -2804,35 +2804,35 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 
 //! @endcond
  
-/*!
+/**
 * @def fplIsBigEndian
 * @brief Returns true when the given platform is big-endian.
 * @result True if the platform is big-endian, false otherwise.
 */
 #define fplIsBigEndian() (fpl__global_endianessOrder.value == fplEndianessType_Big)
 
-/*!
+/**
 * @def fplIsLittleEndian
 * @brief Returns true when the given platform is little-endian.
 * @result True if the platform is little-endian, false otherwise.
 */
 #define fplIsLittleEndian() (fpl__global_endianessOrder.value == fplEndianessType_Little)
 
-/*!
+/**
 * @def fplGetEndianess32
 * @brief Returns the unsigned 32-bit endianess that is built from (0, 1, 2, 3).
 * @result Unsigned 32-bit endianess.
 */
 #define fplGetEndianess32() (fpl__global_endianessOrder.value)
 
-/*!
+/**
 * @def fplClearStruct
 * @brief Clears the given struct pointer to zero.
 * @param[in] ptr Pointer to the struct.
 */
 #define fplClearStruct(ptr) fplMemoryClear((void *)(ptr), sizeof(*(ptr)))
 
-/*!
+/**
 * @def fplCopyStruct
 * @brief Copies the given source struct into the destination struct.
 * @param[in] src Source struct pointer.
@@ -2853,7 +2853,7 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 #	define fpl__m_ArrayCount(arr) (sizeof(arr) / sizeof((arr)[0]))
 #endif
 
-/*!
+/**
 * @def fplArrayCount
 * @brief Returns the element count from a static array. This should ideally produce a compile error when passing a pointer to it.
 * @param[in] arr Array to count elements.
@@ -2861,7 +2861,7 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 */
 #define fplArrayCount(arr) fpl__m_ArrayCount(arr)
 
-/*!
+/**
 * @def fplOffsetOf
 * @brief Returns the offset in bytes for the specified structure type and field name.
 * @param[in] type Structure type.
@@ -2870,7 +2870,7 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 */
 #define fplOffsetOf(type, field) ((size_t)(&(((type*)(0))->field)))
 
-/*!
+/**
 * @def fplMin
 * @brief Returns the smallest value of A and B.
 * @param[in] a First value.
@@ -2879,7 +2879,7 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 */
 #define fplMin(a, b) ((a) < (b) ? (a) : (b))
 
-/*!
+/**
 * @def fplMax
 * @brief Returns the biggest value of A and B.
 * @param[in] a First value.
@@ -2894,7 +2894,7 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 #	define fpl__m_StackAllocate(size) alloca(size)
 #endif
 
-/*!
+/**
 * @def fplStackAllocate
 * @brief Manually allocate the number of specified bytes of memory on the stack.
 * @param[in] size Number of bytes to allocate.
@@ -3178,37 +3178,37 @@ typedef int fpl__LinuxSignalHandle;
 #	define FPL__M_FILE_EXT_SEPARATOR '.'
 #endif
 
-/*!
+/**
 * @def FPL_MAX_FILENAME_LENGTH
 * @brief Maximum length of a filename.
 */
 #define FPL_MAX_FILENAME_LENGTH FPL__M_MAX_FILENAME_LENGTH
 
-/*!
+/**
 * @def FPL_MAX_PATH_LENGTH
 * @brief Maximum length of a path.
 */
 #define FPL_MAX_PATH_LENGTH FPL__M_MAX_PATH_LENGTH
 
-/*!
+/**
 * @def FPL_PATH_SEPARATOR
 * @brief Path separator character.
 */
 #define FPL_PATH_SEPARATOR FPL__M_PATH_SEPARATOR
 
-/*!
+/**
 * @def FPL_FILE_EXT_SEPARATOR
 * @brief File extension character.
 */
 #define FPL_FILE_EXT_SEPARATOR FPL__M_FILE_EXT_SEPARATOR
 
-/*!
+/**
 * @def FPL_MAX_NAME_LENGTH
 * @brief Maximum length of a name (in characters).
 */
 #define FPL_MAX_NAME_LENGTH (256)
 
-/*!
+/**
 * @def FPL_MAX_BUFFER_LENGTH
 * @brief Maximum length of an internal buffer (in bytes).
 */
@@ -3738,7 +3738,7 @@ fpl_common_api void fplAtomicStorePtr(volatile void **dest, const void *value);
 */
 // ----------------------------------------------------------------------------
 
-/*!
+/**
 * @struct fplMemoryBlock
 * @brief Stores a memory block.
 */
@@ -3749,7 +3749,7 @@ typedef struct fplMemoryBlock {
     size_t size;
 } fplMemoryBlock;
 
-/*!
+/**
 * @struct fplMemoryInfos
 * @brief Stores information about current memory usage.
 */
@@ -3856,13 +3856,13 @@ fpl_platform_api bool fplMemoryGetInfos(fplMemoryInfos *outInfos);
 */
 // ----------------------------------------------------------------------------
 
-/*!
+/**
 * @typedef fplVersionNumberPart
 * @brief A type definition for mapping a part of a version number.
 */
 typedef char fplVersionNumberPart[4 + 1];
 
-/*!
+/**
 * @struct fplVersionInfo
 * @brief Stores version information.
 */
@@ -3887,7 +3887,7 @@ typedef struct fplVersionInfo {
     } version;
 } fplVersionInfo;
 
-/*!
+/**
 * @struct fplOSVersionInfos
 * @brief Stores the version information for the operating system.
 */
@@ -3941,7 +3941,7 @@ fpl_platform_api size_t fplSessionGetUsername(char *nameBuffer, const size_t max
 */
 // ----------------------------------------------------------------------------
 
-/*!
+/**
 * @enum fplCPUArchType
 * @brief An enumeration of architecture types.
 */typedef enum fplCPUArchType {
@@ -3964,7 +3964,7 @@ fpl_platform_api size_t fplSessionGetUsername(char *nameBuffer, const size_t max
     fplCPUArchType_Last = fplCPUArchType_Arm64,
 } fplCPUArchType;
 
-/*!
+/**
 * @enum fplCPUCapabilitiesType
 * @brief An enumeration of CPU types.
 */
@@ -3982,7 +3982,7 @@ typedef enum fplCPUCapabilitiesType {
     fplCPUCapabilitiesType_Last = fplCPUCapabilitiesType_ARM,
 } fplCPUCapabilitiesType;
 
-/*!
+/**
 * @brief Gets the name of the specified @ref fplCPUCapabilitiesType.
 * @param[in] type The @ref fplCPUCapabilitiesType.
 * @return Returns the found name or @ref fpl_null (const char*).
@@ -4120,7 +4120,7 @@ fpl_platform_api size_t fplCPUGetCoreCount(void);
 /**
 * @brief Retrieves the name of the processor.
 * @param[out] destBuffer Reference to the destination buffer (char*).
-* @param[in] maxDestBufferLen The max length of the destination buffer (size_t).
+* @param[indc ] maxDestBufferLen The max length of the destination buffer (size_t).
 * @return Returns the number of required/written characters, excluding the null-terminator (size_t).
 * @see @ref section_category_hardware_cpuname
 */
@@ -4151,7 +4151,7 @@ fpl_platform_api fplCPUArchType fplCPUGetArchitecture(void);
 */
 // ----------------------------------------------------------------------------
 
-/*!
+/**
 * @enum fplInitFlags
 * @brief An enumeration of initialization flags.
 */
@@ -4174,7 +4174,7 @@ typedef enum fplInitFlags {
 //! InitFlags operator overloads for C++.
 FPL_ENUM_AS_FLAGS_OPERATORS(fplInitFlags);
 
-/*!
+/**
 * @enum fplPlatformType
 * @brief An enumeration of platform types.
 */
@@ -4194,7 +4194,7 @@ typedef enum fplPlatformType {
     fplPlatformType_Last = fplPlatformType_Unix,
 } fplPlatformType;
 
-/*!
+/**
 * @enum fplPlatformResultType
 * @brief An enumeration of platform result types.
 */
@@ -4230,7 +4230,7 @@ typedef enum fplPlatformResultType {
 */
 fpl_common_api const char *fplPlatformGetResultName(const fplPlatformResultType type);
 
-/*!
+/**
 * @enum fplVideoBackendType
 * @brief An enumeration of video backend types.
 */
@@ -4251,7 +4251,7 @@ typedef enum fplVideoBackendType {
 } fplVideoBackendType;
 
 #if defined(FPL__ENABLE_VIDEO_OPENGL)
-/*!
+/**
 * @enum fplOpenGLCompabilityFlags
 * @brief An enumeration of OpenGL compatibility flags.
 */
@@ -4266,7 +4266,7 @@ typedef enum fplOpenGLCompabilityFlags {
     fplOpenGLCompabilityFlags_Forward = 1 << 3,
 } fplOpenGLCompabilityFlags;
 
-/*!
+/**
 * @struct fplOpenGLSettings
 * @brief Stores OpenGL video settings.
 */
@@ -4286,7 +4286,7 @@ typedef struct fplOpenGLSettings {
 
 #if defined(FPL__ENABLE_VIDEO_VULKAN)
 
-/*!
+/**
 * @brief A function definition for the debug callback called when the validation layer writes something.
 * @param[in] userData Reference to user data (void*).
 * @param[in] message The message from the validation layer (const char*).
@@ -4296,7 +4296,7 @@ typedef struct fplOpenGLSettings {
 */
 typedef void (fplVulkanValidationLayerCallback)(void *userData, const char *message, const uint32_t messageSeverity, const uint32_t messageType, const void *debugUtilsMessengerCallbackData);
 
-/*!
+/**
 * @enum fplVulkanValidationLayerMode
 * @brief An enumeration of Vulkan validation layer modes.
 */
@@ -4309,7 +4309,7 @@ typedef enum fplVulkanValidationLayerMode {
     fplVulkanValidationLayerMode_Required,
 } fplVulkanValidationLayerMode;
 
-/*!
+/**
 * @enum fplVulkanValidationSeverity
 * @brief An enumeration of Vulkan validation layer logging severity.
 */
@@ -4328,7 +4328,7 @@ typedef enum fplVulkanValidationSeverity {
     fplVulkanValidationSeverity_All = INT32_MAX,
 } fplVulkanValidationSeverity;
 
-/*!
+/**
 * @struct fplVulkanSettings
 * @brief Stores Vulkan video settings.
 */
@@ -4360,7 +4360,7 @@ typedef struct fplVulkanSettings {
 } fplVulkanSettings;
 #endif // FPL__ENABLE_VIDEO_VULKAN
 
-/*!
+/**
 * @struct fplGraphicsApiSettings
 * @brief Stores graphics API settings.
 */
@@ -4377,7 +4377,7 @@ typedef struct fplGraphicsApiSettings {
     int dummy;
 } fplGraphicsApiSettings;
 
-/*!
+/**
 * @struct fplVideoSettings
 * @brief Stores video settings such as backend, v-sync, API-settings, etc.
 */
@@ -4400,7 +4400,7 @@ typedef struct fplVideoSettings {
 */
 fpl_common_api void fplSetDefaultVideoSettings(fplVideoSettings *video);
 
-/*!
+/**
 * @enum fplAudioBackendType
 * @brief An enumeration of audio backend types.
 */
@@ -4422,7 +4422,7 @@ typedef enum fplAudioBackendType {
     fplAudioBackendType_Last = fplAudioBackendType_Custom,
 } fplAudioBackendType;
 
-/*!
+/**
 * @enum fplAudioFormatType
 * @brief An enumeration of audio format types.
 */
@@ -4450,7 +4450,7 @@ typedef enum fplAudioFormatType {
     fplAudioFormatType_Last = fplAudioFormatType_F64,
 } fplAudioFormatType;
 
-/*!
+/**
 * @enum fplAudioDefaultFields
 * @brief An enumeration of audio default fields.
 */
@@ -4473,7 +4473,7 @@ typedef enum fplAudioDefaultFields {
 //! fplAudioDefaultFields operator overloads for C++.
 FPL_ENUM_AS_FLAGS_OPERATORS(fplAudioDefaultFields);
 
-/*!
+/**
 * @enum fplAudioLatencyType
 * @brief An enumeration of audio latency types.
 */
@@ -4484,7 +4484,7 @@ typedef enum fplAudioLatencyType {
     fplAudioLatencyType_Low,
 } fplAudioLatencyType;
 
-/*!
+/**
 * @enum fplAudioShareMode
 * @brief An enumeration of audio share modes.
 */
@@ -4495,7 +4495,7 @@ typedef enum fplAudioShareMode {
     fplAudioShareMode_Exclusive,
 } fplAudioShareMode;
 
-/*!
+/**
 * @enum fplAudioMode
 * @brief An enumeration of audio modes that combines conservative/latency and exclusive/shared.
 */
@@ -4510,7 +4510,7 @@ typedef enum fplAudioMode {
     fplAudioMode_Exclusive_LowLatency,
 } fplAudioMode;
 
-/*!
+/**
 * @enum fplAudioChannelLayout
 * @brief An enumeration of audio channel layouts.
 */
@@ -4547,7 +4547,7 @@ typedef enum fplAudioChannelLayout {
     fplAudioChannelLayout_Last = fplAudioChannelLayout_7_1,
 } fplAudioChannelLayout;
 
-/*!
+/**
 * @enum fplAudioChannelType
 * @brief An enumeration of audio channel types.
 */
@@ -4638,13 +4638,13 @@ FPL_ENUM_AS_FLAGS_OPERATORS(fplAudioChannelType);
 */
 fpl_common_api const char *fplGetAudioChannelTypeName(const fplAudioChannelType type);
 
-/*!
+/**
 * @def FPL_MAX_AUDIO_CHANNEL_COUNT
 * @brief Maximum number of audio channels.
 */
 #define FPL_MAX_AUDIO_CHANNEL_COUNT 32
 
-/*!
+/**
 * @struct fplAudioChannelMap
 * @brief Stores the mapping of all audio channels to an audio speaker.
 */
@@ -4653,7 +4653,7 @@ typedef struct fplAudioChannelMap {
     fplAudioChannelType speakers[FPL_MAX_AUDIO_CHANNEL_COUNT];
 } fplAudioChannelMap;
 
-/*!
+/**
 * @struct fplAudioFormat
 * @brief Stores audio format properties, such as type, sample rate, channels, etc.
 */
@@ -4678,7 +4678,7 @@ typedef struct fplAudioFormat {
     fplAudioMode mode;
 } fplAudioFormat;
 
-/*!
+/**
 * @union fplAudioDeviceID
 * @brief Stores the ID of the underlying backend.
 */
@@ -4695,13 +4695,13 @@ typedef union fplAudioDeviceID {
     uint8_t dummy[256];
 } fplAudioDeviceID;
 
-/*!
+/**
 * @typedef fplAudioFormatU64
 * @brief Encoded audio format in 64-bit ([63] Unused 8-bit, Type 8-bit, Channels 16-bit, Sample rate 32-bit [0]).
 */
 typedef uint64_t fplAudioFormatU64;
 
-/*!
+/**
 * @struct fplAudioDeviceInfo
 * @brief Stores the name and the ID of the audio device.
 */
@@ -4714,7 +4714,7 @@ typedef struct fplAudioDeviceInfo {
     fplAudioDeviceID id;
 } fplAudioDeviceInfo;
 
-/*!
+/**
 * @struct fplAudioDeviceInfoExtended
 * @brief Stores the @ref fplAudioDeviceInfo and the supported formats.
 */
@@ -4728,7 +4728,7 @@ typedef struct fplAudioDeviceInfoExtended {
 } fplAudioDeviceInfoExtended;
 
 #if defined(FPL__ENABLE_AUDIO_ALSA)
-/*!
+/**
 * @struct fplAlsaAudioSettings
 * @brief Stores settings for the ALSA audio backend.
 */
@@ -4738,7 +4738,7 @@ typedef struct fplAlsaAudioSettings {
 } fplAlsaAudioSettings;
 #endif
 
-/*!
+/**
 * @union fplSpecificAudioSettings
 * @brief Stores backend-specific audio settings.
 */
@@ -4762,7 +4762,7 @@ typedef union fplSpecificAudioSettings {
 */
 typedef uint32_t(fpl_audio_client_read_callback)(const fplAudioFormat *deviceFormat, const uint32_t frameCount, void *outputSamples, void *userData);
 
-/*!
+/**
 * @struct fplAudioSettings
 * @brief Stores audio settings, such as format, device info, callbacks, backend, etc.
 */
@@ -4795,7 +4795,7 @@ typedef struct fplAudioSettings {
 */
 fpl_common_api void fplSetDefaultAudioSettings(fplAudioSettings *audio);
 
-/*!
+/**
 * @enum fplImageType
 * @brief An enumeration of image types.
 */
@@ -4806,7 +4806,7 @@ typedef enum fplImageType {
     fplImageType_RGBA,
 } fplImageType;
 
-/*!
+/**
 * @struct fplImageSource
 * @brief Stores data for working with an image source.
 */
@@ -4841,7 +4841,7 @@ typedef bool (fpl_window_event_callback)(const fplPlatformType platformType, voi
 */
 typedef fpl_window_event_callback fpl_window_exposed_callback;
 
-/*!
+/**
 * @struct fplWindowCallbacks
 * @brief Stores the window callbacks.
 */
@@ -4856,7 +4856,7 @@ typedef struct fplWindowCallbacks {
     void *eventUserData;
 } fplWindowCallbacks;
 
-/*!
+/**
 * @struct fplWindowSize
 * @brief Stores the size of a window.
 */
@@ -4867,7 +4867,7 @@ typedef struct fplWindowSize {
     uint32_t height;
 } fplWindowSize;
 
-/*!
+/**
 * @struct fplWindowPosition
 * @brief Stores the position of a window.
 */
@@ -4878,7 +4878,7 @@ typedef struct fplWindowPosition {
     int32_t top;
 } fplWindowPosition;
 
-/*!
+/**
 * @union fplColor32
 * @brief Defines a 32-bit color in format BGRA.
 */
@@ -4910,7 +4910,7 @@ typedef union fplColor32 {
 */
 fpl_common_api fplColor32 fplCreateColorRGBA(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a);
 
-/*!
+/**
 * @struct fplWindowSettings
 * @brief Stores window settings, such as size, title, etc.
 */
@@ -4951,7 +4951,7 @@ typedef struct fplWindowSettings {
 */
 fpl_common_api void fplSetDefaultWindowSettings(fplWindowSettings *window);
 
-/*!
+/**
 * @struct fplConsoleSettings
 * @brief Stores the title and options for the console.
 */
@@ -4967,7 +4967,7 @@ typedef struct fplConsoleSettings {
 */
 fpl_common_api void fplSetDefaultConsoleSettings(fplConsoleSettings *console);
 
-/*!
+/**
 * @struct fplInputSettings
 * @brief Stores input settings.
 */
@@ -5002,7 +5002,7 @@ typedef void *(fpl_memory_allocate_callback)(void *userData, const size_t size, 
 */
 typedef void (fpl_memory_release_callback)(void *userData, void *ptr);
 
-/*!
+/**
 * @enum fplMemoryAllocationMode
 * @brief An enumeration of dynamic memory allocation modes.
 */
@@ -5013,7 +5013,7 @@ typedef enum fplMemoryAllocationMode {
     fplMemoryAllocationMode_Custom,
 } fplMemoryAllocationMode;
 
-/*!
+/**
 * @struct fplMemoryAllocationSettings
 * @brief Stores settings for memory allocation usage.
 */
@@ -5028,7 +5028,7 @@ typedef struct fplMemoryAllocationSettings {
     void *userData;
 } fplMemoryAllocationSettings;
 
-/*!
+/**
 * @struct fplMemorySettings
 * @brief Stores memory settings for dynamic and temporary allocations.
 */
@@ -5039,7 +5039,7 @@ typedef struct fplMemorySettings {
     fplMemoryAllocationSettings temporary;
 } fplMemorySettings;
 
-/*!
+/**
 * @struct fplSettings
 * @brief Stores settings, such as window, video, etc.
 */
@@ -5145,7 +5145,7 @@ fpl_common_api bool fplIsPlatformInitialized(void);
 */
 // ----------------------------------------------------------------------------
 
-/*!
+/**
 * @enum fplLogLevel
 * @brief An enumeration of log levels.
 */
@@ -5185,7 +5185,7 @@ typedef enum fplLogLevel {
 */
 typedef void (fpl_log_func_callback)(const char *funcName, const int lineNumber, const fplLogLevel level, const char *message);
 
-/*!
+/**
 * @enum fplLogWriterFlags
 * @brief An enumeration of log writer flags.
 */
@@ -5204,7 +5204,7 @@ typedef enum fplLogWriterFlags {
 //! Log writer flags enumeration operators.
 FPL_ENUM_AS_FLAGS_OPERATORS(fplLogWriterFlags);
 
-/*!
+/**
 * @struct fplLogWriterConsole
 * @brief Stores console logging properties.
 */
@@ -5213,7 +5213,7 @@ typedef struct fplLogWriterConsole {
     int dummy;
 } fplLogWriterConsole;
 
-/*!
+/**
 * @struct fplLogWriterCustom
 * @brief Stores custom logging properties.
 */
@@ -5222,7 +5222,7 @@ typedef struct fplLogWriterCustom {
     fpl_log_func_callback *callback;
 } fplLogWriterCustom;
 
-/*!
+/**
 * @struct fplLogWriter
 * @brief Stores log writer settings.
 */
@@ -5235,7 +5235,7 @@ typedef struct fplLogWriter {
     fplLogWriterCustom custom;
 } fplLogWriter;
 
-/*!
+/**
 * @struct fplLogSettings
 * @brief Stores log settings.
 */
@@ -5355,7 +5355,7 @@ fpl_common_api void fplErrorsClear(void);
 */
 // ----------------------------------------------------------------------------
 
-/*!
+/**
 * @union fplInternalDynamicLibraryHandle
 * @brief Stores the library handle for any platform.
 */
@@ -5369,7 +5369,7 @@ typedef union fplInternalDynamicLibraryHandle {
 #endif
 } fplInternalDynamicLibraryHandle;
 
-/*!
+/**
 * @struct fplDynamicLibraryHandle
 * @brief Stores the internal handle to a dynamic library.
 */
@@ -5488,7 +5488,7 @@ fpl_common_api void fplConsoleFormatError(const char *format, ...);
 */
 // ----------------------------------------------------------------------------
 
-/*!
+/**
 * @union fplTimestamp
 * @brief Stores a timestamp, used for delta measurements only.
 */
@@ -5514,25 +5514,25 @@ typedef union fplTimestamp {
     uint64_t unused;
 } fplTimestamp;
 
-/*!
+/**
 * @typedef fplTimeoutValue
 * @brief A type definition for a timeout value in milliseconds.
 */
 typedef uint32_t fplTimeoutValue;
 
-/*!
+/**
 * @def FPL_TIMEOUT_INFINITE
 * @brief Infinite timeout constant.
 */
 #define FPL_TIMEOUT_INFINITE UINT32_MAX
 
-/*!
+/**
 * @typedef fplSeconds
 * @brief A type definition for seconds (64-bit).
 */
 typedef double fplSeconds;
 
-/*!
+/**
 * @typedef fplMilliseconds
 * @brief A type definition for milliseconds (64-bit).
 */
@@ -5569,7 +5569,7 @@ fpl_platform_api fplSeconds fplTimestampElapsed(const fplTimestamp start, const 
 */
 // ----------------------------------------------------------------------------
 
-/*!
+/**
 * @enum fplThreadStates
 * @brief An enumeration of thread states.
 */
@@ -5584,13 +5584,13 @@ typedef enum fplThreadStates {
     fplThreadState_Stopping,
 } fplThreadStates;
 
-/*!
+/**
 * @typedef fplThreadState
 * @brief A type definition for mapping @ref fplThreadState into a 32-bit integer.
 */
 typedef uint32_t fplThreadState;
 
-/*!
+/**
 * @enum fplThreadPriority
 * @brief Defines all possible thread priorities.
 */
@@ -5620,7 +5620,7 @@ typedef enum fplThreadPriority {
     fplThreadPriority_Last = fplThreadPriority_Highest,
 } fplThreadPriority;
 
-/*!
+/**
 * @typedef fplThreadHandle
 * @brief Forward declared thread handle.
 */
@@ -5633,7 +5633,7 @@ typedef struct fplThreadHandle fplThreadHandle;
 */
 typedef void (fpl_run_thread_callback)(const fplThreadHandle *thread, void *data);
 
-/*!
+/**
 * @union fplInternalThreadHandle
 * @brief Stores the thread handle for any platform.
 */
@@ -5647,7 +5647,7 @@ typedef union fplInternalThreadHandle {
 #endif
 } fplInternalThreadHandle;
 
-/*!
+/**
 * @struct fplThreadParameters
 * @brief Stores creation parameters for @ref fplThreadCreateWithParameters().
 */
@@ -5662,7 +5662,7 @@ typedef struct fplThreadParameters {
     fplThreadPriority priority;
 } fplThreadParameters;
 
-/*!
+/**
 * @struct fplThreadHandle
 * @brief Stores the thread handle structure.
 */
@@ -5682,7 +5682,7 @@ typedef struct fplThreadHandle {
 } fplThreadHandle;
 
 #if defined(FPL_PLATFORM_WINDOWS)
-/*!
+/**
 * @struct fpl__Win32InternalSemaphore
 * @brief Stores the Win32 internal semaphore.
 */
@@ -5694,7 +5694,7 @@ typedef struct fpl__Win32InternalSemaphore {
 } fpl__Win32InternalSemaphore;
 #endif
 
-/*!
+/**
 * @union fplInternalSemaphoreHandle
 * @brief Stores the internal semaphore handle for any platform.
 */
@@ -5708,7 +5708,7 @@ typedef union fplInternalSemaphoreHandle {
 #endif
 } fplInternalSemaphoreHandle;
 
-/*!
+/**
 * @struct fplSemaphoreHandle
 * @brief Stores the semaphore handle structure.
 */
@@ -5719,7 +5719,7 @@ typedef struct fplSemaphoreHandle {
     fpl_b32 isValid;
 } fplSemaphoreHandle;
 
-/*!
+/**
 * @union fplInternalMutexHandle
 * @brief Stores the internal mutex handle for any platform.
 */
@@ -5733,7 +5733,7 @@ typedef union fplInternalMutexHandle {
 #endif
 } fplInternalMutexHandle;
 
-/*!
+/**
 * @struct fplMutexHandle
 * @brief Stores the mutex handle structure.
 */
@@ -5744,7 +5744,7 @@ typedef struct fplMutexHandle {
     fplInternalMutexHandle internalHandle;
 } fplMutexHandle;
 
-/*!
+/**
 * @union fplInternalSignalHandle
 * @brief Stores the internal signal handle for any platform.
 */
@@ -5758,7 +5758,7 @@ typedef union fplInternalSignalHandle {
 #endif
 } fplInternalSignalHandle;
 
-/*!
+/**
 * @struct fplSignalHandle
 * @brief Stores the signal handle structure.
 */
@@ -5769,7 +5769,7 @@ typedef struct fplSignalHandle {
     fpl_b32 isValid;
 } fplSignalHandle;
 
-/*!
+/**
 * @enum fplSignalValue
 * @brief An enumeration of signal values.
 */
@@ -5780,7 +5780,7 @@ typedef enum fplSignalValue {
     fplSignalValue_Set = 1,
 } fplSignalValue;
 
-/*!
+/**
 * @union fplInternalConditionVariable
 * @brief Stores the internal condition variable for any platform.
 */
@@ -5796,7 +5796,7 @@ typedef union fplInternalConditionVariable {
     int dummy;
 } fplInternalConditionVariable;
 
-/*!
+/**
 * @struct fplConditionVariable
 * @brief Stores the condition variable structure.
 */
@@ -6303,7 +6303,7 @@ fpl_common_api size_t fplS32ToString(const int32_t value, char *buffer, const si
 */
 // ----------------------------------------------------------------------------
 
-/*!
+/**
 * @union fplInternalFileHandle
 * @brief A union containing the internal filehandle for any platform.
 */
@@ -6317,7 +6317,7 @@ typedef union fplInternalFileHandle {
 #endif
 } fplInternalFileHandle;
 
-/*!
+/**
 * @struct fplFileHandle
 * @brief The filehandle structure.
 */
@@ -6328,7 +6328,7 @@ typedef struct fplFileHandle {
 	fpl_b32 isValid;
 } fplFileHandle;
 
-/*!
+/**
 * @enum fplFilePositionMode
 * @brief An enumeration of file position modes (Beginning, Current, End).
 */
@@ -6341,7 +6341,7 @@ typedef enum fplFilePositionMode {
 	fplFilePositionMode_End
 } fplFilePositionMode;
 
-/*!
+/**
 * @enum fplFileEntryType
 * @brief An enumeration of file entry types (File, Directory, etc.).
 */
@@ -6354,7 +6354,7 @@ typedef enum fplFileEntryType {
 	fplFileEntryType_Directory
 } fplFileEntryType;
 
-/*!
+/**
 * @enum fplFilePermissionFlags
 * @brief An enumeration of file permission flags.
 */
@@ -6371,7 +6371,7 @@ typedef enum fplFilePermissionFlags {
 //! fplFilePermissionFlags operator overloads for C++.
 FPL_ENUM_AS_FLAGS_OPERATORS(fplFilePermissionFlags);
 
-/*!
+/**
 * @enum fplFilePermissionMasks
 * @brief An enumeration of file permission types.
 */
@@ -6388,7 +6388,7 @@ typedef enum fplFilePermissionMasks {
 //! fplFilePermissionMasks operator overloads for C++.
 FPL_ENUM_AS_FLAGS_OPERATORS(fplFilePermissionMasks);
 
-/*!
+/**
 * @union fplFilePermissions
 * @brief A union containing the file permissions (UMask).
 */
@@ -6407,7 +6407,7 @@ typedef union fplFilePermissions {
 	uint32_t umask;
 } fplFilePermissions;
 
-/*!
+/**
 * @enum fplFileAttributeFlags
 * @brief An enumeration of file attribute flags (Normal, Readonly, Hidden, etc.).
 */
@@ -6426,7 +6426,7 @@ typedef enum fplFileAttributeFlags {
 //! FileAttributeFlags operator overloads for C++.
 FPL_ENUM_AS_FLAGS_OPERATORS(fplFileAttributeFlags);
 
-/*!
+/**
 * @union fplInternalFileEntryHandle
 * @brief A union containing the internal filehandle for any platform.
 */
@@ -6440,7 +6440,7 @@ typedef union fplInternalFileEntryHandle {
 #endif
 } fplInternalFileEntryHandle;
 
-/*!
+/**
 * @struct fplInternalFileRootInfo
 * @brief A structure containing the internal root file informations.
 */
@@ -6454,7 +6454,7 @@ typedef struct fplInternalFileRootInfo {
 //! The elapsed seconds since the UNIX epoch (1970-01-01 00:00:00).
 typedef uint64_t fplFileTimeStamp;
 
-/*!
+/**
 * @struct fplFileTimeStamps
 * @brief A structure containing filestamps for creation/access/modify date.
 */
@@ -6467,7 +6467,7 @@ typedef struct fplFileTimeStamps {
 	fplFileTimeStamp lastModifyTime;
 } fplFileTimeStamps;
 
-/*!
+/**
 * @struct fplFileEntry
 * @brief A structure containing the informations for a file or directory (name, type, attributes, etc.).
 */
@@ -6881,7 +6881,7 @@ fpl_common_api size_t fplPathCombine(char *destPath, const size_t maxDestPathLen
 */
 // ----------------------------------------------------------------------------
 
-/*!
+/**
 * @enum fplKey
 * @brief An enumeration of mapped keys (Based on MS Virtual-Key-Codes, mostly directly mapped from ASCII).
 */
@@ -7200,7 +7200,7 @@ typedef enum fplKey {
 	// 0xE0-0xFE: Don't care
 } fplKey;
 
-/*!
+/**
 * @enum fplWindowEventType
 * @brief An enumeration of window event types (Resized, PositionChanged, etc.).
 */
@@ -7233,7 +7233,7 @@ typedef enum fplWindowEventType {
 	fplWindowEventType_Hidden,
 } fplWindowEventType;
 
-/*!
+/**
 * @struct fplWindowDropFiles
 * @brief A structure containing number and dropped files informations.
 */
@@ -7246,7 +7246,7 @@ typedef struct fplWindowDropFiles {
 	size_t fileCount;
 } fplWindowDropFiles;
 
-/*!
+/**
 * @struct fplWindowEvent
 * @brief A structure containing window event data (Size, Position, etc.).
 */
@@ -7263,7 +7263,7 @@ typedef struct fplWindowEvent {
 	};
 } fplWindowEvent;
 
-/*!
+/**
 * @enum fplButtonState
 * @brief An enumeration of button states.
 */
@@ -7276,7 +7276,7 @@ typedef enum fplButtonState {
 	fplButtonState_Repeat = 2,
 } fplButtonState;
 
-/*!
+/**
 * @enum fplKeyboardEventType
 * @brief An enumeration of keyboard event types.
 */
@@ -7289,7 +7289,7 @@ typedef enum fplKeyboardEventType {
 	fplKeyboardEventType_Input,
 } fplKeyboardEventType;
 
-/*!
+/**
 * @enum fplKeyboardModifierFlags
 * @brief An enumeration of keyboard modifier flags.
 */
@@ -7322,7 +7322,7 @@ typedef enum fplKeyboardModifierFlags {
 //! fplKeyboardModifierFlags operator overloads for C++.
 FPL_ENUM_AS_FLAGS_OPERATORS(fplKeyboardModifierFlags);
 
-/*!
+/**
 * @struct fplKeyboardEvent
 * @brief A structure containing keyboard event data (Type, Keycode, Mapped key, etc.).
 */
@@ -7339,7 +7339,7 @@ typedef struct fplKeyboardEvent {
 	fplKey mappedKey;
 } fplKeyboardEvent;
 
-/*!
+/**
 * @enum fplMouseEventType
 * @brief An enumeration of mouse event types (Move, ButtonDown, etc.).
 */
@@ -7354,7 +7354,7 @@ typedef enum fplMouseEventType {
 	fplMouseEventType_Wheel,
 } fplMouseEventType;
 
-/*!
+/**
 * @enum fplMouseButtonType
 * @brief An enumeration of mouse button types (Left, Right, etc.).
 */
@@ -7371,7 +7371,7 @@ typedef enum fplMouseButtonType {
 	fplMouseButtonType_MaxCount,
 } fplMouseButtonType;
 
-/*!
+/**
 * @struct fplMouseEvent
 * @brief A structure containing mouse event data (Type, Button, Position, etc.).
 */
@@ -7390,7 +7390,7 @@ typedef struct fplMouseEvent {
 	float wheelDelta;
 } fplMouseEvent;
 
-/*!
+/**
 * @enum fplGamepadEventType
 * @brief An enumeration of gamepad event types (Connected, Disconnected, StateChanged, etc.).
 */
@@ -7405,7 +7405,7 @@ typedef enum fplGamepadEventType {
 	fplGamepadEventType_StateChanged,
 } fplGamepadEventType;
 
-/*!
+/**
 * @struct fplGamepadButton
 * @brief A structure containing properties for a gamepad button (IsDown, etc.).
 */
@@ -7414,7 +7414,7 @@ typedef struct fplGamepadButton {
 	fpl_b32 isDown;
 } fplGamepadButton;
 
-/*!
+/**
 * @enum fplGamepadButtonType
 * @brief An enumeration of gamepad buttons.
 */
@@ -7453,7 +7453,7 @@ typedef enum fplGamepadButtonType {
 	fplGamepadButtonType_RightShoulder,
 } fplGamepadButtonType;
 
-/*!
+/**
 * @struct fplGamepadState
 * @brief A structure containing the entire gamepad state.
 */
@@ -7520,7 +7520,7 @@ typedef struct fplGamepadState {
 	fpl_b32 isActive;
 } fplGamepadState;
 
-/*!
+/**
 * @struct fplGamepadEvent
 * @brief A structure containing gamepad event data (Type, Device, State, etc.).
 */
@@ -7535,7 +7535,7 @@ typedef struct fplGamepadEvent {
 	uint32_t deviceIndex;
 } fplGamepadEvent;
 
-/*!
+/**
 * @enum fplEventType
 * @brief An enumeration of event types (Window, Keyboard, Mouse, etc.).
 */
@@ -7552,7 +7552,7 @@ typedef enum fplEventType {
 	fplEventType_Gamepad,
 } fplEventType;
 
-/*!
+/**
 * @struct fplEvent
 * @brief A structure containing event data for all event types (Window, Keyboard, Mouse, etc.).
 */
@@ -7596,13 +7596,13 @@ fpl_platform_api void fplPollEvents(void);
 */
 // ----------------------------------------------------------------------------
 
-/*!
+/**
 * @def FPL_MAX_KEYBOARD_STATE_COUNT
 * @brief Max number of keyboard states.
 */
 #define FPL_MAX_KEYBOARD_STATE_COUNT 256
 
-/*!
+/**
 * @struct fplKeyboardState
 * @brief A struct containing the full keyboard state.
 */
@@ -7615,13 +7615,13 @@ typedef struct fplKeyboardState {
 	fplButtonState buttonStatesMapped[FPL_MAX_KEYBOARD_STATE_COUNT];
 } fplKeyboardState;
 
-/*!
+/**
 * @def FPL_MAX_GAMEPAD_STATE_COUNT
 * @brief Max number of gamepad states.
 */
 #define FPL_MAX_GAMEPAD_STATE_COUNT 4
 
-/*!
+/**
 * @struct fplGamepadStates
 * @brief A struct containing the full state for all gamepad devices.
 */
@@ -7630,7 +7630,7 @@ typedef struct fplGamepadStates {
 	fplGamepadState deviceStates[FPL_MAX_GAMEPAD_STATE_COUNT];
 } fplGamepadStates;
 
-/*!
+/**
 * @struct fplMouseState
 * @brief A struct containing the full mouse state.
 */
@@ -7681,7 +7681,7 @@ fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY);
 */
 // ----------------------------------------------------------------------------
 
-/*!
+/**
 * @enum fplWindowState
 * @brief An enumeration containing the states of a window.
 */
@@ -7698,7 +7698,7 @@ typedef enum fplWindowState {
 	fplWindowState_Fullscreen,
 } fplWindowState;
 
-/*!
+/**
 * @enum fplWindowVisibilityState
 * @brief An enumeration containing the visibility state of a window.
 */
@@ -7885,7 +7885,7 @@ fpl_common_api void fplSetWindowInputEvents(const bool enabled);
 */
 // ----------------------------------------------------------------------------
 
-/*!
+/**
 * @struct fplDisplayInfo
 * @brief A struct containing information about a display.
 */
@@ -7902,7 +7902,7 @@ typedef struct fplDisplayInfo {
 	fpl_b32 isPrimary;
 } fplDisplayInfo;
 
-/*!
+/**
 * @struct fplDisplayMode
 * @brief A structure containing one set of display mode settings, such as size, refresh rate, etc.
 */
@@ -8000,7 +8000,7 @@ fpl_platform_api bool fplSetClipboardText(const char *text);
 */
 // ----------------------------------------------------------------------------
 
-/*!
+/**
 * @struct fplVideoRect
 * @brief A structure defining a video rectangle's position and size.
 */
@@ -8025,7 +8025,7 @@ typedef struct fplVideoRect {
 */
 fpl_common_api fplVideoRect fplCreateVideoRectFromLTRB(int32_t left, int32_t top, int32_t right, int32_t bottom);
 
-/*!
+/**
 * @struct fplVideoBackBuffer
 * @brief A structure containing video backbuffer properties.
 */
@@ -8047,7 +8047,7 @@ typedef struct fplVideoBackBuffer {
 } fplVideoBackBuffer;
 
 #if defined(FPL__ENABLE_VIDEO_VULKAN)
-/*!
+/**
 * @struct fplVideoSurfaceVulkan
 * @brief Stores the surface properties for the Vulkan video backend.
 */
@@ -8060,7 +8060,7 @@ typedef struct fplVideoSurfaceVulkan {
 #endif
 
 #if defined(FPL__ENABLE_VIDEO_OPENGL)
-/*!
+/**
 * @struct fplVideoSurfaceOpenGL
 * @brief Stores the surface properties for the OpenGL video backend.
 */
@@ -8071,7 +8071,7 @@ typedef struct fplVideoSurfaceOpenGL {
 #endif
 
 #if defined(FPL_PLATFORM_WINDOWS)
-/*!
+/**
 * @struct fplVideoWindowWin32
 * @brief Stores the window properties for Win32.
 */
@@ -8084,7 +8084,7 @@ typedef struct fplVideoWindowWin32 {
 #endif
 
 #if defined(FPL_SUBPLATFORM_X11)
-/*!
+/**
 * @struct fplVideoWindowX11
 * @brief Stores the window properties for X11.
 */
@@ -8100,7 +8100,7 @@ typedef struct fplVideoWindowX11 {
 } fplVideoWindowX11;
 #endif // FPL_SUBPLATFORM_X11
 
-/*!
+/**
 * @union fplVideoWindow
 * @brief Stores the video window handles.
 */
@@ -8114,7 +8114,7 @@ typedef union fplVideoWindow {
 	int dummy;
 } fplVideoWindow;
 
-/*!
+/**
 * @struct fplVideoSurface
 * @brief Stores the surface properties for the active video backend.
 */
@@ -8137,7 +8137,7 @@ typedef struct fplVideoSurface {
 } fplVideoSurface;
 
 #if defined(FPL__ENABLE_VIDEO_VULKAN)
-/*!
+/**
 * @struct fplVideoRequirementsVulkan
 * @brief Stores the requirements for the Vulkan video backend.
 */
@@ -8149,7 +8149,7 @@ typedef struct fplVideoRequirementsVulkan {
 } fplVideoRequirementsVulkan;
 #endif // FPL__ENABLE_VIDEO_VULKAN
 
-/*!
+/**
 * @union fplVideoRequirements
 * @brief Stores the video requirements for the desired video backend.
 */
@@ -8228,7 +8228,7 @@ fpl_common_api bool fplGetVideoRequirements(const fplVideoBackendType backendTyp
 */
 // ----------------------------------------------------------------------------
 
-/*!
+/**
 * @enum fplAudioResultType
 * @brief An enumeration of audio results.
 */
@@ -22101,7 +22101,7 @@ struct fplAudioContext;
 struct fplAudioBackend;
 
 #define FPL_AUDIO_BACKEND_INITIALIZE_FUNC(name) fplAudioResultType name(struct fplAudioContext *context, struct fplAudioBackend *backend)
-/*!
+/**
 * @brief Initializes the specified @ref fplAudioBackend
 * @param context The @ref fplAudioContext reference
 * @param backend The @ref fplAudioBackend reference
@@ -22116,7 +22116,7 @@ typedef	FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl_audio_backend_get_audio_dev
 typedef	FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl_audio_backend_get_audio_device_info_func);
 
 #define FPL_AUDIO_BACKEND_RELEASE_FUNC(name) bool name(struct fplAudioContext *context, struct fplAudioBackend *backend)
-/*!
+/**
 * @brief Releases the specified @ref fplAudioBackend
 * @param context The @ref fplAudioContext reference
 * @param backend The @ref fplAudioBackend reference
@@ -22124,7 +22124,7 @@ typedef	FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl_audio_backend_get_audio
 */
 typedef	FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl_audio_backend_release_func);
 
-/*!
+/**
 * @brief Initializes the device of the specified @ref fplAudioBackend and @ref fplAudioBackend with the specified audio settings
 * @param context The @ref fplAudioContext reference
 * @param backend The @ref fplAudioBackend reference
@@ -22139,7 +22139,7 @@ typedef	FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl_audio_backend_release_func);
 typedef	FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl_audio_backend_initialize_device_func);
 
 #define FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(name) bool name(struct fplAudioContext *context, struct fplAudioBackend *backend)
-/*!
+/**
 * @brief Releases the device of the specified @ref fplAudioBackend
 * @param context The @ref fplAudioContext reference
 * @param backend The @ref fplAudioBackend reference
