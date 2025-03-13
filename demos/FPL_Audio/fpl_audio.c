@@ -1146,6 +1146,10 @@ static void TestAudioMath() {
 	fplAlwaysAssert(fplGetAudioBufferSizeInMilliseconds(48000, 48000) == 1000);
 }
 
+static inline bool AreSampleRatesEven(const uint32_t rateA, const uint32_t rateB) {
+	return ((rateA % rateB) == 0) || ((rateB % rateA) == 0);
+}
+
 int main(int argc, char **args) {
 	size_t fileCount = argc >= 2 ? argc - 1 : 0;
 	const char **files = (fileCount > 0) ? (const char **)args + 1 : fpl_null;
@@ -1235,21 +1239,33 @@ int main(int argc, char **args) {
     // Overwrite the client read callback, so we can write samples to the sound device
     fplSetAudioClientReadCallback(AudioPlayback, demo);
 
-    // Load audio tracks
+	// Initialize audio system
+	if(!AudioSystemInit(&demo->audioSys, &demo->targetAudioFormat)) {
+		goto done;
+	}
+
+	// Initialze playback latency
+	demo->maxPlaybackFrameLatency = demo->targetAudioFormat.bufferSizeInFrames / demo->targetAudioFormat.periods;
+
+	// Load audio tracks
+	// 
+    // Only allow audio sources that have a sample rates that are even by the output sample rate!
+    // Because we don't support non-even sample conversions, such as 48000 <-> 41000.
     if (fileCount > 0) {
         size_t maxTrackCount = fplArrayCount(audioTracks);
         for (int i = 0; i < fplMin(maxTrackCount, fileCount); ++i) {
-            AudioTrackSource *track = &audioTracks[audioTrackCount++];
-            const char *filename = fplExtractFileName(files[i]);
-            track->type = AudioTrackSourceType_URL;
-            fplCopyString(filename, track->name, fplArrayCount(track->name));
-            fplCopyString(files[i], track->url.urlOrFilePath, fplArrayCount(track->url.urlOrFilePath));
-
-            // TODO(final): Load audio files and detect sample rate.
-            // Only allow sample rates that are even by the output sample rate!
-            // Because we don't support non-even sample conversions, such as 48000 <-> 41000.
+			PCMWaveFormat fileFormat = fplZeroInit;
+			if (AudioSystemLoadFileFormat(&demo->audioSys, files[i], &fileFormat)) {
+				if (AreSampleRatesEven(demo->targetAudioFormat.sampleRate, fileFormat.samplesPerSecond)) {
+					AudioTrackSource *track = &audioTracks[audioTrackCount++];
+					const char *filename = fplExtractFileName(files[i]);
+					track->type = AudioTrackSourceType_URL;
+					fplCopyString(filename, track->name, fplArrayCount(track->name));
+					fplCopyString(files[i], track->url.urlOrFilePath, fplArrayCount(track->url.urlOrFilePath));
+				}
+			}
         }
-    } else if ((demo->targetAudioFormat.sampleRate % sampleRate_musicTavsControlArgofox) == 0) {
+    } else if (AreSampleRatesEven(demo->targetAudioFormat.sampleRate, sampleRate_musicTavsControlArgofox)) {
         // Load default music (44100 Hz)
         AudioTrackSource *track = &audioTracks[audioTrackCount++];
         track->type = AudioTrackSourceType_Data;
@@ -1271,13 +1287,6 @@ int main(int argc, char **args) {
 
 
 	const fplSettings *currentSettings = fplGetCurrentSettings();
-
-	if(!AudioSystemInit(&demo->audioSys, &demo->targetAudioFormat)) {
-		goto done;
-	}
-
-		// Initialze playback latency
-	demo->maxPlaybackFrameLatency = demo->targetAudioFormat.bufferSizeInFrames / demo->targetAudioFormat.periods;
 
 #if OPT_PLAYBACK == OPT_PLAYBACK_STREAMBUFFER
 	AudioFrameIndex streamBufferFrames = 0;
