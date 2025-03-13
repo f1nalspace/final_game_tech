@@ -12,12 +12,12 @@ typedef void(AudioSampleInterleaveFunc)(const AudioFrameIndex frameCount, const 
 
 typedef struct AudioSampleConversionFunctions {
 	AudioSampleFormatConversionFunc *convU8ToF32;
-	AudioSampleFormatConversionFunc *convS16ToF32;
-	AudioSampleFormatConversionFunc *convS24ToF32;
-	AudioSampleFormatConversionFunc *convS32ToF32;
 	AudioSampleFormatConversionFunc *convF32ToU8;
+	AudioSampleFormatConversionFunc *convS16ToF32;
 	AudioSampleFormatConversionFunc *convF32ToS16;
+	AudioSampleFormatConversionFunc *convS24ToF32;
 	AudioSampleFormatConversionFunc *convF32ToS24;
+	AudioSampleFormatConversionFunc *convS32ToF32;
 	AudioSampleFormatConversionFunc *convF32ToS32;
 
 	AudioSampleInterleaveFunc *interleaveU8;
@@ -63,17 +63,25 @@ extern void TestAudioSamplesSuite();
 
 const uint32_t AUDIO_INT24_MAX = 8388607; // Math is 608, due to signed support we use 607
 
+inline float ClampF32(const float x, const float min, const float max) {
+	return fplMax(min, fplMin(max, x));
+}
+
+inline float ClipF32(const float x) {
+	return ClampF32(x, -1.0f, 1.0f);
+}
+
 //! Converts 8-bit unsigiend integer samples to 32-bit floating point samples by the number of samples specified
 static void AudioSamples_Convert_U8ToF32_Default(const AudioSampleIndex sampleCount, const void *inSamples, void *outSamples) {
 	const uint8_t *inU8 = (const uint8_t *)inSamples;
 	float *outF32 = (float *)outSamples;
-	const float invU8 = 1.0f / (float)UINT8_MAX;
+	const float halfU8 = (float)UINT8_MAX / 2.0f;
+	const float invHalfU8 = 1.0f / halfU8;
 	for(AudioSampleIndex sampleIndex = 0; sampleIndex < sampleCount; ++sampleIndex) {
-		float x = (float)inU8[sampleIndex];
-		x *= invU8;	// Scale into float range of 0.0 to 1.0
-		x *= 2.0f;	// Scale into range of 0.0 to 2.0
-		x -= 1.0f;	// Subtract one to get into range of -1.0 to 1.0
-		outF32[sampleIndex] = x;
+		float x = (float)inU8[sampleIndex];	// Load value
+		x *= invHalfU8;						// Scale into float range of 0.0 to 2.0
+		x -= 1.0f;							// Subtract one to get into range of -1.0 to 1.0
+		outF32[sampleIndex] = x;			// Output
 	}
 }
 
@@ -81,39 +89,42 @@ static void AudioSamples_Convert_U8ToF32_Default(const AudioSampleIndex sampleCo
 static void AudioSamples_Convert_F32ToU8_Default(const AudioSampleIndex sampleCount, const void *inSamples, void *outSamples) {
 	const float *inF32 = (const float *)inSamples;
 	uint8_t *outU8 = (uint8_t *)outSamples;
-	const float fm = (float)UINT8_MAX;
+	const float halfU8 = (float)UINT8_MAX / 2.0f;
 	for(AudioSampleIndex i = 0; i < sampleCount; ++i) {
-		float x = inF32[i];
-		x = fplMax(-1.0f, fplMin(1.0f, x)); // Clip to -1.0 and 1.0
-		x += 1.0f;							// Get into range of 0.0 to 2.0
-		x *= 0.5f;							// Divide by half to get into range 0.0 to 1.0
-		x *= fm;							// Scale to 0 to 255
-		outU8[i] = (uint8_t)x;
+		float x = inF32[i];				// Load value
+		x = ClipF32(x);					// Clip to -1.0 and 1.0
+		x += 1.0f;						// Scale into range of 0.0 to 2.0
+		x *= halfU8;					// Scale into of 0 to 255
+		x = roundf(x);					// Round to correct value
+		uint8_t output = (uint8_t)x;	// Cast to U8
+		outU8[i] = output;				// Output
 	}
 }
 
 //! Converts 16-bit integer samples to 32-bit floating point samples by the number of samples specified
 static void AudioSamples_Convert_S16ToF32_Default(const AudioSampleIndex sampleCount, const void *inSamples, void *outSamples) {
-	const int32_t *inS32 = (const int32_t *)inSamples;
+	const int16_t *inS16 = (const int16_t *)inSamples;
 	float *outF32 = (float *)outSamples;
-	const double invS32 = 1.0f / (double)INT32_MAX;
+	const float invS16 = 1.0f / (float)INT16_MAX;
 	for(AudioSampleIndex sampleIndex = 0; sampleIndex < sampleCount; ++sampleIndex) {
-		double x = (double)inS32[sampleIndex];
-		x *= invS32; // Scale into float range
-		outF32[sampleIndex] = (float)x;
+		float x = (float)inS16[sampleIndex];	// Load value
+		x *= invS16;							// Scale into float range
+		outF32[sampleIndex] = x;				// Output
 	}
 }
 
 //! Converts 32-bit floating point samples to 16-bit integer samples by the number of samples specified
 static void AudioSamples_Convert_F32ToS16_Default(const AudioSampleIndex sampleCount, const void *inSamples, void *outSamples) {
 	const float *inF32 = (const float *)inSamples;
-	int32_t *outS32 = (int32_t *)outSamples;
-	const float fm = (float)INT32_MAX;
+	int16_t *outS16 = (int16_t *)outSamples;
+	const float fm = (float)INT16_MAX;
 	for(AudioSampleIndex i = 0; i < sampleCount; ++i) {
-		float x = inF32[i];
-		x = fplMax(-1.0f, fplMin(1.0f, x)); // Clip to -1.0 and 1.0
-		x *= fm;							// Scale into int32_t range
-		outS32[i] = (int32_t)x;
+		float x = inF32[i];				// Load value
+		x = ClipF32(x);					// Clip to -1.0 and 1.0
+		x *= fm;						// Scale into int16_t range
+		x = roundf(x);					// Round
+		int16_t output = (int16_t)x;	// Cast to S16
+		outS16[i] = output;				// Output
 	}
 }
 
@@ -123,21 +134,20 @@ static void AudioSamples_Convert_S24ToF32_Default(const AudioSampleIndex sampleC
 	float *outF32 = (float *)outSamples;
 	const float invMax24 = 1.0f / (float)AUDIO_INT24_MAX;
 	for(AudioSampleIndex sampleIndex = 0; sampleIndex < sampleCount; ++sampleIndex) {
-		// Read three 8-bit input samples
+		// Load values
 		uint8_t a = inS24[sampleIndex * 3 + 0];
 		uint8_t b = inS24[sampleIndex * 3 + 1];
 		uint8_t c = inS24[sampleIndex * 3 + 2];
-
 		// Convert the three 8-bit samples to a 32-bit sample value
 		int32_t value24 = (int32_t)(((uint32_t)a << 8) | ((uint32_t)b << 16) | ((uint32_t)b << 24));
-
 		// Move 8-bit forward to leave the first 8-bits as zero
 		value24 = value24 >> 8;
-
-		// Scale 24-bit integer to float space
-		float x = (float)value24 * invMax24;
-
-		outF32[sampleIndex] = x;
+		// Cast to F32
+		float output = (float)value24;
+		// Scale to 24-bit float space
+		output *= invMax24;
+		// Output
+		outF32[sampleIndex] = output;
 	}
 }
 
@@ -149,15 +159,16 @@ static void AudioSamples_Convert_F32ToS24_Default(const AudioSampleIndex sampleC
 	const float max24f = (float)AUDIO_INT24_MAX;
 	for(AudioSampleIndex i = 0; i < sampleCount; ++i) {
 		float x = inF32[i];
-		x = fplMax(-1.0f, fplMin(1.0f, x)); // Clip to -1.0 and 1.0
-		x *= max24f;						// Scale to 24-bit
-		int32_t value24 = (int32_t)x;		// Convert to int32
+		x = ClipF32(x);					// Clip to -1.0 and 1.0
+		x *= max24f;					// Scale to 24-bit
+		int32_t value24 = (int32_t)x;	// Convert to int32
 
 		// Extract the three 8-bits
 		uint8_t a = (uint8_t)((value24 & 0x0000FF) >> 0);
 		uint8_t b = (uint8_t)((value24 & 0x00FF00) >> 8);
 		uint8_t c = (uint8_t)((value24 & 0xFF0000) >> 16);
 
+		// Output
 		outS24[i * 3 + 0] = a;
 		outS24[i * 3 + 1] = b;
 		outS24[i * 3 + 2] = c;
@@ -171,9 +182,10 @@ static void AudioSamples_Convert_F32ToS32_Default(const AudioSampleIndex sampleC
 	const float fm = (float)INT32_MAX;
 	for(AudioSampleIndex i = 0; i < sampleCount; ++i) {
 		float x = inF32[i];
-		x = fplMax(-1.0f, fplMin(1.0f, x)); // Clip to -1.0 and 1.0
-		x *= fm;							// Scale into int32_t range
-		outS32[i] = (int32_t)x;
+		x = ClipF32(x);					// Clip to -1.0 and 1.0
+		x *= fm;						// Scale into int32_t range
+		int32_t output = (int32_t)x;	// Cast to S32
+		outS32[i] = output;
 	}
 }
 
@@ -181,11 +193,11 @@ static void AudioSamples_Convert_F32ToS32_Default(const AudioSampleIndex sampleC
 static void AudioSamples_Convert_S32ToF32_Default(const AudioSampleIndex sampleCount, const void *inSamples, void *outSamples) {
 	const int32_t *inS32 = (const int32_t *)inSamples;
 	float *outF32 = (float *)outSamples;
-	const double invS32 = 1.0f / (double)INT32_MAX;
+	const float invS32 = 1.0f / (float)INT32_MAX;
 	for(AudioSampleIndex sampleIndex = 0; sampleIndex < sampleCount; ++sampleIndex) {
-		double x = (double)inS32[sampleIndex];
-		x *= invS32; // Scale into float range
-		outF32[sampleIndex] = (float)x;
+		float x = (float)inS32[sampleIndex];	// Load value
+		x *= invS32;							// Scale into float range
+		outF32[sampleIndex] = x;
 	}
 }
 
@@ -383,74 +395,100 @@ extern bool AudioSamplesInterleave(AudioSampleConversionFunctions *funcTable, co
 
 #define S24_FROM_S32(value32) ((uint8_t)((value32 & 0x0000FF) >> 0)), ((uint8_t)((value32 & 0x00FF00) >> 8)), ((uint8_t)((value32 & 0xFF0000) >> 16))
 
-static int16_t Test5Samples_Convert_S16[] = {
-	-INT16_MAX,
-	-INT16_MAX/2,
-	0,
-	INT16_MAX/2,
-	INT16_MAX,
+#define F32_CMP(a, b, t) (bool)(((float)fabs((a) - (b)) <= (t)))
+
+typedef struct SampleU8ToF32 {
+	uint8_t u8;
+	float f32;
+} SampleU8ToF32;
+
+static SampleU8ToF32 Test_Samples_Convert_U8_F32[] = {
+	{ 0, -1.0f },       // Minimum value
+    { 64, -0.5f },      // Mid negative value
+    { 128, 0.0f },      // Zero value
+    { 191, 0.5f },      // Mid positive value
+    { 255, 1.0f },      // Maximum value
 };
 
-static uint8_t Test5Samples_Convert_S24[] = {
-	S24_FROM_S32(0xAAAAAA),
-	S24_FROM_S32(0xBBBBBB),
-	S24_FROM_S32(0xCCCCCC),
-	S24_FROM_S32(0xDDDDDD),
-	S24_FROM_S32(0xEEEEEE),
+typedef struct SampleS16ToF32 {
+	int16_t s16;
+	float f32;
+} SampleS16ToF32;
+
+static SampleS16ToF32 Test_Samples_Convert_S16_F32[] = {
+	{ -32767, -1.0f },   // Minimum value
+    { -16384, -0.5f },   // Mid negative value
+    {      0,  0.0f },   // Zero value
+    {  16384,  0.5f },   // Mid positive value
+    {  32767,  1.0f },   // Maximum value
 };
 
-static int32_t Test5Samples_Convert_S32[] = {
-	-INT32_MAX,
-	-INT32_MAX / 2,
-	0,
-	INT32_MAX / 2,
-	INT32_MAX,
+typedef struct SampleS24 {
+	uint8_t a;
+	uint8_t b;
+	uint8_t c;
+} SampleS24;
+
+typedef struct SampleS24ToF32 {
+	SampleS24 s24;
+	float f32;
+} SampleS24ToF32;
+
+static SampleS24ToF32 Test_Samples_Convert_S24_F32[] = {
+	{{0x00, 0x00, 0x00}, -1.0f},       // Minimum value
+    {{0x80, 0x00, 0x00}, -0.5f},       // Mid negative value
+    {{0x40, 0x00, 0x00}, 0.0f},        // Zero value
+    {{0xC0, 0x00, 0x00}, 0.5f},        // Mid positive value
+    {{0xFF, 0xFF, 0xFF}, 1.0f},        // Maximum value
 };
 
-const int32_t Test4Frames_Interleaved_S32_OneChannel[4] = {
+const int32_t Test_4_Frames_Interleaved_S32_OneChannel[4] = {
 	42,
 	42,
 	42,
 	42,
 };
-const int32_t Test4Frames_Deinterleaved_S32_OneChannel[1][4] = {
+const int32_t Test_4_Frames_Deinterleaved_S32_OneChannel[1][4] = {
 	{42, 42, 42, 42},
 };
 
-const int32_t Test4Frames_Interleaved_S32_TwoChannels[8] = {
+const int32_t Test_4_Frames_Interleaved_S32_TwoChannels[8] = {
 	-INT32_MAX, INT32_MAX,
 	-INT32_MAX, INT32_MAX,
 	-INT32_MAX, INT32_MAX,
 	-INT32_MAX, INT32_MAX,
 };
-const int32_t Test4Frames_Deinterleaved_S32_TwoChannels[2][4] = {
+const int32_t Test_4_Frames_Deinterleaved_S32_TwoChannels[2][4] = {
 	{-INT32_MAX, -INT32_MAX, -INT32_MAX, -INT32_MAX},
 	{INT32_MAX, INT32_MAX, INT32_MAX, INT32_MAX}
 };
-const void *Test4Frames_Deinterleaved_S32_TwoChannelsP[2] = {
-	&Test4Frames_Deinterleaved_S32_TwoChannels[0],
-	&Test4Frames_Deinterleaved_S32_TwoChannels[1],
+
+const void *Test_4_Frames_Deinterleaved_S32_TwoChannelsP[2] = {
+	&Test_4_Frames_Deinterleaved_S32_TwoChannels[0],
+	&Test_4_Frames_Deinterleaved_S32_TwoChannels[1],
 };
 
-const int32_t Test4Frames_Interleaved_S32_FiveChannels[20] = {
+const int32_t Test_4_Frames_Interleaved_S32_FiveChannels[20] = {
 	-INT32_MAX, -INT32_MAX / 2, 0, INT32_MAX / 2, INT32_MAX,
 	-INT32_MAX, -INT32_MAX / 2, 0, INT32_MAX / 2, INT32_MAX,
 	-INT32_MAX, -INT32_MAX / 2, 0, INT32_MAX / 2, INT32_MAX,
 	-INT32_MAX, -INT32_MAX / 2, 0, INT32_MAX / 2, INT32_MAX
 };
-const int32_t Test4Frames_Deinterleaved_S32_FiveChannels[5][4] = {
+
+const int32_t Test_4_Frames_Deinterleaved_S32_FiveChannels[5][4] = {
 	{-INT32_MAX, -INT32_MAX, -INT32_MAX, -INT32_MAX},
 	{-INT32_MAX / 2, -INT32_MAX / 2, -INT32_MAX / 2, -INT32_MAX / 2},
 	{0, 0, 0, 0},
 	{INT32_MAX / 2, INT32_MAX / 2, INT32_MAX / 2, INT32_MAX / 2},
 	{INT32_MAX, INT32_MAX, INT32_MAX, INT32_MAX}
 };
-const void *Test4Frames_Deinterleaved_S32_FiveChannelsP[5] = {
-	&Test4Frames_Deinterleaved_S32_FiveChannels[0],
-	&Test4Frames_Deinterleaved_S32_FiveChannels[1],
-	&Test4Frames_Deinterleaved_S32_FiveChannels[2],
-	&Test4Frames_Deinterleaved_S32_FiveChannels[3],
-	&Test4Frames_Deinterleaved_S32_FiveChannels[4]
+
+const void *Test_4_Frames_Deinterleaved_S32_FiveChannelsP[5] = {
+	&Test_4_Frames_Deinterleaved_S32_FiveChannels[0],
+	&Test_4_Frames_Deinterleaved_S32_FiveChannels[1],
+	&Test_4_Frames_Deinterleaved_S32_FiveChannels[2],
+	&Test_4_Frames_Deinterleaved_S32_FiveChannels[3],
+	&Test_4_Frames_Deinterleaved_S32_FiveChannels[4]
 };
 
 extern bool IsAudioDeinterleavedSamplesEqual(const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const size_t formatSize, const void **a, const void **b) {
@@ -475,6 +513,128 @@ extern bool IsAudioInterleavedSamplesEqual(const AudioFrameIndex numFrames, cons
 	return(true);
 }
 
+static void TestAudioSamplesConversion() {
+	AudioSampleConversionFunctions funcTable = CreateAudioSamplesConversionFunctions();
+
+	// U8 -> F32
+	{
+		const AudioSampleIndex sampleCount = fplArrayCount(Test_Samples_Convert_U8_F32);
+		uint8_t expectedSamplesU8[8] = fplZeroInit;
+		float expectedSamplesF32[8] = fplZeroInit;
+		fplAlwaysAssert(fplArrayCount(expectedSamplesU8) >= sampleCount);
+		fplAlwaysAssert(fplArrayCount(expectedSamplesF32) >= sampleCount);
+		for (AudioSampleIndex i = 0; i < sampleCount; ++i) {
+			expectedSamplesU8[i] = Test_Samples_Convert_U8_F32[i].u8;
+			expectedSamplesF32[i] = Test_Samples_Convert_U8_F32[i].f32;
+		}
+
+		float referenceSamplesF32[8] = fplZeroInit;
+		AudioSamples_Convert_U8ToF32_Default(sampleCount, expectedSamplesU8, referenceSamplesF32);
+
+		float actualSamplesF32[8] = fplZeroInit;
+		bool res = AudioSamplesConvert(&funcTable, sampleCount, fplAudioFormatType_U8, fplAudioFormatType_F32, expectedSamplesU8, actualSamplesF32);
+		fplAlwaysAssert(res);
+
+		const float u8Tolerance = (1.0f / (float)UINT8_MAX) * 2.0f;
+		for (AudioSampleIndex i = 0; i < sampleCount; ++i) {
+			float referenceSampleF32 = referenceSamplesF32[i];
+			float actualSampleF32 = actualSamplesF32[i];
+			float expectedSampleF32 = expectedSamplesF32[i];
+			float diff = (float)fabs(expectedSampleF32 - referenceSampleF32);
+			bool equalsReference = F32_CMP(expectedSampleF32, referenceSampleF32, u8Tolerance);
+			bool equalsActual = F32_CMP(referenceSampleF32, actualSampleF32, FLT_EPSILON);
+			fplAlwaysAssert(equalsReference && equalsActual);
+		}
+	}
+
+	// F32 -> U8
+	{
+		const AudioSampleIndex sampleCount = fplArrayCount(Test_Samples_Convert_U8_F32);
+		uint8_t expectedSamplesU8[8] = fplZeroInit;
+		float expectedSamplesF32[8] = fplZeroInit;
+		fplAlwaysAssert(fplArrayCount(expectedSamplesU8) >= sampleCount);
+		fplAlwaysAssert(fplArrayCount(expectedSamplesF32) >= sampleCount);
+		for (AudioSampleIndex i = 0; i < sampleCount; ++i) {
+			expectedSamplesU8[i] = Test_Samples_Convert_U8_F32[i].u8;
+			expectedSamplesF32[i] = Test_Samples_Convert_U8_F32[i].f32;
+		}
+
+		uint8_t referenceSamplesU8[8] = fplZeroInit;
+		AudioSamples_Convert_F32ToU8_Default(sampleCount, expectedSamplesF32, referenceSamplesU8);
+
+		uint8_t actualSamplesU8[8] = fplZeroInit;
+		bool res = AudioSamplesConvert(&funcTable, sampleCount, fplAudioFormatType_F32, fplAudioFormatType_U8, expectedSamplesF32, actualSamplesU8);
+		fplAlwaysAssert(res);
+
+		for (AudioSampleIndex i = 0; i < sampleCount; ++i) {
+			uint8_t referenceSampleU8 = referenceSamplesU8[i];
+			uint8_t actualSampleU8 = actualSamplesU8[i];
+			uint8_t expectedSampleU8 = expectedSamplesU8[i];
+			fplAlwaysAssert(expectedSampleU8 == referenceSampleU8);
+			fplAlwaysAssert(actualSampleU8 == referenceSampleU8);
+		}
+	}
+
+	// S16 -> F32
+	{
+		const AudioSampleIndex sampleCount = fplArrayCount(Test_Samples_Convert_S16_F32);
+		int16_t expectedSamplesS16[8] = fplZeroInit;
+		float expectedSamplesF32[8] = fplZeroInit;
+		fplAlwaysAssert(fplArrayCount(expectedSamplesS16) >= sampleCount);
+		fplAlwaysAssert(fplArrayCount(expectedSamplesF32) >= sampleCount);
+		for (AudioSampleIndex i = 0; i < sampleCount; ++i) {
+			expectedSamplesS16[i] = Test_Samples_Convert_S16_F32[i].s16;
+			expectedSamplesF32[i] = Test_Samples_Convert_S16_F32[i].f32;
+		}
+
+		float referenceSamplesF32[8] = fplZeroInit;
+		AudioSamples_Convert_S16ToF32_Default(sampleCount, expectedSamplesS16, referenceSamplesF32);
+
+		float actualSamplesF32[8] = fplZeroInit;
+		bool res = AudioSamplesConvert(&funcTable, sampleCount, fplAudioFormatType_S16, fplAudioFormatType_F32, expectedSamplesS16, actualSamplesF32);
+		fplAlwaysAssert(res);
+
+		const float s16Tolerance = (1.0f / (float)INT16_MAX);
+		for (AudioSampleIndex i = 0; i < sampleCount; ++i) {
+			float referenceSampleF32 = referenceSamplesF32[i];
+			float actualSampleF32 = actualSamplesF32[i];
+			float expectedSampleF32 = expectedSamplesF32[i];
+			float diff = (float)fabs(expectedSampleF32 - referenceSampleF32);
+			bool equalsReference = F32_CMP(expectedSampleF32, referenceSampleF32, s16Tolerance);
+			bool equalsActual = F32_CMP(referenceSampleF32, actualSampleF32, FLT_EPSILON);
+			fplAlwaysAssert(equalsReference && equalsActual);
+		}
+	}
+
+	// F32 -> S16
+	{
+		const AudioSampleIndex sampleCount = fplArrayCount(Test_Samples_Convert_S16_F32);
+		int16_t expectedSamplesS16[8] = fplZeroInit;
+		float expectedSamplesF32[8] = fplZeroInit;
+		fplAlwaysAssert(fplArrayCount(expectedSamplesS16) >= sampleCount);
+		fplAlwaysAssert(fplArrayCount(expectedSamplesF32) >= sampleCount);
+		for (AudioSampleIndex i = 0; i < sampleCount; ++i) {
+			expectedSamplesS16[i] = Test_Samples_Convert_S16_F32[i].s16;
+			expectedSamplesF32[i] = Test_Samples_Convert_S16_F32[i].f32;
+		}
+
+		int16_t referenceSamplesS16[8] = fplZeroInit;
+		AudioSamples_Convert_F32ToS16_Default(sampleCount, expectedSamplesF32, referenceSamplesS16);
+
+		int16_t actualSamplesS16[8] = fplZeroInit;
+		bool res = AudioSamplesConvert(&funcTable, sampleCount, fplAudioFormatType_F32, fplAudioFormatType_S16, expectedSamplesF32, actualSamplesS16);
+		fplAlwaysAssert(res);
+
+		for (AudioSampleIndex i = 0; i < sampleCount; ++i) {
+			int16_t referenceSampleS16 = referenceSamplesS16[i];
+			int16_t actualSampleS16 = actualSamplesS16[i];
+			int16_t expectedSampleS16 = expectedSamplesS16[i];
+			fplAlwaysAssert(expectedSampleS16 == referenceSampleS16);
+			fplAlwaysAssert(actualSampleS16 == referenceSampleS16);
+		}
+	}
+}
+
 static void TestAudioSamplesDeinterleave() {
 	AudioSampleConversionFunctions funcTable = CreateAudioSamplesConversionFunctions();
 
@@ -483,24 +643,24 @@ static void TestAudioSamplesDeinterleave() {
 		int32_t outSamplesTyped[2][4] = fplZeroInit;
 		void *outSamples[2] = { &outSamplesTyped[0], &outSamplesTyped[1] };
 
-		AudioSamples_Deinterleave_S32_Default(4, 2, Test4Frames_Interleaved_S32_TwoChannels, outSamples);
-		fplAlwaysAssert(IsAudioDeinterleavedSamplesEqual(4, 2, sizeof(int32_t), outSamples, Test4Frames_Deinterleaved_S32_TwoChannelsP));
+		AudioSamples_Deinterleave_S32_Default(4, 2, Test_4_Frames_Interleaved_S32_TwoChannels, outSamples);
+		fplAlwaysAssert(IsAudioDeinterleavedSamplesEqual(4, 2, sizeof(int32_t), outSamples, Test_4_Frames_Deinterleaved_S32_TwoChannelsP));
 
 		fplMemoryClear(outSamplesTyped, sizeof(outSamplesTyped));
-		fplAlwaysAssert(AudioSamplesDeinterleave(&funcTable, 4, 2, fplAudioFormatType_S32, Test4Frames_Interleaved_S32_TwoChannels, outSamples));
-		fplAlwaysAssert(IsAudioDeinterleavedSamplesEqual(4, 2, sizeof(int32_t), outSamples, Test4Frames_Deinterleaved_S32_TwoChannelsP));
+		fplAlwaysAssert(AudioSamplesDeinterleave(&funcTable, 4, 2, fplAudioFormatType_S32, Test_4_Frames_Interleaved_S32_TwoChannels, outSamples));
+		fplAlwaysAssert(IsAudioDeinterleavedSamplesEqual(4, 2, sizeof(int32_t), outSamples, Test_4_Frames_Deinterleaved_S32_TwoChannelsP));
 	}
 	{
 		// Deinterleave S32, 5 channels, 4 Frames
 		int32_t outSamplesTyped[5][4] = fplZeroInit;
 		void *outSamples[5] = { &outSamplesTyped[0], &outSamplesTyped[1], &outSamplesTyped[2], &outSamplesTyped[3], &outSamplesTyped[4] };
 
-		AudioSamples_Deinterleave_S32_Default(4, 5, Test4Frames_Interleaved_S32_FiveChannels, outSamples);
-		fplAlwaysAssert(IsAudioDeinterleavedSamplesEqual(4, 5, sizeof(int32_t), (const void **)outSamples, (const void **)Test4Frames_Deinterleaved_S32_FiveChannelsP));
+		AudioSamples_Deinterleave_S32_Default(4, 5, Test_4_Frames_Interleaved_S32_FiveChannels, outSamples);
+		fplAlwaysAssert(IsAudioDeinterleavedSamplesEqual(4, 5, sizeof(int32_t), (const void **)outSamples, (const void **)Test_4_Frames_Deinterleaved_S32_FiveChannelsP));
 
 		fplMemoryClear(outSamplesTyped, sizeof(outSamplesTyped));
-		fplAlwaysAssert(AudioSamplesDeinterleave(&funcTable, 4, 5, fplAudioFormatType_S32, Test4Frames_Interleaved_S32_FiveChannels, outSamples));
-		fplAlwaysAssert(IsAudioDeinterleavedSamplesEqual(4, 5, sizeof(int32_t), (const void **)outSamples, (const void **)Test4Frames_Deinterleaved_S32_FiveChannelsP));
+		fplAlwaysAssert(AudioSamplesDeinterleave(&funcTable, 4, 5, fplAudioFormatType_S32, Test_4_Frames_Interleaved_S32_FiveChannels, outSamples));
+		fplAlwaysAssert(IsAudioDeinterleavedSamplesEqual(4, 5, sizeof(int32_t), (const void **)outSamples, (const void **)Test_4_Frames_Deinterleaved_S32_FiveChannelsP));
 	}
 }
 
@@ -511,27 +671,28 @@ static void TestAudioSamplesInterleave() {
 		// Interleave S32, 2 channels, 4 Frames
 		int32_t outSamples[8] = fplZeroInit;
 
-		AudioSamples_Interleave_S32_Default(4, 2, Test4Frames_Deinterleaved_S32_TwoChannelsP, (void *)outSamples);
-		fplAlwaysAssert(IsAudioInterleavedSamplesEqual(4, 2, sizeof(int32_t), (void *)outSamples, (void *)Test4Frames_Interleaved_S32_TwoChannels));
+		AudioSamples_Interleave_S32_Default(4, 2, Test_4_Frames_Deinterleaved_S32_TwoChannelsP, (void *)outSamples);
+		fplAlwaysAssert(IsAudioInterleavedSamplesEqual(4, 2, sizeof(int32_t), (void *)outSamples, (void *)Test_4_Frames_Interleaved_S32_TwoChannels));
 
 		fplMemoryClear(outSamples, sizeof(outSamples));
-		fplAlwaysAssert(AudioSamplesInterleave(&funcTable, 4, 2, fplAudioFormatType_S32, Test4Frames_Deinterleaved_S32_TwoChannelsP, (void *)outSamples));
-		fplAlwaysAssert(IsAudioInterleavedSamplesEqual(4, 2, sizeof(int32_t), (void *)outSamples, (void *)Test4Frames_Interleaved_S32_TwoChannels));
+		fplAlwaysAssert(AudioSamplesInterleave(&funcTable, 4, 2, fplAudioFormatType_S32, Test_4_Frames_Deinterleaved_S32_TwoChannelsP, (void *)outSamples));
+		fplAlwaysAssert(IsAudioInterleavedSamplesEqual(4, 2, sizeof(int32_t), (void *)outSamples, (void *)Test_4_Frames_Interleaved_S32_TwoChannels));
 	}
 	{
 		// Interleave S32, 5 channels, 4 Frames
 		int32_t outSamples[20] = fplZeroInit;
 
-		AudioSamples_Interleave_S32_Default(4, 5, Test4Frames_Deinterleaved_S32_FiveChannelsP, (void *)outSamples);
-		fplAlwaysAssert(IsAudioInterleavedSamplesEqual(4, 5, sizeof(int32_t), (void *)outSamples, (void *)Test4Frames_Interleaved_S32_FiveChannels));
+		AudioSamples_Interleave_S32_Default(4, 5, Test_4_Frames_Deinterleaved_S32_FiveChannelsP, (void *)outSamples);
+		fplAlwaysAssert(IsAudioInterleavedSamplesEqual(4, 5, sizeof(int32_t), (void *)outSamples, (void *)Test_4_Frames_Interleaved_S32_FiveChannels));
 
 		fplMemoryClear(outSamples, sizeof(outSamples));
-		fplAlwaysAssert(AudioSamplesInterleave(&funcTable, 4, 5, fplAudioFormatType_S32, Test4Frames_Deinterleaved_S32_FiveChannelsP, (void *)outSamples));
-		fplAlwaysAssert(IsAudioInterleavedSamplesEqual(4, 5, sizeof(int32_t), (void *)outSamples, (void *)Test4Frames_Interleaved_S32_FiveChannels));
+		fplAlwaysAssert(AudioSamplesInterleave(&funcTable, 4, 5, fplAudioFormatType_S32, Test_4_Frames_Deinterleaved_S32_FiveChannelsP, (void *)outSamples));
+		fplAlwaysAssert(IsAudioInterleavedSamplesEqual(4, 5, sizeof(int32_t), (void *)outSamples, (void *)Test_4_Frames_Interleaved_S32_FiveChannels));
 	}
 }
 
 extern void TestAudioSamplesSuite() {
+	TestAudioSamplesConversion();
 	TestAudioSamplesDeinterleave();
 	TestAudioSamplesInterleave();
 }
