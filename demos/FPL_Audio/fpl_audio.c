@@ -1151,24 +1151,10 @@ int main(int argc, char **args) {
 	const char **files = (fileCount > 0) ? (const char **)args + 1 : fpl_null;
 	bool forceSineWave = false;
 
-	AudioTrackSource audioTracks[8] = fplZeroInit;
-	size_t audioTrackCount = 0;
-	if (fileCount > 0) {
-		size_t maxTrackCount = fplArrayCount(audioTracks);
-		for (int i = 0; i < fplMin(maxTrackCount, fileCount); ++i) {
-			AudioTrackSource *track = &audioTracks[audioTrackCount++];
-			const char *filename = fplExtractFileName(files[i]);
-			track->type = AudioTrackSourceType_URL;
-			fplCopyString(filename, track->name, fplArrayCount(track->name));
-			fplCopyString(files[i], track->url.urlOrFilePath, fplArrayCount(track->url.urlOrFilePath));
-		}
-	} else {
-		AudioTrackSource *track = &audioTracks[audioTrackCount++];
-		track->type = AudioTrackSourceType_Data;
-		fplCopyString(name_musicTavsControlArgofox, track->name, fplArrayCount(track->name));
-		track->data.size = sizeOf_musicTavsControlArgofox;
-		track->data.data = ptr_musicTavsControlArgofox;
-	}
+    fplLogSettings logSettings = fplZeroInit;
+    logSettings.maxLevel = fplLogLevel_All;
+    logSettings.writers[0].flags = fplLogWriterFlags_DebugOut | fplLogWriterFlags_StandardConsole | fplLogWriterFlags_ErrorConsole;
+    fplSetLogSettings(&logSettings);
 
 	// Always sine-wave
 	//fileCount = 0;
@@ -1213,36 +1199,64 @@ int main(int argc, char **args) {
 	settings.audio.stopAuto = false;
 
 	//
-	// Find audio device
+    // Setup default audio device
 	//
 	if(fplPlatformInit(fplInitFlags_Audio, &settings)) {
-		// Get number of audio devices
-		uint32_t deviceCount = fplGetAudioDevices(0, 0, fpl_null);
-
-		// Allocate memory for audio devices and fill it
-		fplAudioDeviceInfo *audioDeviceInfos = fplMemoryAllocate(sizeof(fplAudioDeviceInfo) * deviceCount);
-		uint32_t loadedDeviceCount = fplGetAudioDevices(deviceCount, 0, audioDeviceInfos);
-		fplAssert(loadedDeviceCount == deviceCount);
-		// Use first audio device
-		if(loadedDeviceCount > 0) {
-			const fplAudioDeviceInfo *defaultDeviceInfo = fpl_null;
-			for(uint32_t deviceIndex = 0; deviceIndex < loadedDeviceCount; ++deviceIndex) {
-				fplAudioDeviceInfo *audioDeviceInfo = audioDeviceInfos + deviceIndex;
-				if (audioDeviceInfo->isDefault) {
-					fplDebugFormatOut("Found default audio device[%lu] %s\n", deviceIndex, audioDeviceInfo->name);
-				}
-			}
-			if (defaultDeviceInfo != fpl_null)
-				settings.audio.targetDevice = *defaultDeviceInfo;
-		}
-		fplMemoryFree(audioDeviceInfos);
+        uint32_t deviceCount = fplGetAudioDevices(0, 0, fpl_null);
+        fplAudioDeviceInfo *audioDeviceInfos = fplMemoryAllocate(sizeof(fplAudioDeviceInfo) * deviceCount);
+        uint32_t loadedDeviceCount = fplGetAudioDevices(deviceCount, 0, audioDeviceInfos);
+        fplAssert(loadedDeviceCount == deviceCount);
+        if(loadedDeviceCount > 0) {
+            const fplAudioDeviceInfo *defaultDeviceInfo = fpl_null;
+            for(uint32_t deviceIndex = 0; deviceIndex < loadedDeviceCount; ++deviceIndex) {
+                fplAudioDeviceInfo *audioDeviceInfo = audioDeviceInfos + deviceIndex;
+                if (audioDeviceInfo->isDefault) {
+                    FPL_LOG_INFO("Audio", "Found default audio device[%lu] %s\n", deviceIndex, audioDeviceInfo->name);
+                }
+            }
+            if (defaultDeviceInfo != fpl_null)
+                settings.audio.targetDevice = *defaultDeviceInfo;
+        }
+        fplMemoryFree(audioDeviceInfos);
 		fplPlatformRelease();
 	}
 
-	// Initialize the platform with audio enabled and the settings
+    AudioTrackSource audioTracks[8] = fplZeroInit;
+    size_t audioTrackCount = 0;
+
+    // Initialize the platform with audio enabled and the settings
 	if(!fplPlatformInit(fplInitFlags_Video | fplInitFlags_Audio, &settings)) {
 		goto done;
 	}
+
+    // Get hardware format
+    fplGetAudioHardwareFormat(&demo->targetAudioFormat);
+
+    // Overwrite the client read callback, so we can write samples to the sound device
+    fplSetAudioClientReadCallback(AudioPlayback, demo);
+
+    // Load audio tracks
+    if (fileCount > 0) {
+        size_t maxTrackCount = fplArrayCount(audioTracks);
+        for (int i = 0; i < fplMin(maxTrackCount, fileCount); ++i) {
+            AudioTrackSource *track = &audioTracks[audioTrackCount++];
+            const char *filename = fplExtractFileName(files[i]);
+            track->type = AudioTrackSourceType_URL;
+            fplCopyString(filename, track->name, fplArrayCount(track->name));
+            fplCopyString(files[i], track->url.urlOrFilePath, fplArrayCount(track->url.urlOrFilePath));
+
+            // TODO(final): Load audio files and detect sample rate.
+            // Only allow sample rates that are even by the output sample rate!
+            // Because we don't support non-even sample conversions, such as 48000 <-> 41000.
+        }
+    } else if ((demo->targetAudioFormat.sampleRate % sampleRate_musicTavsControlArgofox) == 0) {
+        // Load default music (44100 Hz)
+        AudioTrackSource *track = &audioTracks[audioTrackCount++];
+        track->type = AudioTrackSourceType_Data;
+        fplCopyString(name_musicTavsControlArgofox, track->name, fplArrayCount(track->name));
+        track->data.size = sizeOf_musicTavsControlArgofox;
+        track->data.data = ptr_musicTavsControlArgofox;
+    }
 
 	// Initialize OpenGL
 	if(!fglLoadOpenGL(true))
@@ -1255,10 +1269,6 @@ int main(int argc, char **args) {
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-	fplGetAudioHardwareFormat(&demo->targetAudioFormat);
-
-	// You can overwrite the client read callback and user data if you want to
-	fplSetAudioClientReadCallback(AudioPlayback, demo);
 
 	const fplSettings *currentSettings = fplGetCurrentSettings();
 
