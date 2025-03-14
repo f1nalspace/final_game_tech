@@ -208,9 +208,13 @@ typedef struct AudioDemo {
 	fpl_b32 useRealTimeSamples;
 } AudioDemo;
 
-static void UpdateTitle(AudioDemo *demo) {
+static void UpdateTitle(AudioDemo *demo, const char *audioTrackName, const bool isRealTime) {
 	char titleBuffer[256];
-	fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "FPL Demo | Audio");
+	const char *rtString = (isRealTime ? "RT" : "BUF");
+	if (fplGetStringLength(audioTrackName) > 0)
+		fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "FPL Demo | Audio (%s, %u Hz) - %s", rtString, demo->targetAudioFormat.sampleRate, audioTrackName);
+	else
+		fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "FPL Demo | Audio (%s, %u Hz)", rtString, demo->targetAudioFormat.sampleRate);
 	fplSetWindowTitle(titleBuffer);
 }
 
@@ -1260,7 +1264,6 @@ int main(int argc, char **args) {
 					fplCopyString(filename, track->name, fplArrayCount(track->name));
 					fplCopyString(filePath, track->url.urlOrFilePath, fplArrayCount(track->url.urlOrFilePath));
 					FPL_LOG_INFO("Demo", "Audio file[%zu] '%s' used with sample rate", fileIndex, filePath, fileFormat.samplesPerSecond);
-					break;
 				} else {
 					FPL_LOG_WARN("Demo", "Audio file[%zu] '%s' cannot be converted from sample-rate '%u' to '%u'", fileIndex, filePath, fileFormat.samplesPerSecond, demo->targetAudioFormat.sampleRate);
 				}
@@ -1336,7 +1339,8 @@ int main(int argc, char **args) {
 			outSampleRate,
 			outChannels);
 
-		UpdateTitle(demo);
+		const char *audioTrackName = audioTrackCount > 0 ? audioTracks[0].name : fpl_null;
+		UpdateTitle(demo, audioTrackName, demo->useRealTimeSamples);
 
 		// Loop
 		double totalTime = 0.0;
@@ -1356,7 +1360,7 @@ int main(int argc, char **args) {
 							} else if(key == fplKey_F1) {
 								demo->useRealTimeSamples = !demo->useRealTimeSamples;
 							}
-							UpdateTitle(demo);
+							UpdateTitle(demo, audioTrackName, demo->useRealTimeSamples);
 						}
 					}
 				}
