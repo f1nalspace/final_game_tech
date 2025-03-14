@@ -1146,10 +1146,6 @@ static void TestAudioMath() {
 	fplAlwaysAssert(fplGetAudioBufferSizeInMilliseconds(48000, 48000) == 1000);
 }
 
-static inline bool AreSampleRatesEven(const uint32_t rateA, const uint32_t rateB) {
-	return ((rateA % rateB) == 0) || ((rateB % rateA) == 0);
-}
-
 int main(int argc, char **args) {
 	size_t fileCount = argc >= 2 ? argc - 1 : 0;
 	const char **files = (fileCount > 0) ? (const char **)args + 1 : fpl_null;
@@ -1253,19 +1249,26 @@ int main(int argc, char **args) {
     // Because we don't support non-even sample conversions, such as 48000 <-> 41000.
     if (fileCount > 0) {
         size_t maxTrackCount = fplArrayCount(audioTracks);
-        for (int i = 0; i < fplMin(maxTrackCount, fileCount); ++i) {
+        for (size_t fileIndex = 0; fileIndex < fplMin(maxTrackCount, fileCount); ++fileIndex) {
 			PCMWaveFormat fileFormat = fplZeroInit;
-			if (AudioSystemLoadFileFormat(&demo->audioSys, files[i], &fileFormat)) {
-				if (AreSampleRatesEven(demo->targetAudioFormat.sampleRate, fileFormat.samplesPerSecond)) {
+			const char *filePath = files[fileIndex];
+			if (AudioSystemLoadFileFormat(&demo->audioSys, filePath, &fileFormat)) {
+				if (IsAudioSampleRateSupported(&demo->audioSys, fileFormat.samplesPerSecond)) {
 					AudioTrackSource *track = &audioTracks[audioTrackCount++];
-					const char *filename = fplExtractFileName(files[i]);
+					const char *filename = fplExtractFileName(filePath);
 					track->type = AudioTrackSourceType_URL;
 					fplCopyString(filename, track->name, fplArrayCount(track->name));
-					fplCopyString(files[i], track->url.urlOrFilePath, fplArrayCount(track->url.urlOrFilePath));
+					fplCopyString(filePath, track->url.urlOrFilePath, fplArrayCount(track->url.urlOrFilePath));
+					FPL_LOG_INFO("Demo", "Audio file[%zu] '%s' used with sample rate", fileIndex, filePath, fileFormat.samplesPerSecond);
+					break;
+				} else {
+					FPL_LOG_WARN("Demo", "Audio file[%zu] '%s' cannot be converted from sample-rate '%u' to '%u'", fileIndex, filePath, fileFormat.samplesPerSecond, demo->targetAudioFormat.sampleRate);
 				}
+			} else {
+				FPL_LOG_WARN("Demo", "Audio file[%zu] '%s' is unsupported!", fileIndex, filePath);
 			}
         }
-    } else if (AreSampleRatesEven(demo->targetAudioFormat.sampleRate, sampleRate_musicTavsControlArgofox)) {
+    } else if (IsAudioSampleRateSupported(&demo->audioSys, sampleRate_musicTavsControlArgofox)) {
         // Load default music (44100 Hz)
         AudioTrackSource *track = &audioTracks[audioTrackCount++];
         track->type = AudioTrackSourceType_Data;
