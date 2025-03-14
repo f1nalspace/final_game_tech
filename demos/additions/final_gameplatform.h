@@ -330,16 +330,20 @@ extern int GameMain(const GameConfiguration &config) {
 		wasError = true;
 	}
 
-	AudioSystem audioSys = {};
+	AudioSystem *audioSys = fmemPushStruct(&gameMemoryBlock, AudioSystem, fmemPushFlags_Clear);
+	if (audioSys == fpl_null) {
+		wasError = true;
+	}
+
 	fplAudioFormat targetAudioFormat = fplZeroInit;
 	if (!fplGetAudioHardwareFormat(&targetAudioFormat)) {
 		wasError = true;
 	}
-	if(!AudioSystemInit(&audioSys, &targetAudioFormat)) {
+	if(!AudioSystemInit(audioSys, &targetAudioFormat)) {
 		wasError = true;
 	}
 
-	fplSetAudioClientReadCallback(GameAudioPlayback, &audioSys);
+	fplSetAudioClientReadCallback(GameAudioPlayback, audioSys);
 	if(fplPlayAudio() != fplAudioResultType_Success) {
 		wasError = true;
 	}
@@ -349,7 +353,7 @@ extern int GameMain(const GameConfiguration &config) {
 	InitOpenGLRenderer();
 
 	GameMemory gameMem = {};
-	gameMem.audio = &audioSys;
+	gameMem.audio = audioSys;
 	gameMem.memory = &gameMemoryBlock;
 	gameMem.render = &renderState;
 	if(!GameInit(gameMem)) {
@@ -530,7 +534,7 @@ extern int GameMain(const GameConfiguration &config) {
 
 	fplStopAudio();
 
-	AudioSystemShutdown(&audioSys);
+	AudioSystemShutdown(audioSys);
 
 	fmemFree(&gameMemoryBlock);
 	fmemFree(&renderMemoryBlock);
