@@ -121,6 +121,7 @@ typedef struct AudioSystem {
 	AudioStaticBuffer dspInBuffer;
 	AudioStaticBuffer dspOutBuffer;
 	AudioStaticBuffer mixingBuffer;
+	AudioSampleConversionFunctions conversionFuncs;
 	AudioStream conversionBuffer;
 	AudioSineWaveData tempWaveData;
 	AudioFormat targetFormat;
@@ -264,6 +265,9 @@ extern bool AudioSystemInit(AudioSystem *audioSys, const fplAudioFormat *targetF
 	audioSys->tempWaveData.frequency = 440;
 	audioSys->tempWaveData.toneVolume = 0.25;
 	audioSys->tempWaveData.duration = 0.5;
+
+	audioSys->conversionFuncs = CreateAudioSamplesConversionFunctions();
+
 	return(true);
 }
 
@@ -999,6 +1003,8 @@ static AudioFrameIndex MixPlayItems(AudioSystem *audioSys, const AudioFrameIndex
 		// In the future we want to interpolate that, smoothly fade in/out.
 		const float volume = item->volume * audioSys->masterVolume;
 
+		float *dspInSamples = (float *)audioSys->dspInBuffer.samples;
+
 		float *dspOutSamples = (float *)audioSys->dspOutBuffer.samples;
 		fplAssert(targetFrameCount <= audioSys->dspOutBuffer.maxFrameCount);
 
@@ -1018,6 +1024,8 @@ static AudioFrameIndex MixPlayItems(AudioSystem *audioSys, const AudioFrameIndex
 		AudioFrameIndex outRemainingFrameCount = targetFrameCount;
 		while(outRemainingFrameCount > 0) {
 			float *dspOutSamplesStart = dspOutSamples;
+			float *dspInSamplesStart = dspInSamples;
+
 			float *outSamplesStart = outSamples;
 
 			AudioFrameIndex inStartFrameIndex = item->framesPlayed[0];
@@ -1027,7 +1035,14 @@ static AudioFrameIndex MixPlayItems(AudioSystem *audioSys, const AudioFrameIndex
 
 			uint8_t *inSourceSamples = source->buffer.samples + inStartFrameIndex * (inChannelCount * inBytesPerSample);
 
-			// Convert source samples to de-interleaved float samples (dspIn)
+			//
+			// Convert source samples to interleaved float samples (dspIn)
+			//
+			AudioFrameIndex inputFrameConversionCount = fplMin(inRemainingFrameCount, audioSys->dspOutBuffer.maxFrameCount);
+			AudioSampleIndex inputSampleConversionCount = inputFrameConversionCount * inChannelCount;
+			bool convertRes = AudioSamplesConvert(&audioSys->conversionFuncs, inputSampleConversionCount, inFormat, fplAudioFormatType_F32, inSourceSamples, dspInSamplesStart);
+			fplAssert(convertRes == true);
+			dspInSamples += inputFrameConversionCount * inChannelCount;
 
 			AudioFrameIndex playedFrameCount = 0;
 			AudioFrameIndex convertedFrameCount = 0;
@@ -1035,12 +1050,8 @@ static AudioFrameIndex MixPlayItems(AudioSystem *audioSys, const AudioFrameIndex
 			if(inSampleRate == outSampleRate) {
 				// Sample rates are equal, just write out the samples
 				const AudioFrameIndex minFrameCount = fplMin(outRemainingFrameCount, inRemainingFrameCount);
-				for(AudioFrameIndex i = 0; i < minFrameCount; ++i) {
-					for(AudioChannelIndex inChannelIndex = 0; inChannelIndex < inChannelCount; ++inChannelIndex) {
-						*dspOutSamples++ = ConvertToF32(inSourceSamples, inChannelIndex, inFormat) * volume;
-					}
-					inSourceSamples += inBytesPerSample * inChannelCount;
-				}
+				fplMemoryCopy(dspInSamplesStart, minFrameCount * inChannelCount * sizeof(float), dspOutSamplesStart);
+				dspOutSamples += minFrameCount * inChannelCount;
 				convertedFrameCount += minFrameCount;
 				playedFrameCount += minFrameCount;
 			} else if(outSampleRate > 0 && inSampleRate > 0 && inTotalFrameCount > 0) {
