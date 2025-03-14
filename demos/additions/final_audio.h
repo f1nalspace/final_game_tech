@@ -30,6 +30,14 @@ typedef double AudioDuration;
 /// The size of a audio buffer in bytes (32-bit or 64-bit)
 typedef size_t AudioBufferSize; // The size in bytes
 
+//! Stores the result of a audio resampling process.
+typedef struct AudioResampleResult {
+	//! The number of source frames that was processed.
+	AudioFrameIndex inputCount;
+	//! The number of output frames that was processed.
+	AudioFrameIndex outputCount;
+} AudioResampleResult;
+
 typedef struct AudioStreamData {
 	size_t size;
 	const uint8_t *data;
