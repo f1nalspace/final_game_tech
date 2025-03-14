@@ -856,6 +856,10 @@ extern void ConvertFromF32(void *outSamples, const float inSampleValue, const Au
 
 static AudioSampleIndex MixSamples(float *outSamples, const AudioChannelIndex outChannels, const float *inSamples, const AudioChannelIndex inChannels, const AudioFrameIndex frameCount) {
 	AudioSampleIndex mixedSampleCount = 0;
+	
+	// @TODO(final): Do down/up mixing of audio channels (e.g. 2 channels <-> 6 channels or 1 channel <-> 2 channels)
+	// @TODO(final): Channel mapping!
+	// @TODO(final): Use de-interleaved samples, so its much more efficient!
 
 	if(inChannels > 0 && outChannels > 0) {
 		float *outP = outSamples;
@@ -1020,7 +1024,9 @@ static AudioFrameIndex MixPlayItems(AudioSystem *audioSys, const AudioFrameIndex
 
 			AudioFrameIndex inRemainingFrameCount = inTotalFrameCount - inStartFrameIndex;
 
-			uint8_t *inSamples = source->buffer.samples + inStartFrameIndex * (inChannelCount * inBytesPerSample);
+			uint8_t *inSourceSamples = source->buffer.samples + inStartFrameIndex * (inChannelCount * inBytesPerSample);
+
+			// Convert source samples to de-interleaved float samples (dspIn)
 
 			AudioFrameIndex playedFrameCount = 0;
 			AudioFrameIndex convertedFrameCount = 0;
@@ -1030,9 +1036,9 @@ static AudioFrameIndex MixPlayItems(AudioSystem *audioSys, const AudioFrameIndex
 				const AudioFrameIndex minFrameCount = fplMin(outRemainingFrameCount, inRemainingFrameCount);
 				for(AudioFrameIndex i = 0; i < minFrameCount; ++i) {
 					for(AudioChannelIndex inChannelIndex = 0; inChannelIndex < inChannelCount; ++inChannelIndex) {
-						*dspOutSamples++ = ConvertToF32(inSamples, inChannelIndex, inFormat) * volume;
+						*dspOutSamples++ = ConvertToF32(inSourceSamples, inChannelIndex, inFormat) * volume;
 					}
-					inSamples += inBytesPerSample * inChannelCount;
+					inSourceSamples += inBytesPerSample * inChannelCount;
 				}
 				convertedFrameCount += minFrameCount;
 				playedFrameCount += minFrameCount;
@@ -1042,15 +1048,15 @@ static AudioFrameIndex MixPlayItems(AudioSystem *audioSys, const AudioFrameIndex
 					AudioResampleResult resampleResult;
 					if(outSampleRate > inSampleRate) {
 						// Simple Upsampling (2x, 4x, 6x, 8x etc.)
-						resampleResult = AudioSimpleUpSampling(outRemainingFrameCount, inRemainingFrameCount, inFormat, inChannelCount, inSampleRate, inSamples, outSampleRate, dspOutSamples, volume);
+						resampleResult = AudioSimpleUpSampling(outRemainingFrameCount, inRemainingFrameCount, inFormat, inChannelCount, inSampleRate, inSourceSamples, outSampleRate, dspOutSamples, volume);
 					} else {
 						// Simple Downsampling (1/2, 1/4, 1/6, 1/8, etc.)
-						resampleResult = AudioSimpleDownSampling(outRemainingFrameCount, inRemainingFrameCount, inFormat, inChannelCount, inSampleRate, inSamples, outSampleRate, dspOutSamples, volume);
+						resampleResult = AudioSimpleDownSampling(outRemainingFrameCount, inRemainingFrameCount, inFormat, inChannelCount, inSampleRate, inSourceSamples, outSampleRate, dspOutSamples, volume);
 					}
 					convertedFrameCount += resampleResult.outputCount;
 					playedFrameCount += resampleResult.inputCount;
 					dspOutSamples += resampleResult.outputCount * inChannelCount;
-					inSamples += resampleResult.inputCount * inChannelCount * inBytesPerSample;
+					inSourceSamples += resampleResult.inputCount * inChannelCount * inBytesPerSample;
 				} else {
 					if(inSampleRate > outSampleRate) {
 						// @TODO(final): SinC-Downsampling (Example: 48000 to 41000)
@@ -1091,8 +1097,9 @@ static AudioFrameIndex MixPlayItems(AudioSystem *audioSys, const AudioFrameIndex
 		AudioPlayItem *next = item->next;
 		if(item->isFinished[0]) {
 			item->framesPlayed[0] = 0;
-			if(advance)
+			if (advance) {
 				RemovePlayItem(&audioSys->memory, &audioSys->playItems, item);
+			}
 		}
 		item = next;
 	}
@@ -1134,8 +1141,14 @@ static bool FillConversionBuffer(AudioSystem *audioSys, const AudioFrameIndex ma
 	AudioHertz outSampleRate = audioSys->targetFormat.sampleRate;
 	fplAudioFormatType outFormat = audioSys->targetFormat.format;
 
+	//
+	// This "little" function does all the magic, type-conversion, resampling and the mixing
+	//
 	AudioFrameIndex mixFrameCount = MixPlayItems(audioSys, maxFrameCount, advance);
 
+	// @TODO(final): All sample computations should be done with de-interleaved samples instead, so we can here re-interleave the samples and do the final format conversion
+	// This requires that all dspIn, dspOut, mixingBuffer is defines as interleaved samples (2D Array)
+ 
 	for(AudioFrameIndex i = 0; i < mixFrameCount; ++i) {
 		float *inMixingSamples = (float *)audioSys->mixingBuffer.samples + i * outChannelCount;
 		AudioSampleIndex writtenSamples = ConvertSamplesFromF32(inMixingSamples, outChannelCount, outSamples, outChannelCount, outFormat);
