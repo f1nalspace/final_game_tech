@@ -52,6 +52,7 @@ License:
 #include <float.h>
 
 #include "final_audio.h"
+#include "final_audioconversion.h"
 
 #define MAX_AUDIO_PROBE_BYTES_COUNT 128
 

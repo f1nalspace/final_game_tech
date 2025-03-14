@@ -37,7 +37,8 @@ typedef struct AudioSampleConversionFunctions {
 
 extern AudioSampleConversionFunctions CreateAudioSamplesConversionFunctions();
 
-extern bool AudioSamplesConvert(AudioSampleConversionFunctions *funcTable, const AudioSampleIndex numSamples, const fplAudioFormatType inFormat, const fplAudioFormatType outFormat, void *inSamples, void *outSamples);
+
+extern bool AudioSamplesConvert(AudioSampleConversionFunctions *funcTable, const AudioSampleIndex numSamples, const fplAudioFormatType inFormat, const fplAudioFormatType outFormat, const void *inSamples, void *outSamples);
 
 extern bool AudioSamplesDeinterleave(AudioSampleConversionFunctions *funcTable, const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const fplAudioFormatType format, void *inSamples, void **outSamples);
 
@@ -73,12 +74,8 @@ typedef struct AudioResamplingContext {
 	AudioChannelIndex channelCount;
 } AudioResamplingContext;
 
-typedef enum {
-	AudioResamplingAlgorythm_SinC_Deinterleaved = 0,
-	AudioResamplingAlgorythm_SinC_Interleaved,
-} AudioResamplingAlgorythm;
-
-extern AudioFrameIndex AudioResample(AudioResamplingContext *context, const AudioChannelIndex numChannels, const AudioSampleIndex inSampleRate, const AudioSampleIndex outSampleRate, const AudioFrameIndex inFrameCount, const AudioFrameIndex outFrameCount, const AudioResamplingAlgorythm algorythm, const float *inSamples, float *outSamples);
+extern AudioFrameIndex AudioResampleInterleaved(const AudioChannelIndex numChannels, const AudioSampleIndex inSampleRate, const AudioSampleIndex outSampleRate, const AudioFrameIndex inFrameCount, const AudioFrameIndex outFrameCount, const float *inSamples, float *outSamples);
+extern AudioFrameIndex AudioResampleDeinterleaved(const AudioChannelIndex numChannels, const AudioSampleIndex inSampleRate, const AudioSampleIndex outSampleRate, const AudioFrameIndex inFrameCount, const AudioFrameIndex outFrameCount, const float **inSamples, float **outSamples);
 
 extern void TestAudioSamplesSuite();
 
@@ -385,7 +382,7 @@ inline float AudioSinC(const float x) {
 * @param[out] outSamples The interleaved target audio samples float buffer.
 * @return Returns the number interleaved of input and output frames
 */
-static AudioResampleResult AudioResamplingInterleaved(const uint32_t sourceSampleRate, const uint32_t targetSampleRate, const uint32_t sourceFrameCount, const uint32_t targetFrameCount, const uint16_t channelCount, const int filterRadius, const float *inSamples, float *outSamples) {
+static AudioResampleResult Audio__ResamplingInterleaved(const uint32_t sourceSampleRate, const uint32_t targetSampleRate, const uint32_t sourceFrameCount, const uint32_t targetFrameCount, const uint16_t channelCount, const int filterRadius, const float *inSamples, float *outSamples) {
     const float srcToTgtRatio = (float)targetSampleRate / (float)sourceSampleRate;
     const float tgtToSrcRatio = 1.0f / srcToTgtRatio;
     for (uint32_t tgtFrame = 0; tgtFrame < targetFrameCount; ++tgtFrame) {
@@ -444,7 +441,7 @@ static AudioResampleResult AudioResamplingInterleaved(const uint32_t sourceSampl
 * @param[out] outSamples The de-interleaved target audio samples float buffer.
 * @return Returns the number de-interleaved of input and output frames
 */
-static AudioResampleResult AudioResamplingDeinterleaved(const uint32_t sourceSampleRate, const uint32_t targetSampleRate, const uint32_t sourceFrameCount, const uint32_t targetFrameCount, const uint16_t channelCount, const int filterRadius, const float **inSamples, float **outSamples) {
+static AudioResampleResult Audio__ResamplingDeinterleaved(const uint32_t sourceSampleRate, const uint32_t targetSampleRate, const uint32_t sourceFrameCount, const uint32_t targetFrameCount, const uint16_t channelCount, const int filterRadius, const float **inSamples, float **outSamples) {
 	AudioResampleResult result = fplZeroInit;
     const float srcToTgtRatio = (float)targetSampleRate / (float)sourceSampleRate;
     const float tgtToSrcRatio = 1.0f / srcToTgtRatio;
@@ -486,52 +483,22 @@ static AudioResampleResult AudioResamplingDeinterleaved(const uint32_t sourceSam
     return result;
 }
 
-extern AudioFrameIndex AudioResample(AudioResamplingContext *context, const AudioChannelIndex numChannels, const AudioSampleIndex inSampleRate, const AudioSampleIndex outSampleRate, const AudioFrameIndex inFrameCount, const AudioFrameIndex outFrameCount, const AudioResamplingAlgorythm algorythm, const float *inSamples, float *outSamples) {
-	if (context == fpl_null || numChannels == 0 || inSampleRate == 0 || outSampleRate == 0 || inFrameCount == 0 || outFrameCount == 0 || inSamples == fpl_null || outSamples == fpl_null) {
+extern AudioFrameIndex AudioResampleInterleaved(const AudioChannelIndex numChannels, const AudioSampleIndex inSampleRate, const AudioSampleIndex outSampleRate, const AudioFrameIndex inFrameCount, const AudioFrameIndex outFrameCount, const float *inSamples, float *outSamples) {
+	if (numChannels == 0 || inSampleRate == 0 || outSampleRate == 0 || inFrameCount == 0 || outFrameCount == 0 || inSamples == fpl_null || outSamples == fpl_null) {
 		return 0;
 	}
-
-	fplClearStruct(context);
-
-	// Initialize Sin-C Table with fixed filter radius
 	const int filterRadius = 8;
-	AudioSinCTableInitialize(&context->sincTable, filterRadius);
+	AudioResampleResult res = Audio__ResamplingInterleaved(inSampleRate, outSampleRate, inFrameCount, outFrameCount, numChannels, filterRadius, inSamples, outSamples);
+	return res.outputCount;
+}
 
-	context->channelCount = numChannels;
-
-	if (algorythm == AudioResamplingAlgorythm_SinC_Deinterleaved) {
-		const float srcToTgtRatio = (float)outSampleRate / (float)inSampleRate;
-		const float tgtToSrcRatio = 1.0f / srcToTgtRatio;
-
-		// Determine the batch count from the ratio of input/output sample rate
-		const uint32_t batchCount = fplMax(0, inFrameCount / AUDIO_RESAMPLE_BUFFER_FRAME_COUNT) + 1;
-		const size_t batchStride = AUDIO_RESAMPLE_BUFFER_FRAME_COUNT * numChannels;
-
-		// Convert interleaved input samples to deinterleaved input samples
-		context->inFrameCount = 0;
-		context->outFrameCount = 0;
-		AudioFrameIndex remainingInputFrames = inFrameCount;
-		for (uint32_t batchIndex = 0; batchIndex < batchCount; ++batchIndex) {
-			const float *currentInputSamples = &inSamples[batchIndex * batchStride];
-			AudioFrameIndex batchInputFrameCount = fplMin(remainingInputFrames, AUDIO_RESAMPLE_BUFFER_FRAME_COUNT);
-			for (AudioChannelIndex channelIndex = 0; channelIndex < numChannels; ++channelIndex) {
-				float *batchInputSamples = &context->inBuffer[channelIndex][batchIndex * AUDIO_RESAMPLE_BUFFER_FRAME_COUNT];
-				for (AudioFrameIndex frameIndex = 0; frameIndex < batchInputFrameCount; ++frameIndex) {
-					batchInputSamples[frameIndex] = currentInputSamples[frameIndex * numChannels + channelIndex];
-				}
-			}
-
-			// TODO(final): Convert interleaved input samples to deinterleaved input samples for current batch
-
-			remainingInputFrames -= batchInputFrameCount;
-			context->inFrameCount += batchInputFrameCount;
-		}
-	} else {
-		AudioResampleResult res = AudioResamplingInterleaved(inSampleRate, outSampleRate, inFrameCount, outFrameCount, numChannels, filterRadius, inSamples, outSamples);
-		return res.outputCount;
+extern AudioFrameIndex AudioResampleDeinterleaved(const AudioChannelIndex numChannels, const AudioSampleIndex inSampleRate, const AudioSampleIndex outSampleRate, const AudioFrameIndex inFrameCount, const AudioFrameIndex outFrameCount, const float **inSamples, float **outSamples) {
+	if (numChannels == 0 || inSampleRate == 0 || outSampleRate == 0 || inFrameCount == 0 || outFrameCount == 0 || inSamples == fpl_null || outSamples == fpl_null) {
+		return 0;
 	}
-
-	return 0;
+	const int filterRadius = 8;
+	AudioResampleResult res = Audio__ResamplingDeinterleaved(inSampleRate, outSampleRate, inFrameCount, outFrameCount, numChannels, filterRadius, inSamples, outSamples);
+	return res.outputCount;
 }
 
 // **********************************************************************************************************************
@@ -908,11 +875,11 @@ static void TestAudioSamplesDeinterleave() {
 		void *outSamples[2] = { &outSamplesTyped[0], &outSamplesTyped[1] };
 
 		AudioSamples_Deinterleave_S32_Default(4, 2, Test_4_Frames_Interleaved_S32_TwoChannels, outSamples);
-		fplAlwaysAssert(IsAudioDeinterleavedSamplesEqual(4, 2, sizeof(int32_t), outSamples, Test_4_Frames_Deinterleaved_S32_TwoChannelsP));
+		fplAlwaysAssert(IsAudioDeinterleavedSamplesEqual(4, 2, sizeof(int32_t), (const void **)outSamples, (const void **)Test_4_Frames_Deinterleaved_S32_TwoChannelsP));
 
 		fplMemoryClear(outSamplesTyped, sizeof(outSamplesTyped));
 		fplAlwaysAssert(AudioSamplesDeinterleave(&funcTable, 4, 2, fplAudioFormatType_S32, Test_4_Frames_Interleaved_S32_TwoChannels, outSamples));
-		fplAlwaysAssert(IsAudioDeinterleavedSamplesEqual(4, 2, sizeof(int32_t), outSamples, Test_4_Frames_Deinterleaved_S32_TwoChannelsP));
+		fplAlwaysAssert(IsAudioDeinterleavedSamplesEqual(4, 2, sizeof(int32_t), (const void **)outSamples, (const void **)Test_4_Frames_Deinterleaved_S32_TwoChannelsP));
 	}
 	{
 		// Deinterleave S32, 5 channels, 4 Frames
