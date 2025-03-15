@@ -29,6 +29,9 @@ Todo:
 	- Multiple audio tracks
 
 Changelog:
+	## 2025-03-15
+	- Support for swapping out the audio track by drag & drop another file
+
 	## 2025-03-09
 	- Improved visualization a lot
 	- Detect default audio device properly
@@ -325,6 +328,19 @@ static double GetMonoSample(const fplAudioFormatType format, const uint8_t *chun
 			break;
 	}
 	return sampleValue;
+}
+
+static void ClearVisualization(AudioDemo *demo) {
+	demo->visualization.hasVideoAudioChunk = 0;
+	fplClearStruct(&demo->visualization.videoAudioChunks);
+	fplClearStruct(&demo->visualization.currentMagnitudes);
+	fplClearStruct(&demo->visualization.lastMagnitudes);
+	fplClearStruct(&demo->visualization.currentSamples);
+	fplClearStruct(&demo->visualization.lastSamples);
+	fplClearStruct(&demo->visualization.fftInput);
+	fplClearStruct(&demo->visualization.fftOutput);
+	fplClearStruct(&demo->visualization.scaledMagnitudes);
+	fplClearStruct(&demo->visualization.scaledSamples);
 }
 
 static void Render(AudioDemo *demo, const int screenW, const int screenH, const double currentRenderTime) {
@@ -1150,6 +1166,24 @@ static void TestAudioMath() {
 	fplAlwaysAssert(fplGetAudioBufferSizeInMilliseconds(48000, 48000) == 1000);
 }
 
+static bool SetAudioTrackSourceFromFile(AudioSystem *audioSys, AudioTrackSource *track, const char *filePath) {
+	PCMWaveFormat fileFormat = fplZeroInit;
+	if (!AudioSystemLoadFileFormat(audioSys, filePath, &fileFormat)) {
+		FPL_LOG_WARN("Demo", "Audio file '%s' is not unsupported!", filePath);
+		return false;
+	}
+	if (!IsAudioSampleRateSupported(audioSys, fileFormat.samplesPerSecond)) {
+		FPL_LOG_WARN("Demo", "Audio file '%s' cannot be converted from sample-rate '%u' to '%u'", filePath, fileFormat.samplesPerSecond, audioSys->targetFormat.sampleRate);
+		return false;
+	}
+	const char *filename = fplExtractFileName(filePath);
+	track->type = AudioTrackSourceType_URL;
+	fplCopyString(filename, track->name, fplArrayCount(track->name));
+	fplCopyString(filePath, track->url.urlOrFilePath, fplArrayCount(track->url.urlOrFilePath));
+	FPL_LOG_INFO("Demo", "Audio file '%s' used with sample rate", filePath, fileFormat.samplesPerSecond);
+	return true;
+}
+
 int main(int argc, char **args) {
 	size_t fileCount = argc >= 2 ? argc - 1 : 0;
 	const char **files = (fileCount > 0) ? (const char **)args + 1 : fpl_null;
@@ -1254,21 +1288,10 @@ int main(int argc, char **args) {
     if (fileCount > 0) {
         size_t maxTrackCount = fplArrayCount(audioTracks);
         for (size_t fileIndex = 0; fileIndex < fplMin(maxTrackCount, fileCount); ++fileIndex) {
-			PCMWaveFormat fileFormat = fplZeroInit;
 			const char *filePath = files[fileIndex];
-			if (AudioSystemLoadFileFormat(&demo->audioSys, filePath, &fileFormat)) {
-				if (IsAudioSampleRateSupported(&demo->audioSys, fileFormat.samplesPerSecond)) {
-					AudioTrackSource *track = &audioTracks[audioTrackCount++];
-					const char *filename = fplExtractFileName(filePath);
-					track->type = AudioTrackSourceType_URL;
-					fplCopyString(filename, track->name, fplArrayCount(track->name));
-					fplCopyString(filePath, track->url.urlOrFilePath, fplArrayCount(track->url.urlOrFilePath));
-					FPL_LOG_INFO("Demo", "Audio file[%zu] '%s' used with sample rate", fileIndex, filePath, fileFormat.samplesPerSecond);
-				} else {
-					FPL_LOG_WARN("Demo", "Audio file[%zu] '%s' cannot be converted from sample-rate '%u' to '%u'", fileIndex, filePath, fileFormat.samplesPerSecond, demo->targetAudioFormat.sampleRate);
-				}
-			} else {
-				FPL_LOG_WARN("Demo", "Audio file[%zu] '%s' is unsupported!", fileIndex, filePath);
+			AudioTrackSource *track = &audioTracks[audioTrackCount];
+			if (SetAudioTrackSourceFromFile(&demo->audioSys, track, filePath)) {
+				++audioTrackCount;
 			}
         }
     } else if (IsAudioSampleRateSupported(&demo->audioSys, sampleRate_musicTavsControlArgofox)) {
@@ -1348,21 +1371,56 @@ int main(int argc, char **args) {
 		while(fplWindowUpdate()) {
 			fplEvent ev;
 			while(fplPollEvent(&ev)) {
-				if(ev.type == fplEventType_Keyboard) {
-					if(ev.keyboard.type == fplKeyboardEventType_Button) {
-						if(ev.keyboard.buttonState == fplButtonState_Release) {
-							fplKey key = ev.keyboard.mappedKey;
-							if(key == fplKey_F) {
-								if(!fplIsWindowFullscreen())
-									fplEnableWindowFullscreen();
-								else
-									fplDisableWindowFullscreen();
-							} else if(key == fplKey_F1) {
-								demo->useRealTimeSamples = !demo->useRealTimeSamples;
+				switch (ev.type) {
+					case fplEventType_Keyboard:
+					{
+						if(ev.keyboard.type == fplKeyboardEventType_Button) {
+							if(ev.keyboard.buttonState == fplButtonState_Release) {
+								fplKey key = ev.keyboard.mappedKey;
+								if(key == fplKey_F) {
+									if(!fplIsWindowFullscreen())
+										fplEnableWindowFullscreen();
+									else
+										fplDisableWindowFullscreen();
+								} else if(key == fplKey_F1) {
+									demo->useRealTimeSamples = !demo->useRealTimeSamples;
+								}
+								UpdateTitle(demo, audioTrackName, demo->useRealTimeSamples);
 							}
-							UpdateTitle(demo, audioTrackName, demo->useRealTimeSamples);
 						}
-					}
+					} break;
+
+					case fplEventType_Window:
+					{
+						if (ev.window.type == fplWindowEventType_DroppedFiles) {
+							if (ev.window.dropFiles.fileCount > 0) {
+								const char *newMediaTrack = ev.window.dropFiles.files[0];
+								AudioTrackSource newTrack = fplZeroInit;
+
+								StopAllAudioTracks(&demo->audioSys, &demo->trackList);
+
+								AudioSystemClearSources(&demo->audioSys);
+
+								LockFreeRingBufferClear(&demo->outputRingBuffer);
+								fplMemoryClear(demo->outputTempBuffer.samples, demo->outputTempBuffer.bufferSize);
+
+								ClearVisualization(demo);
+
+								if (SetAudioTrackSourceFromFile(&demo->audioSys, &newTrack, newMediaTrack)) {
+									audioTrackCount = 1;
+									audioTracks[0] = newTrack;
+									audioTrackName = audioTracks[0].name;
+									UpdateTitle(demo, audioTrackName, demo->useRealTimeSamples);
+									if (LoadAudioTrackList(&demo->audioSys, audioTracks, audioTrackCount, forceSineWave, &demo->sineWave, LoadAudioTrackFlags_None, &demo->trackList)) {
+										PlayAudioTrack(&demo->audioSys, &demo->trackList, 0);
+									}
+								}
+							}
+						}
+					} break;
+
+					default:
+						break;
 				}
 			}
 
