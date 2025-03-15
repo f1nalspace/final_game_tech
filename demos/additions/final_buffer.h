@@ -452,6 +452,8 @@ extern void LockFreeRingBufferClear(LockFreeRingBuffer *buffer) {
 	if(fillCount > 0) {
 		f_LockFreeRingBufferConsume(buffer, fillCount);
 	}
+	buffer->tail = buffer->head = 0;
+	fplAtomicExchangeS64(&buffer->fillCount, 0);
 }
 
 extern bool LockFreeRingBufferSkip(LockFreeRingBuffer *buffer, const size_t length) {
