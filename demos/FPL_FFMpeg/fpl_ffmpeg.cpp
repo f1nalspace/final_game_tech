@@ -16,6 +16,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2025-03-15
+	- Fixed audio sample buffer was not cleared when seeking
+
 	## 2025-03-13
 	- Fixed linkStatus for shader linking was not checked properly
 
