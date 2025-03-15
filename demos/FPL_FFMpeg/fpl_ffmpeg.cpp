@@ -2887,6 +2887,10 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 
 					state->audio.decoder.isEOF = false;
 					fplSignalSet(&state->audio.decoder.resumeSignal);
+
+					state->audio.pendingAudioFrame = nullptr;
+					state->audio.conversionAudioFrameIndex = 0;
+					state->audio.conversionAudioFramesRemaining = 0;
 				}
 
 				if (state->video.isValid) {
@@ -3295,6 +3299,7 @@ static void RenderVideoFrame(AppState *state) {
 
 	if (playState == PlayingState::Playing || playState == PlayingState::Paused) {
 		hasVideo = playerState->video.isValid;
+
 		if (hasVideo && video.isRenderingInitialized) {
 			int readIndex = playerState->video.decoder.frameQueue.readIndex;
 			vp = PeekFrameQueueLast(playerState->video.decoder.frameQueue);
