@@ -16,6 +16,54 @@ Description:
 
 	Everything together is very complex and requires a good understanding how digital sound is played back in a computer.
 
+How the demo works:
+	# Audio System
+
+	To make playback of any sort of audio stream possible, there is a rather complex system under the hood that does the following:
+
+	- Loading audio sources (Wave, Ogg, MP3) from either file or data streams into PCM format, that consists of infos such sample rate, number of channels, data type and the sample data itself
+	- Separating of audio track and audio sources
+	- Converting audio samples into floating point, that is used for the mixing and resampling
+	- Resampling of audio samples by either (Simple up/down sampling or SinC based resampling)
+	- Applying effects per audio track (Volume, Filters, etc.)
+	- Mixing of multiple audio samples
+	- Converting back the mixed samples into the target sample format
+	- Caching of audio samples into chunks to increase performance
+
+	# Audio playback thread
+
+	The thread function AudioPlayback() is responsible for filling out N audio frames/samples of the audio device playback period buffer.
+	This is called thousands of times per second, that never uses any I/O or locking operations, therefore has a very tight time-frame.
+	The samples are lock-free read from a ring-buffer that is continuosly filled by the streaming thread.
+
+	# Audio streaming thread
+
+	The thread function AudioStreamingThread() is filling a ring buffer that will be used in the audio playback thread, that eventually plays back the audio samples.
+
+	It also detects new audio tracks that needs to be loaded and loads them automatically.
+
+	In addition there is a smart algorythm, that detects the playback latency and adjusts the amount and the duration of the ring-buffer that needs to be filled.
+	This is important, because slow hardware requires more buffering than fast hardware - but a fixed buffer size is not sufficient enough.
+
+	The samples ring-buffer are filled by the AudioSystemWriteFrames() function.
+
+	# Main
+
+	# Rendering
+
+	All rendering is done using oldschool style OpenGL 1.x.
+
+	The monolized samples are visualized by either:
+	- Fast Fourier Transformation
+	- Pure sample drawing
+	- Line drawing
+	- Spectrum analysis (Incomplete)
+
+	The ring-buffer is visualized as simple bars with a tail and head position.
+
+Known Issues:
+	There is no audio synchronization going on, so it may happens that the played audio samples does not match up with the visualized ones!
+
 Requirements:
 	- C99 Compiler
 	- Final Platform Layer
@@ -331,7 +379,7 @@ static double GetMonoSample(const fplAudioFormatType format, const uint8_t *chun
 }
 
 static void ClearVisualization(AudioDemo *demo) {
-	demo->visualization.hasVideoAudioChunk = 0;
+	fplAtomicExchangeU32(&demo->visualization.hasVideoAudioChunk, 0);
 	fplClearStruct(&demo->visualization.videoAudioChunks);
 	fplClearStruct(&demo->visualization.currentMagnitudes);
 	fplClearStruct(&demo->visualization.lastMagnitudes);
@@ -670,6 +718,15 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 #endif
 }
 
+/**
+* @brief Called by the sound device automatically, requesting N audio frames/samples to be written to the output.
+* This function has a very tight time-frame and will be called many thousand times per second, so keep implementation to be as small as possible.
+* @param[in] outFormat The output audio format, @ref fplAudioFormat.
+* @param[in] maxFrameCount The number of frames that needs to be played.
+* @param[out] outputSamples The reference to the output samples that is defined by the output format.
+* @param[in] userData The user data reference.
+* @return Returns the number of audio frames that was written.
+*/
 static uint32_t AudioPlayback(const fplAudioFormat *outFormat, const uint32_t maxFrameCount, void *outputSamples, void *userData) {
 	//fplDebugFormatOut("Requested %lu frames\n", maxFrameCount);
 
@@ -739,7 +796,7 @@ static uint32_t AudioPlayback(const fplAudioFormat *outFormat, const uint32_t ma
 	return(result);
 }
 
-static bool WriteAudio(const fplAudioFormat *format, const uint32_t maxFrameCount, AudioDemo *demo, uint64_t *outDuration) {
+static bool WriteAudioToRingBuffer(const fplAudioFormat *format, const uint32_t maxFrameCount, AudioDemo *demo, uint64_t *outDuration) {
 	if(format == fpl_null || demo == fpl_null) return(false);
 	if(maxFrameCount == 0) return(false);
 
@@ -757,7 +814,7 @@ static bool WriteAudio(const fplAudioFormat *format, const uint32_t maxFrameCoun
 
 		AudioFrameIndex numOfAvailableFrames = (AudioFrameIndex)fplMax(0, availableStreamSpace / frameSize);
 
-		// Disable this condition to always 100% fill the buffer
+		// Disable this condition to always fill the entire buffer
 		//if(numOfAvailableFrames < maxFrameCount)
 		//	return(false);
 
@@ -1043,7 +1100,7 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 		bool tooFast = false;
 
 		uint64_t streamDuration = 0;
-		if(WriteAudio(&demo->targetAudioFormat, currentEntry.frames, demo, &streamDuration)) {
+		if(WriteAudioToRingBuffer(&demo->targetAudioFormat, currentEntry.frames, demo, &streamDuration)) {
 			if(streamDuration > currentEntry.delay) {
 				// We are taking too slow to stream in new audio samples
 				tooSlow = true;
@@ -1341,7 +1398,7 @@ int main(int argc, char **args) {
 	// Stream in initial frames
 	AudioFrameIndex initialFrameStreamCount = streamBufferFrames / 4;
 	fplAssert(streamBufferFrames >= initialFrameStreamCount);
-	WriteAudio(&demo->targetAudioFormat, initialFrameStreamCount, demo, fpl_null);
+	WriteAudioToRingBuffer(&demo->targetAudioFormat, initialFrameStreamCount, demo, fpl_null);
 #endif
 
 	// Start streaming thread
