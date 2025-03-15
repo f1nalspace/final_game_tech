@@ -1144,6 +1144,11 @@ static AudioSampleIndex ConvertSamplesFromF32(const float *inSamples, const Audi
 	return(result);
 }
 
+static void ClearConversionBuffer(AudioSystem *audioSys) {
+	audioSys->conversionBuffer.framesRemaining = 0;
+	audioSys->conversionBuffer.readFrameIndex = 0;
+}
+
 static bool FillConversionBuffer(AudioSystem *audioSys, const AudioFrameIndex maxFrameCount, const bool advance) {
 	audioSys->conversionBuffer.framesRemaining = 0;
 	audioSys->conversionBuffer.readFrameIndex = 0;
@@ -1264,6 +1269,13 @@ extern void AudioSystemStopAll(AudioSystem *audioSys) {
 	playItems->first = playItems->last = fpl_null;
 	playItems->count = 0;
 	fplMutexUnlock(&playItems->lock);
+
+	fplMutexLock(&audioSys->writeFramesLock);
+	ClearConversionBuffer(audioSys);
+	fplMemoryClear(audioSys->mixingBuffer.samples, fplArrayCount(audioSys->mixingBuffer.samples));
+	fplMemoryClear(audioSys->dspInBuffer.samples, fplArrayCount(audioSys->dspInBuffer.samples));
+	fplMemoryClear(audioSys->dspOutBuffer.samples, fplArrayCount(audioSys->dspOutBuffer.samples));
+	fplMutexUnlock(&audioSys->writeFramesLock);
 }
 
 extern void AudioSystemClearSources(AudioSystem *audioSys) {
