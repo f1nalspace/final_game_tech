@@ -155,6 +155,7 @@ static bool LoadAudioTrackList(AudioSystem *audioSys, const AudioTrackSource *so
 			if(tracklist->count < maxTrackCount) {
 				uint32_t trackIndex = tracklist->count++;
 				AudioTrack *track = &tracklist->tracks[trackIndex];
+				fplClearStruct(track);
 
 				track->source.type = trackSource->type;
 
