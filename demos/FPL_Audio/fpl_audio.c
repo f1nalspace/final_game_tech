@@ -1284,6 +1284,7 @@ int main(int argc, char **args) {
 	//settings.audio.targetFormat.sampleRate = 22050;
 	settings.audio.targetFormat.sampleRate = 44100;
 	//settings.audio.targetFormat.sampleRate = 48000;
+	//settings.audio.targetFormat.sampleRate = 88200;
 
 	// Optionally set buffer size in milliseconds or in frames
 	//settings.audio.targetFormat.bufferSizeInMilliseconds = 16;
