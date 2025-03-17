@@ -908,44 +908,40 @@ extern void AudioGenerateSineWave(AudioSineWaveData *waveData, void *outSamples,
 	waveData->frameIndex += frameCount;
 }
 
-static AudioResampleResult AudioSimpleUpSampling(const AudioFrameIndex minFrameCount, const AudioFrameIndex maxFrameCount, const fplAudioFormatType inFormat, const AudioChannelIndex inChannelCount, const AudioHertz inSampleRate, const void *inSamples, const AudioHertz outSampleRate, float *outSamples, const float volume) {
+static AudioResampleResult AudioSimpleUpSampling(const AudioFrameIndex minFrameCount, const AudioFrameIndex maxFrameCount, const AudioChannelIndex inChannelCount, const AudioHertz inSampleRate, const float *inSamples, const AudioHertz outSampleRate, float *outSamples, const float volume) {
 	// Simple Upsampling (2x, 4x, 6x, 8x etc.) -> Duplicate frames
 	fplAssert(outSampleRate > inSampleRate);
 	fplAssert((outSampleRate % inSampleRate) == 0);
 	const uint32_t upsamplingFactor = outSampleRate / inSampleRate;
 	const AudioFrameIndex inFrameCount = fplMin(minFrameCount / upsamplingFactor, maxFrameCount);
-	const size_t inBytesPerSample = fplGetAudioSampleSizeInBytes(inFormat);
-	const uint8_t *inSamplesU8 = (const uint8_t *)inSamples;
-	const size_t inSampleStride = inBytesPerSample * inChannelCount;
+	const float *inSamplesF32 = (const float *)inSamples;
+	const size_t inSampleStride = inChannelCount;
 	AudioResampleResult result = fplZeroInit;
 	for(AudioFrameIndex i = 0; i < inFrameCount; ++i) {
 		for(uint32_t f = 0; f < upsamplingFactor; ++f) {
 			for(AudioChannelIndex inChannelIndex = 0; inChannelIndex < inChannelCount; ++inChannelIndex) {
-				*outSamples++ = ConvertToF32(inSamplesU8, inChannelIndex, inFormat) * volume;
+				*outSamples++ = inSamplesF32[inChannelIndex] * volume;
 			}
 			++result.outputCount;
 		}
-		inSamplesU8 += inSampleStride;
+		inSamplesF32 += inSampleStride;
 		++result.inputCount;
 	}
 	return(result);
 }
 
-static AudioResampleResult AudioSimpleDownSampling(const AudioFrameIndex minFrameCount, const AudioFrameIndex maxFrameCount, const fplAudioFormatType inFormat, const AudioChannelIndex inChannelCount, const AudioHertz inSampleRate, const void *inSamples, const AudioHertz outSampleRate, float *outSamples, const float volume) {
+static AudioResampleResult AudioSimpleDownSampling(const AudioFrameIndex minFrameCount, const AudioFrameIndex maxFrameCount, const AudioChannelIndex inChannelCount, const AudioHertz inSampleRate, const float *inSamples, const AudioHertz outSampleRate, float *outSamples, const float volume) {
 	// Simple Downsampling (1/2, 1/4, 1/6, 1/8, etc.) -> Skipping frames
 	fplAssert(inSampleRate > outSampleRate);
 	fplAssert((inSampleRate % outSampleRate) == 0);
 	const uint32_t downsamplingFactor = inSampleRate / outSampleRate;
 	const AudioFrameIndex inFrameCount = fplMin(minFrameCount * downsamplingFactor, maxFrameCount);
-	const size_t inBytesPerSample = fplGetAudioSampleSizeInBytes(inFormat);
-	const uint8_t *inSamplesU8 = (const uint8_t *)inSamples;
-	const size_t inSampleStride = inBytesPerSample * inChannelCount;
 	AudioResampleResult result = fplZeroInit;
 	for(AudioFrameIndex i = 0; i < inFrameCount; i += downsamplingFactor) {
 		for(AudioChannelIndex inChannelIndex = 0; inChannelIndex < inChannelCount; ++inChannelIndex) {
-			*outSamples++ = ConvertToF32(inSamplesU8, inChannelIndex, inFormat) * volume;
+			AudioFrameIndex sourceIndex = i * inChannelCount + inChannelIndex;
+			*outSamples++ = inSamples[sourceIndex];
 		}
-		inSamplesU8 += inBytesPerSample * inChannelCount * downsamplingFactor;
 		result.inputCount += downsamplingFactor;
 		result.outputCount++;
 	}
@@ -1036,13 +1032,12 @@ static AudioFrameIndex MixPlayItems(AudioSystem *audioSys, const AudioFrameIndex
 			uint8_t *inSourceSamples = source->buffer.samples + inStartFrameIndex * (inChannelCount * inBytesPerSample);
 
 			//
-			// Convert source samples to interleaved float samples (dspIn)
+			// Convert source samples to interleaved float samples (DSP-In)
 			//
 			AudioFrameIndex inputFrameConversionCount = fplMin(inRemainingFrameCount, audioSys->dspOutBuffer.maxFrameCount);
 			AudioSampleIndex inputSampleConversionCount = inputFrameConversionCount * inChannelCount;
 			bool convertRes = AudioSamplesConvert(&audioSys->conversionFuncs, inputSampleConversionCount, inFormat, fplAudioFormatType_F32, inSourceSamples, dspInSamplesStart);
 			fplAssert(convertRes == true);
-			dspInSamples += inputFrameConversionCount * inChannelCount;
 
 			AudioFrameIndex playedFrameCount = 0;
 			AudioFrameIndex convertedFrameCount = 0;
@@ -1059,26 +1054,22 @@ static AudioFrameIndex MixPlayItems(AudioSystem *audioSys, const AudioFrameIndex
 				if(isEven) {
 					AudioResampleResult resampleResult;
 					if(outSampleRate > inSampleRate) {
-						// Simple Upsampling (2x, 4x, 6x, 8x etc.)
-						resampleResult = AudioSimpleUpSampling(outRemainingFrameCount, inRemainingFrameCount, inFormat, inChannelCount, inSampleRate, inSourceSamples, outSampleRate, dspOutSamples, volume);
+						// Simple Upsampling into DSP-Out (2x, 4x, 6x, 8x etc.)
+						resampleResult = AudioSimpleUpSampling(outRemainingFrameCount, inputFrameConversionCount, inChannelCount, inSampleRate, dspInSamples, outSampleRate, dspOutSamples, volume);
 					} else {
-						// Simple Downsampling (1/2, 1/4, 1/6, 1/8, etc.)
-						resampleResult = AudioSimpleDownSampling(outRemainingFrameCount, inRemainingFrameCount, inFormat, inChannelCount, inSampleRate, inSourceSamples, outSampleRate, dspOutSamples, volume);
+						// Simple Downsampling into DSP-Out (1/2, 1/4, 1/6, 1/8, etc.)
+						resampleResult = AudioSimpleDownSampling(outRemainingFrameCount, inputFrameConversionCount, inChannelCount, inSampleRate, dspInSamples, outSampleRate, dspOutSamples, volume);
 					}
 					convertedFrameCount += resampleResult.outputCount;
 					playedFrameCount += resampleResult.inputCount;
 					dspOutSamples += resampleResult.outputCount * inChannelCount;
 					inSourceSamples += resampleResult.inputCount * inChannelCount * inBytesPerSample;
 				} else {
-					if(inSampleRate > outSampleRate) {
-						// @TODO(final): SinC-Downsampling (Example: 48000 to 41000)
-						fplAssert(!"Non even Downsampling not supported");
-					} else if(inSampleRate < outSampleRate) {
-						// @TODO(final): SinC-Upsampling (Example: 41000 to 48000)
-						fplAssert(!"Non even Upsampling not supported");
-					}
+					fplAssert(!"Implement Resampling!");
 				}
 			}
+
+			dspInSamples += inputFrameConversionCount * inChannelCount;
 
 			item->framesPlayed[0] += playedFrameCount;
 
