@@ -974,6 +974,13 @@ static AudioFrameIndex MixPlayItems(AudioSystem *audioSys, const AudioFrameIndex
 	const AudioHertz outSampleRate = audioSys->targetFormat.sampleRate;
 	const AudioChannelIndex outChannelCount = audioSys->targetFormat.channels;
 
+	// @TODO(final): Re-code this entire function
+	// There are lots of assumptions wrong:
+	// Input Frame Count is dependend on the in/out sample rate ratio
+	// Output Frame Count is dependend on the in/out sample rate ratio
+	// Target Frame Count may be incorrect
+	// Proper resampling for all cases, simple and complex
+
 	fplMemoryClear(audioSys->mixingBuffer.samples, fplArrayCount(audioSys->mixingBuffer.samples));
 
 	AudioFrameIndex result = 0;
