@@ -40,9 +40,9 @@ extern AudioSampleConversionFunctions CreateAudioSamplesConversionFunctions();
 
 extern bool AudioSamplesConvert(AudioSampleConversionFunctions *funcTable, const AudioSampleIndex numSamples, const fplAudioFormatType inFormat, const fplAudioFormatType outFormat, const void *inSamples, void *outSamples);
 
-extern bool AudioSamplesDeinterleave(AudioSampleConversionFunctions *funcTable, const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const fplAudioFormatType format, void *inSamples, void **outSamples);
+extern bool AudioSamplesDeinterleave(AudioSampleConversionFunctions *funcTable, const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const fplAudioFormatType format, const void *inSamples, void **outSamples);
 
-extern bool AudioSamplesInterleave(AudioSampleConversionFunctions *funcTable, const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const fplAudioFormatType format, void **inSamples, void *outSamples);
+extern bool AudioSamplesInterleave(AudioSampleConversionFunctions *funcTable, const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const fplAudioFormatType format, const void **inSamples, void *outSamples);
 
 extern bool IsAudioDeinterleavedSamplesEqual(const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const size_t formatSize, const void **a, const void **b);
 extern bool IsAudioInterleavedSamplesEqual(const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const size_t formatSize, const void *a, const void *b);
@@ -94,11 +94,11 @@ extern void TestAudioSamplesSuite();
 const uint32_t AUDIO_INT24_MIN = -8388608;
 const uint32_t AUDIO_INT24_MAX = 8388607;
 
-inline float ClampF32(const float x, const float min, const float max) {
+static inline float ClampF32(const float x, const float min, const float max) {
 	return fplMax(min, fplMin(max, x));
 }
 
-inline float ClipF32(const float x) {
+static inline float ClipF32(const float x) {
 	return ClampF32(x, -1.0f, 1.0f);
 }
 
@@ -347,7 +347,7 @@ static void AudioSinCTableInitialize(AudioSinCTable *table, const uint32_t filte
     }
 }
 
-static float GetSinCTableValue(const AudioSinCTable *table, const float f) {
+static inline float GetSinCTableValue(const AudioSinCTable *table, const float f) {
 	int index = (int)((f + table->filterRadius) / (table->filterRadius * 2) * table->lastIndex);
 	if (index < 0) {
 		index = 0;
@@ -358,7 +358,7 @@ static float GetSinCTableValue(const AudioSinCTable *table, const float f) {
     return table->x[index];
 }
 
-inline float AudioSinC(const float x) {
+static inline float AudioSinC(const float x) {
     if (x == 0.0f) {
         return 1.0f; // sinc(0) = 1
     }
