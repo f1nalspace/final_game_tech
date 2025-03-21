@@ -173,6 +173,7 @@ SOFTWARE.
 	- New: Added function fplGetAudioDeviceInfo() that returns a @ref fplAudioDeviceInfoExtended from a @ref fplAudioDeviceID
 	- New: Added function fplGetAudioChannelMap() that returns the @ref fplAudioChannelMap for the active audio backend
 	- New: Added function fplGetCPUCapabilitiesTypeName() that returns the name of a @ref fplCPUCapabilitiesType
+	- New: Added function fplGetTargetAudioFrameCount() that computes the target audio frames for an input/out sample rate from number of input frames
 	- New: Added field manualLoad to @ref fplAudioSettings that controls the initialization behavior of the audio system
 	- Fixed: fplCreateColorRGBA() was not compiling on GCC due to inlining failing
 	- Fixed: fplCreateVideoRectFromLTRB() was not compiling on GCC due to inlining failing
@@ -8423,6 +8424,15 @@ fpl_common_api uint32_t fplGetAudioFrameSizeInBytes(const fplAudioFormatType for
 * @return Returns the total number of bytes for the buffer.
 */
 fpl_common_api uint32_t fplGetAudioBufferSizeInBytes(const fplAudioFormatType format, const uint16_t channelCount, const uint32_t frameCount);
+
+/**
+* @brief Computes the target number of audio frames from the specified input frame count and sample rate and the output sample rate.
+* @param[in] inputFrameCount The input frame count.
+* @param[in] inputSampleRate The input sample rate in Hz.
+* @param[in] outputSampleRate The output sample rate in Hz.
+* @return Returns the number target audio frames.
+*/
+fpl_common_api uint32_t fplGetTargetAudioFrameCount(const uint32_t inputFrameCount, const uint32_t inputSampleRate, const uint32_t outputSampleRate);
 
 /**
 * @brief Returns the default audio channel layout from the specified channel count.
@@ -25637,6 +25647,38 @@ fpl_common_api uint32_t fplGetAudioBufferSizeInBytes(const fplAudioFormatType fo
 	uint32_t frameSize = fplGetAudioFrameSizeInBytes(format, channelCount);
 	uint32_t result = frameSize * frameCount;
 	return(result);
+}
+
+fpl_common_api uint32_t fplGetTargetAudioFrameCount(const uint32_t inputFrameCount, const uint32_t inputSampleRate, const uint32_t outputSampleRate) {
+	if (inputFrameCount == 0 || inputSampleRate == 0 || outputSampleRate == 0) {
+		return 0;
+	}
+	if (inputSampleRate == outputSampleRate) {
+		return inputFrameCount;
+	}
+
+	float inRatio = inputSampleRate / (float)outputSampleRate;
+	float outRatio = 1.0f / inRatio;
+
+	float ratio;
+
+	if (inputSampleRate > outputSampleRate) {
+		ratio = inRatio;
+	} else {
+		fplAssert(outputSampleRate > inputSampleRate);
+		ratio = outRatio;
+	}
+
+	float f = inputFrameCount * ratio;
+	uint32_t full = (uint32_t)f;
+	float fraction = full - f;
+
+	// @TODO(final): This is not correct to fake round the additional frame, but it works for most cases
+	uint32_t add = fraction != 0 ? (uint32_t)(fraction + 0.5f) : 0;
+
+	uint32_t result = full + add;
+
+	return result;
 }
 
 #define FPL__AUDIO_CHANNEL_LAYOUT_COUNT FPL__ENUM_COUNT(fplAudioChannelLayout_First, fplAudioChannelLayout_Last)
