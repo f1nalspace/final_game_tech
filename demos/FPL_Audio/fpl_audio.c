@@ -264,13 +264,13 @@ typedef struct AudioDemo {
 	fpl_b32 useRealTimeSamples;
 } AudioDemo;
 
-static void UpdateTitle(AudioDemo *demo, const char *audioTrackName, const bool isRealTime) {
+static void UpdateTitle(AudioDemo *demo, const char *audioTrackName, const bool isRealTime, const double fps) {
 	char titleBuffer[256];
 	const char *rtString = (isRealTime ? "RT" : "BUF");
 	if (fplGetStringLength(audioTrackName) > 0)
-		fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "FPL Demo | Audio (%s, %u Hz) - %s", rtString, demo->targetAudioFormat.sampleRate, audioTrackName);
+        fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "FPL Demo | Audio (%s, %u Hz) - %s [%.3f fps]", rtString, demo->targetAudioFormat.sampleRate, audioTrackName, fps);
 	else
-		fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "FPL Demo | Audio (%s, %u Hz)", rtString, demo->targetAudioFormat.sampleRate);
+        fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "FPL Demo | Audio (%s, %u Hz) [%.3f fps]", rtString, demo->targetAudioFormat.sampleRate, fps);
 	fplSetWindowTitle(titleBuffer);
 }
 
@@ -561,7 +561,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 		}
 
 		// Forward FFT using raw samples
-		ForwardFFT(visualization->fftInput, frameCount, visualization->fftOutput);
+        ForwardFFT(visualization->fftInput, frameCount, visualization->fftOutput);
 
 		const uint32_t halfFFT = frameCount / 2;
 
@@ -1432,11 +1432,15 @@ int main(int argc, char **args) {
 			outChannels);
 
 		const char *audioTrackName = audioTrackCount > 0 ? audioTracks[0].name : fpl_null;
-		UpdateTitle(demo, audioTrackName, demo->useRealTimeSamples);
+        UpdateTitle(demo, audioTrackName, demo->useRealTimeSamples, 0.0);
 
 		// Loop
 		double totalTime = 0.0;
 		fplTimestamp lastTime = fplTimestampQuery();
+        fplMilliseconds lastFpsTime = fplMillisecondsQuery();
+        double currentFrameTime = 0.0;
+        double currentFps = 0.0;
+        uint64_t frameCount = 0;
 		while(fplWindowUpdate()) {
 			fplEvent ev;
 			while(fplPollEvent(&ev)) {
@@ -1454,7 +1458,7 @@ int main(int argc, char **args) {
 								} else if(key == fplKey_F1) {
 									demo->useRealTimeSamples = !demo->useRealTimeSamples;
 								}
-								UpdateTitle(demo, audioTrackName, demo->useRealTimeSamples);
+                                UpdateTitle(demo, audioTrackName, demo->useRealTimeSamples, currentFps);
 							}
 						}
 					} break;
@@ -1479,7 +1483,7 @@ int main(int argc, char **args) {
 									audioTrackCount = 1;
 									audioTracks[0] = newTrack;
 									audioTrackName = audioTracks[0].name;
-									UpdateTitle(demo, audioTrackName, demo->useRealTimeSamples);
+                                    UpdateTitle(demo, audioTrackName, demo->useRealTimeSamples, currentFps);
 									if (LoadAudioTrackList(&demo->audioSys, audioTracks, audioTrackCount, forceSineWave, &demo->sineWave, LoadAudioTrackFlags_None, &demo->trackList)) {
 										PlayAudioTrack(&demo->audioSys, &demo->trackList, 0);
 									}
@@ -1493,16 +1497,28 @@ int main(int argc, char **args) {
 				}
 			}
 
-			fplWindowSize winSize = fplZeroInit;
-			fplGetWindowSize(&winSize);
-			Render(demo, winSize.width, winSize.height, totalTime);
+            fplWindowSize winSize = fplZeroInit;
+            fplGetWindowSize(&winSize);
+
+            Render(demo, winSize.width, winSize.height, totalTime);
 			fplVideoFlip();
 
 			fplTimestamp curTime = fplTimestampQuery();
-			double frameTime = fplTimestampElapsed(lastTime, curTime);
+            double frameTime = fplTimestampElapsed(lastTime, curTime);
+            ++frameCount;
 			totalTime += frameTime;
 			lastTime = curTime;
-		}
+
+            currentFps = (double)frameCount / totalTime;
+            if( currentFps > 1000 ){
+                currentFps = 0;
+            }
+
+            if (fplMillisecondsQuery() - lastFpsTime >= 1000) {
+                UpdateTitle(demo, audioTrackName, demo->useRealTimeSamples, currentFps);
+                lastFpsTime = fplMillisecondsQuery();
+            }
+        }
 
 		// Stop audio playback
 		fplStopAudio();
@@ -1521,14 +1537,14 @@ done:
 	ReleaseStreamBuffers(demo);
 #endif
 
-	// Release visualization
+    // Release visualization
 	ReleaseVisualization(demo);
 
-	// Release audio system
-	StopAllAudioTracks(&demo->audioSys, &demo->trackList);
-	AudioSystemShutdown(&demo->audioSys);
+    // Release audio system
+    StopAllAudioTracks(&demo->audioSys, &demo->trackList);
+    AudioSystemShutdown(&demo->audioSys);
 
-	// Shutdown OpenGL
+    // Shutdown OpenGL
 	fglUnloadOpenGL();
 
 	// Free demo memory
