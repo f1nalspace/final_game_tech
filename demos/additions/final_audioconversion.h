@@ -74,8 +74,8 @@ typedef struct AudioResamplingContext {
 	AudioChannelIndex channelCount;
 } AudioResamplingContext;
 
-extern AudioResampleResult AudioResampleInterleaved(const AudioChannelIndex numChannels, const AudioSampleIndex inSampleRate, const AudioSampleIndex outSampleRate, const AudioFrameIndex minOutputFrameCount, const AudioFrameIndex maxInputFrameCount, const float volume, const float *inSamples, float *outSamples);
-extern AudioResampleResult AudioResampleDeinterleaved(const AudioChannelIndex numChannels, const AudioSampleIndex inSampleRate, const AudioSampleIndex outSampleRate, const AudioFrameIndex minOutputFrameCount, const AudioFrameIndex maxInputFrameCount, const float volume, const float **inSamples, float **outSamples);
+extern AudioResampleResult AudioResampleInterleaved(const AudioChannelIndex numChannels, const AudioSampleIndex inSampleRate, const AudioSampleIndex outSampleRate, const AudioFrameIndex minOutputFrameCount, const AudioFrameIndex maxInputFrameCount, const float *inSamples, float *outSamples);
+extern AudioResampleResult AudioResampleDeinterleaved(const AudioChannelIndex numChannels, const AudioSampleIndex inSampleRate, const AudioSampleIndex outSampleRate, const AudioFrameIndex minOutputFrameCount, const AudioFrameIndex maxInputFrameCount, const float **inSamples, float **outSamples);
 
 extern void TestAudioSamplesSuite();
 
@@ -378,12 +378,11 @@ static inline float AudioSinC(const float x) {
 * @param[in] sourceFrameCount The number of source audio frames that is available.
 * @param[in] targetFrameCount The number of target audio frames that is required.
 * @param[in] filterRadius The filter radius (8 is a good compromise between speed and quality).
-* @param[in] volume The volume in range of 0.0 to 1.0.
 * @param[in] inSamples The interleaved source audio samples float buffer.
 * @param[out] outSamples The interleaved target audio samples float buffer.
 * @return Returns the number interleaved of input and output frames
 */
-static AudioResampleResult Audio__ResamplingInterleaved(const uint16_t channelCount, const uint32_t sourceSampleRate, const uint32_t targetSampleRate, const uint32_t sourceFrameCount, const uint32_t targetFrameCount, const int filterRadius, const float volume, const float *inSamples, float *outSamples) {
+static AudioResampleResult Audio__ResamplingInterleaved(const uint16_t channelCount, const uint32_t sourceSampleRate, const uint32_t targetSampleRate, const uint32_t sourceFrameCount, const uint32_t targetFrameCount, const int filterRadius, const float *inSamples, float *outSamples) {
     const float srcToTgtRatio = (float)targetSampleRate / (float)sourceSampleRate;
     const float tgtToSrcRatio = 1.0f / srcToTgtRatio;
 
@@ -425,7 +424,7 @@ static AudioResampleResult Audio__ResamplingInterleaved(const uint16_t channelCo
 			// Normalize the output sample
             if (weightSum != 0.0f) {
 				float x = sample / weightSum;
-                outSamples[tgtFrame * channelCount + channel] = x * volume;
+                outSamples[tgtFrame * channelCount + channel] = x;
             } else {
                 outSamples[tgtFrame * channelCount + channel] = 0.0f; // Handle edge case
             }
@@ -451,12 +450,11 @@ static AudioResampleResult Audio__ResamplingInterleaved(const uint16_t channelCo
 * @param[in] sourceFrameCount The number of source audio frames that is available.
 * @param[in] targetFrameCount The number of target audio frames that is required.
 * @param[in] filterRadius The filter radius (8 is a good compromise between speed and quality).
-* @param[in] volume The volume in range of 0.0 to 1.0.
 * @param[in] inSamples The de-interleaved source audio samples float buffer.
 * @param[out] outSamples The de-interleaved target audio samples float buffer.
 * @return Returns the number de-interleaved of input and output frames
 */
-static AudioResampleResult Audio__ResamplingDeinterleaved(const uint16_t channelCount, const uint32_t sourceSampleRate, const uint32_t targetSampleRate, const uint32_t sourceFrameCount, const uint32_t targetFrameCount, const int filterRadius, const float volume, const float **inSamples, float **outSamples) {
+static AudioResampleResult Audio__ResamplingDeinterleaved(const uint16_t channelCount, const uint32_t sourceSampleRate, const uint32_t targetSampleRate, const uint32_t sourceFrameCount, const uint32_t targetFrameCount, const int filterRadius, const float **inSamples, float **outSamples) {
 	AudioResampleResult result = fplZeroInit;
 
 	const float srcToTgtRatio = (float)targetSampleRate / (float)sourceSampleRate;
@@ -502,7 +500,8 @@ static AudioResampleResult Audio__ResamplingDeinterleaved(const uint16_t channel
 
 			// Normalize the output sample
             if (weightSum != 0.0f) {
-                channelOutSamples[tgtFrame] = (sample / weightSum) * volume;
+				float x = sample / weightSum;
+                channelOutSamples[tgtFrame] = x;
             } else {
                 channelOutSamples[tgtFrame] = 0.0f; // Handle edge case
             }
@@ -513,7 +512,7 @@ static AudioResampleResult Audio__ResamplingDeinterleaved(const uint16_t channel
     return result;
 }
 
-static AudioResampleResult AudioWeightedSampleSumDownSampling(const uint16_t channelCount, const uint32_t sourceSampleRate, const uint32_t targetSampleRate, const uint32_t sourceFrameCount, const uint32_t targetFrameCount, const float volume, const float *inSamples, float *outSamples) {
+static AudioResampleResult AudioWeightedSampleSumDownSampling(const uint16_t channelCount, const uint32_t sourceSampleRate, const uint32_t targetSampleRate, const uint32_t sourceFrameCount, const uint32_t targetFrameCount, const float *inSamples, float *outSamples) {
     const float srcToTgtRatio = (float)sourceSampleRate / (float)targetSampleRate;
 
     // Clear output buffer
@@ -555,7 +554,7 @@ static AudioResampleResult AudioWeightedSampleSumDownSampling(const uint16_t cha
     return result;
 }
 
-extern AudioResampleResult AudioResampleInterleaved(const AudioChannelIndex numChannels, const AudioSampleIndex inSampleRate, const AudioSampleIndex outSampleRate, const AudioFrameIndex minOutputFrameCount, const AudioFrameIndex maxInputFrameCount, const float volume, const float *inSamples, float *outSamples) {
+extern AudioResampleResult AudioResampleInterleaved(const AudioChannelIndex numChannels, const AudioSampleIndex inSampleRate, const AudioSampleIndex outSampleRate, const AudioFrameIndex minOutputFrameCount, const AudioFrameIndex maxInputFrameCount, const float *inSamples, float *outSamples) {
 	if (numChannels == 0 || inSampleRate == 0 || outSampleRate == 0 || minOutputFrameCount == 0 || maxInputFrameCount == 0) {
 		AudioResampleResult zero = fplZeroInit;
 		return zero;
@@ -582,11 +581,11 @@ extern AudioResampleResult AudioResampleInterleaved(const AudioChannelIndex numC
 	 }
 
 	const int filterRadius = 8;
-	AudioResampleResult res = Audio__ResamplingInterleaved(numChannels, inSampleRate, outSampleRate, inFrameCount, outFrameCount, filterRadius, volume, inSamples, outSamples);
+	AudioResampleResult res = Audio__ResamplingInterleaved(numChannels, inSampleRate, outSampleRate, inFrameCount, outFrameCount, filterRadius, inSamples, outSamples);
 	return res;
 }
 
-extern AudioResampleResult AudioResampleDeinterleaved(const AudioChannelIndex numChannels, const AudioSampleIndex inSampleRate, const AudioSampleIndex outSampleRate, const AudioFrameIndex minOutputFrameCount, const AudioFrameIndex maxInputFrameCount, const float volume, const float **inSamples, float **outSamples) {
+extern AudioResampleResult AudioResampleDeinterleaved(const AudioChannelIndex numChannels, const AudioSampleIndex inSampleRate, const AudioSampleIndex outSampleRate, const AudioFrameIndex minOutputFrameCount, const AudioFrameIndex maxInputFrameCount, const float **inSamples, float **outSamples) {
 	if (numChannels == 0 || inSampleRate == 0 || outSampleRate == 0 || minOutputFrameCount == 0 || maxInputFrameCount == 0) {
 		AudioResampleResult zero = fplZeroInit;
 		return zero;
@@ -613,7 +612,7 @@ extern AudioResampleResult AudioResampleDeinterleaved(const AudioChannelIndex nu
 	 }
 
 	const int filterRadius = 8;
-	AudioResampleResult res = Audio__ResamplingDeinterleaved(numChannels, inSampleRate, outSampleRate, inFrameCount, outFrameCount, filterRadius, volume, inSamples, outSamples);
+	AudioResampleResult res = Audio__ResamplingDeinterleaved(numChannels, inSampleRate, outSampleRate, inFrameCount, outFrameCount, filterRadius, inSamples, outSamples);
 	return res;
 }
 
