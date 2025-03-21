@@ -62,7 +62,9 @@ How the demo works:
 	The ring-buffer is visualized as simple bars with a tail and head position.
 
 Known Issues:
-	There is no audio synchronization going on, so it may happens that the played audio samples does not match up with the visualized ones!
+	- There is no audio synchronization going on, so it may happens that the played audio samples does not match up with the visualized ones!
+	- Down/Up sampling is experimental any may not work correctly.
+	- Non-Even up/down sampling is not supported, such as 44100 > 48000 etc.
 
 Requirements:
 	- C99 Compiler
@@ -77,6 +79,9 @@ Todo:
 	- Multiple audio tracks
 
 Changelog:
+	## 2025-03-21
+	- Compute the actual target frame count for the full audio buffer, so that we can up/down sample properly
+
 	## 2025-03-15
 	- Support for swapping out the audio track by drag & drop another file
 
@@ -1022,16 +1027,19 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 					track->playID = AudioSystemPlaySource(&demo->audioSys, source, false, 1.0f);
 
 					// Allocate full audio buffer and fully load the 
-					AudioFrameIndex trackFrameCount = source->buffer.frameCount;
+					AudioFrameIndex sourceFrameCount = source->buffer.frameCount;
+					AudioFrameIndex targetFrameCount = fplGetTargetAudioFrameCount(sourceFrameCount, source->format.sampleRate, demo->targetAudioFormat.sampleRate);
 					AudioFormat fullAudioBufferFormat = fplZeroInit;
 					fullAudioBufferFormat.channels = demo->targetAudioFormat.channels;
 					fullAudioBufferFormat.format = demo->targetAudioFormat.type;
 					fullAudioBufferFormat.sampleRate = demo->targetAudioFormat.sampleRate;
-					AllocateAudioBuffer(&demo->audioSys.memory, fullAudioBuffer, &fullAudioBufferFormat, trackFrameCount);
+					AllocateAudioBuffer(&demo->audioSys.memory, fullAudioBuffer, &fullAudioBufferFormat, targetFrameCount);
 
+					// Write the entire audio track into the full audio buffer, that is used for rendering the audio samples.
+					// The actual playback uses the audio system again, but we can enable realtime (F1) to use the actual played back samples.
 					if (fullAudioBuffer->bufferSize > 0) {
-						AudioFrameIndex writtenFrames = AudioSystemWriteFrames(&demo->audioSys, fullAudioBuffer->samples, &demo->targetAudioFormat, trackFrameCount, false);
-						fplAssert(writtenFrames == trackFrameCount);
+						AudioFrameIndex writtenFrames = AudioSystemWriteFrames(&demo->audioSys, fullAudioBuffer->samples, &demo->targetAudioFormat, targetFrameCount, false);
+						fplAssert(writtenFrames == targetFrameCount);
 					}
 				} else {
 					fplAtomicStoreS32(&track->state, AudioTrackState_Failed);
@@ -1055,16 +1063,19 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 				track->playID = AudioSystemPlaySource(&demo->audioSys, source, false, 1.0f);
 
 				// Allocate full audio buffer
-				AudioFrameIndex trackFrameCount = source->buffer.frameCount;
+				AudioFrameIndex sourceFrameCount = source->buffer.frameCount;
+				AudioFrameIndex targetFrameCount = fplGetTargetAudioFrameCount(sourceFrameCount, source->format.sampleRate, demo->targetAudioFormat.sampleRate);
 				AudioFormat fullAudioBufferFormat = fplZeroInit;
 				fullAudioBufferFormat.channels = demo->targetAudioFormat.channels;
 				fullAudioBufferFormat.format = demo->targetAudioFormat.type;
 				fullAudioBufferFormat.sampleRate = demo->targetAudioFormat.sampleRate;
-				AllocateAudioBuffer(&demo->audioSys.memory, fullAudioBuffer, &fullAudioBufferFormat, trackFrameCount);
+				AllocateAudioBuffer(&demo->audioSys.memory, fullAudioBuffer, &fullAudioBufferFormat, targetFrameCount);
 
+				// Write the entire audio track into the full audio buffer, that is used for rendering the audio samples.
+				// The actual playback uses the audio system again, but we can enable realtime (F1) to use the actual played back samples.
 				if (fullAudioBuffer->bufferSize > 0) {
-					AudioFrameIndex writtenFrames = AudioSystemWriteFrames(&demo->audioSys, fullAudioBuffer->samples, &demo->targetAudioFormat, trackFrameCount, false);
-					fplAssert(writtenFrames == trackFrameCount);
+					AudioFrameIndex writtenFrames = AudioSystemWriteFrames(&demo->audioSys, fullAudioBuffer->samples, &demo->targetAudioFormat, targetFrameCount, false);
+					fplAssert(writtenFrames == targetFrameCount);
 				}
 				
 				demo->trackList.changedPending = false;
@@ -1281,8 +1292,8 @@ int main(int argc, char **args) {
 
 	// Set samplerate in Hz
 	//settings.audio.targetFormat.sampleRate = 11025;
-	//settings.audio.targetFormat.sampleRate = 22050;
-	settings.audio.targetFormat.sampleRate = 44100;
+	settings.audio.targetFormat.sampleRate = 22050;
+	//settings.audio.targetFormat.sampleRate = 44100;
 	//settings.audio.targetFormat.sampleRate = 48000;
 	//settings.audio.targetFormat.sampleRate = 88200;
 
