@@ -12,7 +12,8 @@ Description:
 
 	The audio tracks are streamed in and use a slow/fast detection to only cache when it needs to, see AudioStreamingThread() for more details.
 
-	To make it more appealing all audio samples are visualized in realtime with OpenGL and using several algorythms, such FFT, Windowing, Smoothing, etc.
+	To make it more appealing all audio samples are visualized with OpenGL and uses several algorythms, such FFT, Windowing, Smoothing, etc.
+	This can be shown from the full audio buffer, or in realtime that is filled directly in the streaming thread.
 
 	Everything together is very complex and requires a good understanding how digital sound is played back in a computer.
 
@@ -26,14 +27,14 @@ How the demo works:
 	- Converting audio samples into floating point, that is used for the mixing and resampling
 	- Resampling of audio samples by either (Simple up/down sampling or SinC based resampling)
 	- Applying effects per audio track (Volume, Filters, etc.)
-	- Mixing of multiple audio samples
+	- Mixing of multiple audio samples from input channels into output channels
 	- Converting back the mixed samples into the target sample format
 	- Caching of audio samples into chunks to increase performance
 
 	# Audio playback thread
 
 	The thread function AudioPlayback() is responsible for filling out N audio frames/samples of the audio device playback period buffer.
-	This is called thousands of times per second, that never uses any I/O or locking operations, therefore has a very tight time-frame.
+	This may be called thousands of times per second, therefore has a very tight time-frame and we can't use any I/O or locking operations there. 
 	The samples are lock-free read from a ring-buffer that is continuosly filled by the streaming thread.
 
 	# Audio streaming thread
@@ -42,10 +43,13 @@ How the demo works:
 
 	It also detects new audio tracks that needs to be loaded and loads them automatically.
 
-	In addition there is a smart algorythm, that detects the playback latency and adjusts the amount and the duration of the ring-buffer that needs to be filled.
+	There is a audio buffer that is fully loaded once, that is used for visualizing the samples.
+	This may take a while, depending on the input/target sample rates and the length of the source tracks.
+
+	In addition there is a smart algorythm, that detects the playback latency and adjusts the amount and duration of the ring-buffer that needs to be filled.
 	This is important, because slow hardware requires more buffering than fast hardware - but a fixed buffer size is not sufficient enough.
 
-	The samples ring-buffer are filled by the AudioSystemWriteFrames() function.
+	The samples ring-buffer are filled by the AudioSystemWriteFrames() function, which may advanced the audio system play cursor.
 
 	# Main
 
@@ -53,18 +57,13 @@ How the demo works:
 
 	All rendering is done using oldschool style OpenGL 1.x.
 
-	The monolized samples are visualized by either:
+	The converted mono samples are visualized by either:
 	- Fast Fourier Transformation
 	- Pure sample drawing
 	- Line drawing
 	- Spectrum analysis (Incomplete)
 
 	The ring-buffer is visualized as simple bars with a tail and head position.
-
-Known Issues:
-	- There is no audio synchronization going on, so it may happens that the played audio samples does not match up with the visualized ones!
-	- Down/Up sampling is experimental any may not work correctly.
-	- Non-Even up/down sampling is not supported, such as 44100 > 48000 etc.
 
 Requirements:
 	- C99 Compiler
@@ -81,6 +80,7 @@ Todo:
 Changelog:
 	## 2025-03-21
 	- Compute the actual target frame count for the full audio buffer, so that we can up/down sample properly
+	- Support for resampling from odd frequency ratios, such as 48000 <-> 41000 using SinC
 
 	## 2025-03-15
 	- Support for swapping out the audio track by drag & drop another file
@@ -1292,9 +1292,9 @@ int main(int argc, char **args) {
 
 	// Set samplerate in Hz
 	//settings.audio.targetFormat.sampleRate = 11025;
-	settings.audio.targetFormat.sampleRate = 22050;
+	//settings.audio.targetFormat.sampleRate = 22050;
 	//settings.audio.targetFormat.sampleRate = 44100;
-	//settings.audio.targetFormat.sampleRate = 48000;
+	settings.audio.targetFormat.sampleRate = 48000;
 	//settings.audio.targetFormat.sampleRate = 88200;
 
 	// Optionally set buffer size in milliseconds or in frames
