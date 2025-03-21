@@ -74,8 +74,8 @@ typedef struct AudioResamplingContext {
 	AudioChannelIndex channelCount;
 } AudioResamplingContext;
 
-extern AudioResampleResult AudioResampleInterleaved(const AudioChannelIndex numChannels, const AudioSampleIndex inSampleRate, const AudioSampleIndex outSampleRate, const AudioFrameIndex minFrameCount, const AudioFrameIndex maxFrameCount, const float *inSamples, float *outSamples);
-extern AudioResampleResult AudioResampleDeinterleaved(const AudioChannelIndex numChannels, const AudioSampleIndex inSampleRate, const AudioSampleIndex outSampleRate, const AudioFrameIndex minFrameCount, const AudioFrameIndex maxFrameCount, const float **inSamples, float **outSamples);
+extern AudioResampleResult AudioResampleInterleaved(const AudioChannelIndex numChannels, const AudioSampleIndex inSampleRate, const AudioSampleIndex outSampleRate, const AudioFrameIndex minOutputFrameCount, const AudioFrameIndex maxInputFrameCount, const float volume, const float *inSamples, float *outSamples);
+extern AudioResampleResult AudioResampleDeinterleaved(const AudioChannelIndex numChannels, const AudioSampleIndex inSampleRate, const AudioSampleIndex outSampleRate, const AudioFrameIndex minOutputFrameCount, const AudioFrameIndex maxInputFrameCount, const float volume, const float **inSamples, float **outSamples);
 
 extern void TestAudioSamplesSuite();
 
@@ -372,21 +372,23 @@ inline float AudioSinC(const float x) {
 * @note The number of audio channels are both equal.
 * @note The format is fixed floating point 32-bit for both source and target samples and each sample is in range of -1.0 to 1.0.
 * @note The samples must be in interleaved format: Frame 0: L R, 1: L R, 2: L R, 3: L R 4: L R, ...
+* @param[in] channelCount The number of audio channels for each audio frame.
 * @param[in] sourceSampleRate The source sample rate in Hz.
 * @param[in] targetSampleRate The target sample rate in Hz.
 * @param[in] sourceFrameCount The number of source audio frames that is available.
 * @param[in] targetFrameCount The number of target audio frames that is required.
-* @param[in] channelCount The number of audio channels for each audio frame.
 * @param[in] filterRadius The filter radius (8 is a good compromise between speed and quality).
+* @param[in] volume The volume in range of 0.0 to 1.0.
 * @param[in] inSamples The interleaved source audio samples float buffer.
 * @param[out] outSamples The interleaved target audio samples float buffer.
 * @return Returns the number interleaved of input and output frames
 */
-static AudioResampleResult Audio__ResamplingInterleaved(const uint32_t sourceSampleRate, const uint32_t targetSampleRate, const uint32_t sourceFrameCount, const uint32_t targetFrameCount, const uint16_t channelCount, const int filterRadius, const float *inSamples, float *outSamples) {
+static AudioResampleResult Audio__ResamplingInterleaved(const uint16_t channelCount, const uint32_t sourceSampleRate, const uint32_t targetSampleRate, const uint32_t sourceFrameCount, const uint32_t targetFrameCount, const int filterRadius, const float volume, const float *inSamples, float *outSamples) {
     const float srcToTgtRatio = (float)targetSampleRate / (float)sourceSampleRate;
     const float tgtToSrcRatio = 1.0f / srcToTgtRatio;
 
-	memset(outSamples, 0, targetFrameCount * channelCount * sizeof(float)); // Clear output buffer
+	// Clear samples
+	fplMemoryClear(outSamples, targetFrameCount * channelCount * sizeof(float));
 
     for (uint32_t tgtFrame = 0; tgtFrame < targetFrameCount; ++tgtFrame) {
         float srcFrame = tgtFrame * tgtToSrcRatio;
@@ -422,7 +424,8 @@ static AudioResampleResult Audio__ResamplingInterleaved(const uint32_t sourceSam
 
 			// Normalize the output sample
             if (weightSum != 0.0f) {
-                outSamples[tgtFrame * channelCount + channel] = sample / weightSum;
+				float x = sample / weightSum;
+                outSamples[tgtFrame * channelCount + channel] = x * volume;
             } else {
                 outSamples[tgtFrame * channelCount + channel] = 0.0f; // Handle edge case
             }
@@ -442,28 +445,36 @@ static AudioResampleResult Audio__ResamplingInterleaved(const uint32_t sourceSam
 * @note The number of audio channels are both equal.
 * @note The format is fixed floating point 32-bit for both source and target samples and each sample is in range of -1.0 to 1.0.
 * @note The samples must be in de-interleaved format: Frame 0-(N-1): LLLLLLLL..., Frame 0-(N-1): RRRRRRRR...
+* @param[in] channelCount The number of audio channels for each audio frame.
 * @param[in] sourceSampleRate The source sample rate in Hz.
 * @param[in] targetSampleRate The target sample rate in Hz.
 * @param[in] sourceFrameCount The number of source audio frames that is available.
 * @param[in] targetFrameCount The number of target audio frames that is required.
-* @param[in] channelCount The number of audio channels for each audio frame.
 * @param[in] filterRadius The filter radius (8 is a good compromise between speed and quality).
+* @param[in] volume The volume in range of 0.0 to 1.0.
 * @param[in] inSamples The de-interleaved source audio samples float buffer.
 * @param[out] outSamples The de-interleaved target audio samples float buffer.
 * @return Returns the number de-interleaved of input and output frames
 */
-static AudioResampleResult Audio__ResamplingDeinterleaved(const uint32_t sourceSampleRate, const uint32_t targetSampleRate, const uint32_t sourceFrameCount, const uint32_t targetFrameCount, const uint16_t channelCount, const int filterRadius, const float **inSamples, float **outSamples) {
+static AudioResampleResult Audio__ResamplingDeinterleaved(const uint16_t channelCount, const uint32_t sourceSampleRate, const uint32_t targetSampleRate, const uint32_t sourceFrameCount, const uint32_t targetFrameCount, const int filterRadius, const float volume, const float **inSamples, float **outSamples) {
 	AudioResampleResult result = fplZeroInit;
-    const float srcToTgtRatio = (float)targetSampleRate / (float)sourceSampleRate;
+
+	const float srcToTgtRatio = (float)targetSampleRate / (float)sourceSampleRate;
     const float tgtToSrcRatio = 1.0f / srcToTgtRatio;
+
 	for (uint16_t channel = 0; channel < channelCount; ++channel) {
 		const float *channelInSamples = &inSamples[channel][sourceFrameCount];
 		float *channelOutSamples = &outSamples[channel][targetFrameCount];
+
+		fplMemoryClear(channelOutSamples, targetFrameCount * sizeof(float));
+
 		for (uint32_t tgtFrame = 0; tgtFrame < targetFrameCount; ++tgtFrame) {
 			float srcFrame = tgtFrame * tgtToSrcRatio;
             int srcFrameInt = (int)srcFrame;
             float frac = srcFrame - srcFrameInt;
+
 			float sample = 0.0f;
+			float weightSum = 0.0f;
             for (int r = -filterRadius; r <= filterRadius; ++r) {
                 int srcIndex = srcFrameInt + r;
 #if 0
@@ -475,6 +486,7 @@ static AudioResampleResult Audio__ResamplingDeinterleaved(const uint32_t sourceS
 				float value = input * sincValue;
 				float output = value * mask;
 				sample += output;
+				weightSum += sincValue;
 #else
 				// Version with jumps
                 if (srcIndex >= 0 && srcIndex < (int)sourceFrameCount) {
@@ -483,10 +495,17 @@ static AudioResampleResult Audio__ResamplingDeinterleaved(const uint32_t sourceS
 					float input = channelInSamples[srcIndex];
 					float output = input * sincValue;
                     sample += output;
+					weightSum += sincValue;
                 }
 #endif
             }
-            channelOutSamples[tgtFrame] = sample;
+
+			// Normalize the output sample
+            if (weightSum != 0.0f) {
+                channelOutSamples[tgtFrame] = (sample / weightSum) * volume;
+            } else {
+                channelOutSamples[tgtFrame] = 0.0f; // Handle edge case
+            }
 		}
 	}
     result.inputCount = sourceFrameCount;
@@ -494,7 +513,7 @@ static AudioResampleResult Audio__ResamplingDeinterleaved(const uint32_t sourceS
     return result;
 }
 
-static AudioResampleResult AudioWeightedSampleSumDownSampling(const uint32_t sourceSampleRate, const uint32_t targetSampleRate, const uint32_t sourceFrameCount, const uint32_t targetFrameCount, const uint16_t channelCount, const float *inSamples, float *outSamples) {
+static AudioResampleResult AudioWeightedSampleSumDownSampling(const uint16_t channelCount, const uint32_t sourceSampleRate, const uint32_t targetSampleRate, const uint32_t sourceFrameCount, const uint32_t targetFrameCount, const float volume, const float *inSamples, float *outSamples) {
     const float srcToTgtRatio = (float)sourceSampleRate / (float)targetSampleRate;
 
     // Clear output buffer
@@ -536,8 +555,8 @@ static AudioResampleResult AudioWeightedSampleSumDownSampling(const uint32_t sou
     return result;
 }
 
-extern AudioResampleResult AudioResampleInterleaved(const AudioChannelIndex numChannels, const AudioSampleIndex inSampleRate, const AudioSampleIndex outSampleRate, const AudioFrameIndex minFrameCount, const AudioFrameIndex maxFrameCount, const float *inSamples, float *outSamples) {
-	if (numChannels == 0 || inSampleRate == 0 || outSampleRate == 0 || minFrameCount == 0 || maxFrameCount == 0 || inSamples == fpl_null || outSamples == fpl_null) {
+extern AudioResampleResult AudioResampleInterleaved(const AudioChannelIndex numChannels, const AudioSampleIndex inSampleRate, const AudioSampleIndex outSampleRate, const AudioFrameIndex minOutputFrameCount, const AudioFrameIndex maxInputFrameCount, const float volume, const float *inSamples, float *outSamples) {
+	if (numChannels == 0 || inSampleRate == 0 || outSampleRate == 0 || minOutputFrameCount == 0 || maxInputFrameCount == 0) {
 		AudioResampleResult zero = fplZeroInit;
 		return zero;
 	}
@@ -546,36 +565,56 @@ extern AudioResampleResult AudioResampleInterleaved(const AudioChannelIndex numC
 	AudioFrameIndex outFrameCount;
 	if (outSampleRate > inSampleRate) {
 		double upSamplingFactor = outSampleRate / (double)inSampleRate;
-		inFrameCount = fplMin((AudioFrameIndex)round(minFrameCount / upSamplingFactor), maxFrameCount);
+		inFrameCount = fplMin((AudioFrameIndex)round(minOutputFrameCount / upSamplingFactor), maxInputFrameCount);
 		outFrameCount = (AudioFrameIndex)round(inFrameCount * upSamplingFactor);
 	} else {
 		double downSamplingFactor = inSampleRate / (double)outSampleRate;
-		inFrameCount = fplMin((AudioFrameIndex)round(minFrameCount * downSamplingFactor), maxFrameCount);
+		inFrameCount = fplMin((AudioFrameIndex)round(minOutputFrameCount * downSamplingFactor), maxInputFrameCount);
 		outFrameCount = (AudioFrameIndex)round(inFrameCount / downSamplingFactor);
-		return AudioWeightedSampleSumDownSampling(inSampleRate, outSampleRate, inFrameCount, outFrameCount, numChannels, inSamples, outSamples);
 	}
 
+	// Return just the number of frames, when the buffers was null
+	if (inSamples == fpl_null || outSamples == fpl_null) {
+		AudioResampleResult result = fplZeroInit;
+		result.inputCount = inFrameCount;
+		result.outputCount = outFrameCount;
+		return result;
+	 }
+
 	const int filterRadius = 8;
-	AudioResampleResult res = Audio__ResamplingInterleaved(inSampleRate, outSampleRate, inFrameCount, outFrameCount, numChannels, filterRadius, inSamples, outSamples);
+	AudioResampleResult res = Audio__ResamplingInterleaved(numChannels, inSampleRate, outSampleRate, inFrameCount, outFrameCount, filterRadius, volume, inSamples, outSamples);
 	return res;
 }
 
-extern AudioResampleResult AudioResampleDeinterleaved(const AudioChannelIndex numChannels, const AudioSampleIndex inSampleRate, const AudioSampleIndex outSampleRate, const AudioFrameIndex minFrameCount, const AudioFrameIndex maxFrameCount, const float **inSamples, float **outSamples) {
-	if (numChannels == 0 || inSampleRate == 0 || outSampleRate == 0 || minFrameCount == 0 || maxFrameCount == 0 || inSamples == fpl_null || outSamples == fpl_null) {
+extern AudioResampleResult AudioResampleDeinterleaved(const AudioChannelIndex numChannels, const AudioSampleIndex inSampleRate, const AudioSampleIndex outSampleRate, const AudioFrameIndex minOutputFrameCount, const AudioFrameIndex maxInputFrameCount, const float volume, const float **inSamples, float **outSamples) {
+	if (numChannels == 0 || inSampleRate == 0 || outSampleRate == 0 || minOutputFrameCount == 0 || maxInputFrameCount == 0) {
 		AudioResampleResult zero = fplZeroInit;
 		return zero;
 	}
 
-#if 0
+	AudioFrameIndex inFrameCount;
+	AudioFrameIndex outFrameCount;
+	if (outSampleRate > inSampleRate) {
+		double upSamplingFactor = outSampleRate / (double)inSampleRate;
+		inFrameCount = fplMin((AudioFrameIndex)round(minOutputFrameCount / upSamplingFactor), maxInputFrameCount);
+		outFrameCount = (AudioFrameIndex)round(inFrameCount * upSamplingFactor);
+	} else {
+		double downSamplingFactor = inSampleRate / (double)outSampleRate;
+		inFrameCount = fplMin((AudioFrameIndex)round(minOutputFrameCount * downSamplingFactor), maxInputFrameCount);
+		outFrameCount = (AudioFrameIndex)round(inFrameCount / downSamplingFactor);
+	}
+
+	// Return just the number of frames, when the buffers was null
+	if (inSamples == fpl_null || outSamples == fpl_null) {
+		AudioResampleResult result = fplZeroInit;
+		result.inputCount = inFrameCount;
+		result.outputCount = outFrameCount;
+		return result;
+	 }
+
 	const int filterRadius = 8;
-	AudioResampleResult res = Audio__ResamplingDeinterleaved(inSampleRate, outSampleRate, inFrameCount, outFrameCount, numChannels, filterRadius, inSamples, outSamples);
+	AudioResampleResult res = Audio__ResamplingDeinterleaved(numChannels, inSampleRate, outSampleRate, inFrameCount, outFrameCount, filterRadius, volume, inSamples, outSamples);
 	return res;
-#endif
-
-	{
-		AudioResampleResult zero = fplZeroInit;
-		return zero;
-	}
 }
 
 // **********************************************************************************************************************
