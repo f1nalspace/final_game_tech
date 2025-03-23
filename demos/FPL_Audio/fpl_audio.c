@@ -268,9 +268,9 @@ static void UpdateTitle(AudioDemo *demo, const char *audioTrackName, const bool 
 	char titleBuffer[256];
 	const char *rtString = (isRealTime ? "RT" : "BUF");
 	if (fplGetStringLength(audioTrackName) > 0)
-        fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "FPL Demo | Audio (%s, %u Hz) - %s [%.3f fps]", rtString, demo->targetAudioFormat.sampleRate, audioTrackName, fps);
+        fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "FPL Demo | Audio (%s, %u Hz, %u ch) - %s [%.3f fps]", rtString, demo->targetAudioFormat.sampleRate, demo->targetAudioFormat.channels, audioTrackName, fps);
 	else
-        fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "FPL Demo | Audio (%s, %u Hz) [%.3f fps]", rtString, demo->targetAudioFormat.sampleRate, fps);
+        fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "FPL Demo | Audio (%s, %u Hz, %u ch) [%.3f fps]", rtString, demo->targetAudioFormat.sampleRate, demo->targetAudioFormat.channels, fps);
 	fplSetWindowTitle(titleBuffer);
 }
 
@@ -1270,6 +1270,7 @@ int main(int argc, char **args) {
 	demo->sineWave.frequency = 440;
 	demo->sineWave.toneVolume = 0.25f;
 	demo->sineWave.duration = 10.0;
+	demo->useRealTimeSamples = true;
 
 	int result = -1;
 
