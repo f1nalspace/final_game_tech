@@ -65,6 +65,102 @@ int mp3dec_ex_open(mp3dec_ex_t *dec, const char *file_name, int seek_method);
 
 #ifdef MINIMP3_IMPLEMENTATION
 
+// ID3v2 Tag
+// Version 2
+// Version 3
+// Version 4
+
+#pragma pack(1)
+typedef struct {
+    char id[3];            // ID3 identifier ("ID3")
+    uint8_t version;       // Version (major version in the high nibble, revision in the low nibble)
+    uint8_t revision;      // Revision number
+    uint8_t flags;         // Flags
+    uint8_t size[4];       // Size of the tag (excluding the header)
+} mp3dec_id3v2_header;
+#pragma pop()
+
+#pragma pack(1)
+typedef struct {
+    char id[4];      // 4-character frame ID (e.g., "TIT2" for title)
+    uint32_t size;   // Frame size (in bytes)
+    uint16_t flags;  // Frame flags (2 bytes)
+} mp3dec_id3v2_frame_header;
+#pragma pop()
+
+static size_t mp3dec_id3v2_get_tag_size(const uint8_t *syncsafe) {
+    size_t result = ((syncsafe[0] & 0x7F) << 21) | ((syncsafe[1] & 0x7F) << 14) | ((syncsafe[2] & 0x7F) << 7) | (syncsafe[3] & 0x7F);
+    return result;
+}
+
+static const char *mp3dec_g_supportedID3v2FrameHeaderIDs[] = {
+    "BUF", // Recommended buffer size
+    "CNT", // Play counter
+    "COM", // Comments
+    "CRA", // Audio encryption
+    "CRM", // Encrypted meta frame
+    "ETC", // Event timing codes
+    "EQU", // Equalization
+    "GEO", // General encapsulated object
+    "IPL", // Involved people list
+    "LNK", // Linked information
+    "MCI", // Music CD Identifier
+    "MLL", // MPEG location lookup table
+    "PIC", // Attached picture
+    "POP", // Popularimeter
+    "REV", // Reverb
+    "RVA", // Relative volume adjustment
+    "SLT", // Synchronized lyric/text
+    "STC", // Synced tempo codes
+    "TAL", // Album/Movie/Show title
+    "TBP", // BPM (Beats Per Minute)
+    "TCM", // Composer
+    "TCO", // Content type
+    "TCR", // Copyright message
+    "TDA", // Date
+    "TDY", // Playlist delay
+    "TEN", // Encoded by
+    "TFT", // File type
+    "TIM", // Time
+    "TKE", // Initial key
+    "TLA", // Language(s)
+    "TLE", // Length
+    "TMT", // Media type
+    "TOA", // Original artist(s)/performer(s)
+    "TOF", // Original filename
+    "TOL", // Original Lyricist(s)/text writer(s)
+    "TOR", // Original release year
+    "TOT", // Original album/Movie/Show title
+    "TP1", // Lead artist(s)/Lead performer(s)/Soloist(s)/Performing group
+    "TP2", // Band/Orchestra/Accompaniment
+    "TP3", // Conductor/Performer refinement
+    "TP4", // Interpreted, remixed, or otherwise modified by
+    "TPA", // Part of a set
+    "TPB", // Publisher
+    "TRC", // ISRC (International Standard Recording Code)
+    "TRD", // Recording dates
+    "TRK", // Track number/Position in set
+    "TSI", // Size
+    "TSS", // Software/hardware and settings used for encoding
+    "TT1", // Content group description
+    "TT2", // Title/Songname/Content description
+    "TT3", // Subtitle/Description refinement
+    "TXT", // Lyricist/text writer
+    "TXX", // User defined text information frame
+    "TYE", // Year
+    "UFI", // Unique file identifier
+    "ULT", // Unsychronized lyric/text transcription
+    "WAF", // Official audio file webpage
+    "WAR", // Official artist/performer webpage
+    "WAS", // Official audio source webpage
+    "WCM", // Commercial information
+    "WCP", // Copyright/Legal information
+    "WPB", // Publishers official webpage
+    "WXX"  // User defined URL link frame
+};
+
+#define MP3DEC_ID3V2_TAG_ID_COUNT sizeof(mp3dec_g_supportedID3v2FrameHeaderIDs) / sizeof(mp3dec_g_supportedID3v2FrameHeaderIDs[0])
+
 static size_t mp3dec_skip_id3v2(const uint8_t *buf, size_t buf_size)
 {
     if (buf_size > 10 && !strncmp((char *)buf, "ID3", 3))
