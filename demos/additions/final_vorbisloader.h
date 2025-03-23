@@ -59,23 +59,25 @@ extern bool LoadVorbisFormatFromBuffer(const uint8_t *buffer, const size_t buffe
 		return(false);
 	}
 
-	// TODO(final): Properly open vorbis file and get format, do not assume 2 channels as S16 always
-
-	int channels = 0;
-	int sampleRate = 0;
-	short *output = fpl_null;
-	int samples = stb_vorbis_decode_memory(buffer, (int)bufferSize, &channels, &sampleRate, &output);
-	if (samples <= 0) {
-		return(false);
+	int openErr = 0;
+	stb_vorbis *vorbis = stb_vorbis_open_memory(buffer, (int)bufferSize, &openErr, fpl_null);
+	if (vorbis == fpl_null) {
+		return false;
 	}
 
-	outFormat->bytesPerSample = 2;
-	outFormat->samplesPerSecond = sampleRate;
-	outFormat->channelCount = channels;
-	outFormat->formatType = fplAudioFormatType_S16;
-	outFormat->frameCount = samples;
+	uint32_t sampleCount = stb_vorbis_stream_length_in_samples(vorbis);
 
-	free(output);
+	fplClearStruct(outFormat);
+
+	if (sampleCount > 0) {
+		outFormat->formatType = fplAudioFormatType_S16;
+		outFormat->bytesPerSample = fplGetAudioFrameSizeInBytes(outFormat->formatType, 1);
+		outFormat->channelCount = (uint16_t)fplMax(0, vorbis->channels);
+		outFormat->samplesPerSecond = (uint32_t)fplMax(0, vorbis->sample_rate);
+		outFormat->frameCount = fplMax(0, sampleCount / outFormat->channelCount);
+	}
+
+	stb_vorbis_close(vorbis);
 
 	return true;
 }
@@ -85,21 +87,19 @@ extern bool LoadVorbisFromBuffer(const uint8_t *buffer, const size_t bufferSize,
 		return(false);
 	}
 
-	// TODO(final): Properly open vorbis file and get format, do not assume 2 channels as S16 always
-
 	int channels = 0;
 	int sampleRate = 0;
 	short *output = fpl_null;
-	int samples = stb_vorbis_decode_memory(buffer, (int)bufferSize, &channels, &sampleRate, &output);
-	if (samples <= 0) {
+	int sampleCount = stb_vorbis_decode_memory(buffer, (int)bufferSize, &channels, &sampleRate, &output);
+	if (sampleCount <= 0) {
 		return(false);
 	}
 
-	outWave->format.bytesPerSample = 2;
-	outWave->format.samplesPerSecond = sampleRate;
-	outWave->format.channelCount = channels;
 	outWave->format.formatType = fplAudioFormatType_S16;
-	outWave->format.frameCount = samples;
+	outWave->format.bytesPerSample = fplGetAudioFrameSizeInBytes(outWave->format.formatType, 1);
+	outWave->format.samplesPerSecond = (uint32_t)fplMax(0, sampleRate);
+	outWave->format.channelCount = (uint16_t)fplMax(0, channels);
+	outWave->format.frameCount = fplMax(0, sampleCount / outWave->format.channelCount);
 
 	size_t sampleMemorySize = outWave->format.bytesPerSample * outWave->format.channelCount * outWave->format.frameCount;
 	outWave->samplesSize = sampleMemorySize;
