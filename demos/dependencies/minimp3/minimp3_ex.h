@@ -70,7 +70,7 @@ int mp3dec_ex_open(mp3dec_ex_t *dec, const char *file_name, int seek_method);
 // Version 3
 // Version 4
 
-#pragma pack(1)
+#pragma pack(push, 1)
 typedef struct {
     char id[3];            // ID3 identifier ("ID3")
     uint8_t version;       // Version (major version in the high nibble, revision in the low nibble)
@@ -78,15 +78,15 @@ typedef struct {
     uint8_t flags;         // Flags
     uint8_t size[4];       // Size of the tag (excluding the header)
 } mp3dec_id3v2_header;
-#pragma pop()
+#pragma pack(pop)
 
-#pragma pack(1)
+#pragma pack(push, 1)
 typedef struct {
     char id[4];      // 4-character frame ID (e.g., "TIT2" for title)
     uint32_t size;   // Frame size (in bytes)
     uint16_t flags;  // Frame flags (2 bytes)
 } mp3dec_id3v2_frame_header;
-#pragma pop()
+#pragma pack(pop)
 
 static size_t mp3dec_id3v2_get_tag_size(const uint8_t *syncsafe) {
     size_t result = ((syncsafe[0] & 0x7F) << 21) | ((syncsafe[1] & 0x7F) << 14) | ((syncsafe[2] & 0x7F) << 7) | (syncsafe[3] & 0x7F);
