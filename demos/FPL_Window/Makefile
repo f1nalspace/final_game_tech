@@ -1,6 +1,6 @@
 # Project
-APP_NAME = FPL_C
-SOURCE_FILES = main.c
+APP_NAME = FPL_Window
+SOURCE_FILES = fpl_window.c
 LIBS = -ldl
 INCLUDES = -I../../
 
