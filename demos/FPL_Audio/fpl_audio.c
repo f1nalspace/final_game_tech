@@ -1227,15 +1227,7 @@ static void GenerateFrequencyBins(const uint32_t binCount, const uint32_t sample
 
 static bool InitializeVisualization(AudioDemo *demo) {
 	// Initialize frequency bins
-#if 1
 	GenerateFrequencyBins(MAX_AUDIO_BIN_COUNT, demo->targetAudioFormat.sampleRate, demo->visualization.bins);	
-#else
-	for(uint32_t binIndex = 0; binIndex < MAX_AUDIO_BIN_COUNT - 1; ++binIndex) {
-		double freq = binIndex * (double)demo->targetAudioFormat.sampleRate / (double)MAX_AUDIO_BIN_COUNT;
-		demo->visualization.bins[binIndex] = freq;
-	}
-	demo->visualization.bins[MAX_AUDIO_BIN_COUNT - 1] = demo->targetAudioFormat.sampleRate * 0.5; // nyquist
-#endif
 
 	// Init window coefficients
 	uint32_t N = fplArrayCount(demo->visualization.fftInput);
