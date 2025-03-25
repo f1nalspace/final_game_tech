@@ -78,6 +78,10 @@ Todo:
 	- Multiple audio tracks
 
 Changelog:
+	## 2025-03-25
+	- Added progressbar to indicate current position in the track
+	- Fixed streamed/played frames was not reset on drag & drop
+
 	## 2025-03-21
 	- Compute the actual target frame count for the full audio buffer, so that we can up/down sample properly
 	- Support for resampling from odd frequency ratios, such as 48000 <-> 41000 using SinC
@@ -1499,6 +1503,9 @@ int main(int argc, char **args) {
 
 								LockFreeRingBufferClear(&demo->outputRingBuffer);
 								fplMemoryClear(demo->outputTempBuffer.samples, demo->outputTempBuffer.bufferSize);
+
+								fplAtomicExchangeU32(&demo->numFramesPlayed, 0);
+								fplAtomicExchangeU32(&demo->numFramesStreamed, 0);
 
 								ClearVisualization(demo);
 
