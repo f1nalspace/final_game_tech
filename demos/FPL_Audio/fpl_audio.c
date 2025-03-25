@@ -442,15 +442,23 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 	const float maxBufferW = w - marginW * 2.0f;
 	const float maxBufferH = h * 0.1f;
 	const float bufferBarH = maxBufferH * 0.9f;
+	const float progressW = w - marginW * 2.0f;
+	const float progressH = h * 0.05f;
+	const float progressBarPadding = 5.0f;
+	const float progressBarMaxWidth = progressW - progressBarPadding * 2.0f;
+	const float progressBarMaxHeight = progressH - progressBarPadding * 2.0f;
 
 	const float spectrumWidth = w - marginW * 2.0f;
-	const float spectrumHeight = h - maxBufferH - marginH * 2.0f;
+	const float spectrumHeight = h - maxBufferH - progressH - marginH * 2.0f;
 
 	Vec2f streamBufferDim = V2fInit(maxBufferW, maxBufferH);
 	Vec2f streamBufferPos = V2fInit((w - streamBufferDim.w) * 0.5f, h - marginH - streamBufferDim.h);
 
 	Vec2f spectrumDim = V2fInit(spectrumWidth, spectrumHeight);
-	Vec2f spectrumPos = V2fInit((w - spectrumDim.w) * 0.5f, marginH);
+	Vec2f spectrumPos = V2fInit((w - spectrumDim.w) * 0.5f, marginH + progressH);
+
+	Vec2f progressDim = V2fInit(progressW, progressH);
+	Vec2f progressPos = V2fInit((w - progressDim.w) * 0.5f, marginH);
 
 	RenderRingBuffer(streamBufferPos, streamBufferDim, streamRingBuffer);
 
@@ -466,23 +474,27 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 
 	uint8_t *chunkSamples = chunk->samples;
 
+	AudioFrameIndex framesPlayed;
 	if(demo->useRealTimeSamples) {
 		if(fplAtomicIsCompareAndSwapU32(&visualization->hasVideoAudioChunk, 2, 3)) {
 			visualization->videoAudioChunks[0] = visualization->videoAudioChunks[1];
 			fplAtomicExchangeU32(&visualization->hasVideoAudioChunk, 0);
 		}
+
+		framesPlayed = chunk->index;
 	} else {
 
 #if 1
-		const AudioFrameIndex framesPlayed = fplAtomicLoadU32(&demo->numFramesPlayed);
+		framesPlayed = fplAtomicLoadU32(&demo->numFramesPlayed);
 #else
 		double renderMsecs = currentRenderTime * 1000.0;
-		AudioFrameIndex framesPlayed = (AudioFrameIndex)(((double)demo->targetAudioFormat.sampleRate / 1000.0) * renderMsecs);
+		framesPlayed = (AudioFrameIndex)(((double)demo->targetAudioFormat.sampleRate / 1000.0) * renderMsecs);
 		if(framesPlayed > fullAudioBuffer->frameCount) {
 			framesPlayed = fullAudioBuffer->frameCount;
 		}
 		fplAssert(framesPlayed <= fullAudioBuffer->frameCount);
 #endif
+
 		AudioFrameIndex remainingFramesToPlay = framesPlayed < fullAudioBuffer->frameCount ? fullAudioBuffer->frameCount - framesPlayed : 0;
 		AudioFrameIndex remainingChunkFrames = fplMin(MAX_AUDIO_FRAMES_CHUNK_FRAMES, remainingFramesToPlay);
 		if(remainingChunkFrames > 0) {
@@ -503,6 +515,16 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 
 		frameCount = MAX_AUDIO_FRAMES_CHUNK_FRAMES;
 	}
+
+	RenderRectangle(progressPos.x, progressPos.y, progressPos.x + progressDim.w, progressPos.y + progressDim.h, (Vec4f) { 1, 1, 1, 0.5f }, 1.0f);
+
+	float progressBarScale = 0.0f;
+	if (fullAudioBuffer->frameCount > 0) {
+		progressBarScale = fplMax(0.0f, fplMin(1.0f, framesPlayed / (float)fullAudioBuffer->frameCount));
+	}
+
+	float progressBarWidth = progressBarMaxWidth * progressBarScale;
+	RenderQuad(progressPos.x + progressBarPadding, progressPos.y + progressBarPadding, progressPos.x + progressBarPadding + progressBarWidth, progressPos.y + progressBarPadding + progressBarMaxHeight, (Vec4f) { 1, 1, 0, 1.0f });
 
 	if(frameCount > 0 && chunkSamples != fpl_null) {
 		// Build FFT input samples from mono sample
