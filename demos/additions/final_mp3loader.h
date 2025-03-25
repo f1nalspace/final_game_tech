@@ -22,7 +22,8 @@ License:
 typedef enum MP3HeaderTestStatus {
 	MP3HeaderTestStatus_Success = 0,
 	MP3HeaderTestStatus_InvalidBuffer,
-	MP3HeaderTestStatus_RequireMoreData,
+	MP3HeaderTestStatus_RequireMoreDataBegin,
+	MP3HeaderTestStatus_RequireMoreDataEnd,
 	MP3HeaderTestStatus_NoMP3,
 } MP3HeaderTestStatus;
 
@@ -45,27 +46,33 @@ extern MP3HeaderTestStatus TestMP3Header(const uint8_t *buffer, const size_t buf
 	if ((buffer == fpl_null) || (bufferSize == 0)) {
 		return(MP3HeaderTestStatus_InvalidBuffer);
 	}
+
 	mp3dec_t dec = fplZeroInit;
 	mp3dec_init(&dec);
 
-	if (bufferSize >= 4) {
-		size_t id3v2size = mp3dec_skip_id3v2(buffer, bufferSize);
-		if (bufferSize < id3v2size) {
-			*requiredBufferSize = id3v2size + 4;
-			return(MP3HeaderTestStatus_RequireMoreData);
-		}
+	if (bufferSize < 4) {
+		*requiredBufferSize = 4;
+		return MP3HeaderTestStatus_RequireMoreDataBegin;
+	}
 
-		if (id3v2size > 0) {
-			buffer += id3v2size;
+	if (strncmp((char *)buffer, "ID3", 3) == 0) {
+		// ID3v2 Tag Header Detected
+		return MP3HeaderTestStatus_Success;
+	} else if (hdr_valid(buffer)) {
+		// Audio Frame Header Detected
+		return MP3HeaderTestStatus_Success;
+	} else {
+		// ID3v1 Tag Search
+		if (bufferSize <= 227) {
+			*requiredBufferSize = (227 + 1);
+			return MP3HeaderTestStatus_RequireMoreDataEnd;
 		}
-		
-		dec.header[0] = buffer[0];
-		dec.header[1] = buffer[1];
-		dec.header[2] = buffer[2];
-		dec.header[3] = buffer[3];
-
-		if (dec.header[0] == 0xff && hdr_compare(dec.header, buffer)) {
-			return(MP3HeaderTestStatus_Success);
+		if (strncmp((char *)(buffer + bufferSize - 227), "TAG+", 4) == 0) {
+			// ID3v1.1 Tag Detected
+			return MP3HeaderTestStatus_Success;
+		} else if (strncmp((char *)(buffer + bufferSize - 128), "TAG", 3) == 0) {
+			// ID3v1.0 Tag Detected
+			return MP3HeaderTestStatus_Success;
 		}
 	}
 
