@@ -346,18 +346,32 @@ static AudioFileFormat PropeAudioFileFormat(AudioSystemStream *stream) {
 	AudioFileFormat result = AudioFileFormat_None;
 
 	size_t initialBufferSize = fplMin(MAX_AUDIO_PROBE_BYTES_COUNT, streamSize);
+
 	uint8_t *probeBuffer = (uint8_t *)fplMemoryAllocate(initialBufferSize);
 
 	size_t currentBufferSize = initialBufferSize;
-	bool requiresMoreData;
+	bool requiresMoreData[2] = { 0 };
 	do {
-		requiresMoreData = false;
-		stream->seek(stream, 0);
+		bool seekStart = true;
+		if (requiresMoreData[1]) {
+			seekStart = false;
+		}
+
+		requiresMoreData[0] = false;
+		requiresMoreData[1] = false;
+
+		if (seekStart) {
+			stream->seek(stream, 0);
+		} else {
+			stream->seek(stream, stream->size - currentBufferSize);
+		}
+
 		if(stream->read(stream, currentBufferSize, probeBuffer, currentBufferSize) == currentBufferSize) {
 			if(TestWaveHeader(probeBuffer, currentBufferSize)) {
 				result = AudioFileFormat_Wave;
 				break;
 			}
+
 			if(TestVorbisHeader(probeBuffer, currentBufferSize)) {
 				result = AudioFileFormat_Vorbis;
 				break;
@@ -368,16 +382,21 @@ static AudioFileFormat PropeAudioFileFormat(AudioSystemStream *stream) {
 			if(mp3Status == MP3HeaderTestStatus_Success) {
 				result = AudioFileFormat_MP3;
 				break;
-			} else if(mp3Status == MP3HeaderTestStatus_RequireMoreData) {
-				if(mp3NewSize > 0 && mp3NewSize <= streamSize) {
+			} else if(mp3Status == MP3HeaderTestStatus_RequireMoreDataBegin || mp3Status == MP3HeaderTestStatus_RequireMoreDataEnd) {
+				if(mp3NewSize > 0 && mp3NewSize <= streamSize && mp3NewSize > currentBufferSize) {
 					fplMemoryFree(probeBuffer);
-					currentBufferSize = mp3NewSize;
+					currentBufferSize = fplMax(currentBufferSize, mp3NewSize);
 					probeBuffer = (uint8_t *)fplMemoryAllocate(currentBufferSize);
-					requiresMoreData = true;
+					if (mp3Status == MP3HeaderTestStatus_RequireMoreDataBegin) {
+						requiresMoreData[0] = true;
+					} else {
+						fplAssert(mp3Status == MP3HeaderTestStatus_RequireMoreDataEnd);
+						requiresMoreData[1] = true;
+					}
 				}
 			}
 		}
-	} while(requiresMoreData);
+	} while(requiresMoreData[0] || requiresMoreData[1]);
 
 	fplMemoryFree(probeBuffer);
 
