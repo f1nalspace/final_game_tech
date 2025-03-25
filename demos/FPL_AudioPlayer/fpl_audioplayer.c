@@ -189,6 +189,7 @@ Visualize the samples:
 - Use the copied chunk as FFT input and display the spectrum for it
 */
 
+#define APP_TITLE "FPL Demo | Audio Player"
 
 #define OPT_PLAYBACK_NONE 0
 #define OPT_PLAYBACK_SINEWAVE 1
@@ -284,11 +285,10 @@ static void UpdateTitle(AudioDemo *demo, const char *audioTrackName, const bool 
 	char titleBuffer[256];
 	const char *rtString = (isRealTime ? "RT" : "BUF");
 	const fplSettings *settings = fplGetCurrentSettings();
-	const char *title = settings->window.title;
 	if (fplGetStringLength(audioTrackName) > 0)
-        fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "%s (%s, %u Hz, %u ch) - %s [%.3f fps]", title, rtString, demo->targetAudioFormat.sampleRate, demo->targetAudioFormat.channels, audioTrackName, fps);
+        fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "%s (%s, %u Hz, %u ch) - %s [%.3f fps]", APP_TITLE, rtString, demo->targetAudioFormat.sampleRate, demo->targetAudioFormat.channels, audioTrackName, fps);
 	else
-        fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "%s (%s, %u Hz, %u ch) [%.3f fps]", title, rtString, demo->targetAudioFormat.sampleRate, demo->targetAudioFormat.channels, fps);
+        fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "%s (%s, %u Hz, %u ch) [%.3f fps]", APP_TITLE, rtString, demo->targetAudioFormat.sampleRate, demo->targetAudioFormat.channels, fps);
 	fplSetWindowTitle(titleBuffer);
 }
 
@@ -1317,8 +1317,8 @@ int main(int argc, char **args) {
 	// Settings
 	//
 	fplSettings settings = fplMakeDefaultSettings();
-	fplCopyString("FPL Demo | Audio Player", settings.window.title, fplArrayCount(settings.window.title));
-	fplCopyString("FPL Demo | Audio Player", settings.console.title, fplArrayCount(settings.console.title));
+	fplCopyString(APP_TITLE, settings.window.title, fplArrayCount(settings.window.title));
+	fplCopyString(APP_TITLE, settings.console.title, fplArrayCount(settings.console.title));
 
 	settings.video.backend = fplVideoBackendType_OpenGL;
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
