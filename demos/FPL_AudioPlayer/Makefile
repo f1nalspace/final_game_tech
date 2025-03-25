@@ -4,8 +4,8 @@
 #
 # -----------------------------------------------------------------------------
 
-MY_PROJECT = FPL_Audio
-MY_TRANSLATION_UNITS = fpl_audio.c
+MY_PROJECT = FPL_AudioPlayer
+MY_TRANSLATION_UNITS = fpl_audioplayer.c
 MY_LIBS = -lm
 MY_INCLUDES = -I../../ -I../additions/ -I../dependencies/
 MY_C_STANDARD = c99

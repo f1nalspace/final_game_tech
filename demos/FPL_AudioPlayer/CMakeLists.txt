@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.10)
 # Project settings
 #
 # -----------------------------------------------------------------------------
-project(FPL_Audio)
+project(FPL_AudioPlayer)
 
 set(MY_C_STANDARD c99)
 
@@ -21,12 +21,18 @@ set(MY_INCLUDE_DIRS
 
 set(MY_HEADER_FILES
 	"../../final_platform_layer.h"
+	"../additions/final_audio.h"
 	"../additions/final_audiosystem.h"
+	"../additions/final_audioconversion.h"
+	"../additions/final_audiodemo.h"
+	"../additions/final_buffer.h"
+	"../additions/final_mp3loader.h"
+	"../additions/final_vorbisloader.h"
 	"../additions/final_waveloader.h"
 	)
 
 set(MY_TRANSLATION_UNITS
-	"fpl_audio.c"
+	"fpl_audioplayer.c"
 	)
 
 set(MY_DEFINES

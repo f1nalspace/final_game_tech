@@ -1,7 +1,7 @@
 /*
 -------------------------------------------------------------------------------
 Name:
-	FPL-Demo | Audio
+	FPL-Demo | Audio Player
 
 Description:
 	This demo shows how to play music, sounds using a custom audio system/mixer.
@@ -283,10 +283,12 @@ typedef struct AudioDemo {
 static void UpdateTitle(AudioDemo *demo, const char *audioTrackName, const bool isRealTime, const double fps) {
 	char titleBuffer[256];
 	const char *rtString = (isRealTime ? "RT" : "BUF");
+	const fplSettings *settings = fplGetCurrentSettings();
+	const char *title = settings->window.title;
 	if (fplGetStringLength(audioTrackName) > 0)
-        fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "FPL Demo | Audio (%s, %u Hz, %u ch) - %s [%.3f fps]", rtString, demo->targetAudioFormat.sampleRate, demo->targetAudioFormat.channels, audioTrackName, fps);
+        fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "%s (%s, %u Hz, %u ch) - %s [%.3f fps]", title, rtString, demo->targetAudioFormat.sampleRate, demo->targetAudioFormat.channels, audioTrackName, fps);
 	else
-        fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "FPL Demo | Audio (%s, %u Hz, %u ch) [%.3f fps]", rtString, demo->targetAudioFormat.sampleRate, demo->targetAudioFormat.channels, fps);
+        fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "%s (%s, %u Hz, %u ch) [%.3f fps]", title, rtString, demo->targetAudioFormat.sampleRate, demo->targetAudioFormat.channels, fps);
 	fplSetWindowTitle(titleBuffer);
 }
 
@@ -1315,7 +1317,8 @@ int main(int argc, char **args) {
 	// Settings
 	//
 	fplSettings settings = fplMakeDefaultSettings();
-	fplCopyString("FPL Demo | Audio", settings.window.title, fplArrayCount(settings.window.title));
+	fplCopyString("FPL Demo | Audio Player", settings.window.title, fplArrayCount(settings.window.title));
+	fplCopyString("FPL Demo | Audio Player", settings.console.title, fplArrayCount(settings.console.title));
 
 	settings.video.backend = fplVideoBackendType_OpenGL;
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;

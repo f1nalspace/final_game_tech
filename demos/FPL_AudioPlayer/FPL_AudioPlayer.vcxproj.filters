@@ -39,7 +39,7 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="fpl_audio.c" />
+    <ClCompile Include="fpl_audioplayer.c" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="additions">
