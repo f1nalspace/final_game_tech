@@ -2,8 +2,11 @@
 #define FINAL_AUDIODEMO_H
 
 #include "../../final_platform_layer.h"
+
 #include "final_audio.h"
+
 #include "final_audiosystem.h"
+
 #include "final_buffer.h"
 
 typedef enum AudioTrackState {

@@ -8,6 +8,9 @@ Description:
 
 	This file is part of the final_framework.
 
+Todo:
+	- mmap implementation for mirror buffer
+
 License:
 	MIT License
 	Copyright 2017-2025 Torsten Spaete

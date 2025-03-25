@@ -747,7 +747,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 				double scaledMagnitude = visualization->spectrum[binIndex];
 				float barX = spectrumPos.x + binIndex * barWidth + binIndex * spacing;
 				float barHeight = (float)scaledMagnitude * barMaxHeight;
-				RenderQuad(barX, barY, barX + barWidth, barY + barHeight, (Vec4f) { 0.0f, 0.1, 1.0f, 0.5f });
+				RenderQuad(barX, barY, barX + barWidth, barY + barHeight, (Vec4f) { 0.0f, 0.1f, 1.0f, 0.5f });
 			}
 		}
 #endif

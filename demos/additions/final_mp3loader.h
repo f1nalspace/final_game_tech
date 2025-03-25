@@ -39,7 +39,9 @@ extern bool LoadMP3FormatFromBuffer(const uint8_t *buffer, const size_t bufferSi
 #if defined(FINAL_MP3LOADER_IMPLEMENTATION) && !defined(FINAL_MP3LOADER_IMPLEMENTED)
 #define FINAL_MP3LOADER_IMPLEMENTED
 
-#define MINIMP3_IMPLEMENTATION
+#ifndef MINIMP3_IMPLEMENTATION
+#	define MINIMP3_IMPLEMENTATION
+#endif
 #include <minimp3/minimp3_ex.h>
 
 extern MP3HeaderTestStatus TestMP3Header(const uint8_t *buffer, const size_t bufferSize, size_t *requiredBufferSize) {

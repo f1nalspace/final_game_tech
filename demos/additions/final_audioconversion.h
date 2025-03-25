@@ -1,7 +1,9 @@
 #ifndef FINAL_AUDIO_CONVERSION_H
 #define FINAL_AUDIO_CONVERSION_H
 
+#ifndef __INT24_TYPE__
 #define __INT24_TYPE__
+#endif
 
 #include <final_audio.h>
 #include <final_math.h>

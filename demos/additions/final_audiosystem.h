@@ -54,8 +54,6 @@ License:
 #include "final_audio.h"
 #include "final_audioconversion.h"
 
-#define MAX_AUDIO_PROBE_BYTES_COUNT 128
-
 typedef struct AudioSourceID {
 	uint64_t value;
 } AudioSourceID;
@@ -174,14 +172,27 @@ extern bool IsAudioSampleRateSupported(AudioSystem *audioSys, const AudioSampleI
 #if defined(FINAL_AUDIOSYSTEM_IMPLEMENTATION) && !defined(FINAL_AUDIOSYSTEM_IMPLEMENTED)
 #define FINAL_AUDIOSYSTEM_IMPLEMENTED
 
-#define FINAL_WAVELOADER_IMPLEMENTATION
+#ifndef FINAL_WAVELOADER_IMPLEMENTATION
+#	define FINAL_WAVELOADER_IMPLEMENTATION
+#endif
 #include "final_waveloader.h"
 
-#define FINAL_VORBISLOADER_IMPLEMENTATION
+#ifndef FINAL_VORBISLOADER_IMPLEMENTATION
+#	define FINAL_VORBISLOADER_IMPLEMENTATION
+#endif
 #include "final_vorbisloader.h"
 
-#define FINAL_MP3LOADER_IMPLEMENTATION
+#ifndef FINAL_MP3LOADER_IMPLEMENTATION
+#	define FINAL_MP3LOADER_IMPLEMENTATION
+#endif
 #include "final_mp3loader.h"
+
+#ifndef FINAL_AUDIO_CONVERSION_IMPLEMENTATION
+#	define FINAL_AUDIO_CONVERSION_IMPLEMENTATION
+#endif
+#include "final_audioconversion.h"
+
+#define FINAL_AUDIO_MAX_PROBE_BYTES_COUNT 128
 
 static const float AudioPI32 = 3.14159265359f;
 
@@ -345,8 +356,7 @@ static AudioFileFormat PropeAudioFileFormat(AudioSystemStream *stream) {
 
 	AudioFileFormat result = AudioFileFormat_None;
 
-	size_t initialBufferSize = fplMin(MAX_AUDIO_PROBE_BYTES_COUNT, streamSize);
-
+	size_t initialBufferSize = fplMin(FINAL_AUDIO_MAX_PROBE_BYTES_COUNT, streamSize);
 	uint8_t *probeBuffer = (uint8_t *)fplMemoryAllocate(initialBufferSize);
 
 	size_t currentBufferSize = initialBufferSize;
