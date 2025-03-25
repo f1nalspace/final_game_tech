@@ -1101,6 +1101,11 @@ static AudioFrameIndex WritePlayItemsToMixer(AudioSystem *audioSys, const AudioF
 				}
 			}
 
+			// It may happen that the input/output frames are not enough to produce up/down sampled frames
+			if (outputFrameCount == 0 || playedFrameCount == 0) {
+				break;
+			}
+
 			item->framesPlayed[0] += playedFrameCount;
 
 			fplAssert(item->framesPlayed[0] <= item->source->buffer.frameCount);
