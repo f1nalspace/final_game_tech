@@ -39,12 +39,13 @@ typedef struct AudioSampleConversionFunctions {
 
 extern AudioSampleConversionFunctions CreateAudioSamplesConversionFunctions();
 
-
 extern bool AudioSamplesConvert(AudioSampleConversionFunctions *funcTable, const AudioSampleIndex numSamples, const fplAudioFormatType inFormat, const fplAudioFormatType outFormat, const void *inSamples, void *outSamples);
 
 extern bool AudioSamplesDeinterleave(AudioSampleConversionFunctions *funcTable, const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const fplAudioFormatType format, const void *inSamples, void **outSamples);
 
 extern bool AudioSamplesInterleave(AudioSampleConversionFunctions *funcTable, const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const fplAudioFormatType format, const void **inSamples, void *outSamples);
+
+extern bool AudioSamplesMonolize(const AudioChannelIndex inChannels, const AudioFrameIndex frameCount, const float *inSamples, float *outSamples);
 
 extern bool IsAudioDeinterleavedSamplesEqual(const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const size_t formatSize, const void **a, const void **b);
 extern bool IsAudioInterleavedSamplesEqual(const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const size_t formatSize, const void *a, const void *b);
@@ -249,6 +250,30 @@ static void AudioSamples_Convert_S32ToF32_Default(const AudioSampleIndex sampleC
 // also this makes conversion much easier
 //
 // **********************************************************************************************************************
+
+//! Converts any sample type from interleaved samples to deinterleaved samples, by memory copy each sample
+static void AudioSamples_Deinterleave_Memory(const AudioFrameIndex frameCount, const AudioChannelIndex channelCount, const size_t sampleSize, const void *inSamples, void **outSamples) {
+	for(AudioChannelIndex channelIndex = 0; channelIndex < channelCount; ++channelIndex) {
+		uint8_t *outS8 = (uint8_t *)outSamples[channelIndex];
+		for(AudioFrameIndex frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
+			uint8_t *sourceMem = (uint8_t *)inSamples + (frameIndex * channelCount * sampleSize + channelIndex * sampleSize);
+			uint8_t *targetMem = outS8 + (frameIndex * sampleSize);
+			fplMemoryCopy(sourceMem, sampleSize, targetMem);
+		}
+	}
+}
+
+//! Converts any sample type from deinterleaved samples to interleaved samples, by memory copy each sample
+static void AudioSamples_Interleave_Memory(const AudioFrameIndex frameCount, const AudioChannelIndex channelCount, const size_t sampleSize, const void **inSamples, void *outSamples) {
+	for(AudioFrameIndex frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
+		for(AudioChannelIndex channelIndex = 0; channelIndex < channelCount; ++channelIndex) {
+			const void *x = inSamples[channelIndex];
+			const uint8_t *sourceMem = (const uint8_t *)x;
+			uint8_t *targetMem = (uint8_t *)outSamples + ((frameIndex * channelCount + channelIndex) * sampleSize);
+			fplMemoryCopy(sourceMem, sampleSize, targetMem);
+		}
+	}
+}
 
 //! Converts 8-bit unsigned integer interleaved samples to deinterleaved 8-bit unsigned integer samples by the specified frame count and channel count
 static void AudioSamples_Deinterleave_U8_Default(const AudioFrameIndex frameCount, const AudioChannelIndex channelCount, const void *inSamples, void **outSamples) {
@@ -654,7 +679,16 @@ extern AudioSampleConversionFunctions CreateAudioSamplesConversionFunctions() {
 }
 
 extern bool AudioSamplesConvert(AudioSampleConversionFunctions *funcTable, const AudioSampleIndex numSamples, const fplAudioFormatType inFormat, const fplAudioFormatType outFormat, const void *inSamples, void *outSamples) {
-	if(funcTable == fpl_null || inSamples == fpl_null || outSamples == fpl_null) return(false);
+	if (funcTable == fpl_null || inSamples == fpl_null || outSamples == fpl_null || inFormat == fplAudioFormatType_None || outFormat == fplAudioFormatType_None) {
+		return(false);
+	}
+
+	if (inFormat == outFormat) {
+		size_t sampleSize = fplGetAudioSampleSizeInBytes(inFormat);
+		fplMemoryCopy(inSamples, numSamples * sampleSize, outSamples);
+		return(true);
+	}
+
 	AudioSampleFormatConversionFunc *convFunc = funcTable->conversionTable[inFormat][outFormat];
 	if(convFunc == fpl_null) {
 		return(false); // Not supported
@@ -673,14 +707,7 @@ extern bool AudioSamplesDeinterleave(AudioSampleConversionFunctions *funcTable, 
 
 	// No function found, we deinterleave in the slowest possible way -> Memory copy by size
 	AudioBufferSize sampleSize = fplGetAudioSampleSizeInBytes(format);
-	for(AudioChannelIndex channelIndex = 0; channelIndex < numChannels; ++channelIndex) {
-		uint8_t *outS8 = (uint8_t *)outSamples[channelIndex];
-		for(AudioFrameIndex frameIndex = 0; frameIndex < numFrames; ++frameIndex) {
-			uint8_t *sourceMem = (uint8_t *)inSamples + (frameIndex * numChannels * sampleSize + channelIndex * sampleSize);
-			uint8_t *targetMem = outS8 + (frameIndex * sampleSize);
-			fplMemoryCopy(sourceMem, sampleSize, targetMem);
-		}
-	}
+	AudioSamples_Deinterleave_Memory(numFrames, numChannels, sampleSize, inSamples, outSamples);
 
 	return(true);
 }
@@ -695,15 +722,32 @@ extern bool AudioSamplesInterleave(AudioSampleConversionFunctions *funcTable, co
 
 	// No function found, we interleave in the slowest possible way -> Memory copy by size
 	AudioBufferSize sampleSize = fplGetAudioSampleSizeInBytes(format);
-	for(AudioFrameIndex frameIndex = 0; frameIndex < numFrames; ++frameIndex) {
-		for(AudioChannelIndex channelIndex = 0; channelIndex < numChannels; ++channelIndex) {
-			const void *x = inSamples[channelIndex];
-			const uint8_t *sourceMem = (const uint8_t *)x;
-			uint8_t *targetMem = (uint8_t *)outSamples + ((frameIndex * numChannels + channelIndex) * sampleSize);
-			fplMemoryCopy(sourceMem, sampleSize, targetMem);
-		}
-	}
+	AudioSamples_Interleave_Memory(numFrames, numChannels, sampleSize, inSamples, outSamples);
+	
 	return(true);
+}
+
+extern bool AudioSamplesMonolize(const AudioChannelIndex inChannels, const AudioFrameIndex frameCount, const float *inSamples, float *outSamples) {
+	if (inChannels == 0 || frameCount == 0 || inSamples == fpl_null || outSamples == fpl_null) {
+		return false;
+	}
+	if (inChannels == 1) {
+		fplMemoryCopy(inSamples, sizeof(float) * frameCount, outSamples);
+		return(true);
+	} else {
+		uint8_t *inStart = (uint8_t *)inSamples;
+		uint8_t *outStart = (uint8_t *)outSamples;
+		float invInChannels = 1.0f / (float)inChannels;
+		for (AudioFrameIndex frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
+			float sampleSum = 0.0f;
+			for (AudioChannelIndex channelIndex = 0; channelIndex < inChannels; ++channelIndex) {
+				float sample = inSamples[frameIndex * inChannels + channelIndex];
+				sampleSum += sample;
+			}
+			outSamples[frameIndex] = sampleSum * invInChannels;
+		}
+		return(true);
+	}
 }
 
 // **********************************************************************************************************************
