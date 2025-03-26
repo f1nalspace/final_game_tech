@@ -248,6 +248,8 @@ typedef struct AudioVisualization {
 	AudioFramesChunk videoAudioChunks[2]; // 0 = Render, 1 = New
 	FFTDouble fftInput[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
 	FFTDouble fftOutput[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
+	float rawSamples[MAX_AUDIO_FRAMES_CHUNK_FRAMES * AUDIO_MAX_CHANNEL_COUNT];
+	float monoSamples[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
 	double currentSamples[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
 	double lastSamples[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
 	double currentMagnitudes[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
@@ -361,51 +363,12 @@ static void RenderRingBuffer(const Vec2f pos, const Vec2f dim, LockFreeRingBuffe
 	RenderLine(tailPos, pos.y - dim.h * 0.5f, tailPos, pos.y + dim.h * 1.5f, V4fInit(0.0f, 1.0f, 0.0f, 1.0f), 2.0f);
 }
 
-// Slowest way of converting stero samples into a mono in range of -1.0 to 1.0
-static double GetMonoSample(const fplAudioFormatType format, const uint8_t *chunkSamples, const uint32_t frameIndex, const size_t frameSize) {
-	size_t offsetToFrame = frameIndex * frameSize;
-	const uint8_t *samples = chunkSamples + offsetToFrame;
-	double sampleValue;
-	switch(format) {
-		case fplAudioFormatType_F32:
-		{
-			const float *pF32 = (const float *)samples;
-			double sampleLeft = *(pF32 + 0);
-			double sampleRight = *(pF32 + 1);
-			sampleValue = 0.5 * (sampleLeft + sampleRight);
-		} break;
-
-		case fplAudioFormatType_S32:
-		{
-			const int32_t *pS32 = (const int32_t *)samples;
-			int32_t sampleLeftS32 = *(pS32 + 0);
-			int32_t sampleRightS32 = *(pS32 + 0);
-			double sampleLeft = (double)sampleLeftS32 / (double)INT32_MAX;
-			double sampleRight = (double)sampleRightS32 / (double)INT32_MAX;
-			sampleValue = 0.5 * (sampleLeft + sampleRight);
-		} break;
-
-		case fplAudioFormatType_S16:
-		{
-			const int16_t *pS16 = (const int16_t *)samples;
-			int16_t sampleLeftS16 = *(pS16 + 0);
-			int16_t sampleRightS16 = *(pS16 + 1);
-			double sampleLeft = (double)sampleLeftS16 / (double)INT16_MAX;
-			double sampleRight = (double)sampleRightS16 / (double)INT16_MAX;
-			sampleValue = 0.5 * (sampleLeft + sampleRight);
-		} break;
-
-		default:
-			sampleValue = 0.0;
-			break;
-	}
-	return sampleValue;
-}
-
 static void ClearVisualization(AudioDemo *demo) {
 	fplAtomicExchangeU32(&demo->visualization.hasVideoAudioChunk, 0);
 	fplClearStruct(&demo->visualization.videoAudioChunks);
 	fplClearStruct(&demo->visualization.currentMagnitudes);
+	fplClearStruct(&demo->visualization.rawSamples);
+	fplClearStruct(&demo->visualization.monoSamples);
 	fplClearStruct(&demo->visualization.lastMagnitudes);
 	fplClearStruct(&demo->visualization.currentSamples);
 	fplClearStruct(&demo->visualization.lastSamples);
@@ -416,8 +379,6 @@ static void ClearVisualization(AudioDemo *demo) {
 }
 
 static void Render(AudioDemo *demo, const int screenW, const int screenH, const double currentRenderTime) {
-	uint32_t channelCount = demo->audioSys.targetFormat.channels;
-
 	float w = (float)screenW;
 	float h = (float)screenH;
 
@@ -485,10 +446,9 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 
 	fplAudioFormatType format = demo->targetAudioFormat.type;
 	size_t sampleSize = fplGetAudioSampleSizeInBytes(format);
-	size_t frameSize = sampleSize * demo->targetAudioFormat.channels;
-
+	AudioChannelIndex channelCount = demo->targetAudioFormat.channels;
+	size_t frameSize = sampleSize * channelCount;
 	AudioFrameIndex frameCount = visualization->videoAudioChunks[0].count;
-
 	AudioFramesChunk *chunk = &visualization->videoAudioChunks[0];
 
 	uint8_t *chunkSamples = chunk->samples;
@@ -546,11 +506,18 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 	RenderQuad(progressPos.x + progressBarPadding, progressPos.y + progressBarPadding, progressPos.x + progressBarPadding + progressBarWidth, progressPos.y + progressBarPadding + progressBarMaxHeight, (Vec4f) { 1, 1, 0, 1.0f });
 
 	if(frameCount > 0 && chunkSamples != fpl_null) {
-		// Build FFT input samples from mono sample
+		// Convert all samples to float
+		bool convertRes = AudioSamplesConvert(&demo->audioSys.conversionFuncs, frameCount * channelCount, format, fplAudioFormatType_F32, chunkSamples, visualization->rawSamples);
+		fplAssert(convertRes == true);
+
+		// Convert samples to mono
+		convertRes = AudioSamplesMonolize(channelCount, frameCount, visualization->rawSamples, visualization->monoSamples);
+		fplAssert(convertRes == true);
+
+		// Build FFT input samples from mono samples
 		// Apply hanning window (Coefficients are precomputed)
 		for(uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
-			// Get avg sample in range of -1.0 to 1.0
-			double sampleValue = GetMonoSample(format, chunkSamples, frameIndex, frameSize);
+			double sampleValue = visualization->monoSamples[frameIndex];
 			double windowMultiplier = visualization->windowCoeffs[frameIndex];
 			double adjustedSampleValue = sampleValue * windowMultiplier;
 			double clampedSample = fplMax(-1.0, fplMin(adjustedSampleValue, 1.0));
@@ -769,8 +736,6 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 * @return Returns the number of audio frames that was written.
 */
 static uint32_t AudioPlayback(const fplAudioFormat *outFormat, const uint32_t maxFrameCount, void *outputSamples, void *userData) {
-	//fplDebugFormatOut("Requested %lu frames\n", maxFrameCount);
-
 	AudioDemo *demo = (AudioDemo *)userData;
 
 	AudioFrameIndex result = 0;
@@ -802,9 +767,6 @@ static uint32_t AudioPlayback(const fplAudioFormat *outFormat, const uint32_t ma
 	bool hasData = LockFreeRingBufferCanRead(ringBuffer, &availableBytes);
 	if(hasData && (availableBytes % frameSize) == 0) {
 		AudioFrameIndex availableFrames = (AudioFrameIndex)fplMax(0, availableBytes / frameSize);
-
-		// Enable this assert to fire when the decoding is too slow
-		//fplAssert(availableFrames >= maxFrameCount);
 
 		AudioFrameIndex framesToCopy = fplMin(maxFrameCount, availableFrames);
 
@@ -1476,6 +1438,7 @@ int main(int argc, char **args) {
         UpdateTitle(demo, audioTrackName, demo->useRealTimeSamples, 0.0);
 
 		// Loop
+		const double targetFrameFps = 1.0 / 60.0;
 		double totalTime = 0.0;
 		fplTimestamp lastTime = fplTimestampQuery();
         fplMilliseconds lastFpsTime = fplMillisecondsQuery();
@@ -1551,7 +1514,17 @@ int main(int argc, char **args) {
             double frameTime = fplTimestampElapsed(lastTime, curTime);
             ++frameCount;
 			totalTime += frameTime;
-			lastTime = curTime;
+
+#if 0
+			// Delay to limit the frame rate to 60 Hz
+			if (frameTime < targetFrameFps) {
+				double delta = targetFrameFps - frameTime;
+				int ms = (int)(delta * 1000.0);
+				if (ms > 0) {
+					fplThreadSleep(ms);
+				}
+			}
+#endif
 
             currentFps = (double)frameCount / totalTime;
             if( currentFps > 1000 ){
@@ -1562,7 +1535,9 @@ int main(int argc, char **args) {
                 UpdateTitle(demo, audioTrackName, demo->useRealTimeSamples, currentFps);
                 lastFpsTime = fplMillisecondsQuery();
             }
-        }
+
+			lastTime = fplTimestampQuery();
+		}
 
 		// Stop audio playback
 		fplStopAudio();

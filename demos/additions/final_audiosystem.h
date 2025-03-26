@@ -157,14 +157,8 @@ extern size_t AudioSystemGetPlayItems(AudioSystem *audioSys, AudioPlayItem *dest
 extern AudioSource *AudioSystemGetSourceByID(AudioSystem *audioSys, const AudioSourceID id);
 extern size_t AudioSystemGetSources(AudioSystem *audioSys, AudioSource *dest, const size_t maxDestCount);
 
-// TODO(final): Move to final_audiodemo.h, make a audio source more "Generative"
+// @TODO(final): Move to final_audiodemo.h, make a audio source more "Generative"
 extern void AudioGenerateSineWave(AudioSineWaveData *waveData, void *outSamples, const fplAudioFormatType outFormat, const AudioHertz outSampleRate, const AudioChannelIndex channels, const AudioFrameIndex frameCount);
-
-// TODO(final): Replace with batch version!
-extern float ConvertToF32(const void *inSamples, const AudioChannelIndex inChannel, const fplAudioFormatType inFormat);
-
-// TODO(final): Replace with batch version!
-extern void ConvertFromF32(void *outSamples, const float inSampleValue, const AudioChannelIndex outChannel, const fplAudioFormatType outFormat);
 
 extern bool IsAudioSampleRateSupported(AudioSystem *audioSys, const AudioSampleIndex sampleRate);
 #endif // FINAL_AUDIOSYSTEM_H
@@ -793,47 +787,6 @@ fpl_force_inline float AudioClipF32(const float value) {
 	return(result);
 }
 
-typedef void(AudioConvertSamplesCallback)(const AudioSampleIndex sampleCount, const void *inSamples, void *outSamples);
-
-static void AudioConvertSamplesS16ToF32(const AudioSampleIndex sampleCount, const void *inSamples, void *outSamples) {
-	const int16_t *inS16 = (const int16_t *)inSamples;
-	float *outF32 = (float *)outSamples;
-	for(AudioSampleIndex sampleIndex = 0; sampleIndex < sampleCount; ++sampleIndex) {
-		int16_t sampleValue = inS16[sampleIndex];
-		outF32[sampleIndex] = sampleValue / (float)INT16_MAX;
-	}
-}
-
-static void AudioConvertSamplesF32ToS16(const AudioSampleIndex sampleCount, const void *inSamples, void *outSamples) {
-	const float *inF32 = (const float *)inSamples;
-	int16_t *outS16 = (int16_t *)outSamples;
-	for(AudioSampleIndex sampleIndex = 0; sampleIndex < sampleCount; ++sampleIndex) {
-		float sampleValue = inF32[sampleIndex];
-		sampleValue = AudioClipF32(sampleValue);
-		outS16[sampleIndex] = (int16_t)(sampleValue * INT16_MAX);
-	}
-}
-
-static void AudioConvertSamplesS32ToF32(const AudioSampleIndex sampleCount, const void *inSamples, void *outSamples) {
-	const int32_t *inS32 = (const int32_t *)inSamples;
-	float *outF32 = (float *)outSamples;
-	for(AudioSampleIndex sampleIndex = 0; sampleIndex < sampleCount; ++sampleIndex) {
-		int32_t sampleValue = inS32[sampleIndex];
-		outF32[sampleIndex] = sampleValue / (float)INT32_MAX;
-	}
-}
-
-static void AudioConvertSamplesF32ToS32(const AudioSampleIndex sampleCount, const void *inSamples, void *outSamples) {
-	const float *inF32 = (const float *)inSamples;
-	int32_t *outS32 = (int32_t *)outSamples;
-	for(AudioSampleIndex sampleIndex = 0; sampleIndex < sampleCount; ++sampleIndex) {
-		float sampleValue = inF32[sampleIndex];
-		sampleValue = AudioClipF32(sampleValue);
-		outS32[sampleIndex] = (int32_t)(sampleValue * INT32_MAX);
-	}
-}
-
-// @TODO(final): Use array instead of single samples for conversion to F32
 extern float ConvertToF32(const void *inSamples, const AudioChannelIndex inChannel, const fplAudioFormatType inFormat) {
 	// @TODO(final): Convert from other audio formats to F32
 	switch(inFormat) {
@@ -860,7 +813,6 @@ extern float ConvertToF32(const void *inSamples, const AudioChannelIndex inChann
 	}
 }
 
-// @TODO(final): Use array instead of single samples for conversion from F32
 extern void ConvertFromF32(void *outSamples, const float inSampleValue, const AudioChannelIndex outChannel, const fplAudioFormatType outFormat) {
 	// @TODO(final): Convert to other audio formats
 	float x = AudioClipF32(inSampleValue);
@@ -888,38 +840,68 @@ extern void ConvertFromF32(void *outSamples, const float inSampleValue, const Au
 	}
 }
 
-static AudioSampleIndex MixedSamplesToChannels(const AudioFrameIndex frameCount, const AudioChannelIndex inChannels, const float *inSamples, const AudioChannelIndex outChannels, float *outSamples) {
-	AudioSampleIndex mixedSampleCount = 0;
-	
-	// @TODO(final): Do down/up mixing of audio channels (e.g. 2 channels <-> 6 channels or 1 channel <-> 2 channels)
-	// @TODO(final): Channel mapping!
-	// @TODO(final): Use de-interleaved samples, so its much more efficient!
+static AudioSampleIndex MixedSamplesToChannels(const AudioSampleConversionFunctions *convFunc, const AudioFrameIndex frameCount, const AudioChannelIndex inChannels, const AudioChannelIndex outChannels, const float *inSamples, float *outSamples) {
+	if (convFunc == fpl_null || frameCount == 0 || inChannels == 0 || outChannels == 0 || inSamples == fpl_null || outSamples == fpl_null) {
+		return 0;
+	}
 
-	if(inChannels > 0 && outChannels > 0) {
-		float *outP = outSamples;
-		const float *inP = inSamples;
-		if(inChannels != outChannels) {
-			for(AudioFrameIndex frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
-				float sampleValue = inP[0]; // Just use first channel
-				for(AudioChannelIndex channelIndex = 0; channelIndex < outChannels; ++channelIndex) {
-					outP[channelIndex] += sampleValue;
-					++mixedSampleCount;
-				}
-				outP += outChannels;
-				inP += inChannels;
+	// @TODO(final): Use de-interleaved samples, so its much more efficient!
+	// @TODO(final): Channel mapping!
+
+	AudioSampleIndex outSampleCount = frameCount * outChannels;
+
+	if (inChannels == outChannels) {
+		// Simple copy everything
+		fplMemoryCopy(inSamples, outSampleCount * sizeof(float), outSamples);
+		return(outSampleCount);
+	} else if (inChannels == 1) {
+		// Simply copy the input mono channel samples to each output channel
+		for (AudioFrameIndex frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
+			float sampleValue = inSamples[frameIndex];
+			for (AudioChannelIndex outChannelIndex = 0; outChannelIndex < outChannels; ++outChannelIndex) {
+				outSamples[frameIndex * outChannels + outChannelIndex] = sampleValue;
 			}
-		} else if(inChannels == outChannels) {
-			for(AudioFrameIndex frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
-				for(AudioChannelIndex channelIndex = 0; channelIndex < outChannels; ++channelIndex) {
-					float sampleValue = *inP++;
-					outP[channelIndex] += sampleValue;
-					++mixedSampleCount;
-				}
-				outP += outChannels;
+		}
+	} else if (outChannels == 1) {
+		// Average to mono samples
+		float invInChannels = 1.0f / (float)inChannels;
+		for (AudioFrameIndex frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
+			float sampleSum = 0.0f;
+			for (AudioChannelIndex inChannelIndex = 0; inChannelIndex < inChannels; ++inChannelIndex) {
+				float sampleValue = inSamples[frameIndex * inChannels + inChannelIndex];
+				sampleSum += sampleValue;
+			}
+			float finalSample = sampleSum * invInChannels;
+			outSamples[frameIndex * outChannels + 0] = finalSample;
+		}
+	} else if (inChannels == 2 && outChannels >= 2){
+		// Stereo input and at least stereo output
+		for (AudioFrameIndex frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
+			float sampleLeft = inSamples[frameIndex * inChannels + 0];
+			float sampleRight = inSamples[frameIndex * inChannels + 1];
+			outSamples[frameIndex * outChannels + 0] = sampleLeft;
+			outSamples[frameIndex * outChannels + 1] = sampleRight;
+			float monoSample = 0.5f * (sampleLeft + sampleRight);
+			for (AudioChannelIndex outChannelIndex = 2; outChannelIndex < outChannels; ++outChannelIndex) {
+				outSamples[frameIndex * outChannels + outChannelIndex] = monoSample;
+			}
+		}
+	} else {
+		// Monolize input samples and output it to every channel
+		float invInChannels = 1.0f / (float)inChannels;
+		for (AudioFrameIndex frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
+			float sampleSum = 0.0f;
+			for (AudioChannelIndex inChannelIndex = 0; inChannelIndex < inChannels; ++inChannelIndex) {
+				float sampleValue = inSamples[frameIndex * inChannels + inChannelIndex];
+				sampleSum += sampleValue;
+			}
+			float finalSample = sampleSum * invInChannels;
+			for (AudioChannelIndex outChannelIndex = 0; outChannelIndex < outChannels; ++outChannelIndex) {
+				outSamples[frameIndex * outChannels + outChannelIndex] = finalSample;
 			}
 		}
 	}
-	return(mixedSampleCount);
+	return(outSampleCount);
 }
 
 extern void AudioGenerateSineWave(AudioSineWaveData *waveData, void *outSamples, const fplAudioFormatType outFormat, const AudioHertz outSampleRate, const AudioChannelIndex channels, const AudioFrameIndex frameCount) {
@@ -1130,7 +1112,7 @@ static AudioFrameIndex WritePlayItemsToMixer(AudioSystem *audioSys, const AudioF
 
 			ApplyVolumeToSamples(inChannelCount, outputFrameCount, volume, dspOutSamples);
 
-			const AudioSampleIndex writtenSampleCount = MixedSamplesToChannels(outputFrameCount, inChannelCount, dspOutSamples, outChannelCount, mixingSamples);
+			const AudioSampleIndex writtenSampleCount = MixedSamplesToChannels(&audioSys->conversionFuncs, outputFrameCount, inChannelCount, outChannelCount, dspOutSamples, mixingSamples);
 
 			mixingSamples += writtenSampleCount;
 			inSourceSamples += ((size_t)playedFrameCount * inChannelCount * inBytesPerSample);
@@ -1166,33 +1148,14 @@ static AudioFrameIndex WritePlayItemsToMixer(AudioSystem *audioSys, const AudioF
 	return(result);
 }
 
-static AudioSampleIndex ConvertSamplesFromF32(const float *inSamples, const AudioChannelIndex inChannels, uint8_t *outSamples, const AudioChannelIndex outChannels, const fplAudioFormatType outFormat) {
-	AudioSampleIndex result = 0;
-	if(inChannels > 0 && outChannels > 0) {
-		if(outChannels != inChannels) {
-			float sampleValue = inSamples[0];
-			for(AudioChannelIndex i = 0; i < outChannels; ++i) {
-				ConvertFromF32(outSamples, sampleValue, i, outFormat);
-				++result;
-			}
-		} else {
-			fplAssert(inChannels == outChannels);
-			for(AudioChannelIndex i = 0; i < inChannels; ++i) {
-				float sampleValue = inSamples[i];
-				ConvertFromF32(outSamples, sampleValue, i, outFormat);
-				++result;
-			}
-		}
-	}
-	return(result);
-}
+
 
 static void ClearConversionBuffer(AudioSystem *audioSys) {
 	audioSys->conversionBuffer.framesRemaining = 0;
 	audioSys->conversionBuffer.readFrameIndex = 0;
 }
 
-static bool FillConversionBuffer(AudioSystem *audioSys, const AudioFrameIndex maxFrameCount, const bool advance) {
+static AudioFrameIndex FillConversionBuffer(AudioSystem *audioSys, const AudioFrameIndex maxFrameCount, const bool advance) {
 	audioSys->conversionBuffer.framesRemaining = 0;
 	audioSys->conversionBuffer.readFrameIndex = 0;
 	uint8_t *outSamples = audioSys->conversionBuffer.buffer.samples;
@@ -1206,19 +1169,23 @@ static bool FillConversionBuffer(AudioSystem *audioSys, const AudioFrameIndex ma
 	//
 	AudioFrameIndex mixedFrameCount = WritePlayItemsToMixer(audioSys, maxFrameCount, advance);
 
-	// @TODO(final): All sample computations should be done with de-interleaved samples instead, so we can here re-interleave the samples and do the final format conversion
-	// This requires that all dspIn, dspOut, mixingBuffer is defines as interleaved samples (2D Array)
+	// Convert mixed samples to final output
+	AudioSampleIndex samplesToConvert = mixedFrameCount * outChannelCount;
+	AudioSamplesConvert(&audioSys->conversionFuncs, samplesToConvert, fplAudioFormatType_F32, outFormat, audioSys->mixingBuffer.samples, outSamples);
+	audioSys->conversionBuffer.framesRemaining += mixedFrameCount;
 
-	// @TODO(final): Convert using AudioSamplesConvert(), which is much more efficient
- 
-	for(AudioFrameIndex i = 0; i < mixedFrameCount; ++i) {
-		float *inMixingSamples = (float *)audioSys->mixingBuffer.samples + i * outChannelCount;
-		AudioSampleIndex writtenSamples = ConvertSamplesFromF32(inMixingSamples, outChannelCount, outSamples, outChannelCount, outFormat);
-		outSamples += writtenSamples * outBytesPerSample;
-		audioSys->conversionBuffer.framesRemaining += writtenSamples / outChannelCount;
+	// Clear remaining mixing samples
+	if (mixedFrameCount < maxFrameCount) {
+		AudioFrameIndex zeroFrameCount = maxFrameCount - mixedFrameCount;
+		uint8_t *startMixedOutSamples = outSamples + (outBytesPerSample * outChannelCount * mixedFrameCount);
+		size_t zeroSize = outBytesPerSample * outChannelCount * zeroFrameCount;
+		fplMemoryClear(startMixedOutSamples, zeroSize);
+		audioSys->conversionBuffer.framesRemaining += zeroFrameCount;
 	}
 
-	return audioSys->conversionBuffer.framesRemaining > 0;
+	fplAssert(audioSys->conversionBuffer.framesRemaining == maxFrameCount);
+
+	return maxFrameCount;
 }
 
 extern AudioFrameIndex AudioSystemWriteFrames(AudioSystem *audioSys, void *outSamples, const fplAudioFormat *outFormat, const AudioFrameIndex frameCount, const bool advance) {
@@ -1275,15 +1242,8 @@ extern AudioFrameIndex AudioSystemWriteFrames(AudioSystem *audioSys, void *outSa
 		// Conversion buffer is empty, fill it with new data
 		if(audioSys->conversionBuffer.framesRemaining == 0) {
 			AudioFrameIndex framesToFill = fplMin(audioSys->conversionBuffer.buffer.frameCount, remainingFrames);
-			if(!FillConversionBuffer(audioSys, framesToFill, advance)) {
-				// @NOTE(final): No data available, clear remaining samples to zero (Silent)
-				AudioFrameIndex framesToClear = remainingFrames;
-				size_t destPosition = (frameCount - framesToFill) * outputSampleStride;
-				size_t clearSize = framesToFill * outputSampleStride;
-				fplMemoryClear((uint8_t *)outSamples + destPosition, clearSize);
-				remainingFrames -= framesToClear;
-				result += framesToClear;
-			}
+			AudioFrameIndex convertedFrameCount = FillConversionBuffer(audioSys, framesToFill, advance);
+			fplAssert(convertedFrameCount == framesToFill);
 		}
 	}
 
