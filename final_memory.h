@@ -641,7 +641,7 @@ fmem_api bool fmemBeginTemporary(fmemMemoryBlock *source, fmemMemoryBlock *tempo
 	temporary->source = source;
 	temporary->type = fmemType_Temporary;
 
-	// TODO(final): Not thread-safe!
+	// @TODO(final): Not thread-safe!
 	source->used += remainingSize;
 	source->temporary = temporary;
 
@@ -661,7 +661,7 @@ fmem_api void fmemEndTemporary(fmemMemoryBlock *temporary) {
 	FMEM_ASSERT(sourceBlock->used == sourceBlock->size);
 	FMEM_ASSERT(temporary->size <= sourceBlock->size);
 
-	// TODO(final): Not thread-safe!
+	// @TODO(final): Not thread-safe!
 	sourceBlock->temporary = fmem_null;
 	sourceBlock->used -= temporary->size;
 

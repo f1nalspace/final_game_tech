@@ -1748,8 +1748,7 @@ static Vec2f ComputeTextSize(const FontInfo &info, const char *text, const float
 		Vec2f p2 = glyph.offset[2] * scale;
 		Vec2f p3 = glyph.offset[3] * scale;
 
-		// TODO(final): Compute actual text rectangle
-		//Vec2f charSize = 
+		// @TODO(final): Compute actual text rectangle
 
 		result += V2f(glyph.advance * scale, 0.0f);
 		++s;
@@ -3418,13 +3417,13 @@ static void RenderVideoFrame(AppState *state) {
 	glEnable(GL_BLEND);
 #endif
 
-	// TODO(final): OSD Support for software rendering requires bitmap blitting!
+	// @TODO(final): OSD Support for software rendering requires bitmap blitting!
 	RenderOSD(state, proj, (float)w, (float)h);
 
 #else
 	fplVideoBackBuffer *backBuffer = fplGetVideoBackBuffer();
 
-	// TODO(final): Detect if we need to flip the frame
+	// @TODO(final): Detect if we need to flip the frame
 #if USE_FLIP_V_PICTURE_IN_SOFTWARE
 	backBuffer->outputRect = fplCreateVideoRectFromLTRB(rect.left, rect.bottom, rect.right, rect.top);
 #else
@@ -4409,7 +4408,7 @@ int main(int argc, char **argv) {
 								case fplKey_Left:
 								case fplKey_Right:
 								{
-									// TODO(final): Make seeking thread-safe!
+									// @TODO(final): Make seeking thread-safe!
 									double seekRelative = (ev.keyboard.mappedKey == fplKey_Left) ? -SeekStep : SeekStep;
 									SeekRelative(&playerState, seekRelative);
 								} break;
