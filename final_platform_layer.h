@@ -138,6 +138,7 @@ SOFTWARE.
 	- Improved and extended system/platform detection macros
 	- Improved audio format detection
     - Improved stability for input polling
+	- Reworked API documentations
     - Refactored audio system to use dispatch tables
 	- Support for multiple audio channels with channel layouts and channel mapping
 	- Removed several obsolete functions
@@ -145,7 +146,7 @@ SOFTWARE.
     - Bugfixes in audio format probing
     - Bugfixes for ARM/GCC compilations
     - Bugfixes for X86 compilations
-    - Bugfixes for vulkan backend initialization
+    - Bugfixes for vulkan backend
 
 	### Details
 	- New: Added typedef fplAudioFormatU64 that encodes a audio format (sample rate, channels, type) as 64-bit
@@ -155,12 +156,14 @@ SOFTWARE.
 	- New: Added enum fplAudioShareMode that stores the supported sharing modes
 	- New: Added enum fplAudioLatencyType that stores the supported latency types
 	- New: Added enum fplCPUCapabilitiesType that stores the CPU capabilieis type
+	- New: Added enum fplX86InstructionSetLevel that defines the X86 instruction set level, that is detected at compile time.
 	- New: Added struct fplAudioChannelMap that stores an array of the audio channel configuration
 	- New: Added struct fplAudioDeviceInfoExtended that stores the @ref fplAudioDeviceInfo and the supported formats as U64
 	- New: Added struct fplX86CPUCapabilities that stores the features for a X86 based CPU
 	- New: Added struct fplARMCPUCapabilities that stores the features for a ARM based CPU
 	- New: Added enum value @ref fplAudioDefaultFields_ChannelLayout to fplAudioDefaultFields
 	- New: Added several enum values to @ref fplAudioResultType to indicate audio issues better
+	- New: Added define FPL_X86_CPU_INSTR_SET_LEVEL
 	- New: Added function fplAudioInit() that manually loads the audio system
 	- New: Added function fplAudioRelease() that manually unloads/releases the audio system
 	- New: Added function fplGetAudioDeviceInfo() that returns a @ref fplAudioDeviceInfoExtended from a device id
@@ -1574,7 +1577,7 @@ SOFTWARE.
 	- x86_64
 	- x64 (untested)
 	- Arm32 (partially)
-	- Arm64 (untested)
+	- Arm64 (partially)
 
 	@section section_support_status_supported_platforms Supported Platforms
 
@@ -1590,7 +1593,7 @@ SOFTWARE.
 	- CLANG
 	- Intel (untested)
 	- MingW32 (untested)
-	- MingW32 (untested)
+	- MingW64 (untested)
 	- CC ARM (untested)
 
 	@section section_support_status_supported_subplatforms Supported Sub-Platforms
@@ -1601,6 +1604,20 @@ SOFTWARE.
 	- STD Console
 	- POSIX
 	- X11
+
+	@section section_support_status_known_limitation Known Limitations
+
+	- Some window features not implemented in X11 (See @IMPLEMENT)
+	- Some CPU query features not implemented in non-x86 platforms (See @IMPLEMENT)
+	- Linux gamepad device locked to /dev/input/js0 for now
+	- No unix memory query functions
+	- No unix audio backend implemented (OSS is planned)
+	- No unix gamepad support implemented (fd is planned)
+	- Extended audio device infos does not contain formats yet
+
+	@section section_support_status_unsupported Not Supported
+
+	- MAC or IOS Platform is not supported, due to lack of hardware/software equipment
 */
 
 // ****************************************************************************
@@ -2346,7 +2363,7 @@ typedef enum fplX86InstructionSetLevel {
 #endif
 
 //! Compiled X86 CPU Instruction Set, see: @ref fplX86InstructionSetLevel
-#define FPL_X86_CPU_INSTR_SET_LEVEL fplX86InstructionSetLevel_None
+#define FPL_X86_CPU_INSTR_SET_LEVEL FPL__M_X86_CPU_INSTR_SET_LEVEL
 
 //
 // Assertions
