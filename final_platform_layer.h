@@ -3800,7 +3800,7 @@ fpl_common_api void fplMemorySet(void *mem, const uint8_t value, const size_t si
 fpl_common_api void fplMemoryCopy(const void *sourceMem, const size_t sourceSize, void *targetMem);
 
 /**
-* @brief Allocates memory from the operating system by the given size.
+* @brief Allocates memory from the operating system by the given size, that is aligned to the operating systems page-size (most common is 64 KB)
 * @param[in] size The size to be allocated in bytes (size_t).
 * @return Reference to the newly allocated memory (void*).
 * @warning Alignment is not ensured here, the OS decides how to handle this. If you want to force a specific alignment use @ref fplMemoryAlignedAllocate() instead.
@@ -11534,6 +11534,7 @@ fpl_common_api void fplMemoryCopy(const void *sourceMem, const size_t sourceSize
 // Common Hardware
 //
 // https://github.com/google/cpu_features
+// https://github.com/google/benchmark/blob/v1.1.0/src/cycleclock.h
 
 //
 // X86/X64 only (CPUID, XCR0, RDTSC)
@@ -11721,7 +11722,6 @@ fpl_common_api size_t fplCPUGetName(char *destBuffer, const size_t maxDestBuffer
 #else
 
 fpl_common_api uint64_t fplCPURDTSC(void) {
-	// Based on: https://github.com/google/benchmark/blob/v1.1.0/src/cycleclock.h
 #if defined(FPL_ARCH_ARM64)
 	int64_t virtual_timer_value;
 	fplAsm volatile("mrs %0, cntvct_el0" : "=r"(virtual_timer_value));
@@ -11754,6 +11754,7 @@ fpl_common_api uint64_t fplCPUXCR0(void) {
 }
 
 fpl_common_api bool fplCPUID(const uint32_t functionId, fplCPUIDLeaf *outLeaf) {
+	// Not supported on non-x86 platforms
 	return(false);
 }
 
