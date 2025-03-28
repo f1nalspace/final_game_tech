@@ -4,16 +4,21 @@ Name:
 	FPL-Demo | No Runtime Linking
 
 Description:
-	Demo for showing how FPL works without runtime-linking
+	Demo for showing how FPL works without runtime-linking, falling back to static linking.
 
 Requirements:
 	- C99 Compiler
 	- Final Platform Layer
+	- Linking to POSIX libraries (pthread, x11, gl, libasound, libvulkan, m)
+	- Linking to Win32 libraries (kernel32.lib, user32.lib, shell32.lib, gdi32.lib, ole32.lib, opengl32.lib, vulkan.lib, xinput.lib, dsound.lib)
 
 Author:
 	Torsten Spaete
 
 Changelog:
+	## 2025-03-28
+	- Updated documentation
+
 	## 2018-10-22
 	- Reflect api changes in FPL 0.9.3
 
