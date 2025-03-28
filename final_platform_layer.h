@@ -144,6 +144,7 @@ SOFTWARE.
     - Renamed several types and functions
     - Bugfixes in audio format probing
     - Bugfixes for ARM/GCC compilations
+    - Bugfixes for X86 compilations
     - Bugfixes for vulkan backend initialization
 
 	### Details
@@ -180,6 +181,7 @@ SOFTWARE.
     - Fixed: fpl__VideoBackend_Vulkan_PrepareWindow() was crashing due to invalid free of memory
 	- Fixed: [Win32] fpl__Win32Guid was not properly defined when opaque API was enabled
 	- Fixed: [Win32] fplSetWindowState() was not implementing fplWindowState_Fullscreen
+	- Fixed: Compile errors for vulkan KHR missing cast to void pointer
 	- Changed: Added stride argument to to fplGetAudioDevices()
 	- Changed: Renamed field userData to clientUserData in @ref fplAudioSettings
 	- Changed: Renamed fplAudioDeviceFormat to fplAudioFormat
