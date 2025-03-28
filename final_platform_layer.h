@@ -22017,7 +22017,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Vulkan_Initial
 	nativeBackend->surfaceHandle = surfaceHandle;
 
 	backend->surface.vulkan.instance = nativeBackend->instanceHandle;
-	backend->surface.vulkan.surfaceKHR = nativeBackend->surfaceHandle;
+	backend->surface.vulkan.surfaceKHR = (void *)nativeBackend->surfaceHandle;
 
 #if defined(FPL_PLATFORM_WINDOWS)
 	backend->surface.window.win32.windowHandle = windowState->win32.windowHandle;
