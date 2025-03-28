@@ -15,6 +15,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2025-03-28
+	- Fixed warnings for int vs size_t
+
 	## 2025-02-24
 	- Upgraded to latest miniaudio v0.11.22
 
@@ -283,7 +286,7 @@ int main(int argc, char **args) {
 	size_t audioTrackCount = 0;
 	if (fileCount > 0) {
 		size_t maxTrackCount = fplArrayCount(audioTracks);
-		for (int i = 0; i < fplMin(maxTrackCount, fileCount); ++i) {
+		for (size_t i = 0; i < fplMin(maxTrackCount, fileCount); ++i) {
 			AudioTrackSource *track = &audioTracks[audioTrackCount++];
 			const char *filename = fplExtractFileName(files[i]);
 			track->type = AudioTrackSourceType_URL;
