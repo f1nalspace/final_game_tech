@@ -20,6 +20,9 @@ Todo:
 	- Let it at least draw something, because clearing to blue is boring
 
 Changelog:
+	## 2025-03-28
+	- Fixed warnings for handle null check
+
 	## 2021-10-13
 	- Reflect FPL API changes
 
@@ -2033,7 +2036,7 @@ static void VulkanClearSwapChain(VkAllocationCallbacks *allocator, const VulkanL
 		fplClearStruct(swapChain->presentationCommandBuffers);
 	}
 
-	if(swapChain->presentationCommandPoolHandle != fpl_null) {
+	if(swapChain->presentationCommandPoolHandle != VK_NULL_HANDLE) {
 		deviceApi->vkDestroyCommandPool(logicalDevice->logicalDeviceHandle, swapChain->presentationCommandPoolHandle, allocator);
 		swapChain->presentationCommandPoolHandle = VK_NULL_HANDLE;
 	}
