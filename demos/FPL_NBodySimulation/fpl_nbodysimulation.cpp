@@ -37,6 +37,9 @@ Todo:
 	- Migrate to modern opengl 3.3+
 
 Changelog:
+	# 2025-03-28
+	- Fixed warnings for int vs size_t
+
 	# 2025-03-12
 	- Fixed crash when rendering circles
 

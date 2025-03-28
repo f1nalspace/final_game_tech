@@ -107,7 +107,7 @@ namespace Demo3 {
 	}
 
 	void ParticleSimulation::ClearBodies() {
-		for(int bodyIndex = 0; bodyIndex < bodies.size(); ++bodyIndex) {
+		for(size_t bodyIndex = 0; bodyIndex < bodies.size(); ++bodyIndex) {
 			Body *body = bodies[bodyIndex];
 			delete body;
 		}
@@ -476,7 +476,7 @@ namespace Demo3 {
 		}
 
 		// Bodies
-		for(int bodyIndex = 0; bodyIndex < bodies.size(); ++bodyIndex) {
+		for(size_t bodyIndex = 0; bodyIndex < bodies.size(); ++bodyIndex) {
 			Body *body = bodies[bodyIndex];
 			switch(body->type) {
 				case BodyType::BodyType_Plane:
@@ -508,7 +508,7 @@ namespace Demo3 {
 
 		// Particles
 		if(particles.size() > 0) {
-			for(int particleIndex = 0; particleIndex < particles.size(); ++particleIndex) {
+			for(size_t particleIndex = 0; particleIndex < particles.size(); ++particleIndex) {
 				Particle *particle = &particles[particleIndex];
 				particle->color = SPHGetParticleColor(params.restDensity, particle->density, particle->pressure, particle->velocity);
 			}

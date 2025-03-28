@@ -116,10 +116,10 @@ struct Chart {
 		double originalMaxValue = 0.0;
 		size_t sampleCount = 0;
 		size_t seriesCount = seriesItems.size();
-		for (int seriesIndex = 0; seriesIndex < seriesItems.size(); ++seriesIndex) {
+		for (size_t seriesIndex = 0; seriesIndex < seriesItems.size(); ++seriesIndex) {
 			ChartSeries *series = &seriesItems[seriesIndex];
 			sampleCount = std::max(sampleCount, series->values.size());
-			for (int valueIndex = 0; valueIndex < series->values.size(); ++valueIndex) {
+			for (size_t valueIndex = 0; valueIndex < series->values.size(); ++valueIndex) {
 				double value = series->values[valueIndex];
 				originalMinValue = std::min(originalMinValue, value);
 				originalMaxValue = std::max(originalMaxValue, value);
@@ -151,11 +151,11 @@ struct Chart {
 		// Grid
 		Vec4f gridXLineColor = V4f(0.25f, 0.25f, 0.25f, 1);
 		Vec4f gridYLineColor = V4f(0.25f, 0.25f, 0.25f, 1);
-		for (int sampleIndex = 1; sampleIndex < sampleCount; ++sampleIndex) {
+		for (size_t sampleIndex = 1; sampleIndex < sampleCount; ++sampleIndex) {
 			Render::PushLine(commandBuffer, V2f(chartOriginX + (float)sampleIndex * sampleWidth, chartOriginY), V2f(chartOriginX + (float)sampleIndex * sampleWidth, chartOriginY + chartHeight), gridXLineColor, 1.0f);
 		}
 
-		for (int tickIndex = 0; tickIndex <= tickCount; ++tickIndex) {
+		for (size_t tickIndex = 0; tickIndex <= tickCount; ++tickIndex) {
 			double tickValue = yAxis.min + yAxis.tickSpacing * (double)tickIndex;
 			float tickHeight = yAxis.MapValueToPosition(tickValue, chartHeight);
 			Render::PushLine(commandBuffer, V2f(chartOriginX, chartOriginY + tickHeight), V2f(chartOriginX + chartWidth, chartOriginY + tickHeight), gridYLineColor, 1.0f);
@@ -169,7 +169,7 @@ struct Chart {
 
 		// Tick marks
 		Vec4f tickMarkLineColor = V4f(0.2f, 0.2f, 0.2f, 1);
-		for (int tickIndex = 0; tickIndex <= tickCount; ++tickIndex) {
+		for (size_t tickIndex = 0; tickIndex <= tickCount; ++tickIndex) {
 			double tickValue = yAxis.min + yAxis.tickSpacing * (double)tickIndex;
 			float tickHeight = yAxis.MapValueToPosition(tickValue, chartHeight);
 			Render::PushLine(commandBuffer, V2f(chartOriginX, chartOriginY + tickHeight), V2f(chartOriginX - axisMargin, chartOriginY + tickHeight), tickMarkLineColor, 1.0f);
@@ -177,7 +177,7 @@ struct Chart {
 
 		// Tick labels
 		Vec4f tickLabelColor = V4f(1.0f, 1.0f, 1.0f, 1);
-		for (int tickIndex = 0; tickIndex <= tickCount; ++tickIndex) {
+		for (size_t tickIndex = 0; tickIndex <= tickCount; ++tickIndex) {
 			double tickValue = yAxis.min + yAxis.tickSpacing * (double)tickIndex;
 			float tickHeight = yAxis.MapValueToPosition(tickValue, chartHeight);
 			std::string tickLabel = StringFormat(axisFormat.c_str(), tickValue);
@@ -190,8 +190,8 @@ struct Chart {
 		// Bars
 		float barWidth = sampleWidth - (sampleMargin * 2.0f);
 		float seriesBarWidth = (barWidth - (subSampleMargin * (float)(seriesCount - 1))) / (float)seriesCount;
-		for (int sampleIndex = 0; sampleIndex < sampleCount; ++sampleIndex) {
-			for (int seriesIndex = 0; seriesIndex < seriesCount; ++seriesIndex) {
+		for (size_t sampleIndex = 0; sampleIndex < sampleCount; ++sampleIndex) {
+			for (size_t seriesIndex = 0; seriesIndex < seriesCount; ++seriesIndex) {
 				ChartSeries *series = &seriesItems[seriesIndex];
 				Vec4f seriesColor = series->color;
 				double value = series->values[sampleIndex];
@@ -207,7 +207,7 @@ struct Chart {
 		}
 
 		// Sample labels
-		for (int sampleIndex = 0; sampleIndex < sampleCount; ++sampleIndex) {
+		for (size_t sampleIndex = 0; sampleIndex < sampleCount; ++sampleIndex) {
 			const char *sampleLabel = sampleLabels[sampleIndex].c_str();
 			float textWidth = (float)GetTextWidth(sampleLabel, (uint32_t)strlen(sampleLabel), font, sampleLabelFontHeight);
 			float xLeft = chartOriginX + (float)sampleIndex * sampleWidth + sampleWidth * 0.5f - textWidth * 0.5f;
@@ -218,7 +218,7 @@ struct Chart {
 		// Legend
 		float legendCurLeft = areaLeft;
 		float legendBottom = areaBottom + legendMargin;
-		for (int seriesIndex = 0; seriesIndex < seriesCount; ++seriesIndex) {
+		for (size_t seriesIndex = 0; seriesIndex < seriesCount; ++seriesIndex) {
 			ChartSeries *series = &seriesItems[seriesIndex];
 			Vec4f legendColor = series->color;
 

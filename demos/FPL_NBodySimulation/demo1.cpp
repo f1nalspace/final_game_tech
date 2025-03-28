@@ -38,13 +38,13 @@ namespace Demo1 {
 
 	Grid::Grid(const size_t maxCellCount) {
 		_cells.resize(maxCellCount);
-		for(int cellIndex = 0; cellIndex < maxCellCount; ++cellIndex) {
+		for(size_t cellIndex = 0; cellIndex < maxCellCount; ++cellIndex) {
 			_cells[cellIndex] = nullptr;
 		}
 	}
 
 	Grid::~Grid() {
-		for(int cellIndex = 0; cellIndex < _cells.size(); ++cellIndex) {
+		for(size_t cellIndex = 0; cellIndex < _cells.size(); ++cellIndex) {
 			Cell *cell = _cells[cellIndex];
 			if(cell != nullptr) {
 				delete cell;
@@ -115,13 +115,13 @@ namespace Demo1 {
 	}
 
 	ParticleSimulation::~ParticleSimulation() {
-		for(int emitterIndex = 0; emitterIndex < _emitters.size(); ++emitterIndex) {
+		for(size_t emitterIndex = 0; emitterIndex < _emitters.size(); ++emitterIndex) {
 			delete _emitters[emitterIndex];
 		}
-		for(int bodyIndex = 0; bodyIndex < _bodies.size(); ++bodyIndex) {
+		for(size_t bodyIndex = 0; bodyIndex < _bodies.size(); ++bodyIndex) {
 			delete _bodies[bodyIndex];
 		}
-		for(int particleIndex = 0; particleIndex < _particles.size(); ++particleIndex) {
+		for(size_t particleIndex = 0; particleIndex < _particles.size(); ++particleIndex) {
 			delete _particles[particleIndex];
 		}
 		delete _workerPool;
@@ -143,7 +143,7 @@ namespace Demo1 {
 	}
 
 	void ParticleSimulation::ClearBodies() {
-		for(int bodyIndex = 0; bodyIndex < _bodies.size(); ++bodyIndex) {
+		for(size_t bodyIndex = 0; bodyIndex < _bodies.size(); ++bodyIndex) {
 			Body *body = _bodies[bodyIndex];
 			delete body;
 		}
@@ -152,7 +152,7 @@ namespace Demo1 {
 
 	void ParticleSimulation::ClearParticles() {
 		_grid->Clear();
-		for(int particleIndex = 0; particleIndex < _particles.size(); ++particleIndex) {
+		for(size_t particleIndex = 0; particleIndex < _particles.size(); ++particleIndex) {
 			delete _particles[particleIndex];
 		}
 		_particles.clear();
@@ -567,14 +567,14 @@ namespace Demo1 {
 		}
 
 		// Bodies
-		for(int bodyIndex = 0; bodyIndex < _bodies.size(); ++bodyIndex) {
+		for(size_t bodyIndex = 0; bodyIndex < _bodies.size(); ++bodyIndex) {
 			Body *body = _bodies[bodyIndex];
 			body->Render(commandBuffer);
 		}
 
 		// Particles
 		if(_particles.size() > 0) {
-			for(int particleIndex = 0; particleIndex < _particles.size(); ++particleIndex) {
+			for(size_t particleIndex = 0; particleIndex < _particles.size(); ++particleIndex) {
 				ParticleRenderObject *particleRenderObject = &_particleRenderObjects[particleIndex];
 				Particle *particle = _particles[particleIndex];
 				particleRenderObject->pos = particle->GetPosition();
