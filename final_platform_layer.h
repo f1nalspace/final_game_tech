@@ -2362,7 +2362,7 @@ typedef enum fplX86InstructionSetLevel {
 #	define FPL__M_X86_CPU_INSTR_SET_LEVEL fplX86InstructionSetLevel_None
 #endif
 
-//! Compiled X86 CPU Instruction Set, see: @ref fplX86InstructionSetLevel
+//! Compiled X86 CPU Instruction Set. @ref fplX86InstructionSetLevel
 #define FPL_X86_CPU_INSTR_SET_LEVEL FPL__M_X86_CPU_INSTR_SET_LEVEL
 
 //
@@ -2537,28 +2537,28 @@ typedef enum fplX86InstructionSetLevel {
 
 /**
 * @def fplAssert
-* @brief Breaks with a runtime assertion when the specified expression evaluates to @c false.
+* @brief Breaks with a runtime assertion when the specified expression evaluates to false.
 * @param[in] exp Expression to evaluate.
 */
 #define fplAssert(exp) fpl__m_Assert(exp)
 
 /**
 * @def fplStaticAssert
-* @brief Breaks the compilation when the specified expression evaluates to @c false.
+* @brief Breaks the compilation when the specified expression evaluates to false.
 * @param[in] exp Expression to evaluate.
 */
 #define fplStaticAssert(exp) fpl__m_StaticAssert(exp)
 
 /**
 * @def fplAlwaysAssert
-* @brief Always crashes the application with a null-pointer assignment when the specified expression evaluates to @c false.
+* @brief Always crashes the application with a null-pointer assignment when the specified expression evaluates to false.
 * @param[in] exp Expression to evaluate.
 */
 #define fplAlwaysAssert(exp) if(!(exp)) {*(int *)0 = 0;}
 
 /**
 * @def fplAssertPtr
-* @brief Breaks when the specified pointer is @ref fpl_null.
+* @brief Breaks when the specified pointer is null.
 * @param[in] ptr Pointer to evaluate.
 */
 #define fplAssertPtr(ptr) fpl__m_Assert((ptr) != fpl_null)
@@ -2632,16 +2632,16 @@ fpl_internal fpl_force_inline void fpl__m_DebugBreak(void) { __asm__ __volatile_
 #include <stdarg.h> // va_start, va_end, va_list, va_arg
 #include <limits.h> // UINT32_MAX, ...
 #if defined(FPL__INCLUDE_ASSERT)
-#	include <assert.h>
+#	include <assert.h> // assert
 #endif
 #if defined(FPL__INCLUDE_SIGNAL)
 #	include <signal.h>
 #endif
 #if defined(FPL__INCLUDE_MALLOC)
-#	include <malloc.h>
+#	include <malloc.h> // malloc/free/realloc/_alloca
 #endif
 #if defined(FPL__INCLUDE_ALLOCA)
-#	include <alloca.h>
+#	include <alloca.h> // alloca
 #endif
 #if !defined(FPL_NO_CRT)
 #	include <stdlib.h> // _countof
@@ -2650,7 +2650,7 @@ fpl_internal fpl_force_inline void fpl__m_DebugBreak(void) { __asm__ __volatile_
 /// @cond FPL_INTERNALS
 #if !defined(UINT32_MAX)
 	// On android or older posix versions there is no UINT32_MAX
-#	define UINT32_MAX ((uint32_t)-1)
+#	define UINT32_MAX (0xFFFFFFFFU)
 #endif
 /// @endcond
 
@@ -2712,13 +2712,39 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 #	define fpl__m_StructField(type, name, ...) __VA_ARGS__
 #endif
 
-//! Initializes a struct to zero
+/**
+* @def fplZeroInit
+* @brief Initializes a struct to zero.
+* @result The command that initializes a struct to zero, e.g. {0} or {}.
+*/
 #define fplZeroInit fpl__m_ZeroInit
-//! Sets a struct pointer to the given value
+
+/**
+* @def fplStructSet
+* @brief Overwrites the value of the given struct to a new value.
+* @param[in/out] ptr The reference to the output struct.
+* @param[in] type The identifier of the struct.
+* @param[in] value The new value that is written to the struct reference.
+*/
 #define fplStructSet fpl__m_StructSet
-//! Initializes a struct by the given type
+
+/**
+* @def fplStructInit
+* @brief Initializes a struct by the given type.
+* @param[in] type The identifier of the struct.
+* @param[in] _ Value of the struct from variable arguments (...) without braces in between.
+* @return The initialized struct command.
+*/
 #define fplStructInit fpl__m_StructInit
-//! Defines a single field in a struct
+
+/**
+* @def fplStructField
+* @brief Defines a single field in a struct.
+* @param[in] type The identifier of the struct.
+* @param[in] name The name of the field.
+* @param[in] _ Value of the field from variable arguments (...).
+* @return The constructed field.
+*/
 #define fplStructField fpl__m_StructField
 
 /**
@@ -2801,47 +2827,45 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 // Endianess
 //
 
-/**
-* @enum fplEndianessType
-* @brief Defines the endianess types that are supported.
-*/
+//! @cond FPL_INTERNAL
+
 typedef enum fplEndianessType {
-    //! Little-endian type.
+    // Little-endian type
     fplEndianessType_Little = 0x04030201,
-    //! Big-endian type.
+    // Big-endian type
     fplEndianessType_Big = 0x01020304,
 } fplEndianessType;
 
-//! @cond FPL_INTERNAL
-
 typedef union {
+	// Value as 4 unsigned chars
 	unsigned char bytes[4]; 
+	// Value as 32-bit unsigned integer
 	uint32_t value; 
 } fplEndianess;
 
-//! The current endianess value
+// The current endianess value
 fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 
 //! @endcond
  
 /**
 * @def fplIsBigEndian
-* @brief Returns true when the given platform is big-endian.
-* @result True if the platform is big-endian, false otherwise.
+* @brief Gets a value indicating whether the current platform is big-endian or not.
+* @result Returns true if the platform is big-endian, false otherwise.
 */
 #define fplIsBigEndian() (fpl__global_endianessOrder.value == fplEndianessType_Big)
 
 /**
 * @def fplIsLittleEndian
-* @brief Returns true when the given platform is little-endian.
-* @result True if the platform is little-endian, false otherwise.
+* @brief Gets a value indicating whether the current platform is little-endian or not.
+* @result Returns true if the platform is little-endian, false otherwise.
 */
 #define fplIsLittleEndian() (fpl__global_endianessOrder.value == fplEndianessType_Little)
 
 /**
 * @def fplGetEndianess32
-* @brief Returns the unsigned 32-bit endianess that is built from (0, 1, 2, 3).
-* @result Unsigned 32-bit endianess.
+* @brief Returns the unsigned 32-bit integer value, that represents the current platform endianess that is built from the values (0, 1, 2, 3).
+* @result Unsigned 32-bit integer endianess.
 */
 #define fplGetEndianess32() (fpl__global_endianessOrder.value)
 
@@ -3280,8 +3304,8 @@ fpl_platform_api void fplAtomicReadWriteFence(void);
 
 /**
 * @brief Replaces a 32-bit unsigned integer with the given value atomically.
-* @param[in,out] target The target value to write into
-* @param[in] value The source value used for exchange
+* @param[in,out] target The target value to write into.
+* @param[in] value The source value used for exchange.
 * @return Returns the initial value before the replacement.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_exchange
@@ -3289,8 +3313,8 @@ fpl_platform_api void fplAtomicReadWriteFence(void);
 fpl_platform_api uint32_t fplAtomicExchangeU32(volatile uint32_t *target, const uint32_t value);
 /**
 * @brief Replaces a 64-bit unsigned integer with the given value atomically.
-* @param[in,out] target The target value to write into
-* @param[in] value The source value used for exchange
+* @param[in,out] target The target value to write into.
+* @param[in] value The source value used for exchange.
 * @return Returns the initial value before the replacement.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_exchange
@@ -3298,8 +3322,8 @@ fpl_platform_api uint32_t fplAtomicExchangeU32(volatile uint32_t *target, const 
 fpl_platform_api uint64_t fplAtomicExchangeU64(volatile uint64_t *target, const uint64_t value);
 /**
 * @brief Replaces a 32-bit signed integer with the given value atomically.
-* @param[in,out] target The target value to write into
-* @param[in] value The source value used for exchange
+* @param[in,out] target The target value to write into.
+* @param[in] value The source value used for exchange.
 * @return Returns the initial value before the replacement.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_exchange
@@ -3307,8 +3331,8 @@ fpl_platform_api uint64_t fplAtomicExchangeU64(volatile uint64_t *target, const 
 fpl_platform_api int32_t fplAtomicExchangeS32(volatile int32_t *target, const int32_t value);
 /**
 * @brief Replaces a 64-bit signed integer with the given value atomically.
-* @param[in,out] target The target value to write into
-* @param[in] value The source value used for exchange
+* @param[in,out] target The target value to write into.
+* @param[in] value The source value used for exchange.
 * @return Returns the initial value before the replacement.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_exchange
@@ -3316,8 +3340,8 @@ fpl_platform_api int32_t fplAtomicExchangeS32(volatile int32_t *target, const in
 fpl_platform_api int64_t fplAtomicExchangeS64(volatile int64_t *target, const int64_t value);
 /**
 * @brief Replaces a pointer with the given value atomically.
-* @param[in,out] target The target value to write into
-* @param[in] value The source value used for exchange
+* @param[in,out] target The target value to write into.
+* @param[in] value The source value used for exchange.
 * @return Returns the initial value before the replacement.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_exchange
@@ -3325,8 +3349,8 @@ fpl_platform_api int64_t fplAtomicExchangeS64(volatile int64_t *target, const in
 fpl_common_api void *fplAtomicExchangePtr(volatile void **target, const void *value);
 /**
 * @brief Replaces a size with the given value atomically.
-* @param[in,out] target The target value to write into
-* @param[in] value The source value used for exchange
+* @param[in,out] target The target value to write into.
+* @param[in] value The source value used for exchange.
 * @return Returns the initial value before the replacement.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_exchange
@@ -3510,9 +3534,9 @@ fpl_common_api void *fplAtomicIncrementPtr(volatile void **dest);
 
 /**
 * @brief Compares a 32-bit unsigned integer with a comparand and swaps it when comparand matches the destination.
-* @param[in,out] dest The target value to write into
-* @param[in] comparand The value to compare with
-* @param[in] exchange The value to exchange with
+* @param[in,out] dest The target value to write into.
+* @param[in] comparand The value to compare with.
+* @param[in] exchange The value to exchange with.
 * @return Returns the value of the destination before the swap, regardless of the result.
 * @note Ensures that memory operations are completed in order.
 * @note Use @ref fplAtomicIsCompareAndSwapU32() when you want to check if the exchange has happened or not.
@@ -3521,9 +3545,9 @@ fpl_common_api void *fplAtomicIncrementPtr(volatile void **dest);
 fpl_platform_api uint32_t fplAtomicCompareAndSwapU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange);
 /**
 * @brief Compares a 64-bit unsigned integer with a comparand and swaps it when comparand matches the destination.
-* @param[in,out] dest The target value to write into
-* @param[in] comparand The value to compare with
-* @param[in] exchange The value to exchange with
+* @param[in,out] dest The target value to write into.
+* @param[in] comparand The value to compare with.
+* @param[in] exchange The value to exchange with.
 * @return Returns the value of the destination before the swap, regardless of the result.
 * @note Ensures that memory operations are completed in order.
 * @note Use @ref fplAtomicIsCompareAndSwapU64() when you want to check if the exchange has happened or not.
@@ -3532,9 +3556,9 @@ fpl_platform_api uint32_t fplAtomicCompareAndSwapU32(volatile uint32_t *dest, co
 fpl_platform_api uint64_t fplAtomicCompareAndSwapU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange);
 /**
 * @brief Compares a 32-bit signed integer with a comparand and swaps it when comparand matches the destination.
-* @param[in,out] dest The target value to write into
-* @param[in] comparand The value to compare with
-* @param[in] exchange The value to exchange with
+* @param[in,out] dest The target value to write into.
+* @param[in] comparand The value to compare with.
+* @param[in] exchange The value to exchange with.
 * @return Returns the value of the destination before the swap, regardless of the result.
 * @note Ensures that memory operations are completed in order.
 * @note Use @ref fplAtomicIsCompareAndSwapS32() when you want to check if the exchange has happened or not.
@@ -3543,9 +3567,9 @@ fpl_platform_api uint64_t fplAtomicCompareAndSwapU64(volatile uint64_t *dest, co
 fpl_platform_api int32_t fplAtomicCompareAndSwapS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange);
 /**
 * @brief Compares a 64-bit signed integer with a comparand and swaps it when comparand matches the destination.
-* @param[in,out] dest The target value to write into
-* @param[in] comparand The value to compare with
-* @param[in] exchange The value to exchange with
+* @param[in,out] dest The target value to write into.
+* @param[in] comparand The value to compare with.
+* @param[in] exchange The value to exchange with.
 * @return Returns the value of the destination before the swap, regardless of the result.
 * @note Ensures that memory operations are completed in order.
 * @note Use @ref fplAtomicIsCompareAndSwapS64() when you want to check if the exchange has happened or not.
@@ -3554,9 +3578,9 @@ fpl_platform_api int32_t fplAtomicCompareAndSwapS32(volatile int32_t *dest, cons
 fpl_platform_api int64_t fplAtomicCompareAndSwapS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange);
 /**
 * @brief Compares a size with a comparand and swaps it when comparand matches the destination.
-* @param[in,out] dest The target value to write into
-* @param[in] comparand The value to compare with
-* @param[in] exchange The value to exchange with
+* @param[in,out] dest The target value to write into.
+* @param[in] comparand The value to compare with.
+* @param[in] exchange The value to exchange with.
 * @return Returns the value of the destination before the swap, regardless of the result.
 * @note Ensures that memory operations are completed in order.
 * @note Use @ref fplAtomicIsCompareAndSwapPtr() when you want to check if the exchange has happened or not.
@@ -3565,9 +3589,9 @@ fpl_platform_api int64_t fplAtomicCompareAndSwapS64(volatile int64_t *dest, cons
 fpl_common_api size_t fplAtomicCompareAndSwapSize(volatile size_t *dest, const size_t comparand, const size_t exchange);
 /**
 * @brief Compares a pointer with a comparand and swaps it when comparand matches the destination.
-* @param[in,out] dest The target value to write into
-* @param[in] comparand The value to compare with
-* @param[in] exchange The value to exchange with
+* @param[in,out] dest The target value to write into.
+* @param[in] comparand The value to compare with.
+* @param[in] exchange The value to exchange with.
 * @return Returns the value of the destination before the swap, regardless of the result.
 * @note Ensures that memory operations are completed in order.
 * @note Use @ref fplAtomicIsCompareAndSwapPtr() when you want to check if the exchange has happened or not.
@@ -3577,9 +3601,9 @@ fpl_common_api void *fplAtomicCompareAndSwapPtr(volatile void **dest, const void
 
 /**
 * @brief Compares a 32-bit unsigned integer with a comparand and swaps it when comparand matches the destination and returns a bool indicating the result.
-* @param[in,out] dest The target value to write into
-* @param[in] comparand The value to compare with
-* @param[in] exchange The value to exchange with
+* @param[in,out] dest The target value to write into.
+* @param[in] comparand The value to compare with.
+* @param[in] exchange The value to exchange with.
 * @return Returns true when the exchange happened, false otherwise.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_cas
@@ -3587,9 +3611,9 @@ fpl_common_api void *fplAtomicCompareAndSwapPtr(volatile void **dest, const void
 fpl_platform_api bool fplAtomicIsCompareAndSwapU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange);
 /**
 * @brief Compares a 64-bit unsigned integer with a comparand and swaps it when comparand matches the destination and returns a bool indicating the result.
-* @param[in,out] dest The target value to write into
-* @param[in] comparand The value to compare with
-* @param[in] exchange The value to exchange with
+* @param[in,out] dest The target value to write into.
+* @param[in] comparand The value to compare with.
+* @param[in] exchange The value to exchange with.
 * @return Returns true when the exchange happened, false otherwise.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_cas
@@ -3597,9 +3621,9 @@ fpl_platform_api bool fplAtomicIsCompareAndSwapU32(volatile uint32_t *dest, cons
 fpl_platform_api bool fplAtomicIsCompareAndSwapU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange);
 /**
 * @brief Compares a 32-bit signed integer with a comparand and swaps it when comparand matches the destination and returns a bool indicating the result.
-* @param[in,out] dest The target value to write into
-* @param[in] comparand The value to compare with
-* @param[in] exchange The value to exchange with
+* @param[in,out] dest The target value to write into.
+* @param[in] comparand The value to compare with.
+* @param[in] exchange The value to exchange with.
 * @return Returns true when the exchange happened, false otherwise.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_cas
@@ -3607,9 +3631,9 @@ fpl_platform_api bool fplAtomicIsCompareAndSwapU64(volatile uint64_t *dest, cons
 fpl_platform_api bool fplAtomicIsCompareAndSwapS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange);
 /**
 * @brief Compares a 64-bit signed integer with a comparand and swaps it when comparand matches the destination and returns a bool indicating the result.
-* @param[in,out] dest The target value to write into
-* @param[in] comparand The value to compare with
-* @param[in] exchange The value to exchange with
+* @param[in,out] dest The target value to write into.
+* @param[in] comparand The value to compare with.
+* @param[in] exchange The value to exchange with.
 * @return Returns true when the exchange happened, false otherwise.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_cas
@@ -3617,9 +3641,9 @@ fpl_platform_api bool fplAtomicIsCompareAndSwapS32(volatile int32_t *dest, const
 fpl_platform_api bool fplAtomicIsCompareAndSwapS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange);
 /**
 * @brief Compares a size with a comparand and swaps it when comparand matches the destination and returns a bool indicating the result.
-* @param[in,out] dest The target value to write into
-* @param[in] comparand The value to compare with
-* @param[in] exchange The value to exchange with
+* @param[in,out] dest The target value to write into.
+* @param[in] comparand The value to compare with.
+* @param[in] exchange The value to exchange with.
 * @return Returns true when the exchange happened, false otherwise.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_cas
@@ -3627,9 +3651,9 @@ fpl_platform_api bool fplAtomicIsCompareAndSwapS64(volatile int64_t *dest, const
 fpl_common_api bool fplAtomicIsCompareAndSwapSize(volatile size_t *dest, const size_t comparand, const size_t exchange);
 /**
 * @brief Compares a pointer with a comparand and swaps it when comparand matches the destination and returns a bool indicating the result.
-* @param[in,out] dest The target value to write into
-* @param[in] comparand The value to compare with
-* @param[in] exchange The value to exchange with
+* @param[in,out] dest The target value to write into.
+* @param[in] comparand The value to compare with.
+* @param[in] exchange The value to exchange with.
 * @return Returns true when the exchange happened, false otherwise.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_cas
@@ -3642,7 +3666,7 @@ fpl_common_api bool fplAtomicIsCompareAndSwapPtr(volatile void **dest, const voi
 
 /**
 * @brief Loads the 32-bit unsigned value atomically and returns the value.
-* @param[in] source The source value to read from
+* @param[in] source The source value to read from.
 * @return Returns the atomically loaded source value
 * @note Ensures that memory operations are completed before the reading.
 * @note This may use a CAS instruction when there are no suitable compiler intrinsics found.
@@ -3651,7 +3675,7 @@ fpl_common_api bool fplAtomicIsCompareAndSwapPtr(volatile void **dest, const voi
 fpl_platform_api uint32_t fplAtomicLoadU32(volatile uint32_t *source);
 /**
 * @brief Loads the 64-bit unsigned value atomically and returns the value.
-* @param[in] source The source value to read from
+* @param[in] source The source value to read from.
 * @return Returns the atomically loaded source value
 * @note Ensures that memory operations are completed before the reading.
 * @note This may use a CAS instruction when there are no suitable compiler intrinsics found.
@@ -3660,7 +3684,7 @@ fpl_platform_api uint32_t fplAtomicLoadU32(volatile uint32_t *source);
 fpl_platform_api uint64_t fplAtomicLoadU64(volatile uint64_t *source);
 /**
 * @brief Loads the 32-bit signed value atomically and returns the value.
-* @param[in] source The source value to read from
+* @param[in] source The source value to read from.
 * @return Returns the atomically loaded source value
 * @note Ensures that memory operations are completed before the reading.
 * @note This may use a CAS instruction when there are no suitable compiler intrinsics found.
@@ -3669,7 +3693,7 @@ fpl_platform_api uint64_t fplAtomicLoadU64(volatile uint64_t *source);
 fpl_platform_api int32_t fplAtomicLoadS32(volatile int32_t *source);
 /**
 * @brief Loads the 64-bit signed value atomically and returns the value.
-* @param[in] source The source value to read from
+* @param[in] source The source value to read from.
 * @return Returns the atomically loaded source value
 * @note Ensures that memory operations are completed before the reading.
 * @note This may use a CAS instruction when there are no suitable compiler intrinsics found.
@@ -3680,7 +3704,7 @@ fpl_platform_api int64_t fplAtomicLoadS64(volatile int64_t *source);
 * @brief Loads the size value atomically and returns the value.
 * @note Ensures that memory operations are completed before the reading.
 * @note This may use a CAS instruction when there are no suitable compiler intrinsics found.
-* @param[in] source The source value to read from
+* @param[in] source The source value to read from.
 * @return Returns the atomically loaded source value
 * @see @ref category_threading_atomics_load
 */
@@ -3689,7 +3713,7 @@ fpl_common_api size_t fplAtomicLoadSize(volatile size_t *source);
 * @brief Loads the pointer value atomically and returns the value.
 * @note Ensures that memory operations are completed before the reading.
 * @note This may use a CAS instruction when there are no suitable compiler intrinsics found.
-* @param[in] source The source value to read from
+* @param[in] source The source value to read from.
 * @return Returns the atomically loaded source value
 * @see @ref category_threading_atomics_load
 */
@@ -3701,48 +3725,48 @@ fpl_common_api void *fplAtomicLoadPtr(volatile void **source);
 
 /**
 * @brief Overwrites the 32-bit unsigned value atomically.
-* @param[out] dest The destination to write to
-* @param[in] value The value to exchange with
+* @param[out] dest The destination to write to.
+* @param[in] value The value to exchange with.
 * @note Ensures that memory operations are completed before the write.
 * @see @ref category_threading_atomics_store
 */
 fpl_platform_api void fplAtomicStoreU32(volatile uint32_t *dest, const uint32_t value);
 /**
 * @brief Overwrites the 64-bit unsigned value atomically.
-* @param[out] dest The destination to write to
-* @param[in] value The value to exchange with
+* @param[out] dest The destination to write to.
+* @param[in] value The value to exchange with.
 * @note Ensures that memory operations are completed before the write.
 * @see @ref category_threading_atomics_store
 */
 fpl_platform_api void fplAtomicStoreU64(volatile uint64_t *dest, const uint64_t value);
 /**
 * @brief Overwrites the 32-bit signed value atomically.
-* @param[out] dest The destination to write to
-* @param[in] value The value to exchange with
+* @param[out] dest The destination to write to.
+* @param[in] value The value to exchange with.
 * @note Ensures that memory operations are completed before the write.
 * @see @ref category_threading_atomics_store
 */
 fpl_platform_api void fplAtomicStoreS32(volatile int32_t *dest, const int32_t value);
 /**
 * @brief Overwrites the 64-bit signed value atomically.
-* @param[out] dest The destination to write to
-* @param[in] value The value to exchange with
+* @param[out] dest The destination to write to.
+* @param[in] value The value to exchange with.
 * @note Ensures that memory operations are completed before the write.
 * @see @ref category_threading_atomics_store
 */
 fpl_platform_api void fplAtomicStoreS64(volatile int64_t *dest, const int64_t value);
 /**
 * @brief Overwrites the size value atomically.
-* @param[out] dest The destination to write to
-* @param[in] value The value to exchange with
+* @param[out] dest The destination to write to.
+* @param[in] value The value to exchange with.
 * @note Ensures that memory operations are completed before the write.
 * @see @ref category_threading_atomics_store
 */
 fpl_common_api void fplAtomicStoreSize(volatile size_t *dest, const size_t value);
 /**
 * @brief Overwrites the pointer value atomically.
-* @param[out] dest The destination to write to
-* @param[in] value The value to exchange with
+* @param[out] dest The destination to write to.
+* @param[in] value The value to exchange with.
 * @note Ensures that memory operations are completed before the write.
 * @see @ref category_threading_atomics_store
 */
@@ -3794,7 +3818,7 @@ typedef struct fplMemoryInfos {
 
 /**
 * @brief Clears the given memory by the given size to zero.
-* @param[in] mem Reference to the memory (void*).
+* @param[in] mem Reference to the memory.
 * @param[in] size The number of bytes to be cleared to zero (size_t).
 * @see @ref subsection_category_memory_handling_ops_clear
 */
@@ -3802,26 +3826,26 @@ fpl_common_api void fplMemoryClear(void *mem, const size_t size);
 
 /**
 * @brief Sets the given memory by the given size to the given value.
-* @param[in] mem Reference to the memory (void*).
-* @param[in] value The value to be set (uint8_t).
-* @param[in] size The number of bytes to be set (size_t).
+* @param[in] mem Reference to the memory.
+* @param[in] value The value to be set.
+* @param[in] size The number of bytes to be set.
 * @see @ref subsection_category_memory_handling_ops_set
 */
 fpl_common_api void fplMemorySet(void *mem, const uint8_t value, const size_t size);
 
 /**
 * @brief Copies the given source memory with its length to the target memory.
-* @param[in] sourceMem Reference to the source memory to copy from (const void*).
-* @param[in] sourceSize The size in bytes to be copied (size_t).
-* @param[out] targetMem Reference to the target memory to copy into (void*).
+* @param[in] sourceMem Reference to the source memory to copy from.
+* @param[in] sourceSize The size in bytes to be copied.
+* @param[out] targetMem Reference to the target memory to copy into.
 * @see @ref subsection_category_memory_handling_ops_copy
 */
 fpl_common_api void fplMemoryCopy(const void *sourceMem, const size_t sourceSize, void *targetMem);
 
 /**
-* @brief Allocates memory from the operating system by the given size, that is aligned to the operating systems page-size (most common is 64 KB)
-* @param[in] size The size to be allocated in bytes (size_t).
-* @return Reference to the newly allocated memory (void*).
+* @brief Allocates memory from the operating system by the given size, that is aligned to the operating systems page-size (most common is 64 KB).
+* @param[in] size The size to be allocated in bytes.
+* @return Reference to the newly allocated memory.
 * @warning Alignment is not ensured here, the OS decides how to handle this. If you want to force a specific alignment use @ref fplMemoryAlignedAllocate() instead.
 * @note The memory is guaranteed to be initialized to zero.
 * @note This function can be called without the platform to be initialized.
@@ -3831,7 +3855,7 @@ fpl_platform_api void *fplMemoryAllocate(const size_t size);
 
 /**
 * @brief Releases the memory allocated from the operating system.
-* @param[in] ptr Reference to the allocated memory (void*).
+* @param[in] ptr Reference to the allocated memory.
 * @warning This should never be called with an aligned memory reference! For freeing aligned memory, use @ref fplMemoryAlignedFree() instead.
 * @note This function can be called without the platform to be initialized.
 * @see @ref section_category_memory_normal_free
@@ -3840,9 +3864,9 @@ fpl_platform_api void fplMemoryFree(void *ptr);
 
 /**
 * @brief Allocates aligned memory from the operating system by the given alignment.
-* @param[in] size The size amount in bytes (size_t).
-* @param[in] alignment The alignment in bytes (must be a power-of-two) (size_t).
-* @return Reference to the new allocated aligned memory (void*).
+* @param[in] size The size amount in bytes.
+* @param[in] alignment The alignment in bytes (must be a power-of-two).
+* @return Reference to the new allocated aligned memory.
 * @note The memory is guaranteed to be initialized to zero.
 * @note This function can be called without the platform to be initialized.
 * @see @ref subsection_category_memory_handling_aligned_allocate
@@ -3851,7 +3875,7 @@ fpl_common_api void *fplMemoryAlignedAllocate(const size_t size, const size_t al
 
 /**
 * @brief Releases the aligned memory allocated from the operating system.
-* @param[in] ptr Reference to the aligned allocated memory (void*).
+* @param[in] ptr Reference to the aligned allocated memory.
 * @warning This should never be called with a not-aligned memory reference! For freeing not-aligned memory, use @ref fplMemoryFree() instead.
 * @note This function can be called without the platform to be initialized.
 * @see @ref subsection_category_memory_handling_aligned_free
@@ -3860,8 +3884,8 @@ fpl_common_api void fplMemoryAlignedFree(void *ptr);
 
 /**
 * @brief Retrieves the current system memory usage.
-* @param[out] outInfos Reference to the target @ref fplMemoryInfos structure.
-* @return Returns true when the memory info was retrieved, false otherwise (bool).
+* @param[out] outInfos Reference to the target structure @ref fplMemoryInfos.
+* @return Returns true when the memory info was retrieved, false otherwise.
 * @see @ref section_category_hardware_memstate
 */
 fpl_platform_api bool fplMemoryGetInfos(fplMemoryInfos *outInfos);
@@ -3924,8 +3948,8 @@ typedef struct fplOSVersionInfos {
 
 /**
 * @brief Gets version information from the operating system.
-* @param[out] outInfos Reference to the target @ref fplOSVersionInfos structure.
-* @return Returns true when the information could be retrieved, false otherwise (bool).
+* @param[out] outInfos Reference to the target structure @ref fplOSVersionInfos.
+* @return Returns true when the information could be retrieved, false otherwise.
 * @note This may be called without initializing the platform.
 * @see @ref section_category_platform_os_version
 */
@@ -3942,9 +3966,9 @@ fpl_platform_api bool fplOSGetVersionInfos(fplOSVersionInfos *outInfos);
 // ----------------------------------------------------------------------------
 
 /**
-* @brief Gets the username of the current logged-in user from the session
-* @param[out] nameBuffer The target buffer
-* @param[in] maxNameBufferLen The max length of the target buffer
+* @brief Gets the username of the current logged-in user from the session.
+* @param[out] nameBuffer The target character buffer.
+* @param[in] maxNameBufferLen The max length of the target character buffer.
 * @return Returns the number of required/written characters, excluding the null-terminator
 * @see @ref section_category_platform_os_username
 */
@@ -3964,7 +3988,8 @@ fpl_platform_api size_t fplSessionGetUsername(char *nameBuffer, const size_t max
 /**
 * @enum fplCPUArchType
 * @brief An enumeration of architecture types.
-*/typedef enum fplCPUArchType {
+*/
+typedef enum fplCPUArchType {
     //! Unknown architecture.
     fplCPUArchType_Unknown = 0,
     //! X86 architecture.
@@ -4009,7 +4034,10 @@ typedef enum fplCPUCapabilitiesType {
 */
 fpl_common_api const char *fplGetCPUCapabilitiesTypeName(const fplCPUCapabilitiesType type);
 
-//! Container representing the capabilities of an x86 CPU.
+/**
+* @struct fplX86CPUCapabilities
+* @brief Container storing the capabilities of an x86 CPU.
+*/
 typedef struct fplX86CPUCapabilities {
     //! MMX support.
     bool hasMMX;
@@ -4050,7 +4078,10 @@ typedef struct fplX86CPUCapabilities {
 } fplX86CPUCapabilities;
 fplStaticAssert(sizeof(fplX86CPUCapabilities) <= 28);
 
-//! Container representing the capabilities of an ARM CPU.
+/**
+* @struct fplARMCPUCapabilities
+* @brief Container storing the capabilities of an ARM CPU.
+*/
 typedef struct fplARMCPUCapabilities {
     //! Has NEON support.
     bool hasNEON;
@@ -4067,7 +4098,10 @@ typedef struct fplARMCPUCapabilities {
 } fplARMCPUCapabilities;
 fplStaticAssert(sizeof(fplARMCPUCapabilities) <= 28);
 
-//! Container representing the capabilities of a CPU.
+/**
+* @struct fplARMCPUCapabilities
+* @brief Container storing the capabilities of a CPU.
+*/
 typedef struct fplCPUCapabilities {
     //! The capabilities type.
     fplCPUCapabilitiesType type;
@@ -4082,7 +4116,10 @@ typedef struct fplCPUCapabilities {
 } fplCPUCapabilities;
 fplStaticAssert(sizeof(fplCPUCapabilities) == 32);
 
-//! Container representing the 4-registers for a CPU-Leaf (EAX, EBX, ECX, EDX).
+/**
+* @union fplCPUIDLeaf
+* @brief Container representing the 4-registers for a CPU-Leaf (EAX, EBX, ECX, EDX).
+*/
 typedef union fplCPUIDLeaf {
     struct {
         //! The 32-bit EAX Register.
@@ -4101,62 +4138,62 @@ fplStaticAssert(sizeof(fplCPUIDLeaf) == 16);
 
 /**
 * @brief Queries the x86 CPUID leaf register (EAX, EBX, ECX, EDX) for the given function id.
-* @param[in] functionId The CPUID function id (uint32_t).
-* @param[out] outLeaf Reference to the target fplCPUIDLeaf.
-* @return Returns true when the specified @ref fplCPUIDLeaf was updated, false otherwise (bool).
+* @param[in] functionId The CPUID function id.
+* @param[out] outLeaf Reference to the target structure @ref fplCPUIDLeaf.
+* @return Returns true when CPUID is supported and the leaf was successfully updated, false otherwise.
 * @warning This function works on X86 architectures only.
 */
 fpl_common_api bool fplCPUID(const uint32_t functionId, fplCPUIDLeaf *outLeaf);
 
 /**
 * @brief Gets the x86 extended control register for index zero.
-* @return Returns the extended control register on x86 or zero for non-x86 architectures (uint64_t).
-* @warning This function works on X86 architectures only.
+* @return Returns the extended control register on x86 or zero for non-x86 architectures.
+* @warning This function works on X86 architectures only!
 */
 fpl_common_api uint64_t fplCPUXCR0(void);
 
 /**
 * @brief Reads the current time stamp counter (RDTSC).
-* @return Returns the number of cycles since the system start or zero for non-x86 architectures (uint64_t).
+* @return Returns the number of cycles since the system start or zero for non-x86 architectures.
 * @warning This function works on X86 architectures only.
 */
 fpl_common_api uint64_t fplCPURDTSC(void);
 
 /**
 * @brief Gets the string representation of the given architecture type.
-* @param[in] type The @ref fplCPUArchType enumeration value.
-* @return Returns a string for the given architecture type (const char*).
+* @param[in] type The enumeration value @ref fplCPUArchType.
+* @return Returns a string for the given architecture type.
 * @see @ref section_category_hardware_cpuarch
 */
 fpl_common_api const char *fplCPUGetArchName(const fplCPUArchType type);
 
 /**
 * @brief Retrieves the total number of processor cores.
-* @return Returns the total number of processor cores (size_t).
+* @return Returns the total number of processor cores.
 * @see @ref section_category_hardware_corecount
 */
 fpl_platform_api size_t fplCPUGetCoreCount(void);
 
 /**
 * @brief Retrieves the name of the processor.
-* @param[out] destBuffer Reference to the destination buffer (char*).
-* @param[indc ] maxDestBufferLen The max length of the destination buffer (size_t).
-* @return Returns the number of required/written characters, excluding the null-terminator (size_t).
+* @param[out] destBuffer Reference to the destination character buffer.
+* @param[in] maxDestBufferLen The max length of the destination character buffer.
+* @return Returns the number of required/written characters, excluding the null-terminator.
 * @see @ref section_category_hardware_cpuname
 */
 fpl_common_api size_t fplCPUGetName(char *destBuffer, const size_t maxDestBufferLen);
 
 /**
 * @brief Gets the capabilities of the processor.
-* @param[out] outCaps Reference to the output @ref fplCPUCapabilities.
-* @return Returns true when the capabilities could be retrieved, false otherwise (bool).
+* @param[out] outCaps Reference to the target structure @ref fplCPUCapabilities.
+* @return Returns true when the capabilities could be retrieved, false otherwise.
 * @see @ref section_category_hardware_cpucaps
 */
 fpl_common_api bool fplCPUGetCapabilities(fplCPUCapabilities *outCaps);
 
 /**
 * @brief Gets the processor architecture type.
-* @return Returns the processor architecture type (fplCPUArchType).
+* @return Returns the processor architecture enumeration value @ref fplCPUArchType.
 * @see @ref section_category_hardware_cpuarch
 */
 fpl_platform_api fplCPUArchType fplCPUGetArchitecture(void);
@@ -4244,8 +4281,8 @@ typedef enum fplPlatformResultType {
 
 /**
 * @brief Gets the string representation of a platform result type.
-* @param[in] type The platform result type as @ref fplPlatformResultType.
-* @return Returns the string representation of a platform result type (const char*).
+* @param[in] type The platform result type enumeration value @ref fplPlatformResultType.
+* @return Returns the string representation of a platform result type.
 * @see @ref section_category_initialization_result
 */
 fpl_common_api const char *fplPlatformGetResultName(const fplPlatformResultType type);
@@ -4307,12 +4344,12 @@ typedef struct fplOpenGLSettings {
 #if defined(FPL__ENABLE_VIDEO_VULKAN)
 
 /**
-* @brief A function definition for the debug callback called when the validation layer writes something.
-* @param[in] userData Reference to user data (void*).
-* @param[in] message The message from the validation layer (const char*).
-* @param[in] messageSeverity The severity of the message (uint32_t).
-* @param[in] messageType The type of the message (uint32_t).
-* @param[in] debugUtilsMessengerCallbackData Reference to the debug utils messenger callback data (const void*).
+* @brief A function definition for the debug callback that is called, when the validation layer writes something.
+* @param[in] userData Reference to opaque user data.
+* @param[in] message The message from the validation layer.
+* @param[in] messageSeverity The severity of the message.
+* @param[in] messageType The type of the message.
+* @param[in] debugUtilsMessengerCallbackData Reference to the debug utils messenger callback data.
 */
 typedef void (fplVulkanValidationLayerCallback)(void *userData, const char *message, const uint32_t messageSeverity, const uint32_t messageType, const void *debugUtilsMessengerCallbackData);
 
@@ -4353,17 +4390,17 @@ typedef enum fplVulkanValidationSeverity {
 * @brief Stores Vulkan video settings.
 */
 typedef struct fplVulkanSettings {
-    //! The application version (only required if @ref fplVulkanSettings.instanceHandle is @ref fpl_null).
+    //! The application version (only required if @ref fplVulkanSettings.instanceHandle is null).
     fplVersionInfo appVersion;
-    //! The engine version (only required if @ref fplVulkanSettings.instanceHandle is @ref fpl_null).
+    //! The engine version (only required if @ref fplVulkanSettings.instanceHandle is null).
     fplVersionInfo engineVersion;
-    //! The preferred Vulkan API version (only required if @ref fplVulkanSettings.instanceHandle is @ref fpl_null).
+    //! The preferred Vulkan API version (only required if @ref fplVulkanSettings.instanceHandle is null).
     fplVersionInfo apiVersion;
     //! Custom Vulkan driver library file name/path (null = Default Vulkan library).
     const char *libraryFile;
-    //! The application name (only required if @ref fplVulkanSettings.instanceHandle is @ref fpl_null).
+    //! The application name (only required if @ref fplVulkanSettings.instanceHandle is null).
     const char *appName;
-    //! The engine name (only required if @ref fplVulkanSettings.instanceHandle is @ref fpl_null).
+    //! The engine name (only required if @ref fplVulkanSettings.instanceHandle is null).
     const char *engineName;
     //! The Vulkan instance (VkInstance), when null it will be automatically created.
     void *instanceHandle;
@@ -4371,11 +4408,11 @@ typedef struct fplVulkanSettings {
     const void *allocator;
     //! The validation layer callback @ref fplVulkanValidationLayerCallback.
     fplVulkanValidationLayerCallback *validationLayerCallback;
-    //! User data passed to any callbacks.
+    //! User opaque user data that is passed to any validation layer callbacks.
     void *userData;
-    //! The @ref fplVulkanValidationLayerMode.
+    //! The validation layer mode @ref fplVulkanValidationLayerMode.
     fplVulkanValidationLayerMode validationLayerMode;
-    //! The @ref fplVulkanValidationSeverity.
+    //! The validation severity @ref fplVulkanValidationSeverity.
     fplVulkanValidationSeverity validationSeverity;
 } fplVulkanSettings;
 #endif // FPL__ENABLE_VIDEO_VULKAN
@@ -4414,7 +4451,7 @@ typedef struct fplVideoSettings {
 
 /**
 * @brief Resets the given video settings to default values.
-* @param[out] video Reference to the target @ref fplVideoSettings structure.
+* @param[out] video Reference to the target structure @ref fplVideoSettings.
 * @note This will not change any video settings! To change the actual settings you have to pass the entire @ref fplSettings container as an argument in @ref fplPlatformInit().
 * @see @ref category_video_general_notes
 */
@@ -4653,7 +4690,7 @@ FPL_ENUM_AS_FLAGS_OPERATORS(fplAudioChannelType);
 
 /**
 * @brief Gets the name of the specified audio channel type.
-* @param[in] type Audio channel type.
+* @param[in] type Audio channel type enumeration value @ref fplAudioChannelType.
 * @return Returns the name of the audio channel type.
 */
 fpl_common_api const char *fplGetAudioChannelTypeName(const fplAudioChannelType type);
@@ -4772,12 +4809,12 @@ typedef union fplSpecificAudioSettings {
 } fplSpecificAudioSettings;
 
 /**
-* @brief A function definition for a callback for reading audio samples from the client.
-* @param[in] deviceFormat Reference to the @ref fplAudioFormat structure, the audio card expects.
-* @param[in] frameCount The number of frames the client should write at max (uint32_t).
-* @param[out] outputSamples Reference to the target samples (void*).
-* @param[in] userData Reference to the user data specified in @ref fplAudioSettings (void*).
-* @return Returns the number of written frames (uint32_t).
+* @brief A function definition for a callback that is called to read audio samples from the client.
+* @param[in] deviceFormat Reference to the source audio format structure @ref fplAudioFormat.
+* @param[in] frameCount The number of frames the client should write at max.
+* @param[out] outputSamples Reference to the target samples.
+* @param[in] userData Reference to the user data specified in @ref fplAudioSettings.
+* @return Returns the number of written frames.
 * @see @ref subsection_category_audio_general_default_init_clientcallback
 */
 typedef uint32_t(fpl_audio_client_read_callback)(const fplAudioFormat *deviceFormat, const uint32_t frameCount, void *outputSamples, void *userData);
@@ -4809,7 +4846,7 @@ typedef struct fplAudioSettings {
 
 /**
 * @brief Resets the given audio settings to default settings (S16 PCM, 48 kHz, 2 Channels).
-* @param[out] audio Reference to the target @ref fplAudioSettings structure.
+* @param[out] audio Reference to the target audio settings structure @ref fplAudioSettings.
 * @note This will not change any audio settings! To change the actual settings you have to pass the entire @ref fplSettings container as an argument in @ref fplPlatformInit().
 * @see @ref section_category_audio_general_notes
 */
@@ -4844,10 +4881,10 @@ typedef struct fplImageSource {
 /**
 * @brief A function definition for a callback executed for each raw window event.
 * @param[in] platformType The current @ref fplPlatformType.
-* @param[in, out] windowState Reference to the opaque window state, mapping to fpl internal window state.
+* @param[in, out] windowState Reference to the opaque window state, mapping to the actual internal window state.
 * @param[in] rawEventData Reference to the raw event data structure for the current OS (XEvent for POSIX, MSG for Win32, etc.).
 * @param[in] userData Reference to the specific user data specified in @ref fplWindowCallbacks.
-* @return Needs to return true if the event is handled (bool).
+* @return Needs to return true if the event is handled, false otherwise.
 */
 typedef bool (fpl_window_event_callback)(const fplPlatformType platformType, void *windowState, void *rawEventData, void *userData);
 
@@ -4857,7 +4894,7 @@ typedef bool (fpl_window_event_callback)(const fplPlatformType platformType, voi
 * @param[in, out] windowState Reference to the opaque window state, mapping to internal window state.
 * @param[in] rawEventData Reference to the raw event data structure for the current OS (XEvent for POSIX, MSG for Win32, etc.).
 * @param[in] userData Reference to the specific user data specified in @ref fplWindowCallbacks.
-* @return Needs to return true if the event is handled (bool).
+* @return Needs to return true if the event is handled, false otherwise.
 */
 typedef fpl_window_event_callback fpl_window_exposed_callback;
 
@@ -4921,11 +4958,11 @@ typedef union fplColor32 {
 } fplColor32;
 
 /**
-* @brief Creates a @ref fplColor32 from the specified r, g, b, a components.
-* @param[in] r The red component in range of 0-255 (uint8_t).
-* @param[in] g The green component in range of 0-255 (uint8_t).
-* @param[in] b The blue component in range of 0-255 (uint8_t).
-* @param[in] a The alpha component in range of 0-255 (uint8_t).
+* @brief Creates a 32-bit color structure from the specified R, G, B, A components.
+* @param[in] r The red component in range of 0-255.
+* @param[in] g The green component in range of 0-255.
+* @param[in] b The blue component in range of 0-255.
+* @param[in] a The alpha component in range of 0-255.
 * @return The resulting @ref fplColor32.
 */
 fpl_common_api fplColor32 fplCreateColorRGBA(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a);
@@ -4965,7 +5002,7 @@ typedef struct fplWindowSettings {
 
 /**
 * @brief Resets the given window settings container to default settings.
-* @param[out] window Reference to the target @ref fplWindowSettings structure.
+* @param[out] window Reference to the target structure @ref fplWindowSettings.
 * @note This will not change any window settings! To change the actual settings you have to pass the entire @ref fplSettings container as an argument in @ref fplPlatformInit().
 * @see @ref section_category_window_style_notes
 */
@@ -4982,7 +5019,7 @@ typedef struct fplConsoleSettings {
 
 /**
 * @brief Resets the given console settings container to default settings.
-* @param[out] console Reference to the target @ref fplConsoleSettings structure.
+* @param[out] console Reference to the target structure @ref fplConsoleSettings.
 * @note This will not change any console settings! To change the actual settings you have to pass the entire @ref fplSettings container as an argument in @ref fplPlatformInit().
 */
 fpl_common_api void fplSetDefaultConsoleSettings(fplConsoleSettings *console);
@@ -4992,7 +5029,7 @@ fpl_common_api void fplSetDefaultConsoleSettings(fplConsoleSettings *console);
 * @brief Stores input settings.
 */
 typedef struct fplInputSettings {
-    //! Frequency in ms for detecting new or removed controllers (Default: 200).
+    //! Frequency in ms for detecting new or removed controllers (Default: 1000).
     uint32_t controllerDetectionFrequency;
     //! Disable input events entirely (Default: false).
     fpl_b32 disabledEvents;
@@ -5000,7 +5037,7 @@ typedef struct fplInputSettings {
 
 /**
 * @brief Resets the given input settings container to default values.
-* @param[out] input Reference to the target @ref fplInputSettings structure.
+* @param[out] input Reference to the target structure @ref fplInputSettings.
 * @note This will not change any input settings! To change the actual settings you have to pass the entire @ref fplSettings container as an argument in @ref fplPlatformInit().
 * @see @ref page_category_input_config
 */
@@ -5008,17 +5045,17 @@ fpl_common_api void fplSetDefaultInputSettings(fplInputSettings *input);
 
 /**
 * @brief A function definition for a custom memory allocation callback.
-* @param[in] userData Reference to user data (void*).
-* @param[in] size The size to be allocated (size_t).
-* @param[in] alignment The alignment in bytes (size_t).
-* @return Returns a reference to the allocated memory (void*).
+* @param[in] userData Reference to opaque user data.
+* @param[in] size The size to be allocated.
+* @param[in] alignment The alignment in bytes.
+* @return Returns a reference to the allocated memory.
 */
 typedef void *(fpl_memory_allocate_callback)(void *userData, const size_t size, const size_t alignment);
 
 /**
 * @brief A function definition for a custom memory release callback.
-* @param[in] userData Reference to user data (void*).
-* @param[in] ptr Reference to the memory to be released (void*).
+* @param[in] userData Reference to opaque user data.
+* @param[in] ptr Reference to the memory to be released.
 */
 typedef void (fpl_memory_release_callback)(void *userData, void *ptr);
 
@@ -5080,7 +5117,7 @@ typedef struct fplSettings {
 
 /**
 * @brief Resets the given settings container to default values for window, video, audio, etc.
-* @param[out] settings Reference to the target @ref fplSettings structure.
+* @param[out] settings Reference to the target structure @ref fplSettings.
 * @note This will not change the active settings! To change the actual settings you have to pass this settings container as an argument in @ref fplPlatformInit().
 * @see @ref section_category_initialization_with_settings
 */
@@ -5088,14 +5125,14 @@ fpl_common_api void fplSetDefaultSettings(fplSettings *settings);
 
 /**
 * @brief Creates a full settings structure containing default values.
-* @return Returns a defaulted @ref fplSettings structure.
+* @return Returns a default settings structure @ref fplSettings.
 * @see @ref section_category_initialization_tips
 */
 fpl_common_api fplSettings fplMakeDefaultSettings(void);
 
 /**
 * @brief Gets the current settings.
-* @return Returns a reference to the @ref fplSettings structure.
+* @return Returns a reference to the source settings structure @ref fplSettings.
 * @see @ref section_category_initialization_tips
 */
 fpl_common_api const fplSettings *fplGetCurrentSettings(void);
@@ -5119,8 +5156,8 @@ fpl_common_api fplPlatformType fplGetPlatformType(void);
 
 /**
 * @brief Gets the string representation of the given platform type.
-* @param[in] type The platform type @ref fplPlatformType.
-* @return Returns the string representation for the given platform type @ref fplPlatformType (const char*).
+* @param[in] type The platform type enumeration value @ref fplPlatformType.
+* @return Returns the string representation for the given platform type @ref fplPlatformType.
 * @see @ref section_category_platform_type
 */
 fpl_common_api const char *fplGetPlatformName(const fplPlatformType type);
@@ -5128,8 +5165,8 @@ fpl_common_api const char *fplGetPlatformName(const fplPlatformType type);
 /**
 * @brief Initializes the platform layer.
 * @param[in] initFlags The init flags @ref fplInitFlags used to enable certain features, like video/audio, etc.
-* @param[in] initSettings Reference to the @ref fplSettings structure to control the platform layer behavior or systems. If null is passed here, default values are used automatically.
-* @return Returns true when it was successful, false otherwise (bool).
+* @param[in] initSettings Reference to the source structure @ref fplSettings, that controls the platform layer behaviors or systems. If null is passed here, default values are used automatically.
+* @return Returns true when it was successful, false otherwise.
 * @note @ref fplPlatformRelease() must be called when you are done! After @ref fplPlatformRelease() has been called, you can call this function again if needed.
 * @see @ref section_category_initialization_simple
 */
@@ -5137,7 +5174,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 
 /**
 * @brief Gets the result type of the platform initialization.
-* @return Returns the result type as @ref fplPlatformResultType.
+* @return Returns the platform result type enumeration value @ref fplPlatformResultType.
 * @see @ref section_category_errorhandling_getplatformresult
 */
 fpl_common_api fplPlatformResultType fplGetPlatformResult(void);
