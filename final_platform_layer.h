@@ -1607,8 +1607,8 @@ SOFTWARE.
 
 	@section section_support_status_known_limitation Known Limitations
 
-	- Some window features not implemented in X11 (See @IMPLEMENT)
-	- Some CPU query features not implemented in non-x86 platforms (See @IMPLEMENT)
+	- Some window features not implemented in X11
+	- Some CPU query features not implemented in non-x86 platforms
 	- Linux gamepad device locked to /dev/input/js0 for now
 	- No unix memory query functions
 	- No unix audio backend implemented (OSS is planned)
@@ -2953,7 +2953,7 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 * @brief Manually allocate the number of specified bytes of memory on the stack.
 * @param[in] size Number of bytes to allocate.
 * @return A pointer to the start of the stack memory.
-* @warn Use this very carefully, as it may break stack memory!
+* @note Use this very carefully, as it may break stack memory!
 */
 #define fplStackAllocate(size) fpl__m_StackAllocate(size)
 
