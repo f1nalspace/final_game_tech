@@ -2310,7 +2310,7 @@ SOFTWARE.
 //
 
 /**
-* @enum fplX86InstructionSetType
+* @enum fplX86InstructionSetLevel
 * @brief Defines the X86 instruction sets up to AVX512.
 */
 typedef enum fplX86InstructionSetLevel {
@@ -4113,7 +4113,7 @@ typedef struct fplARMCPUCapabilities {
 fplStaticAssert(sizeof(fplARMCPUCapabilities) <= 28);
 
 /**
-* @struct fplARMCPUCapabilities
+* @struct fplCPUCapabilities
 * @brief Container storing the capabilities of a CPU.
 */
 typedef struct fplCPUCapabilities {
@@ -8605,15 +8605,6 @@ fpl_platform_api size_t fplGetSystemLocale(const fplLocaleFormat targetFormat, c
 * @param[out] buffer Reference to the target string buffer for writing the locale into.
 * @param[in] maxBufferLen The maximum length of the buffer.
 * @return The number of required/written characters, excluding the null-terminator.
-*/
-fpl_platform_api size_t fplGetInputLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen);
-
-/**
-* @brief Gets the input locale in the given target format.
-* @param targetFormat Target locale format value @ref fplLocaleFormat
-* @param buffer Target string buffer for writing the locale into.
-* @param maxBufferLen The maximum length of the buffer.
-* @return Returns the number of required/written characters, excluding the null-terminator.
 */
 fpl_platform_api size_t fplGetInputLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen);
 
