@@ -2362,7 +2362,10 @@ typedef enum fplX86InstructionSetLevel {
 #	define FPL__M_X86_CPU_INSTR_SET_LEVEL fplX86InstructionSetLevel_None
 #endif
 
-//! Compiled X86 CPU Instruction Set. @ref fplX86InstructionSetLevel
+/**
+* @def FPL_X86_CPU_INSTR_SET_LEVEL
+* @brief Compiled X86 CPU Instruction Set. @ref fplX86InstructionSetLevel
+*/
 #define FPL_X86_CPU_INSTR_SET_LEVEL FPL__M_X86_CPU_INSTR_SET_LEVEL
 
 //
@@ -2661,10 +2664,17 @@ fpl_internal fpl_force_inline void fpl__m_DebugBreak(void) { __asm__ __volatile_
 #else
 #	define fpl__m_null 0
 #endif
-//! Null
+
+/**
+* @def fpl_null
+* @brief Defines a NULL pointer value that works in C/C++.
+*/
 #define fpl_null fpl__m_null
 
-//! 32-bit boolean
+/**
+* @typedef fpl_b32
+* @brief Defines a integer based boolean that has a width of 32-bit.
+*/
 typedef int32_t fpl_b32;
 
 //
@@ -2943,6 +2953,7 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 * @brief Manually allocate the number of specified bytes of memory on the stack.
 * @param[in] size Number of bytes to allocate.
 * @return A pointer to the start of the stack memory.
+* @warn Use this very carefully, as it may break stack memory!
 */
 #define fplStackAllocate(size) fpl__m_StackAllocate(size)
 
@@ -2975,8 +2986,11 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 #	define FPL__M_ENUM_AS_FLAGS_OPERATORS(etype)
 #endif
 
-//! Macro for optionally adding enum operators for bitwise and/or/xor
-#define FPL_ENUM_AS_FLAGS_OPERATORS(type) FPL__M_ENUM_AS_FLAGS_OPERATORS(type)
+/**
+* @def FPL_ENUM_AS_FLAGS_OPERATORS
+* @brief Internal macro used to create required enum operators for C++.
+* @param[in] type The type of the enum.
+*/#define FPL_ENUM_AS_FLAGS_OPERATORS(type) FPL__M_ENUM_AS_FLAGS_OPERATORS(type)
 
 // ****************************************************************************
 //
@@ -3784,7 +3798,7 @@ fpl_common_api void fplAtomicStorePtr(volatile void **dest, const void *value);
 
 /**
 * @struct fplMemoryBlock
-* @brief Stores a memory block.
+* @brief Stores properties that represents any block of memory.
 */
 typedef struct fplMemoryBlock {
     //! The base reference.
@@ -3795,7 +3809,7 @@ typedef struct fplMemoryBlock {
 
 /**
 * @struct fplMemoryInfos
-* @brief Stores information about current memory usage.
+* @brief Stores information about the current memory usage.
 */
 typedef struct fplMemoryInfos {
     //! Size of physical installed memory in bytes.
@@ -3818,7 +3832,7 @@ typedef struct fplMemoryInfos {
 
 /**
 * @brief Clears the given memory by the given size to zero.
-* @param[in] mem Reference to the memory.
+* @param[in] mem Reference to the target memory.
 * @param[in] size The number of bytes to be cleared to zero (size_t).
 * @see @ref subsection_category_memory_handling_ops_clear
 */
@@ -3826,7 +3840,7 @@ fpl_common_api void fplMemoryClear(void *mem, const size_t size);
 
 /**
 * @brief Sets the given memory by the given size to the given value.
-* @param[in] mem Reference to the memory.
+* @param[in] mem Reference to the target memory.
 * @param[in] value The value to be set.
 * @param[in] size The number of bytes to be set.
 * @see @ref subsection_category_memory_handling_ops_set
@@ -4880,7 +4894,7 @@ typedef struct fplImageSource {
 
 /**
 * @brief A function definition for a callback executed for each raw window event.
-* @param[in] platformType The current @ref fplPlatformType.
+* @param[in] platformType The current platform type @ref fplPlatformType.
 * @param[in, out] windowState Reference to the opaque window state, mapping to the actual internal window state.
 * @param[in] rawEventData Reference to the raw event data structure for the current OS (XEvent for POSIX, MSG for Win32, etc.).
 * @param[in] userData Reference to the specific user data specified in @ref fplWindowCallbacks.
@@ -4890,7 +4904,7 @@ typedef bool (fpl_window_event_callback)(const fplPlatformType platformType, voi
 
 /**
 * @brief A function definition for a callback executed when the window needs to be exposed/repainted.
-* @param[in] platformType The current @ref fplPlatformType.
+* @param[in] platformType The current platform type @ref fplPlatformType.
 * @param[in, out] windowState Reference to the opaque window state, mapping to internal window state.
 * @param[in] rawEventData Reference to the raw event data structure for the current OS (XEvent for POSIX, MSG for Win32, etc.).
 * @param[in] userData Reference to the specific user data specified in @ref fplWindowCallbacks.
@@ -5188,7 +5202,7 @@ fpl_common_api void fplPlatformRelease(void);
 
 /**
 * @brief Gets a value indicating whether the platform is initialized.
-* @return Returns true if the platform is initialized, false otherwise (bool).
+* @return Returns true if the platform is initialized, false otherwise.
 */
 fpl_common_api bool fplIsPlatformInitialized(void);
 
@@ -5234,10 +5248,10 @@ typedef enum fplLogLevel {
 
 /**
 * @brief A function definition for a callback for printing a log message.
-* @param[in] funcName The function name (const char*).
-* @param[in] lineNumber The line number (int).
+* @param[in] funcName The function name.
+* @param[in] lineNumber The line number.
 * @param[in] level The log level @ref fplLogLevel.
-* @param[in] message The log message string (const char*).
+* @param[in] message The log message string.
 * @see @ref subsection_category_logging_logging_example_custom
 */
 typedef void (fpl_log_func_callback)(const char *funcName, const int lineNumber, const fplLogLevel level, const char *message);
@@ -5328,7 +5342,7 @@ typedef struct fplLogSettings {
 
 /**
 * @brief Overwrites the current log settings.
-* @param[in] params Reference to the source @ref fplLogSettings structure.
+* @param[in] params Reference to the source log settings structure @ref fplLogSettings.
 * @note This function can be called regardless of the initialization state!
 * @see @ref section_category_logging_logging
 */
@@ -5336,7 +5350,7 @@ fpl_common_api void fplSetLogSettings(const fplLogSettings *params);
 
 /**
 * @brief Gets the current log settings.
-* @return Returns a reference to the @ref fplLogSettings structure.
+* @return Returns a reference to the current log settings structure @ref fplLogSettings.
 * @note This function can be called regardless of the initialization state!
 * @see @ref section_category_logging_logging
 */
@@ -5372,7 +5386,7 @@ fpl_common_api fplLogLevel fplGetMaxLogLevel(void);
 
 /**
 * @brief Gets the last internal error string.
-* @return Returns the last error string or an empty string when there was no error (const char*).
+* @return Returns the last error string or an empty string when there was no error.
 * @note This function can be called regardless of the initialization state!
 * @see @ref section_category_errorhandling_getlatest
 */
@@ -5380,8 +5394,8 @@ fpl_common_api const char *fplGetLastError(void);
 
 /**
 * @brief Gets the last error string from the given index.
-* @param[in] index The index (size_t).
-* @return Returns the last error string from the given index or an empty string when there was no error (const char*).
+* @param[in] index The index of the error.
+* @return Returns the last error string from the given index or an empty string when there was no error.
 * @note This function can be called regardless of the initialization state!
 * @see @ref section_category_errorhandling_getbyindex
 */
@@ -5389,7 +5403,7 @@ fpl_common_api const char *fplGetErrorByIndex(const size_t index);
 
 /**
 * @brief Gets the count of total last errors.
-* @return Returns the number of last errors or zero when there was no error (size_t).
+* @return Returns the number of last errors or zero when there was no error.
 * @note This function can be called regardless of the initialization state!
 * @see @ref section_category_errorhandling_count
 */
@@ -5439,18 +5453,18 @@ typedef struct fplDynamicLibraryHandle {
 
 /**
 * @brief Loads a dynamic library and returns if the load was successful or not.
-* @param[in] libraryFilePath The path to the library with included file extension (.dll / .so) (const char*).
-* @param[out] outHandle Reference to the output handle @ref fplDynamicLibraryHandle.
-* @return Returns true when the library was loaded successfully, false otherwise (bool).
+* @param[in] libraryFilePath The path to the library with included file extension (.dll / .so).
+* @param[out] outHandle Reference to the output library handle @ref fplDynamicLibraryHandle.
+* @return Returns true when the library was loaded successfully, false otherwise.
 * @see @ref section_category_dll_load
 */
 fpl_platform_api bool fplDynamicLibraryLoad(const char *libraryFilePath, fplDynamicLibraryHandle *outHandle);
 
 /**
 * @brief Returns the dynamic library procedure address for the given procedure name.
-* @param[in] handle Reference to the @ref fplDynamicLibraryHandle handle to the loaded library.
-* @param[in] name The name of the procedure (const char*).
-* @return Returns the procedure address for the given procedure name or when the procedure is not found or the library is not loaded (void*).
+* @param[in] handle Reference to the library handle @ref fplDynamicLibraryHandle.
+* @param[in] name The name of the procedure.
+* @return Returns the procedure address for the given procedure name or when the procedure is not found or the library is not loaded.
 * @see @ref section_category_dll_getprocaddr
 */
 fpl_platform_api void *fplGetDynamicLibraryProc(const fplDynamicLibraryHandle *handle, const char *name);
@@ -5473,7 +5487,7 @@ fpl_platform_api void fplDynamicLibraryUnload(fplDynamicLibraryHandle *handle);
 
 /**
 * @brief Writes the given text into the debugger output stream.
-* @param[in] text The text to write into the debugger output stream (const char*).
+* @param[in] text The text to write into the debugger output stream.
 * @note This function will only work in IDEs such as MSVC.
 * @see @ref subsection_category_logging_debug_out
 */
@@ -5481,7 +5495,7 @@ fpl_platform_api void fplDebugOut(const char *text);
 
 /**
 * @brief Writes the given formatted text into the debugger output stream.
-* @param[in] format The format used for writing into the debugger output stream (const char*).
+* @param[in] format The format used for writing into the debugger output stream.
 * @param[in] ... The dynamic arguments used for formatting the text.
 * @note This function will only work in IDEs such as MSVC.
 * @see @ref subsection_category_logging_debug_out
@@ -5500,14 +5514,14 @@ fpl_common_api void fplDebugFormatOut(const char *format, ...);
 
 /**
 * @brief Writes the given text to the standard output console buffer.
-* @param[in] text The text to write into the standard output console (const char*).
+* @param[in] text The text to write into the standard output console.
 * @note This is most likely just a wrapper call to fprintf(stdout).
 */
 fpl_platform_api void fplConsoleOut(const char *text);
 
 /**
 * @brief Writes the given text to the standard error console buffer.
-* @param[in] text The text to write into the standard error console (const char*).
+* @param[in] text The text to write into the standard error console.
 * @note This is most likely just a wrapper call to fprintf(stderr).
 */
 fpl_platform_api void fplConsoleError(const char *text);
@@ -5515,13 +5529,13 @@ fpl_platform_api void fplConsoleError(const char *text);
 /**
 * @brief Waits for a character to be typed in the console input and returns it.
 * @note This is most likely just a wrapper call to getchar().
-* @return Returns the character typed in the console input (char).
+* @return Returns the character typed in the console input.
 */
 fpl_platform_api char fplConsoleWaitForCharInput(void);
 
 /**
 * @brief Writes the given formatted text to the standard output console buffer.
-* @param[in] format The format used for writing into the standard output console (const char*).
+* @param[in] format The format used for writing into the standard output console.
 * @param[in] ... The dynamic arguments used for formatting the text.
 * @note This is most likely just a wrapper call to vfprintf(stdout).
 */
@@ -5529,7 +5543,7 @@ fpl_common_api void fplConsoleFormatOut(const char *format, ...);
 
 /**
 * @brief Writes the given formatted text to the standard error console buffer.
-* @param[in] format The format used for writing into the standard error console (const char*).
+* @param[in] format The format used for writing into the standard error console.
 * @param[in] ... The dynamic arguments used for formatting the text.
 * @note This is most likely just a wrapper call to vfprintf(stderr).
 */
@@ -5686,7 +5700,7 @@ typedef struct fplThreadHandle fplThreadHandle;
 /**
 * @brief A function definition for a callback to execute user code inside another thread.
 * @param[in] thread Reference to the thread handle @ref fplThreadHandle.
-* @param[in] data Reference to the user data pointer (void*).
+* @param[in] data Reference to the user data pointer.
 */
 typedef void (fpl_run_thread_callback)(const fplThreadHandle *thread, void *data);
 
@@ -5898,7 +5912,7 @@ fpl_platform_api uint32_t fplGetCurrentThreadId(void);
 
 /**
 * @brief Creates and starts a thread and returns the handle to it.
-* @param[in] runFunc Reference to the run thread callback.
+* @param[in] runFunc Reference to the run thread callback @ref fpl_run_thread_callback.
 * @param[in] data Reference to the user data pointer passed to the execution function callback.
 * @return Returns a pointer to the thread handle structure or null when the limit of active threads has been reached.
 * @warning Do not free this thread context directly!
@@ -5909,7 +5923,7 @@ fpl_platform_api fplThreadHandle *fplThreadCreate(fpl_run_thread_callback *runFu
 
 /**
 * @brief Creates and starts a thread from the specified parameters and returns the handle to it.
-* @param[in] parameters Reference to the thread parameters.
+* @param[in] parameters Reference to the thread parameters @ref fplThreadParameters.
 * @return Returns a pointer to the thread handle structure or null when the limit of active threads has been reached.
 * @warning Do not free this thread context directly!
 * @note The resources are automatically cleaned up when the thread terminates.
@@ -5976,9 +5990,9 @@ fpl_platform_api bool fplThreadWaitForAll(fplThreadHandle **threads, const size_
 
 /**
 * @brief Waits until one of the given threads is done running or the given timeout has been reached.
-* @param[in] threads Reference to the first thread handle pointer.
+* @param[in] threads Reference to the first thread handle @ref fplThreadHandle.
 * @param[in] count The number of threads.
-* @param[in] stride The size in bytes to the next thread handle. When this is set to zero, the array default is used.
+* @param[in] stride The size in bytes to the next thread handle. When this is set to zero, the size of the thread handle is used.
 * @param[in] timeout The number of milliseconds to wait. When this is set to infinite, it will wait indefinitely.
 * @return Returns true when one thread completes or when the timeout has been reached, false otherwise.
 * @see @ref subsection_category_threading_threads_wait_any
@@ -5986,7 +6000,7 @@ fpl_platform_api bool fplThreadWaitForAll(fplThreadHandle **threads, const size_
 fpl_platform_api bool fplThreadWaitForAny(fplThreadHandle **threads, const size_t count, const size_t stride, const fplTimeoutValue timeout);
 /**
 * @brief Initializes the given mutex.
-* @param[in, out] mutex Reference to the mutex handle structure.
+* @param[in, out] mutex Reference to the mutex handle structure @ref fplMutexHandle.
 * @return Returns true when the mutex was initialized, false otherwise.
 * @note Use @ref fplMutexDestroy() when you are done with this mutex.
 * @see @ref section_category_threading_mutexes_init
@@ -5995,14 +6009,14 @@ fpl_platform_api bool fplMutexInit(fplMutexHandle *mutex);
 
 /**
 * @brief Releases the given mutex and clears the structure to zero.
-* @param[in, out] mutex Reference to the mutex handle structure.
+* @param[in, out] mutex Reference to the mutex handle structure @ref fplMutexHandle.
 * @see @ref section_category_threading_mutexes_init
 */
 fpl_platform_api void fplMutexDestroy(fplMutexHandle *mutex);
 
 /**
 * @brief Locks the given mutex and blocks any other threads.
-* @param[in, out] mutex Reference to the mutex handle structure.
+* @param[in, out] mutex Reference to the mutex handle structure @ref fplMutexHandle.
 * @return Returns true when the mutex was locked, false otherwise.
 * @see @ref subsection_category_threading_mutexes_locking_lock
 */
@@ -6010,7 +6024,7 @@ fpl_platform_api bool fplMutexLock(fplMutexHandle *mutex);
 
 /**
 * @brief Tries to lock the given mutex without blocking other threads.
-* @param[in, out] mutex Reference to the mutex handle structure.
+* @param[in, out] mutex Reference to the mutex handle structure @ref fplMutexHandle.
 * @return Returns true when the mutex was locked, false otherwise.
 * @see @ref subsection_category_threading_mutexes_locking_probe
 */
@@ -6018,7 +6032,7 @@ fpl_platform_api bool fplMutexTryLock(fplMutexHandle *mutex);
 
 /**
 * @brief Unlocks the given mutex.
-* @param[in, out] mutex Reference to the mutex handle structure.
+* @param[in, out] mutex Reference to the mutex handle structure @ref fplMutexHandle.
 * @return Returns true when the mutex was unlocked, false otherwise.
 * @see @ref subsection_category_threading_mutexes_locking_unlock
 */
@@ -6026,7 +6040,7 @@ fpl_platform_api bool fplMutexUnlock(fplMutexHandle *mutex);
 
 /**
 * @brief Initializes the given signal.
-* @param[in, out] signal Reference to the signal handle structure.
+* @param[in, out] signal Reference to the signal handle structure @ref fplSignalHandle.
 * @param[in] initialValue The initial value the signal is set to.
 * @return Returns true when initialization was successful, false otherwise.
 * @note Use @ref fplSignalDestroy() when you are done with this Signal to release it.
@@ -6036,14 +6050,14 @@ fpl_platform_api bool fplSignalInit(fplSignalHandle *signal, const fplSignalValu
 
 /**
 * @brief Releases the given signal and clears the structure to zero.
-* @param[in, out] signal Reference to the signal handle structure.
+* @param[in, out] signal Reference to the signal handle structure @ref fplSignalHandle.
 * @see @ref section_category_threading_signals_init
 */
 fpl_platform_api void fplSignalDestroy(fplSignalHandle *signal);
 
 /**
 * @brief Waits until the given signal is woken up.
-* @param[in, out] signal Reference to the signal handle structure.
+* @param[in, out] signal Reference to the signal handle structure @ref fplSignalHandle.
 * @param[in] timeout The number of milliseconds to wait. When this is set to infinite, it will wait indefinitely.
 * @return Returns true when the signal woke up or the timeout has been reached, false otherwise.
 * @see @ref subsection_category_threading_signals_wait_single
@@ -6052,7 +6066,7 @@ fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const fplTime
 
 /**
 * @brief Waits until all the given signals are woken up.
-* @param[in, out] signals Reference to the first signal handle reference.
+* @param[in, out] signals Reference to the first signal handle structure @ref fplSignalHandle.
 * @param[in] count The number of signals.
 * @param[in] stride The size in bytes to the next signal handle. When this is set to zero, the array default is used.
 * @param[in] timeout The number of milliseconds to wait. When this is set to infinite, it will wait indefinitely.
@@ -6063,7 +6077,7 @@ fpl_platform_api bool fplSignalWaitForAll(fplSignalHandle **signals, const size_
 
 /**
 * @brief Waits until any of the given signals wakes up or the timeout has been reached.
-* @param[in, out] signals Reference to the first signal handle reference.
+* @param[in, out] signals Reference to the first signal handle structure @ref fplSignalHandle.
 * @param[in] count The number of signals.
 * @param[in] stride The size in bytes to the next signal handle. When this is set to zero, the array default is used.
 * @param[in] timeout The number of milliseconds to wait. When this is set to infinite, it will wait indefinitely.
@@ -6074,7 +6088,7 @@ fpl_platform_api bool fplSignalWaitForAny(fplSignalHandle **signals, const size_
 
 /**
 * @brief Sets the signal and wakes up the given signal.
-* @param[in, out] signal Reference to the signal handle structure.
+* @param[in, out] signal Reference to the signal handle structure @ref fplSignalHandle.
 * @return Returns true when the signal was set and broadcasted, false otherwise.
 * @see @ref section_category_threading_signals_set
 */
@@ -6082,7 +6096,7 @@ fpl_platform_api bool fplSignalSet(fplSignalHandle *signal);
 
 /**
 * @brief Resets the signal.
-* @param[in, out] signal Reference to the signal handle structure.
+* @param[in, out] signal Reference to the signal handle structure @ref fplSignalHandle.
 * @return Returns true when the signal was reset, false otherwise.
 * @see @ref section_category_threading_signals_reset
 */
@@ -6090,7 +6104,7 @@ fpl_platform_api bool fplSignalReset(fplSignalHandle *signal);
 
 /**
 * @brief Initializes the given condition.
-* @param[in, out] condition Reference to the condition variable structure.
+* @param[in, out] condition Reference to the condition variable structure @ref fplConditionVariable.
 * @return Returns true when initialization was successful, false otherwise.
 * @note Use @ref fplSignalDestroy() when you are done with this Condition Variable to release its resources.
 * @see @ref category_threading_conditions_init
@@ -6099,7 +6113,7 @@ fpl_platform_api bool fplConditionInit(fplConditionVariable *condition);
 
 /**
 * @brief Releases the given condition and clears the structure to zero.
-* @param[in, out] condition Reference to the condition variable structure.
+* @param[in, out] condition Reference to the condition variable structure @ref fplConditionVariable.
 * @see @ref category_threading_conditions_init
 */
 fpl_platform_api void fplConditionDestroy(fplConditionVariable *condition);
@@ -6107,7 +6121,7 @@ fpl_platform_api void fplConditionDestroy(fplConditionVariable *condition);
 /**
 * @brief Sleeps on the given condition and releases the mutex when done.
 * @param[in, out] condition Reference to the condition variable structure.
-* @param[in, out] mutex Reference to the mutex handle structure.
+* @param[in, out] mutex Reference to the mutex handle structure @ref fplConditionVariable.
 * @param[in] timeout The number of milliseconds to wait. When this is set to infinite, it will wait indefinitely.
 * @return Returns true when the function succeeds, false otherwise.
 * @see @ref category_threading_conditions_wait_single
@@ -6116,7 +6130,7 @@ fpl_platform_api bool fplConditionWait(fplConditionVariable *condition, fplMutex
 
 /**
 * @brief Wakes up one thread that waits on the given condition.
-* @param[in, out] condition Reference to the condition variable structure.
+* @param[in, out] condition Reference to the condition variable structure @ref fplConditionVariable.
 * @return Returns true when the function succeeds, false otherwise.
 * @see @ref category_threading_conditions_signal
 */
@@ -6124,7 +6138,7 @@ fpl_platform_api bool fplConditionSignal(fplConditionVariable *condition);
 
 /**
 * @brief Wakes up all threads that wait on the given condition.
-* @param[in, out] condition Reference to the condition variable structure.
+* @param[in, out] condition Reference to the condition variable structure @ref fplConditionVariable.
 * @return Returns true when the function succeeds, false otherwise.
 * @see @ref category_threading_conditions_broadcast
 */
@@ -6132,7 +6146,7 @@ fpl_platform_api bool fplConditionBroadcast(fplConditionVariable *condition);
 
 /**
 * @brief Initializes the semaphore with the given initial value.
-* @param[in, out] semaphore Reference to the semaphore handle structure.
+* @param[in, out] semaphore Reference to the semaphore handle structure @ref fplSemaphoreHandle.
 * @param[in] initialValue The initial value.
 * @return Returns true when the semaphore was initialized, false otherwise.
 * @see @ref category_threading_semaphores_init
@@ -6141,7 +6155,7 @@ fpl_platform_api bool fplSemaphoreInit(fplSemaphoreHandle *semaphore, const uint
 
 /**
 * @brief Releases the internal semaphore resources.
-* @param[in, out] semaphore Reference to the semaphore handle structure.
+* @param[in, out] semaphore Reference to the semaphore handle structure @ref fplSemaphoreHandle.
 * @warning Do not call this when a thread is still waiting on this semaphore.
 * @see @ref category_threading_semaphores_init
 */
@@ -6149,7 +6163,7 @@ fpl_platform_api void fplSemaphoreDestroy(fplSemaphoreHandle *semaphore);
 
 /**
 * @brief Waits for the semaphore until it gets signaled or the timeout has been reached.
-* @param[in, out] semaphore Reference to the semaphore handle structure.
+* @param[in, out] semaphore Reference to the semaphore handle structure @ref fplSemaphoreHandle.
 * @param[in] timeout The number of milliseconds to wait. When this is set to infinite, it will wait indefinitely.
 * @return Returns true when the semaphore got signaled, false otherwise.
 * @note When a semaphore gets signaled, the semaphore value is decreased by one.
@@ -6159,7 +6173,7 @@ fpl_platform_api bool fplSemaphoreWait(fplSemaphoreHandle *semaphore, const fplT
 
 /**
 * @brief Tries to wait for the semaphore until it gets signaled or returns immediately.
-* @param[in, out] semaphore Reference to the semaphore handle structure.
+* @param[in, out] semaphore Reference to the semaphore handle structure @ref fplSemaphoreHandle.
 * @return Returns true when the semaphore got signaled, false otherwise.
 * @note When a semaphore gets signaled, the semaphore value is decreased by one.
 * @see @ref subsection_category_threading_semaphores_trywait
@@ -6168,7 +6182,7 @@ fpl_platform_api bool fplSemaphoreTryWait(fplSemaphoreHandle *semaphore);
 
 /**
 * @brief Gets the current semaphore value.
-* @param[in, out] semaphore Reference to the semaphore handle structure.
+* @param[in, out] semaphore Reference to the semaphore handle structure @ref fplSemaphoreHandle.
 * @return Returns the current semaphore value.
 * @see @ref category_threading_semaphores_getvalue
 */
@@ -6176,7 +6190,7 @@ fpl_platform_api int32_t fplSemaphoreValue(fplSemaphoreHandle *semaphore);
 
 /**
 * @brief Increments the semaphore value by one.
-* @param[in, out] semaphore Reference to the semaphore handle structure.
+* @param[in, out] semaphore Reference to the semaphore handle structure @ref fplSemaphoreHandle.
 * @return Returns true when the semaphore was incremented, false otherwise.
 * @see @ref category_threading_semaphores_post
 */
@@ -6550,7 +6564,7 @@ typedef struct fplFileEntry {
 /**
 * @brief Opens a binary file for reading from a string path and returns the handle of it.
 * @param[in] filePath The file path.
-* @param[out] outHandle Reference to the file handle structure.
+* @param[out] outHandle Reference to the file handle structure @ref fplFileHandle.
 * @return Returns true when the binary file was opened, false otherwise.
 * @see @ref subsection_category_io_binaryfiles_read_open
 */
@@ -6559,7 +6573,7 @@ fpl_platform_api bool fplFileOpenBinary(const char *filePath, fplFileHandle *out
 /**
 * @brief Creates a binary file for writing to the given string path and returns the handle of it.
 * @param[in] filePath The file path.
-* @param[out] outHandle Reference to the file handle structure.
+* @param[out] outHandle Reference to the file handle structure @ref fplFileHandle.
 * @return Returns true when the binary file was created, false otherwise.
 * @see @ref subsection_category_io_binaryfiles_write_create
 */
@@ -6567,7 +6581,7 @@ fpl_platform_api bool fplFileCreateBinary(const char *filePath, fplFileHandle *o
 
 /**
 * @brief Reads a block from the given file and returns the number of bytes read.
-* @param[in] fileHandle Reference to the file handle structure.
+* @param[in] fileHandle Reference to the file handle structure @ref fplFileHandle.
 * @param[in] sizeToRead The number of bytes to read.
 * @param[out] targetBuffer The target memory to write into.
 * @param[in] maxTargetBufferSize Total number of bytes available in the target buffer.
@@ -6579,7 +6593,7 @@ fpl_platform_api uint32_t fplFileReadBlock32(const fplFileHandle *fileHandle, co
 
 /**
 * @brief Reads a block from the given file and returns the number of bytes read.
-* @param[in] fileHandle Reference to the file handle structure.
+* @param[in] fileHandle Reference to the file handle structure @ref fplFileHandle.
 * @param[in] sizeToRead The number of bytes to read.
 * @param[out] targetBuffer The target memory to write into.
 * @param[in] maxTargetBufferSize Total number of bytes available in the target buffer.
@@ -6591,7 +6605,7 @@ fpl_platform_api uint64_t fplFileReadBlock64(const fplFileHandle *fileHandle, co
 
 /**
 * @brief Reads a block from the given file and returns the number of bytes read.
-* @param[in] fileHandle Reference to the file handle structure.
+* @param[in] fileHandle Reference to the file handle structure @ref fplFileHandle.
 * @param[in] sizeToRead The number of bytes to read.
 * @param[out] targetBuffer The target memory to write into.
 * @param[in] maxTargetBufferSize Total number of bytes available in the target buffer.
@@ -6603,7 +6617,7 @@ fpl_platform_api size_t fplFileReadBlock(const fplFileHandle *fileHandle, const 
 
 /**
 * @brief Writes a block to the given file and returns the number of written bytes.
-* @param[in] fileHandle Reference to the file handle structure.
+* @param[in] fileHandle Reference to the file handle structure @ref fplFileHandle.
 * @param[in] sourceBuffer Source memory to read from.
 * @param[in] sourceSize Number of bytes to write.
 * @return Returns the number of bytes written or zero.
@@ -6614,7 +6628,7 @@ fpl_platform_api uint32_t fplFileWriteBlock32(const fplFileHandle *fileHandle, v
 
 /**
 * @brief Writes a block to the given file and returns the number of written bytes.
-* @param[in] fileHandle Reference to the file handle structure.
+* @param[in] fileHandle Reference to the file handle structure @ref fplFileHandle.
 * @param[in] sourceBuffer Source memory to read from.
 * @param[in] sourceSize Number of bytes to write.
 * @return Returns the number of bytes written or zero.
@@ -6625,7 +6639,7 @@ fpl_platform_api uint64_t fplFileWriteBlock64(const fplFileHandle *fileHandle, v
 
 /**
 * @brief Writes a block to the given file and returns the number of written bytes.
-* @param[in] fileHandle Reference to the file handle structure.
+* @param[in] fileHandle Reference to the file handle structure @ref fplFileHandle.
 * @param[in] sourceBuffer Source memory to read from.
 * @param[in] sourceSize Number of bytes to write.
 * @return Returns the number of bytes written or zero.
@@ -6636,7 +6650,7 @@ fpl_common_api size_t fplFileWriteBlock(const fplFileHandle *fileHandle, void *s
 
 /**
 * @brief Sets the current file position by the given position, depending on the mode it's absolute or relative.
-* @param[in] fileHandle Reference to the file handle structure.
+* @param[in] fileHandle Reference to the file handle structure @ref fplFileHandle.
 * @param[in] position Position in bytes.
 * @param[in] mode Position mode.
 * @note Supports max size of 2^31.
@@ -6646,7 +6660,7 @@ fpl_platform_api uint32_t fplFileSetPosition32(const fplFileHandle *fileHandle, 
 
 /**
 * @brief Sets the current file position by the given position, depending on the mode it's absolute or relative.
-* @param[in] fileHandle Reference to the file handle structure.
+* @param[in] fileHandle Reference to the file handle structure @ref fplFileHandle.
 * @param[in] position Position in bytes.
 * @param[in] mode Position mode.
 * @note Supports max size of 2^63.
@@ -6656,7 +6670,7 @@ fpl_platform_api uint64_t fplFileSetPosition64(const fplFileHandle *fileHandle, 
 
 /**
 * @brief Sets the current file position by the given position, depending on the mode it's absolute or relative.
-* @param[in] fileHandle Reference to the file handle structure.
+* @param[in] fileHandle Reference to the file handle structure @ref fplFileHandle.
 * @param[in] position Position in bytes.
 * @param[in] mode Position mode.
 * @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes.
@@ -6666,7 +6680,7 @@ fpl_common_api size_t fplFileSetPosition(const fplFileHandle *fileHandle, const 
 
 /**
 * @brief Gets the current file position in bytes.
-* @param[in] fileHandle Reference to the file handle structure.
+* @param[in] fileHandle Reference to the file handle structure @ref fplFileHandle.
 * @return Returns the current file position in bytes.
 * @note Supports max size of 2^31.
 * @see @ref subsection_category_io_binaryfiles_pos_get
@@ -6675,7 +6689,7 @@ fpl_platform_api uint32_t fplFileGetPosition32(const fplFileHandle *fileHandle);
 
 /**
 * @brief Gets the current file position in bytes.
-* @param[in] fileHandle Reference to the file handle structure.
+* @param[in] fileHandle Reference to the file handle structure @ref fplFileHandle.
 * @return Returns the current file position in bytes.
 * @note Supports max size of 2^63.
 * @see @ref subsection_category_io_binaryfiles_pos_get
@@ -6684,7 +6698,7 @@ fpl_platform_api uint64_t fplFileGetPosition64(const fplFileHandle *fileHandle);
 
 /**
 * @brief Gets the current file position in bytes.
-* @param[in] fileHandle Reference to the file handle structure.
+* @param[in] fileHandle Reference to the file handle structure @ref fplFileHandle.
 * @return Returns the current file position in bytes.
 * @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes.
 * @see @ref subsection_category_io_binaryfiles_pos_get
@@ -6693,14 +6707,14 @@ fpl_common_api size_t fplFileGetPosition(const fplFileHandle *fileHandle);
 
 /**
 * @brief Flushes the buffers of the given file and causes all buffered data to be written to a file.
-* @param[in, out] fileHandle Reference to the file handle structure.
+* @param[in, out] fileHandle Reference to the file handle structure @ref fplFileHandle.
 * @return Returns true when the file buffer was flushed, false otherwise.
 */
 fpl_platform_api bool fplFileFlush(fplFileHandle *fileHandle);
 
 /**
 * @brief Closes the given file and releases the underlying resources and clears the handle to zero.
-* @param[in, out] fileHandle Reference to the file handle structure.
+* @param[in, out] fileHandle Reference to the file handle structure @ref fplFileHandle.
 * @see @ref subsection_category_io_binaryfiles_read_open
 */
 fpl_platform_api void fplFileClose(fplFileHandle *fileHandle);
@@ -6731,7 +6745,7 @@ fpl_platform_api size_t fplFileGetSizeFromPath(const char *filePath);
 
 /**
 * @brief Gets the file size in bytes for an opened file.
-* @param[in] fileHandle Reference to the file handle structure.
+* @param[in] fileHandle Reference to the file handle structure @ref fplFileHandle.
 * @return Returns the file size in bytes or zero.
 * @note Supports max size of 2^31.
 */
@@ -6739,7 +6753,7 @@ fpl_platform_api uint32_t fplFileGetSizeFromHandle32(const fplFileHandle *fileHa
 
 /**
 * @brief Gets the file size in bytes for an opened file.
-* @param[in] fileHandle Reference to the file handle structure.
+* @param[in] fileHandle Reference to the file handle structure @ref fplFileHandle.
 * @return Returns the file size in bytes or zero.
 * @note Supports max size of 2^63.
 */
@@ -6747,7 +6761,7 @@ fpl_platform_api uint64_t fplFileGetSizeFromHandle64(const fplFileHandle *fileHa
 
 /**
 * @brief Gets the file size in bytes for an opened file.
-* @param[in] fileHandle Reference to the file handle structure.
+* @param[in] fileHandle Reference to the file handle structure @ref fplFileHandle.
 * @return Returns the file size in bytes or zero.
 * @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes.
 */
@@ -6756,15 +6770,15 @@ fpl_common_api size_t fplFileGetSizeFromHandle(const fplFileHandle *fileHandle);
 /**
 * @brief Gets the timestamps for the given file.
 * @param[in] filePath The path to the file.
-* @param[out] outStamps Reference to the file timestamps structure.
+* @param[out] outStamps Reference to the file timestamps structure @ref fplFileTimeStamps.
 * @return Returns true when the function succeeded, false otherwise.
 */
 fpl_platform_api bool fplFileGetTimestampsFromPath(const char *filePath, fplFileTimeStamps *outStamps);
 
 /**
 * @brief Gets the timestamps for an opened file.
-* @param[in] fileHandle Reference to the file handle structure.
-* @param[out] outStamps Reference to the file timestamps structure.
+* @param[in] fileHandle Reference to the file handle structure @ref fplFileHandle.
+* @param[out] outStamps Reference to the file timestamps structure @ref fplFileTimeStamps.
 * @return Returns true when the function succeeded, false otherwise.
 */
 fpl_platform_api bool fplFileGetTimestampsFromHandle(const fplFileHandle *fileHandle, fplFileTimeStamps *outStamps);
@@ -6825,7 +6839,7 @@ fpl_platform_api bool fplDirectoryRemove(const char *path);
 * @brief Iterates through files/directories in the given directory.
 * @param[in] path The full path.
 * @param[in] filter The filter wildcard (If empty or null it will not filter anything at all).
-* @param[out] entry Reference to the file entry structure.
+* @param[out] entry Reference to the file entry structure @ref fplFileEntry.
 * @return Returns true when there was a first entry found, false otherwise.
 * @note This function is not recursive, so it will traverse the first level only!
 * @note When no initial entry is found, the resources are automatically cleaned up.
@@ -6835,7 +6849,7 @@ fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter
 
 /**
 * @brief Gets the next file entry from iterating through files/directories.
-* @param[in, out] entry Reference to the file entry structure.
+* @param[in, out] entry Reference to the file entry structure @ref fplFileEntry.
 * @return Returns true when there was a next file, otherwise false if not.
 * @note This function is not recursive, so it will traverse the first level only!
 * @note When no entries are found, the resources are automatically cleaned up.
@@ -6845,7 +6859,7 @@ fpl_platform_api bool fplDirectoryListNext(fplFileEntry *entry);
 
 /**
 * @brief Releases opened resources from iterating through files/directories.
-* @param[in, out] entry Reference to the file entry structure.
+* @param[in, out] entry Reference to the file entry structure @ref fplFileEntry.
 * @note It's safe to call this when the file entry is already closed.
 * @see @ref section_category_io_paths_traversing
 */
@@ -7295,7 +7309,7 @@ typedef enum fplWindowEventType {
 * @brief A structure containing number and dropped files informations.
 */
 typedef struct fplWindowDropFiles {
-	//! The internal memory block.
+	//! The internal memory block, do not touch.
 	fplMemoryBlock internalMemory;
 	//! File paths (Do not release this memory, it's automatically released after the event is processed).
 	const char **files;
@@ -7630,7 +7644,7 @@ typedef struct fplEvent {
 
 /**
 * @brief Polls the next event from the internal event queue or from the OS, handles them, and removes it from the queue.
-* @param[out] ev Reference to the event structure.
+* @param[out] ev Reference to the event structure @ref fplEvent.
 * @return Returns false when there are no events left, true otherwise.
 * @see @ref section_category_window_events_polling
 */
@@ -7702,21 +7716,21 @@ typedef struct fplMouseState {
 
 /**
 * @brief Polls the current keyboard state and writes it out into the output structure.
-* @param[out] outState Reference to the keyboard state structure.
+* @param[out] outState Reference to the keyboard state structure @ref fplKeyboardState.
 * @see @ref subsection_category_input_polling_keyboard
 */
 fpl_platform_api bool fplPollKeyboardState(fplKeyboardState *outState);
 
 /**
 * @brief Polls the current gamepad states and writes it out into the output structure.
-* @param[out] outStates Reference to the gamepad states structure.
+* @param[out] outStates Reference to the gamepad states structure @ref fplGamepadStates.
 * @see @ref subsection_category_input_polling_gamepad
 */
 fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates);
 
 /**
 * @brief Polls the current mouse state and writes it out into the output structure.
-* @param[out] outState Reference to the mouse state structure.
+* @param[out] outState Reference to the mouse state structure @ref fplMouseState.
 * @see @ref subsection_category_input_polling_mouse
 */
 fpl_platform_api bool fplPollMouseState(fplMouseState *outState);
@@ -7886,7 +7900,7 @@ fpl_platform_api bool fplIsWindowFullscreen(void);
 
 /**
 * @brief Retrieves the absolute window position.
-* @param[out] outPos Reference to the window position structure.
+* @param[out] outPos Reference to the window position structure @ref fplWindowPosition.
 * @return Returns true when we got the position, false otherwise.
 */
 fpl_platform_api bool fplGetWindowPosition(fplWindowPosition *outPos);
@@ -7982,7 +7996,7 @@ fpl_platform_api size_t fplGetDisplayCount(void);
 
 /**
 * @brief Gets information about all active displays.
-* @param[out] outDisplays The array of display information.
+* @param[out] outDisplays The otuput array of display information structures @ref fplDisplayInfo.
 * @param[in] maxDisplayCount The maximum number of display infos available in the output array.
 * @return Returns the total number of active displays.
 */
@@ -7990,14 +8004,14 @@ fpl_platform_api size_t fplGetDisplays(fplDisplayInfo *outDisplays, const size_t
 
 /**
 * @brief Gets information about the display for the FPL window.
-* @param[out] outInfo Reference to the display information structure.
+* @param[out] outInfo Reference to the display information structure @ref fplDisplayInfo.
 * @return Returns true when the display for the window was found, false otherwise.
 */
 fpl_platform_api bool fplGetWindowDisplay(fplDisplayInfo *outInfo);
 
 /**
 * @brief Gets information about the primary display.
-* @param[out] outInfo Reference to the display information structure.
+* @param[out] outInfo Reference to the display information structure @ref fplDisplayInfo.
 * @return Returns true when the primary display was found, false otherwise.
 */
 fpl_platform_api bool fplGetPrimaryDisplay(fplDisplayInfo *outInfo);
@@ -8006,7 +8020,7 @@ fpl_platform_api bool fplGetPrimaryDisplay(fplDisplayInfo *outInfo);
 * @brief Finds the display from a cursor position and retrieves the information for it.
 * @param[in] x The x position in screen coordinates.
 * @param[in] y The y position in screen coordinates.
-* @param[out] outInfo Reference to the display information structure.
+* @param[out] outInfo Reference to the display information structure @ref fplDisplayInfo.
 * @return Returns true when the display was found, false otherwise.
 */
 fpl_platform_api bool fplGetDisplayFromPosition(const int32_t x, const int32_t y, fplDisplayInfo *outInfo);
@@ -8014,7 +8028,7 @@ fpl_platform_api bool fplGetDisplayFromPosition(const int32_t x, const int32_t y
 /**
 * @brief Gets the information about the available display modes for the given display id.
 * @param[in] id The display id.
-* @param[out] outModes The array of display modes.
+* @param[out] outModes The array of display modes @ref fplDisplayMode.
 * @param[in] maxDisplayModeCount The maximum number of display modes available in the output array.
 * @return Returns the number of found display modes.
 */
@@ -8227,14 +8241,14 @@ fpl_common_api fplVideoBackendType fplGetVideoBackendType(void);
 
 /**
 * @brief Gets a string that represents the given video backend.
-* @param[in] backendType The video backend type.
+* @param[in] backendType The video backend type @ref fplVideoBackendType.
 * @return Returns a string for the given video backend type.
 */
 fpl_common_api const char *fplGetVideoBackendName(fplVideoBackendType backendType);
 
 /**
 * @brief Retrieves the pointer to the current video backbuffer.
-* @return Returns the pointer to the current video backbuffer.
+* @return Returns the pointer to the current video backbuffer @ref fplVideoBackBuffer.
 * @warning Do not release this memory by any means, otherwise you will corrupt heap memory!
 */
 fpl_common_api fplVideoBackBuffer *fplGetVideoBackBuffer(void);
@@ -8261,14 +8275,14 @@ fpl_common_api const void *fplGetVideoProcedure(const char *procName);
 
 /**
 * @brief Gets the current video surface that stores all handles used for the active video backend.
-* @return The resulting video surface reference.
+* @return The resulting video surface reference @ref fplVideoSurface.
 */
 fpl_common_api const fplVideoSurface *fplGetVideoSurface(void);
 
 /**
 * @brief Gets the video requirements for the specified video backend.
-* @param[in] backendType The video backend type.
-* @param[out] requirements Reference to the video requirements.
+* @param[in] backendType The video backend type @ref fplVideoBackendType.
+* @param[out] requirements Reference to the video requirements @ref fplVideoRequirements.
 * @return Returns true when the video requirements are filled out, false otherwise.
 */
 fpl_common_api bool fplGetVideoRequirements(const fplVideoBackendType backendType, fplVideoRequirements *requirements);
@@ -8363,8 +8377,8 @@ fpl_common_api fplAudioResultType fplStopAudio(void);
 
 /**
 * @brief Re/Initializes the audio system with the specified audio settings.
-* @param[in] audioSettings The audio settings.
-* @return Returns the audio result.
+* @param[in] audioSettings Reference to the audio settings structure @ref fplAudioSettings.
+* @return Returns the audio result type @ref fplAudioResultType.
 */
 fpl_common_api fplAudioResultType fplAudioInit(fplAudioSettings *audioSettings);
 
@@ -8376,14 +8390,14 @@ fpl_common_api bool fplAudioRelease(void);
 
 /**
 * @brief Retrieves the native audio format for the current audio device.
-* @param[out] outFormat Reference to the audio format structure.
+* @param[out] outFormat Reference to the audio format structure @ref fplAudioFormat.
 * @return Returns true when an audio hardware format was active, false otherwise.
 */
 fpl_common_api bool fplGetAudioHardwareFormat(fplAudioFormat *outFormat);
 
 /**
 * @brief Retrieves the audio device info for the current audio device.
-* @param[out] outDevice Reference to the audio device info structure.
+* @param[out] outDevice Reference to the audio device info structure @ref fplAudioDeviceInfo.
 * @return Returns true when an audio hardware device was active, false otherwise.
 */
 fpl_common_api bool fplGetAudioHardwareDevice(fplAudioDeviceInfo *outDevice);
@@ -8396,15 +8410,15 @@ fpl_common_api const char *fplGetAudioHardwareDeviceName(void);
 
 /**
 * @brief Gets the audio channels mapping table.
-* @param[out] outMapping Reference to the audio channel map.
+* @param[out] outMapping Reference to the audio channel map structure @ref fplAudioChannelMap.
 * @return Returns true when the channels mapping was filled out, false otherwise.
 */
 fpl_common_api bool fplGetAudioChannelMap(fplAudioChannelMap *outMapping);
 
 /**
 * @brief Overwrites the audio client read callback.
-* @param[in] newCallback Reference to the audio client read callback.
-* @param[in] userData Reference to the client/user data.
+* @param[in] newCallback Reference to the audio client read callback @ref fpl_audio_client_read_callback.
+* @param[in] userData Reference to the opaque client/user data.
 * @return Returns true when an audio device is ready and the callback was set, false otherwise.
 * @note This has no effect when audio is already playing, you have to call it when audio is in a stopped state!
 */
@@ -8414,7 +8428,7 @@ fpl_common_api bool fplSetAudioClientReadCallback(fpl_audio_client_read_callback
 * @brief Retrieves all playback audio devices.
 * @param[in] maxDeviceCount The total number of devices available in the devices array.
 * @param[in] deviceInfoSize The size of an audio device info.
-* @param[out] outDevices The output array of audio device info.
+* @param[out] outDevices The output array of audio device info structures @ref fplAudioDeviceInfo.
 * @return Returns the number of devices found.
 */
 fpl_common_api uint32_t fplGetAudioDevices(const uint32_t maxDeviceCount, const uint32_t deviceInfoSize, fplAudioDeviceInfo *outDevices);
@@ -8422,28 +8436,28 @@ fpl_common_api uint32_t fplGetAudioDevices(const uint32_t maxDeviceCount, const 
 /**
 * @brief Gets the full audio device info extended for the specified audio device ID.
 * @param[in] deviceId The audio device ID.
-* @param[out] outDeviceInfo The output audio device info extended.
+* @param[out] outDeviceInfo The output audio device info extended structure @ref fplAudioDeviceInfoExtended.
 * @return Returns a boolean indicating whether the function succeeded or not.
 */
 fpl_common_api bool fplGetAudioDeviceInfo(const fplAudioDeviceID *deviceId, fplAudioDeviceInfoExtended *outDeviceInfo);
 
 /**
 * @brief Computes the number of bytes required to write one sample with one channel.
-* @param[in] format The audio format type.
+* @param[in] format The audio format type @ref fplAudioFormatType.
 * @return Returns the number of bytes for one sample with one channel.
 */
 fpl_common_api uint32_t fplGetAudioSampleSizeInBytes(const fplAudioFormatType format);
 
 /**
 * @brief Gets the string that represents the given audio format type.
-* @param[in] format The audio format type.
+* @param[in] format The audio format type @ref fplAudioFormatType.
 * @return Returns a string for the given audio format type.
 */
 fpl_common_api const char *fplGetAudioFormatName(const fplAudioFormatType format);
 
 /**
 * @brief Gets the string that represents the given audio backend type.
-* @param[in] backendType The audio backend type.
+* @param[in] backendType The audio backend type @ref fplAudioBackendType.
 * @return Returns a string for the given audio backend type.
 */
 fpl_common_api const char *fplGetAudioBackendName(const fplAudioBackendType backendType);
@@ -8474,7 +8488,7 @@ fpl_common_api uint32_t fplGetAudioFrameSizeInBytes(const fplAudioFormatType for
 
 /**
 * @brief Computes the total number of bytes for the buffer and the given parameters.
-* @param[in] format The audio format.
+* @param[in] format The audio format type @ref fplAudioFormatType.
 * @param[in] channelCount The number of channels.
 * @param[in] frameCount The number of frames.
 * @return Returns the total number of bytes for the buffer.
@@ -8493,36 +8507,36 @@ fpl_common_api uint32_t fplGetTargetAudioFrameCount(const uint32_t inputFrameCou
 /**
 * @brief Returns the default audio channel layout from the specified channel count.
 * @param[in] channelCount The number of channels.
-* @return Returns the default audio channel layout.
+* @return Returns the default audio channel layout @ref fplAudioChannelLayout.
 */
 fpl_common_api fplAudioChannelLayout fplGetDefaultAudioChannelLayoutFromChannels(const uint16_t channelCount);
 
 /**
 * @brief Returns the number of channels from the specified audio channel layout.
-* @param[in] channelLayout The audio channel layout.
+* @param[in] channelLayout The audio channel layout @ref fplAudioChannelLayout.
 * @return Returns the number of channels.
 */
 fpl_common_api uint16_t fplGetAudioChannelsFromLayout(const fplAudioChannelLayout channelLayout);
 
 /**
 * @brief Gets the audio latency type from the specified audio mode.
-* @param[in] mode The audio mode.
-* @return Returns the matching audio latency type.
+* @param[in] mode The audio mode @ref fplAudioMode.
+* @return Returns the matching audio latency type @ref fplAudioLatencyType.
 */
 fpl_common_api fplAudioLatencyType fplGetAudioLatencyType(const fplAudioMode mode);
 
 /**
 * @brief Gets the audio share mode from the specified audio mode.
-* @param[in] mode The audio mode.
-* @return Returns the matching audio share mode.
+* @param[in] mode The audio mode @ref fplAudioMode.
+* @return Returns the matching audio share mode @ref fplAudioShareMode.
 */
 fpl_common_api fplAudioShareMode fplGetAudioShareMode(const fplAudioMode mode);
 
 /**
 * @brief Creates an audio mode from the specified audio latency type and share mode.
-* @param[in] latencyType The audio latency type.
-* @param[in] shareMode The audio share mode.
-* @return Returns the resulting audio mode.
+* @param[in] latencyType The audio latency type @ref fplAudioLatencyType.
+* @param[in] shareMode The audio share mode @ref fplAudioShareMode.
+* @return Returns the resulting audio mode @ref fplAudioMode.
 */
 fpl_common_api fplAudioMode fplCreateAudioMode(const fplAudioLatencyType latencyType, const fplAudioShareMode shareMode);
 
@@ -8531,13 +8545,13 @@ fpl_common_api fplAudioMode fplCreateAudioMode(const fplAudioLatencyType latency
 * @param[in] sampleRate The sample rate in Hz.
 * @param[in] channels The number of channels.
 * @param[in] type The audio format type.
-* @return Returns the encoded audio format.64
+* @return Returns the encoded audio format @ref fplAudioFormatU64
 */
 fpl_common_api fplAudioFormatU64 fplEncodeAudioFormatU64(const uint32_t sampleRate, const uint16_t channels, const fplAudioFormatType type);
 
 /**
 * @brief Decodes the specified encoded audio format to the specified sample rate, channels, and type.
-* @param[in] format64 The encoded audio format.64
+* @param[in] format64 The encoded audio format @ref fplAudioFormatU64
 * @param[out] outSampleRate Reference to the output sample rate.
 * @param[out] outChannels Reference to the output channels.
 * @param[out] outType Reference to the output audio format type.
@@ -8569,37 +8583,37 @@ typedef enum fplLocaleFormat {
 
 /**
 * @brief Gets the user locale in the given target format.
-* @param[in] fplLocaleFormat targetFormat Target format.
-* @param[out] char *buffer Reference to the target string buffer for writing the locale into.
-* @param[in] size_t maxBufferLen The maximum length of the buffer.
-* @return size_t The number of required/written characters, excluding the null-terminator.
+* @param[in] targetFormat Target locale format value @ref fplLocaleFormat.
+* @param[out] buffer Reference to the target string buffer for writing the locale into.
+* @param[in] maxBufferLen The maximum length of the buffer.
+* @return The number of required/written characters, excluding the null-terminator.
 */
 fpl_platform_api size_t fplGetUserLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen);
 
 /**
 * @brief Gets the system locale in the given target format.
-* @param[in] fplLocaleFormat targetFormat Target format.
-* @param[out] char *buffer Reference to the target string buffer for writing the locale into.
-* @param[in] size_t maxBufferLen The maximum length of the buffer.
-* @return size_t The number of required/written characters, excluding the null-terminator.
+* @param[in] targetFormat Target locale format value @ref fplLocaleFormat.
+* @param[out] buffer Reference to the target string buffer for writing the locale into.
+* @param[in] maxBufferLen The maximum length of the buffer.
+* @return The number of required/written characters, excluding the null-terminator.
 */
 fpl_platform_api size_t fplGetSystemLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen);
 
 /**
 * @brief Gets the input locale in the given target format.
-* @param[in] fplLocaleFormat targetFormat Target format.
-* @param[out] char *buffer Reference to the target string buffer for writing the locale into.
-* @param[in] size_t maxBufferLen The maximum length of the buffer.
-* @return size_t The number of required/written characters, excluding the null-terminator.
+* @param[in] targetFormat Target locale format value @ref fplLocaleFormat.
+* @param[out] buffer Reference to the target string buffer for writing the locale into.
+* @param[in] maxBufferLen The maximum length of the buffer.
+* @return The number of required/written characters, excluding the null-terminator.
 */
 fpl_platform_api size_t fplGetInputLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen);
 
 /**
-* @brief Gets the input locale in the given target format
-* @param targetFormat Target @ref fplLocaleFormat
-* @param buffer Target string buffer for writing the locale into
-* @param maxBufferLen The maximum length of the buffer
-* @return Returns the number of required/written characters, excluding the null-terminator
+* @brief Gets the input locale in the given target format.
+* @param targetFormat Target locale format value @ref fplLocaleFormat
+* @param buffer Target string buffer for writing the locale into.
+* @param maxBufferLen The maximum length of the buffer.
+* @return Returns the number of required/written characters, excluding the null-terminator.
 */
 fpl_platform_api size_t fplGetInputLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen);
 
