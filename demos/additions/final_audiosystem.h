@@ -840,7 +840,7 @@ extern void ConvertFromF32(void *outSamples, const float inSampleValue, const Au
 	}
 }
 
-static AudioSampleIndex MixedSamplesToChannels(const AudioSampleConversionFunctions *convFunc, const AudioFrameIndex frameCount, const AudioChannelIndex inChannels, const AudioChannelIndex outChannels, const float *inSamples, float *outSamples) {
+static AudioSampleIndex MixSamples(const AudioSampleConversionFunctions *convFunc, const AudioFrameIndex frameCount, const AudioChannelIndex inChannels, const AudioChannelIndex outChannels, const float *inSamples, float *outSamples) {
 	if (convFunc == fpl_null || frameCount == 0 || inChannels == 0 || outChannels == 0 || inSamples == fpl_null || outSamples == fpl_null) {
 		return 0;
 	}
@@ -852,14 +852,19 @@ static AudioSampleIndex MixedSamplesToChannels(const AudioSampleConversionFuncti
 
 	if (inChannels == outChannels) {
 		// Simple copy everything
-		fplMemoryCopy(inSamples, outSampleCount * sizeof(float), outSamples);
+		for (AudioFrameIndex frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
+			for (AudioChannelIndex channelIndex = 0; channelIndex < outChannels; ++channelIndex) {
+				float sampleValue = inSamples[frameIndex * outChannels + channelIndex];
+				outSamples[frameIndex * outChannels + channelIndex] += sampleValue;
+			}
+		}
 		return(outSampleCount);
 	} else if (inChannels == 1) {
 		// Simply copy the input mono channel samples to each output channel
 		for (AudioFrameIndex frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
 			float sampleValue = inSamples[frameIndex];
 			for (AudioChannelIndex outChannelIndex = 0; outChannelIndex < outChannels; ++outChannelIndex) {
-				outSamples[frameIndex * outChannels + outChannelIndex] = sampleValue;
+				outSamples[frameIndex * outChannels + outChannelIndex] += sampleValue;
 			}
 		}
 	} else if (outChannels == 1) {
@@ -872,7 +877,7 @@ static AudioSampleIndex MixedSamplesToChannels(const AudioSampleConversionFuncti
 				sampleSum += sampleValue;
 			}
 			float finalSample = sampleSum * invInChannels;
-			outSamples[frameIndex * outChannels + 0] = finalSample;
+			outSamples[frameIndex * outChannels + 0] += finalSample;
 		}
 	} else if (inChannels == 2 && outChannels >= 2){
 		// Stereo input and at least stereo output
@@ -883,7 +888,7 @@ static AudioSampleIndex MixedSamplesToChannels(const AudioSampleConversionFuncti
 			outSamples[frameIndex * outChannels + 1] = sampleRight;
 			float monoSample = 0.5f * (sampleLeft + sampleRight);
 			for (AudioChannelIndex outChannelIndex = 2; outChannelIndex < outChannels; ++outChannelIndex) {
-				outSamples[frameIndex * outChannels + outChannelIndex] = monoSample;
+				outSamples[frameIndex * outChannels + outChannelIndex] += monoSample;
 			}
 		}
 	} else {
@@ -897,7 +902,7 @@ static AudioSampleIndex MixedSamplesToChannels(const AudioSampleConversionFuncti
 			}
 			float finalSample = sampleSum * invInChannels;
 			for (AudioChannelIndex outChannelIndex = 0; outChannelIndex < outChannels; ++outChannelIndex) {
-				outSamples[frameIndex * outChannels + outChannelIndex] = finalSample;
+				outSamples[frameIndex * outChannels + outChannelIndex] += finalSample;
 			}
 		}
 	}
@@ -1112,7 +1117,7 @@ static AudioFrameIndex WritePlayItemsToMixer(AudioSystem *audioSys, const AudioF
 
 			ApplyVolumeToSamples(inChannelCount, outputFrameCount, volume, dspOutSamples);
 
-			const AudioSampleIndex writtenSampleCount = MixedSamplesToChannels(&audioSys->conversionFuncs, outputFrameCount, inChannelCount, outChannelCount, dspOutSamples, mixingSamples);
+			const AudioSampleIndex writtenSampleCount = MixSamples(&audioSys->conversionFuncs, outputFrameCount, inChannelCount, outChannelCount, dspOutSamples, mixingSamples);
 
 			mixingSamples += writtenSampleCount;
 			inSourceSamples += ((size_t)playedFrameCount * inChannelCount * inBytesPerSample);
@@ -1244,6 +1249,7 @@ extern AudioFrameIndex AudioSystemWriteFrames(AudioSystem *audioSys, void *outSa
 			AudioFrameIndex framesToFill = fplMin(audioSys->conversionBuffer.buffer.frameCount, remainingFrames);
 			AudioFrameIndex convertedFrameCount = FillConversionBuffer(audioSys, framesToFill, advance);
 			fplAssert(convertedFrameCount == framesToFill);
+			fplAssert(audioSys->conversionBuffer.framesRemaining == framesToFill);
 		}
 	}
 
