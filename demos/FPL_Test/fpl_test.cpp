@@ -14,6 +14,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2025-03-30
+	- Test available/used thread count
+
 	## 2021-09-07
 	- Added thread limit tests
 
@@ -842,9 +845,35 @@ static void ThreadLimitThreadProc(const fplThreadHandle *context, void *opaque) 
 	fplThreadSleep(2000);
 }
 
+static void ThreadLimitOneSecProc(const fplThreadHandle *context, void *opaque) {
+	fplThreadSleep(1000);
+}
+
 static void ThreadLimits(const size_t overshoot) {
 	ftLine();
 	ftMsg("Thread limits test with overshoot of '%zu'\n", overshoot);
+
+	{
+		size_t usedThreadCount = fplGetUsedThreadCount();
+		size_t availableThreadCount = fplGetAvailableThreadCount();
+		ftMsg("Used/Available threads initial %zu/%zu\n", usedThreadCount, availableThreadCount);
+		ftAssertSizeEquals(0, usedThreadCount);
+		ftAssertSizeEquals(FPL_MAX_THREAD_COUNT, availableThreadCount);
+
+		fplThreadHandle *oneThread = fplThreadCreate(ThreadLimitOneSecProc, fpl_null);
+		usedThreadCount = fplGetUsedThreadCount();
+		availableThreadCount = fplGetAvailableThreadCount();
+		ftMsg("Used/Available threads with one active thread %zu/%zu\n", usedThreadCount, availableThreadCount);
+		ftAssertSizeEquals(1, usedThreadCount);
+		ftAssertSizeEquals(FPL_MAX_THREAD_COUNT - 1, availableThreadCount);
+		fplThreadWaitForOne(oneThread, 3000);
+
+		usedThreadCount = fplGetUsedThreadCount();
+		availableThreadCount = fplGetAvailableThreadCount();
+		ftMsg("Used/Available threads after single thread is done %zu/%zu\n", usedThreadCount, availableThreadCount);
+		ftAssertSizeEquals(0, usedThreadCount);
+		ftAssertSizeEquals(FPL_MAX_THREAD_COUNT, availableThreadCount);
+	}
 
 	size_t threadCount = FPL_MAX_THREAD_COUNT + overshoot;
 	ThreadLimitData *datas = (ThreadLimitData *)fplMemoryAllocate(sizeof(ThreadLimitData) * threadCount);
