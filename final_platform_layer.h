@@ -2904,8 +2904,6 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 #elif defined(ARRAY_SIZE)
 #	define fpl__m_ArrayCount(arr) ARRAY_SIZE(arr)
 #else
-	//! The @ref fplArrayCount() validation is disabled
-#	define FPL__NO_ARRAYCOUNT_VALIDATION
 #	define fpl__m_ArrayCount(arr) (sizeof(arr) / sizeof((arr)[0]))
 #endif
 
