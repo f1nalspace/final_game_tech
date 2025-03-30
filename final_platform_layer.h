@@ -185,6 +185,8 @@ SOFTWARE.
 	- Fixed: [Win32] fpl__Win32Guid was not properly defined when opaque API was enabled
 	- Fixed: [Win32] fplSetWindowState() was not implementing fplWindowState_Fullscreen
 	- Fixed: Compile errors for vulkan KHR missing cast to void pointer
+	- Fixed: Renamed GetAvailableThreadCount() to fplGetAvailableThreadCount()
+	- Fixed: Renamed GetUsedThreadCount() to fplGetUsedThreadCount()
 	- Changed: Added stride argument to to fplGetAudioDevices()
 	- Changed: Renamed field userData to clientUserData in @ref fplAudioSettings
 	- Changed: Renamed fplAudioDeviceFormat to fplAudioFormat
@@ -230,8 +232,8 @@ SOFTWARE.
 	### Details
 
 	#### Core
-	- New: Added function GetAvailableThreadCount() that returns the number of available threads
-	- New: Added function GetUsedThreadCount() that returns the number of used/active threads
+	- New: Added function fplGetAvailableThreadCount() that returns the number of available threads
+	- New: Added function fplGetUsedThreadCount() that returns the number of used/active threads
 	- New: Added union fplColor32 for representing a 32-bit color value
 	- New: Added typedef fplMilliseconds that specifies milliseconds as 64-bit integer
 	- New: Added typedef fplSeconds that specifies seconds as 64-bit floating point
@@ -5896,13 +5898,13 @@ fpl_common_api const fplThreadHandle *fplGetMainThread(void);
 * @brief Gets the number of available threads.
 * @return Returns the number of available threads.
 */
-fpl_common_api size_t GetAvailableThreadCount(void);
+fpl_common_api size_t fplGetAvailableThreadCount(void);
 
 /**
 * @brief Gets the number of used/active threads.
 * @return Returns the number of used/active threads.
 */
-fpl_common_api size_t GetUsedThreadCount(void);
+fpl_common_api size_t fplGetUsedThreadCount(void);
 
 /**
 * @brief Gets the thread id for the current thread.
@@ -12035,7 +12037,7 @@ fpl_common_api const fplThreadHandle *fplGetMainThread(void) {
 	return(result);
 }
 
-fpl_common_api size_t GetAvailableThreadCount(void) {
+fpl_common_api size_t fplGetAvailableThreadCount(void) {
 	size_t result = 0;
 	for (size_t threadIndex = 0; threadIndex < FPL_MAX_THREAD_COUNT; ++threadIndex) {
 		fplThreadState state = (fplThreadState)fplAtomicLoadU32((volatile uint32_t *)&fpl__global__ThreadState.threads[threadIndex].currentState);
@@ -12046,7 +12048,7 @@ fpl_common_api size_t GetAvailableThreadCount(void) {
 	return(result);
 }
 
-fpl_common_api size_t GetUsedThreadCount(void) {
+fpl_common_api size_t fplGetUsedThreadCount(void) {
 	size_t result = 0;
 	for (size_t threadIndex = 0; threadIndex < FPL_MAX_THREAD_COUNT; ++threadIndex) {
 		fplThreadState state = (fplThreadState)fplAtomicLoadU32((volatile uint32_t *)&fpl__global__ThreadState.threads[threadIndex].currentState);
