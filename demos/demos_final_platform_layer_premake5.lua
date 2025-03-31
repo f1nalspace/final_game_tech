@@ -6,8 +6,6 @@ local function getOSArchitecture()
 		raw_arch_name = jit.arch
 	else
 		if package.config:sub(1,1) == '\\' then
-			local env_pfilesx32 = os.getenv('%ProgramFiles(x86)%')
-			print("PFiles32: " .. env_pfilesx32)
 			local env_ARCH = os.getenv('PROCESSOR_ARCHITECTURE')
 			local env_OS = os.getenv('OS')
 			if env_OS and env_ARCH then
@@ -78,7 +76,7 @@ print("Detected OS/Arch: " .. currentOS .. "/" .. currentArchitecture)
 
 workspace "demos_final_platform_layer"
 	configurations { "Debug", "Release" }
-		
+	
 	if currentArchitecture == "arm" then
 		platforms { "ARM32", "ARM64" }
 		defaultplatform "ARM64"
