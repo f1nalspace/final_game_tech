@@ -520,13 +520,14 @@ extern bool AudioSystemLoadFileFormat(AudioSystem *audioSys, const char *filePat
 	size_t seek = 0;
 	size_t read = 0;
 	AudioFileFormat fileFormat = AudioFileFormat_None;
+	AudioSystemStream stream = fplZeroInit;
 
 	fileSize = fplFileGetSizeFromHandle32(&file);
 	if (fileSize == 0) {
 		goto done;
 	}
 
-	AudioSystemStream stream = AudioStreamCreateFromFileHandle(&file, fileSize);
+	stream = AudioStreamCreateFromFileHandle(&file, fileSize);
 
 	fileFormat = PropeAudioFileFormat(&stream);
 	if(fileFormat == AudioFileFormat_None) {
