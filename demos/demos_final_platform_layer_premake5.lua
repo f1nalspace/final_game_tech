@@ -97,8 +97,8 @@ workspace "demos_final_platform_layer"
 			"WinX86",
 			"WinX64",
 		}
-		
-	filter { "action:gmake*", "toolset:gcc" }
+
+	filter "action:gmake*"
 		platforms 
 		{
 			"WinX86",
@@ -111,65 +111,92 @@ workspace "demos_final_platform_layer"
 			"UnixX64",
 			"UnixARM32",
 			"UnixARM64",
-		}	
-			
+		}
+		
 	-- Defaults for every project
 	filter {}
+		if currentOSFamily == "windows" then
+			defaultplatform "WinX64"
+		elseif currentOSFamily == "linux" then
+			if currentArchitectureFamily == "arm" then
+				if currentArchitectureName == "Arm64" then
+					defaultplatform "LinuxARM64"
+				else
+					defaultplatform "LinuxARM32"
+				end
+			elseif currentArchitectureFamily == "x64" then
+				defaultplatform "LinuxX64"
+			elseif currentArchitectureFamily == "x86" then
+				defaultplatform "LinuxX86"
+			end
+		elseif currentOSFamily == "unix" then
+			if currentArchitectureFamily == "arm" then
+				if currentArchitectureName == "Arm64" then
+					defaultplatform "UnixARM64"
+				else
+					defaultplatform "UnixARM32"
+				end
+			elseif currentArchitectureFamily == "x64" then
+				defaultplatform "UnixX64"
+			elseif currentArchitectureFamily == "x86" then
+				defaultplatform "UnixX86"
+			end
+		end
 		includedirs ( {"../", "./additions/", "./dependencies/" } )
 		targetdir ( "./build/%{prj.name}/%{cfg.platform}_%{cfg.buildcfg}" )
 		objdir ( "./immediates/%{prj.name}/%{cfg.platform}_%{cfg.buildcfg}" )
 			
 	-- Platform mapping
-	filter { "platforms:WinX86" }
+	filter "platforms:WinX86"
         system "windows"
         architecture "x86"
 		
-	filter { "platforms:WinX64" }
+	filter "platforms:WinX64"
         system "windows"
         architecture "x86_64"
 		
-	filter { "platforms:LinuxX86" }
+	filter "platforms:LinuxX86"
         system "linux"
         architecture "x86"
         toolset "gcc"
 
-	filter { "platforms:LinuxX64" }
+	filter "platforms:LinuxX64"
         system "linux"
         architecture "x86_64"
         toolset "gcc"
 		
-	filter { "platforms:LinuxARM32" }
+	filter "platforms:LinuxARM32"
         system "linux"
         architecture "ARM"
         toolset "gcc"
 
-    filter { "platforms:LinuxARM64" }
+    filter "platforms:LinuxARM64"
         system "linux"
         architecture "ARM64"
         toolset "gcc"
 		
-	filter { "platforms:UnixX86" }
+	filter "platforms:UnixX86"
         system "bsd"
         architecture "x86"
         toolset "gcc"
 
-	filter { "platforms:UnixX64" }
+	filter "platforms:UnixX64"
         system "bsd"
         architecture "x86_64"
         toolset "gcc"
 		
-	filter { "platforms:UnixARM32" }
+	filter "platforms:UnixARM32"
         system "bsd"
         architecture "ARM"
         toolset "gcc"
 
-    filter { "platforms:UnixARM64" }
+    filter "platforms:UnixARM64"
         system "bsd"
         architecture "ARM64"
         toolset "gcc"
 
 	-- Link to math library on *nix
-	filter { "system:bsd", "system:linux" }
+	filter "system:bsd or system:linux"
 		links { "m" }
 	
 	-- Debug / Release
