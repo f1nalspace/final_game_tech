@@ -8,11 +8,11 @@ project "FPL_NoRuntimeLinking"
 	
 	files { "fpl_noruntimelinking.cpp" }
 	
-	filter { "system:windows" }
+	filter "system:windows"
 		libdirs { "../dependencies/vulkan/lib/%{cfg.platform}/" }
 		links { "opengl32", "dsound", "xinput", "vulkan-1" }
 		
-	filter { "system:bsd", "system:linux" }
+	filter "system:bsd or system:linux"
 		local openGLLibPath = os.findlib("GL")
 		local vulkanLibPath = os.findlib("vulkan")
 		local alsaLibPath = os.findlib("asound")
