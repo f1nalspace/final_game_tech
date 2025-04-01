@@ -187,7 +187,6 @@ SOFTWARE.
 	- Fixed: Compile errors for vulkan KHR missing cast to void pointer
 	- Fixed: Renamed GetAvailableThreadCount() to fplGetAvailableThreadCount()
 	- Fixed: Renamed GetUsedThreadCount() to fplGetUsedThreadCount()
-	- Fixed: POSIX main thread was never initialized, so get fplGetMainThread() was returning zero values
 	- Changed: Added stride argument to to fplGetAudioDevices()
 	- Changed: Renamed field userData to clientUserData in @ref fplAudioSettings
 	- Changed: Renamed fplAudioDeviceFormat to fplAudioFormat
@@ -214,6 +213,7 @@ SOFTWARE.
     - Fixed[#164]: Changed default controllerDetectionFrequency from 100 ms to 1000 ms
 	- Fixed[#160/#158]: Building with G++ or Clang was not working anymore
 	- Fixed[#169]: Only audio initialization may create a window/console, which is incorrect
+	- Fixed[#172]: POSIX main thread was never initialized, so get fplGetMainThread() was returning zero values
 	- Improved[#161]: Compiler detected improved & extended (MingW, Apple, Borland, TCC, DMC, CSMC, Linaro)
 	- Improved[#149]: Refactoring of audio backends to dispatch tables
 	- Improved[#163]: Make endianess detection more robust
