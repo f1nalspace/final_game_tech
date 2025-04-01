@@ -256,47 +256,57 @@ typedef struct {
 static uint32_t AudioPlaybackThread(const fplAudioFormat *nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
 	AudioPlaybackState *playState = (AudioPlaybackState *)userData;
 
+	// Only S16 is supported for now, a real world application would do a format conversion
 	if (nativeFormat->type != fplAudioFormatType_S16) {
-		return 0; // Only S16 is supported
+		return 0;
 	}
 
-	// Wave format must match native format, not ideal -> normally up/down sample and do format conversion + channel mixing
+	// Wave format must match native format, a real world application would do resampling, format conversion and channel mixing
 	if (nativeFormat->type != playState->waveData.format || 
 		nativeFormat->sampleRate != playState->waveData.sampleRate || 
-		nativeFormat->channels != playState->waveData.channels ||
 		playState->waveData.frameCount == 0)
 	{
 		return 0;
 	}
 
+	// Get size of each sample in bytes
 	size_t sampleSize = fplGetAudioSampleSizeInBytes(nativeFormat->type);
 
-	uint16_t channels = nativeFormat->channels;
+	// Number of audio channels
+	uint16_t inChannels = playState->waveData.channels;
+	uint16_t outChannels = nativeFormat->channels;
 
+	// Loop through all output frames and simply copy the looped wave samples to the output
 	int16_t *outS16 = (int16_t *)outputSamples;
 	for (uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
 		uint32_t sourceFrameIndex = playState->playedFrames;
-		int16_t *sourceSamples = (int16_t *)(playState->waveData.data + sourceFrameIndex * channels * sampleSize);
-		for (uint16_t channelIndex = 0; channelIndex < channels; ++channelIndex) {
-			outS16[frameIndex * channels + channelIndex] = sourceSamples[channelIndex];
+		int16_t *sourceSamples = (int16_t *)(playState->waveData.data + sourceFrameIndex * inChannels * sampleSize);
+		for (uint16_t outChannelIndex = 0; outChannelIndex < outChannels; ++outChannelIndex) {
+			int16_t sample = outChannels == inChannels ? sourceSamples[outChannelIndex] : sourceSamples[0];
+			outS16[frameIndex * outChannels + outChannelIndex] = sample;
 		}
 		playState->playedFrames = (playState->playedFrames + 1) % playState->waveData.frameCount;
 	}
 
+	// We always return the output frame count, because we are looping the wave samples (Current + 1) % Total
 	return frameCount;
 }
 
 int main(int argc, char **argv) {
+	// We may got a wave file from the arguments
 	const char *waveFilePath = fpl_null;
 	if (argc >= 2) {
 		waveFilePath = argv[1];
 	}
+
 
 	// Setup FPL and force the audio format to S16, 44100 Hz, Stereo
 	// Note that, there is no guarantee that every sound device supports this!
 	// Modern sound devices with 6+ channels may require 48 KHz or even 96 KHz
 	// Real audio applications must do sample rate conversion from any sample rate configurations, such as 44100 to 48000 or 22050 to 44100, etc.
 	fplSettings settings = fplZeroInit;
+	fplCopyString("FPL Demo | WaveAudio", settings.console.title, fplArrayCount(settings.console.title));
+
 	fplSetDefaultSettings(&settings);
 	
 	// Try to force stereo channel layout
@@ -318,25 +328,38 @@ int main(int argc, char **argv) {
 		return -1;
 	}
 
+	int result = 0;
+
+	WaveLoadResult res = WaveLoadResult_NotSupported;
+
+	AudioPlaybackState playState = fplZeroInit;
+
+	fplAudioFormat hardwareFormat = fplZeroInit;
+
+	const char *audioFormatName = fpl_null;
+
 	// Either load wave file from argument or use a example wave stream stored as binary
 	LoadedWaveData loadedWave = fplZeroInit;
 	if (fplGetStringLength(waveFilePath) > 0 && fplFileExists(waveFilePath)) {
-		WaveLoadResult res = LoadWaveFromFile(waveFilePath, &loadedWave);
+		fplConsoleFormatOut("Loading wave file '%s'\n", waveFilePath);
+		res = LoadWaveFromFile(waveFilePath, &loadedWave);
 		if (res != WaveLoadResult_Success) {
-			fplConsoleFormatError("Failed to load wave file '%s', result code: %d", waveFilePath, res);
-			return -1;
+			fplConsoleFormatError("Failed to load wave file '%s', result code: %d\n", waveFilePath, res);
+			result = -1;
+			goto done;
 		}
 	} else {
 		waveFilePath = name_waveFileExample;
-		WaveLoadResult res = LoadWaveFromBuffer(ptr_waveFileExample, sizeOf_waveFileExample, &loadedWave);
+		fplConsoleFormatOut("Loading wave stream '%s' with size %zu\n", name_waveFileExample, sizeOf_waveFileExample);
+		res = LoadWaveFromBuffer(ptr_waveFileExample, sizeOf_waveFileExample, &loadedWave);
 		if (res != WaveLoadResult_Success) {
-			fplConsoleFormatError("Failed to load wave example stream '%s', result code: %d", name_waveFileExample, res);
-			return -1;
+			fplConsoleFormatError("Failed to load wave example stream '%s', result code: %d\n", name_waveFileExample, res);
+			result = -1;
+			goto done;
 		}
 	}
 
 	// Setup audio callback and user data
-	AudioPlaybackState playState = fplZeroInit;
 	playState.waveData = loadedWave;
 	playState.playedFrames = 0;
 	fplSetAudioClientReadCallback(AudioPlaybackThread, &playState);
@@ -345,15 +368,14 @@ int main(int argc, char **argv) {
 	fplPlayAudio();
 
 	// Get actual audio hardware format, which may be different that our "target" format.
-	fplAudioFormat hardwareFormat = fplZeroInit;
 	fplGetAudioHardwareFormat(&hardwareFormat);
 
 	// Get name of the audio format (S16, F32, etc.)
-	const char *audioFormatName = fplGetAudioFormatName(hardwareFormat.type);
+	audioFormatName = fplGetAudioFormatName(hardwareFormat.type);
 
 	// Print out some infos and wait for a key to be pressed
 	// While we are waiting for a key press, new audio samples will be generated continuesly
-	fplConsoleFormatOut("Playing wave file '%s' with %u Hz, %u channels, %s\n", waveFilePath, hardwareFormat.sampleRate, hardwareFormat.channels, audioFormatName);
+	fplConsoleFormatOut("Playing wave file '%s' with %u frames, %u Hz, %u channels, %s\n", waveFilePath, loadedWave.frameCount, hardwareFormat.sampleRate, hardwareFormat.channels, audioFormatName);
 	fplConsoleOut("Press any key to exit\n");
 	fplConsoleWaitForCharInput();
 
@@ -365,9 +387,12 @@ int main(int argc, char **argv) {
 		fplMemoryFree(playState.waveData.data);
 	}
 
+	result = 0;
+
+done:
 	// Stop audio playback, shutdown the audio device and release any platform resources
 	fplPlatformRelease();
 
 	// We are done
-	return 0;
+	return result;
 }
