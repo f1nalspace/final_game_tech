@@ -1,7 +1,7 @@
 /*
 -------------------------------------------------------------------------------
 Name:
-	FPL-Demo | miniaudio
+	FPL-Demo | Mini Audio
 
 Description:
 	This demo shows how to use the miniaudio library with FPL.
