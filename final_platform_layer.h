@@ -187,6 +187,7 @@ SOFTWARE.
 	- Fixed: Compile errors for vulkan KHR missing cast to void pointer
 	- Fixed: Renamed GetAvailableThreadCount() to fplGetAvailableThreadCount()
 	- Fixed: Renamed GetUsedThreadCount() to fplGetUsedThreadCount()
+	- Fixed: POSIX main thread was never initialized, so get fplGetMainThread() was returning zero values
 	- Changed: Added stride argument to to fplGetAudioDevices()
 	- Changed: Renamed field userData to clientUserData in @ref fplAudioSettings
 	- Changed: Renamed fplAudioDeviceFormat to fplAudioFormat
@@ -16338,10 +16339,21 @@ fpl_internal void fpl__PosixReleaseSubplatform(fpl__PosixAppState *appState) {
 }
 
 fpl_internal bool fpl__PosixInitSubplatform(const fplInitFlags initFlags, const fplSettings *initSettings, fpl__PosixInitState *initState, fpl__PosixAppState *appState) {
-	if (!fpl__PThreadLoadApi(&appState->pthreadApi)) {
+	fpl__PThreadApi *pthreadApi = &appState->pthreadApi;
+
+	if (!fpl__PThreadLoadApi(pthreadApi)) {
 		FPL__ERROR(FPL__MODULE_POSIX, "Failed initializing PThread API");
 		return false;
 	}
+
+	pthread_t currentThreadHandle = pthreadApi->pthread_self();
+	uint32_t mainThreadId = (uint32_t)currentThreadHandle;
+	fplThreadHandle *mainThread = &fpl__global__ThreadState.mainThread;
+	fplClearStruct(mainThread);
+	mainThread->id = mainThreadId;
+	mainThread->internalHandle.posixThread = currentThreadHandle;
+	mainThread->currentState = fplThreadState_Running;
+
 	return true;
 }
 
