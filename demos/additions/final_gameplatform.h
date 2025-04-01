@@ -38,7 +38,7 @@ License:
 #include "final_game.h"
 
 struct GameConfiguration {
-	const wchar_t *title;
+	const char *title;
 	uint32_t audioSampleRate;
 	uint32_t audioChannels;
 	fplAudioFormatType audioFormat;
@@ -291,7 +291,7 @@ extern int GameMain(const GameConfiguration &config) {
 		settings.audio.targetFormat.type = config.audioFormat;
 	if (config.audioChannels > 0)
 		settings.audio.targetFormat.channels = config.audioChannels;
-	fplWideStringToUTF8String(config.title, wcslen(config.title), settings.window.title, fplArrayCount(settings.window.title));
+	fplCopyString(config.title, settings.window.title, fplArrayCount(settings.window.title));
 
 	fplInitFlags initFlags = fplInitFlags_All;
 	initFlags &= ~fplInitFlags_Console;

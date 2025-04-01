@@ -2400,7 +2400,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 
 int main(int argc, char *argv[]) {
 	GameConfiguration config = {};
-	config.title = L"FPL Demo | Towadev";
+	config.title = "FPL Demo | Towadev";
 	config.disableInactiveDetection = true;
 	gamelog::Verbose("Startup game application '%s'", config.title);
 	int result = GameMain(config);

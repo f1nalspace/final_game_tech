@@ -1515,7 +1515,7 @@ int main(int argc, char *argv[]) {
 	fplSetMaxLogLevel(fplLogLevel_All);
 
 	GameConfiguration config = {};
-	config.title = L"FPL Demo | Crackout";
+	config.title = "FPL Demo | Crackout";
 	config.hideMouseCursor = true;
 	config.audioSampleRate = 44100;
 	int result = GameMain(config);
