@@ -31,102 +31,172 @@ local function getOSArchitecture()
 	raw_arch_name = (raw_arch_name):lower()
 
 	local os_patterns = {
-		['windows'] = 'Windows',
-		['linux'] = 'Linux',
-		['mac'] = 'Mac',
-		['darwin'] = 'Mac',
-		['^mingw'] = 'Windows',
-		['^cygwin'] = 'Windows',
-		['bsd$'] = 'BSD',
-		['SunOS'] = 'Solaris',
+		['windows'] = {'Windows', 'windows'},
+		['linux'] = {'Linux', 'linux'},
+		['mac'] = {'Mac', 'mac'},
+		['darwin'] = {'Mac', 'mac'},
+		['^mingw'] = {'Windows', 'windows'},
+		['^cygwin'] = {'Windows', 'windows'},
+		['bsd$'] = {'BSD', 'unix'},
+		['SunOS'] = {'Solaris', 'unix'},
 	}
 	
 	local arch_patterns = {
-		['amd64'] = 'x86_64',
-		['x86_64'] = 'x86_64',
-		['^x86$'] = 'x86',
-		['i[%d]86'] = 'x86',
-		['Power Macintosh'] = 'powerpc',
-		['^arm'] = 'arm',
-		['^mips'] = 'mips',
+		['amd64'] = {'X86_64', 'x64'},
+		['x86_64'] = {'X86_64', 'x64'},
+		['^x86$'] = {'X86', 'x86'},
+		['i[%d]86'] = {'X86', 'x86'},
+		['Power Macintosh'] = {'PowerPC', 'powerpc'},
+		['arm64'] = {'Arm64', 'arm'},
+		['arm32'] = {'Arm32', 'arm'},
+		['^arm'] = {'Arm', 'arm'},
+		['^mips'] = {'Mips', 'mips'},
 	}
 
-	local os_name, arch_name = 'unknown', 'unknown'
+	local os_name, os_family, arch_name, arch_family = 'unknown', 'unknown', 'unknown', 'unknown'
 	
-	print("Raw Arch Name: "  .. raw_arch_name)
-
-	for pattern, name in pairs(os_patterns) do
+	for pattern, pair in pairs(os_patterns) do
 		if raw_os_name:match(pattern) then
-			os_name = name
+			os_name = pair[1]
+			os_family = pair[2]
 			break
 		end
 	end
-	for pattern, name in pairs(arch_patterns) do
+	for pattern, pair in pairs(arch_patterns) do
 		if raw_arch_name:match(pattern) then
-			arch_name = name
+			arch_name = pair[1]
+			arch_family = pair[2]
 			break
 		end
 	end
-	return os_name, arch_name
+	return os_name, os_family, arch_name, arch_family
 end
 
-local currentOS, currentArchitecture = getOSArchitecture()
+local currentOSName, currentOSFamily, currentArchitectureName, currentArchitectureFamily = getOSArchitecture()
 
-print("Detected OS/Arch: " .. currentOS .. "/" .. currentArchitecture)
+print("Detected OS/Arch: " .. currentOSFamily .. "/" .. currentArchitectureFamily)
 
 workspace "demos_final_platform_layer"
-	configurations { "Debug", "Release" }
+	configurations
+	{ 
+		"Debug",
+		"Release",
+	}
 	
-	if currentArchitecture == "arm" then
-		platforms { "ARM32", "ARM64" }
-		defaultplatform "ARM64"
-	elseif currentArchitecture == "x86_64" then
-		platforms { "X86", "X86_64" }
-		defaultplatform "X86_64"
-	elseif currentArchitecture == "x86" then
-		platforms { "X86" }
-		defaultplatform "X86"
-	else
-		error("Architecture not supported: " .. currentArchitecture)
-	end
+	flags
+    {
+        "MultiProcessorCompile",
+		"NoPCH",
+    }
+	
+	filter {}
+	
+	filter "action:vs*"
+		platforms 
+		{
+			"WinX86",
+			"WinX64",
+		}
 		
+	filter { "action:gmake*", "toolset:gcc" }
+		platforms 
+		{
+			"WinX86",
+			"WinX64",
+			"LinuxX86",
+			"LinuxX64",
+			"LinuxARM32",
+			"LinuxARM64",
+			"UnixX86",
+			"UnixX64",
+			"UnixARM32",
+			"UnixARM64",
+		}	
+			
 	-- Defaults for every project
 	filter {}
-		includedirs ({"../", "./additions/", "./dependencies/"})
-		targetdir ("./build/%{prj.name}/%{cfg.system}_%{cfg.platform}_%{cfg.buildcfg}")
-		objdir ("./immediates/%{prj.name}/%{cfg.system}_%{cfg.platform}_%{cfg.buildcfg}")
+		includedirs ( {"../", "./additions/", "./dependencies/" } )
+		targetdir ( "./build/%{prj.name}/%{cfg.platform}_%{cfg.buildcfg}" )
+		objdir ( "./immediates/%{prj.name}/%{cfg.platform}_%{cfg.buildcfg}" )
+			
+	-- Platform mapping
+	filter { "platforms:WinX86" }
+        system "windows"
+        architecture "x86"
 		
+	filter { "platforms:WinX64" }
+        system "windows"
+        architecture "x86_64"
+		
+	filter { "platforms:LinuxX86" }
+        system "linux"
+        architecture "x86"
+        toolset "gcc"
+
+	filter { "platforms:LinuxX64" }
+        system "linux"
+        architecture "x86_64"
+        toolset "gcc"
+		
+	filter { "platforms:LinuxARM32" }
+        system "linux"
+        architecture "ARM"
+        toolset "gcc"
+
+    filter { "platforms:LinuxARM64" }
+        system "linux"
+        architecture "ARM64"
+        toolset "gcc"
+		
+	filter { "platforms:UnixX86" }
+        system "bsd"
+        architecture "x86"
+        toolset "gcc"
+
+	filter { "platforms:UnixX64" }
+        system "bsd"
+        architecture "x86_64"
+        toolset "gcc"
+		
+	filter { "platforms:UnixARM32" }
+        system "bsd"
+        architecture "ARM"
+        toolset "gcc"
+
+    filter { "platforms:UnixARM64" }
+        system "bsd"
+        architecture "ARM64"
+        toolset "gcc"
+
 	-- Link to math library on *nix
 	filter { "system:bsd", "system:linux" }
 		links { "m" }
-
-	-- Platform to architecture mapping
-	filter { "platforms:X86" }
-		architecture "x86"
-	filter { "platforms:X86_64" }
-		architecture "x86_64"
-	filter { "platforms:X86_64" }
-		architecture "x86_64"
-	filter { "platforms:ARM32" }
-		architecture "ARM"
-	filter { "platforms:ARM64" }
-		architecture "ARM64"
-
+	
 	-- Debug / Release
 	filter "configurations:Debug"
 		defines { "DEBUG" }
+		runtime "Debug"
+		optimize "Off"
 		symbols "On"
+		warnings "Default"
+		
 	filter "configurations:Release"
 		defines { "NDEBUG" }
+		runtime "Release"
 		optimize "On"
+		symbols "Off"
+		warnings "Default"
 	
 -- Projects sorted into groups
 group "ThirdParty"
 	include "FPL_ImGui/premake5";
+	include "FPL_MiniAudio/premake5";
 
 group "Apps"
 	include "FPL_FFMpeg/premake5";
 	include "FPL_ImageViewer/premake5";
+	include "FPL_NBodySimulation/premake5";
+	include "FPL_Raytracer/premake5";
 
 group "Console"
 	include "FPL_Console/premake5";
@@ -150,4 +220,16 @@ group "Input"
 
 group "Window"
 	include "FPL_Window/premake5";
+	
+group "Test"
+	include "FPL_Test/premake5";
+
+group "Compability"
+	include "FPL_NoPlatformIncludes/premake5";
+	include "FPL_NoRuntimeLinking/premake5";
+	include "FPL_DynamicLib_Host/premake5";
+	include "FPL_DynamicLib_Client/premake5";
+	include "FPL_StaticLib_Host/premake5";
+	include "FPL_StaticLib_Client/premake5";
+	include "FPL_NoCRT/premake5";
 	
