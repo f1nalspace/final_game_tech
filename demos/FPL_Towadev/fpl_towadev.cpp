@@ -162,7 +162,7 @@ License:
 
 #include "fpl_towadev.h"
 
-constexpr float ShotAngleTolerance = (Pi32 * 0.05f);
+constexpr float ShotAngleTolerance = ((float)M_PI * 0.05f);
 
 namespace gamelog {
 	enum class LogLevel {
