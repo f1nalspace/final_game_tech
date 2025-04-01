@@ -231,6 +231,7 @@ group "Console"
 group "Audio"
 	include "FPL_AudioPlayer/premake5";
 	include "FPL_SimpleAudio/premake5";
+	include "FPL_WaveAudio/premake5";
 
 group "Games"
 	include "FPL_Crackout/premake5";
