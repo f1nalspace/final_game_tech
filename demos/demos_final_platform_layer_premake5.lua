@@ -237,6 +237,7 @@ group "Games"
 	include "FPL_Crackout/premake5";
 	include "FPL_Towadev/premake5";
 	include "FPL_GameTemplate/premake5";
+	include "FPL_Platformer/premake5";	
 
 group "Graphics"
 	include "FPL_OpenGL/premake5";
