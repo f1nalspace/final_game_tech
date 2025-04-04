@@ -1,8 +1,8 @@
 # Project
 APP_NAME = FPL_Software
-SOURCE_FILES = fpl_software.c final_platform_layer.c
+SOURCE_FILES = fpl_software.c
 LIBS = -ldl
-INCLUDES = -I../../
+INCLUDES = -I../../ -I../additions/
 
 # Auto detect release type/platform/architecture
 DEBUG ?= 1

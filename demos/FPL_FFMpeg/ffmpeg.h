@@ -29,6 +29,9 @@ typedef FFMPEG_GET_LIB_VERSION_FUNC(ffmpeg_get_lib_version_func);
 // AVFormat
 //
 
+// av_strerror
+#define FFMPEG_AV_STRERROR_FUNC(name) int name(int errnum, char *errbuf, size_t errbuf_size)
+typedef FFMPEG_AV_STRERROR_FUNC(ffmpeg_av_strerror_func);
 // av_register_all
 #define FFMPEG_AV_REGISTER_ALL_FUNC(name) void name(void)
 typedef FFMPEG_AV_REGISTER_ALL_FUNC(ffmpeg_av_register_all_func);
@@ -225,6 +228,9 @@ typedef FFMPEG_AV_GET_PACKED_SAMPLE_FMT_FUNC(ffmpeg_av_get_packed_sample_fmt_fun
 // av_get_default_channel_layout
 #define FFMPEG_AV_GET_DEFAULT_CHANNEL_LAYOUT_FUNC(name) int64_t name(int nb_channels)
 typedef FFMPEG_AV_GET_DEFAULT_CHANNEL_LAYOUT_FUNC(ffmpeg_av_get_default_channel_layout_func);
+// av_get_channel_layout_channel_index
+#define FFMPEG_AV_GET_CHANNEL_LAYOUT_CHANNEL_INDEX_FUNC(name) int name(uint64_t channel_layout, uint64_t channel)
+typedef FFMPEG_AV_GET_CHANNEL_LAYOUT_CHANNEL_INDEX_FUNC(ffmpeg_av_get_channel_layout_channel_index_func);
 // av_usleep
 #define FFMPEG_AV_USLEEP_FUNC(name) int name(unsigned usec)
 typedef FFMPEG_AV_USLEEP_FUNC(ffmpeg_av_usleep_func);
@@ -358,6 +364,7 @@ struct FFMPEGContext {
 	ffmpeg_av_rdft_end_func* av_rdft_end;
 
 	// Util
+	ffmpeg_av_strerror_func *av_strerror;
 	ffmpeg_get_lib_version_func* avutil_version;
 	ffmpeg_av_frame_alloc_func* av_frame_alloc;
 	ffmpeg_av_frame_free_func* av_frame_free;
@@ -379,6 +386,7 @@ struct FFMPEGContext {
 	ffmpeg_av_freep_func* av_freep;
 	ffmpeg_av_get_packed_sample_fmt_func* av_get_packed_sample_fmt;
 	ffmpeg_av_get_default_channel_layout_func* av_get_default_channel_layout;
+	ffmpeg_av_get_channel_layout_channel_index_func *av_get_channel_layout_channel_index;
 	ffmpeg_av_usleep_func* av_usleep;
 	ffmpeg_av_strdup_func* av_strdup;
 	ffmpeg_av_log2_func* av_log2;
@@ -594,6 +602,7 @@ static bool LoadFFMPEG(FFMPEGContext& ffmpeg) {
 	// AVUtil
 	//
 #if !USE_FFMPEG_STATIC_LINKING
+	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_strerror, ffmpeg_av_strerror_func, "av_strerror");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.avutil_version, ffmpeg_get_lib_version_func, "avutil_version");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_frame_alloc, ffmpeg_av_frame_alloc_func, "av_frame_alloc");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_frame_free, ffmpeg_av_frame_free_func, "av_frame_free");
@@ -615,6 +624,7 @@ static bool LoadFFMPEG(FFMPEGContext& ffmpeg) {
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_freep, ffmpeg_av_freep_func, "av_freep");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_get_packed_sample_fmt, ffmpeg_av_get_packed_sample_fmt_func, "av_get_packed_sample_fmt");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_get_default_channel_layout, ffmpeg_av_get_default_channel_layout_func, "av_get_default_channel_layout");
+	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_get_channel_layout_channel_index, ffmpeg_av_get_channel_layout_channel_index_func, "av_get_channel_layout_channel_index");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_usleep, ffmpeg_av_usleep_func, "av_usleep");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_strdup, ffmpeg_av_strdup_func, "av_strdup");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_log2, ffmpeg_av_log2_func, "av_log2");
@@ -626,6 +636,7 @@ static bool LoadFFMPEG(FFMPEGContext& ffmpeg) {
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_get_pix_fmt_string, ffmpeg_av_get_pix_fmt_string_func, "av_get_pix_fmt_string");	
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_get_pix_fmt_name, ffmpeg_av_get_pix_fmt_name_func, "av_get_pix_fmt_name");
 #else	
+	ffmpeg.av_strerror = av_strerror;
 	ffmpeg.avutil_version = avutil_version;
 	ffmpeg.av_frame_alloc = av_frame_alloc;
 	ffmpeg.av_frame_free = av_frame_free;
@@ -647,6 +658,7 @@ static bool LoadFFMPEG(FFMPEGContext& ffmpeg) {
 	ffmpeg.av_freep = av_freep;
 	ffmpeg.av_get_packed_sample_fmt = av_get_packed_sample_fmt;
 	ffmpeg.av_get_default_channel_layout = av_get_default_channel_layout;
+	ffmpeg.av_get_channel_layout_channel_index = av_get_channel_layout_channel_index;
 	ffmpeg.av_usleep = av_usleep;
 	ffmpeg.av_strdup = av_strdup;
 	ffmpeg.av_log2 = av_log2;
