@@ -12,6 +12,7 @@ set(CMAKE_C_FLAGS "-std=c99")
 set(MY_EXTERNAL_LIBS "")
 
 set(MY_INCLUDE_DIRS
+	"../../"
 	"../additions/"
 	)
 

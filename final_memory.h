@@ -125,7 +125,7 @@ Final Memory is released under the following license:
 
 MIT License
 
-Copyright (c) 2017-2023 Torsten Spaete
+Copyright (c) 2017-2025 Torsten Spaete
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -641,7 +641,7 @@ fmem_api bool fmemBeginTemporary(fmemMemoryBlock *source, fmemMemoryBlock *tempo
 	temporary->source = source;
 	temporary->type = fmemType_Temporary;
 
-	// TODO(final): Not thread-safe!
+	// @TODO(final): Not thread-safe!
 	source->used += remainingSize;
 	source->temporary = temporary;
 
@@ -661,7 +661,7 @@ fmem_api void fmemEndTemporary(fmemMemoryBlock *temporary) {
 	FMEM_ASSERT(sourceBlock->used == sourceBlock->size);
 	FMEM_ASSERT(temporary->size <= sourceBlock->size);
 
-	// TODO(final): Not thread-safe!
+	// @TODO(final): Not thread-safe!
 	sourceBlock->temporary = fmem_null;
 	sourceBlock->used -= temporary->size;
 

@@ -347,7 +347,7 @@ const static Vec4f ColorLightGray = V4f(0.3f, 0.3f, 0.3f, 1.0f);
 const static Vec4f ColorDarkGray = V4f(0.2f, 0.2f, 0.2f, 1.0f);
 
 inline Pixel RGBA32ToPixel(const uint32_t rgba) {
-	Pixel result = { (rgba >> 0) & 0xFF, (rgba >> 8) & 0xFF, (rgba >> 16) & 0xFF, (rgba >> 24) & 0xFF };
+	Pixel result = { (uint8_t)((rgba >> 0) & 0xFF), (uint8_t)((rgba >> 8) & 0xFF), (uint8_t)((rgba >> 16) & 0xFF), (uint8_t)((rgba >> 24) & 0xFF) };
 	return(result);
 }
 

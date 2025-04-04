@@ -31,7 +31,9 @@ namespace Demo2 {
 		}
 	}
 #else
-#define ValidateParticles(particles)
+#	ifndef ValidateParticles
+#		define ValidateParticles(...)
+#	endif
 #endif
 
 	ParticleSimulation::ParticleSimulation():
@@ -114,7 +116,7 @@ namespace Demo2 {
 	}
 
 	void ParticleSimulation::ClearBodies() {
-		for(int bodyIndex = 0; bodyIndex < _bodies.size(); ++bodyIndex) {
+		for(size_t bodyIndex = 0; bodyIndex < _bodies.size(); ++bodyIndex) {
 			Body *body = _bodies[bodyIndex];
 			delete body;
 		}
@@ -464,14 +466,14 @@ namespace Demo2 {
 		}
 
 		// Bodies
-		for(int bodyIndex = 0; bodyIndex < _bodies.size(); ++bodyIndex) {
+		for(size_t bodyIndex = 0; bodyIndex < _bodies.size(); ++bodyIndex) {
 			Body *body = _bodies[bodyIndex];
 			body->Render(commandBuffer);
 		}
 
 		// Particles
 		if(_particles.size() > 0) {
-			for(int particleIndex = 0; particleIndex < _particles.size(); ++particleIndex) {
+			for(size_t particleIndex = 0; particleIndex < _particles.size(); ++particleIndex) {
 				Particle *particle = &_particles[particleIndex];
 				particle->color = SPHGetParticleColor(_params.restDensity, particle->density, particle->pressure, particle->velocity);
 			}
@@ -514,7 +516,7 @@ namespace Demo2 {
 
 	void Circle::Render(Render::CommandBuffer *commandBuffer) {
 		Vec4f color = ColorBlue;
-		Render::PushCircle(commandBuffer, pos, radius, color, 1.0f, false);
+		Render::PushCircle(commandBuffer, pos, radius, color, false, 1.0f);
 	}
 
 	void LineSegment::Render(Render::CommandBuffer *commandBuffer) {

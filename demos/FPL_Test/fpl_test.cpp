@@ -14,6 +14,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2025-03-30
+	- Test available/used thread count
+
 	## 2021-09-07
 	- Added thread limit tests
 
@@ -56,7 +59,7 @@ Changelog:
 	- Forced Visual-Studio-Project to compile in C++ always
 
 License:
-	Copyright (c) 2017-2023 Torsten Spaete
+	Copyright (c) 2017-2025 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -117,7 +120,7 @@ static void TestColdInit() {
 static void TestInit() {
 	ftMsg("Test InitPlatform with All init flags\n");
 	{
-		fplClearErrors();
+		fplErrorsClear();
 		bool inited = fplPlatformInit(fplInitFlags_All, nullptr);
 		ftAssert(inited);
 		fplPlatformResultType resultType = fplGetPlatformResult();
@@ -128,7 +131,7 @@ static void TestInit() {
 	}
 	ftMsg("Test InitPlatform with None init flags\n");
 	{
-		fplClearErrors();
+		fplErrorsClear();
 		bool inited = fplPlatformInit(fplInitFlags_None, fpl_null);
 		ftAssert(inited);
 		fplPlatformResultType resultType = fplGetPlatformResult();
@@ -142,7 +145,7 @@ static void TestInit() {
 	ftMsg("Test fplGetCurrentSettings in non-initialized state\n");
 	{
 		ftIsFalse(fpl__global__InitState.isInitialized);
-		fplClearErrors();
+		fplErrorsClear();
 		const fplSettings *settings = fplGetCurrentSettings();
 		ftIsNull(settings);
 		size_t errorCount = fplGetErrorCount();
@@ -165,9 +168,9 @@ static void TestOSInfos() {
 		bool r = fplOSGetVersionInfos(&osInfos);
 		ftIsTrue(r);
 		fplConsoleFormatOut("\tName: %s\n", osInfos.osName);
-		fplConsoleFormatOut("\tVersion: %s.%s.%s.%s\n", osInfos.osVersion.major, osInfos.osVersion.minor, osInfos.osVersion.fix, osInfos.osVersion.build);
+		fplConsoleFormatOut("\tVersion: %s.%s.%s.%s\n", osInfos.osVersion.version.parts.major, osInfos.osVersion.version.parts.minor, osInfos.osVersion.version.parts.fix, osInfos.osVersion.version.parts.build);
 		fplConsoleFormatOut("\tDistribution Name: %s\n", osInfos.distributionName);
-		fplConsoleFormatOut("\tDistribution Version: %s.%s.%s.%s\n", osInfos.distributionVersion.major, osInfos.distributionVersion.minor, osInfos.distributionVersion.fix, osInfos.distributionVersion.build);
+		fplConsoleFormatOut("\tDistribution Version: %s.%s.%s.%s\n", osInfos.distributionVersion.version.parts.major, osInfos.distributionVersion.version.parts.minor, osInfos.distributionVersion.version.parts.fix, osInfos.distributionVersion.version.parts.build);
 	}
 	ftMsg("Get Session User name:\n");
 	{
@@ -500,18 +503,35 @@ static void TestHardware() {
 
 	fplCPUCapabilities cpuCaps = {};
 	fplCPUGetCapabilities(&cpuCaps);
-	ftMsg("Processor capabilities:\n");
-	ftMsg("\tMMX: %s\n", (cpuCaps.hasMMX ? "yes" : "no"));
-	ftMsg("\tSSE: %s\n", (cpuCaps.hasSSE ? "yes" : "no"));
-	ftMsg("\tSSE2: %s\n", (cpuCaps.hasSSE2 ? "yes" : "no"));
-	ftMsg("\tSSE3: %s\n", (cpuCaps.hasSSE3 ? "yes" : "no"));
-	ftMsg("\tSSSE3: %s\n", (cpuCaps.hasSSSE3 ? "yes" : "no"));
-	ftMsg("\tSSE4.1: %s\n", (cpuCaps.hasSSE4_1 ? "yes" : "no"));
-	ftMsg("\tSSE4.2: %s\n", (cpuCaps.hasSSE4_2 ? "yes" : "no"));
-	ftMsg("\tAVX: %s\n", (cpuCaps.hasAVX ? "yes" : "no"));
-	ftMsg("\tAVX2: %s\n", (cpuCaps.hasAVX2 ? "yes" : "no"));
-	ftMsg("\tAVX512: %s\n", (cpuCaps.hasAVX512 ? "yes" : "no"));
-	ftMsg("\tFMA3: %s\n", (cpuCaps.hasFMA3 ? "yes" : "no"));
+	const char *cpuTypeName = fplGetCPUCapabilitiesTypeName(cpuCaps.type);
+	ftMsg("Processor capabilities (%s):\n", cpuTypeName);
+	if (cpuCaps.type == fplCPUCapabilitiesType_X86) {
+		ftMsg("\tMMX: %s\n", (cpuCaps.x86.hasMMX ? "yes" : "no"));
+		ftMsg("\tSSE: %s\n", (cpuCaps.x86.hasSSE ? "yes" : "no"));
+		ftMsg("\tSSE2: %s\n", (cpuCaps.x86.hasSSE2 ? "yes" : "no"));
+		ftMsg("\tSSE3: %s\n", (cpuCaps.x86.hasSSE3 ? "yes" : "no"));
+		ftMsg("\tSSSE3: %s\n", (cpuCaps.x86.hasSSSE3 ? "yes" : "no"));
+		ftMsg("\tSSE4.1: %s\n", (cpuCaps.x86.hasSSE4_1 ? "yes" : "no"));
+		ftMsg("\tSSE4.2: %s\n", (cpuCaps.x86.hasSSE4_2 ? "yes" : "no"));
+		ftMsg("\tAVX: %s\n", (cpuCaps.x86.hasAVX ? "yes" : "no"));
+		ftMsg("\tAVX2: %s\n", (cpuCaps.x86.hasAVX2 ? "yes" : "no"));
+		ftMsg("\tAVX512: %s\n", (cpuCaps.x86.hasAVX512 ? "yes" : "no"));
+		ftMsg("\tFMA3: %s\n", (cpuCaps.x86.hasFMA3 ? "yes" : "no"));
+		ftMsg("\tEM64T: %s\n", (cpuCaps.x86.hasEM64T ? "yes" : "no"));
+		ftMsg("\tAES-NI: %s\n", (cpuCaps.x86.hasAES_NI ? "yes" : "no"));
+		ftMsg("\tSHA: %s\n", (cpuCaps.x86.hasSHA ? "yes" : "no"));
+		ftMsg("\tBMI1: %s\n", (cpuCaps.x86.hasBMI1 ? "yes" : "no"));
+		ftMsg("\tBMI2: %s\n", (cpuCaps.x86.hasBMI2 ? "yes" : "no"));
+		ftMsg("\tADX: %s\n", (cpuCaps.x86.hasADX ? "yes" : "no"));
+		ftMsg("\tF16C: %s\n", (cpuCaps.x86.hasF16C ? "yes" : "no"));
+	} else if (cpuCaps.type == fplCPUCapabilitiesType_ARM) {
+		ftMsg("\tNeon: %s\n", (cpuCaps.arm.hasNEON ? "yes" : "no"));
+		ftMsg("\tAES: %s\n", (cpuCaps.arm.hasAES ? "yes" : "no"));
+		ftMsg("\tSHA1: %s\n", (cpuCaps.arm.hasSHA1 ? "yes" : "no"));
+		ftMsg("\tSHA2: %s\n", (cpuCaps.arm.hasSHA2 ? "yes" : "no"));
+		ftMsg("\tCRC32: %s\n", (cpuCaps.arm.hasCRC32 ? "yes" : "no"));
+		ftMsg("\tPMULL: %s\n", (cpuCaps.arm.hasPMULL ? "yes" : "no"));
+	}
 
 	fplMemoryInfos memInfos = {};
 	fplMemoryGetInfos(&memInfos);
@@ -825,9 +845,35 @@ static void ThreadLimitThreadProc(const fplThreadHandle *context, void *opaque) 
 	fplThreadSleep(2000);
 }
 
+static void ThreadLimitOneSecProc(const fplThreadHandle *context, void *opaque) {
+	fplThreadSleep(1000);
+}
+
 static void ThreadLimits(const size_t overshoot) {
 	ftLine();
 	ftMsg("Thread limits test with overshoot of '%zu'\n", overshoot);
+
+	{
+		size_t usedThreadCount = fplGetUsedThreadCount();
+		size_t availableThreadCount = fplGetAvailableThreadCount();
+		ftMsg("Used/Available threads initial %zu/%zu\n", usedThreadCount, availableThreadCount);
+		ftAssertSizeEquals(0, usedThreadCount);
+		ftAssertSizeEquals(FPL_MAX_THREAD_COUNT, availableThreadCount);
+
+		fplThreadHandle *oneThread = fplThreadCreate(ThreadLimitOneSecProc, fpl_null);
+		usedThreadCount = fplGetUsedThreadCount();
+		availableThreadCount = fplGetAvailableThreadCount();
+		ftMsg("Used/Available threads with one active thread %zu/%zu\n", usedThreadCount, availableThreadCount);
+		ftAssertSizeEquals(1, usedThreadCount);
+		ftAssertSizeEquals(FPL_MAX_THREAD_COUNT - 1, availableThreadCount);
+		fplThreadWaitForOne(oneThread, 3000);
+
+		usedThreadCount = fplGetUsedThreadCount();
+		availableThreadCount = fplGetAvailableThreadCount();
+		ftMsg("Used/Available threads after single thread is done %zu/%zu\n", usedThreadCount, availableThreadCount);
+		ftAssertSizeEquals(0, usedThreadCount);
+		ftAssertSizeEquals(FPL_MAX_THREAD_COUNT, availableThreadCount);
+	}
 
 	size_t threadCount = FPL_MAX_THREAD_COUNT + overshoot;
 	ThreadLimitData *datas = (ThreadLimitData *)fplMemoryAllocate(sizeof(ThreadLimitData) * threadCount);
