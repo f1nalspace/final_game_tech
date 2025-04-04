@@ -2679,7 +2679,7 @@ static void BuildPresentation(const PresentationDefinition &inPresentation, Rend
 static void QuaternionTests() {
 }
 
-static uint32_t AudioPlaybackCallback(const fplAudioDeviceFormat *outFormat, const uint32_t maxFrameCount, void *outputSamples, void *userData) {
+static uint32_t AudioPlaybackCallback(const fplAudioFormat *outFormat, const uint32_t maxFrameCount, void *outputSamples, void *userData) {
 	AudioSystem *audioSys = (AudioSystem *)userData;
 	uint32_t result = AudioSystemWriteFrames(audioSys, outputSamples, outFormat, maxFrameCount, true);
 	return result;
@@ -2703,7 +2703,7 @@ int main(int argc, char **argv) {
 	// Audio settings
 	settings.audio.targetFormat.sampleRate = 44100;
 	settings.audio.targetFormat.type = fplAudioFormatType_F32;
-	settings.audio.targetFormat.latencyMode = fplAudioLatencyMode_Conservative;
+	settings.audio.targetFormat.mode = fplAudioMode_Shared_Conservative;
 	settings.audio.targetFormat.channels = 2;
 
 	bool platformInitialized = false;
@@ -2714,7 +2714,7 @@ int main(int argc, char **argv) {
 	if ((platformInitialized = fplPlatformInit(fplInitFlags_Video | fplInitFlags_Audio, &settings)) &&
 		(openGLInitialized = fglLoadOpenGL(true))) {
 
-		fplAudioDeviceFormat audioDeviceFormat = fplZeroInit;
+		fplAudioFormat audioDeviceFormat = fplZeroInit;
 		fplGetAudioHardwareFormat(&audioDeviceFormat);
 
 		fplConsoleFormatOut("Using audio device format (%lu frequency, %lu channels, %lu frames)\n", audioDeviceFormat.sampleRate, audioDeviceFormat.channels, audioDeviceFormat.bufferSizeInFrames);
