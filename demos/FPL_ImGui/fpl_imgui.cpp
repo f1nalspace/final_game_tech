@@ -44,13 +44,12 @@ Changelog:
 	- Forced Visual-Studio-Project to compile in C++ always
 
 License:
-	Copyright (c) 2017-2023 Torsten Spaete
+	Copyright (c) 2017-2025 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
 
 #define FPL_IMPLEMENTATION
-#define FPL_NO_AUDIO
 #define FPL_LOGGING
 #define FPL_NO_VIDEO_VULKAN
 #include <final_platform_layer.h>
@@ -225,9 +224,15 @@ static void ImGUIKeyEvent(uint64_t keyCode, fplKey mappedKey, fplKeyboardModifie
 
 static bool show_test_window = true;
 static bool show_another_window = false;
+
+static bool showDisplaysWindow = false;
+static bool showAudioDevicesWindow = false;
+
 static ImVec4 clear_color = ImColor(114, 144, 154);
 static size_t displayCount = 0;
+static size_t audioDeviceCount = 0;
 static fplDisplayInfo displays[16] = fplZeroInit;
+static fplAudioDeviceInfoExtended audioDevices[16] = fplZeroInit;
 
 static void UpdateAndRender(const float deltaTime) {
 	ImGuiIO& io = ImGui::GetIO();
@@ -295,14 +300,23 @@ static void UpdateAndRender(const float deltaTime) {
 
 	ImGui::SetNextWindowPos(ImVec2(60, 480), ImGuiSetCond_FirstUseEver);
 	ImGui::SetNextWindowSize(ImVec2(600, 200), ImGuiSetCond_FirstUseEver);
-	ImGui::Begin("Displays", &show_another_window);
+	ImGui::Begin("Displays", &showDisplaysWindow);
 	ImGui::Text("Count: %zu", displayCount);
 	for(size_t i = 0; i < displayCount; ++i) {
 		fplDisplayInfo *display = displays + i;
-		ImGui::BulletText("Display[%zu]: %s, Pos: %d x %d, Size: %d x %d, Is primary: %s", i, display->id, display->virtualPosition.left, display->virtualPosition.top, display->virtualSize.width, display->virtualSize.height, (display->isPrimary ? "true" : "false"));
+		ImGui::BulletText("Display[%zu]: %s, Pos: %d x %d, Size: %d x %d%s", i, display->id, display->virtualPosition.left, display->virtualPosition.top, display->virtualSize.width, display->virtualSize.height, (display->isPrimary ? " [Primary]" : ""));
 	}
-	ImGui::Text("Primary Display: %s, Pos: %d x %d, Size: %d x %d", primaryDisplay.id, primaryDisplay.virtualPosition.left, primaryDisplay.virtualPosition.top, primaryDisplay.virtualSize.width, primaryDisplay.virtualSize.height);
 	ImGui::Text("Window Display: %s, Pos: %d x %d, Size: %d x %d, Is primary: %s", windowDisplay.id, windowDisplay.virtualPosition.left, windowDisplay.virtualPosition.top, windowDisplay.virtualSize.width, windowDisplay.virtualSize.height, (windowDisplay.isPrimary ? "true" : "false"));
+	ImGui::End();
+
+	ImGui::SetNextWindowPos(ImVec2(560, 480), ImGuiSetCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(600, 200), ImGuiSetCond_FirstUseEver);
+	ImGui::Begin("Audio Devices", &showAudioDevicesWindow);
+	ImGui::Text("Count: %zu", audioDeviceCount);
+	for(size_t i = 0; i < audioDeviceCount; ++i) {
+		fplAudioDeviceInfoExtended *info = audioDevices + i;
+		ImGui::BulletText("Audio Device[%zu]: %s%s", i, info->info.name, (info->info.isDefault ? " [Default]" : ""));
+	}
 	ImGui::End();
 
 	glViewport(0, 0, windowArea.width, windowArea.height);
@@ -318,8 +332,10 @@ int main(int argc, char **args) {
 	settings.window.windowSize.width = 1280;
 	settings.window.windowSize.height = 720;
 	settings.video.backend = fplVideoBackendType_OpenGL;
-	if(fplPlatformInit(fplInitFlags_Video, &settings)) {
+	if(fplPlatformInit(fplInitFlags_All, &settings)) {
 		displayCount = fplGetDisplays(displays, fplArrayCount(displays));
+
+		audioDeviceCount = fplGetAudioDevices(fplArrayCount(audioDevices), sizeof(audioDevices[0]), (fplAudioDeviceInfo *)audioDevices);
 
 		InitImGUI();
 

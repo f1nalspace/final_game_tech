@@ -3,15 +3,18 @@ Name:
 	Final Math
 
 Description:
-	Math Library for defining/computing 2D/3D/4D Vectors, 2x2, 4x4 Matrices, etc.
+	Math Library for defining/computing 2D/3D/4D Vectors, 2x2, 3x3, 4x4 Matrices, etc.
 
 	This file is part of the final_framework.
 
 License:
 	MIT License
-	Copyright 2017-2023 Torsten Spaete
+	Copyright 2017-2025 Torsten Spaete
 
 Changelog
+	## 2025-03-09
+	- More Vec2f functions (Add, Sub)
+
 	## 2020-05-15:
 	- Added optional c++ methods with overloads, to make life a bit easier
 	- Added experimental quaternion struct
@@ -570,6 +573,16 @@ fpl_force_inline float SignF32(float v) {
 //
 // Vec2f
 //
+fpl_force_inline Vec2f V2fAdd(const Vec2f a, const Vec2f b) {
+	Vec2f result = V2fInit(a.x + b.x, a.y + b.y);
+	return(result);
+}
+
+fpl_force_inline Vec2f V2fSub(const Vec2f a, const Vec2f b) {
+	Vec2f result = V2fInit(a.x - b.x, a.y - b.y);
+	return(result);
+}
+
 fpl_force_inline Vec2f V2fMultScalar(const Vec2f v, const float s) {
 	Vec2f result = V2fInit(v.x * s, v.y * s);
 	return(result);
@@ -592,7 +605,7 @@ fpl_force_inline Vec2f operator*(float s, const Vec2f &v) {
 }
 
 fpl_force_inline Vec2f &operator*=(Vec2f &v, float s) {
-	v = v * s;
+	v = V2fMultScalar(v, s);
 	return(v);
 }
 
@@ -602,22 +615,22 @@ fpl_force_inline Vec2f operator-(const Vec2f &v) {
 }
 
 fpl_force_inline Vec2f operator+(const Vec2f &a, const Vec2f &b) {
-	Vec2f result = V2fInit(a.x + b.x, a.y + b.y);
+	Vec2f result = V2fAdd(a, b);
 	return(result);
 }
 
 fpl_force_inline Vec2f &operator+=(Vec2f &a, const Vec2f &b) {
-	a = a + b;
+	a = V2fAdd(a, b);
 	return(a);
 }
 
 fpl_force_inline Vec2f operator-(const Vec2f &a, const Vec2f &b) {
-	Vec2f result = V2fInit(a.x - b.x, a.y - b.y);
+	Vec2f result = V2fSub(a, b);
 	return(result);
 }
 
 fpl_force_inline Vec2f &operator-=(Vec2f &a, const Vec2f &b) {
-	a = a - b;
+	a = V2fSub(a, b);
 	return(a);
 }
 #endif // __cplusplus

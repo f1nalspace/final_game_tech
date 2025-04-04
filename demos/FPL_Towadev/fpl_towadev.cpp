@@ -130,7 +130,7 @@ Todo:
 	- Manual reload of XMLs and update all data dynamically
 
 License:
-	Copyright (c) 2017-2023 Torsten Spaete
+	Copyright (c) 2017-2025 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -158,9 +158,11 @@ License:
 
 #include <final_game.h>
 
+#include <final_fonts.h>
+
 #include "fpl_towadev.h"
 
-constexpr float ShotAngleTolerance = (Pi32 * 0.05f);
+constexpr float ShotAngleTolerance = ((float)M_PI * 0.05f);
 
 namespace gamelog {
 	enum class LogLevel {
@@ -240,12 +242,12 @@ namespace ui {
 	}
 
 	inline bool UIIsHot(const UIContext &ctx) {
-		bool result = ctx.hot > 0;
+		bool result = (uintptr_t)ctx.hot > 0;
 		return(result);
 	}
 
 	inline bool UIIsActive(const UIContext &ctx) {
-		bool result = ctx.active > 0;
+		bool result = (uintptr_t)ctx.active > 0;
 		return(result);
 	}
 
@@ -1632,15 +1634,12 @@ namespace game {
 			level::LoadWaveDefinitions(assets, WavesDataFilename, false, &tempMem);
 
 			// Fonts
-			char fontDataPath[1024];
-			const char *fontFilename = "SulphurPoint-Bold.otf";
-			fplPathCombine(fontDataPath, fplArrayCount(fontDataPath), 2, assets.dataPath, "fonts");
 			FontAsset &hudFont = assets.hudFont;
-			if (LoadFontFromFile(fontDataPath, fontFilename, 0, 36.0f, 32, 128, 512, 512, false, &hudFont.desc)) {
+			if (LoadFontFromMemory(ptr_fontSulphurPointRegular, sizeOf_fontSulphurPointRegular, 0, 36.0f, 32, 128, 512, 512, false, &hudFont.desc)) {
 				PushTexture(renderState, &hudFont.texture, hudFont.desc.atlasAlphaBitmap, hudFont.desc.atlasWidth, hudFont.desc.atlasHeight, 1, TextureFilterType::Linear, TextureWrapMode::ClampToEdge, false, false);
 			}
 			FontAsset &overlayFont = assets.overlayFont;
-			if (LoadFontFromFile(fontDataPath, fontFilename, 0, 240.0f, 32, 128, 4096, 4096, false, &overlayFont.desc)) {
+			if (LoadFontFromMemory(ptr_fontSulphurPointRegular, sizeOf_fontSulphurPointRegular, 0, 240.0f, 32, 128, 4096, 4096, false, &overlayFont.desc)) {
 				PushTexture(renderState, &overlayFont.texture, overlayFont.desc.atlasAlphaBitmap, overlayFont.desc.atlasWidth, overlayFont.desc.atlasHeight, 1, TextureFilterType::Linear, TextureWrapMode::ClampToEdge, false, false);
 			}
 
@@ -2401,7 +2400,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 
 int main(int argc, char *argv[]) {
 	GameConfiguration config = {};
-	config.title = L"FPL Demo | Towadev";
+	config.title = "FPL Demo | Towadev";
 	config.disableInactiveDetection = true;
 	gamelog::Verbose("Startup game application '%s'", config.title);
 	int result = GameMain(config);

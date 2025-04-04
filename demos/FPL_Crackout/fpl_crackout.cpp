@@ -74,7 +74,7 @@ Todo:
 	- Re-create sprites in HD
 
 License:
-	Copyright (c) 2017-2023 Torsten Spaete
+	Copyright (c) 2017-2025 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -104,6 +104,8 @@ License:
 #include <final_utils.h>
 
 #include <final_game.h>
+
+#include <final_fonts.h>
 
 //
 // Game constants
@@ -699,11 +701,11 @@ static bool LoadAssets(GameState &state) {
 	}
 	FreeTextureData(bgImage);
 
-	if(LoadFontFromFile(state.dataPath, "hemi_head_bd_it.ttf", 0, 36.0f, 32, 127, 512, 512, true, &state.assets.fontMenu.desc)) {
+	if(LoadFontFromMemory(ptr_fontHemiHeadBoldItalic, sizeOf_fontHemiHeadBoldItalic, 0, 36.0f, 32, 127, 512, 512, true, &state.assets.fontMenu.desc)) {
 		GLuint texId = AllocateTexture(state.assets.fontMenu.desc.atlasWidth, state.assets.fontMenu.desc.atlasHeight, state.assets.fontMenu.desc.atlasAlphaBitmap, false, GL_NEAREST, true);
 		state.assets.fontMenu.texture = ValueToPointer(texId);
 	}
-	if(LoadFontFromFile(state.dataPath, "hemi_head_bd_it.ttf", 0, 18.0f, 32, 127, 512, 512, true, &state.assets.fontHud.desc)) {
+	if(LoadFontFromMemory(ptr_fontHemiHeadBoldItalic, sizeOf_fontHemiHeadBoldItalic, 0, 18.0f, 32, 127, 512, 512, true, &state.assets.fontHud.desc)) {
 		GLuint texId = AllocateTexture(state.assets.fontHud.desc.atlasWidth, state.assets.fontHud.desc.atlasHeight, state.assets.fontHud.desc.atlasAlphaBitmap, false, GL_NEAREST, true);
 		state.assets.fontHud.texture = ValueToPointer(texId);
 	}
@@ -1513,7 +1515,7 @@ int main(int argc, char *argv[]) {
 	fplSetMaxLogLevel(fplLogLevel_All);
 
 	GameConfiguration config = {};
-	config.title = L"FPL Demo | Crackout";
+	config.title = "FPL Demo | Crackout";
 	config.hideMouseCursor = true;
 	config.audioSampleRate = 44100;
 	int result = GameMain(config);

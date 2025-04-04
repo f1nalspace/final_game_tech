@@ -32,7 +32,7 @@ struct BitmapFileHeader {
 constexpr uint32_t BITMAP_FORMAT_RGB = 0L;
 
 static void SaveBitmapRGB24(uint8_t *source, uint32_t width, uint32_t height, uint32_t scanline, const char *targetFilePath) {
-	assert(scanline == (width * 3));
+	fplAssert(scanline == (width * 3));
 
 	BitmapInfoheader bih = {};
 	bih.biBitCount = 24;

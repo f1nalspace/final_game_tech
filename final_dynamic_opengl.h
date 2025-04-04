@@ -80,7 +80,7 @@ Final Dynamic OpenGL is released under the following license:
 
 MIT License
 
-Copyright (c) 2017-2023 Torsten Spaete
+Copyright (c) 2017-2025 Torsten Spaete
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -103,7 +103,7 @@ SOFTWARE.
 
 /*!
 	\file final_dynamic_opengl.h
-	\version v0.3.5.0 beta
+	\version v0.4.0.0 beta
 	\author Torsten Spaete
 	\brief Final Dynamic OpenGL (FGL) - A open source C99 single file header OpenGL-Loader library.
 */
