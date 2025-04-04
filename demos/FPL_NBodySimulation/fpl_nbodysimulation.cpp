@@ -37,6 +37,12 @@ Todo:
 	- Migrate to modern opengl 3.3+
 
 Changelog:
+	# 2025-03-28
+	- Fixed warnings for int vs size_t
+
+	# 2025-03-12
+	- Fixed crash when rendering circles
+
 	# 2022-04-14:
 	- Fixed thread pool free was broken
 	- Fixed demos was never freed
@@ -79,7 +85,7 @@ Changelog:
 	- Initial version
 
 License:
-	Copyright (c) 2017-2023 Torsten Spaete
+	Copyright (c) 2017-2025 Torsten Spaete
 	MIT License (See LICENSE file)
 */
 #define FPL_LOGGING

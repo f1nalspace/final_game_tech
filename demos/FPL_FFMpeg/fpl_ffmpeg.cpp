@@ -16,8 +16,15 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2025-03-15
+	- Fixed audio sample buffer was not cleared when seeking
+
+	## 2025-03-13
+	- Fixed linkStatus for shader linking was not checked properly
+
 	## 2025-02-16
 	- Only allocate a new packet when needed / fixed dropped packets was never released
+	- Use fplAssert() instead of assert()
 
 	## 2025-01-28
 	- Fixed makefiles for CC/CMake was broken
@@ -142,7 +149,7 @@ Resources:
 	- https://www.codeproject.com/tips/489450/creating-custom-ffmpeg-io-context
 
 License:
-	Copyright (c) 2017-2023 Torsten Spaete
+	Copyright (c) 2017-2025 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -153,15 +160,13 @@ License:
 #define FPL_NO_VIDEO_VULKAN
 #include <final_platform_layer.h>
 
-#include <assert.h> // assert
-
 #include <final_math.h>
 
 #include "defines.h"
 #include "utils.h"
 #include "ffmpeg.h"
 
-#include "fontdata.h" // sulphur-point-regular font
+#include <final_fonts.h> // sulphur-point-regular font
 
 typedef int32_t bool32;
 
@@ -206,7 +211,7 @@ static void CheckGLError() {
 	GLenum err = glGetError();
 	if (err != GL_NO_ERROR) {
 		const char *msg = GetGLErrorString(err);
-		assert(!msg);
+		fplAssert(!msg);
 	}
 }
 
@@ -246,7 +251,7 @@ static GLuint CreateShader(const char *vertexShaderSource, const char *fragmentS
 
 	int linkStatus;
 	glGetProgramiv(result, GL_LINK_STATUS, &linkStatus);
-	if (GL_LINK_STATUS == GL_FALSE) {
+	if (linkStatus == GL_FALSE) {
 		int length;
 		glGetProgramiv(result, GL_INFO_LOG_LENGTH, &length);
 		LinkShaderInfoBuffer[0] = 0;
@@ -355,7 +360,7 @@ struct PacketQueue {
 };
 
 static bool IsFlushPacket(PacketList *packet) {
-	assert(packet != nullptr);
+	fplAssert(packet != nullptr);
 	bool result = (packet->packet.data == (uint8_t *)&globalFlushPacket);
 	return(result);
 }
@@ -449,7 +454,7 @@ static void PushPacket(PacketQueue &queue, PacketList *packet) {
 			queue.first = packet;
 		}
 		if (queue.last != nullptr) {
-			assert(queue.last->next == nullptr);
+			fplAssert(queue.last->next == nullptr);
 			queue.last->next = packet;
 		}
 		queue.last = packet;
@@ -513,7 +518,7 @@ static bool PushFlushPacket(PacketQueue &queue) {
 
 static void StartPacketQueue(PacketQueue &queue) {
 	bool r = PushFlushPacket(queue);
-	assert(r == true);
+	fplAssert(r == true);
 }
 
 //
@@ -740,7 +745,7 @@ static void StopReader(ReaderContext &reader) {
 
 static void StartReader(ReaderContext &reader, fpl_run_thread_callback *readerThreadFunc, void *state) {
 	reader.stopRequest = 0;
-	assert(reader.thread == nullptr);
+	fplAssert(reader.thread == nullptr);
 	reader.thread = fplThreadCreate(readerThreadFunc, state);
 }
 
@@ -806,7 +811,7 @@ static void DestroyDecoder(Decoder &decoder) {
 
 static void StartDecoder(Decoder &decoder, fpl_run_thread_callback *decoderThreadFunc) {
 	StartPacketQueue(decoder.packetsQueue);
-	assert(decoder.thread == nullptr);
+	fplAssert(decoder.thread == nullptr);
 	decoder.thread = fplThreadCreate(decoderThreadFunc, &decoder);
 }
 
@@ -822,7 +827,7 @@ static void StopDecoder(Decoder &decoder) {
 static void AddPacketToDecoder(Decoder &decoder, AVPacket *sourcePacket) {
 	PacketList *targetPacket = nullptr;
 	if (AquirePacket(decoder.packetsQueue, targetPacket)) {
-		assert(targetPacket != nullptr);
+		fplAssert(targetPacket != nullptr);
 		targetPacket->packet = *sourcePacket;
 		PushPacket(decoder.packetsQueue, targetPacket);
 	}
@@ -1128,19 +1133,19 @@ static void UploadTexture(VideoContext &video, const AVFrame *sourceNativeFrame)
 		switch (pixelFormat) {
 			case AVPixelFormat::AV_PIX_FMT_YUV420P:
 			case AVPixelFormat::AV_PIX_FMT_YUVJ420P:
-				assert(video.targetTextureCount == 3);
+				fplAssert(video.targetTextureCount == 3);
 				for (uint32_t textureIndex = 0; textureIndex < video.targetTextureCount; ++textureIndex) {
 					VideoTexture &targetTexture = video.targetTextures[textureIndex];
 
 					uint8_t *data = LockVideoTexture(targetTexture);
 
-					assert(data != nullptr);
+					fplAssert(data != nullptr);
 
 					uint32_t w = (textureIndex == 0) ? sourceNativeFrame->width : sourceNativeFrame->width / 2;
 					uint32_t h = (textureIndex == 0) ? sourceNativeFrame->height : sourceNativeFrame->height / 2;
 
-					assert(targetTexture.width == w);
-					assert(targetTexture.height == h);
+					fplAssert(targetTexture.width == w);
+					fplAssert(targetTexture.height == h);
 
 					uint32_t lineSize = sourceNativeFrame->linesize[textureIndex];
 					size_t copySize = targetTexture.width;
@@ -1160,13 +1165,13 @@ static void UploadTexture(VideoContext &video, const AVFrame *sourceNativeFrame)
 	}
 #endif
 
-	assert(video.targetTextureCount == 1);
+	fplAssert(video.targetTextureCount == 1);
 	VideoTexture &targetTexture = video.targetTextures[0];
-	assert(targetTexture.width == sourceNativeFrame->width);
-	assert(targetTexture.height == sourceNativeFrame->height);
+	fplAssert(targetTexture.width == sourceNativeFrame->width);
+	fplAssert(targetTexture.height == sourceNativeFrame->height);
 
 	uint8_t *data = LockVideoTexture(targetTexture);
-	assert(data != nullptr);
+	fplAssert(data != nullptr);
 
 	int32_t dstLineSize[8] = { targetTexture.rowSize, 0 };
 	uint8_t *dstData[8] = { data, nullptr };
@@ -1217,12 +1222,18 @@ struct AudioFormat {
 	fplAudioBackendType backend;
 };
 
+struct AudioChannelMap {
+	uint8_t channels[16];
+	bool isActive;
+};
+
 struct AudioContext {
 	MediaStream stream;
 	Decoder decoder;
 	AudioFormat audioSource;
 	AudioFormat audioTarget;
 	Clock clock;
+	AudioChannelMap channelMap;
 	double audioClock;
 	int32_t audioClockSerial;
 	int32_t audioDiffAvgCount;
@@ -1737,8 +1748,7 @@ static Vec2f ComputeTextSize(const FontInfo &info, const char *text, const float
 		Vec2f p2 = glyph.offset[2] * scale;
 		Vec2f p3 = glyph.offset[3] * scale;
 
-		// TODO(final): Compute actual text rectangle
-		//Vec2f charSize = 
+		// @TODO(final): Compute actual text rectangle
 
 		result += V2f(glyph.advance * scale, 0.0f);
 		++s;
@@ -1824,6 +1834,9 @@ static void ClearFontBuffer(FontBuffer &buffer) {
 }
 static void PushTextToBuffer(FontBuffer &buffer, const FontInfo &info, const char *text, const float scale, const Vec2f &position, const Vec4f &color, const TextRenderMode mode) {
 }
+static Vec2f ComputeTextSize(const FontInfo &info, const char *text, const float scale) {
+	return V2fZero();
+}
 #endif // USE_HARDWARE_RENDERING
 
 //
@@ -1883,13 +1896,13 @@ struct PlayerState {
 };
 
 static void ReleaseMedia(PlayerState &state, const PlayingState finishState, const uint32_t mainThreadId);
-static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const fplAudioDeviceFormat &nativeAudioFormat, const uint32_t mainThreadId);
+static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const uint32_t mainThreadId);
 
 static void VideoDecodingThreadProc(const fplThreadHandle *thread, void *userData);
 static void AudioDecodingThreadProc(const fplThreadHandle *thread, void *userData);
 static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData);
 static void LoadMediaThreadProc(const fplThreadHandle *thread, void *userData);
-static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData);
+static uint32_t AudioReadCallback(const fplAudioFormat *nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData);
 
 static bool InitializeVideoRendering(VideoContext &video, const AVCodecContext *videoCodexCtx);
 static void ReleaseVideoRendering(VideoContext &video);
@@ -1937,6 +1950,7 @@ static void StopAndReleaseMedia(PlayerState &state, const uint32_t mainThreadId)
 	// Stop audio
 	if (state.audio.isValid) {
 		fplStopAudio();
+		fplAudioRelease();
 	}
 
 	// Stop reader
@@ -1958,10 +1972,10 @@ static void StopAndReleaseMedia(PlayerState &state, const uint32_t mainThreadId)
 	globalMemStats = {};
 };
 
-static bool LoadAndPlayMedia(PlayerState &state, const char *mediaURL, const fplAudioDeviceFormat &nativeAudioFormat, const uint32_t mainThreadId) {
+static bool LoadAndPlayMedia(PlayerState &state, const char *mediaURL, const uint32_t mainThreadId) {
 	fplAssert(state.state == PlayingState::Unloaded || state.state == PlayingState::Failed);
 
-	if (!LoadMedia(state, mediaURL, nativeAudioFormat, mainThreadId)) {
+	if (!LoadMedia(state, mediaURL, mainThreadId)) {
 		fplAssert(state.state == PlayingState::Failed);
 		return false;
 	}
@@ -2014,7 +2028,6 @@ struct AppState {
 	PlayerState player;
 	FontInfo fontInfo;
 	FontBuffer fontBuffer;
-	fplAudioDeviceFormat nativeAudioFormat;
 	fplWindowSize viewport;
 	LoadState loadState;	
 	uint32_t mainThreadId;
@@ -2099,7 +2112,7 @@ static bool InitApp(AppState &state) {
 	// Font Info
 	uint32_t firstChar = ' ';
 	uint32_t charCount = '~' - firstChar;
-	if (!LoadFontInfo(sulphurPointRegularData, sulphurPointRegularDataSize, 1024, 1024, firstChar, charCount, 40.0f, &state.fontInfo)) {
+	if (!LoadFontInfo(ptr_fontSulphurPointRegular, sizeOf_fontSulphurPointRegular, 1024, 1024, firstChar, charCount, 32.0f, &state.fontInfo)) {
 		ReleaseApp(state, state.mainThreadId);
 		return(false);
 	}
@@ -2215,7 +2228,7 @@ namespace DecodeResults {
 typedef DecodeResults::DecodeResultEnum DecodeResult;
 
 static DecodeResult DecodeFrame(ReaderContext &reader, Decoder &decoder, AVFrame *frame) {
-	assert(decoder.stream != nullptr);
+	fplAssert(decoder.stream != nullptr);
 	AVCodecContext *codecCtx = decoder.stream->codecContext;
 	int ret = AVERROR(EAGAIN);
 	PacketList *pkt;
@@ -2279,7 +2292,7 @@ static DecodeResult DecodeFrame(ReaderContext &reader, Decoder &decoder, AVFrame
 
 		do {
 			if (decoder.frameQueue.hasPendingPacket) {
-				assert(decoder.frameQueue.pendingPacket != nullptr);
+				fplAssert(decoder.frameQueue.pendingPacket != nullptr);
 				pkt = decoder.frameQueue.pendingPacket;
 				decoder.frameQueue.hasPendingPacket = false;
 			} else {
@@ -2316,10 +2329,10 @@ static DecodeResult DecodeFrame(ReaderContext &reader, Decoder &decoder, AVFrame
 }
 
 static void QueuePicture(Decoder &decoder, AVFrame *sourceFrame, Frame *targetFrame, const int32_t serial) {
-	assert(targetFrame != nullptr);
-	assert(targetFrame->frame != nullptr);
-	assert(targetFrame->frame->pkt_size <= 0);
-	assert(targetFrame->frame->width == 0);
+	fplAssert(targetFrame != nullptr);
+	fplAssert(targetFrame->frame != nullptr);
+	fplAssert(targetFrame->frame->pkt_size <= 0);
+	fplAssert(targetFrame->frame->width == 0);
 
 	AVStream *videoStream = decoder.stream->stream;
 
@@ -2344,14 +2357,14 @@ static void QueuePicture(Decoder &decoder, AVFrame *sourceFrame, Frame *targetFr
 
 static void VideoDecodingThreadProc(const fplThreadHandle *thread, void *userData) {
 	Decoder *decoder = (Decoder *)userData;
-	assert(decoder != nullptr);
+	fplAssert(decoder != nullptr);
 
 	ReaderContext &reader = *decoder->reader;
 
 	MediaStream *stream = decoder->stream;
-	assert(stream != nullptr);
-	assert(stream->isValid);
-	assert(stream->streamIndex > -1);
+	fplAssert(stream != nullptr);
+	fplAssert(stream->isValid);
+	fplAssert(stream->streamIndex > -1);
 
 	PlayerState *state = decoder->state;
 
@@ -2447,10 +2460,10 @@ static void VideoDecodingThreadProc(const fplThreadHandle *thread, void *userDat
 }
 
 static void QueueSamples(Decoder &decoder, AVFrame *sourceFrame, Frame *targetFrame, int32_t serial) {
-	assert(targetFrame != nullptr);
-	assert(targetFrame->frame != nullptr);
-	assert(targetFrame->frame->pkt_size <= 0);
-	assert(targetFrame->frame->nb_samples == 0);
+	fplAssert(targetFrame != nullptr);
+	fplAssert(targetFrame->frame != nullptr);
+	fplAssert(targetFrame->frame->pkt_size <= 0);
+	fplAssert(targetFrame->frame->nb_samples == 0);
 
 	AVStream *audioStream = decoder.stream->stream;
 	AVRational currentTimeBase = { 1, sourceFrame->sample_rate };
@@ -2497,17 +2510,17 @@ static int SyncronizeAudio(PlayerState *state, const uint32_t sampleCount) {
 
 static void AudioDecodingThreadProc(const fplThreadHandle *thread, void *userData) {
 	Decoder *decoder = (Decoder *)userData;
-	assert(decoder != nullptr);
+	fplAssert(decoder != nullptr);
 
 	ReaderContext &reader = *decoder->reader;
 
 	PlayerState *state = decoder->state;
-	assert(state != nullptr);
+	fplAssert(state != nullptr);
 
 	MediaStream *stream = decoder->stream;
-	assert(stream != nullptr);
-	assert(stream->isValid);
-	assert(stream->streamIndex > -1);
+	fplAssert(stream != nullptr);
+	fplAssert(stream->isValid);
+	fplAssert(stream->streamIndex > -1);
 
 	fplSignalHandle *waitSignals[] = {
 		// New packet arrived
@@ -2583,7 +2596,7 @@ static void WriteSilenceSamples(AudioContext *audio, uint32_t remainingFrameCoun
 
 }
 
-static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
+static uint32_t AudioReadCallback(const fplAudioFormat *nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
 	double audioCallbackTime = (double)ffmpeg.av_gettime_relative();
 
 	// FPL Audio Frame = Audio Sample = [Left S16][Right S16]
@@ -2591,7 +2604,7 @@ static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, cons
 	// FFMPEG Planar audio: (Each channel a plane -> AVFrame->data[channel])
 	// FFMPEG Non-planar audio (One plane, Interleaved samples -> AVFrame->extended_data) [Left][Right],[Left][Right],..
 	AudioContext *audio = (AudioContext *)userData;
-	assert(audio != nullptr);
+	fplAssert(audio != nullptr);
 
 	Decoder &decoder = audio->decoder;
 
@@ -2603,8 +2616,10 @@ static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, cons
 		uint8_t *conversionAudioBuffer = audio->conversionAudioBuffer;
 		uint32_t maxConversionAudioBufferSize = audio->maxConversionAudioBufferSize;
 
-		uint32_t outputSampleStride = fplGetAudioFrameSizeInBytes(nativeFormat->type, nativeFormat->channels);
-		uint32_t maxOutputSampleBufferSize = outputSampleStride * frameCount;
+		uint32_t outputSamplesStride = fplGetAudioFrameSizeInBytes(nativeFormat->type, nativeFormat->channels);
+		uint32_t outputFormatSize = fplGetAudioFrameSizeInBytes(nativeFormat->type, 1);
+
+		uint32_t maxOutputSampleBufferSize = outputSamplesStride * frameCount;
 
 		uint32_t nativeBufferSizeInBytes = fplGetAudioBufferSizeInBytes(nativeFormat->type, nativeFormat->channels, nativeFormat->bufferSizeInFrames);
 
@@ -2613,23 +2628,34 @@ static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, cons
 		uint32_t remainingFrameCount = frameCount;
 		while (remainingFrameCount > 0) {
 			if (state->isPaused) {
-				WriteSilenceSamples(audio, remainingFrameCount, outputSampleStride, conversionAudioBuffer);
+				WriteSilenceSamples(audio, remainingFrameCount, outputSamplesStride, conversionAudioBuffer);
 			}
 
 			// Consume audio in conversion buffer before we do anything else
 			if ((audio->conversionAudioFramesRemaining) > 0) {
 				uint32_t maxFramesToRead = audio->conversionAudioFramesRemaining;
 				uint32_t framesToRead = fplMin(remainingFrameCount, maxFramesToRead);
-				size_t bytesToCopy = framesToRead * outputSampleStride;
+				size_t bytesToCopy = framesToRead * outputSamplesStride;
 
-				assert(audio->conversionAudioFrameIndex < audio->maxConversionAudioFrameCount);
-				size_t sourcePosition = audio->conversionAudioFrameIndex * outputSampleStride;
-				assert(sourcePosition < audio->maxConversionAudioBufferSize);
+				fplAssert(audio->conversionAudioFrameIndex < audio->maxConversionAudioFrameCount);
+				size_t sourcePosition = audio->conversionAudioFrameIndex * outputSamplesStride;
+				fplAssert(sourcePosition < audio->maxConversionAudioBufferSize);
 
-				size_t destPosition = (frameCount - remainingFrameCount) * outputSampleStride;
-				assert(destPosition < maxOutputSampleBufferSize);
+				size_t destPosition = (frameCount - remainingFrameCount) * outputSamplesStride;
+				fplAssert(destPosition < maxOutputSampleBufferSize);
 
-				fplMemoryCopy(conversionAudioBuffer + sourcePosition, bytesToCopy, (uint8_t *)outputSamples + destPosition);
+				if (nativeFormat->channels <= 2 || !state->audio.channelMap.isActive) {
+					fplMemoryCopy(conversionAudioBuffer + sourcePosition, bytesToCopy, (uint8_t *)outputSamples + destPosition);
+				} else {
+					for (uint32_t frameIndex = 0; frameIndex < framesToRead; ++frameIndex) {
+						uintptr_t sourceFramePosition = sourcePosition + frameIndex * outputSamplesStride;
+						uintptr_t destFramePosition = destPosition + frameIndex * outputSamplesStride;
+						for (uint32_t channelIndex = 0; channelIndex < nativeFormat->channels; ++channelIndex) {
+							uint32_t targetChannelIndex = state->audio.channelMap.channels[channelIndex];
+							fplMemoryCopy(conversionAudioBuffer + sourceFramePosition + channelIndex * outputFormatSize, outputFormatSize, (uint8_t *)outputSamples + destFramePosition + targetChannelIndex * outputFormatSize);
+						}
+					}
+				}
 
 				remainingFrameCount -= framesToRead;
 				audio->conversionAudioFrameIndex += framesToRead;
@@ -2645,9 +2671,9 @@ static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, cons
 
 			// Convert entire pending frame into conversion buffer
 			if (audio->pendingAudioFrame != nullptr) {
-				assert(audio->conversionAudioFramesRemaining == 0);
+				fplAssert(audio->conversionAudioFramesRemaining == 0);
 				Frame *audioFrame = audio->pendingAudioFrame;
-				assert(audioFrame->frame != nullptr);
+				fplAssert(audioFrame->frame != nullptr);
 				audio->pendingAudioFrame = nullptr;
 
 				// Get conversion sample count
@@ -2669,7 +2695,7 @@ static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, cons
 				targetSamples[0] = audio->conversionAudioBuffer;
 
 				// @NOTE(final): Conversion buffer needs to be big enough to hold the samples for the frame
-				assert(conversionSampleCount <= (int)maxConversionSampleCount);
+				fplAssert(conversionSampleCount <= (int)maxConversionSampleCount);
 				int samplesPerChannel = ffmpeg.swr_convert(audio->softwareResampleCtx, (uint8_t **)targetSamples, conversionSampleCount, (const uint8_t **)sourceSamples, sourceSampleCount);
 
 				// We are done with this audio frame, release it
@@ -2705,7 +2731,7 @@ static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, cons
 				} else {
 					// No audio frame available, write silence for the remaining frames
 					if (remainingFrameCount > 0) {
-						WriteSilenceSamples(audio, remainingFrameCount, outputSampleStride, conversionAudioBuffer);
+						WriteSilenceSamples(audio, remainingFrameCount, outputSamplesStride, conversionAudioBuffer);
 					} else {
 						break;
 					}
@@ -2715,7 +2741,7 @@ static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, cons
 
 		// Update audio clock
 		if (!isnan(audio->audioClock)) {
-			uint32_t writtenSize = result * outputSampleStride;
+			uint32_t writtenSize = result * outputSamplesStride;
 			double pts = audio->audioClock - (double)(nativeFormat->periods * nativeBufferSizeInBytes + writtenSize) / (double)targetFormat->bufferSizeInBytes;
 			SetClockAt(audio->clock, pts, audio->audioClockSerial, audioCallbackTime / (double)AV_TIME_BASE);
 			SyncClockToSlave(state->externalClock, audio->clock);
@@ -2793,7 +2819,7 @@ static void StepToNextFrame(PlayerState *state) {
 
 static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) {
 	PlayerState *state = (PlayerState *)userData;
-	assert(state != nullptr);
+	fplAssert(state != nullptr);
 
 	ReaderContext &reader = state->reader;
 	VideoContext &video = state->video;
@@ -2801,7 +2827,7 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 	MediaStream *videoStream = video.decoder.stream;
 	MediaStream *audioStream = audio.decoder.stream;
 	AVFormatContext *formatCtx = state->formatCtx;
-	assert(formatCtx != nullptr);
+	fplAssert(formatCtx != nullptr);
 
 	fplSignalHandle *waitSignals[] = {
 		// We got a free packet for use to read into
@@ -2813,7 +2839,7 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 	};
 
 	bool skipWait = true;
-	AVPacket srcPacket;
+	AVPacket srcPacket = fplZeroInit;
 	bool hasPendingPacket = false;
 	for (;;) {
 		// Wait for any signal or skip wait
@@ -2863,6 +2889,10 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 
 					state->audio.decoder.isEOF = false;
 					fplSignalSet(&state->audio.decoder.resumeSignal);
+
+					state->audio.pendingAudioFrame = nullptr;
+					state->audio.conversionAudioFrameIndex = 0;
+					state->audio.conversionAudioFramesRemaining = 0;
 				}
 
 				if (state->video.isValid) {
@@ -2990,7 +3020,8 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 
 static void CloseStreamComponent(MediaStream &outStream) {
 	if (outStream.codecContext != nullptr) {
-		ffmpeg.av_freep(outStream.codecContext);
+        ffmpeg.avcodec_free_context(&outStream.codecContext);
+        outStream.codecContext = fpl_null;
 	}
 	outStream = {};
 	outStream.streamIndex = -1;
@@ -3012,7 +3043,7 @@ static bool OpenStreamComponent(const char *mediaFilePath, const int32_t streamI
 			break;
 		default:
 			typeName = "";
-			assert(!"Unsupported stream type!");
+			fplAssert(!"Unsupported stream type!");
 	}
 
 	// Create codec context
@@ -3257,7 +3288,7 @@ static void RenderOSD(AppState *state, const Mat4f &proj, const float w, const f
 }
 
 static void RenderVideoFrame(AppState *state) {
-	assert(state != nullptr);
+	fplAssert(state != nullptr);
 
 	PlayerState *playerState = &state->player;
 
@@ -3270,6 +3301,7 @@ static void RenderVideoFrame(AppState *state) {
 
 	if (playState == PlayingState::Playing || playState == PlayingState::Paused) {
 		hasVideo = playerState->video.isValid;
+
 		if (hasVideo && video.isRenderingInitialized) {
 			int readIndex = playerState->video.decoder.frameQueue.readIndex;
 			vp = PeekFrameQueueLast(playerState->video.decoder.frameQueue);
@@ -3385,13 +3417,13 @@ static void RenderVideoFrame(AppState *state) {
 	glEnable(GL_BLEND);
 #endif
 
-	// TODO(final): OSD Support for software rendering requires bitmap blitting!
+	// @TODO(final): OSD Support for software rendering requires bitmap blitting!
 	RenderOSD(state, proj, (float)w, (float)h);
 
 #else
 	fplVideoBackBuffer *backBuffer = fplGetVideoBackBuffer();
 
-	// TODO(final): Detect if we need to flip the frame
+	// @TODO(final): Detect if we need to flip the frame
 #if USE_FLIP_V_PICTURE_IN_SOFTWARE
 	backBuffer->outputRect = fplCreateVideoRectFromLTRB(rect.left, rect.bottom, rect.right, rect.top);
 #else
@@ -3753,8 +3785,168 @@ static void ReleaseAudio(AudioContext &audio) {
 	audio = {};
 }
 
-static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const fplAudioDeviceFormat &nativeAudioFormat) {
+static uint64_t MapChannelLayout(const fplAudioChannelLayout layout) {
+	switch (layout) {
+		case fplAudioChannelLayout_Mono:
+			return AV_CH_LAYOUT_MONO;
+		case fplAudioChannelLayout_Stereo:
+			return AV_CH_LAYOUT_STEREO;
+		case fplAudioChannelLayout_3_0_Surround:
+			return AV_CH_LAYOUT_2_1;
+		case fplAudioChannelLayout_2_1:
+			return AV_CH_LAYOUT_2POINT1;
+		case fplAudioChannelLayout_4_0_Quad:
+			return AV_CH_LAYOUT_QUAD;
+		case fplAudioChannelLayout_4_0_Surround:
+			return AV_CH_LAYOUT_4POINT0;
+		case fplAudioChannelLayout_4_1:
+			return AV_CH_LAYOUT_4POINT1;
+		case fplAudioChannelLayout_5_0_Surround:
+			return AV_CH_LAYOUT_5POINT0;
+		case fplAudioChannelLayout_5_1:
+			return AV_CH_LAYOUT_5POINT1;
+		case fplAudioChannelLayout_6_1:
+			return AV_CH_LAYOUT_6POINT1;
+		case fplAudioChannelLayout_7_1:
+			return AV_CH_LAYOUT_7POINT1;
+		default:
+			return AV_CH_LAYOUT_STEREO;
+	}
+}
+
+static uint64_t MapAudioChannelTypeToAVChannel(const fplAudioChannelType type) {
+	switch (type) {
+		case fplAudioChannelType_FrontLeft:
+			return AV_CH_FRONT_LEFT;
+		case fplAudioChannelType_FrontRight:
+			return AV_CH_FRONT_RIGHT;
+		case fplAudioChannelType_FrontCenter:
+			return AV_CH_FRONT_CENTER;
+		case fplAudioChannelType_LowFrequency:
+			return AV_CH_LOW_FREQUENCY;
+		case fplAudioChannelType_BackLeft:
+			return AV_CH_BACK_LEFT;
+		case fplAudioChannelType_BackRight:
+			return AV_CH_BACK_RIGHT;
+		case fplAudioChannelType_FrontLeftOfCenter:
+			return AV_CH_FRONT_LEFT_OF_CENTER;
+		case fplAudioChannelType_FrontRightOfCenter:
+			return AV_CH_FRONT_RIGHT_OF_CENTER;
+		case fplAudioChannelType_BackCenter:
+			return AV_CH_BACK_CENTER;
+		case fplAudioChannelType_SideLeft:
+			return AV_CH_SIDE_LEFT;
+		case fplAudioChannelType_SideRight:
+			return AV_CH_SIDE_RIGHT;
+		case fplAudioChannelType_TopCenter:
+			return AV_CH_TOP_CENTER;
+		case fplAudioChannelType_TopFrontLeft:
+			return AV_CH_TOP_FRONT_LEFT;
+		case fplAudioChannelType_TopFrontCenter:
+			return AV_CH_TOP_FRONT_CENTER;
+		case fplAudioChannelType_TopFrontRight:
+			return AV_CH_TOP_FRONT_RIGHT;
+		case fplAudioChannelType_TopBackLeft:
+			return AV_CH_TOP_BACK_LEFT;
+		case fplAudioChannelType_TopBackCenter:
+			return AV_CH_TOP_BACK_CENTER;
+		case fplAudioChannelType_TopBackRight:
+			return AV_CH_TOP_BACK_RIGHT;
+		default:
+			return 0;
+	}
+}
+
+static fplAudioChannelType MapAVChannelToAudioChannelType(const uint64_t avChannel) {
+    switch (avChannel) {
+        case AV_CH_FRONT_LEFT:
+            return fplAudioChannelType_FrontLeft;
+        case AV_CH_FRONT_RIGHT:
+            return fplAudioChannelType_FrontRight;
+        case AV_CH_FRONT_CENTER:
+            return fplAudioChannelType_FrontCenter;
+        case AV_CH_LOW_FREQUENCY:
+            return fplAudioChannelType_LowFrequency;
+        case AV_CH_BACK_LEFT:
+            return fplAudioChannelType_BackLeft;
+        case AV_CH_BACK_RIGHT:
+            return fplAudioChannelType_BackRight;
+        case AV_CH_FRONT_LEFT_OF_CENTER:
+            return fplAudioChannelType_FrontLeftOfCenter;
+        case AV_CH_FRONT_RIGHT_OF_CENTER:
+            return fplAudioChannelType_FrontRightOfCenter;
+        case AV_CH_BACK_CENTER:
+            return fplAudioChannelType_BackCenter;
+        case AV_CH_SIDE_LEFT:
+            return fplAudioChannelType_SideLeft;
+        case AV_CH_SIDE_RIGHT:
+            return fplAudioChannelType_SideRight;
+        case AV_CH_TOP_CENTER:
+            return fplAudioChannelType_TopCenter;
+        case AV_CH_TOP_FRONT_LEFT:
+            return fplAudioChannelType_TopFrontLeft;
+        case AV_CH_TOP_FRONT_CENTER:
+            return fplAudioChannelType_TopFrontCenter;
+        case AV_CH_TOP_FRONT_RIGHT:
+            return fplAudioChannelType_TopFrontRight;
+        case AV_CH_TOP_BACK_LEFT:
+            return fplAudioChannelType_TopBackLeft;
+        case AV_CH_TOP_BACK_CENTER:
+            return fplAudioChannelType_TopBackCenter;
+        case AV_CH_TOP_BACK_RIGHT:
+            return fplAudioChannelType_TopBackRight;
+        default:
+            return fplAudioChannelType_None;
+    }
+}
+
+static uint16_t GetChannelIndexFromInputMapping(const fplAudioChannelMap *inChannelMap, const uint16_t channelCount, const fplAudioChannelType channelFlag) {
+	for (uint16_t i = 0; i < channelCount; ++i) {
+		if (inChannelMap->speakers[i] == channelFlag) {
+			return i;
+		}
+	}
+	return UINT16_MAX;
+}
+
+static void InitializeChannelMapping(const uint64_t channelLayout, const uint16_t channelCount, const fplAudioChannelMap *inChannelMap, AudioChannelMap *outChannelMap) {
+	int minBits = 0;
+	int maxBits = 17;
+	fplAssert(AV_CH_FRONT_LEFT == (1 << minBits));
+	fplAssert(AV_CH_TOP_BACK_RIGHT == (1 << maxBits));
+
+	bool requireMapping = false;
+
+	uint16_t count = 0;
+    for (uint16_t i = minBits; i < maxBits; ++i) {
+        uint64_t mask = (1ULL << i);
+        if (channelLayout & mask) {
+			fplAudioChannelType type = MapAVChannelToAudioChannelType(mask);
+
+			uint16_t ffmpegIndex = count;
+
+			uint16_t mappedIndex = GetChannelIndexFromInputMapping(inChannelMap, channelCount, type);
+
+			if (ffmpegIndex != mappedIndex) {
+				requireMapping = true;
+			}
+
+			if (mappedIndex == UINT16_MAX) {
+				outChannelMap->channels[ffmpegIndex] = ffmpegIndex & 0xFF;
+			} else {
+				outChannelMap->channels[ffmpegIndex] = mappedIndex & 0xFF;
+			}
+
+            count++;
+        }
+    }
+
+	outChannelMap->isActive = requireMapping;
+}
+
+static bool InitializeAudio(PlayerState &state, const char *mediaFilePath) {
 	AudioContext &audio = state.audio;
+
 	AVCodecContext *audioCodexCtx = audio.stream.codecContext;
 
 	AVSampleFormat targetSampleFormat;
@@ -3773,6 +3965,43 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 
 	int lineSize;
 
+	fplAudioFormat nativeAudioFormat = fplZeroInit;
+
+	fplAudioChannelMap channelMap = fplZeroInit;
+
+	// Init audio system and get audio hardware format (Two tries, one with the ffmpeg format and one with a default one)
+	fplAudioResultType loadAudioRes;
+
+	fplAudioSettings audioSettings = fplZeroInit;
+	fplSetDefaultAudioSettings(&audioSettings);
+
+	// Overwrite target format with audio codec infos (e.g. Channels, Sample Rate, Format)
+	audioSettings.targetFormat.channels = audioCodexCtx->channels;
+	audioSettings.targetFormat.sampleRate = audioCodexCtx->sample_rate;
+	audioSettings.targetFormat.type = MapAVSampleFormat(audioCodexCtx->sample_fmt);
+
+	loadAudioRes = fplAudioInit(&audioSettings);
+
+	if (loadAudioRes != fplAudioResultType_Success) {
+		FPL_LOG_WARN("App", "FFMPEG audio format (sample rate '%u', channels: %u, type: %s) is not supported, try the default format", audioSettings.targetFormat.sampleRate, audioSettings.targetFormat.channels, fplGetAudioFormatName(audioSettings.targetFormat.type));
+		fplSetDefaultAudioSettings(&audioSettings);
+		loadAudioRes = fplAudioInit(&audioSettings);
+	}
+
+	if (loadAudioRes != fplAudioResultType_Success) {
+		FPL_LOG_ERROR("App", "Failed initialize audio system with configuration (sample rate '%u', channels: %u, type: %s)", audioSettings.targetFormat.sampleRate, audioSettings.targetFormat.channels, fplGetAudioFormatName(audioSettings.targetFormat.type));
+		goto failed;
+	}
+
+	if (!fplGetAudioHardwareFormat(&nativeAudioFormat)) {
+		FPL_LOG_ERROR("App", "Failed retrieving audio hardware format for configuration (sample rate: %u, channels: %u, type: %s)", audioSettings.targetFormat.sampleRate, audioSettings.targetFormat.channels, fplGetAudioFormatName(audioSettings.targetFormat.type));
+		goto failed;
+	}
+
+	fplGetAudioChannelMap(&channelMap);
+
+	state.audio.backend = fplGetAudioBackendType();
+
 	// Init audio decoder
 	if (!InitDecoder(audio.decoder, &state, &state.reader, &audio.stream, MAX_AUDIO_FRAME_QUEUE_COUNT, 1)) {
 		FPL_LOG_ERROR("App", "Failed initialize audio decoder for media file '%s'!\n", mediaFilePath);
@@ -3788,18 +4017,16 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 
 	targetSampleFormat = MapAudioFormatType(nativeAudioFormat.type);
 
-	// @TODO(final): Map channels to AV channel layout
-	targetChannelLayout = AV_CH_LAYOUT_STEREO;
+	targetChannelLayout = MapChannelLayout(nativeAudioFormat.channelLayout);
 	targetChannelCount = nativeAudioFormat.channels;
-	assert(targetChannelCount == 2);
 	targetSampleRate = nativeAudioFormat.sampleRate;
 	audio.audioTarget = {};
 	audio.audioTarget.periods = nativeAudioFormat.periods;
 	audio.audioTarget.channels = targetChannelCount;
 	audio.audioTarget.sampleRate = targetSampleRate;
 	audio.audioTarget.type = nativeAudioFormat.type;
-	audio.audioTarget.backend = nativeAudioFormat.backend;
 	audio.audioTarget.bufferSizeInBytes = ffmpeg.av_samples_get_buffer_size(nullptr, audio.audioTarget.channels, audio.audioTarget.sampleRate, targetSampleFormat, 1);
+	audio.audioTarget.backend = state.audio.backend;
 
 	inputSampleFormat = audioCodexCtx->sample_fmt;
 
@@ -3809,6 +4036,8 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 	if (inputChannelLayout == 0) {
 		inputChannelLayout = ffmpeg.av_get_default_channel_layout(inputChannelCount);
 	}
+
+	InitializeChannelMapping(inputChannelLayout, nativeAudioFormat.channels, &channelMap, &audio.channelMap);
 
 	audio.audioSource = {};
 	audio.audioSource.channels = inputChannelCount;
@@ -3897,7 +4126,7 @@ static void ReleaseMedia(PlayerState &state, const PlayingState finishState, con
 	SetPlayingState(state, finishState);
 }
 
-static bool LoadMedia(PlayerState &state, const char *mediaURL, const fplAudioDeviceFormat &nativeAudioFormat, const uint32_t mainThreadId) {
+static bool LoadMedia(PlayerState &state, const char *mediaURL, const uint32_t mainThreadId) {
 	fplAssert(state.state == PlayingState::Unloaded || state.state == PlayingState::Failed);
 
 	bool isURL = fplIsStringMatchWildcard(mediaURL, "http://*") || fplIsStringMatchWildcard(mediaURL, "https://*");
@@ -3907,13 +4136,20 @@ static bool LoadMedia(PlayerState &state, const char *mediaURL, const fplAudioDe
 		return(false);
 	}
 
+	char tmpError[AV_ERROR_MAX_STRING_SIZE];
+
 	state.filePathOrUrl = mediaURL;
 
 	SetPlayingState(state, PlayingState::Loading);
 
 	// Open media file
-	if (ffmpeg.avformat_open_input(&state.formatCtx, mediaURL, nullptr, nullptr) != 0) {
-		FPL_LOG_ERROR("App", "Failed opening media file '%s'!\n", mediaURL);
+	int openInputRes = ffmpeg.avformat_open_input(&state.formatCtx, mediaURL, nullptr, nullptr);
+	if (openInputRes != 0) {
+		if (ffmpeg.av_strerror(openInputRes, tmpError, fplArrayCount(tmpError) == 0)) {
+			FPL_LOG_ERROR("App", "Failed opening media file '%s' -> %s\n", mediaURL, tmpError);
+		} else {
+			FPL_LOG_ERROR("App", "Failed opening media file '%s' -> Code: %d\n", mediaURL, openInputRes);
+		}
 		goto release;
 	}
 
@@ -3974,7 +4210,7 @@ static bool LoadMedia(PlayerState &state, const char *mediaURL, const fplAudioDe
 
 	// Allocate audio related resources
 	if (state.audio.stream.isValid) {
-		state.audio.isValid = InitializeAudio(state, mediaURL, nativeAudioFormat);
+		state.audio.isValid = InitializeAudio(state, mediaURL);
 		if (!state.audio.isValid) {
 			goto release;
 		}
@@ -4048,7 +4284,7 @@ static void LoadMediaThreadProc(const fplThreadHandle *thread, void *userData) {
 			fplMutexLock(&loadState.mutex);
 			StopAndReleaseMedia(state->player, state->mainThreadId);
 			if (fplGetStringLength(loadState.url) > 0) {
-				LoadAndPlayMedia(state->player, loadState.url, state->nativeAudioFormat, state->mainThreadId);
+				LoadAndPlayMedia(state->player, loadState.url, state->mainThreadId);
 			}
 			loadState.url = fpl_null;
 			loadState.state = 0;
@@ -4060,12 +4296,11 @@ static void LoadMediaThreadProc(const fplThreadHandle *thread, void *userData) {
 int main(int argc, char **argv) {
 	int result = 0;
 
-	/*if (argc < 2) {
-		FPL_LOG_CRITICAL("App", "Media file argument missing!");
-		return -1;
-	}*/
-
 	const char *mediaURL = argc == 2 ? argv[1] : nullptr;
+
+	if (fplGetStringLength(mediaURL) == 0) {
+		mediaURL = TEST_VIDEO_URL;
+	}
 
 	fplSettings settings = fplMakeDefaultSettings();
 
@@ -4080,6 +4315,8 @@ int main(int argc, char **argv) {
 #endif
 	settings.video.isAutoSize = false;
 	settings.video.isVSync = false;
+
+	settings.audio.manualLoad = true;
 	
 	fplLogSettings log = fplZeroInit;
 	log.maxLevel = fplLogLevel_All;
@@ -4111,11 +4348,6 @@ int main(int argc, char **argv) {
 
 	// Init
 	if (!InitApp(state)) {
-		goto release;
-	}
-
-	// Get native audio format
-	if (!fplGetAudioHardwareFormat(&state.nativeAudioFormat)) {
 		goto release;
 	}
 
@@ -4176,7 +4408,7 @@ int main(int argc, char **argv) {
 								case fplKey_Left:
 								case fplKey_Right:
 								{
-									// TODO(final): Make seeking thread-safe!
+									// @TODO(final): Make seeking thread-safe!
 									double seekRelative = (ev.keyboard.mappedKey == fplKey_Left) ? -SeekStep : SeekStep;
 									SeekRelative(&playerState, seekRelative);
 								} break;

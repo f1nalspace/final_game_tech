@@ -26,7 +26,7 @@ Changelog:
 	- Forced Visual-Studio-Project to compile in C always
 
 License:
-	Copyright (c) 2017-2023 Torsten Spaete
+	Copyright (c) 2017-2025 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */

@@ -9,7 +9,7 @@ Description:
 
 License:
 	MIT License
-	Copyright 2017-2023 Torsten Spaete
+	Copyright 2017-2025 Torsten Spaete
 */
 
 #ifndef FINAL_WAVELOADER_H
@@ -20,8 +20,12 @@ License:
 #include "final_audio.h"
 
 extern bool TestWaveHeader(const uint8_t *buffer, const size_t bufferSize);
+
 extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, PCMWaveData *outWave);
 extern bool LoadWaveFromFile(const char *filePath, PCMWaveData *outWave);
+
+extern bool LoadWaveFormatFromBuffer(const uint8_t *buffer, const size_t bufferSize, PCMWaveFormat *outFormat);
+
 extern void FreeWave(PCMWaveData *wave);
 
 #endif // FINAL_WAVELOADER_H
@@ -81,6 +85,95 @@ extern bool TestWaveHeader(const uint8_t *buffer, const size_t bufferSize) {
 	return(true);
 }
 
+static void ConvertWaveFormatExToPCMWaveFormat(const WaveFormatEx *sourceFormat, const uint32_t dataSize, PCMWaveFormat *targetFormat) {
+	fplAssert((sourceFormat->bitsPerSample > 0) && (sourceFormat->bitsPerSample % 8 == 0));
+	uint16_t channelCount = sourceFormat->numberOfChannels;
+	uint32_t bytesPerSample = sourceFormat->bitsPerSample / 8;
+	uint32_t frameCount = dataSize / (channelCount * bytesPerSample);
+	
+	targetFormat->channelCount = channelCount;
+	targetFormat->samplesPerSecond = sourceFormat->samplesPerSecond;
+	targetFormat->frameCount = frameCount;
+	targetFormat->bytesPerSample = bytesPerSample;
+
+	targetFormat->formatType = fplAudioFormatType_None;
+	if(bytesPerSample == 1) {
+		targetFormat->formatType = fplAudioFormatType_U8;
+	} else if (bytesPerSample == 2) {
+		targetFormat->formatType = fplAudioFormatType_S16;
+	} else if (bytesPerSample == 3) {
+		targetFormat->formatType = fplAudioFormatType_S24;
+	} else if (bytesPerSample == 4) {
+		if (sourceFormat->formatTag == WaveFormatTags_PCM)
+			targetFormat->formatType = fplAudioFormatType_S32;
+		else
+			targetFormat->formatType = fplAudioFormatType_F32;
+	}
+}
+
+extern bool LoadWaveFormatFromBuffer(const uint8_t *buffer, const size_t bufferSize, PCMWaveFormat *outFormat) {
+	if((buffer == fpl_null) || (bufferSize == 0) || outFormat == fpl_null) {
+		return false;
+	}
+	if(bufferSize < sizeof(WaveHeader)) {
+		return false;
+	}
+	WaveHeader *header = (WaveHeader *)buffer;
+	if(header->chunkId != WaveChunkId_RIFF || header->formatId != WaveChunkId_WAVE) {
+		return false;
+	}
+
+	bool result = false;
+
+	fplClearStruct(outFormat);
+
+	WaveFormatEx waveFormat = fplZeroInit;
+
+	size_t bufferPosition = sizeof(*header);
+	const WaveChunk *chunk = (const WaveChunk *)(buffer + bufferPosition);
+	while(chunk != fpl_null) {
+		bufferPosition += sizeof(WaveChunk);
+		size_t nextChunkOffset = chunk->size;
+		switch(chunk->id) {
+			case WaveChunkId_Format:
+			{
+				const WaveFormatEx *format = (const WaveFormatEx *)(buffer + bufferPosition);
+				if(format->formatTag == WaveFormatTags_PCM) {
+					waveFormat = *format;
+				} else if(format->formatTag == WaveFormatTags_IEEEFloat) {
+					waveFormat = *format;
+				} else {
+					// Unsupported format
+					return false;
+				}
+			} break;
+
+			case WaveChunkId_Data:
+			{
+				uint32_t dataSize = chunk->size;
+				const uint8_t *data = buffer + bufferPosition;
+				switch(waveFormat.formatTag) {
+					case WaveFormatTags_PCM:
+					case WaveFormatTags_IEEEFloat:
+					{
+						ConvertWaveFormatExToPCMWaveFormat(&waveFormat, dataSize, outFormat);
+						result = true;
+					} break;
+				}
+			} break;
+		}
+
+		if((bufferPosition + nextChunkOffset + sizeof(WaveChunk)) <= bufferSize) {
+			bufferPosition += nextChunkOffset;
+			chunk = (const WaveChunk *)(buffer + bufferPosition);
+		} else {
+			chunk = fpl_null;
+			break;
+		}
+	}
+	return(result);
+}
+
 extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, PCMWaveData *outWave) {
 	if((buffer == fpl_null) || (bufferSize == 0)) {
 		return false;
@@ -131,30 +224,8 @@ extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, P
 					case WaveFormatTags_PCM:
 					case WaveFormatTags_IEEEFloat:
 					{
-						fplAssert((waveFormat.bitsPerSample > 0) && (waveFormat.bitsPerSample % 8 == 0));
-						uint32_t channelCount = waveFormat.numberOfChannels;
-						uint32_t bytesPerSample = waveFormat.bitsPerSample / 8;
-						uint32_t frameCount = dataSize / (channelCount * bytesPerSample);
-						fplAssert(waveFormat.numberOfChannels <= 2);
-						outWave->channelCount = channelCount;
-						outWave->samplesPerSecond = waveFormat.samplesPerSecond;
-						outWave->frameCount = frameCount;
-						outWave->bytesPerSample = bytesPerSample;
-
-						outWave->formatType = fplAudioFormatType_None;
-						if(bytesPerSample == 1) {
-							outWave->formatType = fplAudioFormatType_U8;
-						} else if (bytesPerSample == 2) {
-							outWave->formatType = fplAudioFormatType_S16;
-						} else if (bytesPerSample == 3) {
-							outWave->formatType = fplAudioFormatType_S24;
-						} else if (bytesPerSample == 4) {
-							if (waveFormat.formatTag == WaveFormatTags_PCM)
-								outWave->formatType = fplAudioFormatType_S32;
-							else
-								outWave->formatType = fplAudioFormatType_F32;
-						}
-						size_t sampleMemorySize = bytesPerSample * channelCount * frameCount;
+						ConvertWaveFormatExToPCMWaveFormat(&waveFormat, dataSize, &outWave->format);
+						size_t sampleMemorySize = outWave->format.bytesPerSample * outWave->format.channelCount * outWave->format.frameCount;
 						fplAssert(sampleMemorySize == dataSize);
 						outWave->samplesSize = sampleMemorySize;
 						outWave->isamples = (uint8_t *)fplMemoryAllocate(sampleMemorySize);
@@ -166,7 +237,7 @@ extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, P
 			} break;
 		}
 
-		if((bufferPosition + nextChunkOffset) <= bufferSize) {
+		if((bufferPosition + nextChunkOffset + sizeof(WaveChunk)) <= bufferSize) {
 			bufferPosition += nextChunkOffset;
 			chunk = (const WaveChunk *)(buffer + bufferPosition);
 		} else {

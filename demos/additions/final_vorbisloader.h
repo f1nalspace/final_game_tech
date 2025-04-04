@@ -9,7 +9,7 @@ Description:
 
 License:
 	MIT License
-	Copyright 2017-2023 Torsten Spaete
+	Copyright 2017-2025 Torsten Spaete
 */
 
 #ifndef FINAL_VORBISLOADER_H
@@ -22,6 +22,8 @@ License:
 extern bool TestVorbisHeader(const uint8_t *buffer, const size_t bufferSize);
 extern bool LoadVorbisFromBuffer(const uint8_t *buffer, const size_t bufferSize, PCMWaveData *outWave);
 extern bool LoadVorbisFromFile(const char *filePath, PCMWaveData *outWave);
+
+extern bool LoadVorbisFormatFromBuffer(const uint8_t *buffer, const size_t bufferSize, PCMWaveFormat *outFormat);
 
 #endif // FINAL_VORBISLOADER_H
 
@@ -52,28 +54,54 @@ extern bool TestVorbisHeader(const uint8_t *buffer, const size_t bufferSize) {
 	return(true);
 }
 
+extern bool LoadVorbisFormatFromBuffer(const uint8_t *buffer, const size_t bufferSize, PCMWaveFormat *outFormat) {
+	if((buffer == fpl_null) || (bufferSize == 0) || outFormat == fpl_null) {
+		return(false);
+	}
+
+	int openErr = 0;
+	stb_vorbis *vorbis = stb_vorbis_open_memory(buffer, (int)bufferSize, &openErr, fpl_null);
+	if (vorbis == fpl_null) {
+		return false;
+	}
+
+	uint32_t sampleCount = stb_vorbis_stream_length_in_samples(vorbis);
+
+	fplClearStruct(outFormat);
+
+	if (sampleCount > 0) {
+		outFormat->formatType = fplAudioFormatType_S16;
+		outFormat->bytesPerSample = fplGetAudioFrameSizeInBytes(outFormat->formatType, 1);
+		outFormat->channelCount = (uint16_t)fplMax(0, vorbis->channels);
+		outFormat->samplesPerSecond = (uint32_t)fplMax(0, vorbis->sample_rate);
+		outFormat->frameCount = fplMax(0, sampleCount / outFormat->channelCount);
+	}
+
+	stb_vorbis_close(vorbis);
+
+	return true;
+}
+
 extern bool LoadVorbisFromBuffer(const uint8_t *buffer, const size_t bufferSize, PCMWaveData *outWave) {
-	if((buffer == fpl_null) || (bufferSize == 0)) {
+	if((buffer == fpl_null) || (bufferSize == 0) || outWave == fpl_null) {
 		return(false);
 	}
-	if(outWave == fpl_null) {
-		return(false);
-	}
+
 	int channels = 0;
 	int sampleRate = 0;
 	short *output = fpl_null;
-	int samples = stb_vorbis_decode_memory(buffer, (int)bufferSize, &channels, &sampleRate, &output);
-	if (samples <= 0) {
+	int sampleCount = stb_vorbis_decode_memory(buffer, (int)bufferSize, &channels, &sampleRate, &output);
+	if (sampleCount <= 0) {
 		return(false);
 	}
 
-	outWave->bytesPerSample = 2;
-	outWave->samplesPerSecond = sampleRate;
-	outWave->channelCount = channels;
-	outWave->formatType = fplAudioFormatType_S16;
-	outWave->frameCount = samples;
+	outWave->format.formatType = fplAudioFormatType_S16;
+	outWave->format.bytesPerSample = fplGetAudioFrameSizeInBytes(outWave->format.formatType, 1);
+	outWave->format.samplesPerSecond = (uint32_t)fplMax(0, sampleRate);
+	outWave->format.channelCount = (uint16_t)fplMax(0, channels);
+	outWave->format.frameCount = fplMax(0, sampleCount / outWave->format.channelCount);
 
-	size_t sampleMemorySize = outWave->bytesPerSample * outWave->channelCount * outWave->frameCount;
+	size_t sampleMemorySize = outWave->format.bytesPerSample * outWave->format.channelCount * outWave->format.frameCount;
 	outWave->samplesSize = sampleMemorySize;
 	outWave->isamples = (uint8_t *)fplMemoryAllocate(sampleMemorySize);
 	fplMemoryCopy(output, sampleMemorySize, outWave->isamples);

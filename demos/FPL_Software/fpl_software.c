@@ -39,7 +39,7 @@ Changelog:
 	- Forced Visual-Studio-Project to compile in C always
 
 License:
-	Copyright (c) 2017-2023 Torsten Spaete
+	Copyright (c) 2017-2025 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -117,9 +117,9 @@ int main(int argc, char **args) {
 					uint32_t *p = (uint32_t *)((uint8_t *)backBuffer->pixels + y * backBuffer->lineWidth);
 					for (uint32_t x = 0; x < backBuffer->width; ++x) {
 						if (x % stepX == 0) {
-							pixelColor.r = RandomByte(&series);
-							pixelColor.g = RandomByte(&series);
-							pixelColor.b = RandomByte(&series);
+							pixelColor.components.r = RandomByte(&series);
+							pixelColor.components.g = RandomByte(&series);
+							pixelColor.components.b = RandomByte(&series);
 							*p++ = pixelColor.value;
 						} else {
 							++p;

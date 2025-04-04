@@ -531,7 +531,7 @@ namespace Demo4 {
 		}
 
 		// Bodies
-		for(int bodyIndex = 0; bodyIndex < bodyCount; ++bodyIndex) {
+		for(size_t bodyIndex = 0; bodyIndex < bodyCount; ++bodyIndex) {
 			Body *body = &bodies[bodyIndex];
 			switch(body->type) {
 				case BodyType::BodyType_Plane:
@@ -562,13 +562,13 @@ namespace Demo4 {
 		}
 
 		// Emitters
-		for(int emitterIndex = 0; emitterIndex < emitterCount; ++emitterIndex) {
+		for(size_t emitterIndex = 0; emitterIndex < emitterCount; ++emitterIndex) {
 			ParticleEmitter *emitter = &emitters[emitterIndex];
 			emitter->Render(commandBuffer);
 		}
 
 		// Particles
-		for(int particleIndex = 0; particleIndex < particleCount; ++particleIndex) {
+		for(size_t particleIndex = 0; particleIndex < particleCount; ++particleIndex) {
 			ParticleData &dataContainer = particleDatas[particleIndex];
 			particleColors[particleIndex] = SPHGetParticleColor(params.restDensity, dataContainer.density, dataContainer.pressure, dataContainer.velocity);
 		}
@@ -592,7 +592,7 @@ namespace Demo4 {
 
 	void Circle::Render(Render::CommandBuffer *commandBuffer) {
 		Vec4f color = ColorBlue;
-		Render::PushCircle(commandBuffer, pos, radius, color, 1.0f, false);
+		Render::PushCircle(commandBuffer, pos, radius, color, false, 1.0f);
 	}
 
 	void LineSegment::Render(Render::CommandBuffer *commandBuffer) {

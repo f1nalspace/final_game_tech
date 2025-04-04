@@ -96,7 +96,7 @@ Todo:
 	- Diashow
 
 License:
-	Copyright (c) 2017-2023 Torsten Spaete
+	Copyright (c) 2017-2025 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -743,7 +743,7 @@ static void LoadPictureThreadProc(const fplThreadHandle* thread, void* data) {
 			if (loadState == LoadedPictureState_Unloaded || loadState == LoadedPictureState_Error) {
 				fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_LoadingData);
 
-				// TODO(final): This should not be neccesary, but in case there are left-overs...
+				// @TODO(final): This should not be neccesary, but in case there are left-overs...
 				ClearPictureData(loadedPic, true);
 
 				ImageData* firstImage = &loadedPic->imageData[0];

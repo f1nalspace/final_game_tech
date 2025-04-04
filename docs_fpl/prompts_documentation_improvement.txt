@@ -1,0 +1,28 @@
+Please improve the documentation of the following C99 API functions, that is defined as a doxygen group, using the following rules:
+- Prefer single line brief and use @note for clarification when a function name is not self-explainable
+- Add [in] or [out] or [in, out] to every @param
+- Include the actual type in every @param, custom types should be referenced with @ref at the very end
+- Pointer should be called "Reference" instead
+- @return should include the resulting type as well, but remove @return when the result is a void
+- Every line should return with a period
+- Leave the last @see @ref untouched, because those are special
+- Please correct any spelling errors
+- Fields in structs are documented with //! before the field, not to the right
+- Values in enums are documented with //! before the value, not to the right
+- Typedef should use @struct / @union / @enum etc. and @brief for the description as single line, the document style is /*! with * at the start and */ at the end
+- No space identiation, for * line prefix
+- The description of structs or unions are like this: Stores ... or Represents ...
+- Enums should use the same style as structs, except that it uses @enum and has a description like this: An enumeration of ...
+- Function typedef are like any other functions, but the description should start with: A function definition ...
+- The description of functions that returns bool should always start with: Gets a value indicating wether ...
+- Use at least @define and a @brief for every preprocessor define, if there are arguments and results, use the same style from functions
+
+Please improve the documentation for the following C99 preprocessor defines with the following rules:
+- Prefer single line brief and use @note for clarification when a function name is not self-explainable
+- Add [in] or [out] or [in, out] to every @param
+- Pointer should be called "Reference" instead
+- Every line should return with a period
+- Please correct any spelling errors
+- No space identiation, for * line prefix
+- Use at least @define and a @brief for every preprocessor define, if there are arguments and results, use the same style from functions
+- Do not touch any defines starting with FPL__M, because this is internal

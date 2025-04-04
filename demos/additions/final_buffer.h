@@ -8,9 +8,12 @@ Description:
 
 	This file is part of the final_framework.
 
+Todo:
+	- mmap implementation for mirror buffer
+
 License:
 	MIT License
-	Copyright 2017-2023 Torsten Spaete
+	Copyright 2017-2025 Torsten Spaete
 
 Changelog:
 
@@ -452,6 +455,8 @@ extern void LockFreeRingBufferClear(LockFreeRingBuffer *buffer) {
 	if(fillCount > 0) {
 		f_LockFreeRingBufferConsume(buffer, fillCount);
 	}
+	buffer->tail = buffer->head = 0;
+	fplAtomicExchangeS64(&buffer->fillCount, 0);
 }
 
 extern bool LockFreeRingBufferSkip(LockFreeRingBuffer *buffer, const size_t length) {
