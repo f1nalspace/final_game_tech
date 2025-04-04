@@ -224,6 +224,7 @@ group "Apps"
 	include "FPL_ImageViewer/premake5";
 	include "FPL_NBodySimulation/premake5";
 	include "FPL_Raytracer/premake5";
+	include "FPL_Presentation/premake5"
 
 group "Console"
 	include "FPL_Console/premake5";
