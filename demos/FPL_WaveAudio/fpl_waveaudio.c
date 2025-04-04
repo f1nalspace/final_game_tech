@@ -14,6 +14,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2025-04-04
+	- Fixed LoadWaveFromFile() was not returning anything at all
+
 	## 2025-04-01
 	- Initial version
 
@@ -246,6 +249,7 @@ cleanup:
 		fplMemoryFree(buffer);
 	}
 	fplFileClose(&file);
+	return result;
 }
 
 typedef struct {
