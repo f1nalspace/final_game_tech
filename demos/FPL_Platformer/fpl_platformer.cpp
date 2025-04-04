@@ -1069,7 +1069,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 
 int main(int argc, char *argv[]) {
 	GameConfiguration config = {};
-	config.title = L"FPL Demo | GameTemplate";
+	config.title = "FPL Demo | Platformer";
 	config.disableInactiveDetection = true;
 	config.disableVerticalSync = true;
 	int result = GameMain(config);
