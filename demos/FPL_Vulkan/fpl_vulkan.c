@@ -20,6 +20,9 @@ Todo:
 	- Let it at least draw something, because clearing to blue is boring
 
 Changelog:
+	## 2025-03-28
+	- Fixed warnings for handle null check
+
 	## 2021-10-13
 	- Reflect FPL API changes
 
@@ -30,7 +33,7 @@ Changelog:
 	- Initial version
 
 License:
-	Copyright (c) 2017-2023 Torsten Spaete
+	Copyright (c) 2017-2025 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -1400,7 +1403,7 @@ bool VulkanCreatePhysicalDevice(const VulkanCoreApi *coreApi, const VulkanInstan
 		// Maximum possible size of textures affects graphics quality
 		score += props.limits.maxImageDimension2D;
 
-		// TODO(final): Rate by features?
+		// @TODO(final): Rate by features?
 
 		if(score > bestScore) {
 			bestScore = score;
@@ -1429,7 +1432,7 @@ bool VulkanCreatePhysicalDevice(const VulkanCoreApi *coreApi, const VulkanInstan
 		fplConsoleFormatOut("\tGeometry shader supported: %s\n", (physicalDeviceFeatures.geometryShader ? "yes" : "no"));
 		fplConsoleFormatOut("\tTesselation shader supported: %s\n", (physicalDeviceFeatures.tessellationShader ? "yes" : "no"));
 
-		// TODO(final): Print out VkPhysicalDeviceMemoryProperties
+		// @TODO(final): Print out VkPhysicalDeviceMemoryProperties
 	}
 
 	free(physicalDevices);
@@ -1807,7 +1810,7 @@ bool VulkanCreateSurface(VkAllocationCallbacks *allocator, const VulkanInstanceA
 	// Create Surface KHR
 	//
 #if defined(VK_USE_PLATFORM_WIN32_KHR)
-	// TODO(final): This is just temporary, until we can query the platform window informations from FPL
+	// @TODO(final): This is just temporary, until we can query the platform window informations from FPL
 	HWND windowHandle = fpl__global__AppState->window.win32.windowHandle;
 	HINSTANCE appHandle = GetModuleHandle(fpl_null);
 
@@ -1825,7 +1828,7 @@ bool VulkanCreateSurface(VkAllocationCallbacks *allocator, const VulkanInstanceA
 	}
 	fplConsoleFormatOut("Successfully created win32 surface KHR for window handle '%p' and instance '%p' -> '%p'\n\n", createInfo.hwnd, instanceHandle, surface->surfaceHandle);
 #elif defined(VK_USE_PLATFORM_XLIB_KHR)
-	// TODO(final): This is just temporary, until we can query the platform window informations from FPL
+	// @TODO(final): This is just temporary, until we can query the platform window informations from FPL
 	Window window = fpl__global__AppState->window.x11.window;
 	Display *display = fpl__global__AppState->window.x11.display;
 
@@ -2033,7 +2036,7 @@ static void VulkanClearSwapChain(VkAllocationCallbacks *allocator, const VulkanL
 		fplClearStruct(swapChain->presentationCommandBuffers);
 	}
 
-	if(swapChain->presentationCommandPoolHandle != fpl_null) {
+	if(swapChain->presentationCommandPoolHandle != VK_NULL_HANDLE) {
 		deviceApi->vkDestroyCommandPool(logicalDevice->logicalDeviceHandle, swapChain->presentationCommandPoolHandle, allocator);
 		swapChain->presentationCommandPoolHandle = VK_NULL_HANDLE;
 	}
@@ -2534,7 +2537,7 @@ static bool VulkanInitializeStepInit(VulkanState *state, const bool createInstan
 		return(false);
 	}
 
-	// TODO(final): Setup allocation callbacks!
+	// @TODO(final): Setup allocation callbacks!
 	//state->__allocationCallbacks
 
 	VkAllocationCallbacks *allocator = state->allocator = fpl_null;

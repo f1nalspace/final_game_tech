@@ -52,7 +52,7 @@ Final XML is released under the following license:
 
 MIT License
 
-Copyright (c) 2017-2023 Torsten Spaete
+Copyright (c) 2017-2025 Torsten Spaete
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -75,7 +75,7 @@ SOFTWARE.
 
 /*!
 	\file final_xml.h
-	\version v0.3.0 alpha
+	\version v0.3.1 alpha
 	\author Torsten Spaete
 	\brief Final XML (FXML) - A open source C99 single file header xml parser library.
 */
@@ -83,6 +83,9 @@ SOFTWARE.
 /*!
 	\page page_changelog Changelog
 	\tableofcontents
+
+	## v0.3.1 alpha:
+	- Fixed memcpy_s compile error on linux by introducing FXML_MEMCPY, that can be overwritten if needed
 
 	## v0.3.0 alpha:
 	- Added typedef fxmlErrorType to fxmlContext
@@ -143,6 +146,10 @@ SOFTWARE.
 #ifndef FXML_MEMSET
 #	include <string.h>
 #	define FXML_MEMSET(dst, value, size) memset(dst, value, size)
+#endif
+#ifndef FXML_MEMCPY
+#	include <string.h>
+#	define FXML_MEMCPY(dst, src, size) memcpy(dst, src, size)
 #endif
 #ifndef FXML_ASSERT
 #	include <assert.h>
@@ -322,7 +329,7 @@ extern "C" {
 			context->errorType = type;
 		}
 
-		// TODO(final): Log the error out
+		// @TODO(final): Log the error out
 	}
 
 	static size_t fxml__ComputeBlockSize(const size_t minSize, const size_t blockSize) {
@@ -412,7 +419,7 @@ extern "C" {
 			return(fxml_null);
 		}
 		size_t len = str->len;
-		memcpy_s(mem, len + 1, str->start, len);
+		FXML_MEMCPY(mem, str->start, len);
 		return(mem);
 	}
 

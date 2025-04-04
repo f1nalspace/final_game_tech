@@ -14,6 +14,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2025-01-28
+	- Fixed makefiles for CC/CMake was broken
+
 	## 2021-05-16
 	- Use fplPollEvents() instead
 
@@ -36,7 +39,7 @@ Changelog:
 	- Forced Visual-Studio-Project to compile in C always
 
 License:
-	Copyright (c) 2017-2023 Torsten Spaete
+	Copyright (c) 2017-2025 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -77,11 +80,14 @@ int main(int argc, char **args) {
 	settings.window.background = backColor;
 
 	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
+		fplWindowSize winSize = fplZeroInit;
+		fplGetWindowSize(&winSize);
+
 		RandomSeries series = { 1337 };
 		float dt = 1.0f / 60.0f;
-		float margin = 50;
-		Vec2f rectRadius = V2fInit(50.0f, 50.0f);
-		Vec2f rectVel = V2fInit(200.0f, 200.0f);
+		float margin = winSize.width / 50.0f;
+		Vec2f rectRadius = V2fInit(winSize.width / 25.0f, winSize.width / 25.0f);
+		Vec2f rectVel = V2fInit(rectRadius.x * 4.0f, rectRadius.y * 4.0f);
 		Vec2f rectPos = V2fInit(rectRadius.w, rectRadius.h);
 		while (fplWindowUpdate()) {
 			fplPollEvents();
@@ -111,9 +117,9 @@ int main(int argc, char **args) {
 					uint32_t *p = (uint32_t *)((uint8_t *)backBuffer->pixels + y * backBuffer->lineWidth);
 					for (uint32_t x = 0; x < backBuffer->width; ++x) {
 						if (x % stepX == 0) {
-							pixelColor.r = RandomByte(&series);
-							pixelColor.g = RandomByte(&series);
-							pixelColor.b = RandomByte(&series);
+							pixelColor.components.r = RandomByte(&series);
+							pixelColor.components.g = RandomByte(&series);
+							pixelColor.components.b = RandomByte(&series);
 							*p++ = pixelColor.value;
 						} else {
 							++p;

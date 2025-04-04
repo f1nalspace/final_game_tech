@@ -65,14 +65,199 @@ int mp3dec_ex_open(mp3dec_ex_t *dec, const char *file_name, int seek_method);
 
 #ifdef MINIMP3_IMPLEMENTATION
 
+typedef enum {
+    mp3dec_endianess_type_little = 0x04030201,
+    mp3dec_endianess_type_big = 0x01020304,
+} mp3dec_endianess_type;
+
+typedef union {
+	unsigned char bytes[4]; 
+	uint32_t value; 
+} mp3dec_endianess;
+
+static const mp3dec_endianess mp3dec__global_endianessOrder = { 1, 2, 3, 4 };
+
+static bool is_mp3dec_big_endian() {
+    return mp3dec__global_endianessOrder.value == mp3dec_endianess_type_big;
+}
+
+#define is_mp3dec_bitset(value, bit) (((value) >> (bit)) & 0x1)
+
+// ID3v2 Tag
+// Version 2
+// Version 3
+// Version 4
+
+#pragma pack(push, 1)
+typedef struct {
+    char id[3];       // ID3 identifier ("ID3")
+    uint8_t version;  // Version (major version in the high nibble, revision in the low nibble)
+    uint8_t revision; // Revision number
+    uint8_t flags;    // Flags
+    uint32_t size;    // Synchsafe-Size of the tag (excluding the header)
+} mp3dec_id3v2_header;
+#pragma pack(pop)
+
+#pragma pack(push, 1)
+typedef struct {
+    char id[4];      // 4-character frame ID (e.g., "TIT2" for title)
+    uint32_t size;   // Synchsafe-Size of the tag (excluding the header)
+    uint16_t flags;  // Frame flags (2 bytes)
+} mp3dec_id3v2_frame_header;
+#pragma pack(pop)
+
+static uint32_t mp3dec_u32_reverse(const uint32_t x) {
+    return ((x >> 24) & 0x000000FF) | ((x >> 8) & 0x0000FF00) | ((x << 8) & 0x00FF0000) | ((x << 24) & 0xFF000000);
+}
+
+static uint32_t mp3dec_u32_bigendian_to_native(const uint32_t u32be) {
+    if (is_mp3dec_big_endian())
+        return u32be;
+    else
+        return mp3dec_u32_reverse(u32be);
+}
+
+static uint32_t mp3dec_id3v2_get_syncsafe_size(const uint32_t syncsafe) {
+    uint32_t a = (syncsafe >> 0) & 0xFF;
+    uint32_t b = (syncsafe >> 8) & 0xFF;
+    uint32_t c = (syncsafe >> 16) & 0xFF;
+    uint32_t d = (syncsafe >> 24) & 0xFF;
+    uint32_t result = (a << 0) | (b << 7) | (c << 14) | (d << 21);
+    return result;
+}
+
+const char *mp3dec_g_supportedID3v2FrameHeaderIDs[] = {
+    "AENC", // Audio encryption
+    "APIC", // Attached picture
+    "COMM", // Comments
+    "COMR", // Commercial frame
+    "ENCR", // Encryption method registration
+    "EQUA", // Equalization
+    "ETCO", // Event timing codes
+    "GEOB", // General encapsulated object
+    "GRID", // Group identification registration
+    "IPLS", // Involved people list
+    "LINK", // Linked information
+    "MCDI", // Music CD identifier
+    "MIDI", // MIDI
+    "MLLT", // MPEG location lookup table
+    "OWNE", // Ownership frame
+    "PRIV", // Private frame
+    "PCNT", // Play counter
+    "POPM", // Popularimeter
+    "POSS", // Position synchronization frame
+    "RBUF", // Recommended buffer size
+    "RVAD", // Relative volume adjustment
+    "RVRB", // Reverb
+    "SEEK", // Seek frame
+    "SIGN", // Signature frame
+    "SYLT", // Synchronized lyrics/text
+    "SYTC", // Synchronized tempo codes
+    "TALB", // Album/Movie/Show title
+    "TPE1", // Lead performer(s)/Soloist(s)
+    "TPE2", // Band/orchestra/accompaniment
+    "TPE3", // Conductor/performer refinement
+    "TPE4", // Interpreted, remixed, or otherwise modified by
+    "TIT1", // Content group description
+    "TIT2", // Track title
+    "TIT3", // Subtitle/Description refinement
+    "TCON", // Content type (genre)
+    "TPUB", // Publisher
+    "TCOM", // Composer
+    "TRCK", // Track number/Position in set
+    "TYER", // Year
+    "TSSE", // Software/Hardware and settings used for encoding
+    "TXXX", // User-defined text information frame
+    "USLT", // Unsynchronized lyric/text transcription
+    "WCOM", // Commercial information
+    "WCOP", // Copyright/Legal information
+    "WOAF", // Official audio file webpage
+    "WOAR", // Official artist/performer webpage
+    "WOAS", // Official audio source webpage
+    "WORS", // Official radio station webpage
+    "WPAY", // Payment URL
+    "WPUB", // Publisher's official webpage
+};
+
+#define MP3DEC_ID3V2_TAG_ID_COUNT sizeof(mp3dec_g_supportedID3v2FrameHeaderIDs) / sizeof(mp3dec_g_supportedID3v2FrameHeaderIDs[0])
+
+static bool mp3dec_is_id3v2_frame_header_id(const char *id) {
+    for (int i = 0; i < MP3DEC_ID3V2_TAG_ID_COUNT; ++i) {
+        const char *t = mp3dec_g_supportedID3v2FrameHeaderIDs[i];
+        if (strncmp(t, id, 4) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static size_t mp3dec_skip_id3v2(const uint8_t *buf, size_t buf_size)
 {
-    if (buf_size > 10 && !strncmp((char *)buf, "ID3", 3))
-    {
-        return (((buf[6] & 0x7f) << 21) | ((buf[7] & 0x7f) << 14) |
-            ((buf[8] & 0x7f) << 7) | (buf[9] & 0x7f)) + 10;
+    if (buf_size <= 10 || memcmp(buf, "ID3", 3) != 0) {
+        return 0;
     }
-    return 0;
+
+    const uint8_t *start = buf;
+
+    size_t headerSize = sizeof(mp3dec_id3v2_header);
+    assert(headerSize == 10);
+
+    const mp3dec_id3v2_header *header = (const mp3dec_id3v2_header *)buf;
+    buf_size -= headerSize;
+    buf += headerSize;
+
+    uint32_t tagSize = mp3dec_u32_bigendian_to_native(header->size);
+    tagSize = mp3dec_id3v2_get_syncsafe_size(tagSize);
+
+    // Skip extended header, if present
+    if (is_mp3dec_bitset(header->flags, 6) && buf_size >= 4) {
+        uint32 *x = (uint32 *)buf;
+        uint32_t extendedHeaderSize = mp3dec_u32_bigendian_to_native(*x);
+        extendedHeaderSize = mp3dec_id3v2_get_syncsafe_size(extendedHeaderSize);
+        buf_size -= 4;
+        buf += 4;
+        if (buf_size >= extendedHeaderSize) {
+            buf_size -= extendedHeaderSize;
+            buf += extendedHeaderSize;
+        }
+    }
+
+    size_t minSize = tagSize + headerSize;
+
+    size_t frameHeaderSize = sizeof(mp3dec_id3v2_frame_header);
+    assert(frameHeaderSize == 10);
+
+    while (buf_size >= sizeof(mp3dec_id3v2_frame_header)) {
+        const mp3dec_id3v2_frame_header *frameHeader = (const mp3dec_id3v2_frame_header *)buf;
+        if (memcmp(frameHeader->id, "\0\0\0\0", 4) == 0) {
+            // Done, we are inside the padding
+            break;
+        }
+        if (!mp3dec_is_id3v2_frame_header_id(frameHeader->id)) {
+            // Done, not a frame header
+            break;
+        }
+        buf_size -= sizeof(*frameHeader);
+        buf += sizeof(*frameHeader);
+
+        uint32_t frameTagSize = mp3dec_u32_bigendian_to_native(frameHeader->size);
+        if (header->version == 4) {
+            frameTagSize = mp3dec_id3v2_get_syncsafe_size(frameTagSize);
+        }
+
+        if (buf_size >= frameTagSize) {
+            buf_size -= frameTagSize;
+            buf += frameTagSize;
+        } else {
+            break;
+        }
+    }
+
+    size_t parsedSize = (size_t)(buf - start);
+
+    size_t maxSize = minSize > parsedSize ? minSize : parsedSize;
+
+    return maxSize;
 }
 
 void mp3dec_load_buf(mp3dec_t *dec, const uint8_t *buf, size_t buf_size, mp3dec_file_info_t *info, MP3D_PROGRESS_CB progress_cb, void *user_data)
