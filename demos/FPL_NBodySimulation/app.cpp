@@ -16,7 +16,7 @@
 #include "demo3.cpp"
 #include "demo4.cpp"
 
-#include "fonts.h"
+#include <final_fonts.h>
 
 ApplicationWindow::ApplicationWindow() :
 	left(0),
@@ -74,10 +74,8 @@ void DemoApplication::Init() {
 	bool isPremultiplied = false;
 	bool isTopDown = true;
 	
-	FontResource fontResource = FontResources::Arimo;
-	
-	osdFont = LoadFontByData(fontResource.data, 0, 0, 50.0f, charRange[0], charRange[1], atlasSize[0], atlasSize[1]);
-	chartFont = LoadFontByData(fontResource.data, 0, 0, 24.0f, charRange[0], charRange[1], atlasSize[0], atlasSize[1]);
+	osdFont = LoadFontByData(ptr_fontArimoRegular, sizeOf_fontArimoRegular, 0, 50.0f, charRange[0], charRange[1], atlasSize[0], atlasSize[1]);
+	chartFont = LoadFontByData(ptr_fontArimoRegular, sizeOf_fontArimoRegular, 0, 24.0f, charRange[0], charRange[1], atlasSize[0], atlasSize[1]);
 	
 	Render::AllocateTexture(commandBuffer, osdFont.atlasWidth, osdFont.atlasHeight, 1, osdFont.atlasAlphaBitmap, isTopDown, isPremultiplied, &osdFontTexture);
 	Render::AllocateTexture(commandBuffer, chartFont.atlasWidth, chartFont.atlasHeight, 1, chartFont.atlasAlphaBitmap, isTopDown, isPremultiplied, &chartFontTexture);

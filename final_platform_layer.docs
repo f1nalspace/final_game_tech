@@ -538,7 +538,7 @@
 	
 	@section section_category_errorhandling_clear Clearing the errors
 
-	Errors will never be cleared by FPL! You have to do this yourself using @ref fplClearErrors() .<br>
+	Errors will never be cleared by FPL! You have to do this yourself using @ref fplErrorsClear() .<br>
 
 	Example:
 	@code{.c}
@@ -1885,7 +1885,7 @@
 
 	@section section_category_audio_multichannel_default_init Default initialization
 	
-	By default you don't have to setup anything in FPL, if your audio device supports multiple channels you can get the @ref fplAudioChannelLayout and the number of channels from the @ref fplAudioFormat.channels:
+	By default you don't have to setup anything in FPL, if your audio device supports multiple channels you can get the @ref fplAudioChannelLayout and the number of channels from the @ref fplAudioFormat.
 
 	@code{.c}
 	fplSettings settings;
@@ -1898,7 +1898,7 @@
 	
 	@section section_category_audio_multichannel_layout Setting a Audio Channel Layout
 
-	By default, FPL uses the native audio channel layout for your default sound device, by you can overwrite it by setting the @ref fplAudioFormat.layout field in the @ref fplAudioSettings structure:<br>
+	By default, FPL uses the native audio channel layout for your default sound device, by you can overwrite it by setting the @ref fplAudioChannelLayout in the @ref fplAudioSettings structure:<br>
 
 	@code{.c}
 	fplSettings settings;

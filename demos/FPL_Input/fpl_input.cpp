@@ -42,7 +42,7 @@ Changelog:
 	- Initial creation of this description block
 
 License:
-	Copyright (c) 2017-2023 Torsten Spaete
+	Copyright (c) 2017-2025 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -60,6 +60,8 @@ License:
 
 #define STB_TRUETYPE_IMPLEMENTATION
 #include <stb/stb_truetype.h>
+
+#include <final_fonts.h>
 
 #include <wchar.h> // wcslen
 
@@ -1095,11 +1097,11 @@ static void InitApp(AppState* appState) {
 	fplExtractFilePath(dataPath, dataPath, fplArrayCount(dataPath));
 	fplPathCombine(dataPath, fplArrayCount(dataPath), 2, dataPath, "data");
 
-	if (LoadFontFromFile(dataPath, "NotoSans-Regular.ttf", 0, 48.0f, 32, 255, 512, 512, false, &appState->osdFontData)) {
+	if (LoadFontFromMemory(ptr_fontNotoSansRegular, sizeOf_fontNotoSansRegular, 0, 48.0f, 32, 255, 512, 512, false, &appState->osdFontData)) {
 		appState->osdFontTexture = AllocateTexture(appState->osdFontData.atlasWidth, appState->osdFontData.atlasHeight, appState->osdFontData.atlasAlphaBitmap, false, GL_LINEAR, true);
 	}
 
-	if (LoadFontFromFile(dataPath, "VeraMono.ttf", 0, 48.0f, 32, 255, 512, 512, false, &appState->consoleFontData)) {
+	if (LoadFontFromMemory(ptr_fontVeraFontRegular, sizeOf_fontVeraFontRegular, 0, 48.0f, 32, 255, 512, 512, false, &appState->consoleFontData)) {
 		appState->consoleFontTexture = AllocateTexture(appState->consoleFontData.atlasWidth, appState->consoleFontData.atlasHeight, appState->consoleFontData.atlasAlphaBitmap, false, GL_LINEAR, true);
 	}
 
@@ -1109,7 +1111,7 @@ static void InitApp(AppState* appState) {
 	for (int i = 0; i < FontCount; ++i) {
 		int cpStart = i * CodePointsPerAtlas;
 		int cpEnd = cpStart + (CodePointsPerAtlas - 1);
-		if (LoadFontFromFile(dataPath, "NotoSans-Regular.ttf", 0, letterFontSize, cpStart, cpEnd, letterAtlasWidth, letterAtlasHeight, false, &appState->letterFontData[i])) {
+		if (LoadFontFromMemory(ptr_fontNotoSansRegular, sizeOf_fontNotoSansRegular, 0, letterFontSize, cpStart, cpEnd, letterAtlasWidth, letterAtlasHeight, false, &appState->letterFontData[i])) {
 			appState->letterFontTextures[i] = AllocateTexture(appState->letterFontData[i].atlasWidth, appState->letterFontData[i].atlasHeight, appState->letterFontData[i].atlasAlphaBitmap, false, GL_LINEAR, true);
 		}
 	}

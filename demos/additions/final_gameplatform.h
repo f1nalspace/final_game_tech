@@ -25,7 +25,7 @@ Changelog:
 
 License:
 	MIT License
-	Copyright 2017-2023 Torsten Spaete
+	Copyright 2017-2025 Torsten Spaete
 */
 
 #ifndef FINAL_GAMEPLATFORM_H
@@ -38,7 +38,7 @@ License:
 #include "final_game.h"
 
 struct GameConfiguration {
-	const wchar_t *title;
+	const char *title;
 	uint32_t audioSampleRate;
 	uint32_t audioChannels;
 	fplAudioFormatType audioFormat;
@@ -291,7 +291,7 @@ extern int GameMain(const GameConfiguration &config) {
 		settings.audio.targetFormat.type = config.audioFormat;
 	if (config.audioChannels > 0)
 		settings.audio.targetFormat.channels = config.audioChannels;
-	fplWideStringToUTF8String(config.title, wcslen(config.title), settings.window.title, fplArrayCount(settings.window.title));
+	fplCopyString(config.title, settings.window.title, fplArrayCount(settings.window.title));
 
 	fplInitFlags initFlags = fplInitFlags_All;
 	initFlags &= ~fplInitFlags_Console;
@@ -330,16 +330,20 @@ extern int GameMain(const GameConfiguration &config) {
 		wasError = true;
 	}
 
-	AudioSystem audioSys = {};
+	AudioSystem *audioSys = fmemPushStruct(&gameMemoryBlock, AudioSystem, fmemPushFlags_Clear);
+	if (audioSys == fpl_null) {
+		wasError = true;
+	}
+
 	fplAudioFormat targetAudioFormat = fplZeroInit;
 	if (!fplGetAudioHardwareFormat(&targetAudioFormat)) {
 		wasError = true;
 	}
-	if(!AudioSystemInit(&audioSys, &targetAudioFormat)) {
+	if(!AudioSystemInit(audioSys, &targetAudioFormat)) {
 		wasError = true;
 	}
 
-	fplSetAudioClientReadCallback(GameAudioPlayback, &audioSys);
+	fplSetAudioClientReadCallback(GameAudioPlayback, audioSys);
 	if(fplPlayAudio() != fplAudioResultType_Success) {
 		wasError = true;
 	}
@@ -349,7 +353,7 @@ extern int GameMain(const GameConfiguration &config) {
 	InitOpenGLRenderer();
 
 	GameMemory gameMem = {};
-	gameMem.audio = &audioSys;
+	gameMem.audio = audioSys;
 	gameMem.memory = &gameMemoryBlock;
 	gameMem.render = &renderState;
 	if(!GameInit(gameMem)) {
@@ -530,7 +534,7 @@ extern int GameMain(const GameConfiguration &config) {
 
 	fplStopAudio();
 
-	AudioSystemShutdown(&audioSys);
+	AudioSystemShutdown(audioSys);
 
 	fmemFree(&gameMemoryBlock);
 	fmemFree(&renderMemoryBlock);

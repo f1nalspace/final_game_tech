@@ -10,7 +10,7 @@ Author:
 	Torsten Spaete
 
 License:
-	Copyright (c) 2017-2023 Torsten Spaete
+	Copyright (c) 2017-2025 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -272,7 +272,7 @@ extern void GameUpdateAndRender(GameMemory &gameMemory, const Input &input, cons
 
 int main(int argc, char **argv) {
 	GameConfiguration config = {};
-	config.title = L"Final?s Testbed";
+	config.title = "Final´s Testbed";
 	config.hideMouseCursor = false;
 	config.disableInactiveDetection = true;
 	int result = GameMain(config);

@@ -14,7 +14,7 @@ Author:
 	Torsten Spaete
 
 License:
-	Copyright (c) 2017-2023 Torsten Spaete
+	Copyright (c) 2017-2025 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -38,6 +38,8 @@ License:
 #include <final_assets.h>
 
 #include <final_game.h>
+
+#include <final_fonts.h>
 
 #include "fpl_gametemplate.h"
 
@@ -108,11 +110,8 @@ constexpr float MaxTileSize = fplMax(TileWidth, TileHeight);
 
 static void LoadAssets(RenderState &renderState, Assets &assets) {
 	// Fonts
-	char fontDataPath[1024];
-	const char *fontFilename = "lucida_console.ttf";
-	fplPathCombine(fontDataPath, fplArrayCount(fontDataPath), 2, assets.dataPath, "fonts");
 	FontAsset &hudFont = assets.consoleFont;
-	if (LoadFontFromFile(fontDataPath, fontFilename, 0, 24.0f, 32, 128, 512, 512, false, &hudFont.desc)) {
+	if (LoadFontFromMemory(ptr_fontVeraFontRegular, sizeOf_fontVeraFontRegular, 0, 24.0f, 32, 128, 512, 512, false, &hudFont.desc)) {
 		PushTexture(renderState, &hudFont.texture, hudFont.desc.atlasAlphaBitmap, hudFont.desc.atlasWidth, hudFont.desc.atlasHeight, 1, TextureFilterType::Linear, TextureWrapMode::ClampToEdge, false, false);
 	}
 }
@@ -338,7 +337,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 
 int main(int argc, char *argv[]) {
 	GameConfiguration config = {};
-	config.title = L"FPL Demo | GameTemplate";
+	config.title = "FPL Demo | GameTemplate";
 	config.disableInactiveDetection = true;
 	int result = GameMain(config);
 	return(result);

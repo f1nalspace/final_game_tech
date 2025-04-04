@@ -12,7 +12,7 @@
 
 typedef struct
 {
-    int frame_bytes, channels, hz, layer, bitrate_kbps;
+    int frame_bytes, frame_offset, channels, hz, layer, bitrate_kbps;
 } mp3dec_frame_info_t;
 
 typedef struct
@@ -40,7 +40,6 @@ int mp3dec_decode_frame(mp3dec_t *dec, const uint8_t *mp3, int mp3_bytes, mp3d_s
 #endif /* __cplusplus */
 
 #endif /* MINIMP3_H */
-
 #if defined(MINIMP3_IMPLEMENTATION) && !defined(_MINIMP3_IMPLEMENTATION_GUARD)
 #define _MINIMP3_IMPLEMENTATION_GUARD
 
@@ -87,7 +86,7 @@ int mp3dec_decode_frame(mp3dec_t *dec, const uint8_t *mp3, int mp3_bytes, mp3d_s
 
 #if !defined(MINIMP3_NO_SIMD)
 
-#if !defined(MINIMP3_ONLY_SIMD) && (defined(_M_X64) || defined(_M_ARM64) || defined(__x86_64__) || defined(__aarch64__))
+#if !defined(MINIMP3_ONLY_SIMD) && (defined(_M_X64) || defined(__x86_64__) || defined(__aarch64__) || defined(_M_ARM64))
 /* x64 always have SSE2, arm64 always have neon, no need for generic code */
 #define MINIMP3_ONLY_SIMD
 #endif /* SIMD checks... */
@@ -137,7 +136,7 @@ static __inline__ __attribute__((always_inline)) void minimp3_cpuid(int CPUInfo[
 #endif /* defined(__PIC__)*/
 }
 #endif /* defined(_MSC_VER) || defined(MINIMP3_ONLY_SIMD) */
-static int have_simd()
+static int have_simd(void)
 {
 #ifdef MINIMP3_ONLY_SIMD
     return 1;
@@ -162,8 +161,9 @@ end:
     return g_have_simd - 1;
 #endif /* MINIMP3_ONLY_SIMD */
 }
-#elif defined(__ARM_NEON) || defined(__aarch64__)
+#elif defined(__ARM_NEON) || defined(__aarch64__) || defined(_M_ARM64)
 #include <arm_neon.h>
+#define HAVE_SSE 0
 #define HAVE_SIMD 1
 #define VSTORE vst1q_f32
 #define VLD vld1q_f32
@@ -181,6 +181,7 @@ static int have_simd()
     return 1;
 }
 #else /* SIMD checks... */
+#define HAVE_SSE 0
 #define HAVE_SIMD 0
 #ifdef MINIMP3_ONLY_SIMD
 #error MINIMP3_ONLY_SIMD used, but SSE/NEON not enabled
@@ -189,6 +190,18 @@ static int have_simd()
 #else /* !defined(MINIMP3_NO_SIMD) */
 #define HAVE_SIMD 0
 #endif /* !defined(MINIMP3_NO_SIMD) */
+
+#if defined(__ARM_ARCH) && (__ARM_ARCH >= 6) && !defined(__aarch64__) && !defined(_M_ARM64)
+#define HAVE_ARMV6 1
+static __inline__ __attribute__((always_inline)) int32_t minimp3_clip_int16_arm(int32_t a)
+{
+    int32_t x = 0;
+    __asm__ ("ssat %0, #16, %1" : "=r"(x) : "r"(a));
+    return x;
+}
+#else
+#define HAVE_ARMV6 0
+#endif
 
 typedef struct
 {
@@ -232,7 +245,7 @@ static void bs_init(bs_t *bs, const uint8_t *data, int bytes)
     bs->limit = bytes*8;
 }
 
-static uint32_t get_mp3_bits(bs_t *bs, int n)
+static uint32_t minimp3_get_bits(bs_t *bs, int n)
 {
     uint32_t next, cache = 0, s = bs->pos & 7;
     int shl = n + s;
@@ -362,7 +375,7 @@ static void L12_read_scalefactors(bs_t *bs, uint8_t *pba, uint8_t *scfcod, int b
         {
             if (mask & m)
             {
-                int b = get_mp3_bits(bs, 6);
+                int b = minimp3_get_bits(bs, 6);
                 s = g_deq_L12[ba*3 - 6 + b % 3]*(1 << 21 >> b/3);
             }
             *scf++ = s;
@@ -396,18 +409,18 @@ static void L12_read_scale_info(const uint8_t *hdr, bs_t *bs, L12_scale_info *sc
             ba_code_tab = g_bitalloc_code_tab + subband_alloc->tab_offset;
             subband_alloc++;
         }
-        ba = ba_code_tab[get_mp3_bits(bs, ba_bits)];
+        ba = ba_code_tab[minimp3_get_bits(bs, ba_bits)];
         sci->bitalloc[2*i] = ba;
         if (i < sci->stereo_bands)
         {
-            ba = ba_code_tab[get_mp3_bits(bs, ba_bits)];
+            ba = ba_code_tab[minimp3_get_bits(bs, ba_bits)];
         }
         sci->bitalloc[2*i + 1] = sci->stereo_bands ? ba : 0;
     }
 
     for (i = 0; i < 2*sci->total_bands; i++)
     {
-        sci->scfcod[i] = sci->bitalloc[i] ? HDR_IS_LAYER_1(hdr) ? 2 : get_mp3_bits(bs, 2) : 6;
+        sci->scfcod[i] = sci->bitalloc[i] ? HDR_IS_LAYER_1(hdr) ? 2 : minimp3_get_bits(bs, 2) : 6;
     }
 
     L12_read_scalefactors(bs, sci->bitalloc, sci->scfcod, sci->total_bands*2, sci->scf);
@@ -434,12 +447,12 @@ static int L12_dequantize_granule(float *grbuf, bs_t *bs, L12_scale_info *sci, i
                     int half = (1 << (ba - 1)) - 1;
                     for (k = 0; k < group_size; k++)
                     {
-                        dst[k] = (float)((int)get_mp3_bits(bs, ba) - half);
+                        dst[k] = (float)((int)minimp3_get_bits(bs, ba) - half);
                     }
                 } else
                 {
                     unsigned mod = (2 << (ba - 17)) + 1;    /* 3, 5, 9 */
-                    unsigned code = get_mp3_bits(bs, mod + 2 - (mod >> 3));  /* 5, 7, 10 */
+                    unsigned code = minimp3_get_bits(bs, mod + 2 - (mod >> 3));  /* 5, 7, 10 */
                     for (k = 0; k < group_size; k++, code /= mod)
                     {
                         dst[k] = (float)((int)(code % mod - mod/2));
@@ -509,11 +522,11 @@ static int L3_read_side_info(bs_t *bs, L3_gr_info_t *gr, const uint8_t *hdr)
     if (HDR_TEST_MPEG1(hdr))
     {
         gr_count *= 2;
-        main_data_begin = get_mp3_bits(bs, 9);
-        scfsi = get_mp3_bits(bs, 7 + gr_count);
+        main_data_begin = minimp3_get_bits(bs, 9);
+        scfsi = minimp3_get_bits(bs, 7 + gr_count);
     } else
     {
-        main_data_begin = get_mp3_bits(bs, 8 + gr_count) >> gr_count;
+        main_data_begin = minimp3_get_bits(bs, 8 + gr_count) >> gr_count;
     }
 
     do
@@ -522,26 +535,26 @@ static int L3_read_side_info(bs_t *bs, L3_gr_info_t *gr, const uint8_t *hdr)
         {
             scfsi <<= 4;
         }
-        gr->part_23_length = (uint16_t)get_mp3_bits(bs, 12);
+        gr->part_23_length = (uint16_t)minimp3_get_bits(bs, 12);
         part_23_sum += gr->part_23_length;
-        gr->big_values = (uint16_t)get_mp3_bits(bs,  9);
+        gr->big_values = (uint16_t)minimp3_get_bits(bs,  9);
         if (gr->big_values > 288)
         {
             return -1;
         }
-        gr->global_gain = (uint8_t)get_mp3_bits(bs, 8);
-        gr->scalefac_compress = (uint16_t)get_mp3_bits(bs, HDR_TEST_MPEG1(hdr) ? 4 : 9);
+        gr->global_gain = (uint8_t)minimp3_get_bits(bs, 8);
+        gr->scalefac_compress = (uint16_t)minimp3_get_bits(bs, HDR_TEST_MPEG1(hdr) ? 4 : 9);
         gr->sfbtab = g_scf_long[sr_idx];
         gr->n_long_sfb  = 22;
         gr->n_short_sfb = 0;
-        if (get_mp3_bits(bs, 1))
+        if (minimp3_get_bits(bs, 1))
         {
-            gr->block_type = (uint8_t)get_mp3_bits(bs, 2);
+            gr->block_type = (uint8_t)minimp3_get_bits(bs, 2);
             if (!gr->block_type)
             {
                 return -1;
             }
-            gr->mixed_block_flag = (uint8_t)get_mp3_bits(bs, 1);
+            gr->mixed_block_flag = (uint8_t)minimp3_get_bits(bs, 1);
             gr->region_count[0] = 7;
             gr->region_count[1] = 255;
             if (gr->block_type == SHORT_BLOCK_TYPE)
@@ -560,26 +573,26 @@ static int L3_read_side_info(bs_t *bs, L3_gr_info_t *gr, const uint8_t *hdr)
                     gr->n_short_sfb = 30;
                 }
             }
-            tables = get_mp3_bits(bs, 10);
+            tables = minimp3_get_bits(bs, 10);
             tables <<= 5;
-            gr->subblock_gain[0] = (uint8_t)get_mp3_bits(bs, 3);
-            gr->subblock_gain[1] = (uint8_t)get_mp3_bits(bs, 3);
-            gr->subblock_gain[2] = (uint8_t)get_mp3_bits(bs, 3);
+            gr->subblock_gain[0] = (uint8_t)minimp3_get_bits(bs, 3);
+            gr->subblock_gain[1] = (uint8_t)minimp3_get_bits(bs, 3);
+            gr->subblock_gain[2] = (uint8_t)minimp3_get_bits(bs, 3);
         } else
         {
             gr->block_type = 0;
             gr->mixed_block_flag = 0;
-            tables = get_mp3_bits(bs, 15);
-            gr->region_count[0] = (uint8_t)get_mp3_bits(bs, 4);
-            gr->region_count[1] = (uint8_t)get_mp3_bits(bs, 3);
+            tables = minimp3_get_bits(bs, 15);
+            gr->region_count[0] = (uint8_t)minimp3_get_bits(bs, 4);
+            gr->region_count[1] = (uint8_t)minimp3_get_bits(bs, 3);
             gr->region_count[2] = 255;
         }
         gr->table_select[0] = (uint8_t)(tables >> 10);
         gr->table_select[1] = (uint8_t)((tables >> 5) & 31);
         gr->table_select[2] = (uint8_t)((tables) & 31);
-        gr->preflag = HDR_TEST_MPEG1(hdr) ? get_mp3_bits(bs, 1) : (gr->scalefac_compress >= 500);
-        gr->scalefac_scale = (uint8_t)get_mp3_bits(bs, 1);
-        gr->count1_table = (uint8_t)get_mp3_bits(bs, 1);
+        gr->preflag = HDR_TEST_MPEG1(hdr) ? minimp3_get_bits(bs, 1) : (gr->scalefac_compress >= 500);
+        gr->scalefac_scale = (uint8_t)minimp3_get_bits(bs, 1);
+        gr->count1_table = (uint8_t)minimp3_get_bits(bs, 1);
         gr->scfsi = (uint8_t)((scfsi >> 12) & 15);
         scfsi <<= 4;
         gr++;
@@ -614,7 +627,7 @@ static void L3_read_scalefactors(uint8_t *scf, uint8_t *ist_pos, const uint8_t *
                 int max_scf = (scfsi < 0) ? (1 << bits) - 1 : -1;
                 for (k = 0; k < cnt; k++)
                 {
-                    int s = get_mp3_bits(bitbuf, bits);
+                    int s = minimp3_get_bits(bitbuf, bits);
                     ist_pos[k] = (s == max_scf ? -1 : s);
                     scf[k] = s;
                 }
@@ -868,12 +881,22 @@ static void L3_midside_stereo(float *left, int n)
     int i = 0;
     float *right = left + 576;
 #if HAVE_SIMD
-    if (have_simd()) for (; i < n - 3; i += 4)
+    if (have_simd())
     {
-        f4 vl = VLD(left + i);
-        f4 vr = VLD(right + i);
-        VSTORE(left + i, VADD(vl, vr));
-        VSTORE(right + i, VSUB(vl, vr));
+        for (; i < n - 3; i += 4)
+        {
+            f4 vl = VLD(left + i);
+            f4 vr = VLD(right + i);
+            VSTORE(left + i, VADD(vl, vr));
+            VSTORE(right + i, VSUB(vl, vr));
+        }
+#ifdef __GNUC__
+        /* Workaround for spurious -Waggressive-loop-optimizations warning from gcc.
+         * For more info see: https://github.com/lieff/minimp3/issues/88
+         */
+        if (__builtin_constant_p(n % 4 == 0) && n % 4 == 0)
+            return;
+#endif
     }
 #endif /* HAVE_SIMD */
     for (; i < n; i++)
@@ -1340,7 +1363,7 @@ static void mp3d_DCT_II(float *grbuf, int n)
     } else
 #endif /* HAVE_SIMD */
 #ifdef MINIMP3_ONLY_SIMD
-    {}
+    {} /* for HAVE_SIMD=1, MINIMP3_ONLY_SIMD=1 case we do not need non-intrinsic "else" branch */
 #else /* MINIMP3_ONLY_SIMD */
     for (; k < n; k++)
     {
@@ -1406,10 +1429,16 @@ static void mp3d_DCT_II(float *grbuf, int n)
 #ifndef MINIMP3_FLOAT_OUTPUT
 static int16_t mp3d_scale_pcm(float sample)
 {
+#if HAVE_ARMV6
+    int32_t s32 = (int32_t)(sample + .5f);
+    s32 -= (s32 < 0);
+    int16_t s = (int16_t)minimp3_clip_int16_arm(s32);
+#else
     if (sample >=  32766.5) return (int16_t) 32767;
     if (sample <= -32767.5) return (int16_t)-32768;
     int16_t s = (int16_t)(sample + .5f);
     s -= (s < 0);   /* away from zero, to be compliant */
+#endif
     return s;
 }
 #else /* MINIMP3_FLOAT_OUTPUT */
@@ -1564,7 +1593,7 @@ static void mp3d_synth(float *xl, mp3d_sample_t *dstl, int nch, float *lins)
     } else
 #endif /* HAVE_SIMD */
 #ifdef MINIMP3_ONLY_SIMD
-    {}
+    {} /* for HAVE_SIMD=1, MINIMP3_ONLY_SIMD=1 case we do not need non-intrinsic "else" branch */
 #else /* MINIMP3_ONLY_SIMD */
     for (i = 14; i >= 0; i--)
     {
@@ -1673,7 +1702,7 @@ static int mp3d_find_frame(const uint8_t *mp3, int mp3_bytes, int *free_format_b
         }
     }
     *ptr_frame_bytes = 0;
-    return i;
+    return mp3_bytes;
 }
 
 void mp3dec_init(mp3dec_t *dec)
@@ -1710,6 +1739,7 @@ int mp3dec_decode_frame(mp3dec_t *dec, const uint8_t *mp3, int mp3_bytes, mp3d_s
     hdr = mp3 + i;
     memcpy(dec->header, hdr, HDR_SIZE);
     info->frame_bytes = i + frame_size;
+    info->frame_offset = i;
     info->channels = HDR_IS_MONO(hdr) ? 1 : 2;
     info->hz = hdr_sample_rate_hz(hdr);
     info->layer = 4 - HDR_GET_LAYER(hdr);
@@ -1723,7 +1753,7 @@ int mp3dec_decode_frame(mp3dec_t *dec, const uint8_t *mp3, int mp3_bytes, mp3d_s
     bs_init(bs_frame, hdr + HDR_SIZE, frame_size - HDR_SIZE);
     if (HDR_IS_CRC(hdr))
     {
-        get_mp3_bits(bs_frame, 16);
+        minimp3_get_bits(bs_frame, 16);
     }
 
     if (info->layer == 3)
@@ -1778,60 +1808,56 @@ int mp3dec_decode_frame(mp3dec_t *dec, const uint8_t *mp3, int mp3_bytes, mp3d_s
 #ifdef MINIMP3_FLOAT_OUTPUT
 void mp3dec_f32_to_s16(const float *in, int16_t *out, int num_samples)
 {
-    if(num_samples > 0)
-    {
-        int i = 0;
+    int i = 0;
 #if HAVE_SIMD
-        int aligned_count = num_samples & ~7;
-
-        for(;i < aligned_count;i+=8)
-        {
-            static const f4 g_scale = { 32768.0f, 32768.0f, 32768.0f, 32768.0f };
-            f4 a = VMUL(VLD(&in[i  ]), g_scale);
-            f4 b = VMUL(VLD(&in[i+4]), g_scale);
+    int aligned_count = num_samples & ~7;
+    for(; i < aligned_count; i += 8)
+    {
+        static const f4 g_scale = { 32768.0f, 32768.0f, 32768.0f, 32768.0f };
+        f4 a = VMUL(VLD(&in[i  ]), g_scale);
+        f4 b = VMUL(VLD(&in[i+4]), g_scale);
 #if HAVE_SSE
-            static const f4 g_max = { 32767.0f, 32767.0f, 32767.0f, 32767.0f };
-            static const f4 g_min = { -32768.0f, -32768.0f, -32768.0f, -32768.0f };
-            __m128i pcm8 = _mm_packs_epi32(_mm_cvtps_epi32(_mm_max_ps(_mm_min_ps(a, g_max), g_min)),
-                                           _mm_cvtps_epi32(_mm_max_ps(_mm_min_ps(b, g_max), g_min)));
-            out[i  ] = _mm_extract_epi16(pcm8, 0);
-            out[i+1] = _mm_extract_epi16(pcm8, 1);
-            out[i+2] = _mm_extract_epi16(pcm8, 2);
-            out[i+3] = _mm_extract_epi16(pcm8, 3);
-            out[i+4] = _mm_extract_epi16(pcm8, 4);
-            out[i+5] = _mm_extract_epi16(pcm8, 5);
-            out[i+6] = _mm_extract_epi16(pcm8, 6);
-            out[i+7] = _mm_extract_epi16(pcm8, 7);
+        static const f4 g_max = { 32767.0f, 32767.0f, 32767.0f, 32767.0f };
+        static const f4 g_min = { -32768.0f, -32768.0f, -32768.0f, -32768.0f };
+        __m128i pcm8 = _mm_packs_epi32(_mm_cvtps_epi32(_mm_max_ps(_mm_min_ps(a, g_max), g_min)),
+                                       _mm_cvtps_epi32(_mm_max_ps(_mm_min_ps(b, g_max), g_min)));
+        out[i  ] = _mm_extract_epi16(pcm8, 0);
+        out[i+1] = _mm_extract_epi16(pcm8, 1);
+        out[i+2] = _mm_extract_epi16(pcm8, 2);
+        out[i+3] = _mm_extract_epi16(pcm8, 3);
+        out[i+4] = _mm_extract_epi16(pcm8, 4);
+        out[i+5] = _mm_extract_epi16(pcm8, 5);
+        out[i+6] = _mm_extract_epi16(pcm8, 6);
+        out[i+7] = _mm_extract_epi16(pcm8, 7);
 #else /* HAVE_SSE */
-            int16x4_t pcma, pcmb;
-            a = VADD(a, VSET(0.5f));
-            b = VADD(b, VSET(0.5f));
-            pcma = vqmovn_s32(vqaddq_s32(vcvtq_s32_f32(a), vreinterpretq_s32_u32(vcltq_f32(a, VSET(0)))));
-            pcmb = vqmovn_s32(vqaddq_s32(vcvtq_s32_f32(b), vreinterpretq_s32_u32(vcltq_f32(b, VSET(0)))));
-            vst1_lane_s16(out+i  , pcma, 0);
-            vst1_lane_s16(out+i+1, pcma, 1);
-            vst1_lane_s16(out+i+2, pcma, 2);
-            vst1_lane_s16(out+i+3, pcma, 3);
-            vst1_lane_s16(out+i+4, pcmb, 0);
-            vst1_lane_s16(out+i+5, pcmb, 1);
-            vst1_lane_s16(out+i+6, pcmb, 2);
-            vst1_lane_s16(out+i+7, pcmb, 3);
+        int16x4_t pcma, pcmb;
+        a = VADD(a, VSET(0.5f));
+        b = VADD(b, VSET(0.5f));
+        pcma = vqmovn_s32(vqaddq_s32(vcvtq_s32_f32(a), vreinterpretq_s32_u32(vcltq_f32(a, VSET(0)))));
+        pcmb = vqmovn_s32(vqaddq_s32(vcvtq_s32_f32(b), vreinterpretq_s32_u32(vcltq_f32(b, VSET(0)))));
+        vst1_lane_s16(out+i  , pcma, 0);
+        vst1_lane_s16(out+i+1, pcma, 1);
+        vst1_lane_s16(out+i+2, pcma, 2);
+        vst1_lane_s16(out+i+3, pcma, 3);
+        vst1_lane_s16(out+i+4, pcmb, 0);
+        vst1_lane_s16(out+i+5, pcmb, 1);
+        vst1_lane_s16(out+i+6, pcmb, 2);
+        vst1_lane_s16(out+i+7, pcmb, 3);
 #endif /* HAVE_SSE */
-        }
+    }
 #endif /* HAVE_SIMD */
-        for(; i < num_samples; i++)
+    for(; i < num_samples; i++)
+    {
+        float sample = in[i] * 32768.0f;
+        if (sample >=  32766.5)
+            out[i] = (int16_t) 32767;
+        else if (sample <= -32767.5)
+            out[i] = (int16_t)-32768;
+        else
         {
-            float sample = in[i] * 32768.0f;
-            if (sample >=  32766.5)
-                out[i] = (int16_t) 32767;
-            else if (sample <= -32767.5)
-                out[i] = (int16_t)-32768;
-            else
-            {
-                int16_t s = (int16_t)(sample + .5f);
-                s -= (s < 0);   /* away from zero, to be compliant */
-                out[i] = s;
-            }
+            int16_t s = (int16_t)(sample + .5f);
+            s -= (s < 0);   /* away from zero, to be compliant */
+            out[i] = s;
         }
     }
 }
