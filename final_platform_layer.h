@@ -148,6 +148,19 @@ SOFTWARE.
     - Bugfixes for X86 compilations
     - Bugfixes for vulkan backend
 
+	### Breaking Changes
+	- struct fplAudioDeviceFormat replaced by fplAudioFormat
+	- struct fplAudioTargetFormat replaced by fplAudioFormat
+	- struct fplVersionInfo has no anonymous structs/unions anymore
+	- function fplCPUID() -> Changed argument order and changed return type from void to bool
+	- function GetAvailableThreadCount() renamed to fplGetAvailableThreadCount()
+	- function GetUsedThreadCount() renamed to fplGetUsedThreadCount()
+	- function fplGetAudioDevices() added stride argument
+	- type audio channel count is now U16 instead of U32
+	- type audio period count is now U16 instead of U32
+	- enum value fplPlatformResultType_FailedMemory renamed to fplPlatformResultType_OutOfMemory
+	- All argument-less functions -> Added nameless void argument
+
 	### Details
 	- New: Added typedef fplAudioFormatU64 that encodes a audio format (sample rate, channels, type) as 64-bit
 	- New: Added enum fplAudioChannelLayout that stores the supported channel layouts
@@ -197,6 +210,10 @@ SOFTWARE.
 	- Changed: All FPL public and internal functions without arguments has now a (void) as argument
 	- Changed: fplVersionInfo has no anonymous structs/unions anymore
 	- Changed: fplColor32 has no anonymous structs/unions anymore
+	- Changed: fplCPUID argument order swapped and return type is now bool instead
+	- Changed: All argument-less functions have now a nameless void argument
+	- Changed: Audio channel count type is now U16 instead of U32
+	- Changed: Audio period count type is now U16 instead of U32
 	- Removed: Removed obsolete function fplFileSetTimestamps
 	- Removed: Removed obsolete struct fplAudioTargetFormat
 	- Removed: Removed obsolete function fplSetDefaultAudioTargetFormat
@@ -206,6 +223,7 @@ SOFTWARE.
 	- Improved: Architecture detection extended (Apple, Risc-V, Mips, Sparc)
 	- Improved: CPU bits detection improved
 	- Improved: x86 instruction set level detection improved
+	- Improved: Fixed lots of incorrect struct alignments
 
 	- New[#36]: Support for multiple audio channels + channel layouts + channel mapping
 	- Fixed[#156]: Target audio format type and periods was never used
@@ -2991,7 +3009,8 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 * @def FPL_ENUM_AS_FLAGS_OPERATORS
 * @brief Internal macro used to create required enum operators for C++.
 * @param[in] type The type of the enum.
-*/#define FPL_ENUM_AS_FLAGS_OPERATORS(type) FPL__M_ENUM_AS_FLAGS_OPERATORS(type)
+*/
+#define FPL_ENUM_AS_FLAGS_OPERATORS(type) FPL__M_ENUM_AS_FLAGS_OPERATORS(type)
 
 // ****************************************************************************
 //
@@ -3107,8 +3126,11 @@ typedef uint64_t fpl__POSIXConditionVariable[16];
 
 #	if defined(FPL_SUBPLATFORM_X11)
 
+// @TODO(final): Opaque X11 Display is not correct, to not assume void ptr - its a full structure, that is really large
+
 //! A X11 Display (opaque, 4/8 bytes)
 typedef void *fpl__X11Display;
+
 //! A X11 window (opaque, 4 bytes)
 typedef int fpl__X11Window;
 //! A X11 Visual (opaque, 4/8 bytes)
