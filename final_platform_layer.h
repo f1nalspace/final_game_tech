@@ -25,6 +25,15 @@ The only dependencies are built-in operating system libraries and a C99 or C++11
 It is licensed under the MIT License. This license allows you to use FPL freely in any software.
 
 -------------------------------------------------------------------------------
+	Author
+-------------------------------------------------------------------------------
+
+- Torsten Spaete (alias Finalspace)
+- Professional application developer
+- 30+ years of programming experience
+- Data visualization, Software-Architecture, Multimedia & Physics & Game development
+
+-------------------------------------------------------------------------------
 	Getting started
 -------------------------------------------------------------------------------
 
