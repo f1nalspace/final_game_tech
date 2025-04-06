@@ -1,6 +1,8 @@
 # final_game_tech
 MIT-Licensed game related libraries and utilities written in C / C++.
 
+![alt text](https://github.com/f1nalspace/final_game_tech/blob/develop/assets/final_game_tech.png?raw=true)
+
 | Name                     | Description                                 | Platforms        | Language | Latest Version | State       |
 |--------------------------|---------------------------------------------|------------------|----------|----------------|-------------|
 | final_platform_layer.h   | Single file platform abstraction library    | Win32/Linux/Unix | C99      | 0.9.9-beta     | In progress |
