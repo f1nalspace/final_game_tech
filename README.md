@@ -1,7 +1,7 @@
 # final_game_tech
 MIT-Licensed game related libraries and utilities written in C / C++.
 
-![alt text](https://github.com/f1nalspace/final_game_tech/blob/develop/assets/final_game_tech.png)
+![alt text](https://github.com/f1nalspace/final_game_tech/blob/develop/assets/final_game_tech.jpg)
 
 | Name                     | Description                                 | Platforms        | Language | Latest Version | State       |
 |--------------------------|---------------------------------------------|------------------|----------|----------------|-------------|
