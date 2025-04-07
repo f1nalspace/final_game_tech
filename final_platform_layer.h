@@ -136,7 +136,7 @@ SOFTWARE.
 
 /**
 	@file final_platform_layer.h
-	@version v0.9.9-beta
+	@version v1.0.0
 	@author Torsten Spaete
 	@brief Final Platform Layer (FPL) - A C99 Single-Header-File Platform Abstraction Library
 */
@@ -147,6 +147,17 @@ SOFTWARE.
 /**
 	@page page_changelog Changelog
 	@tableofcontents
+
+	## v1.0.0
+	
+	### Overview
+	- Added new useful macros
+	
+	### Breaking Changes
+	- None
+
+	### Details
+	- New: Added macro FPL_CACHELINE_SIZE that detects the cacheline size from the detected CPU architectures
 
 	## v0.9.9-beta
 	
