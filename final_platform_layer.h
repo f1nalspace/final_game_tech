@@ -1869,6 +1869,44 @@ SOFTWARE.
 #endif
 
 //
+// Cacheline detection
+//
+// - X86 has a cacheline size of 64 bytes, since pentium pro
+// - Apple M* has a cacheline size of 128 bytes
+// 
+#if defined(FPL_ARCH_X64) || defined(FPL_ARCH_X86)
+	/**
+	* @def FPL_CACHELINE_SIZE
+	* @brief Cacheline size for X86 Architecture (64-bytes).
+	*/
+#	define FPL_CACHELINE_SIZE 64
+#elif defined(FPL_ARCH_ARM32)
+	/**
+	* @def FPL_CACHELINE_SIZE
+	* @brief Cacheline size for ARM32 Architecture (32-bytes).
+	*/
+#	define FPL_CACHELINE_SIZE 32
+#elif defined(FPL_ARCH_ARM64) || defined(FPL_ARCH_APPLE_ARM64)
+	/**
+	* @def FPL_CACHELINE_SIZE
+	* @brief Cacheline size for ARM64 Architecture (128-bytes).
+	*/
+#	define FPL_CACHELINE_SIZE 128
+#elif defined(defined(FPL_ARCH_POWERPC64))
+	/**
+	* @def FPL_CACHELINE_SIZE
+	* @brief Cacheline size for Power-PC Architecture (128-bytes).
+	*/
+#	define FPL_CACHELINE_SIZE 128
+#else
+	/**
+	* @def FPL_CACHELINE_SIZE
+	* @brief Cacheline size for Default Architecture (64-bytes).
+	*/
+#	define FPL_CACHELINE_SIZE 64
+#endif
+	
+//
 // Compiler detection
 // 
 // http://beefchunk.com/documentation/lang/c/pre-defined-c/precomp.html
