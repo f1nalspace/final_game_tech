@@ -148,7 +148,7 @@ SOFTWARE.
 
 /*!
 	\file final_memory.h
-	\version v0.3.0 alpha
+	\version v0.3.1 alpha
 	\author Torsten Spaete
 	\brief Final Memory (FMEM) - A open source C99 single file header memory library.
 */
@@ -156,6 +156,10 @@ SOFTWARE.
 /*!
 	\page page_changelog Changelog
 	\tableofcontents
+
+	## v0.3.1 alpha:
+	- Changed: fmemCreate() has now a minBlockSize argument, that defines the block alignment size
+	- New: Added fmemPushFlags_ForceBlock enum value to fmemPushFlags, that indicates that the following push always allocates a new block
 
 	## v0.3.0 alpha:
 	- New: Added macro fmemPushStruct()
@@ -253,25 +257,25 @@ typedef enum fmemPushFlags {
 	fmemPushFlags_None = 0,
 	//! Clear region to zero
 	fmemPushFlags_Clear = 1 << 0,
+	//! Indicates that a push always creates an memory block for the allocation
+	fmemPushFlags_ForceBlock = 1 << 1,
 } fmemPushFlags;
 
 typedef enum fmemType {
 	//! Unlimited size, grows additional blocks if needed
 	fmemType_Growable = 0,
-	//! Limited tto a fixed size
+	//! Limited to a fixed size
 	fmemType_Fixed,
 	//! Temporary memory
 	fmemType_Temporary,
 } fmemType;
 
-typedef enum fmemSizeFlags {
-	//! No size flags
-	fmemSizeFlags_None = 0,
-	//! Returns the size for a single block only
-	fmemSizeFlags_Single = 1 << 0,
-	//! Include size with meta-data
-	fmemSizeFlags_WithMeta = 1 << 1,
-} fmemSizeFlags;
+typedef enum fmemPermission {
+	//! Allowed
+	fmemPermission_Allowed = 0,
+	//! Denied
+	fmemPermission_Denied,
+} fmemPermission;
 
 typedef struct fmemBlockHeader {
 	//! Previous block
@@ -291,18 +295,26 @@ typedef struct fmemMemoryBlock {
 	size_t size;
 	//! Used size in bytes
 	size_t used;
+	//! Total number of blocks
+	size_t totalBlockCount;
+	//! Minimum size per block, regardless of the size (If zero, the default is used: One page 4096 bytes)
+	size_t minBlockSize;
 	//! Type
 	fmemType type;
+	// !Push permission
+	fmemPermission allowPush;
 } fmemMemoryBlock;
 
 //! Creates a memory block and allocates memory when size is greater than zero
-fmem_api fmemMemoryBlock fmemCreate(const fmemType type, const size_t size);
+fmem_api fmemMemoryBlock fmemCreate(const fmemType type, const size_t size, const size_t minBlockSize);
 //! Initializes the given block or allocates memory when size is greater than zero
-fmem_api bool fmemInit(fmemMemoryBlock *block, const fmemType type, const size_t size);
+fmem_api bool fmemInit(fmemMemoryBlock *block, const fmemType type, const size_t size, const size_t minBlockSize);
 //! Initializes the given block to a fixed size block from existing source memory
 fmem_api bool fmemInitFromSource(fmemMemoryBlock *block, void *sourceMemory, const size_t sourceSize);
 //! Release this and all appended memory blocks
 fmem_api void fmemFree(fmemMemoryBlock *block);
+//! Release all appended children memory blocks
+fmem_api void fmemFreeChildren(fmemMemoryBlock *block);
 //! Gets memory from the block by the given size
 fmem_api uint8_t *fmemPush(fmemMemoryBlock *block, const size_t size, const fmemPushFlags flags);
 //! Gets memory from the block by the given size and ensure address alignment
@@ -335,23 +347,22 @@ fmem_api fmemBlockHeader *fmemGetHeader(fmemMemoryBlock *block);
 //! Default block size = Page size
 #define FMEM__MIN_BLOCKSIZE 4096
 //! Size of the meta data for the block (Header+Spacing+Block+Spacing)
-#define FMEM__BLOCK_META_SIZE sizeof(fmemBlockHeader) + FMEM__HEADER_SPACING + sizeof(fmemMemoryBlock) + FMEM__HEADER_SPACING
+#define FMEM__BLOCK_META_SIZE (sizeof(fmemBlockHeader) + FMEM__HEADER_SPACING + sizeof(fmemMemoryBlock) + FMEM__HEADER_SPACING)
 //! Offset to block from the header
-#define FMEM__OFFSET_TO_BLOCK sizeof(fmemBlockHeader) + FMEM__HEADER_SPACING
+#define FMEM__OFFSET_TO_BLOCK (sizeof(fmemBlockHeader) + FMEM__HEADER_SPACING)
 //! Returns the header from the given block
 #define FMEM__GETHEADER(block) (fmemBlockHeader *)((uint8_t *)(block)->base - (FMEM__BLOCK_META_SIZE))
 //! Returns the header from the given block
-#define FMEM__GETBLOCK(header) (fmemMemoryBlock *)((uint8_t *)(header) + FMEM__OFFSET_TO_BLOCK)
+#define FMEM__GETBLOCK(header) (fmemMemoryBlock *)((uint8_t *)(header) + (FMEM__OFFSET_TO_BLOCK))
 
 static size_t fmem__GetSpaceAvailableFor(const fmemMemoryBlock *block, const size_t size) {
 	size_t result = ((block->size > 0) && (block->used <= block->size)) ? ((block->size - block->used) - size) : 0;
 	return(result);
 }
 
-static size_t fmem__ComputeBlockSize(size_t size) {
-	FMEM_ASSERT(size >= FMEM__BLOCK_META_SIZE);
-	size_t count = (size / FMEM__MIN_BLOCKSIZE) + 1;
-	size_t result = count * FMEM__MIN_BLOCKSIZE;
+static size_t fmem__RoundToSize(const size_t size, const size_t roundSize) {
+	size_t count = (size / roundSize) + 1;
+	size_t result = count * roundSize;
 	return(result);
 }
 
@@ -425,14 +436,14 @@ fmem_api size_t fmemGetTotalSize(fmemMemoryBlock *block) {
 	return(result);
 }
 
-fmem_api fmemMemoryBlock fmemCreate(const fmemType type, const size_t size) {
+fmem_api fmemMemoryBlock fmemCreate(const fmemType type, const size_t size, const size_t minBlockSize) {
 	fmemMemoryBlock result;
 	FMEM_MEMSET(&result, 0, sizeof(result));
-	fmemInit(&result, type, size);
+	fmemInit(&result, type, size, minBlockSize);
 	return(result);
 }
 
-fmem_api bool fmemInit(fmemMemoryBlock *block, const fmemType type, const size_t size) {
+fmem_api bool fmemInit(fmemMemoryBlock *block, const fmemType type, const size_t size, const size_t minBlockSize) {
 	if (block == fmem_null) {
 		return(false);
 	}
@@ -442,23 +453,36 @@ fmem_api bool fmemInit(fmemMemoryBlock *block, const fmemType type, const size_t
 	if (type == fmemType_Temporary) {
 		return(false);
 	}
+
+	size_t actualMinBlockSize;
+	if (minBlockSize == 0) {
+		actualMinBlockSize = FMEM__MIN_BLOCKSIZE;
+	}  else if (minBlockSize > FMEM__MIN_BLOCKSIZE) {
+		actualMinBlockSize = fmem__RoundToSize(minBlockSize, FMEM__MIN_BLOCKSIZE);
+	} else {
+		actualMinBlockSize = FMEM__MIN_BLOCKSIZE;
+	}
+
 	FMEM_MEMSET(block, 0, sizeof(*block));
 	block->type = type;
+	block->minBlockSize = actualMinBlockSize;
+
 	if (size > 0) {
 		size_t blockSize;
-		size_t metaSize = FMEM__BLOCK_META_SIZE;
+		size_t requiredSize = size + FMEM__BLOCK_META_SIZE;
 		if (type == fmemType_Fixed) {
-			blockSize = size + metaSize;
+			blockSize = requiredSize;
 		} else {
-			blockSize = fmem__ComputeBlockSize(size + metaSize);
+			blockSize = fmem__RoundToSize(requiredSize, actualMinBlockSize);
 		}
 		fmemBlockHeader *header = fmem__AllocateBlock(blockSize);
 		if (header == fmem_null) {
 			return(false);
 		}
-		block->base = (uint8_t *)header + metaSize;
-		block->size = blockSize - metaSize;
+		block->base = (uint8_t *)header + FMEM__BLOCK_META_SIZE;
+		block->size = blockSize - FMEM__BLOCK_META_SIZE;
 	}
+
 	return(true);
 }
 
@@ -495,6 +519,25 @@ fmem_api void fmemFree(fmemMemoryBlock *block) {
 	}
 }
 
+fmem_api void fmemFreeChildren(fmemMemoryBlock *block) {
+	if (block != fmem_null && block->size > 0) {
+		fmemBlockHeader *firstHeader = FMEM__GETHEADER(block);
+		fmemMemoryBlock *freeBlock = firstHeader->next;
+		while (freeBlock != fmem_null) {
+			if (freeBlock->base == fmem_null || freeBlock->size == 0 || freeBlock->source != fmem_null) {
+				break;
+			}
+			fmemBlockHeader *header = FMEM__GETHEADER(freeBlock);
+			fmemMemoryBlock *next = header->next;
+			fmem__FreeBlock(header);
+			freeBlock = next;
+		}
+		firstHeader->next = firstHeader->prev = fmem_null;
+		block->used = 0;
+		block->totalBlockCount = 1;
+	}
+}
+
 fmem_api uint8_t *fmemPush(fmemMemoryBlock *block, const size_t size, const fmemPushFlags flags) {
 	if (block == fmem_null || size == 0) {
 		return fmem_null;
@@ -503,23 +546,31 @@ fmem_api uint8_t *fmemPush(fmemMemoryBlock *block, const size_t size, const fmem
 		return fmem_null;
 	}
 
-	// Find best fitting block (Most space available after append)
 	fmemMemoryBlock *bestBlock = fmem_null;
-	fmemMemoryBlock *searchBlock = block;
-	while (searchBlock != fmem_null) {
-		if (searchBlock->base == fmem_null || searchBlock->size == 0) {
-			break;
-		}
-		if ((searchBlock->used + size) <= searchBlock->size) {
-			if (bestBlock == fmem_null || (fmem__GetSpaceAvailableFor(searchBlock, size) > fmem__GetSpaceAvailableFor(bestBlock, size))) {
-				bestBlock = searchBlock;
+
+	bool isForcedBlock = (flags & fmemPushFlags_ForceBlock) == fmemPushFlags_ForceBlock;
+
+	if (!isForcedBlock) {
+		// Find best fitting block (Most space available after append)
+		fmemMemoryBlock *searchBlock = block;
+		while (searchBlock != fmem_null) {
+			if (searchBlock->base == fmem_null || searchBlock->size == 0) {
+				// Broken block
+				break;
 			}
+			if (searchBlock->allowPush == fmemPermission_Allowed) {
+				if ((searchBlock->used + size) <= searchBlock->size) {
+					if (bestBlock == fmem_null || (fmem__GetSpaceAvailableFor(searchBlock, size) > fmem__GetSpaceAvailableFor(bestBlock, size))) {
+						bestBlock = searchBlock;
+					}
+				}
+			}
+			fmemBlockHeader *header = FMEM__GETHEADER(searchBlock);
+			if (searchBlock->type != fmemType_Growable) {
+				break;
+			}
+			searchBlock = header->next;
 		}
-		fmemBlockHeader *header = FMEM__GETHEADER(searchBlock);
-		if (searchBlock->type != fmemType_Growable) {
-			break;
-		}
-		searchBlock = header->next;
 	}
 
 	// Stupid compiler, i dont care about crosses initialization for labels
@@ -556,8 +607,16 @@ fmem_api uint8_t *fmemPush(fmemMemoryBlock *block, const size_t size, const fmem
 		}
 	}
 
+	size_t actualMinBlockSize;
+	if (block->minBlockSize > 0) {
+		FMEM_ASSERT(block->minBlockSize % FMEM__MIN_BLOCKSIZE == 0);
+		actualMinBlockSize = block->minBlockSize;
+	} else {
+		actualMinBlockSize = FMEM__MIN_BLOCKSIZE;
+	}
+
 	// Allocate new block
-	blockSize = fmem__ComputeBlockSize(size + FMEM__BLOCK_META_SIZE);
+	blockSize = fmem__RoundToSize(size + FMEM__BLOCK_META_SIZE, actualMinBlockSize);
 	newHeader = fmem__AllocateBlock(blockSize);
 	if (newHeader == fmem_null) {
 		result = fmem_null;
@@ -570,6 +629,7 @@ fmem_api uint8_t *fmemPush(fmemMemoryBlock *block, const size_t size, const fmem
 		block->base = (uint8_t *)newHeader + FMEM__BLOCK_META_SIZE;
 		block->used = size;
 		block->source = fmem_null;
+		block->totalBlockCount = 1;
 		result = (uint8_t *)block->base;
 		goto done;
 	}
@@ -581,6 +641,8 @@ fmem_api uint8_t *fmemPush(fmemMemoryBlock *block, const size_t size, const fmem
 	newBlock->type = tailBlock->type;
 	newBlock->source = fmem_null;
 	newBlock->used = size;
+	newBlock->allowPush = isForcedBlock ? fmemPermission_Denied : fmemPermission_Allowed;
+	block->totalBlockCount++;
 
 	// Append next block to tail
 	newHeader->prev = tailBlock;
@@ -598,7 +660,17 @@ done:
 }
 
 fmem_api uint8_t *fmemPushAligned(fmemMemoryBlock *block, const size_t size, const size_t alignment, const fmemPushFlags flags) {
-	uint8_t *result = fmem_null;
+	if (block == fmem_null || size == 0) {
+		return fmem_null;
+	}
+	if (alignment < 1) {
+		return fmemPush(block, size, flags);
+	}
+	size_t offset = ((((alignment) > 1) && (((size) & ((alignment)-1)) != 0)) ? ((alignment)-((size) & (alignment - 1))) : 0);
+	size_t alignedSize = size + offset;
+
+	uint8_t *result = fmemPush(block, alignedSize, flags);
+
 	return(result);
 }
 

@@ -28,7 +28,7 @@ static void TestTemporary() {
 		uint8_t *data;
 
 		fmemMemoryBlock block;
-		fmemAlwaysAssert(fmemInit(&block, fmemType_Fixed, 1024));
+		fmemAlwaysAssert(fmemInit(&block, fmemType_Fixed, 1024, 0));
 
 		data = fmemPush(&block, 32, fmemPushFlags_None);
 		size_t savedUsed = block.used;
@@ -62,11 +62,11 @@ static void TestTemporary() {
 static void TestFixed() {
 	{
 		fmemMemoryBlock block;
-		fmemAlwaysAssert(!fmemInit(&block, fmemType_Fixed, 0));
+		fmemAlwaysAssert(!fmemInit(&block, fmemType_Fixed, 0, 0));
 	}
 	{
 		fmemMemoryBlock block;
-		fmemAlwaysAssert(fmemInit(&block, fmemType_Fixed, 1024));
+		fmemAlwaysAssert(fmemInit(&block, fmemType_Fixed, 1024, 0));
 		fmemBlockHeader *hdr = FMEM__GETHEADER(&block);
 		fmemAlwaysAssert((hdr->next == fmem_null) && (hdr->prev == fmem_null));
 		fmemAlwaysAssert((block.size >= 1024) && (block.used == 0));
@@ -86,9 +86,9 @@ static void TestGrowable(const bool withInit, const bool withAlloc) {
 	fmemMemoryBlock block;
 	if(withInit) {
 		if(withAlloc) {
-			fmemAlwaysAssert(fmemInit(&block, fmemType_Growable, 64));
+			fmemAlwaysAssert(fmemInit(&block, fmemType_Growable, 64, 0));
 		} else {
-			fmemInit(&block, fmemType_Growable, 0);
+			fmemInit(&block, fmemType_Growable, 0, 0);
 		}
 	} else {
 		FMEM_MEMSET(&block, 0, sizeof(block));
@@ -133,7 +133,7 @@ static void TestGrowable(const bool withInit, const bool withAlloc) {
 
 static void TestGrowMiddle() {
 	fmemMemoryBlock mainBlock;
-	fmemInit(&mainBlock, fmemType_Growable, 4096);
+	fmemInit(&mainBlock, fmemType_Growable, 4096, 0);
 
 	fmemPush(&mainBlock, 32 * 1024, fmemPushFlags_None);
 
