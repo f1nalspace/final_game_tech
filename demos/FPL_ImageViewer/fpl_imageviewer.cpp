@@ -26,6 +26,7 @@ Changelog:
 	- Changed multi sample count to 16, to improve quality for downscaled pictures
 	- Changed default filter to bicubic triangular
 	- Added -f parameter to control filter type
+	- size_t for thread and preload count
 
 	## v0.5.5
 	- Reflect api changes in FPL 0.9.4
@@ -383,8 +384,8 @@ typedef struct LoadQueue {
 
 typedef struct ViewerParameters {
 	const char* path;
-	uint32_t threadCount;
-	uint32_t preloadCount;
+	size_t threadCount;
+	size_t preloadCount;
 	int filter;
 	bool recursive;
 	bool preview;
