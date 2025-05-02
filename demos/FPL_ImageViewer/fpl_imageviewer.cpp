@@ -22,6 +22,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## v0.5.6
+	- Changed multi sample count to 16, to improve quality for downscaled pictures
+
 	## v0.5.5
 	- Reflect api changes in FPL 0.9.4
 	- Fixed broken legacy opengl rendering
@@ -632,9 +635,12 @@ static GLuint AllocateTexture(const uint32_t width, const uint32_t height, const
 	glTexParameteri(textureTarget, GL_TEXTURE_WRAP_S, repeatable ? GL_REPEAT : GL_CLAMP);
 	glTexParameteri(textureTarget, GL_TEXTURE_WRAP_T, repeatable ? GL_REPEAT : GL_CLAMP);
 
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
 	glBindTexture(textureTarget, 0);
 
-	fplAssert(glGetError() == GL_NO_ERROR);
+	GLenum err = glGetError();
+	fplAssert(err == GL_NO_ERROR);
 
 	return(handle);
 }
@@ -1863,7 +1869,7 @@ int main(int argc, char** argv) {
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
 	settings.video.graphics.opengl.majorVersion = 3;
 	settings.video.graphics.opengl.minorVersion = 3;
-	settings.video.graphics.opengl.multiSamplingCount = 4;
+	settings.video.graphics.opengl.multiSamplingCount = 16;
 #endif
 	fplCopyString("FPL Demo - Image Viewer", settings.window.title, fplArrayCount(settings.window.title));
 
