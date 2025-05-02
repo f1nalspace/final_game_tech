@@ -322,11 +322,11 @@ extern int GameMain(const GameConfiguration &config) {
 	bool wasError = false;
 
 	fmemMemoryBlock gameMemoryBlock = {};
-	if(!fmemInit(&gameMemoryBlock, fmemType_Growable, FMEM_MEGABYTES(128))) {
+	if(!fmemInit(&gameMemoryBlock, fmemType_Growable, FMEM_MEGABYTES(128), 0)) {
 		wasError = true;
 	}
 	fmemMemoryBlock renderMemoryBlock = {};
-	if(!fmemInit(&renderMemoryBlock, fmemType_Growable, FMEM_MEGABYTES(32))) {
+	if(!fmemInit(&renderMemoryBlock, fmemType_Growable, FMEM_MEGABYTES(32), 0)) {
 		wasError = true;
 	}
 
