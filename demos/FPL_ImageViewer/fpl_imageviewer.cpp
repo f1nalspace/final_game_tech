@@ -24,6 +24,8 @@ Author:
 Changelog:
 	## v0.5.6
 	- Changed multi sample count to 16, to improve quality for downscaled pictures
+	- Changed default filter to bicubic triangular
+	- Added -f parameter to control filter type
 
 	## v0.5.5
 	- Reflect api changes in FPL 0.9.4
@@ -383,6 +385,7 @@ typedef struct ViewerParameters {
 	const char* path;
 	uint32_t threadCount;
 	uint32_t preloadCount;
+	int filter;
 	bool recursive;
 	bool preview;
 	bool border;
@@ -392,11 +395,6 @@ typedef struct Vertex {
 	Vec4f position;
 	Vec2f texCoord;
 } Vertex;
-
-typedef struct Filter {
-	const char* name;
-	GLuint programId;
-} Filter;
 
 typedef enum FilterType {
 	FilterType_Nearest = 0,
@@ -408,6 +406,12 @@ typedef enum FilterType {
 	FilterType_Lanczos3,
 	FilterType_Count,
 } FilterType;
+
+typedef struct Filter {
+	const char* name;
+	GLuint programId;
+	FilterType type;
+} Filter;
 
 typedef enum PictureRequestType {
 	PictureRequestType_None = 0,
@@ -963,7 +967,7 @@ static void ChangeViewPicture(ViewerState* state, const int offset, const bool f
 	}
 }
 
-static uint32_t ParseNumber(const char** p) {
+static uint32_t ParseNumber(const char **p) {
 	uint32_t v = 0;
 	while (isdigit(**p)) {
 		v = v * 10 + (uint8_t)(**p - '0');
@@ -972,8 +976,9 @@ static uint32_t ParseNumber(const char** p) {
 	return(v);
 }
 
-static void ParseParameters(ViewerParameters* params, const int argc, char** argv) {
+static void ParseParameters(ViewerParameters *params, const ViewerParameters *defaultParams, const int argc, char** argv) {
 	fplClearStruct(params);
+	*params = *defaultParams;
 	params->path = fpl_null;
 	for (int i = 0; i < argc; ++i) {
 		const char* p = argv[i];
@@ -1006,6 +1011,14 @@ static void ParseParameters(ViewerParameters* params, const int argc, char** arg
 				if (p[0] == '=') {
 					++p;
 					params->preloadCount = ParseNumber(&p);
+				} else {
+					continue;
+				}
+			} else if (param == 'f') {
+				++p;
+				if (p[0] == '=') {
+					++p;
+					params->filter = ParseNumber(&p);
 				} else {
 					continue;
 				}
@@ -1229,7 +1242,10 @@ static bool Init(ViewerState* state) {
 		state->filterCount = 0;
 		state->filters[state->filterCount++] = fplStructInit(Filter, "Nearest", 0);
 		state->filters[state->filterCount++] = fplStructInit(Filter, "Bilinear", 0);
-		state->activeFilter = state->filterCount - 1;
+		if (state->params.filter > 0 && state->params.filter <= state->filterCount)
+			state->activeFilter = state->params.filter - 1;
+		else
+			state->activeFilter = state->filterCount - 1;
 	} else {
 		if (state->features.srgbFrameBuffer) {
 			glEnable(GL_FRAMEBUFFER_SRGB);
@@ -1241,14 +1257,18 @@ static bool Init(ViewerState* state) {
 		state->colorShaderProgram = CreateShaderProgram("Color", ColorVertexSource, ColorFragmentSource);
 
 		state->filterCount = 0;
-		state->filters[state->filterCount++] = fplStructInit(Filter, "Nearest", CreateShaderProgram("Nearest", FilterVertexSource, NoFilterFragmentSource(samplerType).c_str()));
-		state->filters[state->filterCount++] = fplStructInit(Filter, "Bilinear", CreateShaderProgram("Bilinear", FilterVertexSource, BilinearFilterFragmentSource(samplerType).c_str()));
-		state->filters[state->filterCount++] = fplStructInit(Filter, "Bicubic (Triangular)", CreateShaderProgram("Bicubic (Triangular)", FilterVertexSource, BicubicTriangularFilterFragmentSource(samplerType).c_str()));
-		state->filters[state->filterCount++] = fplStructInit(Filter, "Bicubic (Bell)", CreateShaderProgram("Bicubic (Bell)", FilterVertexSource, BicubicBellFilterFragmentSource(samplerType).c_str()));
-		state->filters[state->filterCount++] = fplStructInit(Filter, "Bicubic (B-Spline)", CreateShaderProgram("Bicubic (B-Spline)", FilterVertexSource, BicubicBSplineFilterFragmentSource(samplerType).c_str()));
-		state->filters[state->filterCount++] = fplStructInit(Filter, "Bicubic (CatMull-Rom)", CreateShaderProgram("Bicubic (CatMull-Rom)", FilterVertexSource, BicubicCatMullRowFilterFragmentSource(samplerType).c_str()));
-		state->filters[state->filterCount++] = fplStructInit(Filter, "Lanczos3", CreateShaderProgram("Lanczos3", FilterVertexSource, Lanczos3FilterFragmentSource(samplerType).c_str()));
-		state->activeFilter = state->filterCount - 1;
+		state->filters[state->filterCount++] = fplStructInit(Filter, "Nearest", CreateShaderProgram("Nearest", FilterVertexSource, NoFilterFragmentSource(samplerType).c_str()), FilterType_Nearest);
+		state->filters[state->filterCount++] = fplStructInit(Filter, "Bilinear", CreateShaderProgram("Bilinear", FilterVertexSource, BilinearFilterFragmentSource(samplerType).c_str()), FilterType_Bilinear);
+		state->filters[state->filterCount++] = fplStructInit(Filter, "Bicubic (Triangular)", CreateShaderProgram("Bicubic (Triangular)", FilterVertexSource, BicubicTriangularFilterFragmentSource(samplerType).c_str()), FilterType_CubicTriangular);
+		state->filters[state->filterCount++] = fplStructInit(Filter, "Bicubic (Bell)", CreateShaderProgram("Bicubic (Bell)", FilterVertexSource, BicubicBellFilterFragmentSource(samplerType).c_str()), FilterType_CubicBell);
+		state->filters[state->filterCount++] = fplStructInit(Filter, "Bicubic (B-Spline)", CreateShaderProgram("Bicubic (B-Spline)", FilterVertexSource, BicubicBSplineFilterFragmentSource(samplerType).c_str()), FilterType_CubicBSpline);
+		state->filters[state->filterCount++] = fplStructInit(Filter, "Bicubic (CatMull-Rom)", CreateShaderProgram("Bicubic (CatMull-Rom)", FilterVertexSource, BicubicCatMullRowFilterFragmentSource(samplerType).c_str()), FilterType_CatMullRom);
+		state->filters[state->filterCount++] = fplStructInit(Filter, "Lanczos3", CreateShaderProgram("Lanczos3", FilterVertexSource, Lanczos3FilterFragmentSource(samplerType).c_str()), FilterType_Lanczos3);
+
+		if (state->params.filter > 0 && state->params.filter <= state->filterCount)
+			state->activeFilter = state->params.filter - 1;
+		else
+			state->activeFilter = 2;
 
 		CheckGL(true);
 
@@ -1846,9 +1866,12 @@ int main(int argc, char** argv) {
 	flogWrite("Startup %s", VER_PRODUCTNAME_STR);
 
 	ViewerState* state = (ViewerState*)fplMemoryAllocate(sizeof(ViewerState));
-	state->params.preview = true;
+	ViewerParameters defaultParams = fplZeroInit;
+	defaultParams.preview = true;
+	defaultParams.threadCount = fplMax(fplMin(fplCPUGetCoreCount(), MAX_LOAD_THREAD_COUNT), 1);
+	state->params = defaultParams;
 	if (argc >= 2) {
-		ParseParameters(&state->params, argc - 1, argv + 1);
+		ParseParameters(&state->params, &defaultParams, argc - 1, argv + 1);
 	}
 
 	flogWrite("Initial Parameters:");
