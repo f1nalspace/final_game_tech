@@ -4,7 +4,7 @@ Name:
 	FPL-Demo | ImageViewer
 
 Version:
-	v0.5.5 (version.h)
+	v0.5.6 (version.h)
 
 Description:
 	Very simple opengl based image viewer.

@@ -3,8 +3,8 @@
 
 #define VER_INTERNALNAME_STR		"FPL_ImageViewer"
 #define VER_PRODUCTNAME_STR			"FPL ImageViewer"
-#define VER_PRODUCTVERSION          0,5,5,0
-#define VER_PRODUCTVERSION_STR      "0.5.5\0"
+#define VER_PRODUCTVERSION          0,5,6,0
+#define VER_PRODUCTVERSION_STR      "0.5.6\0"
 
 #define VER_FILEVERSION             VER_PRODUCTVERSION
 #define VER_FILEVERSION_STR         VER_PRODUCTVERSION_STR
