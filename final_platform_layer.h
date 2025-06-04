@@ -152,12 +152,21 @@ SOFTWARE.
 	
 	### Overview
 	- Added new useful macros
+	- Added several date time types and functions
 	
 	### Breaking Changes
 	- None
 
 	### Details
 	- New: Added macro FPL_CACHELINE_SIZE that detects the cacheline size from the detected CPU architectures
+	- New: Added enum fplDateTimeType, that defines the types of date times, such as UTC or local
+	- New: Added enum fplDateTimeErrors, that defines the error flags that can happen due to date time construction or formattion
+	- New: Added struct fplDateTime, that stores a date time stamp with an included UTC offset
+	- New: Added struct fplDateTimeResult, that stores the components for displaying a date time
+	- New: Added struct fplDateTimeCreationResult, that stores the result of the function fplDateTimeCreate()
+	- New: Added function fplDateTimeQuery that returns a date time stamp, that allows the display in either local or UTC format
+	- New: Added function fplFormatDateTime that formats a fplDateTime into either a local or UTC date time components
+	- New: Added function fplDateTimeCreate that creates a fplDateTime from seperate date time components
 
 	## v0.9.9-beta
 	
@@ -5717,6 +5726,120 @@ fpl_platform_api fplMilliseconds fplMillisecondsQuery(void);
 * @return Returns the resulting elapsed time in seconds as @ref fplSeconds.
 */
 fpl_platform_api fplSeconds fplTimestampElapsed(const fplTimestamp start, const fplTimestamp finish);
+
+/**
+* @enum fplDateTimeType
+* @brief Defines the date time types.
+*/
+typedef enum fplDateTimeType {
+	// UTC type (+0)
+	fplDateTimeType_UTC = 0,
+	// Local type (+/- offset)
+	fplDateTimeType_Local = 1,
+} fplDateTimeType;
+
+/**
+* @struct fplDateTime
+* @brief Stores a date and time with milliseconds, including the UTC offset.
+*/
+typedef struct fplDateTime {
+	// Unix epoch in seconds since 1970-01-01 00:00:00.
+	uint64_t epoch;
+	// Milliseconds that are added after the epoch.
+	uint32_t milliseconds;
+	// UTC offset in minutes, to convert back into UTC format. This is zero when the date time is UTC or +0.
+	int32_t utcOffset;
+} fplDateTime;
+
+/**
+* @enum fplDateTimeErrors
+* @brief Defines the date time error flags.
+*/
+typedef enum fplDateTimeErrors {
+	fplDateTimeErrors_None = 0,
+	// Invalid year, expected range is 1970 or higher.
+	fplDateTimeErrors_InvalidYear = 1 << 0,
+	// Invalid month, expected range is 1-12.
+	fplDateTimeErrors_InvalidMonth = 1 << 1,
+	// Invalid day, expected range is 1-31.
+	fplDateTimeErrors_InvalidDay = 1 << 2,
+	// Invalid hour, expected range is 0-23.
+	fplDateTimeErrors_InvalidHour = 1 << 3,
+	// Invalid minute, expected range is 0-59.
+	fplDateTimeErrors_InvalidMinute = 1 << 4,
+	// Invalid second, expected range is 0-59.
+	fplDateTimeErrors_InvalidSecond = 1 << 5,
+} fplDateTimeErrors;
+FPL_ENUM_AS_FLAGS_OPERATORS(fplDateTimeErrors);
+
+/**
+* @enum fplDateTimeCreationResult
+* @brief Stores the result of a date time creation.
+*/
+typedef struct fplDateTimeCreationResult {
+	// The resulting date time.
+	fplDateTime dateTime;
+	// The creation error flags.
+	fplDateTimeErrors errors;
+	// A value indicating whether the creation was successfully or not.
+	bool success;
+	// Alignment padding
+	uint8_t padding[3];
+} fplDateTimeCreationResult;
+
+/**
+* @brief Creates a date time from the specified date time components and UTC offset.
+* @param year[in] The year starting from 1970.
+* @param month[in] The month in range of 1-12.
+* @param day[in] The day in range of 1-31.
+* @param hour[in] The hour in range of 0-23.
+* @param minute[in] The minute in range of 0-23.
+* @param second[in] The minute in range of 0-59.
+* @param millisecond[in] The millisecond in range of 0-999.
+* @param utcOffset[in] The UTC offset in minutes.
+* @return Returns the created date time structure as @ref fplDateTime.
+* @note If invalid arguments are passed, an empty date time is returned instead.
+*/
+fpl_common_api fplDateTimeCreationResult fplDateTimeCreate(const uint16_t year, const uint8_t month, const uint8_t day, const uint8_t hour, const uint8_t minute, const uint8_t second, const uint16_t millisecond, const int32_t utcOffset);
+
+/**
+* @struct fplDateTimeResult
+* @brief Stores the components for a date and time, that may be computed from a date time stamp.
+*/
+typedef struct {
+	// Year in range of 0-9999
+	uint16_t year;
+	// Millisecond in range of 0-999
+	uint16_t millisecond;
+	// Month in range of 1-12
+	uint8_t month;
+	// Day in range of 1-31
+	uint8_t day;
+	// Hour in range of 0-23
+	uint8_t hour;
+	// Minute in range of 0-59
+	uint8_t minute;
+	// Second in range of 0-59
+	uint8_t second;
+	// Padding to align to 16-bytes
+	uint8_t padding[7];
+} fplDateTimeResult;
+
+/**
+* @brief Gets the current date time and offset and the number of milliseconds in the specified format.
+* @param type[in] The target date time format as @ref fplDateTimeType.
+* @return Returns the date time structure as @ref fplDateTime.
+*/
+fpl_platform_api fplDateTime fplDateTimeQuery(const fplDateTimeType type);
+
+/**
+* @brief Formats the date time into the specified format as a @ref fplDateTimeResult.
+* @param dateTime[in] The date time as @ref fplDateTime.
+* @param type[in] The target date time format as @ref fplDateTimeType.
+* @return Returns the computed date time fields as @ref fplDateTimeResult.
+*/
+fpl_platform_api fplDateTimeResult fplFormatDateTime(const fplDateTime dateTime, const fplDateTimeType type);
+
 
 /** @} */
 
@@ -11680,6 +11803,90 @@ fpl_common_api void fplMemoryCopy(const void *sourceMem, const size_t sourceSize
 #endif // FPL__COMMON_MEMORY_DEFINED
 
 //
+// Common Timing
+//
+#if !defined(FPL__COMMON_TIMINGS_DEFINED)
+#define FPL__COMMON_TIMINGS_DEFINED
+
+fpl_internal bool fpl__IsLeapYear(const uint16_t year) {
+	return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+}
+
+fpl_internal uint8_t fpl__GetMonthDays(const uint16_t year, const uint8_t month) {
+	switch (month) {
+		case 1: return 31; // January
+		case 2: return fpl__IsLeapYear(year) ? 29 : 28; // February
+		case 3: return 31; // March
+		case 4: return 30; // April
+		case 5: return 31; // May
+		case 6: return 30; // June
+		case 7: return 31; // July
+		case 8: return 31; // August
+		case 9: return 30; // September
+		case 10: return 31; // October
+		case 11: return 30; // November
+		case 12: return 31; // December
+		default: return 0; // Invalid month
+	}
+}
+
+fpl_common_api fplDateTimeCreationResult fplDateTimeCreate(const uint16_t year, const uint8_t month, const uint8_t day, const uint8_t hour, const uint8_t minute, const uint8_t second, const uint16_t millisecond, const int32_t utcOffset) {
+	// Validate input
+	fplDateTimeErrors errors = fplDateTimeErrors_None;
+	if (year < 1970) {
+		errors |= fplDateTimeErrors_InvalidYear;
+	}
+	if (month < 1 || month > 12) {
+		errors |= fplDateTimeErrors_InvalidMonth;
+	}
+	uint8_t monthDays = fpl__GetMonthDays(year, month);
+	if (day < 1 || day > monthDays) {
+		errors |= fplDateTimeErrors_InvalidDay;
+	}
+	if (hour > 23) {
+		errors |= fplDateTimeErrors_InvalidHour;
+	}
+	if (minute > 59) {
+		errors |= fplDateTimeErrors_InvalidMinute;
+	}
+	if (second > 59) {
+		errors |= fplDateTimeErrors_InvalidSecond;
+	}
+	if (errors != fplDateTimeErrors_None) {
+		fplDateTimeCreationResult failed = fplZeroInit;
+		failed.errors = errors;
+		return failed;
+	}
+
+	// Calculate the number of days since the Unix epoch (1970-01-01)
+    uint64_t days = 0;
+    for (uint16_t y = 1970; y < year; ++y) {
+        days += fpl__IsLeapYear(y) ? 366 : 365;
+    }
+    for (uint8_t m = 1; m < month; ++m) {
+        days += fpl__GetMonthDays(year, m);
+    }
+    days += (uint64_t)day - 1; // Add days in the current month
+
+    // Calculate total seconds
+    uint64_t totalSeconds = days * 86400ULL + hour * 3600ULL + minute * 60ULL + second;
+
+    // Create the fplDateTime structure
+	fplDateTime dateTime = fplZeroInit;
+    dateTime.epoch = totalSeconds;
+    dateTime.milliseconds = millisecond;
+    dateTime.utcOffset = utcOffset;
+
+	// Output
+	fplDateTimeCreationResult result = fplZeroInit;
+	result.dateTime = dateTime;
+	result.success = true;
+    return result;
+}
+
+#endif && FPL__COMMON_TIMINGS_DEFINED
+
+//
 // Common Hardware
 //
 // https://github.com/google/cpu_features
@@ -15604,6 +15811,117 @@ fpl_platform_api fplMilliseconds fplMillisecondsQuery(void) {
 	return(result);
 }
 
+fpl_platform_api fplDateTime fplDateTimeQuery(const fplDateTimeType type) {
+	const uint64_t EPOCH_DIFFERENCE_FILETIME = 116444736000000000ULL; // difference between 1601 and 1970 in 100-ns intervals
+	const uint64_t HUNDRED_NANOSECONDS_PER_SECOND = 10000000ULL; // Constants for time conversion
+
+	fplDateTime result = fplZeroInit;
+
+    // Get current system time in UTC
+	SYSTEMTIME st = fplZeroInit;
+    GetSystemTime(&st);
+
+    // Convert SYSTEMTIME to FILETIME
+    FILETIME ft = fplZeroInit;
+    SystemTimeToFileTime(&st, &ft);
+
+    ULARGE_INTEGER ull = fplZeroInit;
+    ull.LowPart = ft.dwLowDateTime;
+    ull.HighPart = ft.dwHighDateTime;
+
+    // Convert FILETIME (100-ns intervals since 1601) to Unix epoch seconds
+    uint64_t total100ns = ull.QuadPart;
+
+    // Get timezone offset in minutes
+    TIME_ZONE_INFORMATION tzi = fplZeroInit;
+    DWORD tzi_status = GetTimeZoneInformation(&tzi);
+    LONG offsetMinutes = tzi.Bias;
+    if (tzi_status == TIME_ZONE_ID_DAYLIGHT) {
+        offsetMinutes += tzi.DaylightBias;
+    } else if (tzi_status == TIME_ZONE_ID_STANDARD) {
+        offsetMinutes += tzi.StandardBias;
+    }
+
+    // Subtract the difference between FILETIME epoch and Unix epoch
+    uint64_t unixTime100ns = total100ns - EPOCH_DIFFERENCE_FILETIME;
+
+	if (type == fplDateTimeType_Local) {
+		int64_t sec100Nanos = offsetMinutes * 60ULL * HUNDRED_NANOSECONDS_PER_SECOND;
+		unixTime100ns -= sec100Nanos;
+	}
+
+    // Calculate seconds and milliseconds
+	result.epoch = unixTime100ns / HUNDRED_NANOSECONDS_PER_SECOND;
+    result.milliseconds = (uint32_t)((unixTime100ns % HUNDRED_NANOSECONDS_PER_SECOND) / 10000);
+
+	// Windows Bias is minutes west of UTC, so negate to get offset relative to UTC
+	if (type == fplDateTimeType_Local) {
+		result.utcOffset = offsetMinutes;
+	} else {
+		result.utcOffset = 0;
+	}
+
+    return result;
+}
+
+fpl_platform_api fplDateTimeResult fplFormatDateTime(const fplDateTime dateTime, const fplDateTimeType type) {
+	const uint64_t EPOCH_DIFFERENCE_FILETIME = 116444736000000000ULL; // difference between 1601 and 1970 in 100-ns intervals
+	const uint64_t HUNDRED_NANOSECONDS_PER_SECOND = 10000000ULL; // Constants for time conversion
+
+	fplDateTimeResult result = fplZeroInit;
+
+    // Convert unix epoch + offset (in minutes) + milliseconds to FILETIME
+    // FILETIME uses 100-nanosecond intervals since 1601
+    uint64_t total100ns = (dateTime.epoch * HUNDRED_NANOSECONDS_PER_SECOND) + 
+                          ((uint64_t)dateTime.milliseconds * 10000);
+
+	// Convert back into UTC
+	if (dateTime.utcOffset != 0) {
+		int64_t secs100ns = dateTime.utcOffset * 60ULL * HUNDRED_NANOSECONDS_PER_SECOND;
+		total100ns += secs100ns;
+	}
+
+    // Adjust for offset if converting to local time
+    if (type == fplDateTimeType_Local) {
+		TIME_ZONE_INFORMATION tzi = fplZeroInit;
+		DWORD tzi_status = GetTimeZoneInformation(&tzi);
+		LONG offsetMinutes = tzi.Bias;
+		if (tzi_status == TIME_ZONE_ID_DAYLIGHT) {
+			offsetMinutes += tzi.DaylightBias;
+		} else if (tzi_status == TIME_ZONE_ID_STANDARD) {
+			offsetMinutes += tzi.StandardBias;
+		}
+
+        // offset is in minutes; convert to seconds and add
+        int64_t offsetInSec = (int64_t)offsetMinutes * 60 * -1;
+        total100ns += offsetInSec * HUNDRED_NANOSECONDS_PER_SECOND;
+    }
+
+    // Add difference between Unix epoch (1970) and FILETIME epoch (1601)
+    total100ns += EPOCH_DIFFERENCE_FILETIME;
+
+	ULARGE_INTEGER ull = fplZeroInit;
+    ull.QuadPart = total100ns;
+
+	FILETIME ft = fplZeroInit;
+	ft.dwLowDateTime = ull.LowPart;
+    ft.dwHighDateTime = ull.HighPart;
+
+    SYSTEMTIME st;
+    BOOL res = FileTimeToSystemTime(&ft, &st);
+    if (res) {
+		result.year = (uint16_t)st.wYear;
+		result.month = (uint8_t)st.wMonth;
+		result.day = (uint8_t)st.wDay;
+		result.hour = (uint8_t)st.wHour;
+		result.minute = (uint8_t)st.wMinute;
+		result.second = (uint8_t)st.wSecond;
+		result.millisecond = (uint16_t)st.wMilliseconds;
+    }
+
+    return result;
+}
+
 //
 // Win32 Strings
 //
@@ -18020,6 +18338,63 @@ fpl_platform_api size_t fplGetHomePath(char *destPath, const size_t maxDestLen) 
 	return(result);
 }
 
+//
+// POSIX Timings
+//
+
+fpl_platform_api fplDateTime fplDateTimeQuery(const fplDateTimeType type) {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+
+	fplDateTime dateTime = fplZeroInit;
+    dateTime.epoch = (uint64_t)tv.tv_sec;
+    dateTime.milliseconds = (uint32_t)(tv.tv_usec / 1000); // Convert microseconds to milliseconds
+
+    if (type == fplDateTimeType_UTC) {
+        dateTime.utcOffset = 0; // UTC offset is 0 for UTC format
+    } else {
+        // Get local time offset
+        time_t rawtime = tv.tv_sec;
+        struct tm *localTime = localtime(&rawtime);
+        dateTime.utcOffset = (localTime->tm_gmtoff / 60); // Convert seconds to minutes
+    }
+
+    return dateTime;
+}
+
+fplDateTimeResult fplFormatDateTime(const fplDateTime dateTime, const fplDateTimeType type) {
+	fplDateTimeResult result = fplZeroInit;
+
+    // Convert local epoch + utcOffset back to UTC epoch before applying format
+    // utcOffset is in minutes. Convert to seconds.
+    time_t correctedEpoch = (time_t)(dateTime.epoch);
+    if (dateTime.utcOffset != 0) {
+        correctedEpoch -= (dateTime.utcOffset * 60);
+    }
+
+    struct tm *timeInfo;
+
+    if (type == fplDateTimeType_UTC) {
+        timeInfo = gmtime(&correctedEpoch);
+    } else {
+        timeInfo = localtime(&correctedEpoch);
+    }
+
+    // Fill in the result structure
+    result.year = (uint16_t)(timeInfo->tm_year + 1900); // tm_year is years since 1900
+    result.month = (uint8_t)(timeInfo->tm_mon + 1); // tm_mon is 0-11
+    result.day = (uint8_t)timeInfo->tm_mday;
+    result.hour = (uint8_t)timeInfo->tm_hour;
+    result.minute = (uint8_t)timeInfo->tm_min;
+    result.second = (uint8_t)timeInfo->tm_sec;
+    result.millisecond = dateTime.milliseconds;
+
+    return result;
+}
+
+//
+// POSIX Hardware
+//
 
 fpl_platform_api fplCPUArchType fplCPUGetArchitecture(void) {
 	fplCPUArchType result = fplCPUArchType_Unknown;
@@ -18052,6 +18427,10 @@ fpl_platform_api fplCPUArchType fplCPUGetArchitecture(void) {
 	return(result);
 }
 
+//
+// POSIX OS
+//
+
 fpl_platform_api bool fplOSGetVersionInfos(fplOSVersionInfos *outInfos) {
 	bool result = false;
 	struct utsname nameInfos;
@@ -18070,6 +18449,7 @@ fpl_platform_api bool fplOSGetVersionInfos(fplOSVersionInfos *outInfos) {
 	}
 	return(result);
 }
+
 #endif // FPL_SUBPLATFORM_POSIX
 
 // ############################################################################
