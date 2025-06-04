@@ -11884,7 +11884,7 @@ fpl_common_api fplDateTimeCreationResult fplDateTimeCreate(const uint16_t year, 
     return result;
 }
 
-#endif && FPL__COMMON_TIMINGS_DEFINED
+#endif // FPL__COMMON_TIMINGS_DEFINED
 
 //
 // Common Hardware
