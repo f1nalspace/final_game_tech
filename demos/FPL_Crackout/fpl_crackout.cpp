@@ -1411,7 +1411,7 @@ static void DrawPlayMode(GameState &state) {
 
 	fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Score: %d", state.score);
 	size_t textCount = fplGetStringLength(textBuffer);
-	Vec2f textBounds = GetTextSize(textBuffer, textCount, &state.assets.fontHud.desc, textSize);
+	Vec2f textBounds = GetTextSize(&state.assets.fontHud.desc, textBuffer, textCount, textSize);
 	DrawTextFont(textBuffer, textCount, &state.assets.fontHud.desc, fontTexId, WorldRadius.x - FrameRadius * 2.0f - textFrameMargin - textBounds.w, textTopMiddle, textSize, 1.0f, 0.0f);
 }
 
