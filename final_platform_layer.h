@@ -159,6 +159,7 @@ SOFTWARE.
 
 	### Details
 	- New: Added macro FPL_CACHELINE_SIZE that detects the cacheline size from the detected CPU architectures
+	- New: Added macro fplIsMaskSet that returns true when a bit mask matches a specified bit value
 	- New: Added enum fplDateTimeType, that defines the types of date times, such as UTC or local
 	- New: Added enum fplDateTimeErrors, that defines the error flags that can happen due to date time construction or formattion
 	- New: Added struct fplDateTime, that stores a date time stamp with an included UTC offset
@@ -167,6 +168,7 @@ SOFTWARE.
 	- New: Added function fplDateTimeQuery that returns a date time stamp, that allows the display in either local or UTC format
 	- New: Added function fplFormatDateTime that formats a fplDateTime into either a local or UTC date time components
 	- New: Added function fplDateTimeCreate that creates a fplDateTime from seperate date time components
+	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
 
 	## v0.9.9-beta
 	
@@ -9182,16 +9184,16 @@ fpl_internal void fpl__LogWrite(const char *funcName, const int lineNumber, cons
 #endif
 		const char *levelStr = fpl__LogLevelToString(level);
 
-		if (writer->flags & fplLogWriterFlags_StandardConsole) {
+		if (fplIsMaskSet(writer->flags, fplLogWriterFlags_StandardConsole)) {
 			fplConsoleFormatOut("[%s:%d][%s] %s\n", funcName, lineNumber, levelStr, message);
 		}
-		if (writer->flags & fplLogWriterFlags_ErrorConsole) {
+		if (fplIsMaskSet(writer->flags, fplLogWriterFlags_ErrorConsole)) {
 			fplConsoleFormatError("[%s:%d][%s] %s\n", funcName, lineNumber, levelStr, message);
 		}
-		if (writer->flags & fplLogWriterFlags_DebugOut) {
+		if (fplIsMaskSet(writer->flags, fplLogWriterFlags_DebugOut)) {
 			fplDebugFormatOut("[%s:%d][%s] %s\n", funcName, lineNumber, levelStr, message);
 		}
-		if (writer->flags & fplLogWriterFlags_Custom && writer->custom.callback != fpl_null) {
+		if (fplIsMaskSet(writer->flags, fplLogWriterFlags_Custom) && writer->custom.callback != fpl_null) {
 			writer->custom.callback(funcName, lineNumber, level, message);
 		}
 	}
@@ -11650,7 +11652,8 @@ fpl_common_api void fplConsoleFormatError(const char *format, ...) {
 fpl_common_api void *fplMemoryAlignedAllocate(const size_t size, const size_t alignment) {
 	FPL__CheckArgumentZero(size, fpl_null);
 	FPL__CheckArgumentZero(alignment, fpl_null);
-	if (alignment & (alignment - 1)) {
+	uintptr_t mask = alignment - 1;
+	if (fplIsMaskSet(alignment, mask)) {
 		FPL__ERROR(FPL__MODULE_MEMORY, "Alignment parameter '%zu' must be a power of two", alignment);
 		return fpl_null;
 	}
@@ -11660,7 +11663,6 @@ fpl_common_api void *fplMemoryAlignedAllocate(const size_t size, const size_t al
 	// The resulting address starts after the stored base pointer
 	void *alignedPtr = (void *)((uint8_t *)basePtr + sizeof(void *));
 	// Move the resulting address to a aligned one when not aligned
-	uintptr_t mask = alignment - 1;
 	if ((alignment > 1) && (((uintptr_t)alignedPtr & mask) != 0)) {
 		uintptr_t offset = ((uintptr_t)alignment - ((uintptr_t)alignedPtr & mask));
 		alignedPtr = (uint8_t *)alignedPtr + offset;
@@ -12020,9 +12022,9 @@ fpl_common_api bool fplCPUGetCapabilities(fplCPUCapabilities *outCaps) {
 	const uint32_t MASK_AVX = MASK_XMM | MASK_YMM;
 	const uint32_t MASK_AVX_512 = MASK_XMM | MASK_YMM | MASK_MASKREG | MASK_ZMM0_15 | MASK_ZMM16_31;
 
-	bool hasSSESupport = (xcr0 & MASK_SSE) == MASK_SSE;
-	bool hasAVXSupport = (xcr0 & MASK_AVX) == MASK_AVX;
-	bool hasAVX512Support = (xcr0 & MASK_AVX_512) == MASK_AVX_512;
+	bool hasSSESupport = fplIsMaskSet(xcr0, MASK_SSE);
+	bool hasAVXSupport = fplIsMaskSet(xcr0, MASK_AVX);
+	bool hasAVX512Support = fplIsMaskSet(xcr0, MASK_AVX_512);
 
 	outCaps->x86.hasMMX = fplIsBitSet(info1.edx, 23);
 
@@ -12097,10 +12099,10 @@ fpl_common_api uint64_t fplCPURDTSC(void) {
 	uint32_t pmcntenset;
 	// Read the user mode perf monitor counter access permissions.
 	fplAsm volatile("mrc p15, 0, %0, c9, c14, 0" : "=r"(pmuseren));
-	if (pmuseren & 1) {
+	if (fplIsMaskSet(pmuseren, 1)) {
 		// Allows reading perfmon counters for user mode code.
 		fplAsm volatile("mrc p15, 0, %0, c9, c12, 1" : "=r"(pmcntenset));
-		if (pmcntenset & 0x80000000ul) {
+		if (fplIsMaskSet(pmcntenset, 0x80000000ul)) {
 			// Is it counting?
 			fplAsm volatile("mrc p15, 0, %0, c9, c13, 0" : "=r"(pmccntr));
 			// The counter is set up to count every 64th cycle
@@ -13107,41 +13109,41 @@ fpl_internal void fpl__Win32XInputGamepadToGamepadState(const XINPUT_GAMEPAD *ne
 	outState->rightTrigger = (float)newState->bRightTrigger / 255.0f;
 
 	// Digital pad buttons
-	if (newState->wButtons & XINPUT_GAMEPAD_DPAD_UP)
+	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_DPAD_UP))
 		outState->dpadUp.isDown = true;
-	if (newState->wButtons & XINPUT_GAMEPAD_DPAD_DOWN)
+	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_DPAD_DOWN))
 		outState->dpadDown.isDown = true;
-	if (newState->wButtons & XINPUT_GAMEPAD_DPAD_LEFT)
+	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_DPAD_LEFT))
 		outState->dpadLeft.isDown = true;
-	if (newState->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT)
+	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_DPAD_RIGHT))
 		outState->dpadRight.isDown = true;
 
 	// Action buttons
-	if (newState->wButtons & XINPUT_GAMEPAD_A)
+	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_A))
 		outState->actionA.isDown = true;
-	if (newState->wButtons & XINPUT_GAMEPAD_B)
+	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_B))
 		outState->actionB.isDown = true;
-	if (newState->wButtons & XINPUT_GAMEPAD_X)
+	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_X))
 		outState->actionX.isDown = true;
-	if (newState->wButtons & XINPUT_GAMEPAD_Y)
+	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_Y))
 		outState->actionY.isDown = true;
 
 	// Center buttons
-	if (newState->wButtons & XINPUT_GAMEPAD_START)
+	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_START))
 		outState->start.isDown = true;
-	if (newState->wButtons & XINPUT_GAMEPAD_BACK)
+	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_BACK))
 		outState->back.isDown = true;
 
 	// Shoulder buttons
-	if (newState->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER)
+	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_LEFT_SHOULDER))
 		outState->leftShoulder.isDown = true;
-	if (newState->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER)
+	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_RIGHT_SHOULDER))
 		outState->rightShoulder.isDown = true;
 
 	// Thumb buttons
-	if (newState->wButtons & XINPUT_GAMEPAD_LEFT_THUMB)
+	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_LEFT_THUMB))
 		outState->leftThumb.isDown = true;
-	if (newState->wButtons & XINPUT_GAMEPAD_RIGHT_THUMB)
+	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_RIGHT_THUMB))
 		outState->rightThumb.isDown = true;
 
 	// The controller is only active, when any button or any movement happened
@@ -14246,7 +14248,7 @@ fpl_internal void fpl__Win32ReleasePlatform(fpl__PlatformInitState *initState, f
 	fplAssert(appState != fpl_null);
 	fpl__Win32AppState *win32AppState = &appState->win32;
 	fpl__Win32InitState *win32InitState = &initState->win32;
-	if (appState->initFlags & fplInitFlags_GameController) {
+	if (fplIsMaskSet(appState->initFlags, fplInitFlags_GameController)) {
 		fpl__Win32UnloadXInputApi(&win32AppState->xinput.xinputApi);
 	}
 	fpl__Win32UnloadApi(&win32AppState->winApi);
@@ -14284,12 +14286,12 @@ fpl_internal bool fpl__Win32InitPlatform(const fplInitFlags initFlags, const fpl
 	}
 
 	// Load XInput
-	if (initFlags & fplInitFlags_GameController) {
+	if (fplIsMaskSet(initFlags, fplInitFlags_GameController)) {
 		fpl__Win32LoadXInputApi(&win32AppState->xinput.xinputApi);
 	}
 
 	// Show/Hide console
-	bool showConsole = (initFlags & fplInitFlags_Console);
+	bool showConsole = fplIsMaskSet(initFlags, fplInitFlags_Console);
 	HWND consoleWindow = GetConsoleWindow();
 	if (!showConsole) {
 		if (consoleWindow != fpl_null) {
@@ -15585,7 +15587,7 @@ fpl_platform_api bool fplFileExists(const char *filePath) {
 		WIN32_FIND_DATAW findData;
 		HANDLE searchHandle = FindFirstFileW(filePathWide, &findData);
 		if (searchHandle != INVALID_HANDLE_VALUE) {
-			result = !(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY);
+			result = !fplIsMaskSet(findData.dwFileAttributes, FILE_ATTRIBUTE_DIRECTORY);
 			FindClose(searchHandle);
 		}
 	}
@@ -15630,7 +15632,7 @@ fpl_platform_api bool fplDirectoryExists(const char *path) {
 		WIN32_FIND_DATAW findData;
 		HANDLE searchHandle = FindFirstFileW(pathWide, &findData);
 		if (searchHandle != INVALID_HANDLE_VALUE) {
-			result = (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) > 0;
+			result = fplIsMaskSet(findData.dwFileAttributes, FILE_ATTRIBUTE_DIRECTORY);
 			FindClose(searchHandle);
 		}
 	}
@@ -15656,36 +15658,36 @@ fpl_internal void fpl__Win32FillFileEntry(const char *rootPath, const WIN32_FIND
 	fplAssert(entry != fpl_null);
 	fplWideStringToUTF8String(findData->cFileName, lstrlenW(findData->cFileName), entry->name, fplArrayCount(entry->name));
 	entry->type = fplFileEntryType_Unknown;
-	if (findData->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+	if (fplIsMaskSet(findData->dwFileAttributes, FILE_ATTRIBUTE_DIRECTORY)) {
 		entry->type = fplFileEntryType_Directory;
 	} else if (
-		(findData->dwFileAttributes & FILE_ATTRIBUTE_NORMAL) ||
-		(findData->dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) ||
-		(findData->dwFileAttributes & FILE_ATTRIBUTE_READONLY) ||
-		(findData->dwFileAttributes & FILE_ATTRIBUTE_ARCHIVE) ||
-		(findData->dwFileAttributes & FILE_ATTRIBUTE_SYSTEM)) {
+		fplIsMaskSet(findData->dwFileAttributes, FILE_ATTRIBUTE_NORMAL) ||
+		fplIsMaskSet(findData->dwFileAttributes, FILE_ATTRIBUTE_HIDDEN) ||
+		fplIsMaskSet(findData->dwFileAttributes, FILE_ATTRIBUTE_READONLY) ||
+		fplIsMaskSet(findData->dwFileAttributes, FILE_ATTRIBUTE_ARCHIVE) ||
+		fplIsMaskSet(findData->dwFileAttributes, FILE_ATTRIBUTE_SYSTEM)) {
 		entry->type = fplFileEntryType_File;
 	}
 
 	// @TODO(final/Win32): Win32 Read ACL for full permission detection!
 	entry->attributes = fplFileAttributeFlags_None;
 	entry->permissions.umask = 0;
-	if (findData->dwFileAttributes & FILE_ATTRIBUTE_NORMAL) {
+	if (fplIsMaskSet(findData->dwFileAttributes, FILE_ATTRIBUTE_NORMAL)) {
 		entry->attributes = fplFileAttributeFlags_Normal;
 	} else {
-		if (findData->dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) {
+		if (fplIsMaskSet(findData->dwFileAttributes, FILE_ATTRIBUTE_HIDDEN)) {
 			entry->attributes |= fplFileAttributeFlags_Hidden;
 		}
-		if (findData->dwFileAttributes & FILE_ATTRIBUTE_ARCHIVE) {
+		if (fplIsMaskSet(findData->dwFileAttributes, FILE_ATTRIBUTE_ARCHIVE)) {
 			entry->attributes |= fplFileAttributeFlags_Archive;
 		}
-		if (findData->dwFileAttributes & FILE_ATTRIBUTE_SYSTEM) {
+		if (fplIsMaskSet(findData->dwFileAttributes, FILE_ATTRIBUTE_SYSTEM)) {
 			entry->attributes |= fplFileAttributeFlags_System;
 		}
 		entry->permissions.user |= fplFilePermissionFlags_CanWrite;
 		entry->permissions.user |= fplFilePermissionFlags_CanRead;
 		entry->permissions.user |= fplFilePermissionFlags_CanExecuteSearch;
-		if ((findData->dwFileAttributes & FILE_ATTRIBUTE_READONLY) || (findData->dwFileAttributes & FILE_ATTRIBUTE_SYSTEM)) {
+		if (fplIsMaskSet(findData->dwFileAttributes, FILE_ATTRIBUTE_READONLY) || fplIsMaskSet(findData->dwFileAttributes, FILE_ATTRIBUTE_SYSTEM)) {
 			entry->permissions.user &= ~fplFilePermissionFlags_CanWrite;
 		}
 	}
@@ -16344,7 +16346,7 @@ fpl_platform_api bool fplWindowUpdate(void) {
 	const fpl__Win32InitState *win32InitState = &fpl__global__InitState.win32;
 	const fpl__Win32Api *wapi = &win32AppState->winApi;
 	fpl__ClearInternalEvents();
-	if ((!appState->currentSettings.input.disabledEvents) && (appState->initFlags & fplInitFlags_GameController)) {
+	if (!appState->currentSettings.input.disabledEvents && fplIsMaskSet(appState->initFlags, fplInitFlags_GameController)) {
 		fpl__Win32UpdateGameControllers(&appState->currentSettings, win32InitState, &win32AppState->xinput);
 	}
 	bool result = appState->window.isRunning != 0;
@@ -16551,7 +16553,7 @@ fpl_internal void fpl__Win32FillDisplayInfo(const MONITORINFOEXW *info, fplDispl
 	outInfo->virtualSize.height = info->rcMonitor.bottom - info->rcMonitor.top;
 	outInfo->physicalSize.width = (info->rcMonitor.right > info->rcMonitor.left) ? (info->rcMonitor.right - info->rcMonitor.left) : (info->rcMonitor.left - info->rcMonitor.right);
 	outInfo->physicalSize.height = (info->rcMonitor.bottom > info->rcMonitor.top) ? (info->rcMonitor.bottom - info->rcMonitor.top) : (info->rcMonitor.top - info->rcMonitor.bottom);
-	outInfo->isPrimary = (info->dwFlags & MONITORINFOF_PRIMARY) ? 1 : 0;
+	outInfo->isPrimary = fplIsMaskSet(info->dwFlags, MONITORINFOF_PRIMARY) ? 1 : 0;
 }
 
 typedef struct fpl__Win32DisplayEnumState {
@@ -16602,7 +16604,7 @@ fpl_internal BOOL WINAPI fpl__Win32PrimaryMonitorEnumProc(HMONITOR monitorHandle
 	MONITORINFOEXW info = fplZeroInit;
 	info.cbSize = sizeof(info);
 	if (wapi->user.GetMonitorInfoW(monitorHandle, (LPMONITORINFO)&info) != 0) {
-		if (info.dwFlags & MONITORINFOF_PRIMARY) {
+		if (fplIsMaskSet(info.dwFlags, MONITORINFOF_PRIMARY)) {
 			fplClearStruct(enumState->baseInfo);
 			fpl__Win32FillDisplayInfo(&info, enumState->baseInfo);
 			enumState->count = 1;
@@ -18189,31 +18191,31 @@ fpl_internal void fpl__PosixFillFileEntry(struct dirent *dp, fplFileEntry *entry
 			// @NOTE(final): Any filename starting with dot is hidden in POSIX
 			entry->attributes |= fplFileAttributeFlags_Hidden;
 		}
-		if (sb.st_mode & S_IRUSR) {
+		if (fplIsMaskSet(sb.st_mode, S_IRUSR)) {
 			entry->permissions.user |= fplFilePermissionFlags_CanRead;
 		}
-		if (sb.st_mode & S_IWUSR) {
+		if (fplIsMaskSet(sb.st_mode, S_IWUSR)) {
 			entry->permissions.user |= fplFilePermissionFlags_CanWrite;
 		}
-		if (sb.st_mode & S_IXUSR) {
+		if (fplIsMaskSet(sb.st_mode, S_IXUSR)) {
 			entry->permissions.user |= fplFilePermissionFlags_CanExecuteSearch;
 		}
-		if (sb.st_mode & S_IRGRP) {
+		if (fplIsMaskSet(sb.st_mode, S_IRGRP)) {
 			entry->permissions.group |= fplFilePermissionFlags_CanRead;
 		}
-		if (sb.st_mode & S_IWGRP) {
+		if (fplIsMaskSet(sb.st_mode, S_IWGRP)) {
 			entry->permissions.group |= fplFilePermissionFlags_CanWrite;
 		}
-		if (sb.st_mode & S_IXGRP) {
+		if (fplIsMaskSet(sb.st_mode, S_IXGRP)) {
 			entry->permissions.group |= fplFilePermissionFlags_CanExecuteSearch;
 		}
-		if (sb.st_mode & S_IROTH) {
+		if (fplIsMaskSet(sb.st_mode, S_IROTH)) {
 			entry->permissions.owner |= fplFilePermissionFlags_CanRead;
 		}
-		if (sb.st_mode & S_IWOTH) {
+		if (fplIsMaskSet(sb.st_mode, S_IWOTH)) {
 			entry->permissions.owner |= fplFilePermissionFlags_CanWrite;
 		}
-		if (sb.st_mode & S_IXOTH) {
+		if (fplIsMaskSet(sb.st_mode, S_IXOTH)) {
 			entry->permissions.owner |= fplFilePermissionFlags_CanExecuteSearch;
 		}
 	}
@@ -19074,19 +19076,19 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 
 fpl_internal fplKeyboardModifierFlags fpl__X11TranslateModifierFlags(const int state) {
 	fplKeyboardModifierFlags result = fplKeyboardModifierFlags_None;
-	if (state & ShiftMask) {
+	if (fplIsMaskSet(state, ShiftMask)) {
 		result |= fplKeyboardModifierFlags_LShift;
 		result |= fplKeyboardModifierFlags_RShift;
 	}
-	if (state & ControlMask) {
+	if (fplIsMaskSet(state, ControlMask)) {
 		result |= fplKeyboardModifierFlags_LCtrl;
 		result |= fplKeyboardModifierFlags_RCtrl;
 	}
-	if (state & Mod1Mask) {
+	if (fplIsMaskSet(state, Mod1Mask)) {
 		result |= fplKeyboardModifierFlags_LAlt;
 		result |= fplKeyboardModifierFlags_RAlt;
 	}
-	if (state & Mod4Mask) {
+	if (fplIsMaskSet(state, Mod4Mask)) {
 		result |= fplKeyboardModifierFlags_LSuper;
 		result |= fplKeyboardModifierFlags_RSuper;
 	}
@@ -19161,12 +19163,12 @@ fpl_internal fpl__X11WindowStateInfo fpl__X11GetWindowStateInfo(const fpl__X11Ap
 	}
 	// reset visibility to default
 	result.visibility = fplWindowVisibilityState_Show;
-	if (flags & fpl__X11NetWMStateHiddenFlag) {
+	if (fplIsMaskSet(flags, fpl__X11NetWMStateHiddenFlag)) {
 		result.visibility = fplWindowVisibilityState_Hide;
 	}
-	if (flags & fpl__X11NetWMStateFullscreenFlag) {
+	if (fplIsMaskSet(flags, fpl__X11NetWMStateFullscreenFlag)) {
 		result.state = fplWindowState_Fullscreen;
-	} else if (state != IconicState && flags & fpl__X11NetWMStateMaximizedFlag) {
+	} else if (state != IconicState && fplIsMaskSet(flags, fpl__X11NetWMStateMaximizedFlag)) {
 		result.state = fplWindowState_Maximize;
 	}
 	return result;
@@ -19292,7 +19294,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 				// A drag operation has entered the window
 				unsigned long i, count;
 				Atom *formats = NULL;
-				bool list = ev->xclient.data.l[1] & 1;
+				bool list = fplIsMaskSet(ev->xclient.data.l[1], 1);
 				x11WinState->xdnd.source = ev->xclient.data.l[0];
 				x11WinState->xdnd.version = ev->xclient.data.l[1] >> 24;
 				x11WinState->xdnd.format = None;
@@ -19658,7 +19660,7 @@ fpl_platform_api bool fplWindowUpdate(void) {
 
 	// Dont like this, maybe a callback would be better?
 #if defined(FPL_PLATFORM_LINUX)
-	if ((!appState->currentSettings.input.disabledEvents) && (appState->initFlags & fplInitFlags_GameController)) {
+	if (!appState->currentSettings.input.disabledEvents && fplIsMaskSet(appState->initFlags, fplInitFlags_GameController)) {
 		fpl__LinuxAppState *linuxAppState = &appState->plinux;
 		fpl__LinuxPollGameControllers(&appState->currentSettings, &linuxAppState->controllersState, true);
 	}
@@ -19967,9 +19969,9 @@ fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
 	if (x11Api->XQueryPointer(windowState->display, windowState->window, &root, &child, &rootx, &rooty, &winx, &winy, &mask)) {
 		outState->x = winx;
 		outState->y = winy;
-		outState->buttonStates[fplMouseButtonType_Left] = (mask & Button1Mask) ? fplButtonState_Press : fplButtonState_Release;
-		outState->buttonStates[fplMouseButtonType_Right] = (mask & Button3Mask) ? fplButtonState_Press : fplButtonState_Release;
-		outState->buttonStates[fplMouseButtonType_Middle] = (mask & Button2Mask) ? fplButtonState_Press : fplButtonState_Release;
+		outState->buttonStates[fplMouseButtonType_Left] = fplIsMaskSet(mask, Button1Mask) ? fplButtonState_Press : fplButtonState_Release;
+		outState->buttonStates[fplMouseButtonType_Right] = fplIsMaskSet(mask, Button3Mask) ? fplButtonState_Press : fplButtonState_Release;
+		outState->buttonStates[fplMouseButtonType_Middle] = fplIsMaskSet(mask Button2Mask) ? fplButtonState_Press : fplButtonState_Release;
 		result = true;
 	}
 	return(result);
@@ -19995,7 +19997,7 @@ fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY) {
 
 fpl_internal void fpl__LinuxReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
 #if defined(FPL__ENABLE_WINDOW)
-	if (appState->initFlags & fplInitFlags_GameController) {
+	if (fplIsMaskSet(appState->initFlags, fplInitFlags_GameController)) {
 		fpl__LinuxFreeGameControllers(&appState->plinux.controllersState);
 	}
 #endif
@@ -20270,7 +20272,7 @@ fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
 	FPL__CheckPlatform(false);
 	FPL__CheckArgumentNull(outStates, false);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	if (appState->initFlags & fplInitFlags_GameController) {
+	if (fplIsMaskSet(appState->initFlags, fplInitFlags_GameController)) {
 #if defined(FPL_PLATFORM_LINUX)
 		fpl__LinuxGameControllersState *controllersState = &appState->plinux.controllersState;
 		fpl__LinuxPollGameControllers(&appState->currentSettings, controllersState, false);
@@ -20932,15 +20934,15 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Win32OpenGL_In
 
 		int profile = 0;
 		int flags = 0;
-		if (videoSettings->graphics.opengl.compabilityFlags & fplOpenGLCompabilityFlags_Core) {
+		if (fplIsMaskSet(videoSettings->graphics.opengl.compabilityFlags, fplOpenGLCompabilityFlags_Core)) {
 			profile = FPL__WGL_CONTEXT_CORE_PROFILE_BIT_ARB;
-		} else if (videoSettings->graphics.opengl.compabilityFlags & fplOpenGLCompabilityFlags_Compability) {
+		} else if (fplIsMaskSet(videoSettings->graphics.opengl.compabilityFlags, fplOpenGLCompabilityFlags_Compability)) {
 			profile = FPL__WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB;
 		} else {
 			FPL__ERROR(FPL__MODULE_VIDEO_OPENGL, "No opengl compability profile selected, please specific Core fplOpenGLCompabilityFlags_Core or fplOpenGLCompabilityFlags_Compability");
 			return false;
 		}
-		if (videoSettings->graphics.opengl.compabilityFlags & fplOpenGLCompabilityFlags_Forward) {
+		if (fplIsMaskSet(videoSettings->graphics.opengl.compabilityFlags, fplOpenGLCompabilityFlags_Forward)) {
 			flags = FPL__WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
 		}
 
@@ -21443,15 +21445,15 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Init
 
 		int flags = 0;
 		int profile = 0;
-		if (videoSettings->graphics.opengl.compabilityFlags & fplOpenGLCompabilityFlags_Core) {
+		if (fplIsMaskSet(videoSettings->graphics.opengl.compabilityFlags, fplOpenGLCompabilityFlags_Core)) {
 			profile = FPL__GLX_CONTEXT_CORE_PROFILE_BIT_ARB;
-		} else if (videoSettings->graphics.opengl.compabilityFlags & fplOpenGLCompabilityFlags_Compability) {
+		} else if (fplIsMaskSet(videoSettings->graphics.opengl.compabilityFlags, fplOpenGLCompabilityFlags_Compability)) {
 			profile = FPL__GLX_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB;
 		} else {
 			FPL__ERROR(FPL__MODULE_GLX, "No opengl compability profile selected, please specific Core OpenGLCompabilityFlags_Core or OpenGLCompabilityFlags_Compability");
 			goto failed_x11_glx;
 		}
-		if (videoSettings->graphics.opengl.compabilityFlags & fplOpenGLCompabilityFlags_Forward) {
+		if (fplIsMaskSet(videoSettings->graphics.opengl.compabilityFlags, fplOpenGLCompabilityFlags_Forward)) {
 			flags = FPL__GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
 		}
 
@@ -23218,7 +23220,7 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudiobackendDirec
 	// Get either local window handle or desktop handle
 	HWND windowHandle = fpl_null;
 #	if defined(FPL__ENABLE_WINDOW)
-	if (appState->initFlags & fplInitFlags_Window) {
+	if (fplIsMaskSet(appState->initFlags, fplInitFlags_Window)) {
 		windowHandle = appState->window.win32.windowHandle;
 	}
 #	endif
@@ -23242,7 +23244,7 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudiobackendDirec
 
 	// Get number of channels
 	uint16_t channels;
-	if ((caps.dwFlags & DSCAPS_PRIMARYSTEREO) != 0) {
+	if (fplIsMaskSet(caps.dwFlags, DSCAPS_PRIMARYSTEREO)) {
 		DWORD speakerConfig;
 		channels = 2;
 		if (SUCCEEDED(IDirectSound_GetSpeakerConfig(directSound, &speakerConfig))) {
@@ -23310,7 +23312,7 @@ fpl_internal DWORD fpl__MapAudioSpeakerFlagsToWin32AudioChannelId(const fplAudio
 // Fill out the mapping table from a win32 channel mask and number of channels
 fpl_internal void fpl__CreateChannelsMappingFromChannelMask(const DWORD channelMask, const uint16_t channels, fplAudioChannelMap *channelMap) {
 	fplClearStruct(channelMap);
-	if ((channels == 1) && ((channelMask == 0) || ((channelMask & SPEAKER_FRONT_CENTER) != 0))) {
+	if ((channels == 1) && ((channelMask == 0) || fplIsMaskSet(channelMask, SPEAKER_FRONT_CENTER))) {
 		channelMap->speakers[0] = fplAudioChannelType_FrontCenter;
 	} else if (channels == 2 && channelMask == 0) {
 		channelMap->speakers[0] = fplAudioChannelType_FrontLeft;
@@ -23486,7 +23488,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendDirectSou
 	// Get either local window handle or desktop handle
 	HWND windowHandle = fpl_null;
 #	if defined(FPL__ENABLE_WINDOW)
-	if (appState->initFlags & fplInitFlags_Window) {
+	if (fplIsMaskSet(appState->initFlags, fplInitFlags_Window)) {
 		windowHandle = appState->window.win32.windowHandle;
 	}
 #	endif
@@ -23521,8 +23523,8 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendDirectSou
 	}
 
 	// Get supported number of channels and channel mask, when channels or layout was default
-	if ((targetFormat->defaultFields & fplAudioDefaultFields_Channels) && (targetFormat->defaultFields & fplAudioDefaultFields_ChannelLayout)) {
-		if ((caps.dwFlags & DSCAPS_PRIMARYSTEREO) != 0) {
+	if (fplIsMaskSet(targetFormat->defaultFields, fplAudioDefaultFields_Channels) && fplIsMaskSet(targetFormat->defaultFields, fplAudioDefaultFields_ChannelLayout)) {
+		if (fplIsMaskSet(caps.dwFlags, DSCAPS_PRIMARYSTEREO)) {
 			DWORD speakerConfig;
 			if (SUCCEEDED(IDirectSound_GetSpeakerConfig(impl->directSound, &speakerConfig))) {
 				DWORD channelMask = 0;
@@ -24746,7 +24748,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	// Idea comes from miniaudio, which does the same thing - so the code is almost identically here
 	//
     float bufferSizeScaleFactor = 1.0f;
-    if ((targetFormat->defaultFields & fplAudioDefaultFields_BufferSize) == fplAudioDefaultFields_BufferSize) {
+    if (fplIsMaskSet(targetFormat->defaultFields, fplAudioDefaultFields_BufferSize)) {
         if (fplGetStringLength(internalDevice.name) > 0) {
             bufferSizeScaleFactor = fpl__AlsaGetBufferScale(internalDevice.name);
         }
@@ -24859,7 +24861,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	// Buffer size + Scaling
 	//
 	snd_pcm_uframes_t actualBufferSize;
-	if ((targetFormat->defaultFields & fplAudioDefaultFields_BufferSize) == fplAudioDefaultFields_BufferSize) {
+	if (fplIsMaskSet(targetFormat->defaultFields, fplAudioDefaultFields_BufferSize)) {
 		actualBufferSize = fpl__AlsaScaleBufferSize(targetFormat->bufferSizeInFrames, bufferSizeScaleFactor);
 	} else {
 		actualBufferSize = targetFormat->bufferSizeInFrames;
@@ -25113,8 +25115,8 @@ fpl_internal void fpl__SetupAudioDeviceFormat(const fplAudioFormat *inFormat, fp
 		uint16_t highestChannelCount = fplMax(layoutChannelCount, inFormat->channels);
 		outFormat->channels = fplMax(0, fplMin(highestChannelCount, FPL_MAX_AUDIO_CHANNEL_COUNT));
 		outFormat->channelLayout = fplGetDefaultAudioChannelLayoutFromChannels(outFormat->channels);
-		outFormat->defaultFields |= ((inFormat->defaultFields & fplAudioDefaultFields_Channels) ? fplAudioDefaultFields_Channels : fplAudioDefaultFields_None);
-		outFormat->defaultFields |= ((inFormat->defaultFields & fplAudioDefaultFields_ChannelLayout) ? fplAudioDefaultFields_ChannelLayout : fplAudioDefaultFields_None);
+		outFormat->defaultFields |= (fplIsMaskSet(inFormat->defaultFields, fplAudioDefaultFields_Channels) ? fplAudioDefaultFields_Channels : fplAudioDefaultFields_None);
+		outFormat->defaultFields |= (fplIsMaskSet(inFormat->defaultFields, fplAudioDefaultFields_ChannelLayout) ? fplAudioDefaultFields_ChannelLayout : fplAudioDefaultFields_None);
 	} else if (inFormat->channels > 0 && inFormat->channelLayout == fplAudioChannelLayout_Automatic) {
 		outFormat->channels = fplMin(inFormat->channels, FPL_MAX_AUDIO_CHANNEL_COUNT);
 		outFormat->channelLayout = fplGetDefaultAudioChannelLayoutFromChannels(outFormat->channels);
@@ -25139,7 +25141,7 @@ fpl_internal void fpl__SetupAudioDeviceFormat(const fplAudioFormat *inFormat, fp
 	// Sample rate
 	if (inFormat->sampleRate > 0) {
 		outFormat->sampleRate = inFormat->sampleRate;
-		outFormat->defaultFields |= ((inFormat->defaultFields & fplAudioDefaultFields_SampleRate) ? fplAudioDefaultFields_SampleRate : fplAudioDefaultFields_None);
+		outFormat->defaultFields |= (fplIsMaskSet(inFormat->defaultFields, fplAudioDefaultFields_SampleRate) ? fplAudioDefaultFields_SampleRate : fplAudioDefaultFields_None);
 	} else {
 		outFormat->sampleRate = FPL__DEFAULT_AUDIO_SAMPLERATE;
 		outFormat->defaultFields |= fplAudioDefaultFields_SampleRate;
@@ -25148,7 +25150,7 @@ fpl_internal void fpl__SetupAudioDeviceFormat(const fplAudioFormat *inFormat, fp
 	// Format
 	if (inFormat->type != fplAudioFormatType_None) {
 		outFormat->type = inFormat->type;
-		outFormat->defaultFields |= ((inFormat->defaultFields & fplAudioDefaultFields_Type) ? fplAudioDefaultFields_Type : fplAudioDefaultFields_None);
+		outFormat->defaultFields |= (fplIsMaskSet(inFormat->defaultFields, fplAudioDefaultFields_Type) ? fplAudioDefaultFields_Type : fplAudioDefaultFields_None);
 	} else {
 		outFormat->type = FPL__DEFAULT_AUDIO_FORMAT;
 		outFormat->defaultFields |= fplAudioDefaultFields_Type;
@@ -25157,7 +25159,7 @@ fpl_internal void fpl__SetupAudioDeviceFormat(const fplAudioFormat *inFormat, fp
 	// Periods
 	if (inFormat->periods > 0) {
 		outFormat->periods = inFormat->periods;
-		outFormat->defaultFields |= ((inFormat->defaultFields & fplAudioDefaultFields_Periods) ? fplAudioDefaultFields_Periods : fplAudioDefaultFields_None);
+		outFormat->defaultFields |= (fplIsMaskSet(inFormat->defaultFields, fplAudioDefaultFields_Periods) ? fplAudioDefaultFields_Periods : fplAudioDefaultFields_None);
 	} else {
 		outFormat->periods = FPL__DEFAULT_AUDIO_PERIODS;
 		outFormat->defaultFields |= fplAudioDefaultFields_Periods;
@@ -25167,11 +25169,11 @@ fpl_internal void fpl__SetupAudioDeviceFormat(const fplAudioFormat *inFormat, fp
 	if (inFormat->bufferSizeInFrames > 0) {
 		outFormat->bufferSizeInFrames = inFormat->bufferSizeInFrames;
 		outFormat->bufferSizeInMilliseconds = fplGetAudioBufferSizeInMilliseconds(outFormat->sampleRate, outFormat->bufferSizeInFrames);
-		outFormat->defaultFields |= ((inFormat->defaultFields & fplAudioDefaultFields_BufferSize) ? fplAudioDefaultFields_BufferSize : fplAudioDefaultFields_None);
+		outFormat->defaultFields |= (fplIsMaskSet(inFormat->defaultFields, fplAudioDefaultFields_BufferSize) ? fplAudioDefaultFields_BufferSize : fplAudioDefaultFields_None);
 	} else if (inFormat->bufferSizeInMilliseconds > 0) {
 		outFormat->bufferSizeInMilliseconds = inFormat->bufferSizeInMilliseconds;
 		outFormat->bufferSizeInFrames = fplGetAudioBufferSizeInFrames(outFormat->sampleRate, inFormat->bufferSizeInMilliseconds);
-		outFormat->defaultFields |= ((inFormat->defaultFields & fplAudioDefaultFields_BufferSize) ? fplAudioDefaultFields_BufferSize : fplAudioDefaultFields_None);
+		outFormat->defaultFields |= (fplIsMaskSet(inFormat->defaultFields, fplAudioDefaultFields_BufferSize) ? fplAudioDefaultFields_BufferSize : fplAudioDefaultFields_None);
 	} else {
 		fplAudioLatencyType latencyType = fplGetAudioLatencyType(inFormat->mode);
 		outFormat->bufferSizeInMilliseconds = (latencyType == fplAudioLatencyType_Conservative) ? FPL__DEFAULT_AUDIO_BUFFERSIZE_CONSERVATIVE_IN_MSECS : FPL__DEFAULT_AUDIO_BUFFERSIZE_LOWLATENCY_IN_MSECS;
@@ -25607,9 +25609,9 @@ fpl_internal size_t fpl__PopulateFallbackAudioFormats(const fplAudioDefaultField
 	const uint32_t sampleRateCount = fplArrayCount(fpl__global_AudioFormat_FallbackSampleRates);
 	const uint32_t typeCount = fplArrayCount(fpl__global_AudioFormat_FallbackTypes);
 
-	bool isDefaultChannel = defaultFields & fplAudioDefaultFields_Channels;
-	bool isDefaultType = defaultFields & fplAudioDefaultFields_Type;
-	bool isDefaultSampleRate = defaultFields & fplAudioDefaultFields_SampleRate;
+	bool isDefaultChannel = fplIsMaskSet(defaultFields, fplAudioDefaultFields_Channels);
+	bool isDefaultType = fplIsMaskSet(defaultFields, fplAudioDefaultFields_Type);
+	bool isDefaultSampleRate = fplIsMaskSet(defaultFields, fplAudioDefaultFields_SampleRate);
 
 	size_t requiredCount = 0;
 	if (isDefaultChannel) {
@@ -25761,14 +25763,14 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 				currentTargetFormat.defaultFields = fplAudioDefaultFields_None;
 
 				if (fplDecodeAudioFormatU64(testFormat, &currentSampleRate, &currentChannels, &currentType)) {
-					if (fallbackFieldsMask & fplAudioDefaultFields_Channels) {
+					if (fplIsMaskSet(fallbackFieldsMask, fplAudioDefaultFields_Channels)) {
 						currentTargetFormat.channels = currentChannels;
 						currentTargetFormat.channelLayout = fplGetDefaultAudioChannelLayoutFromChannels(currentChannels);
 					}
-					if (fallbackFieldsMask & fplAudioDefaultFields_Type) {
+					if (fplIsMaskSet(fallbackFieldsMask, fplAudioDefaultFields_Type)) {
 						currentTargetFormat.type = currentType;
 					}
-					if (fallbackFieldsMask & fplAudioDefaultFields_SampleRate) {
+					if (fplIsMaskSet(fallbackFieldsMask, fplAudioDefaultFields_SampleRate)) {
 						currentTargetFormat.sampleRate = currentSampleRate;
 					}
 				}
@@ -26048,7 +26050,7 @@ fpl_internal FPL__FUNC_PREPARE_VIDEO_WINDOW(fpl__PrepareVideoWindowDefault) {
 	fplAssert(appState != fpl_null);
 
 #	if defined(FPL__ENABLE_VIDEO)
-	if (initFlags & fplInitFlags_Video) {
+	if (fplIsMaskSet(initFlags, fplInitFlags_Video)) {
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
 		if (videoState->context.prepareWindowFunc != fpl_null) {
 			bool result = videoState->context.prepareWindowFunc(appState, &initSettings->video, &appState->window, &videoState->activeBackend.base);
@@ -26064,7 +26066,7 @@ fpl_internal FPL__FUNC_FINALIZE_VIDEO_WINDOW(fpl__FinalizeVideoWindowDefault) {
 	fplAssert(appState != fpl_null);
 
 #if defined(FPL__ENABLE_VIDEO)
-	if (initFlags & fplInitFlags_Video) {
+	if (fplIsMaskSet(initFlags, fplInitFlags_Video)) {
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
 		if (videoState->context.finalizeWindowFunc != fpl_null) {
 			bool result = videoState->context.finalizeWindowFunc(appState, &initSettings->video, &appState->window, &videoState->activeBackend.base);
@@ -26977,7 +26979,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 
 	// Compute memory for video
 #	if defined(FPL__ENABLE_VIDEO)
-	if (initFlags & fplInitFlags_Video) {
+	if (fplIsMaskSet(initFlags, fplInitFlags_Video)) {
 		fpl__PushPlatformMemory(&videoMemoryBlock, sizeof(fpl__VideoState), 16, 0);
 	}
 #	endif
@@ -26986,7 +26988,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 #	if defined(FPL__ENABLE_AUDIO)
 	size_t maxAudioBackendSize = 0;
 	size_t offsetToAudioBackend = 0;
-	if (initFlags & fplInitFlags_Audio) {
+	if (fplIsMaskSet(initFlags, fplInitFlags_Audio)) {
 		fplAudioSettings audioSettings = fplZeroInit;
 		if (initSettings != fpl_null) {
 			audioSettings = initSettings->audio;
@@ -27043,7 +27045,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 
 	// Force the inclusion of window when Video flags is set or remove the video flags when video is disabled
 #	if defined(FPL__ENABLE_VIDEO)
-	if (appState->initFlags & fplInitFlags_Video) {
+	if (fplIsMaskSet(appState->initFlags, fplInitFlags_Video)) {
 		appState->initFlags |= fplInitFlags_Window;
 	}
 #	else
@@ -27101,7 +27103,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 
 	// Init video state
 #	if defined(FPL__ENABLE_VIDEO)
-	if (appState->initFlags & fplInitFlags_Video) {
+	if (fplIsMaskSet(appState->initFlags, fplInitFlags_Video)) {
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Video State with size '%zu'", videoMemoryBlock.size);
 		fplAssert(videoMemoryBlock.offset > 0);
 		appState->video.mem = platformMemory + videoMemoryBlock.offset;
@@ -27132,7 +27134,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 
 	// Init Window & event queue
 #	if defined(FPL__ENABLE_WINDOW)
-	if (appState->initFlags & fplInitFlags_Window) {
+	if (fplIsMaskSet(appState->initFlags, fplInitFlags_Window)) {
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Window:");
 		fpl__SetupWindowCallbacks winCallbacks = fplZeroInit;
 		winCallbacks.preSetup = fpl__PrepareVideoWindowDefault;
@@ -27148,7 +27150,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 
 	// Init Video
 #	if defined(FPL__ENABLE_VIDEO)
-	if (appState->initFlags & fplInitFlags_Video) {
+	if (fplIsMaskSet(appState->initFlags, fplInitFlags_Video)) {
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
 		fplAssert(videoState != fpl_null);
 		fplWindowSize windowSize = fplZeroInit;
@@ -27166,7 +27168,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 
 	// Init Audio
 #	if defined(FPL__ENABLE_AUDIO)
-	if (appState->initFlags & fplInitFlags_Audio) {
+	if (fplIsMaskSet(appState->initFlags, fplInitFlags_Audio)) {
 		fplAssert(audioMemoryBlock.offset > 0);
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Audio State with size '%zu'", audioMemoryBlock.size);
 		appState->audio.mem = platformMemory + audioMemoryBlock.offset;
