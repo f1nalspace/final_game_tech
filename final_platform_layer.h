@@ -2928,6 +2928,15 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 */
 #define fplTeraBytes(value) ((fplGigaBytes(value) * 1024ull))
 
+/**
+* @def fplIsMaskSet
+* @brief Returns true when the given mask in set in the value.
+* @param[in] value Value to check.
+* @param[in] mask Bit mask to check
+* @result True if the mask is set, false otherwise.
+*/
+#define fplIsMaskSet(value, mask) (((value) & (mask)) == (mask))
+
 //
 // Endianess
 //
@@ -16428,7 +16437,7 @@ fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
 	FPL__CheckArgumentNull(outStates, false);
 	FPL__CheckPlatform(false);
 	fpl__PlatformAppState *platformAppState = fpl__global__AppState;
-	if (platformAppState->initFlags & fplInitFlags_GameController) {
+	if (fplIsMaskSet(platformAppState->initFlags, fplInitFlags_GameController)) {
 		fpl__Win32AppState *appState = &platformAppState->win32;
 		const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
 		const fpl__Win32Api *wapi = &appState->winApi;
