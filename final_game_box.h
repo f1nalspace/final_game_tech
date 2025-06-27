@@ -25,6 +25,7 @@ This was created for learning purposes and supports features such as:
 - Boot ROM support for DMG
 - GamePak loading with support for ROM and RAM banking (MBC1, MBC2, MBC3, MBC5)
 - Battery backed external RAM load/save
+- Storing and restoring of full save states for filebased roms
 - Joypad support (Keyboard, Gamepad)
 
 It can run most test rom files and games such as Tetris, Super Mario land, Kirby, Zelda, etc.
