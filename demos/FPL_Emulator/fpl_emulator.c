@@ -319,17 +319,15 @@ static const fgbCallbacks globalCallbacks = {
 	.memoryAllocationUserData = &globalTransientMemory,
 };
 
-typedef double Seconds;
-
 #define PERFORMANCE_COUNTER_DELTA_CAPACITY 25
 
 typedef struct {
-	Seconds deltas[PERFORMANCE_COUNTER_DELTA_CAPACITY];
+	fplSeconds deltas[PERFORMANCE_COUNTER_DELTA_CAPACITY];
 	fplTimestamp start;
 	fplTimestamp end;
 	size_t count;
-	Seconds minSecs;
-	Seconds maxSecs;
+	fplSeconds minSecs;
+	fplSeconds maxSecs;
 } PerformanceCounter;
 
 static inline double GetPerformanceCounterAvg(const PerformanceCounter *counter) {
