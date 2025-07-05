@@ -62,7 +62,7 @@ extern void DrawPoint(const Camera2D &camera, const float x, const float y, cons
 
 extern void DrawTextFont(const char *text, const size_t textLen, const LoadedFont *fontDesc, const GLuint fontTexture, const float x, const float y, const float maxCharHeight, const float sx, const float sy) {
 	if(fontDesc != nullptr) {
-		Vec2f textSize = GetTextSize(text, textLen, fontDesc, maxCharHeight);
+		Vec2f textSize = GetTextSize(fontDesc, text, textLen, maxCharHeight);
 		float xpos = x - textSize.w * 0.5f + (textSize.w * 0.5f * sx);
 		float ypos = y - textSize.h * 0.5f + (textSize.h * 0.5f * sy);
 		uint32_t lastChar = fontDesc->firstChar + (fontDesc->charCount - 1);
@@ -317,7 +317,7 @@ extern void RenderWithOpenGL(RenderState &renderState) {
 						const float maxHeight = cmd->maxHeight;
 						const float ax = cmd->horizontalAlignment;
 						const float ay = cmd->verticalAlignment;
-						Vec2f textSize = GetTextSize(text, cmd->textLength, fontDesc, maxHeight);
+						Vec2f textSize = GetTextSize(fontDesc, text, cmd->textLength, maxHeight);
 						float xpos = cmd->position.x - textSize.w * 0.5f + (textSize.w * 0.5f * ax);
 						float ypos = cmd->position.y - textSize.h * 0.5f + (textSize.h * 0.5f * ay);
 						uint32_t lastChar = fontDesc->firstChar + (fontDesc->charCount - 1);

@@ -16,6 +16,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2025-05-02
+	- Fixed crash when trying to get a font char from a not supported code point
+
 	## 2025-03-15
 	- Fixed audio sample buffer was not cleared when seeking
 
@@ -1376,10 +1379,13 @@ struct FontInfo {
 
 static FontChar GetFontChar(const FontInfo &info, const uint32_t codePoint) {
 	uint32_t lastCharPastOne = info.firstChar + info.charCount;
-	fplAssert(codePoint >= info.firstChar && codePoint < lastCharPastOne);
-	uint32_t charIndex = codePoint - info.firstChar;
-	FontChar result = info.chars[charIndex];
-	return(result);
+	if (codePoint >= info.firstChar && codePoint < lastCharPastOne) {
+		uint32_t charIndex = codePoint - info.firstChar;
+		FontChar result = info.chars[charIndex];
+		return(result);
+	}
+	FontChar empty = fplZeroInit;
+	return empty;
 }
 
 static void ReleaseFontInfo(FontInfo &font) {
