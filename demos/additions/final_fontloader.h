@@ -93,7 +93,7 @@ inline float GetFontLineAdvance(const FontInfo *fontInfo) {
 	return(result);
 }
 
-extern Vec2f GetTextSize(const char *text, const size_t textLen, const LoadedFont *fontDesc, const float maxCharHeight);
+extern Vec2f GetTextSize(const LoadedFont *font, const char *text, const size_t textLen, const float maxCharHeight);
 extern FontQuad GetFontQuad(const LoadedFont *font, const uint32_t codePoint, const float scale);
 extern float GetFontCharacterAdvance(const LoadedFont *font, const uint32_t thisCodePoint, const uint32_t nextCodePoint);
 extern bool LoadFontFromFile(const char *dataPath, const char *filename, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t atlasWidth, const uint32_t atlasHeight, const bool loadKerning, LoadedFont *outFont);
@@ -108,28 +108,28 @@ extern void ReleaseFont(LoadedFont *font);
 #define STB_TRUETYPE_IMPLEMENTATION
 #include <stb/stb_truetype.h>
 
-extern Vec2f GetTextSize(const char *text, const size_t textLen, const LoadedFont *fontDesc, const float maxCharHeight) {
+extern Vec2f GetTextSize(const LoadedFont *font, const char *text, const size_t textLen, const float maxCharHeight) {
 	float xwidth = 0.0f;
 	float ymax = 0.0f;
-	if(fontDesc != fpl_null && fontDesc->charCount > 0) {
+	if(font != fpl_null && font->charCount > 0) {
 		float xpos = 0.0f;
 		float ypos = 0.0f;
-		uint32_t lastChar = fontDesc->firstChar + (fontDesc->charCount - 1);
+		uint32_t lastChar = font->firstChar + (font->charCount - 1);
 		for(uint32_t textPos = 0; textPos < textLen; ++textPos) {
 			uint32_t at = text[textPos];
 			uint32_t atNext = textPos < (textLen - 1) ? (text[textPos + 1]) : 0;
 			float xadvance;
 			Vec2f offset = V2fInit(xpos, ypos);
 			Vec2f size = V2fZero();
-			if(at >= fontDesc->firstChar && at <= lastChar) {
-				uint32_t codePoint = at - fontDesc->firstChar;
-				const FontGlyph *glyph = fontDesc->glyphs + codePoint;
+			if(at >= font->firstChar && at <= lastChar) {
+				uint32_t codePoint = at - font->firstChar;
+				const FontGlyph *glyph = font->glyphs + codePoint;
 				size = glyph->charSize;
 				offset = V2fAdd(offset, glyph->offset);
 				offset = V2fAddMultScalar(offset, V2fInit(size.x, -size.y), 0.5f);
-				xadvance = GetFontCharacterAdvance(fontDesc, (uint32_t)at, (uint32_t)atNext);
+				xadvance = GetFontCharacterAdvance(font, (uint32_t)at, (uint32_t)atNext);
 			} else {
-				xadvance = fontDesc->info.spaceAdvance;
+				xadvance = font->info.spaceAdvance;
 			}
 			Vec2f min = offset;
 			Vec2f max = V2fAdd(min, V2fInit(xadvance, size.y));

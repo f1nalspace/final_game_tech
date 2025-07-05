@@ -455,6 +455,10 @@ fpl_force_inline Quaternion Quat(const float s, const Vec3f &axis) {
 }
 #endif
 
+//
+// Color & Pixel
+//
+
 typedef union Pixel {
 	struct {
 		uint8_t b, g, r, a;
@@ -462,6 +466,28 @@ typedef union Pixel {
 	uint32_t bgra;
 	uint8_t m[4];
 } Pixel;
+
+typedef struct Viewport4i {
+	int32_t x;
+	int32_t y;
+	int32_t w;
+	int32_t h;
+} Viewport4i;
+
+fpl_force_inline Viewport4i Viewport4iInit(const int32_t x, const int32_t y, const int32_t w, const int32_t h) {
+	return fplStructInit(Viewport4i, x, y, w, h);
+}
+
+typedef struct Viewport4f {
+	float x;
+	float y;
+	float w;
+	float h;
+} Viewport4f;
+
+fpl_force_inline Viewport4f Viewport4fInit(const float x, const float y, const float w, const float h) {
+	return fplStructInit(Viewport4f, x, y, w, h);
+}
 
 typedef struct Angle {
 	float radians;
@@ -1480,6 +1506,125 @@ fpl_force_inline Pixel LinearToPixelSRGB(const Vec4f linear) {
 	float a = linear.a;
 	Pixel result;
 	result.bgra = BGRAPack4x8(V4fInit(r, g, b, a));
+	return(result);
+}
+
+fpl_force_inline Mat4f Mat4Inverse(const Mat4f mat) {
+	float SubFactor00 = mat.r[2][2] * mat.r[3][3] - mat.r[3][2] * mat.r[2][3];
+	float SubFactor01 = mat.r[2][1] * mat.r[3][3] - mat.r[3][1] * mat.r[2][3];
+	float SubFactor02 = mat.r[2][1] * mat.r[3][2] - mat.r[3][1] * mat.r[2][2];
+	float SubFactor03 = mat.r[2][0] * mat.r[3][3] - mat.r[3][0] * mat.r[2][3];
+	float SubFactor04 = mat.r[2][0] * mat.r[3][2] - mat.r[3][0] * mat.r[2][2];
+	float SubFactor05 = mat.r[2][0] * mat.r[3][1] - mat.r[3][0] * mat.r[2][1];
+	float SubFactor06 = mat.r[1][2] * mat.r[3][3] - mat.r[3][2] * mat.r[1][3];
+	float SubFactor07 = mat.r[1][1] * mat.r[3][3] - mat.r[3][1] * mat.r[1][3];
+	float SubFactor08 = mat.r[1][1] * mat.r[3][2] - mat.r[3][1] * mat.r[1][2];
+	float SubFactor09 = mat.r[1][0] * mat.r[3][3] - mat.r[3][0] * mat.r[1][3];
+	float SubFactor10 = mat.r[1][0] * mat.r[3][2] - mat.r[3][0] * mat.r[1][2];
+	float SubFactor11 = mat.r[1][1] * mat.r[3][3] - mat.r[3][1] * mat.r[1][3];
+	float SubFactor12 = mat.r[1][0] * mat.r[3][1] - mat.r[3][0] * mat.r[1][1];
+	float SubFactor13 = mat.r[1][2] * mat.r[2][3] - mat.r[2][2] * mat.r[1][3];
+	float SubFactor14 = mat.r[1][1] * mat.r[2][3] - mat.r[2][1] * mat.r[1][3];
+	float SubFactor15 = mat.r[1][1] * mat.r[2][2] - mat.r[2][1] * mat.r[1][2];
+	float SubFactor16 = mat.r[1][0] * mat.r[2][3] - mat.r[2][0] * mat.r[1][3];
+	float SubFactor17 = mat.r[1][0] * mat.r[2][2] - mat.r[2][0] * mat.r[1][2];
+	float SubFactor18 = mat.r[1][0] * mat.r[2][1] - mat.r[2][0] * mat.r[1][1];
+
+	Mat4f Inverse;
+
+	Inverse.r[0][0] = +(mat.r[1][1] * SubFactor00 - mat.r[1][2] * SubFactor01 + mat.r[1][3] * SubFactor02);
+	Inverse.r[0][1] = -(mat.r[1][0] * SubFactor00 - mat.r[1][2] * SubFactor03 + mat.r[1][3] * SubFactor04);
+	Inverse.r[0][2] = +(mat.r[1][0] * SubFactor01 - mat.r[1][1] * SubFactor03 + mat.r[1][3] * SubFactor05);
+	Inverse.r[0][3] = -(mat.r[1][0] * SubFactor02 - mat.r[1][1] * SubFactor04 + mat.r[1][2] * SubFactor05);
+
+	Inverse.r[1][0] = -(mat.r[0][1] * SubFactor00 - mat.r[0][2] * SubFactor01 + mat.r[0][3] * SubFactor02);
+	Inverse.r[1][1] = +(mat.r[0][0] * SubFactor00 - mat.r[0][2] * SubFactor03 + mat.r[0][3] * SubFactor04);
+	Inverse.r[1][2] = -(mat.r[0][0] * SubFactor01 - mat.r[0][1] * SubFactor03 + mat.r[0][3] * SubFactor05);
+	Inverse.r[1][3] = +(mat.r[0][0] * SubFactor02 - mat.r[0][1] * SubFactor04 + mat.r[0][2] * SubFactor05);
+
+	Inverse.r[2][0] = +(mat.r[0][1] * SubFactor06 - mat.r[0][2] * SubFactor07 + mat.r[0][3] * SubFactor08);
+	Inverse.r[2][1] = -(mat.r[0][0] * SubFactor06 - mat.r[0][2] * SubFactor09 + mat.r[0][3] * SubFactor10);
+	Inverse.r[2][2] = +(mat.r[0][0] * SubFactor11 - mat.r[0][1] * SubFactor09 + mat.r[0][3] * SubFactor12);
+	Inverse.r[2][3] = -(mat.r[0][0] * SubFactor08 - mat.r[0][1] * SubFactor10 + mat.r[0][2] * SubFactor12);
+
+	Inverse.r[3][0] = -(mat.r[0][1] * SubFactor13 - mat.r[0][2] * SubFactor14 + mat.r[0][3] * SubFactor15);
+	Inverse.r[3][1] = +(mat.r[0][0] * SubFactor13 - mat.r[0][2] * SubFactor16 + mat.r[0][3] * SubFactor17);
+	Inverse.r[3][2] = -(mat.r[0][0] * SubFactor14 - mat.r[0][1] * SubFactor16 + mat.r[0][3] * SubFactor18);
+	Inverse.r[3][3] = +(mat.r[0][0] * SubFactor15 - mat.r[0][1] * SubFactor17 + mat.r[0][2] * SubFactor18);
+
+	float Determinant =
+		+ mat.r[0][0] * Inverse.r[0][0]
+		+ mat.r[0][1] * Inverse.r[0][1]
+		+ mat.r[0][2] * Inverse.r[0][2]
+		+ mat.r[0][3] * Inverse.r[0][3];
+
+	float inverseDet = 1.0f / Determinant;
+
+	for (int i = 0; i < 16; ++i) {
+		Inverse.m[i] *= inverseDet;
+	}
+
+	return Inverse;
+}
+
+fpl_force_inline Vec4f Vec4DivideScalar(const Vec4f vec, const float divisor) {
+	Vec4f result = V4fInit(vec.x / divisor, vec.y / divisor, vec.z / divisor, vec.w / divisor);
+	return result;
+}
+
+fpl_force_inline Vec2f Unproject(const Vec2i screenPos, const Mat4f mvp, const Viewport4i viewport) {
+	Mat4f inverse = Mat4Inverse(mvp);
+
+	float x = (float)screenPos.x;
+	float y = (float)screenPos.y;
+
+	Vec4f tmp = V4fInit(x, y, 0.0f, 1.0f);
+
+	tmp.x = (tmp.x - viewport.x) / viewport.w;
+	tmp.y = (tmp.y - viewport.y) / viewport.h;
+
+	tmp.x = tmp.x * 2.0f - 1.0f;
+	tmp.y = tmp.y * 2.0f - 1.0f;
+
+	Vec4f obj = Vec4MultMat4(inverse, tmp);
+
+	obj = Vec4DivideScalar(obj, obj.w);
+
+	Vec2f result = V2fInit(obj.x, obj.y);
+	return result;
+}
+
+fpl_force_inline Viewport4i Viewport4iComputeByAspect(const Vec2i screenSize, const float targetAspect) {
+	int targetHeight = (int)(screenSize.w / targetAspect);
+	Vec2i viewSize = V2iInit(screenSize.w, screenSize.h);
+	Vec2i viewOffset = V2iInit(0, 0);
+	if (targetHeight > screenSize.h) {
+		viewSize.h = screenSize.h;
+		viewSize.w = (int)(screenSize.h * targetAspect);
+		viewOffset.x = (screenSize.w - viewSize.w) / 2;
+	} else {
+		viewSize.w = screenSize.w;
+		viewSize.h = (int)(screenSize.w / targetAspect);
+		viewOffset.y = (screenSize.h - viewSize.h) / 2;
+	}
+	Viewport4i result = Viewport4iInit(viewOffset.x, viewOffset.y, viewSize.w, viewSize.h);
+	return(result);
+}
+
+fpl_force_inline Viewport4f Viewport4fComputeByAspect(const Vec2f screenSize, const float targetAspect) {
+	float targetHeight = screenSize.w / targetAspect;
+	Vec2f viewSize = V2fInit(screenSize.w, screenSize.h);
+	Vec2f viewOffset = V2fInit(0, 0);
+	if (targetHeight > screenSize.h) {
+		viewSize.h = screenSize.h;
+		viewSize.w = screenSize.h * targetAspect;
+		viewOffset.x = (screenSize.w - viewSize.w) * 0.5f;
+	} else {
+		viewSize.w = screenSize.w;
+		viewSize.h = screenSize.w / targetAspect;
+		viewOffset.y = (screenSize.h - viewSize.h) * 0.5f;
+	}
+	Viewport4f result = Viewport4fInit(viewOffset.x, viewOffset.y, viewSize.w, viewSize.h);
 	return(result);
 }
 
