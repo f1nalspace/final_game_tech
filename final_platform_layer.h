@@ -10729,14 +10729,50 @@ typedef struct fpl__X11WindowState {
 // ****************************************************************************
 #if !defined(FPL__PLATFORM_STATES_DEFINED)
 #define FPL__PLATFORM_STATES_DEFINED
+
+//
+// Backend state
+//
+typedef struct {
+	//! Memory block of the backend
+	void *mem;
+	//! Size of the memory block of the backend
+	size_t memSize;
+	//! Size of the largest backend
+	size_t maxBackendSize;
+	//! Offset to the backend
+	uintptr_t offsetToBackend;
+} fpl__PlatformBackendState;
+
 //
 // Platform initialization state
 //
-typedef struct fpl__PlatformInitSettings {
+typedef struct {
 	fplMemorySettings memorySettings;
 } fpl__PlatformInitSettings;
 
-typedef struct fpl__PlatformInitState {
+typedef struct {
+	//! Total size of the memory block
+	size_t size;
+	// Current offset of the memory block, for the next memory pointer to start at
+	uintptr_t offset;
+} fpl__PlatformMemoryBlock;
+
+//
+// Platform memory block
+//
+fpl_internal uintptr_t fpl__PushPlatformMemory(fpl__PlatformMemoryBlock *block, const size_t size, const size_t alignment, const size_t padding) {
+	uintptr_t offset = block->offset;
+	size_t alignedSize = fplGetAlignedSize(size, alignment);
+	size_t addonSize = padding + alignedSize;
+	block->size += addonSize;
+	block->offset += alignedSize + padding;
+	return offset;
+}
+
+typedef struct {
+	fpl__PlatformMemoryBlock memoryBlocks[16];
+
 #if defined(FPL_SUBPLATFORM_POSIX)
 	fpl__PosixInitState posix;
 #endif
@@ -10759,14 +10795,14 @@ fpl_globalvar fpl__PlatformInitState fpl__global__InitState = fplZeroInit;
 
 #if defined(FPL__ENABLE_WINDOW)
 #define FPL__MAX_EVENT_COUNT 32768
-typedef struct fpl__EventQueue {
+typedef struct {
 	// @FIXME(final): Internal events are not Thread-Safe!
 	fplEvent events[FPL__MAX_EVENT_COUNT];
 	uint32_t pollIndex;
 	uint32_t pushCount;
 } fpl__EventQueue;
 
-typedef struct fpl__PlatformWindowState {
+typedef struct {
 	fpl__EventQueue eventQueue;
 	fplKey keyMap[256];
 	fplButtonState keyStates[256];
@@ -10782,22 +10818,6 @@ typedef struct fpl__PlatformWindowState {
 #endif
 } fpl__PlatformWindowState;
 #endif // FPL__ENABLE_WINDOW
-
-#if defined(FPL__ENABLE_VIDEO)
-typedef struct fpl__PlatformVideoState {
-	void *mem; // Points to fpl__VideoState
-	size_t memSize;
-} fpl__PlatformVideoState;
-#endif // FPL__ENABLE_VIDEO
-
-#if defined(FPL__ENABLE_AUDIO)
-typedef struct fpl__PlatformAudioState {
-	void *mem; // Points to fpl__AudioState
-	size_t memSize;
-	size_t maxBackendSize;
-	uintptr_t offsetToBackend;
-} fpl__PlatformAudioState;
-#endif
 
 //
 // Platform application state
@@ -10817,10 +10837,10 @@ struct fpl__PlatformAppState {
 	fpl__PlatformWindowState window;
 #endif
 #if defined(FPL__ENABLE_VIDEO)
-	fpl__PlatformVideoState video;
+	fpl__PlatformBackendState video;
 #endif
 #if defined(FPL__ENABLE_AUDIO)
-	fpl__PlatformAudioState audio;
+	fpl__PlatformBackendState audio;
 #endif
 
 	// Settings
@@ -25674,7 +25694,7 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 		return fplAudioResultType_BackendAlreadyInitialized;
 	}
 
-	fpl__PlatformAudioState *platformAudioState = &fpl__global__AppState->audio;
+	fpl__PlatformBackendState *platformAudioState = &fpl__global__AppState->audio;
 	fplAssert(platformAudioState->maxBackendSize > 0);
 	fplAssert(platformAudioState->offsetToBackend > 0);
 	fplAssert(platformAudioState->mem != fpl_null);
@@ -26906,15 +26926,15 @@ fpl_globalvar const char *fpl__globalPlatformTypeNameTable[] = {
 };
 fplStaticAssert(fplArrayCount(fpl__globalPlatformTypeNameTable) == FPL__PLATFORMTYPE_COUNT);
 
-fpl_common_api bool fplIsPlatformInitialized(void) {
-	fpl__PlatformInitState *initState = &fpl__global__InitState;
-	bool result = initState->isInitialized;
-	return(result);
-}
-
 fpl_common_api const char *fplGetPlatformName(const fplPlatformType type) {
 	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, fplPlatformType_First, fplPlatformType_Last);
 	const char *result = fpl__globalPlatformTypeNameTable[index];
+	return(result);
+}
+
+fpl_common_api bool fplIsPlatformInitialized(void) {
+	fpl__PlatformInitState *initState = &fpl__global__InitState;
+	bool result = initState->isInitialized;
 	return(result);
 }
 
@@ -26942,19 +26962,6 @@ fpl_common_api void fplPlatformRelease(void) {
 	FPL_LOG_DEBUG(FPL__MODULE_CORE, "Platform released");
 }
 
-typedef struct {
-	size_t offset;
-	size_t size;
-} fpl__PlatformMemoryBlock;
-
-fpl_internal void fpl__PushPlatformMemory(fpl__PlatformMemoryBlock *block, const size_t size, const size_t alignment, const size_t padding) {
-	size_t alignedSize = fplGetAlignedSize(size, alignment);
-	size_t offset = block->offset;
-	size_t addonSize = padding + alignedSize;
-	block->size += addonSize;
-	block->offset += alignedSize + padding;
-}
-
 fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSettings *initSettings) {
 	// Exit out if platform is already initialized
 	if (fpl__global__InitState.isInitialized) {
@@ -26970,17 +26977,21 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 		fplCopyStruct(&initSettings->memory, &initState->initSettings.memorySettings);
 	}
 
-	fpl__PlatformMemoryBlock platformMemoryBlock = fplZeroInit;
-	fpl__PlatformMemoryBlock videoMemoryBlock = fplZeroInit;
-	fpl__PlatformMemoryBlock audioMemoryBlock = fplZeroInit;
-
+	//
 	// Compute platform memory
-	fpl__PushPlatformMemory(&platformMemoryBlock, sizeof(fpl__PlatformAppState), 16, 0);
+	//
+	uint8_t availableMemoryBlockCount = 0;
+	fpl__PlatformMemoryBlock *platformMemoryBlock = &initState->memoryBlocks[availableMemoryBlockCount++];
+	fpl__PlatformMemoryBlock *videoMemoryBlock = &initState->memoryBlocks[availableMemoryBlockCount++];
+	fpl__PlatformMemoryBlock *audioMemoryBlock = &initState->memoryBlocks[availableMemoryBlockCount++];
+
+	// App state memory is fixed
+	fpl__PushPlatformMemory(platformMemoryBlock, sizeof(fpl__PlatformAppState), 16, 0);
 
 	// Compute memory for video
 #	if defined(FPL__ENABLE_VIDEO)
 	if (fplIsMaskSet(initFlags, fplInitFlags_Video)) {
-		fpl__PushPlatformMemory(&videoMemoryBlock, sizeof(fpl__VideoState), 16, 0);
+		fpl__PushPlatformMemory(videoMemoryBlock, sizeof(fpl__VideoState), 16, 0);
 	}
 #	endif
 
@@ -26996,33 +27007,25 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 			fplSetDefaultAudioSettings(&audioSettings);
 		}
 		maxAudioBackendSize = fpl__GetMaxAudioBackendSize(&audioSettings);
-		fpl__PushPlatformMemory(&audioMemoryBlock, sizeof(fpl__AudioState), 16, FPL__ARBITARY_PADDING);
-		fpl__PushPlatformMemory(&audioMemoryBlock, maxAudioBackendSize, 16, 0);
+		fpl__PushPlatformMemory(audioMemoryBlock, sizeof(fpl__AudioState), 16, FPL__ARBITARY_PADDING);
+		fpl__PushPlatformMemory(audioMemoryBlock, maxAudioBackendSize, 16, 0);
 		offsetToAudioBackend = sizeof(fpl__AudioState) + FPL__ARBITARY_PADDING;
 	}
 #	endif
 
-	fpl__PlatformMemoryBlock *memoryBlocks[3] = fplZeroInit;
-	uint8_t memoryBlockCount = 0;
-	memoryBlocks[memoryBlockCount++] = &platformMemoryBlock;
-	if (videoMemoryBlock.size > 0) {
-		memoryBlocks[memoryBlockCount++] = &videoMemoryBlock;
-	}
-	if (audioMemoryBlock.size > 0) {
-		memoryBlocks[memoryBlockCount++] = &audioMemoryBlock;
-	}
-
+	// Compute total memory size
 	size_t totalMemorySize = 0;
-	for (uint8_t i = 0; i < memoryBlockCount; ++i) {
-		fpl__PlatformMemoryBlock *currentBlock = memoryBlocks[i];
+	for (uint8_t i = 0; i < availableMemoryBlockCount; ++i) {
+		fpl__PlatformMemoryBlock *currentBlock = &initState->memoryBlocks[i];
+		if (currentBlock->size == 0)
+			continue;
 		currentBlock->offset = totalMemorySize;
 		size_t memoryBlockSize = currentBlock->size;
 		totalMemorySize += memoryBlockSize;
-		if (i < memoryBlockCount - 1) {
-			totalMemorySize += FPL__ARBITARY_PADDING;
-		}
+		totalMemorySize += FPL__ARBITARY_PADDING;
 	}
 
+	// Allocate a single memory block that holds everything (AppState + All Backends)
 	FPL_LOG_DEBUG(FPL__MODULE_CORE, "Allocate Platform Memory of size '%zu':", totalMemorySize);
 	fplAssert(fpl__global__AppState == fpl_null);
 	uint8_t *platformMemory = (uint8_t *)fplMemoryAlignedAllocate(totalMemorySize, 16);
@@ -27031,8 +27034,8 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 		return(fpl__SetPlatformResult(fplPlatformResultType_OutOfMemory));
 	}
 
-	fplAssert(platformMemoryBlock.offset == 0);
-	fpl__PlatformAppState *appState = fpl__global__AppState = (fpl__PlatformAppState *)platformMemory + platformMemoryBlock.offset;
+	fplAssert(platformMemoryBlock->offset == 0);
+	fpl__PlatformAppState *appState = fpl__global__AppState = (fpl__PlatformAppState *)platformMemory + platformMemoryBlock->offset;
 	appState->initFlags = initFlags;
 	if (initSettings != fpl_null) {
 		appState->initSettings = *initSettings;
@@ -27104,10 +27107,10 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 	// Init video state
 #	if defined(FPL__ENABLE_VIDEO)
 	if (fplIsMaskSet(appState->initFlags, fplInitFlags_Video)) {
-		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Video State with size '%zu'", videoMemoryBlock.size);
-		fplAssert(videoMemoryBlock.offset > 0);
-		appState->video.mem = platformMemory + videoMemoryBlock.offset;
-		appState->video.memSize = videoMemoryBlock.size;
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Video State with size '%zu'", videoMemoryBlock->size);
+		fplAssert(videoMemoryBlock->offset > 0);
+		appState->video.mem = platformMemory + videoMemoryBlock->offset;
+		appState->video.memSize = videoMemoryBlock->size;
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
 		fplAssert(videoState != fpl_null);
 
@@ -27169,10 +27172,10 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 	// Init Audio
 #	if defined(FPL__ENABLE_AUDIO)
 	if (fplIsMaskSet(appState->initFlags, fplInitFlags_Audio)) {
-		fplAssert(audioMemoryBlock.offset > 0);
-		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Audio State with size '%zu'", audioMemoryBlock.size);
-		appState->audio.mem = platformMemory + audioMemoryBlock.offset;
-		appState->audio.memSize = audioMemoryBlock.size;
+		fplAssert(audioMemoryBlock->offset > 0);
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Audio State with size '%zu'", audioMemoryBlock->size);
+		appState->audio.mem = platformMemory + audioMemoryBlock->offset;
+		appState->audio.memSize = audioMemoryBlock->size;
 		appState->audio.maxBackendSize = maxAudioBackendSize;
 		appState->audio.offsetToBackend = offsetToAudioBackend;
 
