@@ -3390,6 +3390,200 @@ typedef int fpl__LinuxSignalHandle;
 
 // ----------------------------------------------------------------------------
 /**
+* @defgroup Timings Timing functions
+* @brief This category contains functions for time comparisons
+* @{
+*/
+// ----------------------------------------------------------------------------
+
+/**
+* @union fplTimestamp
+* @brief Stores a timestamp, used for delta measurements only.
+*/
+typedef union fplTimestamp {
+#if defined(FPL_PLATFORM_WINDOWS)
+	//! Win32 specifics.
+	struct {
+		//! Query performance count in 10th nanoseconds.
+		fpl__Win32LargeInteger qpc;
+		//! Tick count in milliseconds.
+		uint64_t ticks;
+	} win32;
+#elif defined(FPL_SUBPLATFORM_POSIX)
+	//! POSIX specifics.
+	struct {
+		//! Number of seconds.
+		uint64_t seconds;
+		//! Number of nanoseconds.
+		int64_t nanoSeconds;
+	} posix;
+#endif
+	//! Field for preventing union to be empty.
+	uint64_t unused;
+} fplTimestamp;
+
+/**
+* @typedef fplTimeoutValue
+* @brief A type definition for a timeout value in milliseconds.
+*/
+typedef uint32_t fplTimeoutValue;
+
+/**
+* @def FPL_TIMEOUT_INFINITE
+* @brief Infinite timeout constant.
+*/
+#define FPL_TIMEOUT_INFINITE UINT32_MAX
+
+/**
+* @typedef fplSeconds
+* @brief A type definition for seconds (64-bit).
+*/
+typedef double fplSeconds;
+
+/**
+* @typedef fplMilliseconds
+* @brief A type definition for milliseconds (64-bit).
+*/
+typedef uint64_t fplMilliseconds;
+
+/**
+* @brief Gets the current @ref fplTimestamp with most precision, used for time delta measurements only.
+* @return Returns the resulting @ref fplTimestamp.
+* @note Use @ref fplTimestampElapsed() to get the elapsed time.
+*/
+fpl_platform_api fplTimestamp fplTimestampQuery(void);
+
+/**
+* @brief Gets the current system clock in milliseconds, since some fixed starting point (OS start, System start, etc.), used for time delta measurements only.
+* @return Returns the number of milliseconds as @ref fplMilliseconds.
+*/
+fpl_platform_api fplMilliseconds fplMillisecondsQuery(void);
+
+/**
+* @brief Gets the delta value from two @ref fplTimestamp values in seconds.
+* @param[in] start The starting @ref fplTimestamp.
+* @param[in] finish The ending @ref fplTimestamp.
+* @return Returns the resulting elapsed time in seconds as @ref fplSeconds.
+*/
+fpl_platform_api fplSeconds fplTimestampElapsed(const fplTimestamp start, const fplTimestamp finish);
+
+/**
+* @enum fplDateTimeType
+* @brief Defines the date time types.
+*/
+typedef enum fplDateTimeType {
+	// UTC type (+0)
+	fplDateTimeType_UTC = 0,
+	// Local type (+/- offset)
+	fplDateTimeType_Local = 1,
+} fplDateTimeType;
+
+/**
+* @struct fplDateTime
+* @brief Stores a date and time with milliseconds, including the UTC offset.
+*/
+typedef struct fplDateTime {
+	// Unix epoch in seconds since 1970-01-01 00:00:00.
+	uint64_t epoch;
+	// Milliseconds that are added after the epoch.
+	uint32_t milliseconds;
+	// UTC offset in minutes, to convert back into UTC format. This is zero when the date time is UTC or +0.
+	int32_t utcOffset;
+} fplDateTime;
+
+/**
+* @enum fplDateTimeErrors
+* @brief Defines the date time error flags.
+*/
+typedef enum fplDateTimeErrors {
+	fplDateTimeErrors_None = 0,
+	// Invalid year, expected range is 1970 or higher.
+	fplDateTimeErrors_InvalidYear = 1 << 0,
+	// Invalid month, expected range is 1-12.
+	fplDateTimeErrors_InvalidMonth = 1 << 1,
+	// Invalid day, expected range is 1-31.
+	fplDateTimeErrors_InvalidDay = 1 << 2,
+	// Invalid hour, expected range is 0-23.
+	fplDateTimeErrors_InvalidHour = 1 << 3,
+	// Invalid minute, expected range is 0-59.
+	fplDateTimeErrors_InvalidMinute = 1 << 4,
+	// Invalid second, expected range is 0-59.
+	fplDateTimeErrors_InvalidSecond = 1 << 5,
+} fplDateTimeErrors;
+FPL_ENUM_AS_FLAGS_OPERATORS(fplDateTimeErrors);
+
+/**
+* @enum fplDateTimeCreationResult
+* @brief Stores the result of a date time creation.
+*/
+typedef struct fplDateTimeCreationResult {
+	// The resulting date time.
+	fplDateTime dateTime;
+	// The creation error flags.
+	fplDateTimeErrors errors;
+	// A value indicating whether the creation was successfully or not.
+	bool success;
+	// Alignment padding
+	uint8_t padding[3];
+} fplDateTimeCreationResult;
+
+/**
+* @brief Creates a date time from the specified date time components and UTC offset.
+* @param year[in] The year starting from 1970.
+* @param month[in] The month in range of 1-12.
+* @param day[in] The day in range of 1-31.
+* @param hour[in] The hour in range of 0-23.
+* @param minute[in] The minute in range of 0-23.
+* @param second[in] The minute in range of 0-59.
+* @param millisecond[in] The millisecond in range of 0-999.
+* @param utcOffset[in] The UTC offset in minutes.
+* @return Returns the created date time structure as @ref fplDateTime.
+* @note If invalid arguments are passed, an empty date time is returned instead.
+*/
+fpl_common_api fplDateTimeCreationResult fplDateTimeCreate(const uint16_t year, const uint8_t month, const uint8_t day, const uint8_t hour, const uint8_t minute, const uint8_t second, const uint16_t millisecond, const int32_t utcOffset);
+
+/**
+* @struct fplDateTimeResult
+* @brief Stores the components for a date and time, that may be computed from a date time stamp.
+*/
+typedef struct {
+	// Year in range of 0-9999
+	uint16_t year;
+	// Millisecond in range of 0-999
+	uint16_t millisecond;
+	// Month in range of 1-12
+	uint8_t month;
+	// Day in range of 1-31
+	uint8_t day;
+	// Hour in range of 0-23
+	uint8_t hour;
+	// Minute in range of 0-59
+	uint8_t minute;
+	// Second in range of 0-59
+	uint8_t second;
+	// Padding to align to 16-bytes
+	uint8_t padding[7];
+} fplDateTimeResult;
+
+/**
+* @brief Gets the current date time and offset and the number of milliseconds in the specified format.
+* @param type[in] The target date time format as @ref fplDateTimeType.
+* @return Returns the date time structure as @ref fplDateTime.
+*/
+fpl_platform_api fplDateTime fplDateTimeQuery(const fplDateTimeType type);
+
+/**
+* @brief Formats the date time into the specified format as a @ref fplDateTimeResult.
+* @param dateTime[in] The date time as @ref fplDateTime.
+* @param type[in] The target date time format as @ref fplDateTimeType.
+* @return Returns the computed date time fields as @ref fplDateTimeResult.
+*/
+fpl_platform_api fplDateTimeResult fplFormatDateTime(const fplDateTime dateTime, const fplDateTimeType type);
+
+/** @} */
+
+// ----------------------------------------------------------------------------
+/**
 * @defgroup Atomics Atomic operations
 * @brief This category contains functions for handling atomic operations, such as Add, Compare And/Or Exchange, Fences, Loads/Stores, etc.
 * @see @ref page_category_threading_atomics
@@ -5656,201 +5850,6 @@ fpl_common_api void fplConsoleFormatOut(const char *format, ...);
 * @note This is most likely just a wrapper call to vfprintf(stderr).
 */
 fpl_common_api void fplConsoleFormatError(const char *format, ...);
-
-/** @} */
-
-// ----------------------------------------------------------------------------
-/**
-* @defgroup Timings Timing functions
-* @brief This category contains functions for time comparisons
-* @{
-*/
-// ----------------------------------------------------------------------------
-
-/**
-* @union fplTimestamp
-* @brief Stores a timestamp, used for delta measurements only.
-*/
-typedef union fplTimestamp {
-#if defined(FPL_PLATFORM_WINDOWS)
-	//! Win32 specifics.
-	struct {
-		//! Query performance count in 10th nanoseconds.
-		fpl__Win32LargeInteger qpc;
-		//! Tick count in milliseconds.
-		uint64_t ticks;
-	} win32;
-#elif defined(FPL_SUBPLATFORM_POSIX)
-	//! POSIX specifics.
-	struct {
-		//! Number of seconds.
-		uint64_t seconds;
-		//! Number of nanoseconds.
-		int64_t nanoSeconds;
-	} posix;
-#endif
-	//! Field for preventing union to be empty.
-	uint64_t unused;
-} fplTimestamp;
-
-/**
-* @typedef fplTimeoutValue
-* @brief A type definition for a timeout value in milliseconds.
-*/
-typedef uint32_t fplTimeoutValue;
-
-/**
-* @def FPL_TIMEOUT_INFINITE
-* @brief Infinite timeout constant.
-*/
-#define FPL_TIMEOUT_INFINITE UINT32_MAX
-
-/**
-* @typedef fplSeconds
-* @brief A type definition for seconds (64-bit).
-*/
-typedef double fplSeconds;
-
-/**
-* @typedef fplMilliseconds
-* @brief A type definition for milliseconds (64-bit).
-*/
-typedef uint64_t fplMilliseconds;
-
-/**
-* @brief Gets the current @ref fplTimestamp with most precision, used for time delta measurements only.
-* @return Returns the resulting @ref fplTimestamp.
-* @note Use @ref fplTimestampElapsed() to get the elapsed time.
-*/
-fpl_platform_api fplTimestamp fplTimestampQuery(void);
-
-/**
-* @brief Gets the current system clock in milliseconds, since some fixed starting point (OS start, System start, etc.), used for time delta measurements only.
-* @return Returns the number of milliseconds as @ref fplMilliseconds.
-*/
-fpl_platform_api fplMilliseconds fplMillisecondsQuery(void);
-
-/**
-* @brief Gets the delta value from two @ref fplTimestamp values in seconds.
-* @param[in] start The starting @ref fplTimestamp.
-* @param[in] finish The ending @ref fplTimestamp.
-* @return Returns the resulting elapsed time in seconds as @ref fplSeconds.
-*/
-fpl_platform_api fplSeconds fplTimestampElapsed(const fplTimestamp start, const fplTimestamp finish);
-
-/**
-* @enum fplDateTimeType
-* @brief Defines the date time types.
-*/
-typedef enum fplDateTimeType {
-	// UTC type (+0)
-	fplDateTimeType_UTC = 0,
-	// Local type (+/- offset)
-	fplDateTimeType_Local = 1,
-} fplDateTimeType;
-
-/**
-* @struct fplDateTime
-* @brief Stores a date and time with milliseconds, including the UTC offset.
-*/
-typedef struct fplDateTime {
-	// Unix epoch in seconds since 1970-01-01 00:00:00.
-	uint64_t epoch;
-	// Milliseconds that are added after the epoch.
-	uint32_t milliseconds;
-	// UTC offset in minutes, to convert back into UTC format. This is zero when the date time is UTC or +0.
-	int32_t utcOffset;
-} fplDateTime;
-
-/**
-* @enum fplDateTimeErrors
-* @brief Defines the date time error flags.
-*/
-typedef enum fplDateTimeErrors {
-	fplDateTimeErrors_None = 0,
-	// Invalid year, expected range is 1970 or higher.
-	fplDateTimeErrors_InvalidYear = 1 << 0,
-	// Invalid month, expected range is 1-12.
-	fplDateTimeErrors_InvalidMonth = 1 << 1,
-	// Invalid day, expected range is 1-31.
-	fplDateTimeErrors_InvalidDay = 1 << 2,
-	// Invalid hour, expected range is 0-23.
-	fplDateTimeErrors_InvalidHour = 1 << 3,
-	// Invalid minute, expected range is 0-59.
-	fplDateTimeErrors_InvalidMinute = 1 << 4,
-	// Invalid second, expected range is 0-59.
-	fplDateTimeErrors_InvalidSecond = 1 << 5,
-} fplDateTimeErrors;
-FPL_ENUM_AS_FLAGS_OPERATORS(fplDateTimeErrors);
-
-/**
-* @enum fplDateTimeCreationResult
-* @brief Stores the result of a date time creation.
-*/
-typedef struct fplDateTimeCreationResult {
-	// The resulting date time.
-	fplDateTime dateTime;
-	// The creation error flags.
-	fplDateTimeErrors errors;
-	// A value indicating whether the creation was successfully or not.
-	bool success;
-	// Alignment padding
-	uint8_t padding[3];
-} fplDateTimeCreationResult;
-
-/**
-* @brief Creates a date time from the specified date time components and UTC offset.
-* @param year[in] The year starting from 1970.
-* @param month[in] The month in range of 1-12.
-* @param day[in] The day in range of 1-31.
-* @param hour[in] The hour in range of 0-23.
-* @param minute[in] The minute in range of 0-23.
-* @param second[in] The minute in range of 0-59.
-* @param millisecond[in] The millisecond in range of 0-999.
-* @param utcOffset[in] The UTC offset in minutes.
-* @return Returns the created date time structure as @ref fplDateTime.
-* @note If invalid arguments are passed, an empty date time is returned instead.
-*/
-fpl_common_api fplDateTimeCreationResult fplDateTimeCreate(const uint16_t year, const uint8_t month, const uint8_t day, const uint8_t hour, const uint8_t minute, const uint8_t second, const uint16_t millisecond, const int32_t utcOffset);
-
-/**
-* @struct fplDateTimeResult
-* @brief Stores the components for a date and time, that may be computed from a date time stamp.
-*/
-typedef struct {
-	// Year in range of 0-9999
-	uint16_t year;
-	// Millisecond in range of 0-999
-	uint16_t millisecond;
-	// Month in range of 1-12
-	uint8_t month;
-	// Day in range of 1-31
-	uint8_t day;
-	// Hour in range of 0-23
-	uint8_t hour;
-	// Minute in range of 0-59
-	uint8_t minute;
-	// Second in range of 0-59
-	uint8_t second;
-	// Padding to align to 16-bytes
-	uint8_t padding[7];
-} fplDateTimeResult;
-
-/**
-* @brief Gets the current date time and offset and the number of milliseconds in the specified format.
-* @param type[in] The target date time format as @ref fplDateTimeType.
-* @return Returns the date time structure as @ref fplDateTime.
-*/
-fpl_platform_api fplDateTime fplDateTimeQuery(const fplDateTimeType type);
-
-/**
-* @brief Formats the date time into the specified format as a @ref fplDateTimeResult.
-* @param dateTime[in] The date time as @ref fplDateTime.
-* @param type[in] The target date time format as @ref fplDateTimeType.
-* @return Returns the computed date time fields as @ref fplDateTimeResult.
-*/
-fpl_platform_api fplDateTimeResult fplFormatDateTime(const fplDateTime dateTime, const fplDateTimeType type);
-
 
 /** @} */
 
