@@ -2567,7 +2567,7 @@ typedef enum fplX86InstructionSetLevel {
 //
 #if defined(FPL__SUPPORT_WINDOW)
 #	define FPL__ENABLE_WINDOW
-#endif
+#endif // FPL__SUPPORT_WINDOW
 
 #if defined(FPL__SUPPORT_VIDEO)
 #	define FPL__ENABLE_VIDEO
@@ -2597,7 +2597,7 @@ typedef enum fplX86InstructionSetLevel {
 #	if defined(FPL_LOG_MULTIPLE_WRITERS)
 #		define FPL__ENABLE_LOG_MULTIPLE_WRITERS
 #	endif
-#endif
+#endif // FPL_LOGGING
 
 //
 // Assertions & Debug
@@ -7159,14 +7159,33 @@ fpl_common_api size_t fplPathCombine(char *destPath, const size_t maxDestPathLen
 
 /** @} */
 
+// ****************************************************************************
+// 
+// Window / Events / Input
+// 
+// ****************************************************************************
 #if defined(FPL__ENABLE_WINDOW)
+
 // ----------------------------------------------------------------------------
 /**
-* @defgroup WindowEvents Window events
-* @brief This category contains types/functions for handling window events
+* @defgroup Input
+* @brief This category contains the types and function for query keyboard / mouse / game pad informations
 * @{
 */
 // ----------------------------------------------------------------------------
+
+/**
+* @enum fplButtonState
+* @brief An enumeration of button states.
+*/
+typedef enum fplButtonState {
+	//! Key released.
+	fplButtonState_Release = 0,
+	//! Key pressed.
+	fplButtonState_Press = 1,
+	//! Key is held down.
+	fplButtonState_Repeat = 2,
+} fplButtonState;
 
 /**
 * @enum fplKey
@@ -7488,95 +7507,6 @@ typedef enum fplKey {
 } fplKey;
 
 /**
-* @enum fplWindowEventType
-* @brief An enumeration of window event types (Resized, PositionChanged, etc.).
-*/
-typedef enum fplWindowEventType {
-	//! None window event type.
-	fplWindowEventType_None = 0,
-	//! Window has been resized.
-	fplWindowEventType_Resized,
-	//! Window got focus.
-	fplWindowEventType_GotFocus,
-	//! Window lost focus.
-	fplWindowEventType_LostFocus,
-	//! Window has been minimized.
-	fplWindowEventType_Minimized,
-	//! Window has been maximized.
-	fplWindowEventType_Maximized,
-	//! Window has been restored.
-	fplWindowEventType_Restored,
-	//! Dropped one or more files into the window.
-	fplWindowEventType_DroppedFiles,
-	//! Window was exposed.
-	fplWindowEventType_Exposed,
-	//! Window was moved.
-	fplWindowEventType_PositionChanged,
-	//! Window was closed.
-	fplWindowEventType_Closed,
-	//! Window was shown.
-	fplWindowEventType_Shown,
-	//! Window was hidden.
-	fplWindowEventType_Hidden,
-} fplWindowEventType;
-
-/**
-* @struct fplWindowDropFiles
-* @brief A structure containing number and dropped files informations.
-*/
-typedef struct fplWindowDropFiles {
-	//! The internal memory block, do not touch.
-	fplMemoryBlock internalMemory;
-	//! File paths (Do not release this memory, it's automatically released after the event is processed).
-	const char **files;
-	//! Number of dropped in files.
-	size_t fileCount;
-} fplWindowDropFiles;
-
-/**
-* @struct fplWindowEvent
-* @brief A structure containing window event data (Size, Position, etc.).
-*/
-typedef struct fplWindowEvent {
-	//! Window event type.
-	fplWindowEventType type;
-	union {
-		//! Window size.
-		fplWindowSize size;
-		//! Window position.
-		fplWindowPosition position;
-		//! Drop files.
-		fplWindowDropFiles dropFiles;
-	};
-} fplWindowEvent;
-
-/**
-* @enum fplButtonState
-* @brief An enumeration of button states.
-*/
-typedef enum fplButtonState {
-	//! Key released.
-	fplButtonState_Release = 0,
-	//! Key pressed.
-	fplButtonState_Press = 1,
-	//! Key is held down.
-	fplButtonState_Repeat = 2,
-} fplButtonState;
-
-/**
-* @enum fplKeyboardEventType
-* @brief An enumeration of keyboard event types.
-*/
-typedef enum fplKeyboardEventType {
-	//! None key event type.
-	fplKeyboardEventType_None = 0,
-	//! Key button event.
-	fplKeyboardEventType_Button,
-	//! Character was entered.
-	fplKeyboardEventType_Input,
-} fplKeyboardEventType;
-
-/**
 * @enum fplKeyboardModifierFlags
 * @brief An enumeration of keyboard modifier flags.
 */
@@ -7610,36 +7540,30 @@ typedef enum fplKeyboardModifierFlags {
 FPL_ENUM_AS_FLAGS_OPERATORS(fplKeyboardModifierFlags);
 
 /**
-* @struct fplKeyboardEvent
-* @brief A structure containing keyboard event data (Type, Keycode, Mapped key, etc.).
+* @def FPL_MAX_KEYBOARD_STATE_COUNT
+* @brief Max number of keyboard states.
 */
-typedef struct fplKeyboardEvent {
-	//! Raw ASCII key code or 32-bit Unicode for text input.
-	uint64_t keyCode;
-	//! Keyboard event type.
-	fplKeyboardEventType type;
-	//! Keyboard modifiers.
-	fplKeyboardModifierFlags modifiers;
-	//! Button state.
-	fplButtonState buttonState;
-	//! Mapped key.
-	fplKey mappedKey;
-} fplKeyboardEvent;
+#define FPL_MAX_KEYBOARD_STATE_COUNT 256
 
 /**
-* @enum fplMouseEventType
-* @brief An enumeration of mouse event types (Move, ButtonDown, etc.).
+* @struct fplKeyboardState
+* @brief A struct containing the full keyboard state.
 */
-typedef enum fplMouseEventType {
-	//! No mouse event type.
-	fplMouseEventType_None,
-	//! Mouse position has been changed.
-	fplMouseEventType_Move,
-	//! Mouse button event.
-	fplMouseEventType_Button,
-	//! Mouse wheel event.
-	fplMouseEventType_Wheel,
-} fplMouseEventType;
+typedef struct fplKeyboardState {
+	//! Modifier flags.
+	fplKeyboardModifierFlags modifiers;
+	//! Key states.
+	fpl_b32 keyStatesRaw[FPL_MAX_KEYBOARD_STATE_COUNT];
+	//! Mapped button states.
+	fplButtonState buttonStatesMapped[FPL_MAX_KEYBOARD_STATE_COUNT];
+} fplKeyboardState;
+
+/**
+* @brief Polls the current keyboard state and writes it out into the output structure.
+* @param[out] outState Reference to the keyboard state structure @ref fplKeyboardState.
+* @see @ref subsection_category_input_polling_keyboard
+*/
+fpl_platform_api bool fplPollKeyboardState(fplKeyboardState *outState);
 
 /**
 * @enum fplMouseButtonType
@@ -7659,38 +7583,31 @@ typedef enum fplMouseButtonType {
 } fplMouseButtonType;
 
 /**
-* @struct fplMouseEvent
-* @brief A structure containing mouse event data (Type, Button, Position, etc.).
+* @struct fplMouseState
+* @brief A struct containing the full mouse state.
 */
-typedef struct fplMouseEvent {
-	//! Mouse event type.
-	fplMouseEventType type;
-	//! Mouse button.
-	fplMouseButtonType mouseButton;
-	//! Button state.
-	fplButtonState buttonState;
-	//! Mouse X-Position.
-	int32_t mouseX;
-	//! Mouse Y-Position.
-	int32_t mouseY;
-	//! Mouse wheel delta.
-	float wheelDelta;
-} fplMouseEvent;
+typedef struct fplMouseState {
+	//! Mouse button states mapped to @ref fplMouseButtonType.
+	fplButtonState buttonStates[fplMouseButtonType_MaxCount];
+	//! X-Position in pixels.
+	int32_t x;
+	//! Y-Position in pixels.
+	int32_t y;
+} fplMouseState;
 
 /**
-* @enum fplGamepadEventType
-* @brief An enumeration of gamepad event types (Connected, Disconnected, StateChanged, etc.).
+* @brief Polls the current mouse state and writes it out into the output structure.
+* @param[out] outState Reference to the mouse state structure @ref fplMouseState.
+* @see @ref subsection_category_input_polling_mouse
 */
-typedef enum fplGamepadEventType {
-	//! No gamepad event.
-	fplGamepadEventType_None = 0,
-	//! Gamepad connected.
-	fplGamepadEventType_Connected,
-	//! Gamepad disconnected.
-	fplGamepadEventType_Disconnected,
-	//! Gamepad state updated.
-	fplGamepadEventType_StateChanged,
-} fplGamepadEventType;
+fpl_platform_api bool fplPollMouseState(fplMouseState *outState);
+
+/**
+* @brief Queries the cursor position in screen coordinates, relative to the root screen.
+* @param[out] outX Reference to the outgoing X position.
+* @param[out] outY Reference to the outgoing Y position.
+*/
+fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY);
 
 /**
 * @struct fplGamepadButton
@@ -7808,6 +7725,21 @@ typedef struct fplGamepadState {
 } fplGamepadState;
 
 /**
+* @enum fplGamepadEventType
+* @brief An enumeration of gamepad event types (Connected, Disconnected, StateChanged, etc.).
+*/
+typedef enum fplGamepadEventType {
+	//! No gamepad event.
+	fplGamepadEventType_None = 0,
+	//! Gamepad connected.
+	fplGamepadEventType_Connected,
+	//! Gamepad disconnected.
+	fplGamepadEventType_Disconnected,
+	//! Gamepad state updated.
+	fplGamepadEventType_StateChanged,
+} fplGamepadEventType;
+
+/**
 * @struct fplGamepadEvent
 * @brief A structure containing gamepad event data (Type, Device, State, etc.).
 */
@@ -7821,6 +7753,165 @@ typedef struct fplGamepadEvent {
 	//! Gamepad device index.
 	uint32_t deviceIndex;
 } fplGamepadEvent;
+
+/**
+* @def FPL_MAX_GAMEPAD_STATE_COUNT
+* @brief Max number of gamepad states.
+*/
+#define FPL_MAX_GAMEPAD_STATE_COUNT 4
+
+/**
+* @struct fplGamepadStates
+* @brief A struct containing the full state for all gamepad devices.
+*/
+typedef struct fplGamepadStates {
+	//! Device states.
+	fplGamepadState deviceStates[FPL_MAX_GAMEPAD_STATE_COUNT];
+} fplGamepadStates;
+
+/**
+* @brief Polls the current gamepad states and writes it out into the output structure.
+* @param[out] outStates Reference to the gamepad states structure @ref fplGamepadStates.
+* @see @ref subsection_category_input_polling_gamepad
+*/
+fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates);
+
+/** @} */
+
+// ----------------------------------------------------------------------------
+/**
+* @defgroup WindowEvents Window events
+* @brief This category contains types/functions for handling window events
+* @{
+*/
+// ----------------------------------------------------------------------------
+
+/**
+* @enum fplWindowEventType
+* @brief An enumeration of window event types (Resized, PositionChanged, etc.).
+*/
+typedef enum fplWindowEventType {
+	//! None window event type.
+	fplWindowEventType_None = 0,
+	//! Window has been resized.
+	fplWindowEventType_Resized,
+	//! Window got focus.
+	fplWindowEventType_GotFocus,
+	//! Window lost focus.
+	fplWindowEventType_LostFocus,
+	//! Window has been minimized.
+	fplWindowEventType_Minimized,
+	//! Window has been maximized.
+	fplWindowEventType_Maximized,
+	//! Window has been restored.
+	fplWindowEventType_Restored,
+	//! Dropped one or more files into the window.
+	fplWindowEventType_DroppedFiles,
+	//! Window was exposed.
+	fplWindowEventType_Exposed,
+	//! Window was moved.
+	fplWindowEventType_PositionChanged,
+	//! Window was closed.
+	fplWindowEventType_Closed,
+	//! Window was shown.
+	fplWindowEventType_Shown,
+	//! Window was hidden.
+	fplWindowEventType_Hidden,
+} fplWindowEventType;
+
+/**
+* @struct fplWindowDropFiles
+* @brief A structure containing number and dropped files informations.
+*/
+typedef struct fplWindowDropFiles {
+	//! The internal memory block, do not touch.
+	fplMemoryBlock internalMemory;
+	//! File paths (Do not release this memory, it's automatically released after the event is processed).
+	const char **files;
+	//! Number of dropped in files.
+	size_t fileCount;
+} fplWindowDropFiles;
+
+/**
+* @struct fplWindowEvent
+* @brief A structure containing window event data (Size, Position, etc.).
+*/
+typedef struct fplWindowEvent {
+	//! Window event type.
+	fplWindowEventType type;
+	union {
+		//! Window size.
+		fplWindowSize size;
+		//! Window position.
+		fplWindowPosition position;
+		//! Drop files.
+		fplWindowDropFiles dropFiles;
+	};
+} fplWindowEvent;
+
+/**
+* @enum fplKeyboardEventType
+* @brief An enumeration of keyboard event types.
+*/
+typedef enum fplKeyboardEventType {
+	//! None key event type.
+	fplKeyboardEventType_None = 0,
+	//! Key button event.
+	fplKeyboardEventType_Button,
+	//! Character was entered.
+	fplKeyboardEventType_Input,
+} fplKeyboardEventType;
+
+/**
+* @struct fplKeyboardEvent
+* @brief A structure containing keyboard event data (Type, Keycode, Mapped key, etc.).
+*/
+typedef struct fplKeyboardEvent {
+	//! Raw ASCII key code or 32-bit Unicode for text input.
+	uint64_t keyCode;
+	//! Keyboard event type.
+	fplKeyboardEventType type;
+	//! Keyboard modifiers.
+	fplKeyboardModifierFlags modifiers;
+	//! Button state.
+	fplButtonState buttonState;
+	//! Mapped key.
+	fplKey mappedKey;
+} fplKeyboardEvent;
+
+/**
+* @enum fplMouseEventType
+* @brief An enumeration of mouse event types (Move, ButtonDown, etc.).
+*/
+typedef enum fplMouseEventType {
+	//! No mouse event type.
+	fplMouseEventType_None,
+	//! Mouse position has been changed.
+	fplMouseEventType_Move,
+	//! Mouse button event.
+	fplMouseEventType_Button,
+	//! Mouse wheel event.
+	fplMouseEventType_Wheel,
+} fplMouseEventType;
+
+/**
+* @struct fplMouseEvent
+* @brief A structure containing mouse event data (Type, Button, Position, etc.).
+*/
+typedef struct fplMouseEvent {
+	//! Mouse event type.
+	fplMouseEventType type;
+	//! Mouse button.
+	fplMouseButtonType mouseButton;
+	//! Button state.
+	fplButtonState buttonState;
+	//! Mouse X-Position.
+	int32_t mouseX;
+	//! Mouse Y-Position.
+	int32_t mouseY;
+	//! Mouse wheel delta.
+	float wheelDelta;
+} fplMouseEvent;
 
 /**
 * @enum fplEventType
@@ -7872,91 +7963,6 @@ fpl_platform_api bool fplPollEvent(fplEvent *ev);
 * @see @ref section_category_window_events_process
 */
 fpl_platform_api void fplPollEvents(void);
-
-/** @} */
-
-// ----------------------------------------------------------------------------
-/**
-* @defgroup InputData Input functions
-* @brief This category contains functions for retrieving input data
-* @{
-*/
-// ----------------------------------------------------------------------------
-
-/**
-* @def FPL_MAX_KEYBOARD_STATE_COUNT
-* @brief Max number of keyboard states.
-*/
-#define FPL_MAX_KEYBOARD_STATE_COUNT 256
-
-/**
-* @struct fplKeyboardState
-* @brief A struct containing the full keyboard state.
-*/
-typedef struct fplKeyboardState {
-	//! Modifier flags.
-	fplKeyboardModifierFlags modifiers;
-	//! Key states.
-	fpl_b32 keyStatesRaw[FPL_MAX_KEYBOARD_STATE_COUNT];
-	//! Mapped button states.
-	fplButtonState buttonStatesMapped[FPL_MAX_KEYBOARD_STATE_COUNT];
-} fplKeyboardState;
-
-/**
-* @def FPL_MAX_GAMEPAD_STATE_COUNT
-* @brief Max number of gamepad states.
-*/
-#define FPL_MAX_GAMEPAD_STATE_COUNT 4
-
-/**
-* @struct fplGamepadStates
-* @brief A struct containing the full state for all gamepad devices.
-*/
-typedef struct fplGamepadStates {
-	//! Device states.
-	fplGamepadState deviceStates[FPL_MAX_GAMEPAD_STATE_COUNT];
-} fplGamepadStates;
-
-/**
-* @struct fplMouseState
-* @brief A struct containing the full mouse state.
-*/
-typedef struct fplMouseState {
-	//! Mouse button states mapped to @ref fplMouseButtonType.
-	fplButtonState buttonStates[fplMouseButtonType_MaxCount];
-	//! X-Position in pixels.
-	int32_t x;
-	//! Y-Position in pixels.
-	int32_t y;
-} fplMouseState;
-
-/**
-* @brief Polls the current keyboard state and writes it out into the output structure.
-* @param[out] outState Reference to the keyboard state structure @ref fplKeyboardState.
-* @see @ref subsection_category_input_polling_keyboard
-*/
-fpl_platform_api bool fplPollKeyboardState(fplKeyboardState *outState);
-
-/**
-* @brief Polls the current gamepad states and writes it out into the output structure.
-* @param[out] outStates Reference to the gamepad states structure @ref fplGamepadStates.
-* @see @ref subsection_category_input_polling_gamepad
-*/
-fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates);
-
-/**
-* @brief Polls the current mouse state and writes it out into the output structure.
-* @param[out] outState Reference to the mouse state structure @ref fplMouseState.
-* @see @ref subsection_category_input_polling_mouse
-*/
-fpl_platform_api bool fplPollMouseState(fplMouseState *outState);
-
-/**
-* @brief Queries the cursor position in screen coordinates, relative to the root screen.
-* @param[out] outX Reference to the outgoing X position.
-* @param[out] outY Reference to the outgoing Y position.
-*/
-fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY);
 
 /** @} */
 
@@ -10998,6 +11004,25 @@ fpl_internal void fpl__PushMouseMoveEvent(const int32_t x, const int32_t y) {
 	newEvent.mouse.mouseX = x;
 	newEvent.mouse.mouseY = y;
 	fpl__PushInternalEvent(&newEvent);
+}
+
+fpl_internal void fpl__PushGamepadConnectionEvent(const uint32_t deviceIndex, const char *deviceName, const bool isConnected) {
+	fplEvent ev = fplZeroInit;
+	ev.type = fplEventType_Gamepad;
+	ev.gamepad.type = isConnected ? fplGamepadEventType_Connected : fplGamepadEventType_Disconnected;
+	ev.gamepad.deviceIndex = deviceIndex;
+	ev.gamepad.deviceName = deviceName;
+	fpl__PushInternalEvent(&ev);
+}
+
+fpl_internal void fpl__PushGamepadStateEvent(const uint32_t deviceIndex, const char *deviceName, const fplGamepadState *newState) {
+	fplEvent ev = fplZeroInit;
+	ev.type = fplEventType_Gamepad;
+	ev.gamepad.type = fplGamepadEventType_StateChanged;
+	ev.gamepad.deviceIndex = deviceIndex;
+	ev.gamepad.deviceName = deviceName;
+	ev.gamepad.state = *newState;
+	fpl__PushInternalEvent(&ev);
 }
 
 fpl_internal void fpl__HandleKeyboardButtonEvent(fpl__PlatformWindowState *windowState, const uint64_t time, const uint64_t keyCode, const fplKeyboardModifierFlags modifiers, const fplButtonState buttonState, const bool force) {
@@ -16360,8 +16385,10 @@ fpl_platform_api bool fplWindowUpdate(void) {
 	const fpl__Win32InitState *win32InitState = &fpl__global__InitState.win32;
 	const fpl__Win32Api *wapi = &win32AppState->winApi;
 	fpl__ClearInternalEvents();
-	if (!appState->currentSettings.input.disabledEvents && fplIsMaskSet(appState->initFlags, fplInitFlags_GameController)) {
-		fpl__Win32UpdateGameControllers(&appState->currentSettings, win32InitState, &win32AppState->xinput);
+	if (!appState->currentSettings.input.disabledEvents) {
+		if (fplIsMaskSet(appState->initFlags, fplInitFlags_GameController)) {
+			fpl__Win32UpdateGameControllers(&appState->currentSettings, win32InitState, &win32AppState->xinput);
+		}
 	}
 	bool result = appState->window.isRunning != 0;
 	return(result);
@@ -16452,37 +16479,42 @@ fpl_platform_api bool fplPollKeyboardState(fplKeyboardState *outState) {
 fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
 	FPL__CheckArgumentNull(outStates, false);
 	FPL__CheckPlatform(false);
-	fpl__PlatformAppState *platformAppState = fpl__global__AppState;
-	if (fplIsMaskSet(platformAppState->initFlags, fplInitFlags_GameController)) {
-		fpl__Win32AppState *appState = &platformAppState->win32;
-		const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-		const fpl__Win32Api *wapi = &appState->winApi;
-		fpl__Win32XInputState *xinputState = &appState->xinput;
-		fplAssert(xinputState != fpl_null);
-		if (xinputState->xinputApi.XInputGetState != fpl_null) {
-			// @TODO(final): fpl__Win32UpdateGameControllers() uses duplicate code
-			QueryPerformanceCounter(&xinputState->lastDeviceSearchTime);
 
-			fplClearStruct(outStates);
-			for (DWORD controllerIndex = 0; controllerIndex < XUSER_MAX_COUNT; ++controllerIndex) {
-				XINPUT_STATE controllerState = fplZeroInit;
-				if (xinputState->xinputApi.XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
-					if (!xinputState->isConnected[controllerIndex]) {
-						xinputState->isConnected[controllerIndex] = true;
-						fplStringFormat(xinputState->deviceNames[controllerIndex], fplArrayCount(xinputState->deviceNames[controllerIndex]), "XInput-Device [%d]", controllerIndex);
-					}
-					const XINPUT_GAMEPAD *newPadState = &controllerState.Gamepad;
-					fplGamepadState *targetPadState = &outStates->deviceStates[controllerIndex];
-					fpl__Win32XInputGamepadToGamepadState(newPadState, targetPadState);
-					targetPadState->deviceName = xinputState->deviceNames[controllerIndex];
-				} else {
-					if (xinputState->isConnected[controllerIndex]) {
-						xinputState->isConnected[controllerIndex] = false;
-					}
+	fpl__PlatformAppState *platformAppState = fpl__global__AppState;
+
+	bool isEnabled = fplIsMaskSet(platformAppState->initFlags, fplInitFlags_GameController);
+	if (!isEnabled) {
+		return false;
+	}
+	
+	fpl__Win32AppState *appState = &platformAppState->win32;
+	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32Api *wapi = &appState->winApi;
+	fpl__Win32XInputState *xinputState = &appState->xinput;
+	fplAssert(xinputState != fpl_null);
+	if (xinputState->xinputApi.XInputGetState != fpl_null) {
+		// @TODO(final): fpl__Win32UpdateGameControllers() uses duplicate code
+		QueryPerformanceCounter(&xinputState->lastDeviceSearchTime);
+
+		fplClearStruct(outStates);
+		for (DWORD controllerIndex = 0; controllerIndex < XUSER_MAX_COUNT; ++controllerIndex) {
+			XINPUT_STATE controllerState = fplZeroInit;
+			if (xinputState->xinputApi.XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
+				if (!xinputState->isConnected[controllerIndex]) {
+					xinputState->isConnected[controllerIndex] = true;
+					fplStringFormat(xinputState->deviceNames[controllerIndex], fplArrayCount(xinputState->deviceNames[controllerIndex]), "XInput-Device [%d]", controllerIndex);
+				}
+				const XINPUT_GAMEPAD *newPadState = &controllerState.Gamepad;
+				fplGamepadState *targetPadState = &outStates->deviceStates[controllerIndex];
+				fpl__Win32XInputGamepadToGamepadState(newPadState, targetPadState);
+				targetPadState->deviceName = xinputState->deviceNames[controllerIndex];
+			} else {
+				if (xinputState->isConnected[controllerIndex]) {
+					xinputState->isConnected[controllerIndex] = false;
 				}
 			}
-			return(true);
 		}
+		return(true);
 	}
 	return(false);
 }
@@ -20026,9 +20058,8 @@ fpl_internal bool fpl__LinuxInitPlatform(const fplInitFlags initFlags, const fpl
 // Linux OS
 //
 
-
 //
-// Linux Input
+// Linux Gamepads
 //
 #if defined(FPL__ENABLE_WINDOW)
 fpl_internal void fpl__LinuxFreeGameControllers(fpl__LinuxGameControllersState *controllersState) {
