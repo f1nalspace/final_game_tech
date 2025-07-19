@@ -168,6 +168,7 @@ SOFTWARE.
 	- New: Added function fplDateTimeQuery that returns a date time stamp, that allows the display in either local or UTC format
 	- New: Added function fplFormatDateTime that formats a fplDateTime into either a local or UTC date time components
 	- New: Added function fplDateTimeCreate that creates a fplDateTime from seperate date time components
+	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
 
 	## v0.9.9-beta
@@ -2020,12 +2021,6 @@ SOFTWARE.
 #if defined(_WIN32) || defined(_WIN64)
 #	define FPL_PLATFORM_WINDOWS
 #	define FPL_PLATFORM_NAME "Windows"
-#elif defined(__ANDROID__)
-#	define FPL_PLATFORM_ANDROID
-#	define FPL_PLATFORM_NAME "Android"
-#	define FPL_SUBPLATFORM_POSIX
-#	define FPL_SUBPLATFORM_STD_STRINGS
-#	define FPL_SUBPLATFORM_STD_CONSOLE
 #elif defined(__linux__) || defined(__gnu_linux__)
 #	define FPL_PLATFORM_LINUX
 #	define FPL_PLATFORM_NAME "Linux"
