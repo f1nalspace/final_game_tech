@@ -18,6 +18,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2025-07-19
+	- Fixed keyboard states was updated, even when polling was disabled
+
 	## 2019-08-31
 	- Use new field isActive from fplGamepadState now, which was introduced in the last commit
 	- Draw mouse wheel delta for 500 msecs
@@ -1652,9 +1655,9 @@ int main(int argc, char* argv[]) {
 					}
 				}
 
-				fplKeyboardState keyboardState = {};
-				if (fplPollKeyboardState(&keyboardState)) {
-					if (appState->usePolling) {
+				if (appState->usePolling) {
+					fplKeyboardState keyboardState = {};
+					if (fplPollKeyboardState(&keyboardState)) {
 						for (int i = 0; i < 256; ++i) {
 							if (KeyWasPressed(lastKeyStates[i], keyboardState.buttonStatesMapped[i])) {
 								HandleKeyPressed(appState, &input, (fplKey)i);
