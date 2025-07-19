@@ -177,6 +177,8 @@ SOFTWARE.
 
 	- Fixed[X11]: Fixed window support was not disabled when X11 is not present
 
+	- Fixed[POSIX]: Fixed pthread fpl__POSIXSemaphoreHandle was not used
+
 	## v0.9.9-beta
 
 	### Overview
@@ -10131,19 +10133,19 @@ typedef FPL__FUNC_PTHREAD_pthread_cond_broadcast(fpl__pthread_func_pthread_cond_
 #define FPL__FUNC_PTHREAD_pthread_cond_signal(name) int name(pthread_cond_t *cond)
 typedef FPL__FUNC_PTHREAD_pthread_cond_signal(fpl__pthread_func_pthread_cond_signal);
 
-#define FPL__FUNC_PTHREAD_sem_init(name) int name(sem_t *__sem, int __pshared, unsigned int __value)
+#define FPL__FUNC_PTHREAD_sem_init(name) int name(fpl__POSIXSemaphoreHandle *__sem, int __pshared, unsigned int __value)
 typedef FPL__FUNC_PTHREAD_sem_init(fpl__pthread_func_sem_init);
-#define FPL__FUNC_PTHREAD_sem_destroy(name) int name(sem_t *__sem)
+#define FPL__FUNC_PTHREAD_sem_destroy(name) int name(fpl__POSIXSemaphoreHandle *__sem)
 typedef FPL__FUNC_PTHREAD_sem_destroy(fpl__pthread_func_sem_destroy);
-#define FPL__FUNC_PTHREAD_sem_wait(name) int name(sem_t *__sem)
+#define FPL__FUNC_PTHREAD_sem_wait(name) int name(fpl__POSIXSemaphoreHandle *__sem)
 typedef FPL__FUNC_PTHREAD_sem_wait(fpl__pthread_func_sem_wait);
-#define FPL__FUNC_PTHREAD_sem_timedwait(name) int name(sem_t *__restrict __sem, const struct timespec *__restrict __abstime)
+#define FPL__FUNC_PTHREAD_sem_timedwait(name) int name(fpl__POSIXSemaphoreHandle *__restrict __sem, const struct timespec *__restrict __abstime)
 typedef FPL__FUNC_PTHREAD_sem_timedwait(fpl__pthread_func_sem_timedwait);
-#define FPL__FUNC_PTHREAD_sem_trywait(name) int name(sem_t *__sem)
+#define FPL__FUNC_PTHREAD_sem_trywait(name) int name(fpl__POSIXSemaphoreHandle *__sem)
 typedef FPL__FUNC_PTHREAD_sem_trywait(fpl__pthread_func_sem_trywait);
-#define FPL__FUNC_PTHREAD_sem_post(name) int name(sem_t *__sem)
+#define FPL__FUNC_PTHREAD_sem_post(name) int name(fpl__POSIXSemaphoreHandle *__sem)
 typedef FPL__FUNC_PTHREAD_sem_post(fpl__pthread_func_sem_post);
-#define FPL__FUNC_PTHREAD_sem_getvalue(name) int name(sem_t *__restrict __sem, int *__restrict __sval)
+#define FPL__FUNC_PTHREAD_sem_getvalue(name) int name(fpl__POSIXSemaphoreHandle *__restrict __sem, int *__restrict __sval)
 typedef FPL__FUNC_PTHREAD_sem_getvalue(fpl__pthread_func_sem_getvalue);
 
 typedef struct fpl__PThreadApi {
@@ -17677,7 +17679,7 @@ fpl_platform_api bool fplSemaphoreInit(fplSemaphoreHandle *semaphore, const uint
 
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
-	sem_t handle;
+	fpl__POSIXSemaphoreHandle handle;
 	int res = pthreadApi->sem_init(&handle, 0, (int)initialValue);
 	if (res < 0) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Failed creating semaphore");
@@ -17695,7 +17697,7 @@ fpl_platform_api void fplSemaphoreDestroy(fplSemaphoreHandle *semaphore) {
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
 	if (semaphore != fpl_null) {
 		if (semaphore->isValid) {
-			sem_t *handle = (sem_t *)&semaphore->internalHandle.posixHandle;
+			fpl__POSIXSemaphoreHandle *handle = &semaphore->internalHandle.posixHandle;
 			pthreadApi->sem_destroy(handle);
 		}
 		fplClearStruct(semaphore);
@@ -17711,7 +17713,7 @@ fpl_platform_api bool fplSemaphoreWait(fplSemaphoreHandle *semaphore, const fplT
 	FPL__CheckPlatform(false);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
-	sem_t *handle = (sem_t *)&semaphore->internalHandle.posixHandle;
+	fpl__POSIXSemaphoreHandle *handle = &semaphore->internalHandle.posixHandle;
 	int res;
 	if (timeout == FPL_TIMEOUT_INFINITE) {
 		res = pthreadApi->sem_wait(handle);
@@ -17733,7 +17735,7 @@ fpl_platform_api bool fplSemaphoreTryWait(fplSemaphoreHandle *semaphore) {
 	FPL__CheckPlatform(false);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
-	sem_t *handle = (sem_t *)&semaphore->internalHandle.posixHandle;
+	fpl__POSIXSemaphoreHandle *handle = &semaphore->internalHandle.posixHandle;
 	int res = pthreadApi->sem_trywait(handle);
 	bool result = (res == 0);
 	return(result);
@@ -17748,7 +17750,7 @@ fpl_platform_api int32_t fplSemaphoreValue(fplSemaphoreHandle *semaphore) {
 	FPL__CheckPlatform(0);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
-	sem_t *handle = (sem_t *)&semaphore->internalHandle.posixHandle;
+	fpl__POSIXSemaphoreHandle *handle = &semaphore->internalHandle.posixHandle;
 	int value = 0;
 	int res = pthreadApi->sem_getvalue(handle, &value);
 	if (res < 0) {
@@ -17766,7 +17768,7 @@ fpl_platform_api bool fplSemaphoreRelease(fplSemaphoreHandle *semaphore) {
 	FPL__CheckPlatform(0);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
-	sem_t *handle = (sem_t *)&semaphore->internalHandle.posixHandle;
+	fpl__POSIXSemaphoreHandle *handle = &semaphore->internalHandle.posixHandle;
 	int res = pthreadApi->sem_post(handle);
 	bool result = (res == 0);
 	return(result);
