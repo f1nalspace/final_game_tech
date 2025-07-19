@@ -153,6 +153,7 @@ SOFTWARE.
 	### Overview
 	- Added new useful macros
 	- Added several date time types and functions
+	- Added game controllers settings
 
 	### Breaking Changes
 	- None
@@ -165,6 +166,7 @@ SOFTWARE.
 	- New: Added struct fplDateTime, that stores a date time stamp with an included UTC offset
 	- New: Added struct fplDateTimeResult, that stores the components for displaying a date time
 	- New: Added struct fplDateTimeCreationResult, that stores the result of the function fplDateTimeCreate()
+	- New: Added struct fplGameControllersSettings, that stores several properties required for updating/polling game controllers frequently
 	- New: Added function fplDateTimeQuery that returns a date time stamp, that allows the display in either local or UTC format
 	- New: Added function fplFormatDateTime that formats a fplDateTime into either a local or UTC date time components
 	- New: Added function fplDateTimeCreate that creates a fplDateTime from seperate date time components
@@ -5336,12 +5338,30 @@ typedef struct fplConsoleSettings {
 fpl_common_api void fplSetDefaultConsoleSettings(fplConsoleSettings *console);
 
 /**
+* @struct fplGameControllerSettings
+* @brief Stores the settings for controlling how game controllers are handled.
+*/
+typedef struct fplGameControllersSettings {
+	//! Frequency in ms for detecting new or removed controllers (Default: 1000).
+	uint32_t detectionFrequency;
+	//! Frequency in ms for updating states of connected controllers (Default: 0, 0 = As fast as possible).
+	uint32_t updateFrequency;
+} fplGameControllersSettings;
+
+/**
+* @brief Resets the given game controllers settings container to default values.
+* @param[out] gameControllers Reference to the target structure @ref fplGameControllersSettings.
+* @note This will not change any input settings! To change the actual settings you have to pass the entire @ref fplSettings container as an argument in @ref fplPlatformInit().
+*/
+fpl_common_api void fplSetDefaultGameControllersSettings(fplGameControllersSettings *gameControllers);
+
+/**
 * @struct fplInputSettings
 * @brief Stores input settings.
 */
 typedef struct fplInputSettings {
-	//! Frequency in ms for detecting new or removed controllers (Default: 1000).
-	uint32_t controllerDetectionFrequency;
+	//! Game controllers settings
+	fplGameControllersSettings gameControllers;
 	//! Disable input events entirely (Default: false).
 	fpl_b32 disabledEvents;
 } fplInputSettings;
@@ -7610,6 +7630,12 @@ fpl_platform_api bool fplPollMouseState(fplMouseState *outState);
 fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY);
 
 /**
+* @typedef fplGameControllerName
+* @brief A typedef that defines the name of a game controller.
+*/
+typedef char fplGameControllerName[FPL_MAX_NAME_LENGTH];
+
+/**
 * @struct fplGamepadButton
 * @brief A structure containing properties for a gamepad button (IsDown, etc.).
 */
@@ -9447,6 +9473,8 @@ fpl_internal void fpl__ParseVersionString(const char *versionStr, fplVersionInfo
 //
 // This implementation block includes all the required platform-specific
 // header files and defines all the constants, structures and types.
+// 
+// Also some backends structs are included as well, such as XInput/DInput, etc.
 //
 // ****************************************************************************
 
@@ -9458,8 +9486,8 @@ fpl_internal void fpl__ParseVersionString(const char *versionStr, fplVersionInfo
 #if defined(FPL_PLATFORM_WINDOWS)
 #	include <windowsx.h>	// Macros for window messages
 #	include <shlobj.h>		// SHGetFolderPath
-#	include <xinput.h>		// XInputGetState
 #	include <shellapi.h>	// HDROP
+#	include <xinput.h>		// XInput
 
 #	if defined(FPL_IS_CPP)
 #		define fpl__Win32IsEqualGuid(a, b) InlineIsEqualGUID(a, b)
@@ -9501,66 +9529,32 @@ fpl_internal const char *fpl__Win32FormatGuidString(char *buffer, const size_t m
 		(target)->name = name
 #endif
 
-//
-// XInput
-//
+#if defined(FPL__ENABLE_WINDOW)
+
+// 
+// XInput Types
+// 
 #define FPL__FUNC_XINPUT_XInputGetState(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE *pState)
 typedef FPL__FUNC_XINPUT_XInputGetState(fpl__win32_func_XInputGetState);
-FPL__FUNC_XINPUT_XInputGetState(fpl__Win32XInputGetStateStub) {
-	return(ERROR_DEVICE_NOT_CONNECTED);
-}
+
 #define FPL__FUNC_XINPUT_XInputGetCapabilities(name) DWORD WINAPI name(DWORD dwUserIndex, DWORD dwFlags, XINPUT_CAPABILITIES* pCapabilities)
 typedef FPL__FUNC_XINPUT_XInputGetCapabilities(fpl__win32_func_XInputGetCapabilities);
-FPL__FUNC_XINPUT_XInputGetCapabilities(fpl__Win32XInputGetCapabilitiesStub) {
-	return(ERROR_DEVICE_NOT_CONNECTED);
-}
+
 typedef struct fpl__Win32XInputApi {
 	HMODULE xinputLibrary;
 	fpl__win32_func_XInputGetState *XInputGetState;
 	fpl__win32_func_XInputGetCapabilities *XInputGetCapabilities;
 } fpl__Win32XInputApi;
 
-fpl_internal void fpl__Win32UnloadXInputApi(fpl__Win32XInputApi *xinputApi) {
-	fplAssert(xinputApi != fpl_null);
-	if (xinputApi->xinputLibrary) {
-		FPL_LOG_DEBUG("XInput", "Unload XInput Library");
-		FreeLibrary(xinputApi->xinputLibrary);
-		xinputApi->xinputLibrary = fpl_null;
-		xinputApi->XInputGetState = fpl__Win32XInputGetStateStub;
-		xinputApi->XInputGetCapabilities = fpl__Win32XInputGetCapabilitiesStub;
-	}
-}
+typedef struct fpl__Win32XInputState {
+	fplGameControllerName deviceNames[XUSER_MAX_COUNT];
+	fpl_b32 isConnected[XUSER_MAX_COUNT];
+	fpl__Win32XInputApi xinputApi;
+	fplMilliseconds lastDeviceSearchTime;
+	fplMilliseconds lastUpdateStatesTime;
+} fpl__Win32XInputState;
 
-fpl_internal void fpl__Win32LoadXInputApi(fpl__Win32XInputApi *xinputApi) {
-	fplAssert(xinputApi != fpl_null);
-	const char *xinputFileNames[] = {
-		"xinput1_4.dll",
-		"xinput1_3.dll",
-		"xinput9_1_0.dll",
-	};
-	bool result = false;
-	for (uint32_t index = 0; index < fplArrayCount(xinputFileNames); ++index) {
-		const char *libName = xinputFileNames[index];
-		fplClearStruct(xinputApi);
-		do {
-			HMODULE libHandle = fpl_null;
-			FPL__WIN32_LOAD_LIBRARY_BREAK(FPL__MODULE_XINPUT, libHandle, libName);
-			xinputApi->xinputLibrary = libHandle;
-			FPL__WIN32_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_XINPUT, libHandle, libName, xinputApi, fpl__win32_func_XInputGetState, XInputGetState);
-			FPL__WIN32_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_XINPUT, libHandle, libName, xinputApi, fpl__win32_func_XInputGetCapabilities, XInputGetCapabilities);
-			result = true;
-		} while (0);
-		if (result) {
-			break;
-		}
-		fpl__Win32UnloadXInputApi(xinputApi);
-	}
-
-	if (!result) {
-		xinputApi->XInputGetState = fpl__Win32XInputGetStateStub;
-		xinputApi->XInputGetCapabilities = fpl__Win32XInputGetCapabilitiesStub;
-	}
-}
+#endif // FPL__ENABLE_WINDOW
 
 //
 // WINAPI functions
@@ -10035,22 +10029,15 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 #	define fpl__win32_LoadCursor fpl__global__AppState->win32.winApi.user.LoadCursorA
 #endif
 
-typedef char fpl__GameControllerName[FPL_MAX_NAME_LENGTH];
-
-typedef struct fpl__Win32XInputState {
-	fpl__GameControllerName deviceNames[XUSER_MAX_COUNT];
-	fpl_b32 isConnected[XUSER_MAX_COUNT];
-	fpl__Win32XInputApi xinputApi;
-	LARGE_INTEGER lastDeviceSearchTime;
-} fpl__Win32XInputState;
-
 typedef struct fpl__Win32InitState {
 	HINSTANCE appInstance;
 	LARGE_INTEGER qpf;
 } fpl__Win32InitState;
 
 typedef struct fpl__Win32AppState {
+#if defined(FPL__ENABLE_WINDOW)
 	fpl__Win32XInputState xinput;
+#endif
 	fpl__Win32Api winApi;
 } fpl__Win32AppState;
 
@@ -11012,6 +10999,8 @@ fpl_internal void fpl__PushGamepadConnectionEvent(const uint32_t deviceIndex, co
 	ev.gamepad.type = isConnected ? fplGamepadEventType_Connected : fplGamepadEventType_Disconnected;
 	ev.gamepad.deviceIndex = deviceIndex;
 	ev.gamepad.deviceName = deviceName;
+	ev.gamepad.state.isConnected = isConnected;
+	ev.gamepad.state.deviceName = deviceName;
 	fpl__PushInternalEvent(&ev);
 }
 
@@ -12817,10 +12806,15 @@ fpl_common_api void fplSetDefaultConsoleSettings(fplConsoleSettings *console) {
 	console->title[0] = 0;
 }
 
+fpl_common_api void fplSetDefaultGameControllersSettings(fplGameControllersSettings *gameControllers) {
+	gameControllers->detectionFrequency = 1000;
+	gameControllers->updateFrequency = 0;
+}
+
 fpl_common_api void fplSetDefaultInputSettings(fplInputSettings *input) {
 	FPL__CheckArgumentNullNoRet(input);
 	fplClearStruct(input);
-	input->controllerDetectionFrequency = 1000;
+	fplSetDefaultGameControllersSettings(&input->gameControllers);
 }
 
 fpl_common_api void fplSetDefaultSettings(fplSettings *settings) {
@@ -13121,142 +13115,6 @@ fpl_internal bool fpl__Win32SetWindowFullscreen(const bool value, const int32_t 
 	}
 	bool result = windowSettings->isFullscreen != 0;
 	return(result);
-}
-
-fpl_internal float fpl__Win32XInputProcessStickValue(const SHORT value, const SHORT deadZoneThreshold) {
-	float result = 0;
-	if (value < -deadZoneThreshold) {
-		result = (float)((value + deadZoneThreshold) / (32768.0f - deadZoneThreshold));
-	} else if (value > deadZoneThreshold) {
-		result = (float)((value - deadZoneThreshold) / (32767.0f - deadZoneThreshold));
-	}
-	return(result);
-}
-
-fpl_internal void fpl__Win32XInputGamepadToGamepadState(const XINPUT_GAMEPAD *newState, fplGamepadState *outState) {
-	// If we got here, the controller is definitily by connected
-	outState->isConnected = true;
-
-	// Analog sticks
-	outState->leftStickX = fpl__Win32XInputProcessStickValue(newState->sThumbLX, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
-	outState->leftStickY = fpl__Win32XInputProcessStickValue(newState->sThumbLY, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
-	outState->rightStickX = fpl__Win32XInputProcessStickValue(newState->sThumbRX, XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
-	outState->rightStickY = fpl__Win32XInputProcessStickValue(newState->sThumbRY, XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
-
-	// Triggers
-	outState->leftTrigger = (float)newState->bLeftTrigger / 255.0f;
-	outState->rightTrigger = (float)newState->bRightTrigger / 255.0f;
-
-	// Digital pad buttons
-	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_DPAD_UP))
-		outState->dpadUp.isDown = true;
-	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_DPAD_DOWN))
-		outState->dpadDown.isDown = true;
-	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_DPAD_LEFT))
-		outState->dpadLeft.isDown = true;
-	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_DPAD_RIGHT))
-		outState->dpadRight.isDown = true;
-
-	// Action buttons
-	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_A))
-		outState->actionA.isDown = true;
-	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_B))
-		outState->actionB.isDown = true;
-	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_X))
-		outState->actionX.isDown = true;
-	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_Y))
-		outState->actionY.isDown = true;
-
-	// Center buttons
-	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_START))
-		outState->start.isDown = true;
-	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_BACK))
-		outState->back.isDown = true;
-
-	// Shoulder buttons
-	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_LEFT_SHOULDER))
-		outState->leftShoulder.isDown = true;
-	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_RIGHT_SHOULDER))
-		outState->rightShoulder.isDown = true;
-
-	// Thumb buttons
-	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_LEFT_THUMB))
-		outState->leftThumb.isDown = true;
-	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_RIGHT_THUMB))
-		outState->rightThumb.isDown = true;
-
-	// The controller is only active, when any button or any movement happened
-	outState->isActive = !fpl__IsZeroMemory(newState, sizeof(*newState));
-}
-
-fpl_internal void fpl__Win32UpdateGameControllers(const fplSettings *settings, const fpl__Win32InitState *initState, fpl__Win32XInputState *xinputState) {
-	fplAssert(settings != fpl_null);
-	fplAssert(xinputState != fpl_null);
-	if (xinputState->xinputApi.XInputGetState != fpl_null) {
-		//
-		// Detect new controller (Only at a fixed frequency)
-		//
-		if (xinputState->lastDeviceSearchTime.QuadPart == 0) {
-			QueryPerformanceCounter(&xinputState->lastDeviceSearchTime);
-		}
-		LARGE_INTEGER currentDeviceSearchTime, currentDeviceSearchFreq;
-		QueryPerformanceCounter(&currentDeviceSearchTime);
-		QueryPerformanceFrequency(&currentDeviceSearchFreq);
-		uint64_t deviceSearchDifferenceTimeInMs = ((currentDeviceSearchTime.QuadPart - xinputState->lastDeviceSearchTime.QuadPart) / (currentDeviceSearchFreq.QuadPart / 1000));
-		if ((settings->input.controllerDetectionFrequency == 0) || (deviceSearchDifferenceTimeInMs > settings->input.controllerDetectionFrequency)) {
-			xinputState->lastDeviceSearchTime = currentDeviceSearchTime;
-			for (DWORD controllerIndex = 0; controllerIndex < XUSER_MAX_COUNT; ++controllerIndex) {
-				XINPUT_STATE controllerState = fplZeroInit;
-				if (xinputState->xinputApi.XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
-					if (!xinputState->isConnected[controllerIndex]) {
-						// Connected
-						xinputState->isConnected[controllerIndex] = true;
-						fplStringFormat(xinputState->deviceNames[controllerIndex], fplArrayCount(xinputState->deviceNames[controllerIndex]), "XInput-Device [%d]", controllerIndex);
-
-						fplEvent ev = fplZeroInit;
-						ev.type = fplEventType_Gamepad;
-						ev.gamepad.type = fplGamepadEventType_Connected;
-						ev.gamepad.deviceIndex = controllerIndex;
-						ev.gamepad.deviceName = xinputState->deviceNames[controllerIndex];
-						fpl__PushInternalEvent(&ev);
-					}
-				} else {
-					if (xinputState->isConnected[controllerIndex]) {
-						// Disconnected
-						xinputState->isConnected[controllerIndex] = false;
-
-						fplEvent ev = fplZeroInit;
-						ev.type = fplEventType_Gamepad;
-						ev.gamepad.type = fplGamepadEventType_Disconnected;
-						ev.gamepad.deviceIndex = controllerIndex;
-						ev.gamepad.deviceName = xinputState->deviceNames[controllerIndex];
-						fpl__PushInternalEvent(&ev);
-					}
-				}
-			}
-		}
-
-		//
-		// Update controller state when connected only
-		//
-		for (DWORD controllerIndex = 0; controllerIndex < XUSER_MAX_COUNT; ++controllerIndex) {
-			if (xinputState->isConnected[controllerIndex]) {
-				XINPUT_STATE controllerState = fplZeroInit;
-				if (xinputState->xinputApi.XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
-					// State changed
-					fplEvent ev = fplZeroInit;
-					ev.type = fplEventType_Gamepad;
-					ev.gamepad.type = fplGamepadEventType_StateChanged;
-					ev.gamepad.deviceIndex = controllerIndex;
-					ev.gamepad.deviceName = xinputState->deviceNames[controllerIndex];
-					const XINPUT_GAMEPAD *newPadState = &controllerState.Gamepad;
-					fpl__Win32XInputGamepadToGamepadState(newPadState, &ev.gamepad.state);
-					ev.gamepad.state.deviceName = ev.gamepad.deviceName;
-					fpl__PushInternalEvent(&ev);
-				}
-			}
-		}
-	}
 }
 
 fpl_internal bool fpl__Win32IsKeyDown(const fpl__Win32Api *wapi, const int virtualKey) {
@@ -14212,6 +14070,265 @@ fpl_internal void fpl__Win32ReleaseWindow(const fpl__Win32InitState *initState, 
 
 #endif // FPL__ENABLE_WINDOW
 
+// ############################################################################
+//
+// > WIN32_XINPUT
+// 
+// Always included, when window support is enabled
+//
+// ############################################################################
+#if defined(FPL__ENABLE_WINDOW) && !defined(FPL__WIN32_XINPUT_IMPLEMENTED)
+#define FPL__WIN32_XINPUT_IMPLEMENTED
+
+FPL__FUNC_XINPUT_XInputGetState(fpl__Win32XInputGetStateStub) {
+	return(ERROR_DEVICE_NOT_CONNECTED);
+}
+
+FPL__FUNC_XINPUT_XInputGetCapabilities(fpl__Win32XInputGetCapabilitiesStub) {
+	return(ERROR_DEVICE_NOT_CONNECTED);
+}
+
+fpl_internal void fpl__Win32UnloadXInputApi(fpl__Win32XInputApi *xinputApi) {
+	fplAssert(xinputApi != fpl_null);
+	if (xinputApi->xinputLibrary) {
+		FPL_LOG_DEBUG("XInput", "Unload XInput Library");
+		FreeLibrary(xinputApi->xinputLibrary);
+		xinputApi->xinputLibrary = fpl_null;
+		xinputApi->XInputGetState = fpl__Win32XInputGetStateStub;
+		xinputApi->XInputGetCapabilities = fpl__Win32XInputGetCapabilitiesStub;
+	}
+}
+
+fpl_internal void fpl__Win32LoadXInputApi(fpl__Win32XInputApi *xinputApi) {
+	fplAssert(xinputApi != fpl_null);
+	const char *xinputFileNames[] = {
+		"xinput1_4.dll",
+		"xinput1_3.dll",
+		"xinput9_1_0.dll",
+	};
+	bool result = false;
+	for (uint32_t index = 0; index < fplArrayCount(xinputFileNames); ++index) {
+		const char *libName = xinputFileNames[index];
+		fplClearStruct(xinputApi);
+		do {
+			HMODULE libHandle = fpl_null;
+			FPL__WIN32_LOAD_LIBRARY_BREAK(FPL__MODULE_XINPUT, libHandle, libName);
+			xinputApi->xinputLibrary = libHandle;
+			FPL__WIN32_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_XINPUT, libHandle, libName, xinputApi, fpl__win32_func_XInputGetState, XInputGetState);
+			FPL__WIN32_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_XINPUT, libHandle, libName, xinputApi, fpl__win32_func_XInputGetCapabilities, XInputGetCapabilities);
+			result = true;
+		} while (0);
+		if (result) {
+			break;
+		}
+		fpl__Win32UnloadXInputApi(xinputApi);
+	}
+
+	if (!result) {
+		xinputApi->XInputGetState = fpl__Win32XInputGetStateStub;
+		xinputApi->XInputGetCapabilities = fpl__Win32XInputGetCapabilitiesStub;
+	}
+}
+
+fpl_internal float fpl__Win32XInput_ProcessStickValue(const SHORT value, const SHORT deadZoneThreshold) {
+	float result = 0;
+	if (value < -deadZoneThreshold) {
+		result = (float)((value + deadZoneThreshold) / (32768.0f - deadZoneThreshold));
+	} else if (value > deadZoneThreshold) {
+		result = (float)((value - deadZoneThreshold) / (32767.0f - deadZoneThreshold));
+	}
+	return(result);
+}
+
+fpl_internal void fpl__Win32XInput_GamepadToGamepadState(const XINPUT_GAMEPAD *newState, fplGamepadState *outState) {
+	// If we got here, the controller is definitily by connected
+	outState->isConnected = true;
+
+	// Analog sticks
+	outState->leftStickX = fpl__Win32XInput_ProcessStickValue(newState->sThumbLX, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
+	outState->leftStickY = fpl__Win32XInput_ProcessStickValue(newState->sThumbLY, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
+	outState->rightStickX = fpl__Win32XInput_ProcessStickValue(newState->sThumbRX, XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
+	outState->rightStickY = fpl__Win32XInput_ProcessStickValue(newState->sThumbRY, XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
+
+	// Triggers
+	outState->leftTrigger = (float)newState->bLeftTrigger / 255.0f;
+	outState->rightTrigger = (float)newState->bRightTrigger / 255.0f;
+
+	// Digital pad buttons
+	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_DPAD_UP))
+		outState->dpadUp.isDown = true;
+	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_DPAD_DOWN))
+		outState->dpadDown.isDown = true;
+	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_DPAD_LEFT))
+		outState->dpadLeft.isDown = true;
+	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_DPAD_RIGHT))
+		outState->dpadRight.isDown = true;
+
+	// Action buttons
+	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_A))
+		outState->actionA.isDown = true;
+	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_B))
+		outState->actionB.isDown = true;
+	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_X))
+		outState->actionX.isDown = true;
+	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_Y))
+		outState->actionY.isDown = true;
+
+	// Center buttons
+	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_START))
+		outState->start.isDown = true;
+	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_BACK))
+		outState->back.isDown = true;
+
+	// Shoulder buttons
+	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_LEFT_SHOULDER))
+		outState->leftShoulder.isDown = true;
+	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_RIGHT_SHOULDER))
+		outState->rightShoulder.isDown = true;
+
+	// Thumb buttons
+	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_LEFT_THUMB))
+		outState->leftThumb.isDown = true;
+	if (fplIsMaskSet(newState->wButtons, XINPUT_GAMEPAD_RIGHT_THUMB))
+		outState->rightThumb.isDown = true;
+
+	// The controller is only active, when any button or any movement happened
+	outState->isActive = !fpl__IsZeroMemory(newState, sizeof(*newState));
+}
+
+static size_t fpl__Win32XInput_UpdateControllers(const fplGameControllersSettings *gameControllersSettings, fpl__Win32XInputState *xinputState) {
+	fplAssertPtr(gameControllersSettings);
+	fplAssertPtr(xinputState);
+
+	if (xinputState->lastDeviceSearchTime == 0) {
+		xinputState->lastDeviceSearchTime = fplMillisecondsQuery();
+	}
+
+	const uint64_t detectionFrequency = gameControllersSettings->detectionFrequency;
+
+	fplMilliseconds currentTime = fplMillisecondsQuery();
+	uint64_t deltaTime = (currentTime - xinputState->lastDeviceSearchTime);
+
+	if (detectionFrequency > 0 && deltaTime > 0 && deltaTime < detectionFrequency) {
+		return false;
+	}
+
+	xinputState->lastDeviceSearchTime = currentTime;
+
+	size_t count = 0;
+
+	for (DWORD controllerIndex = 0; controllerIndex < XUSER_MAX_COUNT; ++controllerIndex) {
+		XINPUT_STATE controllerState = fplZeroInit;
+		if (xinputState->xinputApi.XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
+			if (!xinputState->isConnected[controllerIndex]) {
+				// Connected
+				xinputState->isConnected[controllerIndex] = true;
+				fplStringFormat(xinputState->deviceNames[controllerIndex], fplArrayCount(xinputState->deviceNames[controllerIndex]), "XInput-Device [%d]", controllerIndex);
+				fpl__PushGamepadConnectionEvent(controllerIndex, xinputState->deviceNames[controllerIndex], true);
+				++count;
+			}
+		} else {
+			if (xinputState->isConnected[controllerIndex]) {
+				// Disconnected
+				xinputState->isConnected[controllerIndex] = false;
+				fpl__PushGamepadConnectionEvent(controllerIndex, xinputState->deviceNames[controllerIndex], false);
+				++count;
+			}
+		}
+	}
+
+	return count;
+}
+
+static size_t fpl__Win32XInput_CreateEventsForStates(const fplGameControllersSettings *gameControllersSettings, fpl__Win32XInputState *xinputState) {
+	fplAssertPtr(gameControllersSettings);
+	fplAssertPtr(xinputState);
+
+	if (xinputState->lastUpdateStatesTime == 0) {
+		xinputState->lastUpdateStatesTime = fplMillisecondsQuery();
+	}
+
+	const uint64_t updateFrequency = gameControllersSettings->updateFrequency;
+
+	fplMilliseconds currentTime = fplMillisecondsQuery();
+	uint64_t deltaTime = (currentTime - xinputState->lastDeviceSearchTime);
+
+	if (updateFrequency > 0 && deltaTime > 0 && deltaTime < updateFrequency) {
+		return false;
+	}
+
+	xinputState->lastUpdateStatesTime = currentTime;
+
+	size_t result = 0;
+
+	fplGamepadState tempState = fplZeroInit;
+
+	for (DWORD controllerIndex = 0; controllerIndex < XUSER_MAX_COUNT; ++controllerIndex) {
+		if (xinputState->isConnected[controllerIndex]) {
+			XINPUT_STATE controllerState = fplZeroInit;
+			if (xinputState->xinputApi.XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
+				// State changed
+				fplClearStruct(&tempState);
+				const XINPUT_GAMEPAD *newPadState = &controllerState.Gamepad;
+				fpl__Win32XInput_GamepadToGamepadState(newPadState, &tempState);
+				tempState.deviceName = xinputState->deviceNames[controllerIndex];
+				fpl__PushGamepadStateEvent(controllerIndex, xinputState->deviceNames[controllerIndex], &tempState);
+				result++;
+			}
+		}
+	}
+
+	return result;
+}
+
+static size_t fpl__Win32XInput_Poll(fpl__Win32XInputState *xinputState, fplGamepadStates *outStates) {
+	fplAssertPtr(xinputState);
+	fplAssertPtr(outStates);
+
+	fplClearStruct(outStates);
+
+	xinputState->lastDeviceSearchTime = xinputState->lastUpdateStatesTime = fplMillisecondsQuery();
+
+	size_t result = 0;
+
+	for (DWORD controllerIndex = 0; controllerIndex < XUSER_MAX_COUNT; ++controllerIndex) {
+		XINPUT_STATE controllerState = fplZeroInit;
+		if (xinputState->xinputApi.XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
+			if (!xinputState->isConnected[controllerIndex]) {
+				xinputState->isConnected[controllerIndex] = true;
+				fplStringFormat(xinputState->deviceNames[controllerIndex], fplArrayCount(xinputState->deviceNames[controllerIndex]), "XInput-Device [%d]", controllerIndex);
+			}
+			const XINPUT_GAMEPAD *newPadState = &controllerState.Gamepad;
+			fplGamepadState *targetPadState = &outStates->deviceStates[controllerIndex];
+			fpl__Win32XInput_GamepadToGamepadState(newPadState, targetPadState);
+			targetPadState->deviceName = xinputState->deviceNames[controllerIndex];
+			result++;
+		} else {
+			if (xinputState->isConnected[controllerIndex]) {
+				xinputState->isConnected[controllerIndex] = false;
+				result++;
+			}
+		}
+	}
+
+	return(result);
+}
+
+#endif // FPL__WIN32_XINPUT_IMPLEMENTED
+
+#if defined(FPL__ENABLE_WINDOW)
+fpl_internal void fpl__Win32UpdateGameControllers(const fplSettings *settings, const fpl__Win32InitState *initState, fpl__Win32AppState *win32AppState) {
+	fplAssertPtr(settings);
+	fplAssertPtr(initState);
+	fplAssertPtr(win32AppState);
+
+	const fplGameControllersSettings *gameControllersSettings = &settings->input.gameControllers;
+
+	fpl__Win32XInput_UpdateControllers(gameControllersSettings, &win32AppState->xinput);
+	fpl__Win32XInput_CreateEventsForStates(gameControllersSettings, &win32AppState->xinput);
+}
+#endif
+
 fpl_internal bool fpl__Win32ThreadWaitForMultiple(fplThreadHandle **threads, const size_t count, const size_t stride, const fplTimeoutValue timeout, const bool waitForAll) {
 	FPL__CheckArgumentNull(threads, false);
 	FPL__CheckArgumentMax(count, FPL_MAX_THREAD_COUNT, false);
@@ -14288,7 +14405,9 @@ fpl_internal void fpl__Win32ReleasePlatform(fpl__PlatformInitState *initState, f
 	fpl__Win32AppState *win32AppState = &appState->win32;
 	fpl__Win32InitState *win32InitState = &initState->win32;
 	if (fplIsMaskSet(appState->initFlags, fplInitFlags_GameController)) {
+#	if defined(FPL__ENABLE_WINDOW)
 		fpl__Win32UnloadXInputApi(&win32AppState->xinput.xinputApi);
+#	endif
 	}
 	fpl__Win32UnloadApi(&win32AppState->winApi);
 }
@@ -14326,7 +14445,9 @@ fpl_internal bool fpl__Win32InitPlatform(const fplInitFlags initFlags, const fpl
 
 	// Load XInput
 	if (fplIsMaskSet(initFlags, fplInitFlags_GameController)) {
+#	if defined(FPL__ENABLE_WINDOW)
 		fpl__Win32LoadXInputApi(&win32AppState->xinput.xinputApi);
+#	endif
 	}
 
 	// Show/Hide console
@@ -16387,7 +16508,7 @@ fpl_platform_api bool fplWindowUpdate(void) {
 	fpl__ClearInternalEvents();
 	if (!appState->currentSettings.input.disabledEvents) {
 		if (fplIsMaskSet(appState->initFlags, fplInitFlags_GameController)) {
-			fpl__Win32UpdateGameControllers(&appState->currentSettings, win32InitState, &win32AppState->xinput);
+			fpl__Win32UpdateGameControllers(&appState->currentSettings, win32InitState, win32AppState);
 		}
 	}
 	bool result = appState->window.isRunning != 0;
@@ -16490,33 +16611,14 @@ fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
 	fpl__Win32AppState *appState = &platformAppState->win32;
 	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
 	const fpl__Win32Api *wapi = &appState->winApi;
-	fpl__Win32XInputState *xinputState = &appState->xinput;
-	fplAssert(xinputState != fpl_null);
-	if (xinputState->xinputApi.XInputGetState != fpl_null) {
-		// @TODO(final): fpl__Win32UpdateGameControllers() uses duplicate code
-		QueryPerformanceCounter(&xinputState->lastDeviceSearchTime);
 
-		fplClearStruct(outStates);
-		for (DWORD controllerIndex = 0; controllerIndex < XUSER_MAX_COUNT; ++controllerIndex) {
-			XINPUT_STATE controllerState = fplZeroInit;
-			if (xinputState->xinputApi.XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
-				if (!xinputState->isConnected[controllerIndex]) {
-					xinputState->isConnected[controllerIndex] = true;
-					fplStringFormat(xinputState->deviceNames[controllerIndex], fplArrayCount(xinputState->deviceNames[controllerIndex]), "XInput-Device [%d]", controllerIndex);
-				}
-				const XINPUT_GAMEPAD *newPadState = &controllerState.Gamepad;
-				fplGamepadState *targetPadState = &outStates->deviceStates[controllerIndex];
-				fpl__Win32XInputGamepadToGamepadState(newPadState, targetPadState);
-				targetPadState->deviceName = xinputState->deviceNames[controllerIndex];
-			} else {
-				if (xinputState->isConnected[controllerIndex]) {
-					xinputState->isConnected[controllerIndex] = false;
-				}
-			}
-		}
-		return(true);
-	}
-	return(false);
+	fpl__Win32XInputState *xinputState = &appState->xinput;
+
+	size_t xinputResult = fpl__Win32XInput_Poll(xinputState, outStates);
+
+	bool result = xinputResult > 0;
+
+	return(result);
 }
 
 fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY) {
