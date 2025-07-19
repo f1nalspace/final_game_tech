@@ -175,6 +175,8 @@ SOFTWARE.
 	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
 
+	- Fixed[X11]: Fixed window support was not disabled when X11 is not present
+
 	## v0.9.9-beta
 
 	### Overview
@@ -2505,6 +2507,14 @@ typedef enum fplX86InstructionSetLevel {
 #if !defined(FPL_NO_WINDOW) && !defined(FPL_APPTYPE_CONSOLE)
 #	define FPL__SUPPORT_WINDOW
 #endif
+#if defined(FPL__SUPPORT_WINDOW)
+#	if defined(FPL_SUBPLATFORM_X11)
+#		if !fplHasInclude(<X11/X.h>)
+#			warning "FPL-Warning: X11 development library is missing, windowing support is disabled. Please install 'libX11-dev' and try again!"
+#			undef FPL__SUPPORT_WINDOW
+#		endif
+#	endif
+#endif // FPL__SUPPORT_WINDOW
 
 //
 // Video
@@ -3096,11 +3106,9 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 */
 #define FPL_ENUM_AS_FLAGS_OPERATORS(type) FPL__M_ENUM_AS_FLAGS_OPERATORS(type)
 
-// ****************************************************************************
 //
 // Platform Includes
 //
-// ****************************************************************************
 #if !defined(FPL_NO_PLATFORM_INCLUDES) && !defined(FPL__HAS_PLATFORM_INCLUDES)
 #	define FPL__HAS_PLATFORM_INCLUDES
 
@@ -3133,6 +3141,7 @@ struct IUnknown;
 #		include <X11/Xlib.h> // Display
 #		include <X11/Xutil.h> // XVisualInfo
 #		include <X11/Xatom.h> // XA_CARDINAL
+#		include <X11/keysym.h> // Keyboard symbols (XK_Escape, etc.)
 #	endif // FPL_SUBPLATFORM_X11
 
 #endif // !FPL_NO_PLATFORM_INCLUDES
@@ -10337,8 +10346,6 @@ typedef struct fpl__UnixAppState {
 //
 // ############################################################################
 #if defined(FPL_SUBPLATFORM_X11)
-
-#include <X11/keysym.h> // Keyboard symbols (XK_Escape, etc.)
 
 //
 // X11 Api
