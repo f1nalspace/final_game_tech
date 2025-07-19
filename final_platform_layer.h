@@ -178,7 +178,7 @@ SOFTWARE.
 	- Fixed[X11]: Fixed window support was not disabled when X11 is not present
 
 	- Fixed[POSIX]: Fixed pthread fpl__POSIXSemaphoreHandle was not used
-	- Fixed[POSIX]: dirint.h was not included always
+	- Fixed[POSIX]: dirint.h and sched.h was not included always
 
 	## v0.9.9-beta
 
@@ -3134,7 +3134,6 @@ struct IUnknown;
 
 #	if defined(FPL_SUBPLATFORM_POSIX)
 #		include <pthread.h> // pthread_t, pthread_mutex_, pthread_cond_, pthread_barrier_
-#		include <sched.h> // sched_param, sched_get_priority_max, SCHED_FIFO
 #		include <semaphore.h> // sem_t
 #	endif // FPL_SUBPLATFORM_POSIX
 
@@ -3160,10 +3159,17 @@ struct IUnknown;
 #    endif // X86 or X64
 #endif
 
+// Only include CRT, when needed
 #if !defined(FPL_NO_CRT)
 #    include <stdio.h> // stdin, stdout, stderr, fprintf, vfprintf, vsnprintf, getchar
 #    include <stdlib.h> // wcstombs, mbstowcs, getenv
 #    include <locale.h> // setlocale, struct lconv, localeconv
+#endif
+
+// Always include sched.h and dirint.h
+#if defined(FPL_SUBPLATFORM_POSIX)
+#	include <sched.h> // sched_param, sched_get_priority_max, SCHED_FIFO
+#	include <dirent.h> // DIR, dirent
 #endif
 
 //
