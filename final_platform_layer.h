@@ -178,6 +178,7 @@ SOFTWARE.
 	- Fixed[X11]: Fixed window support was not disabled when X11 is not present
 
 	- Fixed[POSIX]: Fixed pthread fpl__POSIXSemaphoreHandle was not used
+	- Fixed[POSIX]: dirint.h was not included always
 
 	## v0.9.9-beta
 
@@ -3135,7 +3136,6 @@ struct IUnknown;
 #		include <pthread.h> // pthread_t, pthread_mutex_, pthread_cond_, pthread_barrier_
 #		include <sched.h> // sched_param, sched_get_priority_max, SCHED_FIFO
 #		include <semaphore.h> // sem_t
-#		include <dirent.h> // DIR, dirent
 #	endif // FPL_SUBPLATFORM_POSIX
 
 #	if defined(FPL_SUBPLATFORM_X11)
@@ -10030,6 +10030,7 @@ typedef struct fpl__Win32WindowState {
 #	include <unistd.h> // read, write, close, access, rmdir, getpid, sysconf, geteuid
 #	include <ctype.h> // isspace
 #	include <pwd.h> // getpwuid
+#	include <dirent.h> // DIR, dirent
 
 // @TODO(final): Detect the case of (Older POSIX versions where st_atim != st_atime)
 #if !defined(FPL_PLATFORM_ANDROID)
