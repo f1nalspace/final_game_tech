@@ -154,6 +154,7 @@ SOFTWARE.
 	- Added new useful macros
 	- Added several date time types and functions
 	- Added game controllers settings
+	- Several minor bugfixes
 
 	### Breaking Changes
 	- None
@@ -170,6 +171,7 @@ SOFTWARE.
 	- New: Added function fplDateTimeQuery that returns a date time stamp, that allows the display in either local or UTC format
 	- New: Added function fplFormatDateTime that formats a fplDateTime into either a local or UTC date time components
 	- New: Added function fplDateTimeCreate that creates a fplDateTime from seperate date time components
+	- Fixed: Fixed duplicate platform includes
 	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
 
@@ -3134,6 +3136,24 @@ struct IUnknown;
 #	endif // FPL_SUBPLATFORM_X11
 
 #endif // !FPL_NO_PLATFORM_INCLUDES
+
+//
+// Special Includes, such as intrin.h or cpuid.h
+// CRT Includes, such as stdio.h, stdlib.h, when enabled
+//
+#if defined(FPL_COMPILER_MSVC)
+#    include <intrin.h> // __cpuid, _Interlocked*
+#elif defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG)
+#    if defined(FPL_ARCH_X86) || defined(FPL_ARCH_X64)
+#        include <cpuid.h> // __cpuid_count
+#    endif // X86 or X64
+#endif
+
+#if !defined(FPL_NO_CRT)
+#    include <stdio.h> // stdin, stdout, stderr, fprintf, vfprintf, vsnprintf, getchar
+#    include <stdlib.h> // wcstombs, mbstowcs, getenv
+#    include <locale.h> // setlocale, struct lconv, localeconv
+#endif
 
 //
 // Platform handles
@@ -8999,94 +9019,6 @@ fpl_main int main(int argc, char **args);
 #endif // FPL_COMPILER
 
 #endif // FPL__COMPILER_CONFIG_DEFINED
-
-// ############################################################################
-//
-// > PLATFORM_INCLUDES
-//
-// ############################################################################
-#if !defined(FPL__PLATFORM_INCLUDES_DEFINED)
-#define FPL__PLATFORM_INCLUDES_DEFINED
-
-#if !defined(FPL__HAS_PLATFORM_INCLUDES)
-#	define FPL__HAS_PLATFORM_INCLUDES
-
-#	if defined(FPL_PLATFORM_WINDOWS)
-		// @NOTE(final): windef.h defines min/max macros in lowerspace, this will break for example std::min/max so we have to tell the header we dont want this!
-#		if !defined(NOMINMAX)
-#			define NOMINMAX
-#		endif
-		// @NOTE(final): For now we dont want any network, com or gdi stuff at all, maybe later who knows.
-#		if !defined(WIN32_LEAN_AND_MEAN)
-#			define WIN32_LEAN_AND_MEAN 1
-#		endif
-		// @STUPID(final): Workaround for "combaseapi.h(229): error C2187: syntax error: 'identifier' was unexpected here"
-struct IUnknown;
-#		include <windows.h> // Win32 api
-#		if _WIN32_WINNT < 0x0600
-#		error "Windows Vista or higher required!"
-#		endif
-#	endif // FPL_PLATFORM_WINDOWS
-
-#	if defined(FPL_SUBPLATFORM_POSIX)
-#		include <pthread.h> // pthread_t, pthread_mutex_, pthread_cond_, pthread_barrier_
-#		include <sched.h> // sched_param, sched_get_priority_max, SCHED_FIFO
-#		include <semaphore.h> // sem_t
-#		include <dirent.h> // DIR, dirent
-#	endif // FPL_SUBPLATFORM_POSIX
-
-#	if defined(FPL_SUBPLATFORM_X11)
-#		include <X11/X.h> // Window
-#		include <X11/Xlib.h> // Display
-#		include <X11/Xutil.h> // XVisualInfo
-#		include <X11/Xatom.h> // XA_CARDINAL
-#	endif // FPL_SUBPLATFORM_X11
-
-#endif // !FPL__HAS_PLATFORM_INCLUDES
-
-//
-// Test OS handles
-//
-#if defined(FPL_PLATFORM_WINDOWS)
-fplStaticAssert(sizeof(fpl__Win32Handle) >= sizeof(HANDLE));
-fplStaticAssert(sizeof(fpl__Win32LibraryHandle) >= sizeof(HANDLE));
-fplStaticAssert(sizeof(fpl__Win32FileHandle) >= sizeof(HANDLE));
-fplStaticAssert(sizeof(fpl__Win32ThreadHandle) >= sizeof(HANDLE));
-fplStaticAssert(sizeof(fpl__Win32MutexHandle) >= sizeof(CRITICAL_SECTION));
-fplStaticAssert(sizeof(fpl__Win32SemaphoreHandle) >= sizeof(HANDLE));
-fplStaticAssert(sizeof(fpl__Win32ConditionVariable) >= sizeof(CONDITION_VARIABLE));
-#elif defined(FPL_SUBPLATFORM_POSIX)
-fplStaticAssert(sizeof(fpl__POSIXLibraryHandle) >= sizeof(void *));
-fplStaticAssert(sizeof(fpl__POSIXFileHandle) >= sizeof(int));
-fplStaticAssert(sizeof(fpl__POSIXDirHandle) >= sizeof(DIR *));
-fplStaticAssert(sizeof(fpl__POSIXThreadHandle) >= sizeof(pthread_t));
-fplStaticAssert(sizeof(fpl__POSIXMutexHandle) >= sizeof(pthread_mutex_t));
-fplStaticAssert(sizeof(fpl__POSIXSemaphoreHandle) >= sizeof(sem_t));
-fplStaticAssert(sizeof(fpl__POSIXConditionVariable) >= sizeof(pthread_cond_t));
-#endif // FPL_PLATFORM_WINDOWS / FPL_SUBPLATFORM_POSIX
-#if defined(FPL_PLATFORM_LINUX)
-fplStaticAssert(sizeof(fpl__LinuxSignalHandle) >= sizeof(int));
-#endif // FPL_PLATFORM_LINUX
-
-//
-// Compiler Includes
-//
-#if defined(FPL_COMPILER_MSVC)
-#	include <intrin.h> // __cpuid, _Interlocked*
-#elif defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG)
-#	if defined(FPL_ARCH_X86) || defined(FPL_ARCH_X64)
-#		include <cpuid.h> // __cpuid_count
-#	endif // X86 or X64
-#endif
-
-// Only include C-Runtime functions when CRT is enabled
-#if !defined(FPL_NO_CRT)
-#	include <stdio.h> // stdin, stdout, stderr, fprintf, vfprintf, vsnprintf, getchar
-#	include <stdlib.h> // wcstombs, mbstowcs, getenv
-#	include <locale.h> // setlocale, struct lconv, localeconv
-#endif
-
-#endif // FPL__PLATFORM_INCLUDES_DEFINED
 
 // ############################################################################
 //
