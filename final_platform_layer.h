@@ -154,6 +154,7 @@ SOFTWARE.
 	- Added new useful macros
 	- Added several date time types and functions
 	- Added game controllers settings
+	- Improved code documentation a lot
 	- Several minor bugfixes
 
 	### Breaking Changes
@@ -171,6 +172,7 @@ SOFTWARE.
 	- New: Added function fplDateTimeQuery that returns a date time stamp, that allows the display in either local or UTC format
 	- New: Added function fplFormatDateTime that formats a fplDateTime into either a local or UTC date time components
 	- New: Added function fplDateTimeCreate that creates a fplDateTime from seperate date time components
+	- Improved: Better documentation of the preprocessor setup blocks
 	- Fixed: Fixed duplicate platform includes
 	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
