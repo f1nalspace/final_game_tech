@@ -176,6 +176,7 @@ SOFTWARE.
 	- Fixed: Fixed duplicate platform includes
 	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
+	- Changed: Ensure that std types has the correct sizes always using equals
 
 	- Fixed[X11]: Fixed window support was not disabled when X11 is not present
 
@@ -2813,19 +2814,20 @@ typedef int32_t fpl_b32;
 //
 
 //! @cond FPL_INTERNAL
-
 #if defined(FPL_CPU_64BIT)
-fplStaticAssert(sizeof(uintptr_t) >= sizeof(uint64_t));
-fplStaticAssert(sizeof(size_t) >= sizeof(uint64_t));
+fplStaticAssert(sizeof(uint64_t) == 8);
+fplStaticAssert(sizeof(uint32_t) == 4);
+fplStaticAssert(sizeof(uintptr_t) == sizeof(uint64_t));
+fplStaticAssert(sizeof(size_t) == sizeof(uint64_t));
 #elif defined(FPL_CPU_32BIT)
-fplStaticAssert(sizeof(uintptr_t) >= sizeof(uint32_t));
-fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
+fplStaticAssert(sizeof(uint64_t) == 8);
+fplStaticAssert(sizeof(uint32_t) == 4);
+fplStaticAssert(sizeof(uintptr_t) == sizeof(uint32_t));
+fplStaticAssert(sizeof(size_t) == sizeof(uint32_t));
 #endif
-
 #if CHAR_BIT != 8
-#error "Unsupported Char Size, expect 8 bits"
+#error "Unsupported Char Size, expect 8 bits in CHAR_BIT"
 #endif
-
 //! @endcond
 
 //
