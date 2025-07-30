@@ -20706,33 +20706,43 @@ typedef struct fpl__VideoData {
 
 struct fpl__VideoBackend;
 
+// Very first call that expects to load the video backend API or allocate common resources
 #define FPL__FUNC_VIDEO_BACKEND_LOAD(name) bool name(const fpl__PlatformAppState *appState, struct fpl__VideoBackend *backend)
 typedef FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__func_VideoBackendLoad);
 
+// Very last call that expects to unload the video backend API or clean common resources
 #define FPL__FUNC_VIDEO_BACKEND_UNLOAD(name) void name(const fpl__PlatformAppState *appState, struct fpl__VideoBackend *backend)
 typedef FPL__FUNC_VIDEO_BACKEND_UNLOAD(fpl__func_VideoBackendUnload);
 
-#define FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(name) bool name(const fpl__PlatformAppState *appState, const fplVideoSettings *videoSettings, fpl__PlatformWindowState *windowState, struct fpl__VideoBackend *backend)
-typedef FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__func_VideoBackendPrepareWindow);
-
-#define FPL__FUNC_VIDEO_BACKEND_FINALIZEWINDOW(name) bool name(const fpl__PlatformAppState *appState, const fplVideoSettings *videoSettings, fpl__PlatformWindowState *windowState, struct fpl__VideoBackend *backend)
-typedef FPL__FUNC_VIDEO_BACKEND_FINALIZEWINDOW(fpl__func_VideoBackendFinalizeWindow);
-
-#define FPL__FUNC_VIDEO_BACKEND_DESTROYEDWINDOW(name) void name(const fpl__PlatformAppState *appState, struct fpl__VideoBackend *backend)
-typedef FPL__FUNC_VIDEO_BACKEND_DESTROYEDWINDOW(fpl__func_VideoBackendDestroyedWindow);
-
+// Initializes the video backend for the specified window and create resources
 #define FPL__FUNC_VIDEO_BACKEND_INITIALIZE(name) bool name(const fpl__PlatformAppState *appState, const fpl__PlatformWindowState *windowState, const fplVideoSettings *videoSettings, const fpl__VideoData *data, struct fpl__VideoBackend *backend)
 typedef FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__func_VideoBackendInitialize);
 
+// Prepare the video backend for the window that is going to be created
+#define FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(name) bool name(const fpl__PlatformAppState *appState, const fplVideoSettings *videoSettings, fpl__PlatformWindowState *windowState, struct fpl__VideoBackend *backend)
+typedef FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__func_VideoBackendPrepareWindow);
+
+// Window is now created, adjust if needed for the video backend, such as creating a rendering context
+#define FPL__FUNC_VIDEO_BACKEND_FINALIZEWINDOW(name) bool name(const fpl__PlatformAppState *appState, const fplVideoSettings *videoSettings, fpl__PlatformWindowState *windowState, struct fpl__VideoBackend *backend)
+typedef FPL__FUNC_VIDEO_BACKEND_FINALIZEWINDOW(fpl__func_VideoBackendFinalizeWindow);
+
+// Window is destroyed, if needed you can release additional resources
+#define FPL__FUNC_VIDEO_BACKEND_DESTROYEDWINDOW(name) void name(const fpl__PlatformAppState *appState, struct fpl__VideoBackend *backend)
+typedef FPL__FUNC_VIDEO_BACKEND_DESTROYEDWINDOW(fpl__func_VideoBackendDestroyedWindow);
+
+// Shutdowns the video backend, that may release created resources or destroys a rendering context
 #define FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(name) void name(const fpl__PlatformAppState *appState, const fpl__PlatformWindowState *windowState, struct fpl__VideoBackend *backend)
 typedef FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(fpl__func_VideoBackendShutdown);
 
+// Displays the current frame to the window, e.g. swap buffers, swap chain present, bit blit, etc.
 #define FPL__FUNC_VIDEO_BACKEND_PRESENT(name) void name(const fpl__PlatformAppState *appState, const fpl__PlatformWindowState *windowState, const fpl__VideoData *data, const struct fpl__VideoBackend *backend)
 typedef FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__func_VideoBackendPresent);
 
+// Gets a procedure address from the backend, if supported
 #define FPL__FUNC_VIDEO_BACKEND_GETPROCEDURE(name) const void *name(const struct fpl__VideoBackend *backend, const char *procName)
 typedef FPL__FUNC_VIDEO_BACKEND_GETPROCEDURE(fpl__func_VideoBackendGetProcedure);
 
+// Gets and fill out the requirements of the backend, if supported
 #define FPL__FUNC_VIDEO_BACKEND_GETREQUIREMENTS(name) bool name(fplVideoRequirements *requirements)
 typedef FPL__FUNC_VIDEO_BACKEND_GETREQUIREMENTS(fpl__func_VideoBackendGetRequirements);
 
@@ -26196,6 +26206,7 @@ fpl_internal fpl__VideoContext fpl__ConstructVideoContext(const fplVideoBackendT
 //
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #if defined(FPL__ENABLE_WINDOW)
+
 fpl_internal FPL__FUNC_PREPARE_VIDEO_WINDOW(fpl__PrepareVideoWindowDefault) {
 	fplAssert(appState != fpl_null);
 
