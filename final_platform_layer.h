@@ -9452,6 +9452,47 @@ fpl_internal void fpl__ParseVersionString(const char *versionStr, fplVersionInfo
 //
 // ****************************************************************************
 
+// Tries to load the dynamic library and breaks the loop, when it fails
+#define FPL__AUTO_LOAD_LIBRARY_BREAK(mod, target, libName) \
+	if(!fplDynamicLibraryLoad(libName, (target))) { \
+		FPL__WARNING(mod, "Failed loading library '%s'", (libName)); \
+		break; \
+	}
+
+// Tries to load the dynamic library and continues the loop, when it fails
+#define FPL__AUTO_LOAD_LIBRARY_CONTINUE(mod, target, libName) \
+	if(!fplDynamicLibraryLoad(libName, target)) { \
+		FPL__WARNING(mod, "Failed loading library '%s'", (libName)); \
+		continue; \
+	}
+
+// Tries to get the proc address from the dynamic library and continues the loop, when it fails
+#define FPL__AUTO_GET_FUNCTION_ADDRESS_CONTINUE(mod, libHandle, libName, target, type, name) \
+	(target)->name = (type)fplGetDynamicLibraryProc(&libHandle, #name); \
+	if ((target)->name == fpl_null) { \
+		FPL__WARNING(mod, "Failed getting procedure address '%s' from library '%s'", #name, libName); \
+		continue; \
+	}
+
+// Tries to get the proc address from the dynamic library and breaks the loop, when it fails
+#define FPL__AUTO_GET_FUNCTION_ADDRESS_BREAK(mod, libHandle, libName, target, type, name) \
+	(target)->name = (type *)fplGetDynamicLibraryProc(&libHandle, #name); \
+	if ((target)->name == fpl_null) { \
+		FPL__WARNING(mod, "Failed getting procedure address '%s' from library '%s'", #name, libName); \
+		break; \
+	}
+
+#if !defined(FPL_NO_RUNTIME_LINKING)
+#	define FPL__AUTO_LOAD_LIBRARY(mod, target, libName) FPL__AUTO_LOAD_LIBRARY_BREAK(mod, target, libName)
+#	define FPL__AUTO_UNLOAD_LIBRARY(target) fplDynamicLibraryUnload(target)
+#	define FPL__AUTO_GET_FUNCTION_ADDRESS(mod, libHandle, libName, target, type, name) FPL__AUTO_GET_FUNCTION_ADDRESS_BREAK(mod, libHandle, libName, target, type, name)
+#else
+#	define FPL__AUTO_LOAD_LIBRARY(mod, target, libName)
+#	define FPL__AUTO_UNLOAD_LIBRARY(target)
+#	define FPL__AUTO_GET_FUNCTION_ADDRESS(mod, libHandle, libName, target, type, name) \
+		(target)->name = name
+#endif
+
 // ############################################################################
 //
 // > TYPES_WIN32
