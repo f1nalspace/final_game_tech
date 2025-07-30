@@ -1698,7 +1698,7 @@ SOFTWARE.
 #define FPL_HEADER_H
 
 //
-// C++/C99 detection
+// C++/C99 preprocessor detection
 //
 // https://en.wikipedia.org/wiki/C99#Version_detection
 //
@@ -1781,7 +1781,7 @@ SOFTWARE.
 #endif
 
 //
-// Architecture detection (x86, x64, arm32, arm64, apple arm64, riscv, powerpc, mips, sparc)
+// Architecture preprocessor detection (x86, x64, arm32, arm64, apple arm64, riscv, powerpc, mips, sparc)
 // 
 // https://sourceforge.net/p/predef/wiki/Architectures/
 //
@@ -1852,7 +1852,7 @@ SOFTWARE.
 #endif // FPL_ARCH
 
 //
-// 32-bit or 64-bit
+// CPU width preprocessor detection
 //
 #if defined(_WIN32)
 #	if defined(_WIN64)
@@ -1901,7 +1901,7 @@ SOFTWARE.
 #endif
 
 //
-// Cacheline detection
+// Cacheline preprocessor detection
 //
 // - X86 has a cacheline size of 64 bytes, since pentium pro
 // - Apple M* has a cacheline size of 128 bytes
@@ -1939,7 +1939,7 @@ SOFTWARE.
 #endif
 
 //
-// Compiler detection
+// Compiler preprocessor detection
 // 
 // http://beefchunk.com/documentation/lang/c/pre-defined-c/precomp.html
 // http://nadeausoftware.com/articles/2012/10/c_c_tip_how_detect_compiler_name_and_version_using_compiler_predefined_macros
@@ -2021,7 +2021,7 @@ SOFTWARE.
 #endif // FPL_COMPILER
 
 //
-// Platform detection
+// Platform preprocessor detection
 // 
 // https://sourceforge.net/p/predef/wiki/OperatingSystems/
 // 
@@ -2310,12 +2310,15 @@ SOFTWARE.
 #endif
 
 //
-// Application type detection
-// - Can be disabled by FPL_NO_APPTYPE
-// - Must be explicitly set for No-CRT on Win32
+// Application type preprocessor setup
+//
+// FPL_NO_CRT = Either FPL_APPTYPE_CONSOLE or FPL_APPTYPE_WINDOW must be set manually
+// FPL_NO_APPTYPE = Disable app type detection entirely
+// FPL_APPTYPE_CONSOLE = Console application
+// FPL_APPTYPE_WINDOW = Window application
 //
 #if defined(FPL_APPTYPE_CONSOLE) && defined(FPL_APPTYPE_WINDOW)
-#	error "Its now allowed to define both FPL_APPTYPE_CONSOLE and FPL_APPTYPE_WINDOW!"
+#	error "It is not allowed to define both FPL_APPTYPE_CONSOLE and FPL_APPTYPE_WINDOW!"
 #endif
 #if defined(FPL_NO_CRT)
 #	if !defined(FPL_APPTYPE_CONSOLE) && !defined(FPL_APPTYPE_WINDOW)
@@ -2339,7 +2342,7 @@ SOFTWARE.
 #endif
 
 //
-// Debug/Release detection
+// Debug/Release preprocessor setup
 //
 #if defined(FPL_DEBUG)
 #	define FPL__ENABLE_DEBUG
@@ -2348,7 +2351,7 @@ SOFTWARE.
 #endif
 
 //
-// Compiler settings
+// Compiler preprocessor setup
 //
 #if defined(FPL_COMPILER_MSVC)
 	// Debug/Release detection
@@ -2470,7 +2473,12 @@ typedef enum fplX86InstructionSetLevel {
 #define FPL_X86_CPU_INSTR_SET_LEVEL FPL__M_X86_CPU_INSTR_SET_LEVEL
 
 //
-// Assertions
+// Assertions preprocessor setup
+//
+// FPL_NO_WINDOW or FPL_APPTYPE_CONSOLE = Disable window support entirely
+// FPL_NO_ASSERTIONS = Disable assertions entirely
+// FPL_FORCE_ASSERTIONS = Force assertions always
+// FPL_NO_C_ASSERT or FPL_NO_CRT = Do not allow C-Runtime assertions, use custom macros instead
 //
 #if !defined(FPL_NO_ASSERTIONS)
 #	if !defined(FPL_FORCE_ASSERTIONS)
@@ -2505,7 +2513,9 @@ typedef enum fplX86InstructionSetLevel {
 #define fplHasInclude(inc) fpl__m_HasInclude(inc)
 
 //
-// Window
+// Window preprocessor setup
+//
+// FPL_NO_WINDOW or FPL_APPTYPE_CONSOLE = Disable window support entirely
 //
 #if !defined(FPL_NO_WINDOW) && !defined(FPL_APPTYPE_CONSOLE)
 #	define FPL__SUPPORT_WINDOW
@@ -2520,11 +2530,17 @@ typedef enum fplX86InstructionSetLevel {
 #endif // FPL__SUPPORT_WINDOW
 
 //
-// Video
+// Video preprocessor setup
+//
+// FPL_NO_VIDEO = Disable video support entirely
+// FPL_NO_VIDEO_OPENGL = Disable all OpenGL video backends
+// FPL_NO_VIDEO_VULKAN = Disable Vulkan video backend
+// FPL_NO_VIDEO_SOFTWARE = Disable all Software video backends
 //
 #if !defined(FPL_NO_VIDEO)
 #	define FPL__SUPPORT_VIDEO
-#endif
+#endif // !FPL_NO_VIDEO
+
 #if defined(FPL__SUPPORT_VIDEO)
 #	if !defined(FPL_NO_VIDEO_OPENGL)
 #		define FPL__SUPPORT_VIDEO_OPENGL
@@ -2538,27 +2554,7 @@ typedef enum fplX86InstructionSetLevel {
 #endif // FPL__SUPPORT_VIDEO
 
 //
-// Audio
-//
-#if !defined(FPL_NO_AUDIO)
-	// Audio support
-#	define FPL__SUPPORT_AUDIO
-#endif
-#if defined(FPL__SUPPORT_AUDIO)
-#	if !defined(FPL_NO_AUDIO_DIRECTSOUND) && defined(FPL_PLATFORM_WINDOWS)
-#		define FPL__SUPPORT_AUDIO_DIRECTSOUND // <dsound.h> is always present on windows
-#	endif
-#	if !defined(FPL_NO_AUDIO_ALSA) && defined(FPL_PLATFORM_LINUX)
-#		if fplHasInclude(<alsa/asoundlib.h>)
-#			define FPL__SUPPORT_AUDIO_ALSA
-#		else
-#			warning "FPL-Warning: ALSA audio development library is missing. Please install 'libasound2-dev' and try again!"
-#		endif
-#	endif
-#endif // FPL__SUPPORT_AUDIO
-
-//
-// Remove video support when the window is disabled
+// Remove video support when the Window is disabled
 //
 #if !defined(FPL__SUPPORT_WINDOW)
 #	if defined(FPL_SUBPLATFORM_X11)
@@ -2578,6 +2574,30 @@ typedef enum fplX86InstructionSetLevel {
 #		undef FPL__SUPPORT_VIDEO_SOFTWARE
 #	endif
 #endif // !FPL__SUPPORT_WINDOW
+
+//
+// Audio preprocessor setup
+//
+// FPL_NO_AUDIO = Disable audio support entirely
+// FPL_NO_AUDIO_DIRECTSOUND = Disable DirectSound audio backend
+// FPL_NO_AUDIO_ALSA = Disable ALSA audio backend
+//
+#if !defined(FPL_NO_AUDIO)
+#	define FPL__SUPPORT_AUDIO
+#endif // !FPL_NO_AUDIO
+
+#if defined(FPL__SUPPORT_AUDIO)
+#	if !defined(FPL_NO_AUDIO_DIRECTSOUND) && defined(FPL_PLATFORM_WINDOWS)
+#		define FPL__SUPPORT_AUDIO_DIRECTSOUND // <dsound.h> is always present on windows
+#	endif
+#	if !defined(FPL_NO_AUDIO_ALSA) && defined(FPL_PLATFORM_LINUX)
+#		if fplHasInclude(<alsa/asoundlib.h>)
+#			define FPL__SUPPORT_AUDIO_ALSA
+#		else
+#			warning "FPL-Warning: ALSA audio development library is missing. Please install 'libasound2-dev' and try again!"
+#		endif
+#	endif
+#endif // FPL__SUPPORT_AUDIO
 
 //
 // Enable supports (FPL uses _ENABLE_ internally only)
