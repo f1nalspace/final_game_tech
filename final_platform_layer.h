@@ -174,6 +174,7 @@ SOFTWARE.
 	- New: Added function fplDateTimeCreate that creates a fplDateTime from seperate date time components
 	- Improved: Better documentation of the preprocessor setup blocks
 	- Fixed: Fixed duplicate platform includes
+	- Fixed: fpLGetAlignmentOffset() was not guarding the alignment argument in all cases
 	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
 	- Changed: Ensure that std types has the correct sizes always using equals
@@ -2897,7 +2898,7 @@ fplStaticAssert(sizeof(size_t) == sizeof(uint32_t));
 * @param[in] alignment Alignment boundary.
 * @result Offset to satisfy the alignment boundary.
 */
-#define fplGetAlignmentOffset(value, alignment) ( (((alignment) > 1) && (((value) & ((alignment) - 1)) != 0)) ? ((alignment) - ((value) & (alignment - 1))) : 0)			
+#define fplGetAlignmentOffset(value, alignment) ( (((alignment) > 1) && (((value) & ((alignment) - 1)) != 0)) ? ((alignment) - ((value) & ((alignment) - 1))) : 0)			
 
 /**
 * @def fplGetAlignedSize
