@@ -22281,33 +22281,24 @@ fpl_internal bool fpl__LoadVulkanApi(fpl__VulkanApi *api, const char *libraryNam
 #endif
 	}
 
-#define FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libName, target, type, name) \
-		(target)->name = (type)fplGetDynamicLibraryProc(&libHandle, #name); \
-		if ((target)->name == fpl_null) { \
-			FPL__WARNING(FPL__MODULE_VIDEO_VULKAN, "Failed getting procedure address '%s' from library '%s'", #name, libName); \
-			continue; \
-		}
-
 	bool result = false;
 	for (uint32_t i = 0; i < libraryCount; ++i) {
 		const char *libraryName = libraryNames[i];
 
 		if (api->libraryHandle.isValid) {
-			fplDynamicLibraryUnload(&api->libraryHandle);
+			FPL__AUTO_UNLOAD_LIBRARY(&api->libraryHandle);
 		}
 		fplClearStruct(api);
 
 		fplDynamicLibraryHandle libHandle = fplZeroInit;
-		if (!fplDynamicLibraryLoad(libraryName, &libHandle)) {
-			continue;
-		}
+		FPL__AUTO_LOAD_LIBRARY_CONTINUE(FPL__MODULE_VIDEO_VULKAN, &libHandle, libraryName);
 		api->libraryHandle = libHandle;
 
-		FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libraryName, api, fpl__func_vkCreateInstance, vkCreateInstance);
-		FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libraryName, api, fpl__func_vkDestroyInstance, vkDestroyInstance);
-		FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libraryName, api, fpl__func_vkGetInstanceProcAddr, vkGetInstanceProcAddr);
-		FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libraryName, api, fpl__func_vkEnumerateInstanceExtensionProperties, vkEnumerateInstanceExtensionProperties);
-		FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libraryName, api, fpl__func_vkEnumerateInstanceLayerProperties, vkEnumerateInstanceLayerProperties);
+		FPL__AUTO_GET_FUNCTION_ADDRESS_CONTINUE(FPL__MODULE_VIDEO_VULKAN, libHandle, libraryName, api, fpl__func_vkCreateInstance, vkCreateInstance);
+		FPL__AUTO_GET_FUNCTION_ADDRESS_CONTINUE(FPL__MODULE_VIDEO_VULKAN, libHandle, libraryName, api, fpl__func_vkDestroyInstance, vkDestroyInstance);
+		FPL__AUTO_GET_FUNCTION_ADDRESS_CONTINUE(FPL__MODULE_VIDEO_VULKAN, libHandle, libraryName, api, fpl__func_vkGetInstanceProcAddr, vkGetInstanceProcAddr);
+		FPL__AUTO_GET_FUNCTION_ADDRESS_CONTINUE(FPL__MODULE_VIDEO_VULKAN, libHandle, libraryName, api, fpl__func_vkEnumerateInstanceExtensionProperties, vkEnumerateInstanceExtensionProperties);
+		FPL__AUTO_GET_FUNCTION_ADDRESS_CONTINUE(FPL__MODULE_VIDEO_VULKAN, libHandle, libraryName, api, fpl__func_vkEnumerateInstanceLayerProperties, vkEnumerateInstanceLayerProperties);
 
 		result = true;
 		break;
@@ -22316,8 +22307,6 @@ fpl_internal bool fpl__LoadVulkanApi(fpl__VulkanApi *api, const char *libraryNam
 	if (!result) {
 		fpl__UnloadVulkanApi(api);
 	}
-
-#undef FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE
 
 	return(result);
 }
