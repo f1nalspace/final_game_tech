@@ -155,6 +155,7 @@ SOFTWARE.
 	- Added several date time types and functions
 	- Added game controllers settings
 	- Improved code documentation a lot
+	- Improved thread-safety in the event system
 	- Several minor bugfixes
 
 	### Breaking Changes
@@ -173,6 +174,7 @@ SOFTWARE.
 	- New: Added function fplFormatDateTime that formats a fplDateTime into either a local or UTC date time components
 	- New: Added function fplDateTimeCreate that creates a fplDateTime from seperate date time components
 	- Improved: Better documentation of the preprocessor setup blocks
+	- Improved: Made internal event queue thread-safe using a lock-free push/pop linear buffer
 	- Fixed: Fixed duplicate platform includes
 	- Fixed: fpLGetAlignmentOffset() was not guarding the alignment argument in all cases
 	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
@@ -10795,12 +10797,12 @@ typedef struct {
 fpl_globalvar fpl__PlatformInitState fpl__global__InitState = fplZeroInit;
 
 #if defined(FPL__ENABLE_WINDOW)
+
 #define FPL__MAX_EVENT_COUNT 32768
 typedef struct {
-	// @FIXME(final): Internal events are not Thread-Safe!
 	fplEvent events[FPL__MAX_EVENT_COUNT];
-	uint32_t pollIndex;
-	uint32_t pushCount;
+	volatile size_t pushIndex; // atomic
+    volatile size_t popIndex;  // atomic
 } fpl__EventQueue;
 
 typedef struct {
@@ -10818,6 +10820,7 @@ typedef struct {
 	fpl__X11WindowState x11;
 #endif
 } fpl__PlatformWindowState;
+
 #endif // FPL__ENABLE_WINDOW
 
 //
@@ -10876,48 +10879,71 @@ fpl_internal fplKey fpl__GetMappedKey(const fpl__PlatformWindowState *windowStat
 
 fpl_internal void fpl__ClearInternalEvents(void) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	fplAssert(appState != fpl_null);
-	fpl__EventQueue *eventQueue = &appState->window.eventQueue;
-	// @FIXME(final): Internal events are not thread-safe, introduce a proper thread-safe queue here!
-	uint32_t eventCount = eventQueue->pollIndex;
-	eventQueue->pollIndex = 0;
-	for (size_t eventIndex = 0; eventIndex < eventCount; ++eventIndex) {
-		fplEvent *ev = &eventQueue->events[eventIndex];
-		if (ev->window.dropFiles.internalMemory.base != fpl_null) {
-			fpl__ReleaseDynamicMemory(ev->window.dropFiles.internalMemory.base);
-			fplClearStruct(&ev->window.dropFiles.internalMemory);
+    fpl__EventQueue *eventQueue = &appState->window.eventQueue;
+
+    size_t currentPop = fplAtomicLoadSize(&eventQueue->popIndex);
+    size_t currentPush = fplAtomicLoadSize(&eventQueue->pushIndex);
+
+    for (size_t i = currentPop; i < currentPush; ++i) {
+        fplEvent *ev = &eventQueue->events[i % FPL__MAX_EVENT_COUNT];
+		if (ev->type == fplEventType_Window && ev->window.type == fplWindowEventType_DroppedFiles) {
+			if (ev->window.dropFiles.internalMemory.base != fpl_null) {
+				fpl__ReleaseDynamicMemory(ev->window.dropFiles.internalMemory.base);
+				fplClearStruct(&ev->window.dropFiles.internalMemory);
+			}
 		}
-	}
-	eventQueue->pushCount = 0;
+    }
+
+    fplAtomicStoreSize(&eventQueue->popIndex, 0);
+    fplAtomicStoreSize(&eventQueue->pushIndex, 0);
 }
 
 fpl_internal bool fpl__PollInternalEvent(fplEvent *ev) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	bool result = false;
-	if (appState != fpl_null) {
-		fpl__EventQueue *eventQueue = &appState->window.eventQueue;
-		// @FIXME(final): Internal events are not thread-safe, introduce a proper thread-safe queue here!
-		if (eventQueue->pollIndex < eventQueue->pushCount) {
-			uint32_t eventIndex = eventQueue->pollIndex++;
-			*ev = eventQueue->events[eventIndex];
-			result = true;
-		} else if (eventQueue->pushCount > 0) {
-			eventQueue->pollIndex = 0;
-			eventQueue->pushCount = 0;
-		}
-	}
-	return(result);
+    fpl__EventQueue *eventQueue = &appState->window.eventQueue;
+
+    size_t currentPop;
+    size_t currentPush;
+    size_t newPop;
+
+    do {
+        currentPop = fplAtomicLoadSize(&eventQueue->popIndex);
+        currentPush = fplAtomicLoadSize(&eventQueue->pushIndex);
+
+        if (currentPop >= currentPush) {
+            return false;
+        }
+
+        newPop = currentPop + 1;
+    } while (!fplAtomicIsCompareAndSwapSize(&eventQueue->popIndex, currentPop, newPop));
+
+    size_t index = currentPop % FPL__MAX_EVENT_COUNT;
+    *ev = eventQueue->events[index];
+    return true;
 }
 
 fpl_internal void fpl__PushInternalEvent(const fplEvent *event) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	fplAssert(appState != fpl_null);
-	fpl__EventQueue *eventQueue = &appState->window.eventQueue;
-	// @FIXME(final): Internal events are not thread-safe, introduce a proper thread-safe queue here!
-	if (eventQueue->pushCount < FPL__MAX_EVENT_COUNT) {
-		uint32_t eventIndex = eventQueue->pushCount++;
-		eventQueue->events[eventIndex] = *event;
-	}
+    fpl__EventQueue *eventQueue = &appState->window.eventQueue;
+
+    size_t currentPush;
+    size_t currentPop;
+    size_t newPush;
+
+    do {
+        currentPush = fplAtomicLoadSize(&eventQueue->pushIndex);
+        currentPop = fplAtomicLoadSize(&eventQueue->popIndex);
+
+        if ((currentPush - currentPop) >= FPL__MAX_EVENT_COUNT) {
+            // Queue full, drop event or handle overflow
+            return;
+        }
+
+        newPush = currentPush + 1;
+    } while (!fplAtomicIsCompareAndSwapSize(&eventQueue->pushIndex, currentPush, newPush));
+
+    size_t index = currentPush % FPL__MAX_EVENT_COUNT;
+    eventQueue->events[index] = *event;
 }
 
 fpl_internal void fpl__PushWindowStateEvent(const fplWindowEventType windowType) {
