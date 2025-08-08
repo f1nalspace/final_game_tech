@@ -173,8 +173,8 @@ SOFTWARE.
 	- New: Added function fplDateTimeQuery that returns a date time stamp, that allows the display in either local or UTC format
 	- New: Added function fplFormatDateTime that formats a fplDateTime into either a local or UTC date time components
 	- New: Added function fplDateTimeCreate that creates a fplDateTime from seperate date time components
+	- Improved[#176]: Made internal event queue thread-safe using a lock-free push/pop linear buffer
 	- Improved: Better documentation of the preprocessor setup blocks
-	- Improved: Made internal event queue thread-safe using a lock-free push/pop linear buffer
 	- Fixed: Fixed duplicate platform includes
 	- Fixed: fpLGetAlignmentOffset() was not guarding the alignment argument in all cases
 	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
