@@ -56,7 +56,10 @@ namespace FPLApiGenerator
 
         private void Clear()
         {
-            rtbOutput.Clear();
+            rtbDefines.Clear();
+            rtbPublicAPI.Clear();
+            rtbPrivateAPI.Clear();
+            rtbImplementation.Clear();
         }
 
         private static string CreateSeparator(char c, int count)
@@ -65,21 +68,25 @@ namespace FPLApiGenerator
             return s;
         }
 
-        private void Add(ReadOnlySpan<char> input)
+        class ApiEditor
         {
-            rtbOutput.AppendText(input.ToString());
-        }
+            private readonly RichTextBox _rtb;
 
-        private void AddLine(ReadOnlySpan<char> input)
-        {
-            if (input.Length > 0)
-                Add(input);
-            Add(Environment.NewLine);
-        }
+            public ApiEditor(RichTextBox rtb)
+            {
+                _rtb = rtb ?? throw new ArgumentNullException(nameof(rtb));
+            }
 
-        private void AddLine()
-        {
-            Add(Environment.NewLine);
+            private void Append(ReadOnlySpan<char> input) => _rtb.AppendText(input.ToString());
+
+            public void Add(ReadOnlySpan<char> input) => Append(input);
+            public void AddLine(ReadOnlySpan<char> input)
+            {
+                if (input.Length > 0)
+                    Append(input);
+                Append(Environment.NewLine);
+            }
+            public void AddLine() => Append(Environment.NewLine);
         }
 
         void GenerateDynamicApi(CApi api)
@@ -100,8 +107,6 @@ namespace FPLApiGenerator
             string backendDataOffsetDefineName = $"{backendDefineName}_DATA_OFFSET";
             string backendImplDefineName = $"{backendDefineName}_IMPL";
 
-            string enableDefineName = $"{CApi.InternalDefinePrefix}ENABLE_{upperSystemName}";
-
             string funcPostfixUpper = CApi.FuncPostfix.ToUpper();
             string funcPrefixUpper = CApi.FuncPrefix.ToUpper();
 
@@ -117,71 +122,97 @@ namespace FPLApiGenerator
 
             IndentState indentState = new IndentState();
 
+            ApiEditor defines = new ApiEditor(rtbDefines);
+            ApiEditor publicApi = new ApiEditor(rtbPublicAPI);
+            ApiEditor privateAPI = new ApiEditor(rtbPrivateAPI);
+            ApiEditor internalBackendAPI = new ApiEditor(rtbImplementation);
+            ApiEditor implementation = new ApiEditor(rtbImplementation);
+            ApiEditor platformStates = new ApiEditor(rtbPrivateAPI);
+
+            //
+            // Defines
+            //
+            string backendsDefineName = $"{CApi.PublicDefinePrefix}{upperSystemName}";
+            string noDefineName = $"{CApi.PublicDefinePrefix}NO_{upperSystemName}";
+            string supportDefineName = $"{CApi.InternalDefinePrefix}SUPPORT_{upperSystemName}";
+            string enableDefineName = $"{CApi.InternalDefinePrefix}ENABLE_{upperSystemName}";
+            defines.AddLine($"#if !defined({noDefineName})");
+            defines.AddLine($"#define {supportDefineName}");
+            defines.AddLine($"#endif // !{noDefineName}");
+            defines.AddLine();
+            defines.AddLine($"#if defined({supportDefineName})");
+            defines.AddLine($"#define {enableDefineName}");
+            defines.AddLine($"#endif // {supportDefineName}");
+
             //
             // Public API
             //
-            AddLine($"// {definitionSeperator}");
-            AddLine($"//");
-            AddLine($"// > Public API");
-            AddLine($"//");
-            AddLine($"// {definitionSeperator}");
+            publicApi.AddLine($"// {definitionSeperator}");
+            publicApi.AddLine($"//");
+            publicApi.AddLine($"// > Public API");
+            publicApi.AddLine($"//");
+            publicApi.AddLine($"// {definitionSeperator}");
+            publicApi.AddLine();
 
-            AddLine("// Only add the new init flags to the enum");
-            AddLine($"typedef enum {initFlagsEnumName} {{");
+            publicApi.AddLine("// Only add the new init flags to the enum");
+            publicApi.AddLine($"typedef enum {initFlagsEnumName} {{");
             using (var indent = new Indent(indentState))
             {
-                AddLine($"{indent}{initFlagsEnumName}_None = 0,");
-                AddLine($"{indent}{initFlagsValueName} = 1 << 31,");
+                publicApi.AddLine($"{indent}{initFlagsEnumName}_None = 0,");
+                publicApi.AddLine();
+                publicApi.AddLine($"{indent}{initFlagsValueName} = 1 << 31,");
+                publicApi.AddLine();
+                publicApi.AddLine($"{indent}{initFlagsEnumName}_All = {initFlagsValueName},");
             }
-            AddLine($"}} {initFlagsEnumName};");
-            AddLine();
+            publicApi.AddLine($"}} {initFlagsEnumName};");
+            publicApi.AddLine();
 
-            AddLine($"// {systemName} backend type");
-            AddLine($"typedef enum {backendTypeEnumName} {{");
+            publicApi.AddLine($"// {systemName} backend type");
+            publicApi.AddLine($"typedef enum {backendTypeEnumName} {{");
             using (var indent = new Indent(indentState))
             {
-                AddLine($"{indent}{backendTypeEnumName}_None = 0,");
+                publicApi.AddLine($"{indent}{backendTypeEnumName}_None = 0,");
                 foreach (CImplementation impl in api.Implementations)
-                    AddLine($"{indent}{backendTypeEnumName}_{impl.Name},");
+                    publicApi.AddLine($"{indent}{backendTypeEnumName}_{impl.Name},");
             }
-            AddLine($"}} {backendTypeEnumName};");
-            AddLine();
+            publicApi.AddLine($"}} {backendTypeEnumName};");
+            publicApi.AddLine();
 
-            AddLine($"// {systemName} backend settings");
-            AddLine($"typedef struct {settingsStructName} {{");
+            publicApi.AddLine($"// {systemName} backend settings");
+            publicApi.AddLine($"typedef struct {settingsStructName} {{");
             using (var indent = new Indent(indentState))
             {
-                AddLine($"{indent}{backendTypeEnumName} type;");
+                publicApi.AddLine($"{indent}{backendTypeEnumName} type;");
             }
-            AddLine($"}} {settingsStructName};");
-            AddLine();
+            publicApi.AddLine($"}} {settingsStructName};");
+            publicApi.AddLine();
 
 
             //
             // Internal backend API
             //
             string apiImplementedDefineName = $"{backendDefineName}_API_IMPLEMENTED";
-            AddLine($"// {definitionSeperator}");
-            AddLine($"//");
-            AddLine($"// > {backendDefineName} API");
-            AddLine($"//");
-            AddLine($"// {definitionSeperator}");
-            AddLine($"#if !defined({apiImplementedDefineName}) && defined({enableDefineName})");
-            AddLine($"#define {apiImplementedDefineName}");
-            AddLine();
+            internalBackendAPI.AddLine($"// {definitionSeperator}");
+            internalBackendAPI.AddLine($"//");
+            internalBackendAPI.AddLine($"// > {backendDefineName} API");
+            internalBackendAPI.AddLine($"//");
+            internalBackendAPI.AddLine($"// {definitionSeperator}");
+            internalBackendAPI.AddLine($"#if !defined({apiImplementedDefineName}) && defined({enableDefineName})");
+            internalBackendAPI.AddLine($"#define {apiImplementedDefineName}");
+            internalBackendAPI.AddLine();
 
-            AddLine($"//");
-            AddLine($"// {systemName} backend forward declarations");
-            AddLine($"//");
-            AddLine();
-            AddLine($"{api.ContextType};");
-            AddLine($"{api.BackendType};");
-            AddLine();
+            internalBackendAPI.AddLine($"//");
+            internalBackendAPI.AddLine($"// {systemName} backend forward declarations");
+            internalBackendAPI.AddLine($"//");
+            internalBackendAPI.AddLine();
+            internalBackendAPI.AddLine($"{api.ContextType};");
+            internalBackendAPI.AddLine($"{api.BackendType};");
+            internalBackendAPI.AddLine();
 
-            AddLine($"//");
-            AddLine($"// {systemName} backend function definitions");
-            AddLine($"//");
-            AddLine();
+            internalBackendAPI.AddLine($"//");
+            internalBackendAPI.AddLine($"// {systemName} backend function definitions");
+            internalBackendAPI.AddLine($"//");
+            internalBackendAPI.AddLine();
 
             Dictionary<CFunction, string> functionTableFieldNamesMap = new Dictionary<CFunction, string>();
             Dictionary<CFunction, string> functionTableDefineNamesMap = new Dictionary<CFunction, string>();
@@ -196,10 +227,10 @@ namespace FPLApiGenerator
                 string functionDefineName = $"{CApi.InternalDefinePrefix}{funcPrefixUpper}{upperSystemName}_BACKEND_{upperFunctionName}{funcPostfixUpper}";
                 string functionTypedefName = $"{CApi.InternalFunctionPrefix}{CApi.FuncPrefix}{systemName}_backend_{functionName}{funcPostfixUpper}";
                 string functionTableFieldName = functionName.ToCamelCase();
-                Add($"#define {functionDefineName}(name) {resultType} name(");
+                internalBackendAPI.Add($"#define {functionDefineName}(name) {resultType} name(");
 
                 if (function.Arguments.Length == 0)
-                    Add("void");
+                    internalBackendAPI.Add("void");
                 else
                 {
                     StringBuilder args = new StringBuilder();
@@ -209,25 +240,25 @@ namespace FPLApiGenerator
                             args.Append(", ");
                         args.Append(argument);
                     }
-                    Add(args.ToString());
+                    internalBackendAPI.Add(args.ToString());
                 }
 
-                AddLine(")");
+                internalBackendAPI.AddLine(")");
 
-                AddLine($"typedef {functionDefineName}({functionTypedefName});");
-                AddLine();
+                internalBackendAPI.AddLine($"typedef {functionDefineName}({functionTypedefName});");
+                internalBackendAPI.AddLine();
 
                 functionTableFieldNamesMap.Add(function, functionTableFieldName);
                 functionTableDefineNamesMap.Add(function, functionDefineName);
             }
 
             string tableStructName = $"{CApi.PublicTypePrefix}{backendName}Table";
-            AddLine($"//");
-            AddLine($"// {systemName} backend function table");
-            AddLine($"//");
-            AddLine();
+            internalBackendAPI.AddLine($"//");
+            internalBackendAPI.AddLine($"// {systemName} backend function table");
+            internalBackendAPI.AddLine($"//");
+            internalBackendAPI.AddLine();
 
-            AddLine($"typedef struct {tableStructName} {{");
+            internalBackendAPI.AddLine($"typedef struct {tableStructName} {{");
             using (var indent = new Indent(indentState))
             {
                 foreach (CFunction function in api.Functions)
@@ -235,114 +266,114 @@ namespace FPLApiGenerator
                     string functionName = function.Name;
                     string funcTypeName = $"{CApi.InternalFunctionPrefix}{CApi.FuncPrefix}{systemName}_backend_{functionName}{funcPostfixUpper}";
                     string fieldName = functionTableFieldNamesMap[function];
-                    AddLine($"{indent}{funcTypeName} *{fieldName};");
+                    internalBackendAPI.AddLine($"{indent}{funcTypeName} *{fieldName};");
                 }
             }
-            AddLine($"}} {tableStructName};");
-            AddLine();
+            internalBackendAPI.AddLine($"}} {tableStructName};");
+            internalBackendAPI.AddLine();
 
-            AddLine($"//");
-            AddLine($"// {systemName} backend descriptor");
-            AddLine($"//");
-            AddLine();
+            internalBackendAPI.AddLine($"//");
+            internalBackendAPI.AddLine($"// {systemName} backend descriptor");
+            internalBackendAPI.AddLine($"//");
+            internalBackendAPI.AddLine();
 
             string idTypeName = $"{CApi.PublicTypePrefix}{backendName}Id";
-            AddLine($"// 8-CC code of the {systemName} backend");
-            AddLine($"typedef uint64_t {idTypeName};");
-            AddLine();
+            internalBackendAPI.AddLine($"// 8-CC code of the {systemName} backend");
+            internalBackendAPI.AddLine($"typedef uint64_t {idTypeName};");
+            internalBackendAPI.AddLine();
 
             string idNameStructName = $"{CApi.PublicTypePrefix}{backendName}IdName";
             CArgument idnameNameArgument = new CArgument(CType.StringType, "name");
-            AddLine($"typedef struct {idNameStructName} {{");
+            internalBackendAPI.AddLine($"typedef struct {idNameStructName} {{");
             using (var indent = new Indent(indentState))
             {
-                AddLine($"{indent}{idTypeName} id;");
-                AddLine($"{indent}{idnameNameArgument};");
-                AddLine($"}} {idNameStructName};");
+                internalBackendAPI.AddLine($"{indent}{idTypeName} id;");
+                internalBackendAPI.AddLine($"{indent}{idnameNameArgument};");
+                internalBackendAPI.AddLine($"}} {idNameStructName};");
             }
-            AddLine();
+            internalBackendAPI.AddLine();
 
             string headerStructName = $"{CApi.PublicTypePrefix}{backendName}Header";
             CArgument sizeArgument = new CArgument(CType.SizeType, "size");
             CArgument isValidArgument = new CArgument(CType.B32Type, "isValid");
-            AddLine($"typedef struct {headerStructName} {{");
+            internalBackendAPI.AddLine($"typedef struct {headerStructName} {{");
             using (var indent = new Indent(indentState))
             {
-                AddLine($"{indent}{idNameStructName} idName;");
-                AddLine($"{indent}{backendTypeEnumName} type;");
-                AddLine($"{indent}{sizeArgument};");
-                AddLine($"{indent}{isValidArgument};");
+                internalBackendAPI.AddLine($"{indent}{idNameStructName} idName;");
+                internalBackendAPI.AddLine($"{indent}{backendTypeEnumName} type;");
+                internalBackendAPI.AddLine($"{indent}{sizeArgument};");
+                internalBackendAPI.AddLine($"{indent}{isValidArgument};");
             }
-            AddLine($"}} {headerStructName};");
-            AddLine();
+            internalBackendAPI.AddLine($"}} {headerStructName};");
+            internalBackendAPI.AddLine();
 
             string descriptorStructName = $"{CApi.PublicTypePrefix}{backendName}Descriptor";
-            AddLine($"typedef struct {descriptorStructName} {{");
+            internalBackendAPI.AddLine($"typedef struct {descriptorStructName} {{");
             using (var indent = new Indent(indentState))
             {
-                AddLine($"{indent}{headerStructName} header;");
-                AddLine($"{indent}{tableStructName} table;");
+                internalBackendAPI.AddLine($"{indent}{headerStructName} header;");
+                internalBackendAPI.AddLine($"{indent}{tableStructName} table;");
             }
-            AddLine($"}} {descriptorStructName};");
-            AddLine();
+            internalBackendAPI.AddLine($"}} {descriptorStructName};");
+            internalBackendAPI.AddLine();
 
-            AddLine($"// Stores internal data for the {systemName} backend");
-            AddLine($"typedef struct {api.BackendType.Name} {{");
+            internalBackendAPI.AddLine($"// Stores internal data for the {systemName} backend");
+            internalBackendAPI.AddLine($"typedef struct {api.BackendType.Name} {{");
             using (var indent = new Indent(indentState))
             {
-                AddLine($"{indent}// Unused to prevent compile errors;");
-                AddLine($"{indent}int unused;");
+                internalBackendAPI.AddLine($"{indent}// Unused to prevent compile errors;");
+                internalBackendAPI.AddLine($"{indent}int unused;");
             }
-            AddLine($"}} {api.BackendType.Name};");
-            AddLine();
+            internalBackendAPI.AddLine($"}} {api.BackendType.Name};");
+            internalBackendAPI.AddLine();
 
-            AddLine($"#define {backendDataPaddingDefineName} 16");
-            AddLine($"#define {backendDataOffsetDefineName} (sizeof({api.BackendType.Name}) + {backendDataPaddingDefineName})");
-            AddLine($"#define {backendImplDefineName}(backend, type) (type *)(((uint8_t *)(backend) + {backendDataOffsetDefineName}))");
-            AddLine();
+            internalBackendAPI.AddLine($"#define {backendDataPaddingDefineName} 16");
+            internalBackendAPI.AddLine($"#define {backendDataOffsetDefineName} (sizeof({api.BackendType.Name}) + {backendDataPaddingDefineName})");
+            internalBackendAPI.AddLine($"#define {backendImplDefineName}(backend, type) (type *)(((uint8_t *)(backend) + {backendDataOffsetDefineName}))");
+            internalBackendAPI.AddLine();
 
-            AddLine($"#endif // {apiImplementedDefineName} && {enableDefineName}");
+            internalBackendAPI.AddLine($"#endif // {apiImplementedDefineName} && {enableDefineName}");
 
-            AddLine();
-            AddLine();
-            AddLine();
+            internalBackendAPI.AddLine();
+            internalBackendAPI.AddLine();
+            internalBackendAPI.AddLine();
 
             //
             // Backends implementations
             //
             string commonImplementedDefineName = $"{backendDefineName}S_IMPLEMENTED";
-            AddLine($"// {definitionSeperator}");
-            AddLine($"//");
-            AddLine($"// > {backendDefineName}S");
-            AddLine($"//");
-            AddLine($"// {definitionSeperator}");
-            AddLine($"#if !defined({commonImplementedDefineName}) && defined({enableDefineName})");
-            AddLine($"#define {commonImplementedDefineName}");
-            AddLine();
+            implementation.AddLine($"// {definitionSeperator}");
+            implementation.AddLine($"//");
+            implementation.AddLine($"// > {backendDefineName}S");
+            implementation.AddLine($"//");
+            implementation.AddLine($"// {definitionSeperator}");
+            implementation.AddLine($"#if !defined({commonImplementedDefineName}) && defined({enableDefineName})");
+            implementation.AddLine($"#define {commonImplementedDefineName}");
+            implementation.AddLine();
 
-            AddLine($"// Stores common data for the {systemName} backend");
-            AddLine($"typedef struct {api.ContextType.Name} {{");
+            implementation.AddLine($"// Stores common data for the {systemName} backend");
+            implementation.AddLine($"typedef struct {api.ContextType.Name} {{");
             using (var indent = new Indent(indentState))
             {
-                AddLine($"{indent}// Unused to prevent compile errors;");
-                AddLine($"{indent}int unused;");
+                implementation.AddLine($"{indent}// Unused to prevent compile errors;");
+                implementation.AddLine($"{indent}int unused;");
             }
-            AddLine($"}} {api.ContextType.Name};");
-            AddLine();
+            implementation.AddLine($"}} {api.ContextType.Name};");
+            implementation.AddLine();
 
-            AddLine($"// Stores the table and all relevant pointers and data for the {systemName} backend");
-            AddLine($"typedef struct {api.CommonType.Name} {{");
+            implementation.AddLine($"// Stores the table and all relevant pointers and data for the {systemName} backend");
+            implementation.AddLine($"typedef struct {api.CommonType.Name} {{");
             using (var indent = new Indent(indentState))
             {
-                AddLine($"{indent}// Function table;");
-                AddLine($"{indent}{tableStructName} table;");
-                AddLine($"{indent}// Context;");
-                AddLine($"{indent}{api.ContextType.Name} context;");
-                AddLine($"{indent}// Reference to the backend;");
-                AddLine($"{indent}{api.BackendType.Name} *backend;");
+                implementation.AddLine($"{indent}// Function table;");
+                implementation.AddLine($"{indent}{tableStructName} table;");
+                implementation.AddLine($"{indent}// Context;");
+                implementation.AddLine($"{indent}{api.ContextType.Name} context;");
+                implementation.AddLine($"{indent}// Reference to the backend;");
+                implementation.AddLine($"{indent}{api.BackendType.Name} *backend;");
             }
-            AddLine($"}} {api.CommonType.Name};");
-            AddLine();
+            implementation.AddLine($"}} {api.CommonType.Name};");
+            implementation.AddLine();
 
             foreach (CImplementation impl in api.Implementations)
             {
@@ -354,12 +385,12 @@ namespace FPLApiGenerator
 
                 string descriptorImplName = $"{backendName}{impl.Name}Descriptor";
 
-                AddLine($"// {implementationSeperator}");
-                AddLine("//");
-                AddLine($"// > {backendDefineName}_{implUpperName}");
-                AddLine("//");
-                AddLine($"// {implementationSeperator}");
-                AddLine();
+                implementation.AddLine($"// {implementationSeperator}");
+                implementation.AddLine("//");
+                implementation.AddLine($"// > {backendDefineName}_{implUpperName}");
+                implementation.AddLine("//");
+                implementation.AddLine($"// {implementationSeperator}");
+                implementation.AddLine();
 
                 Dictionary<CFunction, string> functionImplementationNameMap = new Dictionary<CFunction, string>();
 
@@ -371,155 +402,155 @@ namespace FPLApiGenerator
 
                     string functionImplementationName = $"{CApi.InternalFunctionPrefix}{systemName}_Backend_{impl.Name}_{functionName}";
 
-                    AddLine($"//");
-                    AddLine($"// {functionName} of the {impl.Name} backend");
-                    AddLine($"//");
-                    AddLine($"{CApi.InternalApiCall} {functionDefineName}({functionImplementationName}) {{");
+                    implementation.AddLine($"//");
+                    implementation.AddLine($"// {functionName} of the {impl.Name} backend");
+                    implementation.AddLine($"//");
+                    implementation.AddLine($"{CApi.InternalApiCall} {functionDefineName}({functionImplementationName}) {{");
                     using (var indent = new Indent(indentState))
                     {
                         if (function.ResultType == CType.VoidType)
-                            AddLine();
+                            implementation.AddLine();
                         else
                         {
                             string defaultValue = CValue.GetDefaultValue(function.ResultType);
-                            AddLine($"{indent} return {defaultValue};");
+                            implementation.AddLine($"{indent} return {defaultValue};");
                         }
                     }
-                    AddLine($"}}");
-                    AddLine();
+                    implementation.AddLine($"}}");
+                    implementation.AddLine();
 
                     functionImplementationNameMap.Add(function, functionImplementationName);
                 }
 
-                AddLine($"// Descriptor table of the {impl.Name} backend");
-                AddLine($"{CApi.GlobalVariable} {descriptorStructName} {CApi.InternalFunctionPrefix}global_{descriptorImplName} = {{");
+                implementation.AddLine($"// Descriptor table of the {impl.Name} backend");
+                implementation.AddLine($"{CApi.GlobalVariable} {descriptorStructName} {CApi.InternalFunctionPrefix}global_{descriptorImplName} = {{");
                 using (var indent1 = new Indent(indentState))
                 {
-                    AddLine($"{indent1}fplStructField({descriptorStructName}, header, {{");
+                    implementation.AddLine($"{indent1}fplStructField({descriptorStructName}, header, {{");
                     using (var indent2 = new Indent(indentState))
                     {
-                        AddLine($"{indent2}fplStructField({headerStructName}, idName, {{");
+                        implementation.AddLine($"{indent2}fplStructField({headerStructName}, idName, {{");
                         using (var indent3 = new Indent(indentState))
                         {
-                            AddLine($"{indent3}fplStructField({idNameStructName}, id, 0x{code.ToHex()}),");
-                            AddLine($"{indent3}fplStructField({idNameStructName}, name, \"{impl.Name}\"),");
+                            implementation.AddLine($"{indent3}fplStructField({idNameStructName}, id, 0x{code.ToHex()}),");
+                            implementation.AddLine($"{indent3}fplStructField({idNameStructName}, name, \"{impl.Name}\"),");
                         }
-                        AddLine($"{indent2}}}),");
-                        AddLine($"{indent2}fplStructField({headerStructName}, type, {backendTypeEnumName}_{impl.Name}),");
-                        AddLine($"{indent2}fplStructField({headerStructName}, isValid, true),");
+                        implementation.AddLine($"{indent2}}}),");
+                        implementation.AddLine($"{indent2}fplStructField({headerStructName}, type, {backendTypeEnumName}_{impl.Name}),");
+                        implementation.AddLine($"{indent2}fplStructField({headerStructName}, isValid, true),");
                     }
-                    AddLine($"{indent1}}}),");
-                    AddLine($"{indent1}fplStructField({descriptorStructName}, table, {{");
+                    implementation.AddLine($"{indent1}}}),");
+                    implementation.AddLine($"{indent1}fplStructField({descriptorStructName}, table, {{");
                     foreach (CFunction function in api.Functions)
                     {
                         string functionFieldName = functionTableFieldNamesMap[function];
                         string functionImplementationName = functionImplementationNameMap[function];
                         using (var indent2 = new Indent(indentState))
                         {
-                            AddLine($"{indent2}fplStructField({tableStructName}, {functionFieldName}, {functionImplementationName}),");
+                            implementation.AddLine($"{indent2}fplStructField({tableStructName}, {functionFieldName}, {functionImplementationName}),");
                         }
                     }
-                    AddLine($"{indent1}}}),");
+                    implementation.AddLine($"{indent1}}}),");
                 }
-                AddLine($"}};");
-                AddLine();
+                implementation.AddLine($"}};");
+                implementation.AddLine();
             }
 
-            AddLine($"#endif // {commonImplementedDefineName} && {enableDefineName}");
-            AddLine();
+            implementation.AddLine($"#endif // {commonImplementedDefineName} && {enableDefineName}");
+            implementation.AddLine();
 
             //
             // Platform States
             //
             string platformStatesDefined = $"{CApi.InternalDefinePrefix}PLATFORM_STATES_DEFINED";
-            AddLine($"// {implementationSeperator}");
-            AddLine($"//");
-            AddLine($"// > PLATFORM_STATES");
-            AddLine($"//");
-            AddLine($"// {implementationSeperator}");
-            AddLine($"#if !defined({platformStatesDefined})");
-            AddLine($"#define {platformStatesDefined}");
-            AddLine();
+            platformStates.AddLine($"// {implementationSeperator}");
+            platformStates.AddLine($"//");
+            platformStates.AddLine($"// > PLATFORM_STATES");
+            platformStates.AddLine($"//");
+            platformStates.AddLine($"// {implementationSeperator}");
+            platformStates.AddLine($"#if !defined({platformStatesDefined})");
+            platformStates.AddLine($"#define {platformStatesDefined}");
+            platformStates.AddLine();
 
-            string platformMemoryBlockStruct = $"{CApi.InternalFunctionPrefix}fpl__PlatformMemoryBlock";
-            AddLine("// Platform Memory Block (Do not change)");
-            AddLine($"typedef struct {{");
+            string platformMemoryBlockStruct = $"{CApi.InternalFunctionPrefix}PlatformMemoryBlock";
+            platformStates.AddLine("// Platform Memory Block (Do not change)");
+            platformStates.AddLine($"typedef struct {{");
             using (var indent = new Indent(indentState))
             {
-                AddLine($"{indent}{CType.SizeType} size;");
-                AddLine($"{indent}{CType.UPtrType} offset;");
+                platformStates.AddLine($"{indent}{CType.SizeType} size;");
+                platformStates.AddLine($"{indent}{CType.UPtrType} offset;");
             }
-            AddLine($"}} {platformMemoryBlockStruct};");
-            AddLine();
+            platformStates.AddLine($"}} {platformMemoryBlockStruct};");
+            platformStates.AddLine();
 
             string backendStateStruct = $"{CApi.InternalFunctionPrefix}PlatformBackendState";
-            AddLine("// Platform Backend State (Do not change)");
-            AddLine($"typedef struct {{");
+            platformStates.AddLine("// Platform Backend State (Do not change)");
+            platformStates.AddLine($"typedef struct {{");
             using (var indent = new Indent(indentState))
             {
-                AddLine($"{indent}{CType.VoidType} *mem;");
-                AddLine($"{indent}{CType.SizeType} *size;");
-                AddLine($"{indent}{CType.SizeType} maxBackendSize;");
-                AddLine($"{indent}{CType.SizeType} offsetToBackend;");
+                platformStates.AddLine($"{indent}{CType.VoidType} *mem;");
+                platformStates.AddLine($"{indent}{CType.SizeType} *size;");
+                platformStates.AddLine($"{indent}{CType.SizeType} maxBackendSize;");
+                platformStates.AddLine($"{indent}{CType.SizeType} offsetToBackend;");
             }
-            AddLine($"}} {backendStateStruct};");
-            AddLine();
+            platformStates.AddLine($"}} {backendStateStruct};");
+            platformStates.AddLine();
 
             string platformAppStateStruct = $"{CApi.InternalFunctionPrefix}PlatformAppState";
-            AddLine("// Platform Application State");
-            AddLine($"typedef struct {platformAppStateStruct} {platformAppStateStruct};");
-            AddLine($"struct {platformAppStateStruct} {{");
-            AddLine($"#if defined({enableDefineName})");
+            platformStates.AddLine("// Platform Application State");
+            platformStates.AddLine($"typedef struct {platformAppStateStruct} {platformAppStateStruct};");
+            platformStates.AddLine($"struct {platformAppStateStruct} {{");
+            platformStates.AddLine($"#if defined({enableDefineName})");
             using (var indent = new Indent(indentState))
             {
-                AddLine($"{indent}{backendStateStruct} {systemNameCamelCase};");
+                platformStates.AddLine($"{indent}{backendStateStruct} {systemNameCamelCase};");
             }
-            AddLine($"#endif");
-            AddLine($"}};");
-            AddLine();
+            platformStates.AddLine($"#endif");
+            platformStates.AddLine($"}};");
+            platformStates.AddLine();
 
             string backendMemoryBlockVariableName = $"{systemNameCamelCase}MemoryBlock";
-            AddLine($"fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSettings *initSettings) {{");
+            platformStates.AddLine($"fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSettings *initSettings) {{");
             using (var indent1 = new Indent(indentState))
             {
-                AddLine($"{indent1}//");
-                AddLine($"{indent1}// Compute platform memory");
-                AddLine($"{indent1}//");
-                AddLine();
-                AddLine($"{indent1}{platformMemoryBlockStruct} {backendMemoryBlockVariableName} = fplZeroInit;");
-                AddLine();
+                platformStates.AddLine($"{indent1}//");
+                platformStates.AddLine($"{indent1}// Compute platform memory");
+                platformStates.AddLine($"{indent1}//");
+                platformStates.AddLine();
+                platformStates.AddLine($"{indent1}{platformMemoryBlockStruct} {backendMemoryBlockVariableName} = fplZeroInit;");
+                platformStates.AddLine();
 
                 string settingsVariableName = $"{systemNameCamelCase}Settings";
                 string maxBackendSizeVariableName = $"max{backendName}Size";
                 string offsetToBackendVariableName = $"offsetTo{backendName}";
-                AddLine($"{indent1}// Compute {systemName} backend memory");
-                AddLine($"#\tif defined({enableDefineName})");
-                AddLine($"{indent1}{CType.SizeType} {maxBackendSizeVariableName} = 0;");
-                AddLine($"{indent1}{CType.SizeType} {offsetToBackendVariableName} = 0;");
-                AddLine($"{indent1}if (fplIsMaskSet(initFlags, {initFlagsValueName})) {{");
+                platformStates.AddLine($"{indent1}// Compute {systemName} backend memory");
+                platformStates.AddLine($"#\tif defined({enableDefineName})");
+                platformStates.AddLine($"{indent1}{CType.SizeType} {maxBackendSizeVariableName} = 0;");
+                platformStates.AddLine($"{indent1}{CType.SizeType} {offsetToBackendVariableName} = 0;");
+                platformStates.AddLine($"{indent1}if (fplIsMaskSet(initFlags, {initFlagsValueName})) {{");
                 using (var indent2 = new Indent(indentState))
                 {
-                    AddLine($"{indent2}{settingsStructName} {settingsVariableName} = fplZeroInit;");
-                    AddLine($"{indent2}if (initSettings != fpl_null) {{");
+                    platformStates.AddLine($"{indent2}{settingsStructName} {settingsVariableName} = fplZeroInit;");
+                    platformStates.AddLine($"{indent2}if (initSettings != fpl_null) {{");
                     using (var indent3 = new Indent(indentState))
                     {
-                        AddLine($"{indent3}{settingsVariableName} = initSettings->{systemNameCamelCase}");
+                        platformStates.AddLine($"{indent3}{settingsVariableName} = initSettings->{systemNameCamelCase}");
                     }
-                    AddLine($"{indent2}}} else {{");
+                    platformStates.AddLine($"{indent2}}} else {{");
                     using (var indent3 = new Indent(indentState))
                     {
-                        AddLine($"{indent3}fplSetDefault{settingsName}(&{settingsVariableName});");
+                        platformStates.AddLine($"{indent3}fplSetDefault{settingsName}(&{settingsVariableName});");
                     }
-                    AddLine($"{indent2}}}");
-                    AddLine($"{indent2}fpl__PushPlatformMemory(${backendMemoryBlockVariableName}, {maxBackendSizeVariableName}, 16, 0);");
-                    AddLine($"{indent2}{offsetToBackendVariableName} = 0;");
+                    platformStates.AddLine($"{indent2}}}");
+                    platformStates.AddLine($"{indent2}fpl__PushPlatformMemory(${backendMemoryBlockVariableName}, {maxBackendSizeVariableName}, 16, 0);");
+                    platformStates.AddLine($"{indent2}{offsetToBackendVariableName} = 0;");
                 }
-                AddLine($"{indent1}}}");
-                AddLine($"#{indent1}endif // {enableDefineName}");
+                platformStates.AddLine($"{indent1}}}");
+                platformStates.AddLine($"#{indent1}endif // {enableDefineName}");
             }
-            AddLine($"}}");
+            platformStates.AddLine($"}}");
 
-            AddLine($"#endif // {platformStatesDefined}");
+            platformStates.AddLine($"#endif // {platformStatesDefined}");
         }
 
         void GenerateFixedApi(CApi api)

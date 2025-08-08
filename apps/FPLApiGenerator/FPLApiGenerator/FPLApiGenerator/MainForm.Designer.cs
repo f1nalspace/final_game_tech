@@ -38,30 +38,43 @@
             label2 = new System.Windows.Forms.Label();
             groupBox2 = new System.Windows.Forms.GroupBox();
             splitContainer1 = new System.Windows.Forms.SplitContainer();
-            cmsFunctions = new System.Windows.Forms.ContextMenuStrip(components);
-            tsmiAddFunction = new System.Windows.Forms.ToolStripMenuItem();
-            rtbOutput = new System.Windows.Forms.RichTextBox();
             splitContainer2 = new System.Windows.Forms.SplitContainer();
             groupBox3 = new System.Windows.Forms.GroupBox();
             lvFunctions = new System.Windows.Forms.ListView();
             columnHeader1 = new System.Windows.Forms.ColumnHeader();
             columnHeader2 = new System.Windows.Forms.ColumnHeader();
             columnHeader3 = new System.Windows.Forms.ColumnHeader();
+            cmsFunctions = new System.Windows.Forms.ContextMenuStrip(components);
+            tsmiAddFunction = new System.Windows.Forms.ToolStripMenuItem();
             groupBox4 = new System.Windows.Forms.GroupBox();
             lbImplementations = new System.Windows.Forms.ListBox();
+            tabControl1 = new System.Windows.Forms.TabControl();
+            tabPage1 = new System.Windows.Forms.TabPage();
+            rtbPublicAPI = new System.Windows.Forms.RichTextBox();
+            tabPage2 = new System.Windows.Forms.TabPage();
+            rtbPrivateAPI = new System.Windows.Forms.RichTextBox();
+            tabPage3 = new System.Windows.Forms.TabPage();
+            rtbImplementation = new System.Windows.Forms.RichTextBox();
+            tabPage4 = new System.Windows.Forms.TabPage();
+            rtbDefines = new System.Windows.Forms.RichTextBox();
             groupBox1.SuspendLayout();
             groupBox2.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)splitContainer1).BeginInit();
             splitContainer1.Panel1.SuspendLayout();
             splitContainer1.Panel2.SuspendLayout();
             splitContainer1.SuspendLayout();
-            cmsFunctions.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)splitContainer2).BeginInit();
             splitContainer2.Panel1.SuspendLayout();
             splitContainer2.Panel2.SuspendLayout();
             splitContainer2.SuspendLayout();
             groupBox3.SuspendLayout();
+            cmsFunctions.SuspendLayout();
             groupBox4.SuspendLayout();
+            tabControl1.SuspendLayout();
+            tabPage1.SuspendLayout();
+            tabPage2.SuspendLayout();
+            tabPage3.SuspendLayout();
+            tabPage4.SuspendLayout();
             SuspendLayout();
             // 
             // groupBox1
@@ -173,35 +186,10 @@
             // 
             // splitContainer1.Panel2
             // 
-            splitContainer1.Panel2.Controls.Add(rtbOutput);
+            splitContainer1.Panel2.Controls.Add(tabControl1);
             splitContainer1.Size = new System.Drawing.Size(1382, 786);
             splitContainer1.SplitterDistance = 459;
             splitContainer1.TabIndex = 1;
-            // 
-            // cmsFunctions
-            // 
-            cmsFunctions.Items.AddRange(new System.Windows.Forms.ToolStripItem[] { tsmiAddFunction });
-            cmsFunctions.Name = "cmsFunctions";
-            cmsFunctions.Size = new System.Drawing.Size(154, 26);
-            // 
-            // tsmiAddFunction
-            // 
-            tsmiAddFunction.Name = "tsmiAddFunction";
-            tsmiAddFunction.Size = new System.Drawing.Size(153, 22);
-            tsmiAddFunction.Text = "Add function...";
-            // 
-            // rtbOutput
-            // 
-            rtbOutput.Dock = System.Windows.Forms.DockStyle.Fill;
-            rtbOutput.Font = new System.Drawing.Font("Consolas", 9.75F);
-            rtbOutput.Location = new System.Drawing.Point(0, 0);
-            rtbOutput.Name = "rtbOutput";
-            rtbOutput.ReadOnly = true;
-            rtbOutput.ScrollBars = System.Windows.Forms.RichTextBoxScrollBars.Vertical;
-            rtbOutput.Size = new System.Drawing.Size(919, 786);
-            rtbOutput.TabIndex = 1;
-            rtbOutput.Text = "";
-            rtbOutput.WordWrap = false;
             // 
             // splitContainer2
             // 
@@ -264,6 +252,18 @@
             columnHeader3.Text = "ResultType";
             columnHeader3.Width = 100;
             // 
+            // cmsFunctions
+            // 
+            cmsFunctions.Items.AddRange(new System.Windows.Forms.ToolStripItem[] { tsmiAddFunction });
+            cmsFunctions.Name = "cmsFunctions";
+            cmsFunctions.Size = new System.Drawing.Size(225, 26);
+            // 
+            // tsmiAddFunction
+            // 
+            tsmiAddFunction.Name = "tsmiAddFunction";
+            tsmiAddFunction.Size = new System.Drawing.Size(224, 22);
+            tsmiAddFunction.Text = "AppendPublicAPI function...";
+            // 
             // groupBox4
             // 
             groupBox4.Controls.Add(lbImplementations);
@@ -284,6 +284,115 @@
             lbImplementations.Size = new System.Drawing.Size(453, 367);
             lbImplementations.TabIndex = 0;
             // 
+            // tabControl1
+            // 
+            tabControl1.Controls.Add(tabPage4);
+            tabControl1.Controls.Add(tabPage1);
+            tabControl1.Controls.Add(tabPage2);
+            tabControl1.Controls.Add(tabPage3);
+            tabControl1.Dock = System.Windows.Forms.DockStyle.Fill;
+            tabControl1.Location = new System.Drawing.Point(0, 0);
+            tabControl1.Name = "tabControl1";
+            tabControl1.SelectedIndex = 0;
+            tabControl1.Size = new System.Drawing.Size(919, 786);
+            tabControl1.TabIndex = 2;
+            // 
+            // tabPage1
+            // 
+            tabPage1.Controls.Add(rtbPublicAPI);
+            tabPage1.Location = new System.Drawing.Point(4, 24);
+            tabPage1.Name = "tabPage1";
+            tabPage1.Padding = new System.Windows.Forms.Padding(3);
+            tabPage1.Size = new System.Drawing.Size(911, 758);
+            tabPage1.TabIndex = 0;
+            tabPage1.Text = "Public API";
+            tabPage1.UseVisualStyleBackColor = true;
+            // 
+            // rtbPublicAPI
+            // 
+            rtbPublicAPI.Dock = System.Windows.Forms.DockStyle.Fill;
+            rtbPublicAPI.Font = new System.Drawing.Font("Consolas", 9.75F);
+            rtbPublicAPI.Location = new System.Drawing.Point(3, 3);
+            rtbPublicAPI.Name = "rtbPublicAPI";
+            rtbPublicAPI.ReadOnly = true;
+            rtbPublicAPI.ScrollBars = System.Windows.Forms.RichTextBoxScrollBars.Vertical;
+            rtbPublicAPI.Size = new System.Drawing.Size(905, 752);
+            rtbPublicAPI.TabIndex = 2;
+            rtbPublicAPI.Text = "";
+            rtbPublicAPI.WordWrap = false;
+            // 
+            // tabPage2
+            // 
+            tabPage2.Controls.Add(rtbPrivateAPI);
+            tabPage2.Location = new System.Drawing.Point(4, 24);
+            tabPage2.Name = "tabPage2";
+            tabPage2.Padding = new System.Windows.Forms.Padding(3);
+            tabPage2.Size = new System.Drawing.Size(911, 758);
+            tabPage2.TabIndex = 1;
+            tabPage2.Text = "Private API";
+            tabPage2.UseVisualStyleBackColor = true;
+            // 
+            // rtbPrivateAPI
+            // 
+            rtbPrivateAPI.Dock = System.Windows.Forms.DockStyle.Fill;
+            rtbPrivateAPI.Font = new System.Drawing.Font("Consolas", 9.75F);
+            rtbPrivateAPI.Location = new System.Drawing.Point(3, 3);
+            rtbPrivateAPI.Name = "rtbPrivateAPI";
+            rtbPrivateAPI.ReadOnly = true;
+            rtbPrivateAPI.ScrollBars = System.Windows.Forms.RichTextBoxScrollBars.Vertical;
+            rtbPrivateAPI.Size = new System.Drawing.Size(905, 752);
+            rtbPrivateAPI.TabIndex = 3;
+            rtbPrivateAPI.Text = "";
+            rtbPrivateAPI.WordWrap = false;
+            // 
+            // tabPage3
+            // 
+            tabPage3.Controls.Add(rtbImplementation);
+            tabPage3.Location = new System.Drawing.Point(4, 24);
+            tabPage3.Name = "tabPage3";
+            tabPage3.Padding = new System.Windows.Forms.Padding(3);
+            tabPage3.Size = new System.Drawing.Size(911, 758);
+            tabPage3.TabIndex = 2;
+            tabPage3.Text = "Implementation";
+            tabPage3.UseVisualStyleBackColor = true;
+            // 
+            // rtbImplementation
+            // 
+            rtbImplementation.Dock = System.Windows.Forms.DockStyle.Fill;
+            rtbImplementation.Font = new System.Drawing.Font("Consolas", 9.75F);
+            rtbImplementation.Location = new System.Drawing.Point(3, 3);
+            rtbImplementation.Name = "rtbImplementation";
+            rtbImplementation.ReadOnly = true;
+            rtbImplementation.ScrollBars = System.Windows.Forms.RichTextBoxScrollBars.Vertical;
+            rtbImplementation.Size = new System.Drawing.Size(905, 752);
+            rtbImplementation.TabIndex = 3;
+            rtbImplementation.Text = "";
+            rtbImplementation.WordWrap = false;
+            // 
+            // tabPage4
+            // 
+            tabPage4.Controls.Add(rtbDefines);
+            tabPage4.Location = new System.Drawing.Point(4, 24);
+            tabPage4.Name = "tabPage4";
+            tabPage4.Padding = new System.Windows.Forms.Padding(3);
+            tabPage4.Size = new System.Drawing.Size(911, 758);
+            tabPage4.TabIndex = 3;
+            tabPage4.Text = "Defines";
+            tabPage4.UseVisualStyleBackColor = true;
+            // 
+            // rtbDefines
+            // 
+            rtbDefines.Dock = System.Windows.Forms.DockStyle.Fill;
+            rtbDefines.Font = new System.Drawing.Font("Consolas", 9.75F);
+            rtbDefines.Location = new System.Drawing.Point(3, 3);
+            rtbDefines.Name = "rtbDefines";
+            rtbDefines.ReadOnly = true;
+            rtbDefines.ScrollBars = System.Windows.Forms.RichTextBoxScrollBars.Vertical;
+            rtbDefines.Size = new System.Drawing.Size(905, 752);
+            rtbDefines.TabIndex = 3;
+            rtbDefines.Text = "";
+            rtbDefines.WordWrap = false;
+            // 
             // MainForm
             // 
             AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
@@ -302,13 +411,18 @@
             splitContainer1.Panel2.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)splitContainer1).EndInit();
             splitContainer1.ResumeLayout(false);
-            cmsFunctions.ResumeLayout(false);
             splitContainer2.Panel1.ResumeLayout(false);
             splitContainer2.Panel2.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)splitContainer2).EndInit();
             splitContainer2.ResumeLayout(false);
             groupBox3.ResumeLayout(false);
+            cmsFunctions.ResumeLayout(false);
             groupBox4.ResumeLayout(false);
+            tabControl1.ResumeLayout(false);
+            tabPage1.ResumeLayout(false);
+            tabPage2.ResumeLayout(false);
+            tabPage3.ResumeLayout(false);
+            tabPage4.ResumeLayout(false);
             ResumeLayout(false);
         }
 
@@ -321,7 +435,6 @@
         private System.Windows.Forms.Button btnGenerate;
         private System.Windows.Forms.GroupBox groupBox2;
         private System.Windows.Forms.SplitContainer splitContainer1;
-        private System.Windows.Forms.RichTextBox rtbOutput;
         private System.Windows.Forms.ContextMenuStrip cmsFunctions;
         private System.Windows.Forms.ToolStripMenuItem tsmiAddFunction;
         private System.Windows.Forms.Label label3;
@@ -334,5 +447,14 @@
         private System.Windows.Forms.ColumnHeader columnHeader3;
         private System.Windows.Forms.GroupBox groupBox4;
         private System.Windows.Forms.ListBox lbImplementations;
+        private System.Windows.Forms.TabControl tabControl1;
+        private System.Windows.Forms.TabPage tabPage1;
+        private System.Windows.Forms.TabPage tabPage2;
+        private System.Windows.Forms.TabPage tabPage3;
+        private System.Windows.Forms.RichTextBox rtbPublicAPI;
+        private System.Windows.Forms.RichTextBox rtbPrivateAPI;
+        private System.Windows.Forms.RichTextBox rtbImplementation;
+        private System.Windows.Forms.TabPage tabPage4;
+        private System.Windows.Forms.RichTextBox rtbDefines;
     }
 }

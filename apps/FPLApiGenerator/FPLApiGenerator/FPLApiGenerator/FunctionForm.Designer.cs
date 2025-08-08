@@ -195,7 +195,7 @@
             btnAddArgument.Name = "btnAddArgument";
             btnAddArgument.Size = new System.Drawing.Size(75, 23);
             btnAddArgument.TabIndex = 5;
-            btnAddArgument.Text = "Add";
+            btnAddArgument.Text = "AppendPublicAPI";
             btnAddArgument.UseVisualStyleBackColor = true;
             // 
             // tbArgumentName
