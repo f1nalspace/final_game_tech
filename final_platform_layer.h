@@ -3607,7 +3607,7 @@ fpl_common_api fplDateTimeCreationResult fplDateTimeCreate(const uint16_t year, 
 * @struct fplDateTimeResult
 * @brief Stores the components for a date and time, that may be computed from a date time stamp.
 */
-typedef struct {
+typedef struct fplDateTimeResult {
 	// Year in range of 0-9999
 	uint16_t year;
 	// Millisecond in range of 0-999
