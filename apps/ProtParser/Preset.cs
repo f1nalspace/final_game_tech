@@ -9,8 +9,6 @@ namespace ProtParser
     {
         private readonly Dictionary<string, string> _properties = new Dictionary<string, string>();
 
-        private readonly Dictionary<string, string> _procedures = new Dictionary<string, string>();
-
         private readonly List<string> _sources = new List<string>();
         public IEnumerable<string> Sources
         {
@@ -37,21 +35,6 @@ namespace ProtParser
                 _properties[name] = value;
         }
 
-        public string GetProcedure(string name, string def = "")
-        {
-            if (!_procedures.TryGetValue(name, out string value))
-                return def;
-            return value;
-        }
-
-        public void SetProcedure(string name, string value)
-        {
-            if (!_procedures.ContainsKey(name))
-                _procedures.Add(name, value);
-            else
-                _procedures[name] = value;
-        }
-
         public void AddSource(string source)
         {
             _sources.Add(source);
@@ -62,7 +45,6 @@ namespace ProtParser
             None,
             Settings,
             Sources,
-            Procedures,
         }
 
         public static Preset Load(string filename)
@@ -81,9 +63,6 @@ namespace ProtParser
                         {
                             case "settings":
                                 section = SectionType.Settings;
-                                break;
-                            case "procedures":
-                                section = SectionType.Procedures;
                                 break;
                             case "sources":
                                 section = SectionType.Sources;
@@ -109,18 +88,6 @@ namespace ProtParser
                                 }
                                 break;
 
-                            case SectionType.Procedures:
-                            {
-                                int equalPos = line.IndexOf("=");
-                                if (equalPos > -1)
-                                {
-                                    string name = line.Substring(0, equalPos);
-                                    string value = line.Substring(equalPos + 1);
-                                    result.SetProcedure(name, value);
-                                }
-                            }
-                            break;
-
                             case SectionType.Sources:
                                 {
                                     result.AddSource(line);
@@ -144,12 +111,6 @@ namespace ProtParser
 
                 writer.WriteLine();
 
-                writer.WriteLine("[Procedures]");
-                foreach (var procedure in _procedures.OrderBy(p => p.Key))
-                    writer.WriteLine($"{procedure.Key}={procedure.Value}");
-
-                writer.WriteLine();
- 
                 writer.WriteLine("[Sources]");
                 foreach (var source in _sources)
                     writer.WriteLine(source);

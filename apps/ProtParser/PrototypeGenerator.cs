@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Reflection.PortableExecutable;
 using System.Text;
 
 namespace ProtParser
@@ -75,10 +76,28 @@ namespace ProtParser
             string loadLibFieldPrefix = preset.GetProperty("LoadLibFieldPrefix");
             string excludedSymbolsText = preset.GetProperty("ExcludedSymbols");
             string procNamePrefix = preset.GetProperty("ProcNamePrefix");
+            string dllFilePath = preset.GetProperty("DLLFilePath");
 
             HashSet<string> excludedIdents = new HashSet<string>();
             foreach (string excludedSymbol in excludedSymbolsText.Split(new char[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries))
                 excludedIdents.Add(excludedSymbol);
+
+            Dictionary<string, string> procedureMap = new Dictionary<string, string>();
+
+            if (!string.IsNullOrWhiteSpace(dllFilePath))
+            {
+                PeNet.PeFile peHeader = new PeNet.PeFile(dllFilePath);
+                PeNet.Header.Pe.ExportFunction[] functions = peHeader.ExportedFunctions;
+                foreach (var func in functions)
+                {
+                    string targetName = func.Name;
+                    string sourceName = func.Name;
+                    int atPos = sourceName.IndexOf('@');
+                    if (atPos > -1)
+                        sourceName = sourceName.Substring(0, atPos);
+                    procedureMap.Add(sourceName, targetName);
+                }
+            }
 
             try
             {
@@ -264,7 +283,10 @@ namespace ProtParser
                         string typeName = funcToTypeNameMap[func];
                         string typePostfix = string.Empty;
                         string defaultProcName = $"{procNamePrefix}{funcName}";
-                        string procName = preset.GetProcedure(funcName, defaultProcName);
+
+                        if (!procedureMap.TryGetValue(defaultProcName, out string procName))
+                            procName = defaultProcName;
+
                         s.AppendLine($"{loadMacro}({loadLibHandle}, {loadLibName}, {loadLibFieldPrefix}{funcName}, {typeName}, \"{procName}\");");
                     }
                 }

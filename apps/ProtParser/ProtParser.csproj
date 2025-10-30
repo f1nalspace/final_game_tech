@@ -5,4 +5,7 @@
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="PeNet" Version="5.1.0" />
+  </ItemGroup>
 </Project>
