@@ -78,7 +78,7 @@ namespace ProtParser
             preset.SetProperty("LoadLibFieldPrefix", tbLoadLibFieldPrefix.Text);
             preset.SetProperty("ExcludedSymbols", tbExcludedSymbols.Text);
             preset.SetProperty("ProcNamePrefix", tbProcNamePrefix.Text);
-            preset.SetProperty("ProcNameType", cbProcNameType.Text);
+            preset.SetProperty("DLLFilePath", tbDLLFilePath.Text);
             foreach (var line in tbSource.Lines)
                 preset.AddSource(line);
         }
@@ -92,7 +92,7 @@ namespace ProtParser
             tbLoadLibFieldPrefix.Text = string.Empty;
             tbExcludedSymbols.Text = string.Empty;
             tbProcNamePrefix.Text = string.Empty;
-            cbProcNameType.SelectedIndex = 0;
+            tbDLLFilePath.Text = string.Empty;
             tbSource.Clear();
 
             _activeFilename = null;
@@ -122,9 +122,7 @@ namespace ProtParser
             tbLoadLibFieldPrefix.Text = preset.GetProperty("LoadLibFieldPrefix");
             tbExcludedSymbols.Text = preset.GetProperty("ExcludedSymbols");
             tbProcNamePrefix.Text = preset.GetProperty("ProcNamePrefix");
-
-            string typeName = preset.GetProperty("ProcNameType");
-            cbProcNameType.SelectedIndex = !string.IsNullOrEmpty(typeName) ? cbProcNameType.Items.IndexOf(typeName) : 0;
+            tbDLLFilePath.Text = preset.GetProperty("DLLFilePath");
 
             tbSource.Clear();
             string sources = string.Empty;
@@ -139,9 +137,9 @@ namespace ProtParser
 
         private void fileOpenItem_Click(object sender, EventArgs e)
         {
-            if (openFileDialog.ShowDialog() == DialogResult.OK)
+            if (dlgOpenPreset.ShowDialog() == DialogResult.OK)
             {
-                string filename = openFileDialog.FileName;
+                string filename = dlgOpenPreset.FileName;
                 LoadPreset(filename);
             }
         }
@@ -151,11 +149,22 @@ namespace ProtParser
             NewPreset();
         }
 
+        private void fileSaveItem_Click(object sender, EventArgs e)
+        {
+            if (string.IsNullOrWhiteSpace(_activeFilename))
+            {
+                if (dlgSavePreset.ShowDialog() == DialogResult.OK)
+                    SavePreset(dlgSavePreset.FileName);
+            } 
+            else
+                SavePreset(_activeFilename);
+        }
+
         private void fileSaveAsItem_Click(object sender, EventArgs e)
         {
-            if (saveFileDialog.ShowDialog() == DialogResult.OK)
+            if (dlgSavePreset.ShowDialog() == DialogResult.OK)
             {
-                SavePreset(saveFileDialog.FileName);
+                SavePreset(dlgSavePreset.FileName);
             }
         }
 
@@ -172,6 +181,13 @@ namespace ProtParser
         private void cbProcNameType_SelectedIndexChanged(object sender, EventArgs e)
         {
             UpdateTarget();
+        }
+
+        private void btnSelectDLLFilePath_Click(object sender, EventArgs e)
+        {
+            if (dlgOpenDLL.ShowDialog() != DialogResult.OK)
+                return;
+            tbDLLFilePath.Text = dlgOpenDLL.FileName;
         }
     }
 }

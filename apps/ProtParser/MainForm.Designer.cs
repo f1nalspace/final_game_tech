@@ -35,6 +35,10 @@
             this.tbTarget = new System.Windows.Forms.RichTextBox();
             this.panConfiguration = new System.Windows.Forms.Panel();
             this.gbConfiguration = new System.Windows.Forms.GroupBox();
+            this.tbProcNamePrefix = new System.Windows.Forms.TextBox();
+            this.label5 = new System.Windows.Forms.Label();
+            this.label4 = new System.Windows.Forms.Label();
+            this.tbExcludedSymbols = new System.Windows.Forms.TextBox();
             this.tbLoadLibName = new System.Windows.Forms.TextBox();
             this.tbLoadLibFieldPrefix = new System.Windows.Forms.TextBox();
             this.label3 = new System.Windows.Forms.Label();
@@ -51,14 +55,13 @@
             this.fileSaveAsItem = new System.Windows.Forms.ToolStripMenuItem();
             this.toolStripMenuItem1 = new System.Windows.Forms.ToolStripSeparator();
             this.fileExitItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.openFileDialog = new System.Windows.Forms.OpenFileDialog();
-            this.saveFileDialog = new System.Windows.Forms.SaveFileDialog();
-            this.label4 = new System.Windows.Forms.Label();
-            this.tbExcludedSymbols = new System.Windows.Forms.TextBox();
-            this.label5 = new System.Windows.Forms.Label();
-            this.tbProcNamePrefix = new System.Windows.Forms.TextBox();
-            this.cbProcNameType = new System.Windows.Forms.ComboBox();
+            this.dlgOpenPreset = new System.Windows.Forms.OpenFileDialog();
+            this.dlgSavePreset = new System.Windows.Forms.SaveFileDialog();
             this.toolTip1 = new System.Windows.Forms.ToolTip(this.components);
+            this.tbDLLFilePath = new System.Windows.Forms.TextBox();
+            this.label6 = new System.Windows.Forms.Label();
+            this.btnSelectDLLFilePath = new System.Windows.Forms.Button();
+            this.dlgOpenDLL = new System.Windows.Forms.OpenFileDialog();
             this.panConfiguration.SuspendLayout();
             this.gbConfiguration.SuspendLayout();
             this.menuStrip1.SuspendLayout();
@@ -68,11 +71,9 @@
             // 
             this.tbSource.Dock = System.Windows.Forms.DockStyle.Left;
             this.tbSource.Font = new System.Drawing.Font("Consolas", 9.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.tbSource.Location = new System.Drawing.Point(0, 182);
-            this.tbSource.Multiline = true;
+            this.tbSource.Location = new System.Drawing.Point(0, 214);
             this.tbSource.Name = "tbSource";
-            this.tbSource.ScrollBars = System.Windows.Forms.RichTextBoxScrollBars.Both;
-            this.tbSource.Size = new System.Drawing.Size(506, 480);
+            this.tbSource.Size = new System.Drawing.Size(506, 448);
             this.tbSource.TabIndex = 0;
             this.tbSource.Text = resources.GetString("tbSource.Text");
             this.tbSource.WordWrap = false;
@@ -80,9 +81,9 @@
             // 
             // splitter1
             // 
-            this.splitter1.Location = new System.Drawing.Point(506, 182);
+            this.splitter1.Location = new System.Drawing.Point(506, 214);
             this.splitter1.Name = "splitter1";
-            this.splitter1.Size = new System.Drawing.Size(3, 480);
+            this.splitter1.Size = new System.Drawing.Size(3, 448);
             this.splitter1.TabIndex = 1;
             this.splitter1.TabStop = false;
             // 
@@ -90,13 +91,12 @@
             // 
             this.tbTarget.Dock = System.Windows.Forms.DockStyle.Fill;
             this.tbTarget.Font = new System.Drawing.Font("Consolas", 9.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.tbTarget.Location = new System.Drawing.Point(509, 182);
-            this.tbTarget.Multiline = true;
+            this.tbTarget.Location = new System.Drawing.Point(509, 214);
             this.tbTarget.Name = "tbTarget";
             this.tbTarget.ReadOnly = true;
-            this.tbTarget.ScrollBars = System.Windows.Forms.RichTextBoxScrollBars.Both;
-            this.tbTarget.Size = new System.Drawing.Size(806, 480);
+            this.tbTarget.Size = new System.Drawing.Size(806, 448);
             this.tbTarget.TabIndex = 2;
+            this.tbTarget.Text = "";
             this.tbTarget.WordWrap = false;
             // 
             // panConfiguration
@@ -105,12 +105,14 @@
             this.panConfiguration.Dock = System.Windows.Forms.DockStyle.Top;
             this.panConfiguration.Location = new System.Drawing.Point(0, 24);
             this.panConfiguration.Name = "panConfiguration";
-            this.panConfiguration.Size = new System.Drawing.Size(1315, 158);
+            this.panConfiguration.Size = new System.Drawing.Size(1315, 190);
             this.panConfiguration.TabIndex = 3;
             // 
             // gbConfiguration
             // 
-            this.gbConfiguration.Controls.Add(this.cbProcNameType);
+            this.gbConfiguration.Controls.Add(this.btnSelectDLLFilePath);
+            this.gbConfiguration.Controls.Add(this.tbDLLFilePath);
+            this.gbConfiguration.Controls.Add(this.label6);
             this.gbConfiguration.Controls.Add(this.tbProcNamePrefix);
             this.gbConfiguration.Controls.Add(this.label5);
             this.gbConfiguration.Controls.Add(this.label4);
@@ -126,10 +128,50 @@
             this.gbConfiguration.Dock = System.Windows.Forms.DockStyle.Fill;
             this.gbConfiguration.Location = new System.Drawing.Point(0, 0);
             this.gbConfiguration.Name = "gbConfiguration";
-            this.gbConfiguration.Size = new System.Drawing.Size(1315, 158);
+            this.gbConfiguration.Size = new System.Drawing.Size(1315, 190);
             this.gbConfiguration.TabIndex = 4;
             this.gbConfiguration.TabStop = false;
             this.gbConfiguration.Text = "Configuration:";
+            // 
+            // tbProcNamePrefix
+            // 
+            this.tbProcNamePrefix.Font = new System.Drawing.Font("Courier New", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.tbProcNamePrefix.Location = new System.Drawing.Point(106, 122);
+            this.tbProcNamePrefix.Name = "tbProcNamePrefix";
+            this.tbProcNamePrefix.Size = new System.Drawing.Size(577, 20);
+            this.tbProcNamePrefix.TabIndex = 11;
+            this.toolTip1.SetToolTip(this.tbProcNamePrefix, "Prefix of the procedure");
+            this.tbProcNamePrefix.WordWrap = false;
+            this.tbProcNamePrefix.TextChanged += new System.EventHandler(this.tbProcNamePrefix_TextChanged);
+            // 
+            // label5
+            // 
+            this.label5.AutoSize = true;
+            this.label5.Location = new System.Drawing.Point(37, 125);
+            this.label5.Name = "label5";
+            this.label5.Size = new System.Drawing.Size(63, 13);
+            this.label5.TabIndex = 10;
+            this.label5.Text = "Proc Name:";
+            // 
+            // label4
+            // 
+            this.label4.AutoSize = true;
+            this.label4.Location = new System.Drawing.Point(4, 100);
+            this.label4.Name = "label4";
+            this.label4.Size = new System.Drawing.Size(96, 13);
+            this.label4.TabIndex = 9;
+            this.label4.Text = "Excluded Symbols:";
+            // 
+            // tbExcludedSymbols
+            // 
+            this.tbExcludedSymbols.Font = new System.Drawing.Font("Courier New", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.tbExcludedSymbols.Location = new System.Drawing.Point(106, 97);
+            this.tbExcludedSymbols.Name = "tbExcludedSymbols";
+            this.tbExcludedSymbols.Size = new System.Drawing.Size(577, 20);
+            this.tbExcludedSymbols.TabIndex = 8;
+            this.toolTip1.SetToolTip(this.tbExcludedSymbols, "Comma seperated list of excluded symbols");
+            this.tbExcludedSymbols.WordWrap = false;
+            this.tbExcludedSymbols.TextChanged += new System.EventHandler(this.tbExcludedSymbols_TextChanged);
             // 
             // tbLoadLibName
             // 
@@ -259,8 +301,9 @@
             // 
             this.fileSave.Name = "fileSave";
             this.fileSave.ShortcutKeys = ((System.Windows.Forms.Keys)((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.S)));
-            this.fileSave.Size = new System.Drawing.Size(138, 22);
+            this.fileSave.Size = new System.Drawing.Size(180, 22);
             this.fileSave.Text = "Save";
+            this.fileSave.Click += new System.EventHandler(this.fileSaveItem_Click);
             // 
             // fileSaveAsItem
             // 
@@ -281,71 +324,49 @@
             this.fileExitItem.Text = "Exit";
             this.fileExitItem.Click += new System.EventHandler(this.fileExitItem_Click);
             // 
-            // openFileDialog
+            // dlgOpenPreset
             // 
-            this.openFileDialog.DefaultExt = "txt";
-            this.openFileDialog.Filter = "Text files|*.txt";
+            this.dlgOpenPreset.DefaultExt = "txt";
+            this.dlgOpenPreset.Filter = "Text files|*.txt";
             // 
-            // saveFileDialog
+            // dlgSavePreset
             // 
-            this.saveFileDialog.DefaultExt = "txt";
-            this.saveFileDialog.Filter = "Text files|*.txt";
+            this.dlgSavePreset.DefaultExt = "txt";
+            this.dlgSavePreset.Filter = "Text files|*.txt";
             // 
-            // label4
+            // tbDLLFilePath
             // 
-            this.label4.AutoSize = true;
-            this.label4.Location = new System.Drawing.Point(4, 100);
-            this.label4.Name = "label4";
-            this.label4.Size = new System.Drawing.Size(96, 13);
-            this.label4.TabIndex = 9;
-            this.label4.Text = "Excluded Symbols:";
+            this.tbDLLFilePath.Font = new System.Drawing.Font("Courier New", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.tbDLLFilePath.Location = new System.Drawing.Point(106, 148);
+            this.tbDLLFilePath.Name = "tbDLLFilePath";
+            this.tbDLLFilePath.Size = new System.Drawing.Size(577, 20);
+            this.tbDLLFilePath.TabIndex = 13;
+            this.toolTip1.SetToolTip(this.tbDLLFilePath, "File Path of the DLL");
+            this.tbDLLFilePath.WordWrap = false;
             // 
-            // tbExcludedSymbols
+            // label6
             // 
-            this.tbExcludedSymbols.Font = new System.Drawing.Font("Courier New", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.tbExcludedSymbols.Location = new System.Drawing.Point(106, 97);
-            this.tbExcludedSymbols.Name = "tbExcludedSymbols";
-            this.tbExcludedSymbols.Size = new System.Drawing.Size(577, 20);
-            this.tbExcludedSymbols.TabIndex = 8;
-            this.toolTip1.SetToolTip(this.tbExcludedSymbols, "Comma seperated list of excluded symbols");
-            this.tbExcludedSymbols.WordWrap = false;
-            this.tbExcludedSymbols.TextChanged += new System.EventHandler(this.tbExcludedSymbols_TextChanged);
+            this.label6.AutoSize = true;
+            this.label6.Location = new System.Drawing.Point(51, 151);
+            this.label6.Name = "label6";
+            this.label6.Size = new System.Drawing.Size(49, 13);
+            this.label6.TabIndex = 12;
+            this.label6.Text = "DLL File:";
             // 
-            // label5
+            // btnSelectDLLFilePath
             // 
-            this.label5.AutoSize = true;
-            this.label5.Location = new System.Drawing.Point(37, 125);
-            this.label5.Name = "label5";
-            this.label5.Size = new System.Drawing.Size(63, 13);
-            this.label5.TabIndex = 10;
-            this.label5.Text = "Proc Name:";
+            this.btnSelectDLLFilePath.Location = new System.Drawing.Point(689, 146);
+            this.btnSelectDLLFilePath.Name = "btnSelectDLLFilePath";
+            this.btnSelectDLLFilePath.Size = new System.Drawing.Size(29, 23);
+            this.btnSelectDLLFilePath.TabIndex = 14;
+            this.btnSelectDLLFilePath.Text = "...";
+            this.btnSelectDLLFilePath.UseVisualStyleBackColor = true;
+            this.btnSelectDLLFilePath.Click += new System.EventHandler(this.btnSelectDLLFilePath_Click);
             // 
-            // tbProcNamePrefix
+            // dlgOpenDLL
             // 
-            this.tbProcNamePrefix.Font = new System.Drawing.Font("Courier New", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.tbProcNamePrefix.Location = new System.Drawing.Point(106, 122);
-            this.tbProcNamePrefix.Name = "tbProcNamePrefix";
-            this.tbProcNamePrefix.Size = new System.Drawing.Size(320, 20);
-            this.tbProcNamePrefix.TabIndex = 11;
-            this.tbProcNamePrefix.Text = "_";
-            this.toolTip1.SetToolTip(this.tbProcNamePrefix, "Prefix of the procedure");
-            this.tbProcNamePrefix.WordWrap = false;
-            this.tbProcNamePrefix.TextChanged += new System.EventHandler(this.tbProcNamePrefix_TextChanged);
-            // 
-            // cbProcNameType
-            // 
-            this.cbProcNameType.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
-            this.cbProcNameType.FormattingEnabled = true;
-            this.cbProcNameType.Items.AddRange(new object[] {
-            "Prefix only",
-            "Prefix + X86 argument size",
-            "Prefix + X64 argument size"});
-            this.cbProcNameType.Location = new System.Drawing.Point(432, 123);
-            this.cbProcNameType.Name = "cbProcNameType";
-            this.cbProcNameType.Size = new System.Drawing.Size(251, 21);
-            this.cbProcNameType.TabIndex = 12;
-            this.toolTip1.SetToolTip(this.cbProcNameType, "Type of the procedure name");
-            this.cbProcNameType.SelectedIndexChanged += new System.EventHandler(this.cbProcNameType_SelectedIndexChanged);
+            this.dlgOpenDLL.DefaultExt = "txt";
+            this.dlgOpenDLL.Filter = "DLL files|*.dll";
             // 
             // MainForm
             // 
@@ -393,15 +414,18 @@
         private System.Windows.Forms.ToolStripMenuItem fileSaveAsItem;
         private System.Windows.Forms.ToolStripSeparator toolStripMenuItem1;
         private System.Windows.Forms.ToolStripMenuItem fileExitItem;
-        private System.Windows.Forms.OpenFileDialog openFileDialog;
-        private System.Windows.Forms.SaveFileDialog saveFileDialog;
+        private System.Windows.Forms.OpenFileDialog dlgOpenPreset;
+        private System.Windows.Forms.SaveFileDialog dlgSavePreset;
         private System.Windows.Forms.ToolStripMenuItem fileSave;
         private System.Windows.Forms.Label label4;
         private System.Windows.Forms.TextBox tbExcludedSymbols;
         private System.Windows.Forms.TextBox tbProcNamePrefix;
         private System.Windows.Forms.Label label5;
-        private System.Windows.Forms.ComboBox cbProcNameType;
         private System.Windows.Forms.ToolTip toolTip1;
+        private System.Windows.Forms.TextBox tbDLLFilePath;
+        private System.Windows.Forms.Label label6;
+        private System.Windows.Forms.Button btnSelectDLLFilePath;
+        private System.Windows.Forms.OpenFileDialog dlgOpenDLL;
     }
 }
 

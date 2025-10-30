@@ -74,6 +74,7 @@ namespace ProtParser
             string loadLibName = preset.GetProperty("LoadLibName");
             string loadLibFieldPrefix = preset.GetProperty("LoadLibFieldPrefix");
             string excludedSymbolsText = preset.GetProperty("ExcludedSymbols");
+            string procNamePrefix = preset.GetProperty("ProcNamePrefix");
 
             HashSet<string> excludedIdents = new HashSet<string>();
             foreach (string excludedSymbol in excludedSymbolsText.Split(new char[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries))
@@ -261,7 +262,10 @@ namespace ProtParser
                     {
                         string funcName = funcToNameMap[func];
                         string typeName = funcToTypeNameMap[func];
-                        s.AppendLine($"{loadMacro}({loadLibHandle}, {loadLibName}, {loadLibFieldPrefix}{funcName}, {typeName}, \"{funcName}\");");
+                        string typePostfix = string.Empty;
+                        string defaultProcName = $"{procNamePrefix}{funcName}";
+                        string procName = preset.GetProcedure(funcName, defaultProcName);
+                        s.AppendLine($"{loadMacro}({loadLibHandle}, {loadLibName}, {loadLibFieldPrefix}{funcName}, {typeName}, \"{procName}\");");
                     }
                 }
             }
