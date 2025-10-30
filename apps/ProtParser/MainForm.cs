@@ -76,6 +76,9 @@ namespace ProtParser
             preset.SetProperty("LoadLibHandle", tbLoadLibHandle.Text);
             preset.SetProperty("LoadLibName", tbLoadLibName.Text);
             preset.SetProperty("LoadLibFieldPrefix", tbLoadLibFieldPrefix.Text);
+            preset.SetProperty("ExcludedSymbols", tbExcludedSymbols.Text);
+            preset.SetProperty("ProcNamePrefix", tbProcNamePrefix.Text);
+            preset.SetProperty("ProcNameType", cbProcNameType.Text);
             foreach (var line in tbSource.Lines)
                 preset.AddSource(line);
         }
@@ -87,6 +90,9 @@ namespace ProtParser
             tbLoadLibHandle.Text = string.Empty;
             tbLoadLibName.Text = string.Empty;
             tbLoadLibFieldPrefix.Text = string.Empty;
+            tbExcludedSymbols.Text = string.Empty;
+            tbProcNamePrefix.Text = string.Empty;
+            cbProcNameType.SelectedIndex = 0;
             tbSource.Clear();
 
             _activeFilename = null;
@@ -108,11 +114,18 @@ namespace ProtParser
         private void LoadPreset(string filename)
         {
             Preset preset = Preset.Load(filename);
+
             tbPrefix.Text = preset.GetProperty("Prefix");
             tbLoadMacro.Text = preset.GetProperty("LoadMacro");
             tbLoadLibHandle.Text = preset.GetProperty("LoadLibHandle");
             tbLoadLibName.Text = preset.GetProperty("LoadLibName");
             tbLoadLibFieldPrefix.Text = preset.GetProperty("LoadLibFieldPrefix");
+            tbExcludedSymbols.Text = preset.GetProperty("ExcludedSymbols");
+            tbProcNamePrefix.Text = preset.GetProperty("ProcNamePrefix");
+
+            string typeName = preset.GetProperty("ProcNameType");
+            cbProcNameType.SelectedIndex = !string.IsNullOrEmpty(typeName) ? cbProcNameType.Items.IndexOf(typeName) : 0;
+
             tbSource.Clear();
             string sources = string.Empty;
             foreach (var source in preset.Sources)
@@ -144,6 +157,21 @@ namespace ProtParser
             {
                 SavePreset(saveFileDialog.FileName);
             }
+        }
+
+        private void tbExcludedSymbols_TextChanged(object sender, EventArgs e)
+        {
+            UpdateTarget();
+        }
+
+        private void tbProcNamePrefix_TextChanged(object sender, EventArgs e)
+        {
+            UpdateTarget();
+        }
+
+        private void cbProcNameType_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            UpdateTarget();
         }
     }
 }
