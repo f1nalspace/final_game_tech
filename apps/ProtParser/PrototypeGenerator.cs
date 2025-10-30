@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace ProtParser
 {
@@ -62,6 +61,7 @@ namespace ProtParser
         {
             FunctionStart,
             FunctionArgs,
+            FunctionTerminator,
         }
 
         public static string ParseFunctionPrototypes(string source, Preset preset)
@@ -73,6 +73,11 @@ namespace ProtParser
             string loadLibHandle = preset.GetProperty("LoadLibHandle");
             string loadLibName = preset.GetProperty("LoadLibName");
             string loadLibFieldPrefix = preset.GetProperty("LoadLibFieldPrefix");
+            string excludedSymbolsText = preset.GetProperty("ExcludedSymbols");
+
+            HashSet<string> excludedIdents = new HashSet<string>();
+            foreach (string excludedSymbol in excludedSymbolsText.Split(new char[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries))
+                excludedIdents.Add(excludedSymbol);
 
             try
             {
@@ -93,81 +98,115 @@ namespace ProtParser
                     while (tokenIndex < tokens.Count)
                     {
                         FunctionTokenizer.Token token = tokens[tokenIndex];
+
+                        if (token.Type == FunctionTokenizer.TokenType.SingleLineComment ||
+                            token.Type == FunctionTokenizer.TokenType.MultiLineComment)
+                        {
+                            tokenIndex++;
+                            continue;
+                        }
+
+
+                        if (token.Type == FunctionTokenizer.TokenType.Ident)
+                        {
+                            if (excludedIdents.Contains(token.Value))
+                            {
+                                tokenIndex++;
+                                continue;
+                            }
+                        }
+
                         switch (state)
                         {
                             case ParseState.FunctionStart:
+                            {
+                                if (token.Type == FunctionTokenizer.TokenType.ParenOpen)
                                 {
-                                    if (token.Type == FunctionTokenizer.TokenType.BraceBegin)
+                                    if (leftCache.Count == 0)
+                                        throw new Exception($"No tokens before '{token}'!");
+                                    FunctionTokenizer.Token nameToken = leftCache.Last();
+                                    if (nameToken.Type != FunctionTokenizer.TokenType.Ident)
+                                        throw new Exception($"Expected token type '{FunctionTokenizer.TokenType.Ident}' but got token '{token}'!");
+                                    string funcName = nameToken.Value;
+                                    leftCache.RemoveAt(leftCache.Count - 1);
+                                    func = new FunctionPrototype()
                                     {
-                                        if (leftCache.Count == 0)
-                                            throw new Exception($"No tokens before '{token}'!");
-                                        FunctionTokenizer.Token nameToken = leftCache.Last();
-                                        if (nameToken.Type != FunctionTokenizer.TokenType.Ident)
-                                            throw new Exception($"Expected token type '{FunctionTokenizer.TokenType.Ident}' but got token '{token}'!");
-                                        string funcName = nameToken.GetValue();
-                                        leftCache.RemoveAt(leftCache.Count - 1);
-                                        func = new FunctionPrototype()
-                                        {
-                                            Name = funcName,
-                                        };
-                                        funcs.Add(func);
-                                        foreach (var returnTok in leftCache)
-                                            func.Returns.Add(returnTok.GetValue());
-                                        leftCache.Clear();
+                                        Name = funcName,
+                                    };
+                                    funcs.Add(func);
+                                    foreach (var returnTok in leftCache)
+                                        func.Returns.Add(returnTok.Value);
+                                    leftCache.Clear();
+                                    ++tokenIndex;
+                                    state = ParseState.FunctionArgs;
+                                }
+                                else
+                                {
+                                    leftCache.Add(token);
+                                    ++tokenIndex;
+                                }
+                            }
+                            break;
+
+                            case ParseState.FunctionArgs:
+                            {
+                                Debug.Assert(leftCache.Count == 0);
+                                Debug.Assert(func != null);
+                                List<string> argNames = new List<string>();
+                                while (tokenIndex < tokens.Count)
+                                {
+                                    token = tokens[tokenIndex];
+                                    if (token.Type == FunctionTokenizer.TokenType.ParenClose)
+                                    {
                                         ++tokenIndex;
-                                        state = ParseState.FunctionArgs;
+
+                                        FunctionArgumentPrototype newArg = new FunctionArgumentPrototype();
+                                        newArg.Names.AddRange(argNames);
+                                        func.Args.Add(newArg);
+
+                                        // Almost done with function, check for optional terminator
+                                        state = ParseState.FunctionTerminator;
+                                        break;
+                                    }
+                                    else if (token.Type == FunctionTokenizer.TokenType.ArgumentSeparator)
+                                    {
+                                        ++tokenIndex;
+
+                                        FunctionArgumentPrototype newArg = new FunctionArgumentPrototype();
+                                        newArg.Names.AddRange(argNames);
+                                        func.Args.Add(newArg);
+                                        argNames.Clear();
+
+                                        if (tokenIndex == tokens.Count)
+                                            throw new IndexOutOfRangeException($"Missing token after argument separator ',' on token '{token}'");
+                                        token = tokens[tokenIndex];
+                                        if (token.Type != FunctionTokenizer.TokenType.Ident)
+                                            throw new Exception($"Expected token type '{FunctionTokenizer.TokenType.Ident}' but got token '{token}'!");
                                     }
                                     else
                                     {
-                                        leftCache.Add(token);
                                         ++tokenIndex;
+                                        if (token.Type != FunctionTokenizer.TokenType.Ident || !excludedIdents.Contains(token.Value))
+                                            argNames.Add(token.Value);
                                     }
                                 }
-                                break;
-                            case ParseState.FunctionArgs:
+                            }
+                            break;
+
+                            case ParseState.FunctionTerminator:
+                            {
+                                while (tokenIndex < tokens.Count)
                                 {
-                                    Debug.Assert(leftCache.Count == 0);
-                                    Debug.Assert(func != null);
-                                    List<string> argNames = new List<string>();
-                                    while (tokenIndex < tokens.Count)
-                                    {
-                                        token = tokens[tokenIndex];
-                                        if (token.Type == FunctionTokenizer.TokenType.BraceEnd)
-                                        {
-                                            ++tokenIndex;
-
-                                            FunctionArgumentPrototype newArg = new FunctionArgumentPrototype();
-                                            newArg.Names.AddRange(argNames);
-                                            func.Args.Add(newArg);
-
-                                            // Done with function
-                                            func = null;
-                                            state = ParseState.FunctionStart;
-                                            break;
-                                        }
-                                        else if (token.Type == FunctionTokenizer.TokenType.ArgumentSeparator)
-                                        {
-                                            ++tokenIndex;
-
-                                            FunctionArgumentPrototype newArg = new FunctionArgumentPrototype();
-                                            newArg.Names.AddRange(argNames);
-                                            func.Args.Add(newArg);
-                                            argNames.Clear();
-
-                                            if (tokenIndex == tokens.Count)
-                                                throw new IndexOutOfRangeException($"Missing token after argument separator ',' on token '{token}'");
-                                            token = tokens[tokenIndex];
-                                            if (token.Type != FunctionTokenizer.TokenType.Ident)
-                                                throw new Exception($"Expected token type '{FunctionTokenizer.TokenType.Ident}' but got token '{token}'!");
-                                        }
-                                        else
-                                        {
-                                            argNames.Add(token.GetValue());
-                                            ++tokenIndex;
-                                        }
-                                    }
+                                    token = tokens[tokenIndex];
+                                    if (token.Type != FunctionTokenizer.TokenType.Semicolon)
+                                        break;
+                                    ++tokenIndex;
                                 }
-                                break;
+                                func = null;
+                                state = ParseState.FunctionStart;
+                            }
+                            break;
+
                             default:
                                 throw new Exception($"Unsupported parse state '{state}' on token '{token}'");
                         }
@@ -176,7 +215,7 @@ namespace ProtParser
 
                 if (funcs.Count > 0)
                 {
-                    
+
                     s.AppendLine("// Prototypes");
                     Dictionary<FunctionPrototype, string> funcToTypeNameMap = new Dictionary<FunctionPrototype, string>();
                     Dictionary<FunctionPrototype, string> funcToNameMap = new Dictionary<FunctionPrototype, string>();
