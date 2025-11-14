@@ -173,6 +173,9 @@ SOFTWARE.
 	- New: Added function fplDateTimeQuery that returns a date time stamp, that allows the display in either local or UTC format
 	- New: Added function fplFormatDateTime that formats a fplDateTime into either a local or UTC date time components
 	- New: Added function fplDateTimeCreate that creates a fplDateTime from seperate date time components
+	- New: Added function fplFileAppendBinary() for opening a file for appending, that is useful for log-files and such
+	- New: [Win32] Implemented function fplFileAppendBinary() for Win32 API
+	- New: [POSIX] Implemented function fplFileAppendBinary() for POSIX Unix API
 	- Improved[#176]: Made internal event queue thread-safe using a lock-free push/pop linear buffer
 	- Improved: Better documentation of the preprocessor setup blocks
 	- Fixed: Fixed duplicate platform includes
@@ -181,10 +184,10 @@ SOFTWARE.
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
 	- Changed: Ensure that std types has the correct sizes always using equals
 
-	- Fixed[X11]: Fixed window support was not disabled when X11 is not present
+	- Fixed: [X11] Fixed window support was not disabled when X11 is not present
 
-	- Fixed[POSIX]: Fixed pthread fpl__POSIXSemaphoreHandle was not used
-	- Fixed[POSIX]: dirint.h and sched.h was not included always
+	- Fixed: [POSIX] Fixed pthread fpl__POSIXSemaphoreHandle was not used
+	- Fixed: [POSIX] dirint.h and sched.h was not included always
 
 	## v0.9.9-beta
 
@@ -6878,6 +6881,15 @@ fpl_platform_api bool fplFileOpenBinary(const char *filePath, fplFileHandle *out
 * @see @ref subsection_category_io_binaryfiles_write_create
 */
 fpl_platform_api bool fplFileCreateBinary(const char *filePath, fplFileHandle *outHandle);
+
+/**
+* @brief Creates or appends a binary file by the given string path and returns the handle of it.
+* @param[in] filePath The file path.
+* @param[out] outHandle Reference to the file handle structure @ref fplFileHandle.
+* @return Returns true when the binary file was created / open for appending, false otherwise.
+* @see @ref subsection_category_io_binaryfiles_write_create
+*/
+fpl_platform_api bool fplFileAppendBinary(const char *filePath, fplFileHandle *outHandle);
 
 /**
 * @brief Reads a block from the given file and returns the number of bytes read.
@@ -15506,6 +15518,22 @@ fpl_platform_api bool fplFileCreateBinary(const char *filePath, fplFileHandle *o
 	return false;
 }
 
+fpl_platform_api bool fplFileAppendBinary(const char *filePath, fplFileHandle *outHandle) {
+	FPL__CheckArgumentNull(outHandle, false);
+	if (filePath != fpl_null) {
+		wchar_t filePathWide[FPL_MAX_PATH_LENGTH];
+		fplUTF8StringToWideString(filePath, fplGetStringLength(filePath), filePathWide, fplArrayCount(filePathWide));
+		HANDLE win32FileHandle = CreateFileW(filePathWide, GENERIC_WRITE, FILE_SHARE_WRITE, fpl_null, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, fpl_null);
+		if (win32FileHandle != INVALID_HANDLE_VALUE) {
+			fplClearStruct(outHandle);
+			outHandle->isValid = true;
+			outHandle->internalHandle.win32FileHandle = (void *)win32FileHandle;
+			return true;
+		}
+	}
+	return false;
+}
+
 fpl_platform_api uint32_t fplFileReadBlock32(const fplFileHandle *fileHandle, const uint32_t sizeToRead, void *targetBuffer, const uint32_t maxTargetBufferSize) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sizeToRead, 0);
@@ -17957,6 +17985,22 @@ fpl_platform_api bool fplFileCreateBinary(const char *filePath, fplFileHandle *o
 		int posixFileHandle;
 		do {
 			posixFileHandle = open(filePath, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+		} while (posixFileHandle == -1 && errno == EINTR);
+		if (posixFileHandle != -1) {
+			outHandle->isValid = true;
+			outHandle->internalHandle.posixFileHandle = posixFileHandle;
+			return true;
+		}
+	}
+	return false;
+}
+
+fpl_platform_api bool fplFileAppendBinary(const char *filePath, fplFileHandle *outHandle) {
+	FPL__CheckArgumentNull(outHandle, false);
+	if (filePath != fpl_null) {
+		int posixFileHandle;
+		do {
+			posixFileHandle = open(filePath, O_WRONLY | O_CREAT | O_APPEND, 0666);
 		} while (posixFileHandle == -1 && errno == EINTR);
 		if (posixFileHandle != -1) {
 			outHandle->isValid = true;
