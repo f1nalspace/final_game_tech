@@ -4,7 +4,7 @@ Name:
 	FPL-Demo | GameTemplate
 
 Description:
-	Simple c++ template containing a basic skeleton for a game.
+	Simple C99 template containing a basic skeleton for a game.
 
 Requirements:
 	- C++ Compiler
@@ -16,6 +16,7 @@ Author:
 Changelog:
 	## 2025-11-15
 	- Fixed only keyboard controller was used
+	- Full transition to C99
 
 License:
 	Copyright (c) 2017-2025 Torsten Spaete
@@ -53,12 +54,12 @@ License:
 static void FormatSize(const size_t value, const size_t maxCount, char *buffer) {
 	char *p = buffer;
 	if (value < 0) {
-		*p++;
+		p++;
 	}
 
 	size_t tmp = value;
 	do {
-		*p++;
+		p++;
 		tmp = tmp / 10;
 	} while (tmp);
 
@@ -66,7 +67,7 @@ static void FormatSize(const size_t value, const size_t maxCount, char *buffer) 
 	size_t thousandDotCount = 0;
 	tmp = value;
 	while (tmp >= 1000) {
-		*p++;
+		p++;
 		++thousandDotCount;
 		tmp = tmp / 1000;
 	}
@@ -97,26 +98,26 @@ static void FormatSize(const size_t value, const size_t maxCount, char *buffer) 
 //
 // Constants
 //
-constexpr float GameAspect = 16.0f / 9.0f;
-constexpr float WorldWidth = 20.0f;
-constexpr float WorldHeight = WorldWidth / GameAspect;
-constexpr float WorldRadiusW = WorldWidth * 0.5f;
-constexpr float WorldRadiusH = WorldHeight * 0.5f;
+#define GameAspect (16.0f / 9.0f)
+#define WorldWidth 20.0f
+#define WorldHeight (WorldWidth / GameAspect)
+#define WorldRadiusW (WorldWidth * 0.5f)
+#define WorldRadiusH (WorldHeight * 0.5f)
 
-constexpr float DefaultLineWidth = 2.0f;
+#define DefaultLineWidth 2.0f
 
-constexpr int TileCountX = 21;
-constexpr int TileCountY = 11;
-constexpr float TileWidth = WorldWidth / (float)TileCountX;
-constexpr float TileHeight = WorldHeight / (float)(TileCountY + 1);
-const static Vec2f TileSize = V2fInit(TileWidth, TileHeight);
-constexpr float MaxTileSize = fplMax(TileWidth, TileHeight);
+#define TileCountX 21
+#define TileCountY 11
+#define TileWidth (WorldWidth / (float)TileCountX)
+#define TileHeight (WorldHeight / (float)(TileCountY + 1))
+#define TileSize V2fInit(TileWidth, TileHeight)
+#define MaxTileSize fplMax(TileWidth, TileHeight)
 
 static void LoadAssets(RenderState *renderState, Assets *assets) {
 	// Fonts
-	FontAsset &hudFont = assets->consoleFont;
-	if (LoadFontFromMemory(ptr_fontVeraFontRegular, sizeOf_fontVeraFontRegular, 0, 24.0f, 32, 128, 512, 512, false, &hudFont.desc)) {
-		PushTexture(renderState, &hudFont.texture, hudFont.desc.atlasAlphaBitmap, hudFont.desc.atlasWidth, hudFont.desc.atlasHeight, 1, TextureFilterType_Linear, TextureWrapMode_ClampToEdge, false, false);
+	FontAsset *hudFont = &assets->consoleFont;
+	if (LoadFontFromMemory(ptr_fontVeraFontRegular, sizeOf_fontVeraFontRegular, 0, 24.0f, 32, 128, 512, 512, false, &hudFont->desc)) {
+		PushTexture(renderState, &hudFont->texture, hudFont->desc.atlasAlphaBitmap, hudFont->desc.atlasWidth, hudFont->desc.atlasHeight, 1, TextureFilterType_Linear, TextureWrapMode_ClampToEdge, false, false);
 	}
 }
 
@@ -195,8 +196,8 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	assert(renderState != fpl_null);
 
 	// Debug input
-	const Controller &keyboardController = input->controllers[0];
-	if (WasPressed(keyboardController.debugToggle)) {
+	const Controller *keyboardController = &input->controllers[0];
+	if (WasPressed(keyboardController->debugToggle)) {
 		state->isDebugRendering = !state->isDebugRendering;
 	}
 
@@ -212,7 +213,7 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	float invScale = 1.0f / state->camera.scale;
 	Mat4f proj = Mat4OrthoRH(-w * invScale, w * invScale, -h * invScale, h * invScale, 0.0f, 1.0f);
 	Mat4f view = Mat4TranslationV2(state->camera.offset);
-	state->viewProjection = proj * view;
+	state->viewProjection = Mat4Mult(proj, view);
 
 	// Mouse
 	int mouseCenterX = (input->mouse.pos.x - input->windowSize.w / 2);
@@ -231,41 +232,41 @@ extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
 
 	const float dt = input->fixedDeltaTime;
 
-	World &world = state->world;
-	Entity &player = world.player;
+	World *world = &state->world;
+	Entity *player = &world->player;
 
 	// Player
 	Vec2f movement = V2fInit(0.0f, 0.0f);
 	if(input->defaultControllerIndex > -1 && input->defaultControllerIndex < fplArrayCount(input->controllers)){
-		const Controller &controller = input->controllers[input->defaultControllerIndex];
-		if(IsDown(controller.moveUp)) {
-			movement += V2fInit(0.0f,1.0f) * player.moveSpeed;
-		} else if(IsDown(controller.moveDown)) {
-			movement += V2fInit(0.0f,-1.0f) * player.moveSpeed;
+		const Controller *controller = &input->controllers[input->defaultControllerIndex];
+		if(IsDown(controller->moveUp)) {
+			movement = V2fAddMultScalar(movement, V2fInit(0.0f, 1.0f), player->moveSpeed);
+		} else if(IsDown(controller->moveDown)) {
+			movement = V2fAddMultScalar(movement, V2fInit(0.0f, -1.0f), player->moveSpeed);
 		}
-		if(IsDown(controller.moveLeft)) {
-			movement += V2fInit(-1.0f,0.0f) * player.moveSpeed;
-		} else if(IsDown(controller.moveRight)) {
-			movement += V2fInit(1.0f,0.0f) * player.moveSpeed;
+		if(IsDown(controller->moveLeft)) {
+			movement = V2fAddMultScalar(movement, V2fInit(-1.0f,0.0f), player->moveSpeed);
+		} else if(IsDown(controller->moveRight)) {
+			movement = V2fAddMultScalar(movement, V2fInit(1.0f,0.0f), player->moveSpeed);
 		}
 	}
 
 	// Apply movement
 	if (V2fDot(movement, movement) > 0) {
-		player.velocity += movement * dt;
+		player->velocity = V2fAddMultScalar(player->velocity, movement, dt);
 	}
 
 	// Apply drag
-	if (V2fDot(player.velocity, player.velocity) > 0) {
-		float len = V2fLength(player.velocity);
+	if (V2fDot(player->velocity, player->velocity) > 0) {
+		float len = V2fLength(player->velocity);
 		float invLen = 1.0f / len;
-		Vec2f vdir = player.velocity * invLen;
-		float newVelocity = len * (1.0f - player.moveDrag);
-		player.velocity = vdir * newVelocity;
+		Vec2f vdir = V2fMultScalar(player->velocity, invLen);
+		float newVelocity = len * (1.0f - player->moveDrag);
+		player->velocity = V2fMultScalar(vdir, newVelocity);
 	}
 
 	// Integrate position
-	player.position += player.velocity * dt;
+	player->position = V2fAddMultScalar(player->position, player->velocity, dt);
 
 	// FPS display
 	const float fpsSmoothing = 0.1f;
@@ -302,14 +303,18 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 	// Tile grid
 	Vec2f gridOrigin = V2fInit(-w, -h);
 	Vec4f gridColor = V4fInit(0.1f, 0.2f, 0.1f, 1.0f);
-	Vec2f gridSize = V2fInit(w, h) * 2.0f;
+	Vec2f gridSize = V2fInit(w * 2.0f, h * 2.0f);
 	for (int i = 0; i <= TileCountX; ++i) {
 		float xoffset = i * TileWidth;
-		PushLine(renderState, gridOrigin + V2fInit(xoffset, 0.0f), gridOrigin + V2fInit(xoffset, gridSize.y), gridColor, 1.0f);
+		Vec2f a = V2fAdd(gridOrigin, V2fInit(xoffset,0.0f));
+		Vec2f b = V2fAdd(gridOrigin, V2fInit(xoffset, gridSize.y));
+		PushLine(renderState, a, b, gridColor, 1.0f);
 	}
 	for (int i = 0; i <= TileCountY; ++i) {
 		float yoffset = i * TileHeight;
-		PushLine(renderState, gridOrigin + V2fInit(0.0f, yoffset), gridOrigin + V2fInit(gridSize.x, yoffset), gridColor, 1.0f);
+		Vec2f a = V2fAdd(gridOrigin, V2fInit(0.0f, yoffset));
+		Vec2f b = V2fAdd(gridOrigin, V2fInit(gridSize.x, yoffset));
+		PushLine(renderState, a, b, gridColor, 1.0f);
 	}
 
 	// Player
@@ -322,12 +327,12 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 		Vec2f gridPos = V2fInit(state->mouseWorldPos.x - gridOrigin.x, state->mouseWorldPos.y - gridOrigin.y);
 		Vec2f tilePosFloat = V2fHadamard(gridPos, invTileSize);
 		Vec2i tilePosInt = V2iInit((int)tilePosFloat.x, (int)tilePosFloat.y);
-		Vec2f p = gridOrigin + V2fHadamard(V2fInit((float)tilePosInt.x, (float)tilePosInt.y), TileSize);
+		Vec2f p = V2fAdd(gridOrigin, V2fHadamard(V2fInit((float)tilePosInt.x, (float)tilePosInt.y), TileSize));
 		PushRectangle(renderState, p, TileSize, V4fInit(1, 1, 1, 1), false, 1.0f);
 	}
 
 	if (state->isDebugRendering) {
-		const FontAsset &font = state->assets.consoleFont;
+		const FontAsset *font = &state->assets.consoleFont;
 		char text[256];
 		Vec4f textColor = V4fInit(1, 1, 1, 1);
 		Vec2f blockPos = V2fInit(-w, h);
@@ -337,14 +342,14 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 		FormatSize(gameMemory->memory->used, fplArrayCount(sizeCharsBuffer[0]), sizeCharsBuffer[0]);
 		FormatSize(gameMemory->memory->size, fplArrayCount(sizeCharsBuffer[1]), sizeCharsBuffer[1]);
 		fplStringFormat(text, fplArrayCount(text), "Game Memory: %s / %s bytes", sizeCharsBuffer[0], sizeCharsBuffer[1]);
-		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
+		PushText(renderState, text, fplGetStringLength(text), &font->desc, &font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
 
 		FormatSize(renderState->lastMemoryUsage, fplArrayCount(sizeCharsBuffer[0]), sizeCharsBuffer[0]);
 		FormatSize(renderState->memory.size, fplArrayCount(sizeCharsBuffer[1]), sizeCharsBuffer[1]);
 		fplStringFormat(text, fplArrayCount(text), "Render Memory: %s / %s bytes", sizeCharsBuffer[0], sizeCharsBuffer[1]);
-		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(blockPos.x + w, blockPos.y), fontHeight, 0.0f, -1.0f, textColor);
+		PushText(renderState, text, fplGetStringLength(text), &font->desc, &font->texture, V2fInit(blockPos.x + w, blockPos.y), fontHeight, 0.0f, -1.0f, textColor);
 		fplStringFormat(text, fplArrayCount(text), "Fps: %.5f, Delta: %.5f", state->framesPerSecond[1], state->deltaTime);
-		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(blockPos.x + w * 2.0f, blockPos.y), fontHeight, -1.0f, -1.0f, textColor);
+		PushText(renderState, text, fplGetStringLength(text), &font->desc, &font->texture, V2fInit(blockPos.x + w * 2.0f, blockPos.y), fontHeight, -1.0f, -1.0f, textColor);
 	}
 }
 
