@@ -660,7 +660,7 @@ static void LoadLevel(GameState &state, int levelSeed) {
 
 
 static bool LoadTexture(const TextureData &source, const bool repeatable, TextureAsset &outTexture) {
-	GLuint texId = AllocateTexture(source.width, source.height, source.data, repeatable, GL_NEAREST);
+	GLuint texId = AllocateTexture(source.width, source.height, source.data, repeatable, GL_NEAREST, false);
 	outTexture.texture = ValueToPointer(texId);
 	bool result = texId > 0;
 	return(result);
@@ -787,18 +787,18 @@ static void ReleaseGame(GameState &state) {
 	fglUnloadOpenGL();
 }
 
-extern void GameRelease(GameMemory &gameMemory) {
-	GameState *state = gameMemory.game;
+extern void GameRelease(GameMemory *gameMemory) {
+	GameState *state = gameMemory->game;
 	if(state != nullptr) {
 		ReleaseGame(*state);
 		state->~GameState();
 	}
 }
 
-extern bool GameInit(GameMemory &gameMemory) {
-	GameState *state = (GameState *)fmemPush(gameMemory.memory, sizeof(GameState), fmemPushFlags_Clear);
-	gameMemory.game = state;
-	state->audioSys = gameMemory.audio;
+extern bool GameInit(GameMemory *gameMemory) {
+	GameState *state = (GameState *)fmemPush(gameMemory->memory, sizeof(GameState), fmemPushFlags_Clear);
+	gameMemory->game = state;
+	state->audioSys = gameMemory->audio;
 	if(!InitGame(*state)) {
 		GameRelease(gameMemory);
 		return(false);
@@ -993,28 +993,28 @@ void GameContactListener::PreSolve(b2Contact *contact, const b2Manifold *oldMani
 void GameContactListener::PostSolve(b2Contact *contact, const b2ContactImpulse *impulse) {
 }
 
-extern bool IsGameExiting(GameMemory &gameMemory) {
-	GameState *state = gameMemory.game;
+extern bool IsGameExiting(GameMemory *gameMemory) {
+	GameState *state = gameMemory->game;
 	fplAssert(state != nullptr);
 	return state->isExiting;
 }
 
-extern void GameInput(GameMemory &gameMemory, const Input &input) {
-	if(!input.isActive) {
+extern void GameInput(GameMemory *gameMemory, const Input *input) {
+	if(!input->isActive) {
 		return;
 	}
 
-	GameState *state = gameMemory.game;
+	GameState *state = gameMemory->game;
 	fplAssert(state != nullptr);
 
 	// @NOTE(final): We have to the dynamic frame time, because box2d uses its own timing system to lock the physics to a fixed number of updates
 	// When enabled V-Sync this works great, but only when the number of blanks matches the target frame rate of 60 hz.
 	// But with V-Sync disabled, GameInput may be called much more often, so we account for that by using the dynamic frame rate instead.
-	const float vdt = input.dynamicFrameTime;
+	const float vdt = input->dynamicFrameTime;
 
-	if(input.defaultControllerIndex > -1) {
-		fplAssert(input.defaultControllerIndex < fplArrayCount(input.controllers));
-		const Controller *controller = &input.controllers[input.defaultControllerIndex];
+	if(input->defaultControllerIndex > -1) {
+		fplAssert(input->defaultControllerIndex < fplArrayCount(input->controllers));
+		const Controller *controller = &input->controllers[input->defaultControllerIndex];
 		if(controller->isConnected) {
 			switch(state->mode) {
 				case GameMode::Play:
@@ -1171,19 +1171,19 @@ static void UpdatePlayMode(GameState &state, const Input &input) {
 	state.world->ClearForces();
 }
 
-extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
-	if(!input.isActive) {
+extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
+	if(!input->isActive) {
 		return;
 	}
 
-	GameState *state = gameMemory.game;
+	GameState *state = gameMemory->game;
 	fplAssert(state != nullptr);
-	state->viewport = ComputeViewportByAspect(input.windowSize, GameAspect);
+	state->viewport = ComputeViewportByAspect(input->windowSize, GameAspect);
 
 	if(state->mode == GameMode::Play) {
-		UpdatePlayMode(*state, input);
+		UpdatePlayMode(*state, *input);
 	} else if(state->mode == GameMode::Title || state->mode == GameMode::Menu || state->mode == GameMode::GameOver) {
-		state->menu.bgMoveTime += input.fixedDeltaTime;
+		state->menu.bgMoveTime += input->fixedDeltaTime;
 	}
 }
 
@@ -1199,7 +1199,10 @@ static void DrawField(GameState &state, const float uMove, const float vMove) {
 		float vMax = (float)(int)(WorldRadius.y / FrameRadius) + vMove;
 		UVRect bgUV = BackgroundUVs[BackgroundType::Default];
 		glColor4f(1, 1, 1, 1);
-		DrawSprite(bgTex, WorldRadius.x - FrameRadius * 2, WorldRadius.y - FrameRadius, uMin, vMax, uMax, vMin, 0, -FrameRadius);
+		Vec2f bgExt = V2fInit(WorldRadius.x - FrameRadius * 2, WorldRadius.y - FrameRadius);
+		UVRect bgUVRect = UVRectInit(uMin, vMax, uMax, vMin);
+		Vec2f bgOffset = V2fInit(0, -FrameRadius);
+		DrawSprite(bgTex, bgExt, bgUVRect, bgOffset);
 	}
 
 	// Frame
@@ -1215,26 +1218,29 @@ static void DrawField(GameState &state, const float uMove, const float vMove) {
 
 		glColor4f(1, 1, 1, 1);
 
+		Vec2f frameExt = V2fInit(FrameRadius, FrameRadius);
+
 		// Top and side fill
 		uint32_t numTopFillSprites = (uint32_t)(WorldRadius.x / FrameRadius + 0.5f);
 		uint32_t numLeftFillSprites = (uint32_t)(WorldRadius.y / FrameRadius + 0.5f);
 		for(uint32_t i = 1; i < numTopFillSprites - 1; ++i) {
 			float xoffset = -WorldRadius.x + FrameRadius + ((float)i * (FrameRadius * 2.0f));
-			DrawSprite(frameTex, FrameRadius, FrameRadius, topFillUV, xoffset, WorldRadius.y - FrameRadius);
+			DrawSprite(frameTex, frameExt, topFillUV, V2fInit(xoffset, WorldRadius.y - FrameRadius));
 		}
 		for(uint32_t i = 0; i < numLeftFillSprites; ++i) {
 			float yoffset = -WorldRadius.y + FrameRadius + ((float)i * (FrameRadius * 2.0f));
-			DrawSprite(frameTex, FrameRadius, FrameRadius, leftFillUV, -WorldRadius.x + FrameRadius, yoffset);
-			DrawSprite(frameTex, FrameRadius, FrameRadius, rightFillUV, WorldRadius.x - FrameRadius, yoffset);
+			Vec2f frameExt = V2fInit(FrameRadius, FrameRadius);
+			DrawSprite(frameTex, frameExt, leftFillUV, V2fInit(-WorldRadius.x + FrameRadius, yoffset));
+			DrawSprite(frameTex, frameExt, rightFillUV, V2fInit(WorldRadius.x - FrameRadius, yoffset));
 		}
 
 		// Top edges
-		DrawSprite(frameTex, FrameRadius, FrameRadius, topLeftEdgeUV, -WorldRadius.x + FrameRadius, WorldRadius.y - FrameRadius);
-		DrawSprite(frameTex, FrameRadius, FrameRadius, topRightEdgeUV, WorldRadius.x - FrameRadius, WorldRadius.y - FrameRadius);
+		DrawSprite(frameTex, frameExt, topLeftEdgeUV, V2fInit(-WorldRadius.x + FrameRadius, WorldRadius.y - FrameRadius));
+		DrawSprite(frameTex, frameExt, topRightEdgeUV, V2fInit(WorldRadius.x - FrameRadius, WorldRadius.y - FrameRadius));
 
 		// Bottom edges
-		DrawSprite(frameTex, FrameRadius, FrameRadius, bottomLeftEdgeUV, -WorldRadius.x + FrameRadius, -WorldRadius.y + FrameRadius);
-		DrawSprite(frameTex, FrameRadius, FrameRadius, bottomRightEdgeUV, WorldRadius.x - FrameRadius, -WorldRadius.y + FrameRadius);
+		DrawSprite(frameTex, frameExt, bottomLeftEdgeUV, V2fInit(-WorldRadius.x + FrameRadius, -WorldRadius.y + FrameRadius));
+		DrawSprite(frameTex, frameExt, bottomRightEdgeUV, V2fInit(WorldRadius.x - FrameRadius, -WorldRadius.y + FrameRadius));
 	}
 }
 
@@ -1258,7 +1264,8 @@ static void DrawPlayMode(GameState &state) {
 		glTranslatef(ballPos.x, ballPos.y, 0);
 		glRotatef(RadiansToDegrees(ballRot), 0, 0, 1);
 		glColor4f(1, 1, 1, 1);
-		DrawSprite(texId, BallRadius + ROffset, BallRadius + ROffset, 0.0f, 1.0f, 1.0f, 0.0f);
+		Vec2f ballExt = V2fInit(BallRadius + ROffset, BallRadius + ROffset);
+		DrawSprite(texId, ballExt, UVRectInit(0.0f, 1.0f, 1.0f, 0.0f), V2fZero());
 		glPopMatrix();
 	}
 
@@ -1272,7 +1279,8 @@ static void DrawPlayMode(GameState &state) {
 		glTranslatef(paddlePos.x, paddlePos.y, 0);
 		glRotatef(RadiansToDegrees(paddleRot), 0, 0, 1);
 		glColor4f(1, 1, 1, 1);
-		DrawSprite(texId, PaddleRadius.x + BallRadius + ROffset, PaddleRadius.y + ROffset, 0.0f, 1.0f, 1.0f, 0.0f);
+		Vec2f paddleExt = V2fInit(PaddleRadius.x + BallRadius + ROffset, PaddleRadius.y + ROffset);
+		DrawSprite(texId, paddleExt, UVRectInit(0.0f, 1.0f, 1.0f, 0.0f), V2fZero());
 		glPopMatrix();
 	}
 
@@ -1287,7 +1295,7 @@ static void DrawPlayMode(GameState &state) {
 		glTranslatef(brickPos.x, brickPos.y, 0);
 		glRotatef(RadiansToDegrees(brickRot), 0, 0, 1);
 		glColor4f(1, 1, 1, 1);
-		DrawSprite(texId, BrickRadius.x, BrickRadius.y, brickUV);
+		DrawSprite(texId, BrickRadius, brickUV, V2fZero());
 		glPopMatrix();
 	}
 
@@ -1482,10 +1490,10 @@ static void DrawTitleMenuMode(GameState &state) {
 	}
 }
 
-extern void GameRender(GameMemory &gameMemory, const float alpha) {
-	GameState *state = gameMemory.game;
+extern void GameRender(GameMemory *gameMemory, const float alpha) {
+	GameState *state = gameMemory->game;
 	fplAssert(state != nullptr);
-	RenderState *renderState = gameMemory.render;
+	RenderState *renderState = gameMemory->render;
 
 	const float w = WorldRadius.x;
 	const float h = WorldRadius.y;
@@ -1514,10 +1522,10 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 int main(int argc, char *argv[]) {
 	fplSetMaxLogLevel(fplLogLevel_All);
 
-	GameConfiguration config = {};
+	GameConfiguration config = fplZeroInit;
 	config.title = "FPL Demo | Crackout";
 	config.hideMouseCursor = true;
 	config.audioSampleRate = 44100;
-	int result = GameMain(config);
+	int result = GameMain(&config);
 	return(result);
 }
