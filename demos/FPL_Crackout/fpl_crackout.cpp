@@ -661,7 +661,7 @@ static void LoadLevel(GameState &state, int levelSeed) {
 
 static bool LoadTexture(const TextureData &source, const bool repeatable, TextureAsset &outTexture) {
 	GLuint texId = AllocateTexture(source.width, source.height, source.data, repeatable, GL_NEAREST, false);
-	outTexture.texture = ValueToPointer(texId);
+	outTexture.texture = GetTextureHandleFromID(texId);
 	bool result = texId > 0;
 	return(result);
 }
@@ -703,11 +703,11 @@ static bool LoadAssets(GameState &state) {
 
 	if(LoadFontFromMemory(ptr_fontHemiHeadBoldItalic, sizeOf_fontHemiHeadBoldItalic, 0, 36.0f, 32, 127, 512, 512, true, &state.assets.fontMenu.desc)) {
 		GLuint texId = AllocateTexture(state.assets.fontMenu.desc.atlasWidth, state.assets.fontMenu.desc.atlasHeight, state.assets.fontMenu.desc.atlasAlphaBitmap, false, GL_NEAREST, true);
-		state.assets.fontMenu.texture = ValueToPointer(texId);
+		state.assets.fontMenu.texture = GetTextureHandleFromID(texId);
 	}
 	if(LoadFontFromMemory(ptr_fontHemiHeadBoldItalic, sizeOf_fontHemiHeadBoldItalic, 0, 18.0f, 32, 127, 512, 512, true, &state.assets.fontHud.desc)) {
 		GLuint texId = AllocateTexture(state.assets.fontHud.desc.atlasWidth, state.assets.fontHud.desc.atlasHeight, state.assets.fontHud.desc.atlasAlphaBitmap, false, GL_NEAREST, true);
-		state.assets.fontHud.texture = ValueToPointer(texId);
+		state.assets.fontHud.texture = GetTextureHandleFromID(texId);
 	}
 
 	LoadSound(state.audioSys, state.dataPath, "bounce_44100hz.wav", state.assets.ballHitSound);
@@ -1192,7 +1192,7 @@ extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
 static void DrawField(GameState &state, const float uMove, const float vMove) {
 	// Background
 	{
-		GLuint bgTex = PointerToValue<GLuint>(state.assets.bgTextures[BackgroundType::Default].texture);
+		GLuint bgTex = GetTextureIDFromHandle(state.assets.bgTextures[BackgroundType::Default].texture);
 		float uMin = uMove;
 		float vMin = vMove;
 		float uMax = (float)(int)(WorldRadius.x / FrameRadius) + uMove;
@@ -1207,7 +1207,7 @@ static void DrawField(GameState &state, const float uMove, const float vMove) {
 
 	// Frame
 	{
-		GLuint frameTex = PointerToValue<GLuint>(state.assets.frameTexture.texture);
+		GLuint frameTex = GetTextureIDFromHandle(state.assets.frameTexture.texture);
 		UVRect topLeftEdgeUV = FrameUVs[FrameType::TopLeftEdge];
 		UVRect topRightEdgeUV = FrameUVs[FrameType::TopRightEdge];
 		UVRect topFillUV = FrameUVs[FrameType::TopFill];
@@ -1259,7 +1259,7 @@ static void DrawPlayMode(GameState &state) {
 	{
 		
 		float ballRot = ball.body->GetAngle();
-		GLuint texId = PointerToValue<GLuint>(state.assets.ballTexture.texture);
+		GLuint texId = GetTextureIDFromHandle(state.assets.ballTexture.texture);
 		glPushMatrix();
 		glTranslatef(ballPos.x, ballPos.y, 0);
 		glRotatef(RadiansToDegrees(ballRot), 0, 0, 1);
@@ -1274,7 +1274,7 @@ static void DrawPlayMode(GameState &state) {
 		const Paddle &paddle = state.paddle.paddle;
 		b2Vec2 paddlePos = paddle.body->GetPosition();
 		float paddleRot = paddle.body->GetAngle();
-		GLuint texId = PointerToValue<GLuint>(state.assets.paddleTexture.texture);
+		GLuint texId = GetTextureIDFromHandle(state.assets.paddleTexture.texture);
 		glPushMatrix();
 		glTranslatef(paddlePos.x, paddlePos.y, 0);
 		glRotatef(RadiansToDegrees(paddleRot), 0, 0, 1);
@@ -1289,7 +1289,7 @@ static void DrawPlayMode(GameState &state) {
 		const Brick &brick = state.activeBricks[i].brick;
 		b2Vec2 brickPos = brick.body->GetPosition();
 		float brickRot = brick.body->GetAngle();
-		GLuint texId = PointerToValue<GLuint>(state.assets.bricksTexture.texture);
+		GLuint texId = GetTextureIDFromHandle(state.assets.bricksTexture.texture);
 		UVRect brickUV = BricksUVs[brick.type];
 		glPushMatrix();
 		glTranslatef(brickPos.x, brickPos.y, 0);
@@ -1401,7 +1401,7 @@ static void DrawPlayMode(GameState &state) {
 	const float textFrameMargin = BallRadius * 0.25f;
 	const float textSize = 0.65f;
 	const float textTopMiddle = WorldRadius.y - FrameRadius;
-	GLuint fontTexId = PointerToValue<GLuint>(state.assets.fontHud.texture);
+	GLuint fontTexId = GetTextureIDFromHandle(state.assets.fontHud.texture);
 
 	// HUD
 	glColor4f(0, 0, 0, 1);
@@ -1444,7 +1444,7 @@ static bool PushMenuItem(GameState &state, MenuRenderState &menuRender, const ch
 	} else {
 		glColor4f(1, 1, 1, 1);
 	}
-	GLuint fontTexId = PointerToValue<GLuint>(state.assets.fontMenu.texture);
+	GLuint fontTexId = GetTextureIDFromHandle(state.assets.fontMenu.texture);
 	DrawTextFont(itemText, fplGetStringLength(itemText), &state.assets.fontMenu.desc, fontTexId, 0.0f, menuRender.ypos, menuRender.fontHeight, 0.0f, 0.0f);
 	menuRender.ypos -= menuRender.fontHeight;
 	return(result);
@@ -1461,7 +1461,7 @@ static void DrawTitleMenuMode(GameState &state) {
 	float titleFontSize = 2.75f;
 	float titlePosY = WorldRadius.y - WorldHeight * 0.35f;
 	glColor4f(1, 1, 1, 1);
-	GLuint fontTexId = PointerToValue<GLuint>(state.assets.fontMenu.texture);
+	GLuint fontTexId = GetTextureIDFromHandle(state.assets.fontMenu.texture);
 	DrawTextFont(titleText, fplGetStringLength(titleText), &state.assets.fontMenu.desc, fontTexId, 0.0f, titlePosY, titleFontSize, 0.0f, 0.0f);
 
 	if(state.mode == GameMode::Title || state.mode == GameMode::GameOver) {
