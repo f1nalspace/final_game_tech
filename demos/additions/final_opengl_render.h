@@ -16,15 +16,25 @@ Temporary: Remove it when render commands are fully implemented
 
 #include <stdint.h>
 
+fpl_inline TextureHandle GetTextureHandleFromID(const GLuint texId) {
+	return (TextureHandle)(uintptr_t)(texId);
+}
+
+fpl_inline GLuint GetTextureIDFromHandle(const TextureHandle handle) {
+	return (GLuint)(uintptr_t)(handle);
+}
+
 extern void DrawSprite(const GLuint texId, const float rx, const float ry, const float uMin = 0.0f, const float vMin = 0.0f, const float uMax = 1.0f, const float vMax = 1.0f, const float xoffset = 0, const float yoffset = 0);
 extern void DrawSprite(const GLuint texId, const float rx, const float ry, const UVRect &uv, const float xoffset = 0, const float yoffset = 0);
-extern void DrawPoint(const Camera2D &camera, const float x, const float y, const float radius, const Vec4f &color);
+extern void DrawPoint(const Camera2D *camera, const float x, const float y, const float radius, const Vec4f color);
 extern void DrawTextFont(const char *text, const size_t textLen, const LoadedFont *fontDesc, const GLuint fontTexture, const float x, const float y, const float maxCharHeight, const float sx, const float sy);
-extern void DrawCircle(const float centerX, const float centerY, const float radius, const bool isFilled, const Vec4f &color, const int segments = 16);
-extern void DrawNormal(const Vec2f &pos, const Vec2f &normal, const float length, const Vec4f &color);
+extern void DrawCircle(const float centerX, const float centerY, const float radius, const bool isFilled, const Vec4f color, const int segments = 16);
+extern void DrawNormal(const Vec2f pos, const Vec2f normal, const float length, const Vec4f color);
 extern GLuint AllocateTexture(const uint32_t width, const uint32_t height, const void *data, const bool repeatable, const GLint filter, const bool isAlphaOnly = false);
+
 extern void InitOpenGLRenderer();
-extern void RenderWithOpenGL(RenderState &renderState);
+
+extern void RenderWithOpenGL(RenderState *renderState);
 
 #endif // FINAL_OPENGL_RENDER_H
 
@@ -46,22 +56,21 @@ extern void DrawSprite(const GLuint texId, const float rx, const float ry, const
 	glDisable(GL_TEXTURE_2D);
 }
 
-extern void DrawSprite(const GLuint texId, const float rx, const float ry, const UVRect &uv, const float xoffset, const float yoffset) {
+extern void DrawSprite(const GLuint texId, const float rx, const float ry, const UVRect uv, const float xoffset, const float yoffset) {
 	DrawSprite(texId, rx, ry, uv.uMin, uv.vMax, uv.uMax, uv.vMin, xoffset, yoffset);
 }
 
-extern void DrawPoint(const Camera2D &camera, const float x, const float y, const float radius, const Vec4f &color) {
+extern void DrawPoint(const Camera2D *camera, const float x, const float y, const float radius, const Vec4f color) {
 	glColor4fv(&color.r);
-	glPointSize(radius * 2.0f * camera.worldToPixels);
+	glPointSize(radius * 2.0f * camera->worldToPixels);
 	glBegin(GL_POINTS);
 	glVertex2f(x, y);
 	glEnd();
 	glPointSize(1);
 }
 
-
 extern void DrawTextFont(const char *text, const size_t textLen, const LoadedFont *fontDesc, const GLuint fontTexture, const float x, const float y, const float maxCharHeight, const float sx, const float sy) {
-	if(fontDesc != nullptr) {
+	if(fontDesc != fpl_null) {
 		Vec2f textSize = GetTextSize(fontDesc, text, textLen, maxCharHeight);
 		float xpos = x - textSize.w * 0.5f + (textSize.w * 0.5f * sx);
 		float ypos = y - textSize.h * 0.5f + (textSize.h * 0.5f * sy);
@@ -100,7 +109,7 @@ extern void DrawTextFont(const char *text, const size_t textLen, const LoadedFon
 	}
 }
 
-extern void DrawCircle(const float centerX, const float centerY, const float radius, const bool isFilled, const Vec4f &color, const int segments) {
+extern void DrawCircle(const float centerX, const float centerY, const float radius, const bool isFilled, const Vec4f color, const int segments) {
 	float seg = Tau32 / (float)segments;
 	glColor4fv(&color.r);
 	glBegin(isFilled ? GL_POLYGON : GL_LINE_LOOP);
@@ -112,7 +121,7 @@ extern void DrawCircle(const float centerX, const float centerY, const float rad
 	glEnd();
 }
 
-extern void DrawNormal(const Vec2f &pos, const Vec2f &normal, const float length, const Vec4f &color) {
+extern void DrawNormal(const Vec2f pos, const Vec2f normal, const float length, const Vec4f color) {
 	glColor4fv(&color.r);
 	glBegin(GL_LINES);
 	glVertex2f(pos.x, pos.y);
@@ -152,36 +161,36 @@ extern void InitOpenGLRenderer() {
 	glEnable(GL_LINE_SMOOTH);
 }
 
-extern void RenderWithOpenGL(RenderState &renderState) {
+extern void RenderWithOpenGL(RenderState *renderState) {
 	size_t index = 0;
-	while(renderState.textureOperationCount > 0) {
-		TextureOperation &op = renderState.textureOperations[index];
-		if(op.type == TextureOperationType::Upload) {
-			bool isAlphaOnly = op.bytesPerPixel == 1;
-			GLuint texId = AllocateTexture(op.width, op.height, op.data, false, GL_LINEAR, isAlphaOnly);
-			*op.handle = ValueToPointer<GLuint>(texId);
-		} else if(op.type == TextureOperationType::Release) {
-			GLuint texId = PointerToValue<GLuint>(op.handle);
+	while(renderState->textureOperationCount > 0) {
+		TextureOperation *op = &renderState->textureOperations[index];
+		if(op->type == TextureOperationType_Upload) {
+			bool isAlphaOnly = op->bytesPerPixel == 1;
+			GLuint texId = AllocateTexture(op->width, op->height, op->data, false, GL_LINEAR, isAlphaOnly);
+			*op->handle = GetTextureHandleFromID(texId);
+		} else if(op->type == TextureOperationType_Release) {
+			GLuint texId = GetTextureIDFromHandle(*op->handle);
 			if(texId > 0) {
 				glDeleteTextures(1, &texId);
-				*op.handle = nullptr;
+				*op->handle = fpl_null;
 			}
 		}
-		--renderState.textureOperationCount;
+		--renderState->textureOperationCount;
 		++index;
 	}
-	fplAssert(renderState.textureOperationCount == 0);
+	fplAssert(renderState->textureOperationCount == 0);
 
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
 
-	if(renderState.memory.size > sizeof(CommandHeader)) {
-		uint8_t *mem = (uint8_t *)renderState.memory.base;
-		size_t remaining = renderState.memory.used;
+	if(renderState->memory.size > sizeof(CommandHeader)) {
+		uint8_t *mem = (uint8_t *)renderState->memory.base;
+		size_t remaining = renderState->memory.used;
 		Mat4f mvpCur = M4fInit(1.0f);
-		renderState.matrixTop = 0;
+		renderState->matrixTop = 0;
 		while(remaining > 0) {
 			uint8_t *startMem = mem;
 			CommandHeader *header = (CommandHeader *)mem;
@@ -189,49 +198,49 @@ extern void RenderWithOpenGL(RenderState &renderState) {
 			uint8_t *dataStart = mem;
 			size_t dataSize = header->dataSize;
 			switch(header->type) {
-				case CommandType::Viewport:
+				case CommandType_Viewport:
 				{
 					fplAssert(dataSize == sizeof(ViewportCommand));
 					ViewportCommand *cmd = (ViewportCommand *)dataStart;
 					glViewport(cmd->x, cmd->y, cmd->w, cmd->h);
 				} break;
 
-				case CommandType::Clear:
+				case CommandType_Clear:
 				{
 					fplAssert(dataSize == sizeof(ClearCommand));
 					ClearCommand *cmd = (ClearCommand *)dataStart;
 					GLbitfield mask = 0;
-					if((cmd->flags & ClearFlags::Color) == ClearFlags::Color) {
+					if((cmd->flags & ClearFlags_Color) == ClearFlags_Color) {
 						mask |= GL_COLOR_BUFFER_BIT;
 					}
-					if((cmd->flags & ClearFlags::Depth) == ClearFlags::Depth) {
+					if((cmd->flags & ClearFlags_Depth) == ClearFlags_Depth) {
 						mask |= GL_DEPTH_BUFFER_BIT;
 					}
 					glClearColor(cmd->color.r, cmd->color.g, cmd->color.g, cmd->color.a);
 					glClear(mask);
 				} break;
 
-				case CommandType::Matrix:
+				case CommandType_Matrix:
 				{
 					fplAssert(dataSize == sizeof(MatrixCommand));
 					MatrixCommand *cmd = (MatrixCommand *)dataStart;
-					if(cmd->mode == MatrixMode::Set) {
-						renderState.matrixTop = 0;
+					if(cmd->mode == MatrixMode_Set) {
+						renderState->matrixTop = 0;
 						mvpCur = cmd->mat;
-					} else if(cmd->mode == MatrixMode::Push) {
-						fplAssert(renderState.matrixTop < fplArrayCount(renderState.matrixStack));
-						Mat4f *newMatrix = &renderState.matrixStack[renderState.matrixTop++];
+					} else if(cmd->mode == MatrixMode_Push) {
+						fplAssert(renderState->matrixTop < fplArrayCount(renderState->matrixStack));
+						Mat4f *newMatrix = &renderState->matrixStack[renderState->matrixTop++];
 						*newMatrix = mvpCur;
 						mvpCur = *newMatrix * cmd->mat;
-					} else if(cmd->mode == MatrixMode::Pop) {
-						fplAssert(renderState.matrixTop > 0);
-						mvpCur = renderState.matrixStack[--renderState.matrixTop];
+					} else if(cmd->mode == MatrixMode_Pop) {
+						fplAssert(renderState->matrixTop > 0);
+						mvpCur = renderState->matrixStack[--renderState->matrixTop];
 					}
 					glMatrixMode(GL_MODELVIEW);
 					glLoadMatrixf(&mvpCur.m[0]);
 				} break;
 
-				case CommandType::Rectangle:
+				case CommandType_Rectangle:
 				{
 					fplAssert(dataSize == sizeof(RectangleCommand));
 					RectangleCommand *cmd = (RectangleCommand *)dataStart;
@@ -247,11 +256,11 @@ extern void RenderWithOpenGL(RenderState &renderState) {
 					glEnd();
 				} break;
 
-				case CommandType::Sprite:
+				case CommandType_Sprite:
 				{
 					fplAssert(dataSize == sizeof(SpriteCommand));
 					SpriteCommand *cmd = (SpriteCommand *)dataStart;
-					GLuint texId = PointerToValue<GLuint>(cmd->texture);
+					GLuint texId = GetTextureIDFromHandle(cmd->texture);
 					glEnable(GL_TEXTURE_2D);
 					glBindTexture(GL_TEXTURE_2D, texId);
 					glColor4fv(&cmd->color.m[0]);
@@ -265,31 +274,31 @@ extern void RenderWithOpenGL(RenderState &renderState) {
 					glDisable(GL_TEXTURE_2D);
 				} break;
 
-				case CommandType::Vertices:
+				case CommandType_Vertices:
 				{
 					fplAssert(dataSize >= sizeof(VerticesCommand));
 					VerticesCommand *cmd = (VerticesCommand *)dataStart;
 					glColor4fv(&cmd->color.m[0]);
 					GLenum drawMode;
 					switch(cmd->drawMode) {
-						case DrawMode::Lines:
+						case DrawMode_Lines:
 						{
 							glLineWidth(cmd->thickness);
 							drawMode = cmd->isLoop ? GL_LINE_LOOP : GL_LINES;
 						} break;
 
-						case DrawMode::Points:
+						case DrawMode_Points:
 						{
 							glPointSize(cmd->thickness);
 							drawMode = GL_POINTS;
 						} break;
 
-						case DrawMode::Polygon:
+						case DrawMode_Polygon:
 						{
 							drawMode = GL_POLYGON;
 						} break;
 
-						case DrawMode::Triangles:
+						case DrawMode_Triangles:
 						{
 							drawMode = cmd->isLoop ? GL_TRIANGLE_FAN : GL_POLYGON;
 						} break;
@@ -304,7 +313,7 @@ extern void RenderWithOpenGL(RenderState &renderState) {
 					glEnd();
 				} break;
 
-				case CommandType::Text:
+				case CommandType_Text:
 				{
 					fplAssert(dataSize >= sizeof(TextCommand));
 					TextCommand *cmd = (TextCommand *)dataStart;
@@ -312,8 +321,8 @@ extern void RenderWithOpenGL(RenderState &renderState) {
 					const char *text = (const char *)(dataStart + sizeof(TextCommand));
 					const size_t textLen = cmd->textLength;
 					const LoadedFont *fontDesc = cmd->font;
-					const TextureHandle *texture = cmd->texture;
-					if(fontDesc != nullptr && fontDesc->charCount > 0 && texture != nullptr) {
+					const TextureHandle texture = cmd->texture;
+					if(fontDesc != fpl_null && fontDesc->charCount > 0 && texture != fpl_null) {
 						const float maxHeight = cmd->maxHeight;
 						const float ax = cmd->horizontalAlignment;
 						const float ay = cmd->verticalAlignment;
@@ -322,7 +331,7 @@ extern void RenderWithOpenGL(RenderState &renderState) {
 						float ypos = cmd->position.y - textSize.h * 0.5f + (textSize.h * 0.5f * ay);
 						uint32_t lastChar = fontDesc->firstChar + (fontDesc->charCount - 1);
 
-						GLuint texId = PointerToValue<GLuint>(*texture);
+						GLuint texId = GetTextureIDFromHandle(texture);
 
 						glColor4fv(&cmd->color.m[0]);
 						glEnable(GL_TEXTURE_2D);

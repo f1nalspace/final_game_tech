@@ -21,7 +21,7 @@ License:
 #include "final_math.h"
 #include <final_fontloader.h>
 
-typedef struct {
+typedef struct UVRect {
 	float uMin;
 	float vMin;
 	float uMax;
@@ -50,7 +50,7 @@ inline UVRect UVRectFromPos(const Vec2i &imageSize, const Vec2i &partSize, const
 	return(result);
 }
 
-typedef struct {
+typedef struct Viewport {
 	int x;
 	int y;
 	int w;
@@ -59,14 +59,14 @@ typedef struct {
 
 extern Viewport ComputeViewportByAspect(const Vec2i screenSize, const float targetAspect);
 
-typedef struct {
+typedef struct Camera2D {
 	Vec2f offset;
 	float worldToPixels;
 	float pixelsToWorld;
 	float scale;
 } Camera2D;
 
-typedef enum {
+typedef enum TextureOperationType {
 	TextureOperationType_None = 0,
 	TextureOperationType_Upload,
 	TextureOperationType_Release
@@ -74,18 +74,18 @@ typedef enum {
 
 typedef void *TextureHandle;
 
-typedef enum {
+typedef enum TextureFilterType {
 	TextureFilterType_Nearest = 0,
 	TextureFilterType_Linear
 } TextureFilterType;
 
-typedef enum {
+typedef enum TextureWrapMode {
 	TextureWrapMode_Repeat = 0,
 	TextureWrapMode_ClampToEdge,
 	TextureWrapMode_ClampToBorder,
 } TextureWrapMode;
 
-typedef struct {
+typedef struct TextureOperation {
 	TextureHandle *handle;
 	const void *data;
 	TextureOperationType type;
@@ -101,7 +101,7 @@ typedef struct {
 const size_t MAX_TEXTURE_OPERATION_COUNT = 1024;
 const size_t MAX_MATRIX_STACK_COUNT = 32;
 
-typedef struct {
+typedef struct RenderState {
 	TextureOperation textureOperations[MAX_TEXTURE_OPERATION_COUNT];
 	Mat4f matrixStack[MAX_MATRIX_STACK_COUNT];
 	size_t matrixTop;
@@ -110,7 +110,7 @@ typedef struct {
 	size_t lastMemoryUsage;
 } RenderState;
 
-typedef enum {
+typedef enum CommandType {
 	CommandType_None = 0,
 	CommandType_Clear,
 	CommandType_Viewport,
@@ -121,42 +121,42 @@ typedef enum {
 	CommandType_Text
 } CommandType;
 
-typedef struct {
+typedef struct CommandHeader {
 	size_t dataSize;
 	CommandType type;
 } CommandHeader;
 
-typedef enum {
+typedef enum MatrixMode {
 	MatrixMode_Set = 0,
 	MatrixMode_Push,
 	MatrixMode_Pop
 } MatrixMode;
 
-typedef struct {
+typedef struct MatrixCommand {
 	Mat4f mat;
 	MatrixMode mode;
 } MatrixCommand;
 
-typedef enum {
+typedef enum ClearFlags {
 	ClearFlags_None = 0,
 	ClearFlags_Color = 1 << 0,
 	ClearFlags_Depth = 1 << 1,
 } ClearFlags;
 FPL_ENUM_AS_FLAGS_OPERATORS(ClearFlags);
 
-typedef struct {
+typedef struct ClearCommand {
 	Vec4f color;
 	ClearFlags flags;
 } ClearCommand;
 
-typedef struct {
+typedef struct ViewportCommand {
 	int x;
 	int y;
 	int w;
 	int h;
 } ViewportCommand;
 
-typedef struct {
+typedef struct RectangleCommand {
 	Vec4f color;
 	Vec2f bottomLeft;
 	Vec2f size;
@@ -164,7 +164,7 @@ typedef struct {
 	bool isFilled;
 } RectangleCommand;
 
-typedef enum {
+typedef enum DrawMode {
 	DrawMode_None,
 	DrawMode_Points,
 	DrawMode_Lines,
@@ -172,12 +172,12 @@ typedef enum {
 	DrawMode_Polygon
 } DrawMode;
 
-typedef struct {
+typedef struct VertexAllocation {
 	Vec2f *verts;
 	size_t *count;
 } VertexAllocation;
 
-typedef struct {
+typedef struct VerticesCommand {
 	Vec4f color;
 	const Vec2f *verts;
 	size_t capacity;
@@ -187,7 +187,7 @@ typedef struct {
 	bool isLoop;
 } VerticesCommand;
 
-typedef struct {
+typedef struct SpriteCommand {
 	Vec4f color;
 	Vec2f position;
 	Vec2f ext;
@@ -196,10 +196,10 @@ typedef struct {
 	TextureHandle texture;
 } SpriteCommand;
 
-typedef struct {
+typedef struct TextCommand {
 	Vec4f color;
 	Vec2f position;
-	const TextureHandle *texture;
+	TextureHandle texture;
 	const LoadedFont *font;
 	float horizontalAlignment;
 	float verticalAlignment;
@@ -211,14 +211,14 @@ extern void InitRenderState(RenderState *state, fmemMemoryBlock block);
 extern void ResetRenderState(RenderState *state);
 extern void PushClear(RenderState *state, const Vec4f color, const ClearFlags flags);
 extern void PushViewport(RenderState *state, const int x, const int y, const int w, const int h);
-extern void PushMatrix(RenderState *state, const Mat4f &mat, const MatrixMode mode);
-extern void SetMatrix(RenderState *state, const Mat4f &mat);
+extern void PushMatrix(RenderState *state, const Mat4f *mat, const MatrixMode mode);
+extern void SetMatrix(RenderState *state, const Mat4f *mat);
 extern void PopMatrix(RenderState *state);
 extern void PushRectangle(RenderState *state, const Vec2f bottomLeft, const Vec2f size, const Vec4f color, const bool isFilled, const float lineWidth);
 extern void PushRectangleCenter(RenderState *state, const Vec2f center, const Vec2f ext, const Vec4f color, const bool isFilled, const float lineWidth);
 extern VertexAllocation AllocateVertices(RenderState *state, const size_t capacity, const Vec4f color, const DrawMode drawMode, const bool isLoop, const float thickness);
 extern void PushVertices(RenderState *state, const Vec2f *verts, const size_t vertexCount, const bool copyVerts, const Vec4f color, const DrawMode drawMode, const bool isLoop, const float thickness);
-extern void PushSprite(RenderState *state, const Vec2f position, const Vec2f ext, const TextureHandle texture, const Vec4f color, const UVRect uvRect);
+extern void PushSprite(RenderState *state, const Vec2f position, const Vec2f ext, const TextureHandle *texture, const Vec4f color, const UVRect uvRect);
 extern void PushTexture(RenderState *state, TextureHandle *targetTexture, const void *data, const uint32_t width, const uint32_t height, const uint32_t bytesPerPixel, const TextureFilterType filter, const TextureWrapMode wrap, const bool isTopDown, const bool isPreMultiplied);
 extern void PopTexture(RenderState *state, TextureHandle *targetTexture);
 extern void PushText(RenderState *state, const char *text, const size_t textLen, const LoadedFont *font, const TextureHandle *texture, const Vec2f position, const float maxHeight, const float horizontalAlignment, const float verticalAlignment, const Vec4f color);
@@ -405,7 +405,7 @@ extern void PushVertices(RenderState *state, const Vec2f *verts, const size_t ve
 	cmd->isLoop = isLoop;
 }
 
-extern void PushSprite(RenderState *state, const Vec2f position, const Vec2f ext, const TextureHandle texture, const Vec4f color, const UVRect uvRect) {
+extern void PushSprite(RenderState *state, const Vec2f position, const Vec2f ext, const TextureHandle *texture, const Vec4f color, const UVRect uvRect) {
 	if (state == fpl_null) {
 		return;
 	}
@@ -417,7 +417,7 @@ extern void PushSprite(RenderState *state, const Vec2f position, const Vec2f ext
 	}
 	cmd->position = position;
 	cmd->ext = ext;
-	cmd->texture = texture;
+	cmd->texture = *texture;
 	cmd->color = color;
 	cmd->uvMin = V2fInit(uvRect.uMin, uvRect.vMin);
 	cmd->uvMax = V2fInit(uvRect.uMax, uvRect.vMax);
@@ -503,7 +503,7 @@ extern void PushText(RenderState *state, const char *text, const size_t textLen,
 	fplCopyStringLen(text, textLen, pt, capacity);
 
 	cmd->position = position;
-	cmd->texture = texture;
+	cmd->texture = *texture;
 	cmd->font = font;
 	cmd->color = color;
 	cmd->textLength = textLen;

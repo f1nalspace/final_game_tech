@@ -36,13 +36,9 @@ License:
 #ifndef FINAL_GAMEPLATFORM_H
 #define FINAL_GAMEPLATFORM_H
 
-#if !(defined(__cplusplus) && ((__cplusplus >= 201103L) || (defined(_MSC_VER) && _MSC_VER >= 1900)))
-#error "C++/11 compiler not detected!"
-#endif
-
 #include "final_game.h"
 
-struct GameConfiguration {
+typedef struct GameConfiguration {
 	const char *title;
 	uint32_t audioSampleRate;
 	uint32_t audioChannels;
@@ -51,9 +47,9 @@ struct GameConfiguration {
 	bool hideMouseCursor;
 	bool disableInactiveDetection;
 	bool disableVerticalSync;
-};
+} GameConfiguration;
 
-extern int GameMain(const GameConfiguration &config);
+extern int GameMain(const GameConfiguration *config);
 
 #endif // FINAL_GAMEPLATFORM_H
 
@@ -77,15 +73,15 @@ extern int GameMain(const GameConfiguration &config);
 #define FINAL_OPENGL_RENDER_IMPLEMENTATION
 #include "final_opengl_render.h"
 
-static void UpdateKeyboardButtonState(ButtonState &newState, const fpl_b32 isDown) {
-	newState.endedDown = isDown;
-	++newState.halfTransitionCount;
+static void UpdateKeyboardButtonState(ButtonState *newState, const fpl_b32 isDown) {
+	newState->endedDown = isDown;
+	++newState->halfTransitionCount;
 }
 
-static bool UpdateDigitalButtonState(const ButtonState &oldState, ButtonState &newState, const fpl_b32 isDown) {
-	newState.endedDown = isDown;
-	newState.halfTransitionCount = ((newState.endedDown == oldState.endedDown) ? 0 : 1);
-	return(newState.endedDown == 1);
+static bool UpdateDigitalButtonState(const ButtonState *oldState, ButtonState *newState, const fpl_b32 isDown) {
+	newState->endedDown = isDown;
+	newState->halfTransitionCount = ((newState->endedDown == oldState->endedDown) ? 0 : 1);
+	return(newState->endedDown == 1);
 }
 
 static void UpdateDefaultController(Input *currentInput, int newIndex) {
@@ -111,19 +107,19 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 			{
 				switch(event.window.type) {
 					case fplWindowEventType_GotFocus:
-						*windowActiveType = GameWindowActiveType::GotFocus;
+						*windowActiveType = GameWindowActiveType_GotFocus;
 						break;
 					case fplWindowEventType_Restored:
-						*windowActiveType = GameWindowActiveType::Restored;
+						*windowActiveType = GameWindowActiveType_Restored;
 						break;
 					case fplWindowEventType_Maximized:
-						*windowActiveType = GameWindowActiveType::Maximized;
+						*windowActiveType = GameWindowActiveType_Maximized;
 						break;
 					case fplWindowEventType_LostFocus:
-						*windowActiveType = GameWindowActiveType::LostFocus;
+						*windowActiveType = GameWindowActiveType_LostFocus;
 						break;
 					case fplWindowEventType_Minimized:
-						*windowActiveType = GameWindowActiveType::Minimized;
+						*windowActiveType = GameWindowActiveType_Minimized;
 				        break;
 				    default:
 				        break;
@@ -162,17 +158,17 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 							changed = true;
 						} else {
 							newController->isAnalog = false;
-							changed |= UpdateDigitalButtonState(oldController->moveDown, newController->moveDown, padstate.dpadDown.isDown);
-							changed |= UpdateDigitalButtonState(oldController->moveUp, newController->moveUp, padstate.dpadUp.isDown);
-							changed |= UpdateDigitalButtonState(oldController->moveLeft, newController->moveLeft, padstate.dpadLeft.isDown);
-							changed |= UpdateDigitalButtonState(oldController->moveRight, newController->moveRight, padstate.dpadRight.isDown);
+							changed |= UpdateDigitalButtonState(&oldController->moveDown, &newController->moveDown, padstate.dpadDown.isDown);
+							changed |= UpdateDigitalButtonState(&oldController->moveUp, &newController->moveUp, padstate.dpadUp.isDown);
+							changed |= UpdateDigitalButtonState(&oldController->moveLeft, &newController->moveLeft, padstate.dpadLeft.isDown);
+							changed |= UpdateDigitalButtonState(&oldController->moveRight, &newController->moveRight, padstate.dpadRight.isDown);
 						}
-						changed |= UpdateDigitalButtonState(oldController->actionDown, newController->actionDown, padstate.actionA.isDown);
-						changed |= UpdateDigitalButtonState(oldController->actionRight, newController->actionRight, padstate.actionB.isDown);
-						changed |= UpdateDigitalButtonState(oldController->actionLeft, newController->actionLeft, padstate.actionX.isDown);
-						changed |= UpdateDigitalButtonState(oldController->actionUp, newController->actionUp, padstate.actionY.isDown);
-						changed |= UpdateDigitalButtonState(oldController->actionBack, newController->actionBack, padstate.back.isDown);
-						changed |= UpdateDigitalButtonState(oldController->actionStart, newController->actionStart, padstate.start.isDown);
+						changed |= UpdateDigitalButtonState(&oldController->actionDown, &newController->actionDown, padstate.actionA.isDown);
+						changed |= UpdateDigitalButtonState(&oldController->actionRight, &newController->actionRight, padstate.actionB.isDown);
+						changed |= UpdateDigitalButtonState(&oldController->actionLeft, &newController->actionLeft, padstate.actionX.isDown);
+						changed |= UpdateDigitalButtonState(&oldController->actionUp, &newController->actionUp, padstate.actionY.isDown);
+						changed |= UpdateDigitalButtonState(&oldController->actionBack, &newController->actionBack, padstate.back.isDown);
+						changed |= UpdateDigitalButtonState(&oldController->actionStart, &newController->actionStart, padstate.start.isDown);
 						if (changed) {
 							UpdateDefaultController(currentInput, controllerIndex);
 						}
@@ -195,11 +191,11 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 					{
 						bool isDown = (event.mouse.buttonState >= fplButtonState_Press);
 						if(event.mouse.mouseButton == fplMouseButtonType_Left) {
-							UpdateKeyboardButtonState(currentInput->mouse.left, isDown);
+							UpdateKeyboardButtonState(&currentInput->mouse.left, isDown);
 						} else if(event.mouse.mouseButton == fplMouseButtonType_Right) {
-							UpdateKeyboardButtonState(currentInput->mouse.right, isDown);
+							UpdateKeyboardButtonState(&currentInput->mouse.right, isDown);
 						} else if(event.mouse.mouseButton == fplMouseButtonType_Middle) {
-							UpdateKeyboardButtonState(currentInput->mouse.middle, isDown);
+							UpdateKeyboardButtonState(&currentInput->mouse.middle, isDown);
 						}
 					} break;
 
@@ -228,34 +224,34 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 							switch(event.keyboard.mappedKey) {
 								case fplKey_A:
 								case fplKey_Left:
-									UpdateKeyboardButtonState(newKeyboardController->moveLeft, isDown);
+									UpdateKeyboardButtonState(&newKeyboardController->moveLeft, isDown);
 									break;
 								case fplKey_D:
 								case fplKey_Right:
-									UpdateKeyboardButtonState(newKeyboardController->moveRight, isDown);
+									UpdateKeyboardButtonState(&newKeyboardController->moveRight, isDown);
 									break;
 								case fplKey_W:
 								case fplKey_Up:
-									UpdateKeyboardButtonState(newKeyboardController->moveUp, isDown);
+									UpdateKeyboardButtonState(&newKeyboardController->moveUp, isDown);
 									break;
 								case fplKey_S:
 								case fplKey_Down:
-									UpdateKeyboardButtonState(newKeyboardController->moveDown, isDown);
+									UpdateKeyboardButtonState(&newKeyboardController->moveDown, isDown);
 									break;
 								case fplKey_Space:
-									UpdateKeyboardButtonState(newKeyboardController->actionDown, isDown);
+									UpdateKeyboardButtonState(&newKeyboardController->actionDown, isDown);
 									break;
 								case fplKey_F4:
-									UpdateKeyboardButtonState(newKeyboardController->debugToggle, isDown);
+									UpdateKeyboardButtonState(&newKeyboardController->debugToggle, isDown);
 									break;
 								case fplKey_R:
-									UpdateKeyboardButtonState(newKeyboardController->debugReload, isDown);
+									UpdateKeyboardButtonState(&newKeyboardController->debugReload, isDown);
 									break;
 								case fplKey_Return:
-									UpdateKeyboardButtonState(newKeyboardController->actionStart, isDown);
+									UpdateKeyboardButtonState(&newKeyboardController->actionStart, isDown);
 									break;
 								case fplKey_Escape:
-									UpdateKeyboardButtonState(newKeyboardController->actionBack, isDown);
+									UpdateKeyboardButtonState(&newKeyboardController->actionBack, isDown);
 									break;
 							    default:
 							        break;
@@ -322,20 +318,23 @@ static void SetupInputForFrame(Input *oldInput, Input *newInput, const double ta
 
 }
 
-extern int GameMain(const GameConfiguration &config) {
+extern int GameMain(const GameConfiguration *config) {
+	if(config == fpl_null) {
+		return -1;
+	}
 	fplSettings settings = fplMakeDefaultSettings();
 	settings.video.backend = fplVideoBackendType_OpenGL;
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
-	settings.video.isVSync = !config.disableVerticalSync;
-	if (config.audioSampleRate > 0) {
-		settings.audio.targetFormat.sampleRate = config.audioSampleRate;
+	settings.video.isVSync = !config->disableVerticalSync;
+	if (config->audioSampleRate > 0) {
+		settings.audio.targetFormat.sampleRate = config->audioSampleRate;
 		settings.audio.targetFormat.bufferSizeInFrames = fplGetAudioBufferSizeInFrames(settings.audio.targetFormat.sampleRate, settings.audio.targetFormat.bufferSizeInMilliseconds);
 	}
-	if (config.audioFormat != fplAudioFormatType_None)
-		settings.audio.targetFormat.type = config.audioFormat;
-	if (config.audioChannels > 0)
-		settings.audio.targetFormat.channels = config.audioChannels;
-	fplCopyString(config.title, settings.window.title, fplArrayCount(settings.window.title));
+	if (config->audioFormat != fplAudioFormatType_None)
+		settings.audio.targetFormat.type = config->audioFormat;
+	if (config->audioChannels > 0)
+		settings.audio.targetFormat.channels = config->audioChannels;
+	fplCopyString(config->title, settings.window.title, fplArrayCount(settings.window.title));
 
 	fplInitFlags initFlags = fplInitFlags_All;
 	initFlags &= ~fplInitFlags_Console;
@@ -365,11 +364,12 @@ extern int GameMain(const GameConfiguration &config) {
 
 	bool wasError = false;
 
-	fmemMemoryBlock gameMemoryBlock = {};
+	fmemMemoryBlock gameMemoryBlock = fplZeroInit;
 	if(!fmemInit(&gameMemoryBlock, fmemType_Growable, FMEM_MEGABYTES(128), 0)) {
 		wasError = true;
 	}
-	fmemMemoryBlock renderMemoryBlock = {};
+
+	fmemMemoryBlock renderMemoryBlock = fplZeroInit;
 	if(!fmemInit(&renderMemoryBlock, fmemType_Growable, FMEM_MEGABYTES(32), 0)) {
 		wasError = true;
 	}
@@ -392,32 +392,32 @@ extern int GameMain(const GameConfiguration &config) {
 		wasError = true;
 	}
 
-	RenderState renderState = {};
+	RenderState *renderState = fmemPushStruct(&gameMemoryBlock, RenderState, fmemPushFlags_Clear);
 	InitRenderState(renderState, renderMemoryBlock);
 	InitOpenGLRenderer();
 
-	GameMemory gameMem = {};
+	GameMemory gameMem = fplZeroInit;
 	gameMem.audio = audioSys;
 	gameMem.memory = &gameMemoryBlock;
-	gameMem.render = &renderState;
-	if(!GameInit(gameMem)) {
+	gameMem.render = renderState;
+	if(!GameInit(&gameMem)) {
 		wasError = true;
 	}
 
 	if(!wasError) {
-		const uint32_t targetFramesPerSecond = config.targetFps > 0 ? config.targetFps : 60;
+		const uint32_t targetFramesPerSecond = config->targetFps > 0 ? config->targetFps : 60;
 
 		const double targetDeltaTime = 1.0 / (double)targetFramesPerSecond;
 
-		if(config.hideMouseCursor) {
+		if(config->hideMouseCursor) {
 			fplSetWindowCursorEnabled(false);
 		}
 
-		Input inputs[2] = {};
+		Input inputs[2] = fplZeroInit;
 		Input *newInput = &inputs[0];
 		Input *oldInput = &inputs[1];
 		Vec2i lastMousePos = V2iInit(-1, -1);
-		GameWindowActiveType windowActiveType[2] = { GameWindowActiveType::None, GameWindowActiveType::None };
+		GameWindowActiveType windowActiveType[2] = { GameWindowActiveType_None, GameWindowActiveType_None };
 		newInput->defaultControllerIndex = oldInput->defaultControllerIndex = -1;
 
 		uint32_t frameCount = 0;
@@ -434,7 +434,7 @@ extern int GameMain(const GameConfiguration &config) {
 		double framesPerSecond = 0.0;
 		int frameIndex = 0;
 
-		while(!IsGameExiting(gameMem) && fplWindowUpdate()) {
+		while(!IsGameExiting(&gameMem) && fplWindowUpdate()) {
 			// Get window size
 			fplWindowSize winArea;
 			if(fplGetWindowSize(&winArea)) {
@@ -463,10 +463,10 @@ extern int GameMain(const GameConfiguration &config) {
 			}
 #endif
 			
-			if(config.disableInactiveDetection) {
-				newInput->isActive = (windowActiveType[0] & GameWindowActiveType::Minimized) != GameWindowActiveType::Minimized;
+			if(config->disableInactiveDetection) {
+				newInput->isActive = (windowActiveType[0] & GameWindowActiveType_Minimized) != GameWindowActiveType_Minimized;
 			} else {
-				newInput->isActive = ((windowActiveType[0] & GameWindowActiveType::Minimized) != GameWindowActiveType::Minimized) && ((windowActiveType[0] & GameWindowActiveType::LostFocus) != GameWindowActiveType::LostFocus);
+				newInput->isActive = ((windowActiveType[0] & GameWindowActiveType_Minimized) != GameWindowActiveType_Minimized) && ((windowActiveType[0] & GameWindowActiveType_LostFocus) != GameWindowActiveType_LostFocus);
 			}
 
 			if(windowActiveType[0] != windowActiveType[1]) {
@@ -481,7 +481,7 @@ extern int GameMain(const GameConfiguration &config) {
 			}
 
 			// Game Input
-			GameInput(gameMem, *newInput);
+			GameInput(&gameMem, newInput);
 
 			//
 			// Compute frame times and update accumulator
@@ -500,7 +500,7 @@ extern int GameMain(const GameConfiguration &config) {
 			// Game Updates
 			//
 			while(frameAccumulator >= targetDeltaTime) {
-				GameUpdate(gameMem, *newInput);
+				GameUpdate(&gameMem, newInput);
 				frameAccumulator -= targetDeltaTime;
 				totalTime += targetDeltaTime;
 				++updateCount;
@@ -512,7 +512,7 @@ extern int GameMain(const GameConfiguration &config) {
 			ResetRenderState(renderState);
 
 			float alpha = (float)frameAccumulator / (float)targetDeltaTime;
-			GameRender(gameMem, alpha);
+			GameRender(&gameMem, alpha);
 
 			RenderWithOpenGL(renderState);
 			fplVideoFlip();
@@ -540,11 +540,11 @@ extern int GameMain(const GameConfiguration &config) {
 			}
 		}
 
-		if(config.hideMouseCursor) {
+		if(config->hideMouseCursor) {
 			fplSetWindowCursorEnabled(true);
 		}
 
-		GameRelease(gameMem);
+		GameRelease(&gameMem);
 	}
 
 	fplStopAudio();
