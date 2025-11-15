@@ -9,6 +9,11 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
+	## 2025-11-15
+	- Fixed input controllers was properly preserved
+	- Added target fps to the GameConfiguration, to make the frames per second configurable
+	- Fixed active controller was always set, even when no buttons was pressed
+
 	## 2022-01-23
 	- Proper game timing is accumulated delta time method
 	- Configurable vsync
@@ -41,6 +46,7 @@ struct GameConfiguration {
 	const char *title;
 	uint32_t audioSampleRate;
 	uint32_t audioChannels;
+	uint32_t targetFps;
 	fplAudioFormatType audioFormat;
 	bool hideMouseCursor;
 	bool disableInactiveDetection;
@@ -135,7 +141,9 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 					case fplGamepadEventType_Connected:
 					{
 						newController->isConnected = true;
-						UpdateDefaultController(currentInput, controllerIndex);
+						if(event.gamepad.state.isActive) {
+							UpdateDefaultController(currentInput,controllerIndex);
+						}
 					} break;
 					case fplGamepadEventType_Disconnected:
 					{
@@ -210,13 +218,13 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 				switch(event.keyboard.type) {
 					case fplKeyboardEventType_Button:
 					{
-						if(!newKeyboardController->isConnected) {
-							newKeyboardController->isConnected = true;
-							UpdateDefaultController(currentInput, 0);
-						}
 						bool isDown = event.keyboard.buttonState >= fplButtonState_Press;
 						bool wasDown = event.keyboard.buttonState == fplButtonState_Release || event.keyboard.buttonState == fplButtonState_Repeat;
 						if(isDown != wasDown) {
+							if(!newKeyboardController->isConnected) {
+								newKeyboardController->isConnected = true;
+							}
+							UpdateDefaultController(currentInput, 0);
 							switch(event.keyboard.mappedKey) {
 								case fplKey_A:
 								case fplKey_Left:
@@ -276,6 +284,42 @@ static uint32_t GameAudioPlayback(const fplAudioFormat *outFormat, const uint32_
 	AudioSystem *audioSys = (AudioSystem *)userData;
 	uint32_t result = AudioSystemWriteFrames(audioSys, outputSamples, outFormat, frameCount, true);
 	return(result);
+}
+
+static void SetupInputForFrame(Input *oldInput, Input *newInput, const double targetDeltaTime, const double framesPerSecond, const double lastFrameTime) {
+	newInput->fixedDeltaTime = (float)targetDeltaTime;
+	newInput->dynamicFrameTime = (float)lastFrameTime;
+	newInput->framesPerSeconds = (float)framesPerSecond;
+	newInput->defaultControllerIndex = oldInput->defaultControllerIndex;
+
+	Controller *oldKeyboardController = &oldInput->keyboard;
+	Controller *newKeyboardController = &newInput->keyboard;
+	fplClearStruct(newKeyboardController);
+	newKeyboardController->isConnected = oldKeyboardController->isConnected;
+	for(uint32_t buttonIndex = 0; buttonIndex < fplArrayCount(newKeyboardController->buttons); ++buttonIndex) {
+		newKeyboardController->buttons[buttonIndex].endedDown = oldKeyboardController->buttons[buttonIndex].endedDown;
+	}
+
+	Mouse *newMouse = &newInput->mouse;
+	Mouse *oldMouse = &oldInput->mouse;
+	fplClearStruct(newMouse);
+	newMouse->pos = oldMouse->pos;
+	for(uint32_t buttonIndex = 0; buttonIndex < fplArrayCount(newMouse->buttons); ++buttonIndex) {
+		newMouse->buttons[buttonIndex] = oldMouse->buttons[buttonIndex];
+	}
+
+	// Remember previous gamepad connected states
+	for(uint32_t controllerIndex = 1; controllerIndex < fplArrayCount(newInput->controllers); ++controllerIndex) {
+		Controller *newGamepadController = &newInput->controllers[controllerIndex];
+		Controller *oldGamepadController = &oldInput->controllers[controllerIndex];
+		fplClearStruct(newGamepadController);
+		newGamepadController->isConnected = oldGamepadController->isConnected;
+		newGamepadController->isAnalog = oldGamepadController->isAnalog;
+		for(uint32_t buttonIndex = 0; buttonIndex < fplArrayCount(newGamepadController->buttons); ++buttonIndex) {
+			newGamepadController->buttons[buttonIndex].endedDown = oldGamepadController->buttons[buttonIndex].endedDown;
+		}
+	}
+
 }
 
 extern int GameMain(const GameConfiguration &config) {
@@ -361,7 +405,9 @@ extern int GameMain(const GameConfiguration &config) {
 	}
 
 	if(!wasError) {
-		const double TargetDeltaTime = 1.0 / 60.0;
+		const uint32_t targetFramesPerSecond = config.targetFps > 0 ? config.targetFps : 60;
+
+		const double targetDeltaTime = 1.0 / (double)targetFramesPerSecond;
 
 		if(config.hideMouseCursor) {
 			fplSetWindowCursorEnabled(false);
@@ -378,11 +424,11 @@ extern int GameMain(const GameConfiguration &config) {
 		uint32_t updateCount = 0;
 
 
-		double frameAccumulator = TargetDeltaTime;
+		double frameAccumulator = targetDeltaTime;
 		double totalTime = 0.0;
 		fplTimestamp currTime = fplTimestampQuery();
 		fplTimestamp lastTime = fplZeroInit;
-		double lastFrameTime = TargetDeltaTime;
+		double lastFrameTime = targetDeltaTime;
 
 		uint64_t lastFPSTime = fplMillisecondsQuery();
 		double framesPerSecond = 0.0;
@@ -396,39 +442,8 @@ extern int GameMain(const GameConfiguration &config) {
 				newInput->windowSize.y = winArea.height;
 			}
 
-			//
-			// Compute new input state
-			//
-			newInput->fixedDeltaTime = (float)TargetDeltaTime;
-			newInput->dynamicFrameTime = (float)lastFrameTime;
-			newInput->framesPerSeconds = (float)framesPerSecond;
-			newInput->defaultControllerIndex = oldInput->defaultControllerIndex;
-			Controller *oldKeyboardController = &oldInput->keyboard;
-			Controller *newKeyboardController = &newInput->keyboard;
-			*newKeyboardController = {};
-			newKeyboardController->isConnected = oldKeyboardController->isConnected;
-
-			Mouse *newMouse = &newInput->mouse;
-			Mouse *oldMouse = &oldInput->mouse;
-			*newMouse = {};
-			for(uint32_t buttonIndex = 0; buttonIndex < fplArrayCount(newMouse->buttons); ++buttonIndex) {
-				newMouse->buttons[buttonIndex] = oldMouse->buttons[buttonIndex];
-				newMouse->buttons[buttonIndex].halfTransitionCount = 0;
-			}
-			newMouse->pos = lastMousePos;
-
-			// Remember previous gamepad connected states
-			for(uint32_t controllerIndex = 1; controllerIndex < fplArrayCount(newInput->controllers); ++controllerIndex) {
-				Controller *newGamepadController = &newInput->controllers[controllerIndex];
-				Controller *oldGamepadController = &oldInput->controllers[controllerIndex];
-				newGamepadController->isConnected = oldGamepadController->isConnected;
-				newGamepadController->isAnalog = oldGamepadController->isAnalog;
-			}
-
-			for(uint32_t buttonIndex = 0; buttonIndex < fplArrayCount(newKeyboardController->buttons); ++buttonIndex) {
-				newKeyboardController->buttons[buttonIndex].endedDown = oldKeyboardController->buttons[buttonIndex].endedDown;
-			}
-
+			// Setup input (Clear new and preserve important states)
+			SetupInputForFrame(oldInput, newInput, targetDeltaTime, framesPerSecond, lastFrameTime);
 			newInput->frameIndex = frameIndex++;
 
 			// Events
@@ -457,8 +472,8 @@ extern int GameMain(const GameConfiguration &config) {
 			if(windowActiveType[0] != windowActiveType[1]) {
 				// We dont want to have delta time jumps when game was inactive
 				currTime = lastTime = fplTimestampQuery();
-				lastFrameTime = TargetDeltaTime;
-				frameAccumulator = TargetDeltaTime;
+				lastFrameTime = targetDeltaTime;
+				frameAccumulator = targetDeltaTime;
 
 				framesPerSecond = 0.0f;
 				lastFPSTime = fplMillisecondsQuery();
@@ -484,10 +499,10 @@ extern int GameMain(const GameConfiguration &config) {
 			//
 			// Game Updates
 			//
-			while(frameAccumulator >= TargetDeltaTime) {
+			while(frameAccumulator >= targetDeltaTime) {
 				GameUpdate(gameMem, *newInput);
-				frameAccumulator -= TargetDeltaTime;
-				totalTime += TargetDeltaTime;
+				frameAccumulator -= targetDeltaTime;
+				totalTime += targetDeltaTime;
 				++updateCount;
 			}
 
@@ -496,7 +511,7 @@ extern int GameMain(const GameConfiguration &config) {
 			//
 			ResetRenderState(renderState);
 
-			float alpha = (float)frameAccumulator / (float)TargetDeltaTime;
+			float alpha = (float)frameAccumulator / (float)targetDeltaTime;
 			GameRender(gameMem, alpha);
 
 			RenderWithOpenGL(renderState);
