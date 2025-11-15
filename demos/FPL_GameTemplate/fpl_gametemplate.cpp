@@ -13,6 +13,10 @@ Requirements:
 Author:
 	Torsten Spaete
 
+Changelog:
+	## 2025-11-15
+	- Fixed only keyboard controller was used
+
 License:
 	Copyright (c) 2017-2025 Torsten Spaete
 	MIT License (See LICENSE file)
@@ -221,17 +225,19 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 	Entity &player = world.player;
 
 	// Player
-	const Controller &keyboardController = input.controllers[0];
 	Vec2f movement = V2fInit(0.0f, 0.0f);
-	if (IsDown(keyboardController.moveUp)) {
-		movement += V2fInit(0.0f, 1.0f) * player.moveSpeed;
-	} else if (IsDown(keyboardController.moveDown)) {
-		movement += V2fInit(0.0f, -1.0f) * player.moveSpeed;
-	}
-	if (IsDown(keyboardController.moveLeft)) {
-		movement += V2fInit(-1.0f, 0.0f) * player.moveSpeed;
-	} else if (IsDown(keyboardController.moveRight)) {
-		movement += V2fInit(1.0f, 0.0f) * player.moveSpeed;
+	if(input.defaultControllerIndex > -1 && input.defaultControllerIndex < fplArrayCount(input.controllers)){
+		const Controller &controller = input.controllers[input.defaultControllerIndex];
+		if(IsDown(controller.moveUp)) {
+			movement += V2fInit(0.0f,1.0f) * player.moveSpeed;
+		} else if(IsDown(controller.moveDown)) {
+			movement += V2fInit(0.0f,-1.0f) * player.moveSpeed;
+		}
+		if(IsDown(controller.moveLeft)) {
+			movement += V2fInit(-1.0f,0.0f) * player.moveSpeed;
+		} else if(IsDown(controller.moveRight)) {
+			movement += V2fInit(1.0f,0.0f) * player.moveSpeed;
+		}
 	}
 
 	// Apply movement
