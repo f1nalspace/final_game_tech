@@ -37,6 +37,10 @@ inline UVRect UVRectInit(const float uMin, const float vMin, const float uMax, c
 	return(result);
 }
 
+inline UVRect UVRectDefault() {
+	return UVRectInit(0.0f, 0.0f, 1.0f, 1.0f);
+}
+
 inline UVRect UVRectFromTile(const Vec2i imageSize, const Vec2i tileSize, const int border, const Vec2i pos) {
 	Vec2f texel = V2fInit(1.0f / (float)imageSize.x, 1.0f / (float)imageSize.y);
 	int imgX = border + pos.x * tileSize.x + border * pos.x;
@@ -227,10 +231,10 @@ extern void PushRectangle(RenderState *state, const Vec2f bottomLeft, const Vec2
 extern void PushRectangleCenter(RenderState *state, const Vec2f center, const Vec2f ext, const Vec4f color, const bool isFilled, const float lineWidth);
 extern VertexAllocation AllocateVertices(RenderState *state, const size_t capacity, const Vec4f color, const DrawMode drawMode, const bool isLoop, const float thickness);
 extern void PushVertices(RenderState *state, const Vec2f *verts, const size_t vertexCount, const bool copyVerts, const Vec4f color, const DrawMode drawMode, const bool isLoop, const float thickness);
-extern void PushSprite(RenderState *state, const Vec2f position, const Vec2f ext, const TextureHandle *texture, const Vec4f color, const UVRect uvRect);
+extern void PushSprite(RenderState *state, const Vec2f position, const Vec2f ext, const TextureHandle texture, const Vec4f color, const UVRect uvRect);
 extern void PushTexture(RenderState *state, TextureHandle *targetTexture, const void *data, const uint32_t width, const uint32_t height, const uint32_t bytesPerPixel, const TextureFilterType filter, const TextureWrapMode wrap, const bool isTopDown, const bool isPreMultiplied);
 extern void PopTexture(RenderState *state, TextureHandle *targetTexture);
-extern void PushText(RenderState *state, const char *text, const size_t textLen, const LoadedFont *font, const TextureHandle *texture, const Vec2f position, const float maxHeight, const float horizontalAlignment, const float verticalAlignment, const Vec4f color);
+extern void PushText(RenderState *state, const char *text, const size_t textLen, const LoadedFont *font, const TextureHandle texture, const Vec2f position, const float maxHeight, const float horizontalAlignment, const float verticalAlignment, const Vec4f color);
 extern void PushCircle(RenderState *state, const Vec2f position, const float radius, const size_t segmentCount, const Vec4f color, const bool isFilled, const float lineWidth);
 extern void PushLine(RenderState *state, const Vec2f a, const Vec2f b, const Vec4f color, const float lineWidth);
 
@@ -419,7 +423,7 @@ extern void PushVertices(RenderState *state, const Vec2f *verts, const size_t ve
 	cmd->isLoop = isLoop;
 }
 
-extern void PushSprite(RenderState *state, const Vec2f position, const Vec2f ext, const TextureHandle *texture, const Vec4f color, const UVRect uvRect) {
+extern void PushSprite(RenderState *state, const Vec2f position, const Vec2f ext, const TextureHandle texture, const Vec4f color, const UVRect uvRect) {
 	if (state == fpl_null) {
 		return;
 	}
@@ -431,7 +435,7 @@ extern void PushSprite(RenderState *state, const Vec2f position, const Vec2f ext
 	}
 	cmd->position = position;
 	cmd->ext = ext;
-	cmd->texture = *texture;
+	cmd->texture = texture;
 	cmd->color = color;
 	cmd->uvMin = V2fInit(uvRect.uMin, uvRect.vMin);
 	cmd->uvMax = V2fInit(uvRect.uMax, uvRect.vMax);
@@ -498,7 +502,7 @@ extern void PushCircle(RenderState *state, const Vec2f position, const float rad
 	*vertAlloc.count = vertexCount;
 }
 
-extern void PushText(RenderState *state, const char *text, const size_t textLen, const LoadedFont *font, const TextureHandle *texture, const Vec2f position, const float maxHeight, const float horizontalAlignment, const float verticalAlignment, const Vec4f color) {
+extern void PushText(RenderState *state, const char *text, const size_t textLen, const LoadedFont *font, const TextureHandle texture, const Vec2f position, const float maxHeight, const float horizontalAlignment, const float verticalAlignment, const Vec4f color) {
 	if (state == fpl_null || text == fpl_null || textLen == 0 || font == fpl_null || texture == fpl_null) {
 		return;
 	}
@@ -517,7 +521,7 @@ extern void PushText(RenderState *state, const char *text, const size_t textLen,
 	fplCopyStringLen(text, textLen, pt, capacity);
 
 	cmd->position = position;
-	cmd->texture = *texture;
+	cmd->texture = texture;
 	cmd->font = font;
 	cmd->color = color;
 	cmd->textLength = textLen;
