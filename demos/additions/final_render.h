@@ -28,6 +28,15 @@ typedef struct UVRect {
 	float vMax;
 } UVRect;
 
+inline UVRect UVRectInit(const float uMin, const float vMin, const float uMax, const float vMax) {
+	UVRect result = fplZeroInit;
+	result.uMin = uMin;
+	result.vMin = vMin;
+	result.uMax = uMax;
+	result.vMax = vMax;
+	return(result);
+}
+
 inline UVRect UVRectFromTile(const Vec2i imageSize, const Vec2i tileSize, const int border, const Vec2i pos) {
 	Vec2f texel = V2fInit(1.0f / (float)imageSize.x, 1.0f / (float)imageSize.y);
 	int imgX = border + pos.x * tileSize.x + border * pos.x;
@@ -40,7 +49,7 @@ inline UVRect UVRectFromTile(const Vec2i imageSize, const Vec2i tileSize, const 
 	return(result);
 }
 
-inline UVRect UVRectFromPos(const Vec2i &imageSize, const Vec2i &partSize, const Vec2i &pos) {
+inline UVRect UVRectFromPos(const Vec2i imageSize, const Vec2i partSize, const Vec2i pos) {
 	Vec2f texel = V2fInit(1.0f / (float)imageSize.x, 1.0f / (float)imageSize.y);
 	UVRect result = fplZeroInit;
 	result.uMin = pos.x * texel.x;
@@ -98,8 +107,8 @@ typedef struct TextureOperation {
 	bool isPreMultiplied;
 } TextureOperation;
 
-const size_t MAX_TEXTURE_OPERATION_COUNT = 1024;
-const size_t MAX_MATRIX_STACK_COUNT = 32;
+#define MAX_TEXTURE_OPERATION_COUNT 1024
+#define MAX_MATRIX_STACK_COUNT 32
 
 typedef struct RenderState {
 	TextureOperation textureOperations[MAX_TEXTURE_OPERATION_COUNT];
@@ -231,13 +240,16 @@ extern void PushLine(RenderState *state, const Vec2f a, const Vec2f b, const Vec
 #define FINAL_RENDER_IMPLEMENTED
 
 static CommandHeader *PushHeader(RenderState *state, const CommandType type) {
-	fplAssert(state != fpl_null);
-	CommandHeader *result = (CommandHeader *)fmemPush(&state->memory, sizeof(CommandHeader), fmemPushFlags_None);
-	if(result != nullptr) {
-		result->type = type;
-		result->dataSize = 0;
+	if (state == fpl_null) {
+		return fpl_null;
 	}
-	return(result);
+	CommandHeader *result = (CommandHeader *)fmemPush(&state->memory, sizeof(CommandHeader), fmemPushFlags_None);
+	if (result == fpl_null) {
+		return fpl_null;
+	}
+	result->type = type;
+	result->dataSize = 0;
+	return result;
 }
 
 static void *PushTypes(RenderState *state, CommandHeader *header, const size_t count, const size_t typeSize, const bool clear) {
@@ -346,7 +358,9 @@ extern void PushRectangle(RenderState *state, const Vec2f bottomLeft, const Vec2
 }
 
 extern void PushRectangleCenter(RenderState *state, const Vec2f center, const Vec2f ext, const Vec4f color, const bool isFilled, const float lineWidth) {
-	PushRectangle(state, center - ext, ext * 2.0f, color, isFilled, lineWidth);
+	Vec2f bottomLeft = V2fSub(center, ext);
+	Vec2f size = V2fMultScalar(ext, 2.0f);
+	PushRectangle(state, bottomLeft, size, color, isFilled, lineWidth);
 }
 
 extern VertexAllocation AllocateVertices(RenderState *state, const size_t capacity, const Vec4f color, const DrawMode drawMode, const bool isLoop, const float thickness) {
@@ -384,12 +398,12 @@ extern void PushVertices(RenderState *state, const Vec2f *verts, const size_t ve
 		return;
 	}
 
-	if(copyVerts) {
+	if (copyVerts) {
 		Vec2f *dstVerts = PushTypesAs(state, header, vertexCount, Vec2f, true);
 		if (dstVerts == fpl_null) {
 			return;
 		}
-		for(size_t i = 0; i < vertexCount; ++i) {
+		for (size_t i = 0; i < vertexCount; ++i) {
 			dstVerts[i] = verts[i];
 		}
 		cmd->verts = dstVerts;
@@ -464,7 +478,7 @@ extern void PushCircle(RenderState *state, const Vec2f position, const float rad
 	float seg = Tau32 / (float)segmentCount;
 	size_t vertexCapacity = segmentCount;
 	DrawMode drawMode;
-	if(isFilled) {
+	if (isFilled) {
 		drawMode = DrawMode_Polygon;
 	} else {
 		drawMode = DrawMode_Lines;
@@ -475,7 +489,7 @@ extern void PushCircle(RenderState *state, const Vec2f position, const float rad
 	}
 	size_t vertexCount = 0;
 	Vec2f *p = vertAlloc.verts;
-	for(size_t segmentIndex = 0; segmentIndex < segmentCount; ++segmentIndex) {
+	for (size_t segmentIndex = 0; segmentIndex < segmentCount; ++segmentIndex) {
 		float x = position.x + Cosine(segmentIndex * seg) * radius;
 		float y = position.y + Sine(segmentIndex * seg) * radius;
 		*p++ = V2fInit(x, y);
@@ -513,7 +527,7 @@ extern void PushText(RenderState *state, const char *text, const size_t textLen,
 }
 
 extern void PushLine(RenderState *state, const Vec2f a, const Vec2f b, const Vec4f color, const float lineWidth) {
-	Vec2f verts[] = { a, b };
+	Vec2f verts[] = {a, b};
 	PushVertices(state, verts, 2, true, color, DrawMode_Lines, false, lineWidth);
 }
 
@@ -521,7 +535,7 @@ extern Viewport ComputeViewportByAspect(const Vec2i screenSize, const float targ
 	int targetHeight = (int)(screenSize.w / targetAspect);
 	Vec2i viewSize = V2iInit(screenSize.w, screenSize.h);
 	Vec2i viewOffset = V2iInit(0, 0);
-	if(targetHeight > screenSize.h) {
+	if (targetHeight > screenSize.h) {
 		viewSize.h = screenSize.h;
 		viewSize.w = (int)(screenSize.h * targetAspect);
 		viewOffset.x = (screenSize.w - viewSize.w) / 2;
@@ -530,7 +544,7 @@ extern Viewport ComputeViewportByAspect(const Vec2i screenSize, const float targ
 		viewSize.h = (int)(screenSize.w / targetAspect);
 		viewOffset.y = (screenSize.h - viewSize.h) / 2;
 	}
-	Viewport result = { viewOffset.x, viewOffset.y, viewSize.w, viewSize.h };
+	Viewport result = {viewOffset.x, viewOffset.y, viewSize.w, viewSize.h};
 	return(result);
 }
 

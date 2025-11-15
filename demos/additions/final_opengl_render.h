@@ -5,10 +5,6 @@ Temporary: Remove it when render commands are fully implemented
 #ifndef FINAL_OPENGL_RENDER_H
 #define FINAL_OPENGL_RENDER_H
 
-#if !(defined(__cplusplus) && ((__cplusplus >= 201103L) || (defined(_MSC_VER) && _MSC_VER >= 1900)))
-#error "C++/11 compiler not detected!"
-#endif
-
 #include <final_math.h>
 #include <final_render.h>
 #include <final_fontloader.h>
@@ -24,13 +20,12 @@ fpl_inline GLuint GetTextureIDFromHandle(const TextureHandle handle) {
 	return (GLuint)(uintptr_t)(handle);
 }
 
-extern void DrawSprite(const GLuint texId, const float rx, const float ry, const float uMin = 0.0f, const float vMin = 0.0f, const float uMax = 1.0f, const float vMax = 1.0f, const float xoffset = 0, const float yoffset = 0);
-extern void DrawSprite(const GLuint texId, const float rx, const float ry, const UVRect &uv, const float xoffset = 0, const float yoffset = 0);
+extern void DrawSprite(const GLuint texId, const Vec2f ext, const UVRect uv, const Vec2f offset);
 extern void DrawPoint(const Camera2D *camera, const float x, const float y, const float radius, const Vec4f color);
 extern void DrawTextFont(const char *text, const size_t textLen, const LoadedFont *fontDesc, const GLuint fontTexture, const float x, const float y, const float maxCharHeight, const float sx, const float sy);
-extern void DrawCircle(const float centerX, const float centerY, const float radius, const bool isFilled, const Vec4f color, const int segments = 16);
+extern void DrawCircle(const float centerX, const float centerY, const float radius, const bool isFilled, const Vec4f color, const int segments);
 extern void DrawNormal(const Vec2f pos, const Vec2f normal, const float length, const Vec4f color);
-extern GLuint AllocateTexture(const uint32_t width, const uint32_t height, const void *data, const bool repeatable, const GLint filter, const bool isAlphaOnly = false);
+extern GLuint AllocateTexture(const uint32_t width, const uint32_t height, const void *data, const bool repeatable, const GLint filter, const bool isAlphaOnly);
 
 extern void InitOpenGLRenderer();
 
@@ -43,7 +38,15 @@ extern void RenderWithOpenGL(RenderState *renderState);
 
 #include <final_utils.h>
 
-extern void DrawSprite(const GLuint texId, const float rx, const float ry, const float uMin, const float vMin, const float uMax, const float vMax, const float xoffset, const float yoffset) {
+extern void DrawSprite(const GLuint texId, const Vec2f ext, const UVRect uv, const Vec2f offset) {
+	const float uMin = uv.uMin;
+	const float vMin = uv.vMin;
+	const float uMax = uv.uMax;
+	const float vMax = uv.vMax;
+	const float xoffset = offset.x;
+	const float yoffset = offset.y;
+	const float rx = ext.w;
+	const float ry = ext.h;
 	glEnable(GL_TEXTURE_2D);
 	glBindTexture(GL_TEXTURE_2D, texId);
 	glBegin(GL_QUADS);
@@ -54,10 +57,6 @@ extern void DrawSprite(const GLuint texId, const float rx, const float ry, const
 	glEnd();
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glDisable(GL_TEXTURE_2D);
-}
-
-extern void DrawSprite(const GLuint texId, const float rx, const float ry, const UVRect uv, const float xoffset, const float yoffset) {
-	DrawSprite(texId, rx, ry, uv.uMin, uv.vMax, uv.uMax, uv.vMin, xoffset, yoffset);
 }
 
 extern void DrawPoint(const Camera2D *camera, const float x, const float y, const float radius, const Vec4f color) {
@@ -82,10 +81,13 @@ extern void DrawTextFont(const char *text, const size_t textLen, const LoadedFon
 			if((uint32_t)at >= fontDesc->firstChar && (uint32_t)at <= lastChar) {
 				FontQuad quad = GetFontQuad(fontDesc, at, maxCharHeight);
 
-				Vec2f offset = quad.offset + V2fInit(xpos, ypos);
+				Vec2f pos = V2fInit(xpos,ypos);
+				Vec2f offset = V2fAdd(pos, quad.offset);
 				Vec2f size = quad.size;
+				Vec2f ext = V2fMultScalar(quad.size, 0.5f);
 				Vec2f uvMin = quad.uvMin;
 				Vec2f uvMax = quad.uvMax;
+				UVRect uvRect = UVRectInit(uvMin.x, uvMin.y, uvMax.x, uvMax.y);
 
 #if 0
 				glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
@@ -98,7 +100,7 @@ extern void DrawTextFont(const char *text, const size_t textLen, const LoadedFon
 				glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 #endif
 
-				DrawSprite(fontTexture, size.x * 0.5f, size.y * 0.5f, uvMin.x, uvMin.y, uvMax.x, uvMax.y, offset.x, offset.y);
+				DrawSprite(fontTexture, ext, uvRect, offset);
 
 				advance = GetFontCharacterAdvance(fontDesc, at, atNext) * maxCharHeight;
 			} else {
@@ -231,7 +233,7 @@ extern void RenderWithOpenGL(RenderState *renderState) {
 						fplAssert(renderState->matrixTop < fplArrayCount(renderState->matrixStack));
 						Mat4f *newMatrix = &renderState->matrixStack[renderState->matrixTop++];
 						*newMatrix = mvpCur;
-						mvpCur = *newMatrix * cmd->mat;
+						mvpCur = Mat4Mult(*newMatrix, cmd->mat);
 					} else if(cmd->mode == MatrixMode_Pop) {
 						fplAssert(renderState->matrixTop > 0);
 						mvpCur = renderState->matrixStack[--renderState->matrixTop];
@@ -343,10 +345,10 @@ extern void RenderWithOpenGL(RenderState *renderState) {
 							if((uint32_t)at >= fontDesc->firstChar && (uint32_t)at <= lastChar) {
 								uint32_t codePoint = at - fontDesc->firstChar;
 								const FontGlyph *glyph = &fontDesc->glyphs[codePoint];
-								Vec2f size = glyph->charSize * maxHeight;
+								Vec2f size = V2fMultScalar(glyph->charSize, maxHeight);
 								Vec2f offset = V2fInit(xpos, ypos);
-								offset += glyph->offset * maxHeight;
-								offset += V2fInit(size.x, -size.y) * 0.5f;
+								offset = V2fAddMultScalar(offset, glyph->offset, maxHeight);
+								offset = V2fAddMultScalar(offset, V2fInit(size.x, -size.y), 0.5f);
 
 								float extW = size.w * 0.5f;
 								float extH = size.h * 0.5f;

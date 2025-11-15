@@ -95,7 +95,7 @@ struct GameState;
 
 typedef struct GameMemory {
 	fmemMemoryBlock *memory;
-	GameState *game;
+	struct GameState *game;
 	RenderState *render;
 	AudioSystem *audio;
 } GameMemory;

@@ -64,8 +64,7 @@ extern void ReleaseFontAsset(FontAsset *font);
 #include <final_memory.h>
 
 extern void FreeTextureData(TextureData *texture) {
-	fplAssert(texture != fpl_null);
-	if (texture->data == fpl_null) {
+	if (texture == fpl_null || texture->data == fpl_null) {
 		return;
 	}
 	stbi_image_free(texture->data);
@@ -73,9 +72,10 @@ extern void FreeTextureData(TextureData *texture) {
 }
 
 extern TextureData CreateSubTextureData(TextureData *source, const int x, const int y, const int w, const int h) {
-	fplAssert(source != fpl_null);
-	fplAssert(source->components == 4);
-	TextureData result = {};
+	TextureData result = fplZeroInit;
+	if (source == fpl_null || source->data == fpl_null || source->components != 4) {
+		return result;
+	}
 	result.width = w;
 	result.height = h;
 	result.components = 4;
@@ -99,7 +99,7 @@ extern TextureData CreateSubTextureData(TextureData *source, const int x, const 
 }
 
 extern TextureData LoadTextureData(const char *dataPath, const char *filename) {
-	TextureData result = {};
+	TextureData result = fplZeroInit;
 
 	char filePath[1024];
 	fplPathCombine(filePath, fplArrayCount(filePath), 2, dataPath, filename);
@@ -108,14 +108,14 @@ extern TextureData LoadTextureData(const char *dataPath, const char *filename) {
 	if (fplFileOpenBinary(filePath, &file)) {
 		uint32_t fileLen = fplFileGetSizeFromHandle32(&file);
 		uint8_t *fileBuffer = (uint8_t *)fplMemoryAllocate(fileLen);
-		if (fileBuffer != nullptr) {
+		if (fileBuffer != fpl_null) {
 			if (fplFileReadBlock32(&file, fileLen, fileBuffer, fileLen) == fileLen) {
 				int imageWidth = 0;
 				int imageHeight = 0;
 				int imageComponents = 0;
 				stbi_set_flip_vertically_on_load(0);
 				stbi_uc *imageData = stbi_load_from_memory(fileBuffer, fileLen, &imageWidth, &imageHeight, &imageComponents, 4);
-				if (imageData != nullptr) {
+				if (imageData != fpl_null) {
 					result.width = imageWidth;
 					result.height = imageHeight;
 					result.components = imageComponents;

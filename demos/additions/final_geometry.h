@@ -63,11 +63,11 @@ fpl_inline bool LineCastCircle(const LineCastInput *input, const Vec2f *center, 
 		return false;
 	}
 
-	Vec2f s = input->p1 - *center;
+	Vec2f s = V2fSub(input->p1, *center);
 	float b = V2fDot(s, s) - radius * radius;
 
 	// Solve quadratic equation.
-	Vec2f r = input->p2 - input->p1;
+	Vec2f r = V2fSub(input->p2, input->p1);
 	float c = V2fDot(s, r);
 	float rr = V2fDot(r, r);
 	float sigma = c * c - rr * b;
@@ -85,7 +85,7 @@ fpl_inline bool LineCastCircle(const LineCastInput *input, const Vec2f *center, 
 		a /= rr;
 		fplClearStruct(output);
 		output->fraction = a;
-		output->normal = V2fNormalize(s + a * r);
+		output->normal = V2fNormalize(V2fAddMultScalar(s, r, a));
 		return true;
 	}
 

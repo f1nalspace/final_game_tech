@@ -148,27 +148,27 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 					} break;
 					case fplGamepadEventType_StateChanged:
 					{
-						fplGamepadState &padstate = event.gamepad.state;
+						fplGamepadState *padstate = &event.gamepad.state;
 						assert(newController->isConnected);
 						bool changed = false;
-						if(Abs(padstate.leftStickX) > 0.0f || Abs(padstate.leftStickY) > 0.0f) {
+						if(Abs(padstate->leftStickX) > 0.0f || Abs(padstate->leftStickY) > 0.0f) {
 							newController->isAnalog = true;
-							newController->analogMovement.x = padstate.leftStickX;
-							newController->analogMovement.y = padstate.leftStickY;
+							newController->analogMovement.x = padstate->leftStickX;
+							newController->analogMovement.y = padstate->leftStickY;
 							changed = true;
 						} else {
 							newController->isAnalog = false;
-							changed |= UpdateDigitalButtonState(&oldController->moveDown, &newController->moveDown, padstate.dpadDown.isDown);
-							changed |= UpdateDigitalButtonState(&oldController->moveUp, &newController->moveUp, padstate.dpadUp.isDown);
-							changed |= UpdateDigitalButtonState(&oldController->moveLeft, &newController->moveLeft, padstate.dpadLeft.isDown);
-							changed |= UpdateDigitalButtonState(&oldController->moveRight, &newController->moveRight, padstate.dpadRight.isDown);
+							changed |= UpdateDigitalButtonState(&oldController->moveDown, &newController->moveDown, padstate->dpadDown.isDown);
+							changed |= UpdateDigitalButtonState(&oldController->moveUp, &newController->moveUp, padstate->dpadUp.isDown);
+							changed |= UpdateDigitalButtonState(&oldController->moveLeft, &newController->moveLeft, padstate->dpadLeft.isDown);
+							changed |= UpdateDigitalButtonState(&oldController->moveRight, &newController->moveRight, padstate->dpadRight.isDown);
 						}
-						changed |= UpdateDigitalButtonState(&oldController->actionDown, &newController->actionDown, padstate.actionA.isDown);
-						changed |= UpdateDigitalButtonState(&oldController->actionRight, &newController->actionRight, padstate.actionB.isDown);
-						changed |= UpdateDigitalButtonState(&oldController->actionLeft, &newController->actionLeft, padstate.actionX.isDown);
-						changed |= UpdateDigitalButtonState(&oldController->actionUp, &newController->actionUp, padstate.actionY.isDown);
-						changed |= UpdateDigitalButtonState(&oldController->actionBack, &newController->actionBack, padstate.back.isDown);
-						changed |= UpdateDigitalButtonState(&oldController->actionStart, &newController->actionStart, padstate.start.isDown);
+						changed |= UpdateDigitalButtonState(&oldController->actionDown, &newController->actionDown, padstate->actionA.isDown);
+						changed |= UpdateDigitalButtonState(&oldController->actionRight, &newController->actionRight, padstate->actionB.isDown);
+						changed |= UpdateDigitalButtonState(&oldController->actionLeft, &newController->actionLeft, padstate->actionX.isDown);
+						changed |= UpdateDigitalButtonState(&oldController->actionUp, &newController->actionUp, padstate->actionY.isDown);
+						changed |= UpdateDigitalButtonState(&oldController->actionBack, &newController->actionBack, padstate->back.isDown);
+						changed |= UpdateDigitalButtonState(&oldController->actionStart, &newController->actionStart, padstate->start.isDown);
 						if (changed) {
 							UpdateDefaultController(currentInput, controllerIndex);
 						}
