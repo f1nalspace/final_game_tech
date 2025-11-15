@@ -1454,7 +1454,7 @@ namespace towers {
 				input.p2 = input.p1 + lookDirection * maxDistance;
 				input.maxFraction = 1.0f;
 				LineCastOutput output = {};
-				result = LineCastCircle(input, enemy.position, enemy.data->collisionRadius, output);
+				result = LineCastCircle(&input, &enemy.position, enemy.data->collisionRadius, &output);
 				if (result) {
 					break;
 				}

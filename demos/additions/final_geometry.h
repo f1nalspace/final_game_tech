@@ -1,59 +1,73 @@
+/*
+Name:
+	Final Geometry
+
+Description:
+	Contains types and functions for working with geometric types, that are mostly used for physics simulations.
+
+	This file is part of the final_framework.
+
+License:
+	MIT License
+	Copyright 2017-2025 Torsten Spaete
+*/
+
 #ifndef FINAL_GEOMETRY_H
 #define FINAL_GEOMETRY_H
 
-#if !(defined(__cplusplus) && ((__cplusplus >= 201103L) || (defined(_MSC_VER) && _MSC_VER >= 1900)))
-#error "C++/11 compiler not detected!"
-#endif
+#include <final_math.h>
 
-#include "final_math.h"
-
-struct Ray3f {
+typedef struct {
 	Vec3f origin;
 	Vec3f direction;
-};
+} Ray3f;
 
-inline Ray3f MakeRay(const Vec3f &origin, const Vec3f &direction) {
+fpl_inline Ray3f MakeRay(const Vec3f origin, const Vec3f direction) {
 	Ray3f result = { origin, direction };
 	return(result);
 }
 
-struct HitResult3f {
+typedef struct {
 	Vec3f contact;
 	Vec3f normal;
 	float t;
 	bool isHit;
-};
+} HitResult3f;
 
-union Plane3f {
+typedef union {
 	struct {
 		Vec3f normal;
 		float distance;
 	};
 	Vec4f m;
-};
+} Plane3f;
 
-struct Sphere3f {
+typedef struct {
 	Vec3f origin;
 	float radius;
-};
+} Sphere3f;
 
-struct LineCastInput {
+typedef struct {
 	Vec2f p1;
 	Vec2f p2;
 	float maxFraction;
-};
+} LineCastInput;
 
-struct LineCastOutput {
+typedef struct {
 	Vec2f normal;
 	float fraction;
-};
+} LineCastOutput;
 
-bool LineCastCircle(const LineCastInput &input, const Vec2f &center, const float radius, LineCastOutput &output) {
-	Vec2f s = input.p1 - center;
+fpl_inline bool LineCastCircle(const LineCastInput *input, const Vec2f *center, const float radius, LineCastOutput *output) {
+	if (input == fpl_null || center == fpl_null || output == fpl_null) {
+		return false;
+	}
+
+	Vec2f s = input->p1 - *center;
 	float b = V2fDot(s, s) - radius * radius;
 
 	// Solve quadratic equation.
-	Vec2f r = input.p2 - input.p1;
+	Vec2f r = input->p2 - input->p1;
 	float c = V2fDot(s, r);
 	float rr = V2fDot(r, r);
 	float sigma = c * c - rr * b;
@@ -67,10 +81,11 @@ bool LineCastCircle(const LineCastInput &input, const Vec2f &center, const float
 	float a = -(c + SquareRoot(sigma));
 
 	// Is the intersection point on the segment?
-	if (0.0f <= a && a <= input.maxFraction * rr) {
+	if (0.0f <= a && a <= input->maxFraction * rr) {
 		a /= rr;
-		output.fraction = a;
-		output.normal = V2fNormalize(s + a * r);
+		fplClearStruct(output);
+		output->fraction = a;
+		output->normal = V2fNormalize(s + a * r);
 		return true;
 	}
 
