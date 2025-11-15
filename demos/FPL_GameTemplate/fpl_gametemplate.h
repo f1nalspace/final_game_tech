@@ -12,25 +12,25 @@
 
 #include <final_assets.h>
 
-struct Assets {
+typedef struct Assets {
 	FontAsset consoleFont;
 	char dataPath[1024];
-};
+} Assets;
 
-struct Entity {
+typedef struct Entity {
 	Vec2f position;
 	Vec2f velocity;
 	Vec2f radius;
 	Vec4f color;
 	float moveSpeed;
 	float moveDrag;
-};
+} Entity;
 
-struct World {
+typedef struct World {
 	Entity player;
-};
+} World;
 
-struct GameState {
+typedef struct GameState {
 	Assets assets;
 	World world;
 
@@ -44,6 +44,6 @@ struct GameState {
 
 	bool isExiting;
 	bool isDebugRendering;
-};
+} GameState;
 
 #endif // FPL_GAMETEMPLATE_H

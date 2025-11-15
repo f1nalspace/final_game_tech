@@ -112,16 +112,16 @@ constexpr float TileHeight = WorldHeight / (float)(TileCountY + 1);
 const static Vec2f TileSize = V2fInit(TileWidth, TileHeight);
 constexpr float MaxTileSize = fplMax(TileWidth, TileHeight);
 
-static void LoadAssets(RenderState &renderState, Assets &assets) {
+static void LoadAssets(RenderState *renderState, Assets *assets) {
 	// Fonts
-	FontAsset &hudFont = assets.consoleFont;
+	FontAsset &hudFont = assets->consoleFont;
 	if (LoadFontFromMemory(ptr_fontVeraFontRegular, sizeOf_fontVeraFontRegular, 0, 24.0f, 32, 128, 512, 512, false, &hudFont.desc)) {
-		PushTexture(renderState, &hudFont.texture, hudFont.desc.atlasAlphaBitmap, hudFont.desc.atlasWidth, hudFont.desc.atlasHeight, 1, TextureFilterType::Linear, TextureWrapMode::ClampToEdge, false, false);
+		PushTexture(renderState, &hudFont.texture, hudFont.desc.atlasAlphaBitmap, hudFont.desc.atlasWidth, hudFont.desc.atlasHeight, 1, TextureFilterType_Linear, TextureWrapMode_ClampToEdge, false, false);
 	}
 }
 
-static void FreeAssets(Assets &assets) {
-	ReleaseFontAsset(&assets.consoleFont);
+static void FreeAssets(Assets *assets) {
+	ReleaseFontAsset(&assets->consoleFont);
 }
 
 static void InitGame(GameState *state) {
@@ -142,57 +142,67 @@ static void InitGame(GameState *state) {
 	state->world.player.moveDrag = 0.1f;
 }
 
-extern bool GameInit(GameMemory &gameMemory) {
-	GameState *state = (GameState *)fmemPush(gameMemory.memory, sizeof(GameState), fmemPushFlags_Clear);
-	gameMemory.game = state;
+extern bool GameInit(GameMemory *gameMemory) {
+	if(gameMemory == fpl_null) {
+		return false;
+	}
 
-	RenderState *renderState = gameMemory.render;
+	GameState *state = (GameState *)fmemPush(gameMemory->memory, sizeof(GameState), fmemPushFlags_Clear);
+	gameMemory->game = state;
+
+	RenderState *renderState = gameMemory->render;
+
+	Assets *assets  = &state->assets;
 
 	fplGetExecutableFilePath(state->assets.dataPath, fplArrayCount(state->assets.dataPath));
 	fplExtractFilePath(state->assets.dataPath, state->assets.dataPath, fplArrayCount(state->assets.dataPath));
 	fplPathCombine(state->assets.dataPath, fplArrayCount(state->assets.dataPath), 2, state->assets.dataPath, "data");
 
-	LoadAssets(*renderState, state->assets);
+	LoadAssets(renderState, assets);
 
 	InitGame(state);
 
 	return(true);
 }
 
-extern void GameRelease(GameMemory &gameMemory) {
-	GameState *state = gameMemory.game;
-	if (state != nullptr) {
-		FreeAssets(state->assets);
-		state->~GameState();
-	}
-}
-
-extern bool IsGameExiting(GameMemory &gameMemory) {
-	GameState *state = gameMemory.game;
-	assert(state != nullptr);
-	return state->isExiting;
-}
-
-extern void GameInput(GameMemory &gameMemory, const Input &input) {
-	if (!input.isActive) {
+extern void GameRelease(GameMemory *gameMemory) {
+	if(gameMemory == fpl_null) {
 		return;
 	}
 
-	GameState *state = gameMemory.game;
-	assert(state != nullptr);
+	GameState *state = gameMemory->game;
+	if(state == fpl_null) {
+		return;
+	}
+	FreeAssets(&state->assets);
+}
 
-	RenderState *renderState = gameMemory.render;
-	assert(renderState != nullptr);
+extern bool IsGameExiting(GameMemory *gameMemory) {
+	GameState *state = gameMemory->game;
+	assert(state != fpl_null);
+	return state->isExiting;
+}
+
+extern void GameInput(GameMemory *gameMemory, const Input *input) {
+	if (!input->isActive) {
+		return;
+	}
+
+	GameState *state = gameMemory->game;
+	assert(state != fpl_null);
+
+	RenderState *renderState = gameMemory->render;
+	assert(renderState != fpl_null);
 
 	// Debug input
-	const Controller &keyboardController = input.controllers[0];
+	const Controller &keyboardController = input->controllers[0];
 	if (WasPressed(keyboardController.debugToggle)) {
 		state->isDebugRendering = !state->isDebugRendering;
 	}
 
 	// Camera
 	float scale = state->camera.scale;
-	state->viewport = ComputeViewportByAspect(input.windowSize, GameAspect);
+	state->viewport = ComputeViewportByAspect(input->windowSize, GameAspect);
 	state->camera.worldToPixels = (state->viewport.w / (float)WorldWidth) * scale;
 	state->camera.pixelsToWorld = 1.0f / state->camera.worldToPixels;
 
@@ -205,29 +215,29 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 	state->viewProjection = proj * view;
 
 	// Mouse
-	int mouseCenterX = (input.mouse.pos.x - input.windowSize.w / 2);
-	int mouseCenterY = (input.windowSize.h - 1 - input.mouse.pos.y) - input.windowSize.h / 2;
+	int mouseCenterX = (input->mouse.pos.x - input->windowSize.w / 2);
+	int mouseCenterY = (input->windowSize.h - 1 - input->mouse.pos.y) - input->windowSize.h / 2;
 	state->mouseWorldPos.x = (mouseCenterX * state->camera.pixelsToWorld) - state->camera.offset.x;
 	state->mouseWorldPos.y = (mouseCenterY * state->camera.pixelsToWorld) - state->camera.offset.y;
 }
 
-extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
-	if (!input.isActive) {
+extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
+	if (!input->isActive) {
 		return;
 	}
 
-	GameState *state = gameMemory.game;
-	assert(state != nullptr);
+	GameState *state = gameMemory->game;
+	assert(state != fpl_null);
 
-	const float dt = input.fixedDeltaTime;
+	const float dt = input->fixedDeltaTime;
 
 	World &world = state->world;
 	Entity &player = world.player;
 
 	// Player
 	Vec2f movement = V2fInit(0.0f, 0.0f);
-	if(input.defaultControllerIndex > -1 && input.defaultControllerIndex < fplArrayCount(input.controllers)){
-		const Controller &controller = input.controllers[input.defaultControllerIndex];
+	if(input->defaultControllerIndex > -1 && input->defaultControllerIndex < fplArrayCount(input->controllers)){
+		const Controller &controller = input->controllers[input->defaultControllerIndex];
 		if(IsDown(controller.moveUp)) {
 			movement += V2fInit(0.0f,1.0f) * player.moveSpeed;
 		} else if(IsDown(controller.moveDown)) {
@@ -260,7 +270,7 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 	// FPS display
 	const float fpsSmoothing = 0.1f;
 
-	const float newFps = input.framesPerSeconds;
+	const float newFps = input->framesPerSeconds;
 	const float oldFps = state->framesPerSecond[0];
 
 	state->deltaTime = dt;
@@ -268,19 +278,19 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 	state->framesPerSecond[0] = state->framesPerSecond[1];
 }
 
-extern void GameRender(GameMemory &gameMemory, const float alpha) {
-	GameState *state = gameMemory.game;
-	assert(state != nullptr);
+extern void GameRender(GameMemory *gameMemory, const float alpha) {
+	GameState *state = gameMemory->game;
+	assert(state != fpl_null);
 
-	RenderState &renderState = *gameMemory.render;
+	RenderState *renderState = gameMemory->render;
 
 	const float w = WorldRadiusW;
 	const float h = WorldRadiusH;
 	const float dt = state->deltaTime;
 
 	PushViewport(renderState, state->viewport.x, state->viewport.y, state->viewport.w, state->viewport.h);
-	PushClear(renderState, V4fInit(0, 0, 0, 1), ClearFlags::Color | ClearFlags::Depth);
-	SetMatrix(renderState, state->viewProjection);
+	PushClear(renderState, V4fInit(0, 0, 0, 1), ClearFlags_Color | ClearFlags_Depth);
+	SetMatrix(renderState, &state->viewProjection);
 
 	// World size
 	PushRectangle(renderState, V2fInit(-w, -h), V2fInit(w * 2, h * 2), V4fInit(1.0f, 1.0f, 0.0f, 1.0f), false, 1.0f);
@@ -324,13 +334,13 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 		float fontHeight = MaxTileSize * 0.25f;
 
 		char sizeCharsBuffer[2][32 + 1];
-		FormatSize(gameMemory.memory->used, fplArrayCount(sizeCharsBuffer[0]), sizeCharsBuffer[0]);
-		FormatSize(gameMemory.memory->size, fplArrayCount(sizeCharsBuffer[1]), sizeCharsBuffer[1]);
+		FormatSize(gameMemory->memory->used, fplArrayCount(sizeCharsBuffer[0]), sizeCharsBuffer[0]);
+		FormatSize(gameMemory->memory->size, fplArrayCount(sizeCharsBuffer[1]), sizeCharsBuffer[1]);
 		fplStringFormat(text, fplArrayCount(text), "Game Memory: %s / %s bytes", sizeCharsBuffer[0], sizeCharsBuffer[1]);
 		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
 
-		FormatSize(renderState.lastMemoryUsage, fplArrayCount(sizeCharsBuffer[0]), sizeCharsBuffer[0]);
-		FormatSize(renderState.memory.size, fplArrayCount(sizeCharsBuffer[1]), sizeCharsBuffer[1]);
+		FormatSize(renderState->lastMemoryUsage, fplArrayCount(sizeCharsBuffer[0]), sizeCharsBuffer[0]);
+		FormatSize(renderState->memory.size, fplArrayCount(sizeCharsBuffer[1]), sizeCharsBuffer[1]);
 		fplStringFormat(text, fplArrayCount(text), "Render Memory: %s / %s bytes", sizeCharsBuffer[0], sizeCharsBuffer[1]);
 		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(blockPos.x + w, blockPos.y), fontHeight, 0.0f, -1.0f, textColor);
 		fplStringFormat(text, fplArrayCount(text), "Fps: %.5f, Delta: %.5f", state->framesPerSecond[1], state->deltaTime);
@@ -342,9 +352,9 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 #include <final_gameplatform.h>
 
 int main(int argc, char *argv[]) {
-	GameConfiguration config = {};
+	GameConfiguration config = fplZeroInit;
 	config.title = "FPL Demo | GameTemplate";
 	config.disableInactiveDetection = true;
-	int result = GameMain(config);
+	int result = GameMain(&config);
 	return(result);
 }
