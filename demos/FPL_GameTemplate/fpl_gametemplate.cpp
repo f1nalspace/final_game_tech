@@ -121,7 +121,7 @@ static void LoadAssets(RenderState &renderState, Assets &assets) {
 }
 
 static void FreeAssets(Assets &assets) {
-	ReleaseFontAsset(assets.consoleFont);
+	ReleaseFontAsset(&assets.consoleFont);
 }
 
 static void InitGame(GameState *state) {

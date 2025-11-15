@@ -1603,8 +1603,8 @@ namespace game {
 	}
 
 	static void ReleaseAssets(Assets &assets) {
-		ReleaseFontAsset(assets.overlayFont);
-		ReleaseFontAsset(assets.hudFont);
+		ReleaseFontAsset(&assets.overlayFont);
+		ReleaseFontAsset(&assets.hudFont);
 	}
 
 	static void LoadTextureAsset(RenderState &renderState, const char *dataPath, const char *filename, const bool isTopDown, TextureAsset *outAsset) {

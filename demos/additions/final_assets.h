@@ -13,10 +13,6 @@ License:
 #ifndef FINAL_ASSETS_H
 #define FINAL_ASSETS_H
 
-#if !defined(__cplusplus)
-#error "C++ is required for this math library!"
-#endif
-
 #include <final_platform_layer.h>
 
 #include <final_math.h>
@@ -24,34 +20,34 @@ License:
 #include <final_render.h>
 #include <final_memory.h>
 
-struct FontAsset {
+typedef struct {
 	LoadedFont desc;
 	TextureHandle texture;
-};
+} FontAsset;
 
-struct TextureData {
+typedef struct {
 	uint8_t *data;
 	uint32_t width;
 	uint32_t height;
 	uint8_t components;
-};
+} TextureData;
 
-struct TextureAsset {
+typedef struct {
 	TextureData data;
 	TextureHandle texture;
-};
+} TextureAsset;
 
-enum class AssetType {
-	None = 0,
-	Texture,
-	Font,
-};
+typedef enum {
+	AssetType_None = 0,
+	AssetType_Texture,
+	AssetType_Font,
+} AssetType;
 
 
 extern TextureData LoadTextureData(const char *dataPath, const char *filename);
-extern void FreeTextureData(TextureData &texture);
-extern TextureData CreateSubTextureData(TextureData &source, int x, int y, int w, int h);
-extern void ReleaseFontAsset(FontAsset &font);
+extern void FreeTextureData(TextureData *texture);
+extern TextureData CreateSubTextureData(TextureData *source, const int x, const int y, const int w, const int h);
+extern void ReleaseFontAsset(FontAsset *font);
 
 #endif // FINAL_ASSETS_H
 
@@ -67,27 +63,30 @@ extern void ReleaseFontAsset(FontAsset &font);
 #define FMEM_IMPLEMENTATION
 #include <final_memory.h>
 
-extern void FreeTextureData(TextureData &texture) {
-	if (texture.data != nullptr) {
-		stbi_image_free(texture.data);
-		texture.data = nullptr;
+extern void FreeTextureData(TextureData *texture) {
+	fplAssert(texture != fpl_null);
+	if (texture->data == fpl_null) {
+		return;
 	}
+	stbi_image_free(texture->data);
+	texture->data = fpl_null;
 }
 
-extern TextureData CreateSubTextureData(TextureData &source, int x, int y, int w, int h) {
-	fplAssert(source.components == 4);
+extern TextureData CreateSubTextureData(TextureData *source, const int x, const int y, const int w, const int h) {
+	fplAssert(source != fpl_null);
+	fplAssert(source->components == 4);
 	TextureData result = {};
 	result.width = w;
 	result.height = h;
 	result.components = 4;
 	result.data = (uint8_t *)STBI_MALLOC(w * h * 4);
-	int sourceScanline = source.width * 4;
+	int sourceScanline = source->width * 4;
 	int destScanline = w * 4;
 	int dstY = 0;
 	for (int srcY = y; srcY < (y + h); ++srcY) {
 		int dstX = 0;
 		for (int srcX = x; srcX < (x + w); ++srcX) {
-			uint8_t *src = source.data + (srcY * sourceScanline + srcX * 4);
+			uint8_t *src = source->data + (srcY * sourceScanline + srcX * 4);
 			uint8_t *dst = result.data + (dstY * destScanline + dstX * 4);
 			uint32_t *srcPixel = (uint32_t *)src;
 			uint32_t *dstPixel = (uint32_t *)dst;
@@ -96,7 +95,7 @@ extern TextureData CreateSubTextureData(TextureData &source, int x, int y, int w
 		}
 		++dstY;
 	}
-	return(result);
+	return result;
 }
 
 extern TextureData LoadTextureData(const char *dataPath, const char *filename) {
@@ -138,9 +137,9 @@ extern TextureData LoadTextureData(const char *dataPath, const char *filename) {
 	return(result);
 }
 
-extern void ReleaseFontAsset(FontAsset &font) {
+extern void ReleaseFontAsset(FontAsset *font) {
 	// @TODO(final): Release texture somehow
-	ReleaseFont(&font.desc);
+	ReleaseFont(&font->desc);
 }
 
 #endif // FINAL_ASSETS_IMPLEMENTATION

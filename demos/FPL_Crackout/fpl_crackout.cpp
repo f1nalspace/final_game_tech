@@ -672,7 +672,7 @@ static bool LoadTexture(const char *dataPath, const char *filename, const bool r
 		return false;
 	}
 	bool result = LoadTexture(image, repeatable, outTexture);
-	FreeTextureData(image);
+	FreeTextureData(&image);
 	return(result);
 }
 
@@ -695,11 +695,11 @@ static bool LoadAssets(GameState &state) {
 
 	TextureData bgImage = LoadTextureData(state.dataPath, "bg.bmp");
 	if(bgImage.data != nullptr) {
-		TextureData bgTileImage0 = CreateSubTextureData(bgImage, 2, 2, 16, 16);
+		TextureData bgTileImage0 = CreateSubTextureData(&bgImage, 2, 2, 16, 16);
 		LoadTexture(bgTileImage0, true, state.assets.bgTextures[BackgroundType::Default]);
-		FreeTextureData(bgTileImage0);
+		FreeTextureData(&bgTileImage0);
 	}
-	FreeTextureData(bgImage);
+	FreeTextureData(&bgImage);
 
 	if(LoadFontFromMemory(ptr_fontHemiHeadBoldItalic, sizeOf_fontHemiHeadBoldItalic, 0, 36.0f, 32, 127, 512, 512, true, &state.assets.fontMenu.desc)) {
 		GLuint texId = AllocateTexture(state.assets.fontMenu.desc.atlasWidth, state.assets.fontMenu.desc.atlasHeight, state.assets.fontMenu.desc.atlasAlphaBitmap, false, GL_NEAREST, true);
