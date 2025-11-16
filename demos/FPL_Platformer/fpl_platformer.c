@@ -165,8 +165,8 @@ static uint32_t gTestLevelTiles[TestLevel_Width * TestLevel_Height] = {
 	1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
 	1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
 	1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-	1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1,
-	1, 0, 0, 0, 0, 0, 2, 0, 0, 0, 1,
+	1, 0, 0, 2, 0, 0, 0, 1, 0, 0, 1,
+	1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
 	1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1,
 	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
 };
@@ -681,7 +681,6 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 
 	Vec2i mapSize = V2iInit(map->width, map->height);
 	Vec2f mapArea = V2fHadamard(TileSize, V2fInit((float)mapSize.x, (float)mapSize.y));
-	Vec2f mapExtents = V2fMultScalar(mapArea, 0.5f);
 	Vec2f mapOrigin = MapTileCoordsToWorld(map, map->origin);
 	Vec4f mapSolidColor = V4fInit(1.0f, 1.0f, 1.0f, 1.0f);
 	Vec4f playerTileColor = V4fInit(0.3f, 0.1f, 0.7f, 1.0f);
@@ -738,8 +737,6 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 	PushRectangleCenter(renderState, state->mouseWorldPos, V2fInit(2, 2), V4fInit(1.0f, 0.0f, 0.0f, 1.0f), true, 0.0f);
 
 	// Mouse tile
-	Vec2f invTileSize = V2fInit(1.0f / TileWidth, 1.0f / TileHeight);
-
 	Vec2i mouseTilePos = MapWorldCoordsToTile(map, V2fSub(state->mouseWorldPos, mapOrigin));
 	Vec2f mouseWorldPos = MapTileCoordsToWorld(map, mouseTilePos);
 	Vec2f p = V2fAdd(gridOrigin, mouseWorldPos);
