@@ -5,6 +5,8 @@
 
 #include <final_geometry.h>
 
+#include "map.h"
+
 typedef union {
 	struct {
 		uint32_t low;
@@ -21,6 +23,6 @@ typedef struct {
 	float impulse;
 } Contact;
 
-bool CreateContactsAABBvsAABB();
+extern uint32_t CreateContactsAABBvsAABB(const Map *map, const uint32_t idA, const AABB2f *a, const uint32_t idB, const AABB2f *b, const Vec2i tilePos, const bool checkInternal, Contact outContacts[2]);
 
 #endif // COLLISION_H
