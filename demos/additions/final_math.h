@@ -58,30 +58,29 @@ Changelog
 #include <math.h>
 #include <float.h>
 
-const float Pi32 = (float)M_PI;
-const float Tau32 = (float)M_PI * 2.0f;
-const float Deg2Rad = (float)M_PI / 180.0f;
-const float Rad2Deg = 180.0f / (float)M_PI;
-const float Epsilon = FLT_EPSILON;
-const float InvByte = 1.0f / 255.0f;
-
 const float F32Max = FLT_MAX;
 const float F32Min = FLT_MIN;
+const float F32Pi = (float)M_PI;
+const float F32Tau = (float)M_PI * 2.0f;
+const float F32Deg2Rad = (float)M_PI / 180.0f;
+const float F32Rad2Deg = 180.0f / (float)M_PI;
+const float F32Epsilon = FLT_EPSILON;
+const float F32InvByte = 1.0f / 255.0f;
 
 //
-// Ratio type
+// Ratio64 type
 //
-typedef struct Ratio {
+typedef struct Ratio64 {
 	double numerator;
 	double denominator;
-} Ratio;
+} Ratio64;
 
-fpl_force_inline Ratio MakeRatio(double numerator, double denominator) {
-	Ratio result = fplStructInit(Ratio, numerator, denominator);
+fpl_force_inline Ratio64 Ratio64Init(double numerator, double denominator) {
+	Ratio64 result = fplStructInit(Ratio64, numerator, denominator);
 	return(result);
 }
 
-fpl_force_inline double ComputeRatio(const Ratio ratio) {
+fpl_force_inline double Ratio64Compute(const Ratio64 ratio) {
 	fplAssert(ratio.denominator != 0);
 	double result = ratio.numerator / ratio.denominator;
 	return(result);
@@ -568,11 +567,11 @@ fpl_force_inline float SquareRoot(const float value) {
 	return(result);
 }
 fpl_force_inline float RadiansToDegrees(const float radians) {
-	float result = radians * Rad2Deg;
+	float result = radians * F32Rad2Deg;
 	return(result);
 }
 fpl_force_inline float DegreesToRadians(const float degrees) {
-	float result = degrees * Deg2Rad;
+	float result = degrees * F32Deg2Rad;
 	return(result);
 }
 
@@ -592,7 +591,7 @@ fpl_force_inline float ScalarClamp(float value, float min, float max) {
 }
 
 fpl_force_inline float GetBestAngleDistance(float a0, float a1) {
-	float max = Pi32 * 2;
+	float max = F32Pi * 2;
 	float da = fmodf(a1 - a0, max);
 	float result = fmodf(2.0f * da, max) - da;
 	return(result);
@@ -610,7 +609,7 @@ fpl_force_inline uint8_t RoundF32ToU8(float value) {
 }
 
 fpl_force_inline float RoundU8ToF32(uint8_t value) {
-	float result = value * InvByte;
+	float result = value * F32InvByte;
 	return(result);
 }
 
@@ -1327,25 +1326,25 @@ fpl_force_inline Quaternion QuatRotation(const Vec3f orig, const Vec3f dest) {
 	float cosTheta = V3fDot(orig, dest);
 	Vec3f rotationAxis;
 
-	if (cosTheta >= 1.0f - Epsilon) {
+	if (cosTheta >= 1.0f - F32Epsilon) {
 		// orig and dest point in the same direction
 		return QuatIdentity();
 	}
 
-	if (cosTheta < -1.0f + Epsilon) {
+	if (cosTheta < -1.0f + F32Epsilon) {
 		// special case when vectors in opposite directions :
 		// there is no "ideal" rotation axis
 		// So guess one; any will do as long as it's perpendicular to start
 		// This implementation favors a rotation around the Up axis (Y),
 		// since it's often what you want to do.
 		rotationAxis = V3fCross(V3fInit(0, 0, 1), orig);
-		if (V3fLength2(rotationAxis) < Epsilon) {
+		if (V3fLength2(rotationAxis) < F32Epsilon) {
 			// bad luck, they were parallel, try again!
 			rotationAxis = V3fCross(V3fInit(1, 0, 0), orig);
 		}
 
 		rotationAxis = V3fNormalize(rotationAxis);
-		return QuatFromAngleAxis(Pi32, rotationAxis);
+		return QuatFromAngleAxis(F32Pi, rotationAxis);
 	}
 
 	// Implementation from Stan Melax's Game Programming Gems 1 article

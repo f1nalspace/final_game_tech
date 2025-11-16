@@ -73,7 +73,7 @@ fpl_inline bool LineCastCircle(const LineCastInput *input, const Vec2f *center, 
 	float sigma = c * c - rr * b;
 
 	// Check for negative discriminant and short segment.
-	if (sigma < 0.0f || rr < Epsilon) {
+	if (sigma < 0.0f || rr < F32Epsilon) {
 		return false;
 	}
 

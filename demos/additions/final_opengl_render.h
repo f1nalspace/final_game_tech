@@ -83,13 +83,13 @@ extern void DrawTextFont(const char *text, const size_t textLen, const LoadedFon
 
 				Vec2f pos = V2fInit(xpos,ypos);
 				Vec2f offset = V2fAdd(pos, quad.offset);
-				Vec2f size = quad.size;
 				Vec2f ext = V2fMultScalar(quad.size, 0.5f);
 				Vec2f uvMin = quad.uvMin;
 				Vec2f uvMax = quad.uvMax;
 				UVRect uvRect = UVRectInit(uvMin.x, uvMin.y, uvMax.x, uvMax.y);
 
 #if 0
+				Vec2f size = quad.size;
 				glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 				glBegin(GL_LINE_LOOP);
 				glVertex2f(offset.x + size.x * 0.5f, offset.y + size.y * -0.5f);
@@ -112,7 +112,7 @@ extern void DrawTextFont(const char *text, const size_t textLen, const LoadedFon
 }
 
 extern void DrawCircle(const float centerX, const float centerY, const float radius, const bool isFilled, const Vec4f color, const int segments) {
-	float seg = Tau32 / (float)segments;
+	float seg = F32Tau / (float)segments;
 	glColor4fv(&color.r);
 	glBegin(isFilled ? GL_POLYGON : GL_LINE_LOOP);
 	for(int segmentIndex = 0; segmentIndex < segments; ++segmentIndex) {

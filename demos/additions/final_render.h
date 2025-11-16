@@ -479,7 +479,7 @@ extern void PushCircle(RenderState *state, const Vec2f position, const float rad
 	if (state == fpl_null || radius <= 0.0f || segmentCount < 3) {
 		return;
 	}
-	float seg = Tau32 / (float)segmentCount;
+	float seg = F32Tau / (float)segmentCount;
 	size_t vertexCapacity = segmentCount;
 	DrawMode drawMode;
 	if (isFilled) {

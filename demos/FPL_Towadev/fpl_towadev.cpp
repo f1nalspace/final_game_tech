@@ -1761,7 +1761,7 @@ namespace game {
 		if (buttonState == ui::UIButtonState::Hover) {
 			alpha = 1.0f;
 		}
-		towers::DrawTower(renderState, gameState.assets, gameState.camera, *towerData, pos, radius, Pi32 * 0.5f, alpha, false);
+		towers::DrawTower(renderState, gameState.assets, gameState.camera, *towerData, pos, radius, F32Pi * 0.5f, alpha, false);
 
 		// Draw selection frame
 		if (gameState.towers.selectedIndex == towerDataIndex) {
@@ -2240,7 +2240,7 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 		if (placeRes == towers::CanPlaceTowerResult::Success || placeRes == towers::CanPlaceTowerResult::NotEnoughMoney) {
 			float alpha = placeRes == towers::CanPlaceTowerResult::Success ? 0.5f : 0.2f;
 			Vec2f towerCenter = TileToWorld(dim, state->mouseTilePos, TileExt);
-			towers::DrawTower(renderState, state->assets, state->camera, *tower, towerCenter, V2fInitScalar(MaxTileRadius), Pi32 * 0.5f, alpha, true);
+			towers::DrawTower(renderState, state->assets, state->camera, *tower, towerCenter, V2fInitScalar(MaxTileRadius), F32Pi * 0.5f, alpha, true);
 		}
 
 		render::DrawTile(renderState, dim, state->mouseTilePos.x, state->mouseTilePos.y, false, hoverColor);
