@@ -796,8 +796,18 @@ fpl_force_inline bool V2iEquals(const Vec2i a, const Vec2i b) {
 //
 // Vec3f
 //
+fpl_force_inline Vec3f V3fNegate(const Vec3f v) {
+	Vec3f result = V3fInit(-v.x, -v.y, -v.z);
+	return(result);
+}
+
 fpl_force_inline Vec3f V3fMultScalar(const Vec3f v, const float s) {
 	Vec3f result = V3fInit(v.x * s, v.y * s, v.z * s);
+	return(result);
+}
+
+fpl_force_inline Vec3f V3fAdd(const Vec3f a, const Vec3f b) {
+	Vec3f result = V3fInit(a.x + b.x, a.y + b.y, a.z + b.z);
 	return(result);
 }
 
@@ -805,48 +815,6 @@ fpl_force_inline Vec3f V3fSub(const Vec3f a, const Vec3f b) {
 	Vec3f result = V3fInit(a.x - b.x, a.y - b.y, a.z - b.z);
 	return(result);
 }
-
-#if defined(__cplusplus)
-fpl_force_inline Vec3f operator*(float s, const Vec3f &v) {
-	Vec3f result = V3fMultScalar(v, s);
-	return(result);
-}
-
-fpl_force_inline Vec3f operator*(const Vec3f &v, float s) {
-	Vec3f result = V3fMultScalar(v, s);
-	return(result);
-}
-
-fpl_force_inline Vec3f &operator*=(Vec3f &v, float s) {
-	v = s * v;
-	return(v);
-}
-
-fpl_force_inline Vec3f operator+(const Vec3f &a, const Vec3f &b) {
-	Vec3f result = V3fInit(a.x + b.x, a.y + b.y, a.z + b.z);
-	return(result);
-}
-
-fpl_force_inline Vec3f &operator+=(Vec3f &a, const Vec3f &b) {
-	a = a + b;
-	return(a);
-}
-
-fpl_force_inline Vec3f operator-(const Vec3f &a, const Vec3f &b) {
-	Vec3f result = V3fInit(a.x - b.x, a.y - b.y, a.z - b.z);
-	return(result);
-}
-
-fpl_force_inline Vec3f operator-(const Vec3f &v) {
-	Vec3f result = V3fInit(-v.x, -v.y, -v.z);
-	return(result);
-}
-
-fpl_force_inline Vec3f &operator-=(Vec3f &a, const Vec3f &b) {
-	a = a - b;
-	return(a);
-}
-#endif // __cplusplus
 
 fpl_force_inline float V3fDot(const Vec3f a, const Vec3f b) {
 	float result = a.x * b.x + a.y * b.y + a.z * b.z;
@@ -902,6 +870,48 @@ fpl_force_inline Vec3f V3fHadamard(const Vec3f a, const Vec3f b) {
 	result.z = a.z * b.z;
 	return(result);
 }
+
+#if defined(__cplusplus)
+fpl_force_inline Vec3f operator*(float s, const Vec3f &v) {
+	Vec3f result = V3fMultScalar(v, s);
+	return(result);
+}
+
+fpl_force_inline Vec3f operator*(const Vec3f &v, float s) {
+	Vec3f result = V3fMultScalar(v, s);
+	return(result);
+}
+
+fpl_force_inline Vec3f &operator*=(Vec3f &v, float s) {
+	v = s * v;
+	return(v);
+}
+
+fpl_force_inline Vec3f operator+(const Vec3f &a, const Vec3f &b) {
+	Vec3f result = V3fAdd(a, b);
+	return(result);
+}
+
+fpl_force_inline Vec3f &operator+=(Vec3f &a, const Vec3f &b) {
+	a = a + b;
+	return(a);
+}
+
+fpl_force_inline Vec3f operator-(const Vec3f &a, const Vec3f &b) {
+	Vec3f result = V3fSub(a, b);
+	return(result);
+}
+
+fpl_force_inline Vec3f operator-(const Vec3f &v) {
+	Vec3f result = V3fNegate(v);
+	return(result);
+}
+
+fpl_force_inline Vec3f &operator-=(Vec3f &a, const Vec3f &b) {
+	a = a - b;
+	return(a);
+}
+#endif // __cplusplus
 
 //
 // Mat2f
