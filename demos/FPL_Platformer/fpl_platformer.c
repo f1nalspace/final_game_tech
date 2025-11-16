@@ -288,12 +288,12 @@ static void UpdatePlayer(Entity *player, const Map *map, const float dt) {
 #endif
 
 	// Air friction
-	if (player->applyAirFriction && EntityIsAir(player) && Abs(player->velocity.x) > 0) {
+	if (player->applyAirFriction && EntityIsAir(player) && F32Abs(player->velocity.x) > 0) {
 		player->velocity.x *= (1.0f - player->airFriction);
 	}
 
 	// Clamp speed
-	player->velocity.x = ScalarClamp(player->velocity.x, -PlayerMaxSpeed, PlayerMaxSpeed);
+	player->velocity.x = F32Clamp(player->velocity.x, -PlayerMaxSpeed, PlayerMaxSpeed);
 
 	// Grounding
 	player->groundState.last = player->groundState.current;
@@ -588,9 +588,9 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	const float h = WorldRadiusH;
 
 	float invScale = 1.0f / state->camera.scale;
-	state->projection = Mat4OrthoRH(-w * invScale, w * invScale, -h * invScale, h * invScale, 0.0f, 1.0f);
-	state->view = Mat4TranslationV2(state->camera.offset);
-	state->viewProjection = Mat4Mult(state->projection, state->view);
+	state->projection = M4fOrthoRH(-w * invScale, w * invScale, -h * invScale, h * invScale, 0.0f, 1.0f);
+	state->view = M4fTranslationV2(state->camera.offset);
+	state->viewProjection = M4fMult(state->projection, state->view);
 
 	// Mouse
 	int mouseCenterX = (input->mouse.pos.x) - input->windowSize.w / 2;
@@ -633,7 +633,7 @@ extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
 	const float oldFps = state->framesPerSecond[0];
 
 	state->deltaTime = dt;
-	state->framesPerSecond[1] = ScalarAvg(oldFps, fpsSmoothing, newFps);
+	state->framesPerSecond[1] = F32Avg(oldFps, fpsSmoothing, newFps);
 	state->framesPerSecond[0] = state->framesPerSecond[1];
 }
 
