@@ -159,6 +159,9 @@ License:
 #define FINAL_ASSETS_IMPLEMENTATION
 #include <final_assets.h>
 
+#define FINAL_GEOMETRY_IMPLEMENTATION
+#include <final_geometry.h>
+
 #include <final_game.h>
 
 #include <final_fonts.h>

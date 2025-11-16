@@ -17,6 +17,9 @@ License:
 
 #include <final_math.h>
 
+//
+// Ray3f
+//
 typedef struct Ray3f {
 	Vec3f origin;
 	Vec3f direction;
@@ -34,6 +37,9 @@ typedef struct HitResult3f {
 	bool isHit;
 } HitResult3f;
 
+//
+// Plane3f
+//
 typedef union Plane3f {
 	struct {
 		Vec3f normal;
@@ -42,11 +48,22 @@ typedef union Plane3f {
 	Vec4f m;
 } Plane3f;
 
+//
+// Sphere3f
+//
 typedef struct Sphere3f {
 	Vec3f origin;
 	float radius;
 } Sphere3f;
 
+fpl_inline Sphere3f Sphere3fInit(const Vec3f origin, const float radius) {
+	Sphere3f result = fplStructInit(Sphere3f,origin,radius);
+	return result;
+}
+
+//
+// LineCast2f
+//
 typedef struct LineCastInput2f {
 	Vec2f p1;
 	Vec2f p2;
@@ -58,7 +75,14 @@ typedef struct LineCastOutput2f {
 	float fraction;
 } LineCastOutput2f;
 
-fpl_inline bool LineCast2fAgainstCircle(const LineCastInput2f *input, const Vec2f *center, const float radius, LineCastOutput2f *output) {
+extern bool LineCast2fAgainstCircle(const LineCastInput2f *input, const Vec2f *center, const float radius, LineCastOutput2f *output);
+
+#endif // FINAL_GEOMETRY_H
+
+#if defined(FINAL_GEOMETRY_IMPLEMENTATION) && !defined(FINAL_GEOMETRY_IMPLEMENTED)
+#define FINAL_GEOMETRY_IMPLEMENTED
+
+extern bool LineCast2fAgainstCircle(const LineCastInput2f *input, const Vec2f *center, const float radius, LineCastOutput2f *output) {
 	if (input == fpl_null || center == fpl_null || output == fpl_null) {
 		return false;
 	}
@@ -92,4 +116,4 @@ fpl_inline bool LineCast2fAgainstCircle(const LineCastInput2f *input, const Vec2
 	return false;
 }
 
-#endif // FINAL_GEOMETRY_H
+#endif // FINAL_GEOMETRY_IMPLEMENTATION
