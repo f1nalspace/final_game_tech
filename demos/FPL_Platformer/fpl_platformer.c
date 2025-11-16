@@ -24,9 +24,7 @@ License:
 #define FPL_NO_VIDEO_VULKAN
 #include <final_platform_layer.h>
 
-#include <string.h>
-#include <stdlib.h>
-#include <stdarg.h>
+#include <final_game.h>
 
 #define FMEM_IMPLEMENTATION
 #include <final_memory.h>
@@ -37,117 +35,16 @@ License:
 #define FINAL_ASSETS_IMPLEMENTATION
 #include <final_assets.h>
 
-#include "fpl_platformer.h"
+#define FINAL_GEOMETRY_IMPLEMENTATION
+#include <final_geometry.h>
 
-//
-// Constants
-//
-#define GameAspect (16.0f / 9.0f)
-#define WorldWidth 640.0f
-#define WorldHeight (WorldWidth / GameAspect)
-#define WorldRadiusW (WorldWidth * 0.5f)
-#define WorldRadiusH (WorldHeight * 0.5f)
+#include <final_utils.h>
 
-#define TileWidth 32.0f
-#define TileHeight 32.0f
+#include "constants.h"
 
-#define TileSize V2fInit(TileWidth, TileHeight)
-#define TileHalfExt V2fInit(TileWidth * 0.5f, TileHeight * 0.5f)
-#define Gravity V2fInit(0, -10.0f)
+#include "map.c"
 
-//
-// Map
-//
-typedef struct Map {
-	// Memory handling
-	fmemMemoryBlock temporaryMemory;
-	fmemMemoryBlock persistentMemory;
-
-	// The origin in tile coordinate
-	Vec2i origin;
-
-	// The 1D tile data (width * height)
-	uint32_t *solidTiles;
-
-	// The width in tiles
-	uint32_t width;
-
-	// The height in tiles
-	uint32_t height;
-} Map;
-
-// Converts the specified world position into a tile position
-fpl_inline Vec2i MapWorldCoordsToTile(const Map *map, const Vec2f worldPos) {
-	float wx = worldPos.x;
-	float wy = worldPos.y;
-
-	// Adjustment for negative coordinates
-	float rx = 0.0f;
-	float ry = 0.0f;
-	if (wx < 0)
-		rx = -1.0f;
-	if (wy < 0)
-		ry = -1.0f;
-
-	int x = (int)(wx / TileWidth + rx);
-	int y = (int)(wy / TileHeight + ry);
-
-	return V2iInit(x, y);
-}
-
-// Converts the specified tile position into a world position
-fpl_inline Vec2f MapTileCoordsToWorld(const Map *map, const Vec2i tilePos) {
-	float x = ((float)tilePos.x * TileWidth);
-	float y = ((float)tilePos.y * TileHeight);
-	return V2fInit(x, y);
-}
-
-// Gets a tile by the specified tile position, note that Y of the tile position is converted into tile space
-fpl_inline uint32_t MapGetTile(const Map *map, const Vec2i tilePos) {
-	if (map == fpl_null || map->width == 0 || map->height == 0 || map->solidTiles == fpl_null) {
-		return UINT32_MAX;
-	}
-	int invY = map->height - 1 - tilePos.y;
-	if (tilePos.x < 0 || invY < 0 || tilePos.x > ((int)map->width - 1) || invY > ((int)map->height - 1)) {
-		return UINT32_MAX;
-	}
-	uint32_t result = map->solidTiles[invY * map->width + tilePos.x];
-	return result;
-}
-
-// Returns true if the specified tile position is inside the entire tile area
-fpl_inline bool MapIsTileInside(const Map *map, const Vec2i tilePos) {
-	if (map == fpl_null) {
-		return false;
-	}
-	bool result = (tilePos.x >= 0 && tilePos.x < (int)map->width) && (tilePos.y >= 0 && tilePos.y < (int)map->height);
-	return result;
-}
-
-// Returns true if the specified tile is an obstacle or not
-fpl_inline bool MapIsObstacle(const Map *map, const uint32_t tile) {
-	// @TODO(final): Obstacle tile mapping!
-	bool result = tile == 1;
-	return result;
-}
-
-// Finds the first tile position from the specified tile type and returns true if found, false otherwise
-fpl_inline bool MapFindPositionByTile(const Map *map, const uint32_t type, Vec2i *outTilePos) {
-	if (map == fpl_null || map->width == 0 || map->height == 0 || map->solidTiles == fpl_null) {
-		return false;
-	}
-	for (uint32_t y = 0; y < map->height; ++y) {
-		for (uint32_t x = 0; x < map->width; ++x) {
-			uint32_t tile = MapGetTile(map, V2iInit(x, y));
-			if (tile == type)
-			{
-				*outTilePos = V2iInit(x, y);
-				return true;
-			}
-		}
-	}
-	return false;
-}
+#include "collision.c"
 
 //
 // Tiles
@@ -175,6 +72,7 @@ static Map gTestLevel = {
 	{0},
 	{0},
 	{0, 0},
+	{TileWidth, TileHeight},
 	gTestLevelTiles,
 	TestLevel_Width,
 	TestLevel_Height,
@@ -312,6 +210,7 @@ typedef struct World {
 // One time initialization of the map
 static void InitMap(fmemMemoryBlock *memory, Map *map) {
 	fplClearStruct(map);
+	map->tileSize = TileSize;
 	fmemPushBlock(memory, &map->persistentMemory, fplMegaBytes(8), fmemPushFlags_Clear);
 	fmemPushBlock(memory, &map->temporaryMemory, fplMegaBytes(8), fmemPushFlags_Clear);
 }
