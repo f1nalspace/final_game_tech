@@ -47,18 +47,18 @@ typedef struct Sphere3f {
 	float radius;
 } Sphere3f;
 
-typedef struct LineCastInput {
+typedef struct LineCastInput2f {
 	Vec2f p1;
 	Vec2f p2;
 	float maxFraction;
-} LineCastInput;
+} LineCastInput2f;
 
-typedef struct LineCastOutput {
+typedef struct LineCastOutput2f {
 	Vec2f normal;
 	float fraction;
-} LineCastOutput;
+} LineCastOutput2f;
 
-fpl_inline bool LineCastCircle(const LineCastInput *input, const Vec2f *center, const float radius, LineCastOutput *output) {
+fpl_inline bool LineCast2fAgainstCircle(const LineCastInput2f *input, const Vec2f *center, const float radius, LineCastOutput2f *output) {
 	if (input == fpl_null || center == fpl_null || output == fpl_null) {
 		return false;
 	}

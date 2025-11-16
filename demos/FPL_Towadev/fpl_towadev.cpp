@@ -1452,12 +1452,12 @@ namespace towers {
 			for (size_t tubeIndex = 0; tubeIndex < tower.data->tubeCount; ++tubeIndex) {
 				const WeaponTubeData *tube = tower.data->tubes + tubeIndex;
 				Vec2f gunTip = tower.position + GetRelativeTubeTip(tube, lookDirection);
-				LineCastInput input = {};
+				LineCastInput2f input = {};
 				input.p1 = gunTip;
 				input.p2 = input.p1 + lookDirection * maxDistance;
 				input.maxFraction = 1.0f;
-				LineCastOutput output = {};
-				result = LineCastCircle(&input, &enemy.position, enemy.data->collisionRadius, &output);
+				LineCastOutput2f output = {};
+				result = LineCast2fAgainstCircle(&input, &enemy.position, enemy.data->collisionRadius, &output);
 				if (result) {
 					break;
 				}
