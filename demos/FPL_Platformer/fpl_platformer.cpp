@@ -59,53 +59,6 @@ static Vec2f Gravity = V2fInit(0, -10.0f);
 static Vec2f AABBExpand = V2fInit(0.1f, 0.1f);
 
 //
-// Utils
-//
-static void FormatSize(const size_t value, const size_t maxCount, char *buffer) {
-	char *p = buffer;
-	if (value < 0) {
-		p++;
-	}
-
-	size_t tmp = value;
-	do {
-		p++;
-		tmp = tmp / 10;
-	} while (tmp);
-
-	// Count thousands
-	size_t thousandDotCount = 0;
-	tmp = value;
-	while (tmp >= 1000) {
-		p++;
-		++thousandDotCount;
-		tmp = tmp / 1000;
-	}
-
-	size_t charCount = p - buffer;
-
-	fplAssert(charCount + 1 <= maxCount);
-
-	*p = 0;
-	const char *digits = "0123456789";
-	size_t v = value;
-	size_t c = 0;
-	size_t t = thousandDotCount;
-	do {
-		if (t > 0) {
-			if (c == 3) {
-				c = 0;
-				--t;
-				*--p = '.';
-			}
-		}
-		*--p = digits[v % 10];
-		v /= 10;
-		c++;
-	} while (v != 0);
-}
-
-//
 // Math & Physics
 //
 struct TileRect {
@@ -399,8 +352,8 @@ static const SensorDefinition EntitySensorGroundLeft = { { -0.325f, 0.0f }, {0.0
 static const SensorDefinition EntitySensorGroundRight = {{ 0.325f, 0.0f }, {0.0f, -1.0f}, {0.0f, 0.7f, 0.0f, 1.0f}, 0.8f };
 static const SensorDefinition EntitySensorCeilingLeft = {{ -0.325f, 0.0f }, {0.0f, 1.0f}, {1.0f, 0.8f, 0.0f, 1.0f}, 0.8f };
 static const SensorDefinition EntitySensorCeilingRight = {{ 0.325f, 0.0f }, {0.0f, 1.0f}, {1.0f, 0.7f, 0.0f, 1.0f}, 0.8f };
-static const SensorDefinition EntitySensorWallLeft = {{ 0.0f, 0.0f }, { -1.0f, 0.0f }, {0.7f, 0.0f, 0.0f, 1.0f}, 0.4};
-static const SensorDefinition EntitySensorWallRight = {{ 0.0f, 0.0f }, { 1.0f, 0.0f }, {0.6f, 0.0f, 0.0f, 1.0f}, 0.4};
+static const SensorDefinition EntitySensorWallLeft = {{ 0.0f, 0.0f }, { -1.0f, 0.0f }, {0.7f, 0.0f, 0.0f, 1.0f}, 0.4f};
+static const SensorDefinition EntitySensorWallRight = {{ 0.0f, 0.0f }, { 1.0f, 0.0f }, {0.6f, 0.0f, 0.0f, 1.0f}, 0.4f};
 
 static SensorDefinition EntitySensorDefinitions[6] = {
 	EntitySensorGroundLeft,
@@ -511,30 +464,30 @@ static void LoadPlayer(Entity &player, const Map &map) {
 #endif
 }
 
-static void InputPlayer(Entity &player, const Input &input) {
-	const Controller &controller = (input.defaultControllerIndex == -1) ? input.controllers[0] : input.controllers[input.defaultControllerIndex];
+static void InputPlayer(Entity *player, const Input *input) {
+	const Controller *controller = (input->defaultControllerIndex == -1) ? &input->controllers[0] : &input->controllers[input->defaultControllerIndex];
 
 	// Horizontal Movement
-	float moveSpeed = player.IsGrounded() ? PlayerWalkSpeed : PlayerAirSpeed;
-	if (IsDown(controller.moveLeft)) {
-		player.velocity.x -= moveSpeed;
-	} else if (IsDown(controller.moveRight)) {
-		player.velocity.x += moveSpeed;
+	float moveSpeed = player->IsGrounded() ? PlayerWalkSpeed : PlayerAirSpeed;
+	if (IsDown(controller->moveLeft)) {
+		player->velocity.x -= moveSpeed;
+	} else if (IsDown(controller->moveRight)) {
+		player->velocity.x += moveSpeed;
 	}
 
 	// Jump can always be requested, regardless if in air or not
-	if (IsDown(controller.actionDown)) {
-		if (!player.jumpRequested) {
-			player.jumpRequested = true;
+	if (IsDown(controller->actionDown)) {
+		if (!player->jumpRequested) {
+			player->jumpRequested = true;
 		}
 	} else {
-		player.jumpRequested = false;
+		player->jumpRequested = false;
 	}
 
 	// Handle requested jump only when grounded
-	if (player.IsGrounded() && player.jumpRequested) {
-		player.velocity.y = PlayerJumpVelocity;
-		player.jumpRequested = false;
+	if (player->IsGrounded() && player->jumpRequested) {
+		player->velocity.y = PlayerJumpVelocity;
+		player->jumpRequested = false;
 	}
 }
 
@@ -648,19 +601,19 @@ struct GameState {
 	bool isDebugRendering;
 };
 
-static void LoadAssets(RenderState &renderState, Assets &assets) {
+static void FreeAssets(Assets *assets) {
+	ReleaseFontAsset(&assets->consoleFont);
+}
+
+static void LoadAssets(RenderState *renderState, Assets *assets) {
 	// Fonts
 	char fontDataPath[1024];
 	const char *fontFilename = "lucida_console.ttf";
-	fplPathCombine(fontDataPath, fplArrayCount(fontDataPath), 2, assets.dataPath, "fonts");
-	FontAsset &hudFont = assets.consoleFont;
-	if (LoadFontFromFile(fontDataPath, fontFilename, 0, 24.0f, 32, 128, 512, 512, false, &hudFont.desc)) {
-		PushTexture(renderState, &hudFont.texture, hudFont.desc.atlasAlphaBitmap, hudFont.desc.atlasWidth, hudFont.desc.atlasHeight, 1, TextureFilterType::Linear, TextureWrapMode::ClampToEdge, false, false);
+	fplPathCombine(fontDataPath, fplArrayCount(fontDataPath), 2, assets->dataPath, "fonts");
+	FontAsset *hudFont = &assets->consoleFont;
+	if (LoadFontFromFile(fontDataPath, fontFilename, 0, 24.0f, 32, 128, 512, 512, false, &hudFont->desc)) {
+		PushTexture(renderState, &hudFont->texture, hudFont->desc.atlasAlphaBitmap, hudFont->desc.atlasWidth, hudFont->desc.atlasHeight, 1, TextureFilterType_Linear, TextureWrapMode_ClampToEdge, false, false);
 	}
-}
-
-static void FreeAssets(Assets &assets) {
-	ReleaseFontAsset(assets.consoleFont);
 }
 
 static void InitGame(fmemMemoryBlock *memory, GameState *state) {
@@ -686,41 +639,40 @@ static void LoadGame(GameState *state) {
 	LoadWorld(state->world, TestLevel::Level);
 }
 
-extern bool GameInit(GameMemory &gameMemory) {
-	GameState *state = (GameState *)fmemPush(gameMemory.memory, sizeof(GameState), fmemPushFlags_Clear);
-	gameMemory.game = state;
+extern bool GameInit(GameMemory *gameMemory) {
+	GameState *state = (GameState *)fmemPush(gameMemory->memory, sizeof(GameState), fmemPushFlags_Clear);
+	gameMemory->game = state;
 
-	RenderState *renderState = gameMemory.render;
+	RenderState *renderState = gameMemory->render;
 
 	fplGetExecutableFilePath(state->assets.dataPath, fplArrayCount(state->assets.dataPath));
 	fplExtractFilePath(state->assets.dataPath, state->assets.dataPath, fplArrayCount(state->assets.dataPath));
 	fplPathCombine(state->assets.dataPath, fplArrayCount(state->assets.dataPath), 2, state->assets.dataPath, "data");
 
-	LoadAssets(*renderState, state->assets);
+	LoadAssets(renderState, &state->assets);
 
-	InitGame(gameMemory.memory, state);
+	InitGame(gameMemory->memory, state);
 
 	LoadGame(state);
 
 	return(true);
 }
 
-extern void GameRelease(GameMemory &gameMemory) {
-	GameState *state = gameMemory.game;
+extern void GameRelease(GameMemory *gameMemory) {
+	GameState *state = gameMemory->game;
 	if (state != nullptr) {
-		FreeAssets(state->assets);
-		state->~GameState();
+		FreeAssets(&state->assets);
 	}
 }
 
-extern bool IsGameExiting(GameMemory &gameMemory) {
-	GameState *state = gameMemory.game;
+extern bool IsGameExiting(GameMemory *gameMemory) {
+	GameState *state = gameMemory->game;
 	assert(state != nullptr);
 	return state->isExiting;
 }
 
-static void DrawTile(Map &map, const Vec2i &tilePos, const uint32_t newTile) {
-	Vec2i newOrigin = map.origin;
+static void DrawTile(Map *map, const Vec2i &tilePos, const uint32_t newTile) {
+	Vec2i newOrigin = map->origin;
 	Vec2i newSizeAppend = V2iInit(0, 0);
 	Vec2i newTilePos = tilePos;
 	if (tilePos.x < 0) {
@@ -729,8 +681,8 @@ static void DrawTile(Map &map, const Vec2i &tilePos, const uint32_t newTile) {
 		newSizeAppend.x += xcount;
 		newOrigin.x -= xcount;
 		newTilePos.x += xcount;
-	} else if (tilePos.x > ((int)map.width - 1)) {
-		int xcount = tilePos.x - ((int)map.width - 1);
+	} else if (tilePos.x > ((int)map->width - 1)) {
+		int xcount = tilePos.x - ((int)map->width - 1);
 		fplAssert(xcount > 0);
 		newSizeAppend.x += xcount;
 		newTilePos.x = tilePos.x;
@@ -741,31 +693,31 @@ static void DrawTile(Map &map, const Vec2i &tilePos, const uint32_t newTile) {
 		newSizeAppend.y += ycount;
 		newOrigin.y -= ycount;
 		newTilePos.y += ycount;
-	} else if (tilePos.y > ((int)map.height - 1)) {
-		int ycount = tilePos.y - ((int)map.height - 1);
+	} else if (tilePos.y > ((int)map->height - 1)) {
+		int ycount = tilePos.y - ((int)map->height - 1);
 		fplAssert(ycount > 0);
 		newSizeAppend.y += ycount;
 		newTilePos.y = tilePos.y;
 	}
 
 	if (newSizeAppend.x > 0 || newSizeAppend.y > 0) {
-		Vec2i oldMapSize = V2iInit(map.width, map.height);
-		Vec2i newMapSize = V2iInit(map.width + newSizeAppend.x, map.height + newSizeAppend.y);
+		Vec2i oldMapSize = V2iInit(map->width, map->height);
+		Vec2i newMapSize = V2iInit(map->width + newSizeAppend.x, map->height + newSizeAppend.y);
 
-		map.temporaryMemory.used = 0;
+		map->temporaryMemory.used = 0;
 
 		fmemMemoryBlock tempBlock;
-		fmemBeginTemporary(&map.temporaryMemory, &tempBlock);
+		fmemBeginTemporary(&map->temporaryMemory, &tempBlock);
 
 		size_t requiredOldSize = oldMapSize.w * oldMapSize.h * sizeof(uint32_t);
 		fplAssert(requiredOldSize <= tempBlock.size);
 
 		uint32_t *oldTiles = (uint32_t *)fmemPush(&tempBlock, requiredOldSize, fmemPushFlags_None);
-		fplMemoryCopy(map.solidTiles, requiredOldSize, oldTiles);
+		fplMemoryCopy(map->solidTiles, requiredOldSize, oldTiles);
 
-		map.persistentMemory.used = 0;
+		map->persistentMemory.used = 0;
 		size_t requiredNewSize = newMapSize.w * newMapSize.h * sizeof(uint32_t);
-		fplAssert(requiredNewSize <= map.persistentMemory.size);
+		fplAssert(requiredNewSize <= map->persistentMemory.size);
 
 		int offsetX = 0;
 		int offsetY = 0;
@@ -780,81 +732,81 @@ static void DrawTile(Map &map, const Vec2i &tilePos, const uint32_t newTile) {
 			offsetY -= abs(tilePos.y);
 		}
 
-		map.width = newMapSize.w;
-		map.height = newMapSize.h;
-		map.solidTiles = (uint32_t *)fmemPush(&map.persistentMemory, requiredNewSize, fmemPushFlags_Clear);
+		map->width = newMapSize.w;
+		map->height = newMapSize.h;
+		map->solidTiles = (uint32_t *)fmemPush(&map->persistentMemory, requiredNewSize, fmemPushFlags_Clear);
 		for (int y = 0; y < oldMapSize.h; ++y) {
 			for (int x = 0; x < oldMapSize.w; ++x) {
 				int ox = newSizeAppend.x + x + offsetX;
 				int oy = newSizeAppend.y + y + offsetY;
 				fplAssert(ox >= 0 && ox < newMapSize.w);
 				fplAssert(oy >= 0 && oy < newMapSize.h);
-				map.solidTiles[oy * newMapSize.w + ox] = oldTiles[y * oldMapSize.w + x];
+				map->solidTiles[oy * newMapSize.w + ox] = oldTiles[y * oldMapSize.w + x];
 			}
 		}
 
-		fmemEndTemporary(&map.temporaryMemory);
+		fmemEndTemporary(&map->temporaryMemory);
 	}
 
-	int invY = map.height - 1 - newTilePos.y;
-	int curTile = map.solidTiles[invY * map.width + newTilePos.x];
-	map.solidTiles[invY * map.width + newTilePos.x] = newTile;
+	int invY = map->height - 1 - newTilePos.y;
+	int curTile = map->solidTiles[invY * map->width + newTilePos.x];
+	map->solidTiles[invY * map->width + newTilePos.x] = newTile;
 
-	map.origin = newOrigin;
+	map->origin = newOrigin;
 }
 
-static void EditorInput(GameState *state, const Input &input) {
-	Map &map = state->world.map;
+static void EditorInput(GameState *state, const Input *input) {
+	Map *map = &state->world.map;
 
-	Editor &editor = state->editor;
+	Editor *editor = &state->editor;
 
-	Vec2f originWorld = map.TileCoordsToWorld(map.origin);
+	Vec2f originWorld = map->TileCoordsToWorld(map->origin);
 
-	Vec2i mouseTilePos = map.WorldCoordsToTile(state->mouseWorldPos - originWorld);
+	Vec2i mouseTilePos = map->WorldCoordsToTile(state->mouseWorldPos - originWorld);
 
-	if (IsDown(input.mouse.left)) {
-		if (!editor.isDrawing) {
-			editor.isDrawing = true;
+	if (IsDown(input->mouse.left)) {
+		if (!editor->isDrawing) {
+			editor->isDrawing = true;
 
-			if (map.IsTileInside(mouseTilePos)) {
-				uint32_t tile = map.GetTile(mouseTilePos);
-				editor.drawTile = tile == 0 ? 1 : 0;
+			if (map->IsTileInside(mouseTilePos)) {
+				uint32_t tile = map->GetTile(mouseTilePos);
+				editor->drawTile = tile == 0 ? 1 : 0;
 			} else {
-				editor.drawTile = 1;
+				editor->drawTile = 1;
 			}
 		}
-		if (editor.isDrawing) {
-			fplAssert(editor.drawTile != UINT32_MAX);
-			DrawTile(map, mouseTilePos, editor.drawTile);
+		if (editor->isDrawing) {
+			fplAssert(editor->drawTile != UINT32_MAX);
+			DrawTile(map, mouseTilePos, editor->drawTile);
 		}
 	} else {
-		if (editor.isDrawing) {
-			editor.drawTile = UINT32_MAX;
-			editor.isDrawing = false;
+		if (editor->isDrawing) {
+			editor->drawTile = UINT32_MAX;
+			editor->isDrawing = false;
 		}
 	}
 }
 
-extern void GameInput(GameMemory &gameMemory, const Input &input) {
-	if (!input.isActive) {
+extern void GameInput(GameMemory *gameMemory, const Input *input) {
+	if (!input->isActive) {
 		return;
 	}
 
-	GameState *state = gameMemory.game;
+	GameState *state = gameMemory->game;
 	assert(state != nullptr);
 
-	RenderState *renderState = gameMemory.render;
+	RenderState *renderState = gameMemory->render;
 	assert(renderState != nullptr);
 
 	// Debug input
-	const Controller &keyboardController = input.controllers[0];
-	if (WasPressed(keyboardController.debugToggle)) {
+	const Controller *keyboardController = &input->controllers[0];
+	if (WasPressed(keyboardController->debugToggle)) {
 		state->isDebugRendering = !state->isDebugRendering;
 	}
 
 	// Camera
 	float scale = state->camera.scale;
-	state->viewport = ComputeViewportByAspect(input.windowSize, GameAspect);
+	state->viewport = ComputeViewportByAspect(input->windowSize, GameAspect);
 	state->camera.worldToPixels = (state->viewport.w / (float)WorldWidth) * scale;
 	state->camera.pixelsToWorld = 1.0f / state->camera.worldToPixels;
 
@@ -867,8 +819,8 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 	state->viewProjection = state->projection * state->view;
 
 	// Mouse
-	int mouseCenterX = (input.mouse.pos.x - input.windowSize.w / 2);
-	int mouseCenterY = (input.windowSize.h - 1 - input.mouse.pos.y) - input.windowSize.h / 2;
+	int mouseCenterX = (input->mouse.pos.x) - input->windowSize.w / 2;
+	int mouseCenterY = (input->windowSize.h - 1 - input->mouse.pos.y) - input->windowSize.h / 2;
 	state->mouseWorldPos.x = (mouseCenterX * state->camera.pixelsToWorld) - state->camera.offset.x;
 	state->mouseWorldPos.y = (mouseCenterY * state->camera.pixelsToWorld) - state->camera.offset.y;
 
@@ -876,18 +828,18 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 	EditorInput(state, input);
 
 	// Player input
-	InputPlayer(state->world.player, input);
+	InputPlayer(&state->world.player, input);
 }
 
-extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
-	if (!input.isActive) {
+extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
+	if (!input->isActive) {
 		return;
 	}
 
-	GameState *state = gameMemory.game;
+	GameState *state = gameMemory->game;
 	assert(state != nullptr);
 
-	const float dt = input.fixedDeltaTime;
+	const float dt = input->fixedDeltaTime;
 
 	World &world = state->world;
 	Map &map = world.map;
@@ -903,7 +855,7 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 	// FPS display
 	const float fpsSmoothing = 0.1f;
 
-	const float newFps = input.framesPerSeconds;
+	const float newFps = input->framesPerSeconds;
 	const float oldFps = state->framesPerSecond[0];
 
 	state->deltaTime = dt;
@@ -911,7 +863,9 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 	state->framesPerSecond[0] = state->framesPerSecond[1];
 }
 
-static void PushNormal(RenderState &renderState, const Vec2f &position, const Vec2f &normal, const float length = 20.0f, const float chairSize = 8.0f) {
+static void PushNormal(RenderState *renderState, const Vec2f position, const Vec2f normal, const float length, const float chairSize) {
+	// const float length = 20.0f, const float chairSize = 8.0f
+
 	Vec2f tangent = V2fCrossR(normal, 1.0f);
 
 	Vec2f a = position;
@@ -927,7 +881,7 @@ static void PushNormal(RenderState &renderState, const Vec2f &position, const Ve
 	PushLine(renderState, a, b, V4fInit(0.0f, 0.0f, 1.0f, 1.0f), 2.0f);
 }
 
-static void PushOrigin(RenderState &renderState, const Vec2f &origin) {
+static void PushOrigin(RenderState *renderState, const Vec2f &origin) {
 	PushQuad(renderState, origin + V2fInit(0.0f, 2.0f), 1.0f, V4f(0.75f, 0.75f, 0.75f, 1), true, 1.0f);
 	PushQuad(renderState, origin + V2fInit(0.0f, -2.0f), 1.0f, V4f(0.75f, 0.75f, 0.75f, 1), true, 1.0f);
 	PushQuad(renderState, origin + V2fInit(-2.0f, 0.0f), 1.0f, V4f(0.75f, 0.75f, 0.75f, 1), true, 1.0f);
@@ -935,13 +889,13 @@ static void PushOrigin(RenderState &renderState, const Vec2f &origin) {
 	PushQuad(renderState, origin, 1.0f, V4f(0.25f, 0.25f, 0.25f, 1), true, 1.0f);
 }
 
-static void PushSensor(RenderState &renderState, const Sensor &sensor, const float width = 1.0f) {
-	PushLine(renderState, sensor.origin, sensor.target, sensor.color, width);
-	PushQuad(renderState, sensor.target, 1.0f, V4f(1, 1, 1, 1), true, 1.0f);
+static void PushSensor(RenderState *renderState, const Sensor *sensor, const float width) {
+	PushLine(renderState, sensor->origin, sensor->target, sensor->color, width);
+	PushQuad(renderState, sensor->target, 1.0f, V4f(1, 1, 1, 1), true, 1.0f);
 }
 
-extern void GameRender(GameMemory &gameMemory, const float alpha) {
-	GameState *state = gameMemory.game;
+extern void GameRender(GameMemory *gameMemory, const float alpha) {
+	GameState *state = gameMemory->game;
 	assert(state != nullptr);
 
 	const World &world = state->world;
@@ -950,7 +904,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 
 	const Entity &player = world.player;
 
-	RenderState &renderState = *gameMemory.render;
+	RenderState *renderState = gameMemory->render;
 
 	const float w = WorldRadiusW;
 	const float h = WorldRadiusH;
@@ -970,13 +924,13 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 	int gridTileCountY = map.height;
 
 	PushViewport(renderState, state->viewport.x, state->viewport.y, state->viewport.w, state->viewport.h);
-	PushClear(renderState, V4fInit(0, 0, 0, 1), ClearFlags::Color | ClearFlags::Depth);
-	SetMatrix(renderState, state->projection);
+	PushClear(renderState, V4fInit(0, 0, 0, 1), ClearFlags_Color | ClearFlags_Depth);
+	SetMatrix(renderState, &state->projection);
 
 	// World size
 	PushRectangle(renderState, V2fInit(-w, -h), V2fInit(w * 2, h * 2), V4fInit(1.0f, 1.0f, 0.0f, 1.0f), false, 1.0f);
 
-	SetMatrix(renderState, state->viewProjection);
+	SetMatrix(renderState, &state->viewProjection);
 
 	// World cross
 	PushLine(renderState, V2fInit(0.0f, -h), V2fInit(0.0f, h), V4fInit(1.0f, 0.0f, 0.0f, 0.5f), 1.0f);
@@ -1007,13 +961,13 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 	PushRectangleCenter(renderState, player.position, player.radius, player.color, false, 2.0f);
 	PushOrigin(renderState, player.position);
 	for (uint8_t sensorIndex = 0; sensorIndex < 6; ++sensorIndex) {
-		PushSensor(renderState, player.sensors[sensorIndex]);
+		PushSensor(renderState, &player.sensors[sensorIndex], 1.0f);
 	}
 
 	// Sensor tiles
 	for (uint8_t sensorIndex = 0; sensorIndex < 6; ++sensorIndex) {
 		Vec2i tileIndex = map.WorldCoordsToTile(player.sensors[sensorIndex].target);
-		Vec2f tilePos = V2fFromV2i(tileIndex);
+		Vec2f tilePos = V2fInitV2i(tileIndex);
 		Vec2f worldPos = mapOrigin + V2fHadamard(tilePos, TileSize);
 		PushRectangle(renderState, worldPos, TileSize, playerTileColor, false, 2.0f);
 	}
@@ -1034,10 +988,10 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 
 	char buffer[100];
 	fplStringFormat(buffer, fplArrayCount(buffer), "%i x %i", mouseTilePos.x, mouseTilePos.y);
-	PushText(renderState, buffer, fplGetStringLength(buffer), &font.desc, &font.texture, mouseWorldPos, fontHeight, 1.0f, -1.0f, V4fInit(1, 1, 1, 1));
+	PushText(renderState, buffer, fplGetStringLength(buffer), &font.desc, font.texture, mouseWorldPos, fontHeight, 1.0f, -1.0f, V4fInit(1, 1, 1, 1));
 
 	if (state->isDebugRendering) {
-		SetMatrix(renderState, state->projection);
+		SetMatrix(renderState, &state->projection);
 
 		const FontAsset &font = state->assets.consoleFont;
 		char text[256];
@@ -1047,20 +1001,20 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 		float fontHeight = 8.0f;
 
 		char sizeCharsBuffer[2][32 + 1];
-		FormatSize(gameMemory.memory->used, fplArrayCount(sizeCharsBuffer[0]), sizeCharsBuffer[0]);
-		FormatSize(gameMemory.memory->size, fplArrayCount(sizeCharsBuffer[1]), sizeCharsBuffer[1]);
+		FormatSize(gameMemory->memory->used, fplArrayCount(sizeCharsBuffer[0]), sizeCharsBuffer[0]);
+		FormatSize(gameMemory->memory->size, fplArrayCount(sizeCharsBuffer[1]), sizeCharsBuffer[1]);
 		fplStringFormat(text, fplArrayCount(text), "Game Memory: %s / %s bytes", sizeCharsBuffer[0], sizeCharsBuffer[1]);
-		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, blackColor);
-		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
+		PushText(renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, blackColor);
+		PushText(renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
 
-		FormatSize(renderState.lastMemoryUsage, fplArrayCount(sizeCharsBuffer[0]), sizeCharsBuffer[0]);
-		FormatSize(renderState.memory.size, fplArrayCount(sizeCharsBuffer[1]), sizeCharsBuffer[1]);
+		FormatSize(renderState->lastMemoryUsage, fplArrayCount(sizeCharsBuffer[0]), sizeCharsBuffer[0]);
+		FormatSize(renderState->memory.size, fplArrayCount(sizeCharsBuffer[1]), sizeCharsBuffer[1]);
 		fplStringFormat(text, fplArrayCount(text), "Render Memory: %s / %s bytes", sizeCharsBuffer[0], sizeCharsBuffer[1]);
-		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(blockPos.x + w - 1, blockPos.y - 1), fontHeight, 0.0f, -1.0f, blackColor);
-		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(blockPos.x + w, blockPos.y), fontHeight, 0.0f, -1.0f, textColor);
+		PushText(renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(blockPos.x + w - 1, blockPos.y - 1), fontHeight, 0.0f, -1.0f, blackColor);
+		PushText(renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(blockPos.x + w, blockPos.y), fontHeight, 0.0f, -1.0f, textColor);
 		fplStringFormat(text, fplArrayCount(text), "Fps: %.5f, Delta: %.5f", state->framesPerSecond[1], state->deltaTime);
-		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(blockPos.x + w * 2.0f - 1, blockPos.y - 1), fontHeight, -1.0f, -1.0f, blackColor);
-		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(blockPos.x + w * 2.0f, blockPos.y), fontHeight, -1.0f, -1.0f, textColor);
+		PushText(renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(blockPos.x + w * 2.0f - 1, blockPos.y - 1), fontHeight, -1.0f, -1.0f, blackColor);
+		PushText(renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(blockPos.x + w * 2.0f, blockPos.y), fontHeight, -1.0f, -1.0f, textColor);
 	}
 }
 
@@ -1068,10 +1022,10 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 #include <final_gameplatform.h>
 
 int main(int argc, char *argv[]) {
-	GameConfiguration config = {};
+	GameConfiguration config = fplZeroInit;
 	config.title = "FPL Demo | Platformer";
 	config.disableInactiveDetection = true;
 	config.disableVerticalSync = true;
-	int result = GameMain(config);
+	int result = GameMain(&config);
 	return(result);
 }
