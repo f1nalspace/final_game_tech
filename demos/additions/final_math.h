@@ -1094,7 +1094,7 @@ fpl_force_inline static Mat4f M4fRotationY(const float angle) {
 	return (result);
 }
 
-fpl_force_inline static Mat4f M4fRotationZFromAngle(const float angle) {
+fpl_force_inline static Mat4f M4fRotationZ(const float angle) {
 	float c = F32Cos(angle);
 	float s = F32Sin(angle);
 	Mat4f result;
@@ -1126,6 +1126,64 @@ fpl_force_inline Mat4f M4fMult(const Mat4f a, const Mat4f b) {
 		}
 	}
 	return(result);
+}
+
+fpl_force_inline Mat4f M4fInverse(const Mat4f mat) {
+	float SubFactor00 = mat.r[2][2] * mat.r[3][3] - mat.r[3][2] * mat.r[2][3];
+	float SubFactor01 = mat.r[2][1] * mat.r[3][3] - mat.r[3][1] * mat.r[2][3];
+	float SubFactor02 = mat.r[2][1] * mat.r[3][2] - mat.r[3][1] * mat.r[2][2];
+	float SubFactor03 = mat.r[2][0] * mat.r[3][3] - mat.r[3][0] * mat.r[2][3];
+	float SubFactor04 = mat.r[2][0] * mat.r[3][2] - mat.r[3][0] * mat.r[2][2];
+	float SubFactor05 = mat.r[2][0] * mat.r[3][1] - mat.r[3][0] * mat.r[2][1];
+	float SubFactor06 = mat.r[1][2] * mat.r[3][3] - mat.r[3][2] * mat.r[1][3];
+	float SubFactor07 = mat.r[1][1] * mat.r[3][3] - mat.r[3][1] * mat.r[1][3];
+	float SubFactor08 = mat.r[1][1] * mat.r[3][2] - mat.r[3][1] * mat.r[1][2];
+	float SubFactor09 = mat.r[1][0] * mat.r[3][3] - mat.r[3][0] * mat.r[1][3];
+	float SubFactor10 = mat.r[1][0] * mat.r[3][2] - mat.r[3][0] * mat.r[1][2];
+	float SubFactor11 = mat.r[1][1] * mat.r[3][3] - mat.r[3][1] * mat.r[1][3];
+	float SubFactor12 = mat.r[1][0] * mat.r[3][1] - mat.r[3][0] * mat.r[1][1];
+	float SubFactor13 = mat.r[1][2] * mat.r[2][3] - mat.r[2][2] * mat.r[1][3];
+	float SubFactor14 = mat.r[1][1] * mat.r[2][3] - mat.r[2][1] * mat.r[1][3];
+	float SubFactor15 = mat.r[1][1] * mat.r[2][2] - mat.r[2][1] * mat.r[1][2];
+	float SubFactor16 = mat.r[1][0] * mat.r[2][3] - mat.r[2][0] * mat.r[1][3];
+	float SubFactor17 = mat.r[1][0] * mat.r[2][2] - mat.r[2][0] * mat.r[1][2];
+	float SubFactor18 = mat.r[1][0] * mat.r[2][1] - mat.r[2][0] * mat.r[1][1];
+
+	Mat4f Inverse = fplZeroInit;
+
+	Inverse.r[0][0] = +(mat.r[1][1] * SubFactor00 - mat.r[1][2] * SubFactor01 + mat.r[1][3] * SubFactor02);
+	Inverse.r[0][1] = -(mat.r[1][0] * SubFactor00 - mat.r[1][2] * SubFactor03 + mat.r[1][3] * SubFactor04);
+	Inverse.r[0][2] = +(mat.r[1][0] * SubFactor01 - mat.r[1][1] * SubFactor03 + mat.r[1][3] * SubFactor05);
+	Inverse.r[0][3] = -(mat.r[1][0] * SubFactor02 - mat.r[1][1] * SubFactor04 + mat.r[1][2] * SubFactor05);
+
+	Inverse.r[1][0] = -(mat.r[0][1] * SubFactor00 - mat.r[0][2] * SubFactor01 + mat.r[0][3] * SubFactor02);
+	Inverse.r[1][1] = +(mat.r[0][0] * SubFactor00 - mat.r[0][2] * SubFactor03 + mat.r[0][3] * SubFactor04);
+	Inverse.r[1][2] = -(mat.r[0][0] * SubFactor01 - mat.r[0][1] * SubFactor03 + mat.r[0][3] * SubFactor05);
+	Inverse.r[1][3] = +(mat.r[0][0] * SubFactor02 - mat.r[0][1] * SubFactor04 + mat.r[0][2] * SubFactor05);
+
+	Inverse.r[2][0] = +(mat.r[0][1] * SubFactor06 - mat.r[0][2] * SubFactor07 + mat.r[0][3] * SubFactor08);
+	Inverse.r[2][1] = -(mat.r[0][0] * SubFactor06 - mat.r[0][2] * SubFactor09 + mat.r[0][3] * SubFactor10);
+	Inverse.r[2][2] = +(mat.r[0][0] * SubFactor11 - mat.r[0][1] * SubFactor09 + mat.r[0][3] * SubFactor12);
+	Inverse.r[2][3] = -(mat.r[0][0] * SubFactor08 - mat.r[0][1] * SubFactor10 + mat.r[0][2] * SubFactor12);
+
+	Inverse.r[3][0] = -(mat.r[0][1] * SubFactor13 - mat.r[0][2] * SubFactor14 + mat.r[0][3] * SubFactor15);
+	Inverse.r[3][1] = +(mat.r[0][0] * SubFactor13 - mat.r[0][2] * SubFactor16 + mat.r[0][3] * SubFactor17);
+	Inverse.r[3][2] = -(mat.r[0][0] * SubFactor14 - mat.r[0][1] * SubFactor16 + mat.r[0][3] * SubFactor18);
+	Inverse.r[3][3] = +(mat.r[0][0] * SubFactor15 - mat.r[0][1] * SubFactor17 + mat.r[0][2] * SubFactor18);
+
+	float Determinant =
+		+ mat.r[0][0] * Inverse.r[0][0]
+		+ mat.r[0][1] * Inverse.r[0][1]
+		+ mat.r[0][2] * Inverse.r[0][2]
+		+ mat.r[0][3] * Inverse.r[0][3];
+
+	float inverseDet = 1.0f / Determinant;
+
+	for (int i = 0; i < 16; ++i) {
+		Inverse.m[i] *= inverseDet;
+	}
+
+	return Inverse;
 }
 
 #if defined(__cplusplus)
@@ -1529,71 +1587,15 @@ fpl_force_inline Pixel LinearToPixelSRGB(const Vec4f linear) {
 	return(result);
 }
 
-fpl_force_inline Mat4f Mat4Inverse(const Mat4f mat) {
-	float SubFactor00 = mat.r[2][2] * mat.r[3][3] - mat.r[3][2] * mat.r[2][3];
-	float SubFactor01 = mat.r[2][1] * mat.r[3][3] - mat.r[3][1] * mat.r[2][3];
-	float SubFactor02 = mat.r[2][1] * mat.r[3][2] - mat.r[3][1] * mat.r[2][2];
-	float SubFactor03 = mat.r[2][0] * mat.r[3][3] - mat.r[3][0] * mat.r[2][3];
-	float SubFactor04 = mat.r[2][0] * mat.r[3][2] - mat.r[3][0] * mat.r[2][2];
-	float SubFactor05 = mat.r[2][0] * mat.r[3][1] - mat.r[3][0] * mat.r[2][1];
-	float SubFactor06 = mat.r[1][2] * mat.r[3][3] - mat.r[3][2] * mat.r[1][3];
-	float SubFactor07 = mat.r[1][1] * mat.r[3][3] - mat.r[3][1] * mat.r[1][3];
-	float SubFactor08 = mat.r[1][1] * mat.r[3][2] - mat.r[3][1] * mat.r[1][2];
-	float SubFactor09 = mat.r[1][0] * mat.r[3][3] - mat.r[3][0] * mat.r[1][3];
-	float SubFactor10 = mat.r[1][0] * mat.r[3][2] - mat.r[3][0] * mat.r[1][2];
-	float SubFactor11 = mat.r[1][1] * mat.r[3][3] - mat.r[3][1] * mat.r[1][3];
-	float SubFactor12 = mat.r[1][0] * mat.r[3][1] - mat.r[3][0] * mat.r[1][1];
-	float SubFactor13 = mat.r[1][2] * mat.r[2][3] - mat.r[2][2] * mat.r[1][3];
-	float SubFactor14 = mat.r[1][1] * mat.r[2][3] - mat.r[2][1] * mat.r[1][3];
-	float SubFactor15 = mat.r[1][1] * mat.r[2][2] - mat.r[2][1] * mat.r[1][2];
-	float SubFactor16 = mat.r[1][0] * mat.r[2][3] - mat.r[2][0] * mat.r[1][3];
-	float SubFactor17 = mat.r[1][0] * mat.r[2][2] - mat.r[2][0] * mat.r[1][2];
-	float SubFactor18 = mat.r[1][0] * mat.r[2][1] - mat.r[2][0] * mat.r[1][1];
 
-	Mat4f Inverse = fplZeroInit;
 
-	Inverse.r[0][0] = +(mat.r[1][1] * SubFactor00 - mat.r[1][2] * SubFactor01 + mat.r[1][3] * SubFactor02);
-	Inverse.r[0][1] = -(mat.r[1][0] * SubFactor00 - mat.r[1][2] * SubFactor03 + mat.r[1][3] * SubFactor04);
-	Inverse.r[0][2] = +(mat.r[1][0] * SubFactor01 - mat.r[1][1] * SubFactor03 + mat.r[1][3] * SubFactor05);
-	Inverse.r[0][3] = -(mat.r[1][0] * SubFactor02 - mat.r[1][1] * SubFactor04 + mat.r[1][2] * SubFactor05);
-
-	Inverse.r[1][0] = -(mat.r[0][1] * SubFactor00 - mat.r[0][2] * SubFactor01 + mat.r[0][3] * SubFactor02);
-	Inverse.r[1][1] = +(mat.r[0][0] * SubFactor00 - mat.r[0][2] * SubFactor03 + mat.r[0][3] * SubFactor04);
-	Inverse.r[1][2] = -(mat.r[0][0] * SubFactor01 - mat.r[0][1] * SubFactor03 + mat.r[0][3] * SubFactor05);
-	Inverse.r[1][3] = +(mat.r[0][0] * SubFactor02 - mat.r[0][1] * SubFactor04 + mat.r[0][2] * SubFactor05);
-
-	Inverse.r[2][0] = +(mat.r[0][1] * SubFactor06 - mat.r[0][2] * SubFactor07 + mat.r[0][3] * SubFactor08);
-	Inverse.r[2][1] = -(mat.r[0][0] * SubFactor06 - mat.r[0][2] * SubFactor09 + mat.r[0][3] * SubFactor10);
-	Inverse.r[2][2] = +(mat.r[0][0] * SubFactor11 - mat.r[0][1] * SubFactor09 + mat.r[0][3] * SubFactor12);
-	Inverse.r[2][3] = -(mat.r[0][0] * SubFactor08 - mat.r[0][1] * SubFactor10 + mat.r[0][2] * SubFactor12);
-
-	Inverse.r[3][0] = -(mat.r[0][1] * SubFactor13 - mat.r[0][2] * SubFactor14 + mat.r[0][3] * SubFactor15);
-	Inverse.r[3][1] = +(mat.r[0][0] * SubFactor13 - mat.r[0][2] * SubFactor16 + mat.r[0][3] * SubFactor17);
-	Inverse.r[3][2] = -(mat.r[0][0] * SubFactor14 - mat.r[0][1] * SubFactor16 + mat.r[0][3] * SubFactor18);
-	Inverse.r[3][3] = +(mat.r[0][0] * SubFactor15 - mat.r[0][1] * SubFactor17 + mat.r[0][2] * SubFactor18);
-
-	float Determinant =
-		+ mat.r[0][0] * Inverse.r[0][0]
-		+ mat.r[0][1] * Inverse.r[0][1]
-		+ mat.r[0][2] * Inverse.r[0][2]
-		+ mat.r[0][3] * Inverse.r[0][3];
-
-	float inverseDet = 1.0f / Determinant;
-
-	for (int i = 0; i < 16; ++i) {
-		Inverse.m[i] *= inverseDet;
-	}
-
-	return Inverse;
-}
-
-fpl_force_inline Vec4f Vec4DivideScalar(const Vec4f vec, const float divisor) {
+fpl_force_inline Vec4f V4fDivideScalar(const Vec4f vec, const float divisor) {
 	Vec4f result = V4fInit(vec.x / divisor, vec.y / divisor, vec.z / divisor, vec.w / divisor);
 	return result;
 }
 
-fpl_force_inline Vec2f Unproject(const Vec2i screenPos, const Mat4f mvp, const Viewport4i viewport) {
-	Mat4f inverse = Mat4Inverse(mvp);
+fpl_force_inline Vec2f V2fUnproject(const Vec2i screenPos, const Mat4f mvp, const Viewport4i viewport) {
+	Mat4f inverse = M4fInverse(mvp);
 
 	float x = (float)screenPos.x;
 	float y = (float)screenPos.y;
@@ -1608,13 +1610,13 @@ fpl_force_inline Vec2f Unproject(const Vec2i screenPos, const Mat4f mvp, const V
 
 	Vec4f obj = V4fMultM4f(inverse, tmp);
 
-	obj = Vec4DivideScalar(obj, obj.w);
+	obj = V4fDivideScalar(obj, obj.w);
 
 	Vec2f result = V2fInit(obj.x, obj.y);
 	return result;
 }
 
-fpl_force_inline Viewport4i Viewport4iComputeByAspect(const Vec2i screenSize, const float targetAspect) {
+fpl_force_inline Viewport4i VP4iComputeByAspect(const Vec2i screenSize, const float targetAspect) {
 	int targetHeight = (int)(screenSize.w / targetAspect);
 	Vec2i viewSize = V2iInit(screenSize.w, screenSize.h);
 	Vec2i viewOffset = V2iInit(0, 0);
@@ -1631,7 +1633,7 @@ fpl_force_inline Viewport4i Viewport4iComputeByAspect(const Vec2i screenSize, co
 	return(result);
 }
 
-fpl_force_inline Viewport4f Viewport4fComputeByAspect(const Vec2f screenSize, const float targetAspect) {
+fpl_force_inline Viewport4f VP4fComputeByAspect(const Vec2f screenSize, const float targetAspect) {
 	float targetHeight = screenSize.w / targetAspect;
 	Vec2f viewSize = V2fInit(screenSize.w, screenSize.h);
 	Vec2f viewOffset = V2fInit(0, 0);

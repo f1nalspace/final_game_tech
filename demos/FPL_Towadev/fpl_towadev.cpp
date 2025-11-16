@@ -477,7 +477,7 @@ namespace render {
 				partPosition = center + part->offset * scale;
 			}
 			float partLineWidth = camera.worldToPixels * part->lineWidth * scale;
-			Mat4f r = M4fRotationZFromAngle(part->orientation);
+			Mat4f r = M4fRotationZ(part->orientation);
 			if ((part->rotFlags & PartRotationFlags::ApplyToTransform) == PartRotationFlags::ApplyToTransform) {
 				r = r * M4fRotationZFromM2f(rotationMat);
 			}

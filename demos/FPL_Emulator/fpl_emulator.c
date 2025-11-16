@@ -1401,7 +1401,7 @@ static void DrawDisplay(const Application *app, const float x, const float y, co
 
 	Vec2f screenSize = V2fInit(w, h);
 
-	Viewport4f displayView = Viewport4fComputeByAspect(screenSize, aspect);
+	Viewport4f displayView = VP4fComputeByAspect(screenSize, aspect);
 
 	float boyWidth = displayView.w;
 	float boyHeight = displayView.h;
@@ -1555,7 +1555,7 @@ static void DrawTiles(UIContext *uiCtx, const Application *app, const float x, c
 
 	Vec2f size = V2fInit(w - border * 4.0f, h - border * 4.0f);
 
-	Viewport4f vp = Viewport4fComputeByAspect(size, aspect);
+	Viewport4f vp = VP4fComputeByAspect(size, aspect);
 
 	float rx = x + border * 2.0f + vp.x;
 	float ry = y + border * 2.0f + vp.y;
@@ -2306,7 +2306,7 @@ static void RenderDebugFrame(Application *app, const InputState *input) {
 
 		float stateTextureAspect = firstTexture->width / (float)firstTexture->height;
 
-		Viewport4f stateTextureView = Viewport4fComputeByAspect(screenSize, stateTextureAspect);
+		Viewport4f stateTextureView = VP4fComputeByAspect(screenSize, stateTextureAspect);
 
 		// Draw grid
 		float gridY = statesDialogContentY + statesDialogContentHeight - statesGridCellHeight;
@@ -2834,7 +2834,7 @@ static void ProcessEvents(Application *app, const InputState *oldInput, InputSta
 					case fplMouseEventType_Move:
 					{
 						Vec2i screenMousePos = V2iInit(ev.mouse.mouseX, app->windowSize.h - 1 - ev.mouse.mouseY);
-						Vec2f worldMousePos = Unproject(screenMousePos, mvp, viewport);
+						Vec2f worldMousePos = V2fUnproject(screenMousePos, mvp, viewport);
 						newInput->mouse.screenPos = screenMousePos;
 						newInput->mouse.worldPos = worldMousePos;
 					} break;
