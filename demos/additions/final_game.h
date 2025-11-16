@@ -16,10 +16,6 @@ License:
 #ifndef FINAL_GAME_H
 #define FINAL_GAME_H
 
-#if !(defined(__cplusplus) && ((__cplusplus >= 201103L) || (defined(_MSC_VER) && _MSC_VER >= 1900)))
-#error "C++/11 compiler not detected!"
-#endif
-
 #include <final_platform_layer.h>
 
 #include "final_math.h"
@@ -27,21 +23,21 @@ License:
 #include "final_audiosystem.h"
 #include "final_memory.h"
 
-struct ButtonState {
+typedef struct ButtonState {
 	int halfTransitionCount;
 	fpl_b32 endedDown;
-};
+} ButtonState;
 
-inline bool WasPressed(const ButtonState &state) {
+inline bool WasPressed(const ButtonState state) {
 	bool result = ((state.halfTransitionCount > 1) || ((state.halfTransitionCount == 1) && (!state.endedDown)));
 	return(result);
 }
-inline bool IsDown(const ButtonState &state) {
+inline bool IsDown(const ButtonState state) {
 	bool result = state.endedDown != 0;
 	return(result);
 }
 
-struct Controller {
+typedef struct Controller {
 	bool isConnected;
 	bool isAnalog;
 	Vec2f analogMovement;
@@ -62,9 +58,9 @@ struct Controller {
 		};
 		ButtonState buttons[12];
 	};
-};
+} Controller;
 
-struct Mouse {
+typedef struct Mouse {
 	Vec2i pos;
 	float wheelDelta;
 	union {
@@ -75,9 +71,9 @@ struct Mouse {
 		};
 		ButtonState buttons[3];
 	};
-};
+} Mouse;
 
-struct Input {
+typedef struct Input {
 	float fixedDeltaTime;
 	float dynamicFrameTime;
 	float framesPerSeconds;
@@ -93,33 +89,33 @@ struct Input {
 	Vec2i windowSize;
 	int defaultControllerIndex;
 	bool isActive;
-};
+} Input;
 
 struct GameState;
 
-struct GameMemory {
-	struct fmemMemoryBlock *memory;
+typedef struct GameMemory {
+	fmemMemoryBlock *memory;
 	struct GameState *game;
-	struct RenderState *render;
-	struct AudioSystem *audio;
-};
+	RenderState *render;
+	AudioSystem *audio;
+} GameMemory;
 
-enum class GameWindowActiveType : uint32_t {
-	None = 0,
-	GotFocus = 1 << 0,
-	LostFocus = 1 << 1,
-	Minimized = 1 << 2,
-	Maximized = 1 << 3,
-	Restored = 1 << 4,
-};
+typedef enum GameWindowActiveType {
+	GameWindowActiveType_None = 0,
+	GameWindowActiveType_GotFocus = 1 << 0,
+	GameWindowActiveType_LostFocus = 1 << 1,
+	GameWindowActiveType_Minimized = 1 << 2,
+	GameWindowActiveType_Maximized = 1 << 3,
+	GameWindowActiveType_Restored = 1 << 4,
+} GameWindowActiveType;
 FPL_ENUM_AS_FLAGS_OPERATORS(GameWindowActiveType);
 
-extern bool GameInit(GameMemory &gameMemory);
-extern void GameRelease(GameMemory &gameMemory);
-extern void GameInput(GameMemory &gameMemory, const Input &input);
-extern void GameUpdate(GameMemory &gameMemory, const Input &input);
-extern void GameRender(GameMemory &gameMemory, const float alpha);
-extern void GameUpdateAndRender(GameMemory &gameMemory, const Input &input, const float alpha);
-extern bool IsGameExiting(GameMemory &gameMemory);
+extern bool GameInit(GameMemory *gameMemory);
+extern void GameRelease(GameMemory *gameMemory);
+extern void GameInput(GameMemory *gameMemory, const Input *input);
+extern void GameUpdate(GameMemory *gameMemory, const Input *input);
+extern void GameRender(GameMemory *gameMemory, const float alpha);
+extern void GameUpdateAndRender(GameMemory *gameMemory, const Input *input, const float alpha);
+extern bool IsGameExiting(GameMemory *gameMemory);
 
 #endif // FINAL_GAME_H
