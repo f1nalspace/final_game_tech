@@ -98,20 +98,20 @@ inline Vec3f RandomDirection(RandomSeries *series) {
 
 // http://www.rorydriscoll.com/2009/01/07/better-sampling/
 inline Vec3f UniformSampleHemisphere(const float u1, const float u2) {
-	const float r = SquareRoot(1.0f - u1 * u1);
-	const float phi = 2.0f * Pi32 * u2;
-	const float x = Cosine(phi) * r;
-	const float y = Sine(phi) * r;
+	const float r = F32SquareRoot(1.0f - u1 * u1);
+	const float phi = 2.0f * F32Pi * u2;
+	const float x = F32Cos(phi) * r;
+	const float y = F32Sin(phi) * r;
 	const float z = u1;
 	Vec3f result = V3fNormalize(V3fInit(x, y, z));
 	return(result);
 }
 inline Vec3f CosineSampleHemisphere(const float u1, const float u2) {
-	const float r = SquareRoot(u1);
-	const float theta = 2.0f * Pi32 * u2;
-	const float x = r * Cosine(theta);
-	const float y = r * Sine(theta);
-	const float z = SquareRoot(Max(0.0f, 1.0f - u1));
+	const float r = F32SquareRoot(u1);
+	const float theta = 2.0f * F32Pi * u2;
+	const float x = r * F32Cos(theta);
+	const float y = r * F32Sin(theta);
+	const float z = F32SquareRoot(F32Max(0.0f, 1.0f - u1));
 	const Vec3f result = V3fNormalize(V3fInit(x, y, z));
 	return(result);
 }

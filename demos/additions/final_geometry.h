@@ -73,12 +73,12 @@ fpl_inline bool LineCastCircle(const LineCastInput *input, const Vec2f *center, 
 	float sigma = c * c - rr * b;
 
 	// Check for negative discriminant and short segment.
-	if (sigma < 0.0f || rr < Epsilon) {
+	if (sigma < 0.0f || rr < F32Epsilon) {
 		return false;
 	}
 
 	// Find the point of intersection of the line with the circle.
-	float a = -(c + SquareRoot(sigma));
+	float a = -(c + F32SquareRoot(sigma));
 
 	// Is the intersection point on the segment?
 	if (0.0f <= a && a <= input->maxFraction * rr) {

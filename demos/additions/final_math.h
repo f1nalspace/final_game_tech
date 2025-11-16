@@ -17,8 +17,8 @@ Changelog
 	- Added function V2fAbs()
 	- Added function V2fPerp()
 	- Added function V2fMajorAxis()
-	- Added function IsNaN()
-	- Added function Sign()
+	- Added function F32IsNaN()
+	- Added function F32Sign()
 	- Fixed some structs not initialized
 
 	## 2025-03-09
@@ -34,15 +34,15 @@ Changelog
 
 	## 2019-05-10:
 	- Added Vec3f math operator overloaded functions
-	- Renamed Mat4OrthoLH to Mat4OrthoRH
-	- Added Mat4PerspectiveRH
-	- Added Mat4LookAtRH
-	- Added more overrides for Mat4Translation
+	- Renamed Mat4OrthoLH to M4fOrthoRH
+	- Added M4fPerspectiveRH
+	- Added M4fLookAtRH
+	- Added more overrides for M4fTranslation
 	- Added SRGBToLinear, LinearToSRGB
 	- Added default SRGB conversion to Linear <-> Pixel
 
 	## 2018-07-05:
-	- Added Mat4RotationX, Mat4RotationY, Mat4RotationZ
+	- Added M4fRotation, M4fRotationY, M4fRotationZ
 */
 
 #ifndef FINAL_MATH_H
@@ -58,30 +58,29 @@ Changelog
 #include <math.h>
 #include <float.h>
 
-const float Pi32 = (float)M_PI;
-const float Tau32 = (float)M_PI * 2.0f;
-const float Deg2Rad = (float)M_PI / 180.0f;
-const float Rad2Deg = 180.0f / (float)M_PI;
-const float Epsilon = FLT_EPSILON;
-const float InvByte = 1.0f / 255.0f;
-
-const float F32Max = FLT_MAX;
-const float F32Min = FLT_MIN;
+const float F32MaxValue = FLT_MAX;
+const float F32MinValue = FLT_MIN;
+const float F32Pi = (float)M_PI;
+const float F32Tau = (float)M_PI * 2.0f;
+const float F32Deg2Rad = (float)M_PI / 180.0f;
+const float F32Rad2Deg = 180.0f / (float)M_PI;
+const float F32Epsilon = FLT_EPSILON;
+const float F32InvByte = 1.0f / 255.0f;
 
 //
-// Ratio type
+// Ratio64 type
 //
-typedef struct Ratio {
+typedef struct Ratio64 {
 	double numerator;
 	double denominator;
-} Ratio;
+} Ratio64;
 
-fpl_force_inline Ratio MakeRatio(double numerator, double denominator) {
-	Ratio result = fplStructInit(Ratio, numerator, denominator);
+fpl_force_inline Ratio64 Ratio64Init(double numerator, double denominator) {
+	Ratio64 result = fplStructInit(Ratio64, numerator, denominator);
 	return(result);
 }
 
-fpl_force_inline double ComputeRatio(const Ratio ratio) {
+fpl_force_inline double Ratio64Compute(const Ratio64 ratio) {
 	fplAssert(ratio.denominator != 0);
 	double result = ratio.numerator / ratio.denominator;
 	return(result);
@@ -401,7 +400,7 @@ fpl_force_inline Mat4f M4fInit(const float value) {
 	return(result);
 }
 
-fpl_force_inline Mat4f M4fDefault() {
+fpl_force_inline Mat4f M4fIdentity() {
 	Mat4f result = M4fInit(1.0f);
 	return(result);
 }
@@ -488,7 +487,7 @@ typedef struct Viewport4i {
 	int32_t h;
 } Viewport4i;
 
-fpl_force_inline Viewport4i Viewport4iInit(const int32_t x, const int32_t y, const int32_t w, const int32_t h) {
+fpl_force_inline Viewport4i VP4iInit(const int32_t x, const int32_t y, const int32_t w, const int32_t h) {
 	return fplStructInit(Viewport4i, x, y, w, h);
 }
 
@@ -499,18 +498,18 @@ typedef struct Viewport4f {
 	float h;
 } Viewport4f;
 
-fpl_force_inline Viewport4f Viewport4fInit(const float x, const float y, const float w, const float h) {
+fpl_force_inline Viewport4f VP4fInit(const float x, const float y, const float w, const float h) {
 	return fplStructInit(Viewport4f, x, y, w, h);
 }
 
 //
 // Scalar
 //
-fpl_force_inline bool IsNaN(const float x) {
+fpl_force_inline bool F32IsNaN(const float x) {
 	return isnan(x);
 }
-fpl_force_inline float Sign(const float x) {
-	if(IsNaN(x)) {
+fpl_force_inline float F32Sign(const float x) {
+	if(F32IsNaN(x)) {
 		return NAN;
 	}
 	if(x == 0.0) {
@@ -519,88 +518,88 @@ fpl_force_inline float Sign(const float x) {
 	int b = (x > 0.0f) - (x < 0.0f);
 	return (float)b;
 }
-fpl_force_inline float Cosine(const float angle) {
+fpl_force_inline float F32Cos(const float angle) {
 	float result = cosf(angle);
 	return(result);
 }
-fpl_force_inline float Sine(const float angle) {
+fpl_force_inline float F32Sin(const float angle) {
 	float result = sinf(angle);
 	return(result);
 }
-fpl_force_inline float Tan(const float angle) {
+fpl_force_inline float F32Tan(const float angle) {
 	float result = tanf(angle);
 	return(result);
 }
-fpl_force_inline float ArcCos(const float x) {
+fpl_force_inline float F32ArcCos(const float x) {
 	float result = acosf(x);
 	return(result);
 }
-fpl_force_inline float ArcSin(const float x) {
+fpl_force_inline float F32ArcSin(const float x) {
 	float result = asinf(x);
 	return(result);
 }
-fpl_force_inline float ArcTan(const float x) {
+fpl_force_inline float F32ArcTan(const float x) {
 	float result = atanf(x);
 	return(result);
 }
-fpl_force_inline float ArcTan2(const float y, const float x) {
+fpl_force_inline float F32ArcTan2(const float y, const float x) {
 	float result = atan2f(y, x);
 	return(result);
 }
-fpl_force_inline float Abs(const float value) {
+fpl_force_inline float F32Abs(const float value) {
 	float result = fabsf(value);
 	return(result);
 }
-fpl_force_inline float Power(const float x, const float y) {
+fpl_force_inline float F32Power(const float x, const float y) {
 	float result = powf(x, y);
 	return(result);
 }
-fpl_force_inline float Min(const float a, const float b) {
+fpl_force_inline float F32Min(const float a, const float b) {
 	float result = a < b ? a : b;
 	return(result);
 }
-fpl_force_inline float Max(const float a, const float b) {
+fpl_force_inline float F32Max(const float a, const float b) {
 	float result = a > b ? a : b;
 	return(result);
 }
-fpl_force_inline float SquareRoot(const float value) {
+fpl_force_inline float F32SquareRoot(const float value) {
 	float result = sqrtf(value);
 	return(result);
 }
-fpl_force_inline float RadiansToDegrees(const float radians) {
-	float result = radians * Rad2Deg;
+fpl_force_inline float F32RadiansToDegrees(const float radians) {
+	float result = radians * F32Rad2Deg;
 	return(result);
 }
-fpl_force_inline float DegreesToRadians(const float degrees) {
-	float result = degrees * Deg2Rad;
+fpl_force_inline float F32DegreesToRadians(const float degrees) {
+	float result = degrees * F32Deg2Rad;
 	return(result);
 }
 
-fpl_force_inline float ScalarLerp(float a, float t, float b) {
+fpl_force_inline float F32ScalarLerp(float a, float t, float b) {
 	float result = (1.0f - t) * a + t * b;
 	return(result);
 }
 
-fpl_force_inline float ScalarAvg(float oldValue, float t, float newValue) {
+fpl_force_inline float F32Avg(float oldValue, float t, float newValue) {
 	float result = t * newValue + (1.0f - t) * oldValue;
 	return(result);
 }
 
-fpl_force_inline float ScalarClamp(float value, float min, float max) {
+fpl_force_inline float F32Clamp(float value, float min, float max) {
 	float result = fplMin(fplMax(value, min), max);
 	return(result);
 }
 
-fpl_force_inline float GetBestAngleDistance(float a0, float a1) {
-	float max = Pi32 * 2;
+fpl_force_inline float F32GetBestAngleDistance(float a0, float a1) {
+	float max = F32Pi * 2;
 	float da = fmodf(a1 - a0, max);
 	float result = fmodf(2.0f * da, max) - da;
 	return(result);
 }
 
-fpl_force_inline float AngleLerp(float a, float t, float b) {
-	float angleDistance = GetBestAngleDistance(a, b);
-	float result = ScalarLerp(a, t, a + angleDistance);
+fpl_force_inline float F32AngleLerp(float a, float t, float b) {
+	float angleDistance = F32GetBestAngleDistance(a, b);
+	float result = F32ScalarLerp(a, t, a + angleDistance);
 	return(result);
 }
 
@@ -610,7 +609,7 @@ fpl_force_inline uint8_t RoundF32ToU8(float value) {
 }
 
 fpl_force_inline float RoundU8ToF32(uint8_t value) {
-	float result = value * InvByte;
+	float result = value * F32InvByte;
 	return(result);
 }
 
@@ -680,7 +679,7 @@ fpl_force_inline Vec2f &operator-=(Vec2f &a, const Vec2f &b) {
 #endif // __cplusplus
 
 fpl_force_inline Vec2f V2fAbs(const Vec2f v) {
-	return V2fInit(Abs(v.x), Abs(v.y));
+	return V2fInit(F32Abs(v.x), F32Abs(v.y));
 }
 
 fpl_force_inline Vec2f V2fNegate(const Vec2f v) {
@@ -743,46 +742,46 @@ fpl_force_inline float V2fCrossZ(const Vec2f a, const Vec2f b) {
 }
 
 fpl_force_inline float V2fAngleFromAxis(const Vec2f axis) {
-	float result = ArcTan2(axis.y, axis.x);
+	float result = F32ArcTan2(axis.y, axis.x);
 	return(result);
 }
 
 fpl_force_inline Vec2f V2fAxisFromAngle(const float angle) {
-	Vec2f result = V2fInit(Cosine(angle), Sine(angle));
+	Vec2f result = V2fInit(F32Cos(angle), F32Sin(angle));
 	return(result);
 }
 
 fpl_force_inline Vec2f V2fMajorAxis(const Vec2f v) {
-	float x = Abs(v.x);
-	float y = Abs(v.y);
+	float x = F32Abs(v.x);
+	float y = F32Abs(v.y);
 	if (x > y) {
-		return V2fInit(Sign(v.x), 0.0f);
+		return V2fInit(F32Sign(v.x), 0.0f);
 	} else {
-		return V2fInit(0.0f, Sign(v.y));
+		return V2fInit(0.0f, F32Sign(v.y));
 	}
 }
 
 fpl_force_inline Vec2f V2fRandomDirection() {
 	float d = rand() / (float)RAND_MAX;
 	float angle = d * ((float)M_PI * 2.0f);
-	Vec2f result = V2fInit(Cosine(angle), Sine(angle));
+	Vec2f result = V2fInit(F32Cos(angle), F32Sin(angle));
 	return(result);
 }
 
 fpl_force_inline Vec2f V2fLerp(const Vec2f a, const float t, const Vec2f b) {
 	Vec2f result;
-	result.x = ScalarLerp(a.x, t, b.x);
-	result.y = ScalarLerp(a.y, t, b.y);
+	result.x = F32ScalarLerp(a.x, t, b.x);
+	result.y = F32ScalarLerp(a.y, t, b.y);
 	return(result);
 }
 
 fpl_force_inline Vec2f V2fMin(const Vec2f a, const Vec2f b) {
-	Vec2f result = V2fInit(Min(a.x, b.x), Min(a.y, b.y));
+	Vec2f result = V2fInit(F32Min(a.x, b.x), F32Min(a.y, b.y));
 	return(result);
 }
 
 fpl_force_inline Vec2f V2fMax(const Vec2f a, const Vec2f b) {
-	Vec2f result = V2fInit(Max(a.x, b.x), Max(a.y, b.y));
+	Vec2f result = V2fInit(F32Max(a.x, b.x), F32Max(a.y, b.y));
 	return(result);
 }
 
@@ -890,9 +889,9 @@ fpl_force_inline Vec3f V3fCross(const Vec3f a, const Vec3f b) {
 
 fpl_force_inline Vec3f V3fLerp(const Vec3f a, float t, const Vec3f b) {
 	Vec3f result;
-	result.x = ScalarLerp(a.x, t, b.x);
-	result.y = ScalarLerp(a.y, t, b.y);
-	result.z = ScalarLerp(a.z, t, b.z);
+	result.x = F32ScalarLerp(a.x, t, b.x);
+	result.y = F32ScalarLerp(a.y, t, b.y);
+	result.z = F32ScalarLerp(a.z, t, b.z);
 	return(result);
 }
 
@@ -907,43 +906,43 @@ fpl_force_inline Vec3f V3fHadamard(const Vec3f a, const Vec3f b) {
 //
 // Mat2f
 //
-fpl_force_inline Mat2f Mat2FromAngle(float angle) {
-	float s = Sine(angle);
-	float c = Cosine(angle);
+fpl_force_inline Mat2f M2fFromAngle(float angle) {
+	float s = F32Sin(angle);
+	float c = F32Cos(angle);
 	Mat2f result;
 	result.col1 = V2fInit(c, s);
 	result.col2 = V2fInit(-s, c);
 	return(result);
 }
 
-fpl_force_inline Mat2f Mat2FromAxis(const Vec2f axis) {
+fpl_force_inline Mat2f M2fFromAxis(const Vec2f axis) {
 	Mat2f result;
 	result.col1 = axis;
 	result.col2 = V2fCrossL(1.0f, axis);
 	return(result);
 }
 
-fpl_force_inline Mat2f Mat2Transpose(const Mat2f m) {
+fpl_force_inline Mat2f M2fTranspose(const Mat2f m) {
 	Mat2f result;
 	result.col1 = V2fInit(m.col1.x, m.col2.x);
 	result.col2 = V2fInit(m.col1.y, m.col2.y);
 	return(result);
 }
 
-fpl_force_inline Mat2f Mat2Mult(const Mat2f a, const Mat2f b) {
+fpl_force_inline Mat2f M2fMult(const Mat2f a, const Mat2f b) {
 	Mat2f result;
 	result.col1 = V2fMultMat2(a, b.col1);
 	result.col2 = V2fMultMat2(a, b.col2);
 	return(result);
 }
 
-fpl_force_inline float Mat2ToAngle(const Mat2f mat) {
+fpl_force_inline float M2fToAngle(const Mat2f mat) {
 	float result = V2fAngleFromAxis(mat.col1);
 	return(result);
 }
 
 /* Generates a 2x2 matrix for doing B to A conversion */
-fpl_force_inline Mat2f Mat2MultTranspose(const Mat2f a, const Mat2f b) {
+fpl_force_inline Mat2f M2fMultTranspose(const Mat2f a, const Mat2f b) {
 	Mat2f result;
 	result.col1 = V2fInit(V2fDot(a.col1, b.col1), V2fDot(a.col2, b.col1));
 	result.col2 = V2fInit(V2fDot(a.col1, b.col2), V2fDot(a.col2, b.col2));
@@ -953,7 +952,7 @@ fpl_force_inline Mat2f Mat2MultTranspose(const Mat2f a, const Mat2f b) {
 //
 // Mat4f
 //
-fpl_force_inline static Mat4f Mat4OrthoRH(const float left, const float right, const float bottom, const float top, const float zNear, const float zFar) {
+fpl_force_inline static Mat4f M4fOrthoRH(const float left, const float right, const float bottom, const float top, const float zNear, const float zFar) {
 	Mat4f result = M4fInit(1.0f);
 	result.r[0][0] = 2.0f / (right - left);
 	result.r[1][1] = 2.0f / (top - bottom);
@@ -964,8 +963,8 @@ fpl_force_inline static Mat4f Mat4OrthoRH(const float left, const float right, c
 	return (result);
 }
 
-fpl_force_inline static Mat4f Mat4PerspectiveRH(const float fov, const float aspect, const float zNear, const float zFar) {
-	float tanHalfFov = Tan(fov * 0.5f);
+fpl_force_inline static Mat4f M4fPerspectiveRH(const float fov, const float aspect, const float zNear, const float zFar) {
+	float tanHalfFov = F32Tan(fov * 0.5f);
 	Mat4f result = M4fInit(0.0f);
 	result.r[0][0] = 1.0f / (aspect * tanHalfFov);
 	result.r[1][1] = 1.0f / (tanHalfFov);
@@ -975,7 +974,7 @@ fpl_force_inline static Mat4f Mat4PerspectiveRH(const float fov, const float asp
 	return (result);
 }
 
-fpl_force_inline static Mat4f Mat4LookAtRH(const Vec3f eye, const Vec3f center, const Vec3f up) {
+fpl_force_inline static Mat4f M4fLookAtRH(const Vec3f eye, const Vec3f center, const Vec3f up) {
 	// Forward/Side/Upward
 	const Vec3f f = V3fNormalize(V3fSub(center, eye));
 	const Vec3f s = V3fNormalize(V3fCross(f, up));
@@ -1004,7 +1003,7 @@ fpl_force_inline static Mat4f Mat4LookAtRH(const Vec3f eye, const Vec3f center, 
 	return (result);
 }
 
-fpl_force_inline static Mat4f Mat4TranslationV2(const Vec2f p) {
+fpl_force_inline static Mat4f M4fTranslationV2(const Vec2f p) {
 	Mat4f result = M4fInit(1.0f);
 	result.col4.xy = p;
 	result.col4.z = 0.0f;
@@ -1012,32 +1011,32 @@ fpl_force_inline static Mat4f Mat4TranslationV2(const Vec2f p) {
 	return (result);
 }
 
-fpl_force_inline static Mat4f Mat4TranslationV3(const Vec3f p) {
+fpl_force_inline static Mat4f M4fTranslationV3(const Vec3f p) {
 	Mat4f result = M4fInit(1.0f);
 	result.col4.xyz = p;
 	result.col4.w = 1.0f;
 	return (result);
 }
 
-fpl_force_inline static Mat4f Mat4TranslationV4(const Vec4f p) {
+fpl_force_inline static Mat4f M4fTranslationV4(const Vec4f p) {
 	Mat4f result = M4fInit(1.0f);
 	result.col4 = p;
 	return (result);
 }
 
 #if defined(__cplusplus)
-fpl_force_inline static Mat4f Mat4Translation(const Vec2f p) {
-	return Mat4TranslationV2(p);
+fpl_force_inline static Mat4f M4fTranslation(const Vec2f p) {
+	return M4fTranslationV2(p);
 }
-fpl_force_inline static Mat4f Mat4Translation(const Vec3f p) {
-	return Mat4TranslationV3(p);
+fpl_force_inline static Mat4f M4fTranslation(const Vec3f p) {
+	return M4fTranslationV3(p);
 }
-fpl_force_inline static Mat4f Mat4Translation(const Vec4f p) {
-	return Mat4TranslationV4(p);
+fpl_force_inline static Mat4f M4fTranslation(const Vec4f p) {
+	return M4fTranslationV4(p);
 }
 #endif // __cplusplus
 
-fpl_force_inline static Mat4f Mat4ScaleFloat(const float s) {
+fpl_force_inline static Mat4f M4fScaleScalar(const float s) {
 	Mat4f result = M4fInit(1.0f);
 	result.col1.x = s;
 	result.col2.y = s;
@@ -1045,7 +1044,7 @@ fpl_force_inline static Mat4f Mat4ScaleFloat(const float s) {
 	return (result);
 }
 
-fpl_force_inline static Mat4f Mat4ScaleV2(const Vec2f s) {
+fpl_force_inline static Mat4f M4fScaleV2(const Vec2f s) {
 	Mat4f result = M4fInit(1.0f);
 	result.col1.x = s.x;
 	result.col2.y = s.y;
@@ -1053,7 +1052,7 @@ fpl_force_inline static Mat4f Mat4ScaleV2(const Vec2f s) {
 	return (result);
 }
 
-fpl_force_inline static Mat4f Mat4ScaleV3(const Vec3f s) {
+fpl_force_inline static Mat4f M4fScaleV3(const Vec3f s) {
 	Mat4f result = M4fInit(1.0f);
 	result.col1.x = s.x;
 	result.col2.y = s.y;
@@ -1062,20 +1061,20 @@ fpl_force_inline static Mat4f Mat4ScaleV3(const Vec3f s) {
 }
 
 #if defined(__cplusplus)
-fpl_force_inline static Mat4f Mat4Scale(const float s) {
-	return Mat4ScaleFloat(s);
+fpl_force_inline static Mat4f M4fScale(const float s) {
+	return M4fScaleScalar(s);
 }
-fpl_force_inline static Mat4f Mat4Scale(const Vec2f p) {
-	return Mat4ScaleV2(p);
+fpl_force_inline static Mat4f M4fScale(const Vec2f p) {
+	return M4fScaleV2(p);
 }
-fpl_force_inline static Mat4f Mat4Scale(const Vec3f p) {
-	return Mat4ScaleV3(p);
+fpl_force_inline static Mat4f M4fScale(const Vec3f p) {
+	return M4fScaleV3(p);
 }
 #endif // __cplusplus
 
-fpl_force_inline static Mat4f Mat4RotationX(const float angle) {
-	float c = Cosine(angle);
-	float s = Sine(angle);
+fpl_force_inline static Mat4f M4fRotationX(const float angle) {
+	float c = F32Cos(angle);
+	float s = F32Sin(angle);
 	Mat4f result;
 	result.col1 = V4fInit(1.0f, 0.0f, 0.0f, 0.0f);
 	result.col2 = V4fInit(0.0f, c, s, 0.0f);
@@ -1084,9 +1083,9 @@ fpl_force_inline static Mat4f Mat4RotationX(const float angle) {
 	return (result);
 }
 
-fpl_force_inline static Mat4f Mat4RotationY(const float angle) {
-	float c = Cosine(angle);
-	float s = Sine(angle);
+fpl_force_inline static Mat4f M4fRotationY(const float angle) {
+	float c = F32Cos(angle);
+	float s = F32Sin(angle);
 	Mat4f result;
 	result.col1 = V4fInit(c, 0.0f, s, 0.0f);
 	result.col2 = V4fInit(0.0f, 1.0f, 0.0f, 0.0f);
@@ -1095,9 +1094,9 @@ fpl_force_inline static Mat4f Mat4RotationY(const float angle) {
 	return (result);
 }
 
-fpl_force_inline static Mat4f Mat4RotationZFromAngle(const float angle) {
-	float c = Cosine(angle);
-	float s = Sine(angle);
+fpl_force_inline static Mat4f M4fRotationZ(const float angle) {
+	float c = F32Cos(angle);
+	float s = F32Sin(angle);
 	Mat4f result;
 	result.col1 = V4fInit(c, s, 0.0f, 0.0f);
 	result.col2 = V4fInit(-s, c, 0.0f, 0.0f);
@@ -1106,7 +1105,7 @@ fpl_force_inline static Mat4f Mat4RotationZFromAngle(const float angle) {
 	return (result);
 }
 
-fpl_force_inline static Mat4f Mat4RotationZFromM2f(const Mat2f m) {
+fpl_force_inline static Mat4f M4fRotationZFromM2f(const Mat2f m) {
 	Mat4f result;
 	result.col1 = V4fInit(m.col1.x, m.col1.y, 0.0f, 0.0f);
 	result.col2 = V4fInit(-m.col1.y, m.col1.x, 0.0f, 0.0f);
@@ -1115,7 +1114,7 @@ fpl_force_inline static Mat4f Mat4RotationZFromM2f(const Mat2f m) {
 	return (result);
 }
 
-fpl_force_inline Mat4f Mat4Mult(const Mat4f a, const Mat4f b) {
+fpl_force_inline Mat4f M4fMult(const Mat4f a, const Mat4f b) {
 	Mat4f result;
 	for (int i = 0; i < 16; i += 4) {
 		for (int j = 0; j < 4; ++j) {
@@ -1129,14 +1128,72 @@ fpl_force_inline Mat4f Mat4Mult(const Mat4f a, const Mat4f b) {
 	return(result);
 }
 
+fpl_force_inline Mat4f M4fInverse(const Mat4f mat) {
+	float SubFactor00 = mat.r[2][2] * mat.r[3][3] - mat.r[3][2] * mat.r[2][3];
+	float SubFactor01 = mat.r[2][1] * mat.r[3][3] - mat.r[3][1] * mat.r[2][3];
+	float SubFactor02 = mat.r[2][1] * mat.r[3][2] - mat.r[3][1] * mat.r[2][2];
+	float SubFactor03 = mat.r[2][0] * mat.r[3][3] - mat.r[3][0] * mat.r[2][3];
+	float SubFactor04 = mat.r[2][0] * mat.r[3][2] - mat.r[3][0] * mat.r[2][2];
+	float SubFactor05 = mat.r[2][0] * mat.r[3][1] - mat.r[3][0] * mat.r[2][1];
+	float SubFactor06 = mat.r[1][2] * mat.r[3][3] - mat.r[3][2] * mat.r[1][3];
+	float SubFactor07 = mat.r[1][1] * mat.r[3][3] - mat.r[3][1] * mat.r[1][3];
+	float SubFactor08 = mat.r[1][1] * mat.r[3][2] - mat.r[3][1] * mat.r[1][2];
+	float SubFactor09 = mat.r[1][0] * mat.r[3][3] - mat.r[3][0] * mat.r[1][3];
+	float SubFactor10 = mat.r[1][0] * mat.r[3][2] - mat.r[3][0] * mat.r[1][2];
+	float SubFactor11 = mat.r[1][1] * mat.r[3][3] - mat.r[3][1] * mat.r[1][3];
+	float SubFactor12 = mat.r[1][0] * mat.r[3][1] - mat.r[3][0] * mat.r[1][1];
+	float SubFactor13 = mat.r[1][2] * mat.r[2][3] - mat.r[2][2] * mat.r[1][3];
+	float SubFactor14 = mat.r[1][1] * mat.r[2][3] - mat.r[2][1] * mat.r[1][3];
+	float SubFactor15 = mat.r[1][1] * mat.r[2][2] - mat.r[2][1] * mat.r[1][2];
+	float SubFactor16 = mat.r[1][0] * mat.r[2][3] - mat.r[2][0] * mat.r[1][3];
+	float SubFactor17 = mat.r[1][0] * mat.r[2][2] - mat.r[2][0] * mat.r[1][2];
+	float SubFactor18 = mat.r[1][0] * mat.r[2][1] - mat.r[2][0] * mat.r[1][1];
+
+	Mat4f Inverse = fplZeroInit;
+
+	Inverse.r[0][0] = +(mat.r[1][1] * SubFactor00 - mat.r[1][2] * SubFactor01 + mat.r[1][3] * SubFactor02);
+	Inverse.r[0][1] = -(mat.r[1][0] * SubFactor00 - mat.r[1][2] * SubFactor03 + mat.r[1][3] * SubFactor04);
+	Inverse.r[0][2] = +(mat.r[1][0] * SubFactor01 - mat.r[1][1] * SubFactor03 + mat.r[1][3] * SubFactor05);
+	Inverse.r[0][3] = -(mat.r[1][0] * SubFactor02 - mat.r[1][1] * SubFactor04 + mat.r[1][2] * SubFactor05);
+
+	Inverse.r[1][0] = -(mat.r[0][1] * SubFactor00 - mat.r[0][2] * SubFactor01 + mat.r[0][3] * SubFactor02);
+	Inverse.r[1][1] = +(mat.r[0][0] * SubFactor00 - mat.r[0][2] * SubFactor03 + mat.r[0][3] * SubFactor04);
+	Inverse.r[1][2] = -(mat.r[0][0] * SubFactor01 - mat.r[0][1] * SubFactor03 + mat.r[0][3] * SubFactor05);
+	Inverse.r[1][3] = +(mat.r[0][0] * SubFactor02 - mat.r[0][1] * SubFactor04 + mat.r[0][2] * SubFactor05);
+
+	Inverse.r[2][0] = +(mat.r[0][1] * SubFactor06 - mat.r[0][2] * SubFactor07 + mat.r[0][3] * SubFactor08);
+	Inverse.r[2][1] = -(mat.r[0][0] * SubFactor06 - mat.r[0][2] * SubFactor09 + mat.r[0][3] * SubFactor10);
+	Inverse.r[2][2] = +(mat.r[0][0] * SubFactor11 - mat.r[0][1] * SubFactor09 + mat.r[0][3] * SubFactor12);
+	Inverse.r[2][3] = -(mat.r[0][0] * SubFactor08 - mat.r[0][1] * SubFactor10 + mat.r[0][2] * SubFactor12);
+
+	Inverse.r[3][0] = -(mat.r[0][1] * SubFactor13 - mat.r[0][2] * SubFactor14 + mat.r[0][3] * SubFactor15);
+	Inverse.r[3][1] = +(mat.r[0][0] * SubFactor13 - mat.r[0][2] * SubFactor16 + mat.r[0][3] * SubFactor17);
+	Inverse.r[3][2] = -(mat.r[0][0] * SubFactor14 - mat.r[0][1] * SubFactor16 + mat.r[0][3] * SubFactor18);
+	Inverse.r[3][3] = +(mat.r[0][0] * SubFactor15 - mat.r[0][1] * SubFactor17 + mat.r[0][2] * SubFactor18);
+
+	float Determinant =
+		+ mat.r[0][0] * Inverse.r[0][0]
+		+ mat.r[0][1] * Inverse.r[0][1]
+		+ mat.r[0][2] * Inverse.r[0][2]
+		+ mat.r[0][3] * Inverse.r[0][3];
+
+	float inverseDet = 1.0f / Determinant;
+
+	for (int i = 0; i < 16; ++i) {
+		Inverse.m[i] *= inverseDet;
+	}
+
+	return Inverse;
+}
+
 #if defined(__cplusplus)
 fpl_force_inline Mat4f operator *(const Mat4f &a, const Mat4f &b) {
-	Mat4f result = Mat4Mult(a, b);
+	Mat4f result = M4fMult(a, b);
 	return(result);
 }
 #endif // __cplusplus
 
-fpl_force_inline Vec4f Vec4MultMat4(const Mat4f mat, const Vec4f v) {
+fpl_force_inline Vec4f V4fMultM4f(const Mat4f mat, const Vec4f v) {
 	Vec4f result;
 	result.x = mat.r[0][0] * v.m[0] + mat.r[0][1] * v.m[1] + mat.r[0][2] * v.m[2] + mat.r[0][3] * v.m[3];
 	result.y = mat.r[1][0] * v.m[0] + mat.r[1][1] * v.m[1] + mat.r[1][2] * v.m[2] + mat.r[1][3] * v.m[3];
@@ -1167,7 +1224,7 @@ fpl_force_inline Mat4f QuatToMat4(const Quaternion q) {
 	// invs (inverse square length) is only required if quaternion is not already normalised
 	float invs = 1.0f / (sqx + sqy + sqz + sqw);
 
-	Mat4f result = M4fDefault();
+	Mat4f result = M4fIdentity();
 
 	result.r[0][0] = (sqx - sqy - sqz + sqw) * invs; // since sqw + sqx + sqy + sqz =1/invs*invs
 	result.r[1][1] = (-sqx + sqy - sqz + sqw) * invs;
@@ -1192,7 +1249,7 @@ fpl_force_inline Mat4f QuatToMat4(const Quaternion q) {
 }
 
 fpl_force_inline float QuatLength(const Quaternion q) {
-	float result = SquareRoot(QuatDot(q, q));
+	float result = F32SquareRoot(QuatDot(q, q));
 	return(result);
 }
 
@@ -1264,7 +1321,7 @@ fpl_force_inline Vec3f QuatAxis(const Quaternion q) {
 	if (tmp1 <= 0.0f) {
 		return V3fInit(0, 0, 1);
 	}
-	float tmp2 = 1.0f / SquareRoot(tmp1);
+	float tmp2 = 1.0f / F32SquareRoot(tmp1);
 	Vec3f result = V3fInit(q.x * tmp2, q.y * tmp2, q.z * tmp2);
 	return(result);
 }
@@ -1286,15 +1343,15 @@ fpl_force_inline Quaternion QuatLerp(const Quaternion a, const float t, const Qu
 }
 
 fpl_force_inline float QuatAngle(const Quaternion q) {
-	float result = ArcCos(q.w) * 2.0f;
+	float result = F32ArcCos(q.w) * 2.0f;
 	return(result);
 }
 
 fpl_force_inline Quaternion QuatFromAngleAxis(const float angle, const Vec3f axis) {
 	Quaternion result;
 	float const a = angle;
-	float const s = Sine(a * 0.5f);
-	result.w = Cosine(a * 0.5f);
+	float const s = F32Sin(a * 0.5f);
+	result.w = F32Cos(a * 0.5f);
 	result.x = axis.x * s;
 	result.y = axis.y * s;
 	result.z = axis.z * s;
@@ -1302,7 +1359,7 @@ fpl_force_inline Quaternion QuatFromAngleAxis(const float angle, const Vec3f axi
 }
 
 fpl_force_inline float QuatRoll(const Quaternion q) {
-	float result = ArcTan2(2.0f * (q.x * q.y + q.w * q.z), q.w * q.w + q.x * q.x - q.y * q.y - q.z * q.z);
+	float result = F32ArcTan2(2.0f * (q.x * q.y + q.w * q.z), q.w * q.w + q.x * q.x - q.y * q.y - q.z * q.z);
 	return(result);
 }
 
@@ -1311,15 +1368,15 @@ fpl_force_inline float QuatPitch(const Quaternion q) {
 	const float x = q.w * q.w - q.x * q.x - q.y * q.y + q.z * q.z;
 	float result;
 	if (x == 0.0f && y == 0.0f) {
-		result = 2.0f * ArcTan2(q.x, q.w);
+		result = 2.0f * F32ArcTan2(q.x, q.w);
 	} else {
-		result = ArcTan2(y, x);
+		result = F32ArcTan2(y, x);
 	}
 	return(result);
 }
 
 fpl_force_inline float QuatYaw(const Quaternion q) {
-	float result = ArcSin(ScalarClamp(-2.0f * (q.x * q.z - q.w * q.y), 1.0f, 1.0f));
+	float result = F32ArcSin(F32Clamp(-2.0f * (q.x * q.z - q.w * q.y), 1.0f, 1.0f));
 	return(result);
 }
 
@@ -1327,31 +1384,31 @@ fpl_force_inline Quaternion QuatRotation(const Vec3f orig, const Vec3f dest) {
 	float cosTheta = V3fDot(orig, dest);
 	Vec3f rotationAxis;
 
-	if (cosTheta >= 1.0f - Epsilon) {
+	if (cosTheta >= 1.0f - F32Epsilon) {
 		// orig and dest point in the same direction
 		return QuatIdentity();
 	}
 
-	if (cosTheta < -1.0f + Epsilon) {
+	if (cosTheta < -1.0f + F32Epsilon) {
 		// special case when vectors in opposite directions :
 		// there is no "ideal" rotation axis
 		// So guess one; any will do as long as it's perpendicular to start
 		// This implementation favors a rotation around the Up axis (Y),
 		// since it's often what you want to do.
 		rotationAxis = V3fCross(V3fInit(0, 0, 1), orig);
-		if (V3fLength2(rotationAxis) < Epsilon) {
+		if (V3fLength2(rotationAxis) < F32Epsilon) {
 			// bad luck, they were parallel, try again!
 			rotationAxis = V3fCross(V3fInit(1, 0, 0), orig);
 		}
 
 		rotationAxis = V3fNormalize(rotationAxis);
-		return QuatFromAngleAxis(Pi32, rotationAxis);
+		return QuatFromAngleAxis(F32Pi, rotationAxis);
 	}
 
 	// Implementation from Stan Melax's Game Programming Gems 1 article
 	rotationAxis = V3fCross(orig, dest);
 
-	float s = SquareRoot((1.0f + cosTheta) * 2.0f);
+	float s = F32SquareRoot((1.0f + cosTheta) * 2.0f);
 	float invs = 1.0f / s;
 
 	Quaternion result = QuatInit(
@@ -1458,7 +1515,7 @@ fpl_force_inline float SRGBToLinear(const float x) {
 	else if (x < 0.04045f)
 		return x / 12.92f;
 	else
-		return Power((x + 0.055f) / 1.055f, 2.4f);
+		return F32Power((x + 0.055f) / 1.055f, 2.4f);
 }
 
 fpl_force_inline float LinearToSRGB(const float x) {
@@ -1469,7 +1526,7 @@ fpl_force_inline float LinearToSRGB(const float x) {
 	else if (x < 0.0031308f)
 		return x * 12.92f;
 	else
-		return Power(x, 1.0f / 2.4f) * 1.055f - 0.055f;
+		return F32Power(x, 1.0f / 2.4f) * 1.055f - 0.055f;
 }
 
 fpl_force_inline Vec4f PixelToLinearRaw(const Pixel pixel) {
@@ -1530,71 +1587,15 @@ fpl_force_inline Pixel LinearToPixelSRGB(const Vec4f linear) {
 	return(result);
 }
 
-fpl_force_inline Mat4f Mat4Inverse(const Mat4f mat) {
-	float SubFactor00 = mat.r[2][2] * mat.r[3][3] - mat.r[3][2] * mat.r[2][3];
-	float SubFactor01 = mat.r[2][1] * mat.r[3][3] - mat.r[3][1] * mat.r[2][3];
-	float SubFactor02 = mat.r[2][1] * mat.r[3][2] - mat.r[3][1] * mat.r[2][2];
-	float SubFactor03 = mat.r[2][0] * mat.r[3][3] - mat.r[3][0] * mat.r[2][3];
-	float SubFactor04 = mat.r[2][0] * mat.r[3][2] - mat.r[3][0] * mat.r[2][2];
-	float SubFactor05 = mat.r[2][0] * mat.r[3][1] - mat.r[3][0] * mat.r[2][1];
-	float SubFactor06 = mat.r[1][2] * mat.r[3][3] - mat.r[3][2] * mat.r[1][3];
-	float SubFactor07 = mat.r[1][1] * mat.r[3][3] - mat.r[3][1] * mat.r[1][3];
-	float SubFactor08 = mat.r[1][1] * mat.r[3][2] - mat.r[3][1] * mat.r[1][2];
-	float SubFactor09 = mat.r[1][0] * mat.r[3][3] - mat.r[3][0] * mat.r[1][3];
-	float SubFactor10 = mat.r[1][0] * mat.r[3][2] - mat.r[3][0] * mat.r[1][2];
-	float SubFactor11 = mat.r[1][1] * mat.r[3][3] - mat.r[3][1] * mat.r[1][3];
-	float SubFactor12 = mat.r[1][0] * mat.r[3][1] - mat.r[3][0] * mat.r[1][1];
-	float SubFactor13 = mat.r[1][2] * mat.r[2][3] - mat.r[2][2] * mat.r[1][3];
-	float SubFactor14 = mat.r[1][1] * mat.r[2][3] - mat.r[2][1] * mat.r[1][3];
-	float SubFactor15 = mat.r[1][1] * mat.r[2][2] - mat.r[2][1] * mat.r[1][2];
-	float SubFactor16 = mat.r[1][0] * mat.r[2][3] - mat.r[2][0] * mat.r[1][3];
-	float SubFactor17 = mat.r[1][0] * mat.r[2][2] - mat.r[2][0] * mat.r[1][2];
-	float SubFactor18 = mat.r[1][0] * mat.r[2][1] - mat.r[2][0] * mat.r[1][1];
 
-	Mat4f Inverse = fplZeroInit;
 
-	Inverse.r[0][0] = +(mat.r[1][1] * SubFactor00 - mat.r[1][2] * SubFactor01 + mat.r[1][3] * SubFactor02);
-	Inverse.r[0][1] = -(mat.r[1][0] * SubFactor00 - mat.r[1][2] * SubFactor03 + mat.r[1][3] * SubFactor04);
-	Inverse.r[0][2] = +(mat.r[1][0] * SubFactor01 - mat.r[1][1] * SubFactor03 + mat.r[1][3] * SubFactor05);
-	Inverse.r[0][3] = -(mat.r[1][0] * SubFactor02 - mat.r[1][1] * SubFactor04 + mat.r[1][2] * SubFactor05);
-
-	Inverse.r[1][0] = -(mat.r[0][1] * SubFactor00 - mat.r[0][2] * SubFactor01 + mat.r[0][3] * SubFactor02);
-	Inverse.r[1][1] = +(mat.r[0][0] * SubFactor00 - mat.r[0][2] * SubFactor03 + mat.r[0][3] * SubFactor04);
-	Inverse.r[1][2] = -(mat.r[0][0] * SubFactor01 - mat.r[0][1] * SubFactor03 + mat.r[0][3] * SubFactor05);
-	Inverse.r[1][3] = +(mat.r[0][0] * SubFactor02 - mat.r[0][1] * SubFactor04 + mat.r[0][2] * SubFactor05);
-
-	Inverse.r[2][0] = +(mat.r[0][1] * SubFactor06 - mat.r[0][2] * SubFactor07 + mat.r[0][3] * SubFactor08);
-	Inverse.r[2][1] = -(mat.r[0][0] * SubFactor06 - mat.r[0][2] * SubFactor09 + mat.r[0][3] * SubFactor10);
-	Inverse.r[2][2] = +(mat.r[0][0] * SubFactor11 - mat.r[0][1] * SubFactor09 + mat.r[0][3] * SubFactor12);
-	Inverse.r[2][3] = -(mat.r[0][0] * SubFactor08 - mat.r[0][1] * SubFactor10 + mat.r[0][2] * SubFactor12);
-
-	Inverse.r[3][0] = -(mat.r[0][1] * SubFactor13 - mat.r[0][2] * SubFactor14 + mat.r[0][3] * SubFactor15);
-	Inverse.r[3][1] = +(mat.r[0][0] * SubFactor13 - mat.r[0][2] * SubFactor16 + mat.r[0][3] * SubFactor17);
-	Inverse.r[3][2] = -(mat.r[0][0] * SubFactor14 - mat.r[0][1] * SubFactor16 + mat.r[0][3] * SubFactor18);
-	Inverse.r[3][3] = +(mat.r[0][0] * SubFactor15 - mat.r[0][1] * SubFactor17 + mat.r[0][2] * SubFactor18);
-
-	float Determinant =
-		+ mat.r[0][0] * Inverse.r[0][0]
-		+ mat.r[0][1] * Inverse.r[0][1]
-		+ mat.r[0][2] * Inverse.r[0][2]
-		+ mat.r[0][3] * Inverse.r[0][3];
-
-	float inverseDet = 1.0f / Determinant;
-
-	for (int i = 0; i < 16; ++i) {
-		Inverse.m[i] *= inverseDet;
-	}
-
-	return Inverse;
-}
-
-fpl_force_inline Vec4f Vec4DivideScalar(const Vec4f vec, const float divisor) {
+fpl_force_inline Vec4f V4fDivideScalar(const Vec4f vec, const float divisor) {
 	Vec4f result = V4fInit(vec.x / divisor, vec.y / divisor, vec.z / divisor, vec.w / divisor);
 	return result;
 }
 
-fpl_force_inline Vec2f Unproject(const Vec2i screenPos, const Mat4f mvp, const Viewport4i viewport) {
-	Mat4f inverse = Mat4Inverse(mvp);
+fpl_force_inline Vec2f V2fUnproject(const Vec2i screenPos, const Mat4f mvp, const Viewport4i viewport) {
+	Mat4f inverse = M4fInverse(mvp);
 
 	float x = (float)screenPos.x;
 	float y = (float)screenPos.y;
@@ -1607,15 +1608,15 @@ fpl_force_inline Vec2f Unproject(const Vec2i screenPos, const Mat4f mvp, const V
 	tmp.x = tmp.x * 2.0f - 1.0f;
 	tmp.y = tmp.y * 2.0f - 1.0f;
 
-	Vec4f obj = Vec4MultMat4(inverse, tmp);
+	Vec4f obj = V4fMultM4f(inverse, tmp);
 
-	obj = Vec4DivideScalar(obj, obj.w);
+	obj = V4fDivideScalar(obj, obj.w);
 
 	Vec2f result = V2fInit(obj.x, obj.y);
 	return result;
 }
 
-fpl_force_inline Viewport4i Viewport4iComputeByAspect(const Vec2i screenSize, const float targetAspect) {
+fpl_force_inline Viewport4i VP4iComputeByAspect(const Vec2i screenSize, const float targetAspect) {
 	int targetHeight = (int)(screenSize.w / targetAspect);
 	Vec2i viewSize = V2iInit(screenSize.w, screenSize.h);
 	Vec2i viewOffset = V2iInit(0, 0);
@@ -1628,11 +1629,11 @@ fpl_force_inline Viewport4i Viewport4iComputeByAspect(const Vec2i screenSize, co
 		viewSize.h = (int)(screenSize.w / targetAspect);
 		viewOffset.y = (screenSize.h - viewSize.h) / 2;
 	}
-	Viewport4i result = Viewport4iInit(viewOffset.x, viewOffset.y, viewSize.w, viewSize.h);
+	Viewport4i result = VP4iInit(viewOffset.x, viewOffset.y, viewSize.w, viewSize.h);
 	return(result);
 }
 
-fpl_force_inline Viewport4f Viewport4fComputeByAspect(const Vec2f screenSize, const float targetAspect) {
+fpl_force_inline Viewport4f VP4fComputeByAspect(const Vec2f screenSize, const float targetAspect) {
 	float targetHeight = screenSize.w / targetAspect;
 	Vec2f viewSize = V2fInit(screenSize.w, screenSize.h);
 	Vec2f viewOffset = V2fInit(0, 0);
@@ -1645,7 +1646,7 @@ fpl_force_inline Viewport4f Viewport4fComputeByAspect(const Vec2f screenSize, co
 		viewSize.h = screenSize.w / targetAspect;
 		viewOffset.y = (screenSize.h - viewSize.h) * 0.5f;
 	}
-	Viewport4f result = Viewport4fInit(viewOffset.x, viewOffset.y, viewSize.w, viewSize.h);
+	Viewport4f result = VP4fInit(viewOffset.x, viewOffset.y, viewSize.w, viewSize.h);
 	return(result);
 }
 

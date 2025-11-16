@@ -151,7 +151,7 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 						fplGamepadState *padstate = &event.gamepad.state;
 						assert(newController->isConnected);
 						bool changed = false;
-						if(Abs(padstate->leftStickX) > 0.0f || Abs(padstate->leftStickY) > 0.0f) {
+						if(F32Abs(padstate->leftStickX) > 0.0f || F32Abs(padstate->leftStickY) > 0.0f) {
 							newController->isAnalog = true;
 							newController->analogMovement.x = padstate->leftStickX;
 							newController->analogMovement.y = padstate->leftStickY;
