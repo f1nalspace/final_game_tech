@@ -39,161 +39,25 @@ License:
 
 #include "fpl_platformer.h"
 
-#define COLLISION_PLAYGROUND 0
-
 //
 // Constants
 //
-constexpr float GameAspect = 16.0f / 9.0f;
-constexpr float WorldWidth = 640.0f;
-constexpr float WorldHeight = WorldWidth / GameAspect;
-constexpr float WorldRadiusW = WorldWidth * 0.5f;
-constexpr float WorldRadiusH = WorldHeight * 0.5f;
+#define GameAspect (16.0f / 9.0f)
+#define WorldWidth 640.0f
+#define WorldHeight (WorldWidth / GameAspect)
+#define WorldRadiusW (WorldWidth * 0.5f)
+#define WorldRadiusH (WorldHeight * 0.5f)
 
-constexpr float TileWidth = 32.0f;
-constexpr float TileHeight = 32.0f;
+#define TileWidth 32.0f
+#define TileHeight 32.0f
 
-const Vec2f TileSize = V2fInit(TileWidth, TileHeight);
-const Vec2f Gravity = V2fInit(0, -10.0f);
-const Vec2f AABBExpand = V2fInit(0.1f, 0.1f);
-
-//
-// Math & Physics
-//
-struct TileRect {
-	// The minium tile coordinate
-	Vec2i min;
-	// The maximum tile coordinate
-	Vec2i max;
-};
-
-struct Projection {
-	// The smallest projection
-	float min;
-	// The largest projection
-	float max;
-};
-
-struct AABB {
-	Vec2f center;
-	Vec2f halfExtents;
-
-	const Vec2f RightAxis = V2fInit(1, 0);
-	const Vec2f UpAxis = V2fInit(0, 1);
-
-	static AABB Construct(const Vec2f &center, const Vec2f &halfExtents) {
-		AABB result = { center, halfExtents };
-		return result;
-	}
-
-	// Get bottom left corner
-	inline Vec2f GetBottomLeft() const {
-		Vec2f result = center + V2fInit(-halfExtents.x, -halfExtents.y);
-		return result;
-	}
-
-	// Get bottom right corner
-	inline Vec2f GetBottomRight() const {
-		Vec2f result = center + V2fInit(halfExtents.x, -halfExtents.y);
-		return result;
-	}
-
-	// Get top left corner
-	inline Vec2f GetTopLeft() const {
-		Vec2f result = center + V2fInit(-halfExtents.x, halfExtents.y);
-		return result;
-	}
-
-	// Get top right corner
-	inline Vec2f GetTopRight() const {
-		Vec2f result = center + V2fInit(halfExtents.x, halfExtents.y);
-		return result;
-	}
-
-	// Get minimum corner
-	inline Vec2f GetMin() const {
-		return GetBottomLeft();
-	}
-
-	// Get maximum corner
-	inline Vec2f GetMax() const {
-		return GetTopRight();
-	}
-
-	// Overwrites this AABB with specified center and half extents
-	inline void Update(const Vec2f &center, const Vec2f &halfExtents) {
-		this->center = center;
-		this->halfExtents = halfExtents;
-	}
-
-	// Returns true if the specific AABB overlaps with this AABB
-	bool IsOverlap(const AABB &b) const {
-		Vec2f centerDelta = V2fAbs(b.center - center);
-		Vec2f halfExtentsSum = halfExtents + b.halfExtents;
-		centerDelta -= halfExtentsSum;
-		bool result = centerDelta.x < 0 && centerDelta.y < 0;
-		return result;
-	}
-
-	// Returns true if the specific point is inside
-	bool IsPointInside(const Vec2f &point) const {
-		Vec2f delta = point - center;
-		bool result = Abs(delta.x) < halfExtents.w && Abs(delta.y) < halfExtents.h;
-		return result;
-	}
-
-	// Gets the closest point, by projecting the point to this AABB
-	Vec2f GetClosestPoint(const Vec2f &point) const {
-		Vec2f result = center;
-
-		Vec2f r = point - center;
-
-		Vec2f n;
-		float d;
-
-		// Right axis
-		n = V2fInit(1.0f, 0.0f);
-		d = V2fDot(r, n);
-		d = Min(halfExtents.w, d);
-		d = Max(-halfExtents.w, d);
-		result = V2fAddMultScalar(result, n, d);
-
-		// Up axis
-		n = V2fInit(0.0f, 1.0f);
-		d = V2fDot(r, n);
-		d = Min(halfExtents.h, d);
-		d = Max(-halfExtents.h, d);
-		result = V2fAddMultScalar(result, n, d);
-
-		return result;
-	}
-
-	// Project the extents to the specified axis
-	inline Projection Project(Vec2f axis) const {
-		float r = Abs(V2fDot(axis, RightAxis)) * halfExtents.w + Abs(V2fDot(axis, UpAxis)) * halfExtents.h;
-		return { -r, +r };
-	}
-};
-
-struct Contact {
-	Vec2f normal;
-	Vec2f point;
-	float impulse;
-	float distance;
-
-	// Overwrites the contact data
-	inline void Set(const Vec2f &normal, const float distance, const Vec2f &point) {
-		this->normal = normal;
-		this->point = point;
-		this->impulse = 0;
-		this->distance = distance;
-	}
-};
+#define TileSize V2fInit(TileWidth, TileHeight)
+#define Gravity V2fInit(0, -10.0f)
 
 //
 // Map
 //
-struct Map {
+typedef struct Map {
 	// Memory handling
 	fmemMemoryBlock temporaryMemory;
 	fmemMemoryBlock persistentMemory;
@@ -209,135 +73,133 @@ struct Map {
 
 	// The height in tiles
 	uint32_t height;
+} Map;
 
-	// Converts the specified world position into a tile position
-	inline Vec2i WorldCoordsToTile(const Vec2f worldPos) const {
-		float wx = worldPos.x;
-		float wy = worldPos.y;
+// Converts the specified world position into a tile position
+fpl_inline Vec2i MapWorldCoordsToTile(const Map *map, const Vec2f worldPos) {
+	float wx = worldPos.x;
+	float wy = worldPos.y;
 
-		// Adjustment for negative coordinates
-		float rx = 0.0f;
-		float ry = 0.0f;
-		if (wx < 0)
-			rx = -1.0f;
-		if (wy < 0)
-			ry = -1.0f;
+	// Adjustment for negative coordinates
+	float rx = 0.0f;
+	float ry = 0.0f;
+	if (wx < 0)
+		rx = -1.0f;
+	if (wy < 0)
+		ry = -1.0f;
 
-		int x = (int)(wx / TileWidth + rx);
-		int y = (int)(wy / TileHeight + ry);
+	int x = (int)(wx / TileWidth + rx);
+	int y = (int)(wy / TileHeight + ry);
 
-		return V2iInit(x, y);
+	return V2iInit(x, y);
+}
+
+// Converts the specified tile position into a world position
+fpl_inline Vec2f MapTileCoordsToWorld(const Map *map, const Vec2i tilePos) {
+	float x = ((float)tilePos.x * TileWidth);
+	float y = ((float)tilePos.y * TileHeight);
+	return V2fInit(x, y);
+}
+
+// Gets a tile by the specified tile position, note that Y of the tile position is converted into tile space
+fpl_inline uint32_t MapGetTile(const Map *map, const Vec2i tilePos) {
+	if (map == fpl_null || map->width == 0 || map->height == 0 || map->solidTiles == fpl_null) {
+		return UINT32_MAX;
 	}
-
-	// Converts the specified tile position into a world position
-	inline Vec2f TileCoordsToWorld(const Vec2i tilePos) const {
-		float x = (float)tilePos.x * TileWidth;
-		float y = (float)tilePos.y * TileHeight;
-		return V2fInit(x, y);
+	int invY = map->height - 1 - tilePos.y;
+	if (tilePos.x < 0 || invY < 0 || tilePos.x > ((int)map->width - 1) || invY > ((int)map->height - 1)) {
+		return UINT32_MAX;
 	}
+	uint32_t result = map->solidTiles[invY * map->width + tilePos.x];
+	return result;
+}
 
-	// Gets a tile by the specified X and Y indices, note that Y is converted into tile space
-	inline uint32_t GetTile(const int32_t x, const int32_t y) const {
-		if (width == 0 || height == 0 || solidTiles == nullptr) {
-			return UINT32_MAX;
-		}
-		int invY = height - 1 - y;
-		if (x < 0 || invY < 0 || x >((int)width - 1) || invY >((int)height - 1)) {
-			return UINT32_MAX;
-		}
-		uint32_t result = solidTiles[invY * width + x];
-		return result;
-	}
-
-	// Gets a tile by the specified tile position, note that Y of the tile position is converted into tile space
-	inline uint32_t GetTile(const Vec2i &tilePos) const {
-		return GetTile(tilePos.x, tilePos.y);
-	}
-
-	// Returns true if the specified tile position is inside the entire tile area
-	inline bool IsTileInside(const Vec2i &tilePos) const {
-		bool result = (tilePos.x >= 0 && tilePos.x < (int)width) && (tilePos.y >= 0 && tilePos.y < (int)height);
-		return result;
-	}
-
-	// Returns true if the specified tile is an obstacle or not
-	inline bool IsObstacle(const uint32_t tile) const {
-		// @TODO(final): Obstacle tile mapping!
-		bool result = tile == 1;
-		return result;
-	}
-
-	// Finds the first tile position from the specified tile type and returns true if found, false otherwise
-	inline bool FindPositionByTile(const uint32_t type, Vec2i *outTilePos) const {
-		if (width == 0 || height == 0 || solidTiles == nullptr) {
-			return false;
-		}
-		for (uint32_t y = 0; y < height; ++y) {
-			for (uint32_t x = 0; x < width; ++x) {
-				uint32_t tile = GetTile(x, y);
-				if (tile == type)
-				{
-					*outTilePos = V2iInit(x, y);
-					return true;
-				}
-			}
-		}
+// Returns true if the specified tile position is inside the entire tile area
+fpl_inline bool MapIsTileInside(const Map *map, const Vec2i tilePos) {
+	if (map == fpl_null) {
 		return false;
 	}
-};
+	bool result = (tilePos.x >= 0 && tilePos.x < (int)map->width) && (tilePos.y >= 0 && tilePos.y < (int)map->height);
+	return result;
+}
+
+// Returns true if the specified tile is an obstacle or not
+fpl_inline bool MapIsObstacle(const Map *map, const uint32_t tile) {
+	// @TODO(final): Obstacle tile mapping!
+	bool result = tile == 1;
+	return result;
+}
+
+// Finds the first tile position from the specified tile type and returns true if found, false otherwise
+fpl_inline bool MapFindPositionByTile(const Map *map, const uint32_t type, Vec2i *outTilePos) {
+	if (map == fpl_null || map->width == 0 || map->height == 0 || map->solidTiles == nullptr) {
+		return false;
+	}
+	for (uint32_t y = 0; y < map->height; ++y) {
+		for (uint32_t x = 0; x < map->width; ++x) {
+			uint32_t tile = MapGetTile(map, V2iInit(x, y));
+			if (tile == type)
+			{
+				*outTilePos = V2iInit(x, y);
+				return true;
+			}
+		}
+	}
+	return false;
+}
 
 //
 // Tiles
 //
-namespace Tiles {
-	const uint32_t PlayerPosition = (uint32_t)'p';
-};
+#define TileType_PlayerPosition 2
 
 //
 // Levels
 //
-namespace TestLevel {
-	constexpr uint32_t Width = 11;
-	constexpr uint32_t Height = 8;
+#define TestLevel_Width 11
+#define TestLevel_Height 8
 
-	const uint32_t p = Tiles::PlayerPosition;
+static uint32_t gTestLevelTiles[TestLevel_Width * TestLevel_Height] = {
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+	1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+	1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+	1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+	1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1,
+	1, 0, 0, 0, 0, 0, 2, 0, 0, 0, 1,
+	1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1,
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+};
 
-	static uint32_t Tiles[Width * Height] = {
-		1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-		1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1,
-		1, 0, 0, 0, 0, 0, p, 0, 0, 0, 1,
-		1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1,
-		1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-	};
-
-	static Map Level = { {}, {}, {}, Tiles, Width, Height };
+static Map gTestLevel = {
+	{0},
+	{0},
+	{0, 0},
+	gTestLevelTiles,
+	TestLevel_Width,
+	TestLevel_Height,
 };
 
 //
 // Game
 //
-constexpr float MaxSpeed = 100.0f;
-constexpr float PlayerWalkSpeed = 30.0f;
-constexpr float PlayerAirSpeed = 40.0f;
-constexpr float PlayerJumpVelocity = 200.0f * 1.2f;
-constexpr float PlayerGroundFriction = 0.2f;
-constexpr float PlayerAirFriction = 0.2f;
+#define PlayerMaxSpeed 100.0f
+#define PlayerWalkSpeed 30.0f
+#define PlayerAirSpeed 40.0f
+#define PlayerJumpVelocity (200.0f * 1.2f)
+#define PlayerGroundFriction 0.2f
+#define PlayerAirFriction 0.2f
 
-struct Assets {
+typedef struct Assets {
 	FontAsset consoleFont;
 	char dataPath[1024];
-};
+} Assets;
 
-struct GroundState {
+typedef struct GroundState {
 	fpl_b32 current;
 	fpl_b32 last;
-};
+} GroundState;
 
-struct Entity {
-	Contact contact;
+typedef struct Entity {
 	Vec4f color;
 	Vec2f position;
 	Vec2f velocity;
@@ -348,49 +210,20 @@ struct Entity {
 	bool applyFriction;
 	bool applyAirFriction;
 	bool jumpRequested;
+} Entity;
 
-	inline AABB GetAABB() const {
-		AABB aabb = { position, radius };
-		return aabb;
+fpl_inline bool EntityIsGrounded(const Entity *entity) {
+	if (entity == fpl_null) {
+		return false;
 	}
+	return entity->groundState.current;
+}
 
-	inline Projection Project(const Vec2f &axis) const {
-		AABB aabb = GetAABB();
-		return aabb.Project(axis);
+fpl_inline bool EntityIsAir(const Entity *entity) {
+	if (entity == fpl_null) {
+		return false;
 	}
-
-	inline bool IsGrounded() const {
-		return groundState.current;
-	}
-
-	inline bool IsAir() const {
-		return !groundState.current;
-	}
-};
-
-static TileRect ComputeTileRect(const Entity &player, const Map &map, const Vec2f &nextPos) {
-    // Find min/max
-    Vec2f min = V2fMin(player.position, nextPos);
-    Vec2f max = V2fMax(player.position, nextPos);
-
-    // Adjust by map origin
-    Vec2f originWorld = map.TileCoordsToWorld(map.origin);
-    min -= originWorld;
-    max -= originWorld;
-
-    // Extent by radius
-    min -= player.radius;
-    max += player.radius;
-
-    // Expand a bit more to really capture all tiles
-    min -= AABBExpand;
-    max += AABBExpand;
-
-    // Get tile range min/max
-    Vec2i tileMin = map.WorldCoordsToTile(min);
-    Vec2i tileMax = map.WorldCoordsToTile(max + V2fInit(0.5f, 0.5f));
-
-    return { tileMin, tileMax };
+	return !entity->groundState.current;
 }
 
 static void LoadPlayer(Entity *player, const Map *map) {
@@ -399,10 +232,9 @@ static void LoadPlayer(Entity *player, const Map *map) {
 	player->color = V4fInit(0.05f, 0.1f, 0.95f, 1);
 	player->position = V2fInit(0.0f, 0.0f);
 
-#if !COLLISION_PLAYGROUND
 	Vec2i playerTilePos;
-	if (map->FindPositionByTile(Tiles::PlayerPosition, &playerTilePos)) {
-		Vec2f tilePos = map->TileCoordsToWorld(playerTilePos);
+	if (MapFindPositionByTile(map, TileType_PlayerPosition, &playerTilePos)) {
+		Vec2f tilePos = MapTileCoordsToWorld(map, playerTilePos);
 		Vec2f tileBottomCenter = tilePos + V2f(TileWidth * 0.5f, 0);
 
 		// Move the player above the tile, but to the center
@@ -419,14 +251,13 @@ static void LoadPlayer(Entity *player, const Map *map) {
 	player->airFriction = PlayerAirFriction;
 
 	player->jumpRequested = false;
-#endif
 }
 
 static void InputPlayer(Entity *player, const Input *input) {
 	const Controller *controller = (input->defaultControllerIndex == -1) ? &input->controllers[0] : &input->controllers[input->defaultControllerIndex];
 
 	// Horizontal Movement
-	float moveSpeed = player->IsGrounded() ? PlayerWalkSpeed : PlayerAirSpeed;
+	float moveSpeed = EntityIsGrounded(player) ? PlayerWalkSpeed : PlayerAirSpeed;
 	if (IsDown(controller->moveLeft)) {
 		player->velocity.x -= moveSpeed;
 	} else if (IsDown(controller->moveRight)) {
@@ -443,32 +274,32 @@ static void InputPlayer(Entity *player, const Input *input) {
 	}
 
 	// Handle requested jump only when grounded
-	if (player->IsGrounded() && player->jumpRequested) {
+	if (EntityIsGrounded(player) && player->jumpRequested) {
 		player->velocity.y = PlayerJumpVelocity;
 		player->jumpRequested = false;
 	}
 }
 
-static void UpdatePlayer(Entity &player, const Map &map, const float dt) {
+static void UpdatePlayer(Entity *player, const Map *map, const float dt) {
 #if 0
 	// Gravity
-	player.velocity += Gravity;
+	player->velocity += Gravity;
 #endif
 
 	// Air friction
-	if (player.applyAirFriction && player.IsAir() && Abs(player.velocity.x) > 0) {
-		player.velocity.x *= (1.0f - player.airFriction);
+	if (player->applyAirFriction && EntityIsAir(player) && Abs(player->velocity.x) > 0) {
+		player->velocity.x *= (1.0f - player->airFriction);
 	}
 
 	// Clamp speed
-	player.velocity.x = ScalarClamp(player.velocity.x, -MaxSpeed, MaxSpeed);
+	player->velocity.x = ScalarClamp(player->velocity.x, -PlayerMaxSpeed, PlayerMaxSpeed);
 
 	// Grounding
-	player.groundState.last = player.groundState.current;
-	player.groundState.current = false;
+	player->groundState.last = player->groundState.current;
+	player->groundState.current = false;
 
 	// Integrate
-	player.position += player.velocity * dt;
+	player->position += player->velocity * dt;
 }
 
 struct World {
@@ -578,7 +409,7 @@ static void LoadGame(GameState *state) {
 	state->camera.offset.y = 0;
 
 	// World
-	LoadWorld(&state->world, &TestLevel::Level);
+	LoadWorld(&state->world, &gTestLevel);
 }
 
 extern bool GameInit(GameMemory *gameMemory) {
@@ -613,7 +444,7 @@ extern bool IsGameExiting(GameMemory *gameMemory) {
 	return state->isExiting;
 }
 
-static void PaintTile(Map *map, const Vec2i &tilePos, const uint32_t newTile) {
+static void MapPaintTile(Map *map, const Vec2i &tilePos, const uint32_t newTile) {
 	Vec2i newOrigin = map->origin;
 	Vec2i newSizeAppend = V2iInit(0, 0);
 	Vec2i newTilePos = tilePos;
@@ -702,16 +533,16 @@ static void EditorInput(GameState *state, const Input *input) {
 
 	Editor *editor = &state->editor;
 
-	Vec2f originWorld = map->TileCoordsToWorld(map->origin);
+	Vec2f originWorld = MapTileCoordsToWorld(map, map->origin);
 
-	Vec2i mouseTilePos = map->WorldCoordsToTile(state->mouseWorldPos - originWorld);
+	Vec2i mouseTilePos = MapWorldCoordsToTile(map, state->mouseWorldPos - originWorld);
 
 	if (IsDown(input->mouse.left)) {
 		if (!editor->isDrawing) {
 			editor->isDrawing = true;
 
-			if (map->IsTileInside(mouseTilePos)) {
-				uint32_t tile = map->GetTile(mouseTilePos);
+			if (MapIsTileInside(map, mouseTilePos)) {
+				uint32_t tile = MapGetTile(map, mouseTilePos);
 				editor->drawTile = tile == 0 ? 1 : 0;
 			} else {
 				editor->drawTile = 1;
@@ -719,7 +550,7 @@ static void EditorInput(GameState *state, const Input *input) {
 		}
 		if (editor->isDrawing) {
 			fplAssert(editor->drawTile != UINT32_MAX);
-			PaintTile(map, mouseTilePos, editor->drawTile);
+			MapPaintTile(map, mouseTilePos, editor->drawTile);
 		}
 	} else {
 		if (editor->isDrawing) {
@@ -783,15 +614,15 @@ extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
 
 	const float dt = input->fixedDeltaTime;
 
-	World &world = state->world;
-	Map &map = world.map;
-	Entity &player = world.player;
+	World *world = &state->world;
+	Map *map = &world->map;
+	Entity *player = &world->player;
 
 	// Player
 	UpdatePlayer(player, map, dt);
 
 	// Camera
-	state->camera.offset = -player.position;
+	state->camera.offset = -player->position;
 	state->camera.scale = 1;
 
 	// FPS display
@@ -835,11 +666,11 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 	GameState *state = gameMemory->game;
 	assert(state != nullptr);
 
-	const World &world = state->world;
+	const World *world = &state->world;
 
-	const Map &map = world.map;
+	const Map *map = &world->map;
 
-	const Entity &player = world.player;
+	const Entity *player = &world->player;
 
 	RenderState *renderState = gameMemory->render;
 
@@ -847,18 +678,18 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 	const float h = WorldRadiusH;
 	const float dt = state->deltaTime;
 
-	Vec2i mapSize = V2iInit(map.width, map.height);
+	Vec2i mapSize = V2iInit(map->width, map->height);
 	Vec2f mapArea = V2fHadamard(TileSize, V2fInit((float)mapSize.x, (float)mapSize.y));
 	Vec2f mapExtents = mapArea * 0.5f;
-	Vec2f mapOrigin = map.TileCoordsToWorld(map.origin);
+	Vec2f mapOrigin = MapTileCoordsToWorld(map, map->origin);
 	Vec4f mapSolidColor = V4fInit(1.0f, 1.0f, 1.0f, 1.0f);
 	Vec4f playerTileColor = V4fInit(0.3f, 0.1f, 0.7f, 1.0f);
 
 	Vec2f gridSize = mapArea;
 	Vec2f gridOrigin = mapOrigin;
 	Vec4f gridColor = V4fInit(0.1f, 0.2f, 0.1f, 1.0f);
-	int gridTileCountX = map.width;
-	int gridTileCountY = map.height;
+	int gridTileCountX = map->width;
+	int gridTileCountY = map->height;
 
 	PushViewport(renderState, state->viewport.x, state->viewport.y, state->viewport.w, state->viewport.h);
 	PushClear(renderState, V4fInit(0, 0, 0, 1), ClearFlags_Color | ClearFlags_Depth);
@@ -886,8 +717,8 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 	// Map
 	for (int y = 0; y < mapSize.h; ++y) {
 		for (int x = 0; x < mapSize.w; ++x) {
-			uint32_t tile = map.GetTile(x, y);
-			if (map.IsObstacle(tile)) {
+			uint32_t tile = MapGetTile(map, V2iInit(x, y));
+			if (MapIsObstacle(map, tile)) {
 				Vec2f tilePos = gridOrigin + V2fInit(x * TileWidth, y * TileHeight);
 				PushRectangle(renderState, tilePos, TileSize, mapSolidColor, true, 1.0f);
 			}
@@ -895,8 +726,8 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 	}
 
 	// Player
-	PushRectangleCenter(renderState, player.position, player.radius, player.color, false, 2.0f);
-	PushOrigin(renderState, player.position);
+	PushRectangleCenter(renderState, player->position, player->radius, player->color, false, 2.0f);
+	PushOrigin(renderState, player->position);
 
 	// Mouse cursor
 	PushRectangleCenter(renderState, state->mouseWorldPos, V2fInit(2, 2), V4fInit(1.0f, 0.0f, 0.0f, 1.0f), true, 0.0f);
@@ -904,8 +735,8 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 	// Mouse tile
 	Vec2f invTileSize = V2fInit(1.0f / TileWidth, 1.0f / TileHeight);
 
-	Vec2i mouseTilePos = map.WorldCoordsToTile(state->mouseWorldPos - mapOrigin);
-	Vec2f mouseWorldPos = map.TileCoordsToWorld(mouseTilePos);
+	Vec2i mouseTilePos = MapWorldCoordsToTile(map, state->mouseWorldPos - mapOrigin);
+	Vec2f mouseWorldPos = MapTileCoordsToWorld(map, mouseTilePos);
 	Vec2f p = gridOrigin + mouseWorldPos;
 	PushRectangle(renderState, p, TileSize, V4fInit(1, 1, 1, 1), false, 1.0f);
 
