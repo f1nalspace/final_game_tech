@@ -52,6 +52,7 @@ License:
 #define TileHeight 32.0f
 
 #define TileSize V2fInit(TileWidth, TileHeight)
+#define TileHalfExt V2fInit(TileWidth * 0.5f, TileHeight * 0.5f)
 #define Gravity V2fInit(0, -10.0f)
 
 //
@@ -132,7 +133,7 @@ fpl_inline bool MapIsObstacle(const Map *map, const uint32_t tile) {
 
 // Finds the first tile position from the specified tile type and returns true if found, false otherwise
 fpl_inline bool MapFindPositionByTile(const Map *map, const uint32_t type, Vec2i *outTilePos) {
-	if (map == fpl_null || map->width == 0 || map->height == 0 || map->solidTiles == nullptr) {
+	if (map == fpl_null || map->width == 0 || map->height == 0 || map->solidTiles == fpl_null) {
 		return false;
 	}
 	for (uint32_t y = 0; y < map->height; ++y) {
@@ -235,13 +236,13 @@ static void LoadPlayer(Entity *player, const Map *map) {
 	Vec2i playerTilePos;
 	if (MapFindPositionByTile(map, TileType_PlayerPosition, &playerTilePos)) {
 		Vec2f tilePos = MapTileCoordsToWorld(map, playerTilePos);
-		Vec2f tileBottomCenter = tilePos + V2f(TileWidth * 0.5f, 0);
+		Vec2f tileBottomCenter = V2fAdd(tilePos, V2fInit(TileWidth * 0.5f, 0));
 
 		// Move the player above the tile, but to the center
-		player->position = tileBottomCenter + V2fInit(0, player->radius.h);
+		player->position = V2fAdd(tileBottomCenter, V2fInit(0, player->radius.h));
 
 		// Move the player above the tile, but to the right
-		player->position = tileBottomCenter + V2fInit(TileSize.w * 0.5f - player->radius.w, player->radius.h);
+		player->position = V2fAdd(tileBottomCenter, V2fInit(TileSize.w * 0.5f - player->radius.w, player->radius.h));
 	}
 
 	player->applyFriction = true;
@@ -299,14 +300,14 @@ static void UpdatePlayer(Entity *player, const Map *map, const float dt) {
 	player->groundState.current = false;
 
 	// Integrate
-	player->position += player->velocity * dt;
+	player->position = V2fAddMultScalar(player->position, player->velocity, dt);
 }
 
-struct World {
+typedef struct World {
 	fmemMemoryBlock memory;
 	Map map;
 	Entity player;
-};
+} World;
 
 // One time initialization of the map
 static void InitMap(fmemMemoryBlock *memory, Map *map) {
@@ -346,12 +347,12 @@ static void LoadWorld(World *world, const Map *level) {
 	LoadPlayer(&world->player, &world->map);
 }
 
-struct Editor {
+typedef struct Editor {
 	uint32_t drawTile;
 	bool isDrawing;
-};
+} Editor;
 
-struct GameState {
+typedef struct GameState {
 	Assets assets;
 	World world;
 	Editor editor;
@@ -372,7 +373,7 @@ struct GameState {
 
 	bool isExiting;
 	bool isDebugRendering;
-};
+} GameState;
 
 static void FreeAssets(Assets *assets) {
 	ReleaseFontAsset(&assets->consoleFont);
@@ -433,18 +434,18 @@ extern bool GameInit(GameMemory *gameMemory) {
 
 extern void GameRelease(GameMemory *gameMemory) {
 	GameState *state = gameMemory->game;
-	if (state != nullptr) {
+	if (state != fpl_null) {
 		FreeAssets(&state->assets);
 	}
 }
 
 extern bool IsGameExiting(GameMemory *gameMemory) {
 	GameState *state = gameMemory->game;
-	assert(state != nullptr);
+	assert(state != fpl_null);
 	return state->isExiting;
 }
 
-static void MapPaintTile(Map *map, const Vec2i &tilePos, const uint32_t newTile) {
+static void MapPaintTile(Map *map, const Vec2i tilePos, const uint32_t newTile) {
 	Vec2i newOrigin = map->origin;
 	Vec2i newSizeAppend = V2iInit(0, 0);
 	Vec2i newTilePos = tilePos;
@@ -535,7 +536,7 @@ static void EditorInput(GameState *state, const Input *input) {
 
 	Vec2f originWorld = MapTileCoordsToWorld(map, map->origin);
 
-	Vec2i mouseTilePos = MapWorldCoordsToTile(map, state->mouseWorldPos - originWorld);
+	Vec2i mouseTilePos = MapWorldCoordsToTile(map, V2fSub(state->mouseWorldPos, originWorld));
 
 	if (IsDown(input->mouse.left)) {
 		if (!editor->isDrawing) {
@@ -566,10 +567,10 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	}
 
 	GameState *state = gameMemory->game;
-	assert(state != nullptr);
+	assert(state != fpl_null);
 
 	RenderState *renderState = gameMemory->render;
-	assert(renderState != nullptr);
+	assert(renderState != fpl_null);
 
 	// Debug input
 	const Controller *keyboardController = &input->controllers[0];
@@ -589,7 +590,7 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	float invScale = 1.0f / state->camera.scale;
 	state->projection = Mat4OrthoRH(-w * invScale, w * invScale, -h * invScale, h * invScale, 0.0f, 1.0f);
 	state->view = Mat4TranslationV2(state->camera.offset);
-	state->viewProjection = state->projection * state->view;
+	state->viewProjection = Mat4Mult(state->projection, state->view);
 
 	// Mouse
 	int mouseCenterX = (input->mouse.pos.x) - input->windowSize.w / 2;
@@ -610,7 +611,7 @@ extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
 	}
 
 	GameState *state = gameMemory->game;
-	assert(state != nullptr);
+	assert(state != fpl_null);
 
 	const float dt = input->fixedDeltaTime;
 
@@ -622,7 +623,7 @@ extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
 	UpdatePlayer(player, map, dt);
 
 	// Camera
-	state->camera.offset = -player->position;
+	state->camera.offset = V2fNegate(player->position);
 	state->camera.scale = 1;
 
 	// FPS display
@@ -642,29 +643,29 @@ static void PushNormal(RenderState *renderState, const Vec2f position, const Vec
 	Vec2f tangent = V2fCrossR(normal, 1.0f);
 
 	Vec2f a = position;
-	Vec2f b = a + normal * length;
+	Vec2f b = V2fAddMultScalar(a, normal, length);
 	PushLine(renderState, a, b, V4fInit(1.0f, 1.0f, 1.0f, 1.0f), 2.0f);
 
-	a = position + normal * chairSize;
-	b = a + tangent * chairSize;
+	a = V2fAddMultScalar(position, normal, chairSize);
+	b = V2fAddMultScalar(a, tangent, chairSize);
 	PushLine(renderState, a, b, V4fInit(1.0f, 0.0f, 0.0f, 1.0f), 2.0f);
 
-	a = position + tangent * chairSize;
-	b = a + normal * chairSize;
+	a = V2fAddMultScalar(position, tangent, chairSize);
+	b = V2fAddMultScalar(a, normal, chairSize);
 	PushLine(renderState, a, b, V4fInit(0.0f, 0.0f, 1.0f, 1.0f), 2.0f);
 }
 
-static void PushOrigin(RenderState *renderState, const Vec2f &origin) {
-	PushQuad(renderState, origin + V2fInit(0.0f, 2.0f), 1.0f, V4f(0.75f, 0.75f, 0.75f, 1), true, 1.0f);
-	PushQuad(renderState, origin + V2fInit(0.0f, -2.0f), 1.0f, V4f(0.75f, 0.75f, 0.75f, 1), true, 1.0f);
-	PushQuad(renderState, origin + V2fInit(-2.0f, 0.0f), 1.0f, V4f(0.75f, 0.75f, 0.75f, 1), true, 1.0f);
-	PushQuad(renderState, origin + V2fInit(2.0f, 0.0f), 1.0f, V4f(0.75f, 0.75f, 0.75f, 1), true, 1.0f);
-	PushQuad(renderState, origin, 1.0f, V4f(0.25f, 0.25f, 0.25f, 1), true, 1.0f);
+static void PushOrigin(RenderState *renderState, const Vec2f origin) {
+	PushQuad(renderState, V2fAdd(origin, V2fInit(0.0f, 2.0f)), 1.0f, V4fInit(0.75f, 0.75f, 0.75f, 1), true, 1.0f);
+	PushQuad(renderState, V2fAdd(origin, V2fInit(0.0f, -2.0f)), 1.0f, V4fInit(0.75f, 0.75f, 0.75f, 1), true, 1.0f);
+	PushQuad(renderState, V2fAdd(origin, V2fInit(-2.0f, 0.0f)), 1.0f, V4fInit(0.75f, 0.75f, 0.75f, 1), true, 1.0f);
+	PushQuad(renderState, V2fAdd(origin, V2fInit(2.0f, 0.0f)), 1.0f, V4fInit(0.75f, 0.75f, 0.75f, 1), true, 1.0f);
+	PushQuad(renderState, origin, 1.0f, V4fInit(0.25f, 0.25f, 0.25f, 1), true, 1.0f);
 }
 
 extern void GameRender(GameMemory *gameMemory, const float alpha) {
 	GameState *state = gameMemory->game;
-	assert(state != nullptr);
+	assert(state != fpl_null);
 
 	const World *world = &state->world;
 
@@ -680,7 +681,7 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 
 	Vec2i mapSize = V2iInit(map->width, map->height);
 	Vec2f mapArea = V2fHadamard(TileSize, V2fInit((float)mapSize.x, (float)mapSize.y));
-	Vec2f mapExtents = mapArea * 0.5f;
+	Vec2f mapExtents = V2fMultScalar(mapArea, 0.5f);
 	Vec2f mapOrigin = MapTileCoordsToWorld(map, map->origin);
 	Vec4f mapSolidColor = V4fInit(1.0f, 1.0f, 1.0f, 1.0f);
 	Vec4f playerTileColor = V4fInit(0.3f, 0.1f, 0.7f, 1.0f);
@@ -707,11 +708,15 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 	// Tile grid
 	for (int i = 0; i <= gridTileCountX; ++i) {
 		float xoffset = i * TileWidth;
-		PushLine(renderState, gridOrigin + V2fInit(xoffset, 0), gridOrigin + V2fInit(xoffset, gridSize.y), gridColor, 1.0f);
+		Vec2f a = V2fAdd(gridOrigin, V2fInit(xoffset, 0));
+		Vec2f b = V2fAdd(gridOrigin, V2fInit(xoffset, gridSize.y));
+		PushLine(renderState, a, b, gridColor, 1.0f);
 	}
 	for (int i = 0; i <= gridTileCountY; ++i) {
 		float yoffset = i * TileHeight;
-		PushLine(renderState, gridOrigin + V2fInit(0, yoffset), gridOrigin + V2fInit(gridSize.x, yoffset), gridColor, 1.0f);
+		Vec2f a = V2fAdd(gridOrigin, V2fInit(0, yoffset));
+		Vec2f b = V2fAdd(gridOrigin, V2fInit(gridSize.x, yoffset));
+		PushLine(renderState, a, b, gridColor, 1.0f);
 	}
 
 	// Map
@@ -719,7 +724,7 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 		for (int x = 0; x < mapSize.w; ++x) {
 			uint32_t tile = MapGetTile(map, V2iInit(x, y));
 			if (MapIsObstacle(map, tile)) {
-				Vec2f tilePos = gridOrigin + V2fInit(x * TileWidth, y * TileHeight);
+				Vec2f tilePos = V2fAdd(gridOrigin, V2fInit(x * TileWidth, y * TileHeight));
 				PushRectangle(renderState, tilePos, TileSize, mapSolidColor, true, 1.0f);
 			}
 		}
@@ -735,22 +740,22 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 	// Mouse tile
 	Vec2f invTileSize = V2fInit(1.0f / TileWidth, 1.0f / TileHeight);
 
-	Vec2i mouseTilePos = MapWorldCoordsToTile(map, state->mouseWorldPos - mapOrigin);
+	Vec2i mouseTilePos = MapWorldCoordsToTile(map, V2fSub(state->mouseWorldPos, mapOrigin));
 	Vec2f mouseWorldPos = MapTileCoordsToWorld(map, mouseTilePos);
-	Vec2f p = gridOrigin + mouseWorldPos;
+	Vec2f p = V2fAdd(gridOrigin, mouseWorldPos);
 	PushRectangle(renderState, p, TileSize, V4fInit(1, 1, 1, 1), false, 1.0f);
 
-	const FontAsset &font = state->assets.consoleFont;
+	const FontAsset *font = &state->assets.consoleFont;
 	float fontHeight = 6.0f;
 
 	char buffer[100];
 	fplStringFormat(buffer, fplArrayCount(buffer), "%i x %i", mouseTilePos.x, mouseTilePos.y);
-	PushText(renderState, buffer, fplGetStringLength(buffer), &font.desc, font.texture, mouseWorldPos, fontHeight, 1.0f, -1.0f, V4fInit(1, 1, 1, 1));
+	PushText(renderState, buffer, fplGetStringLength(buffer), &font->desc, font->texture, mouseWorldPos, fontHeight, 1.0f, -1.0f, V4fInit(1, 1, 1, 1));
 
 	if (state->isDebugRendering) {
 		SetMatrix(renderState, &state->projection);
 
-		const FontAsset &font = state->assets.consoleFont;
+		const FontAsset *font = &state->assets.consoleFont;
 		char text[256];
 		Vec4f textColor = V4fInit(1, 1, 1, 1);
 		Vec4f blackColor = V4fInit(0, 0, 0, 1);
@@ -761,17 +766,17 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 		FormatSize(gameMemory->memory->used, fplArrayCount(sizeCharsBuffer[0]), sizeCharsBuffer[0]);
 		FormatSize(gameMemory->memory->size, fplArrayCount(sizeCharsBuffer[1]), sizeCharsBuffer[1]);
 		fplStringFormat(text, fplArrayCount(text), "Game Memory: %s / %s bytes", sizeCharsBuffer[0], sizeCharsBuffer[1]);
-		PushText(renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, blackColor);
-		PushText(renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
+		PushText(renderState, text, fplGetStringLength(text), &font->desc, font->texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, blackColor);
+		PushText(renderState, text, fplGetStringLength(text), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
 
 		FormatSize(renderState->lastMemoryUsage, fplArrayCount(sizeCharsBuffer[0]), sizeCharsBuffer[0]);
 		FormatSize(renderState->memory.size, fplArrayCount(sizeCharsBuffer[1]), sizeCharsBuffer[1]);
 		fplStringFormat(text, fplArrayCount(text), "Render Memory: %s / %s bytes", sizeCharsBuffer[0], sizeCharsBuffer[1]);
-		PushText(renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(blockPos.x + w - 1, blockPos.y - 1), fontHeight, 0.0f, -1.0f, blackColor);
-		PushText(renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(blockPos.x + w, blockPos.y), fontHeight, 0.0f, -1.0f, textColor);
+		PushText(renderState, text, fplGetStringLength(text), &font->desc, font->texture, V2fInit(blockPos.x + w - 1, blockPos.y - 1), fontHeight, 0.0f, -1.0f, blackColor);
+		PushText(renderState, text, fplGetStringLength(text), &font->desc, font->texture, V2fInit(blockPos.x + w, blockPos.y), fontHeight, 0.0f, -1.0f, textColor);
 		fplStringFormat(text, fplArrayCount(text), "Fps: %.5f, Delta: %.5f", state->framesPerSecond[1], state->deltaTime);
-		PushText(renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(blockPos.x + w * 2.0f - 1, blockPos.y - 1), fontHeight, -1.0f, -1.0f, blackColor);
-		PushText(renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(blockPos.x + w * 2.0f, blockPos.y), fontHeight, -1.0f, -1.0f, textColor);
+		PushText(renderState, text, fplGetStringLength(text), &font->desc, font->texture, V2fInit(blockPos.x + w * 2.0f - 1, blockPos.y - 1), fontHeight, -1.0f, -1.0f, blackColor);
+		PushText(renderState, text, fplGetStringLength(text), &font->desc, font->texture, V2fInit(blockPos.x + w * 2.0f, blockPos.y), fontHeight, -1.0f, -1.0f, textColor);
 	}
 }
 
