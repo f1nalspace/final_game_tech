@@ -906,7 +906,7 @@ fpl_force_inline Vec3f V3fHadamard(const Vec3f a, const Vec3f b) {
 //
 // Mat2f
 //
-fpl_force_inline Mat2f Mat2FromAngle(float angle) {
+fpl_force_inline Mat2f M2fFromAngle(float angle) {
 	float s = F32Sin(angle);
 	float c = F32Cos(angle);
 	Mat2f result;
@@ -915,34 +915,34 @@ fpl_force_inline Mat2f Mat2FromAngle(float angle) {
 	return(result);
 }
 
-fpl_force_inline Mat2f Mat2FromAxis(const Vec2f axis) {
+fpl_force_inline Mat2f M2fFromAxis(const Vec2f axis) {
 	Mat2f result;
 	result.col1 = axis;
 	result.col2 = V2fCrossL(1.0f, axis);
 	return(result);
 }
 
-fpl_force_inline Mat2f Mat2Transpose(const Mat2f m) {
+fpl_force_inline Mat2f M2fTranspose(const Mat2f m) {
 	Mat2f result;
 	result.col1 = V2fInit(m.col1.x, m.col2.x);
 	result.col2 = V2fInit(m.col1.y, m.col2.y);
 	return(result);
 }
 
-fpl_force_inline Mat2f Mat2Mult(const Mat2f a, const Mat2f b) {
+fpl_force_inline Mat2f M2fMult(const Mat2f a, const Mat2f b) {
 	Mat2f result;
 	result.col1 = V2fMultMat2(a, b.col1);
 	result.col2 = V2fMultMat2(a, b.col2);
 	return(result);
 }
 
-fpl_force_inline float Mat2ToAngle(const Mat2f mat) {
+fpl_force_inline float M2fToAngle(const Mat2f mat) {
 	float result = V2fAngleFromAxis(mat.col1);
 	return(result);
 }
 
 /* Generates a 2x2 matrix for doing B to A conversion */
-fpl_force_inline Mat2f Mat2MultTranspose(const Mat2f a, const Mat2f b) {
+fpl_force_inline Mat2f M2fMultTranspose(const Mat2f a, const Mat2f b) {
 	Mat2f result;
 	result.col1 = V2fInit(V2fDot(a.col1, b.col1), V2fDot(a.col2, b.col1));
 	result.col2 = V2fInit(V2fDot(a.col1, b.col2), V2fDot(a.col2, b.col2));

@@ -466,7 +466,7 @@ namespace render {
 	}
 
 	static void DrawParts(RenderState &renderState, const Assets &assets, const Camera2D &camera, const Vec2f &center, const float scale, const float alpha, const float rotation, const size_t partCount, const PartData *parts) {
-		Mat2f rotationMat = Mat2FromAngle(rotation);
+		Mat2f rotationMat = M2fFromAngle(rotation);
 		for (size_t partIndex = 0; partIndex < partCount; ++partIndex) {
 			const PartData *part = parts + partIndex;
 			Vec4f partColor = V4fInit(part->color.r, part->color.g, part->color.b, part->color.a * alpha);
@@ -1436,7 +1436,7 @@ namespace towers {
 	}
 
 	static Vec2f GetRelativeTubeTip(const WeaponTubeData *tube, const Vec2f &lookDirection) {
-		Mat2f rotMat = Mat2FromAxis(lookDirection);
+		Mat2f rotMat = M2fFromAxis(lookDirection);
 		Vec2f rotatedOffset = V2fMultMat2(rotMat, tube->offset);
 		Vec2f gunTip = rotatedOffset + tube->length * lookDirection;
 		return(gunTip);
