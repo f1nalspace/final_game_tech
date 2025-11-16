@@ -73,6 +73,7 @@ static Map gTestLevel = {
 	{0},
 	{0, 0},
 	{TileWidth, TileHeight},
+	{TileWidth * 0.5f, TileHeight * 0.5f},
 	gTestLevelTiles,
 	TestLevel_Width,
 	TestLevel_Height,
@@ -211,6 +212,7 @@ typedef struct World {
 static void InitMap(fmemMemoryBlock *memory, Map *map) {
 	fplClearStruct(map);
 	map->tileSize = TileSize;
+	map->tileRadius = TileRadius;
 	fmemPushBlock(memory, &map->persistentMemory, fplMegaBytes(8), fmemPushFlags_Clear);
 	fmemPushBlock(memory, &map->temporaryMemory, fplMegaBytes(8), fmemPushFlags_Clear);
 }

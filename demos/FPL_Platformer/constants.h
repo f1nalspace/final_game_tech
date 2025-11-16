@@ -15,7 +15,7 @@
 #define TileHeight 32.0f
 
 #define TileSize V2fInit(TileWidth, TileHeight)
-#define TileHalfExt V2fInit(TileWidth * 0.5f, TileHeight * 0.5f)
+#define TileRadius V2fInit(TileWidth * 0.5f, TileHeight * 0.5f)
 #define Gravity V2fInit(0, -10.0f)
 
 

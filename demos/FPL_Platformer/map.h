@@ -7,6 +7,8 @@
 
 #include <final_math.h>
 
+#include <final_geometry.h>
+
 typedef struct Map {
 	// Memory handling
 	fmemMemoryBlock temporaryMemory;
@@ -15,8 +17,9 @@ typedef struct Map {
 	// The origin in tile coordinate
 	Vec2i origin;
 
-	// The tile world size
+	// The tile world size and radius
 	Vec2f tileSize;
+	Vec2f tileRadius;
 
 	// The 1D tile data (width * height)
 	uint32_t *solidTiles;
@@ -80,6 +83,12 @@ fpl_inline bool MapIsTileInside(const Map *map, const Vec2i tilePos) {
 fpl_inline bool MapIsObstacle(const Map *map, const uint32_t tile) {
 	// @TODO(final): Obstacle tile mapping!
 	bool result = tile == 1;
+	return result;
+}
+
+fpl_inline AABB2f MapCreateTileAABB(const Map *map, const Vec2i tilePos) {
+	Vec2f worldPos = MapTileCoordsToWorld(map, tilePos);
+	AABB2f result = AABB2fInitFromCenter(V2fAdd(worldPos, map->tileRadius), map->tileRadius);
 	return result;
 }
 
