@@ -89,4 +89,48 @@ fpl_internal uint32_t RoundToPowerOfTwo(const uint32_t input) {
 	return(result);
 }
 
+fpl_internal void FormatSize(const size_t value, const size_t maxCount, char *buffer) {
+	char *p = buffer;
+	if (value < 0) {
+		p++;
+	}
+
+	size_t tmp = value;
+	do {
+		p++;
+		tmp = tmp / 10;
+	} while (tmp);
+
+	// Count thousands
+	size_t thousandDotCount = 0;
+	tmp = value;
+	while (tmp >= 1000) {
+		p++;
+		++thousandDotCount;
+		tmp = tmp / 1000;
+	}
+
+	size_t charCount = p - buffer;
+
+	fplAssert(charCount + 1 <= maxCount);
+
+	*p = 0;
+	const char *digits = "0123456789";
+	size_t v = value;
+	size_t c = 0;
+	size_t t = thousandDotCount;
+	do {
+		if (t > 0) {
+			if (c == 3) {
+				c = 0;
+				--t;
+				*--p = '.';
+			}
+		}
+		*--p = digits[v % 10];
+		v /= 10;
+		c++;
+	} while (v != 0);
+}
+
 #endif // FINAL_UTILS_H

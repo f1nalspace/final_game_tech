@@ -139,18 +139,23 @@ fpl_force_inline Vec2f V2fZero() {
 	return(result);
 }
 
-fpl_force_inline Vec2f V2fCopy(const Vec2f v) {
-	Vec2f result = fplStructInit(Vec2f, v.x, v.y);
-	return(result);
-}
-
 fpl_force_inline Vec2f V2fInit(const float x, const float y) {
 	Vec2f result = fplStructInit(Vec2f, x, y);
 	return(result);
 }
 
+fpl_force_inline Vec2f V2fCopy(const Vec2f v) {
+	Vec2f result = V2fInit(v.x, v.y);
+	return(result);
+}
+
 fpl_force_inline Vec2f V2fInitScalar(const float value) {
-	Vec2f result = fplStructInit(Vec2f, value, value);
+	Vec2f result = V2fInit(value, value);
+	return(result);
+}
+
+fpl_force_inline Vec2f V2fInitV2i(const Vec2i v) {
+	Vec2f result = V2fInit((float)v.x, (float)v.y);
 	return(result);
 }
 
