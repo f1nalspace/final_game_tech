@@ -801,6 +801,11 @@ fpl_force_inline Vec3f V3fNegate(const Vec3f v) {
 	return(result);
 }
 
+fpl_force_inline Vec3f V3fAbs(const Vec3f v) {
+	Vec3f result = V3fInit(F32Abs(v.x), F32Abs(v.y), F32Abs(v.z));
+	return(result);
+}
+
 fpl_force_inline Vec3f V3fMultScalar(const Vec3f v, const float s) {
 	Vec3f result = V3fInit(v.x * s, v.y * s, v.z * s);
 	return(result);
