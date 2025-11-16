@@ -477,11 +477,11 @@ namespace render {
 				partPosition = center + part->offset * scale;
 			}
 			float partLineWidth = camera.worldToPixels * part->lineWidth * scale;
-			Mat4f r = Mat4RotationZFromAngle(part->orientation);
+			Mat4f r = M4fRotationZFromAngle(part->orientation);
 			if ((part->rotFlags & PartRotationFlags::ApplyToTransform) == PartRotationFlags::ApplyToTransform) {
-				r = r * Mat4RotationZFromM2f(rotationMat);
+				r = r * M4fRotationZFromM2f(rotationMat);
 			}
-			Mat4f m = Mat4TranslationV2(partPosition) * r;
+			Mat4f m = M4fTranslationV2(partPosition) * r;
 			PushMatrix(&renderState, &m, MatrixMode_Push);
 			switch (part->type) {
 				case PartType::FillCircle:
@@ -1877,8 +1877,8 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	const float h = WorldRadiusH;
 
 	float invScale = 1.0f / state->camera.scale;
-	Mat4f proj = Mat4OrthoRH(-w * invScale, w * invScale, -h * invScale, h * invScale, 0.0f, 1.0f);
-	Mat4f view = Mat4TranslationV2(state->camera.offset);
+	Mat4f proj = M4fOrthoRH(-w * invScale, w * invScale, -h * invScale, h * invScale, 0.0f, 1.0f);
+	Mat4f view = M4fTranslationV2(state->camera.offset);
 	state->viewProjection = proj * view;
 
 	ui::UIBegin(state->ui, state, renderState, *input, state->mouseWorldPos);

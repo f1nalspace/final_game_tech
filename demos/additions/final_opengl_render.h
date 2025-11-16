@@ -233,7 +233,7 @@ extern void RenderWithOpenGL(RenderState *renderState) {
 						fplAssert(renderState->matrixTop < fplArrayCount(renderState->matrixStack));
 						Mat4f *newMatrix = &renderState->matrixStack[renderState->matrixTop++];
 						*newMatrix = mvpCur;
-						mvpCur = Mat4Mult(*newMatrix, cmd->mat);
+						mvpCur = M4fMult(*newMatrix, cmd->mat);
 					} else if(cmd->mode == MatrixMode_Pop) {
 						fplAssert(renderState->matrixTop > 0);
 						mvpCur = renderState->matrixStack[--renderState->matrixTop];

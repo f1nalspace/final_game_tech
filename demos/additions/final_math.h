@@ -34,15 +34,15 @@ Changelog
 
 	## 2019-05-10:
 	- Added Vec3f math operator overloaded functions
-	- Renamed Mat4OrthoLH to Mat4OrthoRH
-	- Added Mat4PerspectiveRH
-	- Added Mat4LookAtRH
-	- Added more overrides for Mat4Translation
+	- Renamed Mat4OrthoLH to M4fOrthoRH
+	- Added M4fPerspectiveRH
+	- Added M4fLookAtRH
+	- Added more overrides for M4fTranslation
 	- Added SRGBToLinear, LinearToSRGB
 	- Added default SRGB conversion to Linear <-> Pixel
 
 	## 2018-07-05:
-	- Added Mat4RotationX, Mat4RotationY, Mat4RotationZ
+	- Added M4fRotation, M4fRotationY, M4fRotationZ
 */
 
 #ifndef FINAL_MATH_H
@@ -952,7 +952,7 @@ fpl_force_inline Mat2f M2fMultTranspose(const Mat2f a, const Mat2f b) {
 //
 // Mat4f
 //
-fpl_force_inline static Mat4f Mat4OrthoRH(const float left, const float right, const float bottom, const float top, const float zNear, const float zFar) {
+fpl_force_inline static Mat4f M4fOrthoRH(const float left, const float right, const float bottom, const float top, const float zNear, const float zFar) {
 	Mat4f result = M4fInit(1.0f);
 	result.r[0][0] = 2.0f / (right - left);
 	result.r[1][1] = 2.0f / (top - bottom);
@@ -963,7 +963,7 @@ fpl_force_inline static Mat4f Mat4OrthoRH(const float left, const float right, c
 	return (result);
 }
 
-fpl_force_inline static Mat4f Mat4PerspectiveRH(const float fov, const float aspect, const float zNear, const float zFar) {
+fpl_force_inline static Mat4f M4fPerspectiveRH(const float fov, const float aspect, const float zNear, const float zFar) {
 	float tanHalfFov = F32Tan(fov * 0.5f);
 	Mat4f result = M4fInit(0.0f);
 	result.r[0][0] = 1.0f / (aspect * tanHalfFov);
@@ -974,7 +974,7 @@ fpl_force_inline static Mat4f Mat4PerspectiveRH(const float fov, const float asp
 	return (result);
 }
 
-fpl_force_inline static Mat4f Mat4LookAtRH(const Vec3f eye, const Vec3f center, const Vec3f up) {
+fpl_force_inline static Mat4f M4fLookAtRH(const Vec3f eye, const Vec3f center, const Vec3f up) {
 	// Forward/Side/Upward
 	const Vec3f f = V3fNormalize(V3fSub(center, eye));
 	const Vec3f s = V3fNormalize(V3fCross(f, up));
@@ -1003,7 +1003,7 @@ fpl_force_inline static Mat4f Mat4LookAtRH(const Vec3f eye, const Vec3f center, 
 	return (result);
 }
 
-fpl_force_inline static Mat4f Mat4TranslationV2(const Vec2f p) {
+fpl_force_inline static Mat4f M4fTranslationV2(const Vec2f p) {
 	Mat4f result = M4fInit(1.0f);
 	result.col4.xy = p;
 	result.col4.z = 0.0f;
@@ -1011,32 +1011,32 @@ fpl_force_inline static Mat4f Mat4TranslationV2(const Vec2f p) {
 	return (result);
 }
 
-fpl_force_inline static Mat4f Mat4TranslationV3(const Vec3f p) {
+fpl_force_inline static Mat4f M4fTranslationV3(const Vec3f p) {
 	Mat4f result = M4fInit(1.0f);
 	result.col4.xyz = p;
 	result.col4.w = 1.0f;
 	return (result);
 }
 
-fpl_force_inline static Mat4f Mat4TranslationV4(const Vec4f p) {
+fpl_force_inline static Mat4f M4fTranslationV4(const Vec4f p) {
 	Mat4f result = M4fInit(1.0f);
 	result.col4 = p;
 	return (result);
 }
 
 #if defined(__cplusplus)
-fpl_force_inline static Mat4f Mat4Translation(const Vec2f p) {
-	return Mat4TranslationV2(p);
+fpl_force_inline static Mat4f M4fTranslation(const Vec2f p) {
+	return M4fTranslationV2(p);
 }
-fpl_force_inline static Mat4f Mat4Translation(const Vec3f p) {
-	return Mat4TranslationV3(p);
+fpl_force_inline static Mat4f M4fTranslation(const Vec3f p) {
+	return M4fTranslationV3(p);
 }
-fpl_force_inline static Mat4f Mat4Translation(const Vec4f p) {
-	return Mat4TranslationV4(p);
+fpl_force_inline static Mat4f M4fTranslation(const Vec4f p) {
+	return M4fTranslationV4(p);
 }
 #endif // __cplusplus
 
-fpl_force_inline static Mat4f Mat4ScaleFloat(const float s) {
+fpl_force_inline static Mat4f M4fScaleScalar(const float s) {
 	Mat4f result = M4fInit(1.0f);
 	result.col1.x = s;
 	result.col2.y = s;
@@ -1044,7 +1044,7 @@ fpl_force_inline static Mat4f Mat4ScaleFloat(const float s) {
 	return (result);
 }
 
-fpl_force_inline static Mat4f Mat4ScaleV2(const Vec2f s) {
+fpl_force_inline static Mat4f M4fScaleV2(const Vec2f s) {
 	Mat4f result = M4fInit(1.0f);
 	result.col1.x = s.x;
 	result.col2.y = s.y;
@@ -1052,7 +1052,7 @@ fpl_force_inline static Mat4f Mat4ScaleV2(const Vec2f s) {
 	return (result);
 }
 
-fpl_force_inline static Mat4f Mat4ScaleV3(const Vec3f s) {
+fpl_force_inline static Mat4f M4fScaleV3(const Vec3f s) {
 	Mat4f result = M4fInit(1.0f);
 	result.col1.x = s.x;
 	result.col2.y = s.y;
@@ -1061,18 +1061,18 @@ fpl_force_inline static Mat4f Mat4ScaleV3(const Vec3f s) {
 }
 
 #if defined(__cplusplus)
-fpl_force_inline static Mat4f Mat4Scale(const float s) {
-	return Mat4ScaleFloat(s);
+fpl_force_inline static Mat4f M4fScale(const float s) {
+	return M4fScaleScalar(s);
 }
-fpl_force_inline static Mat4f Mat4Scale(const Vec2f p) {
-	return Mat4ScaleV2(p);
+fpl_force_inline static Mat4f M4fScale(const Vec2f p) {
+	return M4fScaleV2(p);
 }
-fpl_force_inline static Mat4f Mat4Scale(const Vec3f p) {
-	return Mat4ScaleV3(p);
+fpl_force_inline static Mat4f M4fScale(const Vec3f p) {
+	return M4fScaleV3(p);
 }
 #endif // __cplusplus
 
-fpl_force_inline static Mat4f Mat4RotationX(const float angle) {
+fpl_force_inline static Mat4f M4fRotationX(const float angle) {
 	float c = F32Cos(angle);
 	float s = F32Sin(angle);
 	Mat4f result;
@@ -1083,7 +1083,7 @@ fpl_force_inline static Mat4f Mat4RotationX(const float angle) {
 	return (result);
 }
 
-fpl_force_inline static Mat4f Mat4RotationY(const float angle) {
+fpl_force_inline static Mat4f M4fRotationY(const float angle) {
 	float c = F32Cos(angle);
 	float s = F32Sin(angle);
 	Mat4f result;
@@ -1094,7 +1094,7 @@ fpl_force_inline static Mat4f Mat4RotationY(const float angle) {
 	return (result);
 }
 
-fpl_force_inline static Mat4f Mat4RotationZFromAngle(const float angle) {
+fpl_force_inline static Mat4f M4fRotationZFromAngle(const float angle) {
 	float c = F32Cos(angle);
 	float s = F32Sin(angle);
 	Mat4f result;
@@ -1105,7 +1105,7 @@ fpl_force_inline static Mat4f Mat4RotationZFromAngle(const float angle) {
 	return (result);
 }
 
-fpl_force_inline static Mat4f Mat4RotationZFromM2f(const Mat2f m) {
+fpl_force_inline static Mat4f M4fRotationZFromM2f(const Mat2f m) {
 	Mat4f result;
 	result.col1 = V4fInit(m.col1.x, m.col1.y, 0.0f, 0.0f);
 	result.col2 = V4fInit(-m.col1.y, m.col1.x, 0.0f, 0.0f);
@@ -1114,7 +1114,7 @@ fpl_force_inline static Mat4f Mat4RotationZFromM2f(const Mat2f m) {
 	return (result);
 }
 
-fpl_force_inline Mat4f Mat4Mult(const Mat4f a, const Mat4f b) {
+fpl_force_inline Mat4f M4fMult(const Mat4f a, const Mat4f b) {
 	Mat4f result;
 	for (int i = 0; i < 16; i += 4) {
 		for (int j = 0; j < 4; ++j) {
@@ -1130,12 +1130,12 @@ fpl_force_inline Mat4f Mat4Mult(const Mat4f a, const Mat4f b) {
 
 #if defined(__cplusplus)
 fpl_force_inline Mat4f operator *(const Mat4f &a, const Mat4f &b) {
-	Mat4f result = Mat4Mult(a, b);
+	Mat4f result = M4fMult(a, b);
 	return(result);
 }
 #endif // __cplusplus
 
-fpl_force_inline Vec4f Vec4MultMat4(const Mat4f mat, const Vec4f v) {
+fpl_force_inline Vec4f V4fMultM4f(const Mat4f mat, const Vec4f v) {
 	Vec4f result;
 	result.x = mat.r[0][0] * v.m[0] + mat.r[0][1] * v.m[1] + mat.r[0][2] * v.m[2] + mat.r[0][3] * v.m[3];
 	result.y = mat.r[1][0] * v.m[0] + mat.r[1][1] * v.m[1] + mat.r[1][2] * v.m[2] + mat.r[1][3] * v.m[3];
@@ -1606,7 +1606,7 @@ fpl_force_inline Vec2f Unproject(const Vec2i screenPos, const Mat4f mvp, const V
 	tmp.x = tmp.x * 2.0f - 1.0f;
 	tmp.y = tmp.y * 2.0f - 1.0f;
 
-	Vec4f obj = Vec4MultMat4(inverse, tmp);
+	Vec4f obj = V4fMultM4f(inverse, tmp);
 
 	obj = Vec4DivideScalar(obj, obj.w);
 

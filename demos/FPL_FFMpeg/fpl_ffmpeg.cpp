@@ -3335,7 +3335,7 @@ static void RenderVideoFrame(AppState *state) {
 	DisplayRect rect = CalculateDisplayRect(0, 0, w, h, frameWidth, frameHeight, sar);
 
 #if USE_HARDWARE_RENDERING
-	Mat4f proj = Mat4OrthoRH(0.0f, (float)w, 0.0f, (float)h, 0.0f, 1.0f);
+	Mat4f proj = M4fOrthoRH(0.0f, (float)w, 0.0f, (float)h, 0.0f, 1.0f);
 
 	glViewport(0, 0, w, h);
 	glClear(GL_COLOR_BUFFER_BIT);

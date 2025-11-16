@@ -214,9 +214,9 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	const float h = WorldRadiusH;
 
 	float invScale = 1.0f / state->camera.scale;
-	Mat4f proj = Mat4OrthoRH(-w * invScale, w * invScale, -h * invScale, h * invScale, 0.0f, 1.0f);
-	Mat4f view = Mat4TranslationV2(state->camera.offset);
-	state->viewProjection = Mat4Mult(proj, view);
+	Mat4f proj = M4fOrthoRH(-w * invScale, w * invScale, -h * invScale, h * invScale, 0.0f, 1.0f);
+	Mat4f view = M4fTranslationV2(state->camera.offset);
+	state->viewProjection = M4fMult(proj, view);
 
 	// Mouse
 	int mouseCenterX = (input->mouse.pos.x - input->windowSize.w / 2);
