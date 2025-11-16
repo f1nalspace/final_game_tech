@@ -18,6 +18,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2025-11-16
+	- Migrated to new final addition libraries (C99 standard)
+
 	## 2019-04-27
 	- Use Vec2Normalize instead of dividing by length
 

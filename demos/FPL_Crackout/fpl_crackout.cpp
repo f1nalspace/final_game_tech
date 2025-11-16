@@ -7,7 +7,7 @@ Description:
 	A breakout-like game based on FPL written in C++.
 
 Requirements:
-	- C++/11 Compiler
+	- C++ Compiler
 	- Box2D
 	- Final Memory
 	- Final Framework
@@ -16,6 +16,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2025-11-16
+	- Migrated to new final addition libraries (C99 standard)
+
 	## 2022-01-20
 	- Use variable frame rate for paddle moving instead to prevent over-speeding when V-Sync is enabled, or V-Blanks are more than 60 Hz
 	- Change restitution for field borders to zero, so the paddle wont bounce anymore

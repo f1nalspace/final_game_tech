@@ -7,16 +7,19 @@ Description:
 	Simple C99 template containing a basic skeleton for a game.
 
 Requirements:
-	- C++ Compiler
+	- C99 Compiler
 	- Final Framework
 
 Author:
 	Torsten Spaete
 
 Changelog:
+	## 2025-11-16
+	- Switched from C++ to C99
+
 	## 2025-11-15
 	- Fixed only keyboard controller was used
-	- Full transition to C99
+	- Migrated to new final addition libraries (C99 standard)
 
 License:
 	Copyright (c) 2017-2025 Torsten Spaete
