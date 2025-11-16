@@ -3573,7 +3573,7 @@ static void PrepareFrame(Application *app, const fplWindowSize size) {
 	app->viewMat = Mat4Mult(Mat4ScaleFloat(scale), Mat4TranslationV2(V2fInit(translationX, translationY)));
 	app->projectionMat = Mat4OrthoRH(0.0f, (float)size.width, 0.0f, (float)size.height, 0.0f, 1.0f);
 	app->viewProjectionMat = Mat4Mult(app->projectionMat, app->viewMat);
-	app->viewport = Viewport4iInit(0, 0, size.width, size.height);
+	app->viewport = VP4iInit(0, 0, size.width, size.height);
 }
 
 static void UpdateWindowTitle(Emulator *emulator, const double frameRate) {

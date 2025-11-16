@@ -116,8 +116,8 @@ extern void DrawCircle(const float centerX, const float centerY, const float rad
 	glColor4fv(&color.r);
 	glBegin(isFilled ? GL_POLYGON : GL_LINE_LOOP);
 	for(int segmentIndex = 0; segmentIndex < segments; ++segmentIndex) {
-		float x = centerX + Cosine(segmentIndex * seg) * radius;
-		float y = centerY + Sine(segmentIndex * seg) * radius;
+		float x = centerX + F32Cos(segmentIndex * seg) * radius;
+		float y = centerY + F32Sin(segmentIndex * seg) * radius;
 		glVertex2f(x, y);
 	}
 	glEnd();

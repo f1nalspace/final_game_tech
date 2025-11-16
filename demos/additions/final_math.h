@@ -17,8 +17,8 @@ Changelog
 	- Added function V2fAbs()
 	- Added function V2fPerp()
 	- Added function V2fMajorAxis()
-	- Added function IsNaN()
-	- Added function Sign()
+	- Added function F32IsNaN()
+	- Added function F32Sign()
 	- Fixed some structs not initialized
 
 	## 2025-03-09
@@ -58,8 +58,8 @@ Changelog
 #include <math.h>
 #include <float.h>
 
-const float F32Max = FLT_MAX;
-const float F32Min = FLT_MIN;
+const float F32MaxValue = FLT_MAX;
+const float F32MinValue = FLT_MIN;
 const float F32Pi = (float)M_PI;
 const float F32Tau = (float)M_PI * 2.0f;
 const float F32Deg2Rad = (float)M_PI / 180.0f;
@@ -400,7 +400,7 @@ fpl_force_inline Mat4f M4fInit(const float value) {
 	return(result);
 }
 
-fpl_force_inline Mat4f M4fDefault() {
+fpl_force_inline Mat4f M4fIdentity() {
 	Mat4f result = M4fInit(1.0f);
 	return(result);
 }
@@ -487,7 +487,7 @@ typedef struct Viewport4i {
 	int32_t h;
 } Viewport4i;
 
-fpl_force_inline Viewport4i Viewport4iInit(const int32_t x, const int32_t y, const int32_t w, const int32_t h) {
+fpl_force_inline Viewport4i VP4iInit(const int32_t x, const int32_t y, const int32_t w, const int32_t h) {
 	return fplStructInit(Viewport4i, x, y, w, h);
 }
 
@@ -498,18 +498,18 @@ typedef struct Viewport4f {
 	float h;
 } Viewport4f;
 
-fpl_force_inline Viewport4f Viewport4fInit(const float x, const float y, const float w, const float h) {
+fpl_force_inline Viewport4f VP4fInit(const float x, const float y, const float w, const float h) {
 	return fplStructInit(Viewport4f, x, y, w, h);
 }
 
 //
 // Scalar
 //
-fpl_force_inline bool IsNaN(const float x) {
+fpl_force_inline bool F32IsNaN(const float x) {
 	return isnan(x);
 }
-fpl_force_inline float Sign(const float x) {
-	if(IsNaN(x)) {
+fpl_force_inline float F32Sign(const float x) {
+	if(F32IsNaN(x)) {
 		return NAN;
 	}
 	if(x == 0.0) {
@@ -518,88 +518,88 @@ fpl_force_inline float Sign(const float x) {
 	int b = (x > 0.0f) - (x < 0.0f);
 	return (float)b;
 }
-fpl_force_inline float Cosine(const float angle) {
+fpl_force_inline float F32Cos(const float angle) {
 	float result = cosf(angle);
 	return(result);
 }
-fpl_force_inline float Sine(const float angle) {
+fpl_force_inline float F32Sin(const float angle) {
 	float result = sinf(angle);
 	return(result);
 }
-fpl_force_inline float Tan(const float angle) {
+fpl_force_inline float F32Tan(const float angle) {
 	float result = tanf(angle);
 	return(result);
 }
-fpl_force_inline float ArcCos(const float x) {
+fpl_force_inline float F32ArcCos(const float x) {
 	float result = acosf(x);
 	return(result);
 }
-fpl_force_inline float ArcSin(const float x) {
+fpl_force_inline float F32ArcSin(const float x) {
 	float result = asinf(x);
 	return(result);
 }
-fpl_force_inline float ArcTan(const float x) {
+fpl_force_inline float F32ArcTan(const float x) {
 	float result = atanf(x);
 	return(result);
 }
-fpl_force_inline float ArcTan2(const float y, const float x) {
+fpl_force_inline float F32ArcTan2(const float y, const float x) {
 	float result = atan2f(y, x);
 	return(result);
 }
-fpl_force_inline float Abs(const float value) {
+fpl_force_inline float F32Abs(const float value) {
 	float result = fabsf(value);
 	return(result);
 }
-fpl_force_inline float Power(const float x, const float y) {
+fpl_force_inline float F32Power(const float x, const float y) {
 	float result = powf(x, y);
 	return(result);
 }
-fpl_force_inline float Min(const float a, const float b) {
+fpl_force_inline float F32Min(const float a, const float b) {
 	float result = a < b ? a : b;
 	return(result);
 }
-fpl_force_inline float Max(const float a, const float b) {
+fpl_force_inline float F32Max(const float a, const float b) {
 	float result = a > b ? a : b;
 	return(result);
 }
-fpl_force_inline float SquareRoot(const float value) {
+fpl_force_inline float F32SquareRoot(const float value) {
 	float result = sqrtf(value);
 	return(result);
 }
-fpl_force_inline float RadiansToDegrees(const float radians) {
+fpl_force_inline float F32RadiansToDegrees(const float radians) {
 	float result = radians * F32Rad2Deg;
 	return(result);
 }
-fpl_force_inline float DegreesToRadians(const float degrees) {
+fpl_force_inline float F32DegreesToRadians(const float degrees) {
 	float result = degrees * F32Deg2Rad;
 	return(result);
 }
 
-fpl_force_inline float ScalarLerp(float a, float t, float b) {
+fpl_force_inline float F32ScalarLerp(float a, float t, float b) {
 	float result = (1.0f - t) * a + t * b;
 	return(result);
 }
 
-fpl_force_inline float ScalarAvg(float oldValue, float t, float newValue) {
+fpl_force_inline float F32Avg(float oldValue, float t, float newValue) {
 	float result = t * newValue + (1.0f - t) * oldValue;
 	return(result);
 }
 
-fpl_force_inline float ScalarClamp(float value, float min, float max) {
+fpl_force_inline float F32Clamp(float value, float min, float max) {
 	float result = fplMin(fplMax(value, min), max);
 	return(result);
 }
 
-fpl_force_inline float GetBestAngleDistance(float a0, float a1) {
+fpl_force_inline float F32GetBestAngleDistance(float a0, float a1) {
 	float max = F32Pi * 2;
 	float da = fmodf(a1 - a0, max);
 	float result = fmodf(2.0f * da, max) - da;
 	return(result);
 }
 
-fpl_force_inline float AngleLerp(float a, float t, float b) {
-	float angleDistance = GetBestAngleDistance(a, b);
-	float result = ScalarLerp(a, t, a + angleDistance);
+fpl_force_inline float F32AngleLerp(float a, float t, float b) {
+	float angleDistance = F32GetBestAngleDistance(a, b);
+	float result = F32ScalarLerp(a, t, a + angleDistance);
 	return(result);
 }
 
@@ -679,7 +679,7 @@ fpl_force_inline Vec2f &operator-=(Vec2f &a, const Vec2f &b) {
 #endif // __cplusplus
 
 fpl_force_inline Vec2f V2fAbs(const Vec2f v) {
-	return V2fInit(Abs(v.x), Abs(v.y));
+	return V2fInit(F32Abs(v.x), F32Abs(v.y));
 }
 
 fpl_force_inline Vec2f V2fNegate(const Vec2f v) {
@@ -742,46 +742,46 @@ fpl_force_inline float V2fCrossZ(const Vec2f a, const Vec2f b) {
 }
 
 fpl_force_inline float V2fAngleFromAxis(const Vec2f axis) {
-	float result = ArcTan2(axis.y, axis.x);
+	float result = F32ArcTan2(axis.y, axis.x);
 	return(result);
 }
 
 fpl_force_inline Vec2f V2fAxisFromAngle(const float angle) {
-	Vec2f result = V2fInit(Cosine(angle), Sine(angle));
+	Vec2f result = V2fInit(F32Cos(angle), F32Sin(angle));
 	return(result);
 }
 
 fpl_force_inline Vec2f V2fMajorAxis(const Vec2f v) {
-	float x = Abs(v.x);
-	float y = Abs(v.y);
+	float x = F32Abs(v.x);
+	float y = F32Abs(v.y);
 	if (x > y) {
-		return V2fInit(Sign(v.x), 0.0f);
+		return V2fInit(F32Sign(v.x), 0.0f);
 	} else {
-		return V2fInit(0.0f, Sign(v.y));
+		return V2fInit(0.0f, F32Sign(v.y));
 	}
 }
 
 fpl_force_inline Vec2f V2fRandomDirection() {
 	float d = rand() / (float)RAND_MAX;
 	float angle = d * ((float)M_PI * 2.0f);
-	Vec2f result = V2fInit(Cosine(angle), Sine(angle));
+	Vec2f result = V2fInit(F32Cos(angle), F32Sin(angle));
 	return(result);
 }
 
 fpl_force_inline Vec2f V2fLerp(const Vec2f a, const float t, const Vec2f b) {
 	Vec2f result;
-	result.x = ScalarLerp(a.x, t, b.x);
-	result.y = ScalarLerp(a.y, t, b.y);
+	result.x = F32ScalarLerp(a.x, t, b.x);
+	result.y = F32ScalarLerp(a.y, t, b.y);
 	return(result);
 }
 
 fpl_force_inline Vec2f V2fMin(const Vec2f a, const Vec2f b) {
-	Vec2f result = V2fInit(Min(a.x, b.x), Min(a.y, b.y));
+	Vec2f result = V2fInit(F32Min(a.x, b.x), F32Min(a.y, b.y));
 	return(result);
 }
 
 fpl_force_inline Vec2f V2fMax(const Vec2f a, const Vec2f b) {
-	Vec2f result = V2fInit(Max(a.x, b.x), Max(a.y, b.y));
+	Vec2f result = V2fInit(F32Max(a.x, b.x), F32Max(a.y, b.y));
 	return(result);
 }
 
@@ -889,9 +889,9 @@ fpl_force_inline Vec3f V3fCross(const Vec3f a, const Vec3f b) {
 
 fpl_force_inline Vec3f V3fLerp(const Vec3f a, float t, const Vec3f b) {
 	Vec3f result;
-	result.x = ScalarLerp(a.x, t, b.x);
-	result.y = ScalarLerp(a.y, t, b.y);
-	result.z = ScalarLerp(a.z, t, b.z);
+	result.x = F32ScalarLerp(a.x, t, b.x);
+	result.y = F32ScalarLerp(a.y, t, b.y);
+	result.z = F32ScalarLerp(a.z, t, b.z);
 	return(result);
 }
 
@@ -907,8 +907,8 @@ fpl_force_inline Vec3f V3fHadamard(const Vec3f a, const Vec3f b) {
 // Mat2f
 //
 fpl_force_inline Mat2f Mat2FromAngle(float angle) {
-	float s = Sine(angle);
-	float c = Cosine(angle);
+	float s = F32Sin(angle);
+	float c = F32Cos(angle);
 	Mat2f result;
 	result.col1 = V2fInit(c, s);
 	result.col2 = V2fInit(-s, c);
@@ -964,7 +964,7 @@ fpl_force_inline static Mat4f Mat4OrthoRH(const float left, const float right, c
 }
 
 fpl_force_inline static Mat4f Mat4PerspectiveRH(const float fov, const float aspect, const float zNear, const float zFar) {
-	float tanHalfFov = Tan(fov * 0.5f);
+	float tanHalfFov = F32Tan(fov * 0.5f);
 	Mat4f result = M4fInit(0.0f);
 	result.r[0][0] = 1.0f / (aspect * tanHalfFov);
 	result.r[1][1] = 1.0f / (tanHalfFov);
@@ -1073,8 +1073,8 @@ fpl_force_inline static Mat4f Mat4Scale(const Vec3f p) {
 #endif // __cplusplus
 
 fpl_force_inline static Mat4f Mat4RotationX(const float angle) {
-	float c = Cosine(angle);
-	float s = Sine(angle);
+	float c = F32Cos(angle);
+	float s = F32Sin(angle);
 	Mat4f result;
 	result.col1 = V4fInit(1.0f, 0.0f, 0.0f, 0.0f);
 	result.col2 = V4fInit(0.0f, c, s, 0.0f);
@@ -1084,8 +1084,8 @@ fpl_force_inline static Mat4f Mat4RotationX(const float angle) {
 }
 
 fpl_force_inline static Mat4f Mat4RotationY(const float angle) {
-	float c = Cosine(angle);
-	float s = Sine(angle);
+	float c = F32Cos(angle);
+	float s = F32Sin(angle);
 	Mat4f result;
 	result.col1 = V4fInit(c, 0.0f, s, 0.0f);
 	result.col2 = V4fInit(0.0f, 1.0f, 0.0f, 0.0f);
@@ -1095,8 +1095,8 @@ fpl_force_inline static Mat4f Mat4RotationY(const float angle) {
 }
 
 fpl_force_inline static Mat4f Mat4RotationZFromAngle(const float angle) {
-	float c = Cosine(angle);
-	float s = Sine(angle);
+	float c = F32Cos(angle);
+	float s = F32Sin(angle);
 	Mat4f result;
 	result.col1 = V4fInit(c, s, 0.0f, 0.0f);
 	result.col2 = V4fInit(-s, c, 0.0f, 0.0f);
@@ -1166,7 +1166,7 @@ fpl_force_inline Mat4f QuatToMat4(const Quaternion q) {
 	// invs (inverse square length) is only required if quaternion is not already normalised
 	float invs = 1.0f / (sqx + sqy + sqz + sqw);
 
-	Mat4f result = M4fDefault();
+	Mat4f result = M4fIdentity();
 
 	result.r[0][0] = (sqx - sqy - sqz + sqw) * invs; // since sqw + sqx + sqy + sqz =1/invs*invs
 	result.r[1][1] = (-sqx + sqy - sqz + sqw) * invs;
@@ -1191,7 +1191,7 @@ fpl_force_inline Mat4f QuatToMat4(const Quaternion q) {
 }
 
 fpl_force_inline float QuatLength(const Quaternion q) {
-	float result = SquareRoot(QuatDot(q, q));
+	float result = F32SquareRoot(QuatDot(q, q));
 	return(result);
 }
 
@@ -1263,7 +1263,7 @@ fpl_force_inline Vec3f QuatAxis(const Quaternion q) {
 	if (tmp1 <= 0.0f) {
 		return V3fInit(0, 0, 1);
 	}
-	float tmp2 = 1.0f / SquareRoot(tmp1);
+	float tmp2 = 1.0f / F32SquareRoot(tmp1);
 	Vec3f result = V3fInit(q.x * tmp2, q.y * tmp2, q.z * tmp2);
 	return(result);
 }
@@ -1285,15 +1285,15 @@ fpl_force_inline Quaternion QuatLerp(const Quaternion a, const float t, const Qu
 }
 
 fpl_force_inline float QuatAngle(const Quaternion q) {
-	float result = ArcCos(q.w) * 2.0f;
+	float result = F32ArcCos(q.w) * 2.0f;
 	return(result);
 }
 
 fpl_force_inline Quaternion QuatFromAngleAxis(const float angle, const Vec3f axis) {
 	Quaternion result;
 	float const a = angle;
-	float const s = Sine(a * 0.5f);
-	result.w = Cosine(a * 0.5f);
+	float const s = F32Sin(a * 0.5f);
+	result.w = F32Cos(a * 0.5f);
 	result.x = axis.x * s;
 	result.y = axis.y * s;
 	result.z = axis.z * s;
@@ -1301,7 +1301,7 @@ fpl_force_inline Quaternion QuatFromAngleAxis(const float angle, const Vec3f axi
 }
 
 fpl_force_inline float QuatRoll(const Quaternion q) {
-	float result = ArcTan2(2.0f * (q.x * q.y + q.w * q.z), q.w * q.w + q.x * q.x - q.y * q.y - q.z * q.z);
+	float result = F32ArcTan2(2.0f * (q.x * q.y + q.w * q.z), q.w * q.w + q.x * q.x - q.y * q.y - q.z * q.z);
 	return(result);
 }
 
@@ -1310,15 +1310,15 @@ fpl_force_inline float QuatPitch(const Quaternion q) {
 	const float x = q.w * q.w - q.x * q.x - q.y * q.y + q.z * q.z;
 	float result;
 	if (x == 0.0f && y == 0.0f) {
-		result = 2.0f * ArcTan2(q.x, q.w);
+		result = 2.0f * F32ArcTan2(q.x, q.w);
 	} else {
-		result = ArcTan2(y, x);
+		result = F32ArcTan2(y, x);
 	}
 	return(result);
 }
 
 fpl_force_inline float QuatYaw(const Quaternion q) {
-	float result = ArcSin(ScalarClamp(-2.0f * (q.x * q.z - q.w * q.y), 1.0f, 1.0f));
+	float result = F32ArcSin(F32Clamp(-2.0f * (q.x * q.z - q.w * q.y), 1.0f, 1.0f));
 	return(result);
 }
 
@@ -1350,7 +1350,7 @@ fpl_force_inline Quaternion QuatRotation(const Vec3f orig, const Vec3f dest) {
 	// Implementation from Stan Melax's Game Programming Gems 1 article
 	rotationAxis = V3fCross(orig, dest);
 
-	float s = SquareRoot((1.0f + cosTheta) * 2.0f);
+	float s = F32SquareRoot((1.0f + cosTheta) * 2.0f);
 	float invs = 1.0f / s;
 
 	Quaternion result = QuatInit(
@@ -1457,7 +1457,7 @@ fpl_force_inline float SRGBToLinear(const float x) {
 	else if (x < 0.04045f)
 		return x / 12.92f;
 	else
-		return Power((x + 0.055f) / 1.055f, 2.4f);
+		return F32Power((x + 0.055f) / 1.055f, 2.4f);
 }
 
 fpl_force_inline float LinearToSRGB(const float x) {
@@ -1468,7 +1468,7 @@ fpl_force_inline float LinearToSRGB(const float x) {
 	else if (x < 0.0031308f)
 		return x * 12.92f;
 	else
-		return Power(x, 1.0f / 2.4f) * 1.055f - 0.055f;
+		return F32Power(x, 1.0f / 2.4f) * 1.055f - 0.055f;
 }
 
 fpl_force_inline Vec4f PixelToLinearRaw(const Pixel pixel) {
@@ -1627,7 +1627,7 @@ fpl_force_inline Viewport4i Viewport4iComputeByAspect(const Vec2i screenSize, co
 		viewSize.h = (int)(screenSize.w / targetAspect);
 		viewOffset.y = (screenSize.h - viewSize.h) / 2;
 	}
-	Viewport4i result = Viewport4iInit(viewOffset.x, viewOffset.y, viewSize.w, viewSize.h);
+	Viewport4i result = VP4iInit(viewOffset.x, viewOffset.y, viewSize.w, viewSize.h);
 	return(result);
 }
 
@@ -1644,7 +1644,7 @@ fpl_force_inline Viewport4f Viewport4fComputeByAspect(const Vec2f screenSize, co
 		viewSize.h = screenSize.w / targetAspect;
 		viewOffset.y = (screenSize.h - viewSize.h) * 0.5f;
 	}
-	Viewport4f result = Viewport4fInit(viewOffset.x, viewOffset.y, viewSize.w, viewSize.h);
+	Viewport4f result = VP4fInit(viewOffset.x, viewOffset.y, viewSize.w, viewSize.h);
 	return(result);
 }
 

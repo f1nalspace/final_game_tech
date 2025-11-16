@@ -268,7 +268,7 @@ static void RunLegacy() {
 		fplGetWindowSize(&windowArea);
 
 		float aspect = windowArea.width / (float)windowArea.height;
-		Mat4f proj = Mat4PerspectiveRH(DegreesToRadians(35), aspect, 0.1f, 100.0f);
+		Mat4f proj = Mat4PerspectiveRH(F32DegreesToRadians(35), aspect, 0.1f, 100.0f);
 		Mat4f camera = Mat4LookAtRH(V3fInit(2, 2, 3), V3fInit(0, 0, 0), V3fInit(0, 1, 0));
 		Quaternion quat = QuatFromAngleAxis(rot, V3fInit(0.0f, 1.0f, 0.0f));
 		Mat4f model = QuatToMat4(quat);
@@ -500,7 +500,7 @@ static bool RunModern() {
 		fplGetWindowSize(&windowArea);
 
 		float aspect = windowArea.width / (float)windowArea.height;
-		Mat4f proj = Mat4PerspectiveRH(DegreesToRadians(35), aspect, 0.1f, 100.0f);
+		Mat4f proj = Mat4PerspectiveRH(F32DegreesToRadians(35.0f), aspect, 0.1f, 100.0f);
 		Mat4f camera = Mat4LookAtRH(V3fInit(2, 2, 3), V3fInit(0, 0, 0), V3fInit(0, 1, 0));
 		Quaternion quat = QuatFromAngleAxis(rot, V3fInit(0.0f, 1.0f, 0.0f));
 		Mat4f model = QuatToMat4(quat);

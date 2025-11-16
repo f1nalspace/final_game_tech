@@ -260,7 +260,7 @@ namespace ui {
 	}
 
 	inline bool IsInsideButton(UIContext &ctx, const Vec2f &pos, const Vec2f &radius) {
-		bool result = Abs(ctx.input.userPosition.x - pos.x) <= radius.w && Abs(ctx.input.userPosition.y - pos.y) <= radius.h;
+		bool result = F32Abs(ctx.input.userPosition.x - pos.x) <= radius.w && F32Abs(ctx.input.userPosition.y - pos.y) <= radius.h;
 		return(result);
 	}
 
@@ -1002,7 +1002,7 @@ namespace level {
 				part->ext = utils::StringToVec2(fxmlGetAttributeValue(partTag, "ext"));
 				part->radius = utils::StringToFloat(fxmlGetAttributeValue(partTag, "radius"));
 				part->lineWidth = utils::StringToFloat(fxmlGetAttributeValue(partTag, "lineWidth"));
-				part->orientation = DegreesToRadians(utils::StringToFloat(fxmlGetAttributeValue(partTag, "orientation")));
+				part->orientation = F32DegreesToRadians(utils::StringToFloat(fxmlGetAttributeValue(partTag, "orientation")));
 				part->color = utils::StringToVec4(fxmlGetAttributeValue(partTag, "color"));
 			}
 		}
@@ -1422,7 +1422,7 @@ namespace towers {
 		float b = 2.0f * V2fDot(enemyVelocity, distanceToTarget);
 		float c = V2fDot(distanceToTarget, distanceToTarget);
 		float d = -b / (2.0f * a);
-		float q = (float)SquareRoot((b * b) - 4.0f * a * c) / (2.0f * a);
+		float q = (float)F32SquareRoot((b * b) - 4.0f * a * c) / (2.0f * a);
 		float t1 = d - q;
 		float t2 = d + q;
 		float t;
@@ -1468,7 +1468,7 @@ namespace towers {
 				Vec2f lookPos = tower.position + lookDirection * projDistance;
 				float dot = V2fDot(predictedEnemyPosition, lookPos);
 				float det = predictedEnemyPosition.x * lookPos.y - predictedEnemyPosition.y * lookPos.x;
-				float angle = ArcTan2(det, dot);
+				float angle = F32ArcTan2(det, dot);
 				result = angle >= -ShotAngleTolerance && angle <= ShotAngleTolerance;
 			} else {
 				result = false;
@@ -1483,7 +1483,7 @@ namespace towers {
 			assert(bullets.count < fplArrayCount(bullets.list));
 			Bullet *bullet = &bullets.list[bullets.count++];
 			*bullet = {};
-			Vec2f targetDir = V2fInit(Cosine(tower.facingAngle), Sine(tower.facingAngle));
+			Vec2f targetDir = V2fInit(F32Cos(tower.facingAngle), F32Sin(tower.facingAngle));
 			Vec2f gunTip = tower.position + GetRelativeTubeTip(tube, targetDir);
 			bullet->position = bullet->prevPosition = gunTip;
 			bullet->data = &tower.data->bullet;
@@ -1548,7 +1548,7 @@ namespace towers {
 			Vec2f predictedEnemyPosition = towers::PredictEnemyPosition(tower, *enemy, deltaTime);
 			Vec2f directionToEnemy = V2fNormalize(predictedEnemyPosition - tower.position);
 			float angleToEnemy = V2fAngleFromAxis(directionToEnemy);
-			tower.facingAngle = AngleLerp(tower.facingAngle, deltaTime * tower.data->gunRotationSpeed, angleToEnemy);
+			tower.facingAngle = F32AngleLerp(tower.facingAngle, deltaTime * tower.data->gunRotationSpeed, angleToEnemy);
 		}
 
 		//
@@ -1948,7 +1948,7 @@ extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
 			}
 		}
 		float t = 1.0f - (state->slowdownTimer[0] / state->slowdownTimer[1]);
-		dtScale = ScalarLerp(1.0f, t, state->slowdownScale);
+		dtScale = F32ScalarLerp(1.0f, t, state->slowdownScale);
 	}
 	const float dt = input->fixedDeltaTime * dtScale;
 
@@ -2311,7 +2311,7 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 
 					float dot = V2fDot(target->position, lookPos);
 					float det = V2fCrossZ(target->position, lookPos);
-					float angle = ArcTan2(det, dot);
+					float angle = F32ArcTan2(det, dot);
 
 					if (angle >= -ShotAngleTolerance && angle <= ShotAngleTolerance) {
 						Vec2f lookDirection = V2fAxisFromAngle(tower.facingAngle);

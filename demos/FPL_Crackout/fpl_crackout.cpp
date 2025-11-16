@@ -827,8 +827,8 @@ static void LaunchBall(GameState &state) {
 	ball->isDead = false;
 	ball->body->SetType(b2BodyType::b2_dynamicBody);
 	float newAngle = startAngle + (Random01() > 0.5f ? -1 : 1) * Random01() * spreadAngle;
-	float a = DegreesToRadians(newAngle);
-	b2Vec2 direction = b2Vec2(Cosine(a), Sine(a));
+	float a = F32DegreesToRadians(newAngle);
+	b2Vec2 direction = b2Vec2(F32Cos(a), F32Sin(a));
 	ball->body->ApplyLinearImpulse(ball->speed * direction, ball->body->GetPosition(), true);
 	paddle.gluedBall = nullptr;
 }
@@ -970,7 +970,7 @@ static void HandlePreCollision(GameState &state, b2Contact *contact) {
 
 			Vec2f bounce = V2fInit(0, 1);
 			if(t < 0.0f) {
-				t = Abs(t);
+				t = F32Abs(t);
 				bounce = V2fLerp(V2fInit(0, 1), t, V2fInit(-1, 0.25f));
 			} else {
 				bounce = V2fLerp(V2fInit(0, 1), t, V2fInit(1, 0.25f));
@@ -1027,7 +1027,7 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 
 					if(controller->isAnalog) {
 						float x = controller->analogMovement.x;
-						if(Abs(x) > 0) {
+						if(F32Abs(x) > 0) {
 							paddle.body->ApplyLinearImpulse(paddle.speed * vdt * b2Vec2(x, 0), paddle.body->GetPosition(), true);
 						}
 					} else {
@@ -1116,15 +1116,15 @@ static void UpdatePlayMode(GameState &state, const Input &input) {
 			b2Vec2 dir = vel;
 			dir.Normalize();
 
-			float a = ArcTan2(dir.y, dir.x);
-			float deg = RadiansToDegrees(a);
+			float a = F32ArcTan2(dir.y, dir.x);
+			float deg = F32RadiansToDegrees(a);
 			for(int i = 0; i < fplArrayCount(squaredAngles); ++i) {
-				if(Abs(deg) > (squaredAngles[i] - angleTolerance) && Abs(deg) < (squaredAngles[i] + angleTolerance)) {
-					deg += (Abs(deg) - squaredAngles[i] > 0 ? 1 : -1) * angleCorrection;
-					a = DegreesToRadians(deg);
+				if(F32Abs(deg) > (squaredAngles[i] - angleTolerance) && F32Abs(deg) < (squaredAngles[i] + angleTolerance)) {
+					deg += (F32Abs(deg) - squaredAngles[i] > 0 ? 1 : -1) * angleCorrection;
+					a = F32DegreesToRadians(deg);
 				}
 			}
-			dir = b2Vec2(Cosine(a), Sine(a));
+			dir = b2Vec2(F32Cos(a), F32Sin(a));
 
 			dir *= ball.speed;
 			ball.body->SetLinearVelocity(dir);
@@ -1265,7 +1265,7 @@ static void DrawPlayMode(GameState &state) {
 		GLuint texId = GetTextureIDFromHandle(state.assets.ballTexture.texture);
 		glPushMatrix();
 		glTranslatef(ballPos.x, ballPos.y, 0);
-		glRotatef(RadiansToDegrees(ballRot), 0, 0, 1);
+		glRotatef(F32RadiansToDegrees(ballRot), 0, 0, 1);
 		glColor4f(1, 1, 1, 1);
 		Vec2f ballExt = V2fInit(BallRadius + ROffset, BallRadius + ROffset);
 		DrawSprite(texId, ballExt, UVRectInit(0.0f, 1.0f, 1.0f, 0.0f), V2fZero());
@@ -1280,7 +1280,7 @@ static void DrawPlayMode(GameState &state) {
 		GLuint texId = GetTextureIDFromHandle(state.assets.paddleTexture.texture);
 		glPushMatrix();
 		glTranslatef(paddlePos.x, paddlePos.y, 0);
-		glRotatef(RadiansToDegrees(paddleRot), 0, 0, 1);
+		glRotatef(F32RadiansToDegrees(paddleRot), 0, 0, 1);
 		glColor4f(1, 1, 1, 1);
 		Vec2f paddleExt = V2fInit(PaddleRadius.x + BallRadius + ROffset, PaddleRadius.y + ROffset);
 		DrawSprite(texId, paddleExt, UVRectInit(0.0f, 1.0f, 1.0f, 0.0f), V2fZero());
@@ -1296,7 +1296,7 @@ static void DrawPlayMode(GameState &state) {
 		UVRect brickUV = BricksUVs[brick.type];
 		glPushMatrix();
 		glTranslatef(brickPos.x, brickPos.y, 0);
-		glRotatef(RadiansToDegrees(brickRot), 0, 0, 1);
+		glRotatef(F32RadiansToDegrees(brickRot), 0, 0, 1);
 		glColor4f(1, 1, 1, 1);
 		DrawSprite(texId, BrickRadius, brickUV, V2fZero());
 		glPopMatrix();
@@ -1455,8 +1455,8 @@ static bool PushMenuItem(GameState &state, MenuRenderState &menuRender, const ch
 
 static void DrawTitleMenuMode(GameState &state) {
 	// Field
-	float uMove = (float)Sine(state.menu.bgMoveTime * 0.5f) * 5.5f;
-	float vMove = (float)Sine(state.menu.bgMoveTime * 1.3f) * -2.65f;
+	float uMove = (float)F32Sin(state.menu.bgMoveTime * 0.5f) * 5.5f;
+	float vMove = (float)F32Sin(state.menu.bgMoveTime * 1.3f) * -2.65f;
 	DrawField(state, uMove, vMove);
 
 	// Title

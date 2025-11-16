@@ -278,7 +278,7 @@ extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
 	const float oldFps = state->framesPerSecond[0];
 
 	state->deltaTime = dt;
-	state->framesPerSecond[1] = ScalarAvg(oldFps, fpsSmoothing, newFps);
+	state->framesPerSecond[1] = F32Avg(oldFps, fpsSmoothing, newFps);
 	state->framesPerSecond[0] = state->framesPerSecond[1];
 }
 

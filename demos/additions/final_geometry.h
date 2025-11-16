@@ -78,7 +78,7 @@ fpl_inline bool LineCastCircle(const LineCastInput *input, const Vec2f *center, 
 	}
 
 	// Find the point of intersection of the line with the circle.
-	float a = -(c + SquareRoot(sigma));
+	float a = -(c + F32SquareRoot(sigma));
 
 	// Is the intersection point on the segment?
 	if (0.0f <= a && a <= input->maxFraction * rr) {
