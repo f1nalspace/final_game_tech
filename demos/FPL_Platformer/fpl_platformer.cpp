@@ -52,11 +52,10 @@ constexpr float WorldRadiusH = WorldHeight * 0.5f;
 
 constexpr float TileWidth = 32.0f;
 constexpr float TileHeight = 32.0f;
-static Vec2f TileSize = V2fInit(TileWidth, TileHeight);
 
-static Vec2f Gravity = V2fInit(0, -10.0f);
-
-static Vec2f AABBExpand = V2fInit(0.1f, 0.1f);
+const Vec2f TileSize = V2fInit(TileWidth, TileHeight);
+const Vec2f Gravity = V2fInit(0, -10.0f);
+const Vec2f AABBExpand = V2fInit(0.1f, 0.1f);
 
 //
 // Math & Physics
@@ -333,60 +332,19 @@ struct Assets {
 };
 
 struct GroundState {
-	bool current;
-	bool last;
-};
-
-struct SensorDefinition {
-	// Start/origin of the sensor in unit space, relative to the entity radius
-	Vec2f origin;
-	// Target unit direction
-	Vec2f targetDirection;
-	// Line color
-	Vec4f color;
-	// Minimum distance in unit space, relative to the entity radius
-	float minDistance;
-};
-
-static const SensorDefinition EntitySensorGroundLeft = { { -0.325f, 0.0f }, {0.0f, -1.0f}, {0.0f, 0.8f, 0.0f, 1.0f}, 0.8f };
-static const SensorDefinition EntitySensorGroundRight = {{ 0.325f, 0.0f }, {0.0f, -1.0f}, {0.0f, 0.7f, 0.0f, 1.0f}, 0.8f };
-static const SensorDefinition EntitySensorCeilingLeft = {{ -0.325f, 0.0f }, {0.0f, 1.0f}, {1.0f, 0.8f, 0.0f, 1.0f}, 0.8f };
-static const SensorDefinition EntitySensorCeilingRight = {{ 0.325f, 0.0f }, {0.0f, 1.0f}, {1.0f, 0.7f, 0.0f, 1.0f}, 0.8f };
-static const SensorDefinition EntitySensorWallLeft = {{ 0.0f, 0.0f }, { -1.0f, 0.0f }, {0.7f, 0.0f, 0.0f, 1.0f}, 0.4f};
-static const SensorDefinition EntitySensorWallRight = {{ 0.0f, 0.0f }, { 1.0f, 0.0f }, {0.6f, 0.0f, 0.0f, 1.0f}, 0.4f};
-
-static SensorDefinition EntitySensorDefinitions[6] = {
-	EntitySensorGroundLeft,
-	EntitySensorGroundRight,
-	EntitySensorCeilingLeft,
-	EntitySensorCeilingRight,
-	EntitySensorWallLeft,
-	EntitySensorWallRight,
-};
-
-struct Sensor {
-	// Color of the line
-	Vec4f color;
-	// Origin in world units
-	Vec2f origin;
-	// Target in world units
-	Vec2f target;
-	// Length in world units
-	float length;
-	// Is sensor active or not
-	fpl_b32 isActive;
+	fpl_b32 current;
+	fpl_b32 last;
 };
 
 struct Entity {
-	Sensor sensors[6];
 	Contact contact;
 	Vec4f color;
 	Vec2f position;
 	Vec2f velocity;
 	Vec2f radius;
+	GroundState groundState;
 	float groundFriction;
 	float airFriction;
-	GroundState groundState;
 	bool applyFriction;
 	bool applyAirFriction;
 	bool jumpRequested;
@@ -435,32 +393,32 @@ static TileRect ComputeTileRect(const Entity &player, const Map &map, const Vec2
     return { tileMin, tileMax };
 }
 
-static void LoadPlayer(Entity &player, const Map &map) {
-	player.radius = V2fInit(TileWidth * 0.4f, TileHeight * 0.8f);
-	player.velocity = V2fInit(0.0f, 0.0f);
-	player.color = V4fInit(0.05f, 0.1f, 0.95f, 1);
-	player.position = V2fInit(0.0f, 0.0f);
+static void LoadPlayer(Entity *player, const Map *map) {
+	player->radius = V2fInit(TileWidth * 0.4f, TileHeight * 0.8f);
+	player->velocity = V2fInit(0.0f, 0.0f);
+	player->color = V4fInit(0.05f, 0.1f, 0.95f, 1);
+	player->position = V2fInit(0.0f, 0.0f);
 
 #if !COLLISION_PLAYGROUND
 	Vec2i playerTilePos;
-	if (map.FindPositionByTile(Tiles::PlayerPosition, &playerTilePos)) {
-		Vec2f tilePos = map.TileCoordsToWorld(playerTilePos);
+	if (map->FindPositionByTile(Tiles::PlayerPosition, &playerTilePos)) {
+		Vec2f tilePos = map->TileCoordsToWorld(playerTilePos);
 		Vec2f tileBottomCenter = tilePos + V2f(TileWidth * 0.5f, 0);
 
 		// Move the player above the tile, but to the center
-		player.position = tileBottomCenter + V2fInit(0, player.radius.h);
+		player->position = tileBottomCenter + V2fInit(0, player->radius.h);
 
 		// Move the player above the tile, but to the right
-		player.position = tileBottomCenter + V2fInit(TileSize.w * 0.5f - player.radius.w, player.radius.h);
+		player->position = tileBottomCenter + V2fInit(TileSize.w * 0.5f - player->radius.w, player->radius.h);
 	}
 
-	player.applyFriction = true;
-	player.groundFriction = PlayerGroundFriction;
+	player->applyFriction = true;
+	player->groundFriction = PlayerGroundFriction;
 
-	player.applyAirFriction = true;
-	player.airFriction = PlayerAirFriction;
+	player->applyAirFriction = true;
+	player->airFriction = PlayerAirFriction;
 
-	player.jumpRequested = false;
+	player->jumpRequested = false;
 #endif
 }
 
@@ -491,22 +449,11 @@ static void InputPlayer(Entity *player, const Input *input) {
 	}
 }
 
-static void UpdateSensors(Entity &player, const float dt) {
-	Vec2f predictedPos = player.position + player.velocity * dt;
-	for (uint8_t index = 0; index < 6; ++index) {
-		const SensorDefinition &def = EntitySensorDefinitions[index];
-		Vec2f distance = V2fHadamard(V2fInitScalar(def.minDistance), TileSize);
-		player.sensors[index].isActive = false;
-		player.sensors[index].color = def.color;
-		player.sensors[index].origin = predictedPos + V2fHadamard(def.origin, TileSize);
-		player.sensors[index].length = Abs(V2fDot(distance, def.targetDirection));
-		player.sensors[index].target = player.sensors[index].origin + V2fMultScalar(def.targetDirection, player.sensors[index].length);
-	}
-}
-
 static void UpdatePlayer(Entity &player, const Map &map, const float dt) {
+#if 0
 	// Gravity
-	//player.velocity += Gravity;
+	player.velocity += Gravity;
+#endif
 
 	// Air friction
 	if (player.applyAirFriction && player.IsAir() && Abs(player.velocity.x) > 0) {
@@ -520,11 +467,6 @@ static void UpdatePlayer(Entity &player, const Map &map, const float dt) {
 	player.groundState.last = player.groundState.current;
 	player.groundState.current = false;
 
-	// Sensors
-	UpdateSensors(player, dt);
-
-	// Collision
-
 	// Integrate
 	player.position += player.velocity * dt;
 }
@@ -536,41 +478,41 @@ struct World {
 };
 
 // One time initialization of the map
-static void InitMap(fmemMemoryBlock *memory, Map &map) {
-	map = {};
-	fmemPushBlock(memory, &map.persistentMemory, fplMegaBytes(8), fmemPushFlags_Clear);
-	fmemPushBlock(memory, &map.temporaryMemory, fplMegaBytes(8), fmemPushFlags_Clear);
+static void InitMap(fmemMemoryBlock *memory, Map *map) {
+	fplClearStruct(map);
+	fmemPushBlock(memory, &map->persistentMemory, fplMegaBytes(8), fmemPushFlags_Clear);
+	fmemPushBlock(memory, &map->temporaryMemory, fplMegaBytes(8), fmemPushFlags_Clear);
 }
 
-static void LoadMap(Map &map, const Map &source) {
-	map.persistentMemory.used = 0;
-	map.temporaryMemory.used = 0;
+static void LoadMap(Map *map, const Map *source) {
+	map->persistentMemory.used = 0;
+	map->temporaryMemory.used = 0;
 
-	size_t requiredSize = source.width * source.height * sizeof(uint32_t);
-	fplAssert(requiredSize <= map.persistentMemory.size);
+	size_t requiredSize = source->width * source->height * sizeof(uint32_t);
+	fplAssert(requiredSize <= map->persistentMemory.size);
 
-	map.solidTiles = (uint32_t *)fmemPush(&map.persistentMemory, requiredSize, fmemPushFlags_Clear);
-	map.width = source.width;
-	map.height = source.height;
-	map.origin = source.origin;
-	for (uint32_t tileIndex = 0; tileIndex < source.width * source.height; ++tileIndex) {
-		map.solidTiles[tileIndex] = source.solidTiles[tileIndex];
+	map->solidTiles = (uint32_t *)fmemPush(&map->persistentMemory, requiredSize, fmemPushFlags_Clear);
+	map->width = source->width;
+	map->height = source->height;
+	map->origin = source->origin;
+	for (uint32_t tileIndex = 0; tileIndex < source->width * source->height; ++tileIndex) {
+		map->solidTiles[tileIndex] = source->solidTiles[tileIndex];
 	}
 }
 
 // One time initialization of the world
-static void InitWorld(fmemMemoryBlock *memory, World &world) {
-	world = {};
+static void InitWorld(fmemMemoryBlock *memory, World *world) {
+	fplClearStruct(world);
 
-	fmemPushBlock(memory, &world.memory, fplMegaBytes(64), fmemPushFlags_Clear);
+	fmemPushBlock(memory, &world->memory, fplMegaBytes(64), fmemPushFlags_Clear);
 
-	InitMap(&world.memory, world.map);
+	InitMap(&world->memory, &world->map);
 }
 
 // Load entire world (can be called anytime)
-static void LoadWorld(World &world, const Map &level) {
-	LoadMap(world.map, level);
-	LoadPlayer(world.player, world.map);
+static void LoadWorld(World *world, const Map *level) {
+	LoadMap(&world->map, level);
+	LoadPlayer(&world->player, &world->map);
 }
 
 struct Editor {
@@ -626,7 +568,7 @@ static void InitGame(fmemMemoryBlock *memory, GameState *state) {
 	state->isDebugRendering = true;
 
 	// World
-	InitWorld(memory, state->world);
+	InitWorld(memory, &state->world);
 }
 
 static void LoadGame(GameState *state) {
@@ -636,7 +578,7 @@ static void LoadGame(GameState *state) {
 	state->camera.offset.y = 0;
 
 	// World
-	LoadWorld(state->world, TestLevel::Level);
+	LoadWorld(&state->world, &TestLevel::Level);
 }
 
 extern bool GameInit(GameMemory *gameMemory) {
@@ -671,7 +613,7 @@ extern bool IsGameExiting(GameMemory *gameMemory) {
 	return state->isExiting;
 }
 
-static void DrawTile(Map *map, const Vec2i &tilePos, const uint32_t newTile) {
+static void PaintTile(Map *map, const Vec2i &tilePos, const uint32_t newTile) {
 	Vec2i newOrigin = map->origin;
 	Vec2i newSizeAppend = V2iInit(0, 0);
 	Vec2i newTilePos = tilePos;
@@ -777,7 +719,7 @@ static void EditorInput(GameState *state, const Input *input) {
 		}
 		if (editor->isDrawing) {
 			fplAssert(editor->drawTile != UINT32_MAX);
-			DrawTile(map, mouseTilePos, editor->drawTile);
+			PaintTile(map, mouseTilePos, editor->drawTile);
 		}
 	} else {
 		if (editor->isDrawing) {
@@ -889,11 +831,6 @@ static void PushOrigin(RenderState *renderState, const Vec2f &origin) {
 	PushQuad(renderState, origin, 1.0f, V4f(0.25f, 0.25f, 0.25f, 1), true, 1.0f);
 }
 
-static void PushSensor(RenderState *renderState, const Sensor *sensor, const float width) {
-	PushLine(renderState, sensor->origin, sensor->target, sensor->color, width);
-	PushQuad(renderState, sensor->target, 1.0f, V4f(1, 1, 1, 1), true, 1.0f);
-}
-
 extern void GameRender(GameMemory *gameMemory, const float alpha) {
 	GameState *state = gameMemory->game;
 	assert(state != nullptr);
@@ -960,17 +897,6 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 	// Player
 	PushRectangleCenter(renderState, player.position, player.radius, player.color, false, 2.0f);
 	PushOrigin(renderState, player.position);
-	for (uint8_t sensorIndex = 0; sensorIndex < 6; ++sensorIndex) {
-		PushSensor(renderState, &player.sensors[sensorIndex], 1.0f);
-	}
-
-	// Sensor tiles
-	for (uint8_t sensorIndex = 0; sensorIndex < 6; ++sensorIndex) {
-		Vec2i tileIndex = map.WorldCoordsToTile(player.sensors[sensorIndex].target);
-		Vec2f tilePos = V2fInitV2i(tileIndex);
-		Vec2f worldPos = mapOrigin + V2fHadamard(tilePos, TileSize);
-		PushRectangle(renderState, worldPos, TileSize, playerTileColor, false, 2.0f);
-	}
 
 	// Mouse cursor
 	PushRectangleCenter(renderState, state->mouseWorldPos, V2fInit(2, 2), V4fInit(1.0f, 0.0f, 0.0f, 1.0f), true, 0.0f);
@@ -1000,7 +926,7 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 		Vec2f blockPos = V2fInit(-w, h);
 		float fontHeight = 8.0f;
 
-		char sizeCharsBuffer[2][32 + 1];
+		fpl_localvar char sizeCharsBuffer[2][32 + 1] = fplZeroInit;
 		FormatSize(gameMemory->memory->used, fplArrayCount(sizeCharsBuffer[0]), sizeCharsBuffer[0]);
 		FormatSize(gameMemory->memory->size, fplArrayCount(sizeCharsBuffer[1]), sizeCharsBuffer[1]);
 		fplStringFormat(text, fplArrayCount(text), "Game Memory: %s / %s bytes", sizeCharsBuffer[0], sizeCharsBuffer[1]);
