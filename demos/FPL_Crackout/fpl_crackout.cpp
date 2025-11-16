@@ -659,24 +659,24 @@ static void LoadLevel(GameState &state, int levelSeed) {
 }
 
 
-static bool LoadTexture(const TextureData &source, const bool repeatable, TextureAsset &outTexture) {
-	GLuint texId = AllocateTexture(source.width, source.height, source.data, repeatable, GL_NEAREST);
-	outTexture.texture = ValueToPointer(texId);
+static bool LoadTexture(const TextureData *source, const bool repeatable, TextureAsset *outTexture) {
+	GLuint texId = AllocateTexture(source->width, source->height, source->data, repeatable, GL_NEAREST, false);
+	outTexture->texture = GetTextureHandleFromID(texId);
 	bool result = texId > 0;
 	return(result);
 }
 
-static bool LoadTexture(const char *dataPath, const char *filename, const bool repeatable, TextureAsset &outTexture) {
+static bool LoadTexture(const char *dataPath, const char *filename, const bool repeatable, TextureAsset *outTexture) {
 	TextureData image = LoadTextureData(dataPath, filename);
 	if(image.data == nullptr) {
 		return false;
 	}
-	bool result = LoadTexture(image, repeatable, outTexture);
-	FreeTextureData(image);
+	bool result = LoadTexture(&image, repeatable, outTexture);
+	FreeTextureData(&image);
 	return(result);
 }
 
-static bool LoadSound(AudioSystem *audio, const char *dataPath, const char *filename, AudioSource *&outSource) {
+static bool LoadSound(AudioSystem *audio, const char *dataPath, const char *filename, AudioSource *outSource) {
 	char filePath[1024];
 	fplPathCombine(filePath, fplArrayCount(filePath), 2, dataPath, filename);
 	AudioSource *source = AudioSystemLoadFileSource(audio, filePath);
@@ -687,34 +687,34 @@ static bool LoadSound(AudioSystem *audio, const char *dataPath, const char *file
 	return(result);
 }
 
-static bool LoadAssets(GameState &state) {
-	LoadTexture(state.dataPath, "ball.bmp", false, state.assets.ballTexture);
-	LoadTexture(state.dataPath, "bricks.bmp", false, state.assets.bricksTexture);
-	LoadTexture(state.dataPath, "paddle.bmp", false, state.assets.paddleTexture);
-	LoadTexture(state.dataPath, "frame.bmp", false, state.assets.frameTexture);
+static bool LoadAssets(GameState *state) {
+	LoadTexture(state->dataPath, "ball.bmp", false, &state->assets.ballTexture);
+	LoadTexture(state->dataPath, "bricks.bmp", false, &state->assets.bricksTexture);
+	LoadTexture(state->dataPath, "paddle.bmp", false, &state->assets.paddleTexture);
+	LoadTexture(state->dataPath, "frame.bmp", false, &state->assets.frameTexture);
 
-	TextureData bgImage = LoadTextureData(state.dataPath, "bg.bmp");
+	TextureData bgImage = LoadTextureData(state->dataPath, "bg.bmp");
 	if(bgImage.data != nullptr) {
-		TextureData bgTileImage0 = CreateSubTextureData(bgImage, 2, 2, 16, 16);
-		LoadTexture(bgTileImage0, true, state.assets.bgTextures[BackgroundType::Default]);
-		FreeTextureData(bgTileImage0);
+		TextureData bgTileImage0 = CreateSubTextureData(&bgImage, 2, 2, 16, 16);
+		LoadTexture(&bgTileImage0, true, &state->assets.bgTextures[BackgroundType::Default]);
+		FreeTextureData(&bgTileImage0);
 	}
-	FreeTextureData(bgImage);
+	FreeTextureData(&bgImage);
 
-	if(LoadFontFromMemory(ptr_fontHemiHeadBoldItalic, sizeOf_fontHemiHeadBoldItalic, 0, 36.0f, 32, 127, 512, 512, true, &state.assets.fontMenu.desc)) {
-		GLuint texId = AllocateTexture(state.assets.fontMenu.desc.atlasWidth, state.assets.fontMenu.desc.atlasHeight, state.assets.fontMenu.desc.atlasAlphaBitmap, false, GL_NEAREST, true);
-		state.assets.fontMenu.texture = ValueToPointer(texId);
+	if(LoadFontFromMemory(ptr_fontHemiHeadBoldItalic, sizeOf_fontHemiHeadBoldItalic, 0, 36.0f, 32, 127, 512, 512, true, &state->assets.fontMenu.desc)) {
+		GLuint texId = AllocateTexture(state->assets.fontMenu.desc.atlasWidth, state->assets.fontMenu.desc.atlasHeight, state->assets.fontMenu.desc.atlasAlphaBitmap, false, GL_NEAREST, true);
+		state->assets.fontMenu.texture = GetTextureHandleFromID(texId);
 	}
-	if(LoadFontFromMemory(ptr_fontHemiHeadBoldItalic, sizeOf_fontHemiHeadBoldItalic, 0, 18.0f, 32, 127, 512, 512, true, &state.assets.fontHud.desc)) {
-		GLuint texId = AllocateTexture(state.assets.fontHud.desc.atlasWidth, state.assets.fontHud.desc.atlasHeight, state.assets.fontHud.desc.atlasAlphaBitmap, false, GL_NEAREST, true);
-		state.assets.fontHud.texture = ValueToPointer(texId);
+	if(LoadFontFromMemory(ptr_fontHemiHeadBoldItalic, sizeOf_fontHemiHeadBoldItalic, 0, 18.0f, 32, 127, 512, 512, true, &state->assets.fontHud.desc)) {
+		GLuint texId = AllocateTexture(state->assets.fontHud.desc.atlasWidth, state->assets.fontHud.desc.atlasHeight, state->assets.fontHud.desc.atlasAlphaBitmap, false, GL_NEAREST, true);
+		state->assets.fontHud.texture = GetTextureHandleFromID(texId);
 	}
 
-	LoadSound(state.audioSys, state.dataPath, "bounce_44100hz.wav", state.assets.ballHitSound);
+	LoadSound(state->audioSys, state->dataPath, "bounce_44100hz.wav", state->assets.ballHitSound);
 
-	LoadSound(state.audioSys, state.dataPath, "music_44100hz.ogg", state.assets.gameMusic);
+	LoadSound(state->audioSys, state->dataPath, "music_44100hz.ogg", state->assets.gameMusic);
 
-	LoadSound(state.audioSys, state.dataPath, "menu_44100hz.wav", state.assets.menuMusic);
+	LoadSound(state->audioSys, state->dataPath, "menu_44100hz.wav", state->assets.menuMusic);
 
 	return true;
 }
