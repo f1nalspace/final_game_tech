@@ -12,6 +12,15 @@ License:
 	Copyright 2017-2025 Torsten Spaete
 
 Changelog
+	## 2025-11-16
+	- Added function V2fInitV2i()
+	- Added function V2fAbs()
+	- Added function V2fPerp()
+	- Added function V2fMajorAxis()
+	- Added function IsNaN()
+	- Added function Sign()
+	- Fixed some structs not initialized
+
 	## 2025-03-09
 	- More Vec2f functions (Add, Sub)
 
@@ -151,6 +160,11 @@ fpl_force_inline Vec2f V2fInit(const float x, const float y) {
 
 fpl_force_inline Vec2f V2fInitScalar(const float value) {
 	Vec2f result = fplStructInit(Vec2f, value, value);
+	return(result);
+}
+
+fpl_force_inline Vec2f V2fInitV2i(const Vec2i v) {
+	Vec2f result = fplStructInit(Vec2f, (float)v.x, (float)v.y);
 	return(result);
 }
 
@@ -492,6 +506,19 @@ fpl_force_inline Viewport4f Viewport4fInit(const float x, const float y, const f
 //
 // Scalar
 //
+fpl_force_inline bool IsNaN(const float x) {
+	return isnan(x);
+}
+fpl_force_inline float Sign(const float x) {
+	if(IsNaN(x)) {
+		return NAN;
+	}
+	if(x == 0.0) {
+		return 0.0;
+	}
+	int b = (x > 0.0f) - (x < 0.0f);
+	return (float)b;
+}
 fpl_force_inline float Cosine(const float angle) {
 	float result = cosf(angle);
 	return(result);
@@ -652,6 +679,14 @@ fpl_force_inline Vec2f &operator-=(Vec2f &a, const Vec2f &b) {
 }
 #endif // __cplusplus
 
+fpl_force_inline Vec2f V2fAbs(const Vec2f v) {
+	return V2fInit(Abs(v.x), Abs(v.y));
+}
+
+fpl_force_inline Vec2f V2fNegate(const Vec2f v) {
+	return V2fInit(-v.x, -v.y);
+}
+
 fpl_force_inline float V2fDot(const Vec2f a, const Vec2f b) {
 	float result = a.x * b.x + a.y * b.y;
 	return(result);
@@ -688,6 +723,10 @@ fpl_force_inline float V2fDistanceSquared(const Vec2f a, const Vec2f b) {
 	return(result);
 }
 
+fpl_force_inline Vec2f V2fPerp(const Vec2f v) {
+	return V2fInit(-v.y, v.x);
+}
+
 /* Returns the right perpendicular vector */
 fpl_force_inline Vec2f V2fCrossR(const Vec2f a, float s) {
 	return V2fInit(s * a.y, -s * a.x);
@@ -711,6 +750,16 @@ fpl_force_inline float V2fAngleFromAxis(const Vec2f axis) {
 fpl_force_inline Vec2f V2fAxisFromAngle(const float angle) {
 	Vec2f result = V2fInit(Cosine(angle), Sine(angle));
 	return(result);
+}
+
+fpl_force_inline Vec2f V2fMajorAxis(const Vec2f v) {
+	float x = Abs(v.x);
+	float y = Abs(v.y);
+	if (x > y) {
+		return V2fInit(Sign(v.x), 0.0f);
+	} else {
+		return V2fInit(0.0f, Sign(v.y));
+	}
 }
 
 fpl_force_inline Vec2f V2fRandomDirection() {
@@ -1331,7 +1380,7 @@ static const Vec4f ColorDarkGray = V4fInit(0.2f, 0.2f, 0.2f, 1.0f);
 #endif
 
 fpl_force_inline Pixel MakePixelFromRGBA(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a) {
-	Pixel result;
+	Pixel result = fplZeroInit;
 	result.r = r;
 	result.g = g;
 	result.b = b;
@@ -1339,7 +1388,7 @@ fpl_force_inline Pixel MakePixelFromRGBA(const uint8_t r, const uint8_t g, const
 	return(result);
 }
 fpl_force_inline Pixel MakePixelFromU32(const uint32_t rgba) {
-	Pixel result;
+	Pixel result = fplZeroInit;
 	result.r = (uint8_t)((rgba >> 0) & 0xFF);
 	result.g = (uint8_t)((rgba >> 8) & 0xFF);
 	result.b = (uint8_t)((rgba >> 16) & 0xFF);
@@ -1375,7 +1424,7 @@ fpl_force_inline uint32_t BGRAPack4x8(const Vec4f unpacked) {
 }
 
 fpl_force_inline Vec4f BGRAUnpack4x8(const uint32_t packed) {
-	Vec4f result;
+	Vec4f result = fplZeroInit;
 	result.b = RoundU8ToF32((packed >> 0) & 0xFF);
 	result.g = RoundU8ToF32((packed >> 8) & 0xFF);
 	result.r = RoundU8ToF32((packed >> 16) & 0xFF);
@@ -1384,7 +1433,7 @@ fpl_force_inline Vec4f BGRAUnpack4x8(const uint32_t packed) {
 }
 
 fpl_force_inline Pixel PixelPack(const Vec4f unpacked) {
-	Pixel result;
+	Pixel result = fplZeroInit;
 	result.r = RoundF32ToU8(unpacked.r);
 	result.g = RoundF32ToU8(unpacked.g);
 	result.b = RoundF32ToU8(unpacked.b);
@@ -1393,7 +1442,7 @@ fpl_force_inline Pixel PixelPack(const Vec4f unpacked) {
 }
 
 fpl_force_inline Vec4f PixelUnpack(const Pixel packed) {
-	Vec4f result;
+	Vec4f result = fplZeroInit;
 	result.r = RoundU8ToF32(packed.r & 0xFF);
 	result.g = RoundU8ToF32(packed.g & 0xFF);
 	result.b = RoundU8ToF32(packed.b & 0xFF);
@@ -1466,7 +1515,7 @@ fpl_force_inline Pixel LinearToPixelRaw(const Vec4f linear) {
 	float g = linear.g;
 	float b = linear.b;
 	float a = linear.a;
-	Pixel result;
+	Pixel result = fplZeroInit;
 	result.bgra = BGRAPack4x8(V4fInit(r, g, b, a));
 	return(result);
 }
@@ -1476,7 +1525,7 @@ fpl_force_inline Pixel LinearToPixelSRGB(const Vec4f linear) {
 	float g = LinearToSRGB(linear.g);
 	float b = LinearToSRGB(linear.b);
 	float a = linear.a;
-	Pixel result;
+	Pixel result = fplZeroInit;
 	result.bgra = BGRAPack4x8(V4fInit(r, g, b, a));
 	return(result);
 }
@@ -1502,7 +1551,7 @@ fpl_force_inline Mat4f Mat4Inverse(const Mat4f mat) {
 	float SubFactor17 = mat.r[1][0] * mat.r[2][2] - mat.r[2][0] * mat.r[1][2];
 	float SubFactor18 = mat.r[1][0] * mat.r[2][1] - mat.r[2][0] * mat.r[1][1];
 
-	Mat4f Inverse;
+	Mat4f Inverse = fplZeroInit;
 
 	Inverse.r[0][0] = +(mat.r[1][1] * SubFactor00 - mat.r[1][2] * SubFactor01 + mat.r[1][3] * SubFactor02);
 	Inverse.r[0][1] = -(mat.r[1][0] * SubFactor00 - mat.r[1][2] * SubFactor03 + mat.r[1][3] * SubFactor04);
