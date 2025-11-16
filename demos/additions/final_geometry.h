@@ -17,24 +17,24 @@ License:
 
 #include <final_math.h>
 
-typedef struct {
+typedef struct Ray3f {
 	Vec3f origin;
 	Vec3f direction;
 } Ray3f;
 
-fpl_inline Ray3f MakeRay(const Vec3f origin, const Vec3f direction) {
+fpl_inline Ray3f Ray3fInit(const Vec3f origin, const Vec3f direction) {
 	Ray3f result = { origin, direction };
 	return(result);
 }
 
-typedef struct {
+typedef struct HitResult3f {
 	Vec3f contact;
 	Vec3f normal;
 	float t;
 	bool isHit;
 } HitResult3f;
 
-typedef union {
+typedef union Plane3f {
 	struct {
 		Vec3f normal;
 		float distance;
@@ -42,18 +42,18 @@ typedef union {
 	Vec4f m;
 } Plane3f;
 
-typedef struct {
+typedef struct Sphere3f {
 	Vec3f origin;
 	float radius;
 } Sphere3f;
 
-typedef struct {
+typedef struct LineCastInput {
 	Vec2f p1;
 	Vec2f p2;
 	float maxFraction;
 } LineCastInput;
 
-typedef struct {
+typedef struct LineCastOutput {
 	Vec2f normal;
 	float fraction;
 } LineCastOutput;

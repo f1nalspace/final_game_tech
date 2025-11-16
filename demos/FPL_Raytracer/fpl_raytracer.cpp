@@ -657,7 +657,7 @@ static bool RaytracePart(Worker &worker, WorkOrder &order) {
 				Vec3f rayOrigin = cameraPosition;
 				Vec3f rayDirection = V3fNormalize(filmP - cameraPosition);
 
-				Ray3f ray = MakeRay(rayOrigin, rayDirection);
+				Ray3f ray = Ray3fInit(rayOrigin, rayDirection);
 
 				const f32 tolerance = 1e-6f;
 				f32 minHitDistance = 0.0f;
