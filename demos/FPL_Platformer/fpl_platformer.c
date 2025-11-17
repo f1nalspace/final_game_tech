@@ -82,13 +82,6 @@ static Map gTestLevel = {
 //
 // Game
 //
-#define PlayerMaxSpeed 100.0f
-#define PlayerWalkSpeed 30.0f
-#define PlayerAirSpeed 40.0f
-#define PlayerJumpVelocity (200.0f * 1.2f)
-#define PlayerGroundFriction 0.2f
-#define PlayerAirFriction 0.2f
-
 typedef struct Assets {
 	FontAsset consoleFont;
 	char dataPath[1024];
@@ -101,7 +94,7 @@ typedef struct GroundState {
 
 typedef struct Entity {
 	Vec4f color;
-	Vec2f position;
+	Vec2f position[2];
 	Vec2f velocity;
 	Vec2f radius;
 	GroundState groundState;
@@ -130,7 +123,7 @@ static void LoadPlayer(Entity *player, const Map *map) {
 	player->radius = V2fInit(TileWidth * 0.4f, TileHeight * 0.8f);
 	player->velocity = V2fInit(0.0f, 0.0f);
 	player->color = V4fInit(0.05f, 0.1f, 0.95f, 1);
-	player->position = V2fInit(0.0f, 0.0f);
+	player->position[0] = player->position[1] = V2fInit(0.0f, 0.0f);
 
 	Vec2i playerTilePos;
 	if (MapFindPositionByTile(map, TileType_PlayerPosition, &playerTilePos)) {
@@ -138,10 +131,10 @@ static void LoadPlayer(Entity *player, const Map *map) {
 		Vec2f tileBottomCenter = V2fAdd(tilePos, V2fInit(TileWidth * 0.5f, 0));
 
 		// Move the player above the tile, but to the center
-		player->position = V2fAdd(tileBottomCenter, V2fInit(0, player->radius.h));
+		player->position[0] = player->position[1] = V2fAdd(tileBottomCenter, V2fInit(0, player->radius.h));
 
 		// Move the player above the tile, but to the right
-		player->position = V2fAdd(tileBottomCenter, V2fInit(TileSize.w * 0.5f - player->radius.w, player->radius.h));
+		player->position[0] = player->position[1] = V2fAdd(tileBottomCenter, V2fInit(TileSize.w * 0.5f - player->radius.w, player->radius.h));
 	}
 
 	player->applyFriction = true;
@@ -199,7 +192,7 @@ static void UpdatePlayer(Entity *player, const Map *map, const float dt) {
 	player->groundState.current = false;
 
 	// Integrate
-	player->position = V2fAddMultScalar(player->position, player->velocity, dt);
+	player->position[0] = V2fAddMultScalar(player->position[0], player->velocity, dt);
 }
 
 typedef struct World {
@@ -255,6 +248,13 @@ typedef struct Editor {
 	bool isDrawing;
 } Editor;
 
+typedef struct Camera2D {
+	Vec2f offset[2];
+	float scale[2];
+	float worldToPixels;
+	float pixelsToWorld;
+} Camera2D;
+
 typedef struct GameState {
 	Assets assets;
 	World world;
@@ -295,9 +295,8 @@ static void LoadAssets(RenderState *renderState, Assets *assets) {
 
 static void InitGame(fmemMemoryBlock *memory, GameState *state) {
 	// Camera
-	state->camera.scale = 1.0f;
-	state->camera.offset.x = 0;
-	state->camera.offset.y = 0;
+	state->camera.scale[0] = state->camera.scale[1] = 1.0f;
+	state->camera.offset[0] = state->camera.offset[1] = V2fInit(0.0f, 0.0f);
 
 	// Input
 	state->isDebugRendering = true;
@@ -307,13 +306,12 @@ static void InitGame(fmemMemoryBlock *memory, GameState *state) {
 }
 
 static void LoadGame(GameState *state) {
-	// Camera
-	state->camera.scale = 1.0f;
-	state->camera.offset.x = 0;
-	state->camera.offset.y = 0;
-
 	// World
 	LoadWorld(&state->world, &gTestLevel);
+
+	// Camera
+	state->camera.scale[0] = state->camera.scale[1] = 1.0f;
+	state->camera.offset[0] = state->camera.offset[1] = state->world.player.position[0];
 }
 
 extern bool GameInit(GameMemory *gameMemory) {
@@ -473,6 +471,9 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	RenderState *renderState = gameMemory->render;
 	assert(renderState != fpl_null);
 
+	const float w = WorldRadiusW;
+	const float h = WorldRadiusH;
+
 	// Debug input
 	const Controller *keyboardController = &input->controllers[0];
 	if (WasPressed(keyboardController->debugToggle)) {
@@ -480,24 +481,21 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	}
 
 	// Camera
-	float scale = state->camera.scale;
+	const float cameraScale = state->camera.scale[0];
+	const float invCameraScale = 1.0f / cameraScale;
 	state->viewport = ComputeViewportByAspect(input->windowSize, GameAspect);
-	state->camera.worldToPixels = (state->viewport.w / (float)WorldWidth) * scale;
+	state->camera.worldToPixels = (state->viewport.w / (float)WorldWidth) * cameraScale;
 	state->camera.pixelsToWorld = 1.0f / state->camera.worldToPixels;
 
-	const float w = WorldRadiusW;
-	const float h = WorldRadiusH;
-
-	float invScale = 1.0f / state->camera.scale;
-	state->projection = M4fOrthoRH(-w * invScale, w * invScale, -h * invScale, h * invScale, 0.0f, 1.0f);
-	state->view = M4fTranslationV2(state->camera.offset);
+	state->projection = M4fOrthoRH(-w * invCameraScale, w * invCameraScale, -h * invCameraScale, h * invCameraScale, 0.0f, 1.0f);
+	state->view = M4fTranslationV2(state->camera.offset[0]);
 	state->viewProjection = M4fMult(state->projection, state->view);
 
 	// Mouse
 	int mouseCenterX = (input->mouse.pos.x) - input->windowSize.w / 2;
 	int mouseCenterY = (input->windowSize.h - 1 - input->mouse.pos.y) - input->windowSize.h / 2;
-	state->mouseWorldPos.x = (mouseCenterX * state->camera.pixelsToWorld) - state->camera.offset.x;
-	state->mouseWorldPos.y = (mouseCenterY * state->camera.pixelsToWorld) - state->camera.offset.y;
+	state->mouseWorldPos.x = (mouseCenterX * state->camera.pixelsToWorld) - state->camera.offset[0].x;
+	state->mouseWorldPos.y = (mouseCenterY * state->camera.pixelsToWorld) - state->camera.offset[0].y;
 
 	// Editor input
 	EditorInput(state, input);
@@ -524,8 +522,8 @@ extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
 	UpdatePlayer(player, map, dt);
 
 	// Camera
-	state->camera.offset = V2fNegate(player->position);
-	state->camera.scale = 1;
+	state->camera.offset[0] = V2fNegate(player->position[0]);
+	state->camera.scale[0] = 1.0f;
 
 	// FPS display
 	const float fpsSmoothing = 0.1f;
@@ -570,15 +568,23 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 
 	World *world = &state->world;
 
-	const Map *map = &world->map;
+	Map *map = &world->map;
 
-	const Entity *player = &world->player;
+	Entity *player = &world->player;
 
 	RenderState *renderState = gameMemory->render;
 
 	const float w = WorldRadiusW;
 	const float h = WorldRadiusH;
 	const float dt = state->deltaTime;
+
+	// Re-compute matrices for smooth rendering
+	const float cameraScale = F32ScalarLerp(state->camera.scale[1], alpha, state->camera.scale[0]);
+	const float invCameraScale = 1.0f / cameraScale;
+	const Vec2f cameraOffset = V2fLerp(state->camera.offset[1], alpha, state->camera.offset[0]);
+	state->projection = M4fOrthoRH(-w * invCameraScale, w * invCameraScale, -h * invCameraScale, h * invCameraScale, 0.0f, 1.0f);
+	state->view = M4fTranslationV2(cameraOffset);
+	state->viewProjection = M4fMult(state->projection, state->view);
 
 	Vec2i mapSize = V2iInit(map->width, map->height);
 	Vec2f mapArea = V2fHadamard(TileSize, V2fInit((float)mapSize.x, (float)mapSize.y));
@@ -631,8 +637,9 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 	}
 
 	// Player
-	PushRectangleCenter(renderState, player->position, player->radius, player->color, false, 2.0f);
-	PushOrigin(renderState, player->position);
+	Vec2f playerPos = V2fLerp(player->position[1], alpha, player->position[0]);
+	PushRectangleCenter(renderState, playerPos, player->radius, player->color, false, 2.0f);
+	PushOrigin(renderState, playerPos);
 
 	world->numContacts = 0;
 
@@ -642,13 +649,13 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 		uint32_t entityId = StartEntityID;
 
 		// Predict position for next frame
-		Vec2f predictedPos = V2fAddMultScalar(player->position, player->velocity, dt);
+		Vec2f predictedPos = V2fAddMultScalar(player->position[0], player->velocity, dt);
 
 		// Get min/max
-		Vec2f min = V2fMin(predictedPos, player->position);
-		Vec2f max = V2fMax(predictedPos, player->position);
+		Vec2f min = V2fMin(predictedPos, player->position[0]);
+		Vec2f max = V2fMax(predictedPos, player->position[0]);
 
-		// Create AABB and expand it
+		// Create motion bounds AABB and expand it
 		Vec2f expandedRadius = V2fAdd(player->radius, V2fInitScalar(AABBExpand));
 		min = V2fSub(min, expandedRadius);
 		max = V2fAdd(max, expandedRadius);
@@ -674,7 +681,7 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 				if (MapIsObstacle(map, tile)) {
 					uint32_t tileId = StartMapTileID + (1 + (y * map->width + x));
 					AABB2f tileAABB = MapCreateTileAABB(map, tilePos);
-					AABB2f entityAABB = AABB2fInitFromCenter(player->position, player->radius);
+					AABB2f entityAABB = AABB2fInitFromCenter(player->position[0], player->radius);
 					fplAssert(world->numContacts < fplArrayCount(world->contacts));
 					Contact *contacts = world->contacts + world->numContacts;
 					uint32_t contactCount = CreateContactsAABBvsAABB(map, entityId, &entityAABB, tileId, &tileAABB, tilePos, true, contacts);
@@ -739,6 +746,12 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 		PushText(renderState, text, fplGetStringLength(text), &font->desc, font->texture, V2fInit(blockPos.x + w * 2.0f - 1, blockPos.y - 1), fontHeight, -1.0f, -1.0f, blackColor);
 		PushText(renderState, text, fplGetStringLength(text), &font->desc, font->texture, V2fInit(blockPos.x + w * 2.0f, blockPos.y), fontHeight, -1.0f, -1.0f, textColor);
 	}
+
+	// Overwrite render infos such as position, rotation for "previous" from "current" states
+	// This is important for getting smooth interpolated rendering
+	state->camera.offset[1] = state->camera.offset[0];
+	state->camera.scale[1] = state->camera.scale[0];
+	player->position[1] = player->position[0];
 }
 
 #define FINAL_GAMEPLATFORM_IMPLEMENTATION

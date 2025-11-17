@@ -27,4 +27,11 @@
 
 #define StartMapTileID (StartEntityID + MaxEntityCount)
 
+#define PlayerMaxSpeed 100.0f
+#define PlayerWalkSpeed 30.0f
+#define PlayerAirSpeed 40.0f
+#define PlayerJumpVelocity (200.0f * 1.2f)
+#define PlayerGroundFriction 0.2f
+#define PlayerAirFriction 0.2f
+
 #endif // CONSTANTS_H
