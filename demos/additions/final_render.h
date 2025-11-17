@@ -72,13 +72,6 @@ typedef struct Viewport {
 
 extern Viewport ComputeViewportByAspect(const Vec2i screenSize, const float targetAspect);
 
-typedef struct Camera2D {
-	Vec2f offset;
-	float worldToPixels;
-	float pixelsToWorld;
-	float scale;
-} Camera2D;
-
 typedef enum TextureOperationType {
 	TextureOperationType_None = 0,
 	TextureOperationType_Upload,
@@ -229,7 +222,7 @@ extern void SetMatrix(RenderState *state, const Mat4f *mat);
 extern void PopMatrix(RenderState *state);
 extern void PushRectangle(RenderState *state, const Vec2f bottomLeft, const Vec2f size, const Vec4f color, const bool isFilled, const float lineWidth);
 extern void PushRectangleCenter(RenderState *state, const Vec2f center, const Vec2f ext, const Vec4f color, const bool isFilled, const float lineWidth);
-extern void PushQuad(RenderState *state, const Vec2f center, const float radius, const Vec4f color, const bool isFilled, const float lineWidth);
+extern void PushQuad(RenderState *state,const Vec2f center,const float radius,const Vec4f color,const bool isFilled,const float lineWidth);
 extern VertexAllocation AllocateVertices(RenderState *state, const size_t capacity, const Vec4f color, const DrawMode drawMode, const bool isLoop, const float thickness);
 extern void PushVertices(RenderState *state, const Vec2f *verts, const size_t vertexCount, const bool copyVerts, const Vec4f color, const DrawMode drawMode, const bool isLoop, const float thickness);
 extern void PushSprite(RenderState *state, const Vec2f position, const Vec2f ext, const TextureHandle texture, const Vec4f color, const UVRect uvRect);

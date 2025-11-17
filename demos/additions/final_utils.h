@@ -19,17 +19,6 @@ License:
 
 #if defined(FPL_IS_CPP)
 template <typename T>
-inline T PointerToValue(void *ptr) {
-	T result = (T)(uintptr_t)(ptr);
-	return(result);
-}
-template <typename T>
-inline void *ValueToPointer(T value) {
-	void *result = (T *)(uintptr_t)(value);
-	return(result);
-}
-
-template <typename T>
 inline void Swap(T &a, T &b) {
 	T tmp = a;
 	a = b;
