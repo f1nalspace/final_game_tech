@@ -18,5 +18,13 @@
 #define TileRadius V2fInit(TileWidth * 0.5f, TileHeight * 0.5f)
 #define Gravity V2fInit(0, -10.0f)
 
+#define AABBExpand 10.0f
+
+#define MaxContactCount 128
+
+#define MaxEntityCount 1024
+#define StartEntityID 1
+
+#define StartMapTileID (StartEntityID + MaxEntityCount)
 
 #endif // CONSTANTS_H

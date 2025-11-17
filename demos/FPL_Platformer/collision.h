@@ -16,9 +16,10 @@ typedef union {
 } ContactIDPair;
 
 typedef struct {
-	Vec2f pos;
-	Vec2f normal;
 	ContactIDPair idPair;
+	Vec2f posA;
+	Vec2f posB;
+	Vec2f normal;
 	float distance;
 	float impulse;
 } Contact;

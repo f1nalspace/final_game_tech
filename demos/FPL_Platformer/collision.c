@@ -49,7 +49,8 @@ static uint32_t ComputeClosestContactsAABBvsAABB(Vec2f delta, Vec2f aabbCenter, 
 	// Fill out contact
 	outContacts[0].normal = planeN;
 	outContacts[0].distance = distance;
-	outContacts[0].pos = point;
+	outContacts[0].posA = point;
+	outContacts[0].posB = planeCenter;
 	outContacts[0].impulse = 0.0f;
 
 	return 1;
@@ -80,7 +81,10 @@ extern uint32_t CreateContactsAABBvsAABB(const Map *map, const uint32_t idA, con
 		Contact *contact = outContacts + i;
 		bool isInternalCollision = IsNextTileInDirectionObstacle(map, tilePos, contact->normal);
 		if (!isInternalCollision) {
+			float radADistance = F32Abs(V2fDot(contact->normal, radiusA));
 			contact->idPair = fplStructInit(ContactIDPair, fplMin(idA, idB), fplMax(idA, idB));
+			contact->posB = V2fAddMultScalar(contact->posB, contact->normal, -radADistance);
+			contact->posA = V2fAddMultScalar(contact->posB, contact->normal, contact->distance);
 			++result;
 		}
 	}

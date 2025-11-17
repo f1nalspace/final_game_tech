@@ -205,7 +205,9 @@ static void UpdatePlayer(Entity *player, const Map *map, const float dt) {
 typedef struct World {
 	fmemMemoryBlock memory;
 	Map map;
+	Contact contacts[MaxContactCount];
 	Entity player;
+	uint32_t numContacts;
 } World;
 
 // One time initialization of the map
@@ -568,7 +570,7 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 	GameState *state = gameMemory->game;
 	assert(state != fpl_null);
 
-	const World *world = &state->world;
+	World *world = &state->world;
 
 	const Map *map = &world->map;
 
@@ -634,14 +636,77 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 	PushRectangleCenter(renderState, player->position, player->radius, player->color, false, 2.0f);
 	PushOrigin(renderState, player->position);
 
+	world->numContacts = 0;
+
+	// Render collision tile bounds
+	bool renderPlayerTileBounds = true;
+	if (renderPlayerTileBounds) {
+		uint32_t entityId = StartEntityID;
+
+		// Predict position for next frame
+		Vec2f predictedPos = V2fAddMultScalar(player->position, player->velocity, dt);
+
+		// Get min/max
+		Vec2f min = V2fMin(predictedPos, player->position);
+		Vec2f max = V2fMax(predictedPos, player->position);
+
+		// Create AABB and expand it
+		Vec2f expandedRadius = V2fAdd(player->radius, V2fInitScalar(AABBExpand));
+		min = V2fSub(min, expandedRadius);
+		max = V2fAdd(max, expandedRadius);
+		AABB2f entityAABB = AABB2fInit(min, max);
+
+		// Tile tiles area from AABB
+		Vec2i minTile = MapWorldCoordsToTile(map, entityAABB.min);
+		Vec2i maxTile = MapWorldCoordsToTile(map, V2fAdd(entityAABB.max, V2fInit(0.5f, 0.5f)));
+
+		for (int x = minTile.x; x <= maxTile.x; ++x) {
+			for (int y = minTile.y; y <= maxTile.y; ++y) {
+				if (x < 0 || x >= (int)map->width || y < 0 || y >= (int)map->height) {
+					continue;
+				}
+
+				Vec2i tilePos = V2iInit(x, y);
+				uint32_t tile = MapGetTile(map, tilePos);
+
+				Vec2f worldPos = MapTileCoordsToWorld(map, tilePos);
+				Vec2f tileCenter = V2fAdd(worldPos, TileRadius);
+				PushRectangleCenter(renderState, tileCenter, TileRadius, playerTileColor, false, 1.0f);
+
+				if (MapIsObstacle(map, tile)) {
+					uint32_t tileId = StartMapTileID + (1 + (y * map->width + x));
+					AABB2f tileAABB = MapCreateTileAABB(map, tilePos);
+					AABB2f entityAABB = AABB2fInitFromCenter(player->position, player->radius);
+					fplAssert(world->numContacts < fplArrayCount(world->contacts));
+					Contact *contacts = world->contacts + world->numContacts;
+					uint32_t contactCount = CreateContactsAABBvsAABB(map, entityId, &entityAABB, tileId, &tileAABB, tilePos, true, contacts);
+					if (contactCount > 0) {
+						const Contact *contact = contacts + 0;
+						PushCircle(renderState, contact->posA, 2.0f, 16, V4fInit(1.0f, 0.0f, 0.0f, 1.0f), true, 0.0f);
+						PushCircle(renderState, contact->posB, 2.0f, 16, V4fInit(0.0f, 0.0f, 1.0f, 1.0f), true, 0.0f);
+					}
+					world->numContacts += contactCount;
+				}
+			}
+		}
+	}
+
+	// Render contacts
+	bool renderContacts = true;
+	if (renderContacts) {
+		for (uint32_t i = 0; i < world->numContacts; ++i) {
+			const Contact *contact = world->contacts + i;
+			//PushCircle(renderState, contact->pos, 2.0f, 16, V4fInit(1.0f, 0.0f, 0.0f, 1.0f), true, 0.0f);
+		}
+	}
+
 	// Mouse cursor
 	PushRectangleCenter(renderState, state->mouseWorldPos, V2fInit(2, 2), V4fInit(1.0f, 0.0f, 0.0f, 1.0f), true, 0.0f);
 
 	// Mouse tile
 	Vec2i mouseTilePos = MapWorldCoordsToTile(map, V2fSub(state->mouseWorldPos, mapOrigin));
 	Vec2f mouseWorldPos = MapTileCoordsToWorld(map, mouseTilePos);
-	Vec2f p = V2fAdd(gridOrigin, mouseWorldPos);
-	PushRectangle(renderState, p, TileSize, V4fInit(1, 1, 1, 1), false, 1.0f);
+	PushRectangle(renderState, V2fAdd(gridOrigin, mouseWorldPos), TileSize, V4fInit(1, 1, 1, 1), false, 1.0f);
 
 	const FontAsset *font = &state->assets.consoleFont;
 	float fontHeight = 6.0f;
@@ -685,7 +750,7 @@ int main(int argc, char *argv[]) {
 	GameConfiguration config = fplZeroInit;
 	config.title = "FPL Demo | Platformer";
 	config.disableInactiveDetection = true;
-	config.disableVerticalSync = true;
+	config.disableVerticalSync = false;
 	int result = GameMain(&config);
 	return(result);
 }
