@@ -39,13 +39,23 @@ License:
 #include "final_game.h"
 
 typedef struct GameConfiguration {
+	// Title of the game
 	const char *title;
+	// Preferred sample rate in Hz
 	uint32_t audioSampleRate;
+	// Preferred number of channels
 	uint32_t audioChannels;
-	uint32_t targetFps;
+	// Target game updates in Hz
+	uint32_t targetHz;
+	// Maximum render updates in Hz. If this is zero, the rendering happens on every frame - melting the GPU/CPU core.
+	uint32_t maxRenderHz;
+	// Preferred audio format
 	fplAudioFormatType audioFormat;
+	// Indicates whether to hide the mouse cursor or not
 	bool hideMouseCursor;
+	// Indicates that the detection of a inactive vs active window
 	bool disableInactiveDetection;
+	// Indicates that vertical sync is disabled or not
 	bool disableVerticalSync;
 } GameConfiguration;
 
@@ -287,6 +297,7 @@ static void SetupInputForFrame(Input *oldInput, Input *newInput, const double ta
 	newInput->dynamicFrameTime = (float)lastFrameTime;
 	newInput->framesPerSeconds = (float)framesPerSecond;
 	newInput->defaultControllerIndex = oldInput->defaultControllerIndex;
+	newInput->isFirstUpdateOfFrame = true;
 
 	Controller *oldKeyboardController = &oldInput->keyboard;
 	Controller *newKeyboardController = &newInput->keyboard;
@@ -405,9 +416,11 @@ extern int GameMain(const GameConfiguration *config) {
 	}
 
 	if(!wasError) {
-		const uint32_t targetFramesPerSecond = config->targetFps > 0 ? config->targetFps : 60;
+		const uint32_t targetFramesHz = config->targetHz > 0 ? config->targetHz : 60;
+		const uint32_t maxRenderFramesHz = config->maxRenderHz > 0 ? config->maxRenderHz : 240;
 
-		const double targetDeltaTime = 1.0 / (double)targetFramesPerSecond;
+		const double targetDeltaTime = 1.0 / (double)targetFramesHz;
+		const double maxRenderTime = 1.0 / (double)maxRenderFramesHz;
 
 		if(config->hideMouseCursor) {
 			fplSetWindowCursorEnabled(false);
