@@ -417,10 +417,10 @@ extern int GameMain(const GameConfiguration *config) {
 
 	if(!wasError) {
 		const uint32_t targetFramesHz = config->targetHz > 0 ? config->targetHz : 60;
-		const uint32_t maxRenderFramesHz = config->maxRenderHz > 0 ? config->maxRenderHz : 240;
+		const uint32_t maxRenderFramesHz = config->maxRenderHz;
 
 		const double targetDeltaTime = 1.0 / (double)targetFramesHz;
-		const double maxRenderTime = 1.0 / (double)maxRenderFramesHz;
+		const double maxRenderTime = maxRenderFramesHz > 0 ? 1.0 / (double)maxRenderFramesHz : 0.0;
 
 		if(config->hideMouseCursor) {
 			fplSetWindowCursorEnabled(false);
@@ -436,11 +436,9 @@ extern int GameMain(const GameConfiguration *config) {
 		uint32_t frameCount = 0;
 		uint32_t updateCount = 0;
 
-
-		double frameAccumulator = targetDeltaTime;
+		fplTimestamp lastTime = fplTimestampQuery();
+		double frameAccumulator = 0.0;
 		double totalTime = 0.0;
-		fplTimestamp currTime = fplTimestampQuery();
-		fplTimestamp lastTime = fplZeroInit;
 		double lastFrameTime = targetDeltaTime;
 
 		uint64_t lastFPSTime = fplMillisecondsQuery();
@@ -482,51 +480,53 @@ extern int GameMain(const GameConfiguration *config) {
 				newInput->isActive = ((windowActiveType[0] & GameWindowActiveType_Minimized) != GameWindowActiveType_Minimized) && ((windowActiveType[0] & GameWindowActiveType_LostFocus) != GameWindowActiveType_LostFocus);
 			}
 
+			//
+			// If activation toggled, reset timing cleanly
+			//
 			if(windowActiveType[0] != windowActiveType[1]) {
-				// We dont want to have delta time jumps when game was inactive
-				currTime = lastTime = fplTimestampQuery();
-				lastFrameTime = targetDeltaTime;
-				frameAccumulator = targetDeltaTime;
-
+				lastTime = fplTimestampQuery();
+				frameAccumulator = 0.0;
 				framesPerSecond = 0.0f;
 				lastFPSTime = fplMillisecondsQuery();
 				updateCount = frameCount = 0;
 			}
 
-			// Game Input
+			//
+			// Game Input once per frame
+			//
 			GameInput(&gameMem, newInput);
 
 			//
-			// Compute frame times and update accumulator
+			// Compute frame time once and advance accumulator
 			//
+			fplTimestamp currTime = fplTimestampQuery();
+			double frameTime = fplTimestampElapsed(lastTime, currTime);
 			lastTime = currTime;
-			currTime = fplTimestampQuery();
-			lastFrameTime = fplTimestampElapsed(lastTime, currTime);
-			if (lastFrameTime > 0.25) {
-				// Cap to 0.25 seconds to prevent death-loop
-				lastFrameTime = 0.25;
-			}
-			frameAccumulator += lastFrameTime;
-			framesPerSecond = lastFrameTime > 0 ? 1.0 / lastFrameTime : 0;
+			if (frameTime > 0.25) frameTime = 0.25;
+			frameAccumulator += frameTime;
+			framesPerSecond = frameTime > 0 ? 1.0 / frameTime : 0;
+			lastFrameTime = frameTime;
 
 			//
-			// Game Updates
+			// Game update accumulator loop (Allow button edge events only on the first tick of this render frame)
 			//
-			while(frameAccumulator >= targetDeltaTime) {
+			int ticksThisFrame = 0;
+			while (frameAccumulator >= targetDeltaTime) {
+				newInput->isFirstUpdateOfFrame = (ticksThisFrame == 0);
 				GameUpdate(&gameMem, newInput);
 				frameAccumulator -= targetDeltaTime;
 				totalTime += targetDeltaTime;
 				++updateCount;
+				++ticksThisFrame;
 			}
 
 			//
-			// Game Render
+			// Game Render without any interpolation
 			//
+			const float alphaRaw = (float)(frameAccumulator / targetDeltaTime);
+			const float alpha = F32Clamp(alphaRaw, 0.0f, 1.0f);
 			ResetRenderState(renderState);
-
-			float alpha = (float)frameAccumulator / (float)targetDeltaTime;
 			GameRender(&gameMem, alpha);
-
 			RenderWithOpenGL(renderState);
 			fplVideoFlip();
 			++frameCount;
@@ -536,9 +536,7 @@ extern int GameMain(const GameConfiguration *config) {
 			//
 			if((fplMillisecondsQuery() - lastFPSTime) >= 1000) {
 #if 0
-				char charBuffer[256];
-				fplFormatString(charBuffer, fplArrayCount(charBuffer), "Fps: %d, Ups: %d\n", frameCount, updateCount);
-				OutputDebugStringA(charBuffer);
+				fplDebugFormatOut("Fps: %d, Ups: %d\n", frameCount, updateCount);
 #endif
 				lastFPSTime = fplMillisecondsQuery();
 				frameCount = 0;
@@ -550,6 +548,18 @@ extern int GameMain(const GameConfiguration *config) {
 				Input *tmp = newInput;
 				newInput = oldInput;
 				oldInput = tmp;
+			}
+
+			// Throttle if vsync is disabled and there is a limit of max frames
+			if (config->disableVerticalSync && maxRenderTime > 0.0) {
+				if (frameTime < maxRenderTime) {
+					double sleepSec = maxRenderTime - frameTime;
+					uint32_t sleepMS = (uint32_t)(sleepSec * 1000.0);
+					if (sleepMS > 0) {
+						// TODO(final): Use a better approach!
+						fplThreadSleep(sleepMS);
+					}
+				}
 			}
 		}
 
