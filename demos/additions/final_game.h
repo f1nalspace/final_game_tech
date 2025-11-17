@@ -28,12 +28,20 @@ typedef struct ButtonState {
 	fpl_b32 endedDown;
 } ButtonState;
 
-inline bool WasPressed(const ButtonState state) {
-	bool result = ((state.halfTransitionCount > 1) || ((state.halfTransitionCount == 1) && (!state.endedDown)));
-	return(result);
-}
 inline bool IsDown(const ButtonState state) {
 	bool result = state.endedDown != 0;
+	return(result);
+}
+
+inline bool WasPressed(const ButtonState state) {
+	bool result = ((state.halfTransitionCount > 1) ||
+				  ((state.halfTransitionCount == 1) && (!state.endedDown)));
+	return(result);
+}
+
+inline bool WasReleased(const ButtonState state) {
+	bool result = ((state.halfTransitionCount > 1) ||
+				  ((state.halfTransitionCount == 1) && (state.endedDown)));
 	return(result);
 }
 
@@ -74,10 +82,16 @@ typedef struct Mouse {
 } Mouse;
 
 typedef struct Input {
+	// Fixed delta time in seconds, used for game update or physics
 	float fixedDeltaTime;
+	// Dynamic frame time in seconds
 	float dynamicFrameTime;
+	// Current frames per seconds
 	float framesPerSeconds;
+
+	// Current index of the rendered frame
 	int frameIndex;
+
 	union {
 		struct {
 			Controller keyboard;
@@ -86,9 +100,15 @@ typedef struct Input {
 		Controller controllers[5];
 	};
 	Mouse mouse;
+
+	// Size of window in pixels
 	Vec2i windowSize;
+	// Index to the default controller
 	int defaultControllerIndex;
+	// Indicates that the application is active or not -> only handle any input when this is true!
 	bool isActive;
+	// Indicates that the first GameUpdate() is called inside the Accumulator-Loop -> use this to prevent multiple key transitions by WasPressed() and WasReleased()!
+	bool isFirstUpdateOfFrame;
 } Input;
 
 struct GameState;
