@@ -72,13 +72,6 @@ typedef struct Viewport {
 
 extern Viewport ComputeViewportByAspect(const Vec2i screenSize, const float targetAspect);
 
-typedef struct Camera2D {
-	Vec2f offset;
-	float worldToPixels;
-	float pixelsToWorld;
-	float scale;
-} Camera2D;
-
 typedef enum TextureOperationType {
 	TextureOperationType_None = 0,
 	TextureOperationType_Upload,

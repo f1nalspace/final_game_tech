@@ -21,7 +21,7 @@ fpl_inline GLuint GetTextureIDFromHandle(const TextureHandle handle) {
 }
 
 extern void DrawSprite(const GLuint texId, const Vec2f ext, const UVRect uv, const Vec2f offset);
-extern void DrawPoint(const Camera2D *camera, const float x, const float y, const float radius, const Vec4f color);
+extern void DrawPoint(const float x, const float y, const float radius, const Vec4f color);
 extern void DrawTextFont(const char *text, const size_t textLen, const LoadedFont *fontDesc, const GLuint fontTexture, const float x, const float y, const float maxCharHeight, const float sx, const float sy);
 extern void DrawCircle(const float centerX, const float centerY, const float radius, const bool isFilled, const Vec4f color, const int segments);
 extern void DrawNormal(const Vec2f pos, const Vec2f normal, const float length, const Vec4f color);
@@ -59,9 +59,9 @@ extern void DrawSprite(const GLuint texId, const Vec2f ext, const UVRect uv, con
 	glDisable(GL_TEXTURE_2D);
 }
 
-extern void DrawPoint(const Camera2D *camera, const float x, const float y, const float radius, const Vec4f color) {
+extern void DrawPoint(const float x, const float y, const float radius, const Vec4f color) {
 	glColor4fv(&color.r);
-	glPointSize(radius * 2.0f * camera->worldToPixels);
+	glPointSize(radius);
 	glBegin(GL_POINTS);
 	glVertex2f(x, y);
 	glEnd();

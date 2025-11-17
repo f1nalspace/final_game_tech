@@ -26,6 +26,13 @@ typedef struct Entity {
 	float moveDrag;
 } Entity;
 
+typedef struct Camera2D {
+	Vec2f offset;
+	float scale;
+	float worldToPixels;
+	float pixelsToWorld;
+} Camera2D;
+
 typedef struct World {
 	Entity player;
 } World;
