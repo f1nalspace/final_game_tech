@@ -679,7 +679,7 @@ extern AudioSampleConversionFunctions CreateAudioSamplesConversionFunctions() {
 }
 
 extern bool AudioSamplesConvert(AudioSampleConversionFunctions *funcTable, const AudioSampleIndex numSamples, const fplAudioFormatType inFormat, const fplAudioFormatType outFormat, const void *inSamples, void *outSamples) {
-	if (funcTable == fpl_null || inSamples == fpl_null || outSamples == fpl_null || inFormat == fplAudioFormatType_None || outFormat == fplAudioFormatType_None) {
+	if (funcTable == fpl_null || numSamples == 0 || inFormat == fplAudioFormatType_None || outFormat == fplAudioFormatType_None || inSamples == fpl_null || outSamples == fpl_null) {
 		return(false);
 	}
 
