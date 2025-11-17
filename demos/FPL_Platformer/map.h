@@ -33,8 +33,8 @@ typedef struct Map {
 
 // Converts the specified world position into a tile position
 fpl_inline Vec2i MapWorldCoordsToTile(const Map *map, const Vec2f worldPos) {
-	float wx = worldPos.x;
-	float wy = worldPos.y;
+	float wx = worldPos.x - (map->origin.x * map->tileSize.w);
+	float wy = worldPos.y - (map->origin.y * map->tileSize.h);
 
 	// Adjustment for negative coordinates
 	float rx = 0.0f;
@@ -52,8 +52,8 @@ fpl_inline Vec2i MapWorldCoordsToTile(const Map *map, const Vec2f worldPos) {
 
 // Converts the specified tile position into a world position
 fpl_inline Vec2f MapTileCoordsToWorld(const Map *map, const Vec2i tilePos) {
-	float x = ((float)tilePos.x * map->tileSize.w);
-	float y = ((float)tilePos.y * map->tileSize.h);
+	float x = ((float)(tilePos.x + map->origin.x) * map->tileSize.w);
+	float y = ((float)(tilePos.y + map->origin.y) * map->tileSize.h);
 	return V2fInit(x, y);
 }
 

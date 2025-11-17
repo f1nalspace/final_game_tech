@@ -437,9 +437,7 @@ static void EditorInput(GameState *state, const Input *input) {
 
 	Editor *editor = &state->editor;
 
-	Vec2f originWorld = MapTileCoordsToWorld(map, map->origin);
-
-	Vec2i mouseTilePos = MapWorldCoordsToTile(map, V2fSub(state->mouseWorldPos, originWorld));
+	Vec2i mouseTilePos = MapWorldCoordsToTile(map, state->mouseWorldPos);
 
 	if (IsDown(input->mouse.left)) {
 		if (!editor->isDrawing) {
@@ -584,7 +582,7 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 
 	Vec2i mapSize = V2iInit(map->width, map->height);
 	Vec2f mapArea = V2fHadamard(TileSize, V2fInit((float)mapSize.x, (float)mapSize.y));
-	Vec2f mapOrigin = MapTileCoordsToWorld(map, map->origin);
+	Vec2f mapOrigin = MapTileCoordsToWorld(map, V2iInit(0,0));
 	Vec4f mapSolidColor = V4fInit(1.0f, 1.0f, 1.0f, 1.0f);
 	Vec4f playerTileColor = V4fInit(0.3f, 0.1f, 0.7f, 1.0f);
 
@@ -626,7 +624,7 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 		for (int x = 0; x < mapSize.w; ++x) {
 			uint32_t tile = MapGetTile(map, V2iInit(x, y));
 			if (MapIsObstacle(map, tile)) {
-				Vec2f tilePos = V2fAdd(gridOrigin, V2fInit(x * TileWidth, y * TileHeight));
+				Vec2f tilePos = MapTileCoordsToWorld(map, V2iInit(x, y));
 				PushRectangle(renderState, tilePos, TileSize, mapSolidColor, true, 1.0f);
 			}
 		}
@@ -704,16 +702,16 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 	PushRectangleCenter(renderState, state->mouseWorldPos, V2fInit(2, 2), V4fInit(1.0f, 0.0f, 0.0f, 1.0f), true, 0.0f);
 
 	// Mouse tile
-	Vec2i mouseTilePos = MapWorldCoordsToTile(map, V2fSub(state->mouseWorldPos, mapOrigin));
+	Vec2i mouseTilePos = MapWorldCoordsToTile(map, state->mouseWorldPos);
 	Vec2f mouseWorldPos = MapTileCoordsToWorld(map, mouseTilePos);
-	PushRectangle(renderState, V2fAdd(gridOrigin, mouseWorldPos), TileSize, V4fInit(1, 1, 1, 1), false, 1.0f);
+	PushRectangle(renderState, mouseWorldPos, TileSize, V4fInit(1, 1, 1, 1), false, 1.0f);
 
 	const FontAsset *font = &state->assets.consoleFont;
 	float fontHeight = 6.0f;
 
 	char buffer[100];
 	fplStringFormat(buffer, fplArrayCount(buffer), "%i x %i", mouseTilePos.x, mouseTilePos.y);
-	PushText(renderState, buffer, fplGetStringLength(buffer), &font->desc, font->texture, mouseWorldPos, fontHeight, 1.0f, -1.0f, V4fInit(1, 1, 1, 1));
+	PushText(renderState, buffer, fplGetStringLength(buffer), &font->desc, font->texture, mouseWorldPos, fontHeight, 1.0f, -1.0f, V4fInit(1, 0, 1, 1));
 
 	if (state->isDebugRendering) {
 		SetMatrix(renderState, &state->projection);
