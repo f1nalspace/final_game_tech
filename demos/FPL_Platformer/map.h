@@ -15,6 +15,11 @@
 #define TileSize V2fInit(TileWidth, TileHeight)
 #define TileRadius V2fInit(TileWidth * 0.5f, TileHeight * 0.5f)
 
+//
+// Tile types
+//
+#define TileType_PlayerPosition 2
+
 typedef struct Map {
 	// Memory handling
 	fmemMemoryBlock temporaryMemory;

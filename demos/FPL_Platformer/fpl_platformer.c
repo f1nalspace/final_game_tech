@@ -4,17 +4,17 @@ Name:
 	FPL-Demo | Platformer
 
 Description:
-	Platformer based speculative contacts
+	Platformer based on speculative contacts
 
 Requirements:
-	- C++ Compiler
+	- C99 Compiler
 	- Final Framework
 
 Author:
 	Torsten Spaete
 
 License:
-	Copyright (c) 2017-2023 Torsten Spaete
+	Copyright (c) 2017-2025 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -51,11 +51,6 @@ License:
 #include "map.c"
 #include "world.c"
 #include "physics.c"
-
-//
-// Tiles
-//
-#define TileType_PlayerPosition 2
 
 //
 // Levels
