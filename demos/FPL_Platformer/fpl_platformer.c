@@ -94,9 +94,8 @@ typedef struct Editor {
 } Editor;
 
 typedef struct GameState {
-	Assets assets;
 	World world;
-	Editor editor;
+	Assets assets;
 
 	Mat4f projection;
 	Mat4f view;
@@ -104,6 +103,7 @@ typedef struct GameState {
 	Viewport viewport;
 	Vec2f mouseWorldPos;
 
+	Editor editor;
 	Entity *dragEntity;
 	Vec2f dragStart;
 	bool isDragging;
