@@ -88,180 +88,16 @@ typedef struct Assets {
 	char dataPath[1024];
 } Assets;
 
-typedef struct GroundState {
-	fpl_b32 current;
-	fpl_b32 last;
-} GroundState;
-
-typedef struct Entity {
-	Vec4f color;
-	Vec2f position[2];
-	Vec2f velocity;
-	Vec2f radius;
-	GroundState groundState;
-	float groundFriction;
-	float airFriction;
-	bool applyFriction;
-	bool applyAirFriction;
-	bool jumpRequested;
-} Entity;
-
-fpl_inline bool EntityIsGrounded(const Entity *entity) {
-	if (entity == fpl_null) {
-		return false;
-	}
-	return entity->groundState.current;
-}
-
-fpl_inline bool EntityIsAir(const Entity *entity) {
-	if (entity == fpl_null) {
-		return false;
-	}
-	return !entity->groundState.current;
-}
-
-static void LoadPlayer(Entity *player, const Map *map) {
-	player->radius = V2fInit(TileWidth * 0.4f, TileHeight * 0.8f);
-	player->velocity = V2fInit(0.0f, 0.0f);
-	player->color = V4fInit(0.05f, 0.1f, 0.95f, 1);
-	player->position[0] = player->position[1] = V2fInit(0.0f, 0.0f);
-
-	Vec2i playerTilePos;
-	if (MapFindPositionByTile(map, TileType_PlayerPosition, &playerTilePos)) {
-		Vec2f tilePos = MapTileCoordsToWorld(map, playerTilePos);
-		Vec2f tileBottomCenter = V2fAdd(tilePos, V2fInit(TileWidth * 0.5f, 0));
-
-		// Move the player above the tile, but to the center
-		player->position[0] = player->position[1] = V2fAdd(tileBottomCenter, V2fInit(0, player->radius.h));
-
-		// Move the player above the tile, but to the right
-		player->position[0] = player->position[1] = V2fAdd(tileBottomCenter, V2fInit(TileSize.w * 0.5f - player->radius.w, player->radius.h));
-	}
-
-	player->applyFriction = true;
-	player->groundFriction = PlayerGroundFriction;
-
-	player->applyAirFriction = true;
-	player->airFriction = PlayerAirFriction;
-
-	player->jumpRequested = false;
-}
-
-static void InputPlayer(Entity *player, const Input *input) {
-	const Controller *controller = (input->defaultControllerIndex == -1) ? &input->controllers[0] : &input->controllers[input->defaultControllerIndex];
-
-	// Horizontal Movement
-	float moveSpeed = EntityIsGrounded(player) ? PlayerWalkSpeed : PlayerAirSpeed;
-	if (IsDown(controller->moveLeft)) {
-		player->velocity.x -= moveSpeed;
-	} else if (IsDown(controller->moveRight)) {
-		player->velocity.x += moveSpeed;
-	}
-
-	// Jump can always be requested, regardless if in air or not
-	if (IsDown(controller->actionDown)) {
-		if (!player->jumpRequested) {
-			player->jumpRequested = true;
-		}
-	} else {
-		player->jumpRequested = false;
-	}
-
-	// Handle requested jump only when grounded
-	if (EntityIsGrounded(player) && player->jumpRequested) {
-		player->velocity.y = PlayerJumpVelocity;
-		player->jumpRequested = false;
-	}
-}
-
-static void UpdatePlayer(Entity *player, const Map *map, const float dt) {
-#if 0
-	// Gravity
-	player->velocity += Gravity;
-#endif
-
-	// Air friction
-	if (player->applyAirFriction && EntityIsAir(player) && F32Abs(player->velocity.x) > 0) {
-		player->velocity.x *= (1.0f - player->airFriction);
-	}
-
-	// Clamp speed
-	player->velocity.x = F32Clamp(player->velocity.x, -PlayerMaxSpeed, PlayerMaxSpeed);
-
-	// Grounding
-	player->groundState.last = player->groundState.current;
-	player->groundState.current = false;
-
-	// Integrate
-	player->position[0] = V2fAddMultScalar(player->position[0], player->velocity, dt);
-}
-
-typedef struct World {
-	fmemMemoryBlock memory;
-	Map map;
-	Contact contacts[MaxContactCount];
-	Entity player;
-	uint32_t numContacts;
-} World;
-
-// One time initialization of the map
-static void InitMap(fmemMemoryBlock *memory, Map *map) {
-	fplClearStruct(map);
-	map->tileSize = TileSize;
-	map->tileRadius = TileRadius;
-	fmemPushBlock(memory, &map->persistentMemory, fplMegaBytes(8), fmemPushFlags_Clear);
-	fmemPushBlock(memory, &map->temporaryMemory, fplMegaBytes(8), fmemPushFlags_Clear);
-}
-
-static void LoadMap(Map *map, const Map *source) {
-	map->persistentMemory.used = 0;
-	map->temporaryMemory.used = 0;
-
-	size_t requiredSize = source->width * source->height * sizeof(uint32_t);
-	fplAssert(requiredSize <= map->persistentMemory.size);
-
-	map->solidTiles = (uint32_t *)fmemPush(&map->persistentMemory, requiredSize, fmemPushFlags_Clear);
-	map->width = source->width;
-	map->height = source->height;
-	map->origin = source->origin;
-	for (uint32_t tileIndex = 0; tileIndex < source->width * source->height; ++tileIndex) {
-		map->solidTiles[tileIndex] = source->solidTiles[tileIndex];
-	}
-}
-
-// One time initialization of the world
-static void InitWorld(fmemMemoryBlock *memory, World *world) {
-	fplClearStruct(world);
-
-	fmemPushBlock(memory, &world->memory, fplMegaBytes(64), fmemPushFlags_Clear);
-
-	InitMap(&world->memory, &world->map);
-}
-
-// Load entire world (can be called anytime)
-static void LoadWorld(World *world, const Map *level) {
-	LoadMap(&world->map, level);
-	LoadPlayer(&world->player, &world->map);
-}
-
 typedef struct Editor {
 	uint32_t drawTile;
 	bool isDrawing;
 } Editor;
-
-typedef struct Camera2D {
-	Vec2f offset[2];
-	float scale[2];
-	float worldToPixels;
-	float pixelsToWorld;
-} Camera2D;
 
 typedef struct GameState {
 	Assets assets;
 	World world;
 	Editor editor;
 
-	Camera2D camera;
 	Mat4f projection;
 	Mat4f view;
 	Mat4f viewProjection;
@@ -279,11 +115,11 @@ typedef struct GameState {
 	bool isDebugRendering;
 } GameState;
 
-static void FreeAssets(Assets *assets) {
+static void AssetsFree(Assets *assets) {
 	ReleaseFontAsset(&assets->consoleFont);
 }
 
-static void LoadAssets(RenderState *renderState, Assets *assets) {
+static void AssetsLoad(RenderState *renderState, Assets *assets) {
 	// Fonts
 	char fontDataPath[1024];
 	const char *fontFilename = "lucida_console.ttf";
@@ -294,29 +130,42 @@ static void LoadAssets(RenderState *renderState, Assets *assets) {
 	}
 }
 
-static void InitGame(fmemMemoryBlock *memory, GameState *state) {
-	// Camera
-	state->camera.scale[0] = state->camera.scale[1] = 1.0f;
-	state->camera.offset[0] = state->camera.offset[1] = V2fInit(0.0f, 0.0f);
+static bool GameStateInit(fmemMemoryBlock *memory, GameState *state) {
+	if (memory == fpl_null || state == fpl_null) {
+		return false; // Invalid arguments
+	}
 
-	// Input
 	state->isDebugRendering = true;
 
-	// World
-	InitWorld(memory, &state->world);
+	if (!WorldInit(memory, &state->world)) {
+		return false; // Failed to initialize the world (insufficient memory, wrong values, etc.)
+	}
+
+	return true;
 }
 
-static void LoadGame(GameState *state) {
-	// World
-	LoadWorld(&state->world, &gTestLevel);
+static bool GameStateLoadMap(GameState *state, const Map *map) {
+	if (state == fpl_null || map == fpl_null) {
+		return false; // Invalid arguments
+	}
 
-	// Camera
-	state->camera.scale[0] = state->camera.scale[1] = 1.0f;
-	state->camera.offset[0] = state->camera.offset[1] = state->world.player.position[0];
+	if (!WorldLoadMap(&state->world, map)) {
+		return false; // Failed to load the map into the world (insufficient memory, wrong map, etc.)
+	}
+
+	return true;
 }
 
 extern bool GameInit(GameMemory *gameMemory) {
+	if (gameMemory == fpl_null) {
+		return false; // Invalid arguments
+	}
+
 	GameState *state = (GameState *)fmemPush(gameMemory->memory, sizeof(GameState), fmemPushFlags_Clear);
+	if (state == fpl_null) {
+		return false; // Insufficient memory for game state
+	}
+
 	gameMemory->game = state;
 
 	RenderState *renderState = gameMemory->render;
@@ -325,23 +174,35 @@ extern bool GameInit(GameMemory *gameMemory) {
 	fplExtractFilePath(state->assets.dataPath, state->assets.dataPath, fplArrayCount(state->assets.dataPath));
 	fplPathCombine(state->assets.dataPath, fplArrayCount(state->assets.dataPath), 2, state->assets.dataPath, "data");
 
-	LoadAssets(renderState, &state->assets);
+	AssetsLoad(renderState, &state->assets);
 
-	InitGame(gameMemory->memory, state);
+	if (!GameStateInit(gameMemory->memory, state)) {
+		return false; // Failed to initialize the game state
+	}
 
-	LoadGame(state);
+	if (!GameStateLoadMap(state, &gTestLevel)) {
+		return false; // Failed to load the test level
+	}
 
-	return(true);
+	return true;
 }
 
 extern void GameRelease(GameMemory *gameMemory) {
-	GameState *state = gameMemory->game;
-	if (state != fpl_null) {
-		FreeAssets(&state->assets);
+	if (gameMemory == fpl_null) {
+		return; // Invalid arguments
 	}
+	GameState *state = gameMemory->game;
+	if (state == fpl_null) {
+		return; // Game state not allocated
+	}
+	AssetsFree(&state->assets);
+	fplClearStruct(state);
 }
 
 extern bool IsGameExiting(GameMemory *gameMemory) {
+	if (gameMemory == fpl_null) {
+		return false; // Invalid arguments
+	}
 	GameState *state = gameMemory->game;
 	assert(state != fpl_null);
 	return state->isExiting;
@@ -472,6 +333,8 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	RenderState *renderState = gameMemory->render;
 	assert(renderState != fpl_null);
 
+	World *world = &state->world;
+
 	const float w = WorldRadiusW;
 	const float h = WorldRadiusH;
 
@@ -482,27 +345,27 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	}
 
 	// Camera
-	const float cameraScale = state->camera.scale[0];
+	const float cameraScale = world->camera.scale[0];
 	const float invCameraScale = 1.0f / cameraScale;
 	state->viewport = ComputeViewportByAspect(input->windowSize, WorldAspect);
-	state->camera.worldToPixels = (state->viewport.w / (float)WorldWidth) * cameraScale;
-	state->camera.pixelsToWorld = 1.0f / state->camera.worldToPixels;
+	world->camera.worldToPixels = (state->viewport.w / (float)WorldWidth) * cameraScale;
+	world->camera.pixelsToWorld = 1.0f / world->camera.worldToPixels;
 
 	state->projection = M4fOrthoRH(-w * invCameraScale, w * invCameraScale, -h * invCameraScale, h * invCameraScale, 0.0f, 1.0f);
-	state->view = M4fTranslationV2(state->camera.offset[0]);
+	state->view = M4fTranslationV2(world->camera.offset[0]);
 	state->viewProjection = M4fMult(state->projection, state->view);
 
 	// Mouse
 	int mouseCenterX = (input->mouse.pos.x) - input->windowSize.w / 2;
 	int mouseCenterY = (input->windowSize.h - 1 - input->mouse.pos.y) - input->windowSize.h / 2;
-	state->mouseWorldPos.x = (mouseCenterX * state->camera.pixelsToWorld) - state->camera.offset[0].x;
-	state->mouseWorldPos.y = (mouseCenterY * state->camera.pixelsToWorld) - state->camera.offset[0].y;
+	state->mouseWorldPos.x = (mouseCenterX * world->camera.pixelsToWorld) - world->camera.offset[0].x;
+	state->mouseWorldPos.y = (mouseCenterY * world->camera.pixelsToWorld) - world->camera.offset[0].y;
 
 	// Editor input
 	EditorInput(state, input);
 
 	// Player input
-	InputPlayer(&state->world.player, input);
+	InputPlayer(&world->player, input);
 }
 
 extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
@@ -523,8 +386,8 @@ extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
 	UpdatePlayer(player, map, dt);
 
 	// Camera
-	state->camera.offset[0] = V2fNegate(player->position[0]);
-	state->camera.scale[0] = 1.0f;
+	world->camera.offset[0] = V2fNegate(player->position[0]);
+	world->camera.scale[0] = 1.0f;
 
 	// FPS display
 	const float fpsSmoothing = 0.1f;
@@ -580,9 +443,9 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 	const float dt = state->deltaTime;
 
 	// Re-compute matrices for smooth rendering
-	const float cameraScale = F32ScalarLerp(state->camera.scale[1], alpha, state->camera.scale[0]);
+	const float cameraScale = F32ScalarLerp(world->camera.scale[1], alpha, world->camera.scale[0]);
 	const float invCameraScale = 1.0f / cameraScale;
-	const Vec2f cameraOffset = V2fLerp(state->camera.offset[1], alpha, state->camera.offset[0]);
+	const Vec2f cameraOffset = V2fLerp(world->camera.offset[1], alpha, world->camera.offset[0]);
 	state->projection = M4fOrthoRH(-w * invCameraScale, w * invCameraScale, -h * invCameraScale, h * invCameraScale, 0.0f, 1.0f);
 	state->view = M4fTranslationV2(cameraOffset);
 	state->viewProjection = M4fMult(state->projection, state->view);
@@ -746,8 +609,8 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 
 	// Overwrite render infos such as position, rotation for "previous" from "current" states
 	// This is important for getting smooth interpolated rendering
-	state->camera.offset[1] = state->camera.offset[0];
-	state->camera.scale[1] = state->camera.scale[0];
+	world->camera.offset[1] = world->camera.offset[0];
+	world->camera.scale[1] = world->camera.scale[0];
 	player->position[1] = player->position[0];
 }
 

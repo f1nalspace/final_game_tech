@@ -3,6 +3,12 @@
 
 #include <final_math.h>
 
+#include <final_memory.h>
+
+#include "entity.h"
+#include "map.h"
+#include "physics.h"
+
 //
 // Fixed world definition
 //
@@ -21,5 +27,30 @@
 
 #define StartEntityID 1
 #define StartMapTileID (StartEntityID + MaxEntityCount)
+
+//
+// World types
+//
+typedef struct Camera2D {
+	Vec2f offset[2];
+	float scale[2];
+	float worldToPixels;
+	float pixelsToWorld;
+} Camera2D;
+
+typedef struct World {
+	Map map;
+	fmemMemoryBlock memory;
+	Contact contacts[MaxContactCount];
+	Entity player;
+	Camera2D camera;
+	uint32_t numContacts;
+} World;
+
+//
+// Public Functions
+//
+extern bool WorldInit(fmemMemoryBlock *memory, World *world);
+extern bool WorldLoadMap(World *world, const Map *map);
 
 #endif // WORLD_H
