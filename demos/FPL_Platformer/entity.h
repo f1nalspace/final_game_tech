@@ -55,7 +55,8 @@ fpl_inline bool EntityIsAir(const Entity *entity) {
 	return !entity->groundState.current;
 }
 
-extern void InputPlayer(Entity *player, const Input *input);
-extern void UpdatePlayer(Entity *player, const Map *map, const float dt);
+extern bool PlayerInit(Entity *player, const Map *map);
+extern void PlayerInput(Entity *player, const Input *input);
+extern void PlayerUpdate(Entity *player, const Map *map, const float dt);
 
 #endif // ENTITY_H

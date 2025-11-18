@@ -365,7 +365,7 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	EditorInput(state, input);
 
 	// Player input
-	InputPlayer(&world->player, input);
+	PlayerInput(&world->player, input);
 }
 
 extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
@@ -383,7 +383,7 @@ extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
 	Entity *player = &world->player;
 
 	// Player
-	UpdatePlayer(player, map, dt);
+	PlayerUpdate(player, map, dt);
 
 	// Camera
 	world->camera.offset[0] = V2fNegate(player->position[0]);
