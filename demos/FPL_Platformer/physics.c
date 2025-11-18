@@ -1,6 +1,4 @@
-#include "collision.h"
-
-#define COLLISION_VERTEX_EPSILON 0.001f
+#include "physics.h"
 
 static bool IsNextTileInDirectionObstacle(const Map *map, const Vec2i tilePos, const Vec2f normal) {
 	int nextTileX = tilePos.x + (int)normal.x;
@@ -37,7 +35,7 @@ static uint32_t ComputeClosestContactsAABBvsAABB(Vec2f delta, Vec2f aabbCenter, 
 	float u = V2fDot(V2fSub(b, g), tangent) / abLen;
 
 	// Skip vertex to vertex contacts entirely
-	bool isVertexContact = v <= COLLISION_VERTEX_EPSILON || u <= COLLISION_VERTEX_EPSILON;
+	bool isVertexContact = v <= PhysicsCollisionVertexEpsilon || u <= PhysicsCollisionVertexEpsilon;
 	if (isVertexContact) {
 		return 0;
 	}

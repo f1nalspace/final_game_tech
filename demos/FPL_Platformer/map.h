@@ -7,7 +7,13 @@
 
 #include <final_math.h>
 
-#include <final_geometry.h>
+//
+// Fixed tile definition in world space
+//
+#define TileWidth 32.0f
+#define TileHeight 32.0f
+#define TileSize V2fInit(TileWidth, TileHeight)
+#define TileRadius V2fInit(TileWidth * 0.5f, TileHeight * 0.5f)
 
 typedef struct Map {
 	// Memory handling

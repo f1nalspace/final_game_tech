@@ -1,5 +1,5 @@
-#ifndef COLLISION_H
-#define COLLISION_H
+#ifndef PHYSICS_H
+#define PHYSICS_H
 
 #include <final_math.h>
 
@@ -26,4 +26,9 @@ typedef struct {
 
 extern uint32_t CreateContactsAABBvsAABB(const Map *map, const uint32_t idA, const AABB2f *a, const uint32_t idB, const AABB2f *b, const Vec2i tilePos, const bool checkInternal, Contact outContacts[2]);
 
-#endif // COLLISION_H
+#define PhysicsCollisionVertexEpsilon 0.001f
+
+// Value that are added to the radius of a motion AABB, to ensure that tiles are encapsulated in all cases
+#define PhysicsCollisionAABBExpand 5.0f
+
+#endif // PHYSICS_H

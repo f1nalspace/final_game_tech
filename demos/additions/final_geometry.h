@@ -138,6 +138,16 @@ fpl_inline bool AABB2fContainsPoint(const AABB2f *aabb, const Vec2f point) {
 	return result;
 }
 
+fpl_inline void AABB2fExpand(AABB2f *aabb, const Vec2f expansion) {
+	aabb->min = V2fSub(aabb->min, expansion);
+	aabb->max = V2fAdd(aabb->max, expansion);
+}
+
+fpl_inline void AABB2fExpandScalar(AABB2f *aabb, const float scalar) {
+	Vec2f e = V2fInitScalar(scalar);
+	AABB2fExpand(aabb, e);
+}
+
 //
 // AABB3f
 //

@@ -40,11 +40,17 @@ License:
 
 #include <final_utils.h>
 
-#include "constants.h"
+// Headers
+#include "entity.h"
+#include "map.h"
+#include "world.h"
+#include "physics.h"
 
+// Directly included translation units
+#include "entity.c"
 #include "map.c"
-
-#include "collision.c"
+#include "world.c"
+#include "physics.c"
 
 //
 // Tiles
@@ -483,7 +489,7 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	// Camera
 	const float cameraScale = state->camera.scale[0];
 	const float invCameraScale = 1.0f / cameraScale;
-	state->viewport = ComputeViewportByAspect(input->windowSize, GameAspect);
+	state->viewport = ComputeViewportByAspect(input->windowSize, WorldAspect);
 	state->camera.worldToPixels = (state->viewport.w / (float)WorldWidth) * cameraScale;
 	state->camera.pixelsToWorld = 1.0f / state->camera.worldToPixels;
 
@@ -651,19 +657,15 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 		// Predict position for next frame
 		Vec2f predictedPos = V2fAddMultScalar(player->position[0], player->velocity, dt);
 
-		// Get min/max
-		Vec2f min = V2fMin(predictedPos, player->position[0]);
-		Vec2f max = V2fMax(predictedPos, player->position[0]);
-
 		// Create motion bounds AABB and expand it
-		Vec2f expandedRadius = V2fAdd(player->radius, V2fInitScalar(AABBExpand));
-		min = V2fSub(min, expandedRadius);
-		max = V2fAdd(max, expandedRadius);
-		AABB2f entityAABB = AABB2fInit(min, max);
+		Vec2f min = V2fSub(V2fMin(predictedPos, player->position[0]), player->radius);
+		Vec2f max = V2fAdd(V2fMax(predictedPos, player->position[0]), player->radius);
+		AABB2f entityMotionBounds = AABB2fInit(min, max);
+		AABB2fExpandScalar(&entityMotionBounds, PhysicsCollisionAABBExpand);
 
 		// Tile tiles area from AABB
-		Vec2i minTile = MapWorldCoordsToTile(map, entityAABB.min);
-		Vec2i maxTile = MapWorldCoordsToTile(map, V2fAdd(entityAABB.max, V2fInit(0.5f, 0.5f)));
+		Vec2i minTile = MapWorldCoordsToTile(map, entityMotionBounds.min);
+		Vec2i maxTile = MapWorldCoordsToTile(map, V2fAdd(entityMotionBounds.max, V2fInit(0.5f, 0.5f)));
 
 		for (int x = minTile.x; x <= maxTile.x; ++x) {
 			for (int y = minTile.y; y <= maxTile.y; ++y) {

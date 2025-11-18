@@ -228,12 +228,23 @@
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="collision.h" />
-    <ClInclude Include="constants.h" />
+    <ClInclude Include="entity.h" />
+    <ClInclude Include="physics.h" />
     <ClInclude Include="map.h" />
+    <ClInclude Include="world.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="collision.c">
+    <ClCompile Include="entity.c">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug WinX86|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug WinX64|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release WinX86|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release WinX64|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug WinX86|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug WinX64|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release WinX86|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release WinX64|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="physics.c">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug WinX86|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug WinX64|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release WinX86|Win32'">true</ExcludedFromBuild>
@@ -245,6 +256,16 @@
     </ClCompile>
     <ClCompile Include="fpl_platformer.c" />
     <ClCompile Include="map.c">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug WinX86|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug WinX64|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release WinX86|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release WinX64|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug WinX86|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug WinX64|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release WinX86|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release WinX64|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="world.c">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug WinX86|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug WinX64|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release WinX86|Win32'">true</ExcludedFromBuild>

@@ -2,13 +2,16 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClCompile Include="fpl_platformer.c" />
-    <ClCompile Include="collision.c" />
+    <ClCompile Include="physics.c" />
     <ClCompile Include="map.c" />
+    <ClCompile Include="entity.c" />
+    <ClCompile Include="world.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="collision.h" />
+    <ClInclude Include="physics.h" />
     <ClInclude Include="map.h" />
-    <ClInclude Include="constants.h" />
+    <ClInclude Include="world.h" />
+    <ClInclude Include="entity.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Dependencies">
