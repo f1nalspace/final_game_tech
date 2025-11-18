@@ -21,9 +21,9 @@
 //
 // Game / World states
 //
-#define MaxContactCount 128
+#define MaxContactCount 512
 
-#define MaxEntityCount 1024
+#define MaxEntityCount 2048
 
 #define StartEntityID 1
 #define StartMapTileID (StartEntityID + MaxEntityCount)
@@ -38,19 +38,35 @@ typedef struct Camera2D {
 	float pixelsToWorld;
 } Camera2D;
 
+typedef struct Entities {
+	union {
+		struct {
+			Entity player;
+			Entity others[MaxEntityCount - 1];
+		};
+		Entity list[MaxEntityCount];
+	};
+	size_t count;
+} Entities;
+
+typedef struct Physics {
+	Contact contacts[MaxContactCount];
+	size_t numContacts;
+} Physics;
+
 typedef struct World {
+	Entities entities;
+	Physics physics;
 	Map map;
 	fmemMemoryBlock memory;
-	Contact contacts[MaxContactCount];
-	Entity player;
 	Camera2D camera;
-	uint32_t numContacts;
 } World;
 
 //
 // Public Functions
 //
 extern bool WorldInit(fmemMemoryBlock *memory, World *world);
-extern bool WorldLoadMap(World *world, const Map *map);
+extern bool WorldClear(World *world);
+extern bool WorldLoad(World *world, const Map *map);
 
 #endif // WORLD_H

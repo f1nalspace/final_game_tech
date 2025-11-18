@@ -149,7 +149,7 @@ static bool GameStateLoadMap(GameState *state, const Map *map) {
 		return false; // Invalid arguments
 	}
 
-	if (!WorldLoadMap(&state->world, map)) {
+	if (!WorldLoad(&state->world, map)) {
 		return false; // Failed to load the map into the world (insufficient memory, wrong map, etc.)
 	}
 
@@ -335,6 +335,8 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 
 	World *world = &state->world;
 
+	Entity *player = &world->entities.player;
+
 	const float w = WorldRadiusW;
 	const float h = WorldRadiusH;
 
@@ -365,7 +367,7 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	EditorInput(state, input);
 
 	// Player input
-	PlayerInput(&world->player, input);
+	PlayerInput(player, input);
 }
 
 extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
@@ -380,12 +382,16 @@ extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
 
 	World *world = &state->world;
 	Map *map = &world->map;
-	Entity *player = &world->player;
+	Entity *player = &world->entities.player;
+	Physics *physics = &world->physics;
 
-	// Player
+	// Clear contacts
+	physics->numContacts = 0;
+
+	// Update player
 	PlayerUpdate(player, map, dt);
 
-	// Camera
+	// Update camera
 	world->camera.offset[0] = V2fNegate(player->position[0]);
 	world->camera.scale[0] = 1.0f;
 
@@ -434,7 +440,9 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 
 	Map *map = &world->map;
 
-	Entity *player = &world->player;
+	Physics *physics = &world->physics;
+
+	Entity *player = &world->entities.player;
 
 	RenderState *renderState = gameMemory->render;
 
@@ -505,7 +513,8 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 	PushRectangleCenter(renderState, playerPos, player->radius, player->color, false, 2.0f);
 	PushOrigin(renderState, playerPos);
 
-	world->numContacts = 0;
+	// Temporary array to hold two contacts for debug rendering
+	Contact contacts[2] = fplZeroInit;
 
 	// Render collision tile bounds
 	bool renderPlayerTileBounds = true;
@@ -542,26 +551,15 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 					uint32_t tileId = StartMapTileID + (1 + (y * map->width + x));
 					AABB2f tileAABB = MapCreateTileAABB(map, tilePos);
 					AABB2f entityAABB = AABB2fInitFromCenter(player->position[0], player->radius);
-					fplAssert(world->numContacts < fplArrayCount(world->contacts));
-					Contact *contacts = world->contacts + world->numContacts;
+					fplAssert(physics->numContacts < fplArrayCount(physics->contacts));
 					uint32_t contactCount = CreateContactsAABBvsAABB(map, entityId, &entityAABB, tileId, &tileAABB, tilePos, true, contacts);
-					if (contactCount > 0) {
-						const Contact *contact = contacts + 0;
+					for (uint32_t i = 0; i < contactCount; ++i) {
+						const Contact *contact = contacts + i;
 						PushCircle(renderState, contact->posA, 2.0f, 16, V4fInit(1.0f, 0.0f, 0.0f, 1.0f), true, 0.0f);
 						PushCircle(renderState, contact->posB, 2.0f, 16, V4fInit(0.0f, 0.0f, 1.0f, 1.0f), true, 0.0f);
 					}
-					world->numContacts += contactCount;
 				}
 			}
-		}
-	}
-
-	// Render contacts
-	bool renderContacts = true;
-	if (renderContacts) {
-		for (uint32_t i = 0; i < world->numContacts; ++i) {
-			const Contact *contact = world->contacts + i;
-			//PushCircle(renderState, contact->pos, 2.0f, 16, V4fInit(1.0f, 0.0f, 0.0f, 1.0f), true, 0.0f);
 		}
 	}
 

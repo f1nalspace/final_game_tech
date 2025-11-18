@@ -21,18 +21,37 @@ extern bool WorldInit(fmemMemoryBlock *memory, World *world) {
 	return true;
 }
 
-extern bool WorldLoadMap(World *world, const Map *map) {
-	if (world == fpl_null || map == fpl_null) {
+extern bool WorldClear(World *world) {
+	if (world == fpl_null) {
 		return false;
 	}
 
-	if (!MapAssign(&world->map, map)) {
-		return false; // Failed map assignment
+	// NOTE(final): Do not full clear the world struct, otherwise we will kill the memory blocks!
+
+	fplClearStruct(&world->entities);
+	fplClearStruct(&world->camera);
+
+	return true;
+}
+
+extern bool WorldLoad(World *world, const Map *map) {
+	if (world == fpl_null || map == fpl_null) {
+		return false; // Invalid arguments
 	}
 
-	if (!PlayerInit(&world->player, &world->map)) {
-		return false; // Failed player initialization
+	if (!WorldClear(world)) {
+		return false; // Failed to clear the world
 	}
+
+	if (!MapAssign(&world->map, map)) {
+		return false; // Failed to assign the map
+	}
+
+	Entity *player = &world->entities.player;
+	if (!PlayerInit(player, &world->map)) {
+		return false; // Failed to initialize the player
+	}
+	world->entities.count++;
 
 	world->camera.scale[0] = world->camera.scale[1] = 1.0f;
 	world->camera.offset[0] = world->camera.offset[1] = V2fInit(0.0f, 0.0f);
