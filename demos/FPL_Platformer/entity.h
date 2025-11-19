@@ -10,17 +10,17 @@
 //
 // Entity / Player values
 //
-#define PlayerGravity (TileHeight * 0.5f)
+#define EntityGravity (TileHeight * 0.5f)
 
-#define PlayerMaxHorizontalSpeed (TileWidth * 4.0f)
-#define PlayerMaxVerticalSpeed (TileHeight * 20.0f)
+#define EntityMaxHorizontalSpeed (TileWidth * 4.0f)
+#define EntityMaxVerticalSpeed (TileHeight * 20.0f)
 
-#define PlayerWalkSpeed (TileWidth * 3.0f)
-#define PlayerAirSpeed (TileWidth * 0.1f)
-#define PlayerJumpVelocity (TileHeight * 12.0f)
+#define EntityDefaultWalkSpeed (TileWidth * 3.0f)
+#define EntityDefaultAirSpeed (TileWidth * 0.1f)
+#define EntityDefaultJumpVelocity (TileHeight * 12.0f)
 
-#define PlayerGroundFriction 0.2f
-#define PlayerAirFriction 0.0f
+#define EntityDefaultGroundFriction 0.2f
+#define EntityDefaultAirFriction 0.0f
 
 //
 // Types
@@ -48,6 +48,9 @@ typedef struct Entity {
 
 	// Ground state
 	GroundState groundState;
+
+	// ID of the entity
+	uint32_t id;
 
 	// Friction that is applied when on on-ground (0.0: Ice, 1.0: Glue)
 	float groundFriction;
@@ -85,8 +88,8 @@ fpl_inline bool EntityIsAir(const Entity *entity) {
 	return !entity->groundState.current;
 }
 
-extern bool PlayerInit(Entity *player, const Map *map);
-extern void PlayerInput(Entity *player, const Input *input);
-extern void PlayerUpdate(Physics *physics, Entity *player, const Map *map, const float dt);
+extern bool EntityInit(Entity *entity, const uint32_t id, const Map *map);
+extern void EntityInput(Entity *entity, const Input *input);
+extern void EntityUpdate(Physics *physics, Entity *entity, const Map *map, const float dt);
 
 #endif // ENTITY_H

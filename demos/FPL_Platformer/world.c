@@ -54,8 +54,9 @@ extern bool WorldLoad(World *world, const MapDefinition *mapDefinition) {
 		return false; // Failed to assign the map
 	}
 
+	uint32_t playerId = EntityIDStart + 0;
 	Entity *player = &world->entities.player;
-	if (!PlayerInit(player, &world->map)) {
+	if (!EntityInit(player, playerId, &world->map)) {
 		return false; // Failed to initialize the player
 	}
 	world->entities.count++;
@@ -75,7 +76,10 @@ extern void WorldUpdate(World *world, const Input *input) {
 
 	PhysicsBegin(physics);
 
-	PlayerUpdate(physics, player, map, dt);
+	for (size_t i = 0; i < world->entities.count; ++i) {
+		Entity *entity = world->entities.list + i;
+		EntityUpdate(physics, entity, map, dt);
+	}
 
 	PhysicsEnd(physics);
 

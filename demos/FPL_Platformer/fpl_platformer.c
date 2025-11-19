@@ -373,7 +373,7 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	EditorInput(state, input);
 
 	// Player input
-	PlayerInput(player, input);
+	EntityInput(player, input);
 }
 
 extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
@@ -514,8 +514,6 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 	// Render collision tile bounds
 	bool renderPlayerTileBounds = true;
 	if (renderPlayerTileBounds) {
-		uint32_t entityId = EntityIDStart;
-
 		// Predict position for next frame
 		Vec2f predictedPos = V2fAddMultScalar(player->position[0], player->velocity, dt);
 
@@ -549,6 +547,7 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 			const Contact *contact = physics->contactList.data + i;
 			PushCircle(renderState, contact->posA, 2.0f, 16, V4fInit(1.0f, 0.0f, 0.0f, 1.0f), true, 0.0f);
 			PushCircle(renderState, contact->posB, 2.0f, 16, V4fInit(0.0f, 0.0f, 1.0f, 1.0f), true, 0.0f);
+			PushNormal(renderState, contact->posB, contact->normal, 10.0f, 5.0f);
 		}
 	}
 
