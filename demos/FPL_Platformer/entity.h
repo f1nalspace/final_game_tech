@@ -5,6 +5,8 @@
 
 #include "map.h"
 
+#include "physics.h"
+
 //
 // Entity / Player values
 //
@@ -26,9 +28,14 @@ typedef struct GroundState {
 
 typedef struct Entity {
 	Vec4f color;
+
+	// 0 = Current position, 1 = Last position
 	Vec2f position[2];
-	Vec2f velocity;
 	Vec2f radius;
+
+	Vec2f velocity;
+	Vec2f posCorrect;
+
 	GroundState groundState;
 	float groundFriction;
 	float airFriction;
@@ -57,6 +64,6 @@ fpl_inline bool EntityIsAir(const Entity *entity) {
 
 extern bool PlayerInit(Entity *player, const Map *map);
 extern void PlayerInput(Entity *player, const Input *input);
-extern void PlayerUpdate(Entity *player, const Map *map, const float dt);
+extern void PlayerUpdate(Physics *physics, Entity *player, const Map *map, const float dt);
 
 #endif // ENTITY_H

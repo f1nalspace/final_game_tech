@@ -751,13 +751,20 @@ fpl_force_inline Vec2f V2fAxisFromAngle(const float angle) {
 	return(result);
 }
 
+fpl_force_inline float F32MajorSign(const float x) {
+	if (x >= 0.0f) {
+		return 1.0f;
+	}
+	return -1.0f;
+}
+
 fpl_force_inline Vec2f V2fMajorAxis(const Vec2f v) {
 	float x = F32Abs(v.x);
 	float y = F32Abs(v.y);
 	if (x > y) {
-		return V2fInit(F32Sign(v.x), 0.0f);
+		return V2fInit(F32MajorSign(v.x), 0.0f);
 	} else {
-		return V2fInit(0.0f, F32Sign(v.y));
+		return V2fInit(0.0f, F32MajorSign(v.y));
 	}
 }
 

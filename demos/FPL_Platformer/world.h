@@ -2,8 +2,8 @@
 #define WORLD_H
 
 #include <final_math.h>
-
 #include <final_memory.h>
+#include "final_game.h"
 
 #include "entity.h"
 #include "map.h"
@@ -21,8 +21,6 @@
 //
 // Game / World states
 //
-#define MaxContactCount 512
-
 #define MaxEntityCount 2048
 
 #define StartEntityID 1
@@ -49,11 +47,6 @@ typedef struct Entities {
 	size_t count;
 } Entities;
 
-typedef struct Physics {
-	Contact contacts[MaxContactCount];
-	size_t numContacts;
-} Physics;
-
 typedef struct World {
 	Entities entities;
 	Physics physics;
@@ -68,5 +61,6 @@ typedef struct World {
 extern bool WorldInit(fmemMemoryBlock *memory, World *world);
 extern bool WorldClear(World *world);
 extern bool WorldLoad(World *world, const Map *map);
+extern void WorldUpdate(World *world, const Input *input);
 
 #endif // WORLD_H

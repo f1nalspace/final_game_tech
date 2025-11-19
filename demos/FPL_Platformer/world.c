@@ -15,6 +15,10 @@ extern bool WorldInit(fmemMemoryBlock *memory, World *world) {
 		return false; // Failed map initialization
 	}
 
+	if (!PhysicsInit(&world->physics)) {
+		return false; // Failed to initialize physics system
+	}
+
 	world->camera.scale[0] = world->camera.scale[1] = 1.0f;
 	world->camera.offset[0] = world->camera.offset[1] = V2fInit(0.0f, 0.0f);
 
@@ -29,7 +33,10 @@ extern bool WorldClear(World *world) {
 	// NOTE(final): Do not full clear the world struct, otherwise we will kill the memory blocks!
 
 	fplClearStruct(&world->entities);
+
 	fplClearStruct(&world->camera);
+
+	PhysicsClear(&world->physics);
 
 	return true;
 }
@@ -57,4 +64,21 @@ extern bool WorldLoad(World *world, const Map *map) {
 	world->camera.offset[0] = world->camera.offset[1] = V2fInit(0.0f, 0.0f);
 
 	return true;
+}
+
+extern void WorldUpdate(World *world, const Input *input) {
+	const float dt = input->fixedDeltaTime;
+
+	Map *map = &world->map;
+	Entity *player = &world->entities.player;
+	Physics *physics = &world->physics;
+
+	PhysicsBegin(physics);
+
+	PlayerUpdate(physics, player, map, dt);
+
+	PhysicsEnd(physics);
+
+	world->camera.offset[0] = V2fNegate(player->position[0]);
+	world->camera.scale[0] = 1.0f;
 }

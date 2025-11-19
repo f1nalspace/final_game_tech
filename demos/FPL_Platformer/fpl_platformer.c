@@ -64,7 +64,7 @@ static uint32_t gTestLevelTiles[TestLevel_Width * TestLevel_Height] = {
 	1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
 	1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
 	1, 0, 0, 2, 0, 0, 0, 1, 0, 0, 1,
-	1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+	1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1,
 	1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1,
 	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
 };
@@ -382,18 +382,8 @@ extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
 
 	World *world = &state->world;
 	Map *map = &world->map;
-	Entity *player = &world->entities.player;
-	Physics *physics = &world->physics;
-
-	// Clear contacts
-	physics->numContacts = 0;
-
-	// Update player
-	PlayerUpdate(player, map, dt);
-
-	// Update camera
-	world->camera.offset[0] = V2fNegate(player->position[0]);
-	world->camera.scale[0] = 1.0f;
+	
+	WorldUpdate(world, input);
 
 	// FPS display
 	const float fpsSmoothing = 0.1f;
@@ -513,16 +503,13 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 	PushRectangleCenter(renderState, playerPos, player->radius, player->color, false, 2.0f);
 	PushOrigin(renderState, playerPos);
 
-	// Temporary array to hold two contacts for debug rendering
-	Contact contacts[2] = fplZeroInit;
-
 	// Render collision tile bounds
 	bool renderPlayerTileBounds = true;
 	if (renderPlayerTileBounds) {
 		uint32_t entityId = StartEntityID;
 
 		// Predict position for next frame
-		Vec2f predictedPos = V2fAddMultScalar(player->position[0], player->velocity, dt);
+		Vec2f predictedPos = V2fAddMultScalar(player->position[0], V2fAdd(player->velocity, player->posCorrect), dt);
 
 		// Create motion bounds AABB and expand it
 		Vec2f min = V2fSub(V2fMin(predictedPos, player->position[0]), player->radius);
@@ -539,27 +526,25 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 				if (x < 0 || x >= (int)map->width || y < 0 || y >= (int)map->height) {
 					continue;
 				}
-
 				Vec2i tilePos = V2iInit(x, y);
 				uint32_t tile = MapGetTile(map, tilePos);
-
+				if (!MapIsObstacle(map, tile)) {
+					continue;
+				}
 				Vec2f worldPos = MapTileCoordsToWorld(map, tilePos);
 				Vec2f tileCenter = V2fAdd(worldPos, TileRadius);
 				PushRectangleCenter(renderState, tileCenter, TileRadius, playerTileColor, false, 1.0f);
-
-				if (MapIsObstacle(map, tile)) {
-					uint32_t tileId = StartMapTileID + (1 + (y * map->width + x));
-					AABB2f tileAABB = MapCreateTileAABB(map, tilePos);
-					AABB2f entityAABB = AABB2fInitFromCenter(player->position[0], player->radius);
-					fplAssert(physics->numContacts < fplArrayCount(physics->contacts));
-					uint32_t contactCount = CreateContactsAABBvsAABB(map, entityId, &entityAABB, tileId, &tileAABB, tilePos, true, contacts);
-					for (uint32_t i = 0; i < contactCount; ++i) {
-						const Contact *contact = contacts + i;
-						PushCircle(renderState, contact->posA, 2.0f, 16, V4fInit(1.0f, 0.0f, 0.0f, 1.0f), true, 0.0f);
-						PushCircle(renderState, contact->posB, 2.0f, 16, V4fInit(0.0f, 0.0f, 1.0f, 1.0f), true, 0.0f);
-					}
-				}
 			}
+		}
+	}
+
+	// Contacts
+	bool renderContacts = true;
+	if (renderContacts) {
+		for (size_t i = 0; i < physics->contactList.used; ++i) {
+			const Contact *contact = physics->contactList.data + i;
+			PushCircle(renderState, contact->posA, 2.0f, 16, V4fInit(1.0f, 0.0f, 0.0f, 1.0f), true, 0.0f);
+			PushCircle(renderState, contact->posB, 2.0f, 16, V4fInit(0.0f, 0.0f, 1.0f, 1.0f), true, 0.0f);
 		}
 	}
 
@@ -603,6 +588,10 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 		fplStringFormat(text, fplArrayCount(text), "Fps: %.5f, Delta: %.5f", state->framesPerSecond[1], state->deltaTime);
 		PushText(renderState, text, fplGetStringLength(text), &font->desc, font->texture, V2fInit(blockPos.x + w * 2.0f - 1, blockPos.y - 1), fontHeight, -1.0f, -1.0f, blackColor);
 		PushText(renderState, text, fplGetStringLength(text), &font->desc, font->texture, V2fInit(blockPos.x + w * 2.0f, blockPos.y), fontHeight, -1.0f, -1.0f, textColor);
+
+		blockPos = V2fSub(blockPos, V2fInit(0, fontHeight));
+		fplStringFormat(text, fplArrayCount(text), "Player on ground: %s", player->groundState.current ? "yes" : "no");
+		PushText(renderState, text, fplGetStringLength(text), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
 	}
 
 	// Overwrite render infos such as position, rotation for "previous" from "current" states
