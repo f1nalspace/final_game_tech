@@ -506,10 +506,10 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 	// Render collision tile bounds
 	bool renderPlayerTileBounds = true;
 	if (renderPlayerTileBounds) {
-		uint32_t entityId = StartEntityID;
+		uint32_t entityId = EntityIDStart;
 
 		// Predict position for next frame
-		Vec2f predictedPos = V2fAddMultScalar(player->position[0], V2fAdd(player->velocity, player->posCorrect), dt);
+		Vec2f predictedPos = V2fAddMultScalar(player->position[0], player->velocity, dt);
 
 		// Create motion bounds AABB and expand it
 		Vec2f min = V2fSub(V2fMin(predictedPos, player->position[0]), player->radius);
@@ -528,9 +528,6 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 				}
 				Vec2i tilePos = V2iInit(x, y);
 				uint32_t tile = MapGetTile(map, tilePos);
-				if (!MapIsObstacle(map, tile)) {
-					continue;
-				}
 				Vec2f worldPos = MapTileCoordsToWorld(map, tilePos);
 				Vec2f tileCenter = V2fAdd(worldPos, TileRadius);
 				PushRectangleCenter(renderState, tileCenter, TileRadius, playerTileColor, false, 1.0f);
@@ -554,6 +551,8 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 	// Mouse tile
 	Vec2i mouseTilePos = MapWorldCoordsToTile(map, state->mouseWorldPos);
 	Vec2f mouseWorldPos = MapTileCoordsToWorld(map, mouseTilePos);
+	int32_t mouseTileIndex = mouseTilePos.y * map->width + mouseTilePos.x;
+	uint32_t mouseTileId = MapTileIDStart + mouseTileIndex;
 	PushRectangle(renderState, mouseWorldPos, TileSize, V4fInit(1, 1, 1, 1), false, 1.0f);
 
 	const FontAsset *font = &state->assets.consoleFont;
@@ -561,7 +560,9 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 
 	char buffer[100];
 	fplStringFormat(buffer, fplArrayCount(buffer), "%i x %i", mouseTilePos.x, mouseTilePos.y);
-	PushText(renderState, buffer, fplGetStringLength(buffer), &font->desc, font->texture, mouseWorldPos, fontHeight, 1.0f, -1.0f, V4fInit(1, 0, 1, 1));
+	PushText(renderState, buffer, fplGetStringLength(buffer), &font->desc, font->texture, mouseWorldPos, fontHeight, 1.0f, 1.0f, V4fInit(1, 0, 1, 1));
+	fplStringFormat(buffer, fplArrayCount(buffer), "%u", mouseTileId);
+	PushText(renderState, buffer, fplGetStringLength(buffer), &font->desc, font->texture, V2fAdd(mouseWorldPos, TileRadius), fontHeight, 0.0f, 0.0f, V4fInit(0, 1, 1, 1));
 
 	if (state->isDebugRendering) {
 		SetMatrix(renderState, &state->projection);

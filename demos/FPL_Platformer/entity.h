@@ -10,11 +10,15 @@
 //
 // Entity / Player values
 //
-#define PlayerGravity V2fInit(0, -10.0f)
-#define PlayerMaxSpeed 100.0f
-#define PlayerWalkSpeed 30.0f
-#define PlayerAirSpeed 40.0f
-#define PlayerJumpVelocity (200.0f * 1.2f)
+#define PlayerGravity (TileHeight * 0.5f)
+
+#define PlayerMaxHorizontalSpeed (TileWidth * 4.0f)
+#define PlayerMaxVerticalSpeed (TileHeight * 20.0f)
+
+#define PlayerWalkSpeed (TileWidth * 3.0f)
+#define PlayerAirSpeed (TileWidth * 0.1f)
+#define PlayerJumpVelocity (TileHeight * 12.0f)
+
 #define PlayerGroundFriction 0.2f
 #define PlayerAirFriction 0.2f
 
@@ -31,6 +35,8 @@ typedef struct Entity {
 
 	// 0 = Current position, 1 = Last position
 	Vec2f position[2];
+
+	// Fixed radius of the player
 	Vec2f radius;
 
 	Vec2f velocity;

@@ -7,7 +7,7 @@ extern bool PlayerInit(Entity *player, const Map *map) {
 		return false; // Invalid arguments
 	}
 
-	player->radius = V2fInit(TileWidth * 0.3f, TileHeight * 0.7f);
+	player->radius =  V2fHadamard(TileSize, V2fInit(0.3f, 0.7f));
 	player->velocity = V2fInit(0.0f, 0.0f);
 	player->posCorrect = V2fZero();
 	player->color = V4fInit(0.05f, 0.1f, 0.95f, 1);
@@ -23,6 +23,9 @@ extern bool PlayerInit(Entity *player, const Map *map) {
 
 		// Move the player above the tile, but to the right
 		player->position[0] = player->position[1] = V2fAdd(tileBottomCenter, V2fInit(TileSize.w * 0.5f - player->radius.w, player->radius.h));
+
+		// Move the player above the tile, but to the left
+		player->position[0] = player->position[1] = V2fAdd(tileBottomCenter, V2fInit(-TileSize.w * 0.5f + player->radius.w, player->radius.h));
 	}
 
 	player->applyFriction = true;
@@ -101,10 +104,10 @@ static void PlayerMapCollisions(Physics *physics, Entity *player, const Map *map
 	Contact contacts[2] = fplZeroInit;
 
 	// TODO(final): Use correct entity id
-	const uint32_t playerId = StartEntityID + 0;
+	const uint32_t playerId = EntityIDStart + 0;
 
-	for (int y = tileMin.y; y <= tileMax.y; ++y) {
-		for (int x = tileMin.x; x <= tileMax.x; ++x) {
+	for (int x = tileMin.x; x <= tileMax.x; ++x) {
+		for (int y = tileMin.y; y <= tileMax.y; ++y) {
 			if ((x < 0 || x > mapMaxWidthMinusOne) || (y < 0 || y > mapMaxHeightMinusOne)) {
 				continue;
 			}
@@ -118,7 +121,7 @@ static void PlayerMapCollisions(Physics *physics, Entity *player, const Map *map
 
 			uint32_t index = y * map->width + x;
 
-			uint32_t tileID = StartMapTileID + index;
+			uint32_t tileID = MapTileIDStart + index;
 
 			Vec2f tileWorld = MapTileCoordsToWorld(map, tilePos);
 			AABB2f tileBounds = AABB2fInit(tileWorld, V2fAdd(tileWorld, TileSize));
@@ -147,7 +150,7 @@ static void PlayerHandleCollisions(Physics *physics, Entity *player, const Map *
 	Vec2f min = V2fSub(V2fMin(predictedPos, pos), player->radius);
 	Vec2f max = V2fAdd(V2fMax(predictedPos, pos), player->radius);
 	AABB2f playerMotionBounds = AABB2fInit(min, max);
-	AABB2fExpandScalar(&playerMotionBounds, PhysicsCollisionAABBExpand);
+	AABB2fExpandScalar(&playerMotionBounds, PhysicsAABBExpansion);
 
 	// Get tiles area in min/max tile coordinates
 	Vec2i minTile = MapWorldCoordsToTile(map, playerMotionBounds.min);
@@ -157,18 +160,20 @@ static void PlayerHandleCollisions(Physics *physics, Entity *player, const Map *
 }
 
 extern void PlayerUpdate(Physics *physics, Entity *player, const Map *map, const float dt) {
-	player->groundState.current = false;
-
 	// Gravity
-	player->velocity = V2fAdd(player->velocity, PlayerGravity);
+	player->velocity.y += -PlayerGravity;
 
 	// Air friction
 	if (player->applyAirFriction && EntityIsAir(player) && F32Abs(player->velocity.x) > 0) {
 		player->velocity.x *= (1.0f - player->airFriction);
 	}
 
-	// Clamp speed
-	player->velocity.x = F32Clamp(player->velocity.x, -PlayerMaxSpeed, PlayerMaxSpeed);
+	// Clamp speeds
+	player->velocity.x = F32Clamp(player->velocity.x, -PlayerMaxHorizontalSpeed, PlayerMaxHorizontalSpeed);
+	player->velocity.y = F32Clamp(player->velocity.y, -PlayerMaxVerticalSpeed, PlayerMaxVerticalSpeed);
+
+	// Reset ground state
+	player->groundState.current = false;
 
 	// Handle collisions
 	PlayerHandleCollisions(physics, player, map, dt);

@@ -13,7 +13,7 @@
 // Fixed world definition
 //
 #define WorldAspect (16.0f / 9.0f)
-#define WorldWidth 640.0f
+#define WorldWidth 320.0f
 #define WorldHeight (WorldWidth / WorldAspect)
 #define WorldRadiusW (WorldWidth * 0.5f)
 #define WorldRadiusH (WorldHeight * 0.5f)
@@ -21,10 +21,16 @@
 //
 // Game / World states
 //
-#define MaxEntityCount 2048
+#define MaxEntityCount 2048UL
 
-#define StartEntityID 1
-#define StartMapTileID (StartEntityID + MaxEntityCount)
+#define EntityIDStart 1UL
+#define EntityIDRange (MaxEntityCount - 1UL)
+#define EntityIDEnd (EntityIDRange - 1UL)
+
+#define MapTileIDStart (EntityIDEnd + 1UL)
+#define MapTileIDEnd (UINT32_MAX - 1UL)
+#define MapTileIDRange ((MapTileIDEnd - MapTileIDStart) + 1UL)
+
 
 //
 // World types
