@@ -20,7 +20,7 @@
 #define PlayerJumpVelocity (TileHeight * 12.0f)
 
 #define PlayerGroundFriction 0.2f
-#define PlayerAirFriction 0.2f
+#define PlayerAirFriction 0.0f
 
 //
 // Types
@@ -31,23 +31,40 @@ typedef struct GroundState {
 } GroundState;
 
 typedef struct Entity {
+	// Display color
 	Vec4f color;
 
 	// 0 = Current position, 1 = Last position
 	Vec2f position[2];
 
-	// Fixed radius of the player
+	// Fixed radius
 	Vec2f radius;
 
+	// Current speed/velocity
 	Vec2f velocity;
+
+	// Position correction accumulator
 	Vec2f posCorrect;
 
+	// Ground state
 	GroundState groundState;
+
+	// Friction that is applied when on on-ground (0.0: Ice, 1.0: Glue)
 	float groundFriction;
+
+	// Friction that is applied when on in the air (0.0: No friction, 1.0: Glue)
 	float airFriction;
-	bool applyFriction;
+	
+	// Value indicating whether any ground friction is applied or not
+	bool applyGroundFriction;
+
+	// Value indicating whether any air friction is applied or not
 	bool applyAirFriction;
-	bool jumpRequested;
+
+	// Value indicating whether any air friction is applied or not
+	bool isJumpRequested;
+
+	// Padding to fix alignment
 	bool padding;
 } Entity;
 

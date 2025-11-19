@@ -28,13 +28,13 @@ extern bool PlayerInit(Entity *player, const Map *map) {
 		player->position[0] = player->position[1] = V2fAdd(tileBottomCenter, V2fInit(-TileSize.w * 0.5f + player->radius.w, player->radius.h));
 	}
 
-	player->applyFriction = true;
+	player->applyGroundFriction = true;
 	player->groundFriction = PlayerGroundFriction;
 
 	player->applyAirFriction = true;
 	player->airFriction = PlayerAirFriction;
 
-	player->jumpRequested = false;
+	player->isJumpRequested = false;
 
 	return true;
 }
@@ -52,17 +52,17 @@ extern void PlayerInput(Entity *player, const Input *input) {
 
 	// Jump can always be requested, regardless if in air or not
 	if (IsDown(controller->actionDown)) {
-		if (!player->jumpRequested) {
-			player->jumpRequested = true;
+		if (!player->isJumpRequested) {
+			player->isJumpRequested = true;
 		}
 	} else {
-		player->jumpRequested = false;
+		player->isJumpRequested = false;
 	}
 
 	// Handle requested jump only when grounded
-	if (EntityIsGrounded(player) && player->jumpRequested) {
+	if (EntityIsGrounded(player) && player->isJumpRequested) {
 		player->velocity.y = PlayerJumpVelocity;
-		player->jumpRequested = false;
+		player->isJumpRequested = false;
 	}
 }
 
@@ -82,12 +82,26 @@ static void PlayerCollisionResponse(Entity *player, const Contact *contact, cons
 		// Remove normal velocity
 		player->velocity = V2fSub(player->velocity, V2fMultScalar(n, nv));
 
-		// Player hits ground?
+		// TODO(final): Use a dot product threshold instead of just normal.y with a ground axis (0, 1)
 		if (n.y > 0.0f) {
+			// We are touching ground
 			player->groundState.current = true;
 
+			// Apply friction
+			if (player->applyGroundFriction) {
+				// Get the tangent from the normal (perp vector)
+				Vec2f t = V2fPerp(n);
+
+				// Compute the tangential velocity, scale by friction
+				float friction = F32Clamp(player->groundFriction, 0.0f, 1.0f);
+				float tv = V2fDot(player->velocity, t) * friction;
+
+				// Subtract that from the main velocity
+				player->velocity = V2fSub(player->velocity, V2fMultScalar(t, tv));
+			}
+
 			if (!player->groundState.last) {
-				// Landing transition
+				// TODO(final): Landing transition
 			}
 		}
 	}
