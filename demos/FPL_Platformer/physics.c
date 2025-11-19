@@ -57,9 +57,22 @@ static bool IsNextTileInDirectionObstacle(const Map *map, const Vec2i tilePos, c
 	return result;
 }
 
+fpl_force_inline Vec2f GetContactMajorAxis(const Vec2f v) {
+	float x = F32Abs(v.x);
+	float y = F32Abs(v.y);
+
+	// NOTE(final): Prefer x axis over the y axis
+	const float k = 0.1f * PhysicsLinearSlope;
+	if (y > x + k) {
+		return V2fInit(0.0f, F32MajorSign(v.y));
+	} else {
+		return V2fInit(F32MajorSign(v.x), 0.0f);
+	}
+}
+
 static bool ComputeClosestContactsAABBvsAABB(Vec2f delta, Vec2f aabbCenter, Vec2f aabbRadius, Vec2f point, Contact *outContact) {
-	// Form the closest point on plane
-	Vec2f majorAxis = V2fMajorAxis(delta);
+	// Form the closest point to the plane
+	Vec2f majorAxis = GetContactMajorAxis(delta);
 	Vec2f planeN = V2fNegate(majorAxis);
 	Vec2f planeCenter = V2fAdd(aabbCenter, V2fHadamard(planeN, aabbRadius));
 
@@ -83,7 +96,7 @@ static bool ComputeClosestContactsAABBvsAABB(Vec2f delta, Vec2f aabbCenter, Vec2
 	float u = V2fDot(V2fSub(b, g), tangent) / abLen;
 
 	// Skip vertex to vertex contacts entirely
-	bool isVertexContact = v <= PhysicsCollisionVertexEpsilon || u <= PhysicsCollisionVertexEpsilon;
+	bool isVertexContact = v <= PhysicsLinearSlope || u <= PhysicsLinearSlope;
 	if (isVertexContact) {
 		return false;
 	}
@@ -116,24 +129,25 @@ extern uint32_t CreateContactsAABBvsAABB(const Map *map, const uint32_t idA, con
 
 	Vec2f delta = V2fSub(centerB, centerA);
 
-	uint32_t numContacts = ComputeClosestContactsAABBvsAABB(delta, centerB, minkowskiSum, centerA, outContacts);
-	if (numContacts == 0) {
+	Contact contact = fplZeroInit;
+
+	if (!ComputeClosestContactsAABBvsAABB(delta, centerB, minkowskiSum, centerA, &contact)) {
 		return 0; // No contacts found
 	}
 
-	uint32_t result = 0;
-
-	for (uint32_t i = 0; i < numContacts; ++i) {
-		Contact *contact = &outContacts[i];
-		bool allow = !checkInternal || (checkInternal && !IsNextTileInDirectionObstacle(map, tilePos, contact->normal));
-		if (allow) {
-			float radADistance = F32Abs(V2fDot(contact->normal, radiusA));
-			contact->idPair = fplStructInit(ContactIDPair, fplMin(idA, idB), fplMax(idA, idB));
-			contact->posB = V2fAddMultScalar(contact->posB, contact->normal, -radADistance);
-			contact->posA = V2fAddMultScalar(contact->posB, contact->normal, contact->distance);
-			++result;
+	if (checkInternal) {
+		bool isInternalCollision = IsNextTileInDirectionObstacle(map, tilePos, contact.normal);
+		if (isInternalCollision) {
+			return false;
 		}
 	}
 
-	return result;
+	float radADistance = F32Abs(V2fDot(contact.normal, radiusA));
+	contact.idPair = fplStructInit(ContactIDPair, idA, idB);
+	contact.posB = V2fAddMultScalar(contact.posB, contact.normal, -radADistance);
+	contact.posA = V2fAddMultScalar(contact.posB, contact.normal, contact.distance);
+
+	outContacts[0] = contact;
+
+	return 1;
 }

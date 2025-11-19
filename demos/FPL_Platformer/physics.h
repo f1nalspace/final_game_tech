@@ -9,8 +9,8 @@
 
 typedef union {
 	struct {
-		uint32_t low;
-		uint32_t high;
+		uint32_t a;
+		uint32_t b;
 	};
 	uint64_t value;
 } ContactIDPair;
@@ -44,9 +44,10 @@ extern bool PhysicsPushContact(Physics *physics, const Contact *contact);
 
 extern uint32_t CreateContactsAABBvsAABB(const Map *map, const uint32_t idA, const AABB2f *a, const uint32_t idB, const AABB2f *b, const Vec2i tilePos, const bool checkInternal, Contact contacts[2]);
 
-#define PhysicsCollisionVertexEpsilon 0.001f
+// A small distance used as a collision and constraint tolerance. Usually it is chosen to be numerically significant, but visually insignificant.
+#define PhysicsLinearSlope 0.001f
 
-// Value that are added to the radius of a motion AABB, to ensure that tiles are encapsulated in all cases
-#define PhysicsCollisionAABBExpand 10.0f
+// Additional distance that is added to motion AABB's, to ensure that tiles are encapsulated in all cases
+#define PhysicsAABBExpansion 1.5f
 
 #endif // PHYSICS_H
