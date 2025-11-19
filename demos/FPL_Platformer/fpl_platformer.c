@@ -58,26 +58,21 @@ License:
 #define TestLevel_Width 11
 #define TestLevel_Height 8
 
-static uint32_t gTestLevelTiles[TestLevel_Width * TestLevel_Height] = {
+static TileType gTestLevelTiles[TestLevel_Width * TestLevel_Height] = {
 	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
 	1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
 	1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
 	1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
 	1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1,
 	1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-	1, 0, 2, 0, 0, 1, 0, 1, 0, 0, 1,
+	1, 0, 3, 0, 0, 1, 0, 1, 0, 0, 1,
 	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
 };
 
-static Map gTestLevel = {
-	{0},
-	{0},
-	{0, 0},
-	{TileWidth, TileHeight},
-	{TileWidth * 0.5f, TileHeight * 0.5f},
-	gTestLevelTiles,
-	TestLevel_Width,
-	TestLevel_Height,
+static MapDefinition gTestLevel = {
+	.tiles = gTestLevelTiles,
+	.width = TestLevel_Width,
+	.height = TestLevel_Height,
 };
 
 //
@@ -144,12 +139,12 @@ static bool GameStateInit(fmemMemoryBlock *memory, GameState *state) {
 	return true;
 }
 
-static bool GameStateLoadMap(GameState *state, const Map *map) {
-	if (state == fpl_null || map == fpl_null) {
+static bool GameStateLoadMap(GameState *state, const MapDefinition *mapDefinition) {
+	if (state == fpl_null || mapDefinition == fpl_null) {
 		return false; // Invalid arguments
 	}
 
-	if (!WorldLoad(&state->world, map)) {
+	if (!WorldLoad(&state->world, mapDefinition)) {
 		return false; // Failed to load the map into the world (insufficient memory, wrong map, etc.)
 	}
 
@@ -208,7 +203,7 @@ extern bool IsGameExiting(GameMemory *gameMemory) {
 	return state->isExiting;
 }
 
-static void MapPaintTile(Map *map, const Vec2i tilePos, const uint32_t newTile) {
+static void MapPaintTile(Map *map, const Vec2i tilePos, const TileType type) {
 	Vec2i newOrigin = map->origin;
 	Vec2i newSizeAppend = V2iInit(0, 0);
 	Vec2i newTilePos = tilePos;
@@ -246,10 +241,10 @@ static void MapPaintTile(Map *map, const Vec2i tilePos, const uint32_t newTile) 
 		fmemMemoryBlock tempBlock;
 		fmemBeginTemporary(&map->temporaryMemory, &tempBlock);
 
-		size_t requiredOldSize = oldMapSize.w * oldMapSize.h * sizeof(uint32_t);
+		size_t requiredOldSize = oldMapSize.w * oldMapSize.h * sizeof(Tile);
 		fplAssert(requiredOldSize <= tempBlock.size);
 
-		uint32_t *oldTiles = (uint32_t *)fmemPush(&tempBlock, requiredOldSize, fmemPushFlags_None);
+		Tile *oldTiles = (Tile *)fmemPush(&tempBlock, requiredOldSize, fmemPushFlags_None);
 		fplMemoryCopy(map->solidTiles, requiredOldSize, oldTiles);
 
 		map->persistentMemory.used = 0;
@@ -269,27 +264,37 @@ static void MapPaintTile(Map *map, const Vec2i tilePos, const uint32_t newTile) 
 			offsetY -= abs(tilePos.y);
 		}
 
+		// Create new tiles and copy old tiles over it
 		map->width = newMapSize.w;
 		map->height = newMapSize.h;
-		map->solidTiles = (uint32_t *)fmemPush(&map->persistentMemory, requiredNewSize, fmemPushFlags_Clear);
+		map->solidTiles = (Tile *)fmemPush(&map->persistentMemory, requiredNewSize, fmemPushFlags_Clear);
 		for (int y = 0; y < oldMapSize.h; ++y) {
 			for (int x = 0; x < oldMapSize.w; ++x) {
 				int ox = newSizeAppend.x + x + offsetX;
 				int oy = newSizeAppend.y + y + offsetY;
 				fplAssert(ox >= 0 && ox < newMapSize.w);
 				fplAssert(oy >= 0 && oy < newMapSize.h);
-				map->solidTiles[oy * newMapSize.w + ox] = oldTiles[y * oldMapSize.w + x];
+				size_t index = oy * newMapSize.w + ox;
+				map->solidTiles[index] = oldTiles[y * oldMapSize.w + x];
+			}
+		}
+
+		// Re-assign id's
+		for (int y = 0; y < newMapSize.h; ++y) {
+			for (int x = 0; x < newMapSize.w; ++x) {
+				uint32_t index = y * newMapSize.w + x;
+				map->solidTiles[index].id = MapTileIDStart + index;
 			}
 		}
 
 		fmemEndTemporary(&map->temporaryMemory);
 	}
 
-	int invY = map->height - 1 - newTilePos.y;
-	int curTile = map->solidTiles[invY * map->width + newTilePos.x];
-	map->solidTiles[invY * map->width + newTilePos.x] = newTile;
-
 	map->origin = newOrigin;
+
+	MapSetTileType(map, newTilePos, type);
+
+	
 }
 
 static void EditorInput(GameState *state, const Input *input) {
@@ -304,8 +309,8 @@ static void EditorInput(GameState *state, const Input *input) {
 			editor->isDrawing = true;
 
 			if (MapIsTileInside(map, mouseTilePos)) {
-				uint32_t tile = MapGetTile(map, mouseTilePos);
-				editor->drawTile = tile == 0 ? 1 : 0;
+				Tile tile = MapGetTile(map, mouseTilePos);
+				editor->drawTile = tile.type != TileType_Solid ? TileType_Solid : TileType_None;
 			} else {
 				editor->drawTile = 1;
 			}
@@ -313,6 +318,7 @@ static void EditorInput(GameState *state, const Input *input) {
 		if (editor->isDrawing) {
 			fplAssert(editor->drawTile != UINT32_MAX);
 			MapPaintTile(map, mouseTilePos, editor->drawTile);
+
 		}
 	} else {
 		if (editor->isDrawing) {
@@ -451,7 +457,8 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 	Vec2i mapSize = V2iInit(map->width, map->height);
 	Vec2f mapArea = V2fHadamard(TileSize, V2fInit((float)mapSize.x, (float)mapSize.y));
 	Vec2f mapOrigin = MapTileCoordsToWorld(map, V2iInit(0,0));
-	Vec4f mapSolidColor = V4fInit(1.0f, 1.0f, 1.0f, 1.0f);
+	Vec4f mapSolidTileColor = V4fInit(1.0f, 1.0f, 1.0f, 1.0f);
+	Vec4f mapGhostTileColor = V4fInit(0.3f, 0.3f, 0.3f, 1.0f);
 	Vec4f playerTileColor = V4fInit(0.3f, 0.1f, 0.7f, 1.0f);
 
 	Vec2f gridSize = mapArea;
@@ -490,10 +497,11 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 	// Map
 	for (int y = 0; y < mapSize.h; ++y) {
 		for (int x = 0; x < mapSize.w; ++x) {
-			uint32_t tile = MapGetTile(map, V2iInit(x, y));
-			if (MapIsObstacle(map, tile)) {
+			Tile tile = MapGetTile(map, V2iInit(x, y));
+			if (MapTileTypeIsObstacle(map, tile.type)) {
 				Vec2f tilePos = MapTileCoordsToWorld(map, V2iInit(x, y));
-				PushRectangle(renderState, tilePos, TileSize, mapSolidColor, true, 1.0f);
+				Vec4f tileColor = tile.type == TileType_Ghost ? mapGhostTileColor : mapSolidTileColor;
+				PushRectangle(renderState, tilePos, TileSize, tileColor, true, 1.0f);
 			}
 		}
 	}
@@ -527,7 +535,6 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 					continue;
 				}
 				Vec2i tilePos = V2iInit(x, y);
-				uint32_t tile = MapGetTile(map, tilePos);
 				Vec2f worldPos = MapTileCoordsToWorld(map, tilePos);
 				Vec2f tileCenter = V2fAdd(worldPos, TileRadius);
 				PushRectangleCenter(renderState, tileCenter, TileRadius, playerTileColor, false, 1.0f);

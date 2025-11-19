@@ -14,7 +14,7 @@ extern bool PlayerInit(Entity *player, const Map *map) {
 	player->position[0] = player->position[1] = V2fInit(0.0f, 0.0f);
 
 	Vec2i playerTilePos;
-	if (MapFindPositionByTile(map, TileType_PlayerPosition, &playerTilePos)) {
+	if (MapFindPositionByTile(map, TileType_PlayerStart, &playerTilePos)) {
 		Vec2f tilePos = MapTileCoordsToWorld(map, playerTilePos);
 		Vec2f tileBottomCenter = V2fAdd(tilePos, V2fInit(TileWidth * 0.5f, 0));
 
@@ -128,8 +128,8 @@ static void PlayerMapCollisions(Physics *physics, Entity *player, const Map *map
 
 			Vec2i tilePos = V2iInit(x, y);
 
-			uint32_t tile = MapGetTile(map, tilePos);
-			if (!MapIsObstacle(map, tile)) {
+			Tile tile = MapGetTile(map, tilePos);
+			if (!MapTileTypeIsObstacle(map, tile.type)) {
 				continue;
 			}
 

@@ -41,8 +41,8 @@ extern bool WorldClear(World *world) {
 	return true;
 }
 
-extern bool WorldLoad(World *world, const Map *map) {
-	if (world == fpl_null || map == fpl_null) {
+extern bool WorldLoad(World *world, const MapDefinition *mapDefinition) {
+	if (world == fpl_null || mapDefinition == fpl_null) {
 		return false; // Invalid arguments
 	}
 
@@ -50,7 +50,7 @@ extern bool WorldLoad(World *world, const Map *map) {
 		return false; // Failed to clear the world
 	}
 
-	if (!MapAssign(&world->map, map)) {
+	if (!MapAssign(&world->map, mapDefinition)) {
 		return false; // Failed to assign the map
 	}
 

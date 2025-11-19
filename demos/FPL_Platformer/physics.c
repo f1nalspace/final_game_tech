@@ -51,9 +51,13 @@ extern bool PhysicsPushContact(Physics *physics, const Contact *contact) {
 static bool IsNextTileInDirectionObstacle(const Map *map, const Vec2i tilePos, const Vec2f normal) {
 	int nextTileX = tilePos.x + (int)normal.x;
 	int nextTileY = tilePos.y + (int)normal.y;
-	uint32_t currentTile = MapGetTile(map, tilePos);
-	uint32_t nextTile = MapGetTile(map, V2iInit(nextTileX, nextTileY));
-	bool result = MapIsObstacle(map, nextTile);
+	Vec2i nextPos = V2iInit(nextTileX, nextTileY);
+	if (!MapIsTileInside(map, nextPos)) {
+		return false;
+	}
+	bool currentTile = MapTilePosIsObstacle(map, tilePos);
+	bool nextTile = MapTilePosIsObstacle(map, nextPos);
+	bool result = currentTile && nextTile;
 	return result;
 }
 

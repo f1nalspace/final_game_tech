@@ -13,7 +13,7 @@
 // Fixed world definition
 //
 #define WorldAspect (16.0f / 9.0f)
-#define WorldWidth 320.0f
+#define WorldWidth 640.0f
 #define WorldHeight (WorldWidth / WorldAspect)
 #define WorldRadiusW (WorldWidth * 0.5f)
 #define WorldRadiusH (WorldHeight * 0.5f)
@@ -66,7 +66,7 @@ typedef struct World {
 //
 extern bool WorldInit(fmemMemoryBlock *memory, World *world);
 extern bool WorldClear(World *world);
-extern bool WorldLoad(World *world, const Map *map);
+extern bool WorldLoad(World *world, const MapDefinition *mapDefinition);
 extern void WorldUpdate(World *world, const Input *input);
 
 #endif // WORLD_H
