@@ -63,9 +63,9 @@ static uint32_t gTestLevelTiles[TestLevel_Width * TestLevel_Height] = {
 	1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
 	1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
 	1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-	1, 0, 0, 2, 0, 0, 0, 1, 0, 0, 1,
+	1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1,
 	1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-	1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1,
+	1, 0, 2, 0, 0, 1, 0, 1, 0, 0, 1,
 	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
 };
 
@@ -515,7 +515,7 @@ extern void GameRender(GameMemory *gameMemory, const float alpha) {
 		Vec2f min = V2fSub(V2fMin(predictedPos, player->position[0]), player->radius);
 		Vec2f max = V2fAdd(V2fMax(predictedPos, player->position[0]), player->radius);
 		AABB2f entityMotionBounds = AABB2fInit(min, max);
-		AABB2fExpandScalar(&entityMotionBounds, PhysicsCollisionAABBExpand);
+		AABB2fExpandScalar(&entityMotionBounds, PhysicsAABBExpansion);
 
 		// Tile tiles area from AABB
 		Vec2i minTile = MapWorldCoordsToTile(map, entityMotionBounds.min);
