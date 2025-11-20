@@ -520,7 +520,7 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 		PushText(renderState, text, fplGetStringLength(text), &font->desc, font->texture, V2fInit(blockPos.x + w * 2.0f, blockPos.y), fontHeight, -1.0f, -1.0f, textColor);
 
 		blockPos = V2fSub(blockPos, V2fInit(0, fontHeight));
-		fplStringFormat(text, fplArrayCount(text), "Player on ground: %s", player->groundState.current ? "yes" : "no");
+		fplStringFormat(text, fplArrayCount(text), "Player ground: %s", player->groundState.current ? "yes" : "no");
 		PushText(renderState, text, fplGetStringLength(text), &font->desc, font->texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, blackColor);
 		PushText(renderState, text, fplGetStringLength(text), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
 
@@ -530,7 +530,7 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 		PushText(renderState, text, fplGetStringLength(text), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
 
 		blockPos = V2fSub(blockPos, V2fInit(0, fontHeight));
-		fplStringFormat(text, fplArrayCount(text), "Mouse pos: %.04f x %.04f, down: %s", state->mouseWorldPos.x, state->mouseWorldPos.y, input->mouse.left.endedDown ? "yes" : "no");
+		fplStringFormat(text, fplArrayCount(text), "Mouse: %.04f x %.04f, Down: %s", state->mouseWorldPos.x, state->mouseWorldPos.y, input->mouse.left.endedDown ? "yes" : "no");
 		PushText(renderState, text, fplGetStringLength(text), &font->desc, font->texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, blackColor);
 		PushText(renderState, text, fplGetStringLength(text), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
 	}
