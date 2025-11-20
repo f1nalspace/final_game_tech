@@ -379,7 +379,7 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	state->viewProjection = M4fMult(state->projection, state->view);
 
 	Vec2i mapSize = V2iInit(map->width, map->height);
-	Vec2f mapArea = V2fHadamard(TileSize, V2fInit((float)mapSize.x, (float)mapSize.y));
+	Vec2f mapArea = V2fHadamard(TileSize, V2fInit((float)mapSize.w, (float)mapSize.h));
 	Vec2f mapOrigin = MapTileCoordsToWorld(map, map->origin);
 	Vec4f mapSolidTileColor = V4fInit(1.0f, 1.0f, 1.0f, 1.0f);
 	Vec4f mapGhostTileColor = V4fInit(0.3f, 0.3f, 0.3f, 1.0f);
@@ -419,13 +419,14 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	}
 
 	// Map
-	for (int y = 0; y < mapSize.h; ++y) {
-		for (int x = 0; x < mapSize.w; ++x) {
-			Tile tile = MapGetTile(map, V2iInit(x, y));
+	for (int y = map->origin.y; y < map->origin.y + mapSize.h; ++y) {
+		for (int x = map->origin.x; x < map->origin.x + mapSize.w; ++x) {
+			Vec2i tilePos = V2iInit(x, y);
+			Tile tile = MapGetTile(map, tilePos);
 			if (MapTileTypeIsObstacle(map, tile.type)) {
-				Vec2f tilePos = MapTileCoordsToWorld(map, V2iInit(x, y));
+				Vec2f worldPos = MapTileCoordsToWorld(map, tilePos);
 				Vec4f tileColor = tile.type == TileType_Ghost ? mapGhostTileColor : mapSolidTileColor;
-				PushRectangle(renderState, tilePos, TileSize, tileColor, true, 1.0f);
+				PushRectangle(renderState, worldPos, TileSize, tileColor, true, 1.0f);
 			}
 		}
 	}
@@ -453,9 +454,6 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 
 		for (int x = minTile.x; x <= maxTile.x; ++x) {
 			for (int y = minTile.y; y <= maxTile.y; ++y) {
-				if (x < 0 || x >= (int)map->width || y < 0 || y >= (int)map->height) {
-					continue;
-				}
 				Vec2i tilePos = V2iInit(x, y);
 				Vec2f worldPos = MapTileCoordsToWorld(map, tilePos);
 				Vec2f tileCenter = V2fAdd(worldPos, TileRadius);
@@ -482,7 +480,8 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	Vec2i mouseTilePos = MapWorldCoordsToTile(map, state->mouseWorldPos);
 	Vec2f mouseWorldPos = MapTileCoordsToWorld(map, mouseTilePos);
 	int32_t mouseTileIndex = mouseTilePos.y * map->width + mouseTilePos.x;
-	uint32_t mouseTileId = MapTileIDStart + mouseTileIndex;
+	Tile tile = MapGetTile(map, mouseTilePos);
+	uint32_t mouseTileId = tile.id;
 	PushRectangle(renderState, mouseWorldPos, TileSize, V4fInit(1, 1, 1, 1), false, 1.0f);
 
 	const FontAsset *font = &state->assets.consoleFont;
