@@ -192,8 +192,8 @@ extern bool MapResizeToTilePos(Map *map, const Vec2i tilePos) {
 		fplAssert(ycount > 0);
 		append.h += ycount;
 		newOrigin.y -= ycount;
-	} else if (tilePos.y > mapHeightMinusOne) {
-		int ycount = tilePos.y - mapHeightMinusOne;
+	} else if ((tilePos.y - oldOrigin.y) > mapHeightMinusOne) {
+		int ycount = (tilePos.y - oldOrigin.y) - mapHeightMinusOne;
 		fplAssert(ycount > 0);
 		append.h += ycount;
 	}
