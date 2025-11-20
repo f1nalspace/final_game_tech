@@ -27,16 +27,16 @@ extern void MapClear(Map *map) {
 	map->solidTiles = fpl_null;
 }
 
-static bool MapTilePosIsObstacleInternal(const Map *map, const int x, const int y) {
+static bool MapTilePosIsObstacleInternal(const Map *map, const int localX, const int localY) {
 	if (map == fpl_null || map->width == 0 || map->height == 0) {
 		return false;
 	}
 	int widthMinusOne = map->width - 1;
 	int heightMinusOne = map->height - 1;
-	if (x < 0 || x > widthMinusOne || y < 0 || y > heightMinusOne) {
+	if (localX < 0 || localX > widthMinusOne || localY < 0 || localY > heightMinusOne) {
 		return false;
 	}
-	Tile tile = map->solidTiles[y * map->width + x];
+	Tile tile = map->solidTiles[localY * map->width + localX];
 	bool result = MapTileTypeIsObstacle(map, tile.type);
 	return result;
 }
@@ -114,11 +114,13 @@ extern Tile MapGetTile(const Map *map, const Vec2i tilePos) {
 	if (map == fpl_null || map->width == 0 || map->height == 0 || map->solidTiles == fpl_null) {
 		return TileEmpty;
 	}
-	int invY = map->height - 1 - tilePos.y;
-	if (tilePos.x < 0 || invY < 0 || tilePos.x > ((int)map->width - 1) || invY > ((int)map->height - 1)) {
+	Vec2i local = MapPublicTilePosToLocalTilePos(map, tilePos);
+	int widthMinusOne = map->width - 1;
+	int heightMinusOne = map->height - 1;
+	if (local.x < 0 || local.x > widthMinusOne || local.y < 0 || local.y > heightMinusOne) {
 		return TileEmpty;
 	}
-	Tile result = map->solidTiles[invY * map->width + tilePos.x];
+	Tile result = map->solidTiles[local.y * map->width + local.x];
 	return result;
 }
 
@@ -126,13 +128,15 @@ extern bool MapSetTileType(Map *map, const Vec2i tilePos, const TileType type) {
 	if (map == fpl_null || map->width == 0 || map->height == 0) {
 		return false;
 	}
+	Vec2i local = MapPublicTilePosToLocalTilePos(map, tilePos);
 
-	int invY = map->height - 1 - tilePos.y;
-	if (tilePos.x < 0 || invY < 0 || tilePos.x > ((int)map->width - 1) || invY > ((int)map->height - 1)) {
+	int widthMinusOne = map->width - 1;
+	int heightMinusOne = map->height - 1;
+	if (local.x < 0 || local.x > widthMinusOne || local.y < 0 || local.y > heightMinusOne) {
 		return false;
 	}
 
-	Tile *curTile = &map->solidTiles[invY * map->width + tilePos.x];
+	Tile *curTile = &map->solidTiles[local.y * map->width + local.x];
 	curTile->type = type;
 
 	MapAutoSetAllGhostTiles(map);
@@ -146,10 +150,11 @@ extern bool MapFindPositionByTile(const Map *map, const TileType type, Vec2i *ou
 	}
 	for (uint32_t y = 0; y < map->height; ++y) {
 		for (uint32_t x = 0; x < map->width; ++x) {
-			Tile tile = MapGetTile(map, V2iInit(x, y));
+			Tile tile = map->solidTiles[y * map->width + x];
 			if (tile.type == type)
 			{
-				*outTilePos = V2iInit(x, y);
+				Vec2i local = V2iInit(x, y);
+				*outTilePos = MapLocalTilePosToPublicTilePos(map, local);
 				return true;
 			}
 		}
