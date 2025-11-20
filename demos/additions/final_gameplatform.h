@@ -312,7 +312,7 @@ static void SetupInputForFrame(Input *oldInput, Input *newInput, const double ta
 	fplClearStruct(newMouse);
 	newMouse->pos = oldMouse->pos;
 	for(uint32_t buttonIndex = 0; buttonIndex < fplArrayCount(newMouse->buttons); ++buttonIndex) {
-		newMouse->buttons[buttonIndex] = oldMouse->buttons[buttonIndex];
+		newMouse->buttons[buttonIndex].endedDown = oldMouse->buttons[buttonIndex].endedDown;
 	}
 
 	// Remember previous gamepad connected states
@@ -526,7 +526,7 @@ extern int GameMain(const GameConfiguration *config) {
 			const float alphaRaw = (float)(frameAccumulator / targetDeltaTime);
 			const float alpha = F32Clamp(alphaRaw, 0.0f, 1.0f);
 			ResetRenderState(renderState);
-			GameRender(&gameMem, alpha);
+			GameRender(&gameMem, newInput, alpha);
 			RenderWithOpenGL(renderState);
 			fplVideoFlip();
 			++frameCount;
