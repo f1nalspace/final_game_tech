@@ -9,8 +9,8 @@ extern bool EntityInit(Entity *entity, const uint32_t id, const Vec2f radius, co
 
 	fplClearStruct(entity);
 	entity->id = id;
-	entity->radius =  V2fHadamard(TileSize, V2fInit(0.3f, 0.7f));
-	entity->velocity = radius;
+	entity->radius =  radius;
+	entity->velocity = V2fZero();
 	entity->posCorrect = V2fZero();
 	entity->color = color;
 	entity->position[0] = entity->position[1] = position;
