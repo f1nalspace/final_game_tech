@@ -208,6 +208,7 @@ static Vec2i MapResizeToTilePos(Map *map, const Vec2i tilePos) {
 	if (map == fpl_null || map->width == 0 || map->height == 0) {
 		return tilePos;
 	}
+
 	Vec2i newOrigin = map->origin;
 	Vec2i newSizeAppend = V2iInit(0, 0);
 	Vec2i newTilePos = tilePos;
@@ -625,7 +626,12 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 		PushText(renderState, text, fplGetStringLength(text), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
 
 		blockPos = V2fSub(blockPos, V2fInit(0, fontHeight));
-		fplStringFormat(text, fplArrayCount(text), "Drawing: %d x %d, Active: %s, Tile: %d, Mouse down: %s", state->editor.drawTilePos.x, state->editor.drawTilePos.y, state->editor.isDrawing ? "yes" : "no", state->editor.drawTile, input->mouse.left.endedDown ? "yes" : "no");
+		fplStringFormat(text, fplArrayCount(text), "Drawing: %d x %d, Active: %s, Tile: %d", state->editor.drawTilePos.x, state->editor.drawTilePos.y, state->editor.isDrawing ? "yes" : "no", state->editor.drawTile);
+		PushText(renderState, text, fplGetStringLength(text), &font->desc, font->texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, blackColor);
+		PushText(renderState, text, fplGetStringLength(text), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
+
+		blockPos = V2fSub(blockPos, V2fInit(0, fontHeight));
+		fplStringFormat(text, fplArrayCount(text), "Mouse pos: %.04f x %.04f, down: %s", state->mouseWorldPos.x, state->mouseWorldPos.y, input->mouse.left.endedDown ? "yes" : "no");
 		PushText(renderState, text, fplGetStringLength(text), &font->desc, font->texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, blackColor);
 		PushText(renderState, text, fplGetStringLength(text), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
 	}
