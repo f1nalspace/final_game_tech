@@ -219,7 +219,7 @@ extern bool MapResizeToTilePos(Map *map, const Vec2i tilePos) {
 	fplMemoryCopy(map->solidTiles, requiredOldSize, oldTiles);
 
 	map->persistentMemory.used = 0;
-	size_t requiredNewSize = newMapSize.w * newMapSize.h * sizeof(uint32_t);
+	size_t requiredNewSize = newMapSize.w * newMapSize.h * sizeof(Tile);
 	fplAssert(requiredNewSize <= map->persistentMemory.size);
 
 	// Create new tiles and copy old tiles over it
