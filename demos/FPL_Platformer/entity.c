@@ -99,27 +99,21 @@ static void EntityMapCollisions(Physics *physics, Entity *entity, const Map *map
 		return;
 	}
 
-	int mapMaxWidthMinusOne = map->width - 1;
-	int mapMaxHeightMinusOne = map->height - 1;
-
 	Contact contacts[2] = fplZeroInit;
 
 	for (int x = tileMin.x; x <= tileMax.x; ++x) {
 		for (int y = tileMin.y; y <= tileMax.y; ++y) {
-			if ((x < 0 || x > mapMaxWidthMinusOne) || (y < 0 || y > mapMaxHeightMinusOne)) {
+			Vec2i tilePos = V2iInit(x, y);
+			if (!MapIsTileInside(map, tilePos)) {
 				continue;
 			}
-
-			Vec2i tilePos = V2iInit(x, y);
 
 			Tile tile = MapGetTile(map, tilePos);
 			if (!MapTileTypeIsObstacle(map, tile.type)) {
 				continue;
 			}
 
-			uint32_t index = y * map->width + x;
-
-			uint32_t tileID = MapTileIDStart + index;
+			uint32_t tileID = tile.id;
 
 			Vec2f tileWorld = MapTileCoordsToWorld(map, tilePos);
 			AABB2f tileBounds = AABB2fInit(tileWorld, V2fAdd(tileWorld, TileSize));
