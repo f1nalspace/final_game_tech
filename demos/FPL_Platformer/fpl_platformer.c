@@ -204,100 +204,101 @@ extern bool IsGameExiting(GameMemory *gameMemory) {
 	return state->isExiting;
 }
 
-static Vec2i MapResizeToTilePos(Map *map, const Vec2i tilePos) {
+static bool MapResizeToTilePos(Map *map, const Vec2i tilePos) {
 	if (map == fpl_null || map->width == 0 || map->height == 0) {
-		return tilePos;
+		return false; // Invalid arguments
 	}
+
+	int mapWidthMinusOne = map->width - 1;
+	int mapHeightMinusOne = map->height - 1;
+
+	Vec2i oldOrigin = map->origin;
 
 	Vec2i newOrigin = map->origin;
-	Vec2i newSizeAppend = V2iInit(0, 0);
-	Vec2i newTilePos = tilePos;
-	if (tilePos.x < 0) {
-		int xcount = abs(tilePos.x);
+
+	Vec2i append = V2iInit(0, 0);
+
+	if (tilePos.x < oldOrigin.x) {
+		int xcount = oldOrigin.x - tilePos.x;
 		fplAssert(xcount > 0);
-		newSizeAppend.x += xcount;
+		append.w += xcount;
 		newOrigin.x -= xcount;
-		newTilePos.x += xcount;
-	} else if (tilePos.x > ((int)map->width - 1)) {
-		int xcount = tilePos.x - ((int)map->width - 1);
+	} else if ((tilePos.x - oldOrigin.x) > mapWidthMinusOne) {
+		int xcount = (tilePos.x - oldOrigin.x) - mapWidthMinusOne;
 		fplAssert(xcount > 0);
-		newSizeAppend.x += xcount;
-		newTilePos.x = tilePos.x;
+		append.w += xcount;
 	}
-	if (tilePos.y < 0) {
-		int ycount = abs(tilePos.y);
+
+	if (tilePos.y < oldOrigin.y) {
+		int ycount = oldOrigin.y - tilePos.y;
 		fplAssert(ycount > 0);
-		newSizeAppend.y += ycount;
+		append.h += ycount;
 		newOrigin.y -= ycount;
-		newTilePos.y += ycount;
-	} else if (tilePos.y > ((int)map->height - 1)) {
-		int ycount = tilePos.y - ((int)map->height - 1);
+	} else if (tilePos.y > mapHeightMinusOne) {
+		int ycount = tilePos.y - mapHeightMinusOne;
 		fplAssert(ycount > 0);
-		newSizeAppend.y += ycount;
-		newTilePos.y = tilePos.y;
+		append.h += ycount;
 	}
 
-	if (newSizeAppend.x > 0 || newSizeAppend.y > 0) {
-		Vec2i oldMapSize = V2iInit(map->width, map->height);
-		Vec2i newMapSize = V2iInit(map->width + newSizeAppend.x, map->height + newSizeAppend.y);
-
-		map->temporaryMemory.used = 0;
-
-		fmemMemoryBlock tempBlock;
-		fmemBeginTemporary(&map->temporaryMemory, &tempBlock);
-
-		size_t requiredOldSize = oldMapSize.w * oldMapSize.h * sizeof(Tile);
-		fplAssert(requiredOldSize <= tempBlock.size);
-
-		Tile *oldTiles = (Tile *)fmemPush(&tempBlock, requiredOldSize, fmemPushFlags_None);
-		fplMemoryCopy(map->solidTiles, requiredOldSize, oldTiles);
-
-		map->persistentMemory.used = 0;
-		size_t requiredNewSize = newMapSize.w * newMapSize.h * sizeof(uint32_t);
-		fplAssert(requiredNewSize <= map->persistentMemory.size);
-
-		int offsetX = 0;
-		int offsetY = 0;
-
-		if (tilePos.x >= 0 && newSizeAppend.x > 0) {
-			offsetX -= abs(newSizeAppend.x);
-		}
-
-		if (tilePos.y >= 0 && newSizeAppend.x > 0) {
-			offsetY += abs(newSizeAppend.y);
-		} else if (tilePos.y < 0) {
-			offsetY -= abs(tilePos.y);
-		}
-
-		// Create new tiles and copy old tiles over it
-		map->width = newMapSize.w;
-		map->height = newMapSize.h;
-		map->solidTiles = (Tile *)fmemPush(&map->persistentMemory, requiredNewSize, fmemPushFlags_Clear);
-		for (int y = 0; y < oldMapSize.h; ++y) {
-			for (int x = 0; x < oldMapSize.w; ++x) {
-				int ox = newSizeAppend.x + x + offsetX;
-				int oy = newSizeAppend.y + y + offsetY;
-				fplAssert(ox >= 0 && ox < newMapSize.w);
-				fplAssert(oy >= 0 && oy < newMapSize.h);
-				size_t index = oy * newMapSize.w + ox;
-				map->solidTiles[index] = oldTiles[y * oldMapSize.w + x];
-			}
-		}
-
-		// Re-assign id's
-		for (int y = 0; y < newMapSize.h; ++y) {
-			for (int x = 0; x < newMapSize.w; ++x) {
-				uint32_t index = y * newMapSize.w + x;
-				map->solidTiles[index].id = MapTileIDStart + index;
-			}
-		}
-
-		fmemEndTemporary(&map->temporaryMemory);
+	if (append.w == 0 && append.h == 0) {
+		return false; // Nothnig to resize
 	}
 
+	fplAssert(append.w >= 0 || append.h >= 0);
+
+	Vec2i oldMapSize = V2iInit(map->width, map->height);
+	Vec2i newMapSize = V2iInit(map->width + append.w, map->height + append.h);
+
+	map->temporaryMemory.used = 0;
+
+	fmemMemoryBlock tempBlock;
+	fmemBeginTemporary(&map->temporaryMemory, &tempBlock);
+
+	size_t requiredOldSize = oldMapSize.w * oldMapSize.h * sizeof(Tile);
+	fplAssert(requiredOldSize <= tempBlock.size);
+
+	Tile *oldTiles = (Tile *)fmemPush(&tempBlock, requiredOldSize, fmemPushFlags_None);
+	fplMemoryCopy(map->solidTiles, requiredOldSize, oldTiles);
+
+	map->persistentMemory.used = 0;
+	size_t requiredNewSize = newMapSize.w * newMapSize.h * sizeof(uint32_t);
+	fplAssert(requiredNewSize <= map->persistentMemory.size);
+
+	// Create new tiles and copy old tiles over it
+	map->width = newMapSize.w;
+	map->height = newMapSize.h;
 	map->origin = newOrigin;
+	map->solidTiles = (Tile *)fmemPush(&map->persistentMemory, requiredNewSize, fmemPushFlags_Clear);
 
-	return newTilePos;
+	Vec2i offsetFromOldToNew = V2iSub(oldOrigin, newOrigin);
+
+	if (offsetFromOldToNew.y > 0) {
+		offsetFromOldToNew.y = 0;
+	} else if (append.h > 0) {
+		offsetFromOldToNew.y = append.h;
+	}
+
+	for (int y = 0; y < oldMapSize.h; ++y) {
+		for (int x = 0; x < oldMapSize.w; ++x) {
+			Vec2i oldLocal = V2iInit(x, y);
+			Vec2i newLocal = V2iAdd(oldLocal, offsetFromOldToNew);
+			fplAssert(newLocal.x >= 0 && newLocal.x < newMapSize.w);
+			fplAssert(newLocal.y >= 0 && newLocal.y < newMapSize.h);
+			map->solidTiles[newLocal.y * newMapSize.w + newLocal.x] = oldTiles[oldLocal.y * oldMapSize.w + oldLocal.x];
+		}
+	}
+
+	// Re-assign id's
+	for (int y = 0; y < newMapSize.h; ++y) {
+		for (int x = 0; x < newMapSize.w; ++x) {
+			uint32_t index = y * newMapSize.w + x;
+			map->solidTiles[index].id = MapTileIDStart + index;
+		}
+	}
+
+	fmemEndTemporary(&map->temporaryMemory);
+
+	return true;
 }
 
 static void EditorPaintTile(Editor *editor, Map *map, const Vec2i tilePos) {
@@ -307,10 +308,10 @@ static void EditorPaintTile(Editor *editor, Map *map, const Vec2i tilePos) {
 		fplDebugFormatOut("Paint tile %d x %d with %d", tilePos.x, tilePos.y, editor->drawTile);
 	} else {
 		// NOTE(final): Resize returns a new tile position, due to offset change
-		Vec2i newTilePos = MapResizeToTilePos(map, tilePos);
-		if (!V2iEquals(newTilePos, tilePos)) {
-			//MapSetTileType(map, newTilePos, editor->drawTile);
-			editor->drawTilePos = newTilePos;
+		if (MapResizeToTilePos(map, tilePos)) {
+			//MapSetTileType(map, tilePos, editor->drawTile);
+			editor->drawTilePos = tilePos;
+			editor->isDrawing = false;
 		}
 	}
 }
@@ -322,8 +323,8 @@ static void EditorInput(GameState *state, const Input *input) {
 
 	Vec2i mouseTilePos = MapWorldCoordsToTile(map, state->mouseWorldPos);
 
-	if (!editor->isDrawing) {
-		if (IsDown(input->mouse.left)) {
+	if (IsDown(input->mouse.left)) {
+		if (!editor->isDrawing) {
 			editor->isDrawing = true;
 			editor->drawTilePos = mouseTilePos;
 			if (MapIsTileInside(map, mouseTilePos)) {
@@ -334,21 +335,15 @@ static void EditorInput(GameState *state, const Input *input) {
 			}
 			EditorPaintTile(editor, map, mouseTilePos);
 		} else {
-			editor->drawTile = UINT32_MAX;
-			editor->drawTilePos = mouseTilePos;
-			editor->isDrawing = false;
-		}
-	} else {
-		if (IsDown(input->mouse.left)) {
 			fplAssert(editor->drawTile != UINT32_MAX);
 			if (!V2iEquals(mouseTilePos, editor->drawTilePos)) {
 				EditorPaintTile(editor, map, mouseTilePos);
 			}
-		} else {
-			editor->drawTile = UINT32_MAX;
-			editor->drawTilePos = mouseTilePos;
-			editor->isDrawing = false;
 		}
+	} else {
+		editor->drawTile = UINT32_MAX;
+		editor->drawTilePos = mouseTilePos;
+		editor->isDrawing = false;
 	}
 }
 
@@ -480,7 +475,7 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 
 	Vec2i mapSize = V2iInit(map->width, map->height);
 	Vec2f mapArea = V2fHadamard(TileSize, V2fInit((float)mapSize.x, (float)mapSize.y));
-	Vec2f mapOrigin = MapTileCoordsToWorld(map, V2iInit(0,0));
+	Vec2f mapOrigin = MapTileCoordsToWorld(map, map->origin);
 	Vec4f mapSolidTileColor = V4fInit(1.0f, 1.0f, 1.0f, 1.0f);
 	Vec4f mapGhostTileColor = V4fInit(0.3f, 0.3f, 0.3f, 1.0f);
 	Vec4f playerTileColor = V4fInit(0.3f, 0.1f, 0.7f, 1.0f);
