@@ -222,9 +222,13 @@ static void EditorPaintTile(Editor *editor, Map *map, const Vec2i tilePos) {
 }
 
 static void EditorInput(GameState *state, const Input *input) {
-	Map *map = &state->world.map;
+	World *world = &state->world;
+
+	Map *map = &world->map;
 
 	Editor *editor = &state->editor;
+
+	Entity *player = &world->entities.player;
 
 	Vec2i mouseTilePos = MapWorldCoordsToTile(map, state->mouseWorldPos);
 
@@ -439,21 +443,15 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	// Render collision tile bounds
 	bool renderPlayerTileBounds = true;
 	if (renderPlayerTileBounds) {
-		// Predict position for next frame
-		Vec2f predictedPos = V2fAddMultScalar(player->position[0], player->velocity, dt);
-
-		// Create motion bounds AABB and expand it
-		Vec2f min = V2fSub(V2fMin(predictedPos, player->position[0]), player->radius);
-		Vec2f max = V2fAdd(V2fMax(predictedPos, player->position[0]), player->radius);
-		AABB2f entityMotionBounds = AABB2fInit(min, max);
+		// Get motion bounds
+		AABB2f entityMotionBounds = EntityGetMotionBounds(player, dt);
 		AABB2fExpandScalar(&entityMotionBounds, PhysicsAABBExpansion);
 
 		// Tile tiles area from AABB
-		Vec2i minTile = MapWorldCoordsToTile(map, entityMotionBounds.min);
-		Vec2i maxTile = MapWorldCoordsToTile(map, V2fAdd(entityMotionBounds.max, V2fInit(0.5f, 0.5f)));
+		TileBounds tileBounds = MapGetTileBounds(map, entityMotionBounds);
 
-		for (int x = minTile.x; x <= maxTile.x; ++x) {
-			for (int y = minTile.y; y <= maxTile.y; ++y) {
+		for (int x = tileBounds.min.x; x <= tileBounds.max.x; ++x) {
+			for (int y = tileBounds.min.y; y <= tileBounds.max.y; ++y) {
 				Vec2i tilePos = V2iInit(x, y);
 				Vec2f worldPos = MapTileCoordsToWorld(map, tilePos);
 				Vec2f tileCenter = V2fAdd(worldPos, TileRadius);

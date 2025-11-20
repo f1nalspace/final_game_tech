@@ -90,6 +90,16 @@ fpl_inline bool EntityIsAir(const Entity *entity) {
 	return !entity->groundState.current;
 }
 
+fpl_inline AABB2f EntityGetMotionBounds(const Entity *entity, const float dt) {
+	// Predict position for next frame
+	Vec2f predictedPos = V2fAddMultScalar(entity->position[0], V2fAdd(entity->velocity, entity->posCorrect), dt);
+	// Create motion and return it
+	Vec2f min = V2fSub(V2fMin(predictedPos, entity->position[0]), entity->radius);
+	Vec2f max = V2fAdd(V2fMax(predictedPos, entity->position[0]), entity->radius);
+	AABB2f result = AABB2fInit(min, max);
+	return result;
+}
+
 extern bool EntityInit(Entity *entity, const uint32_t id, const Vec2f radius, const Vec2f position, const Vec4f color);
 extern void EntityInput(Entity *entity, const Input *input);
 extern void EntityUpdate(Physics *physics, Entity *entity, const Map *map, const float dt);

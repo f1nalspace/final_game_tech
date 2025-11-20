@@ -33,6 +33,16 @@ static const Tile gEmptyTile = fplZeroInit;
 
 #define TileEmpty gEmptyTile
 
+typedef struct TileBounds {
+	Vec2i min;
+	Vec2i max;
+} TileBounds;
+
+fpl_inline TileBounds TileBoundsInit(const Vec2i min, const Vec2i max) {
+	TileBounds result = fplStructInit(TileBounds, min, max);
+	return result;
+}
+
 typedef struct MapDefinition {
 	// The 1D tile type array (width * height)
 	TileType *tiles;
@@ -163,6 +173,12 @@ fpl_inline AABB2f MapCreateTileAABB(const Map *map, const Vec2i tilePos) {
 	Vec2f worldPos = MapTileCoordsToWorld(map, tilePos);
 	AABB2f result = AABB2fInitFromCenter(V2fAdd(worldPos, map->tileRadius), map->tileRadius);
 	return result;
+}
+
+fpl_inline TileBounds MapGetTileBounds(const Map *map, const AABB2f aabb) {
+	Vec2i minTile = MapWorldCoordsToTile(map, aabb.min);
+	Vec2i maxTile = MapWorldCoordsToTile(map, V2fAdd(aabb.max, V2fInit(0.5f, 0.5f)));
+	return TileBoundsInit(minTile, maxTile);
 }
 
 extern bool MapInit(fmemMemoryBlock *memory, Map *map);

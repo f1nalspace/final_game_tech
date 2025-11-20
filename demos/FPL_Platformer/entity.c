@@ -135,20 +135,14 @@ static void EntityMapCollisions(Physics *physics, Entity *entity, const Map *map
 static void EntityHandleCollisions(Physics *physics, Entity *entity, const Map *map, const float dt) {
 	Vec2f pos = entity->position[0];
 
-	// Predict position for next frame
-	Vec2f predictedPos = V2fAddMultScalar(pos, entity->velocity, dt);
+	// Get motion bounds
+	AABB2f motionBounds = EntityGetMotionBounds(entity, dt);
+	AABB2fExpandScalar(&motionBounds, PhysicsAABBExpansion);
 
-	// Create motion bounds AABB and expand it
-	Vec2f min = V2fSub(V2fMin(predictedPos, pos), entity->radius);
-	Vec2f max = V2fAdd(V2fMax(predictedPos, pos), entity->radius);
-	AABB2f playerMotionBounds = AABB2fInit(min, max);
-	AABB2fExpandScalar(&playerMotionBounds, PhysicsAABBExpansion);
+	// Tile tiles area from AABB
+	TileBounds tileBounds = MapGetTileBounds(map, motionBounds);
 
-	// Get tiles area in min/max tile coordinates
-	Vec2i minTile = MapWorldCoordsToTile(map, playerMotionBounds.min);
-	Vec2i maxTile = MapWorldCoordsToTile(map, V2fAdd(playerMotionBounds.max, V2fInit(0.5f, 0.5f)));
-
-	EntityMapCollisions(physics, entity, map, minTile, maxTile, dt);
+	EntityMapCollisions(physics, entity, map, tileBounds.min, tileBounds.max, dt);
 }
 
 extern void EntityUpdate(Physics *physics, Entity *entity, const Map *map, const float dt) {
