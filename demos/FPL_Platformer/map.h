@@ -120,9 +120,10 @@ fpl_inline bool MapIsTileInside(const Map *map, const Vec2i tilePos) {
 	if (map == fpl_null) {
 		return false;
 	}
+	Vec2i local = MapPublicTilePosToLocalTilePos(map, tilePos);
 	int widthMinusOne = map->width - 1;
 	int heightMinusOne = map->height - 1;
-	if (tilePos.x < 0 || tilePos.x > widthMinusOne || tilePos.y < 0 || tilePos.y > heightMinusOne) {
+	if (local.x < 0 || local.x > widthMinusOne || local.y < 0 || local.y > heightMinusOne) {
 		return false;
 	}
 	return true;
