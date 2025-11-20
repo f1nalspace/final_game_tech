@@ -428,7 +428,7 @@ static void PushOrigin(RenderState *renderState, const Vec2f origin) {
 	PushQuad(renderState, origin, 1.0f, V4fInit(0.25f, 0.25f, 0.25f, 1), true, 1.0f);
 }
 
-extern void GameRender(GameMemory *gameMemory, const float alpha) {
+extern void GameRender(GameMemory *gameMemory, const Input *input, const float alpha) {
 	GameState *state = gameMemory->game;
 	assert(state != fpl_null);
 

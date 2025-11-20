@@ -134,7 +134,7 @@ extern bool GameInit(GameMemory *gameMemory);
 extern void GameRelease(GameMemory *gameMemory);
 extern void GameInput(GameMemory *gameMemory, const Input *input);
 extern void GameUpdate(GameMemory *gameMemory, const Input *input);
-extern void GameRender(GameMemory *gameMemory, const float alpha);
+extern void GameRender(GameMemory *gameMemory, const Input *input, const float alpha);
 extern void GameUpdateAndRender(GameMemory *gameMemory, const Input *input, const float alpha);
 extern bool IsGameExiting(GameMemory *gameMemory);
 
