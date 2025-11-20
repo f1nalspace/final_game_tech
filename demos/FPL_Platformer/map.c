@@ -16,6 +16,17 @@ extern bool MapInit(fmemMemoryBlock *memory, Map *map) {
 	return true;
 }
 
+extern void MapClear(Map *map) {
+	if (map == fpl_null || map->width == 0 || map->height == 0) {
+		return;
+	}
+	map->persistentMemory.used = 0;
+	map->temporaryMemory.used = 0;
+	map->width = map->height = 0;
+	map->origin = V2iInit(0, 0);
+	map->solidTiles = fpl_null;
+}
+
 static bool MapTilePosIsObstacleInternal(const Map *map, const int x, const int y) {
 	if (map == fpl_null || map->width == 0 || map->height == 0) {
 		return false;

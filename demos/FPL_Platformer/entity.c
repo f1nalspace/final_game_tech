@@ -2,33 +2,18 @@
 
 #include "physics.h"
 
-extern bool EntityInit(Entity *entity, const uint32_t id, const Map *map) {
-	if (entity == fpl_null || map == fpl_null) {
+extern bool EntityInit(Entity *entity, const uint32_t id, const Vec2f radius, const Vec2f position, const Vec4f color) {
+	if (entity == fpl_null) {
 		return false; // Invalid arguments
 	}
 
 	fplClearStruct(entity);
 	entity->id = id;
 	entity->radius =  V2fHadamard(TileSize, V2fInit(0.3f, 0.7f));
-	entity->velocity = V2fInit(0.0f, 0.0f);
+	entity->velocity = radius;
 	entity->posCorrect = V2fZero();
-	entity->color = V4fInit(0.05f, 0.1f, 0.95f, 1);
-	entity->position[0] = entity->position[1] = V2fInit(0.0f, 0.0f);
-
-	Vec2i playerTilePos;
-	if (MapFindPositionByTile(map, TileType_PlayerStart, &playerTilePos)) {
-		Vec2f tilePos = MapTileCoordsToWorld(map, playerTilePos);
-		Vec2f tileBottomCenter = V2fAdd(tilePos, V2fInit(TileWidth * 0.5f, 0));
-
-		// Move the player above the tile, but to the center
-		entity->position[0] = entity->position[1] = V2fAdd(tileBottomCenter, V2fInit(0, entity->radius.h));
-
-		// Move the player above the tile, but to the right
-		entity->position[0] = entity->position[1] = V2fAdd(tileBottomCenter, V2fInit(TileSize.w * 0.5f - entity->radius.w, entity->radius.h));
-
-		// Move the player above the tile, but to the left
-		entity->position[0] = entity->position[1] = V2fAdd(tileBottomCenter, V2fInit(-TileSize.w * 0.5f + entity->radius.w, entity->radius.h));
-	}
+	entity->color = color;
+	entity->position[0] = entity->position[1] = position;
 
 	entity->applyGroundFriction = true;
 	entity->groundFriction = EntityDefaultGroundFriction;

@@ -26,7 +26,9 @@
 // Types
 //
 typedef struct GroundState {
+	// Is entity grounded
 	fpl_b32 current;
+	// Was entity grounded
 	fpl_b32 last;
 } GroundState;
 
@@ -88,7 +90,7 @@ fpl_inline bool EntityIsAir(const Entity *entity) {
 	return !entity->groundState.current;
 }
 
-extern bool EntityInit(Entity *entity, const uint32_t id, const Map *map);
+extern bool EntityInit(Entity *entity, const uint32_t id, const Vec2f radius, const Vec2f position, const Vec4f color);
 extern void EntityInput(Entity *entity, const Input *input);
 extern void EntityUpdate(Physics *physics, Entity *entity, const Map *map, const float dt);
 

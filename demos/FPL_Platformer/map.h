@@ -153,6 +153,8 @@ fpl_inline AABB2f MapCreateTileAABB(const Map *map, const Vec2i tilePos) {
 
 extern bool MapInit(fmemMemoryBlock *memory, Map *map);
 
+extern void MapClear(Map *map);
+
 extern bool MapAssign(Map *map, const MapDefinition *definition);
 
 // Finds the first tile position from the specified tile type and returns true if found, false otherwise
