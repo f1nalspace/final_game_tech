@@ -148,13 +148,13 @@ fpl_inline bool MapTilePosIsObstacle(const Map *map, const Vec2i tilePos) {
 	if (map == fpl_null || map->width == 0 || map->height == 0) {
 		return false;
 	}
+	Vec2i local = MapPublicTilePosToLocalTilePos(map, tilePos);
 	int widthMinusOne = map->width - 1;
 	int heightMinusOne = map->height - 1;
-	if (tilePos.x < 0 || tilePos.x > widthMinusOne || tilePos.y < 0 || tilePos.y > heightMinusOne) {
+	if (local.x < 0 || local.x > widthMinusOne || local.y < 0 || local.y > heightMinusOne) {
 		return false;
 	}
-	int invY = heightMinusOne - tilePos.y;
-	Tile tile = map->solidTiles[invY * map->width + tilePos.x];
+	Tile tile = map->solidTiles[local.y * map->width + local.x];
 	bool result = MapTileTypeIsObstacle(map, tile.type);
 	return result;
 }
@@ -175,5 +175,7 @@ extern bool MapAssign(Map *map, const MapDefinition *definition);
 extern bool MapFindPositionByTile(const Map *map, const TileType type, Vec2i *outTilePos);
 
 extern void MapAutoSetAllGhostTiles(Map *map);
+
+extern bool MapResizeToTilePos(Map *map, const Vec2i tilePos);
 
 #endif // MAP_H
