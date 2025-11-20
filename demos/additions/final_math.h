@@ -614,6 +614,34 @@ fpl_force_inline float RoundU8ToF32(uint8_t value) {
 }
 
 //
+// Vec2i
+//
+fpl_force_inline Vec2i V2iAdd(const Vec2i a, const Vec2i b) {
+	Vec2i result = V2iInit(a.x + b.x, a.y + b.y);
+	return(result);
+}
+
+fpl_force_inline Vec2i V2iSub(const Vec2i a, const Vec2i b) {
+	Vec2i result = V2iInit(a.x - b.x, a.y - b.y);
+	return(result);
+}
+
+fpl_force_inline Vec2i V2iMult(const Vec2i a, const Vec2i b) {
+	Vec2i result = V2iInit(a.x * b.x, a.y * b.y);
+	return(result);
+}
+
+fpl_force_inline Vec2i V2iDiv(const Vec2i a, const Vec2i b) {
+	Vec2i result = V2iInit(a.x / b.x, a.y / b.y);
+	return(result);
+}
+
+fpl_force_inline bool V2iEquals(const Vec2i a, const Vec2i b) {
+	bool result = (a.x == b.x) && (a.y == b.y);
+	return(result);
+}
+
+//
 // Vec2f
 //
 fpl_force_inline Vec2f V2fAdd(const Vec2f a, const Vec2f b) {
@@ -789,14 +817,6 @@ fpl_force_inline Vec2f V2fMin(const Vec2f a, const Vec2f b) {
 
 fpl_force_inline Vec2f V2fMax(const Vec2f a, const Vec2f b) {
 	Vec2f result = V2fInit(F32Max(a.x, b.x), F32Max(a.y, b.y));
-	return(result);
-}
-
-//
-// Vec2i
-//
-fpl_force_inline bool V2iEquals(const Vec2i a, const Vec2i b) {
-	bool result = a.x == b.x && a.y == b.y;
 	return(result);
 }
 
