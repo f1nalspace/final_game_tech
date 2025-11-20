@@ -85,6 +85,7 @@ typedef struct Assets {
 
 typedef struct Editor {
 	uint32_t drawTile;
+	Vec2i drawTilePos;
 	bool isDrawing;
 } Editor;
 
@@ -203,7 +204,10 @@ extern bool IsGameExiting(GameMemory *gameMemory) {
 	return state->isExiting;
 }
 
-static void MapPaintTile(Map *map, const Vec2i tilePos, const TileType type) {
+static Vec2i MapResizeToTilePos(Map *map, const Vec2i tilePos) {
+	if (map == fpl_null || map->width == 0 || map->height == 0) {
+		return tilePos;
+	}
 	Vec2i newOrigin = map->origin;
 	Vec2i newSizeAppend = V2iInit(0, 0);
 	Vec2i newTilePos = tilePos;
@@ -292,9 +296,22 @@ static void MapPaintTile(Map *map, const Vec2i tilePos, const TileType type) {
 
 	map->origin = newOrigin;
 
-	MapSetTileType(map, newTilePos, type);
+	return newTilePos;
+}
 
-	
+static void EditorPaintTile(Editor *editor, Map *map, const Vec2i tilePos) {
+	if (MapIsTileInside(map, tilePos)) {
+		editor->drawTilePos = tilePos;
+		MapSetTileType(map, tilePos, editor->drawTile);
+		fplDebugFormatOut("Paint tile %d x %d with %d", tilePos.x, tilePos.y, editor->drawTile);
+	} else {
+		// NOTE(final): Resize returns a new tile position, due to offset change
+		Vec2i newTilePos = MapResizeToTilePos(map, tilePos);
+		if (!V2iEquals(newTilePos, tilePos)) {
+			//MapSetTileType(map, newTilePos, editor->drawTile);
+			editor->drawTilePos = newTilePos;
+		}
+	}
 }
 
 static void EditorInput(GameState *state, const Input *input) {
@@ -304,25 +321,31 @@ static void EditorInput(GameState *state, const Input *input) {
 
 	Vec2i mouseTilePos = MapWorldCoordsToTile(map, state->mouseWorldPos);
 
-	if (IsDown(input->mouse.left)) {
-		if (!editor->isDrawing) {
+	if (!editor->isDrawing) {
+		if (IsDown(input->mouse.left)) {
 			editor->isDrawing = true;
-
+			editor->drawTilePos = mouseTilePos;
 			if (MapIsTileInside(map, mouseTilePos)) {
 				Tile tile = MapGetTile(map, mouseTilePos);
 				editor->drawTile = tile.type != TileType_Solid ? TileType_Solid : TileType_None;
 			} else {
-				editor->drawTile = 1;
+				editor->drawTile = TileType_Solid;
 			}
-		}
-		if (editor->isDrawing) {
-			fplAssert(editor->drawTile != UINT32_MAX);
-			MapPaintTile(map, mouseTilePos, editor->drawTile);
-
+			EditorPaintTile(editor, map, mouseTilePos);
+		} else {
+			editor->drawTile = UINT32_MAX;
+			editor->drawTilePos = mouseTilePos;
+			editor->isDrawing = false;
 		}
 	} else {
-		if (editor->isDrawing) {
+		if (IsDown(input->mouse.left)) {
+			fplAssert(editor->drawTile != UINT32_MAX);
+			if (!V2iEquals(mouseTilePos, editor->drawTilePos)) {
+				EditorPaintTile(editor, map, mouseTilePos);
+			}
+		} else {
 			editor->drawTile = UINT32_MAX;
+			editor->drawTilePos = mouseTilePos;
 			editor->isDrawing = false;
 		}
 	}
@@ -598,6 +621,12 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 
 		blockPos = V2fSub(blockPos, V2fInit(0, fontHeight));
 		fplStringFormat(text, fplArrayCount(text), "Player on ground: %s", player->groundState.current ? "yes" : "no");
+		PushText(renderState, text, fplGetStringLength(text), &font->desc, font->texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, blackColor);
+		PushText(renderState, text, fplGetStringLength(text), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
+
+		blockPos = V2fSub(blockPos, V2fInit(0, fontHeight));
+		fplStringFormat(text, fplArrayCount(text), "Drawing: %d x %d, Active: %s, Tile: %d, Mouse down: %s", state->editor.drawTilePos.x, state->editor.drawTilePos.y, state->editor.isDrawing ? "yes" : "no", state->editor.drawTile, input->mouse.left.endedDown ? "yes" : "no");
+		PushText(renderState, text, fplGetStringLength(text), &font->desc, font->texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, blackColor);
 		PushText(renderState, text, fplGetStringLength(text), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
 	}
 
