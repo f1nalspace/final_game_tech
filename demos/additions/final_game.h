@@ -8,6 +8,14 @@ Description:
 
 	This file is part of the final_framework.
 
+Changelog:
+	## 2025-11-21
+	- Changed: GameRender to allow an Input argument as well
+	- Changed: Renamed ButtonWasPressed to ButtonButtonWasPressed
+	- Changed: Renamed IsDown to ButtonIsDown
+	- Changed: Use fpl_inline intead of inline
+	- Changed: Use fpl_extern intead of extern
+	
 License:
 	MIT License
 	Copyright 2017-2025 Torsten Spaete
@@ -28,20 +36,14 @@ typedef struct ButtonState {
 	fpl_b32 endedDown;
 } ButtonState;
 
-inline bool IsDown(const ButtonState state) {
+fpl_inline bool ButtonIsDown(const ButtonState state) {
 	bool result = state.endedDown != 0;
 	return(result);
 }
 
-inline bool WasPressed(const ButtonState state) {
+fpl_inline bool ButtonWasPressed(const ButtonState state) {
 	bool result = ((state.halfTransitionCount > 1) ||
 				  ((state.halfTransitionCount == 1) && (!state.endedDown)));
-	return(result);
-}
-
-inline bool WasReleased(const ButtonState state) {
-	bool result = ((state.halfTransitionCount > 1) ||
-				  ((state.halfTransitionCount == 1) && (state.endedDown)));
 	return(result);
 }
 
@@ -107,7 +109,7 @@ typedef struct Input {
 	int defaultControllerIndex;
 	// Indicates that the application is active or not -> only handle any input when this is true!
 	bool isActive;
-	// Indicates that the first GameUpdate() is called inside the Accumulator-Loop -> use this to prevent multiple key transitions by WasPressed() and WasReleased()!
+	// Indicates that the first GameUpdate() is called inside the Accumulator-Loop -> use this to prevent multiple key transitions by ButtonWasPressed()
 	bool isFirstUpdateOfFrame;
 } Input;
 
@@ -130,12 +132,12 @@ typedef enum GameWindowActiveType {
 } GameWindowActiveType;
 FPL_ENUM_AS_FLAGS_OPERATORS(GameWindowActiveType);
 
-extern bool GameInit(GameMemory *gameMemory);
-extern void GameRelease(GameMemory *gameMemory);
-extern void GameInput(GameMemory *gameMemory, const Input *input);
-extern void GameUpdate(GameMemory *gameMemory, const Input *input);
-extern void GameRender(GameMemory *gameMemory, const float alpha);
-extern void GameUpdateAndRender(GameMemory *gameMemory, const Input *input, const float alpha);
-extern bool IsGameExiting(GameMemory *gameMemory);
+fpl_extern bool GameInit(GameMemory *gameMemory);
+fpl_extern void GameRelease(GameMemory *gameMemory);
+fpl_extern void GameInput(GameMemory *gameMemory, const Input *input);
+fpl_extern void GameUpdate(GameMemory *gameMemory, const Input *input);
+fpl_extern void GameRender(GameMemory *gameMemory, const Input *input, const float alpha);
+fpl_extern void GameUpdateAndRender(GameMemory *gameMemory, const Input *input, const float alpha);
+fpl_extern bool IsGameExiting(GameMemory *gameMemory);
 
 #endif // FINAL_GAME_H
