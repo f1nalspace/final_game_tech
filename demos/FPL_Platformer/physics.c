@@ -68,9 +68,9 @@ fpl_force_inline Vec2f GetContactMajorAxis(const Vec2f v) {
 	// NOTE(final): Prefer x axis over the y axis
 	const float k = 0.1f * PhysicsLinearSlope;
 	if (y > x + k) {
-		return V2fInit(0.0f, F32MajorSign(v.y));
+		return V2fInit(0.0f, F32Sign(v.y));
 	} else {
-		return V2fInit(F32MajorSign(v.x), 0.0f);
+		return V2fInit(F32Sign(v.x), 0.0f);
 	}
 }
 

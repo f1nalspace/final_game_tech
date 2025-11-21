@@ -232,7 +232,7 @@ static void EditorInput(GameState *state, const Input *input) {
 
 	Vec2i mouseTilePos = MapWorldCoordsToTile(map, state->mouseWorldPos);
 
-	if (IsDown(input->mouse.left)) {
+	if (ButtonIsDown(input->mouse.left)) {
 		if (!editor->isDrawing) {
 			editor->isDrawing = true;
 			editor->drawTilePos = mouseTilePos;
@@ -276,7 +276,7 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 
 	// Debug input
 	const Controller *keyboardController = &input->controllers[0];
-	if (WasPressed(keyboardController->debugToggle)) {
+	if (ButtonWasPressed(keyboardController->debugToggle)) {
 		state->isDebugRendering = !state->isDebugRendering;
 	}
 
@@ -375,7 +375,7 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	const float dt = state->deltaTime;
 
 	// Re-compute matrices for smooth rendering
-	const float cameraScale = F32ScalarLerp(world->camera.scale[1], alpha, world->camera.scale[0]);
+	const float cameraScale = F32Lerp(world->camera.scale[1], alpha, world->camera.scale[0]);
 	const float invCameraScale = 1.0f / cameraScale;
 	const Vec2f cameraOffset = V2fLerp(world->camera.offset[1], alpha, world->camera.offset[0]);
 	state->projection = M4fOrthoRH(-w * invCameraScale, w * invCameraScale, -h * invCameraScale, h * invCameraScale, 0.0f, 1.0f);

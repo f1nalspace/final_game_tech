@@ -31,14 +31,14 @@ extern void EntityInput(Entity *entity, const Input *input) {
 
 	// Horizontal Movement
 	float moveSpeed = EntityIsGrounded(entity) ? EntityDefaultWalkSpeed : EntityDefaultAirSpeed;
-	if (IsDown(controller->moveLeft)) {
+	if (ButtonIsDown(controller->moveLeft)) {
 		entity->velocity.x -= moveSpeed;
-	} else if (IsDown(controller->moveRight)) {
+	} else if (ButtonIsDown(controller->moveRight)) {
 		entity->velocity.x += moveSpeed;
 	}
 
 	// Jump can always be requested, regardless if in air or not
-	if (IsDown(controller->actionDown)) {
+	if (ButtonIsDown(controller->actionDown)) {
 		if (!entity->isJumpRequested) {
 			entity->isJumpRequested = true;
 		}
@@ -133,8 +133,6 @@ static void EntityMapCollisions(Physics *physics, Entity *entity, const Map *map
 }
 
 static void EntityHandleCollisions(Physics *physics, Entity *entity, const Map *map, const float dt) {
-	Vec2f pos = entity->position[0];
-
 	// Get motion bounds
 	AABB2f motionBounds = EntityGetMotionBounds(entity, dt);
 	AABB2fExpandScalar(&motionBounds, PhysicsAABBExpansion);
