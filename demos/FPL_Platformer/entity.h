@@ -22,6 +22,8 @@
 #define EntityDefaultGroundFriction 0.2f
 #define EntityDefaultAirFriction 0.0f
 
+#define EntitySensorGroundDistanceFromFoot 0.1f
+
 //
 // Types
 //

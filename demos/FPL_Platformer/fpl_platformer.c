@@ -388,6 +388,7 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	Vec4f mapSolidTileColor = V4fInit(1.0f, 1.0f, 1.0f, 1.0f);
 	Vec4f mapGhostTileColor = V4fInit(0.3f, 0.3f, 0.3f, 1.0f);
 	Vec4f playerTileColor = V4fInit(0.3f, 0.1f, 0.7f, 1.0f);
+	Vec4f groundSensorColor = V4fInit(0.0f, 1.0f, 0.0f, 1.0f);
 
 	Vec2f gridSize = mapArea;
 	Vec2f gridOrigin = mapOrigin;
@@ -440,8 +441,28 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	PushRectangleCenter(renderState, playerPos, player->radius, player->color, false, 2.0f);
 	PushOrigin(renderState, playerPos);
 
+	// Player sensors
+	{
+		Vec2f groundSensorDirection = V2fInit(0.0f, -1.0f);
+		float groundSensorDepth = 2.0f;
+		float groundSensorLeft = -player->radius.w * 0.8f;
+		float groundSensorRight = player->radius.w * 0.8f;
+		Vec2f groundSensorStartLeft = V2fAdd(playerPos, V2fInit(groundSensorLeft, -(player->radius.h + EntitySensorGroundDistanceFromFoot)));
+		Vec2f groundSensorStartRight = V2fAdd(playerPos, V2fInit(groundSensorRight, -(player->radius.h + EntitySensorGroundDistanceFromFoot)));
+		Vec2f groundSensorEndLeft = V2fAddMultScalar(groundSensorStartLeft, groundSensorDirection, groundSensorDepth);
+		Vec2f groundSensorEndRight = V2fAddMultScalar(groundSensorStartRight, groundSensorDirection, groundSensorDepth);
+		PushCircle(renderState, groundSensorEndLeft, 2.0f, 8, groundSensorColor, true, 0.0f);
+		PushCircle(renderState, groundSensorEndRight, 2.0f, 8, groundSensorColor, true, 0.0f);
+		Vec2i groundSensorEndLeftTilePos = MapWorldCoordsToTile(map, groundSensorEndLeft);
+		Vec2i groundSensorEndRightTilePos = MapWorldCoordsToTile(map, groundSensorEndRight);
+		Vec2f worldPosLeft = MapTileCoordsToWorld(map, groundSensorEndLeftTilePos);
+		Vec2f worldPosRight = MapTileCoordsToWorld(map, groundSensorEndRightTilePos);
+		PushRectangleCenter(renderState, V2fAdd(worldPosLeft, TileRadius), TileRadius, playerTileColor, false, 1.0f);
+		PushRectangleCenter(renderState, V2fAdd(worldPosRight, TileRadius), TileRadius, playerTileColor, false, 1.0f);
+	}
+
 	// Render collision tile bounds
-	bool renderPlayerTileBounds = true;
+	bool renderPlayerTileBounds = false;
 	if (renderPlayerTileBounds) {
 		// Get motion bounds
 		AABB2f entityMotionBounds = EntityGetMotionBounds(player, dt);
