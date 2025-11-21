@@ -9,10 +9,13 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
+	## 2025-11-21
+	- Reflect for API changes in final_game.h (Added Input argument to GameRender)
+
 	## 2025-11-15
-	- Fixed input controllers was properly preserved
-	- Added target fps to the GameConfiguration, to make the frames per second configurable
-	- Fixed active controller was always set, even when no buttons was pressed
+	- Fixed: Input controllers was properly preserved
+	- Fixed: Active controller was always set, even when no buttons was pressed
+	- Added: Target fps to the GameConfiguration, to make the frames per second configurable
 
 	## 2022-01-23
 	- Proper game timing is accumulated delta time method
@@ -526,7 +529,7 @@ extern int GameMain(const GameConfiguration *config) {
 			const float alphaRaw = (float)(frameAccumulator / targetDeltaTime);
 			const float alpha = F32Clamp(alphaRaw, 0.0f, 1.0f);
 			ResetRenderState(renderState);
-			GameRender(&gameMem, alpha);
+			GameRender(&gameMem, newInput, alpha);
 			RenderWithOpenGL(renderState);
 			fplVideoFlip();
 			++frameCount;
