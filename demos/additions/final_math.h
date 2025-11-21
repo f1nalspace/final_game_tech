@@ -12,6 +12,13 @@ License:
 	Copyright 2017-2025 Torsten Spaete
 
 Changelog
+	## 2025-11-21
+	- Added function V2iAdd()
+	- Added function V2iSub()
+	- Added function V2iMult()
+	- Added function V2iDiv()
+	- Renamed function F32ScalarLerp to F32Lerp
+
 	## 2025-11-16
 	- Added function V2fInitV2i()
 	- Added function V2fAbs()
@@ -575,7 +582,7 @@ fpl_force_inline float F32DegreesToRadians(const float degrees) {
 	return(result);
 }
 
-fpl_force_inline float F32ScalarLerp(float a, float t, float b) {
+fpl_force_inline float F32Lerp(float a, float t, float b) {
 	float result = (1.0f - t) * a + t * b;
 	return(result);
 }
@@ -599,7 +606,7 @@ fpl_force_inline float F32GetBestAngleDistance(float a0, float a1) {
 
 fpl_force_inline float F32AngleLerp(float a, float t, float b) {
 	float angleDistance = F32GetBestAngleDistance(a, b);
-	float result = F32ScalarLerp(a, t, a + angleDistance);
+	float result = F32Lerp(a, t, a + angleDistance);
 	return(result);
 }
 
@@ -610,34 +617,6 @@ fpl_force_inline uint8_t RoundF32ToU8(float value) {
 
 fpl_force_inline float RoundU8ToF32(uint8_t value) {
 	float result = value * F32InvByte;
-	return(result);
-}
-
-//
-// Vec2i
-//
-fpl_force_inline Vec2i V2iAdd(const Vec2i a, const Vec2i b) {
-	Vec2i result = V2iInit(a.x + b.x, a.y + b.y);
-	return(result);
-}
-
-fpl_force_inline Vec2i V2iSub(const Vec2i a, const Vec2i b) {
-	Vec2i result = V2iInit(a.x - b.x, a.y - b.y);
-	return(result);
-}
-
-fpl_force_inline Vec2i V2iMult(const Vec2i a, const Vec2i b) {
-	Vec2i result = V2iInit(a.x * b.x, a.y * b.y);
-	return(result);
-}
-
-fpl_force_inline Vec2i V2iDiv(const Vec2i a, const Vec2i b) {
-	Vec2i result = V2iInit(a.x / b.x, a.y / b.y);
-	return(result);
-}
-
-fpl_force_inline bool V2iEquals(const Vec2i a, const Vec2i b) {
-	bool result = (a.x == b.x) && (a.y == b.y);
 	return(result);
 }
 
@@ -779,20 +758,13 @@ fpl_force_inline Vec2f V2fAxisFromAngle(const float angle) {
 	return(result);
 }
 
-fpl_force_inline float F32MajorSign(const float x) {
-	if (x >= 0.0f) {
-		return 1.0f;
-	}
-	return -1.0f;
-}
-
 fpl_force_inline Vec2f V2fMajorAxis(const Vec2f v) {
 	float x = F32Abs(v.x);
 	float y = F32Abs(v.y);
 	if (x > y) {
-		return V2fInit(F32MajorSign(v.x), 0.0f);
+		return V2fInit(F32Sign(v.x), 0.0f);
 	} else {
-		return V2fInit(0.0f, F32MajorSign(v.y));
+		return V2fInit(0.0f, F32Sign(v.y));
 	}
 }
 
@@ -805,8 +777,8 @@ fpl_force_inline Vec2f V2fRandomDirection() {
 
 fpl_force_inline Vec2f V2fLerp(const Vec2f a, const float t, const Vec2f b) {
 	Vec2f result;
-	result.x = F32ScalarLerp(a.x, t, b.x);
-	result.y = F32ScalarLerp(a.y, t, b.y);
+	result.x = F32Lerp(a.x, t, b.x);
+	result.y = F32Lerp(a.y, t, b.y);
 	return(result);
 }
 
@@ -817,6 +789,34 @@ fpl_force_inline Vec2f V2fMin(const Vec2f a, const Vec2f b) {
 
 fpl_force_inline Vec2f V2fMax(const Vec2f a, const Vec2f b) {
 	Vec2f result = V2fInit(F32Max(a.x, b.x), F32Max(a.y, b.y));
+	return(result);
+}
+
+//
+// Vec2i
+//
+fpl_force_inline Vec2i V2iAdd(const Vec2i a, const Vec2i b) {
+	Vec2i result = V2iInit(a.x + b.x, a.y + b.y);
+	return(result);
+}
+
+fpl_force_inline Vec2i V2iSub(const Vec2i a, const Vec2i b) {
+	Vec2i result = V2iInit(a.x - b.x, a.y - b.y);
+	return(result);
+}
+
+fpl_force_inline Vec2i V2iMult(const Vec2i a, const Vec2i b) {
+	Vec2i result = V2iInit(a.x * b.x, a.y * b.y);
+	return(result);
+}
+
+fpl_force_inline Vec2i V2iDiv(const Vec2i a, const Vec2i b) {
+	Vec2i result = V2iInit(a.x / b.x, a.y / b.y);
+	return(result);
+}
+
+fpl_force_inline bool V2iEquals(const Vec2i a, const Vec2i b) {
+	bool result = a.x == b.x && a.y == b.y;
 	return(result);
 }
 
@@ -889,9 +889,9 @@ fpl_force_inline Vec3f V3fCross(const Vec3f a, const Vec3f b) {
 
 fpl_force_inline Vec3f V3fLerp(const Vec3f a, float t, const Vec3f b) {
 	Vec3f result;
-	result.x = F32ScalarLerp(a.x, t, b.x);
-	result.y = F32ScalarLerp(a.y, t, b.y);
-	result.z = F32ScalarLerp(a.z, t, b.z);
+	result.x = F32Lerp(a.x, t, b.x);
+	result.y = F32Lerp(a.y, t, b.y);
+	result.z = F32Lerp(a.z, t, b.z);
 	return(result);
 }
 
