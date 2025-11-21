@@ -10,12 +10,13 @@ Description:
 
 Changelog:
 	## 2025-11-21
-	- Reflect for API changes in final_game.h (Added Input argument to GameRender)
+	- Changed: Reflect for API changes in final_game.h (Added Input argument to GameRender)
+	- Fixed: Mouse button state was preserving the half-transition count which is incorrect
 
 	## 2025-11-15
+	- Added: Target fps to the GameConfiguration, to make the frames per second configurable
 	- Fixed: Input controllers was properly preserved
 	- Fixed: Active controller was always set, even when no buttons was pressed
-	- Added: Target fps to the GameConfiguration, to make the frames per second configurable
 
 	## 2022-01-23
 	- Proper game timing is accumulated delta time method
@@ -86,15 +87,20 @@ extern int GameMain(const GameConfiguration *config);
 #define FINAL_OPENGL_RENDER_IMPLEMENTATION
 #include "final_opengl_render.h"
 
-static void UpdateKeyboardButtonState(ButtonState *newState, const fpl_b32 isDown) {
+fpl_inline void UpdateKeyboardButtonState(ButtonState *newState, const fpl_b32 isDown) {
 	newState->endedDown = isDown;
 	++newState->halfTransitionCount;
 }
 
-static bool UpdateDigitalButtonState(const ButtonState *oldState, ButtonState *newState, const fpl_b32 isDown) {
+fpl_inline bool UpdateDigitalButtonState(const ButtonState *oldState, ButtonState *newState, const fpl_b32 isDown) {
 	newState->endedDown = isDown;
 	newState->halfTransitionCount = ((newState->endedDown == oldState->endedDown) ? 0 : 1);
 	return(newState->endedDown == 1);
+}
+
+fpl_inline void PreserveButtonState(ButtonState *newState, const ButtonState *oldState) {
+	newState->halfTransitionCount = 0;
+	newState->endedDown = oldState->endedDown;
 }
 
 static void UpdateDefaultController(Input *currentInput, int newIndex) {
@@ -307,7 +313,7 @@ static void SetupInputForFrame(Input *oldInput, Input *newInput, const double ta
 	fplClearStruct(newKeyboardController);
 	newKeyboardController->isConnected = oldKeyboardController->isConnected;
 	for(uint32_t buttonIndex = 0; buttonIndex < fplArrayCount(newKeyboardController->buttons); ++buttonIndex) {
-		newKeyboardController->buttons[buttonIndex].endedDown = oldKeyboardController->buttons[buttonIndex].endedDown;
+		PreserveButtonState(&newKeyboardController->buttons[buttonIndex], &oldKeyboardController->buttons[buttonIndex]);
 	}
 
 	Mouse *newMouse = &newInput->mouse;
@@ -315,7 +321,7 @@ static void SetupInputForFrame(Input *oldInput, Input *newInput, const double ta
 	fplClearStruct(newMouse);
 	newMouse->pos = oldMouse->pos;
 	for(uint32_t buttonIndex = 0; buttonIndex < fplArrayCount(newMouse->buttons); ++buttonIndex) {
-		newMouse->buttons[buttonIndex] = oldMouse->buttons[buttonIndex];
+		PreserveButtonState(&newMouse->buttons[buttonIndex], &oldMouse->buttons[buttonIndex]);
 	}
 
 	// Remember previous gamepad connected states
@@ -326,7 +332,7 @@ static void SetupInputForFrame(Input *oldInput, Input *newInput, const double ta
 		newGamepadController->isConnected = oldGamepadController->isConnected;
 		newGamepadController->isAnalog = oldGamepadController->isAnalog;
 		for(uint32_t buttonIndex = 0; buttonIndex < fplArrayCount(newGamepadController->buttons); ++buttonIndex) {
-			newGamepadController->buttons[buttonIndex].endedDown = oldGamepadController->buttons[buttonIndex].endedDown;
+			PreserveButtonState(&newGamepadController->buttons[buttonIndex], &oldGamepadController->buttons[buttonIndex]);
 		}
 	}
 
