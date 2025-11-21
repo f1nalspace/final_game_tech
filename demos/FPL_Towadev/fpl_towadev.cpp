@@ -1955,7 +1955,7 @@ extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
 			}
 		}
 		float t = 1.0f - (state->slowdownTimer[0] / state->slowdownTimer[1]);
-		dtScale = F32ScalarLerp(1.0f, t, state->slowdownScale);
+		dtScale = F32Lerp(1.0f, t, state->slowdownScale);
 	}
 	const float dt = input->fixedDeltaTime * dtScale;
 
