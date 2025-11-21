@@ -16,6 +16,10 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2025-11-21
+	- Changed: Reflect for API changes final_game.h (GameRender has an additional Input argument)
+	- Changed: Reflect for API changes final_game.h (WasPressed / IsDown was renamed to ButtonWasPressed / ButtonIsDown)
+	
 	## 2025-11-16
 	- Migrated to new final addition libraries (C99 standard)
 
@@ -37,7 +41,7 @@ Changelog:
 	- Reflect api changes in FPL 0.9.2
 
 	## 2018-08-09
-	- Use IsDown() for launching the ball (More responsive)
+	- Use ButtonIsDown() for launching the ball (More responsive)
 	- Use actionDown and actionStart for menu instead "any"
 	- Support analog paddle movement
 
@@ -1031,21 +1035,21 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 							paddle.body->ApplyLinearImpulse(paddle.speed * vdt * b2Vec2(x, 0), paddle.body->GetPosition(), true);
 						}
 					} else {
-						if(IsDown(controller->moveLeft)) {
+						if(ButtonIsDown(controller->moveLeft)) {
 							paddle.body->ApplyLinearImpulse(paddle.speed * vdt * b2Vec2(-1, 0), paddle.body->GetPosition(), true);
-						} else if(IsDown(controller->moveRight)) {
+						} else if(ButtonIsDown(controller->moveRight)) {
 							paddle.body->ApplyLinearImpulse(paddle.speed * vdt * b2Vec2(1, 0), paddle.body->GetPosition(), true);
 						}
 					}
 
-					if(IsDown(controller->actionDown) && paddle.gluedBall != nullptr) {
+					if(ButtonIsDown(controller->actionDown) && paddle.gluedBall != nullptr) {
 						LaunchBall(*state);
 					}
 				} break;
 
 				case GameMode::Title:
 				{
-					if(WasPressed(controller->actionDown) || WasPressed(controller->actionStart)) {
+					if(ButtonWasPressed(controller->actionDown) || ButtonWasPressed(controller->actionStart)) {
 						state->mode = GameMode::Menu;
 						float oldbgMoveTime = state->menu.bgMoveTime;
 						state->menu = {};
@@ -1056,23 +1060,23 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 
 				case GameMode::GameOver:
 				{
-					if(WasPressed(controller->actionDown) || WasPressed(controller->actionStart)) {
+					if(ButtonWasPressed(controller->actionDown) || ButtonWasPressed(controller->actionStart)) {
 						state->mode = GameMode::Title;
 					}
 				};
 
 				case GameMode::Menu:
 				{
-					if(WasPressed(controller->moveDown)) {
+					if(ButtonWasPressed(controller->moveDown)) {
 						if(state->menu.itemIndex < (state->menu.itemCount - 1)) {
 							++state->menu.itemIndex;
 						}
-					} else if(WasPressed(controller->moveUp)) {
+					} else if(ButtonWasPressed(controller->moveUp)) {
 						if(state->menu.itemIndex > 0) {
 							--state->menu.itemIndex;
 						}
 					}
-					if(WasPressed(controller->actionDown) || WasPressed(controller->actionStart)) {
+					if(ButtonWasPressed(controller->actionDown) || ButtonWasPressed(controller->actionStart)) {
 						if(state->menu.hotID != nullptr) {
 							state->menu.itemActivated = true;
 						}
@@ -1493,7 +1497,7 @@ static void DrawTitleMenuMode(GameState &state) {
 	}
 }
 
-extern void GameRender(GameMemory *gameMemory, const float alpha) {
+extern void GameRender(GameMemory *gameMemory, const Input *input, const float alpha) {
 	GameState *state = gameMemory->game;
 	fplAssert(state != nullptr);
 	RenderState *renderState = gameMemory->render;

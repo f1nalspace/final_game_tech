@@ -14,6 +14,10 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2025-11-21
+	- Changed: Reflect for API changes final_game.h (GameRender has an additional Input argument)
+	- Changed: Reflect for API changes final_game.h (WasPressed / IsDown was renamed to ButtonWasPressed / ButtonIsDown)
+
 	## 2025-11-16
 	- Switched from C++ to C99
 
@@ -153,7 +157,7 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 
 	// Debug input
 	const Controller *keyboardController = &input->controllers[0];
-	if (WasPressed(keyboardController->debugToggle)) {
+	if (ButtonWasPressed(keyboardController->debugToggle)) {
 		state->isDebugRendering = !state->isDebugRendering;
 	}
 
@@ -195,14 +199,14 @@ extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
 	Vec2f movement = V2fInit(0.0f, 0.0f);
 	if(input->defaultControllerIndex > -1 && input->defaultControllerIndex < fplArrayCount(input->controllers)){
 		const Controller *controller = &input->controllers[input->defaultControllerIndex];
-		if(IsDown(controller->moveUp)) {
+		if(ButtonIsDown(controller->moveUp)) {
 			movement = V2fAddMultScalar(movement, V2fInit(0.0f, 1.0f), player->moveSpeed);
-		} else if(IsDown(controller->moveDown)) {
+		} else if(ButtonIsDown(controller->moveDown)) {
 			movement = V2fAddMultScalar(movement, V2fInit(0.0f, -1.0f), player->moveSpeed);
 		}
-		if(IsDown(controller->moveLeft)) {
+		if(ButtonIsDown(controller->moveLeft)) {
 			movement = V2fAddMultScalar(movement, V2fInit(-1.0f,0.0f), player->moveSpeed);
-		} else if(IsDown(controller->moveRight)) {
+		} else if(ButtonIsDown(controller->moveRight)) {
 			movement = V2fAddMultScalar(movement, V2fInit(1.0f,0.0f), player->moveSpeed);
 		}
 	}
@@ -235,7 +239,7 @@ extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
 	state->framesPerSecond[0] = state->framesPerSecond[1];
 }
 
-extern void GameRender(GameMemory *gameMemory, const float alpha) {
+extern void GameRender(GameMemory *gameMemory, const Input *input, const float alpha) {
 	GameState *state = gameMemory->game;
 	assert(state != fpl_null);
 

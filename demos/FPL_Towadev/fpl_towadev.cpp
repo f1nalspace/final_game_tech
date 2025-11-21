@@ -18,6 +18,10 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2025-11-21
+	- Changed: Reflect for API changes final_game.h (GameRender has an additional Input argument)
+	- Changed: Reflect for API changes final_game.h (WasPressed / IsDown was renamed to ButtonWasPressed / ButtonIsDown)
+
 	## 2025-11-16
 	- Migrated to new final addition libraries (C99 standard)
 
@@ -280,14 +284,14 @@ namespace ui {
 			ctx.hot = id;
 		}
 		if (ctx.active == id) {
-			if (WasPressed(ctx.input.leftButton)) {
+			if (ButtonWasPressed(ctx.input.leftButton)) {
 				if (ctx.hot == id) {
 					result = true;
 				}
 				ctx.active = 0;
 			}
 		} else if (ctx.hot == id) {
-			if (IsDown(ctx.input.leftButton)) {
+			if (ButtonIsDown(ctx.input.leftButton)) {
 				ctx.active = id;
 			}
 		}
@@ -1866,7 +1870,7 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 
 	// Debug input
 	const Controller &keyboardController = input->controllers[0];
-	if (WasPressed(keyboardController.debugToggle)) {
+	if (ButtonWasPressed(keyboardController.debugToggle)) {
 		state->isDebugRendering = !state->isDebugRendering;
 	}
 
@@ -1897,7 +1901,7 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 		state->mouseTilePos = WorldToTile(state->level.dimension, state->mouseWorldPos);
 
 		// Tower placement
-		if (WasPressed(input->mouse.left) && !ui::UIIsHot(state->ui)) {
+		if (ButtonWasPressed(input->mouse.left) && !ui::UIIsHot(state->ui)) {
 			if (state->towers.selectedIndex > -1) {
 				const TowerData *tower = &state->assets.towerDefinitions[state->towers.selectedIndex];
 				if (towers::CanPlaceTower(*state, state->mouseTilePos, tower) == towers::CanPlaceTowerResult::Success) {
@@ -1916,7 +1920,7 @@ extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
 	GameState *state = gameMemory->game;
 	assert(state != nullptr);
 
-	if (WasPressed(input->keyboard.debugReload)) {
+	if (ButtonWasPressed(input->keyboard.debugReload)) {
 		char filePathBuffer[FPL_MAX_PATH_LENGTH];
 		fplPathCombine(filePathBuffer, fplArrayCount(filePathBuffer), 3, state->assets.dataPath, "levels", TowersDataFilename);
 		FileInfo towersFileContents = utils::LoadFileInfo(filePathBuffer);
@@ -2103,7 +2107,7 @@ extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
 	}
 }
 
-extern void GameRender(GameMemory *gameMemory, const float alpha) {
+extern void GameRender(GameMemory *gameMemory, const Input *input, const float alpha) {
 	GameState *state = gameMemory->game;
 	assert(state != nullptr);
 	RenderState &renderState = *gameMemory->render;
