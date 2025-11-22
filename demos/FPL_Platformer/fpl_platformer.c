@@ -442,7 +442,8 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	PushOrigin(renderState, playerPos);
 
 	// Player sensors
-	{
+	bool drawPlayerSensor = false;
+	if (drawPlayerSensor) {
 		Vec2f groundSensorDirection = V2fInit(0.0f, -1.0f);
 		float groundSensorDepth = 2.0f;
 		float groundSensorLeft = -player->radius.w * 0.8f;
