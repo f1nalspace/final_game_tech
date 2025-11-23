@@ -101,7 +101,7 @@ typedef struct GameState {
 	Mat4f projection;
 	Mat4f view;
 	Mat4f viewProjection;
-	Camera2D camera;
+	Camera camera;
 	Viewport viewport;
 	Vec2f mouseWorldPos;
 
@@ -130,7 +130,7 @@ static void GameChangeMode(GameState *state, const GameMode newMode) {
 	World *world = &state->world;
 	Entity *player = &world->entities.player;
 	Editor *editor = &state->editor;
-	Camera2D *camera = &state->camera;
+	Camera *camera = &state->camera;
 
 	switch (newMode) {
 		case GameMode_Game:
@@ -138,7 +138,7 @@ static void GameChangeMode(GameState *state, const GameMode newMode) {
 			state->mode = GameMode_Game;
 			state->camera.limits.isEnabled = true;
 			state->camera.scale[0] = GameViewScale;
-			Camera2DSetPos(camera, player->position[0]);
+			CameraSetPos(camera, player->position[0]);
 		} break;
 
 		case GameMode_EditorPlay:
@@ -150,7 +150,7 @@ static void GameChangeMode(GameState *state, const GameMode newMode) {
 			// TODO(final): Compute based on editor scale
 			editor->cameraTranslation = player->position[0];
 
-			Camera2DSetPos(camera, editor->cameraTranslation);
+			CameraSetPos(camera, editor->cameraTranslation);
 		} break;
 
 		case GameMode_EditorPause:
@@ -162,7 +162,7 @@ static void GameChangeMode(GameState *state, const GameMode newMode) {
 			// TODO(final): Compute based on editor scale
 			editor->cameraTranslation = player->position[0];
 
-			Camera2DSetPos(camera, editor->cameraTranslation);
+			CameraSetPos(camera, editor->cameraTranslation);
 		} break;
 
 		default:
@@ -372,7 +372,7 @@ extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
 	World *world = &state->world;
 	Map *map = &world->map;
 	Entity *player = &world->entities.player;
-	Camera2D *camera = &state->camera;
+	Camera *camera = &state->camera;
 	Editor *editor = &state->editor;
 
 	if (isGameUpdating) {
@@ -380,9 +380,9 @@ extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
 	}
 
 	if (state->mode != GameMode_EditorPause) {
-		Camera2DSetPos(camera, player->position[0]);
+		CameraSetPos(camera, player->position[0]);
 	} else {
-		Camera2DSetPos(camera, editor->cameraTranslation);
+		CameraSetPos(camera, editor->cameraTranslation);
 	}
 
 	// FPS display

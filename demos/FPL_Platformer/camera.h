@@ -5,14 +5,14 @@
 #include <final_math.h>
 #include <final_geometry.h>
 
-typedef struct CameraLimits2D {
+typedef struct CameraLimits {
 	AABB2f bounds;
 	bool isEnabled;
-} CameraLimits2D;
+} CameraLimits;
 
-typedef struct Camera2D {
+typedef struct Camera {
 	// Current camera limits
-	CameraLimits2D limits;
+	CameraLimits limits;
 	// Current camera view radius
 	Vec2f viewRadius;
 	// 0 = Current offset, 1 = Last offset
@@ -23,9 +23,9 @@ typedef struct Camera2D {
 	float worldToPixels;
 	// Factor that is used to convert from screen coordinate to world coordinates
 	float pixelsToWorld;
-} Camera2D;
+} Camera;
 
-fpl_inline void Camera2DSetPos(Camera2D *camera, const Vec2f pos) {
+fpl_inline void CameraSetPos(Camera *camera, const Vec2f pos) {
 	if (camera->limits.isEnabled) {
 		Vec2f minPos = V2fAdd(camera->limits.bounds.min, camera->viewRadius);
 		Vec2f maxPos = V2fSub(camera->limits.bounds.max, camera->viewRadius);
