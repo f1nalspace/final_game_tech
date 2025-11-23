@@ -37,18 +37,36 @@ fpl_extern bool EditorInit(fmemMemoryBlock *gameMemory, Editor *editor, GameAsse
 	}
 	editor->world = world;
 	editor->assets = assets;
+	editor->mode = EditorMode_None;
 
-	editor->cameraTranslation = V2fInit(0.0f, 0.0f);
-	editor->cameraScale = 1.0f;
+	if (!CameraInit(&editor->camera, V2fInit(0.0f, 0.0f), 1.0f)) {
+		return false;
+	}
 
 	return true;
 }
 
 fpl_extern void EditorInput(Editor *editor, const Input *input) {
+	fplAssert(editor->mode != EditorMode_None);
+
 	World *world = editor->world;
 	Map *map = &world->map;
 	Entity *player = &world->entities.player;
 	Vec2i mouseTilePos = MapWorldCoordsToTile(map, editor->mouseWorldPos);
+	Camera *camera = &editor->camera;
+
+	if (F32Abs(input->mouse.wheelDelta) > 0.0f) {
+		float zoomStep = 1.1f;
+		float oldZoom = camera->transform[0].scale;
+		float newZoom = oldZoom * (input->mouse.wheelDelta > 0 ? zoomStep : 1.0f / zoomStep);
+		newZoom = F32Clamp(newZoom, EDITOR_CAMERA_MIN_ZOOM, EDITOR_CAMERA_MAX_ZOOM);
+		if (editor->mode == EditorMode_Full) {
+			Vec2f targetPos = editor->mouseWorldPos;
+			CameraZoomToPosition(camera, oldZoom, newZoom, editor->viewport.w, WorldWidth, targetPos);
+		} else if (editor->mode == EditorMode_Live) {
+			CameraSetScale(camera, newZoom);
+		}
+	}
 
 	if (ButtonIsDown(input->mouse.left)) {
 		if (!editor->isDrawing) {

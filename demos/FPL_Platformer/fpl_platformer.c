@@ -137,32 +137,37 @@ static void GameChangeMode(GameState *state, const GameMode newMode) {
 		{
 			state->mode = GameMode_Game;
 			state->camera.limits.isEnabled = true;
-			state->camera.transform[0].scale = GameViewScale;
+			CameraSetScale(camera, GameViewScale);
 			CameraSetPos(camera, player->transform[0].pos);
+			editor->mode = EditorMode_None;
 		} break;
 
 		case GameMode_EditorPlay:
 		{
 			state->mode = GameMode_EditorPlay;
 			state->camera.limits.isEnabled = false;
-			state->camera.transform[0].scale = editor->cameraScale;
+			CameraSetScale(camera, editor->camera.transform[0].scale);
 
 			// TODO(final): Compute based on editor scale
-			editor->cameraTranslation = player->transform[0].pos;
+			editor->camera.transform[0].offset = player->transform[0].pos;
 
-			CameraSetPos(camera, editor->cameraTranslation);
+			CameraSetPos(camera, editor->camera.transform[0].offset);
+
+			editor->mode = EditorMode_Live;
 		} break;
 
 		case GameMode_EditorPause:
 		{
 			state->mode = GameMode_EditorPause;
 			state->camera.limits.isEnabled = false;
-			state->camera.transform[0].scale = editor->cameraScale;
+			CameraSetScale(camera, editor->camera.transform[0].scale);
 
 			// TODO(final): Compute based on editor scale
-			editor->cameraTranslation = player->transform[0].pos;
+			editor->camera.transform[0].offset = player->transform[0].pos;
 
-			CameraSetPos(camera, editor->cameraTranslation);
+			CameraSetPos(camera, editor->camera.transform[0].offset);
+
+			editor->mode = EditorMode_Full;
 		} break;
 
 		default:
@@ -226,7 +231,7 @@ static bool GameStateLoad(RenderState *renderState, GameState *state) {
 		return false; // Failed to load the map into the world (insufficient memory, wrong map, etc.)
 	}
 
-	GameChangeMode(state, GameMode_EditorPlay);
+	GameChangeMode(state, GameMode_EditorPause);
 
 	return true;
 }
@@ -293,6 +298,7 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	Map *map = &world->map;
 	Entity *player = &world->entities.player;
 	Editor *editor = &state->editor;
+	Camera *camera = &state->camera;
 
 	const float w = WorldRadiusW;
 	const float h = WorldRadiusH;
@@ -303,10 +309,12 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	// Camera
 	const float cameraScale = state->camera.transform[0].scale;
 	state->viewport = ComputeViewportByAspect(input->windowSize, WorldAspect);
+	editor->viewport = state->viewport;
 
 	// TODO(final): Needs only to be updated when map bounds changes!
 	state->camera.limits.bounds = map->maxBounds;
 
+	// TODO(final): Needs only to be updated when viewport changes!
 	state->camera.worldToPixels = (state->viewport.w / (float)WorldWidth) * cameraScale;
 	state->camera.pixelsToWorld = 1.0f / state->camera.worldToPixels;
 
@@ -347,11 +355,11 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 		}
 	}
 
-	if (isEditorMode) {
+	if (state->mode != GameMode_Game) {
 		EditorInput(editor, input);
 	}
 
-	if (isGameUpdating) {
+	if (state->mode <= GameMode_EditorPlay) {
 		EntityInput(player, input);
 	}
 }
@@ -378,10 +386,17 @@ extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
 		WorldUpdate(world, input);
 	}
 
-	if (state->mode != GameMode_EditorPause) {
-		CameraSetPos(camera, player->transform[0].pos);
+	if (state->mode == GameMode_EditorPlay) {
+		editor->camera.transform[0].offset = player->transform[0].pos;
+	}
+
+	// Overwrite camera scale when in editor mode
+	if (isEditorMode) {
+		CameraSetScale(camera, editor->camera.transform[0].scale);
+		CameraSetPos(camera, editor->camera.transform[0].offset);
 	} else {
-		CameraSetPos(camera, editor->cameraTranslation);
+		CameraSetScale(camera, GameViewScale);
+		CameraSetPos(camera, player->transform[0].pos);
 	}
 
 	// FPS display
@@ -500,7 +515,11 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	PushOrigin(renderState, playerPos);
 
 	// Camera view
-	PushRectangleCenter(renderState, V2fNegate(cameraOffset), state->camera.viewRadius, V4fInit(0.2f, 0.1f, 1.0f, 1.0f), false, 2.0f);
+	if (state->mode == GameMode_Game || state->mode == GameMode_EditorPlay) {
+		PushRectangleCenter(renderState, V2fNegate(cameraOffset), state->camera.viewRadius, V4fInit(0.2f, 0.1f, 1.0f, 1.0f), false, 2.0f);
+	} else {
+		PushRectangleCenter(renderState, playerPos, state->camera.viewRadius, V4fInit(0.2f, 0.1f, 1.0f, 1.0f), false, 2.0f);
+	}
 
 	// Player sensors
 	bool drawPlayerSensor = false;

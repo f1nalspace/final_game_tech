@@ -115,9 +115,10 @@ extern void WorldUpdate(World *world, const Input *input) {
 	Entity *player = &world->entities.player;
 	Physics *physics = &world->physics;
 
-	// Clears contacts and may reset accumulators
+	// Clears contacts and reset physics to a initial state
 	PhysicsBegin(physics);
 
+	// Update all entities
 	for (size_t i = 0; i < world->entities.count; ++i) {
 		Entity *entity = world->entities.list + i;
 		EntityUpdate(physics, entity, map, dt);

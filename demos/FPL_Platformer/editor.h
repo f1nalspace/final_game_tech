@@ -19,17 +19,30 @@
 // Size of the editor persistent memory block
 #define EDITOR_MEMORY_PERSISTENT_SIZE fplMegaBytes(8)
 
+#define EDITOR_CAMERA_MIN_ZOOM 0.1f
+#define EDITOR_CAMERA_MAX_ZOOM 2.0f
+
+typedef enum EditorMode {
+	EditorMode_None = 0,
+	EditorMode_Live,
+	EditorMode_Full,
+} EditorMode;
+
 typedef struct Editor {
+	Camera camera;
+
 	fmemMemoryBlock transientMemory;
 	fmemMemoryBlock persistentMemory;
+
+	Viewport viewport;
+
 	Vec2f mouseWorldPos;
 	Vec2i drawTilePos;
 
 	GameAssets *assets;
 	World *world;
 
-	Vec2f cameraTranslation;
-	float cameraScale;
+	EditorMode mode;
 
 	uint32_t drawTile;
 	bool isDrawing;
