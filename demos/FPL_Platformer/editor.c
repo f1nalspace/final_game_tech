@@ -2,6 +2,14 @@
 
 #include <final_game.h>
 
+static bool EditorCanTileBePlaced(const Editor *editor, const Map *map, const Entity *player, const Vec2i tilePos) {
+	AABB2f playerCurrentBounds = EntityGetCurrentBounds(player);
+	Vec2f mouseWorldPos = MapTileCoordsToWorld(map, tilePos);
+	AABB2f tileBounds = AABB2fInitFromBottomLeft(mouseWorldPos, TileSize);
+	bool isOverlap = AABB2fIsOverlap(&tileBounds, &playerCurrentBounds);
+	return !isOverlap;
+}
+
 static void EditorPaintTile(Editor *editor, Map *map, const Vec2i tilePos) {
 	if (MapIsTileInside(map, tilePos)) {
 		editor->drawTilePos = tilePos;
@@ -38,28 +46,29 @@ fpl_extern bool EditorInit(fmemMemoryBlock *gameMemory, Editor *editor, GameAsse
 
 fpl_extern void EditorInput(Editor *editor, const Input *input) {
 	World *world = editor->world;
-
 	Map *map = &world->map;
-
 	Entity *player = &world->entities.player;
-
 	Vec2i mouseTilePos = MapWorldCoordsToTile(map, editor->mouseWorldPos);
 
 	if (ButtonIsDown(input->mouse.left)) {
 		if (!editor->isDrawing) {
-			editor->isDrawing = true;
-			editor->drawTilePos = mouseTilePos;
-			if (MapIsTileInside(map, mouseTilePos)) {
-				Tile tile = MapGetTile(map, mouseTilePos);
-				editor->drawTile = tile.type != TileType_Solid ? TileType_Solid : TileType_None;
-			} else {
-				editor->drawTile = TileType_Solid;
-			}
-			EditorPaintTile(editor, map, mouseTilePos);
-		} else {
-			fplAssert(editor->drawTile != UINT32_MAX);
-			if (!V2iEquals(mouseTilePos, editor->drawTilePos)) {
+			if (EditorCanTileBePlaced(editor, map, player, mouseTilePos)) {
+				editor->isDrawing = true;
+				editor->drawTilePos = mouseTilePos;
+				if (MapIsTileInside(map, mouseTilePos)) {
+					Tile tile = MapGetTile(map, mouseTilePos);
+					editor->drawTile = tile.type != TileType_Solid ? TileType_Solid : TileType_None;
+				} else {
+					editor->drawTile = TileType_Solid;
+				}
 				EditorPaintTile(editor, map, mouseTilePos);
+			}
+		} else {
+			if (EditorCanTileBePlaced(editor, map, player, mouseTilePos)) {
+				fplAssert(editor->drawTile != UINT32_MAX);
+				if (!V2iEquals(mouseTilePos, editor->drawTilePos)) {
+					EditorPaintTile(editor, map, mouseTilePos);
+				}
 			}
 		}
 	} else {

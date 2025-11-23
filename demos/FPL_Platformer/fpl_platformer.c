@@ -278,8 +278,6 @@ extern bool IsGameExiting(GameMemory *gameMemory) {
 	return state->isExiting;
 }
 
-
-
 extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	if (!input->isActive) {
 		return;
