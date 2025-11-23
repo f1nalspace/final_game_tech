@@ -100,6 +100,7 @@ typedef struct GameState {
 	Mat4f projection;
 	Mat4f view;
 	Mat4f viewProjection;
+	Camera2D camera;
 	Viewport viewport;
 	Vec2f mouseWorldPos;
 
@@ -149,9 +150,15 @@ static bool GameStateInit(fmemMemoryBlock *memory, GameState *state) {
 		return false; // Failed to initialize editor (insufficient memory, etc.)
 	}
 
+	// Projection matrix is locked to the world size
+	state->projection = M4fOrthoRH(-WorldRadiusW, WorldRadiusW, -WorldRadiusH, WorldRadiusH, 0.0f, 1.0f);
+
 	state->isDebugRendering = true;
 
-	state->mode = GameMode_Game;
+	state->mode = GameMode_EditorPlay;
+
+	state->camera.scale[0] = state->camera.scale[1] = 1.0f;
+	state->camera.offset[0] = state->camera.offset[1] = V2fInit(0.0f, 0.0f);
 
 	return true;
 }
@@ -164,6 +171,7 @@ static bool GameStateLoad(RenderState *renderState, GameState *state) {
 	Editor *editor = &state->editor;
 	World *world = &state->world;
 	GameAssets *assets = &state->assets;
+	Entity *player = &world->entities.player;
 
 	if (!AssetsLoad(renderState, assets)) {
 		return false; // Failed to load game assets (insufficient memory, wrong paths, files not found, etc.)
@@ -172,6 +180,10 @@ static bool GameStateLoad(RenderState *renderState, GameState *state) {
 	if (!WorldLoad(world, &gTestLevel)) {
 		return false; // Failed to load the map into the world (insufficient memory, wrong map, etc.)
 	}
+
+	// We are always starting the player position
+	state->camera.offset[0] = state->camera.offset[1] = V2fNegate(player->position[0]);
+	state->camera.scale[0] = state->camera.scale[1] = 1.0f;
 
 	return true;
 }
@@ -247,21 +259,23 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	const bool isEditorMode = state->mode != GameMode_Game;
 
 	// Camera
-	const float cameraScale = world->camera.scale[0];
+	const float cameraScale = state->camera.scale[0];
 	const float invCameraScale = 1.0f / cameraScale;
 	state->viewport = ComputeViewportByAspect(input->windowSize, WorldAspect);
-	world->camera.worldToPixels = (state->viewport.w / (float)WorldWidth) * cameraScale;
-	world->camera.pixelsToWorld = 1.0f / world->camera.worldToPixels;
+	state->camera.worldToPixels = (state->viewport.w / (float)WorldWidth) * cameraScale;
+	state->camera.pixelsToWorld = 1.0f / state->camera.worldToPixels;
 
-	state->projection = M4fOrthoRH(-w * invCameraScale, w * invCameraScale, -h * invCameraScale, h * invCameraScale, 0.0f, 1.0f);
-	state->view = M4fTranslationV2(world->camera.offset[0]);
+	// Matrices
+	Mat4f translationMat = M4fTranslationV2(state->camera.offset[0]);
+	Mat4f scaleMat = M4fScaleV2(V2fInit(cameraScale, cameraScale));
+	state->view = M4fMult(scaleMat, translationMat);
 	state->viewProjection = M4fMult(state->projection, state->view);
 
 	// Mouse
 	int mouseCenterX = (input->mouse.pos.x) - input->windowSize.w / 2;
 	int mouseCenterY = (input->windowSize.h - 1 - input->mouse.pos.y) - input->windowSize.h / 2;
-	state->mouseWorldPos.x = (mouseCenterX * world->camera.pixelsToWorld) - world->camera.offset[0].x;
-	state->mouseWorldPos.y = (mouseCenterY * world->camera.pixelsToWorld) - world->camera.offset[0].y;
+	state->mouseWorldPos.x = (mouseCenterX * state->camera.pixelsToWorld) - state->camera.offset[0].x;
+	state->mouseWorldPos.y = (mouseCenterY * state->camera.pixelsToWorld) - state->camera.offset[0].y;
 	editor->mouseWorldPos = state->mouseWorldPos;
 
 	const Controller *keyboardController = &input->controllers[0];
@@ -276,6 +290,7 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 		switch (state->mode) {
 			case GameMode_Game:
 				state->mode = GameMode_EditorPlay;
+				state->camera.scale[0] = state->camera.scale[1] = 1.0f;
 				break;
 			case GameMode_EditorPlay:
 				state->mode = GameMode_EditorPause;
@@ -315,8 +330,7 @@ extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
 
 	if (isGameUpdating) {
 		WorldUpdate(world, input);
-		world->camera.offset[0] = V2fNegate(player->position[0]);
-		world->camera.scale[0] = 1.0f;
+		state->camera.offset[0] = V2fNegate(player->position[0]);
 	}
 
 	// FPS display
@@ -372,11 +386,14 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	const bool isEditorMode = state->mode >= GameMode_EditorPlay && state->mode <= GameMode_EditorPause;
 
 	// Re-compute matrices for smooth rendering
-	const float cameraScale = F32Lerp(world->camera.scale[1], alpha, world->camera.scale[0]);
+	const float cameraScale = F32Lerp(state->camera.scale[1], alpha, state->camera.scale[0]);
 	const float invCameraScale = 1.0f / cameraScale;
-	const Vec2f cameraOffset = V2fLerp(world->camera.offset[1], alpha, world->camera.offset[0]);
-	state->projection = M4fOrthoRH(-w * invCameraScale, w * invCameraScale, -h * invCameraScale, h * invCameraScale, 0.0f, 1.0f);
-	state->view = M4fTranslationV2(cameraOffset);
+	const Vec2f cameraOffset = V2fLerp(state->camera.offset[1], alpha, state->camera.offset[0]);
+
+	Mat4f translationMat = M4fTranslationV2(cameraOffset);
+	Mat4f scaleMat = M4fScaleV2(V2fInit(cameraScale, cameraScale));
+
+	state->view = M4fMult(scaleMat, translationMat);
 	state->viewProjection = M4fMult(state->projection, state->view);
 
 	Vec2i mapSize = V2iInit(map->width, map->height);
@@ -555,8 +572,8 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	// Overwrite render infos such as position, rotation for "previous" from "current" states
 	// This is important for getting smooth interpolated rendering
 	player->position[1] = player->position[0];
-	world->camera.offset[1] = world->camera.offset[0];
-	world->camera.scale[1] = world->camera.scale[0];
+	state->camera.offset[1] = state->camera.offset[0];
+	state->camera.scale[1] = state->camera.scale[0];
 }
 
 // Directly included translation units

@@ -65,7 +65,6 @@ typedef struct World {
 	Map map;
 	fmemMemoryBlock persistentMemory;
 	fmemMemoryBlock transientMemory;
-	Camera2D camera;
 } World;
 
 //
