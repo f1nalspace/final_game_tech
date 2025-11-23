@@ -41,20 +41,13 @@ License:
 #include <final_utils.h>
 
 // Headers
+#include "common.h"
 #include "assets.h"
 #include "entity.h"
 #include "map.h"
 #include "world.h"
 #include "physics.h"
 #include "editor.h"
-
-// Directly included translation units
-#include "assets.c"
-#include "entity.c"
-#include "map.c"
-#include "world.c"
-#include "physics.c"
-#include "editor.c"
 
 //
 // Levels
@@ -565,6 +558,15 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	world->camera.offset[1] = world->camera.offset[0];
 	world->camera.scale[1] = world->camera.scale[0];
 }
+
+// Directly included translation units
+#include "common.c"
+#include "assets.c"
+#include "entity.c"
+#include "map.c"
+#include "world.c"
+#include "physics.c"
+#include "editor.c"
 
 #define FINAL_GAMEPLATFORM_IMPLEMENTATION
 #include <final_gameplatform.h>
