@@ -6,12 +6,14 @@
     <ClCompile Include="map.c" />
     <ClCompile Include="entity.c" />
     <ClCompile Include="world.c" />
+    <ClCompile Include="common.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="physics.h" />
     <ClInclude Include="map.h" />
     <ClInclude Include="world.h" />
     <ClInclude Include="entity.h" />
+    <ClInclude Include="common.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Dependencies">
