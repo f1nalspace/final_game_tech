@@ -792,6 +792,11 @@ fpl_force_inline Vec2f V2fMax(const Vec2f a, const Vec2f b) {
 	return(result);
 }
 
+fpl_force_inline Vec2f V2fClamp(const Vec2f value, const Vec2f min, const Vec2f max) {
+	Vec2f result = V2fMin(V2fMax(value, min), max);
+	return(result);
+}
+
 //
 // Vec2i
 //

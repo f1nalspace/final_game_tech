@@ -110,6 +110,11 @@ fpl_inline Vec2f AABB2fGetRadius(const AABB2f *aabb) {
 	return result;
 }
 
+fpl_inline Vec2f AABB2fGetSize(const AABB2f *aabb) {
+	Vec2f result = V2fSub(aabb->max, aabb->min);
+	return result;
+}
+
 fpl_inline Vec2f AABB2fGetCenter(const AABB2f *aabb) {
 	Vec2f size = V2fSub(aabb->max, aabb->min);
 	Vec2f ext = V2fMultScalar(size, 0.5f);

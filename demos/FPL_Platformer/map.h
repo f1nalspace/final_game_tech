@@ -91,9 +91,11 @@ typedef struct MapDefinition {
 typedef struct Map {
 	// Temporary memory block
 	fmemMemoryBlock temporaryMemory;
-
 	// Persistent memory block
 	fmemMemoryBlock persistentMemory;
+
+	// Maximum map bounds in world coordinates
+	AABB2f maxBounds;
 
 	// The origin in tile coordinate
 	Vec2i origin;

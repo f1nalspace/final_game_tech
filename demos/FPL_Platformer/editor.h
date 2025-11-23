@@ -28,6 +28,9 @@ typedef struct Editor {
 	GameAssets *assets;
 	World *world;
 
+	Vec2f cameraTranslation;
+	float cameraScale;
+
 	uint32_t drawTile;
 	bool isDrawing;
 } Editor;

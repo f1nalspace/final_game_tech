@@ -25,6 +25,14 @@
 #define WorldRadiusH (WorldHeight * 0.5f)
 
 //
+// Game view definition (only what the player can see)
+//
+
+// Scale factor that is used to compute the view bounds of the player/camera (Changing the world bounds will affect this!)
+#define GameViewScale 1.75f
+#define GameViewInvScale (1.0f / GameViewScale)
+
+//
 // Game / World states
 //
 #define MaxEntityCount 2048UL
@@ -37,17 +45,9 @@
 #define MapTileIDEnd (UINT32_MAX - 1UL)
 #define MapTileIDRange ((MapTileIDEnd - MapTileIDStart) + 1UL)
 
-
 //
 // World types
 //
-typedef struct Camera2D {
-	Vec2f offset[2];
-	float scale[2];
-	float worldToPixels;
-	float pixelsToWorld;
-} Camera2D;
-
 typedef struct Entities {
 	union {
 		struct {

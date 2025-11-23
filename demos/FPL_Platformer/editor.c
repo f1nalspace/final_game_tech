@@ -29,6 +29,10 @@ fpl_extern bool EditorInit(fmemMemoryBlock *gameMemory, Editor *editor, GameAsse
 	}
 	editor->world = world;
 	editor->assets = assets;
+
+	editor->cameraTranslation = V2fInit(0.0f, 0.0f);
+	editor->cameraScale = 1.0f;
+
 	return true;
 }
 

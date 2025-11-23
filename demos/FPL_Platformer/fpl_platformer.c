@@ -42,6 +42,7 @@ License:
 
 // Headers
 #include "common.h"
+#include "camera.h"
 #include "assets.h"
 #include "entity.h"
 #include "map.h"
@@ -125,6 +126,50 @@ static void GameStateRelease(GameState *state) {
 	fplClearStruct(state);
 }
 
+static void GameChangeMode(GameState *state, const GameMode newMode) {
+	World *world = &state->world;
+	Entity *player = &world->entities.player;
+	Editor *editor = &state->editor;
+	Camera2D *camera = &state->camera;
+
+	switch (newMode) {
+		case GameMode_Game:
+		{
+			state->mode = GameMode_Game;
+			state->camera.limits.isEnabled = true;
+			state->camera.scale[0] = GameViewScale;
+			Camera2DSetPos(camera, player->position[0]);
+		} break;
+
+		case GameMode_EditorPlay:
+		{
+			state->mode = GameMode_EditorPlay;
+			state->camera.limits.isEnabled = false;
+			state->camera.scale[0] = editor->cameraScale;
+
+			// TODO(final): Compute based on editor scale
+			editor->cameraTranslation = player->position[0];
+
+			Camera2DSetPos(camera, editor->cameraTranslation);
+		} break;
+
+		case GameMode_EditorPause:
+		{
+			state->mode = GameMode_EditorPause;
+			state->camera.limits.isEnabled = false;
+			state->camera.scale[0] = editor->cameraScale;
+
+			// TODO(final): Compute based on editor scale
+			editor->cameraTranslation = player->position[0];
+
+			Camera2DSetPos(camera, editor->cameraTranslation);
+		} break;
+
+		default:
+			FPL_NOT_IMPLEMENTED;
+	}
+}
+
 static bool GameStateInit(fmemMemoryBlock *memory, GameState *state) {
 	if (memory == fpl_null || state == fpl_null) {
 		return false; // Invalid arguments
@@ -150,15 +195,15 @@ static bool GameStateInit(fmemMemoryBlock *memory, GameState *state) {
 		return false; // Failed to initialize editor (insufficient memory, etc.)
 	}
 
-	// Projection matrix is locked to the world size
+	// NOTE(tspaete): Projection matrix will never change across the entire game run
 	state->projection = M4fOrthoRH(-WorldRadiusW, WorldRadiusW, -WorldRadiusH, WorldRadiusH, 0.0f, 1.0f);
+
+	// NOTE(tspaete): This will never change across the entire game run
+	state->camera.viewRadius = V2fMultScalar(V2fInit(WorldRadiusW, WorldRadiusH), GameViewInvScale);
 
 	state->isDebugRendering = true;
 
-	state->mode = GameMode_EditorPlay;
-
-	state->camera.scale[0] = state->camera.scale[1] = 1.0f;
-	state->camera.offset[0] = state->camera.offset[1] = V2fInit(0.0f, 0.0f);
+	GameChangeMode(state, GameMode_Game);
 
 	return true;
 }
@@ -181,9 +226,7 @@ static bool GameStateLoad(RenderState *renderState, GameState *state) {
 		return false; // Failed to load the map into the world (insufficient memory, wrong map, etc.)
 	}
 
-	// We are always starting the player position
-	state->camera.offset[0] = state->camera.offset[1] = V2fNegate(player->position[0]);
-	state->camera.scale[0] = state->camera.scale[1] = 1.0f;
+	GameChangeMode(state, GameMode_EditorPlay);
 
 	return true;
 }
@@ -235,6 +278,8 @@ extern bool IsGameExiting(GameMemory *gameMemory) {
 	return state->isExiting;
 }
 
+
+
 extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	if (!input->isActive) {
 		return;
@@ -247,9 +292,8 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	assert(renderState != fpl_null);
 
 	World *world = &state->world;
-
+	Map *map = &world->map;
 	Entity *player = &world->entities.player;
-
 	Editor *editor = &state->editor;
 
 	const float w = WorldRadiusW;
@@ -262,6 +306,10 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	const float cameraScale = state->camera.scale[0];
 	const float invCameraScale = 1.0f / cameraScale;
 	state->viewport = ComputeViewportByAspect(input->windowSize, WorldAspect);
+
+	// TODO(final): Needs only to be updated, when map bounds changes!
+	state->camera.limits.bounds = map->maxBounds;
+
 	state->camera.worldToPixels = (state->viewport.w / (float)WorldWidth) * cameraScale;
 	state->camera.pixelsToWorld = 1.0f / state->camera.worldToPixels;
 
@@ -289,14 +337,13 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	if (ButtonWasPressed(keyboardController->debug1)) {
 		switch (state->mode) {
 			case GameMode_Game:
-				state->mode = GameMode_EditorPlay;
-				state->camera.scale[0] = state->camera.scale[1] = 1.0f;
+				GameChangeMode(state, GameMode_EditorPlay);
 				break;
 			case GameMode_EditorPlay:
-				state->mode = GameMode_EditorPause;
+				GameChangeMode(state, GameMode_EditorPause);
 				break;
 			case GameMode_EditorPause:
-				state->mode = GameMode_Game;
+				GameChangeMode(state, GameMode_Game);
 				break;
 			default:
 				break;
@@ -327,10 +374,17 @@ extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
 	World *world = &state->world;
 	Map *map = &world->map;
 	Entity *player = &world->entities.player;
+	Camera2D *camera = &state->camera;
+	Editor *editor = &state->editor;
 
 	if (isGameUpdating) {
 		WorldUpdate(world, input);
-		state->camera.offset[0] = V2fNegate(player->position[0]);
+	}
+
+	if (state->mode != GameMode_EditorPause) {
+		Camera2DSetPos(camera, player->position[0]);
+	} else {
+		Camera2DSetPos(camera, editor->cameraTranslation);
 	}
 
 	// FPS display
@@ -440,10 +494,17 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 		}
 	}
 
+	// Map bounds
+	Vec2f mapBoundsSize = AABB2fGetSize(&map->maxBounds);
+	PushRectangle(renderState, map->maxBounds.min, mapBoundsSize, V4fInit(0.3f, 1.0f, 0.3f, 1.0f), false, 4.0f);
+
 	// Player
 	Vec2f playerPos = V2fLerp(player->position[1], alpha, player->position[0]);
 	PushRectangleCenter(renderState, playerPos, player->radius, player->color, false, 2.0f);
 	PushOrigin(renderState, playerPos);
+
+	// Camera view
+	PushRectangleCenter(renderState, V2fNegate(cameraOffset), state->camera.viewRadius, V4fInit(0.2f, 0.1f, 1.0f, 1.0f), false, 2.0f);
 
 	// Player sensors
 	bool drawPlayerSensor = false;

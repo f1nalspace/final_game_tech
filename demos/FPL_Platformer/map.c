@@ -26,6 +26,7 @@ extern void MapClear(Map *map) {
 	map->temporaryMemory.used = 0;
 	map->width = map->height = 0;
 	map->origin = V2iInit(0, 0);
+	map->maxBounds.min = map->maxBounds.max = V2fInit(0.0f, 0.0f);
 	map->solidTiles = fpl_null;
 }
 
@@ -286,9 +287,14 @@ extern bool MapAssign(Map *map, const MapDefinition *definition) {
 		return false; // Insufficient persistent memory (allocation failed, even though the required size was validated beforehand)
 	}
 
+	Vec2f mapArea = V2fInit(definition->width * map->tileSize.w, definition->height * map->tileSize.h);
+	Vec2f mapBottomLeft = V2fInit(map->origin.x * map->tileSize.w, map->origin.y * map->tileSize.h);
+	AABB2f maxBounds = AABB2fInitFromBottomLeft(mapBottomLeft, mapArea);
+
 	map->width = definition->width;
 	map->height = definition->height;
 	map->origin = V2iInit(0, 0);
+	map->maxBounds = maxBounds;
 
 	for (uint32_t tileIndex = 0; tileIndex < totalTileCount; ++tileIndex) {
 		TileType type = definition->tiles[tileIndex];
@@ -413,10 +419,15 @@ extern bool MapResizeToTilePos(Map *map, const Vec2i tilePos) {
 	size_t requiredNewSize = newMapSize.w * newMapSize.h * sizeof(Tile);
 	fplAssert(requiredNewSize <= map->persistentMemory.size);
 
+	Vec2f mapArea = V2fInit(newMapSize.w * map->tileSize.w, newMapSize.h * map->tileSize.h);
+	Vec2f mapBottomLeft = V2fInit(newOrigin.x * map->tileSize.w, newOrigin.y * map->tileSize.h);
+	AABB2f maxBounds = AABB2fInitFromBottomLeft(mapBottomLeft, mapArea);
+
 	// Create new tiles and copy old tiles over it
 	map->width = newMapSize.w;
 	map->height = newMapSize.h;
 	map->origin = newOrigin;
+	map->maxBounds = maxBounds;
 	map->solidTiles = (Tile *)fmemPush(&map->persistentMemory, requiredNewSize, fmemPushFlags_Clear);
 
 	Vec2i offsetFromOldToNew = V2iSub(oldOrigin, newOrigin);
