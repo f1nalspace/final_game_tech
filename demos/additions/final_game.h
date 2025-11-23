@@ -63,10 +63,14 @@ typedef struct Controller {
 			ButtonState actionRight;
 			ButtonState actionBack;
 			ButtonState actionStart;
-			ButtonState debugToggle;
-			ButtonState debugReload;
+			ButtonState debug1;
+			ButtonState debug2;
+			ButtonState debug3;
+			ButtonState debug4;
+			ButtonState debug5;
+			ButtonState debug6;
 		};
-		ButtonState buttons[12];
+		ButtonState buttons[16];
 	};
 } Controller;
 
@@ -116,10 +120,10 @@ typedef struct Input {
 struct GameState;
 
 typedef struct GameMemory {
+	AudioSystem *audio;
+	RenderState *render;
 	fmemMemoryBlock *memory;
 	struct GameState *game;
-	RenderState *render;
-	AudioSystem *audio;
 } GameMemory;
 
 typedef enum GameWindowActiveType {

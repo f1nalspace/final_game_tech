@@ -260,11 +260,23 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 								case fplKey_Space:
 									UpdateKeyboardButtonState(&newKeyboardController->actionDown, isDown);
 									break;
-								case fplKey_F4:
-									UpdateKeyboardButtonState(&newKeyboardController->debugToggle, isDown);
+								case fplKey_F1:
+									UpdateKeyboardButtonState(&newKeyboardController->debug1, isDown);
 									break;
-								case fplKey_R:
-									UpdateKeyboardButtonState(&newKeyboardController->debugReload, isDown);
+								case fplKey_F2:
+									UpdateKeyboardButtonState(&newKeyboardController->debug2, isDown);
+									break;
+								case fplKey_F3:
+									UpdateKeyboardButtonState(&newKeyboardController->debug3, isDown);
+									break;
+								case fplKey_F4:
+									UpdateKeyboardButtonState(&newKeyboardController->debug4, isDown);
+									break;
+								case fplKey_F5:
+									UpdateKeyboardButtonState(&newKeyboardController->debug5, isDown);
+									break;
+								case fplKey_F6:
+									UpdateKeyboardButtonState(&newKeyboardController->debug6, isDown);
 									break;
 								case fplKey_Return:
 									UpdateKeyboardButtonState(&newKeyboardController->actionStart, isDown);
