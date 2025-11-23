@@ -10,15 +10,26 @@ typedef struct CameraLimits {
 	bool isEnabled;
 } CameraLimits;
 
+typedef struct CameraTarget {
+	Vec2f pos;
+	float speed;
+	bool hasTarget;
+} CameraTarget;
+
+typedef struct CameraTransform {
+	Vec2f offset;
+	float scale;
+} CameraTransform;
+
 typedef struct Camera {
+	// Camera transform (0 = Current, 1 = Last)
+	CameraTransform transform[2];
 	// Current camera limits
 	CameraLimits limits;
+	// Current camera target
+	CameraTarget target;
 	// Current camera view radius
 	Vec2f viewRadius;
-	// 0 = Current offset, 1 = Last offset
-	Vec2f offset[2];
-	// 0 = Current scale, 1 = Last scale
-	float scale[2];
 	// Factor that is used to convert from world coordinate to screen coordinates
 	float worldToPixels;
 	// Factor that is used to convert from screen coordinate to world coordinates
@@ -30,9 +41,9 @@ fpl_inline void CameraSetPos(Camera *camera, const Vec2f pos) {
 		Vec2f minPos = V2fAdd(camera->limits.bounds.min, camera->viewRadius);
 		Vec2f maxPos = V2fSub(camera->limits.bounds.max, camera->viewRadius);
 		Vec2f newPos = V2fClamp(pos, minPos, maxPos);
-		camera->offset[0] = V2fNegate(newPos);
+		camera->transform[0].offset = V2fNegate(newPos);
 	} else {
-		camera->offset[0] = V2fNegate(pos);
+		camera->transform[0].offset = V2fNegate(pos);
 	}
 }
 

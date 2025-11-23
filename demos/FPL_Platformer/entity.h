@@ -34,12 +34,21 @@ typedef struct GroundState {
 	fpl_b32 last;
 } GroundState;
 
+typedef struct EntityTransform {
+	Vec2f pos;
+} EntityTransform;
+
+fpl_inline EntityTransform EntityTransformInit(const Vec2f pos) {
+	EntityTransform result = fplStructInit(EntityTransform, pos);
+	return result;
+}
+
 typedef struct Entity {
 	// Display color
 	Vec4f color;
 
-	// 0 = Current position, 1 = Last position
-	Vec2f position[2];
+	// 0 = Current transform, 1 = Last transform
+	EntityTransform transform[2];
 
 	// Fixed radius
 	Vec2f radius;
@@ -93,23 +102,25 @@ fpl_inline bool EntityIsAir(const Entity *entity) {
 }
 
 fpl_inline AABB2f EntityGetCurrentBounds(const Entity *entity) {
-	Vec2f min = V2fSub(entity->position[0], entity->radius);
-	Vec2f max = V2fAdd(entity->position[0], entity->radius);
+	Vec2f p = entity->transform[0].pos;
+	Vec2f min = V2fSub(p, entity->radius);
+	Vec2f max = V2fAdd(p, entity->radius);
 	AABB2f result = AABB2fInit(min, max);
 	return result;
 }
 
 fpl_inline AABB2f EntityGetMotionBounds(const Entity *entity, const float dt) {
 	// Predict position for next frame
-	Vec2f predictedPos = V2fAddMultScalar(entity->position[0], V2fAdd(entity->velocity, entity->posCorrect), dt);
+	Vec2f currentPos = entity->transform[0].pos;
+	Vec2f predictedPos = V2fAddMultScalar(currentPos, V2fAdd(entity->velocity, entity->posCorrect), dt);
 	// Create motion and return it
-	Vec2f min = V2fSub(V2fMin(predictedPos, entity->position[0]), entity->radius);
-	Vec2f max = V2fAdd(V2fMax(predictedPos, entity->position[0]), entity->radius);
+	Vec2f min = V2fSub(V2fMin(predictedPos, currentPos), entity->radius);
+	Vec2f max = V2fAdd(V2fMax(predictedPos, currentPos), entity->radius);
 	AABB2f result = AABB2fInit(min, max);
 	return result;
 }
 
-extern bool EntityInit(Entity *entity, const uint32_t id, const Vec2f radius, const Vec2f position, const Vec4f color);
+extern bool EntityInit(Entity *entity, const uint32_t id, const Vec2f radius, const EntityTransform *transform, const Vec4f color);
 extern void EntityInput(Entity *entity, const Input *input);
 extern void EntityUpdate(Physics *physics, Entity *entity, const Map *map, const float dt);
 

@@ -137,18 +137,18 @@ static void GameChangeMode(GameState *state, const GameMode newMode) {
 		{
 			state->mode = GameMode_Game;
 			state->camera.limits.isEnabled = true;
-			state->camera.scale[0] = GameViewScale;
-			CameraSetPos(camera, player->position[0]);
+			state->camera.transform[0].scale = GameViewScale;
+			CameraSetPos(camera, player->transform[0].pos);
 		} break;
 
 		case GameMode_EditorPlay:
 		{
 			state->mode = GameMode_EditorPlay;
 			state->camera.limits.isEnabled = false;
-			state->camera.scale[0] = editor->cameraScale;
+			state->camera.transform[0].scale = editor->cameraScale;
 
 			// TODO(final): Compute based on editor scale
-			editor->cameraTranslation = player->position[0];
+			editor->cameraTranslation = player->transform[0].pos;
 
 			CameraSetPos(camera, editor->cameraTranslation);
 		} break;
@@ -157,10 +157,10 @@ static void GameChangeMode(GameState *state, const GameMode newMode) {
 		{
 			state->mode = GameMode_EditorPause;
 			state->camera.limits.isEnabled = false;
-			state->camera.scale[0] = editor->cameraScale;
+			state->camera.transform[0].scale = editor->cameraScale;
 
 			// TODO(final): Compute based on editor scale
-			editor->cameraTranslation = player->position[0];
+			editor->cameraTranslation = player->transform[0].pos;
 
 			CameraSetPos(camera, editor->cameraTranslation);
 		} break;
@@ -301,18 +301,17 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	const bool isEditorMode = state->mode != GameMode_Game;
 
 	// Camera
-	const float cameraScale = state->camera.scale[0];
-	const float invCameraScale = 1.0f / cameraScale;
+	const float cameraScale = state->camera.transform[0].scale;
 	state->viewport = ComputeViewportByAspect(input->windowSize, WorldAspect);
 
-	// TODO(final): Needs only to be updated, when map bounds changes!
+	// TODO(final): Needs only to be updated when map bounds changes!
 	state->camera.limits.bounds = map->maxBounds;
 
 	state->camera.worldToPixels = (state->viewport.w / (float)WorldWidth) * cameraScale;
 	state->camera.pixelsToWorld = 1.0f / state->camera.worldToPixels;
 
 	// Matrices
-	Mat4f translationMat = M4fTranslationV2(state->camera.offset[0]);
+	Mat4f translationMat = M4fTranslationV2(state->camera.transform[0].offset);
 	Mat4f scaleMat = M4fScaleV2(V2fInit(cameraScale, cameraScale));
 	state->view = M4fMult(scaleMat, translationMat);
 	state->viewProjection = M4fMult(state->projection, state->view);
@@ -320,8 +319,8 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	// Mouse
 	int mouseCenterX = (input->mouse.pos.x) - input->windowSize.w / 2;
 	int mouseCenterY = (input->windowSize.h - 1 - input->mouse.pos.y) - input->windowSize.h / 2;
-	state->mouseWorldPos.x = (mouseCenterX * state->camera.pixelsToWorld) - state->camera.offset[0].x;
-	state->mouseWorldPos.y = (mouseCenterY * state->camera.pixelsToWorld) - state->camera.offset[0].y;
+	state->mouseWorldPos.x = (mouseCenterX * state->camera.pixelsToWorld) - state->camera.transform[0].offset.x;
+	state->mouseWorldPos.y = (mouseCenterY * state->camera.pixelsToWorld) - state->camera.transform[0].offset.y;
 	editor->mouseWorldPos = state->mouseWorldPos;
 
 	const Controller *keyboardController = &input->controllers[0];
@@ -380,7 +379,7 @@ extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
 	}
 
 	if (state->mode != GameMode_EditorPause) {
-		CameraSetPos(camera, player->position[0]);
+		CameraSetPos(camera, player->transform[0].pos);
 	} else {
 		CameraSetPos(camera, editor->cameraTranslation);
 	}
@@ -438,9 +437,8 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	const bool isEditorMode = state->mode >= GameMode_EditorPlay && state->mode <= GameMode_EditorPause;
 
 	// Re-compute matrices for smooth rendering
-	const float cameraScale = F32Lerp(state->camera.scale[1], alpha, state->camera.scale[0]);
-	const float invCameraScale = 1.0f / cameraScale;
-	const Vec2f cameraOffset = V2fLerp(state->camera.offset[1], alpha, state->camera.offset[0]);
+	const float cameraScale = F32Lerp(state->camera.transform[1].scale, alpha, state->camera.transform[0].scale);
+	const Vec2f cameraOffset = V2fLerp(state->camera.transform[1].offset, alpha, state->camera.transform[0].offset);
 
 	Mat4f translationMat = M4fTranslationV2(cameraOffset);
 	Mat4f scaleMat = M4fScaleV2(V2fInit(cameraScale, cameraScale));
@@ -497,7 +495,7 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	PushRectangle(renderState, map->maxBounds.min, mapBoundsSize, V4fInit(0.3f, 1.0f, 0.3f, 1.0f), false, 4.0f);
 
 	// Player
-	Vec2f playerPos = V2fLerp(player->position[1], alpha, player->position[0]);
+	Vec2f playerPos = V2fLerp(player->transform[1].pos, alpha, player->transform[0].pos);
 	PushRectangleCenter(renderState, playerPos, player->radius, player->color, false, 2.0f);
 	PushOrigin(renderState, playerPos);
 
@@ -630,9 +628,8 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 
 	// Overwrite render infos such as position, rotation for "previous" from "current" states
 	// This is important for getting smooth interpolated rendering
-	player->position[1] = player->position[0];
-	state->camera.offset[1] = state->camera.offset[0];
-	state->camera.scale[1] = state->camera.scale[0];
+	player->transform[1] = player->transform[0];
+	state->camera.transform[1] = state->camera.transform[0];
 }
 
 // Directly included translation units

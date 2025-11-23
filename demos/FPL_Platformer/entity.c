@@ -2,7 +2,7 @@
 
 #include "physics.h"
 
-extern bool EntityInit(Entity *entity, const uint32_t id, const Vec2f radius, const Vec2f position, const Vec4f color) {
+extern bool EntityInit(Entity *entity, const uint32_t id, const Vec2f radius, const EntityTransform *transform, const Vec4f color) {
 	if (entity == fpl_null) {
 		return false; // Invalid arguments
 	}
@@ -13,7 +13,7 @@ extern bool EntityInit(Entity *entity, const uint32_t id, const Vec2f radius, co
 	entity->velocity = V2fZero();
 	entity->posCorrect = V2fZero();
 	entity->color = color;
-	entity->position[0] = entity->position[1] = position;
+	entity->transform[0] = entity->transform[1] = *transform;
 
 	entity->applyGroundFriction = true;
 	entity->groundFriction = EntityDefaultGroundFriction;
@@ -117,7 +117,7 @@ static void EntityMapCollisions(Physics *physics, Entity *entity, const Map *map
 
 			Vec2f tileWorld = MapTileCoordsToWorld(map, tilePos);
 			AABB2f tileBounds = AABB2fInit(tileWorld, V2fAdd(tileWorld, TileSize));
-			AABB2f playerBounds = AABB2fInitFromCenter(entity->position[0], entity->radius);
+			AABB2f playerBounds = AABB2fInitFromCenter(entity->transform[0].pos, entity->radius);
 
 			uint32_t contactCount = CreateContactsAABBvsAABB(map, entity->id, &playerBounds, tileID, &tileBounds, tilePos, true, contacts);
 			if (contactCount > 0) {
@@ -163,7 +163,7 @@ extern void EntityUpdate(Physics *physics, Entity *entity, const Map *map, const
 	EntityHandleCollisions(physics, entity, map, dt);
 
 	// Integrate with position correction
-	entity->position[0] = V2fAddMultScalar(entity->position[0], V2fAdd(entity->velocity, entity->posCorrect), dt);
+	entity->transform[0].pos = V2fAddMultScalar(entity->transform[0].pos, V2fAdd(entity->velocity, entity->posCorrect), dt);
 
 	// Reset position correction
 	entity->posCorrect = V2fZero();

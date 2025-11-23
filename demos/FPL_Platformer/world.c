@@ -77,6 +77,7 @@ extern bool WorldLoad(World *world, const MapDefinition *mapDefinition) {
 	}
 
 	Map *map = &world->map;
+	Entity *player = &world->entities.player;
 
 	if (!WorldClear(world)) {
 		return false; // Failed to clear the world
@@ -88,14 +89,19 @@ extern bool WorldLoad(World *world, const MapDefinition *mapDefinition) {
 
 	uint32_t playerIndex = (uint32_t)world->entities.count++;
 	uint32_t playerId = EntityIDStart + playerIndex;
+
+	// TODO(final): Hardcoded player constants!
 	Vec2f playerRadius = V2fHadamard(TileSize, V2fInit(0.3f, 0.7f));
 	Vec4f playerColor = V4fInit(0.05f, 0.1f, 0.95f, 1);
+
+	// Find player start position from map
 	Vec2f playerPosition;
 	if (!GetMapPositionForEntity(playerRadius, map, TileType_PlayerStart, &playerPosition)) {
 		playerPosition = V2fZero();
 	}
-	Entity *player = &world->entities.player;
-	if (!EntityInit(player, playerId, playerRadius, playerPosition, playerColor)) {
+
+	EntityTransform playerTransform = EntityTransformInit(playerPosition);
+	if (!EntityInit(player, playerId, playerRadius, &playerTransform, playerColor)) {
 		return false; // Failed to initialize the player
 	}
 
