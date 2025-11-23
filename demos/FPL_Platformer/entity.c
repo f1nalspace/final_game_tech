@@ -138,7 +138,7 @@ static void EntityHandleCollisions(Physics *physics, Entity *entity, const Map *
 	AABB2fExpandScalar(&motionBounds, PhysicsAABBExpansion);
 
 	// Tile tiles area from AABB
-	TileBounds tileBounds = MapGetTileBounds(map, motionBounds);
+	TileBounds tileBounds = MapGetTileBounds(map, &motionBounds);
 
 	EntityMapCollisions(physics, entity, map, tileBounds.min, tileBounds.max, dt);
 }

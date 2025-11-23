@@ -205,9 +205,9 @@ fpl_inline AABB2f MapCreateTileAABB(const Map *map, const Vec2i tilePos) {
 	return result;
 }
 
-fpl_inline TileBounds MapGetTileBounds(const Map *map, const AABB2f aabb) {
-	Vec2i minTile = MapWorldCoordsToTile(map, aabb.min);
-	Vec2i maxTile = MapWorldCoordsToTile(map, V2fAdd(aabb.max, V2fInit(0.5f, 0.5f)));
+fpl_inline TileBounds MapGetTileBounds(const Map *map, const AABB2f *aabb) {
+	Vec2i minTile = MapWorldCoordsToTile(map, aabb->min);
+	Vec2i maxTile = MapWorldCoordsToTile(map, V2fAdd(aabb->max, V2fInit(0.5f, 0.5f)));
 	return TileBoundsInit(minTile, maxTile);
 }
 

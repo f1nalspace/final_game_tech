@@ -92,6 +92,13 @@ fpl_inline bool EntityIsAir(const Entity *entity) {
 	return !entity->groundState.current;
 }
 
+fpl_inline AABB2f EntityGetCurrentBounds(const Entity *entity) {
+	Vec2f min = V2fSub(entity->position[0], entity->radius);
+	Vec2f max = V2fAdd(entity->position[0], entity->radius);
+	AABB2f result = AABB2fInit(min, max);
+	return result;
+}
+
 fpl_inline AABB2f EntityGetMotionBounds(const Entity *entity, const float dt) {
 	// Predict position for next frame
 	Vec2f predictedPos = V2fAddMultScalar(entity->position[0], V2fAdd(entity->velocity, entity->posCorrect), dt);
