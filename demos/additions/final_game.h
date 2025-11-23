@@ -117,17 +117,6 @@ typedef struct Input {
 	bool isFirstUpdateOfFrame;
 } Input;
 
-typedef enum InputMappingValueType {
-	InputMappingValueType_None = 0,
-	InputMappingValueType_Gamepad,
-	InputMappingValueType_Keyboard,
-	InputMappingValueType_Mouse,
-} InputMappingValueType;
-
-typedef struct InputMappingValue {
-
-} InputMappingValue;
-
 struct GameState;
 
 typedef struct GameMemory {
