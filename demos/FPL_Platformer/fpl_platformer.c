@@ -471,7 +471,7 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	AABB2fExpandScalar(&playerMotionBounds, PhysicsAABBExpansion);
 
 	// Render collision tile bounds
-	bool renderPlayerTileBounds = true;
+	bool renderPlayerTileBounds = state->mode != GameMode_EditorPause;
 	if (renderPlayerTileBounds) {
 		// Tile tiles area from AABB
 		TileBounds tileBounds = MapGetTileBounds(map, &playerMotionBounds);
@@ -487,7 +487,7 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	}
 
 	// Contacts
-	bool renderContacts = true;
+	bool renderContacts = state->mode != GameMode_EditorPause;
 	if (renderContacts) {
 		for (size_t i = 0; i < physics->contactList.used; ++i) {
 			const Contact *contact = physics->contactList.data + i;
