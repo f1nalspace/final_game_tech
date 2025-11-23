@@ -118,13 +118,26 @@ static void AssetsFree(Assets *assets) {
 
 static void AssetsLoad(RenderState *renderState, Assets *assets) {
 	// Fonts
-	char fontDataPath[1024];
+	char tempDataPath[1024];
 	const char *fontFilename = "lucida_console.ttf";
-	fplPathCombine(fontDataPath, fplArrayCount(fontDataPath), 2, assets->dataPath, "fonts");
+	fplPathCombine(tempDataPath, fplArrayCount(tempDataPath), 2, assets->dataPath, "fonts");
 	FontAsset *hudFont = &assets->consoleFont;
-	if (LoadFontFromFile(fontDataPath, fontFilename, 0, 24.0f, 32, 128, 512, 512, false, &hudFont->desc)) {
+	if (LoadFontFromFile(tempDataPath, fontFilename, 0, 24.0f, 32, 128, 512, 512, false, &hudFont->desc)) {
 		PushTexture(renderState, &hudFont->texture, hudFont->desc.atlasAlphaBitmap, hudFont->desc.atlasWidth, hudFont->desc.atlasHeight, 1, TextureFilterType_Linear, TextureWrapMode_ClampToEdge, false, false);
 	}
+
+	// Maps
+	const char *mapName = "Level_1"; // Must match the "identifier" of the level
+	const char *mapFilename = "level1.ldtk";
+	fplPathCombine(tempDataPath, fplArrayCount(tempDataPath), 2, assets->dataPath, "maps");
+
+	fmemMemoryBlock tempMemory = fplZeroInit;
+	fmemBeginTemporary(&assets->transientMemory, &tempMemory);
+	MapDefinition *mapDef = fmemPushStruct(&tempMemory, MapDefinition, fmemPushFlags_Clear);
+	if (MapDefinitionLoadFromFile(&tempMemory, tempDataPath, mapFilename, mapName, mapDef)) {
+
+	}
+	fmemEndTemporary(&tempMemory);
 }
 
 static bool GameStateInit(fmemMemoryBlock *memory, GameState *state) {
