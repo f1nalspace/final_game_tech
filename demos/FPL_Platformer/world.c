@@ -127,7 +127,4 @@ extern void WorldUpdate(World *world, const Input *input) {
 
 	// May double-check results later
 	PhysicsEnd(physics);
-
-	world->camera.offset[0] = V2fNegate(player->position[0]);
-	world->camera.scale[0] = 1.0f;
 }

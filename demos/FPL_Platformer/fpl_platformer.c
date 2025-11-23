@@ -82,6 +82,23 @@ static MapDefinition gTestLevel = {
 //
 // Game State
 //
+typedef enum GameMode {
+	// Only game is running
+	GameMode_Game = 0,
+	// Editor is active and game is still running
+	GameMode_EditorPlay,
+	// Editor is active and game is fully paused
+	GameMode_EditorPause,
+	// Total number of game modes
+	GameMode_Count,
+} GameMode;
+
+fpl_globalvar const char *gGameModeNames[GameMode_Count] = {
+	"Game",
+	"Editor (Play-mode)",
+	"Editor (Full)",
+};
+
 typedef struct GameState {
 	World world;
 
@@ -97,8 +114,10 @@ typedef struct GameState {
 
 	fmemMemoryBlock *memory;
 
-	float deltaTime;
 	float framesPerSecond[2];
+	float deltaTime;
+
+	GameMode mode;
 
 	bool isExiting;
 	bool isDebugRendering;
@@ -138,6 +157,8 @@ static bool GameStateInit(fmemMemoryBlock *memory, GameState *state) {
 	}
 
 	state->isDebugRendering = true;
+
+	state->mode = GameMode_Game;
 
 	return true;
 }
@@ -229,6 +250,9 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	const float w = WorldRadiusW;
 	const float h = WorldRadiusH;
 
+	const bool isGameUpdating = state->mode != GameMode_EditorPause;
+	const bool isEditorMode = state->mode != GameMode_Game;
+
 	// Camera
 	const float cameraScale = world->camera.scale[0];
 	const float invCameraScale = 1.0f / cameraScale;
@@ -247,17 +271,37 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	state->mouseWorldPos.y = (mouseCenterY * world->camera.pixelsToWorld) - world->camera.offset[0].y;
 	editor->mouseWorldPos = state->mouseWorldPos;
 
-	// Debug input
 	const Controller *keyboardController = &input->controllers[0];
-	if (ButtonWasPressed(keyboardController->debugToggle)) {
+	
+	// Debug rendering on/off (F6)
+	if (ButtonWasPressed(keyboardController->debug6)) {
 		state->isDebugRendering = !state->isDebugRendering;
 	}
 
-	// Editor input
-	EditorInput(editor, input);
+	// Toggle game state (F1)
+	if (ButtonWasPressed(keyboardController->debug1)) {
+		switch (state->mode) {
+			case GameMode_Game:
+				state->mode = GameMode_EditorPlay;
+				break;
+			case GameMode_EditorPlay:
+				state->mode = GameMode_EditorPause;
+				break;
+			case GameMode_EditorPause:
+				state->mode = GameMode_Game;
+				break;
+			default:
+				break;
+		}
+	}
 
-	// Player input
-	EntityInput(player, input);
+	if (isEditorMode) {
+		EditorInput(editor, input);
+	}
+
+	if (isGameUpdating) {
+		EntityInput(player, input);
+	}
 }
 
 extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
@@ -269,18 +313,23 @@ extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
 	assert(state != fpl_null);
 
 	const float dt = input->fixedDeltaTime;
+	const bool isGameUpdating = state->mode != GameMode_EditorPause;
+	const bool isEditorMode = state->mode != GameMode_Game;
 
 	World *world = &state->world;
 	Map *map = &world->map;
-	
-	WorldUpdate(world, input);
+	Entity *player = &world->entities.player;
+
+	if (isGameUpdating) {
+		WorldUpdate(world, input);
+		world->camera.offset[0] = V2fNegate(player->position[0]);
+		world->camera.scale[0] = 1.0f;
+	}
 
 	// FPS display
 	const float fpsSmoothing = 0.1f;
-
 	const float newFps = input->framesPerSeconds;
 	const float oldFps = state->framesPerSecond[0];
-
 	state->deltaTime = dt;
 	state->framesPerSecond[1] = F32Avg(oldFps, fpsSmoothing, newFps);
 	state->framesPerSecond[0] = state->framesPerSecond[1];
@@ -327,6 +376,7 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	const float w = WorldRadiusW;
 	const float h = WorldRadiusH;
 	const float dt = state->deltaTime;
+	const bool isEditorMode = state->mode >= GameMode_EditorPlay && state->mode <= GameMode_EditorPause;
 
 	// Re-compute matrices for smooth rendering
 	const float cameraScale = F32Lerp(world->camera.scale[1], alpha, world->camera.scale[0]);
@@ -363,7 +413,9 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	PushLine(renderState, V2fInit(-w, 0.0f), V2fInit(w, 0.0f), V4fInit(1.0f, 0.0f, 0.0f, 0.5f), 1.0f);
 
 	// Render editor (Pre -> Grid)
-	EditorPreRender(renderState, editor, input);
+	if (isEditorMode) {
+		EditorPreRender(renderState, editor, input);
+	}
 
 	// Map
 	for (int y = map->origin.y; y < map->origin.y + mapSize.h; ++y) {
@@ -436,10 +488,14 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	}
 
 	// Mouse cursor
-	PushRectangleCenter(renderState, state->mouseWorldPos, V2fInit(2, 2), V4fInit(1.0f, 0.0f, 0.0f, 1.0f), true, 0.0f);
+	if (state->mode != GameMode_Game) {
+		PushRectangleCenter(renderState, state->mouseWorldPos, V2fInit(2, 2), V4fInit(1.0f, 0.0f, 0.0f, 1.0f), true, 0.0f);
+	}
 
 	// Render editor (Post -> Paint tiles)
-	EditorPostRender(renderState, editor, input);
+	if (isEditorMode) {
+		EditorPostRender(renderState, editor, input);
+	}
 
 	// Char buffer to hold characters for formatting strings in the debug OSD
 	fpl_localvar char debugOSDCharBuffer[256];
@@ -482,6 +538,13 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 
 		blockPos = V2fSub(blockPos, V2fInit(0, fontHeight * 2.0f));
 
+		// Game state
+		const char *gameModeName = gGameModeNames[state->mode];
+		fplStringFormat(debugOSDCharBuffer, fplArrayCount(debugOSDCharBuffer), "Game Mode: %s", gameModeName);
+		PushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, blackColor);
+		PushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
+		blockPos = V2fSub(blockPos, V2fInit(0, fontHeight));
+
 		// Player states
 		fplStringFormat(debugOSDCharBuffer, fplArrayCount(debugOSDCharBuffer), "Player ground: %s", player->groundState.current ? "yes" : "no");
 		PushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, blackColor);
@@ -490,7 +553,7 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	}
 
 	// Render editor OSD
-	bool drawEditorOSD = true;
+	bool drawEditorOSD = state->mode >= GameMode_EditorPlay;
 	if (drawEditorOSD) {
 		SetMatrix(renderState, &state->projection);
 		EditorOSDRender(renderState, editor, input);
@@ -498,9 +561,9 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 
 	// Overwrite render infos such as position, rotation for "previous" from "current" states
 	// This is important for getting smooth interpolated rendering
+	player->position[1] = player->position[0];
 	world->camera.offset[1] = world->camera.offset[0];
 	world->camera.scale[1] = world->camera.scale[0];
-	player->position[1] = player->position[0];
 }
 
 #define FINAL_GAMEPLATFORM_IMPLEMENTATION
