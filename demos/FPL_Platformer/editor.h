@@ -34,8 +34,6 @@ typedef struct Editor {
 	fmemMemoryBlock transientMemory;
 	fmemMemoryBlock persistentMemory;
 
-	Viewport viewport;
-
 	Vec2f mouseWorldPos;
 	Vec2i drawTilePos;
 

@@ -39,7 +39,8 @@ fpl_extern bool EditorInit(fmemMemoryBlock *gameMemory, Editor *editor, GameAsse
 	editor->assets = assets;
 	editor->mode = EditorMode_None;
 
-	if (!CameraInit(&editor->camera, V2fInit(0.0f, 0.0f), 1.0f)) {
+	Vec2f viewRadius = V2fMultScalar(V2fInit(WorldRadiusW, WorldRadiusH), GameViewInvScale);
+	if (!CameraInit(&editor->camera, V2fInit(0.0f, 0.0f), 1.0f, viewRadius)) {
 		return false;
 	}
 
@@ -62,7 +63,7 @@ fpl_extern void EditorInput(Editor *editor, const Input *input) {
 		newZoom = F32Clamp(newZoom, EDITOR_CAMERA_MIN_ZOOM, EDITOR_CAMERA_MAX_ZOOM);
 		if (editor->mode == EditorMode_Full) {
 			Vec2f targetPos = editor->mouseWorldPos;
-			CameraZoomToPosition(camera, oldZoom, newZoom, editor->viewport.w, WorldWidth, targetPos);
+			CameraZoomToPosition(camera, oldZoom, newZoom, WorldWidth, targetPos);
 		} else if (editor->mode == EditorMode_Live) {
 			CameraSetScale(camera, newZoom);
 		}

@@ -3,6 +3,7 @@
 
 #include <final_platform_layer.h>
 #include <final_math.h>
+#include <final_render.h>
 #include <final_geometry.h>
 
 typedef struct CameraLimits {
@@ -33,7 +34,9 @@ typedef struct Camera {
 	CameraLimits limits;
 	// Current camera target
 	CameraTarget target;
-	// Current camera view radius
+	// Current viewport in screen space
+	Viewport viewport;
+	// Current camera view radius in world coordinates
 	Vec2f viewRadius;
 	// Factor that is used to convert from world coordinate to screen coordinates
 	float worldToPixels;
@@ -41,7 +44,7 @@ typedef struct Camera {
 	float pixelsToWorld;
 } Camera;
 
-fpl_inline bool CameraInit(Camera *camera, const Vec2f offset, const float scale) {
+fpl_inline bool CameraInit(Camera *camera, const Vec2f offset, const float scale, const Vec2f viewRadius) {
 	if (camera == fpl_null) {
 		return false; // Invalid arguments
 	}
@@ -49,7 +52,14 @@ fpl_inline bool CameraInit(Camera *camera, const Vec2f offset, const float scale
 	camera->transform[0].offset = V2fNegate(offset);
 	camera->transform[0].scale = scale;
 	camera->transform[1] = camera->transform[0];
+	camera->viewRadius = viewRadius;
 	return true;
+}
+
+fpl_inline void CameraUpdateViewport(Camera *camera, const Viewport *viewport, const float worldWidth) {
+	camera->viewport = *viewport;
+	camera->worldToPixels = ((float)viewport->w / worldWidth) * camera->transform[0].scale;
+	camera->pixelsToWorld = 1.0f / camera->worldToPixels;
 }
 
 fpl_inline void CameraSetScale(Camera *camera, const float scale) {
@@ -68,10 +78,12 @@ fpl_inline void CameraSetPos(Camera *camera, const Vec2f pos) {
 	}
 }
 
-fpl_inline void CameraZoomToPosition(Camera *camera, const float oldZoom, const float newZoom, const int viewportWidth, const float worldWidth, const Vec2f target) {
+fpl_inline void CameraZoomToPosition(Camera *camera, const float oldZoom, const float newZoom, const float worldWidth, const Vec2f target) {
 	fplAssert(oldZoom > 0.0f && newZoom > 0.0f);
+	fplAssert(worldWidth > 0.0f);
 
 	// Old conversion factors
+	float viewportWidth = (float)camera->viewport.w;
     float oldWorldToPixels = (viewportWidth / (float)worldWidth) * oldZoom;
     float newWorldToPixels = (viewportWidth / (float)worldWidth) * newZoom;
 

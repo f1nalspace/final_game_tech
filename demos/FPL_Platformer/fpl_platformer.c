@@ -102,7 +102,6 @@ typedef struct GameState {
 	Mat4f view;
 	Mat4f viewProjection;
 	Camera camera;
-	Viewport viewport;
 	Vec2f mouseWorldPos;
 
 	Editor editor;
@@ -307,20 +306,18 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	const bool isEditorMode = state->mode != GameMode_Game;
 
 	// Camera
-	const float cameraScale = state->camera.transform[0].scale;
-	state->viewport = ComputeViewportByAspect(input->windowSize, WorldAspect);
-	editor->viewport = state->viewport;
+
+	// TODO(final): Needs only to be updated when viewport changes!
+	Viewport viewport = ComputeViewportByAspect(input->windowSize, WorldAspect);;
+	CameraUpdateViewport(camera, &viewport, WorldWidth);
+	CameraUpdateViewport(&editor->camera, &viewport, WorldWidth);
 
 	// TODO(final): Needs only to be updated when map bounds changes!
 	state->camera.limits.bounds = map->maxBounds;
 
-	// TODO(final): Needs only to be updated when viewport changes!
-	state->camera.worldToPixels = (state->viewport.w / (float)WorldWidth) * cameraScale;
-	state->camera.pixelsToWorld = 1.0f / state->camera.worldToPixels;
-
 	// Matrices
 	Mat4f translationMat = M4fTranslationV2(state->camera.transform[0].offset);
-	Mat4f scaleMat = M4fScaleV2(V2fInit(cameraScale, cameraScale));
+	Mat4f scaleMat = M4fScaleV2(V2fInitScalar(state->camera.transform[0].scale));
 	state->view = M4fMult(scaleMat, translationMat);
 	state->viewProjection = M4fMult(state->projection, state->view);
 
@@ -440,7 +437,9 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 
 	RenderState *renderState = gameMemory->render;
 
-	Editor *editor = &state->editor;
+	const Editor *editor = &state->editor;
+	const Camera *camera = &state->camera;
+
 	World *world = &state->world;
 	Map *map = &world->map;
 	Physics *physics = &world->physics;
@@ -471,7 +470,7 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	Vec4f groundSensorTileColor = V4fInit(0.0f, 1.0f, 0.0f, 1.0f);
 	Vec4f groundSensorColor = V4fInit(0.0f, 1.0f, 0.0f, 1.0f);
 
-	PushViewport(renderState, state->viewport.x, state->viewport.y, state->viewport.w, state->viewport.h);
+	PushViewport(renderState, camera->viewport.x, camera->viewport.y, camera->viewport.w, camera->viewport.h);
 	PushClear(renderState, V4fInit(0, 0, 0, 1), ClearFlags_Color | ClearFlags_Depth);
 
 	// Only ortho projection
