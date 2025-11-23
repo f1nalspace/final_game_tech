@@ -79,6 +79,7 @@ static MapDefinition gTestLevel = {
 // Game
 //
 typedef struct Assets {
+	fmemMemoryBlock transientMemory;
 	FontAsset consoleFont;
 	char dataPath[1024];
 } Assets;
@@ -169,6 +170,11 @@ extern bool GameInit(GameMemory *gameMemory) {
 	fplGetExecutableFilePath(state->assets.dataPath, fplArrayCount(state->assets.dataPath));
 	fplExtractFilePath(state->assets.dataPath, state->assets.dataPath, fplArrayCount(state->assets.dataPath));
 	fplPathCombine(state->assets.dataPath, fplArrayCount(state->assets.dataPath), 2, state->assets.dataPath, "data");
+
+	// Assets transient memory
+	if (!fmemPushBlock(gameMemory->memory, &state->assets.transientMemory, fplMegaBytes(8), fmemPushFlags_Clear)) {
+		return false; // Insufficient memory for transient asset memory
+	}
 
 	AssetsLoad(renderState, &state->assets);
 
