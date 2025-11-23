@@ -97,6 +97,13 @@ fpl_inline AABB2f AABB2fInitFromCenter(const Vec2f center, const Vec2f radius) {
 	return result;
 }
 
+fpl_inline AABB2f AABB2fInitFromBottomLeft(const Vec2f bottomLeft, const Vec2f size) {
+	Vec2f min = bottomLeft;
+	Vec2f max = V2fAdd(bottomLeft, size);
+	AABB2f result = AABB2fInit(min, max);
+	return result;
+}
+
 fpl_inline Vec2f AABB2fGetRadius(const AABB2f *aabb) {
 	Vec2f size = V2fSub(aabb->max, aabb->min);
 	Vec2f result = V2fMultScalar(size, 0.5f);
