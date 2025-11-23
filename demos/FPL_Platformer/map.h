@@ -9,6 +9,12 @@
 
 #include "common.h"
 
+// Size of the map transient memory block
+#define MAP_MEMORY_TRANSIENT_SIZE fplMegaBytes(4)
+
+// Size of the map persistent memory block
+#define MAP_MEMORY_PERSISTENT_SIZE fplMegaBytes(8)
+
 //
 // Fixed tile definition in world space
 //

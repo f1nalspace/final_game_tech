@@ -37,11 +37,14 @@ extern bool WorldInit(fmemMemoryBlock *memory, World *world) {
 
 	fplClearStruct(world);
 
-	if (!fmemPushBlock(memory, &world->memory, fplMegaBytes(64), fmemPushFlags_Clear)) {
-		return false; // Insufficient memory
+	if (!fmemPushBlock(memory, &world->transientMemory, WORLD_MEMORY_TRANSIENT_SIZE, fmemPushFlags_Clear)) {
+		return false; // Insufficient memory for world transient memory
+	}
+	if (!fmemPushBlock(memory, &world->persistentMemory, WORLD_MEMORY_PERSISTENT_SIZE, fmemPushFlags_Clear)) {
+		return false; // Insufficient memory for world persistent memory
 	}
 
-	if (!MapInit(&world->memory, &world->map)) {
+	if (!MapInit(&world->persistentMemory, &world->map)) {
 		return false; // Failed to initialize map
 	}
 

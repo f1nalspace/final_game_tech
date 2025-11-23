@@ -9,11 +9,11 @@ extern bool MapInit(fmemMemoryBlock *memory, Map *map) {
 	fplClearStruct(map);
 	map->tileSize = TileSize;
 	map->tileRadius = TileRadius;
-	if (!fmemPushBlock(memory, &map->persistentMemory, fplMegaBytes(8), fmemPushFlags_Clear)) {
-		return false; // Memory is too small
+	if (!fmemPushBlock(memory, &map->temporaryMemory, MAP_MEMORY_TRANSIENT_SIZE, fmemPushFlags_Clear)) {
+		return false; // Insufficient memory for map transient memory
 	}
-	if (!fmemPushBlock(memory, &map->temporaryMemory, fplMegaBytes(8), fmemPushFlags_Clear)) {
-		return false; // Memory is too small
+	if (!fmemPushBlock(memory, &map->persistentMemory, MAP_MEMORY_PERSISTENT_SIZE, fmemPushFlags_Clear)) {
+		return false; // Insufficient memory for map persistent memory
 	}
 	return true;
 }

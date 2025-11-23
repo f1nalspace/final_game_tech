@@ -41,6 +41,7 @@ License:
 #include <final_utils.h>
 
 // Headers
+#include "assets.h"
 #include "entity.h"
 #include "map.h"
 #include "world.h"
@@ -48,6 +49,7 @@ License:
 #include "editor.h"
 
 // Directly included translation units
+#include "assets.c"
 #include "entity.c"
 #include "map.c"
 #include "world.c"
@@ -78,14 +80,8 @@ static MapDefinition gTestLevel = {
 };
 
 //
-// Game
+// Game State
 //
-typedef struct GameAssets {
-	fmemMemoryBlock transientMemory;
-	FontAsset consoleFont;
-	char dataPath[1024];
-} GameAssets;
-
 typedef struct GameState {
 	World world;
 
@@ -99,6 +95,8 @@ typedef struct GameState {
 
 	Editor editor;
 
+	fmemMemoryBlock *memory;
+
 	float deltaTime;
 	float framesPerSecond[2];
 
@@ -106,32 +104,12 @@ typedef struct GameState {
 	bool isDebugRendering;
 } GameState;
 
-static void AssetsFree(GameAssets *assets) {
-	ReleaseFontAsset(&assets->consoleFont);
-}
-
-static void AssetsLoad(RenderState *renderState, GameAssets *assets) {
-	// Fonts
-	char tempDataPath[1024];
-	const char *fontFilename = "lucida_console.ttf";
-	fplPathCombine(tempDataPath, fplArrayCount(tempDataPath), 2, assets->dataPath, "fonts");
-	FontAsset *hudFont = &assets->consoleFont;
-	if (LoadFontFromFile(tempDataPath, fontFilename, 0, 24.0f, 32, 128, 512, 512, false, &hudFont->desc)) {
-		PushTexture(renderState, &hudFont->texture, hudFont->desc.atlasAlphaBitmap, hudFont->desc.atlasWidth, hudFont->desc.atlasHeight, 1, TextureFilterType_Linear, TextureWrapMode_ClampToEdge, false, false);
+static void GameStateRelease(GameState *state) {
+	if (state == fpl_null) {
+		return; // Invalid arguments
 	}
-
-	// Maps
-	const char *mapName = "Level_1"; // Must match the "identifier" of the level
-	const char *mapFilename = "level1.ldtk";
-	fplPathCombine(tempDataPath, fplArrayCount(tempDataPath), 2, assets->dataPath, "maps");
-
-	fmemMemoryBlock tempMemory = fplZeroInit;
-	fmemBeginTemporary(&assets->transientMemory, &tempMemory);
-	MapDefinition *mapDef = fmemPushStruct(&tempMemory, MapDefinition, fmemPushFlags_Clear);
-	if (!MapDefinitionLoadFromFile(&tempMemory, tempDataPath, mapFilename, mapName, mapDef)) {
-
-	}
-	fmemEndTemporary(&tempMemory);
+	AssetsFree(&state->assets);
+	fplClearStruct(state);
 }
 
 static bool GameStateInit(fmemMemoryBlock *memory, GameState *state) {
@@ -139,32 +117,45 @@ static bool GameStateInit(fmemMemoryBlock *memory, GameState *state) {
 		return false; // Invalid arguments
 	}
 
+	fplClearStruct(state);
+
+	state->memory = memory;
+
 	Editor *editor = &state->editor;
 	World *world = &state->world;
 	GameAssets *assets = &state->assets;
 
-	state->isDebugRendering = true;
+	if (!AssetsInit(state->memory, &state->assets)) {
+		return false; // Failed to initialize assets (insufficient memory, etc.)
+	}
 
-	if (!WorldInit(memory, world)) {
+	if (!WorldInit(state->memory, world)) {
 		return false; // Failed to initialize world (insufficient memory, wrong values, etc.)
 	}
 
-	if (!EditorInit(memory, editor, world)) {
+	if (!EditorInit(state->memory, editor, assets, world)) {
 		return false; // Failed to initialize editor (insufficient memory, etc.)
 	}
 
-	// TEMPORARY(tspaete): Pass all relevant assets to the editor, because the editor has no access to the game-assets (for now)
-	editor->assets.consoleFont = &assets->consoleFont;
+	state->isDebugRendering = true;
 
 	return true;
 }
 
-static bool GameStateLoadMap(GameState *state, const MapDefinition *mapDefinition) {
-	if (state == fpl_null || mapDefinition == fpl_null) {
+static bool GameStateLoad(RenderState *renderState, GameState *state) {
+	if (state == fpl_null) {
 		return false; // Invalid arguments
 	}
 
-	if (!WorldLoad(&state->world, mapDefinition)) {
+	Editor *editor = &state->editor;
+	World *world = &state->world;
+	GameAssets *assets = &state->assets;
+
+	if (!AssetsLoad(renderState, assets)) {
+		return false; // Failed to load game assets (insufficient memory, wrong paths, files not found, etc.)
+	}
+
+	if (!WorldLoad(world, &gTestLevel)) {
 		return false; // Failed to load the map into the world (insufficient memory, wrong map, etc.)
 	}
 
@@ -176,31 +167,22 @@ extern bool GameInit(GameMemory *gameMemory) {
 		return false; // Invalid arguments
 	}
 
-	GameState *state = (GameState *)fmemPush(gameMemory->memory, sizeof(GameState), fmemPushFlags_Clear);
-	if (state == fpl_null) {
+	fmemMemoryBlock *gameMem = gameMemory->memory;
+	fplAssert(gameMem != fpl_null);
+
+	GameState *gameState = (GameState *)fmemPush(gameMem, sizeof(GameState), fmemPushFlags_Clear);
+	if (gameState == fpl_null) {
 		return false; // Insufficient memory for game state
 	}
-
-	gameMemory->game = state;
+	gameMemory->game = gameState;
 
 	RenderState *renderState = gameMemory->render;
 
-	fplGetExecutableFilePath(state->assets.dataPath, fplArrayCount(state->assets.dataPath));
-	fplExtractFilePath(state->assets.dataPath, state->assets.dataPath, fplArrayCount(state->assets.dataPath));
-	fplPathCombine(state->assets.dataPath, fplArrayCount(state->assets.dataPath), 2, state->assets.dataPath, "data");
-
-	// Assets transient memory
-	if (!fmemPushBlock(gameMemory->memory, &state->assets.transientMemory, fplMegaBytes(4), fmemPushFlags_Clear)) {
-		return false; // Insufficient memory for transient asset memory
+	if (!GameStateInit(gameMem, gameState)) {
+		return false; // Failed to initialize game state
 	}
 
-	AssetsLoad(renderState, &state->assets);
-
-	if (!GameStateInit(gameMemory->memory, state)) {
-		return false; // Failed to initialize the game state
-	}
-
-	if (!GameStateLoadMap(state, &gTestLevel)) {
+	if (!GameStateLoad(renderState, gameState)) {
 		return false; // Failed to load the test level
 	}
 
@@ -211,12 +193,11 @@ extern void GameRelease(GameMemory *gameMemory) {
 	if (gameMemory == fpl_null) {
 		return; // Invalid arguments
 	}
-	GameState *state = gameMemory->game;
-	if (state == fpl_null) {
+	GameState *gameState = gameMemory->game;
+	if (gameState == fpl_null) {
 		return; // Game state not allocated
 	}
-	AssetsFree(&state->assets);
-	fplClearStruct(state);
+	GameStateRelease(gameState);
 }
 
 extern bool IsGameExiting(GameMemory *gameMemory) {

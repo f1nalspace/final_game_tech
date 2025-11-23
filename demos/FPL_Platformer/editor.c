@@ -16,8 +16,8 @@ static void EditorPaintTile(Editor *editor, Map *map, const Vec2i tilePos) {
 		}
 	}
 }
-fpl_extern bool EditorInit(fmemMemoryBlock *gameMemory, Editor *editor, World *world) {
-	if (gameMemory == fpl_null || editor == fpl_null || world == fpl_null) {
+fpl_extern bool EditorInit(fmemMemoryBlock *gameMemory, Editor *editor, GameAssets *assets, World *world) {
+	if (gameMemory == fpl_null || editor == fpl_null || assets == fpl_null || world == fpl_null) {
 		return false; // Invalid arguments
 	}
 	fplClearStruct(editor);
@@ -28,6 +28,7 @@ fpl_extern bool EditorInit(fmemMemoryBlock *gameMemory, Editor *editor, World *w
 		return false; // Insufficient memory for editor persistent memory
 	}
 	editor->world = world;
+	editor->assets = assets;
 	return true;
 }
 
@@ -65,7 +66,7 @@ fpl_extern void EditorInput(Editor *editor, const Input *input) {
 }
 
 fpl_extern void EditorPreRender(RenderState *renderState, const Editor *editor, const Input *input) {
-	const EditorAssets *assets = &editor->assets;
+	const GameAssets *assets = editor->assets;
 	const World *world = editor->world;
 	const Map *map = &world->map;
 	const Entity *player = &world->entities.player;
@@ -99,7 +100,7 @@ fpl_extern void EditorPreRender(RenderState *renderState, const Editor *editor, 
 fpl_extern void EditorPostRender(RenderState *renderState, const Editor *editor, const Input *input) {
 	fpl_localvar char charBuffer[100] = fplZeroInit;
 
-	const EditorAssets *assets = &editor->assets;
+	const GameAssets *assets = editor->assets;
 	const World *world = editor->world;
 	const Map *map = &world->map;
 	const Entity *player = &world->entities.player;
@@ -112,7 +113,7 @@ fpl_extern void EditorPostRender(RenderState *renderState, const Editor *editor,
 	// Editor mouse tile
 	bool drawEditorMouseMouseTile = true;
 	if (drawEditorMouseMouseTile) {
-		const FontAsset *font = assets->consoleFont;
+		const FontAsset *font = &assets->consoleFont;
 		fplAssert(font != fpl_null);
 		float fontHeight = 6.0f;
 
@@ -144,12 +145,12 @@ fpl_extern void EditorOSDRender(RenderState *renderState, const Editor *editor, 
 	const float w = WorldRadiusW;
 	const float h = WorldRadiusH;
 
-	const EditorAssets *assets = &editor->assets;
+	const GameAssets *assets = editor->assets;
 	const World *world = editor->world;
 	const Map *map = &world->map;
 	const Entity *player = &world->entities.player;
 
-	const FontAsset *font = assets->consoleFont;
+	const FontAsset *font = &assets->consoleFont;
 	fplAssert(font != fpl_null);
 	float fontHeight = 8.0f;
 

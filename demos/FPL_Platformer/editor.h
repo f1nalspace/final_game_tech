@@ -4,7 +4,6 @@
 // Dependencies
 #include <final_platform_layer.h>
 #include <final_math.h>
-#include "final_assets.h" // FontAsset
 #include <final_memory.h> // fmemMemoryBlock
 
 // Game headers
@@ -12,6 +11,7 @@
 #include "physics.h"
 #include "entity.h"
 #include "world.h"
+#include "assets.h"
 
 // Size of the editor transient memory block
 #define EDITOR_MEMORY_TRANSIENT_SIZE fplMegaBytes(2)
@@ -19,24 +19,20 @@
 // Size of the editor persistent memory block
 #define EDITOR_MEMORY_PERSISTENT_SIZE fplMegaBytes(8)
 
-typedef struct EditorAssets {
-	const FontAsset *consoleFont;
-} EditorAssets;
-
 typedef struct Editor {
-	EditorAssets assets;
 	fmemMemoryBlock transientMemory;
 	fmemMemoryBlock persistentMemory;
 	Vec2f mouseWorldPos;
 	Vec2i drawTilePos;
 
+	GameAssets *assets;
 	World *world;
 
 	uint32_t drawTile;
 	bool isDrawing;
 } Editor;
 
-fpl_extern bool EditorInit(fmemMemoryBlock *gameMemory, Editor *editor, World *world);
+fpl_extern bool EditorInit(fmemMemoryBlock *gameMemory, Editor *editor, GameAssets *assets, World *world);
 
 fpl_extern void EditorInput(Editor *editor, const Input *input);
 

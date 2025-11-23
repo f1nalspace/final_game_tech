@@ -9,6 +9,12 @@
 #include "map.h"
 #include "physics.h"
 
+// Size of the world persistent memory block
+#define WORLD_MEMORY_PERSISTENT_SIZE fplMegaBytes(64)
+
+// Size of the world transient memory block
+#define WORLD_MEMORY_TRANSIENT_SIZE fplMegaBytes(4)
+
 //
 // Fixed world definition
 //
@@ -57,7 +63,8 @@ typedef struct World {
 	Entities entities;
 	Physics physics;
 	Map map;
-	fmemMemoryBlock memory;
+	fmemMemoryBlock persistentMemory;
+	fmemMemoryBlock transientMemory;
 	Camera2D camera;
 } World;
 

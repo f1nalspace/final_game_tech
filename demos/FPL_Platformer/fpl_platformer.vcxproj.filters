@@ -8,6 +8,7 @@
     <ClCompile Include="world.c" />
     <ClCompile Include="common.c" />
     <ClCompile Include="editor.c" />
+    <ClCompile Include="assets.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="physics.h" />
@@ -16,6 +17,7 @@
     <ClInclude Include="entity.h" />
     <ClInclude Include="common.h" />
     <ClInclude Include="editor.h" />
+    <ClInclude Include="assets.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Dependencies">
