@@ -7,6 +7,8 @@
 
 #include <final_math.h>
 
+#include "common.h"
+
 //
 // Fixed tile definition in world space
 //
@@ -43,7 +45,35 @@ fpl_inline TileBounds TileBoundsInit(const Vec2i min, const Vec2i max) {
 	return result;
 }
 
+typedef enum MapLayerType {
+	MapLayerType_None = 0,
+	MapLayerType_IntGrid,
+	MapLayerType_Entities,
+} MapLayerType;
+
+typedef struct MapIntGridValue {
+	int value;
+	String identifier;
+} MapIntGridValue;
+
+typedef struct MapEntity {
+	String identifier;
+} MapEntity;
+
+typedef struct MapLayer {
+	MapLayerType type;
+	uint32_t uid;
+	uint32_t count;
+	union {
+		MapIntGridValue *intGridValues;
+	};
+} MapLayer;
+
 typedef struct MapDefinition {
+	// Map unique id
+	IID16 iid;
+	// Map name
+	String name;
 	// The 1D tile type array (width * height)
 	TileType *tiles;
 	// The width in tiles
@@ -184,6 +214,8 @@ fpl_inline TileBounds MapGetTileBounds(const Map *map, const AABB2f aabb) {
 extern bool MapInit(fmemMemoryBlock *memory, Map *map);
 
 extern void MapClear(Map *map);
+
+extern bool MapDefinitionLoadFromFile(fmemMemoryBlock *memoryBlock, const char *dataPath, const char *filePath, const char *levelName, MapDefinition *outDefinition);
 
 extern bool MapAssign(Map *map, const MapDefinition *definition);
 
