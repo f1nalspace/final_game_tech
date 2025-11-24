@@ -14,11 +14,11 @@ License:
 #define FINAL_ASSETS_H
 
 #include <final_platform_layer.h>
+#include <final_memory.h>
 
 #include <final_math.h>
 #include <final_fontloader.h>
 #include <final_render.h>
-#include <final_memory.h>
 
 typedef struct {
 	LoadedFont desc;
