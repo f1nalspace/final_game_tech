@@ -4,7 +4,7 @@ Name:
 
 Description:
 	Structures, Functions for setting up a game quickly.
-	Also declares extern functions for init/kill/update/render a game instance.
+	Also declares fpl_extern functions for init/kill/update/render a game instance.
 
 	This file is part of the final_framework.
 
@@ -14,7 +14,7 @@ Changelog:
 	- Changed: Renamed ButtonWasPressed to ButtonButtonWasPressed
 	- Changed: Renamed IsDown to ButtonIsDown
 	- Changed: Use fpl_inline intead of inline
-	- Changed: Use fpl_extern intead of extern
+	- Changed: Use fpl_extern intead of fpl_extern
 	
 License:
 	MIT License
@@ -141,7 +141,6 @@ fpl_extern void GameRelease(GameMemory *gameMemory);
 fpl_extern void GameInput(GameMemory *gameMemory, const Input *input);
 fpl_extern void GameUpdate(GameMemory *gameMemory, const Input *input);
 fpl_extern void GameRender(GameMemory *gameMemory, const Input *input, const float alpha);
-fpl_extern void GameUpdateAndRender(GameMemory *gameMemory, const Input *input, const float alpha);
 fpl_extern bool IsGameExiting(GameMemory *gameMemory);
 
 #endif // FINAL_GAME_H

@@ -93,12 +93,12 @@ inline float GetFontLineAdvance(const FontInfo *fontInfo) {
 	return(result);
 }
 
-extern Vec2f GetTextSize(const LoadedFont *font, const char *text, const size_t textLen, const float maxCharHeight);
-extern FontQuad GetFontQuad(const LoadedFont *font, const uint32_t codePoint, const float scale);
-extern float GetFontCharacterAdvance(const LoadedFont *font, const uint32_t thisCodePoint, const uint32_t nextCodePoint);
-extern bool LoadFontFromFile(const char *dataPath, const char *filename, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t atlasWidth, const uint32_t atlasHeight, const bool loadKerning, LoadedFont *outFont);
-extern bool LoadFontFromMemory(const void *data, const size_t dataSize, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t  atlasWidth, const uint32_t atlasHeight, const bool loadKerning, LoadedFont *outFont);
-extern void ReleaseFont(LoadedFont *font);
+fpl_extern Vec2f GetTextSize(const LoadedFont *font, const char *text, const size_t textLen, const float maxCharHeight);
+fpl_extern FontQuad GetFontQuad(const LoadedFont *font, const uint32_t codePoint, const float scale);
+fpl_extern float GetFontCharacterAdvance(const LoadedFont *font, const uint32_t thisCodePoint, const uint32_t nextCodePoint);
+fpl_extern bool LoadFontFromFile(const char *dataPath, const char *filename, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t atlasWidth, const uint32_t atlasHeight, const bool loadKerning, LoadedFont *outFont);
+fpl_extern bool LoadFontFromMemory(const void *data, const size_t dataSize, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t  atlasWidth, const uint32_t atlasHeight, const bool loadKerning, LoadedFont *outFont);
+fpl_extern void ReleaseFont(LoadedFont *font);
 
 #endif // FINAL_FONTLOADER_H
 
@@ -108,7 +108,7 @@ extern void ReleaseFont(LoadedFont *font);
 #define STB_TRUETYPE_IMPLEMENTATION
 #include <stb/stb_truetype.h>
 
-extern Vec2f GetTextSize(const LoadedFont *font, const char *text, const size_t textLen, const float maxCharHeight) {
+fpl_extern Vec2f GetTextSize(const LoadedFont *font, const char *text, const size_t textLen, const float maxCharHeight) {
 	float xwidth = 0.0f;
 	float ymax = 0.0f;
 	if(font != fpl_null && font->charCount > 0) {
@@ -142,7 +142,7 @@ extern Vec2f GetTextSize(const LoadedFont *font, const char *text, const size_t 
 	return(result);
 }
 
-extern FontQuad GetFontQuad(const LoadedFont *font, const uint32_t codePoint, const float scale) {
+fpl_extern FontQuad GetFontQuad(const LoadedFont *font, const uint32_t codePoint, const float scale) {
 	FontQuad result = fplZeroInit;
 	if(font != fpl_null) {
 		uint32_t lastChar = font->firstChar + (font->charCount - 1);
@@ -162,7 +162,7 @@ extern FontQuad GetFontQuad(const LoadedFont *font, const uint32_t codePoint, co
 	return(result);
 }
 
-extern float GetFontCharacterAdvance(const LoadedFont *font, const uint32_t thisCodePoint, const uint32_t nextCodePoint) {
+fpl_extern float GetFontCharacterAdvance(const LoadedFont *font, const uint32_t thisCodePoint, const uint32_t nextCodePoint) {
 	float result = 0;
 	if(thisCodePoint >= font->firstChar && thisCodePoint < (font->firstChar - font->charCount)) {
 		uint32_t thisIndex = thisCodePoint - font->firstChar;
@@ -179,7 +179,7 @@ extern float GetFontCharacterAdvance(const LoadedFont *font, const uint32_t this
 	return(result);
 }
 
-extern bool LoadFontFromMemory(const void *data, const size_t dataSize, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t  atlasWidth, const uint32_t atlasHeight, const bool loadKerning, LoadedFont *outFont) {
+fpl_extern bool LoadFontFromMemory(const void *data, const size_t dataSize, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t  atlasWidth, const uint32_t atlasHeight, const bool loadKerning, LoadedFont *outFont) {
 	if(data == fpl_null || dataSize == 0) {
 		return false;
 	}
@@ -335,7 +335,7 @@ extern bool LoadFontFromMemory(const void *data, const size_t dataSize, const ui
 	return(result);
 }
 
-extern bool LoadFontFromFile(const char *dataPath, const char *filename, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t atlasWidth, const uint32_t atlasHeight, const bool loadKerning, LoadedFont *outFont) {
+fpl_extern bool LoadFontFromFile(const char *dataPath, const char *filename, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t atlasWidth, const uint32_t atlasHeight, const bool loadKerning, LoadedFont *outFont) {
 	if(filename == fpl_null) {
 		return false;
 	}
@@ -370,7 +370,7 @@ extern bool LoadFontFromFile(const char *dataPath, const char *filename, const u
 	return(result);
 }
 
-extern void ReleaseFont(LoadedFont *font) {
+fpl_extern void ReleaseFont(LoadedFont *font) {
 	if(font != fpl_null) {
 		if(font->hasKerningTable) {
 			fplMemoryFree(font->kerningTable);

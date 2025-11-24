@@ -14,11 +14,11 @@ License:
 #define FINAL_ASSETS_H
 
 #include <final_platform_layer.h>
+#include <final_memory.h>
 
 #include <final_math.h>
 #include <final_fontloader.h>
 #include <final_render.h>
-#include <final_memory.h>
 
 typedef struct {
 	LoadedFont desc;
@@ -43,11 +43,10 @@ typedef enum {
 	AssetType_Font,
 } AssetType;
 
-
-extern TextureData LoadTextureData(const char *dataPath, const char *filename);
-extern void FreeTextureData(TextureData *texture);
-extern TextureData CreateSubTextureData(TextureData *source, const int x, const int y, const int w, const int h);
-extern void ReleaseFontAsset(FontAsset *font);
+fpl_extern TextureData LoadTextureData(const char *dataPath, const char *filename);
+fpl_extern void FreeTextureData(TextureData *texture);
+fpl_extern TextureData CreateSubTextureData(TextureData *source, const int x, const int y, const int w, const int h);
+fpl_extern void ReleaseFontAsset(FontAsset *font);
 
 #endif // FINAL_ASSETS_H
 
@@ -63,7 +62,7 @@ extern void ReleaseFontAsset(FontAsset *font);
 #define FMEM_IMPLEMENTATION
 #include <final_memory.h>
 
-extern void FreeTextureData(TextureData *texture) {
+fpl_extern void FreeTextureData(TextureData *texture) {
 	if (texture == fpl_null || texture->data == fpl_null) {
 		return;
 	}
@@ -71,7 +70,7 @@ extern void FreeTextureData(TextureData *texture) {
 	texture->data = fpl_null;
 }
 
-extern TextureData CreateSubTextureData(TextureData *source, const int x, const int y, const int w, const int h) {
+fpl_extern TextureData CreateSubTextureData(TextureData *source, const int x, const int y, const int w, const int h) {
 	TextureData result = fplZeroInit;
 	if (source == fpl_null || source->data == fpl_null || source->components != 4) {
 		return result;
@@ -98,7 +97,7 @@ extern TextureData CreateSubTextureData(TextureData *source, const int x, const 
 	return result;
 }
 
-extern TextureData LoadTextureData(const char *dataPath, const char *filename) {
+fpl_extern TextureData LoadTextureData(const char *dataPath, const char *filename) {
 	TextureData result = fplZeroInit;
 
 	char filePath[1024];
@@ -137,7 +136,7 @@ extern TextureData LoadTextureData(const char *dataPath, const char *filename) {
 	return(result);
 }
 
-extern void ReleaseFontAsset(FontAsset *font) {
+fpl_extern void ReleaseFontAsset(FontAsset *font) {
 	// @TODO(final): Release texture somehow
 	ReleaseFont(&font->desc);
 }

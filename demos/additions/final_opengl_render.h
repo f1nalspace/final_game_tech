@@ -20,16 +20,16 @@ fpl_inline GLuint GetTextureIDFromHandle(const TextureHandle handle) {
 	return (GLuint)(uintptr_t)(handle);
 }
 
-extern void DrawSprite(const GLuint texId, const Vec2f ext, const UVRect uv, const Vec2f offset);
-extern void DrawPoint(const float x, const float y, const float radius, const Vec4f color);
-extern void DrawTextFont(const char *text, const size_t textLen, const LoadedFont *fontDesc, const GLuint fontTexture, const float x, const float y, const float maxCharHeight, const float sx, const float sy);
-extern void DrawCircle(const float centerX, const float centerY, const float radius, const bool isFilled, const Vec4f color, const int segments);
-extern void DrawNormal(const Vec2f pos, const Vec2f normal, const float length, const Vec4f color);
-extern GLuint AllocateTexture(const uint32_t width, const uint32_t height, const void *data, const bool repeatable, const GLint filter, const bool isAlphaOnly);
+fpl_extern void DrawSprite(const GLuint texId, const Vec2f ext, const UVRect uv, const Vec2f offset);
+fpl_extern void DrawPoint(const float x, const float y, const float radius, const Vec4f color);
+fpl_extern void DrawTextFont(const char *text, const size_t textLen, const LoadedFont *fontDesc, const GLuint fontTexture, const float x, const float y, const float maxCharHeight, const float sx, const float sy);
+fpl_extern void DrawCircle(const float centerX, const float centerY, const float radius, const bool isFilled, const Vec4f color, const int segments);
+fpl_extern void DrawNormal(const Vec2f pos, const Vec2f normal, const float length, const Vec4f color);
+fpl_extern GLuint AllocateTexture(const uint32_t width, const uint32_t height, const void *data, const bool repeatable, const GLint filter, const bool isAlphaOnly);
 
-extern void InitOpenGLRenderer();
+fpl_extern void InitOpenGLRenderer();
 
-extern void RenderWithOpenGL(RenderState *renderState);
+fpl_extern void RenderWithOpenGL(RenderState *renderState);
 
 #endif // FINAL_OPENGL_RENDER_H
 
@@ -38,7 +38,7 @@ extern void RenderWithOpenGL(RenderState *renderState);
 
 #include <final_utils.h>
 
-extern void DrawSprite(const GLuint texId, const Vec2f ext, const UVRect uv, const Vec2f offset) {
+fpl_extern void DrawSprite(const GLuint texId, const Vec2f ext, const UVRect uv, const Vec2f offset) {
 	const float uMin = uv.uMin;
 	const float vMin = uv.vMin;
 	const float uMax = uv.uMax;
@@ -59,7 +59,7 @@ extern void DrawSprite(const GLuint texId, const Vec2f ext, const UVRect uv, con
 	glDisable(GL_TEXTURE_2D);
 }
 
-extern void DrawPoint(const float x, const float y, const float radius, const Vec4f color) {
+fpl_extern void DrawPoint(const float x, const float y, const float radius, const Vec4f color) {
 	glColor4fv(&color.r);
 	glPointSize(radius);
 	glBegin(GL_POINTS);
@@ -68,7 +68,7 @@ extern void DrawPoint(const float x, const float y, const float radius, const Ve
 	glPointSize(1);
 }
 
-extern void DrawTextFont(const char *text, const size_t textLen, const LoadedFont *fontDesc, const GLuint fontTexture, const float x, const float y, const float maxCharHeight, const float sx, const float sy) {
+fpl_extern void DrawTextFont(const char *text, const size_t textLen, const LoadedFont *fontDesc, const GLuint fontTexture, const float x, const float y, const float maxCharHeight, const float sx, const float sy) {
 	if(fontDesc != fpl_null) {
 		Vec2f textSize = GetTextSize(fontDesc, text, textLen, maxCharHeight);
 		float xpos = x - textSize.w * 0.5f + (textSize.w * 0.5f * sx);
@@ -111,7 +111,7 @@ extern void DrawTextFont(const char *text, const size_t textLen, const LoadedFon
 	}
 }
 
-extern void DrawCircle(const float centerX, const float centerY, const float radius, const bool isFilled, const Vec4f color, const int segments) {
+fpl_extern void DrawCircle(const float centerX, const float centerY, const float radius, const bool isFilled, const Vec4f color, const int segments) {
 	float seg = F32Tau / (float)segments;
 	glColor4fv(&color.r);
 	glBegin(isFilled ? GL_POLYGON : GL_LINE_LOOP);
@@ -123,7 +123,7 @@ extern void DrawCircle(const float centerX, const float centerY, const float rad
 	glEnd();
 }
 
-extern void DrawNormal(const Vec2f pos, const Vec2f normal, const float length, const Vec4f color) {
+fpl_extern void DrawNormal(const Vec2f pos, const Vec2f normal, const float length, const Vec4f color) {
 	glColor4fv(&color.r);
 	glBegin(GL_LINES);
 	glVertex2f(pos.x, pos.y);
@@ -131,7 +131,7 @@ extern void DrawNormal(const Vec2f pos, const Vec2f normal, const float length, 
 	glEnd();
 }
 
-extern GLuint AllocateTexture(const uint32_t width, const uint32_t height, const void *data, const bool repeatable, const GLint filter, const bool isAlphaOnly) {
+fpl_extern GLuint AllocateTexture(const uint32_t width, const uint32_t height, const void *data, const bool repeatable, const GLint filter, const bool isAlphaOnly) {
 	GLuint handle;
 	glGenTextures(1, &handle);
 	glBindTexture(GL_TEXTURE_2D, handle);
@@ -149,7 +149,7 @@ extern GLuint AllocateTexture(const uint32_t width, const uint32_t height, const
 	return(handle);
 }
 
-extern void InitOpenGLRenderer() {
+fpl_extern void InitOpenGLRenderer() {
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LEQUAL);
 
@@ -163,7 +163,7 @@ extern void InitOpenGLRenderer() {
 	glEnable(GL_LINE_SMOOTH);
 }
 
-extern void RenderWithOpenGL(RenderState *renderState) {
+fpl_extern void RenderWithOpenGL(RenderState *renderState) {
 	size_t index = 0;
 	while(renderState->textureOperationCount > 0) {
 		TextureOperation *op = &renderState->textureOperations[index];

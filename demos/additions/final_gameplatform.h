@@ -63,7 +63,7 @@ typedef struct GameConfiguration {
 	bool disableVerticalSync;
 } GameConfiguration;
 
-extern int GameMain(const GameConfiguration *config);
+fpl_extern int GameMain(const GameConfiguration *config);
 
 #endif // FINAL_GAMEPLATFORM_H
 
@@ -350,7 +350,7 @@ static void SetupInputForFrame(Input *oldInput, Input *newInput, const double ta
 
 }
 
-extern int GameMain(const GameConfiguration *config) {
+fpl_extern int GameMain(const GameConfiguration *config) {
 	if(config == fpl_null) {
 		return -1;
 	}
@@ -425,7 +425,7 @@ extern int GameMain(const GameConfiguration *config) {
 	}
 
 	RenderState *renderState = fmemPushStruct(&gameMemoryBlock, RenderState, fmemPushFlags_Clear);
-	InitRenderState(renderState, renderMemoryBlock);
+	RenderInit(renderState, renderMemoryBlock);
 	InitOpenGLRenderer();
 
 	GameMemory gameMem = fplZeroInit;
@@ -546,7 +546,7 @@ extern int GameMain(const GameConfiguration *config) {
 			//
 			const float alphaRaw = (float)(frameAccumulator / targetDeltaTime);
 			const float alpha = F32Clamp(alphaRaw, 0.0f, 1.0f);
-			ResetRenderState(renderState);
+			RenderReset(renderState);
 			GameRender(&gameMem, newInput, alpha);
 			RenderWithOpenGL(renderState);
 			fplVideoFlip();

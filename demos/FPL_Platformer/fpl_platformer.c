@@ -308,7 +308,7 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	// Camera
 
 	// TODO(final): Needs only to be updated when viewport changes!
-	Viewport viewport = ComputeViewportByAspect(input->windowSize, WorldAspect);;
+	Viewport viewport = ViewportComputeByAspect(input->windowSize, WorldAspect);;
 	CameraUpdateViewport(camera, &viewport, WorldWidth);
 	CameraUpdateViewport(&editor->camera, &viewport, WorldWidth);
 
@@ -405,30 +405,30 @@ extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
 	state->framesPerSecond[0] = state->framesPerSecond[1];
 }
 
-static void PushNormal(RenderState *renderState, const Vec2f position, const Vec2f normal, const float length, const float chairSize) {
+static void RenderNormal(RenderState *renderState, const Vec2f position, const Vec2f normal, const float length, const float chairSize) {
 	// const float length = 20.0f, const float chairSize = 8.0f
 
 	Vec2f tangent = V2fCrossR(normal, 1.0f);
 
 	Vec2f a = position;
 	Vec2f b = V2fAddMultScalar(a, normal, length);
-	PushLine(renderState, a, b, V4fInit(1.0f, 1.0f, 1.0f, 1.0f), 2.0f);
+	RenderPushLine(renderState, a, b, V4fInit(1.0f, 1.0f, 1.0f, 1.0f), 2.0f);
 
 	a = V2fAddMultScalar(position, normal, chairSize);
 	b = V2fAddMultScalar(a, tangent, chairSize);
-	PushLine(renderState, a, b, V4fInit(1.0f, 0.0f, 0.0f, 1.0f), 2.0f);
+	RenderPushLine(renderState, a, b, V4fInit(1.0f, 0.0f, 0.0f, 1.0f), 2.0f);
 
 	a = V2fAddMultScalar(position, tangent, chairSize);
 	b = V2fAddMultScalar(a, normal, chairSize);
-	PushLine(renderState, a, b, V4fInit(0.0f, 0.0f, 1.0f, 1.0f), 2.0f);
+	RenderPushLine(renderState, a, b, V4fInit(0.0f, 0.0f, 1.0f, 1.0f), 2.0f);
 }
 
-static void PushOrigin(RenderState *renderState, const Vec2f origin) {
-	PushQuad(renderState, V2fAdd(origin, V2fInit(0.0f, 2.0f)), 1.0f, V4fInit(0.75f, 0.75f, 0.75f, 1), true, 1.0f);
-	PushQuad(renderState, V2fAdd(origin, V2fInit(0.0f, -2.0f)), 1.0f, V4fInit(0.75f, 0.75f, 0.75f, 1), true, 1.0f);
-	PushQuad(renderState, V2fAdd(origin, V2fInit(-2.0f, 0.0f)), 1.0f, V4fInit(0.75f, 0.75f, 0.75f, 1), true, 1.0f);
-	PushQuad(renderState, V2fAdd(origin, V2fInit(2.0f, 0.0f)), 1.0f, V4fInit(0.75f, 0.75f, 0.75f, 1), true, 1.0f);
-	PushQuad(renderState, origin, 1.0f, V4fInit(0.25f, 0.25f, 0.25f, 1), true, 1.0f);
+static void RenderOrigin(RenderState *renderState, const Vec2f origin) {
+	RenderPushQuad(renderState, V2fAdd(origin, V2fInit(0.0f, 2.0f)), 1.0f, V4fInit(0.75f, 0.75f, 0.75f, 1), true, 1.0f);
+	RenderPushQuad(renderState, V2fAdd(origin, V2fInit(0.0f, -2.0f)), 1.0f, V4fInit(0.75f, 0.75f, 0.75f, 1), true, 1.0f);
+	RenderPushQuad(renderState, V2fAdd(origin, V2fInit(-2.0f, 0.0f)), 1.0f, V4fInit(0.75f, 0.75f, 0.75f, 1), true, 1.0f);
+	RenderPushQuad(renderState, V2fAdd(origin, V2fInit(2.0f, 0.0f)), 1.0f, V4fInit(0.75f, 0.75f, 0.75f, 1), true, 1.0f);
+	RenderPushQuad(renderState, origin, 1.0f, V4fInit(0.25f, 0.25f, 0.25f, 1), true, 1.0f);
 }
 
 extern void GameRender(GameMemory *gameMemory, const Input *input, const float alpha) {
@@ -470,21 +470,21 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	Vec4f groundSensorTileColor = V4fInit(0.0f, 1.0f, 0.0f, 1.0f);
 	Vec4f groundSensorColor = V4fInit(0.0f, 1.0f, 0.0f, 1.0f);
 
-	PushViewport(renderState, camera->viewport.x, camera->viewport.y, camera->viewport.w, camera->viewport.h);
-	PushClear(renderState, V4fInit(0, 0, 0, 1), ClearFlags_Color | ClearFlags_Depth);
+	RenderPushViewport(renderState, camera->viewport.x, camera->viewport.y, camera->viewport.w, camera->viewport.h);
+	RenderPushClear(renderState, V4fInit(0, 0, 0, 1), ClearFlags_Color | ClearFlags_Depth);
 
 	// Only ortho projection
-	SetMatrix(renderState, &state->projection);
+	RenderSetMatrix(renderState, &state->projection);
 
 	// Draw world size
-	PushRectangle(renderState, V2fInit(-w, -h), V2fInit(w * 2, h * 2), V4fInit(1.0f, 1.0f, 0.0f, 1.0f), false, 1.0f);
+	RenderPushRectangle(renderState, V2fInit(-w, -h), V2fInit(w * 2, h * 2), V4fInit(1.0f, 1.0f, 0.0f, 1.0f), false, 1.0f);
 
 	// Back to full view projection
-	SetMatrix(renderState, &state->viewProjection);
+	RenderSetMatrix(renderState, &state->viewProjection);
 
 	// World cross
-	PushLine(renderState, V2fInit(0.0f, -h), V2fInit(0.0f, h), V4fInit(1.0f, 0.0f, 0.0f, 0.5f), 1.0f);
-	PushLine(renderState, V2fInit(-w, 0.0f), V2fInit(w, 0.0f), V4fInit(1.0f, 0.0f, 0.0f, 0.5f), 1.0f);
+	RenderPushLine(renderState, V2fInit(0.0f, -h), V2fInit(0.0f, h), V4fInit(1.0f, 0.0f, 0.0f, 0.5f), 1.0f);
+	RenderPushLine(renderState, V2fInit(-w, 0.0f), V2fInit(w, 0.0f), V4fInit(1.0f, 0.0f, 0.0f, 0.5f), 1.0f);
 
 	// Render editor (Pre -> Grid)
 	if (isEditorMode) {
@@ -499,25 +499,25 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 			if (MapTileTypeIsObstacle(map, tile.type)) {
 				Vec2f worldPos = MapTileCoordsToWorld(map, tilePos);
 				Vec4f tileColor = tile.type == TileType_Ghost ? mapGhostTileColor : mapSolidTileColor;
-				PushRectangle(renderState, worldPos, TileSize, tileColor, true, 1.0f);
+				RenderPushRectangle(renderState, worldPos, TileSize, tileColor, true, 1.0f);
 			}
 		}
 	}
 
 	// Map bounds
 	Vec2f mapBoundsSize = AABB2fGetSize(&map->maxBounds);
-	PushRectangle(renderState, map->maxBounds.min, mapBoundsSize, V4fInit(0.3f, 1.0f, 0.3f, 1.0f), false, 4.0f);
+	RenderPushRectangle(renderState, map->maxBounds.min, mapBoundsSize, V4fInit(0.3f, 1.0f, 0.3f, 1.0f), false, 4.0f);
 
 	// Player
 	Vec2f playerPos = V2fLerp(player->transform[1].pos, alpha, player->transform[0].pos);
-	PushRectangleCenter(renderState, playerPos, player->radius, player->color, false, 2.0f);
-	PushOrigin(renderState, playerPos);
+	RenderPushRectangleCenter(renderState, playerPos, player->radius, player->color, false, 2.0f);
+	RenderOrigin(renderState, playerPos);
 
 	// Camera view
 	if (state->mode == GameMode_Game || state->mode == GameMode_EditorPlay) {
-		PushRectangleCenter(renderState, V2fNegate(cameraOffset), state->camera.viewRadius, V4fInit(0.2f, 0.1f, 1.0f, 1.0f), false, 2.0f);
+		RenderPushRectangleCenter(renderState, V2fNegate(cameraOffset), state->camera.viewRadius, V4fInit(0.2f, 0.1f, 1.0f, 1.0f), false, 2.0f);
 	} else {
-		PushRectangleCenter(renderState, playerPos, state->camera.viewRadius, V4fInit(0.2f, 0.1f, 1.0f, 1.0f), false, 2.0f);
+		RenderPushRectangleCenter(renderState, playerPos, state->camera.viewRadius, V4fInit(0.2f, 0.1f, 1.0f, 1.0f), false, 2.0f);
 	}
 
 	// Player sensors
@@ -531,14 +531,14 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 		Vec2f groundSensorStartRight = V2fAdd(playerPos, V2fInit(groundSensorRight, -(player->radius.h + EntitySensorGroundDistanceFromFoot)));
 		Vec2f groundSensorEndLeft = V2fAddMultScalar(groundSensorStartLeft, groundSensorDirection, groundSensorDepth);
 		Vec2f groundSensorEndRight = V2fAddMultScalar(groundSensorStartRight, groundSensorDirection, groundSensorDepth);
-		PushCircle(renderState, groundSensorEndLeft, 2.0f, 8, groundSensorColor, true, 0.0f);
-		PushCircle(renderState, groundSensorEndRight, 2.0f, 8, groundSensorColor, true, 0.0f);
+		RenderPushCircle(renderState, groundSensorEndLeft, 2.0f, 8, groundSensorColor, true, 0.0f);
+		RenderPushCircle(renderState, groundSensorEndRight, 2.0f, 8, groundSensorColor, true, 0.0f);
 		Vec2i groundSensorEndLeftTilePos = MapWorldCoordsToTile(map, groundSensorEndLeft);
 		Vec2i groundSensorEndRightTilePos = MapWorldCoordsToTile(map, groundSensorEndRight);
 		Vec2f worldPosLeft = MapTileCoordsToWorld(map, groundSensorEndLeftTilePos);
 		Vec2f worldPosRight = MapTileCoordsToWorld(map, groundSensorEndRightTilePos);
-		PushRectangleCenter(renderState, V2fAdd(worldPosLeft, TileRadius), TileRadius, groundSensorTileColor, false, 1.0f);
-		PushRectangleCenter(renderState, V2fAdd(worldPosRight, TileRadius), TileRadius, groundSensorTileColor, false, 1.0f);
+		RenderPushRectangleCenter(renderState, V2fAdd(worldPosLeft, TileRadius), TileRadius, groundSensorTileColor, false, 1.0f);
+		RenderPushRectangleCenter(renderState, V2fAdd(worldPosRight, TileRadius), TileRadius, groundSensorTileColor, false, 1.0f);
 	}
 
 	// Get player bounds
@@ -556,7 +556,7 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 				Vec2i tilePos = V2iInit(x, y);
 				Vec2f worldPos = MapTileCoordsToWorld(map, tilePos);
 				Vec2f tileCenter = V2fAdd(worldPos, TileRadius);
-				PushRectangleCenter(renderState, tileCenter, TileRadius, playerTileColor, false, 1.0f);
+				RenderPushRectangleCenter(renderState, tileCenter, TileRadius, playerTileColor, false, 1.0f);
 			}
 		}
 	}
@@ -566,15 +566,15 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	if (renderContacts) {
 		for (size_t i = 0; i < physics->contactList.used; ++i) {
 			const Contact *contact = physics->contactList.data + i;
-			PushCircle(renderState, contact->posA, 2.0f, 16, V4fInit(1.0f, 0.0f, 0.0f, 1.0f), true, 0.0f);
-			PushCircle(renderState, contact->posB, 2.0f, 16, V4fInit(0.0f, 0.0f, 1.0f, 1.0f), true, 0.0f);
-			PushNormal(renderState, contact->posB, contact->normal, 10.0f, 5.0f);
+			RenderPushCircle(renderState, contact->posA, 2.0f, 16, V4fInit(1.0f, 0.0f, 0.0f, 1.0f), true, 0.0f);
+			RenderPushCircle(renderState, contact->posB, 2.0f, 16, V4fInit(0.0f, 0.0f, 1.0f, 1.0f), true, 0.0f);
+			RenderNormal(renderState, contact->posB, contact->normal, 10.0f, 5.0f);
 		}
 	}
 
 	// Mouse cursor
 	if (state->mode != GameMode_Game) {
-		PushRectangleCenter(renderState, state->mouseWorldPos, V2fInit(2, 2), V4fInit(1.0f, 0.0f, 0.0f, 1.0f), true, 0.0f);
+		RenderPushRectangleCenter(renderState, state->mouseWorldPos, V2fInit(2, 2), V4fInit(1.0f, 0.0f, 0.0f, 1.0f), true, 0.0f);
 	}
 
 	// Render editor (Post -> Paint tiles)
@@ -594,7 +594,7 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 
 	// Render debug OSD on the top
 	if (state->isDebugRendering) {
-		SetMatrix(renderState, &state->projection);
+		RenderSetMatrix(renderState, &state->projection);
 
 		const FontAsset *font = &state->assets.consoleFont; 
 		Vec4f textColor = V4fInit(1, 1, 1, 1);
@@ -606,41 +606,41 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 		FormatSize(gameMemory->memory->used, fplArrayCount(debugOSDSizeCharBuffer[0]), debugOSDSizeCharBuffer[0]);
 		FormatSize(gameMemory->memory->size, fplArrayCount(debugOSDSizeCharBuffer[1]), debugOSDSizeCharBuffer[1]);
 		fplStringFormat(debugOSDCharBuffer, fplArrayCount(debugOSDCharBuffer), "Game Memory: %s / %s bytes", debugOSDSizeCharBuffer[0], debugOSDSizeCharBuffer[1]);
-		PushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, blackColor);
-		PushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
+		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, blackColor);
+		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
 
 		// Render memory
 		FormatSize(renderState->lastMemoryUsage, fplArrayCount(debugOSDSizeCharBuffer[0]), debugOSDSizeCharBuffer[0]);
 		FormatSize(renderState->memory.size, fplArrayCount(debugOSDSizeCharBuffer[1]), debugOSDSizeCharBuffer[1]);
 		fplStringFormat(debugOSDCharBuffer, fplArrayCount(debugOSDCharBuffer), "Render Memory: %s / %s bytes", debugOSDSizeCharBuffer[0], debugOSDSizeCharBuffer[1]);
-		PushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x + w - 1, blockPos.y - 1), fontHeight, 0.0f, -1.0f, blackColor);
-		PushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x + w, blockPos.y), fontHeight, 0.0f, -1.0f, textColor);
+		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x + w - 1, blockPos.y - 1), fontHeight, 0.0f, -1.0f, blackColor);
+		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x + w, blockPos.y), fontHeight, 0.0f, -1.0f, textColor);
 
 		// Frame timings
 		fplStringFormat(debugOSDCharBuffer, fplArrayCount(debugOSDCharBuffer), "Fps: %.5f, Delta: %.5f", state->framesPerSecond[1], state->deltaTime);
-		PushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x + w * 2.0f - 1, blockPos.y - 1), fontHeight, -1.0f, -1.0f, blackColor);
-		PushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x + w * 2.0f, blockPos.y), fontHeight, -1.0f, -1.0f, textColor);
+		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x + w * 2.0f - 1, blockPos.y - 1), fontHeight, -1.0f, -1.0f, blackColor);
+		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x + w * 2.0f, blockPos.y), fontHeight, -1.0f, -1.0f, textColor);
 
 		blockPos = V2fSub(blockPos, V2fInit(0, fontHeight * 2.0f));
 
 		// Game state
 		const char *gameModeName = gGameModeNames[state->mode];
 		fplStringFormat(debugOSDCharBuffer, fplArrayCount(debugOSDCharBuffer), "Game Mode: %s", gameModeName);
-		PushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, blackColor);
-		PushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
+		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, blackColor);
+		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
 		blockPos = V2fSub(blockPos, V2fInit(0, fontHeight));
 
 		// Player states
 		fplStringFormat(debugOSDCharBuffer, fplArrayCount(debugOSDCharBuffer), "Player ground: %s", player->groundState.current ? "yes" : "no");
-		PushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, blackColor);
-		PushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
+		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, blackColor);
+		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
 		blockPos = V2fSub(blockPos, V2fInit(0, fontHeight));
 	}
 
 	// Render editor OSD
 	bool drawEditorOSD = state->mode >= GameMode_EditorPlay;
 	if (drawEditorOSD) {
-		SetMatrix(renderState, &state->projection);
+		RenderSetMatrix(renderState, &state->projection);
 		EditorOSDRender(renderState, editor, input);
 	}
 

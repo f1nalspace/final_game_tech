@@ -119,13 +119,13 @@ fpl_extern void EditorPreRender(RenderState *renderState, const Editor *editor, 
 		float xoffset = i * TileWidth;
 		Vec2f a = V2fAdd(gridOrigin, V2fInit(xoffset, 0));
 		Vec2f b = V2fAdd(gridOrigin, V2fInit(xoffset, gridSize.y));
-		PushLine(renderState, a, b, gridColor, 1.0f);
+		RenderPushLine(renderState, a, b, gridColor, 1.0f);
 	}
 	for (int i = 0; i <= gridTileCountY; ++i) {
 		float yoffset = i * TileHeight;
 		Vec2f a = V2fAdd(gridOrigin, V2fInit(0, yoffset));
 		Vec2f b = V2fAdd(gridOrigin, V2fInit(gridSize.x, yoffset));
-		PushLine(renderState, a, b, gridColor, 1.0f);
+		RenderPushLine(renderState, a, b, gridColor, 1.0f);
 	}
 }
 
@@ -162,12 +162,12 @@ fpl_extern void EditorPostRender(RenderState *renderState, const Editor *editor,
 
 		Vec4f tileColor = isOverlap ? invalidTileColor : placeTileColor;
 
-		PushRectangle(renderState, mouseWorldPos, TileSize, tileColor, false, 1.0f);
+		RenderPushRectangle(renderState, mouseWorldPos, TileSize, tileColor, false, 1.0f);
 
 		fplStringFormat(charBuffer, fplArrayCount(charBuffer), "%i x %i", mouseTilePos.x, mouseTilePos.y);
-		PushText(renderState, charBuffer, fplGetStringLength(charBuffer), &font->desc, font->texture, mouseWorldPos, fontHeight, 1.0f, 1.0f, V4fInit(1, 0, 1, 1));
+		RenderPushText(renderState, charBuffer, fplGetStringLength(charBuffer), &font->desc, font->texture, mouseWorldPos, fontHeight, 1.0f, 1.0f, V4fInit(1, 0, 1, 1));
 		fplStringFormat(charBuffer, fplArrayCount(charBuffer), "%u", mouseTileId);
-		PushText(renderState, charBuffer, fplGetStringLength(charBuffer), &font->desc, font->texture, V2fAdd(mouseWorldPos, TileRadius), fontHeight, 0.0f, 0.0f, V4fInit(0, 1, 1, 1));
+		RenderPushText(renderState, charBuffer, fplGetStringLength(charBuffer), &font->desc, font->texture, V2fAdd(mouseWorldPos, TileRadius), fontHeight, 0.0f, 0.0f, V4fInit(0, 1, 1, 1));
 	}
 }
 
@@ -191,12 +191,12 @@ fpl_extern void EditorOSDRender(RenderState *renderState, const Editor *editor, 
 	Vec2f blockPos = V2fInit(-w, -h + fontHeight);
 
 	fplStringFormat(charBuffer, fplArrayCount(charBuffer), "Drawing: %d x %d, Active: %s, Tile: %d", editor->drawTilePos.x, editor->drawTilePos.y, editor->isDrawing ? "yes" : "no", editor->drawTile);
-	PushText(renderState, charBuffer, fplGetStringLength(charBuffer), &font->desc, font->texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, blackColor);
-	PushText(renderState, charBuffer, fplGetStringLength(charBuffer), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
+	RenderPushText(renderState, charBuffer, fplGetStringLength(charBuffer), &font->desc, font->texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, blackColor);
+	RenderPushText(renderState, charBuffer, fplGetStringLength(charBuffer), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
 	blockPos = V2fAdd(blockPos, V2fInit(0, fontHeight));
 
 	fplStringFormat(charBuffer, fplArrayCount(charBuffer), "Mouse: %.04f x %.04f, Down: %s", editor->mouseWorldPos.x, editor->mouseWorldPos.y, input->mouse.left.endedDown ? "yes" : "no");
-	PushText(renderState, charBuffer, fplGetStringLength(charBuffer), &font->desc, font->texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, blackColor);
-	PushText(renderState, charBuffer, fplGetStringLength(charBuffer), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
+	RenderPushText(renderState, charBuffer, fplGetStringLength(charBuffer), &font->desc, font->texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, blackColor);
+	RenderPushText(renderState, charBuffer, fplGetStringLength(charBuffer), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
 	blockPos = V2fAdd(blockPos, V2fInit(0, fontHeight));
 }

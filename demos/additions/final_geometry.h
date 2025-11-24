@@ -75,7 +75,7 @@ typedef struct LineCastOutput2f {
 	float fraction;
 } LineCastOutput2f;
 
-extern bool LineCast2fAgainstCircle(const LineCastInput2f *input, const Vec2f *center, const float radius, LineCastOutput2f *output);
+fpl_extern bool LineCast2fAgainstCircle(const LineCastInput2f *input, const Vec2f *center, const float radius, LineCastOutput2f *output);
 
 //
 // AABB2f
@@ -110,15 +110,15 @@ fpl_inline Vec2f AABB2fGetRadius(const AABB2f *aabb) {
 	return result;
 }
 
-fpl_inline Vec2f AABB2fGetSize(const AABB2f *aabb) {
-	Vec2f result = V2fSub(aabb->max, aabb->min);
-	return result;
-}
-
 fpl_inline Vec2f AABB2fGetCenter(const AABB2f *aabb) {
 	Vec2f size = V2fSub(aabb->max, aabb->min);
 	Vec2f ext = V2fMultScalar(size, 0.5f);
 	Vec2f result = V2fAdd(aabb->min, ext);
+	return result;
+}
+
+fpl_inline Vec2f AABB2fGetSize(const AABB2f *aabb) {
+	Vec2f result = V2fSub(aabb->max, aabb->min);
 	return result;
 }
 
@@ -151,13 +151,13 @@ fpl_inline bool AABB2fContainsPoint(const AABB2f *aabb, const Vec2f point) {
 }
 
 fpl_inline void AABB2fExpand(AABB2f *aabb, const Vec2f expansion) {
-	aabb->min = V2fSub(aabb->min, expansion);
-	aabb->max = V2fAdd(aabb->max, expansion);
+    aabb->min = V2fSub(aabb->min, expansion);
+    aabb->max = V2fAdd(aabb->max, expansion);
 }
 
 fpl_inline void AABB2fExpandScalar(AABB2f *aabb, const float scalar) {
-	Vec2f e = V2fInitScalar(scalar);
-	AABB2fExpand(aabb, e);
+    Vec2f e = V2fInitScalar(scalar);
+    AABB2fExpand(aabb, e);
 }
 
 //
@@ -226,7 +226,7 @@ fpl_inline bool AABB3fContainsPoint(const AABB3f *aabb, const Vec3f point) {
 #if defined(FINAL_GEOMETRY_IMPLEMENTATION) && !defined(FINAL_GEOMETRY_IMPLEMENTED)
 #define FINAL_GEOMETRY_IMPLEMENTED
 
-extern bool LineCast2fAgainstCircle(const LineCastInput2f *input, const Vec2f *center, const float radius, LineCastOutput2f *output) {
+fpl_extern bool LineCast2fAgainstCircle(const LineCastInput2f *input, const Vec2f *center, const float radius, LineCastOutput2f *output) {
 	if (input == fpl_null || center == fpl_null || output == fpl_null) {
 		return false;
 	}

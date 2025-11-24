@@ -70,7 +70,7 @@ typedef struct Viewport {
 	int h;
 } Viewport;
 
-extern Viewport ComputeViewportByAspect(const Vec2i screenSize, const float targetAspect);
+fpl_extern Viewport ViewportComputeByAspect(const Vec2i screenSize, const float targetAspect);
 
 typedef enum TextureOperationType {
 	TextureOperationType_None = 0,
@@ -213,31 +213,31 @@ typedef struct TextCommand {
 	size_t textLength;
 } TextCommand;
 
-extern void InitRenderState(RenderState *state, fmemMemoryBlock block);
-extern void ResetRenderState(RenderState *state);
-extern void PushClear(RenderState *state, const Vec4f color, const ClearFlags flags);
-extern void PushViewport(RenderState *state, const int x, const int y, const int w, const int h);
-extern void PushMatrix(RenderState *state, const Mat4f *mat, const MatrixMode mode);
-extern void SetMatrix(RenderState *state, const Mat4f *mat);
-extern void PopMatrix(RenderState *state);
-extern void PushRectangle(RenderState *state, const Vec2f bottomLeft, const Vec2f size, const Vec4f color, const bool isFilled, const float lineWidth);
-extern void PushRectangleCenter(RenderState *state, const Vec2f center, const Vec2f ext, const Vec4f color, const bool isFilled, const float lineWidth);
-extern void PushQuad(RenderState *state,const Vec2f center,const float radius,const Vec4f color,const bool isFilled,const float lineWidth);
-extern VertexAllocation AllocateVertices(RenderState *state, const size_t capacity, const Vec4f color, const DrawMode drawMode, const bool isLoop, const float thickness);
-extern void PushVertices(RenderState *state, const Vec2f *verts, const size_t vertexCount, const bool copyVerts, const Vec4f color, const DrawMode drawMode, const bool isLoop, const float thickness);
-extern void PushSprite(RenderState *state, const Vec2f position, const Vec2f ext, const TextureHandle texture, const Vec4f color, const UVRect uvRect);
-extern void PushTexture(RenderState *state, TextureHandle *targetTexture, const void *data, const uint32_t width, const uint32_t height, const uint32_t bytesPerPixel, const TextureFilterType filter, const TextureWrapMode wrap, const bool isTopDown, const bool isPreMultiplied);
-extern void PopTexture(RenderState *state, TextureHandle *targetTexture);
-extern void PushText(RenderState *state, const char *text, const size_t textLen, const LoadedFont *font, const TextureHandle texture, const Vec2f position, const float maxHeight, const float horizontalAlignment, const float verticalAlignment, const Vec4f color);
-extern void PushCircle(RenderState *state, const Vec2f position, const float radius, const size_t segmentCount, const Vec4f color, const bool isFilled, const float lineWidth);
-extern void PushLine(RenderState *state, const Vec2f a, const Vec2f b, const Vec4f color, const float lineWidth);
+fpl_extern void RenderInit(RenderState *state, fmemMemoryBlock block);
+fpl_extern void RenderReset(RenderState *state);
+fpl_extern void RenderPushClear(RenderState *state, const Vec4f color, const ClearFlags flags);
+fpl_extern void RenderPushViewport(RenderState *state, const int x, const int y, const int w, const int h);
+fpl_extern void RenderPushMatrix(RenderState *state, const Mat4f *mat, const MatrixMode mode);
+fpl_extern void RenderSetMatrix(RenderState *state, const Mat4f *mat);
+fpl_extern void RenderPopMatrix(RenderState *state);
+fpl_extern void RenderPushRectangle(RenderState *state, const Vec2f bottomLeft, const Vec2f size, const Vec4f color, const bool isFilled, const float lineWidth);
+fpl_extern void RenderPushRectangleCenter(RenderState *state, const Vec2f center, const Vec2f ext, const Vec4f color, const bool isFilled, const float lineWidth);
+fpl_extern void RenderPushQuad(RenderState *state,const Vec2f center,const float radius,const Vec4f color,const bool isFilled,const float lineWidth);
+fpl_extern VertexAllocation RenderAllocateVertices(RenderState *state, const size_t capacity, const Vec4f color, const DrawMode drawMode, const bool isLoop, const float thickness);
+fpl_extern void RenderPushVertices(RenderState *state, const Vec2f *verts, const size_t vertexCount, const bool copyVerts, const Vec4f color, const DrawMode drawMode, const bool isLoop, const float thickness);
+fpl_extern void RenderPushSprite(RenderState *state, const Vec2f position, const Vec2f ext, const TextureHandle texture, const Vec4f color, const UVRect uvRect);
+fpl_extern void RendererPushTexture(RenderState *state, TextureHandle *targetTexture, const void *data, const uint32_t width, const uint32_t height, const uint32_t bytesPerPixel, const TextureFilterType filter, const TextureWrapMode wrap, const bool isTopDown, const bool isPreMultiplied);
+fpl_extern void RendererPopTexture(RenderState *state, TextureHandle *targetTexture);
+fpl_extern void RenderPushText(RenderState *state, const char *text, const size_t textLen, const LoadedFont *font, const TextureHandle texture, const Vec2f position, const float maxHeight, const float horizontalAlignment, const float verticalAlignment, const Vec4f color);
+fpl_extern void RenderPushCircle(RenderState *state, const Vec2f position, const float radius, const size_t segmentCount, const Vec4f color, const bool isFilled, const float lineWidth);
+fpl_extern void RenderPushLine(RenderState *state, const Vec2f a, const Vec2f b, const Vec4f color, const float lineWidth);
 
 #endif // FINAL_RENDER_H
 
 #if defined(FINAL_RENDER_IMPLEMENTATION) && !defined(FINAL_RENDER_IMPLEMENTED)
 #define FINAL_RENDER_IMPLEMENTED
 
-static CommandHeader *PushHeader(RenderState *state, const CommandType type) {
+static CommandHeader *_RenderPushHeader(RenderState *state, const CommandType type) {
 	if (state == fpl_null) {
 		return fpl_null;
 	}
@@ -250,7 +250,7 @@ static CommandHeader *PushHeader(RenderState *state, const CommandType type) {
 	return result;
 }
 
-static void *PushTypes(RenderState *state, CommandHeader *header, const size_t count, const size_t typeSize, const bool clear) {
+static void *_RenderPushTypes(RenderState *state, CommandHeader *header, const size_t count, const size_t typeSize, const bool clear) {
 	if (state == fpl_null || header == fpl_null || count == 0 || typeSize == 0) {
 		return fpl_null;
 	}
@@ -260,10 +260,10 @@ static void *PushTypes(RenderState *state, CommandHeader *header, const size_t c
 	return result;
 }
 
-#define PushTypesAs(state, header, count, type, clear) (type*)PushTypes(state, header, count, sizeof(type), clear)
-#define PushTypeAs(state, header, type, clear) (type*)PushTypes(state, header, 1, sizeof(type), clear)
+#define _RenderPushTypesAs(state, header, count, type, clear) (type*)_RenderPushTypes(state, header, count, sizeof(type), clear)
+#define _RenderPushTypeAs(state, header, type, clear) (type*)_RenderPushTypes(state, header, 1, sizeof(type), clear)
 
-extern void InitRenderState(RenderState *state, fmemMemoryBlock block) {
+fpl_extern void RenderInit(RenderState *state, fmemMemoryBlock block) {
 	if (state == fpl_null) {
 		return;
 	}
@@ -271,7 +271,7 @@ extern void InitRenderState(RenderState *state, fmemMemoryBlock block) {
 	state->textureOperationCount = 0;
 }
 
-extern void ResetRenderState(RenderState *state) {
+fpl_extern void RenderReset(RenderState *state) {
 	if (state == fpl_null) {
 		return;
 	}
@@ -279,12 +279,12 @@ extern void ResetRenderState(RenderState *state) {
 	state->memory.used = 0;
 }
 
-extern void PushMatrix(RenderState *state, const Mat4f *mat, const MatrixMode mode) {
+fpl_extern void RenderPushMatrix(RenderState *state, const Mat4f *mat, const MatrixMode mode) {
 	if (state == fpl_null || mat == fpl_null) {
 		return;
 	}
-	CommandHeader *header = PushHeader(state, CommandType_Matrix);
-	MatrixCommand *cmd = PushTypeAs(state, header, MatrixCommand, true);
+	CommandHeader *header = _RenderPushHeader(state, CommandType_Matrix);
+	MatrixCommand *cmd = _RenderPushTypeAs(state, header, MatrixCommand, true);
 	if (cmd == fpl_null) {
 		return;
 	}
@@ -292,31 +292,31 @@ extern void PushMatrix(RenderState *state, const Mat4f *mat, const MatrixMode mo
 	cmd->mode = mode;
 }
 
-extern void PopMatrix(RenderState *state) {
+fpl_extern void RenderPopMatrix(RenderState *state) {
 	if (state == fpl_null) {
 		return;
 	}
-	CommandHeader *header = PushHeader(state, CommandType_Matrix);
-	MatrixCommand *cmd = PushTypeAs(state, header, MatrixCommand, true);
+	CommandHeader *header = _RenderPushHeader(state, CommandType_Matrix);
+	MatrixCommand *cmd = _RenderPushTypeAs(state, header, MatrixCommand, true);
 	if (cmd == fpl_null) {
 		return;
 	}
 	cmd->mode = MatrixMode_Pop;
 }
 
-extern void SetMatrix(RenderState *state, const Mat4f *mat) {
+fpl_extern void RenderSetMatrix(RenderState *state, const Mat4f *mat) {
 	if (state == fpl_null || mat == fpl_null) {
 		return;
 	}
-	PushMatrix(state, mat, MatrixMode_Set);
+	RenderPushMatrix(state, mat, MatrixMode_Set);
 }
 
-extern void PushClear(RenderState *state, const Vec4f color, const ClearFlags flags) {
+fpl_extern void RenderPushClear(RenderState *state, const Vec4f color, const ClearFlags flags) {
 	if (state == fpl_null) {
 		return;
 	}
-	CommandHeader *header = PushHeader(state, CommandType_Clear);
-	ClearCommand *cmd = PushTypeAs(state, header, ClearCommand, true);
+	CommandHeader *header = _RenderPushHeader(state, CommandType_Clear);
+	ClearCommand *cmd = _RenderPushTypeAs(state, header, ClearCommand, true);
 	if (cmd == fpl_null) {
 		return;
 	}
@@ -324,12 +324,12 @@ extern void PushClear(RenderState *state, const Vec4f color, const ClearFlags fl
 	cmd->flags = flags;
 }
 
-extern void PushViewport(RenderState *state, const int x, const int y, const int w, const int h) {
+fpl_extern void RenderPushViewport(RenderState *state, const int x, const int y, const int w, const int h) {
 	if (state == fpl_null) {
 		return;
 	}
-	CommandHeader *header = PushHeader(state, CommandType_Viewport);
-	ViewportCommand *cmd = PushTypeAs(state, header, ViewportCommand, true);
+	CommandHeader *header = _RenderPushHeader(state, CommandType_Viewport);
+	ViewportCommand *cmd = _RenderPushTypeAs(state, header, ViewportCommand, true);
 	if (cmd == fpl_null) {
 		return;
 	}
@@ -339,12 +339,12 @@ extern void PushViewport(RenderState *state, const int x, const int y, const int
 	cmd->h = h;
 }
 
-extern void PushRectangle(RenderState *state, const Vec2f bottomLeft, const Vec2f size, const Vec4f color, const bool isFilled, const float lineWidth) {
+fpl_extern void RenderPushRectangle(RenderState *state, const Vec2f bottomLeft, const Vec2f size, const Vec4f color, const bool isFilled, const float lineWidth) {
 	if (state == fpl_null) {
 		return;
 	}
-	CommandHeader *header = PushHeader(state, CommandType_Rectangle);
-	RectangleCommand *cmd = PushTypeAs(state, header, RectangleCommand, true);
+	CommandHeader *header = _RenderPushHeader(state, CommandType_Rectangle);
+	RectangleCommand *cmd = _RenderPushTypeAs(state, header, RectangleCommand, true);
 	if (cmd == fpl_null) {
 		return;
 	}
@@ -355,25 +355,25 @@ extern void PushRectangle(RenderState *state, const Vec2f bottomLeft, const Vec2
 	cmd->lineWidth = lineWidth;
 }
 
-extern void PushRectangleCenter(RenderState *state, const Vec2f center, const Vec2f ext, const Vec4f color, const bool isFilled, const float lineWidth) {
+fpl_extern void RenderPushRectangleCenter(RenderState *state, const Vec2f center, const Vec2f ext, const Vec4f color, const bool isFilled, const float lineWidth) {
 	Vec2f bottomLeft = V2fSub(center, ext);
 	Vec2f size = V2fMultScalar(ext, 2.0f);
-	PushRectangle(state, bottomLeft, size, color, isFilled, lineWidth);
+	RenderPushRectangle(state, bottomLeft, size, color, isFilled, lineWidth);
 }
 
-extern void PushQuad(RenderState *state, const Vec2f center, const float radius, const Vec4f color, const bool isFilled, const float lineWidth) {
+fpl_extern void RenderPushQuad(RenderState *state, const Vec2f center, const float radius, const Vec4f color, const bool isFilled, const float lineWidth) {
 	Vec2f ext = V2fInitScalar(radius);
-	PushRectangleCenter(state, center, ext, color, isFilled, lineWidth);
+	RenderPushRectangleCenter(state, center, ext, color, isFilled, lineWidth);
 }
 
-extern VertexAllocation AllocateVertices(RenderState *state, const size_t capacity, const Vec4f color, const DrawMode drawMode, const bool isLoop, const float thickness) {
+fpl_extern VertexAllocation RenderAllocateVertices(RenderState *state, const size_t capacity, const Vec4f color, const DrawMode drawMode, const bool isLoop, const float thickness) {
 	VertexAllocation result = fplZeroInit;
 	if (state == fpl_null) {
 		return result;
 	}
-	CommandHeader *header = PushHeader(state, CommandType_Vertices);
-	VerticesCommand *cmd = PushTypeAs(state, header, VerticesCommand, true);
-	Vec2f *verts = PushTypesAs(state, header, capacity, Vec2f, true);
+	CommandHeader *header = _RenderPushHeader(state, CommandType_Vertices);
+	VerticesCommand *cmd = _RenderPushTypeAs(state, header, VerticesCommand, true);
+	Vec2f *verts = _RenderPushTypesAs(state, header, capacity, Vec2f, true);
 	if (cmd == fpl_null || verts == fpl_null) {
 		return result;
 	}
@@ -390,19 +390,19 @@ extern VertexAllocation AllocateVertices(RenderState *state, const size_t capaci
 	return result;
 }
 
-extern void PushVertices(RenderState *state, const Vec2f *verts, const size_t vertexCount, const bool copyVerts, const Vec4f color, const DrawMode drawMode, const bool isLoop, const float thickness) {
+fpl_extern void RenderPushVertices(RenderState *state, const Vec2f *verts, const size_t vertexCount, const bool copyVerts, const Vec4f color, const DrawMode drawMode, const bool isLoop, const float thickness) {
 	if (state == fpl_null || verts == fpl_null || vertexCount == 0) {
 		return;
 	}
 
-	CommandHeader *header = PushHeader(state, CommandType_Vertices);
-	VerticesCommand *cmd = PushTypeAs(state, header, VerticesCommand, true);
+	CommandHeader *header = _RenderPushHeader(state, CommandType_Vertices);
+	VerticesCommand *cmd = _RenderPushTypeAs(state, header, VerticesCommand, true);
 	if (cmd == fpl_null) {
 		return;
 	}
 
 	if (copyVerts) {
-		Vec2f *dstVerts = PushTypesAs(state, header, vertexCount, Vec2f, true);
+		Vec2f *dstVerts = _RenderPushTypesAs(state, header, vertexCount, Vec2f, true);
 		if (dstVerts == fpl_null) {
 			return;
 		}
@@ -422,13 +422,13 @@ extern void PushVertices(RenderState *state, const Vec2f *verts, const size_t ve
 	cmd->isLoop = isLoop;
 }
 
-extern void PushSprite(RenderState *state, const Vec2f position, const Vec2f ext, const TextureHandle texture, const Vec4f color, const UVRect uvRect) {
+fpl_extern void RenderPushSprite(RenderState *state, const Vec2f position, const Vec2f ext, const TextureHandle texture, const Vec4f color, const UVRect uvRect) {
 	if (state == fpl_null) {
 		return;
 	}
 
-	CommandHeader *header = PushHeader(state, CommandType_Sprite);
-	SpriteCommand *cmd = PushTypeAs(state, header, SpriteCommand, true);
+	CommandHeader *header = _RenderPushHeader(state, CommandType_Sprite);
+	SpriteCommand *cmd = _RenderPushTypeAs(state, header, SpriteCommand, true);
 	if (cmd == fpl_null) {
 		return;
 	}
@@ -440,7 +440,7 @@ extern void PushSprite(RenderState *state, const Vec2f position, const Vec2f ext
 	cmd->uvMax = V2fInit(uvRect.uMax, uvRect.vMax);
 }
 
-extern void PushTexture(RenderState *state, TextureHandle *targetTexture, const void *data, const uint32_t width, const uint32_t height, const uint32_t bytesPerPixel, const TextureFilterType filter, const TextureWrapMode wrap, const bool isTopDown, const bool isPreMultiplied) {
+fpl_extern void RendererPushTexture(RenderState *state, TextureHandle *targetTexture, const void *data, const uint32_t width, const uint32_t height, const uint32_t bytesPerPixel, const TextureFilterType filter, const TextureWrapMode wrap, const bool isTopDown, const bool isPreMultiplied) {
 	if (state == fpl_null || targetTexture == fpl_null || data == fpl_null || width == 0 || height == 0) {
 		return;
 	}
@@ -461,7 +461,7 @@ extern void PushTexture(RenderState *state, TextureHandle *targetTexture, const 
 	op->isTopDown = isTopDown;
 }
 
-extern void PopTexture(RenderState *state, TextureHandle *targetTexture) {
+fpl_extern void RendererPopTexture(RenderState *state, TextureHandle *targetTexture) {
 	if (state == fpl_null || targetTexture == fpl_null) {
 		return;
 	}
@@ -474,7 +474,7 @@ extern void PopTexture(RenderState *state, TextureHandle *targetTexture) {
 	op->type = TextureOperationType_Release;
 }
 
-extern void PushCircle(RenderState *state, const Vec2f position, const float radius, const size_t segmentCount, const Vec4f color, const bool isFilled, const float lineWidth) {
+fpl_extern void RenderPushCircle(RenderState *state, const Vec2f position, const float radius, const size_t segmentCount, const Vec4f color, const bool isFilled, const float lineWidth) {
 	if (state == fpl_null || radius <= 0.0f || segmentCount < 3) {
 		return;
 	}
@@ -486,7 +486,7 @@ extern void PushCircle(RenderState *state, const Vec2f position, const float rad
 	} else {
 		drawMode = DrawMode_Lines;
 	}
-	VertexAllocation vertAlloc = AllocateVertices(state, vertexCapacity, color, drawMode, true, lineWidth);
+	VertexAllocation vertAlloc = RenderAllocateVertices(state, vertexCapacity, color, drawMode, true, lineWidth);
 	if (vertAlloc.count == 0 || vertAlloc.verts == fpl_null) {
 		return;
 	}
@@ -501,19 +501,19 @@ extern void PushCircle(RenderState *state, const Vec2f position, const float rad
 	*vertAlloc.count = vertexCount;
 }
 
-extern void PushText(RenderState *state, const char *text, const size_t textLen, const LoadedFont *font, const TextureHandle texture, const Vec2f position, const float maxHeight, const float horizontalAlignment, const float verticalAlignment, const Vec4f color) {
+fpl_extern void RenderPushText(RenderState *state, const char *text, const size_t textLen, const LoadedFont *font, const TextureHandle texture, const Vec2f position, const float maxHeight, const float horizontalAlignment, const float verticalAlignment, const Vec4f color) {
 	if (state == fpl_null || text == fpl_null || textLen == 0 || font == fpl_null || texture == fpl_null) {
 		return;
 	}
-	CommandHeader *header = PushHeader(state, CommandType_Text);
-	TextCommand *cmd = PushTypeAs(state, header, TextCommand, true);
+	CommandHeader *header = _RenderPushHeader(state, CommandType_Text);
+	TextCommand *cmd = _RenderPushTypeAs(state, header, TextCommand, true);
 	if (cmd == fpl_null) {
 		return;
 	}
 
 	size_t capacity = textLen + 1;
 
-	char *pt = PushTypesAs(state, header, capacity, char, false);
+	char *pt = _RenderPushTypesAs(state, header, capacity, char, false);
 	if (pt == fpl_null) {
 		return;
 	}
@@ -529,12 +529,12 @@ extern void PushText(RenderState *state, const char *text, const size_t textLen,
 	cmd->verticalAlignment = verticalAlignment;
 }
 
-extern void PushLine(RenderState *state, const Vec2f a, const Vec2f b, const Vec4f color, const float lineWidth) {
+fpl_extern void RenderPushLine(RenderState *state, const Vec2f a, const Vec2f b, const Vec4f color, const float lineWidth) {
 	Vec2f verts[] = {a, b};
-	PushVertices(state, verts, 2, true, color, DrawMode_Lines, false, lineWidth);
+	RenderPushVertices(state, verts, 2, true, color, DrawMode_Lines, false, lineWidth);
 }
 
-extern Viewport ComputeViewportByAspect(const Vec2i screenSize, const float targetAspect) {
+fpl_extern Viewport ViewportComputeByAspect(const Vec2i screenSize, const float targetAspect) {
 	int targetHeight = (int)(screenSize.w / targetAspect);
 	Vec2i viewSize = V2iInit(screenSize.w, screenSize.h);
 	Vec2i viewOffset = V2iInit(0, 0);
