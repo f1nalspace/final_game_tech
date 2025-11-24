@@ -163,7 +163,7 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 
 	// Camera
 	float scale = state->camera.scale;
-	state->viewport = ComputeViewportByAspect(input->windowSize, GameAspect);
+	state->viewport = ViewportComputeByAspect(input->windowSize, GameAspect);
 	state->camera.worldToPixels = (state->viewport.w / (float)WorldWidth) * scale;
 	state->camera.pixelsToWorld = 1.0f / state->camera.worldToPixels;
 

@@ -1185,7 +1185,7 @@ extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
 
 	GameState *state = gameMemory->game;
 	fplAssert(state != nullptr);
-	state->viewport = ComputeViewportByAspect(input->windowSize, GameAspect);
+	state->viewport = ViewportComputeByAspect(input->windowSize, GameAspect);
 
 	if(state->mode == GameMode::Play) {
 		UpdatePlayMode(*state, *input);

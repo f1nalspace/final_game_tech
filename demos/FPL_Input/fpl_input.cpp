@@ -184,7 +184,7 @@ struct Viewport {
 	int h;
 };
 
-static Viewport ComputeViewportByAspect(const Vec2i& screenSize, const float targetAspect) {
+static Viewport ViewportComputeByAspect(const Vec2i& screenSize, const float targetAspect) {
 	int targetHeight = (int)(screenSize.w / targetAspect);
 	Vec2i viewSize = V2i(screenSize.w, screenSize.h);
 	Vec2i viewOffset = V2i(0, 0);
@@ -1194,7 +1194,7 @@ static void RenderApp(AppState* appState, const InputState* input, const uint32_
 	constexpr float w = AppWidth * 0.5f;
 	constexpr float h = AppHeight * 0.5f;
 
-	Viewport vp = ComputeViewportByAspect(V2i(winWidth, winHeight), AppAspect);
+	Viewport vp = ViewportComputeByAspect(V2i(winWidth, winHeight), AppAspect);
 
 	RenderScale scale = {};
 	scale.worldSize = V2f(AppWidth, AppHeight);

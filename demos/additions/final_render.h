@@ -70,7 +70,7 @@ typedef struct Viewport {
 	int h;
 } Viewport;
 
-extern Viewport ComputeViewportByAspect(const Vec2i screenSize, const float targetAspect);
+extern Viewport ViewportComputeByAspect(const Vec2i screenSize, const float targetAspect);
 
 typedef enum TextureOperationType {
 	TextureOperationType_None = 0,
@@ -534,7 +534,7 @@ extern void PushLine(RenderState *state, const Vec2f a, const Vec2f b, const Vec
 	PushVertices(state, verts, 2, true, color, DrawMode_Lines, false, lineWidth);
 }
 
-extern Viewport ComputeViewportByAspect(const Vec2i screenSize, const float targetAspect) {
+extern Viewport ViewportComputeByAspect(const Vec2i screenSize, const float targetAspect) {
 	int targetHeight = (int)(screenSize.w / targetAspect);
 	Vec2i viewSize = V2iInit(screenSize.w, screenSize.h);
 	Vec2i viewOffset = V2iInit(0, 0);
