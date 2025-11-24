@@ -1629,7 +1629,7 @@ namespace game {
 			outAsset->data.width = width;
 			outAsset->data.height = height;
 			const TextureData &texData = outAsset->data;
-			RendererPushTexture(&renderState, &outAsset->texture, texData.data, texData.width, texData.height, 4, TextureFilterType_Linear, TextureWrapMode_ClampToEdge, false, false);
+			RenderPushTexture(&renderState, &outAsset->texture, texData.data, texData.width, texData.height, 4, TextureFilterType_Linear, TextureWrapMode_ClampToEdge, false, false);
 		}
 	}
 
@@ -1646,11 +1646,11 @@ namespace game {
 			// Fonts
 			FontAsset &hudFont = assets.hudFont;
 			if (LoadFontFromMemory(ptr_fontSulphurPointRegular, sizeOf_fontSulphurPointRegular, 0, 36.0f, 32, 128, 512, 512, false, &hudFont.desc)) {
-				RendererPushTexture(&renderState, &hudFont.texture, hudFont.desc.atlasAlphaBitmap, hudFont.desc.atlasWidth, hudFont.desc.atlasHeight, 1, TextureFilterType_Linear, TextureWrapMode_ClampToEdge, false, false);
+				RenderPushTexture(&renderState, &hudFont.texture, hudFont.desc.atlasAlphaBitmap, hudFont.desc.atlasWidth, hudFont.desc.atlasHeight, 1, TextureFilterType_Linear, TextureWrapMode_ClampToEdge, false, false);
 			}
 			FontAsset &overlayFont = assets.overlayFont;
 			if (LoadFontFromMemory(ptr_fontSulphurPointRegular, sizeOf_fontSulphurPointRegular, 0, 240.0f, 32, 128, 4096, 4096, false, &overlayFont.desc)) {
-				RendererPushTexture(&renderState, &overlayFont.texture, overlayFont.desc.atlasAlphaBitmap, overlayFont.desc.atlasWidth, overlayFont.desc.atlasHeight, 1, TextureFilterType_Linear, TextureWrapMode_ClampToEdge, false, false);
+				RenderPushTexture(&renderState, &overlayFont.texture, overlayFont.desc.atlasAlphaBitmap, overlayFont.desc.atlasWidth, overlayFont.desc.atlasHeight, 1, TextureFilterType_Linear, TextureWrapMode_ClampToEdge, false, false);
 			}
 
 			// Textures
