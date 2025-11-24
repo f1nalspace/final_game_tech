@@ -25,20 +25,18 @@ project "FPL_Input"
 		flags { "ExcludeFromBuild" }
 	filter {}
 
-	group "Dependencies"
-		vpaths { 
-			["Dependencies"] = {
-				"../../final_platform_layer.h",
-				"../../final_dynamic_opengl.h",
-			},
-			["ThirdParty"] = {
-				"../dependencies/stb/stb_image.h",
-				"../dependencies/stb/stb_truetype.h",
-			},
-			["Additions"] = {
-				"../additions/final_fonts.h",
-			},
-		}
-	group "" -- end of "Dependencies"
+	vpaths { 
+		["Dependencies"] = {
+			"../../final_platform_layer.h",
+			"../../final_dynamic_opengl.h",
+		},
+		["ThirdParty"] = {
+			"../dependencies/stb/stb_image.h",
+			"../dependencies/stb/stb_truetype.h",
+		},
+		["Additions"] = {
+			"../additions/final_fonts.h",
+		},
+	}
 		
 	postbuildcommands { "{COPYDIR} %[%{!prj.location}/data] %[%{!cfg.targetdir}/data/]" }
