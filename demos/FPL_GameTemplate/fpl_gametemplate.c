@@ -157,7 +157,7 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 
 	// Debug input
 	const Controller *keyboardController = &input->controllers[0];
-	if (ButtonWasPressed(keyboardController->debugToggle)) {
+	if (ButtonWasPressed(keyboardController->debug4)) {
 		state->isDebugRendering = !state->isDebugRendering;
 	}
 
