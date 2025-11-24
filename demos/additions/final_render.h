@@ -237,7 +237,7 @@ extern void RenderPushLine(RenderState *state, const Vec2f a, const Vec2f b, con
 #if defined(FINAL_RENDER_IMPLEMENTATION) && !defined(FINAL_RENDER_IMPLEMENTED)
 #define FINAL_RENDER_IMPLEMENTED
 
-static CommandHeader *PushHeader(RenderState *state, const CommandType type) {
+static CommandHeader *_RenderPushHeader(RenderState *state, const CommandType type) {
 	if (state == fpl_null) {
 		return fpl_null;
 	}
@@ -250,7 +250,7 @@ static CommandHeader *PushHeader(RenderState *state, const CommandType type) {
 	return result;
 }
 
-static void *PushTypes(RenderState *state, CommandHeader *header, const size_t count, const size_t typeSize, const bool clear) {
+static void *_RenderPushTypes(RenderState *state, CommandHeader *header, const size_t count, const size_t typeSize, const bool clear) {
 	if (state == fpl_null || header == fpl_null || count == 0 || typeSize == 0) {
 		return fpl_null;
 	}
@@ -260,8 +260,8 @@ static void *PushTypes(RenderState *state, CommandHeader *header, const size_t c
 	return result;
 }
 
-#define PushTypesAs(state, header, count, type, clear) (type*)PushTypes(state, header, count, sizeof(type), clear)
-#define PushTypeAs(state, header, type, clear) (type*)PushTypes(state, header, 1, sizeof(type), clear)
+#define _RenderPushTypesAs(state, header, count, type, clear) (type*)_RenderPushTypes(state, header, count, sizeof(type), clear)
+#define _RenderPushTypeAs(state, header, type, clear) (type*)_RenderPushTypes(state, header, 1, sizeof(type), clear)
 
 extern void RenderInit(RenderState *state, fmemMemoryBlock block) {
 	if (state == fpl_null) {
@@ -283,8 +283,8 @@ extern void RenderPushMatrix(RenderState *state, const Mat4f *mat, const MatrixM
 	if (state == fpl_null || mat == fpl_null) {
 		return;
 	}
-	CommandHeader *header = PushHeader(state, CommandType_Matrix);
-	MatrixCommand *cmd = PushTypeAs(state, header, MatrixCommand, true);
+	CommandHeader *header = _RenderPushHeader(state, CommandType_Matrix);
+	MatrixCommand *cmd = _RenderPushTypeAs(state, header, MatrixCommand, true);
 	if (cmd == fpl_null) {
 		return;
 	}
@@ -296,8 +296,8 @@ extern void RenderPopMatrix(RenderState *state) {
 	if (state == fpl_null) {
 		return;
 	}
-	CommandHeader *header = PushHeader(state, CommandType_Matrix);
-	MatrixCommand *cmd = PushTypeAs(state, header, MatrixCommand, true);
+	CommandHeader *header = _RenderPushHeader(state, CommandType_Matrix);
+	MatrixCommand *cmd = _RenderPushTypeAs(state, header, MatrixCommand, true);
 	if (cmd == fpl_null) {
 		return;
 	}
@@ -315,8 +315,8 @@ extern void RenderPushClear(RenderState *state, const Vec4f color, const ClearFl
 	if (state == fpl_null) {
 		return;
 	}
-	CommandHeader *header = PushHeader(state, CommandType_Clear);
-	ClearCommand *cmd = PushTypeAs(state, header, ClearCommand, true);
+	CommandHeader *header = _RenderPushHeader(state, CommandType_Clear);
+	ClearCommand *cmd = _RenderPushTypeAs(state, header, ClearCommand, true);
 	if (cmd == fpl_null) {
 		return;
 	}
@@ -328,8 +328,8 @@ extern void RenderPushViewport(RenderState *state, const int x, const int y, con
 	if (state == fpl_null) {
 		return;
 	}
-	CommandHeader *header = PushHeader(state, CommandType_Viewport);
-	ViewportCommand *cmd = PushTypeAs(state, header, ViewportCommand, true);
+	CommandHeader *header = _RenderPushHeader(state, CommandType_Viewport);
+	ViewportCommand *cmd = _RenderPushTypeAs(state, header, ViewportCommand, true);
 	if (cmd == fpl_null) {
 		return;
 	}
@@ -343,8 +343,8 @@ extern void RenderPushRectangle(RenderState *state, const Vec2f bottomLeft, cons
 	if (state == fpl_null) {
 		return;
 	}
-	CommandHeader *header = PushHeader(state, CommandType_Rectangle);
-	RectangleCommand *cmd = PushTypeAs(state, header, RectangleCommand, true);
+	CommandHeader *header = _RenderPushHeader(state, CommandType_Rectangle);
+	RectangleCommand *cmd = _RenderPushTypeAs(state, header, RectangleCommand, true);
 	if (cmd == fpl_null) {
 		return;
 	}
@@ -371,9 +371,9 @@ extern VertexAllocation RenderAllocateVertices(RenderState *state, const size_t 
 	if (state == fpl_null) {
 		return result;
 	}
-	CommandHeader *header = PushHeader(state, CommandType_Vertices);
-	VerticesCommand *cmd = PushTypeAs(state, header, VerticesCommand, true);
-	Vec2f *verts = PushTypesAs(state, header, capacity, Vec2f, true);
+	CommandHeader *header = _RenderPushHeader(state, CommandType_Vertices);
+	VerticesCommand *cmd = _RenderPushTypeAs(state, header, VerticesCommand, true);
+	Vec2f *verts = _RenderPushTypesAs(state, header, capacity, Vec2f, true);
 	if (cmd == fpl_null || verts == fpl_null) {
 		return result;
 	}
@@ -395,14 +395,14 @@ extern void RenderPushVertices(RenderState *state, const Vec2f *verts, const siz
 		return;
 	}
 
-	CommandHeader *header = PushHeader(state, CommandType_Vertices);
-	VerticesCommand *cmd = PushTypeAs(state, header, VerticesCommand, true);
+	CommandHeader *header = _RenderPushHeader(state, CommandType_Vertices);
+	VerticesCommand *cmd = _RenderPushTypeAs(state, header, VerticesCommand, true);
 	if (cmd == fpl_null) {
 		return;
 	}
 
 	if (copyVerts) {
-		Vec2f *dstVerts = PushTypesAs(state, header, vertexCount, Vec2f, true);
+		Vec2f *dstVerts = _RenderPushTypesAs(state, header, vertexCount, Vec2f, true);
 		if (dstVerts == fpl_null) {
 			return;
 		}
@@ -427,8 +427,8 @@ extern void RenderPushSprite(RenderState *state, const Vec2f position, const Vec
 		return;
 	}
 
-	CommandHeader *header = PushHeader(state, CommandType_Sprite);
-	SpriteCommand *cmd = PushTypeAs(state, header, SpriteCommand, true);
+	CommandHeader *header = _RenderPushHeader(state, CommandType_Sprite);
+	SpriteCommand *cmd = _RenderPushTypeAs(state, header, SpriteCommand, true);
 	if (cmd == fpl_null) {
 		return;
 	}
@@ -505,15 +505,15 @@ extern void RenderPushText(RenderState *state, const char *text, const size_t te
 	if (state == fpl_null || text == fpl_null || textLen == 0 || font == fpl_null || texture == fpl_null) {
 		return;
 	}
-	CommandHeader *header = PushHeader(state, CommandType_Text);
-	TextCommand *cmd = PushTypeAs(state, header, TextCommand, true);
+	CommandHeader *header = _RenderPushHeader(state, CommandType_Text);
+	TextCommand *cmd = _RenderPushTypeAs(state, header, TextCommand, true);
 	if (cmd == fpl_null) {
 		return;
 	}
 
 	size_t capacity = textLen + 1;
 
-	char *pt = PushTypesAs(state, header, capacity, char, false);
+	char *pt = _RenderPushTypesAs(state, header, capacity, char, false);
 	if (pt == fpl_null) {
 		return;
 	}
