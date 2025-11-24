@@ -204,6 +204,27 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="..\..\final_dynamic_opengl.h" />
+    <ClInclude Include="..\..\final_memory.h" />
+    <ClInclude Include="..\..\final_platform_layer.h" />
+    <ClInclude Include="..\additions\final_assets.h" />
+    <ClInclude Include="..\additions\final_audio.h" />
+    <ClInclude Include="..\additions\final_audioconversion.h" />
+    <ClInclude Include="..\additions\final_audiosystem.h" />
+    <ClInclude Include="..\additions\final_fontloader.h" />
+    <ClInclude Include="..\additions\final_fonts.h" />
+    <ClInclude Include="..\additions\final_game.h" />
+    <ClInclude Include="..\additions\final_gameplatform.h" />
+    <ClInclude Include="..\additions\final_geometry.h" />
+    <ClInclude Include="..\additions\final_math.h" />
+    <ClInclude Include="..\additions\final_opengl_render.h" />
+    <ClInclude Include="..\additions\final_random.h" />
+    <ClInclude Include="..\additions\final_render.h" />
+    <ClInclude Include="..\additions\final_utils.h" />
+    <ClInclude Include="..\dependencies\stb\stb_image.h" />
+    <ClInclude Include="..\dependencies\stb\stb_truetype.h" />
+  </ItemGroup>
+  <ItemGroup>
     <ClCompile Include="fpl_crackout.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

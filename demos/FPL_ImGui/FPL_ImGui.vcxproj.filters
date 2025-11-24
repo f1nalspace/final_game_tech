@@ -1,28 +1,19 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <Filter Include="dependencies">
-      <UniqueIdentifier>{8CAD9F58-7810-2FFD-2196-67B30DD8FA7F}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="dependencies\imgui">
-      <UniqueIdentifier>{F6B312BD-E297-D312-4BF8-CD6537FBBD94}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="dependencies\imgui\include">
-      <UniqueIdentifier>{6971379C-5581-E36C-BE3A-488BAA69D205}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="dependencies\imgui\include\imgui">
-      <UniqueIdentifier>{93293726-7F7A-2268-A8DE-102A948EB5D1}</UniqueIdentifier>
+    <Filter Include="ThirdParty">
+      <UniqueIdentifier>{107145F9-FC28-8746-6530-60A251072237}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\dependencies\imgui\include\imgui\imgui.cpp">
-      <Filter>dependencies\imgui\include\imgui</Filter>
+      <Filter>ThirdParty</Filter>
     </ClCompile>
     <ClCompile Include="..\dependencies\imgui\include\imgui\imgui_demo.cpp">
-      <Filter>dependencies\imgui\include\imgui</Filter>
+      <Filter>ThirdParty</Filter>
     </ClCompile>
     <ClCompile Include="..\dependencies\imgui\include\imgui\imgui_draw.cpp">
-      <Filter>dependencies\imgui\include\imgui</Filter>
+      <Filter>ThirdParty</Filter>
     </ClCompile>
     <ClCompile Include="fpl_imgui.cpp" />
   </ItemGroup>
