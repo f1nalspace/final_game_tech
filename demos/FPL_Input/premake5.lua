@@ -13,15 +13,15 @@ project "FPL_Input"
 		"../additions/final_fonts.h",
 	}
 	
-	filter { "files:../../final_platform_layer.h", "files:../../final_dynamic_opengl.h" }
+	filter { "files:../../*.h" }
 		flags { "ExcludeFromBuild" }
 	filter {}
 
-	filter { "files:../dependencies/stb/stb_image.h", "files:../dependencies/stb/stb_truetype.h" }
+	filter { "files:../dependencies/stb/*.h" }
 		flags { "ExcludeFromBuild" }
 	filter {}
 
-	filter { "files:../additions/final_fonts.h" }
+	filter { "files:../additions/*.h" }
 		flags { "ExcludeFromBuild" }
 	filter {}
 
