@@ -425,7 +425,7 @@ extern int GameMain(const GameConfiguration *config) {
 	}
 
 	RenderState *renderState = fmemPushStruct(&gameMemoryBlock, RenderState, fmemPushFlags_Clear);
-	InitRenderState(renderState, renderMemoryBlock);
+	RenderInit(renderState, renderMemoryBlock);
 	InitOpenGLRenderer();
 
 	GameMemory gameMem = fplZeroInit;
@@ -546,7 +546,7 @@ extern int GameMain(const GameConfiguration *config) {
 			//
 			const float alphaRaw = (float)(frameAccumulator / targetDeltaTime);
 			const float alpha = F32Clamp(alphaRaw, 0.0f, 1.0f);
-			ResetRenderState(renderState);
+			RenderReset(renderState);
 			GameRender(&gameMem, newInput, alpha);
 			RenderWithOpenGL(renderState);
 			fplVideoFlip();

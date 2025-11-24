@@ -213,8 +213,8 @@ typedef struct TextCommand {
 	size_t textLength;
 } TextCommand;
 
-extern void InitRenderState(RenderState *state, fmemMemoryBlock block);
-extern void ResetRenderState(RenderState *state);
+extern void RenderInit(RenderState *state, fmemMemoryBlock block);
+extern void RenderReset(RenderState *state);
 extern void PushClear(RenderState *state, const Vec4f color, const ClearFlags flags);
 extern void PushViewport(RenderState *state, const int x, const int y, const int w, const int h);
 extern void PushMatrix(RenderState *state, const Mat4f *mat, const MatrixMode mode);
@@ -263,7 +263,7 @@ static void *PushTypes(RenderState *state, CommandHeader *header, const size_t c
 #define PushTypesAs(state, header, count, type, clear) (type*)PushTypes(state, header, count, sizeof(type), clear)
 #define PushTypeAs(state, header, type, clear) (type*)PushTypes(state, header, 1, sizeof(type), clear)
 
-extern void InitRenderState(RenderState *state, fmemMemoryBlock block) {
+extern void RenderInit(RenderState *state, fmemMemoryBlock block) {
 	if (state == fpl_null) {
 		return;
 	}
@@ -271,7 +271,7 @@ extern void InitRenderState(RenderState *state, fmemMemoryBlock block) {
 	state->textureOperationCount = 0;
 }
 
-extern void ResetRenderState(RenderState *state) {
+extern void RenderReset(RenderState *state) {
 	if (state == fpl_null) {
 		return;
 	}
