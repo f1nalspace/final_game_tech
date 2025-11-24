@@ -131,36 +131,36 @@ typedef struct AudioSystem {
 	bool isShutdown;
 } AudioSystem;
 
-extern bool AudioSystemInit(AudioSystem *audioSys, const fplAudioFormat *targetFormat);
-extern void AudioSystemShutdown(AudioSystem *audioSys);
+fpl_extern bool AudioSystemInit(AudioSystem *audioSys, const fplAudioFormat *targetFormat);
+fpl_extern void AudioSystemShutdown(AudioSystem *audioSys);
 
-extern void AudioSystemSetMasterVolume(AudioSystem *audioSys, const float newMasterVolume);
+fpl_extern void AudioSystemSetMasterVolume(AudioSystem *audioSys, const float newMasterVolume);
 
-extern AudioSource *AudioSystemAllocateSource(AudioSystem *audioSys, const AudioChannelIndex channels, const AudioHertz sampleRate, const fplAudioFormatType type, const AudioFrameIndex frameCount);
+fpl_extern AudioSource *AudioSystemAllocateSource(AudioSystem *audioSys, const AudioChannelIndex channels, const AudioHertz sampleRate, const fplAudioFormatType type, const AudioFrameIndex frameCount);
 
-extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const char *filePath);
-extern bool AudioSystemLoadFileFormat(AudioSystem *audioSys, const char *filePath, PCMWaveFormat *outFormat);
+fpl_extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const char *filePath);
+fpl_extern bool AudioSystemLoadFileFormat(AudioSystem *audioSys, const char *filePath, PCMWaveFormat *outFormat);
 
-extern AudioSource *AudioSystemLoadDataSource(AudioSystem *audioSys, const size_t dataSize, const uint8_t *data);
-extern bool AudioSystemLoadDataFormat(AudioSystem *audioSys, const size_t dataSize, const uint8_t *data, PCMWaveFormat *outFormat);
+fpl_extern AudioSource *AudioSystemLoadDataSource(AudioSystem *audioSys, const size_t dataSize, const uint8_t *data);
+fpl_extern bool AudioSystemLoadDataFormat(AudioSystem *audioSys, const size_t dataSize, const uint8_t *data, PCMWaveFormat *outFormat);
 
-extern bool AudioSystemAddSource(AudioSystem *audioSys, AudioSource *source);
+fpl_extern bool AudioSystemAddSource(AudioSystem *audioSys, AudioSource *source);
 
-extern AudioFrameIndex AudioSystemWriteFrames(AudioSystem *audioSys, void *outSamples, const fplAudioFormat *outFormat, const AudioFrameIndex frameCount, const bool advance);
+fpl_extern AudioFrameIndex AudioSystemWriteFrames(AudioSystem *audioSys, void *outSamples, const fplAudioFormat *outFormat, const AudioFrameIndex frameCount, const bool advance);
 
-extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume);
-extern bool AudioSystemStopOne(AudioSystem *audioSys, const AudioPlayItemID playId);
-extern void AudioSystemStopAll(AudioSystem *audioSys);
-extern void AudioSystemClearSources(AudioSystem *audioSys);
-extern size_t AudioSystemGetPlayItems(AudioSystem *audioSys, AudioPlayItem *dest, const size_t maxDestCount);
+fpl_extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume);
+fpl_extern bool AudioSystemStopOne(AudioSystem *audioSys, const AudioPlayItemID playId);
+fpl_extern void AudioSystemStopAll(AudioSystem *audioSys);
+fpl_extern void AudioSystemClearSources(AudioSystem *audioSys);
+fpl_extern size_t AudioSystemGetPlayItems(AudioSystem *audioSys, AudioPlayItem *dest, const size_t maxDestCount);
 
-extern AudioSource *AudioSystemGetSourceByID(AudioSystem *audioSys, const AudioSourceID id);
-extern size_t AudioSystemGetSources(AudioSystem *audioSys, AudioSource *dest, const size_t maxDestCount);
+fpl_extern AudioSource *AudioSystemGetSourceByID(AudioSystem *audioSys, const AudioSourceID id);
+fpl_extern size_t AudioSystemGetSources(AudioSystem *audioSys, AudioSource *dest, const size_t maxDestCount);
 
 // @TODO(final): Move to final_audiodemo.h, make a audio source more "Generative"
-extern void AudioGenerateSineWave(AudioSineWaveData *waveData, void *outSamples, const fplAudioFormatType outFormat, const AudioHertz outSampleRate, const AudioChannelIndex channels, const AudioFrameIndex frameCount);
+fpl_extern void AudioGenerateSineWave(AudioSineWaveData *waveData, void *outSamples, const fplAudioFormatType outFormat, const AudioHertz outSampleRate, const AudioChannelIndex channels, const AudioFrameIndex frameCount);
 
-extern bool IsAudioSampleRateSupported(AudioSystem *audioSys, const AudioSampleIndex sampleRate);
+fpl_extern bool IsAudioSampleRateSupported(AudioSystem *audioSys, const AudioSampleIndex sampleRate);
 #endif // FINAL_AUDIOSYSTEM_H
 
 #if defined(FINAL_AUDIOSYSTEM_IMPLEMENTATION) && !defined(FINAL_AUDIOSYSTEM_IMPLEMENTED)
@@ -237,7 +237,7 @@ static void FreeAudioStream(AudioMemory *memory, AudioStream *audioStream) {
 	fplClearStruct(audioStream);
 }
 
-extern bool AudioSystemInit(AudioSystem *audioSys, const fplAudioFormat *targetFormat) {
+fpl_extern bool AudioSystemInit(AudioSystem *audioSys, const fplAudioFormat *targetFormat) {
 	if(audioSys == fpl_null) {
 		return false;
 	}
@@ -276,11 +276,11 @@ extern bool AudioSystemInit(AudioSystem *audioSys, const fplAudioFormat *targetF
 	return(true);
 }
 
-extern void AudioSystemSetMasterVolume(AudioSystem *audioSys, const float newMasterVolume) {
+fpl_extern void AudioSystemSetMasterVolume(AudioSystem *audioSys, const float newMasterVolume) {
 	audioSys->masterVolume = newMasterVolume;
 }
 
-extern bool AudioSystemAddSource(AudioSystem *audioSys, AudioSource *source) {
+fpl_extern bool AudioSystemAddSource(AudioSystem *audioSys, AudioSource *source) {
 	if (audioSys == fpl_null || source == fpl_null) {
 		return false;
 	}
@@ -309,7 +309,7 @@ extern bool AudioSystemAddSource(AudioSystem *audioSys, AudioSource *source) {
 	return true;
 }
 
-extern AudioSource *AudioSystemAllocateSource(AudioSystem *audioSys, const AudioChannelIndex channels, const AudioHertz sampleRate, const fplAudioFormatType type, const AudioFrameIndex frameCount) {
+fpl_extern AudioSource *AudioSystemAllocateSource(AudioSystem *audioSys, const AudioChannelIndex channels, const AudioHertz sampleRate, const fplAudioFormatType type, const AudioFrameIndex frameCount) {
 	// Compute audio buffer
 	AudioFormat audioFormat = fplZeroInit;
 	audioFormat.channels = channels;
@@ -425,7 +425,7 @@ static AudioSource *CreateAudioSourceFromPCM(AudioSystem *audioSys, const PCMWav
 	return(source);
 }
 
-extern AudioSource *AudioSystemLoadDataSource(AudioSystem *audioSys, const size_t dataSize, const uint8_t *data) {
+fpl_extern AudioSource *AudioSystemLoadDataSource(AudioSystem *audioSys, const size_t dataSize, const uint8_t *data) {
 	if (audioSys == fpl_null || dataSize == 0 || data == fpl_null) {
 		return fpl_null;
 	}
@@ -483,7 +483,7 @@ static bool AudioSystem__LoadWaveFormat(AudioFileFormat fileFormat, const uint8_
 	}
 }
 
-extern bool AudioSystemLoadDataFormat(AudioSystem *audioSys, const size_t dataSize, const uint8_t *data, PCMWaveFormat *outFormat) {
+fpl_extern bool AudioSystemLoadDataFormat(AudioSystem *audioSys, const size_t dataSize, const uint8_t *data, PCMWaveFormat *outFormat) {
 	if (audioSys == fpl_null || dataSize == 0 || data == fpl_null || outFormat == fpl_null) {
 		return false;
 	}
@@ -502,7 +502,7 @@ extern bool AudioSystemLoadDataFormat(AudioSystem *audioSys, const size_t dataSi
 	return true;
 }
 
-extern bool AudioSystemLoadFileFormat(AudioSystem *audioSys, const char *filePath, PCMWaveFormat *outFormat) {
+fpl_extern bool AudioSystemLoadFileFormat(AudioSystem *audioSys, const char *filePath, PCMWaveFormat *outFormat) {
 	if (audioSys == fpl_null || fplGetStringLength(filePath) == 0 || outFormat == fpl_null) {
 		return false;
 	}
@@ -565,7 +565,7 @@ done:
 	return result;
 }
 
-extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const char *filePath) {
+fpl_extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const char *filePath) {
 	if (audioSys == fpl_null || fplGetStringLength(filePath) == 0) {
 		return fpl_null;
 	}
@@ -677,7 +677,7 @@ static void RemovePlayItem(AudioMemory *memory, AudioPlayItems *playItems, Audio
 	--playItems->count;
 }
 
-extern AudioSource *AudioSystemGetSourceByID(AudioSystem *audioSys, const AudioSourceID id) {
+fpl_extern AudioSource *AudioSystemGetSourceByID(AudioSystem *audioSys, const AudioSourceID id) {
 	fplMutexLock(&audioSys->sources.lock);
 	AudioSource *src = audioSys->sources.first;
 	AudioSource *result = fpl_null;
@@ -692,7 +692,7 @@ extern AudioSource *AudioSystemGetSourceByID(AudioSystem *audioSys, const AudioS
 	return(result);
 }
 
-extern size_t AudioSystemGetSources(AudioSystem *audioSys, AudioSource *dest, const size_t maxDestCount) {
+fpl_extern size_t AudioSystemGetSources(AudioSystem *audioSys, AudioSource *dest, const size_t maxDestCount) {
 	size_t count = audioSys->sources.count;
 	if(dest != fpl_null) {
 		if(count > maxDestCount) {
@@ -711,7 +711,7 @@ extern size_t AudioSystemGetSources(AudioSystem *audioSys, AudioSource *dest, co
 	return(count);
 }
 
-extern size_t AudioSystemGetPlayItems(AudioSystem *audioSys, AudioPlayItem *dest, const size_t maxDestCount) {
+fpl_extern size_t AudioSystemGetPlayItems(AudioSystem *audioSys, AudioPlayItem *dest, const size_t maxDestCount) {
 	size_t count = audioSys->playItems.count;
 	if(dest != fpl_null) {
 		if(count > maxDestCount) {
@@ -730,7 +730,7 @@ extern size_t AudioSystemGetPlayItems(AudioSystem *audioSys, AudioPlayItem *dest
 	return(count);
 }
 
-extern bool AudioSystemStopOne(AudioSystem *audioSys, const AudioPlayItemID playId) {
+fpl_extern bool AudioSystemStopOne(AudioSystem *audioSys, const AudioPlayItemID playId) {
 	AudioPlayItem *playItem = audioSys->playItems.first;
 	AudioPlayItem *foundPlayItem = fpl_null;
 	while(playItem != fpl_null) {
@@ -749,7 +749,7 @@ extern bool AudioSystemStopOne(AudioSystem *audioSys, const AudioPlayItemID play
 	return(false);
 }
 
-extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume) {
+fpl_extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume) {
 	if((audioSys == fpl_null) || (source == fpl_null)) {
 		AudioPlayItemID empty = fplZeroInit;
 		return(empty);
@@ -788,7 +788,7 @@ fpl_force_inline float AudioClipF32(const float value) {
 	return(result);
 }
 
-extern float ConvertToF32(const void *inSamples, const AudioChannelIndex inChannel, const fplAudioFormatType inFormat) {
+fpl_extern float ConvertToF32(const void *inSamples, const AudioChannelIndex inChannel, const fplAudioFormatType inFormat) {
 	// @TODO(final): Convert from other audio formats to F32
 	switch(inFormat) {
 		case fplAudioFormatType_S16:
@@ -814,7 +814,7 @@ extern float ConvertToF32(const void *inSamples, const AudioChannelIndex inChann
 	}
 }
 
-extern void ConvertFromF32(void *outSamples, const float inSampleValue, const AudioChannelIndex outChannel, const fplAudioFormatType outFormat) {
+fpl_extern void ConvertFromF32(void *outSamples, const float inSampleValue, const AudioChannelIndex outChannel, const fplAudioFormatType outFormat) {
 	// @TODO(final): Convert to other audio formats
 	float x = AudioClipF32(inSampleValue);
 	switch(outFormat) {
@@ -910,7 +910,7 @@ static AudioSampleIndex MixSamples(const AudioSampleConversionFunctions *convFun
 	return(outSampleCount);
 }
 
-extern void AudioGenerateSineWave(AudioSineWaveData *waveData, void *outSamples, const fplAudioFormatType outFormat, const AudioHertz outSampleRate, const AudioChannelIndex channels, const AudioFrameIndex frameCount) {
+fpl_extern void AudioGenerateSineWave(AudioSineWaveData *waveData, void *outSamples, const fplAudioFormatType outFormat, const AudioHertz outSampleRate, const AudioChannelIndex channels, const AudioFrameIndex frameCount) {
 	uint8_t *samples = (uint8_t *)outSamples;
 	size_t sampleStride = (size_t)fplGetAudioSampleSizeInBytes(outFormat) * channels;
 	for(AudioFrameIndex i = 0; i < frameCount; ++i) {
@@ -1194,7 +1194,7 @@ static AudioFrameIndex FillConversionBuffer(AudioSystem *audioSys, const AudioFr
 	return maxFrameCount;
 }
 
-extern AudioFrameIndex AudioSystemWriteFrames(AudioSystem *audioSys, void *outSamples, const fplAudioFormat *outFormat, const AudioFrameIndex frameCount, const bool advance) {
+fpl_extern AudioFrameIndex AudioSystemWriteFrames(AudioSystem *audioSys, void *outSamples, const fplAudioFormat *outFormat, const AudioFrameIndex frameCount, const bool advance) {
 	fplAssert(audioSys != NULL);
 	fplAssert(audioSys->targetFormat.sampleRate == outFormat->sampleRate);
 	fplAssert(audioSys->targetFormat.format == outFormat->type);
@@ -1264,7 +1264,7 @@ extern AudioFrameIndex AudioSystemWriteFrames(AudioSystem *audioSys, void *outSa
 	return result;
 }
 
-extern void AudioSystemStopAll(AudioSystem *audioSys) {
+fpl_extern void AudioSystemStopAll(AudioSystem *audioSys) {
 	if(audioSys == fpl_null || audioSys->isShutdown)
 		return;
 
@@ -1290,7 +1290,7 @@ extern void AudioSystemStopAll(AudioSystem *audioSys) {
 	fplMutexUnlock(&audioSys->writeFramesLock);
 }
 
-extern void AudioSystemClearSources(AudioSystem *audioSys) {
+fpl_extern void AudioSystemClearSources(AudioSystem *audioSys) {
 	if(audioSys == fpl_null || audioSys->isShutdown)
 		return;
 
@@ -1309,7 +1309,7 @@ extern void AudioSystemClearSources(AudioSystem *audioSys) {
 	fplMutexUnlock(&sources->lock);
 }
 
-extern void AudioSystemShutdown(AudioSystem *audioSys) {
+fpl_extern void AudioSystemShutdown(AudioSystem *audioSys) {
 	if(audioSys != fpl_null) {
 		AudioSystemStopAll(audioSys);
 		AudioSystemClearSources(audioSys);
@@ -1328,7 +1328,7 @@ static inline bool AreSampleRatesEven(const uint32_t rateA, const uint32_t rateB
 	return ((rateA % rateB) == 0) || ((rateB % rateA) == 0);
 }
 
-extern bool IsAudioSampleRateSupported(AudioSystem *audioSys, const AudioSampleIndex sampleRate) {
+fpl_extern bool IsAudioSampleRateSupported(AudioSystem *audioSys, const AudioSampleIndex sampleRate) {
 	if (audioSys == fpl_null || audioSys->targetFormat.sampleRate == 0 || sampleRate == 0) {
 		return false;
 	}

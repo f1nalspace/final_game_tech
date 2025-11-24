@@ -37,18 +37,18 @@ typedef struct AudioSampleConversionFunctions {
 	AudioSampleDeinterleaveFunc *deinterleaveTable[fplAudioFormatType_Last];
 } AudioSampleConversionFunctions;
 
-extern AudioSampleConversionFunctions CreateAudioSamplesConversionFunctions();
+fpl_extern AudioSampleConversionFunctions CreateAudioSamplesConversionFunctions();
 
-extern bool AudioSamplesConvert(AudioSampleConversionFunctions *funcTable, const AudioSampleIndex numSamples, const fplAudioFormatType inFormat, const fplAudioFormatType outFormat, const void *inSamples, void *outSamples);
+fpl_extern bool AudioSamplesConvert(AudioSampleConversionFunctions *funcTable, const AudioSampleIndex numSamples, const fplAudioFormatType inFormat, const fplAudioFormatType outFormat, const void *inSamples, void *outSamples);
 
-extern bool AudioSamplesDeinterleave(AudioSampleConversionFunctions *funcTable, const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const fplAudioFormatType format, const void *inSamples, void **outSamples);
+fpl_extern bool AudioSamplesDeinterleave(AudioSampleConversionFunctions *funcTable, const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const fplAudioFormatType format, const void *inSamples, void **outSamples);
 
-extern bool AudioSamplesInterleave(AudioSampleConversionFunctions *funcTable, const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const fplAudioFormatType format, const void **inSamples, void *outSamples);
+fpl_extern bool AudioSamplesInterleave(AudioSampleConversionFunctions *funcTable, const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const fplAudioFormatType format, const void **inSamples, void *outSamples);
 
-extern bool AudioSamplesMonolize(const AudioChannelIndex inChannels, const AudioFrameIndex frameCount, const float *inSamples, float *outSamples);
+fpl_extern bool AudioSamplesMonolize(const AudioChannelIndex inChannels, const AudioFrameIndex frameCount, const float *inSamples, float *outSamples);
 
-extern bool IsAudioDeinterleavedSamplesEqual(const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const size_t formatSize, const void **a, const void **b);
-extern bool IsAudioInterleavedSamplesEqual(const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const size_t formatSize, const void *a, const void *b);
+fpl_extern bool IsAudioDeinterleavedSamplesEqual(const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const size_t formatSize, const void **a, const void **b);
+fpl_extern bool IsAudioInterleavedSamplesEqual(const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const size_t formatSize, const void *a, const void *b);
 
 #define AUDIO_RESAMPLE_BUFFER_FRAME_COUNT 512
 #define AUDIO_RESAMPLE_BUFFER_CHANNEL_COUNT FPL_MAX_AUDIO_CHANNEL_COUNT
@@ -77,10 +77,10 @@ typedef struct AudioResamplingContext {
 	AudioChannelIndex channelCount;
 } AudioResamplingContext;
 
-extern AudioResampleResult AudioResampleInterleaved(const AudioChannelIndex numChannels, const AudioSampleIndex inSampleRate, const AudioSampleIndex outSampleRate, const AudioFrameIndex minOutputFrameCount, const AudioFrameIndex maxInputFrameCount, const float *inSamples, float *outSamples);
-extern AudioResampleResult AudioResampleDeinterleaved(const AudioChannelIndex numChannels, const AudioSampleIndex inSampleRate, const AudioSampleIndex outSampleRate, const AudioFrameIndex minOutputFrameCount, const AudioFrameIndex maxInputFrameCount, const float **inSamples, float **outSamples);
+fpl_extern AudioResampleResult AudioResampleInterleaved(const AudioChannelIndex numChannels, const AudioSampleIndex inSampleRate, const AudioSampleIndex outSampleRate, const AudioFrameIndex minOutputFrameCount, const AudioFrameIndex maxInputFrameCount, const float *inSamples, float *outSamples);
+fpl_extern AudioResampleResult AudioResampleDeinterleaved(const AudioChannelIndex numChannels, const AudioSampleIndex inSampleRate, const AudioSampleIndex outSampleRate, const AudioFrameIndex minOutputFrameCount, const AudioFrameIndex maxInputFrameCount, const float **inSamples, float **outSamples);
 
-extern void TestAudioSamplesSuite();
+fpl_extern void TestAudioSamplesSuite();
 
 #endif // FINAL_AUDIO_CONVERSION_H
 
@@ -581,7 +581,7 @@ static AudioResampleResult AudioWeightedSampleSumDownSampling(const uint16_t cha
     return result;
 }
 
-extern AudioResampleResult AudioResampleInterleaved(const AudioChannelIndex numChannels, const AudioSampleIndex inSampleRate, const AudioSampleIndex outSampleRate, const AudioFrameIndex minOutputFrameCount, const AudioFrameIndex maxInputFrameCount, const float *inSamples, float *outSamples) {
+fpl_extern AudioResampleResult AudioResampleInterleaved(const AudioChannelIndex numChannels, const AudioSampleIndex inSampleRate, const AudioSampleIndex outSampleRate, const AudioFrameIndex minOutputFrameCount, const AudioFrameIndex maxInputFrameCount, const float *inSamples, float *outSamples) {
 	if (numChannels == 0 || inSampleRate == 0 || outSampleRate == 0 || minOutputFrameCount == 0 || maxInputFrameCount == 0) {
 		AudioResampleResult zero = fplZeroInit;
 		return zero;
@@ -612,7 +612,7 @@ extern AudioResampleResult AudioResampleInterleaved(const AudioChannelIndex numC
 	return res;
 }
 
-extern AudioResampleResult AudioResampleDeinterleaved(const AudioChannelIndex numChannels, const AudioSampleIndex inSampleRate, const AudioSampleIndex outSampleRate, const AudioFrameIndex minOutputFrameCount, const AudioFrameIndex maxInputFrameCount, const float **inSamples, float **outSamples) {
+fpl_extern AudioResampleResult AudioResampleDeinterleaved(const AudioChannelIndex numChannels, const AudioSampleIndex inSampleRate, const AudioSampleIndex outSampleRate, const AudioFrameIndex minOutputFrameCount, const AudioFrameIndex maxInputFrameCount, const float **inSamples, float **outSamples) {
 	if (numChannels == 0 || inSampleRate == 0 || outSampleRate == 0 || minOutputFrameCount == 0 || maxInputFrameCount == 0) {
 		AudioResampleResult zero = fplZeroInit;
 		return zero;
@@ -647,7 +647,7 @@ extern AudioResampleResult AudioResampleDeinterleaved(const AudioChannelIndex nu
 // Function tables
 // **********************************************************************************************************************
 
-extern AudioSampleConversionFunctions CreateAudioSamplesConversionFunctions() {
+fpl_extern AudioSampleConversionFunctions CreateAudioSamplesConversionFunctions() {
 	AudioSampleConversionFunctions result = fplZeroInit;
 
 	// @TODO(final): SIMD detection and simply change the function pointer to right one with best SIMD implementation
@@ -678,7 +678,7 @@ extern AudioSampleConversionFunctions CreateAudioSamplesConversionFunctions() {
 	return(result);
 }
 
-extern bool AudioSamplesConvert(AudioSampleConversionFunctions *funcTable, const AudioSampleIndex numSamples, const fplAudioFormatType inFormat, const fplAudioFormatType outFormat, const void *inSamples, void *outSamples) {
+fpl_extern bool AudioSamplesConvert(AudioSampleConversionFunctions *funcTable, const AudioSampleIndex numSamples, const fplAudioFormatType inFormat, const fplAudioFormatType outFormat, const void *inSamples, void *outSamples) {
 	if (funcTable == fpl_null || numSamples == 0 || inFormat == fplAudioFormatType_None || outFormat == fplAudioFormatType_None || inSamples == fpl_null || outSamples == fpl_null) {
 		return(false);
 	}
@@ -697,7 +697,7 @@ extern bool AudioSamplesConvert(AudioSampleConversionFunctions *funcTable, const
 	return(true);
 }
 
-extern bool AudioSamplesDeinterleave(AudioSampleConversionFunctions *funcTable, const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const fplAudioFormatType format, const void *inSamples, void **outSamples) {
+fpl_extern bool AudioSamplesDeinterleave(AudioSampleConversionFunctions *funcTable, const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const fplAudioFormatType format, const void *inSamples, void **outSamples) {
 	if(funcTable == fpl_null || inSamples == fpl_null || outSamples == fpl_null) return(false);
 	AudioSampleDeinterleaveFunc *deinterleaveFunc = funcTable->deinterleaveTable[format];
 	if(deinterleaveFunc != fpl_null) {
@@ -712,7 +712,7 @@ extern bool AudioSamplesDeinterleave(AudioSampleConversionFunctions *funcTable, 
 	return(true);
 }
 
-extern bool AudioSamplesInterleave(AudioSampleConversionFunctions *funcTable, const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const fplAudioFormatType format, const void **inSamples, void *outSamples) {
+fpl_extern bool AudioSamplesInterleave(AudioSampleConversionFunctions *funcTable, const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const fplAudioFormatType format, const void **inSamples, void *outSamples) {
 	if(funcTable == fpl_null || inSamples == fpl_null || outSamples == fpl_null) return(false);
 	AudioSampleInterleaveFunc *interleaveFunc = funcTable->interleaveTable[format];
 	if(interleaveFunc != fpl_null) {
@@ -727,7 +727,7 @@ extern bool AudioSamplesInterleave(AudioSampleConversionFunctions *funcTable, co
 	return(true);
 }
 
-extern bool AudioSamplesMonolize(const AudioChannelIndex inChannels, const AudioFrameIndex frameCount, const float *inSamples, float *outSamples) {
+fpl_extern bool AudioSamplesMonolize(const AudioChannelIndex inChannels, const AudioFrameIndex frameCount, const float *inSamples, float *outSamples) {
 	if (inChannels == 0 || frameCount == 0 || inSamples == fpl_null || outSamples == fpl_null) {
 		return false;
 	}
@@ -852,7 +852,7 @@ const void *Test_4_Frames_Deinterleaved_S32_FiveChannelsP[5] = {
 	&Test_4_Frames_Deinterleaved_S32_FiveChannels[4]
 };
 
-extern bool IsAudioDeinterleavedSamplesEqual(const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const size_t formatSize, const void **a, const void **b) {
+fpl_extern bool IsAudioDeinterleavedSamplesEqual(const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const size_t formatSize, const void **a, const void **b) {
 	size_t lineWidth = numFrames * formatSize;
 	for(AudioChannelIndex channelIndex = 0; channelIndex < numChannels; ++channelIndex) {
 		const void *aLine = a[channelIndex];
@@ -865,7 +865,7 @@ extern bool IsAudioDeinterleavedSamplesEqual(const AudioFrameIndex numFrames, co
 	return(true);
 }
 
-extern bool IsAudioInterleavedSamplesEqual(const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const size_t formatSize, const void *a, const void *b) {
+fpl_extern bool IsAudioInterleavedSamplesEqual(const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const size_t formatSize, const void *a, const void *b) {
 	size_t totalWidth = numFrames * numChannels * formatSize;
 	int r = memcmp(a, b, totalWidth);
 	if(r != 0) {
@@ -1083,7 +1083,7 @@ static void TestAudioSamplesInterleave() {
 	}
 }
 
-extern void TestAudioSamplesSuite() {
+fpl_extern void TestAudioSamplesSuite() {
 	TestAudioSamplesConversion();
 	TestAudioSamplesDeinterleave();
 	TestAudioSamplesInterleave();

@@ -75,7 +75,7 @@ typedef struct LineCastOutput2f {
 	float fraction;
 } LineCastOutput2f;
 
-extern bool LineCast2fAgainstCircle(const LineCastInput2f *input, const Vec2f *center, const float radius, LineCastOutput2f *output);
+fpl_extern bool LineCast2fAgainstCircle(const LineCastInput2f *input, const Vec2f *center, const float radius, LineCastOutput2f *output);
 
 //
 // AABB2f
@@ -221,7 +221,7 @@ fpl_inline bool AABB3fContainsPoint(const AABB3f *aabb, const Vec3f point) {
 #if defined(FINAL_GEOMETRY_IMPLEMENTATION) && !defined(FINAL_GEOMETRY_IMPLEMENTED)
 #define FINAL_GEOMETRY_IMPLEMENTED
 
-extern bool LineCast2fAgainstCircle(const LineCastInput2f *input, const Vec2f *center, const float radius, LineCastOutput2f *output) {
+fpl_extern bool LineCast2fAgainstCircle(const LineCastInput2f *input, const Vec2f *center, const float radius, LineCastOutput2f *output) {
 	if (input == fpl_null || center == fpl_null || output == fpl_null) {
 		return false;
 	}

@@ -63,7 +63,7 @@ typedef struct GameConfiguration {
 	bool disableVerticalSync;
 } GameConfiguration;
 
-extern int GameMain(const GameConfiguration *config);
+fpl_extern int GameMain(const GameConfiguration *config);
 
 #endif // FINAL_GAMEPLATFORM_H
 
@@ -350,7 +350,7 @@ static void SetupInputForFrame(Input *oldInput, Input *newInput, const double ta
 
 }
 
-extern int GameMain(const GameConfiguration *config) {
+fpl_extern int GameMain(const GameConfiguration *config) {
 	if(config == fpl_null) {
 		return -1;
 	}
