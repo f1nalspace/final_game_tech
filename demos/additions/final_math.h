@@ -12,6 +12,9 @@ License:
 	Copyright 2017-2025 Torsten Spaete
 
 Changelog
+	## 2025-11-24
+	- Added function V2fClamp()
+
 	## 2025-11-21
 	- Added function V2iAdd()
 	- Added function V2iSub()
