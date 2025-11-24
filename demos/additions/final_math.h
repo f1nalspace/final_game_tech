@@ -12,6 +12,9 @@ License:
 	Copyright 2017-2025 Torsten Spaete
 
 Changelog
+	## 2025-11-24
+	- Added function V2fClamp()
+
 	## 2025-11-21
 	- Added function V2iAdd()
 	- Added function V2iSub()
@@ -789,6 +792,11 @@ fpl_force_inline Vec2f V2fMin(const Vec2f a, const Vec2f b) {
 
 fpl_force_inline Vec2f V2fMax(const Vec2f a, const Vec2f b) {
 	Vec2f result = V2fInit(F32Max(a.x, b.x), F32Max(a.y, b.y));
+	return(result);
+}
+
+fpl_force_inline Vec2f V2fClamp(const Vec2f value, const Vec2f min, const Vec2f max) {
+	Vec2f result = V2fMin(V2fMax(value, min), max);
 	return(result);
 }
 
