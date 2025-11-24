@@ -226,8 +226,8 @@ fpl_extern void RenderPushQuad(RenderState *state,const Vec2f center,const float
 fpl_extern VertexAllocation RenderAllocateVertices(RenderState *state, const size_t capacity, const Vec4f color, const DrawMode drawMode, const bool isLoop, const float thickness);
 fpl_extern void RenderPushVertices(RenderState *state, const Vec2f *verts, const size_t vertexCount, const bool copyVerts, const Vec4f color, const DrawMode drawMode, const bool isLoop, const float thickness);
 fpl_extern void RenderPushSprite(RenderState *state, const Vec2f position, const Vec2f ext, const TextureHandle texture, const Vec4f color, const UVRect uvRect);
-fpl_extern void RendererPushTexture(RenderState *state, TextureHandle *targetTexture, const void *data, const uint32_t width, const uint32_t height, const uint32_t bytesPerPixel, const TextureFilterType filter, const TextureWrapMode wrap, const bool isTopDown, const bool isPreMultiplied);
-fpl_extern void RendererPopTexture(RenderState *state, TextureHandle *targetTexture);
+fpl_extern void RenderPushTexture(RenderState *state, TextureHandle *targetTexture, const void *data, const uint32_t width, const uint32_t height, const uint32_t bytesPerPixel, const TextureFilterType filter, const TextureWrapMode wrap, const bool isTopDown, const bool isPreMultiplied);
+fpl_extern void RenderPopTexture(RenderState *state, TextureHandle *targetTexture);
 fpl_extern void RenderPushText(RenderState *state, const char *text, const size_t textLen, const LoadedFont *font, const TextureHandle texture, const Vec2f position, const float maxHeight, const float horizontalAlignment, const float verticalAlignment, const Vec4f color);
 fpl_extern void RenderPushCircle(RenderState *state, const Vec2f position, const float radius, const size_t segmentCount, const Vec4f color, const bool isFilled, const float lineWidth);
 fpl_extern void RenderPushLine(RenderState *state, const Vec2f a, const Vec2f b, const Vec4f color, const float lineWidth);
@@ -440,7 +440,7 @@ fpl_extern void RenderPushSprite(RenderState *state, const Vec2f position, const
 	cmd->uvMax = V2fInit(uvRect.uMax, uvRect.vMax);
 }
 
-fpl_extern void RendererPushTexture(RenderState *state, TextureHandle *targetTexture, const void *data, const uint32_t width, const uint32_t height, const uint32_t bytesPerPixel, const TextureFilterType filter, const TextureWrapMode wrap, const bool isTopDown, const bool isPreMultiplied) {
+fpl_extern void RenderPushTexture(RenderState *state, TextureHandle *targetTexture, const void *data, const uint32_t width, const uint32_t height, const uint32_t bytesPerPixel, const TextureFilterType filter, const TextureWrapMode wrap, const bool isTopDown, const bool isPreMultiplied) {
 	if (state == fpl_null || targetTexture == fpl_null || data == fpl_null || width == 0 || height == 0) {
 		return;
 	}
@@ -461,7 +461,7 @@ fpl_extern void RendererPushTexture(RenderState *state, TextureHandle *targetTex
 	op->isTopDown = isTopDown;
 }
 
-fpl_extern void RendererPopTexture(RenderState *state, TextureHandle *targetTexture) {
+fpl_extern void RenderPopTexture(RenderState *state, TextureHandle *targetTexture) {
 	if (state == fpl_null || targetTexture == fpl_null) {
 		return;
 	}
