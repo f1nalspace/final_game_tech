@@ -435,7 +435,7 @@ namespace utils {
 namespace render {
 	static void DrawTile(RenderState &renderState, const LevelDimension &dim, const int x, const int y, const bool isFilled, const Vec4f &color) {
 		Vec2f pos = TileToWorld(dim, V2iInit(x, y));
-		PushRectangle(&renderState, pos, V2fInit(TileWidth, TileHeight), color, isFilled, 1.0f);
+		RenderPushRectangle(&renderState, pos, V2fInit(TileWidth, TileHeight), color, isFilled, 1.0f);
 	}
 
 	static void DrawLineStipple(RenderState &renderState, const Vec2f &a, const Vec2f &b, const float stippleWidth, const int modCount, const Vec4f &color, const float lineWidth) {
@@ -446,7 +446,7 @@ namespace render {
 		int secCount = (d > stippleWidth) ? (int)(d / stippleWidth) : 1;
 		assert(secCount > 0);
 		size_t capacity = secCount * 2;
-		VertexAllocation vertAlloc = AllocateVertices(&renderState, capacity, color, DrawMode_Lines, false, lineWidth);
+		VertexAllocation vertAlloc = RenderAllocateVertices(&renderState, capacity, color, DrawMode_Lines, false, lineWidth);
 		Vec2f *p = vertAlloc.verts;
 		size_t count = 0;
 		for (int sec = 0; sec < secCount; ++sec) {
@@ -489,26 +489,26 @@ namespace render {
 				r = r * M4fRotationZFromM2f(rotationMat);
 			}
 			Mat4f m = M4fTranslationV2(partPosition) * r;
-			PushMatrix(&renderState, &m, MatrixMode_Push);
+			RenderPushMatrix(&renderState, &m, MatrixMode_Push);
 			switch (part->type) {
 				case PartType::FillCircle:
 				case PartType::StrokeCircle:
 				{
 					bool isFilled = part->type == PartType::FillCircle;
-					PushCircle(&renderState, V2fInit(0.0f, 0.0f), part->radius * scale, 16, partColor, isFilled, partLineWidth);
+					RenderPushCircle(&renderState, V2fInit(0.0f, 0.0f), part->radius * scale, 16, partColor, isFilled, partLineWidth);
 				} break;
 				case PartType::FillQuad:
 				case PartType::StrokeQuad:
 				{
 					bool isFilled = part->type == PartType::FillQuad;
-					PushRectangleCenter(&renderState, V2fInit(0.0f, 0.0f), part->ext * scale, partColor, isFilled, partLineWidth);
+					RenderPushRectangleCenter(&renderState, V2fInit(0.0f, 0.0f), part->ext * scale, partColor, isFilled, partLineWidth);
 				} break;
 				case PartType::Line:
 				{
-					PushLine(&renderState, V2fInit(part->ext.x, 0) * scale, V2fInit(-part->ext.x, 0) * scale, partColor, partLineWidth);
+					RenderPushLine(&renderState, V2fInit(part->ext.x, 0) * scale, V2fInit(-part->ext.x, 0) * scale, partColor, partLineWidth);
 				} break;
 			}
-			PopMatrix(&renderState);
+			RenderPopMatrix(&renderState);
 		}
 	}
 }
@@ -1597,8 +1597,8 @@ namespace towers {
 
 		if (drawRadius) {
 			const TextureAsset &radiantTexture = assets.radiantTexture;
-			PushSprite(&renderState, pos, V2fInit(tower.detectionRadius * scale, tower.detectionRadius * scale), radiantTexture.texture, V4fInit(0.2f, 1, 0.2f, alpha * 0.25f), UVRectDefault());
-			PushSprite(&renderState, pos, V2fInit(tower.unlockRadius * scale, tower.unlockRadius * scale), radiantTexture.texture, V4fInit(1, 0.25f, 0.25f, alpha * 0.25f), UVRectDefault());
+			RenderPushSprite(&renderState, pos, V2fInit(tower.detectionRadius * scale, tower.detectionRadius * scale), radiantTexture.texture, V4fInit(0.2f, 1, 0.2f, alpha * 0.25f), UVRectDefault());
+			RenderPushSprite(&renderState, pos, V2fInit(tower.unlockRadius * scale, tower.unlockRadius * scale), radiantTexture.texture, V4fInit(1, 0.25f, 0.25f, alpha * 0.25f), UVRectDefault());
 		}
 	}
 }
@@ -1629,7 +1629,7 @@ namespace game {
 			outAsset->data.width = width;
 			outAsset->data.height = height;
 			const TextureData &texData = outAsset->data;
-			PushTexture(&renderState, &outAsset->texture, texData.data, texData.width, texData.height, 4, TextureFilterType_Linear, TextureWrapMode_ClampToEdge, false, false);
+			RendererPushTexture(&renderState, &outAsset->texture, texData.data, texData.width, texData.height, 4, TextureFilterType_Linear, TextureWrapMode_ClampToEdge, false, false);
 		}
 	}
 
@@ -1646,11 +1646,11 @@ namespace game {
 			// Fonts
 			FontAsset &hudFont = assets.hudFont;
 			if (LoadFontFromMemory(ptr_fontSulphurPointRegular, sizeOf_fontSulphurPointRegular, 0, 36.0f, 32, 128, 512, 512, false, &hudFont.desc)) {
-				PushTexture(&renderState, &hudFont.texture, hudFont.desc.atlasAlphaBitmap, hudFont.desc.atlasWidth, hudFont.desc.atlasHeight, 1, TextureFilterType_Linear, TextureWrapMode_ClampToEdge, false, false);
+				RendererPushTexture(&renderState, &hudFont.texture, hudFont.desc.atlasAlphaBitmap, hudFont.desc.atlasWidth, hudFont.desc.atlasHeight, 1, TextureFilterType_Linear, TextureWrapMode_ClampToEdge, false, false);
 			}
 			FontAsset &overlayFont = assets.overlayFont;
 			if (LoadFontFromMemory(ptr_fontSulphurPointRegular, sizeOf_fontSulphurPointRegular, 0, 240.0f, 32, 128, 4096, 4096, false, &overlayFont.desc)) {
-				PushTexture(&renderState, &overlayFont.texture, overlayFont.desc.atlasAlphaBitmap, overlayFont.desc.atlasWidth, overlayFont.desc.atlasHeight, 1, TextureFilterType_Linear, TextureWrapMode_ClampToEdge, false, false);
+				RendererPushTexture(&renderState, &overlayFont.texture, overlayFont.desc.atlasAlphaBitmap, overlayFont.desc.atlasWidth, overlayFont.desc.atlasHeight, 1, TextureFilterType_Linear, TextureWrapMode_ClampToEdge, false, false);
 			}
 
 			// Textures
@@ -1731,32 +1731,32 @@ namespace game {
 			char text[256];
 			fplStringFormat(text, fplArrayCount(text), "%s", state.level.activeId);
 			Vec2f textPos = V2fInit(hudOriginX + WorldRadiusW, hudOriginY - hudPadding - hudFontHeight * 0.5f);
-			PushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, 0.0f, 0.0f, TextBackColor);
-			PushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x, textPos.y), hudFontHeight, 0.0f, 0.0f, TextForeColor);
+			RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, 0.0f, 0.0f, TextBackColor);
+			RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x, textPos.y), hudFontHeight, 0.0f, 0.0f, TextForeColor);
 
 			fplStringFormat(text, fplArrayCount(text), "Wave: %d / %zu", (state.wave.activeIndex + 1), state.assets.waveDefinitionCount);
 			textPos.y -= hudFontHeight;
-			PushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, 0.0f, 0.0f, TextBackColor);
-			PushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x, textPos.y), hudFontHeight, 0.0f, 0.0f, TextForeColor);
+			RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, 0.0f, 0.0f, TextBackColor);
+			RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x, textPos.y), hudFontHeight, 0.0f, 0.0f, TextForeColor);
 
 			fplStringFormat(text, fplArrayCount(text), "Enemies: %zu / %zu", state.enemies.count, state.wave.totalEnemyCount);
 			textPos.y -= hudFontHeight;
-			PushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, 0.0f, 0.0f, TextBackColor);
-			PushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x, textPos.y), hudFontHeight, 0.0f, 0.0f, TextForeColor);
+			RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, 0.0f, 0.0f, TextBackColor);
+			RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x, textPos.y), hudFontHeight, 0.0f, 0.0f, TextForeColor);
 		}
 		{
 			char text[256];
 			fplStringFormat(text, fplArrayCount(text), "$: %d", state.stats.money);
 			Vec2f textPos = V2fInit(hudOriginX + hudPadding, hudOriginY - hudPadding - hudFontHeight * 0.5f);
-			PushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, 1.0f, 0.0f, TextBackColor);
-			PushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x, textPos.y), hudFontHeight, 1.0f, 0.0f, TextForeColor);
+			RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, 1.0f, 0.0f, TextBackColor);
+			RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x, textPos.y), hudFontHeight, 1.0f, 0.0f, TextForeColor);
 		}
 		{
 			char text[256];
 			fplStringFormat(text, fplArrayCount(text), "HP: %d", state.stats.lifes);
 			Vec2f textPos = V2fInit(hudOriginX + WorldWidth - hudPadding, hudOriginY - hudPadding - hudFontHeight * 0.5f);
-			PushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, -1.0f, 0.0f, TextBackColor);
-			PushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x, textPos.y), hudFontHeight, -1.0f, 0.0f, TextForeColor);
+			RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, -1.0f, 0.0f, TextBackColor);
+			RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x, textPos.y), hudFontHeight, -1.0f, 0.0f, TextForeColor);
 		}
 	}
 
@@ -1790,7 +1790,7 @@ namespace game {
 		// Controls Background
 		//
 		Vec4f backgroundColor = V4fInit(0.2f, 0.2f, 0.2f, 1.0f);
-		PushRectangle(&renderState, V2fInit(ControlsOriginX, ControlsOriginY), V2fInit(ControlsWidth, ControlsHeight), backgroundColor, true, 0.0f);
+		RenderPushRectangle(&renderState, V2fInit(ControlsOriginX, ControlsOriginY), V2fInit(ControlsWidth, ControlsHeight), backgroundColor, true, 0.0f);
 
 		// Controls Border
 		float lineWidth = 2.0f;
@@ -1803,7 +1803,7 @@ namespace game {
 			V2fInit(ControlsOriginX + lineWidthWorld, ControlsOriginY + lineWidthWorld),
 			V2fInit(ControlsOriginX + ControlsWidth - lineWidthWorld, ControlsOriginY + lineWidthWorld),
 		};
-		PushVertices(&renderState, controlsVerts, 4, true, controlsBorderColor, DrawMode_Lines, true, lineWidth);
+		RenderPushVertices(&renderState, controlsVerts, 4, true, controlsBorderColor, DrawMode_Lines, true, lineWidth);
 
 		// Tower buttons
 		float buttonPadding = MaxTileSize * 0.1f;
@@ -1827,7 +1827,7 @@ namespace game {
 			Vec2f textPos = V2fInit(ControlsOriginX + ControlsWidth - lineWidthWorld - buttonMargin, ControlsOriginY + ControlsHeight * 0.5f);
 			char textBuffer[256];
 			fplStringFormat(textBuffer, fplArrayCount(textBuffer), "[%s / $%d]", towerData.id, towerData.costs);
-			PushText(&renderState, textBuffer, fplGetStringLength(textBuffer), &font.desc, font.texture, V2fInit(textPos.x, textPos.y), fontHeight, -1.0f, 0.0f, TextForeColor);
+			RenderPushText(&renderState, textBuffer, fplGetStringLength(textBuffer), &font.desc, font.texture, V2fInit(textPos.x, textPos.y), fontHeight, -1.0f, 0.0f, TextForeColor);
 		}
 
 	}
@@ -2116,9 +2116,9 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	const float h = WorldRadiusH;
 	const float dt = state->deltaTime;
 
-	PushViewport(&renderState, state->viewport.x, state->viewport.y, state->viewport.w, state->viewport.h);
-	PushClear(&renderState, V4fInit(0, 0, 0, 1), ClearFlags_Color | ClearFlags_Depth);
-	SetMatrix(&renderState, &state->viewProjection);
+	RenderPushViewport(&renderState, state->viewport.x, state->viewport.y, state->viewport.w, state->viewport.h);
+	RenderPushClear(&renderState, V4fInit(0, 0, 0, 1), ClearFlags_Color | ClearFlags_Depth);
+	RenderSetMatrix(&renderState, &state->viewProjection);
 
 	const Level &level = state->level;
 	const LevelDimension &dim = level.dimension;
@@ -2162,7 +2162,7 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 					const UVRect &uvRect = tileset->tileUVs[indexToTilesheet];
 					if (texAsset != nullptr) {
 						Vec2f pos = TileToWorld(state->level.dimension, V2iInit((int)x, (int)y), TileExt);
-						PushSprite(&renderState, pos, TileExt, texAsset->texture, V4fInit(1, 1, 1, layer.opacity), uvRect);
+						RenderPushSprite(&renderState, pos, TileExt, texAsset->texture, V4fInit(1, 1, 1, layer.opacity), uvRect);
 					}
 				}
 			}
@@ -2208,7 +2208,7 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	Vec4f gridColor = V4fInit(1.0f, 1.0f, 1.0f, 0.25f);
 	float gridLineWidth = DefaultLineWidth;
 	size_t totalGridVerts = (dim.tileCountX + 1) * 2 + (dim.tileCountY + 1) * 2;
-	VertexAllocation vertAlloc = AllocateVertices(&renderState, totalGridVerts, gridColor, DrawMode_Lines, false, gridLineWidth);
+	VertexAllocation vertAlloc = RenderAllocateVertices(&renderState, totalGridVerts, gridColor, DrawMode_Lines, false, gridLineWidth);
 	Vec2f *gridVertex = vertAlloc.verts;
 	size_t count = 0;
 	for (size_t y = 0; y <= dim.tileCountY; ++y) {
@@ -2227,8 +2227,8 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	if (state->isDebugRendering) {
 		// Waypoints
 		for (Waypoint *waypoint = state->waypoints.first; waypoint != nullptr; waypoint = waypoint->next) {
-			PushRectangleCenter(&renderState, waypoint->position, V2fInitScalar(MaxTileSize * 0.15f), V4fInit(1, 0, 1, 1), true, 0.0f);
-			PushLine(&renderState, waypoint->position, waypoint->position + waypoint->direction * level::WaypointDirectionWidth, V4fInit(1, 1, 1, 1), 1.0f);
+			RenderPushRectangleCenter(&renderState, waypoint->position, V2fInitScalar(MaxTileSize * 0.15f), V4fInit(1, 0, 1, 1), true, 0.0f);
+			RenderPushLine(&renderState, waypoint->position, waypoint->position + waypoint->direction * level::WaypointDirectionWidth, V4fInit(1, 1, 1, 1), 1.0f);
 		}
 	}
 
@@ -2262,7 +2262,7 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 			Vec2f enemyPos = V2fLerp(enemy.prevPosition, alpha, enemy.position);
 
 			// Mesh
-			PushRectangleCenter(&renderState, enemyPos, V2fInit(enemy.data->renderRadius, enemy.data->renderRadius), enemy.data->color, true, 0.0f);
+			RenderPushRectangleCenter(&renderState, enemyPos, V2fInit(enemy.data->renderRadius, enemy.data->renderRadius), enemy.data->color, true, 0.0f);
 
 			// HP Bar
 			{
@@ -2282,7 +2282,7 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 					V2fInit(barX, barY),
 					V2fInit(barX + barWidth * barScale, barY),
 				};
-				PushVertices(&renderState, progressVerts, fplArrayCount(progressVerts), true, progressColor, DrawMode_Polygon, true, 0.0f);
+				RenderPushVertices(&renderState, progressVerts, fplArrayCount(progressVerts), true, progressColor, DrawMode_Polygon, true, 0.0f);
 
 				Vec4f borderColor = V4fInit(0.25f, 0.25f, 0.25f, 1.0f);
 				float borderLineWidth = 2.0f;
@@ -2292,7 +2292,7 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 					V2fInit(barX, barY),
 					V2fInit(barX + barWidth, barY),
 				};
-				PushVertices(&renderState, borderVerts, fplArrayCount(borderVerts), true, borderColor, DrawMode_Lines, true, borderLineWidth);
+				RenderPushVertices(&renderState, borderVerts, fplArrayCount(borderVerts), true, borderColor, DrawMode_Lines, true, borderLineWidth);
 			}
 
 			enemy.prevPosition = enemy.position;
@@ -2311,10 +2311,10 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 				assert(tower.targetEnemy != nullptr);
 				const Creep *target = tower.targetEnemy;
 				if ((target->id > 0) && (target->id == tower.targetId)) {
-					PushCircle(&renderState, target->position, target->data->collisionRadius, 32, V4fInit(1, 0, 0, 1), false, 1.0f);
+					RenderPushCircle(&renderState, target->position, target->data->collisionRadius, 32, V4fInit(1, 0, 0, 1), false, 1.0f);
 
 					Vec2f lookPos = towers::PredictEnemyPosition(tower, *target, dt);
-					PushCircle(&renderState, lookPos, MaxTileSize * 0.25f, 16, V4fInit(1, 1, 0, 1), false, 1.0f);
+					RenderPushCircle(&renderState, lookPos, MaxTileSize * 0.25f, 16, V4fInit(1, 1, 0, 1), false, 1.0f);
 
 					float dot = V2fDot(target->position, lookPos);
 					float det = V2fCrossZ(target->position, lookPos);
@@ -2334,7 +2334,7 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 							V2fInit(tower.position.x, tower.position.y),
 							V2fInit(sightPos2.x, sightPos2.y),
 						};
-						PushVertices(&renderState, sightVec2, fplArrayCount(sightVec2), true, sightColor, DrawMode_Lines, false, sightLineWidth);
+						RenderPushVertices(&renderState, sightVec2, fplArrayCount(sightVec2), true, sightColor, DrawMode_Lines, false, sightLineWidth);
 					}
 				}
 			}
@@ -2349,7 +2349,7 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 		if (!bullet.isDestroyed) {
 			Vec2f bulletPos = V2fLerp(bullet.prevPosition, alpha, bullet.position);
 			// @TODO(final): Use sprites for bullets
-			PushCircle(&renderState, bulletPos, bullet.data->renderRadius, 32, V4fInit(1, 0, 0, 1), true, 0.0f);
+			RenderPushCircle(&renderState, bulletPos, bullet.data->renderRadius, 32, V4fInit(1, 0, 0, 1), true, 0.0f);
 			bullet.prevPosition = bullet.position;
 		}
 	}
@@ -2368,16 +2368,16 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 		Vec2f textPos = V2fInit(0, 0);
 		float overlayFontHeight = WorldWidth * 0.25f;
 		float foffset = overlayFontHeight * 0.01f;
-		PushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x, textPos.y), overlayFontHeight, 0.0f, 0.0f, TextBackColor);
-		PushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x + foffset, textPos.y - foffset), overlayFontHeight, 0.0f, 0.0f, TextForeColor);
+		RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x, textPos.y), overlayFontHeight, 0.0f, 0.0f, TextBackColor);
+		RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x + foffset, textPos.y - foffset), overlayFontHeight, 0.0f, 0.0f, TextForeColor);
 	} else if (state->wave.state == WaveState::Won || state->wave.state == WaveState::Lost) {
 		const FontAsset &font = state->assets.overlayFont;
 		const char *text = state->wave.state == WaveState::Won ? "You Win!" : "Game Over!";
 		Vec2f textPos = V2fInit(0, 0);
 		float overlayFontHeight = WorldWidth * 0.15f;
 		float foffset = overlayFontHeight * 0.01f;
-		PushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x, textPos.y), overlayFontHeight, 0.0f, 0.0f, TextBackColor);
-		PushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x + foffset, textPos.y - foffset), overlayFontHeight, 0.0f, 0.0f, TextForeColor);
+		RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x, textPos.y), overlayFontHeight, 0.0f, 0.0f, TextBackColor);
+		RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x + foffset, textPos.y - foffset), overlayFontHeight, 0.0f, 0.0f, TextForeColor);
 	}
 
 	if (state->isDebugRendering) {
@@ -2388,14 +2388,14 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 		float padding = MaxTileSize * 0.1f;
 		Vec2f textPos = V2fInit(dim.gridOriginX + padding, dim.gridOriginY + padding);
 		float fontHeight = MaxTileSize * 0.5f;
-		PushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x, textPos.y), fontHeight, 1.0f, 1.0f, textColor);
+		RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x, textPos.y), fontHeight, 1.0f, 1.0f, textColor);
 
 		fplStringFormat(text, fplArrayCount(text), "Game Memory: %zu / %zu", gameMemory->memory->used, gameMemory->memory->size);
-		PushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x + dim.gridWidth - padding * 2.0f, textPos.y + fontHeight * 2), fontHeight, -1.0f, 1.0f, textColor);
+		RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x + dim.gridWidth - padding * 2.0f, textPos.y + fontHeight * 2), fontHeight, -1.0f, 1.0f, textColor);
 		fplStringFormat(text, fplArrayCount(text), "Render Memory: %zu / %zu", gameMemory->render->lastMemoryUsage, gameMemory->render->memory.size);
-		PushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x + dim.gridWidth - padding * 2.0f, textPos.y + fontHeight * 1), fontHeight, -1.0f, 1.0f, textColor);
+		RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x + dim.gridWidth - padding * 2.0f, textPos.y + fontHeight * 1), fontHeight, -1.0f, 1.0f, textColor);
 		fplStringFormat(text, fplArrayCount(text), "Fps: %.5f, Delta: %.5f", state->framesPerSecond, state->deltaTime);
-		PushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x + dim.gridWidth - padding * 2.0f, textPos.y), fontHeight, -1.0f, 1.0f, textColor);
+		RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x + dim.gridWidth - padding * 2.0f, textPos.y), fontHeight, -1.0f, 1.0f, textColor);
 	}
 
 	//

@@ -216,7 +216,7 @@ namespace Render {
 		commandBuffer->textureOperations.push(texOperation);
 	}
 
-	inline void PushRectangle(CommandBuffer *commandBuffer, const Vec2f &bottomLeft, const Vec2f &size, const Vec4f &color, const bool isFilled, const float lineWidth = 1.0f) {
+	inline void RenderPushRectangle(CommandBuffer *commandBuffer, const Vec2f &bottomLeft, const Vec2f &size, const Vec4f &color, const bool isFilled, const float lineWidth = 1.0f) {
 		CommandHeader *header = PushHeader(commandBuffer, CommandType::Rectangle);
 		Rectangle *rectangle = PushTypes<Rectangle>(commandBuffer, header);
 		rectangle->bottomLeft = bottomLeft;
@@ -226,7 +226,7 @@ namespace Render {
 		rectangle->isFilled = isFilled;
 	}
 
-	inline void PushSprite(CommandBuffer *commandBuffer, const Vec2f &pos, const Vec2f &size, TextureHandle texture, const Vec4f &color, const Vec2f &uvMin = V2f(0, 0), const Vec2f &uvMax = V2f(1.0f, 1.0f)) {
+	inline void RenderPushSprite(CommandBuffer *commandBuffer, const Vec2f &pos, const Vec2f &size, TextureHandle texture, const Vec4f &color, const Vec2f &uvMin = V2f(0, 0), const Vec2f &uvMax = V2f(1.0f, 1.0f)) {
 		CommandHeader *header = PushHeader(commandBuffer, CommandType::Sprite);
 		Sprite *sprite = PushTypes<Sprite>(commandBuffer, header);
 		sprite->position = pos;
@@ -237,7 +237,7 @@ namespace Render {
 		sprite->texture = texture;
 	}
 
-	inline void PushLine(CommandBuffer *commandBuffer, const Vec2f &a, const Vec2f &b, const Vec4f &color, const float lineWidth) {
+	inline void RenderPushLine(CommandBuffer *commandBuffer, const Vec2f &a, const Vec2f &b, const Vec4f &color, const float lineWidth) {
 		CommandHeader *header = PushHeader(commandBuffer, CommandType::Lines);
 		Vertices *verts = PushTypes<Vertices>(commandBuffer, header);
 		verts->pointCount = 2;
@@ -294,7 +294,7 @@ namespace Render {
 		return(verts->points);
 	}
 
-	inline void PushCircle(CommandBuffer *commandBuffer, Vec2f center, const float radius, const Vec4f &color, const bool isFilled, const float lineWidth = 1.0f) {
+	inline void RenderPushCircle(CommandBuffer *commandBuffer, Vec2f center, const float radius, const Vec4f &color, const bool isFilled, const float lineWidth = 1.0f) {
 		CommandHeader *header = PushHeader(commandBuffer, CommandType::Circle);
 		Circle *circle = PushTypes<Circle>(commandBuffer, header);
 		circle->position = center;
@@ -311,7 +311,7 @@ namespace Render {
 		attrState->boolValue = boolValue;
 	}
 
-	inline void PushClear(CommandBuffer *commandBuffer, const bool isColor, const bool isDepth, const Vec4f &color) {
+	inline void RenderPushClear(CommandBuffer *commandBuffer, const bool isColor, const bool isDepth, const Vec4f &color) {
 		CommandHeader *header = PushHeader(commandBuffer, CommandType::Clear);
 		Clear *clear = PushTypes<Clear>(commandBuffer, header);
 		clear->isColor = isColor;
@@ -319,7 +319,7 @@ namespace Render {
 		clear->color = color;
 	}
 
-	inline void PushViewport(CommandBuffer *commandBuffer, const int x, const int y, const int w, const int h) {
+	inline void RenderPushViewport(CommandBuffer *commandBuffer, const int x, const int y, const int w, const int h) {
 		CommandHeader *header = PushHeader(commandBuffer, CommandType::Viewport);
 		Viewport *viewport = PushTypes<Viewport>(commandBuffer, header);
 		viewport->x = x;
@@ -362,7 +362,7 @@ namespace Render {
 		result->pointSize = pointSize;
 	}
 
-	inline void PushText(CommandBuffer *commandBuffer, const Vec2f &bottomLeft, const char *text, FontAtlas *font, TextureHandle texture, const float maxCharHeight, const Vec4f &textColor) {
+	inline void RenderPushText(CommandBuffer *commandBuffer, const Vec2f &bottomLeft, const char *text, FontAtlas *font, TextureHandle texture, const float maxCharHeight, const Vec4f &textColor) {
 		if (font == nullptr) {
 			return;
 		}
