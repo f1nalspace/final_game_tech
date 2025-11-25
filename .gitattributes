@@ -16,3 +16,7 @@
 *.mp4 binary
 *.mkv binary
 *.pdf binary
+*.ase binary
+*.zip binary
+*.rar binary
+*.7z binary
