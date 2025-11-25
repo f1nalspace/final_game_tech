@@ -59,8 +59,8 @@ License:
 static TileType gTestLevelTiles[TestLevel_Width * TestLevel_Height] = {
 	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
 	1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-	1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-	1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+	1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1,
+	1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1,
 	1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1,
 	1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1,
 	1, 0, 3, 0, 0, 1, 0, 1, 0, 0, 1,
@@ -329,7 +329,7 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	editor->mouseWorldPos = state->mouseWorldPos;
 
 	const Controller *keyboardController = &input->controllers[0];
-	
+
 	// Debug rendering on/off (F6)
 	if (ButtonWasPressed(keyboardController->debug6)) {
 		state->isDebugRendering = !state->isDebugRendering;
@@ -493,20 +493,145 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	}
 
 	// Map
+	int mapLeft = map->origin.x;
+	int mapBottom = map->origin.y;
+	int mapRight = mapLeft + map->width - 1;
+	int mapTop = mapBottom + map->height - 1;
 	for (int y = map->origin.y; y < map->origin.y + mapSize.h; ++y) {
 		for (int x = map->origin.x; x < map->origin.x + mapSize.w; ++x) {
 			Vec2i tilePos = V2iInit(x, y);
 			Tile tile = MapGetTile(map, tilePos);
-			if (MapTileTypeIsObstacle(tile.type)) {
-				Vec2f worldPos = MapTileCoordsToWorld(map, tilePos);
+			TileAreaMask mask = tile.areaMask;
+			Vec2f worldPos = MapTileCoordsToWorld(map, tilePos);
+			if (MapTileTypeIsVisible(tile.type)) {
 				Vec2f tileCenter = V2fAdd(worldPos, TileRadius);
-				Vec4f tileColor = tile.type == TileType_Ghost ? mapGhostTileColor : mapSolidTileColor;
 
-				Vec2i textureTilePos = V2iInit(0, 0);
+				// Initialize the tile position in the texture to a invalid one, so we see when our style mapping failed
+				Vec2i textureTilePos = V2iAdd(V2iZero(), TILESET_A_COLLIDABLE_1x1_INVALID);
+
+				//
+				// Mask
+				//
+				bool hasCentroid = IsBitMaskSet(mask, TileAreaMask_Centroid);
+				bool hasLeft = IsBitMaskSet(mask, TileAreaMask_LeftSide);
+				bool hasRight = IsBitMaskSet(mask, TileAreaMask_RightSide);
+				bool hasTop = IsBitMaskSet(mask, TileAreaMask_TopCenter);
+				bool hasBottom = IsBitMaskSet(mask, TileAreaMask_BottomCenter);
+
+				if (!hasLeft && !hasRight && !hasTop && !hasBottom) {
+					// Isolated tile
+					textureTilePos = V2iAdd(V2iZero(), TILESET_A_COLLIDABLE_1x1_A);
+				} else if (hasLeft && hasRight && hasTop && hasBottom) {
+					// Surrounded on all sides
+					textureTilePos = V2iAdd(TILESET_A_COLLIDABLE_3x3_OFFSET, TILESET_A_COLLIDABLE_3x3_MIDDLE);
+				} else if (hasLeft && hasRight && !hasTop && !hasBottom) {
+					// Horizontal center
+					textureTilePos = V2iAdd(TILESET_A_COLLIDABLE_3x1_OFFSET, TILESET_A_COLLIDABLE_3x1_CENTER);
+				} else if (!hasLeft && hasRight && !hasTop && !hasBottom) {
+					// Horizontal left
+					textureTilePos = V2iAdd(TILESET_A_COLLIDABLE_3x1_OFFSET, TILESET_A_COLLIDABLE_3x1_LEFT);
+				} else if (hasLeft && !hasRight && !hasTop && !hasBottom) {
+					// Horizontal right
+					textureTilePos = V2iAdd(TILESET_A_COLLIDABLE_3x1_OFFSET, TILESET_A_COLLIDABLE_3x1_RIGHT);
+				} else if (!hasLeft && !hasRight && hasTop && hasBottom) {
+					// Vertical center
+					textureTilePos = V2iAdd(TILESET_A_COLLIDABLE_1x3_OFFSET, TILESET_A_COLLIDABLE_1x3_MIDDLE);
+				} else if (!hasLeft && !hasRight && !hasTop && hasBottom) {
+					// Vertical top
+					textureTilePos = V2iAdd(TILESET_A_COLLIDABLE_1x3_OFFSET, TILESET_A_COLLIDABLE_1x3_TOP);
+				} else if (!hasLeft && !hasRight && hasTop && !hasBottom) {
+					// Vertical bottom
+					textureTilePos = V2iAdd(TILESET_A_COLLIDABLE_1x3_OFFSET, TILESET_A_COLLIDABLE_1x3_BOTTOM);
+				} else if (hasLeft && !hasRight && hasTop && hasBottom) {
+					// Left edge
+					textureTilePos = V2iAdd(TILESET_A_COLLIDABLE_3x3_OFFSET, TILESET_A_COLLIDABLE_3x3_SIDE_RIGHT);
+				} else if (!hasLeft && hasRight && hasTop && hasBottom) {
+					// Right edge
+					textureTilePos = V2iAdd(TILESET_A_COLLIDABLE_3x3_OFFSET, TILESET_A_COLLIDABLE_3x3_SIDE_LEFT);
+				} else if (hasLeft && hasRight && hasTop && !hasBottom) {
+					// Top edge
+					textureTilePos = V2iAdd(TILESET_A_COLLIDABLE_3x3_OFFSET, TILESET_A_COLLIDABLE_3x3_BOTTOM_MIDDLE);
+				} else if (hasLeft && hasRight && !hasTop && hasBottom) {
+					// Bottom edge
+					textureTilePos = V2iAdd(TILESET_A_COLLIDABLE_3x3_OFFSET, TILESET_A_COLLIDABLE_3x3_TOP_MIDDLE);
+				} else if (hasLeft && hasTop && !hasRight && !hasBottom) {
+					// Top-left corner
+					textureTilePos = V2iAdd(TILESET_A_COLLIDABLE_3x3_OFFSET, TILESET_A_COLLIDABLE_3x3_BOTTOM_RIGHT);
+				} else if (hasRight && hasTop && !hasLeft && !hasBottom) {
+					// Top-right corner
+					textureTilePos = V2iAdd(TILESET_A_COLLIDABLE_3x3_OFFSET, TILESET_A_COLLIDABLE_3x3_BOTTOM_LEFT);
+				} else if (hasLeft && hasBottom && !hasRight && !hasTop) {
+					// Bottom-left corner
+					textureTilePos = V2iAdd(TILESET_A_COLLIDABLE_3x3_OFFSET, TILESET_A_COLLIDABLE_3x3_TOP_RIGHT);
+				} else if (hasRight && hasBottom && !hasLeft && !hasTop) {
+					// Bottom-right corner
+					textureTilePos = V2iAdd(TILESET_A_COLLIDABLE_3x3_OFFSET, TILESET_A_COLLIDABLE_3x3_TOP_LEFT);
+				} else {
+					// Fallback
+					textureTilePos = V2iAdd(V2iZero(), TILESET_A_COLLIDABLE_1x1_INVALID);
+				}
+
+				//
+				// T-junctions
+				//
+				if (hasLeft && hasRight && hasBottom && !hasTop) {
+					// T-junction open at top
+					textureTilePos = V2iAdd(TILESET_A_BORDER_3x3_OFFSET, TILESET_A_BORDER_3x3_TOP_MIDDLE);
+				} else if (hasLeft && hasRight && !hasBottom && hasTop) {
+					// T-junction open at bottom
+					textureTilePos = V2iAdd(TILESET_A_BORDER_3x3_OFFSET, TILESET_A_BORDER_3x3_BOTTOM_MIDDLE);
+				} else if (hasTop && hasBottom && hasRight && !hasLeft) {
+					// T-junction open at left
+					textureTilePos = V2iAdd(TILESET_A_BORDER_3x3_OFFSET, TILESET_A_BORDER_3x3_SIDE_LEFT);
+				} else if (hasTop && hasBottom && hasLeft && !hasRight) {
+					// T-junction open at right
+					textureTilePos = V2iAdd(TILESET_A_BORDER_3x3_OFFSET, TILESET_A_BORDER_3x3_SIDE_RIGHT);
+				}
+
+				//
+				// Connected Corners
+				//
+				if (hasBottom && hasRight && !hasTop && !hasLeft) {
+					// Top left corner connected to the right and bottom
+					textureTilePos = V2iAdd(TILESET_A_BORDER_3x3_OFFSET, TILESET_A_BORDER_3x3_TOP_LEFT);
+				} else if (hasTop && hasLeft && !hasBottom && !hasRight) {
+					// Bottom right corner connected to the left and top
+					textureTilePos = V2iAdd(TILESET_A_BORDER_3x3_OFFSET, TILESET_A_BORDER_3x3_BOTTOM_RIGHT);
+				} else if (hasBottom && hasLeft && !hasTop && !hasRight) {
+					// Top left corner connected to the left and bottom
+					textureTilePos = V2iAdd(TILESET_A_BORDER_3x3_OFFSET, TILESET_A_BORDER_3x3_TOP_RIGHT);
+				} else if (hasTop && hasRight && !hasBottom && !hasLeft) {
+					// Bottom left corner connected to the right and top
+					textureTilePos = V2iAdd(TILESET_A_BORDER_3x3_OFFSET, TILESET_A_BORDER_3x3_BOTTOM_LEFT);
+				}
+
+				//
+				// Outline border
+				//
+				if (x == mapLeft) {
+					textureTilePos = V2iAdd(TILESET_A_BORDER_3x3_OFFSET, TILESET_A_BORDER_3x3_SIDE_LEFT);
+				} else if (x == mapRight) {
+					textureTilePos = V2iAdd(TILESET_A_BORDER_3x3_OFFSET, TILESET_A_BORDER_3x3_SIDE_RIGHT);
+				}
+				if (y == mapBottom) {
+					textureTilePos = V2iAdd(TILESET_A_BORDER_3x3_OFFSET, TILESET_A_BORDER_3x3_BOTTOM_MIDDLE);
+				} else if (y == mapTop) {
+					textureTilePos = V2iAdd(TILESET_A_BORDER_3x3_OFFSET, TILESET_A_BORDER_3x3_TOP_MIDDLE);
+				}
+				if (x == mapLeft && y == mapBottom) {
+					textureTilePos = V2iAdd(TILESET_A_BORDER_3x3_OFFSET, TILESET_A_BORDER_3x3_BOTTOM_LEFT);
+				} else if (x == mapRight && y == mapBottom) {
+					textureTilePos = V2iAdd(TILESET_A_BORDER_3x3_OFFSET, TILESET_A_BORDER_3x3_BOTTOM_RIGHT);
+				} else if (x == mapLeft && y == mapTop) {
+					textureTilePos = V2iAdd(TILESET_A_BORDER_3x3_OFFSET, TILESET_A_BORDER_3x3_TOP_LEFT);
+				} else if (x == mapRight && y == mapTop) {
+					textureTilePos = V2iAdd(TILESET_A_BORDER_3x3_OFFSET, TILESET_A_BORDER_3x3_TOP_RIGHT);
+				}
 
 				UVRect tileUVRect = UVRectFromTile(V2iInit(assets->tilesetTexture.data.width, assets->tilesetTexture.data.height), V2iInit(32, 32), 0, textureTilePos);
-				RenderPushSprite(renderState, tileCenter, TileRadius, assets->tilesetTexture.texture, tileColor, tileUVRect, SpriteFlags_FlipV);
-
+				RenderPushSprite(renderState, tileCenter, TileRadius, assets->tilesetTexture.texture, V4fInit(1.0f, 1.0f, 1.0f, 1.0f), tileUVRect, SpriteFlags_FlipV);
+			} else if (tile.type == TileType_Ghost) {
+				RenderPushRectangle(renderState, worldPos, TileSize, mapGhostTileColor, false, 2.0f);
 			}
 		}
 	}

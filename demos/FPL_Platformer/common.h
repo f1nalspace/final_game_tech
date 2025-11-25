@@ -5,6 +5,8 @@
 
 #include "json/json.h"
 
+#define IsBitMaskSet(value, mask) (((value) & (mask)) == (mask))
+
 typedef struct String {
 	const char *str;
 	size_t len;

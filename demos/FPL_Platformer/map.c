@@ -39,18 +39,24 @@ fpl_internal bool MapTilePosIsObstacleLocal(const Map *map, const int widthMinus
 	return result;
 }
 
-fpl_internal bool MapTilePosIsVisibleLocal(const Map *map, const int widthMinusOne, const int heightMinusOne, const Vec2i local) {
+fpl_internal bool MapTilePosIsMaskableLocal(const Map *map, const int widthMinusOne, const int heightMinusOne, const Vec2i local) {
 	if (!MapIsValid(map) || MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, local)) {
 		return false;
 	}
 	Tile tile = map->solidTiles[local.y * map->width + local.x];
-	bool result = tile.type == TileType_Solid;
-	return result;
+	bool isSolid = tile.type == TileType_Solid;
+	if (isSolid) {
+		if (local.x == 0 || local.x == widthMinusOne || local.y == 0 || local.y == heightMinusOne) {
+			return false; // Outside border is not maskable, treated as non-visible
+		}
+		return true;
+	}
+	return false;
 }
 
 // Gets the tile area mask from the specified map and local position
 fpl_internal TileAreaMask MapGetTileAreaMaskLocal(const Map *map, const int widthMinusOne, const heightMinusOne, const Vec2i local) {
-	if (!MapIsValid(map) || MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, local)) {
+	if (!MapIsValid(map) || !MapTilePosIsMaskableLocal(map, widthMinusOne, heightMinusOne, local)) {
 		return TileAreaMask_None;
 	}
 
@@ -66,25 +72,25 @@ fpl_internal TileAreaMask MapGetTileAreaMaskLocal(const Map *map, const int widt
 	Vec2i bottomCenter = V2iAdd(local, V2iInit(0, 1));
 	Vec2i bottomRight = V2iAdd(local, V2iInit(1, 1));
 
-	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, topLeft) && MapTilePosIsVisibleLocal(map, widthMinusOne, heightMinusOne, topLeft))
+	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, topLeft) && MapTilePosIsMaskableLocal(map, widthMinusOne, heightMinusOne, topLeft))
 		result |= TileAreaMask_TopLeft;
-	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, topCenter) && MapTilePosIsVisibleLocal(map, widthMinusOne, heightMinusOne, topCenter))
+	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, topCenter) && MapTilePosIsMaskableLocal(map, widthMinusOne, heightMinusOne, topCenter))
 		result |= TileAreaMask_TopCenter;
-	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, topRight) && MapTilePosIsVisibleLocal(map, widthMinusOne, heightMinusOne, topRight))
+	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, topRight) && MapTilePosIsMaskableLocal(map, widthMinusOne, heightMinusOne, topRight))
 		result |= TileAreaMask_TopRight;
 
-	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, leftSide) && MapTilePosIsVisibleLocal(map, widthMinusOne, heightMinusOne, leftSide))
+	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, leftSide) && MapTilePosIsMaskableLocal(map, widthMinusOne, heightMinusOne, leftSide))
 		result |= TileAreaMask_LeftSide;
-	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, local) && MapTilePosIsVisibleLocal(map, widthMinusOne, heightMinusOne, local))
+	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, local) && MapTilePosIsMaskableLocal(map, widthMinusOne, heightMinusOne, local))
 		result |= TileAreaMask_Centroid;
-	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, rightSide) && MapTilePosIsVisibleLocal(map, widthMinusOne, heightMinusOne, rightSide))
+	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, rightSide) && MapTilePosIsMaskableLocal(map, widthMinusOne, heightMinusOne, rightSide))
 		result |= TileAreaMask_RightSide;
 
-	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, bottomLeft) && MapTilePosIsVisibleLocal(map, widthMinusOne, heightMinusOne, bottomLeft))
+	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, bottomLeft) && MapTilePosIsMaskableLocal(map, widthMinusOne, heightMinusOne, bottomLeft))
 		result |= TileAreaMask_BottomLeft;
-	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, bottomCenter) && MapTilePosIsVisibleLocal(map, widthMinusOne, heightMinusOne, bottomCenter))
+	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, bottomCenter) && MapTilePosIsMaskableLocal(map, widthMinusOne, heightMinusOne, bottomCenter))
 		result |= TileAreaMask_BottomCenter;
-	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, bottomRight) && MapTilePosIsVisibleLocal(map, widthMinusOne, heightMinusOne, bottomRight))
+	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, bottomRight) && MapTilePosIsMaskableLocal(map, widthMinusOne, heightMinusOne, bottomRight))
 		result |= TileAreaMask_BottomRight;
 
 	return result;
@@ -101,7 +107,7 @@ fpl_internal void MapUpdateAllAreaMasks(Map *map) {
 			Tile *tile = &map->solidTiles[y * map->width + x];
 			Vec2i local = V2iInit(x, y);
 			tile->areaMask = MapGetTileAreaMaskLocal(map, widthMinusOne, heightMinusOne, local);
-		}
+	}
 	}
 }
 

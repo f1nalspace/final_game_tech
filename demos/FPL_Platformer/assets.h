@@ -96,6 +96,9 @@ typedef struct TileAreaRule {
 #define TILESET_A_COLLIDABLE_3x0_5_CENTER V2iInit(1, 0)
 #define TILESET_A_COLLIDABLE_3x0_5_RIGHT V2iInit(2, 0)
 
+// Tileset A Collidable 1x1 (Invalid)
+#define TILESET_A_COLLIDABLE_1x1_INVALID V2iInit(11, 0)
+
 typedef struct GameAssets {
 	fmemMemoryBlock transientMemory;
 	fmemMemoryBlock persistentMemory;

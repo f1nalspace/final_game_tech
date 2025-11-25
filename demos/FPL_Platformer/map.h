@@ -160,7 +160,7 @@ fpl_inline bool MapIsValid(const Map *map) {
 	if (map == fpl_null) {
 		return false;
 	}
-	bool result = map->width > 0 & map->height > 0 && map->solidTiles != fpl_null;
+	bool result = map->width > 0 && map->height > 0 && map->solidTiles != fpl_null;
 	return result;
 }
 
@@ -213,6 +213,16 @@ extern bool MapSetTileType(Map *map, const Vec2i tilePos, const TileType type);
 
 fpl_inline bool MapIsTileOutsideLocal(const int widthMinusOne, const int heightMinusOne, Vec2i local) {
 	return local.x < 0 || local.x > widthMinusOne || local.y < 0 || local.y > heightMinusOne;
+}
+
+// Returns true if the specified tile is visible or not (Ghost tiles are not visible!)
+fpl_inline bool MapTileTypeIsVisible(const TileType tileType) {
+	switch (tileType) {
+		case TileType_Solid:
+			return true;
+		default:
+			return false;
+	}
 }
 
 // Returns true if the specified tile is an obstacle or not
