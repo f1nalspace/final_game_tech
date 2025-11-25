@@ -193,6 +193,15 @@ typedef struct VerticesCommand {
 	bool isLoop;
 } VerticesCommand;
 
+typedef enum SpriteFlags {
+	// No flags
+	SpriteFlags_None = 0,
+	// Flip the U min/max of the UV rectangle
+	SpriteFlags_FlipU = 1 << 0,
+	// Flip the V min/max of the UV rectangle
+	SpriteFlags_FlipV = 1 << 1,
+} SpriteFlags;
+
 typedef struct SpriteCommand {
 	Vec4f color;
 	Vec2f position;
@@ -200,6 +209,7 @@ typedef struct SpriteCommand {
 	Vec2f uvMin;
 	Vec2f uvMax;
 	TextureHandle texture;
+	SpriteFlags flags;
 } SpriteCommand;
 
 typedef struct TextCommand {
@@ -225,7 +235,7 @@ fpl_extern void RenderPushRectangleCenter(RenderState *state, const Vec2f center
 fpl_extern void RenderPushQuad(RenderState *state,const Vec2f center,const float radius,const Vec4f color,const bool isFilled,const float lineWidth);
 fpl_extern VertexAllocation RenderAllocateVertices(RenderState *state, const size_t capacity, const Vec4f color, const DrawMode drawMode, const bool isLoop, const float thickness);
 fpl_extern void RenderPushVertices(RenderState *state, const Vec2f *verts, const size_t vertexCount, const bool copyVerts, const Vec4f color, const DrawMode drawMode, const bool isLoop, const float thickness);
-fpl_extern void RenderPushSprite(RenderState *state, const Vec2f position, const Vec2f ext, const TextureHandle texture, const Vec4f color, const UVRect uvRect);
+fpl_extern void RenderPushSprite(RenderState *state, const Vec2f position, const Vec2f ext, const TextureHandle texture, const Vec4f color, const UVRect uvRect, const SpriteFlags flags);
 fpl_extern void RenderPushTexture(RenderState *state, TextureHandle *targetTexture, const void *data, const uint32_t width, const uint32_t height, const uint32_t bytesPerPixel, const TextureFilterType filter, const TextureWrapMode wrap, const bool isTopDown, const bool isPreMultiplied);
 fpl_extern void RenderPopTexture(RenderState *state, TextureHandle *targetTexture);
 fpl_extern void RenderPushText(RenderState *state, const char *text, const size_t textLen, const LoadedFont *font, const TextureHandle texture, const Vec2f position, const float maxHeight, const float horizontalAlignment, const float verticalAlignment, const Vec4f color);
@@ -422,7 +432,7 @@ fpl_extern void RenderPushVertices(RenderState *state, const Vec2f *verts, const
 	cmd->isLoop = isLoop;
 }
 
-fpl_extern void RenderPushSprite(RenderState *state, const Vec2f position, const Vec2f ext, const TextureHandle texture, const Vec4f color, const UVRect uvRect) {
+fpl_extern void RenderPushSprite(RenderState *state, const Vec2f position, const Vec2f ext, const TextureHandle texture, const Vec4f color, const UVRect uvRect, const SpriteFlags flags) {
 	if (state == fpl_null) {
 		return;
 	}
@@ -438,6 +448,7 @@ fpl_extern void RenderPushSprite(RenderState *state, const Vec2f position, const
 	cmd->color = color;
 	cmd->uvMin = V2fInit(uvRect.uMin, uvRect.vMin);
 	cmd->uvMax = V2fInit(uvRect.uMax, uvRect.vMax);
+	cmd->flags = flags;
 }
 
 fpl_extern void RenderPushTexture(RenderState *state, TextureHandle *targetTexture, const void *data, const uint32_t width, const uint32_t height, const uint32_t bytesPerPixel, const TextureFilterType filter, const TextureWrapMode wrap, const bool isTopDown, const bool isPreMultiplied) {
