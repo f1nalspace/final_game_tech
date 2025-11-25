@@ -386,18 +386,6 @@ fpl_extern void RenderWithOpenGL(RenderState *renderState) {
 			remaining -= consumed;
 		}
 	}
-
-#if 0
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
-	glColor4f(1, 1, 1, 1);
-	glBegin(GL_QUADS);
-	glVertex2f(1, 1);
-	glVertex2f(-1, 1);
-	glVertex2f(-1, -1);
-	glVertex2f(1, -1);
-	glEnd();
-#endif
 }
 
 #endif // FINAL_OPENGL_RENDER_IMPLEMENTATION
