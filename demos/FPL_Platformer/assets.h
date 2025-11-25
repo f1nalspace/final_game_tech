@@ -17,6 +17,7 @@ typedef struct GameAssets {
 	fmemMemoryBlock transientMemory;
 	fmemMemoryBlock persistentMemory;
 	FontAsset consoleFont;
+	TextureAsset tilesetTexture;
 	char dataPath[1024];
 } GameAssets;
 

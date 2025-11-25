@@ -1,6 +1,8 @@
 #include "assets.h"
 
 fpl_extern void AssetsFree(GameAssets *assets) {
+	FreeTextureData(&assets->tilesetTexture.data);
+
 	ReleaseFontAsset(&assets->consoleFont);
 
 	// NOTE(final): No need for freeing any memory block here, because everything is inside the game memory
@@ -32,11 +34,22 @@ fpl_extern bool AssetsInit(fmemMemoryBlock *memory, GameAssets *assets) {
 fpl_extern bool AssetsLoad(RenderState *renderState, GameAssets *assets) {
 	// Fonts
 	char tempDataPath[1024];
+
 	const char *fontFilename = "lucida_console.ttf";
 	fplPathCombine(tempDataPath, fplArrayCount(tempDataPath), 2, assets->dataPath, "fonts");
 	FontAsset *hudFont = &assets->consoleFont;
 	if (LoadFontFromFile(tempDataPath, fontFilename, 0, 24.0f, 32, 128, 512, 512, false, &hudFont->desc)) {
 		RenderPushTexture(renderState, &hudFont->texture, hudFont->desc.atlasAlphaBitmap, hudFont->desc.atlasWidth, hudFont->desc.atlasHeight, 1, TextureFilterType_Linear, TextureWrapMode_ClampToEdge, false, false);
+	}
+
+	// Textures
+	const char *tilesetTextureFilename = "tileset.png";
+	fplPathCombine(tempDataPath, fplArrayCount(tempDataPath), 2, assets->dataPath, "textures");
+	TextureAsset *tilesetTextureAsset = &assets->tilesetTexture;
+	tilesetTextureAsset->data = LoadTextureData(tempDataPath, tilesetTextureFilename);
+	tilesetTextureAsset->texture = fpl_null;
+	if (tilesetTextureAsset->data.data != fpl_null && tilesetTextureAsset->data.width > 0 && tilesetTextureAsset->data.height > 0) {
+		RenderPushTexture(renderState, &tilesetTextureAsset->texture, tilesetTextureAsset->data.data, tilesetTextureAsset->data.width, tilesetTextureAsset->data.height, tilesetTextureAsset->data.components, TextureFilterType_Nearest, TextureWrapMode_ClampToEdge, false, false);
 	}
 
 #if 0
