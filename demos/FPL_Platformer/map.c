@@ -19,7 +19,7 @@ extern bool MapInit(fmemMemoryBlock *memory, Map *map) {
 }
 
 extern void MapClear(Map *map) {
-	if (map == fpl_null || map->width == 0 || map->height == 0) {
+	if (!MapIsValid(map)) {
 		return;
 	}
 	map->persistentMemory.used = 0;
@@ -30,24 +30,88 @@ extern void MapClear(Map *map) {
 	map->solidTiles = fpl_null;
 }
 
-static bool __MapTilePosIsObstacle(const Map *map, const int localX, const int localY) {
-	if (map == fpl_null || map->width == 0 || map->height == 0) {
+fpl_internal bool MapTilePosIsObstacleLocal(const Map *map, const int widthMinusOne, const int heightMinusOne, const Vec2i local) {
+	if (!MapIsValid(map) || MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, local)) {
 		return false;
 	}
-	int widthMinusOne = map->width - 1;
-	int heightMinusOne = map->height - 1;
-	if (localX < 0 || localX > widthMinusOne || localY < 0 || localY > heightMinusOne) {
-		return false;
-	}
-	Tile tile = map->solidTiles[localY * map->width + localX];
-	bool result = MapTileTypeIsObstacle(map, tile.type);
+	Tile tile = map->solidTiles[local.y * map->width + local.x];
+	bool result = MapTileTypeIsObstacle(tile.type);
 	return result;
 }
 
-extern void MapAutoSetAllGhostTiles(Map *map) {
+fpl_internal bool MapTilePosIsVisibleLocal(const Map *map, const int widthMinusOne, const int heightMinusOne, const Vec2i local) {
+	if (!MapIsValid(map) || MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, local)) {
+		return false;
+	}
+	Tile tile = map->solidTiles[local.y * map->width + local.x];
+	bool result = tile.type == TileType_Solid;
+	return result;
+}
+
+// Gets the tile area mask from the specified map and local position
+fpl_internal TileAreaMask MapGetTileAreaMaskLocal(const Map *map, const int widthMinusOne, const heightMinusOne, const Vec2i local) {
+	if (!MapIsValid(map) || MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, local)) {
+		return TileAreaMask_None;
+	}
+
+	TileAreaMask result = TileAreaMask_None;
+
+	// NOTE(final): Map is defined as top-down in memory, so up is negative and down is positive
+	Vec2i topLeft = V2iAdd(local, V2iInit(-1, -1));
+	Vec2i topCenter = V2iAdd(local, V2iInit(0, -1));
+	Vec2i topRight = V2iAdd(local, V2iInit(1, -1));
+	Vec2i leftSide = V2iAdd(local, V2iInit(-1, 0));
+	Vec2i rightSide = V2iAdd(local, V2iInit(1, 0));
+	Vec2i bottomLeft = V2iAdd(local, V2iInit(-1, 1));
+	Vec2i bottomCenter = V2iAdd(local, V2iInit(0, 1));
+	Vec2i bottomRight = V2iAdd(local, V2iInit(1, 1));
+
+	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, topLeft) && MapTilePosIsVisibleLocal(map, widthMinusOne, heightMinusOne, topLeft))
+		result |= TileAreaMask_TopLeft;
+	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, topCenter) && MapTilePosIsVisibleLocal(map, widthMinusOne, heightMinusOne, topCenter))
+		result |= TileAreaMask_TopCenter;
+	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, topRight) && MapTilePosIsVisibleLocal(map, widthMinusOne, heightMinusOne, topRight))
+		result |= TileAreaMask_TopRight;
+
+	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, leftSide) && MapTilePosIsVisibleLocal(map, widthMinusOne, heightMinusOne, leftSide))
+		result |= TileAreaMask_LeftSide;
+	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, local) && MapTilePosIsVisibleLocal(map, widthMinusOne, heightMinusOne, local))
+		result |= TileAreaMask_Centroid;
+	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, rightSide) && MapTilePosIsVisibleLocal(map, widthMinusOne, heightMinusOne, rightSide))
+		result |= TileAreaMask_RightSide;
+
+	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, bottomLeft) && MapTilePosIsVisibleLocal(map, widthMinusOne, heightMinusOne, bottomLeft))
+		result |= TileAreaMask_BottomLeft;
+	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, bottomCenter) && MapTilePosIsVisibleLocal(map, widthMinusOne, heightMinusOne, bottomCenter))
+		result |= TileAreaMask_BottomCenter;
+	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, bottomRight) && MapTilePosIsVisibleLocal(map, widthMinusOne, heightMinusOne, bottomRight))
+		result |= TileAreaMask_BottomRight;
+
+	return result;
+}
+
+fpl_internal void MapUpdateAllAreaMasks(Map *map) {
+	if (!MapIsValid(map)) {
+		return;
+	}
+	int widthMinusOne = map->width - 1;
+	int heightMinusOne = map->height - 1;
+	for (uint32_t y = 0; y < map->height; ++y) {
+		for (uint32_t x = 0; x < map->width; ++x) {
+			Tile *tile = &map->solidTiles[y * map->width + x];
+			Vec2i local = V2iInit(x, y);
+			tile->areaMask = MapGetTileAreaMaskLocal(map, widthMinusOne, heightMinusOne, local);
+		}
+	}
+}
+
+fpl_internal void MapAutoSetAllGhostTiles(Map *map) {
 	if (map == fpl_null || map->width == 0 || map->height == 0) {
 		return;
 	}
+
+	int widthMinusOne = map->width - 1;
+	int heightMinusOne = map->height - 1;
 
 	// Clean ghost tiles
 	for (uint32_t y = 0; y < map->height; ++y) {
@@ -57,7 +121,7 @@ extern void MapAutoSetAllGhostTiles(Map *map) {
 			if (tile->type != TileType_Ghost) {
 				continue;
 			}
-			if (!__MapTilePosIsObstacle(map, p.x, p.y - 1) || !__MapTilePosIsObstacle(map, p.x, p.y + 1)) {
+			if (!MapTilePosIsObstacleLocal(map, widthMinusOne, heightMinusOne, V2iInit(p.x, p.y - 1)) || !MapTilePosIsObstacleLocal(map, widthMinusOne, heightMinusOne, V2iInit(p.x, p.y + 1))) {
 				tile->type = TileType_None;
 			}
 		}
@@ -68,17 +132,17 @@ extern void MapAutoSetAllGhostTiles(Map *map) {
 		for (uint32_t x = 0; x < map->width; ++x) {
 			Tile *tile = &map->solidTiles[y * map->width + x];
 			Vec2i p = V2iInit(x, y);
-			if (MapTileTypeIsObstacle(map, tile->type)) {
+			if (MapTileTypeIsObstacle(tile->type)) {
 				continue;
 			}
-			if (__MapTilePosIsObstacle(map, p.x, p.y - 1) && __MapTilePosIsObstacle(map, p.x, p.y + 1)) {
+			if (MapTilePosIsObstacleLocal(map, widthMinusOne, heightMinusOne, V2iInit(p.x, p.y - 1)) && MapTilePosIsObstacleLocal(map, widthMinusOne, heightMinusOne, V2iInit(p.x, p.y + 1))) {
 				tile->type = TileType_Ghost;
 			}
 		}
 	}
 }
 
-static void *_MapAllocateJSONMemoryInternal(void *userData, const size_t size) {
+fpl_internal void *_MapAllocateJSONMemoryInternal(void *userData, const size_t size) {
 	if (userData == fpl_null || size == 0) {
 		return fpl_null;
 	}
@@ -87,7 +151,7 @@ static void *_MapAllocateJSONMemoryInternal(void *userData, const size_t size) {
 	return result;
 }
 
-extern bool MapDefinitionLoadFromFile(fmemMemoryBlock *memoryBlock, const char *dataPath, const char *filename, const char *levelName, MapDefinition *outDefinition) {
+fpl_internal bool MapDefinitionLoadFromFile(fmemMemoryBlock *memoryBlock, const char *dataPath, const char *filename, const char *levelName, MapDefinition *outDefinition) {
 	if (memoryBlock == fpl_null || fplGetStringLength(filename) == 0 || fplGetStringLength(levelName) == 0 || outDefinition == fpl_null) {
 		return false; // Invalid arguments
 	}
@@ -304,6 +368,8 @@ extern bool MapAssign(Map *map, const MapDefinition *definition) {
 
 	MapAutoSetAllGhostTiles(map);
 
+	MapUpdateAllAreaMasks(map);
+
 	return true;
 }
 
@@ -338,11 +404,13 @@ extern bool MapSetTileType(Map *map, const Vec2i tilePos, const TileType type) {
 
 	MapAutoSetAllGhostTiles(map);
 
+	MapUpdateAllAreaMasks(map);
+
 	return true;
 }
 
 extern bool MapFindPositionByTile(const Map *map, const TileType type, Vec2i *outTilePos) {
-	if (map == fpl_null || map->width == 0 || map->height == 0 || map->solidTiles == fpl_null || outTilePos == fpl_null) {
+	if (!MapIsValid(map) || outTilePos == fpl_null) {
 		return false; // Invalid arguments
 	}
 	for (uint32_t y = 0; y < map->height; ++y) {
@@ -360,7 +428,7 @@ extern bool MapFindPositionByTile(const Map *map, const TileType type, Vec2i *ou
 }
 
 extern bool MapResizeToTilePos(Map *map, const Vec2i tilePos) {
-	if (map == fpl_null || map->width == 0 || map->height == 0) {
+	if (!MapIsValid(map)) {
 		return false; // Invalid arguments
 	}
 
@@ -455,6 +523,8 @@ extern bool MapResizeToTilePos(Map *map, const Vec2i tilePos) {
 			map->solidTiles[index].id = MapTileIDStart + index;
 		}
 	}
+
+	MapUpdateAllAreaMasks(map);
 
 	fmemEndTemporary(&map->temporaryMemory);
 

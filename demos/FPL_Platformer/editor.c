@@ -156,6 +156,8 @@ fpl_extern void EditorPostRender(RenderState *renderState, const Editor *editor,
 
 		uint32_t mouseTileId = tile.id;
 
+		TileAreaMask areaMask = tile.areaMask;
+
 		AABB2f tileBounds = AABB2fInitFromBottomLeft(mouseWorldPos, TileSize);
 
 		bool isOverlap = AABB2fIsOverlap(&tileBounds, &playerCurrentBounds);
@@ -168,6 +170,8 @@ fpl_extern void EditorPostRender(RenderState *renderState, const Editor *editor,
 		RenderPushText(renderState, charBuffer, fplGetStringLength(charBuffer), &font->desc, font->texture, mouseWorldPos, fontHeight, 1.0f, 1.0f, V4fInit(1, 0, 1, 1));
 		fplStringFormat(charBuffer, fplArrayCount(charBuffer), "%u", mouseTileId);
 		RenderPushText(renderState, charBuffer, fplGetStringLength(charBuffer), &font->desc, font->texture, V2fAdd(mouseWorldPos, TileRadius), fontHeight, 0.0f, 0.0f, V4fInit(0, 1, 1, 1));
+		fplStringFormat(charBuffer, fplArrayCount(charBuffer), "%u", areaMask);
+		RenderPushText(renderState, charBuffer, fplGetStringLength(charBuffer), &font->desc, font->texture, V2fAdd(mouseWorldPos, TileSize), fontHeight, 0.0f, 0.0f, V4fInit(0, 1, 1, 1));
 	}
 }
 

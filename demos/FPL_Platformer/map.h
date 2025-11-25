@@ -23,6 +23,7 @@
 #define TileSize V2fInit(TileWidth, TileHeight)
 #define TileRadius V2fInit(TileWidth * 0.5f, TileHeight * 0.5f)
 
+// Tile type enumeration (16-bit)
 typedef enum TileType {
 	TileType_None = 0,
 	TileType_Solid = 1,
@@ -30,9 +31,48 @@ typedef enum TileType {
 	TileType_PlayerStart = 3,
 } TileType;
 
+// Tile Area Mask (Number represents in bit shift, 1 >> value)
+// Center (4) is the tile we are rendering
+//
+// |---|---|---|
+// | 0 | 1 | 2 |
+// |---|---|---|
+// | 3 |(4)| 5 |
+// |---|---|---|
+// | 6 | 7 | 8 |
+// |---|---|---|
+
+// Tile area mask (16-bit)
+typedef enum TileAreaMask {
+	// None
+	TileAreaMask_None = 0,
+	// Top Left
+	TileAreaMask_TopLeft = 1 << 0,
+	// Top Center
+	TileAreaMask_TopCenter = 1 << 1,
+	// Top Right
+	TileAreaMask_TopRight = 1 << 2,
+	// Left Side
+	TileAreaMask_LeftSide = 1 << 3,
+	// Centroid
+	TileAreaMask_Centroid = 1 << 4,
+	// Right Side
+	TileAreaMask_RightSide = 1 << 5,
+	// Bottom Left
+	TileAreaMask_BottomLeft = 1 << 6,
+	// Bottom Center
+	TileAreaMask_BottomCenter = 1 << 7,
+	// Bottom Right
+	TileAreaMask_BottomRight = 1 << 8,
+} TileAreaMask;
+
 typedef struct Tile {
-	// Tile type
-	TileType type;
+	struct {
+		// Tile type
+		TileType type : 16;
+		// Area mask
+		TileAreaMask areaMask : 16;
+	};
 	// Positive tile id
 	uint32_t id;
 } Tile;
@@ -116,6 +156,14 @@ typedef struct Map {
 	uint32_t height;
 } Map;
 
+fpl_inline bool MapIsValid(const Map *map) {
+	if (map == fpl_null) {
+		return false;
+	}
+	bool result = map->width > 0 & map->height > 0 && map->solidTiles != fpl_null;
+	return result;
+}
+
 // Converts the public tile position into a local tile position
 fpl_inline Vec2i MapPublicTilePosToLocalTilePos(const Map *map, const Vec2i publicTilePos) {
 	Vec2i l = V2iSub(publicTilePos, map->origin);
@@ -163,25 +211,12 @@ extern Tile MapGetTile(const Map *map, const Vec2i tilePos);
 // Overwrites a tile type to a fixed tile position, without resizing the map
 extern bool MapSetTileType(Map *map, const Vec2i tilePos, const TileType type);
 
-// Returns true if the specified tile position is inside the entire tile area
-fpl_inline bool MapIsTileInside(const Map *map, const Vec2i tilePos) {
-	if (map == fpl_null) {
-		return false;
-	}
-	Vec2i local = MapPublicTilePosToLocalTilePos(map, tilePos);
-	int widthMinusOne = map->width - 1;
-	int heightMinusOne = map->height - 1;
-	if (local.x < 0 || local.x > widthMinusOne || local.y < 0 || local.y > heightMinusOne) {
-		return false;
-	}
-	return true;
+fpl_inline bool MapIsTileOutsideLocal(const int widthMinusOne, const int heightMinusOne, Vec2i local) {
+	return local.x < 0 || local.x > widthMinusOne || local.y < 0 || local.y > heightMinusOne;
 }
 
 // Returns true if the specified tile is an obstacle or not
-fpl_inline bool MapTileTypeIsObstacle(const Map *map, const TileType tileType) {
-	if (map == fpl_null) {
-		return false;
-	}
+fpl_inline bool MapTileTypeIsObstacle(const TileType tileType) {
 	switch (tileType) {
 		case TileType_Solid:
 		case TileType_Ghost:
@@ -191,9 +226,41 @@ fpl_inline bool MapTileTypeIsObstacle(const Map *map, const TileType tileType) {
 	}
 }
 
+fpl_inline TileType MapGetTileTypeLocal(const Map *map, const int widthMinusOne, const int heightMinusOne, Vec2i local) {
+	if (!MapIsValid(map) || MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, local)) {
+		return TileType_None;
+	}
+	Tile tile = map->solidTiles[local.y * map->width + local.x];
+	return tile.type;
+}
+
+fpl_inline bool MapTileIsObstacleLocal(const Map *map, const int widthMinusOne, const int heightMinusOne, Vec2i local) {
+	if (!MapIsValid(map) || MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, local)) {
+		return false;
+	}
+	Tile tile = map->solidTiles[local.y * map->width + local.x];
+	bool result = MapTileTypeIsObstacle(tile.type);
+	return result;
+}
+
+// Returns true if the specified public tile position is inside the entire tile area
+fpl_inline bool MapIsTileInside(const Map *map, const Vec2i tilePos) {
+	if (!MapIsValid(map)) {
+		return false;
+	}
+	Vec2i local = MapPublicTilePosToLocalTilePos(map, tilePos);
+	int widthMinusOne = map->width - 1;
+	int heightMinusOne = map->height - 1;
+	if (MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, local)) {
+		return false;
+	}
+	return true;
+}
+
+
 // Returns true if the specified tile is an obstacle or not
 fpl_inline bool MapTilePosIsObstacle(const Map *map, const Vec2i tilePos) {
-	if (map == fpl_null || map->width == 0 || map->height == 0) {
+	if (!MapIsValid(map)) {
 		return false;
 	}
 	Vec2i local = MapPublicTilePosToLocalTilePos(map, tilePos);
@@ -203,7 +270,7 @@ fpl_inline bool MapTilePosIsObstacle(const Map *map, const Vec2i tilePos) {
 		return false;
 	}
 	Tile tile = map->solidTiles[local.y * map->width + local.x];
-	bool result = MapTileTypeIsObstacle(map, tile.type);
+	bool result = MapTileTypeIsObstacle(tile.type);
 	return result;
 }
 
@@ -229,8 +296,6 @@ extern bool MapAssign(Map *map, const MapDefinition *definition);
 
 // Finds the first tile position from the specified tile type and returns true if found, false otherwise
 extern bool MapFindPositionByTile(const Map *map, const TileType type, Vec2i *outTilePos);
-
-extern void MapAutoSetAllGhostTiles(Map *map);
 
 extern bool MapResizeToTilePos(Map *map, const Vec2i tilePos);
 

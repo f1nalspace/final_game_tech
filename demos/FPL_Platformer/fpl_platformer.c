@@ -497,7 +497,7 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 		for (int x = map->origin.x; x < map->origin.x + mapSize.w; ++x) {
 			Vec2i tilePos = V2iInit(x, y);
 			Tile tile = MapGetTile(map, tilePos);
-			if (MapTileTypeIsObstacle(map, tile.type)) {
+			if (MapTileTypeIsObstacle(tile.type)) {
 				Vec2f worldPos = MapTileCoordsToWorld(map, tilePos);
 				Vec2f tileCenter = V2fAdd(worldPos, TileRadius);
 				Vec4f tileColor = tile.type == TileType_Ghost ? mapGhostTileColor : mapSolidTileColor;

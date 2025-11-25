@@ -109,7 +109,7 @@ static void EntityMapCollisions(Physics *physics, Entity *entity, const Map *map
 			}
 
 			Tile tile = MapGetTile(map, tilePos);
-			if (!MapTileTypeIsObstacle(map, tile.type)) {
+			if (!MapTileTypeIsObstacle(tile.type)) {
 				continue;
 			}
 

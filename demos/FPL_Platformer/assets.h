@@ -7,6 +7,8 @@
 #include <final_render.h>
 #include <final_math.h>
 
+#include "map.h"
+
 // Size of the assets transient memory block
 #define GAME_ASSETS_MEMORY_TRANSIENT_SIZE fplMegaBytes(8)
 
@@ -31,19 +33,6 @@ typedef struct TileIndexRule {
 	RuleNumber row;
 } TileIndexRule;
 
-// Area Mask (Number represents bit shift, 1 >> number)
-// Center is tile we are rendering
-//
-// |---|---|---|
-// | 0 | 1 | 2 |
-// |---|---|---|
-// | 3 |   | 5 |
-// |---|---|---|
-// | 6 | 7 | 8 |
-// |---|---|---|
-
-typedef uint32_t TileAreaMask;
-
 typedef struct TileAreaRule {
 	Vec2i pos;
 	TileAreaMask areaMask;
@@ -62,16 +51,16 @@ typedef struct TileAreaRule {
 // Row == HEIGHT - 1 && Column == WIDTH - 1: TILESET_A_BORDER_3x3_BOTTOM_RIGHT
 
 // Tileset A Border 3x3
-#define TILESET_A_BORDER_3x3_OFFSET fplStructInit(Vec2i, 7, 0)
-#define TILESET_A_BORDER_3x3_TOP_LEFT fplStructInit(Vec2i, 0, 0)
-#define TILESET_A_BORDER_3x3_TOP_MIDDLE fplStructInit(Vec2i, 1, 0)
-#define TILESET_A_BORDER_3x3_TOP_RIGHT fplStructInit(Vec2i, 2, 0)
-#define TILESET_A_BORDER_3x3_SIDE_LEFT fplStructInit(Vec2i, 0, 1)
-#define TILESET_A_BORDER_3x3_MIDDLE fplStructInit(Vec2i, 1, 1)
-#define TILESET_A_BORDER_3x3_SIDE_RIGHT fplStructInit(Vec2i, 2, 1)
-#define TILESET_A_BORDER_3x3_BOTTOM_LEFT fplStructInit(Vec2i, 0, 2)
-#define TILESET_A_BORDER_3x3_BOTTOM_MIDDLE fplStructInit(Vec2i, 1, 2)
-#define TILESET_A_BORDER_3x3_BOTTOM_RIGHT fplStructInit(Vec2i, 2, 2)
+#define TILESET_A_BORDER_3x3_OFFSET V2iInit(7, 0)
+#define TILESET_A_BORDER_3x3_TOP_LEFT V2iInit(0, 0)
+#define TILESET_A_BORDER_3x3_TOP_MIDDLE V2iInit(1, 0)
+#define TILESET_A_BORDER_3x3_TOP_RIGHT V2iInit(2, 0)
+#define TILESET_A_BORDER_3x3_SIDE_LEFT V2iInit(0, 1)
+#define TILESET_A_BORDER_3x3_MIDDLE V2iInit(1, 1)
+#define TILESET_A_BORDER_3x3_SIDE_RIGHT V2iInit(2, 1)
+#define TILESET_A_BORDER_3x3_BOTTOM_LEFT V2iInit(0, 2)
+#define TILESET_A_BORDER_3x3_BOTTOM_MIDDLE V2iInit(1, 2)
+#define TILESET_A_BORDER_3x3_BOTTOM_RIGHT V2iInit(2, 2)
 
 // Tileset A Collidable 3x3
 #define TILESET_A_COLLIDABLE_3x3_OFFSET V2iInit(0, 0)
