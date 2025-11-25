@@ -448,6 +448,7 @@ fpl_extern void RenderPushSprite(RenderState *state, const Vec2f position, const
 	cmd->color = color;
 	cmd->uvMin = V2fInit(uvRect.uMin, uvRect.vMin);
 	cmd->uvMax = V2fInit(uvRect.uMax, uvRect.vMax);
+	cmd->flags = flags;
 }
 
 fpl_extern void RenderPushTexture(RenderState *state, TextureHandle *targetTexture, const void *data, const uint32_t width, const uint32_t height, const uint32_t bytesPerPixel, const TextureFilterType filter, const TextureWrapMode wrap, const bool isTopDown, const bool isPreMultiplied) {
