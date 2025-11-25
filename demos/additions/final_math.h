@@ -110,6 +110,10 @@ typedef union Vec2i {
 	int m[2];
 } Vec2i;
 
+#define V2I(x, y) {x, y}
+
+#define V2IArg(v2i) (Vec2i)v2i
+
 fpl_force_inline Vec2i V2iZero() {
 	Vec2i result = fplZeroInit;
 	return(result);

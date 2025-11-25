@@ -14,11 +14,8 @@ static void EditorPaintTile(Editor *editor, Map *map, const Vec2i tilePos) {
 	if (MapIsTileInside(map, tilePos)) {
 		editor->drawTilePos = tilePos;
 		MapSetTileType(map, tilePos, editor->drawTile);
-		fplDebugFormatOut("Paint tile %d x %d with %d", tilePos.x, tilePos.y, editor->drawTile);
 	} else {
-		// NOTE(final): Resize returns a new tile position, due to offset change
 		if (MapResizeToTilePos(map, tilePos)) {
-			//MapSetTileType(map, tilePos, editor->drawTile);
 			editor->drawTilePos = tilePos;
 			editor->isDrawing = false;
 		}
@@ -94,6 +91,18 @@ fpl_extern void EditorInput(Editor *editor, const Input *input) {
 		editor->drawTile = UINT32_MAX;
 		editor->drawTilePos = mouseTilePos;
 		editor->isDrawing = false;
+	}
+
+	if (ButtonIsDown(input->mouse.right)) {
+		if (MapIsTileInside(map, mouseTilePos)) {
+			Tile tile = MapGetTile(map, mouseTilePos);
+			uint8_t mask = TileAreaMaskToU8(tile.areaMask);
+			char tmp[9] = fplZeroInit;
+			for (int i = 0; i < 8; ++i) {
+				tmp[i] = (mask & (1 << (7 - i))) ? '1' : '0';
+			}
+			fplDebugFormatOut("0b%s\n", tmp);
+		}
 	}
 }
 
