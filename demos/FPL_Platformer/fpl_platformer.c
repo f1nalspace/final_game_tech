@@ -439,6 +439,7 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 
 	const Editor *editor = &state->editor;
 	const Camera *camera = &state->camera;
+	const GameAssets *assets = &state->assets;
 
 	World *world = &state->world;
 	Map *map = &world->map;
@@ -464,7 +465,7 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 
 	// TODO(final): Move colors to a global static struct
 	Vec4f mapSolidTileColor = V4fInit(1.0f, 1.0f, 1.0f, 1.0f);
-	Vec4f mapGhostTileColor = V4fInit(0.3f, 0.3f, 0.3f, 1.0f);
+	Vec4f mapGhostTileColor = V4fInit(0.5f, 0.5f, 0.5f, 1.0f);
 
 	Vec4f playerTileColor = V4fInit(0.3f, 0.1f, 0.7f, 1.0f);
 	Vec4f groundSensorTileColor = V4fInit(0.0f, 1.0f, 0.0f, 1.0f);
@@ -498,8 +499,14 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 			Tile tile = MapGetTile(map, tilePos);
 			if (MapTileTypeIsObstacle(map, tile.type)) {
 				Vec2f worldPos = MapTileCoordsToWorld(map, tilePos);
+				Vec2f tileCenter = V2fAdd(worldPos, TileRadius);
 				Vec4f tileColor = tile.type == TileType_Ghost ? mapGhostTileColor : mapSolidTileColor;
-				RenderPushRectangle(renderState, worldPos, TileSize, tileColor, true, 1.0f);
+
+				Vec2i textureTilePos = V2iInit(0, 0);
+
+				UVRect tileUVRect = UVRectFromTile(V2iInit(assets->tilesetTexture.data.width, assets->tilesetTexture.data.height), V2iInit(32, 32), 0, textureTilePos);
+				RenderPushSprite(renderState, tileCenter, TileRadius, assets->tilesetTexture.texture, tileColor, tileUVRect, SpriteFlags_FlipV);
+
 			}
 		}
 	}
@@ -596,7 +603,7 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	if (state->isDebugRendering) {
 		RenderSetMatrix(renderState, &state->projection);
 
-		const FontAsset *font = &state->assets.consoleFont; 
+		const FontAsset *font = &assets->consoleFont;
 		Vec4f textColor = V4fInit(1, 1, 1, 1);
 		Vec4f blackColor = V4fInit(0, 0, 0, 1);
 		Vec2f blockPos = V2fInit(-w, h);
