@@ -169,7 +169,8 @@ fpl_extern void RenderWithOpenGL(RenderState *renderState) {
 		TextureOperation *op = &renderState->textureOperations[index];
 		if(op->type == TextureOperationType_Upload) {
 			bool isAlphaOnly = op->bytesPerPixel == 1;
-			GLuint texId = AllocateTexture(op->width, op->height, op->data, false, GL_LINEAR, isAlphaOnly);
+			GLint filter = op->filter == TextureFilterType_Nearest ? GL_NEAREST : GL_LINEAR;
+			GLuint texId = AllocateTexture(op->width, op->height, op->data, false, filter, isAlphaOnly);
 			*op->handle = GetTextureHandleFromID(texId);
 		} else if(op->type == TextureOperationType_Release) {
 			GLuint texId = GetTextureIDFromHandle(*op->handle);
