@@ -1597,8 +1597,8 @@ namespace towers {
 
 		if (drawRadius) {
 			const TextureAsset &radiantTexture = assets.radiantTexture;
-			RenderPushSprite(&renderState, pos, V2fInit(tower.detectionRadius * scale, tower.detectionRadius * scale), radiantTexture.texture, V4fInit(0.2f, 1, 0.2f, alpha * 0.25f), UVRectDefault());
-			RenderPushSprite(&renderState, pos, V2fInit(tower.unlockRadius * scale, tower.unlockRadius * scale), radiantTexture.texture, V4fInit(1, 0.25f, 0.25f, alpha * 0.25f), UVRectDefault());
+			RenderPushSprite(&renderState, pos, V2fInit(tower.detectionRadius * scale, tower.detectionRadius * scale), radiantTexture.texture, V4fInit(0.2f, 1, 0.2f, alpha * 0.25f), UVRectDefault(), SpriteFlags_None);
+			RenderPushSprite(&renderState, pos, V2fInit(tower.unlockRadius * scale, tower.unlockRadius * scale), radiantTexture.texture, V4fInit(1, 0.25f, 0.25f, alpha * 0.25f), UVRectDefault(), SpriteFlags_None);
 		}
 	}
 }
@@ -2162,7 +2162,7 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 					const UVRect &uvRect = tileset->tileUVs[indexToTilesheet];
 					if (texAsset != nullptr) {
 						Vec2f pos = TileToWorld(state->level.dimension, V2iInit((int)x, (int)y), TileExt);
-						RenderPushSprite(&renderState, pos, TileExt, texAsset->texture, V4fInit(1, 1, 1, layer.opacity), uvRect);
+						RenderPushSprite(&renderState, pos, TileExt, texAsset->texture, V4fInit(1, 1, 1, layer.opacity), uvRect, SpriteFlags_None);
 					}
 				}
 			}
