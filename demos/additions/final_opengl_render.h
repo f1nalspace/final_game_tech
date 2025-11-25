@@ -263,14 +263,20 @@ fpl_extern void RenderWithOpenGL(RenderState *renderState) {
 					fplAssert(dataSize == sizeof(SpriteCommand));
 					SpriteCommand *cmd = (SpriteCommand *)dataStart;
 					GLuint texId = GetTextureIDFromHandle(cmd->texture);
+					bool flipU = (cmd->flags & SpriteFlags_FlipU) == SpriteFlags_FlipU;
+					bool flipV = (cmd->flags & SpriteFlags_FlipV) == SpriteFlags_FlipV;
+					float uMin = flipU ? cmd->uvMax.x : cmd->uvMin.x;
+					float uMax = flipU ? cmd->uvMin.x :  cmd->uvMax.x;
+					float vMin = flipV ? cmd->uvMax.y : cmd->uvMin.y;
+					float vMax = flipV ? cmd->uvMin.y : cmd->uvMax.y;
 					glEnable(GL_TEXTURE_2D);
 					glBindTexture(GL_TEXTURE_2D, texId);
 					glColor4fv(&cmd->color.m[0]);
 					glBegin(GL_QUADS);
-					glTexCoord2f(cmd->uvMax.x, cmd->uvMax.y); glVertex2f(cmd->position.x + cmd->ext.w, cmd->position.y + cmd->ext.h);
-					glTexCoord2f(cmd->uvMin.x, cmd->uvMax.y); glVertex2f(cmd->position.x - cmd->ext.w, cmd->position.y + cmd->ext.h);
-					glTexCoord2f(cmd->uvMin.x, cmd->uvMin.y); glVertex2f(cmd->position.x - cmd->ext.w, cmd->position.y - cmd->ext.h);
-					glTexCoord2f(cmd->uvMax.x, cmd->uvMin.y); glVertex2f(cmd->position.x + cmd->ext.w, cmd->position.y - cmd->ext.h);
+					glTexCoord2f(uMax, vMax); glVertex2f(cmd->position.x + cmd->ext.w, cmd->position.y + cmd->ext.h);
+					glTexCoord2f(uMin, vMax); glVertex2f(cmd->position.x - cmd->ext.w, cmd->position.y + cmd->ext.h);
+					glTexCoord2f(uMin, vMin); glVertex2f(cmd->position.x - cmd->ext.w, cmd->position.y - cmd->ext.h);
+					glTexCoord2f(uMax, vMin); glVertex2f(cmd->position.x + cmd->ext.w, cmd->position.y - cmd->ext.h);
 					glEnd();
 					glBindTexture(GL_TEXTURE_2D, 0);
 					glDisable(GL_TEXTURE_2D);
@@ -379,18 +385,6 @@ fpl_extern void RenderWithOpenGL(RenderState *renderState) {
 			remaining -= consumed;
 		}
 	}
-
-#if 0
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
-	glColor4f(1, 1, 1, 1);
-	glBegin(GL_QUADS);
-	glVertex2f(1, 1);
-	glVertex2f(-1, 1);
-	glVertex2f(-1, -1);
-	glVertex2f(1, -1);
-	glEnd();
-#endif
 }
 
 #endif // FINAL_OPENGL_RENDER_IMPLEMENTATION
