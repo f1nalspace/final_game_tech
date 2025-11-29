@@ -523,7 +523,7 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 
 	const GameAssets *assets = &state->assets;
 
-	const Editor *editor = &state->editor;
+	Editor *editor = &state->editor;
 
 	Camera *gameCamera = &state->gameCamera;
 	Camera *editorCamera = &editor->camera;
