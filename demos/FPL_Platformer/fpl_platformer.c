@@ -29,9 +29,14 @@ Todo-List:
 
 # Game mechanics
 
-[ ] Simple trampoline (walking does not do anything, but jumping and falling state with collision raises the upward impulse)
+[X] Camera ID + Active camera switching
+[ ] Smooth camera motion towards a target
+[ ] Fix entity jump requesting (infinite jumps, while holding space)
+[ ] Hurting entities
+[ ] Simple doors
+[ ] Opening/Closing doors with levers
+[ ] Simple trampoline (walking does not do anything, but jumping and only in falling state raises the upward impulse)
 [ ] Moveable Platform controlled by Player with line-raying stops
-[ ] Open/Close doors with levers
 [ ] Jumppad velocity computation based on start and target position and gravity
 
 # Entity
@@ -45,7 +50,7 @@ Todo-List:
 
 # Editor
 
-[ ] Camera translation by holding space and left mouse button
+[X] Camera translation by holding space and left mouse button
 [ ] Entity selection & placement editor (Doors, Spike, Trampoline, Platform, PlayerStart, etc.)
 
 # Rendering
@@ -184,12 +189,8 @@ static void GameChangeModeInternal(GameState *state, const GameMode newMode) {
 	switch (newMode) {
 		case GameMode_Game:
 		{
-			state->mode = GameMode_Game;
-
 			state->activeCamera = &state->gameCamera;
-
-			CameraSetPos(gameCamera, player->transform[0].pos, true);
-
+			state->mode = GameMode_Game;
 			editor->mode = EditorMode_None;
 		} break;
 
@@ -199,27 +200,21 @@ static void GameChangeModeInternal(GameState *state, const GameMode newMode) {
 
 			state->activeCamera = editorCamera;
 
-			// Switching to play mode, overwrites the editor camera offset to the player position
-			CameraSetPos(editorCamera, player->transform[0].pos, true);
-
 			editor->mode = EditorMode_Live;
 		} break;
 
 		case GameMode_EditorPause:
 		{
-			state->mode = GameMode_EditorPause;
-
 			state->activeCamera = editorCamera;
-
-			// Switching to editor mode, overwrites the editor camera offset to the player position
-			CameraSetPos(editorCamera, player->transform[0].pos, true);
-
+			state->mode = GameMode_EditorPause;
 			editor->mode = EditorMode_Full;
 		} break;
 
 		default:
 			FPL_NOT_IMPLEMENTED;
 	}
+
+	CameraSetPos(state->activeCamera, player->transform[0].pos, true);
 }
 
 static bool GameStateInitInternal(fmemMemoryBlock *memory, GameState *state) {
