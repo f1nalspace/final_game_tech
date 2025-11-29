@@ -54,7 +54,7 @@ fpl_extern void EditorInput(Editor *editor, const Input *input) {
 	Vec2i mouseTilePos = MapWorldCoordsToTile(map, editor->mouseWorldPos);
 	Camera *camera = &editor->camera;
 
-	const worldWidth = world->radius.w * 2.0f;
+	const float worldWidth = world->radius.w * 2.0f;
 
 	const Controller *controller = (input->defaultControllerIndex == -1) ? &input->controllers[0] : &input->controllers[input->defaultControllerIndex];
 
