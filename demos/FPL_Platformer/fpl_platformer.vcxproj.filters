@@ -9,6 +9,7 @@
     <ClCompile Include="common.c" />
     <ClCompile Include="editor.c" />
     <ClCompile Include="assets.c" />
+    <ClCompile Include="game.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="physics.h" />
@@ -88,6 +89,7 @@
     <ClInclude Include="..\additions\final_xml.h">
       <Filter>Dependencies</Filter>
     </ClInclude>
+    <ClInclude Include="game.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Dependencies">

@@ -467,6 +467,7 @@
     <ClInclude Include="common.h" />
     <ClInclude Include="editor.h" />
     <ClInclude Include="entity.h" />
+    <ClInclude Include="game.h" />
     <ClInclude Include="physics.h" />
     <ClInclude Include="map.h" />
     <ClInclude Include="world.h" />
@@ -503,6 +504,16 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release WinX64|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="entity.c">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug WinX86|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug WinX64|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release WinX86|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release WinX64|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug WinX86|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug WinX64|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release WinX86|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release WinX64|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="game.c">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug WinX86|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug WinX64|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release WinX86|Win32'">true</ExcludedFromBuild>

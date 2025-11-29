@@ -7,6 +7,8 @@
 
 #include <final_math.h>
 
+#include <final_geometry.h>
+
 #include "common.h"
 
 // Size of the map transient memory block
