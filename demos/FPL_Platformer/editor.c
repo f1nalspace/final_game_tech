@@ -93,10 +93,10 @@ fpl_extern void EditorInput(Editor *editor, const Input *input) {
 		editor->isDrawing = false;
 	}
 
-	if (ButtonIsDown(input->mouse.right)) {
+	if (ButtonWasPressed(input->mouse.right)) {
 		if (MapIsTileInside(map, mouseTilePos)) {
 			Tile tile = MapGetTile(map, mouseTilePos);
-			uint8_t mask = TileAreaMaskToU8(tile.areaMask);
+			uint8_t mask = tile.areaMask & 0xFF;
 			char tmp[9] = fplZeroInit;
 			for (int i = 0; i < 8; ++i) {
 				tmp[i] = (mask & (1 << (7 - i))) ? '1' : '0';
