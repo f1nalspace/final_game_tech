@@ -32,38 +32,35 @@ typedef enum TileType {
 } TileType;
 
 // Tile Area Mask (Number represents in bit shift, 1 >> value)
-// Center (4) is the tile we are rendering
 //
 // |---|---|---|
-// | 0 | 1 | 2 |
+// | 7 | 0 | 1 |
 // |---|---|---|
-// | 3 |(4)| 5 |
+// | 6 |   | 2 |
 // |---|---|---|
-// | 6 | 7 | 8 |
+// | 5 | 4 | 3 |
 // |---|---|---|
 
-// Tile area mask (16-bit)
+// Tile area mask (8-bit, stored as 16-bit)
 typedef enum TileAreaMask {
 	// None
 	TileAreaMask_None = 0,
-	// Top Left
-	TileAreaMask_TopLeft = 1 << 0,
 	// Top Center
-	TileAreaMask_TopCenter = 1 << 1,
+	TileAreaMask_TopCenter = 1 << 0,
 	// Top Right
-	TileAreaMask_TopRight = 1 << 2,
-	// Left Side
-	TileAreaMask_LeftSide = 1 << 3,
-	// Centroid
-	TileAreaMask_Centroid = 1 << 4,
+	TileAreaMask_TopRight = 1 << 1,
 	// Right Side
-	TileAreaMask_RightSide = 1 << 5,
-	// Bottom Left
-	TileAreaMask_BottomLeft = 1 << 6,
-	// Bottom Center
-	TileAreaMask_BottomCenter = 1 << 7,
+	TileAreaMask_RightSide = 1 << 2,
 	// Bottom Right
-	TileAreaMask_BottomRight = 1 << 8,
+	TileAreaMask_BottomRight = 1 << 3,
+	// Bottom Center
+	TileAreaMask_BottomCenter = 1 << 4,
+	// Bottom Left
+	TileAreaMask_BottomLeft = 1 << 5,
+	// Left Side
+	TileAreaMask_LeftSide = 1 << 6,
+	// Top Left
+	TileAreaMask_TopLeft = 1 << 7,
 } TileAreaMask;
 
 typedef struct Tile {

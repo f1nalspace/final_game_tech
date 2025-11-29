@@ -56,11 +56,11 @@ fpl_internal bool MapTilePosIsMaskableLocal(const Map *map, const int widthMinus
 
 // Gets the tile area mask from the specified map and local position
 fpl_internal TileAreaMask MapGetTileAreaMaskLocal(const Map *map, const int widthMinusOne, const heightMinusOne, const Vec2i local) {
-	if (!MapIsValid(map) || !MapTilePosIsMaskableLocal(map, widthMinusOne, heightMinusOne, local)) {
+	if (!MapIsValid(map)) {
 		return TileAreaMask_None;
 	}
 
-	TileAreaMask result = TileAreaMask_None;
+	TileType centerType = MapGetTileTypeLocal(map, widthMinusOne, heightMinusOne, local);
 
 	// NOTE(final): Map is defined as top-down in memory, so up is negative and down is positive
 	Vec2i topLeft = V2iAdd(local, V2iInit(-1, -1));
@@ -72,26 +72,48 @@ fpl_internal TileAreaMask MapGetTileAreaMaskLocal(const Map *map, const int widt
 	Vec2i bottomCenter = V2iAdd(local, V2iInit(0, 1));
 	Vec2i bottomRight = V2iAdd(local, V2iInit(1, 1));
 
-	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, topLeft) && MapTilePosIsMaskableLocal(map, widthMinusOne, heightMinusOne, topLeft))
-		result |= TileAreaMask_TopLeft;
-	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, topCenter) && MapTilePosIsMaskableLocal(map, widthMinusOne, heightMinusOne, topCenter))
+	bool t = (centerType == MapGetTileTypeLocal(map, widthMinusOne, heightMinusOne, topCenter));
+	bool l = (centerType == MapGetTileTypeLocal(map, widthMinusOne, heightMinusOne, leftSide));
+	bool b = (centerType == MapGetTileTypeLocal(map, widthMinusOne, heightMinusOne, bottomCenter));
+	bool r = (centerType == MapGetTileTypeLocal(map, widthMinusOne, heightMinusOne, rightSide));
+	bool tl = (centerType == MapGetTileTypeLocal(map, widthMinusOne, heightMinusOne, topLeft));
+	bool tr = (centerType == MapGetTileTypeLocal(map, widthMinusOne, heightMinusOne, topRight));
+	bool bl = (centerType == MapGetTileTypeLocal(map, widthMinusOne, heightMinusOne, bottomLeft));
+	bool br = (centerType == MapGetTileTypeLocal(map, widthMinusOne, heightMinusOne, bottomRight));
+
+	// If surrounding edges aren't set, then corners must be false
+	// This reduces from 256 combinations to 48
+	if (!(t && l)) {
+		tl = false;
+	}
+	if (!(t && r)) {
+		tr = false;
+	}
+	if (!(b && l)) {
+		bl = false;
+	}
+	if (!(b && r)) {
+		br = false;
+	}
+
+	// Compute bitmask
+	TileAreaMask result = TileAreaMask_None;
+	if (t)
 		result |= TileAreaMask_TopCenter;
-	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, topRight) && MapTilePosIsMaskableLocal(map, widthMinusOne, heightMinusOne, topRight))
+	if (tr)
 		result |= TileAreaMask_TopRight;
-
-	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, leftSide) && MapTilePosIsMaskableLocal(map, widthMinusOne, heightMinusOne, leftSide))
-		result |= TileAreaMask_LeftSide;
-	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, local) && MapTilePosIsMaskableLocal(map, widthMinusOne, heightMinusOne, local))
-		result |= TileAreaMask_Centroid;
-	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, rightSide) && MapTilePosIsMaskableLocal(map, widthMinusOne, heightMinusOne, rightSide))
+	if (r)
 		result |= TileAreaMask_RightSide;
-
-	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, bottomLeft) && MapTilePosIsMaskableLocal(map, widthMinusOne, heightMinusOne, bottomLeft))
-		result |= TileAreaMask_BottomLeft;
-	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, bottomCenter) && MapTilePosIsMaskableLocal(map, widthMinusOne, heightMinusOne, bottomCenter))
-		result |= TileAreaMask_BottomCenter;
-	if (!MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, bottomRight) && MapTilePosIsMaskableLocal(map, widthMinusOne, heightMinusOne, bottomRight))
+	if (br)
 		result |= TileAreaMask_BottomRight;
+	if (b)
+		result |= TileAreaMask_BottomCenter;
+	if (bl)
+		result |= TileAreaMask_BottomLeft;
+	if (l)
+		result |= TileAreaMask_LeftSide;
+	if (tl)
+		result |= TileAreaMask_TopLeft;
 
 	return result;
 }
