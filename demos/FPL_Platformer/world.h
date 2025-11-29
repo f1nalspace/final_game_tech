@@ -71,6 +71,12 @@ typedef struct World {
 	Map map;
 	fmemMemoryBlock persistentMemory;
 	fmemMemoryBlock transientMemory;
+
+	// Fixed world radius in world units
+	Vec2f radius;
+
+	// Size of the world what the player can see, do not change this value lightly - as this will affect the game play, the assets and the level design!
+	Vec2f viewRadius;
 } World;
 
 //

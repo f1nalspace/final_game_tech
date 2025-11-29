@@ -38,8 +38,7 @@ fpl_extern bool EditorInit(fmemMemoryBlock *gameMemory, Editor *editor, GameAsse
 	editor->isDrawing = false;
 	editor->isPanning = false;
 
-	Vec2f viewRadius = V2fMultScalar(V2fInit(WorldRadiusW, WorldRadiusH), GameViewInvScale);
-	if (!CameraInit(&editor->camera, CameraEditorID, V2fInit(0.0f, 0.0f), 1.0f, viewRadius)) {
+	if (!CameraInit(&editor->camera, CameraEditorID, V2fInit(0.0f, 0.0f), 1.0f, world->viewRadius)) {
 		return false;
 	}
 
@@ -55,6 +54,8 @@ fpl_extern void EditorInput(Editor *editor, const Input *input) {
 	Vec2i mouseTilePos = MapWorldCoordsToTile(map, editor->mouseWorldPos);
 	Camera *camera = &editor->camera;
 
+	const worldWidth = world->radius.w * 2.0f;
+
 	const Controller *controller = (input->defaultControllerIndex == -1) ? &input->controllers[0] : &input->controllers[input->defaultControllerIndex];
 
 	if (F32Abs(input->mouse.wheelDelta) > 0.0f) {
@@ -64,7 +65,7 @@ fpl_extern void EditorInput(Editor *editor, const Input *input) {
 		newZoom = F32Clamp(newZoom, EDITOR_CAMERA_MIN_ZOOM, EDITOR_CAMERA_MAX_ZOOM);
 		if (editor->mode == EditorMode_Full) {
 			Vec2f targetPos = V2fNegate(editor->mouseWorldPos);
-			CameraZoomToPosition(camera, oldZoom, newZoom, WorldWidth, targetPos);
+			CameraZoomToPosition(camera, oldZoom, newZoom, worldWidth, targetPos);
 		} else if (editor->mode == EditorMode_Live) {
 			CameraSetScale(camera, newZoom, false);
 		}

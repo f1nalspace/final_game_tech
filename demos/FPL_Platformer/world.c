@@ -37,6 +37,9 @@ extern bool WorldInit(fmemMemoryBlock *memory, World *world) {
 
 	fplClearStruct(world);
 
+	world->radius = V2fInit(WorldRadiusW, WorldRadiusH);
+	world->viewRadius = V2fMultScalar(V2fInit(WorldRadiusW, WorldRadiusH), GameViewInvScale);
+
 	if (!fmemPushBlock(memory, &world->transientMemory, WORLD_MEMORY_TRANSIENT_SIZE, fmemPushFlags_Clear)) {
 		return false; // Insufficient memory for world transient memory
 	}

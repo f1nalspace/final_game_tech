@@ -137,11 +137,10 @@ fpl_extern bool PlatformerGameInit(GameMemory *gameMemory, RenderState *renderSt
 	}
 
 	// NOTE(tspaete): Projection matrix will never change across the entire game run
-	state->projection = M4fOrthoRH(-WorldRadiusW, WorldRadiusW, -WorldRadiusH, WorldRadiusH, 0.0f, 1.0f);
+	state->projection = M4fOrthoRH(-world->radius.w, world->radius.w, -world->radius.h, world->radius.h, 0.0f, 1.0f);
 
 	// NOTE(tspaete): This will never change across the entire game run
-	Vec2f gameViewRadius = V2fMultScalar(V2fInit(WorldRadiusW, WorldRadiusH), GameViewInvScale);
-	CameraInit(&state->gameCamera, CameraMainID, V2fZero(), 1.0f, gameViewRadius);
+	CameraInit(&state->gameCamera, CameraMainID, V2fZero(), 1.0f, world->viewRadius);
 
 	// NOTE(tspaete): These may be overwritten in GameStateLoad()
 	state->isDebugRendering = true;
@@ -171,13 +170,13 @@ fpl_extern void PlatformerGameInput(GameMemory *gameMemory, GameState *state, Re
 	Camera *activeCamera = state->activeCamera;
 	fplAssert(activeCamera != fpl_null);
 
-	const float w = WorldRadiusW;
-	const float h = WorldRadiusH;
+	const float w = world->radius.w;
+	const float h = world->radius.h;
 
 	// Camera
 	// TODO(final): Needs only to be updated when viewport changes!
 	Viewport viewport = ViewportComputeByAspect(input->windowSize, WorldAspect);;
-	CameraUpdateViewport(activeCamera, &viewport, WorldWidth);
+	CameraUpdateViewport(activeCamera, &viewport, w * 2.0f);
 
 	// TODO(final): Needs only to be updated when map bounds changes!
 	activeCamera->limits.bounds = map->maxBounds;
@@ -302,8 +301,8 @@ fpl_extern void PlatformerGameRender(GameMemory *gameMemory, GameState *state, R
 	Physics *physics = &world->physics;
 	Entity *player = &world->entities.player;
 
-	const float w = WorldRadiusW;
-	const float h = WorldRadiusH;
+	const float w = world->radius.w;
+	const float h = world->radius.h;
 	const float dt = state->deltaTime;
 	const bool isEditorMode = state->mode >= GameMode_EditorPlay && state->mode <= GameMode_EditorPause;
 
