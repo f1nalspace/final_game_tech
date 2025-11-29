@@ -63,7 +63,7 @@ fpl_extern void EditorInput(Editor *editor, const Input *input) {
 		float newZoom = oldZoom * (input->mouse.wheelDelta > 0 ? zoomStep : 1.0f / zoomStep);
 		newZoom = F32Clamp(newZoom, EDITOR_CAMERA_MIN_ZOOM, EDITOR_CAMERA_MAX_ZOOM);
 		if (editor->mode == EditorMode_Full) {
-			Vec2f targetPos = editor->mouseWorldPos;
+			Vec2f targetPos = V2fNegate(editor->mouseWorldPos);
 			CameraZoomToPosition(camera, oldZoom, newZoom, WorldWidth, targetPos);
 		} else if (editor->mode == EditorMode_Live) {
 			CameraSetScale(camera, newZoom, false);
@@ -101,7 +101,7 @@ fpl_extern void EditorInput(Editor *editor, const Input *input) {
 				}
 			} else {
 				Vec2f delta = V2fSub(editor->mouseWorldPos, editor->panStartPos);
-				float panningStrength = 1.0f;
+				float panningStrength = 0.5f;
 				editor->camera.transform[0].offset = V2fAddMultScalar(editor->camera.transform[0].offset, delta, -panningStrength);
 				editor->panStartPos = editor->mouseWorldPos;
 			}
@@ -219,6 +219,7 @@ fpl_extern void EditorOSDRender(RenderState *renderState, const Editor *editor, 
 	const World *world = editor->world;
 	const Map *map = &world->map;
 	const Entity *player = &world->entities.player;
+	const Camera *camera = &editor->camera;
 
 	const FontAsset *font = &assets->consoleFont;
 	fplAssert(font != fpl_null);
@@ -234,6 +235,16 @@ fpl_extern void EditorOSDRender(RenderState *renderState, const Editor *editor, 
 	blockPos = V2fAdd(blockPos, V2fInit(0, fontHeight));
 
 	fplStringFormat(charBuffer, fplArrayCount(charBuffer), "Mouse: %.04f x %.04f, Down: %s", editor->mouseWorldPos.x, editor->mouseWorldPos.y, input->mouse.left.endedDown ? "yes" : "no");
+	RenderPushText(renderState, charBuffer, fplGetStringLength(charBuffer), &font->desc, font->texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, blackColor);
+	RenderPushText(renderState, charBuffer, fplGetStringLength(charBuffer), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
+	blockPos = V2fAdd(blockPos, V2fInit(0, fontHeight));
+
+	fplStringFormat(charBuffer, fplArrayCount(charBuffer), "Player: %.04f x %.04f", player->transform[0].pos.x, player->transform[0].pos.y);
+	RenderPushText(renderState, charBuffer, fplGetStringLength(charBuffer), &font->desc, font->texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, blackColor);
+	RenderPushText(renderState, charBuffer, fplGetStringLength(charBuffer), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
+	blockPos = V2fAdd(blockPos, V2fInit(0, fontHeight));
+
+	fplStringFormat(charBuffer, fplArrayCount(charBuffer), "Camera: %.04f x %.04f", camera->transform[0].offset.x, camera->transform[0].offset.y);
 	RenderPushText(renderState, charBuffer, fplGetStringLength(charBuffer), &font->desc, font->texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, blackColor);
 	RenderPushText(renderState, charBuffer, fplGetStringLength(charBuffer), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
 	blockPos = V2fAdd(blockPos, V2fInit(0, fontHeight));

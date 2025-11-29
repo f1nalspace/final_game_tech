@@ -149,7 +149,7 @@ typedef struct GameState {
 	Mat4f projection;
 	Mat4f view;
 	Mat4f viewProjection;
-	Camera camera;
+	Camera gameCamera;
 	Vec2f mouseWorldPos;
 
 	Editor editor;
@@ -178,16 +178,17 @@ static void GameChangeModeInternal(GameState *state, const GameMode newMode) {
 	World *world = &state->world;
 	Entity *player = &world->entities.player;
 	Editor *editor = &state->editor;
-	Camera *camera = &state->camera;
+	Camera *gameCamera = &state->gameCamera;
+	Camera *editorCamera = &editor->camera;
 
 	switch (newMode) {
 		case GameMode_Game:
 		{
 			state->mode = GameMode_Game;
-			state->camera.limits.isEnabled = true;
 
-			CameraSetScale(camera, GameViewScale, false);
-			CameraSetPos(camera, player->transform[0].pos, false);
+			state->activeCamera = &state->gameCamera;
+
+			CameraSetPos(gameCamera, player->transform[0].pos, true);
 
 			editor->mode = EditorMode_None;
 		} break;
@@ -195,13 +196,11 @@ static void GameChangeModeInternal(GameState *state, const GameMode newMode) {
 		case GameMode_EditorPlay:
 		{
 			state->mode = GameMode_EditorPlay;
-			state->camera.limits.isEnabled = false;
+
+			state->activeCamera = editorCamera;
 
 			// Switching to play mode, overwrites the editor camera offset to the player position
-			editor->camera.transform[0].offset = player->transform[0].pos;
-
-			CameraSetScale(camera, editor->camera.transform[0].scale, true);
-			CameraSetPos(camera, editor->camera.transform[0].offset, false);
+			CameraSetPos(editorCamera, player->transform[0].pos, true);
 
 			editor->mode = EditorMode_Live;
 		} break;
@@ -209,13 +208,11 @@ static void GameChangeModeInternal(GameState *state, const GameMode newMode) {
 		case GameMode_EditorPause:
 		{
 			state->mode = GameMode_EditorPause;
-			state->camera.limits.isEnabled = false;
+
+			state->activeCamera = editorCamera;
 
 			// Switching to editor mode, overwrites the editor camera offset to the player position
-			editor->camera.transform[0].offset = player->transform[0].pos;
-
-			CameraSetScale(camera, editor->camera.transform[0].scale, true);
-			CameraSetPos(camera, editor->camera.transform[0].offset, true);
+			CameraSetPos(editorCamera, player->transform[0].pos, true);
 
 			editor->mode = EditorMode_Full;
 		} break;
@@ -255,7 +252,7 @@ static bool GameStateInitInternal(fmemMemoryBlock *memory, GameState *state) {
 
 	// NOTE(tspaete): This will never change across the entire game run
 	Vec2f gameViewRadius = V2fMultScalar(V2fInit(WorldRadiusW, WorldRadiusH), GameViewInvScale);
-	CameraInit(&state->camera, CameraMainID, V2fZero(), 1.0f, gameViewRadius);
+	CameraInit(&state->gameCamera, CameraMainID, V2fZero(), 1.0f, gameViewRadius);
 
 	// NOTE(tspaete): These may be overwritten in GameStateLoad()
 	state->isDebugRendering = true;
@@ -292,7 +289,7 @@ static bool GameStartInternal(GameState *state) {
 		return false; // Failed to load the map into the world (insufficient memory, wrong map, etc.)
 	}
 
-	GameChangeModeInternal(state, GameMode_EditorPlay);
+	GameChangeModeInternal(state, GameMode_EditorPause);
 
 	return true;
 }
@@ -375,34 +372,33 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	Map *map = &world->map;
 	Entity *player = &world->entities.player;
 	Editor *editor = &state->editor;
-	Camera *camera = &state->camera;
+	Camera *gameCamera = &state->gameCamera;
+	Camera *editorCamera = &editor->camera;
+	Camera *activeCamera = state->activeCamera;
+	fplAssert(activeCamera != fpl_null);
 
 	const float w = WorldRadiusW;
 	const float h = WorldRadiusH;
 
-	const bool isGameUpdating = state->mode != GameMode_EditorPause;
-	const bool isEditorMode = state->mode != GameMode_Game;
-
 	// Camera
 	// TODO(final): Needs only to be updated when viewport changes!
 	Viewport viewport = ViewportComputeByAspect(input->windowSize, WorldAspect);;
-	CameraUpdateViewport(camera, &viewport, WorldWidth);
-	CameraUpdateViewport(&editor->camera, &viewport, WorldWidth);
+	CameraUpdateViewport(activeCamera, &viewport, WorldWidth);
 
 	// TODO(final): Needs only to be updated when map bounds changes!
-	state->camera.limits.bounds = map->maxBounds;
+	activeCamera->limits.bounds = map->maxBounds;
 
 	// Matrices
-	Mat4f translationMat = M4fTranslationV2(state->camera.transform[0].offset);
-	Mat4f scaleMat = M4fScaleV2(V2fInitScalar(state->camera.transform[0].scale));
+	Mat4f translationMat = M4fTranslationV2(activeCamera->transform[0].offset);
+	Mat4f scaleMat = M4fScaleV2(V2fInitScalar(activeCamera->transform[0].scale));
 	state->view = M4fMult(scaleMat, translationMat);
 	state->viewProjection = M4fMult(state->projection, state->view);
 
 	// Mouse
 	int mouseCenterX = (input->mouse.pos.x) - input->windowSize.w / 2;
 	int mouseCenterY = (input->windowSize.h - 1 - input->mouse.pos.y) - input->windowSize.h / 2;
-	state->mouseWorldPos.x = (mouseCenterX * state->camera.pixelsToWorld) - state->camera.transform[0].offset.x;
-	state->mouseWorldPos.y = (mouseCenterY * state->camera.pixelsToWorld) - state->camera.transform[0].offset.y;
+	state->mouseWorldPos.x = (mouseCenterX * activeCamera->pixelsToWorld) - activeCamera->transform[0].offset.x;
+	state->mouseWorldPos.y = (mouseCenterY * activeCamera->pixelsToWorld) - activeCamera->transform[0].offset.y;
 	editor->mouseWorldPos = state->mouseWorldPos;
 
 	const Controller *keyboardController = &input->controllers[0];
@@ -456,23 +452,20 @@ extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
 	World *world = &state->world;
 	Map *map = &world->map;
 	Entity *player = &world->entities.player;
-	Camera *camera = &state->camera;
 	Editor *editor = &state->editor;
+	Camera *gameCamera = &state->gameCamera;
+	Camera *editorCamera = &editor->camera;
+	Camera *activeCamera = state->activeCamera;
+	fplAssert(activeCamera != fpl_null);
 
 	if (isGameUpdating) {
 		WorldUpdate(world, input);
 	}
 
 	if (state->mode == GameMode_EditorPlay) {
-		editor->camera.transform[0].offset = player->transform[0].pos;
-	}
-
-	if (isEditorMode) {
-		CameraSetScale(camera, editor->camera.transform[0].scale, false);
-		CameraSetPos(camera, editor->camera.transform[0].offset, false);
-	} else {
-		CameraSetScale(camera, GameViewScale, false);
-		CameraSetPos(camera, player->transform[0].pos, false);
+		CameraSetPos(editorCamera, player->transform[0].pos, false);
+	} else if (state->mode == GameMode_Game) {
+		CameraSetPos(gameCamera, player->transform[0].pos, false);
 	}
 
 	// FPS display
@@ -533,9 +526,14 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 
 	RenderState *renderState = gameMemory->render;
 
-	const Editor *editor = &state->editor;
-	const Camera *camera = &state->camera;
 	const GameAssets *assets = &state->assets;
+
+	const Editor *editor = &state->editor;
+
+	Camera *gameCamera = &state->gameCamera;
+	Camera *editorCamera = &editor->camera;
+	Camera *activeCamera = state->activeCamera;
+	fplAssert(activeCamera != fpl_null);
 
 	World *world = &state->world;
 	Map *map = &world->map;
@@ -548,8 +546,8 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	const bool isEditorMode = state->mode >= GameMode_EditorPlay && state->mode <= GameMode_EditorPause;
 
 	// Re-compute matrices for smooth rendering
-	const float cameraScale = F32Lerp(state->camera.transform[1].scale, alpha, state->camera.transform[0].scale);
-	const Vec2f cameraOffset = V2fLerp(state->camera.transform[1].offset, alpha, state->camera.transform[0].offset);
+	const float cameraScale = F32Lerp(activeCamera->transform[1].scale, alpha, activeCamera->transform[0].scale);
+	const Vec2f cameraOffset = V2fLerp(activeCamera->transform[1].offset, alpha, activeCamera->transform[0].offset);
 
 	const Mat4f translationMat = M4fTranslationV2(cameraOffset);
 	const Mat4f scaleMat = M4fScaleV2(V2fInit(cameraScale, cameraScale));
@@ -561,7 +559,7 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 
 	// TODO(final): Move colors to a global static struct
 
-	RenderPushViewport(renderState, camera->viewport.x, camera->viewport.y, camera->viewport.w, camera->viewport.h);
+	RenderPushViewport(renderState, activeCamera->viewport.x, activeCamera->viewport.y, activeCamera->viewport.w, activeCamera->viewport.h);
 	RenderPushClear(renderState, V4fInit(0, 0, 0, 1), ClearFlags_Color | ClearFlags_Depth);
 
 	// Only ortho projection
@@ -624,9 +622,9 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 
 	// Camera view
 	if (state->mode == GameMode_Game || state->mode == GameMode_EditorPlay) {
-		RenderPushRectangleCenter(renderState, V2fNegate(cameraOffset), state->camera.viewRadius, V4fInit(0.2f, 0.1f, 1.0f, 1.0f), false, 2.0f);
+		RenderPushRectangleCenter(renderState, V2fNegate(cameraOffset), activeCamera->viewRadius, V4fInit(0.2f, 0.1f, 1.0f, 1.0f), false, 2.0f);
 	} else {
-		RenderPushRectangleCenter(renderState, playerPos, state->camera.viewRadius, V4fInit(0.2f, 0.1f, 1.0f, 1.0f), false, 2.0f);
+		RenderPushRectangleCenter(renderState, playerPos, activeCamera->viewRadius, V4fInit(0.2f, 0.1f, 1.0f, 1.0f), false, 2.0f);
 	}
 
 	// Player sensors
@@ -754,7 +752,7 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	// Overwrite render infos such as position, rotation for "previous" from "current" states
 	// This is important for getting smooth interpolated rendering
 	player->transform[1] = player->transform[0];
-	state->camera.transform[1] = state->camera.transform[0];
+	activeCamera->transform[1] = activeCamera->transform[0];
 }
 
 // Directly included translation units
