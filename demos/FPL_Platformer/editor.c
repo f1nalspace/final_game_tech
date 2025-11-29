@@ -35,6 +35,8 @@ fpl_extern bool EditorInit(fmemMemoryBlock *gameMemory, Editor *editor, GameAsse
 	editor->world = world;
 	editor->assets = assets;
 	editor->mode = EditorMode_None;
+	editor->isDrawing = false;
+	editor->isPanning = false;
 
 	Vec2f viewRadius = V2fMultScalar(V2fInit(WorldRadiusW, WorldRadiusH), GameViewInvScale);
 	if (!CameraInit(&editor->camera, V2fInit(0.0f, 0.0f), 1.0f, viewRadius)) {
@@ -53,6 +55,8 @@ fpl_extern void EditorInput(Editor *editor, const Input *input) {
 	Vec2i mouseTilePos = MapWorldCoordsToTile(map, editor->mouseWorldPos);
 	Camera *camera = &editor->camera;
 
+	const Controller *controller = (input->defaultControllerIndex == -1) ? &input->controllers[0] : &input->controllers[input->defaultControllerIndex];
+
 	if (F32Abs(input->mouse.wheelDelta) > 0.0f) {
 		float zoomStep = 1.1f;
 		float oldZoom = camera->transform[0].scale;
@@ -67,30 +71,51 @@ fpl_extern void EditorInput(Editor *editor, const Input *input) {
 	}
 
 	if (ButtonIsDown(input->mouse.left)) {
-		if (!editor->isDrawing) {
-			if (EditorCanTileBePlaced(editor, map, player, mouseTilePos)) {
-				editor->isDrawing = true;
-				editor->drawTilePos = mouseTilePos;
-				if (MapIsTileInside(map, mouseTilePos)) {
-					Tile tile = MapGetTile(map, mouseTilePos);
-					editor->drawTile = tile.type != TileType_Solid ? TileType_Solid : TileType_None;
-				} else {
-					editor->drawTile = TileType_Solid;
-				}
-				EditorPaintTile(editor, map, mouseTilePos);
-			}
-		} else {
-			if (EditorCanTileBePlaced(editor, map, player, mouseTilePos)) {
-				fplAssert(editor->drawTile != UINT32_MAX);
-				if (!V2iEquals(mouseTilePos, editor->drawTilePos)) {
+		bool actionIsDown = ButtonIsDown(controller->actionDown);
+		if (!actionIsDown) {
+			if (!editor->isDrawing) {
+				if (EditorCanTileBePlaced(editor, map, player, mouseTilePos)) {
+					editor->isDrawing = true;
+					editor->drawTilePos = mouseTilePos;
+					if (MapIsTileInside(map, mouseTilePos)) {
+						Tile tile = MapGetTile(map, mouseTilePos);
+						editor->drawTile = tile.type != TileType_Solid ? TileType_Solid : TileType_None;
+					} else {
+						editor->drawTile = TileType_Solid;
+					}
 					EditorPaintTile(editor, map, mouseTilePos);
 				}
+			} else {
+				if (EditorCanTileBePlaced(editor, map, player, mouseTilePos)) {
+					fplAssert(editor->drawTile != UINT32_MAX);
+					if (!V2iEquals(mouseTilePos, editor->drawTilePos)) {
+						EditorPaintTile(editor, map, mouseTilePos);
+					}
+				}
+			}
+		} else {
+			if (!editor->isPanning) {
+				if (editor->mode == EditorMode_Full) {
+					editor->isPanning = true;
+					editor->panStartPos = editor->mouseWorldPos;
+				}
+			} else {
+				Vec2f delta = V2fSub(editor->mouseWorldPos, editor->panStartPos);
+				float panningStrength = 1.0f;
+				editor->camera.transform[0].offset = V2fAddMultScalar(editor->camera.transform[0].offset, delta, -panningStrength);
+				editor->panStartPos = editor->mouseWorldPos;
 			}
 		}
 	} else {
-		editor->drawTile = UINT32_MAX;
-		editor->drawTilePos = mouseTilePos;
-		editor->isDrawing = false;
+		if (editor->isDrawing) {
+			editor->drawTile = UINT32_MAX;
+			editor->drawTilePos = mouseTilePos;
+			editor->isDrawing = false;
+		}
+		if (editor->isPanning || editor->mode != EditorMode_Full) {
+			editor->isPanning = false;
+			editor->panStartPos = editor->mouseWorldPos;
+		}
 	}
 
 	if (ButtonWasPressed(input->mouse.right)) {
