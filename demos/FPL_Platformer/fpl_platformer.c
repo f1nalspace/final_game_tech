@@ -735,6 +735,12 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, cTextForeground);
 		blockPos = V2fSub(blockPos, V2fInit(0, fontHeight));
 
+		// Active camera
+		fplStringFormat(debugOSDCharBuffer, fplArrayCount(debugOSDCharBuffer), "Active Camera: %u", activeCamera->id);
+		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, cTextBackground);
+		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, cTextForeground);
+		blockPos = V2fSub(blockPos, V2fInit(0, fontHeight));
+
 		// Player states
 		fplStringFormat(debugOSDCharBuffer, fplArrayCount(debugOSDCharBuffer), "Player ground: %s", player->groundState.current ? "yes" : "no");
 		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, cTextBackground);
