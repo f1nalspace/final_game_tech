@@ -12,6 +12,9 @@ License:
 	Copyright 2017-2025 Torsten Spaete
 
 Changelog
+	## 2025-11-29
+	- Added macros for creating types as a constant
+
 	## 2025-11-24
 	- Added function V2fClamp()
 
@@ -110,6 +113,9 @@ typedef union Vec2i {
 	int m[2];
 } Vec2i;
 
+#define V2I(x, y) {x, y}
+#define V2IArg(v) (Vec2i)v
+
 fpl_force_inline Vec2i V2iZero() {
 	Vec2i result = fplZeroInit;
 	return(result);
@@ -151,6 +157,9 @@ typedef union Vec2f {
 	};
 	float m[2];
 } Vec2f;
+
+#define V2F(x, y) {x, y}
+#define V2FArg(v) (Vec2f)v
 
 fpl_force_inline Vec2f V2fZero() {
 	Vec2f result = fplZeroInit;
@@ -197,6 +206,9 @@ typedef struct Rect2f {
 	Vec2f size;
 } Rect2f;
 
+#define R2F(p, s) {p, s}
+#define R2FArg(v) (Rect2f)v
+
 fpl_force_inline Rect2f R2fInit(const Vec2f pos, const Vec2f size) {
 	Rect2f result = fplStructInit(Rect2f, pos, size);
 	return(result);
@@ -230,6 +242,9 @@ typedef union Vec3f {
 	};
 	float m[3];
 } Vec3f;
+
+#define V3F(x, y, z) {x, y, z}
+#define V3FArg(v) (Vec3f)v
 
 fpl_force_inline Vec3f V3fZero() {
 	Vec3f result = fplZeroInit;
@@ -314,6 +329,9 @@ typedef union Vec4f {
 	float m[4];
 } Vec4f;
 
+#define V4F(x, y, z, w) {x, y, z, w}
+#define V4FArg(v) (Vec4f)v
+
 fpl_force_inline Vec4f V4fZero() {
 	Vec4f result = fplStructInit(Vec4f, 0, 0, 0, 1);
 	return(result);
@@ -368,6 +386,9 @@ typedef union Mat2f {
 	float m[4];
 } Mat2f;
 
+#define M2F(c1, c2) {c1, c2}
+#define M2FArg(m) (Mat2f)m
+
 fpl_force_inline Mat2f M2fDefault() {
 	Mat2f result = fplStructInit(Mat2f, V2fInit(1, 0), V2fInit(0, 1));
 	return(result);
@@ -399,6 +420,9 @@ typedef union Mat4f {
 	};
 	float m[16];
 } Mat4f;
+
+#define M4F(c1, c2, c3, c4) {c1, c2, c3, c4}
+#define M4FArg(m) (Mat4f)m
 
 fpl_force_inline Mat4f M4fInit(const float value) {
 	Mat4f result = {
@@ -445,6 +469,9 @@ typedef union Quaternion {
 	};
 } Quaternion;
 
+#define QU(w, x, y, z) {w, x, y, z}
+#define QUArg(v) (Quaternion)v
+
 fpl_force_inline Quaternion QuatInit(const float w, const float x, const float y, const float z) {
 	Quaternion result;
 	result.w = w;
@@ -490,12 +517,18 @@ typedef union Pixel {
 	uint8_t m[4];
 } Pixel;
 
+#define PX(b, g, r, a) {b, g, r, a}
+#define PXArg(p) (Pixel)p
+
 typedef struct Viewport4i {
 	int32_t x;
 	int32_t y;
 	int32_t w;
 	int32_t h;
 } Viewport4i;
+
+#define VP4I(x, y, w, h) {x, y, w, h}
+#define VP4IArg(vp) (Viewport4i)vp
 
 fpl_force_inline Viewport4i VP4iInit(const int32_t x, const int32_t y, const int32_t w, const int32_t h) {
 	return fplStructInit(Viewport4i, x, y, w, h);
@@ -507,6 +540,9 @@ typedef struct Viewport4f {
 	float w;
 	float h;
 } Viewport4f;
+
+#define VP4F(x, y, w, h) {x, y, w, h}
+#define VP4FArg(vp) (Viewport4f)vp
 
 fpl_force_inline Viewport4f VP4fInit(const float x, const float y, const float w, const float h) {
 	return fplStructInit(Viewport4f, x, y, w, h);
