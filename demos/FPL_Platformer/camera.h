@@ -42,13 +42,16 @@ typedef struct Camera {
 	float worldToPixels;
 	// Factor that is used to convert from screen coordinate to world coordinates
 	float pixelsToWorld;
+	// ID of the camera
+	uint32_t id;
 } Camera;
 
-fpl_inline bool CameraInit(Camera *camera, const Vec2f offset, const float scale, const Vec2f viewRadius) {
+fpl_inline bool CameraInit(Camera *camera, const uint32_t id, const Vec2f offset, const float scale, const Vec2f viewRadius) {
 	if (camera == fpl_null) {
 		return false; // Invalid arguments
 	}
 	fplClearStruct(camera);
+	camera->id = id;
 	camera->transform[0].offset = V2fNegate(offset);
 	camera->transform[0].scale = scale;
 	camera->transform[1] = camera->transform[0];

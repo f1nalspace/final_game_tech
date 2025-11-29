@@ -46,6 +46,12 @@
 #define MapTileIDRange ((MapTileIDEnd - MapTileIDStart) + 1UL)
 
 //
+// Cameras
+//
+#define CameraMainID 1
+#define CameraEditorID 1000
+
+//
 // World types
 //
 typedef struct Entities {

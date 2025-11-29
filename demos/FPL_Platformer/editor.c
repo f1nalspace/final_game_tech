@@ -39,7 +39,7 @@ fpl_extern bool EditorInit(fmemMemoryBlock *gameMemory, Editor *editor, GameAsse
 	editor->isPanning = false;
 
 	Vec2f viewRadius = V2fMultScalar(V2fInit(WorldRadiusW, WorldRadiusH), GameViewInvScale);
-	if (!CameraInit(&editor->camera, V2fInit(0.0f, 0.0f), 1.0f, viewRadius)) {
+	if (!CameraInit(&editor->camera, CameraEditorID, V2fInit(0.0f, 0.0f), 1.0f, viewRadius)) {
 		return false;
 	}
 

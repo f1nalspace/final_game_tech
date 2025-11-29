@@ -155,6 +155,7 @@ typedef struct GameState {
 	Editor editor;
 
 	fmemMemoryBlock *memory;
+	Camera *activeCamera;
 
 	float framesPerSecond[2];
 	float deltaTime;
@@ -253,7 +254,8 @@ static bool GameStateInitInternal(fmemMemoryBlock *memory, GameState *state) {
 	state->projection = M4fOrthoRH(-WorldRadiusW, WorldRadiusW, -WorldRadiusH, WorldRadiusH, 0.0f, 1.0f);
 
 	// NOTE(tspaete): This will never change across the entire game run
-	state->camera.viewRadius = V2fMultScalar(V2fInit(WorldRadiusW, WorldRadiusH), GameViewInvScale);
+	Vec2f gameViewRadius = V2fMultScalar(V2fInit(WorldRadiusW, WorldRadiusH), GameViewInvScale);
+	CameraInit(&state->camera, CameraMainID, V2fZero(), 1.0f, gameViewRadius);
 
 	// NOTE(tspaete): These may be overwritten in GameStateLoad()
 	state->isDebugRendering = true;
@@ -275,8 +277,6 @@ static bool GameStateLoadInternal(RenderState *renderState, GameState *state) {
 	if (!AssetsLoad(renderState, assets)) {
 		return false; // Failed to load game assets (insufficient memory, wrong paths, files not found, etc.)
 	}
-
-	
 
 	return true;
 }
