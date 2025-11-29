@@ -61,9 +61,9 @@ static TileType gTestLevelTiles[TestLevel_Width * TestLevel_Height] = {
 	1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
 	1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
 	1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-	1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1,
-	1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-	1, 0, 3, 0, 0, 1, 0, 1, 0, 0, 1,
+	1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+	1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+	1, 0, 3, 0, 0, 0, 0, 0, 0, 0, 1,
 	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
 };
 
@@ -117,7 +117,7 @@ typedef struct GameState {
 	bool isDebugRendering;
 } GameState;
 
-static void GameStateRelease(GameState *state) {
+static void GameStateReleaseInternal(GameState *state) {
 	if (state == fpl_null) {
 		return; // Invalid arguments
 	}
@@ -125,7 +125,7 @@ static void GameStateRelease(GameState *state) {
 	fplClearStruct(state);
 }
 
-static void GameChangeMode(GameState *state, const GameMode newMode) {
+static void GameChangeModeInternal(GameState *state, const GameMode newMode) {
 	World *world = &state->world;
 	Entity *player = &world->entities.player;
 	Editor *editor = &state->editor;
@@ -174,7 +174,7 @@ static void GameChangeMode(GameState *state, const GameMode newMode) {
 	}
 }
 
-static bool GameStateInit(fmemMemoryBlock *memory, GameState *state) {
+static bool GameStateInitInternal(fmemMemoryBlock *memory, GameState *state) {
 	if (memory == fpl_null || state == fpl_null) {
 		return false; // Invalid arguments
 	}
@@ -205,14 +205,14 @@ static bool GameStateInit(fmemMemoryBlock *memory, GameState *state) {
 	// NOTE(tspaete): This will never change across the entire game run
 	state->camera.viewRadius = V2fMultScalar(V2fInit(WorldRadiusW, WorldRadiusH), GameViewInvScale);
 
+	// NOTE(tspaete): These may be overwritten in GameStateLoad()
 	state->isDebugRendering = true;
-
-	GameChangeMode(state, GameMode_Game);
+	GameChangeModeInternal(state, GameMode_Game);
 
 	return true;
 }
 
-static bool GameStateLoad(RenderState *renderState, GameState *state) {
+static bool GameStateLoadInternal(RenderState *renderState, GameState *state) {
 	if (state == fpl_null) {
 		return false; // Invalid arguments
 	}
@@ -226,15 +226,30 @@ static bool GameStateLoad(RenderState *renderState, GameState *state) {
 		return false; // Failed to load game assets (insufficient memory, wrong paths, files not found, etc.)
 	}
 
-	if (!WorldLoad(world, &gTestLevel)) {
-		return false; // Failed to load the map into the world (insufficient memory, wrong map, etc.)
-	}
-
-	GameChangeMode(state, GameMode_EditorPause);
+	
 
 	return true;
 }
 
+static bool GameStartInternal(GameState *state) {
+	if (state == fpl_null) {
+		return false;
+	}
+
+	World *world = &state->world;
+
+	if (!WorldLoad(world, &gTestLevel)) {
+		return false; // Failed to load the map into the world (insufficient memory, wrong map, etc.)
+	}
+
+	GameChangeModeInternal(state, GameMode_EditorPlay);
+
+	return true;
+}
+
+//
+// Entry point for one-time game initialization
+//
 extern bool GameInit(GameMemory *gameMemory) {
 	if (gameMemory == fpl_null) {
 		return false; // Invalid arguments
@@ -251,17 +266,24 @@ extern bool GameInit(GameMemory *gameMemory) {
 
 	RenderState *renderState = gameMemory->render;
 
-	if (!GameStateInit(gameMem, gameState)) {
+	if (!GameStateInitInternal(gameMem, gameState)) {
 		return false; // Failed to initialize game state
 	}
 
-	if (!GameStateLoad(renderState, gameState)) {
+	if (!GameStateLoadInternal(renderState, gameState)) {
 		return false; // Failed to load the test level
+	}
+
+	if (!GameStartInternal(gameState)) {
+		return false; // Failed to start the game
 	}
 
 	return true;
 }
 
+//
+// Entry point for one-time game release
+//
 extern void GameRelease(GameMemory *gameMemory) {
 	if (gameMemory == fpl_null) {
 		return; // Invalid arguments
@@ -270,9 +292,12 @@ extern void GameRelease(GameMemory *gameMemory) {
 	if (gameState == fpl_null) {
 		return; // Game state not allocated
 	}
-	GameStateRelease(gameState);
+	GameStateReleaseInternal(gameState);
 }
 
+//
+// Entry point for getting a value indicating whether the game is exiting or not
+//
 extern bool IsGameExiting(GameMemory *gameMemory) {
 	if (gameMemory == fpl_null) {
 		return false; // Invalid arguments
@@ -282,6 +307,9 @@ extern bool IsGameExiting(GameMemory *gameMemory) {
 	return state->isExiting;
 }
 
+//
+// Entry point for handling the game input
+//
 extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	if (!input->isActive) {
 		return;
@@ -306,7 +334,6 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	const bool isEditorMode = state->mode != GameMode_Game;
 
 	// Camera
-
 	// TODO(final): Needs only to be updated when viewport changes!
 	Viewport viewport = ViewportComputeByAspect(input->windowSize, WorldAspect);;
 	CameraUpdateViewport(camera, &viewport, WorldWidth);
@@ -339,13 +366,13 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	if (ButtonWasPressed(keyboardController->debug1)) {
 		switch (state->mode) {
 			case GameMode_Game:
-				GameChangeMode(state, GameMode_EditorPlay);
+				GameChangeModeInternal(state, GameMode_EditorPlay);
 				break;
 			case GameMode_EditorPlay:
-				GameChangeMode(state, GameMode_EditorPause);
+				GameChangeModeInternal(state, GameMode_EditorPause);
 				break;
 			case GameMode_EditorPause:
-				GameChangeMode(state, GameMode_Game);
+				GameChangeModeInternal(state, GameMode_Game);
 				break;
 			default:
 				break;
@@ -361,6 +388,9 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	}
 }
 
+//
+// Entry point for updating the game logic
+//
 extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
 	if (!input->isActive) {
 		return;
@@ -431,6 +461,23 @@ static void RenderOrigin(RenderState *renderState, const Vec2f origin) {
 	RenderPushQuad(renderState, origin, 1.0f, V4fInit(0.25f, 0.25f, 0.25f, 1), true, 1.0f);
 }
 
+constant Vec4f cColorMapGhostTile = V4F(0.5f, 0.5f, 0.5f, 1.0f);
+constant Vec4f cColorPlayerTile = V4F(0.3f, 0.1f, 0.7f, 1.0f);
+constant Vec4f cColorGroundSensorTile = V4F(0.0f, 1.0f, 0.0f, 1.0f);
+constant Vec4f cColorGroundSensor = V4F(0.0f, 1.0f, 0.0f, 1.0f);
+
+constant Vec4f cColorContactPointA = V4F(1.0f, 0.0f, 0.0f, 1.0f);
+constant Vec4f cColorContactPointB = V4F(0.0f, 0.0f, 1.0f, 1.0f);
+
+constant Vec4f cColorWhite = V4F(1.0f, 1.0f, 1.0f, 1.0f);
+constant Vec4f cColorBlack = V4F(0.0f, 0.0f, 0.0f, 1.0f);
+
+constant Vec4f cTextBackground = V4F(0.0f, 0.0f, 0.0f, 1.0f);
+constant Vec4f cTextForeground = V4F(1.0f, 1.0f, 1.0f, 1.0f);
+
+//
+// Entry point for rendering the current game frame
+//
 extern void GameRender(GameMemory *gameMemory, const Input *input, const float alpha) {
 	GameState *state = gameMemory->game;
 	assert(state != fpl_null);
@@ -455,21 +502,15 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	const float cameraScale = F32Lerp(state->camera.transform[1].scale, alpha, state->camera.transform[0].scale);
 	const Vec2f cameraOffset = V2fLerp(state->camera.transform[1].offset, alpha, state->camera.transform[0].offset);
 
-	Mat4f translationMat = M4fTranslationV2(cameraOffset);
-	Mat4f scaleMat = M4fScaleV2(V2fInit(cameraScale, cameraScale));
+	const Mat4f translationMat = M4fTranslationV2(cameraOffset);
+	const Mat4f scaleMat = M4fScaleV2(V2fInit(cameraScale, cameraScale));
 
 	state->view = M4fMult(scaleMat, translationMat);
 	state->viewProjection = M4fMult(state->projection, state->view);
 
-	Vec2i mapSize = V2iInit(map->width, map->height);
+	const Vec2i mapSize = V2iInit(map->width, map->height);
 
 	// TODO(final): Move colors to a global static struct
-	Vec4f mapSolidTileColor = V4fInit(1.0f, 1.0f, 1.0f, 1.0f);
-	Vec4f mapGhostTileColor = V4fInit(0.5f, 0.5f, 0.5f, 1.0f);
-
-	Vec4f playerTileColor = V4fInit(0.3f, 0.1f, 0.7f, 1.0f);
-	Vec4f groundSensorTileColor = V4fInit(0.0f, 1.0f, 0.0f, 1.0f);
-	Vec4f groundSensorColor = V4fInit(0.0f, 1.0f, 0.0f, 1.0f);
 
 	RenderPushViewport(renderState, camera->viewport.x, camera->viewport.y, camera->viewport.w, camera->viewport.h);
 	RenderPushClear(renderState, V4fInit(0, 0, 0, 1), ClearFlags_Color | ClearFlags_Depth);
@@ -493,10 +534,10 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	}
 
 	// Map
-	int mapLeft = map->origin.x;
-	int mapBottom = map->origin.y;
-	int mapRight = mapLeft + map->width - 1;
-	int mapTop = mapBottom + map->height - 1;
+	const int mapLeft = map->origin.x;
+	const int mapBottom = map->origin.y;
+	const int mapRight = mapLeft + map->width - 1;
+	const int mapTop = mapBottom + map->height - 1;
 	for (int y = map->origin.y; y < map->origin.y + mapSize.h; ++y) {
 		for (int x = map->origin.x; x < map->origin.x + mapSize.w; ++x) {
 			Vec2i tilePos = V2iInit(x, y);
@@ -506,142 +547,19 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 			if (MapTileTypeIsVisible(tile.type)) {
 				Vec2f tileCenter = V2fAdd(worldPos, TileRadius);
 
-				// Initialize the tile position in the texture to a invalid one, so we see when our style mapping failed
-				Vec2i textureTilePos = V2iAdd(V2iZero(), (Vec2i)TILESET_A_COLLIDABLE_1x1_INVALID);
-
-				if (mask > 0) {
-					uint8_t maskIndex = TileAreaMaskToU8(mask);
-					TileRule rule = gMapTileRules[maskIndex];
-					if (rule.valid) {
-						textureTilePos = V2iAdd(rule.offset, rule.pos);
-					}
-				}
-
-#if 0
-				//
-				// Mask
-				//
-				bool hasCentroid = IsBitMaskSet(mask, TileAreaMask_Centroid);
-				bool hasLeft = IsBitMaskSet(mask, TileAreaMask_LeftSide);
-				bool hasRight = IsBitMaskSet(mask, TileAreaMask_RightSide);
-				bool hasTop = IsBitMaskSet(mask, TileAreaMask_TopCenter);
-				bool hasBottom = IsBitMaskSet(mask, TileAreaMask_BottomCenter);
-
-				if (!hasLeft && !hasRight && !hasTop && !hasBottom) {
-					// Isolated tile
-					textureTilePos = V2iAdd(V2iZero(), TILESET_A_COLLIDABLE_1x1_A);
-				} else if (hasLeft && hasRight && hasTop && hasBottom) {
-					// Surrounded on all sides
-					textureTilePos = V2iAdd(TILESET_A_COLLIDABLE_3x3_OFFSET, TILESET_A_COLLIDABLE_3x3_MIDDLE);
-				} else if (hasLeft && hasRight && !hasTop && !hasBottom) {
-					// Horizontal center
-					textureTilePos = V2iAdd(TILESET_A_COLLIDABLE_3x1_OFFSET, TILESET_A_COLLIDABLE_3x1_CENTER);
-				} else if (!hasLeft && hasRight && !hasTop && !hasBottom) {
-					// Horizontal left
-					textureTilePos = V2iAdd(TILESET_A_COLLIDABLE_3x1_OFFSET, TILESET_A_COLLIDABLE_3x1_LEFT);
-				} else if (hasLeft && !hasRight && !hasTop && !hasBottom) {
-					// Horizontal right
-					textureTilePos = V2iAdd(TILESET_A_COLLIDABLE_3x1_OFFSET, TILESET_A_COLLIDABLE_3x1_RIGHT);
-				} else if (!hasLeft && !hasRight && hasTop && hasBottom) {
-					// Vertical center
-					textureTilePos = V2iAdd(TILESET_A_COLLIDABLE_1x3_OFFSET, TILESET_A_COLLIDABLE_1x3_MIDDLE);
-				} else if (!hasLeft && !hasRight && !hasTop && hasBottom) {
-					// Vertical top
-					textureTilePos = V2iAdd(TILESET_A_COLLIDABLE_1x3_OFFSET, TILESET_A_COLLIDABLE_1x3_TOP);
-				} else if (!hasLeft && !hasRight && hasTop && !hasBottom) {
-					// Vertical bottom
-					textureTilePos = V2iAdd(TILESET_A_COLLIDABLE_1x3_OFFSET, TILESET_A_COLLIDABLE_1x3_BOTTOM);
-				} else if (hasLeft && !hasRight && hasTop && hasBottom) {
-					// Left edge
-					textureTilePos = V2iAdd(TILESET_A_COLLIDABLE_3x3_OFFSET, TILESET_A_COLLIDABLE_3x3_SIDE_RIGHT);
-				} else if (!hasLeft && hasRight && hasTop && hasBottom) {
-					// Right edge
-					textureTilePos = V2iAdd(TILESET_A_COLLIDABLE_3x3_OFFSET, TILESET_A_COLLIDABLE_3x3_SIDE_LEFT);
-				} else if (hasLeft && hasRight && hasTop && !hasBottom) {
-					// Top edge
-					textureTilePos = V2iAdd(TILESET_A_COLLIDABLE_3x3_OFFSET, TILESET_A_COLLIDABLE_3x3_BOTTOM_MIDDLE);
-				} else if (hasLeft && hasRight && !hasTop && hasBottom) {
-					// Bottom edge
-					textureTilePos = V2iAdd(TILESET_A_COLLIDABLE_3x3_OFFSET, TILESET_A_COLLIDABLE_3x3_TOP_MIDDLE);
-				} else if (hasLeft && hasTop && !hasRight && !hasBottom) {
-					// Top-left corner
-					textureTilePos = V2iAdd(TILESET_A_COLLIDABLE_3x3_OFFSET, TILESET_A_COLLIDABLE_3x3_BOTTOM_RIGHT);
-				} else if (hasRight && hasTop && !hasLeft && !hasBottom) {
-					// Top-right corner
-					textureTilePos = V2iAdd(TILESET_A_COLLIDABLE_3x3_OFFSET, TILESET_A_COLLIDABLE_3x3_BOTTOM_LEFT);
-				} else if (hasLeft && hasBottom && !hasRight && !hasTop) {
-					// Bottom-left corner
-					textureTilePos = V2iAdd(TILESET_A_COLLIDABLE_3x3_OFFSET, TILESET_A_COLLIDABLE_3x3_TOP_RIGHT);
-				} else if (hasRight && hasBottom && !hasLeft && !hasTop) {
-					// Bottom-right corner
-					textureTilePos = V2iAdd(TILESET_A_COLLIDABLE_3x3_OFFSET, TILESET_A_COLLIDABLE_3x3_TOP_LEFT);
+				// Very simple auto-tiling using 48 tiles from 256 (single-edge are ignored)
+				Vec2i textureTilePos;
+				TileRule rule = gMapTileRules[mask & 0xFF];
+				if (rule.valid) {
+					textureTilePos = V2iAdd(rule.offset, rule.pos);
 				} else {
-					// Fallback
-					textureTilePos = V2iAdd(V2iZero(), TILESET_A_COLLIDABLE_1x1_INVALID);
-				}
-
-				//
-				// T-junctions
-				//
-				if (hasLeft && hasRight && hasBottom && !hasTop) {
-					// T-junction open at top
-					textureTilePos = V2iAdd(TILESET_A_BORDER_3x3_OFFSET, TILESET_A_BORDER_3x3_TOP_MIDDLE);
-				} else if (hasLeft && hasRight && !hasBottom && hasTop) {
-					// T-junction open at bottom
-					textureTilePos = V2iAdd(TILESET_A_BORDER_3x3_OFFSET, TILESET_A_BORDER_3x3_BOTTOM_MIDDLE);
-				} else if (hasTop && hasBottom && hasRight && !hasLeft) {
-					// T-junction open at left
-					textureTilePos = V2iAdd(TILESET_A_BORDER_3x3_OFFSET, TILESET_A_BORDER_3x3_SIDE_LEFT);
-				} else if (hasTop && hasBottom && hasLeft && !hasRight) {
-					// T-junction open at right
-					textureTilePos = V2iAdd(TILESET_A_BORDER_3x3_OFFSET, TILESET_A_BORDER_3x3_SIDE_RIGHT);
-				}
-
-				//
-				// Connected Corners
-				//
-				if (hasBottom && hasRight && !hasTop && !hasLeft) {
-					// Top left corner connected to the right and bottom
-					textureTilePos = V2iAdd(TILESET_A_BORDER_3x3_OFFSET, TILESET_A_BORDER_3x3_TOP_LEFT);
-				} else if (hasTop && hasLeft && !hasBottom && !hasRight) {
-					// Bottom right corner connected to the left and top
-					textureTilePos = V2iAdd(TILESET_A_BORDER_3x3_OFFSET, TILESET_A_BORDER_3x3_BOTTOM_RIGHT);
-				} else if (hasBottom && hasLeft && !hasTop && !hasRight) {
-					// Top left corner connected to the left and bottom
-					textureTilePos = V2iAdd(TILESET_A_BORDER_3x3_OFFSET, TILESET_A_BORDER_3x3_TOP_RIGHT);
-				} else if (hasTop && hasRight && !hasBottom && !hasLeft) {
-					// Bottom left corner connected to the right and top
-					textureTilePos = V2iAdd(TILESET_A_BORDER_3x3_OFFSET, TILESET_A_BORDER_3x3_BOTTOM_LEFT);
-				}
-#endif
-
-				//
-				// Outline border
-				//
-				if (x == mapLeft) {
-					textureTilePos = V2iAdd(V2IArg(TILESET_A_BORDER_3x3_OFFSET), V2IArg(TILESET_A_BORDER_3x3_SIDE_LEFT));
-				} else if (x == mapRight) {
-					textureTilePos = V2iAdd(V2IArg(TILESET_A_BORDER_3x3_OFFSET), V2IArg(TILESET_A_BORDER_3x3_SIDE_RIGHT));
-				}
-				if (y == mapBottom) {
-					textureTilePos = V2iAdd(V2IArg(TILESET_A_BORDER_3x3_OFFSET), V2IArg(TILESET_A_BORDER_3x3_BOTTOM_MIDDLE));
-				} else if (y == mapTop) {
-					textureTilePos = V2iAdd(V2IArg(TILESET_A_BORDER_3x3_OFFSET), V2IArg(TILESET_A_BORDER_3x3_TOP_MIDDLE));
-				}
-				if (x == mapLeft && y == mapBottom) {
-					textureTilePos = V2iAdd(V2IArg(TILESET_A_BORDER_3x3_OFFSET), V2IArg(TILESET_A_BORDER_3x3_BOTTOM_LEFT));
-				} else if (x == mapRight && y == mapBottom) {
-					textureTilePos = V2iAdd(V2IArg(TILESET_A_BORDER_3x3_OFFSET), V2IArg(TILESET_A_BORDER_3x3_BOTTOM_RIGHT));
-				} else if (x == mapLeft && y == mapTop) {
-					textureTilePos = V2iAdd(V2IArg(TILESET_A_BORDER_3x3_OFFSET), V2IArg(TILESET_A_BORDER_3x3_TOP_LEFT));
-				} else if (x == mapRight && y == mapTop) {
-					textureTilePos = V2iAdd(V2IArg(TILESET_A_BORDER_3x3_OFFSET), V2IArg(TILESET_A_BORDER_3x3_TOP_RIGHT));
+					textureTilePos = V2iAdd(V2iZero(), (Vec2i)TILESET_1x1_INVALID);
 				}
 
 				UVRect tileUVRect = UVRectFromTile(V2iInit(assets->tilesetTexture.data.width, assets->tilesetTexture.data.height), V2iInit(32, 32), 0, textureTilePos);
 				RenderPushSprite(renderState, tileCenter, TileRadius, assets->tilesetTexture.texture, V4fInit(1.0f, 1.0f, 1.0f, 1.0f), tileUVRect, SpriteFlags_FlipV);
 			} else if (tile.type == TileType_Ghost) {
-				RenderPushRectangle(renderState, worldPos, TileSize, mapGhostTileColor, false, 2.0f);
+				RenderPushRectangle(renderState, worldPos, TileSize, cColorMapGhostTile, false, 2.0f);
 			}
 		}
 	}
@@ -673,14 +591,14 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 		Vec2f groundSensorStartRight = V2fAdd(playerPos, V2fInit(groundSensorRight, -(player->radius.h + EntitySensorGroundDistanceFromFoot)));
 		Vec2f groundSensorEndLeft = V2fAddMultScalar(groundSensorStartLeft, groundSensorDirection, groundSensorDepth);
 		Vec2f groundSensorEndRight = V2fAddMultScalar(groundSensorStartRight, groundSensorDirection, groundSensorDepth);
-		RenderPushCircle(renderState, groundSensorEndLeft, 2.0f, 8, groundSensorColor, true, 0.0f);
-		RenderPushCircle(renderState, groundSensorEndRight, 2.0f, 8, groundSensorColor, true, 0.0f);
+		RenderPushCircle(renderState, groundSensorEndLeft, 2.0f, 8, cColorGroundSensor, true, 0.0f);
+		RenderPushCircle(renderState, groundSensorEndRight, 2.0f, 8, cColorGroundSensor, true, 0.0f);
 		Vec2i groundSensorEndLeftTilePos = MapWorldCoordsToTile(map, groundSensorEndLeft);
 		Vec2i groundSensorEndRightTilePos = MapWorldCoordsToTile(map, groundSensorEndRight);
 		Vec2f worldPosLeft = MapTileCoordsToWorld(map, groundSensorEndLeftTilePos);
 		Vec2f worldPosRight = MapTileCoordsToWorld(map, groundSensorEndRightTilePos);
-		RenderPushRectangleCenter(renderState, V2fAdd(worldPosLeft, TileRadius), TileRadius, groundSensorTileColor, false, 1.0f);
-		RenderPushRectangleCenter(renderState, V2fAdd(worldPosRight, TileRadius), TileRadius, groundSensorTileColor, false, 1.0f);
+		RenderPushRectangleCenter(renderState, V2fAdd(worldPosLeft, TileRadius), TileRadius, cColorGroundSensorTile, false, 1.0f);
+		RenderPushRectangleCenter(renderState, V2fAdd(worldPosRight, TileRadius), TileRadius, cColorGroundSensorTile, false, 1.0f);
 	}
 
 	// Get player bounds
@@ -698,7 +616,7 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 				Vec2i tilePos = V2iInit(x, y);
 				Vec2f worldPos = MapTileCoordsToWorld(map, tilePos);
 				Vec2f tileCenter = V2fAdd(worldPos, TileRadius);
-				RenderPushRectangleCenter(renderState, tileCenter, TileRadius, playerTileColor, false, 1.0f);
+				RenderPushRectangleCenter(renderState, tileCenter, TileRadius, cColorPlayerTile, false, 1.0f);
 			}
 		}
 	}
@@ -708,8 +626,8 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	if (renderContacts) {
 		for (size_t i = 0; i < physics->contactList.used; ++i) {
 			const Contact *contact = physics->contactList.data + i;
-			RenderPushCircle(renderState, contact->posA, 2.0f, 16, V4fInit(1.0f, 0.0f, 0.0f, 1.0f), true, 0.0f);
-			RenderPushCircle(renderState, contact->posB, 2.0f, 16, V4fInit(0.0f, 0.0f, 1.0f, 1.0f), true, 0.0f);
+			RenderPushCircle(renderState, contact->posA, 2.0f, 16, cColorContactPointA, true, 0.0f);
+			RenderPushCircle(renderState, contact->posB, 2.0f, 16, cColorContactPointB, true, 0.0f);
 			RenderNormal(renderState, contact->posB, contact->normal, 10.0f, 5.0f);
 		}
 	}
@@ -739,8 +657,6 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 		RenderSetMatrix(renderState, &state->projection);
 
 		const FontAsset *font = &assets->consoleFont;
-		Vec4f textColor = V4fInit(1, 1, 1, 1);
-		Vec4f blackColor = V4fInit(0, 0, 0, 1);
 		Vec2f blockPos = V2fInit(-w, h);
 		float fontHeight = 6.0f;
 
@@ -748,34 +664,34 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 		FormatSize(gameMemory->memory->used, fplArrayCount(debugOSDSizeCharBuffer[0]), debugOSDSizeCharBuffer[0]);
 		FormatSize(gameMemory->memory->size, fplArrayCount(debugOSDSizeCharBuffer[1]), debugOSDSizeCharBuffer[1]);
 		fplStringFormat(debugOSDCharBuffer, fplArrayCount(debugOSDCharBuffer), "Game Memory: %s / %s bytes", debugOSDSizeCharBuffer[0], debugOSDSizeCharBuffer[1]);
-		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, blackColor);
-		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
+		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, cTextBackground);
+		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, cTextForeground);
 
 		// Render memory
 		FormatSize(renderState->lastMemoryUsage, fplArrayCount(debugOSDSizeCharBuffer[0]), debugOSDSizeCharBuffer[0]);
 		FormatSize(renderState->memory.size, fplArrayCount(debugOSDSizeCharBuffer[1]), debugOSDSizeCharBuffer[1]);
 		fplStringFormat(debugOSDCharBuffer, fplArrayCount(debugOSDCharBuffer), "Render Memory: %s / %s bytes", debugOSDSizeCharBuffer[0], debugOSDSizeCharBuffer[1]);
-		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x + w - 1, blockPos.y - 1), fontHeight, 0.0f, -1.0f, blackColor);
-		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x + w, blockPos.y), fontHeight, 0.0f, -1.0f, textColor);
+		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x + w - 1, blockPos.y - 1), fontHeight, 0.0f, -1.0f, cTextBackground);
+		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x + w, blockPos.y), fontHeight, 0.0f, -1.0f, cTextForeground);
 
 		// Frame timings
 		fplStringFormat(debugOSDCharBuffer, fplArrayCount(debugOSDCharBuffer), "Fps: %.5f, Delta: %.5f", state->framesPerSecond[1], state->deltaTime);
-		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x + w * 2.0f - 1, blockPos.y - 1), fontHeight, -1.0f, -1.0f, blackColor);
-		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x + w * 2.0f, blockPos.y), fontHeight, -1.0f, -1.0f, textColor);
+		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x + w * 2.0f - 1, blockPos.y - 1), fontHeight, -1.0f, -1.0f, cTextBackground);
+		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x + w * 2.0f, blockPos.y), fontHeight, -1.0f, -1.0f, cTextForeground);
 
 		blockPos = V2fSub(blockPos, V2fInit(0, fontHeight * 2.0f));
 
 		// Game state
-		const char *gameModeName = gGameModeNames[state->mode];
+		const char *gameModeName = gGameModeNames[state->mode % GameMode_Count];
 		fplStringFormat(debugOSDCharBuffer, fplArrayCount(debugOSDCharBuffer), "Game Mode: %s", gameModeName);
-		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, blackColor);
-		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
+		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, cTextBackground);
+		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, cTextForeground);
 		blockPos = V2fSub(blockPos, V2fInit(0, fontHeight));
 
 		// Player states
 		fplStringFormat(debugOSDCharBuffer, fplArrayCount(debugOSDCharBuffer), "Player ground: %s", player->groundState.current ? "yes" : "no");
-		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, blackColor);
-		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
+		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, cTextBackground);
+		RenderPushText(renderState, debugOSDCharBuffer, fplGetStringLength(debugOSDCharBuffer), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, cTextForeground);
 		blockPos = V2fSub(blockPos, V2fInit(0, fontHeight));
 	}
 

@@ -5,7 +5,7 @@
 
 #include "json/json.h"
 
-#define constant fpl_internal const
+#define constant static const
 
 #define IsBitMaskSet(value, mask) (((value) & (mask)) == (mask))
 
