@@ -29,15 +29,21 @@ fpl_globalvar const char *gGameModeNames[GameMode_Count] = {
 	"Editor (Full)",
 };
 
-static void GameStateReleaseInternal(GameState *state) {
-	if (state == fpl_null) {
-		return; // Invalid arguments
-	}
-	AssetsFree(&state->assets);
-	fplClearStruct(state);
-}
+constant Vec4f cColorMapGhostTile = V4F(0.5f, 0.5f, 0.5f, 1.0f);
+constant Vec4f cColorPlayerTile = V4F(0.3f, 0.1f, 0.7f, 1.0f);
+constant Vec4f cColorGroundSensorTile = V4F(0.0f, 1.0f, 0.0f, 1.0f);
+constant Vec4f cColorGroundSensor = V4F(0.0f, 1.0f, 0.0f, 1.0f);
 
-static void GameChangeModeInternal(GameState *state, const GameMode newMode) {
+constant Vec4f cColorContactPointA = V4F(1.0f, 0.0f, 0.0f, 1.0f);
+constant Vec4f cColorContactPointB = V4F(0.0f, 0.0f, 1.0f, 1.0f);
+
+constant Vec4f cColorWhite = V4F(1.0f, 1.0f, 1.0f, 1.0f);
+constant Vec4f cColorBlack = V4F(0.0f, 0.0f, 0.0f, 1.0f);
+
+constant Vec4f cTextBackground = V4F(0.0f, 0.0f, 0.0f, 1.0f);
+constant Vec4f cTextForeground = V4F(1.0f, 1.0f, 1.0f, 1.0f);
+
+static void ChangeGameMode(GameState *state, const GameMode newMode) {
 	World *world = &state->world;
 	Entity *player = &world->entities.player;
 	Editor *editor = &state->editor;
@@ -75,10 +81,36 @@ static void GameChangeModeInternal(GameState *state, const GameMode newMode) {
 	CameraSetPos(state->activeCamera, player->transform[0].pos, true);
 }
 
-static bool GameStateInitInternal(fmemMemoryBlock *memory, GameState *state) {
-	if (memory == fpl_null || state == fpl_null) {
+static bool StartGame(GameState *state) {
+	if (state == fpl_null) {
+		return false;
+	}
+
+	World *world = &state->world;
+
+	if (!WorldLoad(world, &gTestLevel)) {
+		return false; // Failed to load the map into the world (insufficient memory, wrong map, etc.)
+	}
+
+	ChangeGameMode(state, GameMode_EditorPause);
+
+	return true;
+}
+
+fpl_extern void PlatformerGameRelease(GameMemory *gameMemory, GameState *state) {
+	if (state == fpl_null) {
+		return; // Invalid arguments
+	}
+	AssetsFree(&state->assets);
+	fplClearStruct(state);
+}
+
+fpl_extern bool PlatformerGameInit(GameMemory *gameMemory, RenderState *renderState, GameState *state) {
+	if (gameMemory == fpl_null || renderState == fpl_null || state == fpl_null) {
 		return false; // Invalid arguments
 	}
+
+	fmemMemoryBlock *memory = gameMemory->memory;
 
 	fplClearStruct(state);
 
@@ -90,6 +122,10 @@ static bool GameStateInitInternal(fmemMemoryBlock *memory, GameState *state) {
 
 	if (!AssetsInit(state->memory, &state->assets)) {
 		return false; // Failed to initialize assets (insufficient memory, etc.)
+	}
+
+	if (!AssetsLoad(renderState, assets)) {
+		return false; // Failed to load game assets (insufficient memory, wrong paths, files not found, etc.)
 	}
 
 	if (!WorldInit(state->memory, world)) {
@@ -109,118 +145,23 @@ static bool GameStateInitInternal(fmemMemoryBlock *memory, GameState *state) {
 
 	// NOTE(tspaete): These may be overwritten in GameStateLoad()
 	state->isDebugRendering = true;
-	GameChangeModeInternal(state, GameMode_Game);
+	ChangeGameMode(state, GameMode_Game);
 
-	return true;
-}
-
-static bool GameStateLoadInternal(RenderState *renderState, GameState *state) {
-	if (state == fpl_null) {
-		return false; // Invalid arguments
-	}
-
-	Editor *editor = &state->editor;
-	World *world = &state->world;
-	GameAssets *assets = &state->assets;
-	Entity *player = &world->entities.player;
-
-	if (!AssetsLoad(renderState, assets)) {
-		return false; // Failed to load game assets (insufficient memory, wrong paths, files not found, etc.)
-	}
-
-	return true;
-}
-
-static bool GameStartInternal(GameState *state) {
-	if (state == fpl_null) {
-		return false;
-	}
-
-	World *world = &state->world;
-
-	if (!WorldLoad(world, &gTestLevel)) {
-		return false; // Failed to load the map into the world (insufficient memory, wrong map, etc.)
-	}
-
-	GameChangeModeInternal(state, GameMode_EditorPause);
-
-	return true;
-}
-
-//
-// Entry point for one-time game initialization
-//
-fpl_extern bool GameInit(GameMemory *gameMemory) {
-	if (gameMemory == fpl_null) {
-		return false; // Invalid arguments
-	}
-
-	fmemMemoryBlock *gameMem = gameMemory->memory;
-	fplAssert(gameMem != fpl_null);
-
-	GameState *gameState = (GameState *)fmemPush(gameMem, sizeof(GameState), fmemPushFlags_Clear);
-	if (gameState == fpl_null) {
-		return false; // Insufficient memory for game state
-	}
-	gameMemory->game = gameState;
-
-	RenderState *renderState = gameMemory->render;
-
-	if (!GameStateInitInternal(gameMem, gameState)) {
-		return false; // Failed to initialize game state
-	}
-
-	if (!GameStateLoadInternal(renderState, gameState)) {
-		return false; // Failed to load the test level
-	}
-
-	if (!GameStartInternal(gameState)) {
+	if (!StartGame(state)) {
 		return false; // Failed to start the game
 	}
 
 	return true;
 }
 
-//
-// Entry point for one-time game release
-//
-fpl_extern void GameRelease(GameMemory *gameMemory) {
-	if (gameMemory == fpl_null) {
-		return; // Invalid arguments
+fpl_extern bool PlatformerGameIsExiting(GameMemory *gameMemory, GameState *state) {
+	if (state == fpl_null) {
+		return true;
 	}
-	GameState *gameState = gameMemory->game;
-	if (gameState == fpl_null) {
-		return; // Game state not allocated
-	}
-	GameStateReleaseInternal(gameState);
-}
-
-//
-// Entry point for getting a value indicating whether the game is exiting or not
-//
-fpl_extern bool IsGameExiting(GameMemory *gameMemory) {
-	if (gameMemory == fpl_null) {
-		return false; // Invalid arguments
-	}
-	GameState *state = gameMemory->game;
-	assert(state != fpl_null);
 	return state->isExiting;
 }
 
-//
-// Entry point for handling the game input
-//
-fpl_extern void GameInput(GameMemory *gameMemory, const Input *input) {
-	if (!input->isActive) {
-		return;
-	}
-
-	GameState *state = gameMemory->game;
-	assert(state != fpl_null);
-
-	RenderState *renderState = gameMemory->render;
-	assert(renderState != fpl_null);
-
+fpl_extern void PlatformerGameInput(GameMemory *gameMemory, GameState *state, RenderState *renderState, const Input *input) {
 	World *world = &state->world;
 	Map *map = &world->map;
 	Entity *player = &world->entities.player;
@@ -265,13 +206,13 @@ fpl_extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	if (ButtonWasPressed(keyboardController->debug1)) {
 		switch (state->mode) {
 			case GameMode_Game:
-				GameChangeModeInternal(state, GameMode_EditorPlay);
+				ChangeGameMode(state, GameMode_EditorPlay);
 				break;
 			case GameMode_EditorPlay:
-				GameChangeModeInternal(state, GameMode_EditorPause);
+				ChangeGameMode(state, GameMode_EditorPause);
 				break;
 			case GameMode_EditorPause:
-				GameChangeModeInternal(state, GameMode_Game);
+				ChangeGameMode(state, GameMode_Game);
 				break;
 			default:
 				break;
@@ -287,17 +228,7 @@ fpl_extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	}
 }
 
-//
-// Entry point for updating the game logic
-//
-fpl_extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
-	if (!input->isActive) {
-		return;
-	}
-
-	GameState *state = gameMemory->game;
-	assert(state != fpl_null);
-
+fpl_extern void PlatformerGameUpdate(GameMemory *gameMemory, GameState *state, const Input *input) {
 	const float dt = input->fixedDeltaTime;
 	const bool isGameUpdating = state->mode != GameMode_EditorPause;
 	const bool isEditorMode = state->mode != GameMode_Game;
@@ -356,29 +287,7 @@ static void RenderOrigin(RenderState *renderState, const Vec2f origin) {
 	RenderPushQuad(renderState, origin, 1.0f, V4fInit(0.25f, 0.25f, 0.25f, 1), true, 1.0f);
 }
 
-constant Vec4f cColorMapGhostTile = V4F(0.5f, 0.5f, 0.5f, 1.0f);
-constant Vec4f cColorPlayerTile = V4F(0.3f, 0.1f, 0.7f, 1.0f);
-constant Vec4f cColorGroundSensorTile = V4F(0.0f, 1.0f, 0.0f, 1.0f);
-constant Vec4f cColorGroundSensor = V4F(0.0f, 1.0f, 0.0f, 1.0f);
-
-constant Vec4f cColorContactPointA = V4F(1.0f, 0.0f, 0.0f, 1.0f);
-constant Vec4f cColorContactPointB = V4F(0.0f, 0.0f, 1.0f, 1.0f);
-
-constant Vec4f cColorWhite = V4F(1.0f, 1.0f, 1.0f, 1.0f);
-constant Vec4f cColorBlack = V4F(0.0f, 0.0f, 0.0f, 1.0f);
-
-constant Vec4f cTextBackground = V4F(0.0f, 0.0f, 0.0f, 1.0f);
-constant Vec4f cTextForeground = V4F(1.0f, 1.0f, 1.0f, 1.0f);
-
-//
-// Entry point for rendering the current game frame
-//
-fpl_extern void GameRender(GameMemory *gameMemory, const Input *input, const float alpha) {
-	GameState *state = gameMemory->game;
-	assert(state != fpl_null);
-
-	RenderState *renderState = gameMemory->render;
-
+fpl_extern void PlatformerGameRender(GameMemory *gameMemory, GameState *state, RenderState *renderState, const Input *input, const float alpha) {
 	const GameAssets *assets = &state->assets;
 
 	Editor *editor = &state->editor;

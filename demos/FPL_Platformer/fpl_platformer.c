@@ -118,6 +118,112 @@ License:
 #include "editor.c"
 #include "game.c"
 
+//
+// Entry point for one-time game initialization
+//
+fpl_extern bool GameInit(GameMemory *gameMemory) {
+	if (gameMemory == fpl_null) {
+		return false; // Invalid arguments
+	}
+
+	fmemMemoryBlock *memory = gameMemory->memory;
+	fplAssert(memory != fpl_null);
+
+	GameState *gameState = (GameState *)fmemPush(memory, sizeof(GameState), fmemPushFlags_Clear);
+	if (gameState == fpl_null) {
+		return false; // Insufficient memory for game state
+	}
+	gameMemory->game = gameState;
+
+	RenderState *renderState = gameMemory->render;
+
+	if (!PlatformerGameInit(gameMemory, renderState, gameState)) {
+		return false; // Failed to initialize game state
+	}
+
+	return true;
+}
+
+//
+// Entry point for one-time game release
+//
+fpl_extern void GameRelease(GameMemory *gameMemory) {
+	if (gameMemory == fpl_null) {
+		return; // Invalid arguments
+	}
+	GameState *gameState = gameMemory->game;
+	if (gameState == fpl_null) {
+		return; // Cannot release game state, because it is already freed
+	}
+	PlatformerGameRelease(gameMemory, gameState);
+}
+
+//
+// Entry point for getting a value indicating whether the game is exiting or not
+//
+fpl_extern bool IsGameExiting(GameMemory *gameMemory) {
+	if (gameMemory == fpl_null) {
+		return false; // Invalid arguments
+	}
+	GameState *state = gameMemory->game;
+	fplAssert(state != fpl_null);
+	return PlatformerGameIsExiting(gameMemory, state);
+}
+
+//
+// Entry point for handling the game input
+//
+fpl_extern void GameInput(GameMemory *gameMemory, const Input *input) {
+	fplAssert(gameMemory != fpl_null);
+	fplAssert(input != fpl_null);
+
+	GameState *state = gameMemory->game;
+	fplAssert(state != fpl_null);
+
+	RenderState *renderState = gameMemory->render;
+	fplAssert(renderState != fpl_null);
+
+	if (!input->isActive) {
+		return;
+	}
+
+	PlatformerGameInput(gameMemory, state, renderState, input);
+}
+
+//
+// Entry point for updating the game logic
+//
+fpl_extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
+	fplAssert(gameMemory != fpl_null);
+	fplAssert(input != fpl_null);
+
+	GameState *state = gameMemory->game;
+	fplAssert(state != fpl_null);
+
+	if (!input->isActive) {
+		return;
+	}
+
+	PlatformerGameUpdate(gameMemory, state, input);
+}
+
+
+//
+// Entry point for rendering the current game frame
+//
+fpl_extern void GameRender(GameMemory *gameMemory, const Input *input, const float alpha) {
+	fplAssert(gameMemory != fpl_null);
+	fplAssert(input != fpl_null);
+
+	GameState *state = gameMemory->game;
+	fplAssert(state != fpl_null);
+
+	RenderState *renderState = gameMemory->render;
+	fplAssert(renderState != fpl_null);
+
+	PlatformerGameRender(gameMemory, state, renderState, input, alpha);
+}
+
 #define FINAL_GAMEPLATFORM_IMPLEMENTATION
 #include <final_gameplatform.h>
 

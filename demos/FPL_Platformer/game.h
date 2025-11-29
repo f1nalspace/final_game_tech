@@ -50,16 +50,11 @@ typedef struct GameState {
 	bool isDebugRendering;
 } GameState;
 
-fpl_extern void GameStateReleaseInternal(GameState *state);
-fpl_extern bool GameStateInitInternal(fmemMemoryBlock *memory, GameState *state);
-fpl_extern bool GameStateLoadInternal(RenderState *renderState, GameState *state);
-fpl_extern bool GameStartInternal(GameState *state);
-
-fpl_extern bool GameInit(GameMemory *gameMemory);
-fpl_extern void GameRelease(GameMemory *gameMemory);
-fpl_extern bool IsGameExiting(GameMemory *gameMemory);
-fpl_extern void GameInput(GameMemory *gameMemory, const Input *input);
-fpl_extern void GameUpdate(GameMemory *gameMemory, const Input *input);
-fpl_extern void GameRender(GameMemory *gameMemory, const Input *input, const float alpha);
+fpl_extern void PlatformerGameRelease(GameMemory *gameMemory, GameState *state);
+fpl_extern bool PlatformerGameInit(GameMemory *gameMemory, RenderState *renderState, GameState *state);
+fpl_extern bool PlatformerGameIsExiting(GameMemory *gameMemory, GameState *state);
+fpl_extern void PlatformerGameInput(GameMemory *gameMemory, GameState *state, RenderState *renderState, const Input *input);
+fpl_extern void PlatformerGameUpdate(GameMemory *gameMemory, GameState *state, const Input *input);
+fpl_extern void PlatformerGameRender(GameMemory *gameMemory, GameState *state, RenderState *renderState, const Input *input, const float alpha);
 
 #endif // GAME_H
