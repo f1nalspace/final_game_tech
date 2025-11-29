@@ -13,6 +13,54 @@ Requirements:
 Author:
 	Torsten Spaete
 
+Todo-List:
+
+# Level
+
+[ ] Map serialization
+[ ] Map save & load
+[ ] Map entity serialization
+
+# Physics
+
+[ ] Jump through platforms
+[ ] Body types (Static, Kinematic, Dynamic)
+[ ] Dynamic vs Kinematic collision response
+
+# Game mechanics
+
+[ ] Simple trampoline (walking does not do anything, but jumping and falling state with collision raises the upward impulse)
+[ ] Moveable Platform controlled by Player with line-raying stops
+[ ] Open/Close doors with levers
+[ ] Jumppad velocity computation based on start and target position and gravity
+
+# Entity
+
+[ ] Entity type
+[ ] Door entity
+[ ] Spike entity
+[ ] Trampoline entity
+[ ] Platform entity
+[ ] Data oriented entities (separate movement, rendering, states, etc.)
+
+# Editor
+
+[ ] Camera translation by holding space and left mouse button
+[ ] Entity selection & placement editor (Doors, Spike, Trampoline, Platform, PlayerStart, etc.)
+
+# Rendering
+
+[ ] Player character animated sprite (Idle, walk, jump, fall, die, hit, activate)
+
+# UI
+
+[ ] Immediate UI library (Panel, Button, Progressbar, Trackbar, Label, Checkbox, Scrollbar)
+[ ] Extended UI (TabSpinEdit, Colorpicker, Textbox)
+
+# Debug
+
+[ ] Console
+
 License:
 	Copyright (c) 2017-2025 Torsten Spaete
 	MIT License (See LICENSE file)
@@ -136,8 +184,10 @@ static void GameChangeModeInternal(GameState *state, const GameMode newMode) {
 		{
 			state->mode = GameMode_Game;
 			state->camera.limits.isEnabled = true;
-			CameraSetScale(camera, GameViewScale);
-			CameraSetPos(camera, player->transform[0].pos);
+
+			CameraSetScale(camera, GameViewScale, false);
+			CameraSetPos(camera, player->transform[0].pos, false);
+
 			editor->mode = EditorMode_None;
 		} break;
 
@@ -145,12 +195,12 @@ static void GameChangeModeInternal(GameState *state, const GameMode newMode) {
 		{
 			state->mode = GameMode_EditorPlay;
 			state->camera.limits.isEnabled = false;
-			CameraSetScale(camera, editor->camera.transform[0].scale);
 
-			// TODO(final): Compute based on editor scale
+			// Switching to play mode, overwrites the editor camera offset to the player position
 			editor->camera.transform[0].offset = player->transform[0].pos;
 
-			CameraSetPos(camera, editor->camera.transform[0].offset);
+			CameraSetScale(camera, editor->camera.transform[0].scale, true);
+			CameraSetPos(camera, editor->camera.transform[0].offset, false);
 
 			editor->mode = EditorMode_Live;
 		} break;
@@ -159,12 +209,12 @@ static void GameChangeModeInternal(GameState *state, const GameMode newMode) {
 		{
 			state->mode = GameMode_EditorPause;
 			state->camera.limits.isEnabled = false;
-			CameraSetScale(camera, editor->camera.transform[0].scale);
 
-			// TODO(final): Compute based on editor scale
+			// Switching to editor mode, overwrites the editor camera offset to the player position
 			editor->camera.transform[0].offset = player->transform[0].pos;
 
-			CameraSetPos(camera, editor->camera.transform[0].offset);
+			CameraSetScale(camera, editor->camera.transform[0].scale, true);
+			CameraSetPos(camera, editor->camera.transform[0].offset, true);
 
 			editor->mode = EditorMode_Full;
 		} break;
@@ -417,13 +467,12 @@ extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
 		editor->camera.transform[0].offset = player->transform[0].pos;
 	}
 
-	// Overwrite camera scale when in editor mode
 	if (isEditorMode) {
-		CameraSetScale(camera, editor->camera.transform[0].scale);
-		CameraSetPos(camera, editor->camera.transform[0].offset);
+		CameraSetScale(camera, editor->camera.transform[0].scale, false);
+		CameraSetPos(camera, editor->camera.transform[0].offset, false);
 	} else {
-		CameraSetScale(camera, GameViewScale);
-		CameraSetPos(camera, player->transform[0].pos);
+		CameraSetScale(camera, GameViewScale, false);
+		CameraSetPos(camera, player->transform[0].pos, false);
 	}
 
 	// FPS display

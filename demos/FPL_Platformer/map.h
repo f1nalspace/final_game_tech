@@ -29,6 +29,9 @@ typedef enum TileType {
 	TileType_Solid = 1,
 	TileType_Ghost = 2,
 	TileType_PlayerStart = 3,
+	TileType_Spike = 4,
+	TileType_Trampoline = 5,
+	TileType_Platform = 6,
 } TileType;
 
 // Tile Area Mask (Number represents in bit shift, 1 >> value)

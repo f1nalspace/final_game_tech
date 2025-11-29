@@ -62,11 +62,13 @@ fpl_inline void CameraUpdateViewport(Camera *camera, const Viewport *viewport, c
 	camera->pixelsToWorld = 1.0f / camera->worldToPixels;
 }
 
-fpl_inline void CameraSetScale(Camera *camera, const float scale) {
+fpl_inline void CameraSetScale(Camera *camera, const float scale, const bool reset) {
 	camera->transform[0].scale = scale;
+	if (reset)
+		camera->transform[1].scale = camera->transform[0].scale;
 }
 
-fpl_inline void CameraSetPos(Camera *camera, const Vec2f pos) {
+fpl_inline void CameraSetPos(Camera *camera, const Vec2f pos, const bool reset) {
 	if (camera->limits.isEnabled) {
 		// Clamp position when limit bounds are enabled
 		Vec2f minPos = V2fAdd(camera->limits.bounds.min, camera->viewRadius);
@@ -76,6 +78,8 @@ fpl_inline void CameraSetPos(Camera *camera, const Vec2f pos) {
 	} else {
 		camera->transform[0].offset = V2fNegate(pos);
 	}
+	if (reset)
+		camera->transform[1].offset = camera->transform[0].offset;
 }
 
 fpl_inline void CameraZoomToPosition(Camera *camera, const float oldZoom, const float newZoom, const float worldWidth, const Vec2f target) {

@@ -66,7 +66,7 @@ fpl_extern void EditorInput(Editor *editor, const Input *input) {
 			Vec2f targetPos = editor->mouseWorldPos;
 			CameraZoomToPosition(camera, oldZoom, newZoom, WorldWidth, targetPos);
 		} else if (editor->mode == EditorMode_Live) {
-			CameraSetScale(camera, newZoom);
+			CameraSetScale(camera, newZoom, false);
 		}
 	}
 
