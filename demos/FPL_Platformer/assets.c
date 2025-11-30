@@ -2,7 +2,7 @@
 
 fpl_extern void AssetsFree(GameAssets *assets) {
 	// TODO(final): Use a proper allocator here
-	AssetsMemoryAllocator *allocator = fpl_null;
+	MemoryAllocator *allocator = fpl_null;
 
 	TextureDataFree(allocator, &assets->tilesetTexture.data);
 
@@ -38,7 +38,7 @@ fpl_extern bool AssetsLoad(RenderState *renderState, GameAssets *assets) {
 	bool result = false;
 
 	// TODO(final): Use a proper allocator here
-	AssetsMemoryAllocator *allocator = fpl_null;
+	MemoryAllocator *allocator = fpl_null;
 
 	fmemMemoryBlock tempMemory = fplZeroInit;
 	if (!fmemBeginTemporary(&assets->transientMemory, &tempMemory)) {
@@ -53,8 +53,8 @@ fpl_extern bool AssetsLoad(RenderState *renderState, GameAssets *assets) {
 
 	// Fonts
 	const char *fontFilename = "lucida_console.ttf";
-	fplPathCombine(tempPath, fplArrayCount(tempPath), 2, assets->dataPath, "fonts");
-	if (!LoadFontFromFile(tempPath, fontFilename, 0, 24.0f, 32, 128, 512, 512, false, &hudFont->desc)) {
+	fplPathCombine(tempPath, fplArrayCount(tempPath), 3, assets->dataPath, "fonts", fontFilename);
+	if (!FontLoadFromFile(allocator, tempPath, 0, 24.0f, 32, 128, 512, 512, false, &hudFont->desc)) {
 		// TODO(final): Logging (Font file not found)
 		goto failed;
 	}
@@ -63,7 +63,7 @@ fpl_extern bool AssetsLoad(RenderState *renderState, GameAssets *assets) {
 	// Textures
 	const char *tilesetTextureFilename = "tileset.png";
 	fplPathCombine(tempPath, fplArrayCount(tempPath), 3, assets->dataPath, "textures", tilesetTextureFilename);
-	if (!TextureDataLoadFromFilePath(allocator, &tilesetTextureAsset->data, tempPath)) {
+	if (!TextureDataLoadFromFile(allocator, &tilesetTextureAsset->data, tempPath)) {
 		// TODO(final): Logging (Texture not found)
 		goto failed;
 	}

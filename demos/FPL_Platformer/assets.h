@@ -3,6 +3,7 @@
 #define ASSETS_H
 
 #include <final_platform_layer.h>
+#include <final_core.h>
 #include <final_memory.h>
 #include <final_assets.h>
 #include <final_render.h>
