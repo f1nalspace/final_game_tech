@@ -14,8 +14,8 @@ License:
 #define FINAL_ASSETS_H
 
 #include <final_platform_layer.h>
-#include <final_memory.h>
 
+#include <final_core.h>
 #include <final_math.h>
 #include <final_fontloader.h>
 #include <final_render.h>
@@ -37,19 +37,6 @@ typedef struct TextureAsset {
 	TextureHandle texture;
 } TextureAsset;
 
-#define ASSETS_MEMORY_ALLOCATE_FUNC(name) void *name(const size_t size, void *userData)
-typedef ASSETS_MEMORY_ALLOCATE_FUNC(AssetsMemoryAllocateFunc);
-
-#define TEXTURE_DATA_FREE_FUNC(name) void name(void *ptr, void *userData)
-typedef TEXTURE_DATA_FREE_FUNC(AssetsMemoryFreeFunc);
-
-typedef struct AssetsMemoryAllocator {
-	AssetsMemoryAllocateFunc *allocate;
-	AssetsMemoryFreeFunc *free;
-	void *userData;
-	uintptr_t padding;
-} AssetsMemoryAllocator;
-
 typedef enum AssetType {
 	AssetType_None = 0,
 	AssetType_Texture,
@@ -63,18 +50,21 @@ fpl_inline bool TextureDataIsValid(const TextureData *textureData) {
 	return true;
 }
 
-fpl_extern bool TextureDataAllocate(AssetsMemoryAllocator *allocator, TextureData *target, const uint32_t w, const uint32_t h, const uint32_t components);
-fpl_extern void TextureDataFree(AssetsMemoryAllocator *allocator, TextureData *texture);
+fpl_extern bool TextureDataAllocate(MemoryAllocator *allocator, TextureData *target, const uint32_t w, const uint32_t h, const uint32_t components);
+fpl_extern void TextureDataFree(MemoryAllocator *allocator, TextureData *texture);
 
-fpl_extern bool TextureDataLoadFromFilePath(AssetsMemoryAllocator *allocator, TextureData *target, const char *filePath);
-fpl_extern bool TextureDataLoadFromSourceRect(AssetsMemoryAllocator *allocator, const TextureData *source, TextureData *target, const uint32_t x, const uint32_t y, const uint32_t w, const uint32_t h);
+fpl_extern bool TextureDataLoadFromFile(MemoryAllocator *allocator, TextureData *target, const char *filePath);
+fpl_extern bool TextureDataLoadFromSourceRect(MemoryAllocator *allocator, const TextureData *source, TextureData *target, const uint32_t x, const uint32_t y, const uint32_t w, const uint32_t h);
 
-fpl_extern void FontAssetFree(AssetsMemoryAllocator *allocator, FontAsset *font);
+fpl_extern void FontAssetFree(MemoryAllocator *allocator, FontAsset *font);
 
 #endif // FINAL_ASSETS_H
 
-#if defined(FINAL_ASSETS_IMPLEMENTATION) && !defined(FINAL_ASSETS_IMPLEMENTED)
+#if (defined(FINAL_ASSETS_IMPLEMENTATION) && !defined(FINAL_ASSETS_IMPLEMENTED)) || FPL_IS_IDE
+
+#ifndef FINAL_ASSETS_IMPLEMENTED
 #define FINAL_ASSETS_IMPLEMENTED
+#endif
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
@@ -85,64 +75,24 @@ fpl_extern void FontAssetFree(AssetsMemoryAllocator *allocator, FontAsset *font)
 #define FMEM_IMPLEMENTATION
 #include <final_memory.h>
 
-static void *AssetsDefaultMemoryAllocate(const size_t size, void *userData) {
-	if (size == 0) {
-		return fpl_null;
-	}
-	void *result = STBI_MALLOC(size);
-	return(result);
-}
-
-static void AssetsDefaultMemoryFree(void *ptr, void *userData) {
-	if (ptr == fpl_null) {
-		return;
-	}
-	STBI_FREE(ptr);
-}
-
-static AssetsMemoryAllocator gAssetsDefaultMemoryAllocator = {
-	AssetsDefaultMemoryAllocate,
-	AssetsDefaultMemoryFree,
-	fpl_null,
-	0,
-};
-
-static void *AssetsMemAllocateInternal(AssetsMemoryAllocator *allocator, const size_t size) {
-	if (allocator == fpl_null) {
-		allocator = &gAssetsDefaultMemoryAllocator;
-	}
-	fplAssertPtr(allocator->allocate);
-	void *result = allocator->allocate(size, allocator->userData);
-	return result;
-}
-
-static void AssetsMemFreeInternal(AssetsMemoryAllocator *allocator, void *ptr) {
-	if (allocator == fpl_null) {
-		allocator = &gAssetsDefaultMemoryAllocator;
-	}
-	fplAssertPtr(allocator->free);
-	allocator->free(ptr, allocator->userData);
-}
-
-fpl_extern void TextureDataFree(AssetsMemoryAllocator *allocator, TextureData *texture) {
-	if (TextureDataIsValid(texture)) {
+fpl_extern void TextureDataFree(MemoryAllocator *allocator, TextureData *texture) {
+	if (texture == fpl_null) {
 		// TODO(final): Logging (Invalid Arguments)
 		return;
 	}
-	AssetsMemFreeInternal(allocator, texture->data);
+	if (TextureDataIsValid(texture)) {
+		MemoryAllocatorFree(allocator, texture->data);
+	}
 	fplClearStruct(texture);
 }
 
-fpl_extern bool TextureDataAllocate(AssetsMemoryAllocator *allocator, TextureData *target, const uint32_t w, const uint32_t h, const uint32_t components) {
+fpl_extern bool TextureDataAllocate(MemoryAllocator *allocator, TextureData *target, const uint32_t w, const uint32_t h, const uint32_t components) {
 	if (target == fpl_null || w == 0 || h == 0 || components == 0 || components > 4) {
 		// TODO(final): Logging (Invalid Arguments)
 		return false;
 	}
-	if (allocator == fpl_null) {
-		allocator = &gAssetsDefaultMemoryAllocator;
-	}
 	size_t size = w * h * sizeof(uint8_t) * components;
-	uint8_t *data = (uint8_t *)AssetsMemAllocateInternal(allocator, size);
+	uint8_t *data = (uint8_t *)MemoryAllocatorAlloc(allocator, size);
 	if (data == fpl_null) {
 		// TODO(final): Logging (Insufficient memory)
 		return false;
@@ -155,11 +105,12 @@ fpl_extern bool TextureDataAllocate(AssetsMemoryAllocator *allocator, TextureDat
 	return true;
 }
 
-fpl_extern bool TextureDataLoadFromSourceRect(AssetsMemoryAllocator *allocator, const TextureData *source, TextureData *target, const uint32_t x, const uint32_t y, const uint32_t w, const uint32_t h) {
+fpl_extern bool TextureDataLoadFromSourceRect(MemoryAllocator *allocator, const TextureData *source, TextureData *target, const uint32_t x, const uint32_t y, const uint32_t w, const uint32_t h) {
 	if (!TextureDataIsValid(source) || target == fpl_null || w == 0 || h == 0) {
 		// TODO(final): Logging (Invalid Arguments)
 		return false;
 	}
+
 	uint32_t components = source->components;
 	if (components > 4) {
 		// TODO(final): Logging (Source texture data is invalid)
@@ -204,7 +155,7 @@ fpl_extern bool TextureDataLoadFromSourceRect(AssetsMemoryAllocator *allocator, 
 	return true;
 }
 
-fpl_extern bool TextureDataLoadFromFilePath(AssetsMemoryAllocator *allocator, TextureData *target, const char *filePath) {
+fpl_extern bool TextureDataLoadFromFile(MemoryAllocator *allocator, TextureData *target, const char *filePath) {
 	if (target == fpl_null || fplGetStringLength(filePath) == 0) {
 		return false;
 	}
@@ -225,7 +176,7 @@ fpl_extern bool TextureDataLoadFromFilePath(AssetsMemoryAllocator *allocator, Te
 		goto failed;
 	}
 
-	fileBuffer = (uint8_t *)AssetsMemAllocateInternal(allocator, fileLen);
+	fileBuffer = (uint8_t *)MemoryAllocatorAlloc(allocator, fileLen);
 	if (fileBuffer == fpl_null) {
 		// TODO(final): Logging (Insufficient memory)
 		goto failed;
@@ -259,7 +210,7 @@ failed:
 
 done:
 	if (fileBuffer != fpl_null) {
-		AssetsMemFreeInternal(allocator, fileBuffer);
+		MemoryAllocatorFree(allocator, fileBuffer);
 	}
 	if (file.isValid) {
 		fplFileClose(&file);
@@ -267,14 +218,14 @@ done:
 	return result;
 }
 
-fpl_extern void FontAssetFree(AssetsMemoryAllocator *allocator, FontAsset *font) {
+fpl_extern void FontAssetFree(MemoryAllocator *allocator, FontAsset *font) {
 	if (font == fpl_null) {
 		return;
 	}
 
 	// @NOTE(final): Texture allocation is tied to the renderer itself, such as OpenGL so we cannot free the texture handle here
 
-	ReleaseFont(&font->desc);
+	FontFree(allocator, &font->desc);
 }
 
 #endif // FINAL_ASSETS_IMPLEMENTATION
