@@ -548,7 +548,7 @@ struct GameState {
 
 	Camera2D camera;
 	Mat4f viewProjection;
-	Viewport viewport;
+	Viewport4i viewport;
 	Vec2f mouseWorldPos;
 	Vec2i mouseTilePos;
 
