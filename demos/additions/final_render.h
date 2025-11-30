@@ -63,15 +63,6 @@ inline UVRect UVRectFromPos(const Vec2i imageSize, const Vec2i partSize, const V
 	return(result);
 }
 
-typedef struct Viewport {
-	int x;
-	int y;
-	int w;
-	int h;
-} Viewport;
-
-fpl_extern Viewport ViewportComputeByAspect(const Vec2i screenSize, const float targetAspect);
-
 typedef enum TextureOperationType {
 	TextureOperationType_None = 0,
 	TextureOperationType_Upload,
@@ -543,23 +534,6 @@ fpl_extern void RenderPushText(RenderState *state, const char *text, const size_
 fpl_extern void RenderPushLine(RenderState *state, const Vec2f a, const Vec2f b, const Vec4f color, const float lineWidth) {
 	Vec2f verts[] = {a, b};
 	RenderPushVertices(state, verts, 2, true, color, DrawMode_Lines, false, lineWidth);
-}
-
-fpl_extern Viewport ViewportComputeByAspect(const Vec2i screenSize, const float targetAspect) {
-	int targetHeight = (int)(screenSize.w / targetAspect);
-	Vec2i viewSize = V2iInit(screenSize.w, screenSize.h);
-	Vec2i viewOffset = V2iInit(0, 0);
-	if (targetHeight > screenSize.h) {
-		viewSize.h = screenSize.h;
-		viewSize.w = (int)(screenSize.h * targetAspect);
-		viewOffset.x = (screenSize.w - viewSize.w) / 2;
-	} else {
-		viewSize.w = screenSize.w;
-		viewSize.h = (int)(screenSize.w / targetAspect);
-		viewOffset.y = (screenSize.h - viewSize.h) / 2;
-	}
-	Viewport result = {viewOffset.x, viewOffset.y, viewSize.w, viewSize.h};
-	return(result);
 }
 
 #endif // FINAL_RENDER_IMPLEMENTATION

@@ -38,7 +38,7 @@ typedef struct Camera {
 	// Current camera target
 	CameraTarget target;
 	// Current viewport in screen space
-	Viewport viewport;
+	Viewport4i viewport;
 	// Current camera view radius in world coordinates
 	Vec2f viewRadius;
 	// Current velocity
@@ -70,7 +70,7 @@ fpl_inline bool CameraInit(Camera *camera, const uint32_t id, const Vec2f offset
 	return true;
 }
 
-fpl_inline void CameraUpdateViewport(Camera *camera, const Viewport *viewport, const float worldWidth) {
+fpl_inline void CameraUpdateViewport(Camera *camera, const Viewport4i *viewport, const float worldWidth) {
 	camera->viewport = *viewport;
 	camera->worldToPixels = ((float)viewport->w / worldWidth) * camera->transform[0].scale;
 	camera->pixelsToWorld = 1.0f / camera->worldToPixels;

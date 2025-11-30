@@ -12,6 +12,10 @@ License:
 	Copyright 2017-2025 Torsten Spaete
 
 Changelog:
+	## 2025-11-30
+	- Introduced custom memory allocator support
+	- Fixed various memory leaks
+
 	## 2018-06-30
 	- Fixed crash on ReleaseFont when not using kerning
 

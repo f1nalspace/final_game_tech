@@ -1,3 +1,17 @@
+/*
+Name:
+	Final Core
+
+Description:
+	Core definitions for the final_framework, such as memory allocators, types, etc.
+
+	This file is part of the final_framework.
+
+License:
+	MIT License
+	Copyright 2017-2025 Torsten Spaete
+*/
+
 #ifndef FINAL_CORE_H
 #define FINAL_CORE_H
 

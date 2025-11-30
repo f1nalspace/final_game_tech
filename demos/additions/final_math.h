@@ -12,6 +12,9 @@ License:
 	Copyright 2017-2025 Torsten Spaete
 
 Changelog
+	## 2025-11-29
+	- Added macros for creating types as a constant
+
 	## 2025-11-24
 	- Added function V2fClamp()
 
@@ -204,7 +207,7 @@ typedef struct Rect2f {
 } Rect2f;
 
 #define R2F(p, s) {p, s}
-#define R2FArg(r) (Rect2f)r
+#define R2FArg(v) (Rect2f)v
 
 fpl_force_inline Rect2f R2fInit(const Vec2f pos, const Vec2f size) {
 	Rect2f result = fplStructInit(Rect2f, pos, size);

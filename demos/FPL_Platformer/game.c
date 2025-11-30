@@ -175,7 +175,7 @@ fpl_extern void PlatformerGameInput(GameMemory *gameMemory, GameState *state, Re
 
 	// Camera
 	// TODO(final): Needs only to be updated when viewport changes!
-	Viewport viewport = ViewportComputeByAspect(input->windowSize, WorldAspect);;
+	Viewport4i viewport = VP4iComputeByAspect(input->windowSize, WorldAspect);
 	CameraUpdateViewport(activeCamera, &viewport, w * 2.0f);
 
 	// TODO(final): Needs only to be updated when map bounds changes!
