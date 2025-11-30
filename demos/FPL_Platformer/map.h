@@ -320,7 +320,7 @@ extern bool MapInit(fmemMemoryBlock *memory, Map *map);
 
 extern void MapClear(Map *map);
 
-extern bool MapDefinitionLoadFromFile(fmemMemoryBlock *memoryBlock, const char *dataPath, const char *filePath, const char *levelName, MapDefinition *outDefinition);
+extern bool MapDefinitionLoadFromFile(fmemMemoryBlock *memoryBlock, const char *filePath, const char *levelName, MapDefinition *outDefinition);
 
 extern bool MapAssign(Map *map, const MapDefinition *definition);
 

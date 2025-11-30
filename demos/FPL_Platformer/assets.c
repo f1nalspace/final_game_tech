@@ -1,9 +1,12 @@
 #include "assets.h"
 
 fpl_extern void AssetsFree(GameAssets *assets) {
-	FreeTextureData(&assets->tilesetTexture.data);
+	// TODO(final): Use a proper allocator here
+	AssetsMemoryAllocator *allocator = fpl_null;
 
-	ReleaseFontAsset(&assets->consoleFont);
+	TextureDataFree(allocator, &assets->tilesetTexture.data);
+
+	FontAssetFree(allocator, &assets->consoleFont);
 
 	// NOTE(final): No need for freeing any memory block here, because everything is inside the game memory
 
@@ -32,40 +35,60 @@ fpl_extern bool AssetsInit(fmemMemoryBlock *memory, GameAssets *assets) {
 }
 
 fpl_extern bool AssetsLoad(RenderState *renderState, GameAssets *assets) {
-	// Fonts
-	char tempDataPath[1024];
+	bool result = false;
 
-	const char *fontFilename = "lucida_console.ttf";
-	fplPathCombine(tempDataPath, fplArrayCount(tempDataPath), 2, assets->dataPath, "fonts");
-	FontAsset *hudFont = &assets->consoleFont;
-	if (LoadFontFromFile(tempDataPath, fontFilename, 0, 24.0f, 32, 128, 512, 512, false, &hudFont->desc)) {
-		RenderPushTexture(renderState, &hudFont->texture, hudFont->desc.atlasAlphaBitmap, hudFont->desc.atlasWidth, hudFont->desc.atlasHeight, 1, TextureFilterType_Linear, TextureWrapMode_ClampToEdge, false, false);
+	// TODO(final): Use a proper allocator here
+	AssetsMemoryAllocator *allocator = fpl_null;
+
+	fmemMemoryBlock tempMemory = fplZeroInit;
+	if (!fmemBeginTemporary(&assets->transientMemory, &tempMemory)) {
+		// TODO(final): Logging (Failed to start transient memory access)
+		goto failed;
 	}
+
+	fpl_localvar char tempPath[1024];
+
+	FontAsset *hudFont = &assets->consoleFont;
+	TextureAsset *tilesetTextureAsset = &assets->tilesetTexture;
+
+	// Fonts
+	const char *fontFilename = "lucida_console.ttf";
+	fplPathCombine(tempPath, fplArrayCount(tempPath), 2, assets->dataPath, "fonts");
+	if (!LoadFontFromFile(tempPath, fontFilename, 0, 24.0f, 32, 128, 512, 512, false, &hudFont->desc)) {
+		// TODO(final): Logging (Font file not found)
+		goto failed;
+	}
+	RenderPushTexture(renderState, &hudFont->texture, hudFont->desc.atlasAlphaBitmap, hudFont->desc.atlasWidth, hudFont->desc.atlasHeight, 1, TextureFilterType_Linear, TextureWrapMode_ClampToEdge, false, false);
 
 	// Textures
 	const char *tilesetTextureFilename = "tileset.png";
-	fplPathCombine(tempDataPath, fplArrayCount(tempDataPath), 2, assets->dataPath, "textures");
-	TextureAsset *tilesetTextureAsset = &assets->tilesetTexture;
-	tilesetTextureAsset->data = LoadTextureData(tempDataPath, tilesetTextureFilename);
-	tilesetTextureAsset->texture = fpl_null;
-	if (tilesetTextureAsset->data.data != fpl_null && tilesetTextureAsset->data.width > 0 && tilesetTextureAsset->data.height > 0) {
-		RenderPushTexture(renderState, &tilesetTextureAsset->texture, tilesetTextureAsset->data.data, tilesetTextureAsset->data.width, tilesetTextureAsset->data.height, tilesetTextureAsset->data.components, TextureFilterType_Nearest, TextureWrapMode_ClampToEdge, false, false);
+	fplPathCombine(tempPath, fplArrayCount(tempPath), 3, assets->dataPath, "textures", tilesetTextureFilename);
+	if (!TextureDataLoadFromFilePath(allocator, &tilesetTextureAsset->data, tempPath)) {
+		// TODO(final): Logging (Texture not found)
+		goto failed;
 	}
+	tilesetTextureAsset->texture = fpl_null;
+	RenderPushTexture(renderState, &tilesetTextureAsset->texture, tilesetTextureAsset->data.data, tilesetTextureAsset->data.width, tilesetTextureAsset->data.height, tilesetTextureAsset->data.components, TextureFilterType_Nearest, TextureWrapMode_ClampToEdge, false, false);
 
-#if 0
 	// Maps
 	const char *mapName = "Level_1"; // Must match the "identifier" of the level
 	const char *mapFilename = "level1.ldtk";
-	fplPathCombine(tempDataPath, fplArrayCount(tempDataPath), 2, assets->dataPath, "maps");
+	fplPathCombine(tempPath, fplArrayCount(tempPath), 3, assets->dataPath, "maps", mapFilename);
 
-	fmemMemoryBlock tempMemory = fplZeroInit;
-	fmemBeginTemporary(&assets->transientMemory, &tempMemory);
+	fmemReset(&tempMemory);
 	MapDefinition *mapDef = fmemPushStruct(&tempMemory, MapDefinition, fmemPushFlags_Clear);
-	if (!MapDefinitionLoadFromFile(&tempMemory, tempDataPath, mapFilename, mapName, mapDef)) {
-
+	if (!MapDefinitionLoadFromFile(&tempMemory, tempPath, mapName, mapDef)) {
+		// TODO(final): Logging (Map file not found)
+		goto failed;
 	}
-	fmemEndTemporary(&tempMemory);
-#endif
 
-	return true;
+	result = true;
+	goto finished;
+
+failed:
+	result = false;
+
+finished:
+	fmemEndTemporary(&tempMemory);
+	return result;
 }

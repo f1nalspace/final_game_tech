@@ -179,20 +179,12 @@ fpl_internal void *_MapAllocateJSONMemoryInternal(void *userData, const size_t s
 	return result;
 }
 
-fpl_internal bool MapDefinitionLoadFromFile(fmemMemoryBlock *memoryBlock, const char *dataPath, const char *filename, const char *levelName, MapDefinition *outDefinition) {
-	if (memoryBlock == fpl_null || fplGetStringLength(filename) == 0 || fplGetStringLength(levelName) == 0 || outDefinition == fpl_null) {
+fpl_internal bool MapDefinitionLoadFromFile(fmemMemoryBlock *memoryBlock, const char *filePath, const char *levelName, MapDefinition *outDefinition) {
+	if (memoryBlock == fpl_null || fplGetStringLength(filePath) == 0 || fplGetStringLength(levelName) == 0 || outDefinition == fpl_null) {
 		return false; // Invalid arguments
 	}
 
 	size_t levelNameLen = fplGetStringLength(levelName);
-
-	char filePath[FPL_MAX_PATH_LENGTH];
-	if(fplGetStringLength(dataPath) > 0) {
-		fplCopyString(dataPath, filePath, fplArrayCount(filePath));
-		fplPathCombine(filePath, fplArrayCount(filePath), 2, dataPath, filename);
-	} else {
-		fplCopyString(filename, filePath, fplArrayCount(filePath));
-	}
 
 	json_value_t *root = fpl_null;
 	void *fileData = fpl_null;
