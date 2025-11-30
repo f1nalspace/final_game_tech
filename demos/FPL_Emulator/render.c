@@ -523,7 +523,7 @@ extern void DrawString(const LoadedFont *font, const TextureID textureId, const 
 
 			float xadvance;
 			if (at >= font->firstChar && at <= lastChar) {
-				FontQuad quad = GetFontQuad(font, at, scale);
+				FontQuad quad = FontGetQuad(font, at, scale);
 
 				Vec2f offset = quad.offset;
 				offset.x += xpos;
@@ -543,7 +543,7 @@ extern void DrawString(const LoadedFont *font, const TextureID textureId, const 
 				glTexCoord2f(uvMax.x, uvMin.y); glVertex2f(offset.x + rx, offset.y - ry);
 				glEnd();
 
-				xadvance = GetFontCharacterAdvance(font, (uint32_t)at, (uint32_t)atNext);
+				xadvance = FontGetCharacterAdvance(font, (uint32_t)at, (uint32_t)atNext);
 			} else {
 				xadvance = font->info.spaceAdvance;
 			}

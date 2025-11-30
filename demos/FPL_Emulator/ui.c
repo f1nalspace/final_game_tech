@@ -526,7 +526,7 @@ extern Vec2f UIGetStringSize(const UIContext *ctx, const char *text, const size_
 
 	size_t actualLen = textLen > textLen ? textLen : fplGetStringLength(text);
 
-	Vec2f s = GetTextSize(font, text, actualLen, fontHeight);
+	Vec2f s = FontGetTextSize(font, text, actualLen, fontHeight);
 
 	return fplStructInit(Vec2f, s.x, s.y);
 }
@@ -764,7 +764,7 @@ extern bool UIButton(UIContext *ctx, UIButtonData *button, const float x, const 
 	DrawFilledQuad(x, y, w, h, backgroundColor);
 	DrawControlBorder(x, y, w, h, borderThickness, &buttonBorderStyle->bright, &buttonBorderStyle->dark, &buttonBorderStyle->darkest, !isDisabled && isDown);
 
-	Vec2f size = GetTextSize(font, label, labelLen, fontHeight);
+	Vec2f size = FontGetTextSize(font, label, labelLen, fontHeight);
 
 	float labelX = x + (w - size.w) * 0.5f;
 	float labelY = y + (h - size.h) * 0.5f;
@@ -863,7 +863,7 @@ extern UITabContent UITabControl(UIContext *ctx, UITabControlData *tabControl, c
 
 		size_t labelLen = fplGetStringLength(tab->label);
 
-		Vec2f labelSize = GetTextSize(font, tab->label, labelLen, fontHeight);
+		Vec2f labelSize = FontGetTextSize(font, tab->label, labelLen, fontHeight);
 
 		float tabHeaderItemWidth = labelSize.w + tabItemPadding * 2.0f;
 		float tabHeaderItemHeight = headerHeight + 0.5f;
@@ -909,7 +909,7 @@ extern UITabContent UITabControl(UIContext *ctx, UITabControlData *tabControl, c
 
 		size_t labelLen = fplGetStringLength(tab->label);
 
-		Vec2f labelSize = GetTextSize(font, tab->label, labelLen, fontHeight);
+		Vec2f labelSize = FontGetTextSize(font, tab->label, labelLen, fontHeight);
 
 		float tabHeaderLabelX = tabArea->x + tabItemPadding;
 		float tabHeaderLabelY = tabArea->y + (tabArea->h - labelSize.h) * 0.5f;
@@ -1023,7 +1023,7 @@ extern bool UICheckbox(UIContext *ctx, UICheckboxData *checkbox, const float x, 
 	if (showLabel) {
 		size_t labelLen = fplGetStringLength(label);
 		if (labelLen > 0) {
-			Vec2f labelSize = GetTextSize(font, label, labelLen, fontHeight);
+			Vec2f labelSize = FontGetTextSize(font, label, labelLen, fontHeight);
 			const float labelY = y + (boxHeight - labelSize.h) * 0.5f;
 			DrawString(font, fontTextureId, label, labelLen, labelX, labelY, fontHeight, foregroundColor);
 			totalWidth += labelSpacing + labelSize.w;

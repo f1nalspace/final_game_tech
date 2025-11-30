@@ -70,7 +70,7 @@ fpl_extern void DrawPoint(const float x, const float y, const float radius, cons
 
 fpl_extern void DrawTextFont(const char *text, const size_t textLen, const LoadedFont *fontDesc, const GLuint fontTexture, const float x, const float y, const float maxCharHeight, const float sx, const float sy) {
 	if(fontDesc != fpl_null) {
-		Vec2f textSize = GetTextSize(fontDesc, text, textLen, maxCharHeight);
+		Vec2f textSize = FontGetTextSize(fontDesc, text, textLen, maxCharHeight);
 		float xpos = x - textSize.w * 0.5f + (textSize.w * 0.5f * sx);
 		float ypos = y - textSize.h * 0.5f + (textSize.h * 0.5f * sy);
 		uint32_t lastChar = fontDesc->firstChar + (fontDesc->charCount - 1);
@@ -79,7 +79,7 @@ fpl_extern void DrawTextFont(const char *text, const size_t textLen, const Loade
 			char atNext = textPos < (textLen - 1) ? (text[textPos + 1]) : 0;
 			float advance;
 			if((uint32_t)at >= fontDesc->firstChar && (uint32_t)at <= lastChar) {
-				FontQuad quad = GetFontQuad(fontDesc, at, maxCharHeight);
+				FontQuad quad = FontGetQuad(fontDesc, at, maxCharHeight);
 
 				Vec2f pos = V2fInit(xpos,ypos);
 				Vec2f offset = V2fAdd(pos, quad.offset);
@@ -102,7 +102,7 @@ fpl_extern void DrawTextFont(const char *text, const size_t textLen, const Loade
 
 				DrawSprite(fontTexture, ext, uvRect, offset);
 
-				advance = GetFontCharacterAdvance(fontDesc, at, atNext) * maxCharHeight;
+				advance = FontGetCharacterAdvance(fontDesc, at, atNext) * maxCharHeight;
 			} else {
 				advance = fontDesc->info.spaceAdvance * maxCharHeight;
 			}
@@ -335,7 +335,7 @@ fpl_extern void RenderWithOpenGL(RenderState *renderState) {
 						const float maxHeight = cmd->maxHeight;
 						const float ax = cmd->horizontalAlignment;
 						const float ay = cmd->verticalAlignment;
-						Vec2f textSize = GetTextSize(fontDesc, text, cmd->textLength, maxHeight);
+						Vec2f textSize = FontGetTextSize(fontDesc, text, cmd->textLength, maxHeight);
 						float xpos = cmd->position.x - textSize.w * 0.5f + (textSize.w * 0.5f * ax);
 						float ypos = cmd->position.y - textSize.h * 0.5f + (textSize.h * 0.5f * ay);
 						uint32_t lastChar = fontDesc->firstChar + (fontDesc->charCount - 1);
@@ -367,7 +367,7 @@ fpl_extern void RenderWithOpenGL(RenderState *renderState) {
 								glTexCoord2f(glyph->uvMax.x, glyph->uvMin.y); glVertex2f(offset.x + extW, offset.y + -extH);
 								glEnd();
 
-								advance = GetFontCharacterAdvance(fontDesc, at, atNext) * maxHeight;
+								advance = FontGetCharacterAdvance(fontDesc, at, atNext) * maxHeight;
 							} else {
 								advance = fontDesc->info.spaceAdvance * maxHeight;
 							}

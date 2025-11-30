@@ -673,13 +673,16 @@ static bool LoadTexture(const TextureData &source, const bool repeatable, Textur
 	return(result);
 }
 
-static bool LoadTexture(const char *dataPath, const char *filename, const bool repeatable, TextureAsset &outTexture) {
-	TextureData image = LoadTextureData(dataPath, filename);
-	if(image.data == nullptr) {
+static bool LoadTexture(MemoryAllocator *allocator, const char *filePath, const bool repeatable, TextureAsset &outTexture) {
+	TextureData image = fplZeroInit;
+	if(!TextureDataLoadFromFile(allocator, &image, filePath)) {
 		return false;
 	}
+
 	bool result = LoadTexture(image, repeatable, outTexture);
-	FreeTextureData(&image);
+
+	TextureDataFree(allocator, &image);
+
 	return(result);
 }
 
@@ -695,24 +698,41 @@ static bool LoadSound(AudioSystem *audio, const char *dataPath, const char *file
 }
 
 static bool LoadAssets(GameState &state) {
-	LoadTexture(state.dataPath, "ball.bmp", false, state.assets.ballTexture);
-	LoadTexture(state.dataPath, "bricks.bmp", false, state.assets.bricksTexture);
-	LoadTexture(state.dataPath, "paddle.bmp", false, state.assets.paddleTexture);
-	LoadTexture(state.dataPath, "frame.bmp", false, state.assets.frameTexture);
+	// TODO(final): Proper memory allocator
+	MemoryAllocator *allocator = fpl_null;
 
-	TextureData bgImage = LoadTextureData(state.dataPath, "bg.bmp");
-	if(bgImage.data != nullptr) {
-		TextureData bgTileImage0 = CreateSubTextureData(&bgImage, 2, 2, 16, 16);
-		LoadTexture(bgTileImage0, true, state.assets.bgTextures[BackgroundType::Default]);
-		FreeTextureData(&bgTileImage0);
+	// TODO(final): Proper validation and clean up when something is failing
+
+	char tmpPath[1024];
+		
+	fplPathCombine(tmpPath, fplArrayCount(tmpPath), 2, state.dataPath, "ball.bmp");
+	LoadTexture(allocator, tmpPath, false, state.assets.ballTexture);
+
+	fplPathCombine(tmpPath, fplArrayCount(tmpPath), 2, state.dataPath, "bricks.bmp");
+	LoadTexture(allocator, tmpPath, false, state.assets.bricksTexture);
+
+	fplPathCombine(tmpPath, fplArrayCount(tmpPath), 2, state.dataPath, "paddle.bmp");
+	LoadTexture(allocator, tmpPath, false, state.assets.paddleTexture);
+
+	fplPathCombine(tmpPath, fplArrayCount(tmpPath), 2, state.dataPath, "frame.bmp");
+	LoadTexture(allocator, tmpPath, false, state.assets.frameTexture);
+
+	TextureData bgImage = fplZeroInit;
+	fplPathCombine(tmpPath, fplArrayCount(tmpPath), 2, state.dataPath, "bg.bmp");
+	if(TextureDataLoadFromFile(allocator, &bgImage, tmpPath)) {
+		TextureData bgTileImage0 = fplZeroInit;
+		if(TextureDataLoadFromSourceRect(allocator, &bgImage, &bgTileImage0, 2, 2, 16, 16)) {
+			LoadTexture(bgTileImage0, true, state.assets.bgTextures[BackgroundType::Default]);
+		}
+		TextureDataFree(allocator, &bgTileImage0);
 	}
-	FreeTextureData(&bgImage);
+	TextureDataFree(allocator, &bgImage);
 
-	if(LoadFontFromMemory(ptr_fontHemiHeadBoldItalic, sizeOf_fontHemiHeadBoldItalic, 0, 36.0f, 32, 127, 512, 512, true, &state.assets.fontMenu.desc)) {
+	if(FontLoadFromMemory(allocator, ptr_fontHemiHeadBoldItalic, sizeOf_fontHemiHeadBoldItalic, 0, 36.0f, 32, 127, 512, 512, true, &state.assets.fontMenu.desc)) {
 		GLuint texId = AllocateTexture(state.assets.fontMenu.desc.atlasWidth, state.assets.fontMenu.desc.atlasHeight, state.assets.fontMenu.desc.atlasAlphaBitmap, false, GL_NEAREST, true);
 		state.assets.fontMenu.texture = GetTextureHandleFromID(texId);
 	}
-	if(LoadFontFromMemory(ptr_fontHemiHeadBoldItalic, sizeOf_fontHemiHeadBoldItalic, 0, 18.0f, 32, 127, 512, 512, true, &state.assets.fontHud.desc)) {
+	if(FontLoadFromMemory(allocator, ptr_fontHemiHeadBoldItalic, sizeOf_fontHemiHeadBoldItalic, 0, 18.0f, 32, 127, 512, 512, true, &state.assets.fontHud.desc)) {
 		GLuint texId = AllocateTexture(state.assets.fontHud.desc.atlasWidth, state.assets.fontHud.desc.atlasHeight, state.assets.fontHud.desc.atlasAlphaBitmap, false, GL_NEAREST, true);
 		state.assets.fontHud.texture = GetTextureHandleFromID(texId);
 	}
@@ -1426,7 +1446,7 @@ static void DrawPlayMode(GameState &state) {
 
 	fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Score: %d", state.score);
 	size_t textCount = fplGetStringLength(textBuffer);
-	Vec2f textBounds = GetTextSize(&state.assets.fontHud.desc, textBuffer, textCount, textSize);
+	Vec2f textBounds = FontGetTextSize(&state.assets.fontHud.desc, textBuffer, textCount, textSize);
 	DrawTextFont(textBuffer, textCount, &state.assets.fontHud.desc, fontTexId, WorldRadius.x - FrameRadius * 2.0f - textFrameMargin - textBounds.w, textTopMiddle, textSize, 1.0f, 0.0f);
 }
 

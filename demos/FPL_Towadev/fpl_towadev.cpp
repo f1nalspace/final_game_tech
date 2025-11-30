@@ -1613,8 +1613,11 @@ namespace game {
 	}
 
 	static void ReleaseAssets(Assets &assets) {
-		ReleaseFontAsset(&assets.overlayFont);
-		ReleaseFontAsset(&assets.hudFont);
+		// TODO(final): Proper memory allocator
+		MemoryAllocator *allocator = fpl_null;
+
+		FontAssetFree(allocator, &assets.overlayFont);
+		FontAssetFree(allocator, &assets.hudFont);
 	}
 
 	static void LoadTextureAsset(RenderState &renderState, const char *dataPath, const char *filename, const bool isTopDown, TextureAsset *outAsset) {
@@ -1634,6 +1637,9 @@ namespace game {
 	}
 
 	static void LoadAssets(GameState &gameState, RenderState &renderState) {
+		// TODO(final): Proper memory allocator
+		MemoryAllocator *allocator = fpl_null;
+		
 		fmemMemoryBlock tempMem = {};
 		if (fmemBeginTemporary(&gameState.transientMem, &tempMem)) {
 			Assets &assets = gameState.assets;
@@ -1645,11 +1651,11 @@ namespace game {
 
 			// Fonts
 			FontAsset &hudFont = assets.hudFont;
-			if (LoadFontFromMemory(ptr_fontSulphurPointRegular, sizeOf_fontSulphurPointRegular, 0, 36.0f, 32, 128, 512, 512, false, &hudFont.desc)) {
+			if (FontLoadFromMemory(allocator, ptr_fontSulphurPointRegular, sizeOf_fontSulphurPointRegular, 0, 36.0f, 32, 128, 512, 512, false, &hudFont.desc)) {
 				RenderPushTexture(&renderState, &hudFont.texture, hudFont.desc.atlasAlphaBitmap, hudFont.desc.atlasWidth, hudFont.desc.atlasHeight, 1, TextureFilterType_Linear, TextureWrapMode_ClampToEdge, false, false);
 			}
 			FontAsset &overlayFont = assets.overlayFont;
-			if (LoadFontFromMemory(ptr_fontSulphurPointRegular, sizeOf_fontSulphurPointRegular, 0, 240.0f, 32, 128, 4096, 4096, false, &overlayFont.desc)) {
+			if (FontLoadFromMemory(allocator, ptr_fontSulphurPointRegular, sizeOf_fontSulphurPointRegular, 0, 240.0f, 32, 128, 4096, 4096, false, &overlayFont.desc)) {
 				RenderPushTexture(&renderState, &overlayFont.texture, overlayFont.desc.atlasAlphaBitmap, overlayFont.desc.atlasWidth, overlayFont.desc.atlasHeight, 1, TextureFilterType_Linear, TextureWrapMode_ClampToEdge, false, false);
 			}
 

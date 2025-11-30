@@ -690,6 +690,9 @@ static Application *CreateApplication(fmemMemoryBlock *mem) {
 		return fpl_null;
 	}
 
+	// TODO: Proper memory allocator
+	MemoryAllocator *allocator = fpl_null;
+
 	// Roms path
 	fplGetExecutableFilePath(app->romsPath, fplArrayCount(app->romsPath));
 	fplExtractFilePath(app->romsPath, app->romsPath, fplArrayCount(app->romsPath));
@@ -698,10 +701,10 @@ static Application *CreateApplication(fmemMemoryBlock *mem) {
 	// Load fonts
 	float fontSizeSmall = 40.0f;
 	float fontSizeLarge = 160.0f;
-	if (!LoadFontFromMemory(ptr_fireCodeFont, sizeOf_fireCodeFont, 0, fontSizeSmall, 32, 126, 256, 256, false, &app->fontData)) {
+	if (!FontLoadFromMemory(allocator, ptr_fireCodeFont, sizeOf_fireCodeFont, 0, fontSizeSmall, 32, 126, 256, 256, false, &app->fontData)) {
 		return fpl_null;
 	}
-	if (!LoadFontFromMemory(ptr_fireCodeFont, sizeOf_fireCodeFont, 0, fontSizeLarge, 32, 126, 1024, 1024, false, &app->fontDataLarge)) {
+	if (!FontLoadFromMemory(allocator, ptr_fireCodeFont, sizeOf_fireCodeFont, 0, fontSizeLarge, 32, 126, 1024, 1024, false, &app->fontDataLarge)) {
 		return fpl_null;
 	}	
 
@@ -746,6 +749,9 @@ static void ReleaseApplication(Application **appRef) {
 		return;
 	}
 
+	// TODO: Proper memory allocator
+	MemoryAllocator *allocator = fpl_null;
+
 	Application *app = *appRef;
 
 	ReleaseEmulator(&app->emulator);
@@ -761,8 +767,8 @@ static void ReleaseApplication(Application **appRef) {
 	fmemFree(&app->disassemblyMemory);
 	fmemFree(&app->consoleMemory);
 
-	ReleaseFont(&app->fontData);
-	ReleaseFont(&app->fontDataLarge);
+	FontFree(allocator, &app->fontData);
+	FontFree(allocator, &app->fontDataLarge);
 
 	fplClearStruct(app);
 
@@ -1423,7 +1429,7 @@ static void DrawDisplay(const Application *app, const float x, const float y, co
 
 		const char *insertGameText = "No Game Pak loaded";
 		size_t textLen = fplGetStringLength(insertGameText);
-		Vec2f textSize = GetTextSize(&app->fontData, insertGameText, textLen, fontHeight * 2.0f);
+		Vec2f textSize = FontGetTextSize(&app->fontData, insertGameText, textLen, fontHeight * 2.0f);
 
 		DrawString(&app->fontData, app->fontTexture.id, insertGameText, textLen, x + (w - textSize.w) * 0.5f, y + (h - textSize.h) * 0.5f - fontHeight, fontHeight * 2.0f, ColorWhite);
 	}

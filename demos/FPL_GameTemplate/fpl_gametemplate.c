@@ -74,15 +74,21 @@ License:
 #define MaxTileSize fplMax(TileWidth, TileHeight)
 
 static void LoadAssets(RenderState *renderState, Assets *assets) {
+	// TODO: proper memory allocator
+	MemoryAllocator *allocator = fpl_null;
+
 	// Fonts
 	FontAsset *hudFont = &assets->consoleFont;
-	if (LoadFontFromMemory(ptr_fontVeraFontRegular, sizeOf_fontVeraFontRegular, 0, 24.0f, 32, 128, 512, 512, false, &hudFont->desc)) {
+	if (FontLoadFromMemory(allocator, ptr_fontVeraFontRegular, sizeOf_fontVeraFontRegular, 0, 24.0f, 32, 128, 512, 512, false, &hudFont->desc)) {
 		RenderPushTexture(renderState, &hudFont->texture, hudFont->desc.atlasAlphaBitmap, hudFont->desc.atlasWidth, hudFont->desc.atlasHeight, 1, TextureFilterType_Linear, TextureWrapMode_ClampToEdge, false, false);
 	}
 }
 
 static void FreeAssets(Assets *assets) {
-	ReleaseFontAsset(&assets->consoleFont);
+	// TODO: proper memory allocator
+	MemoryAllocator *allocator = fpl_null;
+
+	FontAssetFree(allocator, &assets->consoleFont);
 }
 
 static void InitGame(GameState *state) {
