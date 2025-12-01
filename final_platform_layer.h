@@ -6603,6 +6603,15 @@ fpl_platform_api bool fplFileOpenBinary(const char *filePath, fplFileHandle *out
 fpl_platform_api bool fplFileCreateBinary(const char *filePath, fplFileHandle *outHandle);
 
 /**
+* @brief Creates or appends a binary file by the given string path and returns the handle of it.
+* @param[in] filePath The file path.
+* @param[out] outHandle Reference to the file handle structure @ref fplFileHandle.
+* @return Returns true when the binary file was created / open for appending, false otherwise.
+* @see @ref subsection_category_io_binaryfiles_write_create
+*/
+fpl_platform_api bool fplFileAppendBinary(const char *filePath, fplFileHandle *outHandle);
+
+/**
 * @brief Reads a block from the given file and returns the number of bytes read.
 * @param[in] fileHandle Reference to the file handle structure @ref fplFileHandle.
 * @param[in] sizeToRead The number of bytes to read.
@@ -15013,6 +15022,22 @@ fpl_platform_api bool fplFileCreateBinary(const char *filePath, fplFileHandle *o
 		wchar_t filePathWide[FPL_MAX_PATH_LENGTH];
 		fplUTF8StringToWideString(filePath, fplGetStringLength(filePath), filePathWide, fplArrayCount(filePathWide));
 		HANDLE win32FileHandle = CreateFileW(filePathWide, GENERIC_WRITE, FILE_SHARE_WRITE, fpl_null, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, fpl_null);
+		if (win32FileHandle != INVALID_HANDLE_VALUE) {
+			fplClearStruct(outHandle);
+			outHandle->isValid = true;
+			outHandle->internalHandle.win32FileHandle = (void *)win32FileHandle;
+			return true;
+		}
+	}
+	return false;
+}
+
+fpl_platform_api bool fplFileAppendBinary(const char *filePath, fplFileHandle *outHandle) {
+	FPL__CheckArgumentNull(outHandle, false);
+	if (filePath != fpl_null) {
+		wchar_t filePathWide[FPL_MAX_PATH_LENGTH];
+		fplUTF8StringToWideString(filePath, fplGetStringLength(filePath), filePathWide, fplArrayCount(filePathWide));
+		HANDLE win32FileHandle = CreateFileW(filePathWide, GENERIC_WRITE, FILE_SHARE_WRITE, fpl_null, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, fpl_null);
 		if (win32FileHandle != INVALID_HANDLE_VALUE) {
 			fplClearStruct(outHandle);
 			outHandle->isValid = true;
