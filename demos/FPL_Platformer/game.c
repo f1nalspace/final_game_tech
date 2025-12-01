@@ -87,8 +87,9 @@ static bool StartGame(GameState *state) {
 	}
 
 	World *world = &state->world;
+	GameAssets *assets = &state->assets;
 
-	if (!WorldLoad(world, &gTestLevel)) {
+	if (!WorldLoad(world, &assets->currentLevel)) {
 		return false; // Failed to load the map into the world (insufficient memory, wrong map, etc.)
 	}
 
@@ -355,11 +356,11 @@ fpl_extern void PlatformerGameRender(GameMemory *gameMemory, GameState *state, R
 			if (MapTileTypeIsVisible(tile.type)) {
 				Vec2f tileCenter = V2fAdd(worldPos, TileRadius);
 
-				// Very simple auto-tiling using 48 tiles from 256 (single-edge are ignored)
+				// Very simple auto-tile mapping using 48 masks, broken down from 256 masks
 				Vec2i textureTilePos;
-				TileRule rule = gMapTileRules[mask & 0xFF];
-				if (rule.valid) {
-					textureTilePos = V2iAdd(rule.offset, rule.pos);
+				AutoTileMapping mapping = gMapAutoTileMappings[mask & 0xFF];
+				if (mapping.valid) {
+					textureTilePos = V2iAdd(mapping.offset, mapping.pos);
 				} else {
 					textureTilePos = V2iAdd(V2iZero(), (Vec2i)TILESET_1x1_INVALID);
 				}
@@ -516,8 +517,8 @@ fpl_extern void PlatformerGameRender(GameMemory *gameMemory, GameState *state, R
 		EditorOSDRender(renderState, editor, input);
 	}
 
-	// Overwrite render infos such as position, rotation for "previous" from "current" states
-	// This is important for getting smooth interpolated rendering
+	// Save current transforms for next frame
 	player->transform[1] = player->transform[0];
-	activeCamera->transform[1] = activeCamera->transform[0];
+	gameCamera->transform[1] = gameCamera->transform[0];
+	editorCamera->transform[1] = editorCamera->transform[0];
 }

@@ -179,8 +179,8 @@ fpl_internal void *_MapAllocateJSONMemoryInternal(void *userData, const size_t s
 	return result;
 }
 
-fpl_internal bool MapDefinitionLoadFromFile(fmemMemoryBlock *memoryBlock, const char *filePath, const char *levelName, MapDefinition *outDefinition) {
-	if (memoryBlock == fpl_null || fplGetStringLength(filePath) == 0 || fplGetStringLength(levelName) == 0 || outDefinition == fpl_null) {
+fpl_extern bool MapDefinitionLoadFromFile(fmemMemoryBlock *transientMemory, fmemMemoryBlock *persistentMemory, const char *filePath, const char *levelName, MapDefinition *outDefinition) {
+	if (transientMemory == fpl_null || persistentMemory == fpl_null || fplGetStringLength(filePath) == 0 || fplGetStringLength(levelName) == 0 || outDefinition == fpl_null) {
 		return false; // Invalid arguments
 	}
 
@@ -199,7 +199,7 @@ fpl_internal bool MapDefinitionLoadFromFile(fmemMemoryBlock *memoryBlock, const 
 	bool fileOk = false;
 	fileSize = fplFileGetSizeFromHandle(&file);
 	if (fileSize > 0) {
-		fileData = fmemPush(memoryBlock, fileSize, fmemPushFlags_Clear);
+		fileData = fmemPush(transientMemory, fileSize, fmemPushFlags_Clear);
 		if (fileData != fpl_null) {
 			size_t read = fplFileReadBlock(&file, fileSize, fileData, fileSize);
 			fileOk = read == fileSize;
@@ -212,7 +212,7 @@ fpl_internal bool MapDefinitionLoadFromFile(fmemMemoryBlock *memoryBlock, const 
 	}
 
 	// Parse entire json file into a DOM with a single memory block (json.h)
-	root = json_parse_ex(fileData, fileSize, json_parse_flags_default, _MapAllocateJSONMemoryInternal, memoryBlock, fpl_null);
+	root = json_parse_ex(fileData, fileSize, json_parse_flags_default, _MapAllocateJSONMemoryInternal, transientMemory, fpl_null);
 	if (root == fpl_null || root->type != json_type_object) {
 		goto failed; // Failed to parse the json data into a DOM
 	}
@@ -322,7 +322,12 @@ fpl_internal bool MapDefinitionLoadFromFile(fmemMemoryBlock *memoryBlock, const 
 		goto failed; // No layer found
 	}
 
-	// Loop through all layer instances
+	Vec2i solidTileCount = V2iZero();
+	json_array_t *solidIntGridCsvArray = fpl_null;
+
+	json_array_t *entityInstancesArray = fpl_null;
+
+	// Loop through all layer instances and find the relevant ones
 	curArrElement = levelLayerInstancesArr->start;
 	while (curArrElement != fpl_null) {
 		if (curArrElement->value != fpl_null && curArrElement->value->type == json_type_object) {
@@ -334,16 +339,61 @@ fpl_internal bool MapDefinitionLoadFromFile(fmemMemoryBlock *memoryBlock, const 
 			int layerGridSize = JSONValueAsS32(JSONObjectFindValueByName(layerObj, "__gridSize"), 0);
 			IID16 layerIid = IID16ParseStringType(JSONValueAsString(JSONObjectFindValueByName(layerObj, "iid")));
 			int layerDefUid = JSONValueAsS32(JSONObjectFindValueByName(layerObj, "layerDefUid"), 0);
-			if (fplIsStringEqual("IntGrid", layerType.str)) {
-				json_array_t *intGridCsvArray = JSONValueAsArray(JSONObjectFindValueByName(layerObj, "intGridCsv"));
-			} else if (fplIsStringEqual("Entities", layerType.str)) {
-				json_array_t *entityInstancesArray = JSONValueAsArray(JSONObjectFindValueByName(layerObj, "entityInstances"));
+			if (fplIsStringEqual("IntGrid", layerType.str) && fplIsStringEqual("Solid", layerIdentifier.str)) {
+				solidIntGridCsvArray = JSONValueAsArray(JSONObjectFindValueByName(layerObj, "intGridCsv"));
+				solidTileCount = V2iInit(layerCWid, layerCHei);
+			} else if (fplIsStringEqual("Entities", layerType.str) && fplIsStringEqual("Entities", layerIdentifier.str)) {
+				entityInstancesArray = JSONValueAsArray(JSONObjectFindValueByName(layerObj, "entityInstances"));
 			}
 		}
 		curArrElement = curArrElement->next;
 	}
 
+	if (solidIntGridCsvArray == fpl_null) {
+		goto failed; // No solid tiles layer found
+	}
+	if (entityInstancesArray == fpl_null) {
+		goto failed; // No entity instances layer found
+	}
+
+	uint32_t totalTileCount = solidTileCount.w * solidTileCount.h;
+
+	TileType *definitionTileTypes = (TileType *)fmemPush(persistentMemory, sizeof(TileType) * totalTileCount, fmemPushFlags_Clear);
+
+	// Store the current memory block state, so we can rewind it after we parsed and created all tiles
+	fmemMemoryBlock tmp = *transientMemory;
+	int *solidIntArray = (int *)fmemPush(transientMemory, sizeof(int) * totalTileCount, fmemPushFlags_Clear);
+
+	fplAssert(totalTileCount == solidIntGridCsvArray->length);
+	json_array_element_t *cur = solidIntGridCsvArray->start;
+
+	uint32_t index = 0;
+	while (cur != fpl_null) {
+		solidIntArray[index] = JSONValueAsS32(cur->value, 0);
+		cur = cur->next;
+		++index;
+	}
+
+	for (size_t y = 0; y < solidTileCount.h; ++y) {
+		for (size_t x = 0; x < solidTileCount.w; ++x) {
+			int tileValue = solidIntArray[y * solidTileCount.w + x];
+			size_t tileIndex = y * solidTileCount.w + x;
+			definitionTileTypes[tileIndex] = tileValue == 1 ? TileType_Solid : TileType_None;
+		}
+	}
+
+	// We don't care about the solid int array anymore, so rewind back in the memory block
+	*transientMemory = tmp;
+
+	char *definitionLevelName = fmemPush(persistentMemory, sizeof(char) * levelNameLen + 1, fmemPushFlags_Clear);
+	fplCopyStringLen(levelName, levelNameLen, definitionLevelName, levelNameLen + 1);
+
 	fplClearStruct(outDefinition);
+	outDefinition->iid = levelIid;
+	outDefinition->width = solidTileCount.w;
+	outDefinition->height = solidTileCount.h;
+	outDefinition->name = StringInit(definitionLevelName, levelNameLen);
+	outDefinition->tiles = definitionTileTypes;
 
 	return true;
 

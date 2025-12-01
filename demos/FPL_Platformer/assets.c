@@ -75,10 +75,10 @@ fpl_extern bool AssetsLoad(RenderState *renderState, GameAssets *assets) {
 	const char *mapFilename = "level1.ldtk";
 	fplPathCombine(tempPath, fplArrayCount(tempPath), 3, assets->dataPath, "maps", mapFilename);
 
-	fmemReset(&tempMemory);
-	MapDefinition *mapDef = fmemPushStruct(&tempMemory, MapDefinition, fmemPushFlags_Clear);
-	if (!MapDefinitionLoadFromFile(&tempMemory, tempPath, mapName, mapDef)) {
-		// TODO(final): Logging (Map file not found)
+	MapDefinition *mapDef = &assets->currentLevel;
+	fplClearStruct(mapDef);
+	if (!MapDefinitionLoadFromFile(&tempMemory, &assets->persistentMemory, tempPath, mapName, mapDef)) {
+		// TODO(final): Logging (Map file not found or parse error)
 		goto failed;
 	}
 
