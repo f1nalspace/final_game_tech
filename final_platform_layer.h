@@ -10814,7 +10814,7 @@ fpl_globalvar fpl__PlatformInitState fpl__global__InitState = fplZeroInit;
 typedef struct {
 	fplEvent events[FPL__MAX_EVENT_COUNT];
 	volatile size_t pushIndex; // atomic
-    volatile size_t popIndex;  // atomic
+	volatile size_t popIndex;  // atomic
 } fpl__EventQueue;
 
 typedef struct {
@@ -10891,71 +10891,71 @@ fpl_internal fplKey fpl__GetMappedKey(const fpl__PlatformWindowState *windowStat
 
 fpl_internal void fpl__ClearInternalEvents(void) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-    fpl__EventQueue *eventQueue = &appState->window.eventQueue;
+	fpl__EventQueue *eventQueue = &appState->window.eventQueue;
 
-    size_t currentPop = fplAtomicLoadSize(&eventQueue->popIndex);
-    size_t currentPush = fplAtomicLoadSize(&eventQueue->pushIndex);
+	size_t currentPop = fplAtomicLoadSize(&eventQueue->popIndex);
+	size_t currentPush = fplAtomicLoadSize(&eventQueue->pushIndex);
 
-    for (size_t i = currentPop; i < currentPush; ++i) {
-        fplEvent *ev = &eventQueue->events[i % FPL__MAX_EVENT_COUNT];
+	for (size_t i = currentPop; i < currentPush; ++i) {
+		fplEvent *ev = &eventQueue->events[i % FPL__MAX_EVENT_COUNT];
 		if (ev->type == fplEventType_Window && ev->window.type == fplWindowEventType_DroppedFiles) {
 			if (ev->window.dropFiles.internalMemory.base != fpl_null) {
 				fpl__ReleaseDynamicMemory(ev->window.dropFiles.internalMemory.base);
 				fplClearStruct(&ev->window.dropFiles.internalMemory);
 			}
 		}
-    }
+	}
 
-    fplAtomicStoreSize(&eventQueue->popIndex, 0);
-    fplAtomicStoreSize(&eventQueue->pushIndex, 0);
+	fplAtomicStoreSize(&eventQueue->popIndex, 0);
+	fplAtomicStoreSize(&eventQueue->pushIndex, 0);
 }
 
 fpl_internal bool fpl__PollInternalEvent(fplEvent *ev) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-    fpl__EventQueue *eventQueue = &appState->window.eventQueue;
+	fpl__EventQueue *eventQueue = &appState->window.eventQueue;
 
-    size_t currentPop;
-    size_t currentPush;
-    size_t newPop;
+	size_t currentPop;
+	size_t currentPush;
+	size_t newPop;
 
-    do {
-        currentPop = fplAtomicLoadSize(&eventQueue->popIndex);
-        currentPush = fplAtomicLoadSize(&eventQueue->pushIndex);
+	do {
+		currentPop = fplAtomicLoadSize(&eventQueue->popIndex);
+		currentPush = fplAtomicLoadSize(&eventQueue->pushIndex);
 
-        if (currentPop >= currentPush) {
-            return false;
-        }
+		if (currentPop >= currentPush) {
+			return false;
+		}
 
-        newPop = currentPop + 1;
-    } while (!fplAtomicIsCompareAndSwapSize(&eventQueue->popIndex, currentPop, newPop));
+		newPop = currentPop + 1;
+	} while (!fplAtomicIsCompareAndSwapSize(&eventQueue->popIndex, currentPop, newPop));
 
-    size_t index = currentPop % FPL__MAX_EVENT_COUNT;
-    *ev = eventQueue->events[index];
-    return true;
+	size_t index = currentPop % FPL__MAX_EVENT_COUNT;
+	*ev = eventQueue->events[index];
+	return true;
 }
 
 fpl_internal void fpl__PushInternalEvent(const fplEvent *event) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-    fpl__EventQueue *eventQueue = &appState->window.eventQueue;
+	fpl__EventQueue *eventQueue = &appState->window.eventQueue;
 
-    size_t currentPush;
-    size_t currentPop;
-    size_t newPush;
+	size_t currentPush;
+	size_t currentPop;
+	size_t newPush;
 
-    do {
-        currentPush = fplAtomicLoadSize(&eventQueue->pushIndex);
-        currentPop = fplAtomicLoadSize(&eventQueue->popIndex);
+	do {
+		currentPush = fplAtomicLoadSize(&eventQueue->pushIndex);
+		currentPop = fplAtomicLoadSize(&eventQueue->popIndex);
 
-        if ((currentPush - currentPop) >= FPL__MAX_EVENT_COUNT) {
-            // Queue full, drop event or handle overflow
-            return;
-        }
+		if ((currentPush - currentPop) >= FPL__MAX_EVENT_COUNT) {
+			// Queue full, drop event or handle overflow
+			return;
+		}
 
-        newPush = currentPush + 1;
-    } while (!fplAtomicIsCompareAndSwapSize(&eventQueue->pushIndex, currentPush, newPush));
+		newPush = currentPush + 1;
+	} while (!fplAtomicIsCompareAndSwapSize(&eventQueue->pushIndex, currentPush, newPush));
 
-    size_t index = currentPush % FPL__MAX_EVENT_COUNT;
-    eventQueue->events[index] = *event;
+	size_t index = currentPush % FPL__MAX_EVENT_COUNT;
+	eventQueue->events[index] = *event;
 }
 
 fpl_internal void fpl__PushWindowStateEvent(const fplWindowEventType windowType) {
@@ -16675,7 +16675,7 @@ fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
 	if (!isEnabled) {
 		return false;
 	}
-	
+
 	fpl__Win32AppState *appState = &platformAppState->win32;
 	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
 	const fpl__Win32Api *wapi = &appState->winApi;
