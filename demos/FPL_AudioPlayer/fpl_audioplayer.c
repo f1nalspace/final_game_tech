@@ -294,7 +294,7 @@ static void UpdateTitle(AudioDemo *demo, const char *audioTrackName, const bool 
 	fplSetWindowTitle(titleBuffer);
 }
 
-static void RenderRectangle(const float x0, const float y0, const float x1, const float y1, const Vec4f color, const float lineWidth) {
+static void RenderPushRectangle(const float x0, const float y0, const float x1, const float y1, const Vec4f color, const float lineWidth) {
 	glLineWidth(lineWidth);
 	glColor4fv(&color.m[0]);
 	glBegin(GL_LINE_LOOP);
@@ -307,7 +307,7 @@ static void RenderRectangle(const float x0, const float y0, const float x1, cons
 	glColor4f(1, 1, 1, 1);
 }
 
-static void RenderQuad(const float x0, const float y0, const float x1, const float y1, const Vec4f color) {
+static void RenderPushQuad(const float x0, const float y0, const float x1, const float y1, const Vec4f color) {
 	glColor4fv(&color.m[0]);
 	glBegin(GL_QUADS);
 	glVertex2f(x1, y0);
@@ -318,7 +318,7 @@ static void RenderQuad(const float x0, const float y0, const float x1, const flo
 	glColor4f(1, 1, 1, 1);
 }
 
-static void RenderLine(const float x0, const float y0, const float x1, const float y1, const Vec4f color, const float lineWidth) {
+static void RenderPushLine(const float x0, const float y0, const float x1, const float y1, const Vec4f color, const float lineWidth) {
 	glLineWidth(lineWidth);
 	glColor4fv(&color.m[0]);
 	glBegin(GL_LINES);
@@ -330,7 +330,7 @@ static void RenderLine(const float x0, const float y0, const float x1, const flo
 }
 
 static void RenderRingBuffer(const Vec2f pos, const Vec2f dim, LockFreeRingBuffer *buffer) {
-	RenderRectangle(pos.x, pos.y, pos.x + dim.w, pos.y + dim.h, (Vec4f) { 1, 1, 1, 0.5f }, 1.0f);
+	RenderPushRectangle(pos.x, pos.y, pos.x + dim.w, pos.y + dim.h, (Vec4f) { 1, 1, 1, 0.5f }, 1.0f);
 
 	uint64_t bufferLen = buffer->length;
 
@@ -349,18 +349,18 @@ static void RenderRingBuffer(const Vec2f pos, const Vec2f dim, LockFreeRingBuffe
 	bool tailWouldWrap = (tail + fillCount) > bufferLen;
 	if(tailWouldWrap) {
 		// Double
-		RenderQuad(tailPos, pos.y, pos.x + dim.w, pos.y + dim.h, V4fInit(1.0f, 1.0f, 1.0f, 0.5f));
+		RenderPushQuad(tailPos, pos.y, pos.x + dim.w, pos.y + dim.h, V4fInit(1.0f, 1.0f, 1.0f, 0.5f));
 		uint64_t wrapPos = (tail + fillCount) % bufferLen;
 		float fillEnd = wrapPos * bufferScale;
-		RenderQuad(pos.x, pos.y, pos.x + fillEnd, pos.y + dim.h, V4fInit(1.0f, 1.0f, 1.0f, 0.5f));
+		RenderPushQuad(pos.x, pos.y, pos.x + fillEnd, pos.y + dim.h, V4fInit(1.0f, 1.0f, 1.0f, 0.5f));
 	} else {
 		// Single
 		float fillOffset = fillCount * bufferScale;
-		RenderQuad(tailPos, pos.y, tailPos + fillOffset, pos.y + dim.h, V4fInit(1.0f, 1.0f, 1.0f, 0.5f));
+		RenderPushQuad(tailPos, pos.y, tailPos + fillOffset, pos.y + dim.h, V4fInit(1.0f, 1.0f, 1.0f, 0.5f));
 	}
 
-	RenderLine(headPos, pos.y - dim.h * 0.5f, headPos, pos.y + dim.h * 1.5f, V4fInit(0.0f, 0.0f, 1.0f, 1.0f), 2.0f);
-	RenderLine(tailPos, pos.y - dim.h * 0.5f, tailPos, pos.y + dim.h * 1.5f, V4fInit(0.0f, 1.0f, 0.0f, 1.0f), 2.0f);
+	RenderPushLine(headPos, pos.y - dim.h * 0.5f, headPos, pos.y + dim.h * 1.5f, V4fInit(0.0f, 0.0f, 1.0f, 1.0f), 2.0f);
+	RenderPushLine(tailPos, pos.y - dim.h * 0.5f, tailPos, pos.y + dim.h * 1.5f, V4fInit(0.0f, 1.0f, 0.0f, 1.0f), 2.0f);
 }
 
 static void ClearVisualization(AudioDemo *demo) {
@@ -442,7 +442,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 
 	RenderRingBuffer(streamBufferPos, streamBufferDim, streamRingBuffer);
 
-	RenderRectangle(spectrumPos.x, spectrumPos.y, spectrumPos.x + spectrumDim.w, spectrumPos.y + spectrumDim.h, (Vec4f) { 1, 1, 1, 0.5f }, 1.0f);
+	RenderPushRectangle(spectrumPos.x, spectrumPos.y, spectrumPos.x + spectrumDim.w, spectrumPos.y + spectrumDim.h, (Vec4f) { 1, 1, 1, 0.5f }, 1.0f);
 
 	fplAudioFormatType format = demo->targetAudioFormat.type;
 	size_t sampleSize = fplGetAudioSampleSizeInBytes(format);
@@ -495,7 +495,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 		frameCount = MAX_AUDIO_FRAMES_CHUNK_FRAMES;
 	}
 
-	RenderRectangle(progressPos.x, progressPos.y, progressPos.x + progressDim.w, progressPos.y + progressDim.h, (Vec4f) { 1, 1, 1, 0.5f }, 1.0f);
+	RenderPushRectangle(progressPos.x, progressPos.y, progressPos.x + progressDim.w, progressPos.y + progressDim.h, (Vec4f) { 1, 1, 1, 0.5f }, 1.0f);
 
 	float progressBarScale = 0.0f;
 	if (fullAudioBuffer->frameCount > 0) {
@@ -503,7 +503,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 	}
 
 	float progressBarWidth = progressBarMaxWidth * progressBarScale;
-	RenderQuad(progressPos.x + progressBarPadding, progressPos.y + progressBarPadding, progressPos.x + progressBarPadding + progressBarWidth, progressPos.y + progressBarPadding + progressBarMaxHeight, (Vec4f) { 1, 1, 0, 1.0f });
+	RenderPushQuad(progressPos.x + progressBarPadding, progressPos.y + progressBarPadding, progressPos.x + progressBarPadding + progressBarWidth, progressPos.y + progressBarPadding + progressBarMaxHeight, (Vec4f) { 1, 1, 0, 1.0f });
 
 	if(frameCount > 0 && chunkSamples != fpl_null) {
 		// Convert all samples to float
@@ -659,7 +659,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 				float x2 = lineX + ((float)(frameIndex + 1) / (float)(frameCount - 1) * spectrumDim.w);
 				float y1 = lineY + ((float)sampleValue1 * maxWaveFormHeight * 0.5f);
 				float y2 = lineY + ((float)sampleValue2 * maxWaveFormHeight * 0.5f);
-				RenderLine(x1, y1, x2, y2, (Vec4f) { 0.8f, 0.25f, 0.05f, 1.0f }, 4.0f);
+				RenderPushLine(x1, y1, x2, y2, (Vec4f) { 0.8f, 0.25f, 0.05f, 1.0f }, 4.0f);
 			}
 		}
 #endif
@@ -679,7 +679,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 				float barHeight = (float)sampleValue * barMaxHeight;
 				float barX = barStartX + frameIndex * barWidth + frameIndex * spacing;
 				float barY = barStartY + barMaxHeight * 0.5f;
-				RenderQuad(barX, barY + barHeight * 0.5f, barX + barWidth, barY - barHeight * 0.5f, (Vec4f) { 1, 1, 0, 1 });
+				RenderPushQuad(barX, barY + barHeight * 0.5f, barX + barWidth, barY - barHeight * 0.5f, (Vec4f) { 1, 1, 0, 1 });
 			}
 		}
 #endif
@@ -698,7 +698,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 				double scaledMagnitude = visualization->scaledMagnitudes[frameIndex];
 				float barX = barStartX + frameIndex * barWidth + frameIndex * spacing;
 				float barHeight = (float)scaledMagnitude * barMaxHeight;
-				RenderQuad(barX, barStartY, barX + barWidth, barStartY + barHeight, (Vec4f) { 0.0f, 1.0, 0.1f, 0.25f });
+				RenderPushQuad(barX, barStartY, barX + barWidth, barStartY + barHeight, (Vec4f) { 0.0f, 1.0, 0.1f, 0.25f });
 			}
 		}
 #endif
@@ -716,7 +716,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 				double scaledMagnitude = visualization->spectrum[binIndex];
 				float barX = spectrumPos.x + binIndex * barWidth + binIndex * spacing;
 				float barHeight = (float)scaledMagnitude * barMaxHeight;
-				RenderQuad(barX, barY, barX + barWidth, barY + barHeight, (Vec4f) { 0.0f, 0.1f, 1.0f, 0.5f });
+				RenderPushQuad(barX, barY, barX + barWidth, barY + barHeight, (Vec4f) { 0.0f, 0.1f, 1.0f, 0.5f });
 			}
 		}
 #endif

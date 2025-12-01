@@ -18,6 +18,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2025-07-19
+	- Fixed keyboard states was updated, even when polling was disabled
+
 	## 2019-08-31
 	- Use new field isActive from fplGamepadState now, which was introduced in the last commit
 	- Draw mouse wheel delta for 500 msecs
@@ -181,7 +184,7 @@ struct Viewport {
 	int h;
 };
 
-static Viewport ComputeViewportByAspect(const Vec2i& screenSize, const float targetAspect) {
+static Viewport ViewportComputeByAspect(const Vec2i& screenSize, const float targetAspect) {
 	int targetHeight = (int)(screenSize.w / targetAspect);
 	Vec2i viewSize = V2i(screenSize.w, screenSize.h);
 	Vec2i viewOffset = V2i(0, 0);
@@ -1191,7 +1194,7 @@ static void RenderApp(AppState* appState, const InputState* input, const uint32_
 	constexpr float w = AppWidth * 0.5f;
 	constexpr float h = AppHeight * 0.5f;
 
-	Viewport vp = ComputeViewportByAspect(V2i(winWidth, winHeight), AppAspect);
+	Viewport vp = ViewportComputeByAspect(V2i(winWidth, winHeight), AppAspect);
 
 	RenderScale scale = {};
 	scale.worldSize = V2f(AppWidth, AppHeight);
@@ -1652,9 +1655,9 @@ int main(int argc, char* argv[]) {
 					}
 				}
 
-				fplKeyboardState keyboardState = {};
-				if (fplPollKeyboardState(&keyboardState)) {
-					if (appState->usePolling) {
+				if (appState->usePolling) {
+					fplKeyboardState keyboardState = {};
+					if (fplPollKeyboardState(&keyboardState)) {
 						for (int i = 0; i < 256; ++i) {
 							if (KeyWasPressed(lastKeyStates[i], keyboardState.buttonStatesMapped[i])) {
 								HandleKeyPressed(appState, &input, (fplKey)i);

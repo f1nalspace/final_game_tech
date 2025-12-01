@@ -16,6 +16,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2025-05-02
+	- Fixed crash when trying to get a font char from a not supported code point
+
 	## 2025-03-15
 	- Fixed audio sample buffer was not cleared when seeking
 
@@ -1376,10 +1379,13 @@ struct FontInfo {
 
 static FontChar GetFontChar(const FontInfo &info, const uint32_t codePoint) {
 	uint32_t lastCharPastOne = info.firstChar + info.charCount;
-	fplAssert(codePoint >= info.firstChar && codePoint < lastCharPastOne);
-	uint32_t charIndex = codePoint - info.firstChar;
-	FontChar result = info.chars[charIndex];
-	return(result);
+	if (codePoint >= info.firstChar && codePoint < lastCharPastOne) {
+		uint32_t charIndex = codePoint - info.firstChar;
+		FontChar result = info.chars[charIndex];
+		return(result);
+	}
+	FontChar empty = fplZeroInit;
+	return empty;
 }
 
 static void ReleaseFontInfo(FontInfo &font) {
@@ -3329,7 +3335,7 @@ static void RenderVideoFrame(AppState *state) {
 	DisplayRect rect = CalculateDisplayRect(0, 0, w, h, frameWidth, frameHeight, sar);
 
 #if USE_HARDWARE_RENDERING
-	Mat4f proj = Mat4OrthoRH(0.0f, (float)w, 0.0f, (float)h, 0.0f, 1.0f);
+	Mat4f proj = M4fOrthoRH(0.0f, (float)w, 0.0f, (float)h, 0.0f, 1.0f);
 
 	glViewport(0, 0, w, h);
 	glClear(GL_COLOR_BUFFER_BIT);

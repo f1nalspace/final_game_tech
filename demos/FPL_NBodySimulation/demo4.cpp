@@ -503,7 +503,7 @@ namespace Demo4 {
 	void ParticleSimulation::Render(Render::CommandBuffer *commandBuffer, const float worldToScreenScale) {
 		// Domain
 		Vec4f domainColor = V4f(1.0f, 0.0f, 1.0f, 1.0f);
-		Render::PushRectangle(commandBuffer, V2f(-kSPHBoundaryHalfWidth, -kSPHBoundaryHalfHeight), V2f(kSPHBoundaryHalfWidth, kSPHBoundaryHalfHeight) * 2.0f, domainColor, false, 1.0f);
+		Render::RenderPushRectangle(commandBuffer, V2f(-kSPHBoundaryHalfWidth, -kSPHBoundaryHalfHeight), V2f(kSPHBoundaryHalfWidth, kSPHBoundaryHalfHeight) * 2.0f, domainColor, false, 1.0f);
 
 		// Grid fill
 		for(int yIndexInner = 0; yIndexInner < kSPHGridCountY; ++yIndexInner) {
@@ -513,7 +513,7 @@ namespace Demo4 {
 				Vec2f innerP = kSPHGridOrigin + V2f((float)xIndexInner, (float)yIndexInner) * kSPHGridCellSize;
 				Vec2f innerSize = V2f(kSPHGridCellSize, kSPHGridCellSize);
 				if(cell->count > 0) {
-					Render::PushRectangle(commandBuffer, innerP, innerSize, ColorLightGray, true);
+					Render::RenderPushRectangle(commandBuffer, innerP, innerSize, ColorLightGray, true);
 				}
 			}
 		}
@@ -522,12 +522,12 @@ namespace Demo4 {
 		for(int yIndex = 0; yIndex < kSPHGridCountY; ++yIndex) {
 			Vec2f startP = kSPHGridOrigin + V2f(0, (float)yIndex) * kSPHGridCellSize;
 			Vec2f endP = kSPHGridOrigin + V2f((float)kSPHGridCountX, (float)yIndex) * kSPHGridCellSize;
-			Render::PushLine(commandBuffer, startP, endP, ColorDarkGray, 1.0f);
+			Render::RenderPushLine(commandBuffer, startP, endP, ColorDarkGray, 1.0f);
 		}
 		for(int xIndex = 0; xIndex < kSPHGridCountX; ++xIndex) {
 			Vec2f startP = kSPHGridOrigin + V2f((float)xIndex, 0) * kSPHGridCellSize;
 			Vec2f endP = kSPHGridOrigin + V2f((float)xIndex, (float)kSPHGridCountY) * kSPHGridCellSize;
-			Render::PushLine(commandBuffer, startP, endP, ColorDarkGray, 1.0f);
+			Render::RenderPushLine(commandBuffer, startP, endP, ColorDarkGray, 1.0f);
 		}
 
 		// Bodies
@@ -587,17 +587,17 @@ namespace Demo4 {
 		Vec4f color = ColorBlue;
 		Vec2f a = V2f(p.x + t.x * kSPHVisualPlaneLength, p.y + t.y * kSPHVisualPlaneLength);
 		Vec2f b = V2f(p.x - t.x * kSPHVisualPlaneLength, p.y - t.y * kSPHVisualPlaneLength);
-		Render::PushLine(commandBuffer, a, b, color, 1.0f);
+		Render::RenderPushLine(commandBuffer, a, b, color, 1.0f);
 	}
 
 	void Circle::Render(Render::CommandBuffer *commandBuffer) {
 		Vec4f color = ColorBlue;
-		Render::PushCircle(commandBuffer, pos, radius, color, false, 1.0f);
+		Render::RenderPushCircle(commandBuffer, pos, radius, color, false, 1.0f);
 	}
 
 	void LineSegment::Render(Render::CommandBuffer *commandBuffer) {
 		Vec4f color = ColorBlue;
-		Render::PushLine(commandBuffer, a, b, color, 1.0f);
+		Render::RenderPushLine(commandBuffer, a, b, color, 1.0f);
 	}
 
 	void Poly::Render(Render::CommandBuffer *commandBuffer) {

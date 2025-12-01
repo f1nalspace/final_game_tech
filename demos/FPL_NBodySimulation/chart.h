@@ -146,33 +146,33 @@ struct Chart {
 		float subSampleMargin = 5;
 
 		// Chart area
-		Render::PushRectangle(commandBuffer, V2f(areaLeft, areaBottom), V2f(areaWidth, areaHeight), V4f(0.1f, 0.1f, 0.1f, 1.0f), true);
+		Render::RenderPushRectangle(commandBuffer, V2f(areaLeft, areaBottom), V2f(areaWidth, areaHeight), V4f(0.1f, 0.1f, 0.1f, 1.0f), true);
 
 		// Grid
 		Vec4f gridXLineColor = V4f(0.25f, 0.25f, 0.25f, 1);
 		Vec4f gridYLineColor = V4f(0.25f, 0.25f, 0.25f, 1);
 		for (size_t sampleIndex = 1; sampleIndex < sampleCount; ++sampleIndex) {
-			Render::PushLine(commandBuffer, V2f(chartOriginX + (float)sampleIndex * sampleWidth, chartOriginY), V2f(chartOriginX + (float)sampleIndex * sampleWidth, chartOriginY + chartHeight), gridXLineColor, 1.0f);
+			Render::RenderPushLine(commandBuffer, V2f(chartOriginX + (float)sampleIndex * sampleWidth, chartOriginY), V2f(chartOriginX + (float)sampleIndex * sampleWidth, chartOriginY + chartHeight), gridXLineColor, 1.0f);
 		}
 
 		for (size_t tickIndex = 0; tickIndex <= tickCount; ++tickIndex) {
 			double tickValue = yAxis.min + yAxis.tickSpacing * (double)tickIndex;
 			float tickHeight = yAxis.MapValueToPosition(tickValue, chartHeight);
-			Render::PushLine(commandBuffer, V2f(chartOriginX, chartOriginY + tickHeight), V2f(chartOriginX + chartWidth, chartOriginY + tickHeight), gridYLineColor, 1.0f);
+			Render::RenderPushLine(commandBuffer, V2f(chartOriginX, chartOriginY + tickHeight), V2f(chartOriginX + chartWidth, chartOriginY + tickHeight), gridYLineColor, 1.0f);
 		}
 
 		// Axis lines
 		float axisLineExtend = 10.0f;
 		Vec4f axisLineColor = V4f(0.65f, 0.65f, 0.65f, 1);
-		Render::PushLine(commandBuffer, V2f(chartOriginX - axisLineExtend, chartOriginY), V2f(chartOriginX + chartWidth, chartOriginY), axisLineColor, 1.0f);
-		Render::PushLine(commandBuffer, V2f(chartOriginX, chartOriginY - axisLineExtend), V2f(chartOriginX, chartOriginY + chartHeight), axisLineColor, 1.0f);
+		Render::RenderPushLine(commandBuffer, V2f(chartOriginX - axisLineExtend, chartOriginY), V2f(chartOriginX + chartWidth, chartOriginY), axisLineColor, 1.0f);
+		Render::RenderPushLine(commandBuffer, V2f(chartOriginX, chartOriginY - axisLineExtend), V2f(chartOriginX, chartOriginY + chartHeight), axisLineColor, 1.0f);
 
 		// Tick marks
 		Vec4f tickMarkLineColor = V4f(0.2f, 0.2f, 0.2f, 1);
 		for (size_t tickIndex = 0; tickIndex <= tickCount; ++tickIndex) {
 			double tickValue = yAxis.min + yAxis.tickSpacing * (double)tickIndex;
 			float tickHeight = yAxis.MapValueToPosition(tickValue, chartHeight);
-			Render::PushLine(commandBuffer, V2f(chartOriginX, chartOriginY + tickHeight), V2f(chartOriginX - axisMargin, chartOriginY + tickHeight), tickMarkLineColor, 1.0f);
+			Render::RenderPushLine(commandBuffer, V2f(chartOriginX, chartOriginY + tickHeight), V2f(chartOriginX - axisMargin, chartOriginY + tickHeight), tickMarkLineColor, 1.0f);
 		}
 
 		// Tick labels
@@ -184,7 +184,7 @@ struct Chart {
 			float tickLabelWidth = GetTextWidth(tickLabel.c_str(), (uint32_t)tickLabel.size(), font, tickLabelFontHeight);
 			float tickY = chartOriginY + tickHeight - tickLabelFontHeight * 0.5f;
 			float tickX = chartOriginX - axisMargin - tickLabelWidth;
-			Render::PushText(commandBuffer, V2f(tickX, tickY), tickLabel.c_str(), font, fontTexture, tickLabelFontHeight, tickLabelColor);
+			Render::RenderPushText(commandBuffer, V2f(tickX, tickY), tickLabel.c_str(), font, fontTexture, tickLabelFontHeight, tickLabelColor);
 		}
 
 		// Bars
@@ -202,7 +202,7 @@ struct Chart {
 				float sampleTop = chartOriginY + sampleHeight;
 				Vec2f rectPos = V2f(sampleLeft, sampleBottom);
 				Vec2f rectSize = V2f(abs(sampleRight - sampleLeft), abs(sampleBottom - sampleTop));
-				Render::PushRectangle(commandBuffer, rectPos, rectSize, seriesColor, true);
+				Render::RenderPushRectangle(commandBuffer, rectPos, rectSize, seriesColor, true);
 			}
 		}
 
@@ -212,7 +212,7 @@ struct Chart {
 			float textWidth = (float)GetTextWidth(sampleLabel, (uint32_t)strlen(sampleLabel), font, sampleLabelFontHeight);
 			float xLeft = chartOriginX + (float)sampleIndex * sampleWidth + sampleWidth * 0.5f - textWidth * 0.5f;
 			float yMiddle = chartOriginY - sampleLabelFontHeight - sampleAxisMargin;
-			Render::PushText(commandBuffer, V2f(xLeft, yMiddle), sampleLabel, font, fontTexture, sampleLabelFontHeight, V4f(1, 1, 1, 1));
+			Render::RenderPushText(commandBuffer, V2f(xLeft, yMiddle), sampleLabel, font, fontTexture, sampleLabelFontHeight, V4f(1, 1, 1, 1));
 		}
 
 		// Legend
@@ -222,13 +222,13 @@ struct Chart {
 			ChartSeries *series = &seriesItems[seriesIndex];
 			Vec4f legendColor = series->color;
 
-			Render::PushRectangle(commandBuffer, V2f(legendCurLeft, legendBottom), V2f(legendBulletSize, legendBulletSize), legendColor, true);
+			Render::RenderPushRectangle(commandBuffer, V2f(legendCurLeft, legendBottom), V2f(legendBulletSize, legendBulletSize), legendColor, true);
 			legendCurLeft += legendBulletSize + legendBulletPadding;
 
 			const char *legendLabel = series->title.c_str();
 			float labelWidth = (float)GetTextWidth(legendLabel, (uint32_t)strlen(legendLabel), font, legendFontHeight);
 			float labelY = legendBottom - legendFontHeight * 0.5f + legendBulletSize * 0.5f;
-			Render::PushText(commandBuffer, V2f(legendCurLeft, labelY), legendLabel, font, fontTexture, legendFontHeight, V4f(1, 1, 1, 1));
+			Render::RenderPushText(commandBuffer, V2f(legendCurLeft, labelY), legendLabel, font, fontTexture, legendFontHeight, V4f(1, 1, 1, 1));
 			legendCurLeft += labelWidth + legendLabelPadding;
 		}
 	}
