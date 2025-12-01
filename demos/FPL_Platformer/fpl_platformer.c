@@ -155,6 +155,9 @@ License:
 #define FINAL_GEOMETRY_IMPLEMENTATION
 #include <final_geometry.h>
 
+#define FINAL_LOG_IMPLEMENTATION
+#include <final_log.h>
+
 #include <final_utils.h>
 
 // Headers
