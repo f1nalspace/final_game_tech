@@ -98,13 +98,12 @@ fpl_extern void EditorInput(Editor *editor, const Input *input) {
 			if (!editor->isPanning) {
 				if (editor->mode == EditorMode_Full) {
 					editor->isPanning = true;
-					editor->panStartPos = editor->mouseWorldPos;
+					editor->panStartMousePos = editor->mouseWorldPos;
+					editor->panStartOffset = editor->camera.transform[0].offset;
 				}
 			} else {
-				Vec2f delta = V2fSub(editor->mouseWorldPos, editor->panStartPos);
-				float panningStrength = 0.5f;
-				editor->camera.transform[0].offset = V2fAddMultScalar(editor->camera.transform[0].offset, delta, -panningStrength);
-				editor->panStartPos = editor->mouseWorldPos;
+				Vec2f delta = V2fSub(editor->mouseWorldPos, editor->panStartMousePos);
+				editor->camera.transform[0].offset = V2fAdd(editor->panStartOffset, delta);
 			}
 		}
 	} else {
@@ -115,7 +114,7 @@ fpl_extern void EditorInput(Editor *editor, const Input *input) {
 		}
 		if (editor->isPanning || editor->mode != EditorMode_Full) {
 			editor->isPanning = false;
-			editor->panStartPos = editor->mouseWorldPos;
+			editor->panStartMousePos = editor->mouseWorldPos;
 		}
 	}
 
