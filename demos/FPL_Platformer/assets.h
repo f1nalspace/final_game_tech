@@ -17,30 +17,6 @@
 // Size of the assets persistent memory block
 #define GAME_ASSETS_MEMORY_PERSISTENT_SIZE fplMegaBytes(4)
 
-typedef enum RuleNumberType {
-	RuleNumberType_Ignore = 0,
-	RuleNumberType_Value,
-	RuleNumberType_First,
-	RuleNumberType_Last,
-} RuleNumberType;
-
-typedef struct RuleNumber {
-	RuleNumberType type;
-	int value;
-} RuleNumber;
-
-typedef struct TileIndexRule {
-	Vec2i pos;
-	RuleNumber col;
-	RuleNumber row;
-} TileIndexRule;
-
-typedef struct TileAreaRule {
-	Vec2i pos;
-	TileAreaMask areaMask;
-	uint32_t padding;
-} TileAreaRule;
-
 // Tileset 3x3 Fill/Plus 
 #define TILESET_3x3_FILL_OFFSET V2I(0, 0)
 #define TILESET_3x3_FILL_TOP_LEFT V2I(0, 0)
@@ -77,93 +53,97 @@ typedef struct TileAreaRule {
 // Tileset 1x1 Invalid
 #define TILESET_1x1_INVALID V2I(7, 7)
 
-#define TILERULE_SINGLE_BLOCK {V2I(0, 0), TILESET_1x1_SINGLE_A, true}
+// Tileset Single Block
+#define TILESET_SINGLE_BLOCK {V2I(0, 0), TILESET_1x1_SINGLE_A, true}
 
 typedef struct {
-	// tileset offset
+	// Tileset offset
     Vec2i offset;
-	// tile position within tileset
+	// Tile position within tileset
     Vec2i pos;
-    // Is rule valid
+    // Is the mapping valid
     fpl_b32 valid;
-} TileRule;
+} AutoTileMapping;
 
-static const TileRule gMapTileRules[256] = {
+//
+// Defines the 48 mappings for the auto-tile system
+// 
+static const AutoTileMapping gMapAutoTileMappings[256] = {
     // Isolated
-    [0b00000000] = TILERULE_SINGLE_BLOCK,
+    [0b00000000] = TILESET_SINGLE_BLOCK,													// Standalone
 
     // Vertical line
-    [0b00000001] = {TILESET_1x3_VERTICAL_OFFSET, TILESET_1x3_VERTICAL_BOTTOM, true}, // 1x3 Bottom
-    [0b00010001] = {TILESET_1x3_VERTICAL_OFFSET, TILESET_1x3_VERTICAL_MIDDLE, true}, // 1x3 Middle
-    [0b00010000] = {TILESET_1x3_VERTICAL_OFFSET, TILESET_1x3_VERTICAL_TOP, true},    // 1x3 Top
+    [0b00000001] = {TILESET_1x3_VERTICAL_OFFSET, TILESET_1x3_VERTICAL_BOTTOM, true},		// 1x3 Up
+    [0b00010001] = {TILESET_1x3_VERTICAL_OFFSET, TILESET_1x3_VERTICAL_MIDDLE, true},		// 1x3 Middle
+    [0b00010000] = {TILESET_1x3_VERTICAL_OFFSET, TILESET_1x3_VERTICAL_TOP, true},			// 1x3 Down
 
     // Horizontal line
-    [0b00000100] = {TILESET_3x1_HORIZONTAL_OFFSET, TILESET_3x1_HORIZONTAL_LEFT, true},   // 3x1 Left
-    [0b01000100] = {TILESET_3x1_HORIZONTAL_OFFSET, TILESET_3x1_HORIZONTAL_CENTER, true}, // 3x1 Center
-    [0b01000000] = {TILESET_3x1_HORIZONTAL_OFFSET, TILESET_3x1_HORIZONTAL_RIGHT, true},  // 3x1 Right
+    [0b00000100] = {TILESET_3x1_HORIZONTAL_OFFSET, TILESET_3x1_HORIZONTAL_LEFT, true},		// 3x1 Right
+    [0b01000100] = {TILESET_3x1_HORIZONTAL_OFFSET, TILESET_3x1_HORIZONTAL_CENTER, true},	// 3x1 Center
+    [0b01000000] = {TILESET_3x1_HORIZONTAL_OFFSET, TILESET_3x1_HORIZONTAL_RIGHT, true},		// 3x1 Left
 
     // Edges open
-    [0b00010100] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_TOP_LEFT, true},     // Top-left
-    [0b01010000] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_TOP_RIGHT, true},    // Top-right
-    [0b01000001] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_BOTTOM_RIGHT, true}, // Bottom-right
-    [0b00000101] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_BOTTOM_LEFT, true},  // Bottom-left
+    [0b00010100] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_TOP_LEFT, true},				// Open edge top-left
+    [0b01010000] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_TOP_RIGHT, true},				// Open edge top-right
+    [0b01000001] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_BOTTOM_RIGHT, true},			// Open edge bottom-right
+    [0b00000101] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_BOTTOM_LEFT, true},			// Open edge bottom-left
 
     // Edges closed
-    [0b00011100] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_TOP_LEFT, true},     // Top-left
-    [0b01110000] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_TOP_RIGHT, true},    // Top-right
-    [0b11000001] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_BOTTOM_RIGHT, true}, // Bottom-right
-    [0b00000111] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_BOTTOM_LEFT, true},  // Bottom-left
+    [0b00011100] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_TOP_LEFT, true},				// Closed edge top-left
+    [0b01110000] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_TOP_RIGHT, true},				// Closed edge top-right
+    [0b11000001] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_BOTTOM_RIGHT, true},			// Closed edge bottom-right
+    [0b00000111] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_BOTTOM_LEFT, true},			// Closed edge bottom-left
 
     // Middle pieces
-    [0b01111100] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_TOP_MIDDLE, true},    // Top
-    [0b11110001] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_SIDE_RIGHT, true},    // Right
-    [0b11000111] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_BOTTOM_MIDDLE, true}, // Bottom
-    [0b00011111] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_SIDE_LEFT, true},     // Left
+    [0b01111100] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_TOP_MIDDLE, true},			// Top-middle
+    [0b11110001] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_SIDE_RIGHT, true},			// Side-Right
+    [0b11000111] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_BOTTOM_MIDDLE, true},			// Bottom-middle
+    [0b00011111] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_SIDE_LEFT, true},				// Side-Left
 
-    // T-Shapes / Plus
-    // Facing Right
-    [0b00010101] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_SIDE_LEFT, true},
-    [0b00011101] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_SIDE_LEFT, true},
-    [0b00010111] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_SIDE_LEFT, true},
+    // T-Shape Facing Right
+    [0b00010101] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_SIDE_LEFT, true},				// T-Shape right
+    [0b00011101] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_SIDE_LEFT, true},				// T-Shape right and bottom-right
+    [0b00010111] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_SIDE_LEFT, true},				// T-Shape right and top-right
 
-    // Facing Left
-    [0b01010001] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_SIDE_RIGHT, true},
-    [0b01110001] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_SIDE_RIGHT, true},
-    [0b11010001] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_SIDE_RIGHT, true},
+    // T-Shape Facing Left
+    [0b01010001] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_SIDE_RIGHT, true},			// T-Shape left 
+    [0b01110001] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_SIDE_RIGHT, true},			// T-Shape left and bottom-left
+    [0b11010001] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_SIDE_RIGHT, true},			// T-Shape left and top-left
 
-    // Facing Top
-    [0b01000101] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_BOTTOM_MIDDLE, true},
-    [0b01000111] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_BOTTOM_MIDDLE, true},
-    [0b11000101] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_BOTTOM_MIDDLE, true},
+    // T-Shape Facing Top
+	[0b01000101] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_BOTTOM_MIDDLE, true},			// T-Shape up
+    [0b01000111] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_BOTTOM_MIDDLE, true},			// T-Shape up and top-right
+    [0b11000101] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_BOTTOM_MIDDLE, true},			// T-Shape up and top-left
 
-    // Facing Bottom (✅ includes missing one)
-    [0b01010100] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_TOP_MIDDLE, true},
-    [0b01011100] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_TOP_MIDDLE, true},
-    [0b01110100] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_TOP_MIDDLE, true},
-    [0b11010100] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_TOP_MIDDLE, true}, // MISSING ONE
+    // T-Shape Facing Bottom
+    [0b01010100] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_TOP_MIDDLE, true},			// T-Shape down
+	[0b01011100] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_TOP_MIDDLE, true},			// T-Shape down and bottom-right
+	[0b01110100] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_TOP_MIDDLE, true},			// T-Shape down and bottom-left
+	[0b11010100] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_TOP_MIDDLE, true},			// T-Shape down and top-left
 
     // Plus / Centroid variations
-    [0b01010101] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_CENTROID, true},
-    [0b11111101] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_CENTROID, true},
-    [0b01110101] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_CENTROID, true},
-    [0b11010101] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_CENTROID, true},
-    [0b01010111] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_CENTROID, true},
-    [0b01011101] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_CENTROID, true},
-    [0b01111111] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_CENTROID, true},
-    [0b01111101] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_CENTROID, true},
-    [0b11010111] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_CENTROID, true},
-    [0b01011111] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_CENTROID, true},
-    [0b11110101] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_CENTROID, true},
-    [0b11011111] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_CENTROID, true},
-    [0b11110111] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_CENTROID, true},
-    [0b11011101] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_CENTROID, true},
-    [0b01110111] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_CENTROID, true},
+    [0b01010101] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_CENTROID, true},				// Plus
+    [0b11111101] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_CENTROID, true},				// Plus, all except top-right
+    [0b01110101] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_CENTROID, true},				// Plus and bottom-left
+    [0b11010101] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_CENTROID, true},				// Plus and top-left
+    [0b01010111] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_CENTROID, true},				// Plus and top-right
+    [0b01011101] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_CENTROID, true},				// Plus and bottom-right
+    [0b01111111] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_CENTROID, true},				// Plus, all except top-left
+    [0b01111101] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_CENTROID, true},				// Plus and bottom-left + bottom-right
+    [0b11010111] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_CENTROID, true},				// Plus and top-left + top-right
+    [0b01011111] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_CENTROID, true},				// Plus and top-right + bottom-right
+    [0b11110101] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_CENTROID, true},				// Plus and top-left + bottom-left
+    [0b11011111] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_CENTROID, true},				// Plus, all except bottom-left
+    [0b11110111] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_CENTROID, true},				// Plus, all except bottom-right
+    [0b11011101] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_CENTROID, true},				// Plus and top-left + bottom-right
+    [0b01110111] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_CENTROID, true},				// Plus and top-right + bottom-left
 
     // Filled Centroid
-    [0b11111111] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_CENTROID, true},
+    [0b11111111] = {TILESET_3x3_FILL_OFFSET, TILESET_3x3_FILL_CENTROID, true},				// All filled
 };
 
 typedef struct GameAssets {
+	MapDefinition currentLevel;
 	fmemMemoryBlock transientMemory;
 	fmemMemoryBlock persistentMemory;
 	FontAsset consoleFont;
