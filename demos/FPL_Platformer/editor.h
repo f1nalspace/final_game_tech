@@ -37,7 +37,6 @@ typedef struct Editor {
 	Vec2f mouseWorldPos;
 	Vec2i drawTilePos;
 	Vec2f panStartMousePos;
-	Vec2f panStartOffset;
 	bool isPanning;
 
 	GameAssets *assets;

@@ -99,11 +99,10 @@ fpl_extern void EditorInput(Editor *editor, const Input *input) {
 				if (editor->mode == EditorMode_Full) {
 					editor->isPanning = true;
 					editor->panStartMousePos = editor->mouseWorldPos;
-					editor->panStartOffset = editor->camera.transform[0].offset;
 				}
 			} else {
 				Vec2f delta = V2fSub(editor->mouseWorldPos, editor->panStartMousePos);
-				editor->camera.transform[0].offset = V2fAdd(editor->panStartOffset, delta);
+				editor->camera.transform[0].offset = V2fAddMultScalar(editor->camera.transform[0].offset, delta, 1.0f);
 			}
 		}
 	} else {
