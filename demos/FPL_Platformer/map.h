@@ -320,8 +320,6 @@ extern bool MapInit(fmemMemoryBlock *memory, Map *map);
 
 extern void MapClear(Map *map);
 
-extern bool MapDefinitionLoadFromFile(fmemMemoryBlock *transientMemory, fmemMemoryBlock *persistentMemory, const char *filePath, const char *levelName, MapDefinition *outDefinition);
-
 extern bool MapAssign(Map *map, const MapDefinition *definition);
 
 // Finds the first tile position from the specified tile type and returns true if found, false otherwise

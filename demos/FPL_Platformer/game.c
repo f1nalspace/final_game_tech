@@ -89,7 +89,7 @@ static bool StartGame(GameState *state) {
 	World *world = &state->world;
 	GameAssets *assets = &state->assets;
 
-	if (!WorldLoad(world, &assets->currentLevel)) {
+	if (!WorldLoad(world, &gTestLevel)) {
 		return false; // Failed to load the map into the world (insufficient memory, wrong map, etc.)
 	}
 

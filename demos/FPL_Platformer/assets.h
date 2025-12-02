@@ -143,7 +143,6 @@ static const AutoTileMapping gMapAutoTileMappings[256] = {
 };
 
 typedef struct GameAssets {
-	MapDefinition currentLevel;
 	fmemMemoryBlock transientMemory;
 	fmemMemoryBlock persistentMemory;
 	FontAsset consoleFont;

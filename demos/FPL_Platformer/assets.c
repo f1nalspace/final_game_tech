@@ -70,18 +70,6 @@ fpl_extern bool AssetsLoad(RenderState *renderState, GameAssets *assets) {
 	tilesetTextureAsset->texture = fpl_null;
 	RenderPushTexture(renderState, &tilesetTextureAsset->texture, tilesetTextureAsset->data.data, tilesetTextureAsset->data.width, tilesetTextureAsset->data.height, tilesetTextureAsset->data.components, TextureFilterType_Nearest, TextureWrapMode_ClampToEdge, false, false);
 
-	// Maps
-	const char *mapName = "Level_1"; // Must match the "identifier" of the level
-	const char *mapFilename = "level1.ldtk";
-	fplPathCombine(tempPath, fplArrayCount(tempPath), 3, assets->dataPath, "maps", mapFilename);
-
-	MapDefinition *mapDef = &assets->currentLevel;
-	fplClearStruct(mapDef);
-	if (!MapDefinitionLoadFromFile(&tempMemory, &assets->persistentMemory, tempPath, mapName, mapDef)) {
-		// TODO(final): Logging (Map file not found or parse error)
-		goto failed;
-	}
-
 	result = true;
 	goto finished;
 
