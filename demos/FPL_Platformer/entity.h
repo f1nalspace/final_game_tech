@@ -17,7 +17,8 @@
 
 #define EntityDefaultWalkSpeed (TileWidth * 3.0f)
 #define EntityDefaultAirSpeed (TileWidth * 0.1f)
-#define EntityDefaultJumpVelocity (TileHeight * 12.0f)
+#define EntityDefaultJumpVelocity (TileHeight * 11.0f)
+#define EntityDefaultRadius V2F(TileWidth * 0.18f, TileHeight * 0.35f)
 
 #define EntityDefaultGroundFriction 0.2f
 #define EntityDefaultAirFriction 0.0f

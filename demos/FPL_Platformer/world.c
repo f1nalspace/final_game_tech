@@ -94,7 +94,7 @@ extern bool WorldLoad(World *world, const MapDefinition *mapDefinition) {
 	uint32_t playerId = EntityIDStart + playerIndex;
 
 	// TODO(final): Hardcoded player constants!
-	Vec2f playerRadius = V2fHadamard(TileSize, V2fInit(0.3f, 0.7f));
+	Vec2f playerRadius = EntityDefaultRadius;
 	Vec4f playerColor = V4fInit(0.05f, 0.1f, 0.95f, 1);
 
 	// Find player start position from map
