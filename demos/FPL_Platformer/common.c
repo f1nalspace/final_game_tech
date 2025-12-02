@@ -66,32 +66,3 @@ extern IID16 IID16ParseString(const char *str, const size_t len) {
 extern IID16 IID16ParseStringType(const String str) {
 	return IID16ParseString(str.str, str.len);
 }
-
-extern json_object_element_t *JSONObjectFindElementByName(json_object_t *obj, const char *name) {
-	size_t nameLen = fplGetStringLength(name);
-	if (obj == fpl_null || nameLen == 0) {
-		return fpl_null;
-	}
-	json_object_element_t *cur = obj->start;
-	while (cur != fpl_null) {
-		if (cur->name != fpl_null && fplIsStringEqualLen(name, nameLen, cur->name->string, cur->name->string_size)) {
-			return cur;
-		}
-		cur = cur->next;
-	}
-	return fpl_null;
-}
-
-extern json_value_t *JSONObjectFindValueByName(json_object_t *obj, const char *name) {
-	size_t nameLen = fplGetStringLength(name);
-	if (obj == fpl_null || nameLen == 0) {
-		return fpl_null;
-	}
-	json_object_element_t *element = JSONObjectFindElementByName(obj, name);
-	if (element == fpl_null) {
-		return fpl_null;
-	}
-	return element->value;
-}
-
-
