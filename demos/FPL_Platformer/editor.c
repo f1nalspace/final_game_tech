@@ -228,11 +228,6 @@ fpl_extern void EditorOSDRender(RenderState *renderState, const Editor *editor, 
 	Vec4f blackColor = V4fInit(0, 0, 0, 1);
 	Vec2f blockPos = V2fInit(-w, -h + fontHeight);
 
-	fplStringFormat(charBuffer, fplArrayCount(charBuffer), "Drawing: %d x %d, Active: %s, Tile: %d", editor->drawTilePos.x, editor->drawTilePos.y, editor->isDrawing ? "yes" : "no", editor->drawTile);
-	RenderPushText(renderState, charBuffer, fplGetStringLength(charBuffer), &font->desc, font->texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, blackColor);
-	RenderPushText(renderState, charBuffer, fplGetStringLength(charBuffer), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
-	blockPos = V2fAdd(blockPos, V2fInit(0, fontHeight));
-
 	fplStringFormat(charBuffer, fplArrayCount(charBuffer), "Mouse: %.04f x %.04f, Down: %s", editor->mouseWorldPos.x, editor->mouseWorldPos.y, input->mouse.left.endedDown ? "yes" : "no");
 	RenderPushText(renderState, charBuffer, fplGetStringLength(charBuffer), &font->desc, font->texture, V2fInit(blockPos.x - 1, blockPos.y - 1), fontHeight, 1.0f, -1.0f, blackColor);
 	RenderPushText(renderState, charBuffer, fplGetStringLength(charBuffer), &font->desc, font->texture, V2fInit(blockPos.x, blockPos.y), fontHeight, 1.0f, -1.0f, textColor);
