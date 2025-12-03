@@ -15523,7 +15523,7 @@ fpl_platform_api bool fplFileAppendBinary(const char *filePath, fplFileHandle *o
 	if (filePath != fpl_null) {
 		wchar_t filePathWide[FPL_MAX_PATH_LENGTH];
 		fplUTF8StringToWideString(filePath, fplGetStringLength(filePath), filePathWide, fplArrayCount(filePathWide));
-		HANDLE win32FileHandle = CreateFileW(filePathWide, GENERIC_WRITE, FILE_SHARE_WRITE, fpl_null, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, fpl_null);
+		HANDLE win32FileHandle = CreateFileW(filePathWide, FILE_APPEND_DATA, FILE_SHARE_WRITE, fpl_null, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, fpl_null);
 		if (win32FileHandle != INVALID_HANDLE_VALUE) {
 			fplClearStruct(outHandle);
 			outHandle->isValid = true;
