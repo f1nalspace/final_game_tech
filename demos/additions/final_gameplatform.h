@@ -9,6 +9,9 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
+	## 2025-12-03
+	- Introduce automatic logging using final_log.h
+
 	## 2025-11-21
 	- Changed: Reflect for API changes in final_game.h (Added Input argument to GameRender)
 	- Fixed: Mouse button state was preserving the half-transition count which is incorrect
@@ -45,6 +48,10 @@ License:
 typedef struct GameConfiguration {
 	// Title of the game
 	const char *title;
+	// Name of the user folder name (if empty, the title is used instead)
+	const char *userFolderName;
+	// Name of the log file name (if empty, the default name is used)
+	const char *logFileName;
 	// Preferred sample rate in Hz
 	uint32_t audioSampleRate;
 	// Preferred number of channels
@@ -61,6 +68,8 @@ typedef struct GameConfiguration {
 	bool disableInactiveDetection;
 	// Indicates that vertical sync is disabled or not
 	bool disableVerticalSync;
+	// Indicates whether text file logging is enabled or not
+	bool enableLog;
 } GameConfiguration;
 
 fpl_extern int GameMain(const GameConfiguration *config);
@@ -86,6 +95,9 @@ fpl_extern int GameMain(const GameConfiguration *config);
 
 #define FINAL_OPENGL_RENDER_IMPLEMENTATION
 #include "final_opengl_render.h"
+
+#define FINAL_LOG_IMPLEMENTATION
+#include "final_log.h"
 
 fpl_inline void UpdateKeyboardButtonState(ButtonState *newState, const fpl_b32 isDown) {
 	newState->endedDown = isDown;
@@ -347,14 +359,63 @@ static void SetupInputForFrame(Input *oldInput, Input *newInput, const double ta
 			PreserveButtonState(&newGamepadController->buttons[buttonIndex], &oldGamepadController->buttons[buttonIndex]);
 		}
 	}
+}
 
+fpl_globalvar char gGamePlatformHomePathBuffer[FPL_MAX_PATH_LENGTH] = fplZeroInit;
+fpl_globalvar char gGamePlatformFilePathBuffer[FPL_MAX_PATH_LENGTH] = fplZeroInit;
+
+fpl_internal void GameLoggingInitialize(const GameConfiguration *config) {
+	fplSettings settings = fplZeroInit;
+
+	const char *userFolderName;
+	if (fplGetStringLength(config->userFolderName) > 0) {
+		userFolderName = config->userFolderName;
+	} else {
+		userFolderName = config->title;
+	}
+
+	const char *logFileName;
+	if (fplGetStringLength(config->logFileName) > 0) {
+		logFileName = config->logFileName;
+	} else {
+		logFileName = "game.log";
+	}
+
+	// Log initialization, with short platform initialization so we can access several IO functions in FPL
+	if (fplGetStringLength(userFolderName) > 0 && fplGetStringLength(logFileName) > 0 && config->enableLog) {
+		if (fplPlatformInit(fplInitFlags_None, &settings)) {
+			size_t homePathLen = fplGetHomePath(gGamePlatformHomePathBuffer, fplArrayCount(gGamePlatformHomePathBuffer));
+			if (homePathLen > 0) {
+				fplPathCombine(gGamePlatformFilePathBuffer, fplArrayCount(gGamePlatformFilePathBuffer), 2, gGamePlatformHomePathBuffer, userFolderName);
+				if (!fplDirectoryExists(gGamePlatformFilePathBuffer))
+					fplDirectoriesCreate(gGamePlatformFilePathBuffer);
+				fplPathCombine(gGamePlatformFilePathBuffer, fplArrayCount(gGamePlatformFilePathBuffer), 3, gGamePlatformHomePathBuffer, userFolderName, logFileName);
+			}
+
+			LogInit(gGamePlatformFilePathBuffer);
+
+			fplPlatformRelease();
+		}
+	}
 }
 
 fpl_extern int GameMain(const GameConfiguration *config) {
 	if(config == fpl_null) {
 		return -1;
 	}
-	fplSettings settings = fplMakeDefaultSettings();
+
+	GameLoggingInitialize(config);
+
+	LogWriteLineBreak();
+	LogWriteRaw("======================================================================");
+	LogWrite(LogLevel_Info, "Startup Game '%s'", config->title);
+	LogWriteRaw("======================================================================");
+
+	fplSettings settings = fplZeroInit;
+
+	LogWrite(LogLevel_Info, "[ Platform Configuration ]");
+
+	fplSetDefaultSettings(&settings);
 	settings.video.backend = fplVideoBackendType_OpenGL;
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
 	settings.video.isVSync = !config->disableVerticalSync;
@@ -371,8 +432,30 @@ fpl_extern int GameMain(const GameConfiguration *config) {
 	fplInitFlags initFlags = fplInitFlags_All;
 	initFlags &= ~fplInitFlags_Console;
 
+	const char *platformName = fplGetPlatformName(fplGetPlatformType());
+	const char *archName = fplCPUGetArchName(fplCPUGetArchitecture());
+	fplMemoryInfos memInfos = fplZeroInit;
+	fplMemoryGetInfos(&memInfos);
+
+	LogWrite(LogLevel_Info, "- Platform: %s", platformName);
+	LogWrite(LogLevel_Info, "- Architecture: %s", archName);
+	LogWrite(LogLevel_Info, "- Total Physical Memory: %zu bytes", memInfos.totalPhysicalSize);
+	LogWrite(LogLevel_Info, "- Free Physical Memory: %zu bytes", memInfos.freePhysicalSize);
+	LogWrite(LogLevel_Info, "- Title: %s", config->title);
+	LogWrite(LogLevel_Info, "- Video Backend: %s", fplGetVideoBackendName(settings.video.backend));
+	LogWrite(LogLevel_Info, "- Video VSync: %s", settings.video.isVSync ? "On" : "Off");
+	LogWrite(LogLevel_Info, "- Audio format: [SampleRate: %u, Channels: %u, Type: %s]", settings.audio.targetFormat.sampleRate, settings.audio.targetFormat.channels, fplGetAudioFormatName(settings.audio.targetFormat.type));
+
+	int resultCode = -1;
+
+	fmemMemoryBlock gameMemoryBlock = fplZeroInit;
+	fmemMemoryBlock renderMemoryBlock = fplZeroInit;
+
+	LogWrite(LogLevel_Info, "[ Initialize Platform Layer ]");
 	if(!fplPlatformInit(initFlags, &settings)) {
-		return -1;
+		const char *lastError = fplGetLastError();
+		LogWrite(LogLevel_Fatal, "[ Failed to initialize Platform Layer -> %s ]", lastError);
+		goto shutdown;
 	}
 
 	//
@@ -389,221 +472,258 @@ fpl_extern int GameMain(const GameConfiguration *config) {
 		}
 	}
 
+	LogWrite(LogLevel_Info, "[ Load OpenGL Library ]");
 	if(!fglLoadOpenGL(true)) {
-		fplPlatformRelease();
-		return -1;
+		LogWrite(LogLevel_Fatal, "[ Failed to load OpenGL library ]");
+		goto shutdown;
 	}
 
-	bool wasError = false;
-
-	fmemMemoryBlock gameMemoryBlock = fplZeroInit;
-	if(!fmemInit(&gameMemoryBlock, fmemType_Growable, FMEM_MEGABYTES(128), 0)) {
-		wasError = true;
+	const size_t gameMemoryBlockSize = FMEM_MEGABYTES(128);
+	LogWrite(LogLevel_Info, "[ Allocate game memory block with size %zu bytes ]", gameMemoryBlockSize);
+	if(!fmemInit(&gameMemoryBlock, fmemType_Growable, gameMemoryBlockSize, 0)) {
+		LogWrite(LogLevel_Fatal, "[ Failed to allocate game memory block with size %zu ]", gameMemoryBlockSize);
+		goto shutdown;
 	}
 
-	fmemMemoryBlock renderMemoryBlock = fplZeroInit;
-	if(!fmemInit(&renderMemoryBlock, fmemType_Growable, FMEM_MEGABYTES(32), 0)) {
-		wasError = true;
+	const size_t renderMemoryBlockSize = FMEM_MEGABYTES(32);
+	LogWrite(LogLevel_Info, "[ Allocate render memory block with size %zu bytes ]", renderMemoryBlockSize);
+	if(!fmemInit(&renderMemoryBlock, fmemType_Growable, renderMemoryBlockSize, 0)) {
+		LogWrite(LogLevel_Fatal, "[ Failed to allocate render memory block with size %zu ]", renderMemoryBlockSize);
+		goto shutdown;
 	}
 
+	const size_t audioSystemSize = sizeof(AudioSystem);
+	LogWrite(LogLevel_Info, "[ Aquire memory for audio system with size %zu bytes ]", audioSystemSize);
 	AudioSystem *audioSys = fmemPushStruct(&gameMemoryBlock, AudioSystem, fmemPushFlags_Clear);
 	if (audioSys == fpl_null) {
-		wasError = true;
+		LogWrite(LogLevel_Fatal, "[ Insufficient memory for audio system, capacity is '%zu bytes', used is '%zu bytes', required is '%zu bytes' ]", gameMemoryBlock.size, gameMemoryBlock.used, audioSystemSize);
+		goto shutdown;
 	}
 
+	LogWrite(LogLevel_Info, "[ Query Audio Hardware Format ]");
 	fplAudioFormat targetAudioFormat = fplZeroInit;
 	if (!fplGetAudioHardwareFormat(&targetAudioFormat)) {
-		wasError = true;
+		LogWrite(LogLevel_Fatal, "[ Failed to query Audio Hardware Format! ]");
+		goto shutdown;
 	}
+
+	LogWrite(LogLevel_Info, "[ Initialize Audio System with target format: SampleRate: %u, Channels: %u, Type: %s ]", targetAudioFormat.sampleRate, targetAudioFormat.channels, fplGetAudioFormatName(targetAudioFormat.type));
 	if(!AudioSystemInit(audioSys, &targetAudioFormat)) {
-		wasError = true;
+		LogWrite(LogLevel_Fatal, "[ Failed to initialize Audio System with target format: SampleRate: %u, Channels: %u, Type: %s ]", targetAudioFormat.sampleRate, targetAudioFormat.channels, fplGetAudioFormatName(targetAudioFormat.type));
+		goto shutdown;
 	}
 
-	fplSetAudioClientReadCallback(GameAudioPlayback, audioSys);
-	if(fplPlayAudio() != fplAudioResultType_Success) {
-		wasError = true;
-	}
-
+	size_t renderStateSize = sizeof(RenderState);
+	LogWrite(LogLevel_Info, "[ Aquire memory for render state with size %zu bytes ]", renderStateSize);
 	RenderState *renderState = fmemPushStruct(&gameMemoryBlock, RenderState, fmemPushFlags_Clear);
+	if (renderState == fpl_null) {
+		LogWrite(LogLevel_Fatal, "[ Insufficient memory for render state, capacity is '%zu bytes', used is '%zu bytes', required is '%zu bytes' ]", gameMemoryBlock.size, gameMemoryBlock.used, renderStateSize);
+		goto shutdown;
+	}
+
 	RenderInit(renderState, renderMemoryBlock);
 	InitOpenGLRenderer();
+
+	LogWrite(LogLevel_Info, "[ Start Audio Playback ]");
+	fplSetAudioClientReadCallback(GameAudioPlayback, audioSys);
+	fplAudioResultType playAudioResult = fplPlayAudio();
+	if(playAudioResult != fplAudioResultType_Success) {
+		LogWrite(LogLevel_Fatal, "[ Failed to start Audio Playback -> %s ]", fplGetAudioResultName(playAudioResult));
+		goto shutdown;
+	}
 
 	GameMemory gameMem = fplZeroInit;
 	gameMem.audio = audioSys;
 	gameMem.memory = &gameMemoryBlock;
 	gameMem.render = renderState;
+
+	LogWrite(LogLevel_Info, "[ Initialize Game ]");
 	if(!GameInit(&gameMem)) {
-		wasError = true;
+		LogWrite(LogLevel_Fatal, "[ Game failed to initialize! ]");
+		goto shutdown;
 	}
 
-	if(!wasError) {
-		const uint32_t targetFramesHz = config->targetHz > 0 ? config->targetHz : 60;
-		const uint32_t maxRenderFramesHz = config->maxRenderHz;
+	const uint32_t targetFramesHz = config->targetHz > 0 ? config->targetHz : 60;
+	const uint32_t maxRenderFramesHz = config->maxRenderHz;
 
-		const double targetDeltaTime = 1.0 / (double)targetFramesHz;
-		const double maxRenderTime = maxRenderFramesHz > 0 ? 1.0 / (double)maxRenderFramesHz : 0.0;
+	const double targetDeltaTime = 1.0 / (double)targetFramesHz;
+	const double maxRenderTime = maxRenderFramesHz > 0 ? 1.0 / (double)maxRenderFramesHz : 0.0;
 
-		if(config->hideMouseCursor) {
-			fplSetWindowCursorEnabled(false);
-		}
-
-		Input inputs[2] = fplZeroInit;
-		Input *newInput = &inputs[0];
-		Input *oldInput = &inputs[1];
-		Vec2i lastMousePos = V2iInit(-1, -1);
-		GameWindowActiveType windowActiveType[2] = { GameWindowActiveType_None, GameWindowActiveType_None };
-		newInput->defaultControllerIndex = oldInput->defaultControllerIndex = -1;
-
-		uint32_t frameCount = 0;
-		uint32_t updateCount = 0;
-
-		fplTimestamp lastTime = fplTimestampQuery();
-		double frameAccumulator = 0.0;
-		double totalTime = 0.0;
-		double lastFrameTime = targetDeltaTime;
-
-		uint64_t lastFPSTime = fplMillisecondsQuery();
-		double framesPerSecond = 0.0;
-		int frameIndex = 0;
-
-		while(!IsGameExiting(&gameMem) && fplWindowUpdate()) {
-			// Get window size
-			fplWindowSize winArea;
-			if(fplGetWindowSize(&winArea)) {
-				newInput->windowSize.x = winArea.width;
-				newInput->windowSize.y = winArea.height;
-			}
-
-			// Setup input (Clear new and preserve important states)
-			SetupInputForFrame(oldInput, newInput, targetDeltaTime, framesPerSecond, lastFrameTime);
-			newInput->frameIndex = frameIndex++;
-
-			// Events
-			windowActiveType[1] = windowActiveType[0];
-			ProcessEvents(newInput, oldInput, &windowActiveType[0], &lastMousePos);
-			
-#if 0
-			// Logging of input change
-			for(uint32_t buttonIndex = 0; buttonIndex < fplArrayCount(newKeyboardController->buttons); ++buttonIndex) {
-				ButtonState newState = newKeyboardController->buttons[buttonIndex];
-				ButtonState oldState = oldKeyboardController->buttons[buttonIndex];
-				if ((newState.endedDown != oldState.endedDown) ||
-				    (newState.halfTransitionCount != oldState.halfTransitionCount)) {
-					bool wasPressed = WasPressed(newState);
-					fplDebugFormatOut("Button [%d] changed, down: [%u/%u] transitions: [%d/%d] => %s\n", buttonIndex, newState.endedDown, oldState.endedDown, newState.halfTransitionCount, oldState.halfTransitionCount, (wasPressed ? "yes" : "no"));
-				}
-			}
-#endif
-			
-			if(config->disableInactiveDetection) {
-				newInput->isActive = (windowActiveType[0] & GameWindowActiveType_Minimized) != GameWindowActiveType_Minimized;
-			} else {
-				newInput->isActive = ((windowActiveType[0] & GameWindowActiveType_Minimized) != GameWindowActiveType_Minimized) && ((windowActiveType[0] & GameWindowActiveType_LostFocus) != GameWindowActiveType_LostFocus);
-			}
-
-			//
-			// If activation toggled, reset timing cleanly
-			//
-			if(windowActiveType[0] != windowActiveType[1]) {
-				lastTime = fplTimestampQuery();
-				frameAccumulator = 0.0;
-				framesPerSecond = 0.0f;
-				lastFPSTime = fplMillisecondsQuery();
-				updateCount = frameCount = 0;
-			}
-
-			//
-			// Game Input once per frame
-			//
-			GameInput(&gameMem, newInput);
-
-			//
-			// Compute frame time once and advance accumulator
-			//
-			fplTimestamp currTime = fplTimestampQuery();
-			double frameTime = fplTimestampElapsed(lastTime, currTime);
-			lastTime = currTime;
-			if (frameTime > 0.25) frameTime = 0.25;
-			frameAccumulator += frameTime;
-			framesPerSecond = frameTime > 0 ? 1.0 / frameTime : 0;
-			lastFrameTime = frameTime;
-
-			//
-			// Game update accumulator loop (Allow button edge events only on the first tick of this render frame)
-			//
-			int ticksThisFrame = 0;
-			while (frameAccumulator >= targetDeltaTime) {
-				newInput->isFirstUpdateOfFrame = (ticksThisFrame == 0);
-				GameUpdate(&gameMem, newInput);
-				frameAccumulator -= targetDeltaTime;
-				totalTime += targetDeltaTime;
-				++updateCount;
-				++ticksThisFrame;
-			}
-
-			//
-			// Game Render without any interpolation
-			//
-			const float alphaRaw = (float)(frameAccumulator / targetDeltaTime);
-			const float alpha = F32Clamp(alphaRaw, 0.0f, 1.0f);
-			RenderReset(renderState);
-			GameRender(&gameMem, newInput, alpha);
-			RenderWithOpenGL(renderState);
-			fplVideoFlip();
-			++frameCount;
-
-			//
-			// FPS-Timer
-			//
-			if((fplMillisecondsQuery() - lastFPSTime) >= 1000) {
-#if 0
-				fplDebugFormatOut("Fps: %d, Ups: %d\n", frameCount, updateCount);
-#endif
-				lastFPSTime = fplMillisecondsQuery();
-				frameCount = 0;
-				updateCount = 0;
-			}
-
-			// Swap input
-			{
-				Input *tmp = newInput;
-				newInput = oldInput;
-				oldInput = tmp;
-			}
-
-			// Throttle if vsync is disabled and there is a limit of max frames
-			if (config->disableVerticalSync && maxRenderTime > 0.0) {
-				if (frameTime < maxRenderTime) {
-					double sleepSec = maxRenderTime - frameTime;
-					uint32_t sleepMS = (uint32_t)(sleepSec * 1000.0);
-					if (sleepMS > 0) {
-						// TODO(final): Use a better approach!
-						fplThreadSleep(sleepMS);
-					}
-				}
-			}
-		}
-
-		if(config->hideMouseCursor) {
-			fplSetWindowCursorEnabled(true);
-		}
-
-		GameRelease(&gameMem);
+	if(config->hideMouseCursor) {
+		fplSetWindowCursorEnabled(false);
 	}
 
+	Input inputs[2] = fplZeroInit;
+	Input *newInput = &inputs[0];
+	Input *oldInput = &inputs[1];
+	Vec2i lastMousePos = V2iInit(-1, -1);
+	GameWindowActiveType windowActiveType[2] = { GameWindowActiveType_None, GameWindowActiveType_None };
+	newInput->defaultControllerIndex = oldInput->defaultControllerIndex = -1;
+
+	uint32_t frameCount = 0;
+	uint32_t updateCount = 0;
+
+	fplTimestamp lastTime = fplTimestampQuery();
+	double frameAccumulator = 0.0;
+	double totalTime = 0.0;
+	double lastFrameTime = targetDeltaTime;
+
+	uint64_t lastFPSTime = fplMillisecondsQuery();
+	double framesPerSecond = 0.0;
+	int frameIndex = 0;	
+
+	LogWrite(LogLevel_Info, "[ Main Loop ]");
+	while(!IsGameExiting(&gameMem) && fplWindowUpdate()) {
+		// Get window size
+		fplWindowSize winArea;
+		if(fplGetWindowSize(&winArea)) {
+			newInput->windowSize.x = winArea.width;
+			newInput->windowSize.y = winArea.height;
+		}
+
+		// Setup input (Clear new and preserve important states)
+		SetupInputForFrame(oldInput, newInput, targetDeltaTime, framesPerSecond, lastFrameTime);
+		newInput->frameIndex = frameIndex++;
+
+		// Events
+		windowActiveType[1] = windowActiveType[0];
+		ProcessEvents(newInput, oldInput, &windowActiveType[0], &lastMousePos);
+			
+#if 0
+		// Logging of input change
+		for(uint32_t buttonIndex = 0; buttonIndex < fplArrayCount(newKeyboardController->buttons); ++buttonIndex) {
+			ButtonState newState = newKeyboardController->buttons[buttonIndex];
+			ButtonState oldState = oldKeyboardController->buttons[buttonIndex];
+			if ((newState.endedDown != oldState.endedDown) ||
+				(newState.halfTransitionCount != oldState.halfTransitionCount)) {
+				bool wasPressed = WasPressed(newState);
+				fplDebugFormatOut("Button [%d] changed, down: [%u/%u] transitions: [%d/%d] => %s\n", buttonIndex, newState.endedDown, oldState.endedDown, newState.halfTransitionCount, oldState.halfTransitionCount, (wasPressed ? "yes" : "no"));
+			}
+		}
+#endif
+			
+		if(config->disableInactiveDetection) {
+			newInput->isActive = (windowActiveType[0] & GameWindowActiveType_Minimized) != GameWindowActiveType_Minimized;
+		} else {
+			newInput->isActive = ((windowActiveType[0] & GameWindowActiveType_Minimized) != GameWindowActiveType_Minimized) && ((windowActiveType[0] & GameWindowActiveType_LostFocus) != GameWindowActiveType_LostFocus);
+		}
+
+		//
+		// If activation toggled, reset timing cleanly
+		//
+		if(windowActiveType[0] != windowActiveType[1]) {
+			lastTime = fplTimestampQuery();
+			frameAccumulator = 0.0;
+			framesPerSecond = 0.0f;
+			lastFPSTime = fplMillisecondsQuery();
+			updateCount = frameCount = 0;
+		}
+
+		//
+		// Game Input once per frame
+		//
+		GameInput(&gameMem, newInput);
+
+		//
+		// Compute frame time once and advance accumulator
+		//
+		fplTimestamp currTime = fplTimestampQuery();
+		double frameTime = fplTimestampElapsed(lastTime, currTime);
+		lastTime = currTime;
+		if (frameTime > 0.25) frameTime = 0.25;
+		frameAccumulator += frameTime;
+		framesPerSecond = frameTime > 0 ? 1.0 / frameTime : 0;
+		lastFrameTime = frameTime;
+
+		//
+		// Game update accumulator loop (Allow button edge events only on the first tick of this render frame)
+		//
+		int ticksThisFrame = 0;
+		while (frameAccumulator >= targetDeltaTime) {
+			newInput->isFirstUpdateOfFrame = (ticksThisFrame == 0);
+			GameUpdate(&gameMem, newInput);
+			frameAccumulator -= targetDeltaTime;
+			totalTime += targetDeltaTime;
+			++updateCount;
+			++ticksThisFrame;
+		}
+
+		//
+		// Game Render without any interpolation
+		//
+		const float alphaRaw = (float)(frameAccumulator / targetDeltaTime);
+		const float alpha = F32Clamp(alphaRaw, 0.0f, 1.0f);
+		RenderReset(renderState);
+		GameRender(&gameMem, newInput, alpha);
+		RenderWithOpenGL(renderState);
+		fplVideoFlip();
+		++frameCount;
+
+		//
+		// FPS-Timer
+		//
+		if((fplMillisecondsQuery() - lastFPSTime) >= 1000) {
+#if 0
+			fplDebugFormatOut("Fps: %d, Ups: %d\n", frameCount, updateCount);
+#endif
+			lastFPSTime = fplMillisecondsQuery();
+			frameCount = 0;
+			updateCount = 0;
+		}
+
+		// Swap input
+		{
+			Input *tmp = newInput;
+			newInput = oldInput;
+			oldInput = tmp;
+		}
+
+		// Throttle if vsync is disabled and there is a limit of max frames
+		if (config->disableVerticalSync && maxRenderTime > 0.0) {
+			if (frameTime < maxRenderTime) {
+				double sleepSec = maxRenderTime - frameTime;
+				uint32_t sleepMS = (uint32_t)(sleepSec * 1000.0);
+				if (sleepMS > 0) {
+					// TODO(final): Use a better approach!
+					fplThreadSleep(sleepMS);
+				}
+			}
+		}
+	}
+
+	if(config->hideMouseCursor) {
+		fplSetWindowCursorEnabled(true);
+	}
+
+	resultCode = 0;
+
+shutdown:
+	LogWriteRaw("======================================================================");
+	LogWrite(LogLevel_Info, "Shutdown Game '%s'", config->title);
+	LogWriteRaw("======================================================================");
+
+	LogWrite(LogLevel_Info, "[ Release Game ]");
+	GameRelease(&gameMem);
+
+	LogWrite(LogLevel_Info, "[ Stop Audio Playback ]");
 	fplStopAudio();
 
+	LogWrite(LogLevel_Info, "[ Shutdown Audio System ]");
 	AudioSystemShutdown(audioSys);
 
+	LogWrite(LogLevel_Info, "[ Free Memory Blocks ]");
 	fmemFree(&gameMemoryBlock);
 	fmemFree(&renderMemoryBlock);
 
+	LogWrite(LogLevel_Info, "[ Unload OpenGL ]");
 	fglUnloadOpenGL();
 
+	LogWrite(LogLevel_Info, "[ Release Platform Layer ]");
 	fplPlatformRelease();
 
-	int result = wasError ? -1 : 0;
-	return (result);
+	LogShutdown();
+
+	return resultCode;
 }
 
 #endif // FINAL_GAMEPLATFORM_IMPLEMENTATION

@@ -30,6 +30,7 @@ License:
 #include "final_render.h"
 #include "final_audiosystem.h"
 #include "final_memory.h"
+#include "final_log.h"
 
 typedef struct ButtonState {
 	int halfTransitionCount;
