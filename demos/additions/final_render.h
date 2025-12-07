@@ -191,6 +191,10 @@ typedef enum SpriteFlags {
 	SpriteFlags_FlipU = 1 << 0,
 	// Flip the V min/max of the UV rectangle
 	SpriteFlags_FlipV = 1 << 1,
+	// Rotate the sprite by 90 degrees clockwise
+	SpriteFlags_Rotate_90_CW = 1 << 2,
+	// Rotate the sprite by 90 degrees counter-clockwise
+	SpriteFlags_Rotate_90_CCW = 1 << 3,
 } SpriteFlags;
 
 typedef struct SpriteCommand {
