@@ -479,10 +479,10 @@ fpl_extern int GameMain(const GameConfiguration *config) {
 		goto shutdown;
 	}
 
-	const char *glversion = glGetString(GL_VERSION);
-	const char *glvendor = glGetString(GL_VENDOR);
-	const char *glrenderer = glGetString(GL_RENDERER);
-	const char *glextensions = glGetString(GL_EXTENSIONS);
+	const GLubyte *glversion = glGetString(GL_VERSION);
+	const GLubyte *glvendor = glGetString(GL_VENDOR);
+	const GLubyte *glrenderer = glGetString(GL_RENDERER);
+	const GLubyte *glextensions = glGetString(GL_EXTENSIONS);
 
 	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- OpenGL Version: %s", glversion);
 	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- OpenGL Vendor: %s", glvendor);
