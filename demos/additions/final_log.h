@@ -146,7 +146,7 @@ fpl_extern void LogWriteRaw(const char *format, ...) {
 	LogString tempString = fplZeroInit;
 	tempString.allocated = temporaryMemory.size;
 	tempString.length = 0;
-	tempString.data = temporaryMemory.base;
+	tempString.data = (char *)temporaryMemory.base;
 
 	va_list argList;
 	va_start(argList, format);
@@ -188,7 +188,7 @@ fpl_extern void LogWriteArgs(const LogLevel level, const char *format, va_list a
 	LogString tempString = fplZeroInit;
 	tempString.allocated = temporaryMemory.size;
 	tempString.length = 0;
-	tempString.data = temporaryMemory.base;
+	tempString.data = (char *)temporaryMemory.base;
 
 	const char *levelName = gLogLevelNames[level];
 	fplDateTime utcDate = fplDateTimeQuery(fplDateTimeType_UTC);
@@ -245,7 +245,7 @@ fpl_extern void LogWrite(const LogLevel level, const char *format, ...) {
 	LogString tempString = fplZeroInit;
 	tempString.allocated = temporaryMemory.size;
 	tempString.length = 0;
-	tempString.data = temporaryMemory.base;
+	tempString.data = (char *)temporaryMemory.base;
 
 	const char *levelName = gLogLevelNames[level];
 	fplDateTime utcDate = fplDateTimeQuery(fplDateTimeType_UTC);
