@@ -53,8 +53,6 @@ typedef struct Log {
 	bool isInitialized;
 } Log;
 
-fpl_extern Log gLog;
-
 fpl_extern bool LogInit(const char *logFilePath);
 fpl_extern void LogShutdown();
 
@@ -82,7 +80,7 @@ fpl_internal const char *gLogLevelNames[] = {
 };
 
 
-fpl_extern Log gLog = { 0 };
+static Log gLog = { 0 };
 
 static char gLogWriteData[256] = { 0 };
 static LogString gLogWriteString = {
