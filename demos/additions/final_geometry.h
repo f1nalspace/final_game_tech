@@ -130,7 +130,7 @@ fpl_inline void AABB2fExtract(const AABB2f *aabb, Vec2f *outCenter, Vec2f *outRa
 	*outRadius = radius;
 }
 
-fpl_inline bool AABB2fIsOverlap(const AABB2f *a, const AABB2f *b) {
+fpl_inline bool AABB2fIntersects(const AABB2f *a, const AABB2f *b) {
 	Vec2f centerA, centerB;
 	Vec2f radiusA, radiusB;
 	AABB2fExtract(a, &centerA, &radiusA);
