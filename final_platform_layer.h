@@ -180,6 +180,7 @@ SOFTWARE.
 	- Improved: Better documentation of the preprocessor setup blocks
 	- Fixed: Fixed duplicate platform includes
 	- Fixed: fpLGetAlignmentOffset() was not guarding the alignment argument in all cases
+	- Fixed: fplS32ToString() was not handling negative values correctly
 	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
 	- Changed: Ensure that std types has the correct sizes always using equals
@@ -11620,33 +11621,39 @@ fpl_common_api size_t fplS32ToString(const int32_t value, char *buffer, const si
 	int32_t v = value;
 
 	bool isNegative = false;
-	if (v < 0) {
-		isNegative = true;
-		v = -v;
-	}
+	if (value < 0) {
+        isNegative = true;
+        // Convert to unsigned to avoid overflow on INT32_MIN
+        v = (uint32_t)(-(value + 1)) + 1;
+    } else {
+        v = (uint32_t)value;
+    }
 
-	int32_t tmp = v;
-	size_t digitCount = 0;
-	do {
-		tmp = tmp / 10;
-		++digitCount;
-	} while (tmp != 0);
+	// Count digits
+    uint32_t tmp = v;
+    size_t digitCount = 0;
+    do {
+        tmp /= 10;
+        digitCount++;
+    } while (tmp != 0);
 
 	size_t result = digitCount + (isNegative ? 1 : 0);
 
 	if (buffer != fpl_null) {
-		size_t requiredLen = result + 1;
+		size_t requiredLen = result + 1; // include null terminator
 		FPL__CheckArgumentMin(maxBufferLen, requiredLen, 0);
 
 		char *p = buffer;
 		if (isNegative) {
 			*p++ = '-';
 		}
-		p += digitCount;// Go back to the very end, because we are writing the digits back in reverse order
+
+		// Go back to the very end, because we are writing the digits back in reverse order
+		p += digitCount;
 		char *lastP = p;
 
 		const char *digits = "0123456789";
-		tmp = value;
+		tmp = v;
 		do {
 			*--p = digits[tmp % 10];
 			tmp /= 10;
@@ -11655,7 +11662,7 @@ fpl_common_api size_t fplS32ToString(const int32_t value, char *buffer, const si
 		*lastP = 0;
 	}
 
-	return (result);
+	return result;
 }
 
 fpl_common_api int32_t fplStringToS32Len(const char *str, const size_t len) {
