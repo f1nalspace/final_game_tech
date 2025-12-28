@@ -174,8 +174,11 @@ SOFTWARE.
 	- New: Added function fplFormatDateTime that formats a fplDateTime into either a local or UTC date time components
 	- New: Added function fplDateTimeCreate that creates a fplDateTime from seperate date time components
 	- New: Added function fplFileAppendBinary() for opening a file for appending, that is useful for log-files and such
+	- New: Added function fplPathNormalize() for normalizing any partial path into a absolute path
 	- New: [Win32] Implemented function fplFileAppendBinary() for Win32 API
 	- New: [POSIX] Implemented function fplFileAppendBinary() for POSIX Unix API
+	- New: [Win32] Implemented function fplPathNormalize() for Win32 API
+	- New: [POSIX] Implemented function fplPathNormalize() for POSIX Unix API
 	- Improved[#176]: Made internal event queue thread-safe using a lock-free push/pop linear buffer
 	- Improved: Better documentation of the preprocessor setup blocks
 	- Fixed: Fixed duplicate platform includes
@@ -7205,6 +7208,15 @@ fpl_platform_api size_t fplGetExecutableFilePath(char *destPath, const size_t ma
 * @see @ref subsection_category_io_paths_get_home
 */
 fpl_platform_api size_t fplGetHomePath(char *destPath, const size_t maxDestLen);
+
+/**
+ * @brief Normalizes the specified source path into the dest path and len.
+ * @param sourcePath The source path.
+ * @param destPath The destination buffer.
+ * @param maxDestLen The total number of characters available in the destination buffer.
+ * @return Returns the number of required/written characters, excluding the null-terminator.
+ */
+fpl_platform_api size_t fplPathNormalize(const char *sourcePath, char *destPath, const size_t maxDestLen);
 
 /**
 * @brief Extracts the directory path from the given file path.
@@ -15881,6 +15893,7 @@ fpl_platform_api bool fplDirectoriesCreate(const char *path) {
 	bool result = CreateDirectoryW(pathWide, fpl_null) > 0;
 	return(result);
 }
+
 fpl_platform_api bool fplDirectoryRemove(const char *path) {
 	FPL__CheckArgumentNull(path, false);
 	wchar_t pathWide[FPL_MAX_PATH_LENGTH];
@@ -15888,6 +15901,7 @@ fpl_platform_api bool fplDirectoryRemove(const char *path) {
 	bool result = RemoveDirectoryW(pathWide) > 0;
 	return(result);
 }
+
 fpl_internal void fpl__Win32FillFileEntry(const char *rootPath, const WIN32_FIND_DATAW *findData, fplFileEntry *entry) {
 	fplAssert(findData != fpl_null);
 	fplAssert(entry != fpl_null);
@@ -15938,6 +15952,7 @@ fpl_internal void fpl__Win32FillFileEntry(const char *rootPath, const WIN32_FIND
 	entry->timeStamps.lastAccessTime = fpl__Win32ConvertFileTimeToUnixTimestamp(&findData->ftLastAccessTime);
 	entry->timeStamps.lastModifyTime = fpl__Win32ConvertFileTimeToUnixTimestamp(&findData->ftLastWriteTime);
 }
+
 fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter, fplFileEntry *entry) {
 	FPL__CheckArgumentNull(path, false);
 	FPL__CheckArgumentNull(entry, false);
@@ -15971,6 +15986,7 @@ fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter
 	}
 	return(result);
 }
+
 fpl_platform_api bool fplDirectoryListNext(fplFileEntry *entry) {
 	FPL__CheckArgumentNull(entry, false);
 	bool result = false;
@@ -15992,6 +16008,7 @@ fpl_platform_api bool fplDirectoryListNext(fplFileEntry *entry) {
 	}
 	return(result);
 }
+
 fpl_platform_api void fplDirectoryListEnd(fplFileEntry *entry) {
 	FPL__CheckArgumentNullNoRet(entry);
 	if (entry->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
@@ -16019,6 +16036,25 @@ fpl_platform_api size_t fplGetHomePath(char *destPath, const size_t maxDestLen) 
 	wapi->shell.SHGetFolderPathW(fpl_null, CSIDL_PROFILE, fpl_null, 0, homePath);
 	size_t homePathLen = lstrlenW(homePath);
 	size_t result = fplWideStringToUTF8String(homePath, homePathLen, destPath, maxDestLen);
+	return(result);
+}
+
+fpl_platform_api size_t fplPathNormalize(const char *sourcePath, char *destPath, const size_t maxDestLen) {
+	size_t sourceLen;
+	if ((sourceLen = fplGetStringLength(sourcePath)) == 0) {
+		return 0;
+	}
+	wchar_t sourcePathWide[FPL_MAX_PATH_LENGTH];
+	size_t wideLen = fplUTF8StringToWideString(sourcePath, sourceLen, sourcePathWide, fplArrayCount(sourcePathWide));
+	if (wideLen == 0) {
+		return 0;
+	}
+	wchar_t targetPath[FPL_MAX_PATH_LENGTH];
+	DWORD targetLen = GetFullPathNameW(sourcePathWide, fplArrayCount(targetPath), targetPath, NULL);
+	if (targetLen == 0) {
+		return 0;
+	}
+	size_t result = fplWideStringToUTF8String(targetPath, targetLen, destPath, maxDestLen);
 	return(result);
 }
 
@@ -18586,6 +18622,23 @@ fpl_platform_api size_t fplGetHomePath(char *destPath, const size_t maxDestLen) 
 		fplCopyStringLen(homeDir, result, destPath, maxDestLen);
 	}
 	return(result);
+}
+
+fpl_platform_api size_t fplPathNormalize(const char *sourcePath, char *destPath, const size_t maxDestLen) {
+	if (fplGetStringLength(sourcePath) == 0) {
+		return 0;
+	}
+	char resolvedPath[FPL_MAX_PATH_LENGTH];
+	if (realpath(sourcePath, resolvedPath) == fpl_null) {
+        return 0;
+    }
+	size_t result = fplGetStringLength(resolvedPath);
+	if (destPath != fpl_null) {
+		size_t requiredLen = result + 1;
+		FPL__CheckArgumentMin(maxDestLen, requiredLen, 0);
+		fplCopyStringLen(resolvedPath, result, destPath, maxDestLen);
+	}
+	return result;
 }
 
 //
