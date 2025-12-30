@@ -7301,9 +7301,10 @@ typedef enum fplButtonState {
 * @brief An enumeration of mapped keys (Based on MS Virtual-Key-Codes, mostly directly mapped from ASCII).
 */
 typedef enum fplKey {
+	//! 0x00: None
 	fplKey_None = 0,
 
-	// 0x0-0x07: Undefined
+	// 0x01-0x07: Undefined
 
 	//! Backspace key.
 	fplKey_Backspace = 0x08,
@@ -7460,6 +7461,7 @@ typedef enum fplKey {
 
 	//! Sleep key.
 	fplKey_Sleep = 0x5F,
+
 	//! NumPad 0 key.
 	fplKey_NumPad0 = 0x60,
 	//! NumPad 1 key.
@@ -7480,6 +7482,7 @@ typedef enum fplKey {
 	fplKey_NumPad8 = 0x68,
 	//! NumPad 9 key.
 	fplKey_NumPad9 = 0x69,
+
 	//! Multiply key.
 	fplKey_Multiply = 0x6A,
 	//! Add key.
@@ -7492,6 +7495,7 @@ typedef enum fplKey {
 	fplKey_Decimal = 0x6E,
 	//! Divide key.
 	fplKey_Divide = 0x6F,
+
 	//! Function key F1.
 	fplKey_F1 = 0x70,
 	//! Function key F2.
@@ -7541,7 +7545,7 @@ typedef enum fplKey {
 	//! Function key F24.
 	fplKey_F24 = 0x87,
 
-	// 0x88-8F: Unassigned
+	// 0x88-0x8F: Unassigned
 
 	//! Num Lock key.
 	fplKey_NumLock = 0x90,
@@ -7549,6 +7553,7 @@ typedef enum fplKey {
 	fplKey_Scroll = 0x91,
 
 	// 0x92-0x96: OEM specific
+	
 	// 0x97-0x9F: Unassigned
 
 	//! Left Shift key.
@@ -7599,6 +7604,7 @@ typedef enum fplKey {
 	fplKey_Oem3 = 0xC0,
 
 	// 0xC1-0xD7: Reserved
+	// 
 	// 0xD8-0xDA: Unassigned
 
 	//! '[{' for US.
@@ -7613,6 +7619,9 @@ typedef enum fplKey {
 	fplKey_Oem8 = 0xDF,
 
 	// 0xE0-0xFE: Don't care
+
+	//! Last key
+	fplKey_Last = 0xFF,
 } fplKey;
 
 /**
