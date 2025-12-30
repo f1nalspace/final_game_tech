@@ -11,6 +11,8 @@ Description:
 Changelog:
 	## 2025-12-30
 	- Fixed compile warnings
+	- Fixed lost/focus was not detected properly
+	- Fixed input was not reset when focus was changed
 	- Moved Input to GameMemory
 	- Poll full keyboard states
 	- Renamed internal functions and global variables
@@ -106,6 +108,45 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 
 #define FINAL_LOG_IMPLEMENTATION
 #include "final_log.h"
+
+fpl_inline void InternalGamePlatformResetButtonState(ButtonState *button) {
+    if(button->endedDown) {
+        button->endedDown = false;
+        button->halfTransitionCount = 1;
+    } else {
+        button->halfTransitionCount = 0;
+    }
+}
+
+fpl_inline void InternalGamePlatformResetController(Controller *controller) {
+	const uint32_t count = fplArrayCount(controller->buttons);
+	for (uint32_t buttonIndex = 0; buttonIndex < count; ++buttonIndex) {
+		InternalGamePlatformResetButtonState(&controller->buttons[buttonIndex]);
+	}
+}
+
+fpl_inline void InternalGamePlatformResetKeyboard(Keyboard *keyboard) {
+	const uint32_t count = fplArrayCount(keyboard->keys);
+	for (uint32_t keyIndex = 0; keyIndex < count; ++keyIndex) {
+		InternalGamePlatformResetButtonState(&keyboard->keys[keyIndex]);
+	}
+}
+
+fpl_inline void InternalGamePlatformResetMouse(Mouse *mouse) {
+	const uint32_t count = fplArrayCount(mouse->buttons);
+	for (uint32_t buttonIndex = 0; buttonIndex < count; ++buttonIndex) {
+		InternalGamePlatformResetButtonState(&mouse->buttons[buttonIndex]);
+	}
+}
+
+fpl_inline void InternalGamePlatformResetInput(Input *input) {
+	const uint32_t controllerCount = fplArrayCount(input->controllers);
+	for (uint32_t controllerIndex = 0; controllerIndex < controllerCount; ++controllerIndex) {
+		InternalGamePlatformResetController(&input->controllers[controllerIndex]);
+	}
+	InternalGamePlatformResetKeyboard(&input->tastatur);
+	InternalGamePlatformResetMouse(&input->mouse);
+}
 
 fpl_inline bool InternalGamePlatformAddKeyboardControllerButtonMapping(KeyboardButtonStates *states, KeyboardButtonMappings *mappings, const fplKey key, const ControllerButtonType buttonType) {
 	if (mappings == fpl_null || mappings->count >= fplArrayCount(mappings->values) || buttonType < ControllerButtonType_First || buttonType > ControllerButtonType_Last) {
@@ -737,7 +778,7 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 		}
 
 		//
-		// If activation toggled, reset timing cleanly
+		// If activation toggled, reset timings and new-input
 		//
 		if(windowActiveType[0] != windowActiveType[1]) {
 			lastTime = fplTimestampQuery();
@@ -745,6 +786,7 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 			framesPerSecond = 0.0f;
 			lastFPSTime = fplMillisecondsQuery();
 			updateCount = frameCount = 0;
+			InternalGamePlatformResetInput(newInput);
 		}
 
 		//
