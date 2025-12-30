@@ -55,7 +55,7 @@ Todo:
 	- Add option to select background tile area, because relying on LCDC is not good
 
 License:
-	Copyright (c) 2024-2025 Torsten Spaete
+	Copyright (c) 2024-2026 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */

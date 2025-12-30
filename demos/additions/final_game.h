@@ -18,7 +18,7 @@ Changelog:
 	
 License:
 	MIT License
-	Copyright 2017-2025 Torsten Spaete
+	Copyright 2017-2026 Torsten Spaete
 */
 
 #ifndef FINAL_GAME_H
