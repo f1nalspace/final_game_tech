@@ -121,6 +121,7 @@ typedef struct Input {
 struct GameState;
 
 typedef struct GameMemory {
+	Input inputs[2];
 	AudioSystem *audio;
 	RenderState *render;
 	fmemMemoryBlock *memory;

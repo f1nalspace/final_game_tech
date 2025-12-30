@@ -564,9 +564,8 @@ fpl_extern int GameMain(const GameConfiguration *config) {
 		fplSetWindowCursorEnabled(false);
 	}
 
-	Input inputs[2] = fplZeroInit;
-	Input *newInput = &inputs[0];
-	Input *oldInput = &inputs[1];
+	Input *newInput = &gameMem.inputs[0];
+	Input *oldInput = &gameMem.inputs[1];
 	Vec2i lastMousePos = V2iInit(-1, -1);
 	GameWindowActiveType windowActiveType[2] = { GameWindowActiveType_None, GameWindowActiveType_None };
 	newInput->defaultControllerIndex = oldInput->defaultControllerIndex = -1;
