@@ -1875,8 +1875,8 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	RenderState *renderState = gameMemory->render;
 
 	// Debug input
-	const Controller &keyboardController = input->controllers[0];
-	if (ButtonWasPressed(keyboardController.debug4)) {
+	const Keyboard *keyboard = &input->tastatur;
+	if (ButtonWasPressed(keyboard->keys[fplKey_F4])) {
 		state->isDebugRendering = !state->isDebugRendering;
 	}
 
@@ -1926,7 +1926,8 @@ extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
 	GameState *state = gameMemory->game;
 	assert(state != nullptr);
 
-	if (ButtonWasPressed(input->keyboard.debug6)) {
+	const Keyboard *keyboard = &input->tastatur;
+	if (ButtonWasPressed(keyboard->keys[fplKey_F6])) {
 		char filePathBuffer[FPL_MAX_PATH_LENGTH];
 		fplPathCombine(filePathBuffer, fplArrayCount(filePathBuffer), 3, state->assets.dataPath, "levels", TowersDataFilename);
 		FileInfo towersFileContents = utils::LoadFileInfo(filePathBuffer);

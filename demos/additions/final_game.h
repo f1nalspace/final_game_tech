@@ -64,14 +64,8 @@ typedef struct Controller {
 			ButtonState actionRight;
 			ButtonState actionBack;
 			ButtonState actionStart;
-			ButtonState debug1;
-			ButtonState debug2;
-			ButtonState debug3;
-			ButtonState debug4;
-			ButtonState debug5;
-			ButtonState debug6;
 		};
-		ButtonState buttons[16];
+		ButtonState buttons[10];
 	};
 } Controller;
 

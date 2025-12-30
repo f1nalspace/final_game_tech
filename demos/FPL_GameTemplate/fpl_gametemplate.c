@@ -162,8 +162,8 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	assert(renderState != fpl_null);
 
 	// Debug input
-	const Controller *keyboardController = &input->controllers[0];
-	if (ButtonWasPressed(keyboardController->debug4)) {
+	const Keyboard *keyboard = &input->tastatur;
+	if (ButtonWasPressed(keyboard->keys[fplKey_F4])) {
 		state->isDebugRendering = !state->isDebugRendering;
 	}
 
