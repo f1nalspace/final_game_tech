@@ -710,7 +710,6 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 		
 		// Keyboard controller buttons from all mappings
 		for (uint32_t buttonTypeIndex = 0; buttonTypeIndex < MAX_CONTROLLER_BUTTON_TYPE_COUNT; ++buttonTypeIndex) {
-			ControllerButtonType buttonType = (ControllerButtonType)buttonTypeIndex;
 			if (keyboardButtonStates->mapped[buttonTypeIndex] && keyboardButtonStates->changed[buttonTypeIndex]) {
 				ButtonState *button = &newInput->keyboard.buttons[buttonTypeIndex];
 				bool isDown = keyboardButtonStates->states[buttonTypeIndex] > fplButtonState_Release;
