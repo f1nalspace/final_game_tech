@@ -49,8 +49,6 @@ fpl_inline bool ButtonWasPressed(const ButtonState state) {
 }
 
 typedef struct Controller {
-	bool isConnected;
-	bool isAnalog;
 	Vec2f analogMovement;
 	union {
 		struct {
@@ -67,6 +65,8 @@ typedef struct Controller {
 		};
 		ButtonState buttons[10];
 	};
+	bool isConnected;
+	bool isAnalog;
 } Controller;
 
 typedef struct Mouse {
