@@ -122,6 +122,12 @@ typedef struct KeyboardButtonMappings {
 	bool isCustom;
 } KeyboardButtonMappings;
 
+typedef struct KeyboardButtonStates {
+	fplButtonState states[MAX_CONTROLLER_BUTTON_COUNT];
+	bool changed[MAX_CONTROLLER_BUTTON_COUNT];
+	bool mapped[MAX_CONTROLLER_BUTTON_COUNT];
+} KeyboardButtonStates;
+
 typedef struct Keyboard {
 	ButtonState keys[256];
 } Keyboard;
