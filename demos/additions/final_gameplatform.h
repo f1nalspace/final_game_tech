@@ -120,7 +120,7 @@ fpl_inline void PreserveButtonState(ButtonState *newState, const ButtonState *ol
 	newState->endedDown = oldState->endedDown;
 }
 
-static void UpdateDefaultController(Input *currentInput, int newIndex) {
+fpl_internal void UpdateDefaultController(Input *currentInput, int newIndex) {
 	if(newIndex != -1) {
 		currentInput->defaultControllerIndex = newIndex;
 	} else {
@@ -134,7 +134,7 @@ static void UpdateDefaultController(Input *currentInput, int newIndex) {
 	}
 }
 
-static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiveType *windowActiveType, Vec2i *lastMousePos) {
+fpl_internal void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiveType *windowActiveType, Vec2i *lastMousePos) {
 	Controller *newKeyboardController = &currentInput->keyboard;
 	fplEvent event;
 	while(fplPollEvent(&event)) {
@@ -306,13 +306,13 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 	}
 }
 
-static uint32_t GameAudioPlayback(const fplAudioFormat *outFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
+fpl_internal uint32_t GameAudioPlayback(const fplAudioFormat *outFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
 	AudioSystem *audioSys = (AudioSystem *)userData;
 	uint32_t result = AudioSystemWriteFrames(audioSys, outputSamples, outFormat, frameCount, true);
 	return(result);
 }
 
-static void SetupInputForFrame(Input *oldInput, Input *newInput, const double targetDeltaTime, const double framesPerSecond, const double lastFrameTime) {
+fpl_internal void SetupInputForFrame(Input *oldInput, Input *newInput, const double targetDeltaTime, const double framesPerSecond, const double lastFrameTime) {
 	newInput->fixedDeltaTime = (float)targetDeltaTime;
 	newInput->dynamicFrameTime = (float)lastFrameTime;
 	newInput->framesPerSeconds = (float)framesPerSecond;
@@ -395,6 +395,14 @@ fpl_internal void GameLoggingInitialize(const GameConfiguration *config) {
 
 #define GAMEPLATFORM_LOGPREFIX "[ PLATFORM ] "
 
+typedef struct {
+	Input inputs[2];
+	fplKeyboardState keyboardState;
+	KeyboardButtonMappings keyboardMappings;
+	GameMemory gameMemory;
+	
+} GamePlatformState;
+
 fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount, char **arguments) {
 	if(config == fpl_null) {
 		return -1;
@@ -443,12 +451,11 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 
 	int resultCode = -1;
 
-	fmemMemoryBlock gameMemoryBlock = fplZeroInit;
-	fmemMemoryBlock renderMemoryBlock = fplZeroInit;
+	fmemMemoryBlock gameMemoryBlock;
+	fmemMemoryBlock renderMemoryBlock;
+	fplAudioFormat targetAudioFormat;
 
-	fplAudioFormat targetAudioFormat = fplZeroInit;
-
-	GameMemory gameMem = fplZeroInit;
+	GamePlatformState *gamePlatformState = fpl_null;
 
 	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Initialize Platform Layer");
 	if(!fplPlatformInit(initFlags, &settings)) {
@@ -488,12 +495,12 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- OpenGL Extensions: %s", glextensions);
 
 	const size_t gameMemoryBlockSize = FMEM_MEGABYTES(128);
+
 	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Allocate game memory block with size %zu bytes", gameMemoryBlockSize);
 	if(!fmemInit(&gameMemoryBlock, fmemType_Growable, gameMemoryBlockSize, 0)) {
 		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOGPREFIX "Failed to allocate game memory block with size %zu!", gameMemoryBlockSize);
 		goto shutdown;
 	}
-	gameMem.memory = &gameMemoryBlock;
 
 	const size_t renderMemoryBlockSize = FMEM_MEGABYTES(32);
 	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Allocate render memory block with size %zu bytes ]", renderMemoryBlockSize);
@@ -510,6 +517,14 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 		goto shutdown;
 	}
 
+	const size_t gamePlatformStateSize = sizeof(GamePlatformState);
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Aquire memory for game platform state with size %zu bytes", gamePlatformStateSize);
+	gamePlatformState = fmemPushStruct(&gameMemoryBlock, GamePlatformState, fmemPushFlags_Clear);
+	if (audioSys == fpl_null) {
+		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOGPREFIX "Insufficient memory for game platform state, capacity is '%zu bytes', used is '%zu bytes', required is '%zu bytes'!", gameMemoryBlock.size, gameMemoryBlock.used, gamePlatformStateSize);
+		goto shutdown;
+	}
+
 	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Query Audio Hardware Format");
 	if (!fplGetAudioHardwareFormat(&targetAudioFormat)) {
 		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOGPREFIX "Failed to query Audio Hardware Format!");
@@ -521,7 +536,6 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOGPREFIX "Failed to initialize Audio System with target format 'SampleRate: %u, Channels: %u, Type: %s'!", targetAudioFormat.sampleRate, targetAudioFormat.channels, fplGetAudioFormatName(targetAudioFormat.type));
 		goto shutdown;
 	}
-	gameMem.audio = audioSys;
 
 	size_t renderStateSize = sizeof(RenderState);
 	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Aquire memory for render state with size %zu bytes", renderStateSize);
@@ -530,7 +544,6 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOGPREFIX "Insufficient memory for render state, capacity is '%zu bytes', used is '%zu bytes', required is '%zu bytes'!", gameMemoryBlock.size, gameMemoryBlock.used, renderStateSize);
 		goto shutdown;
 	}
-	gameMem.render = renderState;
 
 	RenderInit(renderState, renderMemoryBlock);
 	InitOpenGLRenderer();
@@ -543,8 +556,13 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 		goto shutdown;
 	}
 
+	GameMemory *gameMem = &gamePlatformState->gameMemory;
+	gameMem->render = renderState;
+	gameMem->memory = &gameMemoryBlock;
+	gameMem->audio = audioSys;
+
 	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Initialize Game");
-	if(!GameInit(&gameMem, argumentCount, arguments)) {
+	if(!GameInit(gameMem, argumentCount, arguments)) {
 		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOGPREFIX "Game failed to initialize!");
 		goto shutdown;
 	}
@@ -559,9 +577,8 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 		fplSetWindowCursorEnabled(false);
 	}
 
-	fplKeyboardState *keyboardState = &gameMem.keyboard;
-	Input *newInput = &gameMem.inputs[0];
-	Input *oldInput = &gameMem.inputs[1];
+	Input *newInput = &gamePlatformState->inputs[0];
+	Input *oldInput = &gamePlatformState->inputs[1];
 	Vec2i lastMousePos = V2iInit(-1, -1);
 	GameWindowActiveType windowActiveType[2] = { GameWindowActiveType_None, GameWindowActiveType_None };
 	newInput->defaultControllerIndex = oldInput->defaultControllerIndex = -1;
@@ -579,7 +596,7 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 	int frameIndex = 0;	
 
 	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Main Loop");
-	while(!IsGameExiting(&gameMem) && fplWindowUpdate()) {
+	while(!IsGameExiting(gameMem) && fplWindowUpdate()) {
 		// Get window size
 		fplWindowSize winArea;
 		if(fplGetWindowSize(&winArea)) {
@@ -598,12 +615,13 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 		// Keyboard keys
 		Keyboard *oldKeyboard = &oldInput->tastatur;
 		Keyboard *newKeyboard = &newInput->tastatur;
+		fplKeyboardState *keyboardState = &gamePlatformState->keyboardState;
 		const uint32_t keyCount = fplArrayCount(keyboardState->buttonStatesMapped);
 		fplPollKeyboardState(keyboardState);
 		fplAssert(fplArrayCount(newKeyboard->keys) == keyCount);
 		for (uint32_t keyIndex = 0; keyIndex < keyCount; ++keyIndex) {
 			fplButtonState buttonState = keyboardState->buttonStatesMapped[keyIndex];
-			bool isDown = buttonState != fplButtonState_Release;
+			fpl_b32 isDown = buttonState != fplButtonState_Release ? 1 : 0;
 			if (newKeyboard->keys[keyIndex].endedDown != isDown) {
 				UpdateKeyboardButtonState(&newKeyboard->keys[keyIndex], isDown);
 			}
@@ -642,7 +660,7 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 		//
 		// Game Input once per frame
 		//
-		GameInput(&gameMem, newInput);
+		GameInput(gameMem, newInput);
 
 		//
 		// Compute frame time once and advance accumulator
@@ -661,7 +679,7 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 		int ticksThisFrame = 0;
 		while (frameAccumulator >= targetDeltaTime) {
 			newInput->isFirstUpdateOfFrame = (ticksThisFrame == 0);
-			GameUpdate(&gameMem, newInput);
+			GameUpdate(gameMem, newInput);
 			frameAccumulator -= targetDeltaTime;
 			totalTime += targetDeltaTime;
 			++updateCount;
@@ -674,7 +692,7 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 		const float alphaRaw = (float)(frameAccumulator / targetDeltaTime);
 		const float alpha = F32Clamp(alphaRaw, 0.0f, 1.0f);
 		RenderReset(renderState);
-		GameRender(&gameMem, newInput, alpha);
+		GameRender(gameMem, newInput, alpha);
 		RenderWithOpenGL(renderState);
 		fplVideoFlip();
 		++frameCount;
@@ -722,8 +740,10 @@ shutdown:
 	LogWrite(LogLevel_Info, "Shutdown Game '%s'", config->title);
 	LogWriteRaw("======================================================================");
 
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Release Game");
-	GameRelease(&gameMem);
+	if (gameMem != fpl_null) {
+		LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Release Game");
+		GameRelease(gameMem);
+	}
 
 	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Stop Audio Playback");
 	fplStopAudio();
