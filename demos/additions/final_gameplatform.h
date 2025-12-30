@@ -106,7 +106,7 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 #define FINAL_LOG_IMPLEMENTATION
 #include "final_log.h"
 
-fpl_inline bool AddKeyboardControllerButtonMapping(KeyboardButtonMappings *mappings, const fplKey key, const ControllerButtonType buttonType) {
+fpl_inline bool InternalGamePlatformAddKeyboardControllerButtonMapping(KeyboardButtonMappings *mappings, const fplKey key, const ControllerButtonType buttonType) {
 	if (mappings == fpl_null || mappings->count >= fplArrayCount(mappings->values) || buttonType < ControllerButtonType_First || buttonType > ControllerButtonType_Last) {
 		return false;
 	}
@@ -115,23 +115,23 @@ fpl_inline bool AddKeyboardControllerButtonMapping(KeyboardButtonMappings *mappi
 	return true;
 }
 
-fpl_inline void UpdateKeyboardButtonState(ButtonState *newState, const fpl_b32 isDown) {
+fpl_inline void InternalGamePlatformUpdateKeyboardButtonState(ButtonState *newState, const fpl_b32 isDown) {
 	newState->endedDown = isDown;
 	++newState->halfTransitionCount;
 }
 
-fpl_inline bool UpdateDigitalButtonState(const ButtonState *oldState, ButtonState *newState, const fpl_b32 isDown) {
+fpl_inline bool InternalGamePlatformUpdateDigitalButtonState(const ButtonState *oldState, ButtonState *newState, const fpl_b32 isDown) {
 	newState->endedDown = isDown;
 	newState->halfTransitionCount = ((newState->endedDown == oldState->endedDown) ? 0 : 1);
 	return(newState->endedDown == 1);
 }
 
-fpl_inline void PreserveButtonState(ButtonState *newState, const ButtonState *oldState) {
+fpl_inline void InternalGamePlatformPreserveButtonState(ButtonState *newState, const ButtonState *oldState) {
 	newState->halfTransitionCount = 0;
 	newState->endedDown = oldState->endedDown;
 }
 
-fpl_internal void UpdateDefaultController(Input *currentInput, int newIndex) {
+fpl_internal void InternalGamePlatformUpdateDefaultController(Input *currentInput, int newIndex) {
 	if(newIndex != -1) {
 		currentInput->defaultControllerIndex = newIndex;
 	} else {
@@ -145,7 +145,7 @@ fpl_internal void UpdateDefaultController(Input *currentInput, int newIndex) {
 	}
 }
 
-fpl_internal void ProcessEvents(const KeyboardButtonMappings *keyboardMappings, Input *currentInput, Input *prevInput, GameWindowActiveType *windowActiveType, Vec2i *lastMousePos) {
+fpl_internal void InternalGamePlatformProcessEvents(const KeyboardButtonMappings *keyboardMappings, Input *currentInput, Input *prevInput, GameWindowActiveType *windowActiveType, Vec2i *lastMousePos) {
 	fplAssertPtr(keyboardMappings);
 	fplAssertPtr(currentInput);
 	fplAssertPtr(prevInput);
@@ -190,13 +190,13 @@ fpl_internal void ProcessEvents(const KeyboardButtonMappings *keyboardMappings, 
 					{
 						newController->isConnected = true;
 						if(event.gamepad.state.isActive) {
-							UpdateDefaultController(currentInput,controllerIndex);
+							InternalGamePlatformUpdateDefaultController(currentInput,controllerIndex);
 						}
 					} break;
 					case fplGamepadEventType_Disconnected:
 					{
 						newController->isConnected = false;
-						UpdateDefaultController(currentInput, -1);
+						InternalGamePlatformUpdateDefaultController(currentInput, -1);
 					} break;
 					case fplGamepadEventType_StateChanged:
 					{
@@ -210,19 +210,19 @@ fpl_internal void ProcessEvents(const KeyboardButtonMappings *keyboardMappings, 
 							changed = true;
 						} else {
 							newController->isAnalog = false;
-							changed |= UpdateDigitalButtonState(&oldController->moveDown, &newController->moveDown, padstate->dpadDown.isDown);
-							changed |= UpdateDigitalButtonState(&oldController->moveUp, &newController->moveUp, padstate->dpadUp.isDown);
-							changed |= UpdateDigitalButtonState(&oldController->moveLeft, &newController->moveLeft, padstate->dpadLeft.isDown);
-							changed |= UpdateDigitalButtonState(&oldController->moveRight, &newController->moveRight, padstate->dpadRight.isDown);
+							changed |= InternalGamePlatformUpdateDigitalButtonState(&oldController->moveDown, &newController->moveDown, padstate->dpadDown.isDown);
+							changed |= InternalGamePlatformUpdateDigitalButtonState(&oldController->moveUp, &newController->moveUp, padstate->dpadUp.isDown);
+							changed |= InternalGamePlatformUpdateDigitalButtonState(&oldController->moveLeft, &newController->moveLeft, padstate->dpadLeft.isDown);
+							changed |= InternalGamePlatformUpdateDigitalButtonState(&oldController->moveRight, &newController->moveRight, padstate->dpadRight.isDown);
 						}
-						changed |= UpdateDigitalButtonState(&oldController->actionDown, &newController->actionDown, padstate->actionA.isDown);
-						changed |= UpdateDigitalButtonState(&oldController->actionRight, &newController->actionRight, padstate->actionB.isDown);
-						changed |= UpdateDigitalButtonState(&oldController->actionLeft, &newController->actionLeft, padstate->actionX.isDown);
-						changed |= UpdateDigitalButtonState(&oldController->actionUp, &newController->actionUp, padstate->actionY.isDown);
-						changed |= UpdateDigitalButtonState(&oldController->actionBack, &newController->actionBack, padstate->back.isDown);
-						changed |= UpdateDigitalButtonState(&oldController->actionStart, &newController->actionStart, padstate->start.isDown);
+						changed |= InternalGamePlatformUpdateDigitalButtonState(&oldController->actionDown, &newController->actionDown, padstate->actionA.isDown);
+						changed |= InternalGamePlatformUpdateDigitalButtonState(&oldController->actionRight, &newController->actionRight, padstate->actionB.isDown);
+						changed |= InternalGamePlatformUpdateDigitalButtonState(&oldController->actionLeft, &newController->actionLeft, padstate->actionX.isDown);
+						changed |= InternalGamePlatformUpdateDigitalButtonState(&oldController->actionUp, &newController->actionUp, padstate->actionY.isDown);
+						changed |= InternalGamePlatformUpdateDigitalButtonState(&oldController->actionBack, &newController->actionBack, padstate->back.isDown);
+						changed |= InternalGamePlatformUpdateDigitalButtonState(&oldController->actionStart, &newController->actionStart, padstate->start.isDown);
 						if (changed) {
-							UpdateDefaultController(currentInput, controllerIndex);
+							InternalGamePlatformUpdateDefaultController(currentInput, controllerIndex);
 						}
 					} break;
 
@@ -243,11 +243,11 @@ fpl_internal void ProcessEvents(const KeyboardButtonMappings *keyboardMappings, 
 					{
 						bool isDown = (event.mouse.buttonState >= fplButtonState_Press);
 						if(event.mouse.mouseButton == fplMouseButtonType_Left) {
-							UpdateKeyboardButtonState(&currentInput->mouse.left, isDown);
+							InternalGamePlatformUpdateKeyboardButtonState(&currentInput->mouse.left, isDown);
 						} else if(event.mouse.mouseButton == fplMouseButtonType_Right) {
-							UpdateKeyboardButtonState(&currentInput->mouse.right, isDown);
+							InternalGamePlatformUpdateKeyboardButtonState(&currentInput->mouse.right, isDown);
 						} else if(event.mouse.mouseButton == fplMouseButtonType_Middle) {
-							UpdateKeyboardButtonState(&currentInput->mouse.middle, isDown);
+							InternalGamePlatformUpdateKeyboardButtonState(&currentInput->mouse.middle, isDown);
 						}
 					} break;
 
@@ -272,14 +272,14 @@ fpl_internal void ProcessEvents(const KeyboardButtonMappings *keyboardMappings, 
 							if(!newKeyboardController->isConnected) {
 								newKeyboardController->isConnected = true;
 							}
-							UpdateDefaultController(currentInput, 0);
+							InternalGamePlatformUpdateDefaultController(currentInput, 0);
 							for (uint32_t mappingIndex = 0; mappingIndex < keyboardMappings->count; ++mappingIndex) {
 								const KeyboardControllerButtonMapping *mapping = keyboardMappings->values + mappingIndex;
 								if (mapping->key == event.keyboard.mappedKey) {
 									uint32_t buttonIndex = mapping->type - ControllerButtonType_First;
 									fplAssert(buttonIndex < MAX_CONTROLLER_BUTTON_COUNT);
 									ButtonState *button = &newKeyboardController->buttons[buttonIndex];
-									UpdateKeyboardButtonState(button, isDown);
+									InternalGamePlatformUpdateKeyboardButtonState(button, isDown);
 								}
 							}
 						}
@@ -302,13 +302,13 @@ fpl_internal void ProcessEvents(const KeyboardButtonMappings *keyboardMappings, 
 	}
 }
 
-fpl_internal uint32_t GameAudioPlayback(const fplAudioFormat *outFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
+fpl_internal uint32_t InternalGamePlatformAudioPlayback(const fplAudioFormat *outFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
 	AudioSystem *audioSys = (AudioSystem *)userData;
 	uint32_t result = AudioSystemWriteFrames(audioSys, outputSamples, outFormat, frameCount, true);
 	return(result);
 }
 
-fpl_internal void SetupInputForFrame(Input *oldInput, Input *newInput, const double targetDeltaTime, const double framesPerSecond, const double lastFrameTime) {
+fpl_internal void InternalGamePlatformSetupInputForFrame(Input *oldInput, Input *newInput, const double targetDeltaTime, const double framesPerSecond, const double lastFrameTime) {
 	newInput->fixedDeltaTime = (float)targetDeltaTime;
 	newInput->dynamicFrameTime = (float)lastFrameTime;
 	newInput->framesPerSeconds = (float)framesPerSecond;
@@ -320,7 +320,7 @@ fpl_internal void SetupInputForFrame(Input *oldInput, Input *newInput, const dou
 	fplClearStruct(newKeyboardController);
 	newKeyboardController->isConnected = oldKeyboardController->isConnected;
 	for(uint32_t buttonIndex = 0; buttonIndex < fplArrayCount(newKeyboardController->buttons); ++buttonIndex) {
-		PreserveButtonState(&newKeyboardController->buttons[buttonIndex], &oldKeyboardController->buttons[buttonIndex]);
+		InternalGamePlatformPreserveButtonState(&newKeyboardController->buttons[buttonIndex], &oldKeyboardController->buttons[buttonIndex]);
 	}
 
 	Mouse *newMouse = &newInput->mouse;
@@ -328,14 +328,14 @@ fpl_internal void SetupInputForFrame(Input *oldInput, Input *newInput, const dou
 	fplClearStruct(newMouse);
 	newMouse->pos = oldMouse->pos;
 	for(uint32_t buttonIndex = 0; buttonIndex < fplArrayCount(newMouse->buttons); ++buttonIndex) {
-		PreserveButtonState(&newMouse->buttons[buttonIndex], &oldMouse->buttons[buttonIndex]);
+		InternalGamePlatformPreserveButtonState(&newMouse->buttons[buttonIndex], &oldMouse->buttons[buttonIndex]);
 	}
 
 	Keyboard *newKeyboard = &newInput->tastatur;
 	Keyboard *oldKeyboard = &oldInput->tastatur;
 	fplClearStruct(newKeyboard);
 	for(uint32_t keyIndex = 0; keyIndex < fplArrayCount(newKeyboard->keys); ++keyIndex) {
-		PreserveButtonState(&newKeyboard->keys[keyIndex], &oldKeyboard->keys[keyIndex]);
+		InternalGamePlatformPreserveButtonState(&newKeyboard->keys[keyIndex], &oldKeyboard->keys[keyIndex]);
 	}
 
 	// Remember previous gamepad connected states
@@ -346,15 +346,15 @@ fpl_internal void SetupInputForFrame(Input *oldInput, Input *newInput, const dou
 		newGamepadController->isConnected = oldGamepadController->isConnected;
 		newGamepadController->isAnalog = oldGamepadController->isAnalog;
 		for(uint32_t buttonIndex = 0; buttonIndex < fplArrayCount(newGamepadController->buttons); ++buttonIndex) {
-			PreserveButtonState(&newGamepadController->buttons[buttonIndex], &oldGamepadController->buttons[buttonIndex]);
+			InternalGamePlatformPreserveButtonState(&newGamepadController->buttons[buttonIndex], &oldGamepadController->buttons[buttonIndex]);
 		}
 	}
 }
 
-fpl_globalvar char gGamePlatformHomePathBuffer[FPL_MAX_PATH_LENGTH] = fplZeroInit;
-fpl_globalvar char gGamePlatformFilePathBuffer[FPL_MAX_PATH_LENGTH] = fplZeroInit;
+fpl_globalvar char g__GamePlatform__HomePathBuffer[FPL_MAX_PATH_LENGTH] = fplZeroInit;
+fpl_globalvar char g__GamePlatform__FilePathBuffer[FPL_MAX_PATH_LENGTH] = fplZeroInit;
 
-fpl_internal void GameLoggingInitialize(const GameConfiguration *config) {
+fpl_internal void InternalGamePlatformLoggingInitialize(const GameConfiguration *config) {
 	fplSettings settings = fplZeroInit;
 
 	const char *userFolderName;
@@ -374,15 +374,15 @@ fpl_internal void GameLoggingInitialize(const GameConfiguration *config) {
 	// Log initialization, with short platform initialization so we can access several IO functions in FPL
 	if (fplGetStringLength(userFolderName) > 0 && fplGetStringLength(logFileName) > 0 && config->enableLog) {
 		if (fplPlatformInit(fplInitFlags_None, &settings)) {
-			size_t homePathLen = fplGetHomePath(gGamePlatformHomePathBuffer, fplArrayCount(gGamePlatformHomePathBuffer));
+			size_t homePathLen = fplGetHomePath(g__GamePlatform__HomePathBuffer, fplArrayCount(g__GamePlatform__HomePathBuffer));
 			if (homePathLen > 0) {
-				fplPathCombine(gGamePlatformFilePathBuffer, fplArrayCount(gGamePlatformFilePathBuffer), 2, gGamePlatformHomePathBuffer, userFolderName);
-				if (!fplDirectoryExists(gGamePlatformFilePathBuffer))
-					fplDirectoriesCreate(gGamePlatformFilePathBuffer);
-				fplPathCombine(gGamePlatformFilePathBuffer, fplArrayCount(gGamePlatformFilePathBuffer), 3, gGamePlatformHomePathBuffer, userFolderName, logFileName);
+				fplPathCombine(g__GamePlatform__FilePathBuffer, fplArrayCount(g__GamePlatform__FilePathBuffer), 2, g__GamePlatform__HomePathBuffer, userFolderName);
+				if (!fplDirectoryExists(g__GamePlatform__FilePathBuffer))
+					fplDirectoriesCreate(g__GamePlatform__FilePathBuffer);
+				fplPathCombine(g__GamePlatform__FilePathBuffer, fplArrayCount(g__GamePlatform__FilePathBuffer), 3, g__GamePlatform__HomePathBuffer, userFolderName, logFileName);
 			}
 
-			LogInit(gGamePlatformFilePathBuffer);
+			LogInit(g__GamePlatform__FilePathBuffer);
 
 			fplPlatformRelease();
 		}
@@ -404,7 +404,7 @@ typedef struct {
 fplStaticAssert(ControllerButtonType_MoveUp == ControllerButtonType_First);
 fplStaticAssert(ControllerButtonType_ActionStart == ControllerButtonType_Last);
 
-fpl_globalvar const char *g__ControllerButtonTypeNameTable[] = {
+fpl_globalvar const char *g__GamePlatform__ControllerButtonTypeNameTable[] = {
 	FPL__ENUM_NAME("MoveUp", ControllerButtonType_MoveUp),
 	FPL__ENUM_NAME("MoveDown", ControllerButtonType_MoveDown),
 	FPL__ENUM_NAME("MoveLeft", ControllerButtonType_MoveLeft),
@@ -417,9 +417,9 @@ fpl_globalvar const char *g__ControllerButtonTypeNameTable[] = {
 	FPL__ENUM_NAME("ActionStart", ControllerButtonType_ActionStart),
 };
 
-fpl_internal const char *ControllerButtonTypeGetName(const ControllerButtonType type) {
+fpl_internal const char *InternalGamePlatformGetControllerButtonTypeName(const ControllerButtonType type) {
 	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, ControllerButtonType_First, ControllerButtonType_Last);
-	const char *result = g__ControllerButtonTypeNameTable[index];
+	const char *result = g__GamePlatform__ControllerButtonTypeNameTable[index];
 	return(result);
 }
 
@@ -428,7 +428,7 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 		return -1;
 	}
 
-	GameLoggingInitialize(config);
+	InternalGamePlatformLoggingInitialize(config);
 
 	LogWriteLineBreak();
 	LogWriteRaw("======================================================================");
@@ -478,7 +478,7 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 		LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- %u Keyboard Button Mappings:", mappingCount);
 		for (uint32_t mappingIndex = 0; mappingIndex < mappingCount; ++mappingIndex) {
 			const char *keyName = fplKeyGetName(config->keyboardMappings->values[mappingIndex].key);
-			const char *typeName = ControllerButtonTypeGetName(config->keyboardMappings->values[mappingIndex].type);
+			const char *typeName = InternalGamePlatformGetControllerButtonTypeName(config->keyboardMappings->values[mappingIndex].type);
 			LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "[%u] Key '%s'", mappingIndex);
 		}
 	}
@@ -583,7 +583,7 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 	InitOpenGLRenderer();
 
 	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Start Audio Playback");
-	fplSetAudioClientReadCallback(GameAudioPlayback, audioSys);
+	fplSetAudioClientReadCallback(InternalGamePlatformAudioPlayback, audioSys);
 	fplAudioResultType playAudioResult = fplPlayAudio();
 	if(playAudioResult != fplAudioResultType_Success) {
 		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOGPREFIX "Failed to start Audio Playback -> %s!", fplGetAudioResultName(playAudioResult));
@@ -639,12 +639,12 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 		}
 
 		// Setup input (Clear new and preserve important states)
-		SetupInputForFrame(oldInput, newInput, targetDeltaTime, framesPerSecond, lastFrameTime);
+		InternalGamePlatformSetupInputForFrame(oldInput, newInput, targetDeltaTime, framesPerSecond, lastFrameTime);
 		newInput->frameIndex = frameIndex++;
 
 		// Events
 		windowActiveType[1] = windowActiveType[0];
-		ProcessEvents(&gamePlatformState->keyboardMappings, newInput, oldInput, &windowActiveType[0], &lastMousePos);
+		InternalGamePlatformProcessEvents(&gamePlatformState->keyboardMappings, newInput, oldInput, &windowActiveType[0], &lastMousePos);
 
 		// Keyboard keys
 		Keyboard *oldKeyboard = &oldInput->tastatur;
@@ -657,7 +657,7 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 			fplButtonState buttonState = keyboardState->buttonStatesMapped[keyIndex];
 			fpl_b32 isDown = buttonState != fplButtonState_Release ? 1 : 0;
 			if (newKeyboard->keys[keyIndex].endedDown != isDown) {
-				UpdateKeyboardButtonState(&newKeyboard->keys[keyIndex], isDown);
+				InternalGamePlatformUpdateKeyboardButtonState(&newKeyboard->keys[keyIndex], isDown);
 			}
 		}
 			
