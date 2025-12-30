@@ -156,6 +156,7 @@ SOFTWARE.
 	- Added game controllers settings
 	- Improved code documentation a lot
 	- Improved thread-safety in the event system
+	- A few major bugfixes
 	- Several minor bugfixes
 
 	### Breaking Changes
@@ -190,6 +191,10 @@ SOFTWARE.
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
 	- Changed: Ensure that std types has the correct sizes always using equals
 
+	- Fixed: [Win32] Fixed last event from event queue was never used, when there is no events from the window
+	- Fixed: [Win32] Lost/Got focus event was not detected properly
+
+	- Fixed: [X11] Fixed last event from event queue was never used, when there is no events from the window
 	- Fixed: [X11] Fixed window support was not disabled when X11 is not present
 
 	- Fixed: [POSIX] Fixed pthread fpl__POSIXSemaphoreHandle was not used
@@ -10922,6 +10927,15 @@ fpl_internal fplKey fpl__GetMappedKey(const fpl__PlatformWindowState *windowStat
 	return(result);
 }
 
+fpl_internal size_t fpl__HasInternalEvents(void) {
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__EventQueue *eventQueue = &appState->window.eventQueue;
+	size_t currentPop = fplAtomicLoadSize(&eventQueue->popIndex);
+	size_t currentPush = fplAtomicLoadSize(&eventQueue->pushIndex);
+	bool result = currentPop < currentPush;
+	return result;
+}
+
 fpl_internal void fpl__ClearInternalEvents(void) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	fpl__EventQueue *eventQueue = &appState->window.eventQueue;
@@ -13694,6 +13708,31 @@ fpl_internal void CALLBACK fpl__Win32MessageFiberProc(struct fpl__PlatformAppSta
 	}
 }
 
+fpl_internal bool fpl__Win32WindowGotFocus(const fpl__Win32Api *wapi, fpl__Win32WindowState *windowState) {
+	fplEvent newEvent = fplZeroInit;
+	newEvent.type = fplEventType_Window;
+	newEvent.window.type = fplWindowEventType_GotFocus;
+	fpl__PushInternalEvent(&newEvent);
+	if (!windowState->isCursorActive) {
+		fpl__Win32HideCursor(wapi, windowState);
+	}
+	if (windowState->isFrameInteraction) {
+		return false;
+	}
+	return true;
+}
+
+fpl_internal bool fpl__Win32WindowLostFocus(const fpl__Win32Api *wapi, fpl__Win32WindowState *windowState) {
+	if (!windowState->isCursorActive) {
+		fpl__Win32ShowCursor(wapi, windowState);
+	}
+	fplEvent newEvent = fplZeroInit;
+	newEvent.type = fplEventType_Window;
+	newEvent.window.type = fplWindowEventType_LostFocus;
+	fpl__PushInternalEvent(&newEvent);
+	return true;
+}
+
 LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	fplAssert(appState != fpl_null);
@@ -13827,30 +13866,35 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			}
 		} break;
 
+#if 0
 		case WM_SETFOCUS:
 		{
-			fplEvent newEvent = fplZeroInit;
-			newEvent.type = fplEventType_Window;
-			newEvent.window.type = fplWindowEventType_GotFocus;
-			fpl__PushInternalEvent(&newEvent);
-			if (win32Window->isFrameInteraction) {
+			if (!fpl__Win32WindowGotFocus(wapi, win32Window)) {
 				break;
-			}
-			if (!win32Window->isCursorActive) {
-				fpl__Win32HideCursor(wapi, win32Window);
 			}
 			return 0;
 		} break;
 
 		case WM_KILLFOCUS:
 		{
-			if (!win32Window->isCursorActive) {
-				fpl__Win32ShowCursor(wapi, win32Window);
+			if (!fpl__Win32WindowLostFocus(wapi, win32Window)) {
+				break;
 			}
-			fplEvent newEvent = fplZeroInit;
-			newEvent.type = fplEventType_Window;
-			newEvent.window.type = fplWindowEventType_LostFocus;
-			fpl__PushInternalEvent(&newEvent);
+			return 0;
+		} break;
+#endif
+
+		case WM_ACTIVATEAPP:
+		{
+			if (wParam == 1) {
+				if (!fpl__Win32WindowGotFocus(wapi, win32Window)) {
+					break;
+				}
+			} else {
+				if (!fpl__Win32WindowLostFocus(wapi, win32Window)) {
+					break;
+				}
+			}
 			return 0;
 		} break;
 
@@ -16937,7 +16981,10 @@ fpl_platform_api bool fplPollEvent(fplEvent *ev) {
 
 	// Create new event from the OS message queue
 	if (!fpl__Win32ProcessNextEvent(wapi, appState, windowState)) {
-		return(false);
+		// Queue is empty, we have no events left
+		if (!fpl__HasInternalEvents()) {
+			return(false);
+		}
 	}
 
 	// Poll the first event from the internal queue
@@ -20275,7 +20322,10 @@ fpl_platform_api bool fplPollEvent(fplEvent *ev) {
 
 	// Create new event(s) from the X11 event queue
 	if (!fpl__X11ProcessNextEvent(subplatform, appState)) {
-		return(false);
+		// Queue is empty, we have no events left
+		if (!fpl__HasInternalEvents()) {
+			return(false);
+		}
 	}
 
 	// Poll the first event from the internal queue
