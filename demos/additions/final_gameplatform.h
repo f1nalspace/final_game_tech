@@ -596,11 +596,16 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 		ProcessEvents(newInput, oldInput, &windowActiveType[0], &lastMousePos);
 
 		// Keyboard keys
-		if (fplPollKeyboardState(keyboardState)) {
-			const uint32_t keyCount = fplArrayCount(newInput->tastatur.keys);
-			fplAssert(fplArrayCount(keyboardState->buttonStatesMapped) == keyCount);
-			for (uint32_t keyIndex = 0; keyIndex < keyCount; ++keyIndex) {
-				UpdateKeyboardButtonState(&newInput->tastatur.keys[keyIndex], keyboardState->buttonStatesMapped[keyIndex] != fplButtonState_Release);
+		Keyboard *oldKeyboard = &oldInput->tastatur;
+		Keyboard *newKeyboard = &newInput->tastatur;
+		const uint32_t keyCount = fplArrayCount(keyboardState->buttonStatesMapped);
+		fplPollKeyboardState(keyboardState);
+		fplAssert(fplArrayCount(newKeyboard->keys) == keyCount);
+		for (uint32_t keyIndex = 0; keyIndex < keyCount; ++keyIndex) {
+			fplButtonState buttonState = keyboardState->buttonStatesMapped[keyIndex];
+			bool isDown = buttonState != fplButtonState_Release;
+			if (newKeyboard->keys[keyIndex].endedDown != isDown) {
+				UpdateKeyboardButtonState(&newKeyboard->keys[keyIndex], isDown);
 			}
 		}
 			
