@@ -348,6 +348,13 @@ static void SetupInputForFrame(Input *oldInput, Input *newInput, const double ta
 		PreserveButtonState(&newMouse->buttons[buttonIndex], &oldMouse->buttons[buttonIndex]);
 	}
 
+	Keyboard *newKeyboard = &newInput->tastatur;
+	Keyboard *oldKeyboard = &oldInput->tastatur;
+	fplClearStruct(newKeyboard);
+	for(uint32_t keyIndex = 0; keyIndex < fplArrayCount(newKeyboard->keys); ++keyIndex) {
+		PreserveButtonState(&newKeyboard->keys[keyIndex], &oldKeyboard->keys[keyIndex]);
+	}
+
 	// Remember previous gamepad connected states
 	for(uint32_t controllerIndex = 1; controllerIndex < fplArrayCount(newInput->controllers); ++controllerIndex) {
 		Controller *newGamepadController = &newInput->controllers[controllerIndex];
@@ -564,6 +571,7 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 		fplSetWindowCursorEnabled(false);
 	}
 
+	fplKeyboardState *keyboardState = &gameMem.keyboard;
 	Input *newInput = &gameMem.inputs[0];
 	Input *oldInput = &gameMem.inputs[1];
 	Vec2i lastMousePos = V2iInit(-1, -1);
@@ -598,6 +606,15 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 		// Events
 		windowActiveType[1] = windowActiveType[0];
 		ProcessEvents(newInput, oldInput, &windowActiveType[0], &lastMousePos);
+
+		// Keyboard keys
+		if (fplPollKeyboardState(keyboardState)) {
+			const uint32_t keyCount = fplArrayCount(newInput->tastatur.keys);
+			fplAssert(fplArrayCount(keyboardState->buttonStatesMapped) == keyCount);
+			for (uint32_t keyIndex = 0; keyIndex < keyCount; ++keyIndex) {
+				UpdateKeyboardButtonState(&newInput->tastatur.keys[keyIndex], keyboardState->buttonStatesMapped[keyIndex] != fplButtonState_Release);
+			}
+		}
 			
 #if 0
 		// Logging of input change

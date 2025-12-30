@@ -88,16 +88,12 @@ typedef struct Mouse {
 	};
 } Mouse;
 
-typedef struct Input {
-	// Fixed delta time in seconds, used for game update or physics
-	float fixedDeltaTime;
-	// Dynamic frame time in seconds
-	float dynamicFrameTime;
-	// Current frames per seconds
-	float framesPerSeconds;
+typedef struct Keyboard {
+	ButtonState keys[256];
+} Keyboard;
 
-	// Current index of the rendered frame
-	int frameIndex;
+typedef struct Input {
+	Keyboard tastatur;
 
 	union {
 		struct {
@@ -110,8 +106,17 @@ typedef struct Input {
 
 	// Size of window in pixels
 	Vec2i windowSize;
+	// Fixed delta time in seconds, used for game update or physics
+	float fixedDeltaTime;
+	// Dynamic frame time in seconds
+	float dynamicFrameTime;
+	// Current frames per seconds
+	float framesPerSeconds;
+	// Current index of the rendered frame
+	int frameIndex;
 	// Index to the default controller
 	int defaultControllerIndex;
+
 	// Indicates that the application is active or not -> only handle any input when this is true!
 	bool isActive;
 	// Indicates that the first GameUpdate() is called inside the Accumulator-Loop -> use this to prevent multiple key transitions by ButtonWasPressed()
@@ -122,6 +127,7 @@ struct GameState;
 
 typedef struct GameMemory {
 	Input inputs[2];
+	fplKeyboardState keyboard;
 	AudioSystem *audio;
 	RenderState *render;
 	fmemMemoryBlock *memory;
