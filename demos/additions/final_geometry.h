@@ -143,10 +143,7 @@ fpl_inline bool AABB2fIntersects(const AABB2f *a, const AABB2f *b) {
 }
 
 fpl_inline bool AABB2fContainsPoint(const AABB2f *aabb, const Vec2f point) {
-	Vec2f center, radius;
-	AABB2fExtract(aabb, &center, &radius);
-	Vec2f d = V2fSub(point, center);
-	bool result = (d.x < radius.x) && (d.y < radius.y);
+	bool result = (point.x >= aabb->min.x && point.x <= aabb->max.x && point.y >= aabb->min.y && point.y <= aabb->max.y);
 	return result;
 }
 
@@ -158,6 +155,44 @@ fpl_inline void AABB2fExpand(AABB2f *aabb, const Vec2f expansion) {
 fpl_inline void AABB2fExpandScalar(AABB2f *aabb, const float scalar) {
     Vec2f e = V2fInitScalar(scalar);
     AABB2fExpand(aabb, e);
+}
+
+fpl_inline AABB2f AABB2fGetIntersection(const AABB2f *a, const AABB2f *b) {
+	Vec2f min = V2fMax(a->min, b->min);
+    Vec2f max = V2fMin(a->max, b->max);
+	AABB2f result = AABB2fInit(min, max);
+	return result;
+}
+
+fpl_inline int AABB2fSubtraction(const AABB2f *a, const AABB2f *b, AABB2f out[4]) {
+    int count = 0;
+
+    // First compute intersection
+    AABB2f inter = AABB2fGetIntersection(a, b);
+    if (inter.min.x >= inter.max.x || inter.min.y >= inter.max.y) {
+        // no overlap, result is just 'a'
+        out[0] = *a;
+        return 1;
+    }
+
+    // Bottom strip
+    if (inter.max.y < a->max.y) {
+        out[count++] = fplStructInit(AABB2f, {a->min.x, inter.max.y}, {a->max.x, a->max.y});
+    }
+    // Top strip
+    if (inter.min.y > a->min.y) {
+        out[count++] = fplStructInit(AABB2f, {a->min.x, a->min.y}, {a->max.x, inter.min.y});
+    }
+    // Left strip
+    if (inter.min.x > a->min.x) {
+        out[count++] = fplStructInit(AABB2f, {a->min.x, inter.min.y}, {inter.min.x, inter.max.y});
+    }
+    // Right strip
+    if (inter.max.x < a->max.x) {
+        out[count++] = fplStructInit(AABB2f, {inter.max.x, inter.min.y}, {a->max.x, inter.max.y});
+    }
+
+    return count;
 }
 
 //
@@ -226,6 +261,46 @@ fpl_inline bool AABB3fContainsPoint(const AABB3f *aabb, const Vec3f point) {
 	return result;
 }
 
+//
+// Circle2f
+//
+typedef struct Circle2f {
+	Vec2f center;
+	float radius;
+} Circle2f;
+
+fpl_inline Circle2f Circle2fInit(const Vec2f center, const float radius) {
+	Circle2f result = fplStructInit(Circle2f, center, radius);
+	return result;
+}
+
+fpl_inline bool Circle2fContainsPoint(const Circle2f *circle, const Vec2f point) {
+	Vec2f delta = V2fSub(point, circle->center);
+	const float distanceSq = V2fDot(delta, delta);
+	const float radiusSq = circle->radius * circle->radius;
+	bool result = distanceSq <= radiusSq;
+	return result;
+}
+
+//
+// Arc2f
+//
+typedef struct Arc2f {
+	Vec2f center;
+	float radius;
+	float startAngle;
+	float endAngle;
+	uint32_t padding;
+} Arc2f;
+
+fpl_inline Arc2f Arc2fInit(const Vec2f center, const float radius, const float startAngle, const float endAngle) {
+	Arc2f result = fplStructInit(Arc2f, center, radius, startAngle, endAngle);
+	return result;
+}
+
+fpl_extern bool Arc2fIsPointInside(const Arc2f *arc, const Vec2f point);
+
+
 #endif // FINAL_GEOMETRY_H
 
 #if defined(FINAL_GEOMETRY_IMPLEMENTATION) && !defined(FINAL_GEOMETRY_IMPLEMENTED)
@@ -263,6 +338,27 @@ fpl_extern bool LineCast2fAgainstCircle(const LineCastInput2f *input, const Vec2
 	}
 
 	return false;
+}
+
+fpl_extern bool Arc2fIsPointInside(const Arc2f *arc, const Vec2f point) {
+	if (arc == fpl_null) {
+		return false;
+	}
+	const float s = F32AngleNormalize(arc->endAngle < arc->startAngle ? arc->endAngle : arc->startAngle);
+	const float e = F32AngleNormalize(arc->endAngle < arc->startAngle ? arc->startAngle : arc->endAngle);
+	float range = e - s;
+	if (range <= 0.0f) {
+		range += F32Tau;
+	}
+	const Vec2f d = V2fSub(point, arc->center);
+	const float a = F32ArcTan2(d.y, d.x);
+	const float angle = F32AngleNormalize(a - s);
+	const float lenSquared = V2fDot(d, d);
+	const float radiusSquared = arc->radius * arc->radius;
+	const bool insideCircle = lenSquared <= radiusSquared;
+	const bool insideSegment = angle <= range;
+	const bool result = insideCircle && insideSegment;
+	return result;
 }
 
 #endif // FINAL_GEOMETRY_IMPLEMENTATION
