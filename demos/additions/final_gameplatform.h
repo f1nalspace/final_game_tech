@@ -666,6 +666,13 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 		InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Left, ControllerButtonType_MoveLeft);
 		InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_D, ControllerButtonType_MoveRight);
 		InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Right, ControllerButtonType_MoveRight);
+		InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_W, ControllerButtonType_MoveUp);
+		InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Up, ControllerButtonType_MoveUp);
+		InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_S, ControllerButtonType_MoveDown);
+		InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Down, ControllerButtonType_MoveDown);
+		InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Space, ControllerButtonType_ActionDown);
+		InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Return, ControllerButtonType_ActionStart);
+		InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Escape, ControllerButtonType_ActionBack);
 	}
 
 	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Main Loop");
