@@ -48,6 +48,32 @@ fpl_inline bool ButtonWasPressed(const ButtonState state) {
 	return(result);
 }
 
+typedef enum ControllerButtonType {
+	ControllerButtonType_MoveUp = 0,
+	ControllerButtonType_MoveDown,
+	ControllerButtonType_MoveLeft,
+	ControllerButtonType_MoveRight,
+	ControllerButtonType_ActionUp,
+	ControllerButtonType_ActionDown,
+	ControllerButtonType_ActionLeft,
+	ControllerButtonType_ActionRight,
+	ControllerButtonType_ActionBack,
+	ControllerButtonType_ActionStart,
+
+	ControllerButtonType_Count,
+
+	ControllerButtonType_First = ControllerButtonType_MoveUp,
+	ControllerButtonType_Last = ControllerButtonType_ActionStart,
+} ControllerButtonType;
+
+// Total number of controller button types
+#define MAX_CONTROLLER_BUTTON_TYPE_COUNT (ControllerButtonType_Count)
+
+// Total number of controller buttons
+#define MAX_CONTROLLER_BUTTON_COUNT 10
+
+fplStaticAssert(MAX_CONTROLLER_BUTTON_TYPE_COUNT == MAX_CONTROLLER_BUTTON_COUNT);
+
 typedef struct Controller {
 	Vec2f analogMovement;
 	union {
@@ -63,7 +89,7 @@ typedef struct Controller {
 			ButtonState actionBack;
 			ButtonState actionStart;
 		};
-		ButtonState buttons[10];
+		ButtonState buttons[MAX_CONTROLLER_BUTTON_COUNT];
 	};
 	bool isConnected;
 	bool isAnalog;
@@ -81,6 +107,20 @@ typedef struct Mouse {
 		ButtonState buttons[3];
 	};
 } Mouse;
+
+typedef struct KeyboardControllerButtonMapping {
+	fplKey key;
+	ControllerButtonType type;
+} KeyboardControllerButtonMapping;
+
+// Total number of keyboard controller button mappings
+#define MAX_KEYBOARD_CONTROLLER_BUTTON_MAPPING_COUNT 32
+
+typedef struct KeyboardButtonMappings {
+	KeyboardControllerButtonMapping values[MAX_KEYBOARD_CONTROLLER_BUTTON_MAPPING_COUNT];
+	uint32_t count;
+	bool isCustom;
+} KeyboardButtonMappings;
 
 typedef struct Keyboard {
 	ButtonState keys[256];

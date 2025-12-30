@@ -51,6 +51,8 @@ License:
 #include "final_game.h"
 
 typedef struct GameConfiguration {
+	// Keyboard mappings
+	KeyboardButtonMappings *keyboardMappings;
 	// Title of the game
 	const char *title;
 	// Name of the user folder name (if empty, the title is used instead)
@@ -104,6 +106,15 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 #define FINAL_LOG_IMPLEMENTATION
 #include "final_log.h"
 
+fpl_inline bool AddKeyboardControllerButtonMapping(KeyboardButtonMappings *mappings, const fplKey key, const ControllerButtonType buttonType) {
+	if (mappings == fpl_null || mappings->count >= fplArrayCount(mappings->values) || buttonType < ControllerButtonType_First || buttonType > ControllerButtonType_Last) {
+		return false;
+	}
+	uint32_t index = mappings->count++;
+	mappings->values[index] = fplStructInit(KeyboardControllerButtonMapping, key, buttonType);
+	return true;
+}
+
 fpl_inline void UpdateKeyboardButtonState(ButtonState *newState, const fpl_b32 isDown) {
 	newState->endedDown = isDown;
 	++newState->halfTransitionCount;
@@ -134,7 +145,12 @@ fpl_internal void UpdateDefaultController(Input *currentInput, int newIndex) {
 	}
 }
 
-fpl_internal void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiveType *windowActiveType, Vec2i *lastMousePos) {
+fpl_internal void ProcessEvents(const KeyboardButtonMappings *keyboardMappings, Input *currentInput, Input *prevInput, GameWindowActiveType *windowActiveType, Vec2i *lastMousePos) {
+	fplAssertPtr(keyboardMappings);
+	fplAssertPtr(currentInput);
+	fplAssertPtr(prevInput);
+	fplAssertPtr(windowActiveType);
+	fplAssertPtr(lastMousePos);
 	Controller *newKeyboardController = &currentInput->keyboard;
 	fplEvent event;
 	while(fplPollEvent(&event)) {
@@ -257,34 +273,14 @@ fpl_internal void ProcessEvents(Input *currentInput, Input *prevInput, GameWindo
 								newKeyboardController->isConnected = true;
 							}
 							UpdateDefaultController(currentInput, 0);
-							switch(event.keyboard.mappedKey) {
-								case fplKey_A:
-								case fplKey_Left:
-									UpdateKeyboardButtonState(&newKeyboardController->moveLeft, isDown);
-									break;
-								case fplKey_D:
-								case fplKey_Right:
-									UpdateKeyboardButtonState(&newKeyboardController->moveRight, isDown);
-									break;
-								case fplKey_W:
-								case fplKey_Up:
-									UpdateKeyboardButtonState(&newKeyboardController->moveUp, isDown);
-									break;
-								case fplKey_S:
-								case fplKey_Down:
-									UpdateKeyboardButtonState(&newKeyboardController->moveDown, isDown);
-									break;
-								case fplKey_Space:
-									UpdateKeyboardButtonState(&newKeyboardController->actionDown, isDown);
-									break;
-								case fplKey_Return:
-									UpdateKeyboardButtonState(&newKeyboardController->actionStart, isDown);
-									break;
-								case fplKey_Escape:
-									UpdateKeyboardButtonState(&newKeyboardController->actionBack, isDown);
-									break;
-							    default:
-							        break;
+							for (uint32_t mappingIndex = 0; mappingIndex < keyboardMappings->count; ++mappingIndex) {
+								const KeyboardControllerButtonMapping *mapping = keyboardMappings->values + mappingIndex;
+								if (mapping->key == event.keyboard.mappedKey) {
+									uint32_t buttonIndex = mapping->type - ControllerButtonType_First;
+									fplAssert(buttonIndex < MAX_CONTROLLER_BUTTON_COUNT);
+									ButtonState *button = &newKeyboardController->buttons[buttonIndex];
+									UpdateKeyboardButtonState(button, isDown);
+								}
 							}
 						}
 						if(wasDown) {
@@ -403,6 +399,30 @@ typedef struct {
 	
 } GamePlatformState;
 
+#define CONTROLLER_BUTTON_TYPE_COUNT FPL__ENUM_COUNT(ControllerButtonType_First, ControllerButtonType_Last)
+
+fplStaticAssert(ControllerButtonType_MoveUp == ControllerButtonType_First);
+fplStaticAssert(ControllerButtonType_ActionStart == ControllerButtonType_Last);
+
+fpl_globalvar const char *g__ControllerButtonTypeNameTable[] = {
+	FPL__ENUM_NAME("MoveUp", ControllerButtonType_MoveUp),
+	FPL__ENUM_NAME("MoveDown", ControllerButtonType_MoveDown),
+	FPL__ENUM_NAME("MoveLeft", ControllerButtonType_MoveLeft),
+	FPL__ENUM_NAME("MoveRight", ControllerButtonType_MoveRight),
+	FPL__ENUM_NAME("ActionUp", ControllerButtonType_ActionUp),
+	FPL__ENUM_NAME("ActionDown", ControllerButtonType_ActionDown),
+	FPL__ENUM_NAME("ActionLeft", ControllerButtonType_ActionLeft),
+	FPL__ENUM_NAME("ActionRight", ControllerButtonType_ActionRight),
+	FPL__ENUM_NAME("ActionBack", ControllerButtonType_ActionBack),
+	FPL__ENUM_NAME("ActionStart", ControllerButtonType_ActionStart),
+};
+
+fpl_internal const char *ControllerButtonTypeGetName(const ControllerButtonType type) {
+	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, ControllerButtonType_First, ControllerButtonType_Last);
+	const char *result = g__ControllerButtonTypeNameTable[index];
+	return(result);
+}
+
 fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount, char **arguments) {
 	if(config == fpl_null) {
 		return -1;
@@ -448,6 +468,20 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- Video Backend: %s", fplGetVideoBackendName(settings.video.backend));
 	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- Video VSync: %s", settings.video.isVSync ? "On" : "Off");
 	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- Audio format: [SampleRate: %u, Channels: %u, Type: %s]", settings.audio.targetFormat.sampleRate, settings.audio.targetFormat.channels, fplGetAudioFormatName(settings.audio.targetFormat.type));
+
+	if (config->keyboardMappings == fpl_null || !config->keyboardMappings->isCustom) {
+		LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- Keyboard Button Mappings: Default Keyboard Mapping");
+	} else if (config->keyboardMappings->count == 0) {
+		LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- Keyboard Button Mappings: Disabled");
+	} else {
+		const uint32_t mappingCount = fplMin(config->keyboardMappings->count, MAX_KEYBOARD_CONTROLLER_BUTTON_MAPPING_COUNT);
+		LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- %u Keyboard Button Mappings:", mappingCount);
+		for (uint32_t mappingIndex = 0; mappingIndex < mappingCount; ++mappingIndex) {
+			const char *keyName = fplKeyGetName(config->keyboardMappings->values[mappingIndex].key);
+			const char *typeName = ControllerButtonTypeGetName(config->keyboardMappings->values[mappingIndex].type);
+			LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "[%u] Key '%s'", mappingIndex);
+		}
+	}
 
 	int resultCode = -1;
 
@@ -610,7 +644,7 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 
 		// Events
 		windowActiveType[1] = windowActiveType[0];
-		ProcessEvents(newInput, oldInput, &windowActiveType[0], &lastMousePos);
+		ProcessEvents(&gamePlatformState->keyboardMappings, newInput, oldInput, &windowActiveType[0], &lastMousePos);
 
 		// Keyboard keys
 		Keyboard *oldKeyboard = &oldInput->tastatur;
