@@ -148,7 +148,7 @@ SOFTWARE.
 
 /*!
 	\file final_memory.h
-	\version v0.3.1 alpha
+	\version v1.0.0
 	\author Torsten Spaete
 	\brief Final Memory (FMEM) - A open source C99 single file header memory library.
 */
@@ -156,6 +156,10 @@ SOFTWARE.
 /*!
 	\page page_changelog Changelog
 	\tableofcontents
+
+	## v1.0.0:
+	- New: Added fmemPushArray() to allocate a array with a type
+	- New: Added fmemPushString() to allocate a zero-terminated string
 
 	## v0.3.1 alpha:
 	- Changed: fmemCreate() has now a minBlockSize argument, that defines the block alignment size
@@ -336,6 +340,12 @@ fmem_api fmemBlockHeader *fmemGetHeader(fmemMemoryBlock *block);
 
 //! Gets memory for a struct from the block and return a pointer to the struct
 #define fmemPushStruct(block, type, flags) (type *)fmemPush(block, sizeof(type), flags)
+
+//! Gets memory for a array with the specified type from the block and return a pointer to the array
+#define fmemPushArray(block, type, count, flags) (type *)fmemPush(block, sizeof(type) * (count), flags)
+
+//! Gets memory for a null-terminated string with the specified length from the block and return a pointer to the base
+#define fmemPushString(block, len, flags) (char *)fmemPush(block, sizeof(char) * ((len) + 1), flags)
 
 #endif // FMEM_H
 
