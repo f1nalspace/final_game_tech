@@ -822,7 +822,7 @@ extern void GameRelease(GameMemory *gameMemory) {
 	}
 }
 
-extern bool GameInit(GameMemory *gameMemory) {
+extern bool GameInit(GameMemory *gameMemory, const int argumentCount, char **arguments) {
 	GameState *state = (GameState *)fmemPush(gameMemory->memory, sizeof(GameState), fmemPushFlags_Clear);
 	gameMemory->game = state;
 	state->audioSys = gameMemory->audio;
@@ -1546,13 +1546,13 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 #define FINAL_GAMEPLATFORM_IMPLEMENTATION
 #include <final_gameplatform.h>
 
-int main(int argc, char *argv[]) {
+int main(int argc, char **argv) {
 	fplSetMaxLogLevel(fplLogLevel_All);
 
 	GameConfiguration config = fplZeroInit;
 	config.title = "FPL Demo | Crackout";
 	config.hideMouseCursor = true;
 	config.audioSampleRate = 44100;
-	int result = GameMain(&config);
+	int result = GameMain(&config, argc, argv);
 	return(result);
 }

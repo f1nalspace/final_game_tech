@@ -1839,7 +1839,7 @@ namespace game {
 	}
 }
 
-extern bool GameInit(GameMemory *gameMemory) {
+extern bool GameInit(GameMemory *gameMemory, const int argumentCount, char **arguments) {
 	gamelog::Verbose("Init Game");
 	GameState *state = (GameState *)fmemPush(gameMemory->memory, sizeof(GameState), fmemPushFlags_Clear);
 	gameMemory->game = state;
@@ -2414,11 +2414,11 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 #define FINAL_GAMEPLATFORM_IMPLEMENTATION
 #include <final_gameplatform.h>
 
-int main(int argc, char *argv[]) {
+int main(int argc, char **argv) {
 	GameConfiguration config = fplZeroInit;
 	config.title = "FPL Demo | Towadev";
 	config.disableInactiveDetection = true;
 	gamelog::Verbose("Startup game application '%s'", config.title);
-	int result = GameMain(&config);
+	int result = GameMain(&config, argc, argv);
 	return(result);
 }

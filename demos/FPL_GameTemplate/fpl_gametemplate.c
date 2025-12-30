@@ -109,7 +109,7 @@ static void InitGame(GameState *state) {
 	state->world.player.moveDrag = 0.1f;
 }
 
-extern bool GameInit(GameMemory *gameMemory) {
+extern bool GameInit(GameMemory *gameMemory, const int argumentCount, char **arguments) {
 	if(gameMemory == fpl_null) {
 		return false;
 	}
@@ -322,10 +322,10 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 #define FINAL_GAMEPLATFORM_IMPLEMENTATION
 #include <final_gameplatform.h>
 
-int main(int argc, char *argv[]) {
+int main(int argc, char **argv) {
 	GameConfiguration config = fplZeroInit;
 	config.title = "FPL Demo | GameTemplate";
 	config.disableInactiveDetection = true;
-	int result = GameMain(&config);
+	int result = GameMain(&config, argc, argv);
 	return(result);
 }
