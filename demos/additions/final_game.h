@@ -138,7 +138,7 @@ typedef enum GameWindowActiveType {
 } GameWindowActiveType;
 FPL_ENUM_AS_FLAGS_OPERATORS(GameWindowActiveType);
 
-fpl_extern bool GameInit(GameMemory *gameMemory);
+fpl_extern bool GameInit(GameMemory *gameMemory, const int argumentCount, char **arguments);
 fpl_extern void GameRelease(GameMemory *gameMemory);
 fpl_extern void GameInput(GameMemory *gameMemory, const Input *input);
 fpl_extern void GameUpdate(GameMemory *gameMemory, const Input *input);

@@ -72,7 +72,7 @@ typedef struct GameConfiguration {
 	bool enableLog;
 } GameConfiguration;
 
-fpl_extern int GameMain(const GameConfiguration *config);
+fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount, char **arguments);
 
 #endif // FINAL_GAMEPLATFORM_H
 
@@ -401,7 +401,7 @@ fpl_internal void GameLoggingInitialize(const GameConfiguration *config) {
 
 #define GAMEPLATFORM_LOGPREFIX "[ PLATFORM ] "
 
-fpl_extern int GameMain(const GameConfiguration *config) {
+fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount, char **arguments) {
 	if(config == fpl_null) {
 		return -1;
 	}
@@ -549,7 +549,7 @@ fpl_extern int GameMain(const GameConfiguration *config) {
 	gameMem.render = renderState;
 
 	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Initialize Game");
-	if(!GameInit(&gameMem)) {
+	if(!GameInit(&gameMem, argumentCount, arguments)) {
 		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOGPREFIX "Game failed to initialize!");
 		goto shutdown;
 	}
