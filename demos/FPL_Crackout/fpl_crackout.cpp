@@ -1229,7 +1229,7 @@ static void DrawField(GameState &state, const float uMove, const float vMove) {
 		Vec2f bgExt = V2fInit(WorldRadius.x - FrameRadius * 2, WorldRadius.y - FrameRadius);
 		UVRect bgUVRect = UVRectInit(uMin, vMax, uMax, vMin);
 		Vec2f bgOffset = V2fInit(0, -FrameRadius);
-		DrawSprite(bgTex, bgExt, bgUVRect, bgOffset);
+		DrawSprite(bgTex, bgOffset, bgExt, bgUVRect);
 	}
 
 	// Frame
@@ -1252,22 +1252,22 @@ static void DrawField(GameState &state, const float uMove, const float vMove) {
 		uint32_t numLeftFillSprites = (uint32_t)(WorldRadius.y / FrameRadius + 0.5f);
 		for(uint32_t i = 1; i < numTopFillSprites - 1; ++i) {
 			float xoffset = -WorldRadius.x + FrameRadius + ((float)i * (FrameRadius * 2.0f));
-			DrawSprite(frameTex, frameExt, topFillUV, V2fInit(xoffset, WorldRadius.y - FrameRadius));
+			DrawSprite(frameTex, V2fInit(xoffset, WorldRadius.y - FrameRadius), frameExt, topFillUV);
 		}
 		for(uint32_t i = 0; i < numLeftFillSprites; ++i) {
 			float yoffset = -WorldRadius.y + FrameRadius + ((float)i * (FrameRadius * 2.0f));
 			Vec2f frameExt = V2fInit(FrameRadius, FrameRadius);
-			DrawSprite(frameTex, frameExt, leftFillUV, V2fInit(-WorldRadius.x + FrameRadius, yoffset));
-			DrawSprite(frameTex, frameExt, rightFillUV, V2fInit(WorldRadius.x - FrameRadius, yoffset));
+			DrawSprite(frameTex, V2fInit(-WorldRadius.x + FrameRadius, yoffset), frameExt, leftFillUV);
+			DrawSprite(frameTex, V2fInit(WorldRadius.x - FrameRadius, yoffset), frameExt, rightFillUV);
 		}
 
 		// Top edges
-		DrawSprite(frameTex, frameExt, topLeftEdgeUV, V2fInit(-WorldRadius.x + FrameRadius, WorldRadius.y - FrameRadius));
-		DrawSprite(frameTex, frameExt, topRightEdgeUV, V2fInit(WorldRadius.x - FrameRadius, WorldRadius.y - FrameRadius));
+		DrawSprite(frameTex, V2fInit(-WorldRadius.x + FrameRadius, WorldRadius.y - FrameRadius), frameExt, topLeftEdgeUV);
+		DrawSprite(frameTex, V2fInit(WorldRadius.x - FrameRadius, WorldRadius.y - FrameRadius), frameExt, topRightEdgeUV);
 
 		// Bottom edges
-		DrawSprite(frameTex, frameExt, bottomLeftEdgeUV, V2fInit(-WorldRadius.x + FrameRadius, -WorldRadius.y + FrameRadius));
-		DrawSprite(frameTex, frameExt, bottomRightEdgeUV, V2fInit(WorldRadius.x - FrameRadius, -WorldRadius.y + FrameRadius));
+		DrawSprite(frameTex, V2fInit(-WorldRadius.x + FrameRadius, -WorldRadius.y + FrameRadius), frameExt, bottomLeftEdgeUV);
+		DrawSprite(frameTex, V2fInit(WorldRadius.x - FrameRadius, -WorldRadius.y + FrameRadius), frameExt, bottomRightEdgeUV);
 	}
 }
 
@@ -1292,7 +1292,7 @@ static void DrawPlayMode(GameState &state) {
 		glRotatef(F32RadiansToDegrees(ballRot), 0, 0, 1);
 		glColor4f(1, 1, 1, 1);
 		Vec2f ballExt = V2fInit(BallRadius + ROffset, BallRadius + ROffset);
-		DrawSprite(texId, ballExt, UVRectInit(0.0f, 1.0f, 1.0f, 0.0f), V2fZero());
+		DrawSprite(texId, V2fZero(), ballExt, UVRectInit(0.0f, 1.0f, 1.0f, 0.0f));
 		glPopMatrix();
 	}
 
@@ -1307,7 +1307,7 @@ static void DrawPlayMode(GameState &state) {
 		glRotatef(F32RadiansToDegrees(paddleRot), 0, 0, 1);
 		glColor4f(1, 1, 1, 1);
 		Vec2f paddleExt = V2fInit(PaddleRadius.x + BallRadius + ROffset, PaddleRadius.y + ROffset);
-		DrawSprite(texId, paddleExt, UVRectInit(0.0f, 1.0f, 1.0f, 0.0f), V2fZero());
+		DrawSprite(texId, V2fZero(), paddleExt, UVRectInit(0.0f, 1.0f, 1.0f, 0.0f));
 		glPopMatrix();
 	}
 
@@ -1322,7 +1322,7 @@ static void DrawPlayMode(GameState &state) {
 		glTranslatef(brickPos.x, brickPos.y, 0);
 		glRotatef(F32RadiansToDegrees(brickRot), 0, 0, 1);
 		glColor4f(1, 1, 1, 1);
-		DrawSprite(texId, BrickRadius, brickUV, V2fZero());
+		DrawSprite(texId, V2fZero(), BrickRadius, brickUV);
 		glPopMatrix();
 	}
 
@@ -1434,7 +1434,7 @@ static void DrawPlayMode(GameState &state) {
 	glColor4f(0, 0, 0, 1);
 
 	fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Lifes: %d", state.lifes);
-	DrawTextFont(textBuffer, fplGetStringLength(textBuffer), &state.assets.fontHud.desc, fontTexId, -WorldRadius.x + FrameRadius * 2.0f + textFrameMargin, textTopMiddle, textSize, 1.0f, 0.0f);
+	DrawTextFont(-WorldRadius.x + FrameRadius * 2.0f + textFrameMargin, textTopMiddle, textBuffer, fplGetStringLength(textBuffer), &state.assets.fontHud.desc, fontTexId, textSize, 1.0f, 0.0f);
 
 	if(state.totalBricks > 0) {
 		int levelPercentage = 100 - (int)((state.remainingBricks / (double)state.totalBricks) * 100);
@@ -1442,12 +1442,12 @@ static void DrawPlayMode(GameState &state) {
 	} else {
 		fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Level: %d", (state.levelsCompleted + 1));
 	}
-	DrawTextFont(textBuffer, fplGetStringLength(textBuffer), &state.assets.fontHud.desc, fontTexId, 0, textTopMiddle, textSize, 0.0f, 0.0f);
+	DrawTextFont(0, textTopMiddle, textBuffer, fplGetStringLength(textBuffer), &state.assets.fontHud.desc, fontTexId, textSize, 0.0f, 0.0f);
 
 	fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Score: %d", state.score);
 	size_t textCount = fplGetStringLength(textBuffer);
 	Vec2f textBounds = FontGetTextSize(&state.assets.fontHud.desc, textBuffer, textCount, textSize);
-	DrawTextFont(textBuffer, textCount, &state.assets.fontHud.desc, fontTexId, WorldRadius.x - FrameRadius * 2.0f - textFrameMargin - textBounds.w, textTopMiddle, textSize, 1.0f, 0.0f);
+	DrawTextFont(WorldRadius.x - FrameRadius * 2.0f - textFrameMargin - textBounds.w, textTopMiddle, textBuffer, textCount, &state.assets.fontHud.desc, fontTexId, textSize, 1.0f, 0.0f);
 }
 
 static void BeginMenu(GameState &state) {
@@ -1472,7 +1472,7 @@ static bool PushMenuItem(GameState &state, MenuRenderState &menuRender, const ch
 		glColor4f(1, 1, 1, 1);
 	}
 	GLuint fontTexId = GetTextureIDFromHandle(state.assets.fontMenu.texture);
-	DrawTextFont(itemText, fplGetStringLength(itemText), &state.assets.fontMenu.desc, fontTexId, 0.0f, menuRender.ypos, menuRender.fontHeight, 0.0f, 0.0f);
+	DrawTextFont(0.0f, menuRender.ypos, itemText, fplGetStringLength(itemText), &state.assets.fontMenu.desc, fontTexId, menuRender.fontHeight, 0.0f, 0.0f);
 	menuRender.ypos -= menuRender.fontHeight;
 	return(result);
 }
@@ -1489,7 +1489,7 @@ static void DrawTitleMenuMode(GameState &state) {
 	float titlePosY = WorldRadius.y - WorldHeight * 0.35f;
 	glColor4f(1, 1, 1, 1);
 	GLuint fontTexId = GetTextureIDFromHandle(state.assets.fontMenu.texture);
-	DrawTextFont(titleText, fplGetStringLength(titleText), &state.assets.fontMenu.desc, fontTexId, 0.0f, titlePosY, titleFontSize, 0.0f, 0.0f);
+	DrawTextFont(0.0f, titlePosY, titleText, fplGetStringLength(titleText), &state.assets.fontMenu.desc, fontTexId, titleFontSize, 0.0f, 0.0f);
 
 	if(state.mode == GameMode::Title || state.mode == GameMode::GameOver) {
 		// Title screen
@@ -1497,7 +1497,7 @@ static void DrawTitleMenuMode(GameState &state) {
 		const float smallFontSize = 0.9f;
 		const float smallPosY = -WorldRadius.y + WorldHeight * 0.275f;
 		glColor4f(1, 1, 1, 1);
-		DrawTextFont(smallText, fplGetStringLength(smallText), &state.assets.fontMenu.desc, fontTexId, 0.0f, smallPosY, smallFontSize, 0.0f, 0.0f);
+		DrawTextFont(0.0f, smallPosY, smallText, fplGetStringLength(smallText), &state.assets.fontMenu.desc, fontTexId, smallFontSize, 0.0f, 0.0f);
 	} else {
 		// Menu screen
 		fplAssert(state.mode == GameMode::Menu);
