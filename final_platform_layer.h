@@ -113,7 +113,7 @@ Final Platform Layer is released under the following license:
 
 MIT License
 
-Copyright (c) 2017-2025 Torsten Spaete
+Copyright (c) 2017-2026 Torsten Spaete
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -151,11 +151,13 @@ SOFTWARE.
 	## v1.0.0
 
 	### Overview
+	- Release
 	- Added new useful macros
 	- Added several date time types and functions
 	- Added game controllers settings
 	- Improved code documentation a lot
 	- Improved thread-safety in the event system
+	- A few major bugfixes
 	- Several minor bugfixes
 
 	### Breaking Changes
@@ -174,16 +176,26 @@ SOFTWARE.
 	- New: Added function fplFormatDateTime that formats a fplDateTime into either a local or UTC date time components
 	- New: Added function fplDateTimeCreate that creates a fplDateTime from seperate date time components
 	- New: Added function fplFileAppendBinary() for opening a file for appending, that is useful for log-files and such
+	- New: Added function fplPathNormalize() for normalizing any partial path into a absolute path
+	- New: Added enum values fplKey_First / fplKey_Last to fplKey enum
+	- New: Added common function fplKeyGetName() for getting the name for a fplKey
 	- New: [Win32] Implemented function fplFileAppendBinary() for Win32 API
 	- New: [POSIX] Implemented function fplFileAppendBinary() for POSIX Unix API
+	- New: [Win32] Implemented function fplPathNormalize() for Win32 API
+	- New: [POSIX] Implemented function fplPathNormalize() for POSIX Unix API
 	- Improved[#176]: Made internal event queue thread-safe using a lock-free push/pop linear buffer
 	- Improved: Better documentation of the preprocessor setup blocks
 	- Fixed: Fixed duplicate platform includes
 	- Fixed: fpLGetAlignmentOffset() was not guarding the alignment argument in all cases
+	- Fixed: fplS32ToString() was not handling negative values correctly
 	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
 	- Changed: Ensure that std types has the correct sizes always using equals
 
+	- Fixed: [Win32] Fixed last event from event queue was never used, when there is no events from the window
+	- Fixed: [Win32] Lost/Got focus event was not detected properly
+
+	- Fixed: [X11] Fixed last event from event queue was never used, when there is no events from the window
 	- Fixed: [X11] Fixed window support was not disabled when X11 is not present
 
 	- Fixed: [POSIX] Fixed pthread fpl__POSIXSemaphoreHandle was not used
@@ -7206,6 +7218,15 @@ fpl_platform_api size_t fplGetExecutableFilePath(char *destPath, const size_t ma
 fpl_platform_api size_t fplGetHomePath(char *destPath, const size_t maxDestLen);
 
 /**
+ * @brief Normalizes the specified source path into the dest path and len.
+ * @param sourcePath The source path.
+ * @param destPath The destination buffer.
+ * @param maxDestLen The total number of characters available in the destination buffer.
+ * @return Returns the number of required/written characters, excluding the null-terminator.
+ */
+fpl_platform_api size_t fplPathNormalize(const char *sourcePath, char *destPath, const size_t maxDestLen);
+
+/**
 * @brief Extracts the directory path from the given file path.
 * @param[in] sourcePath The source path to extract from.
 * @param[out] destPath The destination buffer.
@@ -7288,9 +7309,10 @@ typedef enum fplButtonState {
 * @brief An enumeration of mapped keys (Based on MS Virtual-Key-Codes, mostly directly mapped from ASCII).
 */
 typedef enum fplKey {
+	//! 0x00: None
 	fplKey_None = 0,
 
-	// 0x0-0x07: Undefined
+	// 0x01-0x07: Undefined
 
 	//! Backspace key.
 	fplKey_Backspace = 0x08,
@@ -7447,6 +7469,7 @@ typedef enum fplKey {
 
 	//! Sleep key.
 	fplKey_Sleep = 0x5F,
+
 	//! NumPad 0 key.
 	fplKey_NumPad0 = 0x60,
 	//! NumPad 1 key.
@@ -7467,6 +7490,7 @@ typedef enum fplKey {
 	fplKey_NumPad8 = 0x68,
 	//! NumPad 9 key.
 	fplKey_NumPad9 = 0x69,
+
 	//! Multiply key.
 	fplKey_Multiply = 0x6A,
 	//! Add key.
@@ -7479,6 +7503,7 @@ typedef enum fplKey {
 	fplKey_Decimal = 0x6E,
 	//! Divide key.
 	fplKey_Divide = 0x6F,
+
 	//! Function key F1.
 	fplKey_F1 = 0x70,
 	//! Function key F2.
@@ -7528,7 +7553,7 @@ typedef enum fplKey {
 	//! Function key F24.
 	fplKey_F24 = 0x87,
 
-	// 0x88-8F: Unassigned
+	// 0x88-0x8F: Unassigned
 
 	//! Num Lock key.
 	fplKey_NumLock = 0x90,
@@ -7536,6 +7561,7 @@ typedef enum fplKey {
 	fplKey_Scroll = 0x91,
 
 	// 0x92-0x96: OEM specific
+	
 	// 0x97-0x9F: Unassigned
 
 	//! Left Shift key.
@@ -7586,6 +7612,7 @@ typedef enum fplKey {
 	fplKey_Oem3 = 0xC0,
 
 	// 0xC1-0xD7: Reserved
+	// 
 	// 0xD8-0xDA: Unassigned
 
 	//! '[{' for US.
@@ -7600,7 +7627,19 @@ typedef enum fplKey {
 	fplKey_Oem8 = 0xDF,
 
 	// 0xE0-0xFE: Don't care
+
+	//! Last key
+	fplKey_Last = 0xFF,
+	//! First key
+	fplKey_First = fplKey_None,
 } fplKey;
+
+/**
+* @brief Gets the string representation of the given key.
+* @param[in] key The enumeration value @ref fplKey.
+* @return Returns a string for the given key.
+*/
+fpl_common_api const char *fplKeyGetName(const fplKey key);
 
 /**
 * @enum fplKeyboardModifierFlags
@@ -10889,6 +10928,15 @@ fpl_internal fplKey fpl__GetMappedKey(const fpl__PlatformWindowState *windowStat
 	return(result);
 }
 
+fpl_internal size_t fpl__HasInternalEvents(void) {
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__EventQueue *eventQueue = &appState->window.eventQueue;
+	size_t currentPop = fplAtomicLoadSize(&eventQueue->popIndex);
+	size_t currentPush = fplAtomicLoadSize(&eventQueue->pushIndex);
+	bool result = currentPop < currentPush;
+	return result;
+}
+
 fpl_internal void fpl__ClearInternalEvents(void) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	fpl__EventQueue *eventQueue = &appState->window.eventQueue;
@@ -11620,33 +11668,39 @@ fpl_common_api size_t fplS32ToString(const int32_t value, char *buffer, const si
 	int32_t v = value;
 
 	bool isNegative = false;
-	if (v < 0) {
-		isNegative = true;
-		v = -v;
-	}
+	if (value < 0) {
+        isNegative = true;
+        // Convert to unsigned to avoid overflow on INT32_MIN
+        v = (uint32_t)(-(value + 1)) + 1;
+    } else {
+        v = (uint32_t)value;
+    }
 
-	int32_t tmp = v;
-	size_t digitCount = 0;
-	do {
-		tmp = tmp / 10;
-		++digitCount;
-	} while (tmp != 0);
+	// Count digits
+    uint32_t tmp = v;
+    size_t digitCount = 0;
+    do {
+        tmp /= 10;
+        digitCount++;
+    } while (tmp != 0);
 
 	size_t result = digitCount + (isNegative ? 1 : 0);
 
 	if (buffer != fpl_null) {
-		size_t requiredLen = result + 1;
+		size_t requiredLen = result + 1; // include null terminator
 		FPL__CheckArgumentMin(maxBufferLen, requiredLen, 0);
 
 		char *p = buffer;
 		if (isNegative) {
 			*p++ = '-';
 		}
-		p += digitCount;// Go back to the very end, because we are writing the digits back in reverse order
+
+		// Go back to the very end, because we are writing the digits back in reverse order
+		p += digitCount;
 		char *lastP = p;
 
 		const char *digits = "0123456789";
-		tmp = value;
+		tmp = v;
 		do {
 			*--p = digits[tmp % 10];
 			tmp /= 10;
@@ -11655,7 +11709,7 @@ fpl_common_api size_t fplS32ToString(const int32_t value, char *buffer, const si
 		*lastP = 0;
 	}
 
-	return (result);
+	return result;
 }
 
 fpl_common_api int32_t fplStringToS32Len(const char *str, const size_t len) {
@@ -12673,8 +12727,9 @@ fpl_common_api size_t fplPathCombine(char *destPath, const size_t maxDestPathLen
 //
 // Common Window
 //
-#if !defined(FPL__COMMON_WINDOW_DEFINED)
+#if defined(FPL__ENABLE_WINDOW) && !defined(FPL__COMMON_WINDOW_DEFINED)
 #define FPL__COMMON_WINDOW_DEFINED
+
 fpl_common_api char *fplGetWindowTitle(char *outTitle, const size_t maxOutTitleLength) {
 	FPL__CheckPlatform(fpl_null);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
@@ -12687,12 +12742,350 @@ fpl_common_api void fplSetWindowInputEvents(const bool enabled) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	appState->currentSettings.input.disabledEvents = !enabled;
 }
-#endif // FPL__COMMON_WINDOW_DEFINED
+
+#define FPL__KEY_COUNT FPL__ENUM_COUNT(fplKey_First, fplKey_Last)
+
+fpl_globalvar const char *fpl__global_KeyNameTable[] = {
+	FPL__ENUM_NAME("None", fplKey_None),						// 0x00
+
+	// 0x00–0x07 Undefined
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x01
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x02
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x03
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x04
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x05
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x06
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x07
+
+	// 0x08–0x09 Control keys
+	FPL__ENUM_NAME("Backspace", fplKey_Backspace),				// 0x08
+	FPL__ENUM_NAME("Tab", fplKey_Tab),							// 0x09
+
+	// 0x0A–0x0B Reserved
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x0A
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x0B
+
+	// 0x0C–0x0D Control keys
+	FPL__ENUM_NAME("Clear", fplKey_Clear),						// 0x0C
+	FPL__ENUM_NAME("Return", fplKey_Return),					// 0x0D
+
+	// 0x0E–0x0F Undefined
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x0E
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x0F
+
+	// 0x10–0x14 Modifier keys
+	FPL__ENUM_NAME("Shift", fplKey_Shift),						// 0x10
+	FPL__ENUM_NAME("Control", fplKey_Control),					// 0x11
+	FPL__ENUM_NAME("Alt", fplKey_Alt),							// 0x12
+	FPL__ENUM_NAME("Pause", fplKey_Pause),						// 0x13
+	FPL__ENUM_NAME("CapsLock", fplKey_CapsLock),				// 0x14
+
+	// 0x15–0x1A IME / Undefined
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x15
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x16
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x17
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x18
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x19
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x1A
+
+	// 0x1B Escape
+	FPL__ENUM_NAME("Escape", fplKey_Escape),					// 0x1B
+
+	// 0x1C–0x1F IME
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x1C
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x1D
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x1E
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x1F
+
+	// 0x20–0x2F Navigation & editing keys
+	FPL__ENUM_NAME("Space", fplKey_Space),						// 0x20
+	FPL__ENUM_NAME("PageUp", fplKey_PageUp),					// 0x21
+	FPL__ENUM_NAME("PageDown", fplKey_PageDown),				// 0x22
+	FPL__ENUM_NAME("End", fplKey_End),							// 0x23
+	FPL__ENUM_NAME("Home", fplKey_Home),						// 0x24
+	FPL__ENUM_NAME("Left", fplKey_Left),						// 0x25
+	FPL__ENUM_NAME("Up", fplKey_Up),							// 0x26
+	FPL__ENUM_NAME("Right", fplKey_Right),						// 0x27
+	FPL__ENUM_NAME("Down", fplKey_Down),						// 0x28
+	FPL__ENUM_NAME("Select", fplKey_Select),					// 0x29
+	FPL__ENUM_NAME("Print", fplKey_Print),						// 0x2A
+	FPL__ENUM_NAME("Execute", fplKey_Execute),					// 0x2B
+	FPL__ENUM_NAME("Snapshot", fplKey_Snapshot),				// 0x2C
+	FPL__ENUM_NAME("Insert", fplKey_Insert),					// 0x2D
+	FPL__ENUM_NAME("Delete", fplKey_Delete),					// 0x2E
+	FPL__ENUM_NAME("Help", fplKey_Help),						// 0x2F
+
+	// 0x30–0x39 Number keys
+	FPL__ENUM_NAME("0", fplKey_0),								// 0x30
+	FPL__ENUM_NAME("1", fplKey_1),								// 0x31
+	FPL__ENUM_NAME("2", fplKey_2),								// 0x32
+	FPL__ENUM_NAME("3", fplKey_3),								// 0x33
+	FPL__ENUM_NAME("4", fplKey_4),								// 0x34
+	FPL__ENUM_NAME("5", fplKey_5),								// 0x35
+	FPL__ENUM_NAME("6", fplKey_6),								// 0x36
+	FPL__ENUM_NAME("7", fplKey_7),								// 0x37
+	FPL__ENUM_NAME("8", fplKey_8),								// 0x38
+	FPL__ENUM_NAME("9", fplKey_9),								// 0x39
+
+	// 0x3A–0x40 Undefined
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x3A
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x3B
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x3C
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x3D
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x3E
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x3F
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x40
+
+	// 0x41–0x5A Letter keys
+	FPL__ENUM_NAME("A", fplKey_A),								// 0x41
+	FPL__ENUM_NAME("B", fplKey_B),								// 0x42
+	FPL__ENUM_NAME("C", fplKey_C),								// 0x43
+	FPL__ENUM_NAME("D", fplKey_D),								// 0x44
+	FPL__ENUM_NAME("E", fplKey_E),								// 0x45
+	FPL__ENUM_NAME("F", fplKey_F),								// 0x46
+	FPL__ENUM_NAME("G", fplKey_G),								// 0x47
+	FPL__ENUM_NAME("H", fplKey_H),								// 0x48
+	FPL__ENUM_NAME("I", fplKey_I),								// 0x49
+	FPL__ENUM_NAME("J", fplKey_J),								// 0x4A
+	FPL__ENUM_NAME("K", fplKey_K),								// 0x4B
+	FPL__ENUM_NAME("L", fplKey_L),								// 0x4C
+	FPL__ENUM_NAME("M", fplKey_M),								// 0x4D
+	FPL__ENUM_NAME("N", fplKey_N),								// 0x4E
+	FPL__ENUM_NAME("O", fplKey_O),								// 0x4F
+	FPL__ENUM_NAME("P", fplKey_P),								// 0x50
+	FPL__ENUM_NAME("Q", fplKey_Q),								// 0x51
+	FPL__ENUM_NAME("R", fplKey_R),								// 0x52
+	FPL__ENUM_NAME("S", fplKey_S),								// 0x53
+	FPL__ENUM_NAME("T", fplKey_T),								// 0x54
+	FPL__ENUM_NAME("U", fplKey_U),								// 0x55
+	FPL__ENUM_NAME("V", fplKey_V),								// 0x56
+	FPL__ENUM_NAME("W", fplKey_W),								// 0x57
+	FPL__ENUM_NAME("X", fplKey_X),								// 0x58
+	FPL__ENUM_NAME("Y", fplKey_Y),								// 0x59
+	FPL__ENUM_NAME("Z", fplKey_Z),								// 0x5A
+
+	// 0x5B–0x5D Windows / Apps keys
+	FPL__ENUM_NAME("LeftSuper", fplKey_LeftSuper),				// 0x5B
+	FPL__ENUM_NAME("RightSuper", fplKey_RightSuper),			// 0x5C
+	FPL__ENUM_NAME("Apps", fplKey_Apps),						// 0x5D
+
+	// 0x5E Reserved
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x5E
+
+	// 0x5F Sleep
+	FPL__ENUM_NAME("Sleep", fplKey_Sleep),						// 0x5F
+
+	// 0x60–0x69 NumPad digits
+	FPL__ENUM_NAME("NumPad0", fplKey_NumPad0),					// 0x60
+	FPL__ENUM_NAME("NumPad1", fplKey_NumPad1),					// 0x61
+	FPL__ENUM_NAME("NumPad2", fplKey_NumPad2),					// 0x62
+	FPL__ENUM_NAME("NumPad3", fplKey_NumPad3),					// 0x63
+	FPL__ENUM_NAME("NumPad4", fplKey_NumPad4),					// 0x64
+	FPL__ENUM_NAME("NumPad5", fplKey_NumPad5),					// 0x65
+	FPL__ENUM_NAME("NumPad6", fplKey_NumPad6),					// 0x66
+	FPL__ENUM_NAME("NumPad7", fplKey_NumPad7),					// 0x67
+	FPL__ENUM_NAME("NumPad8", fplKey_NumPad8),					// 0x68
+	FPL__ENUM_NAME("NumPad9", fplKey_NumPad9),					// 0x69
+
+	// 0x6A–0x6F NumPad operations
+	FPL__ENUM_NAME("Multiply",  fplKey_Multiply),				// 0x6A
+	FPL__ENUM_NAME("Add",       fplKey_Add),					// 0x6B
+	FPL__ENUM_NAME("Separator", fplKey_Separator),				// 0x6C
+	FPL__ENUM_NAME("Substract", fplKey_Substract),				// 0x6D
+	FPL__ENUM_NAME("Decimal",   fplKey_Decimal),				// 0x6E
+	FPL__ENUM_NAME("Divide",    fplKey_Divide),					// 0x6F
+
+	// 0x70–0x87 Function keys F1–F16
+	FPL__ENUM_NAME("F1",  fplKey_F1),							// 0x70
+	FPL__ENUM_NAME("F2",  fplKey_F2),							// 0x71
+	FPL__ENUM_NAME("F3",  fplKey_F3),							// 0x72
+	FPL__ENUM_NAME("F4",  fplKey_F4),							// 0x73
+	FPL__ENUM_NAME("F5",  fplKey_F5),							// 0x74
+	FPL__ENUM_NAME("F6",  fplKey_F6),							// 0x75
+	FPL__ENUM_NAME("F7",  fplKey_F7),							// 0x76
+	FPL__ENUM_NAME("F8",  fplKey_F8),							// 0x77
+	FPL__ENUM_NAME("F9",  fplKey_F9),							// 0x78
+	FPL__ENUM_NAME("F10", fplKey_F10),							// 0x79
+	FPL__ENUM_NAME("F11", fplKey_F11),							// 0x7A
+	FPL__ENUM_NAME("F12", fplKey_F12),							// 0x7B
+	FPL__ENUM_NAME("F13", fplKey_F13),							// 0x7C
+	FPL__ENUM_NAME("F14", fplKey_F14),							// 0x7D
+	FPL__ENUM_NAME("F15", fplKey_F15),							// 0x7E
+	FPL__ENUM_NAME("F16", fplKey_F16),							// 0x7F
+	FPL__ENUM_NAME("F17", fplKey_F17),							// 0x80
+	FPL__ENUM_NAME("F18", fplKey_F18),							// 0x81
+	FPL__ENUM_NAME("F19", fplKey_F19),							// 0x82
+	FPL__ENUM_NAME("F20", fplKey_F20),							// 0x83
+	FPL__ENUM_NAME("F21", fplKey_F21),							// 0x84
+	FPL__ENUM_NAME("F22", fplKey_F22),							// 0x85
+	FPL__ENUM_NAME("F23", fplKey_F23),							// 0x86
+	FPL__ENUM_NAME("F24", fplKey_F24),							// 0x87
+
+	// 0x88–0x8F Unassigned
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x88
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x89
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x8A
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x8B
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x8C
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x8D
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x8E
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x8F
+
+	// 0x90–0x91 Lock keys
+	FPL__ENUM_NAME("NumLock", fplKey_NumLock),					// 0x90
+	FPL__ENUM_NAME("Scroll",  fplKey_Scroll),					// 0x91
+
+	// 0x92–0x96 OEM specific (unmapped)
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x92
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x93
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x94
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x95
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x96
+
+	// 0x97–0x9F Unassigned
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x97
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x98
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x99
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x9A
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x9B
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x9C
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x9D
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x9E
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0x9F
+
+	// 0xA0–0xA5 Modifier keys (Left/Right Shift, Ctrl, Alt)
+	FPL__ENUM_NAME("LeftShift", fplKey_LeftShift),				// 0xA0
+	FPL__ENUM_NAME("RightShift", fplKey_RightShift),			// 0xA1
+	FPL__ENUM_NAME("LeftControl", fplKey_LeftControl),			// 0xA2
+	FPL__ENUM_NAME("RightControl", fplKey_RightControl),		// 0xA3
+	FPL__ENUM_NAME("LeftAlt", fplKey_LeftAlt),					// 0xA4
+	FPL__ENUM_NAME("RightAlt", fplKey_RightAlt),				// 0xA5
+
+	// 0xA6–0xAC Don't care
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xA6
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xA7
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xA8
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xA9
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xAA
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xAB
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xAC
+
+	// 0xAD–0xB3 Media keys
+	FPL__ENUM_NAME("VolumeMute",      fplKey_VolumeMute),		// 0xAD
+	FPL__ENUM_NAME("VolumeDown",      fplKey_VolumeDown),		// 0xAE
+	FPL__ENUM_NAME("VolumeUp",        fplKey_VolumeUp),			// 0xAF
+	FPL__ENUM_NAME("MediaNextTrack",  fplKey_MediaNextTrack),	// 0xB0
+	FPL__ENUM_NAME("MediaPrevTrack",  fplKey_MediaPrevTrack),	// 0xB1
+	FPL__ENUM_NAME("MediaStop",       fplKey_MediaStop),		// 0xB2
+	FPL__ENUM_NAME("MediaPlayPause",  fplKey_MediaPlayPause),	// 0xB3
+
+	// 0xB4–0xB9 Don't care
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xB4
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xB5
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xB6
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xB7
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xB8
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xB9
+
+	// 0xBA–0xC0 OEM punctuation keys
+	FPL__ENUM_NAME("Oem1", fplKey_Oem1),						// 0xBA
+	FPL__ENUM_NAME("OemPlus", fplKey_OemPlus),					// 0xBB
+	FPL__ENUM_NAME("OemComma", fplKey_OemComma),				// 0xBC
+	FPL__ENUM_NAME("OemMinus", fplKey_OemMinus),				// 0xBD
+	FPL__ENUM_NAME("OemPeriod",fplKey_OemPeriod),				// 0xBE
+	FPL__ENUM_NAME("Oem2", fplKey_Oem2),						// 0xBF
+	FPL__ENUM_NAME("Oem3", fplKey_Oem3),						// 0xC0
+
+	// 0xC1–0xD7 Reserved
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xC1
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xC2
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xC3
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xC4
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xC5
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xC6
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xC7
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xC8
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xC9
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xCA
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xCB
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xCC
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xCD
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xCE
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xCF
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xD0
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xD1
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xD2
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xD3
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xD4
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xD5
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xD6
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xD7
+
+	// 0xD8–0xDA Unassigned
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xD8
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xD9
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xDA
+
+	// 0xDB–0xDF OEM keys
+	FPL__ENUM_NAME("Oem4", fplKey_Oem4),						// 0xDB
+	FPL__ENUM_NAME("Oem5", fplKey_Oem5),						// 0xDC
+	FPL__ENUM_NAME("Oem6", fplKey_Oem6),						// 0xDD
+	FPL__ENUM_NAME("Oem7", fplKey_Oem7),						// 0xDE
+	FPL__ENUM_NAME("Oem8", fplKey_Oem8),						// 0xDF
+
+	// 0xE0–0xFE Don't care
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xE0
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xE1
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xE2
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xE3
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xE4
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xE5
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xE6
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xE7
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xE8
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xE9
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xEA
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xEB
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xEC
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xED
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xEE
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xEF
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xF0
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xF1
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xF2
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xF3
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xF4
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xF5
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xF6
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xF7
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xF8
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xF9
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xFA
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xFB
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xFC
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xFD
+	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xFE
+
+	// 0xFF Last key
+	FPL__ENUM_NAME("Last", fplKey_Last),						// 0xFF
+};
+
+fplStaticAssert(fplArrayCount(fpl__global_KeyNameTable) == FPL__KEY_COUNT);
+fplStaticAssert(fplKey_First == fplKey_None);
+
+fpl_common_api const char *fplKeyGetName(const fplKey key) {
+	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(key, fplKey_First, fplKey_Last);
+	const char *result = fpl__global_KeyNameTable[index];
+	return(result);
+}
+
+#endif // FPL__ENABLE_WINDOW && FPL__COMMON_WINDOW_DEFINED
 
 //
 // Common Logging
 //
 #if defined(FPL__ENABLE_LOGGING)
+
 fpl_common_api void fplSetLogSettings(const fplLogSettings *params) {
 	FPL__CheckArgumentNullNoRet(params);
 	fpl__global__LogSettings = *params;
@@ -12707,7 +13100,8 @@ fpl_common_api void fplSetMaxLogLevel(const fplLogLevel maxLevel) {
 fpl_common_api fplLogLevel fplGetMaxLogLevel(void) {
 	return fpl__global__LogSettings.maxLevel;
 }
-#endif
+
+#endif // FPL__ENABLE_LOGGING
 
 fpl_common_api const char *fplGetLastError(void) {
 	const char *result = "";
@@ -13315,6 +13709,31 @@ fpl_internal void CALLBACK fpl__Win32MessageFiberProc(struct fpl__PlatformAppSta
 	}
 }
 
+fpl_internal bool fpl__Win32WindowGotFocus(const fpl__Win32Api *wapi, fpl__Win32WindowState *windowState) {
+	fplEvent newEvent = fplZeroInit;
+	newEvent.type = fplEventType_Window;
+	newEvent.window.type = fplWindowEventType_GotFocus;
+	fpl__PushInternalEvent(&newEvent);
+	if (!windowState->isCursorActive) {
+		fpl__Win32HideCursor(wapi, windowState);
+	}
+	if (windowState->isFrameInteraction) {
+		return false;
+	}
+	return true;
+}
+
+fpl_internal bool fpl__Win32WindowLostFocus(const fpl__Win32Api *wapi, fpl__Win32WindowState *windowState) {
+	if (!windowState->isCursorActive) {
+		fpl__Win32ShowCursor(wapi, windowState);
+	}
+	fplEvent newEvent = fplZeroInit;
+	newEvent.type = fplEventType_Window;
+	newEvent.window.type = fplWindowEventType_LostFocus;
+	fpl__PushInternalEvent(&newEvent);
+	return true;
+}
+
 LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	fplAssert(appState != fpl_null);
@@ -13448,30 +13867,35 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			}
 		} break;
 
+#if 0
 		case WM_SETFOCUS:
 		{
-			fplEvent newEvent = fplZeroInit;
-			newEvent.type = fplEventType_Window;
-			newEvent.window.type = fplWindowEventType_GotFocus;
-			fpl__PushInternalEvent(&newEvent);
-			if (win32Window->isFrameInteraction) {
+			if (!fpl__Win32WindowGotFocus(wapi, win32Window)) {
 				break;
-			}
-			if (!win32Window->isCursorActive) {
-				fpl__Win32HideCursor(wapi, win32Window);
 			}
 			return 0;
 		} break;
 
 		case WM_KILLFOCUS:
 		{
-			if (!win32Window->isCursorActive) {
-				fpl__Win32ShowCursor(wapi, win32Window);
+			if (!fpl__Win32WindowLostFocus(wapi, win32Window)) {
+				break;
 			}
-			fplEvent newEvent = fplZeroInit;
-			newEvent.type = fplEventType_Window;
-			newEvent.window.type = fplWindowEventType_LostFocus;
-			fpl__PushInternalEvent(&newEvent);
+			return 0;
+		} break;
+#endif
+
+		case WM_ACTIVATEAPP:
+		{
+			if (wParam == 1) {
+				if (!fpl__Win32WindowGotFocus(wapi, win32Window)) {
+					break;
+				}
+			} else {
+				if (!fpl__Win32WindowLostFocus(wapi, win32Window)) {
+					break;
+				}
+			}
 			return 0;
 		} break;
 
@@ -15523,7 +15947,7 @@ fpl_platform_api bool fplFileAppendBinary(const char *filePath, fplFileHandle *o
 	if (filePath != fpl_null) {
 		wchar_t filePathWide[FPL_MAX_PATH_LENGTH];
 		fplUTF8StringToWideString(filePath, fplGetStringLength(filePath), filePathWide, fplArrayCount(filePathWide));
-		HANDLE win32FileHandle = CreateFileW(filePathWide, GENERIC_WRITE, FILE_SHARE_WRITE, fpl_null, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, fpl_null);
+		HANDLE win32FileHandle = CreateFileW(filePathWide, FILE_APPEND_DATA, FILE_SHARE_WRITE, fpl_null, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, fpl_null);
 		if (win32FileHandle != INVALID_HANDLE_VALUE) {
 			fplClearStruct(outHandle);
 			outHandle->isValid = true;
@@ -15874,6 +16298,7 @@ fpl_platform_api bool fplDirectoriesCreate(const char *path) {
 	bool result = CreateDirectoryW(pathWide, fpl_null) > 0;
 	return(result);
 }
+
 fpl_platform_api bool fplDirectoryRemove(const char *path) {
 	FPL__CheckArgumentNull(path, false);
 	wchar_t pathWide[FPL_MAX_PATH_LENGTH];
@@ -15881,6 +16306,7 @@ fpl_platform_api bool fplDirectoryRemove(const char *path) {
 	bool result = RemoveDirectoryW(pathWide) > 0;
 	return(result);
 }
+
 fpl_internal void fpl__Win32FillFileEntry(const char *rootPath, const WIN32_FIND_DATAW *findData, fplFileEntry *entry) {
 	fplAssert(findData != fpl_null);
 	fplAssert(entry != fpl_null);
@@ -15931,6 +16357,7 @@ fpl_internal void fpl__Win32FillFileEntry(const char *rootPath, const WIN32_FIND
 	entry->timeStamps.lastAccessTime = fpl__Win32ConvertFileTimeToUnixTimestamp(&findData->ftLastAccessTime);
 	entry->timeStamps.lastModifyTime = fpl__Win32ConvertFileTimeToUnixTimestamp(&findData->ftLastWriteTime);
 }
+
 fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter, fplFileEntry *entry) {
 	FPL__CheckArgumentNull(path, false);
 	FPL__CheckArgumentNull(entry, false);
@@ -15964,6 +16391,7 @@ fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter
 	}
 	return(result);
 }
+
 fpl_platform_api bool fplDirectoryListNext(fplFileEntry *entry) {
 	FPL__CheckArgumentNull(entry, false);
 	bool result = false;
@@ -15985,6 +16413,7 @@ fpl_platform_api bool fplDirectoryListNext(fplFileEntry *entry) {
 	}
 	return(result);
 }
+
 fpl_platform_api void fplDirectoryListEnd(fplFileEntry *entry) {
 	FPL__CheckArgumentNullNoRet(entry);
 	if (entry->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
@@ -16012,6 +16441,25 @@ fpl_platform_api size_t fplGetHomePath(char *destPath, const size_t maxDestLen) 
 	wapi->shell.SHGetFolderPathW(fpl_null, CSIDL_PROFILE, fpl_null, 0, homePath);
 	size_t homePathLen = lstrlenW(homePath);
 	size_t result = fplWideStringToUTF8String(homePath, homePathLen, destPath, maxDestLen);
+	return(result);
+}
+
+fpl_platform_api size_t fplPathNormalize(const char *sourcePath, char *destPath, const size_t maxDestLen) {
+	size_t sourceLen;
+	if ((sourceLen = fplGetStringLength(sourcePath)) == 0) {
+		return 0;
+	}
+	wchar_t sourcePathWide[FPL_MAX_PATH_LENGTH];
+	size_t wideLen = fplUTF8StringToWideString(sourcePath, sourceLen, sourcePathWide, fplArrayCount(sourcePathWide));
+	if (wideLen == 0) {
+		return 0;
+	}
+	wchar_t targetPath[FPL_MAX_PATH_LENGTH];
+	DWORD targetLen = GetFullPathNameW(sourcePathWide, fplArrayCount(targetPath), targetPath, NULL);
+	if (targetLen == 0) {
+		return 0;
+	}
+	size_t result = fplWideStringToUTF8String(targetPath, targetLen, destPath, maxDestLen);
 	return(result);
 }
 
@@ -16534,7 +16982,10 @@ fpl_platform_api bool fplPollEvent(fplEvent *ev) {
 
 	// Create new event from the OS message queue
 	if (!fpl__Win32ProcessNextEvent(wapi, appState, windowState)) {
-		return(false);
+		// Queue is empty, we have no events left
+		if (!fpl__HasInternalEvents()) {
+			return(false);
+		}
 	}
 
 	// Poll the first event from the internal queue
@@ -18581,6 +19032,23 @@ fpl_platform_api size_t fplGetHomePath(char *destPath, const size_t maxDestLen) 
 	return(result);
 }
 
+fpl_platform_api size_t fplPathNormalize(const char *sourcePath, char *destPath, const size_t maxDestLen) {
+	if (fplGetStringLength(sourcePath) == 0) {
+		return 0;
+	}
+	char resolvedPath[FPL_MAX_PATH_LENGTH];
+	if (realpath(sourcePath, resolvedPath) == fpl_null) {
+        return 0;
+    }
+	size_t result = fplGetStringLength(resolvedPath);
+	if (destPath != fpl_null) {
+		size_t requiredLen = result + 1;
+		FPL__CheckArgumentMin(maxDestLen, requiredLen, 0);
+		fplCopyStringLen(resolvedPath, result, destPath, maxDestLen);
+	}
+	return result;
+}
+
 //
 // POSIX Timings
 //
@@ -19855,7 +20323,10 @@ fpl_platform_api bool fplPollEvent(fplEvent *ev) {
 
 	// Create new event(s) from the X11 event queue
 	if (!fpl__X11ProcessNextEvent(subplatform, appState)) {
-		return(false);
+		// Queue is empty, we have no events left
+		if (!fpl__HasInternalEvents()) {
+			return(false);
+		}
 	}
 
 	// Poll the first event from the internal queue
