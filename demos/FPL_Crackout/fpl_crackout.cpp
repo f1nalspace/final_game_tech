@@ -168,6 +168,7 @@ enum class BrickType: int32_t {
 	Blue,
 	Yellow,
 };
+constexpr uint32_t BrickTypeCount = 4;
 const Vec2i BrickTileSize = V2iInit(32, 16);
 const Vec2i BricksTilesetSize = V2iInit(128, 16);
 const int BrickTilesetBorder = 0;
@@ -506,7 +507,7 @@ static void LoadLevel(GameState &state, int levelSeed) {
 			float brickX = -WorldRadius.x + FrameRadius * 2.0f + AreaPadding + BrickRadius.x;
 			for(int col = 0; col < MaxBrickCols; ++col) {
 				BrickType brickType = state.bricksMap[row * MaxBrickCols + col];
-				if(brickType == BrickType::Green) {
+				if(brickType != BrickType::NoBrick) {
 					Entity *brickEntity = &state.activeBricks[state.totalBricks++];
 					*brickEntity = {};
 					brickEntity->type = EntityType::Brick;
@@ -881,8 +882,11 @@ static void SetRandomLevel(GameState &state, int seed) {
 			int c = reverse ? (halfColCount - 1 - col) : col;
 			int leftCol = c;
 			int rightCol = (MaxBrickCols - 1) - c;
-			state.bricksMap[row * MaxBrickCols + leftCol] = BrickType::Green;
-			state.bricksMap[row * MaxBrickCols + rightCol] = BrickType::Green;
+			int randomBrickTypeIndex = RandomInt(BrickTypeCount);
+			BrickType brickType = (BrickType)((int)BrickType::Green + randomBrickTypeIndex);
+
+			state.bricksMap[row * MaxBrickCols + leftCol] = brickType;
+			state.bricksMap[row * MaxBrickCols + rightCol] = brickType;
 		}
 #if ALL_BRICKS
 		state.bricksMap[row * MaxBrickCols + halfColCount] = BrickType::Green;
