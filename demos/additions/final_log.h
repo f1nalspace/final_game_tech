@@ -87,7 +87,6 @@ static LogString gLogWriteString = {
 	0,
 	sizeof(gLogWriteData),
 	0,
-	0,
 };
 
 fpl_extern bool LogInit(const char *logFilePath) {

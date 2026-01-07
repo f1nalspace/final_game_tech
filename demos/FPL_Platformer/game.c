@@ -197,13 +197,15 @@ fpl_extern void PlatformerGameInput(GameMemory *gameMemory, GameState *state, Re
 
 	const Controller *keyboardController = &input->controllers[0];
 
+	const Keyboard *keyboard = &input->tastatur;
+
 	// Debug rendering on/off (F6)
-	if (ButtonWasPressed(keyboardController->debug6)) {
+	if (ButtonWasPressed(keyboard->keys[fplKey_F6])) {
 		state->isDebugRendering = !state->isDebugRendering;
 	}
 
 	// Toggle game state (F1)
-	if (ButtonWasPressed(keyboardController->debug1)) {
+	if (ButtonWasPressed(keyboard->keys[fplKey_F1])) {
 		switch (state->mode) {
 			case GameMode_Game:
 				ChangeGameMode(state, GameMode_EditorPlay);

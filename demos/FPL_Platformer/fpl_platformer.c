@@ -178,6 +178,6 @@ int main(int argc, char *argv[]) {
 	config.title = "FPL Demo | Platformer";
 	config.disableInactiveDetection = true;
 	config.disableVerticalSync = false;
-	int result = GameMain(&config);
+	int result = GameMain(&config, argc, argv);
 	return(result);
 }

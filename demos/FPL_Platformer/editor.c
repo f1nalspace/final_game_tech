@@ -6,7 +6,7 @@ static bool EditorCanTileBePlaced(const Editor *editor, const Map *map, const En
 	AABB2f playerCurrentBounds = EntityGetCurrentBounds(player);
 	Vec2f mouseWorldPos = MapTileCoordsToWorld(map, tilePos);
 	AABB2f tileBounds = AABB2fInitFromBottomLeft(mouseWorldPos, TileSize);
-	bool isOverlap = AABB2fIsOverlap(&tileBounds, &playerCurrentBounds);
+	bool isOverlap = AABB2fIntersects(&tileBounds, &playerCurrentBounds);
 	return !isOverlap;
 }
 
@@ -193,7 +193,7 @@ fpl_extern void EditorPostRender(RenderState *renderState, const Editor *editor,
 
 		AABB2f tileBounds = AABB2fInitFromBottomLeft(mouseWorldPos, TileSize);
 
-		bool isOverlap = AABB2fIsOverlap(&tileBounds, &playerCurrentBounds);
+		bool isOverlap = AABB2fIntersects(&tileBounds, &playerCurrentBounds);
 
 		Vec4f tileColor = isOverlap ? invalidTileColor : placeTileColor;
 

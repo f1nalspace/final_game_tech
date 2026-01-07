@@ -737,11 +737,11 @@ static bool LoadAssets(GameState &state) {
 		state.assets.fontHud.texture = GetTextureHandleFromID(texId);
 	}
 
-	LoadSound(state->audioSys, state->dataPath, "bounce_44100hz.wav", state->assets.ballHitSound);
+	LoadSound(state.audioSys, state.dataPath, "bounce_44100hz.wav", state.assets.ballHitSound);
 
-	LoadSound(state->audioSys, state->dataPath, "music_44100hz.ogg", state->assets.gameMusic);
+	LoadSound(state.audioSys, state.dataPath, "music_44100hz.ogg", state.assets.gameMusic);
 
-	LoadSound(state->audioSys, state->dataPath, "menu_44100hz.wav", state->assets.menuMusic);
+	LoadSound(state.audioSys, state.dataPath, "menu_44100hz.wav", state.assets.menuMusic);
 
 	return true;
 }
