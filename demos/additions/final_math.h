@@ -9,7 +9,7 @@ Description:
 
 License:
 	MIT License
-	Copyright 2017-2026 Torsten Spaete
+	Copyright 2017-2025 Torsten Spaete
 
 Changelog
 	## 2025-11-29
@@ -600,10 +600,6 @@ fpl_force_inline float F32Power(const float x, const float y) {
 	float result = powf(x, y);
 	return(result);
 }
-fpl_force_inline float F32Modulate(const float x, const float y) {
-	float result = fmodf(x, y);
-	return result;
-}
 fpl_force_inline float F32Min(const float a, const float b) {
 	float result = a < b ? a : b;
 	return(result);
@@ -651,12 +647,6 @@ fpl_force_inline float F32AngleLerp(float a, float t, float b) {
 	float angleDistance = F32GetBestAngleDistance(a, b);
 	float result = F32Lerp(a, t, a + angleDistance);
 	return(result);
-}
-
-fpl_force_inline float F32AngleNormalize(const float angle) {
-	float x = F32Modulate(angle, F32Tau);
-	if (x < 0.0f) x += F32Tau;
-	return x;
 }
 
 fpl_force_inline uint8_t RoundF32ToU8(float value) {
@@ -1698,16 +1688,14 @@ fpl_force_inline Vec2f V2fUnproject(const Vec2i screenPos, const Mat4f mvp, cons
 
 	Vec4f tmp = V4fInit(x, y, 0.0f, 1.0f);
 
-	// Convert to linear range (0.0 to 1.0)
 	tmp.x = (tmp.x - viewport.x) / viewport.w;
 	tmp.y = (tmp.y - viewport.y) / viewport.h;
 
-	// Convert to clip range (-1.0 to 1.0)
 	tmp.x = tmp.x * 2.0f - 1.0f;
 	tmp.y = tmp.y * 2.0f - 1.0f;
 
-	// Convert to world coordinates
 	Vec4f obj = V4fMultM4f(inverse, tmp);
+
 	obj = V4fDivideScalar(obj, obj.w);
 
 	Vec2f result = V2fInit(obj.x, obj.y);

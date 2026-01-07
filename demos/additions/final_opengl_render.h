@@ -20,9 +20,9 @@ fpl_inline GLuint GetTextureIDFromHandle(const TextureHandle handle) {
 	return (GLuint)(uintptr_t)(handle);
 }
 
-fpl_extern void DrawSprite(const GLuint texId, const Vec2f offset, const Vec2f ext, const UVRect uv);
+fpl_extern void DrawSprite(const GLuint texId, const Vec2f ext, const UVRect uv, const Vec2f offset);
 fpl_extern void DrawPoint(const float x, const float y, const float radius, const Vec4f color);
-fpl_extern void DrawTextFont(const float x, const float y, const char *text, const size_t textLen, const LoadedFont *fontDesc, const GLuint fontTexture, const float maxCharHeight, const float sx, const float sy);
+fpl_extern void DrawTextFont(const char *text, const size_t textLen, const LoadedFont *fontDesc, const GLuint fontTexture, const float x, const float y, const float maxCharHeight, const float sx, const float sy);
 fpl_extern void DrawCircle(const float centerX, const float centerY, const float radius, const bool isFilled, const Vec4f color, const int segments);
 fpl_extern void DrawNormal(const Vec2f pos, const Vec2f normal, const float length, const Vec4f color);
 fpl_extern GLuint AllocateTexture(const uint32_t width, const uint32_t height, const void *data, const bool repeatable, const GLint filter, const bool isAlphaOnly);
@@ -38,7 +38,7 @@ fpl_extern void RenderWithOpenGL(RenderState *renderState);
 
 #include <final_utils.h>
 
-fpl_extern void DrawSprite(const GLuint texId, const Vec2f offset, const Vec2f ext, const UVRect uv) {
+fpl_extern void DrawSprite(const GLuint texId, const Vec2f ext, const UVRect uv, const Vec2f offset) {
 	const float uMin = uv.uMin;
 	const float vMin = uv.vMin;
 	const float uMax = uv.uMax;
@@ -68,7 +68,7 @@ fpl_extern void DrawPoint(const float x, const float y, const float radius, cons
 	glPointSize(1);
 }
 
-fpl_extern void DrawTextFont(const float x, const float y, const char *text, const size_t textLen, const LoadedFont *fontDesc, const GLuint fontTexture, const float maxCharHeight, const float sx, const float sy) {
+fpl_extern void DrawTextFont(const char *text, const size_t textLen, const LoadedFont *fontDesc, const GLuint fontTexture, const float x, const float y, const float maxCharHeight, const float sx, const float sy) {
 	if(fontDesc != fpl_null) {
 		Vec2f textSize = FontGetTextSize(fontDesc, text, textLen, maxCharHeight);
 		float xpos = x - textSize.w * 0.5f + (textSize.w * 0.5f * sx);
@@ -100,7 +100,7 @@ fpl_extern void DrawTextFont(const float x, const float y, const char *text, con
 				glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 #endif
 
-				DrawSprite(fontTexture, offset, ext, uvRect);
+				DrawSprite(fontTexture, ext, uvRect, offset);
 
 				advance = FontGetCharacterAdvance(fontDesc, at, atNext) * maxCharHeight;
 			} else {
@@ -263,71 +263,21 @@ fpl_extern void RenderWithOpenGL(RenderState *renderState) {
 				{
 					fplAssert(dataSize == sizeof(SpriteCommand));
 					SpriteCommand *cmd = (SpriteCommand *)dataStart;
-					const GLuint texId = GetTextureIDFromHandle(cmd->texture);
-					const bool flipU = (cmd->flags & SpriteFlags_FlipU) == SpriteFlags_FlipU;
-					const bool flipV = (cmd->flags & SpriteFlags_FlipV) == SpriteFlags_FlipV;
-					const bool rot90CW = (cmd->flags & SpriteFlags_Rotate_90_CW) == SpriteFlags_Rotate_90_CW;
-					const bool rot90CCW = (cmd->flags & SpriteFlags_Rotate_90_CCW) == SpriteFlags_Rotate_90_CCW;
-					const float uMin = flipU ? cmd->uvMax.x : cmd->uvMin.x;
-					const float uMax = flipU ? cmd->uvMin.x :  cmd->uvMax.x;
-					const float vMin = flipV ? cmd->uvMax.y : cmd->uvMin.y;
-					const float vMax = flipV ? cmd->uvMin.y : cmd->uvMax.y;
-					const bool notRotated = (!rot90CW && !rot90CCW) || (rot90CW && rot90CCW);
+					GLuint texId = GetTextureIDFromHandle(cmd->texture);
+					bool flipU = (cmd->flags & SpriteFlags_FlipU) == SpriteFlags_FlipU;
+					bool flipV = (cmd->flags & SpriteFlags_FlipV) == SpriteFlags_FlipV;
+					float uMin = flipU ? cmd->uvMax.x : cmd->uvMin.x;
+					float uMax = flipU ? cmd->uvMin.x :  cmd->uvMax.x;
+					float vMin = flipV ? cmd->uvMax.y : cmd->uvMin.y;
+					float vMax = flipV ? cmd->uvMin.y : cmd->uvMax.y;
 					glEnable(GL_TEXTURE_2D);
 					glBindTexture(GL_TEXTURE_2D, texId);
 					glColor4fv(&cmd->color.m[0]);
 					glBegin(GL_QUADS);
-
-					if (notRotated) {
-						// Top Right
-						glTexCoord2f(uMax, vMax); 
-						glVertex2f(cmd->position.x + cmd->ext.w, cmd->position.y + cmd->ext.h);
-
-						// Top Left
-						glTexCoord2f(uMin, vMax); 
-						glVertex2f(cmd->position.x - cmd->ext.w, cmd->position.y + cmd->ext.h);
-
-						// Bottom Left
-						glTexCoord2f(uMin, vMin); 
-						glVertex2f(cmd->position.x - cmd->ext.w, cmd->position.y - cmd->ext.h);
-
-						// Bottom Right
-						glTexCoord2f(uMax, vMin); 
-						glVertex2f(cmd->position.x + cmd->ext.w, cmd->position.y - cmd->ext.h);
-					} else if (rot90CW) {
-						// Top-right (was top-left)
-						glTexCoord2f(uMin, vMax); 
-						glVertex2f(cmd->position.x + cmd->ext.h, cmd->position.y + cmd->ext.w);
-
-						// Top-left (was bottom-left)
-						glTexCoord2f(uMin, vMin); 
-						glVertex2f(cmd->position.x - cmd->ext.h, cmd->position.y + cmd->ext.w);
-
-						// Bottom-left (was bottom-right)
-						glTexCoord2f(uMax, vMin); 
-						glVertex2f(cmd->position.x - cmd->ext.h, cmd->position.y - cmd->ext.w);
-
-						// Bottom-right (was top-right)
-						glTexCoord2f(uMax, vMax); 
-						glVertex2f(cmd->position.x + cmd->ext.h, cmd->position.y - cmd->ext.w);
-					} else if (rot90CCW) {
-						// Top-left (was top-right)
-						glTexCoord2f(uMax, vMax);
-						glVertex2f(cmd->position.x - cmd->ext.h, cmd->position.y + cmd->ext.w);
-
-						// Bottom-left (was top-left)
-						glTexCoord2f(uMin, vMax);
-						glVertex2f(cmd->position.x - cmd->ext.h, cmd->position.y - cmd->ext.w);
-
-						// Bottom-right (was bottom-left)
-						glTexCoord2f(uMin, vMin);
-						glVertex2f(cmd->position.x + cmd->ext.h, cmd->position.y - cmd->ext.w);
-
-						// Top-right (was bottom-right)
-						glTexCoord2f(uMax, vMin);
-						glVertex2f(cmd->position.x + cmd->ext.h, cmd->position.y + cmd->ext.w);
-					}
-
+					glTexCoord2f(uMax, vMax); glVertex2f(cmd->position.x + cmd->ext.w, cmd->position.y + cmd->ext.h);
+					glTexCoord2f(uMin, vMax); glVertex2f(cmd->position.x - cmd->ext.w, cmd->position.y + cmd->ext.h);
+					glTexCoord2f(uMin, vMin); glVertex2f(cmd->position.x - cmd->ext.w, cmd->position.y - cmd->ext.h);
+					glTexCoord2f(uMax, vMin); glVertex2f(cmd->position.x + cmd->ext.w, cmd->position.y - cmd->ext.h);
 					glEnd();
 					glBindTexture(GL_TEXTURE_2D, 0);
 					glDisable(GL_TEXTURE_2D);

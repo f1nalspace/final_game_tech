@@ -9,7 +9,7 @@ Description:
 
 License:
 	MIT License
-	Copyright 2019-2026 Torsten Spaete
+	Copyright 2019 Torsten Spaete
 */
 
 #ifndef FINAL_RANDOM_H

@@ -137,7 +137,7 @@ Todo:
 	- Manual reload of XMLs and update all data dynamically
 
 License:
-	Copyright (c) 2017-2026 Torsten Spaete
+	Copyright (c) 2017-2025 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -1839,7 +1839,7 @@ namespace game {
 	}
 }
 
-extern bool GameInit(GameMemory *gameMemory, const int argumentCount, char **arguments) {
+extern bool GameInit(GameMemory *gameMemory) {
 	gamelog::Verbose("Init Game");
 	GameState *state = (GameState *)fmemPush(gameMemory->memory, sizeof(GameState), fmemPushFlags_Clear);
 	gameMemory->game = state;
@@ -1875,8 +1875,8 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	RenderState *renderState = gameMemory->render;
 
 	// Debug input
-	const Keyboard *keyboard = &input->tastatur;
-	if (ButtonWasPressed(keyboard->keys[fplKey_F4])) {
+	const Controller &keyboardController = input->controllers[0];
+	if (ButtonWasPressed(keyboardController.debug4)) {
 		state->isDebugRendering = !state->isDebugRendering;
 	}
 
@@ -1926,8 +1926,7 @@ extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
 	GameState *state = gameMemory->game;
 	assert(state != nullptr);
 
-	const Keyboard *keyboard = &input->tastatur;
-	if (ButtonWasPressed(keyboard->keys[fplKey_F6])) {
+	if (ButtonWasPressed(input->keyboard.debug6)) {
 		char filePathBuffer[FPL_MAX_PATH_LENGTH];
 		fplPathCombine(filePathBuffer, fplArrayCount(filePathBuffer), 3, state->assets.dataPath, "levels", TowersDataFilename);
 		FileInfo towersFileContents = utils::LoadFileInfo(filePathBuffer);
@@ -2415,11 +2414,11 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 #define FINAL_GAMEPLATFORM_IMPLEMENTATION
 #include <final_gameplatform.h>
 
-int main(int argc, char **argv) {
+int main(int argc, char *argv[]) {
 	GameConfiguration config = fplZeroInit;
 	config.title = "FPL Demo | Towadev";
 	config.disableInactiveDetection = true;
 	gamelog::Verbose("Startup game application '%s'", config.title);
-	int result = GameMain(&config, argc, argv);
+	int result = GameMain(&config);
 	return(result);
 }

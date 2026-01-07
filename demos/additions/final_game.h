@@ -18,7 +18,7 @@ Changelog:
 	
 License:
 	MIT License
-	Copyright 2017-2026 Torsten Spaete
+	Copyright 2017-2025 Torsten Spaete
 */
 
 #ifndef FINAL_GAME_H
@@ -30,7 +30,6 @@ License:
 #include "final_render.h"
 #include "final_audiosystem.h"
 #include "final_memory.h"
-#include "final_log.h"
 
 typedef struct ButtonState {
 	int halfTransitionCount;
@@ -48,33 +47,9 @@ fpl_inline bool ButtonWasPressed(const ButtonState state) {
 	return(result);
 }
 
-typedef enum ControllerButtonType {
-	ControllerButtonType_MoveUp = 0,
-	ControllerButtonType_MoveDown,
-	ControllerButtonType_MoveLeft,
-	ControllerButtonType_MoveRight,
-	ControllerButtonType_ActionUp,
-	ControllerButtonType_ActionDown,
-	ControllerButtonType_ActionLeft,
-	ControllerButtonType_ActionRight,
-	ControllerButtonType_ActionBack,
-	ControllerButtonType_ActionStart,
-
-	ControllerButtonType_Count,
-
-	ControllerButtonType_First = ControllerButtonType_MoveUp,
-	ControllerButtonType_Last = ControllerButtonType_ActionStart,
-} ControllerButtonType;
-
-// Total number of controller button types
-#define MAX_CONTROLLER_BUTTON_TYPE_COUNT (ControllerButtonType_Count)
-
-// Total number of controller buttons
-#define MAX_CONTROLLER_BUTTON_COUNT 10
-
-fplStaticAssert(MAX_CONTROLLER_BUTTON_TYPE_COUNT == MAX_CONTROLLER_BUTTON_COUNT);
-
 typedef struct Controller {
+	bool isConnected;
+	bool isAnalog;
 	Vec2f analogMovement;
 	union {
 		struct {
@@ -88,11 +63,15 @@ typedef struct Controller {
 			ButtonState actionRight;
 			ButtonState actionBack;
 			ButtonState actionStart;
+			ButtonState debug1;
+			ButtonState debug2;
+			ButtonState debug3;
+			ButtonState debug4;
+			ButtonState debug5;
+			ButtonState debug6;
 		};
-		ButtonState buttons[MAX_CONTROLLER_BUTTON_COUNT];
+		ButtonState buttons[16];
 	};
-	bool isConnected;
-	bool isAnalog;
 } Controller;
 
 typedef struct Mouse {
@@ -108,32 +87,16 @@ typedef struct Mouse {
 	};
 } Mouse;
 
-typedef struct KeyboardControllerButtonMapping {
-	fplKey key;
-	ControllerButtonType type;
-} KeyboardControllerButtonMapping;
-
-// Total number of keyboard controller button mappings
-#define MAX_KEYBOARD_CONTROLLER_BUTTON_MAPPING_COUNT 32
-
-typedef struct KeyboardButtonMappings {
-	KeyboardControllerButtonMapping values[MAX_KEYBOARD_CONTROLLER_BUTTON_MAPPING_COUNT];
-	uint32_t count;
-	bool isCustom;
-} KeyboardButtonMappings;
-
-typedef struct KeyboardButtonStates {
-	fplButtonState states[MAX_CONTROLLER_BUTTON_COUNT];
-	bool changed[MAX_CONTROLLER_BUTTON_COUNT];
-	bool mapped[MAX_CONTROLLER_BUTTON_COUNT];
-} KeyboardButtonStates;
-
-typedef struct Keyboard {
-	ButtonState keys[256];
-} Keyboard;
-
 typedef struct Input {
-	Keyboard tastatur;
+	// Fixed delta time in seconds, used for game update or physics
+	float fixedDeltaTime;
+	// Dynamic frame time in seconds
+	float dynamicFrameTime;
+	// Current frames per seconds
+	float framesPerSeconds;
+
+	// Current index of the rendered frame
+	int frameIndex;
 
 	union {
 		struct {
@@ -146,17 +109,8 @@ typedef struct Input {
 
 	// Size of window in pixels
 	Vec2i windowSize;
-	// Fixed delta time in seconds, used for game update or physics
-	float fixedDeltaTime;
-	// Dynamic frame time in seconds
-	float dynamicFrameTime;
-	// Current frames per seconds
-	float framesPerSeconds;
-	// Current index of the rendered frame
-	int frameIndex;
 	// Index to the default controller
 	int defaultControllerIndex;
-
 	// Indicates that the application is active or not -> only handle any input when this is true!
 	bool isActive;
 	// Indicates that the first GameUpdate() is called inside the Accumulator-Loop -> use this to prevent multiple key transitions by ButtonWasPressed()
@@ -182,7 +136,7 @@ typedef enum GameWindowActiveType {
 } GameWindowActiveType;
 FPL_ENUM_AS_FLAGS_OPERATORS(GameWindowActiveType);
 
-fpl_extern bool GameInit(GameMemory *gameMemory, const int argumentCount, char **arguments);
+fpl_extern bool GameInit(GameMemory *gameMemory);
 fpl_extern void GameRelease(GameMemory *gameMemory);
 fpl_extern void GameInput(GameMemory *gameMemory, const Input *input);
 fpl_extern void GameUpdate(GameMemory *gameMemory, const Input *input);

@@ -10,7 +10,7 @@ Description:
 
 License:
 	MIT License
-	Copyright 2017-2026 Torsten Spaete
+	Copyright 2017-2025 Torsten Spaete
 */
 
 #ifndef FINAL_RENDER_H
@@ -191,10 +191,6 @@ typedef enum SpriteFlags {
 	SpriteFlags_FlipU = 1 << 0,
 	// Flip the V min/max of the UV rectangle
 	SpriteFlags_FlipV = 1 << 1,
-	// Rotate the sprite by 90 degrees clockwise
-	SpriteFlags_Rotate_90_CW = 1 << 2,
-	// Rotate the sprite by 90 degrees counter-clockwise
-	SpriteFlags_Rotate_90_CCW = 1 << 3,
 } SpriteFlags;
 
 typedef struct SpriteCommand {
@@ -227,8 +223,7 @@ fpl_extern void RenderSetMatrix(RenderState *state, const Mat4f *mat);
 fpl_extern void RenderPopMatrix(RenderState *state);
 fpl_extern void RenderPushRectangle(RenderState *state, const Vec2f bottomLeft, const Vec2f size, const Vec4f color, const bool isFilled, const float lineWidth);
 fpl_extern void RenderPushRectangleCenter(RenderState *state, const Vec2f center, const Vec2f ext, const Vec4f color, const bool isFilled, const float lineWidth);
-fpl_extern void RenderPushRectangleMinMax(RenderState *state, const Vec2f min, const Vec2f max, const Vec4f color, const bool isFilled, const float lineWidth);
-fpl_extern void RenderPushQuad(RenderState *state, const Vec2f center, const float radius, const Vec4f color, const bool isFilled, const float lineWidth);
+fpl_extern void RenderPushQuad(RenderState *state,const Vec2f center,const float radius,const Vec4f color,const bool isFilled,const float lineWidth);
 fpl_extern VertexAllocation RenderAllocateVertices(RenderState *state, const size_t capacity, const Vec4f color, const DrawMode drawMode, const bool isLoop, const float thickness);
 fpl_extern void RenderPushVertices(RenderState *state, const Vec2f *verts, const size_t vertexCount, const bool copyVerts, const Vec4f color, const DrawMode drawMode, const bool isLoop, const float thickness);
 fpl_extern void RenderPushSprite(RenderState *state, const Vec2f position, const Vec2f ext, const TextureHandle texture, const Vec4f color, const UVRect uvRect, const SpriteFlags flags);
@@ -236,12 +231,11 @@ fpl_extern void RenderPushTexture(RenderState *state, TextureHandle *targetTextu
 fpl_extern void RenderPopTexture(RenderState *state, TextureHandle *targetTexture);
 fpl_extern void RenderPushText(RenderState *state, const char *text, const size_t textLen, const LoadedFont *font, const TextureHandle texture, const Vec2f position, const float maxHeight, const float horizontalAlignment, const float verticalAlignment, const Vec4f color);
 fpl_extern void RenderPushCircle(RenderState *state, const Vec2f position, const float radius, const size_t segmentCount, const Vec4f color, const bool isFilled, const float lineWidth);
-fpl_extern void RenderPushArc(RenderState *state, const Vec2f position, const float radius, const float startAngle, const float endAngle, const size_t segmentCount, const Vec4f color, const bool isFilled, const bool withClosingLines, const float lineWidth);
 fpl_extern void RenderPushLine(RenderState *state, const Vec2f a, const Vec2f b, const Vec4f color, const float lineWidth);
 
 #endif // FINAL_RENDER_H
 
-#if (defined(FINAL_RENDER_IMPLEMENTATION) && !defined(FINAL_RENDER_IMPLEMENTED)) || FPL_IS_IDE
+#if defined(FINAL_RENDER_IMPLEMENTATION) && !defined(FINAL_RENDER_IMPLEMENTED)
 #define FINAL_RENDER_IMPLEMENTED
 
 static CommandHeader *_RenderPushHeader(RenderState *state, const CommandType type) {
@@ -366,11 +360,6 @@ fpl_extern void RenderPushRectangleCenter(RenderState *state, const Vec2f center
 	Vec2f bottomLeft = V2fSub(center, ext);
 	Vec2f size = V2fMultScalar(ext, 2.0f);
 	RenderPushRectangle(state, bottomLeft, size, color, isFilled, lineWidth);
-}
-
-fpl_extern void RenderPushRectangleMinMax(RenderState *state, const Vec2f min, const Vec2f max, const Vec4f color, const bool isFilled, const float lineWidth) {
-	Vec2f size = V2fSub(max, min);
-	RenderPushRectangle(state, min, size, color, isFilled, lineWidth);
 }
 
 fpl_extern void RenderPushQuad(RenderState *state, const Vec2f center, const float radius, const Vec4f color, const bool isFilled, const float lineWidth) {
@@ -514,91 +503,6 @@ fpl_extern void RenderPushCircle(RenderState *state, const Vec2f position, const
 	*vertAlloc.count = vertexCount;
 }
 
-fpl_extern void RenderPushArc(RenderState *state, const Vec2f position, const float radius, const float startAngle, const float endAngle, const size_t segmentCount, const Vec4f color, const bool isFilled, const bool withClosingLines, const float lineWidth) {
-	if (state == fpl_null || radius <= 0.0f || segmentCount < 3 || startAngle == endAngle) {
-		return;
-	}
-
-	// Normalize angles and compute range
-	float s = F32AngleNormalize(endAngle < startAngle ? endAngle : startAngle);
-	float e = F32AngleNormalize(endAngle < startAngle ? startAngle : endAngle);
-
-	float angleRange = e - s;
-	if (angleRange <= 0.0f) {
-		angleRange += F32Tau;
-	}
-	if (angleRange <= 1e-6f) {
-		return;
-	}
-
-	const float step = angleRange / (float)segmentCount;
-
-	if (isFilled) {
-		// Filled Pie Slice
-		size_t vertexCapacity = segmentCount + 2; // center + arc + close
-
-		VertexAllocation va = RenderAllocateVertices(state, vertexCapacity, color, DrawMode_Polygon, true, lineWidth);
-		if (va.count == 0 || va.verts == fpl_null) {
-			return;
-		}
-
-		size_t vc = 0;
-		Vec2f *p = va.verts;
-
-		// Center
-		*p++ = position; 
-		vc++;
-
-		// Arc
-		for (size_t i = 0; i <= segmentCount; ++i) {
-			float a = s + step * (float)i;
-			*p++ = V2fInit(position.x + F32Cos(a) * radius,
-				position.y + F32Sin(a) * radius);
-			vc++;
-		}
-
-		*va.count = vc;
-	} else {
-		// Line Arc
-		size_t vertexCapacity = segmentCount * 2;
-		if (withClosingLines) {
-			vertexCapacity += 4;
-		}
-
-		VertexAllocation va = RenderAllocateVertices(state, vertexCapacity, color, DrawMode_Lines, false, lineWidth);
-		if (va.count == 0 || va.verts == fpl_null) {
-			return;
-		}
-
-		size_t vc = 0;
-		Vec2f *p = va.verts;
-
-		// First arc vertex
-		Vec2f prev = V2fInit(position.x + F32Cos(s) * radius, position.y + F32Sin(s) * radius);
-
-		// Arc segments
-		for (size_t i = 1; i <= segmentCount; ++i) {
-			float a = s + step * (float)i;
-			Vec2f curr = V2fInit(position.x + F32Cos(a) * radius, position.y + F32Sin(a) * radius);
-			*p++ = prev; vc++;
-			*p++ = curr; vc++;
-			prev = curr;
-		}
-
-		// Extra lines: center -> start, center -> end
-		if (withClosingLines) {
-			Vec2f startPt = V2fInit(position.x + F32Cos(s) * radius, position.y + F32Sin(s) * radius);
-			Vec2f endPt = V2fInit(position.x + F32Cos(e) * radius, position.y + F32Sin(e) * radius);
-			*p++ = position; vc++;
-			*p++ = startPt;  vc++;
-			*p++ = position; vc++;
-			*p++ = endPt;    vc++;
-		}
-
-		*va.count = vc;
-	}
-}
-
 fpl_extern void RenderPushText(RenderState *state, const char *text, const size_t textLen, const LoadedFont *font, const TextureHandle texture, const Vec2f position, const float maxHeight, const float horizontalAlignment, const float verticalAlignment, const Vec4f color) {
 	if (state == fpl_null || text == fpl_null || textLen == 0 || font == fpl_null || texture == fpl_null) {
 		return;
@@ -628,7 +532,7 @@ fpl_extern void RenderPushText(RenderState *state, const char *text, const size_
 }
 
 fpl_extern void RenderPushLine(RenderState *state, const Vec2f a, const Vec2f b, const Vec4f color, const float lineWidth) {
-	Vec2f verts[] = { a, b };
+	Vec2f verts[] = {a, b};
 	RenderPushVertices(state, verts, 2, true, color, DrawMode_Lines, false, lineWidth);
 }
 
