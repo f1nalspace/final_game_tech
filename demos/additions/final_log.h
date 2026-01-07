@@ -79,13 +79,6 @@ fpl_internal const char *gLogLevelNames[] = {
 	"  TRACE",
 };
 
-typedef struct {
-	// Handle to the active log file
-	fplFileHandle fileHandle;
-	// Indicates whether the log system has been initialized
-	bool isInitialized;
-} Log;
-
 static Log gLog = { 0 };
 
 static char gLogWriteData[256] = { 0 };
