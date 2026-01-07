@@ -163,15 +163,15 @@ fplStaticAssert(MaxBrickCols % 2 != 0);
 // Brick UVs
 enum class BrickType: int32_t {
 	NoBrick = 0,
-	Solid
+	Green
 };
 const Vec2i BrickTileSize = V2iInit(32, 16);
-const Vec2i BricksTilesetSize = V2iInit(32, 16);
+const Vec2i BricksTilesetSize = V2iInit(128, 16);
 const int BrickTilesetBorder = 0;
 class BricksUVsClass: public ArrayInitializer<BrickType, UVRect, 256> {
 public:
 	BricksUVsClass() {
-		Set(BrickType::Solid, UVRectFromTile(BricksTilesetSize, BrickTileSize, BrickTilesetBorder, V2iInit(0, 0)));
+		Set(BrickType::Green, UVRectFromTile(BricksTilesetSize, BrickTileSize, BrickTilesetBorder, V2iInit(0, 0)));
 	}
 };
 static BricksUVsClass BricksUVs = {};
@@ -500,7 +500,7 @@ static void LoadLevel(GameState &state, int levelSeed) {
 			float brickX = -WorldRadius.x + FrameRadius * 2.0f + AreaPadding + BrickRadius.x;
 			for(int col = 0; col < MaxBrickCols; ++col) {
 				BrickType brickType = state.bricksMap[row * MaxBrickCols + col];
-				if(brickType == BrickType::Solid) {
+				if(brickType == BrickType::Green) {
 					Entity *brickEntity = &state.activeBricks[state.totalBricks++];
 					*brickEntity = {};
 					brickEntity->type = EntityType::Brick;
@@ -875,14 +875,14 @@ static void SetRandomLevel(GameState &state, int seed) {
 			int c = reverse ? (halfColCount - 1 - col) : col;
 			int leftCol = c;
 			int rightCol = (MaxBrickCols - 1) - c;
-			state.bricksMap[row * MaxBrickCols + leftCol] = BrickType::Solid;
-			state.bricksMap[row * MaxBrickCols + rightCol] = BrickType::Solid;
+			state.bricksMap[row * MaxBrickCols + leftCol] = BrickType::Green;
+			state.bricksMap[row * MaxBrickCols + rightCol] = BrickType::Green;
 		}
 #if ALL_BRICKS
-		state.bricksMap[row * MaxBrickCols + halfColCount] = BrickType::Solid;
+		state.bricksMap[row * MaxBrickCols + halfColCount] = BrickType::Green;
 #else
 		if(Random01() > 0.5f) {
-			state.bricksMap[row * MaxBrickCols + halfColCount] = BrickType::Solid;
+			state.bricksMap[row * MaxBrickCols + halfColCount] = BrickType::Green;
 		}
 #endif
 	}
