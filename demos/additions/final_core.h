@@ -9,7 +9,7 @@ Description:
 
 License:
 	MIT License
-	Copyright 2017-2025 Torsten Spaete
+	Copyright 2017-2026 Torsten Spaete
 */
 
 #ifndef FINAL_CORE_H
@@ -52,7 +52,7 @@ fpl_internal MemoryAllocator gDefaultMemoryAllocator = {
 	0,
 };
 
-fpl_inline void *MemoryAllocatorAlloc(MemoryAllocator *allocator, const size_t size) {
+fpl_inline void *MemoryAllocatorAlloc(const MemoryAllocator *allocator, const size_t size) {
 	if (allocator == fpl_null) {
 		allocator = &gDefaultMemoryAllocator;
 	}
@@ -61,7 +61,7 @@ fpl_inline void *MemoryAllocatorAlloc(MemoryAllocator *allocator, const size_t s
 	return result;
 }
 
-fpl_inline void MemoryAllocatorFree(MemoryAllocator *allocator, void *ptr) {
+fpl_inline void MemoryAllocatorFree(const MemoryAllocator *allocator, void *ptr) {
 	if (allocator == fpl_null) {
 		allocator = &gDefaultMemoryAllocator;
 	}

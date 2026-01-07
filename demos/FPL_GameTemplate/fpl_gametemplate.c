@@ -26,7 +26,7 @@ Changelog:
 	- Migrated to new final addition libraries (C99 standard)
 
 License:
-	Copyright (c) 2017-2025 Torsten Spaete
+	Copyright (c) 2017-2026 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -109,7 +109,7 @@ static void InitGame(GameState *state) {
 	state->world.player.moveDrag = 0.1f;
 }
 
-extern bool GameInit(GameMemory *gameMemory) {
+extern bool GameInit(GameMemory *gameMemory, const int argumentCount, char **arguments) {
 	if(gameMemory == fpl_null) {
 		return false;
 	}
@@ -162,8 +162,8 @@ extern void GameInput(GameMemory *gameMemory, const Input *input) {
 	assert(renderState != fpl_null);
 
 	// Debug input
-	const Controller *keyboardController = &input->controllers[0];
-	if (ButtonWasPressed(keyboardController->debug4)) {
+	const Keyboard *keyboard = &input->tastatur;
+	if (ButtonWasPressed(keyboard->keys[fplKey_F4])) {
 		state->isDebugRendering = !state->isDebugRendering;
 	}
 
@@ -322,10 +322,10 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 #define FINAL_GAMEPLATFORM_IMPLEMENTATION
 #include <final_gameplatform.h>
 
-int main(int argc, char *argv[]) {
+int main(int argc, char **argv) {
 	GameConfiguration config = fplZeroInit;
 	config.title = "FPL Demo | GameTemplate";
 	config.disableInactiveDetection = true;
-	int result = GameMain(&config);
+	int result = GameMain(&config, argc, argv);
 	return(result);
 }
