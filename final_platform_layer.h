@@ -151,6 +151,7 @@ SOFTWARE.
 	## v1.0.0
 
 	### Overview
+	- Release
 	- Added new useful macros
 	- Added several date time types and functions
 	- Added game controllers settings
