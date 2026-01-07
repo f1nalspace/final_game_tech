@@ -163,7 +163,10 @@ fplStaticAssert(MaxBrickCols % 2 != 0);
 // Brick UVs
 enum class BrickType: int32_t {
 	NoBrick = 0,
-	Green
+	Green,
+	Red,
+	Blue,
+	Yellow,
 };
 const Vec2i BrickTileSize = V2iInit(32, 16);
 const Vec2i BricksTilesetSize = V2iInit(128, 16);
@@ -172,6 +175,9 @@ class BricksUVsClass: public ArrayInitializer<BrickType, UVRect, 256> {
 public:
 	BricksUVsClass() {
 		Set(BrickType::Green, UVRectFromTile(BricksTilesetSize, BrickTileSize, BrickTilesetBorder, V2iInit(0, 0)));
+		Set(BrickType::Red, UVRectFromTile(BricksTilesetSize, BrickTileSize, BrickTilesetBorder, V2iInit(1, 0)));
+		Set(BrickType::Blue, UVRectFromTile(BricksTilesetSize, BrickTileSize, BrickTilesetBorder, V2iInit(2, 0)));
+		Set(BrickType::Yellow, UVRectFromTile(BricksTilesetSize, BrickTileSize, BrickTilesetBorder, V2iInit(3, 0)));
 	}
 };
 static BricksUVsClass BricksUVs = {};
