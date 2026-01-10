@@ -869,7 +869,7 @@ static void SetRandomLevel(GameState &state, int seed) {
 	fplAssert((MaxBrickCols * MaxBrickRows) <= fplArrayCount(state.bricksMap));
 	fplMemoryClear(state.bricksMap, sizeof(Brick) * fplArrayCount(state.bricksMap));
 	srand(seed);
-	state.levelSeed = seed;
+	state.levelSeed = 42 + seed;
 	int halfColCount = (MaxBrickCols - 1) / 2;
 	bool reverse = RandomInt(100) > 25;
 	for(int row = 0; row < MaxBrickRows; ++row) {
@@ -878,12 +878,14 @@ static void SetRandomLevel(GameState &state, int seed) {
 #else
 		int randomColCount = RandomInt(halfColCount);
 #endif
+		int randomBrickTypeIndex = RandomInt(BrickTypeCount);
+		BrickType brickType = (BrickType)((int)BrickType::Green + randomBrickTypeIndex);
+
 		for(int col = 0; col < randomColCount; ++col) {
 			int c = reverse ? (halfColCount - 1 - col) : col;
 			int leftCol = c;
 			int rightCol = (MaxBrickCols - 1) - c;
-			int randomBrickTypeIndex = RandomInt(BrickTypeCount);
-			BrickType brickType = (BrickType)((int)BrickType::Green + randomBrickTypeIndex);
+
 
 			state.bricksMap[row * MaxBrickCols + leftCol] = brickType;
 			state.bricksMap[row * MaxBrickCols + rightCol] = brickType;
