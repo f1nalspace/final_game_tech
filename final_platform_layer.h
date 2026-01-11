@@ -8019,6 +8019,7 @@ typedef struct fplWindowEvent {
 	};
 } fplWindowEvent;
 
+#if defined(FPL__ENABLE_INPUT)
 /**
 * @enum fplKeyboardEventType
 * @brief An enumeration of keyboard event types.
@@ -8112,6 +8113,7 @@ typedef struct fplGamepadEvent {
 	//! Gamepad device index.
 	uint32_t deviceIndex;
 } fplGamepadEvent;
+#endif // FPL__ENABLE_INPUT
 
 /**
 * @enum fplEventType
@@ -8140,12 +8142,14 @@ typedef struct fplEvent {
 	union {
 		//! Window event data.
 		fplWindowEvent window;
+#if defined(FPL__ENABLE_INPUT)
 		//! Keyboard event data.
 		fplKeyboardEvent keyboard;
 		//! Mouse event data.
 		fplMouseEvent mouse;
 		//! Gamepad event data.
 		fplGamepadEvent gamepad;
+#endif
 	};
 } fplEvent;
 
@@ -9656,7 +9660,7 @@ fpl_internal const char *fpl__Win32FormatGuidString(char *buffer, const size_t m
 		(target)->name = name
 #endif
 
-#if defined(FPL__ENABLE_WINDOW)
+#if defined(FPL__ENABLE_INPUT)
 
 // 
 // XInput Types
@@ -9681,7 +9685,7 @@ typedef struct fpl__Win32XInputState {
 	fplMilliseconds lastUpdateStatesTime;
 } fpl__Win32XInputState;
 
-#endif // FPL__ENABLE_WINDOW
+#endif // FPL__ENABLE_INPUT
 
 //
 // WINAPI functions
@@ -12799,23 +12803,10 @@ fpl_common_api size_t fplPathCombine(char *destPath, const size_t maxDestPathLen
 #endif // FPL__COMMON_PATHS_DEFINED
 
 //
-// Common Window
+// Common Input
 //
-#if defined(FPL__ENABLE_WINDOW) && !defined(FPL__COMMON_WINDOW_DEFINED)
-#define FPL__COMMON_WINDOW_DEFINED
-
-fpl_common_api char *fplGetWindowTitle(char *outTitle, const size_t maxOutTitleLength) {
-	FPL__CheckPlatform(fpl_null);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	char *result = fplCopyString(appState->currentSettings.window.title, outTitle, maxOutTitleLength);
-	return(result);
-}
-
-fpl_common_api void fplSetWindowInputEvents(const bool enabled) {
-	FPL__CheckPlatformNoRet();
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	appState->currentSettings.input.disabledEvents = !enabled;
-}
+#if defined(FPL__ENABLE_INPUT) && !defined(FPL__COMMON_INPUT_DEFINED)
+#define FPL__COMMON_INPUT_DEFINED
 
 #define FPL__KEY_COUNT FPL__ENUM_COUNT(fplKey_First, fplKey_Last)
 
@@ -13153,6 +13144,29 @@ fpl_common_api const char *fplKeyGetName(const fplKey key) {
 	return(result);
 }
 
+#endif // FPL__ENABLE_INPUT && FPL__COMMON_INPUT_DEFINED
+
+//
+// Common Window
+//
+#if defined(FPL__ENABLE_WINDOW) && !defined(FPL__COMMON_WINDOW_DEFINED)
+#define FPL__COMMON_WINDOW_DEFINED
+
+fpl_common_api char *fplGetWindowTitle(char *outTitle, const size_t maxOutTitleLength) {
+	FPL__CheckPlatform(fpl_null);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	char *result = fplCopyString(appState->currentSettings.window.title, outTitle, maxOutTitleLength);
+	return(result);
+}
+
+fpl_common_api void fplSetWindowInputEvents(const bool enabled) {
+	FPL__CheckPlatformNoRet();
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	appState->currentSettings.input.disabledEvents = !enabled;
+}
+
+
+
 #endif // FPL__ENABLE_WINDOW && FPL__COMMON_WINDOW_DEFINED
 
 //
@@ -13460,8 +13474,349 @@ fpl_common_api fplColor32 fplCreateColorRGBA(const uint8_t r, const uint8_t g, c
 #		define FPL_MEMORY_BARRIER()
 #	endif
 
-#if defined(FPL__ENABLE_WINDOW)
+#if defined(FPL__ENABLE_INPUT)
+fpl_internal bool fpl__Win32IsKeyDown(const fpl__Win32Api *wapi, const int virtualKey) {
+	bool result = (wapi->user.GetAsyncKeyState(virtualKey) & 0x8000) != 0;
+	return(result);
+}
 
+fpl_internal bool fpl__Win32IsKeyActive(const fpl__Win32Api *wapi, const int virtualKey) {
+	bool result = (wapi->user.GetKeyState(virtualKey) & 0x0001) != 0;
+	return(result);
+}
+
+fpl_internal fplKeyboardModifierFlags fpl__Win32GetKeyboardModifiers(const fpl__Win32Api *wapi) {
+	fplKeyboardModifierFlags modifiers = fplKeyboardModifierFlags_None;
+	bool lAltKeyIsDown = fpl__Win32IsKeyDown(wapi, VK_LMENU);
+	bool rAltKeyIsDown = fpl__Win32IsKeyDown(wapi, VK_RMENU);
+	bool lShiftKeyIsDown = fpl__Win32IsKeyDown(wapi, VK_LSHIFT);
+	bool rShiftKeyIsDown = fpl__Win32IsKeyDown(wapi, VK_RSHIFT);
+	bool lCtrlKeyIsDown = fpl__Win32IsKeyDown(wapi, VK_LCONTROL);
+	bool rCtrlKeyIsDown = fpl__Win32IsKeyDown(wapi, VK_RCONTROL);
+	bool lSuperKeyIsDown = fpl__Win32IsKeyDown(wapi, VK_LWIN);
+	bool rSuperKeyIsDown = fpl__Win32IsKeyDown(wapi, VK_RWIN);
+	bool capsLockActive = fpl__Win32IsKeyActive(wapi, VK_CAPITAL);
+	bool numLockActive = fpl__Win32IsKeyActive(wapi, VK_NUMLOCK);
+	bool scrollLockActive = fpl__Win32IsKeyActive(wapi, VK_SCROLL);
+	if (lAltKeyIsDown) {
+		modifiers |= fplKeyboardModifierFlags_LAlt;
+	}
+	if (rAltKeyIsDown) {
+		modifiers |= fplKeyboardModifierFlags_RAlt;
+	}
+	if (lShiftKeyIsDown) {
+		modifiers |= fplKeyboardModifierFlags_LShift;
+	}
+	if (rShiftKeyIsDown) {
+		modifiers |= fplKeyboardModifierFlags_RShift;
+	}
+	if (lCtrlKeyIsDown) {
+		modifiers |= fplKeyboardModifierFlags_LCtrl;
+	}
+	if (rCtrlKeyIsDown) {
+		modifiers |= fplKeyboardModifierFlags_RCtrl;
+	}
+	if (lSuperKeyIsDown) {
+		modifiers |= fplKeyboardModifierFlags_LSuper;
+	}
+	if (rSuperKeyIsDown) {
+		modifiers |= fplKeyboardModifierFlags_RSuper;
+	}
+	if (capsLockActive) {
+		modifiers |= fplKeyboardModifierFlags_CapsLock;
+	}
+	if (numLockActive) {
+		modifiers |= fplKeyboardModifierFlags_NumLock;
+	}
+	if (scrollLockActive) {
+		modifiers |= fplKeyboardModifierFlags_ScrollLock;
+	}
+	return(modifiers);
+}
+
+fpl_internal fplKey fpl__Win32TranslateVirtualKey(const fpl__Win32Api *wapi, const uint64_t virtualKey) {
+	switch (virtualKey) {
+		case VK_BACK:
+			return fplKey_Backspace;
+		case VK_TAB:
+			return fplKey_Tab;
+
+		case VK_CLEAR:
+			return fplKey_Clear;
+		case VK_RETURN:
+			return fplKey_Return;
+
+		case VK_SHIFT:
+			return fplKey_Shift;
+		case VK_CONTROL:
+			return fplKey_Control;
+		case VK_MENU:
+			return fplKey_Alt;
+		case VK_PAUSE:
+			return fplKey_Pause;
+		case VK_CAPITAL:
+			return fplKey_CapsLock;
+
+		case VK_ESCAPE:
+			return fplKey_Escape;
+		case VK_SPACE:
+			return fplKey_Space;
+		case VK_PRIOR:
+			return fplKey_PageUp;
+		case VK_NEXT:
+			return fplKey_PageDown;
+		case VK_END:
+			return fplKey_End;
+		case VK_HOME:
+			return fplKey_Home;
+		case VK_LEFT:
+			return fplKey_Left;
+		case VK_UP:
+			return fplKey_Up;
+		case VK_RIGHT:
+			return fplKey_Right;
+		case VK_DOWN:
+			return fplKey_Down;
+		case VK_SELECT:
+			return fplKey_Select;
+		case VK_PRINT:
+			return fplKey_Print;
+		case VK_EXECUTE:
+			return fplKey_Execute;
+		case VK_SNAPSHOT:
+			return fplKey_Snapshot;
+		case VK_INSERT:
+			return fplKey_Insert;
+		case VK_DELETE:
+			return fplKey_Delete;
+		case VK_HELP:
+			return fplKey_Help;
+
+		case 0x30:
+			return fplKey_0;
+		case 0x31:
+			return fplKey_1;
+		case 0x32:
+			return fplKey_2;
+		case 0x33:
+			return fplKey_3;
+		case 0x34:
+			return fplKey_4;
+		case 0x35:
+			return fplKey_5;
+		case 0x36:
+			return fplKey_6;
+		case 0x37:
+			return fplKey_7;
+		case 0x38:
+			return fplKey_8;
+		case 0x39:
+			return fplKey_9;
+
+		case 0x41:
+			return fplKey_A;
+		case 0x42:
+			return fplKey_B;
+		case 0x43:
+			return fplKey_C;
+		case 0x44:
+			return fplKey_D;
+		case 0x45:
+			return fplKey_E;
+		case 0x46:
+			return fplKey_F;
+		case 0x47:
+			return fplKey_G;
+		case 0x48:
+			return fplKey_H;
+		case 0x49:
+			return fplKey_I;
+		case 0x4A:
+			return fplKey_J;
+		case 0x4B:
+			return fplKey_K;
+		case 0x4C:
+			return fplKey_L;
+		case 0x4D:
+			return fplKey_M;
+		case 0x4E:
+			return fplKey_N;
+		case 0x4F:
+			return fplKey_O;
+		case 0x50:
+			return fplKey_P;
+		case 0x51:
+			return fplKey_Q;
+		case 0x52:
+			return fplKey_R;
+		case 0x53:
+			return fplKey_S;
+		case 0x54:
+			return fplKey_T;
+		case 0x55:
+			return fplKey_U;
+		case 0x56:
+			return fplKey_V;
+		case 0x57:
+			return fplKey_W;
+		case 0x58:
+			return fplKey_X;
+		case 0x59:
+			return fplKey_Y;
+		case 0x5A:
+			return fplKey_Z;
+
+		case VK_LWIN:
+			return fplKey_LeftSuper;
+		case VK_RWIN:
+			return fplKey_RightSuper;
+		case VK_APPS:
+			return fplKey_Apps;
+
+		case VK_SLEEP:
+			return fplKey_Sleep;
+		case VK_NUMPAD0:
+			return fplKey_NumPad0;
+		case VK_NUMPAD1:
+			return fplKey_NumPad1;
+		case VK_NUMPAD2:
+			return fplKey_NumPad2;
+		case VK_NUMPAD3:
+			return fplKey_NumPad3;
+		case VK_NUMPAD4:
+			return fplKey_NumPad4;
+		case VK_NUMPAD5:
+			return fplKey_NumPad5;
+		case VK_NUMPAD6:
+			return fplKey_NumPad6;
+		case VK_NUMPAD7:
+			return fplKey_NumPad7;
+		case VK_NUMPAD8:
+			return fplKey_NumPad8;
+		case VK_NUMPAD9:
+			return fplKey_NumPad9;
+		case VK_MULTIPLY:
+			return fplKey_Multiply;
+		case VK_ADD:
+			return fplKey_Add;
+		case VK_SEPARATOR:
+			return fplKey_Separator;
+		case VK_SUBTRACT:
+			return fplKey_Substract;
+		case VK_DECIMAL:
+			return fplKey_Decimal;
+		case VK_DIVIDE:
+			return fplKey_Divide;
+		case VK_F1:
+			return fplKey_F1;
+		case VK_F2:
+			return fplKey_F2;
+		case VK_F3:
+			return fplKey_F3;
+		case VK_F4:
+			return fplKey_F4;
+		case VK_F5:
+			return fplKey_F5;
+		case VK_F6:
+			return fplKey_F6;
+		case VK_F7:
+			return fplKey_F7;
+		case VK_F8:
+			return fplKey_F8;
+		case VK_F9:
+			return fplKey_F9;
+		case VK_F10:
+			return fplKey_F10;
+		case VK_F11:
+			return fplKey_F11;
+		case VK_F12:
+			return fplKey_F12;
+		case VK_F13:
+			return fplKey_F13;
+		case VK_F14:
+			return fplKey_F14;
+		case VK_F15:
+			return fplKey_F15;
+		case VK_F16:
+			return fplKey_F16;
+		case VK_F17:
+			return fplKey_F17;
+		case VK_F18:
+			return fplKey_F18;
+		case VK_F19:
+			return fplKey_F19;
+		case VK_F20:
+			return fplKey_F20;
+		case VK_F21:
+			return fplKey_F21;
+		case VK_F22:
+			return fplKey_F22;
+		case VK_F23:
+			return fplKey_F23;
+		case VK_F24:
+			return fplKey_F24;
+
+		case VK_LSHIFT:
+			return fplKey_LeftShift;
+		case VK_RSHIFT:
+			return fplKey_RightShift;
+		case VK_LCONTROL:
+			return fplKey_LeftControl;
+		case VK_RCONTROL:
+			return fplKey_RightControl;
+		case VK_LMENU:
+			return fplKey_LeftAlt;
+		case VK_RMENU:
+			return fplKey_RightAlt;
+
+		case VK_VOLUME_MUTE:
+			return fplKey_VolumeMute;
+		case VK_VOLUME_DOWN:
+			return fplKey_VolumeDown;
+		case VK_VOLUME_UP:
+			return fplKey_VolumeUp;
+		case VK_MEDIA_NEXT_TRACK:
+			return fplKey_MediaNextTrack;
+		case VK_MEDIA_PREV_TRACK:
+			return fplKey_MediaPrevTrack;
+		case VK_MEDIA_STOP:
+			return fplKey_MediaStop;
+		case VK_MEDIA_PLAY_PAUSE:
+			return fplKey_MediaPlayPause;
+
+		case VK_OEM_MINUS:
+			return fplKey_OemMinus;
+		case VK_OEM_PLUS:
+			return fplKey_OemPlus;
+		case VK_OEM_COMMA:
+			return fplKey_OemComma;
+		case VK_OEM_PERIOD:
+			return fplKey_OemPeriod;
+
+		case VK_OEM_1:
+			return fplKey_Oem1;
+		case VK_OEM_2:
+			return fplKey_Oem2;
+		case VK_OEM_3:
+			return fplKey_Oem3;
+		case VK_OEM_4:
+			return fplKey_Oem4;
+		case VK_OEM_5:
+			return fplKey_Oem5;
+		case VK_OEM_6:
+			return fplKey_Oem6;
+		case VK_OEM_7:
+			return fplKey_Oem7;
+		case VK_OEM_8:
+			return fplKey_Oem8;
+
+		default:
+			return fplKey_None;
+	}
+}
+#endif // FPL__ENABLE_INPUT
+
+#if defined(FPL__ENABLE_WINDOW)
 fpl_internal DWORD fpl__Win32MakeWindowStyle(const fplWindowSettings *settings) {
 	DWORD result = WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
 	if (settings->isFullscreen || !settings->isDecorated) {
@@ -13637,16 +13992,6 @@ fpl_internal bool fpl__Win32SetWindowFullscreen(const bool value, const int32_t 
 	return(result);
 }
 
-fpl_internal bool fpl__Win32IsKeyDown(const fpl__Win32Api *wapi, const int virtualKey) {
-	bool result = (wapi->user.GetAsyncKeyState(virtualKey) & 0x8000) != 0;
-	return(result);
-}
-
-fpl_internal bool fpl__Win32IsKeyActive(const fpl__Win32Api *wapi, const int virtualKey) {
-	bool result = (wapi->user.GetKeyState(virtualKey) & 0x0001) != 0;
-	return(result);
-}
-
 fpl_internal bool fpl__Win32IsCursorInWindow(const fpl__Win32Api *wapi, const fpl__Win32WindowState *win32Window) {
 	POINT pos;
 	if (!wapi->user.GetCursorPos(&pos)) {
@@ -13712,54 +14057,7 @@ fpl_internal void fpl__Win32HideCursor(const fpl__Win32Api *wapi, fpl__Win32Wind
 	fpl__Win32SetCursorState(wapi, window, true);
 }
 
-fpl_internal fplKeyboardModifierFlags fpl__Win32GetKeyboardModifiers(const fpl__Win32Api *wapi) {
-	fplKeyboardModifierFlags modifiers = fplKeyboardModifierFlags_None;
-	bool lAltKeyIsDown = fpl__Win32IsKeyDown(wapi, VK_LMENU);
-	bool rAltKeyIsDown = fpl__Win32IsKeyDown(wapi, VK_RMENU);
-	bool lShiftKeyIsDown = fpl__Win32IsKeyDown(wapi, VK_LSHIFT);
-	bool rShiftKeyIsDown = fpl__Win32IsKeyDown(wapi, VK_RSHIFT);
-	bool lCtrlKeyIsDown = fpl__Win32IsKeyDown(wapi, VK_LCONTROL);
-	bool rCtrlKeyIsDown = fpl__Win32IsKeyDown(wapi, VK_RCONTROL);
-	bool lSuperKeyIsDown = fpl__Win32IsKeyDown(wapi, VK_LWIN);
-	bool rSuperKeyIsDown = fpl__Win32IsKeyDown(wapi, VK_RWIN);
-	bool capsLockActive = fpl__Win32IsKeyActive(wapi, VK_CAPITAL);
-	bool numLockActive = fpl__Win32IsKeyActive(wapi, VK_NUMLOCK);
-	bool scrollLockActive = fpl__Win32IsKeyActive(wapi, VK_SCROLL);
-	if (lAltKeyIsDown) {
-		modifiers |= fplKeyboardModifierFlags_LAlt;
-	}
-	if (rAltKeyIsDown) {
-		modifiers |= fplKeyboardModifierFlags_RAlt;
-	}
-	if (lShiftKeyIsDown) {
-		modifiers |= fplKeyboardModifierFlags_LShift;
-	}
-	if (rShiftKeyIsDown) {
-		modifiers |= fplKeyboardModifierFlags_RShift;
-	}
-	if (lCtrlKeyIsDown) {
-		modifiers |= fplKeyboardModifierFlags_LCtrl;
-	}
-	if (rCtrlKeyIsDown) {
-		modifiers |= fplKeyboardModifierFlags_RCtrl;
-	}
-	if (lSuperKeyIsDown) {
-		modifiers |= fplKeyboardModifierFlags_LSuper;
-	}
-	if (rSuperKeyIsDown) {
-		modifiers |= fplKeyboardModifierFlags_RSuper;
-	}
-	if (capsLockActive) {
-		modifiers |= fplKeyboardModifierFlags_CapsLock;
-	}
-	if (numLockActive) {
-		modifiers |= fplKeyboardModifierFlags_NumLock;
-	}
-	if (scrollLockActive) {
-		modifiers |= fplKeyboardModifierFlags_ScrollLock;
-	}
-	return(modifiers);
-}
+
 
 fpl_internal void fpl__Win32HandleMessage(const fpl__Win32Api *wapi, fpl__PlatformAppState *appState, fpl__Win32WindowState *windowState, MSG *msg) {
 	if (appState->currentSettings.window.callbacks.eventCallback != fpl_null) {
@@ -14169,287 +14467,6 @@ fpl_internal HICON fpl__Win32LoadIconFromImageSource(const fpl__Win32Api *wapi, 
 	return(result);
 }
 
-fpl_internal fplKey fpl__Win32TranslateVirtualKey(const fpl__Win32Api *wapi, const uint64_t virtualKey) {
-	switch (virtualKey) {
-		case VK_BACK:
-			return fplKey_Backspace;
-		case VK_TAB:
-			return fplKey_Tab;
-
-		case VK_CLEAR:
-			return fplKey_Clear;
-		case VK_RETURN:
-			return fplKey_Return;
-
-		case VK_SHIFT:
-			return fplKey_Shift;
-		case VK_CONTROL:
-			return fplKey_Control;
-		case VK_MENU:
-			return fplKey_Alt;
-		case VK_PAUSE:
-			return fplKey_Pause;
-		case VK_CAPITAL:
-			return fplKey_CapsLock;
-
-		case VK_ESCAPE:
-			return fplKey_Escape;
-		case VK_SPACE:
-			return fplKey_Space;
-		case VK_PRIOR:
-			return fplKey_PageUp;
-		case VK_NEXT:
-			return fplKey_PageDown;
-		case VK_END:
-			return fplKey_End;
-		case VK_HOME:
-			return fplKey_Home;
-		case VK_LEFT:
-			return fplKey_Left;
-		case VK_UP:
-			return fplKey_Up;
-		case VK_RIGHT:
-			return fplKey_Right;
-		case VK_DOWN:
-			return fplKey_Down;
-		case VK_SELECT:
-			return fplKey_Select;
-		case VK_PRINT:
-			return fplKey_Print;
-		case VK_EXECUTE:
-			return fplKey_Execute;
-		case VK_SNAPSHOT:
-			return fplKey_Snapshot;
-		case VK_INSERT:
-			return fplKey_Insert;
-		case VK_DELETE:
-			return fplKey_Delete;
-		case VK_HELP:
-			return fplKey_Help;
-
-		case 0x30:
-			return fplKey_0;
-		case 0x31:
-			return fplKey_1;
-		case 0x32:
-			return fplKey_2;
-		case 0x33:
-			return fplKey_3;
-		case 0x34:
-			return fplKey_4;
-		case 0x35:
-			return fplKey_5;
-		case 0x36:
-			return fplKey_6;
-		case 0x37:
-			return fplKey_7;
-		case 0x38:
-			return fplKey_8;
-		case 0x39:
-			return fplKey_9;
-
-		case 0x41:
-			return fplKey_A;
-		case 0x42:
-			return fplKey_B;
-		case 0x43:
-			return fplKey_C;
-		case 0x44:
-			return fplKey_D;
-		case 0x45:
-			return fplKey_E;
-		case 0x46:
-			return fplKey_F;
-		case 0x47:
-			return fplKey_G;
-		case 0x48:
-			return fplKey_H;
-		case 0x49:
-			return fplKey_I;
-		case 0x4A:
-			return fplKey_J;
-		case 0x4B:
-			return fplKey_K;
-		case 0x4C:
-			return fplKey_L;
-		case 0x4D:
-			return fplKey_M;
-		case 0x4E:
-			return fplKey_N;
-		case 0x4F:
-			return fplKey_O;
-		case 0x50:
-			return fplKey_P;
-		case 0x51:
-			return fplKey_Q;
-		case 0x52:
-			return fplKey_R;
-		case 0x53:
-			return fplKey_S;
-		case 0x54:
-			return fplKey_T;
-		case 0x55:
-			return fplKey_U;
-		case 0x56:
-			return fplKey_V;
-		case 0x57:
-			return fplKey_W;
-		case 0x58:
-			return fplKey_X;
-		case 0x59:
-			return fplKey_Y;
-		case 0x5A:
-			return fplKey_Z;
-
-		case VK_LWIN:
-			return fplKey_LeftSuper;
-		case VK_RWIN:
-			return fplKey_RightSuper;
-		case VK_APPS:
-			return fplKey_Apps;
-
-		case VK_SLEEP:
-			return fplKey_Sleep;
-		case VK_NUMPAD0:
-			return fplKey_NumPad0;
-		case VK_NUMPAD1:
-			return fplKey_NumPad1;
-		case VK_NUMPAD2:
-			return fplKey_NumPad2;
-		case VK_NUMPAD3:
-			return fplKey_NumPad3;
-		case VK_NUMPAD4:
-			return fplKey_NumPad4;
-		case VK_NUMPAD5:
-			return fplKey_NumPad5;
-		case VK_NUMPAD6:
-			return fplKey_NumPad6;
-		case VK_NUMPAD7:
-			return fplKey_NumPad7;
-		case VK_NUMPAD8:
-			return fplKey_NumPad8;
-		case VK_NUMPAD9:
-			return fplKey_NumPad9;
-		case VK_MULTIPLY:
-			return fplKey_Multiply;
-		case VK_ADD:
-			return fplKey_Add;
-		case VK_SEPARATOR:
-			return fplKey_Separator;
-		case VK_SUBTRACT:
-			return fplKey_Substract;
-		case VK_DECIMAL:
-			return fplKey_Decimal;
-		case VK_DIVIDE:
-			return fplKey_Divide;
-		case VK_F1:
-			return fplKey_F1;
-		case VK_F2:
-			return fplKey_F2;
-		case VK_F3:
-			return fplKey_F3;
-		case VK_F4:
-			return fplKey_F4;
-		case VK_F5:
-			return fplKey_F5;
-		case VK_F6:
-			return fplKey_F6;
-		case VK_F7:
-			return fplKey_F7;
-		case VK_F8:
-			return fplKey_F8;
-		case VK_F9:
-			return fplKey_F9;
-		case VK_F10:
-			return fplKey_F10;
-		case VK_F11:
-			return fplKey_F11;
-		case VK_F12:
-			return fplKey_F12;
-		case VK_F13:
-			return fplKey_F13;
-		case VK_F14:
-			return fplKey_F14;
-		case VK_F15:
-			return fplKey_F15;
-		case VK_F16:
-			return fplKey_F16;
-		case VK_F17:
-			return fplKey_F17;
-		case VK_F18:
-			return fplKey_F18;
-		case VK_F19:
-			return fplKey_F19;
-		case VK_F20:
-			return fplKey_F20;
-		case VK_F21:
-			return fplKey_F21;
-		case VK_F22:
-			return fplKey_F22;
-		case VK_F23:
-			return fplKey_F23;
-		case VK_F24:
-			return fplKey_F24;
-
-		case VK_LSHIFT:
-			return fplKey_LeftShift;
-		case VK_RSHIFT:
-			return fplKey_RightShift;
-		case VK_LCONTROL:
-			return fplKey_LeftControl;
-		case VK_RCONTROL:
-			return fplKey_RightControl;
-		case VK_LMENU:
-			return fplKey_LeftAlt;
-		case VK_RMENU:
-			return fplKey_RightAlt;
-
-		case VK_VOLUME_MUTE:
-			return fplKey_VolumeMute;
-		case VK_VOLUME_DOWN:
-			return fplKey_VolumeDown;
-		case VK_VOLUME_UP:
-			return fplKey_VolumeUp;
-		case VK_MEDIA_NEXT_TRACK:
-			return fplKey_MediaNextTrack;
-		case VK_MEDIA_PREV_TRACK:
-			return fplKey_MediaPrevTrack;
-		case VK_MEDIA_STOP:
-			return fplKey_MediaStop;
-		case VK_MEDIA_PLAY_PAUSE:
-			return fplKey_MediaPlayPause;
-
-		case VK_OEM_MINUS:
-			return fplKey_OemMinus;
-		case VK_OEM_PLUS:
-			return fplKey_OemPlus;
-		case VK_OEM_COMMA:
-			return fplKey_OemComma;
-		case VK_OEM_PERIOD:
-			return fplKey_OemPeriod;
-
-		case VK_OEM_1:
-			return fplKey_Oem1;
-		case VK_OEM_2:
-			return fplKey_Oem2;
-		case VK_OEM_3:
-			return fplKey_Oem3;
-		case VK_OEM_4:
-			return fplKey_Oem4;
-		case VK_OEM_5:
-			return fplKey_Oem5;
-		case VK_OEM_6:
-			return fplKey_Oem6;
-		case VK_OEM_7:
-			return fplKey_Oem7;
-		case VK_OEM_8:
-			return fplKey_Oem8;
-
-		default:
-			return fplKey_None;
-	}
-}
-
 fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *platAppState, fpl__Win32AppState *appState, fpl__Win32WindowState *windowState, const fpl__SetupWindowCallbacks *setupCallbacks) {
 	fplAssert(appState != fpl_null);
 	const fpl__Win32Api *wapi = &appState->winApi;
@@ -14624,7 +14641,6 @@ fpl_internal void fpl__Win32ReleaseWindow(const fpl__Win32InitState *initState, 
 		windowState->mainFiber = fpl_null;
 	}
 }
-
 #endif // FPL__ENABLE_WINDOW
 
 // ############################################################################
@@ -14634,7 +14650,7 @@ fpl_internal void fpl__Win32ReleaseWindow(const fpl__Win32InitState *initState, 
 // Always included, when window support is enabled
 //
 // ############################################################################
-#if defined(FPL__ENABLE_WINDOW) && !defined(FPL__WIN32_XINPUT_IMPLEMENTED)
+#if defined(FPL__ENABLE_INPUT) && !defined(FPL__WIN32_XINPUT_IMPLEMENTED)
 #define FPL__WIN32_XINPUT_IMPLEMENTED
 
 FPL__FUNC_XINPUT_XInputGetState(fpl__Win32XInputGetStateStub) {
@@ -14871,7 +14887,7 @@ static size_t fpl__Win32XInput_Poll(fpl__Win32XInputState *xinputState, fplGamep
 	return(result);
 }
 
-#endif // FPL__WIN32_XINPUT_IMPLEMENTED
+#endif // FPL__ENABLE_INPUT && FPL__WIN32_XINPUT_IMPLEMENTED
 
 #if defined(FPL__ENABLE_INPUT)
 fpl_internal void fpl__Win32UpdateGameControllers(const fplSettings *settings, const fpl__Win32InitState *initState, fpl__Win32AppState *win32AppState) {
