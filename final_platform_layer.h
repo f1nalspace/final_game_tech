@@ -10480,7 +10480,7 @@ typedef struct fpl__LinuxInitState {
 	int dummy;
 } fpl__LinuxInitState;
 
-#if defined(FPL__ENABLE_WINDOW)
+#if defined(FPL__ENABLE_INPUT)
 #define FPL__LINUX_MAX_GAME_CONTROLLER_COUNT 4
 typedef struct fpl__LinuxGameController {
 	char deviceName[512 + 1];
@@ -10495,17 +10495,17 @@ typedef struct fpl__LinuxGameControllersState {
 	fpl__LinuxGameController controllers[FPL__LINUX_MAX_GAME_CONTROLLER_COUNT];
 	uint64_t lastCheckTime;
 } fpl__LinuxGameControllersState;
-#endif
+#endif // FPL__ENABLE_INPUT
 
 typedef struct fpl__LinuxAppState {
-#if defined(FPL__ENABLE_WINDOW)
+#if defined(FPL__ENABLE_INPUT)
 	fpl__LinuxGameControllersState controllersState;
 #endif
 	int dummy;
 } fpl__LinuxAppState;
 
 // Forward declarations
-#if defined(FPL__ENABLE_WINDOW)
+#if defined(FPL__ENABLE_INPUT)
 fpl_internal void fpl__LinuxFreeGameControllers(fpl__LinuxGameControllersState *controllersState);
 fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl__LinuxGameControllersState *controllersState, const bool useEvents);
 #endif
@@ -20196,6 +20196,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			}
 		} break;
 
+#if defined(FPL__ENABLE_INPUT)
 		case KeyPress:
 		{
 			// Keyboard button down
@@ -20290,6 +20291,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 				fpl__HandleMouseMoveEvent(winState, ev->xmotion.x, ev->xmotion.y);
 			}
 		} break;
+#endif // FPL__ENABLE_INPUT
 
 		case Expose:
 		{
@@ -20451,7 +20453,11 @@ fpl_platform_api bool fplWindowUpdate(void) {
 #if defined(FPL_PLATFORM_LINUX)
 	if (!appState->currentSettings.input.disabledEvents && fplIsMaskSet(appState->initFlags, fplInitFlags_GameController)) {
 		fpl__LinuxAppState *linuxAppState = &appState->plinux;
+
+#	if defined(FPL__ENABLE_INPUT)
 		fpl__LinuxPollGameControllers(&appState->currentSettings, &linuxAppState->controllersState, true);
+#	endif // FPL__ENABLE_INPUT
+
 	}
 #endif
 
@@ -20785,7 +20791,7 @@ fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY) {
 #	include <linux/joystick.h> // js_event, axis_state, etc.
 
 fpl_internal void fpl__LinuxReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
-#if defined(FPL__ENABLE_WINDOW)
+#if defined(FPL__ENABLE_INPUT)
 	if (fplIsMaskSet(appState->initFlags, fplInitFlags_GameController)) {
 		fpl__LinuxFreeGameControllers(&appState->plinux.controllersState);
 	}
@@ -20804,7 +20810,7 @@ fpl_internal bool fpl__LinuxInitPlatform(const fplInitFlags initFlags, const fpl
 //
 // Linux Gamepads
 //
-#if defined(FPL__ENABLE_WINDOW)
+#if defined(FPL__ENABLE_INPUT)
 fpl_internal void fpl__LinuxFreeGameControllers(fpl__LinuxGameControllersState *controllersState) {
 	for (int controllerIndex = 0; controllerIndex < fplArrayCount(controllersState->controllers); ++controllerIndex) {
 		fpl__LinuxGameController *controller = controllersState->controllers + controllerIndex;
@@ -21074,8 +21080,7 @@ fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
 	}
 	return(false);
 }
-
-#endif // FPL__ENABLE_WINDOW
+#endif // FPL__ENABLE_INPUT
 
 //
 // Linux Threading
