@@ -2621,11 +2621,51 @@ typedef enum fplX86InstructionSetLevel {
 #endif // FPL__SUPPORT_AUDIO
 
 //
+// Input preprocessor setup
+//
+// FPL_NO_INPUT = Disable input support entirely
+//
+#if !defined(FPL_NO_INPUT)
+#	define FPL__SUPPORT_INPUT
+#endif // !FPL_NO_INPUT
+
+// For now, window is required for any input support
+#if !defined(FPL__SUPPORT_WINDOW)
+#	if defined(FPL__SUPPORT_INPUT)
+#		undef FPL__SUPPORT_INPUT
+#	endif
+#endif
+
+//
+// Gamecontroller preprocessor setup
+//
+// FPL_NO_GAME_CONTROLLER = Disable game controller support entirely
+// FPL_NO_GAME_CONTROLLER_XINPUT = Disable XInput game controller backend
+// FPL_NO_GAME_CONTROLLER_LINUX_JOYSTICK = Disable linux joystick game controller backend
+//
+#if !defined(FPL_NO_GAME_CONTROLLER)
+#	define FPL__SUPPORT_GAME_CONTROLLER
+#endif // !FPL_NO_GAME_CONTROLLER
+
+#if defined(FPL__SUPPORT_GAME_CONTROLLER)
+#	if !defined(FPL_NO_GAME_CONTROLLER_XINPUT) && defined(FPL_PLATFORM_WINDOWS)
+#		define FPL__SUPPORT_GAME_CONTROLLER_XINPUT // <xinput.h> is always present on windows
+#	endif
+#	if !defined(FPL_NO_GAME_CONTROLLER_LINUX_JOYSTICK) && defined(FPL_PLATFORM_LINUX)
+#		define FPL__SUPPORT_GAME_CONTROLLER_LINUX_JOYSTICK
+#	endif
+#endif // FPL__SUPPORT_GAME_CONTROLLER
+
+//
 // Enable supports (FPL uses _ENABLE_ internally only)
 //
 #if defined(FPL__SUPPORT_WINDOW)
 #	define FPL__ENABLE_WINDOW
 #endif // FPL__SUPPORT_WINDOW
+
+#if defined(FPL__SUPPORT_INPUT)
+#	define FPL__ENABLE_INPUT
+#endif // FPL__SUPPORT_INPUT
 
 #if defined(FPL__SUPPORT_VIDEO)
 #	define FPL__ENABLE_VIDEO
@@ -2649,6 +2689,16 @@ typedef enum fplX86InstructionSetLevel {
 #		define FPL__ENABLE_AUDIO_ALSA
 #	endif
 #endif // FPL__SUPPORT_AUDIO
+
+#if defined(FPL__SUPPORT_GAME_CONTROLLER)
+#	define FPL__ENABLE_GAME_CONTROLLER
+#	if defined(FPL__SUPPORT_GAME_CONTROLLER_XINPUT)
+#		define FPL__ENABLE_GAME_CONTROLLER_XINPUT
+#	endif
+#	if defined(FPL__SUPPORT_GAME_CONTROLLER_LINUX_JOYSTICK)
+#		define FPL__ENABLE_GAME_CONTROLLER_LINUX_JOYSTICK
+#	endif
+#endif // FPL__SUPPORT_GAME_CONTROLLER
 
 #if defined(FPL_LOGGING)
 #	define FPL__ENABLE_LOGGING
