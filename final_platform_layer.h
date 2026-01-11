@@ -7916,36 +7916,6 @@ typedef struct fplGamepadState {
 } fplGamepadState;
 
 /**
-* @enum fplGamepadEventType
-* @brief An enumeration of gamepad event types (Connected, Disconnected, StateChanged, etc.).
-*/
-typedef enum fplGamepadEventType {
-	//! No gamepad event.
-	fplGamepadEventType_None = 0,
-	//! Gamepad connected.
-	fplGamepadEventType_Connected,
-	//! Gamepad disconnected.
-	fplGamepadEventType_Disconnected,
-	//! Gamepad state updated.
-	fplGamepadEventType_StateChanged,
-} fplGamepadEventType;
-
-/**
-* @struct fplGamepadEvent
-* @brief A structure containing gamepad event data (Type, Device, State, etc.).
-*/
-typedef struct fplGamepadEvent {
-	//! Full gamepad state.
-	fplGamepadState state;
-	//! Device name of the controller.
-	const char *deviceName;
-	//! Gamepad event type.
-	fplGamepadEventType type;
-	//! Gamepad device index.
-	uint32_t deviceIndex;
-} fplGamepadEvent;
-
-/**
 * @def FPL_MAX_GAMEPAD_STATE_COUNT
 * @brief Max number of gamepad states.
 */
@@ -8103,6 +8073,36 @@ typedef struct fplMouseEvent {
 	//! Mouse wheel delta.
 	float wheelDelta;
 } fplMouseEvent;
+
+/**
+* @enum fplGamepadEventType
+* @brief An enumeration of gamepad event types (Connected, Disconnected, StateChanged, etc.).
+*/
+typedef enum fplGamepadEventType {
+	//! No gamepad event.
+	fplGamepadEventType_None = 0,
+	//! Gamepad connected.
+	fplGamepadEventType_Connected,
+	//! Gamepad disconnected.
+	fplGamepadEventType_Disconnected,
+	//! Gamepad state updated.
+	fplGamepadEventType_StateChanged,
+} fplGamepadEventType;
+
+/**
+* @struct fplGamepadEvent
+* @brief A structure containing gamepad event data (Type, Device, State, etc.).
+*/
+typedef struct fplGamepadEvent {
+	//! Full gamepad state.
+	fplGamepadState state;
+	//! Device name of the controller.
+	const char *deviceName;
+	//! Gamepad event type.
+	fplGamepadEventType type;
+	//! Gamepad device index.
+	uint32_t deviceIndex;
+} fplGamepadEvent;
 
 /**
 * @enum fplEventType
