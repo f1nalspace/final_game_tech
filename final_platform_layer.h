@@ -20674,7 +20674,7 @@ fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
 		outState->y = winy;
 		outState->buttonStates[fplMouseButtonType_Left] = fplIsMaskSet(mask, Button1Mask) ? fplButtonState_Press : fplButtonState_Release;
 		outState->buttonStates[fplMouseButtonType_Right] = fplIsMaskSet(mask, Button3Mask) ? fplButtonState_Press : fplButtonState_Release;
-		outState->buttonStates[fplMouseButtonType_Middle] = fplIsMaskSet(mask Button2Mask) ? fplButtonState_Press : fplButtonState_Release;
+		outState->buttonStates[fplMouseButtonType_Middle] = fplIsMaskSet(mask, Button2Mask) ? fplButtonState_Press : fplButtonState_Release;
 		result = true;
 	}
 	return(result);
@@ -20849,7 +20849,7 @@ fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl
 	// https://gist.github.com/jasonwhite/c5b2048c15993d285130
 	// https://github.com/Tasssadar/libenjoy/blob/master/src/libenjoy_linux.c
 
-	if (((controllersState->lastCheckTime == 0) || ((fplMillisecondsQuery() - controllersState->lastCheckTime) >= settings->input.controllerDetectionFrequency)) || !useEvents) {
+    if (((controllersState->lastCheckTime == 0) || ((fplMillisecondsQuery() - controllersState->lastCheckTime) >= settings->input.gameControllers.detectionFrequency)) || !useEvents) {
 		controllersState->lastCheckTime = fplMillisecondsQuery();
 
 		//
