@@ -186,6 +186,113 @@ typedef struct AudioStaticBuffer {
 	AudioFrameIndex maxFrameCount;
 } AudioStaticBuffer;
 
+typedef struct AudioBufferPointer {
+	const uint8_t *samples;
+	AudioFrameIndex totalFrameCount;
+	AudioFrameIndex usedFrameCount;
+	AudioChannelIndex channels;
+	uint16_t frameStride;
+} AudioBufferPointer;
+
+fpl_inline AudioBufferPointer AudioBufferPointerCreateFromStaticBuffer(const AudioStaticBuffer *staticBuffer, const AudioChannelIndex numChannels, const fplAudioFormatType format) {
+	fplAssertPtr(staticBuffer);
+	fplAssert(numChannels > 0);
+	fplAssert(format != fplAudioFormatType_None);
+	AudioBufferPointer result = fplZeroInit;
+	result.samples = staticBuffer->samples;
+	result.totalFrameCount = staticBuffer->maxFrameCount;
+	result.usedFrameCount = 0;
+	result.channels = numChannels;
+	result.frameStride = (uint16_t)(numChannels * fplGetAudioSampleSizeInBytes(format));
+	return result;
+}
+
+fpl_inline AudioBufferPointer AudioBufferPointerCreateFromAudioBuffer(const AudioBuffer *audioBuffer, const AudioChannelIndex numChannels, const fplAudioFormatType format) {
+	fplAssertPtr(audioBuffer);
+	fplAssert(numChannels > 0);
+	fplAssert(format != fplAudioFormatType_None);
+	AudioBufferPointer result = fplZeroInit;
+	result.samples = audioBuffer->samples;
+	result.totalFrameCount = audioBuffer->frameCount;
+	result.usedFrameCount = 0;
+	result.channels = numChannels;
+	result.frameStride = (uint16_t)(numChannels * fplGetAudioSampleSizeInBytes(format));
+	return result;
+}
+
+fpl_inline bool AudioBufferPointerIsValid(const AudioBufferPointer *buffer) {
+	if (buffer == fpl_null) {
+		return false;
+	}
+	if (buffer->totalFrameCount == 0 || buffer->channels == 0 || buffer->frameStride == 0) {
+		return false;
+	}
+	if (buffer->samples == fpl_null) {
+		return false;
+	}
+	return true;
+}
+
+fpl_inline bool AudioBufferPointerIsEOF(const AudioBufferPointer *buffer) {
+	const bool result = (buffer->usedFrameCount >= buffer->totalFrameCount);
+	return result;
+}
+
+fpl_inline AudioFrameIndex AudioBufferPointerGetRemainingFrameCount(const AudioBufferPointer *buffer) {
+	if (!AudioBufferPointerIsValid(buffer) || AudioBufferPointerIsEOF(buffer)) {
+		return 0;
+	}
+	const AudioFrameIndex result = buffer->totalFrameCount - buffer->usedFrameCount;
+	return result;
+}
+
+fpl_inline AudioSampleIndex AudioBufferPointerGetRemainingSampleCount(const AudioBufferPointer *buffer) {
+	if (!AudioBufferPointerIsValid(buffer) || AudioBufferPointerIsEOF(buffer)) {
+		return 0;
+	}
+	const AudioFrameIndex frameCount = buffer->totalFrameCount - buffer->usedFrameCount;
+	const AudioSampleIndex result = frameCount * buffer->channels;
+	return result;
+}
+
+fpl_inline float *AudioBufferPointerGetDataF32(AudioBufferPointer *buffer) {
+	if (!AudioBufferPointerIsValid(buffer) || AudioBufferPointerIsEOF(buffer)) {
+		return fpl_null;
+	}
+	const size_t offset = buffer->usedFrameCount * buffer->frameStride;
+	float *result = (float *)buffer->samples + offset;
+	return result;
+}
+
+fpl_inline uint8_t *AudioBufferPointerGetDataU8(AudioBufferPointer *buffer) {
+	if (!AudioBufferPointerIsValid(buffer) || AudioBufferPointerIsEOF(buffer)) {
+		return fpl_null;
+	}
+	const size_t offset = buffer->usedFrameCount * buffer->frameStride;
+	uint8_t *result = (uint8_t *)buffer->samples + offset;
+	return result;
+}
+
+fpl_inline bool AudioBufferPointerAdvance(AudioBufferPointer *buffer, const AudioFrameIndex frameCount) {
+	if (!AudioBufferPointerIsValid(buffer) || AudioBufferPointerIsEOF(buffer) || (frameCount == 0)) {
+		return false;
+	}
+	const AudioFrameIndex remainingFrameCount = buffer->totalFrameCount - buffer->usedFrameCount;
+	if (remainingFrameCount < frameCount) {
+		return false;
+	}
+	buffer->usedFrameCount += frameCount;
+	return true;
+}
+
+fpl_inline bool AudioBufferPointerSeek(AudioBufferPointer *buffer, const AudioFrameIndex frameIndex) {
+	if (!AudioBufferPointerIsValid(buffer) || frameIndex >= buffer->totalFrameCount) {
+		return false;
+	}
+	buffer->usedFrameCount = frameIndex;
+	return true;
+}
+
 typedef struct PCMWaveFormat {
 	//! Total frame count
 	uint32_t frameCount;
