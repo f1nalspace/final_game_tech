@@ -187,36 +187,36 @@ typedef struct AudioStaticBuffer {
 } AudioStaticBuffer;
 
 typedef struct AudioBufferPointer {
-	const uint8_t *samples;
+	uint8_t *samples;
 	AudioFrameIndex totalFrameCount;
 	AudioFrameIndex usedFrameCount;
 	AudioChannelIndex channels;
 	uint16_t frameStride;
 } AudioBufferPointer;
 
-fpl_inline AudioBufferPointer AudioBufferPointerCreateFromStaticBuffer(const AudioStaticBuffer *staticBuffer, const AudioChannelIndex numChannels, const fplAudioFormatType format) {
+fpl_inline AudioBufferPointer AudioBufferPointerCreateFromStaticBuffer(AudioStaticBuffer *staticBuffer, const AudioChannelIndex numChannels, const uint32_t sampleSize) {
 	fplAssertPtr(staticBuffer);
 	fplAssert(numChannels > 0);
-	fplAssert(format != fplAudioFormatType_None);
+	fplAssert(sampleSize > 0);
 	AudioBufferPointer result = fplZeroInit;
 	result.samples = staticBuffer->samples;
 	result.totalFrameCount = staticBuffer->maxFrameCount;
 	result.usedFrameCount = 0;
 	result.channels = numChannels;
-	result.frameStride = (uint16_t)(numChannels * fplGetAudioSampleSizeInBytes(format));
+	result.frameStride = (uint16_t)(numChannels * sampleSize);
 	return result;
 }
 
-fpl_inline AudioBufferPointer AudioBufferPointerCreateFromAudioBuffer(const AudioBuffer *audioBuffer, const AudioChannelIndex numChannels, const fplAudioFormatType format) {
+fpl_inline AudioBufferPointer AudioBufferPointerCreateFromAudioBuffer(AudioBuffer *audioBuffer, const AudioChannelIndex numChannels, const uint32_t sampleSize) {
 	fplAssertPtr(audioBuffer);
 	fplAssert(numChannels > 0);
-	fplAssert(format != fplAudioFormatType_None);
+	fplAssert(sampleSize > 0);
 	AudioBufferPointer result = fplZeroInit;
 	result.samples = audioBuffer->samples;
 	result.totalFrameCount = audioBuffer->frameCount;
 	result.usedFrameCount = 0;
 	result.channels = numChannels;
-	result.frameStride = (uint16_t)(numChannels * fplGetAudioSampleSizeInBytes(format));
+	result.frameStride = (uint16_t)(numChannels * sampleSize);
 	return result;
 }
 
@@ -290,6 +290,15 @@ fpl_inline bool AudioBufferPointerSeek(AudioBufferPointer *buffer, const AudioFr
 		return false;
 	}
 	buffer->usedFrameCount = frameIndex;
+	return true;
+}
+
+fpl_inline bool AudioBufferPointerClearSamples(AudioBufferPointer *buffer) {
+	if (!AudioBufferPointerIsValid(buffer)) {
+		return false;
+	}
+	const size_t totalSize = buffer->totalFrameCount * buffer->frameStride;
+	fplMemoryClear(buffer->samples, totalSize);
 	return true;
 }
 
