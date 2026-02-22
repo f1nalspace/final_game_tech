@@ -191,6 +191,7 @@ SOFTWARE.
 	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
 	- Changed: Ensure that std types has the correct sizes always using equals
+	- Changed: fplSetDefaultAudioSettings() sets audio backend type to automatic
 
 	- Fixed: [Win32] Fixed last event from event queue was never used, when there is no events from the window
 	- Fixed: [Win32] Lost/Got focus event was not detected properly
@@ -13228,6 +13229,7 @@ fpl_common_api void fplSetDefaultAudioSettings(fplAudioSettings *audio) {
 	audio->startAuto = true;
 	audio->stopAuto = true;
 	audio->manualLoad = false;
+	audio->backend = fplAudioBackendType_Auto;
 }
 
 fpl_common_api void fplSetDefaultWindowSettings(fplWindowSettings *window) {
