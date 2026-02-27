@@ -198,6 +198,7 @@ SOFTWARE.
 
 	- Fixed: [X11] Fixed last event from event queue was never used, when there is no events from the window
 	- Fixed: [X11] Fixed window support was not disabled when X11 is not present
+	- Fixed[181]: fpl__X11ParseUriPaths does not do any URI decoding, resulting in most-likely unuseable file paths
 
 	- Fixed: [POSIX] Fixed pthread fpl__POSIXSemaphoreHandle was not used
 	- Fixed: [POSIX] dirint.h and sched.h was not included always
@@ -19887,38 +19888,109 @@ fpl_internal fpl__X11WindowStateInfo fpl__X11ReconcilWindowStateInfo(fpl__X11Win
 	return change;
 }
 
+// Gets the raw byte value from a hex character (0-9, a-f, A-F)
+static inline char fpl__X11FromHex(char c) {
+	if (c >= '0' && c <= '9') return c - '0';
+	if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+	if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+	return -1;
+}
+
+// Returns number of bytes written to dst (excluding the zero terminator).
+// dst will always be zero-terminated if maxDestinationLength > 0.
+static size_t fpl__X11UriDecode(char *dst,
+								const char *src,
+								const size_t maxDestinationLength,
+								const size_t sourceLen) {
+	size_t written = 0;
+	size_t i = 0;
+
+	if (maxDestinationLength == 0) {
+		return 0; // cannot write anything, not even terminator
+	}
+
+	while (i < sourceLen && written + 1 < maxDestinationLength) {
+		char c = src[i];
+
+		// Check for %xx sequence
+		if (c == '%' && (i + 2) < sourceLen) {
+			char h1 = src[i + 1];
+			char h2 = src[i + 2];
+
+			// Convert hex digit
+			const int hi = fpl__X11FromHex(h1);
+			const int lo = fpl__X11FromHex(h2);
+
+			if (hi >= 0 && lo >= 0) {
+				// Valid %xx sequence
+				dst[written++] = (char)((hi << 4) | lo);
+				i += 3;
+				continue;
+			}
+
+			// Invalid % sequence → fall through and treat '%' literally
+		}
+
+		// Normal byte
+		dst[written++] = c;
+		i++;
+	}
+
+	// Always null-terminate if possible
+	dst[written] = '\0';
+	return written;
+}
+
 fpl_internal void *fpl__X11ParseUriPaths(const char *text, size_t *size, int *count, int textLength) {
 	const char *textCursor = text;
 	const char *textEnd = text + textLength;
 	int fileCount = 0;
+
 	// count file entries
 	while (*textCursor != '\0' || textCursor != textEnd) {
 		if (*textCursor == '\r' && *(textCursor + 1) == '\n')
 			++fileCount;
 		++textCursor;
 	}
+
+
 	textCursor = text;
-	size_t filesTableSize = fileCount * sizeof(char **);
-	size_t maxFileStride = FPL_MAX_PATH_LENGTH + 1;
-	size_t filesMemorySize = filesTableSize + FPL__ARBITARY_PADDING + maxFileStride * fileCount;
+
+	const size_t filesTableSize = fileCount * sizeof(char **);
+	const size_t maxFileStride = FPL_MAX_PATH_LENGTH + 1;
+	const size_t filesMemorySize = filesTableSize + FPL__ARBITARY_PADDING + maxFileStride * fileCount;
+
 	void *filesTableMemory = fpl__AllocateDynamicMemory(filesMemorySize, 8);
 	char **filesTable = (char **)filesTableMemory;
+
+	// Assign pointers
 	for (int fileIndex = 0; fileIndex < fileCount; ++fileIndex) {
 		filesTable[fileIndex] = (char *)((uint8_t *)filesTableMemory + filesTableSize + FPL__ARBITARY_PADDING + fileIndex * maxFileStride);
 	}
+
+	// Parse and decode each entry
 	for (int fileIndex = 0; fileIndex < fileCount; ++fileIndex) {
-		char *file = filesTable[fileIndex];
+		char *fileBuffer = filesTable[fileIndex];
 		const char *line = textCursor;
-		// split on '\r\n' divider 
+
+		// Split on '\r\n' divider
 		while (*textCursor != '\r' && (*textCursor != '\0' || textCursor != textEnd)) {
 			++textCursor;
 		}
-		// strip protocol
+
+		// Strip protocol
 		if (fplIsStringEqualLen(line, 7, "file://", 7)) {
 			line += 7;
 		}
-		fplCopyStringLen(line, (textCursor - line), file, maxFileStride);
-		textCursor += 2;
+
+		// Decode into destination buffer
+		const size_t lineLen = textCursor - line;
+		fpl__X11UriDecode(fileBuffer, line, maxFileStride, lineLen);
+
+		// Skip CRLF
+		if (textCursor < textEnd) {
+			textCursor += 2;
+		}
 	}
 	*size = filesMemorySize;
 	*count = fileCount;
