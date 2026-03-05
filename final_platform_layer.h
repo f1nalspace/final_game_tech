@@ -199,7 +199,7 @@ SOFTWARE.
 
 	- Fixed: [X11] Fixed last event from event queue was never used, when there is no events from the window
 	- Fixed: [X11] Fixed window support was not disabled when X11 is not present
-	- Fixed[181]: fpl__X11ParseUriPaths does not do any URI decoding, resulting in most-likely unuseable file paths
+	- Fixed[181]: [X11] fpl__X11ParseUriPaths does not do any URI decoding, resulting in most-likely unuseable file paths
 
 	- Fixed: [POSIX] Fixed pthread fpl__POSIXSemaphoreHandle was not used
 	- Fixed: [POSIX] dirint.h and sched.h was not included always
