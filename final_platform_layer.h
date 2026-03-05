@@ -192,6 +192,7 @@ SOFTWARE.
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
 	- Changed: Ensure that std types has the correct sizes always using equals
 	- Changed: fplSetDefaultAudioSettings() sets audio backend type to automatic
+	- Changed: [ALSA] Audio device enumeration prints out each audio device to verbose log
 
 	- Fixed: [Win32] Fixed last event from event queue was never used, when there is no events from the window
 	- Fixed: [Win32] Lost/Got focus event was not detected properly
@@ -25799,6 +25800,7 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendAlsaGetAu
 	uint32_t capacityOverflow = 0;
 	uint32_t result = 0;
 	char **ppNextDeviceHint = ppDeviceHints;
+	uint32_t deviceIndex = 0;
 	while (*ppNextDeviceHint != fpl_null) {
 		char *name = alsaApi->snd_device_name_get_hint(*ppNextDeviceHint, "NAME");
 		char *ioid = alsaApi->snd_device_name_get_hint(*ppNextDeviceHint, "IOID");
@@ -25817,6 +25819,7 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendAlsaGetAu
 					if (desc != fpl_null) {
 						fplCopyString(desc, outDeviceInfo->name, fplArrayCount(outDeviceInfo->name));
 						free(desc);
+		FPL_LOG_VERBOSE(FPL__MODULE_AUDIO_ALSA, "ALSA Audio Device[%u]: Name: {%s}, IOID: {%s}, Desc: {%s}", deviceIndex, name, ioid, desc);
 					} else {
 						fplCopyString(name, outDeviceInfo->name, fplArrayCount(outDeviceInfo->name));
 					}
@@ -25831,6 +25834,7 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendAlsaGetAu
 			free(name);
 		}
 		++ppNextDeviceHint;
+		++deviceIndex;
 	}
 	alsaApi->snd_device_name_free_hint((void **)ppDeviceHints);
 	if (capacityOverflow > 0) {
