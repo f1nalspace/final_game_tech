@@ -25383,6 +25383,65 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendAlsaInitialize) 
 #undef FPL__ALSA_INIT_ERROR
 }
 
+fpl_internal uint32_t fpl__ALSADefineDefaultAudioDevices(const fplAudioShareMode shareMode, const char **outputNames, const size_t maxOutputNameCount) {
+	const char *defaultDeviceNames[16] = fplZeroInit;
+	uint32_t defaultDeviceCount = 0;
+	defaultDeviceNames[defaultDeviceCount++] = "default";
+	defaultDeviceNames[defaultDeviceCount++] = "pulse";
+	defaultDeviceNames[defaultDeviceCount++] = "pipewire";
+	if (shareMode != fplAudioShareMode_Exclusive) {
+		defaultDeviceNames[defaultDeviceCount++] = "dmix";
+		defaultDeviceNames[defaultDeviceCount++] = "dmix:0";
+		defaultDeviceNames[defaultDeviceCount++] = "dmix:0,0";
+	}
+	defaultDeviceNames[defaultDeviceCount++] = "hw";
+	defaultDeviceNames[defaultDeviceCount++] = "hw:0";
+	defaultDeviceNames[defaultDeviceCount++] = "hw:0,0";
+
+	if (outputNames == fpl_null) {
+		return defaultDeviceCount;
+	}
+
+	for (uint32_t i = 0; i < defaultDeviceCount; ++i) {
+		outputNames[i] = defaultDeviceNames[i];
+	}
+
+	return defaultDeviceCount;
+}
+
+fpl_internal bool fpl__ALSAIsOutputAudioDevice(const char *ioid) {
+	const bool isOutputDevice = ioid != fpl_null && fplIsStringEqual(ioid, "Output");
+	const bool isDuplexDevice = ioid == fpl_null;
+	const bool result = isOutputDevice || isDuplexDevice;
+	return result;
+}
+
+fpl_internal bool fpl__ALSAIsDefaultAudioDevice(const char *name) {
+	if (name == fpl_null) {
+		return false;
+	}
+
+	bool result = false;
+
+	// New default audio device from sound servers
+	if (fplIsStringEqual(name, "pulse") ||
+		fplIsStringEqual(name, "pipewire")) {
+		result = true;
+	}
+
+	// Old default audio device from pure ALSA
+	if (fplIsStringEqual(name, "default")) {
+		result = true;
+	}
+
+	// Sysdefault is not considered a default audio device!
+	if (fplIsStringEqual(name, "sysdefault")) {
+		result = false;
+	}
+
+	return result;
+}
+
 fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaInitializeDevice) {
 	fpl__AlsaAudioBackend *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AlsaAudioBackend);
 	fplAssert(impl != fpl_null);
@@ -25422,16 +25481,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	int openMode = SND_PCM_NO_AUTO_RESAMPLE | SND_PCM_NO_AUTO_CHANNELS | SND_PCM_NO_AUTO_FORMAT;
 	if (alsaDeviceID == fpl_null || fplGetStringLength(alsaDeviceID) == 0) {
 		const char *defaultDeviceNames[16] = fplZeroInit;
-		int defaultDeviceCount = 0;
-		defaultDeviceNames[defaultDeviceCount++] = "default";
-		if (shareMode != fplAudioShareMode_Exclusive) {
-			defaultDeviceNames[defaultDeviceCount++] = "dmix";
-			defaultDeviceNames[defaultDeviceCount++] = "dmix:0";
-			defaultDeviceNames[defaultDeviceCount++] = "dmix:0,0";
-		}
-		defaultDeviceNames[defaultDeviceCount++] = "hw";
-		defaultDeviceNames[defaultDeviceCount++] = "hw:0";
-		defaultDeviceNames[defaultDeviceCount++] = "hw:0,0";
+		const uint32_t defaultDeviceCount = fpl__ALSADefineDefaultAudioDevices(shareMode, defaultDeviceNames, fplArrayCount(defaultDeviceNames));
 
 		bool isDeviceOpen = false;
 		for (size_t defaultDeviceIndex = 0; defaultDeviceIndex < defaultDeviceCount; ++defaultDeviceIndex) {
@@ -25456,7 +25506,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 		if (alsaApi->snd_pcm_open(&impl->pcmDevice, alsaDeviceID, stream, openMode) < 0) {
 			FPL__ALSA_INIT_ERROR(fplAudioResultType_NoDeviceFound, "PCM audio device by id '%s' not found!", alsaDeviceID);
 		}
-		internalDevice.isDefault = fplIsStringEqual("default", alsaDeviceID);
+		internalDevice.isDefault = fpl__ALSAIsDefaultAudioDevice(alsaDeviceID);
 		fplCopyString(alsaDeviceID, internalDevice.id.alsa, fplArrayCount(internalDevice.id.alsa));
 		fplCopyString(alsaDeviceID, internalDevice.name, fplArrayCount(internalDevice.name));
 	}
@@ -25480,7 +25530,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 		const char *pcmName = alsaApi->snd_pcm_info_get_name(pcmInfo);
 		if (fplGetStringLength(pcmName) > 0) {
 			fplCopyString(pcmName, internalDevice.name, fplArrayCount(internalDevice.name));
-			if (fplIsStringEqual("default", pcmName)) {
+			if (fpl__ALSAIsDefaultAudioDevice(pcmName)) {
 				char **ppDeviceHints;
 				if (alsaApi->snd_device_name_hint(-1, "pcm", (void ***)&ppDeviceHints) == 0) {
 					char **ppNextDeviceHint = ppDeviceHints;
@@ -25490,7 +25540,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 						char *hintIOID = alsaApi->snd_device_name_get_hint(*ppNextDeviceHint, "IOID");
 
 						bool foundDevice = false;
-						if (hintIOID == fpl_null || fplIsStringEqual(hintIOID, "Output")) {
+						if (fpl__ALSAIsOutputAudioDevice(hintIOID)) {
 							if (fplIsStringEqual(hintName, pcmName)) {
 								fplCopyString(hintDesc, internalDevice.name, fplArrayCount(internalDevice.name));
 								foundDevice = true;
@@ -25731,25 +25781,16 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendALSAG
 		deviceID = *targetDevice;
 	}
 
-	fplAudioShareMode shareMode = fplAudioShareMode_Shared;
+	const fplAudioShareMode shareMode = fplAudioShareMode_Shared;
+	const int openMode = SND_PCM_NO_AUTO_RESAMPLE | SND_PCM_NO_AUTO_CHANNELS | SND_PCM_NO_AUTO_FORMAT;
 
 	snd_pcm_t *pcmDevice = fpl_null;
 
 	char deviceName[256] = fplZeroInit;
-	snd_pcm_stream_t stream = SND_PCM_STREAM_PLAYBACK;
-	int openMode = SND_PCM_NO_AUTO_RESAMPLE | SND_PCM_NO_AUTO_CHANNELS | SND_PCM_NO_AUTO_FORMAT;
+	const snd_pcm_stream_t stream = SND_PCM_STREAM_PLAYBACK;
 	if (fplGetStringLength(deviceID.alsa) == 0) {
 		const char *defaultDeviceNames[16] = fplZeroInit;
-		int defaultDeviceCount = 0;
-		defaultDeviceNames[defaultDeviceCount++] = "default";
-		if (shareMode != fplAudioShareMode_Exclusive) {
-			defaultDeviceNames[defaultDeviceCount++] = "dmix";
-			defaultDeviceNames[defaultDeviceCount++] = "dmix:0";
-			defaultDeviceNames[defaultDeviceCount++] = "dmix:0,0";
-		}
-		defaultDeviceNames[defaultDeviceCount++] = "hw";
-		defaultDeviceNames[defaultDeviceCount++] = "hw:0";
-		defaultDeviceNames[defaultDeviceCount++] = "hw:0,0";
+		const uint32_t defaultDeviceCount = fpl__ALSADefineDefaultAudioDevices(shareMode, defaultDeviceNames, fplArrayCount(defaultDeviceNames));
 
 		bool isDeviceOpen = false;
 		for (size_t defaultDeviceIndex = 0; defaultDeviceIndex < defaultDeviceCount; ++defaultDeviceIndex) {
@@ -25829,10 +25870,7 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendAlsaGetAu
 			}
 
 			// Only add output or duplex devices
-			const bool isOutputDevice = ioid != fpl_null && fplIsStringEqual(ioid, "Output");
-			const bool isDuplexDevice = ioid == fpl_null;
-
-			if (isOutputDevice || isDuplexDevice) {
+			if (fpl__ALSAIsOutputAudioDevice(ioid)) {
 				if (deviceInfos != fpl_null) {
 					if (result >= maxDeviceCount) {
 						++capacityOverflow;
