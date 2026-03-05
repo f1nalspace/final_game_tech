@@ -200,6 +200,7 @@ SOFTWARE.
 	- Fixed: [X11] Fixed last event from event queue was never used, when there is no events from the window
 	- Fixed: [X11] Fixed window support was not disabled when X11 is not present
 	- Fixed[181]: [X11] fpl__X11ParseUriPaths does not do any URI decoding, resulting in most-likely unuseable file paths
+	- Fixed[182]: [ALSA] Fixed default audio devices are not detected in modern linux audio systems
 
 	- Fixed: [POSIX] Fixed pthread fpl__POSIXSemaphoreHandle was not used
 	- Fixed: [POSIX] dirint.h and sched.h was not included always
@@ -25804,35 +25805,63 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendAlsaGetAu
 	while (*ppNextDeviceHint != fpl_null) {
 		char *name = alsaApi->snd_device_name_get_hint(*ppNextDeviceHint, "NAME");
 		char *ioid = alsaApi->snd_device_name_get_hint(*ppNextDeviceHint, "IOID");
+		char *desc = alsaApi->snd_device_name_get_hint(*ppNextDeviceHint, "DESC");
 
-		// Only allow output or default devices
-		if (name != fpl_null && (fplIsStringEqual(name, "default") || fplIsStringEqual(name, "pulse") || fplIsStringEqual(ioid, "Output"))) {
-			if (deviceInfos != fpl_null) {
-				if (result >= maxDeviceCount) {
-					++capacityOverflow;
-				} else {
-					fplAudioDeviceInfo *outDeviceInfo = (fplAudioDeviceInfo *)((uint8_t *)deviceInfos + (deviceInfoSize * result));
-					fplClearStruct(outDeviceInfo);
-					outDeviceInfo->isDefault = fplIsStringEqual(name, "default");
-					fplCopyString(name, outDeviceInfo->id.alsa, fplArrayCount(outDeviceInfo->id.alsa));
-					char *desc = alsaApi->snd_device_name_get_hint(*ppNextDeviceHint, "DESC");
-					if (desc != fpl_null) {
-						fplCopyString(desc, outDeviceInfo->name, fplArrayCount(outDeviceInfo->name));
-						free(desc);
 		FPL_LOG_VERBOSE(FPL__MODULE_AUDIO_ALSA, "ALSA Audio Device[%u]: Name: {%s}, IOID: {%s}, Desc: {%s}", deviceIndex, name, ioid, desc);
+
+		if (name != fpl_null) {
+			bool isDefaultDevice = false;
+
+			// New default audio device from sound servers
+			if (fplIsStringEqual(name, "pulse") ||
+				fplIsStringEqual(name, "pipewire")) {
+				isDefaultDevice = true;
+			}
+
+			// Old default audio device from pure ALSA
+			if (fplIsStringEqual(name, "default")) {
+				isDefaultDevice = true;
+			}
+
+			// Sysdefault is not considered a default audio device!
+			if (fplIsStringEqual(name, "sysdefault")) {
+				isDefaultDevice = false;
+			}
+
+			// Only add output or duplex devices
+			const bool isOutputDevice = ioid != fpl_null && fplIsStringEqual(ioid, "Output");
+			const bool isDuplexDevice = ioid == fpl_null;
+
+			if (isOutputDevice || isDuplexDevice) {
+				if (deviceInfos != fpl_null) {
+					if (result >= maxDeviceCount) {
+						++capacityOverflow;
 					} else {
-						fplCopyString(name, outDeviceInfo->name, fplArrayCount(outDeviceInfo->name));
+						fplAudioDeviceInfo *outDeviceInfo = (fplAudioDeviceInfo *)((uint8_t *)deviceInfos + (deviceInfoSize * result));
+						fplClearStruct(outDeviceInfo);
+						outDeviceInfo->isDefault = isDefaultDevice;
+						fplCopyString(name, outDeviceInfo->id.alsa, fplArrayCount(outDeviceInfo->id.alsa));
+						if (desc != fpl_null) {
+							fplCopyString(desc, outDeviceInfo->name, fplArrayCount(outDeviceInfo->name));
+						} else {
+							fplCopyString(name, outDeviceInfo->name, fplArrayCount(outDeviceInfo->name));
+						}
 					}
 				}
+				++result;
 			}
-			++result;
 		}
+
 		if (ioid != fpl_null) {
 			free(ioid);
 		}
 		if (name != fpl_null) {
 			free(name);
 		}
+		if (desc != fpl_null) {
+			free(desc);
+		}
+
 		++ppNextDeviceHint;
 		++deviceIndex;
 	}
