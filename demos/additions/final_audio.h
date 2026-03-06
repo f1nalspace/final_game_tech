@@ -194,10 +194,10 @@ typedef struct AudioBufferPointer {
 	uint16_t frameStride;
 } AudioBufferPointer;
 
-fpl_inline AudioBufferPointer AudioBufferPointerCreateFromStaticBuffer(AudioStaticBuffer *staticBuffer, const AudioChannelIndex numChannels, const uint32_t sampleSize) {
+fpl_inline AudioBufferPointer AudioBufferPointerCreateFromStaticBuffer(AudioStaticBuffer *staticBuffer, const AudioChannelIndex numChannels, const size_t sampleSize) {
 	fplAssertPtr(staticBuffer);
 	fplAssert(numChannels > 0);
-	fplAssert(sampleSize > 0);
+	fplAssert(sampleSize > 0 && sampleSize <= 8);
 	AudioBufferPointer result = fplZeroInit;
 	result.samples = staticBuffer->samples;
 	result.totalFrameCount = staticBuffer->maxFrameCount;
@@ -207,10 +207,10 @@ fpl_inline AudioBufferPointer AudioBufferPointerCreateFromStaticBuffer(AudioStat
 	return result;
 }
 
-fpl_inline AudioBufferPointer AudioBufferPointerCreateFromAudioBuffer(AudioBuffer *audioBuffer, const AudioChannelIndex numChannels, const uint32_t sampleSize) {
+fpl_inline AudioBufferPointer AudioBufferPointerCreateFromAudioBuffer(AudioBuffer *audioBuffer, const AudioChannelIndex numChannels, const size_t sampleSize) {
 	fplAssertPtr(audioBuffer);
 	fplAssert(numChannels > 0);
-	fplAssert(sampleSize > 0);
+	fplAssert(sampleSize > 0 && sampleSize <= 8);
 	AudioBufferPointer result = fplZeroInit;
 	result.samples = audioBuffer->samples;
 	result.totalFrameCount = audioBuffer->frameCount;
