@@ -1,6 +1,8 @@
+#ifndef FPL_IMPLEMENTATION
 #define FPL_IMPLEMENTATION
 #define FPL_NO_WINDOW
 #define FPL_NO_UNDEF
+#endif
 #include <final_platform_layer.h>
 
 #define FINAL_AUDIO_CONVERSION_IMPLEMENTATION
@@ -17,8 +19,8 @@ typedef struct InterleavedSamples {
 	void *samples;
 } InterleavedSamples;
 
-static InterleavedSamples AllocateInterleavedSamples(fplAudioFormatType type, AudioChannelIndex numChannels, AudioFrameIndex frameCount) {
-	AudioBufferSize size = fplGetAudioBufferSizeInBytes(type, numChannels, frameCount);
+static InterleavedSamples AllocateInterleavedSamples(const fplAudioFormatType type, const AudioChannelIndex numChannels, const AudioFrameIndex frameCount) {
+	const AudioBufferSize size = fplGetAudioBufferSizeInBytes(type, numChannels, frameCount);
 	void *base = fplMemoryAlignedAllocate(size, 16);
 	InterleavedSamples result;
 	result.samples = base;
@@ -34,12 +36,12 @@ typedef struct DeinterleavedSamples {
 	void *base;
 } DeinterleavedSamples;
 
-static DeinterleavedSamples AllocateDeinterleavedSamples(fplAudioFormatType type, AudioChannelIndex numChannels, AudioFrameIndex frameCount) {
+static DeinterleavedSamples AllocateDeinterleavedSamples(const fplAudioFormatType type, const AudioChannelIndex numChannels, const AudioFrameIndex frameCount) {
 	DeinterleavedSamples result = fplZeroInit;
 
-	AudioBufferSize sampleSize = fplGetAudioSampleSizeInBytes(type);
-	AudioBufferSize stride = sampleSize * frameCount;
-	AudioBufferSize totalSize = stride * numChannels;
+	const AudioBufferSize sampleSize = fplGetAudioSampleSizeInBytes(type);
+	const AudioBufferSize stride = sampleSize * frameCount;
+	const AudioBufferSize totalSize = stride * numChannels;
 	result.base = fplMemoryAlignedAllocate(totalSize, 16);
 
 	for(AudioChannelIndex channelIndex = 0; channelIndex < numChannels; ++channelIndex) {
@@ -51,7 +53,7 @@ static DeinterleavedSamples AllocateDeinterleavedSamples(fplAudioFormatType type
 }
 
 static void ReleaseDeinterleavedSamples(DeinterleavedSamples *buffer) {
-	fplMemoryAlignedFree(buffer->samples);
+	fplMemoryAlignedFree(buffer->base);
 }
 
 int main(int argc, char **argv) {
@@ -115,7 +117,7 @@ int main(int argc, char **argv) {
 		} else {
 			fplAlwaysAssert(!"Unsupported format!");
 		}
-		fplAlwaysAssert(IsAudioDeinterleavedSamplesEqual(frameCount, inChannels, inSampleSize, inDeinterleaveSamplesMA.samples, inDeinterleaveSamples.samples));
+		fplAlwaysAssert(IsAudioDeinterleavedSamplesEqual(frameCount, inChannels, inSampleSize, (const void **)inDeinterleaveSamplesMA.samples, (const void **)inDeinterleaveSamples.samples));
 #endif
 
 		// Convert to output format
@@ -134,20 +136,20 @@ int main(int argc, char **argv) {
 
 #if defined(COMPARE_WITH_MINIAUDIO)
 		if(outFormat == fplAudioFormatType_S24) {
-			fplAlwaysAssert(IsAudioDeinterleavedSamplesEqual(frameCount, inChannels, outSampleSize, outDeinterleaveSamplesMA.samples, outDeinterleaveSamples.samples));
+			fplAlwaysAssert(IsAudioDeinterleavedSamplesEqual(frameCount, inChannels, outSampleSize, (const void **)outDeinterleaveSamplesMA.samples, (const void **)outDeinterleaveSamples.samples));
 		} else {
 			fplAlwaysAssert(!"Unsupported format!");
 		}
 #endif
 
 		// Interleave converted samples (LLLLRRRR -> LRLRLRLR)
-		res = AudioSamplesInterleave(&conversionFuncs, frameCount, outChannels, outFormat, outDeinterleaveSamples.samples, outSamples.samples);
+		res = AudioSamplesInterleave(&conversionFuncs, frameCount, outChannels, outFormat, (const void **)outDeinterleaveSamples.samples, outSamples.samples);
 		fplAlwaysAssert(res);
 
 #if defined(COMPARE_WITH_MINIAUDIO)
 		if(outFormat == fplAudioFormatType_S24) {
-			ma_pcm_interleave_s24(outInterleaveSamplesMA.samples, outDeinterleaveSamplesMA.samples, frameCount, inChannels);
-			fplAlwaysAssert(IsAudioInterleavedSamplesEqual(frameCount, inChannels, outSampleSize, outInterleaveSamplesMA.samples, outSamples.samples));
+			ma_pcm_interleave_s24(outInterleaveSamplesMA.samples, (const void **)outDeinterleaveSamplesMA.samples, frameCount, inChannels);
+			fplAlwaysAssert(IsAudioInterleavedSamplesEqual(frameCount, inChannels, outSampleSize, (const void *)outInterleaveSamplesMA.samples, (const void *)outSamples.samples));
 		} else {
 			fplAlwaysAssert(!"Unsupported format!");
 		}
@@ -158,6 +160,7 @@ int main(int argc, char **argv) {
 		ReleaseDeinterleavedSamples(&outDeinterleaveSamplesMA);
 		ReleaseInterleavedSamples(&outInterleaveSamplesMA);
 #endif
+
 		ReleaseDeinterleavedSamples(&outDeinterleaveSamples);
 		ReleaseDeinterleavedSamples(&inDeinterleaveSamples);
 
