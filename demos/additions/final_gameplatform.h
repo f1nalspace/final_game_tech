@@ -543,12 +543,13 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 	settings.video.isVSync = !config->disableVerticalSync;
 	if (config->audioSampleRate > 0) {
 		settings.audio.targetFormat.sampleRate = config->audioSampleRate;
-		settings.audio.targetFormat.bufferSizeInFrames = fplGetAudioBufferSizeInFrames(settings.audio.targetFormat.sampleRate, settings.audio.targetFormat.bufferSizeInMilliseconds);
 	}
-	if (config->audioFormat != fplAudioFormatType_None)
+	if (config->audioFormat != fplAudioFormatType_None) {
 		settings.audio.targetFormat.type = config->audioFormat;
-	if (config->audioChannels > 0)
+	}
+	if (config->audioChannels > 0) {
 		settings.audio.targetFormat.channels = config->audioChannels;
+	}
 	fplCopyString(config->title, settings.window.title, fplArrayCount(settings.window.title));
 
 	fplInitFlags initFlags = fplInitFlags_All;
