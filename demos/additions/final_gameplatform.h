@@ -109,7 +109,7 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 #define FINAL_LOG_IMPLEMENTATION
 #include "final_log.h"
 
-fpl_inline void InternalGamePlatformResetButtonState(ButtonState *button) {
+fpl_internal_inline void InternalGamePlatformResetButtonState(ButtonState *button) {
     if(button->endedDown) {
         button->endedDown = false;
         button->halfTransitionCount = 1;
@@ -118,28 +118,28 @@ fpl_inline void InternalGamePlatformResetButtonState(ButtonState *button) {
     }
 }
 
-fpl_inline void InternalGamePlatformResetController(Controller *controller) {
+fpl_internal_inline void InternalGamePlatformResetController(Controller *controller) {
 	const uint32_t count = fplArrayCount(controller->buttons);
 	for (uint32_t buttonIndex = 0; buttonIndex < count; ++buttonIndex) {
 		InternalGamePlatformResetButtonState(&controller->buttons[buttonIndex]);
 	}
 }
 
-fpl_inline void InternalGamePlatformResetKeyboard(Keyboard *keyboard) {
+fpl_internal_inline void InternalGamePlatformResetKeyboard(Keyboard *keyboard) {
 	const uint32_t count = fplArrayCount(keyboard->keys);
 	for (uint32_t keyIndex = 0; keyIndex < count; ++keyIndex) {
 		InternalGamePlatformResetButtonState(&keyboard->keys[keyIndex]);
 	}
 }
 
-fpl_inline void InternalGamePlatformResetMouse(Mouse *mouse) {
+fpl_internal_inline void InternalGamePlatformResetMouse(Mouse *mouse) {
 	const uint32_t count = fplArrayCount(mouse->buttons);
 	for (uint32_t buttonIndex = 0; buttonIndex < count; ++buttonIndex) {
 		InternalGamePlatformResetButtonState(&mouse->buttons[buttonIndex]);
 	}
 }
 
-fpl_inline void InternalGamePlatformResetInput(Input *input) {
+fpl_internal_inline void InternalGamePlatformResetInput(Input *input) {
 	const uint32_t controllerCount = fplArrayCount(input->controllers);
 	for (uint32_t controllerIndex = 0; controllerIndex < controllerCount; ++controllerIndex) {
 		InternalGamePlatformResetController(&input->controllers[controllerIndex]);
@@ -148,7 +148,7 @@ fpl_inline void InternalGamePlatformResetInput(Input *input) {
 	InternalGamePlatformResetMouse(&input->mouse);
 }
 
-fpl_inline bool InternalGamePlatformAddKeyboardControllerButtonMapping(KeyboardButtonStates *states, KeyboardButtonMappings *mappings, const fplKey key, const ControllerButtonType buttonType) {
+fpl_internal_inline bool InternalGamePlatformAddKeyboardControllerButtonMapping(KeyboardButtonStates *states, KeyboardButtonMappings *mappings, const fplKey key, const ControllerButtonType buttonType) {
 	if (mappings == fpl_null || mappings->count >= fplArrayCount(mappings->values) || buttonType < ControllerButtonType_First || buttonType > ControllerButtonType_Last) {
 		return false;
 	}
@@ -158,18 +158,18 @@ fpl_inline bool InternalGamePlatformAddKeyboardControllerButtonMapping(KeyboardB
 	return true;
 }
 
-fpl_inline void InternalGamePlatformUpdateKeyboardButtonState(ButtonState *newState, const fpl_b32 isDown) {
+fpl_internal_inline void InternalGamePlatformUpdateKeyboardButtonState(ButtonState *newState, const fpl_b32 isDown) {
 	newState->endedDown = isDown;
 	++newState->halfTransitionCount;
 }
 
-fpl_inline bool InternalGamePlatformUpdateDigitalButtonState(const ButtonState *oldState, ButtonState *newState, const fpl_b32 isDown) {
+fpl_internal_inline bool InternalGamePlatformUpdateDigitalButtonState(const ButtonState *oldState, ButtonState *newState, const fpl_b32 isDown) {
 	newState->endedDown = isDown;
 	newState->halfTransitionCount = ((newState->endedDown == oldState->endedDown) ? 0 : 1);
 	return(newState->endedDown == 1);
 }
 
-fpl_inline void InternalGamePlatformPreserveButtonState(ButtonState *newState, const ButtonState *oldState) {
+fpl_internal_inline void InternalGamePlatformPreserveButtonState(ButtonState *newState, const ButtonState *oldState) {
 	newState->halfTransitionCount = 0;
 	newState->endedDown = oldState->endedDown;
 }

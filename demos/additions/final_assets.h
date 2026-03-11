@@ -43,7 +43,7 @@ typedef enum AssetType {
 	AssetType_Font,
 } AssetType;
 
-fpl_inline bool TextureDataIsValid(const TextureData *textureData) {
+fpl_extern_inline bool TextureDataIsValid(const TextureData *textureData) {
 	if (textureData == fpl_null || textureData->data == fpl_null || textureData->width == 0 || textureData->height == 0 || textureData->components == 0) {
 		return false;
 	}

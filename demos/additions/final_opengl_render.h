@@ -12,11 +12,11 @@ Temporary: Remove it when render commands are fully implemented
 
 #include <stdint.h>
 
-fpl_inline TextureHandle GetTextureHandleFromID(const GLuint texId) {
+fpl_extern_inline TextureHandle GetTextureHandleFromID(const GLuint texId) {
 	return (TextureHandle)(uintptr_t)(texId);
 }
 
-fpl_inline GLuint GetTextureIDFromHandle(const TextureHandle handle) {
+fpl_extern_inline GLuint GetTextureIDFromHandle(const TextureHandle handle) {
 	return (GLuint)(uintptr_t)(handle);
 }
 
