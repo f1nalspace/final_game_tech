@@ -183,11 +183,13 @@ SOFTWARE.
 	- New: [POSIX] Implemented function fplFileAppendBinary() for POSIX Unix API
 	- New: [Win32] Implemented function fplPathNormalize() for Win32 API
 	- New: [POSIX] Implemented function fplPathNormalize() for POSIX Unix API
+	- New[#183]: Added macro fpl_extern_inline
 	- Improved[#176]: Made internal event queue thread-safe using a lock-free push/pop linear buffer
 	- Improved: Better documentation of the preprocessor setup blocks
 	- Fixed: Fixed duplicate platform includes
 	- Fixed: fpLGetAlignmentOffset() was not guarding the alignment argument in all cases
 	- Fixed: fplS32ToString() was not handling negative values correctly
+	- Fixed[#183]: fpl_internal_inline was not compiling on GCC/Clang
 	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
 	- Changed: Ensure that std types has the correct sizes always using equals
@@ -2199,8 +2201,22 @@ SOFTWARE.
 #define fpl_internal static
 //! Inline function
 #define fpl_inline inline
-//! Internal inlined function
+
+//! Private/Internal inline function
 #define fpl_internal_inline inline
+#if defined(FPL_IS_CPP)
+#	define fpl_internal_inline inline
+#else
+#	define fpl_internal_inline static inline
+#endif
+
+//! Extern inline function
+#if defined(FPL_IS_CPP)
+#	define fpl_extern_inline inline
+#else
+#	define fpl_extern_inline extern inline
+#endif
+
 //! External call
 #if defined(FPL_IS_CPP)
 #	define fpl_extern
