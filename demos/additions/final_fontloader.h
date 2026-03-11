@@ -409,7 +409,8 @@ fpl_extern bool FontLoadFromMemory(MemoryAllocator *allocator, const void *data,
 	outFont->atlasWidth = atlasWidth;
 	outFont->atlasHeight = atlasHeight;
 
-	InternalFontLoadFromMemoryShutdown(allocator, packedChars, atlasAlphaBitmap, glyphs, kerningTable, defaultAdvance);
+	MemoryAllocatorFree(allocator, packedChars);
+
 	return true;
 }
 
