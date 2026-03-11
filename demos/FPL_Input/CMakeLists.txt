@@ -13,7 +13,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(MY_EXTERNAL_LIBS "")
 
-set(MY_INCLUDE_DIRS ../dependencies/)
+set(MY_INCLUDE_DIRS ../dependencies/ ../additions/)
 
 set(MY_HEADER_FILES ../../final_platform_layer.h)
 
