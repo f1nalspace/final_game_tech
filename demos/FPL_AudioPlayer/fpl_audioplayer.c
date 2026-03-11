@@ -1320,8 +1320,9 @@ int main(int argc, char **args) {
             const fplAudioDeviceInfo *defaultDeviceInfo = fpl_null;
             for(uint32_t deviceIndex = 0; deviceIndex < loadedDeviceCount; ++deviceIndex) {
                 fplAudioDeviceInfo *audioDeviceInfo = audioDeviceInfos + deviceIndex;
-                if (audioDeviceInfo->isDefault) {
+                if (audioDeviceInfo->isDefault && defaultDeviceInfo == fpl_null) {
                     FPL_LOG_INFO("Audio", "Found default audio device[%lu] %s\n", deviceIndex, audioDeviceInfo->name);
+                	defaultDeviceInfo = audioDeviceInfo;
                 }
             }
             if (defaultDeviceInfo != fpl_null)
