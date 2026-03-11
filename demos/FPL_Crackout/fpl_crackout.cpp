@@ -1564,7 +1564,6 @@ int main(int argc, char **argv) {
 	GameConfiguration config = fplZeroInit;
 	config.title = "FPL Demo | Crackout";
 	config.hideMouseCursor = true;
-	config.audioSampleRate = 44100;
 	int result = GameMain(&config, argc, argv);
 	return(result);
 }
