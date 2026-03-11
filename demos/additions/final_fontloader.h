@@ -201,13 +201,29 @@ fpl_extern float FontGetCharacterAdvance(const LoadedFont *font, const uint32_t 
 	return(result);
 }
 
+fpl_internal void InternalFontLoadFromMemoryShutdown(MemoryAllocator *allocator, void *packedChars, uint8_t *atlasAlphaBitmap, FontGlyph *glyphs, float *kerningTable, float *defaultAdvance) {
+	if (packedChars != fpl_null) {
+		MemoryAllocatorFree(allocator, packedChars);
+	}
+	if (atlasAlphaBitmap != fpl_null) {
+		MemoryAllocatorFree(allocator, atlasAlphaBitmap);
+	}
+	if (glyphs != fpl_null) {
+		MemoryAllocatorFree(allocator, glyphs);
+	}
+	if (kerningTable != fpl_null) {
+		MemoryAllocatorFree(allocator, kerningTable);
+	}
+	if (defaultAdvance != fpl_null) {
+		MemoryAllocatorFree(allocator, defaultAdvance);
+	}
+}
+
 fpl_extern bool FontLoadFromMemory(MemoryAllocator *allocator, const void *data, const size_t dataSize, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t atlasWidth, const uint32_t atlasHeight, const bool loadKerning, LoadedFont *outFont) {
 	if(data == fpl_null || dataSize == 0 || fontSize <= 0.0f || firstChar > lastChar || atlasWidth == 0 || atlasHeight == 0 || outFont == fpl_null) {
 		// TODO(final): Logging (Invalid arguments)
 		return false;
 	}
-
-	bool result = false;
 
 	float *defaultAdvance = fpl_null;
 	float *kerningTable = fpl_null;
@@ -225,7 +241,8 @@ fpl_extern bool FontLoadFromMemory(MemoryAllocator *allocator, const void *data,
 
 	if(!stbtt_InitFont(&fontInfo, (const unsigned char *)data, fontOffset)) {
 		// TODO(final): Logging (Failed to load with STB_TrueType)
-		goto failed;
+		InternalFontLoadFromMemoryShutdown(allocator, packedChars, atlasAlphaBitmap, glyphs, kerningTable, defaultAdvance);
+		return false;
 	}
 
 	const uint32_t charCount = (lastChar - firstChar) + 1;
@@ -236,34 +253,39 @@ fpl_extern bool FontLoadFromMemory(MemoryAllocator *allocator, const void *data,
 	defaultAdvance = (float *)MemoryAllocatorAlloc(allocator, defaultAdvanceSize);
 	if (defaultAdvance == fpl_null) {
 		// TODO(final): Logging (Insufficient memory)
-		goto failed;
+		InternalFontLoadFromMemoryShutdown(allocator, packedChars, atlasAlphaBitmap, glyphs, kerningTable, defaultAdvance);
+		return false;
 	}
 
 	if (loadKerning) {
 		kerningTable = (float *)MemoryAllocatorAlloc(allocator, kerningTableSize);
 		if (kerningTable == fpl_null) {
 			// TODO(final): Logging (Insufficient memory)
-			goto failed;
+			InternalFontLoadFromMemoryShutdown(allocator, packedChars, atlasAlphaBitmap, glyphs, kerningTable, defaultAdvance);
+			return false;
 		}
 	}
 
 	glyphs = (FontGlyph *)MemoryAllocatorAlloc(allocator, glyphsSize);
 	if (glyphs == fpl_null) {
 		// TODO(final): Logging (Insufficient memory)
-		goto failed;
+		InternalFontLoadFromMemoryShutdown(allocator, packedChars, atlasAlphaBitmap, glyphs, kerningTable, defaultAdvance);
+		return false;
 	}
 
 	atlasAlphaBitmap = (uint8_t *)MemoryAllocatorAlloc(allocator, atlasWidth * atlasHeight);
 	if (atlasAlphaBitmap == fpl_null) {
 		// TODO(final): Logging (Insufficient memory)
-		goto failed;
+		InternalFontLoadFromMemoryShutdown(allocator, packedChars, atlasAlphaBitmap, glyphs, kerningTable, defaultAdvance);
+		return false;
 	}
 
 #if FINAL_FONTLOADER_BETTERQUALITY
 	packedChars = (stbtt_packedchar *)MemoryAllocatorAlloc(charCount * sizeof(stbtt_packedchar));
 	if (packedChars == fpl_null) {
 		// TODO(final): Logging (Insufficient memory)
-		goto failed;
+		InternalFontLoadFromMemoryShutdown(allocator, packedChars, atlasAlphaBitmap, glyphs, kerningTable, defaultAdvance);
+		return false;
 	}
 
 	stbtt_pack_range characterRange = fplZeroInit;
@@ -284,7 +306,8 @@ fpl_extern bool FontLoadFromMemory(MemoryAllocator *allocator, const void *data,
 	packedChars = (stbtt_bakedchar *)MemoryAllocatorAlloc(allocator, charCount * sizeof(stbtt_bakedchar));
 	if (packedChars == fpl_null) {
 		// TODO(final): Logging (Insufficient memory)
-		goto failed;
+		InternalFontLoadFromMemoryShutdown(allocator, packedChars, atlasAlphaBitmap, glyphs, kerningTable, defaultAdvance);
+		return false;
 	}
 	
 	// TODO(final): Handle return value
@@ -386,32 +409,17 @@ fpl_extern bool FontLoadFromMemory(MemoryAllocator *allocator, const void *data,
 	outFont->atlasWidth = atlasWidth;
 	outFont->atlasHeight = atlasHeight;
 
-	result = true;
-	goto done;
+	InternalFontLoadFromMemoryShutdown(allocator, packedChars, atlasAlphaBitmap, glyphs, kerningTable, defaultAdvance);
+	return true;
+}
 
-failed:
-	if (packedChars != fpl_null) {
-		MemoryAllocatorFree(allocator, packedChars);
+fpl_internal void InternalFontLoadFromFileShutdown(MemoryAllocator *allocator, fplFileHandle *file, uint8_t *ttfBuffer) {
+	if (ttfBuffer != fpl_null) {
+		MemoryAllocatorFree(allocator, ttfBuffer);
 	}
-	if (packedChars != fpl_null) {
-		MemoryAllocatorFree(allocator, packedChars);
+	if (file->isValid) {
+		fplFileClose(file);
 	}
-	if (atlasAlphaBitmap != fpl_null) {
-		MemoryAllocatorFree(allocator, atlasAlphaBitmap);
-	}
-	if (glyphs != fpl_null) {
-		MemoryAllocatorFree(allocator, glyphs);
-	}
-	if (kerningTable != fpl_null) {
-		MemoryAllocatorFree(allocator, kerningTable);
-	}
-	if (defaultAdvance != fpl_null) {
-		MemoryAllocatorFree(allocator, defaultAdvance);
-	}
-	result = false;
-
-done:
-	return result;
 }
 
 fpl_extern bool FontLoadFromFile(MemoryAllocator *allocator, const char *filePath, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t atlasWidth, const uint32_t atlasHeight, const bool loadKerning, LoadedFont *outFont) {
@@ -419,15 +427,14 @@ fpl_extern bool FontLoadFromFile(MemoryAllocator *allocator, const char *filePat
 		return false;
 	}
 
-	bool result = false;
-
 	uint8_t *ttfBuffer = fpl_null;
 
 	fplFileHandle file = fplZeroInit;
 
 	if (!fplFileOpenBinary(filePath, &file)) {
 		// TODO(final): Logging (File not found)
-		goto failed;
+		InternalFontLoadFromFileShutdown(allocator, &file, ttfBuffer);
+		return false;
 	}
 
 	size_t ttfBufferSize = fplFileGetSizeFromHandle(&file);
@@ -435,36 +442,27 @@ fpl_extern bool FontLoadFromFile(MemoryAllocator *allocator, const char *filePat
 	ttfBuffer = (uint8_t *)MemoryAllocatorAlloc(allocator, ttfBufferSize);
 	if (ttfBuffer == fpl_null) {
 		// TODO(final): Logging (Insufficient memory)
-		goto failed;
+		InternalFontLoadFromFileShutdown(allocator, &file, ttfBuffer);
+		return false;
 	}
 
 	size_t read = fplFileReadBlock(&file, ttfBufferSize, ttfBuffer, ttfBufferSize);
 	if (read != ttfBufferSize) {
 		// TODO(final): Logging (File read error)
-		goto failed;
+		InternalFontLoadFromFileShutdown(allocator, &file, ttfBuffer);
+		return false;
 	}
 
 	fplFileClose(&file);
 
 	if (!FontLoadFromMemory(allocator, ttfBuffer, ttfBufferSize, fontIndex, fontSize, firstChar, lastChar, atlasWidth, atlasHeight, loadKerning, outFont)) {
 		// TODO(final): Logging (Failed loading font from memory)
-		goto failed;
+		InternalFontLoadFromFileShutdown(allocator, &file, ttfBuffer);
+		return false;
 	}
 
-	result = true;
-	goto done;
-
-failed:
-	result = false;
-
-done:
-	if (ttfBuffer != fpl_null) {
-		MemoryAllocatorFree(allocator, ttfBuffer);
-	}
-	if (file.isValid) {
-		fplFileClose(&file);
-	}
-	return result;
+	InternalFontLoadFromFileShutdown(allocator, &file, ttfBuffer);
+	return true;
 }
 
 fpl_extern void FontFree(MemoryAllocator *allocator, LoadedFont *font) {
