@@ -1538,6 +1538,7 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	const float h = WorldRadius.y;
 
 	glViewport(state->viewport.x, state->viewport.y, state->viewport.w, state->viewport.h);
+	glScissor(state->viewport.x, state->viewport.y, state->viewport.w, state->viewport.h);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	glMatrixMode(GL_PROJECTION);
