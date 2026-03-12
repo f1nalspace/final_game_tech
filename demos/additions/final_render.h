@@ -111,6 +111,7 @@ typedef enum CommandType {
 	CommandType_None = 0,
 	CommandType_Clear,
 	CommandType_Viewport,
+	CommandType_Scissor,
 	CommandType_Matrix,
 	CommandType_Rectangle,
 	CommandType_Vertices,
@@ -152,6 +153,13 @@ typedef struct ViewportCommand {
 	int w;
 	int h;
 } ViewportCommand;
+
+typedef struct ScissorCommand {
+	int x;
+	int y;
+	int w;
+	int h;
+} ScissorCommand;
 
 typedef struct RectangleCommand {
 	Vec4f color;
@@ -222,6 +230,7 @@ fpl_extern void RenderInit(RenderState *state, fmemMemoryBlock block);
 fpl_extern void RenderReset(RenderState *state);
 fpl_extern void RenderPushClear(RenderState *state, const Vec4f color, const ClearFlags flags);
 fpl_extern void RenderPushViewport(RenderState *state, const int x, const int y, const int w, const int h);
+fpl_extern void RenderPushScissor(RenderState *state, const int x, const int y, const int w, const int h);
 fpl_extern void RenderPushMatrix(RenderState *state, const Mat4f *mat, const MatrixMode mode);
 fpl_extern void RenderSetMatrix(RenderState *state, const Mat4f *mat);
 fpl_extern void RenderPopMatrix(RenderState *state);
@@ -337,6 +346,21 @@ fpl_extern void RenderPushViewport(RenderState *state, const int x, const int y,
 	}
 	CommandHeader *header = _RenderPushHeader(state, CommandType_Viewport);
 	ViewportCommand *cmd = _RenderPushTypeAs(state, header, ViewportCommand, true);
+	if (cmd == fpl_null) {
+		return;
+	}
+	cmd->x = x;
+	cmd->y = y;
+	cmd->w = w;
+	cmd->h = h;
+}
+
+fpl_extern void RenderPushScissor(RenderState *state, const int x, const int y, const int w, const int h) {
+	if (state == fpl_null) {
+		return;
+	}
+	CommandHeader *header = _RenderPushHeader(state, CommandType_Scissor);
+	ScissorCommand *cmd = _RenderPushTypeAs(state, header, ScissorCommand, true);
 	if (cmd == fpl_null) {
 		return;
 	}
