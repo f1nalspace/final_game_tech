@@ -12,6 +12,11 @@ License:
 	Copyright 2017-2026 Torsten Spaete
 
 Changelog
+	## 2025-12-31
+	- Added struct Vec2u
+	- Added function V2iProject() that reverses V2fUnproject()
+	- Changed V4fDivideScalar to use a ratio multiplier instead of using division directly
+
 	## 2025-11-29
 	- Added macros for creating types as a constant
 
@@ -148,6 +153,51 @@ fpl_force_inline Vec2i V2i(const int x, const int y) {
 }
 #endif
 
+typedef union Vec2u {
+	struct {
+		uint32_t x, y;
+	};
+	struct {
+		uint32_t w, h;
+	};
+	int m[2];
+} Vec2u;
+
+#define V2U(x, y) {x, y}
+#define V2UArg(v) (Vec2u)v
+
+fpl_force_inline Vec2u V2uZero() {
+	Vec2u result = fplZeroInit;
+	return(result);
+}
+
+fpl_force_inline Vec2u V2uCopy(const Vec2u v) {
+	Vec2u result = fplStructInit(Vec2u, v.x, v.y);
+	return(result);
+}
+
+fpl_force_inline Vec2u V2uInit(const uint32_t x, const uint32_t y) {
+	Vec2u result = fplStructInit(Vec2u, x, y);
+	return(result);
+}
+
+fpl_force_inline Vec2u V2uInitScalar(const uint32_t value) {
+	Vec2u result = fplStructInit(Vec2u, value, value);
+	return(result);
+}
+
+#if defined(__cplusplus)
+fpl_force_inline Vec2u V2u() {
+	return V2uZero();
+}
+fpl_force_inline Vec2u V2u(const uint32_t value) {
+	return V2uInitScalar(value);
+}
+fpl_force_inline Vec2u V2u(const uint32_t x, const uint32_t y) {
+	return V2uInit(x, y);
+}
+#endif
+
 typedef union Vec2f {
 	struct {
 		float x, y;
@@ -197,6 +247,11 @@ fpl_force_inline Vec2f V2f(const float x, const float y) {
 	return V2fInit(x, y);
 }
 #endif
+
+fpl_force_inline Vec2f V2fInitV2u(const Vec2u v) {
+	Vec2f result = fplStructInit(Vec2f, (float)v.x, (float)v.y);
+	return(result);
+}
 
 //
 // Rect2f type
@@ -1686,7 +1741,8 @@ fpl_force_inline Pixel LinearToPixelSRGB(const Vec4f linear) {
 
 
 fpl_force_inline Vec4f V4fDivideScalar(const Vec4f vec, const float divisor) {
-	Vec4f result = V4fInit(vec.x / divisor, vec.y / divisor, vec.z / divisor, vec.w / divisor);
+	float ratio = 1.0f / divisor;
+	Vec4f result = V4fInit(vec.x * ratio, vec.y * ratio, vec.z * ratio, vec.w * ratio);
 	return result;
 }
 
@@ -1712,6 +1768,26 @@ fpl_force_inline Vec2f V2fUnproject(const Vec2i screenPos, const Mat4f mvp, cons
 
 	Vec2f result = V2fInit(obj.x, obj.y);
 	return result;
+}
+
+fpl_force_inline Vec2i V2iProject(const Vec2f worldPos, const Mat4f mvp, const Viewport4i viewport) {
+	const Vec2f one = V2fInit(1.0f, 1.0f);
+
+	// Convert world position to homogeneous clip space
+	Vec4f world4 = V4fInit(worldPos.x, worldPos.y, 0.0f, 1.0f);
+	Vec4f clip = V4fMultM4f(mvp, world4);
+
+	// Perspective divide -> NDC (-1 to +1)
+	Vec4f ndc = V4fDivideScalar(clip, clip.w);
+
+	// Convert NDC -> linear viewport space (0 to 1)
+	Vec2f linear = V2fAddMultScalar(ndc.xy, one, 0.5f);
+
+	// Convert linear -> screen coordinates inside viewport
+	int screenX = (int)(viewport.x + linear.x * viewport.w);
+	int screenY = (int)(viewport.y + linear.y * viewport.h);
+
+	return V2iInit(screenX, screenY);
 }
 
 fpl_force_inline Viewport4i VP4iComputeByAspect(const Vec2i screenSize, const float targetAspect) {
