@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TowerDefinitions>
+  <TowerData id="First Tower" costs="25">
+    <detectionRadius>2.25</detectionRadius>
+    <unlockRadius>2.25</unlockRadius>
+    <gunCooldown>0.35</gunCooldown>
+    <gunRotationSpeed>4.0</gunRotationSpeed>
+    <enemyRangeTestType>InSight</enemyRangeTestType>
+    <enemyLockOnMode>LockedOn</enemyLockOnMode>
+    <parts>
+      <part type="FillQuad" offset="0,0" ext="0.2,0.2" orientation="0"  rotFlags="None" color="0.1,0.3,0.7,1" />
+    </parts>
+    <bullet>
+      <renderRadius>0.05</renderRadius>
+      <collisionRadius>0.05</collisionRadius>
+      <speed>2.5</speed>
+      <damage>15</damage>
+    </bullet>
+    <tubes>
+      <tube length="0.35" offset="0,0">
+        <parts>
+          <part type="Line" offset="0.175,0" ext="0.175,0" orientation="0" rotFlags="ApplyToOffset | ApplyToTransform" color="1.0, 0.0, 0.0, 1.0" lineWidth="0.15" />
+        </parts>
+      </tube>
+    </tubes>
+    <upgrades>
+      <upgrade speedmult="1.1" damagemult="1.25" scalemult="1.1" cost="30" />
+    </upgrades>
+  </TowerData>
+</TowerDefinitions>

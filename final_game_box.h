@@ -1890,7 +1890,7 @@ typedef struct {
 		struct {
 			bool sio_clk : 1;	// Bit 0: SCK Terminal I/O Selection, 0 = Use external clock, 1 = Use internal clock
 			bool sio_fast : 1;	// Bit 1: CGB, Clock Switching Flag, 0 = 8 KHz (16 KHz), 1 = 256 Khz (512 KHz)
-			bool empty : 5;		// Bit 2-6: Unused
+			uint8_t empty : 5;		// Bit 2-6: Unused
 			bool sio_en : 1;	// Bit 7: Serial transfer start flag, 0 = No Serial Transfer, 1 = Start Serial Transfer
 		};
 		uint8_t sc;				// FF01: Serial Transfer Control Register
@@ -2594,7 +2594,7 @@ typedef struct {
 	union {
 		// Anonymous struct storing all 8 bits
 		struct {
-			bool cgbPaletteNumber : 3;		// Bit 0-2: CGB Color Palette
+			uint8_t cgbPaletteNumber : 3;		// Bit 0-2: CGB Color Palette
 			bool cgbTileVRAMBank : 1;		// Bit 3: CGB VRAM Bank
 			bool paletteNumber : 1;			// Bit 4: DMG/MGB Palette (0 = OBJ0, 1 = OBH1)
 			bool horizontalFlip : 1;		// Bit 5: Horizontal Flip (0 = Normal, 1 = Horizontally flipped)

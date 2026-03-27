@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<WaveDefinitions>
+  <WaveData id="Wave-1" level="level1">
+    <startupCooldown>5.0</startupCooldown>
+    <completionBounty>15</completionBounty>
+    <spawners>
+      <SpawnData id="spawn1" enemy="Enemy-1">
+        <startMode>Fixed</startMode>
+        <initialCooldown>1.0</initialCooldown>
+        <cooldown>1.5</cooldown>
+        <enemyCount>10</enemyCount>
+      </SpawnData>
+    </spawners>
+  </WaveData>
+  <WaveData id="Wave-2" level="level1">
+    <startupCooldown>5.0</startupCooldown>
+    <completionBounty>30</completionBounty>
+    <spawners>
+      <SpawnData id="spawn1" enemy="Enemy-2">
+        <startMode>Fixed</startMode>
+        <initialCooldown>1.0</initialCooldown>
+        <cooldown>1.4</cooldown>
+        <enemyCount>15</enemyCount>
+      </SpawnData>
+    </spawners>
+  </WaveData>
+</WaveDefinitions>
