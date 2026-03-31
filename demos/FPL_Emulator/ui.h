@@ -86,12 +86,12 @@ typedef struct {
 	uint32_t endedDown;
 } UIButtonState;
 
-inline bool UIWasPressed(const UIButtonState *state) {
+fpl_extern_inline bool UIWasPressed(const UIButtonState *state) {
 	bool result = ((state->halfTransitionCount > 1) || ((state->halfTransitionCount == 1) && (!state->endedDown)));
 	return(result);
 }
 
-inline bool UIIsDown(const UIButtonState *state) {
+fpl_extern_inline bool UIIsDown(const UIButtonState *state) {
 	bool result = state->endedDown != 0;
 	return(result);
 }
