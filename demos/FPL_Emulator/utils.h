@@ -64,3 +64,5 @@ extern void StringListClear(StringList *list);
 extern String StringCreateFromSource(fmemMemoryBlock *memory, const char *source);
 
 extern uint32_t RoundToPowerOfTwo(const uint32_t input);
+
+extern bool StringCompareIgnoreCase(const char *a, const char *b);

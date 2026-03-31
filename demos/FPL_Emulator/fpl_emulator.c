@@ -2949,7 +2949,7 @@ static fgbGamePakLoadResultType LoadGamePakFromZipFile(const fgbCallbacks *callb
 
 		const char *itemFileExt = fplExtractFileExtension(itemFilename);
 
-		if (_stricmp(itemFileExt, ".gb") == 0) {
+		if (StringCompareIgnoreCase(itemFileExt, ".gb")) {
 			romFileIndex = fileIndex;
 			break;
 		}
@@ -3202,7 +3202,7 @@ static bool EmulatorLoadGame(Emulator *emulator, const char *filePath) {
 	}
 
 	fgbGamePakLoadResultType loadRes;
-	if (_stricmp(".zip", fileExt) == 0) {
+	if (StringCompareIgnoreCase(".zip", fileExt)) {
 		loadRes = LoadGamePakFromZipFile(&globalCallbacks, filePath, gamepak);
 	} else {
 		loadRes = fgbGamePakLoadFromFile(&globalCallbacks, filePath, gamepak);

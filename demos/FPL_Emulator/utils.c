@@ -216,3 +216,24 @@ extern uint32_t RoundToPowerOfTwo(const uint32_t input) {
 	else
 		return next;
 }
+
+extern bool StringCompareIgnoreCase(const char *a, const char *b) {
+	if (a == fpl_null || b == fpl_null) {
+		return false;
+	}
+	const size_t lenA = fplGetStringLength(a);
+	const size_t lenB = fplGetStringLength(b);
+	if (lenA != lenB) {
+		return false;
+	}
+
+	for (size_t i = 0; i < lenA; ++i) {
+		const char ca = tolower(a[i]);
+		const char cb = tolower(b[i]);
+		if (ca != cb) {
+			return false;
+		}
+	}
+
+	return true;
+}
