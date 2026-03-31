@@ -8,7 +8,7 @@
 ░▒▓█▓▒░      ░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░             ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░             ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░ 
 ░▒▓█▓▒░      ░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓████████▓▒░       ░▒▓██████▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓████████▓▒░      ░▒▓███████▓▒░ ░▒▓██████▓▒░░▒▓█▓▒░░▒▓█▓▒░ 
 
-Final Gamebox version 1.0
+Final Gamebox version 1.0.1
 
 -------------------------------------------------------------------------------
 	About
@@ -157,6 +157,10 @@ Copyright 2024-2026 Torsten Spaete
 -------------------------------------------------------------------------------
 
 ## v1.0 Initial version
+
+## v1.0.1 Bugfixes
+
+- Fixed compile errors in GCC/Clang
 
 */
 
@@ -563,6 +567,12 @@ typedef struct {
 FGB_STATIC_ASSERT(sizeof(fgbMemory) % 4 == 0);
 
 // ****************************************************************************
+// Forward declarations
+// ****************************************************************************
+typedef struct fgbSystem fgbSystem;
+typedef struct fgbMemoryBankController fgbMemoryBankController;
+
+// ****************************************************************************
 // Game Pak API
 // ****************************************************************************
 
@@ -938,7 +948,7 @@ FGB_API const char *fgbGetGamePakLoadResultLabel(const fgbGamePakLoadResultType 
 FGB_API const char *fgbGetMemoryControllerTypeName(const fgbMemoryControllerType type);
 
 // Function prototype for reading a byte from a address by the current MBC
-#define FGB_MBC_READ_FUNC(name) uint8_t name(struct fgbSystem *system, struct fgbMemoryBankController *mbc, const uint16_t address)
+#define FGB_MBC_READ_FUNC(name) uint8_t name(fgbSystem *system, fgbMemoryBankController *mbc, const uint16_t address)
 /**
   * @brief Callback for reading a byte from a address by the current MBC
   * @param system The reference to the FGB system structure
@@ -949,7 +959,7 @@ FGB_API const char *fgbGetMemoryControllerTypeName(const fgbMemoryControllerType
 typedef FGB_MBC_READ_FUNC(fgb_mbc_read_func);
 
 // Function prototype for writing a byte to a address by the current MBC
-#define FGB_MBC_WRITE_FUNC(name) void name(struct fgbSystem *system, struct fgbMemoryBankController *mbc, const uint16_t address, const uint8_t value)
+#define FGB_MBC_WRITE_FUNC(name) void name(fgbSystem *system, fgbMemoryBankController *mbc, const uint16_t address, const uint8_t value)
 /**
   * @brief Callback for writing a byte to a address by the current MBC
   * @param system The reference to the FGB system structure
@@ -3571,7 +3581,7 @@ typedef enum {
 } fgbResetState;
 
 // Represents the full emulator backend/system
-typedef struct {
+typedef struct fgbSystem {
 	// Fully loaded Game Pak
 	fgbGamePak gamePak;
 	// Current state of the Picture Processing Unit
@@ -4546,7 +4556,7 @@ static void FGB__Failure(fgbSystem *system, const fgbErrorType type, const char 
 #define FGB__CONCAT_NX(a, b) a ## b
 #define FGB__CONCAT(a, b) FGB__CONCAT_NX(a, b)
 
-#define FGB__SYSNAME_ADDON(baseName, addonName) FGB__CONCAT(FGB__CONCAT(baseName, "::"), addonName)
+#define FGB__SYSNAME_ADDON(baseName, addonName) baseName "::" addonName
 
 // ********************************************************************************************************************
 // 
@@ -5441,7 +5451,7 @@ static uint8_t *fgb__GetRAMBank(const uint16_t bankIndex, fgbExternalRAM *ram, c
 	return NULL;
 }
 
-static uint8_t fgb__MBC1_Read(struct fgbSystem *gbOpaque, struct fgbMemoryBankController *mbcOpaque, const uint16_t address) {
+static uint8_t fgb__MBC1_Read(fgbSystem *gbOpaque, struct fgbMemoryBankController *mbcOpaque, const uint16_t address) {
 	fgbSystem *system = (fgbSystem *)gbOpaque;
 	fgbMemoryBankController *mbc = (fgbMemoryBankController *)mbcOpaque;
 	fgbGamePak *gamepak = &system->gamePak;
