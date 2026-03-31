@@ -16,3 +16,5 @@
 *.mp4 binary
 *.mkv binary
 *.pdf binary
+*.zip binary
+*.gb binary
