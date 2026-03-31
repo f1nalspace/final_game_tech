@@ -1,2 +1,0 @@
-Assets are stored here.
-Folder is copied to the output directory automatically.
