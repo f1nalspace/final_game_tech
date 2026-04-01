@@ -201,6 +201,8 @@ SOFTWARE.
 
 	- Fixed: [X11] Fixed last event from event queue was never used, when there is no events from the window
 	- Fixed: [X11] Fixed window support was not disabled when X11 is not present
+	- Fixed: [X11] Fixed fplPollEvent() was not handling the events properly, resulting in not processing any events anymore
+	- Fixed: [X11] Fixed ClientMessage for Atom netWMPing was not calling XFlush
 	- Fixed[#181]: [X11] fpl__X11ParseUriPaths does not do any URI decoding, resulting in most-likely unuseable file paths
 	- Fixed[#182]: [ALSA] Fixed default audio devices are not detected in modern linux audio systems
 
