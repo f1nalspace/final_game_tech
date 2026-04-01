@@ -2205,7 +2205,6 @@ SOFTWARE.
 #define fpl_inline inline
 
 //! Private/Internal inline function
-#define fpl_internal_inline inline
 #if defined(FPL_IS_CPP)
 #	define fpl_internal_inline inline
 #else
