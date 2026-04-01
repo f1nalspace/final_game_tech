@@ -301,49 +301,71 @@ namespace ftt {
 	};
 	typedef Steps::StepEnum Step;
 
-	//! Tile infos like position, direction and its solid state
+	//! A single tile in the map.  isSolid > 0 means solid, 0 means empty,
+	//! -1 means already visited/removed by the tracer.
+	//! traceDirection indexes into TILETRACE_DIRECTIONS (0=Up,1=Right,2=Down,3=Left)
+	//! and tracks which direction the tracer is currently scanning from this tile.
 	struct Tile {
-		int32_t x, y;
-		uint32_t traceDirection;
-		int32_t isSolid;
+		int32_t x, y;            //!< Tile grid coordinates
+		uint32_t traceDirection; //!< Current scan direction index (0-3)
+		int32_t isSolid;         //!< >0 solid, 0 empty, -1 visited/removed
 	};
 
+	//! A directed boundary edge between two vertices in mainVertices.
+	//! Edges are wound clockwise around a solid tile (outer normal faces outward).
+	//! Two edges with swapped indices (v0==other.v1 && v1==other.v0) are antiparallel
+	//! and represent a shared interior wall — they cancel each other during Phase 1.
 	struct Edge {
-		int32_t index;
-		int32_t vertIndex0, vertIndex1;
-		Vec2i tilePosition;
-		bool isInvalid;
+		int32_t index;              //!< Local edge index within the tile (0-3: left, top, right, bottom)
+		int32_t vertIndex0;         //!< Start vertex index into TileTracerData::mainVertices
+		int32_t vertIndex1;         //!< End   vertex index into TileTracerData::mainVertices
+		Vec2i tilePosition;         //!< Grid position of the tile this edge originated from
+		bool isInvalid;             //!< True once this edge has been consumed by Phase 2 traversal
 	};
 
+	//! The four world-space corner positions for a single tile (see vertex layout in ALGORYTHM).
+	//! verts[0]=bottom-left, verts[1]=top-left, verts[2]=top-right, verts[3]=bottom-right.
 	struct TileVertices {
 		Vec2i verts[4];
 	};
+
+	//! Indices into TileTracerData::mainVertices for each of a tile's four corners.
+	//! Parallel to TileVertices: indices[i] is the mainVertices index for verts[i].
 	struct TileIndices {
 		int32_t indices[4];
 	};
+
+	//! Up to four directed edges produced for a single tile, with the count of valid entries.
+	//! After RemoveOverlapEdges the count may be less than 4 (interior edges are discarded).
 	struct TileEdges {
-		Edge edges[4];
-		uint32_t count;
+		Edge edges[4];   //!< Edge array (only entries [0..count-1] are valid)
+		uint32_t count;  //!< Number of valid edges in the array
 	};
 
+	//! A single output contour — an ordered list of world-space vertices.
+	//! Closed contours have vertices.front() == vertices.back().
+	//! Collinear intermediate vertices are removed by the optimizer.
 	struct ChainSegment {
 		std::vector<Vec2i> vertices;
 	};
 
+	//! Full mutable state of the tile tracer.  Holds the tile grid, the growing
+	//! vertex/edge mesh built during Phase 1, the open-list stack used for
+	//! expansion, and the chain segments produced during Phase 2.
 	struct TileTracerData {
-		Vec2u tileCount;
-		std::vector<Tile> tiles;
-		Step curStep;
-		Tile *startTile;
-		Tile *curTile;
-		Tile *nextTile;
-		Edge *startEdge;
-		Edge *lastEdge;
-		ChainSegment *curChainSegment;
-		std::vector<Tile *> openList;
-		std::vector<Vec2i> mainVertices;
-		std::vector<Edge> mainEdges;
-		std::vector<ChainSegment> chainSegments;
+		Vec2u tileCount;                   //!< Width and height of the tile grid
+		std::vector<Tile> tiles;           //!< Flat row-major tile array (modified in-place; visited tiles become isSolid=-1)
+		Step curStep;                      //!< Current state-machine step
+		Tile *startTile;                   //!< Pointer to the start tile of the current expansion region
+		Tile *curTile;                     //!< Pointer to the tile currently being expanded from
+		Tile *nextTile;                    //!< Pointer to the candidate neighbour tile (transient, used in FindNextTile)
+		Edge *startEdge;                   //!< Pointer to the first edge of the current chain segment (Phase 2)
+		Edge *lastEdge;                    //!< Pointer to the most recently consumed edge (Phase 2)
+		ChainSegment *curChainSegment;     //!< Pointer into chainSegments to the segment being built (Phase 2)
+		std::vector<Tile *> openList;      //!< LIFO stack of solid tiles waiting to be expanded (Phase 1)
+		std::vector<Vec2i> mainVertices;   //!< Deduplicated world-space vertex pool shared across all tiles
+		std::vector<Edge> mainEdges;       //!< Boundary edges surviving antiparallel cancellation (Phase 1 output / Phase 2 input)
+		std::vector<ChainSegment> chainSegments; //!< Final output: one segment per contiguous solid-region boundary
 	};
 
 	//! Tile tracer C++ API
