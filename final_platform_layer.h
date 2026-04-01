@@ -20414,20 +20414,25 @@ fpl_platform_api bool fplPollEvent(fplEvent *ev) {
 		return(true);
 	}
 
-	// Create new event(s) from the X11 event queue
-	if (!fpl__X11ProcessNextEvent(subplatform, appState)) {
-		// Queue is empty, we have no events left
-		if (!fpl__HasInternalEvents()) {
-			return(false);
+	// Drain X11 events until one produces a FPL event or the X11 queue is empty.
+	// A single X11 event can produce zero FPL internal events (e.g. FocusIn/FocusOut
+	// with NotifyGrab/NotifyUngrab mode, ConfigureNotify with no size/position change,
+	// or unhandled X11 event types). Without this loop, fplPollEvent would return false
+	// prematurely, leaving the remaining X11 events (keyboard, mouse) unprocessed for
+	// that frame and causing input to appear frozen.
+	while (fpl__X11ProcessNextEvent(subplatform, appState)) {
+		if (fpl__PollInternalEvent(ev)) {
+			return(true);
 		}
+		// This X11 event generated no FPL event - try the next one
 	}
 
-	// Poll the first event from the internal queue
+	// X11 queue exhausted; final check on the internal queue
 	if (fpl__PollInternalEvent(ev)) {
 		return(true);
 	}
 
-	// No events left
+	// Both queues are truly empty
 	return(false);
 }
 
