@@ -20080,6 +20080,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 						XEvent reply = *ev;
 						reply.xclient.window = x11WinState->root;
 						x11Api->XSendEvent(x11WinState->display, x11WinState->root, False, SubstructureNotifyMask | SubstructureRedirectMask, &reply);
+						x11Api->XFlush(x11WinState->display);
 					}
 				}
 			} else if (ev->xclient.message_type == x11WinState->xdndEnter) {
