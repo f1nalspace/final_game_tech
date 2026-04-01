@@ -2875,7 +2875,7 @@ static void ProcessEvents(Application *app, const InputState *oldInput, InputSta
 					case fplWindowEventType_DroppedFiles:
 					{
 						if (ev.window.dropFiles.fileCount != 1) {
-							return;
+							break;
 						}
 
 						const char *filePath = ev.window.dropFiles.files[0];
