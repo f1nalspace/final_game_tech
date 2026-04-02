@@ -488,8 +488,8 @@ static AudioResampleResult Audio__ResamplingDeinterleaved(const uint16_t channel
     const float tgtToSrcRatio = 1.0f / srcToTgtRatio;
 
 	for (uint16_t channel = 0; channel < channelCount; ++channel) {
-		const float *channelInSamples = &inSamples[channel][sourceFrameCount];
-		float *channelOutSamples = &outSamples[channel][targetFrameCount];
+		const float *channelInSamples = inSamples[channel];
+		float *channelOutSamples = outSamples[channel];
 
 		fplMemoryClear(channelOutSamples, targetFrameCount * sizeof(float));
 
