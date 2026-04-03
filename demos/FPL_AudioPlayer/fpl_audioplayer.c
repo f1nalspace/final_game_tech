@@ -5,17 +5,21 @@ Name:
 
 Description:
 	This demo shows how to play music, sounds using a custom audio system/mixer.
-	It supports uncompressed PCM wave data, OGG Vorbis and MP3 Files.
-	Resampling support is limited to only even sample rates.
-
-	In addition all samples are cached in a lock-free ringbuffer and are played back properly, see AudioPlayback() for more details.
 
 	The audio tracks are streamed in and use a slow/fast detection to only cache when it needs to, see AudioStreamingThread() for more details.
+	In addition all samples are cached in a lock-free ringbuffer and are played back properly, see AudioPlayback() for more details.
 
 	To make it more appealing all audio samples are visualized with OpenGL and uses several algorythms, such FFT, Windowing, Smoothing, etc.
 	This can be shown from the full audio buffer, or in realtime that is filled directly in the streaming thread.
 
-	Everything together is very complex and requires a good understanding how digital sound is played back in a computer.
+	Resampling is fully supported for any sample rates
+
+	The following formats are supports:
+	- PCM Wave (uncompressed)
+	- OGG Vorbis (S16 output)
+	- MP3 (S16 output)
+
+	The demo is very complex and requires a good understanding how digital sound is played back in a computer.
 
 How the demo works:
 	# Audio System
@@ -51,8 +55,6 @@ How the demo works:
 
 	The samples ring-buffer are filled by the AudioSystemWriteFrames() function, which may advanced the audio system play cursor.
 
-	# Main
-
 	# Rendering
 
 	All rendering is done using oldschool style OpenGL 1.x.
@@ -78,6 +80,9 @@ Todo:
 	- Multiple audio tracks
 
 Changelog:
+	## 2026-04-03
+	- Updated documentations
+
 	## 2025-03-25
 	- Added progressbar to indicate current position in the track
 	- Fixed streamed/played frames was not reset on drag & drop
