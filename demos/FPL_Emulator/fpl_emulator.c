@@ -45,6 +45,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2026-04-10
+	- Fixed strcmp() was used, even though no <string.h> was included. Now we have a macro FGB_STRCMP()
+
 	## 2025-06-26
 	- Initial version
 
@@ -63,6 +66,9 @@ License:
 // Final Platform Layer
 #define FPL_IMPLEMENTATION
 #include <final_platform_layer.h>
+
+// Headers
+#include "utils.h"
 
 // Final Memory
 #define FMEM_IMPLEMENTATION
@@ -86,6 +92,7 @@ License:
 
 #define FGB_STRLEN(str) fplGetStringLength(str)
 #define FGB_STRINGFORMAT(buffer, bufferSize, format, ...) fplStringFormatArgs(buffer, bufferSize, format, __VA_ARGS__)
+#define FGB_STRCMP(a, b) StringCompare(a, b)
 #define FGB_MEMSET(ptr, value, size) fplMemorySet(ptr, value, size)
 #define FGB_MEMCOPY(dst, src, size) fplMemoryCopy(src, size, dst)
 

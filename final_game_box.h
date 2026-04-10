@@ -298,6 +298,7 @@ Copyright 2024-2026 Torsten Spaete
 #define FGB_STRINGFORMAT(buffer, bufferSize, format, ...) vsnprintf(buffer, bufferSize, format, __VA_ARGS__)
 #define FGB_MEMSET(ptr, value, size) memset(ptr, value, size)
 #define FGB_MEMCOPY(dst, src, size) memcpy(dst, src, size)
+#define FGB_STRCMP(a, b) strcmp(a, b)
 #else
 
 #if !defined(FGB_STRINGFORMAT)
@@ -12885,7 +12886,7 @@ static void fgb__PrintCurrentInstruction(fgbSystem *system, fgbInstructionRegist
 static fgbRegisterType GetRegisterTypeFromName(const char *name) {
 	for (int i = fgbRegisterType_A; i < FGB_REGISTER_TYPE_COUNT; ++i) {
 		const char *regName = fgb__registerToNameTable[i];
-		if (strcmp(regName, name) == 0) {
+		if (FGB_STRCMP(regName, name) == 0) {
 			return (fgbRegisterType)i;
 		}
 	}
