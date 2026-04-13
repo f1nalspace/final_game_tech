@@ -184,12 +184,15 @@ SOFTWARE.
 	- New: [Win32] Implemented function fplPathNormalize() for Win32 API
 	- New: [POSIX] Implemented function fplPathNormalize() for POSIX Unix API
 	- New[#183]: Added macro fpl_extern_inline
+
 	- Improved[#176]: Made internal event queue thread-safe using a lock-free push/pop linear buffer
 	- Improved: Better documentation of the preprocessor setup blocks
+
 	- Fixed: Fixed duplicate platform includes
 	- Fixed: fpLGetAlignmentOffset() was not guarding the alignment argument in all cases
 	- Fixed: fplS32ToString() was not handling negative values correctly
 	- Fixed[#183]: fpl_internal_inline was not compiling on GCC/Clang
+
 	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
 	- Changed: Ensure that std types has the correct sizes always using equals
@@ -204,10 +207,12 @@ SOFTWARE.
 	- Fixed: [X11] Fixed fplPollEvent() was not handling the events properly, resulting in not processing any events anymore
 	- Fixed: [X11] Fixed ClientMessage for Atom netWMPing was not calling XFlush
 	- Fixed[#181]: [X11] fpl__X11ParseUriPaths does not do any URI decoding, resulting in most-likely unuseable file paths
-	- Fixed[#182]: [ALSA] Fixed default audio devices are not detected in modern linux audio systems
 
 	- Fixed: [POSIX] Fixed pthread fpl__POSIXSemaphoreHandle was not used
 	- Fixed: [POSIX] dirint.h and sched.h was not included always
+	- Fixed[#184]: [POSIX] fplDirectoriesCreate() does not create parent sub-directories
+
+	- Fixed[#182]: [ALSA] Fixed default audio devices are not detected in modern linux audio systems
 
 	## v0.9.9-beta
 
@@ -18864,8 +18869,42 @@ fpl_platform_api bool fplDirectoryExists(const char *path) {
 
 fpl_platform_api bool fplDirectoriesCreate(const char *path) {
 	FPL__CheckArgumentNull(path, false);
-	bool result = mkdir(path, S_IRWXU | S_IRWXG | S_IRWXO) == 0;
-	return(result);
+
+	char tmp[FPL_MAX_PATH_LENGTH];
+	size_t i = 0;
+
+	// Scan and create all sub-directories
+	for (i = 0; path[i] != '\0'; ++i) {
+		if (i >= sizeof(tmp) - 1) {
+			return false;
+		}
+		tmp[i] = path[i];
+		// Whenever we encounter a slash, we "terminate" the string there to create the parent directory.
+		if (tmp[i] == '/' && i > 0) {
+			tmp[i] = '\0';
+			// Try creating the directory. We ignore EEXIST because the folder might already be there.
+			if (mkdir(tmp, S_IRWXU | S_IRWXG | S_IRWXO) != 0) {
+				if (errno != EEXIST) {
+					return false;
+				}
+			}
+			// Restore the slash to continue building the path
+			tmp[i] = '/';
+		}
+	}
+
+	// Handle the final segment (or the whole path if no trailing slash exists)
+	tmp[i] = '\0';
+
+	// If the path ended with a slash, the last mkdir was already handled in the loop.
+	// If not, we run it one last time here.
+	if (i > 0 && tmp[i-1] != '/') {
+		if (mkdir(tmp, S_IRWXU | S_IRWXG | S_IRWXO) != 0) {
+			return (errno == EEXIST);
+		}
+	}
+
+	return true;
 }
 fpl_platform_api bool fplRemoveDirectory(const char *path) {
 	FPL__CheckArgumentNull(path, false);
