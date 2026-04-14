@@ -26444,17 +26444,16 @@ typedef struct {
 	pa_mainloop_api *mainloopApi;
 	pa_context *context;
 	pa_stream *stream;
-	uint32_t targetSinkIndex;
 	fpl__PulseDeviceIterationContext iterContext;
 	uint32_t frameSize;
 	volatile int32_t isContextReady;
 	volatile int32_t isContextFailed;
 	volatile int32_t isStreamReady;
 	volatile int32_t isStreamFailed;
-	bool hasTargetSink;
 	char applicationName[256];
 	char streamName[256];
 	char serverName[256];
+	char resolvedSinkName[256];
 } fpl__PulseAudioBackend;
 
 fpl_internal void fpl__UnloadPulseAudioApi(fpl__PulseAudioApi *pulseAudioApi) {
@@ -26645,7 +26644,9 @@ fpl_internal void fpl__PulseAudio_StreamSuccessCallback(pa_stream *stream, int s
 	pulseAudioApi->pa_threaded_mainloop_signal(pulseAudioBackend->mainloop, 0);
 }
 
-// Stream write callback. Pulls audio from the client via fpl__ReadAudioFramesFromClient until pulseaudio is satisfied.
+// Stream write callback. Pulls audio from the client via fpl__ReadAudioFramesFromClient and writes it to pulseaudio.
+// fpl__ReadAudioFramesFromClient always fills the full requested frame count (padded with silence on underrun),
+// so we trust the buffer is complete and write the full clamped chunk every iteration.
 fpl_internal void fpl__PulseAudio_StreamWriteCallback(pa_stream *stream, size_t requestedBytes, void *userData) {
 	fplAudioBackend *backend = (fplAudioBackend *)userData;
 	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
@@ -26668,25 +26669,52 @@ fpl_internal void fpl__PulseAudio_StreamWriteCallback(pa_stream *stream, size_t 
 			}
 			break;
 		}
-		uint32_t requestedFrames = (uint32_t)(chunkBytes / frameSize);
-		uint32_t producedFrames = fpl__ReadAudioFramesFromClient(backend, requestedFrames, destinationBuffer);
-		size_t producedBytes = (size_t)producedFrames * frameSize;
-		if (producedBytes == 0) {
-			pulseAudioApi->pa_stream_cancel_write(stream);
+		uint32_t chunkFrames = (uint32_t)(chunkBytes / frameSize);
+		size_t chunkFrameBytes = (size_t)chunkFrames * frameSize;
+		fpl__ReadAudioFramesFromClient(backend, chunkFrames, destinationBuffer);
+		if (pulseAudioApi->pa_stream_write(stream, destinationBuffer, chunkFrameBytes, fpl_null, 0, PA_SEEK_RELATIVE) < 0) {
 			break;
 		}
-		if (pulseAudioApi->pa_stream_write(stream, destinationBuffer, producedBytes, fpl_null, 0, PA_SEEK_RELATIVE) < 0) {
-			break;
-		}
-		if (producedFrames < requestedFrames) {
-			break;
-		}
-		remainingBytes -= producedBytes;
+		remainingBytes -= chunkFrameBytes;
 	}
 }
 
-// Sink info callback that stores the first non-eol sink into a fplAudioDeviceInfo record.
-fpl_internal void fpl__PulseAudio_SinkInfoByIndexCallback(pa_context *context, const pa_sink_info *info, int eol, void *userData) {
+// Sink-info-list callback. Fires once per sink, then once more with eol > 0 as terminator.
+// Fills the iteration context in the backend with one fplAudioDeviceInfo record per sink.
+fpl_internal void fpl__PulseAudio_SinkInfoListCallback(pa_context *context, const pa_sink_info *info, int eol, void *userData) {
+	(void)context;
+	fplAudioBackend *backend = (fplAudioBackend *)userData;
+	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
+	fplAssert(pulseAudioBackend != fpl_null);
+	const fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
+	fpl__PulseDeviceIterationContext *iter = &pulseAudioBackend->iterContext;
+	if (eol > 0) {
+		iter->isDone = 1;
+		pulseAudioApi->pa_threaded_mainloop_signal(pulseAudioBackend->mainloop, 0);
+		return;
+	}
+	if (info == fpl_null) {
+		return;
+	}
+	if (iter->deviceInfos != fpl_null && iter->deviceInfoSize > 0) {
+		if (iter->resultCount >= iter->maxDeviceCount) {
+			++iter->overflowCount;
+		} else {
+			fplAudioDeviceInfo *outInfo = (fplAudioDeviceInfo *)((uint8_t *)iter->deviceInfos + (iter->deviceInfoSize * iter->resultCount));
+			fplClearStruct(outInfo);
+			outInfo->id.pulse = info->index;
+			if (info->description != fpl_null && fplGetStringLength(info->description) > 0) {
+				fplCopyString(info->description, outInfo->name, fplArrayCount(outInfo->name));
+			} else if (info->name != fpl_null) {
+				fplCopyString(info->name, outInfo->name, fplArrayCount(outInfo->name));
+			}
+		}
+	}
+	++iter->resultCount;
+}
+
+// Sink-info-by-index callback. Copies the sink name into resolvedSinkName so pa_stream_connect_playback can consume it.
+fpl_internal void fpl__PulseAudio_SinkNameByIndexCallback(pa_context *context, const pa_sink_info *info, int eol, void *userData) {
 	(void)context;
 	fplAudioBackend *backend = (fplAudioBackend *)userData;
 	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
@@ -26696,8 +26724,9 @@ fpl_internal void fpl__PulseAudio_SinkInfoByIndexCallback(pa_context *context, c
 		pulseAudioApi->pa_threaded_mainloop_signal(pulseAudioBackend->mainloop, 0);
 		return;
 	}
-	pulseAudioBackend->targetSinkIndex = info->index;
-	pulseAudioBackend->hasTargetSink = true;
+	if (info->name != fpl_null) {
+		fplCopyString(info->name, pulseAudioBackend->resolvedSinkName, fplArrayCount(pulseAudioBackend->resolvedSinkName));
+	}
 }
 
 // Wait for a pulseaudio operation to reach a terminal state, while the mainloop is locked by the caller.
@@ -26734,13 +26763,41 @@ fpl_internal FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl__AudioBackendPulseAudioRelease) 
 }
 
 fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendPulseAudioGetAudioDevices) {
-	// @NOTE(final/PulseAudio): Device enumeration via pa_context_get_sink_info_list requires an active context which we do not have in this entry point. PulseAudio routes everything through the default sink, so we report no devices here and let the caller use the default sink.
 	(void)context;
-	(void)backend;
-	(void)maxDeviceCount;
-	(void)deviceInfoSize;
-	(void)deviceInfos;
-	return 0;
+	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
+	fplAssert(pulseAudioBackend != fpl_null);
+	const fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
+	if (pulseAudioBackend->mainloop == fpl_null || pulseAudioBackend->context == fpl_null) {
+		return 0;
+	}
+
+	pulseAudioApi->pa_threaded_mainloop_lock(pulseAudioBackend->mainloop);
+
+	fpl__PulseDeviceIterationContext *iter = &pulseAudioBackend->iterContext;
+	fplClearStruct(iter);
+	iter->deviceInfos = deviceInfos;
+	iter->deviceInfoSize = deviceInfoSize;
+	iter->maxDeviceCount = maxDeviceCount;
+
+	pa_operation *sinkListOperation = pulseAudioApi->pa_context_get_sink_info_list(pulseAudioBackend->context, fpl__PulseAudio_SinkInfoListCallback, backend);
+	if (sinkListOperation != fpl_null) {
+		while (!iter->isDone && pulseAudioApi->pa_operation_get_state(sinkListOperation) == PA_OPERATION_RUNNING) {
+			pulseAudioApi->pa_threaded_mainloop_wait(pulseAudioBackend->mainloop);
+		}
+		pulseAudioApi->pa_operation_unref(sinkListOperation);
+	}
+
+	uint32_t resultCount = iter->resultCount;
+	uint32_t overflowCount = iter->overflowCount;
+	fplClearStruct(iter);
+
+	pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
+
+	if (overflowCount > 0) {
+		FPL__ERROR(FPL__MODULE_AUDIO_PULSEAUDIO, "Capacity of '%lu' for audio device infos has been reached. '%lu' audio devices are not included in the result", maxDeviceCount, overflowCount);
+	}
+
+	return(resultCount);
 }
 
 fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendPulseAudioGetAudioDeviceInfo) {
@@ -26781,9 +26838,9 @@ fpl_internal FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(fpl__AudioBackendPulseAudioRe
 	pulseAudioBackend->isContextFailed = 0;
 	pulseAudioBackend->isStreamReady = 0;
 	pulseAudioBackend->isStreamFailed = 0;
-	pulseAudioBackend->hasTargetSink = false;
-	pulseAudioBackend->targetSinkIndex = 0;
 	pulseAudioBackend->frameSize = 0;
+	pulseAudioBackend->resolvedSinkName[0] = '\0';
+	fplClearStruct(&pulseAudioBackend->iterContext);
 	return true;
 }
 
@@ -26897,8 +26954,20 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPulseAudi
 	pulseAudioApi->pa_stream_set_write_callback(pulseAudioBackend->stream, fpl__PulseAudio_StreamWriteCallback, backend);
 
 	pa_stream_flags_t streamFlags = (pa_stream_flags_t)(PA_STREAM_START_CORKED | PA_STREAM_ADJUST_LATENCY | PA_STREAM_AUTO_TIMING_UPDATE);
+
+	// Resolve the target sink name from id.pulse (sink index) so pa_stream_connect_playback gets the actual sink name.
+	// Passing NULL lets pulseaudio pick the default sink.
+	pulseAudioBackend->resolvedSinkName[0] = '\0';
 	const char *requestedDeviceName = fpl_null;
-	(void)targetDevice;
+	if (targetDevice != fpl_null && fplGetStringLength(targetDevice->name) > 0) {
+		pa_operation *resolveOperation = pulseAudioApi->pa_context_get_sink_info_by_index(pulseAudioBackend->context, targetDevice->id.pulse, fpl__PulseAudio_SinkNameByIndexCallback, backend);
+		fpl__PulseAudio_WaitForOperation(pulseAudioBackend, resolveOperation);
+		if (fplGetStringLength(pulseAudioBackend->resolvedSinkName) > 0) {
+			requestedDeviceName = pulseAudioBackend->resolvedSinkName;
+		} else {
+			FPL_LOG_WARN(FPL__MODULE_AUDIO_PULSEAUDIO, "Failed resolving pulseaudio sink name for index '%lu', falling back to default sink", targetDevice->id.pulse);
+		}
+	}
 	if (pulseAudioApi->pa_stream_connect_playback(pulseAudioBackend->stream, requestedDeviceName, &bufferAttributes, streamFlags, fpl_null, fpl_null) < 0) {
 		int errorCode = pulseAudioApi->pa_context_errno(pulseAudioBackend->context);
 		pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
@@ -26946,14 +27015,12 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPulseAudi
 	uint32_t connectedSinkIndex = pulseAudioApi->pa_stream_get_device_index(pulseAudioBackend->stream);
 	const char *connectedSinkName = pulseAudioApi->pa_stream_get_device_name(pulseAudioBackend->stream);
 	internalDevice.id.pulse = connectedSinkIndex;
-	internalDevice.isDefault = true;
+	internalDevice.isDefault = (requestedDeviceName == fpl_null);
 	if (connectedSinkName != fpl_null) {
 		fplCopyString(connectedSinkName, internalDevice.name, fplArrayCount(internalDevice.name));
 	} else {
 		fplCopyString("default", internalDevice.name, fplArrayCount(internalDevice.name));
 	}
-	pulseAudioBackend->targetSinkIndex = connectedSinkIndex;
-	pulseAudioBackend->hasTargetSink = true;
 
 	pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
 
