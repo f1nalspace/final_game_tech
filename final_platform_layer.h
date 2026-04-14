@@ -26818,6 +26818,12 @@ fpl_internal uint32_t fpl__GetAudioBackendDescriptors(const uint32_t maxDescript
 #endif
 				break;
 
+			case fplAudioBackendType_PulseAudio:
+#if defined(FPL__ENABLE_AUDIO_PULSEAUDIO)
+				desc = &fpl__global_audioBackendPulseAudioDescriptor;
+#endif
+				break;
+
 			case fplAudioBackendType_Custom:
 				// @TODO(final): Get audio backend descriptor from audio settings
 				break;
