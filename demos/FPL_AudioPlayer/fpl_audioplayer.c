@@ -1301,13 +1301,16 @@ int main(int argc, char **args) {
 	// Set samplerate in Hz
 	//settings.audio.targetFormat.sampleRate = 11025;
 	//settings.audio.targetFormat.sampleRate = 22050;
-	settings.audio.targetFormat.sampleRate = 44100;
-	//settings.audio.targetFormat.sampleRate = 48000;
+	//settings.audio.targetFormat.sampleRate = 44100;
+	settings.audio.targetFormat.sampleRate = 48000;
 	//settings.audio.targetFormat.sampleRate = 88200;
 
 	// Optionally set buffer size in milliseconds or in frames
 	//settings.audio.targetFormat.bufferSizeInMilliseconds = 16;
 	//settings.audio.targetFormat.bufferSizeInFrames = 512;
+
+	// TEMPORARY(final): Force audio backend to pulse audio
+	settings.audio.backend = fplAudioBackendType_PulseAudio;
 
 	// Disable auto start/stop of audio playback
 	settings.audio.startAuto = false;

@@ -27,6 +27,7 @@ License:
 #define FPL_IMPLEMENTATION
 #define FPL_NO_VIDEO
 #define FPL_NO_WINDOW
+#define FPL_LOGGING
 #include <final_platform_layer.h>
 
 // We need a little bit of math
@@ -96,6 +97,9 @@ int main(int argc, char **argv) {
 
 	// Try to force to 44100 Hz, which is the most common used sample rate
 	settings.audio.targetFormat.sampleRate = 44100;
+
+	// TEMPORARY(final): Force audio backend to pulse audio
+	settings.audio.backend = fplAudioBackendType_PulseAudio;
 
 	// Always start and stop the playback automatically
 	settings.audio.startAuto = true;
