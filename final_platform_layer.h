@@ -23719,7 +23719,7 @@ fpl_internal uint32_t fpl__ReadAudioFramesFromClient(const fplAudioBackend *back
 	if (remainingBytes > 0) {
 		fplMemoryClear((uint8_t *)pSamples + consumedBytes, remainingBytes);
 	}
-	return(samplesRead);
+	return(framesRead);
 }
 
 // Global Audio GUIDs
