@@ -184,6 +184,7 @@ SOFTWARE.
 	- New: [Win32] Implemented function fplPathNormalize() for Win32 API
 	- New: [POSIX] Implemented function fplPathNormalize() for POSIX Unix API
 	- New[#183]: Added macro fpl_extern_inline
+	- New[#35] Implemented PulseAudio audio backend
 
 	- Improved[#176]: Made internal event queue thread-safe using a lock-free push/pop linear buffer
 	- Improved: Better documentation of the preprocessor setup blocks
