@@ -9197,6 +9197,7 @@ fpl_main int main(int argc, char **args);
 #define FPL__MODULE_AUDIO "Audio"
 #define FPL__MODULE_AUDIO_DIRECTSOUND "DirectSound"
 #define FPL__MODULE_AUDIO_ALSA "ALSA"
+#define FPL__MODULE_AUDIO_PULSEAUDIO "PulseAudio"
 
 #define FPL__MODULE_VIDEO "Video"
 #define FPL__MODULE_VIDEO_OPENGL "OpenGL"
@@ -26031,6 +26032,231 @@ fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendALSADescriptor =
 };
 #endif // FPL__ENABLE_AUDIO_ALSA
 
+// ############################################################################
+//
+// > AUDIO_BACKEND_PULSEAUDIO
+//
+// ############################################################################
+#if defined(FPL__ENABLE_AUDIO_PULSEAUDIO)
+
+// @NOTE(final/PulseAudio): The PulseAudio backend is runtime-linked by default, so the PulseAudio development headers are not required.
+// To disable anonymous headers and include the real <pulse/pulseaudio.h> header instead, define FPL_PULSEAUDIO_USE_REAL_HEADERS.
+#if !defined(FPL__ANONYMOUS_PULSEAUDIO_HEADERS) && !defined(FPL_PULSEAUDIO_USE_REAL_HEADERS)
+#	define FPL__ANONYMOUS_PULSEAUDIO_HEADERS
+#endif
+
+// Sets the default audio channel map for the PulseAudio backend
+fpl_internal void fpl__PulseAudio_SetAudioDefaultChannelMap(const uint16_t channels, const fplAudioChannelLayout layout, fplAudioChannelMap *outChannelMap) {
+	fplClearStruct(outChannelMap);
+
+	if (channels == 0 || layout == fplAudioChannelLayout_Unsupported) {
+		return;
+	}
+
+	if (channels == 1 || layout == fplAudioChannelLayout_Mono) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontCenter;
+	} else if (channels == 2 || layout == fplAudioChannelLayout_Stereo) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+	} else if (channels == 3) {
+		if (layout == fplAudioChannelLayout_2_1) {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_LowFrequency;
+		} else {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_FrontCenter;
+		}
+	} else if (channels == 4) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+	} else if (channels == 5) {
+		if (layout == fplAudioChannelLayout_4_1) {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+			outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+			outChannelMap->speakers[4] = fplAudioChannelType_LowFrequency;
+		} else {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+			outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+			outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
+		}
+	} else if (channels == 6) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+		outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
+		outChannelMap->speakers[5] = fplAudioChannelType_LowFrequency;
+	} else if (channels == 7) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+		outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
+		outChannelMap->speakers[5] = fplAudioChannelType_LowFrequency;
+		outChannelMap->speakers[6] = fplAudioChannelType_BackCenter;
+	} else {
+		fplAssert(channels >= 8);
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+		outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
+		outChannelMap->speakers[5] = fplAudioChannelType_LowFrequency;
+		outChannelMap->speakers[6] = fplAudioChannelType_SideLeft;
+		outChannelMap->speakers[7] = fplAudioChannelType_SideRight;
+	}
+}
+
+#if defined(FPL__ANONYMOUS_PULSEAUDIO_HEADERS)
+// Opaque handles
+typedef void pa_mainloop_api;
+typedef void pa_threaded_mainloop;
+typedef void pa_context;
+typedef void pa_stream;
+typedef void pa_operation;
+typedef void pa_proplist;
+
+// Time / size typedefs
+typedef uint64_t pa_usec_t;
+
+// Enumerations
+typedef enum pa_context_state_t {
+	PA_CONTEXT_UNCONNECTED = 0,
+	PA_CONTEXT_CONNECTING,
+	PA_CONTEXT_AUTHORIZING,
+	PA_CONTEXT_SETTING_NAME,
+	PA_CONTEXT_READY,
+	PA_CONTEXT_FAILED,
+	PA_CONTEXT_TERMINATED
+} pa_context_state_t;
+
+typedef enum pa_stream_state_t {
+	PA_STREAM_UNCONNECTED = 0,
+	PA_STREAM_CREATING,
+	PA_STREAM_READY,
+	PA_STREAM_FAILED,
+	PA_STREAM_TERMINATED
+} pa_stream_state_t;
+
+typedef enum pa_operation_state_t {
+	PA_OPERATION_RUNNING = 0,
+	PA_OPERATION_DONE,
+	PA_OPERATION_CANCELLED
+} pa_operation_state_t;
+
+typedef enum pa_sample_format_t {
+	PA_SAMPLE_U8 = 0,
+	PA_SAMPLE_ALAW,
+	PA_SAMPLE_ULAW,
+	PA_SAMPLE_S16LE,
+	PA_SAMPLE_S16BE,
+	PA_SAMPLE_FLOAT32LE,
+	PA_SAMPLE_FLOAT32BE,
+	PA_SAMPLE_S32LE,
+	PA_SAMPLE_S32BE,
+	PA_SAMPLE_S24LE,
+	PA_SAMPLE_S24BE,
+	PA_SAMPLE_S24_32LE,
+	PA_SAMPLE_S24_32BE,
+	PA_SAMPLE_MAX,
+	PA_SAMPLE_INVALID = -1
+} pa_sample_format_t;
+
+typedef enum pa_channel_position_t {
+	PA_CHANNEL_POSITION_INVALID = -1,
+	PA_CHANNEL_POSITION_MONO = 0,
+	PA_CHANNEL_POSITION_FRONT_LEFT,
+	PA_CHANNEL_POSITION_FRONT_RIGHT,
+	PA_CHANNEL_POSITION_FRONT_CENTER,
+	PA_CHANNEL_POSITION_REAR_CENTER,
+	PA_CHANNEL_POSITION_REAR_LEFT,
+	PA_CHANNEL_POSITION_REAR_RIGHT,
+	PA_CHANNEL_POSITION_LFE,
+	PA_CHANNEL_POSITION_FRONT_LEFT_OF_CENTER,
+	PA_CHANNEL_POSITION_FRONT_RIGHT_OF_CENTER,
+	PA_CHANNEL_POSITION_SIDE_LEFT,
+	PA_CHANNEL_POSITION_SIDE_RIGHT,
+	PA_CHANNEL_POSITION_AUX0,
+	PA_CHANNEL_POSITION_MAX = 35
+} pa_channel_position_t;
+
+typedef enum pa_seek_mode_t {
+	PA_SEEK_RELATIVE = 0,
+	PA_SEEK_ABSOLUTE,
+	PA_SEEK_RELATIVE_ON_READ,
+	PA_SEEK_RELATIVE_END
+} pa_seek_mode_t;
+
+// Flag constants (match libpulse values)
+#define PA_CONTEXT_NOFLAGS 0x0000U
+#define PA_CONTEXT_NOAUTOSPAWN 0x0001U
+#define PA_CONTEXT_NOFAIL 0x0002U
+
+#define PA_STREAM_NOFLAGS 0x0000U
+#define PA_STREAM_START_CORKED 0x0001U
+#define PA_STREAM_INTERPOLATE_TIMING 0x0002U
+#define PA_STREAM_NOT_MONOTONIC 0x0004U
+#define PA_STREAM_AUTO_TIMING_UPDATE 0x0008U
+#define PA_STREAM_NO_REMAP_CHANNELS 0x0010U
+#define PA_STREAM_NO_REMIX_CHANNELS 0x0020U
+#define PA_STREAM_FIX_FORMAT 0x0040U
+#define PA_STREAM_FIX_RATE 0x0080U
+#define PA_STREAM_FIX_CHANNELS 0x0100U
+#define PA_STREAM_DONT_MOVE 0x0200U
+#define PA_STREAM_VARIABLE_RATE 0x0400U
+#define PA_STREAM_PEAK_DETECT 0x0800U
+#define PA_STREAM_START_MUTED 0x1000U
+#define PA_STREAM_ADJUST_LATENCY 0x2000U
+#define PA_STREAM_EARLY_REQUESTS 0x4000U
+
+// Channels max from <pulse/sample.h>
+#define PA_CHANNELS_MAX 32
+
+// pulseaudio structs that we allocate ourselves - layout MUST match the real pulseaudio ABI
+typedef struct pa_sample_spec {
+	pa_sample_format_t format;
+	uint32_t rate;
+	uint8_t channels;
+} pa_sample_spec;
+
+typedef struct pa_channel_map {
+	uint8_t channels;
+	pa_channel_position_t map[PA_CHANNELS_MAX];
+} pa_channel_map;
+
+typedef struct pa_buffer_attr {
+	uint32_t maxlength;
+	uint32_t tlength;
+	uint32_t prebuf;
+	uint32_t minreq;
+	uint32_t fragsize;
+} pa_buffer_attr;
+
+// Minimal layout-compatible pa_sink_info
+// @NOTE(final): We only read the first few fields, pulseaudio allocates the full struct, so reading beyond channel_map is not safe here.
+typedef struct pa_sink_info {
+	const char *name;
+	uint32_t index;
+	const char *description;
+	pa_sample_spec sample_spec;
+	pa_channel_map channel_map;
+} pa_sink_info;
+
+#else
+// @TODO(final/PulseAudio): Remove PulseAudio include when runtime linking is enabled
+#	include <pulse/pulseaudio.h>
+#endif // FPL__ANONYMOUS_PULSEAUDIO_HEADERS
+
+#endif // FPL__ENABLE_AUDIO_PULSEAUDIO
+
 #endif // FPL__AUDIO_BACKENDS_IMPLEMENTED
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -26159,6 +26385,7 @@ fplStaticAssert(fplArrayCount(fpl__global_audioResultTypeNameTable) == FPL__AUDI
 
 fpl_globalvar fplAudioBackendType fpl__global_defaultAudioBackendTypes[] = {
 	fplAudioBackendType_DirectSound,
+	fplAudioBackendType_PulseAudio,
 	fplAudioBackendType_Alsa,
 	fplAudioBackendType_Custom,
 };
@@ -27100,6 +27327,7 @@ fpl_globalvar const char *fpl__globalAudioBackendNameTable[FPL__AUDIOBACKENDTYPE
 	FPL__ENUM_NAME("Automatic", fplAudioBackendType_Auto),
 	FPL__ENUM_NAME("DirectSound", fplAudioBackendType_DirectSound),
 	FPL__ENUM_NAME("ALSA", fplAudioBackendType_Alsa),
+	FPL__ENUM_NAME("PulseAudio", fplAudioBackendType_PulseAudio),
 	FPL__ENUM_NAME("Custom", fplAudioBackendType_Custom),
 };
 fplStaticAssert(fplArrayCount(fpl__globalAudioBackendNameTable) == FPL__AUDIOBACKENDTYPE_COUNT);
