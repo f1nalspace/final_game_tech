@@ -27194,6 +27194,7 @@ fpl_internal uint32_t fpl__GetAudioBackendDescriptors(const uint32_t maxDescript
 #if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
 				desc = &fpl__global_audioBackendDirectShowDescriptor;
 #endif
+				break;
 
 			case fplAudioBackendType_Alsa:
 #if defined(FPL__ENABLE_AUDIO_ALSA)
