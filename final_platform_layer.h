@@ -2628,6 +2628,7 @@ typedef enum fplX86InstructionSetLevel {
 // FPL_NO_AUDIO = Disable audio support entirely
 // FPL_NO_AUDIO_DIRECTSOUND = Disable DirectSound audio backend
 // FPL_NO_AUDIO_ALSA = Disable ALSA audio backend
+// FPL_NO_AUDIO_PULSEAUDIO = Disable PulseAudio audio backend
 //
 #if !defined(FPL_NO_AUDIO)
 #	define FPL__SUPPORT_AUDIO
@@ -2643,6 +2644,9 @@ typedef enum fplX86InstructionSetLevel {
 #		else
 #			warning "FPL-Warning: ALSA audio development library is missing. Please install 'libasound2-dev' and try again!"
 #		endif
+#	endif
+#	if !defined(FPL_NO_AUDIO_PULSEAUDIO) && defined(FPL_PLATFORM_LINUX)
+#		define FPL__SUPPORT_AUDIO_PULSEAUDIO // PulseAudio backend uses runtime linking to libpulse.so.0, no dev headers are required
 #	endif
 #endif // FPL__SUPPORT_AUDIO
 
@@ -2673,6 +2677,9 @@ typedef enum fplX86InstructionSetLevel {
 #	endif
 #	if defined(FPL__SUPPORT_AUDIO_ALSA)
 #		define FPL__ENABLE_AUDIO_ALSA
+#	endif
+#	if defined(FPL__SUPPORT_AUDIO_PULSEAUDIO)
+#		define FPL__ENABLE_AUDIO_PULSEAUDIO
 #	endif
 #endif // FPL__SUPPORT_AUDIO
 
