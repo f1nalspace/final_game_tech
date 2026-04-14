@@ -4895,6 +4895,8 @@ typedef enum fplAudioBackendType {
 	fplAudioBackendType_DirectSound,
 	//! ALSA audio backend.
 	fplAudioBackendType_Alsa,
+	//! PulseAudio audio backend.
+	fplAudioBackendType_PulseAudio,
 	//! Custom audio backend.
 	fplAudioBackendType_Custom,
 
@@ -5173,6 +5175,10 @@ typedef union fplAudioDeviceID {
 	//! ALSA Device ID.
 	char alsa[256];
 #endif
+#if defined(FPL__ENABLE_AUDIO_PULSEAUDIO)
+	//! PulseAudio sink index.
+	uint32_t pulse;
+#endif
 	//! Field for preventing union to be empty.
 	uint8_t dummy[256];
 } fplAudioDeviceID;
@@ -5220,6 +5226,21 @@ typedef struct fplAlsaAudioSettings {
 } fplAlsaAudioSettings;
 #endif
 
+#if defined(FPL__ENABLE_AUDIO_PULSEAUDIO)
+/**
+* @struct fplPulseAudioSettings
+* @brief Stores settings for the PulseAudio audio backend.
+*/
+typedef struct fplPulseAudioSettings {
+	//! Optional PulseAudio server name. Leave empty to use the default server.
+	char serverName[256];
+	//! Optional application name shown in PulseAudio mixers like pavucontrol. Leave empty to use a default.
+	char applicationName[256];
+	//! Optional stream description name shown in PulseAudio mixers like pavucontrol. Leave empty to use a default.
+	char streamName[256];
+} fplPulseAudioSettings;
+#endif
+
 /**
 * @union fplSpecificAudioSettings
 * @brief Stores backend-specific audio settings.
@@ -5228,6 +5249,10 @@ typedef union fplSpecificAudioSettings {
 #if defined(FPL__ENABLE_AUDIO_ALSA)
 	//! ALSA-specific settings.
 	fplAlsaAudioSettings alsa;
+#endif
+#if defined(FPL__ENABLE_AUDIO_PULSEAUDIO)
+	//! PulseAudio-specific settings.
+	fplPulseAudioSettings pulse;
 #endif
 	//! Field for preventing union to be empty.
 	int dummy;
