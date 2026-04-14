@@ -26429,6 +26429,15 @@ typedef struct {
 	fpl__pa_func_pa_usec_to_bytes *pa_usec_to_bytes;
 } fpl__PulseAudioApi;
 
+typedef struct fpl__PulseDeviceIterationContext {
+	fplAudioDeviceInfo *deviceInfos;
+	uint32_t deviceInfoSize;
+	uint32_t maxDeviceCount;
+	uint32_t resultCount;
+	uint32_t overflowCount;
+	volatile int32_t isDone;
+} fpl__PulseDeviceIterationContext;
+
 typedef struct {
 	fpl__PulseAudioApi api;
 	pa_threaded_mainloop *mainloop;
@@ -26436,6 +26445,7 @@ typedef struct {
 	pa_context *context;
 	pa_stream *stream;
 	uint32_t targetSinkIndex;
+	fpl__PulseDeviceIterationContext iterContext;
 	uint32_t frameSize;
 	volatile int32_t isContextReady;
 	volatile int32_t isContextFailed;
