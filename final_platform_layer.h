@@ -26195,6 +26195,20 @@ typedef enum pa_seek_mode_t {
 	PA_SEEK_RELATIVE_END
 } pa_seek_mode_t;
 
+typedef enum pa_channel_map_def_t {
+	PA_CHANNEL_MAP_AIFF = 0,
+	PA_CHANNEL_MAP_ALSA,
+	PA_CHANNEL_MAP_AUX,
+	PA_CHANNEL_MAP_WAVEEX,
+	PA_CHANNEL_MAP_OSS,
+	PA_CHANNEL_MAP_DEF_MAX,
+	PA_CHANNEL_MAP_DEFAULT = PA_CHANNEL_MAP_AIFF
+} pa_channel_map_def_t;
+
+// Flag typedefs (match libpulse, which treats flag enums as int-sized)
+typedef int pa_context_flags_t;
+typedef int pa_stream_flags_t;
+
 // Flag constants (match libpulse values)
 #define PA_CONTEXT_NOFLAGS 0x0000U
 #define PA_CONTEXT_NOAUTOSPAWN 0x0001U
@@ -26250,11 +26264,383 @@ typedef struct pa_sink_info {
 	pa_channel_map channel_map;
 } pa_sink_info;
 
+// Callback typedefs
+typedef void(*pa_context_notify_cb_t)(pa_context *context, void *userData);
+typedef void(*pa_stream_notify_cb_t)(pa_stream *stream, void *userData);
+typedef void(*pa_stream_request_cb_t)(pa_stream *stream, size_t numberOfBytes, void *userData);
+typedef void(*pa_stream_success_cb_t)(pa_stream *stream, int success, void *userData);
+typedef void(*pa_sink_info_cb_t)(pa_context *context, const pa_sink_info *info, int eol, void *userData);
+typedef void(*pa_free_cb_t)(void *buffer);
+
 #else
 // @TODO(final/PulseAudio): Remove PulseAudio include when runtime linking is enabled
 #	include <pulse/pulseaudio.h>
 #endif // FPL__ANONYMOUS_PULSEAUDIO_HEADERS
 
+// Function typedefs for all PulseAudio runtime-loaded functions
+#define FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_new(name) pa_threaded_mainloop *name(void)
+typedef FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_new(fpl__pa_func_pa_threaded_mainloop_new);
+#define FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_free(name) void name(pa_threaded_mainloop *mainloop)
+typedef FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_free(fpl__pa_func_pa_threaded_mainloop_free);
+#define FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_start(name) int name(pa_threaded_mainloop *mainloop)
+typedef FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_start(fpl__pa_func_pa_threaded_mainloop_start);
+#define FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_stop(name) void name(pa_threaded_mainloop *mainloop)
+typedef FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_stop(fpl__pa_func_pa_threaded_mainloop_stop);
+#define FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_lock(name) void name(pa_threaded_mainloop *mainloop)
+typedef FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_lock(fpl__pa_func_pa_threaded_mainloop_lock);
+#define FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_unlock(name) void name(pa_threaded_mainloop *mainloop)
+typedef FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_unlock(fpl__pa_func_pa_threaded_mainloop_unlock);
+#define FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_wait(name) void name(pa_threaded_mainloop *mainloop)
+typedef FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_wait(fpl__pa_func_pa_threaded_mainloop_wait);
+#define FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_signal(name) void name(pa_threaded_mainloop *mainloop, int waitForAccept)
+typedef FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_signal(fpl__pa_func_pa_threaded_mainloop_signal);
+#define FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_get_api(name) pa_mainloop_api *name(pa_threaded_mainloop *mainloop)
+typedef FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_get_api(fpl__pa_func_pa_threaded_mainloop_get_api);
+
+#define FPL__PULSEAUDIO_FUNC_pa_context_new(name) pa_context *name(pa_mainloop_api *mainloopApi, const char *clientName)
+typedef FPL__PULSEAUDIO_FUNC_pa_context_new(fpl__pa_func_pa_context_new);
+#define FPL__PULSEAUDIO_FUNC_pa_context_unref(name) void name(pa_context *context)
+typedef FPL__PULSEAUDIO_FUNC_pa_context_unref(fpl__pa_func_pa_context_unref);
+#define FPL__PULSEAUDIO_FUNC_pa_context_set_state_callback(name) void name(pa_context *context, pa_context_notify_cb_t callback, void *userData)
+typedef FPL__PULSEAUDIO_FUNC_pa_context_set_state_callback(fpl__pa_func_pa_context_set_state_callback);
+#define FPL__PULSEAUDIO_FUNC_pa_context_connect(name) int name(pa_context *context, const char *serverName, pa_context_flags_t flags, const void *spawnApi)
+typedef FPL__PULSEAUDIO_FUNC_pa_context_connect(fpl__pa_func_pa_context_connect);
+#define FPL__PULSEAUDIO_FUNC_pa_context_disconnect(name) void name(pa_context *context)
+typedef FPL__PULSEAUDIO_FUNC_pa_context_disconnect(fpl__pa_func_pa_context_disconnect);
+#define FPL__PULSEAUDIO_FUNC_pa_context_get_state(name) pa_context_state_t name(const pa_context *context)
+typedef FPL__PULSEAUDIO_FUNC_pa_context_get_state(fpl__pa_func_pa_context_get_state);
+#define FPL__PULSEAUDIO_FUNC_pa_context_get_sink_info_list(name) pa_operation *name(pa_context *context, pa_sink_info_cb_t callback, void *userData)
+typedef FPL__PULSEAUDIO_FUNC_pa_context_get_sink_info_list(fpl__pa_func_pa_context_get_sink_info_list);
+#define FPL__PULSEAUDIO_FUNC_pa_context_get_sink_info_by_index(name) pa_operation *name(pa_context *context, uint32_t sinkIndex, pa_sink_info_cb_t callback, void *userData)
+typedef FPL__PULSEAUDIO_FUNC_pa_context_get_sink_info_by_index(fpl__pa_func_pa_context_get_sink_info_by_index);
+#define FPL__PULSEAUDIO_FUNC_pa_context_get_sink_info_by_name(name) pa_operation *name(pa_context *context, const char *sinkName, pa_sink_info_cb_t callback, void *userData)
+typedef FPL__PULSEAUDIO_FUNC_pa_context_get_sink_info_by_name(fpl__pa_func_pa_context_get_sink_info_by_name);
+#define FPL__PULSEAUDIO_FUNC_pa_context_errno(name) int name(const pa_context *context)
+typedef FPL__PULSEAUDIO_FUNC_pa_context_errno(fpl__pa_func_pa_context_errno);
+
+#define FPL__PULSEAUDIO_FUNC_pa_stream_new(name) pa_stream *name(pa_context *context, const char *streamName, const pa_sample_spec *sampleSpec, const pa_channel_map *channelMap)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_new(fpl__pa_func_pa_stream_new);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_unref(name) void name(pa_stream *stream)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_unref(fpl__pa_func_pa_stream_unref);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_set_state_callback(name) void name(pa_stream *stream, pa_stream_notify_cb_t callback, void *userData)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_set_state_callback(fpl__pa_func_pa_stream_set_state_callback);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_set_write_callback(name) void name(pa_stream *stream, pa_stream_request_cb_t callback, void *userData)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_set_write_callback(fpl__pa_func_pa_stream_set_write_callback);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_connect_playback(name) int name(pa_stream *stream, const char *deviceName, const pa_buffer_attr *bufferAttributes, pa_stream_flags_t flags, const void *volume, pa_stream *syncStream)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_connect_playback(fpl__pa_func_pa_stream_connect_playback);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_disconnect(name) int name(pa_stream *stream)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_disconnect(fpl__pa_func_pa_stream_disconnect);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_get_state(name) pa_stream_state_t name(const pa_stream *stream)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_get_state(fpl__pa_func_pa_stream_get_state);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_begin_write(name) int name(pa_stream *stream, void **dataBuffer, size_t *numberOfBytes)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_begin_write(fpl__pa_func_pa_stream_begin_write);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_write(name) int name(pa_stream *stream, const void *dataBuffer, size_t numberOfBytes, pa_free_cb_t freeCallback, int64_t byteOffset, pa_seek_mode_t seekMode)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_write(fpl__pa_func_pa_stream_write);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_cancel_write(name) int name(pa_stream *stream)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_cancel_write(fpl__pa_func_pa_stream_cancel_write);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_cork(name) pa_operation *name(pa_stream *stream, int cork, pa_stream_success_cb_t callback, void *userData)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_cork(fpl__pa_func_pa_stream_cork);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_flush(name) pa_operation *name(pa_stream *stream, pa_stream_success_cb_t callback, void *userData)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_flush(fpl__pa_func_pa_stream_flush);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_is_corked(name) int name(const pa_stream *stream)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_is_corked(fpl__pa_func_pa_stream_is_corked);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_writable_size(name) size_t name(const pa_stream *stream)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_writable_size(fpl__pa_func_pa_stream_writable_size);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_get_sample_spec(name) const pa_sample_spec *name(const pa_stream *stream)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_get_sample_spec(fpl__pa_func_pa_stream_get_sample_spec);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_get_channel_map(name) const pa_channel_map *name(const pa_stream *stream)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_get_channel_map(fpl__pa_func_pa_stream_get_channel_map);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_get_device_name(name) const char *name(const pa_stream *stream)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_get_device_name(fpl__pa_func_pa_stream_get_device_name);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_get_device_index(name) uint32_t name(const pa_stream *stream)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_get_device_index(fpl__pa_func_pa_stream_get_device_index);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_get_buffer_attr(name) const pa_buffer_attr *name(const pa_stream *stream)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_get_buffer_attr(fpl__pa_func_pa_stream_get_buffer_attr);
+
+#define FPL__PULSEAUDIO_FUNC_pa_operation_unref(name) void name(pa_operation *operation)
+typedef FPL__PULSEAUDIO_FUNC_pa_operation_unref(fpl__pa_func_pa_operation_unref);
+#define FPL__PULSEAUDIO_FUNC_pa_operation_get_state(name) pa_operation_state_t name(const pa_operation *operation)
+typedef FPL__PULSEAUDIO_FUNC_pa_operation_get_state(fpl__pa_func_pa_operation_get_state);
+
+#define FPL__PULSEAUDIO_FUNC_pa_channel_map_init(name) pa_channel_map *name(pa_channel_map *channelMap)
+typedef FPL__PULSEAUDIO_FUNC_pa_channel_map_init(fpl__pa_func_pa_channel_map_init);
+#define FPL__PULSEAUDIO_FUNC_pa_channel_map_init_auto(name) pa_channel_map *name(pa_channel_map *channelMap, unsigned numberOfChannels, pa_channel_map_def_t definition)
+typedef FPL__PULSEAUDIO_FUNC_pa_channel_map_init_auto(fpl__pa_func_pa_channel_map_init_auto);
+
+#define FPL__PULSEAUDIO_FUNC_pa_strerror(name) const char *name(int errorCode)
+typedef FPL__PULSEAUDIO_FUNC_pa_strerror(fpl__pa_func_pa_strerror);
+#define FPL__PULSEAUDIO_FUNC_pa_frame_size(name) size_t name(const pa_sample_spec *sampleSpec)
+typedef FPL__PULSEAUDIO_FUNC_pa_frame_size(fpl__pa_func_pa_frame_size);
+#define FPL__PULSEAUDIO_FUNC_pa_sample_size(name) size_t name(const pa_sample_spec *sampleSpec)
+typedef FPL__PULSEAUDIO_FUNC_pa_sample_size(fpl__pa_func_pa_sample_size);
+#define FPL__PULSEAUDIO_FUNC_pa_bytes_per_second(name) size_t name(const pa_sample_spec *sampleSpec)
+typedef FPL__PULSEAUDIO_FUNC_pa_bytes_per_second(fpl__pa_func_pa_bytes_per_second);
+#define FPL__PULSEAUDIO_FUNC_pa_usec_to_bytes(name) size_t name(pa_usec_t microseconds, const pa_sample_spec *sampleSpec)
+typedef FPL__PULSEAUDIO_FUNC_pa_usec_to_bytes(fpl__pa_func_pa_usec_to_bytes);
+
+typedef struct {
+	void *libHandle;
+	fpl__pa_func_pa_threaded_mainloop_new *pa_threaded_mainloop_new;
+	fpl__pa_func_pa_threaded_mainloop_free *pa_threaded_mainloop_free;
+	fpl__pa_func_pa_threaded_mainloop_start *pa_threaded_mainloop_start;
+	fpl__pa_func_pa_threaded_mainloop_stop *pa_threaded_mainloop_stop;
+	fpl__pa_func_pa_threaded_mainloop_lock *pa_threaded_mainloop_lock;
+	fpl__pa_func_pa_threaded_mainloop_unlock *pa_threaded_mainloop_unlock;
+	fpl__pa_func_pa_threaded_mainloop_wait *pa_threaded_mainloop_wait;
+	fpl__pa_func_pa_threaded_mainloop_signal *pa_threaded_mainloop_signal;
+	fpl__pa_func_pa_threaded_mainloop_get_api *pa_threaded_mainloop_get_api;
+	fpl__pa_func_pa_context_new *pa_context_new;
+	fpl__pa_func_pa_context_unref *pa_context_unref;
+	fpl__pa_func_pa_context_set_state_callback *pa_context_set_state_callback;
+	fpl__pa_func_pa_context_connect *pa_context_connect;
+	fpl__pa_func_pa_context_disconnect *pa_context_disconnect;
+	fpl__pa_func_pa_context_get_state *pa_context_get_state;
+	fpl__pa_func_pa_context_get_sink_info_list *pa_context_get_sink_info_list;
+	fpl__pa_func_pa_context_get_sink_info_by_index *pa_context_get_sink_info_by_index;
+	fpl__pa_func_pa_context_get_sink_info_by_name *pa_context_get_sink_info_by_name;
+	fpl__pa_func_pa_context_errno *pa_context_errno;
+	fpl__pa_func_pa_stream_new *pa_stream_new;
+	fpl__pa_func_pa_stream_unref *pa_stream_unref;
+	fpl__pa_func_pa_stream_set_state_callback *pa_stream_set_state_callback;
+	fpl__pa_func_pa_stream_set_write_callback *pa_stream_set_write_callback;
+	fpl__pa_func_pa_stream_connect_playback *pa_stream_connect_playback;
+	fpl__pa_func_pa_stream_disconnect *pa_stream_disconnect;
+	fpl__pa_func_pa_stream_get_state *pa_stream_get_state;
+	fpl__pa_func_pa_stream_begin_write *pa_stream_begin_write;
+	fpl__pa_func_pa_stream_write *pa_stream_write;
+	fpl__pa_func_pa_stream_cancel_write *pa_stream_cancel_write;
+	fpl__pa_func_pa_stream_cork *pa_stream_cork;
+	fpl__pa_func_pa_stream_flush *pa_stream_flush;
+	fpl__pa_func_pa_stream_is_corked *pa_stream_is_corked;
+	fpl__pa_func_pa_stream_writable_size *pa_stream_writable_size;
+	fpl__pa_func_pa_stream_get_sample_spec *pa_stream_get_sample_spec;
+	fpl__pa_func_pa_stream_get_channel_map *pa_stream_get_channel_map;
+	fpl__pa_func_pa_stream_get_device_name *pa_stream_get_device_name;
+	fpl__pa_func_pa_stream_get_device_index *pa_stream_get_device_index;
+	fpl__pa_func_pa_stream_get_buffer_attr *pa_stream_get_buffer_attr;
+	fpl__pa_func_pa_operation_unref *pa_operation_unref;
+	fpl__pa_func_pa_operation_get_state *pa_operation_get_state;
+	fpl__pa_func_pa_channel_map_init *pa_channel_map_init;
+	fpl__pa_func_pa_channel_map_init_auto *pa_channel_map_init_auto;
+	fpl__pa_func_pa_strerror *pa_strerror;
+	fpl__pa_func_pa_frame_size *pa_frame_size;
+	fpl__pa_func_pa_sample_size *pa_sample_size;
+	fpl__pa_func_pa_bytes_per_second *pa_bytes_per_second;
+	fpl__pa_func_pa_usec_to_bytes *pa_usec_to_bytes;
+} fpl__PulseAudioApi;
+
+typedef struct {
+	fpl__PulseAudioApi api;
+	pa_threaded_mainloop *mainloop;
+	pa_mainloop_api *mainloopApi;
+	pa_context *context;
+	pa_stream *stream;
+	uint32_t targetSinkIndex;
+	uint32_t frameSize;
+	volatile int32_t isContextReady;
+	volatile int32_t isContextFailed;
+	volatile int32_t isStreamReady;
+	volatile int32_t isStreamFailed;
+	bool hasTargetSink;
+	char applicationName[256];
+	char streamName[256];
+	char serverName[256];
+} fpl__PulseAudioBackend;
+
+fpl_internal void fpl__UnloadPulseAudioApi(fpl__PulseAudioApi *pulseAudioApi) {
+	fplAssert(pulseAudioApi != fpl_null);
+	if (pulseAudioApi->libHandle != fpl_null) {
+		dlclose(pulseAudioApi->libHandle);
+	}
+	fplClearStruct(pulseAudioApi);
+}
+
+fpl_internal bool fpl__LoadPulseAudioApi(fpl__PulseAudioApi *pulseAudioApi) {
+	fplAssert(pulseAudioApi != fpl_null);
+	const char *libraryNames[] = {
+		"libpulse.so.0",
+		"libpulse.so",
+	};
+	bool result = false;
+	for (uint32_t index = 0; index < fplArrayCount(libraryNames); ++index) {
+		const char *libName = libraryNames[index];
+		fplClearStruct(pulseAudioApi);
+		do {
+			void *libHandle = fpl_null;
+			FPL__POSIX_LOAD_LIBRARY(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_threaded_mainloop_new, pa_threaded_mainloop_new);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_threaded_mainloop_free, pa_threaded_mainloop_free);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_threaded_mainloop_start, pa_threaded_mainloop_start);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_threaded_mainloop_stop, pa_threaded_mainloop_stop);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_threaded_mainloop_lock, pa_threaded_mainloop_lock);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_threaded_mainloop_unlock, pa_threaded_mainloop_unlock);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_threaded_mainloop_wait, pa_threaded_mainloop_wait);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_threaded_mainloop_signal, pa_threaded_mainloop_signal);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_threaded_mainloop_get_api, pa_threaded_mainloop_get_api);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_context_new, pa_context_new);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_context_unref, pa_context_unref);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_context_set_state_callback, pa_context_set_state_callback);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_context_connect, pa_context_connect);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_context_disconnect, pa_context_disconnect);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_context_get_state, pa_context_get_state);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_context_get_sink_info_list, pa_context_get_sink_info_list);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_context_get_sink_info_by_index, pa_context_get_sink_info_by_index);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_context_get_sink_info_by_name, pa_context_get_sink_info_by_name);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_context_errno, pa_context_errno);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_new, pa_stream_new);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_unref, pa_stream_unref);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_set_state_callback, pa_stream_set_state_callback);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_set_write_callback, pa_stream_set_write_callback);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_connect_playback, pa_stream_connect_playback);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_disconnect, pa_stream_disconnect);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_get_state, pa_stream_get_state);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_begin_write, pa_stream_begin_write);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_write, pa_stream_write);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_cancel_write, pa_stream_cancel_write);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_cork, pa_stream_cork);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_flush, pa_stream_flush);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_is_corked, pa_stream_is_corked);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_writable_size, pa_stream_writable_size);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_get_sample_spec, pa_stream_get_sample_spec);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_get_channel_map, pa_stream_get_channel_map);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_get_device_name, pa_stream_get_device_name);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_get_device_index, pa_stream_get_device_index);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_get_buffer_attr, pa_stream_get_buffer_attr);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_operation_unref, pa_operation_unref);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_operation_get_state, pa_operation_get_state);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_channel_map_init, pa_channel_map_init);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_channel_map_init_auto, pa_channel_map_init_auto);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_strerror, pa_strerror);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_frame_size, pa_frame_size);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_sample_size, pa_sample_size);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_bytes_per_second, pa_bytes_per_second);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_usec_to_bytes, pa_usec_to_bytes);
+			pulseAudioApi->libHandle = libHandle;
+			result = true;
+		} while (0);
+		if (result) {
+			break;
+		}
+		fpl__UnloadPulseAudioApi(pulseAudioApi);
+	}
+	return(result);
+}
+
+fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendPulseAudioInitialize);
+fpl_internal FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl__AudioBackendPulseAudioRelease);
+fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendPulseAudioGetAudioDevices);
+fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendPulseAudioGetAudioDeviceInfo);
+fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPulseAudioInitializeDevice);
+fpl_internal FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(fpl__AudioBackendPulseAudioReleaseDevice);
+fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudioBackendPulseAudioStartDevice);
+fpl_internal FPL_AUDIO_BACKEND_STOP_DEVICE_FUNC(fpl__AudioBackendPulseAudioStopDevice);
+fpl_internal FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl__AudioBackendPulseAudioMainLoop);
+fpl_internal FPL_AUDIO_BACKEND_STOP_MAIN_LOOP_FUNC(fpl__AudioBackendPulseAudioStopMainLoop);
+
+fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendPulseAudioInitialize) {
+	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
+	fplAssert(pulseAudioBackend != fpl_null);
+	fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
+	if (!fpl__LoadPulseAudioApi(pulseAudioApi)) {
+		FPL__ERROR(FPL__MODULE_AUDIO_PULSEAUDIO, "Failed loading PulseAudio api!");
+		return fplAudioResultType_ApiFailed;
+	}
+	return fplAudioResultType_Success;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl__AudioBackendPulseAudioRelease) {
+	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
+	fplAssert(pulseAudioBackend != fpl_null);
+	fpl__AudioBackendPulseAudioReleaseDevice(context, backend);
+	fpl__UnloadPulseAudioApi(&pulseAudioBackend->api);
+	fplClearStruct(pulseAudioBackend);
+	return true;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendPulseAudioGetAudioDevices) {
+	(void)context;
+	(void)backend;
+	(void)maxDeviceCount;
+	(void)deviceInfoSize;
+	(void)deviceInfos;
+	return 0;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendPulseAudioGetAudioDeviceInfo) {
+	(void)context;
+	(void)backend;
+	(void)targetDevice;
+	(void)outDeviceInfo;
+	return fplAudioResultType_NotImplemented;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPulseAudioInitializeDevice) {
+	(void)context;
+	(void)backend;
+	(void)audioSettings;
+	(void)targetFormat;
+	(void)targetDevice;
+	(void)outputFormat;
+	(void)outputDevice;
+	(void)outputChannelMap;
+	return fplAudioResultType_NotImplemented;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(fpl__AudioBackendPulseAudioReleaseDevice) {
+	(void)context;
+	(void)backend;
+	return true;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudioBackendPulseAudioStartDevice) {
+	(void)context;
+	(void)backend;
+	return fplAudioResultType_NotImplemented;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_STOP_DEVICE_FUNC(fpl__AudioBackendPulseAudioStopDevice) {
+	(void)context;
+	(void)backend;
+	return true;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl__AudioBackendPulseAudioMainLoop) {
+	// @NOTE(final/PulseAudio): Async backend - the threaded mainloop runs inside libpulse, so there is no own loop to run here.
+	(void)context;
+	(void)backend;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_STOP_MAIN_LOOP_FUNC(fpl__AudioBackendPulseAudioStopMainLoop) {
+	// @NOTE(final/PulseAudio): Async backend - nothing to stop because there is no own mainloop.
+	(void)context;
+	(void)backend;
+}
+
+fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendPulseAudioDescriptor = {
+
+	fplStructField(fplAudioBackendDescriptor, header, {
+		fplStructField(fplAudioBackendDescriptorHeader, idName, {
+			fplStructField(fplAudioBackendDescriptorIDName, id, { 0x5f3c8e2a, 0x4b1d, 0x4f9e, { 0xa8, 0x72, 0x91, 0xd5, 0xcc, 0x63, 0x17, 0xe8 } }),
+			fplStructField(fplAudioBackendDescriptorIDName, name, "PulseAudio"),
+		}),
+		fplStructField(fplAudioBackendDescriptorHeader, type, fplAudioBackendType_PulseAudio),
+		fplStructField(fplAudioBackendDescriptorHeader, backendSize, sizeof(fpl__PulseAudioBackend)),
+		fplStructField(fplAudioBackendDescriptorHeader, isAsync, true),
+		fplStructField(fplAudioBackendDescriptorHeader, isValid, true),
+	}),
+	fplStructField(fplAudioBackendDescriptor, table, {
+		fplStructField(fplAudioBackendFunctionTable, initialize, fpl__AudioBackendPulseAudioInitialize),
+		fplStructField(fplAudioBackendFunctionTable, release, fpl__AudioBackendPulseAudioRelease),
+		fplStructField(fplAudioBackendFunctionTable, getAudioDevices, fpl__AudioBackendPulseAudioGetAudioDevices),
+		fplStructField(fplAudioBackendFunctionTable, getAudioDeviceInfo, fpl__AudioBackendPulseAudioGetAudioDeviceInfo),
+		fplStructField(fplAudioBackendFunctionTable, initializeDevice, fpl__AudioBackendPulseAudioInitializeDevice),
+		fplStructField(fplAudioBackendFunctionTable, releaseDevice, fpl__AudioBackendPulseAudioReleaseDevice),
+		fplStructField(fplAudioBackendFunctionTable, startDevice, fpl__AudioBackendPulseAudioStartDevice),
+		fplStructField(fplAudioBackendFunctionTable, stopDevice, fpl__AudioBackendPulseAudioStopDevice),
+		fplStructField(fplAudioBackendFunctionTable, mainLoop, fpl__AudioBackendPulseAudioMainLoop),
+		fplStructField(fplAudioBackendFunctionTable, stopMainLoop, fpl__AudioBackendPulseAudioStopMainLoop),
+	}),
+};
 #endif // FPL__ENABLE_AUDIO_PULSEAUDIO
 
 #endif // FPL__AUDIO_BACKENDS_IMPLEMENTED
