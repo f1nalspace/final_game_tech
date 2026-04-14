@@ -120,7 +120,9 @@ int main(int argc, char **argv) {
 
 	// Print out some infos and wait for a key to be pressed
 	// While we are waiting for a key press, new audio samples will be generated continuesly
-	fplConsoleFormatOut("Playing sine wave with %u Hz, %u channels, %s\n", hardwareFormat.sampleRate, hardwareFormat.channels, audioFormatName);
+	const fplAudioBackendType audioBackend = fplGetAudioBackendType();
+	const char *audioBackendName = fplGetAudioBackendName(audioBackend);
+	fplConsoleFormatOut("Playing sine wave with backend: %s, sample-rate: %u, channels: %u, format: %s, periods: %u, buffer-size: %u\n", audioBackendName, hardwareFormat.sampleRate, hardwareFormat.channels, audioFormatName, hardwareFormat.periods, hardwareFormat.bufferSizeInFrames);
 	fplConsoleOut("Press any key to exit\n");
 	fplConsoleWaitForCharInput();
 
