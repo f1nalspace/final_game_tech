@@ -28367,8 +28367,8 @@ fpl_common_api fplAudioResultType fplStopAudio(void) {
 			// We need to wait for the worker thread to become available for work before returning.
 			// @NOTE(final): The audio worker thread will be the one who puts the device into the stopped state.
 			fpl__WaitForAudioEvent(&audioState->stopEvent);
-			result = fplAudioResultType_Success;
 		}
+		result = fplAudioResultType_Success;
 	}
 	fplMutexUnlock(&audioState->lock);
 
@@ -28417,7 +28417,7 @@ fpl_common_api fplAudioResultType fplPlayAudio(void) {
 
 		if (audioState->isAsyncBackend) {
 			// Asynchronous backends (Has their own thread)
-			fpl__StartAudioDevice(audioState);
+			result = fpl__StartAudioDevice(audioState);
 			fpl__AudioSetDeviceState(context, fpl__AudioDeviceState_Started);
 		} else {
 			// Synchronous backends
