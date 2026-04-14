@@ -26537,6 +26537,172 @@ fpl_internal FPL_AUDIO_BACKEND_STOP_DEVICE_FUNC(fpl__AudioBackendPulseAudioStopD
 fpl_internal FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl__AudioBackendPulseAudioMainLoop);
 fpl_internal FPL_AUDIO_BACKEND_STOP_MAIN_LOOP_FUNC(fpl__AudioBackendPulseAudioStopMainLoop);
 
+// Map a fplAudioFormatType to a pulseaudio pa_sample_format_t.
+fpl_internal pa_sample_format_t fpl__PulseAudio_MapAudioFormatTypeToSampleFormat(const fplAudioFormatType format) {
+	bool isBigEndian = fplIsBigEndian();
+	switch (format) {
+		case fplAudioFormatType_U8:
+			return PA_SAMPLE_U8;
+		case fplAudioFormatType_S16:
+			return isBigEndian ? PA_SAMPLE_S16BE : PA_SAMPLE_S16LE;
+		case fplAudioFormatType_S24:
+			return isBigEndian ? PA_SAMPLE_S24BE : PA_SAMPLE_S24LE;
+		case fplAudioFormatType_S32:
+			return isBigEndian ? PA_SAMPLE_S32BE : PA_SAMPLE_S32LE;
+		case fplAudioFormatType_F32:
+			return isBigEndian ? PA_SAMPLE_FLOAT32BE : PA_SAMPLE_FLOAT32LE;
+		default:
+			return PA_SAMPLE_INVALID;
+	}
+}
+
+// Map a pulseaudio pa_sample_format_t back to a fplAudioFormatType.
+fpl_internal fplAudioFormatType fpl__PulseAudio_MapSampleFormatToAudioFormatType(const pa_sample_format_t sampleFormat) {
+	switch (sampleFormat) {
+		case PA_SAMPLE_U8:
+			return fplAudioFormatType_U8;
+		case PA_SAMPLE_S16LE:
+		case PA_SAMPLE_S16BE:
+			return fplAudioFormatType_S16;
+		case PA_SAMPLE_S24LE:
+		case PA_SAMPLE_S24BE:
+		case PA_SAMPLE_S24_32LE:
+		case PA_SAMPLE_S24_32BE:
+			return fplAudioFormatType_S24;
+		case PA_SAMPLE_S32LE:
+		case PA_SAMPLE_S32BE:
+			return fplAudioFormatType_S32;
+		case PA_SAMPLE_FLOAT32LE:
+		case PA_SAMPLE_FLOAT32BE:
+			return fplAudioFormatType_F32;
+		default:
+			return fplAudioFormatType_None;
+	}
+}
+
+// Context state callback. Wakes the initialization thread whenever the context state changes.
+fpl_internal void fpl__PulseAudio_ContextStateCallback(pa_context *context, void *userData) {
+	fplAudioBackend *backend = (fplAudioBackend *)userData;
+	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
+	fplAssert(pulseAudioBackend != fpl_null);
+	const fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
+	pa_context_state_t state = pulseAudioApi->pa_context_get_state(context);
+	switch (state) {
+		case PA_CONTEXT_READY:
+			pulseAudioBackend->isContextReady = 1;
+			pulseAudioApi->pa_threaded_mainloop_signal(pulseAudioBackend->mainloop, 0);
+			break;
+		case PA_CONTEXT_FAILED:
+		case PA_CONTEXT_TERMINATED:
+			pulseAudioBackend->isContextFailed = 1;
+			pulseAudioApi->pa_threaded_mainloop_signal(pulseAudioBackend->mainloop, 0);
+			break;
+		default:
+			break;
+	}
+}
+
+// Stream state callback. Wakes the initialization thread whenever the stream state changes.
+fpl_internal void fpl__PulseAudio_StreamStateCallback(pa_stream *stream, void *userData) {
+	fplAudioBackend *backend = (fplAudioBackend *)userData;
+	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
+	fplAssert(pulseAudioBackend != fpl_null);
+	const fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
+	pa_stream_state_t state = pulseAudioApi->pa_stream_get_state(stream);
+	switch (state) {
+		case PA_STREAM_READY:
+			pulseAudioBackend->isStreamReady = 1;
+			pulseAudioApi->pa_threaded_mainloop_signal(pulseAudioBackend->mainloop, 0);
+			break;
+		case PA_STREAM_FAILED:
+		case PA_STREAM_TERMINATED:
+			pulseAudioBackend->isStreamFailed = 1;
+			pulseAudioApi->pa_threaded_mainloop_signal(pulseAudioBackend->mainloop, 0);
+			break;
+		default:
+			break;
+	}
+}
+
+// Success callback used for operations that we want to wait on.
+fpl_internal void fpl__PulseAudio_StreamSuccessCallback(pa_stream *stream, int success, void *userData) {
+	(void)stream;
+	(void)success;
+	fplAudioBackend *backend = (fplAudioBackend *)userData;
+	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
+	fplAssert(pulseAudioBackend != fpl_null);
+	const fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
+	pulseAudioApi->pa_threaded_mainloop_signal(pulseAudioBackend->mainloop, 0);
+}
+
+// Stream write callback. Pulls audio from the client via fpl__ReadAudioFramesFromClient until pulseaudio is satisfied.
+fpl_internal void fpl__PulseAudio_StreamWriteCallback(pa_stream *stream, size_t requestedBytes, void *userData) {
+	fplAudioBackend *backend = (fplAudioBackend *)userData;
+	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
+	fplAssert(pulseAudioBackend != fpl_null);
+	const fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
+	uint32_t frameSize = pulseAudioBackend->frameSize;
+	if (frameSize == 0) {
+		return;
+	}
+	size_t remainingBytes = requestedBytes;
+	while (remainingBytes >= frameSize) {
+		void *destinationBuffer = fpl_null;
+		size_t chunkBytes = remainingBytes;
+		if (pulseAudioApi->pa_stream_begin_write(stream, &destinationBuffer, &chunkBytes) < 0) {
+			break;
+		}
+		if (destinationBuffer == fpl_null || chunkBytes < frameSize) {
+			if (destinationBuffer != fpl_null) {
+				pulseAudioApi->pa_stream_cancel_write(stream);
+			}
+			break;
+		}
+		uint32_t requestedFrames = (uint32_t)(chunkBytes / frameSize);
+		uint32_t producedFrames = fpl__ReadAudioFramesFromClient(backend, requestedFrames, destinationBuffer);
+		size_t producedBytes = (size_t)producedFrames * frameSize;
+		if (producedBytes == 0) {
+			pulseAudioApi->pa_stream_cancel_write(stream);
+			break;
+		}
+		if (pulseAudioApi->pa_stream_write(stream, destinationBuffer, producedBytes, fpl_null, 0, PA_SEEK_RELATIVE) < 0) {
+			break;
+		}
+		if (producedFrames < requestedFrames) {
+			break;
+		}
+		remainingBytes -= producedBytes;
+	}
+}
+
+// Sink info callback that stores the first non-eol sink into a fplAudioDeviceInfo record.
+fpl_internal void fpl__PulseAudio_SinkInfoByIndexCallback(pa_context *context, const pa_sink_info *info, int eol, void *userData) {
+	(void)context;
+	fplAudioBackend *backend = (fplAudioBackend *)userData;
+	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
+	fplAssert(pulseAudioBackend != fpl_null);
+	const fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
+	if (eol > 0 || info == fpl_null) {
+		pulseAudioApi->pa_threaded_mainloop_signal(pulseAudioBackend->mainloop, 0);
+		return;
+	}
+	pulseAudioBackend->targetSinkIndex = info->index;
+	pulseAudioBackend->hasTargetSink = true;
+}
+
+// Wait for a pulseaudio operation to reach a terminal state, while the mainloop is locked by the caller.
+fpl_internal void fpl__PulseAudio_WaitForOperation(fpl__PulseAudioBackend *pulseAudioBackend, pa_operation *operation) {
+	fplAssert(pulseAudioBackend != fpl_null);
+	const fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
+	if (operation == fpl_null) {
+		return;
+	}
+	while (pulseAudioApi->pa_operation_get_state(operation) == PA_OPERATION_RUNNING) {
+		pulseAudioApi->pa_threaded_mainloop_wait(pulseAudioBackend->mainloop);
+	}
+	pulseAudioApi->pa_operation_unref(operation);
+}
+
 fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendPulseAudioInitialize) {
 	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
 	fplAssert(pulseAudioBackend != fpl_null);
@@ -26558,6 +26724,7 @@ fpl_internal FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl__AudioBackendPulseAudioRelease) 
 }
 
 fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendPulseAudioGetAudioDevices) {
+	// @NOTE(final/PulseAudio): Device enumeration via pa_context_get_sink_info_list requires an active context which we do not have in this entry point. PulseAudio routes everything through the default sink, so we report no devices here and let the caller use the default sink.
 	(void)context;
 	(void)backend;
 	(void)maxDeviceCount;
@@ -26574,33 +26741,249 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendPulse
 	return fplAudioResultType_NotImplemented;
 }
 
-fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPulseAudioInitializeDevice) {
-	(void)context;
-	(void)backend;
-	(void)audioSettings;
-	(void)targetFormat;
-	(void)targetDevice;
-	(void)outputFormat;
-	(void)outputDevice;
-	(void)outputChannelMap;
-	return fplAudioResultType_NotImplemented;
-}
-
 fpl_internal FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(fpl__AudioBackendPulseAudioReleaseDevice) {
 	(void)context;
-	(void)backend;
+	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
+	fplAssert(pulseAudioBackend != fpl_null);
+	const fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
+	if (pulseAudioApi->libHandle == fpl_null) {
+		return true;
+	}
+	if (pulseAudioBackend->mainloop != fpl_null) {
+		pulseAudioApi->pa_threaded_mainloop_lock(pulseAudioBackend->mainloop);
+		if (pulseAudioBackend->stream != fpl_null) {
+			pulseAudioApi->pa_stream_disconnect(pulseAudioBackend->stream);
+			pulseAudioApi->pa_stream_unref(pulseAudioBackend->stream);
+			pulseAudioBackend->stream = fpl_null;
+		}
+		if (pulseAudioBackend->context != fpl_null) {
+			pulseAudioApi->pa_context_disconnect(pulseAudioBackend->context);
+			pulseAudioApi->pa_context_unref(pulseAudioBackend->context);
+			pulseAudioBackend->context = fpl_null;
+		}
+		pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
+		pulseAudioApi->pa_threaded_mainloop_stop(pulseAudioBackend->mainloop);
+		pulseAudioApi->pa_threaded_mainloop_free(pulseAudioBackend->mainloop);
+		pulseAudioBackend->mainloop = fpl_null;
+	}
+	pulseAudioBackend->mainloopApi = fpl_null;
+	pulseAudioBackend->isContextReady = 0;
+	pulseAudioBackend->isContextFailed = 0;
+	pulseAudioBackend->isStreamReady = 0;
+	pulseAudioBackend->isStreamFailed = 0;
+	pulseAudioBackend->hasTargetSink = false;
+	pulseAudioBackend->targetSinkIndex = 0;
+	pulseAudioBackend->frameSize = 0;
 	return true;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPulseAudioInitializeDevice) {
+	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
+	fplAssert(pulseAudioBackend != fpl_null);
+	fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
+	if (pulseAudioApi->libHandle == fpl_null) {
+		FPL__ERROR(FPL__MODULE_AUDIO_PULSEAUDIO, "PulseAudio api is not loaded!");
+		return fplAudioResultType_ApiFailed;
+	}
+
+#	define FPL__PULSEAUDIO_INIT_ERROR(resultValue, format, ...) do { \
+		FPL__ERROR(FPL__MODULE_AUDIO_PULSEAUDIO, format, ## __VA_ARGS__); \
+		fpl__AudioBackendPulseAudioReleaseDevice(context, backend); \
+		return resultValue; \
+	} while (0)
+
+	// Copy over application/stream/server names from user settings, or fall back to defaults.
+	const char *defaultApplicationName = "Final Platform Layer";
+	const char *defaultStreamName = "Playback";
+	if (audioSettings != fpl_null && fplGetStringLength(audioSettings->pulse.applicationName) > 0) {
+		fplCopyString(audioSettings->pulse.applicationName, pulseAudioBackend->applicationName, fplArrayCount(pulseAudioBackend->applicationName));
+	} else {
+		fplCopyString(defaultApplicationName, pulseAudioBackend->applicationName, fplArrayCount(pulseAudioBackend->applicationName));
+	}
+	if (audioSettings != fpl_null && fplGetStringLength(audioSettings->pulse.streamName) > 0) {
+		fplCopyString(audioSettings->pulse.streamName, pulseAudioBackend->streamName, fplArrayCount(pulseAudioBackend->streamName));
+	} else {
+		fplCopyString(defaultStreamName, pulseAudioBackend->streamName, fplArrayCount(pulseAudioBackend->streamName));
+	}
+	if (audioSettings != fpl_null && fplGetStringLength(audioSettings->pulse.serverName) > 0) {
+		fplCopyString(audioSettings->pulse.serverName, pulseAudioBackend->serverName, fplArrayCount(pulseAudioBackend->serverName));
+	} else {
+		pulseAudioBackend->serverName[0] = '\0';
+	}
+
+	// Create the threaded mainloop and start it. From this point callbacks can fire.
+	pulseAudioBackend->mainloop = pulseAudioApi->pa_threaded_mainloop_new();
+	if (pulseAudioBackend->mainloop == fpl_null) {
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed creating pulseaudio threaded mainloop!");
+	}
+	pulseAudioBackend->mainloopApi = pulseAudioApi->pa_threaded_mainloop_get_api(pulseAudioBackend->mainloop);
+	if (pulseAudioBackend->mainloopApi == fpl_null) {
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed getting pulseaudio mainloop api!");
+	}
+	if (pulseAudioApi->pa_threaded_mainloop_start(pulseAudioBackend->mainloop) < 0) {
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed starting pulseaudio threaded mainloop!");
+	}
+
+	pulseAudioApi->pa_threaded_mainloop_lock(pulseAudioBackend->mainloop);
+
+	// Create and connect the context.
+	pulseAudioBackend->context = pulseAudioApi->pa_context_new(pulseAudioBackend->mainloopApi, pulseAudioBackend->applicationName);
+	if (pulseAudioBackend->context == fpl_null) {
+		pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed creating pulseaudio context!");
+	}
+	pulseAudioApi->pa_context_set_state_callback(pulseAudioBackend->context, fpl__PulseAudio_ContextStateCallback, backend);
+	const char *pulseServerName = (fplGetStringLength(pulseAudioBackend->serverName) > 0) ? pulseAudioBackend->serverName : fpl_null;
+	if (pulseAudioApi->pa_context_connect(pulseAudioBackend->context, pulseServerName, PA_CONTEXT_NOFLAGS, fpl_null) < 0) {
+		int errorCode = pulseAudioApi->pa_context_errno(pulseAudioBackend->context);
+		pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_NoDeviceFound, "Failed connecting pulseaudio context: %s!", pulseAudioApi->pa_strerror(errorCode));
+	}
+	while (!pulseAudioBackend->isContextReady && !pulseAudioBackend->isContextFailed) {
+		pulseAudioApi->pa_threaded_mainloop_wait(pulseAudioBackend->mainloop);
+	}
+	if (pulseAudioBackend->isContextFailed) {
+		int errorCode = pulseAudioApi->pa_context_errno(pulseAudioBackend->context);
+		pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_NoDeviceFound, "PulseAudio context failed to become ready: %s!", pulseAudioApi->pa_strerror(errorCode));
+	}
+
+	// Build the target sample spec + channel map from the requested fplAudioFormat.
+	pa_sample_spec sampleSpec = fplZeroInit;
+	sampleSpec.format = fpl__PulseAudio_MapAudioFormatTypeToSampleFormat(targetFormat->type);
+	if ((int)sampleSpec.format < 0) {
+		sampleSpec.format = fplIsBigEndian() ? PA_SAMPLE_S16BE : PA_SAMPLE_S16LE;
+	}
+	sampleSpec.rate = targetFormat->sampleRate;
+	sampleSpec.channels = (uint8_t)targetFormat->channels;
+
+	pa_channel_map channelMap = fplZeroInit;
+	pulseAudioApi->pa_channel_map_init_auto(&channelMap, sampleSpec.channels, PA_CHANNEL_MAP_DEFAULT);
+
+	// Build the buffer attributes. tlength is total buffer size in bytes.
+	uint32_t frameSizeInBytes = (uint32_t)sampleSpec.channels * fplGetAudioSampleSizeInBytes(fpl__PulseAudio_MapSampleFormatToAudioFormatType(sampleSpec.format));
+	if (frameSizeInBytes == 0) {
+		pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "PulseAudio: unable to compute frame size from target format!");
+	}
+	uint32_t totalBufferBytes = targetFormat->bufferSizeInFrames * frameSizeInBytes;
+	uint32_t periodCount = targetFormat->periods > 0 ? targetFormat->periods : 2;
+	uint32_t periodBytes = totalBufferBytes / periodCount;
+	pa_buffer_attr bufferAttributes = fplZeroInit;
+	bufferAttributes.maxlength = totalBufferBytes;
+	bufferAttributes.tlength = totalBufferBytes;
+	bufferAttributes.prebuf = (uint32_t)-1;
+	bufferAttributes.minreq = periodBytes;
+	bufferAttributes.fragsize = (uint32_t)-1;
+
+	// Create the stream and wire up the state + write callbacks.
+	pulseAudioBackend->stream = pulseAudioApi->pa_stream_new(pulseAudioBackend->context, pulseAudioBackend->streamName, &sampleSpec, &channelMap);
+	if (pulseAudioBackend->stream == fpl_null) {
+		int errorCode = pulseAudioApi->pa_context_errno(pulseAudioBackend->context);
+		pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed creating pulseaudio stream: %s!", pulseAudioApi->pa_strerror(errorCode));
+	}
+	pulseAudioApi->pa_stream_set_state_callback(pulseAudioBackend->stream, fpl__PulseAudio_StreamStateCallback, backend);
+	pulseAudioApi->pa_stream_set_write_callback(pulseAudioBackend->stream, fpl__PulseAudio_StreamWriteCallback, backend);
+
+	pa_stream_flags_t streamFlags = (pa_stream_flags_t)(PA_STREAM_START_CORKED | PA_STREAM_ADJUST_LATENCY | PA_STREAM_AUTO_TIMING_UPDATE);
+	const char *requestedDeviceName = fpl_null;
+	(void)targetDevice;
+	if (pulseAudioApi->pa_stream_connect_playback(pulseAudioBackend->stream, requestedDeviceName, &bufferAttributes, streamFlags, fpl_null, fpl_null) < 0) {
+		int errorCode = pulseAudioApi->pa_context_errno(pulseAudioBackend->context);
+		pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed connecting pulseaudio playback stream: %s!", pulseAudioApi->pa_strerror(errorCode));
+	}
+	while (!pulseAudioBackend->isStreamReady && !pulseAudioBackend->isStreamFailed) {
+		pulseAudioApi->pa_threaded_mainloop_wait(pulseAudioBackend->mainloop);
+	}
+	if (pulseAudioBackend->isStreamFailed) {
+		int errorCode = pulseAudioApi->pa_context_errno(pulseAudioBackend->context);
+		pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_DeviceFailure, "PulseAudio stream failed to become ready: %s!", pulseAudioApi->pa_strerror(errorCode));
+	}
+
+	// Read back the negotiated sample spec, channel map and buffer attr.
+	const pa_sample_spec *actualSampleSpec = pulseAudioApi->pa_stream_get_sample_spec(pulseAudioBackend->stream);
+	const pa_channel_map *actualChannelMap = pulseAudioApi->pa_stream_get_channel_map(pulseAudioBackend->stream);
+	const pa_buffer_attr *actualBufferAttr = pulseAudioApi->pa_stream_get_buffer_attr(pulseAudioBackend->stream);
+
+	fplAudioFormat internalFormat = fplZeroInit;
+	internalFormat.type = fpl__PulseAudio_MapSampleFormatToAudioFormatType(actualSampleSpec->format);
+	internalFormat.sampleRate = actualSampleSpec->rate;
+	internalFormat.channels = actualSampleSpec->channels;
+	internalFormat.channelLayout = fplGetDefaultAudioChannelLayoutFromChannels(internalFormat.channels);
+	internalFormat.periods = periodCount;
+	uint32_t actualFrameSize = (uint32_t)actualSampleSpec->channels * fplGetAudioSampleSizeInBytes(internalFormat.type);
+	if (actualFrameSize == 0) {
+		pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "PulseAudio: negotiated format has zero frame size!");
+	}
+	if (actualBufferAttr != fpl_null && actualBufferAttr->tlength > 0) {
+		internalFormat.bufferSizeInFrames = actualBufferAttr->tlength / actualFrameSize;
+	} else {
+		internalFormat.bufferSizeInFrames = targetFormat->bufferSizeInFrames;
+	}
+	internalFormat.bufferSizeInMilliseconds = fplGetAudioBufferSizeInMilliseconds(internalFormat.sampleRate, internalFormat.bufferSizeInFrames);
+	internalFormat.mode = targetFormat->mode;
+	pulseAudioBackend->frameSize = actualFrameSize;
+
+	// Build the output channel map from the actual pulseaudio channel map.
+	fpl__PulseAudio_SetAudioDefaultChannelMap((uint16_t)actualChannelMap->channels, internalFormat.channelLayout, outputChannelMap);
+
+	// Build the output device info from the negotiated stream sink.
+	fplAudioDeviceInfo internalDevice = fplZeroInit;
+	uint32_t connectedSinkIndex = pulseAudioApi->pa_stream_get_device_index(pulseAudioBackend->stream);
+	const char *connectedSinkName = pulseAudioApi->pa_stream_get_device_name(pulseAudioBackend->stream);
+	internalDevice.id.pulse = connectedSinkIndex;
+	internalDevice.isDefault = true;
+	if (connectedSinkName != fpl_null) {
+		fplCopyString(connectedSinkName, internalDevice.name, fplArrayCount(internalDevice.name));
+	} else {
+		fplCopyString("default", internalDevice.name, fplArrayCount(internalDevice.name));
+	}
+	pulseAudioBackend->targetSinkIndex = connectedSinkIndex;
+	pulseAudioBackend->hasTargetSink = true;
+
+	pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
+
+	*outputFormat = internalFormat;
+	*outputDevice = internalDevice;
+
+	return fplAudioResultType_Success;
+
+#	undef FPL__PULSEAUDIO_INIT_ERROR
 }
 
 fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudioBackendPulseAudioStartDevice) {
 	(void)context;
-	(void)backend;
-	return fplAudioResultType_NotImplemented;
+	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
+	fplAssert(pulseAudioBackend != fpl_null);
+	const fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
+	if (pulseAudioBackend->mainloop == fpl_null || pulseAudioBackend->stream == fpl_null) {
+		return fplAudioResultType_DeviceNotInitialized;
+	}
+	pulseAudioApi->pa_threaded_mainloop_lock(pulseAudioBackend->mainloop);
+	pa_operation *corkOperation = pulseAudioApi->pa_stream_cork(pulseAudioBackend->stream, 0, fpl__PulseAudio_StreamSuccessCallback, backend);
+	fpl__PulseAudio_WaitForOperation(pulseAudioBackend, corkOperation);
+	pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
+	return fplAudioResultType_Success;
 }
 
 fpl_internal FPL_AUDIO_BACKEND_STOP_DEVICE_FUNC(fpl__AudioBackendPulseAudioStopDevice) {
 	(void)context;
-	(void)backend;
+	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
+	fplAssert(pulseAudioBackend != fpl_null);
+	const fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
+	if (pulseAudioBackend->mainloop == fpl_null || pulseAudioBackend->stream == fpl_null) {
+		return true;
+	}
+	pulseAudioApi->pa_threaded_mainloop_lock(pulseAudioBackend->mainloop);
+	pa_operation *corkOperation = pulseAudioApi->pa_stream_cork(pulseAudioBackend->stream, 1, fpl__PulseAudio_StreamSuccessCallback, backend);
+	fpl__PulseAudio_WaitForOperation(pulseAudioBackend, corkOperation);
+	pa_operation *flushOperation = pulseAudioApi->pa_stream_flush(pulseAudioBackend->stream, fpl__PulseAudio_StreamSuccessCallback, backend);
+	fpl__PulseAudio_WaitForOperation(pulseAudioBackend, flushOperation);
+	pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
 	return true;
 }
 
