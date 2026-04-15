@@ -80,6 +80,11 @@ static uint32_t AudioPlaybackThread(const fplAudioFormat *nativeFormat, const ui
 	return numFramesOut;
 }
 
+static void WaitThreadProc(const fplThreadHandle *thread, void *data) {
+	fplThreadSleep(5000);
+	fplConsoleOut("Thread stopping normally\n");
+}
+
 int main(int argc, char **argv) {
 	// Setup FPL and force the audio format to S16, 44100 Hz, Stereo
 	// Note that, there is no guarantee that every sound device supports this!
@@ -123,8 +128,15 @@ int main(int argc, char **argv) {
 	const fplAudioBackendType audioBackend = fplGetAudioBackendType();
 	const char *audioBackendName = fplGetAudioBackendName(audioBackend);
 	fplConsoleFormatOut("Playing sine wave with backend: %s, sample-rate: %u, channels: %u, format: %s, periods: %u, buffer-size: %u\n", audioBackendName, hardwareFormat.sampleRate, hardwareFormat.channels, audioFormatName, hardwareFormat.periods, hardwareFormat.bufferSizeInFrames);
+
+#if 0
 	fplConsoleOut("Press any key to exit\n");
 	fplConsoleWaitForCharInput();
+#else
+	fplConsoleOut("Start thread and wait 5 seconds to exit automatically\n");
+	fplThreadHandle *thread = fplThreadCreate(WaitThreadProc, fpl_null);
+	fplThreadWaitForOne(thread, 10000);
+#endif
 
 	// Stop audio playback, shutdown the audio device and release any platform resources
 	fplPlatformRelease();
