@@ -99,7 +99,7 @@ int main(int argc, char **argv) {
 	settings.audio.targetFormat.sampleRate = 44100;
 
 	// TEMPORARY(final): Force audio backend to pulse audio
-	settings.audio.backend = fplAudioBackendType_PulseAudio;
+	settings.audio.backend = fplAudioBackendType_PipeWire;
 
 	// Always start and stop the playback automatically
 	settings.audio.startAuto = true;
