@@ -27151,76 +27151,6 @@ fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendPulseAudioDescri
 #	define FPL__ANONYMOUS_PIPEWIRE_HEADERS
 #endif
 
-// Sets the default audio channel map for the PipeWire backend
-fpl_internal void fpl__PipeWire_SetAudioDefaultChannelMap(const uint16_t channels, const fplAudioChannelLayout layout, fplAudioChannelMap *outChannelMap) {
-	fplClearStruct(outChannelMap);
-
-	if (channels == 0 || layout == fplAudioChannelLayout_Unsupported) {
-		return;
-	}
-
-	if (channels == 1 || layout == fplAudioChannelLayout_Mono) {
-		outChannelMap->speakers[0] = fplAudioChannelType_FrontCenter;
-	} else if (channels == 2 || layout == fplAudioChannelLayout_Stereo) {
-		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
-		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
-	} else if (channels == 3) {
-		if (layout == fplAudioChannelLayout_2_1) {
-			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
-			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
-			outChannelMap->speakers[2] = fplAudioChannelType_LowFrequency;
-		} else {
-			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
-			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
-			outChannelMap->speakers[2] = fplAudioChannelType_FrontCenter;
-		}
-	} else if (channels == 4) {
-		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
-		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
-		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
-		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
-	} else if (channels == 5) {
-		if (layout == fplAudioChannelLayout_4_1) {
-			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
-			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
-			outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
-			outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
-			outChannelMap->speakers[4] = fplAudioChannelType_LowFrequency;
-		} else {
-			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
-			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
-			outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
-			outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
-			outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
-		}
-	} else if (channels == 6) {
-		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
-		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
-		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
-		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
-		outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
-		outChannelMap->speakers[5] = fplAudioChannelType_LowFrequency;
-	} else if (channels == 7) {
-		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
-		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
-		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
-		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
-		outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
-		outChannelMap->speakers[5] = fplAudioChannelType_LowFrequency;
-		outChannelMap->speakers[6] = fplAudioChannelType_BackCenter;
-	} else {
-		fplAssert(channels >= 8);
-		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
-		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
-		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
-		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
-		outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
-		outChannelMap->speakers[5] = fplAudioChannelType_LowFrequency;
-		outChannelMap->speakers[6] = fplAudioChannelType_SideLeft;
-		outChannelMap->speakers[7] = fplAudioChannelType_SideRight;
-	}
-}
-
 #if defined(FPL__ANONYMOUS_PIPEWIRE_HEADERS)
 // Opaque handles. PipeWire never exposes the internals of these structures, so we can treat them as void-sized handles.
 typedef void pw_thread_loop;
@@ -27734,44 +27664,232 @@ fpl_internal fplAudioFormatType fpl__PipeWire_MapSampleFormatToAudioFormatType(c
 	}
 }
 
+// SPA POD sizes for scalar properties
+#define SPA_POD_PROP_HEADER_SIZE   8u   // key + flags
+#define SPA_POD_SCALAR_SIZE        8u   // pod header (size+type)
+#define SPA_POD_SCALAR_BODY_SIZE   4u   // actual value
+#define SPA_POD_SCALAR_PAD_SIZE    4u   // padding to 8 bytes
+
+// Total size of one scalar property
+#define SPA_POD_PROP_SCALAR_TOTAL_SIZE \
+(SPA_POD_PROP_HEADER_SIZE + \
+SPA_POD_SCALAR_SIZE + \
+SPA_POD_SCALAR_BODY_SIZE + \
+SPA_POD_SCALAR_PAD_SIZE)
+
+// Size of SPA object header
+#define SPA_POD_OBJECT_HEADER_SIZE 8u   // size + type
+
+// Size of SPA object body header
+#define SPA_POD_OBJECT_BODY_HEADER_SIZE 8u // object type + object id
+
+fpl_internal_inline fplAudioChannelType fpl__PipeWire_MapToAudioChannelType(const uint32_t value) {
+	switch (value) {
+		case SPA_AUDIO_CHANNEL_FL:
+			return fplAudioChannelType_FrontLeft;
+		case SPA_AUDIO_CHANNEL_FR:
+			return fplAudioChannelType_FrontRight;
+		case SPA_AUDIO_CHANNEL_FC:
+			return fplAudioChannelType_FrontCenter;
+		case SPA_AUDIO_CHANNEL_LFE:
+			return fplAudioChannelType_LowFrequency;
+		case SPA_AUDIO_CHANNEL_SL:
+			return fplAudioChannelType_SideLeft;
+		case SPA_AUDIO_CHANNEL_SR:
+			return fplAudioChannelType_SideRight;
+		case SPA_AUDIO_CHANNEL_RL:
+			return fplAudioChannelType_BackLeft;
+		case SPA_AUDIO_CHANNEL_RR:
+			return fplAudioChannelType_BackRight;
+		case SPA_AUDIO_CHANNEL_BC:
+			return fplAudioChannelType_BackCenter;
+		default:
+			return fplAudioChannelType_None;
+	}
+}
+
+fpl_internal void fpl__PipeWire_TranslateAudioChannelMap(const uint32_t channels, const uint32_t *inChannelMap, fplAudioChannelMap *outChannelMap) {
+	fplAssertPtr(inChannelMap);
+	fplAssertPtr(outChannelMap);
+	fplClearStruct(outChannelMap);
+	for (uint32_t i = 0; i < channels; ++i) {
+		outChannelMap->speakers[i] = fpl__PipeWire_MapToAudioChannelType(inChannelMap[i]);
+	}
+}
+
+fpl_internal void fpl__PipeWire_BuildChannelMap(const uint32_t channels, const fplAudioChannelLayout layout, const uint32_t maxChannelCount, uint32_t *outChannelMap) {
+	if (channels == 0 || layout == fplAudioChannelLayout_Unsupported || channels > maxChannelCount) {
+		return;
+	}
+	if (channels == 1 || layout == fplAudioChannelLayout_Mono) {
+		outChannelMap[0] = SPA_AUDIO_CHANNEL_FC;
+	} else if (channels == 2 || layout == fplAudioChannelLayout_Stereo) {
+		outChannelMap[0] = SPA_AUDIO_CHANNEL_FL;
+		outChannelMap[1] = SPA_AUDIO_CHANNEL_FR;
+	} else if (channels == 3) {
+		if (layout == fplAudioChannelLayout_2_1) {
+			outChannelMap[0] = SPA_AUDIO_CHANNEL_FL;
+			outChannelMap[1] = SPA_AUDIO_CHANNEL_FR;
+			outChannelMap[2] = SPA_AUDIO_CHANNEL_LFE;
+		} else {
+			outChannelMap[0] = SPA_AUDIO_CHANNEL_FL;
+			outChannelMap[1] = SPA_AUDIO_CHANNEL_FR;
+			outChannelMap[2] = SPA_AUDIO_CHANNEL_FC;
+		}
+	} else if (channels == 4) {
+		outChannelMap[0] = SPA_AUDIO_CHANNEL_FL;
+		outChannelMap[1] = SPA_AUDIO_CHANNEL_FR;
+		outChannelMap[2] = SPA_AUDIO_CHANNEL_RL;
+		outChannelMap[3] = SPA_AUDIO_CHANNEL_RR;
+	} else if (channels == 5) {
+		if (layout == fplAudioChannelLayout_4_1) {
+			outChannelMap[0] = SPA_AUDIO_CHANNEL_FL;
+			outChannelMap[1] = SPA_AUDIO_CHANNEL_FR;
+			outChannelMap[2] = SPA_AUDIO_CHANNEL_RL;
+			outChannelMap[3] = SPA_AUDIO_CHANNEL_RR;
+			outChannelMap[4] = SPA_AUDIO_CHANNEL_LFE;
+		} else {
+			outChannelMap[0] = SPA_AUDIO_CHANNEL_FL;
+			outChannelMap[1] = SPA_AUDIO_CHANNEL_FR;
+			outChannelMap[2] = SPA_AUDIO_CHANNEL_FC;
+			outChannelMap[3] = SPA_AUDIO_CHANNEL_RL;
+			outChannelMap[4] = SPA_AUDIO_CHANNEL_RR;
+		}
+	} else if (channels == 6) {
+		outChannelMap[0] = SPA_AUDIO_CHANNEL_FL;
+		outChannelMap[1] = SPA_AUDIO_CHANNEL_FR;
+		outChannelMap[2] = SPA_AUDIO_CHANNEL_FC;
+		outChannelMap[3] = SPA_AUDIO_CHANNEL_LFE;
+		outChannelMap[4] = SPA_AUDIO_CHANNEL_RL;
+		outChannelMap[5] = SPA_AUDIO_CHANNEL_RR;
+	} else if (channels == 7) {
+		outChannelMap[0] = SPA_AUDIO_CHANNEL_FL;
+		outChannelMap[1] = SPA_AUDIO_CHANNEL_FR;
+		outChannelMap[2] = SPA_AUDIO_CHANNEL_FC;
+		outChannelMap[3] = SPA_AUDIO_CHANNEL_LFE;
+		outChannelMap[4] = SPA_AUDIO_CHANNEL_BC;
+		outChannelMap[5] = SPA_AUDIO_CHANNEL_RL;
+		outChannelMap[6] = SPA_AUDIO_CHANNEL_RR;
+	} else {
+		fplAssert(channels >= 8);
+		outChannelMap[0] = SPA_AUDIO_CHANNEL_FL;
+		outChannelMap[1] = SPA_AUDIO_CHANNEL_FR;
+		outChannelMap[2] = SPA_AUDIO_CHANNEL_FC;
+		outChannelMap[3] = SPA_AUDIO_CHANNEL_LFE;
+		outChannelMap[4] = SPA_AUDIO_CHANNEL_SL;
+		outChannelMap[5] = SPA_AUDIO_CHANNEL_SR;
+		outChannelMap[6] = SPA_AUDIO_CHANNEL_RL;
+		outChannelMap[7] = SPA_AUDIO_CHANNEL_RR;
+	}
+}
+
 // Builds a SPA POD for SPA_TYPE_OBJECT_Format with id SPA_PARAM_EnumFormat.
 // Layout: object header (8) + object body (8 + 5 props * 24 = 128) = 136 bytes.
 // Each Id/Int prop = 8 (key+flags) + 8 (pod header) + 8 (4-byte body + 4-byte pad).
-fpl_internal uint32_t fpl__PipeWire_BuildAudioFormatPod(uint8_t *buffer, const size_t bufferSize, const uint32_t spaAudioFormat, const uint32_t sampleRate, const uint32_t channels) {
-	const uint32_t propBytes = 24u;
-	const uint32_t numProps = 5u;
-	const uint32_t objectBodySize = 8u + propBytes * numProps;
-	const uint32_t totalSize = 8u + objectBodySize;
-	if (buffer == fpl_null || bufferSize < totalSize) {
-		return 0;
-	}
-	fplMemoryClear(buffer, totalSize);
+fpl_internal uint32_t fpl__PipeWire_BuildAudioFormatPod(uint8_t *buffer, const size_t bufferSize, const uint32_t spaAudioFormat, const uint32_t sampleRate, const uint32_t channels, uint32_t *channelMap) {
+	if (!buffer || bufferSize == 0 || channels == 0 || channelMap == fpl_null)
+        return 0;
 
-	uint32_t *u32 = (uint32_t *)buffer;
-	u32[0] = objectBodySize;
-	u32[1] = SPA_TYPE_Object;
-	u32[2] = SPA_TYPE_OBJECT_Format;
-	u32[3] = SPA_PARAM_EnumFormat;
+    // ---- Scalar property definitions ----
+    const uint32_t numScalarProps = 5u;
 
-	struct { uint32_t key; uint32_t childType; uint32_t value; } props[5];
-	props[0].key = SPA_FORMAT_mediaType;     props[0].childType = SPA_TYPE_Id;  props[0].value = SPA_MEDIA_TYPE_audio;
-	props[1].key = SPA_FORMAT_mediaSubtype;  props[1].childType = SPA_TYPE_Id;  props[1].value = SPA_MEDIA_SUBTYPE_raw;
-	props[2].key = SPA_FORMAT_AUDIO_format;  props[2].childType = SPA_TYPE_Id;  props[2].value = spaAudioFormat;
-	props[3].key = SPA_FORMAT_AUDIO_rate;    props[3].childType = SPA_TYPE_Int; props[3].value = sampleRate;
-	props[4].key = SPA_FORMAT_AUDIO_channels;props[4].childType = SPA_TYPE_Int; props[4].value = channels;
+    struct ScalarProp {
+        uint32_t key;
+        uint32_t childType;
+        uint32_t value;
+    } scalarProps[5] = {
+        { SPA_FORMAT_mediaType,      SPA_TYPE_Id,  SPA_MEDIA_TYPE_audio },
+        { SPA_FORMAT_mediaSubtype,   SPA_TYPE_Id,  SPA_MEDIA_SUBTYPE_raw },
+        { SPA_FORMAT_AUDIO_format,   SPA_TYPE_Id,  spaAudioFormat },
+        { SPA_FORMAT_AUDIO_rate,     SPA_TYPE_Int, sampleRate },
+        { SPA_FORMAT_AUDIO_channels, SPA_TYPE_Int, channels }
+    };
 
-	uint8_t *cursor = buffer + 16;
-	for (uint32_t i = 0; i < numProps; ++i) {
-		uint32_t *p = (uint32_t *)cursor;
-		p[0] = props[i].key;
-		p[1] = 0;                      // flags
-		p[2] = 4u;                     // child pod body size
-		p[3] = props[i].childType;     // child pod type
-		p[4] = props[i].value;         // body value
-		p[5] = 0;                      // pad
-		cursor += propBytes;
-	}
-	return totalSize;
+    // ---- Size calculations ----
+
+    // Scalar property size
+    const uint32_t scalarPropSize =
+        SPA_POD_PROP_HEADER_SIZE +
+        SPA_POD_SCALAR_SIZE +
+        SPA_POD_SCALAR_BODY_SIZE +
+        SPA_POD_SCALAR_PAD_SIZE;
+
+    // Channel map array pod size
+    const uint32_t arrayBodySize =
+        8u + channels * sizeof(uint32_t); // childType + childSize + values[]
+
+    const uint32_t arrayPodSize =
+        SPA_POD_PROP_HEADER_SIZE + // key + flags
+        8u +                       // pod header (size + type)
+        arrayBodySize;
+
+    const uint32_t numTotalProps = numScalarProps + 1; // + channel map
+
+    const uint32_t objectBodySize =
+        SPA_POD_OBJECT_BODY_HEADER_SIZE +
+        numScalarProps * scalarPropSize +
+        arrayPodSize;
+
+    const uint32_t totalSize =
+        SPA_POD_OBJECT_HEADER_SIZE +
+        objectBodySize;
+
+    if (bufferSize < totalSize)
+        return 0;
+
+    fplMemoryClear(buffer, totalSize);
+
+    // ---- Write object header ----
+    uint32_t *u32 = (uint32_t *)buffer;
+    u32[0] = objectBodySize;
+    u32[1] = SPA_TYPE_Object;
+
+    // ---- Write object body header ----
+    u32[2] = SPA_TYPE_OBJECT_Format;
+    u32[3] = SPA_PARAM_EnumFormat;
+
+    uint8_t *cursor =
+        buffer + SPA_POD_OBJECT_HEADER_SIZE + SPA_POD_OBJECT_BODY_HEADER_SIZE;
+
+    // ---- Write scalar properties ----
+    for (uint32_t i = 0; i < numScalarProps; ++i) {
+        uint32_t *p = (uint32_t *)cursor;
+
+        p[0] = scalarProps[i].key;
+        p[1] = 0; // flags
+
+        p[2] = SPA_POD_SCALAR_BODY_SIZE; // child body size
+        p[3] = scalarProps[i].childType;
+
+        p[4] = scalarProps[i].value;
+        p[5] = 0; // padding
+
+        cursor += scalarPropSize;
+    }
+
+    // ---- Write channel map array property ----
+    {
+        uint32_t *p = (uint32_t *)cursor;
+
+        // Property header
+        p[0] = SPA_FORMAT_AUDIO_position;
+        p[1] = 0; // flags
+
+        // Array pod header
+        p[2] = arrayBodySize;   // pod.size
+        p[3] = SPA_TYPE_Array;  // pod.type
+
+        // Array child type + size
+        p[4] = SPA_TYPE_Id;     // child type
+        p[5] = sizeof(uint32_t);
+
+        // Values
+        uint32_t *vals = p + 6;
+        for (uint32_t i = 0; i < channels; i++)
+            vals[i] = channelMap[i];
+    }
+
+    return totalSize;
 }
 
 // Helper: find a value in a spa_dict for a given key.
@@ -28209,6 +28327,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPipeWireI
 	}
 	uint16_t channelCount = targetFormat->channels;
 	uint32_t sampleRate = targetFormat->sampleRate;
+	fplAudioChannelLayout channelLayout = fplGetDefaultAudioChannelLayoutFromChannels(channelCount);
 
 	uint32_t localFrameSize = (uint32_t)channelCount * fplGetAudioSampleSizeInBytes(fpl__PipeWire_MapSampleFormatToAudioFormatType(spaAudioFormat));
 	if (localFrameSize == 0) {
@@ -28244,9 +28363,13 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPipeWireI
 	fplClearStruct(&pw->streamListener);
 	api->pw_stream_add_listener(pw->stream, &pw->streamListener, &fpl__global_pipeWireStreamEvents, backend);
 
+	// Build channel map
+	uint32_t nativeChannelMap[32] = fplZeroInit;
+	fpl__PipeWire_BuildChannelMap(channelCount, channelLayout, fplArrayCount(nativeChannelMap), nativeChannelMap);
+
 	// Build the EnumFormat POD.
 	uint8_t podBuffer[256];
-	uint32_t podSize = fpl__PipeWire_BuildAudioFormatPod(podBuffer, sizeof(podBuffer), spaAudioFormat, sampleRate, (uint32_t)channelCount);
+	uint32_t podSize = fpl__PipeWire_BuildAudioFormatPod(podBuffer, sizeof(podBuffer), spaAudioFormat, sampleRate, (uint32_t)channelCount, nativeChannelMap);
 	if (podSize == 0) {
 		api->pw_thread_loop_unlock(pw->threadLoop);
 		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed building PipeWire format POD!");
@@ -28276,13 +28399,13 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPipeWireI
 	internalFormat.type = fpl__PipeWire_MapSampleFormatToAudioFormatType(spaAudioFormat);
 	internalFormat.sampleRate = sampleRate;
 	internalFormat.channels = channelCount;
-	internalFormat.channelLayout = fplGetDefaultAudioChannelLayoutFromChannels(channelCount);
+	internalFormat.channelLayout = channelLayout;
 	internalFormat.periods = targetFormat->periods > 0 ? targetFormat->periods : 2;
 	internalFormat.bufferSizeInFrames = targetFormat->bufferSizeInFrames;
 	internalFormat.bufferSizeInMilliseconds = fplGetAudioBufferSizeInMilliseconds(internalFormat.sampleRate, internalFormat.bufferSizeInFrames);
 	internalFormat.mode = targetFormat->mode;
 
-	fpl__PipeWire_SetAudioDefaultChannelMap(channelCount, internalFormat.channelLayout, outputChannelMap);
+	fpl__PipeWire_TranslateAudioChannelMap(channelCount, nativeChannelMap, outputChannelMap);
 
 	fplAudioDeviceInfo internalDevice = fplZeroInit;
 	if (targetDevice != fpl_null && fplGetStringLength(targetDevice->name) > 0) {
