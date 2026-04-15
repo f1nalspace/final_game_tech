@@ -27135,6 +27135,612 @@ fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendPulseAudioDescri
 };
 #endif // FPL__ENABLE_AUDIO_PULSEAUDIO
 
+// ############################################################################
+//
+// > AUDIO_BACKEND_PIPEWIRE
+//
+// ############################################################################
+#if defined(FPL__ENABLE_AUDIO_PIPEWIRE)
+
+// @NOTE(final/PipeWire): The PipeWire backend is runtime-linked by default, so the PipeWire development headers are not required.
+// To disable anonymous headers and include the real <pipewire/pipewire.h> header instead, define FPL_PIPEWIRE_USE_REAL_HEADERS.
+#if !defined(FPL__ANONYMOUS_PIPEWIRE_HEADERS) && !defined(FPL_PIPEWIRE_USE_REAL_HEADERS)
+#	define FPL__ANONYMOUS_PIPEWIRE_HEADERS
+#endif
+
+// Sets the default audio channel map for the PipeWire backend
+fpl_internal void fpl__PipeWire_SetAudioDefaultChannelMap(const uint16_t channels, const fplAudioChannelLayout layout, fplAudioChannelMap *outChannelMap) {
+	fplClearStruct(outChannelMap);
+
+	if (channels == 0 || layout == fplAudioChannelLayout_Unsupported) {
+		return;
+	}
+
+	if (channels == 1 || layout == fplAudioChannelLayout_Mono) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontCenter;
+	} else if (channels == 2 || layout == fplAudioChannelLayout_Stereo) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+	} else if (channels == 3) {
+		if (layout == fplAudioChannelLayout_2_1) {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_LowFrequency;
+		} else {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_FrontCenter;
+		}
+	} else if (channels == 4) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+	} else if (channels == 5) {
+		if (layout == fplAudioChannelLayout_4_1) {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+			outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+			outChannelMap->speakers[4] = fplAudioChannelType_LowFrequency;
+		} else {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+			outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+			outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
+		}
+	} else if (channels == 6) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+		outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
+		outChannelMap->speakers[5] = fplAudioChannelType_LowFrequency;
+	} else if (channels == 7) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+		outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
+		outChannelMap->speakers[5] = fplAudioChannelType_LowFrequency;
+		outChannelMap->speakers[6] = fplAudioChannelType_BackCenter;
+	} else {
+		fplAssert(channels >= 8);
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+		outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
+		outChannelMap->speakers[5] = fplAudioChannelType_LowFrequency;
+		outChannelMap->speakers[6] = fplAudioChannelType_SideLeft;
+		outChannelMap->speakers[7] = fplAudioChannelType_SideRight;
+	}
+}
+
+#if defined(FPL__ANONYMOUS_PIPEWIRE_HEADERS)
+// Opaque handles. PipeWire never exposes the internals of these structures, so we can treat them as void-sized handles.
+typedef void pw_thread_loop;
+typedef void pw_loop;
+typedef void pw_context;
+typedef void pw_core;
+typedef void pw_registry;
+typedef void pw_stream;
+typedef void pw_proxy;
+typedef void pw_properties;
+
+// Forward-declared SPA types used in function signatures. We never dereference these through anonymous headers.
+struct spa_dict;
+struct spa_pod;
+struct spa_pod_builder;
+struct spa_command;
+
+// Opaque storage for spa_hook. The real struct is 48 bytes on all 64-bit platforms:
+//   struct spa_list link (16) + struct spa_callbacks cb (16) + removed fn pointer (8) + priv pointer (8) = 48
+// We use uint64_t words to enforce 8 byte alignment.
+struct spa_hook {
+	uint64_t fpl__opaqueWords[6];
+};
+
+// Enumerations
+enum pw_stream_state {
+	PW_STREAM_STATE_ERROR = -1,
+	PW_STREAM_STATE_UNCONNECTED = 0,
+	PW_STREAM_STATE_CONNECTING = 1,
+	PW_STREAM_STATE_PAUSED = 2,
+	PW_STREAM_STATE_STREAMING = 3
+};
+
+enum pw_direction {
+	PW_DIRECTION_INPUT = 0,
+	PW_DIRECTION_OUTPUT = 1
+};
+
+enum spa_audio_format {
+	SPA_AUDIO_FORMAT_UNKNOWN = 0,
+	SPA_AUDIO_FORMAT_ENCODED = 1,
+	SPA_AUDIO_FORMAT_START_Interleaved = 0x100,
+	SPA_AUDIO_FORMAT_S8 = 0x101,
+	SPA_AUDIO_FORMAT_U8 = 0x102,
+	SPA_AUDIO_FORMAT_S16_LE = 0x103,
+	SPA_AUDIO_FORMAT_S16_BE = 0x104,
+	SPA_AUDIO_FORMAT_U16_LE = 0x105,
+	SPA_AUDIO_FORMAT_U16_BE = 0x106,
+	SPA_AUDIO_FORMAT_S24_32_LE = 0x107,
+	SPA_AUDIO_FORMAT_S24_32_BE = 0x108,
+	SPA_AUDIO_FORMAT_U24_32_LE = 0x109,
+	SPA_AUDIO_FORMAT_U24_32_BE = 0x10A,
+	SPA_AUDIO_FORMAT_S32_LE = 0x10B,
+	SPA_AUDIO_FORMAT_S32_BE = 0x10C,
+	SPA_AUDIO_FORMAT_U32_LE = 0x10D,
+	SPA_AUDIO_FORMAT_U32_BE = 0x10E,
+	SPA_AUDIO_FORMAT_S24_LE = 0x10F,
+	SPA_AUDIO_FORMAT_S24_BE = 0x110,
+	SPA_AUDIO_FORMAT_U24_LE = 0x111,
+	SPA_AUDIO_FORMAT_U24_BE = 0x112,
+	SPA_AUDIO_FORMAT_S20_LE = 0x113,
+	SPA_AUDIO_FORMAT_S20_BE = 0x114,
+	SPA_AUDIO_FORMAT_U20_LE = 0x115,
+	SPA_AUDIO_FORMAT_U20_BE = 0x116,
+	SPA_AUDIO_FORMAT_S18_LE = 0x117,
+	SPA_AUDIO_FORMAT_S18_BE = 0x118,
+	SPA_AUDIO_FORMAT_U18_LE = 0x119,
+	SPA_AUDIO_FORMAT_U18_BE = 0x11A,
+	SPA_AUDIO_FORMAT_F32_LE = 0x11B,
+	SPA_AUDIO_FORMAT_F32_BE = 0x11C,
+	SPA_AUDIO_FORMAT_F64_LE = 0x11D,
+	SPA_AUDIO_FORMAT_F64_BE = 0x11E
+};
+
+// Well known id constants
+#define PW_ID_CORE 0u
+#define PW_ID_ANY 0xffffffffu
+#define PW_VERSION_CORE 4
+#define PW_VERSION_REGISTRY 3
+#define PW_VERSION_CORE_EVENTS 1
+#define PW_VERSION_REGISTRY_EVENTS 0
+#define PW_VERSION_STREAM_EVENTS 2
+
+// pw_stream_flags bit mask
+#define PW_STREAM_FLAG_NONE 0u
+#define PW_STREAM_FLAG_AUTOCONNECT (1u << 0)
+#define PW_STREAM_FLAG_INACTIVE (1u << 1)
+#define PW_STREAM_FLAG_MAP_BUFFERS (1u << 2)
+#define PW_STREAM_FLAG_DRIVER (1u << 3)
+#define PW_STREAM_FLAG_RT_PROCESS (1u << 4)
+#define PW_STREAM_FLAG_NO_CONVERT (1u << 5)
+#define PW_STREAM_FLAG_EXCLUSIVE (1u << 6)
+#define PW_STREAM_FLAG_DONT_RECONNECT (1u << 7)
+
+// PipeWire property keys used by the backend
+#define PW_KEY_APP_NAME "application.name"
+#define PW_KEY_NODE_NAME "node.name"
+#define PW_KEY_NODE_DESCRIPTION "node.description"
+#define PW_KEY_MEDIA_TYPE "media.type"
+#define PW_KEY_MEDIA_CATEGORY "media.category"
+#define PW_KEY_MEDIA_ROLE "media.role"
+#define PW_KEY_MEDIA_CLASS "media.class"
+#define PW_KEY_TARGET_OBJECT "target.object"
+
+// SPA basic type identifiers (from spa/utils/type.h)
+#define SPA_TYPE_Id 3u
+#define SPA_TYPE_Int 4u
+#define SPA_TYPE_Object 15u
+#define SPA_TYPE_OBJECT_Format 0x40003u
+
+// SPA format property keys (from spa/param/format.h)
+#define SPA_FORMAT_mediaType 1u
+#define SPA_FORMAT_mediaSubtype 2u
+#define SPA_FORMAT_AUDIO_format 0x10001u
+#define SPA_FORMAT_AUDIO_rate 0x10003u
+#define SPA_FORMAT_AUDIO_channels 0x10004u
+
+// SPA media type / subtype values (from spa/param/format.h)
+#define SPA_MEDIA_TYPE_audio 1u
+#define SPA_MEDIA_SUBTYPE_raw 1u
+
+// SPA param ids (from spa/param/param.h)
+#define SPA_PARAM_EnumFormat 3u
+#define SPA_PARAM_Format 4u
+
+// Event structs — ABI must match pipewire. We only fill in the callbacks we actually use,
+// the rest stay NULL which pipewire tolerates.
+struct pw_core_events {
+	uint32_t version;
+	void (*info)(void *data, const void *info);
+	void (*done)(void *data, uint32_t id, int seq);
+	void (*ping)(void *data, uint32_t id, int seq);
+	void (*error)(void *data, uint32_t id, int seq, int res, const char *message);
+	void (*remove_id)(void *data, uint32_t id);
+	void (*bound_id)(void *data, uint32_t id, uint32_t global_id);
+	void (*add_mem)(void *data, uint32_t id, uint32_t type, int fd, uint32_t flags);
+	void (*remove_mem)(void *data, uint32_t id);
+	void (*bound_props)(void *data, uint32_t id, uint32_t global_id, const struct spa_dict *props);
+};
+
+struct pw_registry_events {
+	uint32_t version;
+	void (*global)(void *data, uint32_t id, uint32_t permissions, const char *type, uint32_t version, const struct spa_dict *props);
+	void (*global_remove)(void *data, uint32_t id);
+};
+
+struct pw_stream_events {
+	uint32_t version;
+	void (*destroy)(void *data);
+	void (*state_changed)(void *data, enum pw_stream_state old, enum pw_stream_state state, const char *error);
+	void (*control_info)(void *data, uint32_t id, const void *control);
+	void (*io_changed)(void *data, uint32_t id, void *area, uint32_t size);
+	void (*param_changed)(void *data, uint32_t id, const struct spa_pod *param);
+	void (*add_buffer)(void *data, void *buffer);
+	void (*remove_buffer)(void *data, void *buffer);
+	void (*process)(void *data);
+	void (*drained)(void *data);
+	void (*command)(void *data, const struct spa_command *command);
+	void (*trigger_done)(void *data);
+};
+
+// Buffer layouts (from spa/buffer/buffer.h and pipewire/stream.h)
+struct spa_chunk {
+	uint32_t offset;
+	uint32_t size;
+	int32_t stride;
+	int32_t flags;
+};
+
+struct spa_data {
+	uint32_t type;
+	uint32_t flags;
+	int64_t fd;
+	uint32_t mapoffset;
+	uint32_t maxsize;
+	void *data;
+	struct spa_chunk *chunk;
+};
+
+struct spa_buffer {
+	uint32_t n_metas;
+	uint32_t n_datas;
+	void *metas;
+	struct spa_data *datas;
+};
+
+struct pw_buffer {
+	struct spa_buffer *buffer;
+	void *user_data;
+	uint64_t size;
+	uint64_t requested;
+	uint64_t time;
+};
+
+#else
+// @TODO(final/PipeWire): Remove PipeWire include when runtime linking is enabled
+#	include <pipewire/pipewire.h>
+#	include <spa/param/audio/raw.h>
+#	include <spa/param/audio/format-utils.h>
+#	include <spa/pod/builder.h>
+#endif // FPL__ANONYMOUS_PIPEWIRE_HEADERS
+
+// Function typedefs for all PipeWire runtime-loaded functions
+#define FPL__PIPEWIRE_FUNC_pw_init(name) void name(int *argc, char ***argv)
+typedef FPL__PIPEWIRE_FUNC_pw_init(fpl__pw_func_pw_init);
+#define FPL__PIPEWIRE_FUNC_pw_deinit(name) void name(void)
+typedef FPL__PIPEWIRE_FUNC_pw_deinit(fpl__pw_func_pw_deinit);
+
+#define FPL__PIPEWIRE_FUNC_pw_thread_loop_new(name) pw_thread_loop *name(const char *threadName, const struct spa_dict *props)
+typedef FPL__PIPEWIRE_FUNC_pw_thread_loop_new(fpl__pw_func_pw_thread_loop_new);
+#define FPL__PIPEWIRE_FUNC_pw_thread_loop_destroy(name) void name(pw_thread_loop *threadLoop)
+typedef FPL__PIPEWIRE_FUNC_pw_thread_loop_destroy(fpl__pw_func_pw_thread_loop_destroy);
+#define FPL__PIPEWIRE_FUNC_pw_thread_loop_start(name) int name(pw_thread_loop *threadLoop)
+typedef FPL__PIPEWIRE_FUNC_pw_thread_loop_start(fpl__pw_func_pw_thread_loop_start);
+#define FPL__PIPEWIRE_FUNC_pw_thread_loop_stop(name) void name(pw_thread_loop *threadLoop)
+typedef FPL__PIPEWIRE_FUNC_pw_thread_loop_stop(fpl__pw_func_pw_thread_loop_stop);
+#define FPL__PIPEWIRE_FUNC_pw_thread_loop_lock(name) void name(pw_thread_loop *threadLoop)
+typedef FPL__PIPEWIRE_FUNC_pw_thread_loop_lock(fpl__pw_func_pw_thread_loop_lock);
+#define FPL__PIPEWIRE_FUNC_pw_thread_loop_unlock(name) void name(pw_thread_loop *threadLoop)
+typedef FPL__PIPEWIRE_FUNC_pw_thread_loop_unlock(fpl__pw_func_pw_thread_loop_unlock);
+#define FPL__PIPEWIRE_FUNC_pw_thread_loop_wait(name) void name(pw_thread_loop *threadLoop)
+typedef FPL__PIPEWIRE_FUNC_pw_thread_loop_wait(fpl__pw_func_pw_thread_loop_wait);
+#define FPL__PIPEWIRE_FUNC_pw_thread_loop_signal(name) void name(pw_thread_loop *threadLoop, bool waitForAccept)
+typedef FPL__PIPEWIRE_FUNC_pw_thread_loop_signal(fpl__pw_func_pw_thread_loop_signal);
+#define FPL__PIPEWIRE_FUNC_pw_thread_loop_get_loop(name) pw_loop *name(pw_thread_loop *threadLoop)
+typedef FPL__PIPEWIRE_FUNC_pw_thread_loop_get_loop(fpl__pw_func_pw_thread_loop_get_loop);
+
+#define FPL__PIPEWIRE_FUNC_pw_context_new(name) pw_context *name(pw_loop *mainLoop, pw_properties *props, size_t userDataSize)
+typedef FPL__PIPEWIRE_FUNC_pw_context_new(fpl__pw_func_pw_context_new);
+#define FPL__PIPEWIRE_FUNC_pw_context_destroy(name) void name(pw_context *context)
+typedef FPL__PIPEWIRE_FUNC_pw_context_destroy(fpl__pw_func_pw_context_destroy);
+#define FPL__PIPEWIRE_FUNC_pw_context_connect(name) pw_core *name(pw_context *context, pw_properties *properties, size_t userDataSize)
+typedef FPL__PIPEWIRE_FUNC_pw_context_connect(fpl__pw_func_pw_context_connect);
+
+#define FPL__PIPEWIRE_FUNC_pw_core_disconnect(name) int name(pw_core *core)
+typedef FPL__PIPEWIRE_FUNC_pw_core_disconnect(fpl__pw_func_pw_core_disconnect);
+#define FPL__PIPEWIRE_FUNC_pw_core_add_listener(name) int name(pw_core *core, struct spa_hook *listener, const struct pw_core_events *events, void *userData)
+typedef FPL__PIPEWIRE_FUNC_pw_core_add_listener(fpl__pw_func_pw_core_add_listener);
+#define FPL__PIPEWIRE_FUNC_pw_core_sync(name) int name(pw_core *core, uint32_t id, int seq)
+typedef FPL__PIPEWIRE_FUNC_pw_core_sync(fpl__pw_func_pw_core_sync);
+#define FPL__PIPEWIRE_FUNC_pw_core_get_registry(name) pw_registry *name(pw_core *core, uint32_t registryVersion, size_t userDataSize)
+typedef FPL__PIPEWIRE_FUNC_pw_core_get_registry(fpl__pw_func_pw_core_get_registry);
+
+#define FPL__PIPEWIRE_FUNC_pw_registry_add_listener(name) int name(pw_registry *registry, struct spa_hook *listener, const struct pw_registry_events *events, void *userData)
+typedef FPL__PIPEWIRE_FUNC_pw_registry_add_listener(fpl__pw_func_pw_registry_add_listener);
+
+#define FPL__PIPEWIRE_FUNC_pw_stream_new(name) pw_stream *name(pw_core *core, const char *streamName, pw_properties *props)
+typedef FPL__PIPEWIRE_FUNC_pw_stream_new(fpl__pw_func_pw_stream_new);
+#define FPL__PIPEWIRE_FUNC_pw_stream_destroy(name) void name(pw_stream *stream)
+typedef FPL__PIPEWIRE_FUNC_pw_stream_destroy(fpl__pw_func_pw_stream_destroy);
+#define FPL__PIPEWIRE_FUNC_pw_stream_add_listener(name) void name(pw_stream *stream, struct spa_hook *listener, const struct pw_stream_events *events, void *userData)
+typedef FPL__PIPEWIRE_FUNC_pw_stream_add_listener(fpl__pw_func_pw_stream_add_listener);
+#define FPL__PIPEWIRE_FUNC_pw_stream_connect(name) int name(pw_stream *stream, enum pw_direction direction, uint32_t targetId, uint32_t flags, const struct spa_pod **params, uint32_t nParams)
+typedef FPL__PIPEWIRE_FUNC_pw_stream_connect(fpl__pw_func_pw_stream_connect);
+#define FPL__PIPEWIRE_FUNC_pw_stream_disconnect(name) int name(pw_stream *stream)
+typedef FPL__PIPEWIRE_FUNC_pw_stream_disconnect(fpl__pw_func_pw_stream_disconnect);
+#define FPL__PIPEWIRE_FUNC_pw_stream_set_active(name) int name(pw_stream *stream, bool active)
+typedef FPL__PIPEWIRE_FUNC_pw_stream_set_active(fpl__pw_func_pw_stream_set_active);
+#define FPL__PIPEWIRE_FUNC_pw_stream_dequeue_buffer(name) struct pw_buffer *name(pw_stream *stream)
+typedef FPL__PIPEWIRE_FUNC_pw_stream_dequeue_buffer(fpl__pw_func_pw_stream_dequeue_buffer);
+#define FPL__PIPEWIRE_FUNC_pw_stream_queue_buffer(name) int name(pw_stream *stream, struct pw_buffer *buffer)
+typedef FPL__PIPEWIRE_FUNC_pw_stream_queue_buffer(fpl__pw_func_pw_stream_queue_buffer);
+#define FPL__PIPEWIRE_FUNC_pw_stream_get_state(name) enum pw_stream_state name(pw_stream *stream, const char **error)
+typedef FPL__PIPEWIRE_FUNC_pw_stream_get_state(fpl__pw_func_pw_stream_get_state);
+
+#define FPL__PIPEWIRE_FUNC_pw_properties_new(name) pw_properties *name(const char *key, ...)
+typedef FPL__PIPEWIRE_FUNC_pw_properties_new(fpl__pw_func_pw_properties_new);
+#define FPL__PIPEWIRE_FUNC_pw_properties_free(name) void name(pw_properties *properties)
+typedef FPL__PIPEWIRE_FUNC_pw_properties_free(fpl__pw_func_pw_properties_free);
+#define FPL__PIPEWIRE_FUNC_pw_properties_set(name) int name(pw_properties *properties, const char *key, const char *value)
+typedef FPL__PIPEWIRE_FUNC_pw_properties_set(fpl__pw_func_pw_properties_set);
+#define FPL__PIPEWIRE_FUNC_pw_properties_setf(name) int name(pw_properties *properties, const char *key, const char *format, ...)
+typedef FPL__PIPEWIRE_FUNC_pw_properties_setf(fpl__pw_func_pw_properties_setf);
+
+#define FPL__PIPEWIRE_FUNC_pw_proxy_destroy(name) void name(pw_proxy *proxy)
+typedef FPL__PIPEWIRE_FUNC_pw_proxy_destroy(fpl__pw_func_pw_proxy_destroy);
+
+typedef struct {
+	void *libHandle;
+	fpl__pw_func_pw_init *pw_init;
+	fpl__pw_func_pw_deinit *pw_deinit;
+	fpl__pw_func_pw_thread_loop_new *pw_thread_loop_new;
+	fpl__pw_func_pw_thread_loop_destroy *pw_thread_loop_destroy;
+	fpl__pw_func_pw_thread_loop_start *pw_thread_loop_start;
+	fpl__pw_func_pw_thread_loop_stop *pw_thread_loop_stop;
+	fpl__pw_func_pw_thread_loop_lock *pw_thread_loop_lock;
+	fpl__pw_func_pw_thread_loop_unlock *pw_thread_loop_unlock;
+	fpl__pw_func_pw_thread_loop_wait *pw_thread_loop_wait;
+	fpl__pw_func_pw_thread_loop_signal *pw_thread_loop_signal;
+	fpl__pw_func_pw_thread_loop_get_loop *pw_thread_loop_get_loop;
+	fpl__pw_func_pw_context_new *pw_context_new;
+	fpl__pw_func_pw_context_destroy *pw_context_destroy;
+	fpl__pw_func_pw_context_connect *pw_context_connect;
+	fpl__pw_func_pw_core_disconnect *pw_core_disconnect;
+	fpl__pw_func_pw_core_add_listener *pw_core_add_listener;
+	fpl__pw_func_pw_core_sync *pw_core_sync;
+	fpl__pw_func_pw_core_get_registry *pw_core_get_registry;
+	fpl__pw_func_pw_registry_add_listener *pw_registry_add_listener;
+	fpl__pw_func_pw_stream_new *pw_stream_new;
+	fpl__pw_func_pw_stream_destroy *pw_stream_destroy;
+	fpl__pw_func_pw_stream_add_listener *pw_stream_add_listener;
+	fpl__pw_func_pw_stream_connect *pw_stream_connect;
+	fpl__pw_func_pw_stream_disconnect *pw_stream_disconnect;
+	fpl__pw_func_pw_stream_set_active *pw_stream_set_active;
+	fpl__pw_func_pw_stream_dequeue_buffer *pw_stream_dequeue_buffer;
+	fpl__pw_func_pw_stream_queue_buffer *pw_stream_queue_buffer;
+	fpl__pw_func_pw_stream_get_state *pw_stream_get_state;
+	fpl__pw_func_pw_properties_new *pw_properties_new;
+	fpl__pw_func_pw_properties_free *pw_properties_free;
+	fpl__pw_func_pw_properties_set *pw_properties_set;
+	fpl__pw_func_pw_properties_setf *pw_properties_setf;
+	fpl__pw_func_pw_proxy_destroy *pw_proxy_destroy;
+} fpl__PipeWireApi;
+
+// Registry iteration state used during fpl__AudioBackendPipeWireGetAudioDevices.
+typedef struct fpl__PipeWireDeviceIterationContext {
+	fplAudioDeviceInfo *deviceInfos;
+	uint32_t deviceInfoSize;
+	uint32_t maxDeviceCount;
+	uint32_t resultCount;
+	uint32_t overflowCount;
+	int pendingSeq;
+	volatile int32_t isDone;
+} fpl__PipeWireDeviceIterationContext;
+
+typedef struct {
+	fpl__PipeWireApi api;
+	pw_thread_loop *threadLoop;
+	pw_loop *loop;
+	pw_context *context;
+	pw_core *core;
+	pw_registry *registry;
+	pw_stream *stream;
+	struct spa_hook coreListener;
+	struct spa_hook registryListener;
+	struct spa_hook streamListener;
+	fpl__PipeWireDeviceIterationContext iterContext;
+	uint32_t frameSize;
+	volatile int32_t isCoreReady;
+	volatile int32_t isCoreFailed;
+	volatile int32_t isStreamReady;
+	volatile int32_t isStreamFailed;
+	volatile int32_t hasCoreListener;
+	volatile int32_t hasRegistryListener;
+	volatile int32_t hasStreamListener;
+	char applicationName[256];
+	char streamName[256];
+	char resolvedNodeName[256];
+} fpl__PipeWireAudioBackend;
+
+fpl_internal void fpl__UnloadPipeWireApi(fpl__PipeWireApi *pipeWireApi) {
+	fplAssert(pipeWireApi != fpl_null);
+	if (pipeWireApi->libHandle != fpl_null) {
+		dlclose(pipeWireApi->libHandle);
+	}
+	fplClearStruct(pipeWireApi);
+}
+
+fpl_internal bool fpl__LoadPipeWireApi(fpl__PipeWireApi *pipeWireApi) {
+	fplAssert(pipeWireApi != fpl_null);
+	const char *libraryNames[] = {
+		"libpipewire-0.3.so.0",
+		"libpipewire-0.3.so",
+	};
+	bool result = false;
+	for (uint32_t index = 0; index < fplArrayCount(libraryNames); ++index) {
+		const char *libName = libraryNames[index];
+		fplClearStruct(pipeWireApi);
+		do {
+			void *libHandle = fpl_null;
+			FPL__POSIX_LOAD_LIBRARY(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_init, pw_init);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_deinit, pw_deinit);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_thread_loop_new, pw_thread_loop_new);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_thread_loop_destroy, pw_thread_loop_destroy);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_thread_loop_start, pw_thread_loop_start);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_thread_loop_stop, pw_thread_loop_stop);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_thread_loop_lock, pw_thread_loop_lock);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_thread_loop_unlock, pw_thread_loop_unlock);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_thread_loop_wait, pw_thread_loop_wait);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_thread_loop_signal, pw_thread_loop_signal);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_thread_loop_get_loop, pw_thread_loop_get_loop);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_context_new, pw_context_new);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_context_destroy, pw_context_destroy);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_context_connect, pw_context_connect);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_core_disconnect, pw_core_disconnect);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_core_add_listener, pw_core_add_listener);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_core_sync, pw_core_sync);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_core_get_registry, pw_core_get_registry);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_registry_add_listener, pw_registry_add_listener);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_stream_new, pw_stream_new);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_stream_destroy, pw_stream_destroy);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_stream_add_listener, pw_stream_add_listener);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_stream_connect, pw_stream_connect);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_stream_disconnect, pw_stream_disconnect);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_stream_set_active, pw_stream_set_active);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_stream_dequeue_buffer, pw_stream_dequeue_buffer);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_stream_queue_buffer, pw_stream_queue_buffer);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_stream_get_state, pw_stream_get_state);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_properties_new, pw_properties_new);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_properties_free, pw_properties_free);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_properties_set, pw_properties_set);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_properties_setf, pw_properties_setf);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_proxy_destroy, pw_proxy_destroy);
+			pipeWireApi->libHandle = libHandle;
+			result = true;
+		} while (0);
+		if (result) {
+			break;
+		}
+		fpl__UnloadPipeWireApi(pipeWireApi);
+	}
+	return(result);
+}
+
+fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendPipeWireInitialize);
+fpl_internal FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl__AudioBackendPipeWireRelease);
+fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendPipeWireGetAudioDevices);
+fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendPipeWireGetAudioDeviceInfo);
+fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPipeWireInitializeDevice);
+fpl_internal FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(fpl__AudioBackendPipeWireReleaseDevice);
+fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudioBackendPipeWireStartDevice);
+fpl_internal FPL_AUDIO_BACKEND_STOP_DEVICE_FUNC(fpl__AudioBackendPipeWireStopDevice);
+fpl_internal FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl__AudioBackendPipeWireMainLoop);
+fpl_internal FPL_AUDIO_BACKEND_STOP_MAIN_LOOP_FUNC(fpl__AudioBackendPipeWireStopMainLoop);
+
+fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendPipeWireInitialize) {
+	(void)context;
+	(void)backend;
+	return fplAudioResultType_NotImplemented;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl__AudioBackendPipeWireRelease) {
+	(void)context;
+	(void)backend;
+	return true;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendPipeWireGetAudioDevices) {
+	(void)context;
+	(void)backend;
+	(void)maxDeviceCount;
+	(void)deviceInfoSize;
+	(void)deviceInfos;
+	return 0;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendPipeWireGetAudioDeviceInfo) {
+	(void)context;
+	(void)backend;
+	(void)targetDevice;
+	(void)outDeviceInfo;
+	return fplAudioResultType_NotImplemented;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPipeWireInitializeDevice) {
+	(void)context;
+	(void)backend;
+	(void)audioSettings;
+	(void)targetFormat;
+	(void)targetDevice;
+	(void)outputFormat;
+	(void)outputDevice;
+	(void)outputChannelMap;
+	return fplAudioResultType_NotImplemented;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(fpl__AudioBackendPipeWireReleaseDevice) {
+	(void)context;
+	(void)backend;
+	return true;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudioBackendPipeWireStartDevice) {
+	(void)context;
+	(void)backend;
+	return fplAudioResultType_NotImplemented;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_STOP_DEVICE_FUNC(fpl__AudioBackendPipeWireStopDevice) {
+	(void)context;
+	(void)backend;
+	return true;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl__AudioBackendPipeWireMainLoop) {
+	(void)context;
+	(void)backend;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_STOP_MAIN_LOOP_FUNC(fpl__AudioBackendPipeWireStopMainLoop) {
+	(void)context;
+	(void)backend;
+}
+
+fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendPipeWireDescriptor = {
+
+	fplStructField(fplAudioBackendDescriptor, header, {
+		fplStructField(fplAudioBackendDescriptorHeader, idName, {
+			fplStructField(fplAudioBackendDescriptorIDName, id, { 0x9ad4c731, 0x2f8b, 0x4c52, { 0xbe, 0x39, 0x4a, 0x17, 0x82, 0xd1, 0x6c, 0x5f } }),
+			fplStructField(fplAudioBackendDescriptorIDName, name, "PipeWire"),
+		}),
+		fplStructField(fplAudioBackendDescriptorHeader, type, fplAudioBackendType_PipeWire),
+		fplStructField(fplAudioBackendDescriptorHeader, backendSize, sizeof(fpl__PipeWireAudioBackend)),
+		fplStructField(fplAudioBackendDescriptorHeader, isAsync, true),
+		fplStructField(fplAudioBackendDescriptorHeader, isValid, true),
+	}),
+	fplStructField(fplAudioBackendDescriptor, table, {
+		fplStructField(fplAudioBackendFunctionTable, initialize, fpl__AudioBackendPipeWireInitialize),
+		fplStructField(fplAudioBackendFunctionTable, release, fpl__AudioBackendPipeWireRelease),
+		fplStructField(fplAudioBackendFunctionTable, getAudioDevices, fpl__AudioBackendPipeWireGetAudioDevices),
+		fplStructField(fplAudioBackendFunctionTable, getAudioDeviceInfo, fpl__AudioBackendPipeWireGetAudioDeviceInfo),
+		fplStructField(fplAudioBackendFunctionTable, initializeDevice, fpl__AudioBackendPipeWireInitializeDevice),
+		fplStructField(fplAudioBackendFunctionTable, releaseDevice, fpl__AudioBackendPipeWireReleaseDevice),
+		fplStructField(fplAudioBackendFunctionTable, startDevice, fpl__AudioBackendPipeWireStartDevice),
+		fplStructField(fplAudioBackendFunctionTable, stopDevice, fpl__AudioBackendPipeWireStopDevice),
+		fplStructField(fplAudioBackendFunctionTable, mainLoop, fpl__AudioBackendPipeWireMainLoop),
+		fplStructField(fplAudioBackendFunctionTable, stopMainLoop, fpl__AudioBackendPipeWireStopMainLoop),
+	}),
+};
+
+#endif // FPL__ENABLE_AUDIO_PIPEWIRE
+
 #endif // FPL__AUDIO_BACKENDS_IMPLEMENTED
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -27315,6 +27921,12 @@ fpl_internal uint32_t fpl__GetAudioBackendDescriptors(const uint32_t maxDescript
 			case fplAudioBackendType_PulseAudio:
 #if defined(FPL__ENABLE_AUDIO_PULSEAUDIO)
 				desc = &fpl__global_audioBackendPulseAudioDescriptor;
+#endif
+				break;
+
+			case fplAudioBackendType_PipeWire:
+#if defined(FPL__ENABLE_AUDIO_PIPEWIRE)
+				desc = &fpl__global_audioBackendPipeWireDescriptor;
 #endif
 				break;
 
