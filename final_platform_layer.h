@@ -27549,8 +27549,12 @@ typedef struct {
 	fpl__pw_func_pw_proxy_destroy *pw_proxy_destroy;
 } fpl__PipeWireApi;
 
-// Registry iteration state used during fpl__AudioBackendPipeWireGetAudioDevices.
-typedef struct fpl__PipeWireDeviceIterationContext {
+// Enumeration state used during fpl__AudioBackendPipeWireGetAudioDevices.
+// This is stack-allocated inside GetAudioDevices and passed as user data
+// to the registry/core listeners so we never touch the persistent playback state.
+typedef struct fpl__PipeWireEnumState {
+	const fpl__PipeWireApi *api;
+	pw_thread_loop *loop;
 	fplAudioDeviceInfo *deviceInfos;
 	uint32_t deviceInfoSize;
 	uint32_t maxDeviceCount;
@@ -27558,7 +27562,8 @@ typedef struct fpl__PipeWireDeviceIterationContext {
 	uint32_t overflowCount;
 	int pendingSeq;
 	volatile int32_t isDone;
-} fpl__PipeWireDeviceIterationContext;
+	volatile int32_t isFailed;
+} fpl__PipeWireEnumState;
 
 typedef struct {
 	fpl__PipeWireApi api;
@@ -27566,20 +27571,11 @@ typedef struct {
 	pw_loop *loop;
 	pw_context *context;
 	pw_core *core;
-	pw_registry *registry;
 	pw_stream *stream;
-	struct spa_hook coreListener;
-	struct spa_hook registryListener;
 	struct spa_hook streamListener;
-	fpl__PipeWireDeviceIterationContext iterContext;
 	uint32_t frameSize;
-	volatile int32_t isCoreReady;
-	volatile int32_t isCoreFailed;
 	volatile int32_t isStreamReady;
 	volatile int32_t isStreamFailed;
-	volatile int32_t hasCoreListener;
-	volatile int32_t hasRegistryListener;
-	volatile int32_t hasStreamListener;
 	char applicationName[256];
 	char streamName[256];
 	char resolvedNodeName[256];
@@ -27744,50 +27740,6 @@ fpl_internal uint32_t fpl__PipeWire_BuildAudioFormatPod(uint8_t *buffer, const s
 	return totalSize;
 }
 
-// Core listener callbacks.
-fpl_internal void fpl__PipeWire_CoreInfoCallback(void *data, const void *info) {
-	(void)data;
-	(void)info;
-}
-fpl_internal void fpl__PipeWire_CoreDoneCallback(void *data, uint32_t id, int seq) {
-	fplAudioBackend *backend = (fplAudioBackend *)data;
-	fpl__PipeWireAudioBackend *pw = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PipeWireAudioBackend);
-	fplAssert(pw != fpl_null);
-	if (id == PW_ID_CORE && seq == pw->iterContext.pendingSeq && pw->iterContext.pendingSeq != 0) {
-		pw->iterContext.isDone = 1;
-		pw->isCoreReady = 1;
-		if (pw->threadLoop != fpl_null && pw->api.pw_thread_loop_signal != fpl_null) {
-			pw->api.pw_thread_loop_signal(pw->threadLoop, false);
-		}
-	}
-}
-fpl_internal void fpl__PipeWire_CoreErrorCallback(void *data, uint32_t id, int seq, int res, const char *message) {
-	(void)seq;
-	(void)res;
-	fplAudioBackend *backend = (fplAudioBackend *)data;
-	fpl__PipeWireAudioBackend *pw = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PipeWireAudioBackend);
-	fplAssert(pw != fpl_null);
-	FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, "PipeWire core error on id %lu: %s", id, message != fpl_null ? message : "(null)");
-	pw->isCoreFailed = 1;
-	pw->iterContext.isDone = 1;
-	if (pw->threadLoop != fpl_null && pw->api.pw_thread_loop_signal != fpl_null) {
-		pw->api.pw_thread_loop_signal(pw->threadLoop, false);
-	}
-}
-
-fpl_globalvar struct pw_core_events fpl__global_pipeWireCoreEvents = {
-	PW_VERSION_CORE_EVENTS,
-	fpl__PipeWire_CoreInfoCallback,
-	fpl__PipeWire_CoreDoneCallback,
-	fpl_null,
-	fpl__PipeWire_CoreErrorCallback,
-	fpl_null,
-	fpl_null,
-	fpl_null,
-	fpl_null,
-	fpl_null,
-};
-
 // Helper: find a value in a spa_dict for a given key.
 fpl_internal const char *fpl__PipeWire_SpaDictLookup(const struct spa_dict *dict, const char *key) {
 	if (dict == fpl_null || key == fpl_null) {
@@ -27802,13 +27754,61 @@ fpl_internal const char *fpl__PipeWire_SpaDictLookup(const struct spa_dict *dict
 	return fpl_null;
 }
 
-// Registry listener callbacks.
-fpl_internal void fpl__PipeWire_RegistryGlobalCallback(void *data, uint32_t id, uint32_t permissions, const char *type, uint32_t version, const struct spa_dict *props) {
+// Enumeration-only core listener callbacks. These never touch the persistent
+// fpl__PipeWireAudioBackend state because the `data` pointer is a local
+// fpl__PipeWireEnumState allocated on the stack of GetAudioDevices.
+fpl_internal void fpl__PipeWire_EnumCoreInfoCallback(void *data, const void *info) {
+	(void)data;
+	(void)info;
+}
+fpl_internal void fpl__PipeWire_EnumCoreDoneCallback(void *data, uint32_t id, int seq) {
+	fpl__PipeWireEnumState *s = (fpl__PipeWireEnumState *)data;
+	if (s == fpl_null) {
+		return;
+	}
+	if (id == PW_ID_CORE && seq == s->pendingSeq && s->pendingSeq != 0) {
+		s->isDone = 1;
+		if (s->loop != fpl_null && s->api != fpl_null && s->api->pw_thread_loop_signal != fpl_null) {
+			s->api->pw_thread_loop_signal(s->loop, false);
+		}
+	}
+}
+fpl_internal void fpl__PipeWire_EnumCoreErrorCallback(void *data, uint32_t id, int seq, int res, const char *message) {
+	(void)seq;
+	(void)res;
+	fpl__PipeWireEnumState *s = (fpl__PipeWireEnumState *)data;
+	if (s == fpl_null) {
+		return;
+	}
+	FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, "PipeWire core error on id %lu: %s", id, message != fpl_null ? message : "(null)");
+	s->isFailed = 1;
+	s->isDone = 1;
+	if (s->loop != fpl_null && s->api != fpl_null && s->api->pw_thread_loop_signal != fpl_null) {
+		s->api->pw_thread_loop_signal(s->loop, false);
+	}
+}
+
+fpl_globalvar struct pw_core_events fpl__global_pipeWireEnumCoreEvents = {
+	PW_VERSION_CORE_EVENTS,
+	fpl__PipeWire_EnumCoreInfoCallback,
+	fpl__PipeWire_EnumCoreDoneCallback,
+	fpl_null,
+	fpl__PipeWire_EnumCoreErrorCallback,
+	fpl_null,
+	fpl_null,
+	fpl_null,
+	fpl_null,
+	fpl_null,
+};
+
+// Registry listener callbacks, operating on a stack-local fpl__PipeWireEnumState.
+fpl_internal void fpl__PipeWire_EnumRegistryGlobalCallback(void *data, uint32_t id, uint32_t permissions, const char *type, uint32_t version, const struct spa_dict *props) {
 	(void)permissions;
 	(void)version;
-	fplAudioBackend *backend = (fplAudioBackend *)data;
-	fpl__PipeWireAudioBackend *pw = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PipeWireAudioBackend);
-	fplAssert(pw != fpl_null);
+	fpl__PipeWireEnumState *s = (fpl__PipeWireEnumState *)data;
+	if (s == fpl_null) {
+		return;
+	}
 	if (type == fpl_null || !fplIsStringEqual(type, "PipeWire:Interface:Node")) {
 		return;
 	}
@@ -27816,11 +27816,9 @@ fpl_internal void fpl__PipeWire_RegistryGlobalCallback(void *data, uint32_t id, 
 	if (mediaClass == fpl_null) {
 		return;
 	}
-	// Only pick Audio/Sink nodes (matches both "Audio/Sink" and "Stream/Audio/Sink" if desired; we keep it strict).
 	if (!fplIsStringEqual(mediaClass, "Audio/Sink")) {
 		return;
 	}
-	fpl__PipeWireDeviceIterationContext *iter = &pw->iterContext;
 	const char *description = fpl__PipeWire_SpaDictLookup(props, PW_KEY_NODE_DESCRIPTION);
 	if (description == fpl_null) {
 		description = fpl__PipeWire_SpaDictLookup(props, PW_KEY_NODE_NICK);
@@ -27828,31 +27826,31 @@ fpl_internal void fpl__PipeWire_RegistryGlobalCallback(void *data, uint32_t id, 
 	if (description == fpl_null) {
 		description = fpl__PipeWire_SpaDictLookup(props, PW_KEY_NODE_NAME);
 	}
-	if (iter->deviceInfos != fpl_null && iter->deviceInfoSize > 0) {
-		if (iter->resultCount >= iter->maxDeviceCount) {
-			++iter->overflowCount;
+	if (s->deviceInfos != fpl_null && s->deviceInfoSize > 0) {
+		if (s->resultCount >= s->maxDeviceCount) {
+			++s->overflowCount;
 		} else {
-			fplAudioDeviceInfo *outInfo = (fplAudioDeviceInfo *)((uint8_t *)iter->deviceInfos + (iter->deviceInfoSize * iter->resultCount));
+			fplAudioDeviceInfo *outInfo = (fplAudioDeviceInfo *)((uint8_t *)s->deviceInfos + (s->deviceInfoSize * s->resultCount));
 			fplClearStruct(outInfo);
 			outInfo->id.pipewire = id;
 			if (description != fpl_null && fplGetStringLength(description) > 0) {
 				fplCopyString(description, outInfo->name, fplArrayCount(outInfo->name));
 			} else {
-				fplStringFormat(outInfo->name, fplArrayCount(outInfo->name), "node-%lu", id);
+				fplStringFormat(outInfo->name, fplArrayCount(outInfo->name), "node-%u", id);
 			}
 		}
 	}
-	++iter->resultCount;
+	++s->resultCount;
 }
-fpl_internal void fpl__PipeWire_RegistryGlobalRemoveCallback(void *data, uint32_t id) {
+fpl_internal void fpl__PipeWire_EnumRegistryGlobalRemoveCallback(void *data, uint32_t id) {
 	(void)data;
 	(void)id;
 }
 
-fpl_globalvar struct pw_registry_events fpl__global_pipeWireRegistryEvents = {
+fpl_globalvar struct pw_registry_events fpl__global_pipeWireEnumRegistryEvents = {
 	PW_VERSION_REGISTRY_EVENTS,
-	fpl__PipeWire_RegistryGlobalCallback,
-	fpl__PipeWire_RegistryGlobalRemoveCallback,
+	fpl__PipeWire_EnumRegistryGlobalCallback,
+	fpl__PipeWire_EnumRegistryGlobalRemoveCallback,
 };
 
 // Stream listener callbacks.
@@ -27976,36 +27974,39 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendPipeWireG
 		return 0;
 	}
 
+	// All enumeration state lives on the stack so it cannot clobber the
+	// persistent playback state inside `pw` (threadLoop/listeners/etc).
+	fpl__PipeWireEnumState enumState = fplZeroInit;
+	enumState.api = api;
+	enumState.deviceInfos = deviceInfos;
+	enumState.deviceInfoSize = deviceInfoSize;
+	enumState.maxDeviceCount = maxDeviceCount;
+
+	struct spa_hook coreListener = fplZeroInit;
+	struct spa_hook registryListener = fplZeroInit;
+
 	pw_thread_loop *loop = api->pw_thread_loop_new("fpl-pw-enum", fpl_null);
 	if (loop == fpl_null) {
 		FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, "Failed creating PipeWire thread loop for device enumeration!");
 		return 0;
 	}
+	enumState.loop = loop;
 
 	pw_context *ctx = fpl_null;
 	pw_core *core = fpl_null;
 	pw_registry *registry = fpl_null;
-	uint32_t resultCount = 0;
-	uint32_t overflowCount = 0;
 	bool started = false;
 
-	pw->threadLoop = loop;
-	pw->isCoreReady = 0;
-	pw->isCoreFailed = 0;
-	fplClearStruct(&pw->iterContext);
-	pw->iterContext.deviceInfos = deviceInfos;
-	pw->iterContext.deviceInfoSize = deviceInfoSize;
-	pw->iterContext.maxDeviceCount = maxDeviceCount;
+	if (api->pw_thread_loop_start(loop) < 0) {
+		FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, "Failed starting PipeWire thread loop for device enumeration!");
+		api->pw_thread_loop_destroy(loop);
+		return 0;
+	}
+	started = true;
 
 	api->pw_thread_loop_lock(loop);
 
 	do {
-		if (api->pw_thread_loop_start(loop) < 0) {
-			FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, "Failed starting PipeWire thread loop for device enumeration!");
-			break;
-		}
-		started = true;
-
 		ctx = api->pw_context_new(api->pw_thread_loop_get_loop(loop), fpl_null, 0);
 		if (ctx == fpl_null) {
 			FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, "Failed creating PipeWire context for device enumeration!");
@@ -28018,26 +28019,24 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendPipeWireG
 			break;
 		}
 
-		fplClearStruct(&pw->coreListener);
-		api->pw_core_add_listener(core, &pw->coreListener, &fpl__global_pipeWireCoreEvents, backend);
+		api->pw_core_add_listener(core, &coreListener, &fpl__global_pipeWireEnumCoreEvents, &enumState);
 
 		registry = api->pw_core_get_registry(core, PW_VERSION_REGISTRY, 0);
 		if (registry == fpl_null) {
 			FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, "Failed getting PipeWire registry!");
 			break;
 		}
-		fplClearStruct(&pw->registryListener);
-		api->pw_registry_add_listener(registry, &pw->registryListener, &fpl__global_pipeWireRegistryEvents, backend);
+		api->pw_registry_add_listener(registry, &registryListener, &fpl__global_pipeWireEnumRegistryEvents, &enumState);
 
 		// Trigger a core sync. The done callback fires after all pending registry events are delivered.
-		pw->iterContext.pendingSeq = api->pw_core_sync(core, PW_ID_CORE, 0);
-		while (!pw->iterContext.isDone && !pw->isCoreFailed) {
+		enumState.pendingSeq = api->pw_core_sync(core, PW_ID_CORE, 0);
+		while (!enumState.isDone && !enumState.isFailed) {
 			api->pw_thread_loop_wait(loop);
 		}
 	} while (0);
 
-	resultCount = pw->iterContext.resultCount;
-	overflowCount = pw->iterContext.overflowCount;
+	uint32_t resultCount = enumState.resultCount;
+	uint32_t overflowCount = enumState.overflowCount;
 
 	if (registry != fpl_null) {
 		api->pw_proxy_destroy((pw_proxy *)registry);
@@ -28055,13 +28054,8 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendPipeWireG
 	}
 	api->pw_thread_loop_destroy(loop);
 
-	pw->threadLoop = fpl_null;
-	pw->isCoreReady = 0;
-	pw->isCoreFailed = 0;
-	fplClearStruct(&pw->iterContext);
-
 	if (overflowCount > 0) {
-		FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, "Capacity of '%lu' for audio device infos has been reached. '%lu' audio devices are not included in the result", maxDeviceCount, overflowCount);
+		FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, "Capacity of '%u' for audio device infos has been reached. '%u' audio devices are not included in the result", maxDeviceCount, overflowCount);
 	}
 
 	return resultCount;
@@ -28104,14 +28098,10 @@ fpl_internal FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(fpl__AudioBackendPipeWireRele
 		pw->threadLoop = fpl_null;
 	}
 	pw->loop = fpl_null;
-	pw->registry = fpl_null;
-	pw->isCoreReady = 0;
-	pw->isCoreFailed = 0;
 	pw->isStreamReady = 0;
 	pw->isStreamFailed = 0;
 	pw->frameSize = 0;
 	pw->resolvedNodeName[0] = '\0';
-	fplClearStruct(&pw->iterContext);
 	return true;
 }
 
@@ -28149,8 +28139,6 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPipeWireI
 		mediaRole = audioSettings->pipewire.mediaRole;
 	}
 
-	pw->isCoreReady = 0;
-	pw->isCoreFailed = 0;
 	pw->isStreamReady = 0;
 	pw->isStreamFailed = 0;
 	pw->frameSize = 0;
@@ -28179,9 +28167,6 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPipeWireI
 		api->pw_thread_loop_unlock(pw->threadLoop);
 		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_NoDeviceFound, "Failed connecting PipeWire context!");
 	}
-
-	fplClearStruct(&pw->coreListener);
-	api->pw_core_add_listener(pw->core, &pw->coreListener, &fpl__global_pipeWireCoreEvents, backend);
 
 	// Build the target sample format.
 	uint32_t spaAudioFormat = fpl__PipeWire_MapAudioFormatTypeToSampleFormat(targetFormat->type);
