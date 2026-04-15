@@ -4905,6 +4905,8 @@ typedef enum fplAudioBackendType {
 	fplAudioBackendType_Alsa,
 	//! PulseAudio audio backend.
 	fplAudioBackendType_PulseAudio,
+	//! PipeWire audio backend.
+	fplAudioBackendType_PipeWire,
 	//! Custom audio backend.
 	fplAudioBackendType_Custom,
 
@@ -5187,6 +5189,10 @@ typedef union fplAudioDeviceID {
 	//! PulseAudio sink index.
 	uint32_t pulse;
 #endif
+#if defined(FPL__ENABLE_AUDIO_PIPEWIRE)
+	//! PipeWire node id.
+	uint32_t pipewire;
+#endif
 	//! Field for preventing union to be empty.
 	uint8_t dummy[256];
 } fplAudioDeviceID;
@@ -5249,6 +5255,19 @@ typedef struct fplPulseAudioSettings {
 } fplPulseAudioSettings;
 #endif
 
+#if defined(FPL__ENABLE_AUDIO_PIPEWIRE)
+/**
+* @struct fplPipeWireAudioSettings
+* @brief Stores settings for the PipeWire audio backend.
+*/
+typedef struct fplPipeWireAudioSettings {
+	//! Optional application name shown in PipeWire mixers like pavucontrol/Helvum. Leave empty to use a default.
+	char applicationName[256];
+	//! Optional stream description name shown in PipeWire mixers. Leave empty to use a default.
+	char streamName[256];
+} fplPipeWireAudioSettings;
+#endif
+
 /**
 * @union fplSpecificAudioSettings
 * @brief Stores backend-specific audio settings.
@@ -5261,6 +5280,10 @@ typedef union fplSpecificAudioSettings {
 #if defined(FPL__ENABLE_AUDIO_PULSEAUDIO)
 	//! PulseAudio-specific settings.
 	fplPulseAudioSettings pulse;
+#endif
+#if defined(FPL__ENABLE_AUDIO_PIPEWIRE)
+	//! PipeWire-specific settings.
+	fplPipeWireAudioSettings pipewire;
 #endif
 	//! Field for preventing union to be empty.
 	int dummy;
@@ -9206,6 +9229,7 @@ fpl_main int main(int argc, char **args);
 #define FPL__MODULE_AUDIO_DIRECTSOUND "DirectSound"
 #define FPL__MODULE_AUDIO_ALSA "ALSA"
 #define FPL__MODULE_AUDIO_PULSEAUDIO "PulseAudio"
+#define FPL__MODULE_AUDIO_PIPEWIRE "PipeWire"
 
 #define FPL__MODULE_VIDEO "Video"
 #define FPL__MODULE_VIDEO_OPENGL "OpenGL"
@@ -27239,6 +27263,7 @@ fplStaticAssert(fplArrayCount(fpl__global_audioResultTypeNameTable) == FPL__AUDI
 
 fpl_globalvar fplAudioBackendType fpl__global_defaultAudioBackendTypes[] = {
 	fplAudioBackendType_DirectSound,
+	fplAudioBackendType_PipeWire,
 	fplAudioBackendType_PulseAudio,
 	fplAudioBackendType_Alsa,
 	fplAudioBackendType_Custom,
@@ -28189,6 +28214,7 @@ fpl_globalvar const char *fpl__globalAudioBackendNameTable[FPL__AUDIOBACKENDTYPE
 	FPL__ENUM_NAME("DirectSound", fplAudioBackendType_DirectSound),
 	FPL__ENUM_NAME("ALSA", fplAudioBackendType_Alsa),
 	FPL__ENUM_NAME("PulseAudio", fplAudioBackendType_PulseAudio),
+	FPL__ENUM_NAME("PipeWire", fplAudioBackendType_PipeWire),
 	FPL__ENUM_NAME("Custom", fplAudioBackendType_Custom),
 };
 fplStaticAssert(fplArrayCount(fpl__globalAudioBackendNameTable) == FPL__AUDIOBACKENDTYPE_COUNT);
