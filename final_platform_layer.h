@@ -27708,12 +27708,68 @@ fpl_internal_inline fplAudioChannelType fpl__PipeWire_MapToAudioChannelType(cons
 	}
 }
 
-fpl_internal void fpl__PipeWire_TranslateAudioChannelMap(const uint32_t channels, const uint32_t *inChannelMap, fplAudioChannelMap *outChannelMap) {
-	fplAssertPtr(inChannelMap);
+fpl_internal void fpl__PipeWire_FPLAudioChannelMap(const uint32_t channels, const fplAudioChannelLayout layout, fplAudioChannelMap *outChannelMap) {
 	fplAssertPtr(outChannelMap);
 	fplClearStruct(outChannelMap);
-	for (uint32_t i = 0; i < channels; ++i) {
-		outChannelMap->speakers[i] = fpl__PipeWire_MapToAudioChannelType(inChannelMap[i]);
+	if (channels == 1 || layout == fplAudioChannelLayout_Mono) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontCenter;
+	} else if (channels == 2 || layout == fplAudioChannelLayout_Stereo) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+	} else if (channels == 3) {
+		if (layout == fplAudioChannelLayout_2_1) {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_LowFrequency;
+		} else {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_FrontCenter;
+		}
+	} else if (channels == 4) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+	} else if (channels == 5) {
+		if (layout == fplAudioChannelLayout_4_1) {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+			outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+			outChannelMap->speakers[4] = fplAudioChannelType_LowFrequency;
+		} else {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_FrontCenter;
+			outChannelMap->speakers[3] = fplAudioChannelType_BackLeft;
+			outChannelMap->speakers[4] = fplAudioChannelType_BackRight;
+		}
+	} else if (channels == 6) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+		outChannelMap->speakers[2] = fplAudioChannelType_FrontCenter;
+		outChannelMap->speakers[3] = fplAudioChannelType_LowFrequency;
+		outChannelMap->speakers[4] = fplAudioChannelType_SideLeft;
+		outChannelMap->speakers[5] = fplAudioChannelType_SideRight;
+	} else if (channels == 7) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+		outChannelMap->speakers[2] = fplAudioChannelType_FrontCenter;
+		outChannelMap->speakers[3] = fplAudioChannelType_LowFrequency;
+		outChannelMap->speakers[4] = fplAudioChannelType_BackLeft;
+		outChannelMap->speakers[5] = fplAudioChannelType_BackRight;
+		outChannelMap->speakers[6] = fplAudioChannelType_BackCenter;
+	} else {
+		fplAssert(channels >= 8);
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+		outChannelMap->speakers[2] = fplAudioChannelType_FrontCenter;
+		outChannelMap->speakers[3] = fplAudioChannelType_LowFrequency;
+		outChannelMap->speakers[4] = fplAudioChannelType_SideLeft;
+		outChannelMap->speakers[5] = fplAudioChannelType_SideRight;
+		outChannelMap->speakers[6] = fplAudioChannelType_BackLeft;
+		outChannelMap->speakers[7] = fplAudioChannelType_BackCenter;
 	}
 }
 
@@ -27760,8 +27816,8 @@ fpl_internal void fpl__PipeWire_BuildChannelMap(const uint32_t channels, const f
 		outChannelMap[1] = SPA_AUDIO_CHANNEL_FR;
 		outChannelMap[2] = SPA_AUDIO_CHANNEL_FC;
 		outChannelMap[3] = SPA_AUDIO_CHANNEL_LFE;
-		outChannelMap[4] = SPA_AUDIO_CHANNEL_RL;
-		outChannelMap[5] = SPA_AUDIO_CHANNEL_RR;
+		outChannelMap[4] = SPA_AUDIO_CHANNEL_SL;
+		outChannelMap[5] = SPA_AUDIO_CHANNEL_SR;
 	} else if (channels == 7) {
 		outChannelMap[0] = SPA_AUDIO_CHANNEL_FL;
 		outChannelMap[1] = SPA_AUDIO_CHANNEL_FR;
@@ -28405,7 +28461,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPipeWireI
 	internalFormat.bufferSizeInMilliseconds = fplGetAudioBufferSizeInMilliseconds(internalFormat.sampleRate, internalFormat.bufferSizeInFrames);
 	internalFormat.mode = targetFormat->mode;
 
-	fpl__PipeWire_TranslateAudioChannelMap(channelCount, nativeChannelMap, outputChannelMap);
+	fpl__PipeWire_FPLAudioChannelMap(channelCount, channelLayout, outputChannelMap);
 
 	fplAudioDeviceInfo internalDevice = fplZeroInit;
 	if (targetDevice != fpl_null && fplGetStringLength(targetDevice->name) > 0) {
