@@ -1309,8 +1309,9 @@ int main(int argc, char **args) {
 	//settings.audio.targetFormat.bufferSizeInMilliseconds = 16;
 	//settings.audio.targetFormat.bufferSizeInFrames = 512;
 
-	// TEMPORARY(final): Force audio backend to pulse audio
-	settings.audio.backend = fplAudioBackendType_PipeWire;
+	// Force audio backend to a specific type
+	//settings.audio.backend = fplAudioBackendType_PipeWire;
+	//settings.audio.backend = fplAudioBackendType_PulseAudio;
 
 	// Disable auto start/stop of audio playback
 	settings.audio.startAuto = false;

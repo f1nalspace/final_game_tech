@@ -103,8 +103,9 @@ int main(int argc, char **argv) {
 	// Try to force to 44100 Hz, which is the most common used sample rate
 	settings.audio.targetFormat.sampleRate = 44100;
 
-	// TEMPORARY(final): Force audio backend to pulse audio
-	settings.audio.backend = fplAudioBackendType_PipeWire;
+	// Force audio backend to a specific type
+	//settings.audio.backend = fplAudioBackendType_PipeWire;
+	//settings.audio.backend = fplAudioBackendType_PulseAudio;
 
 	// Always start and stop the playback automatically
 	settings.audio.startAuto = true;
