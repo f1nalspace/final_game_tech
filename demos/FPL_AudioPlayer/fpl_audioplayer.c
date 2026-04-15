@@ -67,6 +67,10 @@ How the demo works:
 
 	The ring-buffer is visualized as simple bars with a tail and head position.
 
+Known Issues / Limitations:
+	- Visualization of FFT is incorrect
+	- Displayed audio samples are not sync with actual samples that are output to the speaker, so its not syncronized
+
 Requirements:
 	- C99 Compiler
 	- Final Platform Layer
