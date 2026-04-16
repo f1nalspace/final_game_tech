@@ -33,3 +33,5 @@
 /apps/**/bin/
 /apps/**/obj/
 doxy-workspace.doxyedit
+/demos/**/[bB]uild
+/demos/**/[iI]mmediates
