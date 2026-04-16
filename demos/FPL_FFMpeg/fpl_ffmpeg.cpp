@@ -106,8 +106,6 @@ Changelog:
 
 Issues:
 	- Black flickering in software rendering mode (FPL has not double buffering support for software rendering)
-	- Frame drops for a couple of seconds when doing seeking (Need to flush all the queues or something)
-	- Defines in mix everywhere, making it hard to implement other systems or switch from software <-> hardware (Need a rewrite)
 
 Features/Planned:
 	[x] Reads packets from stream and queues them up
