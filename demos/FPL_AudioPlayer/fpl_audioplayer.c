@@ -207,8 +207,12 @@ Visualize the samples:
 
 #define OPT_PLAYBACK OPT_PLAYBACK_STREAMBUFFER
 
-#define FPL_LOGGING
-#define FPL_IMPLEMENTATION
+#ifndef FPL_LOGGING
+#	define FPL_LOGGING
+#endif
+#ifndef FPL_IMPLEMENTATION
+#	define FPL_IMPLEMENTATION
+#endif
 #define FPL_NO_VIDEO_VULKAN
 #include <final_platform_layer.h>
 
@@ -216,7 +220,9 @@ Visualize the samples:
 #include <math.h> // sinf, M_PI
 #include <float.h>
 
-#define FINAL_AUDIOSYSTEM_IMPLEMENTATION
+#ifndef FINAL_AUDIOSYSTEM_IMPLEMENTATION
+#	define FINAL_AUDIOSYSTEM_IMPLEMENTATION
+#endif
 #include <final_audiosystem.h>
 
 #define FGL_IMPLEMENTATION

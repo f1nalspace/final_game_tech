@@ -48,9 +48,12 @@ License:
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
-
-#define FPL_IMPLEMENTATION
-#define FPL_LOGGING
+#ifndef FPL_IMPLEMENTATION
+#	define FPL_IMPLEMENTATION
+#endif
+#ifndef FPL_LOGGING
+#	define FPL_LOGGING
+#endif
 #define FPL_NO_VIDEO_VULKAN
 #include <final_platform_layer.h>
 

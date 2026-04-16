@@ -55,10 +55,18 @@ License:
 // Set this to zero to use FPL internal audio
 #define OPT_USE_MINIAUDIO 1
 
-#define FPL_NO_WINDOW
-#define FPL_IMPLEMENTATION
-#define FPL_LOGGING
-#define FPL_NO_UNDEF
+#ifndef FPL_IMPLEMENTATION
+#	define FPL_IMPLEMENTATION
+#endif
+#ifndef FPL_LOGGING
+#	define FPL_LOGGING
+#endif
+#ifndef FPL_NO_WINDOW
+#	define FPL_NO_WINDOW
+#endif
+#ifndef FPL_NO_UNDEF
+#	define FPL_NO_UNDEF
+#endif
 #include <final_platform_layer.h>
 #include <math.h> // sinf
 
