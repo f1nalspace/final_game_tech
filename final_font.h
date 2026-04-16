@@ -198,8 +198,8 @@ SOFTWARE.
 #if !defined(FNT_STRLEN)
 #include <string.h>
 #define FNT_STRLEN(s) strlen(s)
-#define FNT_STRNCPY(dest, capacity, source, count) strncpy_s(dest, (count + 1) * sizeof(char), source, capacity)
-#define FNT_STRCMPI(a, b) _strcmpi(a, b)
+#define FNT_STRNCPY(dest, capacity, source, count) strlcpy(dest, source, count + 1)
+#define FNT_STRCMPI(a, b) strcasecmp(a, b)
 #else
 #	if !defined(FNT_STRLEN) || !defined(FNT_STRNCPY) || !defined(FNT_STRCMPI)
 #		error "Please implement all the required string macros: FNT_STRLEN, FNT_STRNCPY, FNT_STRCMPI"
@@ -216,7 +216,7 @@ SOFTWARE.
 #if !defined(FNT_FILE_HANDLE)
 #	include <stdio.h>
 #	define FNT_FILE_HANDLE FILE *
-#	define FNT_CREATE_BINARY_FILE(filePath, fileHandle) (fopen_s(fileHandle, filePath, "wb") == 0)
+#	define FNT_CREATE_BINARY_FILE(filePath, fileHandle) fopen(filePath, "wb")
 #	define FNT_WRITE_TO_FILE(fileHandle, buffer, size) fwrite(buffer, size, 1, fileHandle)
 #	define FNT_CLOSE_FILE(fileHandle) fclose(fileHandle)
 #else
@@ -547,14 +547,14 @@ extern "C" {
 		uint32_t hasPackContext;
 	} fnt__STBFontContext;
 
-	inline fntVec2 fnt__MakeVec2(const float x, const float y) {
+	static inline fntVec2 fnt__MakeVec2(const float x, const float y) {
 		fntVec2 result;
 		result.x = x;
 		result.y = y;
 		return(result);
 	}
 
-	static bool fnt__IsValidFontData(const fntFontData *data) {
+	static inline bool fnt__IsValidFontData(const fntFontData *data) {
 		if (data == NULL) return(false);
 		if (data->size == 0) return(false);
 		if (data->data == NULL) return(false);
@@ -562,7 +562,7 @@ extern "C" {
 		return(true);
 	}
 
-	static bool fnt__IsValidFontAtlas(const fntFontAtlas *atlas) {
+	static inline bool fnt__IsValidFontAtlas(const fntFontAtlas *atlas) {
 		if (atlas == NULL) return(false);
 
 		if (atlas->codePointsToPageIndices == NULL) return(false);
@@ -570,7 +570,7 @@ extern "C" {
 		return(true);
 	}
 
-	static bool fnt__IsValidFontIndex(const fntFontAtlas *atlas, const uint32_t index) {
+	static inline bool fnt__IsValidFontIndex(const fntFontAtlas *atlas, const uint32_t index) {
 		if (atlas == NULL || index == UINT32_MAX) {
 			return(false);
 		}
@@ -580,7 +580,7 @@ extern "C" {
 		return index < atlas->fontCount;
 	}
 
-	static void fnt__NewPack(fnt__STBFontContext *internalCtx, uint8_t *pixels) {
+	static inline void fnt__NewPack(fnt__STBFontContext *internalCtx, uint8_t *pixels) {
 		FNT_ASSERT(internalCtx != NULL);
 		FNT_ASSERT(pixels != NULL);
 		stbtt_pack_context *packCtx = &internalCtx->currentPackContext;
@@ -588,7 +588,7 @@ extern "C" {
 		internalCtx->hasPackContext = 1;
 	}
 
-	static void fnt__FinishPack(fnt__STBFontContext *internalCtx) {
+	static inline void fnt__FinishPack(fnt__STBFontContext *internalCtx) {
 		FNT_ASSERT(internalCtx != NULL);
 		if (internalCtx->hasPackContext) {
 			stbtt_PackEnd(&internalCtx->currentPackContext);
@@ -1129,20 +1129,20 @@ extern "C" {
 		fnt__UTF8State_Reject = 1,
 	} fnt__UTF8State;
 
-	inline uint32_t fnt__TestDecodeUTF8(uint32_t *state, const uint32_t byte) {
+	static inline uint32_t fnt__TestDecodeUTF8(uint32_t *state, const uint32_t byte) {
 		uint8_t type = fnt__global__UTF8_DecodeTable[byte];
 		*state = fnt__global__UTF8_DecodeTable[256 + *state * 16 + type];
 		return *state;
 	}
 
-	inline uint32_t fnt__DecodeUTF8(uint32_t *state, uint32_t *codePoint, const uint32_t byte) {
+	static inline uint32_t fnt__DecodeUTF8(uint32_t *state, uint32_t *codePoint, const uint32_t byte) {
 		uint8_t type = fnt__global__UTF8_DecodeTable[byte];
 		*codePoint = (*state != fnt__UTF8State_Accept) ? (byte & 0x3fu) | (*codePoint << 6) : (0xff >> type) & (byte);
 		*state = fnt__global__UTF8_DecodeTable[256 + *state * 16 + type];
 		return *state;
 	}
 
-	static size_t fnt__CountUTF8String(const char *text) {
+	static inline size_t fnt__CountUTF8String(const char *text) {
 		const uint8_t *s = (const uint8_t *)text;
 		size_t count = 0;
 		uint32_t current, prev;
@@ -1178,13 +1178,13 @@ extern "C" {
 		return(result);
 	}
 
-	inline bool fnt__IsCodePointWhiteSpace(const fntFont *font, const uint16_t codePoint) {
+	static inline bool fnt__IsCodePointWhiteSpace(const fntFont *font, const uint16_t codePoint) {
 		FNT_ASSERT(font != NULL);
 		bool result = font->whitespaceTable.states[codePoint] != 0;
 		return(result);
 	}
 
-	static void fnt__ComputeQuad(const fntFontGlyph *glyph, const fntVec2 texel, const uint32_t bitmapIndex, const float scale, fntFontQuad *outQuad) {
+	static inline void fnt__ComputeQuad(const fntFontGlyph *glyph, const fntVec2 texel, const uint32_t bitmapIndex, const float scale, fntFontQuad *outQuad) {
 		float u0 = (float)glyph->bitmapRect.x * texel.u;
 		float v0 = (float)glyph->bitmapRect.y * texel.v;
 		float u1 = (float)(glyph->bitmapRect.x + glyph->bitmapRect.width) * texel.u;
@@ -1498,7 +1498,8 @@ extern "C" {
 
 	fnt_api bool fntSaveBitmapToFile(const fntBitmap *bitmap, const char *filePath) {
 		fnt__SaveBitmapFileContext context = FNT__ZERO_INIT;
-		if (!FNT_CREATE_BINARY_FILE(filePath, &context.handle)) {
+		context.handle = FNT_CREATE_BINARY_FILE(filePath, &context.handle);
+		if (!context.handle) {
 			return(false);
 		}
 
