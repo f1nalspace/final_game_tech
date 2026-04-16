@@ -15,6 +15,7 @@ set(MY_INCLUDE_DIRS
 	"../../"
 	"../additions/"
     "../dependencies/"
+	"../dependencies/vulkan/include/"
 	)
 
 set(MY_HEADER_FILES
