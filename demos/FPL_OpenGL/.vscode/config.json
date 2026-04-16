@@ -1,0 +1,7 @@
+{
+  "projectName": "FPL_OpenGL",
+  "platform": "Linux",
+  "processor": "x86_64",
+  "buildType": "Debug",
+  "executable": "FPL_OpenGL",
+}

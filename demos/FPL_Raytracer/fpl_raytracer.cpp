@@ -39,7 +39,7 @@ Changelog:
 	- Initial version
 
 License:
-	Copyright (c) 2017-2025 Torsten Spaete
+	Copyright (c) 2017-2026 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -569,7 +569,7 @@ static bool RaySphereIntersection(const Ray3f &ray, const Sphere3f &sphere, f32 
 	f32 relativeDistanceSquared = V3fDot(rayRelativeOrigin, rayRelativeOrigin);
 
 	f32 denom = 2.0f * a;
-	f32 rootTerm = SquareRoot(b * b - 4.0f * a * c);
+	f32 rootTerm = F32SquareRoot(b * b - 4.0f * a * c);
 	if (rootTerm > tolerance) {
 		f32 tPositive = (-b + rootTerm) / denom;
 		f32 tNegative = (-b - rootTerm) / denom;
@@ -600,7 +600,7 @@ static bool RaytracePart(Worker &worker, WorkOrder &order) {
 	Image32 &image = raytracer->image;
 
 	const f32 fov = scene->camera.fov;
-	const f32 halfTan = Tan(fov * 0.5f);
+	const f32 halfTan = F32Tan(fov * 0.5f);
 	const f32 aspectRatio = (f32)image.width / (float)image.height;
 	const Vec3f cameraPosition = scene->camera.eye;
 	const Vec3f cameraUp = scene->camera.up;
@@ -657,7 +657,7 @@ static bool RaytracePart(Worker &worker, WorkOrder &order) {
 				Vec3f rayOrigin = cameraPosition;
 				Vec3f rayDirection = V3fNormalize(filmP - cameraPosition);
 
-				Ray3f ray = MakeRay(rayOrigin, rayDirection);
+				Ray3f ray = Ray3fInit(rayOrigin, rayDirection);
 
 				const f32 tolerance = 1e-6f;
 				f32 minHitDistance = 0.0f;
@@ -777,7 +777,7 @@ static void InitScene(Scene &scene) {
 	scene.camera.eye = V3fInit(0, -10, 1);
 	scene.camera.target = V3fInit(0, 0, 0);
 	scene.camera.up = UnitUp;
-	scene.camera.fov = DegreesToRadians(15.0f);
+	scene.camera.fov = F32DegreesToRadians(15.0f);
 	scene.camera.zNear = 0.5f;
 	scene.camera.zFar = 100.0f;
 

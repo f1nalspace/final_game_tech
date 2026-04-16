@@ -5,17 +5,21 @@ Name:
 
 Description:
 	This demo shows how to play music, sounds using a custom audio system/mixer.
-	It supports uncompressed PCM wave data, OGG Vorbis and MP3 Files.
-	Resampling support is limited to only even sample rates.
-
-	In addition all samples are cached in a lock-free ringbuffer and are played back properly, see AudioPlayback() for more details.
 
 	The audio tracks are streamed in and use a slow/fast detection to only cache when it needs to, see AudioStreamingThread() for more details.
+	In addition all samples are cached in a lock-free ringbuffer and are played back properly, see AudioPlayback() for more details.
 
 	To make it more appealing all audio samples are visualized with OpenGL and uses several algorythms, such FFT, Windowing, Smoothing, etc.
 	This can be shown from the full audio buffer, or in realtime that is filled directly in the streaming thread.
 
-	Everything together is very complex and requires a good understanding how digital sound is played back in a computer.
+	Resampling is fully supported for any sample rates
+
+	The following formats are supports:
+	- PCM Wave (uncompressed)
+	- OGG Vorbis (S16 output)
+	- MP3 (S16 output)
+
+	The demo is very complex and requires a good understanding how digital sound is played back in a computer.
 
 How the demo works:
 	# Audio System
@@ -51,8 +55,6 @@ How the demo works:
 
 	The samples ring-buffer are filled by the AudioSystemWriteFrames() function, which may advanced the audio system play cursor.
 
-	# Main
-
 	# Rendering
 
 	All rendering is done using oldschool style OpenGL 1.x.
@@ -64,6 +66,10 @@ How the demo works:
 	- Spectrum analysis (Incomplete)
 
 	The ring-buffer is visualized as simple bars with a tail and head position.
+
+Known Issues / Limitations:
+	- Visualization of FFT is incorrect
+	- Displayed audio samples are not sync with actual samples that are output to the speaker, so its not syncronized
 
 Requirements:
 	- C99 Compiler
@@ -78,6 +84,9 @@ Todo:
 	- Multiple audio tracks
 
 Changelog:
+	## 2026-04-03
+	- Updated documentations
+
 	## 2025-03-25
 	- Added progressbar to indicate current position in the track
 	- Fixed streamed/played frames was not reset on drag & drop
@@ -170,7 +179,7 @@ Changelog:
 	- Forced Visual-Studio-Project to compile in C always
 
 License:
-	Copyright (c) 2017-2025 Torsten Spaete
+	Copyright (c) 2017-2026 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -294,7 +303,7 @@ static void UpdateTitle(AudioDemo *demo, const char *audioTrackName, const bool 
 	fplSetWindowTitle(titleBuffer);
 }
 
-static void RenderRectangle(const float x0, const float y0, const float x1, const float y1, const Vec4f color, const float lineWidth) {
+static void RenderPushRectangle(const float x0, const float y0, const float x1, const float y1, const Vec4f color, const float lineWidth) {
 	glLineWidth(lineWidth);
 	glColor4fv(&color.m[0]);
 	glBegin(GL_LINE_LOOP);
@@ -307,7 +316,7 @@ static void RenderRectangle(const float x0, const float y0, const float x1, cons
 	glColor4f(1, 1, 1, 1);
 }
 
-static void RenderQuad(const float x0, const float y0, const float x1, const float y1, const Vec4f color) {
+static void RenderPushQuad(const float x0, const float y0, const float x1, const float y1, const Vec4f color) {
 	glColor4fv(&color.m[0]);
 	glBegin(GL_QUADS);
 	glVertex2f(x1, y0);
@@ -318,7 +327,7 @@ static void RenderQuad(const float x0, const float y0, const float x1, const flo
 	glColor4f(1, 1, 1, 1);
 }
 
-static void RenderLine(const float x0, const float y0, const float x1, const float y1, const Vec4f color, const float lineWidth) {
+static void RenderPushLine(const float x0, const float y0, const float x1, const float y1, const Vec4f color, const float lineWidth) {
 	glLineWidth(lineWidth);
 	glColor4fv(&color.m[0]);
 	glBegin(GL_LINES);
@@ -330,7 +339,7 @@ static void RenderLine(const float x0, const float y0, const float x1, const flo
 }
 
 static void RenderRingBuffer(const Vec2f pos, const Vec2f dim, LockFreeRingBuffer *buffer) {
-	RenderRectangle(pos.x, pos.y, pos.x + dim.w, pos.y + dim.h, (Vec4f) { 1, 1, 1, 0.5f }, 1.0f);
+	RenderPushRectangle(pos.x, pos.y, pos.x + dim.w, pos.y + dim.h, (Vec4f) { 1, 1, 1, 0.5f }, 1.0f);
 
 	uint64_t bufferLen = buffer->length;
 
@@ -349,18 +358,18 @@ static void RenderRingBuffer(const Vec2f pos, const Vec2f dim, LockFreeRingBuffe
 	bool tailWouldWrap = (tail + fillCount) > bufferLen;
 	if(tailWouldWrap) {
 		// Double
-		RenderQuad(tailPos, pos.y, pos.x + dim.w, pos.y + dim.h, V4fInit(1.0f, 1.0f, 1.0f, 0.5f));
+		RenderPushQuad(tailPos, pos.y, pos.x + dim.w, pos.y + dim.h, V4fInit(1.0f, 1.0f, 1.0f, 0.5f));
 		uint64_t wrapPos = (tail + fillCount) % bufferLen;
 		float fillEnd = wrapPos * bufferScale;
-		RenderQuad(pos.x, pos.y, pos.x + fillEnd, pos.y + dim.h, V4fInit(1.0f, 1.0f, 1.0f, 0.5f));
+		RenderPushQuad(pos.x, pos.y, pos.x + fillEnd, pos.y + dim.h, V4fInit(1.0f, 1.0f, 1.0f, 0.5f));
 	} else {
 		// Single
 		float fillOffset = fillCount * bufferScale;
-		RenderQuad(tailPos, pos.y, tailPos + fillOffset, pos.y + dim.h, V4fInit(1.0f, 1.0f, 1.0f, 0.5f));
+		RenderPushQuad(tailPos, pos.y, tailPos + fillOffset, pos.y + dim.h, V4fInit(1.0f, 1.0f, 1.0f, 0.5f));
 	}
 
-	RenderLine(headPos, pos.y - dim.h * 0.5f, headPos, pos.y + dim.h * 1.5f, V4fInit(0.0f, 0.0f, 1.0f, 1.0f), 2.0f);
-	RenderLine(tailPos, pos.y - dim.h * 0.5f, tailPos, pos.y + dim.h * 1.5f, V4fInit(0.0f, 1.0f, 0.0f, 1.0f), 2.0f);
+	RenderPushLine(headPos, pos.y - dim.h * 0.5f, headPos, pos.y + dim.h * 1.5f, V4fInit(0.0f, 0.0f, 1.0f, 1.0f), 2.0f);
+	RenderPushLine(tailPos, pos.y - dim.h * 0.5f, tailPos, pos.y + dim.h * 1.5f, V4fInit(0.0f, 1.0f, 0.0f, 1.0f), 2.0f);
 }
 
 static void ClearVisualization(AudioDemo *demo) {
@@ -442,7 +451,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 
 	RenderRingBuffer(streamBufferPos, streamBufferDim, streamRingBuffer);
 
-	RenderRectangle(spectrumPos.x, spectrumPos.y, spectrumPos.x + spectrumDim.w, spectrumPos.y + spectrumDim.h, (Vec4f) { 1, 1, 1, 0.5f }, 1.0f);
+	RenderPushRectangle(spectrumPos.x, spectrumPos.y, spectrumPos.x + spectrumDim.w, spectrumPos.y + spectrumDim.h, (Vec4f) { 1, 1, 1, 0.5f }, 1.0f);
 
 	fplAudioFormatType format = demo->targetAudioFormat.type;
 	size_t sampleSize = fplGetAudioSampleSizeInBytes(format);
@@ -495,7 +504,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 		frameCount = MAX_AUDIO_FRAMES_CHUNK_FRAMES;
 	}
 
-	RenderRectangle(progressPos.x, progressPos.y, progressPos.x + progressDim.w, progressPos.y + progressDim.h, (Vec4f) { 1, 1, 1, 0.5f }, 1.0f);
+	RenderPushRectangle(progressPos.x, progressPos.y, progressPos.x + progressDim.w, progressPos.y + progressDim.h, (Vec4f) { 1, 1, 1, 0.5f }, 1.0f);
 
 	float progressBarScale = 0.0f;
 	if (fullAudioBuffer->frameCount > 0) {
@@ -503,7 +512,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 	}
 
 	float progressBarWidth = progressBarMaxWidth * progressBarScale;
-	RenderQuad(progressPos.x + progressBarPadding, progressPos.y + progressBarPadding, progressPos.x + progressBarPadding + progressBarWidth, progressPos.y + progressBarPadding + progressBarMaxHeight, (Vec4f) { 1, 1, 0, 1.0f });
+	RenderPushQuad(progressPos.x + progressBarPadding, progressPos.y + progressBarPadding, progressPos.x + progressBarPadding + progressBarWidth, progressPos.y + progressBarPadding + progressBarMaxHeight, (Vec4f) { 1, 1, 0, 1.0f });
 
 	if(frameCount > 0 && chunkSamples != fpl_null) {
 		// Convert all samples to float
@@ -659,7 +668,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 				float x2 = lineX + ((float)(frameIndex + 1) / (float)(frameCount - 1) * spectrumDim.w);
 				float y1 = lineY + ((float)sampleValue1 * maxWaveFormHeight * 0.5f);
 				float y2 = lineY + ((float)sampleValue2 * maxWaveFormHeight * 0.5f);
-				RenderLine(x1, y1, x2, y2, (Vec4f) { 0.8f, 0.25f, 0.05f, 1.0f }, 4.0f);
+				RenderPushLine(x1, y1, x2, y2, (Vec4f) { 0.8f, 0.25f, 0.05f, 1.0f }, 4.0f);
 			}
 		}
 #endif
@@ -679,7 +688,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 				float barHeight = (float)sampleValue * barMaxHeight;
 				float barX = barStartX + frameIndex * barWidth + frameIndex * spacing;
 				float barY = barStartY + barMaxHeight * 0.5f;
-				RenderQuad(barX, barY + barHeight * 0.5f, barX + barWidth, barY - barHeight * 0.5f, (Vec4f) { 1, 1, 0, 1 });
+				RenderPushQuad(barX, barY + barHeight * 0.5f, barX + barWidth, barY - barHeight * 0.5f, (Vec4f) { 1, 1, 0, 1 });
 			}
 		}
 #endif
@@ -698,7 +707,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 				double scaledMagnitude = visualization->scaledMagnitudes[frameIndex];
 				float barX = barStartX + frameIndex * barWidth + frameIndex * spacing;
 				float barHeight = (float)scaledMagnitude * barMaxHeight;
-				RenderQuad(barX, barStartY, barX + barWidth, barStartY + barHeight, (Vec4f) { 0.0f, 1.0, 0.1f, 0.25f });
+				RenderPushQuad(barX, barStartY, barX + barWidth, barStartY + barHeight, (Vec4f) { 0.0f, 1.0, 0.1f, 0.25f });
 			}
 		}
 #endif
@@ -716,7 +725,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 				double scaledMagnitude = visualization->spectrum[binIndex];
 				float barX = spectrumPos.x + binIndex * barWidth + binIndex * spacing;
 				float barHeight = (float)scaledMagnitude * barMaxHeight;
-				RenderQuad(barX, barY, barX + barWidth, barY + barHeight, (Vec4f) { 0.0f, 0.1f, 1.0f, 0.5f });
+				RenderPushQuad(barX, barY, barX + barWidth, barY + barHeight, (Vec4f) { 0.0f, 0.1f, 1.0f, 0.5f });
 			}
 		}
 #endif
@@ -1296,13 +1305,17 @@ int main(int argc, char **args) {
 	// Set samplerate in Hz
 	//settings.audio.targetFormat.sampleRate = 11025;
 	//settings.audio.targetFormat.sampleRate = 22050;
-	settings.audio.targetFormat.sampleRate = 44100;
-	//settings.audio.targetFormat.sampleRate = 48000;
+	//settings.audio.targetFormat.sampleRate = 44100;
+	settings.audio.targetFormat.sampleRate = 48000;
 	//settings.audio.targetFormat.sampleRate = 88200;
 
 	// Optionally set buffer size in milliseconds or in frames
 	//settings.audio.targetFormat.bufferSizeInMilliseconds = 16;
 	//settings.audio.targetFormat.bufferSizeInFrames = 512;
+
+	// Force audio backend to a specific type
+	//settings.audio.backend = fplAudioBackendType_PipeWire;
+	//settings.audio.backend = fplAudioBackendType_PulseAudio;
 
 	// Disable auto start/stop of audio playback
 	settings.audio.startAuto = false;
@@ -1320,8 +1333,9 @@ int main(int argc, char **args) {
             const fplAudioDeviceInfo *defaultDeviceInfo = fpl_null;
             for(uint32_t deviceIndex = 0; deviceIndex < loadedDeviceCount; ++deviceIndex) {
                 fplAudioDeviceInfo *audioDeviceInfo = audioDeviceInfos + deviceIndex;
-                if (audioDeviceInfo->isDefault) {
+                if (audioDeviceInfo->isDefault && defaultDeviceInfo == fpl_null) {
                     FPL_LOG_INFO("Audio", "Found default audio device[%lu] %s\n", deviceIndex, audioDeviceInfo->name);
+                	defaultDeviceInfo = audioDeviceInfo;
                 }
             }
             if (defaultDeviceInfo != fpl_null)

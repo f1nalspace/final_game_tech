@@ -45,25 +45,25 @@
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX64|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX86|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX64|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
@@ -83,29 +83,29 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX86|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <OutDir>..\build\FPL_AudioPlayer\WinX86_Debug\</OutDir>
-    <IntDir>..\immediates\FPL_AudioPlayer\WinX86_Debug\</IntDir>
+    <OutDir>$(ProjectDir)..\build\FPL_AudioPlayer\WinX86_Debug\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\FPL_AudioPlayer\WinX86_Debug\</IntDir>
     <TargetName>FPL_AudioPlayer</TargetName>
     <TargetExt>.exe</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX64|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <OutDir>..\build\FPL_AudioPlayer\WinX64_Debug\</OutDir>
-    <IntDir>..\immediates\FPL_AudioPlayer\WinX64_Debug\</IntDir>
+    <OutDir>$(ProjectDir)..\build\FPL_AudioPlayer\WinX64_Debug\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\FPL_AudioPlayer\WinX64_Debug\</IntDir>
     <TargetName>FPL_AudioPlayer</TargetName>
     <TargetExt>.exe</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX86|Win32'">
     <LinkIncremental>false</LinkIncremental>
-    <OutDir>..\build\FPL_AudioPlayer\WinX86_Release\</OutDir>
-    <IntDir>..\immediates\FPL_AudioPlayer\WinX86_Release\</IntDir>
+    <OutDir>$(ProjectDir)..\build\FPL_AudioPlayer\WinX86_Release\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\FPL_AudioPlayer\WinX86_Release\</IntDir>
     <TargetName>FPL_AudioPlayer</TargetName>
     <TargetExt>.exe</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX64|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <OutDir>..\build\FPL_AudioPlayer\WinX64_Release\</OutDir>
-    <IntDir>..\immediates\FPL_AudioPlayer\WinX64_Release\</IntDir>
+    <OutDir>$(ProjectDir)..\build\FPL_AudioPlayer\WinX64_Release\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\FPL_AudioPlayer\WinX64_Release\</IntDir>
     <TargetName>FPL_AudioPlayer</TargetName>
     <TargetExt>.exe</TargetExt>
   </PropertyGroup>

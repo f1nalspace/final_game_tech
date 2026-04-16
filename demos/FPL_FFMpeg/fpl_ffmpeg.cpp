@@ -16,6 +16,13 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2026-04-16
+	- Fixed seeking was breaking audio/video sync
+	- Fixed build error when FPL_LOGGING is disabled
+
+	## 2025-05-02
+	- Fixed crash when trying to get a font char from a not supported code point
+
 	## 2025-03-15
 	- Fixed audio sample buffer was not cleared when seeking
 
@@ -99,8 +106,6 @@ Changelog:
 
 Issues:
 	- Black flickering in software rendering mode (FPL has not double buffering support for software rendering)
-	- Frame drops for a couple of seconds when doing seeking (Need to flush all the queues or something)
-	- Defines in mix everywhere, making it hard to implement other systems or switch from software <-> hardware (Need a rewrite)
 
 Features/Planned:
 	[x] Reads packets from stream and queues them up
@@ -149,7 +154,7 @@ Resources:
 	- https://www.codeproject.com/tips/489450/creating-custom-ffmpeg-io-context
 
 License:
-	Copyright (c) 2017-2025 Torsten Spaete
+	Copyright (c) 2017-2026 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -1376,10 +1381,13 @@ struct FontInfo {
 
 static FontChar GetFontChar(const FontInfo &info, const uint32_t codePoint) {
 	uint32_t lastCharPastOne = info.firstChar + info.charCount;
-	fplAssert(codePoint >= info.firstChar && codePoint < lastCharPastOne);
-	uint32_t charIndex = codePoint - info.firstChar;
-	FontChar result = info.chars[charIndex];
-	return(result);
+	if (codePoint >= info.firstChar && codePoint < lastCharPastOne) {
+		uint32_t charIndex = codePoint - info.firstChar;
+		FontChar result = info.chars[charIndex];
+		return(result);
+	}
+	FontChar empty = fplZeroInit;
+	return empty;
 }
 
 static void ReleaseFontInfo(FontInfo &font) {
@@ -2295,6 +2303,7 @@ static DecodeResult DecodeFrame(ReaderContext &reader, Decoder &decoder, AVFrame
 				fplAssert(decoder.frameQueue.pendingPacket != nullptr);
 				pkt = decoder.frameQueue.pendingPacket;
 				decoder.frameQueue.hasPendingPacket = false;
+				decoder.pktSerial = pkt->serial; // sync serial so stale check below works
 			} else {
 				pkt = nullptr;
 				if (PopPacket(decoder.packetsQueue, pkt)) {
@@ -2303,6 +2312,13 @@ static DecodeResult DecodeFrame(ReaderContext &reader, Decoder &decoder, AVFrame
 					// We cannot continue to decode, because the packet queue is empty
 					return DecodeResult::RequireMorePackets;
 				}
+			}
+			// On seek the queue serial is bumped; return stale non-flush packets to
+			// avoid leaking one allocation per seek event.
+			if (pkt != nullptr && !IsFlushPacket(pkt) &&
+				decoder.packetsQueue.serial != decoder.pktSerial) {
+				PutPacketBackToReader(reader, pkt);
+				pkt = nullptr;
 			}
 		} while (decoder.packetsQueue.serial != decoder.pktSerial);
 
@@ -2788,7 +2804,7 @@ static void SeekStream(PlayerState *state, int64_t pos, int64_t rel) {
 	if (!seek->isRequired) {
 		seek->pos = pos;
 		seek->rel = rel;
-		seek->seekFlags = AVSEEK_FLAG_ANY; // Seek to and frame, not just key frames
+		seek->seekFlags = AVSEEK_FLAG_BACKWARD; // Always seek to keyframe AT OR BEFORE target; without this flag avformat_seek_file picks the nearest keyframe in either direction and can overshoot forward, putting audio/video ahead of the master clock
 		if (state->seekByBytes)
 			seek->seekFlags |= AVSEEK_FLAG_BYTE; // Some file formats does not allow to seek by seconds
 		seek->isRequired = 1;
@@ -2867,17 +2883,12 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 		// Seeking
 		if (state->seek.isRequired) {
 			int64_t seekTarget = state->seek.pos;
-			int64_t seekMin = state->seek.rel > 0 ? seekTarget - state->seek.rel + 2 : INT64_MIN;
-			int64_t seekMax = state->seek.rel < 0 ? seekTarget - state->seek.rel - 2 : INT64_MAX;
-			double seekTargetSeconds = seekTarget / (double)AV_TIME_BASE;
-			double seekMinSeconds = seekMin / (double)AV_TIME_BASE;
-			double seekMaxSeconds = seekMax / (double)AV_TIME_BASE;
-			int seekFlags = state->seek.seekFlags;
-			if (state->seek.rel < 0) {
-				seekFlags |= AVSEEK_FLAG_BACKWARD;
-			}
+			int64_t seekMin = INT64_MIN;   // No lower bound — BACKWARD flag finds keyframe before target
+			int64_t seekMax = seekTarget;  // Hard upper bound prevents forward overshoot
+			int seekFlags = state->seek.seekFlags; // AVSEEK_FLAG_BACKWARD always included by SeekStream
 #if PRINT_SEEKES
-			fplConsoleFormatOut("Seek to: %llu %llu %llu (%f %f %f)\n", seekMin, seekTarget, seekMax, seekMinSeconds, seekTargetSeconds, seekMaxSeconds);
+			double seekTargetSeconds = seekTarget / (double)AV_TIME_BASE;
+			fplConsoleFormatOut("Seek to: %f\n", seekTargetSeconds);
 #endif
 			int seekResult = ffmpeg.avformat_seek_file(formatCtx, -1, seekMin, seekTarget, seekMax, seekFlags);
 			if (seekResult < 0) {
@@ -2903,12 +2914,11 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 					fplSignalSet(&state->video.decoder.resumeSignal);
 				}
 
-				if (state->seek.seekFlags & AVSEEK_FLAG_BYTE) {
-					SetClock(state->externalClock, NAN, 0);
-				} else {
-					SetClock(state->externalClock, seekTarget / (double)AV_TIME_BASE, 0);
+				// Set extClock to NAN so SyncClockToSlave snaps it to actual audio PTS
+				// on the first decoded frame. Setting it to seekTarget causes desync
+				// when the nearest keyframe is 1-4s before the target (below AV_NOSYNC_THRESHOLD).
+				SetClock(state->externalClock, NAN, 0);
 				}
-			}
 			state->seek.isRequired = false;
 			reader.isEOF = false;
 			if (state->isPaused) {
@@ -3329,7 +3339,7 @@ static void RenderVideoFrame(AppState *state) {
 	DisplayRect rect = CalculateDisplayRect(0, 0, w, h, frameWidth, frameHeight, sar);
 
 #if USE_HARDWARE_RENDERING
-	Mat4f proj = Mat4OrthoRH(0.0f, (float)w, 0.0f, (float)h, 0.0f, 1.0f);
+	Mat4f proj = M4fOrthoRH(0.0f, (float)w, 0.0f, (float)h, 0.0f, 1.0f);
 
 	glViewport(0, 0, w, h);
 	glClear(GL_COLOR_BUFFER_BIT);
@@ -4251,6 +4261,13 @@ static void SeekRelative(PlayerState *state, double incr) {
 		if (isnan(pos)) {
 			pos = (double)state->seek.pos / AV_TIME_BASE;
 		}
+		// After seek, master clock snaps to actual keyframe which may be seconds before
+		// the seek target. Use the last seek target as the base so successive forward
+		// seeks advance past the keyframe gap instead of looping at the same keyframe.
+		double lastSeekTarget = (double)state->seek.pos / AV_TIME_BASE;
+		if (!isnan(pos) && pos < lastSeekTarget) {
+			pos = lastSeekTarget;
+		}
 		pos += incr;
 		double start = state->formatCtx->start_time / (double)AV_TIME_BASE;
 		if ((state->formatCtx->start_time != AV_NOPTS_VALUE) && (pos < start)) {
@@ -4317,11 +4334,13 @@ int main(int argc, char **argv) {
 	settings.video.isVSync = false;
 
 	settings.audio.manualLoad = true;
-	
+
+#if defined(FPL_LOGGING)
 	fplLogSettings log = fplZeroInit;
 	log.maxLevel = fplLogLevel_All;
 	log.writers[0].flags = fplLogWriterFlags_StandardConsole;
 	fplSetLogSettings(&log);
+#endif
 
 	if (!fplPlatformInit(fplInitFlags_All, &settings)) {
 		return -1;

@@ -18,6 +18,13 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2025-11-21
+	- Changed: Reflect for API changes final_game.h (GameRender has an additional Input argument)
+	- Changed: Reflect for API changes final_game.h (WasPressed / IsDown was renamed to ButtonWasPressed / ButtonIsDown)
+
+	## 2025-11-16
+	- Migrated to new final addition libraries (C99 standard)
+
 	## 2019-04-27
 	- Use Vec2Normalize instead of dividing by length
 
@@ -130,7 +137,7 @@ Todo:
 	- Manual reload of XMLs and update all data dynamically
 
 License:
-	Copyright (c) 2017-2025 Torsten Spaete
+	Copyright (c) 2017-2026 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -155,6 +162,9 @@ License:
 
 #define FINAL_ASSETS_IMPLEMENTATION
 #include <final_assets.h>
+
+#define FINAL_GEOMETRY_IMPLEMENTATION
+#include <final_geometry.h>
 
 #include <final_game.h>
 
@@ -257,7 +267,7 @@ namespace ui {
 	}
 
 	inline bool IsInsideButton(UIContext &ctx, const Vec2f &pos, const Vec2f &radius) {
-		bool result = Abs(ctx.input.userPosition.x - pos.x) <= radius.w && Abs(ctx.input.userPosition.y - pos.y) <= radius.h;
+		bool result = F32Abs(ctx.input.userPosition.x - pos.x) <= radius.w && F32Abs(ctx.input.userPosition.y - pos.y) <= radius.h;
 		return(result);
 	}
 
@@ -274,14 +284,14 @@ namespace ui {
 			ctx.hot = id;
 		}
 		if (ctx.active == id) {
-			if (WasPressed(ctx.input.leftButton)) {
+			if (ButtonWasPressed(ctx.input.leftButton)) {
 				if (ctx.hot == id) {
 					result = true;
 				}
 				ctx.active = 0;
 			}
 		} else if (ctx.hot == id) {
-			if (IsDown(ctx.input.leftButton)) {
+			if (ButtonIsDown(ctx.input.leftButton)) {
 				ctx.active = id;
 			}
 		}
@@ -425,7 +435,7 @@ namespace utils {
 namespace render {
 	static void DrawTile(RenderState &renderState, const LevelDimension &dim, const int x, const int y, const bool isFilled, const Vec4f &color) {
 		Vec2f pos = TileToWorld(dim, V2iInit(x, y));
-		PushRectangle(renderState, pos, V2fInit(TileWidth, TileHeight), color, isFilled, 1.0f);
+		RenderPushRectangle(&renderState, pos, V2fInit(TileWidth, TileHeight), color, isFilled, 1.0f);
 	}
 
 	static void DrawLineStipple(RenderState &renderState, const Vec2f &a, const Vec2f &b, const float stippleWidth, const int modCount, const Vec4f &color, const float lineWidth) {
@@ -436,7 +446,7 @@ namespace render {
 		int secCount = (d > stippleWidth) ? (int)(d / stippleWidth) : 1;
 		assert(secCount > 0);
 		size_t capacity = secCount * 2;
-		VertexAllocation vertAlloc = AllocateVertices(renderState, capacity, color, DrawMode::Lines, false, lineWidth);
+		VertexAllocation vertAlloc = RenderAllocateVertices(&renderState, capacity, color, DrawMode_Lines, false, lineWidth);
 		Vec2f *p = vertAlloc.verts;
 		size_t count = 0;
 		for (int sec = 0; sec < secCount; ++sec) {
@@ -463,7 +473,7 @@ namespace render {
 	}
 
 	static void DrawParts(RenderState &renderState, const Assets &assets, const Camera2D &camera, const Vec2f &center, const float scale, const float alpha, const float rotation, const size_t partCount, const PartData *parts) {
-		Mat2f rotationMat = Mat2FromAngle(rotation);
+		Mat2f rotationMat = M2fFromAngle(rotation);
 		for (size_t partIndex = 0; partIndex < partCount; ++partIndex) {
 			const PartData *part = parts + partIndex;
 			Vec4f partColor = V4fInit(part->color.r, part->color.g, part->color.b, part->color.a * alpha);
@@ -474,31 +484,31 @@ namespace render {
 				partPosition = center + part->offset * scale;
 			}
 			float partLineWidth = camera.worldToPixels * part->lineWidth * scale;
-			Mat4f r = Mat4RotationZFromAngle(part->orientation);
+			Mat4f r = M4fRotationZ(part->orientation);
 			if ((part->rotFlags & PartRotationFlags::ApplyToTransform) == PartRotationFlags::ApplyToTransform) {
-				r = r * Mat4RotationZFromM2f(rotationMat);
+				r = r * M4fRotationZFromM2f(rotationMat);
 			}
-			Mat4f m = Mat4TranslationV2(partPosition) * r;
-			PushMatrix(renderState, m);
+			Mat4f m = M4fTranslationV2(partPosition) * r;
+			RenderPushMatrix(&renderState, &m, MatrixMode_Push);
 			switch (part->type) {
 				case PartType::FillCircle:
 				case PartType::StrokeCircle:
 				{
 					bool isFilled = part->type == PartType::FillCircle;
-					PushCircle(renderState, V2fInit(0.0f, 0.0f), part->radius * scale, 16, partColor, isFilled, partLineWidth);
+					RenderPushCircle(&renderState, V2fInit(0.0f, 0.0f), part->radius * scale, 16, partColor, isFilled, partLineWidth);
 				} break;
 				case PartType::FillQuad:
 				case PartType::StrokeQuad:
 				{
 					bool isFilled = part->type == PartType::FillQuad;
-					PushRectangleCenter(renderState, V2fInit(0.0f, 0.0f), part->ext * scale, partColor, isFilled, partLineWidth);
+					RenderPushRectangleCenter(&renderState, V2fInit(0.0f, 0.0f), part->ext * scale, partColor, isFilled, partLineWidth);
 				} break;
 				case PartType::Line:
 				{
-					PushLine(renderState, V2fInit(part->ext.x, 0) * scale, V2fInit(-part->ext.x, 0) * scale, partColor, partLineWidth);
+					RenderPushLine(&renderState, V2fInit(part->ext.x, 0) * scale, V2fInit(-part->ext.x, 0) * scale, partColor, partLineWidth);
 				} break;
 			}
-			PopMatrix(renderState);
+			RenderPopMatrix(&renderState);
 		}
 	}
 }
@@ -999,7 +1009,7 @@ namespace level {
 				part->ext = utils::StringToVec2(fxmlGetAttributeValue(partTag, "ext"));
 				part->radius = utils::StringToFloat(fxmlGetAttributeValue(partTag, "radius"));
 				part->lineWidth = utils::StringToFloat(fxmlGetAttributeValue(partTag, "lineWidth"));
-				part->orientation = DegreesToRadians(utils::StringToFloat(fxmlGetAttributeValue(partTag, "orientation")));
+				part->orientation = F32DegreesToRadians(utils::StringToFloat(fxmlGetAttributeValue(partTag, "orientation")));
 				part->color = utils::StringToVec4(fxmlGetAttributeValue(partTag, "color"));
 			}
 		}
@@ -1419,7 +1429,7 @@ namespace towers {
 		float b = 2.0f * V2fDot(enemyVelocity, distanceToTarget);
 		float c = V2fDot(distanceToTarget, distanceToTarget);
 		float d = -b / (2.0f * a);
-		float q = (float)SquareRoot((b * b) - 4.0f * a * c) / (2.0f * a);
+		float q = (float)F32SquareRoot((b * b) - 4.0f * a * c) / (2.0f * a);
 		float t1 = d - q;
 		float t2 = d + q;
 		float t;
@@ -1433,7 +1443,7 @@ namespace towers {
 	}
 
 	static Vec2f GetRelativeTubeTip(const WeaponTubeData *tube, const Vec2f &lookDirection) {
-		Mat2f rotMat = Mat2FromAxis(lookDirection);
+		Mat2f rotMat = M2fFromAxis(lookDirection);
 		Vec2f rotatedOffset = V2fMultMat2(rotMat, tube->offset);
 		Vec2f gunTip = rotatedOffset + tube->length * lookDirection;
 		return(gunTip);
@@ -1449,12 +1459,12 @@ namespace towers {
 			for (size_t tubeIndex = 0; tubeIndex < tower.data->tubeCount; ++tubeIndex) {
 				const WeaponTubeData *tube = tower.data->tubes + tubeIndex;
 				Vec2f gunTip = tower.position + GetRelativeTubeTip(tube, lookDirection);
-				LineCastInput input = {};
+				LineCastInput2f input = {};
 				input.p1 = gunTip;
 				input.p2 = input.p1 + lookDirection * maxDistance;
 				input.maxFraction = 1.0f;
-				LineCastOutput output = {};
-				result = LineCastCircle(input, enemy.position, enemy.data->collisionRadius, output);
+				LineCastOutput2f output = {};
+				result = LineCast2fAgainstCircle(&input, &enemy.position, enemy.data->collisionRadius, &output);
 				if (result) {
 					break;
 				}
@@ -1465,7 +1475,7 @@ namespace towers {
 				Vec2f lookPos = tower.position + lookDirection * projDistance;
 				float dot = V2fDot(predictedEnemyPosition, lookPos);
 				float det = predictedEnemyPosition.x * lookPos.y - predictedEnemyPosition.y * lookPos.x;
-				float angle = ArcTan2(det, dot);
+				float angle = F32ArcTan2(det, dot);
 				result = angle >= -ShotAngleTolerance && angle <= ShotAngleTolerance;
 			} else {
 				result = false;
@@ -1480,7 +1490,7 @@ namespace towers {
 			assert(bullets.count < fplArrayCount(bullets.list));
 			Bullet *bullet = &bullets.list[bullets.count++];
 			*bullet = {};
-			Vec2f targetDir = V2fInit(Cosine(tower.facingAngle), Sine(tower.facingAngle));
+			Vec2f targetDir = V2fInit(F32Cos(tower.facingAngle), F32Sin(tower.facingAngle));
 			Vec2f gunTip = tower.position + GetRelativeTubeTip(tube, targetDir);
 			bullet->position = bullet->prevPosition = gunTip;
 			bullet->data = &tower.data->bullet;
@@ -1545,7 +1555,7 @@ namespace towers {
 			Vec2f predictedEnemyPosition = towers::PredictEnemyPosition(tower, *enemy, deltaTime);
 			Vec2f directionToEnemy = V2fNormalize(predictedEnemyPosition - tower.position);
 			float angleToEnemy = V2fAngleFromAxis(directionToEnemy);
-			tower.facingAngle = AngleLerp(tower.facingAngle, deltaTime * tower.data->gunRotationSpeed, angleToEnemy);
+			tower.facingAngle = F32AngleLerp(tower.facingAngle, deltaTime * tower.data->gunRotationSpeed, angleToEnemy);
 		}
 
 		//
@@ -1587,8 +1597,8 @@ namespace towers {
 
 		if (drawRadius) {
 			const TextureAsset &radiantTexture = assets.radiantTexture;
-			PushSprite(renderState, pos, V2fInit(tower.detectionRadius * scale, tower.detectionRadius * scale), radiantTexture.texture, V4fInit(0.2f, 1, 0.2f, alpha * 0.25f), V2fInit(0, 0), V2fInit(1, 1));
-			PushSprite(renderState, pos, V2fInit(tower.unlockRadius * scale, tower.unlockRadius * scale), radiantTexture.texture, V4fInit(1, 0.25f, 0.25f, alpha * 0.25f), V2fInit(0, 0), V2fInit(1, 1));
+			RenderPushSprite(&renderState, pos, V2fInit(tower.detectionRadius * scale, tower.detectionRadius * scale), radiantTexture.texture, V4fInit(0.2f, 1, 0.2f, alpha * 0.25f), UVRectDefault(), SpriteFlags_None);
+			RenderPushSprite(&renderState, pos, V2fInit(tower.unlockRadius * scale, tower.unlockRadius * scale), radiantTexture.texture, V4fInit(1, 0.25f, 0.25f, alpha * 0.25f), UVRectDefault(), SpriteFlags_None);
 		}
 	}
 }
@@ -1603,8 +1613,11 @@ namespace game {
 	}
 
 	static void ReleaseAssets(Assets &assets) {
-		ReleaseFontAsset(assets.overlayFont);
-		ReleaseFontAsset(assets.hudFont);
+		// TODO(final): Proper memory allocator
+		MemoryAllocator *allocator = fpl_null;
+
+		FontAssetFree(allocator, &assets.overlayFont);
+		FontAssetFree(allocator, &assets.hudFont);
 	}
 
 	static void LoadTextureAsset(RenderState &renderState, const char *dataPath, const char *filename, const bool isTopDown, TextureAsset *outAsset) {
@@ -1619,11 +1632,14 @@ namespace game {
 			outAsset->data.width = width;
 			outAsset->data.height = height;
 			const TextureData &texData = outAsset->data;
-			PushTexture(renderState, &outAsset->texture, texData.data, texData.width, texData.height, 4, TextureFilterType::Linear, TextureWrapMode::ClampToEdge, false, false);
+			RenderPushTexture(&renderState, &outAsset->texture, texData.data, texData.width, texData.height, 4, TextureFilterType_Linear, TextureWrapMode_ClampToEdge, false, false);
 		}
 	}
 
 	static void LoadAssets(GameState &gameState, RenderState &renderState) {
+		// TODO(final): Proper memory allocator
+		MemoryAllocator *allocator = fpl_null;
+		
 		fmemMemoryBlock tempMem = {};
 		if (fmemBeginTemporary(&gameState.transientMem, &tempMem)) {
 			Assets &assets = gameState.assets;
@@ -1635,12 +1651,12 @@ namespace game {
 
 			// Fonts
 			FontAsset &hudFont = assets.hudFont;
-			if (LoadFontFromMemory(ptr_fontSulphurPointRegular, sizeOf_fontSulphurPointRegular, 0, 36.0f, 32, 128, 512, 512, false, &hudFont.desc)) {
-				PushTexture(renderState, &hudFont.texture, hudFont.desc.atlasAlphaBitmap, hudFont.desc.atlasWidth, hudFont.desc.atlasHeight, 1, TextureFilterType::Linear, TextureWrapMode::ClampToEdge, false, false);
+			if (FontLoadFromMemory(allocator, ptr_fontSulphurPointRegular, sizeOf_fontSulphurPointRegular, 0, 36.0f, 32, 128, 512, 512, false, &hudFont.desc)) {
+				RenderPushTexture(&renderState, &hudFont.texture, hudFont.desc.atlasAlphaBitmap, hudFont.desc.atlasWidth, hudFont.desc.atlasHeight, 1, TextureFilterType_Linear, TextureWrapMode_ClampToEdge, false, false);
 			}
 			FontAsset &overlayFont = assets.overlayFont;
-			if (LoadFontFromMemory(ptr_fontSulphurPointRegular, sizeOf_fontSulphurPointRegular, 0, 240.0f, 32, 128, 4096, 4096, false, &overlayFont.desc)) {
-				PushTexture(renderState, &overlayFont.texture, overlayFont.desc.atlasAlphaBitmap, overlayFont.desc.atlasWidth, overlayFont.desc.atlasHeight, 1, TextureFilterType::Linear, TextureWrapMode::ClampToEdge, false, false);
+			if (FontLoadFromMemory(allocator, ptr_fontSulphurPointRegular, sizeOf_fontSulphurPointRegular, 0, 240.0f, 32, 128, 4096, 4096, false, &overlayFont.desc)) {
+				RenderPushTexture(&renderState, &overlayFont.texture, overlayFont.desc.atlasAlphaBitmap, overlayFont.desc.atlasWidth, overlayFont.desc.atlasHeight, 1, TextureFilterType_Linear, TextureWrapMode_ClampToEdge, false, false);
 			}
 
 			// Textures
@@ -1721,32 +1737,32 @@ namespace game {
 			char text[256];
 			fplStringFormat(text, fplArrayCount(text), "%s", state.level.activeId);
 			Vec2f textPos = V2fInit(hudOriginX + WorldRadiusW, hudOriginY - hudPadding - hudFontHeight * 0.5f);
-			PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, 0.0f, 0.0f, TextBackColor);
-			PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(textPos.x, textPos.y), hudFontHeight, 0.0f, 0.0f, TextForeColor);
+			RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, 0.0f, 0.0f, TextBackColor);
+			RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x, textPos.y), hudFontHeight, 0.0f, 0.0f, TextForeColor);
 
 			fplStringFormat(text, fplArrayCount(text), "Wave: %d / %zu", (state.wave.activeIndex + 1), state.assets.waveDefinitionCount);
 			textPos.y -= hudFontHeight;
-			PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, 0.0f, 0.0f, TextBackColor);
-			PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(textPos.x, textPos.y), hudFontHeight, 0.0f, 0.0f, TextForeColor);
+			RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, 0.0f, 0.0f, TextBackColor);
+			RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x, textPos.y), hudFontHeight, 0.0f, 0.0f, TextForeColor);
 
 			fplStringFormat(text, fplArrayCount(text), "Enemies: %zu / %zu", state.enemies.count, state.wave.totalEnemyCount);
 			textPos.y -= hudFontHeight;
-			PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, 0.0f, 0.0f, TextBackColor);
-			PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(textPos.x, textPos.y), hudFontHeight, 0.0f, 0.0f, TextForeColor);
+			RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, 0.0f, 0.0f, TextBackColor);
+			RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x, textPos.y), hudFontHeight, 0.0f, 0.0f, TextForeColor);
 		}
 		{
 			char text[256];
 			fplStringFormat(text, fplArrayCount(text), "$: %d", state.stats.money);
 			Vec2f textPos = V2fInit(hudOriginX + hudPadding, hudOriginY - hudPadding - hudFontHeight * 0.5f);
-			PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, 1.0f, 0.0f, TextBackColor);
-			PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(textPos.x, textPos.y), hudFontHeight, 1.0f, 0.0f, TextForeColor);
+			RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, 1.0f, 0.0f, TextBackColor);
+			RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x, textPos.y), hudFontHeight, 1.0f, 0.0f, TextForeColor);
 		}
 		{
 			char text[256];
 			fplStringFormat(text, fplArrayCount(text), "HP: %d", state.stats.lifes);
 			Vec2f textPos = V2fInit(hudOriginX + WorldWidth - hudPadding, hudOriginY - hudPadding - hudFontHeight * 0.5f);
-			PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, -1.0f, 0.0f, TextBackColor);
-			PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(textPos.x, textPos.y), hudFontHeight, -1.0f, 0.0f, TextForeColor);
+			RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, -1.0f, 0.0f, TextBackColor);
+			RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x, textPos.y), hudFontHeight, -1.0f, 0.0f, TextForeColor);
 		}
 	}
 
@@ -1758,7 +1774,7 @@ namespace game {
 		if (buttonState == ui::UIButtonState::Hover) {
 			alpha = 1.0f;
 		}
-		towers::DrawTower(renderState, gameState.assets, gameState.camera, *towerData, pos, radius, Pi32 * 0.5f, alpha, false);
+		towers::DrawTower(renderState, gameState.assets, gameState.camera, *towerData, pos, radius, F32Pi * 0.5f, alpha, false);
 
 		// Draw selection frame
 		if (gameState.towers.selectedIndex == towerDataIndex) {
@@ -1780,7 +1796,7 @@ namespace game {
 		// Controls Background
 		//
 		Vec4f backgroundColor = V4fInit(0.2f, 0.2f, 0.2f, 1.0f);
-		PushRectangle(renderState, V2fInit(ControlsOriginX, ControlsOriginY), V2fInit(ControlsWidth, ControlsHeight), backgroundColor, true, 0.0f);
+		RenderPushRectangle(&renderState, V2fInit(ControlsOriginX, ControlsOriginY), V2fInit(ControlsWidth, ControlsHeight), backgroundColor, true, 0.0f);
 
 		// Controls Border
 		float lineWidth = 2.0f;
@@ -1793,7 +1809,7 @@ namespace game {
 			V2fInit(ControlsOriginX + lineWidthWorld, ControlsOriginY + lineWidthWorld),
 			V2fInit(ControlsOriginX + ControlsWidth - lineWidthWorld, ControlsOriginY + lineWidthWorld),
 		};
-		PushVertices(renderState, controlsVerts, 4, true, controlsBorderColor, DrawMode::Lines, true, lineWidth);
+		RenderPushVertices(&renderState, controlsVerts, 4, true, controlsBorderColor, DrawMode_Lines, true, lineWidth);
 
 		// Tower buttons
 		float buttonPadding = MaxTileSize * 0.1f;
@@ -1817,17 +1833,17 @@ namespace game {
 			Vec2f textPos = V2fInit(ControlsOriginX + ControlsWidth - lineWidthWorld - buttonMargin, ControlsOriginY + ControlsHeight * 0.5f);
 			char textBuffer[256];
 			fplStringFormat(textBuffer, fplArrayCount(textBuffer), "[%s / $%d]", towerData.id, towerData.costs);
-			PushText(renderState, textBuffer, fplGetStringLength(textBuffer), &font.desc, &font.texture, V2fInit(textPos.x, textPos.y), fontHeight, -1.0f, 0.0f, TextForeColor);
+			RenderPushText(&renderState, textBuffer, fplGetStringLength(textBuffer), &font.desc, font.texture, V2fInit(textPos.x, textPos.y), fontHeight, -1.0f, 0.0f, TextForeColor);
 		}
 
 	}
 }
 
-extern bool GameInit(GameMemory &gameMemory) {
+extern bool GameInit(GameMemory *gameMemory, const int argumentCount, char **arguments) {
 	gamelog::Verbose("Init Game");
-	GameState *state = (GameState *)fmemPush(gameMemory.memory, sizeof(GameState), fmemPushFlags_Clear);
-	gameMemory.game = state;
-	if (!game::InitGame(*state, gameMemory)) {
+	GameState *state = (GameState *)fmemPush(gameMemory->memory, sizeof(GameState), fmemPushFlags_Clear);
+	gameMemory->game = state;
+	if (!game::InitGame(*state, *gameMemory)) {
 		gamelog::Fatal("Failed initializing Game!");
 		GameRelease(gameMemory);
 		return(false);
@@ -1835,38 +1851,38 @@ extern bool GameInit(GameMemory &gameMemory) {
 	return(true);
 }
 
-extern void GameRelease(GameMemory &gameMemory) {
+extern void GameRelease(GameMemory *gameMemory) {
 	gamelog::Verbose("Destroy Game");
-	GameState *state = gameMemory.game;
+	GameState *state = gameMemory->game;
 	if (state != nullptr) {
 		game::ReleaseGame(*state);
 		state->~GameState();
 	}
 }
 
-extern bool IsGameExiting(GameMemory &gameMemory) {
-	GameState *state = gameMemory.game;
+extern bool IsGameExiting(GameMemory *gameMemory) {
+	GameState *state = gameMemory->game;
 	assert(state != nullptr);
 	return state->isExiting;
 }
 
-extern void GameInput(GameMemory &gameMemory, const Input &input) {
-	if (!input.isActive) {
+extern void GameInput(GameMemory *gameMemory, const Input *input) {
+	if (!input->isActive) {
 		return;
 	}
-	GameState *state = gameMemory.game;
+	GameState *state = gameMemory->game;
 	assert(state != nullptr);
-	RenderState *renderState = gameMemory.render;
+	RenderState *renderState = gameMemory->render;
 
 	// Debug input
-	const Controller &keyboardController = input.controllers[0];
-	if (WasPressed(keyboardController.debugToggle)) {
+	const Keyboard *keyboard = &input->tastatur;
+	if (ButtonWasPressed(keyboard->keys[fplKey_F4])) {
 		state->isDebugRendering = !state->isDebugRendering;
 	}
 
 	// Camera
 	float scale = state->camera.scale;
-	state->viewport = ComputeViewportByAspect(input.windowSize, GameAspect);
+	state->viewport = VP4iComputeByAspect(input->windowSize, GameAspect);
 	state->camera.worldToPixels = (state->viewport.w / (float)WorldWidth) * scale;
 	state->camera.pixelsToWorld = 1.0f / state->camera.worldToPixels;
 
@@ -1874,15 +1890,15 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 	const float h = WorldRadiusH;
 
 	float invScale = 1.0f / state->camera.scale;
-	Mat4f proj = Mat4OrthoRH(-w * invScale, w * invScale, -h * invScale, h * invScale, 0.0f, 1.0f);
-	Mat4f view = Mat4TranslationV2(state->camera.offset);
+	Mat4f proj = M4fOrthoRH(-w * invScale, w * invScale, -h * invScale, h * invScale, 0.0f, 1.0f);
+	Mat4f view = M4fTranslationV2(state->camera.offset);
 	state->viewProjection = proj * view;
 
-	ui::UIBegin(state->ui, state, renderState, input, state->mouseWorldPos);
+	ui::UIBegin(state->ui, state, renderState, *input, state->mouseWorldPos);
 
 	// Mouse
-	int mouseCenterX = (input.mouse.pos.x - input.windowSize.w / 2);
-	int mouseCenterY = (input.windowSize.h - 1 - input.mouse.pos.y) - input.windowSize.h / 2;
+	int mouseCenterX = (input->mouse.pos.x - input->windowSize.w / 2);
+	int mouseCenterY = (input->windowSize.h - 1 - input->mouse.pos.y) - input->windowSize.h / 2;
 	state->mouseWorldPos.x = (mouseCenterX * state->camera.pixelsToWorld) - state->camera.offset.x;
 	state->mouseWorldPos.y = (mouseCenterY * state->camera.pixelsToWorld) - state->camera.offset.y;
 
@@ -1891,7 +1907,7 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 		state->mouseTilePos = WorldToTile(state->level.dimension, state->mouseWorldPos);
 
 		// Tower placement
-		if (WasPressed(input.mouse.left) && !ui::UIIsHot(state->ui)) {
+		if (ButtonWasPressed(input->mouse.left) && !ui::UIIsHot(state->ui)) {
 			if (state->towers.selectedIndex > -1) {
 				const TowerData *tower = &state->assets.towerDefinitions[state->towers.selectedIndex];
 				if (towers::CanPlaceTower(*state, state->mouseTilePos, tower) == towers::CanPlaceTowerResult::Success) {
@@ -1902,15 +1918,16 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 	}
 }
 
-extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
-	if (!input.isActive) {
+extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
+	if (!input->isActive) {
 		return;
 	}
 
-	GameState *state = gameMemory.game;
+	GameState *state = gameMemory->game;
 	assert(state != nullptr);
 
-	if (WasPressed(input.keyboard.debugReload)) {
+	const Keyboard *keyboard = &input->tastatur;
+	if (ButtonWasPressed(keyboard->keys[fplKey_F6])) {
 		char filePathBuffer[FPL_MAX_PATH_LENGTH];
 		fplPathCombine(filePathBuffer, fplArrayCount(filePathBuffer), 3, state->assets.dataPath, "levels", TowersDataFilename);
 		FileInfo towersFileContents = utils::LoadFileInfo(filePathBuffer);
@@ -1937,7 +1954,7 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 	if (state->isSlowDown) {
 		assert(state->slowdownTimer[1] > 0);
 		if (state->slowdownTimer[0] > 0.0f) {
-			state->slowdownTimer[0] -= input.fixedDeltaTime;
+			state->slowdownTimer[0] -= input->fixedDeltaTime;
 		} else {
 			state->slowdownTimer[0] = 0;
 			if (state->wave.state != state->waveStateAfterSlowdown) {
@@ -1945,12 +1962,12 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 			}
 		}
 		float t = 1.0f - (state->slowdownTimer[0] / state->slowdownTimer[1]);
-		dtScale = ScalarLerp(1.0f, t, state->slowdownScale);
+		dtScale = F32Lerp(1.0f, t, state->slowdownScale);
 	}
-	const float dt = input.fixedDeltaTime * dtScale;
+	const float dt = input->fixedDeltaTime * dtScale;
 
 	state->deltaTime = dt;
-	state->framesPerSecond = input.framesPerSeconds;
+	state->framesPerSecond = input->framesPerSeconds;
 
 	// Startup wave
 	if (state->wave.state == WaveState::Starting) {
@@ -2097,18 +2114,18 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 	}
 }
 
-extern void GameRender(GameMemory &gameMemory, const float alpha) {
-	GameState *state = gameMemory.game;
+extern void GameRender(GameMemory *gameMemory, const Input *input, const float alpha) {
+	GameState *state = gameMemory->game;
 	assert(state != nullptr);
-	RenderState &renderState = *gameMemory.render;
+	RenderState &renderState = *gameMemory->render;
 
 	const float w = WorldRadiusW;
 	const float h = WorldRadiusH;
 	const float dt = state->deltaTime;
 
-	PushViewport(renderState, state->viewport.x, state->viewport.y, state->viewport.w, state->viewport.h);
-	PushClear(renderState, V4fInit(0, 0, 0, 1), ClearFlags::Color | ClearFlags::Depth);
-	SetMatrix(renderState, state->viewProjection);
+	RenderPushViewport(&renderState, state->viewport.x, state->viewport.y, state->viewport.w, state->viewport.h);
+	RenderPushClear(&renderState, V4fInit(0, 0, 0, 1), ClearFlags_Color | ClearFlags_Depth);
+	RenderSetMatrix(&renderState, &state->viewProjection);
 
 	const Level &level = state->level;
 	const LevelDimension &dim = level.dimension;
@@ -2152,7 +2169,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 					const UVRect &uvRect = tileset->tileUVs[indexToTilesheet];
 					if (texAsset != nullptr) {
 						Vec2f pos = TileToWorld(state->level.dimension, V2iInit((int)x, (int)y), TileExt);
-						PushSprite(renderState, pos, TileExt, texAsset->texture, V4fInit(1, 1, 1, layer.opacity), uvRect);
+						RenderPushSprite(&renderState, pos, TileExt, texAsset->texture, V4fInit(1, 1, 1, layer.opacity), uvRect, SpriteFlags_None);
 					}
 				}
 			}
@@ -2198,7 +2215,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 	Vec4f gridColor = V4fInit(1.0f, 1.0f, 1.0f, 0.25f);
 	float gridLineWidth = DefaultLineWidth;
 	size_t totalGridVerts = (dim.tileCountX + 1) * 2 + (dim.tileCountY + 1) * 2;
-	VertexAllocation vertAlloc = AllocateVertices(renderState, totalGridVerts, gridColor, DrawMode::Lines, false, gridLineWidth);
+	VertexAllocation vertAlloc = RenderAllocateVertices(&renderState, totalGridVerts, gridColor, DrawMode_Lines, false, gridLineWidth);
 	Vec2f *gridVertex = vertAlloc.verts;
 	size_t count = 0;
 	for (size_t y = 0; y <= dim.tileCountY; ++y) {
@@ -2217,8 +2234,8 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 	if (state->isDebugRendering) {
 		// Waypoints
 		for (Waypoint *waypoint = state->waypoints.first; waypoint != nullptr; waypoint = waypoint->next) {
-			PushRectangleCenter(renderState, waypoint->position, V2fInitScalar(MaxTileSize * 0.15f), V4fInit(1, 0, 1, 1), true, 0.0f);
-			PushLine(renderState, waypoint->position, waypoint->position + waypoint->direction * level::WaypointDirectionWidth, V4fInit(1, 1, 1, 1), 1.0f);
+			RenderPushRectangleCenter(&renderState, waypoint->position, V2fInitScalar(MaxTileSize * 0.15f), V4fInit(1, 0, 1, 1), true, 0.0f);
+			RenderPushLine(&renderState, waypoint->position, waypoint->position + waypoint->direction * level::WaypointDirectionWidth, V4fInit(1, 1, 1, 1), 1.0f);
 		}
 	}
 
@@ -2237,7 +2254,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 		if (placeRes == towers::CanPlaceTowerResult::Success || placeRes == towers::CanPlaceTowerResult::NotEnoughMoney) {
 			float alpha = placeRes == towers::CanPlaceTowerResult::Success ? 0.5f : 0.2f;
 			Vec2f towerCenter = TileToWorld(dim, state->mouseTilePos, TileExt);
-			towers::DrawTower(renderState, state->assets, state->camera, *tower, towerCenter, V2fInitScalar(MaxTileRadius), Pi32 * 0.5f, alpha, true);
+			towers::DrawTower(renderState, state->assets, state->camera, *tower, towerCenter, V2fInitScalar(MaxTileRadius), F32Pi * 0.5f, alpha, true);
 		}
 
 		render::DrawTile(renderState, dim, state->mouseTilePos.x, state->mouseTilePos.y, false, hoverColor);
@@ -2252,7 +2269,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 			Vec2f enemyPos = V2fLerp(enemy.prevPosition, alpha, enemy.position);
 
 			// Mesh
-			PushRectangleCenter(renderState, enemyPos, V2fInit(enemy.data->renderRadius, enemy.data->renderRadius), enemy.data->color, true, 0.0f);
+			RenderPushRectangleCenter(&renderState, enemyPos, V2fInit(enemy.data->renderRadius, enemy.data->renderRadius), enemy.data->color, true, 0.0f);
 
 			// HP Bar
 			{
@@ -2272,7 +2289,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 					V2fInit(barX, barY),
 					V2fInit(barX + barWidth * barScale, barY),
 				};
-				PushVertices(renderState, progressVerts, fplArrayCount(progressVerts), true, progressColor, DrawMode::Polygon, true, 0.0f);
+				RenderPushVertices(&renderState, progressVerts, fplArrayCount(progressVerts), true, progressColor, DrawMode_Polygon, true, 0.0f);
 
 				Vec4f borderColor = V4fInit(0.25f, 0.25f, 0.25f, 1.0f);
 				float borderLineWidth = 2.0f;
@@ -2282,7 +2299,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 					V2fInit(barX, barY),
 					V2fInit(barX + barWidth, barY),
 				};
-				PushVertices(renderState, borderVerts, fplArrayCount(borderVerts), true, borderColor, DrawMode::Lines, true, borderLineWidth);
+				RenderPushVertices(&renderState, borderVerts, fplArrayCount(borderVerts), true, borderColor, DrawMode_Lines, true, borderLineWidth);
 			}
 
 			enemy.prevPosition = enemy.position;
@@ -2301,14 +2318,14 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 				assert(tower.targetEnemy != nullptr);
 				const Creep *target = tower.targetEnemy;
 				if ((target->id > 0) && (target->id == tower.targetId)) {
-					PushCircle(renderState, target->position, target->data->collisionRadius, 32, V4fInit(1, 0, 0, 1), false, 1.0f);
+					RenderPushCircle(&renderState, target->position, target->data->collisionRadius, 32, V4fInit(1, 0, 0, 1), false, 1.0f);
 
 					Vec2f lookPos = towers::PredictEnemyPosition(tower, *target, dt);
-					PushCircle(renderState, lookPos, MaxTileSize * 0.25f, 16, V4fInit(1, 1, 0, 1), false, 1.0f);
+					RenderPushCircle(&renderState, lookPos, MaxTileSize * 0.25f, 16, V4fInit(1, 1, 0, 1), false, 1.0f);
 
 					float dot = V2fDot(target->position, lookPos);
 					float det = V2fCrossZ(target->position, lookPos);
-					float angle = ArcTan2(det, dot);
+					float angle = F32ArcTan2(det, dot);
 
 					if (angle >= -ShotAngleTolerance && angle <= ShotAngleTolerance) {
 						Vec2f lookDirection = V2fAxisFromAngle(tower.facingAngle);
@@ -2324,7 +2341,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 							V2fInit(tower.position.x, tower.position.y),
 							V2fInit(sightPos2.x, sightPos2.y),
 						};
-						PushVertices(renderState, sightVec2, fplArrayCount(sightVec2), true, sightColor, DrawMode::Lines, false, sightLineWidth);
+						RenderPushVertices(&renderState, sightVec2, fplArrayCount(sightVec2), true, sightColor, DrawMode_Lines, false, sightLineWidth);
 					}
 				}
 			}
@@ -2339,7 +2356,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 		if (!bullet.isDestroyed) {
 			Vec2f bulletPos = V2fLerp(bullet.prevPosition, alpha, bullet.position);
 			// @TODO(final): Use sprites for bullets
-			PushCircle(renderState, bulletPos, bullet.data->renderRadius, 32, V4fInit(1, 0, 0, 1), true, 0.0f);
+			RenderPushCircle(&renderState, bulletPos, bullet.data->renderRadius, 32, V4fInit(1, 0, 0, 1), true, 0.0f);
 			bullet.prevPosition = bullet.position;
 		}
 	}
@@ -2358,16 +2375,16 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 		Vec2f textPos = V2fInit(0, 0);
 		float overlayFontHeight = WorldWidth * 0.25f;
 		float foffset = overlayFontHeight * 0.01f;
-		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(textPos.x, textPos.y), overlayFontHeight, 0.0f, 0.0f, TextBackColor);
-		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(textPos.x + foffset, textPos.y - foffset), overlayFontHeight, 0.0f, 0.0f, TextForeColor);
+		RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x, textPos.y), overlayFontHeight, 0.0f, 0.0f, TextBackColor);
+		RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x + foffset, textPos.y - foffset), overlayFontHeight, 0.0f, 0.0f, TextForeColor);
 	} else if (state->wave.state == WaveState::Won || state->wave.state == WaveState::Lost) {
 		const FontAsset &font = state->assets.overlayFont;
 		const char *text = state->wave.state == WaveState::Won ? "You Win!" : "Game Over!";
 		Vec2f textPos = V2fInit(0, 0);
 		float overlayFontHeight = WorldWidth * 0.15f;
 		float foffset = overlayFontHeight * 0.01f;
-		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(textPos.x, textPos.y), overlayFontHeight, 0.0f, 0.0f, TextBackColor);
-		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(textPos.x + foffset, textPos.y - foffset), overlayFontHeight, 0.0f, 0.0f, TextForeColor);
+		RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x, textPos.y), overlayFontHeight, 0.0f, 0.0f, TextBackColor);
+		RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x + foffset, textPos.y - foffset), overlayFontHeight, 0.0f, 0.0f, TextForeColor);
 	}
 
 	if (state->isDebugRendering) {
@@ -2378,14 +2395,14 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 		float padding = MaxTileSize * 0.1f;
 		Vec2f textPos = V2fInit(dim.gridOriginX + padding, dim.gridOriginY + padding);
 		float fontHeight = MaxTileSize * 0.5f;
-		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(textPos.x, textPos.y), fontHeight, 1.0f, 1.0f, textColor);
+		RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x, textPos.y), fontHeight, 1.0f, 1.0f, textColor);
 
-		fplStringFormat(text, fplArrayCount(text), "Game Memory: %zu / %zu", gameMemory.memory->used, gameMemory.memory->size);
-		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(textPos.x + dim.gridWidth - padding * 2.0f, textPos.y + fontHeight * 2), fontHeight, -1.0f, 1.0f, textColor);
-		fplStringFormat(text, fplArrayCount(text), "Render Memory: %zu / %zu", gameMemory.render->lastMemoryUsage, gameMemory.render->memory.size);
-		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(textPos.x + dim.gridWidth - padding * 2.0f, textPos.y + fontHeight * 1), fontHeight, -1.0f, 1.0f, textColor);
+		fplStringFormat(text, fplArrayCount(text), "Game Memory: %zu / %zu", gameMemory->memory->used, gameMemory->memory->size);
+		RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x + dim.gridWidth - padding * 2.0f, textPos.y + fontHeight * 2), fontHeight, -1.0f, 1.0f, textColor);
+		fplStringFormat(text, fplArrayCount(text), "Render Memory: %zu / %zu", gameMemory->render->lastMemoryUsage, gameMemory->render->memory.size);
+		RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x + dim.gridWidth - padding * 2.0f, textPos.y + fontHeight * 1), fontHeight, -1.0f, 1.0f, textColor);
 		fplStringFormat(text, fplArrayCount(text), "Fps: %.5f, Delta: %.5f", state->framesPerSecond, state->deltaTime);
-		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2fInit(textPos.x + dim.gridWidth - padding * 2.0f, textPos.y), fontHeight, -1.0f, 1.0f, textColor);
+		RenderPushText(&renderState, text, fplGetStringLength(text), &font.desc, font.texture, V2fInit(textPos.x + dim.gridWidth - padding * 2.0f, textPos.y), fontHeight, -1.0f, 1.0f, textColor);
 	}
 
 	//
@@ -2398,11 +2415,11 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 #define FINAL_GAMEPLATFORM_IMPLEMENTATION
 #include <final_gameplatform.h>
 
-int main(int argc, char *argv[]) {
-	GameConfiguration config = {};
+int main(int argc, char **argv) {
+	GameConfiguration config = fplZeroInit;
 	config.title = "FPL Demo | Towadev";
 	config.disableInactiveDetection = true;
 	gamelog::Verbose("Startup game application '%s'", config.title);
-	int result = GameMain(config);
+	int result = GameMain(&config, argc, argv);
 	return(result);
 }

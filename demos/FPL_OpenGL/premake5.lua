@@ -12,4 +12,4 @@ project "FPL_OpenGL"
 	filter "system:bsd or system:linux"
 		local openGLLibPath = os.findlib("GL")
 		libdirs { openGLLibPath }
-		links { "m", "GL" }
+		links { "GL" }

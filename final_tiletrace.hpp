@@ -30,6 +30,160 @@ It will try to create as less chain shapes as possible.
 
 # PREPROCESSOR OVERRIDES
 
+# ALGORYTHM
+
+## Overview
+
+The algorithm converts a 2D grid of solid tiles into a minimal set of closed (or
+open) chain segments — polylines that trace the contours of all solid regions.
+It operates in two distinct phases driven by an explicit state machine (Steps::StepEnum):
+
+  Phase 1  — Tile Expansion: expand through the tilemap using a contour-aware
+             flood-fill to build a global edge mesh containing only the *boundary*
+             edges of all solid regions.  Interior edges shared by two adjacent
+             solid tiles cancel each other out via antiparallel edge removal.
+
+  Phase 2  — Edge Traversal: walk the edge mesh in order to extract closed (or
+             open) chain segments, suitable for use as collision shapes
+             (e.g. Box2D b2ChainShape).
+
+Both phases can be advanced one step at a time via NextTileTraceStep(), or run
+to completion with RunTileTracer().
+
+---------------------------------------------------------------------------
+## Tile Coordinate System and Vertex Layout
+
+Tiles are addressed by (tileX, tileY) with (0,0) at the top-left corner.
+Each tile occupies one unit in world space.  The four corner vertices of a
+tile at position (x, y) are generated as:
+
+    v1(x,   y  ) ----[e1]---- v2(x+1, y  )
+         |                          |
+        [e0]                       [e2]
+         |                          |
+    v0(x,   y+1) ----[e3]---- v3(x+1, y+1)
+
+  v0 = bottom-left  = (x,   y+1)
+  v1 = top-left     = (x,   y  )
+  v2 = top-right    = (x+1, y  )
+  v3 = bottom-right = (x+1, y+1)
+
+Edges are directed *clockwise* (outer normal faces outward for a solid tile):
+  e0 (left  ): v0 -> v1
+  e1 (top   ): v1 -> v2
+  e2 (right ): v2 -> v3
+  e3 (bottom): v3 -> v0
+
+---------------------------------------------------------------------------
+## Phase 1 — Tile Expansion (Building the Boundary Edge Mesh)
+
+Goal: populate mainEdges with every edge that lies on the boundary between a
+solid tile and empty space.  Interior edges shared by two adjacent solid tiles
+cancel each other out.
+
+### Step: FindStart
+  Scan the tile array in row-major order (top-left to bottom-right) for the
+  first tile whose isSolid > 0.  This becomes startTile.  Call AddTile on it,
+  then immediately transition to GetNextOpenTile.
+  If no solid tile is found and mainEdges is non-empty, skip straight to
+  TraverseFindStartingEdge (Phase 2).  If mainEdges is also empty, stop (Done).
+
+### AddTile (helper called whenever a new solid tile is accepted)
+  1. Push the tile onto the openList (used as a LIFO stack).
+  2. Mark the tile as visited by setting isSolid = -1 (RemoveTile), so it is
+     never returned by FindStart or FindNextTile again.
+  3. Generate or reuse the four corner vertices in mainVertices.
+     PushTileVertices deduplicates: a vertex is only appended to mainVertices if
+     no existing entry matches it exactly.  Returns TileIndices holding the four
+     indices into mainVertices for this tile's corners.
+  4. Build four directed, clockwise edges (CreateTileEdges) from the TileIndices.
+  5. Cancel shared interior edges (RemoveOverlapEdges):
+     An input edge (v0->v1) cancels an existing main edge when the main edge
+     runs in the exact opposite direction (mainEdge.v0 == v1 && mainEdge.v1 == v0).
+     Both the input edge and the matching main edge are discarded.  This removes
+     the shared wall between two adjacent solid tiles.
+  6. Append all surviving (boundary) edges to mainEdges.
+
+### Step: GetNextOpenTile
+  Peek at the last element of openList (LIFO) and set it as curTile, then
+  transition to FindNextTile.  If openList is empty, go back to FindStart to
+  look for the next disconnected solid region.
+
+### Step: FindNextTile
+  Look at the tile one step ahead of curTile in its current traceDirection
+  (Up=0, Right=1, Down=2, Left=3).  Accept the neighbour tile if and only if:
+    * it exists within map bounds and has isSolid > 0, AND
+    * it shares at least one common edge with the current mainEdges set
+      (IsTileSharesCommonEdges — checks that one of the candidate tile's four
+      potential edges runs antiparallel to an existing main edge).
+  If accepted: call AddTile on it and transition to GetNextOpenTile.
+  Otherwise: transition to RotateForward.
+
+  Note: this is NOT a simple 4-neighbour flood fill.  A neighbour is only
+  accepted when it touches the *existing edge mesh*, keeping expansion coherent
+  along the contour rather than filling the entire solid interior.
+
+### Step: RotateForward
+  Advance curTile->traceDirection by one (Up->Right->Down->Left).
+  If all four directions have been tried (direction would exceed Left), pop
+  curTile from openList and call GetNextOpenTile to process the next tile.
+  This guarantees every reachable solid neighbour is eventually visited.
+
+---------------------------------------------------------------------------
+## Phase 2 — Edge Traversal (Building Chain Segments)
+
+Once Phase 1 is complete, mainEdges contains all boundary edges.  Phase 2
+traverses them to form ordered polylines.
+
+### Step: TraverseFindStartingEdge
+  Find the first edge in mainEdges whose isInvalid flag is false.  Mark it
+  invalid (consumed), create a new ChainSegment, and add both its endpoints
+  as the first two vertices.  Set startEdge and lastEdge to this edge, then
+  transition to TraverseNextEdge.
+  If no free edge exists, transition to Done.
+
+### Step: TraverseNextEdge
+  Find the next edge whose vertIndex0 == lastEdge->vertIndex1 (i.e. the edge
+  that begins where the last consumed edge ends).  Mark it invalid.
+
+  Two sub-cases:
+  a) Closed loop: if the found edge's vertIndex1 == startEdge->vertIndex0, the
+     contour has returned to its origin.  Optimize (remove collinear vertices),
+     finalize (check wrap-around seam), then duplicate the first vertex at the
+     end (closed chain convention).  Return to TraverseFindStartingEdge for the
+     next independent contour.
+  b) Open continuation: append the edge's endpoint to the segment, call
+     OptimizeChainSegment, update lastEdge, and loop.
+
+  If no matching continuation edge exists, the contour is open (e.g. a boundary
+  touching the map edge).  Finalize what has been built and return to
+  TraverseFindStartingEdge.
+
+---------------------------------------------------------------------------
+## Collinearity Optimization (ClearLineSegmentPoints)
+
+After each vertex is appended, OptimizeChainSegment checks the last three
+vertices (first, middle, last).  Given:
+  d1 = last   - middle
+  d2 = middle - first
+If dot(d1, d2) > 0 (both vectors point in the same general direction), the
+three points are collinear and the middle vertex is redundant — it is removed.
+
+FinalizeChainSegment applies the same test at the wrap-around seam:
+  (last-2, last-1, last) and (last, first, second)
+to clean up collinear vertices that span the segment boundary.
+
+---------------------------------------------------------------------------
+## Output
+
+After the algorithm completes (NextTileTraceStep returns false):
+  chainSegments  — one ChainSegment per connected contour boundary.  Each
+                   closed segment ends with a copy of its first vertex.
+                   Collinear intermediate vertices have been removed.
+  mainVertices   — all unique corner vertices referenced by the segments.
+  mainEdges      — all boundary edges (all marked isInvalid = true after
+                   traversal).
+
 # FEATURES
 
 [X] Block tile contour tracing
@@ -147,49 +301,71 @@ namespace ftt {
 	};
 	typedef Steps::StepEnum Step;
 
-	//! Tile infos like position, direction and its solid state
+	//! A single tile in the map.  isSolid > 0 means solid, 0 means empty,
+	//! -1 means already visited/removed by the tracer.
+	//! traceDirection indexes into TILETRACE_DIRECTIONS (0=Up,1=Right,2=Down,3=Left)
+	//! and tracks which direction the tracer is currently scanning from this tile.
 	struct Tile {
-		int32_t x, y;
-		uint32_t traceDirection;
-		int32_t isSolid;
+		int32_t x, y;            //!< Tile grid coordinates
+		uint32_t traceDirection; //!< Current scan direction index (0-3)
+		int32_t isSolid;         //!< >0 solid, 0 empty, -1 visited/removed
 	};
 
+	//! A directed boundary edge between two vertices in mainVertices.
+	//! Edges are wound clockwise around a solid tile (outer normal faces outward).
+	//! Two edges with swapped indices (v0==other.v1 && v1==other.v0) are antiparallel
+	//! and represent a shared interior wall — they cancel each other during Phase 1.
 	struct Edge {
-		int32_t index;
-		int32_t vertIndex0, vertIndex1;
-		Vec2i tilePosition;
-		bool isInvalid;
+		int32_t index;              //!< Local edge index within the tile (0-3: left, top, right, bottom)
+		int32_t vertIndex0;         //!< Start vertex index into TileTracerData::mainVertices
+		int32_t vertIndex1;         //!< End   vertex index into TileTracerData::mainVertices
+		Vec2i tilePosition;         //!< Grid position of the tile this edge originated from
+		bool isInvalid;             //!< True once this edge has been consumed by Phase 2 traversal
 	};
 
+	//! The four world-space corner positions for a single tile (see vertex layout in ALGORYTHM).
+	//! verts[0]=bottom-left, verts[1]=top-left, verts[2]=top-right, verts[3]=bottom-right.
 	struct TileVertices {
 		Vec2i verts[4];
 	};
+
+	//! Indices into TileTracerData::mainVertices for each of a tile's four corners.
+	//! Parallel to TileVertices: indices[i] is the mainVertices index for verts[i].
 	struct TileIndices {
 		int32_t indices[4];
 	};
+
+	//! Up to four directed edges produced for a single tile, with the count of valid entries.
+	//! After RemoveOverlapEdges the count may be less than 4 (interior edges are discarded).
 	struct TileEdges {
-		Edge edges[4];
-		uint32_t count;
+		Edge edges[4];   //!< Edge array (only entries [0..count-1] are valid)
+		uint32_t count;  //!< Number of valid edges in the array
 	};
 
+	//! A single output contour — an ordered list of world-space vertices.
+	//! Closed contours have vertices.front() == vertices.back().
+	//! Collinear intermediate vertices are removed by the optimizer.
 	struct ChainSegment {
 		std::vector<Vec2i> vertices;
 	};
 
+	//! Full mutable state of the tile tracer.  Holds the tile grid, the growing
+	//! vertex/edge mesh built during Phase 1, the open-list stack used for
+	//! expansion, and the chain segments produced during Phase 2.
 	struct TileTracerData {
-		Vec2u tileCount;
-		std::vector<Tile> tiles;
-		Step curStep;
-		Tile *startTile;
-		Tile *curTile;
-		Tile *nextTile;
-		Edge *startEdge;
-		Edge *lastEdge;
-		ChainSegment *curChainSegment;
-		std::vector<Tile *> openList;
-		std::vector<Vec2i> mainVertices;
-		std::vector<Edge> mainEdges;
-		std::vector<ChainSegment> chainSegments;
+		Vec2u tileCount;                   //!< Width and height of the tile grid
+		std::vector<Tile> tiles;           //!< Flat row-major tile array (modified in-place; visited tiles become isSolid=-1)
+		Step curStep;                      //!< Current state-machine step
+		Tile *startTile;                   //!< Pointer to the start tile of the current expansion region
+		Tile *curTile;                     //!< Pointer to the tile currently being expanded from
+		Tile *nextTile;                    //!< Pointer to the candidate neighbour tile (transient, used in FindNextTile)
+		Edge *startEdge;                   //!< Pointer to the first edge of the current chain segment (Phase 2)
+		Edge *lastEdge;                    //!< Pointer to the most recently consumed edge (Phase 2)
+		ChainSegment *curChainSegment;     //!< Pointer into chainSegments to the segment being built (Phase 2)
+		std::vector<Tile *> openList;      //!< LIFO stack of solid tiles waiting to be expanded (Phase 1)
+		std::vector<Vec2i> mainVertices;   //!< Deduplicated world-space vertex pool shared across all tiles
+		std::vector<Edge> mainEdges;       //!< Boundary edges surviving antiparallel cancellation (Phase 1 output / Phase 2 input)
+		std::vector<ChainSegment> chainSegments; //!< Final output: one segment per contiguous solid-region boundary
 	};
 
 	//! Tile tracer C++ API

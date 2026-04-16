@@ -14,11 +14,14 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2025-04-04
+	- Fixed LoadWaveFromFile() was not returning anything at all
+
 	## 2025-04-01
 	- Initial version
 
 License:
-	Copyright (c) 2017-2025 Torsten Spaete
+	Copyright (c) 2017-2026 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -246,6 +249,7 @@ cleanup:
 		fplMemoryFree(buffer);
 	}
 	fplFileClose(&file);
+	return result;
 }
 
 typedef struct {

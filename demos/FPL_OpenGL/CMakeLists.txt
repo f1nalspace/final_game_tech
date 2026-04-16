@@ -35,6 +35,16 @@ set(MY_DEFINES
 #
 # -----------------------------------------------------------------------------
 
+add_compile_options(-fdiagnostics-color=always)
+add_compile_options(-fdiagnostics-plain-output)
+add_compile_options(-fdiagnostics-format=text)
+add_compile_options(-fdiagnostics-show-option)
+
+# Force English diagnostics
+add_compile_options(-fdiagnostics-plain-output)
+set(ENV{LC_ALL} "C")
+set(ENV{LANG} "C")
+
 set(FPL_ROOT_PATH_RELATIVE ../)
 get_filename_component(FPL_ROOT_PATH ${FPL_ROOT_PATH_RELATIVE} ABSOLUTE)
 set(FPL_EXECUTABLE_NAME ${PROJECT_NAME})

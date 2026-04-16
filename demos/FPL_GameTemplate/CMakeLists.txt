@@ -11,13 +11,13 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-set(MY_EXTERNAL_LIBS "")
+set(MY_EXTERNAL_LIBS m)
 
 set(MY_INCLUDE_DIRS ../dependencies/ ../additions/)
 
 set(MY_HEADER_FILES ../../final_platform_layer.h)
 
-set(MY_SOURCE_FILES fpl_gametemplate.cpp)
+set(MY_SOURCE_FILES fpl_gametemplate.c)
 
 # -----------------------------------------------------------------------------
 #

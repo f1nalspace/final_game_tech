@@ -76,6 +76,9 @@ namespace ProtParser
             preset.SetProperty("LoadLibHandle", tbLoadLibHandle.Text);
             preset.SetProperty("LoadLibName", tbLoadLibName.Text);
             preset.SetProperty("LoadLibFieldPrefix", tbLoadLibFieldPrefix.Text);
+            preset.SetProperty("ExcludedSymbols", tbExcludedSymbols.Text);
+            preset.SetProperty("ProcNamePrefix", tbProcNamePrefix.Text);
+            preset.SetProperty("DLLFilePath", tbDLLFilePath.Text);
             foreach (var line in tbSource.Lines)
                 preset.AddSource(line);
         }
@@ -87,6 +90,9 @@ namespace ProtParser
             tbLoadLibHandle.Text = string.Empty;
             tbLoadLibName.Text = string.Empty;
             tbLoadLibFieldPrefix.Text = string.Empty;
+            tbExcludedSymbols.Text = string.Empty;
+            tbProcNamePrefix.Text = string.Empty;
+            tbDLLFilePath.Text = string.Empty;
             tbSource.Clear();
 
             _activeFilename = null;
@@ -108,11 +114,16 @@ namespace ProtParser
         private void LoadPreset(string filename)
         {
             Preset preset = Preset.Load(filename);
+
             tbPrefix.Text = preset.GetProperty("Prefix");
             tbLoadMacro.Text = preset.GetProperty("LoadMacro");
             tbLoadLibHandle.Text = preset.GetProperty("LoadLibHandle");
             tbLoadLibName.Text = preset.GetProperty("LoadLibName");
             tbLoadLibFieldPrefix.Text = preset.GetProperty("LoadLibFieldPrefix");
+            tbExcludedSymbols.Text = preset.GetProperty("ExcludedSymbols");
+            tbProcNamePrefix.Text = preset.GetProperty("ProcNamePrefix");
+            tbDLLFilePath.Text = preset.GetProperty("DLLFilePath");
+
             tbSource.Clear();
             string sources = string.Empty;
             foreach (var source in preset.Sources)
@@ -126,9 +137,9 @@ namespace ProtParser
 
         private void fileOpenItem_Click(object sender, EventArgs e)
         {
-            if (openFileDialog.ShowDialog() == DialogResult.OK)
+            if (dlgOpenPreset.ShowDialog() == DialogResult.OK)
             {
-                string filename = openFileDialog.FileName;
+                string filename = dlgOpenPreset.FileName;
                 LoadPreset(filename);
             }
         }
@@ -138,12 +149,45 @@ namespace ProtParser
             NewPreset();
         }
 
+        private void fileSaveItem_Click(object sender, EventArgs e)
+        {
+            if (string.IsNullOrWhiteSpace(_activeFilename))
+            {
+                if (dlgSavePreset.ShowDialog() == DialogResult.OK)
+                    SavePreset(dlgSavePreset.FileName);
+            } 
+            else
+                SavePreset(_activeFilename);
+        }
+
         private void fileSaveAsItem_Click(object sender, EventArgs e)
         {
-            if (saveFileDialog.ShowDialog() == DialogResult.OK)
+            if (dlgSavePreset.ShowDialog() == DialogResult.OK)
             {
-                SavePreset(saveFileDialog.FileName);
+                SavePreset(dlgSavePreset.FileName);
             }
+        }
+
+        private void tbExcludedSymbols_TextChanged(object sender, EventArgs e)
+        {
+            UpdateTarget();
+        }
+
+        private void tbProcNamePrefix_TextChanged(object sender, EventArgs e)
+        {
+            UpdateTarget();
+        }
+
+        private void cbProcNameType_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            UpdateTarget();
+        }
+
+        private void btnSelectDLLFilePath_Click(object sender, EventArgs e)
+        {
+            if (dlgOpenDLL.ShowDialog() != DialogResult.OK)
+                return;
+            tbDLLFilePath.Text = dlgOpenDLL.FileName;
         }
     }
 }
