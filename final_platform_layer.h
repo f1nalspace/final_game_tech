@@ -200,6 +200,8 @@ SOFTWARE.
 	- Changed: Ensure that std types has the correct sizes always using equals
 	- Changed: fplSetDefaultAudioSettings() sets audio backend type to automatic
 	- Changed: [ALSA] Audio device enumeration prints out each audio device to verbose log
+	- Changed: [X11] Disabled FPL_NO_PLATFORM_INCLUDES for Xlib includes
+	- Changed: [POSIX] Disabled FPL_NO_PLATFORM_INCLUDES for pthread includes
 
 	- Fixed: [Win32] Fixed last event from event queue was never used, when there is no events from the window
 	- Fixed: [Win32] Lost/Got focus event was not detected properly
@@ -3232,6 +3234,19 @@ struct IUnknown;
 
 #endif // !FPL_NO_PLATFORM_INCLUDES
 
+#if defined(FPL_SUBPLATFORM_POSIX)
+#	include <pthread.h> // pthread_t, pthread_mutex_, pthread_cond_, pthread_barrier_
+#	include <semaphore.h> // sem_t
+#endif // FPL_SUBPLATFORM_POSIX
+
+#if defined(FPL_SUBPLATFORM_X11)
+#	include <X11/X.h> // Window
+#	include <X11/Xlib.h> // Display
+#	include <X11/Xutil.h> // XVisualInfo
+#	include <X11/Xatom.h> // XA_CARDINAL
+#	include <X11/keysym.h> // Keyboard symbols (XK_Escape, etc.)
+#endif // FPL_SUBPLATFORM_X11
+
 //
 // Special Includes, such as intrin.h or cpuid.h
 // CRT Includes, such as stdio.h, stdlib.h, when enabled
@@ -3333,18 +3348,17 @@ typedef uint64_t fpl__POSIXConditionVariable[16];
 // @TODO(final): Opaque X11 Display is not correct, to not assume void ptr - its a full structure, that is really large
 
 //! A X11 Display (opaque, 4/8 bytes)
-typedef void *fpl__X11Display;
-
+typedef void fpl__X11Display;
 //! A X11 window (opaque, 4 bytes)
 typedef int fpl__X11Window;
 //! A X11 Visual (opaque, 4/8 bytes)
-typedef void *fpl__X11Visual;
+typedef void fpl__X11Visual;
 //! A X11 GC (opaque, 4/8 bytes)
-typedef void *fpl__X11GC;
+typedef void fpl__X11GC;
 //! A X11 Image (opaque, 4/8 bytes)
-typedef void *fpl__X11Image;
+typedef void fpl__X11Image;
 //! A GLX Context (opaque, 4/8 bytes)
-typedef void *fpl__GLXContext;
+typedef void fpl__GLXContext;
 
 #	endif // FPL_SUBPLATFORM_X11
 
