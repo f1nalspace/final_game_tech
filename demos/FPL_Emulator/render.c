@@ -308,14 +308,22 @@ extern Texture LoadTextureFromMemory(const uint8_t *data, const size_t size, con
 
 extern void ClearTexture(const Texture *texture) {
 	glBindTexture(GL_TEXTURE_2D, texture->id);
-	glTexImage2D(GL_TEXTURE_2D, 0, texture->format.internalFormat, texture->width, texture->height, 0, texture->format.format, GL_UNSIGNED_BYTE, NULL);
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
+				texture->width, texture->height,
+				texture->format.format,
+				GL_UNSIGNED_BYTE,
+				texture->pixels);
 	glBindTexture(GL_TEXTURE_2D, 0);
 	CheckGLError();
 }
 
 extern void UpdateTexture(const Texture *texture) {
 	glBindTexture(GL_TEXTURE_2D, texture->id);
-	glTexImage2D(GL_TEXTURE_2D, 0, texture->format.internalFormat, texture->width, texture->height, 0, texture->format.format, GL_UNSIGNED_BYTE, texture->pixels);
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
+				texture->width, texture->height,
+				texture->format.format,
+				GL_UNSIGNED_BYTE,
+				texture->pixels);
 	glBindTexture(GL_TEXTURE_2D, 0);
 	CheckGLError();
 }

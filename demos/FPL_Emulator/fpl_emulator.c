@@ -45,6 +45,11 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2026-04-16
+	- Emulation thread does not wait for OpenGL transfer anymore and buffers the pixels
+	- Fixed audio playback was not in-sync with games
+	- Improve texture upload performance by using glTexSubImage2D instead glTexImage2D
+
 	## 2026-04-10
 	- Fixed strcmp() was used, even though no <string.h> was included. Now we have a macro FGB_STRCMP()
 
@@ -396,6 +401,146 @@ typedef struct {
 	char labels[MAX_STATE_SLOT_COUNT][64];
 } States;
 
+// Lock-free SPSC frame queues carrying raw fgbColor snapshots from the
+// emulator thread (producer) to the main thread (consumer). Same pattern as
+// fgbAudioRingBuffer in final_game_box.h, power-of-two capacity with mask.
+#define FRAME_QUEUE_CAPACITY 4u
+#define FRAME_QUEUE_MASK     (FRAME_QUEUE_CAPACITY - 1u)
+fplStaticAssert((FRAME_QUEUE_CAPACITY & FRAME_QUEUE_MASK) == 0);
+
+typedef struct {
+	fgbColor pixels[FGB_DISPLAY_WIDTH * FGB_DISPLAY_HEIGHT];
+} FrameSnapshotDisplay;
+
+typedef struct {
+	fgbColor pixels[FGB_BACKGROUND_MAP_WIDTH * FGB_BACKGROUND_MAP_HEIGHT];
+} FrameSnapshotBackgroundMap;
+
+typedef struct {
+	fgbColor pixels[FGB_TILEMAP_WIDTH * FGB_TILEMAP_HEIGHT];
+} FrameSnapshotTilemap;
+
+typedef struct {
+	fgbCacheline cachelineHead;
+	volatile int64_t head;
+	fgbCacheline cachelineTail;
+	volatile int64_t tail;
+	fgbCacheline cachelineSlots;
+	FrameSnapshotDisplay slots[FRAME_QUEUE_CAPACITY];
+} DisplayFrameQueue;
+
+typedef struct {
+	fgbCacheline cachelineHead;
+	volatile int64_t head;
+	fgbCacheline cachelineTail;
+	volatile int64_t tail;
+	fgbCacheline cachelineSlots;
+	FrameSnapshotBackgroundMap slots[FRAME_QUEUE_CAPACITY];
+} BackgroundMapFrameQueue;
+
+typedef struct {
+	fgbCacheline cachelineHead;
+	volatile int64_t head;
+	fgbCacheline cachelineTail;
+	volatile int64_t tail;
+	fgbCacheline cachelineSlots;
+	FrameSnapshotTilemap slots[FRAME_QUEUE_CAPACITY];
+} TilemapFrameQueue;
+
+static inline void DisplayFrameQueueInit(DisplayFrameQueue *q) {
+	fgb__InterlockedExchange64(&q->head, 0);
+	fgb__InterlockedExchange64(&q->tail, 0);
+}
+
+static inline void BackgroundMapFrameQueueInit(BackgroundMapFrameQueue *q) {
+	fgb__InterlockedExchange64(&q->head, 0);
+	fgb__InterlockedExchange64(&q->tail, 0);
+}
+
+static inline void TilemapFrameQueueInit(TilemapFrameQueue *q) {
+	fgb__InterlockedExchange64(&q->head, 0);
+	fgb__InterlockedExchange64(&q->tail, 0);
+}
+
+static inline bool DisplayFrameQueueTryPush(DisplayFrameQueue *q, const FrameSnapshotDisplay *src) {
+	const int64_t head = fgb__InterlockedRead64(&q->head);
+	const int64_t tail = fgb__InterlockedRead64(&q->tail);
+	const int64_t nextHead = (head + 1) & FRAME_QUEUE_MASK;
+	if (nextHead == tail) {
+		return false;
+	}
+	q->slots[(uint64_t)head] = *src;
+	fgb__InterlockedExchange64(&q->head, nextHead);
+	return true;
+}
+
+static inline bool BackgroundMapFrameQueueTryPush(BackgroundMapFrameQueue *q, const FrameSnapshotBackgroundMap *src) {
+	const int64_t head = fgb__InterlockedRead64(&q->head);
+	const int64_t tail = fgb__InterlockedRead64(&q->tail);
+	const int64_t nextHead = (head + 1) & FRAME_QUEUE_MASK;
+	if (nextHead == tail) {
+		return false;
+	}
+	q->slots[(uint64_t)head] = *src;
+	fgb__InterlockedExchange64(&q->head, nextHead);
+	return true;
+}
+
+static inline bool TilemapFrameQueueTryPush(TilemapFrameQueue *q, const FrameSnapshotTilemap *src) {
+	const int64_t head = fgb__InterlockedRead64(&q->head);
+	const int64_t tail = fgb__InterlockedRead64(&q->tail);
+	const int64_t nextHead = (head + 1) & FRAME_QUEUE_MASK;
+	if (nextHead == tail) {
+		return false;
+	}
+	q->slots[(uint64_t)head] = *src;
+	fgb__InterlockedExchange64(&q->head, nextHead);
+	return true;
+}
+
+static inline bool DisplayFrameQueuePopNewest(DisplayFrameQueue *q, FrameSnapshotDisplay *out) {
+	const int64_t head = fgb__InterlockedRead64(&q->head);
+	const int64_t tail = fgb__InterlockedRead64(&q->tail);
+	if (head == tail) {
+		return false;
+	}
+	const int64_t newestIdx = (head - 1 + FRAME_QUEUE_CAPACITY) & FRAME_QUEUE_MASK;
+	*out = q->slots[(uint64_t)newestIdx];
+	fgb__InterlockedExchange64(&q->tail, head);
+	return true;
+}
+
+static inline bool BackgroundMapFrameQueuePopNewest(BackgroundMapFrameQueue *q, FrameSnapshotBackgroundMap *out) {
+	const int64_t head = fgb__InterlockedRead64(&q->head);
+	const int64_t tail = fgb__InterlockedRead64(&q->tail);
+	if (head == tail) {
+		return false;
+	}
+	const int64_t newestIdx = (head - 1 + FRAME_QUEUE_CAPACITY) & FRAME_QUEUE_MASK;
+	*out = q->slots[(uint64_t)newestIdx];
+	fgb__InterlockedExchange64(&q->tail, head);
+	return true;
+}
+
+static inline bool TilemapFrameQueuePopNewest(TilemapFrameQueue *q, FrameSnapshotTilemap *out) {
+	const int64_t head = fgb__InterlockedRead64(&q->head);
+	const int64_t tail = fgb__InterlockedRead64(&q->tail);
+	if (head == tail) {
+		return false;
+	}
+	const int64_t newestIdx = (head - 1 + FRAME_QUEUE_CAPACITY) & FRAME_QUEUE_MASK;
+	*out = q->slots[(uint64_t)newestIdx];
+	fgb__InterlockedExchange64(&q->tail, head);
+	return true;
+}
+
+// Wall-clock ns per PPU frame: 1e9 * 70368 / 4194304 = 16742706 (exact).
+#define EMULATOR_FRAME_TIME_NS       ((uint64_t)16742706)
+// Safety bound on the inner fgbTick loop (far exceeds ~70k real cycles / frame).
+#define EMULATOR_INNER_SAFETY_CAP    200000u
+// Spin the last ~1.5 ms of the wait for sub-ms accuracy; coarse sleep handles the bulk.
+#define EMULATOR_SPIN_THRESHOLD_NS   ((int64_t)1500000)
+
 typedef struct {
 	States states;
 
@@ -409,6 +554,10 @@ typedef struct {
 	fplConditionVariable waitCondition;
 	fplConditionVariable microStepCondition;
 	fplConditionVariable breakpointCondition;
+
+	DisplayFrameQueue displayQueue;
+	BackgroundMapFrameQueue backgroundMapQueue;
+	TilemapFrameQueue tilemapQueue;
 
 	String pendingROMFilePath;
 
@@ -424,10 +573,8 @@ typedef struct {
 
 	volatile uint32_t isShutdown;
 
-	volatile uint32_t isFrameFinished;
 	volatile uint32_t isFrameStepActive;
 	volatile uint32_t isMicroStepActive;
-	volatile uint32_t isVRAMUpdated;
 
 	float masterVolume;
 
@@ -641,6 +788,10 @@ static bool InitEmulator(fmemMemoryBlock *mem, Emulator *emulator) {
 	for (int i = 0; i < fplArrayCount(emulator->states.textures); ++i) {
 		emulator->states.textures[i] = AllocateTexture(mem, FGB_DISPLAY_WIDTH, FGB_DISPLAY_HEIGHT, TextureFormat_RGBA, TextureFilter_Nearest);
 	}
+
+	DisplayFrameQueueInit(&emulator->displayQueue);
+	BackgroundMapFrameQueueInit(&emulator->backgroundMapQueue);
+	TilemapFrameQueueInit(&emulator->tilemapQueue);
 
 	emulator->isShutdown = false;
 	emulator->isActive = false;
@@ -1383,21 +1534,6 @@ static void TransferPixelsToTexture(const fgbColor *sourcePixels, const uint32_t
 		}
 	}
 	texture->hasPixels = true;
-}
-
-static void UpdateDisplayTexture(Application *app, const fgbPPU *ppu) {
-	TransferPixelsToTexture(ppu->display, FGB_DISPLAY_WIDTH, FGB_DISPLAY_HEIGHT, &app->displayTexture);
-	UpdateTexture(&app->displayTexture);
-}
-
-static void UpdateBackgroundMapTexture(Application *app, const fgbPPU *ppu) {
-	TransferPixelsToTexture(ppu->backgroundMap.colors, FGB_BACKGROUND_MAP_WIDTH, FGB_BACKGROUND_MAP_HEIGHT, &app->backgroundMapTexture);
-	UpdateTexture(&app->backgroundMapTexture);
-}
-
-static void UpdateVRAMTexture(Application *app, const fgbPPU *ppu) {
-	TransferPixelsToTexture(ppu->tilemap, FGB_TILEMAP_WIDTH, FGB_TILEMAP_HEIGHT, &app->vramTexture);
-	UpdateTexture(&app->vramTexture);
 }
 
 static void DrawDisplay(const Application *app, const float x, const float y, const float w, const float h, const float aspect) {
@@ -2628,61 +2764,118 @@ static void EmulatorThreadProc(const fplThreadHandle *thread, void *data) {
 
 	fgbSystem *system = &emulator->system;
 
-	emulator->isFrameFinished = false;
-	emulator->isVRAMUpdated = false;
 	emulator->isActive = false;
-
 	emulator->isShutdown = false;
 
+	fplTimestamp epoch = fplTimestampQuery();
+	uint64_t framesDone = 0;
+
+	static FrameSnapshotDisplay prodDisplay;
+	static FrameSnapshotBackgroundMap prodBgMap;
+	static FrameSnapshotTilemap prodTilemap;
+
 	while (!emulator->isShutdown) {
-		// Wait a while, when a frame is finished and continue loop
-		if (emulator->isFrameFinished) {
-			fplThreadSleep(0);
-			continue;
-		}
+		const fgbEmulationState state = fgbGetState(system);
 
-		// Possible wait until the emulator wakes by the condition variable
-		fgbEmulationState state = fgbGetState(system);
+		// Park when not running. Push a snapshot first so the debugger view stays live.
 		if (!emulator->isActive || state == fgbEmulationState_Paused || state == fgbEmulationState_Error) {
-			emulator->isFrameFinished = true;
-			emulator->isVRAMUpdated = true;
+			if (emulator->isActive) {
+				fplMemoryCopy(system->ppu.display, sizeof(prodDisplay.pixels), prodDisplay.pixels);
+				fplMemoryCopy(system->ppu.backgroundMap.colors, sizeof(prodBgMap.pixels), prodBgMap.pixels);
+				fplMemoryCopy(system->ppu.tilemap, sizeof(prodTilemap.pixels), prodTilemap.pixels);
+				DisplayFrameQueueTryPush(&emulator->displayQueue, &prodDisplay);
+				BackgroundMapFrameQueueTryPush(&emulator->backgroundMapQueue, &prodBgMap);
+				TilemapFrameQueueTryPush(&emulator->tilemapQueue, &prodTilemap);
+			}
 			fplConditionWait(&emulator->waitCondition, &emulator->mutex, 1000 * 60);
+			// Resync pacing on wakeup so we don't try to "catch up" on sleep time.
+			epoch = fplTimestampQuery();
+			framesDone = 0;
 			continue;
 		}
 
-		// Process a single CPU tick (4 or more memory ticks)
+		// Run one full PPU frame (or until a halt point is hit).
 		BeginPerformanceCounter(&metrics->emulatorTick, fplTimestampQuery());
-		bool tickResult = fgbTick(system);
+		bool frameDone = false;
+		bool vramTouched = false;
+		bool haltRequested = false;
+		uint32_t safety = 0;
+		while (safety++ < EMULATOR_INNER_SAFETY_CAP) {
+			if (!fgbTick(system)) {
+				break;
+			}
+			if (fgbIsVRAMUpdated(system)) {
+				vramTouched = true;
+			}
+			if (fgbIsFrameUpdated(system)) {
+				frameDone = true;
+				break;
+			}
+			// MicroStep / Breakpoint handlers condwait inside fgbTick; when they return
+			// the state may have changed and fgbIsFrameUpdated will not become true for
+			// the rest of this frame. Exit so the outer loop can pause / park.
+			if (emulator->isMicroStepActive) {
+				haltRequested = true;
+				break;
+			}
+			const fgbEmulationState innerState = fgbGetState(system);
+			if (innerState == fgbEmulationState_Paused || innerState == fgbEmulationState_Error) {
+				haltRequested = true;
+				break;
+			}
+		}
 		EndPerformanceCounter(&metrics->emulatorTick, fplTimestampQuery());
 
-		if (tickResult) {
+		// Snapshot display + bgmap on a full frame, and whenever an inner halt ran (so
+		// debugger step / breakpoint paths always land a visible frame).
+		if (frameDone || haltRequested) {
+			fplMemoryCopy(system->ppu.display, sizeof(prodDisplay.pixels), prodDisplay.pixels);
+			fplMemoryCopy(system->ppu.backgroundMap.colors, sizeof(prodBgMap.pixels), prodBgMap.pixels);
+			DisplayFrameQueueTryPush(&emulator->displayQueue, &prodDisplay);
+			BackgroundMapFrameQueueTryPush(&emulator->backgroundMapQueue, &prodBgMap);
+		}
+		if (vramTouched || haltRequested) {
+			fplMemoryCopy(system->ppu.tilemap, sizeof(prodTilemap.pixels), prodTilemap.pixels);
+			TilemapFrameQueueTryPush(&emulator->tilemapQueue, &prodTilemap);
+		}
 
-			// When a frame was updated, notify the emulator that is finished
-			if (fgbIsFrameUpdated(system)) {
-				emulator->isFrameFinished = true;
+		// Frame-step halt: pause after the full frame completed.
+		if (frameDone && emulator->isFrameStepActive) {
+			emulator->isFrameStepActive = false;
+			fgbPause(system);
+			continue;
+		}
+		// Micro-step halt: pause after the micro-step handler unblocked.
+		if (emulator->isMicroStepActive) {
+			emulator->isMicroStepActive = false;
+			fgbPause(system);
+			continue;
+		}
+		// Other mid-frame halts (breakpoint handler, error): let the next iteration park.
+		if (haltRequested) {
+			continue;
+		}
 
-				// Halt game boy when frame stepping is active
-				if (emulator->isFrameStepActive) {
-					emulator->isFrameStepActive = false;
-					fgbPause(system);
+		// Pacing: epoch-anchored absolute target. Each completed frame advances the
+		// schedule by exactly EMULATOR_FRAME_TIME_NS so the CPU clock averages exactly
+		// 4.194304 MHz over the long run, regardless of per-iteration jitter.
+		++framesDone;
+		const uint64_t targetNs = framesDone * EMULATOR_FRAME_TIME_NS;
+		for (;;) {
+			const int64_t nowNs = (int64_t)(fplTimestampElapsed(epoch, fplTimestampQuery()) * 1e9);
+			const int64_t remainingNs = (int64_t)targetNs - nowNs;
+			if (remainingNs <= 0) {
+				break;
+			}
+			if (remainingNs > EMULATOR_SPIN_THRESHOLD_NS) {
+				const uint32_t coarseMs = (uint32_t)((remainingNs - EMULATOR_SPIN_THRESHOLD_NS) / 1000000);
+				if (coarseMs > 0) {
+					fplThreadSleep(coarseMs);
+				} else {
+					fplThreadYield();
 				}
-			}
-
-			// When the video ram was updated, notify the emulator that is finished
-			if (fgbIsVRAMUpdated(system)) {
-				emulator->isVRAMUpdated = true;
-			}
-
-			// Halt game boy when micro stepping is active
-			if (emulator->isMicroStepActive) {
-				emulator->isMicroStepActive = false;
-				fgbPause(system);
-			}
-
-			// In case the system is paused, always update the textures of the video frame and the VRAM
-			if (fgbGetState(system) == fgbEmulationState_Paused) {
-				emulator->isFrameFinished = true;
-				emulator->isVRAMUpdated = true;
+			} else {
+				fplThreadYield();
 			}
 		}
 	}
@@ -3061,11 +3254,23 @@ static uint32_t AudioThreadCallback(const fplAudioFormat *deviceFormat, const ui
 		int16_t *out16 = (int16_t *)outputSamples;
 
 		BeginPerformanceCounter(&metrics->audioReadSamples, fplTimestampQuery());
-		result = fgbFetchAudioSamples(system, frameCount, AudioTempSampels);
+		// fgbFetchAudioSamples zero-fills (with silence = 128) any shortfall
+		// inside AudioTempSampels, but still returns the actual frame count so
+		// the underrun can be logged for diagnostics.
+		const uint32_t popped = fgbFetchAudioSamples(system, frameCount, AudioTempSampels);
 		EndPerformanceCounter(&metrics->audioReadSamples, fplTimestampQuery());
 
+		if (popped < frameCount) {
+			const uint32_t missing = frameCount - popped;
+			fplDebugFormatOut("APU Audio buffer underrun: %u frames are missing\n", missing);
+		}
+
+		// Always convert the full frameCount — the silence-padded tail keeps
+		// the audio device from playing stale samples from the previous callback.
+		result = frameCount;
+
 		BeginPerformanceCounter(&metrics->audioOutputSamples, fplTimestampQuery());
-		for (uint32_t frameIndex = 0; frameIndex < result; ++frameIndex) {
+		for (uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
 			for (uint8_t channelIndex = 0; channelIndex < 2; ++channelIndex) {
 				uint8_t rawSample = AudioTempSampels[frameIndex * 2 + channelIndex];
 				float sampleF32 = rawSample / 255.0f;
@@ -3468,13 +3673,7 @@ static void HandleDefaultInput(Application *app, InputState *newInput) {
 }
 
 static bool HasGameboxVideoChanges(const Emulator *emulator) {
-	if (!emulator->isActive) {
-		return false;
-	}
-	if (emulator->isFrameFinished || emulator->isVRAMUpdated) {
-		return true;
-	}
-	return false;
+	return emulator->isActive;
 }
 
 static void UploadStateTextures(States *states) {
@@ -3494,21 +3693,26 @@ static void UploadStateTextures(States *states) {
 
 static void UploadGameboxTextures(Application *app) {
 	Emulator *emulator = &app->emulator;
-	fgbSystem *system = &emulator->system;
 
 	if (!emulator->isActive) {
 		return;
 	}
 
-	if (emulator->isFrameFinished) {
-		UpdateBackgroundMapTexture(app, &system->ppu);
-		UpdateDisplayTexture(app, &system->ppu);
-		emulator->isFrameFinished = false;
-	}
+	static FrameSnapshotDisplay scratchDisplay;
+	static FrameSnapshotBackgroundMap scratchBgMap;
+	static FrameSnapshotTilemap scratchTilemap;
 
-	if (emulator->isVRAMUpdated) {
-		UpdateVRAMTexture(app, &system->ppu);
-		emulator->isVRAMUpdated = false;
+	if (DisplayFrameQueuePopNewest(&emulator->displayQueue, &scratchDisplay)) {
+		TransferPixelsToTexture(scratchDisplay.pixels, FGB_DISPLAY_WIDTH, FGB_DISPLAY_HEIGHT, &app->displayTexture);
+		UpdateTexture(&app->displayTexture);
+	}
+	if (BackgroundMapFrameQueuePopNewest(&emulator->backgroundMapQueue, &scratchBgMap)) {
+		TransferPixelsToTexture(scratchBgMap.pixels, FGB_BACKGROUND_MAP_WIDTH, FGB_BACKGROUND_MAP_HEIGHT, &app->backgroundMapTexture);
+		UpdateTexture(&app->backgroundMapTexture);
+	}
+	if (TilemapFrameQueuePopNewest(&emulator->tilemapQueue, &scratchTilemap)) {
+		TransferPixelsToTexture(scratchTilemap.pixels, FGB_TILEMAP_WIDTH, FGB_TILEMAP_HEIGHT, &app->vramTexture);
+		UpdateTexture(&app->vramTexture);
 	}
 }
 
