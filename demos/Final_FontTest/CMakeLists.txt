@@ -65,7 +65,3 @@ include_directories(../../ ${MY_INCLUDE_DIRS})
 add_executable(${PROJECT_NAME} ${MY_TRANSLATION_UNITS})
 
 target_link_libraries(${PROJECT_NAME} ${MY_EXTERNAL_LIBS} ${CMAKE_DL_LIBS})
-
-add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/data $<TARGET_FILE_DIR:${PROJECT_NAME}>/data)
