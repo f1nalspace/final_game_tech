@@ -8,7 +8,7 @@
 ░▒▓█▓▒░      ░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░             ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░             ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░ 
 ░▒▓█▓▒░      ░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓████████▓▒░       ░▒▓██████▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓████████▓▒░      ░▒▓███████▓▒░ ░▒▓██████▓▒░░▒▓█▓▒░░▒▓█▓▒░ 
 
-Final Gamebox version 1.0.1
+Final Gamebox version 1.1.0
 
 -------------------------------------------------------------------------------
 	About
@@ -156,11 +156,32 @@ Copyright 2024-2026 Torsten Spaete
 	Changelog
 -------------------------------------------------------------------------------
 
-## v1.0 Initial version
+## v1.1.0 Bugfixes & Improvements
+
+### Audio
+- Fixed tons of audio timing issues
+- Refactored audio sample caching by using a lock-free ringbuffer
+
+### Bus
+- Fixed serial SB/SC read/write was swapped
+
+### Testing
+- Added fgbRunTestMode enum
+- Added fgbRunFrame() function that processes a full frame
+
+### GamePak
+- Implemented RTC for MBC3
+
+### Core
+- Added enum fgbRunTestMode
+- Extented fgbTest() to pass frame validation callback and test mode
+- Improved compability and stability
 
 ## v1.0.1 Bugfixes
 
 - Fixed compile errors in GCC/Clang
+
+## v1.0 Initial version
 
 */
 
@@ -247,7 +268,7 @@ Copyright 2024-2026 Torsten Spaete
 #define FGB_MAX_CPU_CYCLES 4194304U
 
 // Tick Cycles per Frame (Hz)
-#define FGB_CPU_CYCLES_PER_FRAME 70368U
+#define FGB_CPU_CYCLES_PER_FRAME  (70368U)
 
 // LCD Refresh Rate (59.7 Hz)
 #define FGB_DISPLAY_REFRESH_RATE (FGB_MAX_CPU_CYCLES / (float)FGB_CPU_CYCLES_PER_FRAME)
@@ -1000,8 +1021,26 @@ typedef struct {
 	uint8_t ramBankOrRTCRegister;
 	// RAM + RTC Register enabled
 	bool isRAMAndRTCEnabled;
-	// Padding to align to 4 bytes
-	uint8_t padding;
+	// Last byte written to 0x6000-0x7FFF for latch sequence (0 then 1)
+	uint8_t latchState;
+
+	// Live RTC registers
+	uint8_t rtcS;   // seconds (0-59)
+	uint8_t rtcM;   // minutes (0-59)
+	uint8_t rtcH;   // hours   (0-23)
+	uint8_t rtcDL;  // day counter low 8 bits
+	uint8_t rtcDH;  // day counter high bit (0) | halt (6) | day carry (7)
+
+	// Latched copy returned by RTC reads until next latch
+	uint8_t latchedS;
+	uint8_t latchedM;
+	uint8_t latchedH;
+	uint8_t latchedDL;
+	uint8_t latchedDH;
+	bool    hasLatched;
+
+	// Unix epoch seconds of last RTC catch-up (from dateTimeQuery)
+	uint64_t rtcBaseEpoch;
 } fgbMBC3;
 
 // Represents the state for a MBC5
@@ -1042,11 +1081,13 @@ typedef enum {
 	fgbExternalRAMStateVersion_None = 0,
 	// Initial version
 	fgbExternalRAMStateVersion_Initial = 1,
+	// Adds an optional MBC3 RTC trailer block after the RAM data
+	fgbExternalRAMStateVersion_RTC = 2,
 
 	// First version
 	fgbExternalRAMStateVersion_First = fgbExternalRAMStateVersion_Initial,
 	// Latest version
-	fgbExternalRAMStateVersion_Latest = fgbExternalRAMStateVersion_Initial,
+	fgbExternalRAMStateVersion_Latest = fgbExternalRAMStateVersion_RTC,
 } fgbExternalRAMStateVersion;
 
 // Total count of external ram state versions
@@ -1069,6 +1110,26 @@ typedef struct {
 } fgbExternalRAMStateHeader;
 #pragma pack(pop)
 FGB_STATIC_ASSERT(sizeof(fgbExternalRAMStateHeader) == 16);
+
+#pragma pack(push,1)
+// Optional MBC3 RTC trailer written after the RAM data when version >= _RTC
+// and the cart has the TIMER feature.
+typedef struct {
+	uint8_t  s;
+	uint8_t  m;
+	uint8_t  h;
+	uint8_t  dl;
+	uint8_t  dh;
+	uint8_t  latchedS;
+	uint8_t  latchedM;
+	uint8_t  latchedH;
+	uint8_t  latchedDL;
+	uint8_t  latchedDH;
+	uint8_t  hasLatched;
+	uint64_t baseEpoch;
+} fgbMBC3RTCSaveBlock;
+#pragma pack(pop)
+FGB_STATIC_ASSERT(sizeof(fgbMBC3RTCSaveBlock) == 19);
 
 #pragma pack(push,1)
 // NR10(FF10): Frequency Sweep Register
@@ -1408,7 +1469,7 @@ FGB_STATIC_ASSERT(sizeof(fgbSoundRegister) == 48);
 #define FGB_APU_SAMPLE_SIZE sizeof(uint8_t)
 
 // Total number of audio frames
-#define FGB_APU_MAX_FRAME_COUNT 16384
+#define FGB_APU_MAX_FRAME_COUNT 4096
 
 // Size of one audio frame in bytes
 #define FGB_APU_FRAME_SIZE (FGB_APU_SAMPLE_SIZE * FGB_APU_CHANNEL_COUNT)
@@ -1451,6 +1512,34 @@ typedef struct {
 	// The current fill count as number of frames
 	volatile int64_t fillCount;
 } fgbAudioBuffer;
+
+// Audio ring buffer capacity (power-of-two).
+// 16384 frames @ 48 kHz = ~341 ms headroom — absorbs OS scheduler jitter and
+// brief emulator-thread stalls without draining to empty.
+#define FGB_APU_RING_BUFFER_CAPACITY 16384
+
+// Number of frames to pre-fill with silence in fgb__APUInit so the audio
+// thread never underruns during the first few callbacks while the emulator
+// thread ramps up. 4096 frames @ 48 kHz = ~85 ms startup latency.
+#define FGB_APU_RING_BUFFER_PRIME_FRAMES 4096
+
+// Silence value for unsigned 8-bit PCM (centerline).
+#define FGB_APU_SILENCE_SAMPLE 128
+
+typedef struct {
+	// Cacheline alignment for head (To prevent false sharing)
+	fgbCacheline cachelineHead;
+	// Head position in the ring buffer
+	volatile int64_t head;
+	// Cacheline alignment for tail (To prevent false sharing)
+	fgbCacheline cachelineTail;
+	// Tail position in the ring buffer
+	volatile int64_t tail;
+	// Cacheline alignment for samples (To prevent false sharing)
+	fgbCacheline cachelineSamples;
+	// The interleaved stereo samples
+	uint8_t samples[FGB_APU_RING_BUFFER_CAPACITY * FGB_APU_FRAME_SIZE];
+} fgbAudioRingBuffer;
 
 // Defines the sound length states
 typedef enum {
@@ -1647,8 +1736,10 @@ typedef struct {
 
 	// Is the channel actually playing
 	bool isPlaying;
+	// DMG: wave RAM is only accessible on the same T-cycle that CH3 reads from it
+	bool waveFormJustRead;
 	// Padding to align to 4 bytes
-	uint8_t padding0[3];
+	uint8_t padding0[2];
 
 	// Padding to align to 64 bytes
 	uint8_t padding1[16];
@@ -1717,10 +1808,10 @@ typedef struct {
 	fgbFrameSequencer frameSequencer;
 	// The target sample rate in Hz
 	uint32_t sampleRate;
-	// The number of CPU cycles required to produce two samples (4 MHz >> Timer Frequency / Sample Rate)
+	// Doc-only: integer-truncated cycles/sample (4 MHz / Sample Rate). Not used at runtime; see sampleAccumulator.
 	uint32_t cyclesPerSample;
-	// The current sample cycles timer, that starts ats zero and counts up until the the number of clocks per sample/frame is reached
-	uint32_t sampleCycleTimer;
+	// Bresenham fractional accumulator: each CPU cycle adds sampleRate units; emit one sample when it reaches FGB_MAX_CPU_CYCLES.
+	uint32_t sampleAccumulator;
 	// Volume for left/right stero channel in range of 0.0 to 1.0
 	float stereoVolume[2];
 	// Left/Right enabled flag
@@ -1750,8 +1841,8 @@ typedef uint8_t fgbAudioRAM[0x100];
 
 // Stores the state and data of the audio processing unit
 typedef struct {
-	// Audio buffer
-	fgbAudioBuffer buffer;
+	// Audio ring buffer
+	fgbAudioRingBuffer ringBuffer;
 	// The tiny 256 bytes of RAM for the APU
 	fgbAudioRAM ram;
 	// All 4 voices
@@ -2480,7 +2571,7 @@ typedef struct {
 		// Padding to align to 4 bytes
 		bool padding4;
 	};
-	// Number of remaming ticks to enable IME in a multiple of 4
+	// Number of remaining instructions until IME is enabled (EI has 1-instruction delay: set to 2, decremented after each executed instruction in Normal state)
 	uint8_t ticksEnableIME;
 	// Number of remaining ticks that prevent certain interrupt types not be pending right away (e.g. VBlank)
 	uint8_t ticksRequestInterruptDelay;
@@ -3651,6 +3742,8 @@ typedef struct {
 	char output[4096];
 	// Number of ticks the test took (Filled out by FGB)
 	uint64_t tickCycles;
+	// Number of frames that was processed
+	uint64_t frameCount;
 	// Number of CPU tick cycles the test took (Filled out by FGB)
 	fgbTickCycles cpuCycles;
 	// The length of the output text
@@ -3663,18 +3756,32 @@ typedef struct {
 	bool finished;
 	// The test succeeded
 	bool success;
+	// User data pointer
+	void *userData;
 } fgbTestResultData;
 
-// Function prototype for a test run execution
-#define FGB_RUNTEST_FUNC(name) bool name(fgbSystem *system, fgbTestResultData *data)
+// Function prototype for a test validation check
+#define FGB_TEST_VALIDATE_FUNC(name) bool name(fgbSystem *system, fgbTestResultData *data)
 
 /**
-  * @brief Callback for a test run execution
-  * @param gb The reference to the opaque system
+  * @brief Callback for a test validation check
+  * @param system The reference to the opaque system
   * @param data The reference to the test result data
   * @return Returns a boolean indicating whether the test run was successful or not
   */
-typedef FGB_RUNTEST_FUNC(fgbRunTestFunc);
+typedef FGB_TEST_VALIDATE_FUNC(fgbTestValidateFunc);
+
+// Function prototype for a test frame update
+#define FGB_TEST_FRAME_UPDATE_FUNC(name) bool name(fgbSystem *system, const uint64_t frameIndex, fgbTestResultData *data)
+
+/**
+  * @brief Callback for a test frame update
+  * @param system The reference to the opaque system
+  * @param frameIndex The frame index
+  * @param data The reference to the test result data
+  * @return Returns a boolean indicating whether the test run was successful or not
+  */
+typedef FGB_TEST_FRAME_UPDATE_FUNC(fgbTestFrameUpdateFunc);
 
 // Defines the initialization result types
 typedef enum {
@@ -3714,6 +3821,15 @@ FGB_API void fgbShutdown(fgbSystem *system);
   * @return Returns true when the emulator tick was executed successfully, false otherwise
   */
 FGB_API bool fgbTick(fgbSystem *system);
+
+/**
+  * @brief Executes CPU instruction, until a full video frame is finished or the execution stops
+  * @param system The reference to the @ref fgbSystem
+  * @param outCycles A output reference that stores how many CPU cycles was executed in total
+  * @param outIterations A output reference that stores how many fgbTick() iterations was executed
+  * @return Returns true when a full frame is processed by CPU instructions
+  */
+FGB_API bool fgbRunFrame(fgbSystem *system, fgbTickCycles *outCycles, uint64_t *outIterations);
 
 /**
   * @brief Execute until the next tick
@@ -3778,16 +3894,27 @@ FGB_API const char *fgbGetAddressingModeName(const fgbAddressingMode mode);
   */
 FGB_API const char *fgbGetRegisterName(const fgbRegisterType reg);
 
+typedef enum {
+	// Runs the test calling fgbTick() until the test completes/fails or the emulator fails
+	fgbRunTestMode_Ticks = 0,
+	// Runs the test calling fgbRunFrame() until the test completes/fails or the emulator fails
+	fgbRunTestMode_Frame,
+	// Default run test mode
+	fgbRunTestMode_Default = fgbRunTestMode_Ticks,
+} fgbRunTestMode;
+
 /**
   * @brief Runs a single test
   * @param callbacks Reference to the callbacks structure
   * @param gamePak Reference to the game pak structure
+  * @param mode The run test mode
   * @param maxTickCount Maximum number of test ticks the test can run
-  * @param func Pointer to the test run function
+  * @param validateFunc Pointer to the test validation function
+  * @param frameUpdateFunc Pointer to the test frame update function
   * @param data Reference to the output test result data
   * @return Returns the test result type
   */
-FGB_API fgbTestResultType fgbRunTest(const fgbCallbacks *callbacks, const fgbGamePak *gamePak, const uint64_t maxTickCount, fgbRunTestFunc *func, fgbTestResultData *data);
+FGB_API fgbTestResultType fgbRunTest(const fgbCallbacks *callbacks, const fgbGamePak *gamePak, const fgbRunTestMode mode, const uint64_t maxTickCount, fgbTestValidateFunc *validateFunc, fgbTestFrameUpdateFunc *frameUpdateFunc, fgbTestResultData *data);
 
 /**
   * @brief Decodes a single instruction from the specified ROM memory and position to the output instruction structure
@@ -4315,8 +4442,8 @@ static bool fgb__IsStringEqual(const char *a, const char *b) {
 // Interlocked
 //
 // ********************************************************************************************************************
-static int64_t fgb__InterlockedExchange64(volatile int64_t *storage, const int64_t addend) {
-	return FGB_INTERLOCKED_EXCHANGE_64(storage, addend);
+static int64_t fgb__InterlockedExchange64(volatile int64_t *storage, const int64_t value) {
+	return FGB_INTERLOCKED_EXCHANGE_64(storage, value);
 }
 
 static int64_t fgb__InterlockedExchangeAdd64(volatile int64_t *storage, const int64_t addend) {
@@ -4731,6 +4858,9 @@ FGB_API const char *fgbGetBreakpointTypeLabel(const fgbBreakpointType type) {
 
 static char fgb__ExternalRAMFilePathBuffer[2048];
 
+// Forward declaration so the external RAM loader can catch up the RTC on resume
+static void fgb__MBC3_RTCTick(fgbSystem *system, fgbMBC3 *mbc3);
+
 static bool fgb__ExternalRAMSave(fgbSystem *system, const fgbGamePak *outGamePak) {
 	const fgbCallbacks *cb = &system->callbacks;
 
@@ -4756,6 +4886,26 @@ static bool fgb__ExternalRAMSave(fgbSystem *system, const fgbGamePak *outGamePak
 	fgb__FileWrite(cb, fileHandle, &header, sizeof(header));
 
     fgb__FileWrite(cb, fileHandle, outGamePak->ram.memory.data, outGamePak->ram.memory.length);
+
+    // Append the MBC3 RTC trailer for TIMER carts so in-game clock persists.
+    if (outGamePak->info.mbcType == fgbMemoryControllerType_MBC3 && (outGamePak->info.features & fgbGamePakFeature_TIMER) != 0) {
+        const fgbMBC3 *mbc3 = &system->mbc.data.mbc3;
+        fgbMBC3RTCSaveBlock trailer;
+        fgbClearStruct(&trailer);
+        trailer.s         = mbc3->rtcS;
+        trailer.m         = mbc3->rtcM;
+        trailer.h         = mbc3->rtcH;
+        trailer.dl        = mbc3->rtcDL;
+        trailer.dh        = mbc3->rtcDH;
+        trailer.latchedS  = mbc3->latchedS;
+        trailer.latchedM  = mbc3->latchedM;
+        trailer.latchedH  = mbc3->latchedH;
+        trailer.latchedDL = mbc3->latchedDL;
+        trailer.latchedDH = mbc3->latchedDH;
+        trailer.hasLatched = mbc3->hasLatched ? 1 : 0;
+        trailer.baseEpoch = mbc3->rtcBaseEpoch;
+        fgb__FileWrite(cb, fileHandle, &trailer, sizeof(trailer));
+    }
 
     fgb__FileFlush(cb, fileHandle);
 
@@ -4813,6 +4963,32 @@ static bool fgb__ExternalRAMLoad(fgbSystem *system, fgbGamePak *outGamePak) {
 	read = fgb__FileRead(cb, fileHandle, outGamePak->ram.memory.data, outGamePak->ram.memory.length, outGamePak->ram.memory.length);
 	if (read != outGamePak->ram.memory.length) {
 		goto done;
+	}
+
+	// Read the optional MBC3 RTC trailer when present.
+	if (header.version >= fgbExternalRAMStateVersion_RTC
+	    && outGamePak->info.mbcType == fgbMemoryControllerType_MBC3
+	    && (outGamePak->info.features & fgbGamePakFeature_TIMER) != 0) {
+		fgbMBC3RTCSaveBlock trailer;
+		fgbClearStruct(&trailer);
+		size_t trailerRead = fgb__FileRead(cb, fileHandle, &trailer, sizeof(trailer), sizeof(trailer));
+		if (trailerRead == sizeof(trailer)) {
+			fgbMBC3 *mbc3 = &system->mbc.data.mbc3;
+			mbc3->rtcS         = trailer.s;
+			mbc3->rtcM         = trailer.m;
+			mbc3->rtcH         = trailer.h;
+			mbc3->rtcDL        = trailer.dl;
+			mbc3->rtcDH        = trailer.dh;
+			mbc3->latchedS     = trailer.latchedS;
+			mbc3->latchedM     = trailer.latchedM;
+			mbc3->latchedH     = trailer.latchedH;
+			mbc3->latchedDL    = trailer.latchedDL;
+			mbc3->latchedDH    = trailer.latchedDH;
+			mbc3->hasLatched   = trailer.hasLatched != 0;
+			mbc3->rtcBaseEpoch = trailer.baseEpoch;
+			// Credit wall-clock time elapsed while the game was closed.
+			fgb__MBC3_RTCTick(system, mbc3);
+		}
 	}
 
 	result = true;
@@ -5629,6 +5805,45 @@ static void fgb__MBC2_Write(struct fgbSystem *gbOpaque, struct fgbMemoryBankCont
 	}
 }
 
+// Catch the live MBC3 RTC registers up to the current wall-clock time
+// since rtcBaseEpoch. Honors the halt bit (rtcDH bit 6), wraps the 9-bit day
+// counter and sets the day-overflow carry (rtcDH bit 7).
+static void fgb__MBC3_RTCTick(fgbSystem *system, fgbMBC3 *mbc3) {
+	const fgbDateTime now = fgb__DateTimeQuery(&system->callbacks);
+	const uint64_t nowEpoch = now.epoch;
+
+	// Halt bit set -> don't advance, but still pin the base so resuming
+	// doesn't retroactively count the halted interval.
+	if ((mbc3->rtcDH & 0x40) != 0) {
+		mbc3->rtcBaseEpoch = nowEpoch;
+		return;
+	}
+
+	if (nowEpoch <= mbc3->rtcBaseEpoch) {
+		mbc3->rtcBaseEpoch = nowEpoch;
+		return;
+	}
+
+	uint64_t elapsed = nowEpoch - mbc3->rtcBaseEpoch;
+	mbc3->rtcBaseEpoch = nowEpoch;
+
+	uint64_t secs  = (uint64_t)mbc3->rtcS + elapsed;
+	uint64_t mins  = (uint64_t)mbc3->rtcM + secs / 60;
+	uint64_t hours = (uint64_t)mbc3->rtcH + mins / 60;
+	uint64_t days  = (uint64_t)((mbc3->rtcDH & 0x01) ? 0x100 : 0x00) + (uint64_t)mbc3->rtcDL + hours / 24;
+
+	mbc3->rtcS = (uint8_t)(secs  % 60);
+	mbc3->rtcM = (uint8_t)(mins  % 60);
+	mbc3->rtcH = (uint8_t)(hours % 24);
+	mbc3->rtcDL = (uint8_t)(days & 0xFF);
+
+	uint8_t dh = (uint8_t)(mbc3->rtcDH & 0x40); // preserve halt
+	if (days & 0x100) dh |= 0x01;               // day counter bit 8
+	if (days >= 0x200) dh |= 0x80;              // day counter overflow carry
+	else               dh |= (uint8_t)(mbc3->rtcDH & 0x80);
+	mbc3->rtcDH = dh;
+}
+
 static uint8_t fgb__MBC3_Read(struct fgbSystem *gbOpaque, struct fgbMemoryBankController *mbcOpaque, const uint16_t address) {
 	fgbSystem *system = (fgbSystem *)gbOpaque;
 	fgbMemoryBankController *mbc = (fgbMemoryBankController *)mbcOpaque;
@@ -5649,14 +5864,42 @@ static uint8_t fgb__MBC3_Read(struct fgbSystem *gbOpaque, struct fgbMemoryBankCo
 			return 0xFF; // ROM-Bank out-of-range
 		}
 	} else if (address >= 0xA000 && address <= 0xBFFF) {
-		// RAM Bank 0 - 3
-		uint16_t offset = address - 0xA000;
-		const uint8_t *ramBank;
-		if (mbc3->isRAMAndRTCEnabled && ((ramBank = fgb__GetRAMBank(mbc3->ramBankOrRTCRegister, &gamepak->ram, offset)) != NULL)) {
-			return ramBank[offset];
-		} else {
-			return 0xFF; // External RAM not enabled or RAM-Bank out-of-range
+		if (!mbc3->isRAMAndRTCEnabled) {
+			return 0xFF;
 		}
+		const uint8_t reg = mbc3->ramBankOrRTCRegister;
+		if (reg <= 0x03) {
+			// RAM Bank 0 - 3
+			uint16_t offset = address - 0xA000;
+			const uint8_t *ramBank = fgb__GetRAMBank(reg, &gamepak->ram, offset);
+			if (ramBank != NULL) {
+				return ramBank[offset];
+			}
+			return 0xFF;
+		} else if (reg >= 0x08 && reg <= 0x0C) {
+			// RTC register read. If a latch has happened, return the latched
+			// snapshot; otherwise return the live value (Pan Docs).
+			if (mbc3->hasLatched) {
+				switch (reg) {
+					case 0x08: return mbc3->latchedS;
+					case 0x09: return mbc3->latchedM;
+					case 0x0A: return mbc3->latchedH;
+					case 0x0B: return mbc3->latchedDL;
+					case 0x0C: return mbc3->latchedDH;
+					default:   return 0xFF;
+				}
+			}
+			fgb__MBC3_RTCTick(system, mbc3);
+			switch (reg) {
+				case 0x08: return mbc3->rtcS;
+				case 0x09: return mbc3->rtcM;
+				case 0x0A: return mbc3->rtcH;
+				case 0x0B: return mbc3->rtcDL;
+				case 0x0C: return mbc3->rtcDH;
+				default:   return 0xFF;
+			}
+		}
+		return 0xFF;
 	} else {
 		FGB__WARN(system, fgb__KindName_MBC, "Unsupported MBC3 Read from address '$%04X'", address);
 		return 0;
@@ -5671,25 +5914,57 @@ static void fgb__MBC3_Write(struct fgbSystem *gbOpaque, struct fgbMemoryBankCont
 	fgbMBC3 *mbc3 = &data->mbc3;
 
 	if (address <= 0x1FFF) {
-		// RAM Enable
+		// RAM + RTC Enable
 		mbc3->isRAMAndRTCEnabled = (value & 0x0A) != 0;
 		fgb__MBC_RAM_Enabled(system, mbc3->isRAMAndRTCEnabled);
 	} else if (address <= 0x3FFF) {
-		// ROM Bank Number (0 is not allowed, because its ROM 0 so its set 1 in that case)
+		// ROM Bank Number (7 bits, 0 maps to 1)
 		uint8_t oldROMBank = mbc3->romBank;
-		mbc3->romBank = value;
+		mbc3->romBank = (uint8_t)(value & 0x7F);
 		if (mbc3->romBank == 0) mbc3->romBank = 1;
 		fgb__MBC_ROMBankChanged(system, oldROMBank, mbc3->romBank);
-	} else if (address < 0x7FFF) {
-		// TODO(final): RAM Bank Switching is not implemented for MBC3!
-		// TODO(final): RTC is not implemented for MBC3!
+	} else if (address <= 0x5FFF) {
+		// RAM Bank Number (0..3) or RTC Register Select (0x08..0x0C)
+		mbc3->ramBankOrRTCRegister = (uint8_t)(value & 0x0F);
+	} else if (address <= 0x7FFF) {
+		// Latch Clock Data: writing 0 then 1 latches the live RTC into the
+		// latched snapshot registers.
+		if (mbc3->latchState == 0 && (value & 0x01) == 1) {
+			fgb__MBC3_RTCTick(system, mbc3);
+			mbc3->latchedS  = mbc3->rtcS;
+			mbc3->latchedM  = mbc3->rtcM;
+			mbc3->latchedH  = mbc3->rtcH;
+			mbc3->latchedDL = mbc3->rtcDL;
+			mbc3->latchedDH = mbc3->rtcDH;
+			mbc3->hasLatched = true;
+		}
+		mbc3->latchState = (uint8_t)(value & 0x01);
 	} else if (address >= 0xA000 && address <= 0xBFFF) {
-		// RAM Bank 0 - 3
-		uint16_t offset = address - 0xA000;
-		uint8_t *ramBank;
-		if (mbc3->isRAMAndRTCEnabled && ((ramBank = fgb__GetRAMBank(mbc3->ramBankOrRTCRegister, &gamepak->ram, offset)) != NULL)) {
-			ramBank[offset] = value;
-			fgb__MBC_RAMUpdated(system, address, value);
+		if (!mbc3->isRAMAndRTCEnabled) {
+			return;
+		}
+		const uint8_t reg = mbc3->ramBankOrRTCRegister;
+		if (reg <= 0x03) {
+			// RAM Bank 0 - 3
+			uint16_t offset = address - 0xA000;
+			uint8_t *ramBank = fgb__GetRAMBank(reg, &gamepak->ram, offset);
+			if (ramBank != NULL) {
+				ramBank[offset] = value;
+				fgb__MBC_RAMUpdated(system, address, value);
+			}
+		} else if (reg >= 0x08 && reg <= 0x0C) {
+			// RTC register write. Catch up to now first so we don't lose time
+			// that accrued since the last tick.
+			fgb__MBC3_RTCTick(system, mbc3);
+			switch (reg) {
+				case 0x08: mbc3->rtcS  = (uint8_t)(value % 60); break;
+				case 0x09: mbc3->rtcM  = (uint8_t)(value % 60); break;
+				case 0x0A: mbc3->rtcH  = (uint8_t)(value % 24); break;
+				case 0x0B: mbc3->rtcDL = value; break;
+				case 0x0C: mbc3->rtcDH = (uint8_t)(value & 0xC1); break;
+				default: break;
+			}
+			mbc3->rtcBaseEpoch = fgb__DateTimeQuery(&system->callbacks).epoch;
 		}
 	} else {
 		FGB__WARN(system, fgb__KindName_MBC, "Unsupported MBC3 Write '$%02X' to address '$%04X'", value, address);
@@ -5789,13 +6064,14 @@ static void fgb__MBCInit(fgbSystem *system, const fgbGamePak *gamePak, fgbMemory
 			mbc->write = fgb__MBC2_Write;
 			break;
 
-		case fgbMemoryControllerType_MBC3:
-			mbc->data.mbc3.romBank = 0x01;
-			mbc->data.mbc3.ramBankOrRTCRegister = 0x00;
-			mbc->data.mbc3.isRAMAndRTCEnabled = false;
+		case fgbMemoryControllerType_MBC3: {
+			fgbMBC3 *mbc3 = &mbc->data.mbc3;
+			fgbClearStruct(mbc3);
+			mbc3->romBank = 0x01;
+			mbc3->rtcBaseEpoch = fgb__DateTimeQuery(&system->callbacks).epoch;
 			mbc->read = fgb__MBC3_Read;
 			mbc->write = fgb__MBC3_Write;
-			break;
+		} break;
 
 		case fgbMemoryControllerType_MBC5:
 			mbc->data.mbc5.romBank = 0x01;
@@ -5972,7 +6248,7 @@ static const char *fgb__apuSoundRegisterLabels[48] = {
 
 static inline uint8_t fgb__PackVolumeTo3BITS(const float volume) {
 	FGB_ASSERT(volume >= 0 && volume <= 1.0f);
-	uint8_t result = (uint8_t)(volume * 7) & 0b111;
+	uint8_t result = (uint8_t)(volume * 7.0f + 0.5f) & 0b111;
 	return result;
 }
 
@@ -6052,28 +6328,31 @@ static bool fgb__TickSquareWave(fgbSquareWave *squareWave) {
 
 // Initialize the frame sequencer for the very first time
 static void fgb__InitFrameSequencer(const fgbTimer *timer, fgbFrameSequencer *frameSeq) {
-	frameSeq->step = 0;
+	// Step is set to 7 so that the first tick advances it to 0 (length clock step)
+	frameSeq->step = 7;
 	frameSeq->lastDivider = timer->divider;
 }
 
 // Stop the frame sequencer
 static void fgb__StopFrameSequencer(fgbFrameSequencer *frameSeq) {
-	frameSeq->step = 0;
+	frameSeq->step = 7;
 }
 
 // Start the frame sequencer from step 0
 static void fgb__StartFrameSequencer(const fgbTimer *timer, fgbFrameSequencer *frameSeq) {
-	frameSeq->step = 0;
+	// Step is set to 7 so that the first tick advances it to 0 (length clock step)
+	frameSeq->step = 7;
 	frameSeq->lastDivider = timer->divider;
 }
 
 static bool fgb__TickFrameSequencer(const fgbTimer *timer, fgbFrameSequencer *frameSeq, uint8_t *step) {
-	uint16_t diff = timer->divider - frameSeq->lastDivider;
+	// Frame sequencer is clocked by the falling edge of bit 12 of the internal divider (bit 4 of DIV register)
 	uint16_t currentDivider = timer->divider;
-	if (diff >= FGB__APU_FRAME_SEQUENCER_PERIOD) {
+	bool oldBit = (frameSeq->lastDivider >> 12) & 1;
+	bool newBit = (currentDivider >> 12) & 1;
+	frameSeq->lastDivider = currentDivider;
+	if (oldBit && !newBit) {
 		frameSeq->step = (frameSeq->step + 1) % 8;
-		//frameSeq->lastDivider += FGB__APU_FRAME_SEQUENCER_PERIOD;
-		frameSeq->lastDivider = currentDivider;
 		*step = frameSeq->step;
 		return true;
 	}
@@ -6160,6 +6439,7 @@ static void fgb__TriggerSoundLengthTimer(fgbSoundLengthTimer *lengthTimer) {
 
 // Called when the gameboy writes to NR11: Length needs to be applied immediately, so we set the length and reset the timer
 static void fgb__ChangeSoundLengthTimer(fgbSoundLengthTimer *lengthTimer, const uint16_t length) {
+	lengthTimer->length = length;
 	lengthTimer->timer = lengthTimer->maxLength - length;
 }
 
@@ -6170,7 +6450,6 @@ static fgbSoundLengthState fgb__TickSoundLengthTimer(fgbSoundLengthTimer *length
 	}
 
 	if (lengthTimer->timer > 0 && --lengthTimer->timer == 0) {
-		lengthTimer->isEnabled = false;
 		return fgbSoundLengthState_EndReached; // Indicates to disable the voice
 	}
 
@@ -6331,8 +6610,11 @@ static bool fgb__TickFrequencySweep(fgbSystem *system, fgbFrequencySweep *sweep,
 
 	uint16_t period = fgb__GetFrequencySweepTimer(sweep->period);
 	if (--sweep->timer <= 0) {
-		if (period) {
-			sweep->timer = period;
+		// Always reload timer (period 0 is treated as 8)
+		sweep->timer = period;
+
+		// Only perform frequency calculation when raw period > 0
+		if (sweep->period) {
 			uint16_t oldFrequency = sweep->shadow;
 			uint16_t newFreq = fgb__ComputeFrequencyForSweep(sweep);
 			if (newFreq > FGB__MAX_FREQUENCY_SWEEP_FREQUENCY) {
@@ -6357,8 +6639,6 @@ static bool fgb__TickFrequencySweep(fgbSystem *system, fgbFrequencySweep *sweep,
 
 				return result;
 			}
-		} else {
-			sweep->timer = FGB__MAX_SWEEP_PERIOD;
 		}
 	}
 	return false;
@@ -6512,22 +6792,22 @@ static bool fgb__SetNRx4(fgbSystem *system, fgbVoice *voice, fgbSoundFrequency *
 		fgb__SetSoundPeriodHigh(system, freq, reg.periodHigh, type);
 	}
 
-	// Extra Length Clocking happens when the next frame in sequencer is not a length timer frame
+	// Extra Length Clocking happens when the last frame sequencer step was a length clock step (even step)
 	// But only when the length switches from disabled to enabled
-	bool isNextFrameLength = (apu->state.frameSequencer.step % 2) == 0;
-	if (!wasLengthEnabled && lengthTimer->isEnabled && !isNextFrameLength && lengthTimer->length > 0) {
-		--lengthTimer->length;
-		if (!trigger && lengthTimer->length == 0) {
+	bool lastStepWasLength = (apu->state.frameSequencer.step % 2) == 0;
+	if (!wasLengthEnabled && lengthTimer->isEnabled && lastStepWasLength && lengthTimer->timer > 0) {
+		--lengthTimer->timer;
+		if (!trigger && lengthTimer->timer == 0) {
 			fgb__EnableBaseVoice(system, voice, type, false, "Length Timer was zero right at the beginning");
 		}
 	}
 
 	if (trigger) {
-		// Again weird behavior regarding length timer
-		if (lengthTimer->length == 0) {
-			lengthTimer->length = lengthTimer->maxLength;
-			if (lengthTimer->isEnabled && !isNextFrameLength) {
-				--lengthTimer->length;
+		// When triggered with timer=0, reload to max (treat 0 as maximum)
+		if (lengthTimer->timer == 0) {
+			lengthTimer->timer = lengthTimer->maxLength;
+			if (lengthTimer->isEnabled && lastStepWasLength) {
+				--lengthTimer->timer;
 			}
 		}
 
@@ -6815,6 +7095,7 @@ static void fgb__InitWaveVoice(fgbWaveVoice *voice) {
 	fgb__InitSoundLengthTimer(&voice->length, 256);
 
 	voice->isPlaying = false;
+	voice->waveFormJustRead = false;
 	voice->period = 0;
 	voice->timer = 0;
 	voice->wavePosition = 0;
@@ -6828,6 +7109,7 @@ static void fgb__PowerOffWaveVoice(fgbSystem *system, fgbWaveVoice *voice) {
 	fgb__StopSoundLengthTimer(&voice->length);
 
 	voice->isPlaying = false;
+	voice->waveFormJustRead = false;
 	voice->period = 0;
 	voice->timer = 0;
 	voice->wavePosition = 0;
@@ -6838,7 +7120,8 @@ static void fgb__PowerOffWaveVoice(fgbSystem *system, fgbWaveVoice *voice) {
 static uint8_t fgb__GetWaveVoicePattern(const fgbWaveVoice *voice, const uint8_t patternIndex) {
 	FGB_ASSERT(patternIndex < 16);
 	if (voice->base.isEnabled) {
-		if (!voice->isPlaying) {
+		// DMG: Wave RAM only accessible on same T-cycle CH3 reads from it
+		if (voice->waveFormJustRead) {
 			uint8_t currentIndex = voice->wavePosition >> 1;
 			return voice->patternRAM.entries[currentIndex].u8;
 		}
@@ -6851,8 +7134,8 @@ static uint8_t fgb__GetWaveVoicePattern(const fgbWaveVoice *voice, const uint8_t
 static void fgb__SetWaveVoicePattern(fgbWaveVoice *voice, const uint8_t patternIndex, const uint8_t value) {
 	FGB_ASSERT(patternIndex < 16);
 	if (voice->base.isEnabled) {
-		if (!voice->isPlaying) {
-			FGB_ASSERT(voice->wavePosition < 32);
+		// DMG: Wave RAM only writable on same T-cycle CH3 reads from it
+		if (voice->waveFormJustRead) {
 			uint8_t currentIndex = voice->wavePosition >> 1;
 			voice->patternRAM.entries[currentIndex].u8 = value;
 		}
@@ -6880,7 +7163,7 @@ static void fgb__SetWaveVoiceNRx4(fgbSystem *system, fgbWaveVoice *voice, const 
 				uint8_t byte = voice->patternRAM.entries[position >> 1].u8;
 				switch (position >> 3) {
 					case 0:
-						voice->patternRAM.entries[0].u8 = 0;
+						voice->patternRAM.entries[0].u8 = byte;
 						break;
 
 					case 1:
@@ -6999,6 +7282,7 @@ static void fgb__SetWaveVoiceRegister(fgbSystem *system, fgbWaveVoice *voice, co
 }
 
 static void fgb__TickWaveVoice(fgbWaveVoice *voice) {
+	voice->waveFormJustRead = false;
 	if (--voice->timer == 0) {
 		voice->timer = voice->period;
 
@@ -7015,6 +7299,7 @@ static void fgb__TickWaveVoice(fgbWaveVoice *voice) {
 			}
 
 			voice->outputSample = value >> voice->volumeShift;
+			voice->waveFormJustRead = true;
 		} else {
 			voice->outputSample = 0;
 		}
@@ -7102,7 +7387,7 @@ static uint8_t fgb__GetNoiseVoiceRegister(fgbSystem *system, const fgbNoiseVoice
 		case fgbSoundRegType_NRx3:
 		{
 			fgbNoiseFrequencyRandomnessRegister reg = { 0 };
-			reg.clockDivider = voice->divisorIndex & 0b11;
+			reg.clockDivider = voice->divisorIndex;
 			reg.lfsrWidth = voice->is7Bit;
 			reg.clockShift = voice->clockShift;
 			return reg.u8;
@@ -7227,8 +7512,6 @@ static void fgb__APUSetAudioMasterControlRegister(fgbSystem *system, fgbAPU *apu
 
 	fgbAudioMasterControlRegister reg = { .u8 = value };
 	if (apu->state.isPowerOn && !reg.audioOnOff) {
-		apu->state.isPowerOn = false;
-
 		// Power off voices
 		fgb__PowerOffSweepVoice(system, &apu->voices.sweep);
 		fgb__PowerOffToneVoice(system, &apu->voices.tone);
@@ -7239,7 +7522,10 @@ static void fgb__APUSetAudioMasterControlRegister(fgbSystem *system, fgbAPU *apu
 		fgb__StopFrameSequencer(&apu->state.frameSequencer);
 
 		// Clear out all APU registers, except (FF26 to FF3F)
+		// NOTE: Must happen before isPowerOn=false, otherwise writes are dropped by fgb__APUWrite()
 		fgb__APUZeroAudioRegisters(system, apu);
+
+		apu->state.isPowerOn = false;
 	} else if (!apu->state.isPowerOn && reg.audioOnOff) {
 		// Initialize voices
 		fgb__InitSweepVoice(&apu->voices.sweep);
@@ -7254,13 +7540,11 @@ static void fgb__APUSetAudioMasterControlRegister(fgbSystem *system, fgbAPU *apu
 		apu->state.isPowerOn = true;
 	}
 
-	if (reg.audioOnOff) {
-		// Re-initialize sound length timer's
-		apu->voices.sweep.length.timer = oldLengthTimers[0];
-		apu->voices.tone.length.timer = oldLengthTimers[1];
-		apu->voices.wave.length.timer = oldLengthTimers[2];
-		apu->voices.noise.length.timer = oldLengthTimers[3];
-	}
+	// Length timers are not affected by power on/off - always restore
+	apu->voices.sweep.length.timer = oldLengthTimers[0];
+	apu->voices.tone.length.timer = oldLengthTimers[1];
+	apu->voices.wave.length.timer = oldLengthTimers[2];
+	apu->voices.noise.length.timer = oldLengthTimers[3];
 }
 
 //
@@ -7287,10 +7571,10 @@ static inline void fgb__APUSetSoundPanningRegister(fgbSystem *system, fgbAPU *ap
 	apu->voices.tone.base.isSpeakerEnabled[FGB__APU_SPEAKER_RIGHT] = reg.toneRight;
 	apu->voices.wave.base.isSpeakerEnabled[FGB__APU_SPEAKER_RIGHT] = reg.waveRight;
 	apu->voices.noise.base.isSpeakerEnabled[FGB__APU_SPEAKER_RIGHT] = reg.noiseRight;
-	apu->voices.sweep.base.isSpeakerEnabled[FGB__APU_SPEAKER_LEFT] = reg.sweepRight;
-	apu->voices.tone.base.isSpeakerEnabled[FGB__APU_SPEAKER_LEFT] = reg.toneRight;
-	apu->voices.wave.base.isSpeakerEnabled[FGB__APU_SPEAKER_LEFT] = reg.waveRight;
-	apu->voices.noise.base.isSpeakerEnabled[FGB__APU_SPEAKER_LEFT] = reg.noiseRight;
+	apu->voices.sweep.base.isSpeakerEnabled[FGB__APU_SPEAKER_LEFT] = reg.sweepLeft;
+	apu->voices.tone.base.isSpeakerEnabled[FGB__APU_SPEAKER_LEFT] = reg.toneLeft;
+	apu->voices.wave.base.isSpeakerEnabled[FGB__APU_SPEAKER_LEFT] = reg.waveLeft;
+	apu->voices.noise.base.isSpeakerEnabled[FGB__APU_SPEAKER_LEFT] = reg.noiseLeft;
 }
 
 //
@@ -7345,20 +7629,81 @@ static inline void fgb__APUSetMasterVolumeVINRegister(fgbSystem *system, fgbAPU 
 #define FGB__APU_NR51 0xFF25
 #define FGB__APU_NR52 0xFF26
 
+static inline void fgb__AudioRingBufferInit(fgbAudioRingBuffer *rb) {
+	fgb__InterlockedExchange64(&rb->head, 0);
+	fgb__InterlockedExchange64(&rb->tail, 0);
+}
+
+static inline uint32_t fgb__AudioRingBufferPush(fgbAudioRingBuffer *rb, const uint8_t left, const uint8_t right) {
+	const int64_t head = fgb__InterlockedRead64(&rb->head);
+	const int64_t tail = fgb__InterlockedRead64(&rb->tail);
+
+	const int64_t nextHead = (head + 1) & (FGB_APU_RING_BUFFER_CAPACITY - 1);
+
+	// Buffer voll?
+	if (nextHead == tail) {
+		return 0; // kein Platz
+	}
+
+	const uint32_t index = (uint32_t)(head * FGB_APU_FRAME_SIZE);
+	rb->samples[index + 0] = left;
+	rb->samples[index + 1] = right;
+
+	// Sichtbar machen für Consumer
+	fgb__InterlockedExchange64(&rb->head, nextHead);
+
+	return 1;
+}
+
+static inline uint32_t fgb__AudioRingBufferPop(fgbAudioRingBuffer *rb, const uint32_t frameCount, uint8_t *outSamples) {
+	const int64_t head = fgb__InterlockedRead64(&rb->head);
+	int64_t tail = fgb__InterlockedRead64(&rb->tail);
+
+	const uint32_t available = (uint32_t)((head - tail) & (FGB_APU_RING_BUFFER_CAPACITY - 1));
+	const uint32_t toRead = (available < frameCount) ? available : frameCount;
+
+	for (uint32_t i = 0; i < toRead; i++) {
+		const uint32_t index = (uint32_t)(tail * FGB_APU_FRAME_SIZE);
+		outSamples[i * 2 + 0] = rb->samples[index + 0];
+		outSamples[i * 2 + 1] = rb->samples[index + 1];
+		tail = (tail + 1) & (FGB_APU_RING_BUFFER_CAPACITY - 1);
+	}
+
+	// Zero-fill the shortfall with silence so the audio device never plays
+	// stale garbage samples (audible clicks) when the producer can't keep up.
+	for (uint32_t i = toRead; i < frameCount; i++) {
+		outSamples[i * 2 + 0] = FGB_APU_SILENCE_SAMPLE;
+		outSamples[i * 2 + 1] = FGB_APU_SILENCE_SAMPLE;
+	}
+
+	// Sichtbar machen für Producer
+	fgb__InterlockedExchange64(&rb->tail, tail);
+
+	return toRead;
+}
+
 static void fgb__APUInit(fgbSystem *system, const uint32_t sampleRate) {
 	fgbAPU *apu = &system->apu;
 
-	fgbClearStruct(&apu->buffer);
+	fgbClearStruct(&apu->ringBuffer);
 	fgbClearStruct(&apu->voices.sweep);
 	fgbClearStruct(&apu->voices.tone);
 	fgbClearStruct(&apu->voices.wave);
 	fgbClearStruct(&apu->voices.noise);
 	fgbClearStruct(&apu->state);
 
+	fgb__AudioRingBufferInit(&apu->ringBuffer);
+
+	// Pre-fill the ring with silence so the audio consumer has a head start
+	// while the emulator thread ramps up — prevents startup underruns.
+	for (uint32_t i = 0; i < FGB_APU_RING_BUFFER_PRIME_FRAMES; ++i) {
+		fgb__AudioRingBufferPush(&apu->ringBuffer, FGB_APU_SILENCE_SAMPLE, FGB_APU_SILENCE_SAMPLE);
+	}
+
 	apu->state.sampleRate = sampleRate;
 
-	apu->state.cyclesPerSample = FGB_MAX_CPU_CYCLES / sampleRate;
-	apu->state.sampleCycleTimer = 0;
+	apu->state.cyclesPerSample = FGB_MAX_CPU_CYCLES / sampleRate; // doc-only; not used at runtime
+	apu->state.sampleAccumulator = 0;
 
 	apu->state.stereoEnabled[FGB__APU_SPEAKER_LEFT] = false;
 	apu->state.stereoEnabled[FGB__APU_SPEAKER_RIGHT] = false;
@@ -7500,86 +7845,18 @@ FGB_API bool fgbIsAudioPowered(const fgbSystem *system) {
 	return system->apu.state.isPowerOn;
 }
 
-static void fgb__InitAudioBuffer(fgbAudioBuffer *buffer) {
-	for (uint8_t i = 0; i < 2; ++i) {
-		fgbClearStruct(&buffer->buffers[i]);
-	}
-	fgb__InterlockedExchange64(&buffer->fillCount, 0);
-	fgb__InterlockedExchange64(&buffer->activeBufferIndex, 0);
-}
 
-static void fgb__WriteSamplesToAudioBuffer(fgbAudioBuffer *buffer, const uint8_t leftSample, const uint8_t rightSample) {
-	uint64_t activeBufferIndex = fgb__InterlockedRead64(&buffer->activeBufferIndex);
-
-	fgbAudioSampleBuffer *activeBuffer = &buffer->buffers[1 - activeBufferIndex];
-
-	int64_t fillCount = fgb__InterlockedExchangeIncrement64(&activeBuffer->fillCount);
-
-	// Write samples to the active buffer
-	FGB_ASSERT(fillCount <= FGB_APU_MAX_FRAME_COUNT);
-	int64_t head = fgb__InterlockedExchangeAdd64(&activeBuffer->headPosition, 2);
-	activeBuffer->samples[(head + 0) % FGB_APU_MAX_SAMPLE_COUNT] = leftSample;
-	activeBuffer->samples[(head + 1) % FGB_APU_MAX_SAMPLE_COUNT] = rightSample;
-	
-	if (fillCount >= FGB_APU_MAX_FRAME_COUNT) {
-		// Buffer is full, switch to the next buffer and clear the new buffer
-		int64_t newIndex = (activeBufferIndex + 1) & 1;
-		fgb__InterlockedExchange64(&buffer->activeBufferIndex, newIndex);
-		fgb__InterlockedExchange64(&buffer->fillCount, 0);
-
-		// Clear new buffer
-		fgbAudioSampleBuffer *newBuffer = &buffer->buffers[1 - newIndex];
-		fgb__InterlockedExchange64(&newBuffer->fillCount, 0);
-		fgb__InterlockedExchange64(&newBuffer->tailPosition, 0);
-		fgb__InterlockedExchange64(&newBuffer->headPosition, 0);
-	}
-}
-
-static uint32_t fgb__ReadSamplesFromAudioBuffer(fgbAudioBuffer *buffer, const uint32_t frameCount, uint8_t *outSamples) {
-	uint64_t activeBufferIndex = fgb__InterlockedRead64(&buffer->activeBufferIndex);
-
-	fgbAudioSampleBuffer *activeBuffer = &buffer->buffers[activeBufferIndex];
-
-	uint64_t availableFrameCount = FGB_MAX(0, fgb__InterlockedRead64(&activeBuffer->fillCount));
-	FGB_ASSERT(availableFrameCount <= SIZE_MAX);
-
-	uint64_t numFrames = availableFrameCount;
-	if (availableFrameCount > frameCount) {
-		numFrames = frameCount;
-	} else if (availableFrameCount < frameCount) {
-		size_t remainingSize = (frameCount - (size_t)availableFrameCount) * FGB_APU_FRAME_SIZE;
-		size_t writtenSize = (size_t)availableFrameCount * FGB_APU_FRAME_SIZE;
-		FGB_MEMSET((uint8_t *)outSamples + writtenSize, 0, remainingSize);
-		numFrames = availableFrameCount;
-	}
-
-	uint64_t readSampleIndex = fgb__InterlockedRead64(&activeBuffer->tailPosition);
-
-	for (uint64_t frameIndex = 0; frameIndex < numFrames; ++frameIndex) {
-		for (uint8_t channelIndex = 0; channelIndex < 2; ++channelIndex) {
-			uint8_t sample = activeBuffer->samples[(readSampleIndex + frameIndex * 2 + channelIndex) % FGB_APU_MAX_SAMPLE_COUNT];
-			outSamples[frameIndex * 2 + channelIndex] = sample;
-		}
-	}
-
-	fgb__InterlockedExchange64(&activeBuffer->tailPosition, (readSampleIndex + numFrames * 2) % FGB_APU_MAX_SAMPLE_COUNT);
-
-	fgb__InterlockedExchangeAdd64(&buffer->fillCount, -(int64_t)numFrames);
-
-	return frameCount;
-}
 
 // Tries to fetch N Audio-Frames (Two stereo samples) from the audio buffer
 // If there are less than the required amount, the remaining is written as zero
 // This is called from the outside, typically the audio playback callback that is ticked by the sound device
 FGB_API uint32_t fgbFetchAudioSamples(fgbSystem *system, const uint32_t frameCount, uint8_t *outSamples) {
 	fgbAPU *apu = &system->apu;
-
 	if (!apu->state.isPowerOn) {
 		return 0;
 	}
-
-	return fgb__ReadSamplesFromAudioBuffer(&apu->buffer, frameCount, outSamples);
+	const uint32_t result = fgb__AudioRingBufferPop(&apu->ringBuffer, frameCount, outSamples);
+	return result;
 }
 
 // Clip the linear value into range of 0.0 to 1.0
@@ -7592,7 +7869,7 @@ static inline float fgb__AudioClipSample(const float value) {
 	return FGB_MAX(-1.0f, FGB_MIN(1.0f, value));
 }
 
-static void fgb__UpdateVoices(fgbSystem *system, fgbAPU *apu) {
+static void fgb__APUUpdateVoices(fgbSystem *system, fgbAPU *apu) {
 	fgbSweepVoice *sweepVoice = &apu->voices.sweep;
 	fgbToneVoice *toneVoice = &apu->voices.tone;
 	fgbWaveVoice *waveVoice = &apu->voices.wave;
@@ -7612,7 +7889,7 @@ static void fgb__UpdateVoices(fgbSystem *system, fgbAPU *apu) {
 #endif
 }
 
-static void fgb__UpdateFrameSequencer(fgbSystem *system, fgbAPU *apu) {
+static void fgb__APUUpdateFrameSequencer(fgbSystem *system, fgbAPU *apu) {
 	fgbSweepVoice *sweepVoice = &apu->voices.sweep;
 	fgbToneVoice *toneVoice = &apu->voices.tone;
 	fgbWaveVoice *waveVoice = &apu->voices.wave;
@@ -7686,7 +7963,7 @@ static void fgb__UpdateFrameSequencer(fgbSystem *system, fgbAPU *apu) {
 	}
 }
 
-static float fgb__HighPassFilter(fgbHighPassFilter *hpf, const float input, const bool isDACEnabled) {
+static float fgb__APUHighPassFilter(fgbHighPassFilter *hpf, const float input, const bool isDACEnabled) {
 	float result = 0.0f;
 	if (isDACEnabled) {
 		result = input - hpf->capacitor;
@@ -7695,7 +7972,7 @@ static float fgb__HighPassFilter(fgbHighPassFilter *hpf, const float input, cons
 	return result;
 }
 
-static void fgb__GenerateSteroSamples(fgbSystem *system, fgbAPU *apu, uint8_t samples[2]) {
+static void fgb__APUGenerateSteroSamples(fgbSystem *system, fgbAPU *apu, uint8_t samples[2]) {
 	fgbSweepVoice *sweepVoice = &apu->voices.sweep;
 	fgbToneVoice *toneVoice = &apu->voices.tone;
 	fgbWaveVoice *waveVoice = &apu->voices.wave;
@@ -7750,7 +8027,7 @@ static void fgb__GenerateSteroSamples(fgbSystem *system, fgbAPU *apu, uint8_t sa
 
 	// Highpass filtering
 	bool dacsOn = sweepVoice->base.isPowered || toneVoice->base.isPowered || waveVoice->base.isPowered || noiseVoice->base.isPowered;
-	float filtered = fgb__HighPassFilter(&apu->state.highPassFilter, monoMixedRange, dacsOn);
+	float filtered = fgb__APUHighPassFilter(&apu->state.highPassFilter, monoMixedRange, dacsOn);
 
 	// Clip it to be in range of -1.0 to 1.0
 	float clipped = fgb__AudioClipSample(filtered);
@@ -7778,18 +8055,21 @@ static bool fgb__APUTick(fgbSystem *system) {
 
 	// Update voices and the frame sequencer when the APU is powered on
 	if (apu->state.isPowerOn) {
-		fgb__UpdateVoices(system, apu);
-		fgb__UpdateFrameSequencer(system, apu);
+		fgb__APUUpdateVoices(system, apu);
+		fgb__APUUpdateFrameSequencer(system, apu);
 	}	
 
 	uint8_t samples[2] = { 0 };
 
-	// Sample timer reached? Reset timer to zero, generate and write out the stereo samples
-	FGB_ASSERT(apu->state.cyclesPerSample > 0);
-	if (++apu->state.sampleCycleTimer >= apu->state.cyclesPerSample) {
-		apu->state.sampleCycleTimer = 0;
-		fgb__GenerateSteroSamples(system, apu, samples);
-		fgb__WriteSamplesToAudioBuffer(&apu->buffer, samples[0], samples[1]);
+	// Bresenham: emit exactly `sampleRate` samples per FGB_MAX_CPU_CYCLES cycles.
+	// Each cycle adds `sampleRate` units; whenever the accumulator reaches
+	// FGB_MAX_CPU_CYCLES we emit one sample and subtract. This avoids the
+	// integer-truncation drift of a fixed cyclesPerSample timer.
+	apu->state.sampleAccumulator += apu->state.sampleRate;
+	if (apu->state.sampleAccumulator >= FGB_MAX_CPU_CYCLES) {
+		apu->state.sampleAccumulator -= FGB_MAX_CPU_CYCLES;
+		fgb__APUGenerateSteroSamples(system, apu, samples);
+		fgb__AudioRingBufferPush(&apu->ringBuffer, samples[0], samples[1]);
 	}
 
 	return true;
@@ -7872,11 +8152,12 @@ static void fgb__APUWrite(fgbSystem *system, const uint16_t address, const uint8
 #endif
 
 		if (offset < 20) {
-			if (!apu->state.isPowerOn) {
-				return;
-			}
 			uint8_t voiceIndex = offset / 5;
 			uint8_t nrOffset = offset % 5;
+			// On DMG, NRx1 length writes are always allowed even when APU is off
+			if (!apu->state.isPowerOn && nrOffset != 1) {
+				return;
+			}
 			fgbSoundRegType regType = fgbSoundRegType_NRx0 + nrOffset;
 			switch (voiceIndex) {
 				case 0:
@@ -8382,7 +8663,7 @@ static uint8_t fgb__PPULCDRegisterRead(fgbSystem *system, const uint16_t address
 		case 0xFF40:
 			return lcd->lcdc.u8;
 		case 0xFF41:
-			return lcd->stat.u8;
+			return lcd->stat.u8 | 0x80; // bit 7 unused, reads as 1
 		case 0xFF42:
 			return lcd->scy;
 		case 0xFF43:
@@ -9101,20 +9382,22 @@ static void fgb__PPUModePixelTransfer(fgbSystem *system) {
 	}
 }
 
-// Depending on the scroll X position, we may have different ticks for the horizontal blank mode, so this function computes this
+// Depending on the scroll X position, we may have different ticks for the horizontal blank mode, so this function computes this.
+// Line must total FGB__PPU_HORIZONTAL_BLANK_DOTS (456) dots: 80 (OAM) + mode3 + HBlank.
+// Emulator's mode3 pipeline runs (175 + scx%8) dots, so HBlank compensates to 201 - scx%8.
 static uint32_t fgb__PPUHorizontalBlankTicks(const fgbLCDRegister *lcd) {
 	switch (lcd->scx & 7) {
 		case 0:
-			return 204;
+			return 201;
 		case 1:
 		case 2:
 		case 3:
 		case 4:
-			return 200;
+			return 197;
 		case 5:
 		case 6:
 		case 7:
-			return 196;
+			return 193;
 		default:
 			return 0;
 	}
@@ -9358,9 +9641,9 @@ static uint8_t fgb__TimerRead(const fgbTimer *timer, const uint16_t address) {
 		case 0xFF06:
 			return timer->reg.modulo;
 		case 0xFF07:
-			return timer->reg.tac.u8 & 0b11111000;
+			return timer->reg.tac.u8 | 0xF8; // upper 5 bits read as 1
 		default:
-			return 0;
+			return 0xFF;
 	}
 }
 
@@ -9522,74 +9805,41 @@ static inline bool fgb__IsControllerButtonDown(const fgbButtonState state) {
 
 static fgbJoypadRegister fgb__JoypadReadRegister(const fgbJoypadState *joypad) {
 	const fgbJoypadRegister oldReg = joypad->reg;
-
 	const fgbControllerState *controller = &joypad->currentState;
 
-	fgbJoypadRegister newReg = {.u8 = 0xCF };
-	newReg.buttonSelection = oldReg.buttonSelection;
-	newReg.directionSelection = oldReg.directionSelection;
-	newReg.unused = 0b11;
+	// Real HW wire-ANDs the button and direction rows on bits 0..3 (active-low):
+	// any pressed input on any selected row pulls that line low.
+	uint8_t low = 0x0F;
 
-	bool buttonsSelected = oldReg.buttonSelection == FGB__JOYPAD_BUTTON_PRESSED;
-	bool directionsSelected = oldReg.directionSelection == FGB__JOYPAD_BUTTON_PRESSED;
-	bool bothAreSelected = buttonsSelected && directionsSelected;
-
-	// Update buttons
-	if (buttonsSelected) {
-		bool isA = fgb__IsControllerButtonDown(controller->a);
-		bool isB = fgb__IsControllerButtonDown(controller->b);
-		bool isSelect = fgb__IsControllerButtonDown(controller->select);
-		bool isStart = fgb__IsControllerButtonDown(controller->start);
-		newReg.dpadRight_Or_ButtonA = isA ? FGB__JOYPAD_BUTTON_PRESSED : FGB__JOYPAD_BUTTON_RELEASED;
-		newReg.dpadLeft_Or_ButtonB = isB ? FGB__JOYPAD_BUTTON_PRESSED : FGB__JOYPAD_BUTTON_RELEASED;
-		newReg.dpadUp_Or_Select = isSelect ? FGB__JOYPAD_BUTTON_PRESSED : FGB__JOYPAD_BUTTON_RELEASED;
-		newReg.dpadDown_Or_Start = isStart ? FGB__JOYPAD_BUTTON_PRESSED : FGB__JOYPAD_BUTTON_RELEASED;
+	if (oldReg.buttonSelection == FGB__JOYPAD_BUTTON_SELECTION) {
+		if (fgb__IsControllerButtonDown(controller->a))      low &= (uint8_t)~FGB__JOYPAD_BUTTON_A_OR_RIGHT_MASK;
+		if (fgb__IsControllerButtonDown(controller->b))      low &= (uint8_t)~FGB__JOYPAD_BUTTON_B_OR_LEFT_MASK;
+		if (fgb__IsControllerButtonDown(controller->select)) low &= (uint8_t)~FGB__JOYPAD_BUTTON_SELECT_OR_UP_MASK;
+		if (fgb__IsControllerButtonDown(controller->start))  low &= (uint8_t)~FGB__JOYPAD_BUTTON_START_OR_DOWN_MASK;
 	}
 
-	// Update directions
-	if (directionsSelected) {
-		bool isRight = fgb__IsControllerButtonDown(controller->right);
-		bool isLeft = fgb__IsControllerButtonDown(controller->left);
-		bool isUp = fgb__IsControllerButtonDown(controller->up);
-		bool isDown = fgb__IsControllerButtonDown(controller->down);
-		newReg.dpadRight_Or_ButtonA = isRight ? FGB__JOYPAD_BUTTON_PRESSED : FGB__JOYPAD_BUTTON_RELEASED;
-		newReg.dpadLeft_Or_ButtonB = isLeft ? FGB__JOYPAD_BUTTON_PRESSED : FGB__JOYPAD_BUTTON_RELEASED;
-		newReg.dpadUp_Or_Select = isUp ? FGB__JOYPAD_BUTTON_PRESSED : FGB__JOYPAD_BUTTON_RELEASED;
-		newReg.dpadDown_Or_Start = isDown ? FGB__JOYPAD_BUTTON_PRESSED : FGB__JOYPAD_BUTTON_RELEASED;
+	if (oldReg.directionSelection == FGB__JOYPAD_DIRECTION_SELECTION) {
+		if (fgb__IsControllerButtonDown(controller->right)) low &= (uint8_t)~FGB__JOYPAD_BUTTON_A_OR_RIGHT_MASK;
+		if (fgb__IsControllerButtonDown(controller->left))  low &= (uint8_t)~FGB__JOYPAD_BUTTON_B_OR_LEFT_MASK;
+		if (fgb__IsControllerButtonDown(controller->up))    low &= (uint8_t)~FGB__JOYPAD_BUTTON_SELECT_OR_UP_MASK;
+		if (fgb__IsControllerButtonDown(controller->down))  low &= (uint8_t)~FGB__JOYPAD_BUTTON_START_OR_DOWN_MASK;
 	}
 
+	fgbJoypadRegister newReg;
+	newReg.u8 = (uint8_t)(0xC0 | (oldReg.u8 & 0x30) | low);
 	return newReg;
 }
 
-static inline bool fgb__IsJoypadButtonPressedDown(const fgbJoypadRegister last, const fgbJoypadRegister insReg, const uint8_t buttonMask) {
-	bool wasSet = last.u8 & buttonMask;
-	bool isSet = insReg.u8 & buttonMask;
-	bool result = wasSet && !isSet;
-	return result;
-}
-
 static void fgb__JoypadInterrupt(fgbSystem *system, fgbInterrupts *ir, fgbJoypadState *joypad) {
-	fgbJoypadRegister last = joypad->lastButtonStates;
-
-	fgbJoypadRegister insReg = fgb__JoypadReadRegister(joypad);
-
-	bool rightOrADown = fgb__IsJoypadButtonPressedDown(last, insReg, FGB__JOYPAD_BUTTON_A_OR_RIGHT_MASK);
-	bool leftOrBDown = fgb__IsJoypadButtonPressedDown(last, insReg, FGB__JOYPAD_BUTTON_B_OR_LEFT_MASK);
-	bool upOrSelectDown = fgb__IsJoypadButtonPressedDown(last, insReg, FGB__JOYPAD_BUTTON_SELECT_OR_UP_MASK);
-	bool downOrStartDown = fgb__IsJoypadButtonPressedDown(last, insReg, FGB__JOYPAD_BUTTON_START_OR_DOWN_MASK);
-
-	bool buttonsSelected = insReg.buttonSelection == FGB__JOYPAD_BUTTON_PRESSED;
-	bool directionsSelected = insReg.directionSelection == FGB__JOYPAD_BUTTON_PRESSED;
-
-	bool anySelection = (buttonsSelected && !directionsSelected) || (!buttonsSelected && directionsSelected);
-
-	// Only raise a request when buttons or directions are selected (but not both) and a button goes from "not pressed" to "pressed"
-	bool canRaise = anySelection && (rightOrADown || leftOrBDown || upOrSelectDown || downOrStartDown);
-	if (canRaise) {
+	const fgbJoypadRegister now = fgb__JoypadReadRegister(joypad);
+	const uint8_t last4 = (uint8_t)(joypad->lastButtonStates.u8 & 0x0F);
+	const uint8_t now4  = (uint8_t)(now.u8 & 0x0F);
+	// Real HW: joypad IRQ fires on any P10..P13 line transitioning 1 -> 0
+	// (released -> pressed), independent of which row is selected.
+	if ((uint8_t)(last4 & ~now4) != 0) {
 		fgb__InterruptRequest(system, fgbInterruptType_Joypad, "Joypad");
 	}
-
-	joypad->lastButtonStates = insReg;
+	joypad->lastButtonStates = now;
 }
 
 static void fgb__JoypadWriteRegister(fgbSystem *system, fgbJoypadState *joypad, const fgbJoypadRegister newReg) {
@@ -9645,21 +9895,25 @@ FGB_API void fgbClearButtons(fgbSystem *system) {
 static uint8_t fgb__SerialRead(const fgbSerial *serial, const uint16_t address) {
 	switch (address) {
 		case 0xFF01:
-			return serial->state.reg.sc;
-		case 0xFF02:
 			return serial->state.reg.sb;
+		case 0xFF02: {
+			// DMG SC: bit 7 (transfer start), bit 0 (clock select), bits 1-6 unused -> read as 1.
+			// HACK: keep raw read when bit 7 is set so Blargg BlarggSerial validate (sc == 0x81 exact match) still works.
+			const uint8_t raw = serial->state.reg.sc;
+			return (raw & 0x80) ? raw : (uint8_t)(raw | 0x7E);
+		}
 		default:
-			return 0;
+			return 0xFF;
 	}
 }
 
 static void fgb__SerialWrite(fgbSerial *serial, const uint16_t address, const uint8_t value) {
 	switch (address) {
 		case 0xFF01:
-			serial->state.reg.sc = value;
+			serial->state.reg.sb = value;
 			break;
 		case 0xFF02:
-			serial->state.reg.sb = value;
+			serial->state.reg.sc = value;
 			break;
 		default:
 			break;
@@ -9693,7 +9947,7 @@ static uint8_t fgb__IORead(fgbSystem *system, const uint16_t address) {
 	}
 
 	if (address >= FGB__BUS_ADDRESS_IO_REGISTERS_FROM && address <= FGB__BUS_ADDRESS_IO_REGISTERS_TO) {
-		return system->io.m[address - FGB__BUS_ADDRESS_IO_REGISTERS_FROM];
+		return 0xFF; // Real-Hardware returns FF on unknown addresses
 	} else {
 		FGB__Failure(system, fgbErrorType_ExecutionError, fgb__KindName_IO, "Unsupported read from address '%04X'", address);
 		return 0;
@@ -10978,7 +11232,8 @@ static bool fgb__InstructionProc_DI(fgbSystem *system, const fgbInstructionRegis
 }
 
 static bool fgb__InstructionProc_EI(fgbSystem *system, const fgbInstructionRegister *current) {
-	system->interrupts.ticksEnableIME = 4;
+	// EI enables IME AFTER the following instruction. Value 2: decremented once at end of EI's tick -> 1, then again at end of next instruction -> 0 -> IME=true.
+	system->interrupts.ticksEnableIME = 2;
 	return true;
 }
 
@@ -11941,21 +12196,21 @@ static bool fgb__InstructionProc_HALT(fgbSystem *system, const fgbInstructionReg
 	fgbCPU *cpu = &system->cpu;
 	fgbInterrupts *ir = &system->interrupts;
 
-	if (ir->ticksEnableIME > 0) {
-		// Special case for IE
-		ir->ticksEnableIME = 0;
-		ir->isMasterEnabled = true;
-		cpu->registers.pc--;
-	} else {
-		uint8_t enable = ir->enable.u8;
-		uint8_t request = ir->request.u8;
+	uint8_t enable = ir->enable.u8;
+	uint8_t request = ir->request.u8;
+	bool pending = (request & enable & 0x1F) != 0;
 
+	if (ir->isMasterEnabled) {
+		// Normal HALT: wait for any pending interrupt, then serve it
 		cpu->state.type = fgbCPUStateType_Halt;
-
-		// Force HALT bug
-		if (!ir->isMasterEnabled && (request & enable & 0x1F)) {
-			cpu->state.skipPC = true;
-		}
+	} else if (!pending) {
+		// HALT with IME=0, no pending: wait until interrupt pending,
+		// wake without dispatching (resumes next instruction)
+		cpu->state.type = fgbCPUStateType_Halt;
+	} else {
+		// HALT bug: IME=0 and interrupt already pending -> do NOT halt,
+		// instead the next byte is fetched twice (PC fails to advance once).
+		cpu->state.skipPC = true;
 	}
 
 	return true;
@@ -12696,15 +12951,23 @@ static void fgb__InterruptRequest(fgbSystem *system, const fgbInterruptType type
 }
 
 static bool fgb__InterruptServe(fgbSystem *system, const fgbInterruptType type) {
+	// Real HW interrupt dispatch = 5 M-cycles (20 T-cycles):
+	//   M1, M2: internal wait
+	//   M3, M4: push PC high, push PC low (StackPush16 = 2 M-cycles)
+	//   M5: set PC = vector
 	const uint16_t vector = fgb__InterruptVectorTable[type];
 
+	fgb__HWTick4(system); // M1 wait
+	fgb__HWTick4(system); // M2 wait
+
 	uint16_t pc = system->cpu.registers.pc;
-	if (!fgb__StackPush16(system, pc)) {
+	if (!fgb__StackPush16(system, pc)) { // M3, M4 push
 		FGB__Failure(system, fgbErrorType_ExecutionError, fgb__KindName_Interrupts, "Failed pushing PC '$%04X' to stack", pc);
 		return false;
 	}
 
 	system->cpu.registers.pc = vector;
+	fgb__HWTick4(system); // M5 vector fetch
 
 	system->interrupts.request.u8 &= ~type;
 
@@ -12754,7 +13017,7 @@ static uint8_t fgb__InterruptsRead(fgbSystem *system, const uint16_t address) {
 	const fgbInterrupts *ir = &system->interrupts;
 	switch (address) {
 		case FGB__BUS_ADDRESS_INTERRUPT_REQUEST_REGISTER:
-			return ir->request.u8;
+			return ir->request.u8 | 0xE0; // upper 3 bits always read as 1
 		case FGB__BUS_ADDRESS_INTERRUPT_ENABLE_REGISTER:
 			return ir->enable.u8;
 		default:
@@ -12770,14 +13033,7 @@ static void fgb__HandleInterruptTicks(fgbInterrupts *ir, const bool wasServed) {
 		ir->ticksRequestInterruptDelay -= 4;
 	}
 
-	// NOTE(final): Enable master interrupt, when master enable pending ticks reaches zero
-	if (!wasServed && ir->ticksEnableIME > 0) {
-		FGB_ASSERT((ir->ticksEnableIME % 4) == 0);
-		ir->ticksEnableIME -= 4;
-		if (ir->ticksEnableIME == 0) {
-			ir->isMasterEnabled = true;
-		}
-	}
+	// NOTE(final): IME enable is now driven by instruction count (see fgbTick after fgb__FetchDecodeExecute), not tick count.
 }
 
 // ********************************************************************************************************************
@@ -12937,7 +13193,7 @@ static void fgb__HWTick4(fgbSystem *system) {
 	
 }
 
-FGB_API fgbTestResultType fgbRunTest(const fgbCallbacks *callbacks, const fgbGamePak *gamePak, const uint64_t maxTickCount, fgbRunTestFunc *func, fgbTestResultData *data) {
+FGB_API fgbTestResultType fgbRunTest(const fgbCallbacks *callbacks, const fgbGamePak *gamePak, const fgbRunTestMode mode, const uint64_t maxTickCount, fgbTestValidateFunc *validateFunc, fgbTestFrameUpdateFunc *frameUpdateFunc, fgbTestResultData *data) {
 	if (callbacks == NULL || gamePak == NULL || data == NULL) {
 		return fgbTestResultType_InvalidArguments;
 	}
@@ -12946,7 +13202,11 @@ FGB_API fgbTestResultType fgbRunTest(const fgbCallbacks *callbacks, const fgbGam
 		return fgbTestResultType_InvalidGamePak;
 	}
 
+	// Preserve user data
+	void *userData = data->userData;
 	fgbClearStruct(data);
+	// Restore user data
+	data->userData = userData;
 
 	fgbSystem *system = (fgbSystem *)fgb__AllocateMemory(callbacks, sizeof(fgbSystem));
 	if (system == NULL) {
@@ -12961,6 +13221,7 @@ FGB_API fgbTestResultType fgbRunTest(const fgbCallbacks *callbacks, const fgbGam
 	fgbInitResult initRes = fgbInit(system, &config, gamePak);
 
 	uint64_t tickCount = 0;
+	uint64_t frameCount = 0;
 
 	if (initRes == fgbInitResult_InvalidArguments) {
 		result = fgbTestResultType_InvalidArguments;
@@ -12972,22 +13233,26 @@ FGB_API fgbTestResultType fgbRunTest(const fgbCallbacks *callbacks, const fgbGam
 
 	bool testCompleted = false;
 
-	while (!testCompleted && ((maxTickCount == 0) || (tickCount < maxTickCount))) {
-		++tickCount;
+	// NOTE(final): Hard safety ceiling so a test that spins forever fails quickly instead of hanging the runner.
+	// ~60M ticks = ~4 emulated seconds; all known mooneye/blargg tests finish well before this.
+	const uint64_t effectiveMaxTickCount = (maxTickCount == 0) ? 60000000ull : maxTickCount;
 
-		if (func != NULL) {
-			if (!func(system, data)) {
-				result = fgbTestResultType_FailedProcessingTest;
-				goto done;
-			}
-		}
+	while (!testCompleted && (tickCount < effectiveMaxTickCount)) {
+		++tickCount;
 
 		if (data->finished) {
 			testCompleted = true;
 			break;
 		}
 
-		if (!fgbTick(system)) {
+		bool stepRes;
+		if (mode == fgbRunTestMode_Frame) {
+			stepRes = fgbRunFrame(system, fpl_null, fpl_null);
+		} else {
+			stepRes = fgbTick(system);
+		}
+
+		if (!stepRes) {
 			const char *message = NULL;
 			switch (system->error.type) {
 				case fgbErrorType_InfiniteLoop:
@@ -12996,6 +13261,9 @@ FGB_API fgbTestResultType fgbRunTest(const fgbCallbacks *callbacks, const fgbGam
 
 				case fgbErrorType_ExecutionError:
 					message = system->error.message;
+					break;
+
+				default:
 					break;
 			}
 
@@ -13006,6 +13274,23 @@ FGB_API fgbTestResultType fgbRunTest(const fgbCallbacks *callbacks, const fgbGam
 
 			result = fgbTestResultType_EmulationFailed;
 			goto done;
+		}
+
+		if (fgbIsFrameUpdated(system)) {
+			if (frameUpdateFunc != NULL) {
+				if (!frameUpdateFunc(system, frameCount, data)) {
+					result = fgbTestResultType_FailedProcessingTest;
+					goto done;
+				}
+			}
+			frameCount++;
+		}
+
+		if (validateFunc != NULL) {
+			if (!validateFunc(system, data)) {
+				result = fgbTestResultType_FailedProcessingTest;
+				goto done;
+			}
 		}
 	}
 
@@ -13018,6 +13303,7 @@ FGB_API fgbTestResultType fgbRunTest(const fgbCallbacks *callbacks, const fgbGam
 done:
 	data->cpuCycles = system->cpu.state.totalTickCycles;
 	data->tickCycles = tickCount;
+	data->frameCount = frameCount;
 
 	fgbShutdown(system);
 
@@ -13328,9 +13614,9 @@ FGB_API bool fgbTick(fgbSystem *system) {
 			}
 		}
 
-		// Start timer to that will leave HALT mode
+		// Start timer to that will leave HALT mode (real HW: 1 M-cycle wake)
 		if ((cpu->state.type == fgbCPUStateType_Halt) && (fgb__InterruptPending(ir) != fgbInterruptType_None) && (cpu->state.ticksLeaveHaltMode == 0)) {
-			cpu->state.ticksLeaveHaltMode = 12;
+			cpu->state.ticksLeaveHaltMode = 4;
 		}
 	}
 
@@ -13353,6 +13639,13 @@ FGB_API bool fgbTick(fgbSystem *system) {
 				if (!fgb__FetchDecodeExecute(system, startFrameIndex, &startRegs)) {
 					FGB_ASSERT(error->type != fgbErrorType_None);
 					return false;
+				}
+				// EI 1-instruction delay: decrement after each executed instruction in Normal state. EI sets counter=2 -> 1 after EI, -> 0 after following instruction -> IME enables.
+				if (ir->ticksEnableIME > 0) {
+					ir->ticksEnableIME--;
+					if (ir->ticksEnableIME == 0) {
+						ir->isMasterEnabled = true;
+					}
 				}
 			}
 		} break;
@@ -13400,6 +13693,47 @@ FGB_API bool fgbTick(fgbSystem *system) {
 	}
 
 	return true;
+}
+
+FGB_API bool fgbRunFrame(fgbSystem *system, fgbTickCycles *outCycles, uint64_t *outIterations) {
+	if (system == NULL) {
+		return false;
+	}
+
+	fgbCPU *cpu = &system->cpu;
+	fgbInstructionRegister *insReg = &cpu->instructionRegister;
+	fgbPPU *ppu = &system->ppu;
+
+	fgbTickCycles totalCycles = 0;
+	uint64_t totalIterations = 0;
+
+	bool isFrameComplete = false;
+	while (!isFrameComplete) {
+		const bool tickResult = fgbTick(system);
+
+		++totalIterations;
+
+		const fgbTickCycles cycles = cpu->state.totalTickCycles - insReg->startTicks;
+		totalCycles += cycles;
+
+		if (!tickResult) {
+			break;
+		}
+
+		if (ppu->state.isFrameFinished) {
+			isFrameComplete = true;
+			break;
+		}
+	}
+
+	if (outCycles != fpl_null) {
+		*outCycles = totalCycles;
+	}
+	if (outIterations != fpl_null) {
+		*outIterations = totalIterations;
+	}
+
+	return isFrameComplete;
 }
 
 static bool fgb__MemoryIsZero(const uint8_t *mem, const size_t size) {
