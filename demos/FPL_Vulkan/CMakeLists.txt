@@ -18,6 +18,14 @@ set(MY_INCLUDE_DIRS
 	"../dependencies/vulkan/include/"
 	)
 
+set(MY_SHADER_SOURCE_DIR "shaders")
+set(MY_SHADER_OUTPUT_DIR "shaders/spv")
+set(MY_SHADER_GLSL_SOURCES
+	"${MY_SHADER_SOURCE_DIR}/vert.vert"
+	"${MY_SHADER_SOURCE_DIR}/frag_random.frag"
+	"${MY_SHADER_SOURCE_DIR}/frag_color.frag"
+)
+
 set(MY_HEADER_FILES
 	"../../final_platform_layer.h"
 	)
@@ -36,7 +44,6 @@ set(MY_DEFINES
 # Do not change the following lines
 #
 # -----------------------------------------------------------------------------
-
 set(FPL_ROOT_PATH_RELATIVE ../)
 get_filename_component(FPL_ROOT_PATH ${FPL_ROOT_PATH_RELATIVE} ABSOLUTE)
 set(FPL_EXECUTABLE_NAME ${PROJECT_NAME})
@@ -57,6 +64,39 @@ message(STATUS "Executable path: ${FPL_EXECUTABLE_PATH}")
 message(STATUS "Executable name: ${FPL_EXECUTABLE_NAME}")
 message(STATUS "---------------------------------------------------------------\n")
 
+# -----------------------------------------------------------------------------
+#
+# Shader compilation
+#
+# ------------------------------------------------------------------
+
+file(MAKE_DIRECTORY ${MY_SHADER_OUTPUT_DIR})
+
+set(SPIRV_OUTPUTS "")
+
+foreach(SHADER_FILE ${MY_SHADER_GLSL_SOURCES})
+	get_filename_component(SHADER_NAME ${SHADER_FILE} NAME_WE)
+	set(GLSL_FILE "${CMAKE_CURRENT_SOURCE_DIR}/${SHADER_FILE}")
+	set(SPIRV_FILE "${FPL_EXECUTABLE_PATH}/${MY_SHADER_OUTPUT_DIR}/${SHADER_NAME}.spv")
+
+	add_custom_command(
+			OUTPUT ${SPIRV_FILE}
+			COMMAND glslc ${GLSL_FILE} -o ${SPIRV_FILE}
+			DEPENDS ${GLSL_FILE}
+			COMMENT "Compiling ${GLSL_FILE} to ${SPIRV_FILE}"
+	)
+
+	list(APPEND SPIRV_OUTPUTS ${SPIRV_FILE})
+endforeach()
+
+add_custom_target(shaders ALL DEPENDS ${SPIRV_OUTPUTS})
+
+# -----------------------------------------------------------------------------
+#
+# Build
+#
+# ------------------------------------------------------------------
+
 set(CMAKE_C_FLAGS "-std=${MY_C_STANDARD}")
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${FPL_EXECUTABLE_PATH})
@@ -68,5 +108,7 @@ add_definitions(${MY_DEFINES})
 include_directories(../../ ${MY_INCLUDE_DIRS})
 
 add_executable(${PROJECT_NAME} ${MY_TRANSLATION_UNITS})
+
+add_dependencies(${PROJECT_NAME} shaders)
 
 target_link_libraries(${PROJECT_NAME} ${MY_EXTERNAL_LIBS} ${CMAKE_DL_LIBS})
