@@ -2301,6 +2301,7 @@ static DecodeResult DecodeFrame(ReaderContext &reader, Decoder &decoder, AVFrame
 				fplAssert(decoder.frameQueue.pendingPacket != nullptr);
 				pkt = decoder.frameQueue.pendingPacket;
 				decoder.frameQueue.hasPendingPacket = false;
+				decoder.pktSerial = pkt->serial; // sync serial so stale check below works
 			} else {
 				pkt = nullptr;
 				if (PopPacket(decoder.packetsQueue, pkt)) {
@@ -2309,6 +2310,13 @@ static DecodeResult DecodeFrame(ReaderContext &reader, Decoder &decoder, AVFrame
 					// We cannot continue to decode, because the packet queue is empty
 					return DecodeResult::RequireMorePackets;
 				}
+			}
+			// On seek the queue serial is bumped; return stale non-flush packets to
+			// avoid leaking one allocation per seek event.
+			if (pkt != nullptr && !IsFlushPacket(pkt) &&
+				decoder.packetsQueue.serial != decoder.pktSerial) {
+				PutPacketBackToReader(reader, pkt);
+				pkt = nullptr;
 			}
 		} while (decoder.packetsQueue.serial != decoder.pktSerial);
 
@@ -2794,7 +2802,7 @@ static void SeekStream(PlayerState *state, int64_t pos, int64_t rel) {
 	if (!seek->isRequired) {
 		seek->pos = pos;
 		seek->rel = rel;
-		seek->seekFlags = AVSEEK_FLAG_ANY; // Seek to and frame, not just key frames
+		seek->seekFlags = AVSEEK_FLAG_BACKWARD; // Always seek to keyframe AT OR BEFORE target; without this flag avformat_seek_file picks the nearest keyframe in either direction and can overshoot forward, putting audio/video ahead of the master clock
 		if (state->seekByBytes)
 			seek->seekFlags |= AVSEEK_FLAG_BYTE; // Some file formats does not allow to seek by seconds
 		seek->isRequired = 1;
@@ -2873,17 +2881,12 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 		// Seeking
 		if (state->seek.isRequired) {
 			int64_t seekTarget = state->seek.pos;
-			int64_t seekMin = state->seek.rel > 0 ? seekTarget - state->seek.rel + 2 : INT64_MIN;
-			int64_t seekMax = state->seek.rel < 0 ? seekTarget - state->seek.rel - 2 : INT64_MAX;
-			double seekTargetSeconds = seekTarget / (double)AV_TIME_BASE;
-			double seekMinSeconds = seekMin / (double)AV_TIME_BASE;
-			double seekMaxSeconds = seekMax / (double)AV_TIME_BASE;
-			int seekFlags = state->seek.seekFlags;
-			if (state->seek.rel < 0) {
-				seekFlags |= AVSEEK_FLAG_BACKWARD;
-			}
+			int64_t seekMin = INT64_MIN;   // No lower bound — BACKWARD flag finds keyframe before target
+			int64_t seekMax = seekTarget;  // Hard upper bound prevents forward overshoot
+			int seekFlags = state->seek.seekFlags; // AVSEEK_FLAG_BACKWARD always included by SeekStream
 #if PRINT_SEEKES
-			fplConsoleFormatOut("Seek to: %llu %llu %llu (%f %f %f)\n", seekMin, seekTarget, seekMax, seekMinSeconds, seekTargetSeconds, seekMaxSeconds);
+			double seekTargetSeconds = seekTarget / (double)AV_TIME_BASE;
+			fplConsoleFormatOut("Seek to: %f\n", seekTargetSeconds);
 #endif
 			int seekResult = ffmpeg.avformat_seek_file(formatCtx, -1, seekMin, seekTarget, seekMax, seekFlags);
 			if (seekResult < 0) {
@@ -2909,12 +2912,11 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 					fplSignalSet(&state->video.decoder.resumeSignal);
 				}
 
-				if (state->seek.seekFlags & AVSEEK_FLAG_BYTE) {
-					SetClock(state->externalClock, NAN, 0);
-				} else {
-					SetClock(state->externalClock, seekTarget / (double)AV_TIME_BASE, 0);
+				// Set extClock to NAN so SyncClockToSlave snaps it to actual audio PTS
+				// on the first decoded frame. Setting it to seekTarget causes desync
+				// when the nearest keyframe is 1-4s before the target (below AV_NOSYNC_THRESHOLD).
+				SetClock(state->externalClock, NAN, 0);
 				}
-			}
 			state->seek.isRequired = false;
 			reader.isEOF = false;
 			if (state->isPaused) {
@@ -4256,6 +4258,13 @@ static void SeekRelative(PlayerState *state, double incr) {
 		double pos = GetMasterClock(state);
 		if (isnan(pos)) {
 			pos = (double)state->seek.pos / AV_TIME_BASE;
+		}
+		// After seek, master clock snaps to actual keyframe which may be seconds before
+		// the seek target. Use the last seek target as the base so successive forward
+		// seeks advance past the keyframe gap instead of looping at the same keyframe.
+		double lastSeekTarget = (double)state->seek.pos / AV_TIME_BASE;
+		if (!isnan(pos) && pos < lastSeekTarget) {
+			pos = lastSeekTarget;
 		}
 		pos += incr;
 		double start = state->formatCtx->start_time / (double)AV_TIME_BASE;
