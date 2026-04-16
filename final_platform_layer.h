@@ -208,6 +208,7 @@ SOFTWARE.
 	- Fixed: [X11] Fixed window support was not disabled when X11 is not present
 	- Fixed: [X11] Fixed fplPollEvent() was not handling the events properly, resulting in not processing any events anymore
 	- Fixed: [X11] Fixed ClientMessage for Atom netWMPing was not calling XFlush
+	- Fixed: [X11] Fixed wrong X11 type aliases
 	- Fixed[#181]: [X11] fpl__X11ParseUriPaths does not do any URI decoding, resulting in most-likely unuseable file paths
 
 	- Fixed: [POSIX] Fixed pthread fpl__POSIXSemaphoreHandle was not used
@@ -3411,15 +3412,15 @@ typedef pthread_cond_t fpl__POSIXConditionVariable;
 #	if defined(FPL_SUBPLATFORM_X11)
 
 //! A X11 Display
-typedef Display *fpl__X11Display;
+typedef Display fpl__X11Display;
 //! A X11 window
 typedef Window fpl__X11Window;
 //! A X11 Visual
-typedef Visual *fpl__X11Visual;
+typedef Visual fpl__X11Visual;
 //! A X11 GC
 typedef GC fpl__X11GC;
 //! A X11 Image
-typedef XImage *fpl__X11Image;
+typedef XImage fpl__X11Image;
 //! A GLX Context (opaque, 4/8 bytes)
 typedef void *fpl__GLXContext;
 
@@ -8618,9 +8619,9 @@ typedef struct fplVideoWindowX11 {
 	//! The window handle.
 	fpl__X11Window window;
 	//! The display handle.
-	fpl__X11Display display;
+	fpl__X11Display *display;
 	//! The visual handle.
-	fpl__X11Visual visual;
+	fpl__X11Visual *visual;
 	//! The screen id.
 	int screen;
 } fplVideoWindowX11;
