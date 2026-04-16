@@ -16,6 +16,10 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2026-04-16
+	- Fixed seeking was breaking audio/video sync
+	- Fixed build error when FPL_LOGGING is disabled
+
 	## 2025-05-02
 	- Fixed crash when trying to get a font char from a not supported code point
 
