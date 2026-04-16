@@ -4332,11 +4332,13 @@ int main(int argc, char **argv) {
 	settings.video.isVSync = false;
 
 	settings.audio.manualLoad = true;
-	
+
+#if defined(FPL_LOGGING)
 	fplLogSettings log = fplZeroInit;
 	log.maxLevel = fplLogLevel_All;
 	log.writers[0].flags = fplLogWriterFlags_StandardConsole;
 	fplSetLogSettings(&log);
+#endif
 
 	if (!fplPlatformInit(fplInitFlags_All, &settings)) {
 		return -1;
