@@ -12,6 +12,9 @@ License:
 	Copyright 2017-2026 Torsten Spaete
 
 Changelog:
+	## 2026-04-19
+	- Fixed raw to pixel scaling was incorrect
+
 	## 2025-11-30
 	- Introduced custom memory allocator support
 	- Fixed various memory leaks
@@ -324,21 +327,22 @@ fpl_extern bool FontLoadFromMemory(MemoryAllocator *allocator, const void *data,
 	float texelU = 1.0f / (float)atlasWidth;
 	float texelV = 1.0f / (float)atlasHeight;
 	float pixelsToUnits = 1.0f / fontSize;
+	float scaleToPixels = stbtt_ScaleForPixelHeight(&fontInfo, fontSize);
 
 	// Space advance in pixels
-	float spaceAdvancePx = spaceAdvanceRaw * pixelsToUnits;
+	float spaceAdvancePx = spaceAdvanceRaw * scaleToPixels;
 
 	// Ascent height from the baseline in pixels
-	float ascentPx = fabsf((float)ascentRaw) * pixelsToUnits;
+	float ascentPx = fabsf((float)ascentRaw) * scaleToPixels;
 
 	// Descent height from the baseline in pixels
-	float descentPx = fabsf((float)descentRaw) * pixelsToUnits;
+	float descentPx = fabsf((float)descentRaw) * scaleToPixels;
 
 	// Max height is always ascent + descent
 	float heightPx = ascentPx + descentPx;
 
 	// Calculate line height
-	float lineGapPx = lineGapRaw * pixelsToUnits;
+	float lineGapPx = lineGapRaw * scaleToPixels;
 	float lineHeightPx = ascentPx + descentPx + lineGapPx;
 
 	for(uint32_t glyphIndex = 0; glyphIndex < charCount; ++glyphIndex) {
