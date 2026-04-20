@@ -406,7 +406,7 @@ static void ClearVisualization(AudioDemo *demo) {
 	fplClearStruct(&demo->visualization.rawMagnitudes);
 	fplClearStruct(&demo->visualization.peakSpectrum);
 	demo->visualization.globalPeak = 0.0;
-	demo->spectrumMode = SpectrumMode_MaxPeakScale;
+	demo->spectrumMode = SpectrumMode_Natural;
 }
 
 static void Render(AudioDemo *demo, const int screenW, const int screenH, const double currentRenderTime) {
@@ -653,16 +653,20 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 		}
 
 		// Apply spectrum deformation (video algorithm step 6)
+		// After NormalizeFFT (÷N=256) + Hamming window, full-scale sine → rawMagnitude ≈ 0.27
 		const double peakDecay = 0.99;
 		switch (demo->spectrumMode) {
 			case SpectrumMode_Natural: {
-				const double fitFactor = 2.0;
+				// fitFactor = 1/0.27 ≈ 3.7 so a full-scale sine reaches ~100% bar height
+				const double fitFactor = 4.0;
 				for (uint32_t i = 0; i < binCount; ++i)
 					newSpectrum[i] = fplMin(newSpectrum[i] * fitFactor, 1.0);
 			} break;
 			case SpectrumMode_Exponential: {
-				const double fitFactor = 0.5;
-				const double fitFactor2 = 20.0;
+				// fitFactor2=1000 sets noise floor at x=0.001 (log(0.001*1000)=log(1)=0)
+				// fitFactor=0.16 so full-scale (x=0.27): log(270)*0.16 ≈ 0.90
+				const double fitFactor = 0.16;
+				const double fitFactor2 = 1000.0;
 				for (uint32_t i = 0; i < binCount; ++i)
 					newSpectrum[i] = fplMin(fplMax(log(newSpectrum[i] * fitFactor2) * fitFactor, 0.0), 1.0);
 			} break;
@@ -693,9 +697,9 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 			default: break;
 		}
 
-		// Temporal smoothing with fast attack / slow decay
+		// Temporal smoothing with fast attack / slow decay (~1s fall from peak at 60fps)
 		const double specAttack = 0.7;
-		const double specDecay  = 0.08;
+		const double specDecay  = 0.04;
 		for (uint32_t i = 0; i < binCount; ++i) {
 			double last    = visualization->spectrum[i];
 			double current = newSpectrum[i];
