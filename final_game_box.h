@@ -1,4 +1,4 @@
-﻿/*
+/*
 
 ░▒▓████████▓▒░▒▓█▓▒░▒▓███████▓▒░ ░▒▓██████▓▒░░▒▓█▓▒░              ░▒▓██████▓▒░ ░▒▓██████▓▒░░▒▓██████████████▓▒░░▒▓████████▓▒░      ░▒▓███████▓▒░ ░▒▓██████▓▒░░▒▓█▓▒░░▒▓█▓▒░ 
 ░▒▓█▓▒░      ░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░             ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░             ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░ 
@@ -8,7 +8,7 @@
 ░▒▓█▓▒░      ░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░             ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░             ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░ 
 ░▒▓█▓▒░      ░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓████████▓▒░       ░▒▓██████▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓████████▓▒░      ░▒▓███████▓▒░ ░▒▓██████▓▒░░▒▓█▓▒░░▒▓█▓▒░ 
 
-Final Gamebox version 1.1.0
+Final Gamebox version 1.2.0
 
 -------------------------------------------------------------------------------
 	About
@@ -24,12 +24,15 @@ This was created for learning purposes and supports features such as:
 - MMU (Memory Management Unit): Chip that manages any memory read/write operations
 - Boot ROM support for DMG
 - GamePak loading with support for ROM and RAM banking (MBC1, MBC2, MBC3, MBC5)
+- RTC Support for MBC3 (Basic)
 - Battery backed external RAM load/save
-- Storing and restoring of full save states for filebased roms
+- Storing and restoring of full save states
 - Joypad support (Keyboard, Gamepad)
+- Gameboy Color Support
 
-It can run most test rom files and games such as Tetris, Super Mario land, Kirby, Zelda, etc.
-Some games won't work at all or are totally broken, e.g. Duck Tales :-(
+It can run a ton of DMG games and most CGB games.
+Complex gameboy color games may crash or has graphics or sound bugs.
+Some games won't work at all or are totally broken, e.g. Alleyway, Duck Tales :-(
 
 All knowledge used in this source is based on tutorials, documentations and the awesome "Ultimate Game Boy Talk".
 
@@ -48,26 +51,79 @@ The only dependencies are built-in operating system libraries and a C99 complian
 - Data visualization, Software-Architecture, Multimedia & Physics & Game development
 
 -------------------------------------------------------------------------------
-	Known Issues
+	Known Limitations
 -------------------------------------------------------------------------------
 
 - Snapshots are disabled on non 64-bit platforms, due to pointer alignment differences
-- Audio timing is not always correct, some games plays sound too fast
-- The graphics timing for some games are wrong and it may flicker a lot (e.g. Duck Tales)
+- No SGB Support
+
+-------------------------------------------------------------------------------
+	Known Issues
+-------------------------------------------------------------------------------
+
+- Audio timing is not always correct (some games plays sound too fast)
+- Interrupt timing is not correct (fails blargg test)
 - Input handling are sometimes broken (e.g. Duck Tales, Alley Way)
+- Hard crashes in some CGB games, resulting in wrong CPU opcodes (e.g. Mega Man Xtreme)
 - The tiles are not always correct in the background map (See: Add option to select background tile area)
-- For some games, the background map scroll X and Y is reset to zero after h/v blank, so we can't show the scroll area properly
+- For some games the background map scroll X and Y is reset to zero after h/v blank, so we can't show the scroll area properly
+- PPU timing is not correct always, resulting in weird graphic bugs
+- OAM Bug not implemented
 
 -------------------------------------------------------------------------------
-	Todo
+	Games Compability (Tested)
 -------------------------------------------------------------------------------
 
-	- Rename fgbMonochromeColors to fgbMonochromePalette and remove old fgbMonochromePalette
-	- Fix dissassembly listbox resize breaks scroll position
-	- Show rom/ram banks in UI
-	- Gameboy Color support
-	- Implement STOP properly
-	- Implement HALT bug correctly (some games actually use this and still work fine)
+Good:
+- [DMG] Alfred Chicken
+- [DMG] Dr. Mario
+- [DMG] Kirby's Dream Land
+- [DMG] Mega Man - Dr. Wily's Revenge
+- [DMG] Mega Man II
+- [DMG] R-Type
+- [DMG] Retroid
+- [DMG] Rodland
+- [CGB] Shantae
+- [DMG] Super Breakout
+- [DMG] Super Mario Land
+- [DMG] Super Mario Land 2 - 6 Golden Coins
+- [DMG] Tetris
+- [DMG] The Legend of Zelda - Link's Awakening
+- [DMG] Wario Land - Super Mario Land 3
+
+Partial:
+- [CGB] Alfred's Adventure: Can play, but almost no sprites are visible, alfred itself is just a couple of lines
+
+Do not work:
+- [DMG] Alleyway: Jumps directly into the game, no paddle control -> Propaply interrupt timing / joypad issues
+- [DMG] Duck Tales: In-game music too fast, window-rendering graphic flickering, not able to jump away from climbing vines
+- [CGB] Mega Man Xtreme: Runs for a few mio cycles than emulation failure with wrong CPU opcode, music 2x/4x faster than normal
+
+-------------------------------------------------------------------------------
+	Test-ROMS Compability
+-------------------------------------------------------------------------------
+
+Blargg:
+- [DMG/CGB] `cpu_instrs`: Passed
+- [DMG/CGB] `dmg_sound`: Passed
+- [DMG/CGB] `halt_bug`: Passed
+- [DMG/CGB] `instr_timing`: Passed
+- [DMG/CGB] `interrupt_time`: Fails
+- [DMG/CGB] `mem_timing`: Passed
+- [DMG/CGB] `mem_timing-2`: Passed
+- [DMG/CGB] `oam_bug`: Passed
+- [CGB] `cgb_sound`: Passed
+
+Acid:
+- [DMG/CGB] `dmg-acid2`: Passed
+- [CGB] `cgb-acid2`: Passed
+- [CGB] `cgb-acid-hell`: Fails, smiley mouth not smiling
+
+MoonEye Acceptance:
+- [DMG/CGB] mooneye-testroms/acceptance: Most fails, a couple passes
+
+Others:
+- [DMG/CGB] rtc3test: Basic almost passes, remaining fails
 
 -------------------------------------------------------------------------------
 	Resources
@@ -156,9 +212,32 @@ Copyright 2024-2026 Torsten Spaete
 	Changelog
 -------------------------------------------------------------------------------
 
+## v1.2.0 CGB Support
+
+### CGB Support
+- CGB support with GDMA/HDMA, VRAM/WBANK Switching, Object-Attributes, 2x32 RGB555 Color-Palette RAM, Speed-Switching etc.
+- CGB-DMG support not tested, properly not correct -> no public flag to enable CGB mode for DMG
+
+### SGB Disabled
+- SGB Support is not supported yet, we may fallback to DMG or CGB-DMG
+
+### APU
+- Tons of bugfixes to pass cgb_sound test rom
+
+### PPU
+- Implemented VRAM bank switching
+- Reworked the pixel load/fetch/render pipeline to pass acid tests
+- Fixed tons of bugs related to LCD handling
+
+### Ram
+- Implemented WRAM bank switching
+
+### Core
+- Fixed lots of timing issues with CPU instructions
+
 ## v1.1.0 Bugfixes & Improvements
 
-### Audio
+### APU
 - Fixed tons of audio timing issues
 - Refactored audio sample caching by using a lock-free ringbuffer
 
@@ -176,6 +255,8 @@ Copyright 2024-2026 Torsten Spaete
 - Added enum fgbRunTestMode
 - Extented fgbTest() to pass frame validation callback and test mode
 - Improved compability and stability
+- Implemented STOP correctly
+- Implemented HALT correctly, including simulating the HALT bug
 
 ## v1.0.1 Bugfixes
 
@@ -387,7 +468,7 @@ Copyright 2024-2026 Torsten Spaete
 #endif
 
 // ****************************************************************************
-// Callbacks API
+// CALLBACKS-API: Callbacks & Types
 // ****************************************************************************
 
 // Stores a UTC timestamp and the milliseconds to represent a date and time
@@ -549,7 +630,7 @@ typedef struct {
 } fgbCallbacks;
 
 // ****************************************************************************
-// Cacheline Detection
+// > CACHELINE-API: Cacheline Detection
 // ****************************************************************************
 
 // Detect cache line sizes based on CPU architecture
@@ -576,7 +657,7 @@ typedef struct {
 } fgbCacheline;
 
 // ****************************************************************************
-// Common types and structures
+// > COMMON-API: Common types and structures
 // ****************************************************************************
 
 // Stores a memory block with a fixed length
@@ -595,7 +676,7 @@ typedef struct fgbSystem fgbSystem;
 typedef struct fgbMemoryBankController fgbMemoryBankController;
 
 // ****************************************************************************
-// Game Pak API
+// > GAMEPAK-API
 // ****************************************************************************
 
 // ROM size in bytes per bank
@@ -605,7 +686,7 @@ typedef struct fgbMemoryBankController fgbMemoryBankController;
 #define FGB_MIN_ROM_BANK_COUNT 2
 
 // Minumum number of ROM banks
-#define FGB_MAX_ROM_BANK_COUNT 128
+#define FGB_MAX_ROM_BANK_COUNT 256
 
 // Minimum size of a game pak ROM
 #define FGB_MIN_GAMEPAK_SIZE (FGB_ROM_SIZE_PER_BANK * FGB_MIN_ROM_BANK_COUNT)
@@ -903,6 +984,8 @@ typedef enum {
 	fgbGamePakLoadResultType_FileError,
 	// Not enough data available
 	fgbGamePakLoadResultType_NotEnoughData,
+	// Data too large
+	fgbGamePakLoadResultType_TooLargeData,
 	// Memory error related to the file
 	fgbGamePakLoadResultType_MemoryErrorFile,
 	// Memory error related to the ROM
@@ -968,6 +1051,10 @@ FGB_API const char *fgbGetGamePakLoadResultLabel(const fgbGamePakLoadResultType 
   * @return The resulting null-terminated string
   */
 FGB_API const char *fgbGetMemoryControllerTypeName(const fgbMemoryControllerType type);
+
+// ****************************************************************************
+// > MBC-API: Memory Bank Controller
+// ****************************************************************************
 
 // Function prototype for reading a byte from a address by the current MBC
 #define FGB_MBC_READ_FUNC(name) uint8_t name(fgbSystem *system, fgbMemoryBankController *mbc, const uint16_t address)
@@ -1075,6 +1162,10 @@ typedef struct fgbMemoryBankController {
 	fgbMBCData data;
 } fgbMemoryBankController;
 
+// ****************************************************************************
+// > EXTRAM-API: External RAM
+// ****************************************************************************
+
 // Defines the versions of the external RAM for serialization
 typedef enum {
 	// None
@@ -1130,6 +1221,242 @@ typedef struct {
 } fgbMBC3RTCSaveBlock;
 #pragma pack(pop)
 FGB_STATIC_ASSERT(sizeof(fgbMBC3RTCSaveBlock) == 19);
+
+// ****************************************************************************
+// > COLOR-API
+// ****************************************************************************
+
+#pragma pack(push, 1)
+// Represents a single 24-bit color
+typedef union {
+	// Full memory (3 bytes)
+	uint8_t m[3];
+	// Anonymous struct that holds the RGB values
+	struct {
+		// Red component (1 byte, Little endian)
+		uint8_t r;
+		// Green component (1 byte, Little endian)
+		uint8_t g;
+		// Blue component (1 byte, Little endian)
+		uint8_t b;
+	};
+} fgbColor;
+#pragma pack(pop)
+
+// ****************************************************************************
+// > CGB-API
+// ****************************************************************************
+
+#pragma pack(push, 1)
+// FF55: Represents the HDMA control register (1 byte, CGB-Only)
+typedef union {
+	// Full 8-bit value
+	uint8_t value;
+	struct {
+		// Bits 0-6: Length of transfer (in blocks of 16 bytes) - 1
+		uint8_t length : 7;
+		// Bit 7: DMA mode (0 = General DMA, 1 = H-Blank DMA)
+		bool mode : 1;
+	};
+} fgbHDMAControlRegister;
+#pragma pack(pop)
+FGB_STATIC_ASSERT(sizeof(fgbHDMAControlRegister) == 1);
+
+#pragma pack(push, 1)
+// FF51-FF55: Represents the HDMA register from FF51 to FF55 (5 Bytes, CGB-Only)
+typedef struct {
+	// 0xFF51: HDMA source high
+	uint8_t sourceHigh;
+	// 0xFF52: HDMA source low
+	uint8_t sourceLow;
+	// 0xFF53: HDMA destination high
+	uint8_t destHigh;
+	// 0xFF54: HDMA destination low
+	uint8_t destLow;
+	// 0xFF55: HDMA control register
+	fgbHDMAControlRegister control;
+} fgbHDMARegister;
+#pragma pack(pop)
+FGB_STATIC_ASSERT(sizeof(fgbHDMARegister) == 5);
+
+#pragma pack(push, 1)
+// FF4D: Represents the KEY1 Register (1 Byte, CGB-Only)
+typedef union {
+	struct {
+		bool switchArmed : 1;	// BIT 0: Switch armed (0 = No, 1 = Armed)
+		uint8_t unused : 6;		// BIT 1-6: Unused
+		bool currentSpeed : 1;	// BIT 7: Current speed (0 = Single Speed Mode, 1 = Double Speed Mode)
+	};
+	uint8_t value;
+} fgbKey1Register;
+#pragma pack(pop)
+FGB_STATIC_ASSERT(sizeof(fgbKey1Register) == 1);
+
+#pragma pack(push, 1)
+// FF4F: Represents the VRAM Bank Register (1 byte, CGB-Only)
+typedef union {
+	struct {
+		uint8_t bank : 1;		// BIT 0: VRAM Bank (0 = Bank-0, 1 = Bank-1)
+		uint8_t unused : 7;		// BIT 1-7: Unused
+	};
+	uint8_t value;
+} fgbVRAMBankRegister;
+#pragma pack(pop)
+FGB_STATIC_ASSERT(sizeof(fgbVRAMBankRegister) == 1);
+
+#pragma pack(push, 1)
+// SVBK(FF70): Represents the work ram bank register (1 byte, CGB-Only)
+typedef union {
+	// U8 value
+	uint8_t value;
+	// Anonymous struct that contains all individual registers
+	struct {
+		uint8_t wramBank : 3;	// BIT 0-2: WRAM Bank
+		uint8_t unused : 5;		// BIT 3-7: Unused
+	};
+} fgbWorkRAMBankRegister;
+#pragma pack(pop)
+FGB_STATIC_ASSERT(sizeof(fgbWorkRAMBankRegister) == 1);
+
+// Defines the speed modes
+typedef enum {
+	// Runs the CPU in normal speed mode, ~4.1 MHz
+	fgbSpeedMode_Normal = 0,
+	// Runs the CPU in double speed mode, ~8.2 MHz
+	fgbSpeedMode_Double,
+} fgbSpeedMode;
+
+// Represents a container that stores speed states
+typedef struct {
+	// Current speed mode
+	fgbSpeedMode currentMode;
+	// Toggle that gates non-CPU hardware in double speed mode (1-bit phase)
+	uint8_t halfTickPhase;
+} fgbCGBSpeedState;
+
+#pragma pack(push, 1)
+// Native 15-bit RGB555 color as written to CGB palette RAM (little-endian)
+typedef union {
+	uint16_t u16;
+	struct {
+		uint16_t r : 5;
+		uint16_t g : 5;
+		uint16_t b : 5;
+		uint16_t _unused : 1;
+	};
+	uint8_t m[2];
+} fgbRGB555;
+#pragma pack(pop)
+FGB_STATIC_ASSERT(sizeof(fgbRGB555) == 2);
+
+#pragma pack(push, 1)
+// FF68/FF6A: BCPS/OCPS palette index register (1 byte, CGB-Only)
+typedef union {
+	uint8_t value;
+	struct {
+		uint8_t address : 6;		// BIT 0-5: Byte index into palette RAM (0..63)
+		uint8_t _unused : 1;		// BIT 6: Unused
+		bool autoIncrement : 1;		// BIT 7: Auto-increment index on BCPD/OCPD write
+	};
+} fgbCGBPaletteIndexRegister;
+#pragma pack(pop)
+FGB_STATIC_ASSERT(sizeof(fgbCGBPaletteIndexRegister) == 1);
+
+#pragma pack(push, 1)
+// 64-byte CGB palette RAM (8 palettes x 4 colors) with fast-access overlay
+typedef union {
+	// 1D byte array (64 Bytes)
+	uint8_t m[64];
+	// 2D RGB555 Color Array 8x4
+	fgbRGB555 colors[8][4];
+} fgbCGBPaletteRAM;
+#pragma pack(pop)
+FGB_STATIC_ASSERT(sizeof(fgbCGBPaletteRAM) == 64);
+
+#pragma pack(push, 1)
+// FF6C: OPRI object priority mode register (1 byte, CGB-Only)
+typedef union {
+	uint8_t value;
+	struct {
+		bool dmgMode : 1;			// BIT 0: 0 = OAM index priority (CGB), 1 = X-coord priority (DMG-compat)
+		uint8_t _unused : 7;		// BIT 1-7: Unused
+	};
+} fgbCGBObjPriorityMode;
+#pragma pack(pop)
+FGB_STATIC_ASSERT(sizeof(fgbCGBObjPriorityMode) == 1);
+
+// Grid of 32 CGB colors (8x4)
+typedef union {
+	// 1D-Array of 32 colors
+	fgbColor m[8 * 4];
+	// 2D-Array of 8x4 colors
+	fgbColor grid[8][4];
+} fgbCGBPaletteGrid;
+FGB_STATIC_ASSERT(sizeof(fgbCGBPaletteGrid) == 96);
+
+// CGB Palette
+typedef struct {
+	// Background Palette Grid
+	fgbCGBPaletteGrid bg;
+	// Object Palette Grid
+	fgbCGBPaletteGrid obj;
+} fgbCGBPalette;
+FGB_STATIC_ASSERT(sizeof(fgbCGBPalette) == 192);
+
+// Represents the HDMA state
+typedef struct {
+	// FF51-FF55: HDMA Registers (5 Bytes)
+	fgbHDMARegister reg;
+	// Register padding (3 Bytes)
+	uint8_t regPadding[3];
+	// HDMA control: bytes remaining on an active transfer (GDMA or armed HDMA)
+	uint16_t bytesRemaining;
+	// HDMA control: next source byte address (advances during transfer)
+	uint16_t sourceAddress;
+	// HDMA control: next destination byte address in VRAM (advances during transfer)
+	uint16_t destAddress;
+	// U16 padding (2 Bytes)
+	uint16_t hdmaU16Padding;
+	// HDMA control: active H-blank transfer in progress
+	bool inProgress;
+	// HDMA control: H-blank burst pending on current scanline
+	bool isHBlankPending;
+	// Alignment Padding (6 Bytes)
+	uint8_t alignmentPadding[6];
+} fgbHDMAState;
+FGB_STATIC_ASSERT(sizeof(fgbHDMAState) == 24);
+
+// Represents the CGB state and registers
+typedef struct {
+	// Current RGB palette
+	fgbCGBPalette currentPalette;
+	// BG palette RAM (64 bytes, accessed via BCPD at FF69)
+	fgbCGBPaletteRAM bgPaletteRAM;
+	// OBJ palette RAM (64 bytes, accessed via OCPD at FF6B)
+	fgbCGBPaletteRAM objPaletteRAM;
+	// HDMA state
+	fgbHDMAState hdmaState;
+	// Speed State
+	fgbCGBSpeedState speedState;
+	// FF4D: KEY1 Register (1 Byte)
+	fgbKey1Register key1Reg;
+	// FF4F: VRAM-Bank Register (1 Byte)
+	fgbVRAMBankRegister vramBankReg;
+	// FF70: SVBK WRAM-Bank Register (1 Byte)
+	fgbWorkRAMBankRegister workRAMBankReg;
+	// FF68: BCPS BG palette index register (1 Byte)
+	fgbCGBPaletteIndexRegister bgPaletteIndex;
+	// FF6A: OCPS OBJ palette index register (1 Byte)
+	fgbCGBPaletteIndexRegister objPaletteIndex;
+	// FF6C: OPRI object priority mode (1 Byte)
+	fgbCGBObjPriorityMode objPriorityMode;
+	// Padding
+	uint8_t padding[2];
+} fgbCGBState;
+
+// ****************************************************************************
+// > APU-API: Audio Processing Unit
+// ****************************************************************************
 
 #pragma pack(push,1)
 // NR10(FF10): Frequency Sweep Register
@@ -1851,6 +2178,10 @@ typedef struct {
 	fgbAPUState state;
 } fgbAPU;
 
+// ****************************************************************************
+// > LCD-API: LCD Registers
+// ****************************************************************************
+
 #pragma pack(push,1)
 // FF40: LCDC register
 typedef union {
@@ -1930,6 +2261,10 @@ typedef union {
 #pragma pack(pop)
 FGB_STATIC_ASSERT(sizeof(fgbLCDRegister) == 12);
 
+// ****************************************************************************
+// > JOYPAD-API: Joypad Registers
+// ****************************************************************************
+
 #pragma pack(push, 1)
 // Joypad Register (1 Byte)
 typedef union fgbJoypadRegister {
@@ -1948,6 +2283,81 @@ typedef union fgbJoypadRegister {
 } fgbJoypadRegister;
 #pragma pack(pop)
 FGB_STATIC_ASSERT(sizeof(fgbJoypadRegister) == 1);
+
+// Defines the button states
+typedef enum {
+	// Button is released
+	fgbButtonState_Released = 0,
+	// Button is pressed
+	fgbButtonState_Pressed = 1,
+	// Button is holding down
+	fgbButtonState_Hold = 2,
+} fgbButtonState;
+
+// Defines the button types
+typedef enum {
+	// Start button
+	fgbButtonType_Start = 0,
+	// Select button
+	fgbButtonType_Select,
+	// A button
+	fgbButtonType_A,
+	// B button
+	fgbButtonType_B,
+	// Up button
+	fgbButtonType_Up,
+	// Down button
+	fgbButtonType_Down,
+	// Left button
+	fgbButtonType_Left,
+	// Right button
+	fgbButtonType_Right,
+} fgbButtonType;
+
+// Represents the state of a controller
+typedef union {
+	// Anonymous struct holding all button states
+	struct {
+		// Start button state
+		uint8_t start;
+		// Select button state
+		uint8_t select;
+		// A button state
+		uint8_t a;
+		// B button state
+		uint8_t b;
+		// Up button state
+		uint8_t up;
+		// Down button state
+		uint8_t down;
+		// Left button state
+		uint8_t left;
+		// Right button state
+		uint8_t right;
+	};
+	// Full memory for all button states
+	uint8_t m[8];
+} fgbControllerState;
+
+// Stores the registers and states of the joypad
+typedef struct {
+	// Controller state that was requested by the user
+	fgbControllerState requestedState;
+	// Current controller state
+	fgbControllerState currentState;
+	// Current joypad register
+	fgbJoypadRegister reg;
+	// Last joypad register
+	fgbJoypadRegister lastButtonStates;
+	// Flag indicating whether the states has been changed
+	bool isStateChanged;
+	// Padding to align to 8 bytes
+	uint8_t padding[5];
+} fgbJoypadState;
+
+// ****************************************************************************
+// > INTERRUPTS-API: Interrupts Registers
+// ****************************************************************************
 
 // Defines the interrupt Types
 typedef enum {
@@ -1984,6 +2394,34 @@ typedef union {
 FGB_STATIC_ASSERT(sizeof(fgbInterruptsFlags) == 1);
 
 #pragma pack(push, 1)
+// Stores the datas of the interrupt handler, containg the register, the IME flag and the ticks
+typedef struct {
+	// Anonymous struct holding the register the IME (Has no purpose)
+	struct {
+		// FF0F: Interrupt flags
+		fgbInterruptsFlags request;
+		// FFFF: Interrupt enable
+		fgbInterruptsFlags enable;
+		// IME: Interrupt master enable flag
+		bool isMasterEnabled;
+		// Padding to align to 4 bytes
+		bool padding4;
+	};
+	// Number of remaining instructions until IME is enabled (EI has 1-instruction delay: set to 2, decremented after each executed instruction in Normal state)
+	uint8_t ticksEnableIME;
+	// Number of remaining ticks that prevent certain interrupt types not be pending right away (e.g. VBlank)
+	uint8_t ticksRequestInterruptDelay;
+	// Padding to align to 8 bytes
+	uint8_t padding[2];
+} fgbInterrupts;
+#pragma pack(pop)
+FGB_STATIC_ASSERT(sizeof(fgbInterrupts) == 8);
+
+// ****************************************************************************
+// > SERIAL-API: Serial Transfer Registers
+// ****************************************************************************
+
+#pragma pack(push, 1)
 // Represents the serial data transfer registers (2 Bytes)
 typedef struct {
 	// Anonymous union storing either the bits for the SC register or the byte value
@@ -2001,6 +2439,28 @@ typedef struct {
 } fgbSerialTransferRegister;
 #pragma pack(pop)
 FGB_STATIC_ASSERT(sizeof(fgbSerialTransferRegister) == 2);
+
+// Represents the data for the serial data transfer
+typedef struct {
+	// Serial transfer register
+	fgbSerialTransferRegister reg;
+	// Align to 4 bytes
+	uint8_t padding[2];
+} fgbSerialState;
+
+// Represents the full state of the serial data transfer
+typedef struct {
+	// Current character buffer (~2 KB)
+	char data[2032];
+	// Number of characters
+	size_t count;
+	// Serial state
+	fgbSerialState state;
+} fgbSerial;
+
+// ****************************************************************************
+// > TIMER-API: Timer Registers
+// ****************************************************************************
 
 // Defines the timer clock types
 typedef enum {
@@ -2066,8 +2526,12 @@ typedef struct {
 #pragma pack(pop)
 FGB_STATIC_ASSERT(sizeof(fgbTimer) == 16); 
 
+// ****************************************************************************
+// > IO-API: IO Registers
+// ****************************************************************************
+
 #pragma pack(push, 1)
-// Represents the full IO register (128 bytes)
+// FF00-FFFF: Represents the full IO register (128 bytes, unused, just for display)
 typedef union {
 	// Full data
 	uint8_t m[128];
@@ -2081,25 +2545,34 @@ typedef union {
 		fgbInterruptsFlags interruptRequest;	// FF0F: Interrupt Flags (1 byte)
 		fgbSoundRegister sound;					// FF10-FF3F: Sound (24 bytes)
 		fgbLCDRegister lcd;						// FF40-FF4B: LCD register (12 bytes)
-		uint8_t unused_ff4c_ff4f[4];			// FF4C-FF4F: Unused (CGB???, 4 bytes)
+		uint8_t key0;							// FF4C: KEY0 (CGB, 1 byte)
+		uint8_t key1;							// FF4D: KEY1 speed switch (CGB, 1 byte)
+		uint8_t unused_ff4e;					// FF4E: Unused (1 byte)
+		uint8_t vbk;							// FF4F: VBK VRAM bank (CGB, 1 byte)
 		uint8_t bootFlag;						// FF50: Boot flag (1 byte)
-		uint8_t hdma1;							// FF51: HDMA-1 (CGB, 1 byte)
-		uint8_t hdma2;							// FF52: HDMA-2 (CGB, 1 byte)
-		uint8_t hdma3;							// FF53: HDMA-3 (CGB, 1 byte)
-		uint8_t hdma4;							// FF54: HDMA-4 (CGB, 1 byte)
-		uint8_t hdma5;							// FF55: HDMA-5 (CGB, 1 byte)
+		uint8_t hdma1;							// FF51: HDMA-1 source high (CGB, 1 byte)
+		uint8_t hdma2;							// FF52: HDMA-2 source low (CGB, 1 byte)
+		uint8_t hdma3;							// FF53: HDMA-3 dest high (CGB, 1 byte)
+		uint8_t hdma4;							// FF54: HDMA-4 dest low (CGB, 1 byte)
+		uint8_t hdma5;							// FF55: HDMA-5 length/mode/start (CGB, 1 byte)
 		uint8_t rp;								// FF56: RP (1 byte)
-		uint8_t unused_ff57_ff67[10];			// FF57-FF67: Unused (10 bytes)
-		uint8_t bcps;							// FF68: BCPS (CGB, 1 byte)
-		uint8_t bcpd;							// FF69: BCPD (CGB, 1 byte)
-		uint8_t ocps;							// FF6A: OCPS (CGB, 1 byte)
-		uint8_t ocpd;							// FF6B: OCPD (CGB, 1 byte)
-		uint8_t unused_ff6c_ff7f[26];			// FF6C-FF7F: Unused (26 bytes)
-		fgbInterruptsFlags interruptEnable;		// FFFF: Interrupt Enable (1 byte)
+		uint8_t unused_ff57_ff67[17];			// FF57-FF67: Unused (17 bytes)
+		uint8_t bcps;							// FF68: BCPS BG palette index (CGB, 1 byte)
+		uint8_t bcpd;							// FF69: BCPD BG palette data (CGB, 1 byte)
+		uint8_t ocps;							// FF6A: OCPS OBJ palette index (CGB, 1 byte)
+		uint8_t ocpd;							// FF6B: OCPD OBJ palette data (CGB, 1 byte)
+		uint8_t opri;							// FF6C: OPRI object priority mode (CGB, 1 byte)
+		uint8_t unused_ff6d_ff6f[3];			// FF6D-FF6F: Unused (3 bytes)
+		uint8_t svbk;							// FF70: SVBK WRAM bank (CGB, 1 byte)
+		uint8_t unused_ff71_ff7f[15];			// FF71-FF7F: Unused (15 bytes)
 	};
 } fgbIORegisters;
 #pragma pack(pop)
 FGB_STATIC_ASSERT(sizeof(fgbIORegisters) == 128);
+
+// ****************************************************************************
+// > CPU-API: CPU Registers
+// ****************************************************************************
 
 #pragma pack(push, 1)
 // Represents the CPU flags register
@@ -2557,30 +3030,6 @@ typedef enum {
 	fgbOperation_Last = fgbOperation_Execute,
 } fgbOperation;
 
-#pragma pack(push, 1)
-// Stores the datas of the interrupt handler, containg the register, the IME flag and the ticks
-typedef struct {
-	// Anonymous struct holding the register the IME (Has no purpose)
-	struct {
-		// FF0F: Interrupt flags
-		fgbInterruptsFlags request;
-		// FFFF: Interrupt enable
-		fgbInterruptsFlags enable;
-		// IME: Interrupt master enable flag
-		bool isMasterEnabled;
-		// Padding to align to 4 bytes
-		bool padding4;
-	};
-	// Number of remaining instructions until IME is enabled (EI has 1-instruction delay: set to 2, decremented after each executed instruction in Normal state)
-	uint8_t ticksEnableIME;
-	// Number of remaining ticks that prevent certain interrupt types not be pending right away (e.g. VBlank)
-	uint8_t ticksRequestInterruptDelay;
-	// Padding to align to 8 bytes
-	uint8_t padding[2];
-} fgbInterrupts;
-#pragma pack(pop)
-FGB_STATIC_ASSERT(sizeof(fgbInterrupts) == 8);
-
 #pragma pack(push, 4)
 // Represents the data register, that stores the value, offset and addresses
 typedef struct {
@@ -2627,8 +3076,12 @@ typedef struct {
 	bool isPrefixInstruction;
 	// This is set to true, when any jump instruction was setting the PC
 	bool wasBranchTaken;
+	// Set by side effects that block the CPU for an unbounded number of cycles
+	// (CGB speed switch via STOP, blocking GDMA via HDMA5). When true, the
+	// post-execute cycle accounting check is skipped.
+	bool hadBlockingSideEffect;
 	// Padding to align to 64 bytes
-	uint8_t padding[3];
+	uint8_t padding[2];
 } fgbInstructionRegister;
 #pragma pack(pop)
 FGB_STATIC_ASSERT(sizeof(fgbInstructionRegister) == 64);
@@ -2682,6 +3135,10 @@ typedef struct {
 } fgbCPU;
 #pragma pack(pop)
 FGB_STATIC_ASSERT(sizeof(fgbCPU) == 128);
+
+// ****************************************************************************
+// > PPU-API: Picture Processing Unit
+// ****************************************************************************
 
 #pragma pack(push, 1)
 // Represents the OAM Entry (4-Byte)
@@ -2806,23 +3263,6 @@ typedef enum {
 	fgbColorIndex_Three = FGB_COLOR_INDEX_3
 } fgbColorIndex;
 
-#pragma pack(push, 1)
-// Represents a single 24-bit color
-typedef union {
-	// Full memory (3 bytes)
-	uint8_t m[3];
-	// Anonymous struct that holds the RGB values
-	struct {
-		// Red component (1 byte, Little endian)
-		uint8_t r;
-		// Green component (1 byte, Little endian)
-		uint8_t g;
-		// Blue component (1 byte, Little endian)
-		uint8_t b;
-	};
-} fgbColor;
-#pragma pack(pop)
-
 // Represents the colors the maps from the palette for BG, OBJ0, OBJ1 and the system
 typedef union {
 	// All 16 colors
@@ -2839,64 +3279,6 @@ typedef union {
 		fgbColor system[4];
 	};
 } fgbMonochromeColors;
-
-// Color palette for DMG (https://i.pinimg.com/originals/05/ad/bc/05adbc3f01b2b7015562ba22a60ac375.jpg)
-#define FGB_DMG_COLOR_OFF {202, 220, 159}
-#define FGB_DMG_COLOR_ON {130, 153, 30}
-#define FGB_DMG_COLOR_00 {206, 226, 113}
-#define FGB_DMG_COLOR_01 {125, 153, 13}
-#define FGB_DMG_COLOR_10 {48, 98, 48}
-#define FGB_DMG_COLOR_11 {15, 56, 15}
-
-// Color palette for MGB (https://www.color-hex.com/color-palette/45300) 
-#define FGB_MGB_COLOR_OFF {0, 0, 0}
-#define FGB_MGB_COLOR_ON {200, 200, 200}
-#define FGB_MGB_COLOR_00 {230, 230, 230}
-#define FGB_MGB_COLOR_01 {159, 159, 159}
-#define FGB_MGB_COLOR_10 {84, 84, 84}
-#define FGB_MGB_COLOR_11 {0, 0, 0}
-
-// SGB Color Palette (Row 2)
-// https://en.wikipedia.org/wiki/List_of_video_game_console_palettes
-
-#define FGB_SGB_COLOR_OFF {230, 0, 0}
-#define FGB_SGB_COLOR_ON {255, 133, 132}
-
-#define FGB_SGB_OBJ0_COLOR_00 {190, 255, 153}
-#define FGB_SGB_OBJ0_COLOR_01 {86, 178, 33}
-#define FGB_SGB_OBJ0_COLOR_10 {0, 131, 0}
-#define FGB_SGB_OBJ0_COLOR_11 {0, 0, 0}
-
-#define FGB_SGB_OBJ1_COLOR_00 {158, 255, 240}
-#define FGB_SGB_OBJ1_COLOR_01 {101, 164, 155}
-#define FGB_SGB_OBJ1_COLOR_10 {0, 0, 254}
-#define FGB_SGB_OBJ1_COLOR_11 {0, 0, 0}
-
-#define FGB_SGB_BG_COLOR_00 {255, 211, 211}
-#define FGB_SGB_BG_COLOR_01 {255, 133, 132}
-#define FGB_SGB_BG_COLOR_10 {148, 58, 58}
-#define FGB_SGB_BG_COLOR_11 {0, 0, 0}
-
-static fgbMonochromeColors FGB_DEFAULT_DMG_COLORS = {
-	.background = {FGB_DMG_COLOR_00, FGB_DMG_COLOR_01, FGB_DMG_COLOR_10, FGB_DMG_COLOR_11},
-	.sprite0 = {FGB_DMG_COLOR_00, FGB_DMG_COLOR_01, FGB_DMG_COLOR_10, FGB_DMG_COLOR_11},
-	.sprite1 = {FGB_DMG_COLOR_00, FGB_DMG_COLOR_01, FGB_DMG_COLOR_10, FGB_DMG_COLOR_11},
-	.system = {FGB_DMG_COLOR_OFF, FGB_DMG_COLOR_ON},
-};
-
-static fgbMonochromeColors FGB_DEFAULT_MGB_COLORS = {
-	.background = {FGB_MGB_COLOR_00, FGB_MGB_COLOR_01, FGB_MGB_COLOR_10, FGB_MGB_COLOR_11},
-	.sprite0 = {FGB_MGB_COLOR_00, FGB_MGB_COLOR_01, FGB_MGB_COLOR_10, FGB_MGB_COLOR_11},
-	.sprite1 = {FGB_MGB_COLOR_00, FGB_MGB_COLOR_01, FGB_MGB_COLOR_10, FGB_MGB_COLOR_11},
-	.system = {FGB_MGB_COLOR_OFF, FGB_MGB_COLOR_ON},
-};
-
-static fgbMonochromeColors FGB_DEFAULT_SGB_COLORS = {
-	.background = {FGB_SGB_BG_COLOR_00, FGB_SGB_BG_COLOR_01, FGB_SGB_BG_COLOR_10, FGB_SGB_BG_COLOR_11},
-	.sprite0 = {FGB_SGB_OBJ0_COLOR_00, FGB_SGB_OBJ0_COLOR_01, FGB_SGB_OBJ0_COLOR_10, FGB_SGB_OBJ0_COLOR_11},
-	.sprite1 = {FGB_SGB_OBJ1_COLOR_00, FGB_SGB_OBJ1_COLOR_01, FGB_SGB_OBJ1_COLOR_10, FGB_SGB_OBJ1_COLOR_11},
-	.system = {FGB_SGB_COLOR_OFF, FGB_SGB_COLOR_ON},
-};
 
 typedef union {
 	uint8_t m[4 * 4 * 3];
@@ -3013,17 +3395,21 @@ typedef union {
 FGB_STATIC_ASSERT(sizeof(fgbVRAMBank) == FGB_VRAM_BANK_SIZE);
 
 // The total VRAM size (8 KB on DMG, 16 KB on CGB)
-#define FGB_VRAM_TOTAL_SIZE FGB_VRAM_BANK_SIZE
+#define FGB_VRAM_TOTAL_SIZE FGB_VRAM_BANK_SIZE * 2
 
 #pragma pack(push, 1)
-// Represents the entire video ram (8 KB)
+// Represents the entire video ram (2*8 KB)
 typedef union {
-	// Full VRAM: 0x8000 - 0x9FFF
+	// Full VRAM: 0x8000 - 0x9FFF (16 KB, mapping is 8 KB)
 	uint8_t m[FGB_VRAM_TOTAL_SIZE];
+	// Two VRAM Banks
+	fgbVRAMBank banks[2];
 	// Anonymous struct that holds all banks
 	struct {
 		// The first 8 KB of Video RAM (Bank 0)
 		fgbVRAMBank bank0;
+		// The second 8 KB of Video RAM (Bank 1)
+		fgbVRAMBank bank1;
 	};
 } fgbVRAM;
 #pragma pack(pop)
@@ -3064,8 +3450,10 @@ typedef struct {
 	uint8_t type; // fgbPixelType
 	// Has sprites higher priority over background (Inverse of background priority)
 	bool spritePriority;
-	// Padding to align to 8 bytes
-	uint8_t padding[2];
+	// CGB: palette index 0..7 (BG attr bits 0-2 or OAM attr bits 0-2); ignored on DMG
+	uint8_t cgbPalette;
+	// CGB: BG-tile attribute bit 7 — when set, BG covers sprites regardless of OAM backgroundPriority (ignored on DMG)
+	bool cgbBgPriority;
 } fgbPixel;
 
 // Max number of pixels in the FIFO queue
@@ -3149,8 +3537,10 @@ typedef struct {
 	uint8_t tileID;
 	// Current X position for the next pixels to fetch (Range 0-159).
 	uint8_t currentX;
+	// CGB: BG/Window tile attribute byte from VRAM bank 1 for the tile being fetched (unused on DMG).
+	uint8_t cgbBGAttr;
 	// Padding to align to 32 bytes.
-	uint8_t padding[5];
+	uint8_t padding[4];
 } fgbPPUFetchRegister;
 
 // Stores everything required for the PPU pipeline, such as sprites, pixel-FIFO, fetch-register, positions, etc.
@@ -3282,6 +3672,10 @@ typedef struct {
 	fgbDMA dma;
 } fgbPPU;
 
+// ****************************************************************************
+// > LOG-API
+// ****************************************************************************
+
 // Defines the log levels
 typedef enum {
 	// Fatal failure, emulation can't continue
@@ -3325,6 +3719,10 @@ typedef struct {
 	bool isEnabled;
 } fgbLog;
 
+// ****************************************************************************
+// > BOOT-API
+// ****************************************************************************
+
 // Minimum boot rom size (256 Bytes)
 #define FGB_BOOT_MIN_ROM_SIZE 0x100
 // Maximum boot rom size (4 KB)
@@ -3341,6 +3739,28 @@ typedef struct {
 	// Padding to align to 8 bytes
 	uint8_t padding[7];
 } fgbBootROM;
+
+// Stores the boot register and its state
+typedef struct {
+	// Boot register
+	uint8_t reg;
+	// Is boot rom active
+	bool isActive;
+	// Padding to align to 4 bytes
+	uint8_t padding[2];
+} fgbBootState;
+
+// Represents the boot rom and state
+typedef struct {
+	// Full boot rom
+	fgbBootROM rom;
+	// Boot state
+	fgbBootState state;
+} fgbBoot;
+
+// ****************************************************************************
+// > CONFIG-API
+// ****************************************************************************
 
 // Contains the folder path strings for serialization
 typedef struct {
@@ -3493,11 +3913,15 @@ typedef struct {
 	bool paused;
 } fgbConfiguration;
 
+// ****************************************************************************
+// > RAM-API
+// ****************************************************************************
+
 // The size for each Work RAM Bank (4 KB)
 #define FGB_WORK_RAM_BANK_SIZE 0x1000
 
-// The total number of Work RAM banks
-#define FGB_WORK_RAM_BANK_COUNT 2
+// The total number of Work RAM banks (2 on DMG, 8 on CGB)
+#define FGB_WORK_RAM_BANK_COUNT 8
 
 // The total size of Work RAM
 #define FGB_WORK_RAM_TOTAL_SIZE FGB_WORK_RAM_BANK_SIZE * FGB_WORK_RAM_BANK_COUNT
@@ -3537,23 +3961,9 @@ typedef struct {
 	fgbHighRAM high;
 } fgbRAM;
 
-// Represents the data for the serial data transfer
-typedef struct {
-	// Serial transfer register
-	fgbSerialTransferRegister reg;
-	// Align to 4 bytes
-	uint8_t padding[2];
-} fgbSerialState;
-
-// Represents the full state of the serial data transfer
-typedef struct {
-	// Current character buffer (~2 KB)
-	char data[2032];
-	// Number of characters
-	size_t count;
-	// Serial state
-	fgbSerialState state;
-} fgbSerial;
+// ****************************************************************************
+// > ERROR-API
+// ****************************************************************************
 
 // Defines the error types
 typedef enum {
@@ -3563,6 +3973,8 @@ typedef enum {
 	fgbErrorType_InfiniteLoop,
 	// Instruction execution failed
 	fgbErrorType_ExecutionError,
+	// Power failed
+	fgbErrorType_PowerFailure,
 } fgbErrorType;
 
 // Stores the current error message and its type
@@ -3573,94 +3985,9 @@ typedef struct {
 	fgbErrorType type;
 } fgbError;
 
-// Stores the boot register and its state
-typedef struct {
-	// Boot register
-	uint8_t reg;
-	// Is boot rom active
-	bool isActive;
-	// Padding to align to 4 bytes
-	uint8_t padding[2];
-} fgbBootState;
-
-// Represents the boot rom and state
-typedef struct {
-	// Full boot rom
-	fgbBootROM rom;
-	// Boot state
-	fgbBootState state;
-} fgbBoot;
-
-// Defines the button states
-typedef enum {
-	// Button is released
-	fgbButtonState_Released = 0,
-	// Button is pressed
-	fgbButtonState_Pressed = 1,
-	// Button is holding down
-	fgbButtonState_Hold = 2,
-} fgbButtonState;
-
-// Defines the button types
-typedef enum {
-	// Start button
-	fgbButtonType_Start = 0,
-	// Select button
-	fgbButtonType_Select,
-	// A button
-	fgbButtonType_A,
-	// B button
-	fgbButtonType_B,
-	// Up button
-	fgbButtonType_Up,
-	// Down button
-	fgbButtonType_Down,
-	// Left button
-	fgbButtonType_Left,
-	// Right button
-	fgbButtonType_Right,
-} fgbButtonType;
-
-// Represents the state of a controller
-typedef union {
-	// Anonymous struct holding all button states
-	struct {
-		// Start button state
-		uint8_t start;
-		// Select button state
-		uint8_t select;
-		// A button state
-		uint8_t a;
-		// B button state
-		uint8_t b;
-		// Up button state
-		uint8_t up;
-		// Down button state
-		uint8_t down;
-		// Left button state
-		uint8_t left;
-		// Right button state
-		uint8_t right;
-	};
-	// Full memory for all button states
-	uint8_t m[8];
-} fgbControllerState;
-
-// Stores the registers and states of the joypad
-typedef struct {
-	// Controller state that was requested by the user
-	fgbControllerState requestedState;
-	// Current controller state
-	fgbControllerState currentState;
-	// Current joypad register
-	fgbJoypadRegister reg;
-	// Last joypad register
-	fgbJoypadRegister lastButtonStates;
-	// Flag indicating whether the states has been changed
-	bool isStateChanged;
-	// Padding to align to 8 bytes
-	uint8_t padding[5];
-} fgbJoypadState;
+// ****************************************************************************
+// > SYSTEM-API
+// ****************************************************************************
 
 // Defines the states that are followed after a reset
 typedef enum {
@@ -3688,8 +4015,6 @@ typedef struct fgbSystem {
 	fgbSerial serial;
 	// Current error state
 	fgbError error;
-	// Current IO Registers
-	fgbIORegisters io;
 	// Current CPU state
 	fgbCPU cpu;
 	// Active callbacks configuration
@@ -3716,72 +4041,9 @@ typedef struct fgbSystem {
 	fgbCoreType coreType;
 	// Current reset state, that is applied after a reset
 	fgbResetState resetState;
+	// Current CGB state
+	fgbCGBState cgbState;
 } fgbSystem;
-
-// Defines the test result types
-typedef enum {
-	// Test was successful
-	fgbTestResultType_Success = 0,
-	// Test failed due to invalid argument
-	fgbTestResultType_InvalidArguments,
-	// Test failed due to invalid game pak
-	fgbTestResultType_InvalidGamePak,
-	// Test failed due to out-of-memory
-	fgbTestResultType_OutOfMemory,
-	// Test failed due to emulation failure
-	fgbTestResultType_EmulationFailed,
-	// Test failed while processing test
-	fgbTestResultType_FailedProcessingTest,
-	// Test not passed
-	fgbTestResultType_NotPassed,
-} fgbTestResultType;
-
-// Defines the data for a test result
-typedef struct {
-	// The output text
-	char output[4096];
-	// Number of ticks the test took (Filled out by FGB)
-	uint64_t tickCycles;
-	// Number of frames that was processed
-	uint64_t frameCount;
-	// Number of CPU tick cycles the test took (Filled out by FGB)
-	fgbTickCycles cpuCycles;
-	// The length of the output text
-	size_t outputLen;
-	// First result code, if there is one
-	uint8_t codeA;
-	// Second result code, if there is one
-	uint8_t codeB;
-	// If true, the test was finished, regardless of the result
-	bool finished;
-	// The test succeeded
-	bool success;
-	// User data pointer
-	void *userData;
-} fgbTestResultData;
-
-// Function prototype for a test validation check
-#define FGB_TEST_VALIDATE_FUNC(name) bool name(fgbSystem *system, fgbTestResultData *data)
-
-/**
-  * @brief Callback for a test validation check
-  * @param system The reference to the opaque system
-  * @param data The reference to the test result data
-  * @return Returns a boolean indicating whether the test run was successful or not
-  */
-typedef FGB_TEST_VALIDATE_FUNC(fgbTestValidateFunc);
-
-// Function prototype for a test frame update
-#define FGB_TEST_FRAME_UPDATE_FUNC(name) bool name(fgbSystem *system, const uint64_t frameIndex, fgbTestResultData *data)
-
-/**
-  * @brief Callback for a test frame update
-  * @param system The reference to the opaque system
-  * @param frameIndex The frame index
-  * @param data The reference to the test result data
-  * @return Returns a boolean indicating whether the test run was successful or not
-  */
-typedef FGB_TEST_FRAME_UPDATE_FUNC(fgbTestFrameUpdateFunc);
 
 // Defines the initialization result types
 typedef enum {
@@ -3793,10 +4055,14 @@ typedef enum {
 	fgbInitResult_InvalidGamePak,
 	// Initialization failed due to a missing boot rom
 	fgbInitResult_MissingBootROM,
+	// Initialization failed due to a invalid boot rom
+	fgbInitResult_InvalidBootROM,
 	// Initialization failed due to a missing game pak
 	fgbInitResult_MissingGamePak,
 	// Initialization failed due to failure in the core test
 	fgbInitResult_CoreTestFailed,
+	// Initialization failed due to an initialization error
+	fgbInitResult_InitializationFailed,
 } fgbInitResult;
 
 /**
@@ -3894,6 +4160,75 @@ FGB_API const char *fgbGetAddressingModeName(const fgbAddressingMode mode);
   */
 FGB_API const char *fgbGetRegisterName(const fgbRegisterType reg);
 
+// ****************************************************************************
+// > TEST-API
+// ****************************************************************************
+
+// Defines the test result types
+typedef enum {
+	// Test was successful
+	fgbTestResultType_Success = 0,
+	// Test failed due to invalid argument
+	fgbTestResultType_InvalidArguments,
+	// Test failed due to invalid game pak
+	fgbTestResultType_InvalidGamePak,
+	// Test failed due to out-of-memory
+	fgbTestResultType_OutOfMemory,
+	// Test failed due to emulation failure
+	fgbTestResultType_EmulationFailed,
+	// Test failed while processing test
+	fgbTestResultType_FailedProcessingTest,
+	// Test not passed
+	fgbTestResultType_NotPassed,
+} fgbTestResultType;
+
+// Defines the data for a test result
+typedef struct {
+	// The output text
+	char output[4096];
+	// Number of ticks the test took (Filled out by FGB)
+	uint64_t tickCycles;
+	// Number of frames that was processed
+	uint64_t frameCount;
+	// Number of CPU tick cycles the test took (Filled out by FGB)
+	fgbTickCycles cpuCycles;
+	// The length of the output text
+	size_t outputLen;
+	// First result code, if there is one
+	uint8_t codeA;
+	// Second result code, if there is one
+	uint8_t codeB;
+	// If true, the test was finished, regardless of the result
+	bool finished;
+	// The test succeeded
+	bool success;
+	// User data pointer
+	void *userData;
+} fgbTestResultData;
+
+// Function prototype for a test validation check
+#define FGB_TEST_VALIDATE_FUNC(name) bool name(fgbSystem *system, fgbTestResultData *data)
+
+/**
+  * @brief Callback for a test validation check
+  * @param system The reference to the opaque system
+  * @param data The reference to the test result data
+  * @return Returns a boolean indicating whether the test run was successful or not
+  */
+typedef FGB_TEST_VALIDATE_FUNC(fgbTestValidateFunc);
+
+// Function prototype for a test frame update
+#define FGB_TEST_FRAME_UPDATE_FUNC(name) bool name(fgbSystem *system, const uint64_t frameIndex, fgbTestResultData *data)
+
+/**
+  * @brief Callback for a test frame update
+  * @param system The reference to the opaque system
+  * @param frameIndex The frame index
+  * @param data The reference to the test result data
+  * @return Returns a boolean indicating whether the test run was successful or not
+  */
+typedef FGB_TEST_FRAME_UPDATE_FUNC(fgbTestFrameUpdateFunc);
+
 typedef enum {
 	// Runs the test calling fgbTick() until the test completes/fails or the emulator fails
 	fgbRunTestMode_Ticks = 0,
@@ -3915,6 +4250,10 @@ typedef enum {
   * @return Returns the test result type
   */
 FGB_API fgbTestResultType fgbRunTest(const fgbCallbacks *callbacks, const fgbGamePak *gamePak, const fgbRunTestMode mode, const uint64_t maxTickCount, fgbTestValidateFunc *validateFunc, fgbTestFrameUpdateFunc *frameUpdateFunc, fgbTestResultData *data);
+
+// ****************************************************************************
+// > DEBUG-API
+// ****************************************************************************
 
 /**
   * @brief Decodes a single instruction from the specified ROM memory and position to the output instruction structure
@@ -3956,6 +4295,7 @@ FGB_API void fgbBusWrite8(fgbSystem *system, const uint16_t address, const uint8
   * @return Returns true when the breakpoints are enabled for the specified type, false otherwise
   */
 FGB_API bool fgbIsBreakpointEnabled(fgbSystem *system, const fgbBreakpointType type);
+
 /**
   * @brief Enables or disables a breakpoint by the specified type
   * @param system The reference to the @ref fgbSystem
@@ -3963,6 +4303,7 @@ FGB_API bool fgbIsBreakpointEnabled(fgbSystem *system, const fgbBreakpointType t
   * @param enable A value indicating whether it should enable or disable the breakpoint
   */
 FGB_API void fgbBreakpointEnable(fgbSystem *system, const fgbBreakpointType type, const bool enable);
+
 /**
   * @brief Gets the label of the specified breakpoint type
   * @param type The breakpoint type
@@ -3977,6 +4318,10 @@ FGB_API const char *fgbGetBreakpointTypeLabel(const fgbBreakpointType type);
   */
 FGB_API uint16_t fgbGetROMBank(const fgbSystem *system);
 
+// ****************************************************************************
+// > JOYPAD-API
+// ****************************************************************************
+
 /**
   * @brief Clears the states of all joypad buttons
   * @param system The reference to the @ref fgbSystem
@@ -3989,6 +4334,35 @@ FGB_API void fgbClearButtons(fgbSystem *system);
   * @param isDown A value indicating whether the button is pressed or not
   */
 FGB_API void fgbSetButtonState(fgbSystem *system, const fgbButtonType button, const bool isDown);
+
+// ****************************************************************************
+// > PPU-API
+// ****************************************************************************
+
+// Defines the built-in monochrome palette types
+typedef enum {
+	// DMG Monochrome Palette
+	fgbMonochromePaletteType_DMG = 0,
+	// MGB Monochrome Palette
+	fgbMonochromePaletteType_MGB = 1,
+	// SGB Monochrome Palette
+	fgbMonochromePaletteType_SGB = 2,
+	// Test Monochrome Palette
+	fgbMonochromePaletteType_Test = 3,
+
+	// First Monochrome Palette Type
+	fgbMonochromePaletteType_First = fgbMonochromePaletteType_DMG,
+	// Last Monochrome Palette Type
+	fgbMonochromePaletteType_Last = fgbMonochromePaletteType_Test,
+} fgbMonochromePaletteType;
+
+/**
+  * @brief Get current monochrome color palette
+  * @param type The monochrome palette type
+  * @param colors The reference to the output monochrome color palette
+  * @return Returns true when the color palette is written, false otherwise
+  */
+FGB_API bool fgbGetMonochromeColors(const fgbMonochromePaletteType type, fgbMonochromeColors* colors);
 
 /**
   * @brief Sets the current monochrome color palette
@@ -4011,7 +4385,7 @@ FGB_API bool fgbIsFrameUpdated(const fgbSystem *system);
 FGB_API bool fgbIsVRAMUpdated(const fgbSystem *system);
 
 // ****************************************************************************
-// APU API
+// > APU-API
 // ****************************************************************************
 
 /**
@@ -4111,9 +4485,7 @@ FGB_API void fgbSetAudioVoiceMute(fgbSystem *system, const fgbVoiceType type, co
 FGB_API bool fgbIsAudioPowered(const fgbSystem *system);
 
 // ****************************************************************************
-//
-// Snapshots API
-//
+// > Snapshots-API
 // ****************************************************************************
 
 // Defines the allowed snapshot versions
@@ -4121,16 +4493,18 @@ typedef enum {
 	// No version
 	fgbSnapshotVersion_None = 0,
 
-	// Initial version (1.0)
-	fgbSnapshotVersion_Initial,
+	// DMG version (1.0)
+	fgbSnapshotVersion_DMG,
+	// CGB Support
+	fgbSnapshotVersion_CGB,
 
 	// Current version
-	fgbSnapshotVersion_Current = fgbSnapshotVersion_Initial,
+	fgbSnapshotVersion_Current = fgbSnapshotVersion_CGB,
 
 	// First version
-	fgbSnapshotVersion_First = fgbSnapshotVersion_Initial,
+	fgbSnapshotVersion_First = fgbSnapshotVersion_DMG,
 	// Last version
-	fgbSnapshotVersion_Last = fgbSnapshotVersion_Initial,
+	fgbSnapshotVersion_Last = fgbSnapshotVersion_CGB,
 } fgbSnapshotVersion;
 
 // Represents a full snapshot of the emulator
@@ -4145,8 +4519,8 @@ typedef struct {
 	fgbRAM internalRam;
 	// Serial transfer state
 	fgbSerial serial;
-	// IO Registers
-	fgbIORegisters io;
+	// CGB state
+	fgbCGBState cgbState;
 	// CPU
 	fgbCPU cpu;
 	// Game Pak Info
@@ -4828,6 +5202,26 @@ FGB_API const char *fgbGetBreakpointTypeLabel(const fgbBreakpointType type) {
 #define FGB__BUS_ADDRESS_PPU_LCD_REGISTER_FROM 0xFF40
 #define FGB__BUS_ADDRESS_PPU_LCD_REGISTER_TO 0xFF4B
 
+// FF4D: KEY1 Register (CGB)
+#define FGB__BUS_ADDRESS_IO_KEY1_REG 0xFF4D
+// FF4F: VBK Register (CGB)
+#define FGB__BUS_ADDRESS_IO_VBK_REG 0xFF4F
+// FF51 - FF55: HDMA Registers (CGB)
+#define FGB__BUS_ADDRESS_HDMA_FROM 0xFF51
+#define FGB__BUS_ADDRESS_HDMA_TO 0xFF55
+// FF68: BCPS Register (CGB)
+#define FGB__BUS_ADDRESS_IO_BCPS_REG 0xFF68
+// FF69: BCPD Register (CGB)
+#define FGB__BUS_ADDRESS_IO_BCPD_REG 0xFF69
+// FF6A: OCPS Register (CGB)
+#define FGB__BUS_ADDRESS_IO_OCPS_REG 0xFF6A
+// FF6B: OCPD Register (CGB)
+#define FGB__BUS_ADDRESS_IO_OCPD_REG 0xFF6B
+// FF6C: OPRI Register (CGB)
+#define FGB__BUS_ADDRESS_IO_OPRI_REG 0xFF6C
+// FF70: SVBK Register (CGB)
+#define FGB__BUS_ADDRESS_IO_SVBK_REG 0xFF70
+
 // FF4C - FF7F: End of IO-Registers
 #define FGB__BUS_ADDRESS_IO_REGISTERS_TO 0xFF7F
 
@@ -4865,17 +5259,23 @@ static bool fgb__ExternalRAMSave(fgbSystem *system, const fgbGamePak *outGamePak
 	const fgbCallbacks *cb = &system->callbacks;
 
 	if (!fgb__BuildFilePath(cb, outGamePak->filePath, system->directories.externalRAMFolderPath, fgbFileType_ExternalRAM, fgb__ExternalRAMFilePathBuffer, sizeof(fgb__ExternalRAMFilePathBuffer), 0)) {
+		FGB__WARN(system, fgb__KindName_MBC, "External RAM save skipped: BuildFilePath failed for rom '%s' (folder='%s')", outGamePak->filePath, system->directories.externalRAMFolderPath);
 		return false;
 	}
 
 	const char *filePath = fgb__ExternalRAMFilePathBuffer;
-	if (FGB_STRLEN(filePath) == 0)
+	if (FGB_STRLEN(filePath) == 0) {
+		FGB__WARN(system, fgb__KindName_MBC, "External RAM save skipped: resolved file path is empty");
 		return false;
+	}
 
 	fgbFileHandle fileHandle;
 	if (!fgb__FileCreate(cb, filePath, &fileHandle)) {
-        return false;
+		FGB__WARN(system, fgb__KindName_MBC, "External RAM save FAILED: could not create file '%s'", filePath);
+		return false;
     }
+
+	FGB__INFO(system, fgb__KindName_MBC, "External RAM save: writing %zu bytes to '%s' (bankCount=%u, mbc=%u)", outGamePak->ram.memory.length, filePath, (uint32_t)outGamePak->info.ramBankCount, (uint32_t)outGamePak->info.mbcType);
 
     fgbExternalRAMStateHeader header = { 0 };
     header.magic = FGB_EXTERNAL_RAMSTATE_MAGIC_KEY;
@@ -4918,12 +5318,15 @@ static bool fgb__ExternalRAMLoad(fgbSystem *system, fgbGamePak *outGamePak) {
 	const fgbCallbacks *cb = &system->callbacks;
 
 	if (!fgb__BuildFilePath(cb, outGamePak->filePath, system->directories.externalRAMFolderPath, fgbFileType_ExternalRAM, fgb__ExternalRAMFilePathBuffer, sizeof(fgb__ExternalRAMFilePathBuffer), 0)) {
+		FGB__WARN(system, fgb__KindName_MBC, "External RAM load skipped: BuildFilePath failed for rom '%s' (folder='%s')", outGamePak->filePath, system->directories.externalRAMFolderPath);
 		return false;
 	}
 
 	const char *filePath = fgb__ExternalRAMFilePathBuffer;
-	if (FGB_STRLEN(filePath) == 0)
+	if (FGB_STRLEN(filePath) == 0) {
+		FGB__WARN(system, fgb__KindName_MBC, "External RAM load skipped: resolved file path is empty");
 		return false;
+	}
 
 	bool result = false;
 
@@ -4932,6 +5335,7 @@ static bool fgb__ExternalRAMLoad(fgbSystem *system, fgbGamePak *outGamePak) {
 	fgbFileHandle fileHandle;
 
 	if (!fgb__FileOpen(cb, filePath, &fileHandle)) {
+		FGB__INFO(system, fgb__KindName_MBC, "External RAM load: file '%s' not present (first launch for this rom)", filePath);
 		return false;
 	}
 
@@ -4939,29 +5343,35 @@ static bool fgb__ExternalRAMLoad(fgbSystem *system, fgbGamePak *outGamePak) {
 
 	size_t read = fgb__FileRead(cb, fileHandle, &header, sizeof(header), sizeof(header));
 	if (read != sizeof(header)) {
+		FGB__WARN(system, fgb__KindName_MBC, "External RAM load FAILED: header read returned %zu bytes, expected %zu (file '%s')", read, sizeof(header), filePath);
 		goto done;
 	}
 
 	if (header.magic != FGB_EXTERNAL_RAMSTATE_MAGIC_KEY || header.version < fgbExternalRAMStateVersion_First || header.version > fgbExternalRAMStateVersion_Latest) {
+		FGB__WARN(system, fgb__KindName_MBC, "External RAM load FAILED: header invalid (magic=0x%08X expected 0x%08X, version=%u, range=[%u..%u]) (file '%s')", (uint32_t)header.magic, (uint32_t)FGB_EXTERNAL_RAMSTATE_MAGIC_KEY, (uint32_t)header.version, (uint32_t)fgbExternalRAMStateVersion_First, (uint32_t)fgbExternalRAMStateVersion_Latest, filePath);
 		goto done;
 	}
 
 	if (header.bankCount != outGamePak->info.ramBankCount) {
+		FGB__WARN(system, fgb__KindName_MBC, "External RAM load FAILED: bankCount mismatch (file=%u, gamepak=%u) (file '%s')", (uint32_t)header.bankCount, (uint32_t)outGamePak->info.ramBankCount, filePath);
 		goto done;
 	}
 
 	uint32_t ramSize = header.bankCount * FGB_RAM_SIZE_PER_BANK;
 
 	if (ramSize < FGB_MIN_EXTERNAL_RAM_SIZE || ramSize > FGB_MAX_EXTERNAL_RAM_SIZE) {
+		FGB__WARN(system, fgb__KindName_MBC, "External RAM load FAILED: ramSize %u out of range [%u..%u] (file '%s')", ramSize, (uint32_t)FGB_MIN_EXTERNAL_RAM_SIZE, (uint32_t)FGB_MAX_EXTERNAL_RAM_SIZE, filePath);
 		goto done;
 	}
 
 	if (ramSize != outGamePak->ram.memory.length) {
+		FGB__WARN(system, fgb__KindName_MBC, "External RAM load FAILED: size mismatch (header=%u, buffer=%zu) (file '%s')", ramSize, outGamePak->ram.memory.length, filePath);
 		goto done;
 	}
 
 	read = fgb__FileRead(cb, fileHandle, outGamePak->ram.memory.data, outGamePak->ram.memory.length, outGamePak->ram.memory.length);
 	if (read != outGamePak->ram.memory.length) {
+		FGB__WARN(system, fgb__KindName_MBC, "External RAM load FAILED: body read returned %zu bytes, expected %zu (file '%s')", read, outGamePak->ram.memory.length, filePath);
 		goto done;
 	}
 
@@ -4992,6 +5402,7 @@ static bool fgb__ExternalRAMLoad(fgbSystem *system, fgbGamePak *outGamePak) {
 	}
 
 	result = true;
+	FGB__INFO(system, fgb__KindName_MBC, "External RAM load: restored %zu bytes from '%s'", outGamePak->ram.memory.length, filePath);
 
 done:
 	fgb__FileClose(cb, fileHandle);
@@ -5375,6 +5786,10 @@ static fgbGamePakLoadResultType fgb__GamePakLoad(const uint8_t *data, const size
 	}
 	if (size < FGB_MIN_GAMEPAK_SIZE) {
 		return fgbGamePakLoadResultType_NotEnoughData;
+	}
+
+	if (size > FGB_MAX_GAMEPAK_SIZE) {
+		return fgbGamePakLoadResultType_TooLargeData;
 	}
 
 	// Not allowed to pass the gamepak ROM as data
@@ -6111,8 +6526,336 @@ FGB_API uint16_t fgbGetROMBank(const fgbSystem *system) {
 }
 
 // ********************************************************************************************************************
+//
+// > CGB-IMPL: CGB Specifics Implementation
+//
+// ********************************************************************************************************************
+
+// CGB-IMPL: gate used throughout — DMG short-circuits all CGB paths
+static inline bool fgb__CGBIsActive(const fgbSystem *system) {
+	return system->coreType == fgbCoreType_CGB || system->coreType == fgbCoreType_CGB_DMG;
+}
+
+// Forward-declared here so HDMA helpers below can size their cycle cost. Definition lives near fgb__HWTick4.
+static inline bool fgb__CGBDoubleSpeed(const fgbSystem *system);
+// Forward-declared so the HDMA VRAM writer can resolve the active VBK bank.
+static inline uint8_t fgb__CGBVRAMBankIndex(const fgbSystem *system);
+
+// Setups the CPU registers for CGB in DMG mode
+static void fgb__CGBSetupForDMG(fgbCPURegisters *regs, fgbCGBState *cgb) {
+	regs->af = 0x1180; // A = 0x11, F = 0x80 (Z = 1, all other bits are 0)
+	regs->bc = 0x4300; // B = 0x43 or 0x58?
+	regs->de = 0x0008;
+	regs->hl = 0x007C;
+
+	regs->pc = 0x100;
+	regs->sp = 0xfffe;
+}
+
+// Setups the CPU registers for CGB
+static void fgb__CGBSetupForCGB(fgbCPURegisters *regs, fgbCGBState *cgb) {
+	regs->af = 0x1180; // A = 0x11, F = 0x80 (Z = 1, all other bits are 0)
+	regs->bc = 0x0000;
+	regs->de = 0xFF56;
+	regs->hl = 0x000D;
+
+	regs->pc = 0x100;
+	regs->sp = 0xfffe;
+}
+
+static uint8_t fgb__CGBReadKEY1(fgbSystem *system) {
+	if (!fgb__CGBIsActive(system)) return 0xFF;
+	fgbCGBState *cgb = &system->cgbState;
+	uint8_t armed = cgb->key1Reg.switchArmed ? 0x01 : 0x00;
+	uint8_t speed = (cgb->speedState.currentMode == fgbSpeedMode_Double) ? 0x80 : 0x00;
+	return 0x7E | armed | speed;
+}
+
+static void fgb__CGBWriteKEY1(fgbSystem *system, const uint8_t value) {
+	if (!fgb__CGBIsActive(system)) return;
+	system->cgbState.key1Reg.switchArmed = (value & 0x01) != 0;
+}
+
+static uint8_t fgb__CGBReadVBK(fgbSystem *system) {
+	if (!fgb__CGBIsActive(system)) return 0xFF;
+	return 0xFE | system->cgbState.vramBankReg.bank;
+}
+
+static void fgb__CGBWriteVBK(fgbSystem *system, const uint8_t value) {
+	if (!fgb__CGBIsActive(system)) return;
+	system->cgbState.vramBankReg.bank = value & 0x01;
+}
+
+// Expands a 15-bit RGB555 color to a 24-bit RGB888 fgbColor using the common (v<<3)|(v>>2) fill.
+static inline fgbColor fgb__CGBExpandRGB555(fgbRGB555 c) {
+	fgbColor result;
+	result.r = (uint8_t)((c.r << 3) | (c.r >> 2));
+	result.g = (uint8_t)((c.g << 3) | (c.g >> 2));
+	result.b = (uint8_t)((c.b << 3) | (c.b >> 2));
+	return result;
+}
+
+// Resolves a BG/Window color for CGB rendering: palette 0..7 × color 0..3 → RGB888.
+static inline fgbColor fgb__CGBResolveBGColor(const fgbSystem *system, const uint8_t palette, const uint8_t colorIndex) {
+	fgbRGB555 c = system->cgbState.bgPaletteRAM.colors[palette & 0x7][colorIndex & 0x3];
+	return fgb__CGBExpandRGB555(c);
+}
+
+// Resolves an OBJ color for CGB rendering.
+static inline fgbColor fgb__CGBResolveOBJColor(const fgbSystem *system, const uint8_t palette, const uint8_t colorIndex) {
+	fgbRGB555 c = system->cgbState.objPaletteRAM.colors[palette & 0x7][colorIndex & 0x3];
+	return fgb__CGBExpandRGB555(c);
+}
+
+// Writes 1 byte into VRAM via the currently selected VBK bank. Used only by HDMA/GDMA.
+static inline void fgb__CGBVRAMWriteCurrentBank(fgbSystem *system, const uint16_t address, const uint8_t value) {
+	fgbVRAMBank *b = &system->ppu.vram.banks[fgb__CGBVRAMBankIndex(system)];
+	if (address >= FGB__BUS_ADDRESS_PPU_TILES_FROM && address <= FGB__BUS_ADDRESS_PPU_TILES_TO) {
+		b->tiles.m[address - FGB__BUS_ADDRESS_PPU_TILES_FROM] = value;
+	} else {
+		b->data.m[address - FGB__BUS_ADDRESS_PPU_DATA_FROM] = value;
+	}
+}
+
+// Copies one 16-byte block src→dst, advances cursors, decrements remaining. No tick cost.
+static void fgb__CGBHDMACopyBlock(fgbSystem *system) {
+	fgbCGBState *cgb = &system->cgbState;
+	fgbHDMAState *hdma = &cgb->hdmaState;
+	for (uint8_t i = 0; i < 16; ++i) {
+		uint8_t v = fgb__BusRead8_Direct(system, hdma->sourceAddress);
+		fgb__CGBVRAMWriteCurrentBank(system, hdma->destAddress, v);
+		hdma->sourceAddress++;
+		hdma->destAddress = 0x8000 | ((hdma->destAddress + 1) & 0x1FFF);
+	}
+	hdma->bytesRemaining -= 16;
+}
+
+// Blocking GDMA: copies every pending block now, consuming 8 M-cycles per block (16 in double-speed).
+static void fgb__CGBRunGDMA(fgbSystem *system) {
+	fgbCGBState *cgb = &system->cgbState;
+	fgbHDMAState *hdma = &cgb->hdmaState;
+	uint8_t ticksPerBlock = fgb__CGBDoubleSpeed(system) ? 16 : 8;
+	while (hdma->bytesRemaining > 0) {
+		fgb__CGBHDMACopyBlock(system);
+		for (uint8_t i = 0; i < ticksPerBlock; ++i) {
+			fgb__HWTick4(system);
+		}
+	}
+	hdma->inProgress = false;
+	system->cpu.instructionRegister.hadBlockingSideEffect = true;
+}
+
+// H-blank HDMA step: called on PPU transition into H-blank. Copies 16 bytes per invocation.
+static void fgb__CGBHDMAHBlankStep(fgbSystem *system) {
+	if (!fgb__CGBIsActive(system)) {
+		return;
+	}
+	fgbCGBState *cgb = &system->cgbState;
+	fgbHDMAState *hdma = &cgb->hdmaState;
+	if (!hdma->inProgress) {
+		return;
+	}
+	fgb__CGBHDMACopyBlock(system);
+	if (hdma->bytesRemaining == 0) {
+		hdma->inProgress = false;
+	}
+}
+
+static uint8_t fgb__CGBReadHDMA(fgbSystem *system, const uint16_t address) {
+	if (!fgb__CGBIsActive(system)) {
+		return 0xFF;
+	}
+	fgbCGBState *cgb = &system->cgbState;
+	fgbHDMAState *hdma = &cgb->hdmaState;
+	fgbHDMARegister *reg = &hdma->reg;
+	switch (address) {
+		case 0xFF51: return reg->sourceHigh;
+		case 0xFF52: return reg->sourceLow;
+		case 0xFF53: return reg->destHigh;
+		case 0xFF54: return reg->destLow;
+		case 0xFF55: {
+			// Bit 7: 0 = HDMA active, 1 = inactive (done or cancelled). Bits 0..6 = (blocks_remaining - 1).
+			if (hdma->inProgress) {
+				return (uint8_t)(((hdma->bytesRemaining / 16) - 1) & 0x7F);
+			}
+			if (hdma->bytesRemaining > 0) {
+				return 0x80 | (uint8_t)(((hdma->bytesRemaining / 16) - 1) & 0x7F);
+			}
+			return 0xFF;
+		}
+		default: return 0xFF;
+	}
+}
+
+static void fgb__CGBWriteHDMA(fgbSystem *system, const uint16_t address, const uint8_t value) {
+	if (!fgb__CGBIsActive(system)) {
+		return;
+	}
+	fgbCGBState *cgb = &system->cgbState;
+	fgbHDMAState *hdma = &cgb->hdmaState;
+	fgbHDMARegister *reg = &hdma->reg;
+	switch (address) {
+		case 0xFF51: reg->sourceHigh = value; break;
+		case 0xFF52: reg->sourceLow = value; break;
+		case 0xFF53: reg->destHigh = value; break;
+		case 0xFF54: reg->destLow = value; break;
+		case 0xFF55: {
+			fgbHDMAControlRegister incoming;
+			incoming.value = value;
+			if (hdma->inProgress) {
+				// Active HDMA: bit 7 = 0 cancels (keeps remaining length); bit 7 = 1 re-latches length.
+				if (!incoming.mode) {
+					hdma->inProgress = false;
+				} else {
+					hdma->bytesRemaining = (uint16_t)(((value & 0x7F) + 1) * 16);
+				}
+			} else {
+				// Idle: latch src/dst, start HDMA (bit 7 = 1) or run GDMA immediately (bit 7 = 0).
+				uint16_t src = (uint16_t)(((reg->sourceHigh << 8) | reg->sourceLow) & 0xFFF0);
+				uint16_t dst = (uint16_t)(0x8000 | (((reg->destHigh & 0x1F) << 8) | (reg->destLow & 0xF0)));
+				hdma->sourceAddress = src;
+				hdma->destAddress = dst;
+				hdma->bytesRemaining = (uint16_t)(((value & 0x7F) + 1) * 16);
+				if (incoming.mode) {
+					hdma->inProgress = true;
+				} else {
+					fgb__CGBRunGDMA(system);
+				}
+			}
+			reg->control.value = value;
+			break;
+		}
+		default: break;
+	}
+}
+
+static uint8_t fgb__CGBReadBCPS(fgbSystem *system) {
+	if (!fgb__CGBIsActive(system)) return 0xFF;
+	return system->cgbState.bgPaletteIndex.value | 0x40;
+}
+
+static void fgb__CGBWriteBCPS(fgbSystem *system, const uint8_t value) {
+	if (!fgb__CGBIsActive(system)) return;
+	system->cgbState.bgPaletteIndex.value = value;
+}
+
+static uint8_t fgb__CGBReadBCPD(fgbSystem *system) {
+	if (!fgb__CGBIsActive(system)) return 0xFF;
+	return system->cgbState.bgPaletteRAM.m[system->cgbState.bgPaletteIndex.address];
+}
+
+static void fgb__CGBWritePaletteRAM(const uint8_t value, fgbCGBPaletteIndexRegister *reg, fgbCGBPaletteGrid *palette, fgbCGBPaletteRAM *ram) {
+	const uint16_t address = reg->address;
+
+	ram->m[address] = value;
+
+	if (reg->autoIncrement) {
+		reg->address = (address + 1) & 0x3F;
+	}
+
+	const uint16_t colorIndex = address >> 1;
+	const uint16_t line   = colorIndex >> 2;  // divide by 4
+	const uint16_t column = colorIndex & 0x03; // modulo 4
+	FGB_ASSERT(line < 8 && column < 4);
+	const fgbRGB555 rgb555 = ram->colors[line][column];
+	palette->grid[line][column] = fgb__CGBExpandRGB555(rgb555);
+}
+
+static void fgb__CGBWriteBCPD(fgbSystem *system, const uint8_t value) {
+	if (!fgb__CGBIsActive(system)) return;
+	fgbCGBState *cgb = &system->cgbState;
+	fgb__CGBWritePaletteRAM(value, &cgb->bgPaletteIndex, &cgb->currentPalette.bg, &cgb->bgPaletteRAM);
+}
+
+static uint8_t fgb__CGBReadOCPS(fgbSystem *system) {
+	if (!fgb__CGBIsActive(system)) return 0xFF;
+	return system->cgbState.objPaletteIndex.value | 0x40;
+}
+
+static void fgb__CGBWriteOCPS(fgbSystem *system, const uint8_t value) {
+	if (!fgb__CGBIsActive(system)) return;
+	system->cgbState.objPaletteIndex.value = value;
+}
+
+static uint8_t fgb__CGBReadOCPD(fgbSystem *system) {
+	if (!fgb__CGBIsActive(system)) return 0xFF;
+	return system->cgbState.objPaletteRAM.m[system->cgbState.objPaletteIndex.address];
+}
+
+static void fgb__CGBWriteOCPD(fgbSystem *system, const uint8_t value) {
+	if (!fgb__CGBIsActive(system)) return;
+	fgbCGBState *cgb = &system->cgbState;
+	fgb__CGBWritePaletteRAM(value, &cgb->objPaletteIndex, &cgb->currentPalette.obj, &cgb->objPaletteRAM);
+}
+
+static uint8_t fgb__CGBReadOPRI(fgbSystem *system) {
+	if (!fgb__CGBIsActive(system)) return 0xFF;
+	return system->cgbState.objPriorityMode.value | 0xFE;
+}
+
+static void fgb__CGBWriteOPRI(fgbSystem *system, const uint8_t value) {
+	if (!fgb__CGBIsActive(system)) return;
+	system->cgbState.objPriorityMode.value = value & 0x01;
+}
+
+static uint8_t fgb__CGBReadSVBK(fgbSystem *system) {
+	if (!fgb__CGBIsActive(system)) return 0xFF;
+	return 0xF8 | system->cgbState.workRAMBankReg.wramBank;
+}
+
+static void fgb__CGBWriteSVBK(fgbSystem *system, const uint8_t value) {
+	if (!fgb__CGBIsActive(system)) return;
+	system->cgbState.workRAMBankReg.wramBank = value & 0x07;
+}
+
+static inline uint8_t fgb__CGBWRAMBankIndex(fgbSystem *system) {
+	// CGB quirk: SVBK bank 0 maps to bank 1
+	uint8_t bank = system->cgbState.workRAMBankReg.wramBank;
+	return bank == 0 ? 1 : bank;
+}
+
+static inline uint8_t fgb__CGBVRAMBankIndex(const fgbSystem *system) {
+	return fgb__CGBIsActive(system) ? system->cgbState.vramBankReg.bank : 0;
+}
+
+// Reads VRAM at `address` (0x8000-0x9FFF) from a specific bank, regardless of VBK.
+// Used by the CGB renderer to access attribute maps / tile bank 1.
+static inline uint8_t fgb__CGBVRAMReadBank(const fgbSystem *system, const uint16_t address, const uint8_t bank) {
+	const fgbVRAMBank *b = &system->ppu.vram.banks[bank & 0x01];
+	if (address >= FGB__BUS_ADDRESS_PPU_TILES_FROM && address <= FGB__BUS_ADDRESS_PPU_TILES_TO) {
+		return b->tiles.m[address - FGB__BUS_ADDRESS_PPU_TILES_FROM];
+	}
+	return b->data.m[address - FGB__BUS_ADDRESS_PPU_DATA_FROM];
+}
+
+
+
+// CGB BG attribute bit layout (fetched from VRAM bank 1 map region).
+#define FGB__CGB_BG_ATTR_PALETTE_MASK 0x07
+#define FGB__CGB_BG_ATTR_BANK_BIT     0x08
+#define FGB__CGB_BG_ATTR_XFLIP_BIT    0x20
+#define FGB__CGB_BG_ATTR_YFLIP_BIT    0x40
+#define FGB__CGB_BG_ATTR_PRIORITY_BIT 0x80
+
+// ********************************************************************************************************************
+//
+// > DMG-IMPL: DMG Specifics Implementation
+//
+// ********************************************************************************************************************
+// Setups the CPU registers for DMG
+static void fgb__DMGSetup(fgbCPURegisters *regs) {
+	regs->af = 0x01B0; // A = 0x01, F = 0xB0 (Z = 1, N = 0, H = 1, C = 1, all other bits are 0)
+	regs->bc = 0x0013;
+	regs->de = 0x00D8;
+	regs->hl = 0x014d;
+
+	regs->pc = 0x100;
+	regs->sp = 0xfffe;
+}
+
+// ********************************************************************************************************************
 // 
-// APU Implementation v3
+// > APU-IMPL: APU Implementation (v3)
 // 
 // This is my third rewrite of the APU, which has a much cleaner architecture and are much easier to understand.
 // 
@@ -6124,11 +6867,9 @@ FGB_API uint16_t fgbGetROMBank(const fgbSystem *system) {
 // - A voice is not triggered when the high 5 bits of the volume envelop register are not set
 // 
 // Bugs:
-// 
-// - In Super Mario Land 2, collecting a coin by block or by item does not change the frequency at all, which is wrong.
 //
-// - There may some weird random sound errors, that are hearable - but may be related to the problem above.
-// 
+// - Sound too fast for certain games: Duck Tales
+//
 // Important:
 // 
 // - Period/Timers should never be reset when the register changes!
@@ -7117,11 +7858,12 @@ static void fgb__PowerOffWaveVoice(fgbSystem *system, fgbWaveVoice *voice) {
 	voice->outputSample = 0;
 }
 
-static uint8_t fgb__GetWaveVoicePattern(const fgbWaveVoice *voice, const uint8_t patternIndex) {
+static uint8_t fgb__GetWaveVoicePattern(fgbSystem *system, const fgbWaveVoice *voice, const uint8_t patternIndex) {
 	FGB_ASSERT(patternIndex < 16);
 	if (voice->base.isEnabled) {
-		// DMG: Wave RAM only accessible on same T-cycle CH3 reads from it
-		if (voice->waveFormJustRead) {
+		// CGB: reads always hit the current wave position byte.
+		// DMG: Wave RAM only accessible on same T-cycle CH3 reads from it.
+		if (voice->waveFormJustRead || fgb__CGBIsActive(system)) {
 			uint8_t currentIndex = voice->wavePosition >> 1;
 			return voice->patternRAM.entries[currentIndex].u8;
 		}
@@ -7131,11 +7873,12 @@ static uint8_t fgb__GetWaveVoicePattern(const fgbWaveVoice *voice, const uint8_t
 	}
 }
 
-static void fgb__SetWaveVoicePattern(fgbWaveVoice *voice, const uint8_t patternIndex, const uint8_t value) {
+static void fgb__SetWaveVoicePattern(fgbSystem *system, fgbWaveVoice *voice, const uint8_t patternIndex, const uint8_t value) {
 	FGB_ASSERT(patternIndex < 16);
 	if (voice->base.isEnabled) {
-		// DMG: Wave RAM only writable on same T-cycle CH3 reads from it
-		if (voice->waveFormJustRead) {
+		// CGB: writes always hit the current wave position byte.
+		// DMG: Wave RAM only writable on same T-cycle CH3 reads from it.
+		if (voice->waveFormJustRead || fgb__CGBIsActive(system)) {
 			uint8_t currentIndex = voice->wavePosition >> 1;
 			voice->patternRAM.entries[currentIndex].u8 = value;
 		}
@@ -7155,8 +7898,9 @@ static void fgb__SetWaveVoiceNRx4(fgbSystem *system, fgbWaveVoice *voice, const 
 		FGB__DEBUG(system, fgb__KindName_APU, "[%llu] [Voice-3] Trigger with Initial-Volume %u", system->cpu.state.totalTickCycles, volume);
 #endif
 
-		if (voice->isPlaying) {
-			// Triggering the wave voice, while its already playing will corrupt the wave RAM on DMG
+		if (voice->isPlaying && !fgb__CGBIsActive(system)) {
+			// Triggering the wave voice, while its already playing will corrupt the wave RAM on DMG.
+			// CGB hardware does not corrupt on retrigger.
 			if (voice->timer == FGB__APU_WAVE_CORRUPTION_TICKS) {
 				FGB_ASSERT(voice->wavePosition < 32);
 				uint8_t position = (voice->wavePosition + 1) & 31;
@@ -7540,11 +8284,15 @@ static void fgb__APUSetAudioMasterControlRegister(fgbSystem *system, fgbAPU *apu
 		apu->state.isPowerOn = true;
 	}
 
-	// Length timers are not affected by power on/off - always restore
-	apu->voices.sweep.length.timer = oldLengthTimers[0];
-	apu->voices.tone.length.timer = oldLengthTimers[1];
-	apu->voices.wave.length.timer = oldLengthTimers[2];
-	apu->voices.noise.length.timer = oldLengthTimers[3];
+	// Length timers are not affected by power on/off on DMG - restore.
+	// On CGB, length counters are cleared on power off (keep them at the
+	// post-zero-loop reset value).
+	if (!fgb__CGBIsActive(system)) {
+		apu->voices.sweep.length.timer = oldLengthTimers[0];
+		apu->voices.tone.length.timer = oldLengthTimers[1];
+		apu->voices.wave.length.timer = oldLengthTimers[2];
+		apu->voices.noise.length.timer = oldLengthTimers[3];
+	}
 }
 
 //
@@ -8112,7 +8860,7 @@ static uint8_t fgb__APURead_Direct(fgbSystem *system, const uint16_t address) {
 	} else if (offset < 48) {
 		// Wave Pattern RAM
 		uint8_t patternIndex = offset - 32;
-		return fgb__GetWaveVoicePattern(&apu->voices.wave, patternIndex);
+		return fgb__GetWaveVoicePattern(system, &apu->voices.wave, patternIndex);
 	}
 	return 0xFF;
 }
@@ -8213,7 +8961,7 @@ static void fgb__APUWrite(fgbSystem *system, const uint16_t address, const uint8
 		} else if (offset < 48) {
 			// Wave Pattern RAM
 			uint8_t patternIndex = offset - 32;
-			fgb__SetWaveVoicePattern(&apu->voices.wave, patternIndex, value);
+			fgb__SetWaveVoicePattern(system, &apu->voices.wave, patternIndex, value);
 			return;
 		}
 	}
@@ -8324,18 +9072,24 @@ static inline uint8_t fgb__PPUDecodeColorIndex(const uint8_t first, const uint8_
 	return result;
 }
 
-static void fgb__PPUUpdateTileRow(fgbPPU *ppu, const fgbTileLine *line, const uint32_t startPixelX, const uint32_t startPixelY, const uint32_t scanlineWidth, fgbColor *outPixels) {
+static void fgb__PPUUpdateTileRow(fgbSystem *system, fgbPPU *ppu, const fgbTileLine *line, const uint32_t startPixelX, const uint32_t startPixelY, const uint32_t scanlineWidth, fgbColor *outPixels) {
+	// Reach back to the owning system so CGB palette resolution can find its state.
+	bool cgb = fgb__CGBIsActive(system);
 	uint8_t first = line->lower.value;
 	uint8_t second = line->upper.value;
 	for (uint8_t x = 0; x < FGB_TILE_WIDTH; ++x) {
 		uint8_t bit = 7 - x;
 		uint8_t colorIndex = fgb__PPUDecodeColorIndex(first, second, bit);
-		fgbColor color = ppu->currentMonochromeColors.background[colorIndex];
+		fgbColor color = cgb
+			? fgb__CGBResolveBGColor(system, 0, colorIndex)
+			: ppu->currentMonochromeColors.background[colorIndex];
 		outPixels[startPixelY * scanlineWidth + startPixelX + x] = color;
 	}
 }
 
-static void fgb__PPUVideoRAMUpdated(fgbPPU *ppu, const uint16_t addressIndex) {
+static void fgb__PPUVideoRAMUpdated(fgbSystem *system, const uint16_t addressIndex) {
+	fgbPPU *ppu = &system->ppu;
+
 	if (ppu->state.isDisplayEnabled && addressIndex < FGB_VRAM_TILEMAP_SIZE) {
 		uint16_t normalizedAddress = addressIndex & 0xFFFE;
 
@@ -8351,37 +9105,41 @@ static void fgb__PPUVideoRAMUpdated(fgbPPU *ppu, const uint16_t addressIndex) {
 		uint32_t pixelX = tileColumn * FGB_TILE_WIDTH;
 		uint32_t pixelY = tileRow * FGB_TILE_HEIGHT + lineY;
 
-		const fgbVRAMBank *bank = &ppu->vram.bank0;
+		uint8_t vramBank = fgb__CGBIsActive(system) ? system->cgbState.vramBankReg.bank : 0;
+		const fgbVRAMBank *bank = &ppu->vram.banks[vramBank];
 
 		const fgbTile *tile = &bank->tiles.tiles[tileIndex];
 
 		const fgbTileLine *line = &tile->lines[lineY];
 
-		fgb__PPUUpdateTileRow(ppu, line, pixelX, pixelY, FGB_TILEMAP_WIDTH, ppu->tilemap);
+		fgb__PPUUpdateTileRow(system, ppu, line, pixelX, pixelY, FGB_TILEMAP_WIDTH, ppu->tilemap);
 
 		ppu->state.isVRAMUpdated = true;
 	}
 }
 
-static void fgb__PPUVideoRAMFullUpdate(fgbPPU *ppu) {
-	if (!ppu->state.isDisplayEnabled)
-		return;
+static void fgb__PPUVideoRAMFullUpdate(fgbSystem *system) {
+	fgbPPU *ppu = &system->ppu;
 
-	const fgbVRAMBank *bank = &ppu->vram.bank0;
+	if (!ppu->state.isDisplayEnabled) {
+		return;
+	}
+
+	const fgbVRAMBank *bank0 = &ppu->vram.bank0;
 
 	for (uint32_t tileRow = 0; tileRow < FGB_TILEMAP_VERTICAL_COUNT; ++tileRow) {
 		for (uint32_t tileCol = 0; tileCol < FGB_TILEMAP_HORIZONTAL_COUNT; ++tileCol) {
 			uint32_t tileIndex = tileRow * FGB_TILEMAP_HORIZONTAL_COUNT + tileCol;
 
 			FGB_ASSERT(tileIndex < FGB_TOTAL_TILE_COUNT);
-			const fgbTile *tile = &bank->tiles.tiles[tileIndex];
+			const fgbTile *tile = &bank0->tiles.tiles[tileIndex];
 
 			uint32_t pixelX = FGB_TILE_WIDTH * tileCol;
 			uint32_t pixelY = FGB_TILE_HEIGHT * tileRow;
 
 			for (uint8_t lineIndex = 0; lineIndex < 8; ++lineIndex) {
 				const fgbTileLine *line = &tile->lines[lineIndex];
-				fgb__PPUUpdateTileRow(ppu, line, pixelX, pixelY + lineIndex, FGB_TILEMAP_WIDTH, ppu->tilemap);
+				fgb__PPUUpdateTileRow(system, ppu, line, pixelX, pixelY + lineIndex, FGB_TILEMAP_WIDTH, ppu->tilemap);
 			}
 		}
 	}
@@ -8389,15 +9147,22 @@ static void fgb__PPUVideoRAMFullUpdate(fgbPPU *ppu) {
 	ppu->state.isVRAMUpdated = true;
 }
 
-static void fgb__PPUBackgroundMapUpdate(fgbPPU *ppu) {
-	if (!ppu->state.isDisplayEnabled)
+static void fgb__PPUBackgroundMapUpdate(fgbSystem *system) {
+	fgbPPU *ppu = &system->ppu;
+
+	if (!ppu->state.isDisplayEnabled) {
 		return;
+	}
 
 	fgbLCDRegister *lcd = &ppu->lcd;
 
 	uint32_t scanlineWidth = FGB_BACKGROUND_MAP_WIDTH;
 
-	const fgbVRAMBank *bank = &ppu->vram.bank0;
+	const fgbVRAMBank *bank0 = &ppu->vram.banks[0];
+	const fgbVRAMBank *bank1 = &ppu->vram.banks[1];
+
+	// Reach back to the owning system so CGB palette resolution can find its state.
+	bool cgb = fgb__CGBIsActive(system);
 
 	for (uint32_t tileRow = 0; tileRow < FGB_TILEDATA_VERTICAL_COUNT; ++tileRow) {
 		for (uint32_t tileCol = 0; tileCol < FGB_TILEDATA_HORIZONTAL_COUNT; ++tileCol) {
@@ -8415,24 +9180,40 @@ static void fgb__PPUBackgroundMapUpdate(fgbPPU *ppu) {
 			uint16_t dataPosition = dataOffset + dataIndex;
 
 			FGB_ASSERT(dataPosition < FGB_TILEMAP_TOTAL_SIZE);
-			uint8_t tileID = bank->data.m[dataPosition];
+			uint8_t tileID = bank0->data.m[dataPosition];
+
+			// CGB: attribute byte lives at the same offset in bank 1.
+			uint8_t attr = cgb ? bank1->data.m[dataPosition] : 0;
+			uint8_t cgbPalette = attr & FGB__CGB_BG_ATTR_PALETTE_MASK;
+			bool cgbBank1 = cgb && (attr & FGB__CGB_BG_ATTR_BANK_BIT);
+			bool xFlip = cgb && (attr & FGB__CGB_BG_ATTR_XFLIP_BIT);
+			bool yFlip = cgb && (attr & FGB__CGB_BG_ATTR_YFLIP_BIT);
 
 			uint32_t pixelX = FGB_TILE_WIDTH * tileCol;
 			uint32_t pixelY = FGB_TILE_HEIGHT * tileRow;
 
 			uint16_t tileAddress;
-
 			if (useTiles8800) {
 				tileAddress = 0x8800 + ((int8_t)tileID + 128) * 16;
 			} else {
 				tileAddress = 0x8000 + tileID * 16;
 			}
 
-			const fgbTile *tile = (const fgbTile *)(&ppu->vram.m[tileAddress - 0x8000]);
+			const fgbVRAMBank *tileBank = cgbBank1 ? bank1 : bank0;
+			const fgbTile *tile = (const fgbTile *)(&tileBank->m[tileAddress - 0x8000]);
 
 			for (uint8_t lineIndex = 0; lineIndex < 8; ++lineIndex) {
-				const fgbTileLine *line = &tile->lines[lineIndex];
-				fgb__PPUUpdateTileRow(ppu, line, pixelX, pixelY + lineIndex, scanlineWidth, ppu->backgroundMap.colors);
+				uint8_t srcLineIndex = yFlip ? (7 - lineIndex) : lineIndex;
+				const fgbTileLine *line = &tile->lines[srcLineIndex];
+				uint32_t outRowStart = (pixelY + lineIndex) * scanlineWidth + pixelX;
+				for (uint8_t x = 0; x < FGB_TILE_WIDTH; ++x) {
+					uint8_t bit = xFlip ? x : (uint8_t)(7 - x);
+					uint8_t colorIndex = fgb__PPUDecodeColorIndex(line->lower.value, line->upper.value, bit);
+					fgbColor color = cgb
+						? fgb__CGBResolveBGColor(system, cgbPalette, colorIndex)
+						: ppu->currentMonochromeColors.background[colorIndex];
+					ppu->backgroundMap.colors[outRowStart + x] = color;
+				}
 			}
 		}
 	}
@@ -8473,7 +9254,6 @@ static void fgb__PPUStatusInterruptTest(fgbSystem *system, const bool vBlankTrig
 }
 
 static void fgb__PPUCompareLine(fgbSystem *system) {
-	fgbIORegisters *io = &system->io;
 	fgbPPU *ppu = &system->ppu;
 	fgbLCDRegister *lcd = &ppu->lcd;
 
@@ -8586,7 +9366,6 @@ static uint8_t fgb__PPUOAMRead(fgbSystem *system, const uint16_t address) {
 
 static void fgb__PPUOAMWrite(fgbSystem *system, const uint16_t address, const uint8_t value) {
 	fgbPPU *ppu = &system->ppu;
-	fgbIORegisters *io = &system->io;
 	fgbLCDRegister *lcd = &ppu->lcd;
 
 	uint16_t index = (address >= FGB__BUS_ADDRESS_PPU_OAM_FROM) ? address - FGB__BUS_ADDRESS_PPU_OAM_FROM : address;
@@ -8612,7 +9391,7 @@ static uint8_t fgb__PPUTilesRead(fgbSystem *system, const uint16_t address) {
 	const fgbPPU *ppu = &system->ppu;
 	const fgbLCDRegister *lcd = &ppu->lcd;
 
-	const fgbVRAMBank *bank = &ppu->vram.bank0;
+	const fgbVRAMBank *bank = &ppu->vram.banks[fgb__CGBVRAMBankIndex(system)];
 
 	uint16_t index = address - FGB__BUS_ADDRESS_PPU_TILES_FROM;
 	return bank->tiles.m[index];
@@ -8620,10 +9399,9 @@ static uint8_t fgb__PPUTilesRead(fgbSystem *system, const uint16_t address) {
 
 static void fgb_PPUTilesWrite(fgbSystem *system, const uint16_t address, const uint8_t value) {
 	fgbPPU *ppu = &system->ppu;
-	fgbIORegisters *io = &system->io;
 	fgbLCDRegister *lcd = &ppu->lcd;
 
-	fgbVRAMBank *bank = &ppu->vram.bank0;
+	fgbVRAMBank *bank = &ppu->vram.banks[fgb__CGBVRAMBankIndex(system)];
 
 	uint16_t index = address - FGB__BUS_ADDRESS_PPU_TILES_FROM;
 	bank->tiles.m[index] = value;
@@ -8633,7 +9411,7 @@ static uint8_t fgb__PPUDataRead(fgbSystem *system, const uint16_t address) {
 	const fgbPPU *ppu = &system->ppu;
 	const fgbLCDRegister *lcd = &ppu->lcd;
 
-	const fgbVRAMBank *bank = &ppu->vram.bank0;
+	const fgbVRAMBank *bank = &ppu->vram.banks[fgb__CGBVRAMBankIndex(system)];
 
 	uint16_t index = address - FGB__BUS_ADDRESS_PPU_DATA_FROM;
 	uint8_t result = bank->data.m[index];
@@ -8642,10 +9420,9 @@ static uint8_t fgb__PPUDataRead(fgbSystem *system, const uint16_t address) {
 
 static void fgb__PPUDataWrite(fgbSystem *system, const uint16_t address, const uint8_t value) {
 	fgbPPU *ppu = &system->ppu;
-	fgbIORegisters *io = &system->io;
 	fgbLCDRegister *lcd = &ppu->lcd;
 
-	fgbVRAMBank *bank = &ppu->vram.bank0;
+	fgbVRAMBank *bank = &ppu->vram.banks[fgb__CGBVRAMBankIndex(system)];
 
 	uint16_t index = address - FGB__BUS_ADDRESS_PPU_DATA_FROM;
 	bank->data.m[index] = value;
@@ -8692,7 +9469,6 @@ static uint8_t fgb__PPULCDRegisterRead(fgbSystem *system, const uint16_t address
 
 static void fgb__PPULCDRegisterWrite(fgbSystem *system, const uint16_t address, const uint8_t value) {
 	fgbPPU *ppu = &system->ppu;
-	fgbIORegisters *io = &system->io;
 	fgbLCDRegister *lcd = &ppu->lcd;
 
 	switch (address) {
@@ -8800,7 +9576,6 @@ static void fgb__PPULCDRegisterWrite(fgbSystem *system, const uint16_t address, 
 
 static uint8_t fgb__PPURead(fgbSystem *system, const uint16_t address) {
 	fgbPPU *ppu = &system->ppu;
-	fgbIORegisters *io = &system->io;
 	fgbLCDRegister *lcd = &ppu->lcd;
 
 	if (address >= FGB__BUS_ADDRESS_PPU_TILES_FROM && address <= FGB__BUS_ADDRESS_PPU_TILES_TO) {
@@ -8973,6 +9748,9 @@ static void fgb__PPUPipelineLoadWindowTileID(fgbSystem *system, fgbPPU *ppu, fgb
 	uint16_t tilesDataArea = fgbGetPPUBackgroundWindowTilesArea(lcd);
 
 	pipeline->fetch.tileID = tilesDataArea == 0x8800 ? 128 + (int8_t)tileId : tileId;
+
+	// CGB: BG map attribute byte lives at the same map offset in VRAM bank 1.
+	pipeline->fetch.cgbBGAttr = fgb__CGBIsActive(system) ? fgb__CGBVRAMReadBank(system, windowDataAddress, 1) : 0;
 }
 
 static void fgb__PPUPipelineLoadBackgroundTileID(fgbSystem *system, fgbPPU *ppu, fgbLCDRegister *lcd, fgbPPUPipeline *pipeline) {
@@ -8988,53 +9766,75 @@ static void fgb__PPUPipelineLoadBackgroundTileID(fgbSystem *system, fgbPPU *ppu,
 	uint16_t tilesDataArea = fgbGetPPUBackgroundWindowTilesArea(lcd);
 
 	pipeline->fetch.tileID = tilesDataArea == 0x8800 ? 128 + (int8_t)tileId : tileId;
+
+	// CGB: BG map attribute byte lives at the same map offset in VRAM bank 1.
+	pipeline->fetch.cgbBGAttr = fgb__CGBIsActive(system) ? fgb__CGBVRAMReadBank(system, backgroundDataAddress, 1) : 0;
 }
 
-static fgbPixel fgb__PPUFetchSpritePixel(fgbPPU *ppu, fgbLCDRegister *lcd, fgbPPUPipeline *pipeline, const uint8_t xPos) {
-	for (uint8_t entryIndex = 0; entryIndex < pipeline->fetch.entryCount; ++entryIndex) {
-		const fgbOAMEntry *entry = pipeline->fetch.entries + entryIndex;
+static fgbPixel fgb__PPUFetchSpritePixel(fgbSystem *system, fgbPPU *ppu, fgbLCDRegister *lcd, fgbPPUPipeline *pipeline, const uint8_t xPos) {
+	fgbPixel empty = { 0 };
+
+	if (!lcd->lcdc.objEnable || !ppu->state.isSpritesEnabled) {
+		return empty;
+	}
+
+	bool cgb = fgb__CGBIsActive(system);
+	uint8_t spriteHeight = lcd->lcdc.objSize ? 16 : 8;
+	uint8_t y = lcd->ly;
+
+	// Walk full per-line sprite list (already priority-sorted: CGB OAM-order or DMG X-order).
+	for (fgbLineSpriteEntry *item = pipeline->sprites.first; item != NULL; item = item->next) {
+		const fgbOAMEntry *entry = &item->entry;
 
 		int x = (entry->x - 8) + (lcd->scx % 8);
 
-		if (x + 8 < xPos) {
-			// FIFO was faster than we where, so discard that pixel
-			continue;
-		}
-
-		int offset = xPos - x;
-
+		int offset = (int)xPos - x;
 		if (offset < 0 || offset > 7) {
-			// We are outside to the left or to the right
+			// Sprite not over this fetcher pixel.
 			continue;
 		}
 
-		uint8_t bit = 7 - offset;
+		uint8_t bit = entry->horizontalFlip ? (uint8_t)offset : (uint8_t)(7 - offset);
 
-		if (entry->horizontalFlip) {
-			bit = offset;
+		uint8_t tileY = (uint8_t)(((y + 16) - entry->y) * 2);
+		if (entry->verticalFlip) {
+			tileY = (uint8_t)((spriteHeight * 2) - 2) - tileY;
 		}
 
-		uint8_t low = pipeline->fetch.entryTileData[(entryIndex * 2) + 0];
-		uint8_t high = pipeline->fetch.entryTileData[(entryIndex * 2) + 1];
+		uint8_t tileID = entry->tileID;
+		if (spriteHeight == 16) {
+			tileID &= ~(uint8_t)1;
+		}
+
+		uint8_t bankIndex = (cgb && entry->cgbTileVRAMBank) ? 1 : 0;
+		const fgbVRAMBank *bank = &ppu->vram.banks[bankIndex];
+
+		uint16_t tileBase = (uint16_t)(tileID * FGB_TILE_SIZE) + tileY;
+		uint8_t low = bank->tiles.m[tileBase + 0];
+		uint8_t high = bank->tiles.m[tileBase + 1];
 
 		uint8_t colorIndex = fgb__PPUDecodeColorIndex(low, high, bit);
 
-		if (colorIndex == 0 || !ppu->state.isSpritesEnabled) {
-			// This sprite is transparent, try the next one
+		if (colorIndex == 0) {
+			// Transparent sprite pixel — try next candidate.
 			continue;
 		}
+
+		fgbColor objColor = cgb
+			? fgb__CGBResolveOBJColor(system, entry->cgbPaletteNumber, colorIndex)
+			: (entry->paletteNumber ? ppu->currentMonochromeColors.sprite1[colorIndex] : ppu->currentMonochromeColors.sprite0[colorIndex]);
 
 		fgbPixel pixel = {
 			.spritePriority = !entry->backgroundPriority,
 			.type = entry->paletteNumber ? fgbPixelType_Sprite1 : fgbPixelType_Sprite0,
 			.value = colorIndex,
-			.color = entry->paletteNumber ? ppu->currentMonochromeColors.sprite1[colorIndex] : ppu->currentMonochromeColors.sprite0[colorIndex]
+			.color = objColor,
+			.cgbPalette = (uint8_t)entry->cgbPaletteNumber,
 		};
 
 		return pixel;
 	}
 
-	fgbPixel empty = { 0 };
 	return empty;
 }
 
@@ -9046,7 +9846,7 @@ static void fgb__PPUPipelineLoadSpriteData(fgbSystem *system, fgbPPU *ppu, const
 
 	uint8_t y = lcd->ly;
 
-	const fgbVRAMBank *bank = &ppu->vram.bank0;
+	bool cgb = fgb__CGBIsActive(system);
 
 	for (uint8_t entryIndex = 0; entryIndex < pipeline->fetch.entryCount; ++entryIndex) {
 		const fgbOAMEntry *entry = pipeline->fetch.entries + entryIndex;
@@ -9064,18 +9864,32 @@ static void fgb__PPUPipelineLoadSpriteData(fgbSystem *system, fgbPPU *ppu, const
 		if (spriteHeight == 16) {
 			tileID &= ~(1); // Remove last bit
 		}
-	 
+
 		uint16_t index = (tileID * FGB_TILE_SIZE) + tileY + tileLineIndex;
+
+		// CGB: sprite tile data can live in either VRAM bank via OAM attribute bit 3. DMG stays on bank 0.
+		uint8_t bankIndex = (cgb && entry->cgbTileVRAMBank) ? 1 : 0;
+		const fgbVRAMBank *bank = &ppu->vram.banks[bankIndex];
 
 		pipeline->fetch.entryTileData[(entryIndex * 2) + tileLineIndex] = bank->tiles.m[index];
 	}
 }
 
-static fgbPixel fgb__PPUPixelMix(fgbPixel background, fgbPixel sprite) {
+static fgbPixel fgb__PPUPixelMix(fgbPixel background, fgbPixel sprite, bool cgbMode, bool bgWindowMasterPriority) {
 	fgbPixel result = { 0 };
 	if (sprite.value == 0) {
-		// Sprite pixel is transparent
+		// Sprite pixel is transparent → background wins.
 		result = background;
+	} else if (cgbMode) {
+		// CGB: LCDC bit 0 acts as BG/Window master-priority. When 0 sprites always win over BG (unless transparent).
+		if (!bgWindowMasterPriority) {
+			result = sprite;
+		} else if (background.value != 0 && (background.cgbBgPriority || !sprite.spritePriority)) {
+			// Either BG tile attribute or OAM-OBJ-priority forces BG over sprite.
+			result = background;
+		} else {
+			result = sprite;
+		}
 	} else {
 		if (!sprite.spritePriority && background.value != 0) {
 			// Background has higher priority
@@ -9104,8 +9918,10 @@ static void fgb__PPUPipelineFetch(fgbSystem *system, fgbPPU *ppu, fgbLCDRegister
 			ppu->pipeline.tileType = fgbPixelType_None;
 			ppu->pipeline.state.offsetY = (lcd->ly + lcd->scy) % 8;
 
-			// Background enabled?
-			if (lcd->lcdc.backgroundEnabled) {
+			// On CGB LCDC.0 does NOT blank BG — it only disables BG-over-OBJ master priority.
+			// On DMG LCDC.0=0 makes BG/Window blank. Gate accordingly.
+			bool drawBackground = lcd->lcdc.backgroundEnabled || fgb__CGBIsActive(system);
+			if (drawBackground) {
 				ppu->pipeline.tileType = fgbPixelType_Background;
 
 				// Load background tile ID
@@ -9158,11 +9974,23 @@ static void fgb__PPUPipelineFetch(fgbSystem *system, fgbPPU *ppu, fgbLCDRegister
 			uint8_t tileLineIndex = fetch->state - fgbPPUFetchState_Data0;
 
 			uint16_t tileMapStartAddress = fgbGetPPUBackgroundWindowTilesArea(lcd);
-			uint16_t tileOffset = (pipeline->fetch.tileID * FGB_TILE_SIZE) + (pipeline->state.offsetY * 2);
+
+			// CGB: vertical flip inverts the within-tile Y offset when attribute bit 6 is set.
+			uint8_t lineY = pipeline->state.offsetY;
+			if (fgb__CGBIsActive(system) && (fetch->cgbBGAttr & FGB__CGB_BG_ATTR_YFLIP_BIT)) {
+				lineY = 7 - lineY;
+			}
+
+			uint16_t tileOffset = (pipeline->fetch.tileID * FGB_TILE_SIZE) + (lineY * 2);
 			uint16_t tileAddress = tileMapStartAddress + tileOffset + tileLineIndex;
 			uint16_t tilePosition = tileAddress - 0x8000;
 
-			const fgbVRAMBank *bank = &ppu->vram.bank0;
+			// CGB: tile pixel data may come from bank 1 when BG attribute bit 3 is set. DMG stays on bank 0.
+			uint8_t bankIndex = 0;
+			if (fgb__CGBIsActive(system) && (fetch->cgbBGAttr & FGB__CGB_BG_ATTR_BANK_BIT)) {
+				bankIndex = 1;
+			}
+			const fgbVRAMBank *bank = &ppu->vram.banks[bankIndex];
 
 			fetch->tileLine.m[tileLineIndex] = bank->tiles.m[tilePosition];
 
@@ -9192,30 +10020,43 @@ static void fgb__PPUPipelineFetch(fgbSystem *system, fgbPPU *ppu, fgbLCDRegister
 
 			fgbTileLine line = fetch->tileLine;
 
+			bool cgb = fgb__CGBIsActive(system);
+			uint8_t attr = fetch->cgbBGAttr;
+			bool xFlip = cgb && (attr & FGB__CGB_BG_ATTR_XFLIP_BIT);
+			uint8_t cgbBGPalette = (uint8_t)(attr & FGB__CGB_BG_ATTR_PALETTE_MASK);
+			bool cgbBGPriority = cgb && (attr & FGB__CGB_BG_ATTR_PRIORITY_BIT);
+
 			for (uint8_t xOffset = 0; xOffset < FGB_TILE_WIDTH; ++xOffset) {
 
-				uint8_t bit = 7 - xOffset;
+				uint8_t bit = xFlip ? xOffset : (uint8_t)(7 - xOffset);
 
 				uint8_t colorIndex = fgb__PPUDecodeColorIndex(line.lower.value, line.upper.value, bit);
 
 				fgbPixelType backgroundTileType = pipeline->tileType;
 
-				if (backgroundTileType == fgbPixelType_Background && !ppu->state.isBackgroundEnabled) {
+				// DMG: LCDC.0=0 blanks BG + Window. CGB keeps BG drawn (LCDC.0 acts as master-priority in PixelMix).
+				if ((!cgb && !lcd->lcdc.backgroundEnabled) || (backgroundTileType != fgbPixelType_Window && !ppu->state.isBackgroundEnabled)) {
 					colorIndex = 0;
-				} else if (backgroundTileType == fgbPixelType_Window && !ppu->state.isWindowEnabled) {
+				} else if (backgroundTileType == fgbPixelType_Window && (!lcd->lcdc.windowEnable || !ppu->state.isWindowEnabled)) {
 					colorIndex = 0;
 				}
+
+				fgbColor bgColor = cgb
+					? fgb__CGBResolveBGColor(system, cgbBGPalette, colorIndex)
+					: ppu->currentMonochromeColors.background[colorIndex];
 
 				fgbPixel backgroundPixel = {
 					.spritePriority = false,
 					.type = backgroundTileType,
 					.value = colorIndex,
-					.color = ppu->currentMonochromeColors.background[colorIndex]
+					.color = bgColor,
+					.cgbPalette = cgbBGPalette,
+					.cgbBgPriority = cgbBGPriority,
 				};
 
-				fgbPixel spritePixel = fgb__PPUFetchSpritePixel(ppu, lcd, pipeline, pipeline->state.fifoX);
+				fgbPixel spritePixel = fgb__PPUFetchSpritePixel(system, ppu, lcd, pipeline, pipeline->state.fifoX);
 
-				fgbPixel mixedPixel = fgb__PPUPixelMix(backgroundPixel, spritePixel);
+				fgbPixel mixedPixel = fgb__PPUPixelMix(backgroundPixel, spritePixel, cgb, (bool)lcd->lcdc.backgroundEnabled);
 
 				fgb__PPUFIFOPush(&pipeline->fifo, mixedPixel);
 
@@ -9246,20 +10087,25 @@ static void fgb__PPUPipelinePushPixel(fgbSystem *system, fgbPPU *ppu, fgbLCDRegi
 	// Is is pixel inside the screen? If so render the actual pixel out
 	if ((pipeline->state.lineX >= lcd->scx % 8) || (pixel.type == fgbPixelType_Window)) {
 		fgbColor color = { 0 };
-		switch (pixel.type) {
-			case fgbPixelType_Sprite0:
-				color = ppu->currentMonochromeColors.sprite0[pixel.value];
-				break;
-			case fgbPixelType_Sprite1:
-				color = ppu->currentMonochromeColors.sprite1[pixel.value];
-				break;
-			case fgbPixelType_Background:
-			case fgbPixelType_Window:
-				color = ppu->currentMonochromeColors.background[pixel.value];
-				break;
-			default:
-				color = ppu->currentMonochromeColors.background[0];
-				break;
+		if (fgb__CGBIsActive(system)) {
+			// CGB: pixel.color was resolved from CGB palette RAM during fetch, use it directly.
+			color = pixel.color;
+		} else {
+			switch (pixel.type) {
+				case fgbPixelType_Sprite0:
+					color = ppu->currentMonochromeColors.sprite0[pixel.value];
+					break;
+				case fgbPixelType_Sprite1:
+					color = ppu->currentMonochromeColors.sprite1[pixel.value];
+					break;
+				case fgbPixelType_Background:
+				case fgbPixelType_Window:
+					color = ppu->currentMonochromeColors.background[pixel.value];
+					break;
+				default:
+					color = ppu->currentMonochromeColors.background[0];
+					break;
+			}
 		}
 
 		ppu->display[(lcd->ly * FGB_DISPLAY_WIDTH) + pipeline->state.pushX] = color;
@@ -9311,13 +10157,15 @@ static void fgb__PPUSearchSprites(fgbSystem *system, fgbPPU *ppu) {
 
 	uint8_t spriteHeight = lcd->lcdc.objSize ? 16 : 8;
 
+	// CGB (OPRI=0) orders sprites strictly by OAM index; DMG + CGB-OPRI=1 sort by X-coord.
+	bool oamOrder = fgb__CGBIsActive(system) && !system->cgbState.objPriorityMode.dmgMode;
+
+	fgbLineSpriteEntry *tail = NULL;
+
 	for (uint8_t oamEntryIndex = 0; oamEntryIndex < FGB_MAX_OAM_ENTRY_COUNT; ++oamEntryIndex) {
 		const fgbOAMEntry *oamEntry = ppu->oam.entries + oamEntryIndex;
 
-		if (!oamEntry->x) {
-			// Not visible, because 0 is the same as -8
-			continue;
-		}
+		// Sprites at X=0 are off-screen visually but still consume a per-line slot.
 
 		if (pipeline->sprites.count >= FGB__PPU_MAX_SPRITES_PER_LINE) {
 			// Only 10 sprites per line are allowed
@@ -9331,15 +10179,25 @@ static void fgb__PPUSearchSprites(fgbSystem *system, fgbPPU *ppu) {
 			newEntry->entry = *oamEntry;
 			newEntry->next = NULL;
 
-			// We are the very first sprite or
-			// We are smaller than the last sprite, so we can insert outself to the very end
-			if (pipeline->sprites.first == NULL || oamEntry->x < pipeline->sprites.first->entry.x) {
-				newEntry->next = pipeline->sprites.first;
-				pipeline->sprites.first = newEntry;
+			if (oamOrder) {
+				// Append in OAM traversal order so sprites earlier in OAM stay at the head.
+				if (pipeline->sprites.first == NULL) {
+					pipeline->sprites.first = newEntry;
+				} else {
+					tail->next = newEntry;
+				}
+				tail = newEntry;
 			} else {
-				// Insert the sprite entry in the chain by sorting it in
-				FGB_ASSERT(pipeline->sprites.first != NULL);
-				fgb__PPUInsertSpriteEntry(pipeline, newEntry);
+				// We are the very first sprite or
+				// We are smaller than the last sprite, so we can insert outself to the very end
+				if (pipeline->sprites.first == NULL || oamEntry->x < pipeline->sprites.first->entry.x) {
+					newEntry->next = pipeline->sprites.first;
+					pipeline->sprites.first = newEntry;
+				} else {
+					// Insert the sprite entry in the chain by sorting it in
+					FGB_ASSERT(pipeline->sprites.first != NULL);
+					fgb__PPUInsertSpriteEntry(pipeline, newEntry);
+				}
 			}
 		}
 	}
@@ -9379,6 +10237,9 @@ static void fgb__PPUModePixelTransfer(fgbSystem *system) {
 		fgb__PPUSetMode(system, lcd, fgbPPUMode_HBlank);
 
 		fgb__PPUStatusInterruptTest(system, false);
+
+		// CGB: armed H-blank DMA transfers one 16-byte block on each H-blank edge.
+		fgb__CGBHDMAHBlankStep(system);
 	}
 }
 
@@ -9448,8 +10309,8 @@ static void fgb__PPUModeVerticalBlank(fgbSystem *system) {
 			fgb__PPUStatusInterruptTest(system, false);
 
 			// Update tiles and background map
-			fgb__PPUVideoRAMFullUpdate(&system->ppu);
-			fgb__PPUBackgroundMapUpdate(&system->ppu);
+			fgb__PPUVideoRAMFullUpdate(system);
+			fgb__PPUBackgroundMapUpdate(system);
 
 			// Our frame is now finished
 			ppu->state.frameCount++;
@@ -9732,6 +10593,8 @@ static bool fgb__TimerTick(fgbSystem *system) {
 		}
 	}
 
+	// CGB double-speed: fgb__HWTick4 is called 2x more often, but Timer is gated to every
+	// other call — DIV therefore ticks at the same wall-clock rate in both speeds.
 	uint16_t lastDivider = timer->divider;
 	timer->divider++;
 	fgb__TimerTickTIMA(system, lastDivider, timer->divider);
@@ -9752,7 +10615,8 @@ static uint8_t fgb__WorkRamRead(fgbSystem *system, const uint16_t address) {
 	if (address >= FGB__BUS_ADDRESS_WORK_RAM_BANK0_FROM && address <= FGB__BUS_ADDRESS_WORK_RAM_BANK0_TO) {
 		return system->ram.work.bank0.m[address - FGB__BUS_ADDRESS_WORK_RAM_BANK0_FROM];
 	} else if (address >= FGB__BUS_ADDRESS_WORK_RAM_BANK1_OR_N_FROM && address <= FGB__BUS_ADDRESS_WORK_RAM_BANK1_OR_N_TO) {
-		const fgbWorkRAMBank *bank = &system->ram.work.bank1_to_N[0];
+		uint8_t bankIdx = fgb__CGBIsActive(system) ? fgb__CGBWRAMBankIndex(system) : 1;
+		const fgbWorkRAMBank *bank = &system->ram.work.banks[bankIdx];
 		return bank->m[address - FGB__BUS_ADDRESS_WORK_RAM_BANK1_OR_N_FROM];
 	} else if (address >= FGB__BUS_ADDRESS_SHADOW_RAM_FROM && address <= FGB__BUS_ADDRESS_SHADOW_RAM_TO) {
 		uint16_t newAddress = address - 0x2000; // Redirect to work ram
@@ -9767,7 +10631,8 @@ static void fgb__WorkRamWrite(fgbSystem *system, const uint16_t address, const u
 	if (address >= FGB__BUS_ADDRESS_WORK_RAM_BANK0_FROM && address <= FGB__BUS_ADDRESS_WORK_RAM_BANK0_TO) {
 		system->ram.work.bank0.m[address - FGB__BUS_ADDRESS_WORK_RAM_BANK0_FROM] = value;
 	} else if (address >= FGB__BUS_ADDRESS_WORK_RAM_BANK1_OR_N_FROM && address <= FGB__BUS_ADDRESS_WORK_RAM_BANK1_OR_N_TO) {
-		fgbWorkRAMBank *bank = &system->ram.work.bank1_to_N[0];
+		uint8_t bankIdx = fgb__CGBIsActive(system) ? fgb__CGBWRAMBankIndex(system) : 1;
+		fgbWorkRAMBank *bank = &system->ram.work.banks[bankIdx];
 		bank->m[address - FGB__BUS_ADDRESS_WORK_RAM_BANK1_OR_N_FROM] = value;
 	} else if (address >= FGB__BUS_ADDRESS_SHADOW_RAM_FROM && address <= FGB__BUS_ADDRESS_SHADOW_RAM_TO) {
 		uint16_t newAddress = address - 0x2000; // Redirect to work ram
@@ -9944,6 +10809,26 @@ static uint8_t fgb__IORead(fgbSystem *system, const uint16_t address) {
 		return fgb__PPURead(system, address);
 	} else if (address >= FGB__BUS_ADDRESS_SERIAL_REGISTER_FROM && address <= FGB__BUS_ADDRESS_SERIAL_REGISTER_TO) {
 		return fgb__SerialRead(&system->serial, address);
+	} else if (address >= FGB__BUS_ADDRESS_HDMA_FROM && address <= FGB__BUS_ADDRESS_HDMA_TO) {
+		return fgb__CGBReadHDMA(system, address);
+	}
+
+	if (address == FGB__BUS_ADDRESS_IO_KEY1_REG) {
+		return fgb__CGBReadKEY1(system);
+	} else if (address == FGB__BUS_ADDRESS_IO_VBK_REG) {
+		return fgb__CGBReadVBK(system);
+	} else if (address == FGB__BUS_ADDRESS_IO_BCPS_REG) {
+		return fgb__CGBReadBCPS(system);
+	} else if (address == FGB__BUS_ADDRESS_IO_BCPD_REG) {
+		return fgb__CGBReadBCPD(system);
+	} else if (address == FGB__BUS_ADDRESS_IO_OCPS_REG) {
+		return fgb__CGBReadOCPS(system);
+	} else if (address == FGB__BUS_ADDRESS_IO_OCPD_REG) {
+		return fgb__CGBReadOCPD(system);
+	} else if (address == FGB__BUS_ADDRESS_IO_OPRI_REG) {
+		return fgb__CGBReadOPRI(system);
+	} else if (address == FGB__BUS_ADDRESS_IO_SVBK_REG) {
+		return fgb__CGBReadSVBK(system);
 	}
 
 	if (address >= FGB__BUS_ADDRESS_IO_REGISTERS_FROM && address <= FGB__BUS_ADDRESS_IO_REGISTERS_TO) {
@@ -9978,11 +10863,39 @@ static void fgb__IOWrite(fgbSystem *system, const uint16_t address, const uint8_
 	} else if (address >= FGB__BUS_ADDRESS_SERIAL_REGISTER_FROM && address <= FGB__BUS_ADDRESS_SERIAL_REGISTER_TO) {
 		fgb__SerialWrite(&system->serial, address, value);
 		return;
+	} else if (address >= FGB__BUS_ADDRESS_HDMA_FROM && address <= FGB__BUS_ADDRESS_HDMA_TO) {
+		fgb__CGBWriteHDMA(system, address, value);
+		return;
+	}
+
+	if (address == FGB__BUS_ADDRESS_IO_KEY1_REG) {
+		fgb__CGBWriteKEY1(system, value);
+		return;
+	} else if (address == FGB__BUS_ADDRESS_IO_VBK_REG) {
+		fgb__CGBWriteVBK(system, value);
+		return;
+	} else if (address == FGB__BUS_ADDRESS_IO_BCPS_REG) {
+		fgb__CGBWriteBCPS(system, value);
+		return;
+	} else if (address == FGB__BUS_ADDRESS_IO_BCPD_REG) {
+		fgb__CGBWriteBCPD(system, value);
+		return;
+	} else if (address == FGB__BUS_ADDRESS_IO_OCPS_REG) {
+		fgb__CGBWriteOCPS(system, value);
+		return;
+	} else if (address == FGB__BUS_ADDRESS_IO_OCPD_REG) {
+		fgb__CGBWriteOCPD(system, value);
+		return;
+	} else if (address == FGB__BUS_ADDRESS_IO_OPRI_REG) {
+		fgb__CGBWriteOPRI(system, value);
+		return;
+	} else if (address == FGB__BUS_ADDRESS_IO_SVBK_REG) {
+		fgb__CGBWriteSVBK(system, value);
+		return;
 	}
 
 	if (address >= FGB__BUS_ADDRESS_IO_REGISTERS_FROM && address <= FGB__BUS_ADDRESS_IO_REGISTERS_TO) {
-		system->io.m[address - FGB__BUS_ADDRESS_IO_REGISTERS_FROM] = value;
-		return;
+		return; // Writes are ignored for unsupported IO registers
 	} else {
 		FGB__Failure(system, fgbErrorType_ExecutionError, fgb__KindName_IO, "Unsupported write '$%02X' to address '$%04X'", value, address);
 	}
@@ -12222,6 +13135,20 @@ static bool fgb__InstructionProc_STOP(fgbSystem *system, const fgbInstructionReg
 	// NOTE(final): STOP skips the next instruction always
 	r->pc++;
 
+	// CGB (pure): if KEY1 is armed, STOP performs a speed switch instead of halting.
+	// CGB-in-DMG-compat mode keeps original STOP semantics (KEY1 is locked out).
+	if (system->coreType == fgbCoreType_CGB && system->cgbState.key1Reg.switchArmed) {
+		fgbCGBSpeedState *ss = &system->cgbState.speedState;
+		ss->currentMode = (ss->currentMode == fgbSpeedMode_Normal) ? fgbSpeedMode_Double : fgbSpeedMode_Normal;
+		ss->halfTickPhase = 0;
+		system->cgbState.key1Reg.switchArmed = false;
+		// Documented ~2050 idle cycles (~512 M-cycles) consumed via hardware tick path.
+		for (int i = 0; i < 512; ++i) {
+			fgb__HWTick4(system);
+		}
+		system->cpu.instructionRegister.hadBlockingSideEffect = true;
+	}
+
 	return true;
 }
 
@@ -13037,6 +13964,82 @@ static void fgb__HandleInterruptTicks(fgbInterrupts *ir, const bool wasServed) {
 }
 
 // ********************************************************************************************************************
+// Color Palettes Implementation
+// ********************************************************************************************************************
+// Color palette for DMG (https://i.pinimg.com/originals/05/ad/bc/05adbc3f01b2b7015562ba22a60ac375.jpg)
+#define FGB_DMG_COLOR_OFF {202, 220, 159}
+#define FGB_DMG_COLOR_ON {130, 153, 30}
+#define FGB_DMG_COLOR_00 {206, 226, 113}
+#define FGB_DMG_COLOR_01 {125, 153, 13}
+#define FGB_DMG_COLOR_10 {48, 98, 48}
+#define FGB_DMG_COLOR_11 {15, 56, 15}
+
+// Color palette for MGB (https://www.color-hex.com/color-palette/45300)
+#define FGB_MGB_COLOR_OFF {0, 0, 0}
+#define FGB_MGB_COLOR_ON {200, 200, 200}
+#define FGB_MGB_COLOR_00 {230, 230, 230}
+#define FGB_MGB_COLOR_01 {159, 159, 159}
+#define FGB_MGB_COLOR_10 {84, 84, 84}
+#define FGB_MGB_COLOR_11 {0, 0, 0}
+
+// SGB Color Palette (Row 2)
+// https://en.wikipedia.org/wiki/List_of_video_game_console_palettes
+
+#define FGB_SGB_COLOR_OFF {230, 0, 0}
+#define FGB_SGB_COLOR_ON {255, 133, 132}
+
+#define FGB_SGB_OBJ0_COLOR_00 {190, 255, 153}
+#define FGB_SGB_OBJ0_COLOR_01 {86, 178, 33}
+#define FGB_SGB_OBJ0_COLOR_10 {0, 131, 0}
+#define FGB_SGB_OBJ0_COLOR_11 {0, 0, 0}
+
+#define FGB_SGB_OBJ1_COLOR_00 {158, 255, 240}
+#define FGB_SGB_OBJ1_COLOR_01 {101, 164, 155}
+#define FGB_SGB_OBJ1_COLOR_10 {0, 0, 254}
+#define FGB_SGB_OBJ1_COLOR_11 {0, 0, 0}
+
+#define FGB_SGB_BG_COLOR_00 {255, 211, 211}
+#define FGB_SGB_BG_COLOR_01 {255, 133, 132}
+#define FGB_SGB_BG_COLOR_10 {148, 58, 58}
+#define FGB_SGB_BG_COLOR_11 {0, 0, 0}
+
+// Color palette for TEST (Black/White)
+#define FGB_TEST_COLOR_00 {255, 255, 255}
+#define FGB_TEST_COLOR_01 {170, 170, 170}
+#define FGB_TEST_COLOR_10 {85, 85, 85}
+#define FGB_TEST_COLOR_11 {0, 0, 0}
+#define FGB_TEST_COLOR_OFF FGB_TEST_COLOR_00
+#define FGB_TEST_COLOR_ON FGB_TEST_COLOR_01
+
+static fgbMonochromeColors FGB_DEFAULT_DMG_COLORS = {
+	.background = {FGB_DMG_COLOR_00, FGB_DMG_COLOR_01, FGB_DMG_COLOR_10, FGB_DMG_COLOR_11},
+	.sprite0 = {FGB_DMG_COLOR_00, FGB_DMG_COLOR_01, FGB_DMG_COLOR_10, FGB_DMG_COLOR_11},
+	.sprite1 = {FGB_DMG_COLOR_00, FGB_DMG_COLOR_01, FGB_DMG_COLOR_10, FGB_DMG_COLOR_11},
+	.system = {FGB_DMG_COLOR_OFF, FGB_DMG_COLOR_ON},
+};
+
+static fgbMonochromeColors FGB_DEFAULT_MGB_COLORS = {
+	.background = {FGB_MGB_COLOR_00, FGB_MGB_COLOR_01, FGB_MGB_COLOR_10, FGB_MGB_COLOR_11},
+	.sprite0 = {FGB_MGB_COLOR_00, FGB_MGB_COLOR_01, FGB_MGB_COLOR_10, FGB_MGB_COLOR_11},
+	.sprite1 = {FGB_MGB_COLOR_00, FGB_MGB_COLOR_01, FGB_MGB_COLOR_10, FGB_MGB_COLOR_11},
+	.system = {FGB_MGB_COLOR_OFF, FGB_MGB_COLOR_ON},
+};
+
+static fgbMonochromeColors FGB_DEFAULT_SGB_COLORS = {
+	.background = {FGB_SGB_BG_COLOR_00, FGB_SGB_BG_COLOR_01, FGB_SGB_BG_COLOR_10, FGB_SGB_BG_COLOR_11},
+	.sprite0 = {FGB_SGB_OBJ0_COLOR_00, FGB_SGB_OBJ0_COLOR_01, FGB_SGB_OBJ0_COLOR_10, FGB_SGB_OBJ0_COLOR_11},
+	.sprite1 = {FGB_SGB_OBJ1_COLOR_00, FGB_SGB_OBJ1_COLOR_01, FGB_SGB_OBJ1_COLOR_10, FGB_SGB_OBJ1_COLOR_11},
+	.system = {FGB_SGB_COLOR_OFF, FGB_SGB_COLOR_ON},
+};
+
+static fgbMonochromeColors FGB_DEFAULT_TEST_COLORS = {
+	.background = {FGB_TEST_COLOR_00, FGB_TEST_COLOR_01, FGB_TEST_COLOR_10, FGB_TEST_COLOR_11},
+	.sprite0 = {FGB_TEST_COLOR_00, FGB_TEST_COLOR_01, FGB_TEST_COLOR_10, FGB_TEST_COLOR_11},
+	.sprite1 = {FGB_TEST_COLOR_00, FGB_TEST_COLOR_01, FGB_TEST_COLOR_10, FGB_TEST_COLOR_11},
+	.system = {FGB_TEST_COLOR_OFF, FGB_TEST_COLOR_ON},
+};
+
+// ********************************************************************************************************************
 // Core Implementation
 // ********************************************************************************************************************
 FGB_API bool fgbPause(fgbSystem *system) {
@@ -13149,6 +14152,10 @@ static fgbRegisterType GetRegisterTypeFromName(const char *name) {
 	return fgbRegisterType_None;
 }
 
+static inline bool fgb__CGBDoubleSpeed(const fgbSystem *system) {
+	return fgb__CGBIsActive(system) && system->cgbState.speedState.currentMode == fgbSpeedMode_Double;
+}
+
 static void fgb__HWTick4(fgbSystem *system) {
 	fgbMemoryCycles memoryCycles = 1;
 	fgbTickCycles tickCycles = 4;
@@ -13160,28 +14167,38 @@ static void fgb__HWTick4(fgbSystem *system) {
 		return;
 	}
 
+	// In double-speed, gate Timer/PPU/APU to every other HWTick4 invocation so their
+	// wall-clock cadence is preserved while DMA + CPU run at 2x rate.
+	bool runNonCPU = true;
+	if (fgb__CGBDoubleSpeed(system)) {
+		system->cgbState.speedState.halfTickPhase ^= 1;
+		runNonCPU = (system->cgbState.speedState.halfTickPhase == 0);
+	}
+
 	for (fgbTickCycles tickCycle = 0; tickCycle < tickCycles; ++tickCycle) {
 		fgb__MicroStep(system, fgbMicroStepType_CPUTick);
 
 		for (fgbMemoryCycles memoryCycle = 0; memoryCycle < memoryCycles; ++memoryCycle) {
 			fgb__MicroStep(system, fgbMicroStepType_HardwareTick);
 
-			fgb__MicroStep(system, fgbMicroStepType_Timer);
-			if (!fgb__TimerTick(system)) {
-				FGB__Failure(system, fgbErrorType_ExecutionError, fgb__KindName_Core, "Failed updating timer");
-				return;
-			}
+			if (runNonCPU) {
+				fgb__MicroStep(system, fgbMicroStepType_Timer);
+				if (!fgb__TimerTick(system)) {
+					FGB__Failure(system, fgbErrorType_ExecutionError, fgb__KindName_Core, "Failed updating timer");
+					return;
+				}
 
-			fgb__MicroStep(system, fgbMicroStepType_PPU);
-			if (!fgb__PPUTick(system)) {
-				FGB__Failure(system, fgbErrorType_ExecutionError, fgb__KindName_Core, "Failed updating PPU");
-				return;
-			}
+				fgb__MicroStep(system, fgbMicroStepType_PPU);
+				if (!fgb__PPUTick(system)) {
+					FGB__Failure(system, fgbErrorType_ExecutionError, fgb__KindName_Core, "Failed updating PPU");
+					return;
+				}
 
-			fgb__MicroStep(system, fgbMicroStepType_APU);
-			if (!fgb__APUTick(system)) {
-				FGB__Failure(system, fgbErrorType_ExecutionError, fgb__KindName_Core, "Failed updating APU");
-				return;
+				fgb__MicroStep(system, fgbMicroStepType_APU);
+				if (!fgb__APUTick(system)) {
+					FGB__Failure(system, fgbErrorType_ExecutionError, fgb__KindName_Core, "Failed updating APU");
+					return;
+				}
 			}
 
 			system->cpu.state.currentMemoryCycles++;
@@ -13189,8 +14206,6 @@ static void fgb__HWTick4(fgbSystem *system) {
 
 		system->cpu.state.totalTickCycles++;
 	}
-
-	
 }
 
 FGB_API fgbTestResultType fgbRunTest(const fgbCallbacks *callbacks, const fgbGamePak *gamePak, const fgbRunTestMode mode, const uint64_t maxTickCount, fgbTestValidateFunc *validateFunc, fgbTestFrameUpdateFunc *frameUpdateFunc, fgbTestResultData *data) {
@@ -13217,6 +14232,7 @@ FGB_API fgbTestResultType fgbRunTest(const fgbCallbacks *callbacks, const fgbGam
 
 	fgbConfiguration config = { 0 };
 	config.isScreenDisabled = true;
+	fgbGetMonochromeColors(fgbMonochromePaletteType_Test, &config.colors);
 
 	fgbInitResult initRes = fgbInit(system, &config, gamePak);
 
@@ -13312,23 +14328,6 @@ done:
 	return result;
 }
 
-static void fgb__SetupDMG(fgbCPURegisters *regs) {
-	regs->pc = 0x100;
-	regs->sp = 0xfffe;
-
-	regs->a = 0x01;
-	regs->f.flags = 0xb0;
-
-	regs->b = 0x00;
-	regs->c = 0x13;
-
-	regs->d = 0x00;
-	regs->e = 0xd8;
-
-	regs->h = 0x01;
-	regs->l = 0x4d;
-}
-
 static void fgb__InitExternalRAM(fgbSystem *system, fgbGamePak *gamePak) {
 	// Clear external RAM
 	bool hasExternalRAM = gamePak->ram.memory.length > 0;
@@ -13349,14 +14348,13 @@ static void fgb__InitExternalRAM(fgbSystem *system, fgbGamePak *gamePak) {
 	}
 }
 
-static void fgb__PowerOn(fgbSystem *system, const bool isScreenEnabled, const uint32_t sampleRate) {
+static bool fgb__PowerOn(fgbSystem *system, const bool isScreenEnabled, const uint32_t sampleRate) {
 	FGB__INFO(system, fgb__KindName_Core, "Power On");
 	FGB__INFO(system, fgb__KindName_Core, "");
 
 	fgbCPU *cpu = &system->cpu;
 	fgbBoot *boot = &system->boot;
 	fgbCPURegisters *regs = &cpu->registers;
-	fgbIORegisters *io = &system->io;
 	fgbTimer *timer = &system->timer;
 	fgbSerial *serial = &system->serial;
 	fgbInterrupts *interrupts = &system->interrupts;
@@ -13365,6 +14363,8 @@ static void fgb__PowerOn(fgbSystem *system, const bool isScreenEnabled, const ui
 	fgbJoypadState *joypad = &system->joypad;
 	fgbAPU *apu = &system->apu;
 	fgbGamePak *gamePak = &system->gamePak;
+	fgbCGBState *cgbState = &system->cgbState;
+	fgbLCDRegister *lcd = &ppu->lcd;
 
 	// Reset structs
 	fgbClearStruct(regs);
@@ -13376,10 +14376,13 @@ static void fgb__PowerOn(fgbSystem *system, const bool isScreenEnabled, const ui
 	fgbClearStruct(ppu);
 	fgbClearStruct(joypad);
 	fgbClearStruct(apu);
+	fgbClearStruct(cgbState);
 
 	fgb__TimerInit(timer);
 
 	fgb__PPUInit(system, isScreenEnabled);
+
+	fgb__PPUPaletteReload(lcd, &ppu->currentMonochromeColors, &system->systemMonochromeColors);
 
 	fgb__APUInit(system, sampleRate);
 
@@ -13388,8 +14391,6 @@ static void fgb__PowerOn(fgbSystem *system, const bool isScreenEnabled, const ui
 	fgb__InitExternalRAM(system, gamePak);
 
 	fgb__InterruptsInit(interrupts);
-
-	system->coreType = fgbCoreType_DMG;
 
 	if (boot->rom.isEnabled) {
 		boot->state.isActive = true;
@@ -13400,17 +14401,38 @@ static void fgb__PowerOn(fgbSystem *system, const bool isScreenEnabled, const ui
 		boot->state.isActive = false;
 		boot->state.reg = 0;
 
-		fgb__SetupDMG(regs);
+		switch (system->coreType) {
+			case fgbCoreType_DMG:
+				fgb__DMGSetup(regs);
+				break;
+
+			case fgbCoreType_CGB:
+				fgb__CGBSetupForCGB(regs, cgbState);
+				break;
+
+			case fgbCoreType_CGB_DMG:
+				fgb__CGBSetupForDMG(regs, cgbState);
+				break;
+
+			default:
+				FGB__ERROR(system, fgb__KindName_Core, "Unsupported Core Type '%u'", system->coreType);
+				return false;
+		}
 	}
+
+	return true;
 }
 
-static void fgb__ExecuteReset(fgbSystem *system, const fgbResetState resetState) {
+static bool fgb__ExecuteReset(fgbSystem *system, const fgbResetState resetState) {
 	FGB_ASSERT(resetState != fgbResetState_None);
 
 	FGB__INFO(system, fgb__KindName_Core, "Reset");
 	FGB__INFO(system, fgb__KindName_Core, "");
 
-	fgb__PowerOn(system, system->ppu.state.isDisplayEnabled, system->apu.state.sampleRate);
+	if (!fgb__PowerOn(system, system->ppu.state.isDisplayEnabled, system->apu.state.sampleRate)) {
+		FGB__Failure(system, fgbErrorType_PowerFailure, fgb__KindName_Core, "Failed to power on for reset");
+		return false;
+	}
 
 	system->ppu.state.isFrameFinished = true;
 	system->ppu.state.isVRAMUpdated = true;
@@ -13423,6 +14445,8 @@ static void fgb__ExecuteReset(fgbSystem *system, const fgbResetState resetState)
 	}
 
 	system->resetState = fgbResetState_None;
+
+	return true;
 }
 
 static bool fgb__FetchDecodeExecute(fgbSystem *system, const uint32_t startFrameIndex, const fgbCPURegisters *startRegs) {
@@ -13467,32 +14491,36 @@ static bool fgb__FetchDecodeExecute(fgbSystem *system, const uint32_t startFrame
 		return false;
 	}
 
-	// In the instruction are machine cycles defined, 1 equals 4 cpu cycles, so we multiply it by 4
-	fgbTickCycles branchCycles = insReg->instruction.branchCycles * 4;
-	fgbTickCycles normalCycles = insReg->instruction.normalCycles * 4;
-	fgbTickCycles minCycles = FGB_MIN(branchCycles, normalCycles);
-	fgbTickCycles maxCycles = FGB_MAX(branchCycles, normalCycles);
+	// Certain instructions legitimately exceed the static cycle table when they
+	// trigger a blocking side effect (CGB speed switch via STOP, GDMA via HDMA5).
+	// The side-effect site sets hadBlockingSideEffect so we can skip the bounds check.
+	if (!insReg->hadBlockingSideEffect) {
+		// In the instruction are machine cycles defined, 1 equals 4 cpu cycles, so we multiply it by 4
+		fgbTickCycles branchCycles = insReg->instruction.branchCycles * 4;
+		fgbTickCycles normalCycles = insReg->instruction.normalCycles * 4;
+		fgbTickCycles minCycles = FGB_MIN(branchCycles, normalCycles);
+		fgbTickCycles maxCycles = FGB_MAX(branchCycles, normalCycles);
 
-	fgbTickCycles cyclesAdded = cpu->state.totalTickCycles - insReg->startTicks;
+		fgbTickCycles cyclesAdded = cpu->state.totalTickCycles - insReg->startTicks;
 
-	// Match cycles
-	if (cyclesAdded < minCycles) {
-		FGB__Failure(system, fgbErrorType_ExecutionError, fgb__KindName_Core, "Expect at least %uu cycles, but got %uu in instruction '%s', mode '%s'", minCycles, cyclesAdded, instructionName, addressingModeName);
-		return false;
-	}
-	if (cyclesAdded > maxCycles) {
-		FGB__Failure(system, fgbErrorType_ExecutionError, fgb__KindName_Core, "Expect no more than %uu cycles, but got %uu in instruction '%s', mode '%s'", maxCycles, cyclesAdded, instructionName, addressingModeName);
-		return false;
-	}
-	if (cpu->instructionRegister.wasBranchTaken) {
-		if (cyclesAdded != branchCycles) {
-			FGB__Failure(system, fgbErrorType_ExecutionError, fgb__KindName_Core, "Expect exactly %uu cycles for a jump, but got %uu in instruction '%s', mode '%s'", branchCycles, cyclesAdded, instructionName, addressingModeName);
+		if (cyclesAdded < minCycles) {
+			FGB__Failure(system, fgbErrorType_ExecutionError, fgb__KindName_Core, "Expect at least %uu cycles, but got %uu in instruction '%s', mode '%s'", minCycles, cyclesAdded, instructionName, addressingModeName);
 			return false;
 		}
-	} else {
-		if (cyclesAdded != normalCycles) {
-			FGB__Failure(system, fgbErrorType_ExecutionError, fgb__KindName_Core, "Expect exactly %uu cycles for a normal instruction, but got %uu in instruction '%s', mode '%s'", normalCycles, cyclesAdded, instructionName, addressingModeName);
+		if (cyclesAdded > maxCycles) {
+			FGB__Failure(system, fgbErrorType_ExecutionError, fgb__KindName_Core, "Expect no more than %uu cycles, but got %uu in instruction '%s', mode '%s'", maxCycles, cyclesAdded, instructionName, addressingModeName);
 			return false;
+		}
+		if (cpu->instructionRegister.wasBranchTaken) {
+			if (cyclesAdded != branchCycles) {
+				FGB__Failure(system, fgbErrorType_ExecutionError, fgb__KindName_Core, "Expect exactly %uu cycles for a jump, but got %uu in instruction '%s', mode '%s'", branchCycles, cyclesAdded, instructionName, addressingModeName);
+				return false;
+			}
+		} else {
+			if (cyclesAdded != normalCycles) {
+				FGB__Failure(system, fgbErrorType_ExecutionError, fgb__KindName_Core, "Expect exactly %uu cycles for a normal instruction, but got %uu in instruction '%s', mode '%s'", normalCycles, cyclesAdded, instructionName, addressingModeName);
+				return false;
+			}
 		}
 	}
 
@@ -13532,7 +14560,9 @@ FGB_API bool fgbTick(fgbSystem *system) {
 	// Reset system, if requested from the outside to prevent access to memory while running, etc.
 	//
 	if (system->resetState != fgbResetState_None) {
-		fgb__ExecuteReset(system, system->resetState);
+		if (!fgb__ExecuteReset(system, system->resetState)) {
+			return false;
+		}
 		return true;
 	}
 
@@ -13947,9 +14977,10 @@ FGB_API fgbInitResult fgbInit(fgbSystem *system, const fgbConfiguration *config,
 	// TODO(final): Copy the entire config structure instead!
 	uint32_t targetSampleRate = 0;
 	if (config != NULL) {
+		const bool hasCustomPalette = !fgb__MemoryIsZero((uint8_t *)&config->colors.m[0], sizeof(fgbMonochromeColors));
 		system->log = config->log;
 		system->boot.rom = config->bootROM;
-		system->systemMonochromeColors = !fgb__MemoryIsZero((uint8_t *)&config->colors.m[0], sizeof(fgbMonochromeColors)) ? config->colors : FGB_DEFAULT_DMG_COLORS;
+		system->systemMonochromeColors = hasCustomPalette ? config->colors : FGB_DEFAULT_DMG_COLORS;
 		system->directories = config->directories;
 		system->debug = config->debug;
 		system->callbacks = config->callbacks;
@@ -13971,16 +15002,24 @@ FGB_API fgbInitResult fgbInit(fgbSystem *system, const fgbConfiguration *config,
 	FGB__INFO(system, fgb__KindName_Core, "Initialize");
 	FGB__INFO(system, fgb__KindName_Core, "");
 
-	if (system->boot.rom.isEnabled && system->boot.rom.length < FGB_BOOT_MIN_ROM_SIZE) {
-		return fgbInitResult_MissingBootROM;
+	// Validate boot rom parameters
+	fgbBoot *boot = &system->boot;
+	if (boot->rom.isEnabled) {
+		if (boot->rom.length == 0) {
+			return fgbInitResult_MissingBootROM;
+		} else if (boot->rom.length < FGB_BOOT_MIN_ROM_SIZE) {
+			return fgbInitResult_InvalidBootROM; // DMG Boot ROM to small
+		} else if (boot->rom.length > FGB_BOOT_MAX_ROM_SIZE) {
+			return fgbInitResult_InvalidBootROM; // CGB Boot ROM to small
+		}
 	}
 
-	if (!system->boot.rom.isEnabled && gamePak == NULL) {
+	if (!boot->rom.isEnabled && gamePak == NULL) {
 		FGB__ERROR(system, fgb__KindName_Core, "Missing gamePak argument");
 		return fgbInitResult_MissingGamePak;
 	}
 
-	if (gamePak != NULL && !gamePak->isValid && !system->boot.rom.isEnabled) {
+	if (!boot->rom.isEnabled && (gamePak != NULL && !gamePak->isValid)) {
 		FGB__ERROR(system, fgb__KindName_Core, "Unsupported gamePak, rom size '%zu'", gamePak->rom.length);
 		return fgbInitResult_InvalidGamePak;
 	}
@@ -14045,7 +15084,12 @@ FGB_API fgbInitResult fgbInit(fgbSystem *system, const fgbConfiguration *config,
 		system->state = fgbEmulationState_Running;
 	}
 
-	fgb__PowerOn(system, isScreenEnabled, targetSampleRate);
+	system->coreType = gamePak->info.coreType;
+
+	if (!fgb__PowerOn(system, isScreenEnabled, targetSampleRate)) {
+		FGB__Failure(system, fgbErrorType_PowerFailure, fgb__KindName_Core, "Failed to power on for reset");
+		return fgbInitResult_InitializationFailed;
+	}
 
 	FGB__INFO(system, fgb__KindName_Core, system->state == fgbEmulationState_Paused ? "Paused" : "Running");
 
@@ -14062,6 +15106,17 @@ FGB_API void fgbShutdown(fgbSystem *system) {
 	FGB__INFO(system, fgb__KindName_Core, "");
 	FGB__INFO(system, fgb__KindName_Core, "Shutdown");
 	FGB__INFO(system, fgb__KindName_Core, "");
+
+	// Flush battery-backed RAM on shutdown regardless of the 30s save-debounce timer.
+	// Without this an in-game save made within the last 30s would be lost on quit.
+	fgbGamePak *gamePak = &system->gamePak;
+	bool hasRAM = gamePak->ram.memory.length > 0;
+	bool hasBattery = (gamePak->info.features & fgbGamePakFeature_BATTERY) != 0;
+	if (hasRAM && hasBattery && (gamePak->ram.isDirty || gamePak->ram.requestSave)) {
+		fgb__ExternalRAMSave(system, gamePak);
+		gamePak->ram.isDirty = false;
+		gamePak->ram.requestSave = false;
+	}
 
 	fgbGamePakUnload(&system->gamePak);
 
@@ -14083,7 +15138,9 @@ FGB_API bool fgbReset(fgbSystem *system, const bool paused) {
 		return true;
 	}
 
-	fgb__ExecuteReset(system, newState);
+	if (!fgb__ExecuteReset(system, newState)) {
+		return false;
+	}
 
 	return true;
 }
@@ -14634,6 +15691,28 @@ FGB_API size_t fgbFormatInstruction(char *destBuffer, size_t maxDestBufferLen, c
 	}
 }
 
+FGB_API bool fgbGetMonochromeColors(const fgbMonochromePaletteType type, fgbMonochromeColors* colors) {
+	if (type < fgbMonochromePaletteType_First || type > fgbMonochromePaletteType_Last || colors == NULL) {
+		return false;
+	}
+	switch (type) {
+		case fgbMonochromePaletteType_DMG:
+			*colors = FGB_DEFAULT_DMG_COLORS;
+			return true;
+		case fgbMonochromePaletteType_MGB:
+			*colors = FGB_DEFAULT_MGB_COLORS;
+			return true;
+		case fgbMonochromePaletteType_SGB:
+			*colors = FGB_DEFAULT_SGB_COLORS;
+			return true;
+		case fgbMonochromePaletteType_Test:
+			*colors = FGB_DEFAULT_TEST_COLORS;
+			return true;
+		default:
+			return false;
+	}
+}
+
 FGB_API void fgbSetColorPalette(fgbSystem *system, const fgbMonochromeColors *colors) {
 	if (system == NULL) {
 		return;
@@ -14757,8 +15836,6 @@ FGB_API bool fgbSnapshotExport(fgbSystem *system, fgbSnapshot *outSnapshot) {
 
 	// CPU
 	fgbCopyStruct(&system->cpu, &outSnapshot->cpu);
-	// IO
-	fgbCopyStruct(&system->io, &outSnapshot->io);
 	// Interrupts
 	fgbCopyStruct(&system->interrupts, &outSnapshot->interrupts);
 	// Joypad
@@ -14789,7 +15866,17 @@ FGB_API bool fgbSnapshotExport(fgbSystem *system, fgbSnapshot *outSnapshot) {
 	// Serial
 	fgbCopyStruct(&system->serial, &outSnapshot->serial);
 
-	outSnapshot->version = fgbSnapshotVersion_Current;
+	// CGB
+	if (fgb__CGBIsActive(system)) {
+		fgbCopyStruct(&system->cgbState, &outSnapshot->cgbState);
+	}
+
+	if (fgb__CGBIsActive(system)) {
+		outSnapshot->version = fgbSnapshotVersion_CGB;
+	} else {
+		outSnapshot->version = fgbSnapshotVersion_DMG;
+	}
+
 	outSnapshot->dateTime = fgb__DateTimeQuery(&system->callbacks);
 
 	return true;
@@ -14817,6 +15904,10 @@ FGB_API bool fgbIsSnapshotValid(const fgbSystem *system, const fgbSnapshot *snap
 	}
 
 	if (!fgb__IsGamePakInfoEqual(&system->gamePak.info, &snapshot->gameInfo)) {
+		return false;
+	}
+
+	if (fgb__CGBIsActive(system) && snapshot->version != fgbSnapshotVersion_CGB) {
 		return false;
 	}
 
@@ -14876,8 +15967,6 @@ FGB_API bool fgbSnapshotSaveToFile(const fgbSystem *system, const char *romFileP
 
 	// CPU
 	fgb__FileWriteAutoStruct(cb, fileHandle, &snapshot->cpu);
-	// IO
-	fgb__FileWriteAutoStruct(cb, fileHandle, &snapshot->io);
 	// Interrupts
 	fgb__FileWriteAutoStruct(cb, fileHandle, &snapshot->interrupts);
 	// Joypad
@@ -14893,6 +15982,11 @@ FGB_API bool fgbSnapshotSaveToFile(const fgbSystem *system, const char *romFileP
 	fgb__FileWriteAutoStruct(cb, fileHandle, &snapshot->timer);
 	// Serial
 	fgb__FileWriteAutoStruct(cb, fileHandle, &snapshot->serial);
+
+	// CGB
+	if (snapshot->version >= fgbSnapshotVersion_CGB) {
+		fgb__FileWriteAutoStruct(cb, fileHandle, &snapshot->cgbState);
+	}
 
 	// End-of-Data
 	fgbClearStruct(sixteenBytes);
@@ -14991,10 +16085,6 @@ FGB_API bool fgbSnapshotLoadFromFile(const fgbSystem *system, const char *romFil
 	if (!fgb__FileReadAutoStruct(cb, fileHandle, &snapshot->cpu)) {
 		goto failed;
 	}
-	// IO
-	if (!fgb__FileReadAutoStruct(cb, fileHandle, &snapshot->io)) {
-		goto failed;
-	}
 	// Interrupts
 	if (!fgb__FileReadAutoStruct(cb, fileHandle, &snapshot->interrupts)) {
 		goto failed;
@@ -15023,6 +16113,13 @@ FGB_API bool fgbSnapshotLoadFromFile(const fgbSystem *system, const char *romFil
 	// Serial
 	if (!fgb__FileReadAutoStruct(cb, fileHandle, &snapshot->serial)) {
 		goto failed;
+	}
+
+	// CGB
+	if (snapshot->version >= fgbSnapshotVersion_CGB) {
+		if (!fgb__FileReadAutoStruct(cb, fileHandle, &snapshot->cgbState)) {
+			goto failed;
+		}
 	}
 
 	// End-of-Data
@@ -15070,8 +16167,6 @@ FGB_API bool fgbSnapshotImport(fgbSystem *system, const fgbSnapshot *snapshot) {
 
 	// CPU
 	fgbCopyStruct(&snapshot->cpu, &system->cpu);
-	// IO
-	fgbCopyStruct(&snapshot->io, &system->io);
 	// Interrupts
 	fgbCopyStruct(&snapshot->interrupts, &system->interrupts);
 	// Joypad
@@ -15102,6 +16197,11 @@ FGB_API bool fgbSnapshotImport(fgbSystem *system, const fgbSnapshot *snapshot) {
 	fgbCopyStruct(&snapshot->timer, &system->timer);
 	// Serial
 	fgbCopyStruct(&snapshot->serial, &system->serial);
+
+	// CGB
+	if (snapshot->version >= fgbSnapshotVersion_CGB) {
+		fgbCopyStruct(&snapshot->cgbState, &system->cgbState);
+	}
 
 	return true;
 }
