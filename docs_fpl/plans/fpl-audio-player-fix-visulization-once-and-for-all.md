@@ -36,3 +36,4 @@ In my implementation this never happens and it always looks wrong - even though 
 Create a plan for fixing issue 1 and 2.
 Work only in the specified Sources i defined.
 Split into two tasks, start with FFT because the spectrum analysis is based on the FFT data.
+Store the plan as a markdown file in "docs_fpl/plans/fpl-audio-player-fix-visulization-once-and-for-all-plan.md".
