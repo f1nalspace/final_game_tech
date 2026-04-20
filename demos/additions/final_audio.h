@@ -439,7 +439,7 @@ static void HalfNormalizeFFT(FFTDouble* values, const size_t size) {
 
 static void ForwardFFT(const FFTDouble* in, const size_t size, FFTDouble* out) {
 	FFTCore(in, size, 1, out, FFTDirection_Forward);
-	HalfNormalizeFFT(out, size);
+	NormalizeFFT(out, size);
 }
 
 static void BackwardFFT(const FFTDouble* in, const size_t size, FFTDouble* out) {
