@@ -1286,7 +1286,7 @@ int main(int argc, char **args) {
 	demo->sineWave.frequency = 440;
 	demo->sineWave.toneVolume = 0.25f;
 	demo->sineWave.duration = 10.0;
-	demo->useRealTimeSamples = true;
+	demo->useRealTimeSamples = false;
 
 	int result = -1;
 
