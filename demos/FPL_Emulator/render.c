@@ -31,18 +31,18 @@ typedef struct {
 	uint32_t x;
 } RendererContextImpl;
 
-extern const APITextureFormat InvalidAPITextureFormat = fplZeroInit;
+const APITextureFormat InvalidAPITextureFormat = fplZeroInit;
 
-extern const Texture InvalidTexture = fplZeroInit;
+const Texture InvalidTexture = fplZeroInit;
 
-extern const Color4f ColorWhite = { 1.0f, 1.0f, 1.0f, 1.0f };
-extern const Color4f ColorBlack = { 0.0f, 0.0f, 0.0f, 1.0f };
-extern const Color4f ColorRed = { 1.0f, 0.0f, 0.0f, 1.0f };
-extern const Color4f ColorGreen = { 0.0f, 1.0f, 0.0f, 1.0f };
-extern const Color4f ColorBlue = { 0.0f, 0.0f, 1.0f, 1.0f };
-extern const Color4f ColorYellow = { 1.0f, 1.0f, 0.0f, 1.0f };
-extern const Color4f ColorGray = { 0.5f, 0.5f, 0.5f, 1.0f };
-extern const Color4f ColorDarkGray = { 0.25f, 0.25f, 0.25f, 1.0f };
+const Color4f ColorWhite = { 1.0f, 1.0f, 1.0f, 1.0f };
+const Color4f ColorBlack = { 0.0f, 0.0f, 0.0f, 1.0f };
+const Color4f ColorRed = { 1.0f, 0.0f, 0.0f, 1.0f };
+const Color4f ColorGreen = { 0.0f, 1.0f, 0.0f, 1.0f };
+const Color4f ColorBlue = { 0.0f, 0.0f, 1.0f, 1.0f };
+const Color4f ColorYellow = { 1.0f, 1.0f, 0.0f, 1.0f };
+const Color4f ColorGray = { 0.5f, 0.5f, 0.5f, 1.0f };
+const Color4f ColorDarkGray = { 0.25f, 0.25f, 0.25f, 1.0f };
 
 static char glErrorCodeBuffer[16];
 static const char *GetGLErrorString(const GLenum err) {

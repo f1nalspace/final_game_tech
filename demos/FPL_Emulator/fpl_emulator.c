@@ -45,20 +45,34 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2026-04-19
+	- Support for CGB rom file extension
+	- Support for render CGB palettes
+	- Increased persistent and transient memory block
+	- Fixed Disassembly loading was broken (misaligned instructions)
+	- Fixed UIListbox highlight/scrolling was not handling resize
+	- Fixed UIListbox computation issues
+	- Fixed audio sample ring buffer was not drained, in pause mode
+	- Improved assembly list by limit the updates to 0.1 secs
+
 	## 2026-04-16
 	- Emulation thread does not wait for OpenGL transfer anymore and buffers the pixels
 	- Fixed audio playback was not in-sync with games
 	- Improve texture upload performance by using glTexSubImage2D instead glTexImage2D
 
 	## 2026-04-10
+	- No more stall for texture uploads, emulator thread stores display/background-map/tile-map in ring buffer
+	- Fixed audio sample playback was not in-sync with running game
 	- Fixed strcmp() was used, even though no <string.h> was included. Now we have a macro FGB_STRCMP()
 
 	## 2025-06-26
 	- Initial version
 
 Todo:
-
 	- Unloading game button (very easy to do)
+	- Fix dissassembly listbox resize breaks scroll position
+	- Show CGB states
+	- Show rom/ram banks in UI
 	- OAM Visualization (harder than it seems)
 	- Add option to select background tile area, because relying on LCDC is not good
 
@@ -619,7 +633,7 @@ typedef struct {
 	Texture cursorTexture;
 	Texture displayTexture;
 	Texture backgroundMapTexture;
-	Texture vramTexture;
+	Texture tileMapTexture;
 	Texture fontTexture;
 	Texture fontTextureLarge;
 	Texture gbTexture;
@@ -674,6 +688,9 @@ typedef struct {
 	fpl_b32 isValid;
 
 	bool isDebugEnabled;
+
+	fplTimestamp lastDisassemblyScrollTime;
+	uint64_t lastDisassemblyScrollPC;
 } Application;
 
 static inline void UpdateKeyboardButtonState(UIButtonState *newState, const bool isDown) {
@@ -880,7 +897,7 @@ static Application *CreateApplication(fmemMemoryBlock *mem) {
 	app->fontTexture = UploadTexture(app->fontData.atlasWidth, app->fontData.atlasHeight, TextureFormat_Alpha, TextureFilter_Linear, app->fontData.atlasAlphaBitmap);
 	app->fontTextureLarge = UploadTexture(app->fontDataLarge.atlasWidth, app->fontDataLarge.atlasHeight, TextureFormat_Alpha, TextureFilter_Linear, app->fontDataLarge.atlasAlphaBitmap);
 	app->displayTexture = AllocateTexture(mem, FGB_DISPLAY_WIDTH, FGB_DISPLAY_HEIGHT, TextureFormat_RGBA, TextureFilter_Nearest);
-	app->vramTexture = AllocateTexture(mem, FGB_TILEMAP_WIDTH, FGB_TILEMAP_HEIGHT, TextureFormat_RGBA, TextureFilter_Nearest);
+	app->tileMapTexture = AllocateTexture(mem, FGB_TILEMAP_WIDTH, FGB_TILEMAP_HEIGHT, TextureFormat_RGBA, TextureFilter_Nearest);
 	app->backgroundMapTexture = AllocateTexture(mem, FGB_BACKGROUND_MAP_WIDTH, FGB_BACKGROUND_MAP_HEIGHT, TextureFormat_RGBA, TextureFilter_Nearest);
 	app->cursorTexture = LoadTextureFromMemory(ptr_mouseCursor, sizeOf_mouseCursor, TextureFormat_Automatic, TextureFilter_Linear, 0, 0);
 	app->gbTexture = LoadTextureFromMemory(ptr_gameboyImage, sizeOf_gameboyImage, TextureFormat_Automatic, TextureFilter_Linear, 619, 1024);
@@ -915,7 +932,7 @@ static void ReleaseApplication(Application **appRef) {
 	ReleaseEmulator(&app->emulator);
 
 	ReleaseTexture(&app->cursorTexture);
-	ReleaseTexture(&app->vramTexture);
+	ReleaseTexture(&app->tileMapTexture);
 	ReleaseTexture(&app->displayTexture);
 	ReleaseTexture(&app->backgroundMapTexture);
 	ReleaseTexture(&app->fontTexture);
@@ -1388,6 +1405,13 @@ static void DrawCPUState(Application *app, const fgbEmulationState state, const 
 		fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "State: %s", stateText);
 	}
 	UIString(uiCtx, textX, textY, foregroundColor, TextBuffer, 0);
+
+	const char *gameboyTypeName = fgbGetCoreTypeName(emulator->system.coreType);
+	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "%s", gameboyTypeName);
+	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
+	float gbtX = x + w - textSize.w - paddingX;
+	UIString(uiCtx, gbtX, textY, foregroundColor, TextBuffer, 0);
+
 	textY -= lineHeight;
 
 	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "M-Cycles: %llu, T-Cycles: %llu", cpu->state.currentMemoryCycles, cpu->state.totalTickCycles);
@@ -1694,47 +1718,47 @@ static void DrawBackground(const Application *app, const float x, const float y,
 	DrawTexturedQuad(tex->id, x + border * 2.0f, y + border * 2.0f, w - border * 4.0f, h - border * 4.0f, ColorWhite, uMin, vMin, uMax, vMax);
 }
 
-static void DrawTiles(UIContext *uiCtx, const Application *app, const float x, const float y, const float w, const float h, const float aspect) {
-	const Texture *tex = &app->vramTexture;
-	float uMin = 0.0f;
-	float uMax = tex->uScale;
-	float vMin = tex->vScale;
-	float vMax = 0.0f;
-	float border = 1.0f;
+static void DrawTiles(UIContext *uiCtx, const Texture *tex, const float x, const float y, const float w, const float h, const float aspect) {
+	const float uMin = 0.0f;
+	const float uMax = tex->uScale;
+	const float vMin = tex->vScale;
+	const float vMax = 0.0f;
+	const float border = 1.0f;
 
-	Vec2f size = V2fInit(w - border * 4.0f, h - border * 4.0f);
+	const Vec2f size = V2fInit(w - border * 4.0f, h - border * 4.0f);
 
-	Viewport4f vp = VP4fComputeByAspect(size, aspect);
+	const Viewport4f vp = VP4fComputeByAspect(size, aspect);
 
-	float rx = x + border * 2.0f + vp.x;
-	float ry = y + border * 2.0f + vp.y;
-	float rw = vp.w;
-	float rh = vp.h;
+	const float rx = x + border * 2.0f + vp.x;
+	const float ry = y + border * 2.0f + vp.y;
+	const float rw = vp.w;
+	const float rh = vp.h;
 
-	uint8_t gridCountX = 16;
-	uint8_t gridCountY = 24;
-	float tileSize = rw / (float)gridCountX;
+	const uint8_t gridCountX = 16;
+	const uint8_t gridCountY = 24;
+	const float tileSize = rw / (float)gridCountX;
 
-	float totalTilesWidth = gridCountX * tileSize;
-	float totalTilesHeight = gridCountY * tileSize;
+	const float totalTilesWidth = (float)gridCountX * tileSize;
+	const float totalTilesHeight = (float)gridCountY * tileSize;
+
+	const Color4f gridLineColor = { 0.1f, 0.1f, 0.1f, 0.25f };
 
 	UIPanel(uiCtx, x, y, w, h, true);
 
 	DrawTexturedQuad(tex->id, rx, ry, rw, rh, ColorWhite, uMin, vMin, uMax, vMax);
 
-	Color4f gridLineColor = { 0.1f, 0.1f, 0.1f, 0.25f };
 	for (uint8_t i = 0; i <= gridCountX; ++i) {
-		float gridLineX0 = rx + i * tileSize;
-		float gridLineY0 = ry;
-		float gridLineX1 = rx + i * tileSize;
-		float gridLineY1 = ry + totalTilesHeight;
+		const float gridLineX0 = rx + i * tileSize;
+		const float gridLineY0 = ry;
+		const float gridLineX1 = rx + i * tileSize;
+		const float gridLineY1 = ry + totalTilesHeight;
 		DrawLine(gridLineX0, gridLineY0, gridLineX1, gridLineY1, 1.0f, gridLineColor);
 	}
 	for (uint8_t i = 0; i <= gridCountY; ++i) {
-		float gridLineX0 = rx;
-		float gridLineY0 = ry + i * tileSize;
-		float gridLineX1 = rx + totalTilesWidth;
-		float gridLineY1 = ry + i * tileSize;
+		const float gridLineX0 = rx;
+		const float gridLineY0 = ry + i * tileSize;
+		const float gridLineX1 = rx + totalTilesWidth;
+		const float gridLineY1 = ry + i * tileSize;
 		DrawLine(gridLineX0, gridLineY0, gridLineX1, gridLineY1, 1.0f, gridLineColor);
 	}
 }
@@ -1840,6 +1864,9 @@ static void DrawPalettes(Application *app, const float x, const float y, const f
 	static Color4f obj0Colors[4];
 	static Color4f obj1Colors[4];
 
+	static Color4f cgbBGColors[8][4];
+	static Color4f cgbObjColors[8][4];
+
 	for (uint8_t colorIndex = 0; colorIndex < 4; ++colorIndex) {
 		sysColors[colorIndex] = FGBColorToLinearColor(system->ppu.currentMonochromeColors.system[colorIndex]);
 		bgColors[colorIndex] = FGBColorToLinearColor(system->ppu.currentMonochromeColors.background[colorIndex]);
@@ -1854,6 +1881,13 @@ static void DrawPalettes(Application *app, const float x, const float y, const f
 		paletteColorsBg[colorIndex] = FGBColorToLinearColor(system->systemMonochromeColors.background[colorIndex]);
 		paletteColorsObj0[colorIndex] = FGBColorToLinearColor(system->systemMonochromeColors.sprite0[colorIndex]);
 		paletteColorsObj1[colorIndex] = FGBColorToLinearColor(system->systemMonochromeColors.sprite1[colorIndex]);
+	}
+
+	for (uint8_t lineIndex = 0; lineIndex < 8; ++lineIndex) {
+		for (uint8_t colorIndex = 0; colorIndex < 4; ++colorIndex) {
+			cgbBGColors[lineIndex][colorIndex] = FGBColorToLinearColor(system->cgbState.currentPalette.bg.grid[lineIndex][colorIndex]);
+			cgbObjColors[lineIndex][colorIndex] = FGBColorToLinearColor(system->cgbState.currentPalette.obj.grid[lineIndex][colorIndex]);
+		}
 	}
 
 	// Palette Label
@@ -1929,7 +1963,7 @@ static void DrawPalettes(Application *app, const float x, const float y, const f
 	text = "Sys";
 	textLen = fplGetStringLength(text);
 	textX = px;
-	textY = palY + (cellHeight - maxLabelSize.h) * 0.5f - lineHeight * 0.25f;
+	textY = palY + (cellHeight - maxLabelSize.h) * 0.5f;
 	UIString(uiCtx, textX, textY, foregroundColor, text, textLen);
 	DrawPalette(palX, palY, cellWidth, cellHeight, sysColors, 2);
 
@@ -1941,7 +1975,7 @@ static void DrawPalettes(Application *app, const float x, const float y, const f
 	text = "BG";
 	textLen = fplGetStringLength(text);
 	textX = px;
-	textY = palY + (cellHeight - maxLabelSize.h) * 0.5f - lineHeight * 0.25f;
+	textY = palY + (cellHeight - maxLabelSize.h) * 0.5f;
 	UIString(uiCtx, textX, textY, foregroundColor, text, textLen);
 	DrawPalette(palX, palY, cellWidth, cellHeight, bgColors, 4);
 
@@ -1953,7 +1987,7 @@ static void DrawPalettes(Application *app, const float x, const float y, const f
 	text = "OBJ-0";
 	textLen = fplGetStringLength(text);
 	textX = px;
-	textY = palY + (cellHeight - maxLabelSize.h) * 0.5f - lineHeight * 0.25f;
+	textY = palY + (cellHeight - maxLabelSize.h) * 0.5f;
 	UIString(uiCtx, textX, textY, foregroundColor, text, textLen);
 	DrawPalette(palX, palY, cellWidth, cellHeight, obj0Colors, 4);
 
@@ -1965,9 +1999,38 @@ static void DrawPalettes(Application *app, const float x, const float y, const f
 	text = "OBJ-1";
 	textLen = fplGetStringLength(text);
 	textX = px;
-	textY = palY + (cellHeight - maxLabelSize.h) * 0.5f - lineHeight * 0.25f;
+	textY = palY + (cellHeight - maxLabelSize.h) * 0.5f;
 	UIString(uiCtx, textX, textY, foregroundColor, text, textLen);
 	DrawPalette(palX, palY, cellWidth, cellHeight, obj1Colors, 4);
+
+	py -= (paletteHeight + spacing);
+
+	// CGB Lines/Colums Palettes
+	palX = px + maxLabelSize.w;
+	palY = py;
+	text = "CGB-BG";
+	textLen = fplGetStringLength(text);
+	textX = px;
+	textY = palY + (cellHeight - maxLabelSize.h) * 0.5f;
+	UIString(uiCtx, textX, textY, foregroundColor, text, textLen);
+	for (uint8_t lineIndex = 0; lineIndex < 8; ++lineIndex) {
+		DrawPalette(palX, palY, cellWidth, cellHeight, cgbBGColors[lineIndex], 4);
+		palY -= (paletteHeight + spacing);
+	}
+
+	const float blockWidth = cellWidth * 4 + paletteTypeSpacing;
+
+	palX = px + maxLabelSize.w + blockWidth + maxLabelSize.w;
+	palY = py;
+	text = "CGB-OBJ";
+	textLen = fplGetStringLength(text);
+	textX = px + maxLabelSize.w + blockWidth;
+	textY = palY + (cellHeight - maxLabelSize.h) * 0.5f;
+	UIString(uiCtx, textX, textY, foregroundColor, text, textLen);
+	for (uint8_t lineIndex = 0; lineIndex < 8; ++lineIndex) {
+		DrawPalette(palX, palY, cellWidth, cellHeight, cgbObjColors[lineIndex], 4);
+		palY -= (paletteHeight + spacing);
+	}
 }
 
 static char performanceLabelBuffer[1024] = { 0 };
@@ -2313,7 +2376,7 @@ static void RenderDebugFrame(Application *app, const InputState *input) {
 	}
 	UITabContent rightTabContent = UITabControl(uiCtx, &app->rightTabControl, rightTabControlX, rightTabControlY, rightTabControlWidth, rightTabControlHeight, "Right-TabControl", rightTabs, rightTabCount);
 	if (rightTabContent.activeTab == &tabTiles) {
-		DrawTiles(uiCtx, app, rightTabContent.area.x, rightTabContent.area.y, rightTabContent.area.w, rightTabContent.area.h, vramAspect);
+		DrawTiles(uiCtx, &app->tileMapTexture, rightTabContent.area.x, rightTabContent.area.y, rightTabContent.area.w, rightTabContent.area.h, vramAspect);
 	} else if (rightTabContent.activeTab == &tabPalettes) {
 		DrawPalettes(app, rightTabContent.area.x, rightTabContent.area.y, rightTabContent.area.w, rightTabContent.area.h);
 	} else if (rightTabContent.activeTab == &tabBreakpoints) {
@@ -3149,7 +3212,7 @@ static fgbGamePakLoadResultType LoadGamePakFromZipFile(const fgbCallbacks *callb
 
 		const char *itemFileExt = fplExtractFileExtension(itemFilename);
 
-		if (StringCompareIgnoreCase(itemFileExt, ".gb")) {
+		if (StringCompareIgnoreCase(itemFileExt, ".gb") || StringCompareIgnoreCase(itemFileExt, ".gbc")) {
 			romFileIndex = fileIndex;
 			break;
 		}
@@ -3249,7 +3312,11 @@ static uint32_t AudioThreadCallback(const fplAudioFormat *deviceFormat, const ui
 
 	fgbEmulationState state = fgbGetState(system);
 	if (!emulator->isActive || state == fgbEmulationState_Paused || state == fgbEmulationState_Error) {
-		result = 0;
+		// Drain the APU ring buffer so accumulated samples from stepping don't
+		// play back as a burst when execution resumes.
+		fgbFetchAudioSamples(system, frameCount, AudioTempSampels);
+		fplMemorySet(outputSamples, 0, frameCount * deviceFormat->channels * sizeof(int16_t));
+		result = frameCount;
 	} else {
 		int16_t *out16 = (int16_t *)outputSamples;
 
@@ -3314,6 +3381,9 @@ static char disassemblyTempBuffer[256] = { 0 };
 static char disassemblyLineBuffer[1024] = { 0 };
 
 static uint8_t disassemblyMemory[0xFFFF] = { 0 };
+static uint8_t disassemblyVisited[65536] = { 0 };
+static uint8_t disassemblyQueued[65536] = { 0 };
+static uint16_t disassemblyBFSQueue[65536] = { 0 };
 
 static void ClearDisassembly(UIListboxData *listbox, IndexHashtable *hashtable) {
 	StringListClear(&listbox->values);
@@ -3324,59 +3394,171 @@ static void LoadDisassembly(fgbSystem *system, UIListboxData *listbox, IndexHash
 	StringListClear(&listbox->values);
 	IndexHashtableClear(hashtable);
 
-	uint16_t addressRange = system->boot.state.isActive ? 0xFF : 0xFFFF;
+	// TODO(final): Address not correct for GBC when GBC boot rom is active!
+	const uint16_t addressRange = system->boot.state.isActive ? 0xFF : 0xFFFF;
 
+	// Read all values from the entire address range into a memory array
 	for (uint16_t address = 0; address < addressRange; ++address) {
-		uint8_t value = fgbBusRead8(system, address);
-		disassemblyMemory[address] = value;
+		disassemblyMemory[address] = fgbBusRead8(system, address);
 	}
 
+	// Stup to use fgbDecodeInstruction
 	fgbMemory rom = { 0 };
 	rom.data = disassemblyMemory;
 	rom.length = addressRange;
 
-	fgbDecodedInstruction decoded = { 0 };
+	// BFS from known entry points to discover real instruction starts.
+	// This avoids misalignment from overlapping instruction sequences.
+	fplMemorySet(disassemblyVisited, 0, sizeof(disassemblyVisited));
+	fplMemorySet(disassemblyQueued, 0, sizeof(disassemblyQueued));
 
+	static const uint16_t bfsEntryPoints[] = {
+		// RST vectors
+		0x0000, 0x0008, 0x0010, 0x0018, 0x0020, 0x0028, 0x0030, 0x0038,
+		// Interrupt vectors
+		0x0040, 0x0048, 0x0050, 0x0058, 0x0060,
+		// Game entry point
+		0x0100,
+	};
+
+	uint32_t queueHead = 0, queueTail = 0;
+	for (uint32_t i = 0; i < fplArrayCount(bfsEntryPoints); ++i) {
+		const uint16_t ep = bfsEntryPoints[i];
+		if (ep < addressRange && !disassemblyQueued[ep]) {
+			disassemblyQueued[ep] = 1;
+			disassemblyBFSQueue[queueTail++] = ep;
+		}
+	}
+
+	fgbDecodedInstruction decoded = fplZeroInit;
+
+	while (queueHead < queueTail) {
+		uint16_t pos = disassemblyBFSQueue[queueHead++];
+
+		if (disassemblyVisited[pos]) {
+			continue;
+		}
+		disassemblyVisited[pos] = 1;
+
+		fplClearStruct(&decoded);
+		if (!fgbDecodeInstruction(&rom, pos, &decoded)) {
+			continue;
+		}
+
+		const uint16_t nextSeq = (uint16_t)(pos + decoded.length);
+
+		// Unconditional transfers have no sequential fall-through.
+		const bool noFallthrough =
+			decoded.opCode == 0xC3 ||  // JP a16
+			decoded.opCode == 0xE9 ||  // JP HL (indirect)
+			decoded.opCode == 0x18 ||  // JR e8
+			decoded.opCode == 0xC9 ||  // RET
+			decoded.opCode == 0xD9;    // RETI
+
+		if (!noFallthrough && nextSeq < addressRange && !disassemblyQueued[nextSeq]) {
+			disassemblyQueued[nextSeq] = 1;
+			disassemblyBFSQueue[queueTail++] = nextSeq;
+		}
+
+		// Extract and queue static jump targets.
+		if ((decoded.type == fgbInstructionType_JP || decoded.type == fgbInstructionType_CALL) &&
+		    decoded.mode == fgbAddressingMode_U16 && decoded.operandCount > 0) {
+			const uint16_t target = decoded.operands[0].immediate.u16;
+			if (target < addressRange && !disassemblyQueued[target]) {
+				disassemblyQueued[target] = 1;
+				disassemblyBFSQueue[queueTail++] = target;
+			}
+		} else if (decoded.type == fgbInstructionType_JR &&
+		           decoded.mode == fgbAddressingMode_I8 && decoded.operandCount > 0) {
+			const int32_t target = (int32_t)nextSeq + (int32_t)decoded.operands[0].immediate.slow;
+			if (target >= 0 && (uint32_t)target < addressRange && !disassemblyQueued[(uint16_t)target]) {
+				disassemblyQueued[(uint16_t)target] = 1;
+				disassemblyBFSQueue[queueTail++] = (uint16_t)target;
+			}
+		} else if (decoded.type == fgbInstructionType_RST &&
+		           decoded.mode == fgbAddressingMode_Constant && decoded.operandCount > 0) {
+			const uint16_t target = decoded.operands[0].constant;
+			if (target < addressRange && !disassemblyQueued[target]) {
+				disassemblyQueued[target] = 1;
+				disassemblyBFSQueue[queueTail++] = target;
+			}
+		}
+	}
+
+	// Emit disassembly in address order.
+	// - Header bytes (0x0100-0x014F) are always labeled GAMEPAK_HEADER.
+	// - BFS-confirmed addresses are decoded as guaranteed-correct instructions.
+	// - Other bytes use best-effort linear decode, but never cross a BFS boundary
+	// - If a multi-byte decode would consume a confirmed address, fall back to DB.
 	uint16_t pos = 0;
 	while (pos < rom.length) {
 		fplClearStruct(&decoded);
-		if (!fgbDecodeInstruction(&rom, pos, &decoded)) {
-			decoded.length = 1;
-		}
-		fplAssert(decoded.length > 0 && decoded.length <= 3);
-
 		disassemblyLineBuffer[0] = 0;
+
+		const bool inHeader = (pos >= FGB__GAMEPAK_HEADER_POSITION) && (pos < (uint16_t)(FGB__GAMEPAK_HEADER_POSITION + sizeof(fgb__GamePakHeader)));
+		const bool isConfirmed = disassemblyVisited[pos] != 0;
+
+		uint32_t instrLen = 1;
+		bool showAsHeader = false;
+		bool showAsCode = false;
+
+		if (inHeader) {
+			showAsHeader = true;
+		} else if (isConfirmed) {
+			if (fgbDecodeInstruction(&rom, pos, &decoded)) {
+				instrLen = decoded.length;
+				showAsCode = true;
+			}
+		} else {
+			// Best-effort linear decode; abort if it would swallow a BFS boundary.
+			if (fgbDecodeInstruction(&rom, pos, &decoded)) {
+				const uint32_t tentLen = decoded.length;
+				bool wouldSplit = false;
+				for (uint32_t k = 1; k < tentLen; ++k) {
+					if ((pos + k) < addressRange && disassemblyVisited[pos + k]) {
+						wouldSplit = true;
+						break;
+					}
+				}
+				if (!wouldSplit) {
+					instrLen = tentLen;
+					showAsCode = true;
+				}
+			}
+		}
 
 		fplStringFormat(disassemblyTempBuffer, fplArrayCount(disassemblyTempBuffer), "%04X | ", pos);
 		fplStringAppend(disassemblyTempBuffer, disassemblyLineBuffer, fplArrayCount(disassemblyLineBuffer));
 
-		int8_t m = 3 - decoded.length;
+		const uint8_t MaxInstructionLength = 3;
+
+		const int m = MaxInstructionLength - (int8_t)instrLen;
 		if (m > 0) {
-			for (uint8_t x = 0; x < m; x++) {
+			for (int x = 0; x < m; x++) {
 				fplStringAppend("   ", disassemblyLineBuffer, fplArrayCount(disassemblyLineBuffer));
 			}
 		}
-
-		for (uint8_t x = 0; x < decoded.length; x++) {
+		for (uint32_t x = 0; x < instrLen; x++) {
 			fplStringFormat(disassemblyTempBuffer, fplArrayCount(disassemblyTempBuffer), "%02X ", rom.data[pos + x]);
 			fplStringAppend(disassemblyTempBuffer, disassemblyLineBuffer, fplArrayCount(disassemblyLineBuffer));
 		}
 
-		fplStringFormat(disassemblyTempBuffer, fplArrayCount(disassemblyTempBuffer), "| ");
-		fplStringAppend(disassemblyTempBuffer, disassemblyLineBuffer, fplArrayCount(disassemblyLineBuffer));
+		fplStringAppend("| ", disassemblyLineBuffer, fplArrayCount(disassemblyLineBuffer));
 
-		if (pos >= FGB__GAMEPAK_HEADER_POSITION && pos <= FGB__GAMEPAK_HEADER_POSITION + sizeof(fgb__GamePakHeader)) {
+		if (showAsHeader) {
 			fplStringAppend("GAMEPAK_HEADER", disassemblyLineBuffer, fplArrayCount(disassemblyLineBuffer));
-		} else {
+		} else if (showAsCode) {
 			fgbFormatInstruction(disassemblyTempBuffer, fplArrayCount(disassemblyTempBuffer), &decoded);
+			fplStringAppend(disassemblyTempBuffer, disassemblyLineBuffer, fplArrayCount(disassemblyLineBuffer));
+		} else {
+			fplStringFormat(disassemblyTempBuffer, fplArrayCount(disassemblyTempBuffer), "DB $%02X", rom.data[pos]);
 			fplStringAppend(disassemblyTempBuffer, disassemblyLineBuffer, fplArrayCount(disassemblyLineBuffer));
 		}
 
-		size_t listIndex = StringListAdd(&listbox->values, disassemblyLineBuffer);
-
+		const size_t listIndex = StringListAdd(&listbox->values, disassemblyLineBuffer);
 		IndexHashtableAdd(hashtable, pos, listIndex);
 
-		pos += decoded.length;
+		pos += instrLen;
 	}
 }
 
@@ -3668,7 +3850,17 @@ static void HandleDefaultInput(Application *app, InputState *newInput) {
 	}
 
 	if (emulator->isActive && system->state != fgbEmulationState_Error) {
-		HighlightScrollDisassembly(app);
+		uint64_t currentPC = (uint64_t)system->cpu.registers.pc;
+		if (currentPC != app->lastDisassemblyScrollPC) {
+			bool isPaused = system->state != fgbEmulationState_Running;
+			fplTimestamp now = fplTimestampQuery();
+			double elapsed = fplTimestampElapsed(app->lastDisassemblyScrollTime, now);
+			if (isPaused || elapsed >= 0.1) {
+				HighlightScrollDisassembly(app);
+				app->lastDisassemblyScrollTime = now;
+				app->lastDisassemblyScrollPC = currentPC;
+			}
+		}
 	}
 }
 
@@ -3711,8 +3903,8 @@ static void UploadGameboxTextures(Application *app) {
 		UpdateTexture(&app->backgroundMapTexture);
 	}
 	if (TilemapFrameQueuePopNewest(&emulator->tilemapQueue, &scratchTilemap)) {
-		TransferPixelsToTexture(scratchTilemap.pixels, FGB_TILEMAP_WIDTH, FGB_TILEMAP_HEIGHT, &app->vramTexture);
-		UpdateTexture(&app->vramTexture);
+		TransferPixelsToTexture(scratchTilemap.pixels, FGB_TILEMAP_WIDTH, FGB_TILEMAP_HEIGHT, &app->tileMapTexture);
+		UpdateTexture(&app->tileMapTexture);
 	}
 }
 
@@ -3817,10 +4009,10 @@ int main(int argc, char **argv) {
 	RendererContext *renderer = fpl_null;
 
 	// Allocate transient memory (Used for rom file and external ram file loading)
-	globalTransientMemory.base = CreateTransientMemory(fplMegaBytes(8));
+	globalTransientMemory.base = CreateTransientMemory(fplMegaBytes(16));
 
 	// Allocate main memory
-	fmemMemoryBlock mainMemory = CreatePersistentMemory(fplMegaBytes(32));
+	fmemMemoryBlock mainMemory = CreatePersistentMemory(fplMegaBytes(64));
 	if (mainMemory.base == fpl_null) {
 		return ExitCode_OutOfMemory;
 	}
