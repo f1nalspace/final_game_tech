@@ -4,19 +4,21 @@ Name:
 	FPL-Demo | Emulator
 
 Description:
-	Fully working game boy DMG emulator with a simple debugger based on the final_game_box.h
+	Fully working game boy DMG/CGB emulator with a simple debugger based on the final_game_box.h.
 	
 Features:
 
 	- OpenGL Application with a custom immediate based UI
-	- Loading GamePak roms from either raw or zip files
+	- Loading GamePak roms from either raw or zip files with drag & drop support
 	- Emulator controls (Play, Pause, Stepping, etc.)
 	- Visual Debugger with disassembly, breakpoints, various stepping modes
 	- Rendering of internal states, such as CPU, PPU, APU, GamePak, etc.
 	- Tilemap visualization
-	- Color palette swapping
 	- Full background map visualization with scroll area
-	- Drag & Drop support for raw and zipped rom files 
+	- Color palette rendering & swapping for DMG
+	- Color palette rendering for CGB
+	- Asyncrounous audio playback
+	- Asyncrounous emulation using ring buffer for audio and image data
 
 Key mapping:
 
@@ -70,11 +72,11 @@ Changelog:
 
 Todo:
 	- Unloading game button (very easy to do)
-	- Fix dissassembly listbox resize breaks scroll position
-	- Show CGB states
-	- Show rom/ram banks in UI
-	- OAM Visualization (harder than it seems)
-	- Add option to select background tile area, because relying on LCDC is not good
+	- Show more CGB states
+	- Show rom/ram bank indices in UI
+	- OAM visualization (harder than it seems)
+	- CGB sprite data visualization (harder than it seems)
+	- Add option to select background tile area, because LCDC changes while a frame is rendered
 
 License:
 	Copyright (c) 2024-2026 Torsten Spaete
@@ -106,7 +108,6 @@ License:
 #include <miniz/miniz_zip.c>
 
 // Final Gamebox
-
 #define FGB_DISABLE_PLATFORM_DETECTION
 
 #define FGB_STRLEN(str) fplGetStringLength(str)
