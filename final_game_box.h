@@ -8,16 +8,16 @@
 ░▒▓█▓▒░      ░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░             ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░             ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░ 
 ░▒▓█▓▒░      ░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓████████▓▒░       ░▒▓██████▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓████████▓▒░      ░▒▓███████▓▒░ ░▒▓██████▓▒░░▒▓█▓▒░░▒▓█▓▒░ 
 
-Final Gamebox version 1.2.0
+Final Gamebox version 1.3.0
 
 -------------------------------------------------------------------------------
 	About
 -------------------------------------------------------------------------------
 
-Final Gamebox is a single-header-file gameboy emulator written in C99.
+Final Gamebox is a single-header-file DMG/CGB gameboy emulator written in C99.
 
 This was created for learning purposes and supports features such as:
-- Emulation of the original gameboy (DMG) SoC including:
+- Emulation of the original gameboy and game boy color SoC including:
 	- CPU (Central Processing Unit): Z80/8080 like CPU with the entire (2x256) instruction set
 	- PPU (Picture Processing Unit): Special GPU for rendering tiles/pixels, including implementation of the Pixel-FIFO mentioned in the "Ultimate Game Boy Talk".
 	- APU (Audio Processing Unit): Generating audio samples for 4 Voices (Two Pulse Voices, One general PCM/Wave Voice, One LSFR Noise Voice)
@@ -28,10 +28,10 @@ This was created for learning purposes and supports features such as:
 - Battery backed external RAM load/save
 - Storing and restoring of full save states
 - Joypad support (Keyboard, Gamepad)
-- Gameboy Color Support
+- Gameboy Color Support (RGB555 Color-Palette, Speed Switching, HDMA, VRAM-Banks, WRAM-Banks, etc.)
 
 It can run a ton of DMG games and most CGB games.
-Complex gameboy color games may crash or has graphics or sound bugs.
+Complex gameboy color games may crash, stall or has graphics or sound bugs.
 Some games won't work at all or are totally broken, e.g. Alleyway, Duck Tales :-(
 
 All knowledge used in this source is based on tutorials, documentations and the awesome "Ultimate Game Boy Talk".
@@ -55,19 +55,17 @@ The only dependencies are built-in operating system libraries and a C99 complian
 -------------------------------------------------------------------------------
 
 - Snapshots are disabled on non 64-bit platforms, due to pointer alignment differences
-- No SGB Support
+- No SGB Support (Fallback to DMG)
 
 -------------------------------------------------------------------------------
 	Known Issues
 -------------------------------------------------------------------------------
 
-- Audio timing is not always correct (some games plays sound too fast)
-- Interrupt timing is not correct (fails blargg test)
+- Audio too fast in certain cases (e.g. Duck Tales)
+- Audio buffer underrun in certain cases, resulting in hearable audio bugs
+- Interrupt timing is not correct (fails "interrupt_time" blargg test)
 - Input handling are sometimes broken (e.g. Duck Tales, Alley Way)
-- Hard crashes in some CGB games, resulting in wrong CPU opcodes (e.g. Mega Man Xtreme)
-- The tiles are not always correct in the background map (See: Add option to select background tile area)
-- For some games the background map scroll X and Y is reset to zero after h/v blank, so we can't show the scroll area properly
-- PPU timing is not correct always, resulting in weird graphic bugs
+- CGB Background/Sprite Rendering issues, resulting in weird graphical bugs for (e.g. Aladdin, Alfred's Adventure)
 - OAM Bug not implemented
 
 -------------------------------------------------------------------------------
@@ -93,34 +91,48 @@ Good:
 
 Partial:
 - [CGB] Alfred's Adventure: Can play, but almost no sprites are visible, alfred itself is just a couple of lines
+- [CGB] Aladdin: Can play, but almost no sprites are visible, alfred itself is just a couple of lines
 
 Do not work:
 - [DMG] Alleyway: Jumps directly into the game, no paddle control -> Propaply interrupt timing / joypad issues
 - [DMG] Duck Tales: In-game music too fast, window-rendering graphic flickering, not able to jump away from climbing vines
-- [CGB] Mega Man Xtreme: Runs for a few mio cycles than emulation failure with wrong CPU opcode, music 2x/4x faster than normal
+- [CGB] Mega Man Xtreme: Starts, but hangs in the title screens
 
 -------------------------------------------------------------------------------
 	Test-ROMS Compability
 -------------------------------------------------------------------------------
 
 Blargg:
-- [DMG/CGB] `cpu_instrs`: Passed
-- [DMG/CGB] `dmg_sound`: Passed
-- [DMG/CGB] `halt_bug`: Passed
-- [DMG/CGB] `instr_timing`: Passed
+- [DMG/CGB] `cpu_instrs`: Passes
+- [DMG/CGB] `dmg_sound`: Passes
+- [DMG/CGB] `halt_bug`: Passes
+- [DMG/CGB] `instr_timing`: Passes
 - [DMG/CGB] `interrupt_time`: Fails
-- [DMG/CGB] `mem_timing`: Passed
-- [DMG/CGB] `mem_timing-2`: Passed
-- [DMG/CGB] `oam_bug`: Passed
-- [CGB] `cgb_sound`: Passed
+- [DMG/CGB] `mem_timing`: Passes
+- [DMG/CGB] `mem_timing-2`: Passes
+- [DMG/CGB] `oam_bug`: Fails
+- [CGB] `cgb_sound`: Passes
 
 Acid:
-- [DMG/CGB] `dmg-acid2`: Passed
-- [CGB] `cgb-acid2`: Passed
+- [DMG/CGB] `dmg-acid2`: Passes
+- [CGB] `cgb-acid2`: Passes
 - [CGB] `cgb-acid-hell`: Fails, smiley mouth not smiling
 
 MoonEye Acceptance:
-- [DMG/CGB] mooneye-testroms/acceptance: Most fails, a couple passes
+- [DMG/CGB] mooneye-testroms/acceptance: Most fail, a couple passes
+
+scribbltests:
+- [DMG/CGB] `fairylake`: Passes
+- [DMG/CGB] `lycscx`: Passes
+- [DMG/CGB] `lycscy`: Passes
+- [DMG/CGB] `palettely`: Passes
+- [DMG/CGB] `scxly`: Passes
+- [DMG/CGB] `statcount-auto`: Fails
+- [DMG/CGB] `statcount`: No idea how it works
+- [DMG/CGB] `winpos`: Looks correct
+
+mealybug-tearoom-tests:
+- [DMG/CGB] `mealybug-tearoom-tests`: Most fail
 
 Others:
 - [DMG/CGB] rtc3test: Basic almost passes, remaining fails
@@ -211,6 +223,19 @@ Copyright 2024-2026 Torsten Spaete
 -------------------------------------------------------------------------------
 	Changelog
 -------------------------------------------------------------------------------
+
+## v1.3.0 SGB Support + Bugfixes
+
+### SGB Support
+
+- SGB support by allowing certain CGB features
+
+### Bugfixes
+
+- Timer bugfixes
+- APU bugfixes
+- Interrupt bugfixes
+- Joypad bugfixes
 
 ## v1.2.0 CGB Support
 
@@ -895,13 +920,11 @@ typedef enum {
 	fgbCoreType_CGB = 1,
 	// Gameboy with color support core
 	fgbCoreType_CGB_DMG = 2,
-	// Super Gameboy core
-	fgbCoreType_SGB = 3,
 
 	// First core
 	fgbCoreType_First = fgbCoreType_DMG,
 	// Last core
-	fgbCoreType_Last = fgbCoreType_SGB,
+	fgbCoreType_Last = fgbCoreType_CGB_DMG,
 } fgbCoreType;
 
 // Defines the game pak feature flags.
@@ -1280,6 +1303,19 @@ typedef struct {
 FGB_STATIC_ASSERT(sizeof(fgbHDMARegister) == 5);
 
 #pragma pack(push, 1)
+// FF4C: Represents the KEY0 Register (1 Byte, CGB-Only)
+typedef union {
+	struct {
+		uint8_t unused01 : 2;			// BIT 0-1: Unused
+		bool dmgCompabilityMode : 1;	// BIT 2: DMG Compability Mode (0 = Disabled, 1 = Enabled)
+		uint8_t currentSpeed : 5;		// BIT 3-7: Unused
+	};
+	uint8_t value;
+} fgbKey0Register;
+#pragma pack(pop)
+FGB_STATIC_ASSERT(sizeof(fgbKey0Register) == 1);
+
+#pragma pack(push, 1)
 // FF4D: Represents the KEY1 Register (1 Byte, CGB-Only)
 typedef union {
 	struct {
@@ -1378,12 +1414,12 @@ FGB_STATIC_ASSERT(sizeof(fgbCGBPaletteRAM) == 64);
 typedef union {
 	uint8_t value;
 	struct {
-		bool dmgMode : 1;			// BIT 0: 0 = OAM index priority (CGB), 1 = X-coord priority (DMG-compat)
+		bool dmgMode : 1;			// BIT 0: Priority Mode (0 = OAM index priority (CGB), 1 = X-coord priority (DMG-compat))
 		uint8_t _unused : 7;		// BIT 1-7: Unused
 	};
-} fgbCGBObjPriorityMode;
+} fgbCGBObjectPriorityRegister;
 #pragma pack(pop)
-FGB_STATIC_ASSERT(sizeof(fgbCGBObjPriorityMode) == 1);
+FGB_STATIC_ASSERT(sizeof(fgbCGBObjectPriorityRegister) == 1);
 
 // Grid of 32 CGB colors (8x4)
 typedef union {
@@ -1449,7 +1485,7 @@ typedef struct {
 	// FF6A: OCPS OBJ palette index register (1 Byte)
 	fgbCGBPaletteIndexRegister objPaletteIndex;
 	// FF6C: OPRI object priority mode (1 Byte)
-	fgbCGBObjPriorityMode objPriorityMode;
+	fgbCGBObjectPriorityRegister objPriorityMode;
 	// Padding
 	uint8_t padding[2];
 } fgbCGBState;
@@ -1968,8 +2004,8 @@ FGB_STATIC_ASSERT(sizeof(fgbSquareWave) == 8);
 
 // Represents the state of a frame sequencer
 typedef struct {
-	// Last timer divider value
-	uint16_t lastDivider;
+	// Absolute T-cycle counter (0..8191); advances by 4 per HWTick4 call
+	uint16_t timer;
 	// The current step in range of 0-7 (Increments/Modulates every 8192 cycles - 512 Hz)
 	uint8_t step;
 	// Padding to align to 4 bytes
@@ -2129,8 +2165,8 @@ FGB_STATIC_ASSERT(sizeof(fgbHighPassFilter) == 8);
 #pragma pack(push,4)
 // Stores the states of the audio processing unit
 typedef struct {
-	// High Pass Filter
-	fgbHighPassFilter highPassFilter;
+	// High Pass Filter — one per speaker (L/R)
+	fgbHighPassFilter highPassFilter[2];
 	// Frame Sequencer
 	fgbFrameSequencer frameSequencer;
 	// The target sample rate in Hz
@@ -2146,7 +2182,7 @@ typedef struct {
 	// Power is on or off
 	bool isPowerOn;
 	// Padding to align to 64 bytes
-	uint8_t padding[29];
+	uint8_t padding[21];
 } fgbAPUState;
 #pragma pack(pop)
 FGB_STATIC_ASSERT(sizeof(fgbAPUState) == 64);
@@ -2407,12 +2443,8 @@ typedef struct {
 		// Padding to align to 4 bytes
 		bool padding4;
 	};
-	// Number of remaining instructions until IME is enabled (EI has 1-instruction delay: set to 2, decremented after each executed instruction in Normal state)
-	uint8_t ticksEnableIME;
-	// Number of remaining ticks that prevent certain interrupt types not be pending right away (e.g. VBlank)
-	uint8_t ticksRequestInterruptDelay;
 	// Padding to align to 8 bytes
-	uint8_t padding[2];
+	uint8_t padding[4];
 } fgbInterrupts;
 #pragma pack(pop)
 FGB_STATIC_ASSERT(sizeof(fgbInterrupts) == 8);
@@ -2531,10 +2563,10 @@ FGB_STATIC_ASSERT(sizeof(fgbTimer) == 16);
 // ****************************************************************************
 
 #pragma pack(push, 1)
-// FF00-FFFF: Represents the full IO register (128 bytes, unused, just for display)
+// FF00-FFFF: Represents the full IO register (256 bytes, unused, just for display)
 typedef union {
 	// Full data
-	uint8_t m[128];
+	uint8_t m[256];
 	// Anonymous struct that contains all individual registers
 	struct {
 		fgbJoypadRegister joypad;				// FF00: Joypad (1 byte)
@@ -2545,30 +2577,28 @@ typedef union {
 		fgbInterruptsFlags interruptRequest;	// FF0F: Interrupt Flags (1 byte)
 		fgbSoundRegister sound;					// FF10-FF3F: Sound (24 bytes)
 		fgbLCDRegister lcd;						// FF40-FF4B: LCD register (12 bytes)
-		uint8_t key0;							// FF4C: KEY0 (CGB, 1 byte)
-		uint8_t key1;							// FF4D: KEY1 speed switch (CGB, 1 byte)
+		fgbKey0Register key0;					// FF4C: KEY0/SYS (CGB, 1 byte)
+		fgbKey1Register key1;					// FF4D: KEY1 speed switch (CGB, 1 byte)
 		uint8_t unused_ff4e;					// FF4E: Unused (1 byte)
-		uint8_t vbk;							// FF4F: VBK VRAM bank (CGB, 1 byte)
+		fgbVRAMBankRegister vbk;				// FF4F: VBK VRAM bank (CGB, 1 byte)
 		uint8_t bootFlag;						// FF50: Boot flag (1 byte)
-		uint8_t hdma1;							// FF51: HDMA-1 source high (CGB, 1 byte)
-		uint8_t hdma2;							// FF52: HDMA-2 source low (CGB, 1 byte)
-		uint8_t hdma3;							// FF53: HDMA-3 dest high (CGB, 1 byte)
-		uint8_t hdma4;							// FF54: HDMA-4 dest low (CGB, 1 byte)
-		uint8_t hdma5;							// FF55: HDMA-5 length/mode/start (CGB, 1 byte)
+		fgbHDMARegister hdma;					// FF51-FF55 (CGB, 5 bytes)
 		uint8_t rp;								// FF56: RP (1 byte)
 		uint8_t unused_ff57_ff67[17];			// FF57-FF67: Unused (17 bytes)
-		uint8_t bcps;							// FF68: BCPS BG palette index (CGB, 1 byte)
+		fgbCGBPaletteIndexRegister bcps;		// FF68: BCPS BG palette index (CGB, 1 byte)
 		uint8_t bcpd;							// FF69: BCPD BG palette data (CGB, 1 byte)
-		uint8_t ocps;							// FF6A: OCPS OBJ palette index (CGB, 1 byte)
+		fgbCGBPaletteIndexRegister ocps;		// FF6A: OCPS OBJ palette index (CGB, 1 byte)
 		uint8_t ocpd;							// FF6B: OCPD OBJ palette data (CGB, 1 byte)
-		uint8_t opri;							// FF6C: OPRI object priority mode (CGB, 1 byte)
+		fgbCGBObjectPriorityRegister opri;		// FF6C: OPRI object priority mode (CGB, 1 byte)
 		uint8_t unused_ff6d_ff6f[3];			// FF6D-FF6F: Unused (3 bytes)
-		uint8_t svbk;							// FF70: SVBK WRAM bank (CGB, 1 byte)
+		fgbWorkRAMBankRegister svbk;			// FF70: SVBK WRAM bank (CGB, 1 byte)
 		uint8_t unused_ff71_ff7f[15];			// FF71-FF7F: Unused (15 bytes)
+		uint8_t hram[127];						// FF80-FFFE: High RAM (HRAM, 127 bytes)
+		fgbInterruptsFlags interruptEnable;		// FFFF: Interrupt Enable (1 Byte)
 	};
 } fgbIORegisters;
 #pragma pack(pop)
-FGB_STATIC_ASSERT(sizeof(fgbIORegisters) == 128);
+FGB_STATIC_ASSERT(sizeof(fgbIORegisters) == 256);
 
 // ****************************************************************************
 // > CPU-API: CPU Registers
@@ -3090,10 +3120,16 @@ FGB_STATIC_ASSERT(sizeof(fgbInstructionRegister) == 64);
 typedef enum {
 	// Normal fetch/decode/execution pipeline
 	fgbCPUStateType_Normal = 0,
-	// CPU is in halt state, waiting to get to wake-up by an interrupt
-	fgbCPUStateType_Halt,
 	// CPU is in stop mode, that executes a NOP on DMG
-	fgbCPUStateType_Stop,
+	fgbCPUStateType_Stop = 1,
+	// EI was executed; at start of next instruction set IME=true then execute
+	fgbCPUStateType_EnableIME = 2,
+	// HALT bug: IME=0 and interrupt pending; next byte fetched twice, PC does not advance
+	fgbCPUStateType_HaltBug = 3,
+	// CPU is in halt state with IME=1, waiting to be woken by an interrupt
+	fgbCPUStateType_Halt = 4,
+	// CPU is in halt state with IME=0, no interrupt pending; wakes without dispatching
+	fgbCPUStateType_HaltDI = 5,
 } fgbCPUStateType;
 
 #pragma pack(push, 8)
@@ -3109,14 +3145,8 @@ typedef struct {
 	uint16_t lastPC;
 	// The last saved SP, so we can detect infinite loops
 	uint16_t lastSP;
-	// Padding to align to 28-bytes
-	uint32_t paddingU32;
-	// Number of remaining cycles to exit HALT mode
-	uint8_t ticksLeaveHaltMode;
-	// Flag that indicates if the PC is skipped (HALT bug)
-	bool skipPC;
 	// Padding to align to 32-bytes
-	bool paddingU8[2];
+	uint32_t paddingU32;
 } fgbCPUState;
 #pragma pack(pop)
 FGB_STATIC_ASSERT(sizeof(fgbCPUState) == 32);
@@ -3911,6 +3941,8 @@ typedef struct {
 	bool isScreenDisabled;
 	// Start the emulation in pause mode, waiting to step or continue it actively
 	bool paused;
+	// If enabled, each instruction is traced via the log callback at Trace level before execution
+	bool isInstructionTraceEnabled;
 } fgbConfiguration;
 
 // ****************************************************************************
@@ -4043,6 +4075,8 @@ typedef struct fgbSystem {
 	fgbResetState resetState;
 	// Current CGB state
 	fgbCGBState cgbState;
+	// If enabled, each instruction is traced via the log callback at Trace level before execution
+	bool isInstructionTraceEnabled;
 } fgbSystem;
 
 // Defines the initialization result types
@@ -5241,6 +5275,23 @@ FGB_API const char *fgbGetBreakpointTypeLabel(const fgbBreakpointType type) {
 // FF50: Boot ROM Register
 #define FGB__BUS_ADDRESS_BOOT_ROM_REGISTER 0xFF50
 
+// FF40: LCDC Register
+#define FGB__BUS_ADDRESS_IO_LCDC 0xFF40
+// FF42: SCY Register
+#define FGB__BUS_ADDRESS_IO_SCY 0xFF42
+// FF43: SCX Register
+#define FGB__BUS_ADDRESS_IO_SCX 0xFF43
+// FF45: LYC Register
+#define FGB__BUS_ADDRESS_IO_LYC 0xFF45
+// FF47: BGP Register
+#define FGB__BUS_ADDRESS_IO_BGP 0xFF47
+// FF48: OBJ0 Register
+#define FGB__BUS_ADDRESS_IO_OBJ0 0xFF48
+// FF49: OBJ1 Register
+#define FGB__BUS_ADDRESS_IO_OBJ1 0xFF49
+// FF55: HDMA5 Register
+#define FGB__BUS_ADDRESS_IO_HDMA5 0xFF55
+
 // ********************************************************************************************************************
 // 
 // External RAM Save/Load Implementation
@@ -5653,7 +5704,6 @@ static const char *fgb__CoreTypeToNameTable[] = {
 	[fgbCoreType_DMG] = "Gameboy",
 	[fgbCoreType_CGB] = "Gameboy Color",
 	[fgbCoreType_CGB_DMG] = "Gameboy Color Mode",
-	[fgbCoreType_SGB] = "Super Gameboy",
 };
 
 FGB_API const char *fgbGetCoreTypeName(const fgbCoreType type) {
@@ -5815,16 +5865,20 @@ static fgbGamePakLoadResultType fgb__GamePakLoad(const uint8_t *data, const size
 		title[12] = '\0';
 	}
 
+	const bool isSGB = header->sgbFlag == 0x03;
+	const bool isCGB = header->cgbFlag & (1 << 7);
+
 	fgbCoreType coreType;
-	if (header->sgbFlag == 0x03) {
-		coreType = fgbCoreType_SGB;
-	} else if (header->cgbFlag & (1 << 7)) {
+	if (isSGB) {
+		if (isCGB) {
+			coreType = fgbCoreType_CGB_DMG;
+		} else {
+			coreType = fgbCoreType_DMG;
+		}
+	} else if (isCGB) {
 		switch (header->cgbFlag) {
 			case 0xC0:
 				coreType = fgbCoreType_CGB;
-				break;
-			case 0x80:
-				coreType = fgbCoreType_CGB_DMG;
 				break;
 			default:
 				coreType = fgbCoreType_CGB_DMG;
@@ -6089,16 +6143,11 @@ static void fgb__MBC1_Write(struct fgbSystem *gbOpaque, struct fgbMemoryBankCont
 		mbc1->isRAMEnabled = (value & 0x0A) != 0;
 		fgb__MBC_RAM_Enabled(system, mbc1->isRAMEnabled);
 	} else if (address <= 0x3FFF) {
-		// ROM Bank Number (lower 5 bits)
+		// ROM Bank Number (lower 5 bits); only bank 0x00 maps to 0x01 per hardware
 		uint8_t oldROMBank = mbc1->romBank;
-		mbc1->romBank &= ~0x1F;
-		mbc1->romBank |= (value & 0x1F);
-
-		// Selecting a bank of $20, $40, $60, $0 needs to be incremented by one
-		uint8_t n = mbc1->romBank & 0x1f;
-		if (n == 0x20 || n == 0x40 || n == 0x60 || n == 0x00) {
-			mbc1->romBank++;
-		}
+		uint8_t n = value & 0x1F;
+		if (n == 0) n = 1;
+		mbc1->romBank = (mbc1->romBank & ~0x1F) | n;
 
 		fgb__MBC_ROMBankChanged(system, oldROMBank, mbc1->romBank);
 	} else if (address <= 0x5FFF) {
@@ -6543,28 +6592,29 @@ static inline uint8_t fgb__CGBVRAMBankIndex(const fgbSystem *system);
 
 // Setups the CPU registers for CGB in DMG mode
 static void fgb__CGBSetupForDMG(fgbCPURegisters *regs, fgbCGBState *cgb) {
-	regs->af = 0x1180; // A = 0x11, F = 0x80 (Z = 1, all other bits are 0)
-	regs->bc = 0x4300; // B = 0x43 or 0x58?
-	regs->de = 0x0008;
-	regs->hl = 0x007C;
-
-	regs->pc = 0x100;
+	regs->af = 0x11b0; // A = 0x11, F = 0xB0 (Z = 1, N = 0, H = 1, C = 1, all other bits are 0)
+	regs->bc = 0x0013; // B = 0x43 or 0x58?
+	regs->de = 0x00d8;
+	regs->hl = 0x014d;
 	regs->sp = 0xfffe;
+	regs->pc = 0x100;
 }
+
 
 // Setups the CPU registers for CGB
 static void fgb__CGBSetupForCGB(fgbCPURegisters *regs, fgbCGBState *cgb) {
-	regs->af = 0x1180; // A = 0x11, F = 0x80 (Z = 1, all other bits are 0)
-	regs->bc = 0x0000;
-	regs->de = 0xFF56;
-	regs->hl = 0x000D;
-
-	regs->pc = 0x100;
+	regs->af = 0x11b0; // A = 0x11, F = 0xB0 (Z = 1, N = 0, H = 1, C = 1, all other bits are 0)
+	regs->bc = 0x0013;
+	regs->de = 0x00d8;
+	regs->hl = 0x014d;
 	regs->sp = 0xfffe;
+	regs->pc = 0x100;
 }
 
 static uint8_t fgb__CGBReadKEY1(fgbSystem *system) {
-	if (!fgb__CGBIsActive(system)) return 0xFF;
+	if (!fgb__CGBIsActive(system)) {
+		return 0xFF;
+	}
 	fgbCGBState *cgb = &system->cgbState;
 	uint8_t armed = cgb->key1Reg.switchArmed ? 0x01 : 0x00;
 	uint8_t speed = (cgb->speedState.currentMode == fgbSpeedMode_Double) ? 0x80 : 0x00;
@@ -6572,17 +6622,23 @@ static uint8_t fgb__CGBReadKEY1(fgbSystem *system) {
 }
 
 static void fgb__CGBWriteKEY1(fgbSystem *system, const uint8_t value) {
-	if (!fgb__CGBIsActive(system)) return;
+	if (!fgb__CGBIsActive(system)) {
+		return;
+	}
 	system->cgbState.key1Reg.switchArmed = (value & 0x01) != 0;
 }
 
 static uint8_t fgb__CGBReadVBK(fgbSystem *system) {
-	if (!fgb__CGBIsActive(system)) return 0xFF;
+	if (!fgb__CGBIsActive(system)) {
+		return 0xFF;
+	}
 	return 0xFE | system->cgbState.vramBankReg.bank;
 }
 
 static void fgb__CGBWriteVBK(fgbSystem *system, const uint8_t value) {
-	if (!fgb__CGBIsActive(system)) return;
+	if (!fgb__CGBIsActive(system)) {
+		return;
+	}
 	system->cgbState.vramBankReg.bank = value & 0x01;
 }
 
@@ -6730,17 +6786,23 @@ static void fgb__CGBWriteHDMA(fgbSystem *system, const uint16_t address, const u
 }
 
 static uint8_t fgb__CGBReadBCPS(fgbSystem *system) {
-	if (!fgb__CGBIsActive(system)) return 0xFF;
+	if (!fgb__CGBIsActive(system)) {
+		return 0xFF;
+	}
 	return system->cgbState.bgPaletteIndex.value | 0x40;
 }
 
 static void fgb__CGBWriteBCPS(fgbSystem *system, const uint8_t value) {
-	if (!fgb__CGBIsActive(system)) return;
+	if (!fgb__CGBIsActive(system)) {
+		return;
+	}
 	system->cgbState.bgPaletteIndex.value = value;
 }
 
 static uint8_t fgb__CGBReadBCPD(fgbSystem *system) {
-	if (!fgb__CGBIsActive(system)) return 0xFF;
+	if (!fgb__CGBIsActive(system)) {
+		return 0xFF;
+	}
 	return system->cgbState.bgPaletteRAM.m[system->cgbState.bgPaletteIndex.address];
 }
 
@@ -6848,9 +6910,8 @@ static void fgb__DMGSetup(fgbCPURegisters *regs) {
 	regs->bc = 0x0013;
 	regs->de = 0x00D8;
 	regs->hl = 0x014d;
-
-	regs->pc = 0x100;
 	regs->sp = 0xfffe;
+	regs->pc = 0x100;
 }
 
 // ********************************************************************************************************************
@@ -6905,10 +6966,10 @@ static const uint8_t fgb__APU_DefaultRegister[] = {
 	0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
 
 	// FF30 - FF3F: Wave 00 - 15
-	0xac, 0xdd, 0xda, 0x48,
-	0x36, 0x02, 0xcf, 0x16,
-	0x2c, 0x04, 0xe5, 0x2c,
-	0xac, 0xdd, 0xda, 0x48
+	0x60, 0x0d, 0xda, 0xdd,
+	0x50, 0x0f, 0xad, 0xed,
+	0xc0, 0xde, 0xf0, 0x0d,
+	0xbe, 0xef, 0xfe, 0xed
 };
 FGB_STATIC_ASSERT(sizeof(fgb__APU_DefaultRegister) == sizeof(fgbSoundRegister));
 
@@ -7069,30 +7130,33 @@ static bool fgb__TickSquareWave(fgbSquareWave *squareWave) {
 
 // Initialize the frame sequencer for the very first time
 static void fgb__InitFrameSequencer(const fgbTimer *timer, fgbFrameSequencer *frameSeq) {
+	(void)timer;
 	// Step is set to 7 so that the first tick advances it to 0 (length clock step)
 	frameSeq->step = 7;
-	frameSeq->lastDivider = timer->divider;
+	frameSeq->timer = 0;
 }
 
 // Stop the frame sequencer
 static void fgb__StopFrameSequencer(fgbFrameSequencer *frameSeq) {
 	frameSeq->step = 7;
+	frameSeq->timer = 0;
 }
 
 // Start the frame sequencer from step 0
 static void fgb__StartFrameSequencer(const fgbTimer *timer, fgbFrameSequencer *frameSeq) {
+	(void)timer;
 	// Step is set to 7 so that the first tick advances it to 0 (length clock step)
 	frameSeq->step = 7;
-	frameSeq->lastDivider = timer->divider;
+	frameSeq->timer = 0;
 }
 
 static bool fgb__TickFrameSequencer(const fgbTimer *timer, fgbFrameSequencer *frameSeq, uint8_t *step) {
-	// Frame sequencer is clocked by the falling edge of bit 12 of the internal divider (bit 4 of DIV register)
-	uint16_t currentDivider = timer->divider;
-	bool oldBit = (frameSeq->lastDivider >> 12) & 1;
-	bool newBit = (currentDivider >> 12) & 1;
-	frameSeq->lastDivider = currentDivider;
-	if (oldBit && !newBit) {
+	(void)timer;
+	// Absolute 8192 T-cycle counter — immune to DIV writes (512 Hz exactly).
+	// APU is ticked once per T-cycle (HWTick4 calls APU 4 times) so increment by 1.
+	frameSeq->timer += 1;
+	if (frameSeq->timer >= 8192) {
+		frameSeq->timer -= 8192;
 		frameSeq->step = (frameSeq->step + 1) % 8;
 		*step = frameSeq->step;
 		return true;
@@ -7533,8 +7597,9 @@ static bool fgb__SetNRx4(fgbSystem *system, fgbVoice *voice, fgbSoundFrequency *
 		fgb__SetSoundPeriodHigh(system, freq, reg.periodHigh, type);
 	}
 
-	// Extra Length Clocking happens when the last frame sequencer step was a length clock step (even step)
-	// But only when the length switches from disabled to enabled
+	// Extra length clock fires when LE transitions 0→1 and we are in the FIRST half of
+	// the length period (current step is even = 0,2,4,6; a length clock just fired and
+	// the next step won't be a length step, so clock now to stay in sync).
 	bool lastStepWasLength = (apu->state.frameSequencer.step % 2) == 0;
 	if (!wasLengthEnabled && lengthTimer->isEnabled && lastStepWasLength && lengthTimer->timer > 0) {
 		--lengthTimer->timer;
@@ -8280,6 +8345,10 @@ static void fgb__APUSetAudioMasterControlRegister(fgbSystem *system, fgbAPU *apu
 		// Start frame sequencer
 		fgb__StartFrameSequencer(&system->timer, &apu->state.frameSequencer);
 
+		// Reset HPF capacitors to avoid a pop when audio restarts
+		apu->state.highPassFilter[0].capacitor = 0.0f;
+		apu->state.highPassFilter[1].capacitor = 0.0f;
+
 		// Sound powered on
 		apu->state.isPowerOn = true;
 	}
@@ -8459,8 +8528,12 @@ static void fgb__APUInit(fgbSystem *system, const uint32_t sampleRate) {
 	apu->state.stereoVolume[FGB__APU_SPEAKER_RIGHT] = 1.0f;
 
 	float chargeFactorRate = (float)FGB_MAX_CPU_CYCLES / (float)sampleRate;
-	apu->state.highPassFilter.chargeFactor = powf(0.999958f, chargeFactorRate);
-	apu->state.highPassFilter.capacitor = 0.0f;
+	// 0.999985 per T-cycle ≈ 7 Hz high-pass pole (closer to real DMG hardware than the old 0.999958 ≈ 28 Hz)
+	float chargeFactor = powf(0.999985f, chargeFactorRate);
+	apu->state.highPassFilter[0].chargeFactor = chargeFactor;
+	apu->state.highPassFilter[0].capacitor = 0.0f;
+	apu->state.highPassFilter[1].chargeFactor = chargeFactor;
+	apu->state.highPassFilter[1].capacitor = 0.0f;
 
 	fgb__InitSweepVoice(&apu->voices.sweep);
 	fgb__InitToneVoice(&apu->voices.tone);
@@ -8470,13 +8543,17 @@ static void fgb__APUInit(fgbSystem *system, const uint32_t sampleRate) {
 
 	apu->state.isPowerOn = false;
 
-	// Enable APU first, so subsequent writes succeed 
 	fgb__APUWrite(system, FGB__APU_NR52, 0xf1);
 	fgb__APUWrite(system, FGB__APU_NR11, 0x80);
 	fgb__APUWrite(system, FGB__APU_NR12, 0xf3);
 	fgb__APUWrite(system, FGB__APU_NR14, 0x80);
 	fgb__APUWrite(system, FGB__APU_NR50, 0x77);
 	fgb__APUWrite(system, FGB__APU_NR51, 0xf3);
+
+	apu->state.isPowerOn = true;
+
+	// Turn down volume on voice-1, we don't want it on emulator start
+	apu->voices.sweep.envelope.currentVolume = 0;
 
 	// Very important: Fill out the wave pattern ram with something other than zero
 	FGB_MEMCOPY(&apu->voices.wave.patternRAM.m[0], &fgb__APU_DefaultRegister[32], FGB_WAVE_PATTERN_RAM_SIZE);
@@ -8711,12 +8788,9 @@ static void fgb__APUUpdateFrameSequencer(fgbSystem *system, fgbAPU *apu) {
 	}
 }
 
-static float fgb__APUHighPassFilter(fgbHighPassFilter *hpf, const float input, const bool isDACEnabled) {
-	float result = 0.0f;
-	if (isDACEnabled) {
-		result = input - hpf->capacitor;
-		hpf->capacitor = input - result * hpf->chargeFactor;
-	}
+static float fgb__APUHighPassFilter(fgbHighPassFilter *hpf, const float input) {
+	float result = input - hpf->capacitor;
+	hpf->capacitor = input - result * hpf->chargeFactor;
 	return result;
 }
 
@@ -8726,7 +8800,6 @@ static void fgb__APUGenerateSteroSamples(fgbSystem *system, fgbAPU *apu, uint8_t
 	fgbWaveVoice *waveVoice = &apu->voices.wave;
 	fgbNoiseVoice *noiseVoice = &apu->voices.noise;
 
-	// Generated mono samples for each voice, each is already multiplied by its own volume
 	uint8_t sweep = 0;
 	uint8_t tone = 0;
 	uint8_t wave = 0;
@@ -8747,48 +8820,45 @@ static void fgb__APUGenerateSteroSamples(fgbSystem *system, fgbAPU *apu, uint8_t
 #endif
 	}
 
-	// Ensure that voice samples are in volume range
 	FGB_ASSERT(sweep <= FGB__MAX_VOLUME_ENVELOPE_VOL);
 	FGB_ASSERT(tone <= FGB__MAX_VOLUME_ENVELOPE_VOL);
 	FGB_ASSERT(wave <= FGB__MAX_VOLUME_ENVELOPE_VOL);
 	FGB_ASSERT(noise <= FGB__MAX_VOLUME_ENVELOPE_VOL);
 
-	// To not get into clipping issues, we scale each sample down by 1/4
+	// Scale each voice sample to 0.0-0.25 (1/4 per voice to avoid clipping when all 4 are at max)
 	const float sampleScale = 1.0f / (float)FGB__APU_VOICE_COUNT;
-
-	// Inverse to scale samples by the volume in range of 0-15
 	const float volumeEnvelopeScale = 1.0f / (float)FGB__MAX_VOLUME_ENVELOPE_VOL;
 
-	// Scale samples into range of 0.0 - 1.0 or rather 0.0 - 0.25
-	float monoSamples[4] = {
+	float voiceSamples[4] = {
 		sweep * volumeEnvelopeScale * sampleScale,
-		tone * volumeEnvelopeScale * sampleScale,
-		wave * volumeEnvelopeScale * sampleScale,
+		tone  * volumeEnvelopeScale * sampleScale,
+		wave  * volumeEnvelopeScale * sampleScale,
 		noise * volumeEnvelopeScale * sampleScale,
 	};
 
-	// Mix the samples together in range of 0.0 to 1.0 and clip it
-	float monoMixed = fgb__AudioClipLinear(monoSamples[0] + monoSamples[1] + monoSamples[2] + monoSamples[3]);
-
-	// Convert it into range of -1.0 to 1.0
-	float monoMixedRange = monoMixed * 2.0f - 1.0f;
-
-	// Highpass filtering
-	bool dacsOn = sweepVoice->base.isPowered || toneVoice->base.isPowered || waveVoice->base.isPowered || noiseVoice->base.isPowered;
-	float filtered = fgb__APUHighPassFilter(&apu->state.highPassFilter, monoMixedRange, dacsOn);
-
-	// Clip it to be in range of -1.0 to 1.0
-	float clipped = fgb__AudioClipSample(filtered);
-
-	// Convert back into linear range of 0.0 to 1.0
-	float linear = (clipped + 1.0f) * 0.5f;
-
-	// Stereo enable flags are ignored, so we or it with true - because NR50 is mostly set to 0x77 - disabling the speakers, which we dont want
+	// Mix per-speaker using NR51 panning, apply per-speaker HPF (always running — no freeze on DAC off)
 	for (uint8_t speakerIndex = 0; speakerIndex < 2; ++speakerIndex) {
-		bool isSpeakerEnabled = apu->state.stereoEnabled[speakerIndex] | true;
-		float volume = isSpeakerEnabled ? apu->state.stereoVolume[speakerIndex] : 0.0f;
-		float sample = linear * volume;
-		samples[speakerIndex] = (uint8_t)(sample * 255.0f);
+		float speakerMix = 0.0f;
+#if !FGB_APU_DISABLE_VOICE_SWEEP
+		if (sweepVoice->base.isSpeakerEnabled[speakerIndex]) speakerMix += voiceSamples[0];
+#endif
+#if !FGB_APU_DISABLE_VOICE_TONE
+		if (toneVoice->base.isSpeakerEnabled[speakerIndex]) speakerMix += voiceSamples[1];
+#endif
+#if !FGB_APU_DISABLE_VOICE_WAVE
+		if (waveVoice->base.isSpeakerEnabled[speakerIndex]) speakerMix += voiceSamples[2];
+#endif
+#if !FGB_APU_DISABLE_VOICE_NOISE
+		if (noiseVoice->base.isSpeakerEnabled[speakerIndex]) speakerMix += voiceSamples[3];
+#endif
+
+		float speakerMixed = fgb__AudioClipLinear(speakerMix);
+		float speakerRange = speakerMixed * 2.0f - 1.0f;
+		float filtered = fgb__APUHighPassFilter(&apu->state.highPassFilter[speakerIndex], speakerRange);
+		float clipped = fgb__AudioClipSample(filtered);
+		float linear = (clipped + 1.0f) * 0.5f;
+		float volume = apu->state.stereoVolume[speakerIndex];
+		samples[speakerIndex] = (uint8_t)(linear * volume * 255.0f);
 	}
 }
 
@@ -10280,14 +10350,16 @@ static void fgb__PPUModeHorizontalBlank(fgbSystem *system) {
 		if (lcd->ly >= FGB_DISPLAY_HEIGHT) {
 			fgb__PPUSetMode(system, lcd, fgbPPUMode_VBlank);
 
+			fgb__PPUStatusInterruptTest(system, false);
+
 			// Only fire the VBlank interrupt, when the LCD is actually enabled
 			if (lcd->lcdc.lcdEnabled) {
 				fgb__InterruptRequest(system, fgbInterruptType_VerticalBlank, "VBlank");
 			}
-
-			
 		} else {
 			fgb__PPUSetMode(system, lcd, fgbPPUMode_OAMSearch);
+
+			fgb__PPUStatusInterruptTest(system, false);
 		}
 
 		ppu->state.lineTicks = 0;
@@ -10508,22 +10580,28 @@ static uint8_t fgb__TimerRead(const fgbTimer *timer, const uint16_t address) {
 	}
 }
 
-static void fgb__TimerTACChanged(fgbTimer *timer, const fgbTimerControlRegister newTac) {
-	if (!newTac.isEnabled) {
-		return;
+static void fgb__TimerTACIncrementTIMA(fgbTimer *timer) {
+	timer->reg.counter++;
+	if (timer->reg.counter == 0) {
+		timer->reloadCycles = 0;
+		timer->isReloading = true;
 	}
-	uint8_t oldClock = timer->reg.tac.clock;
-	uint8_t newClock = newTac.clock;
+}
 
-	int oldShift = fgb__globalTimerClockToShiftTable[oldClock];
-	int newShift = fgb__globalTimerClockToShiftTable[newClock];
+// Handles TIMA increment triggered by a TAC write.
+// Hardware rule: detect falling edge on the "enabled AND selected-bit" signal.
+// old_effective = old_enabled && (divider >> old_shift) & 1
+// new_effective = new_enabled && (divider >> new_shift) & 1
+// If old=1 and new=0 → falling edge → increment TIMA.
+static void fgb__TimerTACFallingEdge(fgbTimer *timer, const fgbTimerControlRegister oldTac, const fgbTimerControlRegister newTac) {
+	int oldShift = fgb__globalTimerClockToShiftTable[oldTac.clock];
+	int newShift = fgb__globalTimerClockToShiftTable[newTac.clock];
 
-	if (!((timer->divider >> oldShift) & 0b1) && ((timer->divider >> newShift) & 0b1)) {
-		timer->reg.counter++;
-		if (timer->reg.counter == 0) {
-			timer->reloadCycles = 0;
-			timer->isReloading = true;
-		}
+	bool oldBit = oldTac.isEnabled && ((timer->divider >> oldShift) & 1);
+	bool newBit = newTac.isEnabled && ((timer->divider >> newShift) & 1);
+
+	if (oldBit && !newBit) {
+		fgb__TimerTACIncrementTIMA(timer);
 	}
 }
 
@@ -10554,8 +10632,11 @@ static void fgb__TimerWrite(fgbSystem *system, const uint16_t address, const uin
 			fgbTimerControlRegister oldTac = timer->reg.tac;
 			fgbTimerControlRegister newTac = { .u8 = value };
 
+			// Check falling edge across all TAC transitions (enable/disable + clock change)
+			fgb__TimerTACFallingEdge(timer, oldTac, newTac);
+
+			// Handle any pending overflow that was waiting when TAC changes
 			if (oldTac.isEnabled != newTac.isEnabled) {
-				fgb__TimerTickTIMA(system, timer->divider, 0);
 				if (timer->isReloading && timer->reloadCycles == 0) {
 					timer->reloadCycles = 0;
 					timer->isReloading = false;
@@ -10563,8 +10644,6 @@ static void fgb__TimerWrite(fgbSystem *system, const uint16_t address, const uin
 					fgb__InterruptRequest(system, fgbInterruptType_Timer, "TAC Changed & Overflow");
 				}
 			}
-
-			fgb__TimerTACChanged(timer, newTac);
 
 			timer->reg.tac.u8 = value;
 		} break;
@@ -10604,7 +10683,7 @@ static bool fgb__TimerTick(fgbSystem *system) {
 
 static void fgb__TimerInit(fgbTimer *timer) {
 	fgbClearStruct(&timer->reg);
-	timer->divider = 0xABCC;
+	timer->divider = 0xAC00;
 	timer->reg.divider = timer->divider >> 8;
 }
 
@@ -10708,10 +10787,13 @@ static void fgb__JoypadInterrupt(fgbSystem *system, fgbInterrupts *ir, fgbJoypad
 }
 
 static void fgb__JoypadWriteRegister(fgbSystem *system, fgbJoypadState *joypad, const fgbJoypadRegister newReg) {
+	(void)system;
 	fgbJoypadRegister *destReg = &joypad->reg;
 	destReg->buttonSelection = newReg.buttonSelection;
 	destReg->directionSelection = newReg.directionSelection;
-	fgb__JoypadInterrupt(system, &system->interrupts, joypad);
+	// Row-select writes must NOT trigger the joypad interrupt — only physical button
+	// presses (1→0 transitions on P10..P13) should. The interrupt fires from fgbTick
+	// when joypad->isStateChanged is set by fgbSetButtonState.
 }
 
 FGB_API void fgbSetButtonState(fgbSystem *system, const fgbButtonType button, const bool isDown) {
@@ -12140,13 +12222,14 @@ static bool fgb__InstructionProc_NOP(fgbSystem *system, const fgbInstructionRegi
 
 static bool fgb__InstructionProc_DI(fgbSystem *system, const fgbInstructionRegister *current) {
 	system->interrupts.isMasterEnabled = false;
-	system->interrupts.ticksEnableIME = 0;
+	system->cpu.state.type = fgbCPUStateType_Normal;
 	return true;
 }
 
 static bool fgb__InstructionProc_EI(fgbSystem *system, const fgbInstructionRegister *current) {
-	// EI enables IME AFTER the following instruction. Value 2: decremented once at end of EI's tick -> 1, then again at end of next instruction -> 0 -> IME=true.
-	system->interrupts.ticksEnableIME = 2;
+	// EI enables IME after the following instruction (1-instruction delay).
+	// State EnableIME: on next tick, set IME=true then fetch/execute; interrupt can only fire the tick after that.
+	system->cpu.state.type = fgbCPUStateType_EnableIME;
 	return true;
 }
 
@@ -13109,9 +13192,9 @@ static bool fgb__InstructionProc_HALT(fgbSystem *system, const fgbInstructionReg
 	fgbCPU *cpu = &system->cpu;
 	fgbInterrupts *ir = &system->interrupts;
 
-	uint8_t enable = ir->enable.u8;
-	uint8_t request = ir->request.u8;
-	bool pending = (request & enable & 0x1F) != 0;
+	const uint8_t enable = ir->enable.u8;
+	const uint8_t request = ir->request.u8;
+	const bool pending = (request & enable & 0x1F) != 0;
 
 	if (ir->isMasterEnabled) {
 		// Normal HALT: wait for any pending interrupt, then serve it
@@ -13119,36 +13202,19 @@ static bool fgb__InstructionProc_HALT(fgbSystem *system, const fgbInstructionReg
 	} else if (!pending) {
 		// HALT with IME=0, no pending: wait until interrupt pending,
 		// wake without dispatching (resumes next instruction)
-		cpu->state.type = fgbCPUStateType_Halt;
+		cpu->state.type = fgbCPUStateType_HaltDI;
 	} else {
 		// HALT bug: IME=0 and interrupt already pending -> do NOT halt,
 		// instead the next byte is fetched twice (PC fails to advance once).
-		cpu->state.skipPC = true;
+		cpu->state.type = fgbCPUStateType_HaltBug;
 	}
 
 	return true;
 }
 
 static bool fgb__InstructionProc_STOP(fgbSystem *system, const fgbInstructionRegister *current) {
-	fgbCPURegisters *r = &system->cpu.registers;
-
-	// NOTE(final): STOP skips the next instruction always
-	r->pc++;
-
-	// CGB (pure): if KEY1 is armed, STOP performs a speed switch instead of halting.
-	// CGB-in-DMG-compat mode keeps original STOP semantics (KEY1 is locked out).
-	if (system->coreType == fgbCoreType_CGB && system->cgbState.key1Reg.switchArmed) {
-		fgbCGBSpeedState *ss = &system->cgbState.speedState;
-		ss->currentMode = (ss->currentMode == fgbSpeedMode_Normal) ? fgbSpeedMode_Double : fgbSpeedMode_Normal;
-		ss->halfTickPhase = 0;
-		system->cgbState.key1Reg.switchArmed = false;
-		// Documented ~2050 idle cycles (~512 M-cycles) consumed via hardware tick path.
-		for (int i = 0; i < 512; ++i) {
-			fgb__HWTick4(system);
-		}
-		system->cpu.instructionRegister.hadBlockingSideEffect = true;
-	}
-
+	fgbCPU *cpu = &system->cpu;
+	cpu->state.type = fgbCPUStateType_Stop;
 	return true;
 }
 
@@ -13316,7 +13382,7 @@ static bool fgb__ExecuteInstruction(fgbSystem *system) {
 	return true;
 }
 
-static bool fgb__FetchInstruction(fgbSystem *system) {
+static bool fgb__FetchInstruction(fgbSystem *system, const uint8_t firstOpCode) {
 	if (system == NULL) {
 		FGB__ERROR(system, fgb__KindName_CPU, "Invalid fetch arguments");
 		return false;
@@ -13324,18 +13390,7 @@ static bool fgb__FetchInstruction(fgbSystem *system) {
 
 	fgbCPU *cpu = &system->cpu;
 
-	uint16_t startAddress = system->cpu.registers.pc;
-
-	uint16_t pc = system->cpu.registers.pc;
-
-	uint8_t firstOpCode = fgb__BusRead8(system, pc, true);
-
-	system->cpu.registers.pc++;
-
-	if (cpu->state.skipPC) {
-		cpu->state.skipPC = false;
-		system->cpu.registers.pc--;
-	}
+	const uint16_t nextPC = ++system->cpu.registers.pc;
 
 	const fgbInstruction *instruction = &fgb__instructionTable[firstOpCode];
 
@@ -13349,16 +13404,9 @@ static bool fgb__FetchInstruction(fgbSystem *system) {
 	if (instruction->type == fgbInstructionType_PREFIX) {
 		isPrefixInstruction = true;
 
-		pc = system->cpu.registers.pc;
+		secondOpCode = fgb__BusRead8(system, nextPC, true);
 
-		secondOpCode = fgb__BusRead8(system, pc, true);
-
-		system->cpu.registers.pc++;
-
-		if (cpu->state.skipPC) {
-			cpu->state.skipPC = false;
-			system->cpu.registers.pc--;
-		}
+		++system->cpu.registers.pc;
 
 		instruction = &fgb__prefixInstructionTable[secondOpCode];
 
@@ -13854,13 +13902,9 @@ static const char *fgb__InterruptNameTable[0x100] = {
 
 static void fgb__InterruptsInit(fgbInterrupts *ir) {
 	fgbClearStruct(ir);
-
 	ir->enable.u8 = 0;
 	ir->request.u8 = 0;
 	ir->isMasterEnabled = false;
-
-	ir->ticksEnableIME = 0;
-	ir->ticksRequestInterruptDelay = 0;
 }
 
 static void fgb__InterruptRequest(fgbSystem *system, const fgbInterruptType type, const char *reason) {
@@ -13871,58 +13915,66 @@ static void fgb__InterruptRequest(fgbSystem *system, const fgbInterruptType type
 #endif
 		ir->request.u8 |= type;
 	}
-	if (type == fgbInterruptType_VerticalBlank) {
-		// NOTE(final): VBlank requests require 4 ticks to be visible as pending interrupt
-		ir->ticksRequestInterruptDelay = 4;
-	}
 }
 
-static bool fgb__InterruptServe(fgbSystem *system, const fgbInterruptType type) {
-	// Real HW interrupt dispatch = 5 M-cycles (20 T-cycles):
-	//   M1, M2: internal wait
-	//   M3, M4: push PC high, push PC low (StackPush16 = 2 M-cycles)
-	//   M5: set PC = vector
-	const uint16_t vector = fgb__InterruptVectorTable[type];
-
-	fgb__HWTick4(system); // M1 wait
-	fgb__HWTick4(system); // M2 wait
-
-	uint16_t pc = system->cpu.registers.pc;
-	if (!fgb__StackPush16(system, pc)) { // M3, M4 push
-		FGB__Failure(system, fgbErrorType_ExecutionError, fgb__KindName_Interrupts, "Failed pushing PC '$%04X' to stack", pc);
-		return false;
+static void fgb__InterruptDispatch(fgbSystem *system) {
+	fgbCPU *cpu = &system->cpu;
+	fgbCPUState *cpuState = &cpu->state;
+	fgbCPURegisters *reg = &cpu->registers;
+	fgbInterrupts *ir = &system->interrupts;
+	bool wasHalt = cpu->state.type >= fgbCPUStateType_Halt;
+	if (!(ir->isMasterEnabled || wasHalt)) {
+		return;
 	}
 
-	system->cpu.registers.pc = vector;
-	fgb__HWTick4(system); // M5 vector fetch
+	ir->isMasterEnabled = false;
+	cpuState->type = fgbCPUStateType_Normal;
 
-	system->interrupts.request.u8 &= ~type;
+	// Write MSB of PC
+	reg->sp--;
+	fgb__BusWrite8(system, reg->sp, (uint8_t)(reg->pc >> 8), true);
 
-	system->cpu.state.type = fgbCPUStateType_Normal;
+	uint8_t interrupt = ir->request.u8 & ir->enable.u8;
 
-	system->interrupts.isMasterEnabled = false;
-
-	return true;
-}
-
-static fgbInterruptType fgb__InterruptPending(const fgbInterrupts *ir) {
-	fgbInterruptsFlags flags = { .u8 = ir->request.u8 & ir->enable.u8 & 0b11111 };
-	if (flags.u8 == 0) {
-		return fgbInterruptType_None;
-	}
-	if (flags.vblank && ir->ticksRequestInterruptDelay == 0) {
-		return fgbInterruptType_VerticalBlank;
-	} else if (flags.stat) {
-		return fgbInterruptType_LCDStatus;
-	} else if (flags.timer) {
-		return fgbInterruptType_Timer;
-	} else if (flags.serial) {
-		return fgbInterruptType_Serial;
-	} else if (flags.joypad) {
-		return fgbInterruptType_Joypad;
+	bool delay = false;
+	uint8_t mask;
+	uint16_t vector;
+	if (interrupt & fgbInterruptType_VerticalBlank) {
+		vector = fgb__InterruptVectorTable[fgbInterruptType_VerticalBlank];
+		mask = fgbInterruptType_VerticalBlank;
+	} else if (interrupt & fgbInterruptType_LCDStatus) {
+		vector = fgb__InterruptVectorTable[fgbInterruptType_LCDStatus];
+		mask = fgbInterruptType_LCDStatus;
+	} else if (interrupt & fgbInterruptType_Timer) {
+		vector = fgb__InterruptVectorTable[fgbInterruptType_Timer];
+		mask = fgbInterruptType_Timer;
+		delay = wasHalt;
+	} else if (interrupt & fgbInterruptType_Serial) {
+		vector = fgb__InterruptVectorTable[fgbInterruptType_Serial];
+		mask = fgbInterruptType_Serial;
+	} else if (interrupt & fgbInterruptType_Joypad) {
+		vector = fgb__InterruptVectorTable[fgbInterruptType_Joypad];
+		mask = fgbInterruptType_Joypad;
 	} else {
-		return fgbInterruptType_None;
+		// Interrupt was canceled
+		vector = 0;
+		mask = 0;
 	}
+
+	ir->request.u8 &= ~mask;
+
+	// Write LSB of PC
+	cpu->registers.sp--;
+	fgb__BusWrite8(system, cpu->registers.sp, (uint8_t)reg->pc, true);
+
+	reg->pc = vector;
+
+	if (delay) {
+		fgb__HWTick4(system);
+	}
+
+	fgb__HWTick4(system);
+	fgb__HWTick4(system);
 }
 
 static void fgb__InterruptsWrite(fgbSystem *system, const uint16_t address, const uint8_t value) {
@@ -13951,16 +14003,6 @@ static uint8_t fgb__InterruptsRead(fgbSystem *system, const uint16_t address) {
 			FGB__Failure(system, fgbErrorType_ExecutionError, fgb__KindName_IO, "Unsupported interrupt read from address '%04X'", address);
 			return 0xFF;
 	}
-}
-
-static void fgb__HandleInterruptTicks(fgbInterrupts *ir, const bool wasServed) {
-	// NOTE(final): Decrease delay pending request ticks for interrupt types such as VBlank
-	if (!wasServed && ir->ticksRequestInterruptDelay > 0) {
-		FGB_ASSERT((ir->ticksRequestInterruptDelay % 4) == 0);
-		ir->ticksRequestInterruptDelay -= 4;
-	}
-
-	// NOTE(final): IME enable is now driven by instruction count (see fgbTick after fgb__FetchDecodeExecute), not tick count.
 }
 
 // ********************************************************************************************************************
@@ -14392,6 +14434,18 @@ static bool fgb__PowerOn(fgbSystem *system, const bool isScreenEnabled, const ui
 
 	fgb__InterruptsInit(interrupts);
 
+	// IO-Registers
+	fgb__IOWrite(system, FGB__BUS_ADDRESS_IO_LCDC, 0x91);
+	fgb__IOWrite(system, FGB__BUS_ADDRESS_IO_SCY, 0x00);
+	fgb__IOWrite(system, FGB__BUS_ADDRESS_IO_SCX, 0x00);
+	fgb__IOWrite(system, FGB__BUS_ADDRESS_IO_LYC, 0x00);
+	fgb__IOWrite(system, FGB__BUS_ADDRESS_IO_BGP, 0xfc);
+	fgb__IOWrite(system, FGB__BUS_ADDRESS_IO_OBJ0, 0xff);
+	fgb__IOWrite(system, FGB__BUS_ADDRESS_IO_OBJ1, 0xff);
+	fgb__IOWrite(system, FGB__BUS_ADDRESS_INTERRUPT_REQUEST_REGISTER, 0x1);
+	fgb__IOWrite(system, FGB__BUS_ADDRESS_INTERRUPT_ENABLE_REGISTER, 0x0);
+	fgb__IOWrite(system, FGB__BUS_ADDRESS_IO_HDMA5, 0xFF);
+
 	if (boot->rom.isEnabled) {
 		boot->state.isActive = true;
 		boot->state.reg = 0;
@@ -14449,7 +14503,59 @@ static bool fgb__ExecuteReset(fgbSystem *system, const fgbResetState resetState)
 	return true;
 }
 
-static bool fgb__FetchDecodeExecute(fgbSystem *system, const uint32_t startFrameIndex, const fgbCPURegisters *startRegs) {
+static void fgb__TraceInstruction(fgbSystem *system, const fgbInstructionRegister *insReg, const fgbCPURegisters *regs) {
+	static char instrText[128];
+	FGB_MEMSET(instrText, 0, sizeof(instrText));
+	if (!fgb__FormatInstruction(system, insReg, instrText, FGB_ARRAYCOUNT(instrText))) {
+		fgb__StringFormat(instrText, FGB_ARRAYCOUNT(instrText), "%s", fgbGetInstructionName(insReg->instruction.type));
+	}
+
+	uint16_t bank = 0;
+	uint16_t pc = insReg->startPC;
+	if (pc >= 0x4000 && pc < 0x8000) {
+		if (system->gamePak.info.mbcType == fgbMemoryControllerType_MBC5)
+			bank = system->mbc.data.mbc5.romBank;
+		else
+			bank = system->mbc.data.mbc1.romBank;
+	}
+
+	uint8_t len = insReg->instruction.length;
+	uint8_t b0 = fgb__BusRead8_Direct(system, pc);
+	uint8_t b1 = (len >= 2) ? fgb__BusRead8_Direct(system, (uint16_t)(pc + 1)) : 0;
+	uint8_t b2 = (len >= 3) ? fgb__BusRead8_Direct(system, (uint16_t)(pc + 2)) : 0;
+
+	static char byteStr[12];
+	FGB_MEMSET(byteStr, 0, sizeof(byteStr));
+	if (len >= 3)
+		fgb__StringFormat(byteStr, FGB_ARRAYCOUNT(byteStr), "%02x %02x %02x", b0, b1, b2);
+	else if (len == 2)
+		fgb__StringFormat(byteStr, FGB_ARRAYCOUNT(byteStr), "%02x %02x   ", b0, b1);
+	else
+		fgb__StringFormat(byteStr, FGB_ARRAYCOUNT(byteStr), "%02x      ", b0);
+
+	char flags[5];
+	flags[0] = regs->f.zeroFlag ? 'Z' : '-';
+	flags[1] = regs->f.negativeFlag ? 'N' : '-';
+	flags[2] = regs->f.halfCarryFlag ? 'H' : '-';
+	flags[3] = regs->f.fullCarryFlag ? 'C' : '-';
+	flags[4] = 0;
+
+	static char buf[512];
+	FGB_MEMSET(buf, 0, sizeof(buf));
+	fgb__StringFormat(buf, FGB_ARRAYCOUNT(buf),
+		"A:%02x F:%s BC:%04x DE:%04x HL:%04x SP:%04x PC:%04x (cy: %llu) ppu:+%3u |[%02x]0x%04x: %s  %s",
+		regs->a, flags,
+		regs->bc, regs->de, regs->hl, regs->sp, pc,
+		(unsigned long long)insReg->startTicks,
+		system->ppu.state.lineTicks,
+		(unsigned)bank, pc,
+		byteStr,
+		instrText);
+
+	FGB__TRACE(system, fgb__KindName_Core, buf);
+}
+
+static bool fgb__FetchDecodeExecute(fgbSystem *system, const uint32_t startFrameIndex, const fgbCPURegisters *startRegs, const uint16_t opCode) {
 	fgbCPU *cpu = &system->cpu;
 	fgbPPU *ppu = &system->ppu;
 	fgbCPURegisters *regs = &cpu->registers;
@@ -14460,8 +14566,8 @@ static bool fgb__FetchDecodeExecute(fgbSystem *system, const uint32_t startFrame
 	//
 	// Fetch Instruction
 	// 
-	if (!fgb__FetchInstruction(system)) {
-		FGB__Failure(system, fgbErrorType_ExecutionError, fgb__KindName_Core, "Failed to fetch instruction at address '$%04X'", insReg->startPC);
+	if (!fgb__FetchInstruction(system, opCode)) {
+		FGB__Failure(system, fgbErrorType_ExecutionError, fgb__KindName_Core, "Failed to fetch instruction from op-code '$%02X'", opCode);
 		return false;
 	}
 
@@ -14471,7 +14577,7 @@ static bool fgb__FetchDecodeExecute(fgbSystem *system, const uint32_t startFrame
 	const char *instructionName = fgbGetInstructionName(insReg->instruction.type);
 	const char *addressingModeName = fgbGetAddressingModeName(insReg->instruction.mode);
 
-	uint16_t fetchAddress = cpu->registers.pc;
+	const uint16_t fetchAddress = cpu->registers.pc;
 	if (!fgb__FetchData(system)) {
 		fgb__PrintCurrentInstruction(system, insReg, startRegs, startFrameIndex, "FETCH", fgb__PrintInstructionFlags_Console);
 		FGB__Failure(system, fgbErrorType_ExecutionError, fgb__KindName_Core, "Failed to fetch data for instruction '%s', mode '%s' at address '$%04X'", instructionName, addressingModeName, fetchAddress);
@@ -14481,6 +14587,10 @@ static bool fgb__FetchDecodeExecute(fgbSystem *system, const uint32_t startFrame
 #if FGB_CPU_INSTRUCTION_TICK_LOGGING
 	fgb__PrintCurrentInstruction(system, insReg, startRegs, startFrameIndex, "", fgb__PrintInstructionFlags_Console);
 #endif
+
+	if (system->isInstructionTraceEnabled) {
+		fgb__TraceInstruction(system, insReg, startRegs);
+	}
 
 	//
 	// Execute
@@ -14551,6 +14661,91 @@ static void fgb__PPUResetForTick(fgbPPU *ppu) {
 
 }
 
+static bool fgb__CPUProcess(fgbSystem *system, const uint32_t startFrameIndex) {
+	fgbCPU *cpu = &system->cpu;
+	fgbCPUState *state = &cpu->state;
+	fgbCPURegisters *reg = &cpu->registers;
+	fgbInterrupts *ir = &system->interrupts;
+	fgbError *error = &system->error;
+
+	bool shouldDispatch = false;
+	uint8_t opCode = 0;
+
+	switch (state->type) {
+		case fgbCPUStateType_Normal: {
+			shouldDispatch = ir->isMasterEnabled && (ir->request.u8 & ir->enable.u8) != 0;
+			opCode = fgb__BusRead8(system, cpu->registers.pc, true);
+		} break;
+
+		case fgbCPUStateType_Stop: {
+			shouldDispatch = ir->isMasterEnabled && (ir->request.u8 & ir->enable.u8) != 0;
+			if (!shouldDispatch) {
+				if (system->cgbState.key1Reg.switchArmed) {
+					fgbCGBSpeedState *ss = &system->cgbState.speedState;
+					ss->currentMode = (ss->currentMode == fgbSpeedMode_Normal) ? fgbSpeedMode_Double : fgbSpeedMode_Normal;
+					ss->halfTickPhase = 0;
+					system->cgbState.key1Reg.switchArmed = false;
+					state->type = fgbCPUStateType_Normal;
+					// Documented ~2050 idle cycles (~512 M-cycles) consumed via hardware tick path.
+					for (int i = 0; i < 512; ++i) {
+						fgb__HWTick4(system);
+					}
+					system->cpu.instructionRegister.hadBlockingSideEffect = true;
+				} else {
+					fgb__HWTick4(system);
+					return true;
+				}
+			}
+			opCode = fgb__BusRead8(system, cpu->registers.pc, true);
+		} break;
+
+		case fgbCPUStateType_EnableIME: {
+			shouldDispatch = ir->isMasterEnabled && (ir->request.u8 & ir->enable.u8) != 0;
+			ir->isMasterEnabled = true;
+			state->type = fgbCPUStateType_Normal;
+			opCode = fgb__BusRead8(system, cpu->registers.pc, true);
+		} break;
+
+		case fgbCPUStateType_HaltBug: {
+			shouldDispatch = ir->isMasterEnabled && (ir->request.u8 & ir->enable.u8) != 0;
+			opCode = fgb__BusRead8(system, cpu->registers.pc, true);
+			reg->pc--;
+			state->type = fgbCPUStateType_Normal;
+		} break;
+
+		case fgbCPUStateType_Halt: {
+			shouldDispatch = (ir->request.u8 & ir->enable.u8) != 0;
+			fgb__HWTick4(system);
+			if (shouldDispatch) {
+				fgb__InterruptDispatch(system);
+			}
+			return true;
+		}
+
+		case fgbCPUStateType_HaltDI: {
+			shouldDispatch = (ir->request.u8 & ir->enable.u8) != 0;
+			opCode = fgb__BusRead8(system, cpu->registers.pc, true);
+			if (shouldDispatch) {
+				state->type = fgbCPUStateType_Normal;
+				shouldDispatch = false;
+			}
+			return true;
+		} break;
+	}
+
+	if (shouldDispatch) {
+		fgb__InterruptDispatch(system);
+		return true;
+	}
+
+	if (!fgb__FetchDecodeExecute(system, startFrameIndex, reg, opCode)) {
+		FGB_ASSERT(error->type != fgbErrorType_None);
+		return false;
+	}
+
+	return true;
+}
+
 FGB_API bool fgbTick(fgbSystem *system) {
 	if (system == NULL || (!system->gamePak.isValid && !system->boot.state.isActive)) {
 		return false;
@@ -14608,8 +14803,20 @@ FGB_API bool fgbTick(fgbSystem *system) {
 	//
 	if (joypad->isStateChanged) {
 		joypad->isStateChanged = false;
+
+		// Fire interrupt for any button newly pressed — check physical state, row-independent.
+		// Hardware: P10-P13 fire the joypad IRQ when any line transitions high→low (pressed),
+		// regardless of which row (P14/P15) is currently selected.
+		for (int fgb__ji = 0; fgb__ji < 8; ++fgb__ji) {
+			bool wasPressed = fgb__IsControllerButtonDown((fgbButtonState)joypad->currentState.m[fgb__ji]);
+			bool isPressed  = fgb__IsControllerButtonDown((fgbButtonState)joypad->requestedState.m[fgb__ji]);
+			if (!wasPressed && isPressed) {
+				fgb__InterruptRequest(system, fgbInterruptType_Joypad, "Joypad");
+				break;
+			}
+		}
+
 		joypad->currentState = joypad->requestedState;
-		fgb__JoypadInterrupt(system, ir, joypad);
 	}
 
 	//
@@ -14623,79 +14830,14 @@ FGB_API bool fgbTick(fgbSystem *system) {
 
 	cpu->state.currentMemoryCycles = 0;
 
-	uint32_t startFrameIndex = ppu->state.frameCount;
-	fgbCPURegisters startRegs = cpu->registers;
+	const uint32_t startFrameIndex = ppu->state.frameCount;
 
 	fgb__PPUResetForTick(ppu);
 
-	bool interruptWasServed = false;
-
-	//
-	// Leave HALT mode
-	//
-	if (cpu->state.type == fgbCPUStateType_Halt) {
-		// Decrease timer to leave HALT mode
-		if (cpu->state.ticksLeaveHaltMode > 0) {
-			FGB_ASSERT((cpu->state.ticksLeaveHaltMode % 4) == 0);
-			cpu->state.ticksLeaveHaltMode -= 4;
-
-			if (cpu->state.ticksLeaveHaltMode == 0) {
-				cpu->state.type = fgbCPUStateType_Normal;
-			}
-		}
-
-		// Start timer to that will leave HALT mode (real HW: 1 M-cycle wake)
-		if ((cpu->state.type == fgbCPUStateType_Halt) && (fgb__InterruptPending(ir) != fgbInterruptType_None) && (cpu->state.ticksLeaveHaltMode == 0)) {
-			cpu->state.ticksLeaveHaltMode = 4;
-		}
+	if (!fgb__CPUProcess(system, startFrameIndex)) {
+		FGB_ASSERT(error->type != fgbErrorType_None);
+		return false;
 	}
-
-	//
-	// Process CPU state
-	//
-	switch (cpu->state.type) {
-		case fgbCPUStateType_Normal: {
-			// Serve interrupt when: IME is enabled, a pending interrupt was found
-			fgbInterruptType pendingInterrupt = fgb__InterruptPending(ir);
-			if (ir->isMasterEnabled && (pendingInterrupt != fgbInterruptType_None)) {
-				if (!fgb__InterruptServe(system, pendingInterrupt)) {
-					const char *interruptName = fgb__InterruptNameTable[pendingInterrupt];
-					FGB__Failure(system, fgbErrorType_ExecutionError, fgb__KindName_Core, "Failed serve interrupt type '%s'", interruptName);
-					return false;
-				}
-				interruptWasServed = true;
-			} else {
-				// Fetch -> Decode -> Execute
-				if (!fgb__FetchDecodeExecute(system, startFrameIndex, &startRegs)) {
-					FGB_ASSERT(error->type != fgbErrorType_None);
-					return false;
-				}
-				// EI 1-instruction delay: decrement after each executed instruction in Normal state. EI sets counter=2 -> 1 after EI, -> 0 after following instruction -> IME enables.
-				if (ir->ticksEnableIME > 0) {
-					ir->ticksEnableIME--;
-					if (ir->ticksEnableIME == 0) {
-						ir->isMasterEnabled = true;
-					}
-				}
-			}
-		} break;
-
-		case fgbCPUStateType_Halt: {
-			// NOTE(final): HALT can only be exit due to any interrupt request and won't exit immediatelly, it takes at least 12 cycles
-			fgb__HWTick4(system);
-		} break;
-
-		case fgbCPUStateType_Stop: {
-			// TODO(final): Implement this correctly!
-		} break;
-
-		default:
-			FGB__Failure(system, fgbErrorType_ExecutionError, fgb__KindName_Core, "Unsupported CPU State: %d", system->cpu.state.type);
-			return false;
-	}
-
-	// Handle enable of IME or decrease pending interrupt cycles
-	fgb__HandleInterruptTicks(ir, interruptWasServed);
 
 	// Put the machine to a faulted state, when there is an infinite loop detected and track the error
 	if ((cpu->state.lastPC == regs->pc && cpu->state.lastSP == regs->sp) && (!system->interrupts.isMasterEnabled && !system->interrupts.enable.u8)) {
@@ -14986,6 +15128,7 @@ FGB_API fgbInitResult fgbInit(fgbSystem *system, const fgbConfiguration *config,
 		system->callbacks = config->callbacks;
 		isScreenEnabled = !config->isScreenDisabled;
 		targetSampleRate = config->targetSampleRate;
+		system->isInstructionTraceEnabled = config->isInstructionTraceEnabled;
 	} else {
 		system->systemMonochromeColors = FGB_DEFAULT_DMG_COLORS;
 	}
