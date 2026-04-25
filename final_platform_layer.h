@@ -199,6 +199,7 @@ SOFTWARE.
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
 	- Changed: Ensure that std types has the correct sizes always using equals
 	- Changed: fplSetDefaultAudioSettings() sets audio backend type to automatic
+	- Changed: fplFileWriteBlock*() changed to const for the source argument
 	- Changed: [ALSA] Audio device enumeration prints out each audio device to verbose log
 	- Changed: [X11] Disabled FPL_NO_PLATFORM_INCLUDES for Xlib includes
 	- Changed: [POSIX] Disabled FPL_NO_PLATFORM_INCLUDES for pthread includes
@@ -7055,7 +7056,7 @@ fpl_platform_api size_t fplFileReadBlock(const fplFileHandle *fileHandle, const 
 * @note Supports max size of 2^31.
 * @see @ref subsection_category_io_binaryfiles_write_writeblock
 */
-fpl_platform_api uint32_t fplFileWriteBlock32(const fplFileHandle *fileHandle, void *sourceBuffer, const uint32_t sourceSize);
+fpl_platform_api uint32_t fplFileWriteBlock32(const fplFileHandle *fileHandle, const void *sourceBuffer, const uint32_t sourceSize);
 
 /**
 * @brief Writes a block to the given file and returns the number of written bytes.
@@ -7066,7 +7067,7 @@ fpl_platform_api uint32_t fplFileWriteBlock32(const fplFileHandle *fileHandle, v
 * @note Supports max size of 2^63.
 * @see @ref subsection_category_io_binaryfiles_write_writeblock
 */
-fpl_platform_api uint64_t fplFileWriteBlock64(const fplFileHandle *fileHandle, void *sourceBuffer, const uint64_t sourceSize);
+fpl_platform_api uint64_t fplFileWriteBlock64(const fplFileHandle *fileHandle, const void *sourceBuffer, const uint64_t sourceSize);
 
 /**
 * @brief Writes a block to the given file and returns the number of written bytes.
@@ -7077,7 +7078,7 @@ fpl_platform_api uint64_t fplFileWriteBlock64(const fplFileHandle *fileHandle, v
 * @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes.
 * @see @ref subsection_category_io_binaryfiles_write_writeblock
 */
-fpl_common_api size_t fplFileWriteBlock(const fplFileHandle *fileHandle, void *sourceBuffer, const size_t sourceSize);
+fpl_common_api size_t fplFileWriteBlock(const fplFileHandle *fileHandle, const void *sourceBuffer, const size_t sourceSize);
 
 /**
 * @brief Sets the current file position by the given position, depending on the mode it's absolute or relative.
@@ -12620,7 +12621,7 @@ fpl_common_api size_t fplFileReadBlock(const fplFileHandle *fileHandle, const si
 #endif
 }
 
-fpl_common_api size_t fplFileWriteBlock(const fplFileHandle *fileHandle, void *sourceBuffer, const size_t sourceSize) {
+fpl_common_api size_t fplFileWriteBlock(const fplFileHandle *fileHandle, const void *sourceBuffer, const size_t sourceSize) {
 #if defined(FPL_CPU_64BIT)
 	return fplFileWriteBlock64(fileHandle, sourceBuffer, sourceSize);
 #else
@@ -16115,7 +16116,7 @@ fpl_platform_api uint64_t fplFileReadBlock64(const fplFileHandle *fileHandle, co
 	return(result);
 }
 
-fpl_platform_api uint32_t fplFileWriteBlock32(const fplFileHandle *fileHandle, void *sourceBuffer, const uint32_t sourceSize) {
+fpl_platform_api uint32_t fplFileWriteBlock32(const fplFileHandle *fileHandle, const void *sourceBuffer, const uint32_t sourceSize) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sourceSize, 0);
 	FPL__CheckArgumentNull(sourceBuffer, 0);
@@ -16132,7 +16133,7 @@ fpl_platform_api uint32_t fplFileWriteBlock32(const fplFileHandle *fileHandle, v
 	return(result);
 }
 
-fpl_platform_api uint64_t fplFileWriteBlock64(const fplFileHandle *fileHandle, void *sourceBuffer, const uint64_t sourceSize) {
+fpl_platform_api uint64_t fplFileWriteBlock64(const fplFileHandle *fileHandle, const void *sourceBuffer, const uint64_t sourceSize) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sourceSize, 0);
 	FPL__CheckArgumentNull(sourceBuffer, 0);
@@ -18572,7 +18573,7 @@ fpl_platform_api bool fplFileAppendBinary(const char *filePath, fplFileHandle *o
 	return false;
 }
 
-fpl_platform_api size_t fpl__PosixWriteFileBlock(const fplFileHandle *fileHandle, void *sourceBuffer, const size_t sourceSize) {
+fpl_platform_api size_t fpl__PosixWriteFileBlock(const fplFileHandle *fileHandle, const void *sourceBuffer, const size_t sourceSize) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sourceSize, 0);
 	FPL__CheckArgumentNull(sourceBuffer, 0);
@@ -18643,7 +18644,7 @@ fpl_platform_api uint64_t fplFileReadBlock64(const fplFileHandle *fileHandle, co
 	return(result);
 }
 
-fpl_platform_api uint32_t fplFileWriteBlock32(const fplFileHandle *fileHandle, void *sourceBuffer, const uint32_t sourceSize) {
+fpl_platform_api uint32_t fplFileWriteBlock32(const fplFileHandle *fileHandle, const void *sourceBuffer, const uint32_t sourceSize) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sourceSize, 0);
 	FPL__CheckArgumentNull(sourceBuffer, 0);
@@ -18663,7 +18664,7 @@ fpl_platform_api uint32_t fplFileWriteBlock32(const fplFileHandle *fileHandle, v
 	return(result);
 }
 
-fpl_platform_api uint64_t fplFileWriteBlock64(const fplFileHandle *fileHandle, void *sourceBuffer, const uint64_t sourceSize) {
+fpl_platform_api uint64_t fplFileWriteBlock64(const fplFileHandle *fileHandle, const void *sourceBuffer, const uint64_t sourceSize) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sourceSize, 0);
 	FPL__CheckArgumentNull(sourceBuffer, 0);
