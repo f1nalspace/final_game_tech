@@ -94,7 +94,6 @@ Partial:
 - [CGB] Aladdin: Can play, but almost no sprites are visible, alfred itself is just a couple of lines
 
 Do not work:
-- [DMG] Alleyway: Jumps directly into the game, no paddle control -> Propaply interrupt timing / joypad issues
 - [DMG] Duck Tales: In-game music too fast, window-rendering graphic flickering, not able to jump away from climbing vines
 - [CGB] Mega Man Xtreme: Starts, but hangs in the title screens
 
@@ -224,11 +223,19 @@ Copyright 2024-2026 Torsten Spaete
 	Changelog
 -------------------------------------------------------------------------------
 
-## v1.3.0 SGB Support + Bugfixes
+## v1.3.0 Serial-Transfer + Bugfixes
 
-### SGB Support
+### Features
 
-- SGB support by allowing certain CGB features
+- Implemented Serial transfer (fixes e.g. Alleyway)
+- SGB falls back to either CGB or DMG
+- Added instruction tracing matching popular emulators
+- Added function fgbGetAudioRingBufferFillFrames for retrieving the number of audio frames available in the APU ring buffer
+
+### Improvements
+
+- Extented testing framework (Test callbacks)
+- Improved performance of microstepping checks
 
 ### Bugfixes
 
@@ -1886,6 +1893,11 @@ typedef struct {
 // thread ramps up. 4096 frames @ 48 kHz = ~85 ms startup latency.
 #define FGB_APU_RING_BUFFER_PRIME_FRAMES 4096
 
+// Low-water mark: frontend pacing should run the emulator ahead of wallclock
+// when the ring drops below this to rebuild headroom. 2048 frames @ 48 kHz
+// = ~42 ms — half of the prime level.
+#define FGB_APU_RING_BUFFER_LOW_WATER_FRAMES 2048
+
 // Silence value for unsigned 8-bit PCM (centerline).
 #define FGB_APU_SILENCE_SAMPLE 128
 
@@ -2476,8 +2488,14 @@ FGB_STATIC_ASSERT(sizeof(fgbSerialTransferRegister) == 2);
 typedef struct {
 	// Serial transfer register
 	fgbSerialTransferRegister reg;
-	// Align to 4 bytes
-	uint8_t padding[2];
+	// T-cycles accumulated within the current bit period (0..SERIAL_BIT_CYCLES)
+	uint16_t tickCount;
+	// True while a transfer started by SC bit 7 with internal clock is in flight
+	bool transferring;
+	// Number of bits already shifted out (0..7)
+	uint8_t bitsTransferred;
+	// Padding to align to 8-bytes
+	uint8_t unused[2];
 } fgbSerialState;
 
 // Represents the full state of the serial data transfer
@@ -3918,7 +3936,9 @@ typedef struct {
 	// Micro stepping states
 	fgbMicroStepping microStepping;
 	// Breakpoint states
-	fgbBreakpoints breakpoints;	
+	fgbBreakpoints breakpoints;
+	// If enabled, each instruction is traced via the log callback at Trace level before execution
+	bool isInstructionTraceEnabled;
 } fgbDebug;
 
 // Represents the emulator configuration
@@ -3941,8 +3961,6 @@ typedef struct {
 	bool isScreenDisabled;
 	// Start the emulation in pause mode, waiting to step or continue it actively
 	bool paused;
-	// If enabled, each instruction is traced via the log callback at Trace level before execution
-	bool isInstructionTraceEnabled;
 } fgbConfiguration;
 
 // ****************************************************************************
@@ -4075,8 +4093,6 @@ typedef struct fgbSystem {
 	fgbResetState resetState;
 	// Current CGB state
 	fgbCGBState cgbState;
-	// If enabled, each instruction is traced via the log callback at Trace level before execution
-	bool isInstructionTraceEnabled;
 } fgbSystem;
 
 // Defines the initialization result types
@@ -4263,6 +4279,28 @@ typedef FGB_TEST_VALIDATE_FUNC(fgbTestValidateFunc);
   */
 typedef FGB_TEST_FRAME_UPDATE_FUNC(fgbTestFrameUpdateFunc);
 
+// Function prototype for a test begin
+#define FGB_TEST_BEGIN_FUNC(name) void name(fgbSystem *system, fgbTestResultData *data)
+
+/**
+  * @brief Callback that is executed when a test starts running
+  * @param system The reference to the opaque system
+  * @param data The reference to the test result data
+  * @return Returns a boolean indicating whether the test run was successful or not
+  */
+typedef FGB_TEST_BEGIN_FUNC(fgbTestBeginFunc);
+
+// Function prototype for a test end
+#define FGB_TEST_END_FUNC(name) void name(fgbSystem *system, fgbTestResultData *data)
+
+/**
+  * @brief Callback that is executed when a test finishes, regardless of the result
+  * @param system The reference to the opaque system
+  * @param data The reference to the test result data
+  * @return Returns a boolean indicating whether the test run was successful or not
+  */
+typedef FGB_TEST_END_FUNC(fgbTestEndFunc);
+
 typedef enum {
 	// Runs the test calling fgbTick() until the test completes/fails or the emulator fails
 	fgbRunTestMode_Ticks = 0,
@@ -4271,6 +4309,13 @@ typedef enum {
 	// Default run test mode
 	fgbRunTestMode_Default = fgbRunTestMode_Ticks,
 } fgbRunTestMode;
+
+typedef struct {
+	fgbTestBeginFunc *beginFunc;
+	fgbTestEndFunc *endFunc;
+	fgbTestValidateFunc *validateFunc;
+	fgbTestFrameUpdateFunc *frameUpdateFunc;
+} fgbTestCallbacks;
 
 /**
   * @brief Runs a single test
@@ -4283,7 +4328,7 @@ typedef enum {
   * @param data Reference to the output test result data
   * @return Returns the test result type
   */
-FGB_API fgbTestResultType fgbRunTest(const fgbCallbacks *callbacks, const fgbGamePak *gamePak, const fgbRunTestMode mode, const uint64_t maxTickCount, fgbTestValidateFunc *validateFunc, fgbTestFrameUpdateFunc *frameUpdateFunc, fgbTestResultData *data);
+FGB_API fgbTestResultType fgbRunTest(const fgbCallbacks *callbacks, const fgbGamePak *gamePak, const fgbRunTestMode mode, const uint64_t maxTickCount, const fgbTestCallbacks *testCallbacks, fgbTestResultData *data);
 
 // ****************************************************************************
 // > DEBUG-API
@@ -4430,6 +4475,13 @@ FGB_API bool fgbIsVRAMUpdated(const fgbSystem *system);
   * @return Returns the number of audio frames fetched
   */
 FGB_API uint32_t fgbFetchAudioSamples(fgbSystem *system, const uint32_t frameCount, uint8_t *outSamples);
+
+/**
+  * @brief Returns the current number of audio frames available in the APU ring buffer
+  * @param system The reference to the @ref fgbSystem
+  * @return Frames currently queued for the audio consumer
+  */
+FGB_API uint32_t fgbGetAudioRingBufferFillFrames(const fgbSystem *system);
 
 // Defines the voice types
 typedef enum {
@@ -5101,6 +5153,14 @@ static void FGB__Failure(fgbSystem *system, const fgbErrorType type, const char 
 // ********************************************************************************************************************
 
 static void fgb__MicroStep(fgbSystem *system, const fgbMicroStepType type) {
+	// Hot path: this fires on every CPU tick (4 per HWTick4) and every
+	// hardware tick (also 4 per HWTick4) when the user wires CPUTick /
+	// HardwareTick filters for the debugger. During normal play the
+	// callback is a no-op — skip the indirect load + function call to
+	// keep the emulator running in real-time.
+	if (system->state != fgbEmulationState_MicroStep) {
+		return;
+	}
 	fgbMicroStepping *ms = &system->debug.microStepping;
 	if (!ms->isEnabled || !ms->filter[type]) {
 		return;
@@ -8684,6 +8744,13 @@ FGB_API uint32_t fgbFetchAudioSamples(fgbSystem *system, const uint32_t frameCou
 	return result;
 }
 
+FGB_API uint32_t fgbGetAudioRingBufferFillFrames(const fgbSystem *system) {
+	const fgbAudioRingBuffer *rb = &system->apu.ringBuffer;
+	const int64_t head = fgb__InterlockedRead64((volatile int64_t *)&rb->head);
+	const int64_t tail = fgb__InterlockedRead64((volatile int64_t *)&rb->tail);
+	return (uint32_t)((head - tail) & (FGB_APU_RING_BUFFER_CAPACITY - 1));
+}
+
 // Clip the linear value into range of 0.0 to 1.0
 static inline float fgb__AudioClipLinear(const float value) {
 	return FGB_MAX(0.0f, FGB_MIN(1.0f, value));
@@ -10854,6 +10921,9 @@ static uint8_t fgb__SerialRead(const fgbSerial *serial, const uint16_t address) 
 	}
 }
 
+// Wall-clock T-cycles per serial bit at internal 8192 Hz clock (4194304 / 8192).
+#define FGB__SERIAL_BIT_CYCLES 512
+
 static void fgb__SerialWrite(fgbSerial *serial, const uint16_t address, const uint8_t value) {
 	switch (address) {
 		case 0xFF01:
@@ -10861,9 +10931,41 @@ static void fgb__SerialWrite(fgbSerial *serial, const uint16_t address, const ui
 			break;
 		case 0xFF02:
 			serial->state.reg.sc = value;
+			// Start a new internal-clock transfer when bit 7 (start) and bit 0 (internal clock) are set.
+			// External clock is not modeled (no peer), so the transfer never completes — bit 7 stays set.
+			if (serial->state.reg.sio_en && serial->state.reg.sio_clk) {
+				serial->state.transferring = true;
+				serial->state.bitsTransferred = 0;
+				serial->state.tickCount = 0;
+			} else {
+				serial->state.transferring = false;
+			}
 			break;
 		default:
 			break;
+	}
+}
+
+// Advances the serial transfer by 4 T-cycles. Called once per fgb__HWTick4.
+// On bit completion shifts 0xFF into SB (no peer connected). After 8 bits the
+// transfer ends, SC bit 7 is cleared and the Serial interrupt is requested.
+static void fgb__SerialTick(fgbSystem *system) {
+	fgbSerial *serial = &system->serial;
+	if (!serial->state.transferring) {
+		return;
+	}
+	serial->state.tickCount += 4;
+	if (serial->state.tickCount < FGB__SERIAL_BIT_CYCLES) {
+		return;
+	}
+	serial->state.tickCount = 0;
+	serial->state.reg.sb = (uint8_t)((serial->state.reg.sb << 1) | 0x01);
+	serial->state.bitsTransferred++;
+	if (serial->state.bitsTransferred >= 8) {
+		serial->state.transferring = false;
+		serial->state.bitsTransferred = 0;
+		serial->state.reg.sio_en = 0;
+		fgb__InterruptRequest(system, fgbInterruptType_Serial, "Serial Transfer Complete");
 	}
 }
 
@@ -14209,6 +14311,11 @@ static void fgb__HWTick4(fgbSystem *system) {
 		return;
 	}
 
+	// Serial advances at the wall-clock rate (4 T-cycles per HWTick4) regardless of CGB double-speed,
+	// so HWTick4 firing 2x more often naturally halves transfer time at double speed.
+	// Required by games like Alleyway, which drive their joypad-poll cadence off the serial-transfer-complete interrupt.
+	fgb__SerialTick(system);
+
 	// In double-speed, gate Timer/PPU/APU to every other HWTick4 invocation so their
 	// wall-clock cadence is preserved while DMA + CPU run at 2x rate.
 	bool runNonCPU = true;
@@ -14250,8 +14357,8 @@ static void fgb__HWTick4(fgbSystem *system) {
 	}
 }
 
-FGB_API fgbTestResultType fgbRunTest(const fgbCallbacks *callbacks, const fgbGamePak *gamePak, const fgbRunTestMode mode, const uint64_t maxTickCount, fgbTestValidateFunc *validateFunc, fgbTestFrameUpdateFunc *frameUpdateFunc, fgbTestResultData *data) {
-	if (callbacks == NULL || gamePak == NULL || data == NULL) {
+FGB_API fgbTestResultType fgbRunTest(const fgbCallbacks *callbacks, const fgbGamePak *gamePak, const fgbRunTestMode mode, const uint64_t maxTickCount, const fgbTestCallbacks *testCallbacks, fgbTestResultData *data) {
+	if (callbacks == NULL || gamePak == NULL || data == NULL || testCallbacks == NULL) {
 		return fgbTestResultType_InvalidArguments;
 	}
 
@@ -14287,6 +14394,10 @@ FGB_API fgbTestResultType fgbRunTest(const fgbCallbacks *callbacks, const fgbGam
 	} else if (initRes == fgbInitResult_InvalidGamePak) {
 		result = fgbTestResultType_InvalidGamePak;
 		goto done;
+	}
+
+	if (testCallbacks->beginFunc != NULL) {
+		testCallbacks->beginFunc(system, data);
 	}
 
 	bool testCompleted = false;
@@ -14335,8 +14446,8 @@ FGB_API fgbTestResultType fgbRunTest(const fgbCallbacks *callbacks, const fgbGam
 		}
 
 		if (fgbIsFrameUpdated(system)) {
-			if (frameUpdateFunc != NULL) {
-				if (!frameUpdateFunc(system, frameCount, data)) {
+			if (testCallbacks->frameUpdateFunc != NULL) {
+				if (!testCallbacks->frameUpdateFunc(system, frameCount, data)) {
 					result = fgbTestResultType_FailedProcessingTest;
 					goto done;
 				}
@@ -14344,8 +14455,8 @@ FGB_API fgbTestResultType fgbRunTest(const fgbCallbacks *callbacks, const fgbGam
 			frameCount++;
 		}
 
-		if (validateFunc != NULL) {
-			if (!validateFunc(system, data)) {
+		if (testCallbacks->validateFunc != NULL) {
+			if (!testCallbacks->validateFunc(system, data)) {
 				result = fgbTestResultType_FailedProcessingTest;
 				goto done;
 			}
@@ -14362,6 +14473,10 @@ done:
 	data->cpuCycles = system->cpu.state.totalTickCycles;
 	data->tickCycles = tickCount;
 	data->frameCount = frameCount;
+
+	if (testCallbacks->endFunc != NULL) {
+		testCallbacks->endFunc(system, data);
+	}
 
 	fgbShutdown(system);
 
@@ -14505,27 +14620,29 @@ static bool fgb__ExecuteReset(fgbSystem *system, const fgbResetState resetState)
 
 static void fgb__TraceInstruction(fgbSystem *system, const fgbInstructionRegister *insReg, const fgbCPURegisters *regs) {
 	static char instrText[128];
-	FGB_MEMSET(instrText, 0, sizeof(instrText));
 	if (!fgb__FormatInstruction(system, insReg, instrText, FGB_ARRAYCOUNT(instrText))) {
 		fgb__StringFormat(instrText, FGB_ARRAYCOUNT(instrText), "%s", fgbGetInstructionName(insReg->instruction.type));
 	}
 
 	uint16_t bank = 0;
-	uint16_t pc = insReg->startPC;
+	const uint16_t pc = insReg->startPC;
 	if (pc >= 0x4000 && pc < 0x8000) {
 		if (system->gamePak.info.mbcType == fgbMemoryControllerType_MBC5)
 			bank = system->mbc.data.mbc5.romBank;
-		else
+		else if (system->gamePak.info.mbcType == fgbMemoryControllerType_MBC3)
+			bank = system->mbc.data.mbc3.romBank;
+		else if (system->gamePak.info.mbcType == fgbMemoryControllerType_MBC2)
+			bank = system->mbc.data.mbc2.romBank;
+		else if (system->gamePak.info.mbcType == fgbMemoryControllerType_MBC1)
 			bank = system->mbc.data.mbc1.romBank;
 	}
 
-	uint8_t len = insReg->instruction.length;
-	uint8_t b0 = fgb__BusRead8_Direct(system, pc);
-	uint8_t b1 = (len >= 2) ? fgb__BusRead8_Direct(system, (uint16_t)(pc + 1)) : 0;
-	uint8_t b2 = (len >= 3) ? fgb__BusRead8_Direct(system, (uint16_t)(pc + 2)) : 0;
+	const uint8_t len = insReg->instruction.length;
+	const uint8_t b0 = fgb__BusRead8_Direct(system, pc);
+	const uint8_t b1 = (len >= 2) ? fgb__BusRead8_Direct(system, (uint16_t)(pc + 1)) : 0;
+	const uint8_t b2 = (len >= 3) ? fgb__BusRead8_Direct(system, (uint16_t)(pc + 2)) : 0;
 
 	static char byteStr[12];
-	FGB_MEMSET(byteStr, 0, sizeof(byteStr));
 	if (len >= 3)
 		fgb__StringFormat(byteStr, FGB_ARRAYCOUNT(byteStr), "%02x %02x %02x", b0, b1, b2);
 	else if (len == 2)
@@ -14541,7 +14658,6 @@ static void fgb__TraceInstruction(fgbSystem *system, const fgbInstructionRegiste
 	flags[4] = 0;
 
 	static char buf[512];
-	FGB_MEMSET(buf, 0, sizeof(buf));
 	fgb__StringFormat(buf, FGB_ARRAYCOUNT(buf),
 		"A:%02x F:%s BC:%04x DE:%04x HL:%04x SP:%04x PC:%04x (cy: %llu) ppu:+%3u |[%02x]0x%04x: %s  %s",
 		regs->a, flags,
@@ -14588,7 +14704,10 @@ static bool fgb__FetchDecodeExecute(fgbSystem *system, const uint32_t startFrame
 	fgb__PrintCurrentInstruction(system, insReg, startRegs, startFrameIndex, "", fgb__PrintInstructionFlags_Console);
 #endif
 
-	if (system->isInstructionTraceEnabled) {
+	// Only trace instruction on certain conditions (HDMA is not active, state is less than HALT)
+	if (system->debug.isInstructionTraceEnabled &&
+		!system->cgbState.hdmaState.inProgress &&
+		system->cpu.state.type < fgbCPUStateType_Halt) {
 		fgb__TraceInstruction(system, insReg, startRegs);
 	}
 
@@ -15128,7 +15247,6 @@ FGB_API fgbInitResult fgbInit(fgbSystem *system, const fgbConfiguration *config,
 		system->callbacks = config->callbacks;
 		isScreenEnabled = !config->isScreenDisabled;
 		targetSampleRate = config->targetSampleRate;
-		system->isInstructionTraceEnabled = config->isInstructionTraceEnabled;
 	} else {
 		system->systemMonochromeColors = FGB_DEFAULT_DMG_COLORS;
 	}
