@@ -148,6 +148,12 @@ License:
 #define MAX_STATE_SLOT_COUNT 6
 fplStaticAssert(MAX_STATE_SLOT_COUNT % 2 == 0);
 
+// Boot ROM
+//#define NO_BOOTROM
+#if !defined(NO_BOOTROM)
+#include "bootrom.h"
+#endif
+
 typedef enum {
 	ColorPaletteType_DMG = 0,
 	ColorPaletteType_MGB,
@@ -591,6 +597,12 @@ typedef struct {
 	volatile uint32_t isFrameStepActive;
 	volatile uint32_t isMicroStepActive;
 
+	// Sticky audio-rescue flag: set when ring drops below LOW_WATER,
+	// cleared when ring refills to HIGH_WATER. While set, pacing skips
+	// the wall-clock sleep so the ring can be rebuilt to full headroom
+	// instead of stabilizing at the low-water level.
+	volatile uint32_t audioRescueActive;
+
 	float masterVolume;
 
 	uint16_t currentROMBank;
@@ -617,6 +629,11 @@ typedef struct {
 	StatesDialogCellPos selectedSlotPos;
 	DialogType type;
 } StatesDialog;
+
+typedef struct {
+	const char *romFilePath;
+	bool isTraceEnabled;
+} EmulatorParameters;
 
 typedef struct {
 	UIContext uiCtx;
@@ -660,6 +677,7 @@ typedef struct {
 	UIButtonData restoreStateButton;
 
 	UICheckboxData logEnabledCheckbox;
+	UICheckboxData traceEnabledCheckbox;
 	UICheckboxData bootEnabledCheckbox;
 	UICheckboxData initPauseCheckbox;
 
@@ -860,7 +878,7 @@ static void ReleaseEmulator(Emulator *emulator) {
 	fplClearStruct(emulator);
 }
 
-static Application *CreateApplication(fmemMemoryBlock *mem) {
+static Application *CreateApplication(fmemMemoryBlock *mem, const EmulatorParameters *parameters) {
 	Application *app = fmemPushStruct(mem, Application, fmemPushFlags_Clear);
 	if (app == fpl_null) {
 		return fpl_null;
@@ -1352,10 +1370,13 @@ static void DrawSoundState(Application *app, fgbSystem *system, const float x, c
 	textY -= lineHeight;
 }
 
-static void DrawCPUState(Application *app, const fgbEmulationState state, const fgbCPU *cpu, const float x, const float y, const float w, const float h, const float padding) {
-	const fgbCPURegisters *r = &cpu->registers;
-
+static void DrawCPUState(Application *app, fgbSystem *system, const float x, const float y, const float w, const float h, const float padding) {
 	Emulator *emulator = &app->emulator;
+
+	const fgbCPU *cpu = &system->cpu;
+	const fgbCPURegisters *r = &cpu->registers;
+	const fgbPPU *ppu = &system->ppu;
+	const fgbEmulationState state = system->state;
 
 	UIContext *uiCtx = &app->uiCtx;
 
@@ -1415,7 +1436,7 @@ static void DrawCPUState(Application *app, const fgbEmulationState state, const 
 
 	textY -= lineHeight;
 
-	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "M-Cycles: %llu, T-Cycles: %llu", cpu->state.currentMemoryCycles, cpu->state.totalTickCycles);
+	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "M-Cycles: %03llu, T-Cycles: %llu, Frames: %llu", cpu->state.currentMemoryCycles, cpu->state.totalTickCycles, ppu->state.frameCount);
 	UIString(uiCtx, textX, textY, foregroundColor, TextBuffer, 0);
 	textY -= lineHeight;
 
@@ -2242,7 +2263,7 @@ static void RenderDebugFrame(Application *app, const InputState *input) {
 	//
 	// CPU
 	//
-	DrawCPUState(app, system->state, &system->cpu, cpuStateX, cpuStateY, cpuStateWidth, cpuStateHeight, cpuStatePadding);
+	DrawCPUState(app, system, cpuStateX, cpuStateY, cpuStateWidth, cpuStateHeight, cpuStatePadding);
 
 	//
 	// Actions
@@ -2331,6 +2352,17 @@ static void RenderDebugFrame(Application *app, const InputState *input) {
 		emulator->config.log.isEnabled = !emulator->config.log.isEnabled;
 		if (emulator->isActive) {
 			system->log.isEnabled = emulator->config.log.isEnabled;
+		}
+	}
+
+	tmpX += app->logEnabledCheckbox.currentWidth + switchesPanelPadding;
+
+	bool isTraceChecked = system->debug.isInstructionTraceEnabled;
+	bool isTraceEnabled = true;
+	if (UICheckbox(uiCtx, &app->traceEnabledCheckbox, tmpX, switchesPanelButtonY, "Trace", true, isTraceChecked, isTraceEnabled)) {
+		emulator->config.debug.isInstructionTraceEnabled = !emulator->config.debug.isInstructionTraceEnabled;
+		if (emulator->isActive) {
+			system->debug.isInstructionTraceEnabled = emulator->config.debug.isInstructionTraceEnabled;
 		}
 	}
 
@@ -2720,7 +2752,7 @@ static void RenderFrame(Application *app, const InputState *input) {
 	}
 }
 
-static void GameboxLog(void *userData, fgbLogLevel level, const char *system, const char *message) {
+static void GameboxLog(void *userData, const fgbLogLevel level, const char *system, const char *message) {
 	char logText[255] = { 0 };
 	if (fplGetStringLength(message) > 0) {
 		fplStringFormat(logText, fplArrayCount(logText), "[%s] %s", system, message);
@@ -2730,13 +2762,16 @@ static void GameboxLog(void *userData, fgbLogLevel level, const char *system, co
 
 	fplDebugFormatOut("%s\n", message);
 
-	UIListboxData *list = (UIListboxData *)userData;
-	StringListAdd(&list->values, logText);
-	UIListboxScrollTo(list, list->values.count - 1);
+	if (level < fgbLogLevel_Trace) {
+		UIListboxData *list = (UIListboxData *)userData;
+		StringListAdd(&list->values, logText);
+		UIListboxScrollTo(list, list->values.count - 1);
+	}
 }
 
 typedef enum {
 	ExitCode_Success = 0,
+	ExitCode_InvalidArguments,
 	ExitCode_MissingGamePakArgument,
 	ExitCode_OutOfMemory,
 	ExitCode_FailedInitializePlatform,
@@ -2924,11 +2959,42 @@ static void EmulatorThreadProc(const fplThreadHandle *thread, void *data) {
 		// schedule by exactly EMULATOR_FRAME_TIME_NS so the CPU clock averages exactly
 		// 4.194304 MHz over the long run, regardless of per-iteration jitter.
 		++framesDone;
+
+		// Audio-rescue hysteresis: once ring drops below LOW_WATER, stay in
+		// rescue mode (run flat-out, no wallclock wait) until ring refills
+		// to PRIME (HIGH_WATER). Prevents the ring from stabilizing at
+		// LOW_WATER and leaving no headroom for the next scheduler hiccup.
+		const uint32_t ringFill = fgbGetAudioRingBufferFillFrames(system);
+		if (!emulator->audioRescueActive) {
+			if (ringFill < FGB_APU_RING_BUFFER_LOW_WATER_FRAMES) {
+				emulator->audioRescueActive = 1;
+			}
+		} else {
+			if (ringFill >= FGB_APU_RING_BUFFER_PRIME_FRAMES) {
+				emulator->audioRescueActive = 0;
+			}
+		}
+
+		if (emulator->audioRescueActive) {
+			// Skip pacing entirely; re-anchor so accumulated wallclock debt
+			// doesn't cause an endless catch-up burst after rescue ends.
+			epoch = fplTimestampQuery();
+			framesDone = 0;
+			continue;
+		}
+
 		const uint64_t targetNs = framesDone * EMULATOR_FRAME_TIME_NS;
 		for (;;) {
 			const int64_t nowNs = (int64_t)(fplTimestampElapsed(epoch, fplTimestampQuery()) * 1e9);
 			const int64_t remainingNs = (int64_t)targetNs - nowNs;
 			if (remainingNs <= 0) {
+				break;
+			}
+			// Enter rescue mid-sleep if ring drops below LOW_WATER.
+			if (fgbGetAudioRingBufferFillFrames(system) < FGB_APU_RING_BUFFER_LOW_WATER_FRAMES) {
+				emulator->audioRescueActive = 1;
+				epoch = fplTimestampQuery();
+				framesDone = 0;
 				break;
 			}
 			if (remainingNs > EMULATOR_SPIN_THRESHOLD_NS) {
@@ -3680,7 +3746,7 @@ static void SetupPlatformSettings(fmemMemoryBlock *mainMemory, fplSettings *sett
 	settings->audio.stopAuto = false;
 }
 
-static void SetupGamebox(fgbConfiguration *config, Application *app, const uint32_t sampleRate) {
+static void SetupGamebox(fgbConfiguration *config, Application *app, const uint32_t sampleRate, const EmulatorParameters *parameters) {
 	// Callbacks
 	config->callbacks = globalCallbacks;
 
@@ -3688,6 +3754,7 @@ static void SetupGamebox(fgbConfiguration *config, Application *app, const uint3
 	config->log.userData = &app->console;
 	config->log.callback = GameboxLog;
 	config->log.isEnabled = true;
+	config->debug.isInstructionTraceEnabled = parameters->isTraceEnabled;
 
 	// Audio
 	config->targetSampleRate = sampleRate;
@@ -3709,8 +3776,10 @@ static void SetupGamebox(fgbConfiguration *config, Application *app, const uint3
 	// Run rom immediately
 	config->paused = false;
 
-	// Disable boot rom
 	fplClearStruct(&config->bootROM);
+#if !defined(NO_BOOTROM)
+	fplMemoryCopy(ptr_bootROM_DMG, 0x100, config->bootROM.data);
+#endif
 }
 
 static void SetupInput(InputState *oldInput, InputState *newInput, const double frameRate, const bool isDebug) {
@@ -3997,14 +4066,55 @@ static void UpdateWindowTitle(Emulator *emulator, const double frameRate) {
 	fplSetWindowTitle(windowTitleBuffer);
 }
 
+static bool CharIsAlpha(const char c) {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+
+static EmulatorParameters ParseEmulatorParameters(const int argc, char **argv) {
+	EmulatorParameters result = fplZeroInit;
+	if (argc >= 2) {
+		int argIndex = 1;
+		while (argIndex < argc) {
+			const char *arg = argv[argIndex];
+			if (strlen(arg) >= 2) {
+				if (arg[0] == '-') {
+					const char c = arg[1];
+					if (CharIsAlpha(c)) {
+						// Single char argument
+						if (c == 't') {
+							result.isTraceEnabled = true;
+						} else {
+							// Not supported argument
+						}
+					} else if (c == '-' && CharIsAlpha(arg[2])) {
+						// Long key argument
+						const char *key = arg + 2;
+						if (strcasecmp("trace", key) == 0) {
+							result.isTraceEnabled = true;
+						} else {
+							// Not supported argument
+						}
+					}
+					argIndex++;
+					continue;
+				}
+			}
+			if (argIndex == argc - 1) {
+				result.romFilePath = argv[argIndex];
+			}
+			++argIndex;
+		}
+	}
+	return result;
+}
+
 // Main Entry Point (No need for WinMain or anything like that, due to FPL)
 int main(int argc, char **argv) {
 	int exitCode = 0;
 
-	const char *romFilePath = argc >= 2 ? argv[1] : fpl_null;
+	const EmulatorParameters parameters = ParseEmulatorParameters(argc, argv);
 
-	// Initalize random seed
-	srand(42U);
+	const char *romFilePath = parameters.romFilePath;
 
 	Application *app = fpl_null;
 	RendererContext *renderer = fpl_null;
@@ -4017,6 +4127,9 @@ int main(int argc, char **argv) {
 	if (mainMemory.base == fpl_null) {
 		return ExitCode_OutOfMemory;
 	}
+
+	// Initialize random seed
+	srand(42U);
 
 	// Setup & Initialize Platform
 	fplSettings *settings = fmemPushStruct(&mainMemory, fplSettings, fmemPushFlags_Clear);
@@ -4035,7 +4148,7 @@ int main(int argc, char **argv) {
 	}
 
 	// Create Application & Emulator resources and start the threads
-	app = CreateApplication(&mainMemory);
+	app = CreateApplication(&mainMemory, &parameters);
 	if (app == fpl_null) {
 		exitCode = ExitCode_OutOfMemory;
 		goto shutdown;
@@ -4050,7 +4163,7 @@ int main(int argc, char **argv) {
 	fplGetAudioHardwareFormat(&hardwareAudioFormat);
 
 	// Gamebox configuration
-	SetupGamebox(&emulator->config, app, hardwareAudioFormat.sampleRate);
+	SetupGamebox(&emulator->config, app, hardwareAudioFormat.sampleRate, &parameters);
 
 	// Set audio callback and its data
 	AudioThreadState audioThreadState = { 0 };
