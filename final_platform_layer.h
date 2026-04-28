@@ -4752,12 +4752,16 @@ typedef enum fplInitFlags {
 	fplInitFlags_Video = 1 << 2,
 	//! Use asynchronous audio playback.
 	fplInitFlags_Audio = 1 << 3,
-	//! Support for game controllers (Implies @ref fplInitFlags_Input with the gamepad source enabled).
+	//! Enable the gamepad input source. Initializes the input subsystem if not already requested.
 	fplInitFlags_GameController = 1 << 4,
-	//! Initialize the input subsystem (keyboard, mouse, gamepad). Independent of @ref fplInitFlags_Window.
-	fplInitFlags_Input = 1 << 5,
+	//! Enable the keyboard input source. Initializes the input subsystem if not already requested.
+	fplInitFlags_Keyboard = 1 << 5,
+	//! Enable the mouse input source. Initializes the input subsystem if not already requested.
+	fplInitFlags_Mouse = 1 << 6,
+	//! Convenience alias enabling keyboard, mouse and gamepad input sources together.
+	fplInitFlags_Input = fplInitFlags_Keyboard | fplInitFlags_Mouse | fplInitFlags_GameController,
 	//! All init flags.
-	fplInitFlags_All = fplInitFlags_Console | fplInitFlags_Window | fplInitFlags_Video | fplInitFlags_Audio | fplInitFlags_GameController | fplInitFlags_Input,
+	fplInitFlags_All = fplInitFlags_Console | fplInitFlags_Window | fplInitFlags_Video | fplInitFlags_Audio | fplInitFlags_Input,
 } fplInitFlags;
 //! InitFlags operator overloads for C++.
 FPL_ENUM_AS_FLAGS_OPERATORS(fplInitFlags);
@@ -11328,6 +11332,30 @@ typedef struct {
 //
 // Platform application state
 //
+#if defined(FPL__ENABLE_INPUT)
+// Native event payload kinds used by the window-to-input bridge. Payload pointer interpretation depends on kind.
+typedef enum fpl__NativeInputEventKind {
+	fpl__NativeInputEventKind_None = 0,
+	fpl__NativeInputEventKind_Win32Msg,
+	fpl__NativeInputEventKind_X11Event,
+	fpl__NativeInputEventKind_Custom,
+} fpl__NativeInputEventKind;
+
+// Neutral wrapper carrying a native input event from the window backend to the input subsystem.
+typedef struct fpl__NativeInputEvent {
+	fpl__NativeInputEventKind kind;
+	void *payload;
+} fpl__NativeInputEvent;
+
+// Step 2 skeleton: holds settings and tracks whether the subsystem is initialized. Backends and device cache land in step 3+.
+typedef struct fpl__InputContext {
+	fplInputSettings settings;
+	fplInitFlags initFlags;
+	bool isInitialized;
+	uint32_t backendCount;
+} fpl__InputContext;
+#endif // FPL__ENABLE_INPUT
+
 typedef struct fpl__PlatformAppState fpl__PlatformAppState;
 struct fpl__PlatformAppState {
 	// Subplatforms
@@ -11347,6 +11375,9 @@ struct fpl__PlatformAppState {
 #endif
 #if defined(FPL__ENABLE_AUDIO)
 	fpl__PlatformBackendState audio;
+#endif
+#if defined(FPL__ENABLE_INPUT)
+	fpl__InputContext input;
 #endif
 
 	// Settings
@@ -30704,8 +30735,74 @@ fpl_inline fplVideoRect fplCreateVideoRectFromLTRB(int32_t left, int32_t top, in
 #if !defined(FPL__SYSTEM_INIT_DEFINED)
 #define FPL__SYSTEM_INIT_DEFINED
 
+#if defined(FPL__ENABLE_INPUT)
+// Step 2 stubs. Real backend dispatch lands in steps 3+.
+fpl_internal bool fpl__InputSystem_Init(fpl__InputContext *ctx, const fplInitFlags initFlags, const fplInputSettings *settings) {
+	if (ctx == fpl_null) return false;
+	fplClearStruct(ctx);
+	ctx->initFlags = initFlags;
+	if (settings != fpl_null) {
+		ctx->settings = *settings;
+	} else {
+		fplSetDefaultInputSettings(&ctx->settings);
+	}
+	ctx->isInitialized = true;
+	return true;
+}
+
+fpl_internal void fpl__InputSystem_Release(fpl__InputContext *ctx) {
+	if (ctx == fpl_null) return;
+	if (!ctx->isInitialized) return;
+	fplClearStruct(ctx);
+}
+
+fpl_internal void fpl__InputSystem_Update(fpl__InputContext *ctx) {
+	(void)ctx;
+}
+
+fpl_internal bool fpl__InputSystem_HandleNativeEvent(fpl__InputContext *ctx, const fpl__NativeInputEvent *ev) {
+	(void)ctx;
+	(void)ev;
+	return false;
+}
+
+fpl_internal bool fpl__InputSystem_IsEnabled(const fpl__InputContext *ctx, fplInputSourceType source) {
+	if (ctx == fpl_null) return false;
+	if (!ctx->isInitialized) return false;
+	return (ctx->settings.enabledSources & source) != 0;
+}
+
+#if defined(FPL__ENABLE_WINDOW)
+fpl_internal bool fpl__InputSystem_PollKeyboard(fpl__InputContext *ctx, fplKeyboardState *outState) {
+	(void)ctx;
+	(void)outState;
+	return false;
+}
+
+fpl_internal bool fpl__InputSystem_PollMouse(fpl__InputContext *ctx, fplMouseState *outState) {
+	(void)ctx;
+	(void)outState;
+	return false;
+}
+
+fpl_internal bool fpl__InputSystem_PollGamepad(fpl__InputContext *ctx, fplGamepadStates *outStates) {
+	(void)ctx;
+	(void)outStates;
+	return false;
+}
+#endif // FPL__ENABLE_WINDOW
+#endif // FPL__ENABLE_INPUT
+
 fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
 	fplAssert(initState != fpl_null);
+
+	// Release input (reverse-order init: input released before audio)
+#	if defined(FPL__ENABLE_INPUT)
+	if (appState != fpl_null) {
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release Input");
+		fpl__InputSystem_Release(&appState->input);
+	}
+#	endif
 
 	// Release audio
 #	if defined(FPL__ENABLE_AUDIO)
@@ -31124,6 +31221,27 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 		}
 	}
 #	endif // FPL__ENABLE_AUDIO
+
+	// Init Input. Each source flag (Keyboard/Mouse/GameController) brings up the input subsystem and enables the matching source.
+#	if defined(FPL__ENABLE_INPUT)
+	{
+		fplInputSourceType requestedSources = fplInputSourceType_None;
+		if (fplIsMaskSet(appState->initFlags, fplInitFlags_Keyboard))       requestedSources = (fplInputSourceType)(requestedSources | fplInputSourceType_Keyboard);
+		if (fplIsMaskSet(appState->initFlags, fplInitFlags_Mouse))          requestedSources = (fplInputSourceType)(requestedSources | fplInputSourceType_Mouse);
+		if (fplIsMaskSet(appState->initFlags, fplInitFlags_GameController)) requestedSources = (fplInputSourceType)(requestedSources | fplInputSourceType_Gamepad);
+		if (requestedSources != fplInputSourceType_None) {
+			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Input");
+			fplInputSettings inputSettings = appState->initSettings.input;
+			inputSettings.enabledSources = requestedSources;
+			if (!fpl__InputSystem_Init(&appState->input, appState->initFlags, &inputSettings)) {
+				FPL__CRITICAL(FPL__MODULE_CORE, "Failed initializing Input subsystem");
+				fpl__ReleasePlatformStates(initState, appState);
+				return(fpl__SetPlatformResult(fplPlatformResultType_FailedPlatform));
+			}
+			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully initialized Input");
+		}
+	}
+#	endif // FPL__ENABLE_INPUT
 
 	initState->isInitialized = true;
 	return(fpl__SetPlatformResult(fplPlatformResultType_Success));
