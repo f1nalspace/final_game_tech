@@ -2661,6 +2661,54 @@ typedef enum fplX86InstructionSetLevel {
 #endif // FPL__SUPPORT_AUDIO
 
 //
+// Input preprocessor setup
+//
+// FPL_NO_INPUT = Disable input subsystem entirely
+// FPL_NO_INPUT_XINPUT = Disable XInput backend (Windows)
+// FPL_NO_INPUT_DINPUT = Disable DirectInput backend (Windows)
+// FPL_NO_INPUT_RAWINPUT = Disable RawInput backend (Windows)
+// FPL_NO_INPUT_WIN32 = Disable Win32 keyboard/mouse backend
+// FPL_NO_INPUT_X11 = Disable X11 keyboard/mouse backend
+// FPL_NO_INPUT_LINUX_JOYSTICK = Disable /dev/input/jsX backend (Linux)
+// FPL_NO_INPUT_LINUX_EVDEV = Disable /dev/input/eventX backend (Linux)
+// FPL_NO_INPUT_LINUX_UDEV = Disable udev hotplug backend (Linux)
+// FPL_NO_INPUT_UNIX_GAMEPAD = Disable BSD/Unix gamepad backend
+//
+#if !defined(FPL_NO_INPUT)
+#	define FPL__SUPPORT_INPUT
+#endif // !FPL_NO_INPUT
+
+#if defined(FPL__SUPPORT_INPUT)
+#	if !defined(FPL_NO_INPUT_XINPUT) && defined(FPL_PLATFORM_WINDOWS)
+#		define FPL__SUPPORT_INPUT_XINPUT
+#	endif
+#	if !defined(FPL_NO_INPUT_DINPUT) && defined(FPL_PLATFORM_WINDOWS)
+#		define FPL__SUPPORT_INPUT_DINPUT
+#	endif
+#	if !defined(FPL_NO_INPUT_RAWINPUT) && defined(FPL_PLATFORM_WINDOWS)
+#		define FPL__SUPPORT_INPUT_RAWINPUT
+#	endif
+#	if !defined(FPL_NO_INPUT_WIN32) && defined(FPL_PLATFORM_WINDOWS)
+#		define FPL__SUPPORT_INPUT_WIN32
+#	endif
+#	if !defined(FPL_NO_INPUT_X11) && defined(FPL_SUBPLATFORM_X11)
+#		define FPL__SUPPORT_INPUT_X11
+#	endif
+#	if !defined(FPL_NO_INPUT_LINUX_JOYSTICK) && defined(FPL_PLATFORM_LINUX)
+#		define FPL__SUPPORT_INPUT_LINUX_JOYSTICK
+#	endif
+#	if !defined(FPL_NO_INPUT_LINUX_EVDEV) && defined(FPL_PLATFORM_LINUX)
+#		define FPL__SUPPORT_INPUT_LINUX_EVDEV
+#	endif
+#	if !defined(FPL_NO_INPUT_LINUX_UDEV) && defined(FPL_PLATFORM_LINUX)
+#		define FPL__SUPPORT_INPUT_LINUX_UDEV
+#	endif
+#	if !defined(FPL_NO_INPUT_UNIX_GAMEPAD) && defined(FPL_SUBPLATFORM_POSIX)
+#		define FPL__SUPPORT_INPUT_UNIX_GAMEPAD
+#	endif
+#endif // FPL__SUPPORT_INPUT
+
+//
 // Enable supports (FPL uses _ENABLE_ internally only)
 //
 #if defined(FPL__SUPPORT_WINDOW)
@@ -2695,6 +2743,37 @@ typedef enum fplX86InstructionSetLevel {
 #		define FPL__ENABLE_AUDIO_PIPEWIRE
 #	endif
 #endif // FPL__SUPPORT_AUDIO
+
+#if defined(FPL__SUPPORT_INPUT)
+#	define FPL__ENABLE_INPUT
+#	if defined(FPL__SUPPORT_INPUT_XINPUT)
+#		define FPL__ENABLE_INPUT_XINPUT
+#	endif
+#	if defined(FPL__SUPPORT_INPUT_DINPUT)
+#		define FPL__ENABLE_INPUT_DINPUT
+#	endif
+#	if defined(FPL__SUPPORT_INPUT_RAWINPUT)
+#		define FPL__ENABLE_INPUT_RAWINPUT
+#	endif
+#	if defined(FPL__SUPPORT_INPUT_WIN32)
+#		define FPL__ENABLE_INPUT_WIN32
+#	endif
+#	if defined(FPL__SUPPORT_INPUT_X11)
+#		define FPL__ENABLE_INPUT_X11
+#	endif
+#	if defined(FPL__SUPPORT_INPUT_LINUX_JOYSTICK)
+#		define FPL__ENABLE_INPUT_LINUX_JOYSTICK
+#	endif
+#	if defined(FPL__SUPPORT_INPUT_LINUX_EVDEV)
+#		define FPL__ENABLE_INPUT_LINUX_EVDEV
+#	endif
+#	if defined(FPL__SUPPORT_INPUT_LINUX_UDEV)
+#		define FPL__ENABLE_INPUT_LINUX_UDEV
+#	endif
+#	if defined(FPL__SUPPORT_INPUT_UNIX_GAMEPAD)
+#		define FPL__ENABLE_INPUT_UNIX_GAMEPAD
+#	endif
+#endif // FPL__SUPPORT_INPUT
 
 #if defined(FPL_LOGGING)
 #	define FPL__ENABLE_LOGGING
@@ -4673,10 +4752,12 @@ typedef enum fplInitFlags {
 	fplInitFlags_Video = 1 << 2,
 	//! Use asynchronous audio playback.
 	fplInitFlags_Audio = 1 << 3,
-	//! Support for game controllers.
+	//! Support for game controllers (Implies @ref fplInitFlags_Input with the gamepad source enabled).
 	fplInitFlags_GameController = 1 << 4,
+	//! Initialize the input subsystem (keyboard, mouse, gamepad). Independent of @ref fplInitFlags_Window.
+	fplInitFlags_Input = 1 << 5,
 	//! All init flags.
-	fplInitFlags_All = fplInitFlags_Console | fplInitFlags_Window | fplInitFlags_Video | fplInitFlags_Audio | fplInitFlags_GameController,
+	fplInitFlags_All = fplInitFlags_Console | fplInitFlags_Window | fplInitFlags_Video | fplInitFlags_Audio | fplInitFlags_GameController | fplInitFlags_Input,
 } fplInitFlags;
 //! InitFlags operator overloads for C++.
 FPL_ENUM_AS_FLAGS_OPERATORS(fplInitFlags);
@@ -5543,14 +5624,119 @@ typedef struct fplGameControllersSettings {
 fpl_common_api void fplSetDefaultGameControllersSettings(fplGameControllersSettings *gameControllers);
 
 /**
+* @enum fplInputSourceType
+* @brief A bitmask of input source kinds (keyboard, mouse, gamepad).
+*/
+typedef enum fplInputSourceType {
+	//! No input source.
+	fplInputSourceType_None = 0,
+	//! Keyboard input source.
+	fplInputSourceType_Keyboard = 1 << 0,
+	//! Mouse input source.
+	fplInputSourceType_Mouse = 1 << 1,
+	//! Gamepad input source.
+	fplInputSourceType_Gamepad = 1 << 2,
+	//! All input sources.
+	fplInputSourceType_All = fplInputSourceType_Keyboard | fplInputSourceType_Mouse | fplInputSourceType_Gamepad,
+} fplInputSourceType;
+//! InputSourceType operator overloads for C++.
+FPL_ENUM_AS_FLAGS_OPERATORS(fplInputSourceType);
+
+/**
+* @enum fplInputBackendType
+* @brief Identifies a concrete input backend implementation.
+*/
+typedef enum fplInputBackendType {
+	//! Unknown / no backend.
+	fplInputBackendType_None = 0,
+	//! Use platform default backends.
+	fplInputBackendType_Auto,
+	//! XInput gamepad backend (Windows).
+	fplInputBackendType_XInput,
+	//! DirectInput8 gamepad backend (Windows).
+	fplInputBackendType_DInput,
+	//! RAWINPUT keyboard/mouse backend (Windows).
+	fplInputBackendType_RawInput,
+	//! /dev/input/jsX legacy joystick backend (Linux).
+	fplInputBackendType_LinuxJoystick,
+	//! /dev/input/eventX evdev backend (Linux).
+	fplInputBackendType_LinuxEvdev,
+	//! udev hotplug companion backend (Linux).
+	fplInputBackendType_LinuxUdev,
+	//! BSD / generic uhid gamepad backend.
+	fplInputBackendType_UnixGamepad,
+	//! X11 keyboard/mouse backend.
+	fplInputBackendType_X11Kbm,
+	//! Win32 keyboard/mouse backend (WM_* + GetKeyState).
+	fplInputBackendType_Win32,
+	//! First valid backend type identifier.
+	fplInputBackendType_First = fplInputBackendType_None,
+	//! Last valid backend type identifier.
+	fplInputBackendType_Last = fplInputBackendType_Win32,
+} fplInputBackendType;
+
+//! Maximum number of input backends that can be active at once.
+#define FPL_MAX_INPUT_BACKEND_COUNT 16
+
+/**
+* @struct fplInputBackendMask
+* @brief Bitmask of enabled @ref fplInputBackendType values.
+*/
+typedef struct fplInputBackendMask {
+	//! One bit per @ref fplInputBackendType value. Bits for unsupported backends are silently ignored at init time.
+	uint32_t bits;
+} fplInputBackendMask;
+
+/**
+* @brief Returns true when the given backend type bit is set in the mask.
+* @param[in] mask Reference to the mask to query.
+* @param[in] type The backend type to test.
+*/
+fpl_inline bool fplInputBackendMaskIsEnabled(const fplInputBackendMask *mask, fplInputBackendType type) {
+	if (mask == fpl_null) return false;
+	if ((int)type < 0 || (int)type >= 32) return false;
+	return (mask->bits & (uint32_t)(1u << (uint32_t)type)) != 0u;
+}
+/**
+* @brief Sets the bit for the given backend type in the mask.
+* @param[in,out] mask Reference to the mask to modify.
+* @param[in] type The backend type to enable.
+*/
+fpl_inline void fplInputBackendMaskEnable(fplInputBackendMask *mask, fplInputBackendType type) {
+	if (mask == fpl_null) return;
+	if ((int)type < 0 || (int)type >= 32) return;
+	mask->bits |= (uint32_t)(1u << (uint32_t)type);
+}
+/**
+* @brief Clears the bit for the given backend type in the mask.
+* @param[in,out] mask Reference to the mask to modify.
+* @param[in] type The backend type to disable.
+*/
+fpl_inline void fplInputBackendMaskDisable(fplInputBackendMask *mask, fplInputBackendType type) {
+	if (mask == fpl_null) return;
+	if ((int)type < 0 || (int)type >= 32) return;
+	mask->bits &= ~(uint32_t)(1u << (uint32_t)type);
+}
+
+/**
 * @struct fplInputSettings
 * @brief Stores input settings.
 */
 typedef struct fplInputSettings {
 	//! Game controllers settings
 	fplGameControllersSettings gameControllers;
+	//! Bitmask of @ref fplInputSourceType values to enable (Default: @ref fplInputSourceType_All).
+	fplInputSourceType enabledSources;
+	//! Bitmask of @ref fplInputBackendType values to enable (Default: all bits set, unsupported backends are ignored at init time).
+	fplInputBackendMask enabledBackends;
 	//! Disable input events entirely (Default: false).
 	fpl_b32 disabledEvents;
+	//! When true, multiple gamepad backends (e.g. XInput + DirectInput) may run simultaneously (Default: true).
+	fpl_b32 allowMultipleGamepadBackends;
+	//! When true, native window events are forwarded to the input subsystem (Default: true).
+	fpl_b32 pollFromWindowEventLoop;
+	//! When true, the input subsystem operates without a user window. Required when @ref fplInitFlags_Window is not used (Default: false).
+	fpl_b32 detachFromWindow;
 } fplInputSettings;
 
 /**
@@ -7821,6 +8007,10 @@ typedef enum fplMouseButtonType {
 	fplMouseButtonType_Right = 1,
 	//! Middle mouse button.
 	fplMouseButtonType_Middle = 2,
+	//! First extended mouse button (typically "back").
+	fplMouseButtonType_X1 = 3,
+	//! Second extended mouse button (typically "forward").
+	fplMouseButtonType_X2 = 4,
 	//! Max mouse button count.
 	fplMouseButtonType_MaxCount,
 } fplMouseButtonType;
@@ -7836,6 +8026,10 @@ typedef struct fplMouseState {
 	int32_t x;
 	//! Y-Position in pixels.
 	int32_t y;
+	//! Accumulated vertical wheel delta since last poll.
+	float wheelDeltaY;
+	//! Accumulated horizontal wheel delta since last poll.
+	float wheelDeltaX;
 } fplMouseState;
 
 /**
@@ -8024,6 +8218,153 @@ typedef struct fplGamepadStates {
 * @see @ref subsection_category_input_polling_gamepad
 */
 fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates);
+
+//! Maximum length of the @ref fplInputDevice name field.
+#define FPL_MAX_INPUT_DEVICE_NAME 64
+
+//! Maximum number of devices held by the input subsystem at once.
+#define FPL_MAX_INPUT_DEVICE_COUNT 32
+
+/**
+* @struct fplInputDeviceGuid
+* @brief A 128-bit identifier uniquely identifying an input device across backends.
+*/
+typedef struct fplInputDeviceGuid {
+	//! Raw bytes of the GUID.
+	uint8_t bytes[16];
+} fplInputDeviceGuid;
+
+/**
+* @enum fplInputDeviceFeatureFlags
+* @brief Bitmask describing the features a single @ref fplInputDevice supports.
+*/
+typedef enum fplInputDeviceFeatureFlags {
+	//! No features.
+	fplInputDeviceFeatureFlags_None = 0,
+	//! Device can be polled for state.
+	fplInputDeviceFeatureFlags_Polling = 1 << 0,
+	//! Device can produce events.
+	fplInputDeviceFeatureFlags_Events = 1 << 1,
+	//! Device participates in hotplug notifications.
+	fplInputDeviceFeatureFlags_Hotplug = 1 << 2,
+	//! Device supports rumble / force feedback (reserved for future use).
+	fplInputDeviceFeatureFlags_Rumble = 1 << 3,
+	//! Device exposes battery state (reserved for future use).
+	fplInputDeviceFeatureFlags_Battery = 1 << 4,
+} fplInputDeviceFeatureFlags;
+//! InputDeviceFeatureFlags operator overloads for C++.
+FPL_ENUM_AS_FLAGS_OPERATORS(fplInputDeviceFeatureFlags);
+
+/**
+* @enum fplInputConnectionState
+* @brief Connection state of an input device.
+*/
+typedef enum fplInputConnectionState {
+	//! Connection state has not been determined.
+	fplInputConnectionState_Unknown = 0,
+	//! Device is not currently connected.
+	fplInputConnectionState_Disconnected,
+	//! Device is currently connected.
+	fplInputConnectionState_Connected,
+} fplInputConnectionState;
+
+/**
+* @struct fplInputDevice
+* @brief Describes a single input device exposed by some backend.
+*/
+typedef struct fplInputDevice {
+	//! Stable globally unique identifier for the device.
+	fplInputDeviceGuid guid;
+	//! Display name of the device.
+	char name[FPL_MAX_INPUT_DEVICE_NAME];
+	//! Backend-local device index.
+	uint32_t index;
+	//! Source kind of the device (exactly one bit set).
+	fplInputSourceType sourceType;
+	//! Backend that owns the device.
+	fplInputBackendType backend;
+	//! Capability flags of the device.
+	fplInputDeviceFeatureFlags featureFlags;
+	//! Last known connection state.
+	fplInputConnectionState connection;
+	//! Optional cached state, valid based on @ref sourceType.
+	union {
+		fplKeyboardState keyboard;
+		fplMouseState mouse;
+		fplGamepadState gamepad;
+	} state;
+} fplInputDevice;
+
+/**
+* @struct fplInputBackendSupport
+* @brief Describes the capabilities of a single input backend.
+*/
+typedef struct fplInputBackendSupport {
+	//! Backend type identifier.
+	fplInputBackendType type;
+	//! Human-readable backend name.
+	const char *name;
+	//! Bitmask of input sources this backend can serve.
+	fplInputSourceType supportedSources;
+	//! True when the backend can deliver events.
+	fpl_b32 supportsEvents;
+	//! True when the backend can be polled for state.
+	fpl_b32 supportsPolling;
+	//! True when the backend supports hotplug notifications.
+	fpl_b32 supportsHotplug;
+} fplInputBackendSupport;
+
+/**
+* @brief Writes capabilities of all known input backends into @p outSupports.
+* @param[out] outSupports Caller-supplied array, may be null when @p maxCount is 0.
+* @param[in] maxCount Capacity of @p outSupports.
+* @return Number of backend descriptors written, or the total count when @p outSupports is null.
+*/
+fpl_common_api uint32_t fplGetInputBackendSupport(fplInputBackendSupport *outSupports, uint32_t maxCount);
+
+/**
+* @brief Looks up the support descriptor for a single backend type.
+* @param[in] type The backend type to query.
+* @param[out] outSupport Reference to the destination structure.
+* @return True when the backend is known to the build, false otherwise.
+*/
+fpl_common_api bool fplGetInputBackendSupportByType(fplInputBackendType type, fplInputBackendSupport *outSupport);
+
+/**
+* @brief Enumerates all input devices currently known to the input subsystem.
+* @param[in] sourceFilter Bitmask of @ref fplInputSourceType to filter by, or @ref fplInputSourceType_All.
+* @param[out] outDevices Caller-supplied array, may be null when @p maxDevices is 0.
+* @param[in] maxDevices Capacity of @p outDevices.
+* @return Number of devices written.
+*/
+fpl_common_api uint32_t fplGetInputDevices(fplInputSourceType sourceFilter, fplInputDevice *outDevices, uint32_t maxDevices);
+
+/**
+* @brief Looks up a single device by its GUID.
+* @param[in] guid Reference to the GUID to find.
+* @param[out] outDevice Reference to the destination structure.
+* @return True when the device was found, false otherwise.
+*/
+fpl_common_api bool fplFindInputDevice(const fplInputDeviceGuid *guid, fplInputDevice *outDevice);
+
+/**
+* @brief Convenience wrapper that returns devices with @ref fplInputSourceType_Keyboard.
+*/
+fpl_common_api uint32_t fplGetKeyboardDevices(fplInputDevice *outDevices, uint32_t maxDevices);
+/**
+* @brief Convenience wrapper that returns devices with @ref fplInputSourceType_Mouse.
+*/
+fpl_common_api uint32_t fplGetMouseDevices(fplInputDevice *outDevices, uint32_t maxDevices);
+/**
+* @brief Convenience wrapper that returns devices with @ref fplInputSourceType_Gamepad.
+*/
+fpl_common_api uint32_t fplGetGamepadDevices(fplInputDevice *outDevices, uint32_t maxDevices);
+
+/**
+* @brief Refreshes the input subsystem's device list and processes pending hotplug events.
+* @return True when at least one backend reported a change.
+*/
+fpl_common_api bool fplUpdateInputDevices(void);
 
 /** @} */
 
@@ -13372,7 +13713,62 @@ fpl_common_api void fplSetDefaultInputSettings(fplInputSettings *input) {
 	FPL__CheckArgumentNullNoRet(input);
 	fplClearStruct(input);
 	fplSetDefaultGameControllersSettings(&input->gameControllers);
+	input->enabledSources = fplInputSourceType_All;
+	input->enabledBackends.bits = 0xFFFFFFFFu;
+	input->disabledEvents = false;
+	input->allowMultipleGamepadBackends = true;
+	input->pollFromWindowEventLoop = true;
+	input->detachFromWindow = false;
 }
+
+// Input subsystem stubs. The new public surface lives inside the existing window-gated
+// section for now; the next step lifts everything out of FPL__ENABLE_WINDOW.
+#if defined(FPL__ENABLE_WINDOW)
+fpl_common_api uint32_t fplGetInputBackendSupport(fplInputBackendSupport *outSupports, uint32_t maxCount) {
+	(void)outSupports;
+	(void)maxCount;
+	return 0;
+}
+
+fpl_common_api bool fplGetInputBackendSupportByType(fplInputBackendType type, fplInputBackendSupport *outSupport) {
+	(void)type;
+	if (outSupport != fpl_null) {
+		fplClearStruct(outSupport);
+	}
+	return false;
+}
+
+fpl_common_api uint32_t fplGetInputDevices(fplInputSourceType sourceFilter, fplInputDevice *outDevices, uint32_t maxDevices) {
+	(void)sourceFilter;
+	(void)outDevices;
+	(void)maxDevices;
+	return 0;
+}
+
+fpl_common_api bool fplFindInputDevice(const fplInputDeviceGuid *guid, fplInputDevice *outDevice) {
+	(void)guid;
+	if (outDevice != fpl_null) {
+		fplClearStruct(outDevice);
+	}
+	return false;
+}
+
+fpl_common_api uint32_t fplGetKeyboardDevices(fplInputDevice *outDevices, uint32_t maxDevices) {
+	return fplGetInputDevices(fplInputSourceType_Keyboard, outDevices, maxDevices);
+}
+
+fpl_common_api uint32_t fplGetMouseDevices(fplInputDevice *outDevices, uint32_t maxDevices) {
+	return fplGetInputDevices(fplInputSourceType_Mouse, outDevices, maxDevices);
+}
+
+fpl_common_api uint32_t fplGetGamepadDevices(fplInputDevice *outDevices, uint32_t maxDevices) {
+	return fplGetInputDevices(fplInputSourceType_Gamepad, outDevices, maxDevices);
+}
+
+fpl_common_api bool fplUpdateInputDevices(void) {
+	return false;
+}
+#endif // FPL__ENABLE_WINDOW
 
 fpl_common_api void fplSetDefaultSettings(fplSettings *settings) {
 	FPL__CheckArgumentNullNoRet(settings);
