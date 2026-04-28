@@ -2746,7 +2746,8 @@ typedef enum fplX86InstructionSetLevel {
 
 #if defined(FPL__SUPPORT_INPUT)
 #	define FPL__ENABLE_INPUT
-#	if defined(FPL__SUPPORT_INPUT_XINPUT)
+// NOTE: Input backends currently still depend on the window event queue (gamepad connect/disconnect/state events). Step 8 of the input refactor lifts this dependency. Until then, individual input backends require FPL__SUPPORT_WINDOW.
+#	if defined(FPL__SUPPORT_INPUT_XINPUT) && defined(FPL__SUPPORT_WINDOW)
 #		define FPL__ENABLE_INPUT_XINPUT
 #	endif
 #	if defined(FPL__SUPPORT_INPUT_DINPUT)
@@ -10052,11 +10053,9 @@ fpl_internal const char *fpl__Win32FormatGuidString(char *buffer, const size_t m
 		(target)->name = name
 #endif
 
-#if defined(FPL__ENABLE_WINDOW)
+#if defined(FPL__ENABLE_INPUT_XINPUT)
 
-// 
 // XInput Types
-// 
 #define FPL__FUNC_XINPUT_XInputGetState(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE *pState)
 typedef FPL__FUNC_XINPUT_XInputGetState(fpl__win32_func_XInputGetState);
 
@@ -10069,15 +10068,17 @@ typedef struct fpl__Win32XInputApi {
 	fpl__win32_func_XInputGetCapabilities *XInputGetCapabilities;
 } fpl__Win32XInputApi;
 
-typedef struct fpl__Win32XInputState {
+// XInput backend instance owned by fpl__InputContext.
+typedef struct fpl__InputBackendXInput {
 	fplGameControllerName deviceNames[XUSER_MAX_COUNT];
 	fpl_b32 isConnected[XUSER_MAX_COUNT];
-	fpl__Win32XInputApi xinputApi;
+	fpl__Win32XInputApi api;
 	fplMilliseconds lastDeviceSearchTime;
 	fplMilliseconds lastUpdateStatesTime;
-} fpl__Win32XInputState;
+	bool isInitialized;
+} fpl__InputBackendXInput;
 
-#endif // FPL__ENABLE_WINDOW
+#endif // FPL__ENABLE_INPUT_XINPUT
 
 //
 // WINAPI functions
@@ -10558,9 +10559,6 @@ typedef struct fpl__Win32InitState {
 } fpl__Win32InitState;
 
 typedef struct fpl__Win32AppState {
-#if defined(FPL__ENABLE_WINDOW)
-	fpl__Win32XInputState xinput;
-#endif
 	fpl__Win32Api winApi;
 } fpl__Win32AppState;
 
@@ -11347,12 +11345,15 @@ typedef struct fpl__NativeInputEvent {
 	void *payload;
 } fpl__NativeInputEvent;
 
-// Step 2 skeleton: holds settings and tracks whether the subsystem is initialized. Backends and device cache land in step 3+.
+// Holds settings, tracks initialization, and embeds active backend instances.
 typedef struct fpl__InputContext {
 	fplInputSettings settings;
 	fplInitFlags initFlags;
 	bool isInitialized;
 	uint32_t backendCount;
+#if defined(FPL__ENABLE_INPUT_XINPUT)
+	fpl__InputBackendXInput xinput;
+#endif
 } fpl__InputContext;
 #endif // FPL__ENABLE_INPUT
 
@@ -15091,7 +15092,7 @@ fpl_internal void fpl__Win32ReleaseWindow(const fpl__Win32InitState *initState, 
 // Always included, when window support is enabled
 //
 // ############################################################################
-#if defined(FPL__ENABLE_WINDOW) && !defined(FPL__WIN32_XINPUT_IMPLEMENTED)
+#if defined(FPL__ENABLE_INPUT_XINPUT) && !defined(FPL__WIN32_XINPUT_IMPLEMENTED)
 #define FPL__WIN32_XINPUT_IMPLEMENTED
 
 FPL__FUNC_XINPUT_XInputGetState(fpl__Win32XInputGetStateStub) {
@@ -15210,42 +15211,40 @@ fpl_internal void fpl__Win32XInput_GamepadToGamepadState(const XINPUT_GAMEPAD *n
 	outState->isActive = !fpl__IsZeroMemory(newState, sizeof(*newState));
 }
 
-static size_t fpl__Win32XInput_UpdateControllers(const fplGameControllersSettings *gameControllersSettings, fpl__Win32XInputState *xinputState) {
+static size_t fpl__Win32XInput_UpdateControllers(const fplGameControllersSettings *gameControllersSettings, fpl__InputBackendXInput *backend) {
 	fplAssertPtr(gameControllersSettings);
-	fplAssertPtr(xinputState);
+	fplAssertPtr(backend);
 
-	if (xinputState->lastDeviceSearchTime == 0) {
-		xinputState->lastDeviceSearchTime = fplMillisecondsQuery();
+	if (backend->lastDeviceSearchTime == 0) {
+		backend->lastDeviceSearchTime = fplMillisecondsQuery();
 	}
 
 	const uint64_t detectionFrequency = gameControllersSettings->detectionFrequency;
 
 	fplMilliseconds currentTime = fplMillisecondsQuery();
-	uint64_t deltaTime = (currentTime - xinputState->lastDeviceSearchTime);
+	uint64_t deltaTime = (currentTime - backend->lastDeviceSearchTime);
 
 	if (detectionFrequency > 0 && deltaTime > 0 && deltaTime < detectionFrequency) {
 		return false;
 	}
 
-	xinputState->lastDeviceSearchTime = currentTime;
+	backend->lastDeviceSearchTime = currentTime;
 
 	size_t count = 0;
 
 	for (DWORD controllerIndex = 0; controllerIndex < XUSER_MAX_COUNT; ++controllerIndex) {
 		XINPUT_STATE controllerState = fplZeroInit;
-		if (xinputState->xinputApi.XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
-			if (!xinputState->isConnected[controllerIndex]) {
-				// Connected
-				xinputState->isConnected[controllerIndex] = true;
-				fplStringFormat(xinputState->deviceNames[controllerIndex], fplArrayCount(xinputState->deviceNames[controllerIndex]), "XInput-Device [%d]", controllerIndex);
-				fpl__PushGamepadConnectionEvent(controllerIndex, xinputState->deviceNames[controllerIndex], true);
+		if (backend->api.XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
+			if (!backend->isConnected[controllerIndex]) {
+				backend->isConnected[controllerIndex] = true;
+				fplStringFormat(backend->deviceNames[controllerIndex], fplArrayCount(backend->deviceNames[controllerIndex]), "XInput-Device [%d]", controllerIndex);
+				fpl__PushGamepadConnectionEvent(controllerIndex, backend->deviceNames[controllerIndex], true);
 				++count;
 			}
 		} else {
-			if (xinputState->isConnected[controllerIndex]) {
-				// Disconnected
-				xinputState->isConnected[controllerIndex] = false;
-				fpl__PushGamepadConnectionEvent(controllerIndex, xinputState->deviceNames[controllerIndex], false);
+			if (backend->isConnected[controllerIndex]) {
+				backend->isConnected[controllerIndex] = false;
+				fpl__PushGamepadConnectionEvent(controllerIndex, backend->deviceNames[controllerIndex], false);
 				++count;
 			}
 		}
@@ -15254,39 +15253,38 @@ static size_t fpl__Win32XInput_UpdateControllers(const fplGameControllersSetting
 	return count;
 }
 
-static size_t fpl__Win32XInput_CreateEventsForStates(const fplGameControllersSettings *gameControllersSettings, fpl__Win32XInputState *xinputState) {
+static size_t fpl__Win32XInput_CreateEventsForStates(const fplGameControllersSettings *gameControllersSettings, fpl__InputBackendXInput *backend) {
 	fplAssertPtr(gameControllersSettings);
-	fplAssertPtr(xinputState);
+	fplAssertPtr(backend);
 
-	if (xinputState->lastUpdateStatesTime == 0) {
-		xinputState->lastUpdateStatesTime = fplMillisecondsQuery();
+	if (backend->lastUpdateStatesTime == 0) {
+		backend->lastUpdateStatesTime = fplMillisecondsQuery();
 	}
 
 	const uint64_t updateFrequency = gameControllersSettings->updateFrequency;
 
 	fplMilliseconds currentTime = fplMillisecondsQuery();
-	uint64_t deltaTime = (currentTime - xinputState->lastDeviceSearchTime);
+	uint64_t deltaTime = (currentTime - backend->lastDeviceSearchTime);
 
 	if (updateFrequency > 0 && deltaTime > 0 && deltaTime < updateFrequency) {
 		return false;
 	}
 
-	xinputState->lastUpdateStatesTime = currentTime;
+	backend->lastUpdateStatesTime = currentTime;
 
 	size_t result = 0;
 
 	fplGamepadState tempState = fplZeroInit;
 
 	for (DWORD controllerIndex = 0; controllerIndex < XUSER_MAX_COUNT; ++controllerIndex) {
-		if (xinputState->isConnected[controllerIndex]) {
+		if (backend->isConnected[controllerIndex]) {
 			XINPUT_STATE controllerState = fplZeroInit;
-			if (xinputState->xinputApi.XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
-				// State changed
+			if (backend->api.XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
 				fplClearStruct(&tempState);
 				const XINPUT_GAMEPAD *newPadState = &controllerState.Gamepad;
 				fpl__Win32XInput_GamepadToGamepadState(newPadState, &tempState);
-				tempState.deviceName = xinputState->deviceNames[controllerIndex];
-				fpl__PushGamepadStateEvent(controllerIndex, xinputState->deviceNames[controllerIndex], &tempState);
+				tempState.deviceName = backend->deviceNames[controllerIndex];
+				fpl__PushGamepadStateEvent(controllerIndex, backend->deviceNames[controllerIndex], &tempState);
 				result++;
 			}
 		}
@@ -15295,31 +15293,31 @@ static size_t fpl__Win32XInput_CreateEventsForStates(const fplGameControllersSet
 	return result;
 }
 
-static size_t fpl__Win32XInput_Poll(fpl__Win32XInputState *xinputState, fplGamepadStates *outStates) {
-	fplAssertPtr(xinputState);
+static size_t fpl__Win32XInput_Poll(fpl__InputBackendXInput *backend, fplGamepadStates *outStates) {
+	fplAssertPtr(backend);
 	fplAssertPtr(outStates);
 
 	fplClearStruct(outStates);
 
-	xinputState->lastDeviceSearchTime = xinputState->lastUpdateStatesTime = fplMillisecondsQuery();
+	backend->lastDeviceSearchTime = backend->lastUpdateStatesTime = fplMillisecondsQuery();
 
 	size_t result = 0;
 
 	for (DWORD controllerIndex = 0; controllerIndex < XUSER_MAX_COUNT; ++controllerIndex) {
 		XINPUT_STATE controllerState = fplZeroInit;
-		if (xinputState->xinputApi.XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
-			if (!xinputState->isConnected[controllerIndex]) {
-				xinputState->isConnected[controllerIndex] = true;
-				fplStringFormat(xinputState->deviceNames[controllerIndex], fplArrayCount(xinputState->deviceNames[controllerIndex]), "XInput-Device [%d]", controllerIndex);
+		if (backend->api.XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
+			if (!backend->isConnected[controllerIndex]) {
+				backend->isConnected[controllerIndex] = true;
+				fplStringFormat(backend->deviceNames[controllerIndex], fplArrayCount(backend->deviceNames[controllerIndex]), "XInput-Device [%d]", controllerIndex);
 			}
 			const XINPUT_GAMEPAD *newPadState = &controllerState.Gamepad;
 			fplGamepadState *targetPadState = &outStates->deviceStates[controllerIndex];
 			fpl__Win32XInput_GamepadToGamepadState(newPadState, targetPadState);
-			targetPadState->deviceName = xinputState->deviceNames[controllerIndex];
+			targetPadState->deviceName = backend->deviceNames[controllerIndex];
 			result++;
 		} else {
-			if (xinputState->isConnected[controllerIndex]) {
-				xinputState->isConnected[controllerIndex] = false;
+			if (backend->isConnected[controllerIndex]) {
+				backend->isConnected[controllerIndex] = false;
 				result++;
 			}
 		}
@@ -15328,20 +15326,39 @@ static size_t fpl__Win32XInput_Poll(fpl__Win32XInputState *xinputState, fplGamep
 	return(result);
 }
 
-#endif // FPL__WIN32_XINPUT_IMPLEMENTED
-
-#if defined(FPL__ENABLE_WINDOW)
-fpl_internal void fpl__Win32UpdateGameControllers(const fplSettings *settings, const fpl__Win32InitState *initState, fpl__Win32AppState *win32AppState) {
-	fplAssertPtr(settings);
-	fplAssertPtr(initState);
-	fplAssertPtr(win32AppState);
-
-	const fplGameControllersSettings *gameControllersSettings = &settings->input.gameControllers;
-
-	fpl__Win32XInput_UpdateControllers(gameControllersSettings, &win32AppState->xinput);
-	fpl__Win32XInput_CreateEventsForStates(gameControllersSettings, &win32AppState->xinput);
+// Backend lifecycle wrappers used by fpl__InputSystem_*.
+fpl_internal bool fpl__InputBackendXInput_Init(fpl__InputBackendXInput *backend) {
+	fplAssertPtr(backend);
+	if (backend->isInitialized) return true;
+	fpl__Win32LoadXInputApi(&backend->api);
+	backend->isInitialized = true;
+	return true;
 }
-#endif
+
+fpl_internal void fpl__InputBackendXInput_Release(fpl__InputBackendXInput *backend) {
+	fplAssertPtr(backend);
+	if (!backend->isInitialized) return;
+	fpl__Win32UnloadXInputApi(&backend->api);
+	fplClearStruct(backend);
+}
+
+fpl_internal void fpl__InputBackendXInput_Update(fpl__InputBackendXInput *backend, const fplGameControllersSettings *gameControllersSettings) {
+	fplAssertPtr(backend);
+	fplAssertPtr(gameControllersSettings);
+	if (!backend->isInitialized) return;
+	fpl__Win32XInput_UpdateControllers(gameControllersSettings, backend);
+	fpl__Win32XInput_CreateEventsForStates(gameControllersSettings, backend);
+}
+
+fpl_internal bool fpl__InputBackendXInput_PollGamepad(fpl__InputBackendXInput *backend, fplGamepadStates *outStates) {
+	fplAssertPtr(backend);
+	fplAssertPtr(outStates);
+	if (!backend->isInitialized) return false;
+	size_t result = fpl__Win32XInput_Poll(backend, outStates);
+	return(result > 0);
+}
+
+#endif // FPL__WIN32_XINPUT_IMPLEMENTED
 
 fpl_internal bool fpl__Win32ThreadWaitForMultiple(fplThreadHandle **threads, const size_t count, const size_t stride, const fplTimeoutValue timeout, const bool waitForAll) {
 	FPL__CheckArgumentNull(threads, false);
@@ -15417,12 +15434,6 @@ fpl_internal bool fpl__Win32SignalWaitForMultiple(fplSignalHandle **signals, con
 fpl_internal void fpl__Win32ReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
 	fplAssert(appState != fpl_null);
 	fpl__Win32AppState *win32AppState = &appState->win32;
-	fpl__Win32InitState *win32InitState = &initState->win32;
-	if (fplIsMaskSet(appState->initFlags, fplInitFlags_GameController)) {
-#	if defined(FPL__ENABLE_WINDOW)
-		fpl__Win32UnloadXInputApi(&win32AppState->xinput.xinputApi);
-#	endif
-	}
 	fpl__Win32UnloadApi(&win32AppState->winApi);
 }
 
@@ -15455,13 +15466,6 @@ fpl_internal bool fpl__Win32InitPlatform(const fplInitFlags initFlags, const fpl
 		// @NOTE(final): Assume that errors are pushed on already.
 		fpl__Win32ReleasePlatform(initState, appState);
 		return false;
-	}
-
-	// Load XInput
-	if (fplIsMaskSet(initFlags, fplInitFlags_GameController)) {
-#	if defined(FPL__ENABLE_WINDOW)
-		fpl__Win32LoadXInputApi(&win32AppState->xinput.xinputApi);
-#	endif
 	}
 
 	// Show/Hide console
@@ -17558,16 +17562,12 @@ fpl_platform_api void fplPollEvents(void) {
 fpl_platform_api bool fplWindowUpdate(void) {
 	FPL__CheckPlatform(false);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	fpl__Win32AppState *win32AppState = &appState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	const fpl__Win32InitState *win32InitState = &fpl__global__InitState.win32;
-	const fpl__Win32Api *wapi = &win32AppState->winApi;
 	fpl__ClearInternalEvents();
+#	if defined(FPL__ENABLE_INPUT)
 	if (!appState->currentSettings.input.disabledEvents) {
-		if (fplIsMaskSet(appState->initFlags, fplInitFlags_GameController)) {
-			fpl__Win32UpdateGameControllers(&appState->currentSettings, win32InitState, win32AppState);
-		}
+		fpl__InputSystem_Update(&appState->input);
 	}
+#	endif
 	bool result = appState->window.isRunning != 0;
 	return(result);
 }
@@ -17657,25 +17657,13 @@ fpl_platform_api bool fplPollKeyboardState(fplKeyboardState *outState) {
 fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
 	FPL__CheckArgumentNull(outStates, false);
 	FPL__CheckPlatform(false);
-
+#	if defined(FPL__ENABLE_INPUT)
 	fpl__PlatformAppState *platformAppState = fpl__global__AppState;
-
-	bool isEnabled = fplIsMaskSet(platformAppState->initFlags, fplInitFlags_GameController);
-	if (!isEnabled) {
-		return false;
-	}
-
-	fpl__Win32AppState *appState = &platformAppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	const fpl__Win32Api *wapi = &appState->winApi;
-
-	fpl__Win32XInputState *xinputState = &appState->xinput;
-
-	size_t xinputResult = fpl__Win32XInput_Poll(xinputState, outStates);
-
-	bool result = xinputResult > 0;
-
-	return(result);
+	return fpl__InputSystem_PollGamepad(&platformAppState->input, outStates);
+#	else
+	(void)outStates;
+	return false;
+#	endif
 }
 
 fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY) {
@@ -30736,7 +30724,6 @@ fpl_inline fplVideoRect fplCreateVideoRectFromLTRB(int32_t left, int32_t top, in
 #define FPL__SYSTEM_INIT_DEFINED
 
 #if defined(FPL__ENABLE_INPUT)
-// Step 2 stubs. Real backend dispatch lands in steps 3+.
 fpl_internal bool fpl__InputSystem_Init(fpl__InputContext *ctx, const fplInitFlags initFlags, const fplInputSettings *settings) {
 	if (ctx == fpl_null) return false;
 	fplClearStruct(ctx);
@@ -30746,6 +30733,15 @@ fpl_internal bool fpl__InputSystem_Init(fpl__InputContext *ctx, const fplInitFla
 	} else {
 		fplSetDefaultInputSettings(&ctx->settings);
 	}
+
+#	if defined(FPL__ENABLE_INPUT_XINPUT)
+	if ((ctx->settings.enabledSources & fplInputSourceType_Gamepad) != 0 && fplInputBackendMaskIsEnabled(&ctx->settings.enabledBackends, fplInputBackendType_XInput)) {
+		if (fpl__InputBackendXInput_Init(&ctx->xinput)) {
+			ctx->backendCount++;
+		}
+	}
+#	endif
+
 	ctx->isInitialized = true;
 	return true;
 }
@@ -30753,11 +30749,21 @@ fpl_internal bool fpl__InputSystem_Init(fpl__InputContext *ctx, const fplInitFla
 fpl_internal void fpl__InputSystem_Release(fpl__InputContext *ctx) {
 	if (ctx == fpl_null) return;
 	if (!ctx->isInitialized) return;
+#	if defined(FPL__ENABLE_INPUT_XINPUT)
+	fpl__InputBackendXInput_Release(&ctx->xinput);
+#	endif
 	fplClearStruct(ctx);
 }
 
 fpl_internal void fpl__InputSystem_Update(fpl__InputContext *ctx) {
-	(void)ctx;
+	if (ctx == fpl_null) return;
+	if (!ctx->isInitialized) return;
+	if (ctx->settings.disabledEvents) return;
+#	if defined(FPL__ENABLE_INPUT_XINPUT)
+	if ((ctx->settings.enabledSources & fplInputSourceType_Gamepad) != 0 && ctx->xinput.isInitialized) {
+		fpl__InputBackendXInput_Update(&ctx->xinput, &ctx->settings.gameControllers);
+	}
+#	endif
 }
 
 fpl_internal bool fpl__InputSystem_HandleNativeEvent(fpl__InputContext *ctx, const fpl__NativeInputEvent *ev) {
@@ -30786,9 +30792,18 @@ fpl_internal bool fpl__InputSystem_PollMouse(fpl__InputContext *ctx, fplMouseSta
 }
 
 fpl_internal bool fpl__InputSystem_PollGamepad(fpl__InputContext *ctx, fplGamepadStates *outStates) {
-	(void)ctx;
-	(void)outStates;
-	return false;
+	if (ctx == fpl_null || outStates == fpl_null) return false;
+	if (!ctx->isInitialized) return false;
+	if ((ctx->settings.enabledSources & fplInputSourceType_Gamepad) == 0) return false;
+	bool any = false;
+#	if defined(FPL__ENABLE_INPUT_XINPUT)
+	if (ctx->xinput.isInitialized) {
+		if (fpl__InputBackendXInput_PollGamepad(&ctx->xinput, outStates)) {
+			any = true;
+		}
+	}
+#	endif
+	return any;
 }
 #endif // FPL__ENABLE_WINDOW
 #endif // FPL__ENABLE_INPUT
