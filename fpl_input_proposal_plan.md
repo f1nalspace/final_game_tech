@@ -20,7 +20,7 @@ Consequences:
 
 - `FPL_NO_WINDOW` kills input entirely, even though polling XInput / `/dev/input/js0` / raw Win32 keyboard does not require a window.
 - Running XInput **and** DirectInput side by side is impossible — there is only one gamepad code path per platform.
-- Adding DirectInput, evdev, udev or Wayland input requires touching windowing internals.
+- Adding DirectInput, evdev or udev input requires touching windowing internals.
 - Event dispatching from the window backends cannot be cleanly forwarded to a neutral input layer.
 
 ## 2. Goals
@@ -112,9 +112,8 @@ typedef enum fplInputBackendType {
     fplInputBackendType_LinuxUdev,    // hotplug notifications (companion)
     fplInputBackendType_UnixGamepad,  // BSD / generic uhid
 
-    // X11 / Wayland bridges
+    // X11 bridge
     fplInputBackendType_X11Kbm,       // keyboard/mouse via X11
-    fplInputBackendType_WaylandKbm,   // keyboard/mouse via wl_seat (future)
 
     // Win32 fallback (keyboard/mouse via WM_* + GetKeyState)
     fplInputBackendType_Win32,
@@ -177,7 +176,7 @@ Behavior:
 - `fplInitFlags_Input` initializes the input system regardless of `fplInitFlags_Window`.
 - `fplInitFlags_GameController` implies `fplInitFlags_Input` with `enabledSources |= fplInputSourceType_Gamepad` (for back-compat).
 - New compile switch `FPL_NO_INPUT` disables the whole thing just like `FPL_NO_AUDIO` does.
-- Per-backend compile switches: `FPL_NO_INPUT_XINPUT`, `FPL_NO_INPUT_DINPUT`, `FPL_NO_INPUT_RAWINPUT`, `FPL_NO_INPUT_LINUX_JOYSTICK`, `FPL_NO_INPUT_LINUX_EVDEV`, `FPL_NO_INPUT_X11`, `FPL_NO_INPUT_WAYLAND`, `FPL_NO_INPUT_WIN32`.
+- Per-backend compile switches: `FPL_NO_INPUT_XINPUT`, `FPL_NO_INPUT_DINPUT`, `FPL_NO_INPUT_RAWINPUT`, `FPL_NO_INPUT_LINUX_JOYSTICK`, `FPL_NO_INPUT_LINUX_EVDEV`, `FPL_NO_INPUT_X11`, `FPL_NO_INPUT_WIN32`.
 
 ### 5.7 Public Device Struct
 
@@ -424,7 +423,6 @@ A tiny neutral struct carries native events from the window backend to the input
 typedef enum fpl__NativeInputEventKind {
     fpl__NativeInputEventKind_Win32Msg,    // payload = MSG / WPARAM / LPARAM
     fpl__NativeInputEventKind_X11Event,    // payload = XEvent*
-    fpl__NativeInputEventKind_WaylandEvent,// future
     fpl__NativeInputEventKind_Custom,
 } fpl__NativeInputEventKind;
 
@@ -604,7 +602,7 @@ Each step is independently compilable and testable.
 7. **Event plumbing**: gamepad connect/disconnect events keep flowing through `fpl__PushGamepadEvent`, now driven by the backends instead of the window loop.
 8. **FPL_NO_WINDOW support**: implement the hidden Win32 message-only window and the detached X11 display. Add `fplInputSettings.detachFromWindow`. Verify with a console-only demo that polls a keyboard or gamepad.
 9. **Multi-backend polling**: make `fpl__InputSystem_PollGamepad` merge across backends so XInput + (future) DInput coexist. Add a small unit test in `FPL_Test` that walks a fake second backend.
-10. **New backends (future PRs)**: LinuxEvdev, LinuxUdev, RawInput, DInput, UnixGamepad, WaylandKbm. Each is one descriptor + impl struct + function table entry; nothing else in the core changes.
+10. **New backends (future PRs)**: LinuxEvdev, LinuxUdev, RawInput, DInput, UnixGamepad. Each is one descriptor + impl struct + function table entry; nothing else in the core changes.
 11. **Docs / changelog**: update category `page_category_input_config`, note the new init flag, mask helpers and `FPL_NO_INPUT` switch.
 
 Each step is ~1 commit. Steps 3-6 should keep the public behavior identical; only step 8 and step 9 introduce new capabilities.
@@ -616,8 +614,6 @@ Each step is ~1 commit. Steps 3-6 should keep the public behavior identical; onl
 - Should `fplInputDevice.state` be kept as a union in the public API, or should the public API return plain pointers/arrays? Union matches the spec but duplicates state structs.
 - Does the project want a `fplInputBackendType_Custom` slot (to match `fplAudioBackendType_Custom`) for user-supplied backends? Simple to add, but adds one more public function.
 - Do we expose `fplUpdateInputDevices()` as a public call, or fold it into `fplPollEvents`? Folding is simpler; exposing helps `FPL_NO_WINDOW` console loops.
-- Wayland input: `wl_seat` / `libinput` both work. `libinput` is probably the pragmatic choice since it already handles evdev + hotplug + per-device config; that would let `LinuxEvdev` + `WaylandKbm` share code.
-
 ---
 
 ## 13. Summary
@@ -627,4 +623,4 @@ Each step is ~1 commit. Steps 3-6 should keep the public behavior identical; onl
 - Windowing code is reduced to forwarding native events; all input logic moves into dedicated backends.
 - Multiple backends run simultaneously — the input system merges results.
 - `FPL_NO_WINDOW` works with input; `FPL_NO_INPUT` kills input entirely.
-- Existing XInput, Win32 keyboard/mouse, X11 keyboard/mouse, Linux joystick code is migrated as-is to the new shape; new backends (DInput, RawInput, Evdev, Udev, Wayland, Unix) slot in without touching the core.
+- Existing XInput, Win32 keyboard/mouse, X11 keyboard/mouse, Linux joystick code is migrated as-is to the new shape; new backends (DInput, RawInput, Evdev, Udev, Unix) slot in without touching the core.
