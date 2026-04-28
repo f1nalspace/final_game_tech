@@ -160,21 +160,25 @@ typedef struct fplInputSettings {
 
 ### 5.5 `fplSettings` stays unchanged structurally — still has `fplInputSettings input;`.
 
-### 5.6 New Init Flag
+### 5.6 New Init Flags
 
 ```c
 typedef enum fplInitFlags {
     ...
-    fplInitFlags_GameController = 1 << 4, // retained as an alias for Input + gamepad source
-    fplInitFlags_Input          = 1 << 5, // NEW: bring up input subsystem
+    fplInitFlags_GameController = 1 << 4, // enable gamepad source
+    fplInitFlags_Keyboard       = 1 << 5, // NEW: enable keyboard source
+    fplInitFlags_Mouse          = 1 << 6, // NEW: enable mouse source
+    // Convenience alias enabling keyboard, mouse and gamepad together.
+    fplInitFlags_Input = fplInitFlags_Keyboard | fplInitFlags_Mouse | fplInitFlags_GameController,
     ...
 } fplInitFlags;
 ```
 
 Behavior:
 
-- `fplInitFlags_Input` initializes the input system regardless of `fplInitFlags_Window`.
-- `fplInitFlags_GameController` implies `fplInitFlags_Input` with `enabledSources |= fplInputSourceType_Gamepad` (for back-compat).
+- Each per-source flag (`fplInitFlags_Keyboard`, `fplInitFlags_Mouse`, `fplInitFlags_GameController`) brings up the input subsystem and enables the matching `fplInputSourceType` bit. Independent of `fplInitFlags_Window`.
+- `fplInitFlags_Input` is a convenience composite that enables all three sources at once.
+- The set of source flags drives `fplInputSettings.enabledSources` at init time; settings can be changed at runtime later.
 - New compile switch `FPL_NO_INPUT` disables the whole thing just like `FPL_NO_AUDIO` does.
 - Per-backend compile switches: `FPL_NO_INPUT_XINPUT`, `FPL_NO_INPUT_DINPUT`, `FPL_NO_INPUT_RAWINPUT`, `FPL_NO_INPUT_LINUX_JOYSTICK`, `FPL_NO_INPUT_LINUX_EVDEV`, `FPL_NO_INPUT_X11`, `FPL_NO_INPUT_WIN32`.
 
@@ -556,7 +560,7 @@ New sequence inside `fpl__PlatformInit`:
 2. Window init        (if fplInitFlags_Window)
 3. Video init         (if fplInitFlags_Video)
 4. Audio init         (if fplInitFlags_Audio)           <-- existing order
-5. Input init         (if fplInitFlags_Input or GameController)  <-- new, moved out of window init
+5. Input init         (if any of fplInitFlags_Keyboard / Mouse / GameController / Input is set)  <-- new, moved out of window init
       for each descriptor in fpl__global_inputBackendDescriptors:
           if mask disables it          -> skip
           if platform mismatches       -> skip
@@ -593,7 +597,7 @@ fplPlatformInit(fplInitFlags_All, &s);
 
 Each step is independently compilable and testable.
 
-1. **Types**: add `fplInputSourceType`, `fplInputBackendType`, `fplInputBackendMask`, `fplInputDevice`, `fplInputBackendSupport`, extended `fplInputSettings`, new `fplInitFlags_Input`, `FPL_NO_INPUT` switch, extended `fplMouseButtonType` + wheel fields. No behavior change yet.
+1. **Types**: add `fplInputSourceType`, `fplInputBackendType`, `fplInputBackendMask`, `fplInputDevice`, `fplInputBackendSupport`, extended `fplInputSettings`, new per-source init flags (`fplInitFlags_Keyboard`, `fplInitFlags_Mouse`) plus the `fplInitFlags_Input` composite alias, `FPL_NO_INPUT` switch, extended `fplMouseButtonType` + wheel fields. No behavior change yet.
 2. **Skeleton**: add `fpl__InputContext` to `fpl__PlatformAppState`. Add `fpl__InputSystem_Init` / `Release` / `Update` / `HandleNativeEvent` / `PollKeyboard` / `PollMouse` / `PollGamepad` as empty stubs. Wire init/release into `fpl__PlatformInit` / `fpl__PlatformRelease` behind `FPL_NO_INPUT`.
 3. **XInput migration**: wrap existing XInput code as `fpl__InputBackendXInput`. Switch `fplPollGamepadStates` to go through the context. Delete `fpl__Win32XInputState` from `fpl__Win32AppState`. Verify `FPL_Input` demo still shows gamepad input.
 4. **Win32 keyboard/mouse migration**: move the current `fplPollKeyboardState` / `fplPollMouseState` Win32 implementations into `fpl__InputBackendWin32`. Route WndProc keyboard/mouse messages through `HandleNativeEvent`. Verify all Win32 demos.
@@ -618,7 +622,7 @@ Each step is ~1 commit. Steps 3-6 should keep the public behavior identical; onl
 
 ## 13. Summary
 
-- New public types: `fplInputSourceType`, `fplInputBackendType`, `fplInputBackendMask`, `fplInputDevice`, `fplInputBackendSupport`, extended `fplInputSettings`, new `fplInitFlags_Input`, new `FPL_NO_INPUT`, extended mouse state (5 buttons + wheel).
+- New public types: `fplInputSourceType`, `fplInputBackendType`, `fplInputBackendMask`, `fplInputDevice`, `fplInputBackendSupport`, extended `fplInputSettings`, new per-source init flags `fplInitFlags_Keyboard` / `fplInitFlags_Mouse` plus the `fplInitFlags_Input` composite alias, new `FPL_NO_INPUT`, extended mouse state (5 buttons + wheel).
 - New internal layer: `fpl__InputContext` + `fpl__InputBackend` + `fpl__InputBackendDescriptor` + small function table, modeled on the audio backend system but with no async main loop and no device state machine.
 - Windowing code is reduced to forwarding native events; all input logic moves into dedicated backends.
 - Multiple backends run simultaneously — the input system merges results.
