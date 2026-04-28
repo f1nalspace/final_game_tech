@@ -101,11 +101,10 @@ typedef enum fplInputBackendType {
     fplInputBackendType_None = 0,
     fplInputBackendType_Auto,         // choose sensible defaults per platform
 
-    // Windows
-    fplInputBackendType_Win32XInput,  // gamepads
-    fplInputBackendType_Win32DInput,  // gamepads (DirectInput8)
-    fplInputBackendType_Win32Raw,     // keyboard/mouse via RAWINPUT
-    fplInputBackendType_Win32Legacy,  // keyboard/mouse via WM_* + GetKeyState
+    // Cross-platform / vendor APIs
+    fplInputBackendType_XInput,       // gamepads (Windows)
+    fplInputBackendType_DInput,       // gamepads (DirectInput8, Windows)
+    fplInputBackendType_RawInput,     // keyboard/mouse via RAWINPUT (Windows)
 
     // Linux / Unix
     fplInputBackendType_LinuxJoystick,// /dev/input/jsX (legacy joydev)
@@ -117,8 +116,11 @@ typedef enum fplInputBackendType {
     fplInputBackendType_X11Kbm,       // keyboard/mouse via X11
     fplInputBackendType_WaylandKbm,   // keyboard/mouse via wl_seat (future)
 
+    // Win32 fallback (keyboard/mouse via WM_* + GetKeyState)
+    fplInputBackendType_Win32,
+
     fplInputBackendType_First = fplInputBackendType_None,
-    fplInputBackendType_Last  = fplInputBackendType_WaylandKbm,
+    fplInputBackendType_Last  = fplInputBackendType_Win32,
 } fplInputBackendType;
 ```
 
@@ -175,7 +177,7 @@ Behavior:
 - `fplInitFlags_Input` initializes the input system regardless of `fplInitFlags_Window`.
 - `fplInitFlags_GameController` implies `fplInitFlags_Input` with `enabledSources |= fplInputSourceType_Gamepad` (for back-compat).
 - New compile switch `FPL_NO_INPUT` disables the whole thing just like `FPL_NO_AUDIO` does.
-- Per-backend compile switches: `FPL_NO_INPUT_XINPUT`, `FPL_NO_INPUT_DINPUT`, `FPL_NO_INPUT_RAWINPUT`, `FPL_NO_INPUT_LINUX_JOYSTICK`, `FPL_NO_INPUT_LINUX_EVDEV`, `FPL_NO_INPUT_X11`, `FPL_NO_INPUT_WAYLAND`.
+- Per-backend compile switches: `FPL_NO_INPUT_XINPUT`, `FPL_NO_INPUT_DINPUT`, `FPL_NO_INPUT_RAWINPUT`, `FPL_NO_INPUT_LINUX_JOYSTICK`, `FPL_NO_INPUT_LINUX_EVDEV`, `FPL_NO_INPUT_X11`, `FPL_NO_INPUT_WAYLAND`, `FPL_NO_INPUT_WIN32`.
 
 ### 5.7 Public Device Struct
 
@@ -396,7 +398,7 @@ fpl_globalvar fpl__InputBackendDescriptor *fpl__global_inputBackendDescriptors[]
     &fpl__global_inputBackendDInputDescriptor,
 #endif
 #if !defined(FPL_NO_INPUT_RAWINPUT) && defined(FPL_PLATFORM_WINDOWS)
-    &fpl__global_inputBackendWin32RawDescriptor,
+    &fpl__global_inputBackendRawInputDescriptor,
 #endif
 #if !defined(FPL_NO_INPUT_X11) && defined(FPL_SUBPLATFORM_X11)
     &fpl__global_inputBackendX11KbmDescriptor,
@@ -406,6 +408,9 @@ fpl_globalvar fpl__InputBackendDescriptor *fpl__global_inputBackendDescriptors[]
 #endif
 #if !defined(FPL_NO_INPUT_LINUX_EVDEV) && defined(FPL_PLATFORM_LINUX)
     &fpl__global_inputBackendLinuxEvdevDescriptor,
+#endif
+#if !defined(FPL_NO_INPUT_WIN32) && defined(FPL_PLATFORM_WINDOWS)
+    &fpl__global_inputBackendWin32Descriptor,
 #endif
     fpl_null,
 };
@@ -501,10 +506,10 @@ Keep the descriptor/header/table shape, drop everything that was audio-stream-sp
 ### 7.1 Win32
 
 - **XInput** code in `fpl__Win32XInputState`, `fpl__Win32XInput_*` → move into a new translation unit block guarded by `FPL__ENABLE_INPUT_XINPUT`. Wrap as `fpl__InputBackendXInput` implementing the full function table. `fpl__Win32UpdateGameControllers` / `fpl__Win32XInput_CreateEventsForStates` become the backend's `update()`. Gamepad events keep flowing through `fpl__PushGamepadEvent`.
-- **Win32 WM_ keyboard/mouse handling** currently inside the WndProc becomes `fpl__InputBackendWin32Legacy` (or `Win32Kbm`). WndProc only calls `fpl__InputSystem_HandleNativeEvent`.
-- **`fpl__Win32IsKeyDown` / `MapVirtualKeyW` polling** in `fplPollKeyboardState` moves into `fpl__InputBackendWin32Legacy::pollKeyboard`. `fplPollMouseState` moves into the same backend's `pollMouse`.
-- **RAWINPUT** bits (`RegisterRawInputDevices`) become `fpl__InputBackendWin32Raw` — opt-in.
-- **DirectInput** (future) becomes `fpl__InputBackendWin32DInput`. Can coexist with XInput because the input system allows multiple active backends.
+- **Win32 WM_ keyboard/mouse handling** currently inside the WndProc becomes `fpl__InputBackendWin32`. WndProc only calls `fpl__InputSystem_HandleNativeEvent`.
+- **`fpl__Win32IsKeyDown` / `MapVirtualKeyW` polling** in `fplPollKeyboardState` moves into `fpl__InputBackendWin32::pollKeyboard`. `fplPollMouseState` moves into the same backend's `pollMouse`.
+- **RAWINPUT** bits (`RegisterRawInputDevices`) become `fpl__InputBackendRawInput` — opt-in.
+- **DirectInput** (future) becomes `fpl__InputBackendDInput`. Can coexist with XInput because the input system allows multiple active backends.
 
 ### 7.2 X11
 
@@ -571,7 +576,7 @@ Release in reverse order. `fpl__InputSystem_Release` calls `release()` + `unload
 
 ## 10. Default Mappings
 
-- **Windows**: XInput + Win32Legacy (keyboard/mouse via `GetKeyState`/WM_*). DInput and RawInput are off by default but enabled with a single mask bit.
+- **Windows**: XInput + Win32 (keyboard/mouse via `GetKeyState`/WM_*). DInput and RawInput are off by default but enabled with a single mask bit.
 - **Linux/X11**: X11Kbm + LinuxEvdev + LinuxUdev. Joystick node backend off by default; can be re-enabled for retro-compat.
 - **Unix**: X11Kbm + UnixGamepad.
 
@@ -579,7 +584,7 @@ Release in reverse order. `fpl__InputSystem_Release` calls `release()` + `unload
 
 ```c
 fplSettings s = fplMakeDefaultSettings();
-fplInputBackendMaskEnable(&s.input.enabledBackends, fplInputBackendType_Win32DInput);
+fplInputBackendMaskEnable(&s.input.enabledBackends, fplInputBackendType_DInput);
 // XInput is already on by default; DInput is now also on
 fplPlatformInit(fplInitFlags_All, &s);
 ```
@@ -593,13 +598,13 @@ Each step is independently compilable and testable.
 1. **Types**: add `fplInputSourceType`, `fplInputBackendType`, `fplInputBackendMask`, `fplInputDevice`, `fplInputBackendSupport`, extended `fplInputSettings`, new `fplInitFlags_Input`, `FPL_NO_INPUT` switch, extended `fplMouseButtonType` + wheel fields. No behavior change yet.
 2. **Skeleton**: add `fpl__InputContext` to `fpl__PlatformAppState`. Add `fpl__InputSystem_Init` / `Release` / `Update` / `HandleNativeEvent` / `PollKeyboard` / `PollMouse` / `PollGamepad` as empty stubs. Wire init/release into `fpl__PlatformInit` / `fpl__PlatformRelease` behind `FPL_NO_INPUT`.
 3. **XInput migration**: wrap existing XInput code as `fpl__InputBackendXInput`. Switch `fplPollGamepadStates` to go through the context. Delete `fpl__Win32XInputState` from `fpl__Win32AppState`. Verify `FPL_Input` demo still shows gamepad input.
-4. **Win32Legacy keyboard/mouse migration**: move the current `fplPollKeyboardState` / `fplPollMouseState` Win32 implementations into `fpl__InputBackendWin32Legacy`. Route WndProc keyboard/mouse messages through `HandleNativeEvent`. Verify all Win32 demos.
+4. **Win32 keyboard/mouse migration**: move the current `fplPollKeyboardState` / `fplPollMouseState` Win32 implementations into `fpl__InputBackendWin32`. Route WndProc keyboard/mouse messages through `HandleNativeEvent`. Verify all Win32 demos.
 5. **X11Kbm migration**: same for X11. Route `XEvent` from `fpl__X11HandleEvent` through the bridge. Verify X11 demos.
 6. **Linux Joystick migration**: lift existing `/dev/input/jsX` code into `fpl__InputBackendLinuxJoystick`. Remove the 1-second scan; let `fpl__InputSystem_Update` throttle using `gameControllers.detectionFrequency`.
 7. **Event plumbing**: gamepad connect/disconnect events keep flowing through `fpl__PushGamepadEvent`, now driven by the backends instead of the window loop.
 8. **FPL_NO_WINDOW support**: implement the hidden Win32 message-only window and the detached X11 display. Add `fplInputSettings.detachFromWindow`. Verify with a console-only demo that polls a keyboard or gamepad.
 9. **Multi-backend polling**: make `fpl__InputSystem_PollGamepad` merge across backends so XInput + (future) DInput coexist. Add a small unit test in `FPL_Test` that walks a fake second backend.
-10. **New backends (future PRs)**: LinuxEvdev, LinuxUdev, Win32Raw, Win32DInput, UnixGamepad, WaylandKbm. Each is one descriptor + impl struct + function table entry; nothing else in the core changes.
+10. **New backends (future PRs)**: LinuxEvdev, LinuxUdev, RawInput, DInput, UnixGamepad, WaylandKbm. Each is one descriptor + impl struct + function table entry; nothing else in the core changes.
 11. **Docs / changelog**: update category `page_category_input_config`, note the new init flag, mask helpers and `FPL_NO_INPUT` switch.
 
 Each step is ~1 commit. Steps 3-6 should keep the public behavior identical; only step 8 and step 9 introduce new capabilities.
