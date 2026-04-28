@@ -2756,7 +2756,7 @@ typedef enum fplX86InstructionSetLevel {
 #	if defined(FPL__SUPPORT_INPUT_RAWINPUT)
 #		define FPL__ENABLE_INPUT_RAWINPUT
 #	endif
-#	if defined(FPL__SUPPORT_INPUT_WIN32)
+#	if defined(FPL__SUPPORT_INPUT_WIN32) && defined(FPL__SUPPORT_WINDOW)
 #		define FPL__ENABLE_INPUT_WIN32
 #	endif
 #	if defined(FPL__SUPPORT_INPUT_X11)
@@ -10080,6 +10080,15 @@ typedef struct fpl__InputBackendXInput {
 
 #endif // FPL__ENABLE_INPUT_XINPUT
 
+#if defined(FPL__ENABLE_INPUT_WIN32)
+// Win32 keyboard/mouse backend instance owned by fpl__InputContext.
+// Holds no native state of its own: GetAsyncKeyState / GetCursorPos are global,
+// and WM_* events arrive via fpl__InputSystem_HandleNativeEvent.
+typedef struct fpl__InputBackendWin32 {
+	bool isInitialized;
+} fpl__InputBackendWin32;
+#endif // FPL__ENABLE_INPUT_WIN32
+
 //
 // WINAPI functions
 //
@@ -11353,6 +11362,9 @@ typedef struct fpl__InputContext {
 	uint32_t backendCount;
 #if defined(FPL__ENABLE_INPUT_XINPUT)
 	fpl__InputBackendXInput xinput;
+#endif
+#if defined(FPL__ENABLE_INPUT_WIN32)
+	fpl__InputBackendWin32 win32kbm;
 #endif
 } fpl__InputContext;
 #endif // FPL__ENABLE_INPUT
@@ -14360,26 +14372,39 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		case WM_KEYDOWN:
 		case WM_KEYUP:
 		{
-			if (!appState->currentSettings.input.disabledEvents) {
-				uint64_t keyCode = wParam;
-				bool isDown = (lParam & (1 << 31)) == 0;
-				bool wasDown = (lParam & (1 << 30)) != 0;
-				bool altKeyIsDown = fpl__Win32IsKeyDown(wapi, VK_MENU);
-				fplButtonState keyState = isDown ? fplButtonState_Press : fplButtonState_Release;
-				fplKeyboardModifierFlags modifiers = fpl__Win32GetKeyboardModifiers(wapi);
-				fpl__HandleKeyboardButtonEvent(&appState->window, GetTickCount(), keyCode, modifiers, keyState, false);
-			}
+#if defined(FPL__ENABLE_INPUT)
+			MSG forwarded = fplZeroInit;
+			forwarded.hwnd = hwnd;
+			forwarded.message = msg;
+			forwarded.wParam = wParam;
+			forwarded.lParam = lParam;
+			fpl__NativeInputEvent ev = fplZeroInit;
+			ev.kind = fpl__NativeInputEventKind_Win32Msg;
+			ev.payload = (void *)&forwarded;
+			fpl__InputSystem_HandleNativeEvent(&appState->input, &ev);
+#endif
 		} break;
 
 		case WM_CHAR:
 		case WM_SYSCHAR:
 		case WM_UNICHAR:
+		case WM_DEADCHAR:
 		{
 			if ((msg == WM_UNICHAR) && (wParam == UNICODE_NOCHAR)) {
 				// @NOTE(final): WM_UNICHAR was sent by a third-party input method. Do not add any chars here!
 				return TRUE;
 			}
-			fpl__HandleKeyboardInputEvent(&appState->window, (uint64_t)wParam, (uint32_t)wParam);
+#if defined(FPL__ENABLE_INPUT)
+			MSG forwarded = fplZeroInit;
+			forwarded.hwnd = hwnd;
+			forwarded.message = msg;
+			forwarded.wParam = wParam;
+			forwarded.lParam = lParam;
+			fpl__NativeInputEvent ev = fplZeroInit;
+			ev.kind = fpl__NativeInputEventKind_Win32Msg;
+			ev.payload = (void *)&forwarded;
+			fpl__InputSystem_HandleNativeEvent(&appState->input, &ev);
+#endif
 			return 0;
 		} break;
 
@@ -14461,51 +14486,23 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		case WM_RBUTTONUP:
 		case WM_MBUTTONDOWN:
 		case WM_MBUTTONUP:
-		{
-			if (!appState->currentSettings.input.disabledEvents) {
-				fplButtonState buttonState;
-				if (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN) {
-					buttonState = fplButtonState_Press;
-				} else {
-					buttonState = fplButtonState_Release;
-				}
-				if (buttonState == fplButtonState_Press) {
-					wapi->user.SetCapture(hwnd);
-				} else {
-					wapi->user.ReleaseCapture();
-				}
-				fplMouseButtonType mouseButton;
-				if (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP) {
-					mouseButton = fplMouseButtonType_Left;
-				} else if (msg == WM_RBUTTONDOWN || msg == WM_RBUTTONUP) {
-					mouseButton = fplMouseButtonType_Right;
-				} else if (msg == WM_MBUTTONDOWN || msg == WM_MBUTTONUP) {
-					mouseButton = fplMouseButtonType_Middle;
-				} else {
-					mouseButton = fplMouseButtonType_None;
-				}
-				if (mouseButton != fplMouseButtonType_None) {
-					int32_t mouseX = GET_X_LPARAM(lParam);
-					int32_t mouseY = GET_Y_LPARAM(lParam);
-					fpl__HandleMouseButtonEvent(&appState->window, mouseX, mouseY, mouseButton, buttonState);
-				}
-			}
-		} break;
+		case WM_XBUTTONDOWN:
+		case WM_XBUTTONUP:
 		case WM_MOUSEMOVE:
-		{
-			if (!appState->currentSettings.input.disabledEvents) {
-				int32_t mouseX = GET_X_LPARAM(lParam);
-				int32_t mouseY = GET_Y_LPARAM(lParam);
-				fpl__HandleMouseMoveEvent(&appState->window, mouseX, mouseY);
-			}
-		} break;
 		case WM_MOUSEWHEEL:
+		case WM_MOUSEHWHEEL:
 		{
-			int32_t mouseX = GET_X_LPARAM(lParam);
-			int32_t mouseY = GET_Y_LPARAM(lParam);
-			short zDelta = GET_WHEEL_DELTA_WPARAM(wParam);
-			float wheelDelta = zDelta / (float)WHEEL_DELTA;
-			fpl__HandleMouseWheelEvent(&appState->window, mouseX, mouseY, wheelDelta);
+#if defined(FPL__ENABLE_INPUT)
+			MSG forwarded = fplZeroInit;
+			forwarded.hwnd = hwnd;
+			forwarded.message = msg;
+			forwarded.wParam = wParam;
+			forwarded.lParam = lParam;
+			fpl__NativeInputEvent ev = fplZeroInit;
+			ev.kind = fpl__NativeInputEventKind_Win32Msg;
+			ev.payload = (void *)&forwarded;
+			fpl__InputSystem_HandleNativeEvent(&appState->input, &ev);
+#endif
 		} break;
 
 		case WM_SETCURSOR:
@@ -15359,6 +15356,190 @@ fpl_internal bool fpl__InputBackendXInput_PollGamepad(fpl__InputBackendXInput *b
 }
 
 #endif // FPL__WIN32_XINPUT_IMPLEMENTED
+
+// ############################################################################
+//
+// > WIN32_INPUT_KBM (keyboard + mouse backend)
+//
+// ############################################################################
+#if defined(FPL__ENABLE_INPUT_WIN32) && !defined(FPL__WIN32_INPUT_KBM_IMPLEMENTED)
+#define FPL__WIN32_INPUT_KBM_IMPLEMENTED
+
+fpl_internal bool fpl__InputBackendWin32_Init(fpl__InputBackendWin32 *backend) {
+	fplAssertPtr(backend);
+	if (backend->isInitialized) return true;
+	backend->isInitialized = true;
+	return true;
+}
+
+fpl_internal void fpl__InputBackendWin32_Release(fpl__InputBackendWin32 *backend) {
+	fplAssertPtr(backend);
+	if (!backend->isInitialized) return;
+	fplClearStruct(backend);
+}
+
+fpl_internal bool fpl__InputBackendWin32_PollKeyboard(fpl__InputBackendWin32 *backend, fplKeyboardState *outState) {
+	fplAssertPtr(backend);
+	fplAssertPtr(outState);
+	if (!backend->isInitialized) return false;
+	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
+	const fpl__Win32Api *wapi = &appState->winApi;
+	fplClearStruct(outState);
+	outState->modifiers = fpl__Win32GetKeyboardModifiers(wapi);
+	for (uint32_t keyCode = 0; keyCode < 256; ++keyCode) {
+		int k = wapi->user.MapVirtualKeyW(MAPVK_VSC_TO_VK, keyCode);
+		if (k == 0) {
+			k = (int)keyCode;
+		}
+		bool down = fpl__Win32IsKeyDown(wapi, k);
+		fplKey key = fpl__GetMappedKey(&fpl__global__AppState->window, keyCode);
+		outState->keyStatesRaw[keyCode] = down;
+		outState->buttonStatesMapped[(int)key] = down ? fplButtonState_Press : fplButtonState_Release;
+	}
+	return true;
+}
+
+fpl_internal bool fpl__InputBackendWin32_PollMouse(fpl__InputBackendWin32 *backend, fplMouseState *outState) {
+	fplAssertPtr(backend);
+	fplAssertPtr(outState);
+	if (!backend->isInitialized) return false;
+	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
+	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32Api *wapi = &appState->winApi;
+	POINT p;
+	if ((wapi->user.GetCursorPos(&p) == TRUE) && (wapi->user.ScreenToClient(windowState->windowHandle, &p))) {
+		fplClearStruct(outState);
+		outState->x = p.x;
+		outState->y = p.y;
+		bool leftDown = fpl__Win32IsKeyDown(wapi, VK_LBUTTON);
+		bool rightDown = fpl__Win32IsKeyDown(wapi, VK_RBUTTON);
+		bool middleDown = fpl__Win32IsKeyDown(wapi, VK_MBUTTON);
+		bool x1Down = fpl__Win32IsKeyDown(wapi, VK_XBUTTON1);
+		bool x2Down = fpl__Win32IsKeyDown(wapi, VK_XBUTTON2);
+		outState->buttonStates[fplMouseButtonType_Left] = leftDown ? fplButtonState_Press : fplButtonState_Release;
+		outState->buttonStates[fplMouseButtonType_Right] = rightDown ? fplButtonState_Press : fplButtonState_Release;
+		outState->buttonStates[fplMouseButtonType_Middle] = middleDown ? fplButtonState_Press : fplButtonState_Release;
+		outState->buttonStates[fplMouseButtonType_X1] = x1Down ? fplButtonState_Press : fplButtonState_Release;
+		outState->buttonStates[fplMouseButtonType_X2] = x2Down ? fplButtonState_Press : fplButtonState_Release;
+		return true;
+	}
+	return false;
+}
+
+fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin32 *backend, const fpl__NativeInputEvent *ev) {
+	fplAssertPtr(backend);
+	fplAssertPtr(ev);
+	if (!backend->isInitialized) return false;
+	if (ev->kind != fpl__NativeInputEventKind_Win32Msg) return false;
+	if (ev->payload == fpl_null) return false;
+	const MSG *msg = (const MSG *)ev->payload;
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (appState == fpl_null) return false;
+	const fpl__Win32Api *wapi = &appState->win32.winApi;
+	const bool eventsDisabled = appState->currentSettings.input.disabledEvents != 0;
+	switch (msg->message) {
+		case WM_SYSKEYDOWN:
+		case WM_SYSKEYUP:
+		case WM_KEYDOWN:
+		case WM_KEYUP:
+		{
+			if (eventsDisabled) return true;
+			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Keyboard)) return true;
+			uint64_t keyCode = msg->wParam;
+			bool isDown = (msg->lParam & (1 << 31)) == 0;
+			fplButtonState keyState = isDown ? fplButtonState_Press : fplButtonState_Release;
+			fplKeyboardModifierFlags modifiers = fpl__Win32GetKeyboardModifiers(wapi);
+			fpl__HandleKeyboardButtonEvent(&appState->window, GetTickCount(), keyCode, modifiers, keyState, false);
+			return true;
+		}
+
+		case WM_CHAR:
+		case WM_SYSCHAR:
+		case WM_UNICHAR:
+		case WM_DEADCHAR:
+		{
+			if (eventsDisabled) return true;
+			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Keyboard)) return true;
+			if ((msg->message == WM_UNICHAR) && (msg->wParam == UNICODE_NOCHAR)) {
+				return true;
+			}
+			fpl__HandleKeyboardInputEvent(&appState->window, (uint64_t)msg->wParam, (uint32_t)msg->wParam);
+			return true;
+		}
+
+		case WM_LBUTTONDOWN:
+		case WM_LBUTTONUP:
+		case WM_RBUTTONDOWN:
+		case WM_RBUTTONUP:
+		case WM_MBUTTONDOWN:
+		case WM_MBUTTONUP:
+		case WM_XBUTTONDOWN:
+		case WM_XBUTTONUP:
+		{
+			if (eventsDisabled) return true;
+			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Mouse)) return true;
+			fplButtonState buttonState;
+			bool isDown = (msg->message == WM_LBUTTONDOWN || msg->message == WM_RBUTTONDOWN || msg->message == WM_MBUTTONDOWN || msg->message == WM_XBUTTONDOWN);
+			buttonState = isDown ? fplButtonState_Press : fplButtonState_Release;
+			if (buttonState == fplButtonState_Press) {
+				wapi->user.SetCapture(msg->hwnd);
+			} else {
+				wapi->user.ReleaseCapture();
+			}
+			fplMouseButtonType mouseButton;
+			if (msg->message == WM_LBUTTONDOWN || msg->message == WM_LBUTTONUP) {
+				mouseButton = fplMouseButtonType_Left;
+			} else if (msg->message == WM_RBUTTONDOWN || msg->message == WM_RBUTTONUP) {
+				mouseButton = fplMouseButtonType_Right;
+			} else if (msg->message == WM_MBUTTONDOWN || msg->message == WM_MBUTTONUP) {
+				mouseButton = fplMouseButtonType_Middle;
+			} else {
+				WORD which = GET_XBUTTON_WPARAM(msg->wParam);
+				mouseButton = (which == XBUTTON1) ? fplMouseButtonType_X1 : (which == XBUTTON2) ? fplMouseButtonType_X2 : fplMouseButtonType_None;
+			}
+			if (mouseButton != fplMouseButtonType_None) {
+				int32_t mouseX = GET_X_LPARAM(msg->lParam);
+				int32_t mouseY = GET_Y_LPARAM(msg->lParam);
+				fpl__HandleMouseButtonEvent(&appState->window, mouseX, mouseY, mouseButton, buttonState);
+			}
+			return true;
+		}
+
+		case WM_MOUSEMOVE:
+		{
+			if (eventsDisabled) return true;
+			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Mouse)) return true;
+			int32_t mouseX = GET_X_LPARAM(msg->lParam);
+			int32_t mouseY = GET_Y_LPARAM(msg->lParam);
+			fpl__HandleMouseMoveEvent(&appState->window, mouseX, mouseY);
+			return true;
+		}
+
+		case WM_MOUSEWHEEL:
+		{
+			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Mouse)) return true;
+			int32_t mouseX = GET_X_LPARAM(msg->lParam);
+			int32_t mouseY = GET_Y_LPARAM(msg->lParam);
+			short zDelta = GET_WHEEL_DELTA_WPARAM(msg->wParam);
+			float wheelDelta = zDelta / (float)WHEEL_DELTA;
+			fpl__HandleMouseWheelEvent(&appState->window, mouseX, mouseY, wheelDelta);
+			return true;
+		}
+
+		case WM_MOUSEHWHEEL:
+		{
+			// Horizontal wheel is forwarded but not yet surfaced through fpl__HandleMouseWheelEvent.
+			// Step 9 will extend the public mouse-event API with a horizontal axis.
+			return true;
+		}
+
+		default:
+			break;
+	}
+	return false;
+}
+
+#endif // FPL__WIN32_INPUT_KBM_IMPLEMENTED
 
 fpl_internal bool fpl__Win32ThreadWaitForMultiple(fplThreadHandle **threads, const size_t count, const size_t stride, const fplTimeoutValue timeout, const bool waitForAll) {
 	FPL__CheckArgumentNull(threads, false);
@@ -17636,22 +17817,12 @@ fpl_platform_api bool fplSetClipboardText(const char *text) {
 fpl_platform_api bool fplPollKeyboardState(fplKeyboardState *outState) {
 	FPL__CheckArgumentNull(outState, false);
 	FPL__CheckPlatform(false);
-	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	const fpl__Win32Api *wapi = &appState->winApi;
-	fplClearStruct(outState);
-	outState->modifiers = fpl__Win32GetKeyboardModifiers(wapi);
-	for (uint32_t keyCode = 0; keyCode < 256; ++keyCode) {
-		int k = wapi->user.MapVirtualKeyW(MAPVK_VSC_TO_VK, keyCode);
-		if (k == 0) {
-			k = (int)keyCode;
-		}
-		bool down = fpl__Win32IsKeyDown(wapi, k);
-		fplKey key = fpl__GetMappedKey(&fpl__global__AppState->window, keyCode);
-		outState->keyStatesRaw[keyCode] = down;
-		outState->buttonStatesMapped[(int)key] = down ? fplButtonState_Press : fplButtonState_Release;
-	}
-	return(true);
+#	if defined(FPL__ENABLE_INPUT)
+	return fpl__InputSystem_PollKeyboard(&fpl__global__AppState->input, outState);
+#	else
+	(void)outState;
+	return false;
+#	endif
 }
 
 fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
@@ -17698,25 +17869,12 @@ fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY) {
 fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
 	FPL__CheckArgumentNull(outState, false);
 	FPL__CheckPlatform(false);
-	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	const fpl__Win32Api *wapi = &appState->winApi;
-	POINT p;
-	if ((wapi->user.GetCursorPos(&p) == TRUE) && (wapi->user.ScreenToClient(windowState->windowHandle, &p))) {
-		fplClearStruct(outState);
-		outState->x = p.x;
-		outState->y = p.y;
-
-		bool leftDown = fpl__Win32IsKeyDown(wapi, VK_LBUTTON);
-		bool rightDown = fpl__Win32IsKeyDown(wapi, VK_RBUTTON);
-		bool middleDown = fpl__Win32IsKeyDown(wapi, VK_MBUTTON);
-		outState->buttonStates[fplMouseButtonType_Left] = leftDown ? fplButtonState_Press : fplButtonState_Release;
-		outState->buttonStates[fplMouseButtonType_Right] = rightDown ? fplButtonState_Press : fplButtonState_Release;
-		outState->buttonStates[fplMouseButtonType_Middle] = middleDown ? fplButtonState_Press : fplButtonState_Release;
-
-		return(true);
-	}
-	return(false);
+#	if defined(FPL__ENABLE_INPUT)
+	return fpl__InputSystem_PollMouse(&fpl__global__AppState->input, outState);
+#	else
+	(void)outState;
+	return false;
+#	endif
 }
 
 fpl_internal BOOL WINAPI fpl__Win32MonitorCountEnumProc(HMONITOR monitorHandle, HDC hdc, LPRECT rect, LPARAM userData) {
@@ -30742,6 +30900,14 @@ fpl_internal bool fpl__InputSystem_Init(fpl__InputContext *ctx, const fplInitFla
 	}
 #	endif
 
+#	if defined(FPL__ENABLE_INPUT_WIN32)
+	if ((ctx->settings.enabledSources & (fplInputSourceType_Keyboard | fplInputSourceType_Mouse)) != 0 && fplInputBackendMaskIsEnabled(&ctx->settings.enabledBackends, fplInputBackendType_Win32)) {
+		if (fpl__InputBackendWin32_Init(&ctx->win32kbm)) {
+			ctx->backendCount++;
+		}
+	}
+#	endif
+
 	ctx->isInitialized = true;
 	return true;
 }
@@ -30749,6 +30915,9 @@ fpl_internal bool fpl__InputSystem_Init(fpl__InputContext *ctx, const fplInitFla
 fpl_internal void fpl__InputSystem_Release(fpl__InputContext *ctx) {
 	if (ctx == fpl_null) return;
 	if (!ctx->isInitialized) return;
+#	if defined(FPL__ENABLE_INPUT_WIN32)
+	fpl__InputBackendWin32_Release(&ctx->win32kbm);
+#	endif
 #	if defined(FPL__ENABLE_INPUT_XINPUT)
 	fpl__InputBackendXInput_Release(&ctx->xinput);
 #	endif
@@ -30767,9 +30936,17 @@ fpl_internal void fpl__InputSystem_Update(fpl__InputContext *ctx) {
 }
 
 fpl_internal bool fpl__InputSystem_HandleNativeEvent(fpl__InputContext *ctx, const fpl__NativeInputEvent *ev) {
-	(void)ctx;
-	(void)ev;
-	return false;
+	if (ctx == fpl_null || ev == fpl_null) return false;
+	if (!ctx->isInitialized) return false;
+	bool handled = false;
+#	if defined(FPL__ENABLE_INPUT_WIN32)
+	if (ctx->win32kbm.isInitialized) {
+		if (fpl__InputBackendWin32_HandleNativeEvent(&ctx->win32kbm, ev)) {
+			handled = true;
+		}
+	}
+#	endif
+	return handled;
 }
 
 fpl_internal bool fpl__InputSystem_IsEnabled(const fpl__InputContext *ctx, fplInputSourceType source) {
@@ -30780,15 +30957,33 @@ fpl_internal bool fpl__InputSystem_IsEnabled(const fpl__InputContext *ctx, fplIn
 
 #if defined(FPL__ENABLE_WINDOW)
 fpl_internal bool fpl__InputSystem_PollKeyboard(fpl__InputContext *ctx, fplKeyboardState *outState) {
-	(void)ctx;
-	(void)outState;
-	return false;
+	if (ctx == fpl_null || outState == fpl_null) return false;
+	if (!ctx->isInitialized) return false;
+	if ((ctx->settings.enabledSources & fplInputSourceType_Keyboard) == 0) return false;
+	bool any = false;
+#	if defined(FPL__ENABLE_INPUT_WIN32)
+	if (ctx->win32kbm.isInitialized) {
+		if (fpl__InputBackendWin32_PollKeyboard(&ctx->win32kbm, outState)) {
+			any = true;
+		}
+	}
+#	endif
+	return any;
 }
 
 fpl_internal bool fpl__InputSystem_PollMouse(fpl__InputContext *ctx, fplMouseState *outState) {
-	(void)ctx;
-	(void)outState;
-	return false;
+	if (ctx == fpl_null || outState == fpl_null) return false;
+	if (!ctx->isInitialized) return false;
+	if ((ctx->settings.enabledSources & fplInputSourceType_Mouse) == 0) return false;
+	bool any = false;
+#	if defined(FPL__ENABLE_INPUT_WIN32)
+	if (ctx->win32kbm.isInitialized) {
+		if (fpl__InputBackendWin32_PollMouse(&ctx->win32kbm, outState)) {
+			any = true;
+		}
+	}
+#	endif
+	return any;
 }
 
 fpl_internal bool fpl__InputSystem_PollGamepad(fpl__InputContext *ctx, fplGamepadStates *outStates) {
@@ -31244,6 +31439,10 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 		if (fplIsMaskSet(appState->initFlags, fplInitFlags_Keyboard))       requestedSources = (fplInputSourceType)(requestedSources | fplInputSourceType_Keyboard);
 		if (fplIsMaskSet(appState->initFlags, fplInitFlags_Mouse))          requestedSources = (fplInputSourceType)(requestedSources | fplInputSourceType_Mouse);
 		if (fplIsMaskSet(appState->initFlags, fplInitFlags_GameController)) requestedSources = (fplInputSourceType)(requestedSources | fplInputSourceType_Gamepad);
+		// Back-compat: a window implies keyboard + mouse input. Gamepad still requires an explicit flag.
+		if (fplIsMaskSet(appState->initFlags, fplInitFlags_Window)) {
+			requestedSources = (fplInputSourceType)(requestedSources | fplInputSourceType_Keyboard | fplInputSourceType_Mouse);
+		}
 		if (requestedSources != fplInputSourceType_None) {
 			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Input");
 			fplInputSettings inputSettings = appState->initSettings.input;
