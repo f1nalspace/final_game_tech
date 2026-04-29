@@ -11367,6 +11367,18 @@ typedef struct fpl__InputContext {
 	fpl__InputBackendWin32 win32kbm;
 #endif
 } fpl__InputContext;
+
+// Forward declarations for fpl__InputSystem_* — definitions live in the SYSTEM_INIT section.
+fpl_internal bool fpl__InputSystem_Init(fpl__InputContext *ctx, const fplInitFlags initFlags, const fplInputSettings *settings);
+fpl_internal void fpl__InputSystem_Release(fpl__InputContext *ctx);
+fpl_internal void fpl__InputSystem_Update(fpl__InputContext *ctx);
+fpl_internal bool fpl__InputSystem_HandleNativeEvent(fpl__InputContext *ctx, const fpl__NativeInputEvent *ev);
+fpl_internal bool fpl__InputSystem_IsEnabled(const fpl__InputContext *ctx, fplInputSourceType source);
+#if defined(FPL__ENABLE_WINDOW)
+fpl_internal bool fpl__InputSystem_PollKeyboard(fpl__InputContext *ctx, fplKeyboardState *outState);
+fpl_internal bool fpl__InputSystem_PollMouse(fpl__InputContext *ctx, fplMouseState *outState);
+fpl_internal bool fpl__InputSystem_PollGamepad(fpl__InputContext *ctx, fplGamepadStates *outStates);
+#endif // FPL__ENABLE_WINDOW
 #endif // FPL__ENABLE_INPUT
 
 typedef struct fpl__PlatformAppState fpl__PlatformAppState;
