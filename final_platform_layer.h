@@ -2759,7 +2759,7 @@ typedef enum fplX86InstructionSetLevel {
 #	if defined(FPL__SUPPORT_INPUT_WIN32) && defined(FPL__SUPPORT_WINDOW)
 #		define FPL__ENABLE_INPUT_WIN32
 #	endif
-#	if defined(FPL__SUPPORT_INPUT_X11)
+#	if defined(FPL__SUPPORT_INPUT_X11) && defined(FPL__SUPPORT_WINDOW)
 #		define FPL__ENABLE_INPUT_X11
 #	endif
 #	if defined(FPL__SUPPORT_INPUT_LINUX_JOYSTICK)
@@ -10937,6 +10937,15 @@ typedef struct fpl__UnixAppState {
 // ############################################################################
 #if defined(FPL_SUBPLATFORM_X11)
 
+#if defined(FPL__ENABLE_INPUT_X11)
+// X11 keyboard/mouse backend instance owned by fpl__InputContext.
+// Holds no native state of its own: the X11 Display* / Window live in
+// the platform window state, and XEvents arrive via fpl__InputSystem_HandleNativeEvent.
+typedef struct fpl__InputBackendX11Kbm {
+	bool isInitialized;
+} fpl__InputBackendX11Kbm;
+#endif // FPL__ENABLE_INPUT_X11
+
 //
 // X11 Api
 //
@@ -11365,6 +11374,9 @@ typedef struct fpl__InputContext {
 #endif
 #if defined(FPL__ENABLE_INPUT_WIN32)
 	fpl__InputBackendWin32 win32kbm;
+#endif
+#if defined(FPL__ENABLE_INPUT_X11)
+	fpl__InputBackendX11Kbm x11kbm;
 #endif
 } fpl__InputContext;
 
@@ -20737,6 +20749,193 @@ fpl_internal void fpl__X11HandleTextInputEvent(const fpl__X11Api *x11Api, fpl__P
 	}
 }
 
+// ############################################################################
+//
+// > X11_INPUT_KBM (keyboard + mouse backend)
+//
+// ############################################################################
+#if defined(FPL__ENABLE_INPUT_X11)
+fpl_internal bool fpl__InputBackendX11Kbm_Init(fpl__InputBackendX11Kbm *backend) {
+	fplAssertPtr(backend);
+	if (backend->isInitialized) return true;
+	backend->isInitialized = true;
+	return true;
+}
+
+fpl_internal void fpl__InputBackendX11Kbm_Release(fpl__InputBackendX11Kbm *backend) {
+	fplAssertPtr(backend);
+	if (!backend->isInitialized) return;
+	fplClearStruct(backend);
+}
+
+fpl_internal bool fpl__InputBackendX11Kbm_PollKeyboard(fpl__InputBackendX11Kbm *backend, fplKeyboardState *outState) {
+	fplAssertPtr(backend);
+	fplAssertPtr(outState);
+	if (!backend->isInitialized) return false;
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (appState == fpl_null) return false;
+	const fpl__X11Api *x11Api = &appState->x11.api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	if (windowState->display == fpl_null) return false;
+	char keysReturn[32] = fplZeroInit;
+	if (!x11Api->XQueryKeymap(windowState->display, keysReturn)) return false;
+	fplClearStruct(outState);
+	for (uint64_t keyCode = 0; keyCode < 256; ++keyCode) {
+		bool isDown = (keysReturn[keyCode / 8] & (1 << (keyCode % 8))) != 0;
+		outState->keyStatesRaw[keyCode] = isDown ? 1 : 0;
+		fplKey mappedKey = fpl__GetMappedKey(&appState->window, keyCode);
+		if (outState->buttonStatesMapped[(int)mappedKey] == fplButtonState_Release) {
+			outState->buttonStatesMapped[(int)mappedKey] = isDown ? fplButtonState_Press : fplButtonState_Release;
+		}
+	}
+	outState->modifiers = fplKeyboardModifierFlags_None;
+	if (outState->buttonStatesMapped[fplKey_LeftShift] == fplButtonState_Press) outState->modifiers |= fplKeyboardModifierFlags_LShift;
+	if (outState->buttonStatesMapped[fplKey_RightShift] == fplButtonState_Press) outState->modifiers |= fplKeyboardModifierFlags_RShift;
+	if (outState->buttonStatesMapped[fplKey_LeftControl] == fplButtonState_Press) outState->modifiers |= fplKeyboardModifierFlags_LCtrl;
+	if (outState->buttonStatesMapped[fplKey_RightControl] == fplButtonState_Press) outState->modifiers |= fplKeyboardModifierFlags_RCtrl;
+	if (outState->buttonStatesMapped[fplKey_LeftAlt] == fplButtonState_Press) outState->modifiers |= fplKeyboardModifierFlags_LAlt;
+	if (outState->buttonStatesMapped[fplKey_RightAlt] == fplButtonState_Press) outState->modifiers |= fplKeyboardModifierFlags_RAlt;
+	if (outState->buttonStatesMapped[fplKey_LeftSuper] == fplButtonState_Press) outState->modifiers |= fplKeyboardModifierFlags_LSuper;
+	if (outState->buttonStatesMapped[fplKey_RightSuper] == fplButtonState_Press) outState->modifiers |= fplKeyboardModifierFlags_RSuper;
+	return true;
+}
+
+fpl_internal bool fpl__InputBackendX11Kbm_PollMouse(fpl__InputBackendX11Kbm *backend, fplMouseState *outState) {
+	fplAssertPtr(backend);
+	fplAssertPtr(outState);
+	if (!backend->isInitialized) return false;
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (appState == fpl_null) return false;
+	const fpl__X11Api *x11Api = &appState->x11.api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	if (windowState->display == fpl_null) return false;
+	Window root, child;
+	int rootx, rooty, winx, winy;
+	unsigned int mask;
+	if (!x11Api->XQueryPointer(windowState->display, windowState->window, &root, &child, &rootx, &rooty, &winx, &winy, &mask)) return false;
+	fplClearStruct(outState);
+	outState->x = winx;
+	outState->y = winy;
+	outState->buttonStates[fplMouseButtonType_Left] = fplIsMaskSet(mask, Button1Mask) ? fplButtonState_Press : fplButtonState_Release;
+	outState->buttonStates[fplMouseButtonType_Right] = fplIsMaskSet(mask, Button3Mask) ? fplButtonState_Press : fplButtonState_Release;
+	outState->buttonStates[fplMouseButtonType_Middle] = fplIsMaskSet(mask, Button2Mask) ? fplButtonState_Press : fplButtonState_Release;
+	return true;
+}
+
+fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11Kbm *backend, const fpl__NativeInputEvent *nev) {
+	fplAssertPtr(backend);
+	fplAssertPtr(nev);
+	if (!backend->isInitialized) return false;
+	if (nev->kind != fpl__NativeInputEventKind_X11Event) return false;
+	if (nev->payload == fpl_null) return false;
+	XEvent *ev = (XEvent *)nev->payload;
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (appState == fpl_null) return false;
+	fpl__PlatformWindowState *winState = &appState->window;
+	fpl__X11WindowState *x11WinState = &winState->x11;
+	const fpl__X11Api *x11Api = &appState->x11.api;
+	const bool eventsDisabled = appState->currentSettings.input.disabledEvents != 0;
+
+	switch (ev->type) {
+		case KeyPress:
+		{
+			if (eventsDisabled) return true;
+			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Keyboard)) return true;
+			int keyState = ev->xkey.state;
+			uint64_t keyCode = (uint64_t)ev->xkey.keycode;
+			Time keyTime = ev->xkey.time;
+			Time lastPressTime = winState->keyPressTimes[keyCode];
+			Time diffTime = keyTime - lastPressTime;
+			FPL_LOG_INFO("X11", "Diff for key '%llu', time: %lu, diff: %lu, last: %lu", keyCode, keyTime, diffTime, lastPressTime);
+			if (diffTime == keyTime || (diffTime > 0 && diffTime < (1 << 31))) {
+				if (keyCode) {
+					fpl__HandleKeyboardButtonEvent(winState, (uint64_t)keyTime, keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Press, false);
+					fpl__X11HandleTextInputEvent(x11Api, winState, keyCode, ev);
+				}
+				winState->keyPressTimes[keyCode] = keyTime;
+			}
+			return true;
+		}
+
+		case KeyRelease:
+		{
+			if (eventsDisabled) return true;
+			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Keyboard)) return true;
+			bool isRepeat = false;
+			if (x11Api->XEventsQueued(x11WinState->display, QueuedAfterReading)) {
+				XEvent nextEvent;
+				x11Api->XPeekEvent(x11WinState->display, &nextEvent);
+				if ((nextEvent.type == KeyPress) && (nextEvent.xkey.time == ev->xkey.time) && (nextEvent.xkey.keycode == ev->xkey.keycode)) {
+					// Delete the peeked event, which is a key-repeat
+					x11Api->XNextEvent(x11WinState->display, ev);
+					isRepeat = true;
+				}
+			}
+			int keyState = ev->xkey.state;
+			uint64_t keyCode = (uint64_t)ev->xkey.keycode;
+			if (isRepeat) {
+				fpl__X11HandleTextInputEvent(x11Api, winState, keyCode, ev);
+				fpl__HandleKeyboardButtonEvent(winState, (uint64_t)ev->xkey.time, (uint64_t)keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Repeat, false);
+			} else {
+				fpl__HandleKeyboardButtonEvent(winState, (uint64_t)ev->xkey.time, (uint64_t)keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Release, true);
+			}
+			return true;
+		}
+
+		case ButtonPress:
+		{
+			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Mouse)) return true;
+			int x = ev->xbutton.x;
+			int y = ev->xbutton.y;
+			if (!eventsDisabled) {
+				if (ev->xbutton.button == Button1) {
+					fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Left, fplButtonState_Press);
+				} else if (ev->xbutton.button == Button2) {
+					fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Middle, fplButtonState_Press);
+				} else if (ev->xbutton.button == Button3) {
+					fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Right, fplButtonState_Press);
+				}
+			}
+			// Wheel is unconditional (matches the previous Win32 + X11 behavior).
+			if (ev->xbutton.button == Button4) {
+				fpl__HandleMouseWheelEvent(winState, x, y, 1.0f);
+			} else if (ev->xbutton.button == Button5) {
+				fpl__HandleMouseWheelEvent(winState, x, y, -1.0f);
+			}
+			return true;
+		}
+
+		case ButtonRelease:
+		{
+			if (eventsDisabled) return true;
+			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Mouse)) return true;
+			int x = ev->xbutton.x;
+			int y = ev->xbutton.y;
+			if (ev->xbutton.button == Button1) {
+				fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Left, fplButtonState_Release);
+			} else if (ev->xbutton.button == Button2) {
+				fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Middle, fplButtonState_Release);
+			} else if (ev->xbutton.button == Button3) {
+				fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Right, fplButtonState_Release);
+			}
+			return true;
+		}
+
+		case MotionNotify:
+		{
+			if (eventsDisabled) return true;
+			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Mouse)) return true;
+			fpl__HandleMouseMoveEvent(winState, ev->xmotion.x, ev->xmotion.y);
+			return true;
+		}
+
+		default:
+			break;
+	}
+	return false;
+}
+#endif // FPL__ENABLE_INPUT_X11
+
 fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatform, fpl__PlatformAppState *appState, XEvent *ev) {
 	fplAssert((subplatform != fpl_null) && (appState != fpl_null) && (ev != fpl_null));
 	fpl__PlatformWindowState *winState = &appState->window;
@@ -20913,98 +21112,17 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 		} break;
 
 		case KeyPress:
-		{
-			// Keyboard button down
-			if (!appState->currentSettings.input.disabledEvents) {
-				int keyState = ev->xkey.state;
-				uint64_t keyCode = (uint64_t)ev->xkey.keycode;
-				Time keyTime = ev->xkey.time;
-				Time lastPressTime = winState->keyPressTimes[keyCode];
-				Time diffTime = keyTime - lastPressTime;
-				FPL_LOG_INFO("X11", "Diff for key '%llu', time: %lu, diff: %lu, last: %lu", keyCode, keyTime, diffTime, lastPressTime);
-				if (diffTime == keyTime || (diffTime > 0 && diffTime < (1 << 31))) {
-					if (keyCode) {
-						fpl__HandleKeyboardButtonEvent(winState, (uint64_t)keyTime, keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Press, false);
-						fpl__X11HandleTextInputEvent(x11Api, winState, keyCode, ev);
-					}
-					winState->keyPressTimes[keyCode] = keyTime;
-				}
-			}
-		} break;
-
 		case KeyRelease:
-		{
-			// Keyboard button up
-			if (!appState->currentSettings.input.disabledEvents) {
-				bool isRepeat = false;
-				if (x11Api->XEventsQueued(x11WinState->display, QueuedAfterReading)) {
-					XEvent nextEvent;
-					x11Api->XPeekEvent(x11WinState->display, &nextEvent);
-					if ((nextEvent.type == KeyPress) && (nextEvent.xkey.time == ev->xkey.time) && (nextEvent.xkey.keycode == ev->xkey.keycode)) {
-						// Delete the peeked event, which is a key-repeat
-						x11Api->XNextEvent(x11WinState->display, ev);
-						isRepeat = true;
-					}
-				}
-
-				int keyState = ev->xkey.state;
-				uint64_t keyCode = (uint64_t)ev->xkey.keycode;
-
-				if (isRepeat) {
-					fpl__X11HandleTextInputEvent(x11Api, winState, keyCode, ev);
-					fpl__HandleKeyboardButtonEvent(winState, (uint64_t)ev->xkey.time, (uint64_t)keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Repeat, false);
-				} else {
-					fpl__HandleKeyboardButtonEvent(winState, (uint64_t)ev->xkey.time, (uint64_t)keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Release, true);
-				}
-			}
-		} break;
-
 		case ButtonPress:
-		{
-			int x = ev->xbutton.x;
-			int y = ev->xbutton.y;
-
-			if (!appState->currentSettings.input.disabledEvents) {
-				// Mouse button
-				if (ev->xbutton.button == Button1) {
-					fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Left, fplButtonState_Press);
-				} else if (ev->xbutton.button == Button2) {
-					fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Middle, fplButtonState_Press);
-				} else if (ev->xbutton.button == Button3) {
-					fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Right, fplButtonState_Press);
-				}
-			}
-
-			// Mouse wheel
-			if (ev->xbutton.button == Button4) {
-				fpl__HandleMouseWheelEvent(winState, x, y, 1.0f);
-			} else if (ev->xbutton.button == Button5) {
-				fpl__HandleMouseWheelEvent(winState, x, y, -1.0f);
-			}
-		} break;
-
 		case ButtonRelease:
-		{
-			// Mouse up
-			if (!appState->currentSettings.input.disabledEvents) {
-				int x = ev->xbutton.x;
-				int y = ev->xbutton.y;
-				if (ev->xbutton.button == Button1) {
-					fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Left, fplButtonState_Release);
-				} else if (ev->xbutton.button == Button2) {
-					fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Middle, fplButtonState_Release);
-				} else if (ev->xbutton.button == Button3) {
-					fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Right, fplButtonState_Release);
-				}
-			}
-		} break;
-
 		case MotionNotify:
 		{
-			// Mouse move
-			if (!appState->currentSettings.input.disabledEvents) {
-				fpl__HandleMouseMoveEvent(winState, ev->xmotion.x, ev->xmotion.y);
-			}
+#if defined(FPL__ENABLE_INPUT)
+			fpl__NativeInputEvent nev = fplZeroInit;
+			nev.kind = fpl__NativeInputEventKind_X11Event;
+			nev.payload = (void *)ev;
+			fpl__InputSystem_HandleNativeEvent(&appState->input, &nev);
+#endif
 		} break;
 
 		case Expose:
@@ -21415,76 +21533,25 @@ fpl_platform_api bool fplSetClipboardText(const char *text) {
 }
 
 fpl_platform_api bool fplPollKeyboardState(fplKeyboardState *outState) {
-	FPL__CheckPlatform(false);
 	FPL__CheckArgumentNull(outState, false);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__X11SubplatformState *subplatform = &appState->x11;
-	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
-	bool result = false;
-	char keysReturn[32] = fplZeroInit;
-	if (x11Api->XQueryKeymap(windowState->display, keysReturn)) {
-		fplClearStruct(outState);
-		for (uint64_t keyCode = 0; keyCode < 256; ++keyCode) {
-			bool isDown = (keysReturn[keyCode / 8] & (1 << (keyCode % 8))) != 0;
-			outState->keyStatesRaw[keyCode] = isDown ? 1 : 0;
-			fplKey mappedKey = fpl__GetMappedKey(&appState->window, keyCode);
-			if (outState->buttonStatesMapped[(int)mappedKey] == fplButtonState_Release) {
-				outState->buttonStatesMapped[(int)mappedKey] = isDown ? fplButtonState_Press : fplButtonState_Release;
-			}
-		}
-		outState->modifiers = fplKeyboardModifierFlags_None;
-		if (outState->buttonStatesMapped[fplKey_LeftShift] == fplButtonState_Press) {
-			outState->modifiers |= fplKeyboardModifierFlags_LShift;
-		}
-		if (outState->buttonStatesMapped[fplKey_RightShift] == fplButtonState_Press) {
-			outState->modifiers |= fplKeyboardModifierFlags_RShift;
-		}
-		if (outState->buttonStatesMapped[fplKey_LeftControl] == fplButtonState_Press) {
-			outState->modifiers |= fplKeyboardModifierFlags_LCtrl;
-		}
-		if (outState->buttonStatesMapped[fplKey_RightControl] == fplButtonState_Press) {
-			outState->modifiers |= fplKeyboardModifierFlags_RCtrl;
-		}
-		if (outState->buttonStatesMapped[fplKey_LeftAlt] == fplButtonState_Press) {
-			outState->modifiers |= fplKeyboardModifierFlags_LAlt;
-		}
-		if (outState->buttonStatesMapped[fplKey_RightAlt] == fplButtonState_Press) {
-			outState->modifiers |= fplKeyboardModifierFlags_RAlt;
-		}
-		if (outState->buttonStatesMapped[fplKey_LeftSuper] == fplButtonState_Press) {
-			outState->modifiers |= fplKeyboardModifierFlags_LSuper;
-		}
-		if (outState->buttonStatesMapped[fplKey_RightSuper] == fplButtonState_Press) {
-			outState->modifiers |= fplKeyboardModifierFlags_RSuper;
-		}
-		// @FINISH(fina/X11): Get caps states (Capslock, Numlock, Scrolllock)
-
-		result = true;
-	}
-	return(result);
+	FPL__CheckPlatform(false);
+#	if defined(FPL__ENABLE_INPUT)
+	return fpl__InputSystem_PollKeyboard(&fpl__global__AppState->input, outState);
+#	else
+	(void)outState;
+	return false;
+#	endif
 }
 
 fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
-	FPL__CheckPlatform(false);
 	FPL__CheckArgumentNull(outState, false);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__X11SubplatformState *subplatform = &appState->x11;
-	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
-	bool result = false;
-	Window root, child;
-	int rootx, rooty, winx, winy;
-	unsigned int mask;
-	if (x11Api->XQueryPointer(windowState->display, windowState->window, &root, &child, &rootx, &rooty, &winx, &winy, &mask)) {
-		outState->x = winx;
-		outState->y = winy;
-		outState->buttonStates[fplMouseButtonType_Left] = fplIsMaskSet(mask, Button1Mask) ? fplButtonState_Press : fplButtonState_Release;
-		outState->buttonStates[fplMouseButtonType_Right] = fplIsMaskSet(mask, Button3Mask) ? fplButtonState_Press : fplButtonState_Release;
-		outState->buttonStates[fplMouseButtonType_Middle] = fplIsMaskSet(mask, Button2Mask) ? fplButtonState_Press : fplButtonState_Release;
-		result = true;
-	}
-	return(result);
+	FPL__CheckPlatform(false);
+#	if defined(FPL__ENABLE_INPUT)
+	return fpl__InputSystem_PollMouse(&fpl__global__AppState->input, outState);
+#	else
+	(void)outState;
+	return false;
+#	endif
 }
 
 fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY) {
@@ -30920,6 +30987,14 @@ fpl_internal bool fpl__InputSystem_Init(fpl__InputContext *ctx, const fplInitFla
 	}
 #	endif
 
+#	if defined(FPL__ENABLE_INPUT_X11)
+	if ((ctx->settings.enabledSources & (fplInputSourceType_Keyboard | fplInputSourceType_Mouse)) != 0 && fplInputBackendMaskIsEnabled(&ctx->settings.enabledBackends, fplInputBackendType_X11Kbm)) {
+		if (fpl__InputBackendX11Kbm_Init(&ctx->x11kbm)) {
+			ctx->backendCount++;
+		}
+	}
+#	endif
+
 	ctx->isInitialized = true;
 	return true;
 }
@@ -30927,6 +31002,9 @@ fpl_internal bool fpl__InputSystem_Init(fpl__InputContext *ctx, const fplInitFla
 fpl_internal void fpl__InputSystem_Release(fpl__InputContext *ctx) {
 	if (ctx == fpl_null) return;
 	if (!ctx->isInitialized) return;
+#	if defined(FPL__ENABLE_INPUT_X11)
+	fpl__InputBackendX11Kbm_Release(&ctx->x11kbm);
+#	endif
 #	if defined(FPL__ENABLE_INPUT_WIN32)
 	fpl__InputBackendWin32_Release(&ctx->win32kbm);
 #	endif
@@ -30958,6 +31036,13 @@ fpl_internal bool fpl__InputSystem_HandleNativeEvent(fpl__InputContext *ctx, con
 		}
 	}
 #	endif
+#	if defined(FPL__ENABLE_INPUT_X11)
+	if (ctx->x11kbm.isInitialized) {
+		if (fpl__InputBackendX11Kbm_HandleNativeEvent(&ctx->x11kbm, ev)) {
+			handled = true;
+		}
+	}
+#	endif
 	return handled;
 }
 
@@ -30980,6 +31065,13 @@ fpl_internal bool fpl__InputSystem_PollKeyboard(fpl__InputContext *ctx, fplKeybo
 		}
 	}
 #	endif
+#	if defined(FPL__ENABLE_INPUT_X11)
+	if (ctx->x11kbm.isInitialized) {
+		if (fpl__InputBackendX11Kbm_PollKeyboard(&ctx->x11kbm, outState)) {
+			any = true;
+		}
+	}
+#	endif
 	return any;
 }
 
@@ -30991,6 +31083,13 @@ fpl_internal bool fpl__InputSystem_PollMouse(fpl__InputContext *ctx, fplMouseSta
 #	if defined(FPL__ENABLE_INPUT_WIN32)
 	if (ctx->win32kbm.isInitialized) {
 		if (fpl__InputBackendWin32_PollMouse(&ctx->win32kbm, outState)) {
+			any = true;
+		}
+	}
+#	endif
+#	if defined(FPL__ENABLE_INPUT_X11)
+	if (ctx->x11kbm.isInitialized) {
+		if (fpl__InputBackendX11Kbm_PollMouse(&ctx->x11kbm, outState)) {
 			any = true;
 		}
 	}
