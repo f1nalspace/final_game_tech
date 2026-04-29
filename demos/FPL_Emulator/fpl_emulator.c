@@ -4089,7 +4089,7 @@ static EmulatorParameters ParseEmulatorParameters(const int argc, char **argv) {
 					} else if (c == '-' && CharIsAlpha(arg[2])) {
 						// Long key argument
 						const char *key = arg + 2;
-						if (strcasecmp("trace", key) == 0) {
+						if (StringCompareIgnoreCase("trace", key)) {
 							result.isTraceEnabled = true;
 						} else {
 							// Not supported argument
