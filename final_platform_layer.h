@@ -10885,10 +10885,12 @@ typedef struct fpl__LinuxInitState {
 
 #if defined(FPL__ENABLE_INPUT_LINUX_JOYSTICK)
 #define FPL__LINUX_MAX_GAME_CONTROLLER_COUNT 4
+#define FPL__LINUX_JOYSTICK_SCAN_COUNT 32
 typedef struct fpl__LinuxGameController {
 	char deviceName[512 + 1];
 	char displayName[FPL_MAX_NAME_LENGTH];
 	int fd;
+	int slotIndex;
 	uint8_t axisCount;
 	uint8_t buttonCount;
 	fplGamepadState state;
@@ -10897,6 +10899,7 @@ typedef struct fpl__LinuxGameController {
 // Linux /dev/input/jsX backend instance owned by fpl__InputContext.
 typedef struct fpl__InputBackendLinuxJoystick {
 	fpl__LinuxGameController controllers[FPL__LINUX_MAX_GAME_CONTROLLER_COUNT];
+	bool triedSlot[FPL__LINUX_JOYSTICK_SCAN_COUNT];
 	uint64_t lastCheckTime;
 	bool isInitialized;
 } fpl__InputBackendLinuxJoystick;
@@ -21696,129 +21699,141 @@ fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_e
 	}
 }
 
-fpl_internal void fpl__LinuxJoystick_PollImpl(const fplSettings *settings, fpl__InputBackendLinuxJoystick *backend, const bool useEvents) {
+// Detect new joysticks across /dev/input/js0 .. js{FPL__LINUX_JOYSTICK_SCAN_COUNT-1}.
+// Throttled by gameControllers.detectionFrequency. Called only from Update.
+fpl_internal void fpl__LinuxJoystick_DetectControllers(const fplSettings *settings, fpl__InputBackendLinuxJoystick *backend) {
 	// https://github.com/underdoeg/ofxGamepad
 	// https://github.com/elanthis/gamepad
 	// https://gist.github.com/jasonwhite/c5b2048c15993d285130
 	// https://github.com/Tasssadar/libenjoy/blob/master/src/libenjoy_linux.c
+	const uint64_t now = fplMillisecondsQuery();
+	if (backend->lastCheckTime != 0 && (now - backend->lastCheckTime) < settings->input.gameControllers.detectionFrequency) {
+		return;
+	}
+	backend->lastCheckTime = now;
 
-    if (((backend->lastCheckTime == 0) || ((fplMillisecondsQuery() - backend->lastCheckTime) >= settings->input.gameControllers.detectionFrequency)) || !useEvents) {
-		backend->lastCheckTime = fplMillisecondsQuery();
+	for (int slotIndex = 0; slotIndex < FPL__LINUX_JOYSTICK_SCAN_COUNT; ++slotIndex) {
+		char deviceName[64];
+		fplStringFormat(deviceName, fplArrayCount(deviceName), "/dev/input/js%d", slotIndex);
 
-		//
-		// Detect new controllers
-		//
-		const char *deviceNames[] = {
-			"/dev/input/js0",
-		};
-		for (int deviceNameIndex = 0; deviceNameIndex < fplArrayCount(deviceNames); ++deviceNameIndex) {
-			const char *deviceName = deviceNames[deviceNameIndex];
-			bool alreadyFound = false;
-			int freeIndex = -1;
-			for (uint32_t controllerIndex = 0; controllerIndex < fplArrayCount(backend->controllers); ++controllerIndex) {
-				fpl__LinuxGameController *controller = backend->controllers + controllerIndex;
-				if ((controller->fd > 0) && fplIsStringEqual(deviceName, controller->deviceName)) {
-					alreadyFound = true;
-					break;
-				}
-				if (controller->fd == 0) {
-					if (freeIndex == -1) {
-						freeIndex = controllerIndex;
-					}
-				}
+		// Skip if this slot is already mapped to a live controller
+		bool alreadyFound = false;
+		int freeIndex = -1;
+		for (uint32_t controllerIndex = 0; controllerIndex < fplArrayCount(backend->controllers); ++controllerIndex) {
+			fpl__LinuxGameController *controller = backend->controllers + controllerIndex;
+			if (controller->fd > 0 && controller->slotIndex == slotIndex) {
+				alreadyFound = true;
+				break;
 			}
-			if (!alreadyFound && freeIndex >= 0) {
-				int fd = open(deviceName, O_RDONLY);
-				if (fd < 0) {
-					FPL_LOG_ERROR(FPL__MODULE_LINUX, "Failed opening joystick device '%s'", deviceName);
-					continue;
-				}
-				uint8_t numAxis = 0;
-				uint8_t numButtons = 0;
-				ioctl(fd, JSIOCGAXES, &numAxis);
-				ioctl(fd, JSIOCGBUTTONS, &numButtons);
-				if (numAxis == 0 || numButtons == 0) {
-					FPL_LOG_ERROR(FPL__MODULE_LINUX, "Joystick device '%s' does not have enough buttons/axis to map to a XInput controller!", deviceName);
-					close(fd);
-					continue;
-				}
-
-				// @NOTE(final): We do not want to detect devices which are not proper joysticks, such as gaming keyboards
-				struct js_event msg;
-				if ((read(fd, &msg, sizeof(struct js_event)) != sizeof(struct js_event)) || !((msg.type == JS_EVENT_INIT) || (msg.type == JS_EVENT_AXIS) || (msg.type == JS_EVENT_BUTTON))) {
-					// No joystick message
-					close(fd);
-					continue;
-				}
-
-				fpl__LinuxGameController *controller = backend->controllers + freeIndex;
-				fplClearStruct(controller);
-				controller->fd = fd;
-				controller->axisCount = numAxis;
-				controller->buttonCount = numButtons;
-				fplCopyString(deviceName, controller->deviceName, fplArrayCount(controller->deviceName));
-				ioctl(fd, JSIOCGNAME(fplArrayCount(controller->displayName)), controller->displayName);
-				fcntl(fd, F_SETFL, O_NONBLOCK);
-
-				if (useEvents) {
-					// Push connected event
-					fplEvent ev = fplZeroInit;
-					ev.type = fplEventType_Gamepad;
-					ev.gamepad.type = fplGamepadEventType_Connected;
-					ev.gamepad.deviceIndex = (uint32_t)freeIndex;
-					ev.gamepad.deviceName = controller->deviceName;
-					fpl__PushInternalEvent(&ev);
-				}
+			if (controller->fd == 0 && freeIndex == -1) {
+				freeIndex = controllerIndex;
 			}
 		}
-	}
+		if (alreadyFound) continue;
+		if (freeIndex < 0) break; // All controller slots full
 
-	// Update controller states
+		errno = 0;
+		int fd = open(deviceName, O_RDONLY);
+		if (fd < 0) {
+			// Silent on missing nodes — udev will replace the polling fallback in step 11.
+			if (errno == ENOENT) continue;
+			if (!backend->triedSlot[slotIndex]) {
+				FPL_LOG_DEBUG(FPL__MODULE_LINUX, "Failed opening joystick device '%s' (errno=%d)", deviceName, errno);
+				backend->triedSlot[slotIndex] = true;
+			}
+			continue;
+		}
+		uint8_t numAxis = 0;
+		uint8_t numButtons = 0;
+		ioctl(fd, JSIOCGAXES, &numAxis);
+		ioctl(fd, JSIOCGBUTTONS, &numButtons);
+		if (numAxis == 0 || numButtons == 0) {
+			// Virtual node (motion sensor, gaming keyboard, etc.)
+			if (!backend->triedSlot[slotIndex]) {
+				FPL_LOG_DEBUG(FPL__MODULE_LINUX, "Joystick device '%s' does not have enough buttons/axis to map to a XInput controller!", deviceName);
+				backend->triedSlot[slotIndex] = true;
+			}
+			close(fd);
+			continue;
+		}
+
+		// @NOTE(final): We do not want to detect devices which are not proper joysticks, such as gaming keyboards
+		struct js_event msg;
+		if ((read(fd, &msg, sizeof(struct js_event)) != sizeof(struct js_event)) || !((msg.type == JS_EVENT_INIT) || (msg.type == JS_EVENT_AXIS) || (msg.type == JS_EVENT_BUTTON))) {
+			if (!backend->triedSlot[slotIndex]) {
+				FPL_LOG_DEBUG(FPL__MODULE_LINUX, "Joystick device '%s' did not produce an init message", deviceName);
+				backend->triedSlot[slotIndex] = true;
+			}
+			close(fd);
+			continue;
+		}
+
+		fpl__LinuxGameController *controller = backend->controllers + freeIndex;
+		fplClearStruct(controller);
+		controller->fd = fd;
+		controller->slotIndex = slotIndex;
+		controller->axisCount = numAxis;
+		controller->buttonCount = numButtons;
+		fplCopyString(deviceName, controller->deviceName, fplArrayCount(controller->deviceName));
+		ioctl(fd, JSIOCGNAME(fplArrayCount(controller->displayName)), controller->displayName);
+		fcntl(fd, F_SETFL, O_NONBLOCK);
+
+		fplEvent ev = fplZeroInit;
+		ev.type = fplEventType_Gamepad;
+		ev.gamepad.type = fplGamepadEventType_Connected;
+		ev.gamepad.deviceIndex = (uint32_t)freeIndex;
+		ev.gamepad.deviceName = controller->deviceName;
+		fpl__PushInternalEvent(&ev);
+	}
+}
+
+// Drain pending joystick events from open fds and refresh cached state.
+// useEvents=true pushes Disconnected/StateChanged events; false skips them.
+fpl_internal void fpl__LinuxJoystick_UpdateStates(fpl__InputBackendLinuxJoystick *backend, const bool useEvents) {
 	for (uint32_t controllerIndex = 0; controllerIndex < fplArrayCount(backend->controllers); ++controllerIndex) {
 		fpl__LinuxGameController *controller = backend->controllers + controllerIndex;
-		if (controller->fd > 0) {
-			// Update button/axis state
-			struct js_event event;
-			bool wasDisconnected = false;
-			for (;;) {
-				errno = 0;
-				if (read(controller->fd, &event, sizeof(event)) < 0) {
-					if (errno == ENODEV) {
-						close(controller->fd);
-						controller->fd = 0;
-						fplClearStruct(&controller->state);
-						wasDisconnected = true;
-						if (useEvents) {
-							// Push disconnected event
-							fplEvent ev = fplZeroInit;
-							ev.type = fplEventType_Gamepad;
-							ev.gamepad.type = fplGamepadEventType_Disconnected;
-							ev.gamepad.deviceIndex = controllerIndex;
-							ev.gamepad.deviceName = controller->deviceName;
-							fpl__PushInternalEvent(&ev);
-						}
+		if (controller->fd <= 0) continue;
+
+		struct js_event event;
+		bool wasDisconnected = false;
+		for (;;) {
+			errno = 0;
+			if (read(controller->fd, &event, sizeof(event)) < 0) {
+				if (errno == ENODEV) {
+					int slotIndex = controller->slotIndex;
+					close(controller->fd);
+					controller->fd = 0;
+					fplClearStruct(&controller->state);
+					wasDisconnected = true;
+					if (slotIndex >= 0 && slotIndex < FPL__LINUX_JOYSTICK_SCAN_COUNT) {
+						backend->triedSlot[slotIndex] = false;
 					}
-					break;
+					if (useEvents) {
+						fplEvent ev = fplZeroInit;
+						ev.type = fplEventType_Gamepad;
+						ev.gamepad.type = fplGamepadEventType_Disconnected;
+						ev.gamepad.deviceIndex = controllerIndex;
+						ev.gamepad.deviceName = controller->deviceName;
+						fpl__PushInternalEvent(&ev);
+					}
 				}
-				fpl__LinuxPushGameControllerStateUpdateEvent(&event, controller);
+				break;
 			}
+			fpl__LinuxPushGameControllerStateUpdateEvent(&event, controller);
+		}
 
-			controller->state.isActive = !fpl__IsZeroMemory(&controller->state, sizeof(fplGamepadState));
-			controller->state.isConnected = !wasDisconnected;
-			controller->state.deviceName = controller->deviceName;
+		controller->state.isActive = !fpl__IsZeroMemory(&controller->state, sizeof(fplGamepadState));
+		controller->state.isConnected = !wasDisconnected;
+		controller->state.deviceName = controller->deviceName;
 
-			if (controller->fd > 0) {
-				if (useEvents) {
-					// Push state event
-					fplEvent ev = fplZeroInit;
-					ev.type = fplEventType_Gamepad;
-					ev.gamepad.type = fplGamepadEventType_StateChanged;
-					ev.gamepad.deviceIndex = controllerIndex;
-					ev.gamepad.deviceName = controller->deviceName;
-					ev.gamepad.state = controller->state;
-					fpl__PushInternalEvent(&ev);
-				}
-			}
+		if (controller->fd > 0 && useEvents) {
+			fplEvent ev = fplZeroInit;
+			ev.type = fplEventType_Gamepad;
+			ev.gamepad.type = fplGamepadEventType_StateChanged;
+			ev.gamepad.deviceIndex = controllerIndex;
+			ev.gamepad.deviceName = controller->deviceName;
+			ev.gamepad.state = controller->state;
+			fpl__PushInternalEvent(&ev);
 		}
 	}
 }
@@ -21827,6 +21842,9 @@ fpl_internal void fpl__LinuxJoystick_PollImpl(const fplSettings *settings, fpl__
 fpl_internal bool fpl__InputBackendLinuxJoystick_Init(fpl__InputBackendLinuxJoystick *backend) {
 	fplAssertPtr(backend);
 	if (backend->isInitialized) return true;
+	for (int i = 0; i < fplArrayCount(backend->controllers); ++i) {
+		backend->controllers[i].slotIndex = -1;
+	}
 	backend->isInitialized = true;
 	return true;
 }
@@ -21848,15 +21866,16 @@ fpl_internal void fpl__InputBackendLinuxJoystick_Update(fpl__InputBackendLinuxJo
 	fplAssertPtr(backend);
 	fplAssertPtr(settings);
 	if (!backend->isInitialized) return;
-	fpl__LinuxJoystick_PollImpl(settings, backend, true);
+	fpl__LinuxJoystick_DetectControllers(settings, backend);
+	fpl__LinuxJoystick_UpdateStates(backend, true);
 }
 
-fpl_internal bool fpl__InputBackendLinuxJoystick_PollGamepad(fpl__InputBackendLinuxJoystick *backend, const fplSettings *settings, fplGamepadStates *outStates) {
+fpl_internal bool fpl__InputBackendLinuxJoystick_PollGamepad(fpl__InputBackendLinuxJoystick *backend, fplGamepadStates *outStates) {
 	fplAssertPtr(backend);
-	fplAssertPtr(settings);
 	fplAssertPtr(outStates);
 	if (!backend->isInitialized) return false;
-	fpl__LinuxJoystick_PollImpl(settings, backend, false);
+	// Mirror XInput PollGamepad: read cached state only, do not run detection.
+	fpl__LinuxJoystick_UpdateStates(backend, false);
 	fplAssert(fplArrayCount(backend->controllers) == fplArrayCount(outStates->deviceStates));
 	for (int i = 0; i < fplArrayCount(backend->controllers); ++i) {
 		outStates->deviceStates[i] = backend->controllers[i].state;
@@ -31141,11 +31160,8 @@ fpl_internal bool fpl__InputSystem_PollGamepad(fpl__InputContext *ctx, fplGamepa
 #	endif
 #	if defined(FPL__ENABLE_INPUT_LINUX_JOYSTICK)
 	if (ctx->linuxJoystick.isInitialized) {
-		fpl__PlatformAppState *appState = fpl__global__AppState;
-		if (appState != fpl_null) {
-			if (fpl__InputBackendLinuxJoystick_PollGamepad(&ctx->linuxJoystick, &appState->currentSettings, outStates)) {
-				any = true;
-			}
+		if (fpl__InputBackendLinuxJoystick_PollGamepad(&ctx->linuxJoystick, outStates)) {
+			any = true;
 		}
 	}
 #	endif
