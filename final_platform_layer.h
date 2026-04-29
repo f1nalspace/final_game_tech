@@ -5697,31 +5697,21 @@ typedef struct fplInputBackendMask {
 * @param[in] mask Reference to the mask to query.
 * @param[in] type The backend type to test.
 */
-fpl_inline bool fplInputBackendMaskIsEnabled(const fplInputBackendMask *mask, fplInputBackendType type) {
-	if (mask == fpl_null) return false;
-	if ((int)type < 0 || (int)type >= 32) return false;
-	return (mask->bits & (uint32_t)(1u << (uint32_t)type)) != 0u;
-}
+fpl_common_api bool fplInputBackendMaskIsEnabled(const fplInputBackendMask *mask, const fplInputBackendType type);
+
 /**
 * @brief Sets the bit for the given backend type in the mask.
 * @param[in,out] mask Reference to the mask to modify.
 * @param[in] type The backend type to enable.
 */
-fpl_inline void fplInputBackendMaskEnable(fplInputBackendMask *mask, fplInputBackendType type) {
-	if (mask == fpl_null) return;
-	if ((int)type < 0 || (int)type >= 32) return;
-	mask->bits |= (uint32_t)(1u << (uint32_t)type);
-}
+fpl_common_api void fplInputBackendMaskEnable(fplInputBackendMask *mask, const fplInputBackendType type);
+
 /**
 * @brief Clears the bit for the given backend type in the mask.
 * @param[in,out] mask Reference to the mask to modify.
 * @param[in] type The backend type to disable.
 */
-fpl_inline void fplInputBackendMaskDisable(fplInputBackendMask *mask, fplInputBackendType type) {
-	if (mask == fpl_null) return;
-	if ((int)type < 0 || (int)type >= 32) return;
-	mask->bits &= ~(uint32_t)(1u << (uint32_t)type);
-}
+fpl_common_api void fplInputBackendMaskDisable(fplInputBackendMask *mask, const fplInputBackendType type);
 
 /**
 * @struct fplInputSettings
@@ -30997,7 +30987,25 @@ fpl_inline fplVideoRect fplCreateVideoRectFromLTRB(int32_t left, int32_t top, in
 #define FPL__SYSTEM_INIT_DEFINED
 
 #if defined(FPL__ENABLE_INPUT)
-fpl_internal bool fpl__InputSystem_Init(fpl__InputContext *ctx, const fplInitFlags initFlags, const fplInputSettings *settings) {
+fpl_common_api bool fplInputBackendMaskIsEnabled(const fplInputBackendMask *mask, fplInputBackendType type) {
+	if (mask == fpl_null) return false;
+	if ((int)type < 0 || (int)type >= 32) return false;
+	return (mask->bits & (uint32_t)(1u << (uint32_t)type)) != 0u;
+}
+
+fpl_common_api void fplInputBackendMaskEnable(fplInputBackendMask *mask, fplInputBackendType type) {
+	if (mask == fpl_null) return;
+	if ((int)type < 0 || (int)type >= 32) return;
+	mask->bits |= (uint32_t)(1u << (uint32_t)type);
+}
+
+fpl_common_api void fplInputBackendMaskDisable(fplInputBackendMask *mask, fplInputBackendType type) {
+	if (mask == fpl_null) return;
+	if ((int)type < 0 || (int)type >= 32) return;
+	mask->bits &= ~(uint32_t)(1u << (uint32_t)type);
+}
+
+bool fpl__InputSystem_Init(fpl__InputContext *ctx, const fplInitFlags initFlags, const fplInputSettings *settings) {
 	if (ctx == fpl_null) return false;
 	fplClearStruct(ctx);
 	ctx->initFlags = initFlags;
