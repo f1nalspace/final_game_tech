@@ -2762,7 +2762,7 @@ typedef enum fplX86InstructionSetLevel {
 #	if defined(FPL__SUPPORT_INPUT_X11) && defined(FPL__SUPPORT_WINDOW)
 #		define FPL__ENABLE_INPUT_X11
 #	endif
-#	if defined(FPL__SUPPORT_INPUT_LINUX_JOYSTICK)
+#	if defined(FPL__SUPPORT_INPUT_LINUX_JOYSTICK) && defined(FPL__SUPPORT_WINDOW)
 #		define FPL__ENABLE_INPUT_LINUX_JOYSTICK
 #	endif
 #	if defined(FPL__SUPPORT_INPUT_LINUX_EVDEV)
@@ -10883,7 +10883,7 @@ typedef struct fpl__LinuxInitState {
 	int dummy;
 } fpl__LinuxInitState;
 
-#if defined(FPL__ENABLE_WINDOW)
+#if defined(FPL__ENABLE_INPUT_LINUX_JOYSTICK)
 #define FPL__LINUX_MAX_GAME_CONTROLLER_COUNT 4
 typedef struct fpl__LinuxGameController {
 	char deviceName[512 + 1];
@@ -10894,24 +10894,17 @@ typedef struct fpl__LinuxGameController {
 	fplGamepadState state;
 } fpl__LinuxGameController;
 
-typedef struct fpl__LinuxGameControllersState {
+// Linux /dev/input/jsX backend instance owned by fpl__InputContext.
+typedef struct fpl__InputBackendLinuxJoystick {
 	fpl__LinuxGameController controllers[FPL__LINUX_MAX_GAME_CONTROLLER_COUNT];
 	uint64_t lastCheckTime;
-} fpl__LinuxGameControllersState;
-#endif
+	bool isInitialized;
+} fpl__InputBackendLinuxJoystick;
+#endif // FPL__ENABLE_INPUT_LINUX_JOYSTICK
 
 typedef struct fpl__LinuxAppState {
-#if defined(FPL__ENABLE_WINDOW)
-	fpl__LinuxGameControllersState controllersState;
-#endif
 	int dummy;
 } fpl__LinuxAppState;
-
-// Forward declarations
-#if defined(FPL__ENABLE_WINDOW)
-fpl_internal void fpl__LinuxFreeGameControllers(fpl__LinuxGameControllersState *controllersState);
-fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl__LinuxGameControllersState *controllersState, const bool useEvents);
-#endif
 
 #endif // FPL_PLATFORM_LINUX
 
@@ -11377,6 +11370,9 @@ typedef struct fpl__InputContext {
 #endif
 #if defined(FPL__ENABLE_INPUT_X11)
 	fpl__InputBackendX11Kbm x11kbm;
+#endif
+#if defined(FPL__ENABLE_INPUT_LINUX_JOYSTICK)
+	fpl__InputBackendLinuxJoystick linuxJoystick;
 #endif
 } fpl__InputContext;
 
@@ -21286,11 +21282,9 @@ fpl_platform_api bool fplWindowUpdate(void) {
 
 	fpl__ClearInternalEvents();
 
-	// Dont like this, maybe a callback would be better?
-#if defined(FPL_PLATFORM_LINUX)
-	if (!appState->currentSettings.input.disabledEvents && fplIsMaskSet(appState->initFlags, fplInitFlags_GameController)) {
-		fpl__LinuxAppState *linuxAppState = &appState->plinux;
-		fpl__LinuxPollGameControllers(&appState->currentSettings, &linuxAppState->controllersState, true);
+#if defined(FPL__ENABLE_INPUT)
+	if (!appState->currentSettings.input.disabledEvents) {
+		fpl__InputSystem_Update(&appState->input);
 	}
 #endif
 
@@ -21573,11 +21567,6 @@ fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY) {
 #	include <linux/joystick.h> // js_event, axis_state, etc.
 
 fpl_internal void fpl__LinuxReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
-#if defined(FPL__ENABLE_WINDOW)
-	if (fplIsMaskSet(appState->initFlags, fplInitFlags_GameController)) {
-		fpl__LinuxFreeGameControllers(&appState->plinux.controllersState);
-	}
-#endif
 }
 
 fpl_internal bool fpl__LinuxInitPlatform(const fplInitFlags initFlags, const fplSettings *initSettings, fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
@@ -21592,17 +21581,7 @@ fpl_internal bool fpl__LinuxInitPlatform(const fplInitFlags initFlags, const fpl
 //
 // Linux Gamepads
 //
-#if defined(FPL__ENABLE_WINDOW)
-fpl_internal void fpl__LinuxFreeGameControllers(fpl__LinuxGameControllersState *controllersState) {
-	for (int controllerIndex = 0; controllerIndex < fplArrayCount(controllersState->controllers); ++controllerIndex) {
-		fpl__LinuxGameController *controller = controllersState->controllers + controllerIndex;
-		if (controller->fd > 0) {
-			close(controller->fd);
-			controller->fd = 0;
-		}
-	}
-}
-
+#if defined(FPL__ENABLE_INPUT_LINUX_JOYSTICK)
 fpl_internal float fpl__LinuxJoystickProcessStickValue(const int16_t value, const int16_t deadZoneThreshold) {
 	float result = 0;
 	if (value < -deadZoneThreshold) {
@@ -21717,14 +21696,14 @@ fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_e
 	}
 }
 
-fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl__LinuxGameControllersState *controllersState, const bool useEvents) {
+fpl_internal void fpl__LinuxJoystick_PollImpl(const fplSettings *settings, fpl__InputBackendLinuxJoystick *backend, const bool useEvents) {
 	// https://github.com/underdoeg/ofxGamepad
 	// https://github.com/elanthis/gamepad
 	// https://gist.github.com/jasonwhite/c5b2048c15993d285130
 	// https://github.com/Tasssadar/libenjoy/blob/master/src/libenjoy_linux.c
 
-    if (((controllersState->lastCheckTime == 0) || ((fplMillisecondsQuery() - controllersState->lastCheckTime) >= settings->input.gameControllers.detectionFrequency)) || !useEvents) {
-		controllersState->lastCheckTime = fplMillisecondsQuery();
+    if (((backend->lastCheckTime == 0) || ((fplMillisecondsQuery() - backend->lastCheckTime) >= settings->input.gameControllers.detectionFrequency)) || !useEvents) {
+		backend->lastCheckTime = fplMillisecondsQuery();
 
 		//
 		// Detect new controllers
@@ -21736,8 +21715,8 @@ fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl
 			const char *deviceName = deviceNames[deviceNameIndex];
 			bool alreadyFound = false;
 			int freeIndex = -1;
-			for (uint32_t controllerIndex = 0; controllerIndex < fplArrayCount(controllersState->controllers); ++controllerIndex) {
-				fpl__LinuxGameController *controller = controllersState->controllers + controllerIndex;
+			for (uint32_t controllerIndex = 0; controllerIndex < fplArrayCount(backend->controllers); ++controllerIndex) {
+				fpl__LinuxGameController *controller = backend->controllers + controllerIndex;
 				if ((controller->fd > 0) && fplIsStringEqual(deviceName, controller->deviceName)) {
 					alreadyFound = true;
 					break;
@@ -21772,7 +21751,7 @@ fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl
 					continue;
 				}
 
-				fpl__LinuxGameController *controller = controllersState->controllers + freeIndex;
+				fpl__LinuxGameController *controller = backend->controllers + freeIndex;
 				fplClearStruct(controller);
 				controller->fd = fd;
 				controller->axisCount = numAxis;
@@ -21795,8 +21774,8 @@ fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl
 	}
 
 	// Update controller states
-	for (uint32_t controllerIndex = 0; controllerIndex < fplArrayCount(controllersState->controllers); ++controllerIndex) {
-		fpl__LinuxGameController *controller = controllersState->controllers + controllerIndex;
+	for (uint32_t controllerIndex = 0; controllerIndex < fplArrayCount(backend->controllers); ++controllerIndex) {
+		fpl__LinuxGameController *controller = backend->controllers + controllerIndex;
 		if (controller->fd > 0) {
 			// Update button/axis state
 			struct js_event event;
@@ -21844,23 +21823,55 @@ fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl
 	}
 }
 
+// Backend lifecycle wrappers used by fpl__InputSystem_*.
+fpl_internal bool fpl__InputBackendLinuxJoystick_Init(fpl__InputBackendLinuxJoystick *backend) {
+	fplAssertPtr(backend);
+	if (backend->isInitialized) return true;
+	backend->isInitialized = true;
+	return true;
+}
+
+fpl_internal void fpl__InputBackendLinuxJoystick_Release(fpl__InputBackendLinuxJoystick *backend) {
+	fplAssertPtr(backend);
+	if (!backend->isInitialized) return;
+	for (int controllerIndex = 0; controllerIndex < fplArrayCount(backend->controllers); ++controllerIndex) {
+		fpl__LinuxGameController *controller = backend->controllers + controllerIndex;
+		if (controller->fd > 0) {
+			close(controller->fd);
+			controller->fd = 0;
+		}
+	}
+	fplClearStruct(backend);
+}
+
+fpl_internal void fpl__InputBackendLinuxJoystick_Update(fpl__InputBackendLinuxJoystick *backend, const fplSettings *settings) {
+	fplAssertPtr(backend);
+	fplAssertPtr(settings);
+	if (!backend->isInitialized) return;
+	fpl__LinuxJoystick_PollImpl(settings, backend, true);
+}
+
+fpl_internal bool fpl__InputBackendLinuxJoystick_PollGamepad(fpl__InputBackendLinuxJoystick *backend, const fplSettings *settings, fplGamepadStates *outStates) {
+	fplAssertPtr(backend);
+	fplAssertPtr(settings);
+	fplAssertPtr(outStates);
+	if (!backend->isInitialized) return false;
+	fpl__LinuxJoystick_PollImpl(settings, backend, false);
+	fplAssert(fplArrayCount(backend->controllers) == fplArrayCount(outStates->deviceStates));
+	for (int i = 0; i < fplArrayCount(backend->controllers); ++i) {
+		outStates->deviceStates[i] = backend->controllers[i].state;
+	}
+	return true;
+}
+#endif // FPL__ENABLE_INPUT_LINUX_JOYSTICK
+
+#if defined(FPL__ENABLE_WINDOW)
 fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
 	FPL__CheckPlatform(false);
 	FPL__CheckArgumentNull(outStates, false);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	if (fplIsMaskSet(appState->initFlags, fplInitFlags_GameController)) {
-#if defined(FPL_PLATFORM_LINUX)
-		fpl__LinuxGameControllersState *controllersState = &appState->plinux.controllersState;
-		fpl__LinuxPollGameControllers(&appState->currentSettings, controllersState, false);
-
-		fplAssert(fplArrayCount(controllersState->controllers) == fplArrayCount(outStates->deviceStates));
-		for (int i = 0; i < fplArrayCount(controllersState->controllers); ++i) {
-			outStates->deviceStates[i] = controllersState->controllers[i].state;
-		}
-		return(true);
-#endif
-	}
-	return(false);
+	if (!fplIsMaskSet(appState->initFlags, fplInitFlags_GameController)) return false;
+	return fpl__InputSystem_PollGamepad(&appState->input, outStates);
 }
 
 #endif // FPL__ENABLE_WINDOW
@@ -30995,6 +31006,14 @@ fpl_internal bool fpl__InputSystem_Init(fpl__InputContext *ctx, const fplInitFla
 	}
 #	endif
 
+#	if defined(FPL__ENABLE_INPUT_LINUX_JOYSTICK)
+	if ((ctx->settings.enabledSources & fplInputSourceType_Gamepad) != 0 && fplInputBackendMaskIsEnabled(&ctx->settings.enabledBackends, fplInputBackendType_LinuxJoystick)) {
+		if (fpl__InputBackendLinuxJoystick_Init(&ctx->linuxJoystick)) {
+			ctx->backendCount++;
+		}
+	}
+#	endif
+
 	ctx->isInitialized = true;
 	return true;
 }
@@ -31002,6 +31021,9 @@ fpl_internal bool fpl__InputSystem_Init(fpl__InputContext *ctx, const fplInitFla
 fpl_internal void fpl__InputSystem_Release(fpl__InputContext *ctx) {
 	if (ctx == fpl_null) return;
 	if (!ctx->isInitialized) return;
+#	if defined(FPL__ENABLE_INPUT_LINUX_JOYSTICK)
+	fpl__InputBackendLinuxJoystick_Release(&ctx->linuxJoystick);
+#	endif
 #	if defined(FPL__ENABLE_INPUT_X11)
 	fpl__InputBackendX11Kbm_Release(&ctx->x11kbm);
 #	endif
@@ -31021,6 +31043,14 @@ fpl_internal void fpl__InputSystem_Update(fpl__InputContext *ctx) {
 #	if defined(FPL__ENABLE_INPUT_XINPUT)
 	if ((ctx->settings.enabledSources & fplInputSourceType_Gamepad) != 0 && ctx->xinput.isInitialized) {
 		fpl__InputBackendXInput_Update(&ctx->xinput, &ctx->settings.gameControllers);
+	}
+#	endif
+#	if defined(FPL__ENABLE_INPUT_LINUX_JOYSTICK)
+	if ((ctx->settings.enabledSources & fplInputSourceType_Gamepad) != 0 && ctx->linuxJoystick.isInitialized) {
+		fpl__PlatformAppState *appState = fpl__global__AppState;
+		if (appState != fpl_null) {
+			fpl__InputBackendLinuxJoystick_Update(&ctx->linuxJoystick, &appState->currentSettings);
+		}
 	}
 #	endif
 }
@@ -31106,6 +31136,16 @@ fpl_internal bool fpl__InputSystem_PollGamepad(fpl__InputContext *ctx, fplGamepa
 	if (ctx->xinput.isInitialized) {
 		if (fpl__InputBackendXInput_PollGamepad(&ctx->xinput, outStates)) {
 			any = true;
+		}
+	}
+#	endif
+#	if defined(FPL__ENABLE_INPUT_LINUX_JOYSTICK)
+	if (ctx->linuxJoystick.isInitialized) {
+		fpl__PlatformAppState *appState = fpl__global__AppState;
+		if (appState != fpl_null) {
+			if (fpl__InputBackendLinuxJoystick_PollGamepad(&ctx->linuxJoystick, &appState->currentSettings, outStates)) {
+				any = true;
+			}
 		}
 	}
 #	endif
