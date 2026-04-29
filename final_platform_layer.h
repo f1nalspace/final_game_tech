@@ -21757,9 +21757,15 @@ fpl_internal void fpl__LinuxJoystick_DetectControllers(const fplSettings *settin
 			continue;
 		}
 
-		// @NOTE(final): We do not want to detect devices which are not proper joysticks, such as gaming keyboards
+		// @NOTE(final): We do not want to detect devices which are not proper joysticks, such as gaming keyboards.
+		// First events from the kernel have JS_EVENT_INIT bit ORed onto AXIS/BUTTON, so mask it before comparing.
 		struct js_event msg;
-		if ((read(fd, &msg, sizeof(struct js_event)) != sizeof(struct js_event)) || !((msg.type == JS_EVENT_INIT) || (msg.type == JS_EVENT_AXIS) || (msg.type == JS_EVENT_BUTTON))) {
+		uint8_t baseType = 0;
+		ssize_t bytesRead = read(fd, &msg, sizeof(struct js_event));
+		if (bytesRead == sizeof(struct js_event)) {
+			baseType = msg.type & ~(uint8_t)JS_EVENT_INIT;
+		}
+		if (bytesRead != sizeof(struct js_event) || !(baseType == JS_EVENT_AXIS || baseType == JS_EVENT_BUTTON)) {
 			if (!backend->triedSlot[slotIndex]) {
 				FPL_LOG_DEBUG(FPL__MODULE_LINUX, "Joystick device '%s' did not produce an init message", deviceName);
 				backend->triedSlot[slotIndex] = true;
