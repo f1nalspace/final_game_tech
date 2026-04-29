@@ -3,7 +3,7 @@
 Companion to `fpl_input_proposal_plan.md`. Tracks step-by-step status so a future session can resume cleanly.
 
 Branch: `input-refactoring`
-Last verified: builds clean on Linux/POSIX (FPL_Console, FPL_Window, FPL_OpenGL, FPL_Test). Win32 path not yet verified — needs a Windows build.
+Last verified: builds clean on Linux/POSIX (FPL_Console, FPL_Window, FPL_OpenGL, FPL_Test). FPL_Input verified end-to-end on X11 with a Logitech F310 gamepad — connection + axis/button events flow correctly. Win32 path not re-verified after step 6/7 — needs a Windows build.
 
 ## Done
 
@@ -14,6 +14,7 @@ Last verified: builds clean on Linux/POSIX (FPL_Console, FPL_Window, FPL_OpenGL,
 - [x] **Step 5 — X11Kbm migration.** New `fpl__InputBackendX11Kbm` (in `fpl__InputContext.x11kbm`, struct lives in `TYPES_X11`) with `Init/Release/PollKeyboard/PollMouse/HandleNativeEvent`. X11 `fplPollKeyboardState` / `fplPollMouseState` delegate to `fpl__InputSystem_PollKeyboard` / `_PollMouse`. `fpl__X11HandleEvent` collapses `KeyPress/KeyRelease/ButtonPress/ButtonRelease/MotionNotify` into a single forwarder that builds an `fpl__NativeInputEvent{X11Event, ev}` and calls `fpl__InputSystem_HandleNativeEvent`. Backend handler keeps the original `XEventsQueued`/`XPeekEvent` repeat-detection trick on `KeyRelease`. `FocusIn/FocusOut`, `EnterNotify`, `LeaveNotify` stay in window code (focus events aren't input events; enter/leave were never implemented and remain a separate task). `FPL__ENABLE_INPUT_X11` gated on `FPL__SUPPORT_WINDOW` for now (lifted by step 8). Linux build clean (FPL_Console / FPL_Window / FPL_OpenGL / FPL_Test / FPL_Input).
 - [x] **Step 6 — Linux joystick migration (lift as-is).** New `fpl__InputBackendLinuxJoystick` (in `fpl__InputContext.linuxJoystick`, struct lives in `TYPES_LINUX` under `FPL__ENABLE_INPUT_LINUX_JOYSTICK`) owns the `fpl__LinuxGameController controllers[FPL__LINUX_MAX_GAME_CONTROLLER_COUNT]` array + `lastCheckTime`. Wrappers `Init/Release/Update/PollGamepad`. Detection/state helper renamed `fpl__LinuxJoystick_PollImpl(settings, backend, useEvents)` — same body, just operates on backend. `fpl__LinuxFreeGameControllers` folded into `_Release`. X11 `fplWindowUpdate` no longer calls the joystick directly; it calls `fpl__InputSystem_Update` (matching Win32). Linux `fplPollGamepadStates` delegates to `fpl__InputSystem_PollGamepad`. `fpl__LinuxReleasePlatform` cleared (release happens via `fpl__InputSystem_Release` before audio). Dropped `controllersState` field from `fpl__LinuxAppState`. **Temporary:** `FPL__ENABLE_INPUT_LINUX_JOYSTICK` gated on `FPL__SUPPORT_WINDOW` for now — step 8 lifts this once gamepad event helpers are window-independent. Linux build clean (FPL_Console / FPL_Window / FPL_OpenGL / FPL_Test).
 - [x] **Step 7 — Linux joystick auto-detection + throttling (no udev).** Scan `/dev/input/js0..js31` from `fpl__LinuxJoystick_DetectControllers` (called by `_Update`), throttled by `gameControllers.detectionFrequency`. `_PollGamepad` no longer runs detection — mirrors XInput, just refreshes cached state via `fpl__LinuxJoystick_UpdateStates(false)` and copies. Added `fpl__InputBackendLinuxJoystick.triedSlot[FPL__LINUX_JOYSTICK_SCAN_COUNT]` for one-shot `FPL_LOG_DEBUG` per slot on (a) non-`ENOENT` open failures, (b) zero axes/buttons (virtual nodes), (c) missing init message. `ENOENT` skipped silently. Added `fpl__LinuxGameController.slotIndex` so `ENODEV` in read path can reset `triedSlot[slotIndex]` for hotplug re-announce. Linux build clean (FPL_Console / FPL_Window / FPL_OpenGL / FPL_Test).
+- [x] **Bugfix — Linux joystick init-message guard.** Commit `aeb0a3a3`. Pre-existing bug exposed by step 7's scan-walking past virtual js0/js1 to the real F310 on js2: kernel ORs `JS_EVENT_INIT` (0x80) onto `JS_EVENT_AXIS`/`JS_EVENT_BUTTON` for the queued initial events, so `msg.type` is 0x81/0x82 — the strict equality `msg.type == JS_EVENT_AXIS` etc. never matched and every real gamepad failed detection. Fix masks `JS_EVENT_INIT` off before comparing in `fpl__LinuxJoystick_DetectControllers`. Verified with FPL_Input + Logitech F310.
 
 ## In progress
 
@@ -45,3 +46,16 @@ _None._
 2. Re-read `fpl_input_proposal_plan.md` and this file.
 3. Pick the next pending step. Mark it in_progress, implement, build-check on Linux at minimum, commit, mark done.
 4. Each step should be one commit (per plan §11).
+
+## Latest state (after step 7)
+
+- Most recent commits on `input-refactoring`:
+  - `aeb0a3a3` Fix Linux joystick init-message check
+  - `c8174a26` Linux joystick auto-detection + log throttling
+  - `d51a86ab` Migrated Linux joystick to new input system
+- Linux gamepad path is now usable end-to-end: scan 0..31, throttled detection, cached poll, F310 verified.
+- Step 8 is the next planned step — gamepad event helpers must move out of `FPL__ENABLE_WINDOW` before the `FPL__SUPPORT_WINDOW` gates on `FPL__ENABLE_INPUT_XINPUT` / `_WIN32` / `_X11` / `_LINUX_JOYSTICK` can be lifted in step 9.
+
+## Known incidental issues found while testing
+
+- `fplInputBackendMaskIsEnabled` / `_Enable` / `_Disable` are declared `fpl_inline` (= `inline`). With C99 `-O0`, GCC emits no out-of-line definition, producing `undefined reference` errors when linked from a single-translation-unit demo. Workaround: compile with `-O2`. Proper fix later: change `fpl_inline` to `static inline` on these helpers, or provide an extern definition. Not blocking step 8.
