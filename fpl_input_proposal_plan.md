@@ -602,14 +602,16 @@ Each step is independently compilable and testable.
 3. **XInput migration**: wrap existing XInput code as `fpl__InputBackendXInput`. Switch `fplPollGamepadStates` to go through the context. Delete `fpl__Win32XInputState` from `fpl__Win32AppState`. Verify `FPL_Input` demo still shows gamepad input.
 4. **Win32 keyboard/mouse migration**: move the current `fplPollKeyboardState` / `fplPollMouseState` Win32 implementations into `fpl__InputBackendWin32`. Route WndProc keyboard/mouse messages through `HandleNativeEvent`. Verify all Win32 demos.
 5. **X11Kbm migration**: same for X11. Route `XEvent` from `fpl__X11HandleEvent` through the bridge. Verify X11 demos.
-6. **Linux Joystick migration**: lift existing `/dev/input/jsX` code into `fpl__InputBackendLinuxJoystick`. Remove the 1-second scan; let `fpl__InputSystem_Update` throttle using `gameControllers.detectionFrequency`.
-7. **Event plumbing**: gamepad connect/disconnect events keep flowing through `fpl__PushGamepadEvent`, now driven by the backends instead of the window loop.
-8. **FPL_NO_WINDOW support**: implement the hidden Win32 message-only window and the detached X11 display. Add `fplInputSettings.detachFromWindow`. Verify with a console-only demo that polls a keyboard or gamepad.
-9. **Multi-backend polling**: make `fpl__InputSystem_PollGamepad` merge across backends so XInput + (future) DInput coexist. Add a small unit test in `FPL_Test` that walks a fake second backend.
-10. **New backends (future PRs)**: LinuxEvdev, LinuxUdev, RawInput, DInput, UnixGamepad. Each is one descriptor + impl struct + function table entry; nothing else in the core changes.
-11. **Docs / changelog**: update category `page_category_input_config`, note the new init flag, mask helpers and `FPL_NO_INPUT` switch.
+6. **Linux Joystick migration (lift as-is)**: lift existing `/dev/input/jsX` code into `fpl__InputBackendLinuxJoystick`. Keep behavior identical — single-device scan, current logging, current throttling. Auto-detection improvements land in step 7.
+7. **Linux Joystick auto-detection + throttling (no udev)**: replace the hard-coded `{ "/dev/input/js0" }` list with a polling scan over `/dev/input/js0` … `/dev/input/js31`, modeled after how XInput probes its 4 user slots. Detection runs **only** from `fpl__InputSystem_Update`, throttled by `gameControllers.detectionFrequency`; `fplPollGamepadStates` reads cached state only. Skip silently when a node is missing (`ENOENT`) or has 0 axes / 0 buttons (virtual nodes such as motion sensors and gaming keyboards) — the current code logs `FPL_LOG_ERROR` for these on every cycle, which spams the log even with no real gamepad attached. Replace with a one-shot `FPL_LOG_DEBUG` per slot, gated on a `triedSlot[i]` flag that resets when a slot disconnects so re-plugged devices still announce themselves. Push `fplGamepadEventType_Connected` on first successful open and `fplGamepadEventType_Disconnected` on `ENODEV`.
+8. **Event plumbing**: gamepad connect/disconnect events keep flowing through `fpl__PushGamepadEvent`, now driven by the backends instead of the window loop.
+9. **FPL_NO_WINDOW support**: implement the hidden Win32 message-only window and the detached X11 display. Add `fplInputSettings.detachFromWindow`. Verify with a console-only demo that polls a keyboard or gamepad.
+10. **Multi-backend polling**: make `fpl__InputSystem_PollGamepad` merge across backends so XInput + (future) DInput coexist. Add a small unit test in `FPL_Test` that walks a fake second backend.
+11. **Linux udev hotplug backend**: add `fpl__InputBackendLinuxUdev` that opens a udev netlink socket and listens for `add`/`remove` events on the `input` subsystem; pushes connect/disconnect signals into the LinuxJoystick (and later LinuxEvdev) backend so it can rebuild its slot list immediately instead of waiting for the next `detectionFrequency` tick. Falls back gracefully to step 7's polling scan when libudev is missing or `FPL_NO_INPUT_LINUX_UDEV` is set. Runtime-link `libudev.so.1` (no build-time dep).
+12. **New backends (future PRs)**: LinuxEvdev, RawInput, DInput, UnixGamepad. Each is one descriptor + impl struct + function table entry; nothing else in the core changes.
+13. **Docs / changelog**: update category `page_category_input_config`, note the new init flag, mask helpers and `FPL_NO_INPUT` switch.
 
-Each step is ~1 commit. Steps 3-6 should keep the public behavior identical; only step 8 and step 9 introduce new capabilities.
+Each step is ~1 commit. Steps 3-6 should keep the public behavior identical; only step 7, step 9, step 10 and step 11 introduce new capabilities.
 
 ---
 
