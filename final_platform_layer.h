@@ -2746,8 +2746,8 @@ typedef enum fplX86InstructionSetLevel {
 
 #if defined(FPL__SUPPORT_INPUT)
 #	define FPL__ENABLE_INPUT
-// NOTE: Input backends currently still depend on the window event queue (gamepad connect/disconnect/state events). Step 8 of the input refactor lifts this dependency. Until then, individual input backends require FPL__SUPPORT_WINDOW.
-#	if defined(FPL__SUPPORT_INPUT_XINPUT) && defined(FPL__SUPPORT_WINDOW)
+// NOTE: Gamepad backends (XInput, LinuxJoystick) work without a window since step 9a of the input refactor. Keyboard/mouse backends still require FPL__SUPPORT_WINDOW (step 9b lifts this via hidden message-only window / detached X11 Display).
+#	if defined(FPL__SUPPORT_INPUT_XINPUT)
 #		define FPL__ENABLE_INPUT_XINPUT
 #	endif
 #	if defined(FPL__SUPPORT_INPUT_DINPUT)
@@ -2762,7 +2762,7 @@ typedef enum fplX86InstructionSetLevel {
 #	if defined(FPL__SUPPORT_INPUT_X11) && defined(FPL__SUPPORT_WINDOW)
 #		define FPL__ENABLE_INPUT_X11
 #	endif
-#	if defined(FPL__SUPPORT_INPUT_LINUX_JOYSTICK) && defined(FPL__SUPPORT_WINDOW)
+#	if defined(FPL__SUPPORT_INPUT_LINUX_JOYSTICK)
 #		define FPL__ENABLE_INPUT_LINUX_JOYSTICK
 #	endif
 #	if defined(FPL__SUPPORT_INPUT_LINUX_EVDEV)
@@ -7568,9 +7568,9 @@ fpl_common_api size_t fplPathCombine(char *destPath, const size_t maxDestPathLen
 // ****************************************************************************
 // 
 // Window / Events / Input
-// 
+//
 // ****************************************************************************
-#if defined(FPL__ENABLE_WINDOW)
+#if defined(FPL__ENABLE_WINDOW) || defined(FPL__ENABLE_INPUT)
 
 // ----------------------------------------------------------------------------
 /**
@@ -8867,7 +8867,7 @@ fpl_platform_api bool fplGetClipboardText(char *dest, const uint32_t maxDestLen)
 fpl_platform_api bool fplSetClipboardText(const char *text);
 
 /** @} */
-#endif // FPL__ENABLE_WINDOW
+#endif // FPL__ENABLE_WINDOW || FPL__ENABLE_INPUT
 
 #if defined(FPL__ENABLE_VIDEO)
 // ----------------------------------------------------------------------------
@@ -11304,17 +11304,18 @@ typedef struct {
 } fpl__PlatformInitState;
 fpl_globalvar fpl__PlatformInitState fpl__global__InitState = fplZeroInit;
 
-#if defined(FPL__ENABLE_WINDOW)
-
+// Event queue is shared by window and (no-window) input subsystems. Available whenever input or window is enabled.
+#if defined(FPL__ENABLE_WINDOW) || defined(FPL__ENABLE_INPUT)
 #define FPL__MAX_EVENT_COUNT 32768
 typedef struct {
 	fplEvent events[FPL__MAX_EVENT_COUNT];
 	volatile size_t pushIndex; // atomic
 	volatile size_t popIndex;  // atomic
 } fpl__EventQueue;
+#endif // FPL__ENABLE_WINDOW || FPL__ENABLE_INPUT
 
+#if defined(FPL__ENABLE_WINDOW)
 typedef struct {
-	fpl__EventQueue eventQueue;
 	fplKey keyMap[256];
 	fplButtonState keyStates[256];
 	uint64_t keyPressTimes[256];
@@ -11375,10 +11376,10 @@ fpl_internal void fpl__InputSystem_Release(fpl__InputContext *ctx);
 fpl_internal void fpl__InputSystem_Update(fpl__InputContext *ctx);
 fpl_internal bool fpl__InputSystem_HandleNativeEvent(fpl__InputContext *ctx, const fpl__NativeInputEvent *ev);
 fpl_internal bool fpl__InputSystem_IsEnabled(const fpl__InputContext *ctx, fplInputSourceType source);
+fpl_internal bool fpl__InputSystem_PollGamepad(fpl__InputContext *ctx, fplGamepadStates *outStates);
 #if defined(FPL__ENABLE_WINDOW)
 fpl_internal bool fpl__InputSystem_PollKeyboard(fpl__InputContext *ctx, fplKeyboardState *outState);
 fpl_internal bool fpl__InputSystem_PollMouse(fpl__InputContext *ctx, fplMouseState *outState);
-fpl_internal bool fpl__InputSystem_PollGamepad(fpl__InputContext *ctx, fplGamepadStates *outStates);
 #endif // FPL__ENABLE_WINDOW
 #endif // FPL__ENABLE_INPUT
 
@@ -11390,6 +11391,11 @@ struct fpl__PlatformAppState {
 #endif
 #if defined(FPL_SUBPLATFORM_X11)
 	fpl__X11SubplatformState x11;
+#endif
+
+	// Event queue (shared by window + input)
+#if defined(FPL__ENABLE_WINDOW) || defined(FPL__ENABLE_INPUT)
+	fpl__EventQueue eventQueue;
 #endif
 
 	// Window/video/audio
@@ -11424,21 +11430,12 @@ struct fpl__PlatformAppState {
 };
 
 //
-// Internal window
+// Internal event queue (shared by window + input subsystems)
 //
-#if defined(FPL__ENABLE_WINDOW)
-fpl_internal fplKey fpl__GetMappedKey(const fpl__PlatformWindowState *windowState, const uint64_t keyCode) {
-	fplKey result;
-	if (keyCode < fplArrayCount(windowState->keyMap))
-		result = windowState->keyMap[keyCode];
-	else
-		result = fplKey_None;
-	return(result);
-}
-
+#if defined(FPL__ENABLE_WINDOW) || defined(FPL__ENABLE_INPUT)
 fpl_internal size_t fpl__HasInternalEvents(void) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	fpl__EventQueue *eventQueue = &appState->window.eventQueue;
+	fpl__EventQueue *eventQueue = &appState->eventQueue;
 	size_t currentPop = fplAtomicLoadSize(&eventQueue->popIndex);
 	size_t currentPush = fplAtomicLoadSize(&eventQueue->pushIndex);
 	bool result = currentPop < currentPush;
@@ -11447,7 +11444,7 @@ fpl_internal size_t fpl__HasInternalEvents(void) {
 
 fpl_internal void fpl__ClearInternalEvents(void) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	fpl__EventQueue *eventQueue = &appState->window.eventQueue;
+	fpl__EventQueue *eventQueue = &appState->eventQueue;
 
 	size_t currentPop = fplAtomicLoadSize(&eventQueue->popIndex);
 	size_t currentPush = fplAtomicLoadSize(&eventQueue->pushIndex);
@@ -11468,7 +11465,7 @@ fpl_internal void fpl__ClearInternalEvents(void) {
 
 fpl_internal bool fpl__PollInternalEvent(fplEvent *ev) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	fpl__EventQueue *eventQueue = &appState->window.eventQueue;
+	fpl__EventQueue *eventQueue = &appState->eventQueue;
 
 	size_t currentPop;
 	size_t currentPush;
@@ -11492,7 +11489,7 @@ fpl_internal bool fpl__PollInternalEvent(fplEvent *ev) {
 
 fpl_internal void fpl__PushInternalEvent(const fplEvent *event) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	fpl__EventQueue *eventQueue = &appState->window.eventQueue;
+	fpl__EventQueue *eventQueue = &appState->eventQueue;
 
 	size_t currentPush;
 	size_t currentPop;
@@ -11512,6 +11509,41 @@ fpl_internal void fpl__PushInternalEvent(const fplEvent *event) {
 
 	size_t index = currentPush % FPL__MAX_EVENT_COUNT;
 	eventQueue->events[index] = *event;
+}
+
+fpl_internal void fpl__PushGamepadConnectionEvent(const uint32_t deviceIndex, const char *deviceName, const bool isConnected) {
+	fplEvent ev = fplZeroInit;
+	ev.type = fplEventType_Gamepad;
+	ev.gamepad.type = isConnected ? fplGamepadEventType_Connected : fplGamepadEventType_Disconnected;
+	ev.gamepad.deviceIndex = deviceIndex;
+	ev.gamepad.deviceName = deviceName;
+	ev.gamepad.state.isConnected = isConnected;
+	ev.gamepad.state.deviceName = deviceName;
+	fpl__PushInternalEvent(&ev);
+}
+
+fpl_internal void fpl__PushGamepadStateEvent(const uint32_t deviceIndex, const char *deviceName, const fplGamepadState *newState) {
+	fplEvent ev = fplZeroInit;
+	ev.type = fplEventType_Gamepad;
+	ev.gamepad.type = fplGamepadEventType_StateChanged;
+	ev.gamepad.deviceIndex = deviceIndex;
+	ev.gamepad.deviceName = deviceName;
+	ev.gamepad.state = *newState;
+	fpl__PushInternalEvent(&ev);
+}
+#endif // FPL__ENABLE_WINDOW || FPL__ENABLE_INPUT
+
+//
+// Internal window
+//
+#if defined(FPL__ENABLE_WINDOW)
+fpl_internal fplKey fpl__GetMappedKey(const fpl__PlatformWindowState *windowState, const uint64_t keyCode) {
+	fplKey result;
+	if (keyCode < fplArrayCount(windowState->keyMap))
+		result = windowState->keyMap[keyCode];
+	else
+		result = fplKey_None;
+	return(result);
 }
 
 fpl_internal void fpl__PushWindowStateEvent(const fplWindowEventType windowType) {
@@ -11599,27 +11631,6 @@ fpl_internal void fpl__PushMouseMoveEvent(const int32_t x, const int32_t y) {
 	newEvent.mouse.mouseX = x;
 	newEvent.mouse.mouseY = y;
 	fpl__PushInternalEvent(&newEvent);
-}
-
-fpl_internal void fpl__PushGamepadConnectionEvent(const uint32_t deviceIndex, const char *deviceName, const bool isConnected) {
-	fplEvent ev = fplZeroInit;
-	ev.type = fplEventType_Gamepad;
-	ev.gamepad.type = isConnected ? fplGamepadEventType_Connected : fplGamepadEventType_Disconnected;
-	ev.gamepad.deviceIndex = deviceIndex;
-	ev.gamepad.deviceName = deviceName;
-	ev.gamepad.state.isConnected = isConnected;
-	ev.gamepad.state.deviceName = deviceName;
-	fpl__PushInternalEvent(&ev);
-}
-
-fpl_internal void fpl__PushGamepadStateEvent(const uint32_t deviceIndex, const char *deviceName, const fplGamepadState *newState) {
-	fplEvent ev = fplZeroInit;
-	ev.type = fplEventType_Gamepad;
-	ev.gamepad.type = fplGamepadEventType_StateChanged;
-	ev.gamepad.deviceIndex = deviceIndex;
-	ev.gamepad.deviceName = deviceName;
-	ev.gamepad.state = *newState;
-	fpl__PushInternalEvent(&ev);
 }
 
 fpl_internal void fpl__HandleKeyboardButtonEvent(fpl__PlatformWindowState *windowState, const uint64_t time, const uint64_t keyCode, const fplKeyboardModifierFlags modifiers, const fplButtonState buttonState, const bool force) {
@@ -13778,9 +13789,8 @@ fpl_common_api void fplSetDefaultInputSettings(fplInputSettings *input) {
 	input->detachFromWindow = false;
 }
 
-// Input subsystem stubs. The new public surface lives inside the existing window-gated
-// section for now; the next step lifts everything out of FPL__ENABLE_WINDOW.
-#if defined(FPL__ENABLE_WINDOW)
+// Input subsystem stubs. Available whenever input is enabled (with or without window).
+#if defined(FPL__ENABLE_INPUT)
 fpl_common_api uint32_t fplGetInputBackendSupport(fplInputBackendSupport *outSupports, uint32_t maxCount) {
 	(void)outSupports;
 	(void)maxCount;
@@ -13822,10 +13832,17 @@ fpl_common_api uint32_t fplGetGamepadDevices(fplInputDevice *outDevices, uint32_
 	return fplGetInputDevices(fplInputSourceType_Gamepad, outDevices, maxDevices);
 }
 
+// Drives the input subsystem update: detection + state events flow into the queue.
+// Console-only apps (no window/no fplWindowUpdate) call this each frame to advance gamepad state.
 fpl_common_api bool fplUpdateInputDevices(void) {
-	return false;
+	FPL__CheckPlatform(false);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (appState == fpl_null) return false;
+	if (appState->currentSettings.input.disabledEvents) return false;
+	fpl__InputSystem_Update(&appState->input);
+	return true;
 }
-#endif // FPL__ENABLE_WINDOW
+#endif // FPL__ENABLE_INPUT
 
 fpl_common_api void fplSetDefaultSettings(fplSettings *settings) {
 	FPL__CheckArgumentNullNoRet(settings);
@@ -17838,18 +17855,18 @@ fpl_platform_api bool fplPollKeyboardState(fplKeyboardState *outState) {
 #	endif
 }
 
+#endif // FPL__ENABLE_WINDOW (temporarily closed so fplPollGamepadStates is visible without window)
+
+#if defined(FPL__ENABLE_INPUT)
 fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
 	FPL__CheckArgumentNull(outStates, false);
 	FPL__CheckPlatform(false);
-#	if defined(FPL__ENABLE_INPUT)
 	fpl__PlatformAppState *platformAppState = fpl__global__AppState;
 	return fpl__InputSystem_PollGamepad(&platformAppState->input, outStates);
-#	else
-	(void)outStates;
-	return false;
-#	endif
 }
+#endif // FPL__ENABLE_INPUT
 
+#if defined(FPL__ENABLE_WINDOW)
 fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY) {
 	FPL__CheckArgumentNull(outX, false);
 	FPL__CheckArgumentNull(outY, false);
@@ -21864,7 +21881,7 @@ fpl_internal bool fpl__InputBackendLinuxJoystick_PollGamepad(fpl__InputBackendLi
 }
 #endif // FPL__ENABLE_INPUT_LINUX_JOYSTICK
 
-#if defined(FPL__ENABLE_WINDOW)
+#if defined(FPL__ENABLE_INPUT)
 fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
 	FPL__CheckPlatform(false);
 	FPL__CheckArgumentNull(outStates, false);
@@ -21873,7 +21890,7 @@ fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
 	return fpl__InputSystem_PollGamepad(&appState->input, outStates);
 }
 
-#endif // FPL__ENABLE_WINDOW
+#endif // FPL__ENABLE_INPUT
 
 //
 // Linux Threading
@@ -31143,6 +31160,7 @@ fpl_internal bool fpl__InputSystem_PollMouse(fpl__InputContext *ctx, fplMouseSta
 #	endif
 	return any;
 }
+#endif // FPL__ENABLE_WINDOW
 
 fpl_internal bool fpl__InputSystem_PollGamepad(fpl__InputContext *ctx, fplGamepadStates *outStates) {
 	if (ctx == fpl_null || outStates == fpl_null) return false;
@@ -31165,7 +31183,6 @@ fpl_internal bool fpl__InputSystem_PollGamepad(fpl__InputContext *ctx, fplGamepa
 #	endif
 	return any;
 }
-#endif // FPL__ENABLE_WINDOW
 #endif // FPL__ENABLE_INPUT
 
 fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {

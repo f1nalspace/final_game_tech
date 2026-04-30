@@ -228,7 +228,8 @@ group "Apps"
 
 group "Console"
 	include "FPL_Console/premake5";
-	
+	include "FPL_ConsoleGamepad/premake5";
+
 group "Audio"
 	include "FPL_AudioPlayer/premake5";
 	include "FPL_SimpleAudio/premake5";
