@@ -13802,33 +13802,268 @@ fpl_common_api void fplSetDefaultInputSettings(fplInputSettings *input) {
 	input->detachFromWindow = false;
 }
 
-// Input subsystem stubs. Available whenever input is enabled (with or without window).
+// Input subsystem device/backend enumeration.
 #if defined(FPL__ENABLE_INPUT)
+// Deterministic GUID derived from (backend, source, slot) so successive calls return stable identifiers.
+fpl_internal void fpl__MakeInputDeviceGuid(fplInputDeviceGuid *outGuid, const fplInputBackendType backend, const fplInputSourceType source, const uint32_t slot) {
+	fplClearStruct(outGuid);
+	outGuid->bytes[0] = 'F';
+	outGuid->bytes[1] = 'P';
+	outGuid->bytes[2] = 'L';
+	outGuid->bytes[3] = 'I';
+	outGuid->bytes[4] = (uint8_t)backend;
+	outGuid->bytes[5] = (uint8_t)source;
+	outGuid->bytes[6] = (uint8_t)(slot & 0xFFu);
+	outGuid->bytes[7] = (uint8_t)((slot >> 8) & 0xFFu);
+	outGuid->bytes[8] = (uint8_t)((slot >> 16) & 0xFFu);
+	outGuid->bytes[9] = (uint8_t)((slot >> 24) & 0xFFu);
+}
+
+// Static descriptor for backends compiled into this build.
+typedef struct fpl__InputBackendDescriptor {
+	const char *name;
+	fplInputBackendType type;
+	fplInputSourceType supportedSources;
+	fpl_b32 supportsEvents;
+	fpl_b32 supportsPolling;
+	fpl_b32 supportsHotplug;
+} fpl__InputBackendDescriptor;
+
+fpl_internal uint32_t fpl__BuildInputBackendDescriptors(fpl__InputBackendDescriptor *out, const uint32_t maxCount) {
+	uint32_t count = 0;
+#	if defined(FPL__ENABLE_INPUT_XINPUT)
+	if (count < maxCount) {
+		out[count].name = "XInput";
+		out[count].type = fplInputBackendType_XInput;
+		out[count].supportedSources = fplInputSourceType_Gamepad;
+		out[count].supportsEvents = true;
+		out[count].supportsPolling = true;
+		out[count].supportsHotplug = true;
+		count++;
+	}
+#	endif
+#	if defined(FPL__ENABLE_INPUT_WIN32)
+	if (count < maxCount) {
+		out[count].name = "Win32 Keyboard/Mouse";
+		out[count].type = fplInputBackendType_Win32;
+		out[count].supportedSources = (fplInputSourceType)(fplInputSourceType_Keyboard | fplInputSourceType_Mouse);
+		out[count].supportsEvents = true;
+		out[count].supportsPolling = true;
+		out[count].supportsHotplug = false;
+		count++;
+	}
+#	endif
+#	if defined(FPL__ENABLE_INPUT_X11)
+	if (count < maxCount) {
+		out[count].name = "X11 Keyboard/Mouse";
+		out[count].type = fplInputBackendType_X11Kbm;
+		out[count].supportedSources = (fplInputSourceType)(fplInputSourceType_Keyboard | fplInputSourceType_Mouse);
+		out[count].supportsEvents = true;
+		out[count].supportsPolling = true;
+		out[count].supportsHotplug = false;
+		count++;
+	}
+#	endif
+#	if defined(FPL__ENABLE_INPUT_LINUX_JOYSTICK)
+	if (count < maxCount) {
+		out[count].name = "Linux Joystick (/dev/input/jsX)";
+		out[count].type = fplInputBackendType_LinuxJoystick;
+		out[count].supportedSources = fplInputSourceType_Gamepad;
+		out[count].supportsEvents = true;
+		out[count].supportsPolling = true;
+		// Hotplug currently via polling scan; flips to true once the udev backend (step 11) is in.
+		out[count].supportsHotplug = false;
+		count++;
+	}
+#	endif
+	return count;
+}
+
 fpl_common_api uint32_t fplGetInputBackendSupport(fplInputBackendSupport *outSupports, const uint32_t maxCount) {
-	(void)outSupports;
-	(void)maxCount;
-	return 0;
+	fpl__InputBackendDescriptor descriptors[FPL_MAX_INPUT_BACKEND_COUNT];
+	uint32_t total = fpl__BuildInputBackendDescriptors(descriptors, fplArrayCount(descriptors));
+	if (outSupports == fpl_null || maxCount == 0) return total;
+	uint32_t writeCount = total < maxCount ? total : maxCount;
+	for (uint32_t i = 0; i < writeCount; ++i) {
+		fplClearStruct(&outSupports[i]);
+		outSupports[i].name = descriptors[i].name;
+		outSupports[i].type = descriptors[i].type;
+		outSupports[i].supportedSources = descriptors[i].supportedSources;
+		outSupports[i].supportsEvents = descriptors[i].supportsEvents;
+		outSupports[i].supportsPolling = descriptors[i].supportsPolling;
+		outSupports[i].supportsHotplug = descriptors[i].supportsHotplug;
+	}
+	return writeCount;
 }
 
 fpl_common_api bool fplGetInputBackendSupportByType(const fplInputBackendType type, fplInputBackendSupport *outSupport) {
-	(void)type;
 	if (outSupport != fpl_null) {
 		fplClearStruct(outSupport);
+	}
+	fpl__InputBackendDescriptor descriptors[FPL_MAX_INPUT_BACKEND_COUNT];
+	uint32_t total = fpl__BuildInputBackendDescriptors(descriptors, fplArrayCount(descriptors));
+	for (uint32_t i = 0; i < total; ++i) {
+		if (descriptors[i].type != type) continue;
+		if (outSupport != fpl_null) {
+			outSupport->name = descriptors[i].name;
+			outSupport->type = descriptors[i].type;
+			outSupport->supportedSources = descriptors[i].supportedSources;
+			outSupport->supportsEvents = descriptors[i].supportsEvents;
+			outSupport->supportsPolling = descriptors[i].supportsPolling;
+			outSupport->supportsHotplug = descriptors[i].supportsHotplug;
+		}
+		return true;
 	}
 	return false;
 }
 
+// Single internal enumerator: walks active backends, writes filtered devices into out (when not null), returns total.
+// When out is null or maxDevices is 0, returns the would-be device count.
+fpl_internal uint32_t fpl__EnumerateInputDevices(const fplInputSourceType sourceFilter, fplInputDevice *out, const uint32_t maxDevices) {
+	uint32_t count = 0;
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (appState == fpl_null) return 0;
+	const fpl__InputContext *ctx = &appState->input;
+	if (!ctx->isInitialized) return 0;
+
+	const fplInputDeviceFeatureFlags kbmFeatures = (fplInputDeviceFeatureFlags)(fplInputDeviceFeatureFlags_Polling | fplInputDeviceFeatureFlags_Events);
+	const fplInputDeviceFeatureFlags padFeatures = (fplInputDeviceFeatureFlags)(fplInputDeviceFeatureFlags_Polling | fplInputDeviceFeatureFlags_Events | fplInputDeviceFeatureFlags_Hotplug);
+
+#	if defined(FPL__ENABLE_INPUT_WIN32)
+	if (ctx->win32kbm.isInitialized) {
+		if ((sourceFilter & fplInputSourceType_Keyboard) != 0) {
+			if (out != fpl_null && count < maxDevices) {
+				fplInputDevice *dev = &out[count];
+				fplClearStruct(dev);
+				fpl__MakeInputDeviceGuid(&dev->guid, fplInputBackendType_Win32, fplInputSourceType_Keyboard, 0);
+				fplCopyString("Win32 Keyboard", dev->name, fplArrayCount(dev->name));
+				dev->index = 0;
+				dev->sourceType = fplInputSourceType_Keyboard;
+				dev->backend = fplInputBackendType_Win32;
+				dev->featureFlags = kbmFeatures;
+				dev->connection = fplInputConnectionState_Connected;
+			}
+			count++;
+		}
+		if ((sourceFilter & fplInputSourceType_Mouse) != 0) {
+			if (out != fpl_null && count < maxDevices) {
+				fplInputDevice *dev = &out[count];
+				fplClearStruct(dev);
+				fpl__MakeInputDeviceGuid(&dev->guid, fplInputBackendType_Win32, fplInputSourceType_Mouse, 0);
+				fplCopyString("Win32 Mouse", dev->name, fplArrayCount(dev->name));
+				dev->index = 0;
+				dev->sourceType = fplInputSourceType_Mouse;
+				dev->backend = fplInputBackendType_Win32;
+				dev->featureFlags = kbmFeatures;
+				dev->connection = fplInputConnectionState_Connected;
+			}
+			count++;
+		}
+	}
+#	endif
+
+#	if defined(FPL__ENABLE_INPUT_X11)
+	if (ctx->x11kbm.isInitialized) {
+		if ((sourceFilter & fplInputSourceType_Keyboard) != 0) {
+			if (out != fpl_null && count < maxDevices) {
+				fplInputDevice *dev = &out[count];
+				fplClearStruct(dev);
+				fpl__MakeInputDeviceGuid(&dev->guid, fplInputBackendType_X11Kbm, fplInputSourceType_Keyboard, 0);
+				fplCopyString("X11 Keyboard", dev->name, fplArrayCount(dev->name));
+				dev->index = 0;
+				dev->sourceType = fplInputSourceType_Keyboard;
+				dev->backend = fplInputBackendType_X11Kbm;
+				dev->featureFlags = kbmFeatures;
+				dev->connection = fplInputConnectionState_Connected;
+			}
+			count++;
+		}
+		if ((sourceFilter & fplInputSourceType_Mouse) != 0) {
+			if (out != fpl_null && count < maxDevices) {
+				fplInputDevice *dev = &out[count];
+				fplClearStruct(dev);
+				fpl__MakeInputDeviceGuid(&dev->guid, fplInputBackendType_X11Kbm, fplInputSourceType_Mouse, 0);
+				fplCopyString("X11 Mouse", dev->name, fplArrayCount(dev->name));
+				dev->index = 0;
+				dev->sourceType = fplInputSourceType_Mouse;
+				dev->backend = fplInputBackendType_X11Kbm;
+				dev->featureFlags = kbmFeatures;
+				dev->connection = fplInputConnectionState_Connected;
+			}
+			count++;
+		}
+	}
+#	endif
+
+#	if defined(FPL__ENABLE_INPUT_XINPUT)
+	if (ctx->xinput.isInitialized && (sourceFilter & fplInputSourceType_Gamepad) != 0) {
+		for (uint32_t i = 0; i < XUSER_MAX_COUNT; ++i) {
+			if (!ctx->xinput.isConnected[i]) continue;
+			if (out != fpl_null && count < maxDevices) {
+				fplInputDevice *dev = &out[count];
+				fplClearStruct(dev);
+				fpl__MakeInputDeviceGuid(&dev->guid, fplInputBackendType_XInput, fplInputSourceType_Gamepad, i);
+				fplCopyString(ctx->xinput.deviceNames[i], dev->name, fplArrayCount(dev->name));
+				dev->index = i;
+				dev->sourceType = fplInputSourceType_Gamepad;
+				dev->backend = fplInputBackendType_XInput;
+				dev->featureFlags = padFeatures;
+				dev->connection = fplInputConnectionState_Connected;
+			}
+			count++;
+		}
+	}
+#	endif
+
+#	if defined(FPL__ENABLE_INPUT_LINUX_JOYSTICK)
+	if (ctx->linuxJoystick.isInitialized && (sourceFilter & fplInputSourceType_Gamepad) != 0) {
+		for (uint32_t i = 0; i < fplArrayCount(ctx->linuxJoystick.controllers); ++i) {
+			const fpl__LinuxGameController *controller = &ctx->linuxJoystick.controllers[i];
+			if (controller->fd <= 0) continue;
+			if (out != fpl_null && count < maxDevices) {
+				fplInputDevice *dev = &out[count];
+				fplClearStruct(dev);
+				fpl__MakeInputDeviceGuid(&dev->guid, fplInputBackendType_LinuxJoystick, fplInputSourceType_Gamepad, i);
+				const char *displayName = controller->displayName[0] != 0 ? controller->displayName : controller->deviceName;
+				fplCopyString(displayName, dev->name, fplArrayCount(dev->name));
+				dev->index = i;
+				dev->sourceType = fplInputSourceType_Gamepad;
+				dev->backend = fplInputBackendType_LinuxJoystick;
+				dev->featureFlags = padFeatures;
+				dev->connection = fplInputConnectionState_Connected;
+				dev->state.gamepad = controller->state;
+			}
+			count++;
+		}
+	}
+#	endif
+
+	return count;
+}
+
 fpl_common_api uint32_t fplGetInputDevices(const fplInputSourceType sourceFilter, fplInputDevice *outDevices, const uint32_t maxDevices) {
-	(void)sourceFilter;
-	(void)outDevices;
-	(void)maxDevices;
-	return 0;
+	if (outDevices == fpl_null || maxDevices == 0) {
+		return fpl__EnumerateInputDevices(sourceFilter, fpl_null, 0);
+	}
+	uint32_t total = fpl__EnumerateInputDevices(sourceFilter, outDevices, maxDevices);
+	return total < maxDevices ? total : maxDevices;
 }
 
 fpl_common_api bool fplFindInputDevice(const fplInputDeviceGuid *guid, fplInputDevice *outDevice) {
-	(void)guid;
 	if (outDevice != fpl_null) {
 		fplClearStruct(outDevice);
+	}
+	if (guid == fpl_null) return false;
+	fplInputDevice scratch[FPL_MAX_INPUT_DEVICE_COUNT];
+	uint32_t total = fpl__EnumerateInputDevices(fplInputSourceType_All, scratch, fplArrayCount(scratch));
+	if (total > fplArrayCount(scratch)) total = fplArrayCount(scratch);
+	for (uint32_t i = 0; i < total; ++i) {
+		if (fpl__IsEqualsMemory(scratch[i].guid.bytes, guid->bytes, sizeof(guid->bytes))) {
+			if (outDevice != fpl_null) {
+				*outDevice = scratch[i];
+			}
+			return true;
+		}
 	}
 	return false;
 }
