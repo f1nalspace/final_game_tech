@@ -8249,10 +8249,6 @@ typedef enum fplInputDeviceFeatureFlags {
 	fplInputDeviceFeatureFlags_Events = 1 << 1,
 	//! Device participates in hotplug notifications.
 	fplInputDeviceFeatureFlags_Hotplug = 1 << 2,
-	//! Device supports rumble / force feedback (reserved for future use).
-	fplInputDeviceFeatureFlags_Rumble = 1 << 3,
-	//! Device exposes battery state (reserved for future use).
-	fplInputDeviceFeatureFlags_Battery = 1 << 4,
 } fplInputDeviceFeatureFlags;
 //! InputDeviceFeatureFlags operator overloads for C++.
 FPL_ENUM_AS_FLAGS_OPERATORS(fplInputDeviceFeatureFlags);
