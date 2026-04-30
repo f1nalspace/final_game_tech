@@ -4,18 +4,27 @@ Name:
 	FPL-Demo | ConsoleGamepad
 
 Description:
-	Console-only gamepad polling demo. No window, no video, no audio.
-	Verifies that gamepad backends (XInput on Win32, Linux joystick on Linux)
-	work without a window after step 9a of the input refactor.
+	Console-only input polling demo. No window, no video, no audio.
+	Polls keyboard, mouse, and gamepad without a window — exercises the
+	detached X11 Display* (Linux) and HWND_MESSAGE fallback (Win32) added in
+	step 9b of the input refactor.
 
 Requirements:
 	- C99 Compiler
 	- Final Platform Layer
 
 Usage:
-	Run the binary, plug in a gamepad. Press buttons or move sticks.
-	Stick/trigger values and pressed buttons are printed once per second.
+	Run the binary. Plug in a gamepad. Move the mouse or press keys.
+	Once per second the demo prints: held keys (raw indices + modifiers),
+	cursor position + held mouse buttons, and per-controller stick/trigger
+	values + held gamepad buttons.
 	Press Ctrl+C to quit.
+
+	Note: mouse wheel deltas are always zero in this demo. Without a window
+	there is no event source for wheel input (X11 delivers wheel as
+	ButtonPress on buttons 4-7; Win32 delivers it as WM_MOUSEWHEEL) and a
+	pure-poll path has no "wheel position" to query. Wheel support in
+	detached mode is part of the pending step 9b event-flow work.
 
 License:
 	Copyright (c) 2017-2026 Torsten Spaete
@@ -28,6 +37,36 @@ License:
 #define FPL_NO_VIDEO
 #define FPL_NO_AUDIO
 #include <final_platform_layer.h>
+
+static void PrintKeyboard(const fplKeyboardState *s) {
+	fplConsoleOut("KB modifiers:");
+	if ((s->modifiers & fplKeyboardModifierFlags_LShift) || (s->modifiers & fplKeyboardModifierFlags_RShift)) fplConsoleOut(" Shift");
+	if ((s->modifiers & fplKeyboardModifierFlags_LCtrl) || (s->modifiers & fplKeyboardModifierFlags_RCtrl))   fplConsoleOut(" Ctrl");
+	if ((s->modifiers & fplKeyboardModifierFlags_LAlt) || (s->modifiers & fplKeyboardModifierFlags_RAlt))     fplConsoleOut(" Alt");
+	if ((s->modifiers & fplKeyboardModifierFlags_LSuper) || (s->modifiers & fplKeyboardModifierFlags_RSuper)) fplConsoleOut(" Super");
+	fplConsoleOut("  held(raw):");
+	uint32_t heldCount = 0;
+	for (uint32_t i = 0; i < FPL_MAX_KEYBOARD_STATE_COUNT; ++i) {
+		if (!s->keyStatesRaw[i]) continue;
+		if (heldCount++ < 16) {
+			fplConsoleFormatOut(" 0x%02X", i);
+		}
+	}
+	if (heldCount == 0) fplConsoleOut(" (none)");
+	else if (heldCount > 16) fplConsoleFormatOut(" ... +%u", heldCount - 16);
+	fplConsoleOut("\n");
+}
+
+static void PrintMouse(const fplMouseState *s) {
+	fplConsoleFormatOut("MS pos=(%d, %d) wheel=(% .2f, % .2f)  buttons:",
+		s->x, s->y, s->wheelDeltaX, s->wheelDeltaY);
+	if (s->buttonStates[fplMouseButtonType_Left]   != fplButtonState_Release) fplConsoleOut(" L");
+	if (s->buttonStates[fplMouseButtonType_Right]  != fplButtonState_Release) fplConsoleOut(" R");
+	if (s->buttonStates[fplMouseButtonType_Middle] != fplButtonState_Release) fplConsoleOut(" M");
+	if (s->buttonStates[fplMouseButtonType_X1]     != fplButtonState_Release) fplConsoleOut(" X1");
+	if (s->buttonStates[fplMouseButtonType_X2]     != fplButtonState_Release) fplConsoleOut(" X2");
+	fplConsoleOut("\n");
+}
 
 static void PrintGamepad(uint32_t index, const fplGamepadState *s) {
 	fplConsoleFormatOut("[%u] %s  L(% .2f, % .2f) R(% .2f, % .2f) LT=%.2f RT=%.2f  buttons:",
@@ -56,12 +95,12 @@ static void PrintGamepad(uint32_t index, const fplGamepadState *s) {
 int main(int argc, char *args[]) {
 	fplSettings settings;
 	fplSetDefaultSettings(&settings);
-	if (!fplPlatformInit(fplInitFlags_GameController, &settings)) {
+	if (!fplPlatformInit(fplInitFlags_Input, &settings)) {
 		return 1;
 	}
 
-	fplConsoleOut("Console gamepad demo. Press Ctrl+C to quit.\n");
-	fplConsoleOut("Plug in a gamepad and move sticks / press buttons.\n\n");
+	fplConsoleOut("Console input demo (no window). Press Ctrl+C to quit.\n");
+	fplConsoleOut("Move the mouse, press keys, plug in a gamepad.\n\n");
 
 	uint64_t lastPrint = fplMillisecondsQuery();
 	bool wasConnected[4] = { false, false, false, false };
@@ -83,6 +122,21 @@ int main(int argc, char *args[]) {
 		uint64_t now = fplMillisecondsQuery();
 		if (now - lastPrint >= 1000) {
 			lastPrint = now;
+
+			fplKeyboardState kbState = fplZeroInit;
+			if (fplPollKeyboardState(&kbState)) {
+				PrintKeyboard(&kbState);
+			} else {
+				fplConsoleOut("(keyboard polling not available)\n");
+			}
+
+			fplMouseState msState = fplZeroInit;
+			if (fplPollMouseState(&msState)) {
+				PrintMouse(&msState);
+			} else {
+				fplConsoleOut("(mouse polling not available)\n");
+			}
+
 			bool anyConnected = false;
 			for (uint32_t i = 0; i < fplArrayCount(states.deviceStates); ++i) {
 				if (states.deviceStates[i].isConnected) {
@@ -93,6 +147,7 @@ int main(int argc, char *args[]) {
 			if (!anyConnected) {
 				fplConsoleOut("(no gamepad connected)\n");
 			}
+			fplConsoleOut("\n");
 		}
 
 		fplThreadSleep(16);
