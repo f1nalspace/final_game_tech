@@ -47,14 +47,15 @@ _None._
 3. Pick the next pending step. Mark it in_progress, implement, build-check on Linux at minimum, commit, mark done.
 4. Each step should be one commit (per plan §11).
 
-## Latest state (after step 7)
+## Latest state (after step 8)
 
 - Most recent commits on `input-refactoring`:
+  - `fcb01dca` Step 8: unify gamepad event push through helpers
   - `aeb0a3a3` Fix Linux joystick init-message check
   - `c8174a26` Linux joystick auto-detection + log throttling
-  - `d51a86ab` Migrated Linux joystick to new input system
-- Linux gamepad path is now usable end-to-end: scan 0..31, throttled detection, cached poll, F310 verified.
-- Step 8 is the next planned step — gamepad event helpers must move out of `FPL__ENABLE_WINDOW` before the `FPL__SUPPORT_WINDOW` gates on `FPL__ENABLE_INPUT_XINPUT` / `_WIN32` / `_X11` / `_LINUX_JOYSTICK` can be lifted in step 9.
+- Linux gamepad path usable end-to-end: scan 0..31, throttled detection, cached poll, F310 verified.
+- All backends (XInput, LinuxJoystick) now drive gamepad events via the unified `fpl__PushGamepad*Event` helpers; window code does not push gamepad events.
+- Step 9 is next — must move `fpl__PushGamepad*Event` (and the event queue / supporting public types) out of `FPL__ENABLE_WINDOW` so the `FPL__SUPPORT_WINDOW` gates on `FPL__ENABLE_INPUT_XINPUT` / `_WIN32` / `_X11` / `_LINUX_JOYSTICK` can be lifted, then add a console-only pump (likely route `fpl__InputSystem_Update` through `fplPollEvents` when no window).
 
 ## Known incidental issues found while testing
 
