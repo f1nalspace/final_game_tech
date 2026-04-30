@@ -2607,13 +2607,11 @@ typedef enum fplX86InstructionSetLevel {
 #endif // FPL__SUPPORT_VIDEO
 
 //
-// Remove video support when the Window is disabled
+// Remove video support when the Window is disabled.
+// Note: SUBPLATFORM_X11 is dropped further below (after FPL__SUPPORT_INPUT_X11 is decided)
+// because the X11 keyboard/mouse input backend can run without a user window (step 9b).
 //
 #if !defined(FPL__SUPPORT_WINDOW)
-#	if defined(FPL_SUBPLATFORM_X11)
-#		undef FPL_SUBPLATFORM_X11
-#	endif
-
 #	if defined(FPL__SUPPORT_VIDEO)
 #		undef FPL__SUPPORT_VIDEO
 #	endif
@@ -2709,6 +2707,14 @@ typedef enum fplX86InstructionSetLevel {
 #endif // FPL__SUPPORT_INPUT
 
 //
+// X11 subplatform stays alive when FPL_NO_WINDOW only if the X11 input backend wants it (step 9b).
+// Otherwise drop it (no video/window without X11).
+//
+#if !defined(FPL__SUPPORT_WINDOW) && defined(FPL_SUBPLATFORM_X11) && !defined(FPL__SUPPORT_INPUT_X11)
+#	undef FPL_SUBPLATFORM_X11
+#endif
+
+//
 // Enable supports (FPL uses _ENABLE_ internally only)
 //
 #if defined(FPL__SUPPORT_WINDOW)
@@ -2746,7 +2752,8 @@ typedef enum fplX86InstructionSetLevel {
 
 #if defined(FPL__SUPPORT_INPUT)
 #	define FPL__ENABLE_INPUT
-// NOTE: Gamepad backends (XInput, LinuxJoystick) work without a window since step 9a of the input refactor. Keyboard/mouse backends still require FPL__SUPPORT_WINDOW (step 9b lifts this via hidden message-only window / detached X11 Display).
+// All input backends work without a window since step 9b: keyboard/mouse backends use polling
+// against a hidden HWND_MESSAGE on Win32 and a detached Display* on X11 when no user window exists.
 #	if defined(FPL__SUPPORT_INPUT_XINPUT)
 #		define FPL__ENABLE_INPUT_XINPUT
 #	endif
@@ -2756,10 +2763,10 @@ typedef enum fplX86InstructionSetLevel {
 #	if defined(FPL__SUPPORT_INPUT_RAWINPUT)
 #		define FPL__ENABLE_INPUT_RAWINPUT
 #	endif
-#	if defined(FPL__SUPPORT_INPUT_WIN32) && defined(FPL__SUPPORT_WINDOW)
+#	if defined(FPL__SUPPORT_INPUT_WIN32)
 #		define FPL__ENABLE_INPUT_WIN32
 #	endif
-#	if defined(FPL__SUPPORT_INPUT_X11) && defined(FPL__SUPPORT_WINDOW)
+#	if defined(FPL__SUPPORT_INPUT_X11)
 #		define FPL__ENABLE_INPUT_X11
 #	endif
 #	if defined(FPL__SUPPORT_INPUT_LINUX_JOYSTICK)
@@ -10072,10 +10079,16 @@ typedef struct fpl__InputBackendXInput {
 
 #if defined(FPL__ENABLE_INPUT_WIN32)
 // Win32 keyboard/mouse backend instance owned by fpl__InputContext.
-// Holds no native state of its own: GetAsyncKeyState / GetCursorPos are global,
-// and WM_* events arrive via fpl__InputSystem_HandleNativeEvent.
+// In windowed mode WM_* events arrive via fpl__InputSystem_HandleNativeEvent and polling
+// uses the user window for ScreenToClient. In detached mode (FPL_NO_WINDOW or
+// fplInputSettings.detachFromWindow) the backend creates a hidden HWND_MESSAGE so future
+// WM_INPUT/WM_DEVICECHANGE delivery has a target; polling currently returns
+// screen-relative mouse coordinates because there is no client area (step 9b).
 typedef struct fpl__InputBackendWin32 {
+	HWND messageWindow;
+	ATOM messageWindowClass;
 	bool isInitialized;
+	bool detached;
 } fpl__InputBackendWin32;
 #endif // FPL__ENABLE_INPUT_WIN32
 
@@ -10925,10 +10938,18 @@ typedef struct fpl__UnixAppState {
 
 #if defined(FPL__ENABLE_INPUT_X11)
 // X11 keyboard/mouse backend instance owned by fpl__InputContext.
-// Holds no native state of its own: the X11 Display* / Window live in
-// the platform window state, and XEvents arrive via fpl__InputSystem_HandleNativeEvent.
+// In windowed mode display + window come from fpl__X11WindowState; in detached mode
+// (FPL_NO_WINDOW or fplInputSettings.detachFromWindow) the backend opens its own
+// Display* and uses the default screen's root window for pointer queries (step 9b).
+// XEvents arrive via fpl__InputSystem_HandleNativeEvent in windowed mode; detached mode
+// is polling-only — events from a private Display are not forwarded.
 typedef struct fpl__InputBackendX11Kbm {
+	Display *display;
+	Window root;
+	fplKey detachedKeyMap[256];
 	bool isInitialized;
+	bool detached;
+	bool ownsDisplay;
 } fpl__InputBackendX11Kbm;
 #endif // FPL__ENABLE_INPUT_X11
 
@@ -11377,10 +11398,8 @@ fpl_internal void fpl__InputSystem_Update(fpl__InputContext *ctx);
 fpl_internal bool fpl__InputSystem_HandleNativeEvent(fpl__InputContext *ctx, const fpl__NativeInputEvent *ev);
 fpl_internal bool fpl__InputSystem_IsEnabled(const fpl__InputContext *ctx, fplInputSourceType source);
 fpl_internal bool fpl__InputSystem_PollGamepad(fpl__InputContext *ctx, fplGamepadStates *outStates);
-#if defined(FPL__ENABLE_WINDOW)
 fpl_internal bool fpl__InputSystem_PollKeyboard(fpl__InputContext *ctx, fplKeyboardState *outState);
 fpl_internal bool fpl__InputSystem_PollMouse(fpl__InputContext *ctx, fplMouseState *outState);
-#endif // FPL__ENABLE_WINDOW
 #endif // FPL__ENABLE_INPUT
 
 typedef struct fpl__PlatformAppState fpl__PlatformAppState;
@@ -15398,9 +15417,48 @@ fpl_internal bool fpl__InputBackendXInput_PollGamepad(fpl__InputBackendXInput *b
 #if defined(FPL__ENABLE_INPUT_WIN32) && !defined(FPL__WIN32_INPUT_KBM_IMPLEMENTED)
 #define FPL__WIN32_INPUT_KBM_IMPLEMENTED
 
-fpl_internal bool fpl__InputBackendWin32_Init(fpl__InputBackendWin32 *backend) {
+fpl_internal bool fpl__InputBackendWin32_Init(fpl__InputBackendWin32 *backend, const fplInputSettings *settings) {
 	fplAssertPtr(backend);
 	if (backend->isInitialized) return true;
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (appState == fpl_null) return false;
+	const fpl__Win32Api *wapi = &appState->win32.winApi;
+	bool detached = false;
+#	if defined(FPL__ENABLE_WINDOW)
+	if (settings != fpl_null && settings->detachFromWindow) {
+		detached = true;
+	}
+	if ((appState->initFlags & fplInitFlags_Window) == 0) {
+		detached = true;
+	}
+#	else
+	(void)settings;
+	detached = true;
+#	endif
+	if (detached) {
+		// Hidden HWND_MESSAGE for receiving WM_INPUT/WM_DEVICECHANGE in future steps.
+		// Polling already works against the global cursor/key state, so the message window
+		// is created but the wndproc just defers to DefWindowProcW for now.
+		WNDCLASSEXW wc = fplZeroInit;
+		wc.cbSize = sizeof(wc);
+		wc.lpfnWndProc = wapi->user.DefWindowProcW;
+		wc.hInstance = GetModuleHandleW(fpl_null);
+		wc.lpszClassName = L"FPLInputMessageWindow";
+		ATOM cls = wapi->user.RegisterClassExW(&wc);
+		if (cls == 0) {
+			FPL__ERROR(FPL__MODULE_WIN32, "Failed to register hidden input message-window class");
+			return false;
+		}
+		HWND hwnd = wapi->user.CreateWindowExW(0, (LPCWSTR)wc.lpszClassName, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, fpl_null, wc.hInstance, fpl_null);
+		if (hwnd == fpl_null) {
+			wapi->user.UnregisterClassW((LPCWSTR)wc.lpszClassName, wc.hInstance);
+			FPL__ERROR(FPL__MODULE_WIN32, "Failed to create hidden input message-window");
+			return false;
+		}
+		backend->messageWindow = hwnd;
+		backend->messageWindowClass = cls;
+	}
+	backend->detached = detached;
 	backend->isInitialized = true;
 	return true;
 }
@@ -15408,6 +15466,12 @@ fpl_internal bool fpl__InputBackendWin32_Init(fpl__InputBackendWin32 *backend) {
 fpl_internal void fpl__InputBackendWin32_Release(fpl__InputBackendWin32 *backend) {
 	fplAssertPtr(backend);
 	if (!backend->isInitialized) return;
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (backend->messageWindow != fpl_null && appState != fpl_null) {
+		const fpl__Win32Api *wapi = &appState->win32.winApi;
+		wapi->user.DestroyWindow(backend->messageWindow);
+		wapi->user.UnregisterClassW(L"FPLInputMessageWindow", GetModuleHandleW(fpl_null));
+	}
 	fplClearStruct(backend);
 }
 
@@ -15425,9 +15489,13 @@ fpl_internal bool fpl__InputBackendWin32_PollKeyboard(fpl__InputBackendWin32 *ba
 			k = (int)keyCode;
 		}
 		bool down = fpl__Win32IsKeyDown(wapi, k);
-		fplKey key = fpl__GetMappedKey(&fpl__global__AppState->window, keyCode);
 		outState->keyStatesRaw[keyCode] = down;
-		outState->buttonStatesMapped[(int)key] = down ? fplButtonState_Press : fplButtonState_Release;
+#		if defined(FPL__ENABLE_WINDOW)
+		if (!backend->detached) {
+			fplKey key = fpl__GetMappedKey(&fpl__global__AppState->window, keyCode);
+			outState->buttonStatesMapped[(int)key] = down ? fplButtonState_Press : fplButtonState_Release;
+		}
+#		endif
 	}
 	return true;
 }
@@ -15437,26 +15505,29 @@ fpl_internal bool fpl__InputBackendWin32_PollMouse(fpl__InputBackendWin32 *backe
 	fplAssertPtr(outState);
 	if (!backend->isInitialized) return false;
 	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
 	const fpl__Win32Api *wapi = &appState->winApi;
 	POINT p;
-	if ((wapi->user.GetCursorPos(&p) == TRUE) && (wapi->user.ScreenToClient(windowState->windowHandle, &p))) {
-		fplClearStruct(outState);
-		outState->x = p.x;
-		outState->y = p.y;
-		bool leftDown = fpl__Win32IsKeyDown(wapi, VK_LBUTTON);
-		bool rightDown = fpl__Win32IsKeyDown(wapi, VK_RBUTTON);
-		bool middleDown = fpl__Win32IsKeyDown(wapi, VK_MBUTTON);
-		bool x1Down = fpl__Win32IsKeyDown(wapi, VK_XBUTTON1);
-		bool x2Down = fpl__Win32IsKeyDown(wapi, VK_XBUTTON2);
-		outState->buttonStates[fplMouseButtonType_Left] = leftDown ? fplButtonState_Press : fplButtonState_Release;
-		outState->buttonStates[fplMouseButtonType_Right] = rightDown ? fplButtonState_Press : fplButtonState_Release;
-		outState->buttonStates[fplMouseButtonType_Middle] = middleDown ? fplButtonState_Press : fplButtonState_Release;
-		outState->buttonStates[fplMouseButtonType_X1] = x1Down ? fplButtonState_Press : fplButtonState_Release;
-		outState->buttonStates[fplMouseButtonType_X2] = x2Down ? fplButtonState_Press : fplButtonState_Release;
-		return true;
+	if (wapi->user.GetCursorPos(&p) != TRUE) return false;
+#	if defined(FPL__ENABLE_WINDOW)
+	if (!backend->detached) {
+		const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+		if (!wapi->user.ScreenToClient(windowState->windowHandle, &p)) return false;
 	}
-	return false;
+#	endif
+	fplClearStruct(outState);
+	outState->x = p.x;
+	outState->y = p.y;
+	bool leftDown = fpl__Win32IsKeyDown(wapi, VK_LBUTTON);
+	bool rightDown = fpl__Win32IsKeyDown(wapi, VK_RBUTTON);
+	bool middleDown = fpl__Win32IsKeyDown(wapi, VK_MBUTTON);
+	bool x1Down = fpl__Win32IsKeyDown(wapi, VK_XBUTTON1);
+	bool x2Down = fpl__Win32IsKeyDown(wapi, VK_XBUTTON2);
+	outState->buttonStates[fplMouseButtonType_Left] = leftDown ? fplButtonState_Press : fplButtonState_Release;
+	outState->buttonStates[fplMouseButtonType_Right] = rightDown ? fplButtonState_Press : fplButtonState_Release;
+	outState->buttonStates[fplMouseButtonType_Middle] = middleDown ? fplButtonState_Press : fplButtonState_Release;
+	outState->buttonStates[fplMouseButtonType_X1] = x1Down ? fplButtonState_Press : fplButtonState_Release;
+	outState->buttonStates[fplMouseButtonType_X2] = x2Down ? fplButtonState_Press : fplButtonState_Release;
+	return true;
 }
 
 fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin32 *backend, const fpl__NativeInputEvent *ev) {
@@ -17858,7 +17929,7 @@ fpl_platform_api bool fplPollKeyboardState(fplKeyboardState *outState) {
 #	endif
 }
 
-#endif // FPL__ENABLE_WINDOW (temporarily closed so fplPollGamepadStates is visible without window)
+#endif // FPL__ENABLE_WINDOW (temporarily closed so input poll fns are visible without window)
 
 #if defined(FPL__ENABLE_INPUT)
 fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
@@ -17866,6 +17937,12 @@ fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
 	FPL__CheckPlatform(false);
 	fpl__PlatformAppState *platformAppState = fpl__global__AppState;
 	return fpl__InputSystem_PollGamepad(&platformAppState->input, outStates);
+}
+
+fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
+	FPL__CheckArgumentNull(outState, false);
+	FPL__CheckPlatform(false);
+	return fpl__InputSystem_PollMouse(&fpl__global__AppState->input, outState);
 }
 #endif // FPL__ENABLE_INPUT
 
@@ -17897,17 +17974,6 @@ fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY) {
 #endif
 	}
 	return(false);
-}
-
-fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
-	FPL__CheckArgumentNull(outState, false);
-	FPL__CheckPlatform(false);
-#	if defined(FPL__ENABLE_INPUT)
-	return fpl__InputSystem_PollMouse(&fpl__global__AppState->input, outState);
-#	else
-	(void)outState;
-	return false;
-#	endif
 }
 
 fpl_internal BOOL WINAPI fpl__Win32MonitorCountEnumProc(HMONITOR monitorHandle, HDC hdc, LPRECT rect, LPARAM userData) {
@@ -20001,6 +20067,7 @@ fpl_internal bool fpl__X11InitSubplatform(fpl__X11SubplatformState *subplatform)
 	return true;
 }
 
+#if defined(FPL__ENABLE_WINDOW)
 fpl_internal void fpl__X11ReleaseWindow(const fpl__X11SubplatformState *subplatform, fpl__X11WindowState *windowState) {
 	fplAssert((subplatform != fpl_null) && (windowState != fpl_null));
 	const fpl__X11Api *x11Api = &subplatform->api;
@@ -20030,6 +20097,7 @@ fpl_internal void fpl__X11ReleaseWindow(const fpl__X11SubplatformState *subplatf
 	}
 	fplClearStruct(windowState);
 }
+#endif // FPL__ENABLE_WINDOW
 
 fpl_internal fplKey fpl__X11TranslateKeySymbol(const KeySym keySym) {
 	switch (keySym) {
@@ -20264,6 +20332,7 @@ fpl_internal fplKey fpl__X11TranslateKeySymbol(const KeySym keySym) {
 	}
 }
 
+#if defined(FPL__ENABLE_WINDOW)
 fpl_internal void fpl__X11LoadWindowIcon(const fpl__X11Api *x11Api, fpl__X11WindowState *x11WinState, fplWindowSettings *windowSettings) {
 	// @BUG(final/X11): Setting the window icon on X11 does not fail, but it does not show up in any of the bars in gnome/ubuntu the icon is always shown as "unset"
 
@@ -20757,6 +20826,7 @@ fpl_internal void fpl__X11HandleTextInputEvent(const fpl__X11Api *x11Api, fpl__P
 		}
 	}
 }
+#endif // FPL__ENABLE_WINDOW
 
 // ############################################################################
 //
@@ -20764,9 +20834,71 @@ fpl_internal void fpl__X11HandleTextInputEvent(const fpl__X11Api *x11Api, fpl__P
 //
 // ############################################################################
 #if defined(FPL__ENABLE_INPUT_X11)
-fpl_internal bool fpl__InputBackendX11Kbm_Init(fpl__InputBackendX11Kbm *backend) {
+// Resolve the Display + window pair used for polling. In windowed mode the user
+// window's display is preferred so polling and event delivery stay in sync; in
+// detached mode the backend's own private connection + root window are used.
+fpl_internal bool fpl__InputBackendX11Kbm_ResolveTarget(const fpl__InputBackendX11Kbm *backend, Display **outDisplay, Window *outWindow) {
+	fplAssertPtr(backend);
+	fplAssertPtr(outDisplay);
+	fplAssertPtr(outWindow);
+	*outDisplay = fpl_null;
+	*outWindow = (Window)0;
+#	if defined(FPL__ENABLE_WINDOW)
+	if (!backend->detached) {
+		fpl__PlatformAppState *appState = fpl__global__AppState;
+		if (appState == fpl_null) return false;
+		const fpl__X11WindowState *windowState = &appState->window.x11;
+		if (windowState->display == fpl_null) return false;
+		*outDisplay = windowState->display;
+		*outWindow = windowState->window;
+		return true;
+	}
+#	endif
+	if (backend->display == fpl_null) return false;
+	*outDisplay = backend->display;
+	*outWindow = backend->root;
+	return true;
+}
+
+fpl_internal bool fpl__InputBackendX11Kbm_Init(fpl__InputBackendX11Kbm *backend, const fplInputSettings *settings) {
 	fplAssertPtr(backend);
 	if (backend->isInitialized) return true;
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (appState == fpl_null) return false;
+	const fpl__X11Api *x11Api = &appState->x11.api;
+	bool detached = false;
+#	if defined(FPL__ENABLE_WINDOW)
+	if (settings != fpl_null && settings->detachFromWindow) {
+		detached = true;
+	}
+	if ((appState->initFlags & fplInitFlags_Window) == 0) {
+		detached = true;
+	}
+#	else
+	(void)settings;
+	detached = true;
+#	endif
+	if (detached) {
+		Display *display = x11Api->XOpenDisplay(fpl_null);
+		if (display == fpl_null) {
+			FPL__ERROR(FPL__MODULE_X11, "Failed to open detached X11 display for input backend");
+			return false;
+		}
+		int screen = x11Api->XDefaultScreen(display);
+		backend->display = display;
+		backend->root = x11Api->XRootWindow(display, screen);
+		backend->ownsDisplay = true;
+		// Build a backend-local keycode -> fplKey map (no user window provides one in detached mode).
+		for (int keyCode = 8; keyCode <= 255; ++keyCode) {
+			int dummy = 0;
+			KeySym *keySyms = x11Api->XGetKeyboardMapping(display, (KeyCode)keyCode, 1, &dummy);
+			if (keySyms != fpl_null) {
+				backend->detachedKeyMap[keyCode] = fpl__X11TranslateKeySymbol(keySyms[0]);
+				x11Api->XFree(keySyms);
+			}
+		}
+	}
+	backend->detached = detached;
 	backend->isInitialized = true;
 	return true;
 }
@@ -20774,6 +20906,12 @@ fpl_internal bool fpl__InputBackendX11Kbm_Init(fpl__InputBackendX11Kbm *backend)
 fpl_internal void fpl__InputBackendX11Kbm_Release(fpl__InputBackendX11Kbm *backend) {
 	fplAssertPtr(backend);
 	if (!backend->isInitialized) return;
+	if (backend->ownsDisplay && backend->display != fpl_null) {
+		fpl__PlatformAppState *appState = fpl__global__AppState;
+		if (appState != fpl_null) {
+			appState->x11.api.XCloseDisplay(backend->display);
+		}
+	}
 	fplClearStruct(backend);
 }
 
@@ -20784,15 +20922,25 @@ fpl_internal bool fpl__InputBackendX11Kbm_PollKeyboard(fpl__InputBackendX11Kbm *
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	if (appState == fpl_null) return false;
 	const fpl__X11Api *x11Api = &appState->x11.api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
-	if (windowState->display == fpl_null) return false;
+	Display *display;
+	Window window;
+	if (!fpl__InputBackendX11Kbm_ResolveTarget(backend, &display, &window)) return false;
+	(void)window;
 	char keysReturn[32] = fplZeroInit;
-	if (!x11Api->XQueryKeymap(windowState->display, keysReturn)) return false;
+	if (!x11Api->XQueryKeymap(display, keysReturn)) return false;
 	fplClearStruct(outState);
 	for (uint64_t keyCode = 0; keyCode < 256; ++keyCode) {
 		bool isDown = (keysReturn[keyCode / 8] & (1 << (keyCode % 8))) != 0;
 		outState->keyStatesRaw[keyCode] = isDown ? 1 : 0;
-		fplKey mappedKey = fpl__GetMappedKey(&appState->window, keyCode);
+		fplKey mappedKey;
+#		if defined(FPL__ENABLE_WINDOW)
+		if (!backend->detached) {
+			mappedKey = fpl__GetMappedKey(&appState->window, keyCode);
+		} else
+#		endif
+		{
+			mappedKey = backend->detachedKeyMap[keyCode];
+		}
 		if (outState->buttonStatesMapped[(int)mappedKey] == fplButtonState_Release) {
 			outState->buttonStatesMapped[(int)mappedKey] = isDown ? fplButtonState_Press : fplButtonState_Release;
 		}
@@ -20816,13 +20964,15 @@ fpl_internal bool fpl__InputBackendX11Kbm_PollMouse(fpl__InputBackendX11Kbm *bac
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	if (appState == fpl_null) return false;
 	const fpl__X11Api *x11Api = &appState->x11.api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
-	if (windowState->display == fpl_null) return false;
+	Display *display;
+	Window window;
+	if (!fpl__InputBackendX11Kbm_ResolveTarget(backend, &display, &window)) return false;
 	Window root, child;
 	int rootx, rooty, winx, winy;
 	unsigned int mask;
-	if (!x11Api->XQueryPointer(windowState->display, windowState->window, &root, &child, &rootx, &rooty, &winx, &winy, &mask)) return false;
+	if (!x11Api->XQueryPointer(display, window, &root, &child, &rootx, &rooty, &winx, &winy, &mask)) return false;
 	fplClearStruct(outState);
+	// In detached mode we query the root window, so winx/winy are root-relative coordinates.
 	outState->x = winx;
 	outState->y = winy;
 	outState->buttonStates[fplMouseButtonType_Left] = fplIsMaskSet(mask, Button1Mask) ? fplButtonState_Press : fplButtonState_Release;
@@ -20831,6 +20981,7 @@ fpl_internal bool fpl__InputBackendX11Kbm_PollMouse(fpl__InputBackendX11Kbm *bac
 	return true;
 }
 
+#if defined(FPL__ENABLE_WINDOW)
 fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11Kbm *backend, const fpl__NativeInputEvent *nev) {
 	fplAssertPtr(backend);
 	fplAssertPtr(nev);
@@ -20943,8 +21094,10 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 	}
 	return false;
 }
+#endif // FPL__ENABLE_WINDOW
 #endif // FPL__ENABLE_INPUT_X11
 
+#if defined(FPL__ENABLE_WINDOW)
 fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatform, fpl__PlatformAppState *appState, XEvent *ev) {
 	fplAssert((subplatform != fpl_null) && (appState != fpl_null) && (ev != fpl_null));
 	fpl__PlatformWindowState *winState = &appState->window;
@@ -21538,6 +21691,7 @@ fpl_platform_api bool fplSetClipboardText(const char *text) {
 	// @IMPLEMENT(final/X11): fplSetClipboardText
 	return false;
 }
+#endif // FPL__ENABLE_WINDOW
 
 fpl_platform_api bool fplPollKeyboardState(fplKeyboardState *outState) {
 	FPL__CheckArgumentNull(outState, false);
@@ -31034,7 +31188,7 @@ bool fpl__InputSystem_Init(fpl__InputContext *ctx, const fplInitFlags initFlags,
 
 #	if defined(FPL__ENABLE_INPUT_WIN32)
 	if ((ctx->settings.enabledSources & (fplInputSourceType_Keyboard | fplInputSourceType_Mouse)) != 0 && fplInputBackendMaskIsEnabled(&ctx->settings.enabledBackends, fplInputBackendType_Win32)) {
-		if (fpl__InputBackendWin32_Init(&ctx->win32kbm)) {
+		if (fpl__InputBackendWin32_Init(&ctx->win32kbm, &ctx->settings)) {
 			ctx->backendCount++;
 		}
 	}
@@ -31042,7 +31196,7 @@ bool fpl__InputSystem_Init(fpl__InputContext *ctx, const fplInitFlags initFlags,
 
 #	if defined(FPL__ENABLE_INPUT_X11)
 	if ((ctx->settings.enabledSources & (fplInputSourceType_Keyboard | fplInputSourceType_Mouse)) != 0 && fplInputBackendMaskIsEnabled(&ctx->settings.enabledBackends, fplInputBackendType_X11Kbm)) {
-		if (fpl__InputBackendX11Kbm_Init(&ctx->x11kbm)) {
+		if (fpl__InputBackendX11Kbm_Init(&ctx->x11kbm, &ctx->settings)) {
 			ctx->backendCount++;
 		}
 	}
@@ -31101,19 +31255,23 @@ fpl_internal bool fpl__InputSystem_HandleNativeEvent(fpl__InputContext *ctx, con
 	if (ctx == fpl_null || ev == fpl_null) return false;
 	if (!ctx->isInitialized) return false;
 	bool handled = false;
-#	if defined(FPL__ENABLE_INPUT_WIN32)
+#	if defined(FPL__ENABLE_WINDOW)
+#		if defined(FPL__ENABLE_INPUT_WIN32)
 	if (ctx->win32kbm.isInitialized) {
 		if (fpl__InputBackendWin32_HandleNativeEvent(&ctx->win32kbm, ev)) {
 			handled = true;
 		}
 	}
-#	endif
-#	if defined(FPL__ENABLE_INPUT_X11)
+#		endif
+#		if defined(FPL__ENABLE_INPUT_X11)
 	if (ctx->x11kbm.isInitialized) {
 		if (fpl__InputBackendX11Kbm_HandleNativeEvent(&ctx->x11kbm, ev)) {
 			handled = true;
 		}
 	}
+#		endif
+#	else
+	(void)ev;
 #	endif
 	return handled;
 }
@@ -31124,7 +31282,6 @@ fpl_internal bool fpl__InputSystem_IsEnabled(const fpl__InputContext *ctx, fplIn
 	return (ctx->settings.enabledSources & source) != 0;
 }
 
-#if defined(FPL__ENABLE_WINDOW)
 fpl_internal bool fpl__InputSystem_PollKeyboard(fpl__InputContext *ctx, fplKeyboardState *outState) {
 	if (ctx == fpl_null || outState == fpl_null) return false;
 	if (!ctx->isInitialized) return false;
@@ -31168,7 +31325,6 @@ fpl_internal bool fpl__InputSystem_PollMouse(fpl__InputContext *ctx, fplMouseSta
 #	endif
 	return any;
 }
-#endif // FPL__ENABLE_WINDOW
 
 // Multi-backend merge: clear once, then iterate backends in declared order.
 // Each backend writes only into its own connected slots and skips slots already claimed
