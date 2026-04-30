@@ -18191,6 +18191,9 @@ fpl_platform_api bool fplSetClipboardText(const char *text) {
 	return(result);
 }
 
+#endif // FPL__ENABLE_WINDOW
+
+#if defined(FPL__ENABLE_INPUT)
 fpl_platform_api bool fplPollKeyboardState(fplKeyboardState *outState) {
 	FPL__CheckArgumentNull(outState, false);
 	FPL__CheckPlatform(false);
@@ -18202,9 +18205,6 @@ fpl_platform_api bool fplPollKeyboardState(fplKeyboardState *outState) {
 #	endif
 }
 
-#endif // FPL__ENABLE_WINDOW (temporarily closed so input poll fns are visible without window)
-
-#if defined(FPL__ENABLE_INPUT)
 fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
 	FPL__CheckArgumentNull(outStates, false);
 	FPL__CheckPlatform(false);
