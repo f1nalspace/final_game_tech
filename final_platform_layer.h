@@ -9504,6 +9504,7 @@ fpl_main int main(int argc, char **args);
 // > SYSTEM_WINDOW
 // > SYSTEM_AUDIO_L2
 // > SYSTEM_VIDEO_L2 (Video backbuffer access and present of the frame)
+// > SYSTEM_INPUT
 // > SYSTEM_INIT (Init & Release of the Platform)
 //
 // ****************************************************************************
@@ -31152,12 +31153,14 @@ fpl_inline fplVideoRect fplCreateVideoRectFromLTRB(int32_t left, int32_t top, in
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 //
-// > SYSTEM_INIT
+// > SYSTEM_INPUT (Input System, Public Implementation, Internals)
+//
+// - Input Common Functions
+// - Initialization / Release
+// - Update / Polling
+// - Event handling
 //
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-#if !defined(FPL__SYSTEM_INIT_DEFINED)
-#define FPL__SYSTEM_INIT_DEFINED
-
 #if defined(FPL__ENABLE_INPUT)
 fpl_common_api bool fplInputBackendMaskIsEnabled(const fplInputBackendMask *mask, const fplInputBackendType type) {
 	if (mask == fpl_null) return false;
@@ -31361,6 +31364,14 @@ fpl_internal bool fpl__InputSystem_PollGamepad(fpl__InputContext *ctx, fplGamepa
 	return any;
 }
 #endif // FPL__ENABLE_INPUT
+
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+//
+// > SYSTEM_INIT
+//
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#if !defined(FPL__SYSTEM_INIT_DEFINED)
+#define FPL__SYSTEM_INIT_DEFINED
 
 fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
 	fplAssert(initState != fpl_null);
