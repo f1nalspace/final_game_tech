@@ -14163,6 +14163,9 @@ fpl_internal bool fpl__Win32SetWindowFullscreen(const bool value, const int32_t 
 	return(result);
 }
 
+#endif // FPL__ENABLE_WINDOW (briefly closed so input backend can use the key-state helpers without a window)
+
+#if defined(FPL__ENABLE_WINDOW) || defined(FPL__ENABLE_INPUT_WIN32)
 fpl_internal bool fpl__Win32IsKeyDown(const fpl__Win32Api *wapi, const int virtualKey) {
 	bool result = (wapi->user.GetAsyncKeyState(virtualKey) & 0x8000) != 0;
 	return(result);
@@ -14172,7 +14175,9 @@ fpl_internal bool fpl__Win32IsKeyActive(const fpl__Win32Api *wapi, const int vir
 	bool result = (wapi->user.GetKeyState(virtualKey) & 0x0001) != 0;
 	return(result);
 }
+#endif
 
+#if defined(FPL__ENABLE_WINDOW)
 fpl_internal bool fpl__Win32IsCursorInWindow(const fpl__Win32Api *wapi, const fpl__Win32WindowState *win32Window) {
 	POINT pos;
 	if (!wapi->user.GetCursorPos(&pos)) {
@@ -14237,7 +14242,9 @@ fpl_internal void fpl__Win32ShowCursor(const fpl__Win32Api *wapi, fpl__Win32Wind
 fpl_internal void fpl__Win32HideCursor(const fpl__Win32Api *wapi, fpl__Win32WindowState *window) {
 	fpl__Win32SetCursorState(wapi, window, true);
 }
+#endif // FPL__ENABLE_WINDOW (briefly closed so input backend can use the modifier helper without a window)
 
+#if defined(FPL__ENABLE_WINDOW) || defined(FPL__ENABLE_INPUT_WIN32)
 fpl_internal fplKeyboardModifierFlags fpl__Win32GetKeyboardModifiers(const fpl__Win32Api *wapi) {
 	fplKeyboardModifierFlags modifiers = fplKeyboardModifierFlags_None;
 	bool lAltKeyIsDown = fpl__Win32IsKeyDown(wapi, VK_LMENU);
@@ -14286,7 +14293,9 @@ fpl_internal fplKeyboardModifierFlags fpl__Win32GetKeyboardModifiers(const fpl__
 	}
 	return(modifiers);
 }
+#endif // FPL__ENABLE_WINDOW || FPL__ENABLE_INPUT_WIN32
 
+#if defined(FPL__ENABLE_WINDOW)
 fpl_internal void fpl__Win32HandleMessage(const fpl__Win32Api *wapi, fpl__PlatformAppState *appState, fpl__Win32WindowState *windowState, MSG *msg) {
 	if (appState->currentSettings.window.callbacks.eventCallback != fpl_null) {
 		appState->currentSettings.window.callbacks.eventCallback(fplGetPlatformType(), windowState, &msg, appState->currentSettings.window.callbacks.eventUserData);
@@ -15530,6 +15539,7 @@ fpl_internal bool fpl__InputBackendWin32_PollMouse(fpl__InputBackendWin32 *backe
 	return true;
 }
 
+#if defined(FPL__ENABLE_WINDOW)
 fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin32 *backend, const fpl__NativeInputEvent *ev) {
 	fplAssertPtr(backend);
 	fplAssertPtr(ev);
@@ -15642,6 +15652,7 @@ fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin3
 	}
 	return false;
 }
+#endif // FPL__ENABLE_WINDOW
 
 #endif // FPL__WIN32_INPUT_KBM_IMPLEMENTED
 
