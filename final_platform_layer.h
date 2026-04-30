@@ -8298,10 +8298,10 @@ typedef struct fplInputDevice {
 * @brief Describes the capabilities of a single input backend.
 */
 typedef struct fplInputBackendSupport {
-	//! Backend type identifier.
-	fplInputBackendType type;
 	//! Human-readable backend name.
 	const char *name;
+	//! Backend type identifier.
+	fplInputBackendType type;
 	//! Bitmask of input sources this backend can serve.
 	fplInputSourceType supportedSources;
 	//! True when the backend can deliver events.
@@ -8310,6 +8310,8 @@ typedef struct fplInputBackendSupport {
 	fpl_b32 supportsPolling;
 	//! True when the backend supports hotplug notifications.
 	fpl_b32 supportsHotplug;
+	//! Padding to align to 32-bytes
+	uint8_t padding[4];
 } fplInputBackendSupport;
 
 /**
