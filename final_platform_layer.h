@@ -31159,19 +31159,19 @@ fpl_inline fplVideoRect fplCreateVideoRectFromLTRB(int32_t left, int32_t top, in
 #define FPL__SYSTEM_INIT_DEFINED
 
 #if defined(FPL__ENABLE_INPUT)
-fpl_common_api bool fplInputBackendMaskIsEnabled(const fplInputBackendMask *mask, fplInputBackendType type) {
+fpl_common_api bool fplInputBackendMaskIsEnabled(const fplInputBackendMask *mask, const fplInputBackendType type) {
 	if (mask == fpl_null) return false;
 	if ((int)type < 0 || (int)type >= 32) return false;
 	return (mask->bits & (uint32_t)(1u << (uint32_t)type)) != 0u;
 }
 
-fpl_common_api void fplInputBackendMaskEnable(fplInputBackendMask *mask, fplInputBackendType type) {
+fpl_common_api void fplInputBackendMaskEnable(fplInputBackendMask *mask, const fplInputBackendType type) {
 	if (mask == fpl_null) return;
 	if ((int)type < 0 || (int)type >= 32) return;
 	mask->bits |= (uint32_t)(1u << (uint32_t)type);
 }
 
-fpl_common_api void fplInputBackendMaskDisable(fplInputBackendMask *mask, fplInputBackendType type) {
+fpl_common_api void fplInputBackendMaskDisable(fplInputBackendMask *mask, const fplInputBackendType type) {
 	if (mask == fpl_null) return;
 	if ((int)type < 0 || (int)type >= 32) return;
 	mask->bits &= ~(uint32_t)(1u << (uint32_t)type);
