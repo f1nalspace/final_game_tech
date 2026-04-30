@@ -608,10 +608,14 @@ Each step is independently compilable and testable.
 9. **FPL_NO_WINDOW support**: implement the hidden Win32 message-only window and the detached X11 display. Add `fplInputSettings.detachFromWindow`. Verify with a console-only demo that polls a keyboard or gamepad.
 10. **Multi-backend polling**: make `fpl__InputSystem_PollGamepad` merge across backends so XInput + (future) DInput coexist. Add a small unit test in `FPL_Test` that walks a fake second backend.
 11. **Linux udev hotplug backend**: add `fpl__InputBackendLinuxUdev` that opens a udev netlink socket and listens for `add`/`remove` events on the `input` subsystem; pushes connect/disconnect signals into the LinuxJoystick (and later LinuxEvdev) backend so it can rebuild its slot list immediately instead of waiting for the next `detectionFrequency` tick. Falls back gracefully to step 7's polling scan when libudev is missing or `FPL_NO_INPUT_LINUX_UDEV` is set. Runtime-link `libudev.so.1` (no build-time dep).
-12. **New backends (future PRs)**: LinuxEvdev, RawInput, DInput, UnixGamepad. Each is one descriptor + impl struct + function table entry; nothing else in the core changes.
-13. **Docs / changelog**: update category `page_category_input_config`, note the new init flag, mask helpers and `FPL_NO_INPUT` switch.
+12. **New backends**: add `DInput`, `RawInput`, `UnixGamepad`, `LinuxEvdev` in **exactly that order** as sub-steps. Each backend = one descriptor + impl struct + function-table entry, **landed as its own commit** — sub-steps:
+    - 12a. `DInput` — DirectInput8 gamepad backend (Windows). Coexists with XInput for non-XInput devices (joysticks, flight sticks).
+    - 12b. `RawInput` — `RAWINPUT` keyboard/mouse backend (Windows). Replaces / supplements the WM_*-driven Win32 KBM backend; needed for raw mouse deltas + wheel without window focus.
+    - 12c. `UnixGamepad` — BSD / generic uhid gamepad backend.
+    - 12d. `LinuxEvdev` — `/dev/input/eventX` evdev backend; full button/axis sets + epoll-based reads, supersedes `LinuxJoystick` once stable.
+13. **Docs / changelog**: update category `page_category_input_config`, note the new init flags, mask helpers, `FPL_NO_INPUT` switch, the device enumeration API, and document each backend added in step 12. Comes last so the docs reflect the final shape.
 
-Each step is ~1 commit. Steps 3-6 should keep the public behavior identical; only step 7, step 9, step 10 and step 11 introduce new capabilities.
+Each step is ~1 commit (each sub-step in step 12 is its own commit). Steps 3-6 should keep the public behavior identical; only step 7, step 9, step 10 and step 11 introduce new capabilities.
 
 ---
 
