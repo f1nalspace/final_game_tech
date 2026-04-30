@@ -11544,56 +11544,11 @@ fpl_internal void fpl__PushGamepadStateEvent(const uint32_t deviceIndex, const c
 	ev.gamepad.state = *newState;
 	fpl__PushInternalEvent(&ev);
 }
-#endif // FPL__ENABLE_WINDOW || FPL__ENABLE_INPUT
 
-//
-// Internal window
-//
-#if defined(FPL__ENABLE_WINDOW)
-fpl_internal fplKey fpl__GetMappedKey(const fpl__PlatformWindowState *windowState, const uint64_t keyCode) {
-	fplKey result;
-	if (keyCode < fplArrayCount(windowState->keyMap))
-		result = windowState->keyMap[keyCode];
-	else
-		result = fplKey_None;
-	return(result);
-}
-
-fpl_internal void fpl__PushWindowStateEvent(const fplWindowEventType windowType) {
-	fplEvent newEvent = fplZeroInit;
-	newEvent.type = fplEventType_Window;
-	newEvent.window.type = windowType;
-	fpl__PushInternalEvent(&newEvent);
-}
-
-fpl_internal void fpl__PushWindowSizeEvent(const fplWindowEventType windowType, uint32_t w, uint32_t h) {
-	fplEvent newEvent = fplZeroInit;
-	newEvent.type = fplEventType_Window;
-	newEvent.window.type = windowType;
-	newEvent.window.size.width = w;
-	newEvent.window.size.height = h;
-	fpl__PushInternalEvent(&newEvent);
-}
-
-fpl_internal void fpl__PushWindowPositionEvent(const fplWindowEventType windowType, int32_t x, int32_t y) {
-	fplEvent newEvent = fplZeroInit;
-	newEvent.type = fplEventType_Window;
-	newEvent.window.type = windowType;
-	newEvent.window.position.left = x;
-	newEvent.window.position.top = y;
-	fpl__PushInternalEvent(&newEvent);
-}
-
-fpl_internal void fpl__PushWindowDropFilesEvent(const char *filePath, const size_t fileCount, const char **files, const fplMemoryBlock *memory) {
-	fplEvent newEvent = fplZeroInit;
-	newEvent.type = fplEventType_Window;
-	newEvent.window.type = fplWindowEventType_DroppedFiles;
-	newEvent.window.dropFiles.fileCount = fileCount;
-	newEvent.window.dropFiles.files = files;
-	newEvent.window.dropFiles.internalMemory = *memory;
-	fpl__PushInternalEvent(&newEvent);
-}
-
+// Keyboard / mouse event push primitives. Live in the WINDOW || INPUT block (rather than the
+// window-only block below) so the no-window input backends can push events directly without
+// requiring a window state. The window-only fpl__Handle*Event wrappers below add keymap lookup
+// + repeat tracking on top of these primitives.
 fpl_internal void fpl__PushKeyboardButtonEvent(const uint64_t keyCode, const fplKey mappedKey, const fplKeyboardModifierFlags modifiers, const fplButtonState buttonState) {
 	fplEvent newEvent = fplZeroInit;
 	newEvent.type = fplEventType_Keyboard;
@@ -11643,6 +11598,55 @@ fpl_internal void fpl__PushMouseMoveEvent(const int32_t x, const int32_t y) {
 	newEvent.mouse.mouseButton = fplMouseButtonType_None;
 	newEvent.mouse.mouseX = x;
 	newEvent.mouse.mouseY = y;
+	fpl__PushInternalEvent(&newEvent);
+}
+#endif // FPL__ENABLE_WINDOW || FPL__ENABLE_INPUT
+
+//
+// Internal window
+//
+#if defined(FPL__ENABLE_WINDOW)
+fpl_internal fplKey fpl__GetMappedKey(const fpl__PlatformWindowState *windowState, const uint64_t keyCode) {
+	fplKey result;
+	if (keyCode < fplArrayCount(windowState->keyMap))
+		result = windowState->keyMap[keyCode];
+	else
+		result = fplKey_None;
+	return(result);
+}
+
+fpl_internal void fpl__PushWindowStateEvent(const fplWindowEventType windowType) {
+	fplEvent newEvent = fplZeroInit;
+	newEvent.type = fplEventType_Window;
+	newEvent.window.type = windowType;
+	fpl__PushInternalEvent(&newEvent);
+}
+
+fpl_internal void fpl__PushWindowSizeEvent(const fplWindowEventType windowType, uint32_t w, uint32_t h) {
+	fplEvent newEvent = fplZeroInit;
+	newEvent.type = fplEventType_Window;
+	newEvent.window.type = windowType;
+	newEvent.window.size.width = w;
+	newEvent.window.size.height = h;
+	fpl__PushInternalEvent(&newEvent);
+}
+
+fpl_internal void fpl__PushWindowPositionEvent(const fplWindowEventType windowType, int32_t x, int32_t y) {
+	fplEvent newEvent = fplZeroInit;
+	newEvent.type = fplEventType_Window;
+	newEvent.window.type = windowType;
+	newEvent.window.position.left = x;
+	newEvent.window.position.top = y;
+	fpl__PushInternalEvent(&newEvent);
+}
+
+fpl_internal void fpl__PushWindowDropFilesEvent(const char *filePath, const size_t fileCount, const char **files, const fplMemoryBlock *memory) {
+	fplEvent newEvent = fplZeroInit;
+	newEvent.type = fplEventType_Window;
+	newEvent.window.type = fplWindowEventType_DroppedFiles;
+	newEvent.window.dropFiles.fileCount = fileCount;
+	newEvent.window.dropFiles.files = files;
+	newEvent.window.dropFiles.internalMemory = *memory;
 	fpl__PushInternalEvent(&newEvent);
 }
 
@@ -14090,6 +14094,35 @@ fpl_common_api bool fplUpdateInputDevices(void) {
 	fpl__InputSystem_Update(&appState->input);
 	return true;
 }
+
+// No-window event pump. The platform-specific fplPollEvent/fplPollEvents in the FPL__ENABLE_WINDOW
+// blocks drain the OS message queue (Win32 PeekMessage / X11 XNextEvent). When no window is enabled,
+// those impls don't compile and we provide a common version that drives fpl__InputSystem_Update and
+// drains the internal event queue. Backends that own a no-window event source (Win32 RawInput on
+// HWND_MESSAGE, future X11 InputOnly window) push into the queue from their _Update path.
+#if !defined(FPL__ENABLE_WINDOW)
+fpl_common_api bool fplPollEvent(fplEvent *ev) {
+	FPL__CheckArgumentNull(ev, false);
+	FPL__CheckPlatform(false);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (appState == fpl_null) return false;
+	if (fpl__PollInternalEvent(ev)) return true;
+	if (!appState->currentSettings.input.disabledEvents) {
+		fpl__InputSystem_Update(&appState->input);
+	}
+	return fpl__PollInternalEvent(ev);
+}
+
+fpl_common_api void fplPollEvents(void) {
+	FPL__CheckPlatformNoRet();
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (appState == fpl_null) return;
+	if (!appState->currentSettings.input.disabledEvents) {
+		fpl__InputSystem_Update(&appState->input);
+	}
+	fpl__ClearInternalEvents();
+}
+#endif // !FPL__ENABLE_WINDOW
 #endif // FPL__ENABLE_INPUT
 
 fpl_common_api void fplSetDefaultSettings(fplSettings *settings) {
