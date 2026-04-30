@@ -8320,7 +8320,7 @@ typedef struct fplInputBackendSupport {
 * @param[in] maxCount Capacity of @p outSupports.
 * @return Number of backend descriptors written, or the total count when @p outSupports is null.
 */
-fpl_common_api uint32_t fplGetInputBackendSupport(fplInputBackendSupport *outSupports, uint32_t maxCount);
+fpl_common_api uint32_t fplGetInputBackendSupport(fplInputBackendSupport *outSupports, const uint32_t maxCount);
 
 /**
 * @brief Looks up the support descriptor for a single backend type.
@@ -8328,7 +8328,7 @@ fpl_common_api uint32_t fplGetInputBackendSupport(fplInputBackendSupport *outSup
 * @param[out] outSupport Reference to the destination structure.
 * @return True when the backend is known to the build, false otherwise.
 */
-fpl_common_api bool fplGetInputBackendSupportByType(fplInputBackendType type, fplInputBackendSupport *outSupport);
+fpl_common_api bool fplGetInputBackendSupportByType(const fplInputBackendType type, fplInputBackendSupport *outSupport);
 
 /**
 * @brief Enumerates all input devices currently known to the input subsystem.
@@ -8337,7 +8337,7 @@ fpl_common_api bool fplGetInputBackendSupportByType(fplInputBackendType type, fp
 * @param[in] maxDevices Capacity of @p outDevices.
 * @return Number of devices written.
 */
-fpl_common_api uint32_t fplGetInputDevices(fplInputSourceType sourceFilter, fplInputDevice *outDevices, uint32_t maxDevices);
+fpl_common_api uint32_t fplGetInputDevices(const fplInputSourceType sourceFilter, fplInputDevice *outDevices, const uint32_t maxDevices);
 
 /**
 * @brief Looks up a single device by its GUID.
@@ -8350,15 +8350,15 @@ fpl_common_api bool fplFindInputDevice(const fplInputDeviceGuid *guid, fplInputD
 /**
 * @brief Convenience wrapper that returns devices with @ref fplInputSourceType_Keyboard.
 */
-fpl_common_api uint32_t fplGetKeyboardDevices(fplInputDevice *outDevices, uint32_t maxDevices);
+fpl_common_api uint32_t fplGetKeyboardDevices(fplInputDevice *outDevices, const uint32_t maxDevices);
 /**
 * @brief Convenience wrapper that returns devices with @ref fplInputSourceType_Mouse.
 */
-fpl_common_api uint32_t fplGetMouseDevices(fplInputDevice *outDevices, uint32_t maxDevices);
+fpl_common_api uint32_t fplGetMouseDevices(fplInputDevice *outDevices, const uint32_t maxDevices);
 /**
 * @brief Convenience wrapper that returns devices with @ref fplInputSourceType_Gamepad.
 */
-fpl_common_api uint32_t fplGetGamepadDevices(fplInputDevice *outDevices, uint32_t maxDevices);
+fpl_common_api uint32_t fplGetGamepadDevices(fplInputDevice *outDevices, const uint32_t maxDevices);
 
 /**
 * @brief Refreshes the input subsystem's device list and processes pending hotplug events.
@@ -13808,13 +13808,13 @@ fpl_common_api void fplSetDefaultInputSettings(fplInputSettings *input) {
 
 // Input subsystem stubs. Available whenever input is enabled (with or without window).
 #if defined(FPL__ENABLE_INPUT)
-fpl_common_api uint32_t fplGetInputBackendSupport(fplInputBackendSupport *outSupports, uint32_t maxCount) {
+fpl_common_api uint32_t fplGetInputBackendSupport(fplInputBackendSupport *outSupports, const uint32_t maxCount) {
 	(void)outSupports;
 	(void)maxCount;
 	return 0;
 }
 
-fpl_common_api bool fplGetInputBackendSupportByType(fplInputBackendType type, fplInputBackendSupport *outSupport) {
+fpl_common_api bool fplGetInputBackendSupportByType(const fplInputBackendType type, fplInputBackendSupport *outSupport) {
 	(void)type;
 	if (outSupport != fpl_null) {
 		fplClearStruct(outSupport);
@@ -13822,7 +13822,7 @@ fpl_common_api bool fplGetInputBackendSupportByType(fplInputBackendType type, fp
 	return false;
 }
 
-fpl_common_api uint32_t fplGetInputDevices(fplInputSourceType sourceFilter, fplInputDevice *outDevices, uint32_t maxDevices) {
+fpl_common_api uint32_t fplGetInputDevices(const fplInputSourceType sourceFilter, fplInputDevice *outDevices, const uint32_t maxDevices) {
 	(void)sourceFilter;
 	(void)outDevices;
 	(void)maxDevices;
@@ -13837,15 +13837,15 @@ fpl_common_api bool fplFindInputDevice(const fplInputDeviceGuid *guid, fplInputD
 	return false;
 }
 
-fpl_common_api uint32_t fplGetKeyboardDevices(fplInputDevice *outDevices, uint32_t maxDevices) {
+fpl_common_api uint32_t fplGetKeyboardDevices(fplInputDevice *outDevices, const uint32_t maxDevices) {
 	return fplGetInputDevices(fplInputSourceType_Keyboard, outDevices, maxDevices);
 }
 
-fpl_common_api uint32_t fplGetMouseDevices(fplInputDevice *outDevices, uint32_t maxDevices) {
+fpl_common_api uint32_t fplGetMouseDevices(fplInputDevice *outDevices, const uint32_t maxDevices) {
 	return fplGetInputDevices(fplInputSourceType_Mouse, outDevices, maxDevices);
 }
 
-fpl_common_api uint32_t fplGetGamepadDevices(fplInputDevice *outDevices, uint32_t maxDevices) {
+fpl_common_api uint32_t fplGetGamepadDevices(fplInputDevice *outDevices, const uint32_t maxDevices) {
 	return fplGetInputDevices(fplInputSourceType_Gamepad, outDevices, maxDevices);
 }
 
