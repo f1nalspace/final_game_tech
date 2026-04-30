@@ -5,6 +5,10 @@ Companion to `fpl_input_proposal_plan.md`. Tracks step-by-step status so a futur
 Branch: `input-refactoring`
 Last verified: builds clean on Linux/POSIX (FPL_Console, FPL_Window, FPL_OpenGL, FPL_Test). FPL_Input verified end-to-end on X11 with a Logitech F310 gamepad — connection + axis/button events flow correctly. Win32 path not re-verified after step 6/7 — needs a Windows build.
 
+## User-Updates
+
+- Implement the functions `fplGetInputBackendSupport` / `fplGetInputBackendSupportByType` / `fplGetInputDevices` / `fplFindInputDevice` before continue with Step 9b. Create an extra step for that.
+
 ## Done
 
 - [x] **Step 1 — Public types + `FPL_NO_INPUT`.** Commit `243b6ce6` ("Introduced a new input API"). Adds `fplInputSourceType`, `fplInputBackendType`, `fplInputBackendMask` (+ inline mask helpers), extended `fplInputSettings`, `fplInputDevice` family, `fplInputBackendSupport`, new public-API declarations + stub impls, extended `fplMouseButtonType` with X1/X2 + `fplMouseState.wheelDeltaY/X`, `FPL_NO_INPUT` + `FPL_NO_INPUT_*` per-backend switches, `FPL__SUPPORT_INPUT*` / `FPL__ENABLE_INPUT*`. Wayland scrubbed from code and plan.
