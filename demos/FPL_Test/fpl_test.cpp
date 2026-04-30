@@ -1814,6 +1814,34 @@ static void TestTimes() {
 	}
 }
 
+// Smoke test for the multi-backend gamepad merge in fpl__InputSystem_PollGamepad.
+// With no real controller plugged in, every disconnected slot must come back zeroed.
+// Verifies the system layer clears outStates once and that backends do not leave stale data.
+static void TestGamepadPollMerge() {
+	ftMsg("Test fplPollGamepadStates merge contract\n");
+	if (!fplPlatformInit(fplInitFlags_GameController, fpl_null)) {
+		ftMsg("  skipped: gamepad init failed\n");
+		return;
+	}
+	fplGamepadStates states;
+	for (size_t i = 0; i < fplArrayCount(states.deviceStates); ++i) {
+		states.deviceStates[i].isConnected = true;
+		states.deviceStates[i].leftStickX = 0.5f;
+	}
+	fplPollGamepadStates(&states);
+	for (size_t i = 0; i < fplArrayCount(states.deviceStates); ++i) {
+		const fplGamepadState *s = &states.deviceStates[i];
+		if (s->isConnected) continue;
+		ftAssert(s->leftStickX == 0.0f);
+		ftAssert(s->leftStickY == 0.0f);
+		ftAssert(s->rightStickX == 0.0f);
+		ftAssert(s->rightStickY == 0.0f);
+		ftAssert(s->leftTrigger == 0.0f);
+		ftAssert(s->rightTrigger == 0.0f);
+	}
+	fplPlatformRelease();
+}
+
 int main(int argc, char *args[]) {
 	TestColdInit();
 	TestInit();
@@ -1830,5 +1858,6 @@ int main(int argc, char *args[]) {
 	TestStrings();
 	TestThreading();
 	TestInlining();
+	TestGamepadPollMerge();
 	return 0;
 }

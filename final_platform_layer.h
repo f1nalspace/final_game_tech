@@ -15320,17 +15320,19 @@ static size_t fpl__Win32XInput_CreateEventsForStates(const fplGameControllersSet
 	return result;
 }
 
+// Merge contract: caller (fplPollGamepadStates) clears outStates once.
+// Each backend writes only into slots that hold a connected device it owns,
+// and skips slots already claimed (isConnected=true) by an earlier backend.
 static size_t fpl__Win32XInput_Poll(fpl__InputBackendXInput *backend, fplGamepadStates *outStates) {
 	fplAssertPtr(backend);
 	fplAssertPtr(outStates);
-
-	fplClearStruct(outStates);
 
 	backend->lastDeviceSearchTime = backend->lastUpdateStatesTime = fplMillisecondsQuery();
 
 	size_t result = 0;
 
 	for (DWORD controllerIndex = 0; controllerIndex < XUSER_MAX_COUNT; ++controllerIndex) {
+		if (controllerIndex < fplArrayCount(outStates->deviceStates) && outStates->deviceStates[controllerIndex].isConnected) continue;
 		XINPUT_STATE controllerState = fplZeroInit;
 		if (backend->api.XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
 			if (!backend->isConnected[controllerIndex]) {
@@ -15341,6 +15343,7 @@ static size_t fpl__Win32XInput_Poll(fpl__InputBackendXInput *backend, fplGamepad
 			fplGamepadState *targetPadState = &outStates->deviceStates[controllerIndex];
 			fpl__Win32XInput_GamepadToGamepadState(newPadState, targetPadState);
 			targetPadState->deviceName = backend->deviceNames[controllerIndex];
+			targetPadState->isConnected = true;
 			result++;
 		} else {
 			if (backend->isConnected[controllerIndex]) {
@@ -21873,11 +21876,16 @@ fpl_internal bool fpl__InputBackendLinuxJoystick_PollGamepad(fpl__InputBackendLi
 	if (!backend->isInitialized) return false;
 	// Mirror XInput PollGamepad: read cached state only, do not run detection.
 	fpl__LinuxJoystick_UpdateStates(backend, false);
-	fplAssert(fplArrayCount(backend->controllers) == fplArrayCount(outStates->deviceStates));
+	// Merge contract: only fill slots we own (controller open) and that no earlier backend has claimed.
+	bool any = false;
 	for (int i = 0; i < fplArrayCount(backend->controllers); ++i) {
+		if (i >= fplArrayCount(outStates->deviceStates)) break;
+		if (backend->controllers[i].fd <= 0) continue;
+		if (outStates->deviceStates[i].isConnected) continue;
 		outStates->deviceStates[i] = backend->controllers[i].state;
+		any = true;
 	}
-	return true;
+	return any;
 }
 #endif // FPL__ENABLE_INPUT_LINUX_JOYSTICK
 
@@ -31162,10 +31170,14 @@ fpl_internal bool fpl__InputSystem_PollMouse(fpl__InputContext *ctx, fplMouseSta
 }
 #endif // FPL__ENABLE_WINDOW
 
+// Multi-backend merge: clear once, then iterate backends in declared order.
+// Each backend writes only into its own connected slots and skips slots already claimed
+// (isConnected=true) by an earlier backend. First-backend-wins for conflicting indices.
 fpl_internal bool fpl__InputSystem_PollGamepad(fpl__InputContext *ctx, fplGamepadStates *outStates) {
 	if (ctx == fpl_null || outStates == fpl_null) return false;
 	if (!ctx->isInitialized) return false;
 	if ((ctx->settings.enabledSources & fplInputSourceType_Gamepad) == 0) return false;
+	fplClearStruct(outStates);
 	bool any = false;
 #	if defined(FPL__ENABLE_INPUT_XINPUT)
 	if (ctx->xinput.isInitialized) {
