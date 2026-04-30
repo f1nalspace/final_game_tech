@@ -10073,6 +10073,218 @@ typedef struct fpl__InputBackendXInput {
 
 #endif // FPL__ENABLE_INPUT_XINPUT
 
+#if defined(FPL__ENABLE_INPUT_DINPUT)
+// DirectInput 8 — pure runtime linking. We never include <dinput.h>; everything below
+// is a minimal redefinition of just the COM interface methods, structs, GUIDs, and
+// constants we actually use. Vtables match the canonical IDirectInput8W /
+// IDirectInputDevice8W layout exactly; unused method slots are kept as void* to
+// preserve correct offsets without dragging in unrelated DInput types.
+
+#define FPL__DINPUT_VERSION 0x0800
+
+#define FPL__DI8DEVCLASS_GAMECTRL 4
+#define FPL__DIEDFL_ATTACHEDONLY 0x00000001
+#define FPL__DISCL_BACKGROUND 0x00000008
+#define FPL__DISCL_NONEXCLUSIVE 0x00000002
+#define FPL__DIENUM_CONTINUE 1
+#define FPL__DIENUM_STOP 0
+
+#define FPL__DIDF_ABSAXIS 0x00000001
+#define FPL__DIDFT_ABSAXIS 0x00000002
+#define FPL__DIDFT_AXIS 0x00000003
+#define FPL__DIDFT_BUTTON 0x0000000C
+#define FPL__DIDFT_POV 0x00000010
+#define FPL__DIDFT_ANYINSTANCE 0x00FFFF00
+#define FPL__DIDFT_OPTIONAL 0x80000000
+#define FPL__DIDFT_NOCOLLECTION 0x00FFFF00
+
+#define FPL__DIPH_DEVICE 0
+#define FPL__DIPH_BYOFFSET 2
+
+// Property GUIDs are passed as integer pointers per DirectInput convention.
+#define FPL__DIPROP_RANGE ((const GUID *)4)
+#define FPL__DIPROP_DEADZONE ((const GUID *)5)
+
+#define FPL__DI_OK ((HRESULT)0)
+#define FPL__DIERR_INPUTLOST ((HRESULT)0x8007001E)
+#define FPL__DIERR_NOTACQUIRED ((HRESULT)0x8007001C)
+
+// Maximum DirectInput slots tracked. Mirrors the XInput slot count to keep the
+// merged fplGamepadStates array layout sane.
+#define FPL__DINPUT_MAX_DEVICES 8
+
+typedef const GUID *fpl__LPCGUID;
+
+typedef struct fpl__DIDEVICEINSTANCEW {
+	DWORD dwSize;
+	GUID guidInstance;
+	GUID guidProduct;
+	DWORD dwDevType;
+	WCHAR tszInstanceName[260];
+	WCHAR tszProductName[260];
+	GUID guidFFDriver;
+	WORD wUsagePage;
+	WORD wUsage;
+} fpl__DIDEVICEINSTANCEW;
+
+typedef struct fpl__DIDEVCAPS {
+	DWORD dwSize;
+	DWORD dwFlags;
+	DWORD dwDevType;
+	DWORD dwAxes;
+	DWORD dwButtons;
+	DWORD dwPOVs;
+	DWORD dwFFSamplePeriod;
+	DWORD dwFFMinTimeResolution;
+	DWORD dwFirmwareRevision;
+	DWORD dwHardwareRevision;
+	DWORD dwFFDriverVersion;
+} fpl__DIDEVCAPS;
+
+typedef struct fpl__DIOBJECTDATAFORMAT {
+	const GUID *pguid;
+	DWORD dwOfs;
+	DWORD dwType;
+	DWORD dwFlags;
+} fpl__DIOBJECTDATAFORMAT;
+
+typedef struct fpl__DIDATAFORMAT {
+	DWORD dwSize;
+	DWORD dwObjSize;
+	DWORD dwFlags;
+	DWORD dwDataSize;
+	DWORD dwNumObjs;
+	fpl__DIOBJECTDATAFORMAT *rgodf;
+} fpl__DIDATAFORMAT;
+
+typedef struct fpl__DIPROPHEADER {
+	DWORD dwSize;
+	DWORD dwHeaderSize;
+	DWORD dwObj;
+	DWORD dwHow;
+} fpl__DIPROPHEADER;
+
+typedef struct fpl__DIPROPRANGE {
+	fpl__DIPROPHEADER diph;
+	LONG lMin;
+	LONG lMax;
+} fpl__DIPROPRANGE;
+
+typedef struct fpl__DIPROPDWORD {
+	fpl__DIPROPHEADER diph;
+	DWORD dwData;
+} fpl__DIPROPDWORD;
+
+// Custom data format: 6 axes (LONG, signed), 1 POV (DWORD), 32 buttons (BYTE).
+// Bound to DIJoyState-equivalent offsets via fpl__DIJoy_DataFormat below.
+typedef struct fpl__DIJoyState {
+	LONG lX;
+	LONG lY;
+	LONG lZ;
+	LONG lRx;
+	LONG lRy;
+	LONG lRz;
+	DWORD pov;
+	BYTE buttons[32];
+} fpl__DIJoyState;
+
+typedef struct fpl__IDirectInputDevice8W fpl__IDirectInputDevice8W;
+typedef struct fpl__IDirectInput8W fpl__IDirectInput8W;
+
+typedef BOOL (WINAPI *fpl__LPDIENUMDEVICESCALLBACKW)(const fpl__DIDEVICEINSTANCEW *lpddi, LPVOID pvRef);
+
+typedef struct fpl__IDirectInput8WVtbl {
+	HRESULT (WINAPI *QueryInterface)(fpl__IDirectInput8W *self, REFIID riid, void **ppv);
+	ULONG (WINAPI *AddRef)(fpl__IDirectInput8W *self);
+	ULONG (WINAPI *Release)(fpl__IDirectInput8W *self);
+	HRESULT (WINAPI *CreateDevice)(fpl__IDirectInput8W *self, REFGUID rguid, fpl__IDirectInputDevice8W **lplpDirectInputDevice, LPUNKNOWN pUnkOuter);
+	HRESULT (WINAPI *EnumDevices)(fpl__IDirectInput8W *self, DWORD dwDevType, fpl__LPDIENUMDEVICESCALLBACKW lpCallback, LPVOID pvRef, DWORD dwFlags);
+	HRESULT (WINAPI *GetDeviceStatus)(fpl__IDirectInput8W *self, REFGUID rguidInstance);
+	HRESULT (WINAPI *RunControlPanel)(fpl__IDirectInput8W *self, HWND hwndOwner, DWORD dwFlags);
+	HRESULT (WINAPI *Initialize)(fpl__IDirectInput8W *self, HINSTANCE hinst, DWORD dwVersion);
+	void *_pad_FindDevice;
+	void *_pad_EnumDevicesBySemantics;
+	void *_pad_ConfigureDevices;
+} fpl__IDirectInput8WVtbl;
+
+struct fpl__IDirectInput8W {
+	fpl__IDirectInput8WVtbl *lpVtbl;
+};
+
+typedef struct fpl__IDirectInputDevice8WVtbl {
+	HRESULT (WINAPI *QueryInterface)(fpl__IDirectInputDevice8W *self, REFIID riid, void **ppv);
+	ULONG (WINAPI *AddRef)(fpl__IDirectInputDevice8W *self);
+	ULONG (WINAPI *Release)(fpl__IDirectInputDevice8W *self);
+	HRESULT (WINAPI *GetCapabilities)(fpl__IDirectInputDevice8W *self, fpl__DIDEVCAPS *lpDIDevCaps);
+	void *_pad_EnumObjects;
+	void *_pad_GetProperty;
+	HRESULT (WINAPI *SetProperty)(fpl__IDirectInputDevice8W *self, const GUID *rguidProp, const fpl__DIPROPHEADER *pdiph);
+	HRESULT (WINAPI *Acquire)(fpl__IDirectInputDevice8W *self);
+	HRESULT (WINAPI *Unacquire)(fpl__IDirectInputDevice8W *self);
+	HRESULT (WINAPI *GetDeviceState)(fpl__IDirectInputDevice8W *self, DWORD cbData, LPVOID lpvData);
+	void *_pad_GetDeviceData;
+	HRESULT (WINAPI *SetDataFormat)(fpl__IDirectInputDevice8W *self, const fpl__DIDATAFORMAT *lpdf);
+	void *_pad_SetEventNotification;
+	HRESULT (WINAPI *SetCooperativeLevel)(fpl__IDirectInputDevice8W *self, HWND hwnd, DWORD dwFlags);
+	void *_pad_GetObjectInfo;
+	void *_pad_GetDeviceInfo;
+	void *_pad_RunControlPanel;
+	void *_pad_Initialize;
+	void *_pad_CreateEffect;
+	void *_pad_EnumEffects;
+	void *_pad_GetEffectInfo;
+	void *_pad_GetForceFeedbackState;
+	void *_pad_SendForceFeedbackCommand;
+	void *_pad_EnumCreatedEffectObjects;
+	void *_pad_Escape;
+	HRESULT (WINAPI *Poll)(fpl__IDirectInputDevice8W *self);
+	void *_pad_SendDeviceData;
+	void *_pad_EnumEffectsInFile;
+	void *_pad_WriteEffectToFile;
+	void *_pad_BuildActionMap;
+	void *_pad_SetActionMap;
+	void *_pad_GetImageInfo;
+} fpl__IDirectInputDevice8WVtbl;
+
+struct fpl__IDirectInputDevice8W {
+	fpl__IDirectInputDevice8WVtbl *lpVtbl;
+};
+
+#define FPL__FUNC_DINPUT_DirectInput8Create(name) HRESULT WINAPI name(HINSTANCE hinst, DWORD dwVersion, REFIID riidltf, LPVOID *ppvOut, LPUNKNOWN punkOuter)
+typedef FPL__FUNC_DINPUT_DirectInput8Create(fpl__win32_func_DirectInput8Create);
+
+typedef struct fpl__Win32DInputApi {
+	HMODULE dinputLibrary;
+	fpl__win32_func_DirectInput8Create *DirectInput8Create;
+} fpl__Win32DInputApi;
+
+// One DirectInput slot. ffi mirrors the XInput merge contract: the slot owns
+// its IDirectInputDevice8W*, last-known fplGamepadState, and a stable name.
+typedef struct fpl__InputBackendDInputSlot {
+	fpl__IDirectInputDevice8W *device;
+	GUID guidInstance;
+	uint16_t vendorID;
+	uint16_t productID;
+	bool isAcquired;
+	bool isConnected;
+	fplGameControllerName deviceName;
+	fplGamepadState lastState;
+} fpl__InputBackendDInputSlot;
+
+// DirectInput backend instance owned by fpl__InputContext.
+// Coexists with XInput; XInput-compatible devices are skipped at enumeration time
+// (matched by VID/PID against device names containing "IG_" reported via RawInput).
+typedef struct fpl__InputBackendDInput {
+	fpl__Win32DInputApi api;
+	fpl__IDirectInput8W *iface;
+	fpl__InputBackendDInputSlot slots[FPL__DINPUT_MAX_DEVICES];
+	uint32_t xinputVidPids[16];
+	uint32_t xinputVidPidCount;
+	fplMilliseconds lastDeviceSearchTime;
+	bool isInitialized;
+} fpl__InputBackendDInput;
+#endif // FPL__ENABLE_INPUT_DINPUT
+
 #if defined(FPL__ENABLE_INPUT_WIN32)
 // Win32 keyboard/mouse backend instance owned by fpl__InputContext.
 // In windowed mode WM_* events arrive via fpl__InputSystem_HandleNativeEvent and polling uses the user window for ScreenToClient.
@@ -10237,6 +10449,10 @@ typedef FPL__FUNC_WIN32_MonitorFromPoint(fpl__win32_func_MonitorFromPoint);
 typedef FPL__FUNC_WIN32_MonitorFromWindow(fpl__win32_func_MonitorFromWindow);
 #define FPL__FUNC_WIN32_RegisterRawInputDevices(name) BOOL WINAPI name(PCRAWINPUTDEVICE pRawInputDevices, UINT uiNumDevices, UINT cbSize)
 typedef FPL__FUNC_WIN32_RegisterRawInputDevices(fpl__win32_func_RegisterRawInputDevices);
+#define FPL__FUNC_WIN32_GetRawInputDeviceList(name) UINT WINAPI name(PRAWINPUTDEVICELIST pRawInputDeviceList, PUINT puiNumDevices, UINT cbSize)
+typedef FPL__FUNC_WIN32_GetRawInputDeviceList(fpl__win32_func_GetRawInputDeviceList);
+#define FPL__FUNC_WIN32_GetRawInputDeviceInfoW(name) UINT WINAPI name(HANDLE hDevice, UINT uiCommand, LPVOID pData, PUINT pcbSize)
+typedef FPL__FUNC_WIN32_GetRawInputDeviceInfoW(fpl__win32_func_GetRawInputDeviceInfoW);
 #define FPL__FUNC_WIN32_ClipCursor(name) BOOL WINAPI name(CONST RECT *lpRect)
 typedef FPL__FUNC_WIN32_ClipCursor(fpl__win32_func_ClipCursor);
 #define FPL__FUNC_WIN32_PostQuitMessage(name) VOID WINAPI name(int nExitCode)
@@ -10358,6 +10574,8 @@ typedef struct fpl__Win32UserApi {
 	fpl__win32_func_ClientToScreen *ClientToScreen;
 	fpl__win32_func_PtInRect *PtInRect;
 	fpl__win32_func_RegisterRawInputDevices *RegisterRawInputDevices;
+	fpl__win32_func_GetRawInputDeviceList *GetRawInputDeviceList;
+	fpl__win32_func_GetRawInputDeviceInfoW *GetRawInputDeviceInfoW;
 	fpl__win32_func_ClipCursor *ClipCursor;
 	fpl__win32_func_PostQuitMessage *PostQuitMessage;
 	fpl__win32_func_CreateIconIndirect *CreateIconIndirect;
@@ -10489,6 +10707,8 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_ClientToScreen, ClientToScreen);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_PtInRect, PtInRect);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_RegisterRawInputDevices, RegisterRawInputDevices);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetRawInputDeviceList, GetRawInputDeviceList);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetRawInputDeviceInfoW, GetRawInputDeviceInfoW);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_ClipCursor, ClipCursor);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_PostQuitMessage, PostQuitMessage);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_CreateIconIndirect, CreateIconIndirect);
@@ -11373,6 +11593,9 @@ typedef struct fpl__InputContext {
 	uint32_t backendCount;
 #if defined(FPL__ENABLE_INPUT_XINPUT)
 	fpl__InputBackendXInput xinput;
+#endif
+#if defined(FPL__ENABLE_INPUT_DINPUT)
+	fpl__InputBackendDInput dinput;
 #endif
 #if defined(FPL__ENABLE_INPUT_WIN32)
 	fpl__InputBackendWin32 win32kbm;
@@ -13846,6 +14069,17 @@ fpl_internal uint32_t fpl__BuildInputBackendDescriptors(fpl__InputBackendDescrip
 		count++;
 	}
 #	endif
+#	if defined(FPL__ENABLE_INPUT_DINPUT)
+	if (count < maxCount) {
+		out[count].name = "DirectInput";
+		out[count].type = fplInputBackendType_DInput;
+		out[count].supportedSources = fplInputSourceType_Gamepad;
+		out[count].supportsEvents = true;
+		out[count].supportsPolling = true;
+		out[count].supportsHotplug = true;
+		count++;
+	}
+#	endif
 #	if defined(FPL__ENABLE_INPUT_WIN32)
 	if (count < maxCount) {
 		out[count].name = "Win32 Keyboard/Mouse";
@@ -14013,6 +14247,27 @@ fpl_internal uint32_t fpl__EnumerateInputDevices(const fplInputSourceType source
 				dev->backend = fplInputBackendType_XInput;
 				dev->featureFlags = padFeatures;
 				dev->connection = fplInputConnectionState_Connected;
+			}
+			count++;
+		}
+	}
+#	endif
+
+#	if defined(FPL__ENABLE_INPUT_DINPUT)
+	if (ctx->dinput.isInitialized && (sourceFilter & fplInputSourceType_Gamepad) != 0) {
+		for (uint32_t i = 0; i < fplArrayCount(ctx->dinput.slots); ++i) {
+			if (!ctx->dinput.slots[i].isConnected) continue;
+			if (out != fpl_null && count < maxDevices) {
+				fplInputDevice *dev = &out[count];
+				fplClearStruct(dev);
+				fpl__MakeInputDeviceGuid(&dev->guid, fplInputBackendType_DInput, fplInputSourceType_Gamepad, i);
+				fplCopyString(ctx->dinput.slots[i].deviceName, dev->name, fplArrayCount(dev->name));
+				dev->index = i;
+				dev->sourceType = fplInputSourceType_Gamepad;
+				dev->backend = fplInputBackendType_DInput;
+				dev->featureFlags = padFeatures;
+				dev->connection = fplInputConnectionState_Connected;
+				dev->state.gamepad = ctx->dinput.slots[i].lastState;
 			}
 			count++;
 		}
@@ -15679,6 +15934,442 @@ fpl_internal bool fpl__InputBackendXInput_PollGamepad(fpl__InputBackendXInput *b
 }
 
 #endif // FPL__WIN32_XINPUT_IMPLEMENTED
+
+// ############################################################################
+//
+// > WIN32_DINPUT (DirectInput8 gamepad backend)
+//
+// ############################################################################
+#if defined(FPL__ENABLE_INPUT_DINPUT) && !defined(FPL__WIN32_DINPUT_IMPLEMENTED)
+#define FPL__WIN32_DINPUT_IMPLEMENTED
+
+#define FPL__MODULE_DINPUT "DInput"
+
+// COM/DirectInput GUIDs. Defined inline so we never need to link against dinput8.lib.
+static const GUID fpl__IID_IDirectInput8W = { 0xBF798031, 0x483A, 0x4DA2, { 0xAA, 0x99, 0x5D, 0x64, 0xED, 0x36, 0x97, 0x00 } };
+static const GUID fpl__GUID_XAxis = { 0xA36D02E0, 0xC9F3, 0x11CF, { 0xBF, 0xC7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00 } };
+static const GUID fpl__GUID_YAxis = { 0xA36D02E1, 0xC9F3, 0x11CF, { 0xBF, 0xC7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00 } };
+static const GUID fpl__GUID_ZAxis = { 0xA36D02E2, 0xC9F3, 0x11CF, { 0xBF, 0xC7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00 } };
+static const GUID fpl__GUID_RxAxis = { 0xA36D02F4, 0xC9F3, 0x11CF, { 0xBF, 0xC7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00 } };
+static const GUID fpl__GUID_RyAxis = { 0xA36D02F5, 0xC9F3, 0x11CF, { 0xBF, 0xC7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00 } };
+static const GUID fpl__GUID_RzAxis = { 0xA36D02E3, 0xC9F3, 0x11CF, { 0xBF, 0xC7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00 } };
+static const GUID fpl__GUID_POV = { 0xA36D02F2, 0xC9F3, 0x11CF, { 0xBF, 0xC7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00 } };
+
+// Custom data format: 6 absolute axes + 1 POV + 32 buttons.
+// Offsets must match fpl__DIJoyState exactly. Optional flag lets DirectInput
+// silently skip objects the device does not expose (e.g. devices without Z/Rx/Ry/Rz axes).
+static fpl__DIOBJECTDATAFORMAT fpl__DIJoy_Objects[] = {
+	{ &fpl__GUID_XAxis,  (DWORD)fplOffsetOf(fpl__DIJoyState, lX),  FPL__DIDFT_AXIS | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
+	{ &fpl__GUID_YAxis,  (DWORD)fplOffsetOf(fpl__DIJoyState, lY),  FPL__DIDFT_AXIS | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
+	{ &fpl__GUID_ZAxis,  (DWORD)fplOffsetOf(fpl__DIJoyState, lZ),  FPL__DIDFT_AXIS | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
+	{ &fpl__GUID_RxAxis, (DWORD)fplOffsetOf(fpl__DIJoyState, lRx), FPL__DIDFT_AXIS | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
+	{ &fpl__GUID_RyAxis, (DWORD)fplOffsetOf(fpl__DIJoyState, lRy), FPL__DIDFT_AXIS | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
+	{ &fpl__GUID_RzAxis, (DWORD)fplOffsetOf(fpl__DIJoyState, lRz), FPL__DIDFT_AXIS | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
+	{ &fpl__GUID_POV,    (DWORD)fplOffsetOf(fpl__DIJoyState, pov), FPL__DIDFT_POV  | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
+	{ fpl_null, (DWORD)fplOffsetOf(fpl__DIJoyState, buttons[ 0]), FPL__DIDFT_BUTTON | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
+	{ fpl_null, (DWORD)fplOffsetOf(fpl__DIJoyState, buttons[ 1]), FPL__DIDFT_BUTTON | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
+	{ fpl_null, (DWORD)fplOffsetOf(fpl__DIJoyState, buttons[ 2]), FPL__DIDFT_BUTTON | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
+	{ fpl_null, (DWORD)fplOffsetOf(fpl__DIJoyState, buttons[ 3]), FPL__DIDFT_BUTTON | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
+	{ fpl_null, (DWORD)fplOffsetOf(fpl__DIJoyState, buttons[ 4]), FPL__DIDFT_BUTTON | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
+	{ fpl_null, (DWORD)fplOffsetOf(fpl__DIJoyState, buttons[ 5]), FPL__DIDFT_BUTTON | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
+	{ fpl_null, (DWORD)fplOffsetOf(fpl__DIJoyState, buttons[ 6]), FPL__DIDFT_BUTTON | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
+	{ fpl_null, (DWORD)fplOffsetOf(fpl__DIJoyState, buttons[ 7]), FPL__DIDFT_BUTTON | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
+	{ fpl_null, (DWORD)fplOffsetOf(fpl__DIJoyState, buttons[ 8]), FPL__DIDFT_BUTTON | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
+	{ fpl_null, (DWORD)fplOffsetOf(fpl__DIJoyState, buttons[ 9]), FPL__DIDFT_BUTTON | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
+	{ fpl_null, (DWORD)fplOffsetOf(fpl__DIJoyState, buttons[10]), FPL__DIDFT_BUTTON | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
+	{ fpl_null, (DWORD)fplOffsetOf(fpl__DIJoyState, buttons[11]), FPL__DIDFT_BUTTON | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
+	{ fpl_null, (DWORD)fplOffsetOf(fpl__DIJoyState, buttons[12]), FPL__DIDFT_BUTTON | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
+	{ fpl_null, (DWORD)fplOffsetOf(fpl__DIJoyState, buttons[13]), FPL__DIDFT_BUTTON | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
+	{ fpl_null, (DWORD)fplOffsetOf(fpl__DIJoyState, buttons[14]), FPL__DIDFT_BUTTON | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
+	{ fpl_null, (DWORD)fplOffsetOf(fpl__DIJoyState, buttons[15]), FPL__DIDFT_BUTTON | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
+};
+
+static fpl__DIDATAFORMAT fpl__DIJoy_DataFormat = {
+	sizeof(fpl__DIDATAFORMAT),
+	sizeof(fpl__DIOBJECTDATAFORMAT),
+	FPL__DIDF_ABSAXIS,
+	sizeof(fpl__DIJoyState),
+	(DWORD)(sizeof(fpl__DIJoy_Objects) / sizeof(fpl__DIJoy_Objects[0])),
+	fpl__DIJoy_Objects,
+};
+
+fpl_internal void fpl__Win32UnloadDInputApi(fpl__Win32DInputApi *api) {
+	fplAssert(api != fpl_null);
+	if (api->dinputLibrary) {
+		FPL_LOG_DEBUG(FPL__MODULE_DINPUT, "Unload DirectInput Library");
+		FreeLibrary(api->dinputLibrary);
+		api->dinputLibrary = fpl_null;
+	}
+	api->DirectInput8Create = fpl_null;
+}
+
+fpl_internal bool fpl__Win32LoadDInputApi(fpl__Win32DInputApi *api) {
+	fplAssert(api != fpl_null);
+	const char *libName = "dinput8.dll";
+	bool result = false;
+	fplClearStruct(api);
+	do {
+		HMODULE libHandle = fpl_null;
+		FPL__WIN32_LOAD_LIBRARY_BREAK(FPL__MODULE_DINPUT, libHandle, libName);
+		api->dinputLibrary = libHandle;
+		FPL__WIN32_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_DINPUT, libHandle, libName, api, fpl__win32_func_DirectInput8Create, DirectInput8Create);
+		result = true;
+	} while (0);
+	if (!result) {
+		fpl__Win32UnloadDInputApi(api);
+	}
+	return result;
+}
+
+// Walks all RawInput devices, collects VID/PID for any HID whose device name
+// contains "IG_" — these are the XInput-compatible gamepads we want DInput to skip.
+fpl_internal void fpl__Win32DInput_CollectXInputVidPids(fpl__InputBackendDInput *backend) {
+	backend->xinputVidPidCount = 0;
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (appState == fpl_null) return;
+	const fpl__Win32UserApi *uapi = &appState->win32.winApi.user;
+	if (uapi->GetRawInputDeviceList == fpl_null || uapi->GetRawInputDeviceInfoW == fpl_null) return;
+
+	UINT deviceCount = 0;
+	if (uapi->GetRawInputDeviceList(fpl_null, &deviceCount, sizeof(RAWINPUTDEVICELIST)) != 0) return;
+	if (deviceCount == 0) return;
+	if (deviceCount > 256) deviceCount = 256;
+	RAWINPUTDEVICELIST list[256];
+	UINT got = uapi->GetRawInputDeviceList(list, &deviceCount, sizeof(RAWINPUTDEVICELIST));
+	if (got == (UINT)-1) return;
+
+	WCHAR namebuf[512];
+	for (UINT i = 0; i < got; ++i) {
+		if (list[i].dwType != RIM_TYPEHID) continue;
+		UINT nameSize = (UINT)fplArrayCount(namebuf);
+		if (uapi->GetRawInputDeviceInfoW(list[i].hDevice, RIDI_DEVICENAME, namebuf, &nameSize) == (UINT)-1) continue;
+		// Match "IG_" anywhere in the device path.
+		bool isXInput = false;
+		for (UINT k = 0; k + 2 < nameSize; ++k) {
+			if (namebuf[k] == L'I' && namebuf[k + 1] == L'G' && namebuf[k + 2] == L'_') { isXInput = true; break; }
+		}
+		if (!isXInput) continue;
+		// Extract VID and PID. Format: "\\?\HID#VID_xxxx&PID_yyyy&..."
+		uint16_t vid = 0, pid = 0;
+		for (UINT k = 0; k + 7 < nameSize; ++k) {
+			if (namebuf[k] == L'V' && namebuf[k + 1] == L'I' && namebuf[k + 2] == L'D' && namebuf[k + 3] == L'_') {
+				for (int d = 0; d < 4; ++d) {
+					WCHAR c = namebuf[k + 4 + d];
+					int v = 0;
+					if (c >= L'0' && c <= L'9') v = c - L'0';
+					else if (c >= L'A' && c <= L'F') v = c - L'A' + 10;
+					else if (c >= L'a' && c <= L'f') v = c - L'a' + 10;
+					else { vid = 0; break; }
+					vid = (uint16_t)((vid << 4) | v);
+				}
+			}
+			if (namebuf[k] == L'P' && namebuf[k + 1] == L'I' && namebuf[k + 2] == L'D' && namebuf[k + 3] == L'_') {
+				for (int d = 0; d < 4; ++d) {
+					WCHAR c = namebuf[k + 4 + d];
+					int v = 0;
+					if (c >= L'0' && c <= L'9') v = c - L'0';
+					else if (c >= L'A' && c <= L'F') v = c - L'A' + 10;
+					else if (c >= L'a' && c <= L'f') v = c - L'a' + 10;
+					else { pid = 0; break; }
+					pid = (uint16_t)((pid << 4) | v);
+				}
+			}
+		}
+		if (vid == 0 || pid == 0) continue;
+		uint32_t entry = ((uint32_t)vid << 16) | (uint32_t)pid;
+		if (backend->xinputVidPidCount >= fplArrayCount(backend->xinputVidPids)) break;
+		// Dedup
+		bool dup = false;
+		for (uint32_t k = 0; k < backend->xinputVidPidCount; ++k) {
+			if (backend->xinputVidPids[k] == entry) { dup = true; break; }
+		}
+		if (!dup) backend->xinputVidPids[backend->xinputVidPidCount++] = entry;
+	}
+}
+
+fpl_internal bool fpl__Win32DInput_IsXInputProduct(const fpl__InputBackendDInput *backend, uint16_t vid, uint16_t pid) {
+	uint32_t entry = ((uint32_t)vid << 16) | (uint32_t)pid;
+	for (uint32_t k = 0; k < backend->xinputVidPidCount; ++k) {
+		if (backend->xinputVidPids[k] == entry) return true;
+	}
+	return false;
+}
+
+fpl_internal int fpl__Win32DInput_FindFreeSlot(fpl__InputBackendDInput *backend) {
+	for (uint32_t i = 0; i < fplArrayCount(backend->slots); ++i) {
+		if (!backend->slots[i].isConnected) return (int)i;
+	}
+	return -1;
+}
+
+fpl_internal int fpl__Win32DInput_FindSlotByGuid(fpl__InputBackendDInput *backend, const GUID *guidInstance) {
+	for (uint32_t i = 0; i < fplArrayCount(backend->slots); ++i) {
+		if (!backend->slots[i].isConnected) continue;
+		const GUID *g = &backend->slots[i].guidInstance;
+		if (g->Data1 == guidInstance->Data1 && g->Data2 == guidInstance->Data2 && g->Data3 == guidInstance->Data3) {
+			bool eq = true;
+			for (int k = 0; k < 8; ++k) if (g->Data4[k] != guidInstance->Data4[k]) { eq = false; break; }
+			if (eq) return (int)i;
+		}
+	}
+	return -1;
+}
+
+fpl_internal void fpl__Win32DInput_ReleaseSlot(fpl__InputBackendDInput *backend, uint32_t slotIndex) {
+	fpl__InputBackendDInputSlot *slot = &backend->slots[slotIndex];
+	if (slot->device != fpl_null) {
+		if (slot->isAcquired) {
+			slot->device->lpVtbl->Unacquire(slot->device);
+			slot->isAcquired = false;
+		}
+		slot->device->lpVtbl->Release(slot->device);
+		slot->device = fpl_null;
+	}
+	bool wasConnected = slot->isConnected;
+	fplClearStruct(slot);
+	if (wasConnected) {
+		fpl__PushGamepadConnectionEvent(slotIndex, fpl_null, false);
+	}
+}
+
+// Map raw DIJoyState → fplGamepadState. Generic mapping: lX/lY = left stick,
+// lRx/lRy = right stick, lZ/lRz = triggers, POV = dpad, buttons[0..3]=A/B/X/Y,
+// buttons[4..5]=shoulders, buttons[6..7]=back/start, buttons[8..9]=thumbs.
+fpl_internal void fpl__Win32DInput_MapState(const fpl__DIJoyState *raw, fplGamepadState *outState) {
+	outState->isConnected = true;
+	// Axes are normalized to -1..+1 from -1000..+1000 (set by SetProperty DIPROP_RANGE in init).
+	const float invScale = 1.0f / 1000.0f;
+	outState->leftStickX = (float)raw->lX * invScale;
+	outState->leftStickY = -(float)raw->lY * invScale;
+	outState->rightStickX = (float)raw->lRx * invScale;
+	outState->rightStickY = -(float)raw->lRy * invScale;
+	if (outState->leftStickX < -1.0f) outState->leftStickX = -1.0f; else if (outState->leftStickX > 1.0f) outState->leftStickX = 1.0f;
+	if (outState->leftStickY < -1.0f) outState->leftStickY = -1.0f; else if (outState->leftStickY > 1.0f) outState->leftStickY = 1.0f;
+	if (outState->rightStickX < -1.0f) outState->rightStickX = -1.0f; else if (outState->rightStickX > 1.0f) outState->rightStickX = 1.0f;
+	if (outState->rightStickY < -1.0f) outState->rightStickY = -1.0f; else if (outState->rightStickY > 1.0f) outState->rightStickY = 1.0f;
+	// Triggers from Z / Rz; remap from -1000..+1000 to 0..1.
+	float lt = ((float)raw->lZ + 1000.0f) * 0.0005f;
+	float rt = ((float)raw->lRz + 1000.0f) * 0.0005f;
+	if (lt < 0) lt = 0; else if (lt > 1.0f) lt = 1.0f;
+	if (rt < 0) rt = 0; else if (rt > 1.0f) rt = 1.0f;
+	outState->leftTrigger = lt;
+	outState->rightTrigger = rt;
+	// POV (dpad). 0xFFFFFFFF (or -1) means centered.
+	if (raw->pov != 0xFFFFFFFFu && raw->pov != 0xFFFFu) {
+		DWORD a = raw->pov;
+		if (a >=  31500u || a <  4500u) outState->dpadUp.isDown    = true;
+		if (a >=  4500u  && a < 13500u) outState->dpadRight.isDown = true;
+		if (a >= 13500u  && a < 22500u) outState->dpadDown.isDown  = true;
+		if (a >= 22500u  && a < 31500u) outState->dpadLeft.isDown  = true;
+	}
+	if (raw->buttons[0] & 0x80) outState->actionA.isDown = true;
+	if (raw->buttons[1] & 0x80) outState->actionB.isDown = true;
+	if (raw->buttons[2] & 0x80) outState->actionX.isDown = true;
+	if (raw->buttons[3] & 0x80) outState->actionY.isDown = true;
+	if (raw->buttons[4] & 0x80) outState->leftShoulder.isDown = true;
+	if (raw->buttons[5] & 0x80) outState->rightShoulder.isDown = true;
+	if (raw->buttons[6] & 0x80) outState->back.isDown = true;
+	if (raw->buttons[7] & 0x80) outState->start.isDown = true;
+	if (raw->buttons[8] & 0x80) outState->leftThumb.isDown = true;
+	if (raw->buttons[9] & 0x80) outState->rightThumb.isDown = true;
+	bool active = false;
+	if (outState->leftStickX != 0 || outState->leftStickY != 0) active = true;
+	if (outState->rightStickX != 0 || outState->rightStickY != 0) active = true;
+	if (outState->leftTrigger != 0 || outState->rightTrigger != 0) active = true;
+	for (int b = 0; b < 16; ++b) if (raw->buttons[b] & 0x80) { active = true; break; }
+	outState->isActive = active;
+}
+
+typedef struct fpl__Win32DInput_EnumCtx {
+	fpl__InputBackendDInput *backend;
+	uint32_t added;
+} fpl__Win32DInput_EnumCtx;
+
+static BOOL WINAPI fpl__Win32DInput_EnumDevicesCallback(const fpl__DIDEVICEINSTANCEW *ddi, LPVOID pvRef) {
+	fpl__Win32DInput_EnumCtx *ec = (fpl__Win32DInput_EnumCtx *)pvRef;
+	fpl__InputBackendDInput *backend = ec->backend;
+	if (backend->iface == fpl_null) return FPL__DIENUM_STOP;
+
+	// VID/PID encoded in guidProduct.Data1 = MAKELONG(VID, PID) on Windows.
+	uint16_t vid = (uint16_t)(ddi->guidProduct.Data1 & 0xFFFFu);
+	uint16_t pid = (uint16_t)((ddi->guidProduct.Data1 >> 16) & 0xFFFFu);
+	if (fpl__Win32DInput_IsXInputProduct(backend, vid, pid)) return FPL__DIENUM_CONTINUE;
+
+	// Skip devices already opened on a slot (re-enum each detection cycle).
+	if (fpl__Win32DInput_FindSlotByGuid(backend, &ddi->guidInstance) >= 0) return FPL__DIENUM_CONTINUE;
+
+	int slotIndex = fpl__Win32DInput_FindFreeSlot(backend);
+	if (slotIndex < 0) return FPL__DIENUM_STOP;
+
+	fpl__IDirectInputDevice8W *device = fpl_null;
+	if (FAILED(backend->iface->lpVtbl->CreateDevice(backend->iface, &ddi->guidInstance, &device, fpl_null)) || device == fpl_null) {
+		return FPL__DIENUM_CONTINUE;
+	}
+
+	if (FAILED(device->lpVtbl->SetDataFormat(device, &fpl__DIJoy_DataFormat))) {
+		device->lpVtbl->Release(device);
+		return FPL__DIENUM_CONTINUE;
+	}
+
+	// Background + nonexclusive cooperative level — works without a visible window.
+	if (FAILED(device->lpVtbl->SetCooperativeLevel(device, fpl_null, FPL__DISCL_BACKGROUND | FPL__DISCL_NONEXCLUSIVE))) {
+		device->lpVtbl->Release(device);
+		return FPL__DIENUM_CONTINUE;
+	}
+
+	// Constrain all axes to -1000..+1000 so we can map directly to floats.
+	fpl__DIPROPRANGE range = fplZeroInit;
+	range.diph.dwSize = sizeof(range);
+	range.diph.dwHeaderSize = sizeof(range.diph);
+	range.diph.dwObj = 0;
+	range.diph.dwHow = FPL__DIPH_DEVICE;
+	range.lMin = -1000;
+	range.lMax = +1000;
+	device->lpVtbl->SetProperty(device, FPL__DIPROP_RANGE, &range.diph);
+
+	// Reasonable analog deadzone (10%). Ignored when SetProperty fails.
+	fpl__DIPROPDWORD dz = fplZeroInit;
+	dz.diph.dwSize = sizeof(dz);
+	dz.diph.dwHeaderSize = sizeof(dz.diph);
+	dz.diph.dwObj = 0;
+	dz.diph.dwHow = FPL__DIPH_DEVICE;
+	dz.dwData = 1000;
+	device->lpVtbl->SetProperty(device, FPL__DIPROP_DEADZONE, &dz.diph);
+
+	fpl__InputBackendDInputSlot *slot = &backend->slots[slotIndex];
+	fplClearStruct(slot);
+	slot->device = device;
+	slot->guidInstance = ddi->guidInstance;
+	slot->vendorID = vid;
+	slot->productID = pid;
+	slot->isConnected = true;
+	slot->isAcquired = false;
+	// Build an ASCII display name from the wide product name.
+	char ascii[fplArrayCount(slot->deviceName)];
+	int ai = 0;
+	for (int wi = 0; wi < (int)fplArrayCount(ddi->tszProductName) && ai + 1 < (int)fplArrayCount(ascii); ++wi) {
+		WCHAR c = ddi->tszProductName[wi];
+		if (c == 0) break;
+		ascii[ai++] = (c < 128) ? (char)c : '?';
+	}
+	ascii[ai] = 0;
+	if (ai == 0) {
+		fplStringFormat(slot->deviceName, fplArrayCount(slot->deviceName), "DInput-Device [%d]", slotIndex);
+	} else {
+		fplCopyString(ascii, slot->deviceName, fplArrayCount(slot->deviceName));
+	}
+	device->lpVtbl->Acquire(device);
+	slot->isAcquired = true;
+	fpl__PushGamepadConnectionEvent((uint32_t)slotIndex, slot->deviceName, true);
+	ec->added++;
+	return FPL__DIENUM_CONTINUE;
+}
+
+fpl_internal void fpl__Win32DInput_DetectControllers(fpl__InputBackendDInput *backend, const fplGameControllersSettings *gameControllersSettings) {
+	if (backend->iface == fpl_null) return;
+	if (backend->lastDeviceSearchTime == 0) backend->lastDeviceSearchTime = fplMillisecondsQuery();
+	const uint64_t freq = gameControllersSettings->detectionFrequency;
+	fplMilliseconds now = fplMillisecondsQuery();
+	uint64_t delta = (uint64_t)(now - backend->lastDeviceSearchTime);
+	if (freq > 0 && delta > 0 && delta < freq) return;
+	backend->lastDeviceSearchTime = now;
+
+	// Refresh XInput VID/PID list cheaply each scan — devices come and go.
+	fpl__Win32DInput_CollectXInputVidPids(backend);
+
+	fpl__Win32DInput_EnumCtx ec = fplZeroInit;
+	ec.backend = backend;
+	backend->iface->lpVtbl->EnumDevices(backend->iface, FPL__DI8DEVCLASS_GAMECTRL, fpl__Win32DInput_EnumDevicesCallback, &ec, FPL__DIEDFL_ATTACHEDONLY);
+}
+
+fpl_internal void fpl__Win32DInput_UpdateStates(fpl__InputBackendDInput *backend) {
+	for (uint32_t i = 0; i < fplArrayCount(backend->slots); ++i) {
+		fpl__InputBackendDInputSlot *slot = &backend->slots[i];
+		if (!slot->isConnected || slot->device == fpl_null) continue;
+		if (!slot->isAcquired) {
+			HRESULT hrA = slot->device->lpVtbl->Acquire(slot->device);
+			if (FAILED(hrA)) continue;
+			slot->isAcquired = true;
+		}
+		slot->device->lpVtbl->Poll(slot->device);
+		fpl__DIJoyState raw = fplZeroInit;
+		HRESULT hr = slot->device->lpVtbl->GetDeviceState(slot->device, sizeof(raw), &raw);
+		if (FAILED(hr)) {
+			// Most likely INPUTLOST / NOTACQUIRED — try to re-acquire next tick.
+			slot->device->lpVtbl->Unacquire(slot->device);
+			slot->isAcquired = false;
+			continue;
+		}
+		fplGamepadState gs = fplZeroInit;
+		fpl__Win32DInput_MapState(&raw, &gs);
+		gs.deviceName = slot->deviceName;
+		slot->lastState = gs;
+		fpl__PushGamepadStateEvent(i, slot->deviceName, &gs);
+	}
+}
+
+fpl_internal bool fpl__InputBackendDInput_Init(fpl__InputBackendDInput *backend) {
+	fplAssertPtr(backend);
+	if (backend->isInitialized) return true;
+	if (!fpl__Win32LoadDInputApi(&backend->api)) return false;
+
+	HINSTANCE hinst = GetModuleHandleW(fpl_null);
+	HRESULT hr = backend->api.DirectInput8Create(hinst, FPL__DINPUT_VERSION, &fpl__IID_IDirectInput8W, (LPVOID *)&backend->iface, fpl_null);
+	if (FAILED(hr) || backend->iface == fpl_null) {
+		FPL__WARNING(FPL__MODULE_DINPUT, "DirectInput8Create failed (hr=0x%08lX)", (unsigned long)hr);
+		fpl__Win32UnloadDInputApi(&backend->api);
+		return false;
+	}
+	backend->isInitialized = true;
+	return true;
+}
+
+fpl_internal void fpl__InputBackendDInput_Release(fpl__InputBackendDInput *backend) {
+	fplAssertPtr(backend);
+	if (!backend->isInitialized) return;
+	for (uint32_t i = 0; i < fplArrayCount(backend->slots); ++i) {
+		if (backend->slots[i].isConnected) {
+			fpl__Win32DInput_ReleaseSlot(backend, i);
+		}
+	}
+	if (backend->iface != fpl_null) {
+		backend->iface->lpVtbl->Release(backend->iface);
+		backend->iface = fpl_null;
+	}
+	fpl__Win32UnloadDInputApi(&backend->api);
+	fplClearStruct(backend);
+}
+
+fpl_internal void fpl__InputBackendDInput_Update(fpl__InputBackendDInput *backend, const fplGameControllersSettings *gameControllersSettings) {
+	fplAssertPtr(backend);
+	fplAssertPtr(gameControllersSettings);
+	if (!backend->isInitialized) return;
+	fpl__Win32DInput_DetectControllers(backend, gameControllersSettings);
+	fpl__Win32DInput_UpdateStates(backend);
+}
+
+// Merge contract: caller already cleared outStates. We refresh state by polling each slot,
+// then write into our slot index — but only when an earlier backend hasn't already claimed it.
+fpl_internal bool fpl__InputBackendDInput_PollGamepad(fpl__InputBackendDInput *backend, fplGamepadStates *outStates) {
+	fplAssertPtr(backend);
+	fplAssertPtr(outStates);
+	if (!backend->isInitialized) return false;
+	fpl__Win32DInput_UpdateStates(backend);
+	bool any = false;
+	for (uint32_t i = 0; i < fplArrayCount(backend->slots); ++i) {
+		if (i >= fplArrayCount(outStates->deviceStates)) break;
+		if (outStates->deviceStates[i].isConnected) continue;
+		fpl__InputBackendDInputSlot *slot = &backend->slots[i];
+		if (!slot->isConnected) continue;
+		outStates->deviceStates[i] = slot->lastState;
+		outStates->deviceStates[i].deviceName = slot->deviceName;
+		outStates->deviceStates[i].isConnected = true;
+		any = true;
+	}
+	return any;
+}
+
+#endif // FPL__WIN32_DINPUT_IMPLEMENTED
 
 // ############################################################################
 //
@@ -31461,6 +32152,14 @@ bool fpl__InputSystem_Init(fpl__InputContext *ctx, const fplInitFlags initFlags,
 	}
 #	endif
 
+#	if defined(FPL__ENABLE_INPUT_DINPUT)
+	if ((ctx->settings.enabledSources & fplInputSourceType_Gamepad) != 0 && fplInputBackendMaskIsEnabled(&ctx->settings.enabledBackends, fplInputBackendType_DInput)) {
+		if (fpl__InputBackendDInput_Init(&ctx->dinput)) {
+			ctx->backendCount++;
+		}
+	}
+#	endif
+
 #	if defined(FPL__ENABLE_INPUT_WIN32)
 	if ((ctx->settings.enabledSources & (fplInputSourceType_Keyboard | fplInputSourceType_Mouse)) != 0 && fplInputBackendMaskIsEnabled(&ctx->settings.enabledBackends, fplInputBackendType_Win32)) {
 		if (fpl__InputBackendWin32_Init(&ctx->win32kbm, &ctx->settings)) {
@@ -31501,6 +32200,9 @@ fpl_internal void fpl__InputSystem_Release(fpl__InputContext *ctx) {
 #	if defined(FPL__ENABLE_INPUT_WIN32)
 	fpl__InputBackendWin32_Release(&ctx->win32kbm);
 #	endif
+#	if defined(FPL__ENABLE_INPUT_DINPUT)
+	fpl__InputBackendDInput_Release(&ctx->dinput);
+#	endif
 #	if defined(FPL__ENABLE_INPUT_XINPUT)
 	fpl__InputBackendXInput_Release(&ctx->xinput);
 #	endif
@@ -31514,6 +32216,11 @@ fpl_internal void fpl__InputSystem_Update(fpl__InputContext *ctx) {
 #	if defined(FPL__ENABLE_INPUT_XINPUT)
 	if ((ctx->settings.enabledSources & fplInputSourceType_Gamepad) != 0 && ctx->xinput.isInitialized) {
 		fpl__InputBackendXInput_Update(&ctx->xinput, &ctx->settings.gameControllers);
+	}
+#	endif
+#	if defined(FPL__ENABLE_INPUT_DINPUT)
+	if ((ctx->settings.enabledSources & fplInputSourceType_Gamepad) != 0 && ctx->dinput.isInitialized) {
+		fpl__InputBackendDInput_Update(&ctx->dinput, &ctx->settings.gameControllers);
 	}
 #	endif
 #	if defined(FPL__ENABLE_INPUT_LINUX_JOYSTICK)
@@ -31613,6 +32320,13 @@ fpl_internal bool fpl__InputSystem_PollGamepad(fpl__InputContext *ctx, fplGamepa
 #	if defined(FPL__ENABLE_INPUT_XINPUT)
 	if (ctx->xinput.isInitialized) {
 		if (fpl__InputBackendXInput_PollGamepad(&ctx->xinput, outStates)) {
+			any = true;
+		}
+	}
+#	endif
+#	if defined(FPL__ENABLE_INPUT_DINPUT)
+	if (ctx->dinput.isInitialized) {
+		if (fpl__InputBackendDInput_PollGamepad(&ctx->dinput, outStates)) {
 			any = true;
 		}
 	}
