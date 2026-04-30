@@ -10193,13 +10193,16 @@ typedef struct fpl__IDirectInput8W fpl__IDirectInput8W;
 
 typedef BOOL (WINAPI *fpl__LPDIENUMDEVICESCALLBACKW)(const fpl__DIDEVICEINSTANCEW *lpddi, LPVOID pvRef);
 
+// Note: COM signatures use REFIID/REFGUID which are by-reference in C++ but pointer in C.
+// We always declare these as `const GUID *` so the vtable typedefs compile in both languages.
+// ABI is identical (a C++ reference is implemented as a pointer).
 typedef struct fpl__IDirectInput8WVtbl {
-	HRESULT (WINAPI *QueryInterface)(fpl__IDirectInput8W *self, REFIID riid, void **ppv);
+	HRESULT (WINAPI *QueryInterface)(fpl__IDirectInput8W *self, const IID *riid, void **ppv);
 	ULONG (WINAPI *AddRef)(fpl__IDirectInput8W *self);
 	ULONG (WINAPI *Release)(fpl__IDirectInput8W *self);
-	HRESULT (WINAPI *CreateDevice)(fpl__IDirectInput8W *self, REFGUID rguid, fpl__IDirectInputDevice8W **lplpDirectInputDevice, LPUNKNOWN pUnkOuter);
+	HRESULT (WINAPI *CreateDevice)(fpl__IDirectInput8W *self, const GUID *rguid, fpl__IDirectInputDevice8W **lplpDirectInputDevice, LPUNKNOWN pUnkOuter);
 	HRESULT (WINAPI *EnumDevices)(fpl__IDirectInput8W *self, DWORD dwDevType, fpl__LPDIENUMDEVICESCALLBACKW lpCallback, LPVOID pvRef, DWORD dwFlags);
-	HRESULT (WINAPI *GetDeviceStatus)(fpl__IDirectInput8W *self, REFGUID rguidInstance);
+	HRESULT (WINAPI *GetDeviceStatus)(fpl__IDirectInput8W *self, const GUID *rguidInstance);
 	HRESULT (WINAPI *RunControlPanel)(fpl__IDirectInput8W *self, HWND hwndOwner, DWORD dwFlags);
 	HRESULT (WINAPI *Initialize)(fpl__IDirectInput8W *self, HINSTANCE hinst, DWORD dwVersion);
 	void *_pad_FindDevice;
@@ -10212,7 +10215,7 @@ struct fpl__IDirectInput8W {
 };
 
 typedef struct fpl__IDirectInputDevice8WVtbl {
-	HRESULT (WINAPI *QueryInterface)(fpl__IDirectInputDevice8W *self, REFIID riid, void **ppv);
+	HRESULT (WINAPI *QueryInterface)(fpl__IDirectInputDevice8W *self, const IID *riid, void **ppv);
 	ULONG (WINAPI *AddRef)(fpl__IDirectInputDevice8W *self);
 	ULONG (WINAPI *Release)(fpl__IDirectInputDevice8W *self);
 	HRESULT (WINAPI *GetCapabilities)(fpl__IDirectInputDevice8W *self, fpl__DIDEVCAPS *lpDIDevCaps);
@@ -10250,7 +10253,7 @@ struct fpl__IDirectInputDevice8W {
 	fpl__IDirectInputDevice8WVtbl *lpVtbl;
 };
 
-#define FPL__FUNC_DINPUT_DirectInput8Create(name) HRESULT WINAPI name(HINSTANCE hinst, DWORD dwVersion, REFIID riidltf, LPVOID *ppvOut, LPUNKNOWN punkOuter)
+#define FPL__FUNC_DINPUT_DirectInput8Create(name) HRESULT WINAPI name(HINSTANCE hinst, DWORD dwVersion, const IID *riidltf, LPVOID *ppvOut, LPUNKNOWN punkOuter)
 typedef FPL__FUNC_DINPUT_DirectInput8Create(fpl__win32_func_DirectInput8Create);
 
 typedef struct fpl__Win32DInputApi {
