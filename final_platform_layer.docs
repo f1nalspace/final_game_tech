@@ -1217,22 +1217,140 @@
 /*!
 	@page page_category_input_config Input configuration
 	@tableofcontents
-	
+
+	@section section_category_input_config_overview Overview
+
+	The input subsystem is split into three independent sources - <b>Keyboard</b>, <b>Mouse</b> and <b>Gamepad</b> - and into multiple backends per platform (XInput, Win32 keyboard/mouse, X11 keyboard/mouse, Linux Joystick, etc.).<br>
+	Sources are selected through the @ref fplInitFlags passed to @ref fplPlatformInit, while backends are selected through the @ref fplInputSettings structure or compiled out via preprocessor switches.<br>
+	<br>
+	Input can be used with or without a window. When no window is present, the backends operate in detached mode and the application drives the subsystem itself - see @ref section_category_input_config_no_window.
+
+	@section section_category_input_config_initflags Selecting input sources via init flags
+
+	Each input source has its own flag in @ref fplInitFlags:
+	- @ref fplInitFlags_Keyboard
+	- @ref fplInitFlags_Mouse
+	- @ref fplInitFlags_GameController
+
+	The composite @ref fplInitFlags_Input is the bitwise OR of all three. @ref fplInitFlags_All also enables every input source.<br>
+	<br>
+	@ref fplInitFlags_Window implies @ref fplInitFlags_Keyboard and @ref fplInitFlags_Mouse, so windowed applications keep working without changes. Gamepads must always be requested explicitly with @ref fplInitFlags_GameController.
+
+	@code{.c}
+	// Console-only application that polls a gamepad
+	fplSettings settings;
+	fplSetDefaultSettings(&settings);
+	if (fplPlatformInit(fplInitFlags_GameController, &settings)) {
+		// ...
+	}
+	@endcode
+
+	@section section_category_input_config_backends Selecting input backends
+
+	A backend is a concrete implementation that talks to the operating system (XInput, /dev/input/jsX, X11, etc.). Several backends can be active at once - for example XInput and DirectInput cover different gamepad classes on Windows.<br>
+	<br>
+	By default all backends compiled into the build are enabled. To restrict which backends are used at runtime, populate @ref fplInputSettings.enabledBackends with @ref fplInputBackendMaskEnable / @ref fplInputBackendMaskDisable:
+
+	@code{.c}
+	fplSettings settings;
+	fplSetDefaultSettings(&settings);
+	fplInputBackendMask *backends = &settings.input.enabledBackends;
+
+	// Use only XInput for gamepads
+	*backends = (fplInputBackendMask){0};
+	fplInputBackendMaskEnable(backends, fplInputBackendType_XInput);
+	fplInputBackendMaskEnable(backends, fplInputBackendType_Win32);
+
+	if (fplPlatformInit(fplInitFlags_Input, &settings)) {
+		// ...
+	}
+	@endcode
+
+	Bits for backends that are not compiled in (or not supported on the current platform) are silently ignored at init time.<br>
+	<br>
+	To inspect which backends the build supports use @ref fplGetInputBackendSupport:
+
+	@code{.c}
+	fplInputBackendSupport supports[16];
+	uint32_t count = fplGetInputBackendSupport(supports, fplArrayCount(supports));
+	for (uint32_t i = 0; i < count; ++i) {
+		// supports[i].name, supports[i].type, supports[i].supportedSources, ...
+	}
+	@endcode
+
+	A single backend descriptor can be looked up via @ref fplGetInputBackendSupportByType.
+
+	@section section_category_input_config_devices Enumerating input devices
+
+	After @ref fplPlatformInit, the input subsystem maintains a list of devices visible to all enabled backends. Use @ref fplGetInputDevices to enumerate them, optionally filtered by source:
+
+	@code{.c}
+	fplInputDevice devices[FPL_MAX_INPUT_DEVICE_COUNT];
+	uint32_t count = fplGetInputDevices(fplInputSourceType_Gamepad, devices, fplArrayCount(devices));
+	for (uint32_t i = 0; i < count; ++i) {
+		fplInputDevice *dev = &devices[i];
+		// dev->name, dev->backend, dev->connection, dev->state.gamepad, ...
+	}
+	@endcode
+
+	Each device exposes a stable @ref fplInputDeviceGuid that survives reconnects on the same backend slot. Use @ref fplFindInputDevice to look up a single device by GUID later.<br>
+	<br>
+	Convenience wrappers @ref fplGetKeyboardDevices, @ref fplGetMouseDevices, @ref fplGetGamepadDevices return only devices of the requested source type.
+
+	@section section_category_input_config_no_window Using input without a window
+
+	When @ref fplInitFlags_Window is not set (or @ref fplInputSettings.detachFromWindow is enabled), the keyboard and mouse backends initialize in detached mode:
+	- On Windows the Win32 backend creates a hidden HWND_MESSAGE window for raw input.
+	- On Linux the X11 backend opens its own Display connection.
+
+	The application is responsible for driving the subsystem each frame, since there is no window event loop. Either of the following works:
+	- Call @ref fplUpdateInputDevices once per frame; gamepad connect/disconnect/state events are pushed to the internal event queue and polled state is refreshed.
+	- Call @ref fplPollEvent / @ref fplPollEvents in a loop - they call into the input system internally when no window is present.
+
+	@code{.c}
+	while (running) {
+		fplUpdateInputDevices();
+
+		fplGamepadStates pads;
+		if (fplPollGamepadStates(&pads)) {
+			// ...
+		}
+		fplThreadSleep(16);
+	}
+	@endcode
+
+	See the @c FPL_ConsoleGamepad demo for a complete @c FPL_NO_WINDOW example.
+
 	@section section_catecory_input_config_param_controllerdetectionfrequency Controller detection frequency
 
-	Use @ref fplInputSettings.controllerDetectionFrequency to change the frequency (in milliseconds) for detecting new or removed game controllers.
+	Use @ref fplInputSettings.gameControllers.detectionFrequency to change the frequency (in milliseconds) at which gamepad backends scan for newly connected or removed controllers.<br>
+	<br>
+	Setting this to zero forces a scan every frame, which is not recommended due to its cost. The default value is suitable for most games.
 
-	If this is set to zero, new or removed game controllers are detected for every frame - which is not recommended due to performance issues.
+	@section section_catecory_input_config_param_disabledevents Disable input events
 
-	@section section_catecory_input_config_param_disabledevents Disable controller handling as events
+	Set @ref fplInputSettings.disabledEvents to <b>true</b> to suppress all input events. Polling functions like @ref fplPollKeyboardState, @ref fplPollMouseState and @ref fplPollGamepadStates continue to work regardless of this flag.
 
-	Set @ref fplInputSettings.disabledEvents to '1' to disable all game controller events, if needed.
-		
+	@section section_category_input_config_compile_switches Compile-time switches
+
+	Define @c FPL_NO_INPUT before the implementation include to remove the entire input subsystem. To remove a single backend without disabling the rest, define one of:
+	- @c FPL_NO_INPUT_XINPUT
+	- @c FPL_NO_INPUT_DINPUT
+	- @c FPL_NO_INPUT_RAWINPUT
+	- @c FPL_NO_INPUT_WIN32
+	- @c FPL_NO_INPUT_X11
+	- @c FPL_NO_INPUT_LINUX_JOYSTICK
+	- @c FPL_NO_INPUT_LINUX_EVDEV
+	- @c FPL_NO_INPUT_LINUX_UDEV
+	- @c FPL_NO_INPUT_UNIX_GAMEPAD
+
+	See @subpage page_compiler_options for the full list.
+
 	@section section_category_input_config_default Initialize to default settings
-	
+
 	If needed you can use @ref fplSetDefaultInputSettings to reset the @ref fplInputSettings structure to a default state.<br>
 	<br>
-	You dont have to use this call, if you have already initialized the @ref fplSettings structure by @ref fplMakeDefaultSettings() or @ref fplSetDefaultSettings()
+	You don't have to use this call if you have already initialized the @ref fplSettings structure via @ref fplMakeDefaultSettings or @ref fplSetDefaultSettings.
 */
 
 /*!
@@ -1317,6 +1435,12 @@
 	@subsection subsection_category_input_polling_tips Tips
 
 	@note You can always use all those polling functions, regardless of the @ref fplInputSettings.disabledEvents field!
+
+	@subsection subsection_category_input_polling_no_window Polling without a window
+
+	When the application runs without a window (@c FPL_NO_WINDOW or @ref fplInputSettings.detachFromWindow), the input subsystem is not driven by a window event loop. Call @ref fplUpdateInputDevices once per frame to refresh cached state and dispatch gamepad connect/disconnect events. @ref fplPollEvent and @ref fplPollEvents also work in this mode and drive the input subsystem internally.<br>
+	<br>
+	See @ref section_category_input_config_no_window for a full example.
 */
 
 /*!
@@ -3879,6 +4003,67 @@
 			<td>Audio</td>
 			<td>FPL_NO_AUDIO_ALSA</td>
 			<td>Define this to disable ALSA support entirely.</td>
+			<td>Not set by default</td>
+		</tr>
+
+		<tr>
+			<td>Input</td>
+			<td>FPL_NO_INPUT</td>
+			<td>Define this to disable the entire input subsystem (keyboard, mouse and gamepad backends).</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Input</td>
+			<td>FPL_NO_INPUT_XINPUT</td>
+			<td>Define this to disable the XInput gamepad backend (Windows).</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Input</td>
+			<td>FPL_NO_INPUT_DINPUT</td>
+			<td>Define this to disable the DirectInput gamepad backend (Windows).</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Input</td>
+			<td>FPL_NO_INPUT_RAWINPUT</td>
+			<td>Define this to disable the RawInput keyboard/mouse backend (Windows).</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Input</td>
+			<td>FPL_NO_INPUT_WIN32</td>
+			<td>Define this to disable the Win32 keyboard/mouse backend.</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Input</td>
+			<td>FPL_NO_INPUT_X11</td>
+			<td>Define this to disable the X11 keyboard/mouse backend.</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Input</td>
+			<td>FPL_NO_INPUT_LINUX_JOYSTICK</td>
+			<td>Define this to disable the /dev/input/jsX gamepad backend (Linux).</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Input</td>
+			<td>FPL_NO_INPUT_LINUX_EVDEV</td>
+			<td>Define this to disable the /dev/input/eventX evdev backend (Linux).</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Input</td>
+			<td>FPL_NO_INPUT_LINUX_UDEV</td>
+			<td>Define this to disable the udev hotplug backend (Linux).</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Input</td>
+			<td>FPL_NO_INPUT_UNIX_GAMEPAD</td>
+			<td>Define this to disable the BSD/Unix gamepad backend.</td>
 			<td>Not set by default</td>
 		</tr>
 
