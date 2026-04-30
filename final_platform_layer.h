@@ -21774,12 +21774,7 @@ fpl_internal void fpl__LinuxJoystick_DetectControllers(const fplSettings *settin
 		ioctl(fd, JSIOCGNAME(fplArrayCount(controller->displayName)), controller->displayName);
 		fcntl(fd, F_SETFL, O_NONBLOCK);
 
-		fplEvent ev = fplZeroInit;
-		ev.type = fplEventType_Gamepad;
-		ev.gamepad.type = fplGamepadEventType_Connected;
-		ev.gamepad.deviceIndex = (uint32_t)freeIndex;
-		ev.gamepad.deviceName = controller->deviceName;
-		fpl__PushInternalEvent(&ev);
+		fpl__PushGamepadConnectionEvent((uint32_t)freeIndex, controller->deviceName, true);
 	}
 }
 
@@ -21805,12 +21800,7 @@ fpl_internal void fpl__LinuxJoystick_UpdateStates(fpl__InputBackendLinuxJoystick
 						backend->triedSlot[slotIndex] = false;
 					}
 					if (useEvents) {
-						fplEvent ev = fplZeroInit;
-						ev.type = fplEventType_Gamepad;
-						ev.gamepad.type = fplGamepadEventType_Disconnected;
-						ev.gamepad.deviceIndex = controllerIndex;
-						ev.gamepad.deviceName = controller->deviceName;
-						fpl__PushInternalEvent(&ev);
+						fpl__PushGamepadConnectionEvent(controllerIndex, controller->deviceName, false);
 					}
 				}
 				break;
@@ -21823,13 +21813,7 @@ fpl_internal void fpl__LinuxJoystick_UpdateStates(fpl__InputBackendLinuxJoystick
 		controller->state.deviceName = controller->deviceName;
 
 		if (controller->fd > 0 && useEvents) {
-			fplEvent ev = fplZeroInit;
-			ev.type = fplEventType_Gamepad;
-			ev.gamepad.type = fplGamepadEventType_StateChanged;
-			ev.gamepad.deviceIndex = controllerIndex;
-			ev.gamepad.deviceName = controller->deviceName;
-			ev.gamepad.state = controller->state;
-			fpl__PushInternalEvent(&ev);
+			fpl__PushGamepadStateEvent(controllerIndex, controller->deviceName, &controller->state);
 		}
 	}
 }
