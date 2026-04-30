@@ -2608,8 +2608,6 @@ typedef enum fplX86InstructionSetLevel {
 
 //
 // Remove video support when the Window is disabled.
-// Note: SUBPLATFORM_X11 is dropped further below (after FPL__SUPPORT_INPUT_X11 is decided)
-// because the X11 keyboard/mouse input backend can run without a user window (step 9b).
 //
 #if !defined(FPL__SUPPORT_WINDOW)
 #	if defined(FPL__SUPPORT_VIDEO)
@@ -2707,11 +2705,12 @@ typedef enum fplX86InstructionSetLevel {
 #endif // FPL__SUPPORT_INPUT
 
 //
-// X11 subplatform stays alive when FPL_NO_WINDOW only if the X11 input backend wants it (step 9b).
-// Otherwise drop it (no video/window without X11).
+// Drop subplatform X11, when neither window nor X11-input is supported
 //
-#if !defined(FPL__SUPPORT_WINDOW) && defined(FPL_SUBPLATFORM_X11) && !defined(FPL__SUPPORT_INPUT_X11)
-#	undef FPL_SUBPLATFORM_X11
+#if !defined(FPL__SUPPORT_WINDOW) && !defined(FPL__SUPPORT_INPUT_X11)
+#	if defined(FPL_SUBPLATFORM_X11)
+#		undef FPL_SUBPLATFORM_X11
+#	endif
 #endif
 
 //
@@ -2752,8 +2751,6 @@ typedef enum fplX86InstructionSetLevel {
 
 #if defined(FPL__SUPPORT_INPUT)
 #	define FPL__ENABLE_INPUT
-// All input backends work without a window since step 9b: keyboard/mouse backends use polling
-// against a hidden HWND_MESSAGE on Win32 and a detached Display* on X11 when no user window exists.
 #	if defined(FPL__SUPPORT_INPUT_XINPUT)
 #		define FPL__ENABLE_INPUT_XINPUT
 #	endif
@@ -10078,11 +10075,9 @@ typedef struct fpl__InputBackendXInput {
 
 #if defined(FPL__ENABLE_INPUT_WIN32)
 // Win32 keyboard/mouse backend instance owned by fpl__InputContext.
-// In windowed mode WM_* events arrive via fpl__InputSystem_HandleNativeEvent and polling
-// uses the user window for ScreenToClient. In detached mode (FPL_NO_WINDOW or
-// fplInputSettings.detachFromWindow) the backend creates a hidden HWND_MESSAGE so future
-// WM_INPUT/WM_DEVICECHANGE delivery has a target; polling currently returns
-// screen-relative mouse coordinates because there is no client area (step 9b).
+// In windowed mode WM_* events arrive via fpl__InputSystem_HandleNativeEvent and polling uses the user window for ScreenToClient.
+// In detached mode (FPL_NO_WINDOW or fplInputSettings.detachFromWindow) the backend creates a hidden HWND_MESSAGE.
+// So future WM_INPUT/WM_DEVICECHANGE delivery has a target; polling currently returns screen-relative mouse coordinates because there is no client area.
 typedef struct fpl__InputBackendWin32 {
 	HWND messageWindow;
 	ATOM messageWindowClass;
