@@ -16055,11 +16055,12 @@ fpl_internal void fpl__Win32DInput_ReleaseSlot(fpl__InputBackendDInput *backend,
 }
 
 // Map raw DIJOYSTATE → fplGamepadState. Inputs use raw DInput axis range [0, 65535]
-// (center 32767, no DIPROP_RANGE remapping). Generic mapping (XBox-compatible
-// gamepads): lX/lY = left stick, lRx/lRy = right stick, lZ/lRz = analog triggers,
-// rgdwPOV[0] = dpad, rgbButtons[0..3] = A/B/X/Y, [4..5] = shoulders, [6..7] = digital
-// triggers, [8..9] = back/start, [10..11] = stick clicks. Both analog axis and digital
-// button are honored for triggers — whichever is greater wins.
+// (center 32767, no DIPROP_RANGE remapping). Layout follows the common non-XInput
+// gamepad convention (Logitech F310 DInput mode, generic USB pads, many PS clones):
+// lX/lY = left stick, lZ/lRz = right stick (X on lZ, Y on lRz), lRx/lRy = analog
+// triggers (LT/RT), rgdwPOV[0] = dpad, rgbButtons[0..3] = A/B/X/Y, [4..5] = shoulders,
+// [6..7] = digital triggers (override analog when pressed), [8..9] = back/start,
+// [10..11] = stick clicks.
 fpl_internal void fpl__Win32DInput_MapState(const DIJOYSTATE *raw, fplGamepadState *outState) {
 	outState->isConnected = true;
 	// Sticks: raw [0, 65535] with center 32767 → [-1, +1]. Y axis is inverted so
@@ -16068,8 +16069,8 @@ fpl_internal void fpl__Win32DInput_MapState(const DIJOYSTATE *raw, fplGamepadSta
 	const float invHalf = 1.0f / 32767.5f;
 	float lsx = ((float)raw->lX  - center) * invHalf;
 	float lsy = ((float)raw->lY  - center) * invHalf;
-	float rsx = ((float)raw->lRx - center) * invHalf;
-	float rsy = ((float)raw->lRy - center) * invHalf;
+	float rsx = ((float)raw->lZ  - center) * invHalf;
+	float rsy = ((float)raw->lRz - center) * invHalf;
 	if (lsx < -1.0f) lsx = -1.0f; else if (lsx > 1.0f) lsx = 1.0f;
 	if (lsy < -1.0f) lsy = -1.0f; else if (lsy > 1.0f) lsy = 1.0f;
 	if (rsx < -1.0f) rsx = -1.0f; else if (rsx > 1.0f) rsx = 1.0f;
@@ -16078,11 +16079,9 @@ fpl_internal void fpl__Win32DInput_MapState(const DIJOYSTATE *raw, fplGamepadSta
 	outState->leftStickY = -lsy;
 	outState->rightStickX = rsx;
 	outState->rightStickY = -rsy;
-	// Analog triggers from lZ / lRz when the device exposes dedicated trigger axes
-	// (rest = 0, full = 65535). Combined-axis controllers (Xbox 360 driver) report
-	// the trigger pair on lZ centered at 32767; that is not unwound here.
-	float lt = (float)raw->lZ * (1.0f / 65535.0f);
-	float rt = (float)raw->lRz * (1.0f / 65535.0f);
+	// Analog triggers from lRx / lRy (rest = 0, full = 65535) when present.
+	float lt = (float)raw->lRx * (1.0f / 65535.0f);
+	float rt = (float)raw->lRy * (1.0f / 65535.0f);
 	if (lt < 0) lt = 0; else if (lt > 1.0f) lt = 1.0f;
 	if (rt < 0) rt = 0; else if (rt > 1.0f) rt = 1.0f;
 	// Digital trigger buttons override when pressed (gamepads with non-analog triggers).
