@@ -10204,8 +10204,9 @@ typedef struct fpl__DIJoyState {
 	LONG lRx;
 	LONG lRy;
 	LONG lRz;
-	DWORD pov;
-	BYTE buttons[32];
+	LONG rglSlider[2];
+	DWORD rgdwPOV[4];
+	BYTE rgbButtons[32];
 } fpl__DIJoyState;
 
 typedef struct fpl__IDirectInputDevice8W fpl__IDirectInputDevice8W;
@@ -15976,9 +15977,10 @@ static const GUID fpl__GUID_ZAxis = { 0xA36D02E2, 0xC9F3, 0x11CF, { 0xBF, 0xC7, 
 static const GUID fpl__GUID_RxAxis = { 0xA36D02F4, 0xC9F3, 0x11CF, { 0xBF, 0xC7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00 } };
 static const GUID fpl__GUID_RyAxis = { 0xA36D02F5, 0xC9F3, 0x11CF, { 0xBF, 0xC7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00 } };
 static const GUID fpl__GUID_RzAxis = { 0xA36D02E3, 0xC9F3, 0x11CF, { 0xBF, 0xC7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00 } };
+static const GUID fpl__GUID_Slider = { 0xa36d02e4 , 0xc9f3, 0x11cf, { 0xbf, 0xc7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00 } };
 static const GUID fpl__GUID_POV = { 0xA36D02F2, 0xC9F3, 0x11CF, { 0xBF, 0xC7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00 } };
 
-// Custom data format: 6 absolute axes + 1 POV + 32 buttons.
+// Custom data format: 6 absolute axes + 2 sliders + 4 POVs + 32 buttons.
 // Offsets must match fpl__DIJoyState exactly. Optional flag lets DirectInput
 // silently skip objects the device does not expose (e.g. devices without Z/Rx/Ry/Rz axes).
 static fpl__DIOBJECTDATAFORMAT fpl__DIJoy_Objects[] = {
@@ -15988,7 +15990,12 @@ static fpl__DIOBJECTDATAFORMAT fpl__DIJoy_Objects[] = {
 	{ &fpl__GUID_RxAxis, (DWORD)fplOffsetOf(fpl__DIJoyState, lRx), FPL__DIDFT_AXIS | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
 	{ &fpl__GUID_RyAxis, (DWORD)fplOffsetOf(fpl__DIJoyState, lRy), FPL__DIDFT_AXIS | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
 	{ &fpl__GUID_RzAxis, (DWORD)fplOffsetOf(fpl__DIJoyState, lRz), FPL__DIDFT_AXIS | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
-	{ &fpl__GUID_POV,    (DWORD)fplOffsetOf(fpl__DIJoyState, pov), FPL__DIDFT_POV  | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
+	{ &fpl__GUID_SLIDER, (DWORD)fplOffsetOf(fpl__DIJoyState, rglSlider[0]), FPL__DIDFT_AXIS  | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
+	{ &fpl__GUID_SLIDER, (DWORD)fplOffsetOf(fpl__DIJoyState, rglSlider[1]), FPL__DIDFT_AXIS  | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
+	{ &fpl__GUID_POV,    (DWORD)fplOffsetOf(fpl__DIJoyState, rgdwPOV[0]), FPL__DIDFT_POV  | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
+	{ &fpl__GUID_POV,    (DWORD)fplOffsetOf(fpl__DIJoyState, rgdwPOV[1]), FPL__DIDFT_POV  | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
+	{ &fpl__GUID_POV,    (DWORD)fplOffsetOf(fpl__DIJoyState, rgdwPOV[3]), FPL__DIDFT_POV  | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
+	{ &fpl__GUID_POV,    (DWORD)fplOffsetOf(fpl__DIJoyState, rgdwPOV[4]), FPL__DIDFT_POV  | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
 	{ fpl_null, (DWORD)fplOffsetOf(fpl__DIJoyState, buttons[ 0]), FPL__DIDFT_BUTTON | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
 	{ fpl_null, (DWORD)fplOffsetOf(fpl__DIJoyState, buttons[ 1]), FPL__DIDFT_BUTTON | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
 	{ fpl_null, (DWORD)fplOffsetOf(fpl__DIJoyState, buttons[ 2]), FPL__DIDFT_BUTTON | FPL__DIDFT_ANYINSTANCE | FPL__DIDFT_OPTIONAL, 0 },
@@ -16160,6 +16167,7 @@ fpl_internal void fpl__Win32DInput_ReleaseSlot(fpl__InputBackendDInput *backend,
 // buttons[4..5]=shoulders, buttons[6..7]=back/start, buttons[8..9]=thumbs.
 fpl_internal void fpl__Win32DInput_MapState(const fpl__DIJoyState *raw, fplGamepadState *outState) {
 	outState->isConnected = true;
+
 	// Axes are normalized to -1..+1 from -1000..+1000 (set by SetProperty DIPROP_RANGE in init).
 	const float invScale = 1.0f / 1000.0f;
 	outState->leftStickX = (float)raw->lX * invScale;
@@ -16170,36 +16178,50 @@ fpl_internal void fpl__Win32DInput_MapState(const fpl__DIJoyState *raw, fplGamep
 	if (outState->leftStickY < -1.0f) outState->leftStickY = -1.0f; else if (outState->leftStickY > 1.0f) outState->leftStickY = 1.0f;
 	if (outState->rightStickX < -1.0f) outState->rightStickX = -1.0f; else if (outState->rightStickX > 1.0f) outState->rightStickX = 1.0f;
 	if (outState->rightStickY < -1.0f) outState->rightStickY = -1.0f; else if (outState->rightStickY > 1.0f) outState->rightStickY = 1.0f;
+
 	// Triggers from Z / Rz; remap from -1000..+1000 to 0..1.
-	float lt = ((float)raw->lZ + 1000.0f) * 0.0005f;
-	float rt = ((float)raw->lRz + 1000.0f) * 0.0005f;
+	float lt = ((float)raw->rglSlider[0] + 1000.0f) * 0.0005f;
+	float rt = ((float)raw->rglSlider[1] + 1000.0f) * 0.0005f;
 	if (lt < 0) lt = 0; else if (lt > 1.0f) lt = 1.0f;
 	if (rt < 0) rt = 0; else if (rt > 1.0f) rt = 1.0f;
 	outState->leftTrigger = lt;
 	outState->rightTrigger = rt;
+
 	// POV (dpad). 0xFFFFFFFF (or -1) means centered.
-	if (raw->pov != 0xFFFFFFFFu && raw->pov != 0xFFFFu) {
-		DWORD a = raw->pov;
+	if (raw->rgdwPOV[0] != 0xFFFFFFFFu && raw->rgdwPOV[0] != 0xFFFFu) {
+		const DWORD a = raw->rgdwPOV[0];
 		if (a >=  31500u || a <  4500u) outState->dpadUp.isDown    = true;
 		if (a >=  4500u  && a < 13500u) outState->dpadRight.isDown = true;
 		if (a >= 13500u  && a < 22500u) outState->dpadDown.isDown  = true;
 		if (a >= 22500u  && a < 31500u) outState->dpadLeft.isDown  = true;
 	}
-	if (raw->buttons[0] & 0x80) outState->actionA.isDown = true;
-	if (raw->buttons[1] & 0x80) outState->actionB.isDown = true;
-	if (raw->buttons[2] & 0x80) outState->actionX.isDown = true;
-	if (raw->buttons[3] & 0x80) outState->actionY.isDown = true;
-	if (raw->buttons[4] & 0x80) outState->leftShoulder.isDown = true;
-	if (raw->buttons[5] & 0x80) outState->rightShoulder.isDown = true;
-	if (raw->buttons[6] & 0x80) outState->back.isDown = true;
-	if (raw->buttons[7] & 0x80) outState->start.isDown = true;
-	if (raw->buttons[8] & 0x80) outState->leftThumb.isDown = true;
-	if (raw->buttons[9] & 0x80) outState->rightThumb.isDown = true;
+
+	// Buttons
+	if (raw->rgbButtons[0] & 0x80) outState->actionA.isDown = true;
+	if (raw->rgbButtons[1] & 0x80) outState->actionB.isDown = true;
+	if (raw->rgbButtons[2] & 0x80) outState->actionX.isDown = true;
+	if (raw->rgbButtons[3] & 0x80) outState->actionY.isDown = true;
+	if (raw->rgbButtons[4] & 0x80) outState->leftShoulder.isDown = true;
+	if (raw->rgbButtons[5] & 0x80) outState->rightShoulder.isDown = true;
+	if (raw->rgbButtons[6] & 0x80) outState->back.isDown = true;
+	if (raw->rgbButtons[7] & 0x80) outState->start.isDown = true;
+	if (raw->rgbButtons[8] & 0x80) outState->leftThumb.isDown = true;
+	if (raw->rgbButtons[9] & 0x80) outState->rightThumb.isDown = true;
+
+	// Is active
 	bool active = false;
-	if (outState->leftStickX != 0 || outState->leftStickY != 0) active = true;
-	if (outState->rightStickX != 0 || outState->rightStickY != 0) active = true;
-	if (outState->leftTrigger != 0 || outState->rightTrigger != 0) active = true;
-	for (int b = 0; b < 16; ++b) if (raw->buttons[b] & 0x80) { active = true; break; }
+	if (outState->leftStickX != 0 || outState->leftStickY != 0)
+		active = true;
+	if (outState->rightStickX != 0 || outState->rightStickY != 0)
+		active = true;
+	if (outState->leftTrigger != 0 || outState->rightTrigger != 0)
+		active = true;
+	for (int b = 0; b < 16; ++b) {
+		if (raw->rgbButtons[b] & 0x80) {
+			active = true;
+			break;
+		}
+	}
 	outState->isActive = active;
 }
 
