@@ -10,6 +10,8 @@ Also i added unions to fplGameControllerState so we can map those 4 buttons by i
    
 - The fpl__DIJoy_Objects mapping is not complete and looks wrong, compared against other DInput implementations (ignore ofs)
 
+I adjusted that struct to match DIJOYSTATE, but then the action button mapping shows enabled state, even though no buttons are pressed.
+
 A year ago i got a MR, that i could not use directly - but the user was stating DInput was working.
 Double check and compare againt the our implementation, especially the DIOBJECTDATAFORMAT table:
 
@@ -52,8 +54,7 @@ See `https://github.com/f1nalspace/final_game_tech/pull/174/changes/34e9f54ac1eb
 - Right-Stick button is not mapped at all -> missing
 - Left-rigger is mapped to Select button -> wrong (digital vs analog)
 - Right-rigger is mapped to Start button -> wrong (digital vs analog)
-
-- When i start the FPL_Input demo and enable the gamepad, both the left-trigger and right-trigger are shown half, so it is 0.5 -> wrong
+- Both the left-trigger and right-trigger are 0.5, even though it is not moved at all -> wrong
 
 # 4. Slot device name not UTF-8
 
