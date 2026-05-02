@@ -15802,6 +15802,11 @@ fpl_internal bool fpl__InputBackendXInput_PollGamepad(fpl__InputBackendXInput *b
 
 #define FPL__MODULE_DINPUT "DInput"
 
+// Some Windows SDKs (and older mingw) miss this — pulled from current dinput.h.
+#if !defined(DIDFT_OPTIONAL)
+#	define DIDFT_OPTIONAL 0x80000000
+#endif
+
 // COM/DirectInput GUIDs. Defined inline so we never need to link against dxguid.lib.
 static const GUID fpl__IID_IDirectInput8W = { 0xBF798031, 0x483A, 0x4DA2, { 0xAA, 0x99, 0x5D, 0x64, 0xED, 0x36, 0x97, 0x00 } };
 static const GUID fpl__GUID_XAxis = { 0xA36D02E0, 0xC9F3, 0x11CF, { 0xBF, 0xC7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00 } };
