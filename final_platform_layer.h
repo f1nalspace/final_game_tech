@@ -16054,17 +16054,9 @@ fpl_internal void fpl__Win32DInput_ReleaseSlot(fpl__InputBackendDInput *backend,
 	}
 }
 
-// Map raw DIJOYSTATE → fplGamepadState. Inputs use raw DInput axis range [0, 65535]
-// (center 32767, no DIPROP_RANGE remapping). Layout follows the common non-XInput
-// gamepad convention (Logitech F310 DInput mode, generic USB pads, many PS clones):
-// lX/lY = left stick, lZ/lRz = right stick (X on lZ, Y on lRz), rglSlider[0/1] =
-// analog triggers (LT/RT, rest = 0, full = 65535), rgdwPOV[0] = dpad,
-// rgbButtons[0..3] = A/B/X/Y, [4..5] = shoulders, [8..9] = back/start,
-// [10..11] = stick clicks.
 fpl_internal void fpl__Win32DInput_MapState(const DIJOYSTATE *raw, fplGamepadState *outState) {
 	outState->isConnected = true;
-	// Sticks: raw [0, 65535] with center 32767 → [-1, +1]. Y axis is inverted so
-	// "up" produces positive Y in fpl coordinates (XInput convention).
+	// Sticks: raw [0, 65535] with center 32767 → [-1, +1]. Y axis is inverted so "up" produces positive Y in fpl coordinates (XInput convention).
 	const float center = 32767.5f;
 	const float invHalf = 1.0f / 32767.5f;
 	float lsx = ((float)raw->lX  - center) * invHalf;
@@ -16079,6 +16071,7 @@ fpl_internal void fpl__Win32DInput_MapState(const DIJOYSTATE *raw, fplGamepadSta
 	outState->leftStickY = -lsy;
 	outState->rightStickX = rsx;
 	outState->rightStickY = -rsy;
+
 	// Analog triggers from the two sliders (rest = 0, full = 65535).
 	float lt = (float)raw->rglSlider[0] * (1.0f / 65535.0f);
 	float rt = (float)raw->rglSlider[1] * (1.0f / 65535.0f);
@@ -16086,6 +16079,7 @@ fpl_internal void fpl__Win32DInput_MapState(const DIJOYSTATE *raw, fplGamepadSta
 	if (rt < 0) rt = 0; else if (rt > 1.0f) rt = 1.0f;
 	outState->leftTrigger = lt;
 	outState->rightTrigger = rt;
+
 	// POV[0] (dpad). 0xFFFFFFFF / 0xFFFF / -1 mean centered.
 	DWORD pov = raw->rgdwPOV[0];
 	if (pov != 0xFFFFFFFFu && (pov & 0xFFFFu) != 0xFFFFu) {
@@ -16101,16 +16095,23 @@ fpl_internal void fpl__Win32DInput_MapState(const DIJOYSTATE *raw, fplGamepadSta
 	if (raw->rgbButtons[3] & 0x80) outState->actionY.isDown = true;
 	if (raw->rgbButtons[4] & 0x80) outState->leftShoulder.isDown = true;
 	if (raw->rgbButtons[5] & 0x80) outState->rightShoulder.isDown = true;
+
 	// Buttons 6/7 are also routed into the triggers above.
 	if (raw->rgbButtons[8] & 0x80) outState->back.isDown = true;
 	if (raw->rgbButtons[9] & 0x80) outState->start.isDown = true;
 	if (raw->rgbButtons[10] & 0x80) outState->leftThumb.isDown = true;
 	if (raw->rgbButtons[11] & 0x80) outState->rightThumb.isDown = true;
+
 	bool active = false;
 	if (outState->leftStickX != 0 || outState->leftStickY != 0) active = true;
 	if (outState->rightStickX != 0 || outState->rightStickY != 0) active = true;
 	if (outState->leftTrigger != 0 || outState->rightTrigger != 0) active = true;
-	for (int b = 0; b < 32; ++b) if (raw->rgbButtons[b] & 0x80) { active = true; break; }
+	for (int b = 0; b < 32; ++b) {
+		if (raw->rgbButtons[b] & 0x80) {
+			active = true;
+			break;
+		}
+	}
 	outState->isActive = active;
 }
 
