@@ -155,6 +155,7 @@ SOFTWARE.
 	- Added new useful macros
 	- Added several date time types and functions
 	- Added game controllers settings
+	- Introduced a input backend system
 	- Improved code documentation a lot
 	- Improved thread-safety in the event system
 	- A few major bugfixes
@@ -179,6 +180,13 @@ SOFTWARE.
 	- New: Added function fplPathNormalize() for normalizing any partial path into a absolute path
 	- New: Added enum values fplKey_First / fplKey_Last to fplKey enum
 	- New: Added common function fplKeyGetName() for getting the name for a fplKey
+	- New: Added enum fplInputBackendType
+	- Added enum fplInputSourceType
+	- Added struct fplInputBackendMask
+	- Added function fplInputBackendMaskIsEnabled
+	- Added function fplInputBackendMaskEnable
+	- Added function fplInputBackendMaskDisable
+	- Extented struct fplInputSettings with fields for new input system
 	- New: [Win32] Implemented function fplFileAppendBinary() for Win32 API
 	- New: [POSIX] Implemented function fplFileAppendBinary() for POSIX Unix API
 	- New: [Win32] Implemented function fplPathNormalize() for Win32 API
@@ -186,8 +194,10 @@ SOFTWARE.
 	- New[#183]: Added macro fpl_extern_inline
 	- New[#35] Implemented PulseAudio audio backend
 	- New[#186] Implemented PipeWire audio backend
+	- New[#178] Separate input system from windowing system, by introducing a input backend system
 
 	- Improved[#176]: Made internal event queue thread-safe using a lock-free push/pop linear buffer
+	- Improved[#88]: Gamepad input device is not locked to /dev/input/js0 anymore
 	- Improved: Better documentation of the preprocessor setup blocks
 
 	- Fixed: Fixed duplicate platform includes
@@ -5615,7 +5625,7 @@ typedef struct fplConsoleSettings {
 fpl_common_api void fplSetDefaultConsoleSettings(fplConsoleSettings *console);
 
 /**
-* @struct fplGameControllerSettings
+* @struct fplGameControllersSettings
 * @brief Stores the settings for controlling how game controllers are handled.
 */
 typedef struct fplGameControllersSettings {
