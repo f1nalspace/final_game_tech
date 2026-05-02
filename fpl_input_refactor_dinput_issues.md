@@ -2,6 +2,12 @@ I tested the DirectInput8 implementation on my Win11 VM and it does work not cor
 Note that the gampad layout is inspired by XInput / XBox-Controller, so action-buttons are (Y up, X left, A down, B right).
 Also i added unions to fplGameControllerState so we can map those 4 buttons by its directional name as well.
 
+Use `https://raw.githubusercontent.com/ColleagueRiley/minigamepad/refs/heads/main/minigamepad.h` as a full reference.
+
+# 0. No dinput.h inclusion
+
+You can safely include `dinput.h` library, so can remove our custom types and defines - but you have to fix up the runtime linked function definitions.
+
 # 1. DIJoyStat not correct
 
 - The fpl__DIJoyState is NOT the same as DIJOYSTATE struct:
@@ -9,8 +15,6 @@ Also i added unions to fplGameControllerState so we can map those 4 buttons by i
     - Only one POV -> DWORD rgdwPOV[4] after rglSlider   
    
 - The fpl__DIJoy_Objects mapping is not complete and looks wrong, compared against other DInput implementations (ignore ofs)
-
-I adjusted that struct to match DIJOYSTATE, but then the action button mapping shows enabled state, even though no buttons are pressed.
 
 A year ago i got a MR, that i could not use directly - but the user was stating DInput was working.
 Double check and compare againt the our implementation, especially the DIOBJECTDATAFORMAT table:
