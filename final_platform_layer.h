@@ -192,9 +192,10 @@ SOFTWARE.
 	- New: [Win32] Implemented function fplPathNormalize() for Win32 API
 	- New: [POSIX] Implemented function fplPathNormalize() for POSIX Unix API
 	- New[#183]: Added macro fpl_extern_inline
-	- New[#35] Implemented PulseAudio audio backend
-	- New[#186] Implemented PipeWire audio backend
-	- New[#178] Separate input system from windowing system, by introducing a input backend system
+	- New[#35]: Implemented PulseAudio audio backend
+	- New[#186]: Implemented PipeWire audio backend
+	- New[#178]: Separate input system from windowing system, by introducing a input backend system
+	- New[#187]: Implemented DirectInput input backend
 
 	- Improved[#176]: Made internal event queue thread-safe using a lock-free push/pop linear buffer
 	- Improved[#88]: Gamepad input device is not locked to /dev/input/js0 anymore
