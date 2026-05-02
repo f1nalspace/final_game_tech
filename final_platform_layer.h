@@ -8104,7 +8104,7 @@ typedef enum fplGamepadButtonType {
 
 /**
 * @struct fplGamepadState
-* @brief A structure containing the entire gamepad state.
+* @brief A structure containing the entire gamepad state, that defines a full gamepad state in XInput/XBox layout.
 */
 typedef struct fplGamepadState {
 	union {
@@ -8118,14 +8118,30 @@ typedef struct fplGamepadState {
 			//! Digital button left.
 			fplGamepadButton dpadLeft;
 
-			//! Action button A.
-			fplGamepadButton actionA;
-			//! Action button B.
-			fplGamepadButton actionB;
-			//! Action button X.
-			fplGamepadButton actionX;
-			//! Action button Y.
-			fplGamepadButton actionY;
+			union {
+				struct {
+					//! Action button A.
+					fplGamepadButton actionA;
+					//! Action button B.
+					fplGamepadButton actionB;
+					//! Action button X.
+					fplGamepadButton actionX;
+					//! Action button Y.
+					fplGamepadButton actionY;
+				};
+				struct {
+					//! Action button down.
+					fplGamepadButton actionDown;
+					//! Action button right.
+					fplGamepadButton actionRight;
+					//! Action button left.
+					fplGamepadButton actionLeft;
+					//! Action button up.
+					fplGamepadButton actionUp;
+				};
+				//! Four action buttons
+				fplGamepadButton actions[4];
+			};
 
 			//! Start button.
 			fplGamepadButton start;
