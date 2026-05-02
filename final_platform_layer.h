@@ -187,6 +187,7 @@ SOFTWARE.
 	- Added function fplInputBackendMaskEnable
 	- Added function fplInputBackendMaskDisable
 	- Extented struct fplInputSettings with fields for new input system
+	- Extented struct fplGamepadState with union action buttons (down/right/left/up) and (A/B/X/Y)
 	- New: [Win32] Implemented function fplFileAppendBinary() for Win32 API
 	- New: [POSIX] Implemented function fplFileAppendBinary() for POSIX Unix API
 	- New: [Win32] Implemented function fplPathNormalize() for Win32 API
