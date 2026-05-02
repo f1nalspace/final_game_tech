@@ -5664,19 +5664,11 @@ typedef enum fplInputBackendType {
 	fplInputBackendType_XInput,
 	//! DirectInput8 gamepad backend (Windows).
 	fplInputBackendType_DInput,
-	//! RAWINPUT keyboard/mouse backend (Windows).
-	fplInputBackendType_RawInput,
 	//! /dev/input/jsX legacy joystick backend (Linux).
 	fplInputBackendType_LinuxJoystick,
-	//! /dev/input/eventX evdev backend (Linux).
-	fplInputBackendType_LinuxEvdev,
-	//! udev hotplug companion backend (Linux).
-	fplInputBackendType_LinuxUdev,
-	//! BSD / generic uhid gamepad backend.
-	fplInputBackendType_UnixGamepad,
-	//! X11 keyboard/mouse backend.
+	//! X11 keyboard/mouse backend (Unix/Linux).
 	fplInputBackendType_X11Kbm,
-	//! Win32 keyboard/mouse backend (WM_* + GetKeyState).
+	//! Win32 keyboard/mouse backend (Windows).
 	fplInputBackendType_Win32,
 	//! First valid backend type identifier.
 	fplInputBackendType_First = fplInputBackendType_None,
