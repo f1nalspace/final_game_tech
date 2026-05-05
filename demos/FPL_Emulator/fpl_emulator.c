@@ -149,7 +149,7 @@ License:
 fplStaticAssert(MAX_STATE_SLOT_COUNT % 2 == 0);
 
 // Boot ROM
-//#define NO_BOOTROM
+#define NO_BOOTROM
 #if !defined(NO_BOOTROM)
 #include "bootrom.h"
 #endif
