@@ -3394,7 +3394,10 @@ static uint32_t AudioThreadCallback(const fplAudioFormat *deviceFormat, const ui
 		const uint32_t popped = fgbFetchAudioSamples(system, frameCount, AudioTempSampels);
 		EndPerformanceCounter(&metrics->audioReadSamples, fplTimestampQuery());
 
-		if (popped < frameCount) {
+		if (popped == 0) {
+			// No audio frames, return silence
+			fplMemorySet(outputSamples, 0, frameCount * deviceFormat->channels * sizeof(int16_t));
+		} else if (popped < frameCount) {
 			const uint32_t missing = frameCount - popped;
 			fplDebugFormatOut("APU Audio buffer underrun: %u frames are missing\n", missing);
 		}
@@ -4089,7 +4092,7 @@ static EmulatorParameters ParseEmulatorParameters(const int argc, char **argv) {
 					} else if (c == '-' && CharIsAlpha(arg[2])) {
 						// Long key argument
 						const char *key = arg + 2;
-						if (strcasecmp("trace", key) == 0) {
+						if (StringCompareIgnoreCase("trace", key) == 0) {
 							result.isTraceEnabled = true;
 						} else {
 							// Not supported argument
