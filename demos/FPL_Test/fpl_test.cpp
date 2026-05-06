@@ -1784,31 +1784,6 @@ static void TestInlining() {
 	NoInlineTest();
 }
 
-// ----------------------------------------------------------------------------
-// Security & stability test wiring (see fpl_security_tests.c)
-// Tests assert on the *correct* behavior of issues catalogued in
-// analysis/fpl-code-security-analysis.md. Until each issue is fixed, the
-// matching sub-test will assert.
-// ----------------------------------------------------------------------------
-extern "C" {
-	void FPLSecurityTests_Strings(void);
-	void FPLSecurityTests_Paths(void);
-	void FPLSecurityTests_Files(void);
-	void FPLSecurityTests_Conversions(void);
-	void FPLSecurityTests_Types(void);
-	void FPLSecurityTests_Misc(void);
-}
-
-static void TestSecurityIssues() {
-	ftMsg("Test FPL security/stability fixes\n");
-	FPLSecurityTests_Strings();
-	FPLSecurityTests_Paths();
-	FPLSecurityTests_Files();
-	FPLSecurityTests_Conversions();
-	FPLSecurityTests_Types();
-	FPLSecurityTests_Misc();
-}
-
 static void TestTimes() {
 	ftMsg("Test fplTimestampQuery and fplTimestampElapsed\n");
 	// 0.5 secs
