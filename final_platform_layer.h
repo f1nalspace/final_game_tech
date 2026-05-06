@@ -234,6 +234,8 @@ SOFTWARE.
 	- Fixed: [POSIX] dirint.h and sched.h was not included always
 	- Fixed[#184]: [POSIX] fplDirectoriesCreate() does not create parent sub-directories
 
+	- Fixed: [Win32] fplFileSetPosition32 / fplFileGetSizeFromPath32 / fplFileGetSizeFromHandle32 was not using the best suitable API function
+
 	- Fixed[#182]: [ALSA] Fixed default audio devices are not detected in modern linux audio systems
 
 	## v0.9.9-beta
@@ -16313,9 +16315,16 @@ fpl_platform_api uint32_t fplFileSetPosition32(const fplFileHandle *fileHandle, 
 		} else if (mode == fplFilePositionMode_End) {
 			moveMethod = FILE_END;
 		}
-		DWORD r = 0;
-		r = SetFilePointer(win32FileHandle, (LONG)position, fpl_null, moveMethod);
-		result = (uint32_t)r;
+		LARGE_INTEGER r = fplZeroInit;
+		LARGE_INTEGER li;
+		li.QuadPart = (LONGLONG)position;
+		if (SetFilePointerEx(win32FileHandle, li, &r, moveMethod) == TRUE) {
+			if (r.QuadPart > (LONGLONG)UINT32_MAX) {
+				result = UINT32_MAX;
+			} else {
+				result = (uint32_t)r.QuadPart;
+			}
+		}
 	}
 	return(result);
 }
@@ -16393,8 +16402,14 @@ fpl_platform_api uint32_t fplFileGetSizeFromPath32(const char *filePath) {
 		fplUTF8StringToWideString(filePath, fplGetStringLength(filePath), filePathWide, fplArrayCount(filePathWide));
 		HANDLE win32FileHandle = CreateFileW(filePathWide, GENERIC_READ, FILE_SHARE_READ, fpl_null, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, fpl_null);
 		if (win32FileHandle != INVALID_HANDLE_VALUE) {
-			DWORD fileSize = GetFileSize(win32FileHandle, fpl_null);
-			result = (uint32_t)fileSize;
+			LARGE_INTEGER li = fplZeroInit;
+			if (GetFileSizeEx(win32FileHandle, &li) == TRUE) {
+				if (li.QuadPart > (LONGLONG)UINT32_MAX) {
+					result = UINT32_MAX;
+				} else {
+					result = (uint32_t)li.QuadPart;
+				}
+			}
 			CloseHandle(win32FileHandle);
 		}
 	}
@@ -16423,8 +16438,14 @@ fpl_platform_api uint32_t fplFileGetSizeFromHandle32(const fplFileHandle *fileHa
 	uint32_t result = 0;
 	if (FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
-		DWORD fileSize = GetFileSize(win32FileHandle, fpl_null);
-		result = (uint32_t)fileSize;
+		LARGE_INTEGER li = fplZeroInit;
+		if (GetFileSizeEx(win32FileHandle, &li) == TRUE) {
+			if (li.QuadPart > (LONGLONG)UINT32_MAX) {
+				result = UINT32_MAX;
+			} else {
+				result = (uint32_t)li.QuadPart;
+			}
+		}
 	}
 	return(result);
 }
