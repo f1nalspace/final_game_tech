@@ -122,17 +122,19 @@ Applied Global Conventions; updated all docstrings and call sites.
 - [x] `fplStringToS32` delegates through `fplTryStringToS32`.
 
 ### 2.6 Win32 file size / position error detection
-- [ ] `fplFileGetSizeFromPath32` / `…Handle32`: switch to `GetFileSizeEx`. Add `bool fplFileTryGetSize…(…, uint64_t *outSize);` variant.
-- [ ] `fplFileSetPosition32`: use Microsoft's two-step `INVALID_SET_FILE_POINTER` + `GetLastError() != NO_ERROR` check, or switch to `SetFilePointerEx`.
+- [x] `fplFileGetSizeFromPath32` / `…Handle32`: switched to `GetFileSizeEx` with UINT32_MAX clamp.
+- [x] `fplFileSetPosition32`: switched to `SetFilePointerEx` (clean failure detection, UINT32_MAX clamp).
+- [ ] (Deferred to 3.6) `bool fplFileTryGetSize…(…, uint64_t *outSize);` variant.
 
-### 2.7 Thread-safe error ring (`fpl__PushError_Formatted`) (11343–11374)
-- [ ] Add `fplMutexHandle fpl__global__LastErrorMutex` initialized at `fplPlatformInit`.
-- [ ] Lock around index increment + slot write.
-- [ ] Optional: track `dropped` counter for ring overflow (5.9).
+### 2.7 Thread-safe error ring (`fpl__PushError_Formatted`)
+- [x] Replaced racy `count++` with atomic `fplAtomicFetchAndAddU32` slot claim — no mutex / init-order issues.
+- [x] `count` is now monotonic total (volatile uint32_t); slot = `(count - 1) % MAX`.
+- [x] Fixed pre-existing wrap bug: readers handle `count > MAX` correctly (oldestSlot math).
+- [x] `fplGetErrorCount` clamps return to MAX for compat.
+- [ ] (Optional, deferred) track `dropped` counter for ring overflow.
 
 ### 2.8 MSVC pre-C99 vsnprintf hazard (11752)
-- [ ] When `charCount < 0` on MSVC ≤ 1900: fall back to `_vscprintf(format, listCopy)` to obtain required size.
-- [ ] Or use `vsnprintf_s`.
+- [x] Dropped — pre-C99 MSVC no longer supported.
 
 ### 2.9 `fplDirectoryListBegin` lifetime fix (19052–19068)
 - [ ] Copy `path` and `filter` into fixed buffers inside `fplFileEntry` (mirror `name[FPL_MAX_FILENAME_LENGTH]`).
