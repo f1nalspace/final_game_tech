@@ -206,7 +206,8 @@ SOFTWARE.
 	- Fixed: fplStringFormat and fplStringFormatArgs was not implemented correctly due to its documentation rules
 	- Fixed: fplStringToS32Len and fplStringToS32 was not implemented correctly due to its documentation rules
 	- Fixed: Calls to fpl__AllocateTemporaryMemory use either fpl__MinAlignment or 16 or more
-	- Fixed fplCPUID, fplCPURDTSC, fplCPUXCR0 was not detected on GCC/Clang
+	- Fixed: fplCPUID, fplCPURDTSC, fplCPUXCR0 was not detected on GCC/Clang
+	- Fixed: fplGetErrorCount / fplGetErrorByIndex  / fplGetLastError and pushing of errors was not thread-safe
 	- Fixed[#183]: fpl_internal_inline was not compiling on GCC/Clang
 
 	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
@@ -11379,7 +11380,8 @@ static const uint32_t FPL__DEFAULT_AUDIO_BUFFERSIZE_CONSERVATIVE_IN_MSECS = 25;
 
 typedef struct fpl__ErrorState {
 	char errors[FPL__MAX_ERRORSTATE_COUNT][FPL__MAX_LAST_ERROR_STRING_LENGTH];
-	uint32_t count;
+	// Monotonic total error count. Slot index = (count - 1) % FPL__MAX_ERRORSTATE_COUNT.
+	volatile uint32_t count;
 } fpl__ErrorState;
 
 fpl_globalvar fpl__ErrorState fpl__global__LastErrorState = fplZeroInit;
@@ -11392,9 +11394,9 @@ fpl_internal void fpl__PushError_Formatted(const char *funcName, const int lineN
 		char buffer[FPL__MAX_LAST_ERROR_STRING_LENGTH] = fplZeroInit;
 		size_t formattedLen = fplStringFormatArgs(buffer, fplArrayCount(buffer), format, argList);
 		if (formattedLen > 0) {
-			fplAssert(state->count < FPL__MAX_ERRORSTATE_COUNT);
-			size_t errorIndex = state->count;
-			state->count = (state->count + 1) % FPL__MAX_ERRORSTATE_COUNT;
+			// Atomically claim a unique ring slot so concurrent writers do not collide.
+			uint32_t prevTotal = fplAtomicFetchAndAddU32(&state->count, 1);
+			size_t errorIndex = (size_t)(prevTotal % FPL__MAX_ERRORSTATE_COUNT);
 			fplCopyStringLen(buffer, formattedLen, state->errors[errorIndex], FPL__MAX_LAST_ERROR_STRING_LENGTH);
 		}
 	}
@@ -13328,9 +13330,10 @@ fpl_common_api fplLogLevel fplGetMaxLogLevel(void) {
 fpl_common_api const char *fplGetLastError(void) {
 	const char *result = "";
 	const fpl__ErrorState *errorState = &fpl__global__LastErrorState;
-	if (errorState->count > 0) {
-		size_t index = errorState->count - 1;
-		result = fplGetErrorByIndex(index);
+	uint32_t total = errorState->count;
+	if (total > 0) {
+		size_t slot = (size_t)((total - 1) % FPL__MAX_ERRORSTATE_COUNT);
+		result = errorState->errors[slot];
 	}
 	return (result);
 }
@@ -13338,18 +13341,28 @@ fpl_common_api const char *fplGetLastError(void) {
 fpl_common_api const char *fplGetErrorByIndex(const size_t index) {
 	const char *result = "";
 	const fpl__ErrorState *errorState = &fpl__global__LastErrorState;
-	if (index < errorState->count) {
-		result = errorState->errors[index];
-	} else {
-		result = errorState->errors[errorState->count - 1];
+	uint32_t total = errorState->count;
+	if (total == 0) {
+		return (result);
 	}
+	size_t visible = (total < FPL__MAX_ERRORSTATE_COUNT) ? (size_t)total : (size_t)FPL__MAX_ERRORSTATE_COUNT;
+	size_t effectiveIndex = (index < visible) ? index : (visible - 1);
+	size_t slot;
+	if (total <= FPL__MAX_ERRORSTATE_COUNT) {
+		slot = effectiveIndex;
+	} else {
+		// Ring has wrapped: oldest slot is the next-write slot.
+		size_t oldestSlot = (size_t)(total % FPL__MAX_ERRORSTATE_COUNT);
+		slot = (oldestSlot + effectiveIndex) % FPL__MAX_ERRORSTATE_COUNT;
+	}
+	result = errorState->errors[slot];
 	return (result);
 }
 
 fpl_common_api size_t fplGetErrorCount(void) {
-	size_t result = 0;
 	const fpl__ErrorState *errorState = &fpl__global__LastErrorState;
-	result = errorState->count;
+	uint32_t total = errorState->count;
+	size_t result = (total < FPL__MAX_ERRORSTATE_COUNT) ? (size_t)total : (size_t)FPL__MAX_ERRORSTATE_COUNT;
 	return (result);
 }
 
