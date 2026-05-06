@@ -213,6 +213,7 @@ SOFTWARE.
 	- Fixed: [X11] Fixed fplPollEvent() was not handling the events properly, resulting in not processing any events anymore
 	- Fixed: [X11] Fixed ClientMessage for Atom netWMPing was not calling XFlush
 	- Fixed: [X11] Fixed wrong X11 type aliases
+	- Fixed: [X11] fpl__X11Window opaque pointer was wrong sized
 	- Fixed[#181]: [X11] fpl__X11ParseUriPaths does not do any URI decoding, resulting in most-likely unuseable file paths
 
 	- Fixed: [POSIX] Fixed pthread fpl__POSIXSemaphoreHandle was not used
@@ -3351,8 +3352,8 @@ typedef uint64_t fpl__POSIXConditionVariable[16];
 
 //! A X11 Display (opaque, 4/8 bytes)
 typedef void fpl__X11Display;
-//! A X11 window (opaque, 4 bytes)
-typedef int fpl__X11Window;
+//! A X11 window (opaque, 8 bytes - matches the X11 XID type which is unsigned long on LP64 systems)
+typedef unsigned long fpl__X11Window;
 //! A X11 Visual (opaque, 4/8 bytes)
 typedef void fpl__X11Visual;
 //! A X11 GC (opaque, 4/8 bytes)
