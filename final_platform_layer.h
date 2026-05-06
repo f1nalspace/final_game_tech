@@ -208,6 +208,7 @@ SOFTWARE.
 	- Fixed: Calls to fpl__AllocateTemporaryMemory use either fpl__MinAlignment or 16 or more
 	- Fixed: fplCPUID, fplCPURDTSC, fplCPUXCR0 was not detected on GCC/Clang
 	- Fixed: fplGetErrorCount / fplGetErrorByIndex  / fplGetLastError and pushing of errors was not thread-safe
+	- Fixed: fplAlignAs was using a condition based macro, which is not supported for some compilers
 	- Fixed[#183]: fpl_internal_inline was not compiling on GCC/Clang
 
 	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
@@ -2170,10 +2171,9 @@ SOFTWARE.
 /**
 * @def fplAlignAs
 * @brief Structure alignment in bytes.
-* @param[in] N Alignment size.
-* @return The resulting aligned value in bytes.
+* @param[in] N Alignment size. Must be a power-of-two integer literal.
 */
-#define fplAlignAs(N) fpl__m_AlignAs(((N) < fplMinAlignment ? fplMinAlignment : (N)))
+#define fplAlignAs(N) fpl__m_AlignAs(N)
 //
 // Defines required for POSIX (mmap, 64-bit file io, etc.)
 //
