@@ -76,12 +76,12 @@ int main(int argc, char **args) {
 	settings.video.backend = fplVideoBackendType_OpenGL;
 
 	// Legacy OpenGL
-	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
+	settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Legacy;
 
 	// or
 
 	// Modern OpenGL
-	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
+	settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Core;
 	settings.video.graphics.opengl.majorVersion = 3;
 	settings.video.graphics.opengl.minorVersion = 3;
 
@@ -220,6 +220,7 @@ SOFTWARE.
 	- Changed: [ALSA] Audio device enumeration prints out each audio device to verbose log
 	- Changed: [X11] Disabled FPL_NO_PLATFORM_INCLUDES for Xlib includes
 	- Changed: [POSIX] Disabled FPL_NO_PLATFORM_INCLUDES for pthread includes
+	- Renamed: fplOpenGLCompabilityFlags -> fplOpenGLCompatibilityFlags (incl. enum values and fplOpenGLSettings::compabilityFlags -> compatibilityFlags) - typo fix
 
 	- Fixed: [Win32] Fixed last event from event queue was never used, when there is no events from the window
 	- Fixed: [Win32] Lost/Got focus event was not detected properly
@@ -1396,8 +1397,8 @@ SOFTWARE.
 	- Added: fpl::audio::GetAudioBufferSizeInBytes()
 
 	## v0.5.8.0 beta:
-	- Changed: SignalWaitFor* requires additional parameter for passing in the ThreadMutex reference (pthread compability)
-	- Changed: Signal* does not use const reference anymore (pthread compability)
+	- Changed: SignalWaitFor* requires additional parameter for passing in the ThreadMutex reference (pthread compatibility)
+	- Changed: Signal* does not use const reference anymore (pthread compatibility)
 	- Changed: Updated documentation a ton
 	- Changed: Decreased MAX_ERRORSTATE_COUNT from 1024 to 256
 	- Changed: global__LastErrorState is a non-pointer global now
@@ -1406,7 +1407,7 @@ SOFTWARE.
 	- Fixed: MemoryAlignedFree() had wrong signature (void **) instead of (void *)
 	- Fixed: GetPlatformErrorCount() was not increasing when an empty error was pushed on for single error states
 	- Fixed: [Win32] InitPlatform() was not cleaning up the Win32State when the initialization failed
-	- Replaced: VideoCompabilityProfile is replaced by OpenGLCompabilityFlags (Only available with OpenGL)
+	- Replaced: VideoCompatibilityProfile is replaced by OpenGLCompatibilityFlags (Only available with OpenGL)
 	- New: Added ClearPlatformErrors()
 
 	## v0.5.7.4 beta:
@@ -1659,7 +1660,7 @@ SOFTWARE.
 	- Added memory::CopyMemory
 	- Added fpl::GetLastError and fpl::GetLastErrorCount for proper error handling
 	- Added files::CreateBinaryFile and files::OpenBinaryFile for wide file paths
-	- Added basic support for creating a modern opengl rendering context, see VideoCompabilityProfile in VideoSettings
+	- Added basic support for creating a modern opengl rendering context, see VideoCompatibilityProfile in VideoSettings
 	- Added support for enabling opengl vsync through WGL
 	- Returns char * for all paths:: get like functions
 	- Returns char/wchar_t * for all strings:: functions
@@ -4779,19 +4780,19 @@ typedef enum fplVideoBackendType {
 
 #if defined(FPL__ENABLE_VIDEO_OPENGL)
 /**
-* @enum fplOpenGLCompabilityFlags
+* @enum fplOpenGLCompatibilityFlags
 * @brief An enumeration of OpenGL compatibility flags.
 */
-typedef enum fplOpenGLCompabilityFlags {
+typedef enum fplOpenGLCompatibilityFlags {
 	//! Use legacy context.
-	fplOpenGLCompabilityFlags_Legacy = 0,
+	fplOpenGLCompatibilityFlags_Legacy = 0,
 	//! Use core profile.
-	fplOpenGLCompabilityFlags_Core = 1 << 1,
+	fplOpenGLCompatibilityFlags_Core = 1 << 1,
 	//! Use compatibility profile.
-	fplOpenGLCompabilityFlags_Compability = 1 << 2,
+	fplOpenGLCompatibilityFlags_Compatibility = 1 << 2,
 	//! Remove features marked as deprecated.
-	fplOpenGLCompabilityFlags_Forward = 1 << 3,
-} fplOpenGLCompabilityFlags;
+	fplOpenGLCompatibilityFlags_Forward = 1 << 3,
+} fplOpenGLCompatibilityFlags;
 
 /**
 * @struct fplOpenGLSettings
@@ -4801,7 +4802,7 @@ typedef struct fplOpenGLSettings {
 	//! Custom OpenGL driver library file name/path (null = Default OpenGL library).
 	const char *libraryFile;
 	//! Compatibility flags.
-	fplOpenGLCompabilityFlags compabilityFlags;
+	fplOpenGLCompatibilityFlags compatibilityFlags;
 	//! Desired major version.
 	uint32_t majorVersion;
 	//! Desired minor version.
@@ -13388,7 +13389,7 @@ fpl_common_api void fplSetDefaultVideoSettings(fplVideoSettings *video) {
 
 #if defined(FPL__ENABLE_VIDEO_OPENGL)
 	video->graphics.opengl.libraryFile = fpl_null;
-	video->graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
+	video->graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Legacy;
 #endif
 
 #if defined(FPL__ENABLE_VIDEO_VULKAN)
@@ -21962,7 +21963,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_Win32OpenGL
 
 	nativeWindowState->pixelFormat = 0;
 
-	if (videoSettings->graphics.opengl.compabilityFlags != fplOpenGLCompabilityFlags_Legacy) {
+	if (videoSettings->graphics.opengl.compatibilityFlags != fplOpenGLCompatibilityFlags_Legacy) {
 		fpl__Win32OpenGLApi glApi;
 		if (fpl__LoadWin32OpenGLApi(&glApi, videoSettings->graphics.opengl.libraryFile)) {
 			// Register temporary window class
@@ -22128,7 +22129,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Win32OpenGL_In
 	glapi->wglMakeCurrent(fpl_null, fpl_null);
 
 	HGLRC activeRenderingContext;
-	if (videoSettings->graphics.opengl.compabilityFlags != fplOpenGLCompabilityFlags_Legacy) {
+	if (videoSettings->graphics.opengl.compatibilityFlags != fplOpenGLCompatibilityFlags_Legacy) {
 		// @NOTE(final): This is only available in OpenGL 3.0+
 		if (!(videoSettings->graphics.opengl.majorVersion >= 3 && videoSettings->graphics.opengl.minorVersion >= 0)) {
 			FPL__ERROR(FPL__MODULE_VIDEO_OPENGL, "You have not specified the 'majorVersion' and 'minorVersion' in the VideoSettings");
@@ -22145,15 +22146,15 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Win32OpenGL_In
 
 		int profile = 0;
 		int flags = 0;
-		if (fplIsMaskSet(videoSettings->graphics.opengl.compabilityFlags, fplOpenGLCompabilityFlags_Core)) {
+		if (fplIsMaskSet(videoSettings->graphics.opengl.compatibilityFlags, fplOpenGLCompatibilityFlags_Core)) {
 			profile = FPL__WGL_CONTEXT_CORE_PROFILE_BIT_ARB;
-		} else if (fplIsMaskSet(videoSettings->graphics.opengl.compabilityFlags, fplOpenGLCompabilityFlags_Compability)) {
+		} else if (fplIsMaskSet(videoSettings->graphics.opengl.compatibilityFlags, fplOpenGLCompatibilityFlags_Compatibility)) {
 			profile = FPL__WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB;
 		} else {
-			FPL__ERROR(FPL__MODULE_VIDEO_OPENGL, "No opengl compability profile selected, please specific Core fplOpenGLCompabilityFlags_Core or fplOpenGLCompabilityFlags_Compability");
+			FPL__ERROR(FPL__MODULE_VIDEO_OPENGL, "No opengl compatibility profile selected, please specific Core fplOpenGLCompatibilityFlags_Core or fplOpenGLCompatibilityFlags_Compatibility");
 			return false;
 		}
-		if (fplIsMaskSet(videoSettings->graphics.opengl.compabilityFlags, fplOpenGLCompabilityFlags_Forward)) {
+		if (fplIsMaskSet(videoSettings->graphics.opengl.compatibilityFlags, fplOpenGLCompatibilityFlags_Forward)) {
 			flags = FPL__WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
 		}
 
@@ -22174,7 +22175,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Win32OpenGL_In
 		HGLRC modernRenderingContext = glapi->wglCreateContextAttribsARB(deviceContext, 0, contextAttribList);
 		if (modernRenderingContext) {
 			if (!glapi->wglMakeCurrent(deviceContext, modernRenderingContext)) {
-				FPL__ERROR(FPL__MODULE_VIDEO_OPENGL, "Warning: Failed activating Modern OpenGL Rendering Context for version (%d.%d) and compability flags (%d) and DC '%x') -> Fallback to legacy context", videoSettings->graphics.opengl.majorVersion, videoSettings->graphics.opengl.minorVersion, videoSettings->graphics.opengl.compabilityFlags, deviceContext);
+				FPL__ERROR(FPL__MODULE_VIDEO_OPENGL, "Warning: Failed activating Modern OpenGL Rendering Context for version (%d.%d) and compatibility flags (%d) and DC '%x') -> Fallback to legacy context", videoSettings->graphics.opengl.majorVersion, videoSettings->graphics.opengl.minorVersion, videoSettings->graphics.opengl.compatibilityFlags, deviceContext);
 
 				glapi->wglDeleteContext(modernRenderingContext);
 				modernRenderingContext = fpl_null;
@@ -22189,7 +22190,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Win32OpenGL_In
 				activeRenderingContext = modernRenderingContext;
 			}
 		} else {
-			FPL__ERROR(FPL__MODULE_VIDEO_OPENGL, "Warning: Failed creating Modern OpenGL Rendering Context for version (%d.%d) and compability flags (%d) and DC '%x') -> Fallback to legacy context", videoSettings->graphics.opengl.majorVersion, videoSettings->graphics.opengl.minorVersion, videoSettings->graphics.opengl.compabilityFlags, deviceContext);
+			FPL__ERROR(FPL__MODULE_VIDEO_OPENGL, "Warning: Failed creating Modern OpenGL Rendering Context for version (%d.%d) and compatibility flags (%d) and DC '%x') -> Fallback to legacy context", videoSettings->graphics.opengl.majorVersion, videoSettings->graphics.opengl.minorVersion, videoSettings->graphics.opengl.compatibilityFlags, deviceContext);
 
 			// Fallback to legacy context
 			glapi->wglMakeCurrent(deviceContext, legacyRenderingContext);
@@ -22642,7 +22643,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Init
 
 	GLXContext activeRenderingContext;
 
-	if ((videoSettings->graphics.opengl.compabilityFlags != fplOpenGLCompabilityFlags_Legacy) && (nativeBackend->fbConfig != fpl_null)) {
+	if ((videoSettings->graphics.opengl.compatibilityFlags != fplOpenGLCompatibilityFlags_Legacy) && (nativeBackend->fbConfig != fpl_null)) {
 		// @NOTE(final): This is only available in OpenGL 3.0+
 		if (!(videoSettings->graphics.opengl.majorVersion >= 3 && videoSettings->graphics.opengl.minorVersion >= 0)) {
 			FPL__ERROR(FPL__MODULE_GLX, "You have not specified the 'majorVersion' and 'minorVersion' in the VideoSettings");
@@ -22656,15 +22657,15 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Init
 
 		int flags = 0;
 		int profile = 0;
-		if (fplIsMaskSet(videoSettings->graphics.opengl.compabilityFlags, fplOpenGLCompabilityFlags_Core)) {
+		if (fplIsMaskSet(videoSettings->graphics.opengl.compatibilityFlags, fplOpenGLCompatibilityFlags_Core)) {
 			profile = FPL__GLX_CONTEXT_CORE_PROFILE_BIT_ARB;
-		} else if (fplIsMaskSet(videoSettings->graphics.opengl.compabilityFlags, fplOpenGLCompabilityFlags_Compability)) {
+		} else if (fplIsMaskSet(videoSettings->graphics.opengl.compatibilityFlags, fplOpenGLCompatibilityFlags_Compatibility)) {
 			profile = FPL__GLX_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB;
 		} else {
-			FPL__ERROR(FPL__MODULE_GLX, "No opengl compability profile selected, please specific Core OpenGLCompabilityFlags_Core or OpenGLCompabilityFlags_Compability");
+			FPL__ERROR(FPL__MODULE_GLX, "No opengl compatibility profile selected, please specific Core OpenGLCompatibilityFlags_Core or OpenGLCompatibilityFlags_Compatibility");
 			goto failed_x11_glx;
 		}
-		if (fplIsMaskSet(videoSettings->graphics.opengl.compabilityFlags, fplOpenGLCompabilityFlags_Forward)) {
+		if (fplIsMaskSet(videoSettings->graphics.opengl.compatibilityFlags, fplOpenGLCompatibilityFlags_Forward)) {
 			flags = FPL__GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
 		}
 
@@ -22684,14 +22685,14 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Init
 
 		GLXContext modernRenderingContext = glApi->glXCreateContextAttribsARB(display, nativeBackend->fbConfig, fpl_null, True, contextAttribList);
 		if (!modernRenderingContext) {
-			FPL__ERROR(FPL__MODULE_GLX, "Warning: Failed creating Modern OpenGL Rendering Context for version (%d.%d) and compability flags (%d) -> Fallback to legacy context", videoSettings->graphics.opengl.majorVersion, videoSettings->graphics.opengl.minorVersion, videoSettings->graphics.opengl.compabilityFlags);
+			FPL__ERROR(FPL__MODULE_GLX, "Warning: Failed creating Modern OpenGL Rendering Context for version (%d.%d) and compatibility flags (%d) -> Fallback to legacy context", videoSettings->graphics.opengl.majorVersion, videoSettings->graphics.opengl.minorVersion, videoSettings->graphics.opengl.compatibilityFlags);
 
 			// Fallback to legacy rendering context
 			glApi->glXMakeCurrent(display, window, legacyRenderingContext);
 			activeRenderingContext = legacyRenderingContext;
 		} else {
 			if (!glApi->glXMakeCurrent(display, window, modernRenderingContext)) {
-				FPL__ERROR(FPL__MODULE_GLX, "Warning: Failed activating Modern OpenGL Rendering Context for version (%d.%d) and compability flags (%d) -> Fallback to legacy context", videoSettings->graphics.opengl.majorVersion, videoSettings->graphics.opengl.minorVersion, videoSettings->graphics.opengl.compabilityFlags);
+				FPL__ERROR(FPL__MODULE_GLX, "Warning: Failed activating Modern OpenGL Rendering Context for version (%d.%d) and compatibility flags (%d) -> Fallback to legacy context", videoSettings->graphics.opengl.majorVersion, videoSettings->graphics.opengl.minorVersion, videoSettings->graphics.opengl.compatibilityFlags);
 
 				// Destroy modern rendering context
 				glApi->glXDestroyContext(display, modernRenderingContext);

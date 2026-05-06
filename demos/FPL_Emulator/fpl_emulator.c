@@ -3739,7 +3739,7 @@ static void SetupPlatformSettings(fmemMemoryBlock *mainMemory, fplSettings *sett
 	fplCopyString("FGB - Final Gamebox", settings->window.title, fplArrayCount(settings->window.title));
 
 	settings->video.backend = fplVideoBackendType_OpenGL;
-	settings->video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
+	settings->video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Legacy;
 	settings->video.isVSync = false;
 
 	settings->audio.targetFormat.sampleRate = 48000;

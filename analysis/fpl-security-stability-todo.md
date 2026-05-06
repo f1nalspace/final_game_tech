@@ -152,11 +152,13 @@ Applied Global Conventions; updated all docstrings and call sites.
 ## Phase 3 — API Consistency
 
 ### 3.1 Rename typo `Compability` → `Compatibility`
-- [ ] Rename enum `fplOpenGLCompabilityFlags` → `fplOpenGLCompatibilityFlags`.
-- [ ] Rename enum values `_Legacy`, `_Core`, `_Compatibility`, `_Forward`.
-- [ ] Rename `fplOpenGLSettings::compabilityFlags` → `compatibilityFlags`.
-- [ ] Update all callers in demos.
-- [ ] Optionally provide back-compat aliases (1.0 boundary — recommended to drop).
+- [x] Renamed enum `fplOpenGLCompabilityFlags` → `fplOpenGLCompatibilityFlags`.
+- [x] Renamed enum value `fplOpenGLCompabilityFlags_Compability` → `fplOpenGLCompatibilityFlags_Compatibility` (other values inherit prefix rename).
+- [x] Renamed `fplOpenGLSettings::compabilityFlags` → `compatibilityFlags`.
+- [x] Updated all FPL demos (FOGL_Test/c, FPL_AudioPlayer, FPL_FFMpeg, FPL_ImageViewer, FPL_OpenGL, FPL_Raytracer, FPL_Emulator, FPL_GamePlatform helper) + sln/lua group label.
+- [x] Lowercase strings + comments in `final_platform_layer.h` updated; changelog entry added.
+- [x] No back-compat aliases per user policy.
+- [x] FPL_Test + FPL_OpenGL build clean; FOGL_Test C++ variant has unrelated dead-API breakage.
 
 ### 3.2 Date-time doc range fixes (3670, 3671)
 - [ ] `@param minute` 0-23 → 0-59.

@@ -547,7 +547,7 @@ static bool RunModern() {
 bool IsModernOpenGLSupported() {
 	fplSettings settings = fplMakeDefaultSettings();
 	settings.video.backend = fplVideoBackendType_OpenGL;
-	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
+	settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Core;
 	settings.video.graphics.opengl.majorVersion = 3;
 	settings.video.graphics.opengl.minorVersion = 3;
 	settings.video.graphics.opengl.multiSamplingCount = 0;
@@ -574,14 +574,14 @@ int main(int argc, char **args) {
 	bool supportsModernOpenGL = IsModernOpenGLSupported();
 	if(supportsModernOpenGL) {
 		fplCopyString("FPL Modern OpenGL", settings.window.title, fplArrayCount(settings.window.title));
-		settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
+		settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Core;
 		settings.video.graphics.opengl.majorVersion = 3;
 		settings.video.graphics.opengl.minorVersion = 3;
 		settings.video.graphics.opengl.multiSamplingCount = 4;
 		settings.video.isVSync = true;
 	} else {
 		fplCopyString("FPL Legacy OpenGL", settings.window.title, fplArrayCount(settings.window.title));
-		settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
+		settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Legacy;
 	}
 
 	if(fplPlatformInit(fplInitFlags_Video | fplInitFlags_Console, &settings)) {

@@ -4328,7 +4328,7 @@ int main(int argc, char **argv) {
 	fplCopyString("FPL FFmpeg Demo", settings.window.title, fplArrayCount(settings.window.title));
 #if USE_HARDWARE_RENDERING
 	settings.video.backend = fplVideoBackendType_OpenGL;
-	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
+	settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Core;
 	settings.video.graphics.opengl.majorVersion = 3;
 	settings.video.graphics.opengl.minorVersion = 3;
 #else

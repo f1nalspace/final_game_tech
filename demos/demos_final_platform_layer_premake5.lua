@@ -253,7 +253,7 @@ group "Window"
 group "Test"
 	include "FPL_Test/premake5";
 
-group "Compability"
+group "Compatibility"
 	include "FPL_NoPlatformIncludes/premake5";
 	include "FPL_NoRuntimeLinking/premake5";
 	include "FPL_DynamicLib_Host/premake5";

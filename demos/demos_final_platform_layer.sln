@@ -21,7 +21,7 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FPL_SimpleAudio", "FPL_Simp
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FPL_WaveAudio", "FPL_WaveAudio\FPL_WaveAudio.vcxproj", "{CBF87D0B-37B9-F941-00F4-42BF6C733E1E}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Compability", "Compability", "{C9AD4F62-35C4-4DF8-7E3B-D919EA901E80}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Compatibility", "Compatibility", "{C9AD4F62-35C4-4DF8-7E3B-D919EA901E80}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FPL_DynamicLib_Client", "FPL_DynamicLib_Client\FPL_DynamicLib_Client.vcxproj", "{40CEE1A5-AC3A-9DA0-752E-35FEE159BF08}"
 EndProject

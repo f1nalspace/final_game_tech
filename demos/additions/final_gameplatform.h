@@ -539,7 +539,7 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 	fplSettings settings = fplZeroInit;
 	fplSetDefaultSettings(&settings);
 	settings.video.backend = fplVideoBackendType_OpenGL;
-	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
+	settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Legacy;
 	settings.video.isVSync = !config->disableVerticalSync;
 	if (config->audioSampleRate > 0) {
 		settings.audio.targetFormat.sampleRate = config->audioSampleRate;
