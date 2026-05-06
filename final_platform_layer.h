@@ -3332,29 +3332,29 @@ typedef struct fpl__Win32Guid {
 	uint16_t Data3;
 	uint8_t  Data4[8];
 } fpl__Win32Guid;
-//! A win32 handle (opaque, min 4/8 bytes)
+//! A win32 HANDLE pointer (opaque, sizeof(void*): 4 bytes on Win32, 8 bytes on Win64).
 typedef void *fpl__Win32Handle;
-//! A win32 instance handle (opaque, min 4/8 bytes)
+//! A win32 HINSTANCE pointer (opaque, alias of fpl__Win32Handle).
 typedef fpl__Win32Handle fpl__Win32InstanceHandle;
-//! A win32 library handle (opaque, min 4/8 bytes)
+//! A win32 HMODULE pointer (opaque, alias of fpl__Win32Handle).
 typedef fpl__Win32Handle fpl__Win32LibraryHandle;
-//! A win32 filehandle (opaque, min 4/8 bytes)
+//! A win32 file HANDLE pointer (opaque, alias of fpl__Win32Handle).
 typedef fpl__Win32Handle fpl__Win32FileHandle;
-//! A win32 thread handle (opaque, min 4/8 bytes)
+//! A win32 thread HANDLE pointer (opaque, alias of fpl__Win32Handle).
 typedef fpl__Win32Handle fpl__Win32ThreadHandle;
-//! A win32 mutex handle (opaque, min 80 bytes)
+//! A win32 CRITICAL_SECTION storage (max observed: 40 bytes on Win64, 24 bytes on Win32; buffer is 128 bytes for headroom).
 typedef uint64_t fpl__Win32MutexHandle[16];
-//! A win32 signal handle (opaque, min 4/8 bytes)
+//! A win32 event HANDLE pointer (opaque, alias of fpl__Win32Handle).
 typedef fpl__Win32Handle fpl__Win32SignalHandle;
-//! A win32 condition variable (opaque, min 4/8 bytes)
+//! A win32 CONDITION_VARIABLE pointer (opaque, sizeof(void*) — wraps a single pointer-sized field).
 typedef void *fpl__Win32ConditionVariable;
-//! A win32 semaphore handle (opaque, min 4/8 bytes)
+//! A win32 semaphore HANDLE pointer (opaque, alias of fpl__Win32Handle).
 typedef fpl__Win32Handle fpl__Win32SemaphoreHandle;
-//! A win32 window handle (opaque, min 4/8 bytes)
+//! A win32 HWND pointer (opaque, alias of fpl__Win32Handle).
 typedef fpl__Win32Handle fpl__Win32WindowHandle;
-//! A win32 device context (opaque, min 4/8 bytes)
+//! A win32 HDC pointer (opaque, alias of fpl__Win32Handle).
 typedef fpl__Win32Handle fpl__Win32DeviceContext;
-//! A win32 rendering context (opaque, min 4/8 bytes)
+//! A win32 HGLRC pointer (opaque, alias of fpl__Win32Handle).
 typedef fpl__Win32Handle fpl__Win32RenderingContext;
 //! A win32 structure for storing a large integer for QPC (opaque, 8 bytes)
 typedef union fpl__Win32LargeInteger {
@@ -3372,19 +3372,19 @@ typedef union fpl__Win32LargeInteger {
 
 #	if defined(FPL_SUBPLATFORM_POSIX)
 
-//! A POSIX library handle (opaque, min 4/8 bytes)
+//! A POSIX dlopen handle (opaque, sizeof(void*): 4 bytes on 32-bit, 8 bytes on 64-bit).
 typedef void *fpl__POSIXLibraryHandle;
-//! A POSIX filehandle (opaque, min 4 bytes)
+//! A POSIX file descriptor (opaque, sizeof(int) = 4 bytes on all supported platforms).
 typedef int fpl__POSIXFileHandle;
-//! A POSIX directory handle (opaque, min 4/8 bytes)
+//! A POSIX DIR pointer (opaque, sizeof(void*): 4 bytes on 32-bit, 8 bytes on 64-bit).
 typedef void *fpl__POSIXDirHandle;
-//! A POSIX thread handle (opaque, min 8 bytes)
+//! A POSIX pthread_t (opaque, max observed: 8 bytes on glibc/musl x86_64; treated here as a single uint64_t — opaque branch is glibc/musl-x86_64 only).
 typedef uint64_t fpl__POSIXThreadHandle;
-//! A POSIX mutex handle (opaque, min 40 bytes)
+//! A POSIX pthread_mutex_t storage (max observed: 40 bytes glibc x86_64, 56-64 bytes Darwin/BSD; buffer is 128 bytes for headroom).
 typedef uint64_t fpl__POSIXMutexHandle[16];
-//! A POSIX semaphore handle (opaque, min 32 bytes)
+//! A POSIX sem_t storage (max observed: 32 bytes glibc x86_64; buffer is 64 bytes for headroom).
 typedef uint64_t fpl__POSIXSemaphoreHandle[8];
-//! A POSIX condition variable (opaque, min: 48 bytes)
+//! A POSIX pthread_cond_t storage (max observed: 48 bytes glibc x86_64; buffer is 128 bytes for headroom).
 typedef uint64_t fpl__POSIXConditionVariable[16];
 
 #	endif // FPL_SUBPLATFORM_POSIX

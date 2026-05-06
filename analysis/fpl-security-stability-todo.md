@@ -197,7 +197,7 @@ Applied Global Conventions; updated all docstrings and call sites.
 - [ ] Update size comments → "opaque incomplete type, accessed via pointer".
 
 ### 4.3 Opaque handle size comments (3300, 3338–3343, 3340)
-- [ ] Replace each `min N bytes` comment with the real maximum across supported libcs.
+- [x] Win32 + POSIX opaque-handle comments rewritten to describe the underlying type (HANDLE/CRITICAL_SECTION/pthread_t/etc.) and the max observed libc size, plus the buffer size used for headroom.
 
 ### 4.4 `fpl__POSIXThreadHandle` portability (3337, 3417)
 - [ ] Either expand to `uint8_t buffer[16]` with `fplStaticAssert(sizeof(pthread_t) <= 16)`,
