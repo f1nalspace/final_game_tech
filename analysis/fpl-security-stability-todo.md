@@ -215,12 +215,12 @@ Applied Global Conventions; updated all docstrings and call sites.
 - [x] `int pathLen` → `size_t pathLen`; cast updated to `(size_t)`.
 
 ### 5.2 Win32 `fplGetExecutableFilePath` truncation (16540–16546)
-- [ ] Capture `GetModuleFileNameW` return value.
-- [ ] If `result < MAX_PATH`: NUL-terminate.
-- [ ] Else retry with growing dynamic buffer until `result < capacity`.
+- [x] Capture `GetModuleFileNameW` return value; FPL__ERROR + return 0 when it returns 0.
+- [x] When `written < MAX_PATH`: explicit NUL-terminate, then convert.
+- [x] When `written >= MAX_PATH`: truncation — log FPL__ERROR and return 0 (heap allocation forbidden by user policy).
 
 ### 5.3 Win32 `fplGetHomePath` HRESULT check (16548–16556)
-- [ ] Check `SUCCEEDED(hr)`; on failure return 0.
+- [x] Capture HRESULT from `SHGetFolderPathW`; on `!SUCCEEDED(hr)` log FPL__ERROR and return 0.
 
 ### 5.4 POSIX `fplDateTimeQuery` (19201–19219)
 - [x] `gettimeofday` return checked — returns zeroed `fplDateTime` on failure.
@@ -244,7 +244,7 @@ Applied Global Conventions; updated all docstrings and call sites.
 - [x] Defined `FPL_MAX_VERSION_PART_LENGTH (8)` and switched `fplVersionNumberPart` to `char[FPL_MAX_VERSION_PART_LENGTH + 1]`.
 
 ### 5.10 `fplDirectoryListBegin` filter behavior doc (19059–19061)
-- [ ] Document that NULL filter is rewritten to `"*"` and stored as such.
+- [x] Doxygen now explicitly notes that empty/null `filter` is rewritten to `"*"` and copied into the entry's internal root-info buffer (with `path`).
 
 ---
 

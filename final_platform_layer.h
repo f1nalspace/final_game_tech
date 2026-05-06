@@ -7355,11 +7355,12 @@ fpl_platform_api bool fplDirectoryRemove(const char *path);
 /**
 * @brief Iterates through files/directories in the given directory.
 * @param[in] path The full path.
-* @param[in] filter The filter wildcard (If empty or null it will not filter anything at all).
+* @param[in] filter The filter wildcard. If empty or null, it is rewritten internally to "*" (match all) and stored as such in the entry's internal root info.
 * @param[out] entry Reference to the file entry structure @ref fplFileEntry.
 * @return Returns true when there was a first entry found, false otherwise.
 * @note This function is not recursive, so it will traverse the first level only!
 * @note When no initial entry is found, the resources are automatically cleaned up.
+* @note `path` and `filter` are copied into fixed-size buffers inside `entry`; the caller may free or reuse the source strings immediately after this call returns.
 * @see @ref section_category_io_paths_traversing
 */
 fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter, fplFileEntry *entry);
@@ -16780,20 +16781,35 @@ fpl_platform_api void fplDirectoryListEnd(fplFileEntry *entry) {
 // Win32 Path/Directories
 //
 fpl_platform_api size_t fplGetExecutableFilePath(char *destPath, const size_t maxDestLen) {
+	size_t result = 0;
 	wchar_t modulePath[MAX_PATH];
-	GetModuleFileNameW(fpl_null, modulePath, MAX_PATH);
-	size_t modulePathLen = lstrlenW(modulePath);
-	size_t result = fplWideStringToUTF8String(modulePath, modulePathLen, destPath, maxDestLen);
+	DWORD written = GetModuleFileNameW(fpl_null, modulePath, MAX_PATH);
+	if (written == 0) {
+		FPL__ERROR(FPL__MODULE_PATHS, "GetModuleFileNameW failed (last error %lu)", GetLastError());
+		return(result);
+	}
+	if (written >= MAX_PATH) {
+		// Pre-Win10 1607: buffer truncated. We cannot grow without allocating, so report failure.
+		FPL__ERROR(FPL__MODULE_PATHS, "Executable path exceeds MAX_PATH (%lu); cannot return without truncation", (unsigned long)MAX_PATH);
+		return(result);
+	}
+	modulePath[written] = L'\0';
+	result = fplWideStringToUTF8String(modulePath, (size_t)written, destPath, maxDestLen);
 	return(result);
 }
 
 fpl_platform_api size_t fplGetHomePath(char *destPath, const size_t maxDestLen) {
 	FPL__CheckPlatform(0);
 	const fpl__Win32Api *wapi = &fpl__global__AppState->win32.winApi;
+	size_t result = 0;
 	wchar_t homePath[MAX_PATH];
-	wapi->shell.SHGetFolderPathW(fpl_null, CSIDL_PROFILE, fpl_null, 0, homePath);
+	HRESULT hr = wapi->shell.SHGetFolderPathW(fpl_null, CSIDL_PROFILE, fpl_null, 0, homePath);
+	if (!SUCCEEDED(hr)) {
+		FPL__ERROR(FPL__MODULE_PATHS, "SHGetFolderPathW(CSIDL_PROFILE) failed (HRESULT 0x%08lx)", (unsigned long)hr);
+		return(result);
+	}
 	size_t homePathLen = lstrlenW(homePath);
-	size_t result = fplWideStringToUTF8String(homePath, homePathLen, destPath, maxDestLen);
+	result = fplWideStringToUTF8String(homePath, homePathLen, destPath, maxDestLen);
 	return(result);
 }
 
