@@ -202,6 +202,9 @@ SOFTWARE.
 	- Fixed: fpLGetAlignmentOffset() was not guarding the alignment argument in all cases
 	- Fixed: fplS32ToString() was not handling negative values correctly
 	- Fixed: fplStringFormatArgs must always NUL-terminate even when the buffer is too small
+	- Fixed: Fixed documentations for fplStringToS32Len and fplStringToS32
+	- Fixed: fplStringFormat and fplStringFormatArgs was not implemented correctly due to its documentation rules
+	- Fixed: fplStringToS32Len and fplStringToS32 was not implemented correctly due to its documentation rules
 	- Fixed[#183]: fpl_internal_inline was not compiling on GCC/Clang
 
 	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
@@ -6778,14 +6781,14 @@ fpl_common_api size_t fplStringFormatArgs(char *destBuffer, const size_t maxDest
 * @brief Converts the given string into a 32-bit integer constrained by string length.
 * @param[in] str The source string.
 * @param[in] len The length of the source string.
-* @return Returns a 32-bit integer converted from the given string.
+* @return Returns a 32-bit integer converted from the given string. Overflow is clamped to INT32_MAX/INT32_MIN. Invalid input returns 0 — use fplTryStringToS32Len() to distinguish a valid "0" from an invalid string.
 */
 fpl_common_api int32_t fplStringToS32Len(const char *str, const size_t len);
 
 /**
 * @brief Converts the given string into a 32-bit integer.
 * @param[in] str The source string.
-* @return Returns a 32-bit integer converted from the given string.
+* @return Returns a 32-bit integer converted from the given string. Overflow is clamped to INT32_MAX/INT32_MIN. Invalid input returns 0 — use fplTryStringToS32() to distinguish a valid "0" from an invalid string.
 */
 fpl_common_api int32_t fplStringToS32(const char *str);
 
