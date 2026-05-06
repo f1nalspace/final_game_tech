@@ -106,6 +106,30 @@ int main(int argc, char **args) {
 }
 
 -------------------------------------------------------------------------------
+	Output Buffer Conventions
+-------------------------------------------------------------------------------
+
+All functions that fill a destination buffer (string copy, append, format, path,
+UTF-8/wide conversion) follow a single contract:
+
+- The return type is size_t. The value is the number of characters required
+  (excluding the NUL terminator), NOT a pointer.
+- Query mode: if dest is NULL or maxDestLen is 0, the function returns the
+  required size and writes nothing. Use this to size a buffer ahead of time.
+- Buffer too small: if the required size exceeds maxDestLen, the function
+  returns 0 and does not leave a partial buffer behind.
+- Success: when dest is non-NULL and large enough, the buffer is always
+  NUL-terminated and the function returns the required size (excluding NUL).
+- Hard errors (NULL input, format error) return 0.
+
+Functions that follow this contract: fplCopyString, fplCopyStringLen,
+fplStringAppend, fplStringAppendLen, fplEnforcePathSeparator,
+fplEnforcePathSeparatorLen, fplStringFormat, fplStringFormatArgs,
+fplPathCombine, fplPathNormalize, fplUTF8StringToWideString,
+fplWideStringToUTF8String, fplGetWindowTitle, fplGetExecutableFilePath,
+fplGetHomePath.
+
+-------------------------------------------------------------------------------
 	License
 -------------------------------------------------------------------------------
 

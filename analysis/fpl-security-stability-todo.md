@@ -168,8 +168,8 @@ Applied Global Conventions; updated all docstrings and call sites.
 - [x] `fplStrngFormat` → `fplStringFormat`.
 
 ### 3.4 Output-buffer convention documented
-- [ ] Add a top-of-file convention block describing the Global Conventions above.
-- [ ] Reference from each affected function's doxygen.
+- [x] Added "Output Buffer Conventions" block at the top of `final_platform_layer.h` describing query mode / overflow / NUL contract for all size_t-return buffer functions.
+- [ ] (Optional) Cross-reference from each affected function's doxygen — deferred; the top-of-file block is canonical.
 
 ### 3.5 `fpl_b32` vs `bool`
 - [ ] `fplFileHandle::isValid` → `bool`.
