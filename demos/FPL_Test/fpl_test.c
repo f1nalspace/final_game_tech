@@ -1851,9 +1851,9 @@ int main(int argc, char *args[]) {
 	TestInit();
 	TestSizes();
 	TestMacros();
-	TestStrings();
 	TestInlining();
 	TestSecurity();
+	TestStrings();
 	TestLocalization();
 	TestMemory();
 	TestOSInfos();
