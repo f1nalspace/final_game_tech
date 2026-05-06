@@ -6977,9 +6977,9 @@ typedef union fplInternalFileEntryHandle {
 */
 typedef struct fplInternalFileRootInfo {
 	//! Saved root path.
-	const char *rootPath;
+	char rootPath[FPL_MAX_PATH_LENGTH];
 	//! Saved filter wildcard.
-	const char *filter;
+	char filter[FPL_MAX_FILENAME_LENGTH];
 } fplInternalFileRootInfo;
 
 //! The elapsed seconds since the UNIX epoch (1970-01-01 00:00:00).
@@ -16648,8 +16648,8 @@ fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter
 	if (searchHandle != INVALID_HANDLE_VALUE) {
 		fplClearStruct(entry);
 		entry->internalHandle.win32FileHandle = searchHandle;
-		entry->internalRoot.rootPath = path;
-		entry->internalRoot.filter = filter;
+		fplCopyString(path, entry->internalRoot.rootPath, fplArrayCount(entry->internalRoot.rootPath));
+		fplCopyString(filter, entry->internalRoot.filter, fplArrayCount(entry->internalRoot.filter));
 		bool foundFirst = true;
 		while (foundFirst) {
 			if (lstrcmpW(findData.cFileName, L".") == 0 || lstrcmpW(findData.cFileName, L"..") == 0) {
@@ -19260,8 +19260,8 @@ fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter
 	}
 	fplClearStruct(entry);
 	entry->internalHandle.posixDirHandle = dir;
-	entry->internalRoot.rootPath = path;
-	entry->internalRoot.filter = filter;
+	fplCopyString(path, entry->internalRoot.rootPath, fplArrayCount(entry->internalRoot.rootPath));
+	fplCopyString(filter, entry->internalRoot.filter, fplArrayCount(entry->internalRoot.filter));
 	bool result = fplDirectoryListNext(entry);
 	return(result);
 }

@@ -137,8 +137,8 @@ Applied Global Conventions; updated all docstrings and call sites.
 - [x] Dropped — pre-C99 MSVC no longer supported.
 
 ### 2.9 `fplDirectoryListBegin` lifetime fix (19052–19068)
-- [ ] Copy `path` and `filter` into fixed buffers inside `fplFileEntry` (mirror `name[FPL_MAX_FILENAME_LENGTH]`).
-- [ ] Caller may now free strings safely after `Begin`.
+- [x] Copy `path` and `filter` into fixed buffers inside `fplInternalFileRootInfo` (`rootPath[FPL_MAX_PATH_LENGTH]` + `filter[FPL_MAX_FILENAME_LENGTH]`).
+- [x] Caller may now free strings safely after `Begin` (Win32 + POSIX).
 
 ### 2.10 Audio backend chunk write audit (~26698)
 - [ ] Add `fplAssert(read == frameCount)` after every internal `fpl__ReadAudioFramesFromClient` call.
