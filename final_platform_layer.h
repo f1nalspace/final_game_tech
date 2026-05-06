@@ -180,7 +180,7 @@ SOFTWARE.
 	- Added several date time types and functions
 	- Added game controllers settings
 	- Improved code documentation a lot
-	- Improved thread-safety in the event system
+	- Improved thread-safety in the error-reporting ring (atomic slot claim, no init-order/mutex hazards) and the event system
 	- A few major bugfixes
 	- Several minor bugfixes
 
@@ -2604,7 +2604,7 @@ typedef enum fplX86InstructionSetLevel {
 /**
 * @def fplHasInclude
 * @brief Test for include existence.
-* @param inc Path to the include file.
+* @param[in] inc Path to the include file.
 * @return A boolean indicating whether the specified include has been found or not.
 */
 #define fplHasInclude(inc) fpl__m_HasInclude(inc)
@@ -3708,14 +3708,14 @@ typedef struct fplDateTimeCreationResult {
 
 /**
 * @brief Creates a date time from the specified date time components and UTC offset.
-* @param year[in] The year starting from 1970.
-* @param month[in] The month in range of 1-12.
-* @param day[in] The day in range of 1-31.
-* @param hour[in] The hour in range of 0-23.
-* @param minute[in] The minute in range of 0-59.
-* @param second[in] The second in range of 0-59.
-* @param millisecond[in] The millisecond in range of 0-999.
-* @param utcOffset[in] The UTC offset in minutes.
+* @param[in] year The year starting from 1970.
+* @param[in] month The month in range of 1-12.
+* @param[in] day The day in range of 1-31.
+* @param[in] hour The hour in range of 0-23.
+* @param[in] minute The minute in range of 0-59.
+* @param[in] second The second in range of 0-59.
+* @param[in] millisecond The millisecond in range of 0-999.
+* @param[in] utcOffset The UTC offset in minutes.
 * @return Returns the created date time structure as @ref fplDateTime.
 * @note If invalid arguments are passed, an empty date time is returned instead.
 */
@@ -3746,15 +3746,15 @@ typedef struct fplDateTimeResult {
 
 /**
 * @brief Gets the current date time and offset and the number of milliseconds in the specified format.
-* @param type[in] The target date time format as @ref fplDateTimeType.
+* @param[in] type The target date time format as @ref fplDateTimeType.
 * @return Returns the date time structure as @ref fplDateTime.
 */
 fpl_platform_api fplDateTime fplDateTimeQuery(const fplDateTimeType type);
 
 /**
 * @brief Formats the date time into the specified format as a @ref fplDateTimeResult.
-* @param dateTime[in] The date time as @ref fplDateTime.
-* @param type[in] The target date time format as @ref fplDateTimeType.
+* @param[in] dateTime The date time as @ref fplDateTime.
+* @param[in] type The target date time format as @ref fplDateTimeType.
 * @return Returns the computed date time fields as @ref fplDateTimeResult.
 */
 fpl_platform_api fplDateTimeResult fplFormatDateTime(const fplDateTime dateTime, const fplDateTimeType type);
@@ -7086,7 +7086,8 @@ fpl_platform_api bool fplFileAppendBinary(const char *filePath, fplFileHandle *o
 * @param[in] sizeToRead The number of bytes to read.
 * @param[out] targetBuffer The target memory to write into.
 * @param[in] maxTargetBufferSize Total number of bytes available in the target buffer.
-* @return Returns the number of bytes read or zero.
+* @return Returns the number of bytes read, or 0 on EOF or hard error.
+* @note A return of 0 is ambiguous: it may mean end-of-file or a read failure (NULL handle, invalid handle, OS-level read error). Disambiguate via @ref fplFileGetPosition32 / @ref fplFileGetSizeFromHandle32, or check @ref fplGetLastError.
 * @note Supports max size of 2^31.
 * @see @ref subsection_category_io_binaryfiles_read_readblock
 */
@@ -7413,9 +7414,9 @@ fpl_platform_api size_t fplGetHomePath(char *destPath, const size_t maxDestLen);
 
 /**
  * @brief Normalizes the specified source path into the dest path and len.
- * @param sourcePath The source path.
- * @param destPath The destination buffer.
- * @param maxDestLen The total number of characters available in the destination buffer.
+ * @param[in] sourcePath The source path.
+ * @param[out] destPath The destination buffer.
+ * @param[in] maxDestLen The total number of characters available in the destination buffer.
  * @return Returns the number of required/written characters, excluding the null-terminator.
  */
 fpl_platform_api size_t fplPathNormalize(const char *sourcePath, char *destPath, const size_t maxDestLen);
@@ -24000,8 +24001,8 @@ struct fplAudioBackend;
 #define FPL_AUDIO_BACKEND_INITIALIZE_FUNC(name) fplAudioResultType name(struct fplAudioContext *context, struct fplAudioBackend *backend)
 /**
 * @brief Initializes the specified @ref fplAudioBackend
-* @param context The @ref fplAudioContext reference
-* @param backend The @ref fplAudioBackend reference
+* @param[in] context The @ref fplAudioContext reference
+* @param[in] backend The @ref fplAudioBackend reference
 * @result Returns a @ref fplAudioResultType
 */
 typedef	FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl_audio_backend_initialize_func);
@@ -24015,21 +24016,21 @@ typedef	FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl_audio_backend_get_audio
 #define FPL_AUDIO_BACKEND_RELEASE_FUNC(name) bool name(struct fplAudioContext *context, struct fplAudioBackend *backend)
 /**
 * @brief Releases the specified @ref fplAudioBackend
-* @param context The @ref fplAudioContext reference
-* @param backend The @ref fplAudioBackend reference
+* @param[in] context The @ref fplAudioContext reference
+* @param[in] backend The @ref fplAudioBackend reference
 * @result Returns a boolean indicating whether the backend was released or not
 */
 typedef	FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl_audio_backend_release_func);
 
 /**
 * @brief Initializes the device of the specified @ref fplAudioBackend and @ref fplAudioBackend with the specified audio settings
-* @param context The @ref fplAudioContext reference
-* @param backend The @ref fplAudioBackend reference
-* @param audioSettings The @ref fplSpecificAudioSettings reference, that contains special settings for several backends
-* @param targetFormat The @ref fplAudioFormat reference, that specifies the target audio format
-* @param outputFormat The @ref fplAudioFormat reference, that specifies the output audio format
-* @param outputChannelMap The @ref fplAudioChannelMap reference, that specifies the output channel map
-* @param outputDevice The @ref fplAudioDeviceInfo reference, that specifies the output device info
+* @param[in] context The @ref fplAudioContext reference
+* @param[in] backend The @ref fplAudioBackend reference
+* @param[in] audioSettings The @ref fplSpecificAudioSettings reference, that contains special settings for several backends
+* @param[in] targetFormat The @ref fplAudioFormat reference, that specifies the target audio format
+* @param[out] outputFormat The @ref fplAudioFormat reference, that specifies the output audio format
+* @param[out] outputChannelMap The @ref fplAudioChannelMap reference, that specifies the output channel map
+* @param[out] outputDevice The @ref fplAudioDeviceInfo reference, that specifies the output device info
 * @result Returns a @ref fplAudioResultType
 */
 #define FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(name) fplAudioResultType name(struct fplAudioContext *context, struct fplAudioBackend *backend, const fplSpecificAudioSettings *audioSettings, const fplAudioFormat *targetFormat, const fplAudioDeviceInfo *targetDevice, fplAudioFormat *outputFormat, fplAudioDeviceInfo *outputDevice, fplAudioChannelMap *outputChannelMap)
@@ -24038,8 +24039,8 @@ typedef	FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl_audio_backend_initialize_de
 #define FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(name) bool name(struct fplAudioContext *context, struct fplAudioBackend *backend)
 /**
 * @brief Releases the device of the specified @ref fplAudioBackend
-* @param context The @ref fplAudioContext reference
-* @param backend The @ref fplAudioBackend reference
+* @param[in] context The @ref fplAudioContext reference
+* @param[in] backend The @ref fplAudioBackend reference
 * @result Returns a boolean indicating whether the device of the @ref fplAudioBackend was released or not
 */
 typedef	FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(fpl_audio_backend_release_device_func);

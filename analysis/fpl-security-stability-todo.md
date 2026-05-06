@@ -254,15 +254,17 @@ Applied Global Conventions; updated all docstrings and call sites.
 - [x] Replaced the legacy `@TODO` comment with a clarifying note that X11 Display/Visual/GC/Image are intentionally pointer-only opaque types.
 
 ### 6.2 Doxygen `@param` form
-- [ ] Mass-format to `@param[in]` / `@param[out]` everywhere.
-- [ ] Specifically: `fplPathNormalize` (7330), `fplDateTimeCreate` (3666).
+- [x] Normalized all `@param year[in]`-style postfix tags to `@param[in] year` (datetime + audio-backend + path docs).
+- [x] `fplPathNormalize`, `fplDateTimeCreate`, `fplFormatDateTime`, `fplDateTimeQuery` all use `@param[in]`/`@param[out]`.
+- [x] Audio backend func-typedef docs (`FPL_AUDIO_BACKEND_*`) tagged with directions.
+- [x] `fplHasInclude` macro doc tagged with `@param[in]`.
 
 ### 6.3 Changelog thread-safety claim (190–191)
-- [ ] Update or fix the "Improved thread-safety in the event system" line to match Phase 2.7.
+- [x] Updated v1.0.0 Overview line to "thread-safety in the error-reporting ring (atomic slot claim, no init-order/mutex hazards) and the event system" so it matches Phase 2.7.
 
 ### 6.4 `fplFileReadBlock` 0-return ambiguity
-- [ ] Document explicitly: 0 means EOF or error; caller disambiguates via `fplFileGetPosition` / `fplFileGetSize`.
-- [ ] Or: change API to `size_t` + `bool *outEOF` (breaking — defer or include in 1.0 sweep).
+- [x] Documented in `fplFileReadBlock32/64/(common)` doxygen blocks: 0 = EOF or hard error; disambiguate via `fplFileGetPosition*` / `fplFileGetSizeFromHandle*` or `fplGetLastError`.
+- [ ] (Deferred) breaking API change `size_t + bool *outEOF` — kept for a future major; current Try-style additions (3.6) cover the size case.
 
 ---
 
