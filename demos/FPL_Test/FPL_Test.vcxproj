@@ -192,7 +192,11 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="fpl_test.cpp" />
+    <ClCompile Include="fpl_test.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="final_test.h" />
+    <ClInclude Include="security_tests.c" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

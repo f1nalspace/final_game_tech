@@ -23,9 +23,18 @@ License:
 
 /* This translation unit consumes the FPL public API only.
  * fpl_test.cpp owns FPL_IMPLEMENTATION; do NOT define it here. */
-#define FPL_NO_AUDIO
-#define FPL_NO_VIDEO
-#define FPL_NO_WINDOW
+#ifndef FPL_NO_AUDIO
+#	define FPL_NO_AUDIO
+#endif
+
+#ifndef FPL_NO_AUDIO
+#	define FPL_NO_VIDEO
+#endif
+
+#ifndef FPL_NO_WINDOW
+#	define FPL_NO_WINDOW
+#endif
+
 #include <final_platform_layer.h>
 
 #include <assert.h>
@@ -34,6 +43,14 @@ License:
 #include <stdlib.h>
 #include <stdint.h>
 #include <limits.h>
+
+// Public entry-points provided by fpl_security_tests.c
+extern void FPLSecurityTests_Strings(void);
+extern void FPLSecurityTests_Paths(void);
+extern void FPLSecurityTests_Files(void);
+extern void FPLSecurityTests_Conversions(void);
+extern void FPLSecurityTests_Types(void);
+extern void FPLSecurityTests_Misc(void);
 
 /* ---------------------------------------------------------------------------
  *  Local helpers
