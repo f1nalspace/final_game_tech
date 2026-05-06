@@ -212,7 +212,7 @@ Applied Global Conventions; updated all docstrings and call sites.
 ## Phase 5 — Other Stability / Correctness
 
 ### 5.1 `fplExtractFilePath` int → size_t (12677)
-- [ ] `int pathLen` → `size_t pathLen`. Drop `(int)` cast.
+- [x] `int pathLen` → `size_t pathLen`; cast updated to `(size_t)`.
 
 ### 5.2 Win32 `fplGetExecutableFilePath` truncation (16540–16546)
 - [ ] Capture `GetModuleFileNameW` return value.
@@ -231,7 +231,7 @@ Applied Global Conventions; updated all docstrings and call sites.
 - [ ] Treat both `/` and `\\` as separators.
 
 ### 5.6 POSIX `fplFormatDateTime` API tag (19221)
-- [ ] Add `fpl_platform_api` to implementation.
+- [x] Added `fpl_platform_api` qualifier to POSIX implementation.
 
 ### 5.7 POSIX `fplDirectoryListNext` loop refactor (19070–19094)
 - [ ] Refactor to single `for (;;) { dp = readdir(...); ... }` loop.
@@ -241,7 +241,7 @@ Applied Global Conventions; updated all docstrings and call sites.
 - [ ] Switch path-conversion buffers to dynamic alloc when source > threshold + prepend `\\?\`.
 
 ### 5.9 `fplVersionNumberPart` extend
-- [ ] Increase to `[8 + 1]` or define `FPL_MAX_VERSION_PART_LENGTH (8)`.
+- [x] Defined `FPL_MAX_VERSION_PART_LENGTH (8)` and switched `fplVersionNumberPart` to `char[FPL_MAX_VERSION_PART_LENGTH + 1]`.
 
 ### 5.10 `fplDirectoryListBegin` filter behavior doc (19059–19061)
 - [ ] Document that NULL filter is rewritten to `"*"` and stored as such.
@@ -251,7 +251,7 @@ Applied Global Conventions; updated all docstrings and call sites.
 ## Phase 6 — Documentation & Comments
 
 ### 6.1 Outdated TODO (3349)
-- [ ] Address or remove the X11 Display TODO comment.
+- [x] Replaced the legacy `@TODO` comment with a clarifying note that X11 Display/Visual/GC/Image are intentionally pointer-only opaque types.
 
 ### 6.2 Doxygen `@param` form
 - [ ] Mass-format to `@param[in]` / `@param[out]` everywhere.

@@ -3391,9 +3391,9 @@ typedef uint64_t fpl__POSIXConditionVariable[16];
 
 #	if defined(FPL_SUBPLATFORM_X11)
 
-// @TODO(final): Opaque X11 Display is not correct, to not assume void ptr - its a full structure, that is really large
+// X11 Display/Visual/GC/Image are accessed via pointer, so the typedef is used as `fpl__X11Display *` everywhere — the underlying struct is intentionally not exposed.
 
-//! A X11 Display (opaque, 4/8 bytes)
+//! A X11 Display (opaque incomplete type, accessed via pointer only)
 typedef void fpl__X11Display;
 //! A X11 window (opaque, 8 bytes - matches the X11 XID type which is unsigned long on LP64 systems)
 typedef unsigned long fpl__X11Window;
@@ -4396,10 +4396,16 @@ fpl_platform_api bool fplMemoryGetInfos(fplMemoryInfos *outInfos);
 // ----------------------------------------------------------------------------
 
 /**
+* @def FPL_MAX_VERSION_PART_LENGTH
+* @brief Maximum number of digits in a single version-number part (excluding NUL).
+*/
+#define FPL_MAX_VERSION_PART_LENGTH 8
+
+/**
 * @typedef fplVersionNumberPart
 * @brief A type definition for mapping a part of a version number.
 */
-typedef char fplVersionNumberPart[4 + 1];
+typedef char fplVersionNumberPart[FPL_MAX_VERSION_PART_LENGTH + 1];
 
 /**
 * @struct fplVersionInfo
@@ -12798,11 +12804,11 @@ fpl_common_api size_t fplExtractFilePath(const char *sourcePath, char *destPath,
 	size_t sourceLen = fplGetStringLength(sourcePath);
 	size_t result = 0;
 	if (sourceLen > 0) {
-		int pathLen = 0;
+		size_t pathLen = 0;
 		const char *chPtr = (const char *)sourcePath;
 		while (*chPtr) {
 			if (*chPtr == FPL_PATH_SEPARATOR) {
-				pathLen = (int)(chPtr - sourcePath);
+				pathLen = (size_t)(chPtr - sourcePath);
 			}
 			++chPtr;
 		}
@@ -19527,7 +19533,7 @@ fpl_platform_api fplDateTime fplDateTimeQuery(const fplDateTimeType type) {
 	return dateTime;
 }
 
-fplDateTimeResult fplFormatDateTime(const fplDateTime dateTime, const fplDateTimeType type) {
+fpl_platform_api fplDateTimeResult fplFormatDateTime(const fplDateTime dateTime, const fplDateTimeType type) {
 	fplDateTimeResult result = fplZeroInit;
 
 	// Convert local epoch + utcOffset back to UTC epoch before applying format
