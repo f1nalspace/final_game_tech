@@ -554,9 +554,9 @@ static void TestHardware(void) {
 	double tmp = 1.0;
 	for (int i = 0; i < 1000; ++i) {
 		tmp *= 2 + 1;
-		tmp /= (double)i * 4;
+		tmp += (double)i * 400;
 		tmp = sqrt(tmp);
-		uint64_t cycles = fplCPURDTSC();
+		const uint64_t cycles = fplCPURDTSC();
 		ftMsg("\tRun[%d]: %f, %llu\n", i, tmp, (unsigned long long)cycles);
 	}
 
