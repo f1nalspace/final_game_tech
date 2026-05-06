@@ -161,11 +161,11 @@ Applied Global Conventions; updated all docstrings and call sites.
 - [x] FPL_Test + FPL_OpenGL build clean; FOGL_Test C++ variant has unrelated dead-API breakage.
 
 ### 3.2 Date-time doc range fixes (3670, 3671)
-- [ ] `@param minute` 0-23 → 0-59.
-- [ ] `@param second` "The minute…" → "The second in range of 0-59".
+- [x] `@param minute` 0-23 → 0-59.
+- [x] `@param second` "The minute…" → "The second in range of 0-59".
 
 ### 3.3 Changelog typo (392–393, 766–767)
-- [ ] `fplStrngFormat` → `fplStringFormat`.
+- [x] `fplStrngFormat` → `fplStringFormat`.
 
 ### 3.4 Output-buffer convention documented
 - [ ] Add a top-of-file convention block describing the Global Conventions above.
@@ -179,7 +179,7 @@ Applied Global Conventions; updated all docstrings and call sites.
 - [ ] Add `bool fplFileTryGetSizeFromPath(const char *path, uint64_t *outSize);` (resolves 3.7).
 
 ### 3.7 `fplStringFormat` doc cleanup (6751, 6762)
-- [ ] Drop "wrapper to vsnprintf" claim. Replace with "Follows C99 vsnprintf format specifiers".
+- [x] Replaced "most likely just a wrapper call to vsnprintf()" with the C99 contract description in both `fplStringFormat` and `fplStringFormatArgs` doxygen blocks.
 
 ---
 

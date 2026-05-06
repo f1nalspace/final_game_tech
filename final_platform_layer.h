@@ -410,8 +410,8 @@ SOFTWARE.
 	- Changed: Renamed function fplListDirNext() to fplDirectoryListNext()
 	- Changed: Renamed function fplListDirEnd() to fplDirectoryListEnd()
 	- Changed: Renamed function fplGetPlatformResultName() to fplPlatformGetResultName()
-	- Changed: Renamed function fplFormatString() to fplStrngFormat()
-	- Changed: Renamed function fplFormatStringArgs() to fplStrngFormatArgs()
+	- Changed: Renamed function fplFormatString() to fplStringFormat()
+	- Changed: Renamed function fplFormatStringArgs() to fplStringFormatArgs()
 	- Changed: Renamed function fplGetWallClock() to fplTimestampQuery()
 	- Changed: Renamed function fplGetTimeInMilliseconds() to fplMillisecondsQuery()
 	- Changed: Renamed function fplGetWallDelta() to fplTimestampElapsed()
@@ -3688,8 +3688,8 @@ typedef struct fplDateTimeCreationResult {
 * @param month[in] The month in range of 1-12.
 * @param day[in] The day in range of 1-31.
 * @param hour[in] The hour in range of 0-23.
-* @param minute[in] The minute in range of 0-23.
-* @param second[in] The minute in range of 0-59.
+* @param minute[in] The minute in range of 0-59.
+* @param second[in] The second in range of 0-59.
 * @param millisecond[in] The millisecond in range of 0-999.
 * @param utcOffset[in] The UTC offset in minutes.
 * @return Returns the created date time structure as @ref fplDateTime.
@@ -6770,7 +6770,7 @@ fpl_platform_api size_t fplUTF8StringToWideString(const char *utf8Source, const 
 * @param[in] format The string format.
 * @param[in] ... The variable arguments.
 * @return Returns the number of required/written characters, excluding the null-terminator.
-* @note This is most likely just a wrapper call to vsnprintf().
+* @note Follows C99 vsnprintf format specifiers. Returns the required length excluding NUL; returns 0 if destBuffer is too small.
 */
 fpl_common_api size_t fplStringFormat(char *destBuffer, const size_t maxDestBufferLen, const char *format, ...);
 
@@ -6781,7 +6781,7 @@ fpl_common_api size_t fplStringFormat(char *destBuffer, const size_t maxDestBuff
 * @param[in] format The string format.
 * @param[in] argList The arguments list.
 * @return Returns the number of required/written characters, excluding the null-terminator.
-* @note This is most likely just a wrapper call to vsnprintf().
+* @note Follows C99 vsnprintf format specifiers. Returns the required length excluding NUL; returns 0 if destBuffer is too small.
 */
 fpl_common_api size_t fplStringFormatArgs(char *destBuffer, const size_t maxDestBufferLen, const char *format, va_list argList);
 
