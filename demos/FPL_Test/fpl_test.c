@@ -211,26 +211,29 @@ static void TestSizes(void) {
 
 // File-scope structs for fplOffsetOf / fplMin / fplMax tests (C99 has no
 // templated/local struct types, so we declare these globally and reuse them).
-fplAlignAs(4) struct MacrosAlign4HiLo {
+struct fplAlignAs(4) MacrosAlign4HiLo {
 	uint64_t a;
 	uint32_t b;
 	uint16_t c;
 	uint8_t d;
 };
+typedef struct MacrosAlign4HiLo MacrosAlign4HiLo;
 
-fplAlignAs(4) struct MacrosAlign4LoHi {
+struct fplAlignAs(4) MacrosAlign4LoHi {
 	uint8_t a;
 	uint16_t b;
 	uint32_t c;
 	uint64_t d;
 };
+typedef struct MacrosAlign4LoHi MacrosAlign4LoHi;
 
-fplAlignAs(8) struct MacrosAlign8LoHi {
+struct fplAlignAs(8) MacrosAlign8LoHi {
 	uint8_t a;
 	uint16_t b;
 	uint8_t c[3];
 	uint64_t d;
 };
+typedef struct MacrosAlign8LoHi MacrosAlign8LoHi;
 
 struct MacrosIntPair {
 	int a;
