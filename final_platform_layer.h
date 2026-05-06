@@ -3277,15 +3277,16 @@ struct IUnknown;
 
 // Only include CRT, when needed
 #if !defined(FPL_NO_CRT)
-#    include <stdio.h> // stdin, stdout, stderr, fprintf, vfprintf, vsnprintf, getchar
+#	 include <stdio.h> // stdin, stdout, stderr, fprintf, vfprintf, vsnprintf, getchar
 #    include <stdlib.h> // wcstombs, mbstowcs, getenv
+#	 include <wchar.h> // mbrtowc, wcsrtombs, mbsrtowcs
 #    include <locale.h> // setlocale, struct lconv, localeconv
 #endif
 
 // Always include sched.h and dirint.h
 #if defined(FPL_SUBPLATFORM_POSIX)
-#	include <sched.h> // sched_param, sched_get_priority_max, SCHED_FIFO
-#	include <dirent.h> // DIR, dirent
+#	 include <sched.h> // sched_param, sched_get_priority_max, SCHED_FIFO
+#	 include <dirent.h> // DIR, dirent
 #endif
 
 //
@@ -19484,111 +19485,105 @@ fpl_platform_api bool fplOSGetVersionInfos(fplOSVersionInfos *outInfos) {
 // ############################################################################
 #if defined(FPL_SUBPLATFORM_STD_STRINGS)
 // @NOTE(final): stdio.h is already included
-fpl_platform_api size_t fplWideStringToUTF8String(const wchar_t *wideSource, const size_t wideSourceLen, char *utf8Dest, const size_t maxUtf8DestLen) {
-	// @NOTE(final): Expect locale to be UTF-8
-	// wcstombs requires a NUL-terminated input; build one and use the C-string contract.
+fpl_platform_api size_t fplWideStringToUTF8String(const wchar_t *wideSource, const size_t wideSourceLen, char *utf8Dest, const size_t maxUtf8DestLen)
+{
 	FPL__CheckArgumentNull(wideSource, 0);
 	FPL__CheckArgumentZero(wideSourceLen, 0);
-	wchar_t stackBuf[FPL_MAX_PATH_LENGTH];
-	wchar_t *tempSource = fpl_null;
-	bool heapAlloc = false;
-	if (wideSourceLen + 1 <= fplArrayCount(stackBuf)) {
-		tempSource = stackBuf;
-	} else {
-		tempSource = (wchar_t *)fpl__AllocateTemporaryMemory((wideSourceLen + 1) * sizeof(wchar_t), fpl__MinAlignment);
-		if (tempSource == fpl_null) {
-			FPL__ERROR(FPL__MODULE_STRINGS, "Failed to allocate temporary wide-string buffer");
-			return(0);
-		}
-		heapAlloc = true;
-	}
+
+	mbstate_t state;
+	fplClearStruct(&state);
+
+	size_t totalLen = 0;
+
+	// First pass: compute length
 	for (size_t i = 0; i < wideSourceLen; ++i) {
-		tempSource[i] = wideSource[i];
-	}
-	tempSource[wideSourceLen] = 0;
-	size_t result = wcstombs(fpl_null, tempSource, 0);
-	if (result == (size_t)-1) {
-		if (heapAlloc) {
-			fpl__ReleaseTemporaryMemory(tempSource);
-		}
-		FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert wide-string to UTF-8");
-		return(0);
-	}
-	if (utf8Dest != fpl_null) {
-		size_t requiredLen = result + 1;
-		if (maxUtf8DestLen < requiredLen) {
-			if (heapAlloc) {
-				fpl__ReleaseTemporaryMemory(tempSource);
-			}
-			return(0);
-		}
-		size_t written = wcstombs(utf8Dest, tempSource, maxUtf8DestLen);
-		if (written == (size_t)-1) {
-			if (heapAlloc) {
-				fpl__ReleaseTemporaryMemory(tempSource);
-			}
+		char tmp[MB_CUR_MAX];
+		const size_t res = wcrtomb(tmp, wideSource[i], &state);
+		if (res == (size_t)-1) {
 			FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert wide-string to UTF-8");
-			return(0);
+			return 0;
 		}
-		utf8Dest[result] = 0;
+		totalLen += res;
 	}
-	if (heapAlloc) {
-		fpl__ReleaseTemporaryMemory(tempSource);
+
+	if (utf8Dest != fpl_null) {
+		size_t requiredLen = totalLen + 1;
+		if (maxUtf8DestLen < requiredLen) {
+			return 0;
+		}
+
+		fplClearStruct(&state);
+
+		size_t pos = 0;
+		for (size_t i = 0; i < wideSourceLen; ++i) {
+			const size_t res = wcrtomb(utf8Dest + pos, wideSource[i], &state);
+			if (res == (size_t)-1) {
+				FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert wide-string to UTF-8");
+				return 0;
+			}
+			pos += res;
+		}
+
+		utf8Dest[pos] = '\0';
 	}
-	return(result);
+
+	return totalLen;
 }
-fpl_platform_api size_t fplUTF8StringToWideString(const char *utf8Source, const size_t utf8SourceLen, wchar_t *wideDest, const size_t maxWideDestLen) {
-	// @NOTE(final): Expect locale to be UTF-8
-	// mbstowcs requires a NUL-terminated input; build one and use the C-string contract.
+
+fpl_platform_api size_t fplUTF8StringToWideString(const char *utf8Source, const size_t utf8SourceLen, wchar_t *wideDest, const size_t maxWideDestLen)
+{
 	FPL__CheckArgumentNull(utf8Source, 0);
 	FPL__CheckArgumentZero(utf8SourceLen, 0);
-	char stackBuf[FPL_MAX_PATH_LENGTH];
-	char *tempSource = fpl_null;
-	bool heapAlloc = false;
-	if (utf8SourceLen + 1 <= fplArrayCount(stackBuf)) {
-		tempSource = stackBuf;
-	} else {
-		tempSource = (char *)fpl__AllocateTemporaryMemory(utf8SourceLen + 1, fpl__MinAlignment);
-		if (tempSource == fpl_null) {
-			FPL__ERROR(FPL__MODULE_STRINGS, "Failed to allocate temporary UTF-8 buffer");
-			return(0);
-		}
-		heapAlloc = true;
-	}
-	for (size_t i = 0; i < utf8SourceLen; ++i) {
-		tempSource[i] = utf8Source[i];
-	}
-	tempSource[utf8SourceLen] = 0;
-	size_t result = mbstowcs(fpl_null, tempSource, 0);
-	if (result == (size_t)-1) {
-		if (heapAlloc) {
-			fpl__ReleaseTemporaryMemory(tempSource);
-		}
-		FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert UTF-8 to wide-string");
-		return(0);
-	}
-	if (wideDest != fpl_null) {
-		size_t requiredLen = result + 1;
-		if (maxWideDestLen < requiredLen) {
-			if (heapAlloc) {
-				fpl__ReleaseTemporaryMemory(tempSource);
-			}
-			return(0);
-		}
-		size_t written = mbstowcs(wideDest, tempSource, maxWideDestLen);
-		if (written == (size_t)-1) {
-			if (heapAlloc) {
-				fpl__ReleaseTemporaryMemory(tempSource);
-			}
+
+	mbstate_t state;
+	fplClearStruct(&state);
+
+	size_t totalLen = 0;
+	size_t offset = 0;
+
+	// First pass: compute length
+	while (offset < utf8SourceLen) {
+		wchar_t wc;
+		size_t res = mbrtowc(&wc, utf8Source + offset, utf8SourceLen - offset, &state);
+		if (res == (size_t)-1 || res == (size_t)-2) {
 			FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert UTF-8 to wide-string");
-			return(0);
+			return 0;
 		}
-		wideDest[result] = 0;
+		if (res == 0) {
+			break;
+		}
+		offset += res;
+		totalLen += 1;
 	}
-	if (heapAlloc) {
-		fpl__ReleaseTemporaryMemory(tempSource);
+
+	if (wideDest != fpl_null) {
+		size_t requiredLen = totalLen + 1;
+		if (maxWideDestLen < requiredLen) {
+			return 0;
+		}
+
+		fplClearStruct(&state);
+
+		offset = 0;
+		size_t pos = 0;
+
+		while (offset < utf8SourceLen) {
+			size_t res = mbrtowc(&wideDest[pos], utf8Source + offset, utf8SourceLen - offset, &state);
+			if (res == (size_t)-1 || res == (size_t)-2) {
+				FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert UTF-8 to wide-string");
+				return 0;
+			}
+			if (res == 0) {
+				break;
+			}
+			offset += res;
+			pos += 1;
+		}
+
+		wideDest[pos] = L'\0';
 	}
-	return(result);
+
+	return totalLen;
 }
 #endif // FPL_SUBPLATFORM_STD_STRINGS
 
