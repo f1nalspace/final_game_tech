@@ -1849,19 +1849,19 @@ int main(int argc, char *args[]) {
 	(void)args;
 	TestColdInit();
 	TestInit();
+	TestSizes();
+	TestMacros();
+	TestStrings();
+	TestInlining();
+	TestSecurity();
 	TestLocalization();
 	TestMemory();
 	TestOSInfos();
 	TestHardware();
-	TestSizes();
 	TestTimes();
-	TestMacros();
 	TestAtomics();
 	TestPaths();
 	TestFiles();
-	TestStrings();
 	TestThreading();
-	TestInlining();
-	TestSecurity();
 	return 0;
 }
