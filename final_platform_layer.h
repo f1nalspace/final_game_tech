@@ -161,7 +161,13 @@ SOFTWARE.
 	- Several minor bugfixes
 
 	### Breaking Changes
-	- None
+	- Changed: fplEnforcePathSeparatorLen is now returning the total number of characters required or returns zero on errors
+	- Changed: fplEnforcePathSeparator is now returning the total number of characters required or returns zero on errors
+	- Changed: fplStringAppendLen is now returning the total number of characters required or returns zero on errors
+	- Changed: fplStringAppend is now returning the total number of characters required or returns zero on errors
+	- Changed: fplCopyStringLen is now returning the total number of characters required or returns zero on errors
+	- Changed: fplCopyString is now returning the total number of characters required or returns zero on errors
+	- Changed: fplGetWindowTitle is now returning the total number of characters required or returns zero on errors
 
 	### Details
 	- New: Added macro FPL_CACHELINE_SIZE that detects the cacheline size from the detected CPU architectures
@@ -6662,36 +6668,37 @@ fpl_common_api bool fplIsStringEqual(const char *a, const char *b);
 * @brief Ensures that the given string always ends with a path separator with length constrained.
 * @param[in, out] path The target path string.
 * @param[in] maxPathLen The max length of the target path.
-* @return Returns a pointer to the last written character or null.
+* @return Returns the total number of characters required (excluding NUL).
+* @note Returns 0 if @p path is null, @p maxPathLen is 0, or the buffer is too small to hold the separator + NUL. The destination is left unmodified on too-small buffer.
 */
-fpl_common_api char *fplEnforcePathSeparatorLen(char *path, size_t maxPathLen);
+fpl_common_api size_t fplEnforcePathSeparatorLen(char *path, size_t maxPathLen);
 
 /**
 * @brief Ensures that the given string always ends with a path separator.
 * @param[in, out] path The path string.
-* @return Returns a pointer to the last written character or null.
+* @return Returns the total number of characters of the resulting string (excluding NUL).
 * @note This function is unsafe as it does not know the maximum length of the string!
 */
-fpl_common_api char *fplEnforcePathSeparator(char *path);
+fpl_common_api size_t fplEnforcePathSeparator(char *path);
 
 /**
 * @brief Appends the source string to the given buffer constrained by length.
 * @param[in] appended The appending source string.
 * @param[in] appendedLen The length of the appending source string.
-* @param[in, out] buffer The target buffer.
+* @param[in, out] buffer The target buffer (may be null to query the required size only).
 * @param[in] maxBufferLen The max length of the target buffer.
-* @return Returns a pointer to the last written character or null.
+* @return Returns the total number of characters required (excluding NUL). Returns 0 on hard error or when the buffer is too small (buffer is left untouched).
 */
-fpl_common_api char *fplStringAppendLen(const char *appended, const size_t appendedLen, char *buffer, size_t maxBufferLen);
+fpl_common_api size_t fplStringAppendLen(const char *appended, const size_t appendedLen, char *buffer, size_t maxBufferLen);
 
 /**
 * @brief Appends the source string to the given buffer.
 * @param[in] appended The appending source string.
-* @param[in, out] buffer The target buffer.
+* @param[in, out] buffer The target buffer (may be null to query the required size only).
 * @param[in] maxBufferLen The max length of the target buffer.
-* @return Returns a pointer to the last written character or null.
+* @return Returns the total number of characters required (excluding NUL). Returns 0 on hard error or when the buffer is too small.
 */
-fpl_common_api char *fplStringAppend(const char *appended, char *buffer, size_t maxBufferLen);
+fpl_common_api size_t fplStringAppend(const char *appended, char *buffer, size_t maxBufferLen);
 
 /**
 * @brief Counts the number of characters without including the zero terminator.
@@ -6704,22 +6711,22 @@ fpl_common_api size_t fplGetStringLength(const char *str);
 * @brief Copies the given source string with a constrained length into a destination string.
 * @param[in] source The source string.
 * @param[in] sourceLen The number of characters to copy.
-* @param[in, out] dest The destination string buffer.
+* @param[in, out] dest The destination string buffer (may be null to query the required size only).
 * @param[in] maxDestLen The total number of characters available in the destination buffer.
-* @return Returns the pointer to the last written character or null.
-* @note Null terminator is always included.
+* @return Returns the total number of characters required (excluding NUL). Returns 0 on hard error or when the buffer is too small.
+* @note Null terminator is always included when written.
 */
-fpl_common_api char *fplCopyStringLen(const char *source, const size_t sourceLen, char *dest, const size_t maxDestLen);
+fpl_common_api size_t fplCopyStringLen(const char *source, const size_t sourceLen, char *dest, const size_t maxDestLen);
 
 /**
 * @brief Copies the given source string into a destination string.
 * @param[in] source The source string.
-* @param[in, out] dest The destination string buffer.
+* @param[in, out] dest The destination string buffer (may be null to query the required size only).
 * @param[in] maxDestLen The total number of characters available in the destination buffer.
-* @return Returns the pointer to the last written character or null.
-* @note Null terminator is always included.
+* @return Returns the total number of characters required (excluding NUL). Returns 0 on hard error or when the buffer is too small.
+* @note Null terminator is always included when written.
 */
-fpl_common_api char *fplCopyString(const char *source, char *dest, const size_t maxDestLen);
+fpl_common_api size_t fplCopyString(const char *source, char *dest, const size_t maxDestLen);
 
 /**
 * @brief Converts the given 16-bit source wide string with length into an 8-bit UTF-8 ANSI string.
@@ -8393,11 +8400,11 @@ fpl_platform_api void fplSetWindowTitle(const char *title);
 
 /**
 * @brief Retrieves the window title and writes it into the output string.
-* @param[out] outTitle The output title string.
+* @param[out] outTitle The output title string (may be null to query the required size only).
 * @param[in] maxOutTitleLength The maximum length of the output title.
-* @return Returns the char pointer of the last written character or null.
+* @return Returns the total number of characters required (excluding NUL). Returns 0 on hard error or when the buffer is too small.
 */
-fpl_common_api char *fplGetWindowTitle(char *outTitle, const size_t maxOutTitleLength);
+fpl_common_api size_t fplGetWindowTitle(char *outTitle, const size_t maxOutTitleLength);
 
 /**
 * @brief Gets the current window state.
@@ -11633,74 +11640,65 @@ fpl_common_api bool fplIsStringEqual(const char *a, const char *b) {
 	return(result);
 }
 
-fpl_common_api char *fplEnforcePathSeparatorLen(char *path, size_t maxPathLen) {
-	FPL__CheckArgumentNull(path, fpl_null);
-	FPL__CheckArgumentZero(maxPathLen, fpl_null);
-	char *end = path;
-	while (*end) {
-		end++;
+fpl_common_api size_t fplEnforcePathSeparatorLen(char *path, size_t maxPathLen) {
+	FPL__CheckArgumentNull(path, 0);
+	FPL__CheckArgumentZero(maxPathLen, 0);
+	size_t len = fplGetStringLength(path);
+	if (len == 0) {
+		return(0);
 	}
-	size_t len = end - path;
-	char *result = fpl_null;
-	if (len > 0) {
-		if (path[len - 1] != FPL_PATH_SEPARATOR) {
-			if (len + 1 <= maxPathLen) {
-				path[len] = FPL_PATH_SEPARATOR;
-				path[len + 1] = 0;
-				result = &path[len + 1];
-			} else {
-				FPL__ERROR(FPL__MODULE_PATHS, "Cannot append path separator: Max length '%zu' of path '%s' is exceeded", maxPathLen, path);
-			}
-		} else {
-			result = &path[len];
-		}
+	if (path[len - 1] == FPL_PATH_SEPARATOR) {
+		return(len);
 	}
-	return(result);
+	size_t requiredLen = len + 1;
+	if (requiredLen + 1 > maxPathLen) {
+		FPL__ERROR(FPL__MODULE_PATHS, "Cannot append path separator: Max length '%zu' of path '%s' is exceeded", maxPathLen, path);
+		return(0);
+	}
+	path[len] = FPL_PATH_SEPARATOR;
+	path[len + 1] = 0;
+	return(requiredLen);
 }
 
-fpl_common_api char *fplEnforcePathSeparator(char *path) {
-	FPL__CheckArgumentNull(path, fpl_null);
-	char *end = path;
-	while (*end) {
-		end++;
+fpl_common_api size_t fplEnforcePathSeparator(char *path) {
+	FPL__CheckArgumentNull(path, 0);
+	size_t len = fplGetStringLength(path);
+	if (len == 0) {
+		return(0);
 	}
-	size_t len = end - path;
-	char *result = fpl_null;
-	if (len > 0) {
-		if (path[len - 1] != FPL_PATH_SEPARATOR) {
-			path[len] = FPL_PATH_SEPARATOR;
-			path[len + 1] = 0;
-			result = &path[len + 1];
-		} else {
-			result = &path[len];
-		}
+	if (path[len - 1] == FPL_PATH_SEPARATOR) {
+		return(len);
 	}
-	return(result);
+	path[len] = FPL_PATH_SEPARATOR;
+	path[len + 1] = 0;
+	return(len + 1);
 }
 
-fpl_common_api char *fplStringAppendLen(const char *appended, const size_t appendedLen, char *buffer, size_t maxBufferLen) {
-	FPL__CheckArgumentNull(appended, fpl_null);
-	FPL__CheckArgumentZero(maxBufferLen, fpl_null);
+fpl_common_api size_t fplStringAppendLen(const char *appended, const size_t appendedLen, char *buffer, size_t maxBufferLen) {
+	FPL__CheckArgumentNull(appended, 0);
 	if (appendedLen == 0) {
-		return buffer;
+		return(buffer != fpl_null ? fplGetStringLength(buffer) : 0);
 	}
-	size_t curBufferLen = fplGetStringLength(buffer);
-	size_t requiredSize = curBufferLen + appendedLen + 1;
-	FPL__CheckArgumentMin(maxBufferLen, requiredSize, fpl_null);
-	char *start = buffer + curBufferLen;
-	size_t remainingBufferSize = maxBufferLen - (curBufferLen > 0 ? curBufferLen + 1 : 0);
-	char *result = fplCopyStringLen(appended, appendedLen, start, remainingBufferSize);
-	return(result);
+	size_t curBufferLen = (buffer != fpl_null) ? fplGetStringLength(buffer) : 0;
+	size_t requiredLen = curBufferLen + appendedLen;
+	if (buffer == fpl_null) {
+		return(requiredLen);
+	}
+	FPL__CheckArgumentZero(maxBufferLen, 0);
+	size_t requiredSize = requiredLen + 1;
+	FPL__CheckArgumentMin(maxBufferLen, requiredSize, 0);
+	fplMemoryCopy(appended, appendedLen * sizeof(char), buffer + curBufferLen);
+	buffer[requiredLen] = 0;
+	return(requiredLen);
 }
 
-fpl_common_api char *fplStringAppend(const char *appended, char *buffer, size_t maxBufferLen) {
+fpl_common_api size_t fplStringAppend(const char *appended, char *buffer, size_t maxBufferLen) {
 	size_t appendedLen = fplGetStringLength(appended);
-	char *result = fplStringAppendLen(appended, appendedLen, buffer, maxBufferLen);
-	return(result);
+	return(fplStringAppendLen(appended, appendedLen, buffer, maxBufferLen));
 }
 
 fpl_common_api size_t fplGetStringLength(const char *str) {
-	uint32_t result = 0;
+	size_t result = 0;
 	if (str != fpl_null) {
 		while (*str++) {
 			result++;
@@ -11709,65 +11707,78 @@ fpl_common_api size_t fplGetStringLength(const char *str) {
 	return(result);
 }
 
-fpl_common_api char *fplCopyStringLen(const char *source, const size_t sourceLen, char *dest, const size_t maxDestLen) {
-	if (source != fpl_null && dest != fpl_null) {
-		size_t requiredLen = sourceLen + 1;
-		FPL__CheckArgumentMin(maxDestLen, requiredLen, fpl_null);
-		fplMemoryCopy(source, sourceLen * sizeof(char), dest);
-		char *result = dest + sourceLen;
-		*result = 0;
-		return(result);
-	} else {
-		return(fpl_null);
+fpl_common_api size_t fplCopyStringLen(const char *source, const size_t sourceLen, char *dest, const size_t maxDestLen) {
+	FPL__CheckArgumentNull(source, 0);
+	if (dest == fpl_null) {
+		return(sourceLen);
 	}
+	FPL__CheckArgumentZero(maxDestLen, 0);
+	size_t requiredLen = sourceLen + 1;
+	FPL__CheckArgumentMin(maxDestLen, requiredLen, 0);
+	if (sourceLen > 0) {
+		fplMemoryCopy(source, sourceLen * sizeof(char), dest);
+	}
+	dest[sourceLen] = 0;
+	return(sourceLen);
 }
 
-fpl_common_api char *fplCopyString(const char *source, char *dest, const size_t maxDestLen) {
-	char *result = fpl_null;
-	if (source != fpl_null) {
-		size_t sourceLen = fplGetStringLength(source);
-		result = fplCopyStringLen(source, sourceLen, dest, maxDestLen);
-	}
-	return(result);
+fpl_common_api size_t fplCopyString(const char *source, char *dest, const size_t maxDestLen) {
+	FPL__CheckArgumentNull(source, 0);
+	size_t sourceLen = fplGetStringLength(source);
+	return(fplCopyStringLen(source, sourceLen, dest, maxDestLen));
 }
 
 fpl_common_api size_t fplStringFormatArgs(char *destBuffer, const size_t maxDestBufferLen, const char *format, va_list argList) {
 	FPL__CheckArgumentNull(format, 0);
 
-	// @NOTE(final): Need to clear the first character, otherwise vsnprintf() does weird things... O_o
 	if (destBuffer != fpl_null) {
 		FPL__CheckArgumentMin(maxDestBufferLen, 1, 0);
-		destBuffer[0] = 0;
 	}
 
+	// First pass: query the required length using a dummy buffer when destBuffer is null/too-small.
 	va_list listCopy;
 	va_copy(listCopy, argList);
-
 	int charCount = 0;
 #	if defined(FPL_NO_CRT)
 #		if defined(FPL_USERFUNC_vsnprintf)
-	charCount = FPL_USERFUNC_vsnprintf(destBuffer, maxDestBufferLen, format, listCopy);
+	if (destBuffer != fpl_null) {
+		destBuffer[0] = 0;
+		charCount = FPL_USERFUNC_vsnprintf(destBuffer, maxDestBufferLen, format, listCopy);
+	} else {
+		charCount = FPL_USERFUNC_vsnprintf(fpl_null, 0, format, listCopy);
+	}
 #		else
 	charCount = 0;
 #		endif
 #	else
-	charCount = vsnprintf(destBuffer, maxDestBufferLen, format, listCopy);
-#	endif
-	if (charCount < 0) {
-		FPL__ERROR(FPL__MODULE_STRINGS, "Format parameter are '%s' are invalid, return code was: %d", format, charCount);
-		return 0;
-	}
-	const size_t result = charCount;
 	if (destBuffer != fpl_null) {
-		const size_t requiredMaxDestBufferLen = charCount + 1;
-		if (requiredMaxDestBufferLen > maxDestBufferLen) {
-			destBuffer[maxDestBufferLen - 1] = 0;
-		} else {
-			destBuffer[charCount] = 0;
-		}
+		destBuffer[0] = 0;
+		charCount = vsnprintf(destBuffer, maxDestBufferLen, format, listCopy);
+	} else {
+		charCount = vsnprintf(fpl_null, 0, format, listCopy);
 	}
+#	endif
 	va_end(listCopy);
-	return(result);
+
+	if (charCount < 0) {
+		FPL__ERROR(FPL__MODULE_STRINGS, "Format parameter '%s' is invalid, return code was: %d", format, charCount);
+		if (destBuffer != fpl_null && maxDestBufferLen > 0) {
+			destBuffer[0] = 0;
+		}
+		return(0);
+	}
+	const size_t requiredLen = (size_t)charCount;
+	if (destBuffer == fpl_null) {
+		// Query mode: return what would be needed.
+		return(requiredLen);
+	}
+	if (requiredLen + 1 > maxDestBufferLen) {
+		// Too small: do not leave a partially-filled buffer for the caller to consume.
+		destBuffer[0] = 0;
+		return(0);
+	}
+	destBuffer[requiredLen] = 0;
+	return(requiredLen);
 }
 
 fpl_common_api size_t fplStringFormat(char *destBuffer, const size_t maxDestBufferLen, const char *format, ...) {
@@ -11827,36 +11838,74 @@ fpl_common_api size_t fplS32ToString(const int32_t value, char *buffer, const si
 	return result;
 }
 
-fpl_common_api int32_t fplStringToS32Len(const char *str, const size_t len) {
-	FPL__CheckArgumentNull(str, 0);
-	FPL__CheckArgumentZero(len, 0);
+fpl_common_api bool fplTryStringToS32Len(const char *str, const size_t len, int32_t *outValue) {
+	if (str == fpl_null || len == 0) {
+		return(false);
+	}
 	const char *p = str;
-	bool isNegative = false;
-	if (*p == '-') {
-		if (len == 1) {
-			return 0;
-		}
-		isNegative = true;
+	const char *end = str + len;
+	while (p < end && (*p == ' ' || *p == '\t')) {
 		++p;
 	}
+	bool isNegative = false;
+	if (p < end && (*p == '-' || *p == '+')) {
+		isNegative = (*p == '-');
+		++p;
+	}
+	if (p >= end || *p < '0' || *p > '9') {
+		return(false);
+	}
+	const uint32_t signedMaxAbs = (uint32_t)INT32_MAX + 1u;
+	const uint32_t posMaxAbs = (uint32_t)INT32_MAX;
+	const uint32_t maxAbs = isNegative ? signedMaxAbs : posMaxAbs;
 	uint32_t value = 0;
-	while (*p && ((size_t)(p - str) < len)) {
+	bool overflow = false;
+	while (p < end && *p) {
 		char c = *p;
 		if (c < '0' || c > '9') {
-			return(0);
+			return(false);
 		}
-		int v = (int)(*p - '0');
-		value *= 10;
-		value += (uint32_t)v;
+		uint32_t digit = (uint32_t)(c - '0');
+		if (!overflow) {
+			if (value > (maxAbs - digit) / 10u) {
+				overflow = true;
+			} else {
+				value = value * 10u + digit;
+			}
+		}
 		++p;
 	}
-	int32_t result = isNegative ? -(int32_t)value : (int32_t)value;
+	int32_t result;
+	if (overflow) {
+		result = isNegative ? INT32_MIN : INT32_MAX;
+	} else if (isNegative) {
+		result = (value == signedMaxAbs) ? INT32_MIN : -(int32_t)value;
+	} else {
+		result = (int32_t)value;
+	}
+	if (outValue != fpl_null) {
+		*outValue = result;
+	}
+	return(true);
+}
+
+fpl_common_api bool fplTryStringToS32(const char *str, int32_t *outValue) {
+	if (str == fpl_null) {
+		return(false);
+	}
+	size_t len = fplGetStringLength(str);
+	return(fplTryStringToS32Len(str, len, outValue));
+}
+
+fpl_common_api int32_t fplStringToS32Len(const char *str, const size_t len) {
+	int32_t result = 0;
+	(void)fplTryStringToS32Len(str, len, &result);
 	return(result);
 }
 
 fpl_common_api int32_t fplStringToS32(const char *str) {
-	size_t len = fplGetStringLength(str);
-	int32_t result = fplStringToS32Len(str, len);
+	int32_t result = 0;
+	(void)fplTryStringToS32(str, &result);
 	return(result);
 }
 #endif // FPL__COMMON_STRINGS_DEFINED
@@ -12845,10 +12894,10 @@ fpl_common_api size_t fplPathCombine(char *destPath, const size_t maxDestPathLen
 #if defined(FPL__ENABLE_WINDOW) && !defined(FPL__COMMON_WINDOW_DEFINED)
 #define FPL__COMMON_WINDOW_DEFINED
 
-fpl_common_api char *fplGetWindowTitle(char *outTitle, const size_t maxOutTitleLength) {
-	FPL__CheckPlatform(fpl_null);
+fpl_common_api size_t fplGetWindowTitle(char *outTitle, const size_t maxOutTitleLength) {
+	FPL__CheckPlatform(0);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	char *result = fplCopyString(appState->currentSettings.window.title, outTitle, maxOutTitleLength);
+	size_t result = fplCopyString(appState->currentSettings.window.title, outTitle, maxOutTitleLength);
 	return(result);
 }
 
