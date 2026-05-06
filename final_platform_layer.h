@@ -193,6 +193,7 @@ SOFTWARE.
 	- Fixed: Fixed duplicate platform includes
 	- Fixed: fpLGetAlignmentOffset() was not guarding the alignment argument in all cases
 	- Fixed: fplS32ToString() was not handling negative values correctly
+	- Fixed: fplStringFormatArgs must always NUL-terminate even when the buffer is too small
 	- Fixed[#183]: fpl_internal_inline was not compiling on GCC/Clang
 
 	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
@@ -11732,14 +11733,14 @@ fpl_common_api char *fplCopyString(const char *source, char *dest, const size_t 
 fpl_common_api size_t fplStringFormatArgs(char *destBuffer, const size_t maxDestBufferLen, const char *format, va_list argList) {
 	FPL__CheckArgumentNull(format, 0);
 
-	va_list listCopy;
-	va_copy(listCopy, argList);
-
 	// @NOTE(final): Need to clear the first character, otherwise vsnprintf() does weird things... O_o
 	if (destBuffer != fpl_null) {
 		FPL__CheckArgumentMin(maxDestBufferLen, 1, 0);
 		destBuffer[0] = 0;
 	}
+
+	va_list listCopy;
+	va_copy(listCopy, argList);
 
 	int charCount = 0;
 #	if defined(FPL_NO_CRT)
@@ -11752,14 +11753,17 @@ fpl_common_api size_t fplStringFormatArgs(char *destBuffer, const size_t maxDest
 	charCount = vsnprintf(destBuffer, maxDestBufferLen, format, listCopy);
 #	endif
 	if (charCount < 0) {
-		FPL__ERROR(FPL__MODULE_STRINGS, "Format parameter are '%s' are invalid", format);
+		FPL__ERROR(FPL__MODULE_STRINGS, "Format parameter are '%s' are invalid, return code was: %d", format, charCount);
 		return 0;
 	}
-	size_t result = charCount;
+	const size_t result = charCount;
 	if (destBuffer != fpl_null) {
-		size_t requiredMaxDestBufferLen = charCount + 1;
-		FPL__CheckArgumentMin(maxDestBufferLen, requiredMaxDestBufferLen, 0);
-		destBuffer[charCount] = 0;
+		const size_t requiredMaxDestBufferLen = charCount + 1;
+		if (requiredMaxDestBufferLen > maxDestBufferLen) {
+			destBuffer[maxDestBufferLen - 1] = 0;
+		} else {
+			destBuffer[charCount] = 0;
+		}
 	}
 	va_end(listCopy);
 	return(result);
