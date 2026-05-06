@@ -205,6 +205,7 @@ SOFTWARE.
 	- Fixed: Fixed documentations for fplStringToS32Len and fplStringToS32
 	- Fixed: fplStringFormat and fplStringFormatArgs was not implemented correctly due to its documentation rules
 	- Fixed: fplStringToS32Len and fplStringToS32 was not implemented correctly due to its documentation rules
+	- Fixed: Calls to fpl__AllocateTemporaryMemory use either fpl__MinAlignment or 16 or more
 	- Fixed[#183]: fpl_internal_inline was not compiling on GCC/Clang
 
 	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
@@ -9548,7 +9549,7 @@ fpl_internal size_t fpl__ParseTextFile(const char *filePath, const char **wildca
 	size_t result = 0;
 	fplFileHandle fileHandle = fplZeroInit;
 	if (fplFileOpenBinary(filePath, &fileHandle)) {
-		char *line = (char *)fpl__AllocateTemporaryMemory(maxLineSize, 8);
+		char *line = (char *)fpl__AllocateTemporaryMemory(maxLineSize, fpl__MinAlignment);
 		char buffer[FPL_MAX_BUFFER_LENGTH];
 		const size_t maxBufferSize = fplArrayCount(buffer) - 1;
 		size_t bytesRead = 0;
