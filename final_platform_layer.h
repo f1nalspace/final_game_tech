@@ -12877,103 +12877,71 @@ fpl_common_api size_t fplChangeFileExtension(const char *filePath, const char *n
 fpl_common_api size_t fplPathCombine(char *destPath, const size_t maxDestPathLen, const size_t pathCount, ...) {
 	FPL__CheckArgumentZero(pathCount, 0);
 
-	// First pass: walk varargs, compute total required length while remembering
-	// per-segment length and whether a separator is needed before each segment.
-	size_t stackLens[FPL__PATHCOMBINE_STACK_SEGMENTS];
-	bool stackNeedsSep[FPL__PATHCOMBINE_STACK_SEGMENTS];
-	size_t *segLens = stackLens;
-	bool *segNeedsSep = stackNeedsSep;
-	bool heapAlloc = false;
-	if (pathCount > FPL__PATHCOMBINE_STACK_SEGMENTS) {
-		segLens = (size_t *)fpl__AllocateTemporaryMemory(sizeof(size_t) * pathCount, fpl__MinAlignment);
-		segNeedsSep = (bool *)fpl__AllocateTemporaryMemory(sizeof(bool) * pathCount, fpl__MinAlignment);
-		if (segLens == fpl_null || segNeedsSep == fpl_null) {
-			if (segLens != fpl_null) {
-				fpl__ReleaseTemporaryMemory(segLens);
-			}
-			if (segNeedsSep != fpl_null) {
-				fpl__ReleaseTemporaryMemory(segNeedsSep);
-			}
-			FPL__ERROR(FPL__MODULE_PATHS, "Failed to allocate path-combine scratch");
-			return(0);
-		}
-		heapAlloc = true;
-	}
+	va_list args;
 
-	va_list vargs;
-	va_start(vargs, pathCount);
+	// First pass: compute total length
+	va_start(args, pathCount);
 
 	size_t totalLen = 0;
-	const char **segments = fpl_null;
-	const char *stackSegments[FPL__PATHCOMBINE_STACK_SEGMENTS];
-	const char **segPtrs = stackSegments;
-	if (pathCount > FPL__PATHCOMBINE_STACK_SEGMENTS) {
-		segPtrs = (const char **)fpl__AllocateTemporaryMemory(sizeof(const char *) * pathCount, fpl__MinAlignment);
-		if (segPtrs == fpl_null) {
-			va_end(vargs);
-			if (heapAlloc) {
-				fpl__ReleaseTemporaryMemory(segLens);
-				fpl__ReleaseTemporaryMemory(segNeedsSep);
-			}
-			FPL__ERROR(FPL__MODULE_PATHS, "Failed to allocate path-combine scratch");
-			return(0);
-		}
-		segments = segPtrs;
-	}
-
 	bool prevHasTrailingSep = false;
-	for (size_t pathIndex = 0; pathIndex < pathCount; ++pathIndex) {
-		const char *path = va_arg(vargs, const char *);
-		segPtrs[pathIndex] = path;
-		size_t pathLen = fplGetStringLength(path);
-		segLens[pathIndex] = pathLen;
-		bool needsSepBefore = false;
-		if (pathIndex > 0 && pathLen > 0 && !prevHasTrailingSep) {
-			needsSepBefore = true;
+
+	for (size_t i = 0; i < pathCount; ++i) {
+		const char *path = va_arg(args, const char *);
+		if (path == fpl_null) {
+			continue;
 		}
-		segNeedsSep[pathIndex] = needsSepBefore;
-		totalLen += pathLen + (needsSepBefore ? 1u : 0u);
-		if (pathLen > 0) {
-			prevHasTrailingSep = (path[pathLen - 1] == FPL_PATH_SEPARATOR);
+
+		const size_t len = fplGetStringLength(path);
+
+		if (i > 0 && len > 0 && !prevHasTrailingSep) {
+			totalLen += 1; // separator
+		}
+
+		totalLen += len;
+
+		if (len > 0) {
+			prevHasTrailingSep = (path[len - 1] == FPL_PATH_SEPARATOR);
 		}
 	}
-	va_end(vargs);
 
+	va_end(args);
+
+	// Write result if buffer provided
 	if (destPath != fpl_null) {
-		size_t requiredDestLen = totalLen + 1;
-		if (maxDestPathLen < requiredDestLen) {
-			FPL__ERROR(FPL__MODULE_PATHS, "fplPathCombine: buffer too small (need %zu, have %zu)", requiredDestLen, maxDestPathLen);
-			if (segments != fpl_null) {
-				fpl__ReleaseTemporaryMemory(segments);
-			}
-			if (heapAlloc) {
-				fpl__ReleaseTemporaryMemory(segLens);
-				fpl__ReleaseTemporaryMemory(segNeedsSep);
-			}
-			return(0);
-		}
+		const size_t requiredLen = totalLen + 1;
+
+		FPL__CheckArgumentMin(maxDestPathLen, requiredLen, 0);
+
+		va_start(args, pathCount);
+
 		size_t pos = 0;
-		for (size_t pathIndex = 0; pathIndex < pathCount; ++pathIndex) {
-			if (segNeedsSep[pathIndex]) {
+		prevHasTrailingSep = false;
+
+		for (size_t i = 0; i < pathCount; ++i) {
+			const char *path = va_arg(args, const char *);
+			if (path == fpl_null) {
+				continue;
+			}
+
+			const size_t len = fplGetStringLength(path);
+
+			if (i > 0 && len > 0 && !prevHasTrailingSep) {
 				destPath[pos++] = FPL_PATH_SEPARATOR;
 			}
-			size_t pathLen = segLens[pathIndex];
-			if (pathLen > 0) {
-				fplMemoryCopy(segPtrs[pathIndex], pathLen * sizeof(char), destPath + pos);
-				pos += pathLen;
+
+			if (len > 0) {
+				fplMemoryCopy(path, len * sizeof(char), destPath + pos);
+				pos += len;
+				prevHasTrailingSep = (path[len - 1] == FPL_PATH_SEPARATOR);
 			}
 		}
-		destPath[pos] = 0;
+
+		va_end(args);
+
+		destPath[pos] = '\0';
 	}
 
-	if (segments != fpl_null) {
-		fpl__ReleaseTemporaryMemory(segments);
-	}
-	if (heapAlloc) {
-		fpl__ReleaseTemporaryMemory(segLens);
-		fpl__ReleaseTemporaryMemory(segNeedsSep);
-	}
-	return(totalLen);
+	return totalLen;
 }
 #endif // FPL__COMMON_PATHS_DEFINED
 
