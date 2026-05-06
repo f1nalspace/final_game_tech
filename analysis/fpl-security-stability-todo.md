@@ -141,8 +141,9 @@ Applied Global Conventions; updated all docstrings and call sites.
 - [x] Caller may now free strings safely after `Begin` (Win32 + POSIX).
 
 ### 2.10 Audio backend chunk write audit (~26698)
-- [ ] Add `fplAssert(read == frameCount)` after every internal `fpl__ReadAudioFramesFromClient` call.
-- [ ] Remove conditional logic that branches on partial-read return.
+- [x] `fpl__ReadAudioFramesFromClient` now returns `frameCount` (always full buffer) and clamps client over-reports.
+- [x] Added `fplAssert(framesRead == frameCount)` at all six call sites (DirectSound init/main, ALSA mmap, ALSA writei, PulseAudio, PipeWire).
+- [x] No callers branch on partial-read return — contract enforced by both function and assertions.
 
 **Phase 2 exit criteria:** all `FPL_Test`, `FMEM_Test`, `FXML_Test`, `FOGL_Test` pass. Audio demos run without buffer underruns.
 
