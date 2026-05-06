@@ -13,6 +13,8 @@ These rules apply to every task that touches a string/buffer copy, format, or ap
 - If buffer too small (`required > maxDestLen`): return `0`. Do NOT leave partial buffer. Use the matching `FPL__CheckArgument*` macro.
 - If `dest != NULL && maxDestLen > 0`: always NUL-terminate.
 - Return `0` for hard errors (NULL input, format error). Document this contract in each function's doxygen block.
+- Leave functions as it is and just fix the underlaying issues, with as less changes as possible and do not allocate heap memory or use large stack memory.
+- Returning a value directly is never intented, store it first into a local variable called "result" and return this instead.
 
 Functions impacted (full list):
 - `fplCopyString`, `fplCopyStringLen`
