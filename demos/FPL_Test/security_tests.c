@@ -85,17 +85,18 @@ static int fsec__GuardIntact(const unsigned char *buf, size_t len) {
  *  STRING TESTS  (analysis sections 2.1, 2.2, 2.3, 2.4, 2.6, 5.10)
  * ===========================================================================*/
 
-/* 2.2 fplStringFormatArgs: must always NUL-terminate even when the buffer is
- *     too small, and should never write into a zero-length buffer. */
+/* 2.2 fplStringFormatArgs: when the buffer is too small, the function must
+ *     return 0 (no partial writes, project policy). Caller can query the
+ *     required size first by passing destBuffer == NULL. */
 static void fsec__String_FormatTruncationNullTerminates(void) {
-	fsec__Banner("strings", "fplStringFormat truncation NUL-terminates");
+	fsec__Banner("strings", "fplStringFormat too-small returns 0");
+	size_t required = fplStringFormat(fpl_null, 0, "%s-%s", "abcdef", "ghijkl");
+	FSEC_ASSERT_EQ_SZ(required, 13);
 	char small[8];
 	memset(small, 'X', sizeof(small));
-	size_t needed = fplStringFormat(small, sizeof(small), "%s-%s", "abcdef", "ghijkl");
-	/* Required length is 13 ("abcdef-ghijkl"). The buffer must NOT be
-	 * left without a terminator. */
-	FSEC_ASSERT_TRUE(needed > 0);
-	FSEC_ASSERT_TRUE(small[sizeof(small) - 1] == 0);
+	size_t writtenWithSmallBuf = fplStringFormat(small, sizeof(small), "%s-%s", "abcdef", "ghijkl");
+	FSEC_ASSERT_EQ_SZ(writtenWithSmallBuf, 0);
+	FSEC_ASSERT_TRUE(small[0] == 0);
 }
 
 /* 2.2 / 5.10: passing destBuffer != NULL with maxDestBufferLen == 0 must NOT
@@ -127,9 +128,9 @@ static void fsec__String_AppendExactFit(void) {
 	/* "abcd" + "efghijklmno" = 15 chars + NUL = 16 bytes. Fits exactly. */
 	fplCopyString("abcd", buf, sizeof(buf));
 	const char *append = "efghijklmno";
-	void *res = fplStringAppendLen(append, fplGetStringLength(append), buf,
-	                               sizeof(buf));
-	FSEC_ASSERT_TRUE(res != fpl_null);
+	size_t res = fplStringAppendLen(append, fplGetStringLength(append), buf,
+	                                sizeof(buf));
+	FSEC_ASSERT_TRUE(res > 0);
 	FSEC_ASSERT_TRUE(fplIsStringEqual(buf, "abcdefghijklmno"));
 }
 
@@ -148,16 +149,16 @@ static void fsec__String_StringToS32OverflowDetected(void) {
 }
 
 /* 2.6 fplStringToS32Len: "abc" (invalid) and "0" (valid) must be
- *     distinguishable. Currently both return 0. */
+ *     distinguishable via the Try-style API. */
 static void fsec__String_StringToS32AmbiguousZero(void) {
 	fsec__Banner("strings", "fplStringToS32 distinguishes invalid vs '0'");
-	int32_t valid = fplStringToS32("0");
-	int32_t invalid = fplStringToS32("abc");
-	/* Once a Try-style API is added we can compare success flags.
-	 * For now just record that this case is known-ambiguous: a fix
-	 * should change the API; this assertion intentionally fails until
-	 * the API is updated. */
-	FSEC_ASSERT_FALSE(valid == invalid);
+	int32_t validValue = 0;
+	int32_t invalidValue = 0;
+	bool validOk = fplTryStringToS32("0", &validValue);
+	bool invalidOk = fplTryStringToS32("abc", &invalidValue);
+	FSEC_ASSERT_TRUE(validOk);
+	FSEC_ASSERT_FALSE(invalidOk);
+	FSEC_ASSERT_EQ_S32(validValue, 0);
 }
 
 /* 2.1 fplGetStringLength: documented to return size_t but counter is u32
@@ -222,9 +223,9 @@ static void fsec__Path_CombineBoundedDoesNotOverflow(void) {
 	                                   sizeof(block) - 16 - cap));
 }
 
-/* 2.12 fplPathNormalize must return required size when destination is too
- *      small, instead of returning 0 (which is indistinguishable from
- *      "invalid input"). */
+/* 2.12 fplPathNormalize must report the required size via NULL-dest query.
+ *      With a too-small destination buffer, the function must return 0 and
+ *      leave the buffer untouched (project policy: no partial writes). */
 static void fsec__Path_NormalizeReturnsRequired(void) {
 	fsec__Banner("paths", "fplPathNormalize reports required size");
 	const char *abs = ".";
@@ -234,9 +235,14 @@ static void fsec__Path_NormalizeReturnsRequired(void) {
 		 * can't run this test; surface it but don't false-fail. */
 		return;
 	}
-	char tiny[2] = { 0 };
-	size_t neededAgain = fplPathNormalize(abs, tiny, sizeof(tiny));
-	FSEC_ASSERT_EQ_SZ(needed, neededAgain);
+	unsigned char block[64];
+	fsec__FillGuard(block, sizeof(block));
+	char *tiny = (char *)&block[16];
+	const size_t cap = 2;
+	size_t writtenWithSmallBuf = fplPathNormalize(abs, tiny, cap);
+	FSEC_ASSERT_EQ_SZ(writtenWithSmallBuf, 0);
+	FSEC_ASSERT_TRUE(fsec__GuardIntact(block, 16));
+	FSEC_ASSERT_TRUE(fsec__GuardIntact(&block[16 + cap], sizeof(block) - 16 - cap));
 }
 
 /* 5.1 fplExtractFilePath uses int internally; verify long paths compute

@@ -1832,17 +1832,18 @@ static void TestTimes(void) {
 }
 
 static void TestSecurity(void) {
-	if (fplPlatformInit(fplInitFlags_None, fpl_null)) {
-		ftLine();
-		ftMsg("Security & stability tests\n");
-		FPLSecurityTests_Strings();
-		FPLSecurityTests_Paths();
-		FPLSecurityTests_Files();
-		FPLSecurityTests_Conversions();
-		FPLSecurityTests_Types();
-		FPLSecurityTests_Misc();
-		fplPlatformRelease();
+	ftMsg("Security & stability tests\n");
+	if (!fplPlatformInit(fplInitFlags_None, fpl_null)) {
+		ftFail("Failed to initialize platform");
+		return;
 	}
+	FPLSecurityTests_Strings();
+	FPLSecurityTests_Paths();
+	FPLSecurityTests_Files();
+	FPLSecurityTests_Conversions();
+	FPLSecurityTests_Types();
+	FPLSecurityTests_Misc();
+	fplPlatformRelease();
 }
 
 int main(int argc, char *args[]) {
