@@ -456,7 +456,8 @@ static void fsec__Conv_RoundTripMultibyte(void) {
 	fsec__Banner("conv", "Multibyte round-trip UTF-8 <-> wide");
 	/* "Grüße — 世界" : Latin-1 supplement, em-dash, CJK. The host C
 	 * locale must support UTF-8; if it doesn't, skip silently. */
-	const char *src = "Gr\xC3\xBC\xC3\x9Fe \xE2\x80\x94 \xE4\xB8\x96\xE7\x95\x8C";
+	// Split after \x9F: hex escapes are greedy; \x9Fe would be parsed as 0x9FE.
+	const char *src = "Gr\xC3\xBC\xC3\x9F" "e \xE2\x80\x94 \xE4\xB8\x96\xE7\x95\x8C";
 	wchar_t wide[64] = { 0 };
 	size_t wideLen = fplUTF8StringToWideString(src, fplGetStringLength(src),
 	                                           wide, fplArrayCount(wide));
