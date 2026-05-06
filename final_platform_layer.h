@@ -209,6 +209,7 @@ SOFTWARE.
 	- Fixed: fplCPUID, fplCPURDTSC, fplCPUXCR0 was not detected on GCC/Clang
 	- Fixed: fplGetErrorCount / fplGetErrorByIndex  / fplGetLastError and pushing of errors was not thread-safe
 	- Fixed: fplAlignAs was using a condition based macro, which is not supported for some compilers
+	- Fixed: fpl__ReadAudioFramesFromClient was not returning frameCount always and produce silence bytes for the remaining samples
 	- Fixed[#183]: fpl_internal_inline was not compiling on GCC/Clang
 
 	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
@@ -24033,10 +24034,20 @@ typedef struct fpl__CommonAudioState {
 	fplAudioContext context;
 } fpl__CommonAudioState;
 
+// Always fills the full frameCount of pSamples. Frames not provided by the client callback are zero-padded.
+// Returns frameCount on success, or 0 if pSamples is NULL or frameCount is 0.
+// Backends MUST treat the destination buffer as fully written and MUST NOT branch on a partial-read return.
 fpl_internal uint32_t fpl__ReadAudioFramesFromClient(const fplAudioBackend *backend, uint32_t frameCount, void *pSamples) {
+	uint32_t result = 0;
+	if (pSamples == fpl_null || frameCount == 0) {
+		return(result);
+	}
 	uint32_t framesRead = 0;
 	if (backend->clientReadCallback != fpl_null) {
 		framesRead = backend->clientReadCallback(&backend->internalFormat, frameCount, pSamples, backend->clientUserData);
+		if (framesRead > frameCount) {
+			framesRead = frameCount;
+		}
 	}
 	uint32_t channels = backend->internalFormat.channels;
 	uint32_t samplesRead = framesRead * channels;
@@ -24046,7 +24057,8 @@ fpl_internal uint32_t fpl__ReadAudioFramesFromClient(const fplAudioBackend *back
 	if (remainingBytes > 0) {
 		fplMemoryClear((uint8_t *)pSamples + consumedBytes, remainingBytes);
 	}
-	return(framesRead);
+	result = frameCount;
+	return(result);
 }
 
 // Global Audio GUIDs
@@ -24966,7 +24978,8 @@ fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudioBackendDirectSoundSta
 
 	if (SUCCEEDED(IDirectSoundBuffer_Lock(impl->secondaryBuffer, 0, desiredLockSize, &pLockPtr, &actualLockSize, &pLockPtr2, &actualLockSize2, 0))) {
 		framesToRead = actualLockSize / audioSampleSizeBytes / backend->internalFormat.channels;
-		fpl__ReadAudioFramesFromClient(backend, framesToRead, pLockPtr);
+		uint32_t framesRead = fpl__ReadAudioFramesFromClient(backend, framesToRead, pLockPtr);
+		fplAssert(framesRead == framesToRead);
 		IDirectSoundBuffer_Unlock(impl->secondaryBuffer, pLockPtr, actualLockSize, pLockPtr2, actualLockSize2);
 		impl->lastProcessedFrame = framesToRead;
 		if (FAILED(IDirectSoundBuffer_Play(impl->secondaryBuffer, 0, 0, DSBPLAY_LOOPING))) {
@@ -25025,7 +25038,8 @@ fpl_internal FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl__AudioBackendDirectSoundMainLo
 
 			// Read actual frames from user
 			uint32_t frameCount = actualLockSize / audioSampleSizeBytes / backend->internalFormat.channels;
-			fpl__ReadAudioFramesFromClient(backend, frameCount, pLockPtr);
+			uint32_t framesRead = fpl__ReadAudioFramesFromClient(backend, frameCount, pLockPtr);
+			fplAssert(framesRead == frameCount);
 			impl->lastProcessedFrame = (impl->lastProcessedFrame + frameCount) % backend->internalFormat.bufferSizeInFrames;
 
 			// Unlock playback buffer
@@ -25579,7 +25593,8 @@ fpl_internal bool fpl__GetAudioFramesFromClientAlsa(fplAudioContext *context, fp
 			}
 			if (mappedFrames > 0) {
 				void *bufferPtr = (uint8_t *)channelAreas[0].addr + ((channelAreas[0].first + (mappedOffset * channelAreas[0].step)) / 8);
-				fpl__ReadAudioFramesFromClient(backend, mappedFrames, bufferPtr);
+				uint32_t framesRead = fpl__ReadAudioFramesFromClient(backend, (uint32_t)mappedFrames, bufferPtr);
+				fplAssert((snd_pcm_uframes_t)framesRead == mappedFrames);
 			}
 			result = alsaApi->snd_pcm_mmap_commit(impl->pcmDevice, mappedOffset, mappedFrames);
 			if (result < 0 || (snd_pcm_uframes_t)result != mappedFrames) {
@@ -25608,7 +25623,8 @@ fpl_internal bool fpl__GetAudioFramesFromClientAlsa(fplAudioContext *context, fp
 			if (impl->breakMainLoop) {
 				return false;
 			}
-			fpl__ReadAudioFramesFromClient(backend, framesAvailable, impl->intermediaryBuffer);
+			uint32_t framesRead = fpl__ReadAudioFramesFromClient(backend, framesAvailable, impl->intermediaryBuffer);
+			fplAssert(framesRead == framesAvailable);
 			snd_pcm_sframes_t framesWritten = alsaApi->snd_pcm_writei(impl->pcmDevice, impl->intermediaryBuffer, framesAvailable);
 			if (framesWritten < 0) {
 				if (framesWritten == -EAGAIN) {
@@ -26998,7 +27014,8 @@ fpl_internal void fpl__PulseAudio_StreamWriteCallback(pa_stream *stream, size_t 
 		}
 		uint32_t chunkFrames = (uint32_t)(chunkBytes / frameSize);
 		size_t chunkFrameBytes = (size_t)chunkFrames * frameSize;
-		fpl__ReadAudioFramesFromClient(backend, chunkFrames, destinationBuffer);
+		uint32_t framesRead = fpl__ReadAudioFramesFromClient(backend, chunkFrames, destinationBuffer);
+		fplAssert(framesRead == chunkFrames);
 		if (pulseAudioApi->pa_stream_write(stream, destinationBuffer, chunkFrameBytes, fpl_null, 0, PA_SEEK_RELATIVE) < 0) {
 			break;
 		}
@@ -28432,7 +28449,8 @@ fpl_internal void fpl__PipeWire_StreamProcessCallback(void *data) {
 		wantedFrames = maxFrames;
 	}
 	if (wantedFrames > 0) {
-		fpl__ReadAudioFramesFromClient(backend, wantedFrames, sbuf->datas[0].data);
+		uint32_t framesRead = fpl__ReadAudioFramesFromClient(backend, wantedFrames, sbuf->datas[0].data);
+		fplAssert(framesRead == wantedFrames);
 	}
 	if (sbuf->datas[0].chunk != fpl_null) {
 		sbuf->datas[0].chunk->offset = 0;
