@@ -19269,12 +19269,16 @@ fpl_platform_api bool fplDirectoriesCreate(const char *path) {
 	char tmp[FPL_MAX_PATH_LENGTH];
 	size_t i = 0;
 
-	// Scan and create all sub-directories
+	// Scan and create all sub-directories. Treat '/' and '\\' both as separators on POSIX.
 	for (i = 0; path[i] != '\0'; ++i) {
 		if (i >= sizeof(tmp) - 1) {
 			return false;
 		}
-		tmp[i] = path[i];
+		char c = path[i];
+		if (c == '\\') {
+			c = '/';
+		}
+		tmp[i] = c;
 		// Whenever we encounter a slash, we "terminate" the string there to create the parent directory.
 		if (tmp[i] == '/' && i > 0) {
 			tmp[i] = '\0';
@@ -19384,23 +19388,18 @@ fpl_platform_api bool fplDirectoryListNext(fplFileEntry *entry) {
 	bool result = false;
 	if (entry->internalHandle.posixDirHandle != fpl_null) {
 		DIR *dirHandle = (DIR *)entry->internalHandle.posixDirHandle;
-		struct dirent *dp = readdir(dirHandle);
-		do {
+		for (;;) {
+			struct dirent *dp = readdir(dirHandle);
 			if (dp == fpl_null) {
+				closedir(dirHandle);
+				fplClearStruct(entry);
 				break;
 			}
-			bool isMatch = fplIsStringMatchWildcard(dp->d_name, entry->internalRoot.filter);
-			if (isMatch) {
+			if (fplIsStringMatchWildcard(dp->d_name, entry->internalRoot.filter)) {
+				fpl__PosixFillFileEntry(dp, entry);
+				result = true;
 				break;
 			}
-			dp = readdir(dirHandle);
-		} while (dp != fpl_null);
-		if (dp == fpl_null) {
-			closedir(dirHandle);
-			fplClearStruct(entry);
-		} else {
-			fpl__PosixFillFileEntry(dp, entry);
-			result = true;
 		}
 	}
 	return(result);
@@ -19514,20 +19513,24 @@ fpl_platform_api size_t fplPathNormalize(const char *sourcePath, char *destPath,
 //
 
 fpl_platform_api fplDateTime fplDateTimeQuery(const fplDateTimeType type) {
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-
 	fplDateTime dateTime = fplZeroInit;
+	struct timeval tv;
+	if (gettimeofday(&tv, NULL) != 0) {
+		return dateTime;
+	}
+
 	dateTime.epoch = (uint64_t)tv.tv_sec;
-	dateTime.milliseconds = (uint32_t)(tv.tv_usec / 1000); // Convert microseconds to milliseconds
+	dateTime.milliseconds = (uint32_t)(tv.tv_usec / 1000);
 
 	if (type == fplDateTimeType_UTC) {
-		dateTime.utcOffset = 0; // UTC offset is 0 for UTC format
+		dateTime.utcOffset = 0;
 	} else {
-		// Get local time offset
 		time_t rawtime = tv.tv_sec;
-		struct tm *localTime = localtime(&rawtime);
-		dateTime.utcOffset = (localTime->tm_gmtoff / 60); // Convert seconds to minutes
+		struct tm localStorage;
+		struct tm *localTime = localtime_r(&rawtime, &localStorage);
+		if (localTime != fpl_null) {
+			dateTime.utcOffset = (localTime->tm_gmtoff / 60);
+		}
 	}
 
 	return dateTime;
@@ -19543,17 +19546,21 @@ fpl_platform_api fplDateTimeResult fplFormatDateTime(const fplDateTime dateTime,
 		correctedEpoch -= (dateTime.utcOffset * 60);
 	}
 
+	struct tm tmStorage;
 	struct tm *timeInfo;
 
 	if (type == fplDateTimeType_UTC) {
-		timeInfo = gmtime(&correctedEpoch);
+		timeInfo = gmtime_r(&correctedEpoch, &tmStorage);
 	} else {
-		timeInfo = localtime(&correctedEpoch);
+		timeInfo = localtime_r(&correctedEpoch, &tmStorage);
 	}
 
-	// Fill in the result structure
-	result.year = (uint16_t)(timeInfo->tm_year + 1900); // tm_year is years since 1900
-	result.month = (uint8_t)(timeInfo->tm_mon + 1); // tm_mon is 0-11
+	if (timeInfo == fpl_null) {
+		return result;
+	}
+
+	result.year = (uint16_t)(timeInfo->tm_year + 1900);
+	result.month = (uint8_t)(timeInfo->tm_mon + 1);
 	result.day = (uint8_t)timeInfo->tm_mday;
 	result.hour = (uint8_t)timeInfo->tm_hour;
 	result.minute = (uint8_t)timeInfo->tm_min;

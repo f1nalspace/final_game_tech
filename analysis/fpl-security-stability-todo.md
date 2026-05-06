@@ -223,18 +223,18 @@ Applied Global Conventions; updated all docstrings and call sites.
 - [ ] Check `SUCCEEDED(hr)`; on failure return 0.
 
 ### 5.4 POSIX `fplDateTimeQuery` (19201–19219)
-- [ ] Check `gettimeofday` return.
-- [ ] Use `localtime_r` (thread-safe).
-- [ ] Check `localtime_r` NULL.
+- [x] `gettimeofday` return checked — returns zeroed `fplDateTime` on failure.
+- [x] Switched to `localtime_r` / `gmtime_r` (thread-safe) in `fplDateTimeQuery` and `fplFormatDateTime`.
+- [x] NULL guard added on the `*_r` return; zeroed result on failure.
 
 ### 5.5 POSIX `fplDirectoriesCreate` separator (18954–18992)
-- [ ] Treat both `/` and `\\` as separators.
+- [x] Both `/` and `\\` are now treated as separators (backslashes are normalized in the temp buffer).
 
 ### 5.6 POSIX `fplFormatDateTime` API tag (19221)
 - [x] Added `fpl_platform_api` qualifier to POSIX implementation.
 
 ### 5.7 POSIX `fplDirectoryListNext` loop refactor (19070–19094)
-- [ ] Refactor to single `for (;;) { dp = readdir(...); ... }` loop.
+- [x] Refactored to a single `for (;;) { dp = readdir(...); ... }` loop with break-on-EOF and break-on-match.
 
 ### 5.8 Win32 long-path support (`\\?\`)
 - [ ] Decide: document `FPL_MAX_PATH_LENGTH` cap, OR
