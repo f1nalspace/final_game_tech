@@ -12872,42 +12872,108 @@ fpl_common_api size_t fplChangeFileExtension(const char *filePath, const char *n
 	return(result);
 }
 
+#define FPL__PATHCOMBINE_STACK_SEGMENTS 16
+
 fpl_common_api size_t fplPathCombine(char *destPath, const size_t maxDestPathLen, const size_t pathCount, ...) {
 	FPL__CheckArgumentZero(pathCount, 0);
 
-	size_t result = 0;
-
-	size_t curDestPosition = 0;
-	char *currentDestPtr = destPath;
+	// First pass: walk varargs, compute total required length while remembering
+	// per-segment length and whether a separator is needed before each segment.
+	size_t stackLens[FPL__PATHCOMBINE_STACK_SEGMENTS];
+	bool stackNeedsSep[FPL__PATHCOMBINE_STACK_SEGMENTS];
+	size_t *segLens = stackLens;
+	bool *segNeedsSep = stackNeedsSep;
+	bool heapAlloc = false;
+	if (pathCount > FPL__PATHCOMBINE_STACK_SEGMENTS) {
+		segLens = (size_t *)fpl__AllocateTemporaryMemory(sizeof(size_t) * pathCount, fpl__MinAlignment);
+		segNeedsSep = (bool *)fpl__AllocateTemporaryMemory(sizeof(bool) * pathCount, fpl__MinAlignment);
+		if (segLens == fpl_null || segNeedsSep == fpl_null) {
+			if (segLens != fpl_null) {
+				fpl__ReleaseTemporaryMemory(segLens);
+			}
+			if (segNeedsSep != fpl_null) {
+				fpl__ReleaseTemporaryMemory(segNeedsSep);
+			}
+			FPL__ERROR(FPL__MODULE_PATHS, "Failed to allocate path-combine scratch");
+			return(0);
+		}
+		heapAlloc = true;
+	}
 
 	va_list vargs;
 	va_start(vargs, pathCount);
+
+	size_t totalLen = 0;
+	const char **segments = fpl_null;
+	const char *stackSegments[FPL__PATHCOMBINE_STACK_SEGMENTS];
+	const char **segPtrs = stackSegments;
+	if (pathCount > FPL__PATHCOMBINE_STACK_SEGMENTS) {
+		segPtrs = (const char **)fpl__AllocateTemporaryMemory(sizeof(const char *) * pathCount, fpl__MinAlignment);
+		if (segPtrs == fpl_null) {
+			va_end(vargs);
+			if (heapAlloc) {
+				fpl__ReleaseTemporaryMemory(segLens);
+				fpl__ReleaseTemporaryMemory(segNeedsSep);
+			}
+			FPL__ERROR(FPL__MODULE_PATHS, "Failed to allocate path-combine scratch");
+			return(0);
+		}
+		segments = segPtrs;
+	}
+
+	bool prevHasTrailingSep = false;
 	for (size_t pathIndex = 0; pathIndex < pathCount; ++pathIndex) {
 		const char *path = va_arg(vargs, const char *);
+		segPtrs[pathIndex] = path;
 		size_t pathLen = fplGetStringLength(path);
-
-		bool requireSeparator = pathIndex < (pathCount - 1);
-		size_t requiredPathLen = requireSeparator ? pathLen + 1 : pathLen;
-
-		result += requiredPathLen;
-
-		if (destPath != fpl_null) {
-			size_t requiredDestLen = result + 1;
-			FPL__CheckArgumentMin(maxDestPathLen, requiredDestLen, 0);
-
-			fplCopyStringLen(path, pathLen, currentDestPtr, maxDestPathLen - curDestPosition);
-			currentDestPtr += pathLen;
-			if (requireSeparator) {
-				*currentDestPtr++ = FPL_PATH_SEPARATOR;
-			}
-			curDestPosition += requiredPathLen;
+		segLens[pathIndex] = pathLen;
+		bool needsSepBefore = false;
+		if (pathIndex > 0 && pathLen > 0 && !prevHasTrailingSep) {
+			needsSepBefore = true;
+		}
+		segNeedsSep[pathIndex] = needsSepBefore;
+		totalLen += pathLen + (needsSepBefore ? 1u : 0u);
+		if (pathLen > 0) {
+			prevHasTrailingSep = (path[pathLen - 1] == FPL_PATH_SEPARATOR);
 		}
 	}
-	if (currentDestPtr != fpl_null) {
-		*currentDestPtr = 0;
-	}
 	va_end(vargs);
-	return(result);
+
+	if (destPath != fpl_null) {
+		size_t requiredDestLen = totalLen + 1;
+		if (maxDestPathLen < requiredDestLen) {
+			FPL__ERROR(FPL__MODULE_PATHS, "fplPathCombine: buffer too small (need %zu, have %zu)", requiredDestLen, maxDestPathLen);
+			if (segments != fpl_null) {
+				fpl__ReleaseTemporaryMemory(segments);
+			}
+			if (heapAlloc) {
+				fpl__ReleaseTemporaryMemory(segLens);
+				fpl__ReleaseTemporaryMemory(segNeedsSep);
+			}
+			return(0);
+		}
+		size_t pos = 0;
+		for (size_t pathIndex = 0; pathIndex < pathCount; ++pathIndex) {
+			if (segNeedsSep[pathIndex]) {
+				destPath[pos++] = FPL_PATH_SEPARATOR;
+			}
+			size_t pathLen = segLens[pathIndex];
+			if (pathLen > 0) {
+				fplMemoryCopy(segPtrs[pathIndex], pathLen * sizeof(char), destPath + pos);
+				pos += pathLen;
+			}
+		}
+		destPath[pos] = 0;
+	}
+
+	if (segments != fpl_null) {
+		fpl__ReleaseTemporaryMemory(segments);
+	}
+	if (heapAlloc) {
+		fpl__ReleaseTemporaryMemory(segLens);
+		fpl__ReleaseTemporaryMemory(segNeedsSep);
+	}
+	return(totalLen);
 }
 #endif // FPL__COMMON_PATHS_DEFINED
 
@@ -16056,6 +16122,11 @@ fpl_platform_api void fplMemoryFree(void *ptr) {
 fpl_internal const uint64_t FPL__WIN32_TICKS_PER_SEC = 10000000ULL;
 fpl_internal const uint64_t FPL__WIN32_UNIX_EPOCH_DIFFERENCE = 11644473600ULL;
 
+// fplClearStruct zeroes the struct, setting the handle to NULL.
+// CreateFileW returns INVALID_HANDLE_VALUE (-1) on error.
+// A handle is only safe to use when it is neither NULL nor INVALID_HANDLE_VALUE.
+#define FPL__WIN32_IS_VALID_FILE_HANDLE(h) ((h) != fpl_null && (h) != INVALID_HANDLE_VALUE)
+
 fpl_internal fplFileTimeStamp fpl__Win32ConvertFileTimeToUnixTimestamp(const FILETIME *fileTime) {
 	// Ticks are defined in 100 ns = 10000000 secs
 	// Windows ticks starts at 1601-01-01T00:00:00Z
@@ -16150,14 +16221,16 @@ fpl_platform_api uint32_t fplFileReadBlock32(const fplFileHandle *fileHandle, co
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sizeToRead, 0);
 	FPL__CheckArgumentNull(targetBuffer, 0);
-	if (fileHandle->internalHandle.win32FileHandle == fpl_null) {
+	FPL__CheckArgumentZero(maxTargetBufferSize, 0);
+	if (!FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		FPL__ERROR(FPL__MODULE_FILES, "Filehandle is not opened for reading");
 		return 0;
 	}
+	uint32_t actualToRead = (sizeToRead > maxTargetBufferSize) ? maxTargetBufferSize : sizeToRead;
 	uint32_t result = 0;
 	HANDLE win32FileHandle = (HANDLE)fileHandle->internalHandle.win32FileHandle;
 	DWORD bytesRead = 0;
-	if (ReadFile(win32FileHandle, targetBuffer, (DWORD)sizeToRead, &bytesRead, fpl_null) == TRUE) {
+	if (ReadFile(win32FileHandle, targetBuffer, (DWORD)actualToRead, &bytesRead, fpl_null) == TRUE) {
 		result = bytesRead;
 	}
 	return(result);
@@ -16167,14 +16240,16 @@ fpl_platform_api uint64_t fplFileReadBlock64(const fplFileHandle *fileHandle, co
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sizeToRead, 0);
 	FPL__CheckArgumentNull(targetBuffer, 0);
-	if (fileHandle->internalHandle.win32FileHandle == fpl_null) {
+	FPL__CheckArgumentZero(maxTargetBufferSize, 0);
+	if (!FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		FPL__ERROR(FPL__MODULE_FILES, "Filehandle is not opened for reading");
 		return 0;
 	}
 	// @NOTE(final): There is no ReadFile64 function in win32, so we have to read it in chunks
+	uint64_t actualToRead = (sizeToRead > maxTargetBufferSize) ? maxTargetBufferSize : sizeToRead;
 	uint64_t result = 0;
 	HANDLE win32FileHandle = (HANDLE)fileHandle->internalHandle.win32FileHandle;
-	uint64_t remainingSize = sizeToRead;
+	uint64_t remainingSize = actualToRead;
 	uint64_t bufferPos = 0;
 	const uint64_t MaxDWORD = (uint64_t)(DWORD)-1;
 	while (remainingSize > 0) {
@@ -16183,8 +16258,11 @@ fpl_platform_api uint64_t fplFileReadBlock64(const fplFileHandle *fileHandle, co
 		uint64_t size = fplMin(remainingSize, MaxDWORD);
 		fplAssert(size <= MaxDWORD);
 		if (ReadFile(win32FileHandle, target, (DWORD)size, &bytesRead, fpl_null) == TRUE) {
-			result = bytesRead;
+			result += bytesRead;
 		} else {
+			break;
+		}
+		if (bytesRead == 0) {
 			break;
 		}
 		remainingSize -= bytesRead;
@@ -16197,7 +16275,7 @@ fpl_platform_api uint32_t fplFileWriteBlock32(const fplFileHandle *fileHandle, c
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sourceSize, 0);
 	FPL__CheckArgumentNull(sourceBuffer, 0);
-	if (fileHandle->internalHandle.win32FileHandle == fpl_null) {
+	if (!FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		FPL__ERROR(FPL__MODULE_FILES, "Filehandle is not opened for writing");
 		return 0;
 	}
@@ -16214,7 +16292,7 @@ fpl_platform_api uint64_t fplFileWriteBlock64(const fplFileHandle *fileHandle, c
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sourceSize, 0);
 	FPL__CheckArgumentNull(sourceBuffer, 0);
-	if (fileHandle->internalHandle.win32FileHandle == fpl_null) {
+	if (!FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		FPL__ERROR(FPL__MODULE_FILES, "Filehandle is not opened for writing");
 		return 0;
 	}
@@ -16229,8 +16307,11 @@ fpl_platform_api uint64_t fplFileWriteBlock64(const fplFileHandle *fileHandle, c
 		fplAssert(size <= MaxDWORD);
 		DWORD bytesWritten = 0;
 		if (WriteFile(win32FileHandle, source, (DWORD)size, &bytesWritten, fpl_null) == TRUE) {
-			result = bytesWritten;
+			result += bytesWritten;
 		} else {
+			break;
+		}
+		if (bytesWritten == 0) {
 			break;
 		}
 		remainingSize -= bytesWritten;
@@ -16242,7 +16323,7 @@ fpl_platform_api uint64_t fplFileWriteBlock64(const fplFileHandle *fileHandle, c
 fpl_platform_api uint32_t fplFileSetPosition32(const fplFileHandle *fileHandle, const int32_t position, const fplFilePositionMode mode) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint32_t result = 0;
-	if (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+	if (FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
 		DWORD moveMethod = FILE_BEGIN;
 		if (mode == fplFilePositionMode_Current) {
@@ -16260,7 +16341,7 @@ fpl_platform_api uint32_t fplFileSetPosition32(const fplFileHandle *fileHandle, 
 fpl_platform_api uint64_t fplFileSetPosition64(const fplFileHandle *fileHandle, const int64_t position, const fplFilePositionMode mode) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint64_t result = 0;
-	if (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+	if (FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
 		DWORD moveMethod = FILE_BEGIN;
 		if (mode == fplFilePositionMode_Current) {
@@ -16280,7 +16361,7 @@ fpl_platform_api uint64_t fplFileSetPosition64(const fplFileHandle *fileHandle, 
 
 fpl_platform_api uint32_t fplFileGetPosition32(const fplFileHandle *fileHandle) {
 	FPL__CheckArgumentNull(fileHandle, 0);
-	if (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+	if (FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
 		DWORD filePosition = SetFilePointer(win32FileHandle, 0L, fpl_null, FILE_CURRENT);
 		if (filePosition != INVALID_SET_FILE_POINTER) {
@@ -16293,7 +16374,7 @@ fpl_platform_api uint32_t fplFileGetPosition32(const fplFileHandle *fileHandle) 
 fpl_platform_api uint64_t fplFileGetPosition64(const fplFileHandle *fileHandle) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint64_t result = 0;
-	if (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+	if (FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
 		LARGE_INTEGER r = fplZeroInit;
 		LARGE_INTEGER li;
@@ -16302,12 +16383,12 @@ fpl_platform_api uint64_t fplFileGetPosition64(const fplFileHandle *fileHandle) 
 			result = (uint64_t)r.QuadPart;
 		}
 	}
-	return 0;
+	return result;
 }
 
 fpl_platform_api bool fplFileFlush(fplFileHandle *fileHandle) {
 	FPL__CheckArgumentNull(fileHandle, false);
-	if (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+	if (FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
 		bool result = FlushFileBuffers(win32FileHandle) == TRUE;
 		return(result);
@@ -16316,7 +16397,7 @@ fpl_platform_api bool fplFileFlush(fplFileHandle *fileHandle) {
 }
 
 fpl_platform_api void fplFileClose(fplFileHandle *fileHandle) {
-	if ((fileHandle != fpl_null) && (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE)) {
+	if ((fileHandle != fpl_null) && FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
 		CloseHandle(win32FileHandle);
 		fplClearStruct(fileHandle);
@@ -16358,7 +16439,7 @@ fpl_platform_api uint64_t fplFileGetSizeFromPath64(const char *filePath) {
 fpl_platform_api uint32_t fplFileGetSizeFromHandle32(const fplFileHandle *fileHandle) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint32_t result = 0;
-	if (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+	if (FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
 		DWORD fileSize = GetFileSize(win32FileHandle, fpl_null);
 		result = (uint32_t)fileSize;
@@ -16369,7 +16450,7 @@ fpl_platform_api uint32_t fplFileGetSizeFromHandle32(const fplFileHandle *fileHa
 fpl_platform_api uint64_t fplFileGetSizeFromHandle64(const fplFileHandle *fileHandle) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint64_t result = 0;
-	if (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+	if (FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
 		LARGE_INTEGER li = fplZeroInit;
 		if (GetFileSizeEx(win32FileHandle, &li) == TRUE) {
@@ -16405,7 +16486,7 @@ fpl_platform_api bool fplFileGetTimestampsFromPath(const char *filePath, fplFile
 fpl_platform_api bool fplFileGetTimestampsFromHandle(const fplFileHandle *fileHandle, fplFileTimeStamps *outStamps) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentNull(outStamps, 0);
-	if (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+	if (FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
 		FILETIME times[3];
 		if (GetFileTime(win32FileHandle, &times[0], &times[1], &times[2]) == TRUE) {
@@ -16440,7 +16521,7 @@ fpl_platform_api bool fplFileCopy(const char *sourceFilePath, const char *target
 	wchar_t sourceFilePathWide[FPL_MAX_PATH_LENGTH];
 	wchar_t targetFilePathWide[FPL_MAX_PATH_LENGTH];
 	fplUTF8StringToWideString(sourceFilePath, fplGetStringLength(sourceFilePath), sourceFilePathWide, fplArrayCount(sourceFilePathWide));
-	fplUTF8StringToWideString(sourceFilePath, fplGetStringLength(sourceFilePath), targetFilePathWide, fplArrayCount(targetFilePathWide));
+	fplUTF8StringToWideString(targetFilePath, fplGetStringLength(targetFilePath), targetFilePathWide, fplArrayCount(targetFilePathWide));
 	bool result = (CopyFileW(sourceFilePathWide, targetFilePathWide, !overwrite) == TRUE);
 	return(result);
 }
@@ -16451,7 +16532,7 @@ fpl_platform_api bool fplFileMove(const char *sourceFilePath, const char *target
 	wchar_t sourceFilePathWide[FPL_MAX_PATH_LENGTH];
 	wchar_t targetFilePathWide[FPL_MAX_PATH_LENGTH];
 	fplUTF8StringToWideString(sourceFilePath, fplGetStringLength(sourceFilePath), sourceFilePathWide, fplArrayCount(sourceFilePathWide));
-	fplUTF8StringToWideString(sourceFilePath, fplGetStringLength(sourceFilePath), targetFilePathWide, fplArrayCount(targetFilePathWide));
+	fplUTF8StringToWideString(targetFilePath, fplGetStringLength(targetFilePath), targetFilePathWide, fplArrayCount(targetFilePathWide));
 	bool result = (MoveFileW(sourceFilePathWide, targetFilePathWide) == TRUE);
 	return(result);
 }
@@ -16583,7 +16664,7 @@ fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter
 fpl_platform_api bool fplDirectoryListNext(fplFileEntry *entry) {
 	FPL__CheckArgumentNull(entry, false);
 	bool result = false;
-	if (entry->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+	if (FPL__WIN32_IS_VALID_FILE_HANDLE(entry->internalHandle.win32FileHandle)) {
 		HANDLE searchHandle = entry->internalHandle.win32FileHandle;
 		WIN32_FIND_DATAW findData;
 		bool foundNext;
@@ -16604,7 +16685,7 @@ fpl_platform_api bool fplDirectoryListNext(fplFileEntry *entry) {
 
 fpl_platform_api void fplDirectoryListEnd(fplFileEntry *entry) {
 	FPL__CheckArgumentNullNoRet(entry);
-	if (entry->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+	if (FPL__WIN32_IS_VALID_FILE_HANDLE(entry->internalHandle.win32FileHandle)) {
 		HANDLE searchHandle = entry->internalHandle.win32FileHandle;
 		FindClose(searchHandle);
 		fplClearStruct(entry);
@@ -16803,11 +16884,25 @@ fpl_platform_api fplDateTimeResult fplFormatDateTime(const fplDateTime dateTime,
 fpl_platform_api size_t fplWideStringToUTF8String(const wchar_t *wideSource, const size_t wideSourceLen, char *utf8Dest, const size_t maxUtf8DestLen) {
 	FPL__CheckArgumentNull(wideSource, 0);
 	FPL__CheckArgumentZero(wideSourceLen, 0);
-	size_t result = WideCharToMultiByte(CP_UTF8, 0, wideSource, (int)wideSourceLen, fpl_null, 0, fpl_null, fpl_null);
+	if (wideSourceLen > (size_t)INT_MAX) {
+		FPL__ERROR(FPL__MODULE_STRINGS, "Wide source length %zu exceeds INT_MAX", wideSourceLen);
+		return(0);
+	}
+	int sizeRes = WideCharToMultiByte(CP_UTF8, 0, wideSource, (int)wideSourceLen, fpl_null, 0, fpl_null, fpl_null);
+	if (sizeRes <= 0) {
+		FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert wide-string to UTF-8 (size query)");
+		return(0);
+	}
+	size_t result = (size_t)sizeRes;
 	if (utf8Dest != fpl_null) {
 		size_t minRequiredLen = result + 1;
 		FPL__CheckArgumentMin(maxUtf8DestLen, minRequiredLen, 0);
-		WideCharToMultiByte(CP_UTF8, 0, wideSource, (int)wideSourceLen, utf8Dest, (int)maxUtf8DestLen, fpl_null, fpl_null);
+		int destClamp = (maxUtf8DestLen > (size_t)INT_MAX) ? INT_MAX : (int)maxUtf8DestLen;
+		int writeRes = WideCharToMultiByte(CP_UTF8, 0, wideSource, (int)wideSourceLen, utf8Dest, destClamp, fpl_null, fpl_null);
+		if (writeRes <= 0) {
+			FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert wide-string to UTF-8 (write)");
+			return(0);
+		}
 		utf8Dest[result] = 0;
 	}
 	return(result);
@@ -16815,11 +16910,25 @@ fpl_platform_api size_t fplWideStringToUTF8String(const wchar_t *wideSource, con
 fpl_platform_api size_t fplUTF8StringToWideString(const char *utf8Source, const size_t utf8SourceLen, wchar_t *wideDest, const size_t maxWideDestLen) {
 	FPL__CheckArgumentNull(utf8Source, 0);
 	FPL__CheckArgumentZero(utf8SourceLen, 0);
-	size_t result = MultiByteToWideChar(CP_UTF8, 0, utf8Source, (int)utf8SourceLen, fpl_null, 0);
+	if (utf8SourceLen > (size_t)INT_MAX) {
+		FPL__ERROR(FPL__MODULE_STRINGS, "UTF-8 source length %zu exceeds INT_MAX", utf8SourceLen);
+		return(0);
+	}
+	int sizeRes = MultiByteToWideChar(CP_UTF8, 0, utf8Source, (int)utf8SourceLen, fpl_null, 0);
+	if (sizeRes <= 0) {
+		FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert UTF-8 to wide-string (size query)");
+		return(0);
+	}
+	size_t result = (size_t)sizeRes;
 	if (wideDest != fpl_null) {
 		size_t minRequiredLen = result + 1;
 		FPL__CheckArgumentMin(maxWideDestLen, minRequiredLen, 0);
-		MultiByteToWideChar(CP_UTF8, 0, utf8Source, (int)utf8SourceLen, wideDest, (int)maxWideDestLen);
+		int destClamp = (maxWideDestLen > (size_t)INT_MAX) ? INT_MAX : (int)maxWideDestLen;
+		int writeRes = MultiByteToWideChar(CP_UTF8, 0, utf8Source, (int)utf8SourceLen, wideDest, destClamp);
+		if (writeRes <= 0) {
+			FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert UTF-8 to wide-string (write)");
+			return(0);
+		}
 		wideDest[result] = 0;
 	}
 	return(result);
@@ -18674,14 +18783,16 @@ fpl_platform_api uint32_t fplFileReadBlock32(const fplFileHandle *fileHandle, co
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sizeToRead, 0);
 	FPL__CheckArgumentNull(targetBuffer, 0);
+	FPL__CheckArgumentZero(maxTargetBufferSize, 0);
 	if (!fileHandle->internalHandle.posixFileHandle) {
 		FPL__ERROR(FPL__MODULE_FILES, "File handle is not opened for reading");
 		return 0;
 	}
+	uint32_t actualToRead = (sizeToRead > maxTargetBufferSize) ? maxTargetBufferSize : sizeToRead;
 	int posixFileHandle = fileHandle->internalHandle.posixFileHandle;
 	ssize_t res;
 	do {
-		res = read(posixFileHandle, targetBuffer, sizeToRead);
+		res = read(posixFileHandle, targetBuffer, actualToRead);
 	} while (res == -1 && errno == EINTR);
 	uint32_t result = 0;
 	if (res != -1) {
@@ -18694,13 +18805,15 @@ fpl_platform_api uint64_t fplFileReadBlock64(const fplFileHandle *fileHandle, co
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sizeToRead, 0);
 	FPL__CheckArgumentNull(targetBuffer, 0);
+	FPL__CheckArgumentZero(maxTargetBufferSize, 0);
 	if (!fileHandle->internalHandle.posixFileHandle) {
 		FPL__ERROR(FPL__MODULE_FILES, "File handle is not opened for reading");
 		return 0;
 	}
+	uint64_t actualToRead = (sizeToRead > maxTargetBufferSize) ? maxTargetBufferSize : sizeToRead;
 	int posixFileHandle = fileHandle->internalHandle.posixFileHandle;
 	uint64_t result = 0;
-	uint64_t remainingSize = sizeToRead;
+	uint64_t remainingSize = actualToRead;
 	uint64_t bufferPos = 0;
 	const uint64_t MaxValue = (uint64_t)(size_t)-1;
 	while (remainingSize > 0) {
@@ -18710,13 +18823,15 @@ fpl_platform_api uint64_t fplFileReadBlock64(const fplFileHandle *fileHandle, co
 		do {
 			res = read(posixFileHandle, target, size);
 		} while (res == -1 && errno == EINTR);
-		if (res != -1) {
-			result += res;
-		} else {
+		if (res == -1) {
 			break;
 		}
-		remainingSize -= res;
-		bufferPos += res;
+		if (res == 0) {
+			break;
+		}
+		result += (uint64_t)res;
+		remainingSize -= (uint64_t)res;
+		bufferPos += (uint64_t)res;
 	}
 	return(result);
 }
@@ -18761,11 +18876,15 @@ fpl_platform_api uint64_t fplFileWriteBlock64(const fplFileHandle *fileHandle, c
 		do {
 			res = write(posixFileHandle, source, size);
 		} while (res == -1 && errno == EINTR);
-		if (res != -1) {
-			result += res;
+		if (res == -1) {
+			break;
 		}
-		remainingSize -= res;
-		bufferPos += res;
+		if (res == 0) {
+			break;
+		}
+		result += (uint64_t)res;
+		remainingSize -= (uint64_t)res;
+		bufferPos += (uint64_t)res;
 	}
 	return(result);
 }
@@ -19213,26 +19332,26 @@ fpl_platform_api size_t fplGetExecutableFilePath(char *destPath, const size_t ma
 	size_t result = 0;
 	for (int i = 0; i < fplArrayCount(procNames); ++i) {
 		const char *procName = procNames[i];
-		if (readlink(procName, buf, fplArrayCount(buf) - 1)) {
-			int len = fplGetStringLength(buf);
-			if (len > 0) {
-				char *lastP = buf + (len - 1);
-				char *p = lastP;
-				while (p != buf) {
-					if (*p == '/') {
-						len = (lastP - buf) + 1;
-						break;
-					}
-					--p;
-				}
-				result = len;
-				if (destPath != fpl_null) {
-					size_t requiredLen = len + 1;
-					FPL__CheckArgumentMin(maxDestLen, requiredLen, 0);
-					fplCopyStringLen(buf, len, destPath, maxDestLen);
+		ssize_t n = readlink(procName, buf, fplArrayCount(buf) - 1);
+		if (n > 0) {
+			buf[n] = '\0';
+			size_t len = (size_t)n;
+			char *lastP = buf + (len - 1);
+			char *p = lastP;
+			while (p != buf) {
+				if (*p == '/') {
+					len = (size_t)((lastP - buf) + 1);
 					break;
 				}
+				--p;
 			}
+			result = len;
+			if (destPath != fpl_null) {
+				size_t requiredLen = len + 1;
+				FPL__CheckArgumentMin(maxDestLen, requiredLen, 0);
+				fplCopyStringLen(buf, len, destPath, maxDestLen);
+			}
+			break;
 		}
 	}
 	return(result);
@@ -19243,6 +19362,9 @@ fpl_platform_api size_t fplGetHomePath(char *destPath, const size_t maxDestLen) 
 	if (homeDir == fpl_null) {
 		int userId = getuid();
 		struct passwd *userPwd = getpwuid(userId);
+		if (userPwd == fpl_null || userPwd->pw_dir == fpl_null) {
+			return(0);
+		}
 		homeDir = userPwd->pw_dir;
 	}
 	size_t result = fplGetStringLength(homeDir);
@@ -19396,27 +19518,107 @@ fpl_platform_api bool fplOSGetVersionInfos(fplOSVersionInfos *outInfos) {
 // @NOTE(final): stdio.h is already included
 fpl_platform_api size_t fplWideStringToUTF8String(const wchar_t *wideSource, const size_t wideSourceLen, char *utf8Dest, const size_t maxUtf8DestLen) {
 	// @NOTE(final): Expect locale to be UTF-8
+	// wcstombs requires a NUL-terminated input; build one and use the C-string contract.
 	FPL__CheckArgumentNull(wideSource, 0);
 	FPL__CheckArgumentZero(wideSourceLen, 0);
-	size_t result = wcstombs(fpl_null, wideSource, wideSourceLen);
+	wchar_t stackBuf[FPL_MAX_PATH_LENGTH];
+	wchar_t *tempSource = fpl_null;
+	bool heapAlloc = false;
+	if (wideSourceLen + 1 <= fplArrayCount(stackBuf)) {
+		tempSource = stackBuf;
+	} else {
+		tempSource = (wchar_t *)fpl__AllocateTemporaryMemory((wideSourceLen + 1) * sizeof(wchar_t), fpl__MinAlignment);
+		if (tempSource == fpl_null) {
+			FPL__ERROR(FPL__MODULE_STRINGS, "Failed to allocate temporary wide-string buffer");
+			return(0);
+		}
+		heapAlloc = true;
+	}
+	for (size_t i = 0; i < wideSourceLen; ++i) {
+		tempSource[i] = wideSource[i];
+	}
+	tempSource[wideSourceLen] = 0;
+	size_t result = wcstombs(fpl_null, tempSource, 0);
+	if (result == (size_t)-1) {
+		if (heapAlloc) {
+			fpl__ReleaseTemporaryMemory(tempSource);
+		}
+		FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert wide-string to UTF-8");
+		return(0);
+	}
 	if (utf8Dest != fpl_null) {
 		size_t requiredLen = result + 1;
-		FPL__CheckArgumentMin(maxUtf8DestLen, requiredLen, 0);
-		wcstombs(utf8Dest, wideSource, wideSourceLen);
+		if (maxUtf8DestLen < requiredLen) {
+			if (heapAlloc) {
+				fpl__ReleaseTemporaryMemory(tempSource);
+			}
+			return(0);
+		}
+		size_t written = wcstombs(utf8Dest, tempSource, maxUtf8DestLen);
+		if (written == (size_t)-1) {
+			if (heapAlloc) {
+				fpl__ReleaseTemporaryMemory(tempSource);
+			}
+			FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert wide-string to UTF-8");
+			return(0);
+		}
 		utf8Dest[result] = 0;
+	}
+	if (heapAlloc) {
+		fpl__ReleaseTemporaryMemory(tempSource);
 	}
 	return(result);
 }
 fpl_platform_api size_t fplUTF8StringToWideString(const char *utf8Source, const size_t utf8SourceLen, wchar_t *wideDest, const size_t maxWideDestLen) {
 	// @NOTE(final): Expect locale to be UTF-8
+	// mbstowcs requires a NUL-terminated input; build one and use the C-string contract.
 	FPL__CheckArgumentNull(utf8Source, 0);
 	FPL__CheckArgumentZero(utf8SourceLen, 0);
-	size_t result = mbstowcs(fpl_null, utf8Source, utf8SourceLen);
+	char stackBuf[FPL_MAX_PATH_LENGTH];
+	char *tempSource = fpl_null;
+	bool heapAlloc = false;
+	if (utf8SourceLen + 1 <= fplArrayCount(stackBuf)) {
+		tempSource = stackBuf;
+	} else {
+		tempSource = (char *)fpl__AllocateTemporaryMemory(utf8SourceLen + 1, fpl__MinAlignment);
+		if (tempSource == fpl_null) {
+			FPL__ERROR(FPL__MODULE_STRINGS, "Failed to allocate temporary UTF-8 buffer");
+			return(0);
+		}
+		heapAlloc = true;
+	}
+	for (size_t i = 0; i < utf8SourceLen; ++i) {
+		tempSource[i] = utf8Source[i];
+	}
+	tempSource[utf8SourceLen] = 0;
+	size_t result = mbstowcs(fpl_null, tempSource, 0);
+	if (result == (size_t)-1) {
+		if (heapAlloc) {
+			fpl__ReleaseTemporaryMemory(tempSource);
+		}
+		FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert UTF-8 to wide-string");
+		return(0);
+	}
 	if (wideDest != fpl_null) {
 		size_t requiredLen = result + 1;
-		FPL__CheckArgumentMin(maxWideDestLen, requiredLen, 0);
-		mbstowcs(wideDest, utf8Source, utf8SourceLen);
+		if (maxWideDestLen < requiredLen) {
+			if (heapAlloc) {
+				fpl__ReleaseTemporaryMemory(tempSource);
+			}
+			return(0);
+		}
+		size_t written = mbstowcs(wideDest, tempSource, maxWideDestLen);
+		if (written == (size_t)-1) {
+			if (heapAlloc) {
+				fpl__ReleaseTemporaryMemory(tempSource);
+			}
+			FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert UTF-8 to wide-string");
+			return(0);
+		}
 		wideDest[result] = 0;
+	}
+	if (heapAlloc) {
+		fpl__ReleaseTemporaryMemory(tempSource);
 	}
 	return(result);
 }
