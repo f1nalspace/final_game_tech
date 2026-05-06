@@ -239,6 +239,7 @@ Copyright 2024-2026 Torsten Spaete
 
 - Extented testing framework (Test callbacks)
 - Improved performance of microstepping checks
+- X86 Support
 
 ### Bugfixes
 
@@ -757,16 +758,18 @@ typedef union {
 	};
 } fgbReadOnlyMemory;
 
-// Represents the external RAM (up to 256 KB) in a game pak
+// Represents the external RAM (up to 256 KB) in a game pak.
+// Length is stored as uint64_t (not size_t) so the layout is identical on
+// x86 and x64 — a snapshot saved on either bitness loads on both.
 typedef union {
 	// Full data array
-	uint8_t m[FGB_MAX_EXTERNAL_RAM_SIZE + sizeof(size_t) + sizeof(uint64_t) + sizeof(bool) * 8];
+	uint8_t m[FGB_MAX_EXTERNAL_RAM_SIZE + sizeof(uint64_t) + sizeof(uint64_t) + sizeof(bool) * 8];
 	// Anonymous struct holding the external ram and some states
 	struct {
 		// Fixed amount of memory + size
 		struct {
 			// Size of the RAM
-			size_t length;
+			uint64_t length;
 			// The entire RAM of the gamepak
 			uint8_t data[FGB_MAX_EXTERNAL_RAM_SIZE];
 		} memory;
@@ -1158,7 +1161,9 @@ typedef struct {
 #pragma pack(pop)
 FGB_STATIC_ASSERT(sizeof(fgbMBC3RTCRegister) == 8);
 
-#pragma pack(push,8)
+// pack(4) keeps the layout identical on x86 and x64 — uint64_t aligns to 4
+// on both, so a snapshot saved on either bitness loads on both.
+#pragma pack(push,4)
 typedef struct {
 	// RTC Register
 	fgbMBC3RTCRegister reg;
@@ -1176,7 +1181,7 @@ typedef struct {
 #pragma pack(pop)
 FGB_STATIC_ASSERT(sizeof(fgbMBC3RTC) == 32);
 
-#pragma pack(push,8)
+#pragma pack(push,4)
 // Represents the state for a MBC3
 typedef struct {
 	// RTC values
@@ -1187,8 +1192,8 @@ typedef struct {
 	uint8_t ramBankOrRTCRegister;
 	// RAM + RTC Register enabled
 	bool isRAMAndRTCEnabled;
-	// Padding to align to 40 bytes
-	uint8_t padding[25];
+	// Padding to bring the struct to a fixed 64 bytes regardless of bitness.
+	uint8_t padding[29];
 } fgbMBC3;
 #pragma pack(pop)
 FGB_STATIC_ASSERT(sizeof(fgbMBC3) == 64);
@@ -2607,12 +2612,13 @@ typedef struct {
 	uint8_t unused[2];
 } fgbSerialState;
 
-// Represents the full state of the serial data transfer
+// Represents the full state of the serial data transfer.
+// `count` is uint64_t (not size_t) so the snapshot layout is bitness-independent.
 typedef struct {
 	// Current character buffer (~2 KB)
 	char data[2032];
 	// Number of characters
-	size_t count;
+	uint64_t count;
 	// Serial state
 	fgbSerialState state;
 } fgbSerial;
@@ -3259,7 +3265,9 @@ typedef enum {
 	fgbCPUStateType_HaltDI = 5,
 } fgbCPUStateType;
 
-#pragma pack(push, 8)
+// pack(4) -> uint64_t alignment becomes 4 on both x86 and x64, so the layout
+// matches across bitness. Explicit tail padding makes the struct exactly 32 B.
+#pragma pack(push, 4)
 // Represents the state of the CPU
 typedef struct {
 	// The total tick cycles emulated
@@ -3276,13 +3284,13 @@ typedef struct {
 	// Emulation continues — HW keeps ticking inside the loop — but callers may use this to
 	// distinguish "test finished" from "still running".
 	bool isInDeadLoop;
-	// Padding to keep struct size unchanged (was uint32 paddingU32; now bool + 3 bytes pad)
-	uint8_t paddingU8[3];
+	// Padding to keep struct size at a fixed 32 bytes regardless of bitness
+	uint8_t paddingU8[7];
 } fgbCPUState;
 #pragma pack(pop)
 FGB_STATIC_ASSERT(sizeof(fgbCPUState) == 32);
 
-#pragma pack(push, 8)
+#pragma pack(push, 4)
 // Represents the full CPU with all registers and the state
 typedef struct {
 	// The instruction register, such as start PC, op-code and a copy of the instruction definition
@@ -3653,27 +3661,38 @@ typedef enum {
 	fgbPPUFetchState_Push,
 } fgbPPUFetchState;
 
+// Sentinel value for the sprite linked list when there is no next/first entry.
+#define FGB_LINE_SPRITE_NO_INDEX ((int8_t)-1)
+
+#pragma pack(push, 1)
 // Sprite linked list entry that stores a copy of the OAM entry.
+// Layout is bitness-independent: uses an index instead of a pointer for the
+// next-link so a snapshot taken on x64 can be restored on x86 (and vice versa).
 typedef struct fgbLineSpriteEntry {
-	// Pointer to the next entry.
-	struct fgbLineSpriteEntry *next;
 	// Copy of the OAM entry.
 	fgbOAMEntry entry;
-	// Padding to align to 16-bytes
-	uint8_t padding[4];
+	// Index into fgbLineSpriteList::buffer of the next entry, or FGB_LINE_SPRITE_NO_INDEX (-1) for none.
+	int8_t nextIndex;
+	// Padding to align to 8-bytes
+	uint8_t padding[3];
 } fgbLineSpriteEntry;
-FGB_STATIC_ASSERT(sizeof(fgbLineSpriteEntry) == 16);
+#pragma pack(pop)
+FGB_STATIC_ASSERT(sizeof(fgbLineSpriteEntry) == 8);
 
+#pragma pack(push, 1)
 // Stores the current sprites for the PPU pipeline.
 typedef struct {
 	// Fixed memory of a linked list with 10 entries.
 	fgbLineSpriteEntry buffer[10];
-	// Contains the first OAM entry link, up to 10.
-	fgbLineSpriteEntry *first;
+	// Index into buffer of the first entry, or FGB_LINE_SPRITE_NO_INDEX (-1) for empty.
+	int8_t firstIndex;
 	// Number of line sprites (max 10).
-	size_t count;
+	uint8_t count;
+	// Padding to align to 4 bytes.
+	uint8_t padding[2];
 } fgbLineSpriteList;
-FGB_STATIC_ASSERT(sizeof(fgbLineSpriteList) == 176);
+#pragma pack(pop)
+FGB_STATIC_ASSERT(sizeof(fgbLineSpriteList) == 84);
 
 #pragma pack(push, 1)
 // Stores the states for the PPU pipeline.
@@ -3738,7 +3757,7 @@ typedef struct {
 	// Padding to align to 4 bytes.
 	uint16_t padding;
 } fgbPPUPipeline;
-FGB_STATIC_ASSERT(sizeof(fgbPPUPipeline) == 360);
+FGB_STATIC_ASSERT(sizeof(fgbPPUPipeline) == 268);
 
 // Represents the full state of the DMA.
 typedef struct {
@@ -4707,14 +4726,16 @@ FGB_API bool fgbIsAudioPowered(const fgbSystem *system);
 // > Snapshots-API
 // ****************************************************************************
 
-// Defines the allowed snapshot versions
+// Defines the console kind a snapshot was taken from.
+// The file header carries this plus a separate format-revision field — see
+// fgb__SnapshotHeader::formatRevision for the on-disk layout version.
 typedef enum {
 	// No version
 	fgbSnapshotVersion_None = 0,
 
-	// DMG version (1.0)
+	// DMG (monochrome) snapshot
 	fgbSnapshotVersion_DMG,
-	// CGB Support
+	// CGB (color) snapshot
 	fgbSnapshotVersion_CGB,
 
 	// Current version
@@ -10263,6 +10284,22 @@ static void fgb__PPUIncrementLine(fgbSystem *system) {
 	fgb__PPUCompareLine(system);
 }
 
+// Sprite linked-list traversal helpers. Operate on indices instead of pointers
+// so the layout is bitness-independent and can be safely serialized.
+static inline void fgb__PPULineSpriteListClear(fgbLineSpriteList *list) {
+	fgbClearStruct(list);
+	list->firstIndex = FGB_LINE_SPRITE_NO_INDEX;
+}
+static inline fgbLineSpriteEntry *fgb__PPULineSpriteFirst(fgbLineSpriteList *list) {
+	return (list->firstIndex < 0) ? NULL : &list->buffer[list->firstIndex];
+}
+static inline fgbLineSpriteEntry *fgb__PPULineSpriteNext(fgbLineSpriteList *list, const fgbLineSpriteEntry *entry) {
+	return (entry->nextIndex < 0) ? NULL : &list->buffer[entry->nextIndex];
+}
+static inline int8_t fgb__PPULineSpriteIndexOf(const fgbLineSpriteList *list, const fgbLineSpriteEntry *entry) {
+	return (int8_t)(entry - list->buffer);
+}
+
 static void fgb__PPUPipelineFetchOAMEntries(fgbPPU *ppu, fgbLCDRegister *lcd, fgbPPUPipeline *pipeline) {
 	// Sprites live in screen-pixel coordinates. The fetcher's coordinate space differs
 	// between BG (offset by SCX%8 due to fine-X discard) and Window (offset by initial
@@ -10271,7 +10308,7 @@ static void fgb__PPUPipelineFetchOAMEntries(fgbPPU *ppu, fgbLCDRegister *lcd, fg
 	const uint8_t fetchOffset = pipeline->state.inWindow
 		? ((lcd->wx < 7) ? (uint8_t)(7 - lcd->wx) : (uint8_t)0)
 		: (uint8_t)(pipeline->state.scx % 8);
-	fgbLineSpriteEntry *item = pipeline->sprites.first;
+	fgbLineSpriteEntry *item = fgb__PPULineSpriteFirst(&pipeline->sprites);
 	while (item != NULL) {
 		int x = (item->entry.x - 8) + fetchOffset;
 
@@ -10280,7 +10317,7 @@ static void fgb__PPUPipelineFetchOAMEntries(fgbPPU *ppu, fgbLCDRegister *lcd, fg
 			pipeline->fetch.entries[pipeline->fetch.entryCount++] = item->entry;
 		}
 
-		item = item->next;
+		item = fgb__PPULineSpriteNext(&pipeline->sprites, item);
 
 		// Either we are the end of the OAM linked list or we already got 3 sprite entries
 		if (item == NULL || pipeline->fetch.entryCount >= 3) {
@@ -10343,7 +10380,7 @@ static fgbPixel fgb__PPUFetchSpritePixel(fgbSystem *system, fgbPPU *ppu, fgbLCDR
 		: (uint8_t)(pipeline->state.scx % 8);
 
 	// Walk full per-line sprite list (already priority-sorted: CGB OAM-order or DMG X-order).
-	for (fgbLineSpriteEntry *item = pipeline->sprites.first; item != NULL; item = item->next) {
+	for (fgbLineSpriteEntry *item = fgb__PPULineSpriteFirst(&pipeline->sprites); item != NULL; item = fgb__PPULineSpriteNext(&pipeline->sprites, item)) {
 		const fgbOAMEntry *entry = &item->entry;
 
 		int x = (entry->x - 8) + fetchOffset;
@@ -10502,7 +10539,7 @@ static void fgb__PPUPipelineFetch(fgbSystem *system, fgbPPU *ppu, fgbLCDRegister
 
 			// Sprites are enabled and we found sprites in the buffer
 			if (lcd->lcdc.objEnable && pipeline->sprites.count > 0) {
-				FGB_ASSERT(pipeline->sprites.first != NULL);
+				FGB_ASSERT(pipeline->sprites.firstIndex >= 0);
 				fgb__PPUPipelineFetchOAMEntries(ppu, lcd, pipeline);
 			}
 
@@ -10709,23 +10746,25 @@ static void fgb__PPUPipelineTick(fgbSystem *system, fgbPPU *ppu, fgbLCDRegister 
 }
 
 static void fgb__PPUInsertSpriteEntry(fgbPPUPipeline *pipeline, fgbLineSpriteEntry *toInsert) {
-	fgbLineSpriteEntry *insReg = pipeline->sprites.first;
+	fgbLineSpriteList *list = &pipeline->sprites;
+	const int8_t toInsertIdx = fgb__PPULineSpriteIndexOf(list, toInsert);
+	fgbLineSpriteEntry *insReg = fgb__PPULineSpriteFirst(list);
 	fgbLineSpriteEntry *prev = NULL;
 	while (insReg != NULL) {
 		if (insReg->entry.x > toInsert->entry.x) {
 			FGB_ASSERT(prev != NULL);
-			prev->next = toInsert;
-			toInsert->next = insReg;
+			prev->nextIndex = toInsertIdx;
+			toInsert->nextIndex = fgb__PPULineSpriteIndexOf(list, insReg);
 			break;
 		}
 
-		if (insReg->next == NULL) {
-			insReg->next = toInsert;
+		if (insReg->nextIndex < 0) {
+			insReg->nextIndex = toInsertIdx;
 			break;
 		}
 
 		prev = insReg;
-		insReg = insReg->next;
+		insReg = fgb__PPULineSpriteNext(list, insReg);
 	}
 }
 
@@ -10734,7 +10773,8 @@ static void fgb__PPUSearchSprites(fgbSystem *system, fgbPPU *ppu) {
 	fgbLCDRegister *lcd = &ppu->lcd;
 
 	// Reset found sprites first
-	fgbClearStruct(&pipeline->sprites);
+	fgbLineSpriteList *list = &pipeline->sprites;
+	fgb__PPULineSpriteListClear(list);
 
 	uint8_t y = lcd->ly;
 
@@ -10750,7 +10790,7 @@ static void fgb__PPUSearchSprites(fgbSystem *system, fgbPPU *ppu) {
 
 		// Sprites at X=0 are off-screen visually but still consume a per-line slot.
 
-		if (pipeline->sprites.count >= FGB__PPU_MAX_SPRITES_PER_LINE) {
+		if (list->count >= FGB__PPU_MAX_SPRITES_PER_LINE) {
 			// Only 10 sprites per line are allowed
 			break;
 		}
@@ -10758,27 +10798,29 @@ static void fgb__PPUSearchSprites(fgbSystem *system, fgbPPU *ppu) {
 		int16_t entryY = oamEntry->y - 16;
 		if (entryY <= y && entryY + spriteHeight > y) {
 
-			fgbLineSpriteEntry *newEntry = &pipeline->sprites.buffer[pipeline->sprites.count++];
+			const int8_t newIdx = (int8_t)list->count;
+			fgbLineSpriteEntry *newEntry = &list->buffer[list->count++];
 			newEntry->entry = *oamEntry;
-			newEntry->next = NULL;
+			newEntry->nextIndex = FGB_LINE_SPRITE_NO_INDEX;
 
 			if (oamOrder) {
 				// Append in OAM traversal order so sprites earlier in OAM stay at the head.
-				if (pipeline->sprites.first == NULL) {
-					pipeline->sprites.first = newEntry;
+				if (list->firstIndex < 0) {
+					list->firstIndex = newIdx;
 				} else {
-					tail->next = newEntry;
+					tail->nextIndex = newIdx;
 				}
 				tail = newEntry;
 			} else {
 				// We are the very first sprite or
 				// We are smaller than the last sprite, so we can insert outself to the very end
-				if (pipeline->sprites.first == NULL || oamEntry->x < pipeline->sprites.first->entry.x) {
-					newEntry->next = pipeline->sprites.first;
-					pipeline->sprites.first = newEntry;
+				fgbLineSpriteEntry *first = fgb__PPULineSpriteFirst(list);
+				if (first == NULL || oamEntry->x < first->entry.x) {
+					newEntry->nextIndex = list->firstIndex;
+					list->firstIndex = newIdx;
 				} else {
 					// Insert the sprite entry in the chain by sorting it in
-					FGB_ASSERT(pipeline->sprites.first != NULL);
+					FGB_ASSERT(list->firstIndex >= 0);
 					fgb__PPUInsertSpriteEntry(pipeline, newEntry);
 				}
 			}
@@ -16468,16 +16510,37 @@ FGB_API bool fgbIsVRAMUpdated(const fgbSystem *system) {
 #define FGB_SNAPSHOT_SOD_KEY (uint32_t)FGB_FOURCC('F', 'S', 'O', 'D')
 #define FGB_SNAPSHOT_EOD_KEY (uint32_t)FGB_FOURCC('F', 'E', 'O', 'D')
 
+// File format revision. Bumped whenever any serialized struct layout changes.
+// 0 = legacy x64-only format (raw pointers, size_t, no bitness/endian markers).
+// 1 = bitness-independent format (uint64_t lengths, indexed sprite list).
+#define FGB_SNAPSHOT_FORMAT_REVISION ((uint32_t)1)
+
+// Endianness sentinel: 0x01020304 written as a u32. Loader compares the on-disk
+// bytes against the same constant in host memory order — a foreign-endian save
+// produces a mismatch and is rejected with a clear error.
+#define FGB_SNAPSHOT_ENDIAN_SENTINEL ((uint32_t)0x01020304u)
+
 #pragma pack(push, 1)
 typedef struct {
-	// 4-byte FourCC Magic code
+	// 4-byte FourCC Magic code ('FGBS')
 	uint32_t magic;
-	// Snapshot version
-	fgbSnapshotVersion version;
-	// Date time
+	// File format revision (FGB_SNAPSHOT_FORMAT_REVISION).
+	uint32_t formatRevision;
+	// Endianness sentinel (FGB_SNAPSHOT_ENDIAN_SENTINEL). Mismatch -> reject.
+	uint32_t endianSentinel;
+	// Pointer width on the writer (8 = x64, 4 = x86). Informational only —
+	// load works regardless because the data layout no longer depends on it.
+	uint8_t pointerSize;
+	// Reserved padding for alignment / future use.
+	uint8_t reserved[3];
+	// Console kind (DMG / CGB). Stored as u32 for stable on-disk width
+	// independent of the host enum size.
+	uint32_t version;
+	// Date time the snapshot was written
 	fgbDateTime dateTime;
 } fgb__SnapshotHeader;
 #pragma pack(pop)
+FGB_STATIC_ASSERT(sizeof(uint32_t) == 4);
 
 static char fgb__SnapshotFilePathBuffer[2048];
 
@@ -16507,11 +16570,8 @@ static bool fgb__IsSnapshotAllowed(const fgbSystem *system) {
 	if (system->state == fgbEmulationState_Error || !system->gamePak.isValid) {
 		return false;
 	}
-#if defined(FGB_64BIT)
+	// Format is now bitness-independent: x64 + x86 builds can both save/load.
 	return true;
-#else
-	return false;
-#endif
 }
 
 FGB_API bool fgbSnapshotExport(fgbSystem *system, fgbSnapshot *outSnapshot) {
@@ -16554,18 +16614,9 @@ FGB_API bool fgbSnapshotExport(fgbSystem *system, fgbSnapshot *outSnapshot) {
 	// PPU
 	fgbCopyStruct(&system->ppu, &outSnapshot->ppu);
 
-	// Generate sprites linked list
-	fgbClearStruct(&outSnapshot->ppu.pipeline.sprites);
-	outSnapshot->ppu.pipeline.sprites.count = system->ppu.pipeline.sprites.count;
-	outSnapshot->ppu.pipeline.sprites.first = NULL; // Don't care, its reconstructed later
-	fgbLineSpriteEntry *inSpriteEntry = system->ppu.pipeline.sprites.first;
-	size_t outSpriteEntryIndex = 0;
-	while (inSpriteEntry != NULL) {
-		fgbLineSpriteEntry *outSpriteEntry = &outSnapshot->ppu.pipeline.sprites.buffer[outSpriteEntryIndex++];
-		outSpriteEntry->entry = inSpriteEntry->entry;
-		outSpriteEntry->next = NULL; // Don't care, its reconstructed later
-		inSpriteEntry = inSpriteEntry->next;
-	}
+	// Sprite linked list — already index-based after the bitness-independent
+	// refactor, so the byte copy in fgbCopyStruct(&system->ppu, ...) above is
+	// already complete and portable. Nothing to flatten.
 
 	// Timer
 	fgbCopyStruct(&system->timer, &outSnapshot->timer);
@@ -16621,10 +16672,6 @@ FGB_API bool fgbIsSnapshotValid(const fgbSystem *system, const fgbSnapshot *snap
 }
 
 FGB_API bool fgbSnapshotSaveToFile(const fgbSystem *system, const char *romFilePath, const uint8_t slotIndex, const fgbSnapshot *snapshot) {
-#if !defined(FGB_64BIT)
-	return false; // We don't support non 64-bit serialization, due to size_t and pointer differences -> Not great :-(
-#endif
-
 	if (system == NULL || romFilePath == NULL || snapshot == NULL || !system->gamePak.isValid) {
 		return false;
 	}
@@ -16652,7 +16699,10 @@ FGB_API bool fgbSnapshotSaveToFile(const fgbSystem *system, const char *romFileP
 	// Header
 	fgb__SnapshotHeader header = { 0 };
 	header.magic = FGB_SNAPSHOT_MAGIC_KEY;
-	header.version = snapshot->version;
+	header.formatRevision = FGB_SNAPSHOT_FORMAT_REVISION;
+	header.endianSentinel = FGB_SNAPSHOT_ENDIAN_SENTINEL;
+	header.pointerSize = (uint8_t)sizeof(void *);
+	header.version = (uint32_t)snapshot->version;
 	header.dateTime = snapshot->dateTime;
 	fgb__FileWrite(cb, fileHandle, &header, sizeof(header));
 
@@ -16707,10 +16757,6 @@ FGB_API bool fgbSnapshotSaveToFile(const fgbSystem *system, const char *romFileP
 }
 
 FGB_API bool fgbSnapshotLoadFromFile(const fgbSystem *system, const char *romFilePath, const uint8_t slotIndex, fgbSnapshot *snapshot) {
-#if !defined(FGB_64BIT)
-	return false; // We don't support non 64-bit serialization, due to size_t and pointer differences -> Not great :-(
-#endif
-
 	if (system == NULL || romFilePath == NULL || snapshot == NULL || !system->gamePak.isValid) {
 		return false;
 	}
@@ -16752,12 +16798,21 @@ FGB_API bool fgbSnapshotLoadFromFile(const fgbSystem *system, const char *romFil
 	if (header.magic != FGB_SNAPSHOT_MAGIC_KEY) {
 		goto failed;
 	}
+	// Foreign-endian save: the writer's host-order u32 doesn't match ours.
+	if (header.endianSentinel != FGB_SNAPSHOT_ENDIAN_SENTINEL) {
+		goto failed;
+	}
+	// Older format revisions are no longer supported (they used pointers and
+	// size_t in the data section, which made them x64-only).
+	if (header.formatRevision != FGB_SNAPSHOT_FORMAT_REVISION) {
+		goto failed;
+	}
 	if (header.version < fgbSnapshotVersion_First || header.version > fgbSnapshotVersion_Current) {
 		goto failed;
 	}
 
 	snapshot->dateTime = header.dateTime;
-	snapshot->version = header.version;
+	snapshot->version = (fgbSnapshotVersion)header.version;
 
 	// Start-of-Data
 	read = fgb__FileRead(cb, fileHandle, &sixteenBytes, sizeof(sixteenBytes), 16);
@@ -16886,18 +16941,8 @@ FGB_API bool fgbSnapshotImport(fgbSystem *system, const fgbSnapshot *snapshot) {
 	// PPU
 	fgbCopyStruct(&snapshot->ppu, &system->ppu);
 
-	// Reconstruct sprite linked list
-	size_t spriteCount = FGB_MIN(FGB_MAX(0, system->ppu.pipeline.sprites.count), 10);
-	if (spriteCount == 0) {
-		system->ppu.pipeline.sprites.first = NULL;
-	} else {
-		system->ppu.pipeline.sprites.first = system->ppu.pipeline.sprites.buffer + 0;
-		for (size_t i = 0; i < spriteCount; ++i) {
-			fgbLineSpriteEntry *entry = system->ppu.pipeline.sprites.buffer + i;
-			fgbLineSpriteEntry *nextEntry = ((i + 1) < spriteCount) ? entry + 1 : NULL;
-			entry->next = nextEntry;
-		}
-	}
+	// Sprite linked list is already restored as part of the byte copy above —
+	// indices are bitness-independent and survive serialization unchanged.
 
 	// Timer
 	fgbCopyStruct(&snapshot->timer, &system->timer);
