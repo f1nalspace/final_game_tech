@@ -183,6 +183,8 @@ SOFTWARE.
 	- New: Added function fplDateTimeCreate that creates a fplDateTime from seperate date time components
 	- New: Added function fplFileAppendBinary() for opening a file for appending, that is useful for log-files and such
 	- New: Added function fplPathNormalize() for normalizing any partial path into a absolute path
+	- New: Added function fplTryStringToS32Len that is a more safe-method than to fplStringToS32
+	- New: Added function fplTryStringToS32 that is a more safe-method than to fplStringToS32
 	- New: Added enum values fplKey_First / fplKey_Last to fplKey enum
 	- New: Added common function fplKeyGetName() for getting the name for a fplKey
 	- New: [Win32] Implemented function fplFileAppendBinary() for Win32 API
@@ -6786,6 +6788,23 @@ fpl_common_api int32_t fplStringToS32Len(const char *str, const size_t len);
 * @return Returns a 32-bit integer converted from the given string.
 */
 fpl_common_api int32_t fplStringToS32(const char *str);
+
+/**
+* @brief Try to convert the given string into a 32-bit integer constrained by string length.
+* @param[in] str The source string.
+* @param[in] len The length of the source string.
+* @param[out] outValue Receives the converted value. On overflow, clamped to INT32_MAX/INT32_MIN. May be null to validate without retrieving the value.
+* @return Returns true if @p str was a valid integer literal (optional sign + at least one digit), false otherwise.
+*/
+fpl_common_api bool fplTryStringToS32Len(const char *str, const size_t len, int32_t *outValue);
+
+/**
+* @brief Try to convert the given NUL-terminated string into a 32-bit integer.
+* @param[in] str The source string.
+* @param[out] outValue Receives the converted value. On overflow, clamped to INT32_MAX/INT32_MIN. May be null to validate without retrieving the value.
+* @return Returns true if @p str was a valid integer literal, false otherwise.
+*/
+fpl_common_api bool fplTryStringToS32(const char *str, int32_t *outValue);
 
 /**
 * @brief Converts the given 32-bit integer value into a string.
