@@ -206,6 +206,7 @@ SOFTWARE.
 	- Fixed: fplStringFormat and fplStringFormatArgs was not implemented correctly due to its documentation rules
 	- Fixed: fplStringToS32Len and fplStringToS32 was not implemented correctly due to its documentation rules
 	- Fixed: Calls to fpl__AllocateTemporaryMemory use either fpl__MinAlignment or 16 or more
+	- Fixed fplCPUID, fplCPURDTSC, fplCPUXCR0 was not detected on GCC/Clang
 	- Fixed[#183]: fpl_internal_inline was not compiling on GCC/Clang
 
 	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
@@ -12228,11 +12229,9 @@ fpl_common_api fplDateTimeCreationResult fplDateTimeCreate(const uint16_t year, 
 // X86/X64 only (CPUID, XCR0, RDTSC)
 //
 #if defined(FPL_ARCH_X64) || defined(FPL_ARCH_X86)
-
 #	define FPL__CPU_BRAND_BUFFER_SIZE 0x40
 
 #	if defined(FPL_COMPILER_MSVC)
-
 		// CPUID/XCR0 for MSVC
 #		if _MSC_VER >= 1400
 #			define fpl__m_CPUID(outLeaf, functionId) __cpuid((int *)(outLeaf)->raw, (int)(functionId))
@@ -12240,14 +12239,11 @@ fpl_common_api fplDateTimeCreationResult fplDateTimeCreate(const uint16_t year, 
 #		if _MSC_VER >= 1600
 #			define fpl__m_GetXCR0() ((uint64_t)_xgetbv(0))
 #		endif
-
 		// RDTSC for MSVC
 #		define fpl__m_RDTSC() ((uint64_t)__rdtsc())
-
 #	elif defined(FPL_COMPILER_GCC) ||defined(FPL_COMPILER_CLANG)
-
 		// CPUID for GCC/CLANG
-fpl_internal void fpl__m_CPUID(fplCPUIDLeaf *outLeaf, const uint32_t functionId) {
+fpl_internal void fpl__m_CPUID_Impl(fplCPUIDLeaf *outLeaf, const uint32_t functionId) {
 	int eax = 0, ebx = 0, ecx = 0, edx = 0;
 	__cpuid_count(functionId, 0, eax, ebx, ecx, edx);
 	outLeaf->eax = eax;
@@ -12255,28 +12251,32 @@ fpl_internal void fpl__m_CPUID(fplCPUIDLeaf *outLeaf, const uint32_t functionId)
 	outLeaf->ecx = ecx;
 	outLeaf->edx = edx;
 }
+#		define fpl__m_CPUID(outLeaf, functionId) fpl__m_CPUID_Impl(outLeaf, functionId)
 
 		// XCR0 for GCC/CLANG
-fpl_internal uint64_t fpl__m_GetXCR0(void) {
+fpl_internal uint64_t fpl__m_GetXCR0_Impl(void) {
 	uint32_t eax, edx;
 	__asm(".byte 0x0F, 0x01, 0xd0" : "=a"(eax), "=d"(edx) : "c"(0));
 	return eax;
 }
+#		define fpl__m_GetXCR0() fpl__m_GetXCR0_Impl()
 
 		// RDTSC for non-MSVC
 #		if defined(FPL_ARCH_X86)
-fpl_force_inline uint64_t fpl__m_RDTSC(void) {
+fpl_force_inline uint64_t fpl__m_RDTSC_Impl(void) {
 	unsigned long long int result;
 	__asm__ volatile (".byte 0x0f, 0x31" : "=A" (result));
 	return((uint64_t)result);
 }
+#			define fpl__m_RDTSC() fpl__m_RDTSC_Impl()
 #		elif defined(FPL_ARCH_X64)
-fpl_force_inline uint64_t fpl__m_RDTSC(void) {
+fpl_force_inline uint64_t fpl__m_RDTSC_Impl(void) {
 	unsigned hi, lo;
 	__asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
 	uint64_t result = (uint64_t)(((unsigned long long)lo) | (((unsigned long long)hi) << 32));
 	return (result);
 }
+#			define fpl__m_RDTSC() fpl__m_RDTSC_Impl()
 #		endif
 #	endif
 
