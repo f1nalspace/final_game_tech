@@ -92,11 +92,11 @@ static void fsec__String_FormatTruncationNullTerminates(void) {
 	fsec__Banner("strings", "fplStringFormat too-small returns 0");
 	size_t required = fplStringFormat(fpl_null, 0, "%s-%s", "abcdef", "ghijkl");
 	FSEC_ASSERT_EQ_SZ(required, 13);
-	char small[8];
-	memset(small, 'X', sizeof(small));
-	size_t writtenWithSmallBuf = fplStringFormat(small, sizeof(small), "%s-%s", "abcdef", "ghijkl");
+	char smallBuffer[8];
+	memset(smallBuffer, 'X', sizeof(smallBuffer));
+	size_t writtenWithSmallBuf = fplStringFormat(smallBuffer, sizeof(smallBuffer), "%s-%s", "abcdef", "ghijkl");
 	FSEC_ASSERT_EQ_SZ(writtenWithSmallBuf, 0);
-	FSEC_ASSERT_TRUE(small[0] == 0);
+	FSEC_ASSERT_TRUE(smallBuffer[0] == 0);
 }
 
 /* 2.2 / 5.10: passing destBuffer != NULL with maxDestBufferLen == 0 must NOT
