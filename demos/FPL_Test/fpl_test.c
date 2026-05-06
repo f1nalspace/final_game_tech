@@ -18,6 +18,7 @@ Changelog:
 	- Converted from C++ to C99
 	- Removed AssertEquals<T> templates in favor of type-specific functions
 	- Wired in fpl_security_tests.c entry points
+	- Fixed ThreadLimits Test first test fails, because the thread was finished too fast
 
 	## 2025-03-30
 	- Test available/used thread count
@@ -859,10 +860,10 @@ static void ThreadLimitThreadProc(const fplThreadHandle *context, void *opaque) 
 	fplThreadSleep(2000);
 }
 
-static void ThreadLimitOneSecProc(const fplThreadHandle *context, void *opaque) {
+static void ThreadLimitThreeSecProc(const fplThreadHandle *context, void *opaque) {
 	(void)context;
 	(void)opaque;
-	fplThreadSleep(1000);
+	fplThreadSleep(3000);
 }
 
 static void ThreadLimits(const size_t overshoot) {
@@ -876,13 +877,13 @@ static void ThreadLimits(const size_t overshoot) {
 		ftAssertSizeEquals(0, usedThreadCount);
 		ftAssertSizeEquals(FPL_MAX_THREAD_COUNT, availableThreadCount);
 
-		fplThreadHandle *oneThread = fplThreadCreate(ThreadLimitOneSecProc, fpl_null);
+		fplThreadHandle *oneThread = fplThreadCreate(ThreadLimitThreeSecProc, fpl_null);
 		usedThreadCount = fplGetUsedThreadCount();
 		availableThreadCount = fplGetAvailableThreadCount();
 		ftMsg("Used/Available threads with one active thread %zu/%zu\n", usedThreadCount, availableThreadCount);
 		ftAssertSizeEquals(1, usedThreadCount);
 		ftAssertSizeEquals(FPL_MAX_THREAD_COUNT - 1, availableThreadCount);
-		fplThreadWaitForOne(oneThread, 3000);
+		fplThreadWaitForOne(oneThread, 4000);
 
 		usedThreadCount = fplGetUsedThreadCount();
 		availableThreadCount = fplGetAvailableThreadCount();
