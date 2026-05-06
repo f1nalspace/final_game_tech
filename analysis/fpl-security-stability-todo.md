@@ -124,7 +124,7 @@ Applied Global Conventions; updated all docstrings and call sites.
 ### 2.6 Win32 file size / position error detection
 - [x] `fplFileGetSizeFromPath32` / `…Handle32`: switched to `GetFileSizeEx` with UINT32_MAX clamp.
 - [x] `fplFileSetPosition32`: switched to `SetFilePointerEx` (clean failure detection, UINT32_MAX clamp).
-- [ ] (Deferred to 3.6) `bool fplFileTryGetSize…(…, uint64_t *outSize);` variant.
+- [x] (Implemented in 3.6) `bool fplFileTryGetSize…(…, uint64_t *outSize);` variant.
 
 ### 2.7 Thread-safe error ring (`fpl__PushError_Formatted`)
 - [x] Replaced racy `count++` with atomic `fplAtomicFetchAndAddU32` slot claim — no mutex / init-order issues.
@@ -176,7 +176,10 @@ Applied Global Conventions; updated all docstrings and call sites.
 - [ ] Audit other public structs; reserve `fpl_b32` for atomic-friendly ABI structs only.
 
 ### 3.6 `fplFileGetSizeFromPath` family — try-style API
-- [ ] Add `bool fplFileTryGetSizeFromPath(const char *path, uint64_t *outSize);` (resolves 3.7).
+- [x] Added `bool fplFileTryGetSizeFromPath(const char *filePath, uint64_t *outSize)` and `bool fplFileTryGetSizeFromHandle(const fplFileHandle *fileHandle, uint64_t *outSize)`.
+- [x] Win32: `CreateFileW + GetFileSizeEx` for path; `GetFileSizeEx` for handle.
+- [x] POSIX: `stat()` + `S_ISREG` for path; `lseek` save/restore for handle.
+- [x] On error `outSize` is left untouched and the function returns `false` — disambiguates a real 0-byte file from a query failure.
 
 ### 3.7 `fplStringFormat` doc cleanup (6751, 6762)
 - [x] Replaced "most likely just a wrapper call to vsnprintf()" with the C99 contract description in both `fplStringFormat` and `fplStringFormatArgs` doxygen blocks.

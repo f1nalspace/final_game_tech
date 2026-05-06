@@ -7239,6 +7239,14 @@ fpl_platform_api uint64_t fplFileGetSizeFromPath64(const char *filePath);
 fpl_platform_api size_t fplFileGetSizeFromPath(const char *filePath);
 
 /**
+* @brief Tries to get the full 64-bit file size in bytes for the given file, distinguishing a zero-byte file from an error.
+* @param[in] filePath The path to the file.
+* @param[out] outSize Reference that receives the file size in bytes on success. Untouched on failure.
+* @return Returns true when the size was retrieved, false on any error (NULL input, file not accessible, query failed).
+*/
+fpl_platform_api bool fplFileTryGetSizeFromPath(const char *filePath, uint64_t *outSize);
+
+/**
 * @brief Gets the file size in bytes for an opened file.
 * @param[in] fileHandle Reference to the file handle structure @ref fplFileHandle.
 * @return Returns the file size in bytes or zero.
@@ -7261,6 +7269,14 @@ fpl_platform_api uint64_t fplFileGetSizeFromHandle64(const fplFileHandle *fileHa
 * @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes.
 */
 fpl_common_api size_t fplFileGetSizeFromHandle(const fplFileHandle *fileHandle);
+
+/**
+* @brief Tries to get the full 64-bit file size in bytes for an opened file, distinguishing a zero-byte file from an error.
+* @param[in] fileHandle Reference to the file handle structure @ref fplFileHandle.
+* @param[out] outSize Reference that receives the file size in bytes on success. Untouched on failure.
+* @return Returns true when the size was retrieved, false on any error (NULL input, invalid handle, query failed).
+*/
+fpl_platform_api bool fplFileTryGetSizeFromHandle(const fplFileHandle *fileHandle, uint64_t *outSize);
 
 /**
 * @brief Gets the timestamps for the given file.
@@ -16476,6 +16492,39 @@ fpl_platform_api uint32_t fplFileGetSizeFromHandle32(const fplFileHandle *fileHa
 	return(result);
 }
 
+fpl_platform_api bool fplFileTryGetSizeFromPath(const char *filePath, uint64_t *outSize) {
+	FPL__CheckArgumentNull(filePath, false);
+	FPL__CheckArgumentNull(outSize, false);
+	bool result = false;
+	wchar_t filePathWide[FPL_MAX_PATH_LENGTH];
+	fplUTF8StringToWideString(filePath, fplGetStringLength(filePath), filePathWide, fplArrayCount(filePathWide));
+	HANDLE win32FileHandle = CreateFileW(filePathWide, GENERIC_READ, FILE_SHARE_READ, fpl_null, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, fpl_null);
+	if (win32FileHandle != INVALID_HANDLE_VALUE) {
+		LARGE_INTEGER li = fplZeroInit;
+		if (GetFileSizeEx(win32FileHandle, &li) == TRUE) {
+			*outSize = (uint64_t)li.QuadPart;
+			result = true;
+		}
+		CloseHandle(win32FileHandle);
+	}
+	return(result);
+}
+
+fpl_platform_api bool fplFileTryGetSizeFromHandle(const fplFileHandle *fileHandle, uint64_t *outSize) {
+	FPL__CheckArgumentNull(fileHandle, false);
+	FPL__CheckArgumentNull(outSize, false);
+	bool result = false;
+	if (FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
+		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
+		LARGE_INTEGER li = fplZeroInit;
+		if (GetFileSizeEx(win32FileHandle, &li) == TRUE) {
+			*outSize = (uint64_t)li.QuadPart;
+			result = true;
+		}
+	}
+	return(result);
+}
+
 fpl_platform_api uint64_t fplFileGetSizeFromHandle64(const fplFileHandle *fileHandle) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint64_t result = 0;
@@ -19053,6 +19102,38 @@ fpl_platform_api uint64_t fplFileGetSizeFromHandle64(const fplFileHandle *fileHa
 		if (curPos != -1) {
 			result = (uint64_t)fpl__lseek64(posixFileHandle, 0, SEEK_END);
 			fpl__lseek64(posixFileHandle, curPos, SEEK_SET);
+		}
+	}
+	return(result);
+}
+
+fpl_platform_api bool fplFileTryGetSizeFromPath(const char *filePath, uint64_t *outSize) {
+	FPL__CheckArgumentNull(filePath, false);
+	FPL__CheckArgumentNull(outSize, false);
+	bool result = false;
+	struct stat sb;
+	if (stat(filePath, &sb) == 0 && S_ISREG(sb.st_mode)) {
+		*outSize = (uint64_t)sb.st_size;
+		result = true;
+	}
+	return(result);
+}
+
+fpl_platform_api bool fplFileTryGetSizeFromHandle(const fplFileHandle *fileHandle, uint64_t *outSize) {
+	FPL__CheckArgumentNull(fileHandle, false);
+	FPL__CheckArgumentNull(outSize, false);
+	bool result = false;
+	if (fileHandle->internalHandle.posixFileHandle) {
+		int posixFileHandle = fileHandle->internalHandle.posixFileHandle;
+		fpl__off64_t curPos = fpl__lseek64(posixFileHandle, 0, SEEK_CUR);
+		if (curPos != -1) {
+			fpl__off64_t end = fpl__lseek64(posixFileHandle, 0, SEEK_END);
+			if (end != -1) {
+				if (fpl__lseek64(posixFileHandle, curPos, SEEK_SET) != -1) {
+					*outSize = (uint64_t)end;
+					result = true;
+				}
+			}
 		}
 	}
 	return(result);
