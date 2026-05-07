@@ -243,6 +243,7 @@ SOFTWARE.
 	- New[#186]: Implemented PipeWire audio backend
 	- New[#178]: Separate input system from windowing system, by introducing a input backend system
 	- New[#187]: Implemented DirectInput input backend
+	- Improved: [Win32/DInput] Backend now routes DIJOYSTATE through fplGamepadMappingApply / fplGamepadMappingApplyDefault, with the resolver from fplGameControllersSettings.mappingResolver invoked once per controller connect to install a custom fplGamepadMapping
 
 	- Improved[#176]: Made internal event queue thread-safe using a lock-free push/pop linear buffer
 	- Improved[#88]: Gamepad input device is not locked to /dev/input/js0 anymore
@@ -10447,6 +10448,12 @@ typedef struct fpl__InputBackendDInputSlot {
 	bool isConnected;
 	fplGameControllerName deviceName;
 	fplGamepadState lastState;
+	// Snapshot built from DIJOYSTATE every poll, fed into the active mapping.
+	fplGamepadRawInput raw;
+	// Mapping installed by the user resolver at connect time (only valid when hasMapping is true).
+	fplGamepadMapping mapping;
+	// True when the resolver returned a mapping, false to fall back to fplGamepadMappingApplyDefault.
+	bool hasMapping;
 } fpl__InputBackendDInputSlot;
 
 // DirectInput backend instance owned by fpl__InputContext.
@@ -12091,6 +12098,27 @@ fpl_common_api bool fplGamepadMappingApplyDefault(const fplGamepadRawInput *inpu
 		outState->dpadLeft.isDown  = (h & 0x8) != 0;
 	}
 	return true;
+}
+
+// Recomputes isActive for the given state by inspecting analog axes and digital buttons. Used by raw-HID backends after producing a state via fplGamepadMappingApply / fplGamepadMappingApplyDefault.
+fpl_internal void fpl__GamepadFinalizeState(fplGamepadState *state) {
+	bool active = false;
+	if (state->leftStickX != 0.0f || state->leftStickY != 0.0f) {
+		active = true;
+	}
+	if (state->rightStickX != 0.0f || state->rightStickY != 0.0f) {
+		active = true;
+	}
+	if (state->leftTrigger != 0.0f || state->rightTrigger != 0.0f) {
+		active = true;
+	}
+	for (int i = 0; i < FPL_GAMEPAD_BUTTON_COUNT; ++i) {
+		if (state->buttons[i].isDown) {
+			active = true;
+			break;
+		}
+	}
+	state->isActive = active;
 }
 
 // Builds a 16-byte SDL-style gamepad GUID from a USB VID/PID/version triple. Used by raw-HID backends (DInput, Linux joydev, etc.) when filling fplGameControllerInfo for the resolver.
@@ -16634,69 +16662,63 @@ fpl_internal void fpl__Win32DInput_ReleaseSlot(fpl__InputBackendDInput *backend,
 	}
 }
 
-fpl_internal void fpl__Win32DInput_MapState(const DIJOYSTATE *raw, fplGamepadState *outState) {
-	outState->isConnected = true;
-	// Sticks: raw [0, 65535] with center 32767 → [-1, +1]. Y axis is inverted so "up" produces positive Y in fpl coordinates (XInput convention).
+// Translates a raw DIJOYSTATE into a backend-agnostic fplGamepadRawInput for fplGamepadMappingApply / fplGamepadMappingApplyDefault. Sticks and sliders are normalized to SDL convention (-1..+1, sliders idle at -1).
+fpl_internal void fpl__Win32DInput_FillRawInput(const DIJOYSTATE *src, fplGamepadRawInput *out) {
+	fplGamepadRawInput zero = fplZeroInit;
+	*out = zero;
+
+	// Sticks: raw [0, 65535] with center 32767 → [-1, +1].
 	const float center = 32767.5f;
 	const float invHalf = 1.0f / 32767.5f;
-	float lsx = ((float)raw->lX  - center) * invHalf;
-	float lsy = ((float)raw->lY  - center) * invHalf;
-	float rsx = ((float)raw->lZ  - center) * invHalf;
-	float rsy = ((float)raw->lRz - center) * invHalf;
-	if (lsx < -1.0f) lsx = -1.0f; else if (lsx > 1.0f) lsx = 1.0f;
-	if (lsy < -1.0f) lsy = -1.0f; else if (lsy > 1.0f) lsy = 1.0f;
-	if (rsx < -1.0f) rsx = -1.0f; else if (rsx > 1.0f) rsx = 1.0f;
-	if (rsy < -1.0f) rsy = -1.0f; else if (rsy > 1.0f) rsy = 1.0f;
-	outState->leftStickX = lsx;
-	outState->leftStickY = -lsy;
-	outState->rightStickX = rsx;
-	outState->rightStickY = -rsy;
-
-	// Analog triggers from the two sliders (rest = 0, full = 65535).
-	float lt = (float)raw->rglSlider[0] * (1.0f / 65535.0f);
-	float rt = (float)raw->rglSlider[1] * (1.0f / 65535.0f);
-	if (lt < 0) lt = 0; else if (lt > 1.0f) lt = 1.0f;
-	if (rt < 0) rt = 0; else if (rt > 1.0f) rt = 1.0f;
-	outState->leftTrigger = lt;
-	outState->rightTrigger = rt;
-
-	// POV[0] (dpad). 0xFFFFFFFF / 0xFFFF / -1 mean centered.
-	DWORD pov = raw->rgdwPOV[0];
-	if (pov != 0xFFFFFFFFu && (pov & 0xFFFFu) != 0xFFFFu) {
-		if (pov >=  31500u || pov <  4500u) outState->dpadUp.isDown    = true;
-		if (pov >=  4500u  && pov < 13500u) outState->dpadRight.isDown = true;
-		if (pov >= 13500u  && pov < 22500u) outState->dpadDown.isDown  = true;
-		if (pov >= 22500u  && pov < 31500u) outState->dpadLeft.isDown  = true;
+	float a[8];
+	a[0] = ((float)src->lX  - center) * invHalf;
+	a[1] = ((float)src->lY  - center) * invHalf;
+	a[2] = ((float)src->lZ  - center) * invHalf;
+	a[3] = ((float)src->lRx - center) * invHalf;
+	a[4] = ((float)src->lRy - center) * invHalf;
+	a[5] = ((float)src->lRz - center) * invHalf;
+	// Sliders idle at 0, full at 65535 → SDL trigger convention -1..+1.
+	a[6] = ((float)src->rglSlider[0] * (2.0f / 65535.0f)) - 1.0f;
+	a[7] = ((float)src->rglSlider[1] * (2.0f / 65535.0f)) - 1.0f;
+	for (int i = 0; i < 8; ++i) {
+		if (a[i] < -1.0f) {
+			a[i] = -1.0f;
+		} else if (a[i] > 1.0f) {
+			a[i] = 1.0f;
+		}
+		out->axes[i] = a[i];
 	}
-	// Action buttons (XBox layout: A=down, B=right, X=left, Y=up).
-	if (raw->rgbButtons[0] & 0x80) outState->actionA.isDown = true;
-	if (raw->rgbButtons[1] & 0x80) outState->actionB.isDown = true;
-	if (raw->rgbButtons[2] & 0x80) outState->actionX.isDown = true;
-	if (raw->rgbButtons[3] & 0x80) outState->actionY.isDown = true;
-	if (raw->rgbButtons[4] & 0x80) outState->leftShoulder.isDown = true;
-	if (raw->rgbButtons[5] & 0x80) outState->rightShoulder.isDown = true;
+	out->axisCount = 8;
 
-	// Buttons 6/7 are also routed into the triggers above.
-	if (raw->rgbButtons[8] & 0x80) outState->back.isDown = true;
-	if (raw->rgbButtons[9] & 0x80) outState->start.isDown = true;
-	if (raw->rgbButtons[10] & 0x80) outState->leftThumb.isDown = true;
-	if (raw->rgbButtons[11] & 0x80) outState->rightThumb.isDown = true;
-
-	bool active = false;
-	if (outState->leftStickX != 0 || outState->leftStickY != 0) active = true;
-	if (outState->rightStickX != 0 || outState->rightStickY != 0) active = true;
-	if (outState->leftTrigger != 0 || outState->rightTrigger != 0) active = true;
 	for (int b = 0; b < 32; ++b) {
-		if (raw->rgbButtons[b] & 0x80) {
-			active = true;
-			break;
+		out->buttons[b] = (src->rgbButtons[b] & 0x80) != 0;
+	}
+	out->buttonCount = 32;
+
+	// POV[0] → hat[0]. Centered values (0xFFFFFFFF / 0xFFFF / -1) leave mask 0.
+	uint8_t mask = 0;
+	DWORD pov = src->rgdwPOV[0];
+	if (pov != 0xFFFFFFFFu && (pov & 0xFFFFu) != 0xFFFFu) {
+		if (pov >= 31500u || pov <  4500u) {
+			mask |= 0x1;
+		}
+		if (pov >=  4500u && pov < 13500u) {
+			mask |= 0x2;
+		}
+		if (pov >= 13500u && pov < 22500u) {
+			mask |= 0x4;
+		}
+		if (pov >= 22500u && pov < 31500u) {
+			mask |= 0x8;
 		}
 	}
-	outState->isActive = active;
+	out->hats[0] = mask;
+	out->hatCount = 1;
 }
 
 typedef struct fpl__Win32DInput_EnumCtx {
 	fpl__InputBackendDInput *backend;
+	const fplGameControllersSettings *gameControllers;
 	uint32_t added;
 } fpl__Win32DInput_EnumCtx;
 
@@ -16760,6 +16782,29 @@ static BOOL WINAPI fpl__Win32DInput_EnumDevicesCallback(LPCDIDEVICEINSTANCEW ddi
 	}
 	fpl__DID8_Acquire(device);
 	slot->isAcquired = true;
+
+	// Resolve a per-device mapping. The resolver runs once per connect; failure or absence falls back to fplGamepadMappingApplyDefault.
+	slot->hasMapping = false;
+	if (ec->gameControllers != fpl_null && ec->gameControllers->mappingResolver != fpl_null) {
+		fplGameControllerInfo info = fplZeroInit;
+		info.index = (uint32_t)slotIndex;
+		info.backend = fplInputBackendType_DInput;
+		info.name = slot->deviceName;
+		// Bus 0x03 = USB. CRC and version aren't exposed by DInput, so they stay 0.
+		fpl__GamepadBuildSDLGuid(0x0003u, vid, pid, 0u, 0u, info.guid);
+		info.vendorId = vid;
+		info.productId = pid;
+		info.version = 0;
+		info.buttonCount = 32;
+		info.axisCount = 8;
+		info.hatCount = 1;
+		fplGamepadMapping userMapping = fplZeroInit;
+		if (ec->gameControllers->mappingResolver(&info, &userMapping, ec->gameControllers->mappingResolverUserData)) {
+			slot->mapping = userMapping;
+			slot->hasMapping = true;
+		}
+	}
+
 	fpl__PushGamepadConnectionEvent((uint32_t)slotIndex, slot->deviceName, true);
 	ec->added++;
 	return DIENUM_CONTINUE;
@@ -16779,16 +16824,21 @@ fpl_internal void fpl__Win32DInput_DetectControllers(fpl__InputBackendDInput *ba
 
 	fpl__Win32DInput_EnumCtx ec = fplZeroInit;
 	ec.backend = backend;
+	ec.gameControllers = gameControllersSettings;
 	fpl__DI8_EnumDevices(backend->iface, DI8DEVCLASS_GAMECTRL, fpl__Win32DInput_EnumDevicesCallback, &ec, DIEDFL_ATTACHEDONLY);
 }
 
 fpl_internal void fpl__Win32DInput_UpdateStates(fpl__InputBackendDInput *backend) {
 	for (uint32_t i = 0; i < fplArrayCount(backend->slots); ++i) {
 		fpl__InputBackendDInputSlot *slot = &backend->slots[i];
-		if (!slot->isConnected || slot->device == fpl_null) continue;
+		if (!slot->isConnected || slot->device == fpl_null) {
+			continue;
+		}
 		if (!slot->isAcquired) {
 			HRESULT hrA = fpl__DID8_Acquire(slot->device);
-			if (FAILED(hrA)) continue;
+			if (FAILED(hrA)) {
+				continue;
+			}
 			slot->isAcquired = true;
 		}
 		fpl__DID8_Poll(slot->device);
@@ -16800,9 +16850,16 @@ fpl_internal void fpl__Win32DInput_UpdateStates(fpl__InputBackendDInput *backend
 			slot->isAcquired = false;
 			continue;
 		}
+		fpl__Win32DInput_FillRawInput(&raw, &slot->raw);
 		fplGamepadState gs = fplZeroInit;
-		fpl__Win32DInput_MapState(&raw, &gs);
+		if (slot->hasMapping) {
+			fplGamepadMappingApply(&slot->mapping, &slot->raw, &gs);
+		} else {
+			fplGamepadMappingApplyDefault(&slot->raw, &gs);
+		}
+		gs.isConnected = true;
 		gs.deviceName = slot->deviceName;
+		fpl__GamepadFinalizeState(&gs);
 		slot->lastState = gs;
 		fpl__PushGamepadStateEvent(i, slot->deviceName, &gs);
 	}
