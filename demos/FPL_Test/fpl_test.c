@@ -1834,10 +1834,7 @@ static void TestTimes(void) {
 	}
 }
 
-<<<<<<< HEAD:demos/FPL_Test/fpl_test.cpp
-// Smoke test for the multi-backend gamepad merge in fpl__InputSystem_PollGamepad.
-// With no real controller plugged in, every disconnected slot must come back zeroed.
-// Verifies the system layer clears outStates once and that backends do not leave stale data.
+// Smoke test for the multi-backend gamepad merge in fpl__InputSystem_PollGamepad. With no real controller plugged in, every disconnected slot must come back zeroed. Verifies the system layer clears outStates once and that backends do not leave stale data.
 static void TestGamepadPollMerge() {
 	ftMsg("Test fplPollGamepadStates merge contract\n");
 	if (!fplPlatformInit(fplInitFlags_GameController, fpl_null)) {
@@ -1852,7 +1849,9 @@ static void TestGamepadPollMerge() {
 	fplPollGamepadStates(&states);
 	for (size_t i = 0; i < fplArrayCount(states.deviceStates); ++i) {
 		const fplGamepadState *s = &states.deviceStates[i];
-		if (s->isConnected) continue;
+		if (s->isConnected) {
+			continue;
+		}
 		ftAssert(s->leftStickX == 0.0f);
 		ftAssert(s->leftStickY == 0.0f);
 		ftAssert(s->rightStickX == 0.0f);
@@ -1860,7 +1859,9 @@ static void TestGamepadPollMerge() {
 		ftAssert(s->leftTrigger == 0.0f);
 		ftAssert(s->rightTrigger == 0.0f);
 	}
-=======
+	fplPlatformRelease();
+}
+
 static void TestSecurity(void) {
 	ftMsg("Security & stability tests\n");
 	if (!fplPlatformInit(fplInitFlags_None, fpl_null)) {
@@ -1873,7 +1874,6 @@ static void TestSecurity(void) {
 	FPLSecurityTests_Conversions();
 	FPLSecurityTests_Types();
 	FPLSecurityTests_Misc();
->>>>>>> develop:demos/FPL_Test/fpl_test.c
 	fplPlatformRelease();
 }
 
@@ -1896,10 +1896,6 @@ int main(int argc, char *args[]) {
 	TestPaths();
 	TestFiles();
 	TestThreading();
-<<<<<<< HEAD:demos/FPL_Test/fpl_test.cpp
-	TestInlining();
 	TestGamepadPollMerge();
-=======
->>>>>>> develop:demos/FPL_Test/fpl_test.c
 	return 0;
 }
