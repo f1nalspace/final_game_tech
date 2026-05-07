@@ -229,6 +229,8 @@ SOFTWARE.
 	- New: Added function fplInputBackendMaskIsEnabled
 	- New: Added function fplInputBackendMaskEnable
 	- New: Added function fplInputBackendMaskDisable
+	- New: Added function fplGamepadMappingApply
+	- New: Added function fplGamepadMappingApplyDefault
 	- Extented struct fplInputSettings with fields for new input system
 	- Extented struct fplGamepadState with union action buttons (down/right/left/up) and (A/B/X/Y)
 	- Extented struct fplGameControllersSettings with mappingResolver and mappingResolverUserData fields
@@ -8539,6 +8541,24 @@ struct fplGameControllerInfo {
 	uint32_t hatCount;
 };
 
+/**
+* @brief Applies a @ref fplGamepadMapping over a raw device snapshot and writes the result into @p outState.
+* @param[in]  mapping    Mapping to evaluate.
+* @param[in]  input      Raw device snapshot collected by the backend.
+* @param[out] outState   Logical gamepad state populated from the mapping.
+* @return false when any pointer is null, true on success. Buttons and analog axes are written; deviceName/isConnected/isActive are left untouched.
+*/
+fpl_common_api bool fplGamepadMappingApply(const fplGamepadMapping *mapping, const fplGamepadRawInput *input, fplGamepadState *outState);
+
+/**
+* @brief Applies the built-in default convention to a raw device snapshot when no mapping is installed.
+* @param[in]  input      Raw device snapshot collected by the backend.
+* @param[out] outState   Logical gamepad state populated from the default convention.
+* @return false when any pointer is null, true on success.
+* @note The default convention follows SDL's "unknown DInput device" layout — buttons 0..3 → A/B/X/Y, 4/5 → shoulders, 8/9 → back/start, 10/11 → thumb buttons; axes 0/1 → left stick, 2/5 → right stick (XYZ-RZ DInput quirk), 6/7 → triggers; hat[0] → dpad. Backends that produce a different raw layout (e.g. Linux joydev) should still align with this ordering for the default to be useful.
+*/
+fpl_common_api bool fplGamepadMappingApplyDefault(const fplGamepadRawInput *input, fplGamepadState *outState);
+
 //! Maximum length of the @ref fplInputDevice name field.
 #define FPL_MAX_INPUT_DEVICE_NAME 64
 
@@ -11924,6 +11944,173 @@ fpl_internal void fpl__PushGamepadStateEvent(const uint32_t deviceIndex, const c
 	ev.gamepad.deviceName = deviceName;
 	ev.gamepad.state = *newState;
 	fpl__PushInternalEvent(&ev);
+}
+
+// Threshold above which an analog input is treated as a digital press inside fplGamepadMappingApply.
+#define FPL__GAMEPAD_DIGITAL_THRESHOLD 0.5f
+
+// Returns the digital (button-style) reading produced by a single binding against the given raw input.
+fpl_internal bool fpl__GamepadEvalBindingDigital(const fplGamepadInputBinding *b, const fplGamepadRawInput *in) {
+	switch (b->type) {
+		case fplGamepadInputType_Button: {
+			if (b->index >= in->buttonCount) {
+				return false;
+			}
+			return in->buttons[b->index];
+		}
+		case fplGamepadInputType_Hat: {
+			if (b->index >= in->hatCount) {
+				return false;
+			}
+			return (in->hats[b->index] & (uint8_t)b->hatMask) != 0;
+		}
+		case fplGamepadInputType_Axis: {
+			if (b->index >= in->axisCount) {
+				return false;
+			}
+			float v = in->axes[b->index];
+			if (b->axisInverted) {
+				v = -v;
+			}
+			if (b->axisSign == fplGamepadAxisSign_Negative) {
+				v = -v;
+			}
+			return v > FPL__GAMEPAD_DIGITAL_THRESHOLD;
+		}
+		default: {
+			return false;
+		}
+	}
+}
+
+// Returns the analog (axis-style) reading produced by a single binding against the given raw input.
+fpl_internal float fpl__GamepadEvalBindingAnalog(const fplGamepadInputBinding *b, const fplGamepadRawInput *in) {
+	switch (b->type) {
+		case fplGamepadInputType_Button: {
+			if (b->index >= in->buttonCount) {
+				return 0.0f;
+			}
+			return in->buttons[b->index] ? 1.0f : 0.0f;
+		}
+		case fplGamepadInputType_Hat: {
+			if (b->index >= in->hatCount) {
+				return 0.0f;
+			}
+			return (in->hats[b->index] & (uint8_t)b->hatMask) ? 1.0f : 0.0f;
+		}
+		case fplGamepadInputType_Axis: {
+			if (b->index >= in->axisCount) {
+				return 0.0f;
+			}
+			float v = in->axes[b->index];
+			if (b->axisInverted) {
+				v = -v;
+			}
+			// Half-axis: remap [-1..+1] to [0..1] using only the requested half (used by triggers).
+			if (b->axisSign == fplGamepadAxisSign_Positive) {
+				return (v + 1.0f) * 0.5f;
+			}
+			if (b->axisSign == fplGamepadAxisSign_Negative) {
+				return (-v + 1.0f) * 0.5f;
+			}
+			return v;
+		}
+		default: {
+			return 0.0f;
+		}
+	}
+}
+
+fpl_common_api bool fplGamepadMappingApply(const fplGamepadMapping *mapping, const fplGamepadRawInput *input, fplGamepadState *outState) {
+	if (mapping == fpl_null || input == fpl_null || outState == fpl_null) {
+		return false;
+	}
+	for (size_t i = 0; i < fplArrayCount(mapping->buttons); ++i) {
+		const fplGamepadInputBinding *b = &mapping->buttons[i];
+		bool down = (b->type != fplGamepadInputType_None) && fpl__GamepadEvalBindingDigital(b, input);
+		outState->buttons[i].isDown = down ? 1 : 0;
+	}
+	outState->leftStickX   = fpl__GamepadEvalBindingAnalog(&mapping->axes[fplGamepadAxisType_LeftX],        input);
+	outState->leftStickY   = fpl__GamepadEvalBindingAnalog(&mapping->axes[fplGamepadAxisType_LeftY],        input);
+	outState->rightStickX  = fpl__GamepadEvalBindingAnalog(&mapping->axes[fplGamepadAxisType_RightX],       input);
+	outState->rightStickY  = fpl__GamepadEvalBindingAnalog(&mapping->axes[fplGamepadAxisType_RightY],       input);
+	outState->leftTrigger  = fpl__GamepadEvalBindingAnalog(&mapping->axes[fplGamepadAxisType_LeftTrigger],  input);
+	outState->rightTrigger = fpl__GamepadEvalBindingAnalog(&mapping->axes[fplGamepadAxisType_RightTrigger], input);
+	return true;
+}
+
+fpl_common_api bool fplGamepadMappingApplyDefault(const fplGamepadRawInput *input, fplGamepadState *outState) {
+	if (input == fpl_null || outState == fpl_null) {
+		return false;
+	}
+	// Sticks (DInput convention: Z = right X, RZ = right Y; Y inverted to XInput sense).
+	if (input->axisCount > 0) {
+		outState->leftStickX  =  input->axes[0];
+	}
+	if (input->axisCount > 1) {
+		outState->leftStickY  = -input->axes[1];
+	}
+	if (input->axisCount > 2) {
+		outState->rightStickX =  input->axes[2];
+	}
+	if (input->axisCount > 5) {
+		outState->rightStickY = -input->axes[5];
+	}
+	// Triggers map from -1..+1 to 0..1 to match XInput sense.
+	if (input->axisCount > 6) {
+		outState->leftTrigger  = (input->axes[6] + 1.0f) * 0.5f;
+	}
+	if (input->axisCount > 7) {
+		outState->rightTrigger = (input->axes[7] + 1.0f) * 0.5f;
+	}
+	// Buttons by SDL's unknown-DInput convention.
+	static const struct { uint32_t btn; size_t off; } map[] = {
+		{ 0,  fplOffsetOf(fplGamepadState, actionA)        },
+		{ 1,  fplOffsetOf(fplGamepadState, actionB)        },
+		{ 2,  fplOffsetOf(fplGamepadState, actionX)        },
+		{ 3,  fplOffsetOf(fplGamepadState, actionY)        },
+		{ 4,  fplOffsetOf(fplGamepadState, leftShoulder)   },
+		{ 5,  fplOffsetOf(fplGamepadState, rightShoulder)  },
+		{ 8,  fplOffsetOf(fplGamepadState, back)           },
+		{ 9,  fplOffsetOf(fplGamepadState, start)          },
+		{ 10, fplOffsetOf(fplGamepadState, leftThumb)      },
+		{ 11, fplOffsetOf(fplGamepadState, rightThumb)     },
+	};
+	for (size_t i = 0; i < fplArrayCount(map); ++i) {
+		if (map[i].btn < input->buttonCount && input->buttons[map[i].btn]) {
+			fplGamepadButton *btn = (fplGamepadButton *)((uint8_t *)outState + map[i].off);
+			btn->isDown = 1;
+		}
+	}
+	// Hat 0 → dpad.
+	if (input->hatCount > 0) {
+		uint8_t h = input->hats[0];
+		outState->dpadUp.isDown    = (h & 0x1) != 0;
+		outState->dpadRight.isDown = (h & 0x2) != 0;
+		outState->dpadDown.isDown  = (h & 0x4) != 0;
+		outState->dpadLeft.isDown  = (h & 0x8) != 0;
+	}
+	return true;
+}
+
+// Builds a 16-byte SDL-style gamepad GUID from a USB VID/PID/version triple. Used by raw-HID backends (DInput, Linux joydev, etc.) when filling fplGameControllerInfo for the resolver.
+fpl_internal void fpl__GamepadBuildSDLGuid(const uint16_t bus, const uint16_t vid, const uint16_t pid, const uint16_t version, const uint16_t nameCrc16, uint8_t outGuid[FPL_GAMEPAD_GUID_BYTES]) {
+	outGuid[0]  = (uint8_t)(bus & 0xFF);
+	outGuid[1]  = (uint8_t)((bus >> 8) & 0xFF);
+	outGuid[2]  = (uint8_t)(nameCrc16 & 0xFF);
+	outGuid[3]  = (uint8_t)((nameCrc16 >> 8) & 0xFF);
+	outGuid[4]  = (uint8_t)(vid & 0xFF);
+	outGuid[5]  = (uint8_t)((vid >> 8) & 0xFF);
+	outGuid[6]  = 0;
+	outGuid[7]  = 0;
+	outGuid[8]  = (uint8_t)(pid & 0xFF);
+	outGuid[9]  = (uint8_t)((pid >> 8) & 0xFF);
+	outGuid[10] = 0;
+	outGuid[11] = 0;
+	outGuid[12] = (uint8_t)(version & 0xFF);
+	outGuid[13] = (uint8_t)((version >> 8) & 0xFF);
+	outGuid[14] = 0;
+	outGuid[15] = 0;
 }
 
 // Keyboard / mouse event push primitives. Live in the WINDOW || INPUT block (rather than the
