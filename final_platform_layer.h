@@ -261,6 +261,10 @@ SOFTWARE.
 	- Fixed: [POSIX] dirint.h and sched.h was not included always
 	- Fixed[#184]: [POSIX] fplDirectoriesCreate() does not create parent sub-directories
 
+	- Improved: Added fplStaticAssert checks in the non-opaque branch verifying that the real Win32/POSIX/X11 handle types fit into the opaque-branch buffers (catches portability breakage at compile time instead of corrupting memory at runtime)
+	- Improved: [X11] fpl__X11Display / Visual / GC / Image are now forward-declared incomplete struct types instead of `typedef void`, so `fpl__X11Display *` is a distinct, type-safe pointer rather than an alias for `void *`
+	- Improved: fplDateTime documentation now states explicitly that pre-1970 dates are intentionally not supported (epoch is unsigned and fplDateTimeCreate rejects year < 1970)
+
 	- Fixed: [Win32] fplFileSetPosition32 / fplFileGetSizeFromPath32 / fplFileGetSizeFromHandle32 was not using the best suitable API function
 
 	- Fixed[#182]: [ALSA] Fixed default audio devices are not detected in modern linux audio systems
@@ -3392,19 +3396,20 @@ typedef uint64_t fpl__POSIXConditionVariable[16];
 #	if defined(FPL_SUBPLATFORM_X11)
 
 // X11 Display/Visual/GC/Image are accessed via pointer, so the typedef is used as `fpl__X11Display *` everywhere — the underlying struct is intentionally not exposed.
+// Declared as forward-declared (incomplete) struct types so that `fpl__X11Display *` is a distinct, type-safe pointer (not an alias for `void *`).
 
 //! A X11 Display (opaque incomplete type, accessed via pointer only)
-typedef void fpl__X11Display;
+typedef struct fpl__X11Display fpl__X11Display;
 //! A X11 window (opaque, 8 bytes - matches the X11 XID type which is unsigned long on LP64 systems)
 typedef unsigned long fpl__X11Window;
-//! A X11 Visual (opaque, 4/8 bytes)
-typedef void fpl__X11Visual;
-//! A X11 GC (opaque, 4/8 bytes)
-typedef void fpl__X11GC;
-//! A X11 Image (opaque, 4/8 bytes)
-typedef void fpl__X11Image;
-//! A GLX Context (opaque, 4/8 bytes)
-typedef void fpl__GLXContext;
+//! A X11 Visual (opaque incomplete type, accessed via pointer only)
+typedef struct fpl__X11Visual fpl__X11Visual;
+//! A X11 GC (opaque incomplete type, accessed via pointer only)
+typedef struct fpl__X11GC fpl__X11GC;
+//! A X11 Image (opaque incomplete type, accessed via pointer only)
+typedef struct fpl__X11Image fpl__X11Image;
+//! A GLX Context (opaque, alias of void * — matches the real GLXContext typedef which is a pointer-typed handle)
+typedef void *fpl__GLXContext;
 
 #	endif // FPL_SUBPLATFORM_X11
 
@@ -3448,6 +3453,10 @@ typedef HGLRC fpl__Win32RenderingContext;
 //! A win32 structure for storing a large integer for QPC
 typedef LARGE_INTEGER fpl__Win32LargeInteger;
 
+// Sanity checks that the real Win32 types fit into the opaque-branch buffers (keep these in sync with the opaque typedefs above).
+fplStaticAssert(sizeof(GUID) == sizeof(fpl__Win32Guid));
+fplStaticAssert(sizeof(CRITICAL_SECTION) <= sizeof(uint64_t[16]));
+
 #	endif // FPL_PLATFORM_WINDOWS
 
 #	if defined(FPL_SUBPLATFORM_POSIX)
@@ -3467,6 +3476,12 @@ typedef sem_t fpl__POSIXSemaphoreHandle;
 //! A POSIX condition variable
 typedef pthread_cond_t fpl__POSIXConditionVariable;
 
+// Sanity checks that the real POSIX types fit into the opaque-branch buffers (keep these in sync with the opaque typedefs above).
+fplStaticAssert(sizeof(pthread_t) <= sizeof(uint64_t));
+fplStaticAssert(sizeof(pthread_mutex_t) <= sizeof(uint64_t[16]));
+fplStaticAssert(sizeof(sem_t) <= sizeof(uint64_t[8]));
+fplStaticAssert(sizeof(pthread_cond_t) <= sizeof(uint64_t[16]));
+
 #	endif // FPL_SUBPLATFORM_POSIX
 
 #	if defined(FPL_SUBPLATFORM_X11)
@@ -3483,6 +3498,9 @@ typedef GC fpl__X11GC;
 typedef XImage fpl__X11Image;
 //! A GLX Context (opaque, 4/8 bytes)
 typedef void *fpl__GLXContext;
+
+// Sanity check: X11 Window is an XID (unsigned long on LP64, matches the opaque-branch typedef).
+fplStaticAssert(sizeof(Window) == sizeof(unsigned long));
 
 #	endif // FPL_SUBPLATFORM_X11
 
@@ -3660,9 +3678,10 @@ typedef enum fplDateTimeType {
 /**
 * @struct fplDateTime
 * @brief Stores a date and time with milliseconds, including the UTC offset.
+* @note Pre-1970 dates are intentionally not supported — `epoch` is unsigned and `fplDateTimeCreate` rejects `year < 1970`.
 */
 typedef struct fplDateTime {
-	// Unix epoch in seconds since 1970-01-01 00:00:00.
+	// Unix epoch in seconds since 1970-01-01 00:00:00. Unsigned because pre-1970 dates are not supported.
 	uint64_t epoch;
 	// Milliseconds that are added after the epoch.
 	uint32_t milliseconds;

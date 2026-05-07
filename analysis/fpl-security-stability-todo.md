@@ -189,23 +189,27 @@ Applied Global Conventions; updated all docstrings and call sites.
 ## Phase 4 — Type / Opaque-Handle Hardening
 
 ### 4.1 Static assertions for opaque-vs-real handle sizes
-- [ ] Add `fplStaticAssert(sizeof(pthread_mutex_t) <= sizeof(fpl__POSIXMutexHandle));` (and equivalents) in non-opaque code path.
-- [ ] Same for `pthread_cond_t`, `sem_t`, `pthread_t`, `GUID`, `Window`.
+- [x] Added `fplStaticAssert` block in the non-opaque branch comparing real types against the opaque-buffer reservations:
+  - Win32: `sizeof(GUID) == sizeof(fpl__Win32Guid)`, `sizeof(CRITICAL_SECTION) <= sizeof(uint64_t[16])`.
+  - POSIX: `sizeof(pthread_t) <= sizeof(uint64_t)`, `pthread_mutex_t <= 128`, `sem_t <= 64`, `pthread_cond_t <= 128`.
+  - X11: `sizeof(Window) == sizeof(unsigned long)`.
+- [x] FPL_Test + FPL_OpenGL build clean on linux-x64.
 
 ### 4.2 X11 opaque types as incomplete structs
-- [ ] `typedef struct fpl__X11Display fpl__X11Display;` (and Visual / GC / Image).
-- [ ] Update size comments → "opaque incomplete type, accessed via pointer".
+- [x] `typedef struct fpl__X11Display fpl__X11Display;` (Display / Visual / GC / Image — `fpl__X11Display *` is now a distinct pointer type, not an alias for `void *`).
+- [x] `fpl__GLXContext` left as `void *` (matches the real `GLXContext` typedef, which itself is a pointer-typed handle — keeping both branches `void *`-shaped avoids the `fpl__GLXContext` vs `fpl__GLXContext *` mismatch).
+- [x] Comments rewritten to "opaque incomplete type, accessed via pointer only".
 
 ### 4.3 Opaque handle size comments (3300, 3338–3343, 3340)
 - [x] Win32 + POSIX opaque-handle comments rewritten to describe the underlying type (HANDLE/CRITICAL_SECTION/pthread_t/etc.) and the max observed libc size, plus the buffer size used for headroom.
 
 ### 4.4 `fpl__POSIXThreadHandle` portability (3337, 3417)
-- [ ] Either expand to `uint8_t buffer[16]` with `fplStaticAssert(sizeof(pthread_t) <= 16)`,
-- [ ] Or document constraint that opaque branch is glibc/musl-x86_64 only.
+- [x] Constraint documented in the opaque-typedef comment ("opaque branch is glibc/musl-x86_64 only").
+- [x] Enforced at compile time by the Phase 4.1 static assert `sizeof(pthread_t) <= sizeof(uint64_t)` — ports that would overflow fail to build instead of corrupting memory silently.
 
 ### 4.5 `fplDateTime::epoch` signedness (3619–3626)
-- [ ] Decide: change `uint64_t epoch` → `int64_t` (preferred — matches `time_t`),
-- [ ] Or document pre-1970 unsupported and reject in `fplDateTimeCreate`.
+- [x] Decision: keep `uint64_t epoch`. Pre-1970 is intentionally not supported — `fplDateTimeCreate` already rejects `year < 1970` (`fplDateTimeErrors_InvalidYear`).
+- [x] Doc updated on the struct itself (note + inline field comment) so the unsigned choice is explicit.
 
 ---
 
