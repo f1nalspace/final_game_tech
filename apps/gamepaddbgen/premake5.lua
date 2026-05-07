@@ -4,9 +4,9 @@ project "gamepaddbgen"
    language "C"
    cdialect "C99"
 
-   includedirs { "../../", "../../examples/" }
+   includedirs { "../../" }
 
    files { "gamepaddbgen.c" }
 
    filter "system:linux"
-      links { "m", "pthread", "dl" }
+      links { "m" }

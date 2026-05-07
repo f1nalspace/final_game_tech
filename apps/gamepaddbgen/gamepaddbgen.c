@@ -37,7 +37,7 @@ Requirements:
 #include <stdlib.h>
 #include <string.h>
 
-#include "../../examples/gamecontrollerdb_parser.c"
+#include "parser.c"
 
 static int CompareMappingsByGuid(const void *a, const void *b) {
 	const fplGamepadMapping *ma = (const fplGamepadMapping *)a;

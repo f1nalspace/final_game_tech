@@ -9,11 +9,10 @@ project(gamepaddbgen C)
 
 set(MY_C_STANDARD c99)
 
-set(MY_EXTERNAL_LIBS "")
+set(MY_EXTERNAL_LIBS "m")
 
 set(MY_INCLUDE_DIRS
 	"../../"
-	"../../examples/"
 	)
 
 set(MY_HEADER_FILES

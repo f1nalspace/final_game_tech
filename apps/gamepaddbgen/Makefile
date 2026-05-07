@@ -14,7 +14,7 @@ CC      ?= cc
 CSTD    ?= -std=c99
 CFLAGS  ?= $(CSTD) -O2 -Wall -Wextra -Wno-unused-parameter
 LDFLAGS ?=
-LDLIBS  ?= -lm -lpthread -ldl
+LDLIBS  ?= -lm
 
 ROOT     := ../..
 BUILD    := $(ROOT)/build/gamepaddbgen
@@ -25,7 +25,7 @@ INCLUDES := -I$(ROOT) -I$(ROOT)/examples
 
 # Defaults for `make run`. Override on the command line.
 INPUT    ?= $(ROOT)/docs_fpl/gamecontrollerdb.txt
-OUTPUT   ?= $(ROOT)/examples/gamepad_mapping_table.h
+OUTPUT   ?= $(ROOT)/apps/data/fpl-game-controller-db.h
 SYMBOL   ?= fpl__g_gamepadMappingTable
 
 .PHONY: all run clean
