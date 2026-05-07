@@ -220,6 +220,17 @@ SOFTWARE.
 	- Added function fplInputBackendMaskDisable
 	- Extented struct fplInputSettings with fields for new input system
 	- Extented struct fplGamepadState with union action buttons (down/right/left/up) and (A/B/X/Y)
+	- New: Added enum fplGamepadInputType, that defines the source kind (button/axis/hat) referenced by a fplGamepadInputBinding
+	- New: Added enum fplGamepadAxisSign, that defines the half-axis selector (full/positive/negative) for axis bindings
+	- New: Added enum fplGamepadAxisType, that defines the logical analog axis slots filled by a fplGamepadMapping
+	- New: Added enum fplGamepadPlatform, that mirrors the SDL gamecontrollerdb "platform:" tag (Windows/Linux/MacOS/Android/iOS)
+	- New: Added struct fplGamepadInputBinding, that describes a raw input source bound to one logical FPL gamepad slot
+	- New: Added struct fplGamepadMapping, that holds a complete mapping from raw device inputs onto FPL's logical gamepad layout
+	- New: Added struct fplGamepadRawInput, that captures a backend-agnostic snapshot of raw device input for use with fplGamepadMapping
+	- New: Added struct fplGameControllerInfo, that describes a controller for the mapping resolver callback
+	- New: Added typedef fplGamepadMappingResolverFn, the callback type fired once per controller connect on raw-HID gamepad backends
+	- New: Added macros FPL_GAMEPAD_BUTTON_COUNT, FPL_GAMEPAD_GUID_BYTES, FPL_GAMEPAD_RAW_MAX_AXES, FPL_GAMEPAD_RAW_MAX_BUTTONS, FPL_GAMEPAD_RAW_MAX_HATS
+	- Extented struct fplGameControllersSettings with mappingResolver and mappingResolverUserData fields
 	- New: [Win32] Implemented function fplFileAppendBinary() for Win32 API
 	- New: [POSIX] Implemented function fplFileAppendBinary() for POSIX Unix API
 	- New: [Win32] Implemented function fplPathNormalize() for Win32 API
