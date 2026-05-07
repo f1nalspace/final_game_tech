@@ -220,10 +220,10 @@ SOFTWARE.
 	- New: Added enum fplGamepadPlatform, that mirrors the SDL gamecontrollerdb "platform:" tag (Windows/Linux/MacOS/Android/iOS)
 	- New: Added struct fplGamepadInputBinding, that describes a raw input source bound to one logical FPL gamepad slot
 	- New: Added struct fplGamepadMapping, that holds a complete mapping from raw device inputs onto FPL's logical gamepad layout
-	- New: Added struct fplGamepadRawInput, that captures a backend-agnostic snapshot of raw device input for use with fplGamepadMapping
+	- New: Added struct fplGamepadData, that captures a backend-agnostic snapshot of raw device input for use with fplGamepadMapping
 	- New: Added struct fplGameControllerInfo, that describes a controller for the mapping resolver callback
 	- New: Added typedef fplGamepadMappingResolverFn, the callback type fired once per controller connect on raw-HID gamepad backends
-	- New: Added macros FPL_GAMEPAD_BUTTON_COUNT, FPL_GAMEPAD_GUID_BYTES, FPL_GAMEPAD_RAW_MAX_AXES, FPL_GAMEPAD_RAW_MAX_BUTTONS, FPL_GAMEPAD_RAW_MAX_HATS
+	- New: Added macros FPL_GAMEPAD_BUTTON_COUNT, FPL_GAMEPAD_GUID_BYTES, FPL_GAMEPAD_DATA_MAX_AXES, FPL_GAMEPAD_DATA_MAX_BUTTONS, FPL_GAMEPAD_DATA_MAX_HATS
 	- New: Added enum fplInputSourceType
 	- New: Added struct fplInputBackendMask
 	- New: Added function fplInputBackendMaskIsEnabled
@@ -244,7 +244,7 @@ SOFTWARE.
 	- New[#178]: Separate input system from windowing system, by introducing a input backend system
 	- New[#187]: Implemented DirectInput input backend
 	- Improved: [Win32/DInput] Backend now routes DIJOYSTATE through fplGamepadMappingApply / fplGamepadMappingApplyDefault, with the resolver from fplGameControllersSettings.mappingResolver invoked once per controller connect to install a custom fplGamepadMapping
-	- Improved: [Linux/Joystick] /dev/input/jsX backend now feeds JS_EVENT_AXIS/BUTTON into a fplGamepadRawInput snapshot, calls the mappingResolver with VID/PID/version read from /sys/class/input/jsX/device/id, and applies fplGamepadMappingApply when a mapping is installed (legacy behavior preserved when no resolver returns true)
+	- Improved: [Linux/Joystick] /dev/input/jsX backend now feeds JS_EVENT_AXIS/BUTTON into a fplGamepadData snapshot, calls the mappingResolver with VID/PID/version read from /sys/class/input/jsX/device/id, and applies fplGamepadMappingApply when a mapping is installed (legacy behavior preserved when no resolver returns true)
 
 	- Improved[#176]: Made internal event queue thread-safe using a lock-free push/pop linear buffer
 	- Improved[#88]: Gamepad input device is not locked to /dev/input/js0 anymore
@@ -8490,31 +8490,31 @@ typedef struct fplGamepadMapping {
 	fplGamepadPlatform platform;
 } fplGamepadMapping;
 
-//! Maximum number of raw axes captured in a @ref fplGamepadRawInput snapshot.
-#define FPL_GAMEPAD_RAW_MAX_AXES 8
-//! Maximum number of raw buttons captured in a @ref fplGamepadRawInput snapshot.
-#define FPL_GAMEPAD_RAW_MAX_BUTTONS 32
-//! Maximum number of raw hats captured in a @ref fplGamepadRawInput snapshot.
-#define FPL_GAMEPAD_RAW_MAX_HATS 8
+//! Maximum number of raw axes captured in a @ref fplGamepadData snapshot.
+#define FPL_GAMEPAD_DATA_MAX_AXES 8
+//! Maximum number of raw buttons captured in a @ref fplGamepadData snapshot.
+#define FPL_GAMEPAD_DATA_MAX_BUTTONS 32
+//! Maximum number of raw hats captured in a @ref fplGamepadData snapshot.
+#define FPL_GAMEPAD_DATA_MAX_HATS 8
 
 /**
-* @struct fplGamepadRawInput
+* @struct fplGamepadData
 * @brief Backend-agnostic snapshot of raw device input that a @ref fplGamepadMapping operates on.
 */
-typedef struct fplGamepadRawInput {
+typedef struct fplGamepadData {
 	//! Raw analog axes in SDL convention (-1 .. +1, triggers idle at -1).
-	float axes[FPL_GAMEPAD_RAW_MAX_AXES];
+	float axes[FPL_GAMEPAD_DATA_MAX_AXES];
 	//! Raw digital buttons (true when pressed).
-	bool buttons[FPL_GAMEPAD_RAW_MAX_BUTTONS];
+	bool buttons[FPL_GAMEPAD_DATA_MAX_BUTTONS];
 	//! Raw hat masks (bit 1=up, 2=right, 4=down, 8=left).
-	uint8_t hats[FPL_GAMEPAD_RAW_MAX_HATS];
+	uint8_t hats[FPL_GAMEPAD_DATA_MAX_HATS];
 	//! Number of valid entries in @ref buttons.
 	uint32_t buttonCount;
 	//! Number of valid entries in @ref axes.
 	uint32_t axisCount;
 	//! Number of valid entries in @ref hats.
 	uint32_t hatCount;
-} fplGamepadRawInput;
+} fplGamepadData;
 
 /**
 * @struct fplGameControllerInfo
@@ -8550,7 +8550,7 @@ struct fplGameControllerInfo {
 * @param[out] outState   Logical gamepad state populated from the mapping.
 * @return false when any pointer is null, true on success. Buttons and analog axes are written; deviceName/isConnected/isActive are left untouched.
 */
-fpl_common_api bool fplGamepadMappingApply(const fplGamepadMapping *mapping, const fplGamepadRawInput *input, fplGamepadState *outState);
+fpl_common_api bool fplGamepadMappingApply(const fplGamepadMapping *mapping, const fplGamepadData *input, fplGamepadState *outState);
 
 /**
 * @brief Applies the built-in default convention to a raw device snapshot when no mapping is installed.
@@ -8559,7 +8559,7 @@ fpl_common_api bool fplGamepadMappingApply(const fplGamepadMapping *mapping, con
 * @return false when any pointer is null, true on success.
 * @note The default convention follows SDL's "unknown DInput device" layout — buttons 0..3 → A/B/X/Y, 4/5 → shoulders, 8/9 → back/start, 10/11 → thumb buttons; axes 0/1 → left stick, 2/5 → right stick (XYZ-RZ DInput quirk), 6/7 → triggers; hat[0] → dpad. Backends that produce a different raw layout (e.g. Linux joydev) should still align with this ordering for the default to be useful.
 */
-fpl_common_api bool fplGamepadMappingApplyDefault(const fplGamepadRawInput *input, fplGamepadState *outState);
+fpl_common_api bool fplGamepadMappingApplyDefault(const fplGamepadData *input, fplGamepadState *outState);
 
 //! Maximum length of the @ref fplInputDevice name field.
 #define FPL_MAX_INPUT_DEVICE_NAME 64
@@ -10450,7 +10450,7 @@ typedef struct fpl__InputBackendDInputSlot {
 	fplGameControllerName deviceName;
 	fplGamepadState lastState;
 	// Snapshot built from DIJOYSTATE every poll, fed into the active mapping.
-	fplGamepadRawInput raw;
+	fplGamepadData raw;
 	// Mapping installed by the user resolver at connect time (only valid when hasMapping is true).
 	fplGamepadMapping mapping;
 	// True when the resolver returned a mapping, false to fall back to fplGamepadMappingApplyDefault.
@@ -11298,7 +11298,7 @@ typedef struct fpl__LinuxGameController {
 	uint8_t buttonCount;
 	fplGamepadState state;
 	// Snapshot built from JS_EVENT_AXIS/BUTTON every drain, fed into the active mapping.
-	fplGamepadRawInput raw;
+	fplGamepadData raw;
 	// Mapping installed by the user resolver at connect time (only valid when hasMapping is true).
 	fplGamepadMapping mapping;
 	// True when the resolver returned a mapping. When false, the legacy hardcoded fpl__LinuxPushGameControllerStateUpdateEvent path is used unchanged.
@@ -11964,7 +11964,7 @@ fpl_internal void fpl__PushGamepadStateEvent(const uint32_t deviceIndex, const c
 #define FPL__GAMEPAD_DIGITAL_THRESHOLD 0.5f
 
 // Returns the digital (button-style) reading produced by a single binding against the given raw input.
-fpl_internal bool fpl__GamepadEvalBindingDigital(const fplGamepadInputBinding *b, const fplGamepadRawInput *in) {
+fpl_internal bool fpl__GamepadEvalBindingDigital(const fplGamepadInputBinding *b, const fplGamepadData *in) {
 	switch (b->type) {
 		case fplGamepadInputType_Button: {
 			if (b->index >= in->buttonCount) {
@@ -11998,7 +11998,7 @@ fpl_internal bool fpl__GamepadEvalBindingDigital(const fplGamepadInputBinding *b
 }
 
 // Returns the analog (axis-style) reading produced by a single binding against the given raw input.
-fpl_internal float fpl__GamepadEvalBindingAnalog(const fplGamepadInputBinding *b, const fplGamepadRawInput *in) {
+fpl_internal float fpl__GamepadEvalBindingAnalog(const fplGamepadInputBinding *b, const fplGamepadData *in) {
 	switch (b->type) {
 		case fplGamepadInputType_Button: {
 			if (b->index >= in->buttonCount) {
@@ -12035,7 +12035,7 @@ fpl_internal float fpl__GamepadEvalBindingAnalog(const fplGamepadInputBinding *b
 	}
 }
 
-fpl_common_api bool fplGamepadMappingApply(const fplGamepadMapping *mapping, const fplGamepadRawInput *input, fplGamepadState *outState) {
+fpl_common_api bool fplGamepadMappingApply(const fplGamepadMapping *mapping, const fplGamepadData *input, fplGamepadState *outState) {
 	if (mapping == fpl_null || input == fpl_null || outState == fpl_null) {
 		return false;
 	}
@@ -12053,7 +12053,7 @@ fpl_common_api bool fplGamepadMappingApply(const fplGamepadMapping *mapping, con
 	return true;
 }
 
-fpl_common_api bool fplGamepadMappingApplyDefault(const fplGamepadRawInput *input, fplGamepadState *outState) {
+fpl_common_api bool fplGamepadMappingApplyDefault(const fplGamepadData *input, fplGamepadState *outState) {
 	if (input == fpl_null || outState == fpl_null) {
 		return false;
 	}
@@ -16669,9 +16669,9 @@ fpl_internal void fpl__Win32DInput_ReleaseSlot(fpl__InputBackendDInput *backend,
 	}
 }
 
-// Translates a raw DIJOYSTATE into a backend-agnostic fplGamepadRawInput for fplGamepadMappingApply / fplGamepadMappingApplyDefault. Sticks and sliders are normalized to SDL convention (-1..+1, sliders idle at -1).
-fpl_internal void fpl__Win32DInput_FillRawInput(const DIJOYSTATE *src, fplGamepadRawInput *out) {
-	fplGamepadRawInput zero = fplZeroInit;
+// Translates a raw DIJOYSTATE into a backend-agnostic fplGamepadData for fplGamepadMappingApply / fplGamepadMappingApplyDefault. Sticks and sliders are normalized to SDL convention (-1..+1, sliders idle at -1).
+fpl_internal void fpl__Win32DInput_FillRawInput(const DIJOYSTATE *src, fplGamepadData *out) {
+	fplGamepadData zero = fplZeroInit;
 	*out = zero;
 
 	// Sticks: raw [0, 65535] with center 32767 → [-1, +1].
@@ -23569,7 +23569,7 @@ fpl_internal float fpl__LinuxJoystickProcessStickValue(const int16_t value, cons
 fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_event *event, fpl__LinuxGameController *controller) {
 	// Keep the backend-agnostic raw snapshot in sync — used by fplGamepadMappingApply when the resolver installed a mapping.
 	uint8_t evType = event->type & ~(uint8_t)JS_EVENT_INIT;
-	if (evType == JS_EVENT_AXIS && event->number < FPL_GAMEPAD_RAW_MAX_AXES) {
+	if (evType == JS_EVENT_AXIS && event->number < FPL_GAMEPAD_DATA_MAX_AXES) {
 		float v = (float)event->value / 32767.0f;
 		if (v < -1.0f) {
 			v = -1.0f;
@@ -23577,7 +23577,7 @@ fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_e
 			v = 1.0f;
 		}
 		controller->raw.axes[event->number] = v;
-	} else if (evType == JS_EVENT_BUTTON && event->number < FPL_GAMEPAD_RAW_MAX_BUTTONS) {
+	} else if (evType == JS_EVENT_BUTTON && event->number < FPL_GAMEPAD_DATA_MAX_BUTTONS) {
 		controller->raw.buttons[event->number] = event->value != 0;
 	}
 
