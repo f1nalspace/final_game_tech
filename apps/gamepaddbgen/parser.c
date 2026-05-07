@@ -4,26 +4,17 @@ Name:
 	GameControllerDB Parser
 
 Description:
-	Parses a single line of an SDL gamecontrollerdb.txt file into a
-	fplGamepadMapping structure that maps SDL inputs (buttons, axes, hats)
-	onto FPL gamepad button/axis types.
+	Parses one line of an SDL gamecontrollerdb.txt file into a fplGamepadMapping
+	(see final_platform_layer.h for the public type) and provides the encoder /
+	decoder used by the offline blob generator.
 
-	Line format (SDL 2.0.16):
-		<guid>,<device-name>,<key>:<value>,...,platform:<name>,
+	Line format (SDL 2.0.16): <guid>,<device-name>,<key>:<value>,...,platform:<name>,
+	Value forms: bN, aN, +aN, -aN, aN~, hN.M (mask 1=up,2=right,4=down,8=left).
+	Device name and the runtime flags isConnected/isActive are ignored.
 
-	Value formats:
-		bN        SDL button index N
-		aN        SDL axis index N
-		+aN / -aN positive/negative half-axis
-		aN~       inverted axis
-		hN.M      hat N, mask M (1=up, 2=right, 4=down, 8=left)
-
-	Device name and the runtime flags (isConnected, isActive) are ignored.
-
-	In-memory bindings use a plain struct (readable, debug-friendly).
-	A separate uint16_t-packed form (fplGamepadInputBindingEncoded) is
-	used only for the on-disk blob, with explicit shift/mask helpers
-	(no C bitfields, so this stays valid in both C99 and C++).
+	A separate uint16_t-packed form (fplGamepadInputBindingEncoded) is used only
+	for the on-disk blob, with explicit shift/mask helpers (no C bitfields, so it
+	stays valid in both C99 and C++).
 
 	Encoded binding bit layout (fplGamepadInputBindingEncoded, 16 bits):
 		bits  0..1  type          (fplGamepadInputType, 4 values)
@@ -33,8 +24,8 @@ Description:
 		bit  14     axisInverted  (0/1)
 		bit  15     reserved      (must be 0)
 
-	On-disk blob layout (no embedded header — entry count is provided
-	separately as a #define from the generator):
+	Blob layout (no embedded header — entry count is supplied separately as a
+	#define from the generator):
 		per entry (57 bytes), entries sorted ascending by raw GUID bytes:
 			[16 B]            GUID raw (hex-decoded big-endian)
 			[ 1 B]            platform (fplGamepadPlatform)
@@ -47,30 +38,6 @@ Requirements:
 */
 
 #include <final_platform_layer.h>
-
-// SDL input source kind for a single mapping entry.
-typedef enum fplGamepadInputType {
-	fplGamepadInputType_None = 0,
-	fplGamepadInputType_Button,
-	fplGamepadInputType_Axis,
-	fplGamepadInputType_Hat,
-} fplGamepadInputType;
-
-// Half-axis selector for axis bindings.
-typedef enum fplGamepadAxisSign {
-	fplGamepadAxisSign_Full = 0,
-	fplGamepadAxisSign_Positive,
-	fplGamepadAxisSign_Negative,
-} fplGamepadAxisSign;
-
-// In-memory binding. Use this everywhere except when encoding/decoding the blob.
-typedef struct fplGamepadInputBinding {
-	fplGamepadInputType type;
-	uint32_t index;
-	uint32_t hatMask;
-	fplGamepadAxisSign axisSign;
-	bool axisInverted;
-} fplGamepadInputBinding;
 
 // Packed 16-bit binding used only for on-disk storage.
 typedef uint16_t fplGamepadInputBindingEncoded;
@@ -91,6 +58,16 @@ typedef uint16_t fplGamepadInputBindingEncoded;
 #define FPL_BINDING_INDEX_MAX          ((1u << FPL_BINDING_INDEX_BITS) - 1u)
 #define FPL_BINDING_HATMASK_MAX        ((1u << FPL_BINDING_HATMASK_BITS) - 1u)
 #define FPL_BINDING_AXISSIGN_MAX       ((1u << FPL_BINDING_AXISSIGN_BITS) - 1u)
+
+// Number of analog axis slots stored in a fplGamepadMapping.
+#define FPL_GAMEPAD_AXIS_COUNT     ((int)fplGamepadAxisType_Count)
+// Total binding slots in a mapping (buttons + axes).
+#define FPL_GAMEPAD_BINDING_COUNT  (FPL_GAMEPAD_BUTTON_COUNT + FPL_GAMEPAD_AXIS_COUNT)
+// On-disk per-entry size: 16 + 1 + 20*2 = 57 bytes.
+#define FPL_GAMEPAD_BLOB_ENTRY_SIZE (FPL_GAMEPAD_GUID_BYTES + 1 + FPL_GAMEPAD_BINDING_COUNT * 2)
+
+// Threshold above which an analog input is treated as a digital press.
+#define FPL_GAMEPAD_DIGITAL_THRESHOLD 0.5f
 
 // Returns true if every field of b fits inside its packed bit width (lossless encode possible).
 static fpl_force_inline bool fplBindingFitsEncoded(const fplGamepadInputBinding *b) {
@@ -121,50 +98,12 @@ static fpl_force_inline void fplDecodeBinding(fplGamepadInputBindingEncoded enc,
 	out->axisInverted = ((enc >> FPL_BINDING_AXISINVERTED_SHIFT) & 1u) != 0u;
 }
 
-// FPL analog axis slots filled from a mapping line.
-typedef enum fplGamepadAxisType {
-	fplGamepadAxisType_LeftX = 0,
-	fplGamepadAxisType_LeftY,
-	fplGamepadAxisType_RightX,
-	fplGamepadAxisType_RightY,
-	fplGamepadAxisType_LeftTrigger,
-	fplGamepadAxisType_RightTrigger,
-	fplGamepadAxisType_Count,
-} fplGamepadAxisType;
-
-// Target platform of a mapping entry (from "platform:" field).
-typedef enum fplGamepadPlatform {
-	fplGamepadPlatform_Unknown = 0,
-	fplGamepadPlatform_Windows,
-	fplGamepadPlatform_Linux,
-	fplGamepadPlatform_MacOS,
-	fplGamepadPlatform_Android,
-	fplGamepadPlatform_iOS,
-} fplGamepadPlatform;
-
-#define FPL_GAMEPAD_BUTTON_COUNT 14
-#define FPL_GAMEPAD_AXIS_COUNT   ((int)fplGamepadAxisType_Count)
-#define FPL_GAMEPAD_BINDING_COUNT (FPL_GAMEPAD_BUTTON_COUNT + FPL_GAMEPAD_AXIS_COUNT)
-
-// 16-byte raw GUID (32 hex chars decoded).
-#define FPL_GAMEPAD_GUID_BYTES 16
-
-// On-disk per-entry size: 16 + 1 + 20*2 = 57 bytes.
-#define FPL_GAMEPAD_BLOB_ENTRY_SIZE \
-	(FPL_GAMEPAD_GUID_BYTES + 1 + FPL_GAMEPAD_BINDING_COUNT * 2)
-
-// Full mapping parsed from one gamecontrollerdb line.
-typedef struct fplGamepadMapping {
-	uint8_t guid[FPL_GAMEPAD_GUID_BYTES];
-	fplGamepadInputBinding buttons[FPL_GAMEPAD_BUTTON_COUNT];
-	fplGamepadInputBinding axes[FPL_GAMEPAD_AXIS_COUNT];
-	fplGamepadPlatform platform;
-} fplGamepadMapping;
-
 // Returns offset of first occurrence of c in [str, str+len), or len if not found.
 static size_t fpl__FindChar(const char *str, size_t len, char c) {
 	for (size_t i = 0; i < len; ++i) {
-		if (str[i] == c) return i;
+		if (str[i] == c) {
+			return i;
+		}
 	}
 	return len;
 }
@@ -172,25 +111,37 @@ static size_t fpl__FindChar(const char *str, size_t len, char c) {
 // Returns the length of a leading run of decimal digits.
 static size_t fpl__SpanDigits(const char *str, size_t len) {
 	size_t i = 0;
-	while (i < len && str[i] >= '0' && str[i] <= '9') ++i;
+	while (i < len && str[i] >= '0' && str[i] <= '9') {
+		++i;
+	}
 	return i;
 }
 
 // Decodes one hex character; returns -1 if invalid.
 static int fpl__HexDigit(char c) {
-	if (c >= '0' && c <= '9') return c - '0';
-	if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-	if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+	if (c >= '0' && c <= '9') {
+		return c - '0';
+	}
+	if (c >= 'a' && c <= 'f') {
+		return c - 'a' + 10;
+	}
+	if (c >= 'A' && c <= 'F') {
+		return c - 'A' + 10;
+	}
 	return -1;
 }
 
 // Decodes 32 hex chars at hex into 16 raw bytes. Returns false on malformed input.
 static bool fpl__DecodeGuid(const char *hex, size_t hexLen, uint8_t outBytes[FPL_GAMEPAD_GUID_BYTES]) {
-	if (hexLen != FPL_GAMEPAD_GUID_BYTES * 2) return false;
+	if (hexLen != FPL_GAMEPAD_GUID_BYTES * 2) {
+		return false;
+	}
 	for (size_t i = 0; i < FPL_GAMEPAD_GUID_BYTES; ++i) {
 		int hi = fpl__HexDigit(hex[i * 2]);
 		int lo = fpl__HexDigit(hex[i * 2 + 1]);
-		if (hi < 0 || lo < 0) return false;
+		if (hi < 0 || lo < 0) {
+			return false;
+		}
 		outBytes[i] = (uint8_t)((hi << 4) | lo);
 	}
 	return true;
@@ -258,44 +209,71 @@ static fplGamepadPlatform fpl__ParsePlatform(const char *val, size_t valLen) {
 
 // Parses a single SDL value descriptor like "b3", "+a1", "-a4", "a2~", "h0.4".
 static bool fpl__ParseBinding(const char *val, size_t valLen, fplGamepadInputBinding *outBinding) {
-	if (valLen == 0) return false;
+	if (valLen == 0) {
+		return false;
+	}
 
 	fplGamepadInputBinding b = fplZeroInit;
 
 	size_t pos = 0;
-	if (val[pos] == '+') { b.axisSign = fplGamepadAxisSign_Positive; ++pos; }
-	else if (val[pos] == '-') { b.axisSign = fplGamepadAxisSign_Negative; ++pos; }
+	if (val[pos] == '+') {
+		b.axisSign = fplGamepadAxisSign_Positive;
+		++pos;
+	} else if (val[pos] == '-') {
+		b.axisSign = fplGamepadAxisSign_Negative;
+		++pos;
+	}
 
-	if (pos >= valLen) return false;
+	if (pos >= valLen) {
+		return false;
+	}
 	char typeChar = val[pos++];
 
 	if (typeChar == 'b') {
 		b.type = fplGamepadInputType_Button;
 		size_t digits = fpl__SpanDigits(val + pos, valLen - pos);
-		if (digits == 0) return false;
+		if (digits == 0) {
+			return false;
+		}
 		int32_t parsed;
-		if (!fplTryStringToS32Len(val + pos, digits, &parsed) || parsed < 0) return false;
+		if (!fplTryStringToS32Len(val + pos, digits, &parsed) || parsed < 0) {
+			return false;
+		}
 		b.index = (uint32_t)parsed;
 	} else if (typeChar == 'a') {
 		b.type = fplGamepadInputType_Axis;
 		size_t digits = fpl__SpanDigits(val + pos, valLen - pos);
-		if (digits == 0) return false;
+		if (digits == 0) {
+			return false;
+		}
 		int32_t parsed;
-		if (!fplTryStringToS32Len(val + pos, digits, &parsed) || parsed < 0) return false;
+		if (!fplTryStringToS32Len(val + pos, digits, &parsed) || parsed < 0) {
+			return false;
+		}
 		b.index = (uint32_t)parsed;
-		if (pos + digits < valLen && val[pos + digits] == '~') b.axisInverted = true;
+		if (pos + digits < valLen && val[pos + digits] == '~') {
+			b.axisInverted = true;
+		}
 	} else if (typeChar == 'h') {
 		b.type = fplGamepadInputType_Hat;
 		size_t rem = valLen - pos;
 		size_t dot = fpl__FindChar(val + pos, rem, '.');
-		if (dot == 0 || dot >= rem) return false;
+		if (dot == 0 || dot >= rem) {
+			return false;
+		}
 		int32_t parsedIndex;
-		if (!fplTryStringToS32Len(val + pos, dot, &parsedIndex) || parsedIndex < 0) return false;
+		if (!fplTryStringToS32Len(val + pos, dot, &parsedIndex) || parsedIndex < 0) {
+			return false;
+		}
 		b.index = (uint32_t)parsedIndex;
 		size_t maskStart = pos + dot + 1;
-		if (maskStart >= valLen) return false;
+		if (maskStart >= valLen) {
+			return false;
+		}
 		int32_t parsedMask;
-		if (!fplTryStringToS32Len(val + maskStart, valLen - maskStart, &parsedMask) || parsedMask < 0) return false;
+		if (!fplTryStringToS32Len(val + maskStart, valLen - maskStart, &parsedMask) || parsedMask < 0) {
+			return false;
+		}
 		b.hatMask = (uint32_t)parsedMask;
 	} else {
 		return false;
@@ -305,72 +283,81 @@ static bool fpl__ParseBinding(const char *val, size_t valLen, fplGamepadInputBin
 	return true;
 }
 
-// Raw SDL-style input snapshot used to drive fplApplyGamepadMapping.
-// Caller is responsible for filling these from whatever joystick API they use.
-typedef struct fplGamepadRawInput {
-	// Each axis is expected in SDL convention: -1.0 .. +1.0 (triggers idle at -1.0, fully pressed at +1.0).
-	float axes[8];
-	// Buttons masks: false=not pressed, true=pressed
-	bool buttons[32];
-	// Hat masks: bit 1=up, 2=right, 4=down, 8=left (SDL_HAT_*).
-	uint8_t hats[8];
-	// Number of buttons
-	uint32_t buttonCount;
-	// Number of axes
-	uint32_t axisCount;
-	// Number of hats
-	uint32_t hatCount;
-} fplGamepadRawInput;
-
-// Threshold above which an analog input is treated as a digital press.
-#define FPL_GAMEPAD_DIGITAL_THRESHOLD 0.5f
-
 static bool fpl__EvalBindingDigital(const fplGamepadInputBinding *b, const fplGamepadRawInput *in) {
 	switch (b->type) {
-		case fplGamepadInputType_Button:
-			if (b->index >= in->buttonCount) return false;
+		case fplGamepadInputType_Button: {
+			if (b->index >= in->buttonCount) {
+				return false;
+			}
 			return in->buttons[b->index];
-		case fplGamepadInputType_Hat:
-			if (b->index >= in->hatCount) return false;
+		}
+		case fplGamepadInputType_Hat: {
+			if (b->index >= in->hatCount) {
+				return false;
+			}
 			return (in->hats[b->index] & (uint8_t)b->hatMask) != 0;
+		}
 		case fplGamepadInputType_Axis: {
-			if (b->index >= in->axisCount) return false;
+			if (b->index >= in->axisCount) {
+				return false;
+			}
 			float v = in->axes[b->index];
-			if (b->axisInverted) v = -v;
-			if (b->axisSign == fplGamepadAxisSign_Negative) v = -v;
+			if (b->axisInverted) {
+				v = -v;
+			}
+			if (b->axisSign == fplGamepadAxisSign_Negative) {
+				v = -v;
+			}
 			return v > FPL_GAMEPAD_DIGITAL_THRESHOLD;
 		}
-		default:
+		default: {
 			return false;
+		}
 	}
 }
 
 static float fpl__EvalBindingAnalog(const fplGamepadInputBinding *b, const fplGamepadRawInput *in) {
 	switch (b->type) {
-		case fplGamepadInputType_Button:
-			if (b->index >= in->buttonCount) return 0.0f;
+		case fplGamepadInputType_Button: {
+			if (b->index >= in->buttonCount) {
+				return 0.0f;
+			}
 			return in->buttons[b->index] ? 1.0f : 0.0f;
-		case fplGamepadInputType_Hat:
-			if (b->index >= in->hatCount) return 0.0f;
+		}
+		case fplGamepadInputType_Hat: {
+			if (b->index >= in->hatCount) {
+				return 0.0f;
+			}
 			return (in->hats[b->index] & (uint8_t)b->hatMask) ? 1.0f : 0.0f;
+		}
 		case fplGamepadInputType_Axis: {
-			if (b->index >= in->axisCount) return 0.0f;
+			if (b->index >= in->axisCount) {
+				return 0.0f;
+			}
 			float v = in->axes[b->index];
-			if (b->axisInverted) v = -v;
+			if (b->axisInverted) {
+				v = -v;
+			}
 			// Half-axis: remap [-1..+1] to [0..1] using only the requested half (used by triggers).
-			if (b->axisSign == fplGamepadAxisSign_Positive) return (v + 1.0f) * 0.5f;
-			if (b->axisSign == fplGamepadAxisSign_Negative) return (-v + 1.0f) * 0.5f;
+			if (b->axisSign == fplGamepadAxisSign_Positive) {
+				return (v + 1.0f) * 0.5f;
+			}
+			if (b->axisSign == fplGamepadAxisSign_Negative) {
+				return (-v + 1.0f) * 0.5f;
+			}
 			return v;
 		}
-		default:
+		default: {
 			return 0.0f;
+		}
 	}
 }
 
-// Applies mapping + raw input onto outState. Buttons and analog axes are written;
-// deviceName, isConnected and isActive are left untouched per project policy.
+// Applies mapping + raw input onto outState. Buttons and analog axes are written; deviceName, isConnected and isActive are left untouched per project policy.
 bool fplApplyGamepadMapping(const fplGamepadMapping *mapping, const fplGamepadRawInput *input, fplGamepadState *outState) {
-	if (mapping == fpl_null || input == fpl_null || outState == fpl_null) return false;
+	if (mapping == fpl_null || input == fpl_null || outState == fpl_null) {
+		return false;
+	}
 
 	for (size_t i = 0; i < fplArrayCount(mapping->buttons); ++i) {
 		const fplGamepadInputBinding *b = &mapping->buttons[i];
@@ -388,11 +375,11 @@ bool fplApplyGamepadMapping(const fplGamepadMapping *mapping, const fplGamepadRa
 	return true;
 }
 
-// Parses one line of a gamecontrollerdb.txt file into outMapping.
-// Returns true if the line yielded a usable mapping (has GUID and at least a name field).
-// Comment lines, empty lines, and malformed lines return false.
+// Parses one line of a gamecontrollerdb.txt file into outMapping. Returns true if the line yielded a usable mapping. Comment, empty, and malformed lines return false.
 bool fplParseGameControllerMappingLine(const char *line, fplGamepadMapping *outMapping) {
-	if (line == fpl_null || outMapping == fpl_null) return false;
+	if (line == fpl_null || outMapping == fpl_null) {
+		return false;
+	}
 
 	fplGamepadMapping zero = fplZeroInit;
 	*outMapping = zero;
@@ -400,25 +387,38 @@ bool fplParseGameControllerMappingLine(const char *line, fplGamepadMapping *outM
 	size_t lineLen = fplGetStringLength(line);
 	while (lineLen > 0) {
 		char c = line[lineLen - 1];
-		if (c == '\n' || c == '\r' || c == ' ' || c == '\t') --lineLen;
-		else break;
+		if (c == '\n' || c == '\r' || c == ' ' || c == '\t') {
+			--lineLen;
+		} else {
+			break;
+		}
 	}
-	if (lineLen == 0) return false;
-	if (line[0] == '#') return false;
+	if (lineLen == 0) {
+		return false;
+	}
+	if (line[0] == '#') {
+		return false;
+	}
 
-	// GUID
+	// GUID (32 hex chars decoded into 16 raw bytes).
 	size_t guidEnd = fpl__FindChar(line, lineLen, ',');
-	if (guidEnd == 0 || guidEnd >= lineLen) return false;
-	if (!fpl__DecodeGuid(line, guidEnd, outMapping->guid)) return false;
+	if (guidEnd == 0 || guidEnd >= lineLen) {
+		return false;
+	}
+	if (!fpl__DecodeGuid(line, guidEnd, outMapping->guid)) {
+		return false;
+	}
 	size_t pos = guidEnd + 1;
 
-	// Skip device name
+	// Skip device name.
 	size_t remaining = lineLen - pos;
 	size_t nameEnd = fpl__FindChar(line + pos, remaining, ',');
-	if (nameEnd >= remaining) return false;
+	if (nameEnd >= remaining) {
+		return false;
+	}
 	pos += nameEnd + 1;
 
-	// Key:value pairs
+	// Key:value pairs.
 	while (pos < lineLen) {
 		remaining = lineLen - pos;
 		size_t pairEnd = fpl__FindChar(line + pos, remaining, ',');
@@ -453,7 +453,9 @@ bool fplParseGameControllerMappingLine(const char *line, fplGamepadMapping *outM
 			}
 		}
 
-		if (pairEnd >= remaining) break;
+		if (pairEnd >= remaining) {
+			break;
+		}
 		pos += pairEnd + 1;
 	}
 
@@ -478,16 +480,21 @@ static fpl_force_inline void fpl__WriteU32LE(uint8_t *p, uint32_t v) {
 	p[3] = (uint8_t)((v >> 24) & 0xFF);
 }
 
-// Serializes one mapping into the 57-byte fixed-size entry slot.
-// Returns false if any binding exceeds the packed bit ranges (entry not written).
+// Serializes one mapping into the 57-byte fixed-size entry slot. Returns false if any binding exceeds the packed bit ranges (entry not written).
 bool fplEncodeGamepadMappingEntry(const fplGamepadMapping *mapping, uint8_t out[FPL_GAMEPAD_BLOB_ENTRY_SIZE]) {
 	for (size_t i = 0; i < FPL_GAMEPAD_BUTTON_COUNT; ++i) {
-		if (!fplBindingFitsEncoded(&mapping->buttons[i])) return false;
+		if (!fplBindingFitsEncoded(&mapping->buttons[i])) {
+			return false;
+		}
 	}
 	for (size_t i = 0; i < FPL_GAMEPAD_AXIS_COUNT; ++i) {
-		if (!fplBindingFitsEncoded(&mapping->axes[i])) return false;
+		if (!fplBindingFitsEncoded(&mapping->axes[i])) {
+			return false;
+		}
 	}
-	for (size_t i = 0; i < FPL_GAMEPAD_GUID_BYTES; ++i) out[i] = mapping->guid[i];
+	for (size_t i = 0; i < FPL_GAMEPAD_GUID_BYTES; ++i) {
+		out[i] = mapping->guid[i];
+	}
 	out[FPL_GAMEPAD_GUID_BYTES] = (uint8_t)mapping->platform;
 	uint8_t *bp = out + FPL_GAMEPAD_GUID_BYTES + 1;
 	for (size_t i = 0; i < FPL_GAMEPAD_BUTTON_COUNT; ++i) {
@@ -503,7 +510,9 @@ bool fplEncodeGamepadMappingEntry(const fplGamepadMapping *mapping, uint8_t out[
 
 // Deserializes one fixed-size entry into a mapping struct.
 void fplDecodeGamepadMappingEntry(const uint8_t in[FPL_GAMEPAD_BLOB_ENTRY_SIZE], fplGamepadMapping *outMapping) {
-	for (size_t i = 0; i < FPL_GAMEPAD_GUID_BYTES; ++i) outMapping->guid[i] = in[i];
+	for (size_t i = 0; i < FPL_GAMEPAD_GUID_BYTES; ++i) {
+		outMapping->guid[i] = in[i];
+	}
 	outMapping->platform = (fplGamepadPlatform)in[FPL_GAMEPAD_GUID_BYTES];
 	const uint8_t *bp = in + FPL_GAMEPAD_GUID_BYTES + 1;
 	for (size_t i = 0; i < FPL_GAMEPAD_BUTTON_COUNT; ++i) {
@@ -519,29 +528,32 @@ void fplDecodeGamepadMappingEntry(const uint8_t in[FPL_GAMEPAD_BLOB_ENTRY_SIZE],
 // Compares two raw GUIDs lexicographically. <0 if a<b, 0 equal, >0 if a>b.
 static int fpl__CompareGuid(const uint8_t a[FPL_GAMEPAD_GUID_BYTES], const uint8_t b[FPL_GAMEPAD_GUID_BYTES]) {
 	for (size_t i = 0; i < FPL_GAMEPAD_GUID_BYTES; ++i) {
-		if (a[i] != b[i]) return (int)a[i] - (int)b[i];
+		if (a[i] != b[i]) {
+			return (int)a[i] - (int)b[i];
+		}
 	}
 	return 0;
 }
 
-// Decompresses the whole blob into outMappings. The entry count is supplied
-// by the caller from the FPL_GAMEPAD_MAPPING_TABLE_ENTRY_COUNT macro the
-// generator emits next to the blob — there is no header byte sequence anymore.
-// Returns the number of entries written.
+// Decompresses the whole blob into outMappings. Caller passes the entry count from FPL_GAMEPAD_MAPPING_TABLE_ENTRY_COUNT (no header bytes in the blob).
 uint32_t fplDecompressGamepadMappingTable(const uint8_t *blob, uint32_t entryCount, fplGamepadMapping *outMappings, uint32_t maxMappings) {
-	if (blob == fpl_null || outMappings == fpl_null || entryCount == 0) return 0;
-	if (entryCount > maxMappings) entryCount = maxMappings;
+	if (blob == fpl_null || outMappings == fpl_null || entryCount == 0) {
+		return 0;
+	}
+	if (entryCount > maxMappings) {
+		entryCount = maxMappings;
+	}
 	for (uint32_t i = 0; i < entryCount; ++i) {
 		fplDecodeGamepadMappingEntry(blob + (size_t)i * FPL_GAMEPAD_BLOB_ENTRY_SIZE, &outMappings[i]);
 	}
 	return entryCount;
 }
 
-// Looks up a mapping in an already-decompressed table by raw GUID + platform.
-// Table is assumed to be sorted by GUID (the generator emits it that way).
-// Prefers an exact platform match, falls back to the first GUID match.
+// Looks up a mapping in an already-decompressed, GUID-sorted table. Prefers an exact platform match, falls back to the first GUID match.
 bool fplFindGamepadMapping(const fplGamepadMapping *table, uint32_t tableCount, const uint8_t guid[FPL_GAMEPAD_GUID_BYTES], fplGamepadPlatform platform, fplGamepadMapping *outMapping) {
-	if (table == fpl_null || outMapping == fpl_null || tableCount == 0) return false;
+	if (table == fpl_null || outMapping == fpl_null || tableCount == 0) {
+		return false;
+	}
 
 	int32_t lo = 0;
 	int32_t hi = (int32_t)tableCount - 1;
@@ -549,22 +561,35 @@ bool fplFindGamepadMapping(const fplGamepadMapping *table, uint32_t tableCount, 
 	while (lo <= hi) {
 		int32_t mid = lo + (hi - lo) / 2;
 		int cmp = fpl__CompareGuid(table[mid].guid, guid);
-		if (cmp < 0) lo = mid + 1;
-		else if (cmp > 0) hi = mid - 1;
-		else { found = mid; break; }
+		if (cmp < 0) {
+			lo = mid + 1;
+		} else if (cmp > 0) {
+			hi = mid - 1;
+		} else {
+			found = mid;
+			break;
+		}
 	}
-	if (found < 0) return false;
+	if (found < 0) {
+		return false;
+	}
 
 	int32_t start = found;
-	while (start > 0 && fpl__CompareGuid(table[start - 1].guid, guid) == 0) --start;
+	while (start > 0 && fpl__CompareGuid(table[start - 1].guid, guid) == 0) {
+		--start;
+	}
 	int32_t fallback = -1;
 	for (int32_t i = start; i < (int32_t)tableCount; ++i) {
-		if (fpl__CompareGuid(table[i].guid, guid) != 0) break;
+		if (fpl__CompareGuid(table[i].guid, guid) != 0) {
+			break;
+		}
 		if (table[i].platform == platform) {
 			*outMapping = table[i];
 			return true;
 		}
-		if (fallback < 0) fallback = i;
+		if (fallback < 0) {
+			fallback = i;
+		}
 	}
 	if (fallback >= 0) {
 		*outMapping = table[fallback];
