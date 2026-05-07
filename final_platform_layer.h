@@ -5699,6 +5699,21 @@ typedef struct fplConsoleSettings {
 */
 fpl_common_api void fplSetDefaultConsoleSettings(fplConsoleSettings *console);
 
+// Forward declarations for the gamepad mapping resolver hook. Full definitions live further down with the other gamepad types.
+typedef struct fplGameControllerInfo fplGameControllerInfo;
+typedef struct fplGamepadMapping fplGamepadMapping;
+
+/**
+* @typedef fplGamepadMappingResolverFn
+* @brief Optional callback invoked once per controller connect on raw-HID gamepad backends (DirectInput, Linux joystick/evdev, etc.) to install a custom @ref fplGamepadMapping for the device.
+* @param[in]  info        Backend-built description of the device that just connected.
+* @param[out] outMapping  Mapping to fill in when the resolver wants to override the default convention.
+* @param[in]  userData    Opaque pointer the user supplied via @ref fplGameControllersSettings.
+* @return true to install @p outMapping for this device, false to fall back to the default convention.
+* @note The callback runs once at connect time on the platform input thread; do not block.
+*/
+typedef bool (*fplGamepadMappingResolverFn)(const fplGameControllerInfo *info, fplGamepadMapping *outMapping, void *userData);
+
 /**
 * @struct fplGameControllersSettings
 * @brief Stores the settings for controlling how game controllers are handled.
@@ -5708,6 +5723,10 @@ typedef struct fplGameControllersSettings {
 	uint32_t detectionFrequency;
 	//! Frequency in ms for updating states of connected controllers (Default: 0, 0 = As fast as possible).
 	uint32_t updateFrequency;
+	//! Optional resolver invoked once per raw-HID controller connect to install a custom mapping (Default: fpl_null).
+	fplGamepadMappingResolverFn mappingResolver;
+	//! Opaque user pointer forwarded to @ref mappingResolver (Default: fpl_null).
+	void *mappingResolverUserData;
 } fplGameControllersSettings;
 
 /**
@@ -8348,6 +8367,165 @@ typedef struct fplGamepadStates {
 * @see @ref subsection_category_input_polling_gamepad
 */
 fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates);
+
+/**
+* @enum fplGamepadInputType
+* @brief Source kind referenced by a single @ref fplGamepadInputBinding.
+*/
+typedef enum fplGamepadInputType {
+	//! Slot is unbound.
+	fplGamepadInputType_None = 0,
+	//! Digital button at @ref fplGamepadInputBinding.index.
+	fplGamepadInputType_Button,
+	//! Analog axis at @ref fplGamepadInputBinding.index.
+	fplGamepadInputType_Axis,
+	//! Hat (POV) at @ref fplGamepadInputBinding.index, sampled with @ref fplGamepadInputBinding.hatMask.
+	fplGamepadInputType_Hat,
+} fplGamepadInputType;
+
+/**
+* @enum fplGamepadAxisSign
+* @brief Half-axis selector used when an axis source is bound with the SDL `+`/`-` prefixes.
+*/
+typedef enum fplGamepadAxisSign {
+	//! Use the full axis range (-1 .. +1).
+	fplGamepadAxisSign_Full = 0,
+	//! Only the positive half (`+aN` form). Output is remapped to 0 .. 1.
+	fplGamepadAxisSign_Positive,
+	//! Only the negative half (`-aN` form). Output is remapped to 0 .. 1.
+	fplGamepadAxisSign_Negative,
+} fplGamepadAxisSign;
+
+/**
+* @struct fplGamepadInputBinding
+* @brief Describes the raw input source bound to one logical FPL gamepad button or axis slot.
+*/
+typedef struct fplGamepadInputBinding {
+	//! Source kind. @ref fplGamepadInputType_None means the slot is unbound.
+	fplGamepadInputType type;
+	//! Index of the button, axis or hat in the raw device input.
+	uint32_t index;
+	//! Hat bitmask (1=up, 2=right, 4=down, 8=left). Only used when @ref type is @ref fplGamepadInputType_Hat.
+	uint32_t hatMask;
+	//! Half-axis selector for axis sources.
+	fplGamepadAxisSign axisSign;
+	//! True when an axis source is read with its sign inverted (SDL `~` suffix).
+	bool axisInverted;
+} fplGamepadInputBinding;
+
+/**
+* @enum fplGamepadAxisType
+* @brief Logical analog axis slots filled by a @ref fplGamepadMapping.
+*/
+typedef enum fplGamepadAxisType {
+	//! Left thumb stick X.
+	fplGamepadAxisType_LeftX = 0,
+	//! Left thumb stick Y.
+	fplGamepadAxisType_LeftY,
+	//! Right thumb stick X.
+	fplGamepadAxisType_RightX,
+	//! Right thumb stick Y.
+	fplGamepadAxisType_RightY,
+	//! Left trigger (0 .. 1).
+	fplGamepadAxisType_LeftTrigger,
+	//! Right trigger (0 .. 1).
+	fplGamepadAxisType_RightTrigger,
+	//! Number of logical axis slots.
+	fplGamepadAxisType_Count,
+} fplGamepadAxisType;
+
+/**
+* @enum fplGamepadPlatform
+* @brief Target platform tag of a @ref fplGamepadMapping (mirrors the SDL `platform:` field).
+*/
+typedef enum fplGamepadPlatform {
+	//! Platform was not specified or is not recognized.
+	fplGamepadPlatform_Unknown = 0,
+	//! Microsoft Windows.
+	fplGamepadPlatform_Windows,
+	//! Linux (joystick or evdev).
+	fplGamepadPlatform_Linux,
+	//! Apple macOS.
+	fplGamepadPlatform_MacOS,
+	//! Android.
+	fplGamepadPlatform_Android,
+	//! Apple iOS.
+	fplGamepadPlatform_iOS,
+} fplGamepadPlatform;
+
+//! Number of logical button slots stored in a @ref fplGamepadMapping (matches @ref fplGamepadButtonType).
+#define FPL_GAMEPAD_BUTTON_COUNT 14
+
+//! Length of a raw gamepad GUID in bytes (matches the SDL gamecontrollerdb format).
+#define FPL_GAMEPAD_GUID_BYTES 16
+
+/**
+* @struct fplGamepadMapping
+* @brief A complete mapping of raw device inputs onto FPL's logical gamepad layout.
+*/
+typedef struct fplGamepadMapping {
+	//! Raw 16-byte device GUID, indexed identically across backends to allow lookup.
+	uint8_t guid[FPL_GAMEPAD_GUID_BYTES];
+	//! Bindings for the digital button slots, indexed by @ref fplGamepadButtonType.
+	fplGamepadInputBinding buttons[FPL_GAMEPAD_BUTTON_COUNT];
+	//! Bindings for the analog axis slots, indexed by @ref fplGamepadAxisType.
+	fplGamepadInputBinding axes[fplGamepadAxisType_Count];
+	//! Platform the mapping was authored for.
+	fplGamepadPlatform platform;
+} fplGamepadMapping;
+
+//! Maximum number of raw axes captured in a @ref fplGamepadRawInput snapshot.
+#define FPL_GAMEPAD_RAW_MAX_AXES 8
+//! Maximum number of raw buttons captured in a @ref fplGamepadRawInput snapshot.
+#define FPL_GAMEPAD_RAW_MAX_BUTTONS 32
+//! Maximum number of raw hats captured in a @ref fplGamepadRawInput snapshot.
+#define FPL_GAMEPAD_RAW_MAX_HATS 8
+
+/**
+* @struct fplGamepadRawInput
+* @brief Backend-agnostic snapshot of raw device input that a @ref fplGamepadMapping operates on.
+*/
+typedef struct fplGamepadRawInput {
+	//! Raw analog axes in SDL convention (-1 .. +1, triggers idle at -1).
+	float axes[FPL_GAMEPAD_RAW_MAX_AXES];
+	//! Raw digital buttons (true when pressed).
+	bool buttons[FPL_GAMEPAD_RAW_MAX_BUTTONS];
+	//! Raw hat masks (bit 1=up, 2=right, 4=down, 8=left).
+	uint8_t hats[FPL_GAMEPAD_RAW_MAX_HATS];
+	//! Number of valid entries in @ref buttons.
+	uint32_t buttonCount;
+	//! Number of valid entries in @ref axes.
+	uint32_t axisCount;
+	//! Number of valid entries in @ref hats.
+	uint32_t hatCount;
+} fplGamepadRawInput;
+
+/**
+* @struct fplGameControllerInfo
+* @brief Read-only description of a controller passed to a @ref fplGamepadMappingResolverFn at connect time.
+*/
+struct fplGameControllerInfo {
+	//! Display name of the device (UTF-8).
+	const char *name;
+	//! Backend-local slot index for the controller.
+	uint32_t index;
+	//! Backend that produced this device.
+	fplInputBackendType backend;
+	//! Raw 16-byte SDL-compatible GUID built by the backend.
+	uint8_t guid[FPL_GAMEPAD_GUID_BYTES];
+	//! USB vendor id, or 0 when unknown.
+	uint16_t vendorId;
+	//! USB product id, or 0 when unknown.
+	uint16_t productId;
+	//! Device version (bcdDevice), or 0 when unknown.
+	uint16_t version;
+	//! Number of raw buttons exposed by the device.
+	uint32_t buttonCount;
+	//! Number of raw axes exposed by the device.
+	uint32_t axisCount;
+	//! Number of raw hats exposed by the device.
+	uint32_t hatCount;
+};
 
 //! Maximum length of the @ref fplInputDevice name field.
 #define FPL_MAX_INPUT_DEVICE_NAME 64
@@ -14073,6 +14251,8 @@ fpl_common_api void fplSetDefaultConsoleSettings(fplConsoleSettings *console) {
 fpl_common_api void fplSetDefaultGameControllersSettings(fplGameControllersSettings *gameControllers) {
 	gameControllers->detectionFrequency = 1000;
 	gameControllers->updateFrequency = 0;
+	gameControllers->mappingResolver = fpl_null;
+	gameControllers->mappingResolverUserData = fpl_null;
 }
 
 fpl_common_api void fplSetDefaultInputSettings(fplInputSettings *input) {
