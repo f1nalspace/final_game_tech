@@ -23,8 +23,9 @@ This was created for learning purposes and supports features such as:
 	- APU (Audio Processing Unit): Generating audio samples for 4 Voices (Two Pulse Voices, One general PCM/Wave Voice, One LSFR Noise Voice)
 - MMU (Memory Management Unit): Chip that manages any memory read/write operations
 - Boot ROM support for DMG
-- GamePak loading with support for ROM and RAM banking (MBC1, MBC2, MBC3, MBC5)
+- GamePak loading with support for ROM and RAM banking (MBC1, MBC2, MBC3, MBC5, MBC7)
 - RTC Support for MBC3 (Basic)
+- EEPROM Support for MBC7
 - Battery backed external RAM load/save
 - Storing and restoring of full save states
 - Joypad support (Keyboard, Gamepad)
@@ -32,7 +33,7 @@ This was created for learning purposes and supports features such as:
 
 It can run a ton of DMG games and most CGB games.
 Complex gameboy color games may crash, stall or has graphics or sound bugs.
-Some games won't work at all or are totally broken, e.g. Alleyway, Duck Tales :-(
+Some games won't work at all or are totally broken, e.g. Duck Tales, Alfred Adventure :-(
 
 All knowledge used in this source is based on tutorials, documentations and the awesome "Ultimate Game Boy Talk".
 
@@ -64,7 +65,7 @@ The only dependencies are built-in operating system libraries and a C99 complian
 - Audio too fast in certain cases (e.g. Duck Tales)
 - Audio buffer underrun in certain cases, resulting in hearable audio bugs
 - Interrupt timing is not correct (fails "interrupt_time" blargg test)
-- Input handling are sometimes broken (e.g. Duck Tales, Alley Way)
+- Input handling are sometimes broken (e.g. Duck Tales)
 - CGB Background/Sprite Rendering issues, resulting in weird graphical bugs for (e.g. Aladdin, Alfred's Adventure)
 - OAM Bug not implemented
 
@@ -74,8 +75,10 @@ The only dependencies are built-in operating system libraries and a C99 complian
 
 Good:
 - [DMG] Alfred Chicken
+- [DMG] Alleyway
 - [DMG] Dr. Mario
 - [DMG] Kirby's Dream Land
+- [DMG] Kirby's Dream Land II
 - [DMG] Mega Man - Dr. Wily's Revenge
 - [DMG] Mega Man II
 - [DMG] R-Type
@@ -94,8 +97,8 @@ Partial:
 - [CGB] Aladdin: Can play, but almost no sprites are visible, alfred itself is just a couple of lines
 
 Do not work:
-- [DMG] Duck Tales: In-game music too fast, window-rendering graphic flickering, not able to jump away from climbing vines
-- [CGB] Mega Man Xtreme: Starts, but hangs in the title screens
+- [DMG] Duck Tales: In-game music too fast, crashes with a CPU instruction error, not able to jump away from climbing vines
+- [CGB] Mega Man Xtreme: Crashes with a CPU instruction error
 
 -------------------------------------------------------------------------------
 	Test-ROMS Compability
@@ -128,10 +131,10 @@ scribbltests:
 - [DMG/CGB] `scxly`: Passes
 - [DMG/CGB] `statcount-auto`: Fails
 - [DMG/CGB] `statcount`: No idea how it works
-- [DMG/CGB] `winpos`: Looks correct
+- [DMG/CGB] `winpos`: Visually correct in all cases
 
 mealybug-tearoom-tests:
-- [DMG/CGB] `mealybug-tearoom-tests`: Most fail
+- [DMG/CGB] `mealybug-tearoom-tests`: All fails
 
 Others:
 - [DMG/CGB] rtc3test: Basic almost passes, remaining fails
@@ -236,6 +239,7 @@ Copyright 2024-2026 Torsten Spaete
 
 - Extented testing framework (Test callbacks)
 - Improved performance of microstepping checks
+- X86 Support
 
 ### Bugfixes
 
@@ -754,16 +758,18 @@ typedef union {
 	};
 } fgbReadOnlyMemory;
 
-// Represents the external RAM (up to 128 KB) in a game pak
+// Represents the external RAM (up to 256 KB) in a game pak.
+// Length is stored as uint64_t (not size_t) so the layout is identical on
+// x86 and x64 — a snapshot saved on either bitness loads on both.
 typedef union {
 	// Full data array
-	uint8_t m[FGB_MAX_EXTERNAL_RAM_SIZE + sizeof(size_t) + sizeof(uint64_t) + sizeof(bool) * 8];
+	uint8_t m[FGB_MAX_EXTERNAL_RAM_SIZE + sizeof(uint64_t) + sizeof(uint64_t) + sizeof(bool) * 8];
 	// Anonymous struct holding the external ram and some states
 	struct {
 		// Fixed amount of memory + size
 		struct {
 			// Size of the RAM
-			size_t length;
+			uint64_t length;
 			// The entire RAM of the gamepak
 			uint8_t data[FGB_MAX_EXTERNAL_RAM_SIZE];
 		} memory;
@@ -1108,6 +1114,7 @@ typedef FGB_MBC_READ_FUNC(fgb_mbc_read_func);
   */
 typedef FGB_MBC_WRITE_FUNC(fgb_mbc_write_func);
 
+#pragma pack(push,1)
 // Represents the state for a MBC1
 typedef struct {
 	// Second ROM Bank in range of 1-127
@@ -1119,7 +1126,10 @@ typedef struct {
 	// Is RAM enabled
 	bool isRAMEnabled;
 } fgbMBC1;
+#pragma pack(pop)
+FGB_STATIC_ASSERT(sizeof(fgbMBC1) == 4);
 
+#pragma pack(push,1)
 // Represents the state for a MBC2
 typedef struct {
 	// Second ROM Bank in range of 1-16
@@ -1129,37 +1139,66 @@ typedef struct {
 	// Padding to align to 4 bytes
 	uint8_t padding[2];
 } fgbMBC2;
+#pragma pack(pop)
+FGB_STATIC_ASSERT(sizeof(fgbMBC2) == 4);
 
+#pragma pack(push,1)
+// MBC3 RTC-Register (8 Bytes)
+typedef struct {
+	// Seconds (0-59)
+	uint8_t secs;
+	// Minutes (0-59)
+	uint8_t mins;
+	// Hours (0-23)
+	uint8_t hours;
+	// Day Counter low 8 bits
+	uint8_t dayLow;
+	// Day Counter high bit (0) | halt (6) | day carry (7)
+	uint8_t dayHigh;
+	// Padding to align to 8 bytes
+	uint8_t padding[3];
+} fgbMBC3RTCRegister;
+#pragma pack(pop)
+FGB_STATIC_ASSERT(sizeof(fgbMBC3RTCRegister) == 8);
+
+// pack(4) keeps the layout identical on x86 and x64 — uint64_t aligns to 4
+// on both, so a snapshot saved on either bitness loads on both.
+#pragma pack(push,4)
+typedef struct {
+	// RTC Register
+	fgbMBC3RTCRegister reg;
+	// RTC Latch
+	fgbMBC3RTCRegister latch;
+	// Unix epoch seconds of last RTC catch-up (from dateTimeQuery)
+	uint64_t baseEpoch;
+	// Last byte written to 0x6000-0x7FFF for latch sequence (0 then 1)
+	uint8_t latchState;
+	// Is RTC latched (copied)
+	bool hasLatched;
+	// Padding to align to 32-bytes
+	uint8_t padding[6];
+} fgbMBC3RTC;
+#pragma pack(pop)
+FGB_STATIC_ASSERT(sizeof(fgbMBC3RTC) == 32);
+
+#pragma pack(push,4)
 // Represents the state for a MBC3
 typedef struct {
+	// RTC values
+	fgbMBC3RTC rtc;
 	// Second ROM Bank in range of 1-127
 	uint8_t romBank;
 	// RAM Bank in range of 0-3 OR $08-$0C for RTC
 	uint8_t ramBankOrRTCRegister;
 	// RAM + RTC Register enabled
 	bool isRAMAndRTCEnabled;
-	// Last byte written to 0x6000-0x7FFF for latch sequence (0 then 1)
-	uint8_t latchState;
-
-	// Live RTC registers
-	uint8_t rtcS;   // seconds (0-59)
-	uint8_t rtcM;   // minutes (0-59)
-	uint8_t rtcH;   // hours   (0-23)
-	uint8_t rtcDL;  // day counter low 8 bits
-	uint8_t rtcDH;  // day counter high bit (0) | halt (6) | day carry (7)
-
-	// Latched copy returned by RTC reads until next latch
-	uint8_t latchedS;
-	uint8_t latchedM;
-	uint8_t latchedH;
-	uint8_t latchedDL;
-	uint8_t latchedDH;
-	bool    hasLatched;
-
-	// Unix epoch seconds of last RTC catch-up (from dateTimeQuery)
-	uint64_t rtcBaseEpoch;
+	// Padding to bring the struct to a fixed 64 bytes regardless of bitness.
+	uint8_t padding[29];
 } fgbMBC3;
+#pragma pack(pop)
+FGB_STATIC_ASSERT(sizeof(fgbMBC3) == 64);
 
+#pragma pack(push,1)
 // Represents the state for a MBC5
 typedef struct {
 	// Second ROM Bank in range of 0-480
@@ -1169,6 +1208,80 @@ typedef struct {
 	// Is RAM enabled
 	bool isRAMEnabled;
 } fgbMBC5;
+#pragma pack(pop)
+FGB_STATIC_ASSERT(sizeof(fgbMBC5) == 4);
+
+#pragma pack(push,2)
+// Represents the sensor data and state for a MBC7
+typedef struct {
+	// X-Accelerometer 16-bit values (0x8000 = centered at rest)
+	uint16_t x;
+	// Y-Accelerometer 16-bit values (0x8000 = centered at rest)
+	uint16_t y;
+	// Latch state machine: 0 = idle, 1 = saw 0x55 written to reg 2
+	uint8_t latchState;
+	// True after 0x55 then 0xAA written -> sensor is "sampled"
+	bool isLatched;
+	// Padding to align to 8-bytes
+	uint16_t padding;
+} fgbMBC7Sensor;
+#pragma pack(pop)
+FGB_STATIC_ASSERT(sizeof(fgbMBC7Sensor) == 8);
+
+#pragma pack(push,2)
+// Represents the EEPROM data and state for a MBC7
+typedef struct {
+	// EEPROM Chip-Select Bit
+	uint8_t chipSelect;
+	// EEPROM Clock Bit
+	uint8_t clock;
+	// EEPROM Data-In Bit
+	uint8_t dataIn;
+	// EEPROM Data-Out Bit
+	uint8_t dataOut;
+
+	// Input data to write
+	uint16_t inputData;
+	// Output data to read
+	uint16_t outputData;
+
+	// Shift register for incoming bits
+	uint8_t inputCount;
+	// Shift register for outgoing bits
+	uint8_t outputCount;
+	// Address latched after start bit + READ/WRITE/ERASE opcode
+	uint8_t address;
+	// Internal state: 0 = receiving instruction, 1 = reading out, 2 = receiving write data
+	uint8_t state;
+
+	// EWEN/EWDS gate for write/erase operations
+	bool isWriteEnabled;
+	// Padding to align to 16-bytes
+	uint8_t padding[3];
+} fgbMBC7EEPROM;
+#pragma pack(pop)
+FGB_STATIC_ASSERT(sizeof(fgbMBC7EEPROM) == 16);
+
+#pragma pack(push,2)
+// Represents the state for a MBC7 (Sensor + Rumble + 256-byte EEPROM)
+typedef struct {
+	// EEPROM
+	fgbMBC7EEPROM eeprom;
+	// Sensor
+	fgbMBC7Sensor sensor;
+
+	// Second ROM Bank in range of 0-127 (7 bits)
+	uint16_t romBank;
+	// First-stage RAM enable (0x0A written to 0x0000-0x1FFF)
+	bool isRAMEnabled1;
+	// Second-stage RAM enable (0x40 written to 0x4000-0x5FFF)
+	bool isRAMEnabled2;
+
+	// Padding to align to 32-bytes
+	uint8_t padding[4];
+} fgbMBC7;
+#pragma pack(pop)
+FGB_STATIC_ASSERT(sizeof(fgbMBC7) == 32);
 
 // Stores the current memory bank controller data
 typedef union {
@@ -1180,7 +1293,10 @@ typedef union {
 	fgbMBC3 mbc3;
 	// State for MBC5
 	fgbMBC5 mbc5;
+	// State for MBC7
+	fgbMBC7 mbc7;
 } fgbMBCData;
+FGB_STATIC_ASSERT(sizeof(fgbMBCData) == 64);
 
 // Represents the full state of the current memory bank controller
 typedef struct fgbMemoryBankController {
@@ -1236,21 +1352,19 @@ FGB_STATIC_ASSERT(sizeof(fgbExternalRAMStateHeader) == 16);
 // Optional MBC3 RTC trailer written after the RAM data when version >= _RTC
 // and the cart has the TIMER feature.
 typedef struct {
-	uint8_t  s;
-	uint8_t  m;
-	uint8_t  h;
-	uint8_t  dl;
-	uint8_t  dh;
-	uint8_t  latchedS;
-	uint8_t  latchedM;
-	uint8_t  latchedH;
-	uint8_t  latchedDL;
-	uint8_t  latchedDH;
-	uint8_t  hasLatched;
+	// Current RTC Register
+	fgbMBC3RTCRegister reg;
+	// Latched RTC Register
+	fgbMBC3RTCRegister latch;
+	// Base eppoch unix timestamp
 	uint64_t baseEpoch;
+	// Was RTC latched
+	bool  hasLatched;
+	// Padding to align to 32-bytes
+	uint8_t padding[7];
 } fgbMBC3RTCSaveBlock;
 #pragma pack(pop)
-FGB_STATIC_ASSERT(sizeof(fgbMBC3RTCSaveBlock) == 19);
+FGB_STATIC_ASSERT(sizeof(fgbMBC3RTCSaveBlock) == 32);
 
 // ****************************************************************************
 // > COLOR-API
@@ -2498,12 +2612,13 @@ typedef struct {
 	uint8_t unused[2];
 } fgbSerialState;
 
-// Represents the full state of the serial data transfer
+// Represents the full state of the serial data transfer.
+// `count` is uint64_t (not size_t) so the snapshot layout is bitness-independent.
 typedef struct {
 	// Current character buffer (~2 KB)
 	char data[2032];
 	// Number of characters
-	size_t count;
+	uint64_t count;
 	// Serial state
 	fgbSerialState state;
 } fgbSerial;
@@ -3150,7 +3265,9 @@ typedef enum {
 	fgbCPUStateType_HaltDI = 5,
 } fgbCPUStateType;
 
-#pragma pack(push, 8)
+// pack(4) -> uint64_t alignment becomes 4 on both x86 and x64, so the layout
+// matches across bitness. Explicit tail padding makes the struct exactly 32 B.
+#pragma pack(push, 4)
 // Represents the state of the CPU
 typedef struct {
 	// The total tick cycles emulated
@@ -3163,13 +3280,17 @@ typedef struct {
 	uint16_t lastPC;
 	// The last saved SP, so we can detect infinite loops
 	uint16_t lastSP;
-	// Padding to align to 32-bytes
-	uint32_t paddingU32;
+	// True when the CPU is stuck in a tight spin (e.g. blargg post-test JR -2 with IME/IE off).
+	// Emulation continues — HW keeps ticking inside the loop — but callers may use this to
+	// distinguish "test finished" from "still running".
+	bool isInDeadLoop;
+	// Padding to keep struct size at a fixed 32 bytes regardless of bitness
+	uint8_t paddingU8[7];
 } fgbCPUState;
 #pragma pack(pop)
 FGB_STATIC_ASSERT(sizeof(fgbCPUState) == 32);
 
-#pragma pack(push, 8)
+#pragma pack(push, 4)
 // Represents the full CPU with all registers and the state
 typedef struct {
 	// The instruction register, such as start PC, op-code and a copy of the instruction definition
@@ -3488,6 +3609,7 @@ typedef enum {
 	fgbPixelType_Sprite1,
 } fgbPixelType;
 
+#pragma pack(push, 1)
 // Defines the value and states for a single pixel
 typedef struct {
 	// Output RGB color
@@ -3503,25 +3625,25 @@ typedef struct {
 	// CGB: BG-tile attribute bit 7 — when set, BG covers sprites regardless of OAM backgroundPriority (ignored on DMG)
 	bool cgbBgPriority;
 } fgbPixel;
+#pragma pack(pop)
+FGB_STATIC_ASSERT(sizeof(fgbPixel) == 8);
 
 // Max number of pixels in the FIFO queue
 #define FGB_PIXEL_FIFO_LENGTH 16
 
-#pragma pack(push, 8)
+#pragma pack(push, 1)
 // Represents the full pixel FIFO containing a buffer of 16 entries
 typedef struct {
 	// Pixel buffer of 16 entries
 	fgbPixel pixels[FGB_PIXEL_FIFO_LENGTH];
-	// Padding to align to 8 bytes
-	uint64_t padding0[3];
 	// Pop index (0-15, always wrapped to zero)
 	uint8_t out;
 	// Push index (0-15, always wrapped to zero)
 	uint8_t in;
 	// Number of pixels in the queue
 	uint8_t len;
-	// Struct padding
-	uint8_t padding1[5];
+	// Padding to align to 136 bytes
+	uint8_t padding[5];
 } fgbPixelFIFO;
 #pragma pack(pop)
 
@@ -3539,24 +3661,40 @@ typedef enum {
 	fgbPPUFetchState_Push,
 } fgbPPUFetchState;
 
+// Sentinel value for the sprite linked list when there is no next/first entry.
+#define FGB_LINE_SPRITE_NO_INDEX ((int8_t)-1)
+
+#pragma pack(push, 1)
 // Sprite linked list entry that stores a copy of the OAM entry.
+// Layout is bitness-independent: uses an index instead of a pointer for the
+// next-link so a snapshot taken on x64 can be restored on x86 (and vice versa).
 typedef struct fgbLineSpriteEntry {
-	// Pointer to the next entry.
-	struct fgbLineSpriteEntry *next;
 	// Copy of the OAM entry.
 	fgbOAMEntry entry;
+	// Index into fgbLineSpriteList::buffer of the next entry, or FGB_LINE_SPRITE_NO_INDEX (-1) for none.
+	int8_t nextIndex;
+	// Padding to align to 8-bytes
+	uint8_t padding[3];
 } fgbLineSpriteEntry;
+#pragma pack(pop)
+FGB_STATIC_ASSERT(sizeof(fgbLineSpriteEntry) == 8);
 
+#pragma pack(push, 1)
 // Stores the current sprites for the PPU pipeline.
 typedef struct {
 	// Fixed memory of a linked list with 10 entries.
 	fgbLineSpriteEntry buffer[10];
-	// Contains the first OAM entry link, up to 10.
-	fgbLineSpriteEntry *first;
+	// Index into buffer of the first entry, or FGB_LINE_SPRITE_NO_INDEX (-1) for empty.
+	int8_t firstIndex;
 	// Number of line sprites (max 10).
-	size_t count;
+	uint8_t count;
+	// Padding to align to 4 bytes.
+	uint8_t padding[2];
 } fgbLineSpriteList;
+#pragma pack(pop)
+FGB_STATIC_ASSERT(sizeof(fgbLineSpriteList) == 84);
 
+#pragma pack(push, 1)
 // Stores the states for the PPU pipeline.
 typedef struct {
 	// The Y offset in the tile (Range 0-7).
@@ -3567,7 +3705,17 @@ typedef struct {
 	uint8_t pushX;
 	// Current X position in the FIFO (Range 0-159).
 	uint8_t fifoX;
+	// SCX latched at Mode 3 start; reads of lcd->scx during pixel transfer use these instead.
+	uint8_t scx;
+	// SCY latched at Mode 3 start; reads of lcd->scy during pixel transfer use these instead.
+	uint8_t scy;
+	// Window mode: once triggered for the line, fetcher pulls from the window map until HBlank.
+	bool inWindow;
+	// Pixels to discard at the start of the window (when WX < 7, leftmost 7-WX pixels of the first window tile are off-screen).
+	uint8_t windowDiscard;
 } fgbPipelineState;
+#pragma pack(pop)
+FGB_STATIC_ASSERT(sizeof(fgbPipelineState) == 8);
 
 // Stores the data of the Pixel FIFO fetcher, such as OAM entries, current tile line/id/data and the X position.
 typedef struct {
@@ -3590,6 +3738,7 @@ typedef struct {
 	// Padding to align to 32 bytes.
 	uint8_t padding[4];
 } fgbPPUFetchRegister;
+FGB_STATIC_ASSERT(sizeof(fgbPPUFetchRegister) == 32);
 
 // Stores everything required for the PPU pipeline, such as sprites, pixel-FIFO, fetch-register, positions, etc.
 typedef struct {
@@ -3608,6 +3757,7 @@ typedef struct {
 	// Padding to align to 4 bytes.
 	uint16_t padding;
 } fgbPPUPipeline;
+FGB_STATIC_ASSERT(sizeof(fgbPPUPipeline) == 268);
 
 // Represents the full state of the DMA.
 typedef struct {
@@ -3620,6 +3770,7 @@ typedef struct {
 	// A flag indicating whether DMA is active or not.
 	bool isActive;
 } fgbDMA;
+FGB_STATIC_ASSERT(sizeof(fgbDMA) == 4);
 
 // Represents a single tile information in the background map (Debugger only!).
 typedef struct {
@@ -3632,6 +3783,7 @@ typedef struct {
 	// Padding to align to 4 bytes.
 	uint8_t padding;
 } fgbBackgroundMapTileInfo;
+FGB_STATIC_ASSERT(sizeof(fgbBackgroundMapTileInfo) == 4);
 
 // Represents the data for the PPU Background map (Debugger only!).
 typedef struct {
@@ -4574,14 +4726,16 @@ FGB_API bool fgbIsAudioPowered(const fgbSystem *system);
 // > Snapshots-API
 // ****************************************************************************
 
-// Defines the allowed snapshot versions
+// Defines the console kind a snapshot was taken from.
+// The file header carries this plus a separate format-revision field — see
+// fgb__SnapshotHeader::formatRevision for the on-disk layout version.
 typedef enum {
 	// No version
 	fgbSnapshotVersion_None = 0,
 
-	// DMG version (1.0)
+	// DMG (monochrome) snapshot
 	fgbSnapshotVersion_DMG,
-	// CGB Support
+	// CGB (color) snapshot
 	fgbSnapshotVersion_CGB,
 
 	// Current version
@@ -5364,7 +5518,7 @@ FGB_API const char *fgbGetBreakpointTypeLabel(const fgbBreakpointType type) {
 static char fgb__ExternalRAMFilePathBuffer[2048];
 
 // Forward declaration so the external RAM loader can catch up the RTC on resume
-static void fgb__MBC3_RTCTick(fgbSystem *system, fgbMBC3 *mbc3);
+static void fgb__MBC3_RTCTick(fgbSystem *system, fgbMBC3RTC *rtc);
 
 static bool fgb__ExternalRAMSave(fgbSystem *system, const fgbGamePak *outGamePak) {
 	const fgbCallbacks *cb = &system->callbacks;
@@ -5403,18 +5557,10 @@ static bool fgb__ExternalRAMSave(fgbSystem *system, const fgbGamePak *outGamePak
         const fgbMBC3 *mbc3 = &system->mbc.data.mbc3;
         fgbMBC3RTCSaveBlock trailer;
         fgbClearStruct(&trailer);
-        trailer.s         = mbc3->rtcS;
-        trailer.m         = mbc3->rtcM;
-        trailer.h         = mbc3->rtcH;
-        trailer.dl        = mbc3->rtcDL;
-        trailer.dh        = mbc3->rtcDH;
-        trailer.latchedS  = mbc3->latchedS;
-        trailer.latchedM  = mbc3->latchedM;
-        trailer.latchedH  = mbc3->latchedH;
-        trailer.latchedDL = mbc3->latchedDL;
-        trailer.latchedDH = mbc3->latchedDH;
-        trailer.hasLatched = mbc3->hasLatched ? 1 : 0;
-        trailer.baseEpoch = mbc3->rtcBaseEpoch;
+    	trailer.reg = mbc3->rtc.reg;
+    	trailer.latch = mbc3->rtc.latch;
+        trailer.hasLatched = mbc3->rtc.hasLatched;
+        trailer.baseEpoch = mbc3->rtc.baseEpoch;
         fgb__FileWrite(cb, fileHandle, &trailer, sizeof(trailer));
     }
 
@@ -5495,20 +5641,12 @@ static bool fgb__ExternalRAMLoad(fgbSystem *system, fgbGamePak *outGamePak) {
 		size_t trailerRead = fgb__FileRead(cb, fileHandle, &trailer, sizeof(trailer), sizeof(trailer));
 		if (trailerRead == sizeof(trailer)) {
 			fgbMBC3 *mbc3 = &system->mbc.data.mbc3;
-			mbc3->rtcS         = trailer.s;
-			mbc3->rtcM         = trailer.m;
-			mbc3->rtcH         = trailer.h;
-			mbc3->rtcDL        = trailer.dl;
-			mbc3->rtcDH        = trailer.dh;
-			mbc3->latchedS     = trailer.latchedS;
-			mbc3->latchedM     = trailer.latchedM;
-			mbc3->latchedH     = trailer.latchedH;
-			mbc3->latchedDL    = trailer.latchedDL;
-			mbc3->latchedDH    = trailer.latchedDH;
-			mbc3->hasLatched   = trailer.hasLatched != 0;
-			mbc3->rtcBaseEpoch = trailer.baseEpoch;
+			mbc3->rtc.reg = trailer.reg;
+			mbc3->rtc.latch = trailer.latch;
+			mbc3->rtc.hasLatched = trailer.hasLatched;
+			mbc3->rtc.baseEpoch = trailer.baseEpoch;
 			// Credit wall-clock time elapsed while the game was closed.
-			fgb__MBC3_RTCTick(system, mbc3);
+			fgb__MBC3_RTCTick(system, &mbc3->rtc);
 		}
 	}
 
@@ -6332,40 +6470,43 @@ static void fgb__MBC2_Write(struct fgbSystem *gbOpaque, struct fgbMemoryBankCont
 // Catch the live MBC3 RTC registers up to the current wall-clock time
 // since rtcBaseEpoch. Honors the halt bit (rtcDH bit 6), wraps the 9-bit day
 // counter and sets the day-overflow carry (rtcDH bit 7).
-static void fgb__MBC3_RTCTick(fgbSystem *system, fgbMBC3 *mbc3) {
+static void fgb__MBC3_RTCTick(fgbSystem *system, fgbMBC3RTC *rtc) {
+	fgbMBC3RTCRegister *rtcReg = &rtc->reg;
+	fgbMBC3RTCRegister *rtcLatch = &rtc->latch;
+
 	const fgbDateTime now = fgb__DateTimeQuery(&system->callbacks);
 	const uint64_t nowEpoch = now.epoch;
 
 	// Halt bit set -> don't advance, but still pin the base so resuming
 	// doesn't retroactively count the halted interval.
-	if ((mbc3->rtcDH & 0x40) != 0) {
-		mbc3->rtcBaseEpoch = nowEpoch;
+	if ((rtcReg->dayHigh & 0x40) != 0) {
+		rtc->baseEpoch = nowEpoch;
 		return;
 	}
 
-	if (nowEpoch <= mbc3->rtcBaseEpoch) {
-		mbc3->rtcBaseEpoch = nowEpoch;
+	if (nowEpoch <= rtc->baseEpoch) {
+		rtc->baseEpoch = nowEpoch;
 		return;
 	}
 
-	uint64_t elapsed = nowEpoch - mbc3->rtcBaseEpoch;
-	mbc3->rtcBaseEpoch = nowEpoch;
+	uint64_t elapsed = nowEpoch - rtc->baseEpoch;
+	rtc->baseEpoch = nowEpoch;
 
-	uint64_t secs  = (uint64_t)mbc3->rtcS + elapsed;
-	uint64_t mins  = (uint64_t)mbc3->rtcM + secs / 60;
-	uint64_t hours = (uint64_t)mbc3->rtcH + mins / 60;
-	uint64_t days  = (uint64_t)((mbc3->rtcDH & 0x01) ? 0x100 : 0x00) + (uint64_t)mbc3->rtcDL + hours / 24;
+	uint64_t secs  = (uint64_t)rtcReg->secs + elapsed;
+	uint64_t mins  = (uint64_t)rtcReg->mins + secs / 60;
+	uint64_t hours = (uint64_t)rtcReg->hours + mins / 60;
+	uint64_t days  = (uint64_t)((rtcReg->dayHigh & 0x01) ? 0x100 : 0x00) + (uint64_t)rtcReg->dayLow + hours / 24;
 
-	mbc3->rtcS = (uint8_t)(secs  % 60);
-	mbc3->rtcM = (uint8_t)(mins  % 60);
-	mbc3->rtcH = (uint8_t)(hours % 24);
-	mbc3->rtcDL = (uint8_t)(days & 0xFF);
+	rtcReg->secs = (uint8_t)(secs  % 60);
+	rtcReg->mins = (uint8_t)(mins  % 60);
+	rtcReg->hours = (uint8_t)(hours % 24);
+	rtcReg->dayLow = (uint8_t)(days & 0xFF);
 
-	uint8_t dh = (uint8_t)(mbc3->rtcDH & 0x40); // preserve halt
+	uint8_t dh = (uint8_t)(rtcReg->dayHigh & 0x40); // preserve halt
 	if (days & 0x100) dh |= 0x01;               // day counter bit 8
 	if (days >= 0x200) dh |= 0x80;              // day counter overflow carry
-	else               dh |= (uint8_t)(mbc3->rtcDH & 0x80);
-	mbc3->rtcDH = dh;
+	else               dh |= (uint8_t)(rtcReg->dayHigh & 0x80);
+	rtcReg->dayHigh = dh;
 }
 
 static uint8_t fgb__MBC3_Read(struct fgbSystem *gbOpaque, struct fgbMemoryBankController *mbcOpaque, const uint16_t address) {
@@ -6374,6 +6515,9 @@ static uint8_t fgb__MBC3_Read(struct fgbSystem *gbOpaque, struct fgbMemoryBankCo
 	fgbGamePak *gamepak = &system->gamePak;
 	fgbMBCData *data = &mbc->data;
 	fgbMBC3 *mbc3 = &data->mbc3;
+	fgbMBC3RTC *rtc = &mbc3->rtc;
+	fgbMBC3RTCRegister *rtcReg = &rtc->reg;
+	fgbMBC3RTCRegister *rtcLatch = &rtc->latch;
 
 	if (address <= 0x3FFF) {
 		// ROM Bank 0
@@ -6403,23 +6547,23 @@ static uint8_t fgb__MBC3_Read(struct fgbSystem *gbOpaque, struct fgbMemoryBankCo
 		} else if (reg >= 0x08 && reg <= 0x0C) {
 			// RTC register read. If a latch has happened, return the latched
 			// snapshot; otherwise return the live value (Pan Docs).
-			if (mbc3->hasLatched) {
+			if (rtc->hasLatched) {
 				switch (reg) {
-					case 0x08: return mbc3->latchedS;
-					case 0x09: return mbc3->latchedM;
-					case 0x0A: return mbc3->latchedH;
-					case 0x0B: return mbc3->latchedDL;
-					case 0x0C: return mbc3->latchedDH;
+					case 0x08: return rtcLatch->secs;
+					case 0x09: return rtcLatch->mins;
+					case 0x0A: return rtcLatch->hours;
+					case 0x0B: return rtcLatch->dayLow;
+					case 0x0C: return rtcLatch->dayHigh;
 					default:   return 0xFF;
 				}
 			}
-			fgb__MBC3_RTCTick(system, mbc3);
+			fgb__MBC3_RTCTick(system, rtc);
 			switch (reg) {
-				case 0x08: return mbc3->rtcS;
-				case 0x09: return mbc3->rtcM;
-				case 0x0A: return mbc3->rtcH;
-				case 0x0B: return mbc3->rtcDL;
-				case 0x0C: return mbc3->rtcDH;
+				case 0x08: return rtcReg->secs;
+				case 0x09: return rtcReg->mins;
+				case 0x0A: return rtcReg->hours;
+				case 0x0B: return rtcReg->dayLow;
+				case 0x0C: return rtcReg->dayHigh;
 				default:   return 0xFF;
 			}
 		}
@@ -6436,6 +6580,9 @@ static void fgb__MBC3_Write(struct fgbSystem *gbOpaque, struct fgbMemoryBankCont
 	fgbMBCData *data = &mbc->data;
 	fgbGamePak *gamepak = &system->gamePak;
 	fgbMBC3 *mbc3 = &data->mbc3;
+	fgbMBC3RTC *rtc = &mbc3->rtc;
+	fgbMBC3RTCRegister *rtcReg = &rtc->reg;
+	fgbMBC3RTCRegister *rtcLatch = &rtc->latch;
 
 	if (address <= 0x1FFF) {
 		// RAM + RTC Enable
@@ -6453,16 +6600,12 @@ static void fgb__MBC3_Write(struct fgbSystem *gbOpaque, struct fgbMemoryBankCont
 	} else if (address <= 0x7FFF) {
 		// Latch Clock Data: writing 0 then 1 latches the live RTC into the
 		// latched snapshot registers.
-		if (mbc3->latchState == 0 && (value & 0x01) == 1) {
-			fgb__MBC3_RTCTick(system, mbc3);
-			mbc3->latchedS  = mbc3->rtcS;
-			mbc3->latchedM  = mbc3->rtcM;
-			mbc3->latchedH  = mbc3->rtcH;
-			mbc3->latchedDL = mbc3->rtcDL;
-			mbc3->latchedDH = mbc3->rtcDH;
-			mbc3->hasLatched = true;
+		if (rtc->latchState == 0 && (value & 0x01) == 1) {
+			fgb__MBC3_RTCTick(system, rtc);
+			rtc->latch = rtc->reg;
+			rtc->hasLatched = true;
 		}
-		mbc3->latchState = (uint8_t)(value & 0x01);
+		rtc->latchState = (uint8_t)(value & 0x01);
 	} else if (address >= 0xA000 && address <= 0xBFFF) {
 		if (!mbc3->isRAMAndRTCEnabled) {
 			return;
@@ -6479,16 +6622,17 @@ static void fgb__MBC3_Write(struct fgbSystem *gbOpaque, struct fgbMemoryBankCont
 		} else if (reg >= 0x08 && reg <= 0x0C) {
 			// RTC register write. Catch up to now first so we don't lose time
 			// that accrued since the last tick.
-			fgb__MBC3_RTCTick(system, mbc3);
+			fgb__MBC3_RTCTick(system, rtc);
 			switch (reg) {
-				case 0x08: mbc3->rtcS  = (uint8_t)(value % 60); break;
-				case 0x09: mbc3->rtcM  = (uint8_t)(value % 60); break;
-				case 0x0A: mbc3->rtcH  = (uint8_t)(value % 24); break;
-				case 0x0B: mbc3->rtcDL = value; break;
-				case 0x0C: mbc3->rtcDH = (uint8_t)(value & 0xC1); break;
+				case 0x08: rtcReg->secs  = (uint8_t)(value % 60); break;
+				case 0x09: rtcReg->mins  = (uint8_t)(value % 60); break;
+				case 0x0A: rtcReg->hours  = (uint8_t)(value % 24); break;
+				case 0x0B: rtcReg->dayLow = value; break;
+				case 0x0C: rtcReg->dayHigh = (uint8_t)(value & 0xC1); break;
 				default: break;
 			}
-			mbc3->rtcBaseEpoch = fgb__DateTimeQuery(&system->callbacks).epoch;
+			const fgbDateTime dt = fgb__DateTimeQuery(&system->callbacks);
+			mbc3->rtc.baseEpoch = dt.epoch;
 		}
 	} else {
 		FGB__WARN(system, fgb__KindName_MBC, "Unsupported MBC3 Write '$%02X' to address '$%04X'", value, address);
@@ -6570,49 +6714,332 @@ static void fgb__MBC5_Write(struct fgbSystem *gbOpaque, struct fgbMemoryBankCont
 	}
 }
 
-static void fgb__MBCInit(fgbSystem *system, const fgbGamePak *gamePak, fgbMemoryBankController *mbc) {
+// MBC7 EEPROM commands (top 2 bits after start bit). 93LC56: 128 words x 16 bits.
+#define FGB__MBC7_EEPROM_OP_CTRL  0x0
+#define FGB__MBC7_EEPROM_OP_WRITE 0x1
+#define FGB__MBC7_EEPROM_OP_READ  0x2
+#define FGB__MBC7_EEPROM_OP_ERASE 0x3
+
+#define FGB__MBC7_EEPROM_STATE_INSTRUCTION 0
+#define FGB__MBC7_EEPROM_STATE_READING     1
+#define FGB__MBC7_EEPROM_STATE_WRITING     2
+
+static inline uint16_t fgb__MBC7_EEPROMReadWord(fgbGamePak *gamepak, uint8_t addr) {
+	if (gamepak->ram.memory.length < 256) {
+		return 0xFFFF;
+	}
+	uint16_t off = (uint16_t)((addr & 0x7F) * 2);
+	uint8_t lo = gamepak->ram.memory.data[off];
+	uint8_t hi = gamepak->ram.memory.data[off + 1];
+	return (uint16_t)((hi << 8) | lo);
+}
+
+static inline void fgb__MBC7_EEPROMWriteWord(fgbSystem *system, fgbGamePak *gamepak, uint8_t addr, uint16_t value) {
+	if (gamepak->ram.memory.length < 256) {
+		return;
+	}
+	uint16_t off = (uint16_t)((addr & 0x7F) * 2);
+	gamepak->ram.memory.data[off] = (uint8_t)(value & 0xFF);
+	gamepak->ram.memory.data[off + 1] = (uint8_t)(value >> 8);
+	fgb__MBC_RAMUpdated(system, (uint16_t)(0xA000 + off), (uint8_t)(value & 0xFF));
+}
+
+static void fgb__MBC7_EEPROMTick(fgbSystem *system, fgbMBC7EEPROM *eeprom, fgbGamePak *gamepak, uint8_t newCS, uint8_t newCLK, uint8_t newDI) {
+	// Reset on CS deassert
+	if (eeprom->chipSelect && !newCS) {
+		eeprom->inputData = 0;
+		eeprom->inputCount = 0;
+		eeprom->outputData = 0;
+		eeprom->outputCount = 0;
+		eeprom->state = FGB__MBC7_EEPROM_STATE_INSTRUCTION;
+		eeprom->dataOut = 1;
+	}
+
+	// Rising clock edge while CS is high -> shift one bit
+	bool rising = (!eeprom->clock) && newCLK;
+	if (newCS && rising) {
+		if (eeprom->state == FGB__MBC7_EEPROM_STATE_READING) {
+			// Shift out next bit (MSB first); after dummy zero already prefixed
+			eeprom->dataOut = (uint8_t)((eeprom->outputData >> 15) & 0x1);
+			eeprom->outputData = (uint16_t)(eeprom->outputData << 1);
+			if (eeprom->outputCount > 0) {
+				eeprom->outputCount--;
+				if (eeprom->outputCount == 0) {
+					eeprom->state = FGB__MBC7_EEPROM_STATE_INSTRUCTION;
+					eeprom->inputData = 0;
+					eeprom->inputCount = 0;
+				}
+			}
+		} else {
+			// Shift DI into input register (MSB first)
+			eeprom->inputData = (uint16_t)((eeprom->inputData << 1) | (newDI & 0x1));
+			eeprom->inputCount++;
+
+			if (eeprom->state == FGB__MBC7_EEPROM_STATE_WRITING) {
+				if (eeprom->inputCount >= 16) {
+					if (eeprom->isWriteEnabled) {
+						fgb__MBC7_EEPROMWriteWord(system, gamepak, eeprom->address, eeprom->inputData);
+					}
+					eeprom->state = FGB__MBC7_EEPROM_STATE_INSTRUCTION;
+					eeprom->inputData = 0;
+					eeprom->inputCount = 0;
+					eeprom->dataOut = 1; // ready
+				}
+			} else {
+				// Receiving instruction. Wait for start bit (1) then 2 op bits + 6 addr bits = 9 bits total
+				// If first bit is 0, treat as no-op until we see the start bit.
+				if (eeprom->inputCount == 1 && (eeprom->inputData & 0x1) == 0) {
+					eeprom->inputCount = 0;
+					eeprom->inputData = 0;
+				} else if (eeprom->inputCount >= 9) {
+					// Bits: [start=1][op1 op0][a6 a5 a4 a3 a2 a1] -> low 8 bits = op<<6 | addr
+					uint16_t cmd = (uint16_t)(eeprom->inputData & 0xFF);
+					uint8_t op = (uint8_t)((cmd >> 6) & 0x3);
+					uint8_t addr = (uint8_t)(cmd & 0x3F);
+					switch (op) {
+						case FGB__MBC7_EEPROM_OP_CTRL: {
+							uint8_t sub = (uint8_t)((addr >> 4) & 0x3);
+							if (sub == 0x0) {
+								// EWDS — write disable
+								eeprom->isWriteEnabled = false;
+							} else if (sub == 0x3) {
+								// EWEN — write enable
+								eeprom->isWriteEnabled = true;
+							} else if (sub == 0x2) {
+								// ERAL — erase all
+								if (eeprom->isWriteEnabled) {
+									for (uint8_t i = 0; i < 128; i++) {
+										fgb__MBC7_EEPROMWriteWord(system, gamepak, i, 0xFFFF);
+									}
+								}
+							} else if (sub == 0x1) {
+								// WRAL — write all (data follows in next 16 bits, applied to every word)
+								eeprom->state = FGB__MBC7_EEPROM_STATE_WRITING;
+								eeprom->address = 0xFF; // sentinel for write-all
+							}
+							if (eeprom->state == FGB__MBC7_EEPROM_STATE_INSTRUCTION) {
+								eeprom->inputData = 0;
+								eeprom->inputCount = 0;
+							}
+						} break;
+						case FGB__MBC7_EEPROM_OP_WRITE: {
+							eeprom->address = (uint8_t)(addr & 0x7F);
+							eeprom->inputData = 0;
+							eeprom->inputCount = 0;
+							eeprom->state = FGB__MBC7_EEPROM_STATE_WRITING;
+						} break;
+						case FGB__MBC7_EEPROM_OP_READ: {
+							uint16_t word = fgb__MBC7_EEPROMReadWord(gamepak, addr);
+							// Real device emits a leading dummy 0 then 16 data bits; we represent by clearing DO and queueing 17 shifts
+							eeprom->outputData = word;
+							eeprom->outputCount = 16;
+							eeprom->state = FGB__MBC7_EEPROM_STATE_READING;
+							eeprom->dataOut = 0; // dummy bit
+						} break;
+						case FGB__MBC7_EEPROM_OP_ERASE: {
+							if (eeprom->isWriteEnabled) {
+								fgb__MBC7_EEPROMWriteWord(system, gamepak, addr, 0xFFFF);
+							}
+							eeprom->inputData = 0;
+							eeprom->inputCount = 0;
+						} break;
+					}
+				}
+			}
+		}
+	}
+
+	// Handle WRAL completion separately when finishing a 16-bit data shift in
+	// (the loop above already routed WRAL through STATE_WRITING with eepromAddress=0xFF)
+	// — overwrite handler: if address sentinel, broadcast on completion
+	// Already handled inside STATE_WRITING block by checking sentinel below if needed.
+
+	eeprom->chipSelect = newCS;
+	eeprom->clock = newCLK;
+	eeprom->dataIn = newDI;
+}
+
+static uint8_t fgb__MBC7_Read(struct fgbSystem *gbOpaque, struct fgbMemoryBankController *mbcOpaque, const uint16_t address) {
+	fgbSystem *system = (fgbSystem *)gbOpaque;
+	fgbMemoryBankController *mbc = (fgbMemoryBankController *)mbcOpaque;
+	fgbGamePak *gamepak = &system->gamePak;
+	fgbMBC7 *mbc7 = &mbc->data.mbc7;
+	fgbMBC7Sensor *sensor = &mbc7->sensor;
+	fgbMBC7EEPROM *eeprom = &mbc7->eeprom;
+
+	if (address <= 0x3FFF) {
+		return gamepak->rom.data[address];
+	} else if (address <= 0x7FFF) {
+		uint16_t offset = address - 0x4000;
+		uint16_t bank = mbc7->romBank ? mbc7->romBank : 1;
+		const uint8_t *romBank = fgb__GetROMBank(bank, &gamepak->rom, offset);
+		if (romBank != NULL) {
+			return romBank[offset];
+		}
+		return 0xFF;
+	} else if (address >= 0xA000 && address <= 0xBFFF) {
+		if (!(mbc7->isRAMEnabled1 && mbc7->isRAMEnabled2)) {
+			return 0xFF;
+		}
+		uint8_t reg = (uint8_t)((address >> 4) & 0xF);
+		switch (reg) {
+			case 0x2: return sensor->isLatched ? (uint8_t)(sensor->x & 0xFF) : 0x00;
+			case 0x3: return sensor->isLatched ? (uint8_t)((sensor->x >> 8) & 0xFF) : 0x80;
+			case 0x4: return sensor->isLatched ? (uint8_t)(sensor->y & 0xFF) : 0x00;
+			case 0x5: return sensor->isLatched ? (uint8_t)((sensor->y >> 8) & 0xFF) : 0x80;
+			case 0x6: return 0x00;
+			case 0x7: return 0xFF;
+			case 0x8: {
+				uint8_t v = (uint8_t)(((eeprom->chipSelect & 1) << 7)
+				                    | ((eeprom->clock & 1) << 6)
+				                    | ((eeprom->dataIn & 1) << 1)
+				                    | (eeprom->dataOut & 1));
+				return v;
+			}
+			default: return 0xFF;
+		}
+	} else {
+		FGB__WARN(system, fgb__KindName_MBC, "Unsupported MBC7 Read from address '$%04X'", address);
+		return 0;
+	}
+}
+
+static void fgb__MBC7_Write(struct fgbSystem *gbOpaque, struct fgbMemoryBankController *mbcOpaque, const uint16_t address, const uint8_t value) {
+	fgbSystem *system = (fgbSystem *)gbOpaque;
+	fgbMemoryBankController *mbc = (fgbMemoryBankController *)mbcOpaque;
+	fgbGamePak *gamepak = &system->gamePak;
+	fgbMBC7 *mbc7 = &mbc->data.mbc7;
+	fgbMBC7Sensor *sensor = &mbc7->sensor;
+
+	if (address <= 0x1FFF) {
+		// RAM Enable stage 1
+		bool wasEnabled = mbc7->isRAMEnabled1 && mbc7->isRAMEnabled2;
+		mbc7->isRAMEnabled1 = (value == 0x0A);
+		bool nowEnabled = mbc7->isRAMEnabled1 && mbc7->isRAMEnabled2;
+		if (nowEnabled && !wasEnabled) {
+			fgb__MBC_RAM_Enabled(system, true);
+		}
+	} else if (address <= 0x3FFF) {
+		// ROM Bank Number — 7 bits, bank 0 maps to bank 1
+		uint16_t oldBank = mbc7->romBank;
+		uint16_t bank = (uint16_t)(value & 0x7F);
+		if (bank == 0) bank = 1;
+		mbc7->romBank = bank;
+		fgb__MBC_ROMBankChanged(system, oldBank, mbc7->romBank);
+	} else if (address <= 0x5FFF) {
+		// RAM Enable stage 2 (must be exactly 0x40 for sensor/EEPROM access)
+		bool wasEnabled = mbc7->isRAMEnabled1 && mbc7->isRAMEnabled2;
+		mbc7->isRAMEnabled2 = (value == 0x40);
+		bool nowEnabled = mbc7->isRAMEnabled1 && mbc7->isRAMEnabled2;
+		if (nowEnabled && !wasEnabled) {
+			fgb__MBC_RAM_Enabled(system, true);
+		}
+	} else if (address >= 0xA000 && address <= 0xBFFF) {
+		if (!(mbc7->isRAMEnabled1 && mbc7->isRAMEnabled2)) {
+			return;
+		}
+		uint8_t reg = (uint8_t)((address >> 4) & 0xF);
+		switch (reg) {
+			case 0x0: {
+				// Sensor X latch trigger: write 0x55 then 0xAA samples the X axis
+				if (value == 0x55) {
+					sensor->latchState = 1;
+					sensor->isLatched = false;
+					sensor->x = 0x8000;
+					sensor->y = 0x8000;
+				} else {
+					sensor->latchState = 0;
+				}
+			} break;
+			case 0x1: {
+				if (sensor->latchState == 1 && value == 0xAA) {
+					sensor->isLatched = true;
+					// TODO(final): MBC7 Sensor, Real values here -> center for now
+					sensor->x = 0x8000;
+					sensor->y = 0x8000;
+				}
+				sensor->latchState = 0;
+			} break;
+			case 0x8: {
+				// EEPROM serial port: bit 7 = CS, bit 6 = CLK, bit 1 = DI
+				uint8_t newCS = (uint8_t)((value >> 7) & 0x1);
+				uint8_t newCLK = (uint8_t)((value >> 6) & 0x1);
+				uint8_t newDI = (uint8_t)((value >> 1) & 0x1);
+				fgb__MBC7_EEPROMTick(system, &mbc7->eeprom, gamepak, newCS, newCLK, newDI);
+			} break;
+			default: break;
+		}
+	} else {
+		FGB__WARN(system, fgb__KindName_MBC, "Unsupported MBC7 Write '$%02X' to address '$%04X'", value, address);
+	}
+}
+
+static bool fgb__MBCInit(fgbSystem *system, const fgbGamePak *gamePak, fgbMemoryBankController *mbc) {
 	switch (gamePak->info.mbcType) {
-		case fgbMemoryControllerType_MBC1:
+		case fgbMemoryControllerType_MBC1: {
 			mbc->data.mbc1.romBank = 0x01;
 			mbc->data.mbc1.ramBank = 0x00;
 			mbc->data.mbc1.isRAMEnabled = false;
 			mbc->data.mbc1.mode = 0x00;
 			mbc->read = fgb__MBC1_Read;
 			mbc->write = fgb__MBC1_Write;
-			break;
+			return true;
+		}
 
-		case fgbMemoryControllerType_MBC2:
+		case fgbMemoryControllerType_MBC2: {
 			mbc->data.mbc2.romBank = 0x01;
 			mbc->data.mbc2.isRAMEnabled = false;
 			mbc->read = fgb__MBC2_Read;
 			mbc->write = fgb__MBC2_Write;
-			break;
+			return true;
+		}
 
 		case fgbMemoryControllerType_MBC3: {
 			fgbMBC3 *mbc3 = &mbc->data.mbc3;
 			fgbClearStruct(mbc3);
 			mbc3->romBank = 0x01;
-			mbc3->rtcBaseEpoch = fgb__DateTimeQuery(&system->callbacks).epoch;
+			mbc3->rtc.baseEpoch = fgb__DateTimeQuery(&system->callbacks).epoch;
 			mbc->read = fgb__MBC3_Read;
 			mbc->write = fgb__MBC3_Write;
+			return true;
 		} break;
 
-		case fgbMemoryControllerType_MBC5:
+		case fgbMemoryControllerType_MBC5: {
 			mbc->data.mbc5.romBank = 0x01;
 			mbc->data.mbc5.ramBank = 0x00;
 			mbc->data.mbc5.isRAMEnabled = false;
 			mbc->read = fgb__MBC5_Read;
 			mbc->write = fgb__MBC5_Write;
-			break;
+			return true;
+		}
+
+		case fgbMemoryControllerType_MBC7: {
+			fgbMBC7 *mbc7 = &mbc->data.mbc7;
+			fgbClearStruct(mbc7);
+			mbc7->romBank = 0x01;
+			mbc7->sensor.x = 0x8000;
+			mbc7->sensor.y = 0x8000;
+			mbc7->eeprom.dataOut = 1;
+
+			// MBC7 carts often declare ramSizeType=0; force enough storage for the 256-byte EEPROM
+			if (system->gamePak.ram.memory.length < 256) {
+				system->gamePak.ram.memory.length = FGB_RAM_SIZE_PER_BANK;
+				system->gamePak.info.ramBankCount = 1;
+				FGB_MEMSET(system->gamePak.ram.memory.data, 0xFF, 256);
+			}
+			mbc->read = fgb__MBC7_Read;
+			mbc->write = fgb__MBC7_Write;
+			return true;
+		}
 
 		case fgbMemoryControllerType_ROM:
 			mbc->read = fgb__ROM_Read;
 			mbc->write = fgb__ROM_Write;
-			break;
+			return true;
 
 		default:
-			FGB__WARN(system, fgb__KindName_MBC, "MBC Type '%s' not supported", fgb__MemoryControllerTypeToNameTable[gamePak->info.mbcType]);
-			break;
+			FGB__FATAL(system, fgb__KindName_MBC, "MBC Type '%s' not supported", fgb__MemoryControllerTypeToNameTable[gamePak->info.mbcType]);
+			return false;
 	}
 }
 
@@ -6629,6 +7056,8 @@ FGB_API uint16_t fgbGetROMBank(const fgbSystem *system) {
 			return system->mbc.data.mbc3.romBank;
 		case fgbMemoryControllerType_MBC5:
 			return system->mbc.data.mbc5.romBank;
+		case fgbMemoryControllerType_MBC7:
+			return system->mbc.data.mbc7.romBank;
 		default:
 			return 0;
 	}
@@ -8979,7 +9408,7 @@ static uint8_t fgb__APURead_Direct(fgbSystem *system, const uint16_t address) {
 			case 3:
 				return fgb__GetNoiseVoiceRegister(system, &apu->voices.noise, regType);
 			default:
-				FGB__Failure(system, fgbErrorType_ExecutionError, fgb__KindName_PPU, "Unsupported sound register type '%u' for address $%04X", regType, address);
+				FGB__Failure(system, fgbErrorType_ExecutionError, fgb__KindName_APU, "Unsupported sound register type '%u' for address $%04X", regType, address);
 				return 0xFF;
 		}
 	} else if (offset == 20) {
@@ -9021,7 +9450,7 @@ static uint8_t fgb__APURead(fgbSystem *system, const uint16_t address) {
 		return result;
 	}
 
-	FGB__Failure(system, fgbErrorType_ExecutionError, fgb__KindName_PPU, "Unsupported read from address '%04X'", address);
+	FGB__Failure(system, fgbErrorType_ExecutionError, fgb__KindName_APU, "Unsupported read from address '%04X'", address);
 	return 0xFF;
 }
 
@@ -9070,7 +9499,7 @@ static void fgb__APUWrite(fgbSystem *system, const uint16_t address, const uint8
 #endif
 					return;
 				default:
-					FGB__Failure(system, fgbErrorType_ExecutionError, fgb__KindName_PPU, "Unsupported sound register type '%u' for address $%04X", regType, address);
+					FGB__Failure(system, fgbErrorType_ExecutionError, fgb__KindName_APU, "Unsupported sound register type '%u' for address $%04X", regType, address);
 					return;
 			}
 		} else if (offset == 20) {
@@ -9103,7 +9532,7 @@ static void fgb__APUWrite(fgbSystem *system, const uint16_t address, const uint8
 		}
 	}
 
-	FGB__Failure(system, fgbErrorType_ExecutionError, fgb__KindName_PPU, "Unsupported write '$%02X' to address '%04X'", value, address);
+	FGB__Failure(system, fgbErrorType_ExecutionError, fgb__KindName_APU, "Unsupported write '$%02X' to address '%04X'", value, address);
 }
 
 // ********************************************************************************************************************
@@ -9355,8 +9784,8 @@ static void fgb__PPUBackgroundMapUpdate(fgbSystem *system) {
 		}
 	}
 
-	ppu->backgroundMap.scrollX = ppu->lcd.scx;
-	ppu->backgroundMap.scrollY = ppu->lcd.scy;
+	ppu->backgroundMap.scrollX = ppu->pipeline.state.scx;
+	ppu->backgroundMap.scrollY = ppu->pipeline.state.scy;
 
 	ppu->state.isBackgroundMapUpdated = true;
 }
@@ -9822,6 +10251,8 @@ static void fgb__PPUPipelineReset(fgbPPUPipeline *pipeline) {
 	pipeline->state.lineX = 0;
 	pipeline->state.pushX = 0;
 	pipeline->state.fifoX = 0;
+	pipeline->state.inWindow = false;
+	pipeline->state.windowDiscard = 0;
 	pipeline->fetch.currentX = 0;
 	pipeline->fetch.state = fgbPPUFetchState_Tile;
 
@@ -9831,9 +10262,10 @@ static void fgb__PPUPipelineReset(fgbPPUPipeline *pipeline) {
 // Window Range: WX=0..166, WY=0..143
 // TopLeft: WX=7, WY=0
 static bool fgb__PPUIsWindowVisible(const fgbLCDRegister *lcd) {
-	if (!lcd->lcdc.windowEnable)
+	if (!lcd->lcdc.windowEnable) {
 		return false;
-	bool result = (lcd->wx >= 0 && lcd->wx <= (FGB_DISPLAY_WIDTH + 6)) && (lcd->wy >= 0 && lcd->wy < FGB_DISPLAY_HEIGHT);
+	}
+	const bool result = (lcd->wx >= 0 && lcd->wx <= (FGB_DISPLAY_WIDTH + 6)) && (lcd->wy >= 0 && lcd->wy < FGB_DISPLAY_HEIGHT);
 	return result;
 }
 
@@ -9852,18 +10284,40 @@ static void fgb__PPUIncrementLine(fgbSystem *system) {
 	fgb__PPUCompareLine(system);
 }
 
+// Sprite linked-list traversal helpers. Operate on indices instead of pointers
+// so the layout is bitness-independent and can be safely serialized.
+static inline void fgb__PPULineSpriteListClear(fgbLineSpriteList *list) {
+	fgbClearStruct(list);
+	list->firstIndex = FGB_LINE_SPRITE_NO_INDEX;
+}
+static inline fgbLineSpriteEntry *fgb__PPULineSpriteFirst(fgbLineSpriteList *list) {
+	return (list->firstIndex < 0) ? NULL : &list->buffer[list->firstIndex];
+}
+static inline fgbLineSpriteEntry *fgb__PPULineSpriteNext(fgbLineSpriteList *list, const fgbLineSpriteEntry *entry) {
+	return (entry->nextIndex < 0) ? NULL : &list->buffer[entry->nextIndex];
+}
+static inline int8_t fgb__PPULineSpriteIndexOf(const fgbLineSpriteList *list, const fgbLineSpriteEntry *entry) {
+	return (int8_t)(entry - list->buffer);
+}
+
 static void fgb__PPUPipelineFetchOAMEntries(fgbPPU *ppu, fgbLCDRegister *lcd, fgbPPUPipeline *pipeline) {
-	// Entries are sorted from smallest X to largest X
-	fgbLineSpriteEntry *item = pipeline->sprites.first;
+	// Sprites live in screen-pixel coordinates. The fetcher's coordinate space differs
+	// between BG (offset by SCX%8 due to fine-X discard) and Window (offset by initial
+	// window-discard for WX<7, otherwise 1:1 with screen). Pick the right offset so we
+	// don't double-shift sprites by SCX while the window fetcher is active.
+	const uint8_t fetchOffset = pipeline->state.inWindow
+		? ((lcd->wx < 7) ? (uint8_t)(7 - lcd->wx) : (uint8_t)0)
+		: (uint8_t)(pipeline->state.scx % 8);
+	fgbLineSpriteEntry *item = fgb__PPULineSpriteFirst(&pipeline->sprites);
 	while (item != NULL) {
-		int x = (item->entry.x - 8) + (lcd->scx % 8);
+		int x = (item->entry.x - 8) + fetchOffset;
 
 		if ((x >= pipeline->fetch.currentX && x < pipeline->fetch.currentX + 8) ||
 			((x + 8) >= pipeline->fetch.currentX && (x + 8) < pipeline->fetch.currentX + 8)) {
 			pipeline->fetch.entries[pipeline->fetch.entryCount++] = item->entry;
 		}
 
-		item = item->next;
+		item = fgb__PPULineSpriteNext(&pipeline->sprites, item);
 
 		// Either we are the end of the OAM linked list or we already got 3 sprite entries
 		if (item == NULL || pipeline->fetch.entryCount >= 3) {
@@ -9919,11 +10373,17 @@ static fgbPixel fgb__PPUFetchSpritePixel(fgbSystem *system, fgbPPU *ppu, fgbLCDR
 	uint8_t spriteHeight = lcd->lcdc.objSize ? 16 : 8;
 	uint8_t y = lcd->ly;
 
+	// See FetchOAMEntries — when the window fetcher is active, fifoX advances in screen-pixel
+	// space (offset only by the initial window-left-edge discard, not by SCX%8).
+	const uint8_t fetchOffset = pipeline->state.inWindow
+		? ((lcd->wx < 7) ? (uint8_t)(7 - lcd->wx) : (uint8_t)0)
+		: (uint8_t)(pipeline->state.scx % 8);
+
 	// Walk full per-line sprite list (already priority-sorted: CGB OAM-order or DMG X-order).
-	for (fgbLineSpriteEntry *item = pipeline->sprites.first; item != NULL; item = item->next) {
+	for (fgbLineSpriteEntry *item = fgb__PPULineSpriteFirst(&pipeline->sprites); item != NULL; item = fgb__PPULineSpriteNext(&pipeline->sprites, item)) {
 		const fgbOAMEntry *entry = &item->entry;
 
-		int x = (entry->x - 8) + (lcd->scx % 8);
+		int x = (entry->x - 8) + fetchOffset;
 
 		int offset = (int)xPos - x;
 		if (offset < 0 || offset > 7) {
@@ -10048,44 +10508,38 @@ static void fgb__PPUPipelineFetch(fgbSystem *system, fgbPPU *ppu, fgbLCDRegister
 		{
 			fetch->entryCount = 0;
 
-			uint8_t tilePosX = (fetch->currentX + lcd->scx) / 8;
-			uint8_t tilePosY = (lcd->ly + lcd->scy) / 8;
-			ppu->pipeline.tilePos.x = tilePosX % FGB_TILEDATA_HORIZONTAL_COUNT;
-			ppu->pipeline.tilePos.y = tilePosY % FGB_TILEDATA_VERTICAL_COUNT;
 			ppu->pipeline.tileType = fgbPixelType_None;
-			ppu->pipeline.state.offsetY = (lcd->ly + lcd->scy) % 8;
 
 			// On CGB LCDC.0 does NOT blank BG — it only disables BG-over-OBJ master priority.
 			// On DMG LCDC.0=0 makes BG/Window blank. Gate accordingly.
 			bool drawBackground = lcd->lcdc.backgroundEnabled || fgb__CGBIsActive(system);
 			if (drawBackground) {
-				ppu->pipeline.tileType = fgbPixelType_Background;
+				if (pipeline->state.inWindow) {
+					// Window fetcher: currentX is the window's own pixel coordinate (reset to 0 on window trigger).
+					uint8_t windowTilePosX = fetch->currentX / 8;
+					uint8_t windowTilePosY = ppu->state.windowLine / 8;
 
-				// Load background tile ID
-				fgb__PPUPipelineLoadBackgroundTileID(system, ppu, lcd, pipeline);
+					ppu->pipeline.tilePos.x = windowTilePosX % FGB_TILEDATA_HORIZONTAL_COUNT;
+					ppu->pipeline.tilePos.y = windowTilePosY % FGB_TILEDATA_VERTICAL_COUNT;
+					ppu->pipeline.tileType = fgbPixelType_Window;
+					ppu->pipeline.state.offsetY = ppu->state.windowLine % 8;
 
-				// If window is enabled and it is inside the display for X position, overwrite the tile infos
-				if (fgb__PPUIsWindowVisible(lcd)) {
-					if (fetch->currentX + 7 >= lcd->wx && fetch->currentX + 7 < lcd->wx + FGB_DISPLAY_WIDTH + 14) {
-						if (lcd->ly >= lcd->wy && lcd->ly < lcd->wy + FGB_DISPLAY_HEIGHT) {
-							uint8_t windowTilePosX = ((fetch->currentX + 7 - lcd->wx) / 8);
-							uint8_t windowTilePosY = ppu->state.windowLine / 8;
+					fgb__PPUPipelineLoadWindowTileID(system, ppu, lcd, pipeline);
+				} else {
+					uint8_t tilePosX = ((pipeline->state.scx / 8) + (fetch->currentX / 8)) & 0x1F;
+					uint8_t tilePosY = (lcd->ly + pipeline->state.scy) / 8;
+					ppu->pipeline.tilePos.x = tilePosX % FGB_TILEDATA_HORIZONTAL_COUNT;
+					ppu->pipeline.tilePos.y = tilePosY % FGB_TILEDATA_VERTICAL_COUNT;
+					ppu->pipeline.tileType = fgbPixelType_Background;
+					ppu->pipeline.state.offsetY = (lcd->ly + pipeline->state.scy) % 8;
 
-							ppu->pipeline.tilePos.x = windowTilePosX % FGB_TILEDATA_HORIZONTAL_COUNT;
-							ppu->pipeline.tilePos.y = windowTilePosY % FGB_TILEDATA_VERTICAL_COUNT;
-							ppu->pipeline.tileType = fgbPixelType_Window;
-							ppu->pipeline.state.offsetY = ppu->state.windowLine % 8;
-
-							// Load window tile ID
-							fgb__PPUPipelineLoadWindowTileID(system, ppu, lcd, pipeline);
-						}
-					}
+					fgb__PPUPipelineLoadBackgroundTileID(system, ppu, lcd, pipeline);
 				}
 			}
 
 			// Sprites are enabled and we found sprites in the buffer
 			if (lcd->lcdc.objEnable && pipeline->sprites.count > 0) {
-				FGB_ASSERT(pipeline->sprites.first != NULL);
+				FGB_ASSERT(pipeline->sprites.firstIndex >= 0);
 				fgb__PPUPipelineFetchOAMEntries(ppu, lcd, pipeline);
 			}
 
@@ -10211,6 +10665,24 @@ static void fgb__PPUPipelineFetch(fgbSystem *system, fgbPPU *ppu, fgbLCDRegister
 }
 
 static void fgb__PPUPipelinePushPixel(fgbSystem *system, fgbPPU *ppu, fgbLCDRegister *lcd, fgbPPUPipeline *pipeline) {
+	// Window trigger: when the next on-screen pixel column is the window's left edge,
+	// flush the BG FIFO and restart the fetcher in window mode (Pan Docs §Pixel FIFO / Window).
+	if (!pipeline->state.inWindow &&
+		lcd->lcdc.windowEnable && ppu->state.isWindowEnabled &&
+		fgb__PPUIsWindowVisible(lcd) &&
+		lcd->ly >= lcd->wy &&
+		pipeline->state.pushX < FGB_DISPLAY_WIDTH &&
+		(int)pipeline->state.pushX + 7 >= (int)lcd->wx) {
+		pipeline->state.inWindow = true;
+		pipeline->state.windowDiscard = (lcd->wx < 7) ? (uint8_t)(7 - lcd->wx) : 0;
+		pipeline->fetch.state = fgbPPUFetchState_Tile;
+		pipeline->fetch.currentX = 0;
+		pipeline->fetch.entryCount = 0;
+		pipeline->state.fifoX = pipeline->state.pushX;
+		fgb__PPUFIFOClear(&pipeline->fifo);
+		return;
+	}
+
 	if (!fgb__IsPPUFIFOFull(&pipeline->fifo)) {
 		return;
 	}
@@ -10221,8 +10693,19 @@ static void fgb__PPUPipelinePushPixel(fgbSystem *system, fgbPPU *ppu, fgbLCDRegi
 	}
 	fgb__Breakpoint(system, fgbBreakpointType_PPUFIFOPop);
 
-	// Is is pixel inside the screen? If so render the actual pixel out
-	if ((pipeline->state.lineX >= lcd->scx % 8) || (pixel.type == fgbPixelType_Window)) {
+	bool write;
+	if (pipeline->state.inWindow) {
+		if (pipeline->state.windowDiscard > 0) {
+			--pipeline->state.windowDiscard;
+			write = false;
+		} else {
+			write = true;
+		}
+	} else {
+		write = (pipeline->state.lineX >= pipeline->state.scx % 8);
+	}
+
+	if (write) {
 		fgbColor color = { 0 };
 		if (fgb__CGBIsActive(system)) {
 			// CGB: pixel.color was resolved from CGB palette RAM during fetch, use it directly.
@@ -10263,23 +10746,25 @@ static void fgb__PPUPipelineTick(fgbSystem *system, fgbPPU *ppu, fgbLCDRegister 
 }
 
 static void fgb__PPUInsertSpriteEntry(fgbPPUPipeline *pipeline, fgbLineSpriteEntry *toInsert) {
-	fgbLineSpriteEntry *insReg = pipeline->sprites.first;
+	fgbLineSpriteList *list = &pipeline->sprites;
+	const int8_t toInsertIdx = fgb__PPULineSpriteIndexOf(list, toInsert);
+	fgbLineSpriteEntry *insReg = fgb__PPULineSpriteFirst(list);
 	fgbLineSpriteEntry *prev = NULL;
 	while (insReg != NULL) {
 		if (insReg->entry.x > toInsert->entry.x) {
 			FGB_ASSERT(prev != NULL);
-			prev->next = toInsert;
-			toInsert->next = insReg;
+			prev->nextIndex = toInsertIdx;
+			toInsert->nextIndex = fgb__PPULineSpriteIndexOf(list, insReg);
 			break;
 		}
 
-		if (insReg->next == NULL) {
-			insReg->next = toInsert;
+		if (insReg->nextIndex < 0) {
+			insReg->nextIndex = toInsertIdx;
 			break;
 		}
 
 		prev = insReg;
-		insReg = insReg->next;
+		insReg = fgb__PPULineSpriteNext(list, insReg);
 	}
 }
 
@@ -10288,7 +10773,8 @@ static void fgb__PPUSearchSprites(fgbSystem *system, fgbPPU *ppu) {
 	fgbLCDRegister *lcd = &ppu->lcd;
 
 	// Reset found sprites first
-	fgbClearStruct(&pipeline->sprites);
+	fgbLineSpriteList *list = &pipeline->sprites;
+	fgb__PPULineSpriteListClear(list);
 
 	uint8_t y = lcd->ly;
 
@@ -10304,7 +10790,7 @@ static void fgb__PPUSearchSprites(fgbSystem *system, fgbPPU *ppu) {
 
 		// Sprites at X=0 are off-screen visually but still consume a per-line slot.
 
-		if (pipeline->sprites.count >= FGB__PPU_MAX_SPRITES_PER_LINE) {
+		if (list->count >= FGB__PPU_MAX_SPRITES_PER_LINE) {
 			// Only 10 sprites per line are allowed
 			break;
 		}
@@ -10312,27 +10798,29 @@ static void fgb__PPUSearchSprites(fgbSystem *system, fgbPPU *ppu) {
 		int16_t entryY = oamEntry->y - 16;
 		if (entryY <= y && entryY + spriteHeight > y) {
 
-			fgbLineSpriteEntry *newEntry = &pipeline->sprites.buffer[pipeline->sprites.count++];
+			const int8_t newIdx = (int8_t)list->count;
+			fgbLineSpriteEntry *newEntry = &list->buffer[list->count++];
 			newEntry->entry = *oamEntry;
-			newEntry->next = NULL;
+			newEntry->nextIndex = FGB_LINE_SPRITE_NO_INDEX;
 
 			if (oamOrder) {
 				// Append in OAM traversal order so sprites earlier in OAM stay at the head.
-				if (pipeline->sprites.first == NULL) {
-					pipeline->sprites.first = newEntry;
+				if (list->firstIndex < 0) {
+					list->firstIndex = newIdx;
 				} else {
-					tail->next = newEntry;
+					tail->nextIndex = newIdx;
 				}
 				tail = newEntry;
 			} else {
 				// We are the very first sprite or
 				// We are smaller than the last sprite, so we can insert outself to the very end
-				if (pipeline->sprites.first == NULL || oamEntry->x < pipeline->sprites.first->entry.x) {
-					newEntry->next = pipeline->sprites.first;
-					pipeline->sprites.first = newEntry;
+				fgbLineSpriteEntry *first = fgb__PPULineSpriteFirst(list);
+				if (first == NULL || oamEntry->x < first->entry.x) {
+					newEntry->nextIndex = list->firstIndex;
+					list->firstIndex = newIdx;
 				} else {
 					// Insert the sprite entry in the chain by sorting it in
-					FGB_ASSERT(pipeline->sprites.first != NULL);
+					FGB_ASSERT(list->firstIndex >= 0);
 					fgb__PPUInsertSpriteEntry(pipeline, newEntry);
 				}
 			}
@@ -10351,6 +10839,10 @@ static void fgb__PPUModeOAMSearch(fgbSystem *system) {
 		// OAM search is done, reset pipeline so we can start fetching and pushing pixels
 		fgb__PPUPipelineReset(pipeline);
 
+		// Latch SCX/SCY at Mode 3 start — hardware samples these once per line.
+		pipeline->state.scx = lcd->scx;
+		pipeline->state.scy = lcd->scy;
+
 		ppu->state.lineTicks = 0;
 	}
 
@@ -10367,8 +10859,8 @@ static void fgb__PPUModePixelTransfer(fgbSystem *system) {
 	fgb__PPUPipelineTick(system, ppu, lcd, pipeline);
 
 	if (ppu->pipeline.state.pushX >= FGB_DISPLAY_WIDTH) {
-		ppu->state.lineTicks = 0;
-
+		// NOTE: Do NOT reset lineTicks here. Mode 3 length varies with scx%8 and window penalty,
+		// so HBlank length is computed as the remainder of the 456-dot line in PPUModeHorizontalBlank.
 		fgb__PPUFIFOClear(&pipeline->fifo);
 
 		fgb__PPUSetMode(system, lcd, fgbPPUMode_HBlank);
@@ -10380,38 +10872,23 @@ static void fgb__PPUModePixelTransfer(fgbSystem *system) {
 	}
 }
 
-// Depending on the scroll X position, we may have different ticks for the horizontal blank mode, so this function computes this.
-// Line must total FGB__PPU_HORIZONTAL_BLANK_DOTS (456) dots: 80 (OAM) + mode3 + HBlank.
-// Emulator's mode3 pipeline runs (175 + scx%8) dots, so HBlank compensates to 201 - scx%8.
-static uint32_t fgb__PPUHorizontalBlankTicks(const fgbLCDRegister *lcd) {
-	switch (lcd->scx & 7) {
-		case 0:
-			return 201;
-		case 1:
-		case 2:
-		case 3:
-		case 4:
-			return 197;
-		case 5:
-		case 6:
-		case 7:
-			return 193;
-		default:
-			return 0;
-	}
-}
-
-static void fgb__PPUModeHorizontalBlank(fgbSystem *system) {
+static bool fgb__PPUModeHorizontalBlank(fgbSystem *system) {
 	fgbPPU *ppu = &system->ppu;
 	fgbLCDRegister *lcd = &ppu->lcd;
 
-#if 0
-	const uint32_t blankTicks = FGB__PPU_HORIZONTAL_BLANK_DOTS;
-#else
-	const uint32_t blankTicks = fgb__PPUHorizontalBlankTicks(lcd);
-#endif
+	// Line must total FGB__PPU_HORIZONTAL_BLANK_DOTS (456) dots: 80 (OAM) + mode3 + HBlank.
+	// lineTicks was reset to 0 at the start of mode 3, so it tracks (mode3 + current HBlank) here.
+	// HBlank ends when total reaches 456 - 80 = 376 dots, regardless of how long mode 3 ran.
+	const uint32_t mode3PlusHBlankDots = FGB__PPU_HORIZONTAL_BLANK_DOTS - FGB__PPU_OAM_SCAN_DOTS;
 
-	if (ppu->state.lineTicks >= blankTicks) {
+	if (ppu->state.lineTicks > mode3PlusHBlankDots) {
+		FGB__FATAL(system, fgb__KindName_PPU, "Mode 3 PPU lineTicks exceeded %u!", mode3PlusHBlankDots);
+		return false;
+	}
+
+	FGB_ASSERT(ppu->state.lineTicks <= mode3PlusHBlankDots);
+
+	if (ppu->state.lineTicks >= mode3PlusHBlankDots) {
 		fgb__PPUIncrementLine(system);
 
 		if (lcd->ly >= FGB_DISPLAY_HEIGHT) {
@@ -10431,6 +10908,8 @@ static void fgb__PPUModeHorizontalBlank(fgbSystem *system) {
 
 		ppu->state.lineTicks = 0;
 	}
+
+	return true;
 }
 
 static void fgb__PPUModeVerticalBlank(fgbSystem *system) {
@@ -10540,7 +11019,9 @@ static bool fgb__PPUTick(fgbSystem *system) {
 			break;
 
 		case fgbPPUMode_HBlank:
-			fgb__PPUModeHorizontalBlank(system);
+			if (!fgb__PPUModeHorizontalBlank(system)) {
+				return false;
+			}
 			break;
 
 		case fgbPPUMode_VBlank:
@@ -11154,13 +11635,13 @@ static inline uint8_t fgb__BusRead8_Direct(fgbSystem *system, const uint16_t add
 }
 
 static uint8_t fgb__BusRead8(fgbSystem *system, const uint16_t address, const bool tick) {
+	if (tick) {
+		fgb__HWTick4(system);
+	}
 	uint8_t read = fgb__BusRead8_Direct(system, address);
 #if FGB_BUS_LOGGING
 	FGB__DEBUG(system, fgb__KindName_Bus, "[%2u] [%8zu] Read U8 '%02X' from address '%04X'", system->ppu.frameCount, system->cpu.state.totalTickCycles, read, address);
 #endif
-	if (tick) {
-		fgb__HWTick4(system);
-	}
 	return read;
 }
 
@@ -11195,13 +11676,13 @@ static inline void fgb__BusWrite8_Direct(fgbSystem *system, const uint16_t addre
 }
 
 static void fgb__BusWrite8(fgbSystem *system, const uint16_t address, const uint8_t value, const bool tick) {
+	if (tick) {
+		fgb__HWTick4(system);
+	}
 	fgb__BusWrite8_Direct(system, address, value);
 #if FGB_BUS_LOGGING
 	FGB__DEBUG(system, fgb__KindName_Bus, "[%2u] [%8zu] Written U8 '%02X' to address '%04X'", system->ppu.frameCount, system->cpu.state.totalTickCycles, value, address);
 #endif
-	if (tick) {
-		fgb__HWTick4(system);
-	}
 }
 
 static uint16_t fgb__BusRead16(fgbSystem *system, const uint16_t address, const bool tick) {
@@ -14543,7 +15024,9 @@ static bool fgb__PowerOn(fgbSystem *system, const bool isScreenEnabled, const ui
 
 	fgb__APUInit(system, sampleRate);
 
-	fgb__MBCInit(system, gamePak, &system->mbc);
+	if (!fgb__MBCInit(system, gamePak, &system->mbc)) {
+		return false;
+	}
 
 	fgb__InitExternalRAM(system, gamePak);
 
@@ -14629,6 +15112,8 @@ static void fgb__TraceInstruction(fgbSystem *system, const fgbInstructionRegiste
 	if (pc >= 0x4000 && pc < 0x8000) {
 		if (system->gamePak.info.mbcType == fgbMemoryControllerType_MBC5)
 			bank = system->mbc.data.mbc5.romBank;
+		else if (system->gamePak.info.mbcType == fgbMemoryControllerType_MBC7)
+			bank = system->mbc.data.mbc7.romBank;
 		else if (system->gamePak.info.mbcType == fgbMemoryControllerType_MBC3)
 			bank = system->mbc.data.mbc3.romBank;
 		else if (system->gamePak.info.mbcType == fgbMemoryControllerType_MBC2)
@@ -14958,11 +15443,13 @@ FGB_API bool fgbTick(fgbSystem *system) {
 		return false;
 	}
 
-	// Put the machine to a faulted state, when there is an infinite loop detected and track the error
-	if ((cpu->state.lastPC == regs->pc && cpu->state.lastSP == regs->sp) && (!system->interrupts.isMasterEnabled && !system->interrupts.enable.u8)) {
-		FGB__Failure(system, fgbErrorType_InfiniteLoop, fgb__KindName_Core, "Infinity Loop Detected");
-		return false;
-	}
+	// Detect tight CPU spin (same PC and SP, IME=0, IE=0) — set isInDeadLoop so callers can
+	// observe it (test runner / debugger) without halting emulation. Real test ROMs (blargg)
+	// finish by entering exactly such a spin while their PPU output keeps rendering, so we
+	// must keep ticking HW; failing here would freeze the GUI mid-frame.
+	cpu->state.isInDeadLoop =
+		(cpu->state.lastPC == regs->pc && cpu->state.lastSP == regs->sp) &&
+		(!system->interrupts.isMasterEnabled && !system->interrupts.enable.u8);
 
 	// Remember last PC and SP, so we can detect infinite loops
 	cpu->state.lastPC = regs->pc;
@@ -16023,16 +16510,37 @@ FGB_API bool fgbIsVRAMUpdated(const fgbSystem *system) {
 #define FGB_SNAPSHOT_SOD_KEY (uint32_t)FGB_FOURCC('F', 'S', 'O', 'D')
 #define FGB_SNAPSHOT_EOD_KEY (uint32_t)FGB_FOURCC('F', 'E', 'O', 'D')
 
+// File format revision. Bumped whenever any serialized struct layout changes.
+// 0 = legacy x64-only format (raw pointers, size_t, no bitness/endian markers).
+// 1 = bitness-independent format (uint64_t lengths, indexed sprite list).
+#define FGB_SNAPSHOT_FORMAT_REVISION ((uint32_t)1)
+
+// Endianness sentinel: 0x01020304 written as a u32. Loader compares the on-disk
+// bytes against the same constant in host memory order — a foreign-endian save
+// produces a mismatch and is rejected with a clear error.
+#define FGB_SNAPSHOT_ENDIAN_SENTINEL ((uint32_t)0x01020304u)
+
 #pragma pack(push, 1)
 typedef struct {
-	// 4-byte FourCC Magic code
+	// 4-byte FourCC Magic code ('FGBS')
 	uint32_t magic;
-	// Snapshot version
-	fgbSnapshotVersion version;
-	// Date time
+	// File format revision (FGB_SNAPSHOT_FORMAT_REVISION).
+	uint32_t formatRevision;
+	// Endianness sentinel (FGB_SNAPSHOT_ENDIAN_SENTINEL). Mismatch -> reject.
+	uint32_t endianSentinel;
+	// Pointer width on the writer (8 = x64, 4 = x86). Informational only —
+	// load works regardless because the data layout no longer depends on it.
+	uint8_t pointerSize;
+	// Reserved padding for alignment / future use.
+	uint8_t reserved[3];
+	// Console kind (DMG / CGB). Stored as u32 for stable on-disk width
+	// independent of the host enum size.
+	uint32_t version;
+	// Date time the snapshot was written
 	fgbDateTime dateTime;
 } fgb__SnapshotHeader;
 #pragma pack(pop)
+FGB_STATIC_ASSERT(sizeof(uint32_t) == 4);
 
 static char fgb__SnapshotFilePathBuffer[2048];
 
@@ -16062,11 +16570,8 @@ static bool fgb__IsSnapshotAllowed(const fgbSystem *system) {
 	if (system->state == fgbEmulationState_Error || !system->gamePak.isValid) {
 		return false;
 	}
-#if defined(FGB_64BIT)
+	// Format is now bitness-independent: x64 + x86 builds can both save/load.
 	return true;
-#else
-	return false;
-#endif
 }
 
 FGB_API bool fgbSnapshotExport(fgbSystem *system, fgbSnapshot *outSnapshot) {
@@ -16109,18 +16614,9 @@ FGB_API bool fgbSnapshotExport(fgbSystem *system, fgbSnapshot *outSnapshot) {
 	// PPU
 	fgbCopyStruct(&system->ppu, &outSnapshot->ppu);
 
-	// Generate sprites linked list
-	fgbClearStruct(&outSnapshot->ppu.pipeline.sprites);
-	outSnapshot->ppu.pipeline.sprites.count = system->ppu.pipeline.sprites.count;
-	outSnapshot->ppu.pipeline.sprites.first = NULL; // Don't care, its reconstructed later
-	fgbLineSpriteEntry *inSpriteEntry = system->ppu.pipeline.sprites.first;
-	size_t outSpriteEntryIndex = 0;
-	while (inSpriteEntry != NULL) {
-		fgbLineSpriteEntry *outSpriteEntry = &outSnapshot->ppu.pipeline.sprites.buffer[outSpriteEntryIndex++];
-		outSpriteEntry->entry = inSpriteEntry->entry;
-		outSpriteEntry->next = NULL; // Don't care, its reconstructed later
-		inSpriteEntry = inSpriteEntry->next;
-	}
+	// Sprite linked list — already index-based after the bitness-independent
+	// refactor, so the byte copy in fgbCopyStruct(&system->ppu, ...) above is
+	// already complete and portable. Nothing to flatten.
 
 	// Timer
 	fgbCopyStruct(&system->timer, &outSnapshot->timer);
@@ -16176,10 +16672,6 @@ FGB_API bool fgbIsSnapshotValid(const fgbSystem *system, const fgbSnapshot *snap
 }
 
 FGB_API bool fgbSnapshotSaveToFile(const fgbSystem *system, const char *romFilePath, const uint8_t slotIndex, const fgbSnapshot *snapshot) {
-#if !defined(FGB_64BIT)
-	return false; // We don't support non 64-bit serialization, due to size_t and pointer differences -> Not great :-(
-#endif
-
 	if (system == NULL || romFilePath == NULL || snapshot == NULL || !system->gamePak.isValid) {
 		return false;
 	}
@@ -16207,7 +16699,10 @@ FGB_API bool fgbSnapshotSaveToFile(const fgbSystem *system, const char *romFileP
 	// Header
 	fgb__SnapshotHeader header = { 0 };
 	header.magic = FGB_SNAPSHOT_MAGIC_KEY;
-	header.version = snapshot->version;
+	header.formatRevision = FGB_SNAPSHOT_FORMAT_REVISION;
+	header.endianSentinel = FGB_SNAPSHOT_ENDIAN_SENTINEL;
+	header.pointerSize = (uint8_t)sizeof(void *);
+	header.version = (uint32_t)snapshot->version;
 	header.dateTime = snapshot->dateTime;
 	fgb__FileWrite(cb, fileHandle, &header, sizeof(header));
 
@@ -16262,10 +16757,6 @@ FGB_API bool fgbSnapshotSaveToFile(const fgbSystem *system, const char *romFileP
 }
 
 FGB_API bool fgbSnapshotLoadFromFile(const fgbSystem *system, const char *romFilePath, const uint8_t slotIndex, fgbSnapshot *snapshot) {
-#if !defined(FGB_64BIT)
-	return false; // We don't support non 64-bit serialization, due to size_t and pointer differences -> Not great :-(
-#endif
-
 	if (system == NULL || romFilePath == NULL || snapshot == NULL || !system->gamePak.isValid) {
 		return false;
 	}
@@ -16307,12 +16798,21 @@ FGB_API bool fgbSnapshotLoadFromFile(const fgbSystem *system, const char *romFil
 	if (header.magic != FGB_SNAPSHOT_MAGIC_KEY) {
 		goto failed;
 	}
+	// Foreign-endian save: the writer's host-order u32 doesn't match ours.
+	if (header.endianSentinel != FGB_SNAPSHOT_ENDIAN_SENTINEL) {
+		goto failed;
+	}
+	// Older format revisions are no longer supported (they used pointers and
+	// size_t in the data section, which made them x64-only).
+	if (header.formatRevision != FGB_SNAPSHOT_FORMAT_REVISION) {
+		goto failed;
+	}
 	if (header.version < fgbSnapshotVersion_First || header.version > fgbSnapshotVersion_Current) {
 		goto failed;
 	}
 
 	snapshot->dateTime = header.dateTime;
-	snapshot->version = header.version;
+	snapshot->version = (fgbSnapshotVersion)header.version;
 
 	// Start-of-Data
 	read = fgb__FileRead(cb, fileHandle, &sixteenBytes, sizeof(sixteenBytes), 16);
@@ -16441,18 +16941,8 @@ FGB_API bool fgbSnapshotImport(fgbSystem *system, const fgbSnapshot *snapshot) {
 	// PPU
 	fgbCopyStruct(&snapshot->ppu, &system->ppu);
 
-	// Reconstruct sprite linked list
-	size_t spriteCount = FGB_MIN(FGB_MAX(0, system->ppu.pipeline.sprites.count), 10);
-	if (spriteCount == 0) {
-		system->ppu.pipeline.sprites.first = NULL;
-	} else {
-		system->ppu.pipeline.sprites.first = system->ppu.pipeline.sprites.buffer + 0;
-		for (size_t i = 0; i < spriteCount; ++i) {
-			fgbLineSpriteEntry *entry = system->ppu.pipeline.sprites.buffer + i;
-			fgbLineSpriteEntry *nextEntry = ((i + 1) < spriteCount) ? entry + 1 : NULL;
-			entry->next = nextEntry;
-		}
-	}
+	// Sprite linked list is already restored as part of the byte copy above —
+	// indices are bitness-independent and survive serialization unchanged.
 
 	// Timer
 	fgbCopyStruct(&snapshot->timer, &system->timer);

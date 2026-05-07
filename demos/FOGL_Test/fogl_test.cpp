@@ -178,7 +178,7 @@ int main(int argc, char **args) {
 	settings.video.driver = fplVideoDriverType_OpenGL;
 #if !USE_LEGACY_OPENGL
 	fplCopyAnsiString("FPL Modern OpenGL", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
-	settings.video.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
+	settings.video.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Core;
 	settings.video.opengl.majorVersion = 3;
 	settings.video.opengl.minorVersion = 3;
 #else

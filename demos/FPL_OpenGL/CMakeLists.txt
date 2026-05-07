@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.10)
 # Project settings
 #
 # -----------------------------------------------------------------------------
-project(FPL_OpenGL)
+project(FPL_OpenGL C)
 
 set(MY_C_STANDARD c99)
 

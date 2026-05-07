@@ -5,17 +5,17 @@ cmake_minimum_required(VERSION 3.10)
 # Project settings
 #
 # -----------------------------------------------------------------------------
-project(FPL_Crackout)
+project(FPL_Crackout C CXX)
 
-set(CMAKE_CXX_STANDARD 11)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
+set(MY_C_STANDARD c99)
+set(MY_CXX_STANDARD c++11)
 
 set(MY_EXTERNAL_LIBS "")
 
 set(MY_INCLUDE_DIRS
-	"../dependencies/"
+	"../../"
 	"../additions/"
+	"../dependencies/"
 	)
 
 set(MY_HEADER_FILES
@@ -27,6 +27,8 @@ set(MY_HEADER_FILES
 set(MY_TRANSLATION_UNITS
 	"fpl_crackout.cpp"
 	)
+
+set(MY_DEFINES "")
 
 # -----------------------------------------------------------------------------
 #
@@ -43,6 +45,7 @@ message(STATUS "\n")
 message(STATUS "FPL CMake Infos: ${PROJECT_NAME}")
 message(STATUS "---------------------------------------------------------------")
 message(STATUS "C-Standard: ${MY_C_STANDARD}")
+message(STATUS "C++-Standard: ${MY_CXX_STANDARD}")
 message(STATUS "External libraries: ${MY_EXTERNAL_LIBS}")
 message(STATUS "Include directories: ${MY_INCLUDE_DIRS}")
 message(STATUS "Header files: ${MY_HEADER_FILES}")
@@ -55,6 +58,7 @@ message(STATUS "Executable name: ${FPL_EXECUTABLE_NAME}")
 message(STATUS "---------------------------------------------------------------\n")
 
 set(CMAKE_C_FLAGS "-std=${MY_C_STANDARD}")
+set(CMAKE_CXX_FLAGS "-std=${MY_CXX_STANDARD}")
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${FPL_EXECUTABLE_PATH})
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${FPL_EXECUTABLE_PATH})

@@ -76,12 +76,12 @@ int main(int argc, char **args) {
 	settings.video.backend = fplVideoBackendType_OpenGL;
 
 	// Legacy OpenGL
-	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
+	settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Legacy;
 
 	// or
 
 	// Modern OpenGL
-	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
+	settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Core;
 	settings.video.graphics.opengl.majorVersion = 3;
 	settings.video.graphics.opengl.minorVersion = 3;
 
@@ -104,6 +104,30 @@ int main(int argc, char **args) {
 		return -1;
 	}
 }
+
+-------------------------------------------------------------------------------
+	Output Buffer Conventions
+-------------------------------------------------------------------------------
+
+All functions that fill a destination buffer (string copy, append, format, path,
+UTF-8/wide conversion) follow a single contract:
+
+- The return type is size_t. The value is the number of characters required
+  (excluding the NUL terminator), NOT a pointer.
+- Query mode: if dest is NULL or maxDestLen is 0, the function returns the
+  required size and writes nothing. Use this to size a buffer ahead of time.
+- Buffer too small: if the required size exceeds maxDestLen, the function
+  returns 0 and does not leave a partial buffer behind.
+- Success: when dest is non-NULL and large enough, the buffer is always
+  NUL-terminated and the function returns the required size (excluding NUL).
+- Hard errors (NULL input, format error) return 0.
+
+Functions that follow this contract: fplCopyString, fplCopyStringLen,
+fplStringAppend, fplStringAppendLen, fplEnforcePathSeparator,
+fplEnforcePathSeparatorLen, fplStringFormat, fplStringFormatArgs,
+fplPathCombine, fplPathNormalize, fplUTF8StringToWideString,
+fplWideStringToUTF8String, fplGetWindowTitle, fplGetExecutableFilePath,
+fplGetHomePath.
 
 -------------------------------------------------------------------------------
 	License
@@ -157,12 +181,18 @@ SOFTWARE.
 	- Added game controllers settings
 	- Introduced a input backend system
 	- Improved code documentation a lot
-	- Improved thread-safety in the event system
+	- Improved thread-safety in the error-reporting ring (atomic slot claim, no init-order/mutex hazards) and the event system
 	- A few major bugfixes
 	- Several minor bugfixes
 
 	### Breaking Changes
-	- None
+	- Changed: fplEnforcePathSeparatorLen is now returning the total number of characters required or returns zero on errors
+	- Changed: fplEnforcePathSeparator is now returning the total number of characters required or returns zero on errors
+	- Changed: fplStringAppendLen is now returning the total number of characters required or returns zero on errors
+	- Changed: fplStringAppend is now returning the total number of characters required or returns zero on errors
+	- Changed: fplCopyStringLen is now returning the total number of characters required or returns zero on errors
+	- Changed: fplCopyString is now returning the total number of characters required or returns zero on errors
+	- Changed: fplGetWindowTitle is now returning the total number of characters required or returns zero on errors
 
 	### Details
 	- New: Added macro FPL_CACHELINE_SIZE that detects the cacheline size from the detected CPU architectures
@@ -178,6 +208,8 @@ SOFTWARE.
 	- New: Added function fplDateTimeCreate that creates a fplDateTime from seperate date time components
 	- New: Added function fplFileAppendBinary() for opening a file for appending, that is useful for log-files and such
 	- New: Added function fplPathNormalize() for normalizing any partial path into a absolute path
+	- New: Added function fplTryStringToS32Len that is a more safe-method than to fplStringToS32
+	- New: Added function fplTryStringToS32 that is a more safe-method than to fplStringToS32
 	- New: Added enum values fplKey_First / fplKey_Last to fplKey enum
 	- New: Added common function fplKeyGetName() for getting the name for a fplKey
 	- New: Added enum fplInputBackendType
@@ -205,6 +237,15 @@ SOFTWARE.
 	- Fixed: Fixed duplicate platform includes
 	- Fixed: fpLGetAlignmentOffset() was not guarding the alignment argument in all cases
 	- Fixed: fplS32ToString() was not handling negative values correctly
+	- Fixed: fplStringFormatArgs must always NUL-terminate even when the buffer is too small
+	- Fixed: Fixed documentations for fplStringToS32Len and fplStringToS32
+	- Fixed: fplStringFormat and fplStringFormatArgs was not implemented correctly due to its documentation rules
+	- Fixed: fplStringToS32Len and fplStringToS32 was not implemented correctly due to its documentation rules
+	- Fixed: Calls to fpl__AllocateTemporaryMemory use either fpl__MinAlignment or 16 or more
+	- Fixed: fplCPUID, fplCPURDTSC, fplCPUXCR0 was not detected on GCC/Clang
+	- Fixed: fplGetErrorCount / fplGetErrorByIndex  / fplGetLastError and pushing of errors was not thread-safe
+	- Fixed: fplAlignAs was using a condition based macro, which is not supported for some compilers
+	- Fixed: fpl__ReadAudioFramesFromClient was not returning frameCount always and produce silence bytes for the remaining samples
 	- Fixed[#183]: fpl_internal_inline was not compiling on GCC/Clang
 
 	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
@@ -215,6 +256,7 @@ SOFTWARE.
 	- Changed: [ALSA] Audio device enumeration prints out each audio device to verbose log
 	- Changed: [X11] Disabled FPL_NO_PLATFORM_INCLUDES for Xlib includes
 	- Changed: [POSIX] Disabled FPL_NO_PLATFORM_INCLUDES for pthread includes
+	- Renamed: fplOpenGLCompabilityFlags -> fplOpenGLCompatibilityFlags (incl. enum values and fplOpenGLSettings::compabilityFlags -> compatibilityFlags) - typo fix
 
 	- Fixed: [Win32] Fixed last event from event queue was never used, when there is no events from the window
 	- Fixed: [Win32] Lost/Got focus event was not detected properly
@@ -224,11 +266,18 @@ SOFTWARE.
 	- Fixed: [X11] Fixed fplPollEvent() was not handling the events properly, resulting in not processing any events anymore
 	- Fixed: [X11] Fixed ClientMessage for Atom netWMPing was not calling XFlush
 	- Fixed: [X11] Fixed wrong X11 type aliases
+	- Fixed: [X11] fpl__X11Window opaque pointer was wrong sized
 	- Fixed[#181]: [X11] fpl__X11ParseUriPaths does not do any URI decoding, resulting in most-likely unuseable file paths
 
 	- Fixed: [POSIX] Fixed pthread fpl__POSIXSemaphoreHandle was not used
 	- Fixed: [POSIX] dirint.h and sched.h was not included always
 	- Fixed[#184]: [POSIX] fplDirectoriesCreate() does not create parent sub-directories
+
+	- Improved: Added fplStaticAssert checks in the non-opaque branch verifying that the real Win32/POSIX/X11 handle types fit into the opaque-branch buffers (catches portability breakage at compile time instead of corrupting memory at runtime)
+	- Improved: [X11] fpl__X11Display / Visual / GC / Image are now forward-declared incomplete struct types instead of `typedef void`, so `fpl__X11Display *` is a distinct, type-safe pointer rather than an alias for `void *`
+	- Improved: fplDateTime documentation now states explicitly that pre-1970 dates are intentionally not supported (epoch is unsigned and fplDateTimeCreate rejects year < 1970)
+
+	- Fixed: [Win32] fplFileSetPosition32 / fplFileGetSizeFromPath32 / fplFileGetSizeFromHandle32 was not using the best suitable API function
 
 	- Fixed[#182]: [ALSA] Fixed default audio devices are not detected in modern linux audio systems
 
@@ -401,8 +450,8 @@ SOFTWARE.
 	- Changed: Renamed function fplListDirNext() to fplDirectoryListNext()
 	- Changed: Renamed function fplListDirEnd() to fplDirectoryListEnd()
 	- Changed: Renamed function fplGetPlatformResultName() to fplPlatformGetResultName()
-	- Changed: Renamed function fplFormatString() to fplStrngFormat()
-	- Changed: Renamed function fplFormatStringArgs() to fplStrngFormatArgs()
+	- Changed: Renamed function fplFormatString() to fplStringFormat()
+	- Changed: Renamed function fplFormatStringArgs() to fplStringFormatArgs()
 	- Changed: Renamed function fplGetWallClock() to fplTimestampQuery()
 	- Changed: Renamed function fplGetTimeInMilliseconds() to fplMillisecondsQuery()
 	- Changed: Renamed function fplGetWallDelta() to fplTimestampElapsed()
@@ -1388,8 +1437,8 @@ SOFTWARE.
 	- Added: fpl::audio::GetAudioBufferSizeInBytes()
 
 	## v0.5.8.0 beta:
-	- Changed: SignalWaitFor* requires additional parameter for passing in the ThreadMutex reference (pthread compability)
-	- Changed: Signal* does not use const reference anymore (pthread compability)
+	- Changed: SignalWaitFor* requires additional parameter for passing in the ThreadMutex reference (pthread compatibility)
+	- Changed: Signal* does not use const reference anymore (pthread compatibility)
 	- Changed: Updated documentation a ton
 	- Changed: Decreased MAX_ERRORSTATE_COUNT from 1024 to 256
 	- Changed: global__LastErrorState is a non-pointer global now
@@ -1398,7 +1447,7 @@ SOFTWARE.
 	- Fixed: MemoryAlignedFree() had wrong signature (void **) instead of (void *)
 	- Fixed: GetPlatformErrorCount() was not increasing when an empty error was pushed on for single error states
 	- Fixed: [Win32] InitPlatform() was not cleaning up the Win32State when the initialization failed
-	- Replaced: VideoCompabilityProfile is replaced by OpenGLCompabilityFlags (Only available with OpenGL)
+	- Replaced: VideoCompatibilityProfile is replaced by OpenGLCompatibilityFlags (Only available with OpenGL)
 	- New: Added ClearPlatformErrors()
 
 	## v0.5.7.4 beta:
@@ -1651,7 +1700,7 @@ SOFTWARE.
 	- Added memory::CopyMemory
 	- Added fpl::GetLastError and fpl::GetLastErrorCount for proper error handling
 	- Added files::CreateBinaryFile and files::OpenBinaryFile for wide file paths
-	- Added basic support for creating a modern opengl rendering context, see VideoCompabilityProfile in VideoSettings
+	- Added basic support for creating a modern opengl rendering context, see VideoCompatibilityProfile in VideoSettings
 	- Added support for enabling opengl vsync through WGL
 	- Returns char * for all paths:: get like functions
 	- Returns char/wchar_t * for all strings:: functions
@@ -2164,10 +2213,9 @@ SOFTWARE.
 /**
 * @def fplAlignAs
 * @brief Structure alignment in bytes.
-* @param[in] N Alignment size.
-* @return The resulting aligned value in bytes.
+* @param[in] N Alignment size. Must be a power-of-two integer literal.
 */
-#define fplAlignAs(N) fpl__m_AlignAs(((N) < fplMinAlignment ? fplMinAlignment : (N)))
+#define fplAlignAs(N) fpl__m_AlignAs(N)
 //
 // Defines required for POSIX (mmap, 64-bit file io, etc.)
 //
@@ -2572,7 +2620,7 @@ typedef enum fplX86InstructionSetLevel {
 /**
 * @def fplHasInclude
 * @brief Test for include existence.
-* @param inc Path to the include file.
+* @param[in] inc Path to the include file.
 * @return A boolean indicating whether the specified include has been found or not.
 */
 #define fplHasInclude(inc) fpl__m_HasInclude(inc)
@@ -2966,6 +3014,7 @@ fpl_internal fpl_force_inline void fpl__m_DebugBreak(void) { __asm__ __volatile_
 /**
 * @typedef fpl_b32
 * @brief Defines a integer based boolean that has a width of 32-bit.
+* @note Used for boolean fields inside public structs to keep their layout stable across C/C++ compilers (where `bool` size is implementation-defined) and to support atomic-style access. New API surfaces should still use the C99 `bool` type for return values and parameters; `fpl_b32` is reserved for ABI-stable struct fields.
 */
 typedef int32_t fpl_b32;
 
@@ -3358,15 +3407,16 @@ struct IUnknown;
 
 // Only include CRT, when needed
 #if !defined(FPL_NO_CRT)
-#    include <stdio.h> // stdin, stdout, stderr, fprintf, vfprintf, vsnprintf, getchar
+#	 include <stdio.h> // stdin, stdout, stderr, fprintf, vfprintf, vsnprintf, getchar
 #    include <stdlib.h> // wcstombs, mbstowcs, getenv
+#	 include <wchar.h> // mbrtowc, wcsrtombs, mbsrtowcs
 #    include <locale.h> // setlocale, struct lconv, localeconv
 #endif
 
 // Always include sched.h and dirint.h
 #if defined(FPL_SUBPLATFORM_POSIX)
-#	include <sched.h> // sched_param, sched_get_priority_max, SCHED_FIFO
-#	include <dirent.h> // DIR, dirent
+#	 include <sched.h> // sched_param, sched_get_priority_max, SCHED_FIFO
+#	 include <dirent.h> // DIR, dirent
 #endif
 
 //
@@ -3383,29 +3433,29 @@ typedef struct fpl__Win32Guid {
 	uint16_t Data3;
 	uint8_t  Data4[8];
 } fpl__Win32Guid;
-//! A win32 handle (opaque, min 4/8 bytes)
+//! A win32 HANDLE pointer (opaque, sizeof(void*): 4 bytes on Win32, 8 bytes on Win64).
 typedef void *fpl__Win32Handle;
-//! A win32 instance handle (opaque, min 4/8 bytes)
+//! A win32 HINSTANCE pointer (opaque, alias of fpl__Win32Handle).
 typedef fpl__Win32Handle fpl__Win32InstanceHandle;
-//! A win32 library handle (opaque, min 4/8 bytes)
+//! A win32 HMODULE pointer (opaque, alias of fpl__Win32Handle).
 typedef fpl__Win32Handle fpl__Win32LibraryHandle;
-//! A win32 filehandle (opaque, min 4/8 bytes)
+//! A win32 file HANDLE pointer (opaque, alias of fpl__Win32Handle).
 typedef fpl__Win32Handle fpl__Win32FileHandle;
-//! A win32 thread handle (opaque, min 4/8 bytes)
+//! A win32 thread HANDLE pointer (opaque, alias of fpl__Win32Handle).
 typedef fpl__Win32Handle fpl__Win32ThreadHandle;
-//! A win32 mutex handle (opaque, min 80 bytes)
+//! A win32 CRITICAL_SECTION storage (max observed: 40 bytes on Win64, 24 bytes on Win32; buffer is 128 bytes for headroom).
 typedef uint64_t fpl__Win32MutexHandle[16];
-//! A win32 signal handle (opaque, min 4/8 bytes)
+//! A win32 event HANDLE pointer (opaque, alias of fpl__Win32Handle).
 typedef fpl__Win32Handle fpl__Win32SignalHandle;
-//! A win32 condition variable (opaque, min 4/8 bytes)
+//! A win32 CONDITION_VARIABLE pointer (opaque, sizeof(void*) — wraps a single pointer-sized field).
 typedef void *fpl__Win32ConditionVariable;
-//! A win32 semaphore handle (opaque, min 4/8 bytes)
+//! A win32 semaphore HANDLE pointer (opaque, alias of fpl__Win32Handle).
 typedef fpl__Win32Handle fpl__Win32SemaphoreHandle;
-//! A win32 window handle (opaque, min 4/8 bytes)
+//! A win32 HWND pointer (opaque, alias of fpl__Win32Handle).
 typedef fpl__Win32Handle fpl__Win32WindowHandle;
-//! A win32 device context (opaque, min 4/8 bytes)
+//! A win32 HDC pointer (opaque, alias of fpl__Win32Handle).
 typedef fpl__Win32Handle fpl__Win32DeviceContext;
-//! A win32 rendering context (opaque, min 4/8 bytes)
+//! A win32 HGLRC pointer (opaque, alias of fpl__Win32Handle).
 typedef fpl__Win32Handle fpl__Win32RenderingContext;
 //! A win32 structure for storing a large integer for QPC (opaque, 8 bytes)
 typedef union fpl__Win32LargeInteger {
@@ -3423,39 +3473,40 @@ typedef union fpl__Win32LargeInteger {
 
 #	if defined(FPL_SUBPLATFORM_POSIX)
 
-//! A POSIX library handle (opaque, min 4/8 bytes)
+//! A POSIX dlopen handle (opaque, sizeof(void*): 4 bytes on 32-bit, 8 bytes on 64-bit).
 typedef void *fpl__POSIXLibraryHandle;
-//! A POSIX filehandle (opaque, min 4 bytes)
+//! A POSIX file descriptor (opaque, sizeof(int) = 4 bytes on all supported platforms).
 typedef int fpl__POSIXFileHandle;
-//! A POSIX directory handle (opaque, min 4/8 bytes)
+//! A POSIX DIR pointer (opaque, sizeof(void*): 4 bytes on 32-bit, 8 bytes on 64-bit).
 typedef void *fpl__POSIXDirHandle;
-//! A POSIX thread handle (opaque, min 8 bytes)
+//! A POSIX pthread_t (opaque, max observed: 8 bytes on glibc/musl x86_64; treated here as a single uint64_t — opaque branch is glibc/musl-x86_64 only).
 typedef uint64_t fpl__POSIXThreadHandle;
-//! A POSIX mutex handle (opaque, min 40 bytes)
+//! A POSIX pthread_mutex_t storage (max observed: 40 bytes glibc x86_64, 56-64 bytes Darwin/BSD; buffer is 128 bytes for headroom).
 typedef uint64_t fpl__POSIXMutexHandle[16];
-//! A POSIX semaphore handle (opaque, min 32 bytes)
+//! A POSIX sem_t storage (max observed: 32 bytes glibc x86_64; buffer is 64 bytes for headroom).
 typedef uint64_t fpl__POSIXSemaphoreHandle[8];
-//! A POSIX condition variable (opaque, min: 48 bytes)
+//! A POSIX pthread_cond_t storage (max observed: 48 bytes glibc x86_64; buffer is 128 bytes for headroom).
 typedef uint64_t fpl__POSIXConditionVariable[16];
 
 #	endif // FPL_SUBPLATFORM_POSIX
 
 #	if defined(FPL_SUBPLATFORM_X11)
 
-// @TODO(final): Opaque X11 Display is not correct, to not assume void ptr - its a full structure, that is really large
+// X11 Display/Visual/GC/Image are accessed via pointer, so the typedef is used as `fpl__X11Display *` everywhere — the underlying struct is intentionally not exposed.
+// Declared as forward-declared (incomplete) struct types so that `fpl__X11Display *` is a distinct, type-safe pointer (not an alias for `void *`).
 
-//! A X11 Display (opaque, 4/8 bytes)
-typedef void fpl__X11Display;
-//! A X11 window (opaque, 4 bytes)
-typedef int fpl__X11Window;
-//! A X11 Visual (opaque, 4/8 bytes)
-typedef void fpl__X11Visual;
-//! A X11 GC (opaque, 4/8 bytes)
-typedef void fpl__X11GC;
-//! A X11 Image (opaque, 4/8 bytes)
-typedef void fpl__X11Image;
-//! A GLX Context (opaque, 4/8 bytes)
-typedef void fpl__GLXContext;
+//! A X11 Display (opaque incomplete type, accessed via pointer only)
+typedef struct fpl__X11Display fpl__X11Display;
+//! A X11 window (opaque, 8 bytes - matches the X11 XID type which is unsigned long on LP64 systems)
+typedef unsigned long fpl__X11Window;
+//! A X11 Visual (opaque incomplete type, accessed via pointer only)
+typedef struct fpl__X11Visual fpl__X11Visual;
+//! A X11 GC (opaque incomplete type, accessed via pointer only)
+typedef struct fpl__X11GC fpl__X11GC;
+//! A X11 Image (opaque incomplete type, accessed via pointer only)
+typedef struct fpl__X11Image fpl__X11Image;
+//! A GLX Context (opaque, alias of void * — matches the real GLXContext typedef which is a pointer-typed handle)
+typedef void *fpl__GLXContext;
 
 #	endif // FPL_SUBPLATFORM_X11
 
@@ -3499,6 +3550,10 @@ typedef HGLRC fpl__Win32RenderingContext;
 //! A win32 structure for storing a large integer for QPC
 typedef LARGE_INTEGER fpl__Win32LargeInteger;
 
+// Sanity checks that the real Win32 types fit into the opaque-branch buffers (keep these in sync with the opaque typedefs above).
+fplStaticAssert(sizeof(GUID) == sizeof(fpl__Win32Guid));
+fplStaticAssert(sizeof(CRITICAL_SECTION) <= sizeof(uint64_t[16]));
+
 #	endif // FPL_PLATFORM_WINDOWS
 
 #	if defined(FPL_SUBPLATFORM_POSIX)
@@ -3518,6 +3573,12 @@ typedef sem_t fpl__POSIXSemaphoreHandle;
 //! A POSIX condition variable
 typedef pthread_cond_t fpl__POSIXConditionVariable;
 
+// Sanity checks that the real POSIX types fit into the opaque-branch buffers (keep these in sync with the opaque typedefs above).
+fplStaticAssert(sizeof(pthread_t) <= sizeof(uint64_t));
+fplStaticAssert(sizeof(pthread_mutex_t) <= sizeof(uint64_t[16]));
+fplStaticAssert(sizeof(sem_t) <= sizeof(uint64_t[8]));
+fplStaticAssert(sizeof(pthread_cond_t) <= sizeof(uint64_t[16]));
+
 #	endif // FPL_SUBPLATFORM_POSIX
 
 #	if defined(FPL_SUBPLATFORM_X11)
@@ -3534,6 +3595,9 @@ typedef GC fpl__X11GC;
 typedef XImage fpl__X11Image;
 //! A GLX Context (opaque, 4/8 bytes)
 typedef void *fpl__GLXContext;
+
+// Sanity check: X11 Window is an XID (unsigned long on LP64, matches the opaque-branch typedef).
+fplStaticAssert(sizeof(Window) == sizeof(unsigned long));
 
 #	endif // FPL_SUBPLATFORM_X11
 
@@ -3577,12 +3641,14 @@ typedef int fpl__LinuxSignalHandle;
 /**
 * @def FPL_MAX_FILENAME_LENGTH
 * @brief Maximum length of a filename.
+* @note On Windows this is `MAX_PATH` (260) when `MAX_PATH` is visible at preprocess time, otherwise hard-coded to 260. On POSIX it is 512.
 */
 #define FPL_MAX_FILENAME_LENGTH FPL__M_MAX_FILENAME_LENGTH
 
 /**
 * @def FPL_MAX_PATH_LENGTH
 * @brief Maximum length of a path.
+* @note On Windows this is `MAX_PATH * 2` (520) and on POSIX it is 2048. Internal Win32 path buffers are sized by this constant, so paths longer than `MAX_PATH` are not supported on Windows. The Windows long-path prefix `\\?\` is intentionally not used by FPL — callers that need long-path support must work around this at the application level.
 */
 #define FPL_MAX_PATH_LENGTH FPL__M_MAX_PATH_LENGTH
 
@@ -3711,9 +3777,10 @@ typedef enum fplDateTimeType {
 /**
 * @struct fplDateTime
 * @brief Stores a date and time with milliseconds, including the UTC offset.
+* @note Pre-1970 dates are intentionally not supported — `epoch` is unsigned and `fplDateTimeCreate` rejects `year < 1970`.
 */
 typedef struct fplDateTime {
-	// Unix epoch in seconds since 1970-01-01 00:00:00.
+	// Unix epoch in seconds since 1970-01-01 00:00:00. Unsigned because pre-1970 dates are not supported.
 	uint64_t epoch;
 	// Milliseconds that are added after the epoch.
 	uint32_t milliseconds;
@@ -3759,14 +3826,14 @@ typedef struct fplDateTimeCreationResult {
 
 /**
 * @brief Creates a date time from the specified date time components and UTC offset.
-* @param year[in] The year starting from 1970.
-* @param month[in] The month in range of 1-12.
-* @param day[in] The day in range of 1-31.
-* @param hour[in] The hour in range of 0-23.
-* @param minute[in] The minute in range of 0-23.
-* @param second[in] The minute in range of 0-59.
-* @param millisecond[in] The millisecond in range of 0-999.
-* @param utcOffset[in] The UTC offset in minutes.
+* @param[in] year The year starting from 1970.
+* @param[in] month The month in range of 1-12.
+* @param[in] day The day in range of 1-31.
+* @param[in] hour The hour in range of 0-23.
+* @param[in] minute The minute in range of 0-59.
+* @param[in] second The second in range of 0-59.
+* @param[in] millisecond The millisecond in range of 0-999.
+* @param[in] utcOffset The UTC offset in minutes.
 * @return Returns the created date time structure as @ref fplDateTime.
 * @note If invalid arguments are passed, an empty date time is returned instead.
 */
@@ -3797,15 +3864,15 @@ typedef struct fplDateTimeResult {
 
 /**
 * @brief Gets the current date time and offset and the number of milliseconds in the specified format.
-* @param type[in] The target date time format as @ref fplDateTimeType.
+* @param[in] type The target date time format as @ref fplDateTimeType.
 * @return Returns the date time structure as @ref fplDateTime.
 */
 fpl_platform_api fplDateTime fplDateTimeQuery(const fplDateTimeType type);
 
 /**
 * @brief Formats the date time into the specified format as a @ref fplDateTimeResult.
-* @param dateTime[in] The date time as @ref fplDateTime.
-* @param type[in] The target date time format as @ref fplDateTimeType.
+* @param[in] dateTime The date time as @ref fplDateTime.
+* @param[in] type The target date time format as @ref fplDateTimeType.
 * @return Returns the computed date time fields as @ref fplDateTimeResult.
 */
 fpl_platform_api fplDateTimeResult fplFormatDateTime(const fplDateTime dateTime, const fplDateTimeType type);
@@ -4447,10 +4514,16 @@ fpl_platform_api bool fplMemoryGetInfos(fplMemoryInfos *outInfos);
 // ----------------------------------------------------------------------------
 
 /**
+* @def FPL_MAX_VERSION_PART_LENGTH
+* @brief Maximum number of digits in a single version-number part (excluding NUL).
+*/
+#define FPL_MAX_VERSION_PART_LENGTH 8
+
+/**
 * @typedef fplVersionNumberPart
 * @brief A type definition for mapping a part of a version number.
 */
-typedef char fplVersionNumberPart[4 + 1];
+typedef char fplVersionNumberPart[FPL_MAX_VERSION_PART_LENGTH + 1];
 
 /**
 * @struct fplVersionInfo
@@ -4861,19 +4934,19 @@ typedef enum fplVideoBackendType {
 
 #if defined(FPL__ENABLE_VIDEO_OPENGL)
 /**
-* @enum fplOpenGLCompabilityFlags
+* @enum fplOpenGLCompatibilityFlags
 * @brief An enumeration of OpenGL compatibility flags.
 */
-typedef enum fplOpenGLCompabilityFlags {
+typedef enum fplOpenGLCompatibilityFlags {
 	//! Use legacy context.
-	fplOpenGLCompabilityFlags_Legacy = 0,
+	fplOpenGLCompatibilityFlags_Legacy = 0,
 	//! Use core profile.
-	fplOpenGLCompabilityFlags_Core = 1 << 1,
+	fplOpenGLCompatibilityFlags_Core = 1 << 1,
 	//! Use compatibility profile.
-	fplOpenGLCompabilityFlags_Compability = 1 << 2,
+	fplOpenGLCompatibilityFlags_Compatibility = 1 << 2,
 	//! Remove features marked as deprecated.
-	fplOpenGLCompabilityFlags_Forward = 1 << 3,
-} fplOpenGLCompabilityFlags;
+	fplOpenGLCompatibilityFlags_Forward = 1 << 3,
+} fplOpenGLCompatibilityFlags;
 
 /**
 * @struct fplOpenGLSettings
@@ -4883,7 +4956,7 @@ typedef struct fplOpenGLSettings {
 	//! Custom OpenGL driver library file name/path (null = Default OpenGL library).
 	const char *libraryFile;
 	//! Compatibility flags.
-	fplOpenGLCompabilityFlags compabilityFlags;
+	fplOpenGLCompatibilityFlags compatibilityFlags;
 	//! Desired major version.
 	uint32_t majorVersion;
 	//! Desired minor version.
@@ -6849,36 +6922,37 @@ fpl_common_api bool fplIsStringEqual(const char *a, const char *b);
 * @brief Ensures that the given string always ends with a path separator with length constrained.
 * @param[in, out] path The target path string.
 * @param[in] maxPathLen The max length of the target path.
-* @return Returns a pointer to the last written character or null.
+* @return Returns the total number of characters required (excluding NUL).
+* @note Returns 0 if @p path is null, @p maxPathLen is 0, or the buffer is too small to hold the separator + NUL. The destination is left unmodified on too-small buffer.
 */
-fpl_common_api char *fplEnforcePathSeparatorLen(char *path, size_t maxPathLen);
+fpl_common_api size_t fplEnforcePathSeparatorLen(char *path, size_t maxPathLen);
 
 /**
 * @brief Ensures that the given string always ends with a path separator.
 * @param[in, out] path The path string.
-* @return Returns a pointer to the last written character or null.
+* @return Returns the total number of characters of the resulting string (excluding NUL).
 * @note This function is unsafe as it does not know the maximum length of the string!
 */
-fpl_common_api char *fplEnforcePathSeparator(char *path);
+fpl_common_api size_t fplEnforcePathSeparator(char *path);
 
 /**
 * @brief Appends the source string to the given buffer constrained by length.
 * @param[in] appended The appending source string.
 * @param[in] appendedLen The length of the appending source string.
-* @param[in, out] buffer The target buffer.
+* @param[in, out] buffer The target buffer (may be null to query the required size only).
 * @param[in] maxBufferLen The max length of the target buffer.
-* @return Returns a pointer to the last written character or null.
+* @return Returns the total number of characters required (excluding NUL). Returns 0 on hard error or when the buffer is too small (buffer is left untouched).
 */
-fpl_common_api char *fplStringAppendLen(const char *appended, const size_t appendedLen, char *buffer, size_t maxBufferLen);
+fpl_common_api size_t fplStringAppendLen(const char *appended, const size_t appendedLen, char *buffer, size_t maxBufferLen);
 
 /**
 * @brief Appends the source string to the given buffer.
 * @param[in] appended The appending source string.
-* @param[in, out] buffer The target buffer.
+* @param[in, out] buffer The target buffer (may be null to query the required size only).
 * @param[in] maxBufferLen The max length of the target buffer.
-* @return Returns a pointer to the last written character or null.
+* @return Returns the total number of characters required (excluding NUL). Returns 0 on hard error or when the buffer is too small.
 */
-fpl_common_api char *fplStringAppend(const char *appended, char *buffer, size_t maxBufferLen);
+fpl_common_api size_t fplStringAppend(const char *appended, char *buffer, size_t maxBufferLen);
 
 /**
 * @brief Counts the number of characters without including the zero terminator.
@@ -6891,22 +6965,22 @@ fpl_common_api size_t fplGetStringLength(const char *str);
 * @brief Copies the given source string with a constrained length into a destination string.
 * @param[in] source The source string.
 * @param[in] sourceLen The number of characters to copy.
-* @param[in, out] dest The destination string buffer.
+* @param[in, out] dest The destination string buffer (may be null to query the required size only).
 * @param[in] maxDestLen The total number of characters available in the destination buffer.
-* @return Returns the pointer to the last written character or null.
-* @note Null terminator is always included.
+* @return Returns the total number of characters required (excluding NUL). Returns 0 on hard error or when the buffer is too small.
+* @note Null terminator is always included when written.
 */
-fpl_common_api char *fplCopyStringLen(const char *source, const size_t sourceLen, char *dest, const size_t maxDestLen);
+fpl_common_api size_t fplCopyStringLen(const char *source, const size_t sourceLen, char *dest, const size_t maxDestLen);
 
 /**
 * @brief Copies the given source string into a destination string.
 * @param[in] source The source string.
-* @param[in, out] dest The destination string buffer.
+* @param[in, out] dest The destination string buffer (may be null to query the required size only).
 * @param[in] maxDestLen The total number of characters available in the destination buffer.
-* @return Returns the pointer to the last written character or null.
-* @note Null terminator is always included.
+* @return Returns the total number of characters required (excluding NUL). Returns 0 on hard error or when the buffer is too small.
+* @note Null terminator is always included when written.
 */
-fpl_common_api char *fplCopyString(const char *source, char *dest, const size_t maxDestLen);
+fpl_common_api size_t fplCopyString(const char *source, char *dest, const size_t maxDestLen);
 
 /**
 * @brief Converts the given 16-bit source wide string with length into an 8-bit UTF-8 ANSI string.
@@ -6937,7 +7011,7 @@ fpl_platform_api size_t fplUTF8StringToWideString(const char *utf8Source, const 
 * @param[in] format The string format.
 * @param[in] ... The variable arguments.
 * @return Returns the number of required/written characters, excluding the null-terminator.
-* @note This is most likely just a wrapper call to vsnprintf().
+* @note Follows C99 vsnprintf format specifiers. Returns the required length excluding NUL; returns 0 if destBuffer is too small.
 */
 fpl_common_api size_t fplStringFormat(char *destBuffer, const size_t maxDestBufferLen, const char *format, ...);
 
@@ -6948,7 +7022,7 @@ fpl_common_api size_t fplStringFormat(char *destBuffer, const size_t maxDestBuff
 * @param[in] format The string format.
 * @param[in] argList The arguments list.
 * @return Returns the number of required/written characters, excluding the null-terminator.
-* @note This is most likely just a wrapper call to vsnprintf().
+* @note Follows C99 vsnprintf format specifiers. Returns the required length excluding NUL; returns 0 if destBuffer is too small.
 */
 fpl_common_api size_t fplStringFormatArgs(char *destBuffer, const size_t maxDestBufferLen, const char *format, va_list argList);
 
@@ -6956,16 +7030,33 @@ fpl_common_api size_t fplStringFormatArgs(char *destBuffer, const size_t maxDest
 * @brief Converts the given string into a 32-bit integer constrained by string length.
 * @param[in] str The source string.
 * @param[in] len The length of the source string.
-* @return Returns a 32-bit integer converted from the given string.
+* @return Returns a 32-bit integer converted from the given string. Overflow is clamped to INT32_MAX/INT32_MIN. Invalid input returns 0 — use fplTryStringToS32Len() to distinguish a valid "0" from an invalid string.
 */
 fpl_common_api int32_t fplStringToS32Len(const char *str, const size_t len);
 
 /**
 * @brief Converts the given string into a 32-bit integer.
 * @param[in] str The source string.
-* @return Returns a 32-bit integer converted from the given string.
+* @return Returns a 32-bit integer converted from the given string. Overflow is clamped to INT32_MAX/INT32_MIN. Invalid input returns 0 — use fplTryStringToS32() to distinguish a valid "0" from an invalid string.
 */
 fpl_common_api int32_t fplStringToS32(const char *str);
+
+/**
+* @brief Try to convert the given string into a 32-bit integer constrained by string length.
+* @param[in] str The source string.
+* @param[in] len The length of the source string.
+* @param[out] outValue Receives the converted value. On overflow, clamped to INT32_MAX/INT32_MIN. May be null to validate without retrieving the value.
+* @return Returns true if @p str was a valid integer literal (optional sign + at least one digit), false otherwise.
+*/
+fpl_common_api bool fplTryStringToS32Len(const char *str, const size_t len, int32_t *outValue);
+
+/**
+* @brief Try to convert the given NUL-terminated string into a 32-bit integer.
+* @param[in] str The source string.
+* @param[out] outValue Receives the converted value. On overflow, clamped to INT32_MAX/INT32_MIN. May be null to validate without retrieving the value.
+* @return Returns true if @p str was a valid integer literal, false otherwise.
+*/
+fpl_common_api bool fplTryStringToS32(const char *str, int32_t *outValue);
 
 /**
 * @brief Converts the given 32-bit integer value into a string.
@@ -7129,9 +7220,9 @@ typedef union fplInternalFileEntryHandle {
 */
 typedef struct fplInternalFileRootInfo {
 	//! Saved root path.
-	const char *rootPath;
+	char rootPath[FPL_MAX_PATH_LENGTH];
 	//! Saved filter wildcard.
-	const char *filter;
+	char filter[FPL_MAX_FILENAME_LENGTH];
 } fplInternalFileRootInfo;
 
 //! The elapsed seconds since the UNIX epoch (1970-01-01 00:00:00).
@@ -7206,7 +7297,8 @@ fpl_platform_api bool fplFileAppendBinary(const char *filePath, fplFileHandle *o
 * @param[in] sizeToRead The number of bytes to read.
 * @param[out] targetBuffer The target memory to write into.
 * @param[in] maxTargetBufferSize Total number of bytes available in the target buffer.
-* @return Returns the number of bytes read or zero.
+* @return Returns the number of bytes read, or 0 on EOF or hard error.
+* @note A return of 0 is ambiguous: it may mean end-of-file or a read failure (NULL handle, invalid handle, OS-level read error). Disambiguate via @ref fplFileGetPosition32 / @ref fplFileGetSizeFromHandle32, or check @ref fplGetLastError.
 * @note Supports max size of 2^31.
 * @see @ref subsection_category_io_binaryfiles_read_readblock
 */
@@ -7218,7 +7310,8 @@ fpl_platform_api uint32_t fplFileReadBlock32(const fplFileHandle *fileHandle, co
 * @param[in] sizeToRead The number of bytes to read.
 * @param[out] targetBuffer The target memory to write into.
 * @param[in] maxTargetBufferSize Total number of bytes available in the target buffer.
-* @return Returns the number of bytes read or zero.
+* @return Returns the number of bytes read, or 0 on EOF or hard error.
+* @note A return of 0 is ambiguous: it may mean end-of-file or a read failure (NULL handle, invalid handle, OS-level read error). Disambiguate via @ref fplFileGetPosition64 / @ref fplFileGetSizeFromHandle64, or check @ref fplGetLastError.
 * @note Supports max size of 2^63.
 * @see @ref subsection_category_io_binaryfiles_read_readblock
 */
@@ -7230,7 +7323,8 @@ fpl_platform_api uint64_t fplFileReadBlock64(const fplFileHandle *fileHandle, co
 * @param[in] sizeToRead The number of bytes to read.
 * @param[out] targetBuffer The target memory to write into.
 * @param[in] maxTargetBufferSize Total number of bytes available in the target buffer.
-* @return Returns the number of bytes read or zero.
+* @return Returns the number of bytes read, or 0 on EOF or hard error.
+* @note A return of 0 is ambiguous: it may mean end-of-file or a read failure (NULL handle, invalid handle, OS-level read error). Disambiguate via the matching @ref fplFileGetPosition / @ref fplFileGetSizeFromHandle variant, or check @ref fplGetLastError.
 * @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes.
 * @see @ref subsection_category_io_binaryfiles_read_readblock
 */
@@ -7365,6 +7459,14 @@ fpl_platform_api uint64_t fplFileGetSizeFromPath64(const char *filePath);
 fpl_platform_api size_t fplFileGetSizeFromPath(const char *filePath);
 
 /**
+* @brief Tries to get the full 64-bit file size in bytes for the given file, distinguishing a zero-byte file from an error.
+* @param[in] filePath The path to the file.
+* @param[out] outSize Reference that receives the file size in bytes on success. Untouched on failure.
+* @return Returns true when the size was retrieved, false on any error (NULL input, file not accessible, query failed).
+*/
+fpl_platform_api bool fplFileTryGetSizeFromPath(const char *filePath, uint64_t *outSize);
+
+/**
 * @brief Gets the file size in bytes for an opened file.
 * @param[in] fileHandle Reference to the file handle structure @ref fplFileHandle.
 * @return Returns the file size in bytes or zero.
@@ -7387,6 +7489,14 @@ fpl_platform_api uint64_t fplFileGetSizeFromHandle64(const fplFileHandle *fileHa
 * @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes.
 */
 fpl_common_api size_t fplFileGetSizeFromHandle(const fplFileHandle *fileHandle);
+
+/**
+* @brief Tries to get the full 64-bit file size in bytes for an opened file, distinguishing a zero-byte file from an error.
+* @param[in] fileHandle Reference to the file handle structure @ref fplFileHandle.
+* @param[out] outSize Reference that receives the file size in bytes on success. Untouched on failure.
+* @return Returns true when the size was retrieved, false on any error (NULL input, invalid handle, query failed).
+*/
+fpl_platform_api bool fplFileTryGetSizeFromHandle(const fplFileHandle *fileHandle, uint64_t *outSize);
 
 /**
 * @brief Gets the timestamps for the given file.
@@ -7459,11 +7569,12 @@ fpl_platform_api bool fplDirectoryRemove(const char *path);
 /**
 * @brief Iterates through files/directories in the given directory.
 * @param[in] path The full path.
-* @param[in] filter The filter wildcard (If empty or null it will not filter anything at all).
+* @param[in] filter The filter wildcard. If empty or null, it is rewritten internally to "*" (match all) and stored as such in the entry's internal root info.
 * @param[out] entry Reference to the file entry structure @ref fplFileEntry.
 * @return Returns true when there was a first entry found, false otherwise.
 * @note This function is not recursive, so it will traverse the first level only!
 * @note When no initial entry is found, the resources are automatically cleaned up.
+* @note `path` and `filter` are copied into fixed-size buffers inside `entry`; the caller may free or reuse the source strings immediately after this call returns.
 * @see @ref section_category_io_paths_traversing
 */
 fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter, fplFileEntry *entry);
@@ -7516,9 +7627,9 @@ fpl_platform_api size_t fplGetHomePath(char *destPath, const size_t maxDestLen);
 
 /**
  * @brief Normalizes the specified source path into the dest path and len.
- * @param sourcePath The source path.
- * @param destPath The destination buffer.
- * @param maxDestLen The total number of characters available in the destination buffer.
+ * @param[in] sourcePath The source path.
+ * @param[out] destPath The destination buffer.
+ * @param[in] maxDestLen The total number of characters available in the destination buffer.
  * @return Returns the number of required/written characters, excluding the null-terminator.
  */
 fpl_platform_api size_t fplPathNormalize(const char *sourcePath, char *destPath, const size_t maxDestLen);
@@ -8749,11 +8860,11 @@ fpl_platform_api void fplSetWindowTitle(const char *title);
 
 /**
 * @brief Retrieves the window title and writes it into the output string.
-* @param[out] outTitle The output title string.
+* @param[out] outTitle The output title string (may be null to query the required size only).
 * @param[in] maxOutTitleLength The maximum length of the output title.
-* @return Returns the char pointer of the last written character or null.
+* @return Returns the total number of characters required (excluding NUL). Returns 0 on hard error or when the buffer is too small.
 */
-fpl_common_api char *fplGetWindowTitle(char *outTitle, const size_t maxOutTitleLength);
+fpl_common_api size_t fplGetWindowTitle(char *outTitle, const size_t maxOutTitleLength);
 
 /**
 * @brief Gets the current window state.
@@ -9876,7 +9987,7 @@ fpl_internal size_t fpl__ParseTextFile(const char *filePath, const char **wildca
 	size_t result = 0;
 	fplFileHandle fileHandle = fplZeroInit;
 	if (fplFileOpenBinary(filePath, &fileHandle)) {
-		char *line = (char *)fpl__AllocateTemporaryMemory(maxLineSize, 8);
+		char *line = (char *)fpl__AllocateTemporaryMemory(maxLineSize, fpl__MinAlignment);
 		char buffer[FPL_MAX_BUFFER_LENGTH];
 		const size_t maxBufferSize = fplArrayCount(buffer) - 1;
 		size_t bytesRead = 0;
@@ -11851,7 +11962,8 @@ static const uint32_t FPL__DEFAULT_AUDIO_BUFFERSIZE_CONSERVATIVE_IN_MSECS = 25;
 
 typedef struct fpl__ErrorState {
 	char errors[FPL__MAX_ERRORSTATE_COUNT][FPL__MAX_LAST_ERROR_STRING_LENGTH];
-	uint32_t count;
+	// Monotonic total error count. Slot index = (count - 1) % FPL__MAX_ERRORSTATE_COUNT.
+	volatile uint32_t count;
 } fpl__ErrorState;
 
 fpl_globalvar fpl__ErrorState fpl__global__LastErrorState = fplZeroInit;
@@ -11864,9 +11976,9 @@ fpl_internal void fpl__PushError_Formatted(const char *funcName, const int lineN
 		char buffer[FPL__MAX_LAST_ERROR_STRING_LENGTH] = fplZeroInit;
 		size_t formattedLen = fplStringFormatArgs(buffer, fplArrayCount(buffer), format, argList);
 		if (formattedLen > 0) {
-			fplAssert(state->count < FPL__MAX_ERRORSTATE_COUNT);
-			size_t errorIndex = state->count;
-			state->count = (state->count + 1) % FPL__MAX_ERRORSTATE_COUNT;
+			// Atomically claim a unique ring slot so concurrent writers do not collide.
+			uint32_t prevTotal = fplAtomicFetchAndAddU32(&state->count, 1);
+			size_t errorIndex = (size_t)(prevTotal % FPL__MAX_ERRORSTATE_COUNT);
 			fplCopyStringLen(buffer, formattedLen, state->errors[errorIndex], FPL__MAX_LAST_ERROR_STRING_LENGTH);
 		}
 	}
@@ -12137,74 +12249,65 @@ fpl_common_api bool fplIsStringEqual(const char *a, const char *b) {
 	return(result);
 }
 
-fpl_common_api char *fplEnforcePathSeparatorLen(char *path, size_t maxPathLen) {
-	FPL__CheckArgumentNull(path, fpl_null);
-	FPL__CheckArgumentZero(maxPathLen, fpl_null);
-	char *end = path;
-	while (*end) {
-		end++;
+fpl_common_api size_t fplEnforcePathSeparatorLen(char *path, size_t maxPathLen) {
+	FPL__CheckArgumentNull(path, 0);
+	FPL__CheckArgumentZero(maxPathLen, 0);
+	size_t len = fplGetStringLength(path);
+	if (len == 0) {
+		return(0);
 	}
-	size_t len = end - path;
-	char *result = fpl_null;
-	if (len > 0) {
-		if (path[len - 1] != FPL_PATH_SEPARATOR) {
-			if (len + 1 <= maxPathLen) {
-				path[len] = FPL_PATH_SEPARATOR;
-				path[len + 1] = 0;
-				result = &path[len + 1];
-			} else {
-				FPL__ERROR(FPL__MODULE_PATHS, "Cannot append path separator: Max length '%zu' of path '%s' is exceeded", maxPathLen, path);
-			}
-		} else {
-			result = &path[len];
-		}
+	if (path[len - 1] == FPL_PATH_SEPARATOR) {
+		return(len);
 	}
-	return(result);
+	size_t requiredLen = len + 1;
+	if (requiredLen + 1 > maxPathLen) {
+		FPL__ERROR(FPL__MODULE_PATHS, "Cannot append path separator: Max length '%zu' of path '%s' is exceeded", maxPathLen, path);
+		return(0);
+	}
+	path[len] = FPL_PATH_SEPARATOR;
+	path[len + 1] = 0;
+	return(requiredLen);
 }
 
-fpl_common_api char *fplEnforcePathSeparator(char *path) {
-	FPL__CheckArgumentNull(path, fpl_null);
-	char *end = path;
-	while (*end) {
-		end++;
+fpl_common_api size_t fplEnforcePathSeparator(char *path) {
+	FPL__CheckArgumentNull(path, 0);
+	size_t len = fplGetStringLength(path);
+	if (len == 0) {
+		return(0);
 	}
-	size_t len = end - path;
-	char *result = fpl_null;
-	if (len > 0) {
-		if (path[len - 1] != FPL_PATH_SEPARATOR) {
-			path[len] = FPL_PATH_SEPARATOR;
-			path[len + 1] = 0;
-			result = &path[len + 1];
-		} else {
-			result = &path[len];
-		}
+	if (path[len - 1] == FPL_PATH_SEPARATOR) {
+		return(len);
 	}
-	return(result);
+	path[len] = FPL_PATH_SEPARATOR;
+	path[len + 1] = 0;
+	return(len + 1);
 }
 
-fpl_common_api char *fplStringAppendLen(const char *appended, const size_t appendedLen, char *buffer, size_t maxBufferLen) {
-	FPL__CheckArgumentNull(appended, fpl_null);
-	FPL__CheckArgumentZero(maxBufferLen, fpl_null);
+fpl_common_api size_t fplStringAppendLen(const char *appended, const size_t appendedLen, char *buffer, size_t maxBufferLen) {
+	FPL__CheckArgumentNull(appended, 0);
 	if (appendedLen == 0) {
-		return buffer;
+		return(buffer != fpl_null ? fplGetStringLength(buffer) : 0);
 	}
-	size_t curBufferLen = fplGetStringLength(buffer);
-	size_t requiredSize = curBufferLen + appendedLen + 1;
-	FPL__CheckArgumentMin(maxBufferLen, requiredSize, fpl_null);
-	char *start = buffer + curBufferLen;
-	size_t remainingBufferSize = maxBufferLen - (curBufferLen > 0 ? curBufferLen + 1 : 0);
-	char *result = fplCopyStringLen(appended, appendedLen, start, remainingBufferSize);
-	return(result);
+	size_t curBufferLen = (buffer != fpl_null) ? fplGetStringLength(buffer) : 0;
+	size_t requiredLen = curBufferLen + appendedLen;
+	if (buffer == fpl_null) {
+		return(requiredLen);
+	}
+	FPL__CheckArgumentZero(maxBufferLen, 0);
+	size_t requiredSize = requiredLen + 1;
+	FPL__CheckArgumentMin(maxBufferLen, requiredSize, 0);
+	fplMemoryCopy(appended, appendedLen * sizeof(char), buffer + curBufferLen);
+	buffer[requiredLen] = 0;
+	return(requiredLen);
 }
 
-fpl_common_api char *fplStringAppend(const char *appended, char *buffer, size_t maxBufferLen) {
+fpl_common_api size_t fplStringAppend(const char *appended, char *buffer, size_t maxBufferLen) {
 	size_t appendedLen = fplGetStringLength(appended);
-	char *result = fplStringAppendLen(appended, appendedLen, buffer, maxBufferLen);
-	return(result);
+	return(fplStringAppendLen(appended, appendedLen, buffer, maxBufferLen));
 }
 
 fpl_common_api size_t fplGetStringLength(const char *str) {
-	uint32_t result = 0;
+	size_t result = 0;
 	if (str != fpl_null) {
 		while (*str++) {
 			result++;
@@ -12213,62 +12316,78 @@ fpl_common_api size_t fplGetStringLength(const char *str) {
 	return(result);
 }
 
-fpl_common_api char *fplCopyStringLen(const char *source, const size_t sourceLen, char *dest, const size_t maxDestLen) {
-	if (source != fpl_null && dest != fpl_null) {
-		size_t requiredLen = sourceLen + 1;
-		FPL__CheckArgumentMin(maxDestLen, requiredLen, fpl_null);
-		fplMemoryCopy(source, sourceLen * sizeof(char), dest);
-		char *result = dest + sourceLen;
-		*result = 0;
-		return(result);
-	} else {
-		return(fpl_null);
+fpl_common_api size_t fplCopyStringLen(const char *source, const size_t sourceLen, char *dest, const size_t maxDestLen) {
+	FPL__CheckArgumentNull(source, 0);
+	if (dest == fpl_null) {
+		return(sourceLen);
 	}
+	FPL__CheckArgumentZero(maxDestLen, 0);
+	size_t requiredLen = sourceLen + 1;
+	FPL__CheckArgumentMin(maxDestLen, requiredLen, 0);
+	if (sourceLen > 0) {
+		fplMemoryCopy(source, sourceLen * sizeof(char), dest);
+	}
+	dest[sourceLen] = 0;
+	return(sourceLen);
 }
 
-fpl_common_api char *fplCopyString(const char *source, char *dest, const size_t maxDestLen) {
-	char *result = fpl_null;
-	if (source != fpl_null) {
-		size_t sourceLen = fplGetStringLength(source);
-		result = fplCopyStringLen(source, sourceLen, dest, maxDestLen);
-	}
-	return(result);
+fpl_common_api size_t fplCopyString(const char *source, char *dest, const size_t maxDestLen) {
+	FPL__CheckArgumentNull(source, 0);
+	size_t sourceLen = fplGetStringLength(source);
+	return(fplCopyStringLen(source, sourceLen, dest, maxDestLen));
 }
 
 fpl_common_api size_t fplStringFormatArgs(char *destBuffer, const size_t maxDestBufferLen, const char *format, va_list argList) {
 	FPL__CheckArgumentNull(format, 0);
 
-	va_list listCopy;
-	va_copy(listCopy, argList);
-
-	// @NOTE(final): Need to clear the first character, otherwise vsnprintf() does weird things... O_o
 	if (destBuffer != fpl_null) {
 		FPL__CheckArgumentMin(maxDestBufferLen, 1, 0);
-		destBuffer[0] = 0;
 	}
 
+	// First pass: query the required length using a dummy buffer when destBuffer is null/too-small.
+	va_list listCopy;
+	va_copy(listCopy, argList);
 	int charCount = 0;
 #	if defined(FPL_NO_CRT)
 #		if defined(FPL_USERFUNC_vsnprintf)
-	charCount = FPL_USERFUNC_vsnprintf(destBuffer, maxDestBufferLen, format, listCopy);
+	if (destBuffer != fpl_null) {
+		destBuffer[0] = 0;
+		charCount = FPL_USERFUNC_vsnprintf(destBuffer, maxDestBufferLen, format, listCopy);
+	} else {
+		charCount = FPL_USERFUNC_vsnprintf(fpl_null, 0, format, listCopy);
+	}
 #		else
 	charCount = 0;
 #		endif
 #	else
-	charCount = vsnprintf(destBuffer, maxDestBufferLen, format, listCopy);
-#	endif
-	if (charCount < 0) {
-		FPL__ERROR(FPL__MODULE_STRINGS, "Format parameter are '%s' are invalid", format);
-		return 0;
-	}
-	size_t result = charCount;
 	if (destBuffer != fpl_null) {
-		size_t requiredMaxDestBufferLen = charCount + 1;
-		FPL__CheckArgumentMin(maxDestBufferLen, requiredMaxDestBufferLen, 0);
-		destBuffer[charCount] = 0;
+		destBuffer[0] = 0;
+		charCount = vsnprintf(destBuffer, maxDestBufferLen, format, listCopy);
+	} else {
+		charCount = vsnprintf(fpl_null, 0, format, listCopy);
 	}
+#	endif
 	va_end(listCopy);
-	return(result);
+
+	if (charCount < 0) {
+		FPL__ERROR(FPL__MODULE_STRINGS, "Format parameter '%s' is invalid, return code was: %d", format, charCount);
+		if (destBuffer != fpl_null && maxDestBufferLen > 0) {
+			destBuffer[0] = 0;
+		}
+		return(0);
+	}
+	const size_t requiredLen = (size_t)charCount;
+	if (destBuffer == fpl_null) {
+		// Query mode: return what would be needed.
+		return(requiredLen);
+	}
+	if (requiredLen + 1 > maxDestBufferLen) {
+		// Too small: do not leave a partially-filled buffer for the caller to consume.
+		destBuffer[0] = 0;
+		return(0);
+	}
+	destBuffer[requiredLen] = 0;
+	return(requiredLen);
 }
 
 fpl_common_api size_t fplStringFormat(char *destBuffer, const size_t maxDestBufferLen, const char *format, ...) {
@@ -12328,36 +12447,74 @@ fpl_common_api size_t fplS32ToString(const int32_t value, char *buffer, const si
 	return result;
 }
 
-fpl_common_api int32_t fplStringToS32Len(const char *str, const size_t len) {
-	FPL__CheckArgumentNull(str, 0);
-	FPL__CheckArgumentZero(len, 0);
+fpl_common_api bool fplTryStringToS32Len(const char *str, const size_t len, int32_t *outValue) {
+	if (str == fpl_null || len == 0) {
+		return(false);
+	}
 	const char *p = str;
-	bool isNegative = false;
-	if (*p == '-') {
-		if (len == 1) {
-			return 0;
-		}
-		isNegative = true;
+	const char *end = str + len;
+	while (p < end && (*p == ' ' || *p == '\t')) {
 		++p;
 	}
+	bool isNegative = false;
+	if (p < end && (*p == '-' || *p == '+')) {
+		isNegative = (*p == '-');
+		++p;
+	}
+	if (p >= end || *p < '0' || *p > '9') {
+		return(false);
+	}
+	const uint32_t signedMaxAbs = (uint32_t)INT32_MAX + 1u;
+	const uint32_t posMaxAbs = (uint32_t)INT32_MAX;
+	const uint32_t maxAbs = isNegative ? signedMaxAbs : posMaxAbs;
 	uint32_t value = 0;
-	while (*p && ((size_t)(p - str) < len)) {
+	bool overflow = false;
+	while (p < end && *p) {
 		char c = *p;
 		if (c < '0' || c > '9') {
-			return(0);
+			return(false);
 		}
-		int v = (int)(*p - '0');
-		value *= 10;
-		value += (uint32_t)v;
+		uint32_t digit = (uint32_t)(c - '0');
+		if (!overflow) {
+			if (value > (maxAbs - digit) / 10u) {
+				overflow = true;
+			} else {
+				value = value * 10u + digit;
+			}
+		}
 		++p;
 	}
-	int32_t result = isNegative ? -(int32_t)value : (int32_t)value;
+	int32_t result;
+	if (overflow) {
+		result = isNegative ? INT32_MIN : INT32_MAX;
+	} else if (isNegative) {
+		result = (value == signedMaxAbs) ? INT32_MIN : -(int32_t)value;
+	} else {
+		result = (int32_t)value;
+	}
+	if (outValue != fpl_null) {
+		*outValue = result;
+	}
+	return(true);
+}
+
+fpl_common_api bool fplTryStringToS32(const char *str, int32_t *outValue) {
+	if (str == fpl_null) {
+		return(false);
+	}
+	size_t len = fplGetStringLength(str);
+	return(fplTryStringToS32Len(str, len, outValue));
+}
+
+fpl_common_api int32_t fplStringToS32Len(const char *str, const size_t len) {
+	int32_t result = 0;
+	(void)fplTryStringToS32Len(str, len, &result);
 	return(result);
 }
 
 fpl_common_api int32_t fplStringToS32(const char *str) {
-	size_t len = fplGetStringLength(str);
-	int32_t result = fplStringToS32Len(str, len);
+	int32_t result = 0;
+	(void)fplTryStringToS32(str, &result);
 	return(result);
 }
 #endif // FPL__COMMON_STRINGS_DEFINED
@@ -12657,11 +12814,9 @@ fpl_common_api fplDateTimeCreationResult fplDateTimeCreate(const uint16_t year, 
 // X86/X64 only (CPUID, XCR0, RDTSC)
 //
 #if defined(FPL_ARCH_X64) || defined(FPL_ARCH_X86)
-
 #	define FPL__CPU_BRAND_BUFFER_SIZE 0x40
 
 #	if defined(FPL_COMPILER_MSVC)
-
 		// CPUID/XCR0 for MSVC
 #		if _MSC_VER >= 1400
 #			define fpl__m_CPUID(outLeaf, functionId) __cpuid((int *)(outLeaf)->raw, (int)(functionId))
@@ -12669,14 +12824,11 @@ fpl_common_api fplDateTimeCreationResult fplDateTimeCreate(const uint16_t year, 
 #		if _MSC_VER >= 1600
 #			define fpl__m_GetXCR0() ((uint64_t)_xgetbv(0))
 #		endif
-
 		// RDTSC for MSVC
 #		define fpl__m_RDTSC() ((uint64_t)__rdtsc())
-
 #	elif defined(FPL_COMPILER_GCC) ||defined(FPL_COMPILER_CLANG)
-
 		// CPUID for GCC/CLANG
-fpl_internal void fpl__m_CPUID(fplCPUIDLeaf *outLeaf, const uint32_t functionId) {
+fpl_internal void fpl__m_CPUID_Impl(fplCPUIDLeaf *outLeaf, const uint32_t functionId) {
 	int eax = 0, ebx = 0, ecx = 0, edx = 0;
 	__cpuid_count(functionId, 0, eax, ebx, ecx, edx);
 	outLeaf->eax = eax;
@@ -12684,28 +12836,32 @@ fpl_internal void fpl__m_CPUID(fplCPUIDLeaf *outLeaf, const uint32_t functionId)
 	outLeaf->ecx = ecx;
 	outLeaf->edx = edx;
 }
+#		define fpl__m_CPUID(outLeaf, functionId) fpl__m_CPUID_Impl(outLeaf, functionId)
 
 		// XCR0 for GCC/CLANG
-fpl_internal uint64_t fpl__m_GetXCR0(void) {
+fpl_internal uint64_t fpl__m_GetXCR0_Impl(void) {
 	uint32_t eax, edx;
 	__asm(".byte 0x0F, 0x01, 0xd0" : "=a"(eax), "=d"(edx) : "c"(0));
 	return eax;
 }
+#		define fpl__m_GetXCR0() fpl__m_GetXCR0_Impl()
 
 		// RDTSC for non-MSVC
 #		if defined(FPL_ARCH_X86)
-fpl_force_inline uint64_t fpl__m_RDTSC(void) {
+fpl_force_inline uint64_t fpl__m_RDTSC_Impl(void) {
 	unsigned long long int result;
 	__asm__ volatile (".byte 0x0f, 0x31" : "=A" (result));
 	return((uint64_t)result);
 }
+#			define fpl__m_RDTSC() fpl__m_RDTSC_Impl()
 #		elif defined(FPL_ARCH_X64)
-fpl_force_inline uint64_t fpl__m_RDTSC(void) {
+fpl_force_inline uint64_t fpl__m_RDTSC_Impl(void) {
 	unsigned hi, lo;
 	__asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
 	uint64_t result = (uint64_t)(((unsigned long long)lo) | (((unsigned long long)hi) << 32));
 	return (result);
 }
+#			define fpl__m_RDTSC() fpl__m_RDTSC_Impl()
 #		endif
 #	endif
 
@@ -13180,11 +13336,11 @@ fpl_common_api size_t fplExtractFilePath(const char *sourcePath, char *destPath,
 	size_t sourceLen = fplGetStringLength(sourcePath);
 	size_t result = 0;
 	if (sourceLen > 0) {
-		int pathLen = 0;
+		size_t pathLen = 0;
 		const char *chPtr = (const char *)sourcePath;
 		while (*chPtr) {
 			if (*chPtr == FPL_PATH_SEPARATOR) {
-				pathLen = (int)(chPtr - sourcePath);
+				pathLen = (size_t)(chPtr - sourcePath);
 			}
 			++chPtr;
 		}
@@ -13301,42 +13457,76 @@ fpl_common_api size_t fplChangeFileExtension(const char *filePath, const char *n
 	return(result);
 }
 
+#define FPL__PATHCOMBINE_STACK_SEGMENTS 16
+
 fpl_common_api size_t fplPathCombine(char *destPath, const size_t maxDestPathLen, const size_t pathCount, ...) {
 	FPL__CheckArgumentZero(pathCount, 0);
 
-	size_t result = 0;
+	va_list args;
 
-	size_t curDestPosition = 0;
-	char *currentDestPtr = destPath;
+	// First pass: compute total length
+	va_start(args, pathCount);
 
-	va_list vargs;
-	va_start(vargs, pathCount);
-	for (size_t pathIndex = 0; pathIndex < pathCount; ++pathIndex) {
-		const char *path = va_arg(vargs, const char *);
-		size_t pathLen = fplGetStringLength(path);
+	size_t totalLen = 0;
+	bool prevHasTrailingSep = false;
 
-		bool requireSeparator = pathIndex < (pathCount - 1);
-		size_t requiredPathLen = requireSeparator ? pathLen + 1 : pathLen;
+	for (size_t i = 0; i < pathCount; ++i) {
+		const char *path = va_arg(args, const char *);
+		if (path == fpl_null) {
+			continue;
+		}
 
-		result += requiredPathLen;
+		const size_t len = fplGetStringLength(path);
 
-		if (destPath != fpl_null) {
-			size_t requiredDestLen = result + 1;
-			FPL__CheckArgumentMin(maxDestPathLen, requiredDestLen, 0);
+		if (i > 0 && len > 0 && !prevHasTrailingSep) {
+			totalLen += 1; // separator
+		}
 
-			fplCopyStringLen(path, pathLen, currentDestPtr, maxDestPathLen - curDestPosition);
-			currentDestPtr += pathLen;
-			if (requireSeparator) {
-				*currentDestPtr++ = FPL_PATH_SEPARATOR;
-			}
-			curDestPosition += requiredPathLen;
+		totalLen += len;
+
+		if (len > 0) {
+			prevHasTrailingSep = (path[len - 1] == FPL_PATH_SEPARATOR);
 		}
 	}
-	if (currentDestPtr != fpl_null) {
-		*currentDestPtr = 0;
+
+	va_end(args);
+
+	// Write result if buffer provided
+	if (destPath != fpl_null) {
+		const size_t requiredLen = totalLen + 1;
+
+		FPL__CheckArgumentMin(maxDestPathLen, requiredLen, 0);
+
+		va_start(args, pathCount);
+
+		size_t pos = 0;
+		prevHasTrailingSep = false;
+
+		for (size_t i = 0; i < pathCount; ++i) {
+			const char *path = va_arg(args, const char *);
+			if (path == fpl_null) {
+				continue;
+			}
+
+			const size_t len = fplGetStringLength(path);
+
+			if (i > 0 && len > 0 && !prevHasTrailingSep) {
+				destPath[pos++] = FPL_PATH_SEPARATOR;
+			}
+
+			if (len > 0) {
+				fplMemoryCopy(path, len * sizeof(char), destPath + pos);
+				pos += len;
+				prevHasTrailingSep = (path[len - 1] == FPL_PATH_SEPARATOR);
+			}
+		}
+
+		va_end(args);
+
+		destPath[pos] = '\0';
 	}
-	va_end(vargs);
-	return(result);
+
+	return totalLen;
 }
 #endif // FPL__COMMON_PATHS_DEFINED
 
@@ -13346,10 +13536,10 @@ fpl_common_api size_t fplPathCombine(char *destPath, const size_t maxDestPathLen
 #if defined(FPL__ENABLE_WINDOW) && !defined(FPL__COMMON_WINDOW_DEFINED)
 #define FPL__COMMON_WINDOW_DEFINED
 
-fpl_common_api char *fplGetWindowTitle(char *outTitle, const size_t maxOutTitleLength) {
-	FPL__CheckPlatform(fpl_null);
+fpl_common_api size_t fplGetWindowTitle(char *outTitle, const size_t maxOutTitleLength) {
+	FPL__CheckPlatform(0);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	char *result = fplCopyString(appState->currentSettings.window.title, outTitle, maxOutTitleLength);
+	size_t result = fplCopyString(appState->currentSettings.window.title, outTitle, maxOutTitleLength);
 	return(result);
 }
 
@@ -13722,9 +13912,10 @@ fpl_common_api fplLogLevel fplGetMaxLogLevel(void) {
 fpl_common_api const char *fplGetLastError(void) {
 	const char *result = "";
 	const fpl__ErrorState *errorState = &fpl__global__LastErrorState;
-	if (errorState->count > 0) {
-		size_t index = errorState->count - 1;
-		result = fplGetErrorByIndex(index);
+	uint32_t total = errorState->count;
+	if (total > 0) {
+		size_t slot = (size_t)((total - 1) % FPL__MAX_ERRORSTATE_COUNT);
+		result = errorState->errors[slot];
 	}
 	return (result);
 }
@@ -13732,18 +13923,28 @@ fpl_common_api const char *fplGetLastError(void) {
 fpl_common_api const char *fplGetErrorByIndex(const size_t index) {
 	const char *result = "";
 	const fpl__ErrorState *errorState = &fpl__global__LastErrorState;
-	if (index < errorState->count) {
-		result = errorState->errors[index];
-	} else {
-		result = errorState->errors[errorState->count - 1];
+	uint32_t total = errorState->count;
+	if (total == 0) {
+		return (result);
 	}
+	size_t visible = (total < FPL__MAX_ERRORSTATE_COUNT) ? (size_t)total : (size_t)FPL__MAX_ERRORSTATE_COUNT;
+	size_t effectiveIndex = (index < visible) ? index : (visible - 1);
+	size_t slot;
+	if (total <= FPL__MAX_ERRORSTATE_COUNT) {
+		slot = effectiveIndex;
+	} else {
+		// Ring has wrapped: oldest slot is the next-write slot.
+		size_t oldestSlot = (size_t)(total % FPL__MAX_ERRORSTATE_COUNT);
+		slot = (oldestSlot + effectiveIndex) % FPL__MAX_ERRORSTATE_COUNT;
+	}
+	result = errorState->errors[slot];
 	return (result);
 }
 
 fpl_common_api size_t fplGetErrorCount(void) {
-	size_t result = 0;
 	const fpl__ErrorState *errorState = &fpl__global__LastErrorState;
-	result = errorState->count;
+	uint32_t total = errorState->count;
+	size_t result = (total < FPL__MAX_ERRORSTATE_COUNT) ? (size_t)total : (size_t)FPL__MAX_ERRORSTATE_COUNT;
 	return (result);
 }
 
@@ -13766,7 +13967,7 @@ fpl_common_api void fplSetDefaultVideoSettings(fplVideoSettings *video) {
 
 #if defined(FPL__ENABLE_VIDEO_OPENGL)
 	video->graphics.opengl.libraryFile = fpl_null;
-	video->graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
+	video->graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Legacy;
 #endif
 
 #if defined(FPL__ENABLE_VIDEO_VULKAN)
@@ -17579,6 +17780,11 @@ fpl_platform_api void fplMemoryFree(void *ptr) {
 fpl_internal const uint64_t FPL__WIN32_TICKS_PER_SEC = 10000000ULL;
 fpl_internal const uint64_t FPL__WIN32_UNIX_EPOCH_DIFFERENCE = 11644473600ULL;
 
+// fplClearStruct zeroes the struct, setting the handle to NULL.
+// CreateFileW returns INVALID_HANDLE_VALUE (-1) on error.
+// A handle is only safe to use when it is neither NULL nor INVALID_HANDLE_VALUE.
+#define FPL__WIN32_IS_VALID_FILE_HANDLE(h) ((h) != fpl_null && (h) != INVALID_HANDLE_VALUE)
+
 fpl_internal fplFileTimeStamp fpl__Win32ConvertFileTimeToUnixTimestamp(const FILETIME *fileTime) {
 	// Ticks are defined in 100 ns = 10000000 secs
 	// Windows ticks starts at 1601-01-01T00:00:00Z
@@ -17673,14 +17879,16 @@ fpl_platform_api uint32_t fplFileReadBlock32(const fplFileHandle *fileHandle, co
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sizeToRead, 0);
 	FPL__CheckArgumentNull(targetBuffer, 0);
-	if (fileHandle->internalHandle.win32FileHandle == fpl_null) {
+	FPL__CheckArgumentZero(maxTargetBufferSize, 0);
+	if (!FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		FPL__ERROR(FPL__MODULE_FILES, "Filehandle is not opened for reading");
 		return 0;
 	}
+	uint32_t actualToRead = (sizeToRead > maxTargetBufferSize) ? maxTargetBufferSize : sizeToRead;
 	uint32_t result = 0;
 	HANDLE win32FileHandle = (HANDLE)fileHandle->internalHandle.win32FileHandle;
 	DWORD bytesRead = 0;
-	if (ReadFile(win32FileHandle, targetBuffer, (DWORD)sizeToRead, &bytesRead, fpl_null) == TRUE) {
+	if (ReadFile(win32FileHandle, targetBuffer, (DWORD)actualToRead, &bytesRead, fpl_null) == TRUE) {
 		result = bytesRead;
 	}
 	return(result);
@@ -17690,14 +17898,16 @@ fpl_platform_api uint64_t fplFileReadBlock64(const fplFileHandle *fileHandle, co
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sizeToRead, 0);
 	FPL__CheckArgumentNull(targetBuffer, 0);
-	if (fileHandle->internalHandle.win32FileHandle == fpl_null) {
+	FPL__CheckArgumentZero(maxTargetBufferSize, 0);
+	if (!FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		FPL__ERROR(FPL__MODULE_FILES, "Filehandle is not opened for reading");
 		return 0;
 	}
 	// @NOTE(final): There is no ReadFile64 function in win32, so we have to read it in chunks
+	uint64_t actualToRead = (sizeToRead > maxTargetBufferSize) ? maxTargetBufferSize : sizeToRead;
 	uint64_t result = 0;
 	HANDLE win32FileHandle = (HANDLE)fileHandle->internalHandle.win32FileHandle;
-	uint64_t remainingSize = sizeToRead;
+	uint64_t remainingSize = actualToRead;
 	uint64_t bufferPos = 0;
 	const uint64_t MaxDWORD = (uint64_t)(DWORD)-1;
 	while (remainingSize > 0) {
@@ -17706,8 +17916,11 @@ fpl_platform_api uint64_t fplFileReadBlock64(const fplFileHandle *fileHandle, co
 		uint64_t size = fplMin(remainingSize, MaxDWORD);
 		fplAssert(size <= MaxDWORD);
 		if (ReadFile(win32FileHandle, target, (DWORD)size, &bytesRead, fpl_null) == TRUE) {
-			result = bytesRead;
+			result += bytesRead;
 		} else {
+			break;
+		}
+		if (bytesRead == 0) {
 			break;
 		}
 		remainingSize -= bytesRead;
@@ -17720,7 +17933,7 @@ fpl_platform_api uint32_t fplFileWriteBlock32(const fplFileHandle *fileHandle, c
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sourceSize, 0);
 	FPL__CheckArgumentNull(sourceBuffer, 0);
-	if (fileHandle->internalHandle.win32FileHandle == fpl_null) {
+	if (!FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		FPL__ERROR(FPL__MODULE_FILES, "Filehandle is not opened for writing");
 		return 0;
 	}
@@ -17737,7 +17950,7 @@ fpl_platform_api uint64_t fplFileWriteBlock64(const fplFileHandle *fileHandle, c
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sourceSize, 0);
 	FPL__CheckArgumentNull(sourceBuffer, 0);
-	if (fileHandle->internalHandle.win32FileHandle == fpl_null) {
+	if (!FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		FPL__ERROR(FPL__MODULE_FILES, "Filehandle is not opened for writing");
 		return 0;
 	}
@@ -17752,8 +17965,11 @@ fpl_platform_api uint64_t fplFileWriteBlock64(const fplFileHandle *fileHandle, c
 		fplAssert(size <= MaxDWORD);
 		DWORD bytesWritten = 0;
 		if (WriteFile(win32FileHandle, source, (DWORD)size, &bytesWritten, fpl_null) == TRUE) {
-			result = bytesWritten;
+			result += bytesWritten;
 		} else {
+			break;
+		}
+		if (bytesWritten == 0) {
 			break;
 		}
 		remainingSize -= bytesWritten;
@@ -17765,7 +17981,7 @@ fpl_platform_api uint64_t fplFileWriteBlock64(const fplFileHandle *fileHandle, c
 fpl_platform_api uint32_t fplFileSetPosition32(const fplFileHandle *fileHandle, const int32_t position, const fplFilePositionMode mode) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint32_t result = 0;
-	if (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+	if (FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
 		DWORD moveMethod = FILE_BEGIN;
 		if (mode == fplFilePositionMode_Current) {
@@ -17773,9 +17989,16 @@ fpl_platform_api uint32_t fplFileSetPosition32(const fplFileHandle *fileHandle, 
 		} else if (mode == fplFilePositionMode_End) {
 			moveMethod = FILE_END;
 		}
-		DWORD r = 0;
-		r = SetFilePointer(win32FileHandle, (LONG)position, fpl_null, moveMethod);
-		result = (uint32_t)r;
+		LARGE_INTEGER r = fplZeroInit;
+		LARGE_INTEGER li;
+		li.QuadPart = (LONGLONG)position;
+		if (SetFilePointerEx(win32FileHandle, li, &r, moveMethod) == TRUE) {
+			if (r.QuadPart > (LONGLONG)UINT32_MAX) {
+				result = UINT32_MAX;
+			} else {
+				result = (uint32_t)r.QuadPart;
+			}
+		}
 	}
 	return(result);
 }
@@ -17783,7 +18006,7 @@ fpl_platform_api uint32_t fplFileSetPosition32(const fplFileHandle *fileHandle, 
 fpl_platform_api uint64_t fplFileSetPosition64(const fplFileHandle *fileHandle, const int64_t position, const fplFilePositionMode mode) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint64_t result = 0;
-	if (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+	if (FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
 		DWORD moveMethod = FILE_BEGIN;
 		if (mode == fplFilePositionMode_Current) {
@@ -17803,7 +18026,7 @@ fpl_platform_api uint64_t fplFileSetPosition64(const fplFileHandle *fileHandle, 
 
 fpl_platform_api uint32_t fplFileGetPosition32(const fplFileHandle *fileHandle) {
 	FPL__CheckArgumentNull(fileHandle, 0);
-	if (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+	if (FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
 		DWORD filePosition = SetFilePointer(win32FileHandle, 0L, fpl_null, FILE_CURRENT);
 		if (filePosition != INVALID_SET_FILE_POINTER) {
@@ -17816,7 +18039,7 @@ fpl_platform_api uint32_t fplFileGetPosition32(const fplFileHandle *fileHandle) 
 fpl_platform_api uint64_t fplFileGetPosition64(const fplFileHandle *fileHandle) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint64_t result = 0;
-	if (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+	if (FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
 		LARGE_INTEGER r = fplZeroInit;
 		LARGE_INTEGER li;
@@ -17825,12 +18048,12 @@ fpl_platform_api uint64_t fplFileGetPosition64(const fplFileHandle *fileHandle) 
 			result = (uint64_t)r.QuadPart;
 		}
 	}
-	return 0;
+	return result;
 }
 
 fpl_platform_api bool fplFileFlush(fplFileHandle *fileHandle) {
 	FPL__CheckArgumentNull(fileHandle, false);
-	if (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+	if (FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
 		bool result = FlushFileBuffers(win32FileHandle) == TRUE;
 		return(result);
@@ -17839,7 +18062,7 @@ fpl_platform_api bool fplFileFlush(fplFileHandle *fileHandle) {
 }
 
 fpl_platform_api void fplFileClose(fplFileHandle *fileHandle) {
-	if ((fileHandle != fpl_null) && (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE)) {
+	if ((fileHandle != fpl_null) && FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
 		CloseHandle(win32FileHandle);
 		fplClearStruct(fileHandle);
@@ -17853,8 +18076,14 @@ fpl_platform_api uint32_t fplFileGetSizeFromPath32(const char *filePath) {
 		fplUTF8StringToWideString(filePath, fplGetStringLength(filePath), filePathWide, fplArrayCount(filePathWide));
 		HANDLE win32FileHandle = CreateFileW(filePathWide, GENERIC_READ, FILE_SHARE_READ, fpl_null, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, fpl_null);
 		if (win32FileHandle != INVALID_HANDLE_VALUE) {
-			DWORD fileSize = GetFileSize(win32FileHandle, fpl_null);
-			result = (uint32_t)fileSize;
+			LARGE_INTEGER li = fplZeroInit;
+			if (GetFileSizeEx(win32FileHandle, &li) == TRUE) {
+				if (li.QuadPart > (LONGLONG)UINT32_MAX) {
+					result = UINT32_MAX;
+				} else {
+					result = (uint32_t)li.QuadPart;
+				}
+			}
 			CloseHandle(win32FileHandle);
 		}
 	}
@@ -17881,10 +18110,49 @@ fpl_platform_api uint64_t fplFileGetSizeFromPath64(const char *filePath) {
 fpl_platform_api uint32_t fplFileGetSizeFromHandle32(const fplFileHandle *fileHandle) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint32_t result = 0;
-	if (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+	if (FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
-		DWORD fileSize = GetFileSize(win32FileHandle, fpl_null);
-		result = (uint32_t)fileSize;
+		LARGE_INTEGER li = fplZeroInit;
+		if (GetFileSizeEx(win32FileHandle, &li) == TRUE) {
+			if (li.QuadPart > (LONGLONG)UINT32_MAX) {
+				result = UINT32_MAX;
+			} else {
+				result = (uint32_t)li.QuadPart;
+			}
+		}
+	}
+	return(result);
+}
+
+fpl_platform_api bool fplFileTryGetSizeFromPath(const char *filePath, uint64_t *outSize) {
+	FPL__CheckArgumentNull(filePath, false);
+	FPL__CheckArgumentNull(outSize, false);
+	bool result = false;
+	wchar_t filePathWide[FPL_MAX_PATH_LENGTH];
+	fplUTF8StringToWideString(filePath, fplGetStringLength(filePath), filePathWide, fplArrayCount(filePathWide));
+	HANDLE win32FileHandle = CreateFileW(filePathWide, GENERIC_READ, FILE_SHARE_READ, fpl_null, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, fpl_null);
+	if (win32FileHandle != INVALID_HANDLE_VALUE) {
+		LARGE_INTEGER li = fplZeroInit;
+		if (GetFileSizeEx(win32FileHandle, &li) == TRUE) {
+			*outSize = (uint64_t)li.QuadPart;
+			result = true;
+		}
+		CloseHandle(win32FileHandle);
+	}
+	return(result);
+}
+
+fpl_platform_api bool fplFileTryGetSizeFromHandle(const fplFileHandle *fileHandle, uint64_t *outSize) {
+	FPL__CheckArgumentNull(fileHandle, false);
+	FPL__CheckArgumentNull(outSize, false);
+	bool result = false;
+	if (FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
+		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
+		LARGE_INTEGER li = fplZeroInit;
+		if (GetFileSizeEx(win32FileHandle, &li) == TRUE) {
+			*outSize = (uint64_t)li.QuadPart;
+			result = true;
+		}
 	}
 	return(result);
 }
@@ -17892,7 +18160,7 @@ fpl_platform_api uint32_t fplFileGetSizeFromHandle32(const fplFileHandle *fileHa
 fpl_platform_api uint64_t fplFileGetSizeFromHandle64(const fplFileHandle *fileHandle) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint64_t result = 0;
-	if (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+	if (FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
 		LARGE_INTEGER li = fplZeroInit;
 		if (GetFileSizeEx(win32FileHandle, &li) == TRUE) {
@@ -17928,7 +18196,7 @@ fpl_platform_api bool fplFileGetTimestampsFromPath(const char *filePath, fplFile
 fpl_platform_api bool fplFileGetTimestampsFromHandle(const fplFileHandle *fileHandle, fplFileTimeStamps *outStamps) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentNull(outStamps, 0);
-	if (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+	if (FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
 		FILETIME times[3];
 		if (GetFileTime(win32FileHandle, &times[0], &times[1], &times[2]) == TRUE) {
@@ -17963,7 +18231,7 @@ fpl_platform_api bool fplFileCopy(const char *sourceFilePath, const char *target
 	wchar_t sourceFilePathWide[FPL_MAX_PATH_LENGTH];
 	wchar_t targetFilePathWide[FPL_MAX_PATH_LENGTH];
 	fplUTF8StringToWideString(sourceFilePath, fplGetStringLength(sourceFilePath), sourceFilePathWide, fplArrayCount(sourceFilePathWide));
-	fplUTF8StringToWideString(sourceFilePath, fplGetStringLength(sourceFilePath), targetFilePathWide, fplArrayCount(targetFilePathWide));
+	fplUTF8StringToWideString(targetFilePath, fplGetStringLength(targetFilePath), targetFilePathWide, fplArrayCount(targetFilePathWide));
 	bool result = (CopyFileW(sourceFilePathWide, targetFilePathWide, !overwrite) == TRUE);
 	return(result);
 }
@@ -17974,7 +18242,7 @@ fpl_platform_api bool fplFileMove(const char *sourceFilePath, const char *target
 	wchar_t sourceFilePathWide[FPL_MAX_PATH_LENGTH];
 	wchar_t targetFilePathWide[FPL_MAX_PATH_LENGTH];
 	fplUTF8StringToWideString(sourceFilePath, fplGetStringLength(sourceFilePath), sourceFilePathWide, fplArrayCount(sourceFilePathWide));
-	fplUTF8StringToWideString(sourceFilePath, fplGetStringLength(sourceFilePath), targetFilePathWide, fplArrayCount(targetFilePathWide));
+	fplUTF8StringToWideString(targetFilePath, fplGetStringLength(targetFilePath), targetFilePathWide, fplArrayCount(targetFilePathWide));
 	bool result = (MoveFileW(sourceFilePathWide, targetFilePathWide) == TRUE);
 	return(result);
 }
@@ -18087,8 +18355,8 @@ fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter
 	if (searchHandle != INVALID_HANDLE_VALUE) {
 		fplClearStruct(entry);
 		entry->internalHandle.win32FileHandle = searchHandle;
-		entry->internalRoot.rootPath = path;
-		entry->internalRoot.filter = filter;
+		fplCopyString(path, entry->internalRoot.rootPath, fplArrayCount(entry->internalRoot.rootPath));
+		fplCopyString(filter, entry->internalRoot.filter, fplArrayCount(entry->internalRoot.filter));
 		bool foundFirst = true;
 		while (foundFirst) {
 			if (lstrcmpW(findData.cFileName, L".") == 0 || lstrcmpW(findData.cFileName, L"..") == 0) {
@@ -18106,7 +18374,7 @@ fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter
 fpl_platform_api bool fplDirectoryListNext(fplFileEntry *entry) {
 	FPL__CheckArgumentNull(entry, false);
 	bool result = false;
-	if (entry->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+	if (FPL__WIN32_IS_VALID_FILE_HANDLE(entry->internalHandle.win32FileHandle)) {
 		HANDLE searchHandle = entry->internalHandle.win32FileHandle;
 		WIN32_FIND_DATAW findData;
 		bool foundNext;
@@ -18127,7 +18395,7 @@ fpl_platform_api bool fplDirectoryListNext(fplFileEntry *entry) {
 
 fpl_platform_api void fplDirectoryListEnd(fplFileEntry *entry) {
 	FPL__CheckArgumentNullNoRet(entry);
-	if (entry->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+	if (FPL__WIN32_IS_VALID_FILE_HANDLE(entry->internalHandle.win32FileHandle)) {
 		HANDLE searchHandle = entry->internalHandle.win32FileHandle;
 		FindClose(searchHandle);
 		fplClearStruct(entry);
@@ -18138,20 +18406,35 @@ fpl_platform_api void fplDirectoryListEnd(fplFileEntry *entry) {
 // Win32 Path/Directories
 //
 fpl_platform_api size_t fplGetExecutableFilePath(char *destPath, const size_t maxDestLen) {
+	size_t result = 0;
 	wchar_t modulePath[MAX_PATH];
-	GetModuleFileNameW(fpl_null, modulePath, MAX_PATH);
-	size_t modulePathLen = lstrlenW(modulePath);
-	size_t result = fplWideStringToUTF8String(modulePath, modulePathLen, destPath, maxDestLen);
+	DWORD written = GetModuleFileNameW(fpl_null, modulePath, MAX_PATH);
+	if (written == 0) {
+		FPL__ERROR(FPL__MODULE_PATHS, "GetModuleFileNameW failed (last error %lu)", GetLastError());
+		return(result);
+	}
+	if (written >= MAX_PATH) {
+		// Pre-Win10 1607: buffer truncated. We cannot grow without allocating, so report failure.
+		FPL__ERROR(FPL__MODULE_PATHS, "Executable path exceeds MAX_PATH (%lu); cannot return without truncation", (unsigned long)MAX_PATH);
+		return(result);
+	}
+	modulePath[written] = L'\0';
+	result = fplWideStringToUTF8String(modulePath, (size_t)written, destPath, maxDestLen);
 	return(result);
 }
 
 fpl_platform_api size_t fplGetHomePath(char *destPath, const size_t maxDestLen) {
 	FPL__CheckPlatform(0);
 	const fpl__Win32Api *wapi = &fpl__global__AppState->win32.winApi;
+	size_t result = 0;
 	wchar_t homePath[MAX_PATH];
-	wapi->shell.SHGetFolderPathW(fpl_null, CSIDL_PROFILE, fpl_null, 0, homePath);
+	HRESULT hr = wapi->shell.SHGetFolderPathW(fpl_null, CSIDL_PROFILE, fpl_null, 0, homePath);
+	if (!SUCCEEDED(hr)) {
+		FPL__ERROR(FPL__MODULE_PATHS, "SHGetFolderPathW(CSIDL_PROFILE) failed (HRESULT 0x%08lx)", (unsigned long)hr);
+		return(result);
+	}
 	size_t homePathLen = lstrlenW(homePath);
-	size_t result = fplWideStringToUTF8String(homePath, homePathLen, destPath, maxDestLen);
+	result = fplWideStringToUTF8String(homePath, homePathLen, destPath, maxDestLen);
 	return(result);
 }
 
@@ -18326,11 +18609,25 @@ fpl_platform_api fplDateTimeResult fplFormatDateTime(const fplDateTime dateTime,
 fpl_platform_api size_t fplWideStringToUTF8String(const wchar_t *wideSource, const size_t wideSourceLen, char *utf8Dest, const size_t maxUtf8DestLen) {
 	FPL__CheckArgumentNull(wideSource, 0);
 	FPL__CheckArgumentZero(wideSourceLen, 0);
-	size_t result = WideCharToMultiByte(CP_UTF8, 0, wideSource, (int)wideSourceLen, fpl_null, 0, fpl_null, fpl_null);
+	if (wideSourceLen > (size_t)INT_MAX) {
+		FPL__ERROR(FPL__MODULE_STRINGS, "Wide source length %zu exceeds INT_MAX", wideSourceLen);
+		return(0);
+	}
+	int sizeRes = WideCharToMultiByte(CP_UTF8, 0, wideSource, (int)wideSourceLen, fpl_null, 0, fpl_null, fpl_null);
+	if (sizeRes <= 0) {
+		FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert wide-string to UTF-8 (size query)");
+		return(0);
+	}
+	size_t result = (size_t)sizeRes;
 	if (utf8Dest != fpl_null) {
 		size_t minRequiredLen = result + 1;
 		FPL__CheckArgumentMin(maxUtf8DestLen, minRequiredLen, 0);
-		WideCharToMultiByte(CP_UTF8, 0, wideSource, (int)wideSourceLen, utf8Dest, (int)maxUtf8DestLen, fpl_null, fpl_null);
+		int destClamp = (maxUtf8DestLen > (size_t)INT_MAX) ? INT_MAX : (int)maxUtf8DestLen;
+		int writeRes = WideCharToMultiByte(CP_UTF8, 0, wideSource, (int)wideSourceLen, utf8Dest, destClamp, fpl_null, fpl_null);
+		if (writeRes <= 0) {
+			FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert wide-string to UTF-8 (write)");
+			return(0);
+		}
 		utf8Dest[result] = 0;
 	}
 	return(result);
@@ -18338,11 +18635,25 @@ fpl_platform_api size_t fplWideStringToUTF8String(const wchar_t *wideSource, con
 fpl_platform_api size_t fplUTF8StringToWideString(const char *utf8Source, const size_t utf8SourceLen, wchar_t *wideDest, const size_t maxWideDestLen) {
 	FPL__CheckArgumentNull(utf8Source, 0);
 	FPL__CheckArgumentZero(utf8SourceLen, 0);
-	size_t result = MultiByteToWideChar(CP_UTF8, 0, utf8Source, (int)utf8SourceLen, fpl_null, 0);
+	if (utf8SourceLen > (size_t)INT_MAX) {
+		FPL__ERROR(FPL__MODULE_STRINGS, "UTF-8 source length %zu exceeds INT_MAX", utf8SourceLen);
+		return(0);
+	}
+	int sizeRes = MultiByteToWideChar(CP_UTF8, 0, utf8Source, (int)utf8SourceLen, fpl_null, 0);
+	if (sizeRes <= 0) {
+		FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert UTF-8 to wide-string (size query)");
+		return(0);
+	}
+	size_t result = (size_t)sizeRes;
 	if (wideDest != fpl_null) {
 		size_t minRequiredLen = result + 1;
 		FPL__CheckArgumentMin(maxWideDestLen, minRequiredLen, 0);
-		MultiByteToWideChar(CP_UTF8, 0, utf8Source, (int)utf8SourceLen, wideDest, (int)maxWideDestLen);
+		int destClamp = (maxWideDestLen > (size_t)INT_MAX) ? INT_MAX : (int)maxWideDestLen;
+		int writeRes = MultiByteToWideChar(CP_UTF8, 0, utf8Source, (int)utf8SourceLen, wideDest, destClamp);
+		if (writeRes <= 0) {
+			FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert UTF-8 to wide-string (write)");
+			return(0);
+		}
 		wideDest[result] = 0;
 	}
 	return(result);
@@ -20153,14 +20464,16 @@ fpl_platform_api uint32_t fplFileReadBlock32(const fplFileHandle *fileHandle, co
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sizeToRead, 0);
 	FPL__CheckArgumentNull(targetBuffer, 0);
+	FPL__CheckArgumentZero(maxTargetBufferSize, 0);
 	if (!fileHandle->internalHandle.posixFileHandle) {
 		FPL__ERROR(FPL__MODULE_FILES, "File handle is not opened for reading");
 		return 0;
 	}
+	uint32_t actualToRead = (sizeToRead > maxTargetBufferSize) ? maxTargetBufferSize : sizeToRead;
 	int posixFileHandle = fileHandle->internalHandle.posixFileHandle;
 	ssize_t res;
 	do {
-		res = read(posixFileHandle, targetBuffer, sizeToRead);
+		res = read(posixFileHandle, targetBuffer, actualToRead);
 	} while (res == -1 && errno == EINTR);
 	uint32_t result = 0;
 	if (res != -1) {
@@ -20173,13 +20486,15 @@ fpl_platform_api uint64_t fplFileReadBlock64(const fplFileHandle *fileHandle, co
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sizeToRead, 0);
 	FPL__CheckArgumentNull(targetBuffer, 0);
+	FPL__CheckArgumentZero(maxTargetBufferSize, 0);
 	if (!fileHandle->internalHandle.posixFileHandle) {
 		FPL__ERROR(FPL__MODULE_FILES, "File handle is not opened for reading");
 		return 0;
 	}
+	uint64_t actualToRead = (sizeToRead > maxTargetBufferSize) ? maxTargetBufferSize : sizeToRead;
 	int posixFileHandle = fileHandle->internalHandle.posixFileHandle;
 	uint64_t result = 0;
-	uint64_t remainingSize = sizeToRead;
+	uint64_t remainingSize = actualToRead;
 	uint64_t bufferPos = 0;
 	const uint64_t MaxValue = (uint64_t)(size_t)-1;
 	while (remainingSize > 0) {
@@ -20189,13 +20504,15 @@ fpl_platform_api uint64_t fplFileReadBlock64(const fplFileHandle *fileHandle, co
 		do {
 			res = read(posixFileHandle, target, size);
 		} while (res == -1 && errno == EINTR);
-		if (res != -1) {
-			result += res;
-		} else {
+		if (res == -1) {
 			break;
 		}
-		remainingSize -= res;
-		bufferPos += res;
+		if (res == 0) {
+			break;
+		}
+		result += (uint64_t)res;
+		remainingSize -= (uint64_t)res;
+		bufferPos += (uint64_t)res;
 	}
 	return(result);
 }
@@ -20240,11 +20557,15 @@ fpl_platform_api uint64_t fplFileWriteBlock64(const fplFileHandle *fileHandle, c
 		do {
 			res = write(posixFileHandle, source, size);
 		} while (res == -1 && errno == EINTR);
-		if (res != -1) {
-			result += res;
+		if (res == -1) {
+			break;
 		}
-		remainingSize -= res;
-		bufferPos += res;
+		if (res == 0) {
+			break;
+		}
+		result += (uint64_t)res;
+		remainingSize -= (uint64_t)res;
+		bufferPos += (uint64_t)res;
 	}
 	return(result);
 }
@@ -20389,6 +20710,38 @@ fpl_platform_api uint64_t fplFileGetSizeFromHandle64(const fplFileHandle *fileHa
 	return(result);
 }
 
+fpl_platform_api bool fplFileTryGetSizeFromPath(const char *filePath, uint64_t *outSize) {
+	FPL__CheckArgumentNull(filePath, false);
+	FPL__CheckArgumentNull(outSize, false);
+	bool result = false;
+	struct stat sb;
+	if (stat(filePath, &sb) == 0 && S_ISREG(sb.st_mode)) {
+		*outSize = (uint64_t)sb.st_size;
+		result = true;
+	}
+	return(result);
+}
+
+fpl_platform_api bool fplFileTryGetSizeFromHandle(const fplFileHandle *fileHandle, uint64_t *outSize) {
+	FPL__CheckArgumentNull(fileHandle, false);
+	FPL__CheckArgumentNull(outSize, false);
+	bool result = false;
+	if (fileHandle->internalHandle.posixFileHandle) {
+		int posixFileHandle = fileHandle->internalHandle.posixFileHandle;
+		fpl__off64_t curPos = fpl__lseek64(posixFileHandle, 0, SEEK_CUR);
+		if (curPos != -1) {
+			fpl__off64_t end = fpl__lseek64(posixFileHandle, 0, SEEK_END);
+			if (end != -1) {
+				if (fpl__lseek64(posixFileHandle, curPos, SEEK_SET) != -1) {
+					*outSize = (uint64_t)end;
+					result = true;
+				}
+			}
+		}
+	}
+	return(result);
+}
+
 fpl_internal uint64_t fpl__PosixConvertTimeToUnixTimeStamp(const time_t secs) {
 	uint64_t result = (uint64_t)secs;
 	return(result);
@@ -20513,12 +20866,16 @@ fpl_platform_api bool fplDirectoriesCreate(const char *path) {
 	char tmp[FPL_MAX_PATH_LENGTH];
 	size_t i = 0;
 
-	// Scan and create all sub-directories
+	// Scan and create all sub-directories. Treat '/' and '\\' both as separators on POSIX.
 	for (i = 0; path[i] != '\0'; ++i) {
 		if (i >= sizeof(tmp) - 1) {
 			return false;
 		}
-		tmp[i] = path[i];
+		char c = path[i];
+		if (c == '\\') {
+			c = '/';
+		}
+		tmp[i] = c;
 		// Whenever we encounter a slash, we "terminate" the string there to create the parent directory.
 		if (tmp[i] == '/' && i > 0) {
 			tmp[i] = '\0';
@@ -20617,8 +20974,8 @@ fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter
 	}
 	fplClearStruct(entry);
 	entry->internalHandle.posixDirHandle = dir;
-	entry->internalRoot.rootPath = path;
-	entry->internalRoot.filter = filter;
+	fplCopyString(path, entry->internalRoot.rootPath, fplArrayCount(entry->internalRoot.rootPath));
+	fplCopyString(filter, entry->internalRoot.filter, fplArrayCount(entry->internalRoot.filter));
 	bool result = fplDirectoryListNext(entry);
 	return(result);
 }
@@ -20628,23 +20985,18 @@ fpl_platform_api bool fplDirectoryListNext(fplFileEntry *entry) {
 	bool result = false;
 	if (entry->internalHandle.posixDirHandle != fpl_null) {
 		DIR *dirHandle = (DIR *)entry->internalHandle.posixDirHandle;
-		struct dirent *dp = readdir(dirHandle);
-		do {
+		for (;;) {
+			struct dirent *dp = readdir(dirHandle);
 			if (dp == fpl_null) {
+				closedir(dirHandle);
+				fplClearStruct(entry);
 				break;
 			}
-			bool isMatch = fplIsStringMatchWildcard(dp->d_name, entry->internalRoot.filter);
-			if (isMatch) {
+			if (fplIsStringMatchWildcard(dp->d_name, entry->internalRoot.filter)) {
+				fpl__PosixFillFileEntry(dp, entry);
+				result = true;
 				break;
 			}
-			dp = readdir(dirHandle);
-		} while (dp != fpl_null);
-		if (dp == fpl_null) {
-			closedir(dirHandle);
-			fplClearStruct(entry);
-		} else {
-			fpl__PosixFillFileEntry(dp, entry);
-			result = true;
 		}
 	}
 	return(result);
@@ -20692,26 +21044,26 @@ fpl_platform_api size_t fplGetExecutableFilePath(char *destPath, const size_t ma
 	size_t result = 0;
 	for (int i = 0; i < fplArrayCount(procNames); ++i) {
 		const char *procName = procNames[i];
-		if (readlink(procName, buf, fplArrayCount(buf) - 1)) {
-			int len = fplGetStringLength(buf);
-			if (len > 0) {
-				char *lastP = buf + (len - 1);
-				char *p = lastP;
-				while (p != buf) {
-					if (*p == '/') {
-						len = (lastP - buf) + 1;
-						break;
-					}
-					--p;
-				}
-				result = len;
-				if (destPath != fpl_null) {
-					size_t requiredLen = len + 1;
-					FPL__CheckArgumentMin(maxDestLen, requiredLen, 0);
-					fplCopyStringLen(buf, len, destPath, maxDestLen);
+		ssize_t n = readlink(procName, buf, fplArrayCount(buf) - 1);
+		if (n > 0) {
+			buf[n] = '\0';
+			size_t len = (size_t)n;
+			char *lastP = buf + (len - 1);
+			char *p = lastP;
+			while (p != buf) {
+				if (*p == '/') {
+					len = (size_t)((lastP - buf) + 1);
 					break;
 				}
+				--p;
 			}
+			result = len;
+			if (destPath != fpl_null) {
+				size_t requiredLen = len + 1;
+				FPL__CheckArgumentMin(maxDestLen, requiredLen, 0);
+				fplCopyStringLen(buf, len, destPath, maxDestLen);
+			}
+			break;
 		}
 	}
 	return(result);
@@ -20722,6 +21074,9 @@ fpl_platform_api size_t fplGetHomePath(char *destPath, const size_t maxDestLen) 
 	if (homeDir == fpl_null) {
 		int userId = getuid();
 		struct passwd *userPwd = getpwuid(userId);
+		if (userPwd == fpl_null || userPwd->pw_dir == fpl_null) {
+			return(0);
+		}
 		homeDir = userPwd->pw_dir;
 	}
 	size_t result = fplGetStringLength(homeDir);
@@ -20755,26 +21110,30 @@ fpl_platform_api size_t fplPathNormalize(const char *sourcePath, char *destPath,
 //
 
 fpl_platform_api fplDateTime fplDateTimeQuery(const fplDateTimeType type) {
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-
 	fplDateTime dateTime = fplZeroInit;
+	struct timeval tv;
+	if (gettimeofday(&tv, NULL) != 0) {
+		return dateTime;
+	}
+
 	dateTime.epoch = (uint64_t)tv.tv_sec;
-	dateTime.milliseconds = (uint32_t)(tv.tv_usec / 1000); // Convert microseconds to milliseconds
+	dateTime.milliseconds = (uint32_t)(tv.tv_usec / 1000);
 
 	if (type == fplDateTimeType_UTC) {
-		dateTime.utcOffset = 0; // UTC offset is 0 for UTC format
+		dateTime.utcOffset = 0;
 	} else {
-		// Get local time offset
 		time_t rawtime = tv.tv_sec;
-		struct tm *localTime = localtime(&rawtime);
-		dateTime.utcOffset = (localTime->tm_gmtoff / 60); // Convert seconds to minutes
+		struct tm localStorage;
+		struct tm *localTime = localtime_r(&rawtime, &localStorage);
+		if (localTime != fpl_null) {
+			dateTime.utcOffset = (localTime->tm_gmtoff / 60);
+		}
 	}
 
 	return dateTime;
 }
 
-fplDateTimeResult fplFormatDateTime(const fplDateTime dateTime, const fplDateTimeType type) {
+fpl_platform_api fplDateTimeResult fplFormatDateTime(const fplDateTime dateTime, const fplDateTimeType type) {
 	fplDateTimeResult result = fplZeroInit;
 
 	// Convert local epoch + utcOffset back to UTC epoch before applying format
@@ -20784,17 +21143,21 @@ fplDateTimeResult fplFormatDateTime(const fplDateTime dateTime, const fplDateTim
 		correctedEpoch -= (dateTime.utcOffset * 60);
 	}
 
+	struct tm tmStorage;
 	struct tm *timeInfo;
 
 	if (type == fplDateTimeType_UTC) {
-		timeInfo = gmtime(&correctedEpoch);
+		timeInfo = gmtime_r(&correctedEpoch, &tmStorage);
 	} else {
-		timeInfo = localtime(&correctedEpoch);
+		timeInfo = localtime_r(&correctedEpoch, &tmStorage);
 	}
 
-	// Fill in the result structure
-	result.year = (uint16_t)(timeInfo->tm_year + 1900); // tm_year is years since 1900
-	result.month = (uint8_t)(timeInfo->tm_mon + 1); // tm_mon is 0-11
+	if (timeInfo == fpl_null) {
+		return result;
+	}
+
+	result.year = (uint16_t)(timeInfo->tm_year + 1900);
+	result.month = (uint8_t)(timeInfo->tm_mon + 1);
 	result.day = (uint8_t)timeInfo->tm_mday;
 	result.hour = (uint8_t)timeInfo->tm_hour;
 	result.minute = (uint8_t)timeInfo->tm_min;
@@ -20873,31 +21236,105 @@ fpl_platform_api bool fplOSGetVersionInfos(fplOSVersionInfos *outInfos) {
 // ############################################################################
 #if defined(FPL_SUBPLATFORM_STD_STRINGS)
 // @NOTE(final): stdio.h is already included
-fpl_platform_api size_t fplWideStringToUTF8String(const wchar_t *wideSource, const size_t wideSourceLen, char *utf8Dest, const size_t maxUtf8DestLen) {
-	// @NOTE(final): Expect locale to be UTF-8
+fpl_platform_api size_t fplWideStringToUTF8String(const wchar_t *wideSource, const size_t wideSourceLen, char *utf8Dest, const size_t maxUtf8DestLen)
+{
 	FPL__CheckArgumentNull(wideSource, 0);
 	FPL__CheckArgumentZero(wideSourceLen, 0);
-	size_t result = wcstombs(fpl_null, wideSource, wideSourceLen);
-	if (utf8Dest != fpl_null) {
-		size_t requiredLen = result + 1;
-		FPL__CheckArgumentMin(maxUtf8DestLen, requiredLen, 0);
-		wcstombs(utf8Dest, wideSource, wideSourceLen);
-		utf8Dest[result] = 0;
+
+	mbstate_t state;
+	fplClearStruct(&state);
+
+	size_t totalLen = 0;
+
+	// First pass: compute length
+	for (size_t i = 0; i < wideSourceLen; ++i) {
+		char tmp[MB_CUR_MAX];
+		const size_t res = wcrtomb(tmp, wideSource[i], &state);
+		if (res == (size_t)-1) {
+			FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert wide-string to UTF-8");
+			return 0;
+		}
+		totalLen += res;
 	}
-	return(result);
+
+	if (utf8Dest != fpl_null) {
+		size_t requiredLen = totalLen + 1;
+		if (maxUtf8DestLen < requiredLen) {
+			return 0;
+		}
+
+		fplClearStruct(&state);
+
+		size_t pos = 0;
+		for (size_t i = 0; i < wideSourceLen; ++i) {
+			const size_t res = wcrtomb(utf8Dest + pos, wideSource[i], &state);
+			if (res == (size_t)-1) {
+				FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert wide-string to UTF-8");
+				return 0;
+			}
+			pos += res;
+		}
+
+		utf8Dest[pos] = '\0';
+	}
+
+	return totalLen;
 }
-fpl_platform_api size_t fplUTF8StringToWideString(const char *utf8Source, const size_t utf8SourceLen, wchar_t *wideDest, const size_t maxWideDestLen) {
-	// @NOTE(final): Expect locale to be UTF-8
+
+fpl_platform_api size_t fplUTF8StringToWideString(const char *utf8Source, const size_t utf8SourceLen, wchar_t *wideDest, const size_t maxWideDestLen)
+{
 	FPL__CheckArgumentNull(utf8Source, 0);
 	FPL__CheckArgumentZero(utf8SourceLen, 0);
-	size_t result = mbstowcs(fpl_null, utf8Source, utf8SourceLen);
-	if (wideDest != fpl_null) {
-		size_t requiredLen = result + 1;
-		FPL__CheckArgumentMin(maxWideDestLen, requiredLen, 0);
-		mbstowcs(wideDest, utf8Source, utf8SourceLen);
-		wideDest[result] = 0;
+
+	mbstate_t state;
+	fplClearStruct(&state);
+
+	size_t totalLen = 0;
+	size_t offset = 0;
+
+	// First pass: compute length
+	while (offset < utf8SourceLen) {
+		wchar_t wc;
+		size_t res = mbrtowc(&wc, utf8Source + offset, utf8SourceLen - offset, &state);
+		if (res == (size_t)-1 || res == (size_t)-2) {
+			FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert UTF-8 to wide-string");
+			return 0;
+		}
+		if (res == 0) {
+			break;
+		}
+		offset += res;
+		totalLen += 1;
 	}
-	return(result);
+
+	if (wideDest != fpl_null) {
+		size_t requiredLen = totalLen + 1;
+		if (maxWideDestLen < requiredLen) {
+			return 0;
+		}
+
+		fplClearStruct(&state);
+
+		offset = 0;
+		size_t pos = 0;
+
+		while (offset < utf8SourceLen) {
+			size_t res = mbrtowc(&wideDest[pos], utf8Source + offset, utf8SourceLen - offset, &state);
+			if (res == (size_t)-1 || res == (size_t)-2) {
+				FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert UTF-8 to wide-string");
+				return 0;
+			}
+			if (res == 0) {
+				break;
+			}
+			offset += res;
+			pos += 1;
+		}
+
+		wideDest[pos] = L'\0';
+	}
+
+	return totalLen;
 }
 #endif // FPL_SUBPLATFORM_STD_STRINGS
 
@@ -23410,7 +23847,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_Win32OpenGL
 
 	nativeWindowState->pixelFormat = 0;
 
-	if (videoSettings->graphics.opengl.compabilityFlags != fplOpenGLCompabilityFlags_Legacy) {
+	if (videoSettings->graphics.opengl.compatibilityFlags != fplOpenGLCompatibilityFlags_Legacy) {
 		fpl__Win32OpenGLApi glApi;
 		if (fpl__LoadWin32OpenGLApi(&glApi, videoSettings->graphics.opengl.libraryFile)) {
 			// Register temporary window class
@@ -23576,7 +24013,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Win32OpenGL_In
 	glapi->wglMakeCurrent(fpl_null, fpl_null);
 
 	HGLRC activeRenderingContext;
-	if (videoSettings->graphics.opengl.compabilityFlags != fplOpenGLCompabilityFlags_Legacy) {
+	if (videoSettings->graphics.opengl.compatibilityFlags != fplOpenGLCompatibilityFlags_Legacy) {
 		// @NOTE(final): This is only available in OpenGL 3.0+
 		if (!(videoSettings->graphics.opengl.majorVersion >= 3 && videoSettings->graphics.opengl.minorVersion >= 0)) {
 			FPL__ERROR(FPL__MODULE_VIDEO_OPENGL, "You have not specified the 'majorVersion' and 'minorVersion' in the VideoSettings");
@@ -23593,15 +24030,15 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Win32OpenGL_In
 
 		int profile = 0;
 		int flags = 0;
-		if (fplIsMaskSet(videoSettings->graphics.opengl.compabilityFlags, fplOpenGLCompabilityFlags_Core)) {
+		if (fplIsMaskSet(videoSettings->graphics.opengl.compatibilityFlags, fplOpenGLCompatibilityFlags_Core)) {
 			profile = FPL__WGL_CONTEXT_CORE_PROFILE_BIT_ARB;
-		} else if (fplIsMaskSet(videoSettings->graphics.opengl.compabilityFlags, fplOpenGLCompabilityFlags_Compability)) {
+		} else if (fplIsMaskSet(videoSettings->graphics.opengl.compatibilityFlags, fplOpenGLCompatibilityFlags_Compatibility)) {
 			profile = FPL__WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB;
 		} else {
-			FPL__ERROR(FPL__MODULE_VIDEO_OPENGL, "No opengl compability profile selected, please specific Core fplOpenGLCompabilityFlags_Core or fplOpenGLCompabilityFlags_Compability");
+			FPL__ERROR(FPL__MODULE_VIDEO_OPENGL, "No opengl compatibility profile selected, please specific Core fplOpenGLCompatibilityFlags_Core or fplOpenGLCompatibilityFlags_Compatibility");
 			return false;
 		}
-		if (fplIsMaskSet(videoSettings->graphics.opengl.compabilityFlags, fplOpenGLCompabilityFlags_Forward)) {
+		if (fplIsMaskSet(videoSettings->graphics.opengl.compatibilityFlags, fplOpenGLCompatibilityFlags_Forward)) {
 			flags = FPL__WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
 		}
 
@@ -23622,7 +24059,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Win32OpenGL_In
 		HGLRC modernRenderingContext = glapi->wglCreateContextAttribsARB(deviceContext, 0, contextAttribList);
 		if (modernRenderingContext) {
 			if (!glapi->wglMakeCurrent(deviceContext, modernRenderingContext)) {
-				FPL__ERROR(FPL__MODULE_VIDEO_OPENGL, "Warning: Failed activating Modern OpenGL Rendering Context for version (%d.%d) and compability flags (%d) and DC '%x') -> Fallback to legacy context", videoSettings->graphics.opengl.majorVersion, videoSettings->graphics.opengl.minorVersion, videoSettings->graphics.opengl.compabilityFlags, deviceContext);
+				FPL__ERROR(FPL__MODULE_VIDEO_OPENGL, "Warning: Failed activating Modern OpenGL Rendering Context for version (%d.%d) and compatibility flags (%d) and DC '%x') -> Fallback to legacy context", videoSettings->graphics.opengl.majorVersion, videoSettings->graphics.opengl.minorVersion, videoSettings->graphics.opengl.compatibilityFlags, deviceContext);
 
 				glapi->wglDeleteContext(modernRenderingContext);
 				modernRenderingContext = fpl_null;
@@ -23637,7 +24074,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Win32OpenGL_In
 				activeRenderingContext = modernRenderingContext;
 			}
 		} else {
-			FPL__ERROR(FPL__MODULE_VIDEO_OPENGL, "Warning: Failed creating Modern OpenGL Rendering Context for version (%d.%d) and compability flags (%d) and DC '%x') -> Fallback to legacy context", videoSettings->graphics.opengl.majorVersion, videoSettings->graphics.opengl.minorVersion, videoSettings->graphics.opengl.compabilityFlags, deviceContext);
+			FPL__ERROR(FPL__MODULE_VIDEO_OPENGL, "Warning: Failed creating Modern OpenGL Rendering Context for version (%d.%d) and compatibility flags (%d) and DC '%x') -> Fallback to legacy context", videoSettings->graphics.opengl.majorVersion, videoSettings->graphics.opengl.minorVersion, videoSettings->graphics.opengl.compatibilityFlags, deviceContext);
 
 			// Fallback to legacy context
 			glapi->wglMakeCurrent(deviceContext, legacyRenderingContext);
@@ -24090,7 +24527,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Init
 
 	GLXContext activeRenderingContext;
 
-	if ((videoSettings->graphics.opengl.compabilityFlags != fplOpenGLCompabilityFlags_Legacy) && (nativeBackend->fbConfig != fpl_null)) {
+	if ((videoSettings->graphics.opengl.compatibilityFlags != fplOpenGLCompatibilityFlags_Legacy) && (nativeBackend->fbConfig != fpl_null)) {
 		// @NOTE(final): This is only available in OpenGL 3.0+
 		if (!(videoSettings->graphics.opengl.majorVersion >= 3 && videoSettings->graphics.opengl.minorVersion >= 0)) {
 			FPL__ERROR(FPL__MODULE_GLX, "You have not specified the 'majorVersion' and 'minorVersion' in the VideoSettings");
@@ -24104,15 +24541,15 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Init
 
 		int flags = 0;
 		int profile = 0;
-		if (fplIsMaskSet(videoSettings->graphics.opengl.compabilityFlags, fplOpenGLCompabilityFlags_Core)) {
+		if (fplIsMaskSet(videoSettings->graphics.opengl.compatibilityFlags, fplOpenGLCompatibilityFlags_Core)) {
 			profile = FPL__GLX_CONTEXT_CORE_PROFILE_BIT_ARB;
-		} else if (fplIsMaskSet(videoSettings->graphics.opengl.compabilityFlags, fplOpenGLCompabilityFlags_Compability)) {
+		} else if (fplIsMaskSet(videoSettings->graphics.opengl.compatibilityFlags, fplOpenGLCompatibilityFlags_Compatibility)) {
 			profile = FPL__GLX_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB;
 		} else {
-			FPL__ERROR(FPL__MODULE_GLX, "No opengl compability profile selected, please specific Core OpenGLCompabilityFlags_Core or OpenGLCompabilityFlags_Compability");
+			FPL__ERROR(FPL__MODULE_GLX, "No opengl compatibility profile selected, please specific Core OpenGLCompatibilityFlags_Core or OpenGLCompatibilityFlags_Compatibility");
 			goto failed_x11_glx;
 		}
-		if (fplIsMaskSet(videoSettings->graphics.opengl.compabilityFlags, fplOpenGLCompabilityFlags_Forward)) {
+		if (fplIsMaskSet(videoSettings->graphics.opengl.compatibilityFlags, fplOpenGLCompatibilityFlags_Forward)) {
 			flags = FPL__GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
 		}
 
@@ -24132,14 +24569,14 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Init
 
 		GLXContext modernRenderingContext = glApi->glXCreateContextAttribsARB(display, nativeBackend->fbConfig, fpl_null, True, contextAttribList);
 		if (!modernRenderingContext) {
-			FPL__ERROR(FPL__MODULE_GLX, "Warning: Failed creating Modern OpenGL Rendering Context for version (%d.%d) and compability flags (%d) -> Fallback to legacy context", videoSettings->graphics.opengl.majorVersion, videoSettings->graphics.opengl.minorVersion, videoSettings->graphics.opengl.compabilityFlags);
+			FPL__ERROR(FPL__MODULE_GLX, "Warning: Failed creating Modern OpenGL Rendering Context for version (%d.%d) and compatibility flags (%d) -> Fallback to legacy context", videoSettings->graphics.opengl.majorVersion, videoSettings->graphics.opengl.minorVersion, videoSettings->graphics.opengl.compatibilityFlags);
 
 			// Fallback to legacy rendering context
 			glApi->glXMakeCurrent(display, window, legacyRenderingContext);
 			activeRenderingContext = legacyRenderingContext;
 		} else {
 			if (!glApi->glXMakeCurrent(display, window, modernRenderingContext)) {
-				FPL__ERROR(FPL__MODULE_GLX, "Warning: Failed activating Modern OpenGL Rendering Context for version (%d.%d) and compability flags (%d) -> Fallback to legacy context", videoSettings->graphics.opengl.majorVersion, videoSettings->graphics.opengl.minorVersion, videoSettings->graphics.opengl.compabilityFlags);
+				FPL__ERROR(FPL__MODULE_GLX, "Warning: Failed activating Modern OpenGL Rendering Context for version (%d.%d) and compatibility flags (%d) -> Fallback to legacy context", videoSettings->graphics.opengl.majorVersion, videoSettings->graphics.opengl.minorVersion, videoSettings->graphics.opengl.compatibilityFlags);
 
 				// Destroy modern rendering context
 				glApi->glXDestroyContext(display, modernRenderingContext);
@@ -25313,8 +25750,8 @@ struct fplAudioBackend;
 #define FPL_AUDIO_BACKEND_INITIALIZE_FUNC(name) fplAudioResultType name(struct fplAudioContext *context, struct fplAudioBackend *backend)
 /**
 * @brief Initializes the specified @ref fplAudioBackend
-* @param context The @ref fplAudioContext reference
-* @param backend The @ref fplAudioBackend reference
+* @param[in] context The @ref fplAudioContext reference
+* @param[in] backend The @ref fplAudioBackend reference
 * @result Returns a @ref fplAudioResultType
 */
 typedef	FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl_audio_backend_initialize_func);
@@ -25328,21 +25765,21 @@ typedef	FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl_audio_backend_get_audio
 #define FPL_AUDIO_BACKEND_RELEASE_FUNC(name) bool name(struct fplAudioContext *context, struct fplAudioBackend *backend)
 /**
 * @brief Releases the specified @ref fplAudioBackend
-* @param context The @ref fplAudioContext reference
-* @param backend The @ref fplAudioBackend reference
+* @param[in] context The @ref fplAudioContext reference
+* @param[in] backend The @ref fplAudioBackend reference
 * @result Returns a boolean indicating whether the backend was released or not
 */
 typedef	FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl_audio_backend_release_func);
 
 /**
 * @brief Initializes the device of the specified @ref fplAudioBackend and @ref fplAudioBackend with the specified audio settings
-* @param context The @ref fplAudioContext reference
-* @param backend The @ref fplAudioBackend reference
-* @param audioSettings The @ref fplSpecificAudioSettings reference, that contains special settings for several backends
-* @param targetFormat The @ref fplAudioFormat reference, that specifies the target audio format
-* @param outputFormat The @ref fplAudioFormat reference, that specifies the output audio format
-* @param outputChannelMap The @ref fplAudioChannelMap reference, that specifies the output channel map
-* @param outputDevice The @ref fplAudioDeviceInfo reference, that specifies the output device info
+* @param[in] context The @ref fplAudioContext reference
+* @param[in] backend The @ref fplAudioBackend reference
+* @param[in] audioSettings The @ref fplSpecificAudioSettings reference, that contains special settings for several backends
+* @param[in] targetFormat The @ref fplAudioFormat reference, that specifies the target audio format
+* @param[out] outputFormat The @ref fplAudioFormat reference, that specifies the output audio format
+* @param[out] outputChannelMap The @ref fplAudioChannelMap reference, that specifies the output channel map
+* @param[out] outputDevice The @ref fplAudioDeviceInfo reference, that specifies the output device info
 * @result Returns a @ref fplAudioResultType
 */
 #define FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(name) fplAudioResultType name(struct fplAudioContext *context, struct fplAudioBackend *backend, const fplSpecificAudioSettings *audioSettings, const fplAudioFormat *targetFormat, const fplAudioDeviceInfo *targetDevice, fplAudioFormat *outputFormat, fplAudioDeviceInfo *outputDevice, fplAudioChannelMap *outputChannelMap)
@@ -25351,8 +25788,8 @@ typedef	FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl_audio_backend_initialize_de
 #define FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(name) bool name(struct fplAudioContext *context, struct fplAudioBackend *backend)
 /**
 * @brief Releases the device of the specified @ref fplAudioBackend
-* @param context The @ref fplAudioContext reference
-* @param backend The @ref fplAudioBackend reference
+* @param[in] context The @ref fplAudioContext reference
+* @param[in] backend The @ref fplAudioBackend reference
 * @result Returns a boolean indicating whether the device of the @ref fplAudioBackend was released or not
 */
 typedef	FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(fpl_audio_backend_release_device_func);
@@ -25482,10 +25919,20 @@ typedef struct fpl__CommonAudioState {
 	fplAudioContext context;
 } fpl__CommonAudioState;
 
+// Always fills the full frameCount of pSamples. Frames not provided by the client callback are zero-padded.
+// Returns frameCount on success, or 0 if pSamples is NULL or frameCount is 0.
+// Backends MUST treat the destination buffer as fully written and MUST NOT branch on a partial-read return.
 fpl_internal uint32_t fpl__ReadAudioFramesFromClient(const fplAudioBackend *backend, uint32_t frameCount, void *pSamples) {
+	uint32_t result = 0;
+	if (pSamples == fpl_null || frameCount == 0) {
+		return(result);
+	}
 	uint32_t framesRead = 0;
 	if (backend->clientReadCallback != fpl_null) {
 		framesRead = backend->clientReadCallback(&backend->internalFormat, frameCount, pSamples, backend->clientUserData);
+		if (framesRead > frameCount) {
+			framesRead = frameCount;
+		}
 	}
 	uint32_t channels = backend->internalFormat.channels;
 	uint32_t samplesRead = framesRead * channels;
@@ -25495,7 +25942,8 @@ fpl_internal uint32_t fpl__ReadAudioFramesFromClient(const fplAudioBackend *back
 	if (remainingBytes > 0) {
 		fplMemoryClear((uint8_t *)pSamples + consumedBytes, remainingBytes);
 	}
-	return(framesRead);
+	result = frameCount;
+	return(result);
 }
 
 // Global Audio GUIDs
@@ -26415,7 +26863,8 @@ fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudioBackendDirectSoundSta
 
 	if (SUCCEEDED(IDirectSoundBuffer_Lock(impl->secondaryBuffer, 0, desiredLockSize, &pLockPtr, &actualLockSize, &pLockPtr2, &actualLockSize2, 0))) {
 		framesToRead = actualLockSize / audioSampleSizeBytes / backend->internalFormat.channels;
-		fpl__ReadAudioFramesFromClient(backend, framesToRead, pLockPtr);
+		uint32_t framesRead = fpl__ReadAudioFramesFromClient(backend, framesToRead, pLockPtr);
+		fplAssert(framesRead == framesToRead);
 		IDirectSoundBuffer_Unlock(impl->secondaryBuffer, pLockPtr, actualLockSize, pLockPtr2, actualLockSize2);
 		impl->lastProcessedFrame = framesToRead;
 		if (FAILED(IDirectSoundBuffer_Play(impl->secondaryBuffer, 0, 0, DSBPLAY_LOOPING))) {
@@ -26474,7 +26923,8 @@ fpl_internal FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl__AudioBackendDirectSoundMainLo
 
 			// Read actual frames from user
 			uint32_t frameCount = actualLockSize / audioSampleSizeBytes / backend->internalFormat.channels;
-			fpl__ReadAudioFramesFromClient(backend, frameCount, pLockPtr);
+			uint32_t framesRead = fpl__ReadAudioFramesFromClient(backend, frameCount, pLockPtr);
+			fplAssert(framesRead == frameCount);
 			impl->lastProcessedFrame = (impl->lastProcessedFrame + frameCount) % backend->internalFormat.bufferSizeInFrames;
 
 			// Unlock playback buffer
@@ -27028,7 +27478,8 @@ fpl_internal bool fpl__GetAudioFramesFromClientAlsa(fplAudioContext *context, fp
 			}
 			if (mappedFrames > 0) {
 				void *bufferPtr = (uint8_t *)channelAreas[0].addr + ((channelAreas[0].first + (mappedOffset * channelAreas[0].step)) / 8);
-				fpl__ReadAudioFramesFromClient(backend, mappedFrames, bufferPtr);
+				uint32_t framesRead = fpl__ReadAudioFramesFromClient(backend, (uint32_t)mappedFrames, bufferPtr);
+				fplAssert((snd_pcm_uframes_t)framesRead == mappedFrames);
 			}
 			result = alsaApi->snd_pcm_mmap_commit(impl->pcmDevice, mappedOffset, mappedFrames);
 			if (result < 0 || (snd_pcm_uframes_t)result != mappedFrames) {
@@ -27057,7 +27508,8 @@ fpl_internal bool fpl__GetAudioFramesFromClientAlsa(fplAudioContext *context, fp
 			if (impl->breakMainLoop) {
 				return false;
 			}
-			fpl__ReadAudioFramesFromClient(backend, framesAvailable, impl->intermediaryBuffer);
+			uint32_t framesRead = fpl__ReadAudioFramesFromClient(backend, framesAvailable, impl->intermediaryBuffer);
+			fplAssert(framesRead == framesAvailable);
 			snd_pcm_sframes_t framesWritten = alsaApi->snd_pcm_writei(impl->pcmDevice, impl->intermediaryBuffer, framesAvailable);
 			if (framesWritten < 0) {
 				if (framesWritten == -EAGAIN) {
@@ -28447,7 +28899,8 @@ fpl_internal void fpl__PulseAudio_StreamWriteCallback(pa_stream *stream, size_t 
 		}
 		uint32_t chunkFrames = (uint32_t)(chunkBytes / frameSize);
 		size_t chunkFrameBytes = (size_t)chunkFrames * frameSize;
-		fpl__ReadAudioFramesFromClient(backend, chunkFrames, destinationBuffer);
+		uint32_t framesRead = fpl__ReadAudioFramesFromClient(backend, chunkFrames, destinationBuffer);
+		fplAssert(framesRead == chunkFrames);
 		if (pulseAudioApi->pa_stream_write(stream, destinationBuffer, chunkFrameBytes, fpl_null, 0, PA_SEEK_RELATIVE) < 0) {
 			break;
 		}
@@ -29881,7 +30334,8 @@ fpl_internal void fpl__PipeWire_StreamProcessCallback(void *data) {
 		wantedFrames = maxFrames;
 	}
 	if (wantedFrames > 0) {
-		fpl__ReadAudioFramesFromClient(backend, wantedFrames, sbuf->datas[0].data);
+		uint32_t framesRead = fpl__ReadAudioFramesFromClient(backend, wantedFrames, sbuf->datas[0].data);
+		fplAssert(framesRead == wantedFrames);
 	}
 	if (sbuf->datas[0].chunk != fpl_null) {
 		sbuf->datas[0].chunk->offset = 0;

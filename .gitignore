@@ -35,3 +35,4 @@
 doxy-workspace.doxyedit
 /demos/**/[bB]uild
 /demos/**/[iI]mmediates
+.claude/
