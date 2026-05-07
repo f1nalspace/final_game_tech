@@ -66,9 +66,6 @@ typedef uint16_t fplGamepadInputBindingEncoded;
 // On-disk per-entry size: 16 + 1 + 20*2 = 57 bytes.
 #define FPL_GAMEPAD_BLOB_ENTRY_SIZE (FPL_GAMEPAD_GUID_BYTES + 1 + FPL_GAMEPAD_BINDING_COUNT * 2)
 
-// Threshold above which an analog input is treated as a digital press.
-#define FPL_GAMEPAD_DIGITAL_THRESHOLD 0.5f
-
 // Returns true if every field of b fits inside its packed bit width (lossless encode possible).
 static fpl_force_inline bool fplBindingFitsEncoded(const fplGamepadInputBinding *b) {
 	return
@@ -280,98 +277,6 @@ static bool fpl__ParseBinding(const char *val, size_t valLen, fplGamepadInputBin
 	}
 
 	*outBinding = b;
-	return true;
-}
-
-static bool fpl__EvalBindingDigital(const fplGamepadInputBinding *b, const fplGamepadRawInput *in) {
-	switch (b->type) {
-		case fplGamepadInputType_Button: {
-			if (b->index >= in->buttonCount) {
-				return false;
-			}
-			return in->buttons[b->index];
-		}
-		case fplGamepadInputType_Hat: {
-			if (b->index >= in->hatCount) {
-				return false;
-			}
-			return (in->hats[b->index] & (uint8_t)b->hatMask) != 0;
-		}
-		case fplGamepadInputType_Axis: {
-			if (b->index >= in->axisCount) {
-				return false;
-			}
-			float v = in->axes[b->index];
-			if (b->axisInverted) {
-				v = -v;
-			}
-			if (b->axisSign == fplGamepadAxisSign_Negative) {
-				v = -v;
-			}
-			return v > FPL_GAMEPAD_DIGITAL_THRESHOLD;
-		}
-		default: {
-			return false;
-		}
-	}
-}
-
-static float fpl__EvalBindingAnalog(const fplGamepadInputBinding *b, const fplGamepadRawInput *in) {
-	switch (b->type) {
-		case fplGamepadInputType_Button: {
-			if (b->index >= in->buttonCount) {
-				return 0.0f;
-			}
-			return in->buttons[b->index] ? 1.0f : 0.0f;
-		}
-		case fplGamepadInputType_Hat: {
-			if (b->index >= in->hatCount) {
-				return 0.0f;
-			}
-			return (in->hats[b->index] & (uint8_t)b->hatMask) ? 1.0f : 0.0f;
-		}
-		case fplGamepadInputType_Axis: {
-			if (b->index >= in->axisCount) {
-				return 0.0f;
-			}
-			float v = in->axes[b->index];
-			if (b->axisInverted) {
-				v = -v;
-			}
-			// Half-axis: remap [-1..+1] to [0..1] using only the requested half (used by triggers).
-			if (b->axisSign == fplGamepadAxisSign_Positive) {
-				return (v + 1.0f) * 0.5f;
-			}
-			if (b->axisSign == fplGamepadAxisSign_Negative) {
-				return (-v + 1.0f) * 0.5f;
-			}
-			return v;
-		}
-		default: {
-			return 0.0f;
-		}
-	}
-}
-
-// Applies mapping + raw input onto outState. Buttons and analog axes are written; deviceName, isConnected and isActive are left untouched per project policy.
-bool fplApplyGamepadMapping(const fplGamepadMapping *mapping, const fplGamepadRawInput *input, fplGamepadState *outState) {
-	if (mapping == fpl_null || input == fpl_null || outState == fpl_null) {
-		return false;
-	}
-
-	for (size_t i = 0; i < fplArrayCount(mapping->buttons); ++i) {
-		const fplGamepadInputBinding *b = &mapping->buttons[i];
-		bool down = (b->type != fplGamepadInputType_None) && fpl__EvalBindingDigital(b, input);
-		outState->buttons[i].isDown = down ? 1 : 0;
-	}
-
-	outState->leftStickX    = fpl__EvalBindingAnalog(&mapping->axes[fplGamepadAxisType_LeftX],        input);
-	outState->leftStickY    = fpl__EvalBindingAnalog(&mapping->axes[fplGamepadAxisType_LeftY],        input);
-	outState->rightStickX   = fpl__EvalBindingAnalog(&mapping->axes[fplGamepadAxisType_RightX],       input);
-	outState->rightStickY   = fpl__EvalBindingAnalog(&mapping->axes[fplGamepadAxisType_RightY],       input);
-	outState->leftTrigger   = fpl__EvalBindingAnalog(&mapping->axes[fplGamepadAxisType_LeftTrigger],  input);
-	outState->rightTrigger  = fpl__EvalBindingAnalog(&mapping->axes[fplGamepadAxisType_RightTrigger], input);
-
 	return true;
 }
 
