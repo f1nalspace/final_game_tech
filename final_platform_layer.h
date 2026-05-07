@@ -244,6 +244,7 @@ SOFTWARE.
 	- New[#178]: Separate input system from windowing system, by introducing a input backend system
 	- New[#187]: Implemented DirectInput input backend
 	- Improved: [Win32/DInput] Backend now routes DIJOYSTATE through fplGamepadMappingApply / fplGamepadMappingApplyDefault, with the resolver from fplGameControllersSettings.mappingResolver invoked once per controller connect to install a custom fplGamepadMapping
+	- Improved: [Linux/Joystick] /dev/input/jsX backend now feeds JS_EVENT_AXIS/BUTTON into a fplGamepadRawInput snapshot, calls the mappingResolver with VID/PID/version read from /sys/class/input/jsX/device/id, and applies fplGamepadMappingApply when a mapping is installed (legacy behavior preserved when no resolver returns true)
 
 	- Improved[#176]: Made internal event queue thread-safe using a lock-free push/pop linear buffer
 	- Improved[#88]: Gamepad input device is not locked to /dev/input/js0 anymore
@@ -11296,6 +11297,12 @@ typedef struct fpl__LinuxGameController {
 	uint8_t axisCount;
 	uint8_t buttonCount;
 	fplGamepadState state;
+	// Snapshot built from JS_EVENT_AXIS/BUTTON every drain, fed into the active mapping.
+	fplGamepadRawInput raw;
+	// Mapping installed by the user resolver at connect time (only valid when hasMapping is true).
+	fplGamepadMapping mapping;
+	// True when the resolver returned a mapping. When false, the legacy hardcoded fpl__LinuxPushGameControllerStateUpdateEvent path is used unchanged.
+	bool hasMapping;
 } fpl__LinuxGameController;
 
 // Linux /dev/input/jsX backend instance owned by fpl__InputContext.
@@ -23506,6 +23513,49 @@ fpl_internal bool fpl__LinuxInitPlatform(const fplInitFlags initFlags, const fpl
 // Linux Gamepads
 //
 #if defined(FPL__ENABLE_INPUT_LINUX_JOYSTICK)
+// Parses a 4-hex-digit value from a sysfs file (e.g. "046d\n"). Returns 0 if missing/invalid.
+fpl_internal uint16_t fpl__LinuxJoystick_ReadHexFile(const char *path) {
+	int fd = open(path, O_RDONLY);
+	if (fd < 0) {
+		return 0;
+	}
+	char buf[16];
+	ssize_t n = read(fd, buf, sizeof(buf) - 1);
+	close(fd);
+	if (n <= 0) {
+		return 0;
+	}
+	uint32_t val = 0;
+	for (ssize_t i = 0; i < n; ++i) {
+		char c = buf[i];
+		int d = -1;
+		if (c >= '0' && c <= '9') {
+			d = c - '0';
+		} else if (c >= 'a' && c <= 'f') {
+			d = c - 'a' + 10;
+		} else if (c >= 'A' && c <= 'F') {
+			d = c - 'A' + 10;
+		} else {
+			break;
+		}
+		val = (val << 4) | (uint32_t)d;
+	}
+	return (uint16_t)val;
+}
+
+// Reads bus/vid/pid/version for /dev/input/jsX from sysfs. Each defaults to 0 if the file is missing (e.g. virtual device).
+fpl_internal void fpl__LinuxJoystick_ReadDeviceIds(int slotIndex, uint16_t *outBus, uint16_t *outVid, uint16_t *outPid, uint16_t *outVersion) {
+	char path[128];
+	fplStringFormat(path, fplArrayCount(path), "/sys/class/input/js%d/device/id/bustype", slotIndex);
+	*outBus = fpl__LinuxJoystick_ReadHexFile(path);
+	fplStringFormat(path, fplArrayCount(path), "/sys/class/input/js%d/device/id/vendor", slotIndex);
+	*outVid = fpl__LinuxJoystick_ReadHexFile(path);
+	fplStringFormat(path, fplArrayCount(path), "/sys/class/input/js%d/device/id/product", slotIndex);
+	*outPid = fpl__LinuxJoystick_ReadHexFile(path);
+	fplStringFormat(path, fplArrayCount(path), "/sys/class/input/js%d/device/id/version", slotIndex);
+	*outVersion = fpl__LinuxJoystick_ReadHexFile(path);
+}
+
 fpl_internal float fpl__LinuxJoystickProcessStickValue(const int16_t value, const int16_t deadZoneThreshold) {
 	float result = 0;
 	if (value < -deadZoneThreshold) {
@@ -23517,6 +23567,20 @@ fpl_internal float fpl__LinuxJoystickProcessStickValue(const int16_t value, cons
 }
 
 fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_event *event, fpl__LinuxGameController *controller) {
+	// Keep the backend-agnostic raw snapshot in sync — used by fplGamepadMappingApply when the resolver installed a mapping.
+	uint8_t evType = event->type & ~(uint8_t)JS_EVENT_INIT;
+	if (evType == JS_EVENT_AXIS && event->number < FPL_GAMEPAD_RAW_MAX_AXES) {
+		float v = (float)event->value / 32767.0f;
+		if (v < -1.0f) {
+			v = -1.0f;
+		} else if (v > 1.0f) {
+			v = 1.0f;
+		}
+		controller->raw.axes[event->number] = v;
+	} else if (evType == JS_EVENT_BUTTON && event->number < FPL_GAMEPAD_RAW_MAX_BUTTONS) {
+		controller->raw.buttons[event->number] = event->value != 0;
+	}
+
 	fplGamepadState *padState = &controller->state;
 
 	// @TODO(final): Use a static offset table instead of a pointer mapping table
@@ -23705,6 +23769,38 @@ fpl_internal void fpl__LinuxJoystick_DetectControllers(const fplSettings *settin
 		ioctl(fd, JSIOCGNAME(fplArrayCount(controller->displayName)), controller->displayName);
 		fcntl(fd, F_SETFL, O_NONBLOCK);
 
+		// Seed the raw snapshot ranges. Hats are not produced by joydev (kernel folds them into axes 6/7 for Xbox-style devices).
+		controller->raw.axisCount = numAxis;
+		controller->raw.buttonCount = numButtons;
+		controller->raw.hatCount = 0;
+
+		// Resolve a per-device mapping. The resolver runs once per connect; failure or absence keeps the legacy joydev convention.
+		controller->hasMapping = false;
+		const fplGameControllersSettings *gc = &settings->input.gameControllers;
+		if (gc->mappingResolver != fpl_null) {
+			uint16_t bus = 0;
+			uint16_t vid = 0;
+			uint16_t pid = 0;
+			uint16_t version = 0;
+			fpl__LinuxJoystick_ReadDeviceIds(slotIndex, &bus, &vid, &pid, &version);
+			fplGameControllerInfo info = fplZeroInit;
+			info.index = (uint32_t)freeIndex;
+			info.backend = fplInputBackendType_LinuxJoystick;
+			info.name = controller->displayName;
+			fpl__GamepadBuildSDLGuid(bus, vid, pid, version, 0u, info.guid);
+			info.vendorId = vid;
+			info.productId = pid;
+			info.version = version;
+			info.buttonCount = numButtons;
+			info.axisCount = numAxis;
+			info.hatCount = 0;
+			fplGamepadMapping userMapping = fplZeroInit;
+			if (gc->mappingResolver(&info, &userMapping, gc->mappingResolverUserData)) {
+				controller->mapping = userMapping;
+				controller->hasMapping = true;
+			}
+		}
+
 		fpl__PushGamepadConnectionEvent((uint32_t)freeIndex, controller->deviceName, true);
 	}
 }
@@ -23739,7 +23835,15 @@ fpl_internal void fpl__LinuxJoystick_UpdateStates(fpl__InputBackendLinuxJoystick
 			fpl__LinuxPushGameControllerStateUpdateEvent(&event, controller);
 		}
 
-		controller->state.isActive = !fpl__IsZeroMemory(&controller->state, sizeof(fplGamepadState));
+		// When a user mapping is installed, derive the state from raw via fplGamepadMappingApply. Otherwise the legacy direct path inside fpl__LinuxPushGameControllerStateUpdateEvent already populated controller->state.
+		if (controller->hasMapping && !wasDisconnected) {
+			fplGamepadState gs = fplZeroInit;
+			fplGamepadMappingApply(&controller->mapping, &controller->raw, &gs);
+			controller->state = gs;
+			fpl__GamepadFinalizeState(&controller->state);
+		} else {
+			controller->state.isActive = !fpl__IsZeroMemory(&controller->state, sizeof(fplGamepadState));
+		}
 		controller->state.isConnected = !wasDisconnected;
 		controller->state.deviceName = controller->deviceName;
 
