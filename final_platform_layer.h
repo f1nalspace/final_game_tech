@@ -2918,6 +2918,7 @@ fpl_internal fpl_force_inline void fpl__m_DebugBreak(void) { __asm__ __volatile_
 /**
 * @typedef fpl_b32
 * @brief Defines a integer based boolean that has a width of 32-bit.
+* @note Used for boolean fields inside public structs to keep their layout stable across C/C++ compilers (where `bool` size is implementation-defined) and to support atomic-style access. New API surfaces should still use the C99 `bool` type for return values and parameters; `fpl_b32` is reserved for ABI-stable struct fields.
 */
 typedef int32_t fpl_b32;
 
@@ -3544,12 +3545,14 @@ typedef int fpl__LinuxSignalHandle;
 /**
 * @def FPL_MAX_FILENAME_LENGTH
 * @brief Maximum length of a filename.
+* @note On Windows this is `MAX_PATH` (260) when `MAX_PATH` is visible at preprocess time, otherwise hard-coded to 260. On POSIX it is 512.
 */
 #define FPL_MAX_FILENAME_LENGTH FPL__M_MAX_FILENAME_LENGTH
 
 /**
 * @def FPL_MAX_PATH_LENGTH
 * @brief Maximum length of a path.
+* @note On Windows this is `MAX_PATH * 2` (520) and on POSIX it is 2048. Internal Win32 path buffers are sized by this constant, so paths longer than `MAX_PATH` are not supported on Windows. The Windows long-path prefix `\\?\` is intentionally not used by FPL — callers that need long-path support must work around this at the application level.
 */
 #define FPL_MAX_PATH_LENGTH FPL__M_MAX_PATH_LENGTH
 
@@ -7118,7 +7121,8 @@ fpl_platform_api uint32_t fplFileReadBlock32(const fplFileHandle *fileHandle, co
 * @param[in] sizeToRead The number of bytes to read.
 * @param[out] targetBuffer The target memory to write into.
 * @param[in] maxTargetBufferSize Total number of bytes available in the target buffer.
-* @return Returns the number of bytes read or zero.
+* @return Returns the number of bytes read, or 0 on EOF or hard error.
+* @note A return of 0 is ambiguous: it may mean end-of-file or a read failure (NULL handle, invalid handle, OS-level read error). Disambiguate via @ref fplFileGetPosition64 / @ref fplFileGetSizeFromHandle64, or check @ref fplGetLastError.
 * @note Supports max size of 2^63.
 * @see @ref subsection_category_io_binaryfiles_read_readblock
 */
@@ -7130,7 +7134,8 @@ fpl_platform_api uint64_t fplFileReadBlock64(const fplFileHandle *fileHandle, co
 * @param[in] sizeToRead The number of bytes to read.
 * @param[out] targetBuffer The target memory to write into.
 * @param[in] maxTargetBufferSize Total number of bytes available in the target buffer.
-* @return Returns the number of bytes read or zero.
+* @return Returns the number of bytes read, or 0 on EOF or hard error.
+* @note A return of 0 is ambiguous: it may mean end-of-file or a read failure (NULL handle, invalid handle, OS-level read error). Disambiguate via the matching @ref fplFileGetPosition / @ref fplFileGetSizeFromHandle variant, or check @ref fplGetLastError.
 * @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes.
 * @see @ref subsection_category_io_binaryfiles_read_readblock
 */

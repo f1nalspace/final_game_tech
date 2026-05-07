@@ -172,8 +172,8 @@ Applied Global Conventions; updated all docstrings and call sites.
 - [ ] (Optional) Cross-reference from each affected function's doxygen — deferred; the top-of-file block is canonical.
 
 ### 3.5 `fpl_b32` vs `bool`
-- [ ] `fplFileHandle::isValid` → `bool`.
-- [ ] Audit other public structs; reserve `fpl_b32` for atomic-friendly ABI structs only.
+- [x] **Doc-only:** `fpl_b32` typedef now documents the policy (ABI-stable struct fields use `fpl_b32`, new function returns/parameters use C99 `bool`).
+- [ ] (Deferred — not changing implementation per user request.) `fplFileHandle::isValid` → `bool` and a wider audit of public structs would be a breaking ABI change; left as-is.
 
 ### 3.6 `fplFileGetSizeFromPath` family — try-style API
 - [x] Added `bool fplFileTryGetSizeFromPath(const char *filePath, uint64_t *outSize)` and `bool fplFileTryGetSizeFromHandle(const fplFileHandle *fileHandle, uint64_t *outSize)`.
@@ -241,8 +241,8 @@ Applied Global Conventions; updated all docstrings and call sites.
 - [x] Refactored to a single `for (;;) { dp = readdir(...); ... }` loop with break-on-EOF and break-on-match.
 
 ### 5.8 Win32 long-path support (`\\?\`)
-- [ ] Decide: document `FPL_MAX_PATH_LENGTH` cap, OR
-- [ ] Switch path-conversion buffers to dynamic alloc when source > threshold + prepend `\\?\`.
+- [x] **Doc-only:** Documented in `FPL_MAX_PATH_LENGTH` doxygen — paths longer than `MAX_PATH` are not supported on Windows; the `\\?\` prefix is intentionally not used. Long-path handling is left to the application.
+- [ ] (Deferred — not changing implementation.) Dynamic path-conversion buffers + `\\?\` prefixing.
 
 ### 5.9 `fplVersionNumberPart` extend
 - [x] Defined `FPL_MAX_VERSION_PART_LENGTH (8)` and switched `fplVersionNumberPart` to `char[FPL_MAX_VERSION_PART_LENGTH + 1]`.
@@ -267,8 +267,8 @@ Applied Global Conventions; updated all docstrings and call sites.
 - [x] Updated v1.0.0 Overview line to "thread-safety in the error-reporting ring (atomic slot claim, no init-order/mutex hazards) and the event system" so it matches Phase 2.7.
 
 ### 6.4 `fplFileReadBlock` 0-return ambiguity
-- [x] Documented in `fplFileReadBlock32/64/(common)` doxygen blocks: 0 = EOF or hard error; disambiguate via `fplFileGetPosition*` / `fplFileGetSizeFromHandle*` or `fplGetLastError`.
-- [ ] (Deferred) breaking API change `size_t + bool *outEOF` — kept for a future major; current Try-style additions (3.6) cover the size case.
+- [x] Documented in `fplFileReadBlock32/64/(common)` doxygen blocks: 0 = EOF or hard error; disambiguate via `fplFileGetPosition*` / `fplFileGetSizeFromHandle*` or `fplGetLastError`. (Note normalized so all three variants — `Read32`, `Read64`, `Read` — carry the same disambiguation guidance.)
+- [ ] (Deferred — not changing API.) Breaking change `size_t + bool *outEOF`; current Try-style additions (3.6) cover the size case.
 
 ---
 
