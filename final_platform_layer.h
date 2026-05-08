@@ -5720,6 +5720,14 @@ typedef struct fplGameControllerInfo fplGameControllerInfo;
 typedef struct fplGamepadMapping fplGamepadMapping;
 
 /**
+ * @define FPL_GAMEPAD_MAPPING_RESOLVE_FUNC
+ * @brief Defines a prototype for a gamepad mapping resolver function.
+ * @param name The name of the function.
+ * @return A boolean indicating the result.
+ */
+#define FPL_GAMEPAD_MAPPING_RESOLVE_CALLBACK(name) bool name(const fplGameControllerInfo *info, fplGamepadMapping *outMapping, void *userData)
+
+/**
 * @typedef fplGamepadMappingResolverFn
 * @brief Optional callback invoked once per controller connect on raw-HID gamepad backends (DirectInput, Linux joystick/evdev, etc.) to install a custom @ref fplGamepadMapping for the device.
 * @param[in]  info        Backend-built description of the device that just connected.
@@ -5728,7 +5736,7 @@ typedef struct fplGamepadMapping fplGamepadMapping;
 * @return true to install @p outMapping for this device, false to fall back to the default convention.
 * @note The callback runs once at connect time on the platform input thread; do not block.
 */
-typedef bool (*fplGamepadMappingResolverFn)(const fplGameControllerInfo *info, fplGamepadMapping *outMapping, void *userData);
+typedef FPL_GAMEPAD_MAPPING_RESOLVE_CALLBACK(fpl_gamepad_mapping_resolver_callback);
 
 /**
 * @struct fplGameControllersSettings
@@ -5740,7 +5748,7 @@ typedef struct fplGameControllersSettings {
 	//! Frequency in ms for updating states of connected controllers (Default: 0, 0 = As fast as possible).
 	uint32_t updateFrequency;
 	//! Optional resolver invoked once per raw-HID controller connect to install a custom mapping (Default: fpl_null).
-	fplGamepadMappingResolverFn mappingResolver;
+	fpl_gamepad_mapping_resolver_callback *mappingResolver;
 	//! Opaque user pointer forwarded to @ref mappingResolver (Default: fpl_null).
 	void *mappingResolverUserData;
 } fplGameControllersSettings;
