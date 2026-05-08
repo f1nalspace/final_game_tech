@@ -1079,9 +1079,16 @@ struct AppState {
 	fpl_b32 usePolling;
 };
 
+struct GamepadState {
+	fplGameControllerGuid guid;
+	fplGamepadState state;
+	uint32_t deviceIndex;
+	const char *deviceName;
+};
+
 struct InputState {
 	wchar_t *text;
-	fplGamepadState gamepadState;
+	GamepadState gamepadState;
 	fplButtonState keyStates[256];
 	fplButtonState mouseStates[fplMouseButtonType_MaxCount];
 	Vec2i mousePos;
@@ -1451,10 +1458,12 @@ static void RenderApp(AppState* appState, const InputState* input, const uint32_
 		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 		DrawSprite(appState->gamepadForegroundTexture, GamepadW * 0.5f, GamepadH * 0.5f, 0.0f, 1.0f, 1.0f, 0.0f, gamepadCenterX, gamepadCenterY);
 
+		const fplGamepadState *gpadState = &input->gamepadState.state;
+
 		for (int i = 0; i < fplArrayCount(GamepadButtonsDefinitions); ++i) {
 			const GamepadButtonDef def = GamepadButtonsDefinitions[i];
 			SpritePosition foregroundPos = ComputeSpritePosition(gamepadCenter, GamepadSize, def.foregroundUV);
-			bool down = input->gamepadState.buttons[def.button].isDown == 1;
+			bool down = gpadState->buttons[def.button].isDown == 1;
 			if (down) {
 				// Background
 				glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -1478,20 +1487,20 @@ static void RenderApp(AppState* appState, const InputState* input, const uint32_
 
 		// Sticks
 		float maxStickLength = GamepadSize.w * 0.065f;
-		if (fabsf(input->gamepadState.leftStickX) > 0 || fabsf(input->gamepadState.leftStickY) > 0) {
+		if (fabsf(gpadState->leftStickX) > 0 || fabsf(gpadState->leftStickY) > 0) {
 			SpritePosition stickLeftPos = ComputeSpritePosition(gamepadCenter, GamepadSize, GamepadLeftStickUV);
 			float leftStickLength = maxStickLength;
-			Vec2f leftStickDirection = V2f(input->gamepadState.leftStickX, input->gamepadState.leftStickY);
+			Vec2f leftStickDirection = V2f(gpadState->leftStickX, gpadState->leftStickY);
 			Vec2f leftStickDistance = leftStickDirection * leftStickLength;
 			float leftStickArrowWidth = leftStickLength * 0.65f;
 			float leftStickArrowDepth = leftStickLength * 0.65f * 0.5f;
 			glColor4f(1.0f, 0.0f, 0.0f, 1.0f);
 			DrawArrow(stickLeftPos.pos.x, stickLeftPos.pos.y, stickLeftPos.pos.x + leftStickDistance.x, stickLeftPos.pos.y + leftStickDistance.y, leftStickArrowWidth, leftStickArrowDepth, leftStickDirection, 6.0f);
 		}
-		if (fabsf(input->gamepadState.rightStickX) > 0 || fabsf(input->gamepadState.rightStickY) > 0) {
+		if (fabsf(gpadState->rightStickX) > 0 || fabsf(gpadState->rightStickY) > 0) {
 			SpritePosition rightStickPos = ComputeSpritePosition(gamepadCenter, GamepadSize, GamepadRightStickUV);
 			float rightStickLength = maxStickLength;
-			Vec2f rightStickDirection = V2f(input->gamepadState.rightStickX, input->gamepadState.rightStickY);
+			Vec2f rightStickDirection = V2f(gpadState->rightStickX, gpadState->rightStickY);
 			Vec2f rightStickDistance = rightStickDirection * rightStickLength;
 			float rightStickArrowWidth = rightStickLength * 0.65f;
 			float rightStickArrowDepth = rightStickLength * 0.65f * 0.5f;
@@ -1504,22 +1513,82 @@ static void RenderApp(AppState* appState, const InputState* input, const uint32_
 		SpritePosition rightTriggerPos = ComputeSpritePosition(gamepadCenter, GamepadSize, GamepadRightTriggerUV);
 		float maxTriggerLength = GamepadSize.w * 0.065f;
 		Vec2f triggerDirection = V2f(0, 1);
-		if (fabsf(input->gamepadState.leftTrigger) > 0) {
-			float leftTriggerLength = maxTriggerLength * input->gamepadState.leftTrigger;
+		if (fabsf(gpadState->leftTrigger) > 0) {
+			float leftTriggerLength = maxTriggerLength * gpadState->leftTrigger;
 			float leftTriggerArrowWidth = leftTriggerLength * 0.65f;
 			float leftTriggerArrowDepth = leftTriggerLength * 0.65f * 0.5f;
 			Vec2f leftTriggerDistance = triggerDirection * leftTriggerLength;
 			glColor4f(1.0f, 0.0f, 0.0f, 1.0f);
 			DrawArrow(leftTriggerPos.pos.x, leftTriggerPos.pos.y, leftTriggerPos.pos.x + leftTriggerDistance.x, leftTriggerPos.pos.y + leftTriggerDistance.y, leftTriggerArrowWidth, leftTriggerArrowDepth, triggerDirection, 6.0f);
 		}
-		if (fabsf(input->gamepadState.rightTrigger) > 0) {
-			float rightTriggerLength = maxTriggerLength * input->gamepadState.rightTrigger;
+		if (fabsf(gpadState->rightTrigger) > 0) {
+			float rightTriggerLength = maxTriggerLength * gpadState->rightTrigger;
 			float rightTriggerArrowWidth = rightTriggerLength * 0.65f;
 			float rightTriggerArrowDepth = rightTriggerLength * 0.65f * 0.5f;
 			Vec2f rightTriggerDistance = triggerDirection * rightTriggerLength;
 			glColor4f(1.0f, 0.0f, 0.0f, 1.0f);
 			DrawArrow(rightTriggerPos.pos.x, rightTriggerPos.pos.y, rightTriggerPos.pos.x + rightTriggerDistance.x, rightTriggerPos.pos.y + rightTriggerDistance.y, rightTriggerArrowWidth, rightTriggerArrowDepth, triggerDirection, 6.0f);
 		}
+
+		float gamepadOsdX = -w;
+		float gamepadOsdY = h - osdFontHeight * 2.0f;
+		const float gamepadOSDFontHeight = osdFontHeight * 0.8f;
+
+		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+
+		// Device Info
+		fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Device[%u]: %s", input->gamepadState.deviceIndex, input->gamepadState.deviceName);
+		fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
+		DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, gamepadOsdX, gamepadOsdY, gamepadOSDFontHeight, 1.0f, 0.0f);
+		gamepadOsdY -= gamepadOSDFontHeight;
+
+		// DPad Buttons
+		fplStringFormat(textBuffer, fplArrayCount(textBuffer), "DPad(U,R,D,L): %u %u %u %u", input->gamepadState.state.dpadUp.isDown, input->gamepadState.state.dpadRight.isDown, input->gamepadState.state.dpadDown.isDown, input->gamepadState.state.dpadLeft.isDown);
+		fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
+		DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, gamepadOsdX, gamepadOsdY, gamepadOSDFontHeight, 1.0f, 0.0f);
+		gamepadOsdY -= gamepadOSDFontHeight;
+
+		// Action Buttons
+		fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Actions(X,Y,A,B): %u %u %u %u", input->gamepadState.state.actionX.isDown, input->gamepadState.state.actionY.isDown, input->gamepadState.state.actionA.isDown, input->gamepadState.state.actionB.isDown);
+		fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
+		DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, gamepadOsdX, gamepadOsdY, gamepadOSDFontHeight, 1.0f, 0.0f);
+		gamepadOsdY -= gamepadOSDFontHeight;
+
+		// Thumb Buttons
+		fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Thumbs(L, R): %u %u", input->gamepadState.state.leftThumb.isDown, input->gamepadState.state.rightThumb.isDown);
+		fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
+		DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, gamepadOsdX, gamepadOsdY, gamepadOSDFontHeight, 1.0f, 0.0f);
+		gamepadOsdY -= gamepadOSDFontHeight;
+
+		// Left/Right Shoulder Buttons
+		fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Shoulder L1/L2: %u %u", input->gamepadState.state.leftShoulder.isDown, input->gamepadState.state.rightShoulder.isDown);
+		fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
+		DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, gamepadOsdX, gamepadOsdY, gamepadOSDFontHeight, 1.0f, 0.0f);
+		gamepadOsdY -= gamepadOSDFontHeight;
+
+		// Start/Back Buttons
+		fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Start/Back: %u %u", input->gamepadState.state.start.isDown, input->gamepadState.state.back.isDown);
+		fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
+		DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, gamepadOsdX, gamepadOsdY, gamepadOSDFontHeight, 1.0f, 0.0f);
+		gamepadOsdY -= gamepadOSDFontHeight;
+
+		// Trigger Axis
+		fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Trigger L2/L2: %.6f %.6f", input->gamepadState.state.leftTrigger, input->gamepadState.state.rightTrigger);
+		fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
+		DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, gamepadOsdX, gamepadOsdY, gamepadOSDFontHeight, 1.0f, 0.0f);
+		gamepadOsdY -= gamepadOSDFontHeight;
+
+		// Left Stick
+		fplStringFormat(textBuffer, fplArrayCount(textBuffer), "L-Stick x/y: %.6f %.6f", input->gamepadState.state.leftStickX, input->gamepadState.state.leftStickY);
+		fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
+		DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, gamepadOsdX, gamepadOsdY, gamepadOSDFontHeight, 1.0f, 0.0f);
+		gamepadOsdY -= gamepadOSDFontHeight;
+
+		// Right Stick
+		fplStringFormat(textBuffer, fplArrayCount(textBuffer), "R-Stick x/y: %.6f %.6f", input->gamepadState.state.rightStickX, input->gamepadState.state.rightStickY);
+		fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
+		DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, gamepadOsdX, gamepadOsdY, gamepadOSDFontHeight, 1.0f, 0.0f);
+		gamepadOsdY -= gamepadOSDFontHeight;
 	}
 }
 
@@ -1677,10 +1746,15 @@ int main(int argc, char* argv[]) {
 						case fplEventType_Gamepad:
 						{
 							if (!appState->usePolling) {
-								if ((ev.gamepad.type == fplGamepadEventType_StateChanged) ||
-									(ev.gamepad.type == fplGamepadEventType_Connected) ||
-									(ev.gamepad.type == fplGamepadEventType_Disconnected)) {
-									input.gamepadState = ev.gamepad.state;
+								if (ev.gamepad.type == fplGamepadEventType_Connected || ev.gamepad.type == fplGamepadEventType_Disconnected) {
+									input.gamepadState.state = ev.gamepad.state;
+									input.gamepadState.deviceIndex = ev.gamepad.deviceIndex;
+									input.gamepadState.deviceName = ev.gamepad.deviceName;
+									input.gamepadState.state = ev.gamepad.state;
+									fplClearStruct(&input.gamepadState.guid);
+									// TODO(final): Gamepad device info!
+								} else if (ev.gamepad.type == fplGamepadEventType_StateChanged) {
+									input.gamepadState.state = ev.gamepad.state;
 								}
 							}
 						} break;
@@ -1733,9 +1807,9 @@ int main(int argc, char* argv[]) {
 								break;
 							}
 						}
-						input.gamepadState = {};
+						fplClearStruct(&input.gamepadState.state);
 						if (found > -1) {
-							input.gamepadState = gamepadStates.deviceStates[found];
+							input.gamepadState.state = gamepadStates.deviceStates[found];
 						}
 					}
 				}
