@@ -68,6 +68,8 @@ License:
 
 #include <wchar.h> // wcslen
 
+#include "gamecontroller_mapping_table.h"
+
 // @BAD(final): CPP is such garbage!
 // It cannot handle array index initializer such as [index] = value :-(
 // So we need this nonsense just to initialize a static array -.-
@@ -1588,10 +1590,19 @@ static void HandleKeyPressed(AppState* appState, InputState *input, const fplKey
 	}
 }
 
+static FPL_GAMEPAD_MAPPING_RESOLVE_CALLBACK(InputGamepadMappingResolveCallback) {
+	return false;
+}
+
 int main(int argc, char* argv[]) {
 	AppState* appState = (AppState*)fplMemoryAllocate(sizeof(AppState));
+
 	fplSettings settings = fplMakeDefaultSettings();
 	fplCopyString("FPL Input Demo", settings.window.title, fplArrayCount(settings.window.title));
+
+	settings.input.gameControllers.mappingResolver = InputGamepadMappingResolveCallback;
+	settings.input.gameControllers.mappingResolverUserData = appState;
+
 	int retCode = 0;
 
 	if (fplPlatformInit(fplInitFlags_All, &settings)) {

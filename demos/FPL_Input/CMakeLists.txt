@@ -20,7 +20,8 @@ set(MY_INCLUDE_DIRS
 
 set(MY_HEADER_FILES
 	"../../final_platform_layer.h"
-	)
+	"gamecontroller_mapping_table.h"
+)
 
 set(MY_TRANSLATION_UNITS
 	"fpl_input.cpp"
