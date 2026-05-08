@@ -11313,6 +11313,9 @@ typedef struct fpl__LinuxGameController {
 	int slotIndex;
 	uint8_t axisCount;
 	uint8_t buttonCount;
+	// joydev axis indices that carry ABS_HAT0X / ABS_HAT0Y (resolved via JSIOCGAXMAP at connect). 0xFF means "this controller has no DPad-as-axis on hat 0". SDL's gamecontrollerdb encodes the DPad as `h0.*` for nearly every Linux pad regardless of whether the kernel exposes the DPad as a real hat or as a pair of axes, so we synthesize raw.hats[0] from these joydev axes to make SDL mappings resolve uniformly. Different controllers place the HAT axes at different joydev indices (XInput F310 → 6/7, DInput F310 → 4/5).
+	uint8_t hat0XAxis;
+	uint8_t hat0YAxis;
 	fplGamepadState state;
 	// Snapshot built from JS_EVENT_AXIS/BUTTON every drain, fed into the active mapping.
 	fplGamepadData raw;
@@ -11980,6 +11983,9 @@ fpl_internal void fpl__PushGamepadStateEvent(const uint32_t deviceIndex, const c
 // Threshold above which an analog input is treated as a digital press inside fplGamepadMappingApply.
 #define FPL__GAMEPAD_DIGITAL_THRESHOLD 0.5f
 
+// Per-axis deadzone applied to thumb sticks inside fplGamepadMappingApply. Below this magnitude the stick component is forced to zero, above it the remaining range is rescaled to (0..1] so small motions feel responsive without leaking center jitter. Set to 0.0f to disable while diagnosing raw stick behavior.
+#define FPL__GAMEPAD_STICK_DEADZONE 0.01f
+
 // Returns the digital (button-style) reading produced by a single binding against the given raw input.
 fpl_internal bool fpl__GamepadEvalBindingDigital(const fplGamepadInputBinding *b, const fplGamepadData *in) {
 	switch (b->type) {
@@ -12052,6 +12058,34 @@ fpl_internal float fpl__GamepadEvalBindingAnalog(const fplGamepadInputBinding *b
 	}
 }
 
+// Trigger axes follow SDL convention: when a full-range axis (no `+`/`-` prefix) is bound to a trigger destination, the source idles at -1 and pulls to +1. Remap to the [0..1] range expected by fplGamepadState. Half-axis (+/-) bindings already produce 0..1 from fpl__GamepadEvalBindingAnalog, so pass them through unchanged. Non-axis bindings (e.g. trigger as button) also pass through.
+fpl_internal float fpl__GamepadEvalTrigger(const fplGamepadInputBinding *b, const fplGamepadData *in) {
+	float v = fpl__GamepadEvalBindingAnalog(b, in);
+	if (b->type == fplGamepadInputType_Axis && b->axisSign == fplGamepadAxisSign_Full) {
+		v = (v + 1.0f) * 0.5f;
+	}
+	if (v < 0.0f) {
+		v = 0.0f;
+	} else if (v > 1.0f) {
+		v = 1.0f;
+	}
+	return v;
+}
+
+// Applies a per-axis deadzone to a single stick component: values within FPL__GAMEPAD_STICK_DEADZONE collapse to 0, values beyond are rescaled so the remaining range still spans 0..1. Avoids pulling in math.h for sqrt; the tiny corner artifact of a non-radial deadzone is acceptable for stick centering.
+fpl_internal float fpl__GamepadApplyStickDeadzone(float v) {
+	float dz = FPL__GAMEPAD_STICK_DEADZONE;
+	float a = v < 0.0f ? -v : v;
+	if (a <= dz) {
+		return 0.0f;
+	}
+	float scaled = (a - dz) / (1.0f - dz);
+	if (scaled > 1.0f) {
+		scaled = 1.0f;
+	}
+	return v < 0.0f ? -scaled : scaled;
+}
+
 fpl_common_api bool fplGamepadMappingApply(const fplGamepadMapping *mapping, const fplGamepadData *input, fplGamepadState *outState) {
 	if (mapping == fpl_null || input == fpl_null || outState == fpl_null) {
 		return false;
@@ -12061,12 +12095,13 @@ fpl_common_api bool fplGamepadMappingApply(const fplGamepadMapping *mapping, con
 		bool down = (b->type != fplGamepadInputType_None) && fpl__GamepadEvalBindingDigital(b, input);
 		outState->buttons[i].isDown = down ? 1 : 0;
 	}
-	outState->leftStickX   = fpl__GamepadEvalBindingAnalog(&mapping->axes[fplGamepadAxisType_LeftX],        input);
-	outState->leftStickY   = fpl__GamepadEvalBindingAnalog(&mapping->axes[fplGamepadAxisType_LeftY],        input);
-	outState->rightStickX  = fpl__GamepadEvalBindingAnalog(&mapping->axes[fplGamepadAxisType_RightX],       input);
-	outState->rightStickY  = fpl__GamepadEvalBindingAnalog(&mapping->axes[fplGamepadAxisType_RightY],       input);
-	outState->leftTrigger  = fpl__GamepadEvalBindingAnalog(&mapping->axes[fplGamepadAxisType_LeftTrigger],  input);
-	outState->rightTrigger = fpl__GamepadEvalBindingAnalog(&mapping->axes[fplGamepadAxisType_RightTrigger], input);
+	// SDL's stick convention is +Y = down. fplGamepadState uses +Y = up (XInput convention) so the Y axes are negated here. Mappings authored with `~` (axisInverted) reverse it inside fpl__GamepadEvalBindingAnalog.
+	outState->leftStickX   = fpl__GamepadApplyStickDeadzone( fpl__GamepadEvalBindingAnalog(&mapping->axes[fplGamepadAxisType_LeftX],  input));
+	outState->leftStickY   = fpl__GamepadApplyStickDeadzone(-fpl__GamepadEvalBindingAnalog(&mapping->axes[fplGamepadAxisType_LeftY],  input));
+	outState->rightStickX  = fpl__GamepadApplyStickDeadzone( fpl__GamepadEvalBindingAnalog(&mapping->axes[fplGamepadAxisType_RightX], input));
+	outState->rightStickY  = fpl__GamepadApplyStickDeadzone(-fpl__GamepadEvalBindingAnalog(&mapping->axes[fplGamepadAxisType_RightY], input));
+	outState->leftTrigger  = fpl__GamepadEvalTrigger(&mapping->axes[fplGamepadAxisType_LeftTrigger],  input);
+	outState->rightTrigger = fpl__GamepadEvalTrigger(&mapping->axes[fplGamepadAxisType_RightTrigger], input);
 	return true;
 }
 
@@ -23583,9 +23618,30 @@ fpl_internal float fpl__LinuxJoystickProcessStickValue(const int16_t value, cons
 	return(result);
 }
 
+// Returns true when the given joydev axis is bound as a thumb-stick axis (LeftX/LeftY/RightX/RightY) by the active mapping. Used to suppress JS_EVENT_INIT replay for stick axes — joydev re-emits the kernel-cached raw value at open time, which is uncalibrated for HID-unsigned axes (Logitech F310 in DInput mode reports ABS_Z / ABS_RZ as -32767 = "min" rather than the centered 0 a real device sends after first motion). Trigger axes legitimately rest at -32767, so this filter is restricted to sticks.
+fpl_internal bool fpl__LinuxJoystick_IsStickAxis(const fpl__LinuxGameController *controller, uint8_t axisIndex) {
+	if (!controller->hasMapping) {
+		return false;
+	}
+	const fplGamepadAxisType stickAxes[4] = {
+		fplGamepadAxisType_LeftX,
+		fplGamepadAxisType_LeftY,
+		fplGamepadAxisType_RightX,
+		fplGamepadAxisType_RightY,
+	};
+	for (size_t i = 0; i < fplArrayCount(stickAxes); ++i) {
+		const fplGamepadInputBinding *b = &controller->mapping.axes[stickAxes[i]];
+		if (b->type == fplGamepadInputType_Axis && b->index == axisIndex) {
+			return true;
+		}
+	}
+	return false;
+}
+
 fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_event *event, fpl__LinuxGameController *controller) {
 	// Keep the backend-agnostic raw snapshot in sync — used by fplGamepadMappingApply when the resolver installed a mapping.
 	uint8_t evType = event->type & ~(uint8_t)JS_EVENT_INIT;
+	bool isInit = (event->type & JS_EVENT_INIT) != 0;
 	if (evType == JS_EVENT_AXIS && event->number < FPL_GAMEPAD_DATA_MAX_AXES) {
 		float v = (float)event->value / 32767.0f;
 		if (v < -1.0f) {
@@ -23593,7 +23649,31 @@ fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_e
 		} else if (v > 1.0f) {
 			v = 1.0f;
 		}
+		// Force stick-axis init replay to centered. Real motion arrives without JS_EVENT_INIT and overwrites this. Triggers and other axes still get their genuine init value.
+		if (isInit && fpl__LinuxJoystick_IsStickAxis(controller, event->number)) {
+			v = 0.0f;
+		}
 		controller->raw.axes[event->number] = v;
+		// joydev folds DPad usages onto ABS_HAT0X / ABS_HAT0Y but never emits JS_EVENT_HAT. Synthesize hat 0 from whichever joydev axes were resolved at connect (varies per device — see fpl__LinuxJoystick_DetectControllers) so SDL mappings that bind dp* to h0.* work uniformly across XInput / DInput / generic pads.
+		if (event->number == controller->hat0XAxis || event->number == controller->hat0YAxis) {
+			uint8_t h = controller->raw.hats[0];
+			if (event->number == controller->hat0XAxis) {
+				h &= (uint8_t)~(0x2 | 0x8); // clear right/left
+				if (event->value <= -16384) {
+					h |= 0x8;
+				} else if (event->value >= 16384) {
+					h |= 0x2;
+				}
+			} else {
+				h &= (uint8_t)~(0x1 | 0x4); // clear up/down
+				if (event->value <= -16384) {
+					h |= 0x1;
+				} else if (event->value >= 16384) {
+					h |= 0x4;
+				}
+			}
+			controller->raw.hats[0] = h;
+		}
 	} else if (evType == JS_EVENT_BUTTON && event->number < FPL_GAMEPAD_DATA_MAX_BUTTONS) {
 		controller->raw.buttons[event->number] = event->value != 0;
 	}
@@ -23786,10 +23866,25 @@ fpl_internal void fpl__LinuxJoystick_DetectControllers(const fplSettings *settin
 		ioctl(fd, JSIOCGNAME(fplArrayCount(controller->displayName)), controller->displayName);
 		fcntl(fd, F_SETFL, O_NONBLOCK);
 
-		// Seed the raw snapshot ranges. Hats are not produced by joydev (kernel folds them into axes 6/7 for Xbox-style devices).
+		// Resolve which joydev axis indices correspond to ABS_HAT0X / ABS_HAT0Y. joydev never emits JS_EVENT_HAT, but the kernel folds DPad usages onto these ABS codes, so the joydev axis index varies per device — XInput F310 places them at 6/7 (after X,Y,Z,RX,RY,RZ), DInput F310 at 4/5 (only X,Y,Z,RZ are present so HAT shifts down). SDL's gamecontrollerdb almost always binds DPad as h0.* on Linux, so synthesizing raw.hats[0] from these axes lets the same mapping work across XInput/DInput modes. ABS_HAT0X = 0x10, ABS_HAT0Y = 0x11; we don't include <linux/input-event-codes.h> here to keep the header dependency footprint small.
+		controller->hat0XAxis = 0xFF;
+		controller->hat0YAxis = 0xFF;
+		{
+			uint8_t axmap[64] = fplZeroInit;
+			if (ioctl(fd, JSIOCGAXMAP, axmap) >= 0) {
+				for (uint8_t a = 0; a < numAxis && a < (uint8_t)fplArrayCount(axmap); ++a) {
+					if (axmap[a] == 0x10) {
+						controller->hat0XAxis = a;
+					} else if (axmap[a] == 0x11) {
+						controller->hat0YAxis = a;
+					}
+				}
+			}
+		}
+		// Seed the raw snapshot ranges. fpl__LinuxPushGameControllerStateUpdateEvent synthesizes hat 0 from the joydev axes resolved above. Advertise one hat whenever either DPad axis exists so SDL mappings (h0.1/h0.2/h0.4/h0.8) resolve.
 		controller->raw.axisCount = numAxis;
 		controller->raw.buttonCount = numButtons;
-		controller->raw.hatCount = 0;
+		controller->raw.hatCount = (controller->hat0XAxis != 0xFF || controller->hat0YAxis != 0xFF) ? 1 : 0;
 
 		// Resolve a per-device mapping. The resolver runs once per connect; failure or absence keeps the legacy joydev convention.
 		controller->hasMapping = false;
@@ -23810,7 +23905,7 @@ fpl_internal void fpl__LinuxJoystick_DetectControllers(const fplSettings *settin
 			info.version = version;
 			info.buttonCount = numButtons;
 			info.axisCount = numAxis;
-			info.hatCount = 0;
+			info.hatCount = controller->raw.hatCount;
 			fplGamepadMapping userMapping = fplZeroInit;
 			if (gc->mappingResolver(&info, &userMapping, gc->mappingResolverUserData)) {
 				controller->mapping = userMapping;
