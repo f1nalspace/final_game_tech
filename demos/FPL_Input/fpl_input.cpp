@@ -49,10 +49,18 @@ License:
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
+#ifndef FPL_IMPLEMENTATION
+#	define FPL_IMPLEMENTATION
+#endif
 
-#define FPL_IMPLEMENTATION
-#define FPL_LOGGING
-#define FPL_NO_VIDEO_VULKAN
+#ifndef FPL_LOGGING
+#	define FPL_LOGGING
+#endif
+
+#ifndef FPL_NO_VIDEO_VULKAN
+#	define FPL_NO_VIDEO_VULKAN
+#endif
+
 #include <final_platform_layer.h>
 
 #define FGL_IMPLEMENTATION
@@ -65,6 +73,9 @@ License:
 #include <stb/stb_truetype.h>
 
 #include <final_fonts.h>
+
+#define FINAL_GAMECONTROLLER_IMPLEMENTATION
+#include <final_gamecontroller.h>
 
 #include <wchar.h> // wcslen
 
@@ -1045,6 +1056,9 @@ enum class RenderMode {
 };
 
 struct AppState {
+	fplGamepadMapping gamepadMappingTable[4096];
+	size_t gamepadMappingTableEntryCount;
+
 	FontData letterFontData[FontCount];
 	FontData osdFontData;
 	FontData consoleFontData;
@@ -1127,6 +1141,9 @@ static void InitApp(AppState* appState) {
 	appState->mouseTexture = LoadTexture(dataPath, "mouse.png");
 	appState->usePolling = false;
 	appState->renderMode = RenderMode::KeyboardAndMouse;
+
+	const uint8_t *sourceMappingTablePtr = (uint8_t *)fpl__g_gamepadMappingTable;
+	appState->gamepadMappingTableEntryCount = fplDecompressGamepadMappingTable(sourceMappingTablePtr, FPL_GAMEPAD_MAPPING_TABLE_ENTRY_COUNT, appState->gamepadMappingTable, fplArrayCount(appState->gamepadMappingTable));
 }
 
 static void ReleaseApp(AppState* appState) {
@@ -1591,7 +1608,13 @@ static void HandleKeyPressed(AppState* appState, InputState *input, const fplKey
 }
 
 static FPL_GAMEPAD_MAPPING_RESOLVE_CALLBACK(InputGamepadMappingResolveCallback) {
-	return false;
+	AppState* appState = (AppState*)userData;
+	if (appState->gamepadMappingTableEntryCount == 0) {
+		return false;
+	}
+	fplPlatformType systemPlatformType = fplGetPlatformType();
+	fplGamepadPlatform gamepadPlatform = fplGetGamepadPlatform(systemPlatformType);
+	return fplFindGamepadMapping(appState->gamepadMappingTable, appState->gamepadMappingTableEntryCount, info->guid, gamepadPlatform, outMapping);
 }
 
 int main(int argc, char* argv[]) {
