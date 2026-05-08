@@ -8210,6 +8210,18 @@ fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY);
 typedef char fplGameControllerName[FPL_MAX_NAME_LENGTH];
 
 /**
+* @define FPL_GAME_CONTROLLER_GUID_SIZE
+* @brief Defines the size of a game controller guid in bytes.
+*/
+#define FPL_GAME_CONTROLLER_GUID_SIZE 16
+
+/**
+* @typedef fplGameControllerGuid
+* @brief A typedef that defines a 16-byte guid for identify a game controler.
+*/
+typedef uint8_t fplGameControllerGuid[FPL_GAME_CONTROLLER_GUID_SIZE];
+
+/**
 * @struct fplGamepadButton
 * @brief A structure containing properties for a gamepad button (IsDown, etc.).
 */
@@ -8480,16 +8492,13 @@ typedef enum fplGamepadPlatform {
 //! Number of logical button slots stored in a @ref fplGamepadMapping (matches @ref fplGamepadButtonType).
 #define FPL_GAMEPAD_BUTTON_COUNT 14
 
-//! Length of a raw gamepad GUID in bytes (matches the SDL gamecontrollerdb format).
-#define FPL_GAMEPAD_GUID_BYTES 16
-
 /**
 * @struct fplGamepadMapping
 * @brief A complete mapping of raw device inputs onto FPL's logical gamepad layout.
 */
 typedef struct fplGamepadMapping {
 	//! Raw 16-byte device GUID, indexed identically across backends to allow lookup.
-	uint8_t guid[FPL_GAMEPAD_GUID_BYTES];
+	fplGameControllerGuid guid;
 	//! Bindings for the digital button slots, indexed by @ref fplGamepadButtonType.
 	fplGamepadInputBinding buttons[FPL_GAMEPAD_BUTTON_COUNT];
 	//! Bindings for the analog axis slots, indexed by @ref fplGamepadAxisType.
@@ -8528,15 +8537,15 @@ typedef struct fplGamepadData {
 * @struct fplGameControllerInfo
 * @brief Read-only description of a controller passed to a @ref fplGamepadMappingResolverFn at connect time.
 */
-struct fplGameControllerInfo {
+typedef struct fplGameControllerInfo {
+	//! Raw 16-byte SDL-compatible GUID built by the backend.
+	fplGameControllerGuid guid;
 	//! Display name of the device (UTF-8).
 	const char *name;
 	//! Backend-local slot index for the controller.
 	uint32_t index;
 	//! Backend that produced this device.
 	fplInputBackendType backend;
-	//! Raw 16-byte SDL-compatible GUID built by the backend.
-	uint8_t guid[FPL_GAMEPAD_GUID_BYTES];
 	//! USB vendor id, or 0 when unknown.
 	uint16_t vendorId;
 	//! USB product id, or 0 when unknown.
@@ -8549,7 +8558,7 @@ struct fplGameControllerInfo {
 	uint32_t axisCount;
 	//! Number of raw hats exposed by the device.
 	uint32_t hatCount;
-};
+} fplGameControllerInfo;
 
 /**
 * @brief Applies a @ref fplGamepadMapping over a raw device snapshot and writes the result into @p outState.
@@ -12137,7 +12146,7 @@ fpl_internal void fpl__GamepadFinalizeState(fplGamepadState *state) {
 }
 
 // Builds a 16-byte SDL-style gamepad GUID from a USB VID/PID/version triple. Used by raw-HID backends (DInput, Linux joydev, etc.) when filling fplGameControllerInfo for the resolver.
-fpl_internal void fpl__GamepadBuildSDLGuid(const uint16_t bus, const uint16_t vid, const uint16_t pid, const uint16_t version, const uint16_t nameCrc16, uint8_t outGuid[FPL_GAMEPAD_GUID_BYTES]) {
+fpl_internal void fpl__GamepadBuildSDLGuid(const uint16_t bus, const uint16_t vid, const uint16_t pid, const uint16_t version, const uint16_t nameCrc16, fplGameControllerGuid outGuid) {
 	outGuid[0]  = (uint8_t)(bus & 0xFF);
 	outGuid[1]  = (uint8_t)((bus >> 8) & 0xFF);
 	outGuid[2]  = (uint8_t)(nameCrc16 & 0xFF);
