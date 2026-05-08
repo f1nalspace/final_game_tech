@@ -1614,7 +1614,8 @@ static FPL_GAMEPAD_MAPPING_RESOLVE_CALLBACK(InputGamepadMappingResolveCallback) 
 	}
 	fplPlatformType systemPlatformType = fplGetPlatformType();
 	fplGamepadPlatform gamepadPlatform = fplGetGamepadPlatform(systemPlatformType);
-	return fplFindGamepadMapping(appState->gamepadMappingTable, appState->gamepadMappingTableEntryCount, info->guid, gamepadPlatform, outMapping);
+	const bool result = fplFindGamepadMapping(appState->gamepadMappingTable, appState->gamepadMappingTableEntryCount, info->guid, gamepadPlatform, outMapping);
+	return result;
 }
 
 int main(int argc, char* argv[]) {
