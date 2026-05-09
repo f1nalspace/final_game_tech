@@ -10413,16 +10413,16 @@ fpl_internal const char *fpl__Win32FormatGuidString(char *buffer, const size_t m
 #if defined(FPL__ENABLE_INPUT_XINPUT)
 
 // XInput Types
-#define FPL__FUNC_XINPUT_XInputGetState(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE *pState)
-typedef FPL__FUNC_XINPUT_XInputGetState(fpl__win32_func_XInputGetState);
+#define FPL__FUNC_INPUT_WIN32_XINPUT_XInputGetState(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE *pState)
+typedef FPL__FUNC_INPUT_WIN32_XINPUT_XInputGetState(fpl__func_InputWin32XInput_XInputGetState);
 
-#define FPL__FUNC_XINPUT_XInputGetCapabilities(name) DWORD WINAPI name(DWORD dwUserIndex, DWORD dwFlags, XINPUT_CAPABILITIES* pCapabilities)
-typedef FPL__FUNC_XINPUT_XInputGetCapabilities(fpl__win32_func_XInputGetCapabilities);
+#define FPL__FUNC_INPUT_WIN32_XINPUT_XInputGetCapabilities(name) DWORD WINAPI name(DWORD dwUserIndex, DWORD dwFlags, XINPUT_CAPABILITIES* pCapabilities)
+typedef FPL__FUNC_INPUT_WIN32_XINPUT_XInputGetCapabilities(fpl__func_InputWin32XInput_XInputGetCapabilities);
 
 typedef struct fpl__InputWin32XInputApi {
 	HMODULE xinputLibrary;
-	fpl__win32_func_XInputGetState *XInputGetState;
-	fpl__win32_func_XInputGetCapabilities *XInputGetCapabilities;
+	fpl__func_InputWin32XInput_XInputGetState *XInputGetState;
+	fpl__func_InputWin32XInput_XInputGetCapabilities *XInputGetCapabilities;
 } fpl__InputWin32XInputApi;
 
 // XInput backend instance owned by fpl__InputContext.
@@ -16191,11 +16191,11 @@ fpl_internal void fpl__Win32ReleaseWindow(const fpl__Win32InitState *initState, 
 #if defined(FPL__ENABLE_INPUT_XINPUT) && !defined(FPL__WIN32_XINPUT_IMPLEMENTED)
 #define FPL__WIN32_XINPUT_IMPLEMENTED
 
-FPL__FUNC_XINPUT_XInputGetState(fpl__InputWin32XInputGetStateStub) {
+FPL__FUNC_INPUT_WIN32_XINPUT_XInputGetState(fpl__InputWin32XInputGetStateStub) {
 	return(ERROR_DEVICE_NOT_CONNECTED);
 }
 
-FPL__FUNC_XINPUT_XInputGetCapabilities(fpl__InputWin32XInputGetCapabilitiesStub) {
+FPL__FUNC_INPUT_WIN32_XINPUT_XInputGetCapabilities(fpl__InputWin32XInputGetCapabilitiesStub) {
 	return(ERROR_DEVICE_NOT_CONNECTED);
 }
 
@@ -16225,8 +16225,8 @@ fpl_internal void fpl__Win32LoadXInputApi(fpl__InputWin32XInputApi *xinputApi) {
 			HMODULE libHandle = fpl_null;
 			FPL__WIN32_LOAD_LIBRARY_BREAK(FPL__MODULE_XINPUT, libHandle, libName);
 			xinputApi->xinputLibrary = libHandle;
-			FPL__WIN32_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_XINPUT, libHandle, libName, xinputApi, fpl__win32_func_XInputGetState, XInputGetState);
-			FPL__WIN32_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_XINPUT, libHandle, libName, xinputApi, fpl__win32_func_XInputGetCapabilities, XInputGetCapabilities);
+			FPL__WIN32_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_XINPUT, libHandle, libName, xinputApi, fpl__func_InputWin32XInput_XInputGetState, XInputGetState);
+			FPL__WIN32_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_XINPUT, libHandle, libName, xinputApi, fpl__func_InputWin32XInput_XInputGetCapabilities, XInputGetCapabilities);
 			result = true;
 		} while (0);
 		if (result) {
