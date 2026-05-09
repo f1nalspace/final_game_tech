@@ -8204,10 +8204,10 @@ fpl_platform_api bool fplPollMouseState(fplMouseState *outState);
 fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY);
 
 /**
-* @typedef fplGameControllerName
+* @typedef fplGamepadName
 * @brief A typedef that defines the name of a game controller.
 */
-typedef char fplGameControllerName[FPL_MAX_NAME_LENGTH];
+typedef char fplGamepadName[FPL_MAX_NAME_LENGTH];
 
 /**
 * @define FPL_GAME_CONTROLLER_GUID_SIZE
@@ -10427,7 +10427,7 @@ typedef struct fpl__Win32XInputApi {
 
 // XInput backend instance owned by fpl__InputContext.
 typedef struct fpl__InputBackendXInput {
-	fplGameControllerName deviceNames[XUSER_MAX_COUNT];
+	fplGamepadName deviceNames[XUSER_MAX_COUNT];
 	fpl_b32 isConnected[XUSER_MAX_COUNT];
 	fpl__Win32XInputApi api;
 	fplMilliseconds lastDeviceSearchTime;
@@ -10464,7 +10464,7 @@ typedef struct fpl__InputBackendDInputSlot {
 	uint16_t productID;
 	bool isAcquired;
 	bool isConnected;
-	fplGameControllerName deviceName;
+	fplGamepadName deviceName;
 	fplGamepadState lastState;
 	// Snapshot built from DIJOYSTATE every poll, fed into the active mapping.
 	fplGamepadData raw;
