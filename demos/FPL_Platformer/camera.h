@@ -57,7 +57,7 @@ typedef struct Camera {
 	bool hasTarget;
 } Camera;
 
-fpl_inline bool CameraInit(Camera *camera, const uint32_t id, const Vec2f offset, const float scale, const Vec2f viewRadius) {
+fpl_extern_inline bool CameraInit(Camera *camera, const uint32_t id, const Vec2f offset, const float scale, const Vec2f viewRadius) {
 	if (camera == fpl_null) {
 		return false; // Invalid arguments
 	}
@@ -70,26 +70,26 @@ fpl_inline bool CameraInit(Camera *camera, const uint32_t id, const Vec2f offset
 	return true;
 }
 
-fpl_inline void CameraUpdateViewport(Camera *camera, const Viewport4i *viewport, const float worldWidth) {
+fpl_extern_inline void CameraUpdateViewport(Camera *camera, const Viewport4i *viewport, const float worldWidth) {
 	camera->viewport = *viewport;
 	camera->worldToPixels = ((float)viewport->w / worldWidth) * camera->transform[0].scale;
 	camera->pixelsToWorld = 1.0f / camera->worldToPixels;
 }
 
-fpl_inline void CameraSetScale(Camera *camera, const float scale, const bool reset) {
+fpl_extern_inline void CameraSetScale(Camera *camera, const float scale, const bool reset) {
 	camera->transform[0].scale = scale;
 	if (reset)
 		camera->transform[1].scale = camera->transform[0].scale;
 }
 
-fpl_inline Vec2f CameraGetLimitedPosition(const Camera *camera, const Vec2f pos) {
+fpl_extern_inline Vec2f CameraGetLimitedPosition(const Camera *camera, const Vec2f pos) {
 	Vec2f minPos = V2fAdd(camera->limits.bounds.min, camera->viewRadius);
 	Vec2f maxPos = V2fSub(camera->limits.bounds.max, camera->viewRadius);
 	Vec2f result = V2fClamp(pos, minPos, maxPos);
 	return result;
 }
 
-fpl_inline void CameraSetPos(Camera *camera, const Vec2f pos, const bool reset) {
+fpl_extern_inline void CameraSetPos(Camera *camera, const Vec2f pos, const bool reset) {
 	if (camera->limits.isEnabled) {
 		Vec2f newPos = CameraGetLimitedPosition(camera, pos);
 		camera->transform[0].offset = V2fNegate(newPos);
@@ -102,7 +102,7 @@ fpl_inline void CameraSetPos(Camera *camera, const Vec2f pos, const bool reset) 
 	}
 }
 
-fpl_inline void CameraZoomToPosition(Camera *camera, const float oldZoom, const float newZoom, const float worldWidth, const Vec2f target) {
+fpl_extern_inline void CameraZoomToPosition(Camera *camera, const float oldZoom, const float newZoom, const float worldWidth, const Vec2f target) {
 	fplAssert(oldZoom > 0.0f && newZoom > 0.0f);
 	fplAssert(worldWidth > 0.0f);
 
@@ -124,7 +124,7 @@ fpl_inline void CameraZoomToPosition(Camera *camera, const float oldZoom, const 
 	camera->transform[0].offset = offsetNew;
 }
 
-fpl_inline void CameraMoveTo(Camera *camera, const Vec2f target, const float speed) {
+fpl_extern_inline void CameraMoveTo(Camera *camera, const Vec2f target, const float speed) {
 	Vec2f t = V2fMultScalar(target, 1.0f);
 	Vec2f p = V2fSub(camera->transform[0].offset, t);
 	float s = F32Abs(V2fLength(p) / speed);
@@ -134,13 +134,13 @@ fpl_inline void CameraMoveTo(Camera *camera, const Vec2f target, const float spe
 	}
 }
 
-fpl_inline void CameraSetTarget(Camera *camera, const Vec2f targetPos, const float targetSpeed) {
+fpl_extern_inline void CameraSetTarget(Camera *camera, const Vec2f targetPos, const float targetSpeed) {
 	camera->targetPos = targetPos;
 	camera->targetSpeed = targetSpeed;
 	camera->hasTarget = true;
 }
 
-fpl_inline void CameraUpdate(Camera *camera, const float dt) {
+fpl_extern_inline void CameraUpdate(Camera *camera, const float dt) {
 	// Move towards the target, if needed
 	if (camera->hasTarget) {
 		CameraMoveTo(camera, camera->targetPos, camera->targetSpeed);

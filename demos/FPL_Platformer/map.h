@@ -82,7 +82,7 @@ typedef struct Tile {
 // Convert a TileAreaMask (with centroid removed at bit 4) into 8-bit adjacency mask.
 // Bits 0-3 are kept as-is, bit 4 (centroid) is discarded,
 // bits 5-8 are shifted down into positions 4-7.
-fpl_inline uint8_t TileAreaMaskToU8(const TileAreaMask mask) {
+fpl_extern_inline uint8_t TileAreaMaskToU8(const TileAreaMask mask) {
 	// Clear the centroid bit 4
 	uint16_t mask16 = (mask & 0b0000000111101111);
 
@@ -106,7 +106,7 @@ typedef struct TileBounds {
 	Vec2i max;
 } TileBounds;
 
-fpl_inline TileBounds TileBoundsInit(const Vec2i min, const Vec2i max) {
+fpl_extern_inline TileBounds TileBoundsInit(const Vec2i min, const Vec2i max) {
 	TileBounds result = fplStructInit(TileBounds, min, max);
 	return result;
 }
@@ -176,7 +176,7 @@ typedef struct Map {
 	uint32_t height;
 } Map;
 
-fpl_inline bool MapIsValid(const Map *map) {
+fpl_extern_inline bool MapIsValid(const Map *map) {
 	if (map == fpl_null) {
 		return false;
 	}
@@ -185,21 +185,21 @@ fpl_inline bool MapIsValid(const Map *map) {
 }
 
 // Converts the public tile position into a local tile position
-fpl_inline Vec2i MapPublicTilePosToLocalTilePos(const Map *map, const Vec2i publicTilePos) {
+fpl_extern_inline Vec2i MapPublicTilePosToLocalTilePos(const Map *map, const Vec2i publicTilePos) {
 	Vec2i l = V2iSub(publicTilePos, map->origin);
 	Vec2i result = V2iInit(l.x, map->height - 1 - l.y);
 	return result;
 }
 
 // Converts the local tile position into a public tile position
-fpl_inline Vec2i MapLocalTilePosToPublicTilePos(const Map *map, const Vec2i localTilePos) {
+fpl_extern_inline Vec2i MapLocalTilePosToPublicTilePos(const Map *map, const Vec2i localTilePos) {
 	Vec2i p = V2iInit(localTilePos.x, map->height - 1 - localTilePos.y);
 	Vec2i result = V2iAdd(p, map->origin);
 	return result;
 }
 
 // Converts the specified world position into a tile position
-fpl_inline Vec2i MapWorldCoordsToTile(const Map *map, const Vec2f worldPos) {
+fpl_extern_inline Vec2i MapWorldCoordsToTile(const Map *map, const Vec2f worldPos) {
 	float wx = worldPos.x / map->tileSize.w;
 	float wy = worldPos.y / map->tileSize.h;
 
@@ -219,24 +219,24 @@ fpl_inline Vec2i MapWorldCoordsToTile(const Map *map, const Vec2f worldPos) {
 }
 
 // Converts the specified tile position into a world position
-fpl_inline Vec2f MapTileCoordsToWorld(const Map *map, const Vec2i tilePos) {
+fpl_extern_inline Vec2f MapTileCoordsToWorld(const Map *map, const Vec2i tilePos) {
 	float x = (float)(tilePos.x * map->tileSize.w);
 	float y = (float)(tilePos.y * map->tileSize.h);
 	return V2fInit(x, y);
 }
 
 // Gets a tile by the specified tile position, note that Y of the tile position is converted into tile space
-extern Tile MapGetTile(const Map *map, const Vec2i tilePos);
+fpl_extern Tile MapGetTile(const Map *map, const Vec2i tilePos);
 
 // Overwrites a tile type to a fixed tile position, without resizing the map
-extern bool MapSetTileType(Map *map, const Vec2i tilePos, const TileType type);
+fpl_extern bool MapSetTileType(Map *map, const Vec2i tilePos, const TileType type);
 
-fpl_inline bool MapIsTileOutsideLocal(const int widthMinusOne, const int heightMinusOne, Vec2i local) {
+fpl_extern_inline bool MapIsTileOutsideLocal(const int widthMinusOne, const int heightMinusOne, Vec2i local) {
 	return local.x < 0 || local.x > widthMinusOne || local.y < 0 || local.y > heightMinusOne;
 }
 
 // Returns true if the specified tile is visible or not (Ghost tiles are not visible!)
-fpl_inline bool MapTileTypeIsVisible(const TileType tileType) {
+fpl_extern_inline bool MapTileTypeIsVisible(const TileType tileType) {
 	switch (tileType) {
 		case TileType_Solid:
 			return true;
@@ -246,7 +246,7 @@ fpl_inline bool MapTileTypeIsVisible(const TileType tileType) {
 }
 
 // Returns true if the specified tile is an obstacle or not
-fpl_inline bool MapTileTypeIsObstacle(const TileType tileType) {
+fpl_extern_inline bool MapTileTypeIsObstacle(const TileType tileType) {
 	switch (tileType) {
 		case TileType_Solid:
 		case TileType_Ghost:
@@ -256,7 +256,7 @@ fpl_inline bool MapTileTypeIsObstacle(const TileType tileType) {
 	}
 }
 
-fpl_inline TileType MapGetTileTypeLocal(const Map *map, const int widthMinusOne, const int heightMinusOne, Vec2i local) {
+fpl_extern_inline TileType MapGetTileTypeLocal(const Map *map, const int widthMinusOne, const int heightMinusOne, Vec2i local) {
 	if (!MapIsValid(map) || MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, local)) {
 		return TileType_None;
 	}
@@ -264,7 +264,7 @@ fpl_inline TileType MapGetTileTypeLocal(const Map *map, const int widthMinusOne,
 	return tile.type;
 }
 
-fpl_inline bool MapTileIsObstacleLocal(const Map *map, const int widthMinusOne, const int heightMinusOne, Vec2i local) {
+fpl_extern_inline bool MapTileIsObstacleLocal(const Map *map, const int widthMinusOne, const int heightMinusOne, Vec2i local) {
 	if (!MapIsValid(map) || MapIsTileOutsideLocal(widthMinusOne, heightMinusOne, local)) {
 		return false;
 	}
@@ -274,7 +274,7 @@ fpl_inline bool MapTileIsObstacleLocal(const Map *map, const int widthMinusOne, 
 }
 
 // Returns true if the specified public tile position is inside the entire tile area
-fpl_inline bool MapIsTileInside(const Map *map, const Vec2i tilePos) {
+fpl_extern_inline bool MapIsTileInside(const Map *map, const Vec2i tilePos) {
 	if (!MapIsValid(map)) {
 		return false;
 	}
@@ -289,7 +289,7 @@ fpl_inline bool MapIsTileInside(const Map *map, const Vec2i tilePos) {
 
 
 // Returns true if the specified tile is an obstacle or not
-fpl_inline bool MapTilePosIsObstacle(const Map *map, const Vec2i tilePos) {
+fpl_extern_inline bool MapTilePosIsObstacle(const Map *map, const Vec2i tilePos) {
 	if (!MapIsValid(map)) {
 		return false;
 	}
@@ -304,13 +304,13 @@ fpl_inline bool MapTilePosIsObstacle(const Map *map, const Vec2i tilePos) {
 	return result;
 }
 
-fpl_inline AABB2f MapCreateTileAABB(const Map *map, const Vec2i tilePos) {
+fpl_extern_inline AABB2f MapCreateTileAABB(const Map *map, const Vec2i tilePos) {
 	Vec2f worldPos = MapTileCoordsToWorld(map, tilePos);
 	AABB2f result = AABB2fInitFromCenter(V2fAdd(worldPos, map->tileRadius), map->tileRadius);
 	return result;
 }
 
-fpl_inline TileBounds MapGetTileBounds(const Map *map, const AABB2f *aabb) {
+fpl_extern_inline TileBounds MapGetTileBounds(const Map *map, const AABB2f *aabb) {
 	Vec2i minTile = MapWorldCoordsToTile(map, aabb->min);
 	Vec2i maxTile = MapWorldCoordsToTile(map, V2fAdd(aabb->max, V2fInit(0.5f, 0.5f)));
 	return TileBoundsInit(minTile, maxTile);

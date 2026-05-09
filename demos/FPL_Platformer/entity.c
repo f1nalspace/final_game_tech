@@ -2,6 +2,8 @@
 
 #include "physics.h"
 
+#include <final_game.h>
+
 extern bool EntityInit(Entity *entity, const uint32_t id, const Vec2f radius, const EntityTransform *transform, const Vec4f color) {
 	if (entity == fpl_null) {
 		return false; // Invalid arguments

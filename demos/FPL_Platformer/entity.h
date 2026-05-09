@@ -39,7 +39,7 @@ typedef struct EntityTransform {
 	Vec2f pos;
 } EntityTransform;
 
-fpl_inline EntityTransform EntityTransformInit(const Vec2f pos) {
+fpl_extern_inline EntityTransform EntityTransformInit(const Vec2f pos) {
 	EntityTransform result = fplStructInit(EntityTransform, pos);
 	return result;
 }
@@ -88,21 +88,21 @@ typedef struct Entity {
 //
 // Public functions
 //
-fpl_inline bool EntityIsGrounded(const Entity *entity) {
+fpl_extern_inline bool EntityIsGrounded(const Entity *entity) {
 	if (entity == fpl_null) {
 		return false;
 	}
 	return entity->groundState.current;
 }
 
-fpl_inline bool EntityIsAir(const Entity *entity) {
+fpl_extern_inline bool EntityIsAir(const Entity *entity) {
 	if (entity == fpl_null) {
 		return false;
 	}
 	return !entity->groundState.current;
 }
 
-fpl_inline AABB2f EntityGetCurrentBounds(const Entity *entity) {
+fpl_extern_inline AABB2f EntityGetCurrentBounds(const Entity *entity) {
 	Vec2f p = entity->transform[0].pos;
 	Vec2f min = V2fSub(p, entity->radius);
 	Vec2f max = V2fAdd(p, entity->radius);
@@ -110,7 +110,7 @@ fpl_inline AABB2f EntityGetCurrentBounds(const Entity *entity) {
 	return result;
 }
 
-fpl_inline AABB2f EntityGetMotionBounds(const Entity *entity, const float dt) {
+fpl_extern_inline AABB2f EntityGetMotionBounds(const Entity *entity, const float dt) {
 	// Predict position for next frame
 	Vec2f currentPos = entity->transform[0].pos;
 	Vec2f predictedPos = V2fAddMultScalar(currentPos, V2fAdd(entity->velocity, entity->posCorrect), dt);
