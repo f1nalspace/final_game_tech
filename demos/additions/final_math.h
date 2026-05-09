@@ -609,21 +609,21 @@ typedef struct Angle {
 
 #if defined(__cplusplus)
 	static Angle FromDegrees(const float degrees) {
-		return { degrees * Deg2Rad, degrees };
+		return {  degrees * F32Deg2Rad, degrees };
 	}
 
 	static Angle FromRadians(const float radians) {
-		return { radians, radians * Rad2Deg };
+		return { radians, radians * F32Rad2Deg };
 	}
 #endif
 } Angle;
 
 fpl_force_inline Angle AngleFromDegrees(const float degrees) {
-	return fplStructInit(Angle, degrees, degrees * Deg2Rad);
+	return fplStructInit(Angle, degrees, degrees * F32Deg2Rad);
 }
 
 fpl_force_inline Angle AngleFromRadians(const float radians) {
-	return fplStructInit(Angle, radians* Rad2Deg, radians);
+	return fplStructInit(Angle, radians* F32Rad2Deg, radians);
 }
 
 //
