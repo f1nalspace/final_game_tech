@@ -231,9 +231,6 @@ SOFTWARE.
 	- New: Added function fplInputBackendMaskDisable
 	- New: Added function fplGamepadMappingApply
 	- New: Added function fplGamepadMappingApplyDefault
-	- Extented struct fplInputSettings with fields for new input system
-	- Extented struct fplGamepadState with union action buttons (down/right/left/up) and (A/B/X/Y)
-	- Extented struct fplGameControllersSettings with mappingResolver and mappingResolverUserData fields
 	- New: [Win32] Implemented function fplFileAppendBinary() for Win32 API
 	- New: [POSIX] Implemented function fplFileAppendBinary() for POSIX Unix API
 	- New: [Win32] Implemented function fplPathNormalize() for Win32 API
@@ -245,6 +242,8 @@ SOFTWARE.
 	- New[#187]: Implemented DirectInput input backend
 	- Improved: [Win32/DInput] Backend now routes DIJOYSTATE through fplGamepadMappingApply / fplGamepadMappingApplyDefault, with the resolver from fplGameControllersSettings.mappingResolver invoked once per controller connect to install a custom fplGamepadMapping
 	- Improved: [Linux/Joystick] /dev/input/jsX backend now feeds JS_EVENT_AXIS/BUTTON into a fplGamepadData snapshot, calls the mappingResolver with VID/PID/version read from /sys/class/input/jsX/device/id, and applies fplGamepadMappingApply when a mapping is installed (legacy behavior preserved when no resolver returns true)
+	- Changed: Extented struct fplInputSettings with fields for new input system
+	- Changed: Extented struct fplGamepadState with union action buttons (down/right/left/up) and (A/B/X/Y)
 
 	- Improved[#176]: Made internal event queue thread-safe using a lock-free push/pop linear buffer
 	- Improved[#88]: Gamepad input device is not locked to /dev/input/js0 anymore
