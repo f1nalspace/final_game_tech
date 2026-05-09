@@ -3264,7 +3264,7 @@ int main(int argc, char **argv) {
     fplCopyString("FPL Demo | Vulkan", settings.window.title, fplArrayCount(settings.window.title));
     fplCopyString("FPL Demo | Vulkan", settings.console.title, fplArrayCount(settings.console.title));
 
-    fplInitFlags initFlags = fplInitFlags_Window | fplInitFlags_GameController | fplInitFlags_Console;
+    fplInitFlags initFlags = fplInitFlags_Window | fplInitFlags_Console;
 
 #if VULKANDEMO_FPL_VIDEO_MODE != VULKANDEMO_FPL_VIDEO_MODE_NONE
     initFlags |= fplInitFlags_Video;
