@@ -222,7 +222,7 @@ SOFTWARE.
 	- New: Added struct fplGamepadInputBinding, that describes a raw input source bound to one logical FPL gamepad slot
 	- New: Added struct fplGamepadMapping, that holds a complete mapping from raw device inputs onto FPL's logical gamepad layout
 	- New: Added struct fplGamepadData, that captures a backend-agnostic snapshot of raw device input for use with fplGamepadMapping
-	- New: Added struct fplGameControllerInfo, that describes a controller for the mapping resolver callback
+	- New: Added struct fplGamepadInfo, that describes a controller for the mapping resolver callback
 	- New: Added typedef fplGamepadMappingResolverFn, the callback type fired once per controller connect on raw-HID gamepad backends
 	- New: Added macros FPL_GAMEPAD_BUTTON_COUNT, FPL_GAMEPAD_GUID_BYTES, FPL_GAMEPAD_DATA_MAX_AXES, FPL_GAMEPAD_DATA_MAX_BUTTONS, FPL_GAMEPAD_DATA_MAX_HATS
 	- New: Added enum fplInputSourceType
@@ -5716,7 +5716,7 @@ typedef struct fplConsoleSettings {
 fpl_common_api void fplSetDefaultConsoleSettings(fplConsoleSettings *console);
 
 // Forward declarations for the gamepad mapping resolver hook. Full definitions live further down with the other gamepad types.
-typedef struct fplGameControllerInfo fplGameControllerInfo;
+typedef struct fplGamepadInfo fplGamepadInfo;
 typedef struct fplGamepadMapping fplGamepadMapping;
 
 /**
@@ -5725,7 +5725,7 @@ typedef struct fplGamepadMapping fplGamepadMapping;
  * @param name The name of the function.
  * @return A boolean indicating the result.
  */
-#define FPL_GAMEPAD_MAPPING_RESOLVE_CALLBACK(name) bool name(const fplGameControllerInfo *info, fplGamepadMapping *outMapping, void *userData)
+#define FPL_GAMEPAD_MAPPING_RESOLVE_CALLBACK(name) bool name(const fplGamepadInfo *info, fplGamepadMapping *outMapping, void *userData)
 
 /**
 * @typedef fplGamepadMappingResolverFn
@@ -5755,10 +5755,10 @@ typedef struct fplGamepadSettings {
 
 /**
 * @brief Resets the given game controllers settings container to default values.
-* @param[out] gameControllers Reference to the target structure @ref fplGamepadSettings.
+* @param[out] gamepadSettings Reference to the target structure @ref fplGamepadSettings.
 * @note This will not change any input settings! To change the actual settings you have to pass the entire @ref fplSettings container as an argument in @ref fplPlatformInit().
 */
-fpl_common_api void fplSetDefaultGameControllersSettings(fplGamepadSettings *gameControllers);
+fpl_common_api void fplSetDefaultGamepadSettings(fplGamepadSettings *gamepadSettings);
 
 /**
 * @enum fplInputSourceType
@@ -5843,7 +5843,7 @@ fpl_common_api void fplInputBackendMaskDisable(fplInputBackendMask *mask, const 
 */
 typedef struct fplInputSettings {
 	//! Game controllers settings
-	fplGamepadSettings gameControllers;
+	fplGamepadSettings gamepad;
 	//! Bitmask of @ref fplInputSourceType values to enable (Default: @ref fplInputSourceType_All).
 	fplInputSourceType enabledSources;
 	//! Bitmask of @ref fplInputBackendType values to enable (Default: all bits set, unsupported backends are ignored at init time).
@@ -8534,10 +8534,10 @@ typedef struct fplGamepadData {
 } fplGamepadData;
 
 /**
-* @struct fplGameControllerInfo
+* @struct fplGamepadInfo
 * @brief Read-only description of a controller passed to a @ref fplGamepadMappingResolverFn at connect time.
 */
-typedef struct fplGameControllerInfo {
+typedef struct fplGamepadInfo {
 	//! Raw 16-byte SDL-compatible GUID built by the backend.
 	fplGameControllerGuid guid;
 	//! Display name of the device (UTF-8).
@@ -8558,7 +8558,7 @@ typedef struct fplGameControllerInfo {
 	uint32_t axisCount;
 	//! Number of raw hats exposed by the device.
 	uint32_t hatCount;
-} fplGameControllerInfo;
+} fplGamepadInfo;
 
 /**
 * @brief Applies a @ref fplGamepadMapping over a raw device snapshot and writes the result into @p outState.
@@ -12180,7 +12180,7 @@ fpl_internal void fpl__GamepadFinalizeState(fplGamepadState *state) {
 	state->isActive = active;
 }
 
-// Builds a 16-byte SDL-style gamepad GUID from a USB VID/PID/version triple. Used by raw-HID backends (DInput, Linux joydev, etc.) when filling fplGameControllerInfo for the resolver.
+// Builds a 16-byte SDL-style gamepad GUID from a USB VID/PID/version triple. Used by raw-HID backends (DInput, Linux joydev, etc.) when filling fplGamepadInfo for the resolver.
 fpl_internal void fpl__GamepadBuildSDLGuid(const uint16_t bus, const uint16_t vid, const uint16_t pid, const uint16_t version, const uint16_t nameCrc16, fplGameControllerGuid outGuid) {
 	outGuid[0]  = (uint8_t)(bus & 0xFF);
 	outGuid[1]  = (uint8_t)((bus >> 8) & 0xFF);
@@ -14534,17 +14534,17 @@ fpl_common_api void fplSetDefaultConsoleSettings(fplConsoleSettings *console) {
 	console->title[0] = 0;
 }
 
-fpl_common_api void fplSetDefaultGameControllersSettings(fplGamepadSettings *gameControllers) {
-	gameControllers->detectionFrequency = 1000;
-	gameControllers->updateFrequency = 0;
-	gameControllers->mappingResolver = fpl_null;
-	gameControllers->mappingResolverUserData = fpl_null;
+fpl_common_api void fplSetDefaultGamepadSettings(fplGamepadSettings *gamepadSettings) {
+	gamepadSettings->detectionFrequency = 1000;
+	gamepadSettings->updateFrequency = 0;
+	gamepadSettings->mappingResolver = fpl_null;
+	gamepadSettings->mappingResolverUserData = fpl_null;
 }
 
 fpl_common_api void fplSetDefaultInputSettings(fplInputSettings *input) {
 	FPL__CheckArgumentNullNoRet(input);
 	fplClearStruct(input);
-	fplSetDefaultGameControllersSettings(&input->gameControllers);
+	fplSetDefaultGamepadSettings(&input->gamepad);
 	input->enabledSources = fplInputSourceType_All;
 	input->enabledBackends.bits = 0xFFFFFFFFu;
 	input->disabledEvents = false;
@@ -16307,15 +16307,15 @@ fpl_internal void fpl__Win32XInput_GamepadToGamepadState(const XINPUT_GAMEPAD *n
 	outState->isActive = !fpl__IsZeroMemory(newState, sizeof(*newState));
 }
 
-static size_t fpl__Win32XInput_UpdateControllers(const fplGamepadSettings *gameControllersSettings, fpl__InputBackendXInput *backend) {
-	fplAssertPtr(gameControllersSettings);
+static size_t fpl__Win32XInput_UpdateControllers(const fplGamepadSettings *gamepadSettings, fpl__InputBackendXInput *backend) {
+	fplAssertPtr(gamepadSettings);
 	fplAssertPtr(backend);
 
 	if (backend->lastDeviceSearchTime == 0) {
 		backend->lastDeviceSearchTime = fplMillisecondsQuery();
 	}
 
-	const uint64_t detectionFrequency = gameControllersSettings->detectionFrequency;
+	const uint64_t detectionFrequency = gamepadSettings->detectionFrequency;
 
 	fplMilliseconds currentTime = fplMillisecondsQuery();
 	uint64_t deltaTime = (currentTime - backend->lastDeviceSearchTime);
@@ -16349,15 +16349,15 @@ static size_t fpl__Win32XInput_UpdateControllers(const fplGamepadSettings *gameC
 	return count;
 }
 
-static size_t fpl__Win32XInput_CreateEventsForStates(const fplGamepadSettings *gameControllersSettings, fpl__InputBackendXInput *backend) {
-	fplAssertPtr(gameControllersSettings);
+static size_t fpl__Win32XInput_CreateEventsForStates(const fplGamepadSettings *gamepadSettings, fpl__InputBackendXInput *backend) {
+	fplAssertPtr(gamepadSettings);
 	fplAssertPtr(backend);
 
 	if (backend->lastUpdateStatesTime == 0) {
 		backend->lastUpdateStatesTime = fplMillisecondsQuery();
 	}
 
-	const uint64_t updateFrequency = gameControllersSettings->updateFrequency;
+	const uint64_t updateFrequency = gamepadSettings->updateFrequency;
 
 	fplMilliseconds currentTime = fplMillisecondsQuery();
 	uint64_t deltaTime = (currentTime - backend->lastDeviceSearchTime);
@@ -16441,12 +16441,12 @@ fpl_internal void fpl__InputBackendXInput_Release(fpl__InputBackendXInput *backe
 	fplClearStruct(backend);
 }
 
-fpl_internal void fpl__InputBackendXInput_Update(fpl__InputBackendXInput *backend, const fplGamepadSettings *gameControllersSettings) {
+fpl_internal void fpl__InputBackendXInput_Update(fpl__InputBackendXInput *backend, const fplGamepadSettings *gamepadSettings) {
 	fplAssertPtr(backend);
-	fplAssertPtr(gameControllersSettings);
+	fplAssertPtr(gamepadSettings);
 	if (!backend->isInitialized) return;
-	fpl__Win32XInput_UpdateControllers(gameControllersSettings, backend);
-	fpl__Win32XInput_CreateEventsForStates(gameControllersSettings, backend);
+	fpl__Win32XInput_UpdateControllers(gamepadSettings, backend);
+	fpl__Win32XInput_CreateEventsForStates(gamepadSettings, backend);
 }
 
 fpl_internal bool fpl__InputBackendXInput_PollGamepad(fpl__InputBackendXInput *backend, fplGamepadStates *outStates) {
@@ -16777,7 +16777,7 @@ fpl_internal void fpl__Win32DInput_FillRawInput(const DIJOYSTATE *src, fplGamepa
 
 typedef struct fpl__Win32DInput_EnumCtx {
 	fpl__InputBackendDInput *backend;
-	const fplGamepadSettings *gameControllers;
+	const fplGamepadSettings *gamepadSettings;
 	uint32_t added;
 } fpl__Win32DInput_EnumCtx;
 
@@ -16844,8 +16844,8 @@ static BOOL WINAPI fpl__Win32DInput_EnumDevicesCallback(LPCDIDEVICEINSTANCEW ddi
 
 	// Resolve a per-device mapping. The resolver runs once per connect; failure or absence falls back to fplGamepadMappingApplyDefault.
 	slot->hasMapping = false;
-	if (ec->gameControllers != fpl_null && ec->gameControllers->mappingResolver != fpl_null) {
-		fplGameControllerInfo info = fplZeroInit;
+	if (ec->gamepadSettings != fpl_null && ec->gamepadSettings->mappingResolver != fpl_null) {
+		fplGamepadInfo info = fplZeroInit;
 		info.index = (uint32_t)slotIndex;
 		info.backend = fplInputBackendType_DInput;
 		info.name = slot->deviceName;
@@ -16858,7 +16858,7 @@ static BOOL WINAPI fpl__Win32DInput_EnumDevicesCallback(LPCDIDEVICEINSTANCEW ddi
 		info.axisCount = 8;
 		info.hatCount = 1;
 		fplGamepadMapping userMapping = fplZeroInit;
-		if (ec->gameControllers->mappingResolver(&info, &userMapping, ec->gameControllers->mappingResolverUserData)) {
+		if (ec->gamepadSettings->mappingResolver(&info, &userMapping, ec->gamepadSettings->mappingResolverUserData)) {
 			slot->mapping = userMapping;
 			slot->hasMapping = true;
 		}
@@ -16869,10 +16869,10 @@ static BOOL WINAPI fpl__Win32DInput_EnumDevicesCallback(LPCDIDEVICEINSTANCEW ddi
 	return DIENUM_CONTINUE;
 }
 
-fpl_internal void fpl__Win32DInput_DetectControllers(fpl__InputBackendDInput *backend, const fplGamepadSettings *gameControllersSettings) {
+fpl_internal void fpl__Win32DInput_DetectControllers(fpl__InputBackendDInput *backend, const fplGamepadSettings *gamepadSettings) {
 	if (backend->iface == fpl_null) return;
 	if (backend->lastDeviceSearchTime == 0) backend->lastDeviceSearchTime = fplMillisecondsQuery();
-	const uint64_t freq = gameControllersSettings->detectionFrequency;
+	const uint64_t freq = gamepadSettings->detectionFrequency;
 	fplMilliseconds now = fplMillisecondsQuery();
 	uint64_t delta = (uint64_t)(now - backend->lastDeviceSearchTime);
 	if (freq > 0 && delta > 0 && delta < freq) return;
@@ -16883,7 +16883,7 @@ fpl_internal void fpl__Win32DInput_DetectControllers(fpl__InputBackendDInput *ba
 
 	fpl__Win32DInput_EnumCtx ec = fplZeroInit;
 	ec.backend = backend;
-	ec.gameControllers = gameControllersSettings;
+	ec.gamepadSettings = gamepadSettings;
 	fpl__DI8_EnumDevices(backend->iface, DI8DEVCLASS_GAMECTRL, fpl__Win32DInput_EnumDevicesCallback, &ec, DIEDFL_ATTACHEDONLY);
 }
 
@@ -16956,11 +16956,11 @@ fpl_internal void fpl__InputBackendDInput_Release(fpl__InputBackendDInput *backe
 	fplClearStruct(backend);
 }
 
-fpl_internal void fpl__InputBackendDInput_Update(fpl__InputBackendDInput *backend, const fplGamepadSettings *gameControllersSettings) {
+fpl_internal void fpl__InputBackendDInput_Update(fpl__InputBackendDInput *backend, const fplGamepadSettings *gamepadSettings) {
 	fplAssertPtr(backend);
-	fplAssertPtr(gameControllersSettings);
+	fplAssertPtr(gamepadSettings);
 	if (!backend->isInitialized) return;
-	fpl__Win32DInput_DetectControllers(backend, gameControllersSettings);
+	fpl__Win32DInput_DetectControllers(backend, gamepadSettings);
 	fpl__Win32DInput_UpdateStates(backend);
 }
 
@@ -23782,14 +23782,14 @@ fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_e
 }
 
 // Detect new joysticks across /dev/input/js0 .. js{FPL__LINUX_JOYSTICK_SCAN_COUNT-1}.
-// Throttled by gameControllers.detectionFrequency. Called only from Update.
+// Throttled by gamepad.detectionFrequency. Called only from Update.
 fpl_internal void fpl__LinuxJoystick_DetectControllers(const fplSettings *settings, fpl__InputBackendLinuxJoystick *backend) {
 	// https://github.com/underdoeg/ofxGamepad
 	// https://github.com/elanthis/gamepad
 	// https://gist.github.com/jasonwhite/c5b2048c15993d285130
 	// https://github.com/Tasssadar/libenjoy/blob/master/src/libenjoy_linux.c
 	const uint64_t now = fplMillisecondsQuery();
-	if (backend->lastCheckTime != 0 && (now - backend->lastCheckTime) < settings->input.gameControllers.detectionFrequency) {
+	if (backend->lastCheckTime != 0 && (now - backend->lastCheckTime) < settings->input.gamepad.detectionFrequency) {
 		return;
 	}
 	backend->lastCheckTime = now;
@@ -23888,14 +23888,14 @@ fpl_internal void fpl__LinuxJoystick_DetectControllers(const fplSettings *settin
 
 		// Resolve a per-device mapping. The resolver runs once per connect; failure or absence keeps the legacy joydev convention.
 		controller->hasMapping = false;
-		const fplGamepadSettings *gc = &settings->input.gameControllers;
+		const fplGamepadSettings *gc = &settings->input.gamepad;
 		if (gc->mappingResolver != fpl_null) {
 			uint16_t bus = 0;
 			uint16_t vid = 0;
 			uint16_t pid = 0;
 			uint16_t version = 0;
 			fpl__LinuxJoystick_ReadDeviceIds(slotIndex, &bus, &vid, &pid, &version);
-			fplGameControllerInfo info = fplZeroInit;
+			fplGamepadInfo info = fplZeroInit;
 			info.index = (uint32_t)freeIndex;
 			info.backend = fplInputBackendType_LinuxJoystick;
 			info.name = controller->displayName;
@@ -33241,12 +33241,12 @@ fpl_internal void fpl__InputSystem_Update(fpl__InputContext *ctx) {
 	if (ctx->settings.disabledEvents) return;
 #	if defined(FPL__ENABLE_INPUT_XINPUT)
 	if ((ctx->settings.enabledSources & fplInputSourceType_Gamepad) != 0 && ctx->xinput.isInitialized) {
-		fpl__InputBackendXInput_Update(&ctx->xinput, &ctx->settings.gameControllers);
+		fpl__InputBackendXInput_Update(&ctx->xinput, &ctx->settings.gamepad);
 	}
 #	endif
 #	if defined(FPL__ENABLE_INPUT_DINPUT)
 	if ((ctx->settings.enabledSources & fplInputSourceType_Gamepad) != 0 && ctx->dinput.isInitialized) {
-		fpl__InputBackendDInput_Update(&ctx->dinput, &ctx->settings.gameControllers);
+		fpl__InputBackendDInput_Update(&ctx->dinput, &ctx->settings.gamepad);
 	}
 #	endif
 #	if defined(FPL__ENABLE_INPUT_LINUX_JOYSTICK)
