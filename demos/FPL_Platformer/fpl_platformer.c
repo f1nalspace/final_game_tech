@@ -67,7 +67,7 @@ License:
 //
 // Entry point for one-time game initialization
 //
-fpl_extern bool GameInit(GameMemory *gameMemory) {
+fpl_extern bool GameInit(GameMemory *gameMemory, const int argumentCount, char **arguments) {
 	if (gameMemory == fpl_null) {
 		return false; // Invalid arguments
 	}

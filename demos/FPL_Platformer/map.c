@@ -53,7 +53,7 @@ fpl_internal bool MapTilePosIsMaskableLocal(const Map *map, const int widthMinus
 }
 
 // Gets the tile area mask from the specified map and local position
-fpl_internal TileAreaMask MapGetTileAreaMaskLocal(const Map *map, const int widthMinusOne, const heightMinusOne, const Vec2i local) {
+fpl_internal TileAreaMask MapGetTileAreaMaskLocal(const Map *map, const int widthMinusOne, const int heightMinusOne, const Vec2i local) {
 	if (!MapIsValid(map)) {
 		return TileAreaMask_None;
 	}

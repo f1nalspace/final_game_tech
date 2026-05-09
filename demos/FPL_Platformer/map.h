@@ -80,18 +80,18 @@ typedef struct Tile {
 } Tile;
 
 // Convert a TileAreaMask (with centroid removed at bit 4) into 8-bit adjacency mask.
-// Bits 0–3 are kept as-is, bit 4 (centroid) is discarded,
-// bits 5–8 are shifted down into positions 4–7.
+// Bits 0-3 are kept as-is, bit 4 (centroid) is discarded,
+// bits 5-8 are shifted down into positions 4-7.
 fpl_inline uint8_t TileAreaMaskToU8(const TileAreaMask mask) {
 	// Clear the centroid bit 4
 	uint16_t mask16 = (mask & 0b0000000111101111);
 
     uint8_t result = 0;
 
-    // Keep bits 0–3
+    // Keep bits 0-3
     result |= (mask16 & 0b0000000000001111); // TopLeft, TopCenter, TopRight, Left
 
-    // Shift bits 5–8 down by 1
+    // Shift bits 5-8 down by 1
     result |= ((mask16 & 0b0000000111100000) >> 1); // Right, BottomLeft, BottomCenter, BottomRight
 
     return result;
