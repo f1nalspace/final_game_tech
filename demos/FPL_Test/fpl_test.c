@@ -1837,7 +1837,7 @@ static void TestTimes(void) {
 // Smoke test for the multi-backend gamepad merge in fpl__InputSystem_PollGamepad. With no real controller plugged in, every disconnected slot must come back zeroed. Verifies the system layer clears outStates once and that backends do not leave stale data.
 static void TestGamepadPollMerge() {
 	ftMsg("Test fplPollGamepadStates merge contract\n");
-	if (!fplPlatformInit(fplInitFlags_GameController, fpl_null)) {
+	if (!fplPlatformInit(fplInitFlags_Gamepad, fpl_null)) {
 		ftMsg("  skipped: gamepad init failed\n");
 		return;
 	}

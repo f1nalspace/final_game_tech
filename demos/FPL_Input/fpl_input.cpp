@@ -1693,8 +1693,8 @@ int main(int argc, char* argv[]) {
 	fplSettings settings = fplMakeDefaultSettings();
 	fplCopyString("FPL Input Demo", settings.window.title, fplArrayCount(settings.window.title));
 
-	settings.input.gameControllers.mappingResolver = InputGamepadMappingResolveCallback;
-	settings.input.gameControllers.mappingResolverUserData = appState;
+	settings.input.gamepad.mappingResolver = InputGamepadMappingResolveCallback;
+	settings.input.gamepad.mappingResolverUserData = appState;
 
 	int retCode = 0;
 
