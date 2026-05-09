@@ -163,15 +163,22 @@ fplStaticAssert(MaxBrickCols % 2 != 0);
 // Brick UVs
 enum class BrickType: int32_t {
 	NoBrick = 0,
-	Solid
+	Green,
+	Red,
+	Blue,
+	Yellow,
 };
+constexpr uint32_t BrickTypeCount = 4;
 const Vec2i BrickTileSize = V2iInit(32, 16);
-const Vec2i BricksTilesetSize = V2iInit(32, 16);
+const Vec2i BricksTilesetSize = V2iInit(128, 16);
 const int BrickTilesetBorder = 0;
 class BricksUVsClass: public ArrayInitializer<BrickType, UVRect, 256> {
 public:
 	BricksUVsClass() {
-		Set(BrickType::Solid, UVRectFromTile(BricksTilesetSize, BrickTileSize, BrickTilesetBorder, V2iInit(0, 0)));
+		Set(BrickType::Green, UVRectFromTile(BricksTilesetSize, BrickTileSize, BrickTilesetBorder, V2iInit(0, 0)));
+		Set(BrickType::Red, UVRectFromTile(BricksTilesetSize, BrickTileSize, BrickTilesetBorder, V2iInit(1, 0)));
+		Set(BrickType::Blue, UVRectFromTile(BricksTilesetSize, BrickTileSize, BrickTilesetBorder, V2iInit(2, 0)));
+		Set(BrickType::Yellow, UVRectFromTile(BricksTilesetSize, BrickTileSize, BrickTilesetBorder, V2iInit(3, 0)));
 	}
 };
 static BricksUVsClass BricksUVs = {};
@@ -500,7 +507,7 @@ static void LoadLevel(GameState &state, int levelSeed) {
 			float brickX = -WorldRadius.x + FrameRadius * 2.0f + AreaPadding + BrickRadius.x;
 			for(int col = 0; col < MaxBrickCols; ++col) {
 				BrickType brickType = state.bricksMap[row * MaxBrickCols + col];
-				if(brickType == BrickType::Solid) {
+				if(brickType != BrickType::NoBrick) {
 					Entity *brickEntity = &state.activeBricks[state.totalBricks++];
 					*brickEntity = {};
 					brickEntity->type = EntityType::Brick;
@@ -862,7 +869,7 @@ static void SetRandomLevel(GameState &state, int seed) {
 	fplAssert((MaxBrickCols * MaxBrickRows) <= fplArrayCount(state.bricksMap));
 	fplMemoryClear(state.bricksMap, sizeof(Brick) * fplArrayCount(state.bricksMap));
 	srand(seed);
-	state.levelSeed = seed;
+	state.levelSeed = 42 + seed;
 	int halfColCount = (MaxBrickCols - 1) / 2;
 	bool reverse = RandomInt(100) > 25;
 	for(int row = 0; row < MaxBrickRows; ++row) {
@@ -871,18 +878,23 @@ static void SetRandomLevel(GameState &state, int seed) {
 #else
 		int randomColCount = RandomInt(halfColCount);
 #endif
+		int randomBrickTypeIndex = RandomInt(BrickTypeCount);
+		BrickType brickType = (BrickType)((int)BrickType::Green + randomBrickTypeIndex);
+
 		for(int col = 0; col < randomColCount; ++col) {
 			int c = reverse ? (halfColCount - 1 - col) : col;
 			int leftCol = c;
 			int rightCol = (MaxBrickCols - 1) - c;
-			state.bricksMap[row * MaxBrickCols + leftCol] = BrickType::Solid;
-			state.bricksMap[row * MaxBrickCols + rightCol] = BrickType::Solid;
+
+
+			state.bricksMap[row * MaxBrickCols + leftCol] = brickType;
+			state.bricksMap[row * MaxBrickCols + rightCol] = brickType;
 		}
 #if ALL_BRICKS
-		state.bricksMap[row * MaxBrickCols + halfColCount] = BrickType::Solid;
+		state.bricksMap[row * MaxBrickCols + halfColCount] = BrickType::Green;
 #else
 		if(Random01() > 0.5f) {
-			state.bricksMap[row * MaxBrickCols + halfColCount] = BrickType::Solid;
+			state.bricksMap[row * MaxBrickCols + halfColCount] = BrickType::Green;
 		}
 #endif
 	}
@@ -1526,6 +1538,7 @@ extern void GameRender(GameMemory *gameMemory, const Input *input, const float a
 	const float h = WorldRadius.y;
 
 	glViewport(state->viewport.x, state->viewport.y, state->viewport.w, state->viewport.h);
+	glScissor(state->viewport.x, state->viewport.y, state->viewport.w, state->viewport.h);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	glMatrixMode(GL_PROJECTION);
@@ -1552,7 +1565,6 @@ int main(int argc, char **argv) {
 	GameConfiguration config = fplZeroInit;
 	config.title = "FPL Demo | Crackout";
 	config.hideMouseCursor = true;
-	config.audioSampleRate = 44100;
 	int result = GameMain(&config, argc, argv);
 	return(result);
 }

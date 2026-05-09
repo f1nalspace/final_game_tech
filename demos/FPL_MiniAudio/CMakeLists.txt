@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.10)
 # Project settings
 #
 # -----------------------------------------------------------------------------
-project(FPL_MiniAudio)
+project(FPL_MiniAudio C)
 
 set(MY_C_STANDARD c99)
 

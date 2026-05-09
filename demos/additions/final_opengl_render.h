@@ -12,11 +12,11 @@ Temporary: Remove it when render commands are fully implemented
 
 #include <stdint.h>
 
-fpl_inline TextureHandle GetTextureHandleFromID(const GLuint texId) {
+fpl_extern_inline TextureHandle GetTextureHandleFromID(const GLuint texId) {
 	return (TextureHandle)(uintptr_t)(texId);
 }
 
-fpl_inline GLuint GetTextureIDFromHandle(const TextureHandle handle) {
+fpl_extern_inline GLuint GetTextureIDFromHandle(const TextureHandle handle) {
 	return (GLuint)(uintptr_t)(handle);
 }
 
@@ -161,6 +161,8 @@ fpl_extern void InitOpenGLRenderer() {
 	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
 
 	glEnable(GL_LINE_SMOOTH);
+
+	glEnable(GL_SCISSOR_TEST);
 }
 
 fpl_extern void RenderWithOpenGL(RenderState *renderState) {
@@ -206,6 +208,16 @@ fpl_extern void RenderWithOpenGL(RenderState *renderState) {
 					fplAssert(dataSize == sizeof(ViewportCommand));
 					ViewportCommand *cmd = (ViewportCommand *)dataStart;
 					glViewport(cmd->x, cmd->y, cmd->w, cmd->h);
+
+					// NOTE(fina): Scissor-Test is enabled by default, so we always use the same from the viewport
+					glScissor(cmd->x, cmd->y, cmd->w, cmd->h);
+				} break;
+
+				case CommandType_Scissor:
+				{
+					fplAssert(dataSize == sizeof(ScissorCommand));
+					ScissorCommand *cmd = (ScissorCommand *)dataStart;
+					glScissor(cmd->x, cmd->y, cmd->w, cmd->h);
 				} break;
 
 				case CommandType_Clear:

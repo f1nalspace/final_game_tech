@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.10)
 # Project settings
 #
 # -----------------------------------------------------------------------------
-project(FPL_OpenGL)
+project(FPL_OpenGL C)
 
 set(MY_C_STANDARD c99)
 
@@ -34,6 +34,16 @@ set(MY_DEFINES
 # Do not change the following lines
 #
 # -----------------------------------------------------------------------------
+
+add_compile_options(-fdiagnostics-color=always)
+add_compile_options(-fdiagnostics-plain-output)
+add_compile_options(-fdiagnostics-format=text)
+add_compile_options(-fdiagnostics-show-option)
+
+# Force English diagnostics
+add_compile_options(-fdiagnostics-plain-output)
+set(ENV{LC_ALL} "C")
+set(ENV{LANG} "C")
 
 set(FPL_ROOT_PATH_RELATIVE ../)
 get_filename_component(FPL_ROOT_PATH ${FPL_ROOT_PATH_RELATIVE} ABSOLUTE)

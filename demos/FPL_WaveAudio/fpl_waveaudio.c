@@ -27,7 +27,9 @@ License:
 */
 
 // Include FPL
-#define FPL_IMPLEMENTATION
+#ifndef FPL_IMPLEMENTATION
+#	define FPL_IMPLEMENTATION
+#endif
 #define FPL_NO_VIDEO
 #define FPL_NO_WINDOW
 #include <final_platform_layer.h>

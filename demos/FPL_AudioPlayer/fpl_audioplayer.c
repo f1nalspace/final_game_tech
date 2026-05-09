@@ -5,17 +5,21 @@ Name:
 
 Description:
 	This demo shows how to play music, sounds using a custom audio system/mixer.
-	It supports uncompressed PCM wave data, OGG Vorbis and MP3 Files.
-	Resampling support is limited to only even sample rates.
-
-	In addition all samples are cached in a lock-free ringbuffer and are played back properly, see AudioPlayback() for more details.
 
 	The audio tracks are streamed in and use a slow/fast detection to only cache when it needs to, see AudioStreamingThread() for more details.
+	In addition all samples are cached in a lock-free ringbuffer and are played back properly, see AudioPlayback() for more details.
 
 	To make it more appealing all audio samples are visualized with OpenGL and uses several algorythms, such FFT, Windowing, Smoothing, etc.
 	This can be shown from the full audio buffer, or in realtime that is filled directly in the streaming thread.
 
-	Everything together is very complex and requires a good understanding how digital sound is played back in a computer.
+	Resampling is fully supported for any sample rates
+
+	The following formats are supports:
+	- PCM Wave (uncompressed)
+	- OGG Vorbis (S16 output)
+	- MP3 (S16 output)
+
+	The demo is very complex and requires a good understanding how digital sound is played back in a computer.
 
 How the demo works:
 	# Audio System
@@ -51,8 +55,6 @@ How the demo works:
 
 	The samples ring-buffer are filled by the AudioSystemWriteFrames() function, which may advanced the audio system play cursor.
 
-	# Main
-
 	# Rendering
 
 	All rendering is done using oldschool style OpenGL 1.x.
@@ -64,6 +66,10 @@ How the demo works:
 	- Spectrum analysis (Incomplete)
 
 	The ring-buffer is visualized as simple bars with a tail and head position.
+
+Known Issues / Limitations:
+	- Visualization of FFT is incorrect
+	- Displayed audio samples are not sync with actual samples that are output to the speaker, so its not syncronized
 
 Requirements:
 	- C99 Compiler
@@ -78,6 +84,9 @@ Todo:
 	- Multiple audio tracks
 
 Changelog:
+	## 2026-04-03
+	- Updated documentations
+
 	## 2025-03-25
 	- Added progressbar to indicate current position in the track
 	- Fixed streamed/played frames was not reset on drag & drop
@@ -198,8 +207,12 @@ Visualize the samples:
 
 #define OPT_PLAYBACK OPT_PLAYBACK_STREAMBUFFER
 
-#define FPL_LOGGING
-#define FPL_IMPLEMENTATION
+#ifndef FPL_LOGGING
+#	define FPL_LOGGING
+#endif
+#ifndef FPL_IMPLEMENTATION
+#	define FPL_IMPLEMENTATION
+#endif
 #define FPL_NO_VIDEO_VULKAN
 #include <final_platform_layer.h>
 
@@ -207,7 +220,9 @@ Visualize the samples:
 #include <math.h> // sinf, M_PI
 #include <float.h>
 
-#define FINAL_AUDIOSYSTEM_IMPLEMENTATION
+#ifndef FINAL_AUDIOSYSTEM_IMPLEMENTATION
+#	define FINAL_AUDIOSYSTEM_IMPLEMENTATION
+#endif
 #include <final_audiosystem.h>
 
 #define FGL_IMPLEMENTATION
@@ -244,6 +259,14 @@ static const int AudibleFrequencyRanges[] = {
 
 #define MAX_AUDIO_BIN_COUNT 32
 
+typedef enum SpectrumMode {
+	SpectrumMode_Natural = 0,
+	SpectrumMode_Exponential,
+	SpectrumMode_MultiPeakScale,
+	SpectrumMode_MaxPeakScale,
+	SpectrumMode_Count,
+} SpectrumMode;
+
 typedef struct AudioVisualization {
 	AudioFramesChunk videoAudioChunks[2]; // 0 = Render, 1 = New
 	FFTDouble fftInput[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
@@ -257,8 +280,11 @@ typedef struct AudioVisualization {
 	double scaledMagnitudes[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
 	double scaledSamples[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
 	double windowCoeffs[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
+	double rawMagnitudes[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
 	double spectrum[MAX_AUDIO_BIN_COUNT];
-	double bins[MAX_AUDIO_BIN_COUNT];
+	double peakSpectrum[MAX_AUDIO_BIN_COUNT];
+	double globalPeak;
+	double bins[MAX_AUDIO_BIN_COUNT + 1];
 	volatile uint32_t hasVideoAudioChunk;
 } AudioVisualization;
 
@@ -281,6 +307,7 @@ typedef struct AudioDemo {
 
 	volatile fpl_b32 isStreamingThreadStopped;
 	fpl_b32 useRealTimeSamples;
+	SpectrumMode spectrumMode;
 } AudioDemo;
 
 static void UpdateTitle(AudioDemo *demo, const char *audioTrackName, const bool isRealTime, const double fps) {
@@ -376,6 +403,10 @@ static void ClearVisualization(AudioDemo *demo) {
 	fplClearStruct(&demo->visualization.fftOutput);
 	fplClearStruct(&demo->visualization.scaledMagnitudes);
 	fplClearStruct(&demo->visualization.scaledSamples);
+	fplClearStruct(&demo->visualization.rawMagnitudes);
+	fplClearStruct(&demo->visualization.peakSpectrum);
+	demo->visualization.globalPeak = 0.0;
+	demo->spectrumMode = SpectrumMode_Natural;
 }
 
 static void Render(AudioDemo *demo, const int screenW, const int screenH, const double currentRenderTime) {
@@ -554,14 +585,14 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 		if (!sampleScaling) {
 			// No sample scaling
 			double scaleSamplesFitFactor = 2.0f;
-			for (uint32_t frameIndex = 1; frameIndex < frameCount; ++frameIndex) {
+			for (uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
 				visualization->scaledSamples[frameIndex] = visualization->currentSamples[frameIndex] * scaleSamplesFitFactor;
 			}
 		} else {
 			// Normalize samples to be in full range of -1.0 to 1.0, just for better visualization
 			double scaleSamplesFitFactor = 0.75f;
 			double rangeSample = maxSamples - minSamples;
-			for (uint32_t frameIndex = 1; frameIndex < frameCount; ++frameIndex) {
+			for (uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
 				double sample = visualization->currentSamples[frameIndex];
 				double scaledSample = ((sample - minSamples) / rangeSample) * scaleSamplesFitFactor;
 				visualization->scaledSamples[frameIndex] = -1.0f + scaledSample * 2.0f;
@@ -573,77 +604,107 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 
 		const uint32_t halfFFT = frameCount / 2;
 
-		const bool useLogarythmBase = true;
-
-		// Compute raw magnitudes (We do it for the entire FFT, not just the half because i want to see all of it)
-		// Convert magnitudes into log() + Track last magnitudes for later use
+		// Compute magnitudes in dB with fixed reference scale [-120, 0] dB
+		// Factor of 2 for single-sided spectrum (all bins except DC and Nyquist)
+		const double minDb = -60.0;
+		const double maxDb = 0.0;
+		const double dbRange = maxDb - minDb;
 		for (uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
 			double re = visualization->fftOutput[frameIndex].real;
 			double im = visualization->fftOutput[frameIndex].imag;
 			double rawMagnitude = sqrt(re * re + im * im);
-			double magnitude;
-			if (useLogarythmBase)
-				magnitude = log(1.0 + rawMagnitude);
-			else
-				magnitude = rawMagnitude;
+			visualization->rawMagnitudes[frameIndex] = rawMagnitude;
+			double amplitude = (frameIndex > 0 && frameIndex < halfFFT) ? rawMagnitude * 2.0 : rawMagnitude;
+			double dB = 20.0 * log10(amplitude + 1e-10);
+			double scaledMagnitude = fplMax(0.0, fplMin((dB - minDb) / dbRange, 1.0));
 			visualization->lastMagnitudes[frameIndex] = visualization->currentMagnitudes[frameIndex];
-			visualization->currentMagnitudes[frameIndex] = magnitude;
+			visualization->currentMagnitudes[frameIndex] = scaledMagnitude;
 		}
 
-		// Smooth magnitudes
-		const double magSmooth = 0.4;
+		// Smooth magnitudes with fast attack / slow decay
+		const double magAttack = 0.8;
+		const double magDecay = 0.05;
 		for(uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
-			double lastMagnitude = visualization->lastMagnitudes[frameIndex];
-			double currentMagnitude = visualization->currentMagnitudes[frameIndex];
-			double newMagnitude = lastMagnitude * (1.0 - magSmooth) + currentMagnitude * magSmooth;
-			visualization->currentMagnitudes[frameIndex] = newMagnitude;
+			double last = visualization->lastMagnitudes[frameIndex];
+			double current = visualization->currentMagnitudes[frameIndex];
+			double factor = (current > last) ? magAttack : magDecay;
+			visualization->currentMagnitudes[frameIndex] = last * (1.0 - factor) + current * factor;
 		}
 
-		// Track min/max magnitudes
-		double minMagnitude = visualization->currentMagnitudes[0];
-		double maxMagnitude = visualization->currentMagnitudes[0];
-		for(uint32_t frameIndex = 1; frameIndex < halfFFT; ++frameIndex) {
-			double magnitude = visualization->currentMagnitudes[frameIndex];
-			if(magnitude > maxMagnitude) {
-				maxMagnitude = magnitude;
-			}
-			if(magnitude < minMagnitude) {
-				minMagnitude = magnitude;
-			}
-		}
-
-		
-
-		// Normalize the magnitudes into range of 0.0 to 1.0
-		const double rangeMagnitude = maxMagnitude - minMagnitude;
+		// Copy smoothed magnitudes to scaledMagnitudes for rendering
 		for(uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
-			double magnitude = visualization->currentMagnitudes[frameIndex];
-			double scaledMagnitude = (magnitude - minMagnitude) / rangeMagnitude;
-			visualization->scaledMagnitudes[frameIndex] = scaledMagnitude;
+			visualization->scaledMagnitudes[frameIndex] = visualization->currentMagnitudes[frameIndex];
 		}
 
-		// Reset and evaluate max peaks
+		// Fill spectrum bins with max raw magnitude per frequency band (video algorithm step 5)
 		uint32_t binCount = MAX_AUDIO_BIN_COUNT;
-		for(uint32_t binIndex = 0; binIndex < binCount - 1; ++binIndex) {
-			visualization->spectrum[binIndex] = 0.0;
+		double newSpectrum[MAX_AUDIO_BIN_COUNT] = {0};
+		for (uint32_t binIndex = 0; binIndex < binCount; ++binIndex) {
 			double lowerFrequency = visualization->bins[binIndex];
 			double upperFrequency = visualization->bins[binIndex + 1];
 			for (uint32_t frameIndex = 0; frameIndex < halfFFT; ++frameIndex) {
 				double frameFreq = (frameIndex * (double)demo->targetAudioFormat.sampleRate) / (double)frameCount;
 				if (frameFreq >= lowerFrequency && frameFreq <= upperFrequency) {
-					double scaledMagnitude = visualization->scaledMagnitudes[frameIndex];
-					if (scaledMagnitude > visualization->spectrum[binIndex]) {
-						visualization->spectrum[binIndex] = scaledMagnitude;
-					}
+					double mag = visualization->rawMagnitudes[frameIndex];
+					if (mag > newSpectrum[binIndex])
+						newSpectrum[binIndex] = mag;
 				}
 			}
 		}
 
-		// Spectrum deformations
-		const double fitFactor = 1.0;
+		// Apply spectrum deformation (video algorithm step 6)
+		// After NormalizeFFT (÷N=256) + Hamming window, full-scale sine → rawMagnitude ≈ 0.27
+		const double peakDecay = 0.99;
+		switch (demo->spectrumMode) {
+			case SpectrumMode_Natural: {
+				// fitFactor = 1/0.27 ≈ 3.7 so a full-scale sine reaches ~100% bar height
+				const double fitFactor = 4.0;
+				for (uint32_t i = 0; i < binCount; ++i)
+					newSpectrum[i] = fplMin(newSpectrum[i] * fitFactor, 1.0);
+			} break;
+			case SpectrumMode_Exponential: {
+				// fitFactor2=1000 sets noise floor at x=0.001 (log(0.001*1000)=log(1)=0)
+				// fitFactor=0.16 so full-scale (x=0.27): log(270)*0.16 ≈ 0.90
+				const double fitFactor = 0.16;
+				const double fitFactor2 = 1000.0;
+				for (uint32_t i = 0; i < binCount; ++i)
+					newSpectrum[i] = fplMin(fplMax(log(newSpectrum[i] * fitFactor2) * fitFactor, 0.0), 1.0);
+			} break;
+			case SpectrumMode_MultiPeakScale: {
+				const double fitFactor = 1.0;
+				for (uint32_t i = 0; i < binCount; ++i) {
+					if (newSpectrum[i] > visualization->peakSpectrum[i])
+						visualization->peakSpectrum[i] = newSpectrum[i];
+					else
+						visualization->peakSpectrum[i] *= peakDecay;
+					double peak = visualization->peakSpectrum[i];
+					newSpectrum[i] = (peak > 1e-10) ? fplMin(newSpectrum[i] / peak * fitFactor, 1.0) : 0.0;
+				}
+			} break;
+			case SpectrumMode_MaxPeakScale: {
+				const double fitFactor = 1.0;
+				double maxVal = 0.0;
+				for (uint32_t i = 0; i < binCount; ++i)
+					if (newSpectrum[i] > maxVal) maxVal = newSpectrum[i];
+				if (maxVal > visualization->globalPeak)
+					visualization->globalPeak = maxVal;
+				else
+					visualization->globalPeak *= peakDecay;
+				double gPeak = visualization->globalPeak;
+				for (uint32_t i = 0; i < binCount; ++i)
+					newSpectrum[i] = (gPeak > 1e-10) ? fplMin(newSpectrum[i] / gPeak * fitFactor, 1.0) : 0.0;
+			} break;
+			default: break;
+		}
+
+		// Temporal smoothing with fast attack / slow decay (~1s fall from peak at 60fps)
+		const double specAttack = 0.7;
+		const double specDecay  = 0.04;
 		for (uint32_t i = 0; i < binCount; ++i) {
-			double value = visualization->spectrum[i];
-			visualization->spectrum[i] = value * fitFactor;
+			double last    = visualization->spectrum[i];
+			double current = newSpectrum[i];
+			double factor  = (current > last) ? specAttack : specDecay;
+			visualization->spectrum[i] = last * (1.0 - factor) + current * factor;
 		}
 
 #if 1
@@ -1195,16 +1256,12 @@ static void FillFrequencyBins(const uint32_t binCount, const uint32_t sampleRate
 
 static void GenerateFrequencyBins(const uint32_t binCount, const uint32_t sampleRate, double *bins) {
 	const double nyquist = sampleRate * 0.5;
-	const double minHearableFreq = 400.0;
-    const double maxHearableFreq = 20000.0;
-	const double minFreq = minHearableFreq;
-	const double maxFreq = fplMin(maxHearableFreq, nyquist);
-	const uint32_t N = binCount - 1;
-	bins[0] = 0;
-    for (uint32_t i = 0; i < N; i++) {
-        bins[i] = minFreq * pow(maxFreq / minFreq, (double)i / N);
-    }
-	bins[N] = maxFreq;
+	// Linear distribution: bin i covers [i*nyquist/N, (i+1)*nyquist/N)
+	// This ensures every bin maps to the same number of FFT bins and a sweep
+	// from 0 to Nyquist visually moves left to right across all bars.
+	for (uint32_t i = 0; i <= binCount; i++) {
+		bins[i] = (double)i / (double)binCount * nyquist;
+	}
 }
 
 static bool InitializeVisualization(AudioDemo *demo) {
@@ -1271,7 +1328,7 @@ int main(int argc, char **args) {
 	demo->sineWave.frequency = 440;
 	demo->sineWave.toneVolume = 0.25f;
 	demo->sineWave.duration = 10.0;
-	demo->useRealTimeSamples = true;
+	demo->useRealTimeSamples = false;
 
 	int result = -1;
 
@@ -1283,7 +1340,7 @@ int main(int argc, char **args) {
 	fplCopyString(APP_TITLE, settings.console.title, fplArrayCount(settings.console.title));
 
 	settings.video.backend = fplVideoBackendType_OpenGL;
-	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
+	settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Legacy;
 	settings.video.isVSync = true;
 
 	// Set audio device format
@@ -1296,13 +1353,17 @@ int main(int argc, char **args) {
 	// Set samplerate in Hz
 	//settings.audio.targetFormat.sampleRate = 11025;
 	//settings.audio.targetFormat.sampleRate = 22050;
-	settings.audio.targetFormat.sampleRate = 44100;
-	//settings.audio.targetFormat.sampleRate = 48000;
+	//settings.audio.targetFormat.sampleRate = 44100;
+	settings.audio.targetFormat.sampleRate = 48000;
 	//settings.audio.targetFormat.sampleRate = 88200;
 
 	// Optionally set buffer size in milliseconds or in frames
 	//settings.audio.targetFormat.bufferSizeInMilliseconds = 16;
 	//settings.audio.targetFormat.bufferSizeInFrames = 512;
+
+	// Force audio backend to a specific type
+	//settings.audio.backend = fplAudioBackendType_PipeWire;
+	//settings.audio.backend = fplAudioBackendType_PulseAudio;
 
 	// Disable auto start/stop of audio playback
 	settings.audio.startAuto = false;
@@ -1320,8 +1381,9 @@ int main(int argc, char **args) {
             const fplAudioDeviceInfo *defaultDeviceInfo = fpl_null;
             for(uint32_t deviceIndex = 0; deviceIndex < loadedDeviceCount; ++deviceIndex) {
                 fplAudioDeviceInfo *audioDeviceInfo = audioDeviceInfos + deviceIndex;
-                if (audioDeviceInfo->isDefault) {
+                if (audioDeviceInfo->isDefault && defaultDeviceInfo == fpl_null) {
                     FPL_LOG_INFO("Audio", "Found default audio device[%lu] %s\n", deviceIndex, audioDeviceInfo->name);
+                	defaultDeviceInfo = audioDeviceInfo;
                 }
             }
             if (defaultDeviceInfo != fpl_null)
@@ -1461,6 +1523,8 @@ int main(int argc, char **args) {
 										fplDisableWindowFullscreen();
 								} else if(key == fplKey_F1) {
 									demo->useRealTimeSamples = !demo->useRealTimeSamples;
+								} else if(key == fplKey_F2) {
+									demo->spectrumMode = (SpectrumMode)((demo->spectrumMode + 1) % SpectrumMode_Count);
 								}
                                 UpdateTitle(demo, audioTrackName, demo->useRealTimeSamples, currentFps);
 							}

@@ -37,12 +37,12 @@ typedef struct ButtonState {
 	fpl_b32 endedDown;
 } ButtonState;
 
-fpl_inline bool ButtonIsDown(const ButtonState state) {
+fpl_extern_inline bool ButtonIsDown(const ButtonState state) {
 	bool result = state.endedDown != 0;
 	return(result);
 }
 
-fpl_inline bool ButtonWasPressed(const ButtonState state) {
+fpl_extern_inline bool ButtonWasPressed(const ButtonState state) {
 	bool result = ((state.halfTransitionCount > 1) ||
 				  ((state.halfTransitionCount == 1) && (!state.endedDown)));
 	return(result);

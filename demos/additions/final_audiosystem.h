@@ -7,32 +7,128 @@ Description:
 
 	This file is part of the final_framework.
 
-How the mixer works:
-	- Clear out the mixer buffers to zero
-	- Loop over all playing sounds, for each sound
-		- Start at the beginning of the mixing buffer
-		- Do sample rate conversion for sound samples -> More samples, less samples, equal samples
-		- Converted samples are already in float space, or convert raw samples to float space
-		- Mix the samples (+=)
-		- Clip and convert mixed samples into target format
+How everything works:
+
+Heart is the AudioSystemWriteFrames() function that generates X-samples worth of N-audio frames.
+It's the function you call to get rendered audio output from all currently playing sounds.
+Think of it as your "rendering engine" that combines all audio streams and produces the final mixed output.
+
+The entire pipeline system uses 4 scratch buffers to process samples:
+- DSP-In Buffer: Stores the source samples, but converted to F32
+- DSP-Out Buffer: Stores the resampled samples as F32
+- Mixing Buffer: Stores the samples from all audio sources mixed together as F32
+- Conversion Buffer: Stores the samples in the target audio format (sample rate, type, channels)
+
+The conversion buffer is special, because it will always be consumed first, before more samples are produced by the FillConversionBuffer() function.
+
+There can be N audio sources, each audio source has a sample buffer that is based on either external or internal memory
+There can be N play items, each play item tracks the current state of a audio source.
+
+There are several API functions for adding/loading audio sources, start playback by adding play-items, change-volume etc.
+
+How audio frame writing/generation works:
+
+- The samples that are left in the conversion buffer are written first
+- If the conversion buffer is empty, new samples are produced
+- Samples are produced by looping over all play items and:
+	- Convert them to float into the DSP-In buffer
+	- Resample them to the target sample rate from the DSP-In buffer into the DSP-Out buffer
+	- Apply the volume to each sample
+	- Write the samples to the mixing buffer
+- Write samples until no frames are left
+- Clear remaining frames to zero
+
+Diagram of audio frame generation:
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     AudioSystemWriteFrames                              │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  1. CLEAR MIXING BUFFER                                                 │
+│     ┌──────────────┐                                                    │
+│     │ Mixing Buffer│                                                    │
+│     │     [0]      │ ← All zeros                                        │
+│     └──────────────┘                                                    │
+│                                                                         │
+│  2. PROCESS EACH PLAYING SOUND                                          │
+│     ┌─────────────────────────────────────────────────────────────────┐ │
+│     │ For each AudioPlayItem (sound)                                  │ │
+│     │ ┌─────────────────────────────────────────────────────────────┐ │ │
+│     │ │ SAMPLE RATE CONVERSION                                      │ │ │
+│     │ │ Source Rate    →  Output Rate                               │ │ │
+│     │ │ Example: 44100Hz → 48000Hz                                  │ │ │
+│     │ └─────────────────────────────────────────────────────────────┘ │ │
+│     │                                                                 │ │
+│     │ ┌─────────────────────────────────────────────────────────────┐ │ │
+│     │ │ FORMAT CONVERSION                                           │ │ │
+│     │ │ int16 / int32  →  float32 (-1.0 to 1.0)                     │ │ │
+│     │ └─────────────────────────────────────────────────────────────┘ │ │
+│     │                                                                 │ │
+│     │ ┌─────────────────────────────────────────────────────────────┐ │ │
+│     │ │ MIXING ( += )                                               │ │ │
+│     │ │ MixingBuffer += ConvertedSample * Volume                    │ │ │
+│     │ └─────────────────────────────────────────────────────────────┘ │ │
+│     └─────────────────────────────────────────────────────────────────┘ │
+│                                                                         │
+│  3. CLIPPING & FORMAT CONVERSION                                        │
+│     ┌─────────────────────────────────────────────────────────────────┐ │
+│     │ ┌─────────────────┐                                             │ │
+│     │ │ Clip to [-1, 1] │ ──→ Target Format (S16/S32/F32)             │ │
+│     │ └─────────────────┘                                             │ │
+│     └─────────────────────────────────────────────────────────────────┘ │
+│                                                                         │
+│  4. WRITE TO OUTPUT BUFFER                                              │
+│     ┌─────────────────────────────────────────────────────────────────┐ │
+│     │ outSamples ← Final mixed and converted output                   │ │
+│     └─────────────────────────────────────────────────────────────────┘ │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+
+Data flow diagram:
+
+┌──────────────┐
+│ AudioSource  │ ───► Sample Buffer ───► Float Conversion ───►
+└──────────────┘                                       Sample Stream
+														│
+														▼
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│  AudioPlay   │───►│  Sample Rate │───►│   Channel    │
+│    Item 1    │    │  Converter   │    │   Mixer      │
+└──────────────┘    └──────────────┘    └──────────────┘
+													│
+													▼
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│  AudioPlay   │───►│  Sample Rate │───►│   Channel    │
+│    Item 2    │    │  Converter   │    │   Mixer      │
+└──────────────┘    └──────────────┘    └──────────────┘
+													│
+													▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    MIXING BUFFER                                │
+│  All sources accumulate here: Buffer += Sample × Volume         │
+└─────────────────────────────────────────────────────────────────┘
+														  │
+														  ▼
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│   MASTER     │───►│    CLIP      │───►│ FORMAT       │
+│   VOLUME     │    │  [-1 to 1]   │    │ CONVERT      │
+└──────────────┘    └──────────────┘    └──────────────┘
+														  │
+														  ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      OUTSAMPLES                                 │
+│              Final output buffer filled with mixed audio        │
+└─────────────────────────────────────────────────────────────────┘
 
 Todo:
 	- Performance is really bad, so we need to do a lot of things
 		- Remove the need for mutexes (Lock-free!)
 		- Dont allocate any memory
 		- Dont do any file/network IO
-		- Dont call code non-deterministic functions (external api)
-		- Do format conversion <-> float for multiple frames, not just one sample
-		- Separate format conversion into its own functions and use a dispatch table
-		- Separate sample rate conversion from mixing (Doing the sample rate conversion inside the mixing is stupid)
 		- Unroll loops (x4), but keep reference implementation
 		- SIMD everything
 
-	- Proper sample rate conversion
-		- Linear interpolation
-		- SinC
-
-	- Channel mapping -> Requires Channel mapping in FPL as well
+	- Channel mapping
 
 	- Do we need to deal with deinterleaved samples?
 		Interleaved Samples         = LR|LR|LR|LR|LR|LR|LR
@@ -841,75 +937,6 @@ fpl_extern void ConvertFromF32(void *outSamples, const float inSampleValue, cons
 	}
 }
 
-static AudioSampleIndex MixSamples(const AudioSampleConversionFunctions *convFunc, const AudioFrameIndex frameCount, const AudioChannelIndex inChannels, const AudioChannelIndex outChannels, const float *inSamples, float *outSamples) {
-	if (convFunc == fpl_null || frameCount == 0 || inChannels == 0 || outChannels == 0 || inSamples == fpl_null || outSamples == fpl_null) {
-		return 0;
-	}
-
-	// @TODO(final): Use de-interleaved samples, so its much more efficient!
-	// @TODO(final): Channel mapping!
-
-	AudioSampleIndex outSampleCount = frameCount * outChannels;
-
-	if (inChannels == outChannels) {
-		// Simple copy everything
-		for (AudioFrameIndex frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
-			for (AudioChannelIndex channelIndex = 0; channelIndex < outChannels; ++channelIndex) {
-				float sampleValue = inSamples[frameIndex * outChannels + channelIndex];
-				outSamples[frameIndex * outChannels + channelIndex] += sampleValue;
-			}
-		}
-		return(outSampleCount);
-	} else if (inChannels == 1) {
-		// Simply copy the input mono channel samples to each output channel
-		for (AudioFrameIndex frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
-			float sampleValue = inSamples[frameIndex];
-			for (AudioChannelIndex outChannelIndex = 0; outChannelIndex < outChannels; ++outChannelIndex) {
-				outSamples[frameIndex * outChannels + outChannelIndex] += sampleValue;
-			}
-		}
-	} else if (outChannels == 1) {
-		// Average to mono samples
-		float invInChannels = 1.0f / (float)inChannels;
-		for (AudioFrameIndex frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
-			float sampleSum = 0.0f;
-			for (AudioChannelIndex inChannelIndex = 0; inChannelIndex < inChannels; ++inChannelIndex) {
-				float sampleValue = inSamples[frameIndex * inChannels + inChannelIndex];
-				sampleSum += sampleValue;
-			}
-			float finalSample = sampleSum * invInChannels;
-			outSamples[frameIndex * outChannels + 0] += finalSample;
-		}
-	} else if (inChannels == 2 && outChannels >= 2){
-		// Stereo input and at least stereo output
-		for (AudioFrameIndex frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
-			float sampleLeft = inSamples[frameIndex * inChannels + 0];
-			float sampleRight = inSamples[frameIndex * inChannels + 1];
-			outSamples[frameIndex * outChannels + 0] = sampleLeft;
-			outSamples[frameIndex * outChannels + 1] = sampleRight;
-			float monoSample = 0.5f * (sampleLeft + sampleRight);
-			for (AudioChannelIndex outChannelIndex = 2; outChannelIndex < outChannels; ++outChannelIndex) {
-				outSamples[frameIndex * outChannels + outChannelIndex] += monoSample;
-			}
-		}
-	} else {
-		// Monolize input samples and output it to every channel
-		float invInChannels = 1.0f / (float)inChannels;
-		for (AudioFrameIndex frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
-			float sampleSum = 0.0f;
-			for (AudioChannelIndex inChannelIndex = 0; inChannelIndex < inChannels; ++inChannelIndex) {
-				float sampleValue = inSamples[frameIndex * inChannels + inChannelIndex];
-				sampleSum += sampleValue;
-			}
-			float finalSample = sampleSum * invInChannels;
-			for (AudioChannelIndex outChannelIndex = 0; outChannelIndex < outChannels; ++outChannelIndex) {
-				outSamples[frameIndex * outChannels + outChannelIndex] += finalSample;
-			}
-		}
-	}
-	return(outSampleCount);
-}
-
 fpl_extern void AudioGenerateSineWave(AudioSineWaveData *waveData, void *outSamples, const fplAudioFormatType outFormat, const AudioHertz outSampleRate, const AudioChannelIndex channels, const AudioFrameIndex frameCount) {
 	uint8_t *samples = (uint8_t *)outSamples;
 	size_t sampleStride = (size_t)fplGetAudioSampleSizeInBytes(outFormat) * channels;
@@ -994,173 +1021,456 @@ static void RestorePlayStates(AudioSystem *audioSys) {
 	fplMutexUnlock(&audioSys->playItems.lock);
 }
 
-/*
-  Tries to write the specified number of target audio frames to the mixing buffer.
+// ============================================================================
+// Play Items Mixing Pipeline
+// ============================================================================
+//
+// Pipeline per play item (repeated in chunks until targetFrameCount is filled):
+//
+//   Source PCM (any format)
+//       |
+//       v
+//   ConvertSourceChunkToF32()     -- bulk conversion via dispatch table
+//       |                            supports U8, S16, S24, S32, F32
+//       v
+//   ResampleChunk()               -- passthrough / even up-down / SinC
+//       |                            output clamped to buffer capacity
+//       v
+//   ApplyVolumeToSamples()        -- flat loop: sample *= volume
+//       |
+//       v
+//   MixSamplesIntoBuffer()        -- accumulate (+= ) into mixing buffer
+//                                    handles channel up/down mixing
+//
+// ============================================================================
+
+/**
+* @brief Accumulates interleaved F32 samples from inSamples into outSamples (+=).
+*
+* @details Handles channel count differences:
+*   - Same count:   flat bulk add over frameCount * channels samples.
+*   - Mono in:      broadcast the mono sample to every output channel.
+*   - Mono out:     average all input channels into the single output channel.
+*   - Stereo in, N out (N >= 2): add L/R to first two output channels,
+*     add a mono downmix (0.5 * (L+R)) to remaining channels.
+*   - General case: average all input channels, add to every output channel.
+*
+* @param[in] frameCount  Number of audio frames to mix.
+* @param[in] inChannels  Channel count of inSamples (samples per frame).
+* @param[in] outChannels Channel count of outSamples (samples per frame).
+* @param[in] inSamples   Source interleaved F32 samples (frameCount * inChannels elements).
+* @param[in] outSamples  Destination interleaved F32 samples (frameCount * outChannels elements).
+*                        Existing values are preserved and added to (+=).
+*
+* @returns Total number of output samples touched (frameCount * outChannels).
+*
+* @note Buffer safety: Caller must ensure both buffers are large enough.
+*       No internal allocation.
 */
-static AudioFrameIndex WritePlayItemsToMixer(AudioSystem *audioSys, const AudioFrameIndex targetFrameCount, const bool advance) {
+static AudioSampleIndex MixSamplesIntoBuffer(const AudioFrameIndex frameCount, const AudioChannelIndex inChannels, const AudioChannelIndex outChannels, const float *inSamples, float *outSamples) {
+	if (frameCount == 0 || inChannels == 0 || outChannels == 0 || inSamples == fpl_null || outSamples == fpl_null) {
+		return 0;
+	}
+
+	const AudioSampleIndex outSampleCount = (AudioSampleIndex)frameCount * outChannels;
+
+	if (inChannels == outChannels) {
+		// Bulk add — single flat loop, no per-frame/per-channel indexing needed
+		const AudioSampleIndex totalSamples = (AudioSampleIndex)frameCount * outChannels;
+		for (AudioSampleIndex i = 0; i < totalSamples; ++i) {
+			outSamples[i] += inSamples[i];
+		}
+	} else if (inChannels == 1) {
+		// Mono → N channels: broadcast each mono sample to all output channels
+		for (AudioFrameIndex f = 0; f < frameCount; ++f) {
+			const float sample = inSamples[f];
+			float *outFrame = outSamples + f * outChannels;
+			for (AudioChannelIndex ch = 0; ch < outChannels; ++ch) {
+				outFrame[ch] += sample;
+			}
+		}
+	} else if (outChannels == 1) {
+		// N channels → mono: average all input channels per frame
+		const float invInChannels = 1.0f / (float)inChannels;
+		for (AudioFrameIndex f = 0; f < frameCount; ++f) {
+			const float *inFrame = inSamples + f * inChannels;
+			float sum = 0.0f;
+			for (AudioChannelIndex ch = 0; ch < inChannels; ++ch) {
+				sum += inFrame[ch];
+			}
+			outSamples[f] += sum * invInChannels;
+		}
+	} else if (inChannels == 2 && outChannels >= 2) {
+		// Stereo → N channels (N >= 2): L/R to first two, mono downmix to rest
+		for (AudioFrameIndex f = 0; f < frameCount; ++f) {
+			const float *inFrame = inSamples + f * inChannels;
+			float *outFrame = outSamples + f * outChannels;
+			const float left = inFrame[0];
+			const float right = inFrame[1];
+			outFrame[0] += left;   // += not = (fixes stereo overwrite bug)
+			outFrame[1] += right;  // += not = (fixes stereo overwrite bug)
+			const float mono = 0.5f * (left + right);
+			for (AudioChannelIndex ch = 2; ch < outChannels; ++ch) {
+				outFrame[ch] += mono;
+			}
+		}
+	} else {
+		// General case: average all input channels, add to every output channel
+		const float invInChannels = 1.0f / (float)inChannels;
+		for (AudioFrameIndex f = 0; f < frameCount; ++f) {
+			const float *inFrame = inSamples + f * inChannels;
+			float *outFrame = outSamples + f * outChannels;
+			float sum = 0.0f;
+			for (AudioChannelIndex ch = 0; ch < inChannels; ++ch) {
+				sum += inFrame[ch];
+			}
+			const float mono = sum * invInChannels;
+			for (AudioChannelIndex ch = 0; ch < outChannels; ++ch) {
+				outFrame[ch] += mono;
+			}
+		}
+	}
+
+	return outSampleCount;
+}
+
+/**
+* @brief Converts a chunk of source PCM samples to interleaved F32 in the DSP-in buffer.
+*
+* @details Uses the full AudioSamplesConvert dispatch table.
+*          Supports the format types: U8, S16, S24, S32, F32.
+*          Clamps the number of frames to the buffer capacity.
+*
+* @param convFuncs          Format conversion dispatch table.
+* @param sourceData         Pointer to the first byte of source samples to convert.
+* @param sourceFrameCount   Number of source frames available starting at sourceData.
+* @param sourceChannels     Channel count of the source audio.
+* @param sourceFormat       Sample format of the source audio (U8, S16, S24, S32, F32).
+* @param dspInBuffer        Destination buffer for interleaved F32 output.
+* @param dspInMaxFrameCount Maximum frames the destination buffer can hold.
+*
+* @return Returns the number of frames actually converted (always <= min(sourceFrameCount, dspInMaxFrameCount)).
+*
+* @note Buffer safety:
+*       Output is clamped to dspInMaxFrameCount. Caller must ensure sourceData has at least sourceFrameCount * sourceChannels * bytesPerSample bytes available.
+*/
+static AudioFrameIndex ConvertSourceChunkToF32(AudioSampleConversionFunctions *convFuncs, const uint8_t *sourceData, const AudioFrameIndex sourceFrameCount, const AudioChannelIndex sourceChannels, const fplAudioFormatType sourceFormat, float *dspInBuffer, const AudioFrameIndex dspInMaxFrameCount) {
+	const AudioFrameIndex framesToConvert = fplMin(sourceFrameCount, dspInMaxFrameCount);
+	if (framesToConvert == 0) {
+		return 0;
+	}
+	const AudioSampleIndex sampleCount = (AudioSampleIndex)framesToConvert * sourceChannels;
+	bool ok = AudioSamplesConvert(convFuncs, sampleCount, sourceFormat, fplAudioFormatType_F32, sourceData, dspInBuffer);
+	fplAssert(ok);
+	(void)ok;
+	return framesToConvert;
+}
+
+/**
+* @brief Resamples interleaved F32 audio from one sample rate to another.
+*
+* @details Three paths:
+*   1. Same rate:      Memory copy passthrough — no processing.
+*   2. Even ratio:     Frame duplication (up) or frame skipping (down).
+*                      Only used for exact integer multiples (2x, 4x, etc.).
+*   3. Non-even ratio: SinC interpolation via AudioResampleInterleaved.
+*                      Handles arbitrary ratios (e.g. 44100 <-> 48000).
+*
+* @param channels        Number of interleaved channels.
+* @param inRate          Input sample rate in Hz.
+* @param outRate         Output sample rate in Hz.
+* @param maxOutputFrames Maximum number of output frames the dspOut buffer can hold.
+*                        Also limits how many frames we request from the resampler.
+* @param inputFrameCount Number of input frames available in dspIn.
+* @param dspIn           Source interleaved F32 samples.
+* @param dspOut          Destination interleaved F32 samples.
+*
+* @return Returns an AudioResampleResult with .inputCount (frames consumed) and .outputCount (frames produced).
+*         Both are zero if rates are invalid or no frames could be produced.
+*
+* @note Buffer safety:
+*       For upsampling, input frames are pre-clamped so that (input * factor) <= maxOutputFrames.
+*       For downsampling and SinC, maxOutputFrames is passed as the output limit.
+*       Passthrough is clamped to min(inputFrameCount, maxOutputFrames).
+*
+* @warning AudioResampleInterleaved can return .outputCount that exceeds maxOutputFrames by 1 frame due to floating-point rounding when converting between non-even sample rates (e.g. 44100 <-> 48000).
+*          Callers MUST clamp the returned outputCount before using it to index into fixed-size buffers or subtract from unsigned frame counters.
+*/
+static AudioResampleResult ResampleChunk(const AudioChannelIndex channels, const AudioHertz inRate, const AudioHertz outRate, const AudioFrameIndex maxOutputFrames, const AudioFrameIndex inputFrameCount, const float *dspIn, float *dspOut) {
+	AudioResampleResult result = fplZeroInit;
+
+	if (channels == 0 || inRate == 0 || outRate == 0 || inputFrameCount == 0 || maxOutputFrames == 0) {
+		return result;
+	}
+
+	if (inRate == outRate) {
+		// Passthrough — same sample rate, just copy
+		const AudioFrameIndex framesToCopy = fplMin(inputFrameCount, maxOutputFrames);
+		const size_t bytesToCopy = (size_t)framesToCopy * channels * sizeof(float);
+		fplMemoryCopy(dspIn, bytesToCopy, dspOut);
+		result.inputCount = framesToCopy;
+		result.outputCount = framesToCopy;
+	} else {
+		const bool isEven = (outRate > inRate) ? ((outRate % inRate) == 0) : ((inRate % outRate) == 0);
+
+		if (isEven) {
+			if (outRate > inRate) {
+				// Even upsampling (2x, 4x, etc.)
+				// Clamp input so that (input * factor) does not exceed maxOutputFrames
+				result = AudioSimpleUpSampling(channels, inRate, outRate, maxOutputFrames, inputFrameCount, dspIn, dspOut);
+			} else {
+				// Even downsampling (1/2, 1/4, etc.)
+				result = AudioSimpleDownSampling(channels, inRate, outRate, maxOutputFrames, inputFrameCount, dspIn, dspOut);
+			}
+		} else {
+			// Non-even ratio — SinC interpolation (e.g. 44100 <-> 48000)
+			result = AudioResampleInterleaved(channels, inRate, outRate, maxOutputFrames, inputFrameCount, dspIn, dspOut);
+		}
+	}
+
+	return result;
+}
+
+/**
+* @brief Processes a single AudioPlayItem through the full mixing pipeline.
+*
+* @details For one play item, this function loops in chunks (bounded by DSP buffer sizes) until
+* either targetFrameCount output frames have been produced or the source is exhausted.
+*
+* Each chunk iteration:
+*   1. Convert source PCM → interleaved F32            (ConvertSourceChunkToF32)
+*   2. Resample to output sample rate                  (ResampleChunk)
+*   3. Apply per-item and master volume                (ApplyVolumeToSamples)
+*   4. Accumulate into the mixing buffer               (MixSamplesIntoBuffer)
+*
+* DSP scratch buffers (dspInBuffer, dspOutBuffer) are used from the start of the buffer
+* each iteration — they are temporary workspace, never accumulated across iterations.
+*
+* The function updates item->framesPlayed[0] and item->isFinished[0]. When the item
+* reaches the end of its source and isRepeat is true, framesPlayed resets to zero so
+* the loop continues.
+*
+* @param audioSys         Audio system (provides target format, DSP buffers, conversion table).
+* @param item             Play item to process. Modified in place (framesPlayed, isFinished).
+* @param targetFrameCount Number of output frames to fill in the mixing buffer.
+* @param mixingBuffer     Pointer to the start of the F32 mixing buffer for this item.
+*                         Must have at least targetFrameCount * outChannels floats.
+*
+* @return Number of output frames actually produced and mixed into the buffer.
+*
+* @warning Buffer safety:
+*   - dspInBuffer:  ConvertSourceChunkToF32 clamps to dspInBuffer.maxFrameCount.
+*   - dspOutBuffer: ResampleChunk clamps output to min(outRemainingFrameCount, dspOutBuffer.maxFrameCount).
+*   - mixingBuffer: outRemainingFrameCount counts down from targetFrameCount, preventing overflow.
+*   - Source data:  Bounded by inTotalFrameCount - framesPlayed[0].
+*/
+static AudioFrameIndex ProcessSinglePlayItem(AudioSystem *audioSys, AudioPlayItem *item, const AudioFrameIndex targetFrameCount, float *mixingBuffer) {
 	const AudioHertz outSampleRate = audioSys->targetFormat.sampleRate;
 	const AudioChannelIndex outChannelCount = audioSys->targetFormat.channels;
 
-	// The frame count must fit in the mixing buffer
+	const AudioSource *source = item->source;
+	const AudioFormat *srcFormat = &source->format;
+	const AudioBuffer *srcBuffer = &source->buffer;
+
+	const AudioHertz inSampleRate = srcFormat->sampleRate;
+	const AudioFrameIndex inTotalFrameCount = srcBuffer->frameCount;
+	const AudioChannelIndex inChannelCount = srcFormat->channels;
+	const fplAudioFormatType inFormat = srcFormat->format;
+	const size_t inBytesPerSample = fplGetAudioSampleSizeInBytes(inFormat);
+	const size_t inBytesPerFrame = (size_t)inChannelCount * inBytesPerSample;
+
+	const float volume = item->volume * audioSys->masterVolume;
+
+	// Maximum frames the DSP output buffer can hold (for the source channel count)
+	const AudioFrameIndex dspOutMaxFrames = audioSys->dspOutBuffer.maxFrameCount;
+
+	AudioFrameIndex outRemainingFrameCount = targetFrameCount;
+	AudioFrameIndex totalOutputFrameCount = 0;
+
+	while (outRemainingFrameCount > 0) {
+		// If this item finished on a previous chunk (e.g. repeat looped and then finished), stop
+		if (item->isFinished[0]) {
+			break;
+		}
+
+		const AudioFrameIndex inStartFrameIndex = item->framesPlayed[0];
+		fplAssert(inStartFrameIndex < inTotalFrameCount);
+
+		const AudioFrameIndex inRemainingFrameCount = inTotalFrameCount - inStartFrameIndex;
+		const uint8_t *inSourceData = srcBuffer->samples + (size_t)inStartFrameIndex * inBytesPerFrame;
+
+		// ---- Step 1: Convert source samples to interleaved F32 (DSP-In) ----
+		// Always write to the start of the DSP-in buffer (scratch space, reused each iteration)
+		float *dspIn = (float *)audioSys->dspInBuffer.samples;
+		const AudioFrameIndex convertedFrameCount = ConvertSourceChunkToF32(
+			&audioSys->conversionFuncs,
+			inSourceData,
+			inRemainingFrameCount,
+			inChannelCount,
+			inFormat,
+			dspIn,
+			audioSys->dspInBuffer.maxFrameCount
+		);
+
+		if (convertedFrameCount == 0) {
+			break;
+		}
+
+		// ---- Step 2: Resample to output sample rate (DSP-Out) ----
+		// Always write to the start of the DSP-out buffer (scratch space, reused each iteration)
+		float *dspOut = (float *)audioSys->dspOutBuffer.samples;
+
+		// Clamp output to both the remaining target frames and the DSP-out buffer capacity
+		const AudioFrameIndex maxOutputForThisChunk = fplMin(outRemainingFrameCount, dspOutMaxFrames);
+
+		const AudioResampleResult resampleResult = ResampleChunk(
+			inChannelCount,
+			inSampleRate,
+			outSampleRate,
+			maxOutputForThisChunk,
+			convertedFrameCount,
+			dspIn,
+			dspOut
+		);
+
+		const AudioFrameIndex playedFrameCount = resampleResult.inputCount;
+
+		// Clamp output frame count to what we actually need. AudioResampleInterleaved
+		// can produce 1 extra frame due to rounding when computing outFrameCount from
+		// inFrameCount * (outRate/inRate). Without this clamp, the unsigned subtraction
+		// outRemainingFrameCount -= outputFrameCount would underflow, causing the loop
+		// to run far past the mixing buffer boundary.
+		const AudioFrameIndex outputFrameCount = fplMin(resampleResult.outputCount, outRemainingFrameCount);
+
+		// If resampling could not produce any frames (e.g. not enough input for SinC), stop
+		if (outputFrameCount == 0 || playedFrameCount == 0) {
+			break;
+		}
+
+		// ---- Step 3: Apply volume ----
+		// Note: we apply volume to the full resampler output (resampleResult.outputCount),
+		// not the clamped count, because dspOut contains that many valid samples.
+		// However, only outputFrameCount frames will be mixed into the output.
+		ApplyVolumeToSamples(inChannelCount, outputFrameCount, volume, dspOut);
+
+		// ---- Step 4: Mix into the mixing buffer with channel up/down conversion ----
+		float *mixDest = mixingBuffer + (size_t)totalOutputFrameCount * outChannelCount;
+		MixSamplesIntoBuffer(outputFrameCount, inChannelCount, outChannelCount, dspOut, mixDest);
+
+		// ---- Update play position ----
+		item->framesPlayed[0] += playedFrameCount;
+		fplAssert(item->framesPlayed[0] <= inTotalFrameCount);
+
+		if (item->framesPlayed[0] == inTotalFrameCount) {
+			if (item->isRepeat) {
+				item->isFinished[0] = false;
+				item->framesPlayed[0] = 0; // Reset for next loop iteration
+			} else {
+				item->isFinished[0] = true;
+			}
+		}
+
+		totalOutputFrameCount += outputFrameCount;
+		outRemainingFrameCount -= outputFrameCount;
+	}
+
+	return totalOutputFrameCount;
+}
+
+/**
+* @brief Mixes all active play items into the F32 mixing buffer.
+*
+* @details Produces up to targetFrameCount output frames at the system's target sample rate and channel count.
+*
+* This is the top-level mixing function called from FillConversionBuffer.
+* After this returns, the mixing buffer contains additive F32 samples ready
+* for final format conversion to the output device format.
+*
+* Pipeline overview:
+*
+*   For each active AudioPlayItem:
+* ┌──────────────────────────────────────────────────────────────────┐
+* │  Source PCM ──► F32 convert ──► Resample ──► Volume ──► Mix +=   │
+* └──────────────────────────────────────────────────────────────────┘
+* Multiple items accumulate into the same mixing buffer via +=.
+*
+* @param audioSys         Audio system state (buffers, format, play items list).
+* @param targetFrameCount Number of output frames to produce. Must be <= mixingBuffer.maxFrameCount.
+* @param advance          If true, finished (non-repeating) play items are removed from the list.
+*                         If false, play items are left in place (preview mode).
+* @return                 The maximum number of output frames produced by any single play item.
+*                         This represents the valid range of the mixing buffer — frames beyond this
+*                         are zero (the buffer is cleared at the start).
+* @note                   Thread safety: Acquires playItems.lock for the duration of the call. Must not be called concurrently (guarded externally by writeFramesLock).
+*/
+static AudioFrameIndex WritePlayItemsToMixer2(AudioSystem *audioSys, const AudioFrameIndex targetFrameCount, const bool advance) {
+	// The requested frame count must fit in the mixing buffer
 	fplAssert(targetFrameCount <= audioSys->mixingBuffer.maxFrameCount);
 
-	// Clear static buffers
+	// Clear all three static scratch buffers to zero
 	fplMemoryClear(audioSys->dspInBuffer.samples, fplArrayCount(audioSys->dspInBuffer.samples));
 	fplMemoryClear(audioSys->dspOutBuffer.samples, fplArrayCount(audioSys->dspOutBuffer.samples));
 	fplMemoryClear(audioSys->mixingBuffer.samples, fplArrayCount(audioSys->mixingBuffer.samples));
-
-	AudioFrameIndex result = 0;
 
 #define GENSINEWAVE 0
 
 #if GENSINEWAVE == 1
 	AudioGenerateSineWave(&audioSys->tempWaveData, audioSys->mixingBuffer.samples, fplAudioFormatType_F32, outSampleRate, outChannelCount, targetFrameCount);
-	result = targetFrameCount;
+	AudioFrameIndex result = targetFrameCount;
+	return result;
 #else
+	float *mixingBuffer = (float *)audioSys->mixingBuffer.samples;
+	AudioFrameIndex maxOutputFrameCount = 0;
+
 	fplMutexLock(&audioSys->playItems.lock);
-	AudioSampleIndex maxOutSampleCount = 0;
+
 	AudioPlayItem *item = audioSys->playItems.first;
-	while(item != fpl_null) {
-		// This may happen when we dont advance the play states
-		if(item->isFinished[0]) {
+	while (item != fpl_null) {
+		// Skip items that were already finished (can happen in advance=false mode)
+		if (item->isFinished[0]) {
 			item = item->next;
 			continue;
 		}
 
-		// @TODO(final): Right know, we apply volume to every sample.
-		// In the future we want to interpolate that, smoothly fade in/out.
-		const float volume = item->volume * audioSys->masterVolume;
+		// Process this play item through the full pipeline
+		const AudioFrameIndex itemOutputFrames = ProcessSinglePlayItem(audioSys, item, targetFrameCount, mixingBuffer);
+		if (itemOutputFrames > maxOutputFrameCount) {
+			maxOutputFrameCount = itemOutputFrames;
+		}
 
-		float *dspInSamples = (float *)audioSys->dspInBuffer.samples;
-		float *dspOutSamples = (float *)audioSys->dspOutBuffer.samples;
-		float *mixingSamples = (float *)audioSys->mixingBuffer.samples;
-
-		const AudioSource *source = item->source;
-		const AudioFormat *format = &item->source->format;
-		const AudioBuffer *buffer = &item->source->buffer;
-
-		const AudioHertz inSampleRate = format->sampleRate;
-		const AudioFrameIndex inTotalFrameCount = buffer->frameCount;
-		const AudioChannelIndex inChannelCount = format->channels;
-		const fplAudioFormatType inFormat = format->format;
-		const size_t inBytesPerSample = fplGetAudioSampleSizeInBytes(inFormat);
-
-		// Total amount of frames we need to play, either from actual samples or zero bytes
-		AudioFrameIndex outRemainingFrameCount = targetFrameCount;
-		while(outRemainingFrameCount > 0) {
-			float *dspOutSamplesStart = dspOutSamples;
-			float *dspInSamplesStart = dspInSamples;
-			float *mixingSamplesStart = mixingSamples;
-
-			const AudioFrameIndex inStartFrameIndex = item->framesPlayed[0];
-			fplAssert(inStartFrameIndex < inTotalFrameCount);
-
-			// Total number of frames that is remaining in the play item
-			const AudioFrameIndex inRemainingFrameCount = inTotalFrameCount - inStartFrameIndex;
-			uint8_t *inSourceSamples = source->buffer.samples + inStartFrameIndex * (inChannelCount * inBytesPerSample);
-
-			//
-			// Convert source samples to interleaved float samples (DSP-In)
-			//
-			const AudioFrameIndex inputFrameConversionCount = fplMin(inRemainingFrameCount, audioSys->dspInBuffer.maxFrameCount);
-			const AudioSampleIndex inputSampleConversionCount = inputFrameConversionCount * inChannelCount;
-			bool convertRes = AudioSamplesConvert(&audioSys->conversionFuncs, inputSampleConversionCount, inFormat, fplAudioFormatType_F32, inSourceSamples, dspInSamples);
-			fplAssert(convertRes == true);
-
-			AudioFrameIndex playedFrameCount = 0;
-			AudioFrameIndex outputFrameCount = 0;
-
-			if(inSampleRate == outSampleRate) {
-				// Sample rates are equal, just copy samples to DSP-Out
-				const AudioFrameIndex minFrameCount = fplMin(outRemainingFrameCount, inRemainingFrameCount);
-				const AudioSampleIndex sampleCount = minFrameCount * inChannelCount;
-				const size_t sizeToCopy = sampleCount * sizeof(float);
-				fplMemoryCopy(dspInSamples, sizeToCopy, dspOutSamples);
-				outputFrameCount = minFrameCount;
-				playedFrameCount = minFrameCount;
-			} else if(outSampleRate > 0 && inSampleRate > 0 && inTotalFrameCount > 0) {
-				bool isEven = (outSampleRate > inSampleRate) ? ((outSampleRate % inSampleRate) == 0) : ((inSampleRate % outSampleRate) == 0);
-				if(isEven) {
-					AudioResampleResult resampleResult;
-					if(outSampleRate > inSampleRate) {
-						// Simple Upsampling into DSP-Out (2x, 4x, 6x, 8x etc.) and apply volume
-						resampleResult = AudioSimpleUpSampling(inChannelCount, inSampleRate, outSampleRate, outRemainingFrameCount, inputFrameConversionCount, dspInSamples, dspOutSamples);
-					} else {
-						// Simple Downsampling into DSP-Out (1/2, 1/4, 1/6, 1/8, etc.) and apply volume
-						resampleResult = AudioSimpleDownSampling(inChannelCount, inSampleRate, outSampleRate, outRemainingFrameCount, inputFrameConversionCount, dspInSamples, dspOutSamples);
-					}
-					outputFrameCount = resampleResult.outputCount;
-					playedFrameCount = resampleResult.inputCount;
-				} else {
-					// Slow resampling using SinC (e.g. 44100 <-> 48000) and apply volume
-					AudioResampleResult resampleResult = AudioResampleInterleaved(inChannelCount, inSampleRate, outSampleRate, outRemainingFrameCount, inputFrameConversionCount, dspInSamples, dspOutSamples);
-					outputFrameCount = resampleResult.outputCount;
-					playedFrameCount = resampleResult.inputCount;
-				}
-			}
-
-			// It may happen that the input/output frames are not enough to produce up/down sampled frames
-			if (outputFrameCount == 0 || playedFrameCount == 0) {
-				break;
-			}
-
-			item->framesPlayed[0] += playedFrameCount;
-
-			fplAssert(item->framesPlayed[0] <= item->source->buffer.frameCount);
-			if(item->framesPlayed[0] == item->source->buffer.frameCount) {
-				if(item->isRepeat) {
-					item->isFinished[0] = false;
-					item->framesPlayed[0] = 0; // We can play it again, to while loop can continue
-				} else {
-					item->isFinished[0] = true;
-				}
-			}
-
-			ApplyVolumeToSamples(inChannelCount, outputFrameCount, volume, dspOutSamples);
-
-			const AudioSampleIndex writtenSampleCount = MixSamples(&audioSys->conversionFuncs, outputFrameCount, inChannelCount, outChannelCount, dspOutSamples, mixingSamples);
-
-			mixingSamples += writtenSampleCount;
-			inSourceSamples += ((size_t)playedFrameCount * inChannelCount * inBytesPerSample);
-			dspInSamples += playedFrameCount * inChannelCount;
-			dspOutSamples += outputFrameCount * inChannelCount;
-
-			outRemainingFrameCount -= outputFrameCount;
-
-			if(item->isFinished[0]) {
-				break; // Cancel while loop, dont try to play any more samples of this play item
-			}
-		} // outRemainingFrameCount > 0
-
-		const AudioSampleIndex outSampleCount = (AudioSampleIndex)(mixingSamples - (float *)audioSys->mixingBuffer.samples);
-
-		maxOutSampleCount = fplMax(maxOutSampleCount, outSampleCount);
-
-		// Save next item and remove item when it is finished
+		// Save next pointer before potential removal
 		AudioPlayItem *next = item->next;
-		if(item->isFinished[0]) {
+
+		if (item->isFinished[0]) {
 			item->framesPlayed[0] = 0;
 			if (advance) {
 				RemovePlayItem(&audioSys->memory, &audioSys->playItems, item);
 			}
 		}
+
 		item = next;
 	}
+
 	fplMutexUnlock(&audioSys->playItems.lock);
 
-	result = maxOutSampleCount / outChannelCount;
+	return maxOutputFrameCount;
 #endif
-
-	return(result);
 }
-
-
 
 static void ClearConversionBuffer(AudioSystem *audioSys) {
 	audioSys->conversionBuffer.framesRemaining = 0;
 	audioSys->conversionBuffer.readFrameIndex = 0;
 }
 
+/**
+ * @brief Fills the conversion buffer with mixed/converted samples from the audio sources of the play items.
+ *
+ * @param audioSys Audio system state (buffers, format, play items list).
+ * @param maxFrameCount Maximim number of output frames that can be produced.
+ * @param advance If true, finished (non-repeating) play items are removed from the list.
+ *                If false, play items are left in place (preview mode).
+ * @return Returns the the maximum number of audio frames always, because remaining frames are filled with zero.
+ */
 static AudioFrameIndex FillConversionBuffer(AudioSystem *audioSys, const AudioFrameIndex maxFrameCount, const bool advance) {
 	audioSys->conversionBuffer.framesRemaining = 0;
 	audioSys->conversionBuffer.readFrameIndex = 0;
@@ -1173,7 +1483,7 @@ static AudioFrameIndex FillConversionBuffer(AudioSystem *audioSys, const AudioFr
 	//
 	// This "little" function does all the magic, type-conversion, resampling and the mixing
 	//
-	AudioFrameIndex mixedFrameCount = WritePlayItemsToMixer(audioSys, maxFrameCount, advance);
+	AudioFrameIndex mixedFrameCount = WritePlayItemsToMixer2(audioSys, maxFrameCount, advance);
 
 	// Convert mixed samples to final output
 	AudioSampleIndex samplesToConvert = mixedFrameCount * outChannelCount;

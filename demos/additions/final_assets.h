@@ -43,7 +43,7 @@ typedef enum AssetType {
 	AssetType_Font,
 } AssetType;
 
-fpl_inline bool TextureDataIsValid(const TextureData *textureData) {
+fpl_extern_inline bool TextureDataIsValid(const TextureData *textureData) {
 	if (textureData == fpl_null || textureData->data == fpl_null || textureData->width == 0 || textureData->height == 0 || textureData->components == 0) {
 		return false;
 	}
@@ -155,6 +155,15 @@ fpl_extern bool TextureDataLoadFromSourceRect(MemoryAllocator *allocator, const 
 	return true;
 }
 
+fpl_internal void InternalTextureDataLoadFromFileShutdown(MemoryAllocator *allocator, fplFileHandle *file, uint8_t *fileBuffer) {
+	if (fileBuffer != fpl_null) {
+		MemoryAllocatorFree(allocator, fileBuffer);
+	}
+	if (file->isValid) {
+		fplFileClose(file);
+	}
+}
+
 fpl_extern bool TextureDataLoadFromFile(MemoryAllocator *allocator, TextureData *target, const char *filePath) {
 	if (target == fpl_null || fplGetStringLength(filePath) == 0) {
 		return false;
@@ -163,28 +172,30 @@ fpl_extern bool TextureDataLoadFromFile(MemoryAllocator *allocator, TextureData 
 	fplFileHandle file = fplZeroInit;
 	uint8_t *fileBuffer = fpl_null;
 
-	bool result = false;
-
 	if (!fplFileOpenBinary(filePath, &file)) {
 		// TODO: Logging (File not found);
-		goto failed;
+		InternalTextureDataLoadFromFileShutdown(allocator, &file, fileBuffer);
+		return false;
 	}
 
 	uint32_t fileLen = fplFileGetSizeFromHandle32(&file);
 	if (fileLen == 0) {
 		// TODO(final): Logging (Empty file)
-		goto failed;
+		InternalTextureDataLoadFromFileShutdown(allocator, &file, fileBuffer);
+		return false;
 	}
 
 	fileBuffer = (uint8_t *)MemoryAllocatorAlloc(allocator, fileLen);
 	if (fileBuffer == fpl_null) {
 		// TODO(final): Logging (Insufficient memory)
-		goto failed;
+		InternalTextureDataLoadFromFileShutdown(allocator, &file, fileBuffer);
+		return false;
 	}
 
 	if (!fplFileReadBlock32(&file, fileLen, fileBuffer, fileLen) == fileLen) {
 		// TODO(final): Logging (Failed to load the file into memory)
-		goto failed;
+		InternalTextureDataLoadFromFileShutdown(allocator, &file, fileBuffer);
+		return false;
 	}
 
 	int imageWidth = 0;
@@ -194,7 +205,8 @@ fpl_extern bool TextureDataLoadFromFile(MemoryAllocator *allocator, TextureData 
 	stbi_uc *imageData = stbi_load_from_memory(fileBuffer, fileLen, &imageWidth, &imageHeight, &imageComponents, 4);
 	if (imageData == fpl_null) {
 		// TODO(final): Logging (Failed to load/decode the image from memory)
-		goto failed;
+		InternalTextureDataLoadFromFileShutdown(allocator, &file, fileBuffer);
+		return false;
 	}
 
 	fplClearStruct(target);
@@ -202,20 +214,10 @@ fpl_extern bool TextureDataLoadFromFile(MemoryAllocator *allocator, TextureData 
 	target->height = imageHeight;
 	target->components = imageComponents;
 	target->data = imageData;
-	result = true;
-	goto done;
 
-failed:
-	result = false;
+	InternalTextureDataLoadFromFileShutdown(allocator, &file, fileBuffer);
 
-done:
-	if (fileBuffer != fpl_null) {
-		MemoryAllocatorFree(allocator, fileBuffer);
-	}
-	if (file.isValid) {
-		fplFileClose(&file);
-	}
-	return result;
+	return true;
 }
 
 fpl_extern void FontAssetFree(MemoryAllocator *allocator, FontAsset *font) {

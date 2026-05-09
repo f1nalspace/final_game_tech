@@ -148,7 +148,7 @@ SOFTWARE.
 
 /*!
 	\file final_memory.h
-	\version v1.0.0
+	\version v1.0.1
 	\author Torsten Spaete
 	\brief Final Memory (FMEM) - A open source C99 single file header memory library.
 */
@@ -156,6 +156,9 @@ SOFTWARE.
 /*!
 	\page page_changelog Changelog
 	\tableofcontents
+
+	## v1.0.1:
+	- Changed: Moved FMEM_MEMSET, FMEM_MALLOC, FMEM_ASSERT into the implementation block
 
 	## v1.0.0:
 	- New: Added fmemPushArray() to allocate a array with a type
@@ -227,22 +230,6 @@ SOFTWARE.
 #include <stdint.h> // int32_t, etc.
 #include <stdbool.h> // bool
 #include <stddef.h> // NULL
-
-// Functions override
-#ifndef FMEM_MEMSET
-#	include <string.h>
-#	define FMEM_MEMSET(dst, val, size) memset(dst, val, size)
-#endif
-#ifndef FMEM_MALLOC
-#	include <malloc.h>
-#	define FMEM_MALLOC(size) malloc(size)
-#	define FMEM_FREE(ptr) free(ptr)
-#endif
-#if !defined(FMEM_ASSERT) || !defined(FMEM_STATIC_ASSERT)
-#	include <assert.h>
-#	define FMEM_ASSERT(exp) assert(exp)
-#	define FMEM_STATIC_ASSERT(exp) static_assert(exp)
-#endif
 
 //! Null pointer
 #define fmem_null NULL
@@ -351,6 +338,22 @@ fmem_api fmemBlockHeader *fmemGetHeader(fmemMemoryBlock *block);
 
 #if defined(FMEM_IMPLEMENTATION) && !defined(FMEM_IMPLEMENTED)
 #define FMEM_IMPLEMENTED
+
+// Functions override
+#ifndef FMEM_MEMSET
+#	include <string.h>
+#	define FMEM_MEMSET(dst, val, size) memset(dst, val, size)
+#endif
+#ifndef FMEM_MALLOC
+#	include <malloc.h>
+#	define FMEM_MALLOC(size) malloc(size)
+#	define FMEM_FREE(ptr) free(ptr)
+#endif
+#if !defined(FMEM_ASSERT) || !defined(FMEM_STATIC_ASSERT)
+#	include <assert.h>
+#	define FMEM_ASSERT(exp) assert(exp)
+#	define FMEM_STATIC_ASSERT(exp) static_assert(exp)
+#endif
 
 //! Default spacing after the header
 #define FMEM__HEADER_SPACING sizeof(uintptr_t)

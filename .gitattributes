@@ -16,7 +16,15 @@
 *.mp4 binary
 *.mkv binary
 *.pdf binary
+<<<<<<< HEAD
 *.ase binary
 *.zip binary
 *.rar binary
 *.7z binary
+=======
+*.zip binary
+*.rar binary
+*.7z binary
+*.gb binary
+*.ase binary
+>>>>>>> develop

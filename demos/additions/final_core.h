@@ -52,7 +52,7 @@ fpl_internal MemoryAllocator gDefaultMemoryAllocator = {
 	0,
 };
 
-fpl_inline void *MemoryAllocatorAlloc(const MemoryAllocator *allocator, const size_t size) {
+fpl_internal_inline void *MemoryAllocatorAlloc(const MemoryAllocator *allocator, const size_t size) {
 	if (allocator == fpl_null) {
 		allocator = &gDefaultMemoryAllocator;
 	}
@@ -61,7 +61,7 @@ fpl_inline void *MemoryAllocatorAlloc(const MemoryAllocator *allocator, const si
 	return result;
 }
 
-fpl_inline void MemoryAllocatorFree(const MemoryAllocator *allocator, void *ptr) {
+fpl_internal_inline void MemoryAllocatorFree(const MemoryAllocator *allocator, void *ptr) {
 	if (allocator == fpl_null) {
 		allocator = &gDefaultMemoryAllocator;
 	}

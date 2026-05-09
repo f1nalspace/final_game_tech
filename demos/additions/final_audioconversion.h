@@ -169,11 +169,11 @@ static void AudioSamples_Convert_S24ToF32_Default(const AudioSampleIndex sampleC
 	const float invMax24 = 1.0f / (float)AUDIO_INT24_MAX;
 	for(AudioSampleIndex sampleIndex = 0; sampleIndex < sampleCount; ++sampleIndex) {
 		// Load values
-		uint8_t a = inS24[sampleIndex * 3 + 0];
-		uint8_t b = inS24[sampleIndex * 3 + 1];
-		uint8_t c = inS24[sampleIndex * 3 + 2];
+		const uint8_t a = inS24[sampleIndex * 3 + 0];
+		const uint8_t b = inS24[sampleIndex * 3 + 1];
+		const uint8_t c = inS24[sampleIndex * 3 + 2];
 		// Convert the three 8-bit samples to a 32-bit sample value
-		int32_t value24 = (int32_t)(((uint32_t)a << 8) | ((uint32_t)b << 16) | ((uint32_t)b << 24));
+		int32_t value24 = (int32_t)(((uint32_t)a << 8) | ((uint32_t)b << 16) | ((uint32_t)c << 24));
 		// Move 8-bit forward to leave the first 8-bits as zero
 		value24 = value24 >> 8;
 		// Cast to F32
@@ -195,12 +195,12 @@ static void AudioSamples_Convert_F32ToS24_Default(const AudioSampleIndex sampleC
 		float x = inF32[i];
 		x = ClipF32(x);					// Clip to -1.0 and 1.0
 		x *= max24f;					// Scale to 24-bit
-		int32_t value24 = (int32_t)x;	// Convert to int32
+		const int32_t value24 = (int32_t)x;	// Convert to int32
 
 		// Extract the three 8-bits
-		uint8_t a = (uint8_t)((value24 & 0x0000FF) >> 0);
-		uint8_t b = (uint8_t)((value24 & 0x00FF00) >> 8);
-		uint8_t c = (uint8_t)((value24 & 0xFF0000) >> 16);
+		const uint8_t a = (uint8_t)((value24 & 0x0000FF) >> 0);
+		const uint8_t b = (uint8_t)((value24 & 0x00FF00) >> 8);
+		const uint8_t c = (uint8_t)((value24 & 0xFF0000) >> 16);
 
 		// Output
 		outS24[i * 3 + 0] = a;
@@ -488,8 +488,8 @@ static AudioResampleResult Audio__ResamplingDeinterleaved(const uint16_t channel
     const float tgtToSrcRatio = 1.0f / srcToTgtRatio;
 
 	for (uint16_t channel = 0; channel < channelCount; ++channel) {
-		const float *channelInSamples = &inSamples[channel][sourceFrameCount];
-		float *channelOutSamples = &outSamples[channel][targetFrameCount];
+		const float *channelInSamples = inSamples[channel];
+		float *channelOutSamples = outSamples[channel];
 
 		fplMemoryClear(channelOutSamples, targetFrameCount * sizeof(float));
 
@@ -796,11 +796,11 @@ typedef struct SampleS24ToF32 {
 } SampleS24ToF32;
 
 static SampleS24ToF32 Test_Samples_Convert_S24_F32[] = {
-	{{0x01, 0x00, 0x80}, -1.0f},       // Minimum value
-	{{0x01, 0x00, 0xc0}, -0.5f},       // Negative mid range
+	{{0x00, 0x00, 0x80}, -1.0f},       // Minimum value
+	{{0x00, 0x00, 0xC0}, -0.5f}, // Negative mid range
     {{0x00, 0x00, 0x00}, 0.0f},        // Zero value
-	{{0xff, 0xff, 0x3f}, 0.5f},       // Positive mid range
-    {{0xFF, 0xFF, 0x7f}, 1.0f},        // Maximum value
+	{{0x00, 0x00, 0x40}, 0.5f},  // Positive mid range
+    {{0xFF, 0xFF, 0x7F}, 1.0f},        // Maximum value
 };
 
 const int32_t Test_4_Frames_Interleaved_S32_OneChannel[4] = {

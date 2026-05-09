@@ -4,19 +4,21 @@ Name:
 	FPL-Demo | Emulator
 
 Description:
-	Fully working game boy DMG emulator with a simple debugger based on the final_game_box.h
+	Fully working game boy DMG/CGB emulator with a simple debugger based on the final_game_box.h.
 	
 Features:
 
 	- OpenGL Application with a custom immediate based UI
-	- Loading GamePak roms from either raw or zip files
+	- Loading GamePak roms from either raw or zip files with drag & drop support
 	- Emulator controls (Play, Pause, Stepping, etc.)
 	- Visual Debugger with disassembly, breakpoints, various stepping modes
 	- Rendering of internal states, such as CPU, PPU, APU, GamePak, etc.
 	- Tilemap visualization
-	- Color palette swapping
 	- Full background map visualization with scroll area
-	- Drag & Drop support for raw and zipped rom files 
+	- Color palette rendering & swapping for DMG
+	- Color palette rendering for CGB
+	- Asyncrounous audio playback
+	- Asyncrounous emulation using ring buffer for audio and image data
 
 Key mapping:
 
@@ -45,14 +47,36 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2026-04-19
+	- Support for CGB rom file extension
+	- Support for render CGB palettes
+	- Increased persistent and transient memory block
+	- Fixed Disassembly loading was broken (misaligned instructions)
+	- Fixed UIListbox highlight/scrolling was not handling resize
+	- Fixed UIListbox computation issues
+	- Fixed audio sample ring buffer was not drained, in pause mode
+	- Improved assembly list by limit the updates to 0.1 secs
+
+	## 2026-04-16
+	- Emulation thread does not wait for OpenGL transfer anymore and buffers the pixels
+	- Fixed audio playback was not in-sync with games
+	- Improve texture upload performance by using glTexSubImage2D instead glTexImage2D
+
+	## 2026-04-10
+	- No more stall for texture uploads, emulator thread stores display/background-map/tile-map in ring buffer
+	- Fixed audio sample playback was not in-sync with running game
+	- Fixed strcmp() was used, even though no <string.h> was included. Now we have a macro FGB_STRCMP()
+
 	## 2025-06-26
 	- Initial version
 
 Todo:
-
 	- Unloading game button (very easy to do)
-	- OAM Visualization (harder than it seems)
-	- Add option to select background tile area, because relying on LCDC is not good
+	- Show more CGB states
+	- Show rom/ram bank indices in UI
+	- OAM visualization (harder than it seems)
+	- CGB sprite data visualization (harder than it seems)
+	- Add option to select background tile area, because LCDC changes while a frame is rendered
 
 License:
 	Copyright (c) 2024-2026 Torsten Spaete
@@ -63,6 +87,9 @@ License:
 // Final Platform Layer
 #define FPL_IMPLEMENTATION
 #include <final_platform_layer.h>
+
+// Headers
+#include "utils.h"
 
 // Final Memory
 #define FMEM_IMPLEMENTATION
@@ -81,11 +108,11 @@ License:
 #include <miniz/miniz_zip.c>
 
 // Final Gamebox
-
 #define FGB_DISABLE_PLATFORM_DETECTION
 
 #define FGB_STRLEN(str) fplGetStringLength(str)
 #define FGB_STRINGFORMAT(buffer, bufferSize, format, ...) fplStringFormatArgs(buffer, bufferSize, format, __VA_ARGS__)
+#define FGB_STRCMP(a, b) StringCompare(a, b)
 #define FGB_MEMSET(ptr, value, size) fplMemorySet(ptr, value, size)
 #define FGB_MEMCOPY(dst, src, size) fplMemoryCopy(src, size, dst)
 
@@ -120,6 +147,12 @@ License:
 // Set from FGB!
 #define MAX_STATE_SLOT_COUNT 6
 fplStaticAssert(MAX_STATE_SLOT_COUNT % 2 == 0);
+
+// Boot ROM
+#define NO_BOOTROM
+#if !defined(NO_BOOTROM)
+#include "bootrom.h"
+#endif
 
 typedef enum {
 	ColorPaletteType_DMG = 0,
@@ -389,6 +422,146 @@ typedef struct {
 	char labels[MAX_STATE_SLOT_COUNT][64];
 } States;
 
+// Lock-free SPSC frame queues carrying raw fgbColor snapshots from the
+// emulator thread (producer) to the main thread (consumer). Same pattern as
+// fgbAudioRingBuffer in final_game_box.h, power-of-two capacity with mask.
+#define FRAME_QUEUE_CAPACITY 4u
+#define FRAME_QUEUE_MASK     (FRAME_QUEUE_CAPACITY - 1u)
+fplStaticAssert((FRAME_QUEUE_CAPACITY & FRAME_QUEUE_MASK) == 0);
+
+typedef struct {
+	fgbColor pixels[FGB_DISPLAY_WIDTH * FGB_DISPLAY_HEIGHT];
+} FrameSnapshotDisplay;
+
+typedef struct {
+	fgbColor pixels[FGB_BACKGROUND_MAP_WIDTH * FGB_BACKGROUND_MAP_HEIGHT];
+} FrameSnapshotBackgroundMap;
+
+typedef struct {
+	fgbColor pixels[FGB_TILEMAP_WIDTH * FGB_TILEMAP_HEIGHT];
+} FrameSnapshotTilemap;
+
+typedef struct {
+	fgbCacheline cachelineHead;
+	volatile int64_t head;
+	fgbCacheline cachelineTail;
+	volatile int64_t tail;
+	fgbCacheline cachelineSlots;
+	FrameSnapshotDisplay slots[FRAME_QUEUE_CAPACITY];
+} DisplayFrameQueue;
+
+typedef struct {
+	fgbCacheline cachelineHead;
+	volatile int64_t head;
+	fgbCacheline cachelineTail;
+	volatile int64_t tail;
+	fgbCacheline cachelineSlots;
+	FrameSnapshotBackgroundMap slots[FRAME_QUEUE_CAPACITY];
+} BackgroundMapFrameQueue;
+
+typedef struct {
+	fgbCacheline cachelineHead;
+	volatile int64_t head;
+	fgbCacheline cachelineTail;
+	volatile int64_t tail;
+	fgbCacheline cachelineSlots;
+	FrameSnapshotTilemap slots[FRAME_QUEUE_CAPACITY];
+} TilemapFrameQueue;
+
+static inline void DisplayFrameQueueInit(DisplayFrameQueue *q) {
+	fgb__InterlockedExchange64(&q->head, 0);
+	fgb__InterlockedExchange64(&q->tail, 0);
+}
+
+static inline void BackgroundMapFrameQueueInit(BackgroundMapFrameQueue *q) {
+	fgb__InterlockedExchange64(&q->head, 0);
+	fgb__InterlockedExchange64(&q->tail, 0);
+}
+
+static inline void TilemapFrameQueueInit(TilemapFrameQueue *q) {
+	fgb__InterlockedExchange64(&q->head, 0);
+	fgb__InterlockedExchange64(&q->tail, 0);
+}
+
+static inline bool DisplayFrameQueueTryPush(DisplayFrameQueue *q, const FrameSnapshotDisplay *src) {
+	const int64_t head = fgb__InterlockedRead64(&q->head);
+	const int64_t tail = fgb__InterlockedRead64(&q->tail);
+	const int64_t nextHead = (head + 1) & FRAME_QUEUE_MASK;
+	if (nextHead == tail) {
+		return false;
+	}
+	q->slots[(uint64_t)head] = *src;
+	fgb__InterlockedExchange64(&q->head, nextHead);
+	return true;
+}
+
+static inline bool BackgroundMapFrameQueueTryPush(BackgroundMapFrameQueue *q, const FrameSnapshotBackgroundMap *src) {
+	const int64_t head = fgb__InterlockedRead64(&q->head);
+	const int64_t tail = fgb__InterlockedRead64(&q->tail);
+	const int64_t nextHead = (head + 1) & FRAME_QUEUE_MASK;
+	if (nextHead == tail) {
+		return false;
+	}
+	q->slots[(uint64_t)head] = *src;
+	fgb__InterlockedExchange64(&q->head, nextHead);
+	return true;
+}
+
+static inline bool TilemapFrameQueueTryPush(TilemapFrameQueue *q, const FrameSnapshotTilemap *src) {
+	const int64_t head = fgb__InterlockedRead64(&q->head);
+	const int64_t tail = fgb__InterlockedRead64(&q->tail);
+	const int64_t nextHead = (head + 1) & FRAME_QUEUE_MASK;
+	if (nextHead == tail) {
+		return false;
+	}
+	q->slots[(uint64_t)head] = *src;
+	fgb__InterlockedExchange64(&q->head, nextHead);
+	return true;
+}
+
+static inline bool DisplayFrameQueuePopNewest(DisplayFrameQueue *q, FrameSnapshotDisplay *out) {
+	const int64_t head = fgb__InterlockedRead64(&q->head);
+	const int64_t tail = fgb__InterlockedRead64(&q->tail);
+	if (head == tail) {
+		return false;
+	}
+	const int64_t newestIdx = (head - 1 + FRAME_QUEUE_CAPACITY) & FRAME_QUEUE_MASK;
+	*out = q->slots[(uint64_t)newestIdx];
+	fgb__InterlockedExchange64(&q->tail, head);
+	return true;
+}
+
+static inline bool BackgroundMapFrameQueuePopNewest(BackgroundMapFrameQueue *q, FrameSnapshotBackgroundMap *out) {
+	const int64_t head = fgb__InterlockedRead64(&q->head);
+	const int64_t tail = fgb__InterlockedRead64(&q->tail);
+	if (head == tail) {
+		return false;
+	}
+	const int64_t newestIdx = (head - 1 + FRAME_QUEUE_CAPACITY) & FRAME_QUEUE_MASK;
+	*out = q->slots[(uint64_t)newestIdx];
+	fgb__InterlockedExchange64(&q->tail, head);
+	return true;
+}
+
+static inline bool TilemapFrameQueuePopNewest(TilemapFrameQueue *q, FrameSnapshotTilemap *out) {
+	const int64_t head = fgb__InterlockedRead64(&q->head);
+	const int64_t tail = fgb__InterlockedRead64(&q->tail);
+	if (head == tail) {
+		return false;
+	}
+	const int64_t newestIdx = (head - 1 + FRAME_QUEUE_CAPACITY) & FRAME_QUEUE_MASK;
+	*out = q->slots[(uint64_t)newestIdx];
+	fgb__InterlockedExchange64(&q->tail, head);
+	return true;
+}
+
+// Wall-clock ns per PPU frame: 1e9 * 70368 / 4194304 = 16742706 (exact).
+#define EMULATOR_FRAME_TIME_NS       ((uint64_t)16742706)
+// Safety bound on the inner fgbTick loop (far exceeds ~70k real cycles / frame).
+#define EMULATOR_INNER_SAFETY_CAP    200000u
+// Spin the last ~1.5 ms of the wait for sub-ms accuracy; coarse sleep handles the bulk.
+#define EMULATOR_SPIN_THRESHOLD_NS   ((int64_t)1500000)
+
 typedef struct {
 	States states;
 
@@ -402,6 +575,10 @@ typedef struct {
 	fplConditionVariable waitCondition;
 	fplConditionVariable microStepCondition;
 	fplConditionVariable breakpointCondition;
+
+	DisplayFrameQueue displayQueue;
+	BackgroundMapFrameQueue backgroundMapQueue;
+	TilemapFrameQueue tilemapQueue;
 
 	String pendingROMFilePath;
 
@@ -417,10 +594,14 @@ typedef struct {
 
 	volatile uint32_t isShutdown;
 
-	volatile uint32_t isFrameFinished;
 	volatile uint32_t isFrameStepActive;
 	volatile uint32_t isMicroStepActive;
-	volatile uint32_t isVRAMUpdated;
+
+	// Sticky audio-rescue flag: set when ring drops below LOW_WATER,
+	// cleared when ring refills to HIGH_WATER. While set, pacing skips
+	// the wall-clock sleep so the ring can be rebuilt to full headroom
+	// instead of stabilizing at the low-water level.
+	volatile uint32_t audioRescueActive;
 
 	float masterVolume;
 
@@ -450,6 +631,11 @@ typedef struct {
 } StatesDialog;
 
 typedef struct {
+	const char *romFilePath;
+	bool isTraceEnabled;
+} EmulatorParameters;
+
+typedef struct {
 	UIContext uiCtx;
 
 	char romsPath[1024];
@@ -465,7 +651,7 @@ typedef struct {
 	Texture cursorTexture;
 	Texture displayTexture;
 	Texture backgroundMapTexture;
-	Texture vramTexture;
+	Texture tileMapTexture;
 	Texture fontTexture;
 	Texture fontTextureLarge;
 	Texture gbTexture;
@@ -491,6 +677,7 @@ typedef struct {
 	UIButtonData restoreStateButton;
 
 	UICheckboxData logEnabledCheckbox;
+	UICheckboxData traceEnabledCheckbox;
 	UICheckboxData bootEnabledCheckbox;
 	UICheckboxData initPauseCheckbox;
 
@@ -520,6 +707,9 @@ typedef struct {
 	fpl_b32 isValid;
 
 	bool isDebugEnabled;
+
+	fplTimestamp lastDisassemblyScrollTime;
+	uint64_t lastDisassemblyScrollPC;
 } Application;
 
 static inline void UpdateKeyboardButtonState(UIButtonState *newState, const bool isDown) {
@@ -635,6 +825,10 @@ static bool InitEmulator(fmemMemoryBlock *mem, Emulator *emulator) {
 		emulator->states.textures[i] = AllocateTexture(mem, FGB_DISPLAY_WIDTH, FGB_DISPLAY_HEIGHT, TextureFormat_RGBA, TextureFilter_Nearest);
 	}
 
+	DisplayFrameQueueInit(&emulator->displayQueue);
+	BackgroundMapFrameQueueInit(&emulator->backgroundMapQueue);
+	TilemapFrameQueueInit(&emulator->tilemapQueue);
+
 	emulator->isShutdown = false;
 	emulator->isActive = false;
 	emulator->masterVolume = 0.25f;
@@ -684,7 +878,7 @@ static void ReleaseEmulator(Emulator *emulator) {
 	fplClearStruct(emulator);
 }
 
-static Application *CreateApplication(fmemMemoryBlock *mem) {
+static Application *CreateApplication(fmemMemoryBlock *mem, const EmulatorParameters *parameters) {
 	Application *app = fmemPushStruct(mem, Application, fmemPushFlags_Clear);
 	if (app == fpl_null) {
 		return fpl_null;
@@ -722,7 +916,7 @@ static Application *CreateApplication(fmemMemoryBlock *mem) {
 	app->fontTexture = UploadTexture(app->fontData.atlasWidth, app->fontData.atlasHeight, TextureFormat_Alpha, TextureFilter_Linear, app->fontData.atlasAlphaBitmap);
 	app->fontTextureLarge = UploadTexture(app->fontDataLarge.atlasWidth, app->fontDataLarge.atlasHeight, TextureFormat_Alpha, TextureFilter_Linear, app->fontDataLarge.atlasAlphaBitmap);
 	app->displayTexture = AllocateTexture(mem, FGB_DISPLAY_WIDTH, FGB_DISPLAY_HEIGHT, TextureFormat_RGBA, TextureFilter_Nearest);
-	app->vramTexture = AllocateTexture(mem, FGB_TILEMAP_WIDTH, FGB_TILEMAP_HEIGHT, TextureFormat_RGBA, TextureFilter_Nearest);
+	app->tileMapTexture = AllocateTexture(mem, FGB_TILEMAP_WIDTH, FGB_TILEMAP_HEIGHT, TextureFormat_RGBA, TextureFilter_Nearest);
 	app->backgroundMapTexture = AllocateTexture(mem, FGB_BACKGROUND_MAP_WIDTH, FGB_BACKGROUND_MAP_HEIGHT, TextureFormat_RGBA, TextureFilter_Nearest);
 	app->cursorTexture = LoadTextureFromMemory(ptr_mouseCursor, sizeOf_mouseCursor, TextureFormat_Automatic, TextureFilter_Linear, 0, 0);
 	app->gbTexture = LoadTextureFromMemory(ptr_gameboyImage, sizeOf_gameboyImage, TextureFormat_Automatic, TextureFilter_Linear, 619, 1024);
@@ -757,7 +951,7 @@ static void ReleaseApplication(Application **appRef) {
 	ReleaseEmulator(&app->emulator);
 
 	ReleaseTexture(&app->cursorTexture);
-	ReleaseTexture(&app->vramTexture);
+	ReleaseTexture(&app->tileMapTexture);
 	ReleaseTexture(&app->displayTexture);
 	ReleaseTexture(&app->backgroundMapTexture);
 	ReleaseTexture(&app->fontTexture);
@@ -1176,10 +1370,13 @@ static void DrawSoundState(Application *app, fgbSystem *system, const float x, c
 	textY -= lineHeight;
 }
 
-static void DrawCPUState(Application *app, const fgbEmulationState state, const fgbCPU *cpu, const float x, const float y, const float w, const float h, const float padding) {
-	const fgbCPURegisters *r = &cpu->registers;
-
+static void DrawCPUState(Application *app, fgbSystem *system, const float x, const float y, const float w, const float h, const float padding) {
 	Emulator *emulator = &app->emulator;
+
+	const fgbCPU *cpu = &system->cpu;
+	const fgbCPURegisters *r = &cpu->registers;
+	const fgbPPU *ppu = &system->ppu;
+	const fgbEmulationState state = system->state;
 
 	UIContext *uiCtx = &app->uiCtx;
 
@@ -1230,9 +1427,16 @@ static void DrawCPUState(Application *app, const fgbEmulationState state, const 
 		fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "State: %s", stateText);
 	}
 	UIString(uiCtx, textX, textY, foregroundColor, TextBuffer, 0);
+
+	const char *gameboyTypeName = fgbGetCoreTypeName(emulator->system.coreType);
+	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "%s", gameboyTypeName);
+	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
+	float gbtX = x + w - textSize.w - paddingX;
+	UIString(uiCtx, gbtX, textY, foregroundColor, TextBuffer, 0);
+
 	textY -= lineHeight;
 
-	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "M-Cycles: %llu, T-Cycles: %llu", cpu->state.currentMemoryCycles, cpu->state.totalTickCycles);
+	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "M-Cycles: %03llu, T-Cycles: %llu, Frames: %llu", cpu->state.currentMemoryCycles, cpu->state.totalTickCycles, ppu->state.frameCount);
 	UIString(uiCtx, textX, textY, foregroundColor, TextBuffer, 0);
 	textY -= lineHeight;
 
@@ -1376,21 +1580,6 @@ static void TransferPixelsToTexture(const fgbColor *sourcePixels, const uint32_t
 		}
 	}
 	texture->hasPixels = true;
-}
-
-static void UpdateDisplayTexture(Application *app, const fgbPPU *ppu) {
-	TransferPixelsToTexture(ppu->display, FGB_DISPLAY_WIDTH, FGB_DISPLAY_HEIGHT, &app->displayTexture);
-	UpdateTexture(&app->displayTexture);
-}
-
-static void UpdateBackgroundMapTexture(Application *app, const fgbPPU *ppu) {
-	TransferPixelsToTexture(ppu->backgroundMap.colors, FGB_BACKGROUND_MAP_WIDTH, FGB_BACKGROUND_MAP_HEIGHT, &app->backgroundMapTexture);
-	UpdateTexture(&app->backgroundMapTexture);
-}
-
-static void UpdateVRAMTexture(Application *app, const fgbPPU *ppu) {
-	TransferPixelsToTexture(ppu->tilemap, FGB_TILEMAP_WIDTH, FGB_TILEMAP_HEIGHT, &app->vramTexture);
-	UpdateTexture(&app->vramTexture);
 }
 
 static void DrawDisplay(const Application *app, const float x, const float y, const float w, const float h, const float aspect) {
@@ -1551,47 +1740,47 @@ static void DrawBackground(const Application *app, const float x, const float y,
 	DrawTexturedQuad(tex->id, x + border * 2.0f, y + border * 2.0f, w - border * 4.0f, h - border * 4.0f, ColorWhite, uMin, vMin, uMax, vMax);
 }
 
-static void DrawTiles(UIContext *uiCtx, const Application *app, const float x, const float y, const float w, const float h, const float aspect) {
-	const Texture *tex = &app->vramTexture;
-	float uMin = 0.0f;
-	float uMax = tex->uScale;
-	float vMin = tex->vScale;
-	float vMax = 0.0f;
-	float border = 1.0f;
+static void DrawTiles(UIContext *uiCtx, const Texture *tex, const float x, const float y, const float w, const float h, const float aspect) {
+	const float uMin = 0.0f;
+	const float uMax = tex->uScale;
+	const float vMin = tex->vScale;
+	const float vMax = 0.0f;
+	const float border = 1.0f;
 
-	Vec2f size = V2fInit(w - border * 4.0f, h - border * 4.0f);
+	const Vec2f size = V2fInit(w - border * 4.0f, h - border * 4.0f);
 
-	Viewport4f vp = VP4fComputeByAspect(size, aspect);
+	const Viewport4f vp = VP4fComputeByAspect(size, aspect);
 
-	float rx = x + border * 2.0f + vp.x;
-	float ry = y + border * 2.0f + vp.y;
-	float rw = vp.w;
-	float rh = vp.h;
+	const float rx = x + border * 2.0f + vp.x;
+	const float ry = y + border * 2.0f + vp.y;
+	const float rw = vp.w;
+	const float rh = vp.h;
 
-	uint8_t gridCountX = 16;
-	uint8_t gridCountY = 24;
-	float tileSize = rw / (float)gridCountX;
+	const uint8_t gridCountX = 16;
+	const uint8_t gridCountY = 24;
+	const float tileSize = rw / (float)gridCountX;
 
-	float totalTilesWidth = gridCountX * tileSize;
-	float totalTilesHeight = gridCountY * tileSize;
+	const float totalTilesWidth = (float)gridCountX * tileSize;
+	const float totalTilesHeight = (float)gridCountY * tileSize;
+
+	const Color4f gridLineColor = { 0.1f, 0.1f, 0.1f, 0.25f };
 
 	UIPanel(uiCtx, x, y, w, h, true);
 
 	DrawTexturedQuad(tex->id, rx, ry, rw, rh, ColorWhite, uMin, vMin, uMax, vMax);
 
-	Color4f gridLineColor = { 0.1f, 0.1f, 0.1f, 0.25f };
 	for (uint8_t i = 0; i <= gridCountX; ++i) {
-		float gridLineX0 = rx + i * tileSize;
-		float gridLineY0 = ry;
-		float gridLineX1 = rx + i * tileSize;
-		float gridLineY1 = ry + totalTilesHeight;
+		const float gridLineX0 = rx + i * tileSize;
+		const float gridLineY0 = ry;
+		const float gridLineX1 = rx + i * tileSize;
+		const float gridLineY1 = ry + totalTilesHeight;
 		DrawLine(gridLineX0, gridLineY0, gridLineX1, gridLineY1, 1.0f, gridLineColor);
 	}
 	for (uint8_t i = 0; i <= gridCountY; ++i) {
-		float gridLineX0 = rx;
-		float gridLineY0 = ry + i * tileSize;
-		float gridLineX1 = rx + totalTilesWidth;
-		float gridLineY1 = ry + i * tileSize;
+		const float gridLineX0 = rx;
+		const float gridLineY0 = ry + i * tileSize;
+		const float gridLineX1 = rx + totalTilesWidth;
+		const float gridLineY1 = ry + i * tileSize;
 		DrawLine(gridLineX0, gridLineY0, gridLineX1, gridLineY1, 1.0f, gridLineColor);
 	}
 }
@@ -1697,6 +1886,9 @@ static void DrawPalettes(Application *app, const float x, const float y, const f
 	static Color4f obj0Colors[4];
 	static Color4f obj1Colors[4];
 
+	static Color4f cgbBGColors[8][4];
+	static Color4f cgbObjColors[8][4];
+
 	for (uint8_t colorIndex = 0; colorIndex < 4; ++colorIndex) {
 		sysColors[colorIndex] = FGBColorToLinearColor(system->ppu.currentMonochromeColors.system[colorIndex]);
 		bgColors[colorIndex] = FGBColorToLinearColor(system->ppu.currentMonochromeColors.background[colorIndex]);
@@ -1711,6 +1903,13 @@ static void DrawPalettes(Application *app, const float x, const float y, const f
 		paletteColorsBg[colorIndex] = FGBColorToLinearColor(system->systemMonochromeColors.background[colorIndex]);
 		paletteColorsObj0[colorIndex] = FGBColorToLinearColor(system->systemMonochromeColors.sprite0[colorIndex]);
 		paletteColorsObj1[colorIndex] = FGBColorToLinearColor(system->systemMonochromeColors.sprite1[colorIndex]);
+	}
+
+	for (uint8_t lineIndex = 0; lineIndex < 8; ++lineIndex) {
+		for (uint8_t colorIndex = 0; colorIndex < 4; ++colorIndex) {
+			cgbBGColors[lineIndex][colorIndex] = FGBColorToLinearColor(system->cgbState.currentPalette.bg.grid[lineIndex][colorIndex]);
+			cgbObjColors[lineIndex][colorIndex] = FGBColorToLinearColor(system->cgbState.currentPalette.obj.grid[lineIndex][colorIndex]);
+		}
 	}
 
 	// Palette Label
@@ -1786,7 +1985,7 @@ static void DrawPalettes(Application *app, const float x, const float y, const f
 	text = "Sys";
 	textLen = fplGetStringLength(text);
 	textX = px;
-	textY = palY + (cellHeight - maxLabelSize.h) * 0.5f - lineHeight * 0.25f;
+	textY = palY + (cellHeight - maxLabelSize.h) * 0.5f;
 	UIString(uiCtx, textX, textY, foregroundColor, text, textLen);
 	DrawPalette(palX, palY, cellWidth, cellHeight, sysColors, 2);
 
@@ -1798,7 +1997,7 @@ static void DrawPalettes(Application *app, const float x, const float y, const f
 	text = "BG";
 	textLen = fplGetStringLength(text);
 	textX = px;
-	textY = palY + (cellHeight - maxLabelSize.h) * 0.5f - lineHeight * 0.25f;
+	textY = palY + (cellHeight - maxLabelSize.h) * 0.5f;
 	UIString(uiCtx, textX, textY, foregroundColor, text, textLen);
 	DrawPalette(palX, palY, cellWidth, cellHeight, bgColors, 4);
 
@@ -1810,7 +2009,7 @@ static void DrawPalettes(Application *app, const float x, const float y, const f
 	text = "OBJ-0";
 	textLen = fplGetStringLength(text);
 	textX = px;
-	textY = palY + (cellHeight - maxLabelSize.h) * 0.5f - lineHeight * 0.25f;
+	textY = palY + (cellHeight - maxLabelSize.h) * 0.5f;
 	UIString(uiCtx, textX, textY, foregroundColor, text, textLen);
 	DrawPalette(palX, palY, cellWidth, cellHeight, obj0Colors, 4);
 
@@ -1822,9 +2021,38 @@ static void DrawPalettes(Application *app, const float x, const float y, const f
 	text = "OBJ-1";
 	textLen = fplGetStringLength(text);
 	textX = px;
-	textY = palY + (cellHeight - maxLabelSize.h) * 0.5f - lineHeight * 0.25f;
+	textY = palY + (cellHeight - maxLabelSize.h) * 0.5f;
 	UIString(uiCtx, textX, textY, foregroundColor, text, textLen);
 	DrawPalette(palX, palY, cellWidth, cellHeight, obj1Colors, 4);
+
+	py -= (paletteHeight + spacing);
+
+	// CGB Lines/Colums Palettes
+	palX = px + maxLabelSize.w;
+	palY = py;
+	text = "CGB-BG";
+	textLen = fplGetStringLength(text);
+	textX = px;
+	textY = palY + (cellHeight - maxLabelSize.h) * 0.5f;
+	UIString(uiCtx, textX, textY, foregroundColor, text, textLen);
+	for (uint8_t lineIndex = 0; lineIndex < 8; ++lineIndex) {
+		DrawPalette(palX, palY, cellWidth, cellHeight, cgbBGColors[lineIndex], 4);
+		palY -= (paletteHeight + spacing);
+	}
+
+	const float blockWidth = cellWidth * 4 + paletteTypeSpacing;
+
+	palX = px + maxLabelSize.w + blockWidth + maxLabelSize.w;
+	palY = py;
+	text = "CGB-OBJ";
+	textLen = fplGetStringLength(text);
+	textX = px + maxLabelSize.w + blockWidth;
+	textY = palY + (cellHeight - maxLabelSize.h) * 0.5f;
+	UIString(uiCtx, textX, textY, foregroundColor, text, textLen);
+	for (uint8_t lineIndex = 0; lineIndex < 8; ++lineIndex) {
+		DrawPalette(palX, palY, cellWidth, cellHeight, cgbObjColors[lineIndex], 4);
+		palY -= (paletteHeight + spacing);
+	}
 }
 
 static char performanceLabelBuffer[1024] = { 0 };
@@ -2035,7 +2263,7 @@ static void RenderDebugFrame(Application *app, const InputState *input) {
 	//
 	// CPU
 	//
-	DrawCPUState(app, system->state, &system->cpu, cpuStateX, cpuStateY, cpuStateWidth, cpuStateHeight, cpuStatePadding);
+	DrawCPUState(app, system, cpuStateX, cpuStateY, cpuStateWidth, cpuStateHeight, cpuStatePadding);
 
 	//
 	// Actions
@@ -2129,6 +2357,17 @@ static void RenderDebugFrame(Application *app, const InputState *input) {
 
 	tmpX += app->logEnabledCheckbox.currentWidth + switchesPanelPadding;
 
+	bool isTraceChecked = system->debug.isInstructionTraceEnabled;
+	bool isTraceEnabled = true;
+	if (UICheckbox(uiCtx, &app->traceEnabledCheckbox, tmpX, switchesPanelButtonY, "Trace", true, isTraceChecked, isTraceEnabled)) {
+		emulator->config.debug.isInstructionTraceEnabled = !emulator->config.debug.isInstructionTraceEnabled;
+		if (emulator->isActive) {
+			system->debug.isInstructionTraceEnabled = emulator->config.debug.isInstructionTraceEnabled;
+		}
+	}
+
+	tmpX += app->logEnabledCheckbox.currentWidth + switchesPanelPadding;
+
 	bool isBootChecked = system->boot.rom.isEnabled;
 	bool isBootEnabled = true;
 	if (UICheckbox(uiCtx, &app->bootEnabledCheckbox, tmpX, switchesPanelButtonY, "Boot", true, isBootChecked, isBootEnabled)) {
@@ -2170,7 +2409,7 @@ static void RenderDebugFrame(Application *app, const InputState *input) {
 	}
 	UITabContent rightTabContent = UITabControl(uiCtx, &app->rightTabControl, rightTabControlX, rightTabControlY, rightTabControlWidth, rightTabControlHeight, "Right-TabControl", rightTabs, rightTabCount);
 	if (rightTabContent.activeTab == &tabTiles) {
-		DrawTiles(uiCtx, app, rightTabContent.area.x, rightTabContent.area.y, rightTabContent.area.w, rightTabContent.area.h, vramAspect);
+		DrawTiles(uiCtx, &app->tileMapTexture, rightTabContent.area.x, rightTabContent.area.y, rightTabContent.area.w, rightTabContent.area.h, vramAspect);
 	} else if (rightTabContent.activeTab == &tabPalettes) {
 		DrawPalettes(app, rightTabContent.area.x, rightTabContent.area.y, rightTabContent.area.w, rightTabContent.area.h);
 	} else if (rightTabContent.activeTab == &tabBreakpoints) {
@@ -2513,7 +2752,7 @@ static void RenderFrame(Application *app, const InputState *input) {
 	}
 }
 
-static void GameboxLog(void *userData, fgbLogLevel level, const char *system, const char *message) {
+static void GameboxLog(void *userData, const fgbLogLevel level, const char *system, const char *message) {
 	char logText[255] = { 0 };
 	if (fplGetStringLength(message) > 0) {
 		fplStringFormat(logText, fplArrayCount(logText), "[%s] %s", system, message);
@@ -2523,13 +2762,16 @@ static void GameboxLog(void *userData, fgbLogLevel level, const char *system, co
 
 	fplDebugFormatOut("%s\n", message);
 
-	UIListboxData *list = (UIListboxData *)userData;
-	StringListAdd(&list->values, logText);
-	UIListboxScrollTo(list, list->values.count - 1);
+	if (level < fgbLogLevel_Trace) {
+		UIListboxData *list = (UIListboxData *)userData;
+		StringListAdd(&list->values, logText);
+		UIListboxScrollTo(list, list->values.count - 1);
+	}
 }
 
 typedef enum {
 	ExitCode_Success = 0,
+	ExitCode_InvalidArguments,
 	ExitCode_MissingGamePakArgument,
 	ExitCode_OutOfMemory,
 	ExitCode_FailedInitializePlatform,
@@ -2621,61 +2863,149 @@ static void EmulatorThreadProc(const fplThreadHandle *thread, void *data) {
 
 	fgbSystem *system = &emulator->system;
 
-	emulator->isFrameFinished = false;
-	emulator->isVRAMUpdated = false;
 	emulator->isActive = false;
-
 	emulator->isShutdown = false;
 
+	fplTimestamp epoch = fplTimestampQuery();
+	uint64_t framesDone = 0;
+
+	static FrameSnapshotDisplay prodDisplay;
+	static FrameSnapshotBackgroundMap prodBgMap;
+	static FrameSnapshotTilemap prodTilemap;
+
 	while (!emulator->isShutdown) {
-		// Wait a while, when a frame is finished and continue loop
-		if (emulator->isFrameFinished) {
-			fplThreadSleep(0);
-			continue;
-		}
+		const fgbEmulationState state = fgbGetState(system);
 
-		// Possible wait until the emulator wakes by the condition variable
-		fgbEmulationState state = fgbGetState(system);
+		// Park when not running. Push a snapshot first so the debugger view stays live.
 		if (!emulator->isActive || state == fgbEmulationState_Paused || state == fgbEmulationState_Error) {
-			emulator->isFrameFinished = true;
-			emulator->isVRAMUpdated = true;
+			if (emulator->isActive) {
+				fplMemoryCopy(system->ppu.display, sizeof(prodDisplay.pixels), prodDisplay.pixels);
+				fplMemoryCopy(system->ppu.backgroundMap.colors, sizeof(prodBgMap.pixels), prodBgMap.pixels);
+				fplMemoryCopy(system->ppu.tilemap, sizeof(prodTilemap.pixels), prodTilemap.pixels);
+				DisplayFrameQueueTryPush(&emulator->displayQueue, &prodDisplay);
+				BackgroundMapFrameQueueTryPush(&emulator->backgroundMapQueue, &prodBgMap);
+				TilemapFrameQueueTryPush(&emulator->tilemapQueue, &prodTilemap);
+			}
 			fplConditionWait(&emulator->waitCondition, &emulator->mutex, 1000 * 60);
+			// Resync pacing on wakeup so we don't try to "catch up" on sleep time.
+			epoch = fplTimestampQuery();
+			framesDone = 0;
 			continue;
 		}
 
-		// Process a single CPU tick (4 or more memory ticks)
+		// Run one full PPU frame (or until a halt point is hit).
 		BeginPerformanceCounter(&metrics->emulatorTick, fplTimestampQuery());
-		bool tickResult = fgbTick(system);
+		bool frameDone = false;
+		bool vramTouched = false;
+		bool haltRequested = false;
+		uint32_t safety = 0;
+		while (safety++ < EMULATOR_INNER_SAFETY_CAP) {
+			if (!fgbTick(system)) {
+				break;
+			}
+			if (fgbIsVRAMUpdated(system)) {
+				vramTouched = true;
+			}
+			if (fgbIsFrameUpdated(system)) {
+				frameDone = true;
+				break;
+			}
+			// MicroStep / Breakpoint handlers condwait inside fgbTick; when they return
+			// the state may have changed and fgbIsFrameUpdated will not become true for
+			// the rest of this frame. Exit so the outer loop can pause / park.
+			if (emulator->isMicroStepActive) {
+				haltRequested = true;
+				break;
+			}
+			const fgbEmulationState innerState = fgbGetState(system);
+			if (innerState == fgbEmulationState_Paused || innerState == fgbEmulationState_Error) {
+				haltRequested = true;
+				break;
+			}
+		}
 		EndPerformanceCounter(&metrics->emulatorTick, fplTimestampQuery());
 
-		if (tickResult) {
+		// Snapshot display + bgmap on a full frame, and whenever an inner halt ran (so
+		// debugger step / breakpoint paths always land a visible frame).
+		if (frameDone || haltRequested) {
+			fplMemoryCopy(system->ppu.display, sizeof(prodDisplay.pixels), prodDisplay.pixels);
+			fplMemoryCopy(system->ppu.backgroundMap.colors, sizeof(prodBgMap.pixels), prodBgMap.pixels);
+			DisplayFrameQueueTryPush(&emulator->displayQueue, &prodDisplay);
+			BackgroundMapFrameQueueTryPush(&emulator->backgroundMapQueue, &prodBgMap);
+		}
+		if (vramTouched || haltRequested) {
+			fplMemoryCopy(system->ppu.tilemap, sizeof(prodTilemap.pixels), prodTilemap.pixels);
+			TilemapFrameQueueTryPush(&emulator->tilemapQueue, &prodTilemap);
+		}
 
-			// When a frame was updated, notify the emulator that is finished
-			if (fgbIsFrameUpdated(system)) {
-				emulator->isFrameFinished = true;
+		// Frame-step halt: pause after the full frame completed.
+		if (frameDone && emulator->isFrameStepActive) {
+			emulator->isFrameStepActive = false;
+			fgbPause(system);
+			continue;
+		}
+		// Micro-step halt: pause after the micro-step handler unblocked.
+		if (emulator->isMicroStepActive) {
+			emulator->isMicroStepActive = false;
+			fgbPause(system);
+			continue;
+		}
+		// Other mid-frame halts (breakpoint handler, error): let the next iteration park.
+		if (haltRequested) {
+			continue;
+		}
 
-				// Halt game boy when frame stepping is active
-				if (emulator->isFrameStepActive) {
-					emulator->isFrameStepActive = false;
-					fgbPause(system);
+		// Pacing: epoch-anchored absolute target. Each completed frame advances the
+		// schedule by exactly EMULATOR_FRAME_TIME_NS so the CPU clock averages exactly
+		// 4.194304 MHz over the long run, regardless of per-iteration jitter.
+		++framesDone;
+
+		// Audio-rescue hysteresis: once ring drops below LOW_WATER, stay in
+		// rescue mode (run flat-out, no wallclock wait) until ring refills
+		// to PRIME (HIGH_WATER). Prevents the ring from stabilizing at
+		// LOW_WATER and leaving no headroom for the next scheduler hiccup.
+		const uint32_t ringFill = fgbGetAudioRingBufferFillFrames(system);
+		if (!emulator->audioRescueActive) {
+			if (ringFill < FGB_APU_RING_BUFFER_LOW_WATER_FRAMES) {
+				emulator->audioRescueActive = 1;
+			}
+		} else {
+			if (ringFill >= FGB_APU_RING_BUFFER_PRIME_FRAMES) {
+				emulator->audioRescueActive = 0;
+			}
+		}
+
+		if (emulator->audioRescueActive) {
+			// Skip pacing entirely; re-anchor so accumulated wallclock debt
+			// doesn't cause an endless catch-up burst after rescue ends.
+			epoch = fplTimestampQuery();
+			framesDone = 0;
+			continue;
+		}
+
+		const uint64_t targetNs = framesDone * EMULATOR_FRAME_TIME_NS;
+		for (;;) {
+			const int64_t nowNs = (int64_t)(fplTimestampElapsed(epoch, fplTimestampQuery()) * 1e9);
+			const int64_t remainingNs = (int64_t)targetNs - nowNs;
+			if (remainingNs <= 0) {
+				break;
+			}
+			// Enter rescue mid-sleep if ring drops below LOW_WATER.
+			if (fgbGetAudioRingBufferFillFrames(system) < FGB_APU_RING_BUFFER_LOW_WATER_FRAMES) {
+				emulator->audioRescueActive = 1;
+				epoch = fplTimestampQuery();
+				framesDone = 0;
+				break;
+			}
+			if (remainingNs > EMULATOR_SPIN_THRESHOLD_NS) {
+				const uint32_t coarseMs = (uint32_t)((remainingNs - EMULATOR_SPIN_THRESHOLD_NS) / 1000000);
+				if (coarseMs > 0) {
+					fplThreadSleep(coarseMs);
+				} else {
+					fplThreadYield();
 				}
-			}
-
-			// When the video ram was updated, notify the emulator that is finished
-			if (fgbIsVRAMUpdated(system)) {
-				emulator->isVRAMUpdated = true;
-			}
-
-			// Halt game boy when micro stepping is active
-			if (emulator->isMicroStepActive) {
-				emulator->isMicroStepActive = false;
-				fgbPause(system);
-			}
-
-			// In case the system is paused, always update the textures of the video frame and the VRAM
-			if (fgbGetState(system) == fgbEmulationState_Paused) {
-				emulator->isFrameFinished = true;
-				emulator->isVRAMUpdated = true;
+			} else {
+				fplThreadYield();
 			}
 		}
 	}
@@ -2875,7 +3205,7 @@ static void ProcessEvents(Application *app, const InputState *oldInput, InputSta
 					case fplWindowEventType_DroppedFiles:
 					{
 						if (ev.window.dropFiles.fileCount != 1) {
-							return;
+							break;
 						}
 
 						const char *filePath = ev.window.dropFiles.files[0];
@@ -2949,7 +3279,7 @@ static fgbGamePakLoadResultType LoadGamePakFromZipFile(const fgbCallbacks *callb
 
 		const char *itemFileExt = fplExtractFileExtension(itemFilename);
 
-		if (_stricmp(itemFileExt, ".gb") == 0) {
+		if (StringCompareIgnoreCase(itemFileExt, ".gb") || StringCompareIgnoreCase(itemFileExt, ".gbc")) {
 			romFileIndex = fileIndex;
 			break;
 		}
@@ -3049,16 +3379,35 @@ static uint32_t AudioThreadCallback(const fplAudioFormat *deviceFormat, const ui
 
 	fgbEmulationState state = fgbGetState(system);
 	if (!emulator->isActive || state == fgbEmulationState_Paused || state == fgbEmulationState_Error) {
-		result = 0;
+		// Drain the APU ring buffer so accumulated samples from stepping don't
+		// play back as a burst when execution resumes.
+		fgbFetchAudioSamples(system, frameCount, AudioTempSampels);
+		fplMemorySet(outputSamples, 0, frameCount * deviceFormat->channels * sizeof(int16_t));
+		result = frameCount;
 	} else {
 		int16_t *out16 = (int16_t *)outputSamples;
 
 		BeginPerformanceCounter(&metrics->audioReadSamples, fplTimestampQuery());
-		result = fgbFetchAudioSamples(system, frameCount, AudioTempSampels);
+		// fgbFetchAudioSamples zero-fills (with silence = 128) any shortfall
+		// inside AudioTempSampels, but still returns the actual frame count so
+		// the underrun can be logged for diagnostics.
+		const uint32_t popped = fgbFetchAudioSamples(system, frameCount, AudioTempSampels);
 		EndPerformanceCounter(&metrics->audioReadSamples, fplTimestampQuery());
 
+		if (popped == 0) {
+			// No audio frames, return silence
+			fplMemorySet(outputSamples, 0, frameCount * deviceFormat->channels * sizeof(int16_t));
+		} else if (popped < frameCount) {
+			const uint32_t missing = frameCount - popped;
+			fplDebugFormatOut("APU Audio buffer underrun: %u frames are missing\n", missing);
+		}
+
+		// Always convert the full frameCount — the silence-padded tail keeps
+		// the audio device from playing stale samples from the previous callback.
+		result = frameCount;
+
 		BeginPerformanceCounter(&metrics->audioOutputSamples, fplTimestampQuery());
-		for (uint32_t frameIndex = 0; frameIndex < result; ++frameIndex) {
+		for (uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
 			for (uint8_t channelIndex = 0; channelIndex < 2; ++channelIndex) {
 				uint8_t rawSample = AudioTempSampels[frameIndex * 2 + channelIndex];
 				float sampleF32 = rawSample / 255.0f;
@@ -3102,6 +3451,9 @@ static char disassemblyTempBuffer[256] = { 0 };
 static char disassemblyLineBuffer[1024] = { 0 };
 
 static uint8_t disassemblyMemory[0xFFFF] = { 0 };
+static uint8_t disassemblyVisited[65536] = { 0 };
+static uint8_t disassemblyQueued[65536] = { 0 };
+static uint16_t disassemblyBFSQueue[65536] = { 0 };
 
 static void ClearDisassembly(UIListboxData *listbox, IndexHashtable *hashtable) {
 	StringListClear(&listbox->values);
@@ -3112,59 +3464,171 @@ static void LoadDisassembly(fgbSystem *system, UIListboxData *listbox, IndexHash
 	StringListClear(&listbox->values);
 	IndexHashtableClear(hashtable);
 
-	uint16_t addressRange = system->boot.state.isActive ? 0xFF : 0xFFFF;
+	// TODO(final): Address not correct for GBC when GBC boot rom is active!
+	const uint16_t addressRange = system->boot.state.isActive ? 0xFF : 0xFFFF;
 
+	// Read all values from the entire address range into a memory array
 	for (uint16_t address = 0; address < addressRange; ++address) {
-		uint8_t value = fgbBusRead8(system, address);
-		disassemblyMemory[address] = value;
+		disassemblyMemory[address] = fgbBusRead8(system, address);
 	}
 
+	// Stup to use fgbDecodeInstruction
 	fgbMemory rom = { 0 };
 	rom.data = disassemblyMemory;
 	rom.length = addressRange;
 
-	fgbDecodedInstruction decoded = { 0 };
+	// BFS from known entry points to discover real instruction starts.
+	// This avoids misalignment from overlapping instruction sequences.
+	fplMemorySet(disassemblyVisited, 0, sizeof(disassemblyVisited));
+	fplMemorySet(disassemblyQueued, 0, sizeof(disassemblyQueued));
 
+	static const uint16_t bfsEntryPoints[] = {
+		// RST vectors
+		0x0000, 0x0008, 0x0010, 0x0018, 0x0020, 0x0028, 0x0030, 0x0038,
+		// Interrupt vectors
+		0x0040, 0x0048, 0x0050, 0x0058, 0x0060,
+		// Game entry point
+		0x0100,
+	};
+
+	uint32_t queueHead = 0, queueTail = 0;
+	for (uint32_t i = 0; i < fplArrayCount(bfsEntryPoints); ++i) {
+		const uint16_t ep = bfsEntryPoints[i];
+		if (ep < addressRange && !disassemblyQueued[ep]) {
+			disassemblyQueued[ep] = 1;
+			disassemblyBFSQueue[queueTail++] = ep;
+		}
+	}
+
+	fgbDecodedInstruction decoded = fplZeroInit;
+
+	while (queueHead < queueTail) {
+		uint16_t pos = disassemblyBFSQueue[queueHead++];
+
+		if (disassemblyVisited[pos]) {
+			continue;
+		}
+		disassemblyVisited[pos] = 1;
+
+		fplClearStruct(&decoded);
+		if (!fgbDecodeInstruction(&rom, pos, &decoded)) {
+			continue;
+		}
+
+		const uint16_t nextSeq = (uint16_t)(pos + decoded.length);
+
+		// Unconditional transfers have no sequential fall-through.
+		const bool noFallthrough =
+			decoded.opCode == 0xC3 ||  // JP a16
+			decoded.opCode == 0xE9 ||  // JP HL (indirect)
+			decoded.opCode == 0x18 ||  // JR e8
+			decoded.opCode == 0xC9 ||  // RET
+			decoded.opCode == 0xD9;    // RETI
+
+		if (!noFallthrough && nextSeq < addressRange && !disassemblyQueued[nextSeq]) {
+			disassemblyQueued[nextSeq] = 1;
+			disassemblyBFSQueue[queueTail++] = nextSeq;
+		}
+
+		// Extract and queue static jump targets.
+		if ((decoded.type == fgbInstructionType_JP || decoded.type == fgbInstructionType_CALL) &&
+		    decoded.mode == fgbAddressingMode_U16 && decoded.operandCount > 0) {
+			const uint16_t target = decoded.operands[0].immediate.u16;
+			if (target < addressRange && !disassemblyQueued[target]) {
+				disassemblyQueued[target] = 1;
+				disassemblyBFSQueue[queueTail++] = target;
+			}
+		} else if (decoded.type == fgbInstructionType_JR &&
+		           decoded.mode == fgbAddressingMode_I8 && decoded.operandCount > 0) {
+			const int32_t target = (int32_t)nextSeq + (int32_t)decoded.operands[0].immediate.slow;
+			if (target >= 0 && (uint32_t)target < addressRange && !disassemblyQueued[(uint16_t)target]) {
+				disassemblyQueued[(uint16_t)target] = 1;
+				disassemblyBFSQueue[queueTail++] = (uint16_t)target;
+			}
+		} else if (decoded.type == fgbInstructionType_RST &&
+		           decoded.mode == fgbAddressingMode_Constant && decoded.operandCount > 0) {
+			const uint16_t target = decoded.operands[0].constant;
+			if (target < addressRange && !disassemblyQueued[target]) {
+				disassemblyQueued[target] = 1;
+				disassemblyBFSQueue[queueTail++] = target;
+			}
+		}
+	}
+
+	// Emit disassembly in address order.
+	// - Header bytes (0x0100-0x014F) are always labeled GAMEPAK_HEADER.
+	// - BFS-confirmed addresses are decoded as guaranteed-correct instructions.
+	// - Other bytes use best-effort linear decode, but never cross a BFS boundary
+	// - If a multi-byte decode would consume a confirmed address, fall back to DB.
 	uint16_t pos = 0;
 	while (pos < rom.length) {
 		fplClearStruct(&decoded);
-		if (!fgbDecodeInstruction(&rom, pos, &decoded)) {
-			decoded.length = 1;
-		}
-		fplAssert(decoded.length > 0 && decoded.length <= 3);
-
 		disassemblyLineBuffer[0] = 0;
+
+		const bool inHeader = (pos >= FGB__GAMEPAK_HEADER_POSITION) && (pos < (uint16_t)(FGB__GAMEPAK_HEADER_POSITION + sizeof(fgb__GamePakHeader)));
+		const bool isConfirmed = disassemblyVisited[pos] != 0;
+
+		uint32_t instrLen = 1;
+		bool showAsHeader = false;
+		bool showAsCode = false;
+
+		if (inHeader) {
+			showAsHeader = true;
+		} else if (isConfirmed) {
+			if (fgbDecodeInstruction(&rom, pos, &decoded)) {
+				instrLen = decoded.length;
+				showAsCode = true;
+			}
+		} else {
+			// Best-effort linear decode; abort if it would swallow a BFS boundary.
+			if (fgbDecodeInstruction(&rom, pos, &decoded)) {
+				const uint32_t tentLen = decoded.length;
+				bool wouldSplit = false;
+				for (uint32_t k = 1; k < tentLen; ++k) {
+					if ((pos + k) < addressRange && disassemblyVisited[pos + k]) {
+						wouldSplit = true;
+						break;
+					}
+				}
+				if (!wouldSplit) {
+					instrLen = tentLen;
+					showAsCode = true;
+				}
+			}
+		}
 
 		fplStringFormat(disassemblyTempBuffer, fplArrayCount(disassemblyTempBuffer), "%04X | ", pos);
 		fplStringAppend(disassemblyTempBuffer, disassemblyLineBuffer, fplArrayCount(disassemblyLineBuffer));
 
-		int8_t m = 3 - decoded.length;
+		const uint8_t MaxInstructionLength = 3;
+
+		const int m = MaxInstructionLength - (int8_t)instrLen;
 		if (m > 0) {
-			for (uint8_t x = 0; x < m; x++) {
+			for (int x = 0; x < m; x++) {
 				fplStringAppend("   ", disassemblyLineBuffer, fplArrayCount(disassemblyLineBuffer));
 			}
 		}
-
-		for (uint8_t x = 0; x < decoded.length; x++) {
+		for (uint32_t x = 0; x < instrLen; x++) {
 			fplStringFormat(disassemblyTempBuffer, fplArrayCount(disassemblyTempBuffer), "%02X ", rom.data[pos + x]);
 			fplStringAppend(disassemblyTempBuffer, disassemblyLineBuffer, fplArrayCount(disassemblyLineBuffer));
 		}
 
-		fplStringFormat(disassemblyTempBuffer, fplArrayCount(disassemblyTempBuffer), "| ");
-		fplStringAppend(disassemblyTempBuffer, disassemblyLineBuffer, fplArrayCount(disassemblyLineBuffer));
+		fplStringAppend("| ", disassemblyLineBuffer, fplArrayCount(disassemblyLineBuffer));
 
-		if (pos >= FGB__GAMEPAK_HEADER_POSITION && pos <= FGB__GAMEPAK_HEADER_POSITION + sizeof(fgb__GamePakHeader)) {
+		if (showAsHeader) {
 			fplStringAppend("GAMEPAK_HEADER", disassemblyLineBuffer, fplArrayCount(disassemblyLineBuffer));
-		} else {
+		} else if (showAsCode) {
 			fgbFormatInstruction(disassemblyTempBuffer, fplArrayCount(disassemblyTempBuffer), &decoded);
+			fplStringAppend(disassemblyTempBuffer, disassemblyLineBuffer, fplArrayCount(disassemblyLineBuffer));
+		} else {
+			fplStringFormat(disassemblyTempBuffer, fplArrayCount(disassemblyTempBuffer), "DB $%02X", rom.data[pos]);
 			fplStringAppend(disassemblyTempBuffer, disassemblyLineBuffer, fplArrayCount(disassemblyLineBuffer));
 		}
 
-		size_t listIndex = StringListAdd(&listbox->values, disassemblyLineBuffer);
-
+		const size_t listIndex = StringListAdd(&listbox->values, disassemblyLineBuffer);
 		IndexHashtableAdd(hashtable, pos, listIndex);
 
-		pos += decoded.length;
+		pos += instrLen;
 	}
 }
 
@@ -3202,7 +3666,7 @@ static bool EmulatorLoadGame(Emulator *emulator, const char *filePath) {
 	}
 
 	fgbGamePakLoadResultType loadRes;
-	if (_stricmp(".zip", fileExt) == 0) {
+	if (StringCompareIgnoreCase(".zip", fileExt)) {
 		loadRes = LoadGamePakFromZipFile(&globalCallbacks, filePath, gamepak);
 	} else {
 		loadRes = fgbGamePakLoadFromFile(&globalCallbacks, filePath, gamepak);
@@ -3275,7 +3739,7 @@ static void SetupPlatformSettings(fmemMemoryBlock *mainMemory, fplSettings *sett
 	fplCopyString("FGB - Final Gamebox", settings->window.title, fplArrayCount(settings->window.title));
 
 	settings->video.backend = fplVideoBackendType_OpenGL;
-	settings->video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
+	settings->video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Legacy;
 	settings->video.isVSync = false;
 
 	settings->audio.targetFormat.sampleRate = 48000;
@@ -3285,7 +3749,7 @@ static void SetupPlatformSettings(fmemMemoryBlock *mainMemory, fplSettings *sett
 	settings->audio.stopAuto = false;
 }
 
-static void SetupGamebox(fgbConfiguration *config, Application *app, const uint32_t sampleRate) {
+static void SetupGamebox(fgbConfiguration *config, Application *app, const uint32_t sampleRate, const EmulatorParameters *parameters) {
 	// Callbacks
 	config->callbacks = globalCallbacks;
 
@@ -3293,6 +3757,7 @@ static void SetupGamebox(fgbConfiguration *config, Application *app, const uint3
 	config->log.userData = &app->console;
 	config->log.callback = GameboxLog;
 	config->log.isEnabled = true;
+	config->debug.isInstructionTraceEnabled = parameters->isTraceEnabled;
 
 	// Audio
 	config->targetSampleRate = sampleRate;
@@ -3314,8 +3779,10 @@ static void SetupGamebox(fgbConfiguration *config, Application *app, const uint3
 	// Run rom immediately
 	config->paused = false;
 
-	// Disable boot rom
 	fplClearStruct(&config->bootROM);
+#if !defined(NO_BOOTROM)
+	fplMemoryCopy(ptr_bootROM_DMG, 0x100, config->bootROM.data);
+#endif
 }
 
 static void SetupInput(InputState *oldInput, InputState *newInput, const double frameRate, const bool isDebug) {
@@ -3456,18 +3923,22 @@ static void HandleDefaultInput(Application *app, InputState *newInput) {
 	}
 
 	if (emulator->isActive && system->state != fgbEmulationState_Error) {
-		HighlightScrollDisassembly(app);
+		uint64_t currentPC = (uint64_t)system->cpu.registers.pc;
+		if (currentPC != app->lastDisassemblyScrollPC) {
+			bool isPaused = system->state != fgbEmulationState_Running;
+			fplTimestamp now = fplTimestampQuery();
+			double elapsed = fplTimestampElapsed(app->lastDisassemblyScrollTime, now);
+			if (isPaused || elapsed >= 0.1) {
+				HighlightScrollDisassembly(app);
+				app->lastDisassemblyScrollTime = now;
+				app->lastDisassemblyScrollPC = currentPC;
+			}
+		}
 	}
 }
 
 static bool HasGameboxVideoChanges(const Emulator *emulator) {
-	if (!emulator->isActive) {
-		return false;
-	}
-	if (emulator->isFrameFinished || emulator->isVRAMUpdated) {
-		return true;
-	}
-	return false;
+	return emulator->isActive;
 }
 
 static void UploadStateTextures(States *states) {
@@ -3487,21 +3958,26 @@ static void UploadStateTextures(States *states) {
 
 static void UploadGameboxTextures(Application *app) {
 	Emulator *emulator = &app->emulator;
-	fgbSystem *system = &emulator->system;
 
 	if (!emulator->isActive) {
 		return;
 	}
 
-	if (emulator->isFrameFinished) {
-		UpdateBackgroundMapTexture(app, &system->ppu);
-		UpdateDisplayTexture(app, &system->ppu);
-		emulator->isFrameFinished = false;
-	}
+	static FrameSnapshotDisplay scratchDisplay;
+	static FrameSnapshotBackgroundMap scratchBgMap;
+	static FrameSnapshotTilemap scratchTilemap;
 
-	if (emulator->isVRAMUpdated) {
-		UpdateVRAMTexture(app, &system->ppu);
-		emulator->isVRAMUpdated = false;
+	if (DisplayFrameQueuePopNewest(&emulator->displayQueue, &scratchDisplay)) {
+		TransferPixelsToTexture(scratchDisplay.pixels, FGB_DISPLAY_WIDTH, FGB_DISPLAY_HEIGHT, &app->displayTexture);
+		UpdateTexture(&app->displayTexture);
+	}
+	if (BackgroundMapFrameQueuePopNewest(&emulator->backgroundMapQueue, &scratchBgMap)) {
+		TransferPixelsToTexture(scratchBgMap.pixels, FGB_BACKGROUND_MAP_WIDTH, FGB_BACKGROUND_MAP_HEIGHT, &app->backgroundMapTexture);
+		UpdateTexture(&app->backgroundMapTexture);
+	}
+	if (TilemapFrameQueuePopNewest(&emulator->tilemapQueue, &scratchTilemap)) {
+		TransferPixelsToTexture(scratchTilemap.pixels, FGB_TILEMAP_WIDTH, FGB_TILEMAP_HEIGHT, &app->tileMapTexture);
+		UpdateTexture(&app->tileMapTexture);
 	}
 }
 
@@ -3593,26 +4069,70 @@ static void UpdateWindowTitle(Emulator *emulator, const double frameRate) {
 	fplSetWindowTitle(windowTitleBuffer);
 }
 
+static bool CharIsAlpha(const char c) {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+
+static EmulatorParameters ParseEmulatorParameters(const int argc, char **argv) {
+	EmulatorParameters result = fplZeroInit;
+	if (argc >= 2) {
+		int argIndex = 1;
+		while (argIndex < argc) {
+			const char *arg = argv[argIndex];
+			if (strlen(arg) >= 2) {
+				if (arg[0] == '-') {
+					const char c = arg[1];
+					if (CharIsAlpha(c)) {
+						// Single char argument
+						if (c == 't') {
+							result.isTraceEnabled = true;
+						} else {
+							// Not supported argument
+						}
+					} else if (c == '-' && CharIsAlpha(arg[2])) {
+						// Long key argument
+						const char *key = arg + 2;
+						if (StringCompareIgnoreCase("trace", key) == 0) {
+							result.isTraceEnabled = true;
+						} else {
+							// Not supported argument
+						}
+					}
+					argIndex++;
+					continue;
+				}
+			}
+			if (argIndex == argc - 1) {
+				result.romFilePath = argv[argIndex];
+			}
+			++argIndex;
+		}
+	}
+	return result;
+}
+
 // Main Entry Point (No need for WinMain or anything like that, due to FPL)
 int main(int argc, char **argv) {
 	int exitCode = 0;
 
-	const char *romFilePath = argc >= 2 ? argv[1] : fpl_null;
+	const EmulatorParameters parameters = ParseEmulatorParameters(argc, argv);
 
-	// Initalize random seed
-	srand(42U);
+	const char *romFilePath = parameters.romFilePath;
 
 	Application *app = fpl_null;
 	RendererContext *renderer = fpl_null;
 
 	// Allocate transient memory (Used for rom file and external ram file loading)
-	globalTransientMemory.base = CreateTransientMemory(fplMegaBytes(8));
+	globalTransientMemory.base = CreateTransientMemory(fplMegaBytes(16));
 
 	// Allocate main memory
-	fmemMemoryBlock mainMemory = CreatePersistentMemory(fplMegaBytes(32));
+	fmemMemoryBlock mainMemory = CreatePersistentMemory(fplMegaBytes(64));
 	if (mainMemory.base == fpl_null) {
 		return ExitCode_OutOfMemory;
 	}
+
+	// Initialize random seed
+	srand(42U);
 
 	// Setup & Initialize Platform
 	fplSettings *settings = fmemPushStruct(&mainMemory, fplSettings, fmemPushFlags_Clear);
@@ -3631,7 +4151,7 @@ int main(int argc, char **argv) {
 	}
 
 	// Create Application & Emulator resources and start the threads
-	app = CreateApplication(&mainMemory);
+	app = CreateApplication(&mainMemory, &parameters);
 	if (app == fpl_null) {
 		exitCode = ExitCode_OutOfMemory;
 		goto shutdown;
@@ -3646,7 +4166,7 @@ int main(int argc, char **argv) {
 	fplGetAudioHardwareFormat(&hardwareAudioFormat);
 
 	// Gamebox configuration
-	SetupGamebox(&emulator->config, app, hardwareAudioFormat.sampleRate);
+	SetupGamebox(&emulator->config, app, hardwareAudioFormat.sampleRate, &parameters);
 
 	// Set audio callback and its data
 	AudioThreadState audioThreadState = { 0 };

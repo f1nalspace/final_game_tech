@@ -25,7 +25,7 @@ typedef struct Ray3f {
 	Vec3f direction;
 } Ray3f;
 
-fpl_inline Ray3f Ray3fInit(const Vec3f origin, const Vec3f direction) {
+fpl_extern_inline Ray3f Ray3fInit(const Vec3f origin, const Vec3f direction) {
 	Ray3f result = { origin, direction };
 	return(result);
 }
@@ -56,7 +56,7 @@ typedef struct Sphere3f {
 	float radius;
 } Sphere3f;
 
-fpl_inline Sphere3f Sphere3fInit(const Vec3f origin, const float radius) {
+fpl_extern_inline Sphere3f Sphere3fInit(const Vec3f origin, const float radius) {
 	Sphere3f result = fplStructInit(Sphere3f,origin,radius);
 	return result;
 }
@@ -85,44 +85,44 @@ typedef struct AABB2f {
 	Vec2f max;
 } AABB2f;
 
-fpl_inline AABB2f AABB2fInit(const Vec2f min, const Vec2f max) {
+fpl_extern_inline AABB2f AABB2fInit(const Vec2f min, const Vec2f max) {
 	AABB2f result = fplStructInit(AABB2f, min, max);
 	return result;
 }
 
-fpl_inline AABB2f AABB2fInitFromCenter(const Vec2f center, const Vec2f radius) {
+fpl_extern_inline AABB2f AABB2fInitFromCenter(const Vec2f center, const Vec2f radius) {
 	Vec2f min = V2fSub(center, radius);
 	Vec2f max = V2fAdd(center, radius);
 	AABB2f result = AABB2fInit(min, max);
 	return result;
 }
 
-fpl_inline AABB2f AABB2fInitFromBottomLeft(const Vec2f bottomLeft, const Vec2f size) {
+fpl_extern_inline AABB2f AABB2fInitFromBottomLeft(const Vec2f bottomLeft, const Vec2f size) {
 	Vec2f min = bottomLeft;
 	Vec2f max = V2fAdd(bottomLeft, size);
 	AABB2f result = AABB2fInit(min, max);
 	return result;
 }
 
-fpl_inline Vec2f AABB2fGetRadius(const AABB2f *aabb) {
+fpl_extern_inline Vec2f AABB2fGetRadius(const AABB2f *aabb) {
 	Vec2f size = V2fSub(aabb->max, aabb->min);
 	Vec2f result = V2fMultScalar(size, 0.5f);
 	return result;
 }
 
-fpl_inline Vec2f AABB2fGetSize(const AABB2f *aabb) {
+fpl_extern_inline Vec2f AABB2fGetSize(const AABB2f *aabb) {
 	Vec2f result = V2fSub(aabb->max, aabb->min);
 	return result;
 }
 
-fpl_inline Vec2f AABB2fGetCenter(const AABB2f *aabb) {
+fpl_extern_inline Vec2f AABB2fGetCenter(const AABB2f *aabb) {
 	Vec2f size = V2fSub(aabb->max, aabb->min);
 	Vec2f ext = V2fMultScalar(size, 0.5f);
 	Vec2f result = V2fAdd(aabb->min, ext);
 	return result;
 }
 
-fpl_inline void AABB2fExtract(const AABB2f *aabb, Vec2f *outCenter, Vec2f *outRadius) {
+fpl_extern_inline void AABB2fExtract(const AABB2f *aabb, Vec2f *outCenter, Vec2f *outRadius) {
 	Vec2f size = V2fSub(aabb->max, aabb->min);
 	Vec2f radius = V2fMultScalar(size, 0.5f);
 	Vec2f center = V2fAdd(aabb->min, radius);
@@ -130,7 +130,7 @@ fpl_inline void AABB2fExtract(const AABB2f *aabb, Vec2f *outCenter, Vec2f *outRa
 	*outRadius = radius;
 }
 
-fpl_inline bool AABB2fIntersects(const AABB2f *a, const AABB2f *b) {
+fpl_extern_inline bool AABB2fIntersects(const AABB2f *a, const AABB2f *b) {
 	Vec2f centerA, centerB;
 	Vec2f radiusA, radiusB;
 	AABB2fExtract(a, &centerA, &radiusA);
@@ -142,29 +142,29 @@ fpl_inline bool AABB2fIntersects(const AABB2f *a, const AABB2f *b) {
 	return result;
 }
 
-fpl_inline bool AABB2fContainsPoint(const AABB2f *aabb, const Vec2f point) {
+fpl_extern_inline bool AABB2fContainsPoint(const AABB2f *aabb, const Vec2f point) {
 	bool result = (point.x >= aabb->min.x && point.x <= aabb->max.x && point.y >= aabb->min.y && point.y <= aabb->max.y);
 	return result;
 }
 
-fpl_inline void AABB2fExpand(AABB2f *aabb, const Vec2f expansion) {
+fpl_extern_inline void AABB2fExpand(AABB2f *aabb, const Vec2f expansion) {
     aabb->min = V2fSub(aabb->min, expansion);
     aabb->max = V2fAdd(aabb->max, expansion);
 }
 
-fpl_inline void AABB2fExpandScalar(AABB2f *aabb, const float scalar) {
+fpl_extern_inline void AABB2fExpandScalar(AABB2f *aabb, const float scalar) {
     Vec2f e = V2fInitScalar(scalar);
     AABB2fExpand(aabb, e);
 }
 
-fpl_inline AABB2f AABB2fGetIntersection(const AABB2f *a, const AABB2f *b) {
+fpl_extern_inline AABB2f AABB2fGetIntersection(const AABB2f *a, const AABB2f *b) {
 	Vec2f min = V2fMax(a->min, b->min);
     Vec2f max = V2fMin(a->max, b->max);
 	AABB2f result = AABB2fInit(min, max);
 	return result;
 }
 
-fpl_inline int AABB2fSubtraction(const AABB2f *a, const AABB2f *b, AABB2f out[4]) {
+fpl_extern_inline int AABB2fSubtraction(const AABB2f *a, const AABB2f *b, AABB2f out[4]) {
     int count = 0;
 
     // First compute intersection
@@ -203,37 +203,37 @@ typedef struct AABB3f {
 	Vec3f max;
 } AABB3f;
 
-fpl_inline AABB3f AABB3fInit(const Vec3f min, const Vec3f max) {
+fpl_extern_inline AABB3f AABB3fInit(const Vec3f min, const Vec3f max) {
 	AABB3f result = fplStructInit(AABB3f, min, max);
 	return result;
 }
 
-fpl_inline AABB3f AABB3fInitFromCenter(const Vec3f center, const Vec3f radius) {
+fpl_extern_inline AABB3f AABB3fInitFromCenter(const Vec3f center, const Vec3f radius) {
 	Vec3f min = V3fSub(center, radius);
 	Vec3f max = V3fAdd(center, radius);
 	AABB3f result = AABB3fInit(min, max);
 	return result;
 }
 
-fpl_inline Vec3f AABB3fGetRadius(const AABB3f *aabb) {
+fpl_extern_inline Vec3f AABB3fGetRadius(const AABB3f *aabb) {
 	Vec3f size = V3fSub(aabb->max, aabb->min);
 	Vec3f result = V3fMultScalar(size, 0.5f);
 	return result;
 }
 
-fpl_inline Vec3f AABB3fGetSize(const AABB3f *aabb) {
+fpl_extern_inline Vec3f AABB3fGetSize(const AABB3f *aabb) {
 	Vec3f result = V3fSub(aabb->max, aabb->min);
 	return result;
 }
 
-fpl_inline Vec3f AABB3fGetCenter(const AABB3f *aabb) {
+fpl_extern_inline Vec3f AABB3fGetCenter(const AABB3f *aabb) {
 	Vec3f size = V3fSub(aabb->max, aabb->min);
 	Vec3f ext = V3fMultScalar(size, 0.5f);
 	Vec3f result = V3fAdd(aabb->min, ext);
 	return result;
 }
 
-fpl_inline void AABB3fExtract(const AABB3f *aabb, Vec3f *outCenter, Vec3f *outRadius) {
+fpl_extern_inline void AABB3fExtract(const AABB3f *aabb, Vec3f *outCenter, Vec3f *outRadius) {
 	Vec3f size = V3fSub(aabb->max, aabb->min);
 	Vec3f radius = V3fMultScalar(size, 0.5f);
 	Vec3f center = V3fAdd(aabb->min, radius);
@@ -241,7 +241,7 @@ fpl_inline void AABB3fExtract(const AABB3f *aabb, Vec3f *outCenter, Vec3f *outRa
 	*outRadius = radius;
 }
 
-fpl_inline bool AABB3fIsOverlap(const AABB3f *a, const AABB3f *b) {
+fpl_extern_inline bool AABB3fIsOverlap(const AABB3f *a, const AABB3f *b) {
 	Vec3f centerA, centerB;
 	Vec3f radiusA, radiusB;
 	AABB3fExtract(a, &centerA, &radiusA);
@@ -253,7 +253,7 @@ fpl_inline bool AABB3fIsOverlap(const AABB3f *a, const AABB3f *b) {
 	return result;
 }
 
-fpl_inline bool AABB3fContainsPoint(const AABB3f *aabb, const Vec3f point) {
+fpl_extern_inline bool AABB3fContainsPoint(const AABB3f *aabb, const Vec3f point) {
 	Vec3f center, radius;
 	AABB3fExtract(aabb, &center, &radius);
 	Vec3f d = V3fSub(point, center);
@@ -269,12 +269,12 @@ typedef struct Circle2f {
 	float radius;
 } Circle2f;
 
-fpl_inline Circle2f Circle2fInit(const Vec2f center, const float radius) {
+fpl_extern_inline Circle2f Circle2fInit(const Vec2f center, const float radius) {
 	Circle2f result = fplStructInit(Circle2f, center, radius);
 	return result;
 }
 
-fpl_inline bool Circle2fContainsPoint(const Circle2f *circle, const Vec2f point) {
+fpl_extern_inline bool Circle2fContainsPoint(const Circle2f *circle, const Vec2f point) {
 	Vec2f delta = V2fSub(point, circle->center);
 	const float distanceSq = V2fDot(delta, delta);
 	const float radiusSq = circle->radius * circle->radius;
@@ -293,7 +293,7 @@ typedef struct Arc2f {
 	uint32_t padding;
 } Arc2f;
 
-fpl_inline Arc2f Arc2fInit(const Vec2f center, const float radius, const float startAngle, const float endAngle) {
+fpl_extern_inline Arc2f Arc2fInit(const Vec2f center, const float radius, const float startAngle, const float endAngle) {
 	Arc2f result = fplStructInit(Arc2f, center, radius, startAngle, endAngle);
 	return result;
 }

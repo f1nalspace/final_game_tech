@@ -76,12 +76,12 @@ int main(int argc, char **args) {
 	settings.video.backend = fplVideoBackendType_OpenGL;
 
 	// Legacy OpenGL
-	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
+	settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Legacy;
 
 	// or
 
 	// Modern OpenGL
-	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
+	settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Core;
 	settings.video.graphics.opengl.majorVersion = 3;
 	settings.video.graphics.opengl.minorVersion = 3;
 
@@ -104,6 +104,30 @@ int main(int argc, char **args) {
 		return -1;
 	}
 }
+
+-------------------------------------------------------------------------------
+	Output Buffer Conventions
+-------------------------------------------------------------------------------
+
+All functions that fill a destination buffer (string copy, append, format, path,
+UTF-8/wide conversion) follow a single contract:
+
+- The return type is size_t. The value is the number of characters required
+  (excluding the NUL terminator), NOT a pointer.
+- Query mode: if dest is NULL or maxDestLen is 0, the function returns the
+  required size and writes nothing. Use this to size a buffer ahead of time.
+- Buffer too small: if the required size exceeds maxDestLen, the function
+  returns 0 and does not leave a partial buffer behind.
+- Success: when dest is non-NULL and large enough, the buffer is always
+  NUL-terminated and the function returns the required size (excluding NUL).
+- Hard errors (NULL input, format error) return 0.
+
+Functions that follow this contract: fplCopyString, fplCopyStringLen,
+fplStringAppend, fplStringAppendLen, fplEnforcePathSeparator,
+fplEnforcePathSeparatorLen, fplStringFormat, fplStringFormatArgs,
+fplPathCombine, fplPathNormalize, fplUTF8StringToWideString,
+fplWideStringToUTF8String, fplGetWindowTitle, fplGetExecutableFilePath,
+fplGetHomePath.
 
 -------------------------------------------------------------------------------
 	License
@@ -154,14 +178,24 @@ SOFTWARE.
 	- Release
 	- Added new useful macros
 	- Added several date time types and functions
-	- Added game controllers settings
+	- Added gamepad settings
+	- Added gamepad mapping types and callbacks
+	- Introduced a input backend system that allows multiple input backends
 	- Improved code documentation a lot
-	- Improved thread-safety in the event system
+	- Improved thread-safety in the error-reporting ring (atomic slot claim, no init-order/mutex hazards) and the event system
+	- Fixed naming inconsistencies
 	- A few major bugfixes
 	- Several minor bugfixes
 
 	### Breaking Changes
-	- None
+	- Changed: fplEnforcePathSeparatorLen is now returning the total number of characters required or returns zero on errors
+	- Changed: fplEnforcePathSeparator is now returning the total number of characters required or returns zero on errors
+	- Changed: fplStringAppendLen is now returning the total number of characters required or returns zero on errors
+	- Changed: fplStringAppend is now returning the total number of characters required or returns zero on errors
+	- Changed: fplCopyStringLen is now returning the total number of characters required or returns zero on errors
+	- Changed: fplCopyString is now returning the total number of characters required or returns zero on errors
+	- Changed: fplGetWindowTitle is now returning the total number of characters required or returns zero on errors
+	- Changed: Renamed fplInitFlags_GameController to fplInitFlags_Gamepad due to naming inconsisitency
 
 	### Details
 	- New: Added macro FPL_CACHELINE_SIZE that detects the cacheline size from the detected CPU architectures
@@ -171,35 +205,98 @@ SOFTWARE.
 	- New: Added struct fplDateTime, that stores a date time stamp with an included UTC offset
 	- New: Added struct fplDateTimeResult, that stores the components for displaying a date time
 	- New: Added struct fplDateTimeCreationResult, that stores the result of the function fplDateTimeCreate()
-	- New: Added struct fplGameControllersSettings, that stores several properties required for updating/polling game controllers frequently
+	- New: Added struct fplGamepadSettings, that stores several properties required for updating/polling game controllers frequently
 	- New: Added function fplDateTimeQuery that returns a date time stamp, that allows the display in either local or UTC format
 	- New: Added function fplFormatDateTime that formats a fplDateTime into either a local or UTC date time components
 	- New: Added function fplDateTimeCreate that creates a fplDateTime from seperate date time components
 	- New: Added function fplFileAppendBinary() for opening a file for appending, that is useful for log-files and such
 	- New: Added function fplPathNormalize() for normalizing any partial path into a absolute path
+	- New: Added function fplTryStringToS32Len that is a more safe-method than to fplStringToS32
+	- New: Added function fplTryStringToS32 that is a more safe-method than to fplStringToS32
 	- New: Added enum values fplKey_First / fplKey_Last to fplKey enum
 	- New: Added common function fplKeyGetName() for getting the name for a fplKey
+	- New: Added enum fplInputBackendType
+	- New: Added enum fplGamepadInputType, that defines the source kind (button/axis/hat) referenced by a fplGamepadInputBinding
+	- New: Added enum fplGamepadAxisSign, that defines the half-axis selector (full/positive/negative) for axis bindings
+	- New: Added enum fplGamepadAxisType, that defines the logical analog axis slots filled by a fplGamepadMapping
+	- New: Added enum fplGamepadPlatform, that mirrors the SDL gamecontrollerdb "platform:" tag (Windows/Linux/MacOS/Android/iOS)
+	- New: Added struct fplGamepadInputBinding, that describes a raw input source bound to one logical FPL gamepad slot
+	- New: Added struct fplGamepadMapping, that holds a complete mapping from raw device inputs onto FPL's logical gamepad layout
+	- New: Added struct fplGamepadData, that captures a backend-agnostic snapshot of raw device input for use with fplGamepadMapping
+	- New: Added struct fplGamepadInfo, that describes a controller for the mapping resolver callback
+	- New: Added typedef fplGamepadMappingResolverFn, the callback type fired once per controller connect on raw-HID gamepad backends
+	- New: Added macros FPL_GAMEPAD_BUTTON_COUNT, FPL_GAMEPAD_GUID_BYTES, FPL_GAMEPAD_DATA_MAX_AXES, FPL_GAMEPAD_DATA_MAX_BUTTONS, FPL_GAMEPAD_DATA_MAX_HATS
+	- New: Added enum fplInputSourceType
+	- New: Added struct fplInputBackendMask
+	- New: Added function fplInputBackendMaskIsEnabled
+	- New: Added function fplInputBackendMaskEnable
+	- New: Added function fplInputBackendMaskDisable
+	- New: Added function fplGamepadMappingApply
+	- New: Added function fplGamepadMappingApplyDefault
 	- New: [Win32] Implemented function fplFileAppendBinary() for Win32 API
 	- New: [POSIX] Implemented function fplFileAppendBinary() for POSIX Unix API
 	- New: [Win32] Implemented function fplPathNormalize() for Win32 API
 	- New: [POSIX] Implemented function fplPathNormalize() for POSIX Unix API
+	- New[#183]: Added macro fpl_extern_inline
+	- New[#35]: Implemented PulseAudio audio backend
+	- New[#186]: Implemented PipeWire audio backend
+	- New[#178]: Separate input system from windowing system, by introducing a input backend system
+	- New[#187]: Implemented DirectInput input backend
+	- Improved: [Win32/DInput] Backend now routes DIJOYSTATE through fplGamepadMappingApply / fplGamepadMappingApplyDefault, with the resolver from fplGamepadSettings.mappingResolver invoked once per controller connect to install a custom fplGamepadMapping
+	- Improved: [Linux/Joystick] /dev/input/jsX backend now feeds JS_EVENT_AXIS/BUTTON into a fplGamepadData snapshot, calls the mappingResolver with VID/PID/version read from /sys/class/input/jsX/device/id, and applies fplGamepadMappingApply when a mapping is installed (legacy behavior preserved when no resolver returns true)
+	- Changed: Extented struct fplInputSettings with fields for new input system
+	- Changed: Extented struct fplGamepadState with union action buttons (down/right/left/up) and (A/B/X/Y)
+
 	- Improved[#176]: Made internal event queue thread-safe using a lock-free push/pop linear buffer
+	- Improved[#88]: Gamepad input device is not locked to /dev/input/js0 anymore
 	- Improved: Better documentation of the preprocessor setup blocks
+
 	- Fixed: Fixed duplicate platform includes
 	- Fixed: fpLGetAlignmentOffset() was not guarding the alignment argument in all cases
 	- Fixed: fplS32ToString() was not handling negative values correctly
+	- Fixed: fplStringFormatArgs must always NUL-terminate even when the buffer is too small
+	- Fixed: Fixed documentations for fplStringToS32Len and fplStringToS32
+	- Fixed: fplStringFormat and fplStringFormatArgs was not implemented correctly due to its documentation rules
+	- Fixed: fplStringToS32Len and fplStringToS32 was not implemented correctly due to its documentation rules
+	- Fixed: Calls to fpl__AllocateTemporaryMemory use either fpl__MinAlignment or 16 or more
+	- Fixed: fplCPUID, fplCPURDTSC, fplCPUXCR0 was not detected on GCC/Clang
+	- Fixed: fplGetErrorCount / fplGetErrorByIndex  / fplGetLastError and pushing of errors was not thread-safe
+	- Fixed: fplAlignAs was using a condition based macro, which is not supported for some compilers
+	- Fixed: fpl__ReadAudioFramesFromClient was not returning frameCount always and produce silence bytes for the remaining samples
+	- Fixed[#183]: fpl_internal_inline was not compiling on GCC/Clang
+
 	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
 	- Changed: Ensure that std types has the correct sizes always using equals
+	- Changed: fplSetDefaultAudioSettings() sets audio backend type to automatic
+	- Changed: fplFileWriteBlock*() changed to const for the source argument
+	- Changed: [ALSA] Audio device enumeration prints out each audio device to verbose log
+	- Changed: [X11] Disabled FPL_NO_PLATFORM_INCLUDES for Xlib includes
+	- Changed: [POSIX] Disabled FPL_NO_PLATFORM_INCLUDES for pthread includes
+	- Renamed: fplOpenGLCompabilityFlags -> fplOpenGLCompatibilityFlags (incl. enum values and fplOpenGLSettings::compabilityFlags -> compatibilityFlags) - typo fix
 
 	- Fixed: [Win32] Fixed last event from event queue was never used, when there is no events from the window
 	- Fixed: [Win32] Lost/Got focus event was not detected properly
 
 	- Fixed: [X11] Fixed last event from event queue was never used, when there is no events from the window
 	- Fixed: [X11] Fixed window support was not disabled when X11 is not present
+	- Fixed: [X11] Fixed fplPollEvent() was not handling the events properly, resulting in not processing any events anymore
+	- Fixed: [X11] Fixed ClientMessage for Atom netWMPing was not calling XFlush
+	- Fixed: [X11] Fixed wrong X11 type aliases
+	- Fixed: [X11] fpl__X11Window opaque pointer was wrong sized
+	- Fixed[#181]: [X11] fpl__X11ParseUriPaths does not do any URI decoding, resulting in most-likely unuseable file paths
 
 	- Fixed: [POSIX] Fixed pthread fpl__POSIXSemaphoreHandle was not used
 	- Fixed: [POSIX] dirint.h and sched.h was not included always
+	- Fixed[#184]: [POSIX] fplDirectoriesCreate() does not create parent sub-directories
+
+	- Improved: Added fplStaticAssert checks in the non-opaque branch verifying that the real Win32/POSIX/X11 handle types fit into the opaque-branch buffers (catches portability breakage at compile time instead of corrupting memory at runtime)
+	- Improved: [X11] fpl__X11Display / Visual / GC / Image are now forward-declared incomplete struct types instead of `typedef void`, so `fpl__X11Display *` is a distinct, type-safe pointer rather than an alias for `void *`
+	- Improved: fplDateTime documentation now states explicitly that pre-1970 dates are intentionally not supported (epoch is unsigned and fplDateTimeCreate rejects year < 1970)
+
+	- Fixed: [Win32] fplFileSetPosition32 / fplFileGetSizeFromPath32 / fplFileGetSizeFromHandle32 was not using the best suitable API function
+
+	- Fixed[#182]: [ALSA] Fixed default audio devices are not detected in modern linux audio systems
 
 	## v0.9.9-beta
 
@@ -370,8 +467,8 @@ SOFTWARE.
 	- Changed: Renamed function fplListDirNext() to fplDirectoryListNext()
 	- Changed: Renamed function fplListDirEnd() to fplDirectoryListEnd()
 	- Changed: Renamed function fplGetPlatformResultName() to fplPlatformGetResultName()
-	- Changed: Renamed function fplFormatString() to fplStrngFormat()
-	- Changed: Renamed function fplFormatStringArgs() to fplStrngFormatArgs()
+	- Changed: Renamed function fplFormatString() to fplStringFormat()
+	- Changed: Renamed function fplFormatStringArgs() to fplStringFormatArgs()
 	- Changed: Renamed function fplGetWallClock() to fplTimestampQuery()
 	- Changed: Renamed function fplGetTimeInMilliseconds() to fplMillisecondsQuery()
 	- Changed: Renamed function fplGetWallDelta() to fplTimestampElapsed()
@@ -1357,8 +1454,8 @@ SOFTWARE.
 	- Added: fpl::audio::GetAudioBufferSizeInBytes()
 
 	## v0.5.8.0 beta:
-	- Changed: SignalWaitFor* requires additional parameter for passing in the ThreadMutex reference (pthread compability)
-	- Changed: Signal* does not use const reference anymore (pthread compability)
+	- Changed: SignalWaitFor* requires additional parameter for passing in the ThreadMutex reference (pthread compatibility)
+	- Changed: Signal* does not use const reference anymore (pthread compatibility)
 	- Changed: Updated documentation a ton
 	- Changed: Decreased MAX_ERRORSTATE_COUNT from 1024 to 256
 	- Changed: global__LastErrorState is a non-pointer global now
@@ -1367,7 +1464,7 @@ SOFTWARE.
 	- Fixed: MemoryAlignedFree() had wrong signature (void **) instead of (void *)
 	- Fixed: GetPlatformErrorCount() was not increasing when an empty error was pushed on for single error states
 	- Fixed: [Win32] InitPlatform() was not cleaning up the Win32State when the initialization failed
-	- Replaced: VideoCompabilityProfile is replaced by OpenGLCompabilityFlags (Only available with OpenGL)
+	- Replaced: VideoCompatibilityProfile is replaced by OpenGLCompatibilityFlags (Only available with OpenGL)
 	- New: Added ClearPlatformErrors()
 
 	## v0.5.7.4 beta:
@@ -1620,7 +1717,7 @@ SOFTWARE.
 	- Added memory::CopyMemory
 	- Added fpl::GetLastError and fpl::GetLastErrorCount for proper error handling
 	- Added files::CreateBinaryFile and files::OpenBinaryFile for wide file paths
-	- Added basic support for creating a modern opengl rendering context, see VideoCompabilityProfile in VideoSettings
+	- Added basic support for creating a modern opengl rendering context, see VideoCompatibilityProfile in VideoSettings
 	- Added support for enabling opengl vsync through WGL
 	- Returns char * for all paths:: get like functions
 	- Returns char/wchar_t * for all strings:: functions
@@ -2133,10 +2230,9 @@ SOFTWARE.
 /**
 * @def fplAlignAs
 * @brief Structure alignment in bytes.
-* @param[in] N Alignment size.
-* @return The resulting aligned value in bytes.
+* @param[in] N Alignment size. Must be a power-of-two integer literal.
 */
-#define fplAlignAs(N) fpl__m_AlignAs(((N) < fplMinAlignment ? fplMinAlignment : (N)))
+#define fplAlignAs(N) fpl__m_AlignAs(N)
 //
 // Defines required for POSIX (mmap, 64-bit file io, etc.)
 //
@@ -2195,8 +2291,21 @@ SOFTWARE.
 #define fpl_internal static
 //! Inline function
 #define fpl_inline inline
-//! Internal inlined function
-#define fpl_internal_inline inline
+
+//! Private/Internal inline function
+#if defined(FPL_IS_CPP)
+#	define fpl_internal_inline inline
+#else
+#	define fpl_internal_inline static inline
+#endif
+
+//! Extern inline function
+#if defined(FPL_IS_CPP)
+#	define fpl_extern_inline inline
+#else
+#	define fpl_extern_inline extern inline
+#endif
+
 //! External call
 #if defined(FPL_IS_CPP)
 #	define fpl_extern
@@ -2528,7 +2637,7 @@ typedef enum fplX86InstructionSetLevel {
 /**
 * @def fplHasInclude
 * @brief Test for include existence.
-* @param inc Path to the include file.
+* @param[in] inc Path to the include file.
 * @return A boolean indicating whether the specified include has been found or not.
 */
 #define fplHasInclude(inc) fpl__m_HasInclude(inc)
@@ -2575,13 +2684,9 @@ typedef enum fplX86InstructionSetLevel {
 #endif // FPL__SUPPORT_VIDEO
 
 //
-// Remove video support when the Window is disabled
+// Remove video support when the Window is disabled.
 //
 #if !defined(FPL__SUPPORT_WINDOW)
-#	if defined(FPL_SUBPLATFORM_X11)
-#		undef FPL_SUBPLATFORM_X11
-#	endif
-
 #	if defined(FPL__SUPPORT_VIDEO)
 #		undef FPL__SUPPORT_VIDEO
 #	endif
@@ -2602,6 +2707,8 @@ typedef enum fplX86InstructionSetLevel {
 // FPL_NO_AUDIO = Disable audio support entirely
 // FPL_NO_AUDIO_DIRECTSOUND = Disable DirectSound audio backend
 // FPL_NO_AUDIO_ALSA = Disable ALSA audio backend
+// FPL_NO_AUDIO_PULSEAUDIO = Disable PulseAudio audio backend
+// FPL_NO_AUDIO_PIPEWIRE = Disable PipeWire audio backend
 //
 #if !defined(FPL_NO_AUDIO)
 #	define FPL__SUPPORT_AUDIO
@@ -2618,7 +2725,70 @@ typedef enum fplX86InstructionSetLevel {
 #			warning "FPL-Warning: ALSA audio development library is missing. Please install 'libasound2-dev' and try again!"
 #		endif
 #	endif
+#	if !defined(FPL_NO_AUDIO_PULSEAUDIO) && defined(FPL_PLATFORM_LINUX)
+#		define FPL__SUPPORT_AUDIO_PULSEAUDIO // PulseAudio backend uses runtime linking to libpulse.so.0, no dev headers are required
+#	endif
+#	if !defined(FPL_NO_AUDIO_PIPEWIRE) && defined(FPL_PLATFORM_LINUX)
+#		define FPL__SUPPORT_AUDIO_PIPEWIRE // PipeWire backend uses runtime linking to libpipewire-0.3.so.0, no dev headers are required
+#	endif
 #endif // FPL__SUPPORT_AUDIO
+
+//
+// Input preprocessor setup
+//
+// FPL_NO_INPUT = Disable input subsystem entirely
+// FPL_NO_INPUT_XINPUT = Disable XInput backend (Windows)
+// FPL_NO_INPUT_DINPUT = Disable DirectInput backend (Windows)
+// FPL_NO_INPUT_RAWINPUT = Disable RawInput backend (Windows)
+// FPL_NO_INPUT_WIN32 = Disable Win32 keyboard/mouse backend
+// FPL_NO_INPUT_X11 = Disable X11 keyboard/mouse backend
+// FPL_NO_INPUT_LINUX_JOYSTICK = Disable /dev/input/jsX backend (Linux)
+// FPL_NO_INPUT_LINUX_EVDEV = Disable /dev/input/eventX backend (Linux)
+// FPL_NO_INPUT_LINUX_UDEV = Disable udev hotplug backend (Linux)
+// FPL_NO_INPUT_UNIX_GAMEPAD = Disable BSD/Unix gamepad backend
+//
+#if !defined(FPL_NO_INPUT)
+#	define FPL__SUPPORT_INPUT
+#endif // !FPL_NO_INPUT
+
+#if defined(FPL__SUPPORT_INPUT)
+#	if !defined(FPL_NO_INPUT_XINPUT) && defined(FPL_PLATFORM_WINDOWS)
+#		define FPL__SUPPORT_INPUT_XINPUT
+#	endif
+#	if !defined(FPL_NO_INPUT_DINPUT) && defined(FPL_PLATFORM_WINDOWS)
+#		define FPL__SUPPORT_INPUT_DINPUT
+#	endif
+#	if !defined(FPL_NO_INPUT_RAWINPUT) && defined(FPL_PLATFORM_WINDOWS)
+#		define FPL__SUPPORT_INPUT_RAWINPUT
+#	endif
+#	if !defined(FPL_NO_INPUT_WIN32) && defined(FPL_PLATFORM_WINDOWS)
+#		define FPL__SUPPORT_INPUT_WIN32
+#	endif
+#	if !defined(FPL_NO_INPUT_X11) && defined(FPL_SUBPLATFORM_X11)
+#		define FPL__SUPPORT_INPUT_X11
+#	endif
+#	if !defined(FPL_NO_INPUT_LINUX_JOYSTICK) && defined(FPL_PLATFORM_LINUX)
+#		define FPL__SUPPORT_INPUT_LINUX_JOYSTICK
+#	endif
+#	if !defined(FPL_NO_INPUT_LINUX_EVDEV) && defined(FPL_PLATFORM_LINUX)
+#		define FPL__SUPPORT_INPUT_LINUX_EVDEV
+#	endif
+#	if !defined(FPL_NO_INPUT_LINUX_UDEV) && defined(FPL_PLATFORM_LINUX)
+#		define FPL__SUPPORT_INPUT_LINUX_UDEV
+#	endif
+#	if !defined(FPL_NO_INPUT_UNIX_GAMEPAD) && defined(FPL_SUBPLATFORM_POSIX)
+#		define FPL__SUPPORT_INPUT_UNIX_GAMEPAD
+#	endif
+#endif // FPL__SUPPORT_INPUT
+
+//
+// Drop subplatform X11, when neither window nor X11-input is supported
+//
+#if !defined(FPL__SUPPORT_WINDOW) && !defined(FPL__SUPPORT_INPUT_X11)
+#	if defined(FPL_SUBPLATFORM_X11)
+#		undef FPL_SUBPLATFORM_X11
+#	endif
+#endif
 
 //
 // Enable supports (FPL uses _ENABLE_ internally only)
@@ -2648,7 +2818,44 @@ typedef enum fplX86InstructionSetLevel {
 #	if defined(FPL__SUPPORT_AUDIO_ALSA)
 #		define FPL__ENABLE_AUDIO_ALSA
 #	endif
+#	if defined(FPL__SUPPORT_AUDIO_PULSEAUDIO)
+#		define FPL__ENABLE_AUDIO_PULSEAUDIO
+#	endif
+#	if defined(FPL__SUPPORT_AUDIO_PIPEWIRE)
+#		define FPL__ENABLE_AUDIO_PIPEWIRE
+#	endif
 #endif // FPL__SUPPORT_AUDIO
+
+#if defined(FPL__SUPPORT_INPUT)
+#	define FPL__ENABLE_INPUT
+#	if defined(FPL__SUPPORT_INPUT_XINPUT)
+#		define FPL__ENABLE_INPUT_XINPUT
+#	endif
+#	if defined(FPL__SUPPORT_INPUT_DINPUT)
+#		define FPL__ENABLE_INPUT_DINPUT
+#	endif
+#	if defined(FPL__SUPPORT_INPUT_RAWINPUT)
+#		define FPL__ENABLE_INPUT_RAWINPUT
+#	endif
+#	if defined(FPL__SUPPORT_INPUT_WIN32)
+#		define FPL__ENABLE_INPUT_WIN32
+#	endif
+#	if defined(FPL__SUPPORT_INPUT_X11)
+#		define FPL__ENABLE_INPUT_X11
+#	endif
+#	if defined(FPL__SUPPORT_INPUT_LINUX_JOYSTICK)
+#		define FPL__ENABLE_INPUT_LINUX_JOYSTICK
+#	endif
+#	if defined(FPL__SUPPORT_INPUT_LINUX_EVDEV)
+#		define FPL__ENABLE_INPUT_LINUX_EVDEV
+#	endif
+#	if defined(FPL__SUPPORT_INPUT_LINUX_UDEV)
+#		define FPL__ENABLE_INPUT_LINUX_UDEV
+#	endif
+#	if defined(FPL__SUPPORT_INPUT_UNIX_GAMEPAD)
+#		define FPL__ENABLE_INPUT_UNIX_GAMEPAD
+#	endif
+#endif // FPL__SUPPORT_INPUT
 
 #if defined(FPL_LOGGING)
 #	define FPL__ENABLE_LOGGING
@@ -2824,6 +3031,7 @@ fpl_internal fpl_force_inline void fpl__m_DebugBreak(void) { __asm__ __volatile_
 /**
 * @typedef fpl_b32
 * @brief Defines a integer based boolean that has a width of 32-bit.
+* @note Used for boolean fields inside public structs to keep their layout stable across C/C++ compilers (where `bool` size is implementation-defined) and to support atomic-style access. New API surfaces should still use the C99 `bool` type for return values and parameters; `fpl_b32` is reserved for ABI-stable struct fields.
 */
 typedef int32_t fpl_b32;
 
@@ -3189,6 +3397,19 @@ struct IUnknown;
 
 #endif // !FPL_NO_PLATFORM_INCLUDES
 
+#if defined(FPL_SUBPLATFORM_POSIX)
+#	include <pthread.h> // pthread_t, pthread_mutex_, pthread_cond_, pthread_barrier_
+#	include <semaphore.h> // sem_t
+#endif // FPL_SUBPLATFORM_POSIX
+
+#if defined(FPL_SUBPLATFORM_X11)
+#	include <X11/X.h> // Window
+#	include <X11/Xlib.h> // Display
+#	include <X11/Xutil.h> // XVisualInfo
+#	include <X11/Xatom.h> // XA_CARDINAL
+#	include <X11/keysym.h> // Keyboard symbols (XK_Escape, etc.)
+#endif // FPL_SUBPLATFORM_X11
+
 //
 // Special Includes, such as intrin.h or cpuid.h
 // CRT Includes, such as stdio.h, stdlib.h, when enabled
@@ -3203,15 +3424,16 @@ struct IUnknown;
 
 // Only include CRT, when needed
 #if !defined(FPL_NO_CRT)
-#    include <stdio.h> // stdin, stdout, stderr, fprintf, vfprintf, vsnprintf, getchar
+#	 include <stdio.h> // stdin, stdout, stderr, fprintf, vfprintf, vsnprintf, getchar
 #    include <stdlib.h> // wcstombs, mbstowcs, getenv
+#	 include <wchar.h> // mbrtowc, wcsrtombs, mbsrtowcs
 #    include <locale.h> // setlocale, struct lconv, localeconv
 #endif
 
 // Always include sched.h and dirint.h
 #if defined(FPL_SUBPLATFORM_POSIX)
-#	include <sched.h> // sched_param, sched_get_priority_max, SCHED_FIFO
-#	include <dirent.h> // DIR, dirent
+#	 include <sched.h> // sched_param, sched_get_priority_max, SCHED_FIFO
+#	 include <dirent.h> // DIR, dirent
 #endif
 
 //
@@ -3228,29 +3450,29 @@ typedef struct fpl__Win32Guid {
 	uint16_t Data3;
 	uint8_t  Data4[8];
 } fpl__Win32Guid;
-//! A win32 handle (opaque, min 4/8 bytes)
+//! A win32 HANDLE pointer (opaque, sizeof(void*): 4 bytes on Win32, 8 bytes on Win64).
 typedef void *fpl__Win32Handle;
-//! A win32 instance handle (opaque, min 4/8 bytes)
+//! A win32 HINSTANCE pointer (opaque, alias of fpl__Win32Handle).
 typedef fpl__Win32Handle fpl__Win32InstanceHandle;
-//! A win32 library handle (opaque, min 4/8 bytes)
+//! A win32 HMODULE pointer (opaque, alias of fpl__Win32Handle).
 typedef fpl__Win32Handle fpl__Win32LibraryHandle;
-//! A win32 filehandle (opaque, min 4/8 bytes)
+//! A win32 file HANDLE pointer (opaque, alias of fpl__Win32Handle).
 typedef fpl__Win32Handle fpl__Win32FileHandle;
-//! A win32 thread handle (opaque, min 4/8 bytes)
+//! A win32 thread HANDLE pointer (opaque, alias of fpl__Win32Handle).
 typedef fpl__Win32Handle fpl__Win32ThreadHandle;
-//! A win32 mutex handle (opaque, min 80 bytes)
+//! A win32 CRITICAL_SECTION storage (max observed: 40 bytes on Win64, 24 bytes on Win32; buffer is 128 bytes for headroom).
 typedef uint64_t fpl__Win32MutexHandle[16];
-//! A win32 signal handle (opaque, min 4/8 bytes)
+//! A win32 event HANDLE pointer (opaque, alias of fpl__Win32Handle).
 typedef fpl__Win32Handle fpl__Win32SignalHandle;
-//! A win32 condition variable (opaque, min 4/8 bytes)
+//! A win32 CONDITION_VARIABLE pointer (opaque, sizeof(void*) — wraps a single pointer-sized field).
 typedef void *fpl__Win32ConditionVariable;
-//! A win32 semaphore handle (opaque, min 4/8 bytes)
+//! A win32 semaphore HANDLE pointer (opaque, alias of fpl__Win32Handle).
 typedef fpl__Win32Handle fpl__Win32SemaphoreHandle;
-//! A win32 window handle (opaque, min 4/8 bytes)
+//! A win32 HWND pointer (opaque, alias of fpl__Win32Handle).
 typedef fpl__Win32Handle fpl__Win32WindowHandle;
-//! A win32 device context (opaque, min 4/8 bytes)
+//! A win32 HDC pointer (opaque, alias of fpl__Win32Handle).
 typedef fpl__Win32Handle fpl__Win32DeviceContext;
-//! A win32 rendering context (opaque, min 4/8 bytes)
+//! A win32 HGLRC pointer (opaque, alias of fpl__Win32Handle).
 typedef fpl__Win32Handle fpl__Win32RenderingContext;
 //! A win32 structure for storing a large integer for QPC (opaque, 8 bytes)
 typedef union fpl__Win32LargeInteger {
@@ -3268,39 +3490,39 @@ typedef union fpl__Win32LargeInteger {
 
 #	if defined(FPL_SUBPLATFORM_POSIX)
 
-//! A POSIX library handle (opaque, min 4/8 bytes)
+//! A POSIX dlopen handle (opaque, sizeof(void*): 4 bytes on 32-bit, 8 bytes on 64-bit).
 typedef void *fpl__POSIXLibraryHandle;
-//! A POSIX filehandle (opaque, min 4 bytes)
+//! A POSIX file descriptor (opaque, sizeof(int) = 4 bytes on all supported platforms).
 typedef int fpl__POSIXFileHandle;
-//! A POSIX directory handle (opaque, min 4/8 bytes)
+//! A POSIX DIR pointer (opaque, sizeof(void*): 4 bytes on 32-bit, 8 bytes on 64-bit).
 typedef void *fpl__POSIXDirHandle;
-//! A POSIX thread handle (opaque, min 8 bytes)
+//! A POSIX pthread_t (opaque, max observed: 8 bytes on glibc/musl x86_64; treated here as a single uint64_t — opaque branch is glibc/musl-x86_64 only).
 typedef uint64_t fpl__POSIXThreadHandle;
-//! A POSIX mutex handle (opaque, min 40 bytes)
+//! A POSIX pthread_mutex_t storage (max observed: 40 bytes glibc x86_64, 56-64 bytes Darwin/BSD; buffer is 128 bytes for headroom).
 typedef uint64_t fpl__POSIXMutexHandle[16];
-//! A POSIX semaphore handle (opaque, min 32 bytes)
+//! A POSIX sem_t storage (max observed: 32 bytes glibc x86_64; buffer is 64 bytes for headroom).
 typedef uint64_t fpl__POSIXSemaphoreHandle[8];
-//! A POSIX condition variable (opaque, min: 48 bytes)
+//! A POSIX pthread_cond_t storage (max observed: 48 bytes glibc x86_64; buffer is 128 bytes for headroom).
 typedef uint64_t fpl__POSIXConditionVariable[16];
 
 #	endif // FPL_SUBPLATFORM_POSIX
 
 #	if defined(FPL_SUBPLATFORM_X11)
 
-// @TODO(final): Opaque X11 Display is not correct, to not assume void ptr - its a full structure, that is really large
+// X11 Display/Visual/GC/Image are accessed via pointer, so the typedef is used as `fpl__X11Display *` everywhere — the underlying struct is intentionally not exposed.
+// Declared as forward-declared (incomplete) struct types so that `fpl__X11Display *` is a distinct, type-safe pointer (not an alias for `void *`).
 
-//! A X11 Display (opaque, 4/8 bytes)
-typedef void *fpl__X11Display;
-
-//! A X11 window (opaque, 4 bytes)
-typedef int fpl__X11Window;
-//! A X11 Visual (opaque, 4/8 bytes)
-typedef void *fpl__X11Visual;
-//! A X11 GC (opaque, 4/8 bytes)
-typedef void *fpl__X11GC;
-//! A X11 Image (opaque, 4/8 bytes)
-typedef void *fpl__X11Image;
-//! A GLX Context (opaque, 4/8 bytes)
+//! A X11 Display (opaque incomplete type, accessed via pointer only)
+typedef struct fpl__X11Display fpl__X11Display;
+//! A X11 window (opaque, 8 bytes - matches the X11 XID type which is unsigned long on LP64 systems)
+typedef unsigned long fpl__X11Window;
+//! A X11 Visual (opaque incomplete type, accessed via pointer only)
+typedef struct fpl__X11Visual fpl__X11Visual;
+//! A X11 GC (opaque incomplete type, accessed via pointer only)
+typedef struct fpl__X11GC fpl__X11GC;
+//! A X11 Image (opaque incomplete type, accessed via pointer only)
+typedef struct fpl__X11Image fpl__X11Image;
+//! A GLX Context (opaque, alias of void * — matches the real GLXContext typedef which is a pointer-typed handle)
 typedef void *fpl__GLXContext;
 
 #	endif // FPL_SUBPLATFORM_X11
@@ -3345,6 +3567,10 @@ typedef HGLRC fpl__Win32RenderingContext;
 //! A win32 structure for storing a large integer for QPC
 typedef LARGE_INTEGER fpl__Win32LargeInteger;
 
+// Sanity checks that the real Win32 types fit into the opaque-branch buffers (keep these in sync with the opaque typedefs above).
+fplStaticAssert(sizeof(GUID) == sizeof(fpl__Win32Guid));
+fplStaticAssert(sizeof(CRITICAL_SECTION) <= sizeof(uint64_t[16]));
+
 #	endif // FPL_PLATFORM_WINDOWS
 
 #	if defined(FPL_SUBPLATFORM_POSIX)
@@ -3364,22 +3590,31 @@ typedef sem_t fpl__POSIXSemaphoreHandle;
 //! A POSIX condition variable
 typedef pthread_cond_t fpl__POSIXConditionVariable;
 
+// Sanity checks that the real POSIX types fit into the opaque-branch buffers (keep these in sync with the opaque typedefs above).
+fplStaticAssert(sizeof(pthread_t) <= sizeof(uint64_t));
+fplStaticAssert(sizeof(pthread_mutex_t) <= sizeof(uint64_t[16]));
+fplStaticAssert(sizeof(sem_t) <= sizeof(uint64_t[8]));
+fplStaticAssert(sizeof(pthread_cond_t) <= sizeof(uint64_t[16]));
+
 #	endif // FPL_SUBPLATFORM_POSIX
 
 #	if defined(FPL_SUBPLATFORM_X11)
 
 //! A X11 Display
-typedef Display *fpl__X11Display;
+typedef Display fpl__X11Display;
 //! A X11 window
 typedef Window fpl__X11Window;
 //! A X11 Visual
-typedef Visual *fpl__X11Visual;
+typedef Visual fpl__X11Visual;
 //! A X11 GC
 typedef GC fpl__X11GC;
 //! A X11 Image
-typedef XImage *fpl__X11Image;
+typedef XImage fpl__X11Image;
 //! A GLX Context (opaque, 4/8 bytes)
 typedef void *fpl__GLXContext;
+
+// Sanity check: X11 Window is an XID (unsigned long on LP64, matches the opaque-branch typedef).
+fplStaticAssert(sizeof(Window) == sizeof(unsigned long));
 
 #	endif // FPL_SUBPLATFORM_X11
 
@@ -3423,12 +3658,14 @@ typedef int fpl__LinuxSignalHandle;
 /**
 * @def FPL_MAX_FILENAME_LENGTH
 * @brief Maximum length of a filename.
+* @note On Windows this is `MAX_PATH` (260) when `MAX_PATH` is visible at preprocess time, otherwise hard-coded to 260. On POSIX it is 512.
 */
 #define FPL_MAX_FILENAME_LENGTH FPL__M_MAX_FILENAME_LENGTH
 
 /**
 * @def FPL_MAX_PATH_LENGTH
 * @brief Maximum length of a path.
+* @note On Windows this is `MAX_PATH * 2` (520) and on POSIX it is 2048. Internal Win32 path buffers are sized by this constant, so paths longer than `MAX_PATH` are not supported on Windows. The Windows long-path prefix `\\?\` is intentionally not used by FPL — callers that need long-path support must work around this at the application level.
 */
 #define FPL_MAX_PATH_LENGTH FPL__M_MAX_PATH_LENGTH
 
@@ -3557,9 +3794,10 @@ typedef enum fplDateTimeType {
 /**
 * @struct fplDateTime
 * @brief Stores a date and time with milliseconds, including the UTC offset.
+* @note Pre-1970 dates are intentionally not supported — `epoch` is unsigned and `fplDateTimeCreate` rejects `year < 1970`.
 */
 typedef struct fplDateTime {
-	// Unix epoch in seconds since 1970-01-01 00:00:00.
+	// Unix epoch in seconds since 1970-01-01 00:00:00. Unsigned because pre-1970 dates are not supported.
 	uint64_t epoch;
 	// Milliseconds that are added after the epoch.
 	uint32_t milliseconds;
@@ -3605,14 +3843,14 @@ typedef struct fplDateTimeCreationResult {
 
 /**
 * @brief Creates a date time from the specified date time components and UTC offset.
-* @param year[in] The year starting from 1970.
-* @param month[in] The month in range of 1-12.
-* @param day[in] The day in range of 1-31.
-* @param hour[in] The hour in range of 0-23.
-* @param minute[in] The minute in range of 0-23.
-* @param second[in] The minute in range of 0-59.
-* @param millisecond[in] The millisecond in range of 0-999.
-* @param utcOffset[in] The UTC offset in minutes.
+* @param[in] year The year starting from 1970.
+* @param[in] month The month in range of 1-12.
+* @param[in] day The day in range of 1-31.
+* @param[in] hour The hour in range of 0-23.
+* @param[in] minute The minute in range of 0-59.
+* @param[in] second The second in range of 0-59.
+* @param[in] millisecond The millisecond in range of 0-999.
+* @param[in] utcOffset The UTC offset in minutes.
 * @return Returns the created date time structure as @ref fplDateTime.
 * @note If invalid arguments are passed, an empty date time is returned instead.
 */
@@ -3643,15 +3881,15 @@ typedef struct fplDateTimeResult {
 
 /**
 * @brief Gets the current date time and offset and the number of milliseconds in the specified format.
-* @param type[in] The target date time format as @ref fplDateTimeType.
+* @param[in] type The target date time format as @ref fplDateTimeType.
 * @return Returns the date time structure as @ref fplDateTime.
 */
 fpl_platform_api fplDateTime fplDateTimeQuery(const fplDateTimeType type);
 
 /**
 * @brief Formats the date time into the specified format as a @ref fplDateTimeResult.
-* @param dateTime[in] The date time as @ref fplDateTime.
-* @param type[in] The target date time format as @ref fplDateTimeType.
+* @param[in] dateTime The date time as @ref fplDateTime.
+* @param[in] type The target date time format as @ref fplDateTimeType.
 * @return Returns the computed date time fields as @ref fplDateTimeResult.
 */
 fpl_platform_api fplDateTimeResult fplFormatDateTime(const fplDateTime dateTime, const fplDateTimeType type);
@@ -4293,10 +4531,16 @@ fpl_platform_api bool fplMemoryGetInfos(fplMemoryInfos *outInfos);
 // ----------------------------------------------------------------------------
 
 /**
+* @def FPL_MAX_VERSION_PART_LENGTH
+* @brief Maximum number of digits in a single version-number part (excluding NUL).
+*/
+#define FPL_MAX_VERSION_PART_LENGTH 8
+
+/**
 * @typedef fplVersionNumberPart
 * @brief A type definition for mapping a part of a version number.
 */
-typedef char fplVersionNumberPart[4 + 1];
+typedef char fplVersionNumberPart[FPL_MAX_VERSION_PART_LENGTH + 1];
 
 /**
 * @struct fplVersionInfo
@@ -4615,10 +4859,16 @@ typedef enum fplInitFlags {
 	fplInitFlags_Video = 1 << 2,
 	//! Use asynchronous audio playback.
 	fplInitFlags_Audio = 1 << 3,
-	//! Support for game controllers.
-	fplInitFlags_GameController = 1 << 4,
+	//! Enable the gamepad input source. Initializes the input subsystem if not already requested.
+	fplInitFlags_Gamepad = 1 << 4,
+	//! Enable the keyboard input source. Initializes the input subsystem if not already requested.
+	fplInitFlags_Keyboard = 1 << 5,
+	//! Enable the mouse input source. Initializes the input subsystem if not already requested.
+	fplInitFlags_Mouse = 1 << 6,
+	//! Convenience alias enabling keyboard, mouse and gamepad input sources together.
+	fplInitFlags_Input = fplInitFlags_Keyboard | fplInitFlags_Mouse | fplInitFlags_Gamepad,
 	//! All init flags.
-	fplInitFlags_All = fplInitFlags_Console | fplInitFlags_Window | fplInitFlags_Video | fplInitFlags_Audio | fplInitFlags_GameController,
+	fplInitFlags_All = fplInitFlags_Console | fplInitFlags_Window | fplInitFlags_Video | fplInitFlags_Audio | fplInitFlags_Input,
 } fplInitFlags;
 //! InitFlags operator overloads for C++.
 FPL_ENUM_AS_FLAGS_OPERATORS(fplInitFlags);
@@ -4701,19 +4951,19 @@ typedef enum fplVideoBackendType {
 
 #if defined(FPL__ENABLE_VIDEO_OPENGL)
 /**
-* @enum fplOpenGLCompabilityFlags
+* @enum fplOpenGLCompatibilityFlags
 * @brief An enumeration of OpenGL compatibility flags.
 */
-typedef enum fplOpenGLCompabilityFlags {
+typedef enum fplOpenGLCompatibilityFlags {
 	//! Use legacy context.
-	fplOpenGLCompabilityFlags_Legacy = 0,
+	fplOpenGLCompatibilityFlags_Legacy = 0,
 	//! Use core profile.
-	fplOpenGLCompabilityFlags_Core = 1 << 1,
+	fplOpenGLCompatibilityFlags_Core = 1 << 1,
 	//! Use compatibility profile.
-	fplOpenGLCompabilityFlags_Compability = 1 << 2,
+	fplOpenGLCompatibilityFlags_Compatibility = 1 << 2,
 	//! Remove features marked as deprecated.
-	fplOpenGLCompabilityFlags_Forward = 1 << 3,
-} fplOpenGLCompabilityFlags;
+	fplOpenGLCompatibilityFlags_Forward = 1 << 3,
+} fplOpenGLCompatibilityFlags;
 
 /**
 * @struct fplOpenGLSettings
@@ -4723,7 +4973,7 @@ typedef struct fplOpenGLSettings {
 	//! Custom OpenGL driver library file name/path (null = Default OpenGL library).
 	const char *libraryFile;
 	//! Compatibility flags.
-	fplOpenGLCompabilityFlags compabilityFlags;
+	fplOpenGLCompatibilityFlags compatibilityFlags;
 	//! Desired major version.
 	uint32_t majorVersion;
 	//! Desired minor version.
@@ -4862,6 +5112,10 @@ typedef enum fplAudioBackendType {
 	fplAudioBackendType_DirectSound,
 	//! ALSA audio backend.
 	fplAudioBackendType_Alsa,
+	//! PulseAudio audio backend.
+	fplAudioBackendType_PulseAudio,
+	//! PipeWire audio backend.
+	fplAudioBackendType_PipeWire,
 	//! Custom audio backend.
 	fplAudioBackendType_Custom,
 
@@ -5140,6 +5394,14 @@ typedef union fplAudioDeviceID {
 	//! ALSA Device ID.
 	char alsa[256];
 #endif
+#if defined(FPL__ENABLE_AUDIO_PULSEAUDIO)
+	//! PulseAudio sink index.
+	uint32_t pulse;
+#endif
+#if defined(FPL__ENABLE_AUDIO_PIPEWIRE)
+	//! PipeWire node id.
+	uint32_t pipewire;
+#endif
 	//! Field for preventing union to be empty.
 	uint8_t dummy[256];
 } fplAudioDeviceID;
@@ -5187,6 +5449,36 @@ typedef struct fplAlsaAudioSettings {
 } fplAlsaAudioSettings;
 #endif
 
+#if defined(FPL__ENABLE_AUDIO_PULSEAUDIO)
+/**
+* @struct fplPulseAudioSettings
+* @brief Stores settings for the PulseAudio audio backend.
+*/
+typedef struct fplPulseAudioSettings {
+	//! Optional PulseAudio server name. Leave empty to use the default server.
+	char serverName[256];
+	//! Optional application name shown in PulseAudio mixers like pavucontrol. Leave empty to use a default.
+	char applicationName[256];
+	//! Optional stream description name shown in PulseAudio mixers like pavucontrol. Leave empty to use a default.
+	char streamName[256];
+} fplPulseAudioSettings;
+#endif
+
+#if defined(FPL__ENABLE_AUDIO_PIPEWIRE)
+/**
+* @struct fplPipeWireAudioSettings
+* @brief Stores settings for the PipeWire audio backend.
+*/
+typedef struct fplPipeWireAudioSettings {
+	//! Optional application name shown in PipeWire mixers like pavucontrol/Helvum. Leave empty to use a default.
+	char applicationName[256];
+	//! Optional stream description name shown in PipeWire mixers. Leave empty to use a default.
+	char streamName[256];
+	//! Optional PipeWire media role ("Game", "Music", "Movie", ...). Leave empty to use "Game".
+	char mediaRole[64];
+} fplPipeWireAudioSettings;
+#endif
+
 /**
 * @union fplSpecificAudioSettings
 * @brief Stores backend-specific audio settings.
@@ -5195,6 +5487,14 @@ typedef union fplSpecificAudioSettings {
 #if defined(FPL__ENABLE_AUDIO_ALSA)
 	//! ALSA-specific settings.
 	fplAlsaAudioSettings alsa;
+#endif
+#if defined(FPL__ENABLE_AUDIO_PULSEAUDIO)
+	//! PulseAudio-specific settings.
+	fplPulseAudioSettings pulse;
+#endif
+#if defined(FPL__ENABLE_AUDIO_PIPEWIRE)
+	//! PipeWire-specific settings.
+	fplPipeWireAudioSettings pipewire;
 #endif
 	//! Field for preventing union to be empty.
 	int dummy;
@@ -5416,33 +5716,147 @@ typedef struct fplConsoleSettings {
 */
 fpl_common_api void fplSetDefaultConsoleSettings(fplConsoleSettings *console);
 
-/**
-* @struct fplGameControllerSettings
-* @brief Stores the settings for controlling how game controllers are handled.
-*/
-typedef struct fplGameControllersSettings {
-	//! Frequency in ms for detecting new or removed controllers (Default: 1000).
-	uint32_t detectionFrequency;
-	//! Frequency in ms for updating states of connected controllers (Default: 0, 0 = As fast as possible).
-	uint32_t updateFrequency;
-} fplGameControllersSettings;
+// Forward declarations for the gamepad mapping resolver hook. Full definitions live further down with the other gamepad types.
+typedef struct fplGamepadInfo fplGamepadInfo;
+typedef struct fplGamepadMapping fplGamepadMapping;
 
 /**
-* @brief Resets the given game controllers settings container to default values.
-* @param[out] gameControllers Reference to the target structure @ref fplGameControllersSettings.
+ * @define FPL_GAMEPAD_MAPPING_RESOLVE_FUNC
+ * @brief Defines a prototype for a gamepad mapping resolver function.
+ * @param name The name of the function.
+ * @return A boolean indicating the result.
+ */
+#define FPL_GAMEPAD_MAPPING_RESOLVE_CALLBACK(name) bool name(const fplGamepadInfo *info, fplGamepadMapping *outMapping, void *userData)
+
+/**
+* @typedef fplGamepadMappingResolverFn
+* @brief Optional callback invoked once per controller connect on raw-HID gamepad backends (DirectInput, Linux joystick/evdev, etc.) to install a custom @ref fplGamepadMapping for the device.
+* @param[in]  info        Backend-built description of the device that just connected.
+* @param[out] outMapping  Mapping to fill in when the resolver wants to override the default convention.
+* @param[in]  userData    Opaque pointer the user supplied via @ref fplGamepadSettings.
+* @return true to install @p outMapping for this device, false to fall back to the default convention.
+* @note The callback runs once at connect time on the platform input thread; do not block.
+*/
+typedef FPL_GAMEPAD_MAPPING_RESOLVE_CALLBACK(fpl_gamepad_mapping_resolver_callback);
+
+/**
+* @struct fplGamepadSettings
+* @brief Stores the settings for controlling how gamepads are handled.
+*/
+typedef struct fplGamepadSettings {
+	//! Frequency in ms for detecting new or removed gamepads (Default: 1000).
+	uint32_t detectionFrequency;
+	//! Frequency in ms for updating states of connected gamepads (Default: 0, 0 = As fast as possible).
+	uint32_t updateFrequency;
+	//! Optional resolver invoked once per raw-HID controller connect to install a custom mapping (Default: fpl_null).
+	fpl_gamepad_mapping_resolver_callback *mappingResolver;
+	//! Opaque user pointer forwarded to @ref mappingResolver (Default: fpl_null).
+	void *mappingResolverUserData;
+} fplGamepadSettings;
+
+/**
+* @brief Resets the given gamepad settings container to default values.
+* @param[out] gamepadSettings Reference to the target structure @ref fplGamepadSettings.
 * @note This will not change any input settings! To change the actual settings you have to pass the entire @ref fplSettings container as an argument in @ref fplPlatformInit().
 */
-fpl_common_api void fplSetDefaultGameControllersSettings(fplGameControllersSettings *gameControllers);
+fpl_common_api void fplSetDefaultGamepadSettings(fplGamepadSettings *gamepadSettings);
+
+/**
+* @enum fplInputSourceType
+* @brief A bitmask of input source kinds (keyboard, mouse, gamepad).
+*/
+typedef enum fplInputSourceType {
+	//! No input source.
+	fplInputSourceType_None = 0,
+	//! Keyboard input source.
+	fplInputSourceType_Keyboard = 1 << 0,
+	//! Mouse input source.
+	fplInputSourceType_Mouse = 1 << 1,
+	//! Gamepad input source.
+	fplInputSourceType_Gamepad = 1 << 2,
+	//! All input sources.
+	fplInputSourceType_All = fplInputSourceType_Keyboard | fplInputSourceType_Mouse | fplInputSourceType_Gamepad,
+} fplInputSourceType;
+//! InputSourceType operator overloads for C++.
+FPL_ENUM_AS_FLAGS_OPERATORS(fplInputSourceType);
+
+/**
+* @enum fplInputBackendType
+* @brief Identifies a concrete input backend implementation.
+*/
+typedef enum fplInputBackendType {
+	//! Unknown / no backend.
+	fplInputBackendType_None = 0,
+	//! Use platform default backends.
+	fplInputBackendType_Auto,
+	//! XInput gamepad backend (Windows).
+	fplInputBackendType_XInput,
+	//! DirectInput8 gamepad backend (Windows).
+	fplInputBackendType_DInput,
+	//! /dev/input/jsX legacy joystick backend (Linux).
+	fplInputBackendType_LinuxJoystick,
+	//! X11 keyboard/mouse backend (Unix/Linux).
+	fplInputBackendType_X11Kbm,
+	//! Win32 keyboard/mouse backend (Windows).
+	fplInputBackendType_Win32,
+	//! First valid backend type identifier.
+	fplInputBackendType_First = fplInputBackendType_None,
+	//! Last valid backend type identifier.
+	fplInputBackendType_Last = fplInputBackendType_Win32,
+} fplInputBackendType;
+
+//! Maximum number of input backends that can be active at once.
+#define FPL_MAX_INPUT_BACKEND_COUNT 16
+
+/**
+* @struct fplInputBackendMask
+* @brief Bitmask of enabled @ref fplInputBackendType values.
+*/
+typedef struct fplInputBackendMask {
+	//! One bit per @ref fplInputBackendType value. Bits for unsupported backends are silently ignored at init time.
+	uint32_t bits;
+} fplInputBackendMask;
+
+/**
+* @brief Returns true when the given backend type bit is set in the mask.
+* @param[in] mask Reference to the mask to query.
+* @param[in] type The backend type to test.
+*/
+fpl_common_api bool fplInputBackendMaskIsEnabled(const fplInputBackendMask *mask, const fplInputBackendType type);
+
+/**
+* @brief Sets the bit for the given backend type in the mask.
+* @param[in,out] mask Reference to the mask to modify.
+* @param[in] type The backend type to enable.
+*/
+fpl_common_api void fplInputBackendMaskEnable(fplInputBackendMask *mask, const fplInputBackendType type);
+
+/**
+* @brief Clears the bit for the given backend type in the mask.
+* @param[in,out] mask Reference to the mask to modify.
+* @param[in] type The backend type to disable.
+*/
+fpl_common_api void fplInputBackendMaskDisable(fplInputBackendMask *mask, const fplInputBackendType type);
 
 /**
 * @struct fplInputSettings
 * @brief Stores input settings.
 */
 typedef struct fplInputSettings {
-	//! Game controllers settings
-	fplGameControllersSettings gameControllers;
+	//! Gamepad settings
+	fplGamepadSettings gamepad;
+	//! Bitmask of @ref fplInputSourceType values to enable (Default: @ref fplInputSourceType_All).
+	fplInputSourceType enabledSources;
+	//! Bitmask of @ref fplInputBackendType values to enable (Default: all bits set, unsupported backends are ignored at init time).
+	fplInputBackendMask enabledBackends;
 	//! Disable input events entirely (Default: false).
 	fpl_b32 disabledEvents;
+	//! When true, multiple gamepad backends (e.g. XInput + DirectInput) may run simultaneously (Default: true).
+	fpl_b32 allowMultipleGamepadBackends;
+	//! When true, native window events are forwarded to the input subsystem (Default: true).
+	fpl_b32 pollFromWindowEventLoop;
+	//! When true, the input subsystem operates without a user window. Required when @ref fplInitFlags_Window is not used (Default: false).
+	fpl_b32 detachFromWindow;
 } fplInputSettings;
 
 /**
@@ -6552,36 +6966,37 @@ fpl_common_api bool fplIsStringEqual(const char *a, const char *b);
 * @brief Ensures that the given string always ends with a path separator with length constrained.
 * @param[in, out] path The target path string.
 * @param[in] maxPathLen The max length of the target path.
-* @return Returns a pointer to the last written character or null.
+* @return Returns the total number of characters required (excluding NUL).
+* @note Returns 0 if @p path is null, @p maxPathLen is 0, or the buffer is too small to hold the separator + NUL. The destination is left unmodified on too-small buffer.
 */
-fpl_common_api char *fplEnforcePathSeparatorLen(char *path, size_t maxPathLen);
+fpl_common_api size_t fplEnforcePathSeparatorLen(char *path, size_t maxPathLen);
 
 /**
 * @brief Ensures that the given string always ends with a path separator.
 * @param[in, out] path The path string.
-* @return Returns a pointer to the last written character or null.
+* @return Returns the total number of characters of the resulting string (excluding NUL).
 * @note This function is unsafe as it does not know the maximum length of the string!
 */
-fpl_common_api char *fplEnforcePathSeparator(char *path);
+fpl_common_api size_t fplEnforcePathSeparator(char *path);
 
 /**
 * @brief Appends the source string to the given buffer constrained by length.
 * @param[in] appended The appending source string.
 * @param[in] appendedLen The length of the appending source string.
-* @param[in, out] buffer The target buffer.
+* @param[in, out] buffer The target buffer (may be null to query the required size only).
 * @param[in] maxBufferLen The max length of the target buffer.
-* @return Returns a pointer to the last written character or null.
+* @return Returns the total number of characters required (excluding NUL). Returns 0 on hard error or when the buffer is too small (buffer is left untouched).
 */
-fpl_common_api char *fplStringAppendLen(const char *appended, const size_t appendedLen, char *buffer, size_t maxBufferLen);
+fpl_common_api size_t fplStringAppendLen(const char *appended, const size_t appendedLen, char *buffer, size_t maxBufferLen);
 
 /**
 * @brief Appends the source string to the given buffer.
 * @param[in] appended The appending source string.
-* @param[in, out] buffer The target buffer.
+* @param[in, out] buffer The target buffer (may be null to query the required size only).
 * @param[in] maxBufferLen The max length of the target buffer.
-* @return Returns a pointer to the last written character or null.
+* @return Returns the total number of characters required (excluding NUL). Returns 0 on hard error or when the buffer is too small.
 */
-fpl_common_api char *fplStringAppend(const char *appended, char *buffer, size_t maxBufferLen);
+fpl_common_api size_t fplStringAppend(const char *appended, char *buffer, size_t maxBufferLen);
 
 /**
 * @brief Counts the number of characters without including the zero terminator.
@@ -6594,22 +7009,22 @@ fpl_common_api size_t fplGetStringLength(const char *str);
 * @brief Copies the given source string with a constrained length into a destination string.
 * @param[in] source The source string.
 * @param[in] sourceLen The number of characters to copy.
-* @param[in, out] dest The destination string buffer.
+* @param[in, out] dest The destination string buffer (may be null to query the required size only).
 * @param[in] maxDestLen The total number of characters available in the destination buffer.
-* @return Returns the pointer to the last written character or null.
-* @note Null terminator is always included.
+* @return Returns the total number of characters required (excluding NUL). Returns 0 on hard error or when the buffer is too small.
+* @note Null terminator is always included when written.
 */
-fpl_common_api char *fplCopyStringLen(const char *source, const size_t sourceLen, char *dest, const size_t maxDestLen);
+fpl_common_api size_t fplCopyStringLen(const char *source, const size_t sourceLen, char *dest, const size_t maxDestLen);
 
 /**
 * @brief Copies the given source string into a destination string.
 * @param[in] source The source string.
-* @param[in, out] dest The destination string buffer.
+* @param[in, out] dest The destination string buffer (may be null to query the required size only).
 * @param[in] maxDestLen The total number of characters available in the destination buffer.
-* @return Returns the pointer to the last written character or null.
-* @note Null terminator is always included.
+* @return Returns the total number of characters required (excluding NUL). Returns 0 on hard error or when the buffer is too small.
+* @note Null terminator is always included when written.
 */
-fpl_common_api char *fplCopyString(const char *source, char *dest, const size_t maxDestLen);
+fpl_common_api size_t fplCopyString(const char *source, char *dest, const size_t maxDestLen);
 
 /**
 * @brief Converts the given 16-bit source wide string with length into an 8-bit UTF-8 ANSI string.
@@ -6640,7 +7055,7 @@ fpl_platform_api size_t fplUTF8StringToWideString(const char *utf8Source, const 
 * @param[in] format The string format.
 * @param[in] ... The variable arguments.
 * @return Returns the number of required/written characters, excluding the null-terminator.
-* @note This is most likely just a wrapper call to vsnprintf().
+* @note Follows C99 vsnprintf format specifiers. Returns the required length excluding NUL; returns 0 if destBuffer is too small.
 */
 fpl_common_api size_t fplStringFormat(char *destBuffer, const size_t maxDestBufferLen, const char *format, ...);
 
@@ -6651,7 +7066,7 @@ fpl_common_api size_t fplStringFormat(char *destBuffer, const size_t maxDestBuff
 * @param[in] format The string format.
 * @param[in] argList The arguments list.
 * @return Returns the number of required/written characters, excluding the null-terminator.
-* @note This is most likely just a wrapper call to vsnprintf().
+* @note Follows C99 vsnprintf format specifiers. Returns the required length excluding NUL; returns 0 if destBuffer is too small.
 */
 fpl_common_api size_t fplStringFormatArgs(char *destBuffer, const size_t maxDestBufferLen, const char *format, va_list argList);
 
@@ -6659,16 +7074,33 @@ fpl_common_api size_t fplStringFormatArgs(char *destBuffer, const size_t maxDest
 * @brief Converts the given string into a 32-bit integer constrained by string length.
 * @param[in] str The source string.
 * @param[in] len The length of the source string.
-* @return Returns a 32-bit integer converted from the given string.
+* @return Returns a 32-bit integer converted from the given string. Overflow is clamped to INT32_MAX/INT32_MIN. Invalid input returns 0 — use fplTryStringToS32Len() to distinguish a valid "0" from an invalid string.
 */
 fpl_common_api int32_t fplStringToS32Len(const char *str, const size_t len);
 
 /**
 * @brief Converts the given string into a 32-bit integer.
 * @param[in] str The source string.
-* @return Returns a 32-bit integer converted from the given string.
+* @return Returns a 32-bit integer converted from the given string. Overflow is clamped to INT32_MAX/INT32_MIN. Invalid input returns 0 — use fplTryStringToS32() to distinguish a valid "0" from an invalid string.
 */
 fpl_common_api int32_t fplStringToS32(const char *str);
+
+/**
+* @brief Try to convert the given string into a 32-bit integer constrained by string length.
+* @param[in] str The source string.
+* @param[in] len The length of the source string.
+* @param[out] outValue Receives the converted value. On overflow, clamped to INT32_MAX/INT32_MIN. May be null to validate without retrieving the value.
+* @return Returns true if @p str was a valid integer literal (optional sign + at least one digit), false otherwise.
+*/
+fpl_common_api bool fplTryStringToS32Len(const char *str, const size_t len, int32_t *outValue);
+
+/**
+* @brief Try to convert the given NUL-terminated string into a 32-bit integer.
+* @param[in] str The source string.
+* @param[out] outValue Receives the converted value. On overflow, clamped to INT32_MAX/INT32_MIN. May be null to validate without retrieving the value.
+* @return Returns true if @p str was a valid integer literal, false otherwise.
+*/
+fpl_common_api bool fplTryStringToS32(const char *str, int32_t *outValue);
 
 /**
 * @brief Converts the given 32-bit integer value into a string.
@@ -6832,9 +7264,9 @@ typedef union fplInternalFileEntryHandle {
 */
 typedef struct fplInternalFileRootInfo {
 	//! Saved root path.
-	const char *rootPath;
+	char rootPath[FPL_MAX_PATH_LENGTH];
 	//! Saved filter wildcard.
-	const char *filter;
+	char filter[FPL_MAX_FILENAME_LENGTH];
 } fplInternalFileRootInfo;
 
 //! The elapsed seconds since the UNIX epoch (1970-01-01 00:00:00).
@@ -6909,7 +7341,8 @@ fpl_platform_api bool fplFileAppendBinary(const char *filePath, fplFileHandle *o
 * @param[in] sizeToRead The number of bytes to read.
 * @param[out] targetBuffer The target memory to write into.
 * @param[in] maxTargetBufferSize Total number of bytes available in the target buffer.
-* @return Returns the number of bytes read or zero.
+* @return Returns the number of bytes read, or 0 on EOF or hard error.
+* @note A return of 0 is ambiguous: it may mean end-of-file or a read failure (NULL handle, invalid handle, OS-level read error). Disambiguate via @ref fplFileGetPosition32 / @ref fplFileGetSizeFromHandle32, or check @ref fplGetLastError.
 * @note Supports max size of 2^31.
 * @see @ref subsection_category_io_binaryfiles_read_readblock
 */
@@ -6921,7 +7354,8 @@ fpl_platform_api uint32_t fplFileReadBlock32(const fplFileHandle *fileHandle, co
 * @param[in] sizeToRead The number of bytes to read.
 * @param[out] targetBuffer The target memory to write into.
 * @param[in] maxTargetBufferSize Total number of bytes available in the target buffer.
-* @return Returns the number of bytes read or zero.
+* @return Returns the number of bytes read, or 0 on EOF or hard error.
+* @note A return of 0 is ambiguous: it may mean end-of-file or a read failure (NULL handle, invalid handle, OS-level read error). Disambiguate via @ref fplFileGetPosition64 / @ref fplFileGetSizeFromHandle64, or check @ref fplGetLastError.
 * @note Supports max size of 2^63.
 * @see @ref subsection_category_io_binaryfiles_read_readblock
 */
@@ -6933,7 +7367,8 @@ fpl_platform_api uint64_t fplFileReadBlock64(const fplFileHandle *fileHandle, co
 * @param[in] sizeToRead The number of bytes to read.
 * @param[out] targetBuffer The target memory to write into.
 * @param[in] maxTargetBufferSize Total number of bytes available in the target buffer.
-* @return Returns the number of bytes read or zero.
+* @return Returns the number of bytes read, or 0 on EOF or hard error.
+* @note A return of 0 is ambiguous: it may mean end-of-file or a read failure (NULL handle, invalid handle, OS-level read error). Disambiguate via the matching @ref fplFileGetPosition / @ref fplFileGetSizeFromHandle variant, or check @ref fplGetLastError.
 * @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes.
 * @see @ref subsection_category_io_binaryfiles_read_readblock
 */
@@ -6948,7 +7383,7 @@ fpl_platform_api size_t fplFileReadBlock(const fplFileHandle *fileHandle, const 
 * @note Supports max size of 2^31.
 * @see @ref subsection_category_io_binaryfiles_write_writeblock
 */
-fpl_platform_api uint32_t fplFileWriteBlock32(const fplFileHandle *fileHandle, void *sourceBuffer, const uint32_t sourceSize);
+fpl_platform_api uint32_t fplFileWriteBlock32(const fplFileHandle *fileHandle, const void *sourceBuffer, const uint32_t sourceSize);
 
 /**
 * @brief Writes a block to the given file and returns the number of written bytes.
@@ -6959,7 +7394,7 @@ fpl_platform_api uint32_t fplFileWriteBlock32(const fplFileHandle *fileHandle, v
 * @note Supports max size of 2^63.
 * @see @ref subsection_category_io_binaryfiles_write_writeblock
 */
-fpl_platform_api uint64_t fplFileWriteBlock64(const fplFileHandle *fileHandle, void *sourceBuffer, const uint64_t sourceSize);
+fpl_platform_api uint64_t fplFileWriteBlock64(const fplFileHandle *fileHandle, const void *sourceBuffer, const uint64_t sourceSize);
 
 /**
 * @brief Writes a block to the given file and returns the number of written bytes.
@@ -6970,7 +7405,7 @@ fpl_platform_api uint64_t fplFileWriteBlock64(const fplFileHandle *fileHandle, v
 * @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes.
 * @see @ref subsection_category_io_binaryfiles_write_writeblock
 */
-fpl_common_api size_t fplFileWriteBlock(const fplFileHandle *fileHandle, void *sourceBuffer, const size_t sourceSize);
+fpl_common_api size_t fplFileWriteBlock(const fplFileHandle *fileHandle, const void *sourceBuffer, const size_t sourceSize);
 
 /**
 * @brief Sets the current file position by the given position, depending on the mode it's absolute or relative.
@@ -7068,6 +7503,14 @@ fpl_platform_api uint64_t fplFileGetSizeFromPath64(const char *filePath);
 fpl_platform_api size_t fplFileGetSizeFromPath(const char *filePath);
 
 /**
+* @brief Tries to get the full 64-bit file size in bytes for the given file, distinguishing a zero-byte file from an error.
+* @param[in] filePath The path to the file.
+* @param[out] outSize Reference that receives the file size in bytes on success. Untouched on failure.
+* @return Returns true when the size was retrieved, false on any error (NULL input, file not accessible, query failed).
+*/
+fpl_platform_api bool fplFileTryGetSizeFromPath(const char *filePath, uint64_t *outSize);
+
+/**
 * @brief Gets the file size in bytes for an opened file.
 * @param[in] fileHandle Reference to the file handle structure @ref fplFileHandle.
 * @return Returns the file size in bytes or zero.
@@ -7090,6 +7533,14 @@ fpl_platform_api uint64_t fplFileGetSizeFromHandle64(const fplFileHandle *fileHa
 * @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes.
 */
 fpl_common_api size_t fplFileGetSizeFromHandle(const fplFileHandle *fileHandle);
+
+/**
+* @brief Tries to get the full 64-bit file size in bytes for an opened file, distinguishing a zero-byte file from an error.
+* @param[in] fileHandle Reference to the file handle structure @ref fplFileHandle.
+* @param[out] outSize Reference that receives the file size in bytes on success. Untouched on failure.
+* @return Returns true when the size was retrieved, false on any error (NULL input, invalid handle, query failed).
+*/
+fpl_platform_api bool fplFileTryGetSizeFromHandle(const fplFileHandle *fileHandle, uint64_t *outSize);
 
 /**
 * @brief Gets the timestamps for the given file.
@@ -7162,11 +7613,12 @@ fpl_platform_api bool fplDirectoryRemove(const char *path);
 /**
 * @brief Iterates through files/directories in the given directory.
 * @param[in] path The full path.
-* @param[in] filter The filter wildcard (If empty or null it will not filter anything at all).
+* @param[in] filter The filter wildcard. If empty or null, it is rewritten internally to "*" (match all) and stored as such in the entry's internal root info.
 * @param[out] entry Reference to the file entry structure @ref fplFileEntry.
 * @return Returns true when there was a first entry found, false otherwise.
 * @note This function is not recursive, so it will traverse the first level only!
 * @note When no initial entry is found, the resources are automatically cleaned up.
+* @note `path` and `filter` are copied into fixed-size buffers inside `entry`; the caller may free or reuse the source strings immediately after this call returns.
 * @see @ref section_category_io_paths_traversing
 */
 fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter, fplFileEntry *entry);
@@ -7219,9 +7671,9 @@ fpl_platform_api size_t fplGetHomePath(char *destPath, const size_t maxDestLen);
 
 /**
  * @brief Normalizes the specified source path into the dest path and len.
- * @param sourcePath The source path.
- * @param destPath The destination buffer.
- * @param maxDestLen The total number of characters available in the destination buffer.
+ * @param[in] sourcePath The source path.
+ * @param[out] destPath The destination buffer.
+ * @param[in] maxDestLen The total number of characters available in the destination buffer.
  * @return Returns the number of required/written characters, excluding the null-terminator.
  */
 fpl_platform_api size_t fplPathNormalize(const char *sourcePath, char *destPath, const size_t maxDestLen);
@@ -7279,9 +7731,9 @@ fpl_common_api size_t fplPathCombine(char *destPath, const size_t maxDestPathLen
 // ****************************************************************************
 // 
 // Window / Events / Input
-// 
+//
 // ****************************************************************************
-#if defined(FPL__ENABLE_WINDOW)
+#if defined(FPL__ENABLE_WINDOW) || defined(FPL__ENABLE_INPUT)
 
 // ----------------------------------------------------------------------------
 /**
@@ -7713,6 +8165,10 @@ typedef enum fplMouseButtonType {
 	fplMouseButtonType_Right = 1,
 	//! Middle mouse button.
 	fplMouseButtonType_Middle = 2,
+	//! First extended mouse button (typically "back").
+	fplMouseButtonType_X1 = 3,
+	//! Second extended mouse button (typically "forward").
+	fplMouseButtonType_X2 = 4,
 	//! Max mouse button count.
 	fplMouseButtonType_MaxCount,
 } fplMouseButtonType;
@@ -7728,6 +8184,10 @@ typedef struct fplMouseState {
 	int32_t x;
 	//! Y-Position in pixels.
 	int32_t y;
+	//! Accumulated vertical wheel delta since last poll.
+	float wheelDeltaY;
+	//! Accumulated horizontal wheel delta since last poll.
+	float wheelDeltaX;
 } fplMouseState;
 
 /**
@@ -7745,10 +8205,22 @@ fpl_platform_api bool fplPollMouseState(fplMouseState *outState);
 fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY);
 
 /**
-* @typedef fplGameControllerName
+* @typedef fplGamepadName
 * @brief A typedef that defines the name of a game controller.
 */
-typedef char fplGameControllerName[FPL_MAX_NAME_LENGTH];
+typedef char fplGamepadName[FPL_MAX_NAME_LENGTH];
+
+/**
+* @define FPL_GAMEPAD_GUID_SIZE
+* @brief Defines the size of a game controller guid in bytes.
+*/
+#define FPL_GAMEPAD_GUID_SIZE 16
+
+/**
+* @typedef fplGamepadGuid
+* @brief A typedef that defines a 16-byte guid for identify a game controler.
+*/
+typedef uint8_t fplGamepadGuid[FPL_GAMEPAD_GUID_SIZE];
 
 /**
 * @struct fplGamepadButton
@@ -7800,7 +8272,7 @@ typedef enum fplGamepadButtonType {
 
 /**
 * @struct fplGamepadState
-* @brief A structure containing the entire gamepad state.
+* @brief A structure containing the entire gamepad state, that defines a full gamepad state in XInput/XBox layout.
 */
 typedef struct fplGamepadState {
 	union {
@@ -7814,14 +8286,30 @@ typedef struct fplGamepadState {
 			//! Digital button left.
 			fplGamepadButton dpadLeft;
 
-			//! Action button A.
-			fplGamepadButton actionA;
-			//! Action button B.
-			fplGamepadButton actionB;
-			//! Action button X.
-			fplGamepadButton actionX;
-			//! Action button Y.
-			fplGamepadButton actionY;
+			union {
+				struct {
+					//! Action button A.
+					fplGamepadButton actionA;
+					//! Action button B.
+					fplGamepadButton actionB;
+					//! Action button X.
+					fplGamepadButton actionX;
+					//! Action button Y.
+					fplGamepadButton actionY;
+				};
+				struct {
+					//! Action button down.
+					fplGamepadButton actionDown;
+					//! Action button right.
+					fplGamepadButton actionRight;
+					//! Action button left.
+					fplGamepadButton actionLeft;
+					//! Action button up.
+					fplGamepadButton actionUp;
+				};
+				//! Four action buttons
+				fplGamepadButton actions[4];
+			};
 
 			//! Start button.
 			fplGamepadButton start;
@@ -7916,6 +8404,325 @@ typedef struct fplGamepadStates {
 * @see @ref subsection_category_input_polling_gamepad
 */
 fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates);
+
+/**
+* @enum fplGamepadInputType
+* @brief Source kind referenced by a single @ref fplGamepadInputBinding.
+*/
+typedef enum fplGamepadInputType {
+	//! Slot is unbound.
+	fplGamepadInputType_None = 0,
+	//! Digital button at @ref fplGamepadInputBinding.index.
+	fplGamepadInputType_Button,
+	//! Analog axis at @ref fplGamepadInputBinding.index.
+	fplGamepadInputType_Axis,
+	//! Hat (POV) at @ref fplGamepadInputBinding.index, sampled with @ref fplGamepadInputBinding.hatMask.
+	fplGamepadInputType_Hat,
+} fplGamepadInputType;
+
+/**
+* @enum fplGamepadAxisSign
+* @brief Half-axis selector used when an axis source is bound with the SDL `+`/`-` prefixes.
+*/
+typedef enum fplGamepadAxisSign {
+	//! Use the full axis range (-1 .. +1).
+	fplGamepadAxisSign_Full = 0,
+	//! Only the positive half (`+aN` form). Output is remapped to 0 .. 1.
+	fplGamepadAxisSign_Positive,
+	//! Only the negative half (`-aN` form). Output is remapped to 0 .. 1.
+	fplGamepadAxisSign_Negative,
+} fplGamepadAxisSign;
+
+/**
+* @struct fplGamepadInputBinding
+* @brief Describes the raw input source bound to one logical FPL gamepad button or axis slot.
+*/
+typedef struct fplGamepadInputBinding {
+	//! Source kind. @ref fplGamepadInputType_None means the slot is unbound.
+	fplGamepadInputType type;
+	//! Index of the button, axis or hat in the raw device input.
+	uint32_t index;
+	//! Hat bitmask (1=up, 2=right, 4=down, 8=left). Only used when @ref type is @ref fplGamepadInputType_Hat.
+	uint32_t hatMask;
+	//! Half-axis selector for axis sources.
+	fplGamepadAxisSign axisSign;
+	//! True when an axis source is read with its sign inverted (SDL `~` suffix).
+	bool axisInverted;
+} fplGamepadInputBinding;
+
+/**
+* @enum fplGamepadAxisType
+* @brief Logical analog axis slots filled by a @ref fplGamepadMapping.
+*/
+typedef enum fplGamepadAxisType {
+	//! Left thumb stick X.
+	fplGamepadAxisType_LeftX = 0,
+	//! Left thumb stick Y.
+	fplGamepadAxisType_LeftY,
+	//! Right thumb stick X.
+	fplGamepadAxisType_RightX,
+	//! Right thumb stick Y.
+	fplGamepadAxisType_RightY,
+	//! Left trigger (0 .. 1).
+	fplGamepadAxisType_LeftTrigger,
+	//! Right trigger (0 .. 1).
+	fplGamepadAxisType_RightTrigger,
+	//! Number of logical axis slots.
+	fplGamepadAxisType_Count,
+} fplGamepadAxisType;
+
+/**
+* @enum fplGamepadPlatform
+* @brief Target platform tag of a @ref fplGamepadMapping (mirrors the SDL `platform:` field).
+*/
+typedef enum fplGamepadPlatform {
+	//! Platform was not specified or is not recognized.
+	fplGamepadPlatform_Unknown = 0,
+	//! Microsoft Windows.
+	fplGamepadPlatform_Windows,
+	//! Linux (joystick or evdev).
+	fplGamepadPlatform_Linux,
+	//! Apple macOS.
+	fplGamepadPlatform_MacOS,
+	//! Android.
+	fplGamepadPlatform_Android,
+	//! Apple iOS.
+	fplGamepadPlatform_iOS,
+} fplGamepadPlatform;
+
+//! Number of logical button slots stored in a @ref fplGamepadMapping (matches @ref fplGamepadButtonType).
+#define FPL_GAMEPAD_BUTTON_COUNT 14
+
+/**
+* @struct fplGamepadMapping
+* @brief A complete mapping of raw device inputs onto FPL's logical gamepad layout.
+*/
+typedef struct fplGamepadMapping {
+	//! Raw 16-byte device GUID, indexed identically across backends to allow lookup.
+	fplGamepadGuid guid;
+	//! Bindings for the digital button slots, indexed by @ref fplGamepadButtonType.
+	fplGamepadInputBinding buttons[FPL_GAMEPAD_BUTTON_COUNT];
+	//! Bindings for the analog axis slots, indexed by @ref fplGamepadAxisType.
+	fplGamepadInputBinding axes[fplGamepadAxisType_Count];
+	//! Platform the mapping was authored for.
+	fplGamepadPlatform platform;
+} fplGamepadMapping;
+
+//! Maximum number of raw axes captured in a @ref fplGamepadData snapshot.
+#define FPL_GAMEPAD_DATA_MAX_AXES 8
+//! Maximum number of raw buttons captured in a @ref fplGamepadData snapshot.
+#define FPL_GAMEPAD_DATA_MAX_BUTTONS 32
+//! Maximum number of raw hats captured in a @ref fplGamepadData snapshot.
+#define FPL_GAMEPAD_DATA_MAX_HATS 8
+
+/**
+* @struct fplGamepadData
+* @brief Backend-agnostic snapshot of raw device input that a @ref fplGamepadMapping operates on.
+*/
+typedef struct fplGamepadData {
+	//! Raw analog axes in SDL convention (-1 .. +1, triggers idle at -1).
+	float axes[FPL_GAMEPAD_DATA_MAX_AXES];
+	//! Raw digital buttons (true when pressed).
+	bool buttons[FPL_GAMEPAD_DATA_MAX_BUTTONS];
+	//! Raw hat masks (bit 1=up, 2=right, 4=down, 8=left).
+	uint8_t hats[FPL_GAMEPAD_DATA_MAX_HATS];
+	//! Number of valid entries in @ref buttons.
+	uint32_t buttonCount;
+	//! Number of valid entries in @ref axes.
+	uint32_t axisCount;
+	//! Number of valid entries in @ref hats.
+	uint32_t hatCount;
+} fplGamepadData;
+
+/**
+* @struct fplGamepadInfo
+* @brief Read-only description of a controller passed to a @ref fplGamepadMappingResolverFn at connect time.
+*/
+typedef struct fplGamepadInfo {
+	//! Raw 16-byte SDL-compatible GUID built by the backend.
+	fplGamepadGuid guid;
+	//! Display name of the device (UTF-8).
+	const char *name;
+	//! Backend-local slot index for the controller.
+	uint32_t index;
+	//! Backend that produced this device.
+	fplInputBackendType backend;
+	//! USB vendor id, or 0 when unknown.
+	uint16_t vendorId;
+	//! USB product id, or 0 when unknown.
+	uint16_t productId;
+	//! Device version (bcdDevice), or 0 when unknown.
+	uint16_t version;
+	//! Number of raw buttons exposed by the device.
+	uint32_t buttonCount;
+	//! Number of raw axes exposed by the device.
+	uint32_t axisCount;
+	//! Number of raw hats exposed by the device.
+	uint32_t hatCount;
+} fplGamepadInfo;
+
+/**
+* @brief Applies a @ref fplGamepadMapping over a raw device snapshot and writes the result into @p outState.
+* @param[in]  mapping    Mapping to evaluate.
+* @param[in]  input      Raw device snapshot collected by the backend.
+* @param[out] outState   Logical gamepad state populated from the mapping.
+* @return false when any pointer is null, true on success. Buttons and analog axes are written; deviceName/isConnected/isActive are left untouched.
+*/
+fpl_common_api bool fplGamepadMappingApply(const fplGamepadMapping *mapping, const fplGamepadData *input, fplGamepadState *outState);
+
+/**
+* @brief Applies the built-in default convention to a raw device snapshot when no mapping is installed.
+* @param[in]  input      Raw device snapshot collected by the backend.
+* @param[out] outState   Logical gamepad state populated from the default convention.
+* @return false when any pointer is null, true on success.
+* @note The default convention follows SDL's "unknown DInput device" layout — buttons 0..3 → A/B/X/Y, 4/5 → shoulders, 8/9 → back/start, 10/11 → thumb buttons; axes 0/1 → left stick, 2/5 → right stick (XYZ-RZ DInput quirk), 6/7 → triggers; hat[0] → dpad. Backends that produce a different raw layout (e.g. Linux joydev) should still align with this ordering for the default to be useful.
+*/
+fpl_common_api bool fplGamepadMappingApplyDefault(const fplGamepadData *input, fplGamepadState *outState);
+
+//! Maximum length of the @ref fplInputDevice name field.
+#define FPL_MAX_INPUT_DEVICE_NAME 64
+
+//! Maximum number of devices held by the input subsystem at once.
+#define FPL_MAX_INPUT_DEVICE_COUNT 32
+
+/**
+* @struct fplInputDeviceGuid
+* @brief A 128-bit identifier uniquely identifying an input device across backends.
+*/
+typedef struct fplInputDeviceGuid {
+	//! Raw bytes of the GUID.
+	uint8_t bytes[16];
+} fplInputDeviceGuid;
+
+/**
+* @enum fplInputDeviceFeatureFlags
+* @brief Bitmask describing the features a single @ref fplInputDevice supports.
+*/
+typedef enum fplInputDeviceFeatureFlags {
+	//! No features.
+	fplInputDeviceFeatureFlags_None = 0,
+	//! Device can be polled for state.
+	fplInputDeviceFeatureFlags_Polling = 1 << 0,
+	//! Device can produce events.
+	fplInputDeviceFeatureFlags_Events = 1 << 1,
+	//! Device participates in hotplug notifications.
+	fplInputDeviceFeatureFlags_Hotplug = 1 << 2,
+} fplInputDeviceFeatureFlags;
+//! InputDeviceFeatureFlags operator overloads for C++.
+FPL_ENUM_AS_FLAGS_OPERATORS(fplInputDeviceFeatureFlags);
+
+/**
+* @enum fplInputConnectionState
+* @brief Connection state of an input device.
+*/
+typedef enum fplInputConnectionState {
+	//! Connection state has not been determined.
+	fplInputConnectionState_Unknown = 0,
+	//! Device is not currently connected.
+	fplInputConnectionState_Disconnected,
+	//! Device is currently connected.
+	fplInputConnectionState_Connected,
+} fplInputConnectionState;
+
+/**
+* @struct fplInputDevice
+* @brief Describes a single input device exposed by some backend.
+*/
+typedef struct fplInputDevice {
+	//! Stable globally unique identifier for the device.
+	fplInputDeviceGuid guid;
+	//! Display name of the device.
+	char name[FPL_MAX_INPUT_DEVICE_NAME];
+	//! Backend-local device index.
+	uint32_t index;
+	//! Source kind of the device (exactly one bit set).
+	fplInputSourceType sourceType;
+	//! Backend that owns the device.
+	fplInputBackendType backend;
+	//! Capability flags of the device.
+	fplInputDeviceFeatureFlags featureFlags;
+	//! Last known connection state.
+	fplInputConnectionState connection;
+	//! Optional cached state, valid based on @ref sourceType.
+	union {
+		fplKeyboardState keyboard;
+		fplMouseState mouse;
+		fplGamepadState gamepad;
+	} state;
+} fplInputDevice;
+
+/**
+* @struct fplInputBackendSupport
+* @brief Describes the capabilities of a single input backend.
+*/
+typedef struct fplInputBackendSupport {
+	//! Human-readable backend name.
+	const char *name;
+	//! Backend type identifier.
+	fplInputBackendType type;
+	//! Bitmask of input sources this backend can serve.
+	fplInputSourceType supportedSources;
+	//! True when the backend can deliver events.
+	fpl_b32 supportsEvents;
+	//! True when the backend can be polled for state.
+	fpl_b32 supportsPolling;
+	//! True when the backend supports hotplug notifications.
+	fpl_b32 supportsHotplug;
+	//! Padding to align to 32-bytes
+	uint8_t padding[4];
+} fplInputBackendSupport;
+
+/**
+* @brief Writes capabilities of all known input backends into @p outSupports.
+* @param[out] outSupports Caller-supplied array, may be null when @p maxCount is 0.
+* @param[in] maxCount Capacity of @p outSupports.
+* @return Number of backend descriptors written, or the total count when @p outSupports is null.
+*/
+fpl_common_api uint32_t fplGetInputBackendSupport(fplInputBackendSupport *outSupports, const uint32_t maxCount);
+
+/**
+* @brief Looks up the support descriptor for a single backend type.
+* @param[in] type The backend type to query.
+* @param[out] outSupport Reference to the destination structure.
+* @return True when the backend is known to the build, false otherwise.
+*/
+fpl_common_api bool fplGetInputBackendSupportByType(const fplInputBackendType type, fplInputBackendSupport *outSupport);
+
+/**
+* @brief Enumerates all input devices currently known to the input subsystem.
+* @param[in] sourceFilter Bitmask of @ref fplInputSourceType to filter by, or @ref fplInputSourceType_All.
+* @param[out] outDevices Caller-supplied array, may be null when @p maxDevices is 0.
+* @param[in] maxDevices Capacity of @p outDevices.
+* @return Number of devices written.
+*/
+fpl_common_api uint32_t fplGetInputDevices(const fplInputSourceType sourceFilter, fplInputDevice *outDevices, const uint32_t maxDevices);
+
+/**
+* @brief Looks up a single device by its GUID.
+* @param[in] guid Reference to the GUID to find.
+* @param[out] outDevice Reference to the destination structure.
+* @return True when the device was found, false otherwise.
+*/
+fpl_common_api bool fplFindInputDevice(const fplInputDeviceGuid *guid, fplInputDevice *outDevice);
+
+/**
+* @brief Convenience wrapper that returns devices with @ref fplInputSourceType_Keyboard.
+*/
+fpl_common_api uint32_t fplGetKeyboardDevices(fplInputDevice *outDevices, const uint32_t maxDevices);
+/**
+* @brief Convenience wrapper that returns devices with @ref fplInputSourceType_Mouse.
+*/
+fpl_common_api uint32_t fplGetMouseDevices(fplInputDevice *outDevices, const uint32_t maxDevices);
+/**
+* @brief Convenience wrapper that returns devices with @ref fplInputSourceType_Gamepad.
+*/
+fpl_common_api uint32_t fplGetGamepadDevices(fplInputDevice *outDevices, const uint32_t maxDevices);
+
+/**
+* @brief Refreshes the input subsystem's device list and processes pending hotplug events.
+* @return True when at least one backend reported a change.
+*/
+fpl_common_api bool fplUpdateInputDevices(void);
 
 /** @} */
 
@@ -8283,11 +9090,11 @@ fpl_platform_api void fplSetWindowTitle(const char *title);
 
 /**
 * @brief Retrieves the window title and writes it into the output string.
-* @param[out] outTitle The output title string.
+* @param[out] outTitle The output title string (may be null to query the required size only).
 * @param[in] maxOutTitleLength The maximum length of the output title.
-* @return Returns the char pointer of the last written character or null.
+* @return Returns the total number of characters required (excluding NUL). Returns 0 on hard error or when the buffer is too small.
 */
-fpl_common_api char *fplGetWindowTitle(char *outTitle, const size_t maxOutTitleLength);
+fpl_common_api size_t fplGetWindowTitle(char *outTitle, const size_t maxOutTitleLength);
 
 /**
 * @brief Gets the current window state.
@@ -8423,7 +9230,7 @@ fpl_platform_api bool fplGetClipboardText(char *dest, const uint32_t maxDestLen)
 fpl_platform_api bool fplSetClipboardText(const char *text);
 
 /** @} */
-#endif // FPL__ENABLE_WINDOW
+#endif // FPL__ENABLE_WINDOW || FPL__ENABLE_INPUT
 
 #if defined(FPL__ENABLE_VIDEO)
 // ----------------------------------------------------------------------------
@@ -8526,9 +9333,9 @@ typedef struct fplVideoWindowX11 {
 	//! The window handle.
 	fpl__X11Window window;
 	//! The display handle.
-	fpl__X11Display display;
+	fpl__X11Display *display;
 	//! The visual handle.
-	fpl__X11Visual visual;
+	fpl__X11Visual *visual;
 	//! The screen id.
 	int screen;
 } fplVideoWindowX11;
@@ -9055,6 +9862,7 @@ fpl_main int main(int argc, char **args);
 // > SYSTEM_WINDOW
 // > SYSTEM_AUDIO_L2
 // > SYSTEM_VIDEO_L2 (Video backbuffer access and present of the frame)
+// > SYSTEM_INPUT
 // > SYSTEM_INIT (Init & Release of the Platform)
 //
 // ****************************************************************************
@@ -9139,6 +9947,8 @@ fpl_main int main(int argc, char **args);
 #define FPL__MODULE_AUDIO "Audio"
 #define FPL__MODULE_AUDIO_DIRECTSOUND "DirectSound"
 #define FPL__MODULE_AUDIO_ALSA "ALSA"
+#define FPL__MODULE_AUDIO_PULSEAUDIO "PulseAudio"
+#define FPL__MODULE_AUDIO_PIPEWIRE "PipeWire"
 
 #define FPL__MODULE_VIDEO "Video"
 #define FPL__MODULE_VIDEO_OPENGL "OpenGL"
@@ -9407,7 +10217,7 @@ fpl_internal size_t fpl__ParseTextFile(const char *filePath, const char **wildca
 	size_t result = 0;
 	fplFileHandle fileHandle = fplZeroInit;
 	if (fplFileOpenBinary(filePath, &fileHandle)) {
-		char *line = (char *)fpl__AllocateTemporaryMemory(maxLineSize, 8);
+		char *line = (char *)fpl__AllocateTemporaryMemory(maxLineSize, fpl__MinAlignment);
 		char buffer[FPL_MAX_BUFFER_LENGTH];
 		const size_t maxBufferSize = fplArrayCount(buffer) - 1;
 		size_t bytesRead = 0;
@@ -9556,6 +10366,10 @@ fpl_internal void fpl__ParseVersionString(const char *versionStr, fplVersionInfo
 #	include <shlobj.h>		// SHGetFolderPath
 #	include <shellapi.h>	// HDROP
 #	include <xinput.h>		// XInput
+#	if !defined(DIRECTINPUT_VERSION)
+#		define DIRECTINPUT_VERSION 0x0800
+#	endif
+#	include <dinput.h>		// DirectInput8
 
 #	if defined(FPL_IS_CPP)
 #		define fpl__Win32IsEqualGuid(a, b) InlineIsEqualGUID(a, b)
@@ -9597,32 +10411,96 @@ fpl_internal const char *fpl__Win32FormatGuidString(char *buffer, const size_t m
 		(target)->name = name
 #endif
 
-#if defined(FPL__ENABLE_WINDOW)
+#if defined(FPL__ENABLE_INPUT_XINPUT)
 
-// 
 // XInput Types
-// 
-#define FPL__FUNC_XINPUT_XInputGetState(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE *pState)
-typedef FPL__FUNC_XINPUT_XInputGetState(fpl__win32_func_XInputGetState);
+#define FPL__FUNC_INPUT_WIN32_XINPUT_XInputGetState(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE *pState)
+typedef FPL__FUNC_INPUT_WIN32_XINPUT_XInputGetState(fpl__func_input_win32_xinput_XInputGetState);
 
-#define FPL__FUNC_XINPUT_XInputGetCapabilities(name) DWORD WINAPI name(DWORD dwUserIndex, DWORD dwFlags, XINPUT_CAPABILITIES* pCapabilities)
-typedef FPL__FUNC_XINPUT_XInputGetCapabilities(fpl__win32_func_XInputGetCapabilities);
+#define FPL__FUNC_INPUT_WIN32_XINPUT_XInputGetCapabilities(name) DWORD WINAPI name(DWORD dwUserIndex, DWORD dwFlags, XINPUT_CAPABILITIES* pCapabilities)
+typedef FPL__FUNC_INPUT_WIN32_XINPUT_XInputGetCapabilities(fpl__func_input_win32_xinput_XInputGetCapabilities);
 
-typedef struct fpl__Win32XInputApi {
+typedef struct fpl__InputWin32XInputApi {
 	HMODULE xinputLibrary;
-	fpl__win32_func_XInputGetState *XInputGetState;
-	fpl__win32_func_XInputGetCapabilities *XInputGetCapabilities;
-} fpl__Win32XInputApi;
+	fpl__func_input_win32_xinput_XInputGetState *XInputGetState;
+	fpl__func_input_win32_xinput_XInputGetCapabilities *XInputGetCapabilities;
+} fpl__InputWin32XInputApi;
 
-typedef struct fpl__Win32XInputState {
-	fplGameControllerName deviceNames[XUSER_MAX_COUNT];
+// XInput backend instance owned by fpl__InputContext.
+typedef struct fpl__InputBackendXInput {
+	fplGamepadName deviceNames[XUSER_MAX_COUNT];
 	fpl_b32 isConnected[XUSER_MAX_COUNT];
-	fpl__Win32XInputApi xinputApi;
+	fpl__InputWin32XInputApi api;
 	fplMilliseconds lastDeviceSearchTime;
 	fplMilliseconds lastUpdateStatesTime;
-} fpl__Win32XInputState;
+	bool isInitialized;
+} fpl__InputBackendXInput;
 
-#endif // FPL__ENABLE_WINDOW
+#endif // FPL__ENABLE_INPUT_XINPUT
+
+#if defined(FPL__ENABLE_INPUT_DINPUT)
+// DirectInput 8 — uses <dinput.h> for all types, GUIDs and constants.
+// DirectInput8Create is the only function we runtime-link from dinput8.dll, so we
+// avoid pulling in dinput8.lib. Per-interface GUIDs (IID_IDirectInput8W, axis GUIDs)
+// are defined as private static constants to keep us off dxguid.lib too.
+
+// Maximum DirectInput slots tracked. Mirrors the XInput slot count to keep the
+// merged fplGamepadStates array layout sane.
+#define FPL__DINPUT_MAX_DEVICES 8
+
+#define FPL__FUNC_INPUT_WIN32_DINPUT_DirectInput8Create(name) HRESULT WINAPI name(HINSTANCE hinst, DWORD dwVersion, REFIID riidltf, LPVOID *ppvOut, LPUNKNOWN punkOuter)
+typedef FPL__FUNC_INPUT_WIN32_DINPUT_DirectInput8Create(fpl__func_input_win32_dinput_DirectInput8Create);
+
+typedef struct fpl__Win32DInputApi {
+	HMODULE dinputLibrary;
+	fpl__func_input_win32_dinput_DirectInput8Create *DirectInput8Create;
+} fpl__Win32DInputApi;
+
+// One DirectInput slot. ffi mirrors the XInput merge contract: the slot owns
+// its IDirectInputDevice8W*, last-known fplGamepadState, and a stable name.
+typedef struct fpl__InputBackendDInputSlot {
+	IDirectInputDevice8W *device;
+	GUID guidInstance;
+	uint16_t vendorID;
+	uint16_t productID;
+	bool isAcquired;
+	bool isConnected;
+	fplGamepadName deviceName;
+	fplGamepadState lastState;
+	// Snapshot built from DIJOYSTATE every poll, fed into the active mapping.
+	fplGamepadData raw;
+	// Mapping installed by the user resolver at connect time (only valid when hasMapping is true).
+	fplGamepadMapping mapping;
+	// True when the resolver returned a mapping, false to fall back to fplGamepadMappingApplyDefault.
+	bool hasMapping;
+} fpl__InputBackendDInputSlot;
+
+// DirectInput backend instance owned by fpl__InputContext.
+// Coexists with XInput; XInput-compatible devices are skipped at enumeration time
+// (matched by VID/PID against device names containing "IG_" reported via RawInput).
+typedef struct fpl__InputBackendDInput {
+	fpl__Win32DInputApi api;
+	IDirectInput8W *iface;
+	fpl__InputBackendDInputSlot slots[FPL__DINPUT_MAX_DEVICES];
+	uint32_t xinputVidPids[16];
+	uint32_t xinputVidPidCount;
+	fplMilliseconds lastDeviceSearchTime;
+	bool isInitialized;
+} fpl__InputBackendDInput;
+#endif // FPL__ENABLE_INPUT_DINPUT
+
+#if defined(FPL__ENABLE_INPUT_WIN32)
+// Win32 keyboard/mouse backend instance owned by fpl__InputContext.
+// In windowed mode WM_* events arrive via fpl__InputSystem_HandleNativeEvent and polling uses the user window for ScreenToClient.
+// In detached mode (FPL_NO_WINDOW or fplInputSettings.detachFromWindow) the backend creates a hidden HWND_MESSAGE.
+// So future WM_INPUT/WM_DEVICECHANGE delivery has a target; polling currently returns screen-relative mouse coordinates because there is no client area.
+typedef struct fpl__InputBackendWin32 {
+	HWND messageWindow;
+	ATOM messageWindowClass;
+	bool isInitialized;
+	bool detached;
+} fpl__InputBackendWin32;
+#endif // FPL__ENABLE_INPUT_WIN32
 
 //
 // WINAPI functions
@@ -9775,6 +10653,10 @@ typedef FPL__FUNC_WIN32_MonitorFromPoint(fpl__win32_func_MonitorFromPoint);
 typedef FPL__FUNC_WIN32_MonitorFromWindow(fpl__win32_func_MonitorFromWindow);
 #define FPL__FUNC_WIN32_RegisterRawInputDevices(name) BOOL WINAPI name(PCRAWINPUTDEVICE pRawInputDevices, UINT uiNumDevices, UINT cbSize)
 typedef FPL__FUNC_WIN32_RegisterRawInputDevices(fpl__win32_func_RegisterRawInputDevices);
+#define FPL__FUNC_WIN32_GetRawInputDeviceList(name) UINT WINAPI name(PRAWINPUTDEVICELIST pRawInputDeviceList, PUINT puiNumDevices, UINT cbSize)
+typedef FPL__FUNC_WIN32_GetRawInputDeviceList(fpl__win32_func_GetRawInputDeviceList);
+#define FPL__FUNC_WIN32_GetRawInputDeviceInfoW(name) UINT WINAPI name(HANDLE hDevice, UINT uiCommand, LPVOID pData, PUINT pcbSize)
+typedef FPL__FUNC_WIN32_GetRawInputDeviceInfoW(fpl__win32_func_GetRawInputDeviceInfoW);
 #define FPL__FUNC_WIN32_ClipCursor(name) BOOL WINAPI name(CONST RECT *lpRect)
 typedef FPL__FUNC_WIN32_ClipCursor(fpl__win32_func_ClipCursor);
 #define FPL__FUNC_WIN32_PostQuitMessage(name) VOID WINAPI name(int nExitCode)
@@ -9896,6 +10778,8 @@ typedef struct fpl__Win32UserApi {
 	fpl__win32_func_ClientToScreen *ClientToScreen;
 	fpl__win32_func_PtInRect *PtInRect;
 	fpl__win32_func_RegisterRawInputDevices *RegisterRawInputDevices;
+	fpl__win32_func_GetRawInputDeviceList *GetRawInputDeviceList;
+	fpl__win32_func_GetRawInputDeviceInfoW *GetRawInputDeviceInfoW;
 	fpl__win32_func_ClipCursor *ClipCursor;
 	fpl__win32_func_PostQuitMessage *PostQuitMessage;
 	fpl__win32_func_CreateIconIndirect *CreateIconIndirect;
@@ -10027,6 +10911,8 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_ClientToScreen, ClientToScreen);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_PtInRect, PtInRect);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_RegisterRawInputDevices, RegisterRawInputDevices);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetRawInputDeviceList, GetRawInputDeviceList);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetRawInputDeviceInfoW, GetRawInputDeviceInfoW);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_ClipCursor, ClipCursor);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_PostQuitMessage, PostQuitMessage);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_CreateIconIndirect, CreateIconIndirect);
@@ -10103,9 +10989,6 @@ typedef struct fpl__Win32InitState {
 } fpl__Win32InitState;
 
 typedef struct fpl__Win32AppState {
-#if defined(FPL__ENABLE_WINDOW)
-	fpl__Win32XInputState xinput;
-#endif
 	fpl__Win32Api winApi;
 } fpl__Win32AppState;
 
@@ -10421,35 +11304,44 @@ typedef struct fpl__LinuxInitState {
 	int dummy;
 } fpl__LinuxInitState;
 
-#if defined(FPL__ENABLE_WINDOW)
-#define FPL__LINUX_MAX_GAME_CONTROLLER_COUNT 4
-typedef struct fpl__LinuxGameController {
+#if defined(FPL__ENABLE_INPUT_LINUX_JOYSTICK)
+
+#define FPL__INPUT_LINUX_JOYSTICK_MAX_JOYPAD_COUNT 4
+
+#define FPL__INPUT_LINUX_JOYSTICK_SCAN_COUNT 32
+
+typedef struct fpl__InputLinuxJoystickGamepad {
 	char deviceName[512 + 1];
 	char displayName[FPL_MAX_NAME_LENGTH];
+	// Device handle
 	int fd;
+	int slotIndex;
 	uint8_t axisCount;
 	uint8_t buttonCount;
+	// joydev axis indices that carry ABS_HAT0X / ABS_HAT0Y (resolved via JSIOCGAXMAP at connect). 0xFF means "this controller has no DPad-as-axis on hat 0". SDL's gamecontrollerdb encodes the DPad as `h0.*` for nearly every Linux pad regardless of whether the kernel exposes the DPad as a real hat or as a pair of axes, so we synthesize raw.hats[0] from these joydev axes to make SDL mappings resolve uniformly. Different controllers place the HAT axes at different joydev indices (XInput F310 → 6/7, DInput F310 → 4/5).
+	uint8_t hat0XAxis;
+	uint8_t hat0YAxis;
 	fplGamepadState state;
-} fpl__LinuxGameController;
+	// Snapshot built from JS_EVENT_AXIS/BUTTON every drain, fed into the active mapping.
+	fplGamepadData raw;
+	// Mapping installed by the user resolver at connect time (only valid when hasMapping is true).
+	fplGamepadMapping mapping;
+	// True when the resolver returned a mapping. When false, the legacy hardcoded fpl__InputLinuxJoystickStateUpdateEvent path is used unchanged.
+	bool hasMapping;
+} fpl__InputLinuxJoystickGamepad;
 
-typedef struct fpl__LinuxGameControllersState {
-	fpl__LinuxGameController controllers[FPL__LINUX_MAX_GAME_CONTROLLER_COUNT];
+// Linux /dev/input/jsX backend instance owned by fpl__InputContext.
+typedef struct fpl__InputBackendLinuxJoystick {
+	fpl__InputLinuxJoystickGamepad gamepads[FPL__INPUT_LINUX_JOYSTICK_MAX_JOYPAD_COUNT];
+	bool triedSlot[FPL__INPUT_LINUX_JOYSTICK_SCAN_COUNT];
 	uint64_t lastCheckTime;
-} fpl__LinuxGameControllersState;
-#endif
+	bool isInitialized;
+} fpl__InputBackendLinuxJoystick;
+#endif // FPL__ENABLE_INPUT_LINUX_JOYSTICK
 
 typedef struct fpl__LinuxAppState {
-#if defined(FPL__ENABLE_WINDOW)
-	fpl__LinuxGameControllersState controllersState;
-#endif
 	int dummy;
 } fpl__LinuxAppState;
-
-// Forward declarations
-#if defined(FPL__ENABLE_WINDOW)
-fpl_internal void fpl__LinuxFreeGameControllers(fpl__LinuxGameControllersState *controllersState);
-fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl__LinuxGameControllersState *controllersState, const bool useEvents);
-#endif
 
 #endif // FPL_PLATFORM_LINUX
 
@@ -10474,6 +11366,23 @@ typedef struct fpl__UnixAppState {
 //
 // ############################################################################
 #if defined(FPL_SUBPLATFORM_X11)
+
+#if defined(FPL__ENABLE_INPUT_X11)
+// X11 keyboard/mouse backend instance owned by fpl__InputContext.
+// In windowed mode display + window come from fpl__X11WindowState; in detached mode
+// (FPL_NO_WINDOW or fplInputSettings.detachFromWindow) the backend opens its own
+// Display* and uses the default screen's root window for pointer queries (step 9b).
+// XEvents arrive via fpl__InputSystem_HandleNativeEvent in windowed mode; detached mode
+// is polling-only — events from a private Display are not forwarded.
+typedef struct fpl__InputBackendX11Kbm {
+	Display *display;
+	Window root;
+	fplKey detachedKeyMap[256];
+	bool isInitialized;
+	bool detached;
+	bool ownsDisplay;
+} fpl__InputBackendX11Kbm;
+#endif // FPL__ENABLE_INPUT_X11
 
 //
 // X11 Api
@@ -10847,17 +11756,18 @@ typedef struct {
 } fpl__PlatformInitState;
 fpl_globalvar fpl__PlatformInitState fpl__global__InitState = fplZeroInit;
 
-#if defined(FPL__ENABLE_WINDOW)
-
+// Event queue is shared by window and (no-window) input subsystems. Available whenever input or window is enabled.
+#if defined(FPL__ENABLE_WINDOW) || defined(FPL__ENABLE_INPUT)
 #define FPL__MAX_EVENT_COUNT 32768
 typedef struct {
 	fplEvent events[FPL__MAX_EVENT_COUNT];
 	volatile size_t pushIndex; // atomic
 	volatile size_t popIndex;  // atomic
 } fpl__EventQueue;
+#endif // FPL__ENABLE_WINDOW || FPL__ENABLE_INPUT
 
+#if defined(FPL__ENABLE_WINDOW)
 typedef struct {
-	fpl__EventQueue eventQueue;
 	fplKey keyMap[256];
 	fplButtonState keyStates[256];
 	uint64_t keyPressTimes[256];
@@ -10877,6 +11787,55 @@ typedef struct {
 //
 // Platform application state
 //
+#if defined(FPL__ENABLE_INPUT)
+// Native event payload kinds used by the window-to-input bridge. Payload pointer interpretation depends on kind.
+typedef enum fpl__NativeInputEventKind {
+	fpl__NativeInputEventKind_None = 0,
+	fpl__NativeInputEventKind_Win32Msg,
+	fpl__NativeInputEventKind_X11Event,
+	fpl__NativeInputEventKind_Custom,
+} fpl__NativeInputEventKind;
+
+// Neutral wrapper carrying a native input event from the window backend to the input subsystem.
+typedef struct fpl__NativeInputEvent {
+	fpl__NativeInputEventKind kind;
+	void *payload;
+} fpl__NativeInputEvent;
+
+// Holds settings, tracks initialization, and embeds active backend instances.
+typedef struct fpl__InputContext {
+	fplInputSettings settings;
+	fplInitFlags initFlags;
+	bool isInitialized;
+	uint32_t backendCount;
+#if defined(FPL__ENABLE_INPUT_XINPUT)
+	fpl__InputBackendXInput xinput;
+#endif
+#if defined(FPL__ENABLE_INPUT_DINPUT)
+	fpl__InputBackendDInput dinput;
+#endif
+#if defined(FPL__ENABLE_INPUT_WIN32)
+	fpl__InputBackendWin32 win32kbm;
+#endif
+#if defined(FPL__ENABLE_INPUT_X11)
+	fpl__InputBackendX11Kbm x11kbm;
+#endif
+#if defined(FPL__ENABLE_INPUT_LINUX_JOYSTICK)
+	fpl__InputBackendLinuxJoystick linuxJoystick;
+#endif
+} fpl__InputContext;
+
+// Forward declarations for fpl__InputSystem_* — definitions live in the SYSTEM_INIT section.
+fpl_internal bool fpl__InputSystem_Init(fpl__InputContext *ctx, const fplInitFlags initFlags, const fplInputSettings *settings);
+fpl_internal void fpl__InputSystem_Release(fpl__InputContext *ctx);
+fpl_internal void fpl__InputSystem_Update(fpl__InputContext *ctx);
+fpl_internal bool fpl__InputSystem_HandleNativeEvent(fpl__InputContext *ctx, const fpl__NativeInputEvent *ev);
+fpl_internal bool fpl__InputSystem_IsEnabled(const fpl__InputContext *ctx, fplInputSourceType source);
+fpl_internal bool fpl__InputSystem_PollGamepad(fpl__InputContext *ctx, fplGamepadStates *outStates);
+fpl_internal bool fpl__InputSystem_PollKeyboard(fpl__InputContext *ctx, fplKeyboardState *outState);
+fpl_internal bool fpl__InputSystem_PollMouse(fpl__InputContext *ctx, fplMouseState *outState);
+#endif // FPL__ENABLE_INPUT
+
 typedef struct fpl__PlatformAppState fpl__PlatformAppState;
 struct fpl__PlatformAppState {
 	// Subplatforms
@@ -10885,6 +11844,11 @@ struct fpl__PlatformAppState {
 #endif
 #if defined(FPL_SUBPLATFORM_X11)
 	fpl__X11SubplatformState x11;
+#endif
+
+	// Event queue (shared by window + input)
+#if defined(FPL__ENABLE_WINDOW) || defined(FPL__ENABLE_INPUT)
+	fpl__EventQueue eventQueue;
 #endif
 
 	// Window/video/audio
@@ -10896,6 +11860,9 @@ struct fpl__PlatformAppState {
 #endif
 #if defined(FPL__ENABLE_AUDIO)
 	fpl__PlatformBackendState audio;
+#endif
+#if defined(FPL__ENABLE_INPUT)
+	fpl__InputContext input;
 #endif
 
 	// Settings
@@ -10916,21 +11883,12 @@ struct fpl__PlatformAppState {
 };
 
 //
-// Internal window
+// Internal event queue (shared by window + input subsystems)
 //
-#if defined(FPL__ENABLE_WINDOW)
-fpl_internal fplKey fpl__GetMappedKey(const fpl__PlatformWindowState *windowState, const uint64_t keyCode) {
-	fplKey result;
-	if (keyCode < fplArrayCount(windowState->keyMap))
-		result = windowState->keyMap[keyCode];
-	else
-		result = fplKey_None;
-	return(result);
-}
-
+#if defined(FPL__ENABLE_WINDOW) || defined(FPL__ENABLE_INPUT)
 fpl_internal size_t fpl__HasInternalEvents(void) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	fpl__EventQueue *eventQueue = &appState->window.eventQueue;
+	fpl__EventQueue *eventQueue = &appState->eventQueue;
 	size_t currentPop = fplAtomicLoadSize(&eventQueue->popIndex);
 	size_t currentPush = fplAtomicLoadSize(&eventQueue->pushIndex);
 	bool result = currentPop < currentPush;
@@ -10939,7 +11897,7 @@ fpl_internal size_t fpl__HasInternalEvents(void) {
 
 fpl_internal void fpl__ClearInternalEvents(void) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	fpl__EventQueue *eventQueue = &appState->window.eventQueue;
+	fpl__EventQueue *eventQueue = &appState->eventQueue;
 
 	size_t currentPop = fplAtomicLoadSize(&eventQueue->popIndex);
 	size_t currentPush = fplAtomicLoadSize(&eventQueue->pushIndex);
@@ -10960,7 +11918,7 @@ fpl_internal void fpl__ClearInternalEvents(void) {
 
 fpl_internal bool fpl__PollInternalEvent(fplEvent *ev) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	fpl__EventQueue *eventQueue = &appState->window.eventQueue;
+	fpl__EventQueue *eventQueue = &appState->eventQueue;
 
 	size_t currentPop;
 	size_t currentPush;
@@ -10984,7 +11942,7 @@ fpl_internal bool fpl__PollInternalEvent(fplEvent *ev) {
 
 fpl_internal void fpl__PushInternalEvent(const fplEvent *event) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	fpl__EventQueue *eventQueue = &appState->window.eventQueue;
+	fpl__EventQueue *eventQueue = &appState->eventQueue;
 
 	size_t currentPush;
 	size_t currentPop;
@@ -11006,41 +11964,251 @@ fpl_internal void fpl__PushInternalEvent(const fplEvent *event) {
 	eventQueue->events[index] = *event;
 }
 
-fpl_internal void fpl__PushWindowStateEvent(const fplWindowEventType windowType) {
-	fplEvent newEvent = fplZeroInit;
-	newEvent.type = fplEventType_Window;
-	newEvent.window.type = windowType;
-	fpl__PushInternalEvent(&newEvent);
+fpl_internal void fpl__PushGamepadConnectionEvent(const uint32_t deviceIndex, const char *deviceName, const bool isConnected) {
+	fplEvent ev = fplZeroInit;
+	ev.type = fplEventType_Gamepad;
+	ev.gamepad.type = isConnected ? fplGamepadEventType_Connected : fplGamepadEventType_Disconnected;
+	ev.gamepad.deviceIndex = deviceIndex;
+	ev.gamepad.deviceName = deviceName;
+	ev.gamepad.state.isConnected = isConnected;
+	ev.gamepad.state.deviceName = deviceName;
+	fpl__PushInternalEvent(&ev);
 }
 
-fpl_internal void fpl__PushWindowSizeEvent(const fplWindowEventType windowType, uint32_t w, uint32_t h) {
-	fplEvent newEvent = fplZeroInit;
-	newEvent.type = fplEventType_Window;
-	newEvent.window.type = windowType;
-	newEvent.window.size.width = w;
-	newEvent.window.size.height = h;
-	fpl__PushInternalEvent(&newEvent);
+fpl_internal void fpl__PushGamepadStateEvent(const uint32_t deviceIndex, const char *deviceName, const fplGamepadState *newState) {
+	fplEvent ev = fplZeroInit;
+	ev.type = fplEventType_Gamepad;
+	ev.gamepad.type = fplGamepadEventType_StateChanged;
+	ev.gamepad.deviceIndex = deviceIndex;
+	ev.gamepad.deviceName = deviceName;
+	ev.gamepad.state = *newState;
+	fpl__PushInternalEvent(&ev);
 }
 
-fpl_internal void fpl__PushWindowPositionEvent(const fplWindowEventType windowType, int32_t x, int32_t y) {
-	fplEvent newEvent = fplZeroInit;
-	newEvent.type = fplEventType_Window;
-	newEvent.window.type = windowType;
-	newEvent.window.position.left = x;
-	newEvent.window.position.top = y;
-	fpl__PushInternalEvent(&newEvent);
+// Threshold above which an analog input is treated as a digital press inside fplGamepadMappingApply.
+#define FPL__GAMEPAD_DIGITAL_THRESHOLD 0.5f
+
+// Per-axis deadzone applied to thumb sticks inside fplGamepadMappingApply. Below this magnitude the stick component is forced to zero, above it the remaining range is rescaled to (0..1] so small motions feel responsive without leaking center jitter. Set to 0.0f to disable while diagnosing raw stick behavior.
+#define FPL__GAMEPAD_STICK_DEADZONE 0.01f
+
+// Returns the digital (button-style) reading produced by a single binding against the given raw input.
+fpl_internal bool fpl__GamepadEvalBindingDigital(const fplGamepadInputBinding *b, const fplGamepadData *in) {
+	switch (b->type) {
+		case fplGamepadInputType_Button: {
+			if (b->index >= in->buttonCount) {
+				return false;
+			}
+			return in->buttons[b->index];
+		}
+		case fplGamepadInputType_Hat: {
+			if (b->index >= in->hatCount) {
+				return false;
+			}
+			return (in->hats[b->index] & (uint8_t)b->hatMask) != 0;
+		}
+		case fplGamepadInputType_Axis: {
+			if (b->index >= in->axisCount) {
+				return false;
+			}
+			float v = in->axes[b->index];
+			if (b->axisInverted) {
+				v = -v;
+			}
+			if (b->axisSign == fplGamepadAxisSign_Negative) {
+				v = -v;
+			}
+			return v > FPL__GAMEPAD_DIGITAL_THRESHOLD;
+		}
+		default: {
+			return false;
+		}
+	}
 }
 
-fpl_internal void fpl__PushWindowDropFilesEvent(const char *filePath, const size_t fileCount, const char **files, const fplMemoryBlock *memory) {
-	fplEvent newEvent = fplZeroInit;
-	newEvent.type = fplEventType_Window;
-	newEvent.window.type = fplWindowEventType_DroppedFiles;
-	newEvent.window.dropFiles.fileCount = fileCount;
-	newEvent.window.dropFiles.files = files;
-	newEvent.window.dropFiles.internalMemory = *memory;
-	fpl__PushInternalEvent(&newEvent);
+// Returns the analog (axis-style) reading produced by a single binding against the given raw input.
+fpl_internal float fpl__GamepadEvalBindingAnalog(const fplGamepadInputBinding *b, const fplGamepadData *in) {
+	switch (b->type) {
+		case fplGamepadInputType_Button: {
+			if (b->index >= in->buttonCount) {
+				return 0.0f;
+			}
+			return in->buttons[b->index] ? 1.0f : 0.0f;
+		}
+		case fplGamepadInputType_Hat: {
+			if (b->index >= in->hatCount) {
+				return 0.0f;
+			}
+			return (in->hats[b->index] & (uint8_t)b->hatMask) ? 1.0f : 0.0f;
+		}
+		case fplGamepadInputType_Axis: {
+			if (b->index >= in->axisCount) {
+				return 0.0f;
+			}
+			float v = in->axes[b->index];
+			if (b->axisInverted) {
+				v = -v;
+			}
+			// Half-axis: remap [-1..+1] to [0..1] using only the requested half (used by triggers).
+			if (b->axisSign == fplGamepadAxisSign_Positive) {
+				return (v + 1.0f) * 0.5f;
+			}
+			if (b->axisSign == fplGamepadAxisSign_Negative) {
+				return (-v + 1.0f) * 0.5f;
+			}
+			return v;
+		}
+		default: {
+			return 0.0f;
+		}
+	}
 }
 
+// Trigger axes follow SDL convention: when a full-range axis (no `+`/`-` prefix) is bound to a trigger destination, the source idles at -1 and pulls to +1. Remap to the [0..1] range expected by fplGamepadState. Half-axis (+/-) bindings already produce 0..1 from fpl__GamepadEvalBindingAnalog, so pass them through unchanged. Non-axis bindings (e.g. trigger as button) also pass through.
+fpl_internal float fpl__GamepadEvalTrigger(const fplGamepadInputBinding *b, const fplGamepadData *in) {
+	float v = fpl__GamepadEvalBindingAnalog(b, in);
+	if (b->type == fplGamepadInputType_Axis && b->axisSign == fplGamepadAxisSign_Full) {
+		v = (v + 1.0f) * 0.5f;
+	}
+	if (v < 0.0f) {
+		v = 0.0f;
+	} else if (v > 1.0f) {
+		v = 1.0f;
+	}
+	return v;
+}
+
+// Applies a per-axis deadzone to a single stick component: values within FPL__GAMEPAD_STICK_DEADZONE collapse to 0, values beyond are rescaled so the remaining range still spans 0..1. Avoids pulling in math.h for sqrt; the tiny corner artifact of a non-radial deadzone is acceptable for stick centering.
+fpl_internal float fpl__GamepadApplyStickDeadzone(float v) {
+	float dz = FPL__GAMEPAD_STICK_DEADZONE;
+	float a = v < 0.0f ? -v : v;
+	if (a <= dz) {
+		return 0.0f;
+	}
+	float scaled = (a - dz) / (1.0f - dz);
+	if (scaled > 1.0f) {
+		scaled = 1.0f;
+	}
+	return v < 0.0f ? -scaled : scaled;
+}
+
+fpl_common_api bool fplGamepadMappingApply(const fplGamepadMapping *mapping, const fplGamepadData *input, fplGamepadState *outState) {
+	if (mapping == fpl_null || input == fpl_null || outState == fpl_null) {
+		return false;
+	}
+	for (size_t i = 0; i < fplArrayCount(mapping->buttons); ++i) {
+		const fplGamepadInputBinding *b = &mapping->buttons[i];
+		bool down = (b->type != fplGamepadInputType_None) && fpl__GamepadEvalBindingDigital(b, input);
+		outState->buttons[i].isDown = down ? 1 : 0;
+	}
+	// SDL's stick convention is +Y = down. fplGamepadState uses +Y = up (XInput convention) so the Y axes are negated here. Mappings authored with `~` (axisInverted) reverse it inside fpl__GamepadEvalBindingAnalog.
+	outState->leftStickX   = fpl__GamepadApplyStickDeadzone( fpl__GamepadEvalBindingAnalog(&mapping->axes[fplGamepadAxisType_LeftX],  input));
+	outState->leftStickY   = fpl__GamepadApplyStickDeadzone(-fpl__GamepadEvalBindingAnalog(&mapping->axes[fplGamepadAxisType_LeftY],  input));
+	outState->rightStickX  = fpl__GamepadApplyStickDeadzone( fpl__GamepadEvalBindingAnalog(&mapping->axes[fplGamepadAxisType_RightX], input));
+	outState->rightStickY  = fpl__GamepadApplyStickDeadzone(-fpl__GamepadEvalBindingAnalog(&mapping->axes[fplGamepadAxisType_RightY], input));
+	outState->leftTrigger  = fpl__GamepadEvalTrigger(&mapping->axes[fplGamepadAxisType_LeftTrigger],  input);
+	outState->rightTrigger = fpl__GamepadEvalTrigger(&mapping->axes[fplGamepadAxisType_RightTrigger], input);
+	return true;
+}
+
+fpl_common_api bool fplGamepadMappingApplyDefault(const fplGamepadData *input, fplGamepadState *outState) {
+	if (input == fpl_null || outState == fpl_null) {
+		return false;
+	}
+	// Sticks (DInput convention: Z = right X, RZ = right Y; Y inverted to XInput sense).
+	if (input->axisCount > 0) {
+		outState->leftStickX  =  input->axes[0];
+	}
+	if (input->axisCount > 1) {
+		outState->leftStickY  = -input->axes[1];
+	}
+	if (input->axisCount > 2) {
+		outState->rightStickX =  input->axes[2];
+	}
+	if (input->axisCount > 5) {
+		outState->rightStickY = -input->axes[5];
+	}
+	// Triggers map from -1..+1 to 0..1 to match XInput sense.
+	if (input->axisCount > 6) {
+		outState->leftTrigger  = (input->axes[6] + 1.0f) * 0.5f;
+	}
+	if (input->axisCount > 7) {
+		outState->rightTrigger = (input->axes[7] + 1.0f) * 0.5f;
+	}
+	// Buttons by SDL's unknown-DInput convention.
+	static const struct { uint32_t btn; size_t off; } map[] = {
+		{ 0,  fplOffsetOf(fplGamepadState, actionA)        },
+		{ 1,  fplOffsetOf(fplGamepadState, actionB)        },
+		{ 2,  fplOffsetOf(fplGamepadState, actionX)        },
+		{ 3,  fplOffsetOf(fplGamepadState, actionY)        },
+		{ 4,  fplOffsetOf(fplGamepadState, leftShoulder)   },
+		{ 5,  fplOffsetOf(fplGamepadState, rightShoulder)  },
+		{ 8,  fplOffsetOf(fplGamepadState, back)           },
+		{ 9,  fplOffsetOf(fplGamepadState, start)          },
+		{ 10, fplOffsetOf(fplGamepadState, leftThumb)      },
+		{ 11, fplOffsetOf(fplGamepadState, rightThumb)     },
+	};
+	for (size_t i = 0; i < fplArrayCount(map); ++i) {
+		if (map[i].btn < input->buttonCount && input->buttons[map[i].btn]) {
+			fplGamepadButton *btn = (fplGamepadButton *)((uint8_t *)outState + map[i].off);
+			btn->isDown = 1;
+		}
+	}
+	// Hat 0 → dpad.
+	if (input->hatCount > 0) {
+		uint8_t h = input->hats[0];
+		outState->dpadUp.isDown    = (h & 0x1) != 0;
+		outState->dpadRight.isDown = (h & 0x2) != 0;
+		outState->dpadDown.isDown  = (h & 0x4) != 0;
+		outState->dpadLeft.isDown  = (h & 0x8) != 0;
+	}
+	return true;
+}
+
+// Recomputes isActive for the given state by inspecting analog axes and digital buttons. Used by raw-HID backends after producing a state via fplGamepadMappingApply / fplGamepadMappingApplyDefault.
+fpl_internal void fpl__GamepadFinalizeState(fplGamepadState *state) {
+	bool active = false;
+	if (state->leftStickX != 0.0f || state->leftStickY != 0.0f) {
+		active = true;
+	}
+	if (state->rightStickX != 0.0f || state->rightStickY != 0.0f) {
+		active = true;
+	}
+	if (state->leftTrigger != 0.0f || state->rightTrigger != 0.0f) {
+		active = true;
+	}
+	for (int i = 0; i < FPL_GAMEPAD_BUTTON_COUNT; ++i) {
+		if (state->buttons[i].isDown) {
+			active = true;
+			break;
+		}
+	}
+	state->isActive = active;
+}
+
+// Builds a 16-byte SDL-style gamepad GUID from a USB VID/PID/version triple. Used by raw-HID backends (DInput, Linux joydev, etc.) when filling fplGamepadInfo for the resolver.
+fpl_internal void fpl__GamepadBuildSDLGuid(const uint16_t bus, const uint16_t vid, const uint16_t pid, const uint16_t version, const uint16_t nameCrc16, fplGamepadGuid outGuid) {
+	outGuid[0]  = (uint8_t)(bus & 0xFF);
+	outGuid[1]  = (uint8_t)((bus >> 8) & 0xFF);
+	outGuid[2]  = (uint8_t)(nameCrc16 & 0xFF);
+	outGuid[3]  = (uint8_t)((nameCrc16 >> 8) & 0xFF);
+	outGuid[4]  = (uint8_t)(vid & 0xFF);
+	outGuid[5]  = (uint8_t)((vid >> 8) & 0xFF);
+	outGuid[6]  = 0;
+	outGuid[7]  = 0;
+	outGuid[8]  = (uint8_t)(pid & 0xFF);
+	outGuid[9]  = (uint8_t)((pid >> 8) & 0xFF);
+	outGuid[10] = 0;
+	outGuid[11] = 0;
+	outGuid[12] = (uint8_t)(version & 0xFF);
+	outGuid[13] = (uint8_t)((version >> 8) & 0xFF);
+	outGuid[14] = 0;
+	outGuid[15] = 0;
+}
+
+// Keyboard / mouse event push primitives. Live in the WINDOW || INPUT block (rather than the
+// window-only block below) so the no-window input backends can push events directly without
+// requiring a window state. The window-only fpl__Handle*Event wrappers below add keymap lookup
+// + repeat tracking on top of these primitives.
 fpl_internal void fpl__PushKeyboardButtonEvent(const uint64_t keyCode, const fplKey mappedKey, const fplKeyboardModifierFlags modifiers, const fplButtonState buttonState) {
 	fplEvent newEvent = fplZeroInit;
 	newEvent.type = fplEventType_Keyboard;
@@ -11092,26 +12260,54 @@ fpl_internal void fpl__PushMouseMoveEvent(const int32_t x, const int32_t y) {
 	newEvent.mouse.mouseY = y;
 	fpl__PushInternalEvent(&newEvent);
 }
+#endif // FPL__ENABLE_WINDOW || FPL__ENABLE_INPUT
 
-fpl_internal void fpl__PushGamepadConnectionEvent(const uint32_t deviceIndex, const char *deviceName, const bool isConnected) {
-	fplEvent ev = fplZeroInit;
-	ev.type = fplEventType_Gamepad;
-	ev.gamepad.type = isConnected ? fplGamepadEventType_Connected : fplGamepadEventType_Disconnected;
-	ev.gamepad.deviceIndex = deviceIndex;
-	ev.gamepad.deviceName = deviceName;
-	ev.gamepad.state.isConnected = isConnected;
-	ev.gamepad.state.deviceName = deviceName;
-	fpl__PushInternalEvent(&ev);
+//
+// Internal window
+//
+#if defined(FPL__ENABLE_WINDOW)
+fpl_internal fplKey fpl__GetMappedKey(const fpl__PlatformWindowState *windowState, const uint64_t keyCode) {
+	fplKey result;
+	if (keyCode < fplArrayCount(windowState->keyMap))
+		result = windowState->keyMap[keyCode];
+	else
+		result = fplKey_None;
+	return(result);
 }
 
-fpl_internal void fpl__PushGamepadStateEvent(const uint32_t deviceIndex, const char *deviceName, const fplGamepadState *newState) {
-	fplEvent ev = fplZeroInit;
-	ev.type = fplEventType_Gamepad;
-	ev.gamepad.type = fplGamepadEventType_StateChanged;
-	ev.gamepad.deviceIndex = deviceIndex;
-	ev.gamepad.deviceName = deviceName;
-	ev.gamepad.state = *newState;
-	fpl__PushInternalEvent(&ev);
+fpl_internal void fpl__PushWindowStateEvent(const fplWindowEventType windowType) {
+	fplEvent newEvent = fplZeroInit;
+	newEvent.type = fplEventType_Window;
+	newEvent.window.type = windowType;
+	fpl__PushInternalEvent(&newEvent);
+}
+
+fpl_internal void fpl__PushWindowSizeEvent(const fplWindowEventType windowType, uint32_t w, uint32_t h) {
+	fplEvent newEvent = fplZeroInit;
+	newEvent.type = fplEventType_Window;
+	newEvent.window.type = windowType;
+	newEvent.window.size.width = w;
+	newEvent.window.size.height = h;
+	fpl__PushInternalEvent(&newEvent);
+}
+
+fpl_internal void fpl__PushWindowPositionEvent(const fplWindowEventType windowType, int32_t x, int32_t y) {
+	fplEvent newEvent = fplZeroInit;
+	newEvent.type = fplEventType_Window;
+	newEvent.window.type = windowType;
+	newEvent.window.position.left = x;
+	newEvent.window.position.top = y;
+	fpl__PushInternalEvent(&newEvent);
+}
+
+fpl_internal void fpl__PushWindowDropFilesEvent(const char *filePath, const size_t fileCount, const char **files, const fplMemoryBlock *memory) {
+	fplEvent newEvent = fplZeroInit;
+	newEvent.type = fplEventType_Window;
+	newEvent.window.type = fplWindowEventType_DroppedFiles;
+	newEvent.window.dropFiles.fileCount = fileCount;
+	newEvent.window.dropFiles.files = files;
+	newEvent.window.dropFiles.internalMemory = *memory;
+	fpl__PushInternalEvent(&newEvent);
 }
 
 fpl_internal void fpl__HandleKeyboardButtonEvent(fpl__PlatformWindowState *windowState, const uint64_t time, const uint64_t keyCode, const fplKeyboardModifierFlags modifiers, const fplButtonState buttonState, const bool force) {
@@ -11235,7 +12431,8 @@ static const uint32_t FPL__DEFAULT_AUDIO_BUFFERSIZE_CONSERVATIVE_IN_MSECS = 25;
 
 typedef struct fpl__ErrorState {
 	char errors[FPL__MAX_ERRORSTATE_COUNT][FPL__MAX_LAST_ERROR_STRING_LENGTH];
-	uint32_t count;
+	// Monotonic total error count. Slot index = (count - 1) % FPL__MAX_ERRORSTATE_COUNT.
+	volatile uint32_t count;
 } fpl__ErrorState;
 
 fpl_globalvar fpl__ErrorState fpl__global__LastErrorState = fplZeroInit;
@@ -11248,9 +12445,9 @@ fpl_internal void fpl__PushError_Formatted(const char *funcName, const int lineN
 		char buffer[FPL__MAX_LAST_ERROR_STRING_LENGTH] = fplZeroInit;
 		size_t formattedLen = fplStringFormatArgs(buffer, fplArrayCount(buffer), format, argList);
 		if (formattedLen > 0) {
-			fplAssert(state->count < FPL__MAX_ERRORSTATE_COUNT);
-			size_t errorIndex = state->count;
-			state->count = (state->count + 1) % FPL__MAX_ERRORSTATE_COUNT;
+			// Atomically claim a unique ring slot so concurrent writers do not collide.
+			uint32_t prevTotal = fplAtomicFetchAndAddU32(&state->count, 1);
+			size_t errorIndex = (size_t)(prevTotal % FPL__MAX_ERRORSTATE_COUNT);
 			fplCopyStringLen(buffer, formattedLen, state->errors[errorIndex], FPL__MAX_LAST_ERROR_STRING_LENGTH);
 		}
 	}
@@ -11521,74 +12718,65 @@ fpl_common_api bool fplIsStringEqual(const char *a, const char *b) {
 	return(result);
 }
 
-fpl_common_api char *fplEnforcePathSeparatorLen(char *path, size_t maxPathLen) {
-	FPL__CheckArgumentNull(path, fpl_null);
-	FPL__CheckArgumentZero(maxPathLen, fpl_null);
-	char *end = path;
-	while (*end) {
-		end++;
+fpl_common_api size_t fplEnforcePathSeparatorLen(char *path, size_t maxPathLen) {
+	FPL__CheckArgumentNull(path, 0);
+	FPL__CheckArgumentZero(maxPathLen, 0);
+	size_t len = fplGetStringLength(path);
+	if (len == 0) {
+		return(0);
 	}
-	size_t len = end - path;
-	char *result = fpl_null;
-	if (len > 0) {
-		if (path[len - 1] != FPL_PATH_SEPARATOR) {
-			if (len + 1 <= maxPathLen) {
-				path[len] = FPL_PATH_SEPARATOR;
-				path[len + 1] = 0;
-				result = &path[len + 1];
-			} else {
-				FPL__ERROR(FPL__MODULE_PATHS, "Cannot append path separator: Max length '%zu' of path '%s' is exceeded", maxPathLen, path);
-			}
-		} else {
-			result = &path[len];
-		}
+	if (path[len - 1] == FPL_PATH_SEPARATOR) {
+		return(len);
 	}
-	return(result);
+	size_t requiredLen = len + 1;
+	if (requiredLen + 1 > maxPathLen) {
+		FPL__ERROR(FPL__MODULE_PATHS, "Cannot append path separator: Max length '%zu' of path '%s' is exceeded", maxPathLen, path);
+		return(0);
+	}
+	path[len] = FPL_PATH_SEPARATOR;
+	path[len + 1] = 0;
+	return(requiredLen);
 }
 
-fpl_common_api char *fplEnforcePathSeparator(char *path) {
-	FPL__CheckArgumentNull(path, fpl_null);
-	char *end = path;
-	while (*end) {
-		end++;
+fpl_common_api size_t fplEnforcePathSeparator(char *path) {
+	FPL__CheckArgumentNull(path, 0);
+	size_t len = fplGetStringLength(path);
+	if (len == 0) {
+		return(0);
 	}
-	size_t len = end - path;
-	char *result = fpl_null;
-	if (len > 0) {
-		if (path[len - 1] != FPL_PATH_SEPARATOR) {
-			path[len] = FPL_PATH_SEPARATOR;
-			path[len + 1] = 0;
-			result = &path[len + 1];
-		} else {
-			result = &path[len];
-		}
+	if (path[len - 1] == FPL_PATH_SEPARATOR) {
+		return(len);
 	}
-	return(result);
+	path[len] = FPL_PATH_SEPARATOR;
+	path[len + 1] = 0;
+	return(len + 1);
 }
 
-fpl_common_api char *fplStringAppendLen(const char *appended, const size_t appendedLen, char *buffer, size_t maxBufferLen) {
-	FPL__CheckArgumentNull(appended, fpl_null);
-	FPL__CheckArgumentZero(maxBufferLen, fpl_null);
+fpl_common_api size_t fplStringAppendLen(const char *appended, const size_t appendedLen, char *buffer, size_t maxBufferLen) {
+	FPL__CheckArgumentNull(appended, 0);
 	if (appendedLen == 0) {
-		return buffer;
+		return(buffer != fpl_null ? fplGetStringLength(buffer) : 0);
 	}
-	size_t curBufferLen = fplGetStringLength(buffer);
-	size_t requiredSize = curBufferLen + appendedLen + 1;
-	FPL__CheckArgumentMin(maxBufferLen, requiredSize, fpl_null);
-	char *start = buffer + curBufferLen;
-	size_t remainingBufferSize = maxBufferLen - (curBufferLen > 0 ? curBufferLen + 1 : 0);
-	char *result = fplCopyStringLen(appended, appendedLen, start, remainingBufferSize);
-	return(result);
+	size_t curBufferLen = (buffer != fpl_null) ? fplGetStringLength(buffer) : 0;
+	size_t requiredLen = curBufferLen + appendedLen;
+	if (buffer == fpl_null) {
+		return(requiredLen);
+	}
+	FPL__CheckArgumentZero(maxBufferLen, 0);
+	size_t requiredSize = requiredLen + 1;
+	FPL__CheckArgumentMin(maxBufferLen, requiredSize, 0);
+	fplMemoryCopy(appended, appendedLen * sizeof(char), buffer + curBufferLen);
+	buffer[requiredLen] = 0;
+	return(requiredLen);
 }
 
-fpl_common_api char *fplStringAppend(const char *appended, char *buffer, size_t maxBufferLen) {
+fpl_common_api size_t fplStringAppend(const char *appended, char *buffer, size_t maxBufferLen) {
 	size_t appendedLen = fplGetStringLength(appended);
-	char *result = fplStringAppendLen(appended, appendedLen, buffer, maxBufferLen);
-	return(result);
+	return(fplStringAppendLen(appended, appendedLen, buffer, maxBufferLen));
 }
 
 fpl_common_api size_t fplGetStringLength(const char *str) {
-	uint32_t result = 0;
+	size_t result = 0;
 	if (str != fpl_null) {
 		while (*str++) {
 			result++;
@@ -11597,62 +12785,78 @@ fpl_common_api size_t fplGetStringLength(const char *str) {
 	return(result);
 }
 
-fpl_common_api char *fplCopyStringLen(const char *source, const size_t sourceLen, char *dest, const size_t maxDestLen) {
-	if (source != fpl_null && dest != fpl_null) {
-		size_t requiredLen = sourceLen + 1;
-		FPL__CheckArgumentMin(maxDestLen, requiredLen, fpl_null);
-		fplMemoryCopy(source, sourceLen * sizeof(char), dest);
-		char *result = dest + sourceLen;
-		*result = 0;
-		return(result);
-	} else {
-		return(fpl_null);
+fpl_common_api size_t fplCopyStringLen(const char *source, const size_t sourceLen, char *dest, const size_t maxDestLen) {
+	FPL__CheckArgumentNull(source, 0);
+	if (dest == fpl_null) {
+		return(sourceLen);
 	}
+	FPL__CheckArgumentZero(maxDestLen, 0);
+	size_t requiredLen = sourceLen + 1;
+	FPL__CheckArgumentMin(maxDestLen, requiredLen, 0);
+	if (sourceLen > 0) {
+		fplMemoryCopy(source, sourceLen * sizeof(char), dest);
+	}
+	dest[sourceLen] = 0;
+	return(sourceLen);
 }
 
-fpl_common_api char *fplCopyString(const char *source, char *dest, const size_t maxDestLen) {
-	char *result = fpl_null;
-	if (source != fpl_null) {
-		size_t sourceLen = fplGetStringLength(source);
-		result = fplCopyStringLen(source, sourceLen, dest, maxDestLen);
-	}
-	return(result);
+fpl_common_api size_t fplCopyString(const char *source, char *dest, const size_t maxDestLen) {
+	FPL__CheckArgumentNull(source, 0);
+	size_t sourceLen = fplGetStringLength(source);
+	return(fplCopyStringLen(source, sourceLen, dest, maxDestLen));
 }
 
 fpl_common_api size_t fplStringFormatArgs(char *destBuffer, const size_t maxDestBufferLen, const char *format, va_list argList) {
 	FPL__CheckArgumentNull(format, 0);
 
-	va_list listCopy;
-	va_copy(listCopy, argList);
-
-	// @NOTE(final): Need to clear the first character, otherwise vsnprintf() does weird things... O_o
 	if (destBuffer != fpl_null) {
 		FPL__CheckArgumentMin(maxDestBufferLen, 1, 0);
-		destBuffer[0] = 0;
 	}
 
+	// First pass: query the required length using a dummy buffer when destBuffer is null/too-small.
+	va_list listCopy;
+	va_copy(listCopy, argList);
 	int charCount = 0;
 #	if defined(FPL_NO_CRT)
 #		if defined(FPL_USERFUNC_vsnprintf)
-	charCount = FPL_USERFUNC_vsnprintf(destBuffer, maxDestBufferLen, format, listCopy);
+	if (destBuffer != fpl_null) {
+		destBuffer[0] = 0;
+		charCount = FPL_USERFUNC_vsnprintf(destBuffer, maxDestBufferLen, format, listCopy);
+	} else {
+		charCount = FPL_USERFUNC_vsnprintf(fpl_null, 0, format, listCopy);
+	}
 #		else
 	charCount = 0;
 #		endif
 #	else
-	charCount = vsnprintf(destBuffer, maxDestBufferLen, format, listCopy);
-#	endif
-	if (charCount < 0) {
-		FPL__ERROR(FPL__MODULE_STRINGS, "Format parameter are '%s' are invalid", format);
-		return 0;
-	}
-	size_t result = charCount;
 	if (destBuffer != fpl_null) {
-		size_t requiredMaxDestBufferLen = charCount + 1;
-		FPL__CheckArgumentMin(maxDestBufferLen, requiredMaxDestBufferLen, 0);
-		destBuffer[charCount] = 0;
+		destBuffer[0] = 0;
+		charCount = vsnprintf(destBuffer, maxDestBufferLen, format, listCopy);
+	} else {
+		charCount = vsnprintf(fpl_null, 0, format, listCopy);
 	}
+#	endif
 	va_end(listCopy);
-	return(result);
+
+	if (charCount < 0) {
+		FPL__ERROR(FPL__MODULE_STRINGS, "Format parameter '%s' is invalid, return code was: %d", format, charCount);
+		if (destBuffer != fpl_null && maxDestBufferLen > 0) {
+			destBuffer[0] = 0;
+		}
+		return(0);
+	}
+	const size_t requiredLen = (size_t)charCount;
+	if (destBuffer == fpl_null) {
+		// Query mode: return what would be needed.
+		return(requiredLen);
+	}
+	if (requiredLen + 1 > maxDestBufferLen) {
+		// Too small: do not leave a partially-filled buffer for the caller to consume.
+		destBuffer[0] = 0;
+		return(0);
+	}
+	destBuffer[requiredLen] = 0;
+	return(requiredLen);
 }
 
 fpl_common_api size_t fplStringFormat(char *destBuffer, const size_t maxDestBufferLen, const char *format, ...) {
@@ -11712,36 +12916,74 @@ fpl_common_api size_t fplS32ToString(const int32_t value, char *buffer, const si
 	return result;
 }
 
-fpl_common_api int32_t fplStringToS32Len(const char *str, const size_t len) {
-	FPL__CheckArgumentNull(str, 0);
-	FPL__CheckArgumentZero(len, 0);
+fpl_common_api bool fplTryStringToS32Len(const char *str, const size_t len, int32_t *outValue) {
+	if (str == fpl_null || len == 0) {
+		return(false);
+	}
 	const char *p = str;
-	bool isNegative = false;
-	if (*p == '-') {
-		if (len == 1) {
-			return 0;
-		}
-		isNegative = true;
+	const char *end = str + len;
+	while (p < end && (*p == ' ' || *p == '\t')) {
 		++p;
 	}
+	bool isNegative = false;
+	if (p < end && (*p == '-' || *p == '+')) {
+		isNegative = (*p == '-');
+		++p;
+	}
+	if (p >= end || *p < '0' || *p > '9') {
+		return(false);
+	}
+	const uint32_t signedMaxAbs = (uint32_t)INT32_MAX + 1u;
+	const uint32_t posMaxAbs = (uint32_t)INT32_MAX;
+	const uint32_t maxAbs = isNegative ? signedMaxAbs : posMaxAbs;
 	uint32_t value = 0;
-	while (*p && ((size_t)(p - str) < len)) {
+	bool overflow = false;
+	while (p < end && *p) {
 		char c = *p;
 		if (c < '0' || c > '9') {
-			return(0);
+			return(false);
 		}
-		int v = (int)(*p - '0');
-		value *= 10;
-		value += (uint32_t)v;
+		uint32_t digit = (uint32_t)(c - '0');
+		if (!overflow) {
+			if (value > (maxAbs - digit) / 10u) {
+				overflow = true;
+			} else {
+				value = value * 10u + digit;
+			}
+		}
 		++p;
 	}
-	int32_t result = isNegative ? -(int32_t)value : (int32_t)value;
+	int32_t result;
+	if (overflow) {
+		result = isNegative ? INT32_MIN : INT32_MAX;
+	} else if (isNegative) {
+		result = (value == signedMaxAbs) ? INT32_MIN : -(int32_t)value;
+	} else {
+		result = (int32_t)value;
+	}
+	if (outValue != fpl_null) {
+		*outValue = result;
+	}
+	return(true);
+}
+
+fpl_common_api bool fplTryStringToS32(const char *str, int32_t *outValue) {
+	if (str == fpl_null) {
+		return(false);
+	}
+	size_t len = fplGetStringLength(str);
+	return(fplTryStringToS32Len(str, len, outValue));
+}
+
+fpl_common_api int32_t fplStringToS32Len(const char *str, const size_t len) {
+	int32_t result = 0;
+	(void)fplTryStringToS32Len(str, len, &result);
 	return(result);
 }
 
 fpl_common_api int32_t fplStringToS32(const char *str) {
-	size_t len = fplGetStringLength(str);
-	int32_t result = fplStringToS32Len(str, len);
+	int32_t result = 0;
+	(void)fplTryStringToS32(str, &result);
 	return(result);
 }
 #endif // FPL__COMMON_STRINGS_DEFINED
@@ -12041,11 +13283,9 @@ fpl_common_api fplDateTimeCreationResult fplDateTimeCreate(const uint16_t year, 
 // X86/X64 only (CPUID, XCR0, RDTSC)
 //
 #if defined(FPL_ARCH_X64) || defined(FPL_ARCH_X86)
-
 #	define FPL__CPU_BRAND_BUFFER_SIZE 0x40
 
 #	if defined(FPL_COMPILER_MSVC)
-
 		// CPUID/XCR0 for MSVC
 #		if _MSC_VER >= 1400
 #			define fpl__m_CPUID(outLeaf, functionId) __cpuid((int *)(outLeaf)->raw, (int)(functionId))
@@ -12053,14 +13293,11 @@ fpl_common_api fplDateTimeCreationResult fplDateTimeCreate(const uint16_t year, 
 #		if _MSC_VER >= 1600
 #			define fpl__m_GetXCR0() ((uint64_t)_xgetbv(0))
 #		endif
-
 		// RDTSC for MSVC
 #		define fpl__m_RDTSC() ((uint64_t)__rdtsc())
-
 #	elif defined(FPL_COMPILER_GCC) ||defined(FPL_COMPILER_CLANG)
-
 		// CPUID for GCC/CLANG
-fpl_internal void fpl__m_CPUID(fplCPUIDLeaf *outLeaf, const uint32_t functionId) {
+fpl_internal void fpl__m_CPUID_Impl(fplCPUIDLeaf *outLeaf, const uint32_t functionId) {
 	int eax = 0, ebx = 0, ecx = 0, edx = 0;
 	__cpuid_count(functionId, 0, eax, ebx, ecx, edx);
 	outLeaf->eax = eax;
@@ -12068,28 +13305,32 @@ fpl_internal void fpl__m_CPUID(fplCPUIDLeaf *outLeaf, const uint32_t functionId)
 	outLeaf->ecx = ecx;
 	outLeaf->edx = edx;
 }
+#		define fpl__m_CPUID(outLeaf, functionId) fpl__m_CPUID_Impl(outLeaf, functionId)
 
 		// XCR0 for GCC/CLANG
-fpl_internal uint64_t fpl__m_GetXCR0(void) {
+fpl_internal uint64_t fpl__m_GetXCR0_Impl(void) {
 	uint32_t eax, edx;
 	__asm(".byte 0x0F, 0x01, 0xd0" : "=a"(eax), "=d"(edx) : "c"(0));
 	return eax;
 }
+#		define fpl__m_GetXCR0() fpl__m_GetXCR0_Impl()
 
 		// RDTSC for non-MSVC
 #		if defined(FPL_ARCH_X86)
-fpl_force_inline uint64_t fpl__m_RDTSC(void) {
+fpl_force_inline uint64_t fpl__m_RDTSC_Impl(void) {
 	unsigned long long int result;
 	__asm__ volatile (".byte 0x0f, 0x31" : "=A" (result));
 	return((uint64_t)result);
 }
+#			define fpl__m_RDTSC() fpl__m_RDTSC_Impl()
 #		elif defined(FPL_ARCH_X64)
-fpl_force_inline uint64_t fpl__m_RDTSC(void) {
+fpl_force_inline uint64_t fpl__m_RDTSC_Impl(void) {
 	unsigned hi, lo;
 	__asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
 	uint64_t result = (uint64_t)(((unsigned long long)lo) | (((unsigned long long)hi) << 32));
 	return (result);
 }
+#			define fpl__m_RDTSC() fpl__m_RDTSC_Impl()
 #		endif
 #	endif
 
@@ -12511,7 +13752,7 @@ fpl_common_api size_t fplFileReadBlock(const fplFileHandle *fileHandle, const si
 #endif
 }
 
-fpl_common_api size_t fplFileWriteBlock(const fplFileHandle *fileHandle, void *sourceBuffer, const size_t sourceSize) {
+fpl_common_api size_t fplFileWriteBlock(const fplFileHandle *fileHandle, const void *sourceBuffer, const size_t sourceSize) {
 #if defined(FPL_CPU_64BIT)
 	return fplFileWriteBlock64(fileHandle, sourceBuffer, sourceSize);
 #else
@@ -12564,11 +13805,11 @@ fpl_common_api size_t fplExtractFilePath(const char *sourcePath, char *destPath,
 	size_t sourceLen = fplGetStringLength(sourcePath);
 	size_t result = 0;
 	if (sourceLen > 0) {
-		int pathLen = 0;
+		size_t pathLen = 0;
 		const char *chPtr = (const char *)sourcePath;
 		while (*chPtr) {
 			if (*chPtr == FPL_PATH_SEPARATOR) {
-				pathLen = (int)(chPtr - sourcePath);
+				pathLen = (size_t)(chPtr - sourcePath);
 			}
 			++chPtr;
 		}
@@ -12685,42 +13926,76 @@ fpl_common_api size_t fplChangeFileExtension(const char *filePath, const char *n
 	return(result);
 }
 
+#define FPL__PATHCOMBINE_STACK_SEGMENTS 16
+
 fpl_common_api size_t fplPathCombine(char *destPath, const size_t maxDestPathLen, const size_t pathCount, ...) {
 	FPL__CheckArgumentZero(pathCount, 0);
 
-	size_t result = 0;
+	va_list args;
 
-	size_t curDestPosition = 0;
-	char *currentDestPtr = destPath;
+	// First pass: compute total length
+	va_start(args, pathCount);
 
-	va_list vargs;
-	va_start(vargs, pathCount);
-	for (size_t pathIndex = 0; pathIndex < pathCount; ++pathIndex) {
-		const char *path = va_arg(vargs, const char *);
-		size_t pathLen = fplGetStringLength(path);
+	size_t totalLen = 0;
+	bool prevHasTrailingSep = false;
 
-		bool requireSeparator = pathIndex < (pathCount - 1);
-		size_t requiredPathLen = requireSeparator ? pathLen + 1 : pathLen;
+	for (size_t i = 0; i < pathCount; ++i) {
+		const char *path = va_arg(args, const char *);
+		if (path == fpl_null) {
+			continue;
+		}
 
-		result += requiredPathLen;
+		const size_t len = fplGetStringLength(path);
 
-		if (destPath != fpl_null) {
-			size_t requiredDestLen = result + 1;
-			FPL__CheckArgumentMin(maxDestPathLen, requiredDestLen, 0);
+		if (i > 0 && len > 0 && !prevHasTrailingSep) {
+			totalLen += 1; // separator
+		}
 
-			fplCopyStringLen(path, pathLen, currentDestPtr, maxDestPathLen - curDestPosition);
-			currentDestPtr += pathLen;
-			if (requireSeparator) {
-				*currentDestPtr++ = FPL_PATH_SEPARATOR;
-			}
-			curDestPosition += requiredPathLen;
+		totalLen += len;
+
+		if (len > 0) {
+			prevHasTrailingSep = (path[len - 1] == FPL_PATH_SEPARATOR);
 		}
 	}
-	if (currentDestPtr != fpl_null) {
-		*currentDestPtr = 0;
+
+	va_end(args);
+
+	// Write result if buffer provided
+	if (destPath != fpl_null) {
+		const size_t requiredLen = totalLen + 1;
+
+		FPL__CheckArgumentMin(maxDestPathLen, requiredLen, 0);
+
+		va_start(args, pathCount);
+
+		size_t pos = 0;
+		prevHasTrailingSep = false;
+
+		for (size_t i = 0; i < pathCount; ++i) {
+			const char *path = va_arg(args, const char *);
+			if (path == fpl_null) {
+				continue;
+			}
+
+			const size_t len = fplGetStringLength(path);
+
+			if (i > 0 && len > 0 && !prevHasTrailingSep) {
+				destPath[pos++] = FPL_PATH_SEPARATOR;
+			}
+
+			if (len > 0) {
+				fplMemoryCopy(path, len * sizeof(char), destPath + pos);
+				pos += len;
+				prevHasTrailingSep = (path[len - 1] == FPL_PATH_SEPARATOR);
+			}
+		}
+
+		va_end(args);
+
+		destPath[pos] = '\0';
 	}
-	va_end(vargs);
-	return(result);
+
+	return totalLen;
 }
 #endif // FPL__COMMON_PATHS_DEFINED
 
@@ -12730,10 +14005,10 @@ fpl_common_api size_t fplPathCombine(char *destPath, const size_t maxDestPathLen
 #if defined(FPL__ENABLE_WINDOW) && !defined(FPL__COMMON_WINDOW_DEFINED)
 #define FPL__COMMON_WINDOW_DEFINED
 
-fpl_common_api char *fplGetWindowTitle(char *outTitle, const size_t maxOutTitleLength) {
-	FPL__CheckPlatform(fpl_null);
+fpl_common_api size_t fplGetWindowTitle(char *outTitle, const size_t maxOutTitleLength) {
+	FPL__CheckPlatform(0);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	char *result = fplCopyString(appState->currentSettings.window.title, outTitle, maxOutTitleLength);
+	size_t result = fplCopyString(appState->currentSettings.window.title, outTitle, maxOutTitleLength);
 	return(result);
 }
 
@@ -13106,9 +14381,10 @@ fpl_common_api fplLogLevel fplGetMaxLogLevel(void) {
 fpl_common_api const char *fplGetLastError(void) {
 	const char *result = "";
 	const fpl__ErrorState *errorState = &fpl__global__LastErrorState;
-	if (errorState->count > 0) {
-		size_t index = errorState->count - 1;
-		result = fplGetErrorByIndex(index);
+	uint32_t total = errorState->count;
+	if (total > 0) {
+		size_t slot = (size_t)((total - 1) % FPL__MAX_ERRORSTATE_COUNT);
+		result = errorState->errors[slot];
 	}
 	return (result);
 }
@@ -13116,18 +14392,28 @@ fpl_common_api const char *fplGetLastError(void) {
 fpl_common_api const char *fplGetErrorByIndex(const size_t index) {
 	const char *result = "";
 	const fpl__ErrorState *errorState = &fpl__global__LastErrorState;
-	if (index < errorState->count) {
-		result = errorState->errors[index];
-	} else {
-		result = errorState->errors[errorState->count - 1];
+	uint32_t total = errorState->count;
+	if (total == 0) {
+		return (result);
 	}
+	size_t visible = (total < FPL__MAX_ERRORSTATE_COUNT) ? (size_t)total : (size_t)FPL__MAX_ERRORSTATE_COUNT;
+	size_t effectiveIndex = (index < visible) ? index : (visible - 1);
+	size_t slot;
+	if (total <= FPL__MAX_ERRORSTATE_COUNT) {
+		slot = effectiveIndex;
+	} else {
+		// Ring has wrapped: oldest slot is the next-write slot.
+		size_t oldestSlot = (size_t)(total % FPL__MAX_ERRORSTATE_COUNT);
+		slot = (oldestSlot + effectiveIndex) % FPL__MAX_ERRORSTATE_COUNT;
+	}
+	result = errorState->errors[slot];
 	return (result);
 }
 
 fpl_common_api size_t fplGetErrorCount(void) {
-	size_t result = 0;
 	const fpl__ErrorState *errorState = &fpl__global__LastErrorState;
-	result = errorState->count;
+	uint32_t total = errorState->count;
+	size_t result = (total < FPL__MAX_ERRORSTATE_COUNT) ? (size_t)total : (size_t)FPL__MAX_ERRORSTATE_COUNT;
 	return (result);
 }
 
@@ -13150,7 +14436,7 @@ fpl_common_api void fplSetDefaultVideoSettings(fplVideoSettings *video) {
 
 #if defined(FPL__ENABLE_VIDEO_OPENGL)
 	video->graphics.opengl.libraryFile = fpl_null;
-	video->graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
+	video->graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Legacy;
 #endif
 
 #if defined(FPL__ENABLE_VIDEO_VULKAN)
@@ -13228,6 +14514,7 @@ fpl_common_api void fplSetDefaultAudioSettings(fplAudioSettings *audio) {
 	audio->startAuto = true;
 	audio->stopAuto = true;
 	audio->manualLoad = false;
+	audio->backend = fplAudioBackendType_Auto;
 }
 
 fpl_common_api void fplSetDefaultWindowSettings(fplWindowSettings *window) {
@@ -13252,16 +14539,375 @@ fpl_common_api void fplSetDefaultConsoleSettings(fplConsoleSettings *console) {
 	console->title[0] = 0;
 }
 
-fpl_common_api void fplSetDefaultGameControllersSettings(fplGameControllersSettings *gameControllers) {
-	gameControllers->detectionFrequency = 1000;
-	gameControllers->updateFrequency = 0;
+fpl_common_api void fplSetDefaultGamepadSettings(fplGamepadSettings *gamepadSettings) {
+	gamepadSettings->detectionFrequency = 1000;
+	gamepadSettings->updateFrequency = 0;
+	gamepadSettings->mappingResolver = fpl_null;
+	gamepadSettings->mappingResolverUserData = fpl_null;
 }
 
 fpl_common_api void fplSetDefaultInputSettings(fplInputSettings *input) {
 	FPL__CheckArgumentNullNoRet(input);
 	fplClearStruct(input);
-	fplSetDefaultGameControllersSettings(&input->gameControllers);
+	fplSetDefaultGamepadSettings(&input->gamepad);
+	input->enabledSources = fplInputSourceType_All;
+	input->enabledBackends.bits = 0xFFFFFFFFu;
+	input->disabledEvents = false;
+	input->allowMultipleGamepadBackends = true;
+	input->pollFromWindowEventLoop = true;
+	input->detachFromWindow = false;
 }
+
+// Input subsystem device/backend enumeration.
+#if defined(FPL__ENABLE_INPUT)
+// Deterministic GUID derived from (backend, source, slot) so successive calls return stable identifiers.
+fpl_internal void fpl__MakeInputDeviceGuid(fplInputDeviceGuid *outGuid, const fplInputBackendType backend, const fplInputSourceType source, const uint32_t slot) {
+	fplClearStruct(outGuid);
+	outGuid->bytes[0] = 'F';
+	outGuid->bytes[1] = 'P';
+	outGuid->bytes[2] = 'L';
+	outGuid->bytes[3] = 'I';
+	outGuid->bytes[4] = (uint8_t)backend;
+	outGuid->bytes[5] = (uint8_t)source;
+	outGuid->bytes[6] = (uint8_t)(slot & 0xFFu);
+	outGuid->bytes[7] = (uint8_t)((slot >> 8) & 0xFFu);
+	outGuid->bytes[8] = (uint8_t)((slot >> 16) & 0xFFu);
+	outGuid->bytes[9] = (uint8_t)((slot >> 24) & 0xFFu);
+}
+
+// Static descriptor for backends compiled into this build.
+typedef struct fpl__InputBackendDescriptor {
+	const char *name;
+	fplInputBackendType type;
+	fplInputSourceType supportedSources;
+	fpl_b32 supportsEvents;
+	fpl_b32 supportsPolling;
+	fpl_b32 supportsHotplug;
+} fpl__InputBackendDescriptor;
+
+fpl_internal uint32_t fpl__BuildInputBackendDescriptors(fpl__InputBackendDescriptor *out, const uint32_t maxCount) {
+	uint32_t count = 0;
+#	if defined(FPL__ENABLE_INPUT_XINPUT)
+	if (count < maxCount) {
+		out[count].name = "XInput";
+		out[count].type = fplInputBackendType_XInput;
+		out[count].supportedSources = fplInputSourceType_Gamepad;
+		out[count].supportsEvents = true;
+		out[count].supportsPolling = true;
+		out[count].supportsHotplug = true;
+		count++;
+	}
+#	endif
+#	if defined(FPL__ENABLE_INPUT_DINPUT)
+	if (count < maxCount) {
+		out[count].name = "DirectInput";
+		out[count].type = fplInputBackendType_DInput;
+		out[count].supportedSources = fplInputSourceType_Gamepad;
+		out[count].supportsEvents = true;
+		out[count].supportsPolling = true;
+		out[count].supportsHotplug = true;
+		count++;
+	}
+#	endif
+#	if defined(FPL__ENABLE_INPUT_WIN32)
+	if (count < maxCount) {
+		out[count].name = "Win32 Keyboard/Mouse";
+		out[count].type = fplInputBackendType_Win32;
+		out[count].supportedSources = (fplInputSourceType)(fplInputSourceType_Keyboard | fplInputSourceType_Mouse);
+		out[count].supportsEvents = true;
+		out[count].supportsPolling = true;
+		out[count].supportsHotplug = false;
+		count++;
+	}
+#	endif
+#	if defined(FPL__ENABLE_INPUT_X11)
+	if (count < maxCount) {
+		out[count].name = "X11 Keyboard/Mouse";
+		out[count].type = fplInputBackendType_X11Kbm;
+		out[count].supportedSources = (fplInputSourceType)(fplInputSourceType_Keyboard | fplInputSourceType_Mouse);
+		out[count].supportsEvents = true;
+		out[count].supportsPolling = true;
+		out[count].supportsHotplug = false;
+		count++;
+	}
+#	endif
+#	if defined(FPL__ENABLE_INPUT_LINUX_JOYSTICK)
+	if (count < maxCount) {
+		out[count].name = "Linux Joystick (/dev/input/jsX)";
+		out[count].type = fplInputBackendType_LinuxJoystick;
+		out[count].supportedSources = fplInputSourceType_Gamepad;
+		out[count].supportsEvents = true;
+		out[count].supportsPolling = true;
+		// Hotplug currently via polling scan; flips to true once the udev backend (step 11) is in.
+		out[count].supportsHotplug = false;
+		count++;
+	}
+#	endif
+	return count;
+}
+
+fpl_common_api uint32_t fplGetInputBackendSupport(fplInputBackendSupport *outSupports, const uint32_t maxCount) {
+	fpl__InputBackendDescriptor descriptors[FPL_MAX_INPUT_BACKEND_COUNT];
+	uint32_t total = fpl__BuildInputBackendDescriptors(descriptors, fplArrayCount(descriptors));
+	if (outSupports == fpl_null || maxCount == 0) return total;
+	uint32_t writeCount = total < maxCount ? total : maxCount;
+	for (uint32_t i = 0; i < writeCount; ++i) {
+		fplClearStruct(&outSupports[i]);
+		outSupports[i].name = descriptors[i].name;
+		outSupports[i].type = descriptors[i].type;
+		outSupports[i].supportedSources = descriptors[i].supportedSources;
+		outSupports[i].supportsEvents = descriptors[i].supportsEvents;
+		outSupports[i].supportsPolling = descriptors[i].supportsPolling;
+		outSupports[i].supportsHotplug = descriptors[i].supportsHotplug;
+	}
+	return writeCount;
+}
+
+fpl_common_api bool fplGetInputBackendSupportByType(const fplInputBackendType type, fplInputBackendSupport *outSupport) {
+	if (outSupport != fpl_null) {
+		fplClearStruct(outSupport);
+	}
+	fpl__InputBackendDescriptor descriptors[FPL_MAX_INPUT_BACKEND_COUNT];
+	uint32_t total = fpl__BuildInputBackendDescriptors(descriptors, fplArrayCount(descriptors));
+	for (uint32_t i = 0; i < total; ++i) {
+		if (descriptors[i].type != type) continue;
+		if (outSupport != fpl_null) {
+			outSupport->name = descriptors[i].name;
+			outSupport->type = descriptors[i].type;
+			outSupport->supportedSources = descriptors[i].supportedSources;
+			outSupport->supportsEvents = descriptors[i].supportsEvents;
+			outSupport->supportsPolling = descriptors[i].supportsPolling;
+			outSupport->supportsHotplug = descriptors[i].supportsHotplug;
+		}
+		return true;
+	}
+	return false;
+}
+
+// Single internal enumerator: walks active backends, writes filtered devices into out (when not null), returns total.
+// When out is null or maxDevices is 0, returns the would-be device count.
+fpl_internal uint32_t fpl__EnumerateInputDevices(const fplInputSourceType sourceFilter, fplInputDevice *out, const uint32_t maxDevices) {
+	uint32_t count = 0;
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (appState == fpl_null) return 0;
+	const fpl__InputContext *ctx = &appState->input;
+	if (!ctx->isInitialized) return 0;
+
+	const fplInputDeviceFeatureFlags kbmFeatures = (fplInputDeviceFeatureFlags)(fplInputDeviceFeatureFlags_Polling | fplInputDeviceFeatureFlags_Events);
+	const fplInputDeviceFeatureFlags padFeatures = (fplInputDeviceFeatureFlags)(fplInputDeviceFeatureFlags_Polling | fplInputDeviceFeatureFlags_Events | fplInputDeviceFeatureFlags_Hotplug);
+
+#	if defined(FPL__ENABLE_INPUT_WIN32)
+	if (ctx->win32kbm.isInitialized) {
+		if ((sourceFilter & fplInputSourceType_Keyboard) != 0) {
+			if (out != fpl_null && count < maxDevices) {
+				fplInputDevice *dev = &out[count];
+				fplClearStruct(dev);
+				fpl__MakeInputDeviceGuid(&dev->guid, fplInputBackendType_Win32, fplInputSourceType_Keyboard, 0);
+				fplCopyString("Win32 Keyboard", dev->name, fplArrayCount(dev->name));
+				dev->index = 0;
+				dev->sourceType = fplInputSourceType_Keyboard;
+				dev->backend = fplInputBackendType_Win32;
+				dev->featureFlags = kbmFeatures;
+				dev->connection = fplInputConnectionState_Connected;
+			}
+			count++;
+		}
+		if ((sourceFilter & fplInputSourceType_Mouse) != 0) {
+			if (out != fpl_null && count < maxDevices) {
+				fplInputDevice *dev = &out[count];
+				fplClearStruct(dev);
+				fpl__MakeInputDeviceGuid(&dev->guid, fplInputBackendType_Win32, fplInputSourceType_Mouse, 0);
+				fplCopyString("Win32 Mouse", dev->name, fplArrayCount(dev->name));
+				dev->index = 0;
+				dev->sourceType = fplInputSourceType_Mouse;
+				dev->backend = fplInputBackendType_Win32;
+				dev->featureFlags = kbmFeatures;
+				dev->connection = fplInputConnectionState_Connected;
+			}
+			count++;
+		}
+	}
+#	endif
+
+#	if defined(FPL__ENABLE_INPUT_X11)
+	if (ctx->x11kbm.isInitialized) {
+		if ((sourceFilter & fplInputSourceType_Keyboard) != 0) {
+			if (out != fpl_null && count < maxDevices) {
+				fplInputDevice *dev = &out[count];
+				fplClearStruct(dev);
+				fpl__MakeInputDeviceGuid(&dev->guid, fplInputBackendType_X11Kbm, fplInputSourceType_Keyboard, 0);
+				fplCopyString("X11 Keyboard", dev->name, fplArrayCount(dev->name));
+				dev->index = 0;
+				dev->sourceType = fplInputSourceType_Keyboard;
+				dev->backend = fplInputBackendType_X11Kbm;
+				dev->featureFlags = kbmFeatures;
+				dev->connection = fplInputConnectionState_Connected;
+			}
+			count++;
+		}
+		if ((sourceFilter & fplInputSourceType_Mouse) != 0) {
+			if (out != fpl_null && count < maxDevices) {
+				fplInputDevice *dev = &out[count];
+				fplClearStruct(dev);
+				fpl__MakeInputDeviceGuid(&dev->guid, fplInputBackendType_X11Kbm, fplInputSourceType_Mouse, 0);
+				fplCopyString("X11 Mouse", dev->name, fplArrayCount(dev->name));
+				dev->index = 0;
+				dev->sourceType = fplInputSourceType_Mouse;
+				dev->backend = fplInputBackendType_X11Kbm;
+				dev->featureFlags = kbmFeatures;
+				dev->connection = fplInputConnectionState_Connected;
+			}
+			count++;
+		}
+	}
+#	endif
+
+#	if defined(FPL__ENABLE_INPUT_XINPUT)
+	if (ctx->xinput.isInitialized && (sourceFilter & fplInputSourceType_Gamepad) != 0) {
+		for (uint32_t i = 0; i < XUSER_MAX_COUNT; ++i) {
+			if (!ctx->xinput.isConnected[i]) continue;
+			if (out != fpl_null && count < maxDevices) {
+				fplInputDevice *dev = &out[count];
+				fplClearStruct(dev);
+				fpl__MakeInputDeviceGuid(&dev->guid, fplInputBackendType_XInput, fplInputSourceType_Gamepad, i);
+				fplCopyString(ctx->xinput.deviceNames[i], dev->name, fplArrayCount(dev->name));
+				dev->index = i;
+				dev->sourceType = fplInputSourceType_Gamepad;
+				dev->backend = fplInputBackendType_XInput;
+				dev->featureFlags = padFeatures;
+				dev->connection = fplInputConnectionState_Connected;
+			}
+			count++;
+		}
+	}
+#	endif
+
+#	if defined(FPL__ENABLE_INPUT_DINPUT)
+	if (ctx->dinput.isInitialized && (sourceFilter & fplInputSourceType_Gamepad) != 0) {
+		for (uint32_t i = 0; i < fplArrayCount(ctx->dinput.slots); ++i) {
+			if (!ctx->dinput.slots[i].isConnected) continue;
+			if (out != fpl_null && count < maxDevices) {
+				fplInputDevice *dev = &out[count];
+				fplClearStruct(dev);
+				fpl__MakeInputDeviceGuid(&dev->guid, fplInputBackendType_DInput, fplInputSourceType_Gamepad, i);
+				fplCopyString(ctx->dinput.slots[i].deviceName, dev->name, fplArrayCount(dev->name));
+				dev->index = i;
+				dev->sourceType = fplInputSourceType_Gamepad;
+				dev->backend = fplInputBackendType_DInput;
+				dev->featureFlags = padFeatures;
+				dev->connection = fplInputConnectionState_Connected;
+				dev->state.gamepad = ctx->dinput.slots[i].lastState;
+			}
+			count++;
+		}
+	}
+#	endif
+
+#	if defined(FPL__ENABLE_INPUT_LINUX_JOYSTICK)
+	if (ctx->linuxJoystick.isInitialized && (sourceFilter & fplInputSourceType_Gamepad) != 0) {
+		for (uint32_t i = 0; i < fplArrayCount(ctx->linuxJoystick.gamepads); ++i) {
+			const fpl__InputLinuxJoystickGamepad *controller = &ctx->linuxJoystick.gamepads[i];
+			if (controller->fd <= 0) continue;
+			if (out != fpl_null && count < maxDevices) {
+				fplInputDevice *dev = &out[count];
+				fplClearStruct(dev);
+				fpl__MakeInputDeviceGuid(&dev->guid, fplInputBackendType_LinuxJoystick, fplInputSourceType_Gamepad, i);
+				const char *displayName = controller->displayName[0] != 0 ? controller->displayName : controller->deviceName;
+				fplCopyString(displayName, dev->name, fplArrayCount(dev->name));
+				dev->index = i;
+				dev->sourceType = fplInputSourceType_Gamepad;
+				dev->backend = fplInputBackendType_LinuxJoystick;
+				dev->featureFlags = padFeatures;
+				dev->connection = fplInputConnectionState_Connected;
+				dev->state.gamepad = controller->state;
+			}
+			count++;
+		}
+	}
+#	endif
+
+	return count;
+}
+
+fpl_common_api uint32_t fplGetInputDevices(const fplInputSourceType sourceFilter, fplInputDevice *outDevices, const uint32_t maxDevices) {
+	if (outDevices == fpl_null || maxDevices == 0) {
+		return fpl__EnumerateInputDevices(sourceFilter, fpl_null, 0);
+	}
+	uint32_t total = fpl__EnumerateInputDevices(sourceFilter, outDevices, maxDevices);
+	return total < maxDevices ? total : maxDevices;
+}
+
+fpl_common_api bool fplFindInputDevice(const fplInputDeviceGuid *guid, fplInputDevice *outDevice) {
+	if (outDevice != fpl_null) {
+		fplClearStruct(outDevice);
+	}
+	if (guid == fpl_null) return false;
+	fplInputDevice scratch[FPL_MAX_INPUT_DEVICE_COUNT];
+	uint32_t total = fpl__EnumerateInputDevices(fplInputSourceType_All, scratch, fplArrayCount(scratch));
+	if (total > fplArrayCount(scratch)) total = fplArrayCount(scratch);
+	for (uint32_t i = 0; i < total; ++i) {
+		if (fpl__IsEqualsMemory(scratch[i].guid.bytes, guid->bytes, sizeof(guid->bytes))) {
+			if (outDevice != fpl_null) {
+				*outDevice = scratch[i];
+			}
+			return true;
+		}
+	}
+	return false;
+}
+
+fpl_common_api uint32_t fplGetKeyboardDevices(fplInputDevice *outDevices, const uint32_t maxDevices) {
+	return fplGetInputDevices(fplInputSourceType_Keyboard, outDevices, maxDevices);
+}
+
+fpl_common_api uint32_t fplGetMouseDevices(fplInputDevice *outDevices, const uint32_t maxDevices) {
+	return fplGetInputDevices(fplInputSourceType_Mouse, outDevices, maxDevices);
+}
+
+fpl_common_api uint32_t fplGetGamepadDevices(fplInputDevice *outDevices, const uint32_t maxDevices) {
+	return fplGetInputDevices(fplInputSourceType_Gamepad, outDevices, maxDevices);
+}
+
+// Drives the input subsystem update: detection + state events flow into the queue.
+// Console-only apps (no window/no fplWindowUpdate) call this each frame to advance gamepad state.
+fpl_common_api bool fplUpdateInputDevices(void) {
+	FPL__CheckPlatform(false);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (appState == fpl_null) return false;
+	if (appState->currentSettings.input.disabledEvents) return false;
+	fpl__InputSystem_Update(&appState->input);
+	return true;
+}
+
+// No-window event pump. The platform-specific fplPollEvent/fplPollEvents in the FPL__ENABLE_WINDOW
+// blocks drain the OS message queue (Win32 PeekMessage / X11 XNextEvent). When no window is enabled,
+// those impls don't compile and we provide a common version that drives fpl__InputSystem_Update and
+// drains the internal event queue. Backends that own a no-window event source (Win32 RawInput on
+// HWND_MESSAGE, future X11 InputOnly window) push into the queue from their _Update path.
+#if !defined(FPL__ENABLE_WINDOW)
+fpl_common_api bool fplPollEvent(fplEvent *ev) {
+	FPL__CheckArgumentNull(ev, false);
+	FPL__CheckPlatform(false);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (appState == fpl_null) return false;
+	if (fpl__PollInternalEvent(ev)) return true;
+	if (!appState->currentSettings.input.disabledEvents) {
+		fpl__InputSystem_Update(&appState->input);
+	}
+	return fpl__PollInternalEvent(ev);
+}
+
+fpl_common_api void fplPollEvents(void) {
+	FPL__CheckPlatformNoRet();
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (appState == fpl_null) return;
+	if (!appState->currentSettings.input.disabledEvents) {
+		fpl__InputSystem_Update(&appState->input);
+	}
+	fpl__ClearInternalEvents();
+}
+#endif // !FPL__ENABLE_WINDOW
+#endif // FPL__ENABLE_INPUT
 
 fpl_common_api void fplSetDefaultSettings(fplSettings *settings) {
 	FPL__CheckArgumentNullNoRet(settings);
@@ -13563,6 +15209,9 @@ fpl_internal bool fpl__Win32SetWindowFullscreen(const bool value, const int32_t 
 	return(result);
 }
 
+#endif // FPL__ENABLE_WINDOW (briefly closed so input backend can use the key-state helpers without a window)
+
+#if defined(FPL__ENABLE_WINDOW) || defined(FPL__ENABLE_INPUT_WIN32)
 fpl_internal bool fpl__Win32IsKeyDown(const fpl__Win32Api *wapi, const int virtualKey) {
 	bool result = (wapi->user.GetAsyncKeyState(virtualKey) & 0x8000) != 0;
 	return(result);
@@ -13572,7 +15221,9 @@ fpl_internal bool fpl__Win32IsKeyActive(const fpl__Win32Api *wapi, const int vir
 	bool result = (wapi->user.GetKeyState(virtualKey) & 0x0001) != 0;
 	return(result);
 }
+#endif
 
+#if defined(FPL__ENABLE_WINDOW)
 fpl_internal bool fpl__Win32IsCursorInWindow(const fpl__Win32Api *wapi, const fpl__Win32WindowState *win32Window) {
 	POINT pos;
 	if (!wapi->user.GetCursorPos(&pos)) {
@@ -13637,7 +15288,9 @@ fpl_internal void fpl__Win32ShowCursor(const fpl__Win32Api *wapi, fpl__Win32Wind
 fpl_internal void fpl__Win32HideCursor(const fpl__Win32Api *wapi, fpl__Win32WindowState *window) {
 	fpl__Win32SetCursorState(wapi, window, true);
 }
+#endif // FPL__ENABLE_WINDOW (briefly closed so input backend can use the modifier helper without a window)
 
+#if defined(FPL__ENABLE_WINDOW) || defined(FPL__ENABLE_INPUT_WIN32)
 fpl_internal fplKeyboardModifierFlags fpl__Win32GetKeyboardModifiers(const fpl__Win32Api *wapi) {
 	fplKeyboardModifierFlags modifiers = fplKeyboardModifierFlags_None;
 	bool lAltKeyIsDown = fpl__Win32IsKeyDown(wapi, VK_LMENU);
@@ -13686,7 +15339,9 @@ fpl_internal fplKeyboardModifierFlags fpl__Win32GetKeyboardModifiers(const fpl__
 	}
 	return(modifiers);
 }
+#endif // FPL__ENABLE_WINDOW || FPL__ENABLE_INPUT_WIN32
 
+#if defined(FPL__ENABLE_WINDOW)
 fpl_internal void fpl__Win32HandleMessage(const fpl__Win32Api *wapi, fpl__PlatformAppState *appState, fpl__Win32WindowState *windowState, MSG *msg) {
 	if (appState->currentSettings.window.callbacks.eventCallback != fpl_null) {
 		appState->currentSettings.window.callbacks.eventCallback(fplGetPlatformType(), windowState, &msg, appState->currentSettings.window.callbacks.eventUserData);
@@ -13821,26 +15476,39 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		case WM_KEYDOWN:
 		case WM_KEYUP:
 		{
-			if (!appState->currentSettings.input.disabledEvents) {
-				uint64_t keyCode = wParam;
-				bool isDown = (lParam & (1 << 31)) == 0;
-				bool wasDown = (lParam & (1 << 30)) != 0;
-				bool altKeyIsDown = fpl__Win32IsKeyDown(wapi, VK_MENU);
-				fplButtonState keyState = isDown ? fplButtonState_Press : fplButtonState_Release;
-				fplKeyboardModifierFlags modifiers = fpl__Win32GetKeyboardModifiers(wapi);
-				fpl__HandleKeyboardButtonEvent(&appState->window, GetTickCount(), keyCode, modifiers, keyState, false);
-			}
+#if defined(FPL__ENABLE_INPUT)
+			MSG forwarded = fplZeroInit;
+			forwarded.hwnd = hwnd;
+			forwarded.message = msg;
+			forwarded.wParam = wParam;
+			forwarded.lParam = lParam;
+			fpl__NativeInputEvent ev = fplZeroInit;
+			ev.kind = fpl__NativeInputEventKind_Win32Msg;
+			ev.payload = (void *)&forwarded;
+			fpl__InputSystem_HandleNativeEvent(&appState->input, &ev);
+#endif
 		} break;
 
 		case WM_CHAR:
 		case WM_SYSCHAR:
 		case WM_UNICHAR:
+		case WM_DEADCHAR:
 		{
 			if ((msg == WM_UNICHAR) && (wParam == UNICODE_NOCHAR)) {
 				// @NOTE(final): WM_UNICHAR was sent by a third-party input method. Do not add any chars here!
 				return TRUE;
 			}
-			fpl__HandleKeyboardInputEvent(&appState->window, (uint64_t)wParam, (uint32_t)wParam);
+#if defined(FPL__ENABLE_INPUT)
+			MSG forwarded = fplZeroInit;
+			forwarded.hwnd = hwnd;
+			forwarded.message = msg;
+			forwarded.wParam = wParam;
+			forwarded.lParam = lParam;
+			fpl__NativeInputEvent ev = fplZeroInit;
+			ev.kind = fpl__NativeInputEventKind_Win32Msg;
+			ev.payload = (void *)&forwarded;
+			fpl__InputSystem_HandleNativeEvent(&appState->input, &ev);
+#endif
 			return 0;
 		} break;
 
@@ -13922,51 +15590,23 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		case WM_RBUTTONUP:
 		case WM_MBUTTONDOWN:
 		case WM_MBUTTONUP:
-		{
-			if (!appState->currentSettings.input.disabledEvents) {
-				fplButtonState buttonState;
-				if (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN) {
-					buttonState = fplButtonState_Press;
-				} else {
-					buttonState = fplButtonState_Release;
-				}
-				if (buttonState == fplButtonState_Press) {
-					wapi->user.SetCapture(hwnd);
-				} else {
-					wapi->user.ReleaseCapture();
-				}
-				fplMouseButtonType mouseButton;
-				if (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP) {
-					mouseButton = fplMouseButtonType_Left;
-				} else if (msg == WM_RBUTTONDOWN || msg == WM_RBUTTONUP) {
-					mouseButton = fplMouseButtonType_Right;
-				} else if (msg == WM_MBUTTONDOWN || msg == WM_MBUTTONUP) {
-					mouseButton = fplMouseButtonType_Middle;
-				} else {
-					mouseButton = fplMouseButtonType_None;
-				}
-				if (mouseButton != fplMouseButtonType_None) {
-					int32_t mouseX = GET_X_LPARAM(lParam);
-					int32_t mouseY = GET_Y_LPARAM(lParam);
-					fpl__HandleMouseButtonEvent(&appState->window, mouseX, mouseY, mouseButton, buttonState);
-				}
-			}
-		} break;
+		case WM_XBUTTONDOWN:
+		case WM_XBUTTONUP:
 		case WM_MOUSEMOVE:
-		{
-			if (!appState->currentSettings.input.disabledEvents) {
-				int32_t mouseX = GET_X_LPARAM(lParam);
-				int32_t mouseY = GET_Y_LPARAM(lParam);
-				fpl__HandleMouseMoveEvent(&appState->window, mouseX, mouseY);
-			}
-		} break;
 		case WM_MOUSEWHEEL:
+		case WM_MOUSEHWHEEL:
 		{
-			int32_t mouseX = GET_X_LPARAM(lParam);
-			int32_t mouseY = GET_Y_LPARAM(lParam);
-			short zDelta = GET_WHEEL_DELTA_WPARAM(wParam);
-			float wheelDelta = zDelta / (float)WHEEL_DELTA;
-			fpl__HandleMouseWheelEvent(&appState->window, mouseX, mouseY, wheelDelta);
+#if defined(FPL__ENABLE_INPUT)
+			MSG forwarded = fplZeroInit;
+			forwarded.hwnd = hwnd;
+			forwarded.message = msg;
+			forwarded.wParam = wParam;
+			forwarded.lParam = lParam;
+			fpl__NativeInputEvent ev = fplZeroInit;
+			ev.kind = fpl__NativeInputEventKind_Win32Msg;
+			ev.payload = (void *)&forwarded;
+			fpl__InputSystem_HandleNativeEvent(&appState->input, &ev);
+#endif
 		} break;
 
 		case WM_SETCURSOR:
@@ -14553,29 +16193,29 @@ fpl_internal void fpl__Win32ReleaseWindow(const fpl__Win32InitState *initState, 
 // Always included, when window support is enabled
 //
 // ############################################################################
-#if defined(FPL__ENABLE_WINDOW) && !defined(FPL__WIN32_XINPUT_IMPLEMENTED)
+#if defined(FPL__ENABLE_INPUT_XINPUT) && !defined(FPL__WIN32_XINPUT_IMPLEMENTED)
 #define FPL__WIN32_XINPUT_IMPLEMENTED
 
-FPL__FUNC_XINPUT_XInputGetState(fpl__Win32XInputGetStateStub) {
+FPL__FUNC_INPUT_WIN32_XINPUT_XInputGetState(fpl__InputWin32XInputGetStateStub) {
 	return(ERROR_DEVICE_NOT_CONNECTED);
 }
 
-FPL__FUNC_XINPUT_XInputGetCapabilities(fpl__Win32XInputGetCapabilitiesStub) {
+FPL__FUNC_INPUT_WIN32_XINPUT_XInputGetCapabilities(fpl__InputWin32XInputGetCapabilitiesStub) {
 	return(ERROR_DEVICE_NOT_CONNECTED);
 }
 
-fpl_internal void fpl__Win32UnloadXInputApi(fpl__Win32XInputApi *xinputApi) {
+fpl_internal void fpl__Win32UnloadXInputApi(fpl__InputWin32XInputApi *xinputApi) {
 	fplAssert(xinputApi != fpl_null);
 	if (xinputApi->xinputLibrary) {
 		FPL_LOG_DEBUG("XInput", "Unload XInput Library");
 		FreeLibrary(xinputApi->xinputLibrary);
 		xinputApi->xinputLibrary = fpl_null;
-		xinputApi->XInputGetState = fpl__Win32XInputGetStateStub;
-		xinputApi->XInputGetCapabilities = fpl__Win32XInputGetCapabilitiesStub;
+		xinputApi->XInputGetState = fpl__InputWin32XInputGetStateStub;
+		xinputApi->XInputGetCapabilities = fpl__InputWin32XInputGetCapabilitiesStub;
 	}
 }
 
-fpl_internal void fpl__Win32LoadXInputApi(fpl__Win32XInputApi *xinputApi) {
+fpl_internal void fpl__Win32LoadXInputApi(fpl__InputWin32XInputApi *xinputApi) {
 	fplAssert(xinputApi != fpl_null);
 	const char *xinputFileNames[] = {
 		"xinput1_4.dll",
@@ -14590,8 +16230,8 @@ fpl_internal void fpl__Win32LoadXInputApi(fpl__Win32XInputApi *xinputApi) {
 			HMODULE libHandle = fpl_null;
 			FPL__WIN32_LOAD_LIBRARY_BREAK(FPL__MODULE_XINPUT, libHandle, libName);
 			xinputApi->xinputLibrary = libHandle;
-			FPL__WIN32_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_XINPUT, libHandle, libName, xinputApi, fpl__win32_func_XInputGetState, XInputGetState);
-			FPL__WIN32_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_XINPUT, libHandle, libName, xinputApi, fpl__win32_func_XInputGetCapabilities, XInputGetCapabilities);
+			FPL__WIN32_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_XINPUT, libHandle, libName, xinputApi, fpl__func_input_win32_xinput_XInputGetState, XInputGetState);
+			FPL__WIN32_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_XINPUT, libHandle, libName, xinputApi, fpl__func_input_win32_xinput_XInputGetCapabilities, XInputGetCapabilities);
 			result = true;
 		} while (0);
 		if (result) {
@@ -14601,12 +16241,12 @@ fpl_internal void fpl__Win32LoadXInputApi(fpl__Win32XInputApi *xinputApi) {
 	}
 
 	if (!result) {
-		xinputApi->XInputGetState = fpl__Win32XInputGetStateStub;
-		xinputApi->XInputGetCapabilities = fpl__Win32XInputGetCapabilitiesStub;
+		xinputApi->XInputGetState = fpl__InputWin32XInputGetStateStub;
+		xinputApi->XInputGetCapabilities = fpl__InputWin32XInputGetCapabilitiesStub;
 	}
 }
 
-fpl_internal float fpl__Win32XInput_ProcessStickValue(const SHORT value, const SHORT deadZoneThreshold) {
+fpl_internal float fpl__InputWin32XInput_ProcessStickValue(const SHORT value, const SHORT deadZoneThreshold) {
 	float result = 0;
 	if (value < -deadZoneThreshold) {
 		result = (float)((value + deadZoneThreshold) / (32768.0f - deadZoneThreshold));
@@ -14616,15 +16256,15 @@ fpl_internal float fpl__Win32XInput_ProcessStickValue(const SHORT value, const S
 	return(result);
 }
 
-fpl_internal void fpl__Win32XInput_GamepadToGamepadState(const XINPUT_GAMEPAD *newState, fplGamepadState *outState) {
+fpl_internal void fpl__InputWin32XInput_GamepadToGamepadState(const XINPUT_GAMEPAD *newState, fplGamepadState *outState) {
 	// If we got here, the controller is definitily by connected
 	outState->isConnected = true;
 
 	// Analog sticks
-	outState->leftStickX = fpl__Win32XInput_ProcessStickValue(newState->sThumbLX, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
-	outState->leftStickY = fpl__Win32XInput_ProcessStickValue(newState->sThumbLY, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
-	outState->rightStickX = fpl__Win32XInput_ProcessStickValue(newState->sThumbRX, XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
-	outState->rightStickY = fpl__Win32XInput_ProcessStickValue(newState->sThumbRY, XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
+	outState->leftStickX = fpl__InputWin32XInput_ProcessStickValue(newState->sThumbLX, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
+	outState->leftStickY = fpl__InputWin32XInput_ProcessStickValue(newState->sThumbLY, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
+	outState->rightStickX = fpl__InputWin32XInput_ProcessStickValue(newState->sThumbRX, XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
+	outState->rightStickY = fpl__InputWin32XInput_ProcessStickValue(newState->sThumbRY, XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
 
 	// Triggers
 	outState->leftTrigger = (float)newState->bLeftTrigger / 255.0f;
@@ -14672,42 +16312,40 @@ fpl_internal void fpl__Win32XInput_GamepadToGamepadState(const XINPUT_GAMEPAD *n
 	outState->isActive = !fpl__IsZeroMemory(newState, sizeof(*newState));
 }
 
-static size_t fpl__Win32XInput_UpdateControllers(const fplGameControllersSettings *gameControllersSettings, fpl__Win32XInputState *xinputState) {
-	fplAssertPtr(gameControllersSettings);
-	fplAssertPtr(xinputState);
+static size_t fpl__InputWin32XInput_UpdateControllers(const fplGamepadSettings *gamepadSettings, fpl__InputBackendXInput *backend) {
+	fplAssertPtr(gamepadSettings);
+	fplAssertPtr(backend);
 
-	if (xinputState->lastDeviceSearchTime == 0) {
-		xinputState->lastDeviceSearchTime = fplMillisecondsQuery();
+	if (backend->lastDeviceSearchTime == 0) {
+		backend->lastDeviceSearchTime = fplMillisecondsQuery();
 	}
 
-	const uint64_t detectionFrequency = gameControllersSettings->detectionFrequency;
+	const uint64_t detectionFrequency = gamepadSettings->detectionFrequency;
 
 	fplMilliseconds currentTime = fplMillisecondsQuery();
-	uint64_t deltaTime = (currentTime - xinputState->lastDeviceSearchTime);
+	uint64_t deltaTime = (currentTime - backend->lastDeviceSearchTime);
 
 	if (detectionFrequency > 0 && deltaTime > 0 && deltaTime < detectionFrequency) {
 		return false;
 	}
 
-	xinputState->lastDeviceSearchTime = currentTime;
+	backend->lastDeviceSearchTime = currentTime;
 
 	size_t count = 0;
 
 	for (DWORD controllerIndex = 0; controllerIndex < XUSER_MAX_COUNT; ++controllerIndex) {
 		XINPUT_STATE controllerState = fplZeroInit;
-		if (xinputState->xinputApi.XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
-			if (!xinputState->isConnected[controllerIndex]) {
-				// Connected
-				xinputState->isConnected[controllerIndex] = true;
-				fplStringFormat(xinputState->deviceNames[controllerIndex], fplArrayCount(xinputState->deviceNames[controllerIndex]), "XInput-Device [%d]", controllerIndex);
-				fpl__PushGamepadConnectionEvent(controllerIndex, xinputState->deviceNames[controllerIndex], true);
+		if (backend->api.XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
+			if (!backend->isConnected[controllerIndex]) {
+				backend->isConnected[controllerIndex] = true;
+				fplStringFormat(backend->deviceNames[controllerIndex], fplArrayCount(backend->deviceNames[controllerIndex]), "XInput-Device [%d]", controllerIndex);
+				fpl__PushGamepadConnectionEvent(controllerIndex, backend->deviceNames[controllerIndex], true);
 				++count;
 			}
 		} else {
-			if (xinputState->isConnected[controllerIndex]) {
-				// Disconnected
-				xinputState->isConnected[controllerIndex] = false;
-				fpl__PushGamepadConnectionEvent(controllerIndex, xinputState->deviceNames[controllerIndex], false);
+			if (backend->isConnected[controllerIndex]) {
+				backend->isConnected[controllerIndex] = false;
+				fpl__PushGamepadConnectionEvent(controllerIndex, backend->deviceNames[controllerIndex], false);
 				++count;
 			}
 		}
@@ -14716,39 +16354,38 @@ static size_t fpl__Win32XInput_UpdateControllers(const fplGameControllersSetting
 	return count;
 }
 
-static size_t fpl__Win32XInput_CreateEventsForStates(const fplGameControllersSettings *gameControllersSettings, fpl__Win32XInputState *xinputState) {
-	fplAssertPtr(gameControllersSettings);
-	fplAssertPtr(xinputState);
+static size_t fpl__InputWin32XInput_CreateEventsForStates(const fplGamepadSettings *gamepadSettings, fpl__InputBackendXInput *backend) {
+	fplAssertPtr(gamepadSettings);
+	fplAssertPtr(backend);
 
-	if (xinputState->lastUpdateStatesTime == 0) {
-		xinputState->lastUpdateStatesTime = fplMillisecondsQuery();
+	if (backend->lastUpdateStatesTime == 0) {
+		backend->lastUpdateStatesTime = fplMillisecondsQuery();
 	}
 
-	const uint64_t updateFrequency = gameControllersSettings->updateFrequency;
+	const uint64_t updateFrequency = gamepadSettings->updateFrequency;
 
 	fplMilliseconds currentTime = fplMillisecondsQuery();
-	uint64_t deltaTime = (currentTime - xinputState->lastDeviceSearchTime);
+	uint64_t deltaTime = (currentTime - backend->lastDeviceSearchTime);
 
 	if (updateFrequency > 0 && deltaTime > 0 && deltaTime < updateFrequency) {
 		return false;
 	}
 
-	xinputState->lastUpdateStatesTime = currentTime;
+	backend->lastUpdateStatesTime = currentTime;
 
 	size_t result = 0;
 
 	fplGamepadState tempState = fplZeroInit;
 
 	for (DWORD controllerIndex = 0; controllerIndex < XUSER_MAX_COUNT; ++controllerIndex) {
-		if (xinputState->isConnected[controllerIndex]) {
+		if (backend->isConnected[controllerIndex]) {
 			XINPUT_STATE controllerState = fplZeroInit;
-			if (xinputState->xinputApi.XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
-				// State changed
+			if (backend->api.XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
 				fplClearStruct(&tempState);
 				const XINPUT_GAMEPAD *newPadState = &controllerState.Gamepad;
-				fpl__Win32XInput_GamepadToGamepadState(newPadState, &tempState);
-				tempState.deviceName = xinputState->deviceNames[controllerIndex];
-				fpl__PushGamepadStateEvent(controllerIndex, xinputState->deviceNames[controllerIndex], &tempState);
+				fpl__InputWin32XInput_GamepadToGamepadState(newPadState, &tempState);
+				tempState.deviceName = backend->deviceNames[controllerIndex];
+				fpl__PushGamepadStateEvent(controllerIndex, backend->deviceNames[controllerIndex], &tempState);
 				result++;
 			}
 		}
@@ -14757,31 +16394,34 @@ static size_t fpl__Win32XInput_CreateEventsForStates(const fplGameControllersSet
 	return result;
 }
 
-static size_t fpl__Win32XInput_Poll(fpl__Win32XInputState *xinputState, fplGamepadStates *outStates) {
-	fplAssertPtr(xinputState);
+// Merge contract: caller (fplPollGamepadStates) clears outStates once.
+// Each backend writes only into slots that hold a connected device it owns,
+// and skips slots already claimed (isConnected=true) by an earlier backend.
+static size_t fpl__InputWin32XInput_Poll(fpl__InputBackendXInput *backend, fplGamepadStates *outStates) {
+	fplAssertPtr(backend);
 	fplAssertPtr(outStates);
 
-	fplClearStruct(outStates);
-
-	xinputState->lastDeviceSearchTime = xinputState->lastUpdateStatesTime = fplMillisecondsQuery();
+	backend->lastDeviceSearchTime = backend->lastUpdateStatesTime = fplMillisecondsQuery();
 
 	size_t result = 0;
 
 	for (DWORD controllerIndex = 0; controllerIndex < XUSER_MAX_COUNT; ++controllerIndex) {
+		if (controllerIndex < fplArrayCount(outStates->deviceStates) && outStates->deviceStates[controllerIndex].isConnected) continue;
 		XINPUT_STATE controllerState = fplZeroInit;
-		if (xinputState->xinputApi.XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
-			if (!xinputState->isConnected[controllerIndex]) {
-				xinputState->isConnected[controllerIndex] = true;
-				fplStringFormat(xinputState->deviceNames[controllerIndex], fplArrayCount(xinputState->deviceNames[controllerIndex]), "XInput-Device [%d]", controllerIndex);
+		if (backend->api.XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
+			if (!backend->isConnected[controllerIndex]) {
+				backend->isConnected[controllerIndex] = true;
+				fplStringFormat(backend->deviceNames[controllerIndex], fplArrayCount(backend->deviceNames[controllerIndex]), "XInput-Device [%d]", controllerIndex);
 			}
 			const XINPUT_GAMEPAD *newPadState = &controllerState.Gamepad;
 			fplGamepadState *targetPadState = &outStates->deviceStates[controllerIndex];
-			fpl__Win32XInput_GamepadToGamepadState(newPadState, targetPadState);
-			targetPadState->deviceName = xinputState->deviceNames[controllerIndex];
+			fpl__InputWin32XInput_GamepadToGamepadState(newPadState, targetPadState);
+			targetPadState->deviceName = backend->deviceNames[controllerIndex];
+			targetPadState->isConnected = true;
 			result++;
 		} else {
-			if (xinputState->isConnected[controllerIndex]) {
-				xinputState->isConnected[controllerIndex] = false;
+			if (backend->isConnected[controllerIndex]) {
+				backend->isConnected[controllerIndex] = false;
 				result++;
 			}
 		}
@@ -14790,20 +16430,805 @@ static size_t fpl__Win32XInput_Poll(fpl__Win32XInputState *xinputState, fplGamep
 	return(result);
 }
 
+// Backend lifecycle wrappers used by fpl__InputSystem_*.
+fpl_internal bool fpl__InputBackendXInput_Init(fpl__InputBackendXInput *backend) {
+	fplAssertPtr(backend);
+	if (backend->isInitialized) return true;
+	fpl__Win32LoadXInputApi(&backend->api);
+	backend->isInitialized = true;
+	return true;
+}
+
+fpl_internal void fpl__InputBackendXInput_Release(fpl__InputBackendXInput *backend) {
+	fplAssertPtr(backend);
+	if (!backend->isInitialized) return;
+	fpl__Win32UnloadXInputApi(&backend->api);
+	fplClearStruct(backend);
+}
+
+fpl_internal void fpl__InputBackendXInput_Update(fpl__InputBackendXInput *backend, const fplGamepadSettings *gamepadSettings) {
+	fplAssertPtr(backend);
+	fplAssertPtr(gamepadSettings);
+	if (!backend->isInitialized) return;
+	fpl__InputWin32XInput_UpdateControllers(gamepadSettings, backend);
+	fpl__InputWin32XInput_CreateEventsForStates(gamepadSettings, backend);
+}
+
+fpl_internal bool fpl__InputBackendXInput_PollGamepad(fpl__InputBackendXInput *backend, fplGamepadStates *outStates) {
+	fplAssertPtr(backend);
+	fplAssertPtr(outStates);
+	if (!backend->isInitialized) return false;
+	size_t result = fpl__InputWin32XInput_Poll(backend, outStates);
+	return(result > 0);
+}
+
 #endif // FPL__WIN32_XINPUT_IMPLEMENTED
 
-#if defined(FPL__ENABLE_WINDOW)
-fpl_internal void fpl__Win32UpdateGameControllers(const fplSettings *settings, const fpl__Win32InitState *initState, fpl__Win32AppState *win32AppState) {
-	fplAssertPtr(settings);
-	fplAssertPtr(initState);
-	fplAssertPtr(win32AppState);
+// ############################################################################
+//
+// > WIN32_DINPUT (DirectInput8 gamepad backend)
+//
+// ############################################################################
+#if defined(FPL__ENABLE_INPUT_DINPUT) && !defined(FPL__WIN32_DINPUT_IMPLEMENTED)
+#define FPL__WIN32_DINPUT_IMPLEMENTED
 
-	const fplGameControllersSettings *gameControllersSettings = &settings->input.gameControllers;
+#define FPL__MODULE_DINPUT "DInput"
 
-	fpl__Win32XInput_UpdateControllers(gameControllersSettings, &win32AppState->xinput);
-	fpl__Win32XInput_CreateEventsForStates(gameControllersSettings, &win32AppState->xinput);
-}
+// Some Windows SDKs (and older mingw) miss this — pulled from current dinput.h.
+#if !defined(DIDFT_OPTIONAL)
+#	define DIDFT_OPTIONAL 0x80000000
 #endif
+
+// COM/DirectInput GUIDs. Defined inline so we never need to link against dxguid.lib.
+static const GUID fpl__IID_IDirectInput8W = { 0xBF798031, 0x483A, 0x4DA2, { 0xAA, 0x99, 0x5D, 0x64, 0xED, 0x36, 0x97, 0x00 } };
+static const GUID fpl__GUID_XAxis = { 0xA36D02E0, 0xC9F3, 0x11CF, { 0xBF, 0xC7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00 } };
+static const GUID fpl__GUID_YAxis = { 0xA36D02E1, 0xC9F3, 0x11CF, { 0xBF, 0xC7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00 } };
+static const GUID fpl__GUID_ZAxis = { 0xA36D02E2, 0xC9F3, 0x11CF, { 0xBF, 0xC7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00 } };
+static const GUID fpl__GUID_RxAxis = { 0xA36D02F4, 0xC9F3, 0x11CF, { 0xBF, 0xC7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00 } };
+static const GUID fpl__GUID_RyAxis = { 0xA36D02F5, 0xC9F3, 0x11CF, { 0xBF, 0xC7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00 } };
+static const GUID fpl__GUID_RzAxis = { 0xA36D02E3, 0xC9F3, 0x11CF, { 0xBF, 0xC7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00 } };
+static const GUID fpl__GUID_Slider = { 0xA36D02E4, 0xC9F3, 0x11CF, { 0xBF, 0xC7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00 } };
+static const GUID fpl__GUID_POV = { 0xA36D02F2, 0xC9F3, 0x11CF, { 0xBF, 0xC7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00 } };
+
+// REFGUID/REFIID is `const GUID&` in C++ but `const GUID*` in C — pass dereferenced
+// in C++, raw pointer in C. ABI is identical.
+#if defined(__cplusplus)
+#	define fpl__DI_RefGuid(g) (*(g))
+#else
+#	define fpl__DI_RefGuid(g) (g)
+#endif
+
+// Cross-language COM dispatch helpers. dinput.h exposes IDirectInput8_* / IDirectInputDevice8_*
+// macros only in C; in C++ the methods are called directly on the interface.
+#if defined(__cplusplus)
+#	define fpl__DI8_Release(p)                       ((p)->Release())
+#	define fpl__DI8_CreateDevice(p,a,b,c)            ((p)->CreateDevice(a,b,c))
+#	define fpl__DI8_EnumDevices(p,a,b,c,d)           ((p)->EnumDevices(a,b,c,d))
+#	define fpl__DID8_Release(p)                      ((p)->Release())
+#	define fpl__DID8_GetCapabilities(p,a)            ((p)->GetCapabilities(a))
+#	define fpl__DID8_SetDataFormat(p,a)              ((p)->SetDataFormat(a))
+#	define fpl__DID8_SetCooperativeLevel(p,a,b)      ((p)->SetCooperativeLevel(a,b))
+#	define fpl__DID8_SetProperty(p,a,b)              ((p)->SetProperty(a,b))
+#	define fpl__DID8_Acquire(p)                      ((p)->Acquire())
+#	define fpl__DID8_Unacquire(p)                    ((p)->Unacquire())
+#	define fpl__DID8_GetDeviceState(p,a,b)           ((p)->GetDeviceState(a,b))
+#	define fpl__DID8_Poll(p)                         ((p)->Poll())
+#else
+#	define fpl__DI8_Release(p)                       ((p)->lpVtbl->Release(p))
+#	define fpl__DI8_CreateDevice(p,a,b,c)            ((p)->lpVtbl->CreateDevice(p,a,b,c))
+#	define fpl__DI8_EnumDevices(p,a,b,c,d)           ((p)->lpVtbl->EnumDevices(p,a,b,c,d))
+#	define fpl__DID8_Release(p)                      ((p)->lpVtbl->Release(p))
+#	define fpl__DID8_GetCapabilities(p,a)            ((p)->lpVtbl->GetCapabilities(p,a))
+#	define fpl__DID8_SetDataFormat(p,a)              ((p)->lpVtbl->SetDataFormat(p,a))
+#	define fpl__DID8_SetCooperativeLevel(p,a,b)      ((p)->lpVtbl->SetCooperativeLevel(p,a,b))
+#	define fpl__DID8_SetProperty(p,a,b)              ((p)->lpVtbl->SetProperty(p,a,b))
+#	define fpl__DID8_Acquire(p)                      ((p)->lpVtbl->Acquire(p))
+#	define fpl__DID8_Unacquire(p)                    ((p)->lpVtbl->Unacquire(p))
+#	define fpl__DID8_GetDeviceState(p,a,b)           ((p)->lpVtbl->GetDeviceState(p,a,b))
+#	define fpl__DID8_Poll(p)                         ((p)->lpVtbl->Poll(p))
+#endif
+
+// Data format mirroring c_dfDIJoystick: 6 axes + 2 sliders + 4 POVs + 32 buttons.
+// Bound to the canonical DIJOYSTATE layout via DIJOFS_* offsets. Optional flag
+// lets DirectInput silently skip objects the device does not expose.
+static DIOBJECTDATAFORMAT fpl__DIJoy_Objects[] = {
+	{ &fpl__GUID_XAxis,  DIJOFS_X,         DIDFT_AXIS   | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, DIDOI_ASPECTPOSITION },
+	{ &fpl__GUID_YAxis,  DIJOFS_Y,         DIDFT_AXIS   | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, DIDOI_ASPECTPOSITION },
+	{ &fpl__GUID_ZAxis,  DIJOFS_Z,         DIDFT_AXIS   | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, DIDOI_ASPECTPOSITION },
+	{ &fpl__GUID_RxAxis, DIJOFS_RX,        DIDFT_AXIS   | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, DIDOI_ASPECTPOSITION },
+	{ &fpl__GUID_RyAxis, DIJOFS_RY,        DIDFT_AXIS   | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, DIDOI_ASPECTPOSITION },
+	{ &fpl__GUID_RzAxis, DIJOFS_RZ,        DIDFT_AXIS   | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, DIDOI_ASPECTPOSITION },
+	{ &fpl__GUID_Slider, DIJOFS_SLIDER(0), DIDFT_AXIS   | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, DIDOI_ASPECTPOSITION },
+	{ &fpl__GUID_Slider, DIJOFS_SLIDER(1), DIDFT_AXIS   | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, DIDOI_ASPECTPOSITION },
+	{ &fpl__GUID_POV,    DIJOFS_POV(0),    DIDFT_POV    | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ &fpl__GUID_POV,    DIJOFS_POV(1),    DIDFT_POV    | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ &fpl__GUID_POV,    DIJOFS_POV(2),    DIDFT_POV    | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ &fpl__GUID_POV,    DIJOFS_POV(3),    DIDFT_POV    | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, DIJOFS_BUTTON( 0), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, DIJOFS_BUTTON( 1), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, DIJOFS_BUTTON( 2), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, DIJOFS_BUTTON( 3), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, DIJOFS_BUTTON( 4), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, DIJOFS_BUTTON( 5), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, DIJOFS_BUTTON( 6), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, DIJOFS_BUTTON( 7), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, DIJOFS_BUTTON( 8), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, DIJOFS_BUTTON( 9), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, DIJOFS_BUTTON(10), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, DIJOFS_BUTTON(11), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, DIJOFS_BUTTON(12), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, DIJOFS_BUTTON(13), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, DIJOFS_BUTTON(14), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, DIJOFS_BUTTON(15), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, DIJOFS_BUTTON(16), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, DIJOFS_BUTTON(17), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, DIJOFS_BUTTON(18), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, DIJOFS_BUTTON(19), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, DIJOFS_BUTTON(20), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, DIJOFS_BUTTON(21), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, DIJOFS_BUTTON(22), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, DIJOFS_BUTTON(23), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, DIJOFS_BUTTON(24), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, DIJOFS_BUTTON(25), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, DIJOFS_BUTTON(26), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, DIJOFS_BUTTON(27), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, DIJOFS_BUTTON(28), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, DIJOFS_BUTTON(29), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, DIJOFS_BUTTON(30), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, DIJOFS_BUTTON(31), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+};
+
+static const DIDATAFORMAT fpl__DIJoy_DataFormat = {
+	sizeof(DIDATAFORMAT),
+	sizeof(DIOBJECTDATAFORMAT),
+	DIDF_ABSAXIS,
+	sizeof(DIJOYSTATE),
+	(DWORD)(sizeof(fpl__DIJoy_Objects) / sizeof(fpl__DIJoy_Objects[0])),
+	fpl__DIJoy_Objects,
+};
+
+fpl_internal void fpl__Win32UnloadDInputApi(fpl__Win32DInputApi *api) {
+	fplAssert(api != fpl_null);
+	if (api->dinputLibrary) {
+		FPL_LOG_DEBUG(FPL__MODULE_DINPUT, "Unload DirectInput Library");
+		FreeLibrary(api->dinputLibrary);
+		api->dinputLibrary = fpl_null;
+	}
+	api->DirectInput8Create = fpl_null;
+}
+
+fpl_internal bool fpl__Win32LoadDInputApi(fpl__Win32DInputApi *api) {
+	fplAssert(api != fpl_null);
+	const char *libName = "dinput8.dll";
+	bool result = false;
+	fplClearStruct(api);
+	do {
+		HMODULE libHandle = fpl_null;
+		FPL__WIN32_LOAD_LIBRARY_BREAK(FPL__MODULE_DINPUT, libHandle, libName);
+		api->dinputLibrary = libHandle;
+		FPL__WIN32_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_DINPUT, libHandle, libName, api, fpl__func_input_win32_dinput_DirectInput8Create, DirectInput8Create);
+		result = true;
+	} while (0);
+	if (!result) {
+		fpl__Win32UnloadDInputApi(api);
+	}
+	return result;
+}
+
+// Walks all RawInput devices, collects VID/PID for any HID whose device name
+// contains "IG_" — these are the XInput-compatible gamepads we want DInput to skip.
+fpl_internal void fpl__Win32DInput_CollectXInputVidPids(fpl__InputBackendDInput *backend) {
+	backend->xinputVidPidCount = 0;
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (appState == fpl_null) return;
+	const fpl__Win32UserApi *uapi = &appState->win32.winApi.user;
+	if (uapi->GetRawInputDeviceList == fpl_null || uapi->GetRawInputDeviceInfoW == fpl_null) return;
+
+	UINT deviceCount = 0;
+	if (uapi->GetRawInputDeviceList(fpl_null, &deviceCount, sizeof(RAWINPUTDEVICELIST)) != 0) return;
+	if (deviceCount == 0) return;
+	if (deviceCount > 256) deviceCount = 256;
+	RAWINPUTDEVICELIST list[256];
+	UINT got = uapi->GetRawInputDeviceList(list, &deviceCount, sizeof(RAWINPUTDEVICELIST));
+	if (got == (UINT)-1) return;
+
+	WCHAR namebuf[512];
+	for (UINT i = 0; i < got; ++i) {
+		if (list[i].dwType != RIM_TYPEHID) continue;
+		UINT nameSize = (UINT)fplArrayCount(namebuf);
+		if (uapi->GetRawInputDeviceInfoW(list[i].hDevice, RIDI_DEVICENAME, namebuf, &nameSize) == (UINT)-1) continue;
+		// Match "IG_" anywhere in the device path.
+		bool isXInput = false;
+		for (UINT k = 0; k + 2 < nameSize; ++k) {
+			if (namebuf[k] == L'I' && namebuf[k + 1] == L'G' && namebuf[k + 2] == L'_') { isXInput = true; break; }
+		}
+		if (!isXInput) continue;
+		// Extract VID and PID. Format: "\\?\HID#VID_xxxx&PID_yyyy&..."
+		uint16_t vid = 0, pid = 0;
+		for (UINT k = 0; k + 7 < nameSize; ++k) {
+			if (namebuf[k] == L'V' && namebuf[k + 1] == L'I' && namebuf[k + 2] == L'D' && namebuf[k + 3] == L'_') {
+				for (int d = 0; d < 4; ++d) {
+					WCHAR c = namebuf[k + 4 + d];
+					int v = 0;
+					if (c >= L'0' && c <= L'9') v = c - L'0';
+					else if (c >= L'A' && c <= L'F') v = c - L'A' + 10;
+					else if (c >= L'a' && c <= L'f') v = c - L'a' + 10;
+					else { vid = 0; break; }
+					vid = (uint16_t)((vid << 4) | v);
+				}
+			}
+			if (namebuf[k] == L'P' && namebuf[k + 1] == L'I' && namebuf[k + 2] == L'D' && namebuf[k + 3] == L'_') {
+				for (int d = 0; d < 4; ++d) {
+					WCHAR c = namebuf[k + 4 + d];
+					int v = 0;
+					if (c >= L'0' && c <= L'9') v = c - L'0';
+					else if (c >= L'A' && c <= L'F') v = c - L'A' + 10;
+					else if (c >= L'a' && c <= L'f') v = c - L'a' + 10;
+					else { pid = 0; break; }
+					pid = (uint16_t)((pid << 4) | v);
+				}
+			}
+		}
+		if (vid == 0 || pid == 0) continue;
+		uint32_t entry = ((uint32_t)vid << 16) | (uint32_t)pid;
+		if (backend->xinputVidPidCount >= fplArrayCount(backend->xinputVidPids)) break;
+		// Dedup
+		bool dup = false;
+		for (uint32_t k = 0; k < backend->xinputVidPidCount; ++k) {
+			if (backend->xinputVidPids[k] == entry) { dup = true; break; }
+		}
+		if (!dup) backend->xinputVidPids[backend->xinputVidPidCount++] = entry;
+	}
+}
+
+fpl_internal bool fpl__Win32DInput_IsXInputProduct(const fpl__InputBackendDInput *backend, uint16_t vid, uint16_t pid) {
+	uint32_t entry = ((uint32_t)vid << 16) | (uint32_t)pid;
+	for (uint32_t k = 0; k < backend->xinputVidPidCount; ++k) {
+		if (backend->xinputVidPids[k] == entry) return true;
+	}
+	return false;
+}
+
+fpl_internal int fpl__Win32DInput_FindFreeSlot(fpl__InputBackendDInput *backend) {
+	for (uint32_t i = 0; i < fplArrayCount(backend->slots); ++i) {
+		if (!backend->slots[i].isConnected) return (int)i;
+	}
+	return -1;
+}
+
+fpl_internal int fpl__Win32DInput_FindSlotByGuid(fpl__InputBackendDInput *backend, const GUID *guidInstance) {
+	for (uint32_t i = 0; i < fplArrayCount(backend->slots); ++i) {
+		if (!backend->slots[i].isConnected) continue;
+		const GUID *g = &backend->slots[i].guidInstance;
+		if (g->Data1 == guidInstance->Data1 && g->Data2 == guidInstance->Data2 && g->Data3 == guidInstance->Data3) {
+			bool eq = true;
+			for (int k = 0; k < 8; ++k) if (g->Data4[k] != guidInstance->Data4[k]) { eq = false; break; }
+			if (eq) return (int)i;
+		}
+	}
+	return -1;
+}
+
+fpl_internal void fpl__Win32DInput_ReleaseSlot(fpl__InputBackendDInput *backend, uint32_t slotIndex) {
+	fpl__InputBackendDInputSlot *slot = &backend->slots[slotIndex];
+	if (slot->device != fpl_null) {
+		if (slot->isAcquired) {
+			fpl__DID8_Unacquire(slot->device);
+			slot->isAcquired = false;
+		}
+		fpl__DID8_Release(slot->device);
+		slot->device = fpl_null;
+	}
+	bool wasConnected = slot->isConnected;
+	fplClearStruct(slot);
+	if (wasConnected) {
+		fpl__PushGamepadConnectionEvent(slotIndex, fpl_null, false);
+	}
+}
+
+// Translates a raw DIJOYSTATE into a backend-agnostic fplGamepadData for fplGamepadMappingApply / fplGamepadMappingApplyDefault. Sticks and sliders are normalized to SDL convention (-1..+1, sliders idle at -1).
+fpl_internal void fpl__Win32DInput_FillRawInput(const DIJOYSTATE *src, fplGamepadData *out) {
+	fplGamepadData zero = fplZeroInit;
+	*out = zero;
+
+	// Sticks: raw [0, 65535] with center 32767 → [-1, +1].
+	const float center = 32767.5f;
+	const float invHalf = 1.0f / 32767.5f;
+	float a[8];
+	a[0] = ((float)src->lX  - center) * invHalf;
+	a[1] = ((float)src->lY  - center) * invHalf;
+	a[2] = ((float)src->lZ  - center) * invHalf;
+	a[3] = ((float)src->lRx - center) * invHalf;
+	a[4] = ((float)src->lRy - center) * invHalf;
+	a[5] = ((float)src->lRz - center) * invHalf;
+	// Sliders idle at 0, full at 65535 → SDL trigger convention -1..+1.
+	a[6] = ((float)src->rglSlider[0] * (2.0f / 65535.0f)) - 1.0f;
+	a[7] = ((float)src->rglSlider[1] * (2.0f / 65535.0f)) - 1.0f;
+	for (int i = 0; i < 8; ++i) {
+		if (a[i] < -1.0f) {
+			a[i] = -1.0f;
+		} else if (a[i] > 1.0f) {
+			a[i] = 1.0f;
+		}
+		out->axes[i] = a[i];
+	}
+	out->axisCount = 8;
+
+	for (int b = 0; b < 32; ++b) {
+		out->buttons[b] = (src->rgbButtons[b] & 0x80) != 0;
+	}
+	out->buttonCount = 32;
+
+	// POV[0] → hat[0]. Centered values (0xFFFFFFFF / 0xFFFF / -1) leave mask 0.
+	uint8_t mask = 0;
+	DWORD pov = src->rgdwPOV[0];
+	if (pov != 0xFFFFFFFFu && (pov & 0xFFFFu) != 0xFFFFu) {
+		if (pov >= 31500u || pov <  4500u) {
+			mask |= 0x1;
+		}
+		if (pov >=  4500u && pov < 13500u) {
+			mask |= 0x2;
+		}
+		if (pov >= 13500u && pov < 22500u) {
+			mask |= 0x4;
+		}
+		if (pov >= 22500u && pov < 31500u) {
+			mask |= 0x8;
+		}
+	}
+	out->hats[0] = mask;
+	out->hatCount = 1;
+}
+
+typedef struct fpl__Win32DInput_EnumCtx {
+	fpl__InputBackendDInput *backend;
+	const fplGamepadSettings *gamepadSettings;
+	uint32_t added;
+} fpl__Win32DInput_EnumCtx;
+
+static BOOL WINAPI fpl__Win32DInput_EnumDevicesCallback(LPCDIDEVICEINSTANCEW ddi, LPVOID pvRef) {
+	fpl__Win32DInput_EnumCtx *ec = (fpl__Win32DInput_EnumCtx *)pvRef;
+	fpl__InputBackendDInput *backend = ec->backend;
+	if (backend->iface == fpl_null) return DIENUM_STOP;
+
+	// VID/PID encoded in guidProduct.Data1 = MAKELONG(VID, PID) on Windows.
+	uint16_t vid = (uint16_t)(ddi->guidProduct.Data1 & 0xFFFFu);
+	uint16_t pid = (uint16_t)((ddi->guidProduct.Data1 >> 16) & 0xFFFFu);
+	if (fpl__Win32DInput_IsXInputProduct(backend, vid, pid)) return DIENUM_CONTINUE;
+
+	// Skip devices already opened on a slot (re-enum each detection cycle).
+	if (fpl__Win32DInput_FindSlotByGuid(backend, &ddi->guidInstance) >= 0) return DIENUM_CONTINUE;
+
+	int slotIndex = fpl__Win32DInput_FindFreeSlot(backend);
+	if (slotIndex < 0) return DIENUM_STOP;
+
+	IDirectInputDevice8W *device = fpl_null;
+	if (FAILED(fpl__DI8_CreateDevice(backend->iface, fpl__DI_RefGuid(&ddi->guidInstance), &device, fpl_null)) || device == fpl_null) {
+		return DIENUM_CONTINUE;
+	}
+
+	if (FAILED(fpl__DID8_SetDataFormat(device, &fpl__DIJoy_DataFormat))) {
+		fpl__DID8_Release(device);
+		return DIENUM_CONTINUE;
+	}
+
+	// Background + nonexclusive cooperative level — works without a visible window.
+	if (FAILED(fpl__DID8_SetCooperativeLevel(device, fpl_null, DISCL_BACKGROUND | DISCL_NONEXCLUSIVE))) {
+		fpl__DID8_Release(device);
+		return DIENUM_CONTINUE;
+	}
+
+	// Reasonable analog deadzone (10% of full range). Ignored when SetProperty fails.
+	DIPROPDWORD dz = fplZeroInit;
+	dz.diph.dwSize = sizeof(dz);
+	dz.diph.dwHeaderSize = sizeof(dz.diph);
+	dz.diph.dwObj = 0;
+	dz.diph.dwHow = DIPH_DEVICE;
+	dz.dwData = 1000;
+	fpl__DID8_SetProperty(device, DIPROP_DEADZONE, &dz.diph);
+
+	fpl__InputBackendDInputSlot *slot = &backend->slots[slotIndex];
+	fplClearStruct(slot);
+	slot->device = device;
+	slot->guidInstance = ddi->guidInstance;
+	slot->vendorID = vid;
+	slot->productID = pid;
+	slot->isConnected = true;
+	slot->isAcquired = false;
+	// UTF-8 decode of the wide product name.
+	int wlen = lstrlenW(ddi->tszProductName);
+	size_t written = 0;
+	if (wlen > 0) {
+		written = fplWideStringToUTF8String(ddi->tszProductName, (size_t)wlen, slot->deviceName, fplArrayCount(slot->deviceName));
+	}
+	if (written == 0) {
+		fplStringFormat(slot->deviceName, fplArrayCount(slot->deviceName), "DInput-Device [%d]", slotIndex);
+	}
+	fpl__DID8_Acquire(device);
+	slot->isAcquired = true;
+
+	// Resolve a per-device mapping. The resolver runs once per connect; failure or absence falls back to fplGamepadMappingApplyDefault.
+	slot->hasMapping = false;
+	if (ec->gamepadSettings != fpl_null && ec->gamepadSettings->mappingResolver != fpl_null) {
+		fplGamepadInfo info = fplZeroInit;
+		info.index = (uint32_t)slotIndex;
+		info.backend = fplInputBackendType_DInput;
+		info.name = slot->deviceName;
+		// Bus 0x03 = USB. CRC and version aren't exposed by DInput, so they stay 0.
+		fpl__GamepadBuildSDLGuid(0x0003u, vid, pid, 0u, 0u, info.guid);
+		info.vendorId = vid;
+		info.productId = pid;
+		info.version = 0;
+		info.buttonCount = 32;
+		info.axisCount = 8;
+		info.hatCount = 1;
+		fplGamepadMapping userMapping = fplZeroInit;
+		if (ec->gamepadSettings->mappingResolver(&info, &userMapping, ec->gamepadSettings->mappingResolverUserData)) {
+			slot->mapping = userMapping;
+			slot->hasMapping = true;
+		}
+	}
+
+	fpl__PushGamepadConnectionEvent((uint32_t)slotIndex, slot->deviceName, true);
+	ec->added++;
+	return DIENUM_CONTINUE;
+}
+
+fpl_internal void fpl__Win32DInput_DetectControllers(fpl__InputBackendDInput *backend, const fplGamepadSettings *gamepadSettings) {
+	if (backend->iface == fpl_null) return;
+	if (backend->lastDeviceSearchTime == 0) backend->lastDeviceSearchTime = fplMillisecondsQuery();
+	const uint64_t freq = gamepadSettings->detectionFrequency;
+	fplMilliseconds now = fplMillisecondsQuery();
+	uint64_t delta = (uint64_t)(now - backend->lastDeviceSearchTime);
+	if (freq > 0 && delta > 0 && delta < freq) return;
+	backend->lastDeviceSearchTime = now;
+
+	// Refresh XInput VID/PID list cheaply each scan — devices come and go.
+	fpl__Win32DInput_CollectXInputVidPids(backend);
+
+	fpl__Win32DInput_EnumCtx ec = fplZeroInit;
+	ec.backend = backend;
+	ec.gamepadSettings = gamepadSettings;
+	fpl__DI8_EnumDevices(backend->iface, DI8DEVCLASS_GAMECTRL, fpl__Win32DInput_EnumDevicesCallback, &ec, DIEDFL_ATTACHEDONLY);
+}
+
+fpl_internal void fpl__Win32DInput_UpdateStates(fpl__InputBackendDInput *backend) {
+	for (uint32_t i = 0; i < fplArrayCount(backend->slots); ++i) {
+		fpl__InputBackendDInputSlot *slot = &backend->slots[i];
+		if (!slot->isConnected || slot->device == fpl_null) {
+			continue;
+		}
+		if (!slot->isAcquired) {
+			HRESULT hrA = fpl__DID8_Acquire(slot->device);
+			if (FAILED(hrA)) {
+				continue;
+			}
+			slot->isAcquired = true;
+		}
+		fpl__DID8_Poll(slot->device);
+		DIJOYSTATE raw = fplZeroInit;
+		HRESULT hr = fpl__DID8_GetDeviceState(slot->device, sizeof(raw), &raw);
+		if (FAILED(hr)) {
+			// Most likely DIERR_INPUTLOST / DIERR_NOTACQUIRED — try to re-acquire next tick.
+			fpl__DID8_Unacquire(slot->device);
+			slot->isAcquired = false;
+			continue;
+		}
+		fpl__Win32DInput_FillRawInput(&raw, &slot->raw);
+		fplGamepadState gs = fplZeroInit;
+		if (slot->hasMapping) {
+			fplGamepadMappingApply(&slot->mapping, &slot->raw, &gs);
+		} else {
+			fplGamepadMappingApplyDefault(&slot->raw, &gs);
+		}
+		gs.isConnected = true;
+		gs.deviceName = slot->deviceName;
+		fpl__GamepadFinalizeState(&gs);
+		slot->lastState = gs;
+		fpl__PushGamepadStateEvent(i, slot->deviceName, &gs);
+	}
+}
+
+fpl_internal bool fpl__InputBackendDInput_Init(fpl__InputBackendDInput *backend) {
+	fplAssertPtr(backend);
+	if (backend->isInitialized) return true;
+	if (!fpl__Win32LoadDInputApi(&backend->api)) return false;
+
+	HINSTANCE hinst = GetModuleHandleW(fpl_null);
+	HRESULT hr = backend->api.DirectInput8Create(hinst, DIRECTINPUT_VERSION, fpl__DI_RefGuid(&fpl__IID_IDirectInput8W), (LPVOID *)&backend->iface, fpl_null);
+	if (FAILED(hr) || backend->iface == fpl_null) {
+		FPL__WARNING(FPL__MODULE_DINPUT, "DirectInput8Create failed (hr=0x%08lX)", (unsigned long)hr);
+		fpl__Win32UnloadDInputApi(&backend->api);
+		return false;
+	}
+	backend->isInitialized = true;
+	return true;
+}
+
+fpl_internal void fpl__InputBackendDInput_Release(fpl__InputBackendDInput *backend) {
+	fplAssertPtr(backend);
+	if (!backend->isInitialized) return;
+	for (uint32_t i = 0; i < fplArrayCount(backend->slots); ++i) {
+		if (backend->slots[i].isConnected) {
+			fpl__Win32DInput_ReleaseSlot(backend, i);
+		}
+	}
+	if (backend->iface != fpl_null) {
+		fpl__DI8_Release(backend->iface);
+		backend->iface = fpl_null;
+	}
+	fpl__Win32UnloadDInputApi(&backend->api);
+	fplClearStruct(backend);
+}
+
+fpl_internal void fpl__InputBackendDInput_Update(fpl__InputBackendDInput *backend, const fplGamepadSettings *gamepadSettings) {
+	fplAssertPtr(backend);
+	fplAssertPtr(gamepadSettings);
+	if (!backend->isInitialized) return;
+	fpl__Win32DInput_DetectControllers(backend, gamepadSettings);
+	fpl__Win32DInput_UpdateStates(backend);
+}
+
+// Merge contract: caller already cleared outStates. We refresh state by polling each slot,
+// then write into our slot index — but only when an earlier backend hasn't already claimed it.
+fpl_internal bool fpl__InputBackendDInput_PollGamepad(fpl__InputBackendDInput *backend, fplGamepadStates *outStates) {
+	fplAssertPtr(backend);
+	fplAssertPtr(outStates);
+	if (!backend->isInitialized) return false;
+	fpl__Win32DInput_UpdateStates(backend);
+	bool any = false;
+	for (uint32_t i = 0; i < fplArrayCount(backend->slots); ++i) {
+		if (i >= fplArrayCount(outStates->deviceStates)) break;
+		if (outStates->deviceStates[i].isConnected) continue;
+		fpl__InputBackendDInputSlot *slot = &backend->slots[i];
+		if (!slot->isConnected) continue;
+		outStates->deviceStates[i] = slot->lastState;
+		outStates->deviceStates[i].deviceName = slot->deviceName;
+		outStates->deviceStates[i].isConnected = true;
+		any = true;
+	}
+	return any;
+}
+
+#endif // FPL__WIN32_DINPUT_IMPLEMENTED
+
+// ############################################################################
+//
+// > WIN32_INPUT_KBM (keyboard + mouse backend)
+//
+// ############################################################################
+#if defined(FPL__ENABLE_INPUT_WIN32) && !defined(FPL__WIN32_INPUT_KBM_IMPLEMENTED)
+#define FPL__WIN32_INPUT_KBM_IMPLEMENTED
+
+fpl_internal bool fpl__InputBackendWin32_Init(fpl__InputBackendWin32 *backend, const fplInputSettings *settings) {
+	fplAssertPtr(backend);
+	if (backend->isInitialized) return true;
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (appState == fpl_null) return false;
+	const fpl__Win32Api *wapi = &appState->win32.winApi;
+	bool detached = false;
+#	if defined(FPL__ENABLE_WINDOW)
+	if (settings != fpl_null && settings->detachFromWindow) {
+		detached = true;
+	}
+	if ((appState->initFlags & fplInitFlags_Window) == 0) {
+		detached = true;
+	}
+#	else
+	(void)settings;
+	detached = true;
+#	endif
+	if (detached) {
+		// Hidden HWND_MESSAGE for receiving WM_INPUT/WM_DEVICECHANGE in future steps.
+		// Polling already works against the global cursor/key state, so the message window
+		// is created but the wndproc just defers to DefWindowProcW for now.
+		WNDCLASSEXW wc = fplZeroInit;
+		wc.cbSize = sizeof(wc);
+		wc.lpfnWndProc = wapi->user.DefWindowProcW;
+		wc.hInstance = GetModuleHandleW(fpl_null);
+		wc.lpszClassName = L"FPLInputMessageWindow";
+		ATOM cls = wapi->user.RegisterClassExW(&wc);
+		if (cls == 0) {
+			FPL__ERROR(FPL__MODULE_WIN32, "Failed to register hidden input message-window class");
+			return false;
+		}
+		HWND hwnd = wapi->user.CreateWindowExW(0, (LPCWSTR)wc.lpszClassName, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, fpl_null, wc.hInstance, fpl_null);
+		if (hwnd == fpl_null) {
+			wapi->user.UnregisterClassW((LPCWSTR)wc.lpszClassName, wc.hInstance);
+			FPL__ERROR(FPL__MODULE_WIN32, "Failed to create hidden input message-window");
+			return false;
+		}
+		backend->messageWindow = hwnd;
+		backend->messageWindowClass = cls;
+	}
+	backend->detached = detached;
+	backend->isInitialized = true;
+	return true;
+}
+
+fpl_internal void fpl__InputBackendWin32_Release(fpl__InputBackendWin32 *backend) {
+	fplAssertPtr(backend);
+	if (!backend->isInitialized) return;
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (backend->messageWindow != fpl_null && appState != fpl_null) {
+		const fpl__Win32Api *wapi = &appState->win32.winApi;
+		wapi->user.DestroyWindow(backend->messageWindow);
+		wapi->user.UnregisterClassW(L"FPLInputMessageWindow", GetModuleHandleW(fpl_null));
+	}
+	fplClearStruct(backend);
+}
+
+fpl_internal bool fpl__InputBackendWin32_PollKeyboard(fpl__InputBackendWin32 *backend, fplKeyboardState *outState) {
+	fplAssertPtr(backend);
+	fplAssertPtr(outState);
+	if (!backend->isInitialized) return false;
+	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
+	const fpl__Win32Api *wapi = &appState->winApi;
+	fplClearStruct(outState);
+	outState->modifiers = fpl__Win32GetKeyboardModifiers(wapi);
+	for (uint32_t keyCode = 0; keyCode < 256; ++keyCode) {
+		int k = wapi->user.MapVirtualKeyW(MAPVK_VSC_TO_VK, keyCode);
+		if (k == 0) {
+			k = (int)keyCode;
+		}
+		bool down = fpl__Win32IsKeyDown(wapi, k);
+		outState->keyStatesRaw[keyCode] = down;
+#		if defined(FPL__ENABLE_WINDOW)
+		if (!backend->detached) {
+			fplKey key = fpl__GetMappedKey(&fpl__global__AppState->window, keyCode);
+			outState->buttonStatesMapped[(int)key] = down ? fplButtonState_Press : fplButtonState_Release;
+		}
+#		endif
+	}
+	return true;
+}
+
+fpl_internal bool fpl__InputBackendWin32_PollMouse(fpl__InputBackendWin32 *backend, fplMouseState *outState) {
+	fplAssertPtr(backend);
+	fplAssertPtr(outState);
+	if (!backend->isInitialized) return false;
+	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
+	const fpl__Win32Api *wapi = &appState->winApi;
+	POINT p;
+	if (wapi->user.GetCursorPos(&p) != TRUE) return false;
+#	if defined(FPL__ENABLE_WINDOW)
+	if (!backend->detached) {
+		const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+		if (!wapi->user.ScreenToClient(windowState->windowHandle, &p)) return false;
+	}
+#	endif
+	fplClearStruct(outState);
+	outState->x = p.x;
+	outState->y = p.y;
+	bool leftDown = fpl__Win32IsKeyDown(wapi, VK_LBUTTON);
+	bool rightDown = fpl__Win32IsKeyDown(wapi, VK_RBUTTON);
+	bool middleDown = fpl__Win32IsKeyDown(wapi, VK_MBUTTON);
+	bool x1Down = fpl__Win32IsKeyDown(wapi, VK_XBUTTON1);
+	bool x2Down = fpl__Win32IsKeyDown(wapi, VK_XBUTTON2);
+	outState->buttonStates[fplMouseButtonType_Left] = leftDown ? fplButtonState_Press : fplButtonState_Release;
+	outState->buttonStates[fplMouseButtonType_Right] = rightDown ? fplButtonState_Press : fplButtonState_Release;
+	outState->buttonStates[fplMouseButtonType_Middle] = middleDown ? fplButtonState_Press : fplButtonState_Release;
+	outState->buttonStates[fplMouseButtonType_X1] = x1Down ? fplButtonState_Press : fplButtonState_Release;
+	outState->buttonStates[fplMouseButtonType_X2] = x2Down ? fplButtonState_Press : fplButtonState_Release;
+	return true;
+}
+
+#if defined(FPL__ENABLE_WINDOW)
+fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin32 *backend, const fpl__NativeInputEvent *ev) {
+	fplAssertPtr(backend);
+	fplAssertPtr(ev);
+	if (!backend->isInitialized) return false;
+	if (ev->kind != fpl__NativeInputEventKind_Win32Msg) return false;
+	if (ev->payload == fpl_null) return false;
+	const MSG *msg = (const MSG *)ev->payload;
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (appState == fpl_null) return false;
+	const fpl__Win32Api *wapi = &appState->win32.winApi;
+	const bool eventsDisabled = appState->currentSettings.input.disabledEvents != 0;
+	switch (msg->message) {
+		case WM_SYSKEYDOWN:
+		case WM_SYSKEYUP:
+		case WM_KEYDOWN:
+		case WM_KEYUP:
+		{
+			if (eventsDisabled) return true;
+			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Keyboard)) return true;
+			uint64_t keyCode = msg->wParam;
+			bool isDown = (msg->lParam & (1 << 31)) == 0;
+			fplButtonState keyState = isDown ? fplButtonState_Press : fplButtonState_Release;
+			fplKeyboardModifierFlags modifiers = fpl__Win32GetKeyboardModifiers(wapi);
+			fpl__HandleKeyboardButtonEvent(&appState->window, GetTickCount(), keyCode, modifiers, keyState, false);
+			return true;
+		}
+
+		case WM_CHAR:
+		case WM_SYSCHAR:
+		case WM_UNICHAR:
+		case WM_DEADCHAR:
+		{
+			if (eventsDisabled) return true;
+			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Keyboard)) return true;
+			if ((msg->message == WM_UNICHAR) && (msg->wParam == UNICODE_NOCHAR)) {
+				return true;
+			}
+			fpl__HandleKeyboardInputEvent(&appState->window, (uint64_t)msg->wParam, (uint32_t)msg->wParam);
+			return true;
+		}
+
+		case WM_LBUTTONDOWN:
+		case WM_LBUTTONUP:
+		case WM_RBUTTONDOWN:
+		case WM_RBUTTONUP:
+		case WM_MBUTTONDOWN:
+		case WM_MBUTTONUP:
+		case WM_XBUTTONDOWN:
+		case WM_XBUTTONUP:
+		{
+			if (eventsDisabled) return true;
+			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Mouse)) return true;
+			fplButtonState buttonState;
+			bool isDown = (msg->message == WM_LBUTTONDOWN || msg->message == WM_RBUTTONDOWN || msg->message == WM_MBUTTONDOWN || msg->message == WM_XBUTTONDOWN);
+			buttonState = isDown ? fplButtonState_Press : fplButtonState_Release;
+			if (buttonState == fplButtonState_Press) {
+				wapi->user.SetCapture(msg->hwnd);
+			} else {
+				wapi->user.ReleaseCapture();
+			}
+			fplMouseButtonType mouseButton;
+			if (msg->message == WM_LBUTTONDOWN || msg->message == WM_LBUTTONUP) {
+				mouseButton = fplMouseButtonType_Left;
+			} else if (msg->message == WM_RBUTTONDOWN || msg->message == WM_RBUTTONUP) {
+				mouseButton = fplMouseButtonType_Right;
+			} else if (msg->message == WM_MBUTTONDOWN || msg->message == WM_MBUTTONUP) {
+				mouseButton = fplMouseButtonType_Middle;
+			} else {
+				WORD which = GET_XBUTTON_WPARAM(msg->wParam);
+				mouseButton = (which == XBUTTON1) ? fplMouseButtonType_X1 : (which == XBUTTON2) ? fplMouseButtonType_X2 : fplMouseButtonType_None;
+			}
+			if (mouseButton != fplMouseButtonType_None) {
+				int32_t mouseX = GET_X_LPARAM(msg->lParam);
+				int32_t mouseY = GET_Y_LPARAM(msg->lParam);
+				fpl__HandleMouseButtonEvent(&appState->window, mouseX, mouseY, mouseButton, buttonState);
+			}
+			return true;
+		}
+
+		case WM_MOUSEMOVE:
+		{
+			if (eventsDisabled) return true;
+			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Mouse)) return true;
+			int32_t mouseX = GET_X_LPARAM(msg->lParam);
+			int32_t mouseY = GET_Y_LPARAM(msg->lParam);
+			fpl__HandleMouseMoveEvent(&appState->window, mouseX, mouseY);
+			return true;
+		}
+
+		case WM_MOUSEWHEEL:
+		{
+			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Mouse)) return true;
+			int32_t mouseX = GET_X_LPARAM(msg->lParam);
+			int32_t mouseY = GET_Y_LPARAM(msg->lParam);
+			short zDelta = GET_WHEEL_DELTA_WPARAM(msg->wParam);
+			float wheelDelta = zDelta / (float)WHEEL_DELTA;
+			fpl__HandleMouseWheelEvent(&appState->window, mouseX, mouseY, wheelDelta);
+			return true;
+		}
+
+		case WM_MOUSEHWHEEL:
+		{
+			// Horizontal wheel is forwarded but not yet surfaced through fpl__HandleMouseWheelEvent.
+			// Step 9 will extend the public mouse-event API with a horizontal axis.
+			return true;
+		}
+
+		default:
+			break;
+	}
+	return false;
+}
+#endif // FPL__ENABLE_WINDOW
+
+#endif // FPL__WIN32_INPUT_KBM_IMPLEMENTED
 
 fpl_internal bool fpl__Win32ThreadWaitForMultiple(fplThreadHandle **threads, const size_t count, const size_t stride, const fplTimeoutValue timeout, const bool waitForAll) {
 	FPL__CheckArgumentNull(threads, false);
@@ -14879,12 +17304,6 @@ fpl_internal bool fpl__Win32SignalWaitForMultiple(fplSignalHandle **signals, con
 fpl_internal void fpl__Win32ReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
 	fplAssert(appState != fpl_null);
 	fpl__Win32AppState *win32AppState = &appState->win32;
-	fpl__Win32InitState *win32InitState = &initState->win32;
-	if (fplIsMaskSet(appState->initFlags, fplInitFlags_GameController)) {
-#	if defined(FPL__ENABLE_WINDOW)
-		fpl__Win32UnloadXInputApi(&win32AppState->xinput.xinputApi);
-#	endif
-	}
 	fpl__Win32UnloadApi(&win32AppState->winApi);
 }
 
@@ -14917,13 +17336,6 @@ fpl_internal bool fpl__Win32InitPlatform(const fplInitFlags initFlags, const fpl
 		// @NOTE(final): Assume that errors are pushed on already.
 		fpl__Win32ReleasePlatform(initState, appState);
 		return false;
-	}
-
-	// Load XInput
-	if (fplIsMaskSet(initFlags, fplInitFlags_GameController)) {
-#	if defined(FPL__ENABLE_WINDOW)
-		fpl__Win32LoadXInputApi(&win32AppState->xinput.xinputApi);
-#	endif
 	}
 
 	// Show/Hide console
@@ -15868,6 +18280,11 @@ fpl_platform_api void fplMemoryFree(void *ptr) {
 fpl_internal const uint64_t FPL__WIN32_TICKS_PER_SEC = 10000000ULL;
 fpl_internal const uint64_t FPL__WIN32_UNIX_EPOCH_DIFFERENCE = 11644473600ULL;
 
+// fplClearStruct zeroes the struct, setting the handle to NULL.
+// CreateFileW returns INVALID_HANDLE_VALUE (-1) on error.
+// A handle is only safe to use when it is neither NULL nor INVALID_HANDLE_VALUE.
+#define FPL__WIN32_IS_VALID_FILE_HANDLE(h) ((h) != fpl_null && (h) != INVALID_HANDLE_VALUE)
+
 fpl_internal fplFileTimeStamp fpl__Win32ConvertFileTimeToUnixTimestamp(const FILETIME *fileTime) {
 	// Ticks are defined in 100 ns = 10000000 secs
 	// Windows ticks starts at 1601-01-01T00:00:00Z
@@ -15962,14 +18379,16 @@ fpl_platform_api uint32_t fplFileReadBlock32(const fplFileHandle *fileHandle, co
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sizeToRead, 0);
 	FPL__CheckArgumentNull(targetBuffer, 0);
-	if (fileHandle->internalHandle.win32FileHandle == fpl_null) {
+	FPL__CheckArgumentZero(maxTargetBufferSize, 0);
+	if (!FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		FPL__ERROR(FPL__MODULE_FILES, "Filehandle is not opened for reading");
 		return 0;
 	}
+	uint32_t actualToRead = (sizeToRead > maxTargetBufferSize) ? maxTargetBufferSize : sizeToRead;
 	uint32_t result = 0;
 	HANDLE win32FileHandle = (HANDLE)fileHandle->internalHandle.win32FileHandle;
 	DWORD bytesRead = 0;
-	if (ReadFile(win32FileHandle, targetBuffer, (DWORD)sizeToRead, &bytesRead, fpl_null) == TRUE) {
+	if (ReadFile(win32FileHandle, targetBuffer, (DWORD)actualToRead, &bytesRead, fpl_null) == TRUE) {
 		result = bytesRead;
 	}
 	return(result);
@@ -15979,14 +18398,16 @@ fpl_platform_api uint64_t fplFileReadBlock64(const fplFileHandle *fileHandle, co
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sizeToRead, 0);
 	FPL__CheckArgumentNull(targetBuffer, 0);
-	if (fileHandle->internalHandle.win32FileHandle == fpl_null) {
+	FPL__CheckArgumentZero(maxTargetBufferSize, 0);
+	if (!FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		FPL__ERROR(FPL__MODULE_FILES, "Filehandle is not opened for reading");
 		return 0;
 	}
 	// @NOTE(final): There is no ReadFile64 function in win32, so we have to read it in chunks
+	uint64_t actualToRead = (sizeToRead > maxTargetBufferSize) ? maxTargetBufferSize : sizeToRead;
 	uint64_t result = 0;
 	HANDLE win32FileHandle = (HANDLE)fileHandle->internalHandle.win32FileHandle;
-	uint64_t remainingSize = sizeToRead;
+	uint64_t remainingSize = actualToRead;
 	uint64_t bufferPos = 0;
 	const uint64_t MaxDWORD = (uint64_t)(DWORD)-1;
 	while (remainingSize > 0) {
@@ -15995,8 +18416,11 @@ fpl_platform_api uint64_t fplFileReadBlock64(const fplFileHandle *fileHandle, co
 		uint64_t size = fplMin(remainingSize, MaxDWORD);
 		fplAssert(size <= MaxDWORD);
 		if (ReadFile(win32FileHandle, target, (DWORD)size, &bytesRead, fpl_null) == TRUE) {
-			result = bytesRead;
+			result += bytesRead;
 		} else {
+			break;
+		}
+		if (bytesRead == 0) {
 			break;
 		}
 		remainingSize -= bytesRead;
@@ -16005,11 +18429,11 @@ fpl_platform_api uint64_t fplFileReadBlock64(const fplFileHandle *fileHandle, co
 	return(result);
 }
 
-fpl_platform_api uint32_t fplFileWriteBlock32(const fplFileHandle *fileHandle, void *sourceBuffer, const uint32_t sourceSize) {
+fpl_platform_api uint32_t fplFileWriteBlock32(const fplFileHandle *fileHandle, const void *sourceBuffer, const uint32_t sourceSize) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sourceSize, 0);
 	FPL__CheckArgumentNull(sourceBuffer, 0);
-	if (fileHandle->internalHandle.win32FileHandle == fpl_null) {
+	if (!FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		FPL__ERROR(FPL__MODULE_FILES, "Filehandle is not opened for writing");
 		return 0;
 	}
@@ -16022,11 +18446,11 @@ fpl_platform_api uint32_t fplFileWriteBlock32(const fplFileHandle *fileHandle, v
 	return(result);
 }
 
-fpl_platform_api uint64_t fplFileWriteBlock64(const fplFileHandle *fileHandle, void *sourceBuffer, const uint64_t sourceSize) {
+fpl_platform_api uint64_t fplFileWriteBlock64(const fplFileHandle *fileHandle, const void *sourceBuffer, const uint64_t sourceSize) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sourceSize, 0);
 	FPL__CheckArgumentNull(sourceBuffer, 0);
-	if (fileHandle->internalHandle.win32FileHandle == fpl_null) {
+	if (!FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		FPL__ERROR(FPL__MODULE_FILES, "Filehandle is not opened for writing");
 		return 0;
 	}
@@ -16041,8 +18465,11 @@ fpl_platform_api uint64_t fplFileWriteBlock64(const fplFileHandle *fileHandle, v
 		fplAssert(size <= MaxDWORD);
 		DWORD bytesWritten = 0;
 		if (WriteFile(win32FileHandle, source, (DWORD)size, &bytesWritten, fpl_null) == TRUE) {
-			result = bytesWritten;
+			result += bytesWritten;
 		} else {
+			break;
+		}
+		if (bytesWritten == 0) {
 			break;
 		}
 		remainingSize -= bytesWritten;
@@ -16054,7 +18481,7 @@ fpl_platform_api uint64_t fplFileWriteBlock64(const fplFileHandle *fileHandle, v
 fpl_platform_api uint32_t fplFileSetPosition32(const fplFileHandle *fileHandle, const int32_t position, const fplFilePositionMode mode) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint32_t result = 0;
-	if (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+	if (FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
 		DWORD moveMethod = FILE_BEGIN;
 		if (mode == fplFilePositionMode_Current) {
@@ -16062,9 +18489,16 @@ fpl_platform_api uint32_t fplFileSetPosition32(const fplFileHandle *fileHandle, 
 		} else if (mode == fplFilePositionMode_End) {
 			moveMethod = FILE_END;
 		}
-		DWORD r = 0;
-		r = SetFilePointer(win32FileHandle, (LONG)position, fpl_null, moveMethod);
-		result = (uint32_t)r;
+		LARGE_INTEGER r = fplZeroInit;
+		LARGE_INTEGER li;
+		li.QuadPart = (LONGLONG)position;
+		if (SetFilePointerEx(win32FileHandle, li, &r, moveMethod) == TRUE) {
+			if (r.QuadPart > (LONGLONG)UINT32_MAX) {
+				result = UINT32_MAX;
+			} else {
+				result = (uint32_t)r.QuadPart;
+			}
+		}
 	}
 	return(result);
 }
@@ -16072,7 +18506,7 @@ fpl_platform_api uint32_t fplFileSetPosition32(const fplFileHandle *fileHandle, 
 fpl_platform_api uint64_t fplFileSetPosition64(const fplFileHandle *fileHandle, const int64_t position, const fplFilePositionMode mode) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint64_t result = 0;
-	if (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+	if (FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
 		DWORD moveMethod = FILE_BEGIN;
 		if (mode == fplFilePositionMode_Current) {
@@ -16092,7 +18526,7 @@ fpl_platform_api uint64_t fplFileSetPosition64(const fplFileHandle *fileHandle, 
 
 fpl_platform_api uint32_t fplFileGetPosition32(const fplFileHandle *fileHandle) {
 	FPL__CheckArgumentNull(fileHandle, 0);
-	if (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+	if (FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
 		DWORD filePosition = SetFilePointer(win32FileHandle, 0L, fpl_null, FILE_CURRENT);
 		if (filePosition != INVALID_SET_FILE_POINTER) {
@@ -16105,7 +18539,7 @@ fpl_platform_api uint32_t fplFileGetPosition32(const fplFileHandle *fileHandle) 
 fpl_platform_api uint64_t fplFileGetPosition64(const fplFileHandle *fileHandle) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint64_t result = 0;
-	if (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+	if (FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
 		LARGE_INTEGER r = fplZeroInit;
 		LARGE_INTEGER li;
@@ -16114,12 +18548,12 @@ fpl_platform_api uint64_t fplFileGetPosition64(const fplFileHandle *fileHandle) 
 			result = (uint64_t)r.QuadPart;
 		}
 	}
-	return 0;
+	return result;
 }
 
 fpl_platform_api bool fplFileFlush(fplFileHandle *fileHandle) {
 	FPL__CheckArgumentNull(fileHandle, false);
-	if (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+	if (FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
 		bool result = FlushFileBuffers(win32FileHandle) == TRUE;
 		return(result);
@@ -16128,7 +18562,7 @@ fpl_platform_api bool fplFileFlush(fplFileHandle *fileHandle) {
 }
 
 fpl_platform_api void fplFileClose(fplFileHandle *fileHandle) {
-	if ((fileHandle != fpl_null) && (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE)) {
+	if ((fileHandle != fpl_null) && FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
 		CloseHandle(win32FileHandle);
 		fplClearStruct(fileHandle);
@@ -16142,8 +18576,14 @@ fpl_platform_api uint32_t fplFileGetSizeFromPath32(const char *filePath) {
 		fplUTF8StringToWideString(filePath, fplGetStringLength(filePath), filePathWide, fplArrayCount(filePathWide));
 		HANDLE win32FileHandle = CreateFileW(filePathWide, GENERIC_READ, FILE_SHARE_READ, fpl_null, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, fpl_null);
 		if (win32FileHandle != INVALID_HANDLE_VALUE) {
-			DWORD fileSize = GetFileSize(win32FileHandle, fpl_null);
-			result = (uint32_t)fileSize;
+			LARGE_INTEGER li = fplZeroInit;
+			if (GetFileSizeEx(win32FileHandle, &li) == TRUE) {
+				if (li.QuadPart > (LONGLONG)UINT32_MAX) {
+					result = UINT32_MAX;
+				} else {
+					result = (uint32_t)li.QuadPart;
+				}
+			}
 			CloseHandle(win32FileHandle);
 		}
 	}
@@ -16170,10 +18610,49 @@ fpl_platform_api uint64_t fplFileGetSizeFromPath64(const char *filePath) {
 fpl_platform_api uint32_t fplFileGetSizeFromHandle32(const fplFileHandle *fileHandle) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint32_t result = 0;
-	if (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+	if (FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
-		DWORD fileSize = GetFileSize(win32FileHandle, fpl_null);
-		result = (uint32_t)fileSize;
+		LARGE_INTEGER li = fplZeroInit;
+		if (GetFileSizeEx(win32FileHandle, &li) == TRUE) {
+			if (li.QuadPart > (LONGLONG)UINT32_MAX) {
+				result = UINT32_MAX;
+			} else {
+				result = (uint32_t)li.QuadPart;
+			}
+		}
+	}
+	return(result);
+}
+
+fpl_platform_api bool fplFileTryGetSizeFromPath(const char *filePath, uint64_t *outSize) {
+	FPL__CheckArgumentNull(filePath, false);
+	FPL__CheckArgumentNull(outSize, false);
+	bool result = false;
+	wchar_t filePathWide[FPL_MAX_PATH_LENGTH];
+	fplUTF8StringToWideString(filePath, fplGetStringLength(filePath), filePathWide, fplArrayCount(filePathWide));
+	HANDLE win32FileHandle = CreateFileW(filePathWide, GENERIC_READ, FILE_SHARE_READ, fpl_null, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, fpl_null);
+	if (win32FileHandle != INVALID_HANDLE_VALUE) {
+		LARGE_INTEGER li = fplZeroInit;
+		if (GetFileSizeEx(win32FileHandle, &li) == TRUE) {
+			*outSize = (uint64_t)li.QuadPart;
+			result = true;
+		}
+		CloseHandle(win32FileHandle);
+	}
+	return(result);
+}
+
+fpl_platform_api bool fplFileTryGetSizeFromHandle(const fplFileHandle *fileHandle, uint64_t *outSize) {
+	FPL__CheckArgumentNull(fileHandle, false);
+	FPL__CheckArgumentNull(outSize, false);
+	bool result = false;
+	if (FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
+		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
+		LARGE_INTEGER li = fplZeroInit;
+		if (GetFileSizeEx(win32FileHandle, &li) == TRUE) {
+			*outSize = (uint64_t)li.QuadPart;
+			result = true;
+		}
 	}
 	return(result);
 }
@@ -16181,7 +18660,7 @@ fpl_platform_api uint32_t fplFileGetSizeFromHandle32(const fplFileHandle *fileHa
 fpl_platform_api uint64_t fplFileGetSizeFromHandle64(const fplFileHandle *fileHandle) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint64_t result = 0;
-	if (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+	if (FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
 		LARGE_INTEGER li = fplZeroInit;
 		if (GetFileSizeEx(win32FileHandle, &li) == TRUE) {
@@ -16217,7 +18696,7 @@ fpl_platform_api bool fplFileGetTimestampsFromPath(const char *filePath, fplFile
 fpl_platform_api bool fplFileGetTimestampsFromHandle(const fplFileHandle *fileHandle, fplFileTimeStamps *outStamps) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentNull(outStamps, 0);
-	if (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+	if (FPL__WIN32_IS_VALID_FILE_HANDLE(fileHandle->internalHandle.win32FileHandle)) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
 		FILETIME times[3];
 		if (GetFileTime(win32FileHandle, &times[0], &times[1], &times[2]) == TRUE) {
@@ -16252,7 +18731,7 @@ fpl_platform_api bool fplFileCopy(const char *sourceFilePath, const char *target
 	wchar_t sourceFilePathWide[FPL_MAX_PATH_LENGTH];
 	wchar_t targetFilePathWide[FPL_MAX_PATH_LENGTH];
 	fplUTF8StringToWideString(sourceFilePath, fplGetStringLength(sourceFilePath), sourceFilePathWide, fplArrayCount(sourceFilePathWide));
-	fplUTF8StringToWideString(sourceFilePath, fplGetStringLength(sourceFilePath), targetFilePathWide, fplArrayCount(targetFilePathWide));
+	fplUTF8StringToWideString(targetFilePath, fplGetStringLength(targetFilePath), targetFilePathWide, fplArrayCount(targetFilePathWide));
 	bool result = (CopyFileW(sourceFilePathWide, targetFilePathWide, !overwrite) == TRUE);
 	return(result);
 }
@@ -16263,7 +18742,7 @@ fpl_platform_api bool fplFileMove(const char *sourceFilePath, const char *target
 	wchar_t sourceFilePathWide[FPL_MAX_PATH_LENGTH];
 	wchar_t targetFilePathWide[FPL_MAX_PATH_LENGTH];
 	fplUTF8StringToWideString(sourceFilePath, fplGetStringLength(sourceFilePath), sourceFilePathWide, fplArrayCount(sourceFilePathWide));
-	fplUTF8StringToWideString(sourceFilePath, fplGetStringLength(sourceFilePath), targetFilePathWide, fplArrayCount(targetFilePathWide));
+	fplUTF8StringToWideString(targetFilePath, fplGetStringLength(targetFilePath), targetFilePathWide, fplArrayCount(targetFilePathWide));
 	bool result = (MoveFileW(sourceFilePathWide, targetFilePathWide) == TRUE);
 	return(result);
 }
@@ -16376,8 +18855,8 @@ fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter
 	if (searchHandle != INVALID_HANDLE_VALUE) {
 		fplClearStruct(entry);
 		entry->internalHandle.win32FileHandle = searchHandle;
-		entry->internalRoot.rootPath = path;
-		entry->internalRoot.filter = filter;
+		fplCopyString(path, entry->internalRoot.rootPath, fplArrayCount(entry->internalRoot.rootPath));
+		fplCopyString(filter, entry->internalRoot.filter, fplArrayCount(entry->internalRoot.filter));
 		bool foundFirst = true;
 		while (foundFirst) {
 			if (lstrcmpW(findData.cFileName, L".") == 0 || lstrcmpW(findData.cFileName, L"..") == 0) {
@@ -16395,7 +18874,7 @@ fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter
 fpl_platform_api bool fplDirectoryListNext(fplFileEntry *entry) {
 	FPL__CheckArgumentNull(entry, false);
 	bool result = false;
-	if (entry->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+	if (FPL__WIN32_IS_VALID_FILE_HANDLE(entry->internalHandle.win32FileHandle)) {
 		HANDLE searchHandle = entry->internalHandle.win32FileHandle;
 		WIN32_FIND_DATAW findData;
 		bool foundNext;
@@ -16416,7 +18895,7 @@ fpl_platform_api bool fplDirectoryListNext(fplFileEntry *entry) {
 
 fpl_platform_api void fplDirectoryListEnd(fplFileEntry *entry) {
 	FPL__CheckArgumentNullNoRet(entry);
-	if (entry->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+	if (FPL__WIN32_IS_VALID_FILE_HANDLE(entry->internalHandle.win32FileHandle)) {
 		HANDLE searchHandle = entry->internalHandle.win32FileHandle;
 		FindClose(searchHandle);
 		fplClearStruct(entry);
@@ -16427,20 +18906,35 @@ fpl_platform_api void fplDirectoryListEnd(fplFileEntry *entry) {
 // Win32 Path/Directories
 //
 fpl_platform_api size_t fplGetExecutableFilePath(char *destPath, const size_t maxDestLen) {
+	size_t result = 0;
 	wchar_t modulePath[MAX_PATH];
-	GetModuleFileNameW(fpl_null, modulePath, MAX_PATH);
-	size_t modulePathLen = lstrlenW(modulePath);
-	size_t result = fplWideStringToUTF8String(modulePath, modulePathLen, destPath, maxDestLen);
+	DWORD written = GetModuleFileNameW(fpl_null, modulePath, MAX_PATH);
+	if (written == 0) {
+		FPL__ERROR(FPL__MODULE_PATHS, "GetModuleFileNameW failed (last error %lu)", GetLastError());
+		return(result);
+	}
+	if (written >= MAX_PATH) {
+		// Pre-Win10 1607: buffer truncated. We cannot grow without allocating, so report failure.
+		FPL__ERROR(FPL__MODULE_PATHS, "Executable path exceeds MAX_PATH (%lu); cannot return without truncation", (unsigned long)MAX_PATH);
+		return(result);
+	}
+	modulePath[written] = L'\0';
+	result = fplWideStringToUTF8String(modulePath, (size_t)written, destPath, maxDestLen);
 	return(result);
 }
 
 fpl_platform_api size_t fplGetHomePath(char *destPath, const size_t maxDestLen) {
 	FPL__CheckPlatform(0);
 	const fpl__Win32Api *wapi = &fpl__global__AppState->win32.winApi;
+	size_t result = 0;
 	wchar_t homePath[MAX_PATH];
-	wapi->shell.SHGetFolderPathW(fpl_null, CSIDL_PROFILE, fpl_null, 0, homePath);
+	HRESULT hr = wapi->shell.SHGetFolderPathW(fpl_null, CSIDL_PROFILE, fpl_null, 0, homePath);
+	if (!SUCCEEDED(hr)) {
+		FPL__ERROR(FPL__MODULE_PATHS, "SHGetFolderPathW(CSIDL_PROFILE) failed (HRESULT 0x%08lx)", (unsigned long)hr);
+		return(result);
+	}
 	size_t homePathLen = lstrlenW(homePath);
-	size_t result = fplWideStringToUTF8String(homePath, homePathLen, destPath, maxDestLen);
+	result = fplWideStringToUTF8String(homePath, homePathLen, destPath, maxDestLen);
 	return(result);
 }
 
@@ -16615,11 +19109,25 @@ fpl_platform_api fplDateTimeResult fplFormatDateTime(const fplDateTime dateTime,
 fpl_platform_api size_t fplWideStringToUTF8String(const wchar_t *wideSource, const size_t wideSourceLen, char *utf8Dest, const size_t maxUtf8DestLen) {
 	FPL__CheckArgumentNull(wideSource, 0);
 	FPL__CheckArgumentZero(wideSourceLen, 0);
-	size_t result = WideCharToMultiByte(CP_UTF8, 0, wideSource, (int)wideSourceLen, fpl_null, 0, fpl_null, fpl_null);
+	if (wideSourceLen > (size_t)INT_MAX) {
+		FPL__ERROR(FPL__MODULE_STRINGS, "Wide source length %zu exceeds INT_MAX", wideSourceLen);
+		return(0);
+	}
+	int sizeRes = WideCharToMultiByte(CP_UTF8, 0, wideSource, (int)wideSourceLen, fpl_null, 0, fpl_null, fpl_null);
+	if (sizeRes <= 0) {
+		FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert wide-string to UTF-8 (size query)");
+		return(0);
+	}
+	size_t result = (size_t)sizeRes;
 	if (utf8Dest != fpl_null) {
 		size_t minRequiredLen = result + 1;
 		FPL__CheckArgumentMin(maxUtf8DestLen, minRequiredLen, 0);
-		WideCharToMultiByte(CP_UTF8, 0, wideSource, (int)wideSourceLen, utf8Dest, (int)maxUtf8DestLen, fpl_null, fpl_null);
+		int destClamp = (maxUtf8DestLen > (size_t)INT_MAX) ? INT_MAX : (int)maxUtf8DestLen;
+		int writeRes = WideCharToMultiByte(CP_UTF8, 0, wideSource, (int)wideSourceLen, utf8Dest, destClamp, fpl_null, fpl_null);
+		if (writeRes <= 0) {
+			FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert wide-string to UTF-8 (write)");
+			return(0);
+		}
 		utf8Dest[result] = 0;
 	}
 	return(result);
@@ -16627,11 +19135,25 @@ fpl_platform_api size_t fplWideStringToUTF8String(const wchar_t *wideSource, con
 fpl_platform_api size_t fplUTF8StringToWideString(const char *utf8Source, const size_t utf8SourceLen, wchar_t *wideDest, const size_t maxWideDestLen) {
 	FPL__CheckArgumentNull(utf8Source, 0);
 	FPL__CheckArgumentZero(utf8SourceLen, 0);
-	size_t result = MultiByteToWideChar(CP_UTF8, 0, utf8Source, (int)utf8SourceLen, fpl_null, 0);
+	if (utf8SourceLen > (size_t)INT_MAX) {
+		FPL__ERROR(FPL__MODULE_STRINGS, "UTF-8 source length %zu exceeds INT_MAX", utf8SourceLen);
+		return(0);
+	}
+	int sizeRes = MultiByteToWideChar(CP_UTF8, 0, utf8Source, (int)utf8SourceLen, fpl_null, 0);
+	if (sizeRes <= 0) {
+		FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert UTF-8 to wide-string (size query)");
+		return(0);
+	}
+	size_t result = (size_t)sizeRes;
 	if (wideDest != fpl_null) {
 		size_t minRequiredLen = result + 1;
 		FPL__CheckArgumentMin(maxWideDestLen, minRequiredLen, 0);
-		MultiByteToWideChar(CP_UTF8, 0, utf8Source, (int)utf8SourceLen, wideDest, (int)maxWideDestLen);
+		int destClamp = (maxWideDestLen > (size_t)INT_MAX) ? INT_MAX : (int)maxWideDestLen;
+		int writeRes = MultiByteToWideChar(CP_UTF8, 0, utf8Source, (int)utf8SourceLen, wideDest, destClamp);
+		if (writeRes <= 0) {
+			FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert UTF-8 to wide-string (write)");
+			return(0);
+		}
 		wideDest[result] = 0;
 	}
 	return(result);
@@ -17020,16 +19542,12 @@ fpl_platform_api void fplPollEvents(void) {
 fpl_platform_api bool fplWindowUpdate(void) {
 	FPL__CheckPlatform(false);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	fpl__Win32AppState *win32AppState = &appState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	const fpl__Win32InitState *win32InitState = &fpl__global__InitState.win32;
-	const fpl__Win32Api *wapi = &win32AppState->winApi;
 	fpl__ClearInternalEvents();
+#	if defined(FPL__ENABLE_INPUT)
 	if (!appState->currentSettings.input.disabledEvents) {
-		if (fplIsMaskSet(appState->initFlags, fplInitFlags_GameController)) {
-			fpl__Win32UpdateGameControllers(&appState->currentSettings, win32InitState, win32AppState);
-		}
+		fpl__InputSystem_Update(&appState->input);
 	}
+#	endif
 	bool result = appState->window.isRunning != 0;
 	return(result);
 }
@@ -17095,51 +19613,35 @@ fpl_platform_api bool fplSetClipboardText(const char *text) {
 	return(result);
 }
 
+#endif // FPL__ENABLE_WINDOW
+
+#if defined(FPL__ENABLE_INPUT)
 fpl_platform_api bool fplPollKeyboardState(fplKeyboardState *outState) {
 	FPL__CheckArgumentNull(outState, false);
 	FPL__CheckPlatform(false);
-	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	const fpl__Win32Api *wapi = &appState->winApi;
-	fplClearStruct(outState);
-	outState->modifiers = fpl__Win32GetKeyboardModifiers(wapi);
-	for (uint32_t keyCode = 0; keyCode < 256; ++keyCode) {
-		int k = wapi->user.MapVirtualKeyW(MAPVK_VSC_TO_VK, keyCode);
-		if (k == 0) {
-			k = (int)keyCode;
-		}
-		bool down = fpl__Win32IsKeyDown(wapi, k);
-		fplKey key = fpl__GetMappedKey(&fpl__global__AppState->window, keyCode);
-		outState->keyStatesRaw[keyCode] = down;
-		outState->buttonStatesMapped[(int)key] = down ? fplButtonState_Press : fplButtonState_Release;
-	}
-	return(true);
+#	if defined(FPL__ENABLE_INPUT)
+	return fpl__InputSystem_PollKeyboard(&fpl__global__AppState->input, outState);
+#	else
+	(void)outState;
+	return false;
+#	endif
 }
 
 fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
 	FPL__CheckArgumentNull(outStates, false);
 	FPL__CheckPlatform(false);
-
 	fpl__PlatformAppState *platformAppState = fpl__global__AppState;
-
-	bool isEnabled = fplIsMaskSet(platformAppState->initFlags, fplInitFlags_GameController);
-	if (!isEnabled) {
-		return false;
-	}
-
-	fpl__Win32AppState *appState = &platformAppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	const fpl__Win32Api *wapi = &appState->winApi;
-
-	fpl__Win32XInputState *xinputState = &appState->xinput;
-
-	size_t xinputResult = fpl__Win32XInput_Poll(xinputState, outStates);
-
-	bool result = xinputResult > 0;
-
-	return(result);
+	return fpl__InputSystem_PollGamepad(&platformAppState->input, outStates);
 }
 
+fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
+	FPL__CheckArgumentNull(outState, false);
+	FPL__CheckPlatform(false);
+	return fpl__InputSystem_PollMouse(&fpl__global__AppState->input, outState);
+}
+#endif // FPL__ENABLE_INPUT
+
+#if defined(FPL__ENABLE_WINDOW)
 fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY) {
 	FPL__CheckArgumentNull(outX, false);
 	FPL__CheckArgumentNull(outY, false);
@@ -17165,30 +19667,6 @@ fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY) {
 		*outY = p.y;
 		return(true);
 #endif
-	}
-	return(false);
-}
-
-fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
-	FPL__CheckArgumentNull(outState, false);
-	FPL__CheckPlatform(false);
-	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	const fpl__Win32Api *wapi = &appState->winApi;
-	POINT p;
-	if ((wapi->user.GetCursorPos(&p) == TRUE) && (wapi->user.ScreenToClient(windowState->windowHandle, &p))) {
-		fplClearStruct(outState);
-		outState->x = p.x;
-		outState->y = p.y;
-
-		bool leftDown = fpl__Win32IsKeyDown(wapi, VK_LBUTTON);
-		bool rightDown = fpl__Win32IsKeyDown(wapi, VK_RBUTTON);
-		bool middleDown = fpl__Win32IsKeyDown(wapi, VK_MBUTTON);
-		outState->buttonStates[fplMouseButtonType_Left] = leftDown ? fplButtonState_Press : fplButtonState_Release;
-		outState->buttonStates[fplMouseButtonType_Right] = rightDown ? fplButtonState_Press : fplButtonState_Release;
-		outState->buttonStates[fplMouseButtonType_Middle] = middleDown ? fplButtonState_Press : fplButtonState_Release;
-
-		return(true);
 	}
 	return(false);
 }
@@ -18462,7 +20940,7 @@ fpl_platform_api bool fplFileAppendBinary(const char *filePath, fplFileHandle *o
 	return false;
 }
 
-fpl_platform_api size_t fpl__PosixWriteFileBlock(const fplFileHandle *fileHandle, void *sourceBuffer, const size_t sourceSize) {
+fpl_platform_api size_t fpl__PosixWriteFileBlock(const fplFileHandle *fileHandle, const void *sourceBuffer, const size_t sourceSize) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sourceSize, 0);
 	FPL__CheckArgumentNull(sourceBuffer, 0);
@@ -18486,14 +20964,16 @@ fpl_platform_api uint32_t fplFileReadBlock32(const fplFileHandle *fileHandle, co
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sizeToRead, 0);
 	FPL__CheckArgumentNull(targetBuffer, 0);
+	FPL__CheckArgumentZero(maxTargetBufferSize, 0);
 	if (!fileHandle->internalHandle.posixFileHandle) {
 		FPL__ERROR(FPL__MODULE_FILES, "File handle is not opened for reading");
 		return 0;
 	}
+	uint32_t actualToRead = (sizeToRead > maxTargetBufferSize) ? maxTargetBufferSize : sizeToRead;
 	int posixFileHandle = fileHandle->internalHandle.posixFileHandle;
 	ssize_t res;
 	do {
-		res = read(posixFileHandle, targetBuffer, sizeToRead);
+		res = read(posixFileHandle, targetBuffer, actualToRead);
 	} while (res == -1 && errno == EINTR);
 	uint32_t result = 0;
 	if (res != -1) {
@@ -18506,13 +20986,15 @@ fpl_platform_api uint64_t fplFileReadBlock64(const fplFileHandle *fileHandle, co
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sizeToRead, 0);
 	FPL__CheckArgumentNull(targetBuffer, 0);
+	FPL__CheckArgumentZero(maxTargetBufferSize, 0);
 	if (!fileHandle->internalHandle.posixFileHandle) {
 		FPL__ERROR(FPL__MODULE_FILES, "File handle is not opened for reading");
 		return 0;
 	}
+	uint64_t actualToRead = (sizeToRead > maxTargetBufferSize) ? maxTargetBufferSize : sizeToRead;
 	int posixFileHandle = fileHandle->internalHandle.posixFileHandle;
 	uint64_t result = 0;
-	uint64_t remainingSize = sizeToRead;
+	uint64_t remainingSize = actualToRead;
 	uint64_t bufferPos = 0;
 	const uint64_t MaxValue = (uint64_t)(size_t)-1;
 	while (remainingSize > 0) {
@@ -18522,18 +21004,20 @@ fpl_platform_api uint64_t fplFileReadBlock64(const fplFileHandle *fileHandle, co
 		do {
 			res = read(posixFileHandle, target, size);
 		} while (res == -1 && errno == EINTR);
-		if (res != -1) {
-			result += res;
-		} else {
+		if (res == -1) {
 			break;
 		}
-		remainingSize -= res;
-		bufferPos += res;
+		if (res == 0) {
+			break;
+		}
+		result += (uint64_t)res;
+		remainingSize -= (uint64_t)res;
+		bufferPos += (uint64_t)res;
 	}
 	return(result);
 }
 
-fpl_platform_api uint32_t fplFileWriteBlock32(const fplFileHandle *fileHandle, void *sourceBuffer, const uint32_t sourceSize) {
+fpl_platform_api uint32_t fplFileWriteBlock32(const fplFileHandle *fileHandle, const void *sourceBuffer, const uint32_t sourceSize) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sourceSize, 0);
 	FPL__CheckArgumentNull(sourceBuffer, 0);
@@ -18553,7 +21037,7 @@ fpl_platform_api uint32_t fplFileWriteBlock32(const fplFileHandle *fileHandle, v
 	return(result);
 }
 
-fpl_platform_api uint64_t fplFileWriteBlock64(const fplFileHandle *fileHandle, void *sourceBuffer, const uint64_t sourceSize) {
+fpl_platform_api uint64_t fplFileWriteBlock64(const fplFileHandle *fileHandle, const void *sourceBuffer, const uint64_t sourceSize) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sourceSize, 0);
 	FPL__CheckArgumentNull(sourceBuffer, 0);
@@ -18573,11 +21057,15 @@ fpl_platform_api uint64_t fplFileWriteBlock64(const fplFileHandle *fileHandle, v
 		do {
 			res = write(posixFileHandle, source, size);
 		} while (res == -1 && errno == EINTR);
-		if (res != -1) {
-			result += res;
+		if (res == -1) {
+			break;
 		}
-		remainingSize -= res;
-		bufferPos += res;
+		if (res == 0) {
+			break;
+		}
+		result += (uint64_t)res;
+		remainingSize -= (uint64_t)res;
+		bufferPos += (uint64_t)res;
 	}
 	return(result);
 }
@@ -18722,6 +21210,38 @@ fpl_platform_api uint64_t fplFileGetSizeFromHandle64(const fplFileHandle *fileHa
 	return(result);
 }
 
+fpl_platform_api bool fplFileTryGetSizeFromPath(const char *filePath, uint64_t *outSize) {
+	FPL__CheckArgumentNull(filePath, false);
+	FPL__CheckArgumentNull(outSize, false);
+	bool result = false;
+	struct stat sb;
+	if (stat(filePath, &sb) == 0 && S_ISREG(sb.st_mode)) {
+		*outSize = (uint64_t)sb.st_size;
+		result = true;
+	}
+	return(result);
+}
+
+fpl_platform_api bool fplFileTryGetSizeFromHandle(const fplFileHandle *fileHandle, uint64_t *outSize) {
+	FPL__CheckArgumentNull(fileHandle, false);
+	FPL__CheckArgumentNull(outSize, false);
+	bool result = false;
+	if (fileHandle->internalHandle.posixFileHandle) {
+		int posixFileHandle = fileHandle->internalHandle.posixFileHandle;
+		fpl__off64_t curPos = fpl__lseek64(posixFileHandle, 0, SEEK_CUR);
+		if (curPos != -1) {
+			fpl__off64_t end = fpl__lseek64(posixFileHandle, 0, SEEK_END);
+			if (end != -1) {
+				if (fpl__lseek64(posixFileHandle, curPos, SEEK_SET) != -1) {
+					*outSize = (uint64_t)end;
+					result = true;
+				}
+			}
+		}
+	}
+	return(result);
+}
+
 fpl_internal uint64_t fpl__PosixConvertTimeToUnixTimeStamp(const time_t secs) {
 	uint64_t result = (uint64_t)secs;
 	return(result);
@@ -18842,8 +21362,46 @@ fpl_platform_api bool fplDirectoryExists(const char *path) {
 
 fpl_platform_api bool fplDirectoriesCreate(const char *path) {
 	FPL__CheckArgumentNull(path, false);
-	bool result = mkdir(path, S_IRWXU | S_IRWXG | S_IRWXO) == 0;
-	return(result);
+
+	char tmp[FPL_MAX_PATH_LENGTH];
+	size_t i = 0;
+
+	// Scan and create all sub-directories. Treat '/' and '\\' both as separators on POSIX.
+	for (i = 0; path[i] != '\0'; ++i) {
+		if (i >= sizeof(tmp) - 1) {
+			return false;
+		}
+		char c = path[i];
+		if (c == '\\') {
+			c = '/';
+		}
+		tmp[i] = c;
+		// Whenever we encounter a slash, we "terminate" the string there to create the parent directory.
+		if (tmp[i] == '/' && i > 0) {
+			tmp[i] = '\0';
+			// Try creating the directory. We ignore EEXIST because the folder might already be there.
+			if (mkdir(tmp, S_IRWXU | S_IRWXG | S_IRWXO) != 0) {
+				if (errno != EEXIST) {
+					return false;
+				}
+			}
+			// Restore the slash to continue building the path
+			tmp[i] = '/';
+		}
+	}
+
+	// Handle the final segment (or the whole path if no trailing slash exists)
+	tmp[i] = '\0';
+
+	// If the path ended with a slash, the last mkdir was already handled in the loop.
+	// If not, we run it one last time here.
+	if (i > 0 && tmp[i-1] != '/') {
+		if (mkdir(tmp, S_IRWXU | S_IRWXG | S_IRWXO) != 0) {
+			return (errno == EEXIST);
+		}
+	}
+
+	return true;
 }
 fpl_platform_api bool fplRemoveDirectory(const char *path) {
 	FPL__CheckArgumentNull(path, false);
@@ -18916,8 +21474,8 @@ fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter
 	}
 	fplClearStruct(entry);
 	entry->internalHandle.posixDirHandle = dir;
-	entry->internalRoot.rootPath = path;
-	entry->internalRoot.filter = filter;
+	fplCopyString(path, entry->internalRoot.rootPath, fplArrayCount(entry->internalRoot.rootPath));
+	fplCopyString(filter, entry->internalRoot.filter, fplArrayCount(entry->internalRoot.filter));
 	bool result = fplDirectoryListNext(entry);
 	return(result);
 }
@@ -18927,23 +21485,18 @@ fpl_platform_api bool fplDirectoryListNext(fplFileEntry *entry) {
 	bool result = false;
 	if (entry->internalHandle.posixDirHandle != fpl_null) {
 		DIR *dirHandle = (DIR *)entry->internalHandle.posixDirHandle;
-		struct dirent *dp = readdir(dirHandle);
-		do {
+		for (;;) {
+			struct dirent *dp = readdir(dirHandle);
 			if (dp == fpl_null) {
+				closedir(dirHandle);
+				fplClearStruct(entry);
 				break;
 			}
-			bool isMatch = fplIsStringMatchWildcard(dp->d_name, entry->internalRoot.filter);
-			if (isMatch) {
+			if (fplIsStringMatchWildcard(dp->d_name, entry->internalRoot.filter)) {
+				fpl__PosixFillFileEntry(dp, entry);
+				result = true;
 				break;
 			}
-			dp = readdir(dirHandle);
-		} while (dp != fpl_null);
-		if (dp == fpl_null) {
-			closedir(dirHandle);
-			fplClearStruct(entry);
-		} else {
-			fpl__PosixFillFileEntry(dp, entry);
-			result = true;
 		}
 	}
 	return(result);
@@ -18991,26 +21544,26 @@ fpl_platform_api size_t fplGetExecutableFilePath(char *destPath, const size_t ma
 	size_t result = 0;
 	for (int i = 0; i < fplArrayCount(procNames); ++i) {
 		const char *procName = procNames[i];
-		if (readlink(procName, buf, fplArrayCount(buf) - 1)) {
-			int len = fplGetStringLength(buf);
-			if (len > 0) {
-				char *lastP = buf + (len - 1);
-				char *p = lastP;
-				while (p != buf) {
-					if (*p == '/') {
-						len = (lastP - buf) + 1;
-						break;
-					}
-					--p;
-				}
-				result = len;
-				if (destPath != fpl_null) {
-					size_t requiredLen = len + 1;
-					FPL__CheckArgumentMin(maxDestLen, requiredLen, 0);
-					fplCopyStringLen(buf, len, destPath, maxDestLen);
+		ssize_t n = readlink(procName, buf, fplArrayCount(buf) - 1);
+		if (n > 0) {
+			buf[n] = '\0';
+			size_t len = (size_t)n;
+			char *lastP = buf + (len - 1);
+			char *p = lastP;
+			while (p != buf) {
+				if (*p == '/') {
+					len = (size_t)((lastP - buf) + 1);
 					break;
 				}
+				--p;
 			}
+			result = len;
+			if (destPath != fpl_null) {
+				size_t requiredLen = len + 1;
+				FPL__CheckArgumentMin(maxDestLen, requiredLen, 0);
+				fplCopyStringLen(buf, len, destPath, maxDestLen);
+			}
+			break;
 		}
 	}
 	return(result);
@@ -19021,6 +21574,9 @@ fpl_platform_api size_t fplGetHomePath(char *destPath, const size_t maxDestLen) 
 	if (homeDir == fpl_null) {
 		int userId = getuid();
 		struct passwd *userPwd = getpwuid(userId);
+		if (userPwd == fpl_null || userPwd->pw_dir == fpl_null) {
+			return(0);
+		}
 		homeDir = userPwd->pw_dir;
 	}
 	size_t result = fplGetStringLength(homeDir);
@@ -19054,26 +21610,30 @@ fpl_platform_api size_t fplPathNormalize(const char *sourcePath, char *destPath,
 //
 
 fpl_platform_api fplDateTime fplDateTimeQuery(const fplDateTimeType type) {
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-
 	fplDateTime dateTime = fplZeroInit;
+	struct timeval tv;
+	if (gettimeofday(&tv, NULL) != 0) {
+		return dateTime;
+	}
+
 	dateTime.epoch = (uint64_t)tv.tv_sec;
-	dateTime.milliseconds = (uint32_t)(tv.tv_usec / 1000); // Convert microseconds to milliseconds
+	dateTime.milliseconds = (uint32_t)(tv.tv_usec / 1000);
 
 	if (type == fplDateTimeType_UTC) {
-		dateTime.utcOffset = 0; // UTC offset is 0 for UTC format
+		dateTime.utcOffset = 0;
 	} else {
-		// Get local time offset
 		time_t rawtime = tv.tv_sec;
-		struct tm *localTime = localtime(&rawtime);
-		dateTime.utcOffset = (localTime->tm_gmtoff / 60); // Convert seconds to minutes
+		struct tm localStorage;
+		struct tm *localTime = localtime_r(&rawtime, &localStorage);
+		if (localTime != fpl_null) {
+			dateTime.utcOffset = (localTime->tm_gmtoff / 60);
+		}
 	}
 
 	return dateTime;
 }
 
-fplDateTimeResult fplFormatDateTime(const fplDateTime dateTime, const fplDateTimeType type) {
+fpl_platform_api fplDateTimeResult fplFormatDateTime(const fplDateTime dateTime, const fplDateTimeType type) {
 	fplDateTimeResult result = fplZeroInit;
 
 	// Convert local epoch + utcOffset back to UTC epoch before applying format
@@ -19083,17 +21643,21 @@ fplDateTimeResult fplFormatDateTime(const fplDateTime dateTime, const fplDateTim
 		correctedEpoch -= (dateTime.utcOffset * 60);
 	}
 
+	struct tm tmStorage;
 	struct tm *timeInfo;
 
 	if (type == fplDateTimeType_UTC) {
-		timeInfo = gmtime(&correctedEpoch);
+		timeInfo = gmtime_r(&correctedEpoch, &tmStorage);
 	} else {
-		timeInfo = localtime(&correctedEpoch);
+		timeInfo = localtime_r(&correctedEpoch, &tmStorage);
 	}
 
-	// Fill in the result structure
-	result.year = (uint16_t)(timeInfo->tm_year + 1900); // tm_year is years since 1900
-	result.month = (uint8_t)(timeInfo->tm_mon + 1); // tm_mon is 0-11
+	if (timeInfo == fpl_null) {
+		return result;
+	}
+
+	result.year = (uint16_t)(timeInfo->tm_year + 1900);
+	result.month = (uint8_t)(timeInfo->tm_mon + 1);
 	result.day = (uint8_t)timeInfo->tm_mday;
 	result.hour = (uint8_t)timeInfo->tm_hour;
 	result.minute = (uint8_t)timeInfo->tm_min;
@@ -19172,31 +21736,105 @@ fpl_platform_api bool fplOSGetVersionInfos(fplOSVersionInfos *outInfos) {
 // ############################################################################
 #if defined(FPL_SUBPLATFORM_STD_STRINGS)
 // @NOTE(final): stdio.h is already included
-fpl_platform_api size_t fplWideStringToUTF8String(const wchar_t *wideSource, const size_t wideSourceLen, char *utf8Dest, const size_t maxUtf8DestLen) {
-	// @NOTE(final): Expect locale to be UTF-8
+fpl_platform_api size_t fplWideStringToUTF8String(const wchar_t *wideSource, const size_t wideSourceLen, char *utf8Dest, const size_t maxUtf8DestLen)
+{
 	FPL__CheckArgumentNull(wideSource, 0);
 	FPL__CheckArgumentZero(wideSourceLen, 0);
-	size_t result = wcstombs(fpl_null, wideSource, wideSourceLen);
-	if (utf8Dest != fpl_null) {
-		size_t requiredLen = result + 1;
-		FPL__CheckArgumentMin(maxUtf8DestLen, requiredLen, 0);
-		wcstombs(utf8Dest, wideSource, wideSourceLen);
-		utf8Dest[result] = 0;
+
+	mbstate_t state;
+	fplClearStruct(&state);
+
+	size_t totalLen = 0;
+
+	// First pass: compute length
+	for (size_t i = 0; i < wideSourceLen; ++i) {
+		char tmp[MB_CUR_MAX];
+		const size_t res = wcrtomb(tmp, wideSource[i], &state);
+		if (res == (size_t)-1) {
+			FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert wide-string to UTF-8");
+			return 0;
+		}
+		totalLen += res;
 	}
-	return(result);
+
+	if (utf8Dest != fpl_null) {
+		size_t requiredLen = totalLen + 1;
+		if (maxUtf8DestLen < requiredLen) {
+			return 0;
+		}
+
+		fplClearStruct(&state);
+
+		size_t pos = 0;
+		for (size_t i = 0; i < wideSourceLen; ++i) {
+			const size_t res = wcrtomb(utf8Dest + pos, wideSource[i], &state);
+			if (res == (size_t)-1) {
+				FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert wide-string to UTF-8");
+				return 0;
+			}
+			pos += res;
+		}
+
+		utf8Dest[pos] = '\0';
+	}
+
+	return totalLen;
 }
-fpl_platform_api size_t fplUTF8StringToWideString(const char *utf8Source, const size_t utf8SourceLen, wchar_t *wideDest, const size_t maxWideDestLen) {
-	// @NOTE(final): Expect locale to be UTF-8
+
+fpl_platform_api size_t fplUTF8StringToWideString(const char *utf8Source, const size_t utf8SourceLen, wchar_t *wideDest, const size_t maxWideDestLen)
+{
 	FPL__CheckArgumentNull(utf8Source, 0);
 	FPL__CheckArgumentZero(utf8SourceLen, 0);
-	size_t result = mbstowcs(fpl_null, utf8Source, utf8SourceLen);
-	if (wideDest != fpl_null) {
-		size_t requiredLen = result + 1;
-		FPL__CheckArgumentMin(maxWideDestLen, requiredLen, 0);
-		mbstowcs(wideDest, utf8Source, utf8SourceLen);
-		wideDest[result] = 0;
+
+	mbstate_t state;
+	fplClearStruct(&state);
+
+	size_t totalLen = 0;
+	size_t offset = 0;
+
+	// First pass: compute length
+	while (offset < utf8SourceLen) {
+		wchar_t wc;
+		size_t res = mbrtowc(&wc, utf8Source + offset, utf8SourceLen - offset, &state);
+		if (res == (size_t)-1 || res == (size_t)-2) {
+			FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert UTF-8 to wide-string");
+			return 0;
+		}
+		if (res == 0) {
+			break;
+		}
+		offset += res;
+		totalLen += 1;
 	}
-	return(result);
+
+	if (wideDest != fpl_null) {
+		size_t requiredLen = totalLen + 1;
+		if (maxWideDestLen < requiredLen) {
+			return 0;
+		}
+
+		fplClearStruct(&state);
+
+		offset = 0;
+		size_t pos = 0;
+
+		while (offset < utf8SourceLen) {
+			size_t res = mbrtowc(&wideDest[pos], utf8Source + offset, utf8SourceLen - offset, &state);
+			if (res == (size_t)-1 || res == (size_t)-2) {
+				FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert UTF-8 to wide-string");
+				return 0;
+			}
+			if (res == 0) {
+				break;
+			}
+			offset += res;
+			pos += 1;
+		}
+
+		wideDest[pos] = L'\0';
+	}
+
+	return totalLen;
 }
 #endif // FPL_SUBPLATFORM_STD_STRINGS
 
@@ -19250,6 +21888,7 @@ fpl_internal bool fpl__X11InitSubplatform(fpl__X11SubplatformState *subplatform)
 	return true;
 }
 
+#if defined(FPL__ENABLE_WINDOW)
 fpl_internal void fpl__X11ReleaseWindow(const fpl__X11SubplatformState *subplatform, fpl__X11WindowState *windowState) {
 	fplAssert((subplatform != fpl_null) && (windowState != fpl_null));
 	const fpl__X11Api *x11Api = &subplatform->api;
@@ -19279,6 +21918,7 @@ fpl_internal void fpl__X11ReleaseWindow(const fpl__X11SubplatformState *subplatf
 	}
 	fplClearStruct(windowState);
 }
+#endif // FPL__ENABLE_WINDOW
 
 fpl_internal fplKey fpl__X11TranslateKeySymbol(const KeySym keySym) {
 	switch (keySym) {
@@ -19513,6 +22153,7 @@ fpl_internal fplKey fpl__X11TranslateKeySymbol(const KeySym keySym) {
 	}
 }
 
+#if defined(FPL__ENABLE_WINDOW)
 fpl_internal void fpl__X11LoadWindowIcon(const fpl__X11Api *x11Api, fpl__X11WindowState *x11WinState, fplWindowSettings *windowSettings) {
 	// @BUG(final/X11): Setting the window icon on X11 does not fail, but it does not show up in any of the bars in gnome/ubuntu the icon is always shown as "unset"
 
@@ -19885,38 +22526,109 @@ fpl_internal fpl__X11WindowStateInfo fpl__X11ReconcilWindowStateInfo(fpl__X11Win
 	return change;
 }
 
+// Gets the raw byte value from a hex character (0-9, a-f, A-F)
+static inline char fpl__X11FromHex(char c) {
+	if (c >= '0' && c <= '9') return c - '0';
+	if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+	if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+	return -1;
+}
+
+// Returns number of bytes written to dst (excluding the zero terminator).
+// dst will always be zero-terminated if maxDestinationLength > 0.
+static size_t fpl__X11UriDecode(char *dst,
+								const char *src,
+								const size_t maxDestinationLength,
+								const size_t sourceLen) {
+	size_t written = 0;
+	size_t i = 0;
+
+	if (maxDestinationLength == 0) {
+		return 0; // cannot write anything, not even terminator
+	}
+
+	while (i < sourceLen && written + 1 < maxDestinationLength) {
+		char c = src[i];
+
+		// Check for %xx sequence
+		if (c == '%' && (i + 2) < sourceLen) {
+			char h1 = src[i + 1];
+			char h2 = src[i + 2];
+
+			// Convert hex digit
+			const int hi = fpl__X11FromHex(h1);
+			const int lo = fpl__X11FromHex(h2);
+
+			if (hi >= 0 && lo >= 0) {
+				// Valid %xx sequence
+				dst[written++] = (char)((hi << 4) | lo);
+				i += 3;
+				continue;
+			}
+
+			// Invalid % sequence → fall through and treat '%' literally
+		}
+
+		// Normal byte
+		dst[written++] = c;
+		i++;
+	}
+
+	// Always null-terminate if possible
+	dst[written] = '\0';
+	return written;
+}
+
 fpl_internal void *fpl__X11ParseUriPaths(const char *text, size_t *size, int *count, int textLength) {
 	const char *textCursor = text;
 	const char *textEnd = text + textLength;
 	int fileCount = 0;
+
 	// count file entries
 	while (*textCursor != '\0' || textCursor != textEnd) {
 		if (*textCursor == '\r' && *(textCursor + 1) == '\n')
 			++fileCount;
 		++textCursor;
 	}
+
+
 	textCursor = text;
-	size_t filesTableSize = fileCount * sizeof(char **);
-	size_t maxFileStride = FPL_MAX_PATH_LENGTH + 1;
-	size_t filesMemorySize = filesTableSize + FPL__ARBITARY_PADDING + maxFileStride * fileCount;
+
+	const size_t filesTableSize = fileCount * sizeof(char **);
+	const size_t maxFileStride = FPL_MAX_PATH_LENGTH + 1;
+	const size_t filesMemorySize = filesTableSize + FPL__ARBITARY_PADDING + maxFileStride * fileCount;
+
 	void *filesTableMemory = fpl__AllocateDynamicMemory(filesMemorySize, 8);
 	char **filesTable = (char **)filesTableMemory;
+
+	// Assign pointers
 	for (int fileIndex = 0; fileIndex < fileCount; ++fileIndex) {
 		filesTable[fileIndex] = (char *)((uint8_t *)filesTableMemory + filesTableSize + FPL__ARBITARY_PADDING + fileIndex * maxFileStride);
 	}
+
+	// Parse and decode each entry
 	for (int fileIndex = 0; fileIndex < fileCount; ++fileIndex) {
-		char *file = filesTable[fileIndex];
+		char *fileBuffer = filesTable[fileIndex];
 		const char *line = textCursor;
-		// split on '\r\n' divider 
+
+		// Split on '\r\n' divider
 		while (*textCursor != '\r' && (*textCursor != '\0' || textCursor != textEnd)) {
 			++textCursor;
 		}
-		// strip protocol
+
+		// Strip protocol
 		if (fplIsStringEqualLen(line, 7, "file://", 7)) {
 			line += 7;
 		}
-		fplCopyStringLen(line, (textCursor - line), file, maxFileStride);
-		textCursor += 2;
+
+		// Decode into destination buffer
+		const size_t lineLen = textCursor - line;
+		fpl__X11UriDecode(fileBuffer, line, maxFileStride, lineLen);
+
+		// Skip CRLF
+		if (textCursor < textEnd) {
+			textCursor += 2;
+		}
 	}
 	*size = filesMemorySize;
 	*count = fileCount;
@@ -19935,7 +22647,278 @@ fpl_internal void fpl__X11HandleTextInputEvent(const fpl__X11Api *x11Api, fpl__P
 		}
 	}
 }
+#endif // FPL__ENABLE_WINDOW
 
+// ############################################################################
+//
+// > X11_INPUT_KBM (keyboard + mouse backend)
+//
+// ############################################################################
+#if defined(FPL__ENABLE_INPUT_X11)
+// Resolve the Display + window pair used for polling. In windowed mode the user
+// window's display is preferred so polling and event delivery stay in sync; in
+// detached mode the backend's own private connection + root window are used.
+fpl_internal bool fpl__InputBackendX11Kbm_ResolveTarget(const fpl__InputBackendX11Kbm *backend, Display **outDisplay, Window *outWindow) {
+	fplAssertPtr(backend);
+	fplAssertPtr(outDisplay);
+	fplAssertPtr(outWindow);
+	*outDisplay = fpl_null;
+	*outWindow = (Window)0;
+#	if defined(FPL__ENABLE_WINDOW)
+	if (!backend->detached) {
+		fpl__PlatformAppState *appState = fpl__global__AppState;
+		if (appState == fpl_null) return false;
+		const fpl__X11WindowState *windowState = &appState->window.x11;
+		if (windowState->display == fpl_null) return false;
+		*outDisplay = windowState->display;
+		*outWindow = windowState->window;
+		return true;
+	}
+#	endif
+	if (backend->display == fpl_null) return false;
+	*outDisplay = backend->display;
+	*outWindow = backend->root;
+	return true;
+}
+
+fpl_internal bool fpl__InputBackendX11Kbm_Init(fpl__InputBackendX11Kbm *backend, const fplInputSettings *settings) {
+	fplAssertPtr(backend);
+	if (backend->isInitialized) return true;
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (appState == fpl_null) return false;
+	const fpl__X11Api *x11Api = &appState->x11.api;
+	bool detached = false;
+#	if defined(FPL__ENABLE_WINDOW)
+	if (settings != fpl_null && settings->detachFromWindow) {
+		detached = true;
+	}
+	if ((appState->initFlags & fplInitFlags_Window) == 0) {
+		detached = true;
+	}
+#	else
+	(void)settings;
+	detached = true;
+#	endif
+	if (detached) {
+		Display *display = x11Api->XOpenDisplay(fpl_null);
+		if (display == fpl_null) {
+			FPL__ERROR(FPL__MODULE_X11, "Failed to open detached X11 display for input backend");
+			return false;
+		}
+		int screen = x11Api->XDefaultScreen(display);
+		backend->display = display;
+		backend->root = x11Api->XRootWindow(display, screen);
+		backend->ownsDisplay = true;
+		// Build a backend-local keycode -> fplKey map (no user window provides one in detached mode).
+		for (int keyCode = 8; keyCode <= 255; ++keyCode) {
+			int dummy = 0;
+			KeySym *keySyms = x11Api->XGetKeyboardMapping(display, (KeyCode)keyCode, 1, &dummy);
+			if (keySyms != fpl_null) {
+				backend->detachedKeyMap[keyCode] = fpl__X11TranslateKeySymbol(keySyms[0]);
+				x11Api->XFree(keySyms);
+			}
+		}
+	}
+	backend->detached = detached;
+	backend->isInitialized = true;
+	return true;
+}
+
+fpl_internal void fpl__InputBackendX11Kbm_Release(fpl__InputBackendX11Kbm *backend) {
+	fplAssertPtr(backend);
+	if (!backend->isInitialized) return;
+	if (backend->ownsDisplay && backend->display != fpl_null) {
+		fpl__PlatformAppState *appState = fpl__global__AppState;
+		if (appState != fpl_null) {
+			appState->x11.api.XCloseDisplay(backend->display);
+		}
+	}
+	fplClearStruct(backend);
+}
+
+fpl_internal bool fpl__InputBackendX11Kbm_PollKeyboard(fpl__InputBackendX11Kbm *backend, fplKeyboardState *outState) {
+	fplAssertPtr(backend);
+	fplAssertPtr(outState);
+	if (!backend->isInitialized) return false;
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (appState == fpl_null) return false;
+	const fpl__X11Api *x11Api = &appState->x11.api;
+	Display *display;
+	Window window;
+	if (!fpl__InputBackendX11Kbm_ResolveTarget(backend, &display, &window)) return false;
+	(void)window;
+	char keysReturn[32] = fplZeroInit;
+	if (!x11Api->XQueryKeymap(display, keysReturn)) return false;
+	fplClearStruct(outState);
+	for (uint64_t keyCode = 0; keyCode < 256; ++keyCode) {
+		bool isDown = (keysReturn[keyCode / 8] & (1 << (keyCode % 8))) != 0;
+		outState->keyStatesRaw[keyCode] = isDown ? 1 : 0;
+		fplKey mappedKey;
+#		if defined(FPL__ENABLE_WINDOW)
+		if (!backend->detached) {
+			mappedKey = fpl__GetMappedKey(&appState->window, keyCode);
+		} else
+#		endif
+		{
+			mappedKey = backend->detachedKeyMap[keyCode];
+		}
+		if (outState->buttonStatesMapped[(int)mappedKey] == fplButtonState_Release) {
+			outState->buttonStatesMapped[(int)mappedKey] = isDown ? fplButtonState_Press : fplButtonState_Release;
+		}
+	}
+	outState->modifiers = fplKeyboardModifierFlags_None;
+	if (outState->buttonStatesMapped[fplKey_LeftShift] == fplButtonState_Press) outState->modifiers |= fplKeyboardModifierFlags_LShift;
+	if (outState->buttonStatesMapped[fplKey_RightShift] == fplButtonState_Press) outState->modifiers |= fplKeyboardModifierFlags_RShift;
+	if (outState->buttonStatesMapped[fplKey_LeftControl] == fplButtonState_Press) outState->modifiers |= fplKeyboardModifierFlags_LCtrl;
+	if (outState->buttonStatesMapped[fplKey_RightControl] == fplButtonState_Press) outState->modifiers |= fplKeyboardModifierFlags_RCtrl;
+	if (outState->buttonStatesMapped[fplKey_LeftAlt] == fplButtonState_Press) outState->modifiers |= fplKeyboardModifierFlags_LAlt;
+	if (outState->buttonStatesMapped[fplKey_RightAlt] == fplButtonState_Press) outState->modifiers |= fplKeyboardModifierFlags_RAlt;
+	if (outState->buttonStatesMapped[fplKey_LeftSuper] == fplButtonState_Press) outState->modifiers |= fplKeyboardModifierFlags_LSuper;
+	if (outState->buttonStatesMapped[fplKey_RightSuper] == fplButtonState_Press) outState->modifiers |= fplKeyboardModifierFlags_RSuper;
+	return true;
+}
+
+fpl_internal bool fpl__InputBackendX11Kbm_PollMouse(fpl__InputBackendX11Kbm *backend, fplMouseState *outState) {
+	fplAssertPtr(backend);
+	fplAssertPtr(outState);
+	if (!backend->isInitialized) return false;
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (appState == fpl_null) return false;
+	const fpl__X11Api *x11Api = &appState->x11.api;
+	Display *display;
+	Window window;
+	if (!fpl__InputBackendX11Kbm_ResolveTarget(backend, &display, &window)) return false;
+	Window root, child;
+	int rootx, rooty, winx, winy;
+	unsigned int mask;
+	if (!x11Api->XQueryPointer(display, window, &root, &child, &rootx, &rooty, &winx, &winy, &mask)) return false;
+	fplClearStruct(outState);
+	// In detached mode we query the root window, so winx/winy are root-relative coordinates.
+	outState->x = winx;
+	outState->y = winy;
+	outState->buttonStates[fplMouseButtonType_Left] = fplIsMaskSet(mask, Button1Mask) ? fplButtonState_Press : fplButtonState_Release;
+	outState->buttonStates[fplMouseButtonType_Right] = fplIsMaskSet(mask, Button3Mask) ? fplButtonState_Press : fplButtonState_Release;
+	outState->buttonStates[fplMouseButtonType_Middle] = fplIsMaskSet(mask, Button2Mask) ? fplButtonState_Press : fplButtonState_Release;
+	return true;
+}
+
+#if defined(FPL__ENABLE_WINDOW)
+fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11Kbm *backend, const fpl__NativeInputEvent *nev) {
+	fplAssertPtr(backend);
+	fplAssertPtr(nev);
+	if (!backend->isInitialized) return false;
+	if (nev->kind != fpl__NativeInputEventKind_X11Event) return false;
+	if (nev->payload == fpl_null) return false;
+	XEvent *ev = (XEvent *)nev->payload;
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (appState == fpl_null) return false;
+	fpl__PlatformWindowState *winState = &appState->window;
+	fpl__X11WindowState *x11WinState = &winState->x11;
+	const fpl__X11Api *x11Api = &appState->x11.api;
+	const bool eventsDisabled = appState->currentSettings.input.disabledEvents != 0;
+
+	switch (ev->type) {
+		case KeyPress:
+		{
+			if (eventsDisabled) return true;
+			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Keyboard)) return true;
+			int keyState = ev->xkey.state;
+			uint64_t keyCode = (uint64_t)ev->xkey.keycode;
+			Time keyTime = ev->xkey.time;
+			Time lastPressTime = winState->keyPressTimes[keyCode];
+			Time diffTime = keyTime - lastPressTime;
+			FPL_LOG_INFO("X11", "Diff for key '%llu', time: %lu, diff: %lu, last: %lu", keyCode, keyTime, diffTime, lastPressTime);
+			if (diffTime == keyTime || (diffTime > 0 && diffTime < (1 << 31))) {
+				if (keyCode) {
+					fpl__HandleKeyboardButtonEvent(winState, (uint64_t)keyTime, keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Press, false);
+					fpl__X11HandleTextInputEvent(x11Api, winState, keyCode, ev);
+				}
+				winState->keyPressTimes[keyCode] = keyTime;
+			}
+			return true;
+		}
+
+		case KeyRelease:
+		{
+			if (eventsDisabled) return true;
+			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Keyboard)) return true;
+			bool isRepeat = false;
+			if (x11Api->XEventsQueued(x11WinState->display, QueuedAfterReading)) {
+				XEvent nextEvent;
+				x11Api->XPeekEvent(x11WinState->display, &nextEvent);
+				if ((nextEvent.type == KeyPress) && (nextEvent.xkey.time == ev->xkey.time) && (nextEvent.xkey.keycode == ev->xkey.keycode)) {
+					// Delete the peeked event, which is a key-repeat
+					x11Api->XNextEvent(x11WinState->display, ev);
+					isRepeat = true;
+				}
+			}
+			int keyState = ev->xkey.state;
+			uint64_t keyCode = (uint64_t)ev->xkey.keycode;
+			if (isRepeat) {
+				fpl__X11HandleTextInputEvent(x11Api, winState, keyCode, ev);
+				fpl__HandleKeyboardButtonEvent(winState, (uint64_t)ev->xkey.time, (uint64_t)keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Repeat, false);
+			} else {
+				fpl__HandleKeyboardButtonEvent(winState, (uint64_t)ev->xkey.time, (uint64_t)keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Release, true);
+			}
+			return true;
+		}
+
+		case ButtonPress:
+		{
+			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Mouse)) return true;
+			int x = ev->xbutton.x;
+			int y = ev->xbutton.y;
+			if (!eventsDisabled) {
+				if (ev->xbutton.button == Button1) {
+					fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Left, fplButtonState_Press);
+				} else if (ev->xbutton.button == Button2) {
+					fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Middle, fplButtonState_Press);
+				} else if (ev->xbutton.button == Button3) {
+					fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Right, fplButtonState_Press);
+				}
+			}
+			// Wheel is unconditional (matches the previous Win32 + X11 behavior).
+			if (ev->xbutton.button == Button4) {
+				fpl__HandleMouseWheelEvent(winState, x, y, 1.0f);
+			} else if (ev->xbutton.button == Button5) {
+				fpl__HandleMouseWheelEvent(winState, x, y, -1.0f);
+			}
+			return true;
+		}
+
+		case ButtonRelease:
+		{
+			if (eventsDisabled) return true;
+			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Mouse)) return true;
+			int x = ev->xbutton.x;
+			int y = ev->xbutton.y;
+			if (ev->xbutton.button == Button1) {
+				fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Left, fplButtonState_Release);
+			} else if (ev->xbutton.button == Button2) {
+				fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Middle, fplButtonState_Release);
+			} else if (ev->xbutton.button == Button3) {
+				fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Right, fplButtonState_Release);
+			}
+			return true;
+		}
+
+		case MotionNotify:
+		{
+			if (eventsDisabled) return true;
+			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Mouse)) return true;
+			fpl__HandleMouseMoveEvent(winState, ev->xmotion.x, ev->xmotion.y);
+			return true;
+		}
+
+		default:
+			break;
+	}
+	return false;
+}
+#endif // FPL__ENABLE_WINDOW
+#endif // FPL__ENABLE_INPUT_X11
+
+#if defined(FPL__ENABLE_WINDOW)
 fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatform, fpl__PlatformAppState *appState, XEvent *ev) {
 	fplAssert((subplatform != fpl_null) && (appState != fpl_null) && (ev != fpl_null));
 	fpl__PlatformWindowState *winState = &appState->window;
@@ -19988,6 +22971,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 						XEvent reply = *ev;
 						reply.xclient.window = x11WinState->root;
 						x11Api->XSendEvent(x11WinState->display, x11WinState->root, False, SubstructureNotifyMask | SubstructureRedirectMask, &reply);
+						x11Api->XFlush(x11WinState->display);
 					}
 				}
 			} else if (ev->xclient.message_type == x11WinState->xdndEnter) {
@@ -20111,98 +23095,17 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 		} break;
 
 		case KeyPress:
-		{
-			// Keyboard button down
-			if (!appState->currentSettings.input.disabledEvents) {
-				int keyState = ev->xkey.state;
-				uint64_t keyCode = (uint64_t)ev->xkey.keycode;
-				Time keyTime = ev->xkey.time;
-				Time lastPressTime = winState->keyPressTimes[keyCode];
-				Time diffTime = keyTime - lastPressTime;
-				FPL_LOG_INFO("X11", "Diff for key '%llu', time: %lu, diff: %lu, last: %lu", keyCode, keyTime, diffTime, lastPressTime);
-				if (diffTime == keyTime || (diffTime > 0 && diffTime < (1 << 31))) {
-					if (keyCode) {
-						fpl__HandleKeyboardButtonEvent(winState, (uint64_t)keyTime, keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Press, false);
-						fpl__X11HandleTextInputEvent(x11Api, winState, keyCode, ev);
-					}
-					winState->keyPressTimes[keyCode] = keyTime;
-				}
-			}
-		} break;
-
 		case KeyRelease:
-		{
-			// Keyboard button up
-			if (!appState->currentSettings.input.disabledEvents) {
-				bool isRepeat = false;
-				if (x11Api->XEventsQueued(x11WinState->display, QueuedAfterReading)) {
-					XEvent nextEvent;
-					x11Api->XPeekEvent(x11WinState->display, &nextEvent);
-					if ((nextEvent.type == KeyPress) && (nextEvent.xkey.time == ev->xkey.time) && (nextEvent.xkey.keycode == ev->xkey.keycode)) {
-						// Delete the peeked event, which is a key-repeat
-						x11Api->XNextEvent(x11WinState->display, ev);
-						isRepeat = true;
-					}
-				}
-
-				int keyState = ev->xkey.state;
-				uint64_t keyCode = (uint64_t)ev->xkey.keycode;
-
-				if (isRepeat) {
-					fpl__X11HandleTextInputEvent(x11Api, winState, keyCode, ev);
-					fpl__HandleKeyboardButtonEvent(winState, (uint64_t)ev->xkey.time, (uint64_t)keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Repeat, false);
-				} else {
-					fpl__HandleKeyboardButtonEvent(winState, (uint64_t)ev->xkey.time, (uint64_t)keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Release, true);
-				}
-			}
-		} break;
-
 		case ButtonPress:
-		{
-			int x = ev->xbutton.x;
-			int y = ev->xbutton.y;
-
-			if (!appState->currentSettings.input.disabledEvents) {
-				// Mouse button
-				if (ev->xbutton.button == Button1) {
-					fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Left, fplButtonState_Press);
-				} else if (ev->xbutton.button == Button2) {
-					fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Middle, fplButtonState_Press);
-				} else if (ev->xbutton.button == Button3) {
-					fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Right, fplButtonState_Press);
-				}
-			}
-
-			// Mouse wheel
-			if (ev->xbutton.button == Button4) {
-				fpl__HandleMouseWheelEvent(winState, x, y, 1.0f);
-			} else if (ev->xbutton.button == Button5) {
-				fpl__HandleMouseWheelEvent(winState, x, y, -1.0f);
-			}
-		} break;
-
 		case ButtonRelease:
-		{
-			// Mouse up
-			if (!appState->currentSettings.input.disabledEvents) {
-				int x = ev->xbutton.x;
-				int y = ev->xbutton.y;
-				if (ev->xbutton.button == Button1) {
-					fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Left, fplButtonState_Release);
-				} else if (ev->xbutton.button == Button2) {
-					fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Middle, fplButtonState_Release);
-				} else if (ev->xbutton.button == Button3) {
-					fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Right, fplButtonState_Release);
-				}
-			}
-		} break;
-
 		case MotionNotify:
 		{
-			// Mouse move
-			if (!appState->currentSettings.input.disabledEvents) {
-				fpl__HandleMouseMoveEvent(winState, ev->xmotion.x, ev->xmotion.y);
-			}
+#if defined(FPL__ENABLE_INPUT)
+			fpl__NativeInputEvent nev = fplZeroInit;
+			nev.kind = fpl__NativeInputEventKind_X11Event;
+			nev.payload = (void *)ev;
+			fpl__InputSystem_HandleNativeEvent(&appState->input, &nev);
+#endif
 		} break;
 
 		case Expose:
@@ -20321,20 +23224,25 @@ fpl_platform_api bool fplPollEvent(fplEvent *ev) {
 		return(true);
 	}
 
-	// Create new event(s) from the X11 event queue
-	if (!fpl__X11ProcessNextEvent(subplatform, appState)) {
-		// Queue is empty, we have no events left
-		if (!fpl__HasInternalEvents()) {
-			return(false);
+	// Drain X11 events until one produces a FPL event or the X11 queue is empty.
+	// A single X11 event can produce zero FPL internal events (e.g. FocusIn/FocusOut
+	// with NotifyGrab/NotifyUngrab mode, ConfigureNotify with no size/position change,
+	// or unhandled X11 event types). Without this loop, fplPollEvent would return false
+	// prematurely, leaving the remaining X11 events (keyboard, mouse) unprocessed for
+	// that frame and causing input to appear frozen.
+	while (fpl__X11ProcessNextEvent(subplatform, appState)) {
+		if (fpl__PollInternalEvent(ev)) {
+			return(true);
 		}
+		// This X11 event generated no FPL event - try the next one
 	}
 
-	// Poll the first event from the internal queue
+	// X11 queue exhausted; final check on the internal queue
 	if (fpl__PollInternalEvent(ev)) {
 		return(true);
 	}
 
-	// No events left
+	// Both queues are truly empty
 	return(false);
 }
 
@@ -20361,11 +23269,9 @@ fpl_platform_api bool fplWindowUpdate(void) {
 
 	fpl__ClearInternalEvents();
 
-	// Dont like this, maybe a callback would be better?
-#if defined(FPL_PLATFORM_LINUX)
-	if (!appState->currentSettings.input.disabledEvents && fplIsMaskSet(appState->initFlags, fplInitFlags_GameController)) {
-		fpl__LinuxAppState *linuxAppState = &appState->plinux;
-		fpl__LinuxPollGameControllers(&appState->currentSettings, &linuxAppState->controllersState, true);
+#if defined(FPL__ENABLE_INPUT)
+	if (!appState->currentSettings.input.disabledEvents) {
+		fpl__InputSystem_Update(&appState->input);
 	}
 #endif
 
@@ -20606,78 +23512,28 @@ fpl_platform_api bool fplSetClipboardText(const char *text) {
 	// @IMPLEMENT(final/X11): fplSetClipboardText
 	return false;
 }
+#endif // FPL__ENABLE_WINDOW
 
 fpl_platform_api bool fplPollKeyboardState(fplKeyboardState *outState) {
-	FPL__CheckPlatform(false);
 	FPL__CheckArgumentNull(outState, false);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__X11SubplatformState *subplatform = &appState->x11;
-	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
-	bool result = false;
-	char keysReturn[32] = fplZeroInit;
-	if (x11Api->XQueryKeymap(windowState->display, keysReturn)) {
-		fplClearStruct(outState);
-		for (uint64_t keyCode = 0; keyCode < 256; ++keyCode) {
-			bool isDown = (keysReturn[keyCode / 8] & (1 << (keyCode % 8))) != 0;
-			outState->keyStatesRaw[keyCode] = isDown ? 1 : 0;
-			fplKey mappedKey = fpl__GetMappedKey(&appState->window, keyCode);
-			if (outState->buttonStatesMapped[(int)mappedKey] == fplButtonState_Release) {
-				outState->buttonStatesMapped[(int)mappedKey] = isDown ? fplButtonState_Press : fplButtonState_Release;
-			}
-		}
-		outState->modifiers = fplKeyboardModifierFlags_None;
-		if (outState->buttonStatesMapped[fplKey_LeftShift] == fplButtonState_Press) {
-			outState->modifiers |= fplKeyboardModifierFlags_LShift;
-		}
-		if (outState->buttonStatesMapped[fplKey_RightShift] == fplButtonState_Press) {
-			outState->modifiers |= fplKeyboardModifierFlags_RShift;
-		}
-		if (outState->buttonStatesMapped[fplKey_LeftControl] == fplButtonState_Press) {
-			outState->modifiers |= fplKeyboardModifierFlags_LCtrl;
-		}
-		if (outState->buttonStatesMapped[fplKey_RightControl] == fplButtonState_Press) {
-			outState->modifiers |= fplKeyboardModifierFlags_RCtrl;
-		}
-		if (outState->buttonStatesMapped[fplKey_LeftAlt] == fplButtonState_Press) {
-			outState->modifiers |= fplKeyboardModifierFlags_LAlt;
-		}
-		if (outState->buttonStatesMapped[fplKey_RightAlt] == fplButtonState_Press) {
-			outState->modifiers |= fplKeyboardModifierFlags_RAlt;
-		}
-		if (outState->buttonStatesMapped[fplKey_LeftSuper] == fplButtonState_Press) {
-			outState->modifiers |= fplKeyboardModifierFlags_LSuper;
-		}
-		if (outState->buttonStatesMapped[fplKey_RightSuper] == fplButtonState_Press) {
-			outState->modifiers |= fplKeyboardModifierFlags_RSuper;
-		}
-		// @FINISH(fina/X11): Get caps states (Capslock, Numlock, Scrolllock)
-
-		result = true;
-	}
-	return(result);
+	FPL__CheckPlatform(false);
+#	if defined(FPL__ENABLE_INPUT)
+	return fpl__InputSystem_PollKeyboard(&fpl__global__AppState->input, outState);
+#	else
+	(void)outState;
+	return false;
+#	endif
 }
 
 fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
-	FPL__CheckPlatform(false);
 	FPL__CheckArgumentNull(outState, false);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__X11SubplatformState *subplatform = &appState->x11;
-	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
-	bool result = false;
-	Window root, child;
-	int rootx, rooty, winx, winy;
-	unsigned int mask;
-	if (x11Api->XQueryPointer(windowState->display, windowState->window, &root, &child, &rootx, &rooty, &winx, &winy, &mask)) {
-		outState->x = winx;
-		outState->y = winy;
-		outState->buttonStates[fplMouseButtonType_Left] = fplIsMaskSet(mask, Button1Mask) ? fplButtonState_Press : fplButtonState_Release;
-		outState->buttonStates[fplMouseButtonType_Right] = fplIsMaskSet(mask, Button3Mask) ? fplButtonState_Press : fplButtonState_Release;
-		outState->buttonStates[fplMouseButtonType_Middle] = fplIsMaskSet(mask Button2Mask) ? fplButtonState_Press : fplButtonState_Release;
-		result = true;
-	}
-	return(result);
+	FPL__CheckPlatform(false);
+#	if defined(FPL__ENABLE_INPUT)
+	return fpl__InputSystem_PollMouse(&fpl__global__AppState->input, outState);
+#	else
+	(void)outState;
+	return false;
+#	endif
 }
 
 fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY) {
@@ -20699,14 +23555,10 @@ fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY) {
 #	include <linux/joystick.h> // js_event, axis_state, etc.
 
 fpl_internal void fpl__LinuxReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
-#if defined(FPL__ENABLE_WINDOW)
-	if (fplIsMaskSet(appState->initFlags, fplInitFlags_GameController)) {
-		fpl__LinuxFreeGameControllers(&appState->plinux.controllersState);
-	}
-#endif
 }
 
 fpl_internal bool fpl__LinuxInitPlatform(const fplInitFlags initFlags, const fplSettings *initSettings, fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
+	// TODO(final): Remember LC_ALL and restore in fpl__LinuxReleasePlatform
 	setlocale(LC_ALL, "");
 	return true;
 }
@@ -20718,18 +23570,51 @@ fpl_internal bool fpl__LinuxInitPlatform(const fplInitFlags initFlags, const fpl
 //
 // Linux Gamepads
 //
-#if defined(FPL__ENABLE_WINDOW)
-fpl_internal void fpl__LinuxFreeGameControllers(fpl__LinuxGameControllersState *controllersState) {
-	for (int controllerIndex = 0; controllerIndex < fplArrayCount(controllersState->controllers); ++controllerIndex) {
-		fpl__LinuxGameController *controller = controllersState->controllers + controllerIndex;
-		if (controller->fd > 0) {
-			close(controller->fd);
-			controller->fd = 0;
-		}
+#if defined(FPL__ENABLE_INPUT_LINUX_JOYSTICK)
+// Parses a 4-hex-digit value from a sysfs file (e.g. "046d\n"). Returns 0 if missing/invalid.
+fpl_internal uint16_t fpl__InputLinuxJoystick_ReadHexFile(const char *path) {
+	int fd = open(path, O_RDONLY);
+	if (fd < 0) {
+		return 0;
 	}
+	char buf[16];
+	ssize_t n = read(fd, buf, sizeof(buf) - 1);
+	close(fd);
+	if (n <= 0) {
+		return 0;
+	}
+	uint32_t val = 0;
+	for (ssize_t i = 0; i < n; ++i) {
+		char c = buf[i];
+		int d = -1;
+		if (c >= '0' && c <= '9') {
+			d = c - '0';
+		} else if (c >= 'a' && c <= 'f') {
+			d = c - 'a' + 10;
+		} else if (c >= 'A' && c <= 'F') {
+			d = c - 'A' + 10;
+		} else {
+			break;
+		}
+		val = (val << 4) | (uint32_t)d;
+	}
+	return (uint16_t)val;
 }
 
-fpl_internal float fpl__LinuxJoystickProcessStickValue(const int16_t value, const int16_t deadZoneThreshold) {
+// Reads bus/vid/pid/version for /dev/input/jsX from sysfs. Each defaults to 0 if the file is missing (e.g. virtual device).
+fpl_internal void fpl__InputLinuxJoystick_ReadDeviceIds(int slotIndex, uint16_t *outBus, uint16_t *outVid, uint16_t *outPid, uint16_t *outVersion) {
+	char path[128];
+	fplStringFormat(path, fplArrayCount(path), "/sys/class/input/js%d/device/id/bustype", slotIndex);
+	*outBus = fpl__InputLinuxJoystick_ReadHexFile(path);
+	fplStringFormat(path, fplArrayCount(path), "/sys/class/input/js%d/device/id/vendor", slotIndex);
+	*outVid = fpl__InputLinuxJoystick_ReadHexFile(path);
+	fplStringFormat(path, fplArrayCount(path), "/sys/class/input/js%d/device/id/product", slotIndex);
+	*outPid = fpl__InputLinuxJoystick_ReadHexFile(path);
+	fplStringFormat(path, fplArrayCount(path), "/sys/class/input/js%d/device/id/version", slotIndex);
+	*outVersion = fpl__InputLinuxJoystick_ReadHexFile(path);
+}
+
+fpl_internal float fpl__InputLinuxJoystickProcessStickValue(const int16_t value, const int16_t deadZoneThreshold) {
 	float result = 0;
 	if (value < -deadZoneThreshold) {
 		result = (float)((value + deadZoneThreshold) / (32768.0f - deadZoneThreshold));
@@ -20739,7 +23624,66 @@ fpl_internal float fpl__LinuxJoystickProcessStickValue(const int16_t value, cons
 	return(result);
 }
 
-fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_event *event, fpl__LinuxGameController *controller) {
+// Returns true when the given joydev axis is bound as a thumb-stick axis (LeftX/LeftY/RightX/RightY) by the active mapping. Used to suppress JS_EVENT_INIT replay for stick axes — joydev re-emits the kernel-cached raw value at open time, which is uncalibrated for HID-unsigned axes (Logitech F310 in DInput mode reports ABS_Z / ABS_RZ as -32767 = "min" rather than the centered 0 a real device sends after first motion). Trigger axes legitimately rest at -32767, so this filter is restricted to sticks.
+fpl_internal bool fpl__InputLinuxJoystick_IsStickAxis(const fpl__InputLinuxJoystickGamepad *controller, uint8_t axisIndex) {
+	if (!controller->hasMapping) {
+		return false;
+	}
+	const fplGamepadAxisType stickAxes[4] = {
+		fplGamepadAxisType_LeftX,
+		fplGamepadAxisType_LeftY,
+		fplGamepadAxisType_RightX,
+		fplGamepadAxisType_RightY,
+	};
+	for (size_t i = 0; i < fplArrayCount(stickAxes); ++i) {
+		const fplGamepadInputBinding *b = &controller->mapping.axes[stickAxes[i]];
+		if (b->type == fplGamepadInputType_Axis && b->index == axisIndex) {
+			return true;
+		}
+	}
+	return false;
+}
+
+fpl_internal void fpl__InputLinuxJoystickStateUpdateEvent(const struct js_event *event, fpl__InputLinuxJoystickGamepad *controller) {
+	// Keep the backend-agnostic raw snapshot in sync — used by fplGamepadMappingApply when the resolver installed a mapping.
+	uint8_t evType = event->type & ~(uint8_t)JS_EVENT_INIT;
+	bool isInit = (event->type & JS_EVENT_INIT) != 0;
+	if (evType == JS_EVENT_AXIS && event->number < FPL_GAMEPAD_DATA_MAX_AXES) {
+		float v = (float)event->value / 32767.0f;
+		if (v < -1.0f) {
+			v = -1.0f;
+		} else if (v > 1.0f) {
+			v = 1.0f;
+		}
+		// Force stick-axis init replay to centered. Real motion arrives without JS_EVENT_INIT and overwrites this. Triggers and other axes still get their genuine init value.
+		if (isInit && fpl__InputLinuxJoystick_IsStickAxis(controller, event->number)) {
+			v = 0.0f;
+		}
+		controller->raw.axes[event->number] = v;
+		// joydev folds DPad usages onto ABS_HAT0X / ABS_HAT0Y but never emits JS_EVENT_HAT. Synthesize hat 0 from whichever joydev axes were resolved at connect (varies per device — see fpl__InputLinuxJoystick_DetectControllers) so SDL mappings that bind dp* to h0.* work uniformly across XInput / DInput / generic pads.
+		if (event->number == controller->hat0XAxis || event->number == controller->hat0YAxis) {
+			uint8_t h = controller->raw.hats[0];
+			if (event->number == controller->hat0XAxis) {
+				h &= (uint8_t)~(0x2 | 0x8); // clear right/left
+				if (event->value <= -16384) {
+					h |= 0x8;
+				} else if (event->value >= 16384) {
+					h |= 0x2;
+				}
+			} else {
+				h &= (uint8_t)~(0x1 | 0x4); // clear up/down
+				if (event->value <= -16384) {
+					h |= 0x1;
+				} else if (event->value >= 16384) {
+					h |= 0x4;
+				}
+			}
+			controller->raw.hats[0] = h;
+		}
+	} else if (evType == JS_EVENT_BUTTON && event->number < FPL_GAMEPAD_DATA_MAX_BUTTONS) {
+		controller->raw.buttons[event->number] = event->value != 0;
+	}
+
 	fplGamepadState *padState = &controller->state;
 
 	// @TODO(final): Use a static offset table instead of a pointer mapping table
@@ -20766,21 +23710,21 @@ fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_e
 				// Left stick
 				case 0:
 				{
-					padState->leftStickX = fpl__LinuxJoystickProcessStickValue(event->value, deadZoneThresholdLeftStick);
+					padState->leftStickX = fpl__InputLinuxJoystickProcessStickValue(event->value, deadZoneThresholdLeftStick);
 				} break;
 				case 1:
 				{
-					padState->leftStickY = fpl__LinuxJoystickProcessStickValue(-event->value, deadZoneThresholdLeftStick);
+					padState->leftStickY = fpl__InputLinuxJoystickProcessStickValue(-event->value, deadZoneThresholdLeftStick);
 				} break;
 
 				// Right stick
 				case 3:
 				{
-					padState->rightStickX = fpl__LinuxJoystickProcessStickValue(event->value, deadZoneThresholdRightStick);
+					padState->rightStickX = fpl__InputLinuxJoystickProcessStickValue(event->value, deadZoneThresholdRightStick);
 				} break;
 				case 4:
 				{
-					padState->rightStickY = fpl__LinuxJoystickProcessStickValue(-event->value, deadZoneThresholdRightStick);
+					padState->rightStickY = fpl__InputLinuxJoystickProcessStickValue(-event->value, deadZoneThresholdRightStick);
 				} break;
 
 				// Left/right trigger
@@ -20843,153 +23787,250 @@ fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_e
 	}
 }
 
-fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl__LinuxGameControllersState *controllersState, const bool useEvents) {
+// Detect new joysticks across /dev/input/js0 .. js{FPL__INPUT_LINUX_JOYSTICK_SCAN_COUNT-1}.
+// Throttled by gamepad.detectionFrequency. Called only from Update.
+fpl_internal void fpl__InputLinuxJoystick_DetectControllers(const fplSettings *settings, fpl__InputBackendLinuxJoystick *backend) {
 	// https://github.com/underdoeg/ofxGamepad
 	// https://github.com/elanthis/gamepad
 	// https://gist.github.com/jasonwhite/c5b2048c15993d285130
 	// https://github.com/Tasssadar/libenjoy/blob/master/src/libenjoy_linux.c
+	const uint64_t now = fplMillisecondsQuery();
+	if (backend->lastCheckTime != 0 && (now - backend->lastCheckTime) < settings->input.gamepad.detectionFrequency) {
+		return;
+	}
+	backend->lastCheckTime = now;
 
-	if (((controllersState->lastCheckTime == 0) || ((fplMillisecondsQuery() - controllersState->lastCheckTime) >= settings->input.controllerDetectionFrequency)) || !useEvents) {
-		controllersState->lastCheckTime = fplMillisecondsQuery();
+	for (int slotIndex = 0; slotIndex < FPL__INPUT_LINUX_JOYSTICK_SCAN_COUNT; ++slotIndex) {
+		char deviceName[64];
+		fplStringFormat(deviceName, fplArrayCount(deviceName), "/dev/input/js%d", slotIndex);
 
-		//
-		// Detect new controllers
-		//
-		const char *deviceNames[] = {
-			"/dev/input/js0",
-		};
-		for (int deviceNameIndex = 0; deviceNameIndex < fplArrayCount(deviceNames); ++deviceNameIndex) {
-			const char *deviceName = deviceNames[deviceNameIndex];
-			bool alreadyFound = false;
-			int freeIndex = -1;
-			for (uint32_t controllerIndex = 0; controllerIndex < fplArrayCount(controllersState->controllers); ++controllerIndex) {
-				fpl__LinuxGameController *controller = controllersState->controllers + controllerIndex;
-				if ((controller->fd > 0) && fplIsStringEqual(deviceName, controller->deviceName)) {
-					alreadyFound = true;
-					break;
-				}
-				if (controller->fd == 0) {
-					if (freeIndex == -1) {
-						freeIndex = controllerIndex;
-					}
-				}
+		// Skip if this slot is already mapped to a live controller
+		bool alreadyFound = false;
+		int freeIndex = -1;
+		for (uint32_t controllerIndex = 0; controllerIndex < fplArrayCount(backend->gamepads); ++controllerIndex) {
+			fpl__InputLinuxJoystickGamepad *controller = backend->gamepads + controllerIndex;
+			if (controller->fd > 0 && controller->slotIndex == slotIndex) {
+				alreadyFound = true;
+				break;
 			}
-			if (!alreadyFound && freeIndex >= 0) {
-				int fd = open(deviceName, O_RDONLY);
-				if (fd < 0) {
-					FPL_LOG_ERROR(FPL__MODULE_LINUX, "Failed opening joystick device '%s'", deviceName);
-					continue;
-				}
-				uint8_t numAxis = 0;
-				uint8_t numButtons = 0;
-				ioctl(fd, JSIOCGAXES, &numAxis);
-				ioctl(fd, JSIOCGBUTTONS, &numButtons);
-				if (numAxis == 0 || numButtons == 0) {
-					FPL_LOG_ERROR(FPL__MODULE_LINUX, "Joystick device '%s' does not have enough buttons/axis to map to a XInput controller!", deviceName);
-					close(fd);
-					continue;
-				}
+			if (controller->fd == 0 && freeIndex == -1) {
+				freeIndex = controllerIndex;
+			}
+		}
+		if (alreadyFound) continue;
+		if (freeIndex < 0) break; // All controller slots full
 
-				// @NOTE(final): We do not want to detect devices which are not proper joysticks, such as gaming keyboards
-				struct js_event msg;
-				if ((read(fd, &msg, sizeof(struct js_event)) != sizeof(struct js_event)) || !((msg.type == JS_EVENT_INIT) || (msg.type == JS_EVENT_AXIS) || (msg.type == JS_EVENT_BUTTON))) {
-					// No joystick message
-					close(fd);
-					continue;
-				}
+		errno = 0;
+		int fd = open(deviceName, O_RDONLY);
+		if (fd < 0) {
+			// Silent on missing nodes — udev will replace the polling fallback in step 11.
+			if (errno == ENOENT) continue;
+			if (!backend->triedSlot[slotIndex]) {
+				FPL_LOG_DEBUG(FPL__MODULE_LINUX, "Failed opening joystick device '%s' (errno=%d)", deviceName, errno);
+				backend->triedSlot[slotIndex] = true;
+			}
+			continue;
+		}
+		uint8_t numAxis = 0;
+		uint8_t numButtons = 0;
+		ioctl(fd, JSIOCGAXES, &numAxis);
+		ioctl(fd, JSIOCGBUTTONS, &numButtons);
+		if (numAxis == 0 || numButtons == 0) {
+			// Virtual node (motion sensor, gaming keyboard, etc.)
+			if (!backend->triedSlot[slotIndex]) {
+				FPL_LOG_DEBUG(FPL__MODULE_LINUX, "Joystick device '%s' does not have enough buttons/axis to map to a XInput controller!", deviceName);
+				backend->triedSlot[slotIndex] = true;
+			}
+			close(fd);
+			continue;
+		}
 
-				fpl__LinuxGameController *controller = controllersState->controllers + freeIndex;
-				fplClearStruct(controller);
-				controller->fd = fd;
-				controller->axisCount = numAxis;
-				controller->buttonCount = numButtons;
-				fplCopyString(deviceName, controller->deviceName, fplArrayCount(controller->deviceName));
-				ioctl(fd, JSIOCGNAME(fplArrayCount(controller->displayName)), controller->displayName);
-				fcntl(fd, F_SETFL, O_NONBLOCK);
+		// @NOTE(final): We do not want to detect devices which are not proper joysticks, such as gaming keyboards.
+		// First events from the kernel have JS_EVENT_INIT bit ORed onto AXIS/BUTTON, so mask it before comparing.
+		struct js_event msg;
+		uint8_t baseType = 0;
+		ssize_t bytesRead = read(fd, &msg, sizeof(struct js_event));
+		if (bytesRead == sizeof(struct js_event)) {
+			baseType = msg.type & ~(uint8_t)JS_EVENT_INIT;
+		}
+		if (bytesRead != sizeof(struct js_event) || !(baseType == JS_EVENT_AXIS || baseType == JS_EVENT_BUTTON)) {
+			if (!backend->triedSlot[slotIndex]) {
+				FPL_LOG_DEBUG(FPL__MODULE_LINUX, "Joystick device '%s' did not produce an init message", deviceName);
+				backend->triedSlot[slotIndex] = true;
+			}
+			close(fd);
+			continue;
+		}
 
-				if (useEvents) {
-					// Push connected event
-					fplEvent ev = fplZeroInit;
-					ev.type = fplEventType_Gamepad;
-					ev.gamepad.type = fplGamepadEventType_Connected;
-					ev.gamepad.deviceIndex = (uint32_t)freeIndex;
-					ev.gamepad.deviceName = controller->deviceName;
-					fpl__PushInternalEvent(&ev);
+		fpl__InputLinuxJoystickGamepad *controller = backend->gamepads + freeIndex;
+		fplClearStruct(controller);
+		controller->fd = fd;
+		controller->slotIndex = slotIndex;
+		controller->axisCount = numAxis;
+		controller->buttonCount = numButtons;
+		fplCopyString(deviceName, controller->deviceName, fplArrayCount(controller->deviceName));
+		ioctl(fd, JSIOCGNAME(fplArrayCount(controller->displayName)), controller->displayName);
+		fcntl(fd, F_SETFL, O_NONBLOCK);
+
+		// Resolve which joydev axis indices correspond to ABS_HAT0X / ABS_HAT0Y. joydev never emits JS_EVENT_HAT, but the kernel folds DPad usages onto these ABS codes, so the joydev axis index varies per device — XInput F310 places them at 6/7 (after X,Y,Z,RX,RY,RZ), DInput F310 at 4/5 (only X,Y,Z,RZ are present so HAT shifts down). SDL's gamecontrollerdb almost always binds DPad as h0.* on Linux, so synthesizing raw.hats[0] from these axes lets the same mapping work across XInput/DInput modes. ABS_HAT0X = 0x10, ABS_HAT0Y = 0x11; we don't include <linux/input-event-codes.h> here to keep the header dependency footprint small.
+		controller->hat0XAxis = 0xFF;
+		controller->hat0YAxis = 0xFF;
+		{
+			uint8_t axmap[64] = fplZeroInit;
+			if (ioctl(fd, JSIOCGAXMAP, axmap) >= 0) {
+				for (uint8_t a = 0; a < numAxis && a < (uint8_t)fplArrayCount(axmap); ++a) {
+					if (axmap[a] == 0x10) {
+						controller->hat0XAxis = a;
+					} else if (axmap[a] == 0x11) {
+						controller->hat0YAxis = a;
+					}
 				}
 			}
 		}
+		// Seed the raw snapshot ranges. fpl__InputLinuxJoystickStateUpdateEvent synthesizes hat 0 from the joydev axes resolved above. Advertise one hat whenever either DPad axis exists so SDL mappings (h0.1/h0.2/h0.4/h0.8) resolve.
+		controller->raw.axisCount = numAxis;
+		controller->raw.buttonCount = numButtons;
+		controller->raw.hatCount = (controller->hat0XAxis != 0xFF || controller->hat0YAxis != 0xFF) ? 1 : 0;
+
+		// Resolve a per-device mapping. The resolver runs once per connect; failure or absence keeps the legacy joydev convention.
+		controller->hasMapping = false;
+		const fplGamepadSettings *gc = &settings->input.gamepad;
+		if (gc->mappingResolver != fpl_null) {
+			uint16_t bus = 0;
+			uint16_t vid = 0;
+			uint16_t pid = 0;
+			uint16_t version = 0;
+			fpl__InputLinuxJoystick_ReadDeviceIds(slotIndex, &bus, &vid, &pid, &version);
+			fplGamepadInfo info = fplZeroInit;
+			info.index = (uint32_t)freeIndex;
+			info.backend = fplInputBackendType_LinuxJoystick;
+			info.name = controller->displayName;
+			fpl__GamepadBuildSDLGuid(bus, vid, pid, version, 0u, info.guid);
+			info.vendorId = vid;
+			info.productId = pid;
+			info.version = version;
+			info.buttonCount = numButtons;
+			info.axisCount = numAxis;
+			info.hatCount = controller->raw.hatCount;
+			fplGamepadMapping userMapping = fplZeroInit;
+			if (gc->mappingResolver(&info, &userMapping, gc->mappingResolverUserData)) {
+				controller->mapping = userMapping;
+				controller->hasMapping = true;
+			}
+		}
+
+		fpl__PushGamepadConnectionEvent((uint32_t)freeIndex, controller->deviceName, true);
 	}
+}
 
-	// Update controller states
-	for (uint32_t controllerIndex = 0; controllerIndex < fplArrayCount(controllersState->controllers); ++controllerIndex) {
-		fpl__LinuxGameController *controller = controllersState->controllers + controllerIndex;
-		if (controller->fd > 0) {
-			// Update button/axis state
-			struct js_event event;
-			bool wasDisconnected = false;
-			for (;;) {
-				errno = 0;
-				if (read(controller->fd, &event, sizeof(event)) < 0) {
-					if (errno == ENODEV) {
-						close(controller->fd);
-						controller->fd = 0;
-						fplClearStruct(&controller->state);
-						wasDisconnected = true;
-						if (useEvents) {
-							// Push disconnected event
-							fplEvent ev = fplZeroInit;
-							ev.type = fplEventType_Gamepad;
-							ev.gamepad.type = fplGamepadEventType_Disconnected;
-							ev.gamepad.deviceIndex = controllerIndex;
-							ev.gamepad.deviceName = controller->deviceName;
-							fpl__PushInternalEvent(&ev);
-						}
+// Drain pending joystick events from open fds and refresh cached state.
+// useEvents=true pushes Disconnected/StateChanged events; false skips them.
+fpl_internal void fpl__InputLinuxJoystick_UpdateStates(fpl__InputBackendLinuxJoystick *backend, const bool useEvents) {
+	for (uint32_t controllerIndex = 0; controllerIndex < fplArrayCount(backend->gamepads); ++controllerIndex) {
+		fpl__InputLinuxJoystickGamepad *controller = backend->gamepads + controllerIndex;
+		if (controller->fd <= 0) continue;
+
+		struct js_event event;
+		bool wasDisconnected = false;
+		for (;;) {
+			errno = 0;
+			if (read(controller->fd, &event, sizeof(event)) < 0) {
+				if (errno == ENODEV) {
+					int slotIndex = controller->slotIndex;
+					close(controller->fd);
+					controller->fd = 0;
+					fplClearStruct(&controller->state);
+					wasDisconnected = true;
+					if (slotIndex >= 0 && slotIndex < FPL__INPUT_LINUX_JOYSTICK_SCAN_COUNT) {
+						backend->triedSlot[slotIndex] = false;
 					}
-					break;
+					if (useEvents) {
+						fpl__PushGamepadConnectionEvent(controllerIndex, controller->deviceName, false);
+					}
 				}
-				fpl__LinuxPushGameControllerStateUpdateEvent(&event, controller);
+				break;
 			}
+			fpl__InputLinuxJoystickStateUpdateEvent(&event, controller);
+		}
 
+		// When a user mapping is installed, derive the state from raw via fplGamepadMappingApply. Otherwise the legacy direct path inside fpl__InputLinuxJoystickStateUpdateEvent already populated controller->state.
+		if (controller->hasMapping && !wasDisconnected) {
+			fplGamepadState gs = fplZeroInit;
+			fplGamepadMappingApply(&controller->mapping, &controller->raw, &gs);
+			controller->state = gs;
+			fpl__GamepadFinalizeState(&controller->state);
+		} else {
 			controller->state.isActive = !fpl__IsZeroMemory(&controller->state, sizeof(fplGamepadState));
-			controller->state.isConnected = !wasDisconnected;
-			controller->state.deviceName = controller->deviceName;
+		}
+		controller->state.isConnected = !wasDisconnected;
+		controller->state.deviceName = controller->deviceName;
 
-			if (controller->fd > 0) {
-				if (useEvents) {
-					// Push state event
-					fplEvent ev = fplZeroInit;
-					ev.type = fplEventType_Gamepad;
-					ev.gamepad.type = fplGamepadEventType_StateChanged;
-					ev.gamepad.deviceIndex = controllerIndex;
-					ev.gamepad.deviceName = controller->deviceName;
-					ev.gamepad.state = controller->state;
-					fpl__PushInternalEvent(&ev);
-				}
-			}
+		if (controller->fd > 0 && useEvents) {
+			fpl__PushGamepadStateEvent(controllerIndex, controller->deviceName, &controller->state);
 		}
 	}
 }
 
+// Backend lifecycle wrappers used by fpl__InputSystem_*.
+fpl_internal bool fpl__InputBackendLinuxJoystick_Init(fpl__InputBackendLinuxJoystick *backend) {
+	fplAssertPtr(backend);
+	if (backend->isInitialized) return true;
+	for (int i = 0; i < fplArrayCount(backend->gamepads); ++i) {
+		backend->gamepads[i].slotIndex = -1;
+	}
+	backend->isInitialized = true;
+	return true;
+}
+
+fpl_internal void fpl__InputBackendLinuxJoystick_Release(fpl__InputBackendLinuxJoystick *backend) {
+	fplAssertPtr(backend);
+	if (!backend->isInitialized) return;
+	for (int controllerIndex = 0; controllerIndex < fplArrayCount(backend->gamepads); ++controllerIndex) {
+		fpl__InputLinuxJoystickGamepad *controller = backend->gamepads + controllerIndex;
+		if (controller->fd > 0) {
+			close(controller->fd);
+			controller->fd = 0;
+		}
+	}
+	fplClearStruct(backend);
+}
+
+fpl_internal void fpl__InputBackendLinuxJoystick_Update(fpl__InputBackendLinuxJoystick *backend, const fplSettings *settings) {
+	fplAssertPtr(backend);
+	fplAssertPtr(settings);
+	if (!backend->isInitialized) return;
+	fpl__InputLinuxJoystick_DetectControllers(settings, backend);
+	fpl__InputLinuxJoystick_UpdateStates(backend, true);
+}
+
+fpl_internal bool fpl__InputBackendLinuxJoystick_PollGamepad(fpl__InputBackendLinuxJoystick *backend, fplGamepadStates *outStates) {
+	fplAssertPtr(backend);
+	fplAssertPtr(outStates);
+	if (!backend->isInitialized) return false;
+	// Mirror XInput PollGamepad: read cached state only, do not run detection.
+	fpl__InputLinuxJoystick_UpdateStates(backend, false);
+	// Merge contract: only fill slots we own (controller open) and that no earlier backend has claimed.
+	bool any = false;
+	for (int i = 0; i < fplArrayCount(backend->gamepads); ++i) {
+		if (i >= fplArrayCount(outStates->deviceStates)) break;
+		if (backend->gamepads[i].fd <= 0) continue;
+		if (outStates->deviceStates[i].isConnected) continue;
+		outStates->deviceStates[i] = backend->gamepads[i].state;
+		any = true;
+	}
+	return any;
+}
+#endif // FPL__ENABLE_INPUT_LINUX_JOYSTICK
+
+#if defined(FPL__ENABLE_INPUT)
 fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
 	FPL__CheckPlatform(false);
 	FPL__CheckArgumentNull(outStates, false);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	if (fplIsMaskSet(appState->initFlags, fplInitFlags_GameController)) {
-#if defined(FPL_PLATFORM_LINUX)
-		fpl__LinuxGameControllersState *controllersState = &appState->plinux.controllersState;
-		fpl__LinuxPollGameControllers(&appState->currentSettings, controllersState, false);
-
-		fplAssert(fplArrayCount(controllersState->controllers) == fplArrayCount(outStates->deviceStates));
-		for (int i = 0; i < fplArrayCount(controllersState->controllers); ++i) {
-			outStates->deviceStates[i] = controllersState->controllers[i].state;
-		}
-		return(true);
-#endif
-	}
-	return(false);
+	if (!fplIsMaskSet(appState->initFlags, fplInitFlags_Gamepad)) return false;
+	return fpl__InputSystem_PollGamepad(&appState->input, outStates);
 }
-
-#endif // FPL__ENABLE_WINDOW
+#endif // FPL__ENABLE_INPUT
 
 //
 // Linux Threading
@@ -21463,7 +24504,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_Win32OpenGL
 
 	nativeWindowState->pixelFormat = 0;
 
-	if (videoSettings->graphics.opengl.compabilityFlags != fplOpenGLCompabilityFlags_Legacy) {
+	if (videoSettings->graphics.opengl.compatibilityFlags != fplOpenGLCompatibilityFlags_Legacy) {
 		fpl__Win32OpenGLApi glApi;
 		if (fpl__LoadWin32OpenGLApi(&glApi, videoSettings->graphics.opengl.libraryFile)) {
 			// Register temporary window class
@@ -21629,7 +24670,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Win32OpenGL_In
 	glapi->wglMakeCurrent(fpl_null, fpl_null);
 
 	HGLRC activeRenderingContext;
-	if (videoSettings->graphics.opengl.compabilityFlags != fplOpenGLCompabilityFlags_Legacy) {
+	if (videoSettings->graphics.opengl.compatibilityFlags != fplOpenGLCompatibilityFlags_Legacy) {
 		// @NOTE(final): This is only available in OpenGL 3.0+
 		if (!(videoSettings->graphics.opengl.majorVersion >= 3 && videoSettings->graphics.opengl.minorVersion >= 0)) {
 			FPL__ERROR(FPL__MODULE_VIDEO_OPENGL, "You have not specified the 'majorVersion' and 'minorVersion' in the VideoSettings");
@@ -21646,15 +24687,15 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Win32OpenGL_In
 
 		int profile = 0;
 		int flags = 0;
-		if (fplIsMaskSet(videoSettings->graphics.opengl.compabilityFlags, fplOpenGLCompabilityFlags_Core)) {
+		if (fplIsMaskSet(videoSettings->graphics.opengl.compatibilityFlags, fplOpenGLCompatibilityFlags_Core)) {
 			profile = FPL__WGL_CONTEXT_CORE_PROFILE_BIT_ARB;
-		} else if (fplIsMaskSet(videoSettings->graphics.opengl.compabilityFlags, fplOpenGLCompabilityFlags_Compability)) {
+		} else if (fplIsMaskSet(videoSettings->graphics.opengl.compatibilityFlags, fplOpenGLCompatibilityFlags_Compatibility)) {
 			profile = FPL__WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB;
 		} else {
-			FPL__ERROR(FPL__MODULE_VIDEO_OPENGL, "No opengl compability profile selected, please specific Core fplOpenGLCompabilityFlags_Core or fplOpenGLCompabilityFlags_Compability");
+			FPL__ERROR(FPL__MODULE_VIDEO_OPENGL, "No opengl compatibility profile selected, please specific Core fplOpenGLCompatibilityFlags_Core or fplOpenGLCompatibilityFlags_Compatibility");
 			return false;
 		}
-		if (fplIsMaskSet(videoSettings->graphics.opengl.compabilityFlags, fplOpenGLCompabilityFlags_Forward)) {
+		if (fplIsMaskSet(videoSettings->graphics.opengl.compatibilityFlags, fplOpenGLCompatibilityFlags_Forward)) {
 			flags = FPL__WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
 		}
 
@@ -21675,7 +24716,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Win32OpenGL_In
 		HGLRC modernRenderingContext = glapi->wglCreateContextAttribsARB(deviceContext, 0, contextAttribList);
 		if (modernRenderingContext) {
 			if (!glapi->wglMakeCurrent(deviceContext, modernRenderingContext)) {
-				FPL__ERROR(FPL__MODULE_VIDEO_OPENGL, "Warning: Failed activating Modern OpenGL Rendering Context for version (%d.%d) and compability flags (%d) and DC '%x') -> Fallback to legacy context", videoSettings->graphics.opengl.majorVersion, videoSettings->graphics.opengl.minorVersion, videoSettings->graphics.opengl.compabilityFlags, deviceContext);
+				FPL__ERROR(FPL__MODULE_VIDEO_OPENGL, "Warning: Failed activating Modern OpenGL Rendering Context for version (%d.%d) and compatibility flags (%d) and DC '%x') -> Fallback to legacy context", videoSettings->graphics.opengl.majorVersion, videoSettings->graphics.opengl.minorVersion, videoSettings->graphics.opengl.compatibilityFlags, deviceContext);
 
 				glapi->wglDeleteContext(modernRenderingContext);
 				modernRenderingContext = fpl_null;
@@ -21690,7 +24731,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Win32OpenGL_In
 				activeRenderingContext = modernRenderingContext;
 			}
 		} else {
-			FPL__ERROR(FPL__MODULE_VIDEO_OPENGL, "Warning: Failed creating Modern OpenGL Rendering Context for version (%d.%d) and compability flags (%d) and DC '%x') -> Fallback to legacy context", videoSettings->graphics.opengl.majorVersion, videoSettings->graphics.opengl.minorVersion, videoSettings->graphics.opengl.compabilityFlags, deviceContext);
+			FPL__ERROR(FPL__MODULE_VIDEO_OPENGL, "Warning: Failed creating Modern OpenGL Rendering Context for version (%d.%d) and compatibility flags (%d) and DC '%x') -> Fallback to legacy context", videoSettings->graphics.opengl.majorVersion, videoSettings->graphics.opengl.minorVersion, videoSettings->graphics.opengl.compatibilityFlags, deviceContext);
 
 			// Fallback to legacy context
 			glapi->wglMakeCurrent(deviceContext, legacyRenderingContext);
@@ -22143,7 +25184,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Init
 
 	GLXContext activeRenderingContext;
 
-	if ((videoSettings->graphics.opengl.compabilityFlags != fplOpenGLCompabilityFlags_Legacy) && (nativeBackend->fbConfig != fpl_null)) {
+	if ((videoSettings->graphics.opengl.compatibilityFlags != fplOpenGLCompatibilityFlags_Legacy) && (nativeBackend->fbConfig != fpl_null)) {
 		// @NOTE(final): This is only available in OpenGL 3.0+
 		if (!(videoSettings->graphics.opengl.majorVersion >= 3 && videoSettings->graphics.opengl.minorVersion >= 0)) {
 			FPL__ERROR(FPL__MODULE_GLX, "You have not specified the 'majorVersion' and 'minorVersion' in the VideoSettings");
@@ -22157,15 +25198,15 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Init
 
 		int flags = 0;
 		int profile = 0;
-		if (fplIsMaskSet(videoSettings->graphics.opengl.compabilityFlags, fplOpenGLCompabilityFlags_Core)) {
+		if (fplIsMaskSet(videoSettings->graphics.opengl.compatibilityFlags, fplOpenGLCompatibilityFlags_Core)) {
 			profile = FPL__GLX_CONTEXT_CORE_PROFILE_BIT_ARB;
-		} else if (fplIsMaskSet(videoSettings->graphics.opengl.compabilityFlags, fplOpenGLCompabilityFlags_Compability)) {
+		} else if (fplIsMaskSet(videoSettings->graphics.opengl.compatibilityFlags, fplOpenGLCompatibilityFlags_Compatibility)) {
 			profile = FPL__GLX_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB;
 		} else {
-			FPL__ERROR(FPL__MODULE_GLX, "No opengl compability profile selected, please specific Core OpenGLCompabilityFlags_Core or OpenGLCompabilityFlags_Compability");
+			FPL__ERROR(FPL__MODULE_GLX, "No opengl compatibility profile selected, please specific Core OpenGLCompatibilityFlags_Core or OpenGLCompatibilityFlags_Compatibility");
 			goto failed_x11_glx;
 		}
-		if (fplIsMaskSet(videoSettings->graphics.opengl.compabilityFlags, fplOpenGLCompabilityFlags_Forward)) {
+		if (fplIsMaskSet(videoSettings->graphics.opengl.compatibilityFlags, fplOpenGLCompatibilityFlags_Forward)) {
 			flags = FPL__GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
 		}
 
@@ -22185,14 +25226,14 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Init
 
 		GLXContext modernRenderingContext = glApi->glXCreateContextAttribsARB(display, nativeBackend->fbConfig, fpl_null, True, contextAttribList);
 		if (!modernRenderingContext) {
-			FPL__ERROR(FPL__MODULE_GLX, "Warning: Failed creating Modern OpenGL Rendering Context for version (%d.%d) and compability flags (%d) -> Fallback to legacy context", videoSettings->graphics.opengl.majorVersion, videoSettings->graphics.opengl.minorVersion, videoSettings->graphics.opengl.compabilityFlags);
+			FPL__ERROR(FPL__MODULE_GLX, "Warning: Failed creating Modern OpenGL Rendering Context for version (%d.%d) and compatibility flags (%d) -> Fallback to legacy context", videoSettings->graphics.opengl.majorVersion, videoSettings->graphics.opengl.minorVersion, videoSettings->graphics.opengl.compatibilityFlags);
 
 			// Fallback to legacy rendering context
 			glApi->glXMakeCurrent(display, window, legacyRenderingContext);
 			activeRenderingContext = legacyRenderingContext;
 		} else {
 			if (!glApi->glXMakeCurrent(display, window, modernRenderingContext)) {
-				FPL__ERROR(FPL__MODULE_GLX, "Warning: Failed activating Modern OpenGL Rendering Context for version (%d.%d) and compability flags (%d) -> Fallback to legacy context", videoSettings->graphics.opengl.majorVersion, videoSettings->graphics.opengl.minorVersion, videoSettings->graphics.opengl.compabilityFlags);
+				FPL__ERROR(FPL__MODULE_GLX, "Warning: Failed activating Modern OpenGL Rendering Context for version (%d.%d) and compatibility flags (%d) -> Fallback to legacy context", videoSettings->graphics.opengl.majorVersion, videoSettings->graphics.opengl.minorVersion, videoSettings->graphics.opengl.compatibilityFlags);
 
 				// Destroy modern rendering context
 				glApi->glXDestroyContext(display, modernRenderingContext);
@@ -23366,8 +26407,8 @@ struct fplAudioBackend;
 #define FPL_AUDIO_BACKEND_INITIALIZE_FUNC(name) fplAudioResultType name(struct fplAudioContext *context, struct fplAudioBackend *backend)
 /**
 * @brief Initializes the specified @ref fplAudioBackend
-* @param context The @ref fplAudioContext reference
-* @param backend The @ref fplAudioBackend reference
+* @param[in] context The @ref fplAudioContext reference
+* @param[in] backend The @ref fplAudioBackend reference
 * @result Returns a @ref fplAudioResultType
 */
 typedef	FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl_audio_backend_initialize_func);
@@ -23381,21 +26422,21 @@ typedef	FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl_audio_backend_get_audio
 #define FPL_AUDIO_BACKEND_RELEASE_FUNC(name) bool name(struct fplAudioContext *context, struct fplAudioBackend *backend)
 /**
 * @brief Releases the specified @ref fplAudioBackend
-* @param context The @ref fplAudioContext reference
-* @param backend The @ref fplAudioBackend reference
+* @param[in] context The @ref fplAudioContext reference
+* @param[in] backend The @ref fplAudioBackend reference
 * @result Returns a boolean indicating whether the backend was released or not
 */
 typedef	FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl_audio_backend_release_func);
 
 /**
 * @brief Initializes the device of the specified @ref fplAudioBackend and @ref fplAudioBackend with the specified audio settings
-* @param context The @ref fplAudioContext reference
-* @param backend The @ref fplAudioBackend reference
-* @param audioSettings The @ref fplSpecificAudioSettings reference, that contains special settings for several backends
-* @param targetFormat The @ref fplAudioFormat reference, that specifies the target audio format
-* @param outputFormat The @ref fplAudioFormat reference, that specifies the output audio format
-* @param outputChannelMap The @ref fplAudioChannelMap reference, that specifies the output channel map
-* @param outputDevice The @ref fplAudioDeviceInfo reference, that specifies the output device info
+* @param[in] context The @ref fplAudioContext reference
+* @param[in] backend The @ref fplAudioBackend reference
+* @param[in] audioSettings The @ref fplSpecificAudioSettings reference, that contains special settings for several backends
+* @param[in] targetFormat The @ref fplAudioFormat reference, that specifies the target audio format
+* @param[out] outputFormat The @ref fplAudioFormat reference, that specifies the output audio format
+* @param[out] outputChannelMap The @ref fplAudioChannelMap reference, that specifies the output channel map
+* @param[out] outputDevice The @ref fplAudioDeviceInfo reference, that specifies the output device info
 * @result Returns a @ref fplAudioResultType
 */
 #define FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(name) fplAudioResultType name(struct fplAudioContext *context, struct fplAudioBackend *backend, const fplSpecificAudioSettings *audioSettings, const fplAudioFormat *targetFormat, const fplAudioDeviceInfo *targetDevice, fplAudioFormat *outputFormat, fplAudioDeviceInfo *outputDevice, fplAudioChannelMap *outputChannelMap)
@@ -23404,8 +26445,8 @@ typedef	FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl_audio_backend_initialize_de
 #define FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(name) bool name(struct fplAudioContext *context, struct fplAudioBackend *backend)
 /**
 * @brief Releases the device of the specified @ref fplAudioBackend
-* @param context The @ref fplAudioContext reference
-* @param backend The @ref fplAudioBackend reference
+* @param[in] context The @ref fplAudioContext reference
+* @param[in] backend The @ref fplAudioBackend reference
 * @result Returns a boolean indicating whether the device of the @ref fplAudioBackend was released or not
 */
 typedef	FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(fpl_audio_backend_release_device_func);
@@ -23535,10 +26576,20 @@ typedef struct fpl__CommonAudioState {
 	fplAudioContext context;
 } fpl__CommonAudioState;
 
+// Always fills the full frameCount of pSamples. Frames not provided by the client callback are zero-padded.
+// Returns frameCount on success, or 0 if pSamples is NULL or frameCount is 0.
+// Backends MUST treat the destination buffer as fully written and MUST NOT branch on a partial-read return.
 fpl_internal uint32_t fpl__ReadAudioFramesFromClient(const fplAudioBackend *backend, uint32_t frameCount, void *pSamples) {
+	uint32_t result = 0;
+	if (pSamples == fpl_null || frameCount == 0) {
+		return(result);
+	}
 	uint32_t framesRead = 0;
 	if (backend->clientReadCallback != fpl_null) {
 		framesRead = backend->clientReadCallback(&backend->internalFormat, frameCount, pSamples, backend->clientUserData);
+		if (framesRead > frameCount) {
+			framesRead = frameCount;
+		}
 	}
 	uint32_t channels = backend->internalFormat.channels;
 	uint32_t samplesRead = framesRead * channels;
@@ -23548,7 +26599,8 @@ fpl_internal uint32_t fpl__ReadAudioFramesFromClient(const fplAudioBackend *back
 	if (remainingBytes > 0) {
 		fplMemoryClear((uint8_t *)pSamples + consumedBytes, remainingBytes);
 	}
-	return(samplesRead);
+	result = frameCount;
+	return(result);
 }
 
 // Global Audio GUIDs
@@ -24468,7 +27520,8 @@ fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudioBackendDirectSoundSta
 
 	if (SUCCEEDED(IDirectSoundBuffer_Lock(impl->secondaryBuffer, 0, desiredLockSize, &pLockPtr, &actualLockSize, &pLockPtr2, &actualLockSize2, 0))) {
 		framesToRead = actualLockSize / audioSampleSizeBytes / backend->internalFormat.channels;
-		fpl__ReadAudioFramesFromClient(backend, framesToRead, pLockPtr);
+		uint32_t framesRead = fpl__ReadAudioFramesFromClient(backend, framesToRead, pLockPtr);
+		fplAssert(framesRead == framesToRead);
 		IDirectSoundBuffer_Unlock(impl->secondaryBuffer, pLockPtr, actualLockSize, pLockPtr2, actualLockSize2);
 		impl->lastProcessedFrame = framesToRead;
 		if (FAILED(IDirectSoundBuffer_Play(impl->secondaryBuffer, 0, 0, DSBPLAY_LOOPING))) {
@@ -24527,7 +27580,8 @@ fpl_internal FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl__AudioBackendDirectSoundMainLo
 
 			// Read actual frames from user
 			uint32_t frameCount = actualLockSize / audioSampleSizeBytes / backend->internalFormat.channels;
-			fpl__ReadAudioFramesFromClient(backend, frameCount, pLockPtr);
+			uint32_t framesRead = fpl__ReadAudioFramesFromClient(backend, frameCount, pLockPtr);
+			fplAssert(framesRead == frameCount);
 			impl->lastProcessedFrame = (impl->lastProcessedFrame + frameCount) % backend->internalFormat.bufferSizeInFrames;
 
 			// Unlock playback buffer
@@ -25081,7 +28135,8 @@ fpl_internal bool fpl__GetAudioFramesFromClientAlsa(fplAudioContext *context, fp
 			}
 			if (mappedFrames > 0) {
 				void *bufferPtr = (uint8_t *)channelAreas[0].addr + ((channelAreas[0].first + (mappedOffset * channelAreas[0].step)) / 8);
-				fpl__ReadAudioFramesFromClient(backend, mappedFrames, bufferPtr);
+				uint32_t framesRead = fpl__ReadAudioFramesFromClient(backend, (uint32_t)mappedFrames, bufferPtr);
+				fplAssert((snd_pcm_uframes_t)framesRead == mappedFrames);
 			}
 			result = alsaApi->snd_pcm_mmap_commit(impl->pcmDevice, mappedOffset, mappedFrames);
 			if (result < 0 || (snd_pcm_uframes_t)result != mappedFrames) {
@@ -25110,7 +28165,8 @@ fpl_internal bool fpl__GetAudioFramesFromClientAlsa(fplAudioContext *context, fp
 			if (impl->breakMainLoop) {
 				return false;
 			}
-			fpl__ReadAudioFramesFromClient(backend, framesAvailable, impl->intermediaryBuffer);
+			uint32_t framesRead = fpl__ReadAudioFramesFromClient(backend, framesAvailable, impl->intermediaryBuffer);
+			fplAssert(framesRead == framesAvailable);
 			snd_pcm_sframes_t framesWritten = alsaApi->snd_pcm_writei(impl->pcmDevice, impl->intermediaryBuffer, framesAvailable);
 			if (framesWritten < 0) {
 				if (framesWritten == -EAGAIN) {
@@ -25307,6 +28363,65 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendAlsaInitialize) 
 #undef FPL__ALSA_INIT_ERROR
 }
 
+fpl_internal uint32_t fpl__ALSADefineDefaultAudioDevices(const fplAudioShareMode shareMode, const char **outputNames, const size_t maxOutputNameCount) {
+	const char *defaultDeviceNames[16] = fplZeroInit;
+	uint32_t defaultDeviceCount = 0;
+	defaultDeviceNames[defaultDeviceCount++] = "default";
+	defaultDeviceNames[defaultDeviceCount++] = "pulse";
+	defaultDeviceNames[defaultDeviceCount++] = "pipewire";
+	if (shareMode != fplAudioShareMode_Exclusive) {
+		defaultDeviceNames[defaultDeviceCount++] = "dmix";
+		defaultDeviceNames[defaultDeviceCount++] = "dmix:0";
+		defaultDeviceNames[defaultDeviceCount++] = "dmix:0,0";
+	}
+	defaultDeviceNames[defaultDeviceCount++] = "hw";
+	defaultDeviceNames[defaultDeviceCount++] = "hw:0";
+	defaultDeviceNames[defaultDeviceCount++] = "hw:0,0";
+
+	if (outputNames == fpl_null) {
+		return defaultDeviceCount;
+	}
+
+	for (uint32_t i = 0; i < defaultDeviceCount; ++i) {
+		outputNames[i] = defaultDeviceNames[i];
+	}
+
+	return defaultDeviceCount;
+}
+
+fpl_internal bool fpl__ALSAIsOutputAudioDevice(const char *ioid) {
+	const bool isOutputDevice = ioid != fpl_null && fplIsStringEqual(ioid, "Output");
+	const bool isDuplexDevice = ioid == fpl_null;
+	const bool result = isOutputDevice || isDuplexDevice;
+	return result;
+}
+
+fpl_internal bool fpl__ALSAIsDefaultAudioDevice(const char *name) {
+	if (name == fpl_null) {
+		return false;
+	}
+
+	bool result = false;
+
+	// New default audio device from sound servers
+	if (fplIsStringEqual(name, "pulse") ||
+		fplIsStringEqual(name, "pipewire")) {
+		result = true;
+	}
+
+	// Old default audio device from pure ALSA
+	if (fplIsStringEqual(name, "default")) {
+		result = true;
+	}
+
+	// Sysdefault is not considered a default audio device!
+	if (fplIsStringEqual(name, "sysdefault")) {
+		result = false;
+	}
+
+	return result;
+}
+
 fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaInitializeDevice) {
 	fpl__AlsaAudioBackend *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AlsaAudioBackend);
 	fplAssert(impl != fpl_null);
@@ -25346,16 +28461,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	int openMode = SND_PCM_NO_AUTO_RESAMPLE | SND_PCM_NO_AUTO_CHANNELS | SND_PCM_NO_AUTO_FORMAT;
 	if (alsaDeviceID == fpl_null || fplGetStringLength(alsaDeviceID) == 0) {
 		const char *defaultDeviceNames[16] = fplZeroInit;
-		int defaultDeviceCount = 0;
-		defaultDeviceNames[defaultDeviceCount++] = "default";
-		if (shareMode != fplAudioShareMode_Exclusive) {
-			defaultDeviceNames[defaultDeviceCount++] = "dmix";
-			defaultDeviceNames[defaultDeviceCount++] = "dmix:0";
-			defaultDeviceNames[defaultDeviceCount++] = "dmix:0,0";
-		}
-		defaultDeviceNames[defaultDeviceCount++] = "hw";
-		defaultDeviceNames[defaultDeviceCount++] = "hw:0";
-		defaultDeviceNames[defaultDeviceCount++] = "hw:0,0";
+		const uint32_t defaultDeviceCount = fpl__ALSADefineDefaultAudioDevices(shareMode, defaultDeviceNames, fplArrayCount(defaultDeviceNames));
 
 		bool isDeviceOpen = false;
 		for (size_t defaultDeviceIndex = 0; defaultDeviceIndex < defaultDeviceCount; ++defaultDeviceIndex) {
@@ -25380,7 +28486,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 		if (alsaApi->snd_pcm_open(&impl->pcmDevice, alsaDeviceID, stream, openMode) < 0) {
 			FPL__ALSA_INIT_ERROR(fplAudioResultType_NoDeviceFound, "PCM audio device by id '%s' not found!", alsaDeviceID);
 		}
-		internalDevice.isDefault = fplIsStringEqual("default", alsaDeviceID);
+		internalDevice.isDefault = fpl__ALSAIsDefaultAudioDevice(alsaDeviceID);
 		fplCopyString(alsaDeviceID, internalDevice.id.alsa, fplArrayCount(internalDevice.id.alsa));
 		fplCopyString(alsaDeviceID, internalDevice.name, fplArrayCount(internalDevice.name));
 	}
@@ -25404,7 +28510,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 		const char *pcmName = alsaApi->snd_pcm_info_get_name(pcmInfo);
 		if (fplGetStringLength(pcmName) > 0) {
 			fplCopyString(pcmName, internalDevice.name, fplArrayCount(internalDevice.name));
-			if (fplIsStringEqual("default", pcmName)) {
+			if (fpl__ALSAIsDefaultAudioDevice(pcmName)) {
 				char **ppDeviceHints;
 				if (alsaApi->snd_device_name_hint(-1, "pcm", (void ***)&ppDeviceHints) == 0) {
 					char **ppNextDeviceHint = ppDeviceHints;
@@ -25414,7 +28520,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 						char *hintIOID = alsaApi->snd_device_name_get_hint(*ppNextDeviceHint, "IOID");
 
 						bool foundDevice = false;
-						if (hintIOID == fpl_null || fplIsStringEqual(hintIOID, "Output")) {
+						if (fpl__ALSAIsOutputAudioDevice(hintIOID)) {
 							if (fplIsStringEqual(hintName, pcmName)) {
 								fplCopyString(hintDesc, internalDevice.name, fplArrayCount(internalDevice.name));
 								foundDevice = true;
@@ -25655,25 +28761,16 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendALSAG
 		deviceID = *targetDevice;
 	}
 
-	fplAudioShareMode shareMode = fplAudioShareMode_Shared;
+	const fplAudioShareMode shareMode = fplAudioShareMode_Shared;
+	const int openMode = SND_PCM_NO_AUTO_RESAMPLE | SND_PCM_NO_AUTO_CHANNELS | SND_PCM_NO_AUTO_FORMAT;
 
 	snd_pcm_t *pcmDevice = fpl_null;
 
 	char deviceName[256] = fplZeroInit;
-	snd_pcm_stream_t stream = SND_PCM_STREAM_PLAYBACK;
-	int openMode = SND_PCM_NO_AUTO_RESAMPLE | SND_PCM_NO_AUTO_CHANNELS | SND_PCM_NO_AUTO_FORMAT;
+	const snd_pcm_stream_t stream = SND_PCM_STREAM_PLAYBACK;
 	if (fplGetStringLength(deviceID.alsa) == 0) {
 		const char *defaultDeviceNames[16] = fplZeroInit;
-		int defaultDeviceCount = 0;
-		defaultDeviceNames[defaultDeviceCount++] = "default";
-		if (shareMode != fplAudioShareMode_Exclusive) {
-			defaultDeviceNames[defaultDeviceCount++] = "dmix";
-			defaultDeviceNames[defaultDeviceCount++] = "dmix:0";
-			defaultDeviceNames[defaultDeviceCount++] = "dmix:0,0";
-		}
-		defaultDeviceNames[defaultDeviceCount++] = "hw";
-		defaultDeviceNames[defaultDeviceCount++] = "hw:0";
-		defaultDeviceNames[defaultDeviceCount++] = "hw:0,0";
+		const uint32_t defaultDeviceCount = fpl__ALSADefineDefaultAudioDevices(shareMode, defaultDeviceNames, fplArrayCount(defaultDeviceNames));
 
 		bool isDeviceOpen = false;
 		for (size_t defaultDeviceIndex = 0; defaultDeviceIndex < defaultDeviceCount; ++defaultDeviceIndex) {
@@ -25725,38 +28822,66 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendAlsaGetAu
 	uint32_t capacityOverflow = 0;
 	uint32_t result = 0;
 	char **ppNextDeviceHint = ppDeviceHints;
+	uint32_t deviceIndex = 0;
 	while (*ppNextDeviceHint != fpl_null) {
 		char *name = alsaApi->snd_device_name_get_hint(*ppNextDeviceHint, "NAME");
 		char *ioid = alsaApi->snd_device_name_get_hint(*ppNextDeviceHint, "IOID");
+		char *desc = alsaApi->snd_device_name_get_hint(*ppNextDeviceHint, "DESC");
 
-		// Only allow output or default devices
-		if (name != fpl_null && (fplIsStringEqual(name, "default") || fplIsStringEqual(name, "pulse") || fplIsStringEqual(ioid, "Output"))) {
-			if (deviceInfos != fpl_null) {
-				if (result >= maxDeviceCount) {
-					++capacityOverflow;
-				} else {
-					fplAudioDeviceInfo *outDeviceInfo = (fplAudioDeviceInfo *)((uint8_t *)deviceInfos + (deviceInfoSize * result));
-					fplClearStruct(outDeviceInfo);
-					outDeviceInfo->isDefault = fplIsStringEqual(name, "default");
-					fplCopyString(name, outDeviceInfo->id.alsa, fplArrayCount(outDeviceInfo->id.alsa));
-					char *desc = alsaApi->snd_device_name_get_hint(*ppNextDeviceHint, "DESC");
-					if (desc != fpl_null) {
-						fplCopyString(desc, outDeviceInfo->name, fplArrayCount(outDeviceInfo->name));
-						free(desc);
+		FPL_LOG_VERBOSE(FPL__MODULE_AUDIO_ALSA, "ALSA Audio Device[%u]: Name: {%s}, IOID: {%s}, Desc: {%s}", deviceIndex, name, ioid, desc);
+
+		if (name != fpl_null) {
+			bool isDefaultDevice = false;
+
+			// New default audio device from sound servers
+			if (fplIsStringEqual(name, "pulse") ||
+				fplIsStringEqual(name, "pipewire")) {
+				isDefaultDevice = true;
+			}
+
+			// Old default audio device from pure ALSA
+			if (fplIsStringEqual(name, "default")) {
+				isDefaultDevice = true;
+			}
+
+			// Sysdefault is not considered a default audio device!
+			if (fplIsStringEqual(name, "sysdefault")) {
+				isDefaultDevice = false;
+			}
+
+			// Only add output or duplex devices
+			if (fpl__ALSAIsOutputAudioDevice(ioid)) {
+				if (deviceInfos != fpl_null) {
+					if (result >= maxDeviceCount) {
+						++capacityOverflow;
 					} else {
-						fplCopyString(name, outDeviceInfo->name, fplArrayCount(outDeviceInfo->name));
+						fplAudioDeviceInfo *outDeviceInfo = (fplAudioDeviceInfo *)((uint8_t *)deviceInfos + (deviceInfoSize * result));
+						fplClearStruct(outDeviceInfo);
+						outDeviceInfo->isDefault = isDefaultDevice;
+						fplCopyString(name, outDeviceInfo->id.alsa, fplArrayCount(outDeviceInfo->id.alsa));
+						if (desc != fpl_null) {
+							fplCopyString(desc, outDeviceInfo->name, fplArrayCount(outDeviceInfo->name));
+						} else {
+							fplCopyString(name, outDeviceInfo->name, fplArrayCount(outDeviceInfo->name));
+						}
 					}
 				}
+				++result;
 			}
-			++result;
 		}
+
 		if (ioid != fpl_null) {
 			free(ioid);
 		}
 		if (name != fpl_null) {
 			free(name);
 		}
+		if (desc != fpl_null) {
+			free(desc);
+		}
+
 		++ppNextDeviceHint;
+		++deviceIndex;
 	}
 	alsaApi->snd_device_name_free_hint((void **)ppDeviceHints);
 	if (capacityOverflow > 0) {
@@ -25791,6 +28916,2509 @@ fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendALSADescriptor =
 	}),
 };
 #endif // FPL__ENABLE_AUDIO_ALSA
+
+// ############################################################################
+//
+// > AUDIO_BACKEND_PULSEAUDIO
+//
+// ############################################################################
+#if defined(FPL__ENABLE_AUDIO_PULSEAUDIO)
+
+// @NOTE(final/PulseAudio): The PulseAudio backend is runtime-linked by default, so the PulseAudio development headers are not required.
+// To disable anonymous headers and include the real <pulse/pulseaudio.h> header instead, define FPL_PULSEAUDIO_USE_REAL_HEADERS.
+#if !defined(FPL__ANONYMOUS_PULSEAUDIO_HEADERS) && !defined(FPL_PULSEAUDIO_USE_REAL_HEADERS)
+#	define FPL__ANONYMOUS_PULSEAUDIO_HEADERS
+#endif
+
+// Sets the default audio channel map for the PulseAudio backend
+fpl_internal void fpl__PulseAudio_SetAudioDefaultChannelMap(const uint16_t channels, const fplAudioChannelLayout layout, fplAudioChannelMap *outChannelMap) {
+	fplClearStruct(outChannelMap);
+
+	if (channels == 0 || layout == fplAudioChannelLayout_Unsupported) {
+		return;
+	}
+
+	if (channels == 1 || layout == fplAudioChannelLayout_Mono) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontCenter;
+	} else if (channels == 2 || layout == fplAudioChannelLayout_Stereo) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+	} else if (channels == 3) {
+		if (layout == fplAudioChannelLayout_2_1) {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_LowFrequency;
+		} else {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_FrontCenter;
+		}
+	} else if (channels == 4) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+	} else if (channels == 5) {
+		if (layout == fplAudioChannelLayout_4_1) {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+			outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+			outChannelMap->speakers[4] = fplAudioChannelType_LowFrequency;
+		} else {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+			outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+			outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
+		}
+	} else if (channels == 6) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+		outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
+		outChannelMap->speakers[5] = fplAudioChannelType_LowFrequency;
+	} else if (channels == 7) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+		outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
+		outChannelMap->speakers[5] = fplAudioChannelType_LowFrequency;
+		outChannelMap->speakers[6] = fplAudioChannelType_BackCenter;
+	} else {
+		fplAssert(channels >= 8);
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+		outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
+		outChannelMap->speakers[5] = fplAudioChannelType_LowFrequency;
+		outChannelMap->speakers[6] = fplAudioChannelType_SideLeft;
+		outChannelMap->speakers[7] = fplAudioChannelType_SideRight;
+	}
+}
+
+#if defined(FPL__ANONYMOUS_PULSEAUDIO_HEADERS)
+// Opaque handles
+typedef void pa_mainloop_api;
+typedef void pa_threaded_mainloop;
+typedef void pa_context;
+typedef void pa_stream;
+typedef void pa_operation;
+typedef void pa_proplist;
+
+// Time / size typedefs
+typedef uint64_t pa_usec_t;
+
+// Enumerations
+typedef enum pa_context_state_t {
+	PA_CONTEXT_UNCONNECTED = 0,
+	PA_CONTEXT_CONNECTING,
+	PA_CONTEXT_AUTHORIZING,
+	PA_CONTEXT_SETTING_NAME,
+	PA_CONTEXT_READY,
+	PA_CONTEXT_FAILED,
+	PA_CONTEXT_TERMINATED
+} pa_context_state_t;
+
+typedef enum pa_stream_state_t {
+	PA_STREAM_UNCONNECTED = 0,
+	PA_STREAM_CREATING,
+	PA_STREAM_READY,
+	PA_STREAM_FAILED,
+	PA_STREAM_TERMINATED
+} pa_stream_state_t;
+
+typedef enum pa_operation_state_t {
+	PA_OPERATION_RUNNING = 0,
+	PA_OPERATION_DONE,
+	PA_OPERATION_CANCELLED
+} pa_operation_state_t;
+
+typedef enum pa_sample_format_t {
+	PA_SAMPLE_U8 = 0,
+	PA_SAMPLE_ALAW,
+	PA_SAMPLE_ULAW,
+	PA_SAMPLE_S16LE,
+	PA_SAMPLE_S16BE,
+	PA_SAMPLE_FLOAT32LE,
+	PA_SAMPLE_FLOAT32BE,
+	PA_SAMPLE_S32LE,
+	PA_SAMPLE_S32BE,
+	PA_SAMPLE_S24LE,
+	PA_SAMPLE_S24BE,
+	PA_SAMPLE_S24_32LE,
+	PA_SAMPLE_S24_32BE,
+	PA_SAMPLE_MAX,
+	PA_SAMPLE_INVALID = -1
+} pa_sample_format_t;
+
+typedef enum pa_channel_position_t {
+	PA_CHANNEL_POSITION_INVALID = -1,
+	PA_CHANNEL_POSITION_MONO = 0,
+	PA_CHANNEL_POSITION_FRONT_LEFT,
+	PA_CHANNEL_POSITION_FRONT_RIGHT,
+	PA_CHANNEL_POSITION_FRONT_CENTER,
+	PA_CHANNEL_POSITION_REAR_CENTER,
+	PA_CHANNEL_POSITION_REAR_LEFT,
+	PA_CHANNEL_POSITION_REAR_RIGHT,
+	PA_CHANNEL_POSITION_LFE,
+	PA_CHANNEL_POSITION_FRONT_LEFT_OF_CENTER,
+	PA_CHANNEL_POSITION_FRONT_RIGHT_OF_CENTER,
+	PA_CHANNEL_POSITION_SIDE_LEFT,
+	PA_CHANNEL_POSITION_SIDE_RIGHT,
+	PA_CHANNEL_POSITION_AUX0,
+	PA_CHANNEL_POSITION_MAX = 35
+} pa_channel_position_t;
+
+typedef enum pa_seek_mode_t {
+	PA_SEEK_RELATIVE = 0,
+	PA_SEEK_ABSOLUTE,
+	PA_SEEK_RELATIVE_ON_READ,
+	PA_SEEK_RELATIVE_END
+} pa_seek_mode_t;
+
+typedef enum pa_channel_map_def_t {
+	PA_CHANNEL_MAP_AIFF = 0,
+	PA_CHANNEL_MAP_ALSA,
+	PA_CHANNEL_MAP_AUX,
+	PA_CHANNEL_MAP_WAVEEX,
+	PA_CHANNEL_MAP_OSS,
+	PA_CHANNEL_MAP_DEF_MAX,
+	PA_CHANNEL_MAP_DEFAULT = PA_CHANNEL_MAP_AIFF
+} pa_channel_map_def_t;
+
+// Flag typedefs (match libpulse, which treats flag enums as int-sized)
+typedef int pa_context_flags_t;
+typedef int pa_stream_flags_t;
+
+// Flag constants (match libpulse values)
+#define PA_CONTEXT_NOFLAGS 0x0000U
+#define PA_CONTEXT_NOAUTOSPAWN 0x0001U
+#define PA_CONTEXT_NOFAIL 0x0002U
+
+#define PA_STREAM_NOFLAGS 0x0000U
+#define PA_STREAM_START_CORKED 0x0001U
+#define PA_STREAM_INTERPOLATE_TIMING 0x0002U
+#define PA_STREAM_NOT_MONOTONIC 0x0004U
+#define PA_STREAM_AUTO_TIMING_UPDATE 0x0008U
+#define PA_STREAM_NO_REMAP_CHANNELS 0x0010U
+#define PA_STREAM_NO_REMIX_CHANNELS 0x0020U
+#define PA_STREAM_FIX_FORMAT 0x0040U
+#define PA_STREAM_FIX_RATE 0x0080U
+#define PA_STREAM_FIX_CHANNELS 0x0100U
+#define PA_STREAM_DONT_MOVE 0x0200U
+#define PA_STREAM_VARIABLE_RATE 0x0400U
+#define PA_STREAM_PEAK_DETECT 0x0800U
+#define PA_STREAM_START_MUTED 0x1000U
+#define PA_STREAM_ADJUST_LATENCY 0x2000U
+#define PA_STREAM_EARLY_REQUESTS 0x4000U
+
+// Channels max from <pulse/sample.h>
+#define PA_CHANNELS_MAX 32
+
+// pulseaudio structs that we allocate ourselves - layout MUST match the real pulseaudio ABI
+typedef struct pa_sample_spec {
+	pa_sample_format_t format;
+	uint32_t rate;
+	uint8_t channels;
+} pa_sample_spec;
+
+typedef struct pa_channel_map {
+	uint8_t channels;
+	pa_channel_position_t map[PA_CHANNELS_MAX];
+} pa_channel_map;
+
+typedef struct pa_buffer_attr {
+	uint32_t maxlength;
+	uint32_t tlength;
+	uint32_t prebuf;
+	uint32_t minreq;
+	uint32_t fragsize;
+} pa_buffer_attr;
+
+// Minimal layout-compatible pa_sink_info
+// @NOTE(final): We only read the first few fields, pulseaudio allocates the full struct, so reading beyond channel_map is not safe here.
+typedef struct pa_sink_info {
+	const char *name;
+	uint32_t index;
+	const char *description;
+	pa_sample_spec sample_spec;
+	pa_channel_map channel_map;
+} pa_sink_info;
+
+// Callback typedefs
+typedef void(*pa_context_notify_cb_t)(pa_context *context, void *userData);
+typedef void(*pa_stream_notify_cb_t)(pa_stream *stream, void *userData);
+typedef void(*pa_stream_request_cb_t)(pa_stream *stream, size_t numberOfBytes, void *userData);
+typedef void(*pa_stream_success_cb_t)(pa_stream *stream, int success, void *userData);
+typedef void(*pa_sink_info_cb_t)(pa_context *context, const pa_sink_info *info, int eol, void *userData);
+typedef void(*pa_free_cb_t)(void *buffer);
+
+#else
+// @TODO(final/PulseAudio): Remove PulseAudio include when runtime linking is enabled
+#	include <pulse/pulseaudio.h>
+#endif // FPL__ANONYMOUS_PULSEAUDIO_HEADERS
+
+// Function typedefs for all PulseAudio runtime-loaded functions
+#define FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_new(name) pa_threaded_mainloop *name(void)
+typedef FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_new(fpl__pa_func_pa_threaded_mainloop_new);
+#define FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_free(name) void name(pa_threaded_mainloop *mainloop)
+typedef FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_free(fpl__pa_func_pa_threaded_mainloop_free);
+#define FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_start(name) int name(pa_threaded_mainloop *mainloop)
+typedef FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_start(fpl__pa_func_pa_threaded_mainloop_start);
+#define FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_stop(name) void name(pa_threaded_mainloop *mainloop)
+typedef FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_stop(fpl__pa_func_pa_threaded_mainloop_stop);
+#define FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_lock(name) void name(pa_threaded_mainloop *mainloop)
+typedef FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_lock(fpl__pa_func_pa_threaded_mainloop_lock);
+#define FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_unlock(name) void name(pa_threaded_mainloop *mainloop)
+typedef FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_unlock(fpl__pa_func_pa_threaded_mainloop_unlock);
+#define FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_wait(name) void name(pa_threaded_mainloop *mainloop)
+typedef FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_wait(fpl__pa_func_pa_threaded_mainloop_wait);
+#define FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_signal(name) void name(pa_threaded_mainloop *mainloop, int waitForAccept)
+typedef FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_signal(fpl__pa_func_pa_threaded_mainloop_signal);
+#define FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_get_api(name) pa_mainloop_api *name(pa_threaded_mainloop *mainloop)
+typedef FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_get_api(fpl__pa_func_pa_threaded_mainloop_get_api);
+
+#define FPL__PULSEAUDIO_FUNC_pa_context_new(name) pa_context *name(pa_mainloop_api *mainloopApi, const char *clientName)
+typedef FPL__PULSEAUDIO_FUNC_pa_context_new(fpl__pa_func_pa_context_new);
+#define FPL__PULSEAUDIO_FUNC_pa_context_unref(name) void name(pa_context *context)
+typedef FPL__PULSEAUDIO_FUNC_pa_context_unref(fpl__pa_func_pa_context_unref);
+#define FPL__PULSEAUDIO_FUNC_pa_context_set_state_callback(name) void name(pa_context *context, pa_context_notify_cb_t callback, void *userData)
+typedef FPL__PULSEAUDIO_FUNC_pa_context_set_state_callback(fpl__pa_func_pa_context_set_state_callback);
+#define FPL__PULSEAUDIO_FUNC_pa_context_connect(name) int name(pa_context *context, const char *serverName, pa_context_flags_t flags, const void *spawnApi)
+typedef FPL__PULSEAUDIO_FUNC_pa_context_connect(fpl__pa_func_pa_context_connect);
+#define FPL__PULSEAUDIO_FUNC_pa_context_disconnect(name) void name(pa_context *context)
+typedef FPL__PULSEAUDIO_FUNC_pa_context_disconnect(fpl__pa_func_pa_context_disconnect);
+#define FPL__PULSEAUDIO_FUNC_pa_context_get_state(name) pa_context_state_t name(const pa_context *context)
+typedef FPL__PULSEAUDIO_FUNC_pa_context_get_state(fpl__pa_func_pa_context_get_state);
+#define FPL__PULSEAUDIO_FUNC_pa_context_get_sink_info_list(name) pa_operation *name(pa_context *context, pa_sink_info_cb_t callback, void *userData)
+typedef FPL__PULSEAUDIO_FUNC_pa_context_get_sink_info_list(fpl__pa_func_pa_context_get_sink_info_list);
+#define FPL__PULSEAUDIO_FUNC_pa_context_get_sink_info_by_index(name) pa_operation *name(pa_context *context, uint32_t sinkIndex, pa_sink_info_cb_t callback, void *userData)
+typedef FPL__PULSEAUDIO_FUNC_pa_context_get_sink_info_by_index(fpl__pa_func_pa_context_get_sink_info_by_index);
+#define FPL__PULSEAUDIO_FUNC_pa_context_get_sink_info_by_name(name) pa_operation *name(pa_context *context, const char *sinkName, pa_sink_info_cb_t callback, void *userData)
+typedef FPL__PULSEAUDIO_FUNC_pa_context_get_sink_info_by_name(fpl__pa_func_pa_context_get_sink_info_by_name);
+#define FPL__PULSEAUDIO_FUNC_pa_context_errno(name) int name(const pa_context *context)
+typedef FPL__PULSEAUDIO_FUNC_pa_context_errno(fpl__pa_func_pa_context_errno);
+
+#define FPL__PULSEAUDIO_FUNC_pa_stream_new(name) pa_stream *name(pa_context *context, const char *streamName, const pa_sample_spec *sampleSpec, const pa_channel_map *channelMap)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_new(fpl__pa_func_pa_stream_new);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_unref(name) void name(pa_stream *stream)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_unref(fpl__pa_func_pa_stream_unref);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_set_state_callback(name) void name(pa_stream *stream, pa_stream_notify_cb_t callback, void *userData)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_set_state_callback(fpl__pa_func_pa_stream_set_state_callback);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_set_write_callback(name) void name(pa_stream *stream, pa_stream_request_cb_t callback, void *userData)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_set_write_callback(fpl__pa_func_pa_stream_set_write_callback);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_connect_playback(name) int name(pa_stream *stream, const char *deviceName, const pa_buffer_attr *bufferAttributes, pa_stream_flags_t flags, const void *volume, pa_stream *syncStream)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_connect_playback(fpl__pa_func_pa_stream_connect_playback);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_disconnect(name) int name(pa_stream *stream)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_disconnect(fpl__pa_func_pa_stream_disconnect);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_get_state(name) pa_stream_state_t name(const pa_stream *stream)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_get_state(fpl__pa_func_pa_stream_get_state);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_begin_write(name) int name(pa_stream *stream, void **dataBuffer, size_t *numberOfBytes)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_begin_write(fpl__pa_func_pa_stream_begin_write);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_write(name) int name(pa_stream *stream, const void *dataBuffer, size_t numberOfBytes, pa_free_cb_t freeCallback, int64_t byteOffset, pa_seek_mode_t seekMode)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_write(fpl__pa_func_pa_stream_write);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_cancel_write(name) int name(pa_stream *stream)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_cancel_write(fpl__pa_func_pa_stream_cancel_write);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_cork(name) pa_operation *name(pa_stream *stream, int cork, pa_stream_success_cb_t callback, void *userData)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_cork(fpl__pa_func_pa_stream_cork);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_flush(name) pa_operation *name(pa_stream *stream, pa_stream_success_cb_t callback, void *userData)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_flush(fpl__pa_func_pa_stream_flush);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_is_corked(name) int name(const pa_stream *stream)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_is_corked(fpl__pa_func_pa_stream_is_corked);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_writable_size(name) size_t name(const pa_stream *stream)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_writable_size(fpl__pa_func_pa_stream_writable_size);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_get_sample_spec(name) const pa_sample_spec *name(const pa_stream *stream)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_get_sample_spec(fpl__pa_func_pa_stream_get_sample_spec);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_get_channel_map(name) const pa_channel_map *name(const pa_stream *stream)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_get_channel_map(fpl__pa_func_pa_stream_get_channel_map);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_get_device_name(name) const char *name(const pa_stream *stream)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_get_device_name(fpl__pa_func_pa_stream_get_device_name);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_get_device_index(name) uint32_t name(const pa_stream *stream)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_get_device_index(fpl__pa_func_pa_stream_get_device_index);
+#define FPL__PULSEAUDIO_FUNC_pa_stream_get_buffer_attr(name) const pa_buffer_attr *name(const pa_stream *stream)
+typedef FPL__PULSEAUDIO_FUNC_pa_stream_get_buffer_attr(fpl__pa_func_pa_stream_get_buffer_attr);
+
+#define FPL__PULSEAUDIO_FUNC_pa_operation_unref(name) void name(pa_operation *operation)
+typedef FPL__PULSEAUDIO_FUNC_pa_operation_unref(fpl__pa_func_pa_operation_unref);
+#define FPL__PULSEAUDIO_FUNC_pa_operation_get_state(name) pa_operation_state_t name(const pa_operation *operation)
+typedef FPL__PULSEAUDIO_FUNC_pa_operation_get_state(fpl__pa_func_pa_operation_get_state);
+
+#define FPL__PULSEAUDIO_FUNC_pa_channel_map_init(name) pa_channel_map *name(pa_channel_map *channelMap)
+typedef FPL__PULSEAUDIO_FUNC_pa_channel_map_init(fpl__pa_func_pa_channel_map_init);
+#define FPL__PULSEAUDIO_FUNC_pa_channel_map_init_auto(name) pa_channel_map *name(pa_channel_map *channelMap, unsigned numberOfChannels, pa_channel_map_def_t definition)
+typedef FPL__PULSEAUDIO_FUNC_pa_channel_map_init_auto(fpl__pa_func_pa_channel_map_init_auto);
+
+#define FPL__PULSEAUDIO_FUNC_pa_strerror(name) const char *name(int errorCode)
+typedef FPL__PULSEAUDIO_FUNC_pa_strerror(fpl__pa_func_pa_strerror);
+#define FPL__PULSEAUDIO_FUNC_pa_frame_size(name) size_t name(const pa_sample_spec *sampleSpec)
+typedef FPL__PULSEAUDIO_FUNC_pa_frame_size(fpl__pa_func_pa_frame_size);
+#define FPL__PULSEAUDIO_FUNC_pa_sample_size(name) size_t name(const pa_sample_spec *sampleSpec)
+typedef FPL__PULSEAUDIO_FUNC_pa_sample_size(fpl__pa_func_pa_sample_size);
+#define FPL__PULSEAUDIO_FUNC_pa_bytes_per_second(name) size_t name(const pa_sample_spec *sampleSpec)
+typedef FPL__PULSEAUDIO_FUNC_pa_bytes_per_second(fpl__pa_func_pa_bytes_per_second);
+#define FPL__PULSEAUDIO_FUNC_pa_usec_to_bytes(name) size_t name(pa_usec_t microseconds, const pa_sample_spec *sampleSpec)
+typedef FPL__PULSEAUDIO_FUNC_pa_usec_to_bytes(fpl__pa_func_pa_usec_to_bytes);
+
+typedef struct {
+	void *libHandle;
+	fpl__pa_func_pa_threaded_mainloop_new *pa_threaded_mainloop_new;
+	fpl__pa_func_pa_threaded_mainloop_free *pa_threaded_mainloop_free;
+	fpl__pa_func_pa_threaded_mainloop_start *pa_threaded_mainloop_start;
+	fpl__pa_func_pa_threaded_mainloop_stop *pa_threaded_mainloop_stop;
+	fpl__pa_func_pa_threaded_mainloop_lock *pa_threaded_mainloop_lock;
+	fpl__pa_func_pa_threaded_mainloop_unlock *pa_threaded_mainloop_unlock;
+	fpl__pa_func_pa_threaded_mainloop_wait *pa_threaded_mainloop_wait;
+	fpl__pa_func_pa_threaded_mainloop_signal *pa_threaded_mainloop_signal;
+	fpl__pa_func_pa_threaded_mainloop_get_api *pa_threaded_mainloop_get_api;
+	fpl__pa_func_pa_context_new *pa_context_new;
+	fpl__pa_func_pa_context_unref *pa_context_unref;
+	fpl__pa_func_pa_context_set_state_callback *pa_context_set_state_callback;
+	fpl__pa_func_pa_context_connect *pa_context_connect;
+	fpl__pa_func_pa_context_disconnect *pa_context_disconnect;
+	fpl__pa_func_pa_context_get_state *pa_context_get_state;
+	fpl__pa_func_pa_context_get_sink_info_list *pa_context_get_sink_info_list;
+	fpl__pa_func_pa_context_get_sink_info_by_index *pa_context_get_sink_info_by_index;
+	fpl__pa_func_pa_context_get_sink_info_by_name *pa_context_get_sink_info_by_name;
+	fpl__pa_func_pa_context_errno *pa_context_errno;
+	fpl__pa_func_pa_stream_new *pa_stream_new;
+	fpl__pa_func_pa_stream_unref *pa_stream_unref;
+	fpl__pa_func_pa_stream_set_state_callback *pa_stream_set_state_callback;
+	fpl__pa_func_pa_stream_set_write_callback *pa_stream_set_write_callback;
+	fpl__pa_func_pa_stream_connect_playback *pa_stream_connect_playback;
+	fpl__pa_func_pa_stream_disconnect *pa_stream_disconnect;
+	fpl__pa_func_pa_stream_get_state *pa_stream_get_state;
+	fpl__pa_func_pa_stream_begin_write *pa_stream_begin_write;
+	fpl__pa_func_pa_stream_write *pa_stream_write;
+	fpl__pa_func_pa_stream_cancel_write *pa_stream_cancel_write;
+	fpl__pa_func_pa_stream_cork *pa_stream_cork;
+	fpl__pa_func_pa_stream_flush *pa_stream_flush;
+	fpl__pa_func_pa_stream_is_corked *pa_stream_is_corked;
+	fpl__pa_func_pa_stream_writable_size *pa_stream_writable_size;
+	fpl__pa_func_pa_stream_get_sample_spec *pa_stream_get_sample_spec;
+	fpl__pa_func_pa_stream_get_channel_map *pa_stream_get_channel_map;
+	fpl__pa_func_pa_stream_get_device_name *pa_stream_get_device_name;
+	fpl__pa_func_pa_stream_get_device_index *pa_stream_get_device_index;
+	fpl__pa_func_pa_stream_get_buffer_attr *pa_stream_get_buffer_attr;
+	fpl__pa_func_pa_operation_unref *pa_operation_unref;
+	fpl__pa_func_pa_operation_get_state *pa_operation_get_state;
+	fpl__pa_func_pa_channel_map_init *pa_channel_map_init;
+	fpl__pa_func_pa_channel_map_init_auto *pa_channel_map_init_auto;
+	fpl__pa_func_pa_strerror *pa_strerror;
+	fpl__pa_func_pa_frame_size *pa_frame_size;
+	fpl__pa_func_pa_sample_size *pa_sample_size;
+	fpl__pa_func_pa_bytes_per_second *pa_bytes_per_second;
+	fpl__pa_func_pa_usec_to_bytes *pa_usec_to_bytes;
+} fpl__PulseAudioApi;
+
+typedef struct fpl__PulseDeviceIterationContext {
+	fplAudioDeviceInfo *deviceInfos;
+	uint32_t deviceInfoSize;
+	uint32_t maxDeviceCount;
+	uint32_t resultCount;
+	uint32_t overflowCount;
+	volatile int32_t isDone;
+} fpl__PulseDeviceIterationContext;
+
+typedef struct {
+	fpl__PulseAudioApi api;
+	pa_threaded_mainloop *mainloop;
+	pa_mainloop_api *mainloopApi;
+	pa_context *context;
+	pa_stream *stream;
+	fpl__PulseDeviceIterationContext iterContext;
+	uint32_t frameSize;
+	volatile int32_t isContextReady;
+	volatile int32_t isContextFailed;
+	volatile int32_t isStreamReady;
+	volatile int32_t isStreamFailed;
+	char applicationName[256];
+	char streamName[256];
+	char serverName[256];
+	char resolvedSinkName[256];
+} fpl__PulseAudioBackend;
+
+fpl_internal void fpl__UnloadPulseAudioApi(fpl__PulseAudioApi *pulseAudioApi) {
+	fplAssert(pulseAudioApi != fpl_null);
+	if (pulseAudioApi->libHandle != fpl_null) {
+		dlclose(pulseAudioApi->libHandle);
+	}
+	fplClearStruct(pulseAudioApi);
+}
+
+fpl_internal bool fpl__LoadPulseAudioApi(fpl__PulseAudioApi *pulseAudioApi) {
+	fplAssert(pulseAudioApi != fpl_null);
+	const char *libraryNames[] = {
+		"libpulse.so.0",
+		"libpulse.so",
+	};
+	bool result = false;
+	for (uint32_t index = 0; index < fplArrayCount(libraryNames); ++index) {
+		const char *libName = libraryNames[index];
+		fplClearStruct(pulseAudioApi);
+		do {
+			void *libHandle = fpl_null;
+			FPL__POSIX_LOAD_LIBRARY(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_threaded_mainloop_new, pa_threaded_mainloop_new);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_threaded_mainloop_free, pa_threaded_mainloop_free);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_threaded_mainloop_start, pa_threaded_mainloop_start);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_threaded_mainloop_stop, pa_threaded_mainloop_stop);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_threaded_mainloop_lock, pa_threaded_mainloop_lock);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_threaded_mainloop_unlock, pa_threaded_mainloop_unlock);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_threaded_mainloop_wait, pa_threaded_mainloop_wait);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_threaded_mainloop_signal, pa_threaded_mainloop_signal);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_threaded_mainloop_get_api, pa_threaded_mainloop_get_api);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_context_new, pa_context_new);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_context_unref, pa_context_unref);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_context_set_state_callback, pa_context_set_state_callback);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_context_connect, pa_context_connect);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_context_disconnect, pa_context_disconnect);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_context_get_state, pa_context_get_state);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_context_get_sink_info_list, pa_context_get_sink_info_list);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_context_get_sink_info_by_index, pa_context_get_sink_info_by_index);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_context_get_sink_info_by_name, pa_context_get_sink_info_by_name);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_context_errno, pa_context_errno);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_new, pa_stream_new);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_unref, pa_stream_unref);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_set_state_callback, pa_stream_set_state_callback);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_set_write_callback, pa_stream_set_write_callback);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_connect_playback, pa_stream_connect_playback);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_disconnect, pa_stream_disconnect);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_get_state, pa_stream_get_state);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_begin_write, pa_stream_begin_write);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_write, pa_stream_write);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_cancel_write, pa_stream_cancel_write);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_cork, pa_stream_cork);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_flush, pa_stream_flush);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_is_corked, pa_stream_is_corked);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_writable_size, pa_stream_writable_size);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_get_sample_spec, pa_stream_get_sample_spec);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_get_channel_map, pa_stream_get_channel_map);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_get_device_name, pa_stream_get_device_name);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_get_device_index, pa_stream_get_device_index);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_stream_get_buffer_attr, pa_stream_get_buffer_attr);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_operation_unref, pa_operation_unref);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_operation_get_state, pa_operation_get_state);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_channel_map_init, pa_channel_map_init);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_channel_map_init_auto, pa_channel_map_init_auto);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_strerror, pa_strerror);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_frame_size, pa_frame_size);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_sample_size, pa_sample_size);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_bytes_per_second, pa_bytes_per_second);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_usec_to_bytes, pa_usec_to_bytes);
+			pulseAudioApi->libHandle = libHandle;
+			result = true;
+		} while (0);
+		if (result) {
+			break;
+		}
+		fpl__UnloadPulseAudioApi(pulseAudioApi);
+	}
+	return(result);
+}
+
+fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendPulseAudioInitialize);
+fpl_internal FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl__AudioBackendPulseAudioRelease);
+fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendPulseAudioGetAudioDevices);
+fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendPulseAudioGetAudioDeviceInfo);
+fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPulseAudioInitializeDevice);
+fpl_internal FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(fpl__AudioBackendPulseAudioReleaseDevice);
+fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudioBackendPulseAudioStartDevice);
+fpl_internal FPL_AUDIO_BACKEND_STOP_DEVICE_FUNC(fpl__AudioBackendPulseAudioStopDevice);
+fpl_internal FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl__AudioBackendPulseAudioMainLoop);
+fpl_internal FPL_AUDIO_BACKEND_STOP_MAIN_LOOP_FUNC(fpl__AudioBackendPulseAudioStopMainLoop);
+
+// Map a fplAudioFormatType to a pulseaudio pa_sample_format_t.
+fpl_internal pa_sample_format_t fpl__PulseAudio_MapAudioFormatTypeToSampleFormat(const fplAudioFormatType format) {
+	bool isBigEndian = fplIsBigEndian();
+	switch (format) {
+		case fplAudioFormatType_U8:
+			return PA_SAMPLE_U8;
+		case fplAudioFormatType_S16:
+			return isBigEndian ? PA_SAMPLE_S16BE : PA_SAMPLE_S16LE;
+		case fplAudioFormatType_S24:
+			return isBigEndian ? PA_SAMPLE_S24BE : PA_SAMPLE_S24LE;
+		case fplAudioFormatType_S32:
+			return isBigEndian ? PA_SAMPLE_S32BE : PA_SAMPLE_S32LE;
+		case fplAudioFormatType_F32:
+			return isBigEndian ? PA_SAMPLE_FLOAT32BE : PA_SAMPLE_FLOAT32LE;
+		default:
+			return PA_SAMPLE_INVALID;
+	}
+}
+
+// Map a pulseaudio pa_sample_format_t back to a fplAudioFormatType.
+fpl_internal fplAudioFormatType fpl__PulseAudio_MapSampleFormatToAudioFormatType(const pa_sample_format_t sampleFormat) {
+	switch (sampleFormat) {
+		case PA_SAMPLE_U8:
+			return fplAudioFormatType_U8;
+		case PA_SAMPLE_S16LE:
+		case PA_SAMPLE_S16BE:
+			return fplAudioFormatType_S16;
+		case PA_SAMPLE_S24LE:
+		case PA_SAMPLE_S24BE:
+		case PA_SAMPLE_S24_32LE:
+		case PA_SAMPLE_S24_32BE:
+			return fplAudioFormatType_S24;
+		case PA_SAMPLE_S32LE:
+		case PA_SAMPLE_S32BE:
+			return fplAudioFormatType_S32;
+		case PA_SAMPLE_FLOAT32LE:
+		case PA_SAMPLE_FLOAT32BE:
+			return fplAudioFormatType_F32;
+		default:
+			return fplAudioFormatType_None;
+	}
+}
+
+// Context state callback. Wakes the initialization thread whenever the context state changes.
+fpl_internal void fpl__PulseAudio_ContextStateCallback(pa_context *context, void *userData) {
+	fplAudioBackend *backend = (fplAudioBackend *)userData;
+	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
+	fplAssert(pulseAudioBackend != fpl_null);
+	const fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
+	pa_context_state_t state = pulseAudioApi->pa_context_get_state(context);
+	switch (state) {
+		case PA_CONTEXT_READY:
+			pulseAudioBackend->isContextReady = 1;
+			pulseAudioApi->pa_threaded_mainloop_signal(pulseAudioBackend->mainloop, 0);
+			break;
+		case PA_CONTEXT_FAILED:
+		case PA_CONTEXT_TERMINATED:
+			pulseAudioBackend->isContextFailed = 1;
+			pulseAudioApi->pa_threaded_mainloop_signal(pulseAudioBackend->mainloop, 0);
+			break;
+		default:
+			break;
+	}
+}
+
+// Stream state callback. Wakes the initialization thread whenever the stream state changes.
+fpl_internal void fpl__PulseAudio_StreamStateCallback(pa_stream *stream, void *userData) {
+	fplAudioBackend *backend = (fplAudioBackend *)userData;
+	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
+	fplAssert(pulseAudioBackend != fpl_null);
+	const fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
+	pa_stream_state_t state = pulseAudioApi->pa_stream_get_state(stream);
+	switch (state) {
+		case PA_STREAM_READY:
+			pulseAudioBackend->isStreamReady = 1;
+			pulseAudioApi->pa_threaded_mainloop_signal(pulseAudioBackend->mainloop, 0);
+			break;
+		case PA_STREAM_FAILED:
+		case PA_STREAM_TERMINATED:
+			pulseAudioBackend->isStreamFailed = 1;
+			pulseAudioApi->pa_threaded_mainloop_signal(pulseAudioBackend->mainloop, 0);
+			break;
+		default:
+			break;
+	}
+}
+
+// Success callback used for operations that we want to wait on.
+fpl_internal void fpl__PulseAudio_StreamSuccessCallback(pa_stream *stream, int success, void *userData) {
+	(void)stream;
+	(void)success;
+	fplAudioBackend *backend = (fplAudioBackend *)userData;
+	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
+	fplAssert(pulseAudioBackend != fpl_null);
+	const fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
+	pulseAudioApi->pa_threaded_mainloop_signal(pulseAudioBackend->mainloop, 0);
+}
+
+// Stream write callback. Pulls audio from the client via fpl__ReadAudioFramesFromClient and writes it to pulseaudio.
+// fpl__ReadAudioFramesFromClient always fills the full requested frame count (padded with silence on underrun),
+// so we trust the buffer is complete and write the full clamped chunk every iteration.
+fpl_internal void fpl__PulseAudio_StreamWriteCallback(pa_stream *stream, size_t requestedBytes, void *userData) {
+	fplAudioBackend *backend = (fplAudioBackend *)userData;
+	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
+	fplAssert(pulseAudioBackend != fpl_null);
+	const fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
+	uint32_t frameSize = pulseAudioBackend->frameSize;
+	if (frameSize == 0) {
+		return;
+	}
+	size_t remainingBytes = requestedBytes;
+	while (remainingBytes >= frameSize) {
+		void *destinationBuffer = fpl_null;
+		size_t chunkBytes = remainingBytes;
+		if (pulseAudioApi->pa_stream_begin_write(stream, &destinationBuffer, &chunkBytes) < 0) {
+			break;
+		}
+		if (destinationBuffer == fpl_null || chunkBytes < frameSize) {
+			if (destinationBuffer != fpl_null) {
+				pulseAudioApi->pa_stream_cancel_write(stream);
+			}
+			break;
+		}
+		uint32_t chunkFrames = (uint32_t)(chunkBytes / frameSize);
+		size_t chunkFrameBytes = (size_t)chunkFrames * frameSize;
+		uint32_t framesRead = fpl__ReadAudioFramesFromClient(backend, chunkFrames, destinationBuffer);
+		fplAssert(framesRead == chunkFrames);
+		if (pulseAudioApi->pa_stream_write(stream, destinationBuffer, chunkFrameBytes, fpl_null, 0, PA_SEEK_RELATIVE) < 0) {
+			break;
+		}
+		remainingBytes -= chunkFrameBytes;
+	}
+}
+
+// Sink-info-list callback. Fires once per sink, then once more with eol > 0 as terminator.
+// Fills the iteration context in the backend with one fplAudioDeviceInfo record per sink.
+fpl_internal void fpl__PulseAudio_SinkInfoListCallback(pa_context *context, const pa_sink_info *info, int eol, void *userData) {
+	(void)context;
+	fplAudioBackend *backend = (fplAudioBackend *)userData;
+	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
+	fplAssert(pulseAudioBackend != fpl_null);
+	const fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
+	fpl__PulseDeviceIterationContext *iter = &pulseAudioBackend->iterContext;
+	if (eol > 0) {
+		iter->isDone = 1;
+		pulseAudioApi->pa_threaded_mainloop_signal(pulseAudioBackend->mainloop, 0);
+		return;
+	}
+	if (info == fpl_null) {
+		return;
+	}
+	if (iter->deviceInfos != fpl_null && iter->deviceInfoSize > 0) {
+		if (iter->resultCount >= iter->maxDeviceCount) {
+			++iter->overflowCount;
+		} else {
+			fplAudioDeviceInfo *outInfo = (fplAudioDeviceInfo *)((uint8_t *)iter->deviceInfos + (iter->deviceInfoSize * iter->resultCount));
+			fplClearStruct(outInfo);
+			outInfo->id.pulse = info->index;
+			if (info->description != fpl_null && fplGetStringLength(info->description) > 0) {
+				fplCopyString(info->description, outInfo->name, fplArrayCount(outInfo->name));
+			} else if (info->name != fpl_null) {
+				fplCopyString(info->name, outInfo->name, fplArrayCount(outInfo->name));
+			}
+		}
+	}
+	++iter->resultCount;
+}
+
+// Sink-info-by-index callback. Copies the sink name into resolvedSinkName so pa_stream_connect_playback can consume it.
+fpl_internal void fpl__PulseAudio_SinkNameByIndexCallback(pa_context *context, const pa_sink_info *info, int eol, void *userData) {
+	(void)context;
+	fplAudioBackend *backend = (fplAudioBackend *)userData;
+	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
+	fplAssert(pulseAudioBackend != fpl_null);
+	const fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
+	if (eol > 0 || info == fpl_null) {
+		pulseAudioApi->pa_threaded_mainloop_signal(pulseAudioBackend->mainloop, 0);
+		return;
+	}
+	if (info->name != fpl_null) {
+		fplCopyString(info->name, pulseAudioBackend->resolvedSinkName, fplArrayCount(pulseAudioBackend->resolvedSinkName));
+	}
+}
+
+// Wait for a pulseaudio operation to reach a terminal state, while the mainloop is locked by the caller.
+fpl_internal void fpl__PulseAudio_WaitForOperation(fpl__PulseAudioBackend *pulseAudioBackend, pa_operation *operation) {
+	fplAssert(pulseAudioBackend != fpl_null);
+	const fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
+	if (operation == fpl_null) {
+		return;
+	}
+	while (pulseAudioApi->pa_operation_get_state(operation) == PA_OPERATION_RUNNING) {
+		pulseAudioApi->pa_threaded_mainloop_wait(pulseAudioBackend->mainloop);
+	}
+	pulseAudioApi->pa_operation_unref(operation);
+}
+
+fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendPulseAudioInitialize) {
+	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
+	fplAssert(pulseAudioBackend != fpl_null);
+	fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
+	if (!fpl__LoadPulseAudioApi(pulseAudioApi)) {
+		FPL__ERROR(FPL__MODULE_AUDIO_PULSEAUDIO, "Failed loading PulseAudio api!");
+		return fplAudioResultType_ApiFailed;
+	}
+	return fplAudioResultType_Success;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl__AudioBackendPulseAudioRelease) {
+	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
+	fplAssert(pulseAudioBackend != fpl_null);
+	fpl__AudioBackendPulseAudioReleaseDevice(context, backend);
+	fpl__UnloadPulseAudioApi(&pulseAudioBackend->api);
+	fplClearStruct(pulseAudioBackend);
+	return true;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendPulseAudioGetAudioDevices) {
+	(void)context;
+	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
+	fplAssert(pulseAudioBackend != fpl_null);
+	const fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
+	if (pulseAudioBackend->mainloop == fpl_null || pulseAudioBackend->context == fpl_null) {
+		return 0;
+	}
+
+	pulseAudioApi->pa_threaded_mainloop_lock(pulseAudioBackend->mainloop);
+
+	fpl__PulseDeviceIterationContext *iter = &pulseAudioBackend->iterContext;
+	fplClearStruct(iter);
+	iter->deviceInfos = deviceInfos;
+	iter->deviceInfoSize = deviceInfoSize;
+	iter->maxDeviceCount = maxDeviceCount;
+
+	pa_operation *sinkListOperation = pulseAudioApi->pa_context_get_sink_info_list(pulseAudioBackend->context, fpl__PulseAudio_SinkInfoListCallback, backend);
+	if (sinkListOperation != fpl_null) {
+		while (!iter->isDone && pulseAudioApi->pa_operation_get_state(sinkListOperation) == PA_OPERATION_RUNNING) {
+			pulseAudioApi->pa_threaded_mainloop_wait(pulseAudioBackend->mainloop);
+		}
+		pulseAudioApi->pa_operation_unref(sinkListOperation);
+	}
+
+	uint32_t resultCount = iter->resultCount;
+	uint32_t overflowCount = iter->overflowCount;
+	fplClearStruct(iter);
+
+	pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
+
+	if (overflowCount > 0) {
+		FPL__ERROR(FPL__MODULE_AUDIO_PULSEAUDIO, "Capacity of '%lu' for audio device infos has been reached. '%lu' audio devices are not included in the result", maxDeviceCount, overflowCount);
+	}
+
+	return(resultCount);
+}
+
+fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendPulseAudioGetAudioDeviceInfo) {
+	(void)context;
+	(void)backend;
+	(void)targetDevice;
+	(void)outDeviceInfo;
+	return fplAudioResultType_NotImplemented;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(fpl__AudioBackendPulseAudioReleaseDevice) {
+	(void)context;
+	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
+	fplAssert(pulseAudioBackend != fpl_null);
+	const fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
+	if (pulseAudioApi->libHandle == fpl_null) {
+		return true;
+	}
+	if (pulseAudioBackend->mainloop != fpl_null) {
+		pulseAudioApi->pa_threaded_mainloop_lock(pulseAudioBackend->mainloop);
+		if (pulseAudioBackend->stream != fpl_null) {
+			pulseAudioApi->pa_stream_disconnect(pulseAudioBackend->stream);
+			pulseAudioApi->pa_stream_unref(pulseAudioBackend->stream);
+			pulseAudioBackend->stream = fpl_null;
+		}
+		if (pulseAudioBackend->context != fpl_null) {
+			pulseAudioApi->pa_context_disconnect(pulseAudioBackend->context);
+			pulseAudioApi->pa_context_unref(pulseAudioBackend->context);
+			pulseAudioBackend->context = fpl_null;
+		}
+		pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
+		pulseAudioApi->pa_threaded_mainloop_stop(pulseAudioBackend->mainloop);
+		pulseAudioApi->pa_threaded_mainloop_free(pulseAudioBackend->mainloop);
+		pulseAudioBackend->mainloop = fpl_null;
+	}
+	pulseAudioBackend->mainloopApi = fpl_null;
+	pulseAudioBackend->isContextReady = 0;
+	pulseAudioBackend->isContextFailed = 0;
+	pulseAudioBackend->isStreamReady = 0;
+	pulseAudioBackend->isStreamFailed = 0;
+	pulseAudioBackend->frameSize = 0;
+	pulseAudioBackend->resolvedSinkName[0] = '\0';
+	fplClearStruct(&pulseAudioBackend->iterContext);
+	return true;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPulseAudioInitializeDevice) {
+	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
+	fplAssert(pulseAudioBackend != fpl_null);
+	fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
+	if (pulseAudioApi->libHandle == fpl_null) {
+		FPL__ERROR(FPL__MODULE_AUDIO_PULSEAUDIO, "PulseAudio api is not loaded!");
+		return fplAudioResultType_ApiFailed;
+	}
+
+#	define FPL__PULSEAUDIO_INIT_ERROR(resultValue, format, ...) do { \
+		FPL__ERROR(FPL__MODULE_AUDIO_PULSEAUDIO, format, ## __VA_ARGS__); \
+		fpl__AudioBackendPulseAudioReleaseDevice(context, backend); \
+		return resultValue; \
+	} while (0)
+
+	// Copy over application/stream/server names from user settings, or fall back to defaults.
+	const char *defaultApplicationName = "Final Platform Layer";
+	const char *defaultStreamName = "Playback";
+	if (audioSettings != fpl_null && fplGetStringLength(audioSettings->pulse.applicationName) > 0) {
+		fplCopyString(audioSettings->pulse.applicationName, pulseAudioBackend->applicationName, fplArrayCount(pulseAudioBackend->applicationName));
+	} else {
+		fplCopyString(defaultApplicationName, pulseAudioBackend->applicationName, fplArrayCount(pulseAudioBackend->applicationName));
+	}
+	if (audioSettings != fpl_null && fplGetStringLength(audioSettings->pulse.streamName) > 0) {
+		fplCopyString(audioSettings->pulse.streamName, pulseAudioBackend->streamName, fplArrayCount(pulseAudioBackend->streamName));
+	} else {
+		fplCopyString(defaultStreamName, pulseAudioBackend->streamName, fplArrayCount(pulseAudioBackend->streamName));
+	}
+	if (audioSettings != fpl_null && fplGetStringLength(audioSettings->pulse.serverName) > 0) {
+		fplCopyString(audioSettings->pulse.serverName, pulseAudioBackend->serverName, fplArrayCount(pulseAudioBackend->serverName));
+	} else {
+		pulseAudioBackend->serverName[0] = '\0';
+	}
+
+	// Create the threaded mainloop and start it. From this point callbacks can fire.
+	pulseAudioBackend->mainloop = pulseAudioApi->pa_threaded_mainloop_new();
+	if (pulseAudioBackend->mainloop == fpl_null) {
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed creating pulseaudio threaded mainloop!");
+	}
+	pulseAudioBackend->mainloopApi = pulseAudioApi->pa_threaded_mainloop_get_api(pulseAudioBackend->mainloop);
+	if (pulseAudioBackend->mainloopApi == fpl_null) {
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed getting pulseaudio mainloop api!");
+	}
+	if (pulseAudioApi->pa_threaded_mainloop_start(pulseAudioBackend->mainloop) < 0) {
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed starting pulseaudio threaded mainloop!");
+	}
+
+	pulseAudioApi->pa_threaded_mainloop_lock(pulseAudioBackend->mainloop);
+
+	// Create and connect the context.
+	pulseAudioBackend->context = pulseAudioApi->pa_context_new(pulseAudioBackend->mainloopApi, pulseAudioBackend->applicationName);
+	if (pulseAudioBackend->context == fpl_null) {
+		pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed creating pulseaudio context!");
+	}
+	pulseAudioApi->pa_context_set_state_callback(pulseAudioBackend->context, fpl__PulseAudio_ContextStateCallback, backend);
+	const char *pulseServerName = (fplGetStringLength(pulseAudioBackend->serverName) > 0) ? pulseAudioBackend->serverName : fpl_null;
+	if (pulseAudioApi->pa_context_connect(pulseAudioBackend->context, pulseServerName, PA_CONTEXT_NOFLAGS, fpl_null) < 0) {
+		int errorCode = pulseAudioApi->pa_context_errno(pulseAudioBackend->context);
+		pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_NoDeviceFound, "Failed connecting pulseaudio context: %s!", pulseAudioApi->pa_strerror(errorCode));
+	}
+	while (!pulseAudioBackend->isContextReady && !pulseAudioBackend->isContextFailed) {
+		pulseAudioApi->pa_threaded_mainloop_wait(pulseAudioBackend->mainloop);
+	}
+	if (pulseAudioBackend->isContextFailed) {
+		int errorCode = pulseAudioApi->pa_context_errno(pulseAudioBackend->context);
+		pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_NoDeviceFound, "PulseAudio context failed to become ready: %s!", pulseAudioApi->pa_strerror(errorCode));
+	}
+
+	// Build the target sample spec + channel map from the requested fplAudioFormat.
+	pa_sample_spec sampleSpec = fplZeroInit;
+	sampleSpec.format = fpl__PulseAudio_MapAudioFormatTypeToSampleFormat(targetFormat->type);
+	if ((int)sampleSpec.format < 0) {
+		sampleSpec.format = fplIsBigEndian() ? PA_SAMPLE_S16BE : PA_SAMPLE_S16LE;
+	}
+	sampleSpec.rate = targetFormat->sampleRate;
+	sampleSpec.channels = (uint8_t)targetFormat->channels;
+
+	pa_channel_map channelMap = fplZeroInit;
+	pulseAudioApi->pa_channel_map_init_auto(&channelMap, sampleSpec.channels, PA_CHANNEL_MAP_DEFAULT);
+
+	// Build the buffer attributes. tlength is total buffer size in bytes.
+	uint32_t frameSizeInBytes = (uint32_t)sampleSpec.channels * fplGetAudioSampleSizeInBytes(fpl__PulseAudio_MapSampleFormatToAudioFormatType(sampleSpec.format));
+	if (frameSizeInBytes == 0) {
+		pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "PulseAudio: unable to compute frame size from target format!");
+	}
+	uint32_t totalBufferBytes = targetFormat->bufferSizeInFrames * frameSizeInBytes;
+	uint32_t periodCount = targetFormat->periods > 0 ? targetFormat->periods : 2;
+	uint32_t periodBytes = totalBufferBytes / periodCount;
+	pa_buffer_attr bufferAttributes = fplZeroInit;
+	bufferAttributes.maxlength = totalBufferBytes;
+	bufferAttributes.tlength = totalBufferBytes;
+	bufferAttributes.prebuf = (uint32_t)-1;
+	bufferAttributes.minreq = periodBytes;
+	bufferAttributes.fragsize = (uint32_t)-1;
+
+	// Create the stream and wire up the state + write callbacks.
+	pulseAudioBackend->stream = pulseAudioApi->pa_stream_new(pulseAudioBackend->context, pulseAudioBackend->streamName, &sampleSpec, &channelMap);
+	if (pulseAudioBackend->stream == fpl_null) {
+		int errorCode = pulseAudioApi->pa_context_errno(pulseAudioBackend->context);
+		pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed creating pulseaudio stream: %s!", pulseAudioApi->pa_strerror(errorCode));
+	}
+	pulseAudioApi->pa_stream_set_state_callback(pulseAudioBackend->stream, fpl__PulseAudio_StreamStateCallback, backend);
+	pulseAudioApi->pa_stream_set_write_callback(pulseAudioBackend->stream, fpl__PulseAudio_StreamWriteCallback, backend);
+
+	pa_stream_flags_t streamFlags = (pa_stream_flags_t)(PA_STREAM_START_CORKED | PA_STREAM_ADJUST_LATENCY | PA_STREAM_AUTO_TIMING_UPDATE);
+
+	// Resolve the target sink name from id.pulse (sink index) so pa_stream_connect_playback gets the actual sink name.
+	// Passing NULL lets pulseaudio pick the default sink.
+	pulseAudioBackend->resolvedSinkName[0] = '\0';
+	const char *requestedDeviceName = fpl_null;
+	if (targetDevice != fpl_null && fplGetStringLength(targetDevice->name) > 0) {
+		pa_operation *resolveOperation = pulseAudioApi->pa_context_get_sink_info_by_index(pulseAudioBackend->context, targetDevice->id.pulse, fpl__PulseAudio_SinkNameByIndexCallback, backend);
+		fpl__PulseAudio_WaitForOperation(pulseAudioBackend, resolveOperation);
+		if (fplGetStringLength(pulseAudioBackend->resolvedSinkName) > 0) {
+			requestedDeviceName = pulseAudioBackend->resolvedSinkName;
+		} else {
+			FPL_LOG_WARN(FPL__MODULE_AUDIO_PULSEAUDIO, "Failed resolving pulseaudio sink name for index '%lu', falling back to default sink", targetDevice->id.pulse);
+		}
+	}
+	if (pulseAudioApi->pa_stream_connect_playback(pulseAudioBackend->stream, requestedDeviceName, &bufferAttributes, streamFlags, fpl_null, fpl_null) < 0) {
+		int errorCode = pulseAudioApi->pa_context_errno(pulseAudioBackend->context);
+		pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed connecting pulseaudio playback stream: %s!", pulseAudioApi->pa_strerror(errorCode));
+	}
+	while (!pulseAudioBackend->isStreamReady && !pulseAudioBackend->isStreamFailed) {
+		pulseAudioApi->pa_threaded_mainloop_wait(pulseAudioBackend->mainloop);
+	}
+	if (pulseAudioBackend->isStreamFailed) {
+		int errorCode = pulseAudioApi->pa_context_errno(pulseAudioBackend->context);
+		pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_DeviceFailure, "PulseAudio stream failed to become ready: %s!", pulseAudioApi->pa_strerror(errorCode));
+	}
+
+	// Read back the negotiated sample spec, channel map and buffer attr.
+	const pa_sample_spec *actualSampleSpec = pulseAudioApi->pa_stream_get_sample_spec(pulseAudioBackend->stream);
+	const pa_channel_map *actualChannelMap = pulseAudioApi->pa_stream_get_channel_map(pulseAudioBackend->stream);
+	const pa_buffer_attr *actualBufferAttr = pulseAudioApi->pa_stream_get_buffer_attr(pulseAudioBackend->stream);
+
+	fplAudioFormat internalFormat = fplZeroInit;
+	internalFormat.type = fpl__PulseAudio_MapSampleFormatToAudioFormatType(actualSampleSpec->format);
+	internalFormat.sampleRate = actualSampleSpec->rate;
+	internalFormat.channels = actualSampleSpec->channels;
+	internalFormat.channelLayout = fplGetDefaultAudioChannelLayoutFromChannels(internalFormat.channels);
+	internalFormat.periods = periodCount;
+	uint32_t actualFrameSize = (uint32_t)actualSampleSpec->channels * fplGetAudioSampleSizeInBytes(internalFormat.type);
+	if (actualFrameSize == 0) {
+		pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "PulseAudio: negotiated format has zero frame size!");
+	}
+	if (actualBufferAttr != fpl_null && actualBufferAttr->tlength > 0) {
+		internalFormat.bufferSizeInFrames = actualBufferAttr->tlength / actualFrameSize;
+	} else {
+		internalFormat.bufferSizeInFrames = targetFormat->bufferSizeInFrames;
+	}
+	internalFormat.bufferSizeInMilliseconds = fplGetAudioBufferSizeInMilliseconds(internalFormat.sampleRate, internalFormat.bufferSizeInFrames);
+	internalFormat.mode = targetFormat->mode;
+	pulseAudioBackend->frameSize = actualFrameSize;
+
+	// Build the output channel map from the actual pulseaudio channel map.
+	fpl__PulseAudio_SetAudioDefaultChannelMap((uint16_t)actualChannelMap->channels, internalFormat.channelLayout, outputChannelMap);
+
+	// Build the output device info from the negotiated stream sink.
+	fplAudioDeviceInfo internalDevice = fplZeroInit;
+	uint32_t connectedSinkIndex = pulseAudioApi->pa_stream_get_device_index(pulseAudioBackend->stream);
+	const char *connectedSinkName = pulseAudioApi->pa_stream_get_device_name(pulseAudioBackend->stream);
+	internalDevice.id.pulse = connectedSinkIndex;
+	internalDevice.isDefault = (requestedDeviceName == fpl_null);
+	if (connectedSinkName != fpl_null) {
+		fplCopyString(connectedSinkName, internalDevice.name, fplArrayCount(internalDevice.name));
+	} else {
+		fplCopyString("default", internalDevice.name, fplArrayCount(internalDevice.name));
+	}
+
+	pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
+
+	*outputFormat = internalFormat;
+	*outputDevice = internalDevice;
+
+	return fplAudioResultType_Success;
+
+#	undef FPL__PULSEAUDIO_INIT_ERROR
+}
+
+fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudioBackendPulseAudioStartDevice) {
+	(void)context;
+	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
+	fplAssert(pulseAudioBackend != fpl_null);
+	const fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
+	if (pulseAudioBackend->mainloop == fpl_null || pulseAudioBackend->stream == fpl_null) {
+		return fplAudioResultType_DeviceNotInitialized;
+	}
+	pulseAudioApi->pa_threaded_mainloop_lock(pulseAudioBackend->mainloop);
+	pa_operation *corkOperation = pulseAudioApi->pa_stream_cork(pulseAudioBackend->stream, 0, fpl__PulseAudio_StreamSuccessCallback, backend);
+	fpl__PulseAudio_WaitForOperation(pulseAudioBackend, corkOperation);
+	pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
+	return fplAudioResultType_Success;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_STOP_DEVICE_FUNC(fpl__AudioBackendPulseAudioStopDevice) {
+	(void)context;
+	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
+	fplAssert(pulseAudioBackend != fpl_null);
+	const fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
+	if (pulseAudioBackend->mainloop == fpl_null || pulseAudioBackend->stream == fpl_null) {
+		return true;
+	}
+	pulseAudioApi->pa_threaded_mainloop_lock(pulseAudioBackend->mainloop);
+	pa_operation *corkOperation = pulseAudioApi->pa_stream_cork(pulseAudioBackend->stream, 1, fpl__PulseAudio_StreamSuccessCallback, backend);
+	fpl__PulseAudio_WaitForOperation(pulseAudioBackend, corkOperation);
+	pa_operation *flushOperation = pulseAudioApi->pa_stream_flush(pulseAudioBackend->stream, fpl__PulseAudio_StreamSuccessCallback, backend);
+	fpl__PulseAudio_WaitForOperation(pulseAudioBackend, flushOperation);
+	pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
+	return true;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl__AudioBackendPulseAudioMainLoop) {
+	// @NOTE(final/PulseAudio): Async backend - the threaded mainloop runs inside libpulse, so there is no own loop to run here.
+	(void)context;
+	(void)backend;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_STOP_MAIN_LOOP_FUNC(fpl__AudioBackendPulseAudioStopMainLoop) {
+	// @NOTE(final/PulseAudio): Async backend - nothing to stop because there is no own mainloop.
+	(void)context;
+	(void)backend;
+}
+
+fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendPulseAudioDescriptor = {
+
+	fplStructField(fplAudioBackendDescriptor, header, {
+		fplStructField(fplAudioBackendDescriptorHeader, idName, {
+			fplStructField(fplAudioBackendDescriptorIDName, id, { 0x5f3c8e2a, 0x4b1d, 0x4f9e, { 0xa8, 0x72, 0x91, 0xd5, 0xcc, 0x63, 0x17, 0xe8 } }),
+			fplStructField(fplAudioBackendDescriptorIDName, name, "PulseAudio"),
+		}),
+		fplStructField(fplAudioBackendDescriptorHeader, type, fplAudioBackendType_PulseAudio),
+		fplStructField(fplAudioBackendDescriptorHeader, backendSize, sizeof(fpl__PulseAudioBackend)),
+		fplStructField(fplAudioBackendDescriptorHeader, isAsync, true),
+		fplStructField(fplAudioBackendDescriptorHeader, isValid, true),
+	}),
+	fplStructField(fplAudioBackendDescriptor, table, {
+		fplStructField(fplAudioBackendFunctionTable, initialize, fpl__AudioBackendPulseAudioInitialize),
+		fplStructField(fplAudioBackendFunctionTable, release, fpl__AudioBackendPulseAudioRelease),
+		fplStructField(fplAudioBackendFunctionTable, getAudioDevices, fpl__AudioBackendPulseAudioGetAudioDevices),
+		fplStructField(fplAudioBackendFunctionTable, getAudioDeviceInfo, fpl__AudioBackendPulseAudioGetAudioDeviceInfo),
+		fplStructField(fplAudioBackendFunctionTable, initializeDevice, fpl__AudioBackendPulseAudioInitializeDevice),
+		fplStructField(fplAudioBackendFunctionTable, releaseDevice, fpl__AudioBackendPulseAudioReleaseDevice),
+		fplStructField(fplAudioBackendFunctionTable, startDevice, fpl__AudioBackendPulseAudioStartDevice),
+		fplStructField(fplAudioBackendFunctionTable, stopDevice, fpl__AudioBackendPulseAudioStopDevice),
+		fplStructField(fplAudioBackendFunctionTable, mainLoop, fpl__AudioBackendPulseAudioMainLoop),
+		fplStructField(fplAudioBackendFunctionTable, stopMainLoop, fpl__AudioBackendPulseAudioStopMainLoop),
+	}),
+};
+#endif // FPL__ENABLE_AUDIO_PULSEAUDIO
+
+// ############################################################################
+//
+// > AUDIO_BACKEND_PIPEWIRE
+//
+// ############################################################################
+#if defined(FPL__ENABLE_AUDIO_PIPEWIRE)
+
+// @NOTE(final/PipeWire): The PipeWire backend is runtime-linked by default, so the PipeWire development headers are not required.
+// To disable anonymous headers and include the real <pipewire/pipewire.h> header instead, define FPL_PIPEWIRE_USE_REAL_HEADERS.
+#if !defined(FPL__ANONYMOUS_PIPEWIRE_HEADERS) && !defined(FPL_PIPEWIRE_USE_REAL_HEADERS)
+#	define FPL__ANONYMOUS_PIPEWIRE_HEADERS
+#endif
+
+#if defined(FPL__ANONYMOUS_PIPEWIRE_HEADERS)
+// Opaque handles. PipeWire never exposes the internals of these structures, so we can treat them as void-sized handles.
+typedef void pw_thread_loop;
+typedef void pw_loop;
+typedef void pw_context;
+typedef void pw_core;
+typedef void pw_registry;
+typedef void pw_stream;
+typedef void pw_proxy;
+typedef void pw_properties;
+
+// Forward-declared SPA types used in function signatures. We never dereference these through anonymous headers.
+struct spa_pod;
+struct spa_pod_builder;
+struct spa_command;
+
+// spa_dict is used both in function signatures and in the registry global callback where we dereference it.
+struct spa_dict_item {
+	const char *key;
+	const char *value;
+};
+struct spa_dict {
+	uint32_t flags;
+	uint32_t n_items;
+	const struct spa_dict_item *items;
+};
+
+// Opaque storage for spa_hook. The real struct is 48 bytes on all 64-bit platforms:
+//   struct spa_list link (16) + struct spa_callbacks cb (16) + removed fn pointer (8) + priv pointer (8) = 48
+// We use uint64_t words to enforce 8 byte alignment.
+struct spa_hook {
+	uint64_t fpl__opaqueWords[6];
+};
+
+// Enumerations
+enum pw_stream_state {
+	PW_STREAM_STATE_ERROR = -1,
+	PW_STREAM_STATE_UNCONNECTED = 0,
+	PW_STREAM_STATE_CONNECTING = 1,
+	PW_STREAM_STATE_PAUSED = 2,
+	PW_STREAM_STATE_STREAMING = 3
+};
+
+enum pw_direction {
+	PW_DIRECTION_INPUT = 0,
+	PW_DIRECTION_OUTPUT = 1
+};
+
+enum spa_audio_format {
+	SPA_AUDIO_FORMAT_UNKNOWN = 0,
+	SPA_AUDIO_FORMAT_ENCODED = 1,
+	SPA_AUDIO_FORMAT_START_Interleaved = 0x100,
+	SPA_AUDIO_FORMAT_S8 = 0x101,
+	SPA_AUDIO_FORMAT_U8 = 0x102,
+	SPA_AUDIO_FORMAT_S16_LE = 0x103,
+	SPA_AUDIO_FORMAT_S16_BE = 0x104,
+	SPA_AUDIO_FORMAT_U16_LE = 0x105,
+	SPA_AUDIO_FORMAT_U16_BE = 0x106,
+	SPA_AUDIO_FORMAT_S24_32_LE = 0x107,
+	SPA_AUDIO_FORMAT_S24_32_BE = 0x108,
+	SPA_AUDIO_FORMAT_U24_32_LE = 0x109,
+	SPA_AUDIO_FORMAT_U24_32_BE = 0x10A,
+	SPA_AUDIO_FORMAT_S32_LE = 0x10B,
+	SPA_AUDIO_FORMAT_S32_BE = 0x10C,
+	SPA_AUDIO_FORMAT_U32_LE = 0x10D,
+	SPA_AUDIO_FORMAT_U32_BE = 0x10E,
+	SPA_AUDIO_FORMAT_S24_LE = 0x10F,
+	SPA_AUDIO_FORMAT_S24_BE = 0x110,
+	SPA_AUDIO_FORMAT_U24_LE = 0x111,
+	SPA_AUDIO_FORMAT_U24_BE = 0x112,
+	SPA_AUDIO_FORMAT_S20_LE = 0x113,
+	SPA_AUDIO_FORMAT_S20_BE = 0x114,
+	SPA_AUDIO_FORMAT_U20_LE = 0x115,
+	SPA_AUDIO_FORMAT_U20_BE = 0x116,
+	SPA_AUDIO_FORMAT_S18_LE = 0x117,
+	SPA_AUDIO_FORMAT_S18_BE = 0x118,
+	SPA_AUDIO_FORMAT_U18_LE = 0x119,
+	SPA_AUDIO_FORMAT_U18_BE = 0x11A,
+	SPA_AUDIO_FORMAT_F32_LE = 0x11B,
+	SPA_AUDIO_FORMAT_F32_BE = 0x11C,
+	SPA_AUDIO_FORMAT_F64_LE = 0x11D,
+	SPA_AUDIO_FORMAT_F64_BE = 0x11E
+};
+
+enum spa_audio_channel {
+	SPA_AUDIO_CHANNEL_UNKNOWN, SPA_AUDIO_CHANNEL_NA, SPA_AUDIO_CHANNEL_MONO, SPA_AUDIO_CHANNEL_FL,
+	SPA_AUDIO_CHANNEL_FR, SPA_AUDIO_CHANNEL_FC, SPA_AUDIO_CHANNEL_LFE, SPA_AUDIO_CHANNEL_SL,
+	SPA_AUDIO_CHANNEL_SR, SPA_AUDIO_CHANNEL_FLC, SPA_AUDIO_CHANNEL_FRC, SPA_AUDIO_CHANNEL_RC,
+	SPA_AUDIO_CHANNEL_RL, SPA_AUDIO_CHANNEL_RR, SPA_AUDIO_CHANNEL_TC, SPA_AUDIO_CHANNEL_TFL,
+	SPA_AUDIO_CHANNEL_TFC, SPA_AUDIO_CHANNEL_TFR, SPA_AUDIO_CHANNEL_TRL, SPA_AUDIO_CHANNEL_TRC,
+	SPA_AUDIO_CHANNEL_TRR, SPA_AUDIO_CHANNEL_RLC, SPA_AUDIO_CHANNEL_RRC, SPA_AUDIO_CHANNEL_FLW,
+	SPA_AUDIO_CHANNEL_FRW, SPA_AUDIO_CHANNEL_LFE2, SPA_AUDIO_CHANNEL_FLH, SPA_AUDIO_CHANNEL_FCH,
+	SPA_AUDIO_CHANNEL_FRH, SPA_AUDIO_CHANNEL_TFLC, SPA_AUDIO_CHANNEL_TFRC, SPA_AUDIO_CHANNEL_TSL,
+	SPA_AUDIO_CHANNEL_TSR, SPA_AUDIO_CHANNEL_LLFE, SPA_AUDIO_CHANNEL_RLFE, SPA_AUDIO_CHANNEL_BC,
+	SPA_AUDIO_CHANNEL_BLC, SPA_AUDIO_CHANNEL_BRC, SPA_AUDIO_CHANNEL_START_Aux = 0x1000,
+	SPA_AUDIO_CHANNEL_AUX0 = SPA_AUDIO_CHANNEL_START_Aux,
+	SPA_AUDIO_CHANNEL_AUX1, SPA_AUDIO_CHANNEL_AUX2, SPA_AUDIO_CHANNEL_AUX3, SPA_AUDIO_CHANNEL_AUX4,
+	SPA_AUDIO_CHANNEL_AUX5, SPA_AUDIO_CHANNEL_AUX6, SPA_AUDIO_CHANNEL_AUX7, SPA_AUDIO_CHANNEL_AUX8,
+	SPA_AUDIO_CHANNEL_AUX9, SPA_AUDIO_CHANNEL_AUX10, SPA_AUDIO_CHANNEL_AUX11, SPA_AUDIO_CHANNEL_AUX12,
+	SPA_AUDIO_CHANNEL_AUX13, SPA_AUDIO_CHANNEL_AUX14, SPA_AUDIO_CHANNEL_AUX15, SPA_AUDIO_CHANNEL_AUX16,
+	SPA_AUDIO_CHANNEL_AUX17, SPA_AUDIO_CHANNEL_AUX18, SPA_AUDIO_CHANNEL_AUX19, SPA_AUDIO_CHANNEL_AUX20,
+	SPA_AUDIO_CHANNEL_AUX21, SPA_AUDIO_CHANNEL_AUX22, SPA_AUDIO_CHANNEL_AUX23, SPA_AUDIO_CHANNEL_AUX24,
+	SPA_AUDIO_CHANNEL_AUX25, SPA_AUDIO_CHANNEL_AUX26, SPA_AUDIO_CHANNEL_AUX27, SPA_AUDIO_CHANNEL_AUX28,
+	SPA_AUDIO_CHANNEL_AUX29, SPA_AUDIO_CHANNEL_AUX30, SPA_AUDIO_CHANNEL_AUX31, SPA_AUDIO_CHANNEL_AUX32,
+	SPA_AUDIO_CHANNEL_AUX33, SPA_AUDIO_CHANNEL_AUX34, SPA_AUDIO_CHANNEL_AUX35, SPA_AUDIO_CHANNEL_AUX36,
+	SPA_AUDIO_CHANNEL_AUX37, SPA_AUDIO_CHANNEL_AUX38, SPA_AUDIO_CHANNEL_AUX39, SPA_AUDIO_CHANNEL_AUX40,
+	SPA_AUDIO_CHANNEL_AUX41, SPA_AUDIO_CHANNEL_AUX42, SPA_AUDIO_CHANNEL_AUX43, SPA_AUDIO_CHANNEL_AUX44,
+	SPA_AUDIO_CHANNEL_AUX45, SPA_AUDIO_CHANNEL_AUX46, SPA_AUDIO_CHANNEL_AUX47, SPA_AUDIO_CHANNEL_AUX48,
+	SPA_AUDIO_CHANNEL_AUX49, SPA_AUDIO_CHANNEL_AUX50, SPA_AUDIO_CHANNEL_AUX51, SPA_AUDIO_CHANNEL_AUX52,
+	SPA_AUDIO_CHANNEL_AUX53, SPA_AUDIO_CHANNEL_AUX54, SPA_AUDIO_CHANNEL_AUX55, SPA_AUDIO_CHANNEL_AUX56,
+	SPA_AUDIO_CHANNEL_AUX57, SPA_AUDIO_CHANNEL_AUX58, SPA_AUDIO_CHANNEL_AUX59, SPA_AUDIO_CHANNEL_AUX60,
+	SPA_AUDIO_CHANNEL_AUX61, SPA_AUDIO_CHANNEL_AUX62, SPA_AUDIO_CHANNEL_AUX63, SPA_AUDIO_CHANNEL_LAST_Aux = 0x1fff,
+	SPA_AUDIO_CHANNEL_START_Custom = 0x10000
+};
+
+// Well known id constants
+#define PW_ID_CORE 0u
+#define PW_ID_ANY 0xffffffffu
+#define PW_VERSION_CORE 4
+#define PW_VERSION_REGISTRY 3
+#define PW_VERSION_CORE_EVENTS 1
+#define PW_VERSION_REGISTRY_EVENTS 0
+#define PW_VERSION_STREAM_EVENTS 2
+
+// pw_stream_flags bit mask
+#define PW_STREAM_FLAG_NONE 0u
+#define PW_STREAM_FLAG_AUTOCONNECT (1u << 0)
+#define PW_STREAM_FLAG_INACTIVE (1u << 1)
+#define PW_STREAM_FLAG_MAP_BUFFERS (1u << 2)
+#define PW_STREAM_FLAG_DRIVER (1u << 3)
+#define PW_STREAM_FLAG_RT_PROCESS (1u << 4)
+#define PW_STREAM_FLAG_NO_CONVERT (1u << 5)
+#define PW_STREAM_FLAG_EXCLUSIVE (1u << 6)
+#define PW_STREAM_FLAG_DONT_RECONNECT (1u << 7)
+
+// PipeWire property keys used by the backend
+#define PW_KEY_APP_NAME "application.name"
+#define PW_KEY_NODE_NAME "node.name"
+#define PW_KEY_NODE_DESCRIPTION "node.description"
+#define PW_KEY_NODE_NICK "node.nick"
+#define PW_KEY_NODE_LATENCY "node.latency"
+#define PW_KEY_MEDIA_TYPE "media.type"
+#define PW_KEY_MEDIA_CATEGORY "media.category"
+#define PW_KEY_MEDIA_ROLE "media.role"
+#define PW_KEY_MEDIA_CLASS "media.class"
+#define PW_KEY_AUDIO_CHANNELS "audio.channels"
+#define PW_KEY_AUDIO_RATE "audio.rate"
+#define PW_KEY_TARGET_OBJECT "target.object"
+
+
+// SPA basic type identifiers (from spa/utils/type.h)
+#define SPA_TYPE_Id 3u
+#define SPA_TYPE_Int 4u
+#define SPA_TYPE_Array 13u
+#define SPA_TYPE_Object 15u
+#define SPA_TYPE_OBJECT_Format 0x40003u
+
+// SPA format property keys (from spa/param/format.h)
+#define SPA_FORMAT_mediaType 1u
+#define SPA_FORMAT_mediaSubtype 2u
+#define SPA_FORMAT_AUDIO_format 0x10001u
+#define SPA_FORMAT_AUDIO_rate 0x10003u
+#define SPA_FORMAT_AUDIO_channels 0x10004u
+#define SPA_FORMAT_AUDIO_position  0x10005u
+
+// SPA media type / subtype values (from spa/param/format.h)
+#define SPA_MEDIA_TYPE_audio 1u
+#define SPA_MEDIA_SUBTYPE_raw 1u
+
+// SPA param ids (from spa/param/param.h)
+#define SPA_PARAM_EnumFormat 3u
+#define SPA_PARAM_Format 4u
+
+// Event structs — ABI must match pipewire. We only fill in the callbacks we actually use,
+// the rest stay NULL which pipewire tolerates.
+struct pw_core_events {
+	uint32_t version;
+	void (*info)(void *data, const void *info);
+	void (*done)(void *data, uint32_t id, int seq);
+	void (*ping)(void *data, uint32_t id, int seq);
+	void (*error)(void *data, uint32_t id, int seq, int res, const char *message);
+	void (*remove_id)(void *data, uint32_t id);
+	void (*bound_id)(void *data, uint32_t id, uint32_t global_id);
+	void (*add_mem)(void *data, uint32_t id, uint32_t type, int fd, uint32_t flags);
+	void (*remove_mem)(void *data, uint32_t id);
+	void (*bound_props)(void *data, uint32_t id, uint32_t global_id, const struct spa_dict *props);
+};
+
+struct pw_registry_events {
+	uint32_t version;
+	void (*global)(void *data, uint32_t id, uint32_t permissions, const char *type, uint32_t version, const struct spa_dict *props);
+	void (*global_remove)(void *data, uint32_t id);
+};
+
+struct pw_stream_events {
+	uint32_t version;
+	void (*destroy)(void *data);
+	void (*state_changed)(void *data, enum pw_stream_state old, enum pw_stream_state state, const char *error);
+	void (*control_info)(void *data, uint32_t id, const void *control);
+	void (*io_changed)(void *data, uint32_t id, void *area, uint32_t size);
+	void (*param_changed)(void *data, uint32_t id, const struct spa_pod *param);
+	void (*add_buffer)(void *data, void *buffer);
+	void (*remove_buffer)(void *data, void *buffer);
+	void (*process)(void *data);
+	void (*drained)(void *data);
+	void (*command)(void *data, const struct spa_command *command);
+	void (*trigger_done)(void *data);
+};
+
+// Buffer layouts (from spa/buffer/buffer.h and pipewire/stream.h)
+struct spa_chunk {
+	uint32_t offset;
+	uint32_t size;
+	int32_t stride;
+	int32_t flags;
+};
+
+struct spa_data {
+	uint32_t type;
+	uint32_t flags;
+	int64_t fd;
+	uint32_t mapoffset;
+	uint32_t maxsize;
+	void *data;
+	struct spa_chunk *chunk;
+};
+
+struct spa_buffer {
+	uint32_t n_metas;
+	uint32_t n_datas;
+	void *metas;
+	struct spa_data *datas;
+};
+
+struct pw_buffer {
+	struct spa_buffer *buffer;
+	void *user_data;
+	uint64_t size;
+	uint64_t requested;
+	uint64_t time;
+};
+
+#else
+// @TODO(final/PipeWire): Remove PipeWire include when runtime linking is enabled
+#	include <pipewire/pipewire.h>
+#	include <spa/param/audio/raw.h>
+#	include <spa/param/audio/format-utils.h>
+#	include <spa/pod/builder.h>
+#endif // FPL__ANONYMOUS_PIPEWIRE_HEADERS
+
+// Function typedefs for all PipeWire runtime-loaded functions
+#define FPL__PIPEWIRE_FUNC_pw_init(name) void name(int *argc, char ***argv)
+typedef FPL__PIPEWIRE_FUNC_pw_init(fpl__pw_func_pw_init);
+#define FPL__PIPEWIRE_FUNC_pw_deinit(name) void name(void)
+typedef FPL__PIPEWIRE_FUNC_pw_deinit(fpl__pw_func_pw_deinit);
+
+#define FPL__PIPEWIRE_FUNC_pw_thread_loop_new(name) pw_thread_loop *name(const char *threadName, const struct spa_dict *props)
+typedef FPL__PIPEWIRE_FUNC_pw_thread_loop_new(fpl__pw_func_pw_thread_loop_new);
+#define FPL__PIPEWIRE_FUNC_pw_thread_loop_destroy(name) void name(pw_thread_loop *threadLoop)
+typedef FPL__PIPEWIRE_FUNC_pw_thread_loop_destroy(fpl__pw_func_pw_thread_loop_destroy);
+#define FPL__PIPEWIRE_FUNC_pw_thread_loop_start(name) int name(pw_thread_loop *threadLoop)
+typedef FPL__PIPEWIRE_FUNC_pw_thread_loop_start(fpl__pw_func_pw_thread_loop_start);
+#define FPL__PIPEWIRE_FUNC_pw_thread_loop_stop(name) void name(pw_thread_loop *threadLoop)
+typedef FPL__PIPEWIRE_FUNC_pw_thread_loop_stop(fpl__pw_func_pw_thread_loop_stop);
+#define FPL__PIPEWIRE_FUNC_pw_thread_loop_lock(name) void name(pw_thread_loop *threadLoop)
+typedef FPL__PIPEWIRE_FUNC_pw_thread_loop_lock(fpl__pw_func_pw_thread_loop_lock);
+#define FPL__PIPEWIRE_FUNC_pw_thread_loop_unlock(name) void name(pw_thread_loop *threadLoop)
+typedef FPL__PIPEWIRE_FUNC_pw_thread_loop_unlock(fpl__pw_func_pw_thread_loop_unlock);
+#define FPL__PIPEWIRE_FUNC_pw_thread_loop_wait(name) void name(pw_thread_loop *threadLoop)
+typedef FPL__PIPEWIRE_FUNC_pw_thread_loop_wait(fpl__pw_func_pw_thread_loop_wait);
+#define FPL__PIPEWIRE_FUNC_pw_thread_loop_signal(name) void name(pw_thread_loop *threadLoop, bool waitForAccept)
+typedef FPL__PIPEWIRE_FUNC_pw_thread_loop_signal(fpl__pw_func_pw_thread_loop_signal);
+#define FPL__PIPEWIRE_FUNC_pw_thread_loop_get_loop(name) pw_loop *name(pw_thread_loop *threadLoop)
+typedef FPL__PIPEWIRE_FUNC_pw_thread_loop_get_loop(fpl__pw_func_pw_thread_loop_get_loop);
+
+#define FPL__PIPEWIRE_FUNC_pw_context_new(name) pw_context *name(pw_loop *mainLoop, pw_properties *props, size_t userDataSize)
+typedef FPL__PIPEWIRE_FUNC_pw_context_new(fpl__pw_func_pw_context_new);
+#define FPL__PIPEWIRE_FUNC_pw_context_destroy(name) void name(pw_context *context)
+typedef FPL__PIPEWIRE_FUNC_pw_context_destroy(fpl__pw_func_pw_context_destroy);
+#define FPL__PIPEWIRE_FUNC_pw_context_connect(name) pw_core *name(pw_context *context, pw_properties *properties, size_t userDataSize)
+typedef FPL__PIPEWIRE_FUNC_pw_context_connect(fpl__pw_func_pw_context_connect);
+
+#define FPL__PIPEWIRE_FUNC_pw_core_disconnect(name) int name(pw_core *core)
+typedef FPL__PIPEWIRE_FUNC_pw_core_disconnect(fpl__pw_func_pw_core_disconnect);
+#define FPL__PIPEWIRE_FUNC_pw_core_add_listener(name) int name(pw_core *core, struct spa_hook *listener, const struct pw_core_events *events, void *userData)
+typedef FPL__PIPEWIRE_FUNC_pw_core_add_listener(fpl__pw_func_pw_core_add_listener);
+#define FPL__PIPEWIRE_FUNC_pw_core_sync(name) int name(pw_core *core, uint32_t id, int seq)
+typedef FPL__PIPEWIRE_FUNC_pw_core_sync(fpl__pw_func_pw_core_sync);
+#define FPL__PIPEWIRE_FUNC_pw_core_get_registry(name) pw_registry *name(pw_core *core, uint32_t registryVersion, size_t userDataSize)
+typedef FPL__PIPEWIRE_FUNC_pw_core_get_registry(fpl__pw_func_pw_core_get_registry);
+
+#define FPL__PIPEWIRE_FUNC_pw_registry_add_listener(name) int name(pw_registry *registry, struct spa_hook *listener, const struct pw_registry_events *events, void *userData)
+typedef FPL__PIPEWIRE_FUNC_pw_registry_add_listener(fpl__pw_func_pw_registry_add_listener);
+
+#define FPL__PIPEWIRE_FUNC_pw_stream_new(name) pw_stream *name(pw_core *core, const char *streamName, pw_properties *props)
+typedef FPL__PIPEWIRE_FUNC_pw_stream_new(fpl__pw_func_pw_stream_new);
+#define FPL__PIPEWIRE_FUNC_pw_stream_destroy(name) void name(pw_stream *stream)
+typedef FPL__PIPEWIRE_FUNC_pw_stream_destroy(fpl__pw_func_pw_stream_destroy);
+#define FPL__PIPEWIRE_FUNC_pw_stream_add_listener(name) void name(pw_stream *stream, struct spa_hook *listener, const struct pw_stream_events *events, void *userData)
+typedef FPL__PIPEWIRE_FUNC_pw_stream_add_listener(fpl__pw_func_pw_stream_add_listener);
+#define FPL__PIPEWIRE_FUNC_pw_stream_connect(name) int name(pw_stream *stream, enum pw_direction direction, uint32_t targetId, uint32_t flags, const struct spa_pod **params, uint32_t nParams)
+typedef FPL__PIPEWIRE_FUNC_pw_stream_connect(fpl__pw_func_pw_stream_connect);
+#define FPL__PIPEWIRE_FUNC_pw_stream_disconnect(name) int name(pw_stream *stream)
+typedef FPL__PIPEWIRE_FUNC_pw_stream_disconnect(fpl__pw_func_pw_stream_disconnect);
+#define FPL__PIPEWIRE_FUNC_pw_stream_set_active(name) int name(pw_stream *stream, bool active)
+typedef FPL__PIPEWIRE_FUNC_pw_stream_set_active(fpl__pw_func_pw_stream_set_active);
+#define FPL__PIPEWIRE_FUNC_pw_stream_dequeue_buffer(name) struct pw_buffer *name(pw_stream *stream)
+typedef FPL__PIPEWIRE_FUNC_pw_stream_dequeue_buffer(fpl__pw_func_pw_stream_dequeue_buffer);
+#define FPL__PIPEWIRE_FUNC_pw_stream_queue_buffer(name) int name(pw_stream *stream, struct pw_buffer *buffer)
+typedef FPL__PIPEWIRE_FUNC_pw_stream_queue_buffer(fpl__pw_func_pw_stream_queue_buffer);
+#define FPL__PIPEWIRE_FUNC_pw_stream_get_state(name) enum pw_stream_state name(pw_stream *stream, const char **error)
+typedef FPL__PIPEWIRE_FUNC_pw_stream_get_state(fpl__pw_func_pw_stream_get_state);
+
+#define FPL__PIPEWIRE_FUNC_pw_properties_new(name) pw_properties *name(const char *key, ...)
+typedef FPL__PIPEWIRE_FUNC_pw_properties_new(fpl__pw_func_pw_properties_new);
+#define FPL__PIPEWIRE_FUNC_pw_properties_free(name) void name(pw_properties *properties)
+typedef FPL__PIPEWIRE_FUNC_pw_properties_free(fpl__pw_func_pw_properties_free);
+#define FPL__PIPEWIRE_FUNC_pw_properties_set(name) int name(pw_properties *properties, const char *key, const char *value)
+typedef FPL__PIPEWIRE_FUNC_pw_properties_set(fpl__pw_func_pw_properties_set);
+#define FPL__PIPEWIRE_FUNC_pw_properties_setf(name) int name(pw_properties *properties, const char *key, const char *format, ...)
+typedef FPL__PIPEWIRE_FUNC_pw_properties_setf(fpl__pw_func_pw_properties_setf);
+
+#define FPL__PIPEWIRE_FUNC_pw_proxy_destroy(name) void name(pw_proxy *proxy)
+typedef FPL__PIPEWIRE_FUNC_pw_proxy_destroy(fpl__pw_func_pw_proxy_destroy);
+
+typedef struct {
+	void *libHandle;
+	fpl__pw_func_pw_init *pw_init;
+	fpl__pw_func_pw_deinit *pw_deinit;
+	fpl__pw_func_pw_thread_loop_new *pw_thread_loop_new;
+	fpl__pw_func_pw_thread_loop_destroy *pw_thread_loop_destroy;
+	fpl__pw_func_pw_thread_loop_start *pw_thread_loop_start;
+	fpl__pw_func_pw_thread_loop_stop *pw_thread_loop_stop;
+	fpl__pw_func_pw_thread_loop_lock *pw_thread_loop_lock;
+	fpl__pw_func_pw_thread_loop_unlock *pw_thread_loop_unlock;
+	fpl__pw_func_pw_thread_loop_wait *pw_thread_loop_wait;
+	fpl__pw_func_pw_thread_loop_signal *pw_thread_loop_signal;
+	fpl__pw_func_pw_thread_loop_get_loop *pw_thread_loop_get_loop;
+	fpl__pw_func_pw_context_new *pw_context_new;
+	fpl__pw_func_pw_context_destroy *pw_context_destroy;
+	fpl__pw_func_pw_context_connect *pw_context_connect;
+	fpl__pw_func_pw_core_disconnect *pw_core_disconnect;
+	fpl__pw_func_pw_core_add_listener *pw_core_add_listener;
+	fpl__pw_func_pw_core_sync *pw_core_sync;
+	fpl__pw_func_pw_core_get_registry *pw_core_get_registry;
+	fpl__pw_func_pw_registry_add_listener *pw_registry_add_listener;
+	fpl__pw_func_pw_stream_new *pw_stream_new;
+	fpl__pw_func_pw_stream_destroy *pw_stream_destroy;
+	fpl__pw_func_pw_stream_add_listener *pw_stream_add_listener;
+	fpl__pw_func_pw_stream_connect *pw_stream_connect;
+	fpl__pw_func_pw_stream_disconnect *pw_stream_disconnect;
+	fpl__pw_func_pw_stream_set_active *pw_stream_set_active;
+	fpl__pw_func_pw_stream_dequeue_buffer *pw_stream_dequeue_buffer;
+	fpl__pw_func_pw_stream_queue_buffer *pw_stream_queue_buffer;
+	fpl__pw_func_pw_stream_get_state *pw_stream_get_state;
+	fpl__pw_func_pw_properties_new *pw_properties_new;
+	fpl__pw_func_pw_properties_free *pw_properties_free;
+	fpl__pw_func_pw_properties_set *pw_properties_set;
+	fpl__pw_func_pw_properties_setf *pw_properties_setf;
+	fpl__pw_func_pw_proxy_destroy *pw_proxy_destroy;
+} fpl__PipeWireApi;
+
+// Enumeration state used during fpl__AudioBackendPipeWireGetAudioDevices.
+// This is stack-allocated inside GetAudioDevices and passed as user data
+// to the registry/core listeners so we never touch the persistent playback state.
+typedef struct fpl__PipeWireEnumState {
+	const fpl__PipeWireApi *api;
+	pw_thread_loop *loop;
+	fplAudioDeviceInfo *deviceInfos;
+	uint32_t deviceInfoSize;
+	uint32_t maxDeviceCount;
+	uint32_t resultCount;
+	uint32_t overflowCount;
+	int pendingSeq;
+	volatile int32_t isDone;
+	volatile int32_t isFailed;
+} fpl__PipeWireEnumState;
+
+typedef struct {
+	fpl__PipeWireApi api;
+	pw_thread_loop *threadLoop;
+	pw_loop *loop;
+	pw_context *context;
+	pw_core *core;
+	pw_stream *stream;
+	struct spa_hook streamListener;
+	uint32_t frameSize;
+	volatile int32_t isStreamReady;
+	volatile int32_t isStreamFailed;
+	char applicationName[256];
+	char streamName[256];
+	char resolvedNodeName[256];
+} fpl__PipeWireAudioBackend;
+
+fpl_internal void fpl__UnloadPipeWireApi(fpl__PipeWireApi *pipeWireApi) {
+	fplAssert(pipeWireApi != fpl_null);
+	if (pipeWireApi->libHandle != fpl_null) {
+		dlclose(pipeWireApi->libHandle);
+	}
+	fplClearStruct(pipeWireApi);
+}
+
+fpl_internal bool fpl__LoadPipeWireApi(fpl__PipeWireApi *pipeWireApi) {
+	fplAssert(pipeWireApi != fpl_null);
+	const char *libraryNames[] = {
+		"libpipewire-0.3.so.0",
+		"libpipewire-0.3.so",
+	};
+	bool result = false;
+	for (uint32_t index = 0; index < fplArrayCount(libraryNames); ++index) {
+		const char *libName = libraryNames[index];
+		fplClearStruct(pipeWireApi);
+		do {
+			void *libHandle = fpl_null;
+			FPL__POSIX_LOAD_LIBRARY(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_init, pw_init);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_deinit, pw_deinit);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_thread_loop_new, pw_thread_loop_new);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_thread_loop_destroy, pw_thread_loop_destroy);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_thread_loop_start, pw_thread_loop_start);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_thread_loop_stop, pw_thread_loop_stop);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_thread_loop_lock, pw_thread_loop_lock);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_thread_loop_unlock, pw_thread_loop_unlock);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_thread_loop_wait, pw_thread_loop_wait);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_thread_loop_signal, pw_thread_loop_signal);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_thread_loop_get_loop, pw_thread_loop_get_loop);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_context_new, pw_context_new);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_context_destroy, pw_context_destroy);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_context_connect, pw_context_connect);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_core_disconnect, pw_core_disconnect);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_core_add_listener, pw_core_add_listener);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_core_sync, pw_core_sync);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_core_get_registry, pw_core_get_registry);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_registry_add_listener, pw_registry_add_listener);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_stream_new, pw_stream_new);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_stream_destroy, pw_stream_destroy);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_stream_add_listener, pw_stream_add_listener);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_stream_connect, pw_stream_connect);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_stream_disconnect, pw_stream_disconnect);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_stream_set_active, pw_stream_set_active);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_stream_dequeue_buffer, pw_stream_dequeue_buffer);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_stream_queue_buffer, pw_stream_queue_buffer);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_stream_get_state, pw_stream_get_state);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_properties_new, pw_properties_new);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_properties_free, pw_properties_free);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_properties_set, pw_properties_set);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_properties_setf, pw_properties_setf);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_proxy_destroy, pw_proxy_destroy);
+			pipeWireApi->libHandle = libHandle;
+			result = true;
+		} while (0);
+		if (result) {
+			break;
+		}
+		fpl__UnloadPipeWireApi(pipeWireApi);
+	}
+	return(result);
+}
+
+fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendPipeWireInitialize);
+fpl_internal FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl__AudioBackendPipeWireRelease);
+fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendPipeWireGetAudioDevices);
+fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendPipeWireGetAudioDeviceInfo);
+fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPipeWireInitializeDevice);
+fpl_internal FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(fpl__AudioBackendPipeWireReleaseDevice);
+fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudioBackendPipeWireStartDevice);
+fpl_internal FPL_AUDIO_BACKEND_STOP_DEVICE_FUNC(fpl__AudioBackendPipeWireStopDevice);
+fpl_internal FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl__AudioBackendPipeWireMainLoop);
+fpl_internal FPL_AUDIO_BACKEND_STOP_MAIN_LOOP_FUNC(fpl__AudioBackendPipeWireStopMainLoop);
+
+// Map a fplAudioFormatType to a SPA audio format.
+fpl_internal uint32_t fpl__PipeWire_MapAudioFormatTypeToSampleFormat(const fplAudioFormatType format) {
+	bool isBigEndian = fplIsBigEndian();
+	switch (format) {
+		case fplAudioFormatType_U8:
+			return SPA_AUDIO_FORMAT_U8;
+		case fplAudioFormatType_S16:
+			return isBigEndian ? SPA_AUDIO_FORMAT_S16_BE : SPA_AUDIO_FORMAT_S16_LE;
+		case fplAudioFormatType_S24:
+			return isBigEndian ? SPA_AUDIO_FORMAT_S24_BE : SPA_AUDIO_FORMAT_S24_LE;
+		case fplAudioFormatType_S32:
+			return isBigEndian ? SPA_AUDIO_FORMAT_S32_BE : SPA_AUDIO_FORMAT_S32_LE;
+		case fplAudioFormatType_F32:
+			return isBigEndian ? SPA_AUDIO_FORMAT_F32_BE : SPA_AUDIO_FORMAT_F32_LE;
+		default:
+			return SPA_AUDIO_FORMAT_UNKNOWN;
+	}
+}
+
+// Map a SPA audio format back to a fplAudioFormatType.
+fpl_internal fplAudioFormatType fpl__PipeWire_MapSampleFormatToAudioFormatType(const uint32_t spaAudioFormat) {
+	switch (spaAudioFormat) {
+		case SPA_AUDIO_FORMAT_U8:
+			return fplAudioFormatType_U8;
+		case SPA_AUDIO_FORMAT_S16_LE:
+		case SPA_AUDIO_FORMAT_S16_BE:
+			return fplAudioFormatType_S16;
+		case SPA_AUDIO_FORMAT_S24_LE:
+		case SPA_AUDIO_FORMAT_S24_BE:
+		case SPA_AUDIO_FORMAT_S24_32_LE:
+		case SPA_AUDIO_FORMAT_S24_32_BE:
+			return fplAudioFormatType_S24;
+		case SPA_AUDIO_FORMAT_S32_LE:
+		case SPA_AUDIO_FORMAT_S32_BE:
+			return fplAudioFormatType_S32;
+		case SPA_AUDIO_FORMAT_F32_LE:
+		case SPA_AUDIO_FORMAT_F32_BE:
+			return fplAudioFormatType_F32;
+		default:
+			return fplAudioFormatType_None;
+	}
+}
+
+// SPA POD sizes for scalar properties
+#define SPA_POD_PROP_HEADER_SIZE   8u   // key + flags
+#define SPA_POD_SCALAR_SIZE        8u   // pod header (size+type)
+#define SPA_POD_SCALAR_BODY_SIZE   4u   // actual value
+#define SPA_POD_SCALAR_PAD_SIZE    4u   // padding to 8 bytes
+
+// Total size of one scalar property
+#define SPA_POD_PROP_SCALAR_TOTAL_SIZE \
+(SPA_POD_PROP_HEADER_SIZE + \
+SPA_POD_SCALAR_SIZE + \
+SPA_POD_SCALAR_BODY_SIZE + \
+SPA_POD_SCALAR_PAD_SIZE)
+
+// Size of SPA object header
+#define SPA_POD_OBJECT_HEADER_SIZE 8u   // size + type
+
+// Size of SPA object body header
+#define SPA_POD_OBJECT_BODY_HEADER_SIZE 8u // object type + object id
+
+fpl_internal_inline fplAudioChannelType fpl__PipeWire_MapToAudioChannelType(const uint32_t value) {
+	switch (value) {
+		case SPA_AUDIO_CHANNEL_FL:
+			return fplAudioChannelType_FrontLeft;
+		case SPA_AUDIO_CHANNEL_FR:
+			return fplAudioChannelType_FrontRight;
+		case SPA_AUDIO_CHANNEL_FC:
+			return fplAudioChannelType_FrontCenter;
+		case SPA_AUDIO_CHANNEL_LFE:
+			return fplAudioChannelType_LowFrequency;
+		case SPA_AUDIO_CHANNEL_SL:
+			return fplAudioChannelType_SideLeft;
+		case SPA_AUDIO_CHANNEL_SR:
+			return fplAudioChannelType_SideRight;
+		case SPA_AUDIO_CHANNEL_RL:
+			return fplAudioChannelType_BackLeft;
+		case SPA_AUDIO_CHANNEL_RR:
+			return fplAudioChannelType_BackRight;
+		case SPA_AUDIO_CHANNEL_BC:
+			return fplAudioChannelType_BackCenter;
+		default:
+			return fplAudioChannelType_None;
+	}
+}
+
+fpl_internal void fpl__PipeWire_FPLAudioChannelMap(const uint32_t channels, const fplAudioChannelLayout layout, fplAudioChannelMap *outChannelMap) {
+	fplAssertPtr(outChannelMap);
+	fplClearStruct(outChannelMap);
+	if (channels == 0 || layout == fplAudioChannelLayout_Unsupported) {
+		return;
+	}
+	if (channels == 1 || layout == fplAudioChannelLayout_Mono) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontCenter;
+	} else if (channels == 2 || layout == fplAudioChannelLayout_Stereo) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+	} else if (channels == 3) {
+		if (layout == fplAudioChannelLayout_2_1) {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_LowFrequency;
+		} else {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_FrontCenter;
+		}
+	} else if (channels == 4) {
+		if (layout == fplAudioChannelLayout_4_0_Surround) {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_FrontCenter;
+			outChannelMap->speakers[3] = fplAudioChannelType_BackCenter;
+		} else {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+			outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+		}
+	} else if (channels == 5) {
+		if (layout == fplAudioChannelLayout_4_1) {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+			outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+			outChannelMap->speakers[4] = fplAudioChannelType_LowFrequency;
+		} else {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_FrontCenter;
+			outChannelMap->speakers[3] = fplAudioChannelType_BackLeft;
+			outChannelMap->speakers[4] = fplAudioChannelType_BackRight;
+		}
+	} else if (channels == 6) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+		outChannelMap->speakers[2] = fplAudioChannelType_FrontCenter;
+		outChannelMap->speakers[3] = fplAudioChannelType_LowFrequency;
+		outChannelMap->speakers[4] = fplAudioChannelType_BackLeft;
+		outChannelMap->speakers[5] = fplAudioChannelType_BackRight;
+	} else if (channels == 7) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+		outChannelMap->speakers[2] = fplAudioChannelType_FrontCenter;
+		outChannelMap->speakers[3] = fplAudioChannelType_LowFrequency;
+		outChannelMap->speakers[4] = fplAudioChannelType_BackLeft;
+		outChannelMap->speakers[5] = fplAudioChannelType_BackRight;
+		outChannelMap->speakers[6] = fplAudioChannelType_BackCenter;
+	} else {
+		fplAssert(channels >= 8);
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+		outChannelMap->speakers[2] = fplAudioChannelType_FrontCenter;
+		outChannelMap->speakers[3] = fplAudioChannelType_LowFrequency;
+		outChannelMap->speakers[4] = fplAudioChannelType_BackLeft;
+		outChannelMap->speakers[5] = fplAudioChannelType_BackRight;
+		outChannelMap->speakers[6] = fplAudioChannelType_SideLeft;
+		outChannelMap->speakers[7] = fplAudioChannelType_SideRight;
+	}
+}
+
+fpl_internal void fpl__PipeWire_BuildChannelMap(const uint32_t channels, const fplAudioChannelLayout layout, const uint32_t maxChannelCount, uint32_t *outChannelMap) {
+	if (channels == 0 || layout == fplAudioChannelLayout_Unsupported || channels > maxChannelCount) {
+		return;
+	}
+	if (channels == 1 || layout == fplAudioChannelLayout_Mono) {
+		outChannelMap[0] = SPA_AUDIO_CHANNEL_FC;
+	} else if (channels == 2 || layout == fplAudioChannelLayout_Stereo) {
+		outChannelMap[0] = SPA_AUDIO_CHANNEL_FL;
+		outChannelMap[1] = SPA_AUDIO_CHANNEL_FR;
+	} else if (channels == 3) {
+		if (layout == fplAudioChannelLayout_2_1) {
+			outChannelMap[0] = SPA_AUDIO_CHANNEL_FL;
+			outChannelMap[1] = SPA_AUDIO_CHANNEL_FR;
+			outChannelMap[2] = SPA_AUDIO_CHANNEL_LFE;
+		} else {
+			outChannelMap[0] = SPA_AUDIO_CHANNEL_FL;
+			outChannelMap[1] = SPA_AUDIO_CHANNEL_FR;
+			outChannelMap[2] = SPA_AUDIO_CHANNEL_FC;
+		}
+	} else if (channels == 4) {
+		if (layout == fplAudioChannelLayout_4_0_Surround) {
+			outChannelMap[0] = SPA_AUDIO_CHANNEL_FL;
+			outChannelMap[1] = SPA_AUDIO_CHANNEL_FR;
+			outChannelMap[2] = SPA_AUDIO_CHANNEL_FC;
+			outChannelMap[3] = SPA_AUDIO_CHANNEL_BC;
+		} else {
+			outChannelMap[0] = SPA_AUDIO_CHANNEL_FL;
+			outChannelMap[1] = SPA_AUDIO_CHANNEL_FR;
+			outChannelMap[2] = SPA_AUDIO_CHANNEL_RL;
+			outChannelMap[3] = SPA_AUDIO_CHANNEL_RR;
+		}
+	} else if (channels == 5) {
+		if (layout == fplAudioChannelLayout_4_1) {
+			outChannelMap[0] = SPA_AUDIO_CHANNEL_FL;
+			outChannelMap[1] = SPA_AUDIO_CHANNEL_FR;
+			outChannelMap[2] = SPA_AUDIO_CHANNEL_RL;
+			outChannelMap[3] = SPA_AUDIO_CHANNEL_RR;
+			outChannelMap[4] = SPA_AUDIO_CHANNEL_LFE;
+		} else {
+			outChannelMap[0] = SPA_AUDIO_CHANNEL_FL;
+			outChannelMap[1] = SPA_AUDIO_CHANNEL_FR;
+			outChannelMap[2] = SPA_AUDIO_CHANNEL_FC;
+			outChannelMap[3] = SPA_AUDIO_CHANNEL_RL;
+			outChannelMap[4] = SPA_AUDIO_CHANNEL_RR;
+		}
+	} else if (channels == 6) {
+		outChannelMap[0] = SPA_AUDIO_CHANNEL_FL;
+		outChannelMap[1] = SPA_AUDIO_CHANNEL_FR;
+		outChannelMap[2] = SPA_AUDIO_CHANNEL_FC;
+		outChannelMap[3] = SPA_AUDIO_CHANNEL_LFE;
+		outChannelMap[4] = SPA_AUDIO_CHANNEL_RL;
+		outChannelMap[5] = SPA_AUDIO_CHANNEL_RR;
+	} else if (channels == 7) {
+		outChannelMap[0] = SPA_AUDIO_CHANNEL_FL;
+		outChannelMap[1] = SPA_AUDIO_CHANNEL_FR;
+		outChannelMap[2] = SPA_AUDIO_CHANNEL_FC;
+		outChannelMap[3] = SPA_AUDIO_CHANNEL_LFE;
+		outChannelMap[4] = SPA_AUDIO_CHANNEL_RL;
+		outChannelMap[5] = SPA_AUDIO_CHANNEL_RR;
+		outChannelMap[6] = SPA_AUDIO_CHANNEL_BC;
+	} else {
+		fplAssert(channels >= 8);
+		outChannelMap[0] = SPA_AUDIO_CHANNEL_FL;
+		outChannelMap[1] = SPA_AUDIO_CHANNEL_FR;
+		outChannelMap[2] = SPA_AUDIO_CHANNEL_FC;
+		outChannelMap[3] = SPA_AUDIO_CHANNEL_LFE;
+		outChannelMap[4] = SPA_AUDIO_CHANNEL_RL;
+		outChannelMap[5] = SPA_AUDIO_CHANNEL_RR;
+		outChannelMap[6] = SPA_AUDIO_CHANNEL_SL;
+		outChannelMap[7] = SPA_AUDIO_CHANNEL_SR;
+	}
+}
+
+// Builds a SPA POD for SPA_TYPE_OBJECT_Format with id SPA_PARAM_EnumFormat.
+// Layout: object header (8) + object body (8 + 5 props * 24 = 128) = 136 bytes.
+// Each Id/Int prop = 8 (key+flags) + 8 (pod header) + 8 (4-byte body + 4-byte pad).
+fpl_internal uint32_t fpl__PipeWire_BuildAudioFormatPod(uint8_t *buffer, const size_t bufferSize, const uint32_t spaAudioFormat, const uint32_t sampleRate, const uint32_t channels, uint32_t *channelMap) {
+	if (!buffer || bufferSize == 0 || channels == 0 || channelMap == fpl_null)
+        return 0;
+
+    // ---- Scalar property definitions ----
+    const uint32_t numScalarProps = 5u;
+
+    struct ScalarProp {
+        uint32_t key;
+        uint32_t childType;
+        uint32_t value;
+    } scalarProps[5] = {
+        { SPA_FORMAT_mediaType,      SPA_TYPE_Id,  SPA_MEDIA_TYPE_audio },
+        { SPA_FORMAT_mediaSubtype,   SPA_TYPE_Id,  SPA_MEDIA_SUBTYPE_raw },
+        { SPA_FORMAT_AUDIO_format,   SPA_TYPE_Id,  spaAudioFormat },
+        { SPA_FORMAT_AUDIO_rate,     SPA_TYPE_Int, sampleRate },
+        { SPA_FORMAT_AUDIO_channels, SPA_TYPE_Int, channels }
+    };
+
+    // ---- Size calculations ----
+
+    // Scalar property size
+    const uint32_t scalarPropSize =
+        SPA_POD_PROP_HEADER_SIZE +
+        SPA_POD_SCALAR_SIZE +
+        SPA_POD_SCALAR_BODY_SIZE +
+        SPA_POD_SCALAR_PAD_SIZE;
+
+    // Channel map array pod size
+    const uint32_t arrayBodySize =
+        8u + channels * sizeof(uint32_t); // childType + childSize + values[]
+
+    const uint32_t arrayPodSize =
+        SPA_POD_PROP_HEADER_SIZE + // key + flags
+        8u +                       // pod header (size + type)
+        arrayBodySize;
+
+    const uint32_t numTotalProps = numScalarProps + 1; // + channel map
+
+    const uint32_t objectBodySize =
+        SPA_POD_OBJECT_BODY_HEADER_SIZE +
+        numScalarProps * scalarPropSize +
+        arrayPodSize;
+
+    const uint32_t totalSize =
+        SPA_POD_OBJECT_HEADER_SIZE +
+        objectBodySize;
+
+    if (bufferSize < totalSize)
+        return 0;
+
+    fplMemoryClear(buffer, totalSize);
+
+    // ---- Write object header ----
+    uint32_t *u32 = (uint32_t *)buffer;
+    u32[0] = objectBodySize;
+    u32[1] = SPA_TYPE_Object;
+
+    // ---- Write object body header ----
+    u32[2] = SPA_TYPE_OBJECT_Format;
+    u32[3] = SPA_PARAM_EnumFormat;
+
+    uint8_t *cursor =
+        buffer + SPA_POD_OBJECT_HEADER_SIZE + SPA_POD_OBJECT_BODY_HEADER_SIZE;
+
+    // ---- Write scalar properties ----
+    for (uint32_t i = 0; i < numScalarProps; ++i) {
+        uint32_t *p = (uint32_t *)cursor;
+
+        p[0] = scalarProps[i].key;
+        p[1] = 0; // flags
+
+        p[2] = SPA_POD_SCALAR_BODY_SIZE; // child body size
+        p[3] = scalarProps[i].childType;
+
+        p[4] = scalarProps[i].value;
+        p[5] = 0; // padding
+
+        cursor += scalarPropSize;
+    }
+
+    // ---- Write channel map array property ----
+    {
+        uint32_t *p = (uint32_t *)cursor;
+
+        // Property header
+        p[0] = SPA_FORMAT_AUDIO_position;
+        p[1] = 0; // flags
+
+        // Array pod header
+        p[2] = arrayBodySize;   // pod.size
+        p[3] = SPA_TYPE_Array;  // pod.type
+
+        // Array child size + type (spa_pod: size first, type second)
+        p[4] = sizeof(uint32_t); // child.size
+        p[5] = SPA_TYPE_Id;      // child.type
+
+        // Values
+        uint32_t *vals = p + 6;
+        for (uint32_t i = 0; i < channels; i++)
+            vals[i] = channelMap[i];
+    }
+
+    return totalSize;
+}
+
+// Helper: find a value in a spa_dict for a given key.
+fpl_internal const char *fpl__PipeWire_SpaDictLookup(const struct spa_dict *dict, const char *key) {
+	if (dict == fpl_null || key == fpl_null) {
+		return fpl_null;
+	}
+	for (uint32_t i = 0; i < dict->n_items; ++i) {
+		const struct spa_dict_item *item = &dict->items[i];
+		if (item->key != fpl_null && fplIsStringEqual(item->key, key)) {
+			return item->value;
+		}
+	}
+	return fpl_null;
+}
+
+// Enumeration-only core listener callbacks. These never touch the persistent
+// fpl__PipeWireAudioBackend state because the `data` pointer is a local
+// fpl__PipeWireEnumState allocated on the stack of GetAudioDevices.
+fpl_internal void fpl__PipeWire_EnumCoreInfoCallback(void *data, const void *info) {
+	(void)data;
+	(void)info;
+}
+fpl_internal void fpl__PipeWire_EnumCoreDoneCallback(void *data, uint32_t id, int seq) {
+	fpl__PipeWireEnumState *s = (fpl__PipeWireEnumState *)data;
+	if (s == fpl_null) {
+		return;
+	}
+	if (id == PW_ID_CORE && seq == s->pendingSeq && s->pendingSeq != 0) {
+		s->isDone = 1;
+		if (s->loop != fpl_null && s->api != fpl_null && s->api->pw_thread_loop_signal != fpl_null) {
+			s->api->pw_thread_loop_signal(s->loop, false);
+		}
+	}
+}
+fpl_internal void fpl__PipeWire_EnumCoreErrorCallback(void *data, uint32_t id, int seq, int res, const char *message) {
+	(void)seq;
+	(void)res;
+	fpl__PipeWireEnumState *s = (fpl__PipeWireEnumState *)data;
+	if (s == fpl_null) {
+		return;
+	}
+	FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, "PipeWire core error on id %lu: %s", id, message != fpl_null ? message : "(null)");
+	s->isFailed = 1;
+	s->isDone = 1;
+	if (s->loop != fpl_null && s->api != fpl_null && s->api->pw_thread_loop_signal != fpl_null) {
+		s->api->pw_thread_loop_signal(s->loop, false);
+	}
+}
+
+fpl_globalvar struct pw_core_events fpl__global_pipeWireEnumCoreEvents = {
+	PW_VERSION_CORE_EVENTS,
+	fpl__PipeWire_EnumCoreInfoCallback,
+	fpl__PipeWire_EnumCoreDoneCallback,
+	fpl_null,
+	fpl__PipeWire_EnumCoreErrorCallback,
+	fpl_null,
+	fpl_null,
+	fpl_null,
+	fpl_null,
+	fpl_null,
+};
+
+// Registry listener callbacks, operating on a stack-local fpl__PipeWireEnumState.
+fpl_internal void fpl__PipeWire_EnumRegistryGlobalCallback(void *data, uint32_t id, uint32_t permissions, const char *type, uint32_t version, const struct spa_dict *props) {
+	(void)permissions;
+	(void)version;
+	fpl__PipeWireEnumState *s = (fpl__PipeWireEnumState *)data;
+	if (s == fpl_null) {
+		return;
+	}
+	if (type == fpl_null || !fplIsStringEqual(type, "PipeWire:Interface:Node")) {
+		return;
+	}
+	const char *mediaClass = fpl__PipeWire_SpaDictLookup(props, PW_KEY_MEDIA_CLASS);
+	if (mediaClass == fpl_null) {
+		return;
+	}
+	if (!fplIsStringEqual(mediaClass, "Audio/Sink")) {
+		return;
+	}
+	const char *description = fpl__PipeWire_SpaDictLookup(props, PW_KEY_NODE_DESCRIPTION);
+	if (description == fpl_null) {
+		description = fpl__PipeWire_SpaDictLookup(props, PW_KEY_NODE_NICK);
+	}
+	if (description == fpl_null) {
+		description = fpl__PipeWire_SpaDictLookup(props, PW_KEY_NODE_NAME);
+	}
+	if (s->deviceInfos != fpl_null && s->deviceInfoSize > 0) {
+		if (s->resultCount >= s->maxDeviceCount) {
+			++s->overflowCount;
+		} else {
+			fplAudioDeviceInfo *outInfo = (fplAudioDeviceInfo *)((uint8_t *)s->deviceInfos + (s->deviceInfoSize * s->resultCount));
+			fplClearStruct(outInfo);
+			outInfo->id.pipewire = id;
+			if (description != fpl_null && fplGetStringLength(description) > 0) {
+				fplCopyString(description, outInfo->name, fplArrayCount(outInfo->name));
+			} else {
+				fplStringFormat(outInfo->name, fplArrayCount(outInfo->name), "node-%u", id);
+			}
+		}
+	}
+	++s->resultCount;
+}
+fpl_internal void fpl__PipeWire_EnumRegistryGlobalRemoveCallback(void *data, uint32_t id) {
+	(void)data;
+	(void)id;
+}
+
+fpl_globalvar struct pw_registry_events fpl__global_pipeWireEnumRegistryEvents = {
+	PW_VERSION_REGISTRY_EVENTS,
+	fpl__PipeWire_EnumRegistryGlobalCallback,
+	fpl__PipeWire_EnumRegistryGlobalRemoveCallback,
+};
+
+// Stream listener callbacks.
+fpl_internal void fpl__PipeWire_StreamDestroyCallback(void *data) { (void)data; }
+fpl_internal void fpl__PipeWire_StreamControlInfoCallback(void *data, uint32_t id, const void *control) { (void)data; (void)id; (void)control; }
+fpl_internal void fpl__PipeWire_StreamIoChangedCallback(void *data, uint32_t id, void *area, uint32_t size) { (void)data; (void)id; (void)area; (void)size; }
+fpl_internal void fpl__PipeWire_StreamParamChangedCallback(void *data, uint32_t id, const struct spa_pod *param) { (void)data; (void)id; (void)param; }
+fpl_internal void fpl__PipeWire_StreamAddBufferCallback(void *data, void *buffer) { (void)data; (void)buffer; }
+fpl_internal void fpl__PipeWire_StreamRemoveBufferCallback(void *data, void *buffer) { (void)data; (void)buffer; }
+fpl_internal void fpl__PipeWire_StreamDrainedCallback(void *data) { (void)data; }
+fpl_internal void fpl__PipeWire_StreamCommandCallback(void *data, const struct spa_command *command) { (void)data; (void)command; }
+fpl_internal void fpl__PipeWire_StreamTriggerDoneCallback(void *data) { (void)data; }
+
+fpl_internal void fpl__PipeWire_StreamStateChangedCallback(void *data, enum pw_stream_state old, enum pw_stream_state state, const char *error) {
+	(void)old;
+	fplAudioBackend *backend = (fplAudioBackend *)data;
+	fpl__PipeWireAudioBackend *pw = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PipeWireAudioBackend);
+	fplAssert(pw != fpl_null);
+	switch (state) {
+		case PW_STREAM_STATE_PAUSED:
+		case PW_STREAM_STATE_STREAMING:
+			pw->isStreamReady = 1;
+			if (pw->threadLoop != fpl_null && pw->api.pw_thread_loop_signal != fpl_null) {
+				pw->api.pw_thread_loop_signal(pw->threadLoop, false);
+			}
+			break;
+		case PW_STREAM_STATE_ERROR:
+			FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, "PipeWire stream error: %s", error != fpl_null ? error : "(null)");
+			pw->isStreamFailed = 1;
+			if (pw->threadLoop != fpl_null && pw->api.pw_thread_loop_signal != fpl_null) {
+				pw->api.pw_thread_loop_signal(pw->threadLoop, false);
+			}
+			break;
+		case PW_STREAM_STATE_UNCONNECTED:
+		case PW_STREAM_STATE_CONNECTING:
+		default:
+			break;
+	}
+}
+
+fpl_internal void fpl__PipeWire_StreamProcessCallback(void *data) {
+	fplAudioBackend *backend = (fplAudioBackend *)data;
+	fpl__PipeWireAudioBackend *pw = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PipeWireAudioBackend);
+	fplAssert(pw != fpl_null);
+	const fpl__PipeWireApi *api = &pw->api;
+	if (pw->stream == fpl_null || pw->frameSize == 0) {
+		return;
+	}
+	struct pw_buffer *buf = api->pw_stream_dequeue_buffer(pw->stream);
+	if (buf == fpl_null) {
+		return;
+	}
+	struct spa_buffer *sbuf = buf->buffer;
+	if (sbuf == fpl_null || sbuf->n_datas == 0 || sbuf->datas == fpl_null || sbuf->datas[0].data == fpl_null) {
+		api->pw_stream_queue_buffer(pw->stream, buf);
+		return;
+	}
+	uint32_t stride = pw->frameSize;
+	uint32_t maxFrames = sbuf->datas[0].maxsize / stride;
+	uint32_t wantedFrames = (uint32_t)buf->requested;
+	if (wantedFrames == 0 || wantedFrames > maxFrames) {
+		wantedFrames = maxFrames;
+	}
+	if (wantedFrames > 0) {
+		uint32_t framesRead = fpl__ReadAudioFramesFromClient(backend, wantedFrames, sbuf->datas[0].data);
+		fplAssert(framesRead == wantedFrames);
+	}
+	if (sbuf->datas[0].chunk != fpl_null) {
+		sbuf->datas[0].chunk->offset = 0;
+		sbuf->datas[0].chunk->stride = (int32_t)stride;
+		sbuf->datas[0].chunk->size = wantedFrames * stride;
+	}
+	api->pw_stream_queue_buffer(pw->stream, buf);
+}
+
+fpl_globalvar struct pw_stream_events fpl__global_pipeWireStreamEvents = {
+	PW_VERSION_STREAM_EVENTS,
+	fpl__PipeWire_StreamDestroyCallback,
+	fpl__PipeWire_StreamStateChangedCallback,
+	fpl__PipeWire_StreamControlInfoCallback,
+	fpl__PipeWire_StreamIoChangedCallback,
+	fpl__PipeWire_StreamParamChangedCallback,
+	fpl__PipeWire_StreamAddBufferCallback,
+	fpl__PipeWire_StreamRemoveBufferCallback,
+	fpl__PipeWire_StreamProcessCallback,
+	fpl__PipeWire_StreamDrainedCallback,
+	fpl__PipeWire_StreamCommandCallback,
+	fpl__PipeWire_StreamTriggerDoneCallback,
+};
+
+fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendPipeWireInitialize) {
+	(void)context;
+	fpl__PipeWireAudioBackend *pw = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PipeWireAudioBackend);
+	fplAssert(pw != fpl_null);
+	fpl__PipeWireApi *api = &pw->api;
+	if (!fpl__LoadPipeWireApi(api)) {
+		FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, "Failed loading PipeWire api!");
+		return fplAudioResultType_ApiFailed;
+	}
+	api->pw_init(fpl_null, fpl_null);
+	return fplAudioResultType_Success;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl__AudioBackendPipeWireRelease) {
+	fpl__PipeWireAudioBackend *pw = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PipeWireAudioBackend);
+	fplAssert(pw != fpl_null);
+	fpl__AudioBackendPipeWireReleaseDevice(context, backend);
+	if (pw->api.pw_deinit != fpl_null) {
+		pw->api.pw_deinit();
+	}
+	fpl__UnloadPipeWireApi(&pw->api);
+	fplClearStruct(pw);
+	return true;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendPipeWireGetAudioDevices) {
+	(void)context;
+	fpl__PipeWireAudioBackend *pw = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PipeWireAudioBackend);
+	fplAssert(pw != fpl_null);
+	const fpl__PipeWireApi *api = &pw->api;
+	if (api->libHandle == fpl_null) {
+		return 0;
+	}
+
+	// All enumeration state lives on the stack so it cannot clobber the
+	// persistent playback state inside `pw` (threadLoop/listeners/etc).
+	fpl__PipeWireEnumState enumState = fplZeroInit;
+	enumState.api = api;
+	enumState.deviceInfos = deviceInfos;
+	enumState.deviceInfoSize = deviceInfoSize;
+	enumState.maxDeviceCount = maxDeviceCount;
+
+	struct spa_hook coreListener = fplZeroInit;
+	struct spa_hook registryListener = fplZeroInit;
+
+	pw_thread_loop *loop = api->pw_thread_loop_new("fpl-pw-enum", fpl_null);
+	if (loop == fpl_null) {
+		FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, "Failed creating PipeWire thread loop for device enumeration!");
+		return 0;
+	}
+	enumState.loop = loop;
+
+	pw_context *ctx = fpl_null;
+	pw_core *core = fpl_null;
+	pw_registry *registry = fpl_null;
+	bool started = false;
+
+	if (api->pw_thread_loop_start(loop) < 0) {
+		FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, "Failed starting PipeWire thread loop for device enumeration!");
+		api->pw_thread_loop_destroy(loop);
+		return 0;
+	}
+	started = true;
+
+	api->pw_thread_loop_lock(loop);
+
+	do {
+		ctx = api->pw_context_new(api->pw_thread_loop_get_loop(loop), fpl_null, 0);
+		if (ctx == fpl_null) {
+			FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, "Failed creating PipeWire context for device enumeration!");
+			break;
+		}
+
+		core = api->pw_context_connect(ctx, fpl_null, 0);
+		if (core == fpl_null) {
+			FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, "Failed connecting PipeWire context for device enumeration!");
+			break;
+		}
+
+		api->pw_core_add_listener(core, &coreListener, &fpl__global_pipeWireEnumCoreEvents, &enumState);
+
+		registry = api->pw_core_get_registry(core, PW_VERSION_REGISTRY, 0);
+		if (registry == fpl_null) {
+			FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, "Failed getting PipeWire registry!");
+			break;
+		}
+		api->pw_registry_add_listener(registry, &registryListener, &fpl__global_pipeWireEnumRegistryEvents, &enumState);
+
+		// Trigger a core sync. The done callback fires after all pending registry events are delivered.
+		enumState.pendingSeq = api->pw_core_sync(core, PW_ID_CORE, 0);
+		while (!enumState.isDone && !enumState.isFailed) {
+			api->pw_thread_loop_wait(loop);
+		}
+	} while (0);
+
+	uint32_t resultCount = enumState.resultCount;
+	uint32_t overflowCount = enumState.overflowCount;
+
+	if (registry != fpl_null) {
+		api->pw_proxy_destroy((pw_proxy *)registry);
+	}
+	if (core != fpl_null) {
+		api->pw_core_disconnect(core);
+	}
+	if (ctx != fpl_null) {
+		api->pw_context_destroy(ctx);
+	}
+
+	api->pw_thread_loop_unlock(loop);
+	if (started) {
+		api->pw_thread_loop_stop(loop);
+	}
+	api->pw_thread_loop_destroy(loop);
+
+	if (overflowCount > 0) {
+		FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, "Capacity of '%u' for audio device infos has been reached. '%u' audio devices are not included in the result", maxDeviceCount, overflowCount);
+	}
+
+	return resultCount;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendPipeWireGetAudioDeviceInfo) {
+	(void)context;
+	(void)backend;
+	(void)targetDevice;
+	(void)outDeviceInfo;
+	return fplAudioResultType_NotImplemented;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(fpl__AudioBackendPipeWireReleaseDevice) {
+	(void)context;
+	fpl__PipeWireAudioBackend *pw = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PipeWireAudioBackend);
+	fplAssert(pw != fpl_null);
+	const fpl__PipeWireApi *api = &pw->api;
+	if (api->libHandle == fpl_null) {
+		return true;
+	}
+	if (pw->threadLoop != fpl_null) {
+		api->pw_thread_loop_lock(pw->threadLoop);
+		if (pw->stream != fpl_null) {
+			api->pw_stream_disconnect(pw->stream);
+			api->pw_stream_destroy(pw->stream);
+			pw->stream = fpl_null;
+		}
+		if (pw->core != fpl_null) {
+			api->pw_core_disconnect(pw->core);
+			pw->core = fpl_null;
+		}
+		if (pw->context != fpl_null) {
+			api->pw_context_destroy(pw->context);
+			pw->context = fpl_null;
+		}
+		api->pw_thread_loop_unlock(pw->threadLoop);
+		api->pw_thread_loop_stop(pw->threadLoop);
+		api->pw_thread_loop_destroy(pw->threadLoop);
+		pw->threadLoop = fpl_null;
+	}
+	pw->loop = fpl_null;
+	pw->isStreamReady = 0;
+	pw->isStreamFailed = 0;
+	pw->frameSize = 0;
+	pw->resolvedNodeName[0] = '\0';
+	return true;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPipeWireInitializeDevice) {
+	fpl__PipeWireAudioBackend *pw = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PipeWireAudioBackend);
+	fplAssert(pw != fpl_null);
+	fpl__PipeWireApi *api = &pw->api;
+	if (api->libHandle == fpl_null) {
+		FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, "PipeWire api is not loaded!");
+		return fplAudioResultType_ApiFailed;
+	}
+
+#	define FPL__PIPEWIRE_INIT_ERROR(resultValue, format, ...) do { \
+		FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, format, ## __VA_ARGS__); \
+		fpl__AudioBackendPipeWireReleaseDevice(context, backend); \
+		return resultValue; \
+	} while (0)
+
+	// Resolve application / stream / media role names from settings, or fall back to defaults.
+	const char *defaultApplicationName = "Final Platform Layer";
+	const char *defaultStreamName = "Playback";
+	const char *defaultMediaRole = "Game";
+	if (audioSettings != fpl_null && fplGetStringLength(audioSettings->pipewire.applicationName) > 0) {
+		fplCopyString(audioSettings->pipewire.applicationName, pw->applicationName, fplArrayCount(pw->applicationName));
+	} else {
+		fplCopyString(defaultApplicationName, pw->applicationName, fplArrayCount(pw->applicationName));
+	}
+	if (audioSettings != fpl_null && fplGetStringLength(audioSettings->pipewire.streamName) > 0) {
+		fplCopyString(audioSettings->pipewire.streamName, pw->streamName, fplArrayCount(pw->streamName));
+	} else {
+		fplCopyString(defaultStreamName, pw->streamName, fplArrayCount(pw->streamName));
+	}
+	const char *mediaRole = defaultMediaRole;
+	if (audioSettings != fpl_null && fplGetStringLength(audioSettings->pipewire.mediaRole) > 0) {
+		mediaRole = audioSettings->pipewire.mediaRole;
+	}
+
+	pw->isStreamReady = 0;
+	pw->isStreamFailed = 0;
+	pw->frameSize = 0;
+
+	// Create the threaded loop + context + core.
+	pw->threadLoop = api->pw_thread_loop_new("fpl-pw-playback", fpl_null);
+	if (pw->threadLoop == fpl_null) {
+		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed creating PipeWire thread loop!");
+	}
+
+	api->pw_thread_loop_lock(pw->threadLoop);
+
+	if (api->pw_thread_loop_start(pw->threadLoop) < 0) {
+		api->pw_thread_loop_unlock(pw->threadLoop);
+		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed starting PipeWire thread loop!");
+	}
+
+	pw->context = api->pw_context_new(api->pw_thread_loop_get_loop(pw->threadLoop), fpl_null, 0);
+	if (pw->context == fpl_null) {
+		api->pw_thread_loop_unlock(pw->threadLoop);
+		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed creating PipeWire context!");
+	}
+
+	pw->core = api->pw_context_connect(pw->context, fpl_null, 0);
+	if (pw->core == fpl_null) {
+		api->pw_thread_loop_unlock(pw->threadLoop);
+		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_NoDeviceFound, "Failed connecting PipeWire context!");
+	}
+
+	// Build the target sample format.
+	uint32_t spaAudioFormat = fpl__PipeWire_MapAudioFormatTypeToSampleFormat(targetFormat->type);
+	if (spaAudioFormat == SPA_AUDIO_FORMAT_UNKNOWN) {
+		spaAudioFormat = fplIsBigEndian() ? SPA_AUDIO_FORMAT_S16_BE : SPA_AUDIO_FORMAT_S16_LE;
+	}
+	uint16_t channelCount = targetFormat->channels;
+	uint32_t sampleRate = targetFormat->sampleRate;
+	fplAudioChannelLayout channelLayout = fplGetDefaultAudioChannelLayoutFromChannels(channelCount);
+
+	uint32_t localFrameSize = (uint32_t)channelCount * fplGetAudioSampleSizeInBytes(fpl__PipeWire_MapSampleFormatToAudioFormatType(spaAudioFormat));
+	if (localFrameSize == 0) {
+		api->pw_thread_loop_unlock(pw->threadLoop);
+		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "PipeWire: unable to compute frame size from target format!");
+	}
+
+	// Build stream properties.
+	pw_properties *props = api->pw_properties_new(PW_KEY_MEDIA_TYPE, "Audio", fpl_null);
+	if (props == fpl_null) {
+		api->pw_thread_loop_unlock(pw->threadLoop);
+		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed creating PipeWire stream properties!");
+	}
+	api->pw_properties_set(props, PW_KEY_MEDIA_CATEGORY, "Playback");
+	api->pw_properties_set(props, PW_KEY_MEDIA_ROLE, mediaRole);
+	api->pw_properties_set(props, PW_KEY_APP_NAME, pw->applicationName);
+	api->pw_properties_set(props, PW_KEY_NODE_NAME, pw->streamName);
+	api->pw_properties_setf(props, PW_KEY_NODE_LATENCY, "%u/%u", targetFormat->bufferSizeInFrames, sampleRate);
+	api->pw_properties_setf(props, PW_KEY_AUDIO_CHANNELS, "%u", (uint32_t)channelCount);
+	api->pw_properties_setf(props, PW_KEY_AUDIO_RATE, "%u", sampleRate);
+	if (targetDevice != fpl_null && fplGetStringLength(targetDevice->name) > 0) {
+		api->pw_properties_setf(props, PW_KEY_TARGET_OBJECT, "%u", targetDevice->id.pipewire);
+	}
+
+	pw->stream = api->pw_stream_new(pw->core, pw->streamName, props);
+	// pw_stream_new takes ownership of props on success; on failure we must free them ourselves.
+	if (pw->stream == fpl_null) {
+		api->pw_properties_free(props);
+		api->pw_thread_loop_unlock(pw->threadLoop);
+		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed creating PipeWire stream!");
+	}
+
+	fplClearStruct(&pw->streamListener);
+	api->pw_stream_add_listener(pw->stream, &pw->streamListener, &fpl__global_pipeWireStreamEvents, backend);
+
+	// Build channel map
+	uint32_t nativeChannelMap[32] = fplZeroInit;
+	fpl__PipeWire_BuildChannelMap(channelCount, channelLayout, fplArrayCount(nativeChannelMap), nativeChannelMap);
+
+	// Build the EnumFormat POD.
+	uint8_t podBuffer[256];
+	uint32_t podSize = fpl__PipeWire_BuildAudioFormatPod(podBuffer, sizeof(podBuffer), spaAudioFormat, sampleRate, (uint32_t)channelCount, nativeChannelMap);
+	if (podSize == 0) {
+		api->pw_thread_loop_unlock(pw->threadLoop);
+		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed building PipeWire format POD!");
+	}
+	const struct spa_pod *params[1];
+	params[0] = (const struct spa_pod *)podBuffer;
+
+	uint32_t streamFlags = PW_STREAM_FLAG_AUTOCONNECT | PW_STREAM_FLAG_MAP_BUFFERS | PW_STREAM_FLAG_RT_PROCESS | PW_STREAM_FLAG_INACTIVE;
+	if (api->pw_stream_connect(pw->stream, PW_DIRECTION_OUTPUT, PW_ID_ANY, streamFlags, params, 1) < 0) {
+		api->pw_thread_loop_unlock(pw->threadLoop);
+		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed connecting PipeWire playback stream!");
+	}
+
+	// Wait until the stream reaches PAUSED (because we passed INACTIVE) or errors out.
+	while (!pw->isStreamReady && !pw->isStreamFailed) {
+		api->pw_thread_loop_wait(pw->threadLoop);
+	}
+	if (pw->isStreamFailed) {
+		api->pw_thread_loop_unlock(pw->threadLoop);
+		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_DeviceFailure, "PipeWire stream failed to become ready!");
+	}
+
+	pw->frameSize = localFrameSize;
+
+	// Fill the output format (we use the requested format, since PipeWire negotiates implicitly).
+	fplAudioFormat internalFormat = fplZeroInit;
+	internalFormat.type = fpl__PipeWire_MapSampleFormatToAudioFormatType(spaAudioFormat);
+	internalFormat.sampleRate = sampleRate;
+	internalFormat.channels = channelCount;
+	internalFormat.channelLayout = channelLayout;
+	internalFormat.periods = targetFormat->periods > 0 ? targetFormat->periods : 2;
+	internalFormat.bufferSizeInFrames = targetFormat->bufferSizeInFrames;
+	internalFormat.bufferSizeInMilliseconds = fplGetAudioBufferSizeInMilliseconds(internalFormat.sampleRate, internalFormat.bufferSizeInFrames);
+	internalFormat.mode = targetFormat->mode;
+
+	fpl__PipeWire_FPLAudioChannelMap(channelCount, channelLayout, outputChannelMap);
+
+	fplAudioDeviceInfo internalDevice = fplZeroInit;
+	if (targetDevice != fpl_null && fplGetStringLength(targetDevice->name) > 0) {
+		internalDevice = *targetDevice;
+		internalDevice.isDefault = false;
+	} else {
+		internalDevice.id.pipewire = 0;
+		internalDevice.isDefault = true;
+		fplCopyString("default", internalDevice.name, fplArrayCount(internalDevice.name));
+	}
+
+	api->pw_thread_loop_unlock(pw->threadLoop);
+
+	*outputFormat = internalFormat;
+	*outputDevice = internalDevice;
+
+	return fplAudioResultType_Success;
+
+#	undef FPL__PIPEWIRE_INIT_ERROR
+}
+
+fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudioBackendPipeWireStartDevice) {
+	(void)context;
+	fpl__PipeWireAudioBackend *pw = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PipeWireAudioBackend);
+	fplAssert(pw != fpl_null);
+	const fpl__PipeWireApi *api = &pw->api;
+	if (pw->threadLoop == fpl_null || pw->stream == fpl_null) {
+		return fplAudioResultType_DeviceNotInitialized;
+	}
+	api->pw_thread_loop_lock(pw->threadLoop);
+	api->pw_stream_set_active(pw->stream, true);
+	api->pw_thread_loop_unlock(pw->threadLoop);
+	return fplAudioResultType_Success;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_STOP_DEVICE_FUNC(fpl__AudioBackendPipeWireStopDevice) {
+	(void)context;
+	fpl__PipeWireAudioBackend *pw = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PipeWireAudioBackend);
+	fplAssert(pw != fpl_null);
+	const fpl__PipeWireApi *api = &pw->api;
+	if (pw->threadLoop == fpl_null || pw->stream == fpl_null) {
+		return true;
+	}
+	api->pw_thread_loop_lock(pw->threadLoop);
+	api->pw_stream_set_active(pw->stream, false);
+	api->pw_thread_loop_unlock(pw->threadLoop);
+	return true;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl__AudioBackendPipeWireMainLoop) {
+	// @NOTE(final/PipeWire): Async backend - the threaded loop runs inside libpipewire, so there is no own loop to run here.
+	(void)context;
+	(void)backend;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_STOP_MAIN_LOOP_FUNC(fpl__AudioBackendPipeWireStopMainLoop) {
+	// @NOTE(final/PipeWire): Async backend - nothing to stop because there is no own mainloop.
+	(void)context;
+	(void)backend;
+}
+
+fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendPipeWireDescriptor = {
+
+	fplStructField(fplAudioBackendDescriptor, header, {
+		fplStructField(fplAudioBackendDescriptorHeader, idName, {
+			fplStructField(fplAudioBackendDescriptorIDName, id, { 0x9ad4c731, 0x2f8b, 0x4c52, { 0xbe, 0x39, 0x4a, 0x17, 0x82, 0xd1, 0x6c, 0x5f } }),
+			fplStructField(fplAudioBackendDescriptorIDName, name, "PipeWire"),
+		}),
+		fplStructField(fplAudioBackendDescriptorHeader, type, fplAudioBackendType_PipeWire),
+		fplStructField(fplAudioBackendDescriptorHeader, backendSize, sizeof(fpl__PipeWireAudioBackend)),
+		fplStructField(fplAudioBackendDescriptorHeader, isAsync, true),
+		fplStructField(fplAudioBackendDescriptorHeader, isValid, true),
+	}),
+	fplStructField(fplAudioBackendDescriptor, table, {
+		fplStructField(fplAudioBackendFunctionTable, initialize, fpl__AudioBackendPipeWireInitialize),
+		fplStructField(fplAudioBackendFunctionTable, release, fpl__AudioBackendPipeWireRelease),
+		fplStructField(fplAudioBackendFunctionTable, getAudioDevices, fpl__AudioBackendPipeWireGetAudioDevices),
+		fplStructField(fplAudioBackendFunctionTable, getAudioDeviceInfo, fpl__AudioBackendPipeWireGetAudioDeviceInfo),
+		fplStructField(fplAudioBackendFunctionTable, initializeDevice, fpl__AudioBackendPipeWireInitializeDevice),
+		fplStructField(fplAudioBackendFunctionTable, releaseDevice, fpl__AudioBackendPipeWireReleaseDevice),
+		fplStructField(fplAudioBackendFunctionTable, startDevice, fpl__AudioBackendPipeWireStartDevice),
+		fplStructField(fplAudioBackendFunctionTable, stopDevice, fpl__AudioBackendPipeWireStopDevice),
+		fplStructField(fplAudioBackendFunctionTable, mainLoop, fpl__AudioBackendPipeWireMainLoop),
+		fplStructField(fplAudioBackendFunctionTable, stopMainLoop, fpl__AudioBackendPipeWireStopMainLoop),
+	}),
+};
+
+#endif // FPL__ENABLE_AUDIO_PIPEWIRE
 
 #endif // FPL__AUDIO_BACKENDS_IMPLEMENTED
 
@@ -25920,6 +31548,8 @@ fplStaticAssert(fplArrayCount(fpl__global_audioResultTypeNameTable) == FPL__AUDI
 
 fpl_globalvar fplAudioBackendType fpl__global_defaultAudioBackendTypes[] = {
 	fplAudioBackendType_DirectSound,
+	fplAudioBackendType_PipeWire,
+	fplAudioBackendType_PulseAudio,
 	fplAudioBackendType_Alsa,
 	fplAudioBackendType_Custom,
 };
@@ -25959,10 +31589,23 @@ fpl_internal uint32_t fpl__GetAudioBackendDescriptors(const uint32_t maxDescript
 #if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
 				desc = &fpl__global_audioBackendDirectShowDescriptor;
 #endif
+				break;
 
 			case fplAudioBackendType_Alsa:
 #if defined(FPL__ENABLE_AUDIO_ALSA)
 				desc = &fpl__global_audioBackendALSADescriptor;
+#endif
+				break;
+
+			case fplAudioBackendType_PulseAudio:
+#if defined(FPL__ENABLE_AUDIO_PULSEAUDIO)
+				desc = &fpl__global_audioBackendPulseAudioDescriptor;
+#endif
+				break;
+
+			case fplAudioBackendType_PipeWire:
+#if defined(FPL__ENABLE_AUDIO_PIPEWIRE)
+				desc = &fpl__global_audioBackendPipeWireDescriptor;
 #endif
 				break;
 
@@ -26861,6 +32504,8 @@ fpl_globalvar const char *fpl__globalAudioBackendNameTable[FPL__AUDIOBACKENDTYPE
 	FPL__ENUM_NAME("Automatic", fplAudioBackendType_Auto),
 	FPL__ENUM_NAME("DirectSound", fplAudioBackendType_DirectSound),
 	FPL__ENUM_NAME("ALSA", fplAudioBackendType_Alsa),
+	FPL__ENUM_NAME("PulseAudio", fplAudioBackendType_PulseAudio),
+	FPL__ENUM_NAME("PipeWire", fplAudioBackendType_PipeWire),
 	FPL__ENUM_NAME("Custom", fplAudioBackendType_Custom),
 };
 fplStaticAssert(fplArrayCount(fpl__globalAudioBackendNameTable) == FPL__AUDIOBACKENDTYPE_COUNT);
@@ -27124,8 +32769,8 @@ fpl_common_api fplAudioResultType fplStopAudio(void) {
 			// We need to wait for the worker thread to become available for work before returning.
 			// @NOTE(final): The audio worker thread will be the one who puts the device into the stopped state.
 			fpl__WaitForAudioEvent(&audioState->stopEvent);
-			result = fplAudioResultType_Success;
 		}
+		result = fplAudioResultType_Success;
 	}
 	fplMutexUnlock(&audioState->lock);
 
@@ -27174,7 +32819,7 @@ fpl_common_api fplAudioResultType fplPlayAudio(void) {
 
 		if (audioState->isAsyncBackend) {
 			// Asynchronous backends (Has their own thread)
-			fpl__StartAudioDevice(audioState);
+			result = fpl__StartAudioDevice(audioState);
 			fpl__AudioSetDeviceState(context, fpl__AudioDeviceState_Started);
 		} else {
 			// Synchronous backends
@@ -27493,6 +33138,243 @@ fpl_inline fplVideoRect fplCreateVideoRectFromLTRB(int32_t left, int32_t top, in
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 //
+// > SYSTEM_INPUT (Input System, Public Implementation, Internals)
+//
+// - Input Common Functions
+// - Initialization / Release
+// - Update / Polling
+// - Event handling
+//
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#if defined(FPL__ENABLE_INPUT)
+fpl_common_api bool fplInputBackendMaskIsEnabled(const fplInputBackendMask *mask, const fplInputBackendType type) {
+	if (mask == fpl_null) return false;
+	if ((int)type < 0 || (int)type >= 32) return false;
+	return (mask->bits & (uint32_t)(1u << (uint32_t)type)) != 0u;
+}
+
+fpl_common_api void fplInputBackendMaskEnable(fplInputBackendMask *mask, const fplInputBackendType type) {
+	if (mask == fpl_null) return;
+	if ((int)type < 0 || (int)type >= 32) return;
+	mask->bits |= (uint32_t)(1u << (uint32_t)type);
+}
+
+fpl_common_api void fplInputBackendMaskDisable(fplInputBackendMask *mask, const fplInputBackendType type) {
+	if (mask == fpl_null) return;
+	if ((int)type < 0 || (int)type >= 32) return;
+	mask->bits &= ~(uint32_t)(1u << (uint32_t)type);
+}
+
+bool fpl__InputSystem_Init(fpl__InputContext *ctx, const fplInitFlags initFlags, const fplInputSettings *settings) {
+	if (ctx == fpl_null) return false;
+	fplClearStruct(ctx);
+	ctx->initFlags = initFlags;
+	if (settings != fpl_null) {
+		ctx->settings = *settings;
+	} else {
+		fplSetDefaultInputSettings(&ctx->settings);
+	}
+
+#	if defined(FPL__ENABLE_INPUT_XINPUT)
+	if ((ctx->settings.enabledSources & fplInputSourceType_Gamepad) != 0 && fplInputBackendMaskIsEnabled(&ctx->settings.enabledBackends, fplInputBackendType_XInput)) {
+		if (fpl__InputBackendXInput_Init(&ctx->xinput)) {
+			ctx->backendCount++;
+		}
+	}
+#	endif
+
+#	if defined(FPL__ENABLE_INPUT_DINPUT)
+	if ((ctx->settings.enabledSources & fplInputSourceType_Gamepad) != 0 && fplInputBackendMaskIsEnabled(&ctx->settings.enabledBackends, fplInputBackendType_DInput)) {
+		if (fpl__InputBackendDInput_Init(&ctx->dinput)) {
+			ctx->backendCount++;
+		}
+	}
+#	endif
+
+#	if defined(FPL__ENABLE_INPUT_WIN32)
+	if ((ctx->settings.enabledSources & (fplInputSourceType_Keyboard | fplInputSourceType_Mouse)) != 0 && fplInputBackendMaskIsEnabled(&ctx->settings.enabledBackends, fplInputBackendType_Win32)) {
+		if (fpl__InputBackendWin32_Init(&ctx->win32kbm, &ctx->settings)) {
+			ctx->backendCount++;
+		}
+	}
+#	endif
+
+#	if defined(FPL__ENABLE_INPUT_X11)
+	if ((ctx->settings.enabledSources & (fplInputSourceType_Keyboard | fplInputSourceType_Mouse)) != 0 && fplInputBackendMaskIsEnabled(&ctx->settings.enabledBackends, fplInputBackendType_X11Kbm)) {
+		if (fpl__InputBackendX11Kbm_Init(&ctx->x11kbm, &ctx->settings)) {
+			ctx->backendCount++;
+		}
+	}
+#	endif
+
+#	if defined(FPL__ENABLE_INPUT_LINUX_JOYSTICK)
+	if ((ctx->settings.enabledSources & fplInputSourceType_Gamepad) != 0 && fplInputBackendMaskIsEnabled(&ctx->settings.enabledBackends, fplInputBackendType_LinuxJoystick)) {
+		if (fpl__InputBackendLinuxJoystick_Init(&ctx->linuxJoystick)) {
+			ctx->backendCount++;
+		}
+	}
+#	endif
+
+	ctx->isInitialized = true;
+	return true;
+}
+
+fpl_internal void fpl__InputSystem_Release(fpl__InputContext *ctx) {
+	if (ctx == fpl_null) return;
+	if (!ctx->isInitialized) return;
+#	if defined(FPL__ENABLE_INPUT_LINUX_JOYSTICK)
+	fpl__InputBackendLinuxJoystick_Release(&ctx->linuxJoystick);
+#	endif
+#	if defined(FPL__ENABLE_INPUT_X11)
+	fpl__InputBackendX11Kbm_Release(&ctx->x11kbm);
+#	endif
+#	if defined(FPL__ENABLE_INPUT_WIN32)
+	fpl__InputBackendWin32_Release(&ctx->win32kbm);
+#	endif
+#	if defined(FPL__ENABLE_INPUT_DINPUT)
+	fpl__InputBackendDInput_Release(&ctx->dinput);
+#	endif
+#	if defined(FPL__ENABLE_INPUT_XINPUT)
+	fpl__InputBackendXInput_Release(&ctx->xinput);
+#	endif
+	fplClearStruct(ctx);
+}
+
+fpl_internal void fpl__InputSystem_Update(fpl__InputContext *ctx) {
+	if (ctx == fpl_null) return;
+	if (!ctx->isInitialized) return;
+	if (ctx->settings.disabledEvents) return;
+#	if defined(FPL__ENABLE_INPUT_XINPUT)
+	if ((ctx->settings.enabledSources & fplInputSourceType_Gamepad) != 0 && ctx->xinput.isInitialized) {
+		fpl__InputBackendXInput_Update(&ctx->xinput, &ctx->settings.gamepad);
+	}
+#	endif
+#	if defined(FPL__ENABLE_INPUT_DINPUT)
+	if ((ctx->settings.enabledSources & fplInputSourceType_Gamepad) != 0 && ctx->dinput.isInitialized) {
+		fpl__InputBackendDInput_Update(&ctx->dinput, &ctx->settings.gamepad);
+	}
+#	endif
+#	if defined(FPL__ENABLE_INPUT_LINUX_JOYSTICK)
+	if ((ctx->settings.enabledSources & fplInputSourceType_Gamepad) != 0 && ctx->linuxJoystick.isInitialized) {
+		fpl__PlatformAppState *appState = fpl__global__AppState;
+		if (appState != fpl_null) {
+			fpl__InputBackendLinuxJoystick_Update(&ctx->linuxJoystick, &appState->currentSettings);
+		}
+	}
+#	endif
+}
+
+fpl_internal bool fpl__InputSystem_HandleNativeEvent(fpl__InputContext *ctx, const fpl__NativeInputEvent *ev) {
+	if (ctx == fpl_null || ev == fpl_null) return false;
+	if (!ctx->isInitialized) return false;
+	bool handled = false;
+#	if defined(FPL__ENABLE_WINDOW)
+#		if defined(FPL__ENABLE_INPUT_WIN32)
+	if (ctx->win32kbm.isInitialized) {
+		if (fpl__InputBackendWin32_HandleNativeEvent(&ctx->win32kbm, ev)) {
+			handled = true;
+		}
+	}
+#		endif
+#		if defined(FPL__ENABLE_INPUT_X11)
+	if (ctx->x11kbm.isInitialized) {
+		if (fpl__InputBackendX11Kbm_HandleNativeEvent(&ctx->x11kbm, ev)) {
+			handled = true;
+		}
+	}
+#		endif
+#	else
+	(void)ev;
+#	endif
+	return handled;
+}
+
+fpl_internal bool fpl__InputSystem_IsEnabled(const fpl__InputContext *ctx, fplInputSourceType source) {
+	if (ctx == fpl_null) return false;
+	if (!ctx->isInitialized) return false;
+	return (ctx->settings.enabledSources & source) != 0;
+}
+
+fpl_internal bool fpl__InputSystem_PollKeyboard(fpl__InputContext *ctx, fplKeyboardState *outState) {
+	if (ctx == fpl_null || outState == fpl_null) return false;
+	if (!ctx->isInitialized) return false;
+	if ((ctx->settings.enabledSources & fplInputSourceType_Keyboard) == 0) return false;
+	bool any = false;
+#	if defined(FPL__ENABLE_INPUT_WIN32)
+	if (ctx->win32kbm.isInitialized) {
+		if (fpl__InputBackendWin32_PollKeyboard(&ctx->win32kbm, outState)) {
+			any = true;
+		}
+	}
+#	endif
+#	if defined(FPL__ENABLE_INPUT_X11)
+	if (ctx->x11kbm.isInitialized) {
+		if (fpl__InputBackendX11Kbm_PollKeyboard(&ctx->x11kbm, outState)) {
+			any = true;
+		}
+	}
+#	endif
+	return any;
+}
+
+fpl_internal bool fpl__InputSystem_PollMouse(fpl__InputContext *ctx, fplMouseState *outState) {
+	if (ctx == fpl_null || outState == fpl_null) return false;
+	if (!ctx->isInitialized) return false;
+	if ((ctx->settings.enabledSources & fplInputSourceType_Mouse) == 0) return false;
+	bool any = false;
+#	if defined(FPL__ENABLE_INPUT_WIN32)
+	if (ctx->win32kbm.isInitialized) {
+		if (fpl__InputBackendWin32_PollMouse(&ctx->win32kbm, outState)) {
+			any = true;
+		}
+	}
+#	endif
+#	if defined(FPL__ENABLE_INPUT_X11)
+	if (ctx->x11kbm.isInitialized) {
+		if (fpl__InputBackendX11Kbm_PollMouse(&ctx->x11kbm, outState)) {
+			any = true;
+		}
+	}
+#	endif
+	return any;
+}
+
+// Multi-backend merge: clear once, then iterate backends in declared order.
+// Each backend writes only into its own connected slots and skips slots already claimed
+// (isConnected=true) by an earlier backend. First-backend-wins for conflicting indices.
+fpl_internal bool fpl__InputSystem_PollGamepad(fpl__InputContext *ctx, fplGamepadStates *outStates) {
+	if (ctx == fpl_null || outStates == fpl_null) return false;
+	if (!ctx->isInitialized) return false;
+	if ((ctx->settings.enabledSources & fplInputSourceType_Gamepad) == 0) return false;
+	fplClearStruct(outStates);
+	bool any = false;
+#	if defined(FPL__ENABLE_INPUT_XINPUT)
+	if (ctx->xinput.isInitialized) {
+		if (fpl__InputBackendXInput_PollGamepad(&ctx->xinput, outStates)) {
+			any = true;
+		}
+	}
+#	endif
+#	if defined(FPL__ENABLE_INPUT_DINPUT)
+	if (ctx->dinput.isInitialized) {
+		if (fpl__InputBackendDInput_PollGamepad(&ctx->dinput, outStates)) {
+			any = true;
+		}
+	}
+#	endif
+#	if defined(FPL__ENABLE_INPUT_LINUX_JOYSTICK)
+	if (ctx->linuxJoystick.isInitialized) {
+		if (fpl__InputBackendLinuxJoystick_PollGamepad(&ctx->linuxJoystick, outStates)) {
+			any = true;
+		}
+	}
+#	endif
+	return any;
+}
+#endif // FPL__ENABLE_INPUT
+
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+//
 // > SYSTEM_INIT
 //
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -27501,6 +33383,14 @@ fpl_inline fplVideoRect fplCreateVideoRectFromLTRB(int32_t left, int32_t top, in
 
 fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
 	fplAssert(initState != fpl_null);
+
+	// Release input (reverse-order init: input released before audio)
+#	if defined(FPL__ENABLE_INPUT)
+	if (appState != fpl_null) {
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release Input");
+		fpl__InputSystem_Release(&appState->input);
+	}
+#	endif
 
 	// Release audio
 #	if defined(FPL__ENABLE_AUDIO)
@@ -27919,6 +33809,31 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 		}
 	}
 #	endif // FPL__ENABLE_AUDIO
+
+	// Init Input. Each source flag (Keyboard/Mouse/Gamepad) brings up the input subsystem and enables the matching source.
+#	if defined(FPL__ENABLE_INPUT)
+	{
+		fplInputSourceType requestedSources = fplInputSourceType_None;
+		if (fplIsMaskSet(appState->initFlags, fplInitFlags_Keyboard))       requestedSources = (fplInputSourceType)(requestedSources | fplInputSourceType_Keyboard);
+		if (fplIsMaskSet(appState->initFlags, fplInitFlags_Mouse))          requestedSources = (fplInputSourceType)(requestedSources | fplInputSourceType_Mouse);
+		if (fplIsMaskSet(appState->initFlags, fplInitFlags_Gamepad)) requestedSources = (fplInputSourceType)(requestedSources | fplInputSourceType_Gamepad);
+		// Back-compat: a window implies keyboard + mouse input. Gamepad still requires an explicit flag.
+		if (fplIsMaskSet(appState->initFlags, fplInitFlags_Window)) {
+			requestedSources = (fplInputSourceType)(requestedSources | fplInputSourceType_Keyboard | fplInputSourceType_Mouse);
+		}
+		if (requestedSources != fplInputSourceType_None) {
+			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Input");
+			fplInputSettings inputSettings = appState->initSettings.input;
+			inputSettings.enabledSources = requestedSources;
+			if (!fpl__InputSystem_Init(&appState->input, appState->initFlags, &inputSettings)) {
+				FPL__CRITICAL(FPL__MODULE_CORE, "Failed initializing Input subsystem");
+				fpl__ReleasePlatformStates(initState, appState);
+				return(fpl__SetPlatformResult(fplPlatformResultType_FailedPlatform));
+			}
+			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully initialized Input");
+		}
+	}
+#	endif // FPL__ENABLE_INPUT
 
 	initState->isInitialized = true;
 	return(fpl__SetPlatformResult(fplPlatformResultType_Success));

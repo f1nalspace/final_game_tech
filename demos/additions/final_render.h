@@ -28,7 +28,7 @@ typedef struct UVRect {
 	float vMax;
 } UVRect;
 
-inline UVRect UVRectInit(const float uMin, const float vMin, const float uMax, const float vMax) {
+fpl_extern_inline UVRect UVRectInit(const float uMin, const float vMin, const float uMax, const float vMax) {
 	UVRect result = fplZeroInit;
 	result.uMin = uMin;
 	result.vMin = vMin;
@@ -37,11 +37,11 @@ inline UVRect UVRectInit(const float uMin, const float vMin, const float uMax, c
 	return(result);
 }
 
-inline UVRect UVRectDefault() {
+fpl_extern_inline UVRect UVRectDefault() {
 	return UVRectInit(0.0f, 0.0f, 1.0f, 1.0f);
 }
 
-inline UVRect UVRectFromTile(const Vec2i imageSize, const Vec2i tileSize, const int border, const Vec2i pos) {
+fpl_extern_inline UVRect UVRectFromTile(const Vec2i imageSize, const Vec2i tileSize, const int border, const Vec2i pos) {
 	Vec2f texel = V2fInit(1.0f / (float)imageSize.x, 1.0f / (float)imageSize.y);
 	int imgX = border + pos.x * tileSize.x + border * pos.x;
 	int imgY = border + pos.y * tileSize.y + border * pos.y;
@@ -53,7 +53,7 @@ inline UVRect UVRectFromTile(const Vec2i imageSize, const Vec2i tileSize, const 
 	return(result);
 }
 
-inline UVRect UVRectFromPos(const Vec2i imageSize, const Vec2i partSize, const Vec2i pos) {
+fpl_extern_inline UVRect UVRectFromPos(const Vec2i imageSize, const Vec2i partSize, const Vec2i pos) {
 	Vec2f texel = V2fInit(1.0f / (float)imageSize.x, 1.0f / (float)imageSize.y);
 	UVRect result = fplZeroInit;
 	result.uMin = pos.x * texel.x;
@@ -111,6 +111,7 @@ typedef enum CommandType {
 	CommandType_None = 0,
 	CommandType_Clear,
 	CommandType_Viewport,
+	CommandType_Scissor,
 	CommandType_Matrix,
 	CommandType_Rectangle,
 	CommandType_Vertices,
@@ -152,6 +153,13 @@ typedef struct ViewportCommand {
 	int w;
 	int h;
 } ViewportCommand;
+
+typedef struct ScissorCommand {
+	int x;
+	int y;
+	int w;
+	int h;
+} ScissorCommand;
 
 typedef struct RectangleCommand {
 	Vec4f color;
@@ -222,6 +230,7 @@ fpl_extern void RenderInit(RenderState *state, fmemMemoryBlock block);
 fpl_extern void RenderReset(RenderState *state);
 fpl_extern void RenderPushClear(RenderState *state, const Vec4f color, const ClearFlags flags);
 fpl_extern void RenderPushViewport(RenderState *state, const int x, const int y, const int w, const int h);
+fpl_extern void RenderPushScissor(RenderState *state, const int x, const int y, const int w, const int h);
 fpl_extern void RenderPushMatrix(RenderState *state, const Mat4f *mat, const MatrixMode mode);
 fpl_extern void RenderSetMatrix(RenderState *state, const Mat4f *mat);
 fpl_extern void RenderPopMatrix(RenderState *state);
@@ -337,6 +346,21 @@ fpl_extern void RenderPushViewport(RenderState *state, const int x, const int y,
 	}
 	CommandHeader *header = _RenderPushHeader(state, CommandType_Viewport);
 	ViewportCommand *cmd = _RenderPushTypeAs(state, header, ViewportCommand, true);
+	if (cmd == fpl_null) {
+		return;
+	}
+	cmd->x = x;
+	cmd->y = y;
+	cmd->w = w;
+	cmd->h = h;
+}
+
+fpl_extern void RenderPushScissor(RenderState *state, const int x, const int y, const int w, const int h) {
+	if (state == fpl_null) {
+		return;
+	}
+	CommandHeader *header = _RenderPushHeader(state, CommandType_Scissor);
+	ScissorCommand *cmd = _RenderPushTypeAs(state, header, ScissorCommand, true);
 	if (cmd == fpl_null) {
 		return;
 	}
