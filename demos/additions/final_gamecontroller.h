@@ -28,11 +28,11 @@ typedef uint16_t GameControllerInputBindingEncoded;
 // Total binding slots in a mapping (buttons + axes).
 #define GAMECONTROLLER_BINDING_COUNT  (FPL_GAMEPAD_BUTTON_COUNT + GAMECONTROLLER_AXIS_COUNT)
 // On-disk per-entry size: 16 + 1 + 20*2 = 57 bytes.
-#define GAMECONTROLLER_BLOB_ENTRY_SIZE (FPL_GAME_CONTROLLER_GUID_SIZE + 1 + GAMECONTROLLER_BINDING_COUNT * 2)
+#define GAMECONTROLLER_BLOB_ENTRY_SIZE (FPL_GAMEPAD_GUID_SIZE + 1 + GAMECONTROLLER_BINDING_COUNT * 2)
 
 fpl_extern void fplDecodeGamepadMappingEntry(const uint8_t in[GAMECONTROLLER_BLOB_ENTRY_SIZE], fplGamepadMapping *outMapping);
 fpl_extern uint32_t fplDecompressGamepadMappingTable(const uint8_t *blob, uint32_t entryCount, fplGamepadMapping *outMappings, uint32_t maxMappings);
-fpl_extern bool fplFindGamepadMapping(const fplGamepadMapping *table, uint32_t tableCount, const fplGameControllerGuid guid, fplGamepadPlatform platform, fplGamepadMapping *outMapping);
+fpl_extern bool fplFindGamepadMapping(const fplGamepadMapping *table, uint32_t tableCount, const fplGamepadGuid guid, fplGamepadPlatform platform, fplGamepadMapping *outMapping);
 fpl_extern fplGamepadPlatform fplGetGamepadPlatform(const fplPlatformType type);
 
 #endif // FINAL_GAMECONTROLLER_H
@@ -115,11 +115,11 @@ static int fpl__HexDigit(char c) {
 }
 
 // Decodes 32 hex chars at hex into 16 raw bytes. Returns false on malformed input.
-static bool fpl__DecodeGuid(const char *hex, size_t hexLen, fplGameControllerGuid outGuid) {
-	if (hexLen != FPL_GAME_CONTROLLER_GUID_SIZE * 2) {
+static bool fpl__DecodeGuid(const char *hex, size_t hexLen, fplGamepadGuid outGuid) {
+	if (hexLen != FPL_GAMEPAD_GUID_SIZE * 2) {
 		return false;
 	}
-	for (size_t i = 0; i < FPL_GAME_CONTROLLER_GUID_SIZE; ++i) {
+	for (size_t i = 0; i < FPL_GAMEPAD_GUID_SIZE; ++i) {
 		int hi = fpl__HexDigit(hex[i * 2]);
 		int lo = fpl__HexDigit(hex[i * 2 + 1]);
 		if (hi < 0 || lo < 0) {
@@ -383,11 +383,11 @@ bool fplEncodeGamepadMappingEntry(const fplGamepadMapping *mapping, uint8_t out[
 			return false;
 		}
 	}
-	for (size_t i = 0; i < FPL_GAME_CONTROLLER_GUID_SIZE; ++i) {
+	for (size_t i = 0; i < FPL_GAMEPAD_GUID_SIZE; ++i) {
 		out[i] = mapping->guid[i];
 	}
-	out[FPL_GAME_CONTROLLER_GUID_SIZE] = (uint8_t)mapping->platform;
-	uint8_t *bp = out + FPL_GAME_CONTROLLER_GUID_SIZE + 1;
+	out[FPL_GAMEPAD_GUID_SIZE] = (uint8_t)mapping->platform;
+	uint8_t *bp = out + FPL_GAMEPAD_GUID_SIZE + 1;
 	for (size_t i = 0; i < FPL_GAMEPAD_BUTTON_COUNT; ++i) {
 		fpl__WriteU16LE(bp, fplEncodeBinding(&mapping->buttons[i]));
 		bp += 2;
@@ -401,11 +401,11 @@ bool fplEncodeGamepadMappingEntry(const fplGamepadMapping *mapping, uint8_t out[
 
 // Deserializes one fixed-size entry into a mapping struct.
 fpl_extern void fplDecodeGamepadMappingEntry(const uint8_t in[GAMECONTROLLER_BLOB_ENTRY_SIZE], fplGamepadMapping *outMapping) {
-	for (size_t i = 0; i < FPL_GAME_CONTROLLER_GUID_SIZE; ++i) {
+	for (size_t i = 0; i < FPL_GAMEPAD_GUID_SIZE; ++i) {
 		outMapping->guid[i] = in[i];
 	}
-	outMapping->platform = (fplGamepadPlatform)in[FPL_GAME_CONTROLLER_GUID_SIZE];
-	const uint8_t *bp = in + FPL_GAME_CONTROLLER_GUID_SIZE + 1;
+	outMapping->platform = (fplGamepadPlatform)in[FPL_GAMEPAD_GUID_SIZE];
+	const uint8_t *bp = in + FPL_GAMEPAD_GUID_SIZE + 1;
 	for (size_t i = 0; i < FPL_GAMEPAD_BUTTON_COUNT; ++i) {
 		fplDecodeBinding(fpl__ReadU16LE(bp), &outMapping->buttons[i]);
 		bp += 2;
@@ -417,8 +417,8 @@ fpl_extern void fplDecodeGamepadMappingEntry(const uint8_t in[GAMECONTROLLER_BLO
 }
 
 // Compares two raw GUIDs lexicographically. <0 if a<b, 0 equal, >0 if a>b.
-static int fpl__CompareGuid(const fplGameControllerGuid a, const fplGameControllerGuid b) {
-	for (size_t i = 0; i < FPL_GAME_CONTROLLER_GUID_SIZE; ++i) {
+static int fpl__CompareGuid(const fplGamepadGuid a, const fplGamepadGuid b) {
+	for (size_t i = 0; i < FPL_GAMEPAD_GUID_SIZE; ++i) {
 		if (a[i] != b[i]) {
 			return (int)a[i] - (int)b[i];
 		}
@@ -441,7 +441,7 @@ fpl_extern uint32_t fplDecompressGamepadMappingTable(const uint8_t *blob, uint32
 }
 
 // Looks up a mapping in an already-decompressed, GUID-sorted table. Prefers an exact platform match, falls back to the first GUID match.
-fpl_extern bool fplFindGamepadMapping(const fplGamepadMapping *table, uint32_t tableCount, const fplGameControllerGuid guid, fplGamepadPlatform platform, fplGamepadMapping *outMapping) {
+fpl_extern bool fplFindGamepadMapping(const fplGamepadMapping *table, uint32_t tableCount, const fplGamepadGuid guid, fplGamepadPlatform platform, fplGamepadMapping *outMapping) {
 	if (table == fpl_null || outMapping == fpl_null || tableCount == 0) {
 		return false;
 	}

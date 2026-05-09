@@ -1080,7 +1080,7 @@ struct AppState {
 };
 
 struct GamepadState {
-	fplGameControllerGuid guid;
+	fplGamepadGuid guid;
 	fplGamepadState state;
 	uint32_t deviceIndex;
 	const char *deviceName;

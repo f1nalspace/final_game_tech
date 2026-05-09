@@ -8210,16 +8210,16 @@ fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY);
 typedef char fplGamepadName[FPL_MAX_NAME_LENGTH];
 
 /**
-* @define FPL_GAME_CONTROLLER_GUID_SIZE
+* @define FPL_GAMEPAD_GUID_SIZE
 * @brief Defines the size of a game controller guid in bytes.
 */
-#define FPL_GAME_CONTROLLER_GUID_SIZE 16
+#define FPL_GAMEPAD_GUID_SIZE 16
 
 /**
-* @typedef fplGameControllerGuid
+* @typedef fplGamepadGuid
 * @brief A typedef that defines a 16-byte guid for identify a game controler.
 */
-typedef uint8_t fplGameControllerGuid[FPL_GAME_CONTROLLER_GUID_SIZE];
+typedef uint8_t fplGamepadGuid[FPL_GAMEPAD_GUID_SIZE];
 
 /**
 * @struct fplGamepadButton
@@ -8498,7 +8498,7 @@ typedef enum fplGamepadPlatform {
 */
 typedef struct fplGamepadMapping {
 	//! Raw 16-byte device GUID, indexed identically across backends to allow lookup.
-	fplGameControllerGuid guid;
+	fplGamepadGuid guid;
 	//! Bindings for the digital button slots, indexed by @ref fplGamepadButtonType.
 	fplGamepadInputBinding buttons[FPL_GAMEPAD_BUTTON_COUNT];
 	//! Bindings for the analog axis slots, indexed by @ref fplGamepadAxisType.
@@ -8539,7 +8539,7 @@ typedef struct fplGamepadData {
 */
 typedef struct fplGamepadInfo {
 	//! Raw 16-byte SDL-compatible GUID built by the backend.
-	fplGameControllerGuid guid;
+	fplGamepadGuid guid;
 	//! Display name of the device (UTF-8).
 	const char *name;
 	//! Backend-local slot index for the controller.
@@ -12181,7 +12181,7 @@ fpl_internal void fpl__GamepadFinalizeState(fplGamepadState *state) {
 }
 
 // Builds a 16-byte SDL-style gamepad GUID from a USB VID/PID/version triple. Used by raw-HID backends (DInput, Linux joydev, etc.) when filling fplGamepadInfo for the resolver.
-fpl_internal void fpl__GamepadBuildSDLGuid(const uint16_t bus, const uint16_t vid, const uint16_t pid, const uint16_t version, const uint16_t nameCrc16, fplGameControllerGuid outGuid) {
+fpl_internal void fpl__GamepadBuildSDLGuid(const uint16_t bus, const uint16_t vid, const uint16_t pid, const uint16_t version, const uint16_t nameCrc16, fplGamepadGuid outGuid) {
 	outGuid[0]  = (uint8_t)(bus & 0xFF);
 	outGuid[1]  = (uint8_t)((bus >> 8) & 0xFF);
 	outGuid[2]  = (uint8_t)(nameCrc16 & 0xFF);
