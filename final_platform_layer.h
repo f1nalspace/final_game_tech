@@ -178,11 +178,12 @@ SOFTWARE.
 	- Release
 	- Added new useful macros
 	- Added several date time types and functions
-	- Added game controllers settings
+	- Added gamepad settings
 	- Added gamepad mapping types and callbacks
-	- Introduced a input backend system
+	- Introduced a input backend system that allows multiple input backends
 	- Improved code documentation a lot
 	- Improved thread-safety in the error-reporting ring (atomic slot claim, no init-order/mutex hazards) and the event system
+	- Fixed naming inconsistencies
 	- A few major bugfixes
 	- Several minor bugfixes
 
@@ -5740,12 +5741,12 @@ typedef FPL_GAMEPAD_MAPPING_RESOLVE_CALLBACK(fpl_gamepad_mapping_resolver_callba
 
 /**
 * @struct fplGamepadSettings
-* @brief Stores the settings for controlling how game controllers are handled.
+* @brief Stores the settings for controlling how gamepads are handled.
 */
 typedef struct fplGamepadSettings {
-	//! Frequency in ms for detecting new or removed controllers (Default: 1000).
+	//! Frequency in ms for detecting new or removed gamepads (Default: 1000).
 	uint32_t detectionFrequency;
-	//! Frequency in ms for updating states of connected controllers (Default: 0, 0 = As fast as possible).
+	//! Frequency in ms for updating states of connected gamepads (Default: 0, 0 = As fast as possible).
 	uint32_t updateFrequency;
 	//! Optional resolver invoked once per raw-HID controller connect to install a custom mapping (Default: fpl_null).
 	fpl_gamepad_mapping_resolver_callback *mappingResolver;
@@ -5754,7 +5755,7 @@ typedef struct fplGamepadSettings {
 } fplGamepadSettings;
 
 /**
-* @brief Resets the given game controllers settings container to default values.
+* @brief Resets the given gamepad settings container to default values.
 * @param[out] gamepadSettings Reference to the target structure @ref fplGamepadSettings.
 * @note This will not change any input settings! To change the actual settings you have to pass the entire @ref fplSettings container as an argument in @ref fplPlatformInit().
 */
@@ -5842,7 +5843,7 @@ fpl_common_api void fplInputBackendMaskDisable(fplInputBackendMask *mask, const 
 * @brief Stores input settings.
 */
 typedef struct fplInputSettings {
-	//! Game controllers settings
+	//! Gamepad settings
 	fplGamepadSettings gamepad;
 	//! Bitmask of @ref fplInputSourceType values to enable (Default: @ref fplInputSourceType_All).
 	fplInputSourceType enabledSources;
@@ -11304,11 +11305,15 @@ typedef struct fpl__LinuxInitState {
 } fpl__LinuxInitState;
 
 #if defined(FPL__ENABLE_INPUT_LINUX_JOYSTICK)
-#define FPL__LINUX_MAX_GAME_CONTROLLER_COUNT 4
-#define FPL__LINUX_JOYSTICK_SCAN_COUNT 32
-typedef struct fpl__InputLinuxJoypad {
+
+#define FPL__INPUT_LINUX_JOYSTICK_MAX_JOYPAD_COUNT 4
+
+#define FPL__INPUT_LINUX_JOYSTICK_SCAN_COUNT 32
+
+typedef struct fpl__InputLinuxJoystickGamepad {
 	char deviceName[512 + 1];
 	char displayName[FPL_MAX_NAME_LENGTH];
+	// Device handle
 	int fd;
 	int slotIndex;
 	uint8_t axisCount;
@@ -11323,12 +11328,12 @@ typedef struct fpl__InputLinuxJoypad {
 	fplGamepadMapping mapping;
 	// True when the resolver returned a mapping. When false, the legacy hardcoded fpl__InputLinuxJoystickStateUpdateEvent path is used unchanged.
 	bool hasMapping;
-} fpl__InputLinuxJoypad;
+} fpl__InputLinuxJoystickGamepad;
 
 // Linux /dev/input/jsX backend instance owned by fpl__InputContext.
 typedef struct fpl__InputBackendLinuxJoystick {
-	fpl__InputLinuxJoypad controllers[FPL__LINUX_MAX_GAME_CONTROLLER_COUNT];
-	bool triedSlot[FPL__LINUX_JOYSTICK_SCAN_COUNT];
+	fpl__InputLinuxJoystickGamepad gamepads[FPL__INPUT_LINUX_JOYSTICK_MAX_JOYPAD_COUNT];
+	bool triedSlot[FPL__INPUT_LINUX_JOYSTICK_SCAN_COUNT];
 	uint64_t lastCheckTime;
 	bool isInitialized;
 } fpl__InputBackendLinuxJoystick;
@@ -14800,8 +14805,8 @@ fpl_internal uint32_t fpl__EnumerateInputDevices(const fplInputSourceType source
 
 #	if defined(FPL__ENABLE_INPUT_LINUX_JOYSTICK)
 	if (ctx->linuxJoystick.isInitialized && (sourceFilter & fplInputSourceType_Gamepad) != 0) {
-		for (uint32_t i = 0; i < fplArrayCount(ctx->linuxJoystick.controllers); ++i) {
-			const fpl__InputLinuxJoypad *controller = &ctx->linuxJoystick.controllers[i];
+		for (uint32_t i = 0; i < fplArrayCount(ctx->linuxJoystick.gamepads); ++i) {
+			const fpl__InputLinuxJoystickGamepad *controller = &ctx->linuxJoystick.gamepads[i];
 			if (controller->fd <= 0) continue;
 			if (out != fpl_null && count < maxDevices) {
 				fplInputDevice *dev = &out[count];
@@ -23620,7 +23625,7 @@ fpl_internal float fpl__InputLinuxJoystickProcessStickValue(const int16_t value,
 }
 
 // Returns true when the given joydev axis is bound as a thumb-stick axis (LeftX/LeftY/RightX/RightY) by the active mapping. Used to suppress JS_EVENT_INIT replay for stick axes — joydev re-emits the kernel-cached raw value at open time, which is uncalibrated for HID-unsigned axes (Logitech F310 in DInput mode reports ABS_Z / ABS_RZ as -32767 = "min" rather than the centered 0 a real device sends after first motion). Trigger axes legitimately rest at -32767, so this filter is restricted to sticks.
-fpl_internal bool fpl__InputLinuxJoystick_IsStickAxis(const fpl__InputLinuxJoypad *controller, uint8_t axisIndex) {
+fpl_internal bool fpl__InputLinuxJoystick_IsStickAxis(const fpl__InputLinuxJoystickGamepad *controller, uint8_t axisIndex) {
 	if (!controller->hasMapping) {
 		return false;
 	}
@@ -23639,7 +23644,7 @@ fpl_internal bool fpl__InputLinuxJoystick_IsStickAxis(const fpl__InputLinuxJoypa
 	return false;
 }
 
-fpl_internal void fpl__InputLinuxJoystickStateUpdateEvent(const struct js_event *event, fpl__InputLinuxJoypad *controller) {
+fpl_internal void fpl__InputLinuxJoystickStateUpdateEvent(const struct js_event *event, fpl__InputLinuxJoystickGamepad *controller) {
 	// Keep the backend-agnostic raw snapshot in sync — used by fplGamepadMappingApply when the resolver installed a mapping.
 	uint8_t evType = event->type & ~(uint8_t)JS_EVENT_INIT;
 	bool isInit = (event->type & JS_EVENT_INIT) != 0;
@@ -23782,7 +23787,7 @@ fpl_internal void fpl__InputLinuxJoystickStateUpdateEvent(const struct js_event 
 	}
 }
 
-// Detect new joysticks across /dev/input/js0 .. js{FPL__LINUX_JOYSTICK_SCAN_COUNT-1}.
+// Detect new joysticks across /dev/input/js0 .. js{FPL__INPUT_LINUX_JOYSTICK_SCAN_COUNT-1}.
 // Throttled by gamepad.detectionFrequency. Called only from Update.
 fpl_internal void fpl__InputLinuxJoystick_DetectControllers(const fplSettings *settings, fpl__InputBackendLinuxJoystick *backend) {
 	// https://github.com/underdoeg/ofxGamepad
@@ -23795,15 +23800,15 @@ fpl_internal void fpl__InputLinuxJoystick_DetectControllers(const fplSettings *s
 	}
 	backend->lastCheckTime = now;
 
-	for (int slotIndex = 0; slotIndex < FPL__LINUX_JOYSTICK_SCAN_COUNT; ++slotIndex) {
+	for (int slotIndex = 0; slotIndex < FPL__INPUT_LINUX_JOYSTICK_SCAN_COUNT; ++slotIndex) {
 		char deviceName[64];
 		fplStringFormat(deviceName, fplArrayCount(deviceName), "/dev/input/js%d", slotIndex);
 
 		// Skip if this slot is already mapped to a live controller
 		bool alreadyFound = false;
 		int freeIndex = -1;
-		for (uint32_t controllerIndex = 0; controllerIndex < fplArrayCount(backend->controllers); ++controllerIndex) {
-			fpl__InputLinuxJoypad *controller = backend->controllers + controllerIndex;
+		for (uint32_t controllerIndex = 0; controllerIndex < fplArrayCount(backend->gamepads); ++controllerIndex) {
+			fpl__InputLinuxJoystickGamepad *controller = backend->gamepads + controllerIndex;
 			if (controller->fd > 0 && controller->slotIndex == slotIndex) {
 				alreadyFound = true;
 				break;
@@ -23857,7 +23862,7 @@ fpl_internal void fpl__InputLinuxJoystick_DetectControllers(const fplSettings *s
 			continue;
 		}
 
-		fpl__InputLinuxJoypad *controller = backend->controllers + freeIndex;
+		fpl__InputLinuxJoystickGamepad *controller = backend->gamepads + freeIndex;
 		fplClearStruct(controller);
 		controller->fd = fd;
 		controller->slotIndex = slotIndex;
@@ -23921,8 +23926,8 @@ fpl_internal void fpl__InputLinuxJoystick_DetectControllers(const fplSettings *s
 // Drain pending joystick events from open fds and refresh cached state.
 // useEvents=true pushes Disconnected/StateChanged events; false skips them.
 fpl_internal void fpl__InputLinuxJoystick_UpdateStates(fpl__InputBackendLinuxJoystick *backend, const bool useEvents) {
-	for (uint32_t controllerIndex = 0; controllerIndex < fplArrayCount(backend->controllers); ++controllerIndex) {
-		fpl__InputLinuxJoypad *controller = backend->controllers + controllerIndex;
+	for (uint32_t controllerIndex = 0; controllerIndex < fplArrayCount(backend->gamepads); ++controllerIndex) {
+		fpl__InputLinuxJoystickGamepad *controller = backend->gamepads + controllerIndex;
 		if (controller->fd <= 0) continue;
 
 		struct js_event event;
@@ -23936,7 +23941,7 @@ fpl_internal void fpl__InputLinuxJoystick_UpdateStates(fpl__InputBackendLinuxJoy
 					controller->fd = 0;
 					fplClearStruct(&controller->state);
 					wasDisconnected = true;
-					if (slotIndex >= 0 && slotIndex < FPL__LINUX_JOYSTICK_SCAN_COUNT) {
+					if (slotIndex >= 0 && slotIndex < FPL__INPUT_LINUX_JOYSTICK_SCAN_COUNT) {
 						backend->triedSlot[slotIndex] = false;
 					}
 					if (useEvents) {
@@ -23970,8 +23975,8 @@ fpl_internal void fpl__InputLinuxJoystick_UpdateStates(fpl__InputBackendLinuxJoy
 fpl_internal bool fpl__InputBackendLinuxJoystick_Init(fpl__InputBackendLinuxJoystick *backend) {
 	fplAssertPtr(backend);
 	if (backend->isInitialized) return true;
-	for (int i = 0; i < fplArrayCount(backend->controllers); ++i) {
-		backend->controllers[i].slotIndex = -1;
+	for (int i = 0; i < fplArrayCount(backend->gamepads); ++i) {
+		backend->gamepads[i].slotIndex = -1;
 	}
 	backend->isInitialized = true;
 	return true;
@@ -23980,8 +23985,8 @@ fpl_internal bool fpl__InputBackendLinuxJoystick_Init(fpl__InputBackendLinuxJoys
 fpl_internal void fpl__InputBackendLinuxJoystick_Release(fpl__InputBackendLinuxJoystick *backend) {
 	fplAssertPtr(backend);
 	if (!backend->isInitialized) return;
-	for (int controllerIndex = 0; controllerIndex < fplArrayCount(backend->controllers); ++controllerIndex) {
-		fpl__InputLinuxJoypad *controller = backend->controllers + controllerIndex;
+	for (int controllerIndex = 0; controllerIndex < fplArrayCount(backend->gamepads); ++controllerIndex) {
+		fpl__InputLinuxJoystickGamepad *controller = backend->gamepads + controllerIndex;
 		if (controller->fd > 0) {
 			close(controller->fd);
 			controller->fd = 0;
@@ -24006,11 +24011,11 @@ fpl_internal bool fpl__InputBackendLinuxJoystick_PollGamepad(fpl__InputBackendLi
 	fpl__InputLinuxJoystick_UpdateStates(backend, false);
 	// Merge contract: only fill slots we own (controller open) and that no earlier backend has claimed.
 	bool any = false;
-	for (int i = 0; i < fplArrayCount(backend->controllers); ++i) {
+	for (int i = 0; i < fplArrayCount(backend->gamepads); ++i) {
 		if (i >= fplArrayCount(outStates->deviceStates)) break;
-		if (backend->controllers[i].fd <= 0) continue;
+		if (backend->gamepads[i].fd <= 0) continue;
 		if (outStates->deviceStates[i].isConnected) continue;
-		outStates->deviceStates[i] = backend->controllers[i].state;
+		outStates->deviceStates[i] = backend->gamepads[i].state;
 		any = true;
 	}
 	return any;
@@ -33805,7 +33810,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 	}
 #	endif // FPL__ENABLE_AUDIO
 
-	// Init Input. Each source flag (Keyboard/Mouse/GameController) brings up the input subsystem and enables the matching source.
+	// Init Input. Each source flag (Keyboard/Mouse/Gamepad) brings up the input subsystem and enables the matching source.
 #	if defined(FPL__ENABLE_INPUT)
 	{
 		fplInputSourceType requestedSources = fplInputSourceType_None;
