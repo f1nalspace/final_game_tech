@@ -194,6 +194,7 @@ SOFTWARE.
 	- Changed: fplCopyStringLen is now returning the total number of characters required or returns zero on errors
 	- Changed: fplCopyString is now returning the total number of characters required or returns zero on errors
 	- Changed: fplGetWindowTitle is now returning the total number of characters required or returns zero on errors
+	- Changed: Renamed fplInitFlags_GameController to fplInitFlags_Gamepad due to naming inconsisitency
 
 	### Details
 	- New: Added macro FPL_CACHELINE_SIZE that detects the cacheline size from the detected CPU architectures
@@ -4858,13 +4859,13 @@ typedef enum fplInitFlags {
 	//! Use asynchronous audio playback.
 	fplInitFlags_Audio = 1 << 3,
 	//! Enable the gamepad input source. Initializes the input subsystem if not already requested.
-	fplInitFlags_GameController = 1 << 4,
+	fplInitFlags_Gamepad = 1 << 4,
 	//! Enable the keyboard input source. Initializes the input subsystem if not already requested.
 	fplInitFlags_Keyboard = 1 << 5,
 	//! Enable the mouse input source. Initializes the input subsystem if not already requested.
 	fplInitFlags_Mouse = 1 << 6,
 	//! Convenience alias enabling keyboard, mouse and gamepad input sources together.
-	fplInitFlags_Input = fplInitFlags_Keyboard | fplInitFlags_Mouse | fplInitFlags_GameController,
+	fplInitFlags_Input = fplInitFlags_Keyboard | fplInitFlags_Mouse | fplInitFlags_Gamepad,
 	//! All init flags.
 	fplInitFlags_All = fplInitFlags_Console | fplInitFlags_Window | fplInitFlags_Video | fplInitFlags_Audio | fplInitFlags_Input,
 } fplInitFlags;
@@ -24020,7 +24021,7 @@ fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
 	FPL__CheckPlatform(false);
 	FPL__CheckArgumentNull(outStates, false);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	if (!fplIsMaskSet(appState->initFlags, fplInitFlags_GameController)) return false;
+	if (!fplIsMaskSet(appState->initFlags, fplInitFlags_Gamepad)) return false;
 	return fpl__InputSystem_PollGamepad(&appState->input, outStates);
 }
 
@@ -33810,7 +33811,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 		fplInputSourceType requestedSources = fplInputSourceType_None;
 		if (fplIsMaskSet(appState->initFlags, fplInitFlags_Keyboard))       requestedSources = (fplInputSourceType)(requestedSources | fplInputSourceType_Keyboard);
 		if (fplIsMaskSet(appState->initFlags, fplInitFlags_Mouse))          requestedSources = (fplInputSourceType)(requestedSources | fplInputSourceType_Mouse);
-		if (fplIsMaskSet(appState->initFlags, fplInitFlags_GameController)) requestedSources = (fplInputSourceType)(requestedSources | fplInputSourceType_Gamepad);
+		if (fplIsMaskSet(appState->initFlags, fplInitFlags_Gamepad)) requestedSources = (fplInputSourceType)(requestedSources | fplInputSourceType_Gamepad);
 		// Back-compat: a window implies keyboard + mouse input. Gamepad still requires an explicit flag.
 		if (fplIsMaskSet(appState->initFlags, fplInitFlags_Window)) {
 			requestedSources = (fplInputSourceType)(requestedSources | fplInputSourceType_Keyboard | fplInputSourceType_Mouse);
