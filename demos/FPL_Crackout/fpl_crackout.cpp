@@ -7,7 +7,7 @@ Description:
 	A breakout-like game based on FPL written in C++.
 
 Requirements:
-	- C++/11 Compiler
+	- C++ Compiler
 	- Box2D
 	- Final Memory
 	- Final Framework
@@ -16,6 +16,13 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2025-11-21
+	- Changed: Reflect for API changes final_game.h (GameRender has an additional Input argument)
+	- Changed: Reflect for API changes final_game.h (WasPressed / IsDown was renamed to ButtonWasPressed / ButtonIsDown)
+	
+	## 2025-11-16
+	- Migrated to new final addition libraries (C99 standard)
+
 	## 2022-01-20
 	- Use variable frame rate for paddle moving instead to prevent over-speeding when V-Sync is enabled, or V-Blanks are more than 60 Hz
 	- Change restitution for field borders to zero, so the paddle wont bounce anymore
@@ -34,7 +41,7 @@ Changelog:
 	- Reflect api changes in FPL 0.9.2
 
 	## 2018-08-09
-	- Use IsDown() for launching the ball (More responsive)
+	- Use ButtonIsDown() for launching the ball (More responsive)
 	- Use actionDown and actionStart for menu instead "any"
 	- Support analog paddle movement
 
@@ -74,7 +81,7 @@ Todo:
 	- Re-create sprites in HD
 
 License:
-	Copyright (c) 2017-2025 Torsten Spaete
+	Copyright (c) 2017-2026 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -156,15 +163,22 @@ fplStaticAssert(MaxBrickCols % 2 != 0);
 // Brick UVs
 enum class BrickType: int32_t {
 	NoBrick = 0,
-	Solid
+	Green,
+	Red,
+	Blue,
+	Yellow,
 };
+constexpr uint32_t BrickTypeCount = 4;
 const Vec2i BrickTileSize = V2iInit(32, 16);
-const Vec2i BricksTilesetSize = V2iInit(32, 16);
+const Vec2i BricksTilesetSize = V2iInit(128, 16);
 const int BrickTilesetBorder = 0;
 class BricksUVsClass: public ArrayInitializer<BrickType, UVRect, 256> {
 public:
 	BricksUVsClass() {
-		Set(BrickType::Solid, UVRectFromTile(BricksTilesetSize, BrickTileSize, BrickTilesetBorder, V2iInit(0, 0)));
+		Set(BrickType::Green, UVRectFromTile(BricksTilesetSize, BrickTileSize, BrickTilesetBorder, V2iInit(0, 0)));
+		Set(BrickType::Red, UVRectFromTile(BricksTilesetSize, BrickTileSize, BrickTilesetBorder, V2iInit(1, 0)));
+		Set(BrickType::Blue, UVRectFromTile(BricksTilesetSize, BrickTileSize, BrickTilesetBorder, V2iInit(2, 0)));
+		Set(BrickType::Yellow, UVRectFromTile(BricksTilesetSize, BrickTileSize, BrickTilesetBorder, V2iInit(3, 0)));
 	}
 };
 static BricksUVsClass BricksUVs = {};
@@ -340,7 +354,7 @@ struct GameState {
 
 	AudioSystem *audioSys;
 
-	Viewport viewport;
+	Viewport4i viewport;
 
 	b2World *world;
 
@@ -493,7 +507,7 @@ static void LoadLevel(GameState &state, int levelSeed) {
 			float brickX = -WorldRadius.x + FrameRadius * 2.0f + AreaPadding + BrickRadius.x;
 			for(int col = 0; col < MaxBrickCols; ++col) {
 				BrickType brickType = state.bricksMap[row * MaxBrickCols + col];
-				if(brickType == BrickType::Solid) {
+				if(brickType != BrickType::NoBrick) {
 					Entity *brickEntity = &state.activeBricks[state.totalBricks++];
 					*brickEntity = {};
 					brickEntity->type = EntityType::Brick;
@@ -660,19 +674,22 @@ static void LoadLevel(GameState &state, int levelSeed) {
 
 
 static bool LoadTexture(const TextureData &source, const bool repeatable, TextureAsset &outTexture) {
-	GLuint texId = AllocateTexture(source.width, source.height, source.data, repeatable, GL_NEAREST);
-	outTexture.texture = ValueToPointer(texId);
+	GLuint texId = AllocateTexture(source.width, source.height, source.data, repeatable, GL_NEAREST, false);
+	outTexture.texture = GetTextureHandleFromID(texId);
 	bool result = texId > 0;
 	return(result);
 }
 
-static bool LoadTexture(const char *dataPath, const char *filename, const bool repeatable, TextureAsset &outTexture) {
-	TextureData image = LoadTextureData(dataPath, filename);
-	if(image.data == nullptr) {
+static bool LoadTexture(MemoryAllocator *allocator, const char *filePath, const bool repeatable, TextureAsset &outTexture) {
+	TextureData image = fplZeroInit;
+	if(!TextureDataLoadFromFile(allocator, &image, filePath)) {
 		return false;
 	}
+
 	bool result = LoadTexture(image, repeatable, outTexture);
-	FreeTextureData(image);
+
+	TextureDataFree(allocator, &image);
+
 	return(result);
 }
 
@@ -688,26 +705,43 @@ static bool LoadSound(AudioSystem *audio, const char *dataPath, const char *file
 }
 
 static bool LoadAssets(GameState &state) {
-	LoadTexture(state.dataPath, "ball.bmp", false, state.assets.ballTexture);
-	LoadTexture(state.dataPath, "bricks.bmp", false, state.assets.bricksTexture);
-	LoadTexture(state.dataPath, "paddle.bmp", false, state.assets.paddleTexture);
-	LoadTexture(state.dataPath, "frame.bmp", false, state.assets.frameTexture);
+	// TODO(final): Proper memory allocator
+	MemoryAllocator *allocator = fpl_null;
 
-	TextureData bgImage = LoadTextureData(state.dataPath, "bg.bmp");
-	if(bgImage.data != nullptr) {
-		TextureData bgTileImage0 = CreateSubTextureData(bgImage, 2, 2, 16, 16);
-		LoadTexture(bgTileImage0, true, state.assets.bgTextures[BackgroundType::Default]);
-		FreeTextureData(bgTileImage0);
+	// TODO(final): Proper validation and clean up when something is failing
+
+	char tmpPath[1024];
+		
+	fplPathCombine(tmpPath, fplArrayCount(tmpPath), 2, state.dataPath, "ball.bmp");
+	LoadTexture(allocator, tmpPath, false, state.assets.ballTexture);
+
+	fplPathCombine(tmpPath, fplArrayCount(tmpPath), 2, state.dataPath, "bricks.bmp");
+	LoadTexture(allocator, tmpPath, false, state.assets.bricksTexture);
+
+	fplPathCombine(tmpPath, fplArrayCount(tmpPath), 2, state.dataPath, "paddle.bmp");
+	LoadTexture(allocator, tmpPath, false, state.assets.paddleTexture);
+
+	fplPathCombine(tmpPath, fplArrayCount(tmpPath), 2, state.dataPath, "frame.bmp");
+	LoadTexture(allocator, tmpPath, false, state.assets.frameTexture);
+
+	TextureData bgImage = fplZeroInit;
+	fplPathCombine(tmpPath, fplArrayCount(tmpPath), 2, state.dataPath, "bg.bmp");
+	if(TextureDataLoadFromFile(allocator, &bgImage, tmpPath)) {
+		TextureData bgTileImage0 = fplZeroInit;
+		if(TextureDataLoadFromSourceRect(allocator, &bgImage, &bgTileImage0, 2, 2, 16, 16)) {
+			LoadTexture(bgTileImage0, true, state.assets.bgTextures[BackgroundType::Default]);
+		}
+		TextureDataFree(allocator, &bgTileImage0);
 	}
-	FreeTextureData(bgImage);
+	TextureDataFree(allocator, &bgImage);
 
-	if(LoadFontFromMemory(ptr_fontHemiHeadBoldItalic, sizeOf_fontHemiHeadBoldItalic, 0, 36.0f, 32, 127, 512, 512, true, &state.assets.fontMenu.desc)) {
+	if(FontLoadFromMemory(allocator, ptr_fontHemiHeadBoldItalic, sizeOf_fontHemiHeadBoldItalic, 0, 36.0f, 32, 127, 512, 512, true, &state.assets.fontMenu.desc)) {
 		GLuint texId = AllocateTexture(state.assets.fontMenu.desc.atlasWidth, state.assets.fontMenu.desc.atlasHeight, state.assets.fontMenu.desc.atlasAlphaBitmap, false, GL_NEAREST, true);
-		state.assets.fontMenu.texture = ValueToPointer(texId);
+		state.assets.fontMenu.texture = GetTextureHandleFromID(texId);
 	}
-	if(LoadFontFromMemory(ptr_fontHemiHeadBoldItalic, sizeOf_fontHemiHeadBoldItalic, 0, 18.0f, 32, 127, 512, 512, true, &state.assets.fontHud.desc)) {
+	if(FontLoadFromMemory(allocator, ptr_fontHemiHeadBoldItalic, sizeOf_fontHemiHeadBoldItalic, 0, 18.0f, 32, 127, 512, 512, true, &state.assets.fontHud.desc)) {
 		GLuint texId = AllocateTexture(state.assets.fontHud.desc.atlasWidth, state.assets.fontHud.desc.atlasHeight, state.assets.fontHud.desc.atlasAlphaBitmap, false, GL_NEAREST, true);
-		state.assets.fontHud.texture = ValueToPointer(texId);
+		state.assets.fontHud.texture = GetTextureHandleFromID(texId);
 	}
 
 	LoadSound(state.audioSys, state.dataPath, "bounce_44100hz.wav", state.assets.ballHitSound);
@@ -787,18 +821,18 @@ static void ReleaseGame(GameState &state) {
 	fglUnloadOpenGL();
 }
 
-extern void GameRelease(GameMemory &gameMemory) {
-	GameState *state = gameMemory.game;
+extern void GameRelease(GameMemory *gameMemory) {
+	GameState *state = gameMemory->game;
 	if(state != nullptr) {
 		ReleaseGame(*state);
 		state->~GameState();
 	}
 }
 
-extern bool GameInit(GameMemory &gameMemory) {
-	GameState *state = (GameState *)fmemPush(gameMemory.memory, sizeof(GameState), fmemPushFlags_Clear);
-	gameMemory.game = state;
-	state->audioSys = gameMemory.audio;
+extern bool GameInit(GameMemory *gameMemory, const int argumentCount, char **arguments) {
+	GameState *state = (GameState *)fmemPush(gameMemory->memory, sizeof(GameState), fmemPushFlags_Clear);
+	gameMemory->game = state;
+	state->audioSys = gameMemory->audio;
 	if(!InitGame(*state)) {
 		GameRelease(gameMemory);
 		return(false);
@@ -824,8 +858,8 @@ static void LaunchBall(GameState &state) {
 	ball->isDead = false;
 	ball->body->SetType(b2BodyType::b2_dynamicBody);
 	float newAngle = startAngle + (Random01() > 0.5f ? -1 : 1) * Random01() * spreadAngle;
-	float a = DegreesToRadians(newAngle);
-	b2Vec2 direction = b2Vec2(Cosine(a), Sine(a));
+	float a = F32DegreesToRadians(newAngle);
+	b2Vec2 direction = b2Vec2(F32Cos(a), F32Sin(a));
 	ball->body->ApplyLinearImpulse(ball->speed * direction, ball->body->GetPosition(), true);
 	paddle.gluedBall = nullptr;
 }
@@ -835,7 +869,7 @@ static void SetRandomLevel(GameState &state, int seed) {
 	fplAssert((MaxBrickCols * MaxBrickRows) <= fplArrayCount(state.bricksMap));
 	fplMemoryClear(state.bricksMap, sizeof(Brick) * fplArrayCount(state.bricksMap));
 	srand(seed);
-	state.levelSeed = seed;
+	state.levelSeed = 42 + seed;
 	int halfColCount = (MaxBrickCols - 1) / 2;
 	bool reverse = RandomInt(100) > 25;
 	for(int row = 0; row < MaxBrickRows; ++row) {
@@ -844,18 +878,23 @@ static void SetRandomLevel(GameState &state, int seed) {
 #else
 		int randomColCount = RandomInt(halfColCount);
 #endif
+		int randomBrickTypeIndex = RandomInt(BrickTypeCount);
+		BrickType brickType = (BrickType)((int)BrickType::Green + randomBrickTypeIndex);
+
 		for(int col = 0; col < randomColCount; ++col) {
 			int c = reverse ? (halfColCount - 1 - col) : col;
 			int leftCol = c;
 			int rightCol = (MaxBrickCols - 1) - c;
-			state.bricksMap[row * MaxBrickCols + leftCol] = BrickType::Solid;
-			state.bricksMap[row * MaxBrickCols + rightCol] = BrickType::Solid;
+
+
+			state.bricksMap[row * MaxBrickCols + leftCol] = brickType;
+			state.bricksMap[row * MaxBrickCols + rightCol] = brickType;
 		}
 #if ALL_BRICKS
-		state.bricksMap[row * MaxBrickCols + halfColCount] = BrickType::Solid;
+		state.bricksMap[row * MaxBrickCols + halfColCount] = BrickType::Green;
 #else
 		if(Random01() > 0.5f) {
-			state.bricksMap[row * MaxBrickCols + halfColCount] = BrickType::Solid;
+			state.bricksMap[row * MaxBrickCols + halfColCount] = BrickType::Green;
 		}
 #endif
 	}
@@ -967,7 +1006,7 @@ static void HandlePreCollision(GameState &state, b2Contact *contact) {
 
 			Vec2f bounce = V2fInit(0, 1);
 			if(t < 0.0f) {
-				t = Abs(t);
+				t = F32Abs(t);
 				bounce = V2fLerp(V2fInit(0, 1), t, V2fInit(-1, 0.25f));
 			} else {
 				bounce = V2fLerp(V2fInit(0, 1), t, V2fInit(1, 0.25f));
@@ -993,28 +1032,28 @@ void GameContactListener::PreSolve(b2Contact *contact, const b2Manifold *oldMani
 void GameContactListener::PostSolve(b2Contact *contact, const b2ContactImpulse *impulse) {
 }
 
-extern bool IsGameExiting(GameMemory &gameMemory) {
-	GameState *state = gameMemory.game;
+extern bool IsGameExiting(GameMemory *gameMemory) {
+	GameState *state = gameMemory->game;
 	fplAssert(state != nullptr);
 	return state->isExiting;
 }
 
-extern void GameInput(GameMemory &gameMemory, const Input &input) {
-	if(!input.isActive) {
+extern void GameInput(GameMemory *gameMemory, const Input *input) {
+	if(!input->isActive) {
 		return;
 	}
 
-	GameState *state = gameMemory.game;
+	GameState *state = gameMemory->game;
 	fplAssert(state != nullptr);
 
 	// @NOTE(final): We have to the dynamic frame time, because box2d uses its own timing system to lock the physics to a fixed number of updates
 	// When enabled V-Sync this works great, but only when the number of blanks matches the target frame rate of 60 hz.
 	// But with V-Sync disabled, GameInput may be called much more often, so we account for that by using the dynamic frame rate instead.
-	const float vdt = input.dynamicFrameTime;
+	const float vdt = input->dynamicFrameTime;
 
-	if(input.defaultControllerIndex > -1) {
-		fplAssert(input.defaultControllerIndex < fplArrayCount(input.controllers));
-		const Controller *controller = &input.controllers[input.defaultControllerIndex];
+	if(input->defaultControllerIndex > -1) {
+		fplAssert(input->defaultControllerIndex < fplArrayCount(input->controllers));
+		const Controller *controller = &input->controllers[input->defaultControllerIndex];
 		if(controller->isConnected) {
 			switch(state->mode) {
 				case GameMode::Play:
@@ -1024,25 +1063,25 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 
 					if(controller->isAnalog) {
 						float x = controller->analogMovement.x;
-						if(Abs(x) > 0) {
+						if(F32Abs(x) > 0) {
 							paddle.body->ApplyLinearImpulse(paddle.speed * vdt * b2Vec2(x, 0), paddle.body->GetPosition(), true);
 						}
 					} else {
-						if(IsDown(controller->moveLeft)) {
+						if(ButtonIsDown(controller->moveLeft)) {
 							paddle.body->ApplyLinearImpulse(paddle.speed * vdt * b2Vec2(-1, 0), paddle.body->GetPosition(), true);
-						} else if(IsDown(controller->moveRight)) {
+						} else if(ButtonIsDown(controller->moveRight)) {
 							paddle.body->ApplyLinearImpulse(paddle.speed * vdt * b2Vec2(1, 0), paddle.body->GetPosition(), true);
 						}
 					}
 
-					if(IsDown(controller->actionDown) && paddle.gluedBall != nullptr) {
+					if(ButtonIsDown(controller->actionDown) && paddle.gluedBall != nullptr) {
 						LaunchBall(*state);
 					}
 				} break;
 
 				case GameMode::Title:
 				{
-					if(WasPressed(controller->actionDown) || WasPressed(controller->actionStart)) {
+					if(ButtonWasPressed(controller->actionDown) || ButtonWasPressed(controller->actionStart)) {
 						state->mode = GameMode::Menu;
 						float oldbgMoveTime = state->menu.bgMoveTime;
 						state->menu = {};
@@ -1053,23 +1092,23 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 
 				case GameMode::GameOver:
 				{
-					if(WasPressed(controller->actionDown) || WasPressed(controller->actionStart)) {
+					if(ButtonWasPressed(controller->actionDown) || ButtonWasPressed(controller->actionStart)) {
 						state->mode = GameMode::Title;
 					}
 				};
 
 				case GameMode::Menu:
 				{
-					if(WasPressed(controller->moveDown)) {
+					if(ButtonWasPressed(controller->moveDown)) {
 						if(state->menu.itemIndex < (state->menu.itemCount - 1)) {
 							++state->menu.itemIndex;
 						}
-					} else if(WasPressed(controller->moveUp)) {
+					} else if(ButtonWasPressed(controller->moveUp)) {
 						if(state->menu.itemIndex > 0) {
 							--state->menu.itemIndex;
 						}
 					}
-					if(WasPressed(controller->actionDown) || WasPressed(controller->actionStart)) {
+					if(ButtonWasPressed(controller->actionDown) || ButtonWasPressed(controller->actionStart)) {
 						if(state->menu.hotID != nullptr) {
 							state->menu.itemActivated = true;
 						}
@@ -1113,15 +1152,15 @@ static void UpdatePlayMode(GameState &state, const Input &input) {
 			b2Vec2 dir = vel;
 			dir.Normalize();
 
-			float a = ArcTan2(dir.y, dir.x);
-			float deg = RadiansToDegrees(a);
+			float a = F32ArcTan2(dir.y, dir.x);
+			float deg = F32RadiansToDegrees(a);
 			for(int i = 0; i < fplArrayCount(squaredAngles); ++i) {
-				if(Abs(deg) > (squaredAngles[i] - angleTolerance) && Abs(deg) < (squaredAngles[i] + angleTolerance)) {
-					deg += (Abs(deg) - squaredAngles[i] > 0 ? 1 : -1) * angleCorrection;
-					a = DegreesToRadians(deg);
+				if(F32Abs(deg) > (squaredAngles[i] - angleTolerance) && F32Abs(deg) < (squaredAngles[i] + angleTolerance)) {
+					deg += (F32Abs(deg) - squaredAngles[i] > 0 ? 1 : -1) * angleCorrection;
+					a = F32DegreesToRadians(deg);
 				}
 			}
-			dir = b2Vec2(Cosine(a), Sine(a));
+			dir = b2Vec2(F32Cos(a), F32Sin(a));
 
 			dir *= ball.speed;
 			ball.body->SetLinearVelocity(dir);
@@ -1171,19 +1210,19 @@ static void UpdatePlayMode(GameState &state, const Input &input) {
 	state.world->ClearForces();
 }
 
-extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
-	if(!input.isActive) {
+extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
+	if(!input->isActive) {
 		return;
 	}
 
-	GameState *state = gameMemory.game;
+	GameState *state = gameMemory->game;
 	fplAssert(state != nullptr);
-	state->viewport = ComputeViewportByAspect(input.windowSize, GameAspect);
+	state->viewport = VP4iComputeByAspect(input->windowSize, GameAspect);
 
 	if(state->mode == GameMode::Play) {
-		UpdatePlayMode(*state, input);
+		UpdatePlayMode(*state, *input);
 	} else if(state->mode == GameMode::Title || state->mode == GameMode::Menu || state->mode == GameMode::GameOver) {
-		state->menu.bgMoveTime += input.fixedDeltaTime;
+		state->menu.bgMoveTime += input->fixedDeltaTime;
 	}
 }
 
@@ -1192,19 +1231,22 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 static void DrawField(GameState &state, const float uMove, const float vMove) {
 	// Background
 	{
-		GLuint bgTex = PointerToValue<GLuint>(state.assets.bgTextures[BackgroundType::Default].texture);
+		GLuint bgTex = GetTextureIDFromHandle(state.assets.bgTextures[BackgroundType::Default].texture);
 		float uMin = uMove;
 		float vMin = vMove;
 		float uMax = (float)(int)(WorldRadius.x / FrameRadius) + uMove;
 		float vMax = (float)(int)(WorldRadius.y / FrameRadius) + vMove;
 		UVRect bgUV = BackgroundUVs[BackgroundType::Default];
 		glColor4f(1, 1, 1, 1);
-		DrawSprite(bgTex, WorldRadius.x - FrameRadius * 2, WorldRadius.y - FrameRadius, uMin, vMax, uMax, vMin, 0, -FrameRadius);
+		Vec2f bgExt = V2fInit(WorldRadius.x - FrameRadius * 2, WorldRadius.y - FrameRadius);
+		UVRect bgUVRect = UVRectInit(uMin, vMax, uMax, vMin);
+		Vec2f bgOffset = V2fInit(0, -FrameRadius);
+		DrawSprite(bgTex, bgOffset, bgExt, bgUVRect);
 	}
 
 	// Frame
 	{
-		GLuint frameTex = PointerToValue<GLuint>(state.assets.frameTexture.texture);
+		GLuint frameTex = GetTextureIDFromHandle(state.assets.frameTexture.texture);
 		UVRect topLeftEdgeUV = FrameUVs[FrameType::TopLeftEdge];
 		UVRect topRightEdgeUV = FrameUVs[FrameType::TopRightEdge];
 		UVRect topFillUV = FrameUVs[FrameType::TopFill];
@@ -1215,26 +1257,29 @@ static void DrawField(GameState &state, const float uMove, const float vMove) {
 
 		glColor4f(1, 1, 1, 1);
 
+		Vec2f frameExt = V2fInit(FrameRadius, FrameRadius);
+
 		// Top and side fill
 		uint32_t numTopFillSprites = (uint32_t)(WorldRadius.x / FrameRadius + 0.5f);
 		uint32_t numLeftFillSprites = (uint32_t)(WorldRadius.y / FrameRadius + 0.5f);
 		for(uint32_t i = 1; i < numTopFillSprites - 1; ++i) {
 			float xoffset = -WorldRadius.x + FrameRadius + ((float)i * (FrameRadius * 2.0f));
-			DrawSprite(frameTex, FrameRadius, FrameRadius, topFillUV, xoffset, WorldRadius.y - FrameRadius);
+			DrawSprite(frameTex, V2fInit(xoffset, WorldRadius.y - FrameRadius), frameExt, topFillUV);
 		}
 		for(uint32_t i = 0; i < numLeftFillSprites; ++i) {
 			float yoffset = -WorldRadius.y + FrameRadius + ((float)i * (FrameRadius * 2.0f));
-			DrawSprite(frameTex, FrameRadius, FrameRadius, leftFillUV, -WorldRadius.x + FrameRadius, yoffset);
-			DrawSprite(frameTex, FrameRadius, FrameRadius, rightFillUV, WorldRadius.x - FrameRadius, yoffset);
+			Vec2f frameExt = V2fInit(FrameRadius, FrameRadius);
+			DrawSprite(frameTex, V2fInit(-WorldRadius.x + FrameRadius, yoffset), frameExt, leftFillUV);
+			DrawSprite(frameTex, V2fInit(WorldRadius.x - FrameRadius, yoffset), frameExt, rightFillUV);
 		}
 
 		// Top edges
-		DrawSprite(frameTex, FrameRadius, FrameRadius, topLeftEdgeUV, -WorldRadius.x + FrameRadius, WorldRadius.y - FrameRadius);
-		DrawSprite(frameTex, FrameRadius, FrameRadius, topRightEdgeUV, WorldRadius.x - FrameRadius, WorldRadius.y - FrameRadius);
+		DrawSprite(frameTex, V2fInit(-WorldRadius.x + FrameRadius, WorldRadius.y - FrameRadius), frameExt, topLeftEdgeUV);
+		DrawSprite(frameTex, V2fInit(WorldRadius.x - FrameRadius, WorldRadius.y - FrameRadius), frameExt, topRightEdgeUV);
 
 		// Bottom edges
-		DrawSprite(frameTex, FrameRadius, FrameRadius, bottomLeftEdgeUV, -WorldRadius.x + FrameRadius, -WorldRadius.y + FrameRadius);
-		DrawSprite(frameTex, FrameRadius, FrameRadius, bottomRightEdgeUV, WorldRadius.x - FrameRadius, -WorldRadius.y + FrameRadius);
+		DrawSprite(frameTex, V2fInit(-WorldRadius.x + FrameRadius, -WorldRadius.y + FrameRadius), frameExt, bottomLeftEdgeUV);
+		DrawSprite(frameTex, V2fInit(WorldRadius.x - FrameRadius, -WorldRadius.y + FrameRadius), frameExt, bottomRightEdgeUV);
 	}
 }
 
@@ -1253,12 +1298,13 @@ static void DrawPlayMode(GameState &state) {
 	{
 		
 		float ballRot = ball.body->GetAngle();
-		GLuint texId = PointerToValue<GLuint>(state.assets.ballTexture.texture);
+		GLuint texId = GetTextureIDFromHandle(state.assets.ballTexture.texture);
 		glPushMatrix();
 		glTranslatef(ballPos.x, ballPos.y, 0);
-		glRotatef(RadiansToDegrees(ballRot), 0, 0, 1);
+		glRotatef(F32RadiansToDegrees(ballRot), 0, 0, 1);
 		glColor4f(1, 1, 1, 1);
-		DrawSprite(texId, BallRadius + ROffset, BallRadius + ROffset, 0.0f, 1.0f, 1.0f, 0.0f);
+		Vec2f ballExt = V2fInit(BallRadius + ROffset, BallRadius + ROffset);
+		DrawSprite(texId, V2fZero(), ballExt, UVRectInit(0.0f, 1.0f, 1.0f, 0.0f));
 		glPopMatrix();
 	}
 
@@ -1267,12 +1313,13 @@ static void DrawPlayMode(GameState &state) {
 		const Paddle &paddle = state.paddle.paddle;
 		b2Vec2 paddlePos = paddle.body->GetPosition();
 		float paddleRot = paddle.body->GetAngle();
-		GLuint texId = PointerToValue<GLuint>(state.assets.paddleTexture.texture);
+		GLuint texId = GetTextureIDFromHandle(state.assets.paddleTexture.texture);
 		glPushMatrix();
 		glTranslatef(paddlePos.x, paddlePos.y, 0);
-		glRotatef(RadiansToDegrees(paddleRot), 0, 0, 1);
+		glRotatef(F32RadiansToDegrees(paddleRot), 0, 0, 1);
 		glColor4f(1, 1, 1, 1);
-		DrawSprite(texId, PaddleRadius.x + BallRadius + ROffset, PaddleRadius.y + ROffset, 0.0f, 1.0f, 1.0f, 0.0f);
+		Vec2f paddleExt = V2fInit(PaddleRadius.x + BallRadius + ROffset, PaddleRadius.y + ROffset);
+		DrawSprite(texId, V2fZero(), paddleExt, UVRectInit(0.0f, 1.0f, 1.0f, 0.0f));
 		glPopMatrix();
 	}
 
@@ -1281,13 +1328,13 @@ static void DrawPlayMode(GameState &state) {
 		const Brick &brick = state.activeBricks[i].brick;
 		b2Vec2 brickPos = brick.body->GetPosition();
 		float brickRot = brick.body->GetAngle();
-		GLuint texId = PointerToValue<GLuint>(state.assets.bricksTexture.texture);
+		GLuint texId = GetTextureIDFromHandle(state.assets.bricksTexture.texture);
 		UVRect brickUV = BricksUVs[brick.type];
 		glPushMatrix();
 		glTranslatef(brickPos.x, brickPos.y, 0);
-		glRotatef(RadiansToDegrees(brickRot), 0, 0, 1);
+		glRotatef(F32RadiansToDegrees(brickRot), 0, 0, 1);
 		glColor4f(1, 1, 1, 1);
-		DrawSprite(texId, BrickRadius.x, BrickRadius.y, brickUV);
+		DrawSprite(texId, V2fZero(), BrickRadius, brickUV);
 		glPopMatrix();
 	}
 
@@ -1393,13 +1440,13 @@ static void DrawPlayMode(GameState &state) {
 	const float textFrameMargin = BallRadius * 0.25f;
 	const float textSize = 0.65f;
 	const float textTopMiddle = WorldRadius.y - FrameRadius;
-	GLuint fontTexId = PointerToValue<GLuint>(state.assets.fontHud.texture);
+	GLuint fontTexId = GetTextureIDFromHandle(state.assets.fontHud.texture);
 
 	// HUD
 	glColor4f(0, 0, 0, 1);
 
 	fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Lifes: %d", state.lifes);
-	DrawTextFont(textBuffer, fplGetStringLength(textBuffer), &state.assets.fontHud.desc, fontTexId, -WorldRadius.x + FrameRadius * 2.0f + textFrameMargin, textTopMiddle, textSize, 1.0f, 0.0f);
+	DrawTextFont(-WorldRadius.x + FrameRadius * 2.0f + textFrameMargin, textTopMiddle, textBuffer, fplGetStringLength(textBuffer), &state.assets.fontHud.desc, fontTexId, textSize, 1.0f, 0.0f);
 
 	if(state.totalBricks > 0) {
 		int levelPercentage = 100 - (int)((state.remainingBricks / (double)state.totalBricks) * 100);
@@ -1407,12 +1454,12 @@ static void DrawPlayMode(GameState &state) {
 	} else {
 		fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Level: %d", (state.levelsCompleted + 1));
 	}
-	DrawTextFont(textBuffer, fplGetStringLength(textBuffer), &state.assets.fontHud.desc, fontTexId, 0, textTopMiddle, textSize, 0.0f, 0.0f);
+	DrawTextFont(0, textTopMiddle, textBuffer, fplGetStringLength(textBuffer), &state.assets.fontHud.desc, fontTexId, textSize, 0.0f, 0.0f);
 
 	fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Score: %d", state.score);
 	size_t textCount = fplGetStringLength(textBuffer);
-	Vec2f textBounds = GetTextSize(&state.assets.fontHud.desc, textBuffer, textCount, textSize);
-	DrawTextFont(textBuffer, textCount, &state.assets.fontHud.desc, fontTexId, WorldRadius.x - FrameRadius * 2.0f - textFrameMargin - textBounds.w, textTopMiddle, textSize, 1.0f, 0.0f);
+	Vec2f textBounds = FontGetTextSize(&state.assets.fontHud.desc, textBuffer, textCount, textSize);
+	DrawTextFont(WorldRadius.x - FrameRadius * 2.0f - textFrameMargin - textBounds.w, textTopMiddle, textBuffer, textCount, &state.assets.fontHud.desc, fontTexId, textSize, 1.0f, 0.0f);
 }
 
 static void BeginMenu(GameState &state) {
@@ -1436,16 +1483,16 @@ static bool PushMenuItem(GameState &state, MenuRenderState &menuRender, const ch
 	} else {
 		glColor4f(1, 1, 1, 1);
 	}
-	GLuint fontTexId = PointerToValue<GLuint>(state.assets.fontMenu.texture);
-	DrawTextFont(itemText, fplGetStringLength(itemText), &state.assets.fontMenu.desc, fontTexId, 0.0f, menuRender.ypos, menuRender.fontHeight, 0.0f, 0.0f);
+	GLuint fontTexId = GetTextureIDFromHandle(state.assets.fontMenu.texture);
+	DrawTextFont(0.0f, menuRender.ypos, itemText, fplGetStringLength(itemText), &state.assets.fontMenu.desc, fontTexId, menuRender.fontHeight, 0.0f, 0.0f);
 	menuRender.ypos -= menuRender.fontHeight;
 	return(result);
 }
 
 static void DrawTitleMenuMode(GameState &state) {
 	// Field
-	float uMove = (float)Sine(state.menu.bgMoveTime * 0.5f) * 5.5f;
-	float vMove = (float)Sine(state.menu.bgMoveTime * 1.3f) * -2.65f;
+	float uMove = (float)F32Sin(state.menu.bgMoveTime * 0.5f) * 5.5f;
+	float vMove = (float)F32Sin(state.menu.bgMoveTime * 1.3f) * -2.65f;
 	DrawField(state, uMove, vMove);
 
 	// Title
@@ -1453,8 +1500,8 @@ static void DrawTitleMenuMode(GameState &state) {
 	float titleFontSize = 2.75f;
 	float titlePosY = WorldRadius.y - WorldHeight * 0.35f;
 	glColor4f(1, 1, 1, 1);
-	GLuint fontTexId = PointerToValue<GLuint>(state.assets.fontMenu.texture);
-	DrawTextFont(titleText, fplGetStringLength(titleText), &state.assets.fontMenu.desc, fontTexId, 0.0f, titlePosY, titleFontSize, 0.0f, 0.0f);
+	GLuint fontTexId = GetTextureIDFromHandle(state.assets.fontMenu.texture);
+	DrawTextFont(0.0f, titlePosY, titleText, fplGetStringLength(titleText), &state.assets.fontMenu.desc, fontTexId, titleFontSize, 0.0f, 0.0f);
 
 	if(state.mode == GameMode::Title || state.mode == GameMode::GameOver) {
 		// Title screen
@@ -1462,7 +1509,7 @@ static void DrawTitleMenuMode(GameState &state) {
 		const float smallFontSize = 0.9f;
 		const float smallPosY = -WorldRadius.y + WorldHeight * 0.275f;
 		glColor4f(1, 1, 1, 1);
-		DrawTextFont(smallText, fplGetStringLength(smallText), &state.assets.fontMenu.desc, fontTexId, 0.0f, smallPosY, smallFontSize, 0.0f, 0.0f);
+		DrawTextFont(0.0f, smallPosY, smallText, fplGetStringLength(smallText), &state.assets.fontMenu.desc, fontTexId, smallFontSize, 0.0f, 0.0f);
 	} else {
 		// Menu screen
 		fplAssert(state.mode == GameMode::Menu);
@@ -1482,15 +1529,16 @@ static void DrawTitleMenuMode(GameState &state) {
 	}
 }
 
-extern void GameRender(GameMemory &gameMemory, const float alpha) {
-	GameState *state = gameMemory.game;
+extern void GameRender(GameMemory *gameMemory, const Input *input, const float alpha) {
+	GameState *state = gameMemory->game;
 	fplAssert(state != nullptr);
-	RenderState *renderState = gameMemory.render;
+	RenderState *renderState = gameMemory->render;
 
 	const float w = WorldRadius.x;
 	const float h = WorldRadius.y;
 
 	glViewport(state->viewport.x, state->viewport.y, state->viewport.w, state->viewport.h);
+	glScissor(state->viewport.x, state->viewport.y, state->viewport.w, state->viewport.h);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	glMatrixMode(GL_PROJECTION);
@@ -1511,13 +1559,12 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 #define FINAL_GAMEPLATFORM_IMPLEMENTATION
 #include <final_gameplatform.h>
 
-int main(int argc, char *argv[]) {
+int main(int argc, char **argv) {
 	fplSetMaxLogLevel(fplLogLevel_All);
 
-	GameConfiguration config = {};
+	GameConfiguration config = fplZeroInit;
 	config.title = "FPL Demo | Crackout";
 	config.hideMouseCursor = true;
-	config.audioSampleRate = 44100;
-	int result = GameMain(config);
+	int result = GameMain(&config, argc, argv);
 	return(result);
 }

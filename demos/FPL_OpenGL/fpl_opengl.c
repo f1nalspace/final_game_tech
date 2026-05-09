@@ -42,13 +42,17 @@ Changelog:
 	- Forced Visual-Studio-Project to compile in C always
 
 License:
-	Copyright (c) 2017-2025 Torsten Spaete
+	Copyright (c) 2017-2026 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
 
-#define FPL_IMPLEMENTATION
-#define FPL_LOGGING
+#ifndef FPL_IMPLEMENTATION
+#	define FPL_IMPLEMENTATION
+#endif
+#ifndef FPL_LOGGING
+#	define FPL_LOGGING
+#endif
 #define FPL_NO_VIDEO_SOFTWARE
 #define FPL_NO_VIDEO_VULKAN
 #define FPL_NO_AUDIO
@@ -268,12 +272,12 @@ static void RunLegacy() {
 		fplGetWindowSize(&windowArea);
 
 		float aspect = windowArea.width / (float)windowArea.height;
-		Mat4f proj = Mat4PerspectiveRH(DegreesToRadians(35), aspect, 0.1f, 100.0f);
-		Mat4f camera = Mat4LookAtRH(V3fInit(2, 2, 3), V3fInit(0, 0, 0), V3fInit(0, 1, 0));
+		Mat4f proj = M4fPerspectiveRH(F32DegreesToRadians(35), aspect, 0.1f, 100.0f);
+		Mat4f camera = M4fLookAtRH(V3fInit(2, 2, 3), V3fInit(0, 0, 0), V3fInit(0, 1, 0));
 		Quaternion quat = QuatFromAngleAxis(rot, V3fInit(0.0f, 1.0f, 0.0f));
 		Mat4f model = QuatToMat4(quat);
-		Mat4f vp = Mat4Mult(proj, camera);
-		Mat4f mvp = Mat4Mult(vp, model);
+		Mat4f vp = M4fMult(proj, camera);
+		Mat4f mvp = M4fMult(vp, model);
 
 		glViewport(0, 0, windowArea.width, windowArea.height);
 
@@ -500,12 +504,12 @@ static bool RunModern() {
 		fplGetWindowSize(&windowArea);
 
 		float aspect = windowArea.width / (float)windowArea.height;
-		Mat4f proj = Mat4PerspectiveRH(DegreesToRadians(35), aspect, 0.1f, 100.0f);
-		Mat4f camera = Mat4LookAtRH(V3fInit(2, 2, 3), V3fInit(0, 0, 0), V3fInit(0, 1, 0));
+		Mat4f proj = M4fPerspectiveRH(F32DegreesToRadians(35.0f), aspect, 0.1f, 100.0f);
+		Mat4f camera = M4fLookAtRH(V3fInit(2, 2, 3), V3fInit(0, 0, 0), V3fInit(0, 1, 0));
 		Quaternion quat = QuatFromAngleAxis(rot, V3fInit(0.0f, 1.0f, 0.0f));
 		Mat4f model = QuatToMat4(quat);
-		Mat4f vp = Mat4Mult(proj, camera);
-		Mat4f mvp = Mat4Mult(vp, model);
+		Mat4f vp = M4fMult(proj, camera);
+		Mat4f mvp = M4fMult(vp, model);
 
 		glViewport(0, 0, windowArea.width, windowArea.height);
 
@@ -543,7 +547,7 @@ static bool RunModern() {
 bool IsModernOpenGLSupported() {
 	fplSettings settings = fplMakeDefaultSettings();
 	settings.video.backend = fplVideoBackendType_OpenGL;
-	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
+	settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Core;
 	settings.video.graphics.opengl.majorVersion = 3;
 	settings.video.graphics.opengl.minorVersion = 3;
 	settings.video.graphics.opengl.multiSamplingCount = 0;
@@ -570,14 +574,14 @@ int main(int argc, char **args) {
 	bool supportsModernOpenGL = IsModernOpenGLSupported();
 	if(supportsModernOpenGL) {
 		fplCopyString("FPL Modern OpenGL", settings.window.title, fplArrayCount(settings.window.title));
-		settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
+		settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Core;
 		settings.video.graphics.opengl.majorVersion = 3;
 		settings.video.graphics.opengl.minorVersion = 3;
 		settings.video.graphics.opengl.multiSamplingCount = 4;
 		settings.video.isVSync = true;
 	} else {
 		fplCopyString("FPL Legacy OpenGL", settings.window.title, fplArrayCount(settings.window.title));
-		settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
+		settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Legacy;
 	}
 
 	if(fplPlatformInit(fplInitFlags_Video | fplInitFlags_Console, &settings)) {

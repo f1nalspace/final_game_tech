@@ -102,7 +102,7 @@ Todo:
 	- Diashow
 
 License:
-	Copyright (c) 2017-2025 Torsten Spaete
+	Copyright (c) 2017-2026 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -1888,9 +1888,9 @@ int main(int argc, char** argv) {
 	settings.video.isVSync = true;
 	settings.video.backend = fplVideoBackendType_OpenGL;
 #if FORCE_LEGACY_OPENGL
-	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
+	settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Legacy;
 #else
-	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
+	settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Core;
 	settings.video.graphics.opengl.majorVersion = 3;
 	settings.video.graphics.opengl.minorVersion = 3;
 	settings.video.graphics.opengl.multiSamplingCount = 16;

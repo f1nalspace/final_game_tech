@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace ProtParser
@@ -7,6 +8,7 @@ namespace ProtParser
     class Preset
     {
         private readonly Dictionary<string, string> _properties = new Dictionary<string, string>();
+
         private readonly List<string> _sources = new List<string>();
         public IEnumerable<string> Sources
         {
@@ -17,10 +19,14 @@ namespace ProtParser
         {
             get { return _properties.Keys; }
         }
+
         public string GetProperty(string name, string def = "")
         {
-            return _properties.ContainsKey(name) ? _properties[name] : def;
+            if (!_properties.TryGetValue(name, out string value))
+                return def;
+            return value;
         }
+
         public void SetProperty(string name, string value)
         {
             if (!_properties.ContainsKey(name))
@@ -38,7 +44,7 @@ namespace ProtParser
         {
             None,
             Settings,
-            Sources
+            Sources,
         }
 
         public static Preset Load(string filename)
@@ -100,9 +106,11 @@ namespace ProtParser
             using (StreamWriter writer = new StreamWriter(filename, false, Encoding.UTF8))
             {
                 writer.WriteLine("[Settings]");
-                foreach (var property in _properties)
+                foreach (var property in _properties.OrderBy(p => p.Key))
                     writer.WriteLine($"{property.Key}={property.Value}");
+
                 writer.WriteLine();
+
                 writer.WriteLine("[Sources]");
                 foreach (var source in _sources)
                     writer.WriteLine(source);

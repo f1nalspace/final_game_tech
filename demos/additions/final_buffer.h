@@ -13,9 +13,11 @@ Todo:
 
 License:
 	MIT License
-	Copyright 2017-2025 Torsten Spaete
+	Copyright 2017-2026 Torsten Spaete
 
 Changelog:
+	## 2026-04-20
+	- MemoryMirror/LockFreeRingBuffer Linux implementation using mmap and memfd
 
 	## 2024-01-01
 	- Use VirtualAlloc3 and MapViewOfFile3 in addition of old "try-repeat-loop" way of creating the virtual mapped buffers
@@ -26,9 +28,19 @@ Changelog:
 
 #include <final_platform_layer.h>
 
+#if defined(FPL_PLATFORM_LINUX)
+#include <sys/mman.h>
+#include <unistd.h>
+#ifndef MFD_CLOEXEC
+#define MFD_CLOEXEC 1U
+#endif
+#endif
+
 typedef struct MemoryMirror {
 #if defined(FPL_PLATFORM_WINDOWS)
 	HANDLE *fileHandle; // Memory mapped file handle/base
+#elif defined(FPL_PLATFORM_LINUX)
+	int fd; // memfd file descriptor
 #endif
 	void *buffer;
 	size_t length; // Length of one mirror
@@ -49,6 +61,9 @@ typedef struct LockFreeRingBuffer {
 #if defined(FPL_PLATFORM_WINDOWS)
 	uint8_t filePadding[64 - UINTPTR_MAX];
 	HANDLE *fileHandle; // Memory mapped file
+#elif defined(FPL_PLATFORM_LINUX)
+	uint8_t filePadding[64 - sizeof(int)];
+	int fd; // memfd file descriptor
 #endif
 
 	uint8_t bufferPadding[64 - UINTPTR_MAX];
@@ -90,6 +105,11 @@ extern void LockFreeRingBufferUnitTest();
 
 #if defined(FINAL_BUFFER_IMPLEMENTATION) && !defined(FINAL_BUFFER_IMPLEMENTED)
 #define FINAL_BUFFER_IMPLEMENTED
+
+static size_t f_RoundToPow2Size(const size_t minimumSize, const size_t blockSize) {
+	size_t result = (minimumSize + blockSize - 1) / blockSize * blockSize;
+	return result;
+}
 
 #if defined(FPL_PLATFORM_WINDOWS)
 
@@ -150,11 +170,6 @@ static void f_ReleaseMemoryMirrorWin32(MirroredMemory *mem) {
 	if(mem->fileHandle != INVALID_HANDLE_VALUE) {
 		CloseHandle(mem->fileHandle);
 	}
-}
-
-static size_t f_RoundToPow2Size(const size_t minimumSize, const size_t blockSize) {
-	size_t result = (minimumSize + blockSize - 1) / blockSize * blockSize;
-	return result;
 }
 
 static bool f_InitMemoryMirrorWin32(MirroredMemory *mem, const size_t length, const size_t count) {
@@ -284,11 +299,90 @@ returnResult:
 }
 #endif
 
+#if defined(FPL_PLATFORM_LINUX)
+
+#define LINUX_LIBC_DLL "libc.so.6"
+
+#define LINUX_FUNC_memfd_create(name) int name(const char *memName, unsigned int flags)
+typedef LINUX_FUNC_memfd_create(linux_func_memfd_create);
+
+static void f_ReleaseMemoryMirrorLinux(MirroredMemory *mem) {
+	fplAssert(mem != fpl_null);
+	if(mem->buffer != NULL) {
+		munmap(mem->buffer, mem->length * mem->count);
+	}
+	if(mem->fd >= 0) {
+		close(mem->fd);
+	}
+}
+
+static bool f_InitMemoryMirrorLinux(MirroredMemory *mem, const size_t length, const size_t count) {
+	fplAssert(mem != fpl_null && length > 0 && count > 1);
+
+	const long pageSize = sysconf(_SC_PAGESIZE);
+	if (pageSize <= 0) {
+		return false;
+	}
+
+	const size_t roundedSize = f_RoundToPow2Size(length, (size_t)pageSize);
+	const size_t totalSize = roundedSize * count;
+
+	// Load memfd_create at runtime (guarded by __USE_GNU in glibc headers)
+	fplDynamicLibraryHandle libcHandle;
+	if(!fplDynamicLibraryLoad(LINUX_LIBC_DLL, &libcHandle)) {
+		return(false);
+	}
+	linux_func_memfd_create *memfd_create_func = (linux_func_memfd_create *)fplGetDynamicLibraryProc(&libcHandle, "memfd_create");
+	if(memfd_create_func == fpl_null) {
+		fplDynamicLibraryUnload(&libcHandle);
+		return(false);
+	}
+
+	const int fd = memfd_create_func("mirror_buffer", MFD_CLOEXEC);
+	fplDynamicLibraryUnload(&libcHandle);
+	if(fd < 0) {
+		return(false);
+	}
+
+	if(ftruncate(fd, (off_t)roundedSize) < 0) {
+		close(fd);
+		return(false);
+	}
+
+	// Reserve contiguous virtual address range
+	uint8_t *blockAddress = (uint8_t *)mmap(NULL, totalSize, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	if(blockAddress == MAP_FAILED) {
+		close(fd);
+		return(false);
+	}
+
+	// Map each mirror over the reserved range
+	for(size_t mirrorIndex = 0; mirrorIndex < count; ++mirrorIndex) {
+		void *addr = mmap(blockAddress + mirrorIndex * roundedSize, roundedSize, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, fd, 0);
+		if(addr == MAP_FAILED) {
+			munmap(blockAddress, totalSize);
+			close(fd);
+			return(false);
+		}
+	}
+
+	fplClearStruct(mem);
+	mem->fd = fd;
+	mem->buffer = blockAddress;
+	mem->length = roundedSize;
+	mem->count = count;
+	mem->isValid = true;
+	return(true);
+}
+#endif
+
 extern bool InitMemoryMirror(MirroredMemory *mem, const size_t length, const size_t count) {
 	if(mem == fpl_null || length == 0 || count < 2) return(false);
 
 #if defined(FPL_PLATFORM_WINDOWS)
 	return f_InitMemoryMirrorWin32(mem, length, count);
+#elif defined(FPL_PLATFORM_LINUX)
+	return f_InitMemoryMirrorLinux(mem, length, count);
 #else
 	return(false);
 #endif
@@ -298,6 +392,8 @@ extern void ReleaseMemoryMirror(MirroredMemory *mem) {
 	if(mem != fpl_null && mem->buffer != fpl_null) {
 #if defined(FPL_PLATFORM_WINDOWS)
 		f_ReleaseMemoryMirrorWin32(mem);
+#elif defined(FPL_PLATFORM_LINUX)
+		f_ReleaseMemoryMirrorLinux(mem);
 #endif
 	}
 }
@@ -314,6 +410,8 @@ extern bool LockFreeRingBufferInit(LockFreeRingBuffer *buffer, const size_t leng
 			buffer->isMirror = true;
 #if defined(FPL_PLATFORM_WINDOWS)
 			buffer->fileHandle = mirror.fileHandle;
+#elif defined(FPL_PLATFORM_LINUX)
+			buffer->fd = mirror.fd;
 #endif
 			return(true);
 		}
@@ -340,6 +438,8 @@ extern void LockFreeRingBufferRelease(LockFreeRingBuffer *buffer) {
 		mirror.count = 2;
 #if defined(FPL_PLATFORM_WINDOWS)
 		mirror.fileHandle = buffer->fileHandle;
+#elif defined(FPL_PLATFORM_LINUX)
+		mirror.fd = buffer->fd;
 #endif
 		mirror.isValid = true;
 		ReleaseMemoryMirror(&mirror);

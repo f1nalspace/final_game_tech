@@ -125,7 +125,7 @@ Final Memory is released under the following license:
 
 MIT License
 
-Copyright (c) 2017-2025 Torsten Spaete
+Copyright (c) 2017-2026 Torsten Spaete
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -148,7 +148,7 @@ SOFTWARE.
 
 /*!
 	\file final_memory.h
-	\version v0.3.1 alpha
+	\version v1.0.1
 	\author Torsten Spaete
 	\brief Final Memory (FMEM) - A open source C99 single file header memory library.
 */
@@ -156,6 +156,13 @@ SOFTWARE.
 /*!
 	\page page_changelog Changelog
 	\tableofcontents
+
+	## v1.0.1:
+	- Changed: Moved FMEM_MEMSET, FMEM_MALLOC, FMEM_ASSERT into the implementation block
+
+	## v1.0.0:
+	- New: Added fmemPushArray() to allocate a array with a type
+	- New: Added fmemPushString() to allocate a zero-terminated string
 
 	## v0.3.1 alpha:
 	- Changed: fmemCreate() has now a minBlockSize argument, that defines the block alignment size
@@ -223,22 +230,6 @@ SOFTWARE.
 #include <stdint.h> // int32_t, etc.
 #include <stdbool.h> // bool
 #include <stddef.h> // NULL
-
-// Functions override
-#ifndef FMEM_MEMSET
-#	include <string.h>
-#	define FMEM_MEMSET(dst, val, size) memset(dst, val, size)
-#endif
-#ifndef FMEM_MALLOC
-#	include <malloc.h>
-#	define FMEM_MALLOC(size) malloc(size)
-#	define FMEM_FREE(ptr) free(ptr)
-#endif
-#if !defined(FMEM_ASSERT) || !defined(FMEM_STATIC_ASSERT)
-#	include <assert.h>
-#	define FMEM_ASSERT(exp) assert(exp)
-#	define FMEM_STATIC_ASSERT(exp) static_assert(exp)
-#endif
 
 //! Null pointer
 #define fmem_null NULL
@@ -337,10 +328,32 @@ fmem_api fmemBlockHeader *fmemGetHeader(fmemMemoryBlock *block);
 //! Gets memory for a struct from the block and return a pointer to the struct
 #define fmemPushStruct(block, type, flags) (type *)fmemPush(block, sizeof(type), flags)
 
+//! Gets memory for a array with the specified type from the block and return a pointer to the array
+#define fmemPushArray(block, type, count, flags) (type *)fmemPush(block, sizeof(type) * (count), flags)
+
+//! Gets memory for a null-terminated string with the specified length from the block and return a pointer to the base
+#define fmemPushString(block, len, flags) (char *)fmemPush(block, sizeof(char) * ((len) + 1), flags)
+
 #endif // FMEM_H
 
 #if defined(FMEM_IMPLEMENTATION) && !defined(FMEM_IMPLEMENTED)
 #define FMEM_IMPLEMENTED
+
+// Functions override
+#ifndef FMEM_MEMSET
+#	include <string.h>
+#	define FMEM_MEMSET(dst, val, size) memset(dst, val, size)
+#endif
+#ifndef FMEM_MALLOC
+#	include <malloc.h>
+#	define FMEM_MALLOC(size) malloc(size)
+#	define FMEM_FREE(ptr) free(ptr)
+#endif
+#if !defined(FMEM_ASSERT) || !defined(FMEM_STATIC_ASSERT)
+#	include <assert.h>
+#	define FMEM_ASSERT(exp) assert(exp)
+#	define FMEM_STATIC_ASSERT(exp) static_assert(exp)
+#endif
 
 //! Default spacing after the header
 #define FMEM__HEADER_SPACING sizeof(uintptr_t)

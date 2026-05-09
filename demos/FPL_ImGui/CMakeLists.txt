@@ -5,18 +5,19 @@ cmake_minimum_required(VERSION 3.10)
 # Project settings
 #
 # -----------------------------------------------------------------------------
-project(FPL_ImGui)
+project(FPL_ImGui C CXX)
 
-set(MY_C_STANDARD c++11)
+set(MY_C_STANDARD c99)
+set(MY_CXX_STANDARD c++11)
 
 set(MY_EXTERNAL_LIBS
 	m
-    GL
+	GL
 	)
 
 set(MY_INCLUDE_DIRS
 	"../../"
-    "../dependencies/imgui/include/"
+	"../dependencies/imgui/include/"
 	)
 
 set(MY_HEADER_FILES
@@ -25,14 +26,14 @@ set(MY_HEADER_FILES
 
 set(MY_TRANSLATION_UNITS
 	"fpl_imgui.cpp"
-    "../dependencies/imgui/include/imgui/imgui.cpp"
-    "../dependencies/imgui/include/imgui/imgui_draw.cpp"
-    "../dependencies/imgui/include/imgui/imgui_demo.cpp"
+	"../dependencies/imgui/include/imgui/imgui.cpp"
+	"../dependencies/imgui/include/imgui/imgui_draw.cpp"
+	"../dependencies/imgui/include/imgui/imgui_demo.cpp"
 	)
 
 set(MY_DEFINES
 	-DFPL_IMPLEMENTATION
-    -DFPL_LOGGING
+	-DFPL_LOGGING
 	)
 
 # -----------------------------------------------------------------------------
@@ -50,6 +51,7 @@ message(STATUS "\n")
 message(STATUS "FPL CMake Infos: ${PROJECT_NAME}")
 message(STATUS "---------------------------------------------------------------")
 message(STATUS "C-Standard: ${MY_C_STANDARD}")
+message(STATUS "C++-Standard: ${MY_CXX_STANDARD}")
 message(STATUS "External libraries: ${MY_EXTERNAL_LIBS}")
 message(STATUS "Include directories: ${MY_INCLUDE_DIRS}")
 message(STATUS "Header files: ${MY_HEADER_FILES}")
@@ -62,6 +64,7 @@ message(STATUS "Executable name: ${FPL_EXECUTABLE_NAME}")
 message(STATUS "---------------------------------------------------------------\n")
 
 set(CMAKE_C_FLAGS "-std=${MY_C_STANDARD}")
+set(CMAKE_CXX_FLAGS "-std=${MY_CXX_STANDARD}")
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${FPL_EXECUTABLE_PATH})
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${FPL_EXECUTABLE_PATH})

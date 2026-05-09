@@ -229,7 +229,7 @@ group "Apps"
 
 group "Console"
 	include "FPL_Console/premake5";
-	
+
 group "Audio"
 	include "FPL_AudioPlayer/premake5";
 	include "FPL_SimpleAudio/premake5";
@@ -247,6 +247,7 @@ group "Graphics"
 	
 group "Input"
 	include "FPL_Input/premake5";
+	include "FPL_ConsoleGamepad/premake5";
 
 group "Window"
 	include "FPL_Window/premake5";
@@ -254,7 +255,7 @@ group "Window"
 group "Test"
 	include "FPL_Test/premake5";
 
-group "Compability"
+group "Compatibility"
 	include "FPL_NoPlatformIncludes/premake5";
 	include "FPL_NoRuntimeLinking/premake5";
 	include "FPL_DynamicLib_Host/premake5";

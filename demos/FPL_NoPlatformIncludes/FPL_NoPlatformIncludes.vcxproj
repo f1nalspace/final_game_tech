@@ -83,29 +83,29 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX86|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <OutDir>..\build\FPL_NoPlatformIncludes\WinX86_Debug\</OutDir>
-    <IntDir>..\immediates\FPL_NoPlatformIncludes\WinX86_Debug\</IntDir>
+    <OutDir>$(ProjectDir)..\build\FPL_NoPlatformIncludes\WinX86_Debug\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\FPL_NoPlatformIncludes\WinX86_Debug\</IntDir>
     <TargetName>FPL_NoPlatformIncludes</TargetName>
     <TargetExt>.exe</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX64|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <OutDir>..\build\FPL_NoPlatformIncludes\WinX64_Debug\</OutDir>
-    <IntDir>..\immediates\FPL_NoPlatformIncludes\WinX64_Debug\</IntDir>
+    <OutDir>$(ProjectDir)..\build\FPL_NoPlatformIncludes\WinX64_Debug\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\FPL_NoPlatformIncludes\WinX64_Debug\</IntDir>
     <TargetName>FPL_NoPlatformIncludes</TargetName>
     <TargetExt>.exe</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX86|Win32'">
     <LinkIncremental>false</LinkIncremental>
-    <OutDir>..\build\FPL_NoPlatformIncludes\WinX86_Release\</OutDir>
-    <IntDir>..\immediates\FPL_NoPlatformIncludes\WinX86_Release\</IntDir>
+    <OutDir>$(ProjectDir)..\build\FPL_NoPlatformIncludes\WinX86_Release\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\FPL_NoPlatformIncludes\WinX86_Release\</IntDir>
     <TargetName>FPL_NoPlatformIncludes</TargetName>
     <TargetExt>.exe</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX64|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <OutDir>..\build\FPL_NoPlatformIncludes\WinX64_Release\</OutDir>
-    <IntDir>..\immediates\FPL_NoPlatformIncludes\WinX64_Release\</IntDir>
+    <OutDir>$(ProjectDir)..\build\FPL_NoPlatformIncludes\WinX64_Release\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\FPL_NoPlatformIncludes\WinX64_Release\</IntDir>
     <TargetName>FPL_NoPlatformIncludes</TargetName>
     <TargetExt>.exe</TargetExt>
   </PropertyGroup>

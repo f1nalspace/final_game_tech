@@ -1,0 +1,15 @@
+{
+    "fpl.projectName": "FPL_OpenGL",
+    "cmake.build.type": "Debug",
+    "cmake.sourceDirectory": "${workspaceFolder}",
+    "cmake.configureOnOpen": true,
+    "cmake.generator": "Unix Makefiles",
+    "cmake.configureEnvironment": {
+        "LC_ALL": "C",
+        "LANG": "C"
+    },
+    "cmake.buildEnvironment": {
+        "LC_ALL": "C",
+        "LANG": "C"
+    }
+}

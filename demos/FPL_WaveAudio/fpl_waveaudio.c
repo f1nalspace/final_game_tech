@@ -21,13 +21,15 @@ Changelog:
 	- Initial version
 
 License:
-	Copyright (c) 2017-2025 Torsten Spaete
+	Copyright (c) 2017-2026 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
 
 // Include FPL
-#define FPL_IMPLEMENTATION
+#ifndef FPL_IMPLEMENTATION
+#	define FPL_IMPLEMENTATION
+#endif
 #define FPL_NO_VIDEO
 #define FPL_NO_WINDOW
 #include <final_platform_layer.h>

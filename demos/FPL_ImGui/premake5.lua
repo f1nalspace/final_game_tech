@@ -13,10 +13,21 @@ project "FPL_ImGui"
 		"fpl_imgui.cpp",
 	}
 	
+	vpaths { 
+		["Dependencies"] = {
+			"../../final_platform_layer.h",
+		},
+		["ThirdParty"] = {
+			"../dependencies/imgui/include/imgui/imgui.cpp",
+			"../dependencies/imgui/include/imgui/imgui_demo.cpp",
+			"../dependencies/imgui/include/imgui/imgui_draw.cpp",
+		},
+	}
+
 	filter "system:windows"
 		links { "opengl32" }
 	
 	filter "system:bsd or system:linux"
 		local openGLLibPath = os.findlib("GL")
 		libdirs { openGLLibPath }
-		links { "m", "GL" }
+		links { "GL" }

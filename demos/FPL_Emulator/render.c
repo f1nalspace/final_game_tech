@@ -31,18 +31,18 @@ typedef struct {
 	uint32_t x;
 } RendererContextImpl;
 
-extern const APITextureFormat InvalidAPITextureFormat = fplZeroInit;
+const APITextureFormat InvalidAPITextureFormat = fplZeroInit;
 
-extern const Texture InvalidTexture = fplZeroInit;
+const Texture InvalidTexture = fplZeroInit;
 
-extern const Color4f ColorWhite = { 1.0f, 1.0f, 1.0f, 1.0f };
-extern const Color4f ColorBlack = { 0.0f, 0.0f, 0.0f, 1.0f };
-extern const Color4f ColorRed = { 1.0f, 0.0f, 0.0f, 1.0f };
-extern const Color4f ColorGreen = { 0.0f, 1.0f, 0.0f, 1.0f };
-extern const Color4f ColorBlue = { 0.0f, 0.0f, 1.0f, 1.0f };
-extern const Color4f ColorYellow = { 1.0f, 1.0f, 0.0f, 1.0f };
-extern const Color4f ColorGray = { 0.5f, 0.5f, 0.5f, 1.0f };
-extern const Color4f ColorDarkGray = { 0.25f, 0.25f, 0.25f, 1.0f };
+const Color4f ColorWhite = { 1.0f, 1.0f, 1.0f, 1.0f };
+const Color4f ColorBlack = { 0.0f, 0.0f, 0.0f, 1.0f };
+const Color4f ColorRed = { 1.0f, 0.0f, 0.0f, 1.0f };
+const Color4f ColorGreen = { 0.0f, 1.0f, 0.0f, 1.0f };
+const Color4f ColorBlue = { 0.0f, 0.0f, 1.0f, 1.0f };
+const Color4f ColorYellow = { 1.0f, 1.0f, 0.0f, 1.0f };
+const Color4f ColorGray = { 0.5f, 0.5f, 0.5f, 1.0f };
+const Color4f ColorDarkGray = { 0.25f, 0.25f, 0.25f, 1.0f };
 
 static char glErrorCodeBuffer[16];
 static const char *GetGLErrorString(const GLenum err) {
@@ -308,14 +308,22 @@ extern Texture LoadTextureFromMemory(const uint8_t *data, const size_t size, con
 
 extern void ClearTexture(const Texture *texture) {
 	glBindTexture(GL_TEXTURE_2D, texture->id);
-	glTexImage2D(GL_TEXTURE_2D, 0, texture->format.internalFormat, texture->width, texture->height, 0, texture->format.format, GL_UNSIGNED_BYTE, NULL);
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
+				texture->width, texture->height,
+				texture->format.format,
+				GL_UNSIGNED_BYTE,
+				texture->pixels);
 	glBindTexture(GL_TEXTURE_2D, 0);
 	CheckGLError();
 }
 
 extern void UpdateTexture(const Texture *texture) {
 	glBindTexture(GL_TEXTURE_2D, texture->id);
-	glTexImage2D(GL_TEXTURE_2D, 0, texture->format.internalFormat, texture->width, texture->height, 0, texture->format.format, GL_UNSIGNED_BYTE, texture->pixels);
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
+				texture->width, texture->height,
+				texture->format.format,
+				GL_UNSIGNED_BYTE,
+				texture->pixels);
 	glBindTexture(GL_TEXTURE_2D, 0);
 	CheckGLError();
 }
@@ -523,7 +531,7 @@ extern void DrawString(const LoadedFont *font, const TextureID textureId, const 
 
 			float xadvance;
 			if (at >= font->firstChar && at <= lastChar) {
-				FontQuad quad = GetFontQuad(font, at, scale);
+				FontQuad quad = FontGetQuad(font, at, scale);
 
 				Vec2f offset = quad.offset;
 				offset.x += xpos;
@@ -543,7 +551,7 @@ extern void DrawString(const LoadedFont *font, const TextureID textureId, const 
 				glTexCoord2f(uvMax.x, uvMin.y); glVertex2f(offset.x + rx, offset.y - ry);
 				glEnd();
 
-				xadvance = GetFontCharacterAdvance(font, (uint32_t)at, (uint32_t)atNext);
+				xadvance = FontGetCharacterAdvance(font, (uint32_t)at, (uint32_t)atNext);
 			} else {
 				xadvance = font->info.spaceAdvance;
 			}

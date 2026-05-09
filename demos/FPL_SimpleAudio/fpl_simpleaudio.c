@@ -18,7 +18,7 @@ Changelog:
 	- Initial version
 
 License:
-	Copyright (c) 2017-2025 Torsten Spaete
+	Copyright (c) 2017-2026 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -27,6 +27,7 @@ License:
 #define FPL_IMPLEMENTATION
 #define FPL_NO_VIDEO
 #define FPL_NO_WINDOW
+#define FPL_LOGGING
 #include <final_platform_layer.h>
 
 // We need a little bit of math
@@ -79,6 +80,11 @@ static uint32_t AudioPlaybackThread(const fplAudioFormat *nativeFormat, const ui
 	return numFramesOut;
 }
 
+static void WaitThreadProc(const fplThreadHandle *thread, void *data) {
+	fplThreadSleep(5000);
+	fplConsoleOut("Thread stopping normally\n");
+}
+
 int main(int argc, char **argv) {
 	// Setup FPL and force the audio format to S16, 44100 Hz, Stereo
 	// Note that, there is no guarantee that every sound device supports this!
@@ -96,6 +102,10 @@ int main(int argc, char **argv) {
 
 	// Try to force to 44100 Hz, which is the most common used sample rate
 	settings.audio.targetFormat.sampleRate = 44100;
+
+	// Force audio backend to a specific type
+	//settings.audio.backend = fplAudioBackendType_PipeWire;
+	//settings.audio.backend = fplAudioBackendType_PulseAudio;
 
 	// Always start and stop the playback automatically
 	settings.audio.startAuto = true;
@@ -116,9 +126,18 @@ int main(int argc, char **argv) {
 
 	// Print out some infos and wait for a key to be pressed
 	// While we are waiting for a key press, new audio samples will be generated continuesly
-	fplConsoleFormatOut("Playing sine wave with %u Hz, %u channels, %s\n", hardwareFormat.sampleRate, hardwareFormat.channels, audioFormatName);
+	const fplAudioBackendType audioBackend = fplGetAudioBackendType();
+	const char *audioBackendName = fplGetAudioBackendName(audioBackend);
+	fplConsoleFormatOut("Playing sine wave with backend: %s, sample-rate: %u, channels: %u, format: %s, periods: %u, buffer-size: %u\n", audioBackendName, hardwareFormat.sampleRate, hardwareFormat.channels, audioFormatName, hardwareFormat.periods, hardwareFormat.bufferSizeInFrames);
+
+#if 0
 	fplConsoleOut("Press any key to exit\n");
 	fplConsoleWaitForCharInput();
+#else
+	fplConsoleOut("Start thread and wait 5 seconds to exit automatically\n");
+	fplThreadHandle *thread = fplThreadCreate(WaitThreadProc, fpl_null);
+	fplThreadWaitForOne(thread, 10000);
+#endif
 
 	// Stop audio playback, shutdown the audio device and release any platform resources
 	fplPlatformRelease();

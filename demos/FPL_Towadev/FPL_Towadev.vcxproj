@@ -83,29 +83,29 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX86|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <OutDir>..\build\FPL_Towadev\WinX86_Debug\</OutDir>
-    <IntDir>..\immediates\FPL_Towadev\WinX86_Debug\</IntDir>
+    <OutDir>$(ProjectDir)..\build\FPL_Towadev\WinX86_Debug\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\FPL_Towadev\WinX86_Debug\</IntDir>
     <TargetName>FPL_Towadev</TargetName>
     <TargetExt>.exe</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX64|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <OutDir>..\build\FPL_Towadev\WinX64_Debug\</OutDir>
-    <IntDir>..\immediates\FPL_Towadev\WinX64_Debug\</IntDir>
+    <OutDir>$(ProjectDir)..\build\FPL_Towadev\WinX64_Debug\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\FPL_Towadev\WinX64_Debug\</IntDir>
     <TargetName>FPL_Towadev</TargetName>
     <TargetExt>.exe</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX86|Win32'">
     <LinkIncremental>false</LinkIncremental>
-    <OutDir>..\build\FPL_Towadev\WinX86_Release\</OutDir>
-    <IntDir>..\immediates\FPL_Towadev\WinX86_Release\</IntDir>
+    <OutDir>$(ProjectDir)..\build\FPL_Towadev\WinX86_Release\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\FPL_Towadev\WinX86_Release\</IntDir>
     <TargetName>FPL_Towadev</TargetName>
     <TargetExt>.exe</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX64|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <OutDir>..\build\FPL_Towadev\WinX64_Release\</OutDir>
-    <IntDir>..\immediates\FPL_Towadev\WinX64_Release\</IntDir>
+    <OutDir>$(ProjectDir)..\build\FPL_Towadev\WinX64_Release\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\FPL_Towadev\WinX64_Release\</IntDir>
     <TargetName>FPL_Towadev</TargetName>
     <TargetExt>.exe</TargetExt>
   </PropertyGroup>
@@ -204,6 +204,26 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="..\..\final_dynamic_opengl.h" />
+    <ClInclude Include="..\..\final_memory.h" />
+    <ClInclude Include="..\..\final_platform_layer.h" />
+    <ClInclude Include="..\..\final_xml.h" />
+    <ClInclude Include="..\additions\final_assets.h" />
+    <ClInclude Include="..\additions\final_audio.h" />
+    <ClInclude Include="..\additions\final_audioconversion.h" />
+    <ClInclude Include="..\additions\final_audiosystem.h" />
+    <ClInclude Include="..\additions\final_fontloader.h" />
+    <ClInclude Include="..\additions\final_fonts.h" />
+    <ClInclude Include="..\additions\final_game.h" />
+    <ClInclude Include="..\additions\final_gameplatform.h" />
+    <ClInclude Include="..\additions\final_geometry.h" />
+    <ClInclude Include="..\additions\final_math.h" />
+    <ClInclude Include="..\additions\final_opengl_render.h" />
+    <ClInclude Include="..\additions\final_random.h" />
+    <ClInclude Include="..\additions\final_render.h" />
+    <ClInclude Include="..\additions\final_utils.h" />
+    <ClInclude Include="..\dependencies\stb\stb_image.h" />
+    <ClInclude Include="..\dependencies\stb\stb_truetype.h" />
     <ClInclude Include="fpl_towadev.h" />
   </ItemGroup>
   <ItemGroup>

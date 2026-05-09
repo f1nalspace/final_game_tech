@@ -83,29 +83,29 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX86|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <OutDir>..\build\FPL_Test\WinX86_Debug\</OutDir>
-    <IntDir>..\immediates\FPL_Test\WinX86_Debug\</IntDir>
+    <OutDir>$(ProjectDir)..\build\FPL_Test\WinX86_Debug\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\FPL_Test\WinX86_Debug\</IntDir>
     <TargetName>FPL_Test</TargetName>
     <TargetExt>.exe</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX64|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <OutDir>..\build\FPL_Test\WinX64_Debug\</OutDir>
-    <IntDir>..\immediates\FPL_Test\WinX64_Debug\</IntDir>
+    <OutDir>$(ProjectDir)..\build\FPL_Test\WinX64_Debug\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\FPL_Test\WinX64_Debug\</IntDir>
     <TargetName>FPL_Test</TargetName>
     <TargetExt>.exe</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX86|Win32'">
     <LinkIncremental>false</LinkIncremental>
-    <OutDir>..\build\FPL_Test\WinX86_Release\</OutDir>
-    <IntDir>..\immediates\FPL_Test\WinX86_Release\</IntDir>
+    <OutDir>$(ProjectDir)..\build\FPL_Test\WinX86_Release\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\FPL_Test\WinX86_Release\</IntDir>
     <TargetName>FPL_Test</TargetName>
     <TargetExt>.exe</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX64|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <OutDir>..\build\FPL_Test\WinX64_Release\</OutDir>
-    <IntDir>..\immediates\FPL_Test\WinX64_Release\</IntDir>
+    <OutDir>$(ProjectDir)..\build\FPL_Test\WinX64_Release\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\FPL_Test\WinX64_Release\</IntDir>
     <TargetName>FPL_Test</TargetName>
     <TargetExt>.exe</TargetExt>
   </PropertyGroup>
@@ -121,6 +121,7 @@
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <ExternalWarningLevel>Level3</ExternalWarningLevel>
+      <CompileAs>CompileAsC</CompileAs>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -139,6 +140,7 @@
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <ExternalWarningLevel>Level3</ExternalWarningLevel>
+      <CompileAs>CompileAsC</CompileAs>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -160,6 +162,7 @@
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <ExternalWarningLevel>Level3</ExternalWarningLevel>
+      <CompileAs>CompileAsC</CompileAs>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -183,6 +186,7 @@
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <ExternalWarningLevel>Level3</ExternalWarningLevel>
+      <CompileAs>CompileAsC</CompileAs>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -191,8 +195,32 @@
       <OptimizeReferences>true</OptimizeReferences>
     </Link>
   </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX64|Win32'">
+    <ClCompile>
+      <CompileAs>CompileAsC</CompileAs>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX64|Win32'">
+    <ClCompile>
+      <CompileAs>CompileAsC</CompileAs>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX86|x64'">
+    <ClCompile>
+      <CompileAs>CompileAsC</CompileAs>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX86|x64'">
+    <ClCompile>
+      <CompileAs>CompileAsC</CompileAs>
+    </ClCompile>
+  </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="fpl_test.cpp" />
+    <ClCompile Include="fpl_test.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="final_test.h" />
+    <ClInclude Include="security_tests.c" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

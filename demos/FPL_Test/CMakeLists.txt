@@ -5,9 +5,9 @@ cmake_minimum_required(VERSION 3.10)
 # Project settings
 #
 # -----------------------------------------------------------------------------
-project(FPL_Test)
+project(FPL_Test C)
 
-set(MY_C_STANDARD c++11)
+set(MY_C_STANDARD c99)
 
 set(MY_EXTERNAL_LIBS
 	m
@@ -21,10 +21,11 @@ set(MY_INCLUDE_DIRS
 
 set(MY_HEADER_FILES
 	"../../final_platform_layer.h"
+	"final_test.h"
 	)
 
 set(MY_TRANSLATION_UNITS
-	"fpl_test.cpp"
+	"fpl_test.c"
 	)
 
 set(MY_DEFINES
