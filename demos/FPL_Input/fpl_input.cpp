@@ -18,6 +18,10 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2026-05-09
+	- Handle gamepad connect/disconnect in poll state
+	- Added gamepad mapping detection
+
 	## 2025-07-19
 	- Fixed keyboard states was updated, even when polling was disabled
 
@@ -1055,30 +1059,6 @@ enum class RenderMode {
 	Gamepad,
 };
 
-struct AppState {
-	fplGamepadMapping gamepadMappingTable[4096];
-	size_t gamepadMappingTableEntryCount;
-
-	FontData letterFontData[FontCount];
-	FontData osdFontData;
-	FontData consoleFontData;
-
-	GLuint letterFontTextures[FontCount];
-	GLuint osdFontTexture;
-	GLuint consoleFontTexture;
-
-	GLuint keyboardTexture;
-	GLuint gamepadForegroundTexture;
-	GLuint gamepadMaskTexture;
-
-	GLuint mouseTexture;
-	Vec2f mousePos;
-
-	RenderMode renderMode;
-
-	fpl_b32 usePolling;
-};
-
 struct GamepadState {
 	fplGamepadGuid guid;
 	fplGamepadState state;
@@ -1100,6 +1080,32 @@ struct InputState {
 	fpl_b32 showTextCursor;
 	float mouseWheelDelta;
 	fplKeyboardModifierFlags ledStates;
+};
+
+struct AppState {
+	fplGamepadMapping gamepadMappingTable[4096];
+	size_t gamepadMappingTableEntryCount;
+
+	InputState input;
+
+	FontData letterFontData[FontCount];
+	FontData osdFontData;
+	FontData consoleFontData;
+
+	GLuint letterFontTextures[FontCount];
+	GLuint osdFontTexture;
+	GLuint consoleFontTexture;
+
+	GLuint keyboardTexture;
+	GLuint gamepadForegroundTexture;
+	GLuint gamepadMaskTexture;
+
+	GLuint mouseTexture;
+	Vec2f mousePos;
+
+	RenderMode renderMode;
+
+	fpl_b32 usePolling;
 };
 
 static void InitApp(AppState* appState) {
@@ -1276,7 +1282,11 @@ static void RenderApp(AppState* appState, const InputState* input, const uint32_
 	fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
 	DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, 0, h - osdFontHeight, osdFontHeight, 0.0f, 0.0f);
 
-	DrawTextFont(L"F1 (Keyboard) - F2 (Gamepad)", 1, &appState->osdFontData, &appState->osdFontTexture, 0, -h + osdFontHeight, osdFontHeight, 0.0f, 0.0f);
+	const char *pollEventKeyText = appState->usePolling ? "Event" : "Poll";
+
+	fplStringFormat(textBuffer, fplArrayCount(textBuffer), "F1 (Keyboard) - F2 (Gamepad) - F5 (%s)", pollEventKeyText);
+	fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
+	DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, 0, -h + osdFontHeight, osdFontHeight, 0.0f, 0.0f);
 
 	if (appState->renderMode == RenderMode::KeyboardAndMouse) {
 		constexpr float keyFontHeight = KeyboardW * 0.015f;
@@ -1689,6 +1699,22 @@ static FPL_GAMEPAD_MAPPING_RESOLVE_CALLBACK(InputGamepadMappingResolveCallback) 
 	return result;
 }
 
+static void GamepadConnected(const uint32_t deviceIndex, const char *deviceName, const fplGamepadState *state, GamepadState *target) {
+	target->deviceIndex = deviceIndex;
+	target->deviceName = deviceName;
+	target->state = *state;
+	fplClearStruct(&target->guid);
+	// TODO(final): Gamepad device info!
+}
+
+static void GamepadDisconnected(GamepadState *target) {
+	fplClearStruct(target);
+}
+
+static void GamepadUpdate(const fplGamepadState *state, GamepadState *target) {
+	target->state = *state;
+}
+
 int main(int argc, char* argv[]) {
 	AppState* appState = (AppState*)fplMemoryAllocate(sizeof(AppState));
 
@@ -1702,7 +1728,7 @@ int main(int argc, char* argv[]) {
 
 	if (fplPlatformInit(fplInitFlags_All, &settings)) {
 		if (fglLoadOpenGL(true)) {
-			InputState input = {};
+			InputState *input = &appState->input;
 			fplButtonState lastKeyStates[256] = {};
 			InitApp(appState);
 			fplSetWindowInputEvents(!appState->usePolling);
@@ -1713,13 +1739,13 @@ int main(int argc, char* argv[]) {
 						case fplEventType_Mouse:
 						{
 							if (ev.mouse.type == fplMouseEventType_Move) {
-								input.mousePos.x = ev.mouse.mouseX;
-								input.mousePos.y = ev.mouse.mouseY;
+								input->mousePos.x = ev.mouse.mouseX;
+								input->mousePos.y = ev.mouse.mouseY;
 							} else if (ev.mouse.type == fplMouseEventType_Button) {
-								input.mouseStates[(int)ev.mouse.mouseButton] = ev.mouse.buttonState;
+								input->mouseStates[(int)ev.mouse.mouseButton] = ev.mouse.buttonState;
 							} else if (ev.mouse.type == fplMouseEventType_Wheel) {
-								input.mouseWheelDelta = ev.mouse.wheelDelta;
-								input.lastMouseWheelUpdateTime = fplMillisecondsQuery();
+								input->mouseWheelDelta = ev.mouse.wheelDelta;
+								input->lastMouseWheelUpdateTime = fplMillisecondsQuery();
 							}
 						} break;
 
@@ -1727,20 +1753,20 @@ int main(int argc, char* argv[]) {
 						{
 							if (!appState->usePolling) {
 								if (ev.keyboard.type == fplKeyboardEventType_Button) {
-									input.keyStates[(int)ev.keyboard.mappedKey] = ev.keyboard.buttonState;
+									input->keyStates[(int)ev.keyboard.mappedKey] = ev.keyboard.buttonState;
 								}
 							}
 							if (ev.keyboard.type == fplKeyboardEventType_Button) {
 								if (ev.keyboard.buttonState == fplButtonState_Release) {
-									HandleKeyPressed(appState, &input, ev.keyboard.mappedKey);
+									HandleKeyPressed(appState, input, ev.keyboard.mappedKey);
 								} else if (ev.keyboard.buttonState >= fplButtonState_Press) {
-									HandleKeyDown(appState, &input, ev.keyboard.mappedKey);
+									HandleKeyDown(appState, input, ev.keyboard.mappedKey);
 								}
 							} else if (ev.keyboard.type == fplKeyboardEventType_Input) {
 								if ((ev.keyboard.keyCode > 0 && ev.keyboard.keyCode < INT16_MAX) &&
 									((ev.keyboard.mappedKey != fplKey_Backspace) && (ev.keyboard.mappedKey != fplKey_Tab) && (ev.keyboard.mappedKey != fplKey_Return))) {
 									wchar_t c = (wchar_t)ev.keyboard.keyCode;
-									InsertInputChar(&input, c);
+									InsertInputChar(input, c);
 								}
 							}
 						} break;
@@ -1748,15 +1774,12 @@ int main(int argc, char* argv[]) {
 						case fplEventType_Gamepad:
 						{
 							if (!appState->usePolling) {
-								if (ev.gamepad.type == fplGamepadEventType_Connected || ev.gamepad.type == fplGamepadEventType_Disconnected) {
-									input.gamepadState.state = ev.gamepad.state;
-									input.gamepadState.deviceIndex = ev.gamepad.deviceIndex;
-									input.gamepadState.deviceName = ev.gamepad.deviceName;
-									input.gamepadState.state = ev.gamepad.state;
-									fplClearStruct(&input.gamepadState.guid);
-									// TODO(final): Gamepad device info!
+								if (ev.gamepad.type == fplGamepadEventType_Connected) {
+									GamepadConnected(ev.gamepad.deviceIndex, ev.gamepad.deviceName, &ev.gamepad.state, &input->gamepadState);
+								} else if (ev.gamepad.type == fplGamepadEventType_Disconnected) {
+									GamepadDisconnected(&input->gamepadState);
 								} else if (ev.gamepad.type == fplGamepadEventType_StateChanged) {
-									input.gamepadState.state = ev.gamepad.state;
+									GamepadUpdate(&ev.gamepad.state, &input->gamepadState);
 								}
 							}
 						} break;
@@ -1771,87 +1794,95 @@ int main(int argc, char* argv[]) {
 					if (fplPollKeyboardState(&keyboardState)) {
 						for (int i = 0; i < 256; ++i) {
 							if (KeyWasPressed(lastKeyStates[i], keyboardState.buttonStatesMapped[i])) {
-								HandleKeyPressed(appState, &input, (fplKey)i);
+								HandleKeyPressed(appState, input, (fplKey)i);
 							} else if (KeyIsDown(keyboardState.buttonStatesMapped[i])) {
-								HandleKeyDown(appState, &input, (fplKey)i);
+								HandleKeyDown(appState, input, (fplKey)i);
 							}
-							input.keyStates[i] = keyboardState.buttonStatesMapped[i];
-							lastKeyStates[i] = input.keyStates[i];
+							input->keyStates[i] = keyboardState.buttonStatesMapped[i];
+							lastKeyStates[i] = input->keyStates[i];
 						}
 					}
-					SetButtonStateFromModifier(&input, &keyboardState, fplKeyboardModifierFlags_LShift, fplKey_LeftShift);
-					SetButtonStateFromModifier(&input, &keyboardState, fplKeyboardModifierFlags_RShift, fplKey_RightShift);
-					SetButtonStateFromModifier(&input, &keyboardState, fplKeyboardModifierFlags_LAlt, fplKey_LeftAlt);
-					SetButtonStateFromModifier(&input, &keyboardState, fplKeyboardModifierFlags_RAlt, fplKey_RightAlt);
-					SetButtonStateFromModifier(&input, &keyboardState, fplKeyboardModifierFlags_LCtrl, fplKey_LeftControl);
-					SetButtonStateFromModifier(&input, &keyboardState, fplKeyboardModifierFlags_RCtrl, fplKey_RightControl);
-					SetButtonStateFromModifier(&input, &keyboardState, fplKeyboardModifierFlags_LSuper, fplKey_LeftSuper);
-					SetButtonStateFromModifier(&input, &keyboardState, fplKeyboardModifierFlags_RSuper, fplKey_RightSuper);
-					input.ledStates = fplKeyboardModifierFlags_None;
+					SetButtonStateFromModifier(input, &keyboardState, fplKeyboardModifierFlags_LShift, fplKey_LeftShift);
+					SetButtonStateFromModifier(input, &keyboardState, fplKeyboardModifierFlags_RShift, fplKey_RightShift);
+					SetButtonStateFromModifier(input, &keyboardState, fplKeyboardModifierFlags_LAlt, fplKey_LeftAlt);
+					SetButtonStateFromModifier(input, &keyboardState, fplKeyboardModifierFlags_RAlt, fplKey_RightAlt);
+					SetButtonStateFromModifier(input, &keyboardState, fplKeyboardModifierFlags_LCtrl, fplKey_LeftControl);
+					SetButtonStateFromModifier(input, &keyboardState, fplKeyboardModifierFlags_RCtrl, fplKey_RightControl);
+					SetButtonStateFromModifier(input, &keyboardState, fplKeyboardModifierFlags_LSuper, fplKey_LeftSuper);
+					SetButtonStateFromModifier(input, &keyboardState, fplKeyboardModifierFlags_RSuper, fplKey_RightSuper);
+					input->ledStates = fplKeyboardModifierFlags_None;
 					if (keyboardState.modifiers & fplKeyboardModifierFlags_CapsLock) {
-						input.ledStates |= fplKeyboardModifierFlags_CapsLock;
+						input->ledStates |= fplKeyboardModifierFlags_CapsLock;
 					}
 					if (keyboardState.modifiers & fplKeyboardModifierFlags_ScrollLock) {
-						input.ledStates |= fplKeyboardModifierFlags_ScrollLock;
+						input->ledStates |= fplKeyboardModifierFlags_ScrollLock;
 					}
 					if (keyboardState.modifiers & fplKeyboardModifierFlags_NumLock) {
-						input.ledStates |= fplKeyboardModifierFlags_NumLock;
+						input->ledStates |= fplKeyboardModifierFlags_NumLock;
 					}
 				}
 
 				if (appState->usePolling) {
-					fplGamepadStates gamepadStates = {};
+					fplGamepadStates gamepadStates = fplZeroInit;
 					if (fplPollGamepadStates(&gamepadStates)) {
 						int found = -1;
 						for (int i = 0; i < fplArrayCount(gamepadStates.deviceStates); ++i) {
-							if (gamepadStates.deviceStates[i].isConnected && gamepadStates.deviceStates[i].isActive) {
+							if (gamepadStates.deviceStates[i].isConnected || gamepadStates.deviceStates[i].isActive) {
 								found = i;
 								break;
 							}
 						}
-						fplClearStruct(&input.gamepadState.state);
-						if (found > -1) {
-							input.gamepadState.state = gamepadStates.deviceStates[found];
+						if (found == -1) {
+							GamepadDisconnected(&input->gamepadState);
+						} else {
+							const fplGamepadState *state = &gamepadStates.deviceStates[found];
+							if (!input->gamepadState.state.isConnected) {
+								GamepadConnected((uint32_t)found, "Polled", state, &input->gamepadState);
+							} else {
+								GamepadUpdate(state, &input->gamepadState);
+							}
 						}
+					} else {
+						GamepadDisconnected(&input->gamepadState);
 					}
 				}
 
 				if (appState->usePolling) {
-					fplMouseState mouseState = {};
+					fplMouseState mouseState = fplZeroInit;
 					if (fplPollMouseState(&mouseState)) {
-						input.mousePos.x = mouseState.x;
-						input.mousePos.y = mouseState.y;
-						fplAssert(fplArrayCount(mouseState.buttonStates) <= fplArrayCount(input.mouseStates));
+						input->mousePos.x = mouseState.x;
+						input->mousePos.y = mouseState.y;
+						fplAssert(fplArrayCount(mouseState.buttonStates) <= fplArrayCount(input->mouseStates));
 						for (int i = 0; i < fplArrayCount(mouseState.buttonStates); ++i) {
-							input.mouseStates[i] = mouseState.buttonStates[i];
+							input->mouseStates[i] = mouseState.buttonStates[i];
 						}
 					}
 				}
 
 				// Reset mouse wheel delta after half a second
 				uint64_t maxWheelShowTime = 500;
-				if (input.lastMouseWheelUpdateTime > 0) {
-					if (fplMillisecondsQuery() - input.lastMouseWheelUpdateTime >= maxWheelShowTime) {
-						input.lastMouseWheelUpdateTime = 0;
-						input.mouseWheelDelta = 0.0f;
+				if (input->lastMouseWheelUpdateTime > 0) {
+					if (fplMillisecondsQuery() - input->lastMouseWheelUpdateTime >= maxWheelShowTime) {
+						input->lastMouseWheelUpdateTime = 0;
+						input->mouseWheelDelta = 0.0f;
 					}
 				}
 
 				// Cursor blinking
 				uint64_t maxCursorShowTime = 500;
-				if (input.lastTextCursorBlinkTime == 0) {
-					input.lastTextCursorBlinkTime = fplMillisecondsQuery();
-					input.showTextCursor = true;
+				if (input->lastTextCursorBlinkTime == 0) {
+					input->lastTextCursorBlinkTime = fplMillisecondsQuery();
+					input->showTextCursor = true;
 				} else {
-					if ((fplMillisecondsQuery() - input.lastTextCursorBlinkTime) >= maxCursorShowTime) {
-						input.showTextCursor = !input.showTextCursor;
-						input.lastTextCursorBlinkTime = fplMillisecondsQuery();
+					if ((fplMillisecondsQuery() - input->lastTextCursorBlinkTime) >= maxCursorShowTime) {
+						input->showTextCursor = !input->showTextCursor;
+						input->lastTextCursorBlinkTime = fplMillisecondsQuery();
 					}
 				}
 
-				fplWindowSize wsize = {};
+				fplWindowSize wsize = fplZeroInit;
 				fplGetWindowSize(&wsize);
-				RenderApp(appState, &input, wsize.width, wsize.height);
+				RenderApp(appState, input, wsize.width, wsize.height);
 				fplVideoFlip();
 			}
 			ReleaseApp(appState);
