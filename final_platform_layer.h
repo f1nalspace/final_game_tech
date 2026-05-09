@@ -10414,15 +10414,15 @@ fpl_internal const char *fpl__Win32FormatGuidString(char *buffer, const size_t m
 
 // XInput Types
 #define FPL__FUNC_INPUT_WIN32_XINPUT_XInputGetState(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE *pState)
-typedef FPL__FUNC_INPUT_WIN32_XINPUT_XInputGetState(fpl__func_InputWin32XInput_XInputGetState);
+typedef FPL__FUNC_INPUT_WIN32_XINPUT_XInputGetState(fpl__func_input_win32_xinput_XInputGetState);
 
 #define FPL__FUNC_INPUT_WIN32_XINPUT_XInputGetCapabilities(name) DWORD WINAPI name(DWORD dwUserIndex, DWORD dwFlags, XINPUT_CAPABILITIES* pCapabilities)
-typedef FPL__FUNC_INPUT_WIN32_XINPUT_XInputGetCapabilities(fpl__func_InputWin32XInput_XInputGetCapabilities);
+typedef FPL__FUNC_INPUT_WIN32_XINPUT_XInputGetCapabilities(fpl__func_input_win32_xinput_XInputGetCapabilities);
 
 typedef struct fpl__InputWin32XInputApi {
 	HMODULE xinputLibrary;
-	fpl__func_InputWin32XInput_XInputGetState *XInputGetState;
-	fpl__func_InputWin32XInput_XInputGetCapabilities *XInputGetCapabilities;
+	fpl__func_input_win32_xinput_XInputGetState *XInputGetState;
+	fpl__func_input_win32_xinput_XInputGetCapabilities *XInputGetCapabilities;
 } fpl__InputWin32XInputApi;
 
 // XInput backend instance owned by fpl__InputContext.
@@ -10447,12 +10447,12 @@ typedef struct fpl__InputBackendXInput {
 // merged fplGamepadStates array layout sane.
 #define FPL__DINPUT_MAX_DEVICES 8
 
-#define FPL__FUNC_DINPUT_DirectInput8Create(name) HRESULT WINAPI name(HINSTANCE hinst, DWORD dwVersion, REFIID riidltf, LPVOID *ppvOut, LPUNKNOWN punkOuter)
-typedef FPL__FUNC_DINPUT_DirectInput8Create(fpl__win32_func_DirectInput8Create);
+#define FPL__FUNC_INPUT_WIN32_DINPUT_DirectInput8Create(name) HRESULT WINAPI name(HINSTANCE hinst, DWORD dwVersion, REFIID riidltf, LPVOID *ppvOut, LPUNKNOWN punkOuter)
+typedef FPL__FUNC_INPUT_WIN32_DINPUT_DirectInput8Create(fpl__func_input_win32_dinput_DirectInput8Create);
 
 typedef struct fpl__Win32DInputApi {
 	HMODULE dinputLibrary;
-	fpl__win32_func_DirectInput8Create *DirectInput8Create;
+	fpl__func_input_win32_dinput_DirectInput8Create *DirectInput8Create;
 } fpl__Win32DInputApi;
 
 // One DirectInput slot. ffi mirrors the XInput merge contract: the slot owns
@@ -16225,8 +16225,8 @@ fpl_internal void fpl__Win32LoadXInputApi(fpl__InputWin32XInputApi *xinputApi) {
 			HMODULE libHandle = fpl_null;
 			FPL__WIN32_LOAD_LIBRARY_BREAK(FPL__MODULE_XINPUT, libHandle, libName);
 			xinputApi->xinputLibrary = libHandle;
-			FPL__WIN32_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_XINPUT, libHandle, libName, xinputApi, fpl__func_InputWin32XInput_XInputGetState, XInputGetState);
-			FPL__WIN32_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_XINPUT, libHandle, libName, xinputApi, fpl__func_InputWin32XInput_XInputGetCapabilities, XInputGetCapabilities);
+			FPL__WIN32_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_XINPUT, libHandle, libName, xinputApi, fpl__func_input_win32_xinput_XInputGetState, XInputGetState);
+			FPL__WIN32_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_XINPUT, libHandle, libName, xinputApi, fpl__func_input_win32_xinput_XInputGetCapabilities, XInputGetCapabilities);
 			result = true;
 		} while (0);
 		if (result) {
@@ -16601,7 +16601,7 @@ fpl_internal bool fpl__Win32LoadDInputApi(fpl__Win32DInputApi *api) {
 		HMODULE libHandle = fpl_null;
 		FPL__WIN32_LOAD_LIBRARY_BREAK(FPL__MODULE_DINPUT, libHandle, libName);
 		api->dinputLibrary = libHandle;
-		FPL__WIN32_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_DINPUT, libHandle, libName, api, fpl__win32_func_DirectInput8Create, DirectInput8Create);
+		FPL__WIN32_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_DINPUT, libHandle, libName, api, fpl__func_input_win32_dinput_DirectInput8Create, DirectInput8Create);
 		result = true;
 	} while (0);
 	if (!result) {
