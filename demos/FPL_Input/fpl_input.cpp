@@ -1530,65 +1530,67 @@ static void RenderApp(AppState* appState, const InputState* input, const uint32_
 			DrawArrow(rightTriggerPos.pos.x, rightTriggerPos.pos.y, rightTriggerPos.pos.x + rightTriggerDistance.x, rightTriggerPos.pos.y + rightTriggerDistance.y, rightTriggerArrowWidth, rightTriggerArrowDepth, triggerDirection, 6.0f);
 		}
 
-		float gamepadOsdX = -w;
-		float gamepadOsdY = h - osdFontHeight * 2.0f;
-		const float gamepadOSDFontHeight = osdFontHeight * 0.8f;
+		if (gpadState->isConnected) {
+			float gamepadOsdX = -w;
+			float gamepadOsdY = h - osdFontHeight * 2.0f;
+			const float gamepadOSDFontHeight = osdFontHeight * 0.8f;
 
-		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+			glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 
-		// Device Info
-		fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Device[%u]: %s", input->gamepadState.deviceIndex, input->gamepadState.deviceName);
-		fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
-		DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, gamepadOsdX, gamepadOsdY, gamepadOSDFontHeight, 1.0f, 0.0f);
-		gamepadOsdY -= gamepadOSDFontHeight;
+			// Device Info
+			fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Device[%u]: %s", input->gamepadState.deviceIndex, input->gamepadState.deviceName);
+			fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
+			DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, gamepadOsdX, gamepadOsdY, gamepadOSDFontHeight, 1.0f, 0.0f);
+			gamepadOsdY -= gamepadOSDFontHeight;
 
-		// DPad Buttons
-		fplStringFormat(textBuffer, fplArrayCount(textBuffer), "DPad(U,R,D,L): %u %u %u %u", input->gamepadState.state.dpadUp.isDown, input->gamepadState.state.dpadRight.isDown, input->gamepadState.state.dpadDown.isDown, input->gamepadState.state.dpadLeft.isDown);
-		fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
-		DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, gamepadOsdX, gamepadOsdY, gamepadOSDFontHeight, 1.0f, 0.0f);
-		gamepadOsdY -= gamepadOSDFontHeight;
+			// DPad Buttons
+			fplStringFormat(textBuffer, fplArrayCount(textBuffer), "DPad(U,R,D,L): %u %u %u %u", input->gamepadState.state.dpadUp.isDown, input->gamepadState.state.dpadRight.isDown, input->gamepadState.state.dpadDown.isDown, input->gamepadState.state.dpadLeft.isDown);
+			fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
+			DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, gamepadOsdX, gamepadOsdY, gamepadOSDFontHeight, 1.0f, 0.0f);
+			gamepadOsdY -= gamepadOSDFontHeight;
 
-		// Action Buttons
-		fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Actions(X,Y,A,B): %u %u %u %u", input->gamepadState.state.actionX.isDown, input->gamepadState.state.actionY.isDown, input->gamepadState.state.actionA.isDown, input->gamepadState.state.actionB.isDown);
-		fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
-		DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, gamepadOsdX, gamepadOsdY, gamepadOSDFontHeight, 1.0f, 0.0f);
-		gamepadOsdY -= gamepadOSDFontHeight;
+			// Action Buttons
+			fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Actions(X,Y,A,B): %u %u %u %u", input->gamepadState.state.actionX.isDown, input->gamepadState.state.actionY.isDown, input->gamepadState.state.actionA.isDown, input->gamepadState.state.actionB.isDown);
+			fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
+			DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, gamepadOsdX, gamepadOsdY, gamepadOSDFontHeight, 1.0f, 0.0f);
+			gamepadOsdY -= gamepadOSDFontHeight;
 
-		// Thumb Buttons
-		fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Thumbs(L, R): %u %u", input->gamepadState.state.leftThumb.isDown, input->gamepadState.state.rightThumb.isDown);
-		fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
-		DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, gamepadOsdX, gamepadOsdY, gamepadOSDFontHeight, 1.0f, 0.0f);
-		gamepadOsdY -= gamepadOSDFontHeight;
+			// Thumb Buttons
+			fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Thumbs(L, R): %u %u", input->gamepadState.state.leftThumb.isDown, input->gamepadState.state.rightThumb.isDown);
+			fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
+			DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, gamepadOsdX, gamepadOsdY, gamepadOSDFontHeight, 1.0f, 0.0f);
+			gamepadOsdY -= gamepadOSDFontHeight;
 
-		// Left/Right Shoulder Buttons
-		fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Shoulder L1/L2: %u %u", input->gamepadState.state.leftShoulder.isDown, input->gamepadState.state.rightShoulder.isDown);
-		fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
-		DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, gamepadOsdX, gamepadOsdY, gamepadOSDFontHeight, 1.0f, 0.0f);
-		gamepadOsdY -= gamepadOSDFontHeight;
+			// Left/Right Shoulder Buttons
+			fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Shoulder L1/L2: %u %u", input->gamepadState.state.leftShoulder.isDown, input->gamepadState.state.rightShoulder.isDown);
+			fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
+			DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, gamepadOsdX, gamepadOsdY, gamepadOSDFontHeight, 1.0f, 0.0f);
+			gamepadOsdY -= gamepadOSDFontHeight;
 
-		// Start/Back Buttons
-		fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Start/Back: %u %u", input->gamepadState.state.start.isDown, input->gamepadState.state.back.isDown);
-		fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
-		DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, gamepadOsdX, gamepadOsdY, gamepadOSDFontHeight, 1.0f, 0.0f);
-		gamepadOsdY -= gamepadOSDFontHeight;
+			// Start/Back Buttons
+			fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Start/Back: %u %u", input->gamepadState.state.start.isDown, input->gamepadState.state.back.isDown);
+			fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
+			DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, gamepadOsdX, gamepadOsdY, gamepadOSDFontHeight, 1.0f, 0.0f);
+			gamepadOsdY -= gamepadOSDFontHeight;
 
-		// Trigger Axis
-		fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Trigger L2/L2: %.6f %.6f", input->gamepadState.state.leftTrigger, input->gamepadState.state.rightTrigger);
-		fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
-		DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, gamepadOsdX, gamepadOsdY, gamepadOSDFontHeight, 1.0f, 0.0f);
-		gamepadOsdY -= gamepadOSDFontHeight;
+			// Trigger Axis
+			fplStringFormat(textBuffer, fplArrayCount(textBuffer), "Trigger L2/L2: %.6f %.6f", input->gamepadState.state.leftTrigger, input->gamepadState.state.rightTrigger);
+			fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
+			DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, gamepadOsdX, gamepadOsdY, gamepadOSDFontHeight, 1.0f, 0.0f);
+			gamepadOsdY -= gamepadOSDFontHeight;
 
-		// Left Stick
-		fplStringFormat(textBuffer, fplArrayCount(textBuffer), "L-Stick x/y: %.6f %.6f", input->gamepadState.state.leftStickX, input->gamepadState.state.leftStickY);
-		fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
-		DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, gamepadOsdX, gamepadOsdY, gamepadOSDFontHeight, 1.0f, 0.0f);
-		gamepadOsdY -= gamepadOSDFontHeight;
+			// Left Stick
+			fplStringFormat(textBuffer, fplArrayCount(textBuffer), "L-Stick x/y: %.6f %.6f", input->gamepadState.state.leftStickX, input->gamepadState.state.leftStickY);
+			fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
+			DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, gamepadOsdX, gamepadOsdY, gamepadOSDFontHeight, 1.0f, 0.0f);
+			gamepadOsdY -= gamepadOSDFontHeight;
 
-		// Right Stick
-		fplStringFormat(textBuffer, fplArrayCount(textBuffer), "R-Stick x/y: %.6f %.6f", input->gamepadState.state.rightStickX, input->gamepadState.state.rightStickY);
-		fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
-		DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, gamepadOsdX, gamepadOsdY, gamepadOSDFontHeight, 1.0f, 0.0f);
-		gamepadOsdY -= gamepadOSDFontHeight;
+			// Right Stick
+			fplStringFormat(textBuffer, fplArrayCount(textBuffer), "R-Stick x/y: %.6f %.6f", input->gamepadState.state.rightStickX, input->gamepadState.state.rightStickY);
+			fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
+			DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, gamepadOsdX, gamepadOsdY, gamepadOSDFontHeight, 1.0f, 0.0f);
+			gamepadOsdY -= gamepadOSDFontHeight;
+		}
 	}
 }
 
