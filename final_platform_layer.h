@@ -23553,6 +23553,7 @@ fpl_internal void fpl__LinuxReleasePlatform(fpl__PlatformInitState *initState, f
 }
 
 fpl_internal bool fpl__LinuxInitPlatform(const fplInitFlags initFlags, const fplSettings *initSettings, fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
+	// TODO(final): Remember LC_ALL and restore in fpl__LinuxReleasePlatform
 	setlocale(LC_ALL, "");
 	return true;
 }
