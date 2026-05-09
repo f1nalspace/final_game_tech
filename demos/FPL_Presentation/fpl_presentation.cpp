@@ -331,10 +331,8 @@ static const char *GetGLErrorString(const GLenum err) {
 		case GL_INVALID_FRAMEBUFFER_OPERATION:
 			return "GL_INVALID_FRAMEBUFFER_OPERATION";
 		default:
-			if (_itoa_s(err, glErrorCodeBuffer, fplArrayCount(glErrorCodeBuffer), 10) == 0)
-				return (const char *)glErrorCodeBuffer;
-			else
-				return "";
+			fplS32ToString((int32_t)err, glErrorCodeBuffer, fplArrayCount(glErrorCodeBuffer));
+			return (const char *)glErrorCodeBuffer;
 	}
 }
 
@@ -1088,43 +1086,43 @@ struct Easing {
 namespace Easings {
 	static Easing Linear = { [](float x) { return x; } };
 
-	static Easing EaseInSine = { [](float x) { return 1.0f - Cosine((x * Pi32) * 0.5f); } };
-	static Easing EaseOutSine = { [](float x) { return Sine((x * Pi32) * 0.5f); } };
-	static Easing EaseInOutSine = { [](float x) { return -(Cosine(Pi32 * x) - 1.0f) * 0.5f; } };
+	static Easing EaseInSine = { [](float x) { return 1.0f - F32Cos((x * F32Pi) * 0.5f); } };
+	static Easing EaseOutSine = { [](float x) { return F32Sin((x * F32Pi) * 0.5f); } };
+	static Easing EaseInOutSine = { [](float x) { return -(F32Cos(F32Pi * x) - 1.0f) * 0.5f; } };
 
 	static Easing EaseInQuad = { [](float x) { return x * x; } };
 	static Easing EaseOutQuad = { [](float x) { return 1.0f - (1.0f - x) * (1.0f - x); } };
-	static Easing EaseInOutQuad = { [](float x) { return x < 0.5f ? 2.0f * x * x : 1.0f - Power(-2.0f * x + 2.0f, 2.0f) * 0.5f; } };
+	static Easing EaseInOutQuad = { [](float x) { return x < 0.5f ? 2.0f * x * x : 1.0f - F32Power(-2.0f * x + 2.0f, 2.0f) * 0.5f; } };
 
 	static Easing EaseInCube = { [](float x) { return x * x * x; } };
-	static Easing EaseOutCube = { [](float x) { return 1.0f - Power(1.0f - x, 3.0f); } };
-	static Easing EaseInOutCube = { [](float x) { return x < 0.5f ? 4.0f * x * x * x : 1.0f - Power(-2.0f * x + 2.0f, 3.0f) * 0.5f; } };
+	static Easing EaseOutCube = { [](float x) { return 1.0f - F32Power(1.0f - x, 3.0f); } };
+	static Easing EaseInOutCube = { [](float x) { return x < 0.5f ? 4.0f * x * x * x : 1.0f - F32Power(-2.0f * x + 2.0f, 3.0f) * 0.5f; } };
 
 	static Easing EaseInQuart = { [](float x) { return x * x * x * x; } };
-	static Easing EaseOutQuart = { [](float x) { return 1.0f - Power(1.0f - x, 4.0f); } };
-	static Easing EaseInOutQuart = { [](float x) { return x < 0.5f ? 8.0f * x * x * x * x : 1.0f - Power(-2.0f * x + 2.0f, 4.0f) * 0.5f; } };
+	static Easing EaseOutQuart = { [](float x) { return 1.0f - F32Power(1.0f - x, 4.0f); } };
+	static Easing EaseInOutQuart = { [](float x) { return x < 0.5f ? 8.0f * x * x * x * x : 1.0f - F32Power(-2.0f * x + 2.0f, 4.0f) * 0.5f; } };
 
 	static Easing EaseInQuint = { [](float x) { return x * x * x * x * x; } };
-	static Easing EaseOutQuint = { [](float x) { return 1.0f - Power(1.0f - x, 5.0f); } };
-	static Easing EaseInOutQuint = { [](float x) { return x < 0.5f ? 16.0f * x * x * x * x * x : 1.0f - Power(-2.0f * x + 2.0f, 5.0f) * 0.5f; } };
+	static Easing EaseOutQuint = { [](float x) { return 1.0f - F32Power(1.0f - x, 5.0f); } };
+	static Easing EaseInOutQuint = { [](float x) { return x < 0.5f ? 16.0f * x * x * x * x * x : 1.0f - F32Power(-2.0f * x + 2.0f, 5.0f) * 0.5f; } };
 
-	static Easing EaseInExpo = { [](float x) { return x == 0.0f ? 0 : Power(2.0f, 10.0f * x - 10.0f); } };
-	static Easing EaseOutExpo = { [](float x) { return x == 1.0f ? 1.0f : 1.0f - Power(2.0f, -10.0f * x); } };
+	static Easing EaseInExpo = { [](float x) { return x == 0.0f ? 0 : F32Power(2.0f, 10.0f * x - 10.0f); } };
+	static Easing EaseOutExpo = { [](float x) { return x == 1.0f ? 1.0f : 1.0f - F32Power(2.0f, -10.0f * x); } };
 	static Easing EaseInOutExpo = { [](float x) {
 		return x == 0.0f
 		  ? 0.0f
 		  : x == 1.0f
 		  ? 1.0f
-		  : x < 0.5f ? Power(2.0f, 20.0f * x - 10.0f) * 0.5f
-		  : (2.0f - Power(2.0f, -20.0f * x + 10.0f)) * 0.5f;
+		  : x < 0.5f ? F32Power(2.0f, 20.0f * x - 10.0f) * 0.5f
+		  : (2.0f - F32Power(2.0f, -20.0f * x + 10.0f)) * 0.5f;
 	} };
 
-	static Easing EaseInCircle = { [](float x) { return 1.0f - SquareRoot(1.0f - Power(x, 2.0f)); } };
-	static Easing EaseOutCircle = { [](float x) { return SquareRoot(1.0f - Power(x - 1.0f, 2.0f)); } };
+	static Easing EaseInCircle = { [](float x) { return 1.0f - F32SquareRoot(1.0f - F32Power(x, 2.0f)); } };
+	static Easing EaseOutCircle = { [](float x) { return F32SquareRoot(1.0f - F32Power(x - 1.0f, 2.0f)); } };
 	static Easing EaseInOutCircle = { [](float x) {
 		return x < 0.5f
-		  ? (1.0f - SquareRoot(1.0f - Power(2.0f * x, 2.0f))) * 0.5f
-		  : (SquareRoot(1.0f - Power(-2.0f * x + 2.0f, 2.0f)) + 1.0f) * 0.5f;
+		  ? (1.0f - F32SquareRoot(1.0f - F32Power(2.0f * x, 2.0f))) * 0.5f
+		  : (F32SquareRoot(1.0f - F32Power(-2.0f * x + 2.0f, 2.0f)) + 1.0f) * 0.5f;
 	} };
 };
 
@@ -1205,7 +1203,7 @@ struct Animation {
 			{
 				currentTime += dt;
 				float t = fplMin(currentTime, duration) / duration;
-				currentAlpha = easing.func(ScalarLerp(startAlpha, t, targetAlpha));
+				currentAlpha = easing.func(F32Lerp(startAlpha, t, targetAlpha));
 				if (currentTime >= duration) {
 					currentTime = duration;
 					currentAlpha = easing.func(targetAlpha);
@@ -2080,8 +2078,8 @@ static void DrawRotatingCubeOnly(App &app, const Vec2i &winSize) {
 	float h = 144;
 	float aspect = w / h;
 	Vec2f center = V2f(w, h) * 0.5f;
-	Mat4f orthoProj = Mat4OrthoRH(0.0f, w, h, 0.0f, -1.0f, 1.0f);
-	Mat4f perspectiveProj = Mat4PerspectiveRH(DegreesToRadians(45.0f), aspect, 0.01f, 1000.0f);
+	Mat4f orthoProj = M4fOrthoRH(0.0f, w, h, 0.0f, -1.0f, 1.0f);
+	Mat4f perspectiveProj = M4fPerspectiveRH(F32DegreesToRadians(45.0f), aspect, 0.01f, 1000.0f);
 
 	Viewport viewport = ComputeViewportByAspect(winSize, aspect);
 
@@ -2096,8 +2094,8 @@ static void DrawRotatingCubeOnly(App &app, const Vec2i &winSize) {
 #endif
 
 	float zoom = 1.0f;
-	Mat4f scale = Mat4Scale(V3f(zoom, zoom, zoom));
-	Mat4f view = Mat4Translation(V2f(w * 0.5f, h * 0.5f)) * scale;
+	Mat4f scale = M4fScale(V3f(zoom, zoom, zoom));
+	Mat4f view = M4fTranslation(V2f(w * 0.5f, h * 0.5f)) * scale;
 	Vec2f zoomOffset = V2f(-w * 0.5f, -h * 0.5f);
 
 	const LoadedImage *cubeImage = renderer.FindImage(ImageResources::FPLLogo512x512.name);
@@ -2109,7 +2107,7 @@ static void DrawRotatingCubeOnly(App &app, const Vec2i &winSize) {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glEnable(GL_DEPTH_TEST);
 
-	Mat4f cubeTranslation = Mat4Translation(V3f(0, 0, -3.0f));
+	Mat4f cubeTranslation = M4fTranslation(V3f(0, 0, -3.0f));
 
 	Mat4f cubeRot = QuatToMat4(state.currentRotation);
 
@@ -2154,7 +2152,7 @@ static void DrawRotatingCubeOnly(App &app, const Vec2i &winSize) {
 	glClearColor(0.0f, 0.0f, 0.0f, 1);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	Mat4f slideModel = Mat4Translation(V2f(0, 0) + zoomOffset);
+	Mat4f slideModel = M4fTranslation(V2f(0, 0) + zoomOffset);
 	Mat4f slideMVP = orthoProj * view * slideModel;
 	glLoadMatrixf(&slideMVP.m[0]);
 
@@ -2180,7 +2178,7 @@ static void RenderFrame(App &app, const Vec2i &winSize) {
 
 		glViewport(0, 0, winSize.w, winSize.h);
 
-		Mat4f proj = Mat4OrthoRH(0.0f, w, h, 0.0f, -1.0f, 1.0f);
+		Mat4f proj = M4fOrthoRH(0.0f, w, h, 0.0f, -1.0f, 1.0f);
 		glLoadMatrixf(&proj.m[0]);
 
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -2195,8 +2193,8 @@ static void RenderFrame(App &app, const Vec2i &winSize) {
 		float h = activeSlide->size.h;
 		float aspect = w / h;
 		Vec2f center = V2f(w, h) * 0.5f;
-		Mat4f orthoProj = Mat4OrthoRH(0.0f, w, h, 0.0f, -1.0f, 1.0f);
-		Mat4f perspectiveProj = Mat4PerspectiveRH(DegreesToRadians(45.0f), aspect, 0.01f, 1000.0f);
+		Mat4f orthoProj = M4fOrthoRH(0.0f, w, h, 0.0f, -1.0f, 1.0f);
+		Mat4f perspectiveProj = M4fPerspectiveRH(F32DegreesToRadians(45.0f), aspect, 0.01f, 1000.0f);
 
 		Viewport viewport = ComputeViewportByAspect(winSize, aspect);
 
@@ -2211,8 +2209,8 @@ static void RenderFrame(App &app, const Vec2i &winSize) {
 #endif
 
 		float zoom = 1.0f;
-		Mat4f scale = Mat4Scale(V3f(zoom, zoom, zoom));
-		Mat4f view = Mat4Translation(V2f(w * 0.5f, h * 0.5f)) * scale;
+		Mat4f scale = M4fScale(V3f(zoom, zoom, zoom));
+		Mat4f view = M4fTranslation(V2f(w * 0.5f, h * 0.5f)) * scale;
 		Vec2f zoomOffset = V2f(-w * 0.5f, -h * 0.5f);
 
 		//
@@ -2228,7 +2226,7 @@ static void RenderFrame(App &app, const Vec2i &winSize) {
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 			glEnable(GL_DEPTH_TEST);
 
-			Mat4f cubeTranslation = Mat4Translation(V3f(0, 0, -2.0f));
+			Mat4f cubeTranslation = M4fTranslation(V3f(0, 0, -2.0f));
 
 			Mat4f cubeRot = QuatToMat4(state.currentRotation);
 
@@ -2278,7 +2276,7 @@ static void RenderFrame(App &app, const Vec2i &winSize) {
 		auto it = presentation.slides.GetConstIterator();
 		for (const Slide *slide = it.Value(); it.HasNext(); slide = it.MoveNext()) {
 			Vec2f slideSize = slide->size;
-			Mat4f slideModel = Mat4Translation(slidePos - state.currentOffset + zoomOffset);
+			Mat4f slideModel = M4fTranslation(slidePos - state.currentOffset + zoomOffset);
 			Mat4f slideMVP = orthoProj * view * slideModel;
 			glLoadMatrixf(&slideMVP.m[0]);
 
@@ -2697,7 +2695,7 @@ int main(int argc, char **argv) {
 	// Video settings
 	settings.video.backend = fplVideoBackendType_OpenGL;
 	settings.video.isVSync = true;
-	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
+	settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Legacy;
 	settings.video.graphics.opengl.multiSamplingCount = 16;
 
 	// Audio settings
