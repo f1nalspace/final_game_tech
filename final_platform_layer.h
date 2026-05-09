@@ -11321,7 +11321,7 @@ typedef struct fpl__InputLinuxJoypad {
 	fplGamepadData raw;
 	// Mapping installed by the user resolver at connect time (only valid when hasMapping is true).
 	fplGamepadMapping mapping;
-	// True when the resolver returned a mapping. When false, the legacy hardcoded fpl__LinuxPushGameControllerStateUpdateEvent path is used unchanged.
+	// True when the resolver returned a mapping. When false, the legacy hardcoded fpl__InputLinuxJoystickStateUpdateEvent path is used unchanged.
 	bool hasMapping;
 } fpl__InputLinuxJoypad;
 
@@ -23566,7 +23566,7 @@ fpl_internal bool fpl__LinuxInitPlatform(const fplInitFlags initFlags, const fpl
 //
 #if defined(FPL__ENABLE_INPUT_LINUX_JOYSTICK)
 // Parses a 4-hex-digit value from a sysfs file (e.g. "046d\n"). Returns 0 if missing/invalid.
-fpl_internal uint16_t fpl__LinuxJoystick_ReadHexFile(const char *path) {
+fpl_internal uint16_t fpl__InputLinuxJoystick_ReadHexFile(const char *path) {
 	int fd = open(path, O_RDONLY);
 	if (fd < 0) {
 		return 0;
@@ -23596,19 +23596,19 @@ fpl_internal uint16_t fpl__LinuxJoystick_ReadHexFile(const char *path) {
 }
 
 // Reads bus/vid/pid/version for /dev/input/jsX from sysfs. Each defaults to 0 if the file is missing (e.g. virtual device).
-fpl_internal void fpl__LinuxJoystick_ReadDeviceIds(int slotIndex, uint16_t *outBus, uint16_t *outVid, uint16_t *outPid, uint16_t *outVersion) {
+fpl_internal void fpl__InputLinuxJoystick_ReadDeviceIds(int slotIndex, uint16_t *outBus, uint16_t *outVid, uint16_t *outPid, uint16_t *outVersion) {
 	char path[128];
 	fplStringFormat(path, fplArrayCount(path), "/sys/class/input/js%d/device/id/bustype", slotIndex);
-	*outBus = fpl__LinuxJoystick_ReadHexFile(path);
+	*outBus = fpl__InputLinuxJoystick_ReadHexFile(path);
 	fplStringFormat(path, fplArrayCount(path), "/sys/class/input/js%d/device/id/vendor", slotIndex);
-	*outVid = fpl__LinuxJoystick_ReadHexFile(path);
+	*outVid = fpl__InputLinuxJoystick_ReadHexFile(path);
 	fplStringFormat(path, fplArrayCount(path), "/sys/class/input/js%d/device/id/product", slotIndex);
-	*outPid = fpl__LinuxJoystick_ReadHexFile(path);
+	*outPid = fpl__InputLinuxJoystick_ReadHexFile(path);
 	fplStringFormat(path, fplArrayCount(path), "/sys/class/input/js%d/device/id/version", slotIndex);
-	*outVersion = fpl__LinuxJoystick_ReadHexFile(path);
+	*outVersion = fpl__InputLinuxJoystick_ReadHexFile(path);
 }
 
-fpl_internal float fpl__LinuxJoystickProcessStickValue(const int16_t value, const int16_t deadZoneThreshold) {
+fpl_internal float fpl__InputLinuxJoystickProcessStickValue(const int16_t value, const int16_t deadZoneThreshold) {
 	float result = 0;
 	if (value < -deadZoneThreshold) {
 		result = (float)((value + deadZoneThreshold) / (32768.0f - deadZoneThreshold));
@@ -23619,7 +23619,7 @@ fpl_internal float fpl__LinuxJoystickProcessStickValue(const int16_t value, cons
 }
 
 // Returns true when the given joydev axis is bound as a thumb-stick axis (LeftX/LeftY/RightX/RightY) by the active mapping. Used to suppress JS_EVENT_INIT replay for stick axes — joydev re-emits the kernel-cached raw value at open time, which is uncalibrated for HID-unsigned axes (Logitech F310 in DInput mode reports ABS_Z / ABS_RZ as -32767 = "min" rather than the centered 0 a real device sends after first motion). Trigger axes legitimately rest at -32767, so this filter is restricted to sticks.
-fpl_internal bool fpl__LinuxJoystick_IsStickAxis(const fpl__InputLinuxJoypad *controller, uint8_t axisIndex) {
+fpl_internal bool fpl__InputLinuxJoystick_IsStickAxis(const fpl__InputLinuxJoypad *controller, uint8_t axisIndex) {
 	if (!controller->hasMapping) {
 		return false;
 	}
@@ -23638,7 +23638,7 @@ fpl_internal bool fpl__LinuxJoystick_IsStickAxis(const fpl__InputLinuxJoypad *co
 	return false;
 }
 
-fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_event *event, fpl__InputLinuxJoypad *controller) {
+fpl_internal void fpl__InputLinuxJoystickStateUpdateEvent(const struct js_event *event, fpl__InputLinuxJoypad *controller) {
 	// Keep the backend-agnostic raw snapshot in sync — used by fplGamepadMappingApply when the resolver installed a mapping.
 	uint8_t evType = event->type & ~(uint8_t)JS_EVENT_INIT;
 	bool isInit = (event->type & JS_EVENT_INIT) != 0;
@@ -23650,11 +23650,11 @@ fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_e
 			v = 1.0f;
 		}
 		// Force stick-axis init replay to centered. Real motion arrives without JS_EVENT_INIT and overwrites this. Triggers and other axes still get their genuine init value.
-		if (isInit && fpl__LinuxJoystick_IsStickAxis(controller, event->number)) {
+		if (isInit && fpl__InputLinuxJoystick_IsStickAxis(controller, event->number)) {
 			v = 0.0f;
 		}
 		controller->raw.axes[event->number] = v;
-		// joydev folds DPad usages onto ABS_HAT0X / ABS_HAT0Y but never emits JS_EVENT_HAT. Synthesize hat 0 from whichever joydev axes were resolved at connect (varies per device — see fpl__LinuxJoystick_DetectControllers) so SDL mappings that bind dp* to h0.* work uniformly across XInput / DInput / generic pads.
+		// joydev folds DPad usages onto ABS_HAT0X / ABS_HAT0Y but never emits JS_EVENT_HAT. Synthesize hat 0 from whichever joydev axes were resolved at connect (varies per device — see fpl__InputLinuxJoystick_DetectControllers) so SDL mappings that bind dp* to h0.* work uniformly across XInput / DInput / generic pads.
 		if (event->number == controller->hat0XAxis || event->number == controller->hat0YAxis) {
 			uint8_t h = controller->raw.hats[0];
 			if (event->number == controller->hat0XAxis) {
@@ -23704,21 +23704,21 @@ fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_e
 				// Left stick
 				case 0:
 				{
-					padState->leftStickX = fpl__LinuxJoystickProcessStickValue(event->value, deadZoneThresholdLeftStick);
+					padState->leftStickX = fpl__InputLinuxJoystickProcessStickValue(event->value, deadZoneThresholdLeftStick);
 				} break;
 				case 1:
 				{
-					padState->leftStickY = fpl__LinuxJoystickProcessStickValue(-event->value, deadZoneThresholdLeftStick);
+					padState->leftStickY = fpl__InputLinuxJoystickProcessStickValue(-event->value, deadZoneThresholdLeftStick);
 				} break;
 
 				// Right stick
 				case 3:
 				{
-					padState->rightStickX = fpl__LinuxJoystickProcessStickValue(event->value, deadZoneThresholdRightStick);
+					padState->rightStickX = fpl__InputLinuxJoystickProcessStickValue(event->value, deadZoneThresholdRightStick);
 				} break;
 				case 4:
 				{
-					padState->rightStickY = fpl__LinuxJoystickProcessStickValue(-event->value, deadZoneThresholdRightStick);
+					padState->rightStickY = fpl__InputLinuxJoystickProcessStickValue(-event->value, deadZoneThresholdRightStick);
 				} break;
 
 				// Left/right trigger
@@ -23783,7 +23783,7 @@ fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_e
 
 // Detect new joysticks across /dev/input/js0 .. js{FPL__LINUX_JOYSTICK_SCAN_COUNT-1}.
 // Throttled by gamepad.detectionFrequency. Called only from Update.
-fpl_internal void fpl__LinuxJoystick_DetectControllers(const fplSettings *settings, fpl__InputBackendLinuxJoystick *backend) {
+fpl_internal void fpl__InputLinuxJoystick_DetectControllers(const fplSettings *settings, fpl__InputBackendLinuxJoystick *backend) {
 	// https://github.com/underdoeg/ofxGamepad
 	// https://github.com/elanthis/gamepad
 	// https://gist.github.com/jasonwhite/c5b2048c15993d285130
@@ -23881,7 +23881,7 @@ fpl_internal void fpl__LinuxJoystick_DetectControllers(const fplSettings *settin
 				}
 			}
 		}
-		// Seed the raw snapshot ranges. fpl__LinuxPushGameControllerStateUpdateEvent synthesizes hat 0 from the joydev axes resolved above. Advertise one hat whenever either DPad axis exists so SDL mappings (h0.1/h0.2/h0.4/h0.8) resolve.
+		// Seed the raw snapshot ranges. fpl__InputLinuxJoystickStateUpdateEvent synthesizes hat 0 from the joydev axes resolved above. Advertise one hat whenever either DPad axis exists so SDL mappings (h0.1/h0.2/h0.4/h0.8) resolve.
 		controller->raw.axisCount = numAxis;
 		controller->raw.buttonCount = numButtons;
 		controller->raw.hatCount = (controller->hat0XAxis != 0xFF || controller->hat0YAxis != 0xFF) ? 1 : 0;
@@ -23894,7 +23894,7 @@ fpl_internal void fpl__LinuxJoystick_DetectControllers(const fplSettings *settin
 			uint16_t vid = 0;
 			uint16_t pid = 0;
 			uint16_t version = 0;
-			fpl__LinuxJoystick_ReadDeviceIds(slotIndex, &bus, &vid, &pid, &version);
+			fpl__InputLinuxJoystick_ReadDeviceIds(slotIndex, &bus, &vid, &pid, &version);
 			fplGamepadInfo info = fplZeroInit;
 			info.index = (uint32_t)freeIndex;
 			info.backend = fplInputBackendType_LinuxJoystick;
@@ -23919,7 +23919,7 @@ fpl_internal void fpl__LinuxJoystick_DetectControllers(const fplSettings *settin
 
 // Drain pending joystick events from open fds and refresh cached state.
 // useEvents=true pushes Disconnected/StateChanged events; false skips them.
-fpl_internal void fpl__LinuxJoystick_UpdateStates(fpl__InputBackendLinuxJoystick *backend, const bool useEvents) {
+fpl_internal void fpl__InputLinuxJoystick_UpdateStates(fpl__InputBackendLinuxJoystick *backend, const bool useEvents) {
 	for (uint32_t controllerIndex = 0; controllerIndex < fplArrayCount(backend->controllers); ++controllerIndex) {
 		fpl__InputLinuxJoypad *controller = backend->controllers + controllerIndex;
 		if (controller->fd <= 0) continue;
@@ -23944,10 +23944,10 @@ fpl_internal void fpl__LinuxJoystick_UpdateStates(fpl__InputBackendLinuxJoystick
 				}
 				break;
 			}
-			fpl__LinuxPushGameControllerStateUpdateEvent(&event, controller);
+			fpl__InputLinuxJoystickStateUpdateEvent(&event, controller);
 		}
 
-		// When a user mapping is installed, derive the state from raw via fplGamepadMappingApply. Otherwise the legacy direct path inside fpl__LinuxPushGameControllerStateUpdateEvent already populated controller->state.
+		// When a user mapping is installed, derive the state from raw via fplGamepadMappingApply. Otherwise the legacy direct path inside fpl__InputLinuxJoystickStateUpdateEvent already populated controller->state.
 		if (controller->hasMapping && !wasDisconnected) {
 			fplGamepadState gs = fplZeroInit;
 			fplGamepadMappingApply(&controller->mapping, &controller->raw, &gs);
@@ -23993,8 +23993,8 @@ fpl_internal void fpl__InputBackendLinuxJoystick_Update(fpl__InputBackendLinuxJo
 	fplAssertPtr(backend);
 	fplAssertPtr(settings);
 	if (!backend->isInitialized) return;
-	fpl__LinuxJoystick_DetectControllers(settings, backend);
-	fpl__LinuxJoystick_UpdateStates(backend, true);
+	fpl__InputLinuxJoystick_DetectControllers(settings, backend);
+	fpl__InputLinuxJoystick_UpdateStates(backend, true);
 }
 
 fpl_internal bool fpl__InputBackendLinuxJoystick_PollGamepad(fpl__InputBackendLinuxJoystick *backend, fplGamepadStates *outStates) {
@@ -24002,7 +24002,7 @@ fpl_internal bool fpl__InputBackendLinuxJoystick_PollGamepad(fpl__InputBackendLi
 	fplAssertPtr(outStates);
 	if (!backend->isInitialized) return false;
 	// Mirror XInput PollGamepad: read cached state only, do not run detection.
-	fpl__LinuxJoystick_UpdateStates(backend, false);
+	fpl__InputLinuxJoystick_UpdateStates(backend, false);
 	// Merge contract: only fill slots we own (controller open) and that no earlier backend has claimed.
 	bool any = false;
 	for (int i = 0; i < fplArrayCount(backend->controllers); ++i) {
