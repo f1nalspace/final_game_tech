@@ -21,6 +21,7 @@ Author:
 Changelog:
 	## 2026-05-10
 	- Use final_dynamic_opengl instead of gl.h
+	- No more size and position overwrite of window
 
 	## 2018-10-22
 	- Reflect api changes in FPL 0.9.3
@@ -152,9 +153,6 @@ int main(int argc, char **args) {
 		fplPlatformRelease();
 		return -1;
 	}
-
-	fplSetWindowSize(640, 480);
-	fplSetWindowPosition(0, 0);
 
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LEQUAL);
