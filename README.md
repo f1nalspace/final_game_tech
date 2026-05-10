@@ -1,10 +1,14 @@
 # final_game_tech
 
-This repository contains game/multimedia related libraries and utilities written in C / C++.
+![Final Game Tech](assets/final_game_tech.jpg)
 
-![Final Game Tech](https://github.com/f1nalspace/final_game_tech/blob/develop/assets/final_game_tech.jpg)
+## Description
 
-## Table of libraries
+This repository contains several game/multimedia related libraries mostly written in C99/C17 or C++/11.
+
+Core library is the Final Platform Layer (FPL) library that contains various demo applications showcasing its capabilities.
+
+## Libraries
 
 | Name                     | Description                                 | Platforms        | Language | Latest Version | State       | Size ~  |
 |--------------------------|---------------------------------------------|------------------|----------|----------------|-------------|---------|
@@ -19,24 +23,40 @@ This repository contains game/multimedia related libraries and utilities written
 * Few libraries are still in beta/alpha, even though they are finished.
 * Only fully implemented, documented and well tested libraries will leave the alpha/beta phase.
 
-## How to contribute
+## Structure
+
+```
+.
+├── final_platform_layer.h          # Single-header-file platform abstraction library (C99)
+├── final_dynamic_opengl.h          # Single-header-file OpenGL function loader (C99)
+├── final_game_box.h                # Single-header-file DMG game boy emulator library (C99)
+├── final_xml.h                     # Single-header-file simple XML parser library (C99)
+├── final_memory.h                  # Single-header-file custom memory allocator (C99)
+├── final_tiletrace.hpp             # Single-header-file contour tile tracing library (C++/11)
+├── demos/                          # Demo applications for all libraries (C99 or C++/11)
+├── apps/                           # Converters and utility applications (mostly used internally)
+```
+
+## Contributing
+
+### How to contribute
 
 If you want to support any of this library in this repository, you can do this in the following way:
 
-- Provide feedback by tickets (features, bugs, improvements, etc). 
+- Compile and test the demos/libraries in several configurations and share your feedback (Platform / Architecture / Compiler / IDE)
+- Provide feedback by tickets (features, bugs, improvements, etc).
 - Provide new demos to the demos/ folder
 - Improve existing demos by pull requests
-- Test the demos/libraries in several configurations and share your feedback (Platform / Architecture / Compiler / IDE)
 - Be active in the community, ask questions, help others
-- Please feel free to spread the word
+- Spread the word / Star the project
 
-## Code Contribution
+### Code Contribution
 
 You are invited to provide pull quests at any time - helping to improve the libraries and/or demos for me or for others.
 
 However, untested, sloppy generated or poorly designed or broken code will not be accepted!
 
-### Code Quality Requirements
+#### Code Quality Requirements
 
 Code that you provide you must have a certain level of quality:
 - Compiles without any errors
@@ -45,17 +65,18 @@ Code that you provide you must have a certain level of quality:
 - Prevents collision of existing functions and types by using prefix and long names
 - Good readable documentations of all defines, types and functions
 - External library loading and handling supports runtime, static and dynamic linking
-- Uses as less memory as possible and uses data-oriented structures
-- Uses existing libraries from `demos/additions`, whenever possible
+- Uses as less memory as possible and focus on data-oriented structures
+- Uses existing libraries from root or `demos/additions`, whenever possible
 
 Also respect the following rules:
-- Use `fplMemory*Allocate()` / `fplMemory*Free()` over malloc/free
+- Prefer `fplMemory*Allocate()` / `fplMemory*Free()` over malloc/free
 - Use `final_memory.h`, when you do lots of memory allocations
-- Use platform preprocessor guards, for platform specific code
+- Use `final_dynamic_opengl.h`, when you need OpenGL functions
+- Use platform preprocessor guards for platform specific code
 - Prefer single translation units over multiple translation units
-- Prefer C99 over C++/11
+- Prefer C99/C17 over C++/11
 
-## AI Usage
+### AI Usage
 
 Since 2026, libraries and demos are extensively improved using local and premium AI tools.
 Every line of code that is/was generated or modified by AI is/was properly reviewed and tested by humans.
@@ -64,14 +85,17 @@ Positive examples are:
 - PulseAudio backend for `final_platform_layer.h`
 - PipeWire backend for `final_platform_layer.h`
 - Critical audio bugfixes in `demos/additions/final_audio*.h`
-- Fixing seek not working properly in `demos/FPL_FFMpeg`
+- Fixing seek in `demos/FPL_FFMpeg`
 - Fixing major audio issues in `final_game_box.h`
 - Improving emulation processing in `final_game_box.h`
 - Game Boy Color support in `final_game_box.h`
 
 It is allowed to provide AI generated code by pull requests, but those must have a certain level of quality (See section `Code Contribution`).
 
+## Details
+
+You can find more details in the [Final Game Tech](final_game_tech.md).
+
 ## License
 
-All libraries in the root folder of this repository are open-source and use the MIT-License.
-Read `LICENSE` for more details.
+All libraries in the root folder of this repository are open-source and use the MIT-License. Read [LICENSE](LICENSE) for more details.
