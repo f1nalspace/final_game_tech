@@ -24279,8 +24279,67 @@ fpl_platform_api bool fplSetWindowFullscreenSize(const bool value, const uint32_
 }
 
 fpl_platform_api bool fplSetWindowFullscreenRect(const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height) {
-	// @IMPLEMENT(final/X11): fplSetWindowFullscreenRect
-	return(false);
+	FPL__CheckPlatform(false);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	if (!value) {
+		return(fplSetWindowFullscreenSize(false, 0, 0, 0));
+	}
+	// X11 has no pixel-rect fullscreen, snap to monitor span via _NET_WM_FULLSCREEN_MONITORS (Xinerama indices).
+	if (subplatform->xinerama.libHandle != fpl_null && subplatform->xinerama.XineramaIsActive(windowState->display)) {
+		int count = 0;
+		fpl__XineramaScreenInfo *screens = subplatform->xinerama.XineramaQueryScreens(windowState->display, &count);
+		if (screens != fpl_null && count > 0) {
+			int rx0 = x;
+			int ry0 = y;
+			int rx1 = x + width - 1;
+			int ry1 = y + height - 1;
+			int cx = x + width / 2;
+			int cy = y + height / 2;
+			int idxTL = -1;
+			int idxBR = -1;
+			int idxC = -1;
+			for (int i = 0; i < count; ++i) {
+				int sx = screens[i].x_org;
+				int sy = screens[i].y_org;
+				int sw = screens[i].width;
+				int sh = screens[i].height;
+				if (idxTL < 0 && fpl__X11RectContains(sx, sy, sw, sh, rx0, ry0)) {
+					idxTL = i;
+				}
+				if (idxBR < 0 && fpl__X11RectContains(sx, sy, sw, sh, rx1, ry1)) {
+					idxBR = i;
+				}
+				if (idxC < 0 && fpl__X11RectContains(sx, sy, sw, sh, cx, cy)) {
+					idxC = i;
+				}
+			}
+			if (idxTL < 0) {
+				idxTL = (idxC >= 0) ? idxC : 0;
+			}
+			if (idxBR < 0) {
+				idxBR = (idxC >= 0) ? idxC : idxTL;
+			}
+			x11Api->XFree(screens);
+			Atom monAtom = x11Api->XInternAtom(windowState->display, "_NET_WM_FULLSCREEN_MONITORS", False);
+			XEvent xev = fplZeroInit;
+			xev.type = ClientMessage;
+			xev.xclient.window = windowState->window;
+			xev.xclient.message_type = monAtom;
+			xev.xclient.format = 32;
+			xev.xclient.data.l[0] = idxTL;
+			xev.xclient.data.l[1] = idxBR;
+			xev.xclient.data.l[2] = idxTL;
+			xev.xclient.data.l[3] = idxBR;
+			xev.xclient.data.l[4] = 1L;
+			x11Api->XSendEvent(windowState->display, windowState->root, 0, SubstructureRedirectMask | SubstructureNotifyMask, &xev);
+			x11Api->XFlush(windowState->display);
+		}
+	}
+	bool result = fplSetWindowFullscreenSize(true, 0, 0, 0);
+	return(result);
 }
 
 fpl_platform_api bool fplEnableWindowFullscreen(void) {
