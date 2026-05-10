@@ -21871,8 +21871,8 @@ fpl_platform_api char fplConsoleWaitForCharInput(void) {
 // ############################################################################
 #if defined(FPL_SUBPLATFORM_X11)
 
-#define FPL__X11_DEFAULT_WINDOW_WIDTH 400
-#define FPL__X11_DEFAULT_WINDOW_HEIGHT 400
+#define FPL__X11_DEFAULT_WINDOW_WIDTH 1280
+#define FPL__X11_DEFAULT_WINDOW_HEIGHT 720
 
 fpl_internal void fpl__X11ReleaseSubplatform(fpl__X11SubplatformState *subplatform) {
 	fplAssert(subplatform != fpl_null);
