@@ -103,7 +103,7 @@ SOFTWARE.
 
 /*!
 	\file final_dynamic_opengl.h
-	\version v1.0.1
+	\version v1.0.0
 	\author Torsten Spaete
 	\brief Final Dynamic OpenGL (FGL) - A open source C99 single file header OpenGL-Loader library.
 */
@@ -118,11 +118,9 @@ SOFTWARE.
 	\page page_changelog Changelog
 	\tableofcontents
 
-	# v1.0.1:
-	- Fixed warnings for initialization of function prototypes with fgl_api
-
 	# v1.0.0:
-	- Release
+	- Fixed warnings for initialization of function prototypes with fgl_api
+	- Fixed wrong X11 window handle
 
 	# v0.4.0.0 beta:
 
@@ -325,7 +323,7 @@ typedef struct fglPosixOpenGLWindowHandle {
 	//! Display
 	Display *display;
 	//! Window
-	Window *window;
+	Window window;
 } fglPosixOpenGLWindowHandle;
 
 typedef struct fglPosixOpenGLRenderingContext {
