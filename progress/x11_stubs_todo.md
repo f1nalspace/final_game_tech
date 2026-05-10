@@ -35,16 +35,16 @@ Tracking file. Tick boxes as work progresses across sessions. See `x11_stubs_pla
 
 ## Session 4 — Display query (RandR + Xinerama + root fallback)
 
-- [ ] Helper `fpl__X11ResolveDisplayBackend`.
-- [ ] Helper `fpl__X11FillDisplayInfoFromCrtc`.
-- [ ] Helper `fpl__X11FillDisplayInfoFromXinerama`.
-- [ ] Helper `fpl__X11FillDisplayInfoFromRoot`.
-- [ ] `fplGetDisplayCount`
-- [ ] `fplGetDisplays`
-- [ ] `fplGetPrimaryDisplay`
-- [ ] `fplGetWindowDisplay`
-- [ ] `fplGetDisplayFromPosition`
-- [ ] `fplGetDisplayModes` (RandR mode list, Xinerama/root single current)
+- [x] Helper `fpl__X11ResolveDisplayBackend`.
+- [x] Helper `fpl__X11FillDisplayInfoFromCrtc`.
+- [x] Helper `fpl__X11FillDisplayInfoFromXinerama`.
+- [x] Helper `fpl__X11FillDisplayInfoFromRoot`.
+- [x] `fplGetDisplayCount`
+- [x] `fplGetDisplays`
+- [x] `fplGetPrimaryDisplay`
+- [x] `fplGetWindowDisplay`
+- [x] `fplGetDisplayFromPosition`
+- [x] `fplGetDisplayModes` (RandR mode list, Xinerama/root single current)
 - [ ] Manual test: single-monitor + multi-monitor (if available).
 
 ## Session 5 — Clipboard
