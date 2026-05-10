@@ -18,12 +18,12 @@ Tracking file. Tick boxes as work progresses across sessions. See `x11_stubs_pla
 
 ## Session 2 — Window styles
 
-- [ ] `fplIsWindowFloating`
-- [ ] `fplSetWindowFloating`
-- [ ] `fplGetWindowState`
-- [ ] `fplSetWindowState`
-- [ ] `fplIsWindowResizable`
-- [ ] `fplSetWindowResizeable`
+- [x] `fplIsWindowFloating`
+- [x] `fplSetWindowFloating`
+- [x] `fplGetWindowState`
+- [x] `fplSetWindowState`
+- [x] `fplIsWindowResizable`
+- [x] `fplSetWindowResizeable`
 - [ ] Manual test: window state cycling, resizable toggle, floating toggle.
 
 ## Session 3 — Cursor
