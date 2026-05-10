@@ -1,6 +1,6 @@
 # Final Game Tech Codebase
 
-This repository contains several game/multimedia related libraries mostly written in C99.
+This repository contains several game/multimedia related libraries mostly written in C99/C17 or C++/11.
 
 Core library is the Final Platform Layer (FPL) library that contains various demo applications showcasing its capabilities.
 
@@ -17,6 +17,7 @@ Core library is the Final Platform Layer (FPL) library that contains various dem
 ├── apps/
 │   ├── EnumToSwitchConverter/      # C# GUI tool to convert enums to switch statements
 │   ├── FontRendering/              # C++ font rendering tool using stb_truetype
+│   ├── gamepaddbgen/               # C tool for generating gamepad database
 │   ├── OpenGLExtParser/            # C++ parser for OpenGL extensions
 │   ├── ProtParser/                 # C# prototype/function parser generator
 │   ├── staticdatamaker/            # C tool for generating static data
@@ -86,12 +87,50 @@ Core library is the Final Platform Layer (FPL) library that contains various dem
 
 The main platform abstraction layer that provides:
 - Cross-platform window management
-- Video/OpenGL rendering context setup
-- Audio playback and capture
-- Input handling (keyboard, mouse, controllers)
+- Video/Graphics rendering context setup
+- Asyncronous Audio samples playback
+- Input handling (keyboard, mouse, gamepads)
 - File I/O and path operations
 - Memory management utilities
 - Threading and synchronization primitives
+- Hardware info retrieval
+- Logging and debugging utilities
+- Error handling and assertions
+- Time info retrieval
+
+### Supported Architectures
+
+- X86
+- X86_64
+- ARM32
+- ARM64
+
+### Supported Platforms
+
+- Windows
+- Linux
+- Unix/BSD (partially)
+
+### Video Backends
+
+- Software
+- OpenGL
+- Vulkan
+
+### Audio Backends
+
+- DirectSound
+- ALSA
+- PulseAudio
+- PipeWire
+
+### Input Backends
+
+- Win32 Keyboard/Mouse
+- Win32 XInput
+- Win32 DirectInput
+- X11 Keyboard/Mouse
+- Linux Joystick
 
 ## Demo Applications
 
@@ -101,15 +140,18 @@ The main platform abstraction layer that provides:
 A breakout-style game demonstrating:
 - Physics with Box2D
 - Game state management
-- Rendering with Final Framework
+- Based on Final-Game-Framework
 - Input handling
 - Audio integration
+- OpenGL rendering
+- Incomplete game, no items, no powerups, no enemies
 
 #### FPL_Towadev
 A tower defence game that implements:
 - Basic tower defence game code with full math
 - Fully controlled by mouse
 - Based on Final-Game-Framework
+- OpenGL rendering
 - Incomplete game, just two levels with developer-graphics
 
 ### FPL_GameTemplate
@@ -122,8 +164,8 @@ Simple template that can be used to start programming a game
 Full-featured audio playback demo showcasing:
 - Audio system integration
 - Streaming of audio sources into a ring buffer
-- Playback controls
 - File format support (MP3, Vorbis, Wave)
+- Audio visualization (FFT, Spectrum, Samples)
 
 #### FPL_SimpleAudio
 Basic audio demo demonstrating the audio callback interface:
@@ -136,12 +178,12 @@ Wave file audio playback demo
 ### Apps/Simulations
 
 #### FPL_Emulator
-A Game Boy DMG emulator with:
-- Full emulator functionality
+A Game Boy DMG/CGB emulator with:
+- Full emulator functionality, including sound
 - Debugger with disassembly
 - Visual debugging features
 - ROM loading from raw or zip files
-- OpenGL rendering
+- OpenGL rendering with optional GLSL shaders
 
 #### FPL_ImageViewer
 Image viewer app that loads and displays images:
@@ -155,22 +197,26 @@ Image viewer app that loads and displays images:
 C++ 2D fluid simulation with different scenarios and an integrated benchmarking mode:
 - Uses legacy OpenGL for rendering
 - Makes heavy use of multi-threading
+- Supports only CPU acceleration
+- Supports different scenarios
+- Has built-in benchmarking mode
 
 #### FPL_Raytracer
 Multi-threaded 3D software raytracer:
 - Inspired by "handmade ray" (Casey Muratori)
-- Tests multi-threading and software video output
+- Tests multi-threading software video output
 - Uses FPL software rendering backend
 
 ### Demos that use Third-Party Libraries
 
 #### FPL_FFMpeg
-FFmpeg integration demo showing:
+FFmpeg video player demo showing:
 - Packet caching & decoding
 - Video/audio packet caching & decoding
 - Uses OpenGL for rendering, but works also with fplVideoBackendType_Software
 - Simple OSD that displays relevant infos: time, video/audio information
-- Support for seeking, but not correctly implemented
+- Support for seeking and pausing
+- Drag & Drop support
 
 #### FPL_ImGui
 Example demo that has a full FPL implementation for ImGui
@@ -202,7 +248,7 @@ Vulkan rendering demo demonstrating:
 ### Input
 
 #### FPL_Input
-Visual demo that displays all held/pressed keys and buttons in a gamepad:
+Visual demo that displays all held/pressed keys and buttons in keyboard/mouse/gamepad:
 - Uses legacy OpenGL for rendering
 - Allows switching between event or polling mode
 
@@ -236,10 +282,20 @@ Demonstrates compiling FPL as a static library and linking it into a client appl
 ### Test & Development
 
 #### FPL_Test
-Unit tests for FPL functionality (C++):
-- Threading, synchronization primitives (mutexes, semaphores, condition variables)
-- Memory operations
+Unit tests for FPL functionality:
+- Cold + Custom Initialization
+- Size checks and macro validations
+- Security validations, testing for buffer overflows or invalid memory accesses
 - String utilities
+- Localization
+- Memory operations
+- OS and user info retrieval
+- Hardware info retrieval
+- Time info retrieval
+- File/Path IO
+- Atomics
+- Threading, synchronization primitives (mutexes, semaphores, condition variables)
+- Gamepad Poll Merge
 
 #### Final_Testbed
 Playground for testing font loading and game platform components:
@@ -270,9 +326,9 @@ Demonstrates final_tiletrace.hpp:
 
 ### Top-level Single-Header Libraries
 
-- **final_platform_layer.h**: Cross-platform abstraction layer (window, audio, input, file I/O, threading)
+- **final_platform_layer.h**: Cross-platform abstraction layer (window, video, audio, input, file I/O, threading)
 - **final_dynamic_opengl.h**: OpenGL function loader with full OpenGL header
-- **final_game_box.h**: DMG Game Boy emulator library
+- **final_game_box.h**: DMG/CGB Game Boy emulator library
 - **final_xml.h**: Simple XML parser library
 - **final_memory.h**: Custom memory allocator with debugging features
 - **final_tiletrace.hpp**: C++/11 contour tile tracing for solid tilemaps
@@ -315,6 +371,7 @@ Utilities:
 
 - **EnumToSwitchConverter**: C# GUI tool to convert enum definitions to switch/case statements
 - **FontRendering**: C++ tool for font rendering using stb_truetype.h
+- **gamepaddbgen**: C tool for generating gamepad database
 - **OpenGLExtParser**: C++ parser that processes OpenGL extension specifications
 - **ProtParser**: C# tool to parse and generate prototype/function declarations
 - **staticdatamaker**: C tool for generating static data headers
@@ -326,10 +383,11 @@ Utilities:
 2. **Cross-Platform Abstraction**: Platform-specific code is conditionally compiled
 3. **Modular Architecture**: Each demo focuses on specific capabilities while using shared libraries
 4. **Simple Integration**: Easy to include and use in new projects
+5. **Runtime Linking**: Uses runtime by default, but can be statically or dynamically linked
 
 ## Implementation Details
 
-- Uses C99 standard for maximum portability
+- Uses C99 or C++/11 for maximum portability
 - Conditional compilation for platform-specific features
 - Memory allocation macros that can be overridden
 - Extensive use of inline functions for performance
