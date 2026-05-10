@@ -43,32 +43,6 @@ Core library is the Final Platform Layer (FPL) library that contains various dem
 ├── screenshots/                    # Screenshots of the demo applications 
 ```
 
-## Screenshots
-
-![FPL_AudioPlayer](screenshots/FPL_AudioPlayer.png)
-
-![FPL_Crackout](screenshots/FPL_AudioPlayer.png)
-
-![FPL_Emulator](screenshots/FPL_Emulator.png)
-
-![FPL_FFMpeg](screenshots/FPL_FFMpeg.png)
-
-![FPL_ImageViewer](screenshots/FPL_ImageViewer.png)
-
-![FPL_ImGui](screenshots/FPL_ImGui.png)
-
-![FPL_NBodySimulation](screenshots/FPL_NBodySimulation.png)
-
-![FPL_OpenGL](screenshots/FPL_OpenGL.png)
-
-![FPL_Raytracer](screenshots/FPL_Raytracer.png)
-
-![FPL_Software](screenshots/FPL_Software.png)
-
-![FPL_Towadev](screenshots/FPL_Towadev.png)
-
-![FTT_TileTracingDemo](screenshots/FTT_TileTracingDemo.png)
-
 ## Contributing
 
 ### How to contribute
@@ -131,3 +105,29 @@ You can find more details in the [Final Game Tech](final_game_tech.md).
 ## License
 
 All libraries in the root folder of this repository are open-source and use the MIT-License. Read [LICENSE](LICENSE) for more details.
+
+## Screenshots
+
+![FPL_AudioPlayer](screenshots/FPL_AudioPlayer.png)
+
+![FPL_Crackout](screenshots/FPL_AudioPlayer.png)
+
+![FPL_Emulator](screenshots/FPL_Emulator.png)
+
+![FPL_FFMpeg](screenshots/FPL_FFMpeg.png)
+
+![FPL_ImageViewer](screenshots/FPL_ImageViewer.png)
+
+![FPL_ImGui](screenshots/FPL_ImGui.png)
+
+![FPL_NBodySimulation](screenshots/FPL_NBodySimulation.png)
+
+![FPL_OpenGL](screenshots/FPL_OpenGL.png)
+
+![FPL_Raytracer](screenshots/FPL_Raytracer.png)
+
+![FPL_Software](screenshots/FPL_Software.png)
+
+![FPL_Towadev](screenshots/FPL_Towadev.png)
+
+![FTT_TileTracingDemo](screenshots/FTT_TileTracingDemo.png)
