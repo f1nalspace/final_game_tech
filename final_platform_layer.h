@@ -24327,8 +24327,18 @@ fpl_platform_api bool fplGetClipboardText(char *dest, const uint32_t maxDestLen)
 }
 
 fpl_platform_api bool fplSetClipboardText(const char *text) {
-	// @IMPLEMENT(final/X11): fplSetClipboardText
-	return false;
+	FPL__CheckArgumentNull(text, false);
+	FPL__CheckPlatform(false);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	fpl__X11WindowState *windowState = &appState->window.x11;
+	size_t copied = fplCopyString(text, windowState->clipboardOut, fplArrayCount(windowState->clipboardOut));
+	windowState->clipboardOutLen = copied;
+	x11Api->XSetSelectionOwner(windowState->display, windowState->clipboardAtom, windowState->window, CurrentTime);
+	x11Api->XFlush(windowState->display);
+	bool result = x11Api->XGetSelectionOwner(windowState->display, windowState->clipboardAtom) == windowState->window;
+	return(result);
 }
 #endif // FPL__ENABLE_WINDOW
 
