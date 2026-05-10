@@ -23350,6 +23350,33 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			}
 		} break;
 
+		case SelectionRequest:
+		{
+			XSelectionRequestEvent *req = &ev->xselectionrequest;
+			XEvent reply = fplZeroInit;
+			reply.xselection.type = SelectionNotify;
+			reply.xselection.requestor = req->requestor;
+			reply.xselection.selection = req->selection;
+			reply.xselection.target = req->target;
+			reply.xselection.time = req->time;
+			reply.xselection.property = None;
+			if (req->selection == x11WinState->clipboardAtom) {
+				if (req->target == x11WinState->targetsAtom) {
+					Atom supported[3];
+					supported[0] = x11WinState->targetsAtom;
+					supported[1] = x11WinState->utf8String;
+					supported[2] = XA_STRING;
+					x11Api->XChangeProperty(x11WinState->display, req->requestor, req->property, XA_ATOM, 32, PropModeReplace, (unsigned char *)supported, 3);
+					reply.xselection.property = req->property;
+				} else if (req->target == x11WinState->utf8String || req->target == XA_STRING) {
+					x11Api->XChangeProperty(x11WinState->display, req->requestor, req->property, req->target, 8, PropModeReplace, (unsigned char *)x11WinState->clipboardOut, (int)x11WinState->clipboardOutLen);
+					reply.xselection.property = req->property;
+				}
+			}
+			x11Api->XSendEvent(x11WinState->display, req->requestor, False, NoEventMask, &reply);
+			x11Api->XFlush(x11WinState->display);
+		} break;
+
 		case SelectionNotify:
 		{
 			if (ev->xselection.property == x11WinState->xdndSelection) {
