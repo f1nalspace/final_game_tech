@@ -96,7 +96,7 @@ Positive examples are:
 - Improving emulation processing in `final_game_box.h`
 - Game Boy Color support in `final_game_box.h`
 
-It is allowed to provide AI generated code by pull requests, but those must have a certain level of quality (See section `Code Contribution`).
+It is allowed to provide AI generated code by pull requests, but those must have a certain level of quality (See section [Code Contribution](#code-contribution)).
 
 ## Details
 
