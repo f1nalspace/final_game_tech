@@ -23990,7 +23990,25 @@ fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
 }
 
 fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY) {
-	// @IMPLEMENT(final/X11) fplQueryCursorPosition
+	FPL__CheckArgumentNull(outX, false);
+	FPL__CheckArgumentNull(outY, false);
+	FPL__CheckPlatform(false);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	Window rootRet = 0;
+	Window childRet = 0;
+	int rootX = 0;
+	int rootY = 0;
+	int winX = 0;
+	int winY = 0;
+	unsigned int mask = 0;
+	if (x11Api->XQueryPointer(windowState->display, windowState->window, &rootRet, &childRet, &rootX, &rootY, &winX, &winY, &mask)) {
+		*outX = winX;
+		*outY = winY;
+		return(true);
+	}
 	return(false);
 }
 #endif // FPL_SUBPLATFORM_X11
