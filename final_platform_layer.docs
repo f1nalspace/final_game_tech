@@ -102,12 +102,19 @@
 		- Text input (Event-based only)
 		- Keyboard
 		- Mouse
-		- Game Controllers
+		- Gamepads
+		- Backends:
+		    - Win32 Keyboard/Mouse
+		    - Win32 DirectInput
+		    - Win32 XInput
+		    - X11 Keyboard/Mouse
+		    - Linux Joystick
 	- Video:
 		- Graphics initialization
 		- Backends:
 			- OpenGL 1.x (Legacy)
 			- OpenGL 3.x or higher (Modern)
+			- Vulkan
 			- Software Backbuffer
 	- Audio
 		- Raw audio asyncronous playback
@@ -115,6 +122,8 @@
 		- Backends:
 			- DirectSound
 			- ALSA
+			- PulseAudio
+			- PipeWire
 	- Memory
 		- Allocation and Deallocation
 		- Custom Alignment functions
