@@ -9963,6 +9963,8 @@ fpl_main int main(int argc, char **args);
 #define FPL__MODULE_POSIX "POSIX"
 #define FPL__MODULE_PTHREAD "pthread"
 #define FPL__MODULE_X11 "X11"
+#define FPL__MODULE_XRANDR "XrandR"
+#define FPL__MODULE_XINERAMA "Xinerama"
 #define FPL__MODULE_GLX "GLX"
 
 //
@@ -11670,8 +11672,148 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 	return(result);
 }
 
+//
+// XrandR Api (optional)
+//
+
+typedef unsigned long fpl__RROutput;
+typedef unsigned long fpl__RRCrtc;
+typedef unsigned long fpl__RRMode;
+typedef unsigned short fpl__RRConnection;
+typedef unsigned short fpl__RRSubpixelOrder;
+typedef unsigned short fpl__RRRotation;
+
+typedef struct fpl__XRRModeInfo {
+	fpl__RRMode id;
+	unsigned int width;
+	unsigned int height;
+	unsigned long dotClock;
+	unsigned int hSyncStart;
+	unsigned int hSyncEnd;
+	unsigned int hTotal;
+	unsigned int hSkew;
+	unsigned int vSyncStart;
+	unsigned int vSyncEnd;
+	unsigned int vTotal;
+	char *name;
+	unsigned int nameLength;
+	unsigned long modeFlags;
+} fpl__XRRModeInfo;
+
+typedef struct fpl__XRRScreenResources {
+	Time timestamp;
+	Time configTimestamp;
+	int ncrtc;
+	fpl__RRCrtc *crtcs;
+	int noutput;
+	fpl__RROutput *outputs;
+	int nmode;
+	fpl__XRRModeInfo *modes;
+} fpl__XRRScreenResources;
+
+typedef struct fpl__XRRCrtcInfo {
+	Time timestamp;
+	int x, y;
+	unsigned int width, height;
+	fpl__RRMode mode;
+	fpl__RRRotation rotation;
+	int noutput;
+	fpl__RROutput *outputs;
+	fpl__RRRotation rotations;
+	int npossible;
+	fpl__RROutput *possible;
+} fpl__XRRCrtcInfo;
+
+typedef struct fpl__XRROutputInfo {
+	Time timestamp;
+	fpl__RRCrtc crtc;
+	char *name;
+	int nameLen;
+	unsigned long mm_width;
+	unsigned long mm_height;
+	fpl__RRConnection connection;
+	fpl__RRSubpixelOrder subpixel_order;
+	int ncrtc;
+	fpl__RRCrtc *crtcs;
+	int nclone;
+	fpl__RROutput *clones;
+	int nmode;
+	int npreferred;
+	fpl__RRMode *modes;
+} fpl__XRROutputInfo;
+
+#define FPL__FUNC_XRR_XRRQueryExtension(name) Bool name(Display *dpy, int *event_base_return, int *error_base_return)
+typedef FPL__FUNC_XRR_XRRQueryExtension(fpl__func_xrr_XRRQueryExtension);
+#define FPL__FUNC_XRR_XRRGetScreenResourcesCurrent(name) fpl__XRRScreenResources *name(Display *dpy, Window window)
+typedef FPL__FUNC_XRR_XRRGetScreenResourcesCurrent(fpl__func_xrr_XRRGetScreenResourcesCurrent);
+#define FPL__FUNC_XRR_XRRFreeScreenResources(name) void name(fpl__XRRScreenResources *resources)
+typedef FPL__FUNC_XRR_XRRFreeScreenResources(fpl__func_xrr_XRRFreeScreenResources);
+#define FPL__FUNC_XRR_XRRGetCrtcInfo(name) fpl__XRRCrtcInfo *name(Display *dpy, fpl__XRRScreenResources *resources, fpl__RRCrtc crtc)
+typedef FPL__FUNC_XRR_XRRGetCrtcInfo(fpl__func_xrr_XRRGetCrtcInfo);
+#define FPL__FUNC_XRR_XRRFreeCrtcInfo(name) void name(fpl__XRRCrtcInfo *crtcInfo)
+typedef FPL__FUNC_XRR_XRRFreeCrtcInfo(fpl__func_xrr_XRRFreeCrtcInfo);
+#define FPL__FUNC_XRR_XRRGetOutputInfo(name) fpl__XRROutputInfo *name(Display *dpy, fpl__XRRScreenResources *resources, fpl__RROutput output)
+typedef FPL__FUNC_XRR_XRRGetOutputInfo(fpl__func_xrr_XRRGetOutputInfo);
+#define FPL__FUNC_XRR_XRRFreeOutputInfo(name) void name(fpl__XRROutputInfo *outputInfo)
+typedef FPL__FUNC_XRR_XRRFreeOutputInfo(fpl__func_xrr_XRRFreeOutputInfo);
+#define FPL__FUNC_XRR_XRRGetOutputPrimary(name) fpl__RROutput name(Display *dpy, Window window)
+typedef FPL__FUNC_XRR_XRRGetOutputPrimary(fpl__func_xrr_XRRGetOutputPrimary);
+
+typedef struct fpl__XrandRApi {
+	void *libHandle;
+	fpl__func_xrr_XRRQueryExtension *XRRQueryExtension;
+	fpl__func_xrr_XRRGetScreenResourcesCurrent *XRRGetScreenResourcesCurrent;
+	fpl__func_xrr_XRRFreeScreenResources *XRRFreeScreenResources;
+	fpl__func_xrr_XRRGetCrtcInfo *XRRGetCrtcInfo;
+	fpl__func_xrr_XRRFreeCrtcInfo *XRRFreeCrtcInfo;
+	fpl__func_xrr_XRRGetOutputInfo *XRRGetOutputInfo;
+	fpl__func_xrr_XRRFreeOutputInfo *XRRFreeOutputInfo;
+	fpl__func_xrr_XRRGetOutputPrimary *XRRGetOutputPrimary;
+} fpl__XrandRApi;
+
+fpl_internal void fpl__UnloadXrandRApi(fpl__XrandRApi *xrandrApi) {
+	fplAssert(xrandrApi != fpl_null);
+	if (xrandrApi->libHandle != fpl_null) {
+		dlclose(xrandrApi->libHandle);
+	}
+	fplClearStruct(xrandrApi);
+}
+
+fpl_internal bool fpl__LoadXrandRApi(fpl__XrandRApi *xrandrApi) {
+	fplAssert(xrandrApi != fpl_null);
+	const char *libFileNames[] = {
+		"libXrandr.so.2",
+		"libXrandr.so",
+	};
+	bool result = false;
+	for (uint32_t index = 0; index < fplArrayCount(libFileNames); ++index) {
+		const char *libName = libFileNames[index];
+		fplClearStruct(xrandrApi);
+		do {
+			void *libHandle = fpl_null;
+			FPL__POSIX_LOAD_LIBRARY(FPL__MODULE_XRANDR, libHandle, libName);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_XRANDR, libHandle, libName, xrandrApi, fpl__func_xrr_XRRQueryExtension, XRRQueryExtension);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_XRANDR, libHandle, libName, xrandrApi, fpl__func_xrr_XRRGetScreenResourcesCurrent, XRRGetScreenResourcesCurrent);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_XRANDR, libHandle, libName, xrandrApi, fpl__func_xrr_XRRFreeScreenResources, XRRFreeScreenResources);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_XRANDR, libHandle, libName, xrandrApi, fpl__func_xrr_XRRGetCrtcInfo, XRRGetCrtcInfo);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_XRANDR, libHandle, libName, xrandrApi, fpl__func_xrr_XRRFreeCrtcInfo, XRRFreeCrtcInfo);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_XRANDR, libHandle, libName, xrandrApi, fpl__func_xrr_XRRGetOutputInfo, XRRGetOutputInfo);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_XRANDR, libHandle, libName, xrandrApi, fpl__func_xrr_XRRFreeOutputInfo, XRRFreeOutputInfo);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_XRANDR, libHandle, libName, xrandrApi, fpl__func_xrr_XRRGetOutputPrimary, XRRGetOutputPrimary);
+			xrandrApi->libHandle = libHandle;
+			result = true;
+		} while (0);
+		if (result) {
+			break;
+		}
+		fpl__UnloadXrandRApi(xrandrApi);
+	}
+	return(result);
+}
+
 typedef struct fpl__X11SubplatformState {
 	fpl__X11Api api;
+	fpl__XrandRApi xrandr;
 } fpl__X11SubplatformState;
 
 typedef struct fpl__X11WindowStateInfo {
