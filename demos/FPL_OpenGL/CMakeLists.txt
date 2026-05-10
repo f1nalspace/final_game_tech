@@ -35,25 +35,38 @@ set(MY_DEFINES
 #
 # -----------------------------------------------------------------------------
 
-add_compile_options(-fdiagnostics-color=always)
-add_compile_options(-fdiagnostics-plain-output)
-add_compile_options(-fdiagnostics-format=text)
-add_compile_options(-fdiagnostics-show-option)
+# Detect architecture by pointer size
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|ARM64")
+	set(FPL_ARCH arm64)
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "arm")
+	set(FPL_ARCH arm32)
+elseif(CMAKE_SIZEOF_VOID_P EQUAL 8)
+	set(FPL_ARCH x64)
+elseif(CMAKE_SIZEOF_VOID_P EQUAL 4)
+	set(FPL_ARCH x86)
+else()
+	set(FPL_ARCH unknown)
+endif()
 
 # Force English diagnostics
 add_compile_options(-fdiagnostics-plain-output)
+add_compile_options(-fdiagnostics-color=always)
+add_compile_options(-fdiagnostics-format=text)
+add_compile_options(-fdiagnostics-show-option)
 set(ENV{LC_ALL} "C")
 set(ENV{LANG} "C")
 
+# Setup output path
 set(FPL_ROOT_PATH_RELATIVE ../)
 get_filename_component(FPL_ROOT_PATH ${FPL_ROOT_PATH_RELATIVE} ABSOLUTE)
 set(FPL_EXECUTABLE_NAME ${PROJECT_NAME})
-set(FPL_EXECUTABLE_PATH ${FPL_ROOT_PATH}/build/${PROJECT_NAME}/${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}-${CMAKE_BUILD_TYPE})
+set(FPL_EXECUTABLE_PATH ${FPL_ROOT_PATH}/build/${PROJECT_NAME}/${CMAKE_SYSTEM_NAME}-${FPL_ARCH}-${CMAKE_BUILD_TYPE})
 
 message(STATUS "\n")
 message(STATUS "FPL CMake Infos: ${PROJECT_NAME}")
 message(STATUS "---------------------------------------------------------------")
-message(STATUS "C-Standard: ${MY_C_STANDARD}")
+message(STATUS "Architecture: ${FPL_ARCH}")
+message(STATUS "C standard: ${MY_C_STANDARD}")
 message(STATUS "External libraries: ${MY_EXTERNAL_LIBS}")
 message(STATUS "Include directories: ${MY_INCLUDE_DIRS}")
 message(STATUS "Header files: ${MY_HEADER_FILES}")
@@ -65,16 +78,34 @@ message(STATUS "Executable path: ${FPL_EXECUTABLE_PATH}")
 message(STATUS "Executable name: ${FPL_EXECUTABLE_NAME}")
 message(STATUS "---------------------------------------------------------------\n")
 
-set(CMAKE_C_FLAGS "-std=${MY_C_STANDARD}")
-
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${FPL_EXECUTABLE_PATH})
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${FPL_EXECUTABLE_PATH})
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${FPL_EXECUTABLE_PATH})
 
-add_definitions(${MY_DEFINES})
-
-include_directories(../../ ${MY_INCLUDE_DIRS})
-
 add_executable(${PROJECT_NAME} ${MY_TRANSLATION_UNITS})
+
+# C standard
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS OFF)
+if (MY_C_STANDARD MATCHES "c99")
+	set(CMAKE_C_STANDARD 99)
+	target_compile_features(${PROJECT_NAME} PUBLIC c_std_99)
+elseif (MY_C_STANDARD MATCHES "c11")
+	set(CMAKE_C_STANDARD 11)
+	target_compile_features(${PROJECT_NAME} PUBLIC c_std_11)
+elseif (MY_C_STANDARD MATCHES "c17")
+	set(CMAKE_C_STANDARD 17)
+	target_compile_features(${PROJECT_NAME} PUBLIC c_std_17)
+elseif (MY_C_STANDARD MATCHES "c23")
+	set(CMAKE_C_STANDARD 23)
+	target_compile_features(${PROJECT_NAME} PUBLIC c_std_23)
+else()
+	set(CMAKE_C_STANDARD 90)
+	target_compile_features(${PROJECT_NAME} PUBLIC c_std_90)
+endif()
+
+target_compile_definitions(${PROJECT_NAME} PUBLIC ${MY_DEFINES})
+
+target_include_directories(${PROJECT_NAME} PUBLIC ${MY_INCLUDE_DIRS})
 
 target_link_libraries(${PROJECT_NAME} ${MY_EXTERNAL_LIBS} ${CMAKE_DL_LIBS})
