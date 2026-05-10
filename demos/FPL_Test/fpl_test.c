@@ -1892,9 +1892,9 @@ int main(int argc, char *args[]) {
 	TestOSInfos();
 	TestHardware();
 	TestTimes();
-	TestAtomics();
 	TestPaths();
 	TestFiles();
+	TestAtomics();
 	TestThreading();
 	TestGamepadPollMerge();
 	return 0;
