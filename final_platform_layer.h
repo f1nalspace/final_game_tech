@@ -23568,7 +23568,28 @@ fpl_platform_api bool fplWindowUpdate(void) {
 }
 
 fpl_platform_api void fplSetWindowCursorEnabled(const bool value) {
-	// @IMPLEMENT(final/X11): fplSetWindowCursorEnabled
+	FPL__CheckPlatformNoRet();
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	fpl__X11WindowState *windowState = &appState->window.x11;
+	if (value) {
+		x11Api->XUndefineCursor(windowState->display, windowState->window);
+	} else {
+		if (windowState->invisibleCursor == 0) {
+			char zero[8] = fplZeroInit;
+			Pixmap blank = x11Api->XCreateBitmapFromData(windowState->display, windowState->window, zero, 1, 1);
+			if (blank != 0) {
+				XColor dummy = fplZeroInit;
+				windowState->invisibleCursor = x11Api->XCreatePixmapCursor(windowState->display, blank, blank, &dummy, &dummy, 0, 0);
+			}
+		}
+		if (windowState->invisibleCursor != 0) {
+			x11Api->XDefineCursor(windowState->display, windowState->window, windowState->invisibleCursor);
+		}
+	}
+	x11Api->XFlush(windowState->display);
+	windowState->cursorEnabled = value;
 }
 
 fpl_platform_api bool fplGetWindowSize(fplWindowSize *outSize) {
