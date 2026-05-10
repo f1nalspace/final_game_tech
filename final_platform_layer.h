@@ -25261,9 +25261,9 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Init
 	nativeBackend->context = activeRenderingContext;
 	nativeBackend->isActiveContext = true;
 
-	backend->surface.window.x11.display = display;
-	backend->surface.window.x11.window = window;
-	backend->surface.window.x11.visual = nativeWindowState->visual;
+	backend->surface.window.x11.display = (fpl__X11Display *)display;
+	backend->surface.window.x11.window = (fpl__X11Window)window;
+	backend->surface.window.x11.visual = (fpl__X11Visual *)nativeWindowState->visual;
 	backend->surface.window.x11.screen = nativeWindowState->screen;
 	backend->surface.opengl.renderingContext = (void *)activeRenderingContext;
 
@@ -25383,9 +25383,9 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11Software_In
 	x11Api->XPutImage(nativeWindowState->display, nativeWindowState->window, nativeBackend->graphicsContext, nativeBackend->buffer, 0, 0, 0, 0, backbuffer->width, backbuffer->height);
 	x11Api->XSync(nativeWindowState->display, False);
 
-	backend->surface.window.x11.display = nativeWindowState->display;
-	backend->surface.window.x11.window = nativeWindowState->window;
-	backend->surface.window.x11.visual = nativeWindowState->visual;
+	backend->surface.window.x11.display = (fpl__X11Display *)nativeWindowState->display;
+	backend->surface.window.x11.window = (fpl__X11Window)nativeWindowState->window;
+	backend->surface.window.x11.visual = (fpl__X11Visual *)nativeWindowState->visual;
 	backend->surface.window.x11.screen = nativeWindowState->screen;
 
 	return (true);
