@@ -24349,8 +24349,59 @@ fpl_platform_api void fplSetWindowTitle(const char *title) {
 }
 
 fpl_platform_api bool fplGetClipboardText(char *dest, const uint32_t maxDestLen) {
-	// @IMPLEMENT(final/X11): fplGetClipboardText
-	return false;
+	FPL__CheckArgumentNull(dest, false);
+	FPL__CheckArgumentZero(maxDestLen, false);
+	FPL__CheckPlatform(false);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+
+	// Self-owned: just copy local buffer
+	if (x11Api->XGetSelectionOwner(windowState->display, windowState->clipboardAtom) == windowState->window) {
+		fplCopyString(windowState->clipboardOut, dest, maxDestLen);
+		return(true);
+	}
+
+	x11Api->XConvertSelection(windowState->display, windowState->clipboardAtom, windowState->utf8String, windowState->selectionPropAtom, windowState->window, CurrentTime);
+	x11Api->XFlush(windowState->display);
+
+	// Poll for SelectionNotify, timeout 500ms
+	XEvent ev = fplZeroInit;
+	fplMilliseconds startMs = fplMillisecondsQuery();
+	bool received = false;
+	while ((fplMillisecondsQuery() - startMs) < 500) {
+		if (x11Api->XCheckTypedWindowEvent(windowState->display, windowState->window, SelectionNotify, &ev)) {
+			received = true;
+			break;
+		}
+		fplThreadSleep(1);
+	}
+	if (!received || ev.xselection.property == None) {
+		return(false);
+	}
+
+	Atom actualType = 0;
+	int actualFormat = 0;
+	unsigned long itemCount = 0;
+	unsigned long bytesAfter = 0;
+	unsigned char *data = fpl_null;
+	int status = x11Api->XGetWindowProperty(windowState->display, windowState->window, windowState->selectionPropAtom, 0L, LONG_MAX, False, AnyPropertyType, &actualType, &actualFormat, &itemCount, &bytesAfter, &data);
+	bool result = false;
+	if (status == Success && data != fpl_null && actualType != windowState->incrAtom) {
+		size_t copyLen = (size_t)itemCount;
+		if (copyLen >= maxDestLen) {
+			copyLen = maxDestLen - 1;
+		}
+		fplMemoryCopy(data, copyLen, dest);
+		dest[copyLen] = 0;
+		result = true;
+	}
+	if (data != fpl_null) {
+		x11Api->XFree(data);
+	}
+	x11Api->XDeleteProperty(windowState->display, windowState->window, windowState->selectionPropAtom);
+	return(result);
 }
 
 fpl_platform_api bool fplSetClipboardText(const char *text) {
