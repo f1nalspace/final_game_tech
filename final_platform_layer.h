@@ -11483,6 +11483,32 @@ typedef FPL__FUNC_X11_XConvertSelection(fpl__func_x11_XConvertSelection);
 typedef FPL__FUNC_X11_XInitThreads(fpl__func_x11_XInitThreads);
 #define FPL__FUNC_X11_XSetErrorHandler(name) XErrorHandler name(XErrorHandler *handler)
 typedef FPL__FUNC_X11_XSetErrorHandler(fpl__func_x11_XSetErrorHandler);
+#define FPL__FUNC_X11_XIconifyWindow(name) Status name(Display *display, Window w, int screen_number)
+typedef FPL__FUNC_X11_XIconifyWindow(fpl__func_x11_XIconifyWindow);
+#define FPL__FUNC_X11_XAllocSizeHints(name) XSizeHints *name(void)
+typedef FPL__FUNC_X11_XAllocSizeHints(fpl__func_x11_XAllocSizeHints);
+#define FPL__FUNC_X11_XSetWMNormalHints(name) void name(Display *display, Window w, XSizeHints *hints)
+typedef FPL__FUNC_X11_XSetWMNormalHints(fpl__func_x11_XSetWMNormalHints);
+#define FPL__FUNC_X11_XGetWMNormalHints(name) Status name(Display *display, Window w, XSizeHints *hints_return, long *supplied_return)
+typedef FPL__FUNC_X11_XGetWMNormalHints(fpl__func_x11_XGetWMNormalHints);
+#define FPL__FUNC_X11_XDefineCursor(name) int name(Display *display, Window w, Cursor cursor)
+typedef FPL__FUNC_X11_XDefineCursor(fpl__func_x11_XDefineCursor);
+#define FPL__FUNC_X11_XUndefineCursor(name) int name(Display *display, Window w)
+typedef FPL__FUNC_X11_XUndefineCursor(fpl__func_x11_XUndefineCursor);
+#define FPL__FUNC_X11_XFreeCursor(name) int name(Display *display, Cursor cursor)
+typedef FPL__FUNC_X11_XFreeCursor(fpl__func_x11_XFreeCursor);
+#define FPL__FUNC_X11_XCreateBitmapFromData(name) Pixmap name(Display *display, Drawable d, _Xconst char *data, unsigned int width, unsigned int height)
+typedef FPL__FUNC_X11_XCreateBitmapFromData(fpl__func_x11_XCreateBitmapFromData);
+#define FPL__FUNC_X11_XCreatePixmapCursor(name) Cursor name(Display *display, Pixmap source, Pixmap mask, XColor *foreground_color, XColor *background_color, unsigned int x, unsigned int y)
+typedef FPL__FUNC_X11_XCreatePixmapCursor(fpl__func_x11_XCreatePixmapCursor);
+#define FPL__FUNC_X11_XSetSelectionOwner(name) int name(Display *display, Atom selection, Window owner, Time time)
+typedef FPL__FUNC_X11_XSetSelectionOwner(fpl__func_x11_XSetSelectionOwner);
+#define FPL__FUNC_X11_XGetSelectionOwner(name) Window name(Display *display, Atom selection)
+typedef FPL__FUNC_X11_XGetSelectionOwner(fpl__func_x11_XGetSelectionOwner);
+#define FPL__FUNC_X11_XCheckTypedWindowEvent(name) Bool name(Display *display, Window w, int event_type, XEvent *event_return)
+typedef FPL__FUNC_X11_XCheckTypedWindowEvent(fpl__func_x11_XCheckTypedWindowEvent);
+#define FPL__FUNC_X11_XTranslateCoordinates(name) Bool name(Display *display, Window src_w, Window dest_w, int src_x, int src_y, int *dest_x_return, int *dest_y_return, Window *child_return)
+typedef FPL__FUNC_X11_XTranslateCoordinates(fpl__func_x11_XTranslateCoordinates);
 
 typedef struct fpl__X11Api {
 	void *libHandle;
@@ -11534,6 +11560,19 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XConvertSelection *XConvertSelection;
 	fpl__func_x11_XInitThreads *XInitThreads;
 	fpl__func_x11_XSetErrorHandler *XSetErrorHandler;
+	fpl__func_x11_XIconifyWindow *XIconifyWindow;
+	fpl__func_x11_XAllocSizeHints *XAllocSizeHints;
+	fpl__func_x11_XSetWMNormalHints *XSetWMNormalHints;
+	fpl__func_x11_XGetWMNormalHints *XGetWMNormalHints;
+	fpl__func_x11_XDefineCursor *XDefineCursor;
+	fpl__func_x11_XUndefineCursor *XUndefineCursor;
+	fpl__func_x11_XFreeCursor *XFreeCursor;
+	fpl__func_x11_XCreateBitmapFromData *XCreateBitmapFromData;
+	fpl__func_x11_XCreatePixmapCursor *XCreatePixmapCursor;
+	fpl__func_x11_XSetSelectionOwner *XSetSelectionOwner;
+	fpl__func_x11_XGetSelectionOwner *XGetSelectionOwner;
+	fpl__func_x11_XCheckTypedWindowEvent *XCheckTypedWindowEvent;
+	fpl__func_x11_XTranslateCoordinates *XTranslateCoordinates;
 } fpl__X11Api;
 
 fpl_internal void fpl__UnloadX11Api(fpl__X11Api *x11Api) {
@@ -11607,6 +11646,19 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XConvertSelection, XConvertSelection);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XInitThreads, XInitThreads);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetErrorHandler, XSetErrorHandler);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XIconifyWindow, XIconifyWindow);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XAllocSizeHints, XAllocSizeHints);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetWMNormalHints, XSetWMNormalHints);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGetWMNormalHints, XGetWMNormalHints);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XDefineCursor, XDefineCursor);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XUndefineCursor, XUndefineCursor);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XFreeCursor, XFreeCursor);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCreateBitmapFromData, XCreateBitmapFromData);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCreatePixmapCursor, XCreatePixmapCursor);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetSelectionOwner, XSetSelectionOwner);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGetSelectionOwner, XGetSelectionOwner);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCheckTypedWindowEvent, XCheckTypedWindowEvent);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XTranslateCoordinates, XTranslateCoordinates);
 			x11Api->libHandle = libHandle;
 			result = true;
 		} while (0);
