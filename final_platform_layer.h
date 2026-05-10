@@ -22133,6 +22133,8 @@ fpl_platform_api char fplConsoleWaitForCharInput(void) {
 
 fpl_internal void fpl__X11ReleaseSubplatform(fpl__X11SubplatformState *subplatform) {
 	fplAssert(subplatform != fpl_null);
+	fpl__UnloadXineramaApi(&subplatform->xinerama);
+	fpl__UnloadXrandRApi(&subplatform->xrandr);
 	fpl__UnloadX11Api(&subplatform->api);
 }
 
@@ -22141,6 +22143,13 @@ fpl_internal bool fpl__X11InitSubplatform(fpl__X11SubplatformState *subplatform)
 	if (!fpl__LoadX11Api(&subplatform->api)) {
 		FPL__ERROR(FPL__MODULE_X11, "Failed loading x11 api");
 		return false;
+	}
+	// Optional extensions, init must not fail when missing
+	if (!fpl__LoadXrandRApi(&subplatform->xrandr)) {
+		FPL__WARNING(FPL__MODULE_XRANDR, "XrandR not available, falling back");
+	}
+	if (!fpl__LoadXineramaApi(&subplatform->xinerama)) {
+		FPL__WARNING(FPL__MODULE_XINERAMA, "Xinerama not available, falling back");
 	}
 	return true;
 }
