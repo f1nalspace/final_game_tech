@@ -23708,13 +23708,77 @@ fpl_platform_api void fplSetWindowFloating(const bool value) {
 }
 
 fpl_platform_api fplWindowState fplGetWindowState(void) {
-	// @IMPLEMENT(final/X11): fplGetWindowState
+	FPL__CheckPlatform(fplWindowState_Unknown);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	if (appState->currentSettings.window.isFullscreen) {
+		return(fplWindowState_Fullscreen);
+	}
+	if (fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWMStateFullscreen)) {
+		return(fplWindowState_Fullscreen);
+	}
+	if (fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWMStateHidden)) {
+		return(fplWindowState_Iconify);
+	}
+	bool maxVert = fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWMStateMaximizedVert);
+	bool maxHorz = fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWMStateMaximizedHorz);
+	if (maxVert && maxHorz) {
+		return(fplWindowState_Maximize);
+	}
+	XWindowAttributes attribs = fplZeroInit;
+	x11Api->XGetWindowAttributes(windowState->display, windowState->window, &attribs);
+	if (attribs.map_state == IsViewable) {
+		return(fplWindowState_Normal);
+	}
 	return(fplWindowState_Unknown);
 }
 
 fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
-	// @IMPLEMENT(final/X11): fplSetWindowState
-	return(false);
+	FPL__CheckPlatform(false);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	bool result = false;
+	switch (newState) {
+		case fplWindowState_Iconify:
+		{
+			result = x11Api->XIconifyWindow(windowState->display, windowState->window, windowState->screen) != 0;
+			x11Api->XFlush(windowState->display);
+		} break;
+
+		case fplWindowState_Maximize:
+		{
+			if (!appState->currentSettings.window.isFullscreen) {
+				result = fpl__X11SendNetWMState(x11Api, windowState, windowState->netWMStateMaximizedVert, windowState->netWMStateMaximizedHorz, FPL__NET_WM_STATE_ADD);
+			}
+		} break;
+
+		case fplWindowState_Normal:
+		{
+			fpl__X11SendNetWMState(x11Api, windowState, windowState->netWMStateMaximizedVert, windowState->netWMStateMaximizedHorz, FPL__NET_WM_STATE_REMOVE);
+			fpl__X11SendNetWMState(x11Api, windowState, windowState->netWMStateHidden, 0, FPL__NET_WM_STATE_REMOVE);
+			x11Api->XMapWindow(windowState->display, windowState->window);
+			x11Api->XFlush(windowState->display);
+			result = true;
+		} break;
+
+		case fplWindowState_Fullscreen:
+		{
+			if (!appState->currentSettings.window.isFullscreen) {
+				result = fplSetWindowFullscreenSize(true, 0, 0, 0);
+			} else {
+				result = true;
+			}
+		} break;
+
+		case fplWindowState_Unknown:
+		default:
+			break;
+	}
+	return(result);
 }
 
 fpl_platform_api size_t fplGetDisplayCount(void) {
