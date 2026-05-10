@@ -242,6 +242,14 @@ SOFTWARE.
 	- New[#186]: Implemented PipeWire audio backend
 	- New[#178]: Separate input system from windowing system, by introducing a input backend system
 	- New[#187]: Implemented DirectInput input backend
+	- New: [X11] Implemented fplIsWindowFloating / fplSetWindowFloating
+	- New: [X11] Implemented fplGetWindowState / fplSetWindowState
+	- New: [X11] Implemented fplIsWindowResizable / fplSetWindowResizeable
+	- New: [X11] Implemented fplSetWindowCursorEnabled / fplQueryCursorPosition
+	- New: [X11] Implemented fplGetClipboardText / fplSetClipboardText
+	- New: [X11] Implemented fplSetWindowFullscreenRect (snaps to monitor span via Xinerama)
+	- New: [X11] Display query (fplGetDisplayCount, fplGetDisplays, fplGetPrimaryDisplay, fplGetWindowDisplay, fplGetDisplayFromPosition, fplGetDisplayModes) via XrandR with Xinerama / root fallback
+	- New: [X11] Optional runtime loaders for libXrandr.so.2 and libXinerama.so.1
 	- Improved: [Win32/DInput] Backend now routes DIJOYSTATE through fplGamepadMappingApply / fplGamepadMappingApplyDefault, with the resolver from fplGamepadSettings.mappingResolver invoked once per controller connect to install a custom fplGamepadMapping
 	- Improved: [Linux/Joystick] /dev/input/jsX backend now feeds JS_EVENT_AXIS/BUTTON into a fplGamepadData snapshot, calls the mappingResolver with VID/PID/version read from /sys/class/input/jsX/device/id, and applies fplGamepadMappingApply when a mapping is installed (legacy behavior preserved when no resolver returns true)
 	- Changed: Extented struct fplInputSettings with fields for new input system
