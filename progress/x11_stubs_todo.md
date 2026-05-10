@@ -28,9 +28,9 @@ Tracking file. Tick boxes as work progresses across sessions. See `x11_stubs_pla
 
 ## Session 3 — Cursor
 
-- [ ] `fplSetWindowCursorEnabled` (lazy invisible cursor + define/undefine)
-- [ ] `fplQueryCursorPosition` (`XQueryPointer`, window-relative)
-- [ ] Free cursor in `fpl__X11ReleaseWindow` if created.
+- [x] `fplSetWindowCursorEnabled` (lazy invisible cursor + define/undefine)
+- [x] `fplQueryCursorPosition` (`XQueryPointer`, window-relative)
+- [x] Free cursor in `fpl__X11ReleaseWindow` if created.
 - [ ] Manual test: hide/show cursor, query position inside window.
 
 ## Session 4 — Display query (RandR + Xinerama + root fallback)
