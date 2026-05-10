@@ -11930,6 +11930,18 @@ typedef struct fpl__X11WindowState {
 	Atom xdndSelection;
 	Atom xdndTypeList;
 	Atom textUriList;
+	// Window styles
+	Atom netWMStateAbove;
+	// Cursor
+	Cursor invisibleCursor;
+	bool cursorEnabled;
+	// Clipboard
+	Atom clipboardAtom;
+	Atom targetsAtom;
+	Atom incrAtom;
+	Atom selectionPropAtom;
+	char clipboardOut[FPL_MAX_BUFFER_LENGTH];
+	size_t clipboardOutLen;
 	int screen;
 	int colorDepth;
 } fpl__X11WindowState;
@@ -22624,6 +22636,16 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	windowState->xdndSelection = x11Api->XInternAtom(windowState->display, "XdndSelection", False);
 	windowState->xdndTypeList = x11Api->XInternAtom(windowState->display, "XdndTypeList", False);
 	windowState->textUriList = x11Api->XInternAtom(windowState->display, "text/uri-list", False);
+	// Window style atoms
+	windowState->netWMStateAbove = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_ABOVE", False);
+	// Clipboard atoms
+	windowState->clipboardAtom = x11Api->XInternAtom(windowState->display, "CLIPBOARD", False);
+	windowState->targetsAtom = x11Api->XInternAtom(windowState->display, "TARGETS", False);
+	windowState->incrAtom = x11Api->XInternAtom(windowState->display, "INCR", False);
+	windowState->selectionPropAtom = x11Api->XInternAtom(windowState->display, "FPL_SELECTION", False);
+	// Cursor defaults
+	windowState->invisibleCursor = 0;
+	windowState->cursorEnabled = true;
 
 	// Register window manager protocols
 	{
