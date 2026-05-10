@@ -23646,13 +23646,65 @@ fpl_platform_api void fplSetWindowDecorated(const bool value) {
 	appState->currentSettings.window.isDecorated = value;
 }
 
+#define FPL__NET_WM_STATE_REMOVE 0L
+#define FPL__NET_WM_STATE_ADD 1L
+
+fpl_internal bool fpl__X11HasNetWMStateAtom(const fpl__X11Api *x11Api, const fpl__X11WindowState *windowState, Atom needle) {
+	Atom actualType = 0;
+	int actualFormat = 0;
+	unsigned long itemCount = 0;
+	unsigned long bytesAfter = 0;
+	unsigned char *data = fpl_null;
+	bool result = false;
+	int status = x11Api->XGetWindowProperty(windowState->display, windowState->window, windowState->netWMState, 0L, 1024L, False, XA_ATOM, &actualType, &actualFormat, &itemCount, &bytesAfter, &data);
+	if (status == Success && data != fpl_null) {
+		Atom *atoms = (Atom *)data;
+		for (unsigned long i = 0; i < itemCount; ++i) {
+			if (atoms[i] == needle) {
+				result = true;
+				break;
+			}
+		}
+	}
+	if (data != fpl_null) {
+		x11Api->XFree(data);
+	}
+	return(result);
+}
+
+fpl_internal bool fpl__X11SendNetWMState(const fpl__X11Api *x11Api, const fpl__X11WindowState *windowState, Atom atom1, Atom atom2, long action) {
+	XEvent xev = fplZeroInit;
+	xev.type = ClientMessage;
+	xev.xclient.window = windowState->window;
+	xev.xclient.message_type = windowState->netWMState;
+	xev.xclient.format = 32;
+	xev.xclient.data.l[0] = action;
+	xev.xclient.data.l[1] = (long)atom1;
+	xev.xclient.data.l[2] = (long)atom2;
+	xev.xclient.data.l[3] = 1L;
+	bool result = x11Api->XSendEvent(windowState->display, windowState->root, 0, SubstructureRedirectMask | SubstructureNotifyMask, &xev) != 0;
+	x11Api->XFlush(windowState->display);
+	return(result);
+}
+
 fpl_platform_api bool fplIsWindowFloating(void) {
-	// @IMPLEMENT(final/X11): fplIsWindowFloating
-	return false;
+	FPL__CheckPlatform(false);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	bool result = fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWMStateAbove);
+	return(result);
 }
 
 fpl_platform_api void fplSetWindowFloating(const bool value) {
-	// @IMPLEMENT(final/X11): fplSetWindowFloating
+	FPL__CheckPlatformNoRet();
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	long action = value ? FPL__NET_WM_STATE_ADD : FPL__NET_WM_STATE_REMOVE;
+	fpl__X11SendNetWMState(x11Api, windowState, windowState->netWMStateAbove, 0, action);
 }
 
 fpl_platform_api fplWindowState fplGetWindowState(void) {
