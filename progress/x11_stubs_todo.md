@@ -49,9 +49,9 @@ Tracking file. Tick boxes as work progresses across sessions. See `x11_stubs_pla
 
 ## Session 5 — Clipboard
 
-- [ ] `fplGetClipboardText` (XConvertSelection + SelectionNotify polling).
-- [ ] `fplSetClipboardText` (XSetSelectionOwner + outgoing buffer).
-- [ ] Extend `fpl__X11HandleEvent` for `SelectionRequest` (TARGETS, UTF8_STRING, STRING).
+- [x] `fplGetClipboardText` (XConvertSelection + SelectionNotify polling).
+- [x] `fplSetClipboardText` (XSetSelectionOwner + outgoing buffer).
+- [x] Extend `fpl__X11HandleEvent` for `SelectionRequest` (TARGETS, UTF8_STRING, STRING).
 - [ ] Manual test: copy from another app + paste; copy from FPL window + paste in another app.
 
 ## Session 6 — Optional + cleanup
