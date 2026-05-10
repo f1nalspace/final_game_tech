@@ -23596,12 +23596,40 @@ fpl_platform_api void fplSetWindowSize(const uint32_t width, const uint32_t heig
 }
 
 fpl_platform_api bool fplIsWindowResizable(void) {
-	// @IMPLEMENT(final/X11): fplIsWindowResizable
-	return false;
+	FPL__CheckPlatform(false);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	bool result = appState->currentSettings.window.isResizable != 0;
+	return(result);
 }
 
 fpl_platform_api void fplSetWindowResizeable(const bool value) {
-	// @IMPLEMENT(final/X11): fplSetWindowResizeable
+	FPL__CheckPlatformNoRet();
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	if (appState->currentSettings.window.isFullscreen) {
+		return;
+	}
+	XSizeHints *hints = x11Api->XAllocSizeHints();
+	if (hints == fpl_null) {
+		return;
+	}
+	if (value) {
+		hints->flags = 0;
+	} else {
+		XWindowAttributes attribs = fplZeroInit;
+		x11Api->XGetWindowAttributes(windowState->display, windowState->window, &attribs);
+		hints->flags = PMinSize | PMaxSize;
+		hints->min_width = attribs.width;
+		hints->min_height = attribs.height;
+		hints->max_width = attribs.width;
+		hints->max_height = attribs.height;
+	}
+	x11Api->XSetWMNormalHints(windowState->display, windowState->window, hints);
+	x11Api->XFree(hints);
+	x11Api->XFlush(windowState->display);
+	appState->currentSettings.window.isResizable = value;
 }
 
 fpl_platform_api bool fplIsWindowDecorated(void) {
