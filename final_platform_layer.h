@@ -21871,6 +21871,7 @@ fpl_platform_api char fplConsoleWaitForCharInput(void) {
 // ############################################################################
 #if defined(FPL_SUBPLATFORM_X11)
 
+// Hardcoded default window size for any X11 window
 #define FPL__X11_DEFAULT_WINDOW_WIDTH 1280
 #define FPL__X11_DEFAULT_WINDOW_HEIGHT 720
 
