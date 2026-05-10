@@ -56,10 +56,10 @@ Tracking file. Tick boxes as work progresses across sessions. See `x11_stubs_pla
 
 ## Session 6 — Optional + cleanup
 
-- [ ] `fplSetWindowFullscreenRect` via `_NET_WM_FULLSCREEN_MONITORS`.
-- [ ] Sweep for leftover `@IMPLEMENT(final/X11)` markers in target range.
-- [ ] Final build + run a window/display demo end-to-end.
-- [ ] Update changelog block at top of `final_platform_layer.h`.
+- [x] `fplSetWindowFullscreenRect` via `_NET_WM_FULLSCREEN_MONITORS`.
+- [x] Sweep for leftover `@IMPLEMENT(final/X11)` markers in target range.
+- [x] Final build (FPL_ImGui demo).
+- [x] Update changelog block at top of `final_platform_layer.h`.
 
 ## Notes
 
