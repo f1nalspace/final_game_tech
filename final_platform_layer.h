@@ -11811,9 +11811,71 @@ fpl_internal bool fpl__LoadXrandRApi(fpl__XrandRApi *xrandrApi) {
 	return(result);
 }
 
+//
+// Xinerama Api (optional)
+//
+
+typedef struct fpl__XineramaScreenInfo {
+	int screen_number;
+	short x_org;
+	short y_org;
+	short width;
+	short height;
+} fpl__XineramaScreenInfo;
+
+#define FPL__FUNC_XINERAMA_XineramaQueryExtension(name) Bool name(Display *dpy, int *event_base, int *error_base)
+typedef FPL__FUNC_XINERAMA_XineramaQueryExtension(fpl__func_xinerama_XineramaQueryExtension);
+#define FPL__FUNC_XINERAMA_XineramaIsActive(name) Bool name(Display *dpy)
+typedef FPL__FUNC_XINERAMA_XineramaIsActive(fpl__func_xinerama_XineramaIsActive);
+#define FPL__FUNC_XINERAMA_XineramaQueryScreens(name) fpl__XineramaScreenInfo *name(Display *dpy, int *number)
+typedef FPL__FUNC_XINERAMA_XineramaQueryScreens(fpl__func_xinerama_XineramaQueryScreens);
+
+typedef struct fpl__XineramaApi {
+	void *libHandle;
+	fpl__func_xinerama_XineramaQueryExtension *XineramaQueryExtension;
+	fpl__func_xinerama_XineramaIsActive *XineramaIsActive;
+	fpl__func_xinerama_XineramaQueryScreens *XineramaQueryScreens;
+} fpl__XineramaApi;
+
+fpl_internal void fpl__UnloadXineramaApi(fpl__XineramaApi *xineramaApi) {
+	fplAssert(xineramaApi != fpl_null);
+	if (xineramaApi->libHandle != fpl_null) {
+		dlclose(xineramaApi->libHandle);
+	}
+	fplClearStruct(xineramaApi);
+}
+
+fpl_internal bool fpl__LoadXineramaApi(fpl__XineramaApi *xineramaApi) {
+	fplAssert(xineramaApi != fpl_null);
+	const char *libFileNames[] = {
+		"libXinerama.so.1",
+		"libXinerama.so",
+	};
+	bool result = false;
+	for (uint32_t index = 0; index < fplArrayCount(libFileNames); ++index) {
+		const char *libName = libFileNames[index];
+		fplClearStruct(xineramaApi);
+		do {
+			void *libHandle = fpl_null;
+			FPL__POSIX_LOAD_LIBRARY(FPL__MODULE_XINERAMA, libHandle, libName);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_XINERAMA, libHandle, libName, xineramaApi, fpl__func_xinerama_XineramaQueryExtension, XineramaQueryExtension);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_XINERAMA, libHandle, libName, xineramaApi, fpl__func_xinerama_XineramaIsActive, XineramaIsActive);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_XINERAMA, libHandle, libName, xineramaApi, fpl__func_xinerama_XineramaQueryScreens, XineramaQueryScreens);
+			xineramaApi->libHandle = libHandle;
+			result = true;
+		} while (0);
+		if (result) {
+			break;
+		}
+		fpl__UnloadXineramaApi(xineramaApi);
+	}
+	return(result);
+}
+
 typedef struct fpl__X11SubplatformState {
 	fpl__X11Api api;
 	fpl__XrandRApi xrandr;
+	fpl__XineramaApi xinerama;
 } fpl__X11SubplatformState;
 
 typedef struct fpl__X11WindowStateInfo {
