@@ -198,6 +198,8 @@ SOFTWARE.
 	- Changed: Renamed fplInitFlags_GameController to fplInitFlags_Gamepad due to naming inconsisitency
 
 	### Details
+
+	#### Core
 	- New: Added macro FPL_CACHELINE_SIZE that detects the cacheline size from the detected CPU architectures
 	- New: Added macro fplIsMaskSet that returns true when a bit mask matches a specified bit value
 	- New: Added enum fplDateTimeType, that defines the types of date times, such as UTC or local
@@ -205,7 +207,6 @@ SOFTWARE.
 	- New: Added struct fplDateTime, that stores a date time stamp with an included UTC offset
 	- New: Added struct fplDateTimeResult, that stores the components for displaying a date time
 	- New: Added struct fplDateTimeCreationResult, that stores the result of the function fplDateTimeCreate()
-	- New: Added struct fplGamepadSettings, that stores several properties required for updating/polling game controllers frequently
 	- New: Added function fplDateTimeQuery that returns a date time stamp, that allows the display in either local or UTC format
 	- New: Added function fplFormatDateTime that formats a fplDateTime into either a local or UTC date time components
 	- New: Added function fplDateTimeCreate that creates a fplDateTime from seperate date time components
@@ -213,6 +214,63 @@ SOFTWARE.
 	- New: Added function fplPathNormalize() for normalizing any partial path into a absolute path
 	- New: Added function fplTryStringToS32Len that is a more safe-method than to fplStringToS32
 	- New: Added function fplTryStringToS32 that is a more safe-method than to fplStringToS32
+	- New: [Win32] Implemented function fplFileAppendBinary() for Win32 API
+	- New: [POSIX] Implemented function fplFileAppendBinary() for POSIX Unix API
+	- New: [Win32] Implemented function fplPathNormalize() for Win32 API
+	- New: [POSIX] Implemented function fplPathNormalize() for POSIX Unix API
+	- New[#183]: Added macro fpl_extern_inline
+	- Improved: Better documentation of the preprocessor setup blocks
+	- Improved: Added fplStaticAssert checks in the non-opaque branch verifying that the real Win32/POSIX/X11 handle types fit into the opaque-branch buffers (catches portability breakage at compile time instead of corrupting memory at runtime)
+	- Improved: fplDateTime documentation now states explicitly that pre-1970 dates are intentionally not supported (epoch is unsigned and fplDateTimeCreate rejects year < 1970)
+	- Fixed: Fixed duplicate platform includes
+	- Fixed: fpLGetAlignmentOffset() was not guarding the alignment argument in all cases
+	- Fixed: fplS32ToString() was not handling negative values correctly
+	- Fixed: fplStringFormatArgs must always NUL-terminate even when the buffer is too small
+	- Fixed: Fixed documentations for fplStringToS32Len and fplStringToS32
+	- Fixed: fplStringFormat and fplStringFormatArgs was not implemented correctly due to its documentation rules
+	- Fixed: fplStringToS32Len and fplStringToS32 was not implemented correctly due to its documentation rules
+	- Fixed: Calls to fpl__AllocateTemporaryMemory use either fpl__MinAlignment or 16 or more
+	- Fixed: fplCPUID, fplCPURDTSC, fplCPUXCR0 was not detected on GCC/Clang
+	- Fixed: fplGetErrorCount / fplGetErrorByIndex  / fplGetLastError and pushing of errors was not thread-safe
+	- Fixed: fplAlignAs was using a condition based macro, which is not supported for some compilers
+	- Fixed[#183]: fpl_internal_inline was not compiling on GCC/Clang
+	- Fixed: [Win32] fplFileSetPosition32 / fplFileGetSizeFromPath32 / fplFileGetSizeFromHandle32 was not using the best suitable API function
+	- Fixed: [POSIX] Fixed pthread fpl__POSIXSemaphoreHandle was not used
+	- Fixed: [POSIX] dirint.h and sched.h was not included always
+	- Fixed[#184]: [POSIX] fplDirectoriesCreate() does not create parent sub-directories
+	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
+	- Changed: Ensure that std types has the correct sizes always using equals
+	- Changed: fplFileWriteBlock*() changed to const for the source argument
+	- Changed: [POSIX] Disabled FPL_NO_PLATFORM_INCLUDES for pthread includes
+	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
+
+	#### Window
+	- Improved[#176]: Made internal event queue thread-safe using a lock-free push/pop linear buffer
+	- Improved: [X11] fpl__X11Display / Visual / GC / Image are now forward-declared incomplete struct types instead of `typedef void`, so `fpl__X11Display *` is a distinct, type-safe pointer rather than an alias for `void *`
+	- Fixed: [Win32] Fixed last event from event queue was never used, when there is no events from the window
+	- Fixed: [Win32] Lost/Got focus event was not detected properly
+	- Fixed: [X11] Fixed last event from event queue was never used, when there is no events from the window
+	- Fixed: [X11] Fixed window support was not disabled when X11 is not present
+	- Fixed: [X11] Fixed fplPollEvent() was not handling the events properly, resulting in not processing any events anymore
+	- Fixed: [X11] Fixed ClientMessage for Atom netWMPing was not calling XFlush
+	- Fixed: [X11] Fixed wrong X11 type aliases
+	- Fixed: [X11] fpl__X11Window opaque pointer was wrong sized
+	- Fixed[#181]: [X11] fpl__X11ParseUriPaths does not do any URI decoding, resulting in most-likely unuseable file paths
+	- Changed: [X11] Disabled FPL_NO_PLATFORM_INCLUDES for Xlib includes
+
+	#### Video
+	- Renamed: fplOpenGLCompabilityFlags -> fplOpenGLCompatibilityFlags (incl. enum values and fplOpenGLSettings::compabilityFlags -> compatibilityFlags) - typo fix
+
+	#### Audio
+	- New[#35]: Implemented PulseAudio audio backend
+	- New[#186]: Implemented PipeWire audio backend
+	- Fixed: fpl__ReadAudioFramesFromClient was not returning frameCount always and produce silence bytes for the remaining samples
+	- Fixed[#182]: [ALSA] Fixed default audio devices are not detected in modern linux audio systems
+	- Changed: fplSetDefaultAudioSettings() sets audio backend type to automatic
+	- Changed: [ALSA] Audio device enumeration prints out each audio device to verbose log
+
+	#### Input
+	- New: Added struct fplGamepadSettings, that stores several properties required for updating/polling game controllers frequently
 	- New: Added enum values fplKey_First / fplKey_Last to fplKey enum
 	- New: Added common function fplKeyGetName() for getting the name for a fplKey
 	- New: Added enum fplInputBackendType
@@ -233,70 +291,13 @@ SOFTWARE.
 	- New: Added function fplInputBackendMaskDisable
 	- New: Added function fplGamepadMappingApply
 	- New: Added function fplGamepadMappingApplyDefault
-	- New: [Win32] Implemented function fplFileAppendBinary() for Win32 API
-	- New: [POSIX] Implemented function fplFileAppendBinary() for POSIX Unix API
-	- New: [Win32] Implemented function fplPathNormalize() for Win32 API
-	- New: [POSIX] Implemented function fplPathNormalize() for POSIX Unix API
-	- New[#183]: Added macro fpl_extern_inline
-	- New[#35]: Implemented PulseAudio audio backend
-	- New[#186]: Implemented PipeWire audio backend
 	- New[#178]: Separate input system from windowing system, by introducing a input backend system
 	- New[#187]: Implemented DirectInput input backend
 	- Improved: [Win32/DInput] Backend now routes DIJOYSTATE through fplGamepadMappingApply / fplGamepadMappingApplyDefault, with the resolver from fplGamepadSettings.mappingResolver invoked once per controller connect to install a custom fplGamepadMapping
 	- Improved: [Linux/Joystick] /dev/input/jsX backend now feeds JS_EVENT_AXIS/BUTTON into a fplGamepadData snapshot, calls the mappingResolver with VID/PID/version read from /sys/class/input/jsX/device/id, and applies fplGamepadMappingApply when a mapping is installed (legacy behavior preserved when no resolver returns true)
+	- Improved[#88]: Gamepad input device is not locked to /dev/input/js0 anymore
 	- Changed: Extented struct fplInputSettings with fields for new input system
 	- Changed: Extented struct fplGamepadState with union action buttons (down/right/left/up) and (A/B/X/Y)
-
-	- Improved[#176]: Made internal event queue thread-safe using a lock-free push/pop linear buffer
-	- Improved[#88]: Gamepad input device is not locked to /dev/input/js0 anymore
-	- Improved: Better documentation of the preprocessor setup blocks
-
-	- Fixed: Fixed duplicate platform includes
-	- Fixed: fpLGetAlignmentOffset() was not guarding the alignment argument in all cases
-	- Fixed: fplS32ToString() was not handling negative values correctly
-	- Fixed: fplStringFormatArgs must always NUL-terminate even when the buffer is too small
-	- Fixed: Fixed documentations for fplStringToS32Len and fplStringToS32
-	- Fixed: fplStringFormat and fplStringFormatArgs was not implemented correctly due to its documentation rules
-	- Fixed: fplStringToS32Len and fplStringToS32 was not implemented correctly due to its documentation rules
-	- Fixed: Calls to fpl__AllocateTemporaryMemory use either fpl__MinAlignment or 16 or more
-	- Fixed: fplCPUID, fplCPURDTSC, fplCPUXCR0 was not detected on GCC/Clang
-	- Fixed: fplGetErrorCount / fplGetErrorByIndex  / fplGetLastError and pushing of errors was not thread-safe
-	- Fixed: fplAlignAs was using a condition based macro, which is not supported for some compilers
-	- Fixed: fpl__ReadAudioFramesFromClient was not returning frameCount always and produce silence bytes for the remaining samples
-	- Fixed[#183]: fpl_internal_inline was not compiling on GCC/Clang
-
-	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
-	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
-	- Changed: Ensure that std types has the correct sizes always using equals
-	- Changed: fplSetDefaultAudioSettings() sets audio backend type to automatic
-	- Changed: fplFileWriteBlock*() changed to const for the source argument
-	- Changed: [ALSA] Audio device enumeration prints out each audio device to verbose log
-	- Changed: [X11] Disabled FPL_NO_PLATFORM_INCLUDES for Xlib includes
-	- Changed: [POSIX] Disabled FPL_NO_PLATFORM_INCLUDES for pthread includes
-	- Renamed: fplOpenGLCompabilityFlags -> fplOpenGLCompatibilityFlags (incl. enum values and fplOpenGLSettings::compabilityFlags -> compatibilityFlags) - typo fix
-
-	- Fixed: [Win32] Fixed last event from event queue was never used, when there is no events from the window
-	- Fixed: [Win32] Lost/Got focus event was not detected properly
-
-	- Fixed: [X11] Fixed last event from event queue was never used, when there is no events from the window
-	- Fixed: [X11] Fixed window support was not disabled when X11 is not present
-	- Fixed: [X11] Fixed fplPollEvent() was not handling the events properly, resulting in not processing any events anymore
-	- Fixed: [X11] Fixed ClientMessage for Atom netWMPing was not calling XFlush
-	- Fixed: [X11] Fixed wrong X11 type aliases
-	- Fixed: [X11] fpl__X11Window opaque pointer was wrong sized
-	- Fixed[#181]: [X11] fpl__X11ParseUriPaths does not do any URI decoding, resulting in most-likely unuseable file paths
-
-	- Fixed: [POSIX] Fixed pthread fpl__POSIXSemaphoreHandle was not used
-	- Fixed: [POSIX] dirint.h and sched.h was not included always
-	- Fixed[#184]: [POSIX] fplDirectoriesCreate() does not create parent sub-directories
-
-	- Improved: Added fplStaticAssert checks in the non-opaque branch verifying that the real Win32/POSIX/X11 handle types fit into the opaque-branch buffers (catches portability breakage at compile time instead of corrupting memory at runtime)
-	- Improved: [X11] fpl__X11Display / Visual / GC / Image are now forward-declared incomplete struct types instead of `typedef void`, so `fpl__X11Display *` is a distinct, type-safe pointer rather than an alias for `void *`
-	- Improved: fplDateTime documentation now states explicitly that pre-1970 dates are intentionally not supported (epoch is unsigned and fplDateTimeCreate rejects year < 1970)
-
-	- Fixed: [Win32] fplFileSetPosition32 / fplFileGetSizeFromPath32 / fplFileGetSizeFromHandle32 was not using the best suitable API function
-
-	- Fixed[#182]: [ALSA] Fixed default audio devices are not detected in modern linux audio systems
 
 	## v0.9.9-beta
 
