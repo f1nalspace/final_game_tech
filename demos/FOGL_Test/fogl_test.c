@@ -33,7 +33,7 @@ Changelog:
 	- Forced Visual-Studio-Project to compile in C++ always
 
 License:
-	Copyright (c) 2017-2019 Torsten Spaete
+	Copyright (c) 2017-2026 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -200,7 +200,7 @@ int main(int argc, char **args) {
 	fplInitFlags initFlags;
 #if USE_FPL_OPENGL_CONTEXT_CREATION
 	initFlags = fplInitFlags_Video;
-	settings.video.driver = fplVideoDriverType_OpenGL;
+	settings.video.backend = fplVideoBackendType_OpenGL;
 #	if !USE_LEGACY_OPENGL
 	fplCopyString("FPL Modern OpenGL", settings.window.title, fplArrayCount(settings.window.title));
 	settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Core;
@@ -224,16 +224,19 @@ int main(int argc, char **args) {
 #else
 		fglOpenGLContextCreationParameters contextCreationParams = { 0 };
 #	if !USE_LEGACY_OPENGL
-		fplCopyAnsiString("DYNGL Modern OpenGL", settings.window.windowTitle, fplArrayCount(settings.window.windowTitle));
+		fplCopyString("DYNGL Modern OpenGL", settings.window.title, fplArrayCount(settings.window.title));
 		contextCreationParams.profile = fglOpenGLProfileType_CoreProfile;
 		contextCreationParams.majorVersion = 3;
 		contextCreationParams.minorVersion = 3;
 #	else
-		fplCopyAnsiString("DYNGL Legacy OpenGL", settings.window.windowTitle, fplArrayCount(settings.window.windowTitle));
+		fplCopyString("DYNGL Legacy OpenGL", settings.window.title, fplArrayCount(settings.window.title));
 		contextCreationParams.profile = fdyngl::OpenGLProfileType::LegacyProfile;
 #	endif
-#	if defined(FGL_PLATFORM_WIN32)
+#	if defined(FGL_PLATFORM_WIN32) && defined(FPL_PLATFORM_WINDOWS)
 		contextCreationParams.windowHandle.win32.deviceContext = fpl__global__AppState->window.win32.deviceContext;
+#	elif defined(FGL_PLATFORM_LINUX) && defined(FPL_SUBPLATFORM_X11)
+		contextCreationParams.windowHandle.posix.display = fpl__global__AppState->window.x11.display;
+		contextCreationParams.windowHandle.posix.window = fpl__global__AppState->window.x11.window;
 #	endif
 		fglOpenGLContext glContext = { 0 };
 		if(fglLoadOpenGL(false)) {

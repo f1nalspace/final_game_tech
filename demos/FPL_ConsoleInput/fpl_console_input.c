@@ -32,10 +32,26 @@ License:
 -------------------------------------------------------------------------------
 */
 
-#define FPL_IMPLEMENTATION
-#define FPL_NO_WINDOW
-#define FPL_NO_VIDEO
+#ifndef FPL_IMPLEMENTATION
+#	define FPL_IMPLEMENTATION
+#endif
+
+#ifndef FPL_NO_WINDOW
+#	define FPL_NO_WINDOW
+#endif
+
+#ifndef FPL_NO_VIDEO
+#	define FPL_NO_VIDEO
+#endif
+
+#ifndef FPL_NO_VIDEO
+#	define FPL_NO_VIDEO_OPENGL
+#endif
+
+#ifndef FPL_NO_AUDIO
 #define FPL_NO_AUDIO
+#endif
+
 #include <final_platform_layer.h>
 
 static void PrintKeyboard(const fplKeyboardState *s) {

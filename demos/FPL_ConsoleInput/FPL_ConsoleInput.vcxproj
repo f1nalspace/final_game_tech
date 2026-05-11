@@ -35,10 +35,10 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{8892F6CF-7476-B725-DDD6-B178C9D9A1A7}</ProjectGuid>
+    <ProjectGuid>{A9216EB4-951A-8D06-BE4C-728BAAA46C12}</ProjectGuid>
     <IgnoreWarnCompileDuplicatedFilename>true</IgnoreWarnCompileDuplicatedFilename>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>FPL_ConsoleGamepad</RootNamespace>
+    <RootNamespace>FPL_ConsoleInput</RootNamespace>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX86|Win32'" Label="Configuration">
@@ -83,30 +83,30 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX86|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <OutDir>$(ProjectDir)..\build\FPL_ConsoleGamepad\WinX86_Debug\</OutDir>
-    <IntDir>$(ProjectDir)..\immediates\FPL_ConsoleGamepad\WinX86_Debug\</IntDir>
-    <TargetName>FPL_ConsoleGamepad</TargetName>
+    <OutDir>$(ProjectDir)..\build\FPL_ConsoleInput\WinX86_Debug\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\FPL_ConsoleInput\WinX86_Debug\</IntDir>
+    <TargetName>FPL_ConsoleInput</TargetName>
     <TargetExt>.exe</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX64|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <OutDir>$(ProjectDir)..\build\FPL_ConsoleGamepad\WinX64_Debug\</OutDir>
-    <IntDir>$(ProjectDir)..\immediates\FPL_ConsoleGamepad\WinX64_Debug\</IntDir>
-    <TargetName>FPL_ConsoleGamepad</TargetName>
+    <OutDir>$(ProjectDir)..\build\FPL_ConsoleInput\WinX64_Debug\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\FPL_ConsoleInput\WinX64_Debug\</IntDir>
+    <TargetName>FPL_ConsoleInput</TargetName>
     <TargetExt>.exe</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX86|Win32'">
     <LinkIncremental>false</LinkIncremental>
-    <OutDir>$(ProjectDir)..\build\FPL_ConsoleGamepad\WinX86_Release\</OutDir>
-    <IntDir>$(ProjectDir)..\immediates\FPL_ConsoleGamepad\WinX86_Release\</IntDir>
-    <TargetName>FPL_ConsoleGamepad</TargetName>
+    <OutDir>$(ProjectDir)..\build\FPL_ConsoleInput\WinX86_Release\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\FPL_ConsoleInput\WinX86_Release\</IntDir>
+    <TargetName>FPL_ConsoleInput</TargetName>
     <TargetExt>.exe</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX64|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <OutDir>$(ProjectDir)..\build\FPL_ConsoleGamepad\WinX64_Release\</OutDir>
-    <IntDir>$(ProjectDir)..\immediates\FPL_ConsoleGamepad\WinX64_Release\</IntDir>
-    <TargetName>FPL_ConsoleGamepad</TargetName>
+    <OutDir>$(ProjectDir)..\build\FPL_ConsoleInput\WinX64_Release\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\FPL_ConsoleInput\WinX64_Release\</IntDir>
+    <TargetName>FPL_ConsoleInput</TargetName>
     <TargetExt>.exe</TargetExt>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX86|Win32'">
@@ -200,7 +200,7 @@
     </ProjectReference>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="fpl_console_gamepad.c" />
+    <ClCompile Include="fpl_console_input.c" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
