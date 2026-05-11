@@ -11063,8 +11063,6 @@ typedef struct fpl__Win32WindowState {
 		break; \
 	}
 
-#define FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL(mod, libHandle, libName, target, type, name) \
-	(target)->name = (type *)dlsym(libHandle, #name)
 
 #define FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(mod, libHandle, libName, target, type, name) \
 	(target)->name = (type *)dlsym(libHandle, #name); \
@@ -11074,6 +11072,8 @@ typedef struct fpl__Win32WindowState {
 	}
 #if !defined(FPL_NO_RUNTIME_LINKING)
 #	define FPL__POSIX_LOAD_LIBRARY FPL__POSIX_LOAD_LIBRARY_BREAK
+#	define FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL(mod, libHandle, libName, target, type, name) \
+		(target)->name = (type *)dlsym(libHandle, #name)
 #	define FPL__POSIX_GET_FUNCTION_ADDRESS FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK
 #else
 #	define FPL__POSIX_LOAD_LIBRARY(mod, target, libName)
