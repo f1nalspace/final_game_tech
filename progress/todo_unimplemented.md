@@ -58,10 +58,11 @@ Last refresh: 2026-05-11
 
 ## Audio
 
-- [ ] `[DirectSound] fpl__AudioBackendDirectSoundGetAudioDeviceInfo` — returns `NotImplemented` (line 28313-28315)
-- [ ] `[ALSA] fpl__AudioBackendAlsaGetAudioDeviceInfo` — returns `NotImplemented` (line 30117)
-- [ ] `[PulseAudio] fpl__AudioBackendPulseAudioGetAudioDeviceInfo` — returns `NotImplemented` (line 31007)
-- [ ] `[PipeWire] fpl__AudioBackendPipeWireGetAudioDeviceInfo` — returns `NotImplemented` (line 32461)
+- [x] ~~`[DirectSound] GetAudioDeviceInfo`~~ — done: lookup by GUID via DirectSoundEnumerateW
+- [x] ~~`[ALSA] GetAudioDeviceInfo`~~ — done: lookup by name via snd_device_name_hint
+- [x] ~~`[PulseAudio] GetAudioDeviceInfo`~~ — done: pa_context_get_sink_info_by_index
+- [x] ~~`[PipeWire] GetAudioDeviceInfo`~~ — done: registry enum filtered by node id, shared helper with full enumeration
+- [ ] Phase 2 (next): supported-formats list per backend — currently `supportedFormatCount = 0` placeholder
 - [x] ~~`[ALSA]` Mapping table `fplAudioFormatType -> snd_pcm_format_t`~~ — done: indexed lookup, covers F64; S64 marked UNKNOWN (no ALSA equivalent)
 - [x] ~~`[ALSA]` Mapping table `snd_pcm_format_t -> fplAudioFormatType`~~ — done: lookup table, handles native-endian aliases + FLOAT64
 - [ ] `[ALSA]` Optional `dmix`/`hw` device id `:%d,%d` probe (line 29794, 30103)
