@@ -139,6 +139,9 @@ Todo:
 License:
 	MIT License
 	Copyright 2017-2026 Torsten Spaete
+
+Changelog:
+	- Changed: ResampleChunk warning text updated — now references fplGetTargetAudioFrameCount as the authoritative formula; clamp kept defensively for arbitrary non-even ratios. 44100 <-> 48000 round-trip is exact.
 */
 
 #ifndef FINAL_AUDIOSYSTEM_H
@@ -1188,7 +1191,8 @@ static AudioFrameIndex ConvertSourceChunkToF32(AudioSampleConversionFunctions *c
 *       For downsampling and SinC, maxOutputFrames is passed as the output limit.
 *       Passthrough is clamped to min(inputFrameCount, maxOutputFrames).
 *
-* @warning AudioResampleInterleaved can return .outputCount that exceeds maxOutputFrames by 1 frame due to floating-point rounding when converting between non-even sample rates (e.g. 44100 <-> 48000).
+* @warning AudioResampleInterleaved derives its outputCount via fplGetTargetAudioFrameCount(inFrameCount, inRate, outRate).
+*          For 44100 <-> 48000 the round-trip converges exactly, but for arbitrary non-even ratios the result may still exceed minOutputFrameCount by 1 frame.
 *          Callers MUST clamp the returned outputCount before using it to index into fixed-size buffers or subtract from unsigned frame counters.
 */
 static AudioResampleResult ResampleChunk(const AudioChannelIndex channels, const AudioHertz inRate, const AudioHertz outRate, const AudioFrameIndex maxOutputFrames, const AudioFrameIndex inputFrameCount, const float *dspIn, float *dspOut) {
