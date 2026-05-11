@@ -35,10 +35,10 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{B72CDC20-23B8-49E5-2CC9-CCD998D3A5E5}</ProjectGuid>
+    <ProjectGuid>{347E71B8-20E1-005D-C966-3913B5A8CCDF}</ProjectGuid>
     <IgnoreWarnCompileDuplicatedFilename>true</IgnoreWarnCompileDuplicatedFilename>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>staticdatamaker</RootNamespace>
+    <RootNamespace>gamepaddbgen</RootNamespace>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX86|Win32'" Label="Configuration">
@@ -83,30 +83,30 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX86|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <OutDir>$(ProjectDir)..\build\staticdatamaker\WinX86_Debug\</OutDir>
-    <IntDir>$(ProjectDir)..\immediates\staticdatamaker\WinX86_Debug\</IntDir>
-    <TargetName>staticdatamaker</TargetName>
+    <OutDir>$(ProjectDir)..\build\gamepaddbgen\WinX86_Debug\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\gamepaddbgen\WinX86_Debug\</IntDir>
+    <TargetName>gamepaddbgen</TargetName>
     <TargetExt>.exe</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX64|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <OutDir>$(ProjectDir)..\build\staticdatamaker\WinX64_Debug\</OutDir>
-    <IntDir>$(ProjectDir)..\immediates\staticdatamaker\WinX64_Debug\</IntDir>
-    <TargetName>staticdatamaker</TargetName>
+    <OutDir>$(ProjectDir)..\build\gamepaddbgen\WinX64_Debug\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\gamepaddbgen\WinX64_Debug\</IntDir>
+    <TargetName>gamepaddbgen</TargetName>
     <TargetExt>.exe</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX86|Win32'">
     <LinkIncremental>false</LinkIncremental>
-    <OutDir>$(ProjectDir)..\build\staticdatamaker\WinX86_Release\</OutDir>
-    <IntDir>$(ProjectDir)..\immediates\staticdatamaker\WinX86_Release\</IntDir>
-    <TargetName>staticdatamaker</TargetName>
+    <OutDir>$(ProjectDir)..\build\gamepaddbgen\WinX86_Release\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\gamepaddbgen\WinX86_Release\</IntDir>
+    <TargetName>gamepaddbgen</TargetName>
     <TargetExt>.exe</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX64|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <OutDir>$(ProjectDir)..\build\staticdatamaker\WinX64_Release\</OutDir>
-    <IntDir>$(ProjectDir)..\immediates\staticdatamaker\WinX64_Release\</IntDir>
-    <TargetName>staticdatamaker</TargetName>
+    <OutDir>$(ProjectDir)..\build\gamepaddbgen\WinX64_Release\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\gamepaddbgen\WinX64_Release\</IntDir>
+    <TargetName>gamepaddbgen</TargetName>
     <TargetExt>.exe</TargetExt>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX86|Win32'">
@@ -200,7 +200,7 @@
     </ProjectReference>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="main.c" />
+    <ClCompile Include="gamepaddbgen.c" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
