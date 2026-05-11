@@ -142,3 +142,12 @@ if(DEFINED MY_RESOURCE_FOLDER AND NOT "${MY_RESOURCE_FOLDER}" STREQUAL "")
 			$<TARGET_FILE_DIR:${PROJECT_NAME}>/${MY_RESOURCE_FOLDER}
 	)
 endif()
+
+# -----------------------------------------------------------------------------
+#
+# Link against FPL_DynamicLib_Host
+#
+# -----------------------------------------------------------------------------
+
+add_subdirectory(../FPL_DynamicLib_Host ${CMAKE_BINARY_DIR}/_FPL_DynamicLib_Host)
+target_link_libraries(${PROJECT_NAME} FPL_DynamicLib_Host)
