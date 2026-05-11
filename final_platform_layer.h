@@ -311,6 +311,12 @@ SOFTWARE.
 	- Fixed[#182]: [ALSA] Fixed default audio devices are not detected in modern linux audio systems
 	- Improved: [ALSA] fpl__MapAudioFormatToAlsaFormat now uses an indexed lookup table covering all fplAudioFormatType values incl. F64
 	- Improved: [ALSA] fpl__MapAlsaFormatToAudioFormat now uses a lookup table that also handles native-endian aliases (SND_PCM_FORMAT_S16/S32/FLOAT/FLOAT64) and FLOAT64 variants
+	- New: [DirectSound] Implemented getAudioDeviceInfo via DirectSoundEnumerateW lookup-by-GUID
+	- New: [ALSA] Implemented getAudioDeviceInfo via snd_device_name_hint lookup-by-name
+	- New: [PulseAudio] Implemented getAudioDeviceInfo via pa_context_get_sink_info_by_index
+	- New: [PipeWire] Implemented getAudioDeviceInfo via registry enumeration filtered by node id
+	- Improved: [PipeWire] Extracted shared fpl__PipeWire_RunRegistryEnum helper; enum state gained targetId/hasTargetId so single-device lookup and full enumeration use one code path
+	- Changed: fplGetAudioDeviceInfo and the backend getAudioDeviceInfo contract now require a non-null deviceId (no implicit default-device path)
 	- Changed: fplSetDefaultAudioSettings() sets audio backend type to automatic
 	- Changed: [ALSA] Audio device enumeration prints out each audio device to verbose log
 
@@ -28246,11 +28252,8 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudiobackendDirectSou
 fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudiobackendDirectSoundGetAudioDeviceInfo) {
 	fpl__AudioBackendDirectSound *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendDirectSound);
 	fplAssert(impl != fpl_null);
-
-	fplAssert(fpl__global__AppState != fpl_null);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	fpl__Win32AppState *win32AppState = &appState->win32;
-	const fpl__Win32Api *apiFuncs = &win32AppState->winApi;
+	fplAssertPtr(targetDevice);
+	fplClearStruct(outDeviceInfo);
 
 	const fpl__DirectSoundApi *dsoundApi = &impl->api;
 	if (dsoundApi->dsoundLibrary == fpl_null) {
@@ -28258,79 +28261,24 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudiobackendDirec
 		return fplAudioResultType_ApiFailed;
 	}
 
-	LPDIRECTSOUND directSound = fpl_null;
-
-	// Load direct sound object
-	const fpl__Win32Guid *deviceId = fpl_null;
-	if (targetDevice != fpl_null) {
-		fplAssert(sizeof(GUID) == sizeof(targetDevice->dshow));
-		deviceId = &targetDevice->dshow;
-	}
-
-	// Query device
-	fplAudioDeviceInfo deviceInfo = fplZeroInit;
+	fplAssert(sizeof(GUID) == sizeof(targetDevice->dshow));
 	fpl__DirectSoundDeviceInfos infos = fplZeroInit;
 	infos.maxDeviceCount = 1;
-	infos.deviceInfos = &deviceInfo;
-	infos.capacityOverflow = 0;
-	infos.deviceInfoSize = sizeof(deviceInfo);
+	infos.deviceInfos = &outDeviceInfo->info;
+	infos.deviceInfoSize = sizeof(outDeviceInfo->info);
 	infos.isLookup = true;
-	if (deviceId != fpl_null) {
-		fpl__Win32CopyGuid(deviceId, &infos.lookupID);
-	} else {
-		fpl__Win32CopyGuid(&FPL__WIN32_GUID_ZERO, &infos.lookupID);
-	}
+	fpl__Win32CopyGuid(&targetDevice->dshow, &infos.lookupID);
+
 	if (FAILED(dsoundApi->DirectSoundEnumerateW(fpl__GetDeviceCallbackDirectSound, &infos))) {
 		return fplAudioResultType_DeviceByIdNotFound;
 	}
-
-	// Open direct sound with device
-	if (!SUCCEEDED(dsoundApi->DirectSoundCreate((const GUID *)deviceId, &directSound, fpl_null))) {
-		char idString[64];
-		fpl__Win32FormatGuidString(idString, fplArrayCount(idString), deviceId);
-		return fplAudioResultType_NoDeviceFound;
+	if (infos.foundDeviceCount == 0) {
+		return fplAudioResultType_DeviceByIdNotFound;
 	}
 
-	// Get either local window handle or desktop handle
-	HWND windowHandle = fpl_null;
-#	if defined(FPL__ENABLE_WINDOW)
-	if (fplIsMaskSet(appState->initFlags, fplInitFlags_Window)) {
-		windowHandle = appState->window.win32.windowHandle;
-	}
-#	endif
-	if (windowHandle == fpl_null) {
-		windowHandle = apiFuncs->user.GetDesktopWindow();
-	}
-
-	// The cooperative level must be set before doing anything else
-	if (FAILED(IDirectSound_SetCooperativeLevel(directSound, windowHandle, DSSCL_PRIORITY))) {
-		IDirectSound_Release(directSound);
-		return fplAudioResultType_DeviceFailure;
-	}
-
-	// Get capabilities
-	DSCAPS caps = fplZeroInit;
-	caps.dwSize = sizeof(caps);
-	if (FAILED(IDirectSound_GetCaps(directSound, &caps))) {
-		IDirectSound_Release(directSound);
-		return fplAudioResultType_DeviceFailure;
-	}
-
-	// Get number of channels
-	uint16_t channels;
-	if (fplIsMaskSet(caps.dwFlags, DSCAPS_PRIMARYSTEREO)) {
-		DWORD speakerConfig;
-		channels = 2;
-		if (SUCCEEDED(IDirectSound_GetSpeakerConfig(directSound, &speakerConfig))) {
-			channels = fpl__GetDirectSoundChannelsAndMapFromSpeakerConfig(speakerConfig, fpl_null, fpl_null);
-		}
-	} else {
-		channels = 1;
-	}
-
-	// @IMPLEMENT(final): [DirectSound] Implement audio device info extended
-
-	return fplAudioResultType_NotImplemented;
+	// Format list is populated by a later phase.
+	outDeviceInfo->supportedFormatCount = 0;
+	return fplAudioResultType_Success;
 }
 
 // Convert a flag from a dwChannelMask to a fplAudioChannelType
@@ -30068,66 +30016,59 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendALSAGetAudioDeviceInfo) {
 	fpl__AlsaAudioBackend *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AlsaAudioBackend);
 	fplAssert(impl != fpl_null);
+	fplAssertPtr(targetDevice);
+	(void)context;
+	fplClearStruct(outDeviceInfo);
 
 	fpl__AlsaAudioApi *alsaApi = &impl->api;
 	if (alsaApi->libHandle == fpl_null) {
-		FPL__WARNING(FPL__MODULE_AUDIO_ALSA, "API is not loaded!"); \
-			return fplAudioResultType_ApiFailed;
+		FPL__WARNING(FPL__MODULE_AUDIO_ALSA, "API is not loaded!");
+		return fplAudioResultType_ApiFailed;
+	}
+	if (fplGetStringLength(targetDevice->alsa) == 0) {
+		return fplAudioResultType_InvalidArguments;
 	}
 
-	//
-	// Open PCM Device
-	//
-	fplAudioDeviceID deviceID = fplZeroInit;
-	if (targetDevice != fpl_null) {
-		deviceID = *targetDevice;
+	char **ppDeviceHints = fpl_null;
+	if (alsaApi->snd_device_name_hint(-1, "pcm", (void ***)&ppDeviceHints) < 0) {
+		return fplAudioResultType_DeviceFailure;
 	}
 
-	const fplAudioShareMode shareMode = fplAudioShareMode_Shared;
-	const int openMode = SND_PCM_NO_AUTO_RESAMPLE | SND_PCM_NO_AUTO_CHANNELS | SND_PCM_NO_AUTO_FORMAT;
-
-	snd_pcm_t *pcmDevice = fpl_null;
-
-	char deviceName[256] = fplZeroInit;
-	const snd_pcm_stream_t stream = SND_PCM_STREAM_PLAYBACK;
-	if (fplGetStringLength(deviceID.alsa) == 0) {
-		const char *defaultDeviceNames[16] = fplZeroInit;
-		const uint32_t defaultDeviceCount = fpl__ALSADefineDefaultAudioDevices(shareMode, defaultDeviceNames, fplArrayCount(defaultDeviceNames));
-
-		bool isDeviceOpen = false;
-		for (size_t defaultDeviceIndex = 0; defaultDeviceIndex < defaultDeviceCount; ++defaultDeviceIndex) {
-			const char *defaultDeviceName = defaultDeviceNames[defaultDeviceIndex];
-			FPL_LOG_DEBUG("ALSA", "Opening PCM audio device '%s'", defaultDeviceName);
-			if (alsaApi->snd_pcm_open(&pcmDevice, defaultDeviceName, stream, openMode) == 0) {
-				FPL_LOG_DEBUG("ALSA", "Successfully opened PCM audio device '%s'", defaultDeviceName);
-				isDeviceOpen = true;
-				fplCopyString(defaultDeviceName, deviceName, fplArrayCount(deviceName));
-				break;
+	bool found = false;
+	char **ppNextDeviceHint = ppDeviceHints;
+	while (*ppNextDeviceHint != fpl_null && !found) {
+		char *name = alsaApi->snd_device_name_get_hint(*ppNextDeviceHint, "NAME");
+		char *desc = alsaApi->snd_device_name_get_hint(*ppNextDeviceHint, "DESC");
+		if (name != fpl_null && fplIsStringEqual(name, targetDevice->alsa)) {
+			fplCopyString(name, outDeviceInfo->info.id.alsa, fplArrayCount(outDeviceInfo->info.id.alsa));
+			if (desc != fpl_null) {
+				fplCopyString(desc, outDeviceInfo->info.name, fplArrayCount(outDeviceInfo->info.name));
 			} else {
-				FPL_LOG_ERROR("ALSA", "Failed opening PCM audio device '%s'!", defaultDeviceName);
+				fplCopyString(name, outDeviceInfo->info.name, fplArrayCount(outDeviceInfo->info.name));
 			}
+			outDeviceInfo->info.isDefault =
+				fplIsStringEqual(name, "default") ||
+				fplIsStringEqual(name, "pulse") ||
+				fplIsStringEqual(name, "pipewire");
+			found = true;
 		}
-		if (!isDeviceOpen) {
-			FPL__WARNING(FPL__MODULE_AUDIO_ALSA, "No PCM audio device found!");
-			return fplAudioResultType_NoDeviceFound;
+		if (name != fpl_null) {
+			free(name);
 		}
-	} else {
-		const char *forcedDeviceId = deviceID.alsa;
-		// @TODO(final/ALSA): Do we want to allow device ids to be :%d,%d so we can probe "dmix" and "hw" ?
-		if (alsaApi->snd_pcm_open(&pcmDevice, forcedDeviceId, stream, openMode) < 0) {
-			FPL__WARNING(FPL__MODULE_AUDIO_ALSA, "PCM audio device by id '%s' not found!", forcedDeviceId);
-			return fplAudioResultType_NoDeviceFound;
+		if (desc != fpl_null) {
+			free(desc);
 		}
-		fplCopyString(forcedDeviceId, deviceName, fplArrayCount(deviceName));
+		++ppNextDeviceHint;
+	}
+	alsaApi->snd_device_name_free_hint((void **)ppDeviceHints);
+
+	if (!found) {
+		return fplAudioResultType_DeviceByIdNotFound;
 	}
 
-	if (pcmDevice != fpl_null) {
-		alsaApi->snd_pcm_close(pcmDevice);
-	}
-
-	// @IMPLEMEMENT(final): [ALSA] Implement audio device info extended
-
-	return fplAudioResultType_NotImplemented;
+	// Format list is populated by a later phase.
+	outDeviceInfo->supportedFormatCount = 0;
+	return fplAudioResultType_Success;
 }
 
 fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendAlsaGetAudioDevices) {
@@ -31013,11 +30954,49 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendPulseAudi
 }
 
 fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendPulseAudioGetAudioDeviceInfo) {
+	fpl__PulseAudioBackend *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
+	fplAssert(impl != fpl_null);
+	fplAssertPtr(targetDevice);
 	(void)context;
-	(void)backend;
-	(void)targetDevice;
-	(void)outDeviceInfo;
-	return fplAudioResultType_NotImplemented;
+	fplClearStruct(outDeviceInfo);
+
+	const fpl__PulseAudioApi *api = &impl->api;
+	if (api->libHandle == fpl_null) {
+		FPL__WARNING(FPL__MODULE_AUDIO_PULSEAUDIO, "API is not loaded!");
+		return fplAudioResultType_ApiFailed;
+	}
+	if (impl->mainloop == fpl_null || impl->context == fpl_null) {
+		return fplAudioResultType_DeviceNotInitialized;
+	}
+
+	api->pa_threaded_mainloop_lock(impl->mainloop);
+
+	// SinkInfoListCallback writes one fplAudioDeviceInfo per sink into iter->deviceInfos.
+	fpl__PulseDeviceIterationContext *iter = &impl->iterContext;
+	fplClearStruct(iter);
+	iter->deviceInfos = &outDeviceInfo->info;
+	iter->deviceInfoSize = sizeof(outDeviceInfo->info);
+	iter->maxDeviceCount = 1;
+
+	pa_operation *op = api->pa_context_get_sink_info_by_index(impl->context, targetDevice->pulse, fpl__PulseAudio_SinkInfoListCallback, backend);
+	if (op != fpl_null) {
+		while (!iter->isDone && api->pa_operation_get_state(op) == PA_OPERATION_RUNNING) {
+			api->pa_threaded_mainloop_wait(impl->mainloop);
+		}
+		api->pa_operation_unref(op);
+	}
+
+	bool found = (iter->resultCount > 0);
+	fplClearStruct(iter);
+	api->pa_threaded_mainloop_unlock(impl->mainloop);
+
+	if (!found) {
+		return fplAudioResultType_DeviceByIdNotFound;
+	}
+
+	// Format list is populated by a later phase.
+	outDeviceInfo->supportedFormatCount = 0;
+	return fplAudioResultType_Success;
 }
 
 fpl_internal FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(fpl__AudioBackendPulseAudioReleaseDevice) {
@@ -31704,6 +31683,8 @@ typedef struct fpl__PipeWireEnumState {
 	uint32_t resultCount;
 	uint32_t overflowCount;
 	int pendingSeq;
+	uint32_t targetId;
+	bool hasTargetId;
 	volatile int32_t isDone;
 	volatile int32_t isFailed;
 } fpl__PipeWireEnumState;
@@ -32223,6 +32204,9 @@ fpl_internal void fpl__PipeWire_EnumRegistryGlobalCallback(void *data, uint32_t 
 	if (!fplIsStringEqual(mediaClass, "Audio/Sink")) {
 		return;
 	}
+	if (s->hasTargetId && id != s->targetId) {
+		return;
+	}
 	const char *description = fpl__PipeWire_SpaDictLookup(props, PW_KEY_NODE_DESCRIPTION);
 	if (description == fpl_null) {
 		description = fpl__PipeWire_SpaDictLookup(props, PW_KEY_NODE_NICK);
@@ -32370,22 +32354,12 @@ fpl_internal FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl__AudioBackendPipeWireRelease) {
 	return true;
 }
 
-fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendPipeWireGetAudioDevices) {
-	(void)context;
-	fpl__PipeWireAudioBackend *pw = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PipeWireAudioBackend);
-	fplAssert(pw != fpl_null);
-	const fpl__PipeWireApi *api = &pw->api;
-	if (api->libHandle == fpl_null) {
-		return 0;
-	}
-
-	// All enumeration state lives on the stack so it cannot clobber the
-	// persistent playback state inside `pw` (threadLoop/listeners/etc).
-	fpl__PipeWireEnumState enumState = fplZeroInit;
-	enumState.api = api;
-	enumState.deviceInfos = deviceInfos;
-	enumState.deviceInfoSize = deviceInfoSize;
-	enumState.maxDeviceCount = maxDeviceCount;
+// Runs a one-shot registry enumeration using the caller-prepared enumState (deviceInfos buffer, maxDeviceCount, optional targetId filter).
+// All thread-loop/context/registry state is local so the persistent playback state inside the backend is never touched.
+fpl_internal bool fpl__PipeWire_RunRegistryEnum(const fpl__PipeWireApi *api, fpl__PipeWireEnumState *enumState) {
+	fplAssertPtr(api);
+	fplAssertPtr(enumState);
+	enumState->api = api;
 
 	struct spa_hook coreListener = fplZeroInit;
 	struct spa_hook registryListener = fplZeroInit;
@@ -32393,9 +32367,9 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendPipeWireG
 	pw_thread_loop *loop = api->pw_thread_loop_new("fpl-pw-enum", fpl_null);
 	if (loop == fpl_null) {
 		FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, "Failed creating PipeWire thread loop for device enumeration!");
-		return 0;
+		return false;
 	}
-	enumState.loop = loop;
+	enumState->loop = loop;
 
 	pw_context *ctx = fpl_null;
 	pw_core *core = fpl_null;
@@ -32405,7 +32379,7 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendPipeWireG
 	if (api->pw_thread_loop_start(loop) < 0) {
 		FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, "Failed starting PipeWire thread loop for device enumeration!");
 		api->pw_thread_loop_destroy(loop);
-		return 0;
+		return false;
 	}
 	started = true;
 
@@ -32424,24 +32398,21 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendPipeWireG
 			break;
 		}
 
-		api->pw_core_add_listener(core, &coreListener, &fpl__global_pipeWireEnumCoreEvents, &enumState);
+		api->pw_core_add_listener(core, &coreListener, &fpl__global_pipeWireEnumCoreEvents, enumState);
 
 		registry = api->pw_core_get_registry(core, PW_VERSION_REGISTRY, 0);
 		if (registry == fpl_null) {
 			FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, "Failed getting PipeWire registry!");
 			break;
 		}
-		api->pw_registry_add_listener(registry, &registryListener, &fpl__global_pipeWireEnumRegistryEvents, &enumState);
+		api->pw_registry_add_listener(registry, &registryListener, &fpl__global_pipeWireEnumRegistryEvents, enumState);
 
 		// Trigger a core sync. The done callback fires after all pending registry events are delivered.
-		enumState.pendingSeq = api->pw_core_sync(core, PW_ID_CORE, 0);
-		while (!enumState.isDone && !enumState.isFailed) {
+		enumState->pendingSeq = api->pw_core_sync(core, PW_ID_CORE, 0);
+		while (!enumState->isDone && !enumState->isFailed) {
 			api->pw_thread_loop_wait(loop);
 		}
 	} while (0);
-
-	uint32_t resultCount = enumState.resultCount;
-	uint32_t overflowCount = enumState.overflowCount;
 
 	if (registry != fpl_null) {
 		api->pw_proxy_destroy((pw_proxy *)registry);
@@ -32458,20 +32429,62 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendPipeWireG
 		api->pw_thread_loop_stop(loop);
 	}
 	api->pw_thread_loop_destroy(loop);
+	return !enumState->isFailed;
+}
 
-	if (overflowCount > 0) {
-		FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, "Capacity of '%u' for audio device infos has been reached. '%u' audio devices are not included in the result", maxDeviceCount, overflowCount);
+fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendPipeWireGetAudioDevices) {
+	(void)context;
+	fpl__PipeWireAudioBackend *pw = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PipeWireAudioBackend);
+	fplAssert(pw != fpl_null);
+	const fpl__PipeWireApi *api = &pw->api;
+	if (api->libHandle == fpl_null) {
+		return 0;
 	}
 
-	return resultCount;
+	fpl__PipeWireEnumState enumState = fplZeroInit;
+	enumState.deviceInfos = deviceInfos;
+	enumState.deviceInfoSize = deviceInfoSize;
+	enumState.maxDeviceCount = maxDeviceCount;
+
+	fpl__PipeWire_RunRegistryEnum(api, &enumState);
+
+	if (enumState.overflowCount > 0) {
+		FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, "Capacity of '%u' for audio device infos has been reached. '%u' audio devices are not included in the result", maxDeviceCount, enumState.overflowCount);
+	}
+
+	return enumState.resultCount;
 }
 
 fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendPipeWireGetAudioDeviceInfo) {
+	fpl__PipeWireAudioBackend *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PipeWireAudioBackend);
+	fplAssert(impl != fpl_null);
+	fplAssertPtr(targetDevice);
 	(void)context;
-	(void)backend;
-	(void)targetDevice;
-	(void)outDeviceInfo;
-	return fplAudioResultType_NotImplemented;
+	fplClearStruct(outDeviceInfo);
+
+	const fpl__PipeWireApi *api = &impl->api;
+	if (api->libHandle == fpl_null) {
+		FPL__WARNING(FPL__MODULE_AUDIO_PIPEWIRE, "API is not loaded!");
+		return fplAudioResultType_ApiFailed;
+	}
+
+	fpl__PipeWireEnumState enumState = fplZeroInit;
+	enumState.deviceInfos = &outDeviceInfo->info;
+	enumState.deviceInfoSize = sizeof(outDeviceInfo->info);
+	enumState.maxDeviceCount = 1;
+	enumState.targetId = targetDevice->pipewire;
+	enumState.hasTargetId = true;
+
+	if (!fpl__PipeWire_RunRegistryEnum(api, &enumState)) {
+		return fplAudioResultType_DeviceFailure;
+	}
+	if (enumState.resultCount == 0) {
+		return fplAudioResultType_DeviceByIdNotFound;
+	}
+
+	// Format list is populated by a later phase.
+	outDeviceInfo->supportedFormatCount = 0;
+	return fplAudioResultType_Success;
 }
 
 fpl_internal FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(fpl__AudioBackendPipeWireReleaseDevice) {
@@ -34333,6 +34346,7 @@ fpl_common_api uint32_t fplGetAudioDevices(const uint32_t maxDeviceCount, const 
 
 fpl_common_api bool fplGetAudioDeviceInfo(const fplAudioDeviceID *deviceId, fplAudioDeviceInfoExtended *outDeviceInfo) {
 	FPL__CheckArgumentNull(outDeviceInfo, false);
+	FPL__CheckArgumentNull(deviceId, false);
 	FPL__CheckPlatform(false);
 	fpl__AudioState *audioState = fpl__GetAudioState(fpl__global__AppState);
 	fplAudioContext *context = &audioState->common.context;
