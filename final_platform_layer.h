@@ -1,4 +1,4 @@
-﻿/*
+/*
 
 ░▒▓████████▓▒░▒▓█▓▒░▒▓███████▓▒░ ░▒▓██████▓▒░░▒▓█▓▒░             ░▒▓███████▓▒░░▒▓█▓▒░       ░▒▓██████▓▒░▒▓████████▓▒░▒▓████████▓▒░▒▓██████▓▒░░▒▓███████▓▒░░▒▓██████████████▓▒░       ░▒▓█▓▒░       ░▒▓██████▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓████████▓▒░▒▓███████▓▒░
 ░▒▓█▓▒░      ░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░             ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░   ░▒▓█▓▒░     ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░      ░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░
@@ -10003,6 +10003,8 @@ fpl_main int main(int argc, char **args);
 #define FPL__MODULE_POSIX "POSIX"
 #define FPL__MODULE_PTHREAD "pthread"
 #define FPL__MODULE_X11 "X11"
+#define FPL__MODULE_XRANDR "XrandR"
+#define FPL__MODULE_XINERAMA "Xinerama"
 #define FPL__MODULE_GLX "GLX"
 
 //
@@ -11523,6 +11525,32 @@ typedef FPL__FUNC_X11_XConvertSelection(fpl__func_x11_XConvertSelection);
 typedef FPL__FUNC_X11_XInitThreads(fpl__func_x11_XInitThreads);
 #define FPL__FUNC_X11_XSetErrorHandler(name) XErrorHandler name(XErrorHandler handler)
 typedef FPL__FUNC_X11_XSetErrorHandler(fpl__func_x11_XSetErrorHandler);
+#define FPL__FUNC_X11_XIconifyWindow(name) Status name(Display *display, Window w, int screen_number)
+typedef FPL__FUNC_X11_XIconifyWindow(fpl__func_x11_XIconifyWindow);
+#define FPL__FUNC_X11_XAllocSizeHints(name) XSizeHints *name(void)
+typedef FPL__FUNC_X11_XAllocSizeHints(fpl__func_x11_XAllocSizeHints);
+#define FPL__FUNC_X11_XSetWMNormalHints(name) void name(Display *display, Window w, XSizeHints *hints)
+typedef FPL__FUNC_X11_XSetWMNormalHints(fpl__func_x11_XSetWMNormalHints);
+#define FPL__FUNC_X11_XGetWMNormalHints(name) Status name(Display *display, Window w, XSizeHints *hints_return, long *supplied_return)
+typedef FPL__FUNC_X11_XGetWMNormalHints(fpl__func_x11_XGetWMNormalHints);
+#define FPL__FUNC_X11_XDefineCursor(name) int name(Display *display, Window w, Cursor cursor)
+typedef FPL__FUNC_X11_XDefineCursor(fpl__func_x11_XDefineCursor);
+#define FPL__FUNC_X11_XUndefineCursor(name) int name(Display *display, Window w)
+typedef FPL__FUNC_X11_XUndefineCursor(fpl__func_x11_XUndefineCursor);
+#define FPL__FUNC_X11_XFreeCursor(name) int name(Display *display, Cursor cursor)
+typedef FPL__FUNC_X11_XFreeCursor(fpl__func_x11_XFreeCursor);
+#define FPL__FUNC_X11_XCreateBitmapFromData(name) Pixmap name(Display *display, Drawable d, _Xconst char *data, unsigned int width, unsigned int height)
+typedef FPL__FUNC_X11_XCreateBitmapFromData(fpl__func_x11_XCreateBitmapFromData);
+#define FPL__FUNC_X11_XCreatePixmapCursor(name) Cursor name(Display *display, Pixmap source, Pixmap mask, XColor *foreground_color, XColor *background_color, unsigned int x, unsigned int y)
+typedef FPL__FUNC_X11_XCreatePixmapCursor(fpl__func_x11_XCreatePixmapCursor);
+#define FPL__FUNC_X11_XSetSelectionOwner(name) int name(Display *display, Atom selection, Window owner, Time time)
+typedef FPL__FUNC_X11_XSetSelectionOwner(fpl__func_x11_XSetSelectionOwner);
+#define FPL__FUNC_X11_XGetSelectionOwner(name) Window name(Display *display, Atom selection)
+typedef FPL__FUNC_X11_XGetSelectionOwner(fpl__func_x11_XGetSelectionOwner);
+#define FPL__FUNC_X11_XCheckTypedWindowEvent(name) Bool name(Display *display, Window w, int event_type, XEvent *event_return)
+typedef FPL__FUNC_X11_XCheckTypedWindowEvent(fpl__func_x11_XCheckTypedWindowEvent);
+#define FPL__FUNC_X11_XTranslateCoordinates(name) Bool name(Display *display, Window src_w, Window dest_w, int src_x, int src_y, int *dest_x_return, int *dest_y_return, Window *child_return)
+typedef FPL__FUNC_X11_XTranslateCoordinates(fpl__func_x11_XTranslateCoordinates);
 
 typedef struct fpl__X11Api {
 	void *libHandle;
@@ -11574,6 +11602,19 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XConvertSelection *XConvertSelection;
 	fpl__func_x11_XInitThreads *XInitThreads;
 	fpl__func_x11_XSetErrorHandler *XSetErrorHandler;
+	fpl__func_x11_XIconifyWindow *XIconifyWindow;
+	fpl__func_x11_XAllocSizeHints *XAllocSizeHints;
+	fpl__func_x11_XSetWMNormalHints *XSetWMNormalHints;
+	fpl__func_x11_XGetWMNormalHints *XGetWMNormalHints;
+	fpl__func_x11_XDefineCursor *XDefineCursor;
+	fpl__func_x11_XUndefineCursor *XUndefineCursor;
+	fpl__func_x11_XFreeCursor *XFreeCursor;
+	fpl__func_x11_XCreateBitmapFromData *XCreateBitmapFromData;
+	fpl__func_x11_XCreatePixmapCursor *XCreatePixmapCursor;
+	fpl__func_x11_XSetSelectionOwner *XSetSelectionOwner;
+	fpl__func_x11_XGetSelectionOwner *XGetSelectionOwner;
+	fpl__func_x11_XCheckTypedWindowEvent *XCheckTypedWindowEvent;
+	fpl__func_x11_XTranslateCoordinates *XTranslateCoordinates;
 } fpl__X11Api;
 
 fpl_internal void fpl__UnloadX11Api(fpl__X11Api *x11Api) {
@@ -11647,6 +11688,19 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XConvertSelection, XConvertSelection);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XInitThreads, XInitThreads);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetErrorHandler, XSetErrorHandler);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XIconifyWindow, XIconifyWindow);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XAllocSizeHints, XAllocSizeHints);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetWMNormalHints, XSetWMNormalHints);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGetWMNormalHints, XGetWMNormalHints);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XDefineCursor, XDefineCursor);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XUndefineCursor, XUndefineCursor);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XFreeCursor, XFreeCursor);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCreateBitmapFromData, XCreateBitmapFromData);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCreatePixmapCursor, XCreatePixmapCursor);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetSelectionOwner, XSetSelectionOwner);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGetSelectionOwner, XGetSelectionOwner);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCheckTypedWindowEvent, XCheckTypedWindowEvent);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XTranslateCoordinates, XTranslateCoordinates);
 			x11Api->libHandle = libHandle;
 			result = true;
 		} while (0);
@@ -11658,8 +11712,210 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 	return(result);
 }
 
+//
+// XrandR Api (optional)
+//
+
+typedef unsigned long fpl__RROutput;
+typedef unsigned long fpl__RRCrtc;
+typedef unsigned long fpl__RRMode;
+typedef unsigned short fpl__RRConnection;
+typedef unsigned short fpl__RRSubpixelOrder;
+typedef unsigned short fpl__RRRotation;
+
+typedef struct fpl__XRRModeInfo {
+	fpl__RRMode id;
+	unsigned int width;
+	unsigned int height;
+	unsigned long dotClock;
+	unsigned int hSyncStart;
+	unsigned int hSyncEnd;
+	unsigned int hTotal;
+	unsigned int hSkew;
+	unsigned int vSyncStart;
+	unsigned int vSyncEnd;
+	unsigned int vTotal;
+	char *name;
+	unsigned int nameLength;
+	unsigned long modeFlags;
+} fpl__XRRModeInfo;
+
+typedef struct fpl__XRRScreenResources {
+	Time timestamp;
+	Time configTimestamp;
+	int ncrtc;
+	fpl__RRCrtc *crtcs;
+	int noutput;
+	fpl__RROutput *outputs;
+	int nmode;
+	fpl__XRRModeInfo *modes;
+} fpl__XRRScreenResources;
+
+typedef struct fpl__XRRCrtcInfo {
+	Time timestamp;
+	int x, y;
+	unsigned int width, height;
+	fpl__RRMode mode;
+	fpl__RRRotation rotation;
+	int noutput;
+	fpl__RROutput *outputs;
+	fpl__RRRotation rotations;
+	int npossible;
+	fpl__RROutput *possible;
+} fpl__XRRCrtcInfo;
+
+typedef struct fpl__XRROutputInfo {
+	Time timestamp;
+	fpl__RRCrtc crtc;
+	char *name;
+	int nameLen;
+	unsigned long mm_width;
+	unsigned long mm_height;
+	fpl__RRConnection connection;
+	fpl__RRSubpixelOrder subpixel_order;
+	int ncrtc;
+	fpl__RRCrtc *crtcs;
+	int nclone;
+	fpl__RROutput *clones;
+	int nmode;
+	int npreferred;
+	fpl__RRMode *modes;
+} fpl__XRROutputInfo;
+
+#define FPL__FUNC_XRR_XRRQueryExtension(name) Bool name(Display *dpy, int *event_base_return, int *error_base_return)
+typedef FPL__FUNC_XRR_XRRQueryExtension(fpl__func_xrr_XRRQueryExtension);
+#define FPL__FUNC_XRR_XRRGetScreenResourcesCurrent(name) fpl__XRRScreenResources *name(Display *dpy, Window window)
+typedef FPL__FUNC_XRR_XRRGetScreenResourcesCurrent(fpl__func_xrr_XRRGetScreenResourcesCurrent);
+#define FPL__FUNC_XRR_XRRFreeScreenResources(name) void name(fpl__XRRScreenResources *resources)
+typedef FPL__FUNC_XRR_XRRFreeScreenResources(fpl__func_xrr_XRRFreeScreenResources);
+#define FPL__FUNC_XRR_XRRGetCrtcInfo(name) fpl__XRRCrtcInfo *name(Display *dpy, fpl__XRRScreenResources *resources, fpl__RRCrtc crtc)
+typedef FPL__FUNC_XRR_XRRGetCrtcInfo(fpl__func_xrr_XRRGetCrtcInfo);
+#define FPL__FUNC_XRR_XRRFreeCrtcInfo(name) void name(fpl__XRRCrtcInfo *crtcInfo)
+typedef FPL__FUNC_XRR_XRRFreeCrtcInfo(fpl__func_xrr_XRRFreeCrtcInfo);
+#define FPL__FUNC_XRR_XRRGetOutputInfo(name) fpl__XRROutputInfo *name(Display *dpy, fpl__XRRScreenResources *resources, fpl__RROutput output)
+typedef FPL__FUNC_XRR_XRRGetOutputInfo(fpl__func_xrr_XRRGetOutputInfo);
+#define FPL__FUNC_XRR_XRRFreeOutputInfo(name) void name(fpl__XRROutputInfo *outputInfo)
+typedef FPL__FUNC_XRR_XRRFreeOutputInfo(fpl__func_xrr_XRRFreeOutputInfo);
+#define FPL__FUNC_XRR_XRRGetOutputPrimary(name) fpl__RROutput name(Display *dpy, Window window)
+typedef FPL__FUNC_XRR_XRRGetOutputPrimary(fpl__func_xrr_XRRGetOutputPrimary);
+
+typedef struct fpl__XrandRApi {
+	void *libHandle;
+	fpl__func_xrr_XRRQueryExtension *XRRQueryExtension;
+	fpl__func_xrr_XRRGetScreenResourcesCurrent *XRRGetScreenResourcesCurrent;
+	fpl__func_xrr_XRRFreeScreenResources *XRRFreeScreenResources;
+	fpl__func_xrr_XRRGetCrtcInfo *XRRGetCrtcInfo;
+	fpl__func_xrr_XRRFreeCrtcInfo *XRRFreeCrtcInfo;
+	fpl__func_xrr_XRRGetOutputInfo *XRRGetOutputInfo;
+	fpl__func_xrr_XRRFreeOutputInfo *XRRFreeOutputInfo;
+	fpl__func_xrr_XRRGetOutputPrimary *XRRGetOutputPrimary;
+} fpl__XrandRApi;
+
+fpl_internal void fpl__UnloadXrandRApi(fpl__XrandRApi *xrandrApi) {
+	fplAssert(xrandrApi != fpl_null);
+	if (xrandrApi->libHandle != fpl_null) {
+		dlclose(xrandrApi->libHandle);
+	}
+	fplClearStruct(xrandrApi);
+}
+
+fpl_internal bool fpl__LoadXrandRApi(fpl__XrandRApi *xrandrApi) {
+	fplAssert(xrandrApi != fpl_null);
+	const char *libFileNames[] = {
+		"libXrandr.so.2",
+		"libXrandr.so",
+	};
+	bool result = false;
+	for (uint32_t index = 0; index < fplArrayCount(libFileNames); ++index) {
+		const char *libName = libFileNames[index];
+		fplClearStruct(xrandrApi);
+		do {
+			void *libHandle = fpl_null;
+			FPL__POSIX_LOAD_LIBRARY(FPL__MODULE_XRANDR, libHandle, libName);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_XRANDR, libHandle, libName, xrandrApi, fpl__func_xrr_XRRQueryExtension, XRRQueryExtension);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_XRANDR, libHandle, libName, xrandrApi, fpl__func_xrr_XRRGetScreenResourcesCurrent, XRRGetScreenResourcesCurrent);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_XRANDR, libHandle, libName, xrandrApi, fpl__func_xrr_XRRFreeScreenResources, XRRFreeScreenResources);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_XRANDR, libHandle, libName, xrandrApi, fpl__func_xrr_XRRGetCrtcInfo, XRRGetCrtcInfo);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_XRANDR, libHandle, libName, xrandrApi, fpl__func_xrr_XRRFreeCrtcInfo, XRRFreeCrtcInfo);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_XRANDR, libHandle, libName, xrandrApi, fpl__func_xrr_XRRGetOutputInfo, XRRGetOutputInfo);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_XRANDR, libHandle, libName, xrandrApi, fpl__func_xrr_XRRFreeOutputInfo, XRRFreeOutputInfo);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_XRANDR, libHandle, libName, xrandrApi, fpl__func_xrr_XRRGetOutputPrimary, XRRGetOutputPrimary);
+			xrandrApi->libHandle = libHandle;
+			result = true;
+		} while (0);
+		if (result) {
+			break;
+		}
+		fpl__UnloadXrandRApi(xrandrApi);
+	}
+	return(result);
+}
+
+//
+// Xinerama Api (optional)
+//
+
+typedef struct fpl__XineramaScreenInfo {
+	int screen_number;
+	short x_org;
+	short y_org;
+	short width;
+	short height;
+} fpl__XineramaScreenInfo;
+
+#define FPL__FUNC_XINERAMA_XineramaQueryExtension(name) Bool name(Display *dpy, int *event_base, int *error_base)
+typedef FPL__FUNC_XINERAMA_XineramaQueryExtension(fpl__func_xinerama_XineramaQueryExtension);
+#define FPL__FUNC_XINERAMA_XineramaIsActive(name) Bool name(Display *dpy)
+typedef FPL__FUNC_XINERAMA_XineramaIsActive(fpl__func_xinerama_XineramaIsActive);
+#define FPL__FUNC_XINERAMA_XineramaQueryScreens(name) fpl__XineramaScreenInfo *name(Display *dpy, int *number)
+typedef FPL__FUNC_XINERAMA_XineramaQueryScreens(fpl__func_xinerama_XineramaQueryScreens);
+
+typedef struct fpl__XineramaApi {
+	void *libHandle;
+	fpl__func_xinerama_XineramaQueryExtension *XineramaQueryExtension;
+	fpl__func_xinerama_XineramaIsActive *XineramaIsActive;
+	fpl__func_xinerama_XineramaQueryScreens *XineramaQueryScreens;
+} fpl__XineramaApi;
+
+fpl_internal void fpl__UnloadXineramaApi(fpl__XineramaApi *xineramaApi) {
+	fplAssert(xineramaApi != fpl_null);
+	if (xineramaApi->libHandle != fpl_null) {
+		dlclose(xineramaApi->libHandle);
+	}
+	fplClearStruct(xineramaApi);
+}
+
+fpl_internal bool fpl__LoadXineramaApi(fpl__XineramaApi *xineramaApi) {
+	fplAssert(xineramaApi != fpl_null);
+	const char *libFileNames[] = {
+		"libXinerama.so.1",
+		"libXinerama.so",
+	};
+	bool result = false;
+	for (uint32_t index = 0; index < fplArrayCount(libFileNames); ++index) {
+		const char *libName = libFileNames[index];
+		fplClearStruct(xineramaApi);
+		do {
+			void *libHandle = fpl_null;
+			FPL__POSIX_LOAD_LIBRARY(FPL__MODULE_XINERAMA, libHandle, libName);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_XINERAMA, libHandle, libName, xineramaApi, fpl__func_xinerama_XineramaQueryExtension, XineramaQueryExtension);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_XINERAMA, libHandle, libName, xineramaApi, fpl__func_xinerama_XineramaIsActive, XineramaIsActive);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_XINERAMA, libHandle, libName, xineramaApi, fpl__func_xinerama_XineramaQueryScreens, XineramaQueryScreens);
+			xineramaApi->libHandle = libHandle;
+			result = true;
+		} while (0);
+		if (result) {
+			break;
+		}
+		fpl__UnloadXineramaApi(xineramaApi);
+	}
+	return(result);
+}
+
 typedef struct fpl__X11SubplatformState {
 	fpl__X11Api api;
+	fpl__XrandRApi xrandr;
+	fpl__XineramaApi xinerama;
 } fpl__X11SubplatformState;
 
 typedef struct fpl__X11WindowStateInfo {
@@ -11714,6 +11970,18 @@ typedef struct fpl__X11WindowState {
 	Atom xdndSelection;
 	Atom xdndTypeList;
 	Atom textUriList;
+	// Window styles
+	Atom netWMStateAbove;
+	// Cursor
+	Cursor invisibleCursor;
+	bool cursorEnabled;
+	// Clipboard
+	Atom clipboardAtom;
+	Atom targetsAtom;
+	Atom incrAtom;
+	Atom selectionPropAtom;
+	char clipboardOut[FPL_MAX_BUFFER_LENGTH];
+	size_t clipboardOutLen;
 	int screen;
 	int colorDepth;
 } fpl__X11WindowState;
@@ -22188,6 +22456,8 @@ fpl_platform_api char fplConsoleWaitForCharInput(void) {
 
 fpl_internal void fpl__X11ReleaseSubplatform(fpl__X11SubplatformState *subplatform) {
 	fplAssert(subplatform != fpl_null);
+	fpl__UnloadXineramaApi(&subplatform->xinerama);
+	fpl__UnloadXrandRApi(&subplatform->xrandr);
 	fpl__UnloadX11Api(&subplatform->api);
 }
 
@@ -22197,6 +22467,13 @@ fpl_internal bool fpl__X11InitSubplatform(fpl__X11SubplatformState *subplatform)
 		FPL__ERROR(FPL__MODULE_X11, "Failed loading x11 api");
 		return false;
 	}
+	// Optional extensions, init must not fail when missing
+	if (!fpl__LoadXrandRApi(&subplatform->xrandr)) {
+		FPL__WARNING(FPL__MODULE_XRANDR, "XrandR not available, falling back");
+	}
+	if (!fpl__LoadXineramaApi(&subplatform->xinerama)) {
+		FPL__WARNING(FPL__MODULE_XINERAMA, "Xinerama not available, falling back");
+	}
 	return true;
 }
 
@@ -22204,6 +22481,10 @@ fpl_internal bool fpl__X11InitSubplatform(fpl__X11SubplatformState *subplatform)
 fpl_internal void fpl__X11ReleaseWindow(const fpl__X11SubplatformState *subplatform, fpl__X11WindowState *windowState) {
 	fplAssert((subplatform != fpl_null) && (windowState != fpl_null));
 	const fpl__X11Api *x11Api = &subplatform->api;
+	if (windowState->invisibleCursor != 0) {
+		x11Api->XFreeCursor(windowState->display, windowState->invisibleCursor);
+		windowState->invisibleCursor = 0;
+	}
 	if (windowState->window) {
 		FPL_LOG_DEBUG("X11", "Hide window '%d' from display '%p'", (int)windowState->window, windowState->display);
 		x11Api->XUnmapWindow(windowState->display, windowState->window);
@@ -22670,6 +22951,16 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	windowState->xdndSelection = x11Api->XInternAtom(windowState->display, "XdndSelection", False);
 	windowState->xdndTypeList = x11Api->XInternAtom(windowState->display, "XdndTypeList", False);
 	windowState->textUriList = x11Api->XInternAtom(windowState->display, "text/uri-list", False);
+	// Window style atoms
+	windowState->netWMStateAbove = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_ABOVE", False);
+	// Clipboard atoms
+	windowState->clipboardAtom = x11Api->XInternAtom(windowState->display, "CLIPBOARD", False);
+	windowState->targetsAtom = x11Api->XInternAtom(windowState->display, "TARGETS", False);
+	windowState->incrAtom = x11Api->XInternAtom(windowState->display, "INCR", False);
+	windowState->selectionPropAtom = x11Api->XInternAtom(windowState->display, "FPL_SELECTION", False);
+	// Cursor defaults
+	windowState->invisibleCursor = 0;
+	windowState->cursorEnabled = true;
 
 	// Register window manager protocols
 	{
@@ -23370,6 +23661,33 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			}
 		} break;
 
+		case SelectionRequest:
+		{
+			XSelectionRequestEvent *req = &ev->xselectionrequest;
+			XEvent reply = fplZeroInit;
+			reply.xselection.type = SelectionNotify;
+			reply.xselection.requestor = req->requestor;
+			reply.xselection.selection = req->selection;
+			reply.xselection.target = req->target;
+			reply.xselection.time = req->time;
+			reply.xselection.property = None;
+			if (req->selection == x11WinState->clipboardAtom) {
+				if (req->target == x11WinState->targetsAtom) {
+					Atom supported[3];
+					supported[0] = x11WinState->targetsAtom;
+					supported[1] = x11WinState->utf8String;
+					supported[2] = XA_STRING;
+					x11Api->XChangeProperty(x11WinState->display, req->requestor, req->property, XA_ATOM, 32, PropModeReplace, (unsigned char *)supported, 3);
+					reply.xselection.property = req->property;
+				} else if (req->target == x11WinState->utf8String || req->target == XA_STRING) {
+					x11Api->XChangeProperty(x11WinState->display, req->requestor, req->property, req->target, 8, PropModeReplace, (unsigned char *)x11WinState->clipboardOut, (int)x11WinState->clipboardOutLen);
+					reply.xselection.property = req->property;
+				}
+			}
+			x11Api->XSendEvent(x11WinState->display, req->requestor, False, NoEventMask, &reply);
+			x11Api->XFlush(x11WinState->display);
+		} break;
+
 		case SelectionNotify:
 		{
 			if (ev->xselection.property == x11WinState->xdndSelection) {
@@ -23592,7 +23910,28 @@ fpl_platform_api bool fplWindowUpdate(void) {
 }
 
 fpl_platform_api void fplSetWindowCursorEnabled(const bool value) {
-	// @IMPLEMENT(final/X11): fplSetWindowCursorEnabled
+	FPL__CheckPlatformNoRet();
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	fpl__X11WindowState *windowState = &appState->window.x11;
+	if (value) {
+		x11Api->XUndefineCursor(windowState->display, windowState->window);
+	} else {
+		if (windowState->invisibleCursor == 0) {
+			char zero[8] = fplZeroInit;
+			Pixmap blank = x11Api->XCreateBitmapFromData(windowState->display, windowState->window, zero, 1, 1);
+			if (blank != 0) {
+				XColor dummy = fplZeroInit;
+				windowState->invisibleCursor = x11Api->XCreatePixmapCursor(windowState->display, blank, blank, &dummy, &dummy, 0, 0);
+			}
+		}
+		if (windowState->invisibleCursor != 0) {
+			x11Api->XDefineCursor(windowState->display, windowState->window, windowState->invisibleCursor);
+		}
+	}
+	x11Api->XFlush(windowState->display);
+	windowState->cursorEnabled = value;
 }
 
 fpl_platform_api bool fplGetWindowSize(fplWindowSize *outSize) {
@@ -23620,12 +23959,40 @@ fpl_platform_api void fplSetWindowSize(const uint32_t width, const uint32_t heig
 }
 
 fpl_platform_api bool fplIsWindowResizable(void) {
-	// @IMPLEMENT(final/X11): fplIsWindowResizable
-	return false;
+	FPL__CheckPlatform(false);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	bool result = appState->currentSettings.window.isResizable != 0;
+	return(result);
 }
 
 fpl_platform_api void fplSetWindowResizeable(const bool value) {
-	// @IMPLEMENT(final/X11): fplSetWindowResizeable
+	FPL__CheckPlatformNoRet();
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	if (appState->currentSettings.window.isFullscreen) {
+		return;
+	}
+	XSizeHints *hints = x11Api->XAllocSizeHints();
+	if (hints == fpl_null) {
+		return;
+	}
+	if (value) {
+		hints->flags = 0;
+	} else {
+		XWindowAttributes attribs = fplZeroInit;
+		x11Api->XGetWindowAttributes(windowState->display, windowState->window, &attribs);
+		hints->flags = PMinSize | PMaxSize;
+		hints->min_width = attribs.width;
+		hints->min_height = attribs.height;
+		hints->max_width = attribs.width;
+		hints->max_height = attribs.height;
+	}
+	x11Api->XSetWMNormalHints(windowState->display, windowState->window, hints);
+	x11Api->XFree(hints);
+	x11Api->XFlush(windowState->display);
+	appState->currentSettings.window.isResizable = value;
 }
 
 fpl_platform_api bool fplIsWindowDecorated(void) {
@@ -23670,53 +24037,530 @@ fpl_platform_api void fplSetWindowDecorated(const bool value) {
 	appState->currentSettings.window.isDecorated = value;
 }
 
+#define FPL__NET_WM_STATE_REMOVE 0L
+#define FPL__NET_WM_STATE_ADD 1L
+
+fpl_internal bool fpl__X11HasNetWMStateAtom(const fpl__X11Api *x11Api, const fpl__X11WindowState *windowState, Atom needle) {
+	Atom actualType = 0;
+	int actualFormat = 0;
+	unsigned long itemCount = 0;
+	unsigned long bytesAfter = 0;
+	unsigned char *data = fpl_null;
+	bool result = false;
+	int status = x11Api->XGetWindowProperty(windowState->display, windowState->window, windowState->netWMState, 0L, 1024L, False, XA_ATOM, &actualType, &actualFormat, &itemCount, &bytesAfter, &data);
+	if (status == Success && data != fpl_null) {
+		Atom *atoms = (Atom *)data;
+		for (unsigned long i = 0; i < itemCount; ++i) {
+			if (atoms[i] == needle) {
+				result = true;
+				break;
+			}
+		}
+	}
+	if (data != fpl_null) {
+		x11Api->XFree(data);
+	}
+	return(result);
+}
+
+fpl_internal bool fpl__X11SendNetWMState(const fpl__X11Api *x11Api, const fpl__X11WindowState *windowState, Atom atom1, Atom atom2, long action) {
+	XEvent xev = fplZeroInit;
+	xev.type = ClientMessage;
+	xev.xclient.window = windowState->window;
+	xev.xclient.message_type = windowState->netWMState;
+	xev.xclient.format = 32;
+	xev.xclient.data.l[0] = action;
+	xev.xclient.data.l[1] = (long)atom1;
+	xev.xclient.data.l[2] = (long)atom2;
+	xev.xclient.data.l[3] = 1L;
+	bool result = x11Api->XSendEvent(windowState->display, windowState->root, 0, SubstructureRedirectMask | SubstructureNotifyMask, &xev) != 0;
+	x11Api->XFlush(windowState->display);
+	return(result);
+}
+
 fpl_platform_api bool fplIsWindowFloating(void) {
-	// @IMPLEMENT(final/X11): fplIsWindowFloating
-	return false;
+	FPL__CheckPlatform(false);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	bool result = fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWMStateAbove);
+	return(result);
 }
 
 fpl_platform_api void fplSetWindowFloating(const bool value) {
-	// @IMPLEMENT(final/X11): fplSetWindowFloating
+	FPL__CheckPlatformNoRet();
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	long action = value ? FPL__NET_WM_STATE_ADD : FPL__NET_WM_STATE_REMOVE;
+	fpl__X11SendNetWMState(x11Api, windowState, windowState->netWMStateAbove, 0, action);
 }
 
 fpl_platform_api fplWindowState fplGetWindowState(void) {
-	// @IMPLEMENT(final/X11): fplGetWindowState
+	FPL__CheckPlatform(fplWindowState_Unknown);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	if (appState->currentSettings.window.isFullscreen) {
+		return(fplWindowState_Fullscreen);
+	}
+	if (fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWMStateFullscreen)) {
+		return(fplWindowState_Fullscreen);
+	}
+	if (fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWMStateHidden)) {
+		return(fplWindowState_Iconify);
+	}
+	bool maxVert = fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWMStateMaximizedVert);
+	bool maxHorz = fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWMStateMaximizedHorz);
+	if (maxVert && maxHorz) {
+		return(fplWindowState_Maximize);
+	}
+	XWindowAttributes attribs = fplZeroInit;
+	x11Api->XGetWindowAttributes(windowState->display, windowState->window, &attribs);
+	if (attribs.map_state == IsViewable) {
+		return(fplWindowState_Normal);
+	}
 	return(fplWindowState_Unknown);
 }
 
 fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
-	// @IMPLEMENT(final/X11): fplSetWindowState
-	return(false);
+	FPL__CheckPlatform(false);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	bool result = false;
+	switch (newState) {
+		case fplWindowState_Iconify:
+		{
+			result = x11Api->XIconifyWindow(windowState->display, windowState->window, windowState->screen) != 0;
+			x11Api->XFlush(windowState->display);
+		} break;
+
+		case fplWindowState_Maximize:
+		{
+			if (!appState->currentSettings.window.isFullscreen) {
+				result = fpl__X11SendNetWMState(x11Api, windowState, windowState->netWMStateMaximizedVert, windowState->netWMStateMaximizedHorz, FPL__NET_WM_STATE_ADD);
+			}
+		} break;
+
+		case fplWindowState_Normal:
+		{
+			fpl__X11SendNetWMState(x11Api, windowState, windowState->netWMStateMaximizedVert, windowState->netWMStateMaximizedHorz, FPL__NET_WM_STATE_REMOVE);
+			fpl__X11SendNetWMState(x11Api, windowState, windowState->netWMStateHidden, 0, FPL__NET_WM_STATE_REMOVE);
+			x11Api->XMapWindow(windowState->display, windowState->window);
+			x11Api->XFlush(windowState->display);
+			result = true;
+		} break;
+
+		case fplWindowState_Fullscreen:
+		{
+			if (!appState->currentSettings.window.isFullscreen) {
+				result = fplSetWindowFullscreenSize(true, 0, 0, 0);
+			} else {
+				result = true;
+			}
+		} break;
+
+		case fplWindowState_Unknown:
+		default:
+			break;
+	}
+	return(result);
+}
+
+typedef enum fpl__X11DisplayBackend {
+	fpl__X11DisplayBackend_Root = 0,
+	fpl__X11DisplayBackend_Xinerama,
+	fpl__X11DisplayBackend_RandR,
+} fpl__X11DisplayBackend;
+
+fpl_internal fpl__X11DisplayBackend fpl__X11ResolveDisplayBackend(const fpl__X11SubplatformState *subplatform, Display *display) {
+	if (subplatform->xrandr.libHandle != fpl_null) {
+		int eventBase = 0;
+		int errorBase = 0;
+		if (subplatform->xrandr.XRRQueryExtension(display, &eventBase, &errorBase)) {
+			return(fpl__X11DisplayBackend_RandR);
+		}
+	}
+	if (subplatform->xinerama.libHandle != fpl_null) {
+		if (subplatform->xinerama.XineramaIsActive(display)) {
+			return(fpl__X11DisplayBackend_Xinerama);
+		}
+	}
+	return(fpl__X11DisplayBackend_Root);
+}
+
+fpl_internal void fpl__X11FillDisplayInfoFromCrtc(const char *outputName, int outputNameLen, const fpl__XRRCrtcInfo *crtc, bool isPrimary, fplDisplayInfo *outInfo) {
+	fplClearStruct(outInfo);
+	if (outputName != fpl_null && outputNameLen > 0) {
+		size_t copyLen = (size_t)outputNameLen;
+		if (copyLen >= fplArrayCount(outInfo->id)) {
+			copyLen = fplArrayCount(outInfo->id) - 1;
+		}
+		fplMemoryCopy(outputName, copyLen, outInfo->id);
+		outInfo->id[copyLen] = 0;
+	}
+	outInfo->virtualPosition.left = crtc->x;
+	outInfo->virtualPosition.top = crtc->y;
+	outInfo->virtualSize.width = (int32_t)crtc->width;
+	outInfo->virtualSize.height = (int32_t)crtc->height;
+	outInfo->physicalSize.width = outInfo->virtualSize.width;
+	outInfo->physicalSize.height = outInfo->virtualSize.height;
+	outInfo->isPrimary = isPrimary ? 1 : 0;
+}
+
+fpl_internal void fpl__X11FillDisplayInfoFromXinerama(const fpl__XineramaScreenInfo *screen, bool isPrimary, fplDisplayInfo *outInfo) {
+	fplClearStruct(outInfo);
+	fplStringFormat(outInfo->id, fplArrayCount(outInfo->id), "XINERAMA-%d", screen->screen_number);
+	outInfo->virtualPosition.left = screen->x_org;
+	outInfo->virtualPosition.top = screen->y_org;
+	outInfo->virtualSize.width = screen->width;
+	outInfo->virtualSize.height = screen->height;
+	outInfo->physicalSize.width = screen->width;
+	outInfo->physicalSize.height = screen->height;
+	outInfo->isPrimary = isPrimary ? 1 : 0;
+}
+
+fpl_internal void fpl__X11FillDisplayInfoFromRoot(const fpl__X11Api *x11Api, Display *display, Window root, fplDisplayInfo *outInfo) {
+	fplClearStruct(outInfo);
+	fplCopyString("default", outInfo->id, fplArrayCount(outInfo->id));
+	XWindowAttributes attribs = fplZeroInit;
+	x11Api->XGetWindowAttributes(display, root, &attribs);
+	outInfo->virtualPosition.left = 0;
+	outInfo->virtualPosition.top = 0;
+	outInfo->virtualSize.width = attribs.width;
+	outInfo->virtualSize.height = attribs.height;
+	outInfo->physicalSize.width = attribs.width;
+	outInfo->physicalSize.height = attribs.height;
+	outInfo->isPrimary = 1;
+}
+
+fpl_internal bool fpl__X11RectContains(int rx, int ry, int rw, int rh, int px, int py) {
+	return(px >= rx && px < rx + rw && py >= ry && py < ry + rh);
 }
 
 fpl_platform_api size_t fplGetDisplayCount(void) {
-	// @IMPLEMENT(final/X11): fplGetDisplayCount
-	return(0);
+	FPL__CheckPlatform(0);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	fpl__X11DisplayBackend backend = fpl__X11ResolveDisplayBackend(subplatform, windowState->display);
+	size_t result = 0;
+	if (backend == fpl__X11DisplayBackend_RandR) {
+		const fpl__XrandRApi *xrr = &subplatform->xrandr;
+		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(windowState->display, windowState->root);
+		if (res != fpl_null) {
+			for (int i = 0; i < res->noutput; ++i) {
+				fpl__XRROutputInfo *outInfo = xrr->XRRGetOutputInfo(windowState->display, res, res->outputs[i]);
+				if (outInfo != fpl_null) {
+					if (outInfo->connection == 0 && outInfo->crtc != 0) {
+						++result;
+					}
+					xrr->XRRFreeOutputInfo(outInfo);
+				}
+			}
+			xrr->XRRFreeScreenResources(res);
+		}
+	} else if (backend == fpl__X11DisplayBackend_Xinerama) {
+		int count = 0;
+		fpl__XineramaScreenInfo *screens = subplatform->xinerama.XineramaQueryScreens(windowState->display, &count);
+		if (screens != fpl_null) {
+			result = (size_t)count;
+			x11Api->XFree(screens);
+		}
+	} else {
+		result = 1;
+	}
+	return(result);
 }
 
 fpl_platform_api size_t fplGetDisplays(fplDisplayInfo *displays, const size_t maxDisplayCount) {
-	// @IMPLEMENT(final/X11): fplGetDisplays
-	return(0);
+	FPL__CheckArgumentNull(displays, 0);
+	FPL__CheckArgumentZero(maxDisplayCount, 0);
+	FPL__CheckPlatform(0);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	fpl__X11DisplayBackend backend = fpl__X11ResolveDisplayBackend(subplatform, windowState->display);
+	size_t result = 0;
+	if (backend == fpl__X11DisplayBackend_RandR) {
+		const fpl__XrandRApi *xrr = &subplatform->xrandr;
+		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(windowState->display, windowState->root);
+		if (res != fpl_null) {
+			fpl__RROutput primary = xrr->XRRGetOutputPrimary(windowState->display, windowState->root);
+			for (int i = 0; i < res->noutput && result < maxDisplayCount; ++i) {
+				fpl__RROutput outId = res->outputs[i];
+				fpl__XRROutputInfo *outInfo = xrr->XRRGetOutputInfo(windowState->display, res, outId);
+				if (outInfo != fpl_null) {
+					if (outInfo->connection == 0 && outInfo->crtc != 0) {
+						fpl__XRRCrtcInfo *crtc = xrr->XRRGetCrtcInfo(windowState->display, res, outInfo->crtc);
+						if (crtc != fpl_null) {
+							bool isPrimary = (outId == primary);
+							fpl__X11FillDisplayInfoFromCrtc(outInfo->name, outInfo->nameLen, crtc, isPrimary, displays + result);
+							xrr->XRRFreeCrtcInfo(crtc);
+							++result;
+						}
+					}
+					xrr->XRRFreeOutputInfo(outInfo);
+				}
+			}
+			xrr->XRRFreeScreenResources(res);
+		}
+	} else if (backend == fpl__X11DisplayBackend_Xinerama) {
+		int count = 0;
+		fpl__XineramaScreenInfo *screens = subplatform->xinerama.XineramaQueryScreens(windowState->display, &count);
+		if (screens != fpl_null) {
+			for (int i = 0; i < count && result < maxDisplayCount; ++i) {
+				bool isPrimary = fpl__X11RectContains(screens[i].x_org, screens[i].y_org, screens[i].width, screens[i].height, 0, 0);
+				fpl__X11FillDisplayInfoFromXinerama(&screens[i], isPrimary, displays + result);
+				++result;
+			}
+			x11Api->XFree(screens);
+		}
+	} else {
+		fpl__X11FillDisplayInfoFromRoot(x11Api, windowState->display, windowState->root, displays);
+		result = 1;
+	}
+	return(result);
 }
 
 fpl_platform_api bool fplGetPrimaryDisplay(fplDisplayInfo *display) {
-	// @IMPLEMENT(final/X11): fplGetPrimaryDisplay
-	return(false);
+	FPL__CheckArgumentNull(display, false);
+	FPL__CheckPlatform(false);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	fpl__X11DisplayBackend backend = fpl__X11ResolveDisplayBackend(subplatform, windowState->display);
+	bool result = false;
+	if (backend == fpl__X11DisplayBackend_RandR) {
+		const fpl__XrandRApi *xrr = &subplatform->xrandr;
+		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(windowState->display, windowState->root);
+		if (res != fpl_null) {
+			fpl__RROutput primary = xrr->XRRGetOutputPrimary(windowState->display, windowState->root);
+			if (primary != 0) {
+				fpl__XRROutputInfo *outInfo = xrr->XRRGetOutputInfo(windowState->display, res, primary);
+				if (outInfo != fpl_null) {
+					if (outInfo->crtc != 0) {
+						fpl__XRRCrtcInfo *crtc = xrr->XRRGetCrtcInfo(windowState->display, res, outInfo->crtc);
+						if (crtc != fpl_null) {
+							fpl__X11FillDisplayInfoFromCrtc(outInfo->name, outInfo->nameLen, crtc, true, display);
+							xrr->XRRFreeCrtcInfo(crtc);
+							result = true;
+						}
+					}
+					xrr->XRRFreeOutputInfo(outInfo);
+				}
+			}
+			xrr->XRRFreeScreenResources(res);
+		}
+	} else if (backend == fpl__X11DisplayBackend_Xinerama) {
+		int count = 0;
+		fpl__XineramaScreenInfo *screens = subplatform->xinerama.XineramaQueryScreens(windowState->display, &count);
+		if (screens != fpl_null && count > 0) {
+			int chosen = 0;
+			for (int i = 0; i < count; ++i) {
+				if (fpl__X11RectContains(screens[i].x_org, screens[i].y_org, screens[i].width, screens[i].height, 0, 0)) {
+					chosen = i;
+					break;
+				}
+			}
+			fpl__X11FillDisplayInfoFromXinerama(&screens[chosen], true, display);
+			result = true;
+		}
+		if (screens != fpl_null) {
+			x11Api->XFree(screens);
+		}
+	}
+	if (!result) {
+		fpl__X11FillDisplayInfoFromRoot(x11Api, windowState->display, windowState->root, display);
+		result = true;
+	}
+	return(result);
+}
+
+fpl_internal bool fpl__X11FindDisplayAtPoint(const fpl__X11SubplatformState *subplatform, const fpl__X11WindowState *windowState, int32_t x, int32_t y, fplDisplayInfo *outDisplay) {
+	const fpl__X11Api *x11Api = &subplatform->api;
+	fpl__X11DisplayBackend backend = fpl__X11ResolveDisplayBackend(subplatform, windowState->display);
+	bool result = false;
+	if (backend == fpl__X11DisplayBackend_RandR) {
+		const fpl__XrandRApi *xrr = &subplatform->xrandr;
+		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(windowState->display, windowState->root);
+		if (res != fpl_null) {
+			fpl__RROutput primary = xrr->XRRGetOutputPrimary(windowState->display, windowState->root);
+			for (int i = 0; i < res->noutput && !result; ++i) {
+				fpl__RROutput outId = res->outputs[i];
+				fpl__XRROutputInfo *outInfo = xrr->XRRGetOutputInfo(windowState->display, res, outId);
+				if (outInfo != fpl_null) {
+					if (outInfo->connection == 0 && outInfo->crtc != 0) {
+						fpl__XRRCrtcInfo *crtc = xrr->XRRGetCrtcInfo(windowState->display, res, outInfo->crtc);
+						if (crtc != fpl_null) {
+							if (fpl__X11RectContains(crtc->x, crtc->y, (int)crtc->width, (int)crtc->height, x, y)) {
+								fpl__X11FillDisplayInfoFromCrtc(outInfo->name, outInfo->nameLen, crtc, outId == primary, outDisplay);
+								result = true;
+							}
+							xrr->XRRFreeCrtcInfo(crtc);
+						}
+					}
+					xrr->XRRFreeOutputInfo(outInfo);
+				}
+			}
+			xrr->XRRFreeScreenResources(res);
+		}
+	} else if (backend == fpl__X11DisplayBackend_Xinerama) {
+		int count = 0;
+		fpl__XineramaScreenInfo *screens = subplatform->xinerama.XineramaQueryScreens(windowState->display, &count);
+		if (screens != fpl_null) {
+			for (int i = 0; i < count; ++i) {
+				if (fpl__X11RectContains(screens[i].x_org, screens[i].y_org, screens[i].width, screens[i].height, x, y)) {
+					bool isPrimary = fpl__X11RectContains(screens[i].x_org, screens[i].y_org, screens[i].width, screens[i].height, 0, 0);
+					fpl__X11FillDisplayInfoFromXinerama(&screens[i], isPrimary, outDisplay);
+					result = true;
+					break;
+				}
+			}
+			x11Api->XFree(screens);
+		}
+	} else {
+		fpl__X11FillDisplayInfoFromRoot(x11Api, windowState->display, windowState->root, outDisplay);
+		result = fpl__X11RectContains(0, 0, outDisplay->virtualSize.width, outDisplay->virtualSize.height, x, y);
+	}
+	return(result);
 }
 
 fpl_platform_api bool fplGetWindowDisplay(fplDisplayInfo *outDisplay) {
-	// @IMPLEMENT(final/X11): fplGetWindowDisplay
-	return(false);
+	FPL__CheckArgumentNull(outDisplay, false);
+	FPL__CheckPlatform(false);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	XWindowAttributes attribs = fplZeroInit;
+	x11Api->XGetWindowAttributes(windowState->display, windowState->window, &attribs);
+	int rootX = 0;
+	int rootY = 0;
+	Window child = 0;
+	x11Api->XTranslateCoordinates(windowState->display, windowState->window, windowState->root, 0, 0, &rootX, &rootY, &child);
+	int centerX = rootX + attribs.width / 2;
+	int centerY = rootY + attribs.height / 2;
+	bool result = fpl__X11FindDisplayAtPoint(subplatform, windowState, centerX, centerY, outDisplay);
+	if (!result) {
+		result = fplGetPrimaryDisplay(outDisplay);
+	}
+	return(result);
 }
 
 fpl_platform_api bool fplGetDisplayFromPosition(const int32_t x, const int32_t y, fplDisplayInfo *outDisplay) {
-	// @IMPLEMENT(final/X11): fplGetDisplayFromPosition
-	return(false);
+	FPL__CheckArgumentNull(outDisplay, false);
+	FPL__CheckPlatform(false);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	bool result = fpl__X11FindDisplayAtPoint(subplatform, windowState, x, y, outDisplay);
+	return(result);
 }
 
 fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *modes, const size_t maxDisplayModeCount) {
-	// @IMPLEMENT(final/X11): fplGetDisplayModes
-	return(0);
+	FPL__CheckArgumentNull(id, 0);
+	FPL__CheckPlatform(0);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	fpl__X11DisplayBackend backend = fpl__X11ResolveDisplayBackend(subplatform, windowState->display);
+	size_t result = 0;
+	if (backend == fpl__X11DisplayBackend_RandR) {
+		const fpl__XrandRApi *xrr = &subplatform->xrandr;
+		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(windowState->display, windowState->root);
+		if (res != fpl_null) {
+			fpl__XRROutputInfo *match = fpl_null;
+			for (int i = 0; i < res->noutput; ++i) {
+				fpl__XRROutputInfo *outInfo = xrr->XRRGetOutputInfo(windowState->display, res, res->outputs[i]);
+				if (outInfo != fpl_null) {
+					if (outInfo->name != fpl_null && outInfo->nameLen > 0 && (size_t)outInfo->nameLen == fplGetStringLength(id) && fplIsStringEqualLen(outInfo->name, outInfo->nameLen, id, outInfo->nameLen)) {
+						match = outInfo;
+						break;
+					}
+					xrr->XRRFreeOutputInfo(outInfo);
+				}
+			}
+			if (match != fpl_null) {
+				int colorBits = x11Api->XDefaultDepth(windowState->display, windowState->screen);
+				for (int i = 0; i < match->nmode; ++i) {
+					fpl__RRMode mid = match->modes[i];
+					for (int j = 0; j < res->nmode; ++j) {
+						if (res->modes[j].id == mid) {
+							if (modes != fpl_null) {
+								if (result == maxDisplayModeCount) {
+									break;
+								}
+								fplDisplayMode *outMode = modes + result;
+								fplClearStruct(outMode);
+								outMode->width = res->modes[j].width;
+								outMode->height = res->modes[j].height;
+								outMode->colorBits = (uint32_t)colorBits;
+								unsigned int divisor = res->modes[j].hTotal * res->modes[j].vTotal;
+								if (divisor > 0) {
+									outMode->refreshRate = (uint32_t)((res->modes[j].dotClock + divisor / 2) / divisor);
+								}
+							}
+							++result;
+							break;
+						}
+					}
+					if (modes != fpl_null && result == maxDisplayModeCount) {
+						break;
+					}
+				}
+				xrr->XRRFreeOutputInfo(match);
+			}
+			xrr->XRRFreeScreenResources(res);
+		}
+	} else {
+		fplDisplayInfo info = fplZeroInit;
+		bool found = false;
+		size_t total = fplGetDisplays(&info, 1);
+		(void)total;
+		if (backend == fpl__X11DisplayBackend_Xinerama) {
+			int count = 0;
+			fpl__XineramaScreenInfo *screens = subplatform->xinerama.XineramaQueryScreens(windowState->display, &count);
+			if (screens != fpl_null) {
+				for (int i = 0; i < count; ++i) {
+					char tmp[FPL_MAX_NAME_LENGTH];
+					fplStringFormat(tmp, fplArrayCount(tmp), "XINERAMA-%d", screens[i].screen_number);
+					if (fplIsStringEqual(tmp, id)) {
+						info.virtualSize.width = screens[i].width;
+						info.virtualSize.height = screens[i].height;
+						found = true;
+						break;
+					}
+				}
+				x11Api->XFree(screens);
+			}
+		} else {
+			if (fplIsStringEqual("default", id)) {
+				fpl__X11FillDisplayInfoFromRoot(x11Api, windowState->display, windowState->root, &info);
+				found = true;
+			}
+		}
+		if (found) {
+			if (modes != fpl_null && maxDisplayModeCount > 0) {
+				fplClearStruct(modes);
+				modes[0].width = info.virtualSize.width;
+				modes[0].height = info.virtualSize.height;
+				modes[0].colorBits = (uint32_t)x11Api->XDefaultDepth(windowState->display, windowState->screen);
+				modes[0].refreshRate = 0;
+			}
+			result = 1;
+		}
+	}
+	return(result);
 }
 
 fpl_platform_api bool fplSetWindowFullscreenSize(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
@@ -23746,8 +24590,67 @@ fpl_platform_api bool fplSetWindowFullscreenSize(const bool value, const uint32_
 }
 
 fpl_platform_api bool fplSetWindowFullscreenRect(const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height) {
-	// @IMPLEMENT(final/X11): fplSetWindowFullscreenRect
-	return(false);
+	FPL__CheckPlatform(false);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	if (!value) {
+		return(fplSetWindowFullscreenSize(false, 0, 0, 0));
+	}
+	// X11 has no pixel-rect fullscreen, snap to monitor span via _NET_WM_FULLSCREEN_MONITORS (Xinerama indices).
+	if (subplatform->xinerama.libHandle != fpl_null && subplatform->xinerama.XineramaIsActive(windowState->display)) {
+		int count = 0;
+		fpl__XineramaScreenInfo *screens = subplatform->xinerama.XineramaQueryScreens(windowState->display, &count);
+		if (screens != fpl_null && count > 0) {
+			int rx0 = x;
+			int ry0 = y;
+			int rx1 = x + width - 1;
+			int ry1 = y + height - 1;
+			int cx = x + width / 2;
+			int cy = y + height / 2;
+			int idxTL = -1;
+			int idxBR = -1;
+			int idxC = -1;
+			for (int i = 0; i < count; ++i) {
+				int sx = screens[i].x_org;
+				int sy = screens[i].y_org;
+				int sw = screens[i].width;
+				int sh = screens[i].height;
+				if (idxTL < 0 && fpl__X11RectContains(sx, sy, sw, sh, rx0, ry0)) {
+					idxTL = i;
+				}
+				if (idxBR < 0 && fpl__X11RectContains(sx, sy, sw, sh, rx1, ry1)) {
+					idxBR = i;
+				}
+				if (idxC < 0 && fpl__X11RectContains(sx, sy, sw, sh, cx, cy)) {
+					idxC = i;
+				}
+			}
+			if (idxTL < 0) {
+				idxTL = (idxC >= 0) ? idxC : 0;
+			}
+			if (idxBR < 0) {
+				idxBR = (idxC >= 0) ? idxC : idxTL;
+			}
+			x11Api->XFree(screens);
+			Atom monAtom = x11Api->XInternAtom(windowState->display, "_NET_WM_FULLSCREEN_MONITORS", False);
+			XEvent xev = fplZeroInit;
+			xev.type = ClientMessage;
+			xev.xclient.window = windowState->window;
+			xev.xclient.message_type = monAtom;
+			xev.xclient.format = 32;
+			xev.xclient.data.l[0] = idxTL;
+			xev.xclient.data.l[1] = idxBR;
+			xev.xclient.data.l[2] = idxTL;
+			xev.xclient.data.l[3] = idxBR;
+			xev.xclient.data.l[4] = 1L;
+			x11Api->XSendEvent(windowState->display, windowState->root, 0, SubstructureRedirectMask | SubstructureNotifyMask, &xev);
+			x11Api->XFlush(windowState->display);
+		}
+	}
+	bool result = fplSetWindowFullscreenSize(true, 0, 0, 0);
+	return(result);
 }
 
 fpl_platform_api bool fplEnableWindowFullscreen(void) {
@@ -23816,13 +24719,74 @@ fpl_platform_api void fplSetWindowTitle(const char *title) {
 }
 
 fpl_platform_api bool fplGetClipboardText(char *dest, const uint32_t maxDestLen) {
-	// @IMPLEMENT(final/X11): fplGetClipboardText
-	return false;
+	FPL__CheckArgumentNull(dest, false);
+	FPL__CheckArgumentZero(maxDestLen, false);
+	FPL__CheckPlatform(false);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+
+	// Self-owned: just copy local buffer
+	if (x11Api->XGetSelectionOwner(windowState->display, windowState->clipboardAtom) == windowState->window) {
+		fplCopyString(windowState->clipboardOut, dest, maxDestLen);
+		return(true);
+	}
+
+	x11Api->XConvertSelection(windowState->display, windowState->clipboardAtom, windowState->utf8String, windowState->selectionPropAtom, windowState->window, CurrentTime);
+	x11Api->XFlush(windowState->display);
+
+	// Poll for SelectionNotify, timeout 500ms
+	XEvent ev = fplZeroInit;
+	fplMilliseconds startMs = fplMillisecondsQuery();
+	bool received = false;
+	while ((fplMillisecondsQuery() - startMs) < 500) {
+		if (x11Api->XCheckTypedWindowEvent(windowState->display, windowState->window, SelectionNotify, &ev)) {
+			received = true;
+			break;
+		}
+		fplThreadSleep(1);
+	}
+	if (!received || ev.xselection.property == None) {
+		return(false);
+	}
+
+	Atom actualType = 0;
+	int actualFormat = 0;
+	unsigned long itemCount = 0;
+	unsigned long bytesAfter = 0;
+	unsigned char *data = fpl_null;
+	int status = x11Api->XGetWindowProperty(windowState->display, windowState->window, windowState->selectionPropAtom, 0L, LONG_MAX, False, AnyPropertyType, &actualType, &actualFormat, &itemCount, &bytesAfter, &data);
+	bool result = false;
+	if (status == Success && data != fpl_null && actualType != windowState->incrAtom) {
+		size_t copyLen = (size_t)itemCount;
+		if (copyLen >= maxDestLen) {
+			copyLen = maxDestLen - 1;
+		}
+		fplMemoryCopy(data, copyLen, dest);
+		dest[copyLen] = 0;
+		result = true;
+	}
+	if (data != fpl_null) {
+		x11Api->XFree(data);
+	}
+	x11Api->XDeleteProperty(windowState->display, windowState->window, windowState->selectionPropAtom);
+	return(result);
 }
 
 fpl_platform_api bool fplSetClipboardText(const char *text) {
-	// @IMPLEMENT(final/X11): fplSetClipboardText
-	return false;
+	FPL__CheckArgumentNull(text, false);
+	FPL__CheckPlatform(false);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	fpl__X11WindowState *windowState = &appState->window.x11;
+	size_t copied = fplCopyString(text, windowState->clipboardOut, fplArrayCount(windowState->clipboardOut));
+	windowState->clipboardOutLen = copied;
+	x11Api->XSetSelectionOwner(windowState->display, windowState->clipboardAtom, windowState->window, CurrentTime);
+	x11Api->XFlush(windowState->display);
+	bool result = x11Api->XGetSelectionOwner(windowState->display, windowState->clipboardAtom) == windowState->window;
+	return(result);
 }
 #endif // FPL__ENABLE_WINDOW
 
@@ -23849,7 +24813,25 @@ fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
 }
 
 fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY) {
-	// @IMPLEMENT(final/X11) fplQueryCursorPosition
+	FPL__CheckArgumentNull(outX, false);
+	FPL__CheckArgumentNull(outY, false);
+	FPL__CheckPlatform(false);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	Window rootRet = 0;
+	Window childRet = 0;
+	int rootX = 0;
+	int rootY = 0;
+	int winX = 0;
+	int winY = 0;
+	unsigned int mask = 0;
+	if (x11Api->XQueryPointer(windowState->display, windowState->window, &rootRet, &childRet, &rootX, &rootY, &winX, &winY, &mask)) {
+		*outX = winX;
+		*outY = winY;
+		return(true);
+	}
 	return(false);
 }
 #endif // FPL_SUBPLATFORM_X11
