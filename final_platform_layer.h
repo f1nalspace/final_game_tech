@@ -26317,10 +26317,10 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Vulkan_Initial
 	backend->surface.window.win32.windowHandle = windowState->win32.windowHandle;
 	backend->surface.window.win32.deviceContext = windowState->win32.deviceContext;
 #elif defined(FPL_SUBPLATFORM_X11)
-	backend->surface.window.x11.display = windowState->x11.display;
+	backend->surface.window.x11.display = (fpl__X11Display *)windowState->x11.display;
 	backend->surface.window.x11.window = windowState->x11.window;
 	backend->surface.window.x11.screen = windowState->x11.screen;
-	backend->surface.window.x11.visual = windowState->x11.visual;
+	backend->surface.window.x11.visual = (fpl__X11Visual *)windowState->x11.visual;
 #endif
 
 	return(true);
