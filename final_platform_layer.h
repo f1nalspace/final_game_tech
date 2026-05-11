@@ -28933,80 +28933,11 @@ fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendALSADescriptor =
 #if defined(FPL__ENABLE_AUDIO_PULSEAUDIO)
 
 // @NOTE(final/PulseAudio): The PulseAudio backend is runtime-linked by default, so the PulseAudio development headers are not required.
-// To disable anonymous headers and include the real <pulse/pulseaudio.h> header instead, define FPL_PULSEAUDIO_USE_REAL_HEADERS.
-#if !defined(FPL__ANONYMOUS_PULSEAUDIO_HEADERS) && !defined(FPL_PULSEAUDIO_USE_REAL_HEADERS)
+#if !defined(FPL__ANONYMOUS_PULSEAUDIO_HEADERS) && !defined(FPL_NO_RUNTIME_LINKING)
 #	define FPL__ANONYMOUS_PULSEAUDIO_HEADERS
 #endif
 
-// Sets the default audio channel map for the PulseAudio backend
-fpl_internal void fpl__PulseAudio_SetAudioDefaultChannelMap(const uint16_t channels, const fplAudioChannelLayout layout, fplAudioChannelMap *outChannelMap) {
-	fplClearStruct(outChannelMap);
 
-	if (channels == 0 || layout == fplAudioChannelLayout_Unsupported) {
-		return;
-	}
-
-	if (channels == 1 || layout == fplAudioChannelLayout_Mono) {
-		outChannelMap->speakers[0] = fplAudioChannelType_FrontCenter;
-	} else if (channels == 2 || layout == fplAudioChannelLayout_Stereo) {
-		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
-		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
-	} else if (channels == 3) {
-		if (layout == fplAudioChannelLayout_2_1) {
-			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
-			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
-			outChannelMap->speakers[2] = fplAudioChannelType_LowFrequency;
-		} else {
-			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
-			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
-			outChannelMap->speakers[2] = fplAudioChannelType_FrontCenter;
-		}
-	} else if (channels == 4) {
-		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
-		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
-		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
-		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
-	} else if (channels == 5) {
-		if (layout == fplAudioChannelLayout_4_1) {
-			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
-			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
-			outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
-			outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
-			outChannelMap->speakers[4] = fplAudioChannelType_LowFrequency;
-		} else {
-			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
-			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
-			outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
-			outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
-			outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
-		}
-	} else if (channels == 6) {
-		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
-		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
-		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
-		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
-		outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
-		outChannelMap->speakers[5] = fplAudioChannelType_LowFrequency;
-	} else if (channels == 7) {
-		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
-		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
-		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
-		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
-		outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
-		outChannelMap->speakers[5] = fplAudioChannelType_LowFrequency;
-		outChannelMap->speakers[6] = fplAudioChannelType_BackCenter;
-	} else {
-		fplAssert(channels >= 8);
-		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
-		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
-		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
-		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
-		outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
-		outChannelMap->speakers[5] = fplAudioChannelType_LowFrequency;
-		outChannelMap->speakers[6] = fplAudioChannelType_SideLeft;
-		outChannelMap->speakers[7] = fplAudioChannelType_SideRight;
-	}
-}
 
 #if defined(FPL__ANONYMOUS_PULSEAUDIO_HEADERS)
 // Opaque handles
@@ -29196,7 +29127,7 @@ typedef FPL__PULSEAUDIO_FUNC_pa_context_new(fpl__pa_func_pa_context_new);
 typedef FPL__PULSEAUDIO_FUNC_pa_context_unref(fpl__pa_func_pa_context_unref);
 #define FPL__PULSEAUDIO_FUNC_pa_context_set_state_callback(name) void name(pa_context *context, pa_context_notify_cb_t callback, void *userData)
 typedef FPL__PULSEAUDIO_FUNC_pa_context_set_state_callback(fpl__pa_func_pa_context_set_state_callback);
-#define FPL__PULSEAUDIO_FUNC_pa_context_connect(name) int name(pa_context *context, const char *serverName, pa_context_flags_t flags, const void *spawnApi)
+#define FPL__PULSEAUDIO_FUNC_pa_context_connect(name) int name(pa_context *c, const char *server, pa_context_flags_t flags, const pa_spawn_api *api)
 typedef FPL__PULSEAUDIO_FUNC_pa_context_connect(fpl__pa_func_pa_context_connect);
 #define FPL__PULSEAUDIO_FUNC_pa_context_disconnect(name) void name(pa_context *context)
 typedef FPL__PULSEAUDIO_FUNC_pa_context_disconnect(fpl__pa_func_pa_context_disconnect);
@@ -29219,7 +29150,7 @@ typedef FPL__PULSEAUDIO_FUNC_pa_stream_unref(fpl__pa_func_pa_stream_unref);
 typedef FPL__PULSEAUDIO_FUNC_pa_stream_set_state_callback(fpl__pa_func_pa_stream_set_state_callback);
 #define FPL__PULSEAUDIO_FUNC_pa_stream_set_write_callback(name) void name(pa_stream *stream, pa_stream_request_cb_t callback, void *userData)
 typedef FPL__PULSEAUDIO_FUNC_pa_stream_set_write_callback(fpl__pa_func_pa_stream_set_write_callback);
-#define FPL__PULSEAUDIO_FUNC_pa_stream_connect_playback(name) int name(pa_stream *stream, const char *deviceName, const pa_buffer_attr *bufferAttributes, pa_stream_flags_t flags, const void *volume, pa_stream *syncStream)
+#define FPL__PULSEAUDIO_FUNC_pa_stream_connect_playback(name) int name(pa_stream *s, const char *dev, const pa_buffer_attr *attr, pa_stream_flags_t flags, const pa_cvolume *volume, pa_stream *sync_stream)
 typedef FPL__PULSEAUDIO_FUNC_pa_stream_connect_playback(fpl__pa_func_pa_stream_connect_playback);
 #define FPL__PULSEAUDIO_FUNC_pa_stream_disconnect(name) int name(pa_stream *stream)
 typedef FPL__PULSEAUDIO_FUNC_pa_stream_disconnect(fpl__pa_func_pa_stream_disconnect);
@@ -29239,15 +29170,15 @@ typedef FPL__PULSEAUDIO_FUNC_pa_stream_flush(fpl__pa_func_pa_stream_flush);
 typedef FPL__PULSEAUDIO_FUNC_pa_stream_is_corked(fpl__pa_func_pa_stream_is_corked);
 #define FPL__PULSEAUDIO_FUNC_pa_stream_writable_size(name) size_t name(const pa_stream *stream)
 typedef FPL__PULSEAUDIO_FUNC_pa_stream_writable_size(fpl__pa_func_pa_stream_writable_size);
-#define FPL__PULSEAUDIO_FUNC_pa_stream_get_sample_spec(name) const pa_sample_spec *name(const pa_stream *stream)
+#define FPL__PULSEAUDIO_FUNC_pa_stream_get_sample_spec(name) const pa_sample_spec *name(pa_stream *s)
 typedef FPL__PULSEAUDIO_FUNC_pa_stream_get_sample_spec(fpl__pa_func_pa_stream_get_sample_spec);
-#define FPL__PULSEAUDIO_FUNC_pa_stream_get_channel_map(name) const pa_channel_map *name(const pa_stream *stream)
+#define FPL__PULSEAUDIO_FUNC_pa_stream_get_channel_map(name) const pa_channel_map *name(pa_stream *s)
 typedef FPL__PULSEAUDIO_FUNC_pa_stream_get_channel_map(fpl__pa_func_pa_stream_get_channel_map);
 #define FPL__PULSEAUDIO_FUNC_pa_stream_get_device_name(name) const char *name(const pa_stream *stream)
 typedef FPL__PULSEAUDIO_FUNC_pa_stream_get_device_name(fpl__pa_func_pa_stream_get_device_name);
 #define FPL__PULSEAUDIO_FUNC_pa_stream_get_device_index(name) uint32_t name(const pa_stream *stream)
 typedef FPL__PULSEAUDIO_FUNC_pa_stream_get_device_index(fpl__pa_func_pa_stream_get_device_index);
-#define FPL__PULSEAUDIO_FUNC_pa_stream_get_buffer_attr(name) const pa_buffer_attr *name(const pa_stream *stream)
+#define FPL__PULSEAUDIO_FUNC_pa_stream_get_buffer_attr(name) const pa_buffer_attr *name(pa_stream *s)
 typedef FPL__PULSEAUDIO_FUNC_pa_stream_get_buffer_attr(fpl__pa_func_pa_stream_get_buffer_attr);
 
 #define FPL__PULSEAUDIO_FUNC_pa_operation_unref(name) void name(pa_operation *operation)
@@ -29359,10 +29290,12 @@ fpl_internal void fpl__UnloadPulseAudioApi(fpl__PulseAudioApi *pulseAudioApi) {
 
 fpl_internal bool fpl__LoadPulseAudioApi(fpl__PulseAudioApi *pulseAudioApi) {
 	fplAssert(pulseAudioApi != fpl_null);
+
 	const char *libraryNames[] = {
 		"libpulse.so.0",
 		"libpulse.so",
 	};
+
 	bool result = false;
 	for (uint32_t index = 0; index < fplArrayCount(libraryNames); ++index) {
 		const char *libName = libraryNames[index];
@@ -29438,6 +29371,76 @@ fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudioBackendPulseAudioStar
 fpl_internal FPL_AUDIO_BACKEND_STOP_DEVICE_FUNC(fpl__AudioBackendPulseAudioStopDevice);
 fpl_internal FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl__AudioBackendPulseAudioMainLoop);
 fpl_internal FPL_AUDIO_BACKEND_STOP_MAIN_LOOP_FUNC(fpl__AudioBackendPulseAudioStopMainLoop);
+
+// Sets the default audio channel map for the PulseAudio backend
+fpl_internal void fpl__PulseAudio_SetAudioDefaultChannelMap(const uint16_t channels, const fplAudioChannelLayout layout, fplAudioChannelMap *outChannelMap) {
+	fplClearStruct(outChannelMap);
+
+	if (channels == 0 || layout == fplAudioChannelLayout_Unsupported) {
+		return;
+	}
+
+	if (channels == 1 || layout == fplAudioChannelLayout_Mono) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontCenter;
+	} else if (channels == 2 || layout == fplAudioChannelLayout_Stereo) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+	} else if (channels == 3) {
+		if (layout == fplAudioChannelLayout_2_1) {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_LowFrequency;
+		} else {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_FrontCenter;
+		}
+	} else if (channels == 4) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+	} else if (channels == 5) {
+		if (layout == fplAudioChannelLayout_4_1) {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+			outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+			outChannelMap->speakers[4] = fplAudioChannelType_LowFrequency;
+		} else {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+			outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+			outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
+		}
+	} else if (channels == 6) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+		outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
+		outChannelMap->speakers[5] = fplAudioChannelType_LowFrequency;
+	} else if (channels == 7) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+		outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
+		outChannelMap->speakers[5] = fplAudioChannelType_LowFrequency;
+		outChannelMap->speakers[6] = fplAudioChannelType_BackCenter;
+	} else {
+		fplAssert(channels >= 8);
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+		outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
+		outChannelMap->speakers[5] = fplAudioChannelType_LowFrequency;
+		outChannelMap->speakers[6] = fplAudioChannelType_SideLeft;
+		outChannelMap->speakers[7] = fplAudioChannelType_SideRight;
+	}
+}
 
 // Map a fplAudioFormatType to a pulseaudio pa_sample_format_t.
 fpl_internal pa_sample_format_t fpl__PulseAudio_MapAudioFormatTypeToSampleFormat(const fplAudioFormatType format) {
