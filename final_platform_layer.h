@@ -21742,22 +21742,293 @@ fpl_platform_api fplCPUArchType fplCPUGetArchitecture(void) {
 // POSIX OS
 //
 
+// Strips trailing whitespace/CR/LF and a single pair of matching surrounding quotes from a string in-place
+fpl_internal void fpl__PosixTrimAndUnquote(char *str) {
+	if (str == fpl_null) {
+		return;
+	}
+	size_t len = fplGetStringLength(str);
+	while (len > 0) {
+		char c = str[len - 1];
+		if (c == '\r' || c == '\n' || c == ' ' || c == '\t') {
+			str[--len] = 0;
+		} else {
+			break;
+		}
+	}
+	if (len >= 2) {
+		char first = str[0];
+		char last = str[len - 1];
+		if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
+			for (size_t i = 0; i + 2 < len; ++i) {
+				str[i] = str[i + 1];
+			}
+			str[len - 2] = 0;
+		}
+	}
+}
+
+// Matches a "KEY=value" line; on match, copies trimmed/unquoted value to outValue
+fpl_internal bool fpl__PosixMatchKeyValue(const char *line, const char *key, char *outValue, const size_t maxOutValueLen) {
+	if (line == fpl_null || key == fpl_null || outValue == fpl_null) {
+		return false;
+	}
+	while (*line == ' ' || *line == '\t') {
+		++line;
+	}
+	const size_t keyLen = fplGetStringLength(key);
+	if (!fplIsStringEqualLen(line, keyLen, key, keyLen)) {
+		return false;
+	}
+	if (line[keyLen] != '=') {
+		return false;
+	}
+	const char *valueStart = line + keyLen + 1;
+	fplCopyString(valueStart, outValue, maxOutValueLen);
+	fpl__PosixTrimAndUnquote(outValue);
+	return true;
+}
+
+// Parses /etc/os-release style key=value file. Returns true when at least name or version was found
+fpl_internal bool fpl__PosixParseOSReleaseFile(const char *filePath, char *outName, const size_t maxOutNameLen, char *outVersion, const size_t maxOutVersionLen) {
+	const char *wildcards[] = {
+		"NAME=*",
+		"PRETTY_NAME=*",
+		"VERSION=*",
+		"VERSION_ID=*",
+	};
+	enum {
+		fpl__OSReleaseMaxLines = 16,
+		fpl__OSReleaseLineSize = FPL_MAX_NAME_LENGTH * 2,
+	};
+	char lineStorage[fpl__OSReleaseMaxLines][fpl__OSReleaseLineSize] = fplZeroInit;
+	char *lines[fpl__OSReleaseMaxLines];
+	for (size_t i = 0; i < fpl__OSReleaseMaxLines; ++i) {
+		lines[i] = lineStorage[i];
+	}
+	const size_t matchedCount = fpl__ParseTextFile(filePath, wildcards, fplArrayCount(wildcards), fpl__OSReleaseLineSize, fpl__OSReleaseMaxLines, lines);
+	if (matchedCount == 0) {
+		return false;
+	}
+
+	char nameValue[FPL_MAX_NAME_LENGTH] = fplZeroInit;
+	char prettyNameValue[FPL_MAX_NAME_LENGTH] = fplZeroInit;
+	char versionValue[FPL_MAX_NAME_LENGTH] = fplZeroInit;
+	char versionIdValue[FPL_MAX_NAME_LENGTH] = fplZeroInit;
+	for (size_t i = 0; i < matchedCount; ++i) {
+		const char *line = lines[i];
+		if (fpl__PosixMatchKeyValue(line, "PRETTY_NAME", prettyNameValue, fplArrayCount(prettyNameValue))) {
+			continue;
+		}
+		if (fpl__PosixMatchKeyValue(line, "VERSION_ID", versionIdValue, fplArrayCount(versionIdValue))) {
+			continue;
+		}
+		if (fpl__PosixMatchKeyValue(line, "VERSION", versionValue, fplArrayCount(versionValue))) {
+			continue;
+		}
+		if (fpl__PosixMatchKeyValue(line, "NAME", nameValue, fplArrayCount(nameValue))) {
+			continue;
+		}
+	}
+
+	bool gotName = false;
+	if (prettyNameValue[0] != 0) {
+		fplCopyString(prettyNameValue, outName, maxOutNameLen);
+		gotName = true;
+	} else if (nameValue[0] != 0) {
+		fplCopyString(nameValue, outName, maxOutNameLen);
+		gotName = true;
+	}
+
+	bool gotVersion = false;
+	if (versionIdValue[0] != 0) {
+		fplCopyString(versionIdValue, outVersion, maxOutVersionLen);
+		gotVersion = true;
+	} else if (versionValue[0] != 0) {
+		fplCopyString(versionValue, outVersion, maxOutVersionLen);
+		gotVersion = true;
+	}
+	return (gotName || gotVersion);
+}
+
+// Parses /etc/lsb-release file (DISTRIB_* keys)
+fpl_internal bool fpl__PosixParseLSBReleaseFile(const char *filePath, char *outName, const size_t maxOutNameLen, char *outVersion, const size_t maxOutVersionLen) {
+	const char *wildcards[] = {
+		"DISTRIB_ID=*",
+		"DISTRIB_RELEASE=*",
+		"DISTRIB_DESCRIPTION=*",
+	};
+	enum {
+		fpl__LSBMaxLines = 12,
+		fpl__LSBLineSize = FPL_MAX_NAME_LENGTH * 2,
+	};
+	char lineStorage[fpl__LSBMaxLines][fpl__LSBLineSize] = fplZeroInit;
+	char *lines[fpl__LSBMaxLines];
+	for (size_t i = 0; i < fpl__LSBMaxLines; ++i) {
+		lines[i] = lineStorage[i];
+	}
+	const size_t matchedCount = fpl__ParseTextFile(filePath, wildcards, fplArrayCount(wildcards), fpl__LSBLineSize, fpl__LSBMaxLines, lines);
+	if (matchedCount == 0) {
+		return false;
+	}
+
+	char idValue[FPL_MAX_NAME_LENGTH] = fplZeroInit;
+	char releaseValue[FPL_MAX_NAME_LENGTH] = fplZeroInit;
+	char descriptionValue[FPL_MAX_NAME_LENGTH] = fplZeroInit;
+	for (size_t i = 0; i < matchedCount; ++i) {
+		const char *line = lines[i];
+		if (fpl__PosixMatchKeyValue(line, "DISTRIB_DESCRIPTION", descriptionValue, fplArrayCount(descriptionValue))) {
+			continue;
+		}
+		if (fpl__PosixMatchKeyValue(line, "DISTRIB_RELEASE", releaseValue, fplArrayCount(releaseValue))) {
+			continue;
+		}
+		if (fpl__PosixMatchKeyValue(line, "DISTRIB_ID", idValue, fplArrayCount(idValue))) {
+			continue;
+		}
+	}
+
+	bool gotName = false;
+	if (descriptionValue[0] != 0) {
+		fplCopyString(descriptionValue, outName, maxOutNameLen);
+		gotName = true;
+	} else if (idValue[0] != 0) {
+		fplCopyString(idValue, outName, maxOutNameLen);
+		gotName = true;
+	}
+
+	bool gotVersion = false;
+	if (releaseValue[0] != 0) {
+		fplCopyString(releaseValue, outVersion, maxOutVersionLen);
+		gotVersion = true;
+	}
+	return (gotName || gotVersion);
+}
+
+// Reads a single-line distro release file (e.g. /etc/redhat-release).
+// When nameIsContent is true, the file content is used as distro name; otherwise defaultName is used.
+// Any leading run of digits and dots is extracted as the version.
+fpl_internal bool fpl__PosixParseSingleLineReleaseFile(const char *filePath, const char *defaultName, const bool nameIsContent, char *outName, const size_t maxOutNameLen, char *outVersion, const size_t maxOutVersionLen) {
+	fplFileHandle fileHandle = fplZeroInit;
+	if (!fplFileOpenBinary(filePath, &fileHandle)) {
+		return false;
+	}
+	char buffer[FPL_MAX_NAME_LENGTH * 2];
+	const size_t maxToRead = fplArrayCount(buffer) - 1;
+	const size_t bytesRead = fplFileReadBlock(&fileHandle, maxToRead, &buffer[0], maxToRead);
+	fplFileClose(&fileHandle);
+	buffer[bytesRead] = 0;
+	for (size_t i = 0; i < bytesRead; ++i) {
+		if (buffer[i] == '\n' || buffer[i] == '\r') {
+			buffer[i] = 0;
+			break;
+		}
+	}
+	fpl__PosixTrimAndUnquote(buffer);
+
+	if (nameIsContent && buffer[0] != 0) {
+		fplCopyString(buffer, outName, maxOutNameLen);
+	} else {
+		fplCopyString(defaultName, outName, maxOutNameLen);
+	}
+
+	const char *p = buffer;
+	const char *versionStart = fpl_null;
+	while (*p != 0) {
+		if (*p >= '0' && *p <= '9') {
+			versionStart = p;
+			break;
+		}
+		++p;
+	}
+	if (versionStart != fpl_null) {
+		const char *q = versionStart;
+		while ((*q >= '0' && *q <= '9') || *q == '.') {
+			++q;
+		}
+		const size_t versionLen = (size_t)(q - versionStart);
+		if (versionLen > 0 && versionLen < maxOutVersionLen) {
+			fplCopyStringLen(versionStart, versionLen, outVersion, maxOutVersionLen);
+		}
+	}
+	return true;
+}
+
 fpl_platform_api bool fplOSGetVersionInfos(fplOSVersionInfos *outInfos) {
+	FPL__CheckArgumentNull(outInfos, false);
+
+	fplClearStruct(outInfos);
+
 	bool result = false;
 	struct utsname nameInfos;
 	if (uname(&nameInfos) == 0) {
 		const char *kernelName = nameInfos.sysname;
-		const char *kernelVersion = nameInfos.release;
-		const char *systemName = nameInfos.version;
+		const char *kernelRelease = nameInfos.release;
 		fplCopyString(kernelName, outInfos->osName, fplArrayCount(outInfos->osName));
-		fplCopyString(systemName, outInfos->distributionName, fplArrayCount(outInfos->distributionName));
-		fpl__ParseVersionString(kernelVersion, &outInfos->osVersion);
-
-		// @TODO(final/POSIX): Get distro version
-		// /etc/os-release
-
+		fpl__ParseVersionString(kernelRelease, &outInfos->osVersion);
 		result = true;
 	}
+
+	// Try to obtain distribution information from common locations
+	char distroName[FPL_MAX_NAME_LENGTH] = fplZeroInit;
+	char distroVersion[FPL_MAX_NAME_LENGTH] = fplZeroInit;
+	bool gotDistro = false;
+
+	// /etc/os-release (and /usr/lib/os-release fallback) - modern Linux, FreeBSD 13+, etc.
+	if (!gotDistro && fpl__PosixParseOSReleaseFile("/etc/os-release", distroName, fplArrayCount(distroName), distroVersion, fplArrayCount(distroVersion))) {
+		gotDistro = true;
+	}
+	if (!gotDistro && fpl__PosixParseOSReleaseFile("/usr/lib/os-release", distroName, fplArrayCount(distroName), distroVersion, fplArrayCount(distroVersion))) {
+		gotDistro = true;
+	}
+	// /etc/lsb-release - older LSB-compliant systems (Ubuntu, etc.)
+	if (!gotDistro && fpl__PosixParseLSBReleaseFile("/etc/lsb-release", distroName, fplArrayCount(distroName), distroVersion, fplArrayCount(distroVersion))) {
+		gotDistro = true;
+	}
+	// Legacy single-line distro release files
+	if (!gotDistro) {
+		struct fpl__SingleLineReleaseSource {
+			const char *path;
+			const char *defaultName;
+			bool nameIsContent;
+		};
+		const struct fpl__SingleLineReleaseSource singleLineSources[] = {
+			{"/etc/redhat-release",     "Red Hat",      true},
+			{"/etc/centos-release",     "CentOS",       true},
+			{"/etc/fedora-release",     "Fedora",       true},
+			{"/etc/oracle-release",     "Oracle Linux", true},
+			{"/etc/SuSE-release",       "SUSE",         true},
+			{"/etc/gentoo-release",     "Gentoo",       true},
+			{"/etc/mandriva-release",   "Mandriva",     true},
+			{"/etc/slackware-version",  "Slackware",    true},
+			{"/etc/alpine-release",     "Alpine Linux", false},
+			{"/etc/arch-release",       "Arch Linux",   false},
+			{"/etc/debian_version",     "Debian",       false},
+		};
+		for (size_t i = 0; i < fplArrayCount(singleLineSources); ++i) {
+			const struct fpl__SingleLineReleaseSource *src = &singleLineSources[i];
+			if (fpl__PosixParseSingleLineReleaseFile(src->path, src->defaultName, src->nameIsContent, distroName, fplArrayCount(distroName), distroVersion, fplArrayCount(distroVersion))) {
+				gotDistro = true;
+				break;
+			}
+		}
+	}
+
+	// Fallback: on BSD/macOS/other Unix without distro files, use the kernel sysname/release
+	// Skipped on Linux to avoid a redundant distributionName equals 'Linux'
+	if (!gotDistro && result && !fplIsStringEqual("Linux", outInfos->osName)) {
+		fplCopyString(outInfos->osName, distroName, fplArrayCount(distroName));
+		fplCopyString(outInfos->osVersion.fullName, distroVersion, fplArrayCount(distroVersion));
+		gotDistro = true;
+	}
+
+	if (gotDistro) {
+		fplCopyString(distroName, outInfos->distributionName, fplArrayCount(outInfos->distributionName));
+		if (distroVersion[0] != 0) {
+			fpl__ParseVersionString(distroVersion, &outInfos->distributionVersion);
+		}
+	}
+
 	return(result);
 }
 
