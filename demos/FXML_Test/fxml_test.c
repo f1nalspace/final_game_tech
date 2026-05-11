@@ -150,7 +150,7 @@ static void UnitTests() {
 static void ManualTest() {
 	const char xml1[] = {
 		"<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n"
-		"<!-- Special char as copyright in comment ® -->\n"
+		"<!-- Special char as copyright in comment ï¿½ -->\n"
 		"<root>\n"
 		"<properties>\n"
 		"<property name=\"myNumber\" value=\"1337\" />\n"
@@ -161,7 +161,7 @@ static void ManualTest() {
 		"</properties>\n"
 		"<meta>\n"
 		"<description rating=\"5\">The great description here</description>\n"
-		"<body>Norwegian: Å/å, Æ/æ, Ø/ø, Ò/ò, French: Französisch (Æ/æ, À/à, Â/â, È/è, É/é, Ê/ê, Ë/ë, Î/î, Ï/ï, Ô/ô, Ù/ù, Û/û, Ç/ç, Ü/ü, ÿ, nicht Œ/œ, Ÿ),</body>\n"
+		"<body>Norwegian: ï¿½/ï¿½, ï¿½/ï¿½, ï¿½/ï¿½, ï¿½/ï¿½, French: Franzï¿½sisch (ï¿½/ï¿½, ï¿½/ï¿½, ï¿½/ï¿½, ï¿½/ï¿½, ï¿½/ï¿½, ï¿½/ï¿½, ï¿½/ï¿½, ï¿½/ï¿½, ï¿½/ï¿½, ï¿½/ï¿½, ï¿½/ï¿½, ï¿½/ï¿½, ï¿½/ï¿½, ï¿½/ï¿½, ï¿½, nicht ï¿½/ï¿½, ï¿½),</body>\n"
 		"<addon>&quot;hello&apos; &#169; &lt;-&gt; &amp;world!</addon>\n"
 		"</meta>\n"
 		"</root>\n"
@@ -184,8 +184,8 @@ static void ManualTest() {
 
 static void FileTest(const char *filePath) {
 	fxmlContext ctx = FXML_ZERO_INIT;
-	FILE *f = fxml_null;
-	bool r = fopen_s(&f, filePath, "rb") == 0;
+	FILE *f = fopen(filePath, "rb");
+	bool r = f != fxml_null;
 	TEST_ASSERT(r);
 	fseek(f, 0, SEEK_END);
 	size_t size = ftell(f);
