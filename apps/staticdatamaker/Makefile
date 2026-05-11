@@ -81,9 +81,9 @@ define POSTBUILDCMDS
 endef
 
 ifeq ($(config),debug_winx86)
-TARGETDIR = ../build/gamepaddbgen/WinX86_Debug
-TARGET = $(TARGETDIR)/gamepaddbgen.exe
-OBJDIR = ../immediates/gamepaddbgen/WinX86_Debug
+TARGETDIR = ../build/staticdatamaker/WinX86_Debug
+TARGET = $(TARGETDIR)/staticdatamaker.exe
+OBJDIR = ../immediates/staticdatamaker/WinX86_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g
@@ -91,9 +91,9 @@ LIBS +=
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32
 
 else ifeq ($(config),debug_winx64)
-TARGETDIR = ../build/gamepaddbgen/WinX64_Debug
-TARGET = $(TARGETDIR)/gamepaddbgen.exe
-OBJDIR = ../immediates/gamepaddbgen/WinX64_Debug
+TARGETDIR = ../build/staticdatamaker/WinX64_Debug
+TARGET = $(TARGETDIR)/staticdatamaker.exe
+OBJDIR = ../immediates/staticdatamaker/WinX64_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g
@@ -101,9 +101,9 @@ LIBS +=
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib64 -m64
 
 else ifeq ($(config),debug_linuxx86)
-TARGETDIR = ../build/gamepaddbgen/LinuxX86_Debug
-TARGET = $(TARGETDIR)/gamepaddbgen
-OBJDIR = ../immediates/gamepaddbgen/LinuxX86_Debug
+TARGETDIR = ../build/staticdatamaker/LinuxX86_Debug
+TARGET = $(TARGETDIR)/staticdatamaker
+OBJDIR = ../immediates/staticdatamaker/LinuxX86_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g
@@ -111,9 +111,9 @@ LIBS += -lm
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32
 
 else ifeq ($(config),debug_linuxx64)
-TARGETDIR = ../build/gamepaddbgen/LinuxX64_Debug
-TARGET = $(TARGETDIR)/gamepaddbgen
-OBJDIR = ../immediates/gamepaddbgen/LinuxX64_Debug
+TARGETDIR = ../build/staticdatamaker/LinuxX64_Debug
+TARGET = $(TARGETDIR)/staticdatamaker
+OBJDIR = ../immediates/staticdatamaker/LinuxX64_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g
@@ -121,9 +121,9 @@ LIBS += -lm
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib64 -m64
 
 else ifeq ($(config),debug_linuxarm32)
-TARGETDIR = ../build/gamepaddbgen/LinuxARM32_Debug
-TARGET = $(TARGETDIR)/gamepaddbgen
-OBJDIR = ../immediates/gamepaddbgen/LinuxARM32_Debug
+TARGETDIR = ../build/staticdatamaker/LinuxARM32_Debug
+TARGET = $(TARGETDIR)/staticdatamaker
+OBJDIR = ../immediates/staticdatamaker/LinuxARM32_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O0 -g
@@ -131,9 +131,9 @@ LIBS += -lm
 ALL_LDFLAGS += $(LDFLAGS)
 
 else ifeq ($(config),debug_linuxarm64)
-TARGETDIR = ../build/gamepaddbgen/LinuxARM64_Debug
-TARGET = $(TARGETDIR)/gamepaddbgen
-OBJDIR = ../immediates/gamepaddbgen/LinuxARM64_Debug
+TARGETDIR = ../build/staticdatamaker/LinuxARM64_Debug
+TARGET = $(TARGETDIR)/staticdatamaker
+OBJDIR = ../immediates/staticdatamaker/LinuxARM64_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O0 -g
@@ -141,9 +141,9 @@ LIBS += -lm
 ALL_LDFLAGS += $(LDFLAGS)
 
 else ifeq ($(config),debug_unixx86)
-TARGETDIR = ../build/gamepaddbgen/UnixX86_Debug
-TARGET = $(TARGETDIR)/gamepaddbgen
-OBJDIR = ../immediates/gamepaddbgen/UnixX86_Debug
+TARGETDIR = ../build/staticdatamaker/UnixX86_Debug
+TARGET = $(TARGETDIR)/staticdatamaker
+OBJDIR = ../immediates/staticdatamaker/UnixX86_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g
@@ -151,9 +151,9 @@ LIBS += -lm
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32
 
 else ifeq ($(config),debug_unixx64)
-TARGETDIR = ../build/gamepaddbgen/UnixX64_Debug
-TARGET = $(TARGETDIR)/gamepaddbgen
-OBJDIR = ../immediates/gamepaddbgen/UnixX64_Debug
+TARGETDIR = ../build/staticdatamaker/UnixX64_Debug
+TARGET = $(TARGETDIR)/staticdatamaker
+OBJDIR = ../immediates/staticdatamaker/UnixX64_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g
@@ -161,9 +161,9 @@ LIBS += -lm
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib64 -m64
 
 else ifeq ($(config),debug_unixarm32)
-TARGETDIR = ../build/gamepaddbgen/UnixARM32_Debug
-TARGET = $(TARGETDIR)/gamepaddbgen
-OBJDIR = ../immediates/gamepaddbgen/UnixARM32_Debug
+TARGETDIR = ../build/staticdatamaker/UnixARM32_Debug
+TARGET = $(TARGETDIR)/staticdatamaker
+OBJDIR = ../immediates/staticdatamaker/UnixARM32_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O0 -g
@@ -171,9 +171,9 @@ LIBS += -lm
 ALL_LDFLAGS += $(LDFLAGS)
 
 else ifeq ($(config),debug_unixarm64)
-TARGETDIR = ../build/gamepaddbgen/UnixARM64_Debug
-TARGET = $(TARGETDIR)/gamepaddbgen
-OBJDIR = ../immediates/gamepaddbgen/UnixARM64_Debug
+TARGETDIR = ../build/staticdatamaker/UnixARM64_Debug
+TARGET = $(TARGETDIR)/staticdatamaker
+OBJDIR = ../immediates/staticdatamaker/UnixARM64_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O0 -g
@@ -181,9 +181,9 @@ LIBS += -lm
 ALL_LDFLAGS += $(LDFLAGS)
 
 else ifeq ($(config),release_winx86)
-TARGETDIR = ../build/gamepaddbgen/WinX86_Release
-TARGET = $(TARGETDIR)/gamepaddbgen.exe
-OBJDIR = ../immediates/gamepaddbgen/WinX86_Release
+TARGETDIR = ../build/staticdatamaker/WinX86_Release
+TARGET = $(TARGETDIR)/staticdatamaker.exe
+OBJDIR = ../immediates/staticdatamaker/WinX86_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O2
@@ -191,9 +191,9 @@ LIBS +=
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32 -s
 
 else ifeq ($(config),release_winx64)
-TARGETDIR = ../build/gamepaddbgen/WinX64_Release
-TARGET = $(TARGETDIR)/gamepaddbgen.exe
-OBJDIR = ../immediates/gamepaddbgen/WinX64_Release
+TARGETDIR = ../build/staticdatamaker/WinX64_Release
+TARGET = $(TARGETDIR)/staticdatamaker.exe
+OBJDIR = ../immediates/staticdatamaker/WinX64_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O2
@@ -201,9 +201,9 @@ LIBS +=
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib64 -m64 -s
 
 else ifeq ($(config),release_linuxx86)
-TARGETDIR = ../build/gamepaddbgen/LinuxX86_Release
-TARGET = $(TARGETDIR)/gamepaddbgen
-OBJDIR = ../immediates/gamepaddbgen/LinuxX86_Release
+TARGETDIR = ../build/staticdatamaker/LinuxX86_Release
+TARGET = $(TARGETDIR)/staticdatamaker
+OBJDIR = ../immediates/staticdatamaker/LinuxX86_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O2
@@ -211,9 +211,9 @@ LIBS += -lm
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32 -s
 
 else ifeq ($(config),release_linuxx64)
-TARGETDIR = ../build/gamepaddbgen/LinuxX64_Release
-TARGET = $(TARGETDIR)/gamepaddbgen
-OBJDIR = ../immediates/gamepaddbgen/LinuxX64_Release
+TARGETDIR = ../build/staticdatamaker/LinuxX64_Release
+TARGET = $(TARGETDIR)/staticdatamaker
+OBJDIR = ../immediates/staticdatamaker/LinuxX64_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O2
@@ -221,9 +221,9 @@ LIBS += -lm
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib64 -m64 -s
 
 else ifeq ($(config),release_linuxarm32)
-TARGETDIR = ../build/gamepaddbgen/LinuxARM32_Release
-TARGET = $(TARGETDIR)/gamepaddbgen
-OBJDIR = ../immediates/gamepaddbgen/LinuxARM32_Release
+TARGETDIR = ../build/staticdatamaker/LinuxARM32_Release
+TARGET = $(TARGETDIR)/staticdatamaker
+OBJDIR = ../immediates/staticdatamaker/LinuxARM32_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O2
@@ -231,9 +231,9 @@ LIBS += -lm
 ALL_LDFLAGS += $(LDFLAGS) -s
 
 else ifeq ($(config),release_linuxarm64)
-TARGETDIR = ../build/gamepaddbgen/LinuxARM64_Release
-TARGET = $(TARGETDIR)/gamepaddbgen
-OBJDIR = ../immediates/gamepaddbgen/LinuxARM64_Release
+TARGETDIR = ../build/staticdatamaker/LinuxARM64_Release
+TARGET = $(TARGETDIR)/staticdatamaker
+OBJDIR = ../immediates/staticdatamaker/LinuxARM64_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O2
@@ -241,9 +241,9 @@ LIBS += -lm
 ALL_LDFLAGS += $(LDFLAGS) -s
 
 else ifeq ($(config),release_unixx86)
-TARGETDIR = ../build/gamepaddbgen/UnixX86_Release
-TARGET = $(TARGETDIR)/gamepaddbgen
-OBJDIR = ../immediates/gamepaddbgen/UnixX86_Release
+TARGETDIR = ../build/staticdatamaker/UnixX86_Release
+TARGET = $(TARGETDIR)/staticdatamaker
+OBJDIR = ../immediates/staticdatamaker/UnixX86_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O2
@@ -251,9 +251,9 @@ LIBS += -lm
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32 -s
 
 else ifeq ($(config),release_unixx64)
-TARGETDIR = ../build/gamepaddbgen/UnixX64_Release
-TARGET = $(TARGETDIR)/gamepaddbgen
-OBJDIR = ../immediates/gamepaddbgen/UnixX64_Release
+TARGETDIR = ../build/staticdatamaker/UnixX64_Release
+TARGET = $(TARGETDIR)/staticdatamaker
+OBJDIR = ../immediates/staticdatamaker/UnixX64_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O2
@@ -261,9 +261,9 @@ LIBS += -lm
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib64 -m64 -s
 
 else ifeq ($(config),release_unixarm32)
-TARGETDIR = ../build/gamepaddbgen/UnixARM32_Release
-TARGET = $(TARGETDIR)/gamepaddbgen
-OBJDIR = ../immediates/gamepaddbgen/UnixARM32_Release
+TARGETDIR = ../build/staticdatamaker/UnixARM32_Release
+TARGET = $(TARGETDIR)/staticdatamaker
+OBJDIR = ../immediates/staticdatamaker/UnixARM32_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O2
@@ -271,9 +271,9 @@ LIBS += -lm
 ALL_LDFLAGS += $(LDFLAGS) -s
 
 else ifeq ($(config),release_unixarm64)
-TARGETDIR = ../build/gamepaddbgen/UnixARM64_Release
-TARGET = $(TARGETDIR)/gamepaddbgen
-OBJDIR = ../immediates/gamepaddbgen/UnixARM64_Release
+TARGETDIR = ../build/staticdatamaker/UnixARM64_Release
+TARGET = $(TARGETDIR)/staticdatamaker
+OBJDIR = ../immediates/staticdatamaker/UnixARM64_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O2
@@ -292,8 +292,8 @@ endif
 GENERATED :=
 OBJECTS :=
 
-GENERATED += $(OBJDIR)/gamepaddbgen.o
-OBJECTS += $(OBJDIR)/gamepaddbgen.o
+GENERATED += $(OBJDIR)/main.o
+OBJECTS += $(OBJDIR)/main.o
 
 # Rules
 # #############################################
@@ -303,7 +303,7 @@ all: $(TARGET)
 
 $(TARGET): $(GENERATED) $(OBJECTS) $(LDDEPS) | $(TARGETDIR)
 	$(PRELINKCMDS)
-	@echo Linking gamepaddbgen
+	@echo Linking staticdatamaker
 	$(SILENT) $(LINKCMD)
 	$(POSTBUILDCMDS)
 
@@ -324,7 +324,7 @@ else
 endif
 
 clean:
-	@echo Cleaning gamepaddbgen
+	@echo Cleaning staticdatamaker
 ifeq (posix,$(SHELLTYPE))
 	$(SILENT) rm -f  $(TARGET)
 	$(SILENT) rm -rf $(GENERATED)
@@ -357,7 +357,7 @@ endif
 # File Rules
 # #############################################
 
-$(OBJDIR)/gamepaddbgen.o: gamepaddbgen.c
+$(OBJDIR)/main.o: main.c
 	@echo "$(notdir $<)"
 	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
 
