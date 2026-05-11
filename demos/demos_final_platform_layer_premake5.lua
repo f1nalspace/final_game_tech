@@ -246,7 +246,7 @@ group "Graphics"
 	
 group "Input"
 	include "FPL_Input/premake5";
-	include "FPL_ConsoleGamepad/premake5";
+	include "FPL_ConsoleInput/premake5";
 
 group "Window"
 	include "FPL_Window/premake5";
