@@ -175,17 +175,20 @@ SOFTWARE.
 	## v1.0.0
 
 	### Overview
-	- Release
-	- Added new useful macros
-	- Added several date time types and functions
-	- Added gamepad settings
-	- Added gamepad mapping types and callbacks
-	- Introduced a input backend system that allows multiple input backends
-	- Improved code documentation a lot
-	- Improved thread-safety in the error-reporting ring (atomic slot claim, no init-order/mutex hazards) and the event system
-	- Fixed naming inconsistencies
-	- A few major bugfixes
-	- Several minor bugfixes
+	- First stable release
+	- New input backend system decoupled from windowing, with multi-backend polling and merging
+	- New SDL-compatible gamepad mapping system with resolver callbacks and device enumeration
+	- New DirectInput backend on Windows and improved /dev/input/jsX backend on Linux
+	- New PulseAudio and PipeWire audio backends
+	- New date time API with UTC/local support and thread-safe queries
+	- New file/path helpers: append-binary, path normalization, safe size queries, safe string-to-int parsing
+	- New headless/no-window event pump for input-only applications
+	- Thread-safe error reporting (lock-free) and lock-free window event queue
+	- Improved type safety for opaque X11/Win32/POSIX handles with compile-time size checks
+	- Improved POSIX support (BSD/macOS version detection, thread-safe date time, separator-tolerant directory creation)
+	- Reworked and normalized API documentation across the header
+	- Numerous ABI, runtime-linking, and platform-specific bugfixes (X11, ALSA, OpenGL, Vulkan)
+	- Several breaking changes in string/path/window-title APIs (now return required size)
 
 	### Breaking Changes
 	- Changed: fplEnforcePathSeparatorLen is now returning the total number of characters required or returns zero on errors
