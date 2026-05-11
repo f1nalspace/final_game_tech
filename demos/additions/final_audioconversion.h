@@ -543,7 +543,7 @@ static AudioResampleResult AudioWeightedSampleSumDownSampling(const uint16_t cha
     const float srcToTgtRatio = (float)sourceSampleRate / (float)targetSampleRate;
 
     // Clear output buffer
-    memset(outSamples, 0, targetFrameCount * channelCount * sizeof(float));
+	fplMemoryClear(outSamples, targetFrameCount * channelCount * sizeof(float));
 
     for (uint32_t tgtFrame = 0; tgtFrame < targetFrameCount; ++tgtFrame) {
         // Calculate the corresponding source frame
@@ -857,8 +857,7 @@ fpl_extern bool IsAudioDeinterleavedSamplesEqual(const AudioFrameIndex numFrames
 	for(AudioChannelIndex channelIndex = 0; channelIndex < numChannels; ++channelIndex) {
 		const void *aLine = a[channelIndex];
 		const void *bLine = b[channelIndex];
-		int r = memcmp(aLine, bLine, lineWidth);
-		if(r != 0) {
+		if(!fpl__IsEqualsMemory(aLine, bLine, lineWidth)) {
 			return(false);
 		}
 	}
@@ -867,8 +866,7 @@ fpl_extern bool IsAudioDeinterleavedSamplesEqual(const AudioFrameIndex numFrames
 
 fpl_extern bool IsAudioInterleavedSamplesEqual(const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const size_t formatSize, const void *a, const void *b) {
 	size_t totalWidth = numFrames * numChannels * formatSize;
-	int r = memcmp(a, b, totalWidth);
-	if(r != 0) {
+	if(!fpl__IsEqualsMemory(a, b, totalWidth)) {
 		return(false);
 	}
 	return(true);

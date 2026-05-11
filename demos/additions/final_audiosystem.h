@@ -310,11 +310,6 @@ static bool AllocateAudioBuffer(AudioMemory *memory, AudioBuffer *audioBuffer, c
 	return(audioBuffer->isAllocated);
 }
 
-static bool ReferenceAudioBuffer(const AudioBuffer *sourceAudioBuffer, AudioBuffer *targetAudioBuffer) {
-	*targetAudioBuffer = *sourceAudioBuffer;
-	targetAudioBuffer->isAllocated = false;
-}
-
 static void FreeAudioBuffer(AudioMemory *memory, AudioBuffer *audioBuffer) {
 	if(audioBuffer->isAllocated) {
 		if(audioBuffer->samples != fpl_null) {
