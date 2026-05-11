@@ -6,24 +6,20 @@ cmake_minimum_required(VERSION 3.10)
 #
 # -----------------------------------------------------------------------------
 
-project(gamepaddbgen C)
+project(staticdatamaker C)
 
 set(MY_COMPILER "c99")
 
-set(MY_EXTERNAL_LIBS
-	"m"
-	)
+set(MY_EXTERNAL_LIBS "")
 
 set(MY_INCLUDE_DIRS
 	"../../"
 	)
 
-set(MY_HEADER_FILES
-	"../../final_platform_layer.h"
-	)
+set(MY_HEADER_FILES "")
 
 set(MY_TRANSLATION_UNITS
-	"gamepaddbgen.c"
+	"main.c"
 	)
 
 set(MY_DEFINES "")
