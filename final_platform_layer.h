@@ -185,6 +185,7 @@ SOFTWARE.
 	- New headless/no-window event pump for input-only applications
 	- Thread-safe error reporting (lock-free) and lock-free window event queue
 	- Improved type safety for opaque X11/Win32/POSIX handles with compile-time size checks
+	- Implemented missing X11 window surface (display API, clipboard, fullscreen rect, window state, resizable/floating, cursor query)
 	- Improved POSIX support (BSD/macOS version detection, thread-safe date time, separator-tolerant directory creation)
 	- Reworked and normalized API documentation across the header
 	- Numerous ABI, runtime-linking, and platform-specific bugfixes (X11, ALSA, OpenGL, Vulkan)
@@ -262,6 +263,14 @@ SOFTWARE.
 	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
 
 	#### Window
+	- New: [X11] Implemented fplSetWindowCursorEnabled
+	- New: [X11] Implemented fplIsWindowResizable / fplSetWindowResizeable
+	- New: [X11] Implemented fplIsWindowFloating / fplSetWindowFloating
+	- New: [X11] Implemented fplGetWindowState / fplSetWindowState
+	- New: [X11] Implemented fplSetWindowFullscreenRect
+	- New: [X11] Implemented fplGetClipboardText / fplSetClipboardText (with INCR/timeout handling)
+	- New: [X11] Implemented fplQueryCursorPosition
+	- New: [X11] Implemented display API: fplGetDisplayCount, fplGetDisplays, fplGetPrimaryDisplay, fplGetWindowDisplay, fplGetDisplayFromPosition, fplGetDisplayModes
 	- Improved[#176]: Made internal event queue thread-safe using a lock-free push/pop linear buffer
 	- Improved: [X11] fpl__X11Display / Visual / GC / Image are now forward-declared incomplete struct types instead of `typedef void`, so `fpl__X11Display *` is a distinct, type-safe pointer rather than an alias for `void *`
 	- Fixed: [Win32] Fixed last event from event queue was never used, when there is no events from the window
