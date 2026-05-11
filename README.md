@@ -110,7 +110,7 @@ All libraries in the root folder of this repository are open-source and use the 
 
 ![FPL_AudioPlayer](screenshots/FPL_AudioPlayer.png)
 
-![FPL_Crackout](screenshots/FPL_AudioPlayer.png)
+![FPL_Crackout](screenshots/FPL_Crackout.png)
 
 ![FPL_Emulator](screenshots/FPL_Emulator.png)
 
