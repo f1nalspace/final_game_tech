@@ -24811,7 +24811,7 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_Win32OpenGL_Construct(void) {
 #endif
 
 #ifndef __gl_h_
-typedef uint8_t GLubyte;
+typedef unsigned char GLubyte;
 #endif
 
 #ifndef GLX_H
