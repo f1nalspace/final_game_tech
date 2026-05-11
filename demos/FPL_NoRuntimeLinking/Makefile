@@ -28,7 +28,7 @@ ifeq ($(origin AR), default)
   AR = ar
 endif
 RESCOMP = windres
-INCLUDES += -I../.. -I../additions -I../dependencies
+INCLUDES += -I../.. -I../additions -I../dependencies -I../dependencies/vulkan/include
 FORCE_INCLUDE +=
 ALL_CPPFLAGS += $(CPPFLAGS) -MD -MP $(DEFINES) $(INCLUDES)
 ALL_RESFLAGS += $(RESFLAGS) $(DEFINES) $(INCLUDES)
@@ -78,286 +78,208 @@ define PREBUILDCMDS
 endef
 define PRELINKCMDS
 endef
+define POSTBUILDCMDS
+endef
 
 ifeq ($(config),debug_winx86)
-TARGETDIR = ../build/FPL_Crackout/WinX86_Debug
-TARGET = $(TARGETDIR)/FPL_Crackout.exe
-OBJDIR = ../immediates/FPL_Crackout/WinX86_Debug
+TARGETDIR = ../build/FPL_NoRuntimeLinking/WinX86_Debug
+TARGET = $(TARGETDIR)/FPL_NoRuntimeLinking.exe
+OBJDIR = ../immediates/FPL_NoRuntimeLinking/WinX86_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g -std=c++11
-LIBS +=
-ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32 -mwindows
-define POSTBUILDCMDS
-	@echo Running postbuild commands
-	cp -rf "data" "../build/FPL_Crackout/WinX86_Debug/data/"
-endef
+LIBS += -lopengl32 -ldsound -lxinput -lvulkan-1
+ALL_LDFLAGS += $(LDFLAGS) -L../dependencies/vulkan/lib/WinX86 -L/usr/lib32 -m32 -mwindows
 
 else ifeq ($(config),debug_winx64)
-TARGETDIR = ../build/FPL_Crackout/WinX64_Debug
-TARGET = $(TARGETDIR)/FPL_Crackout.exe
-OBJDIR = ../immediates/FPL_Crackout/WinX64_Debug
+TARGETDIR = ../build/FPL_NoRuntimeLinking/WinX64_Debug
+TARGET = $(TARGETDIR)/FPL_NoRuntimeLinking.exe
+OBJDIR = ../immediates/FPL_NoRuntimeLinking/WinX64_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g -std=c++11
-LIBS +=
-ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib64 -m64 -mwindows
-define POSTBUILDCMDS
-	@echo Running postbuild commands
-	cp -rf "data" "../build/FPL_Crackout/WinX64_Debug/data/"
-endef
+LIBS += -lopengl32 -ldsound -lxinput -lvulkan-1
+ALL_LDFLAGS += $(LDFLAGS) -L../dependencies/vulkan/lib/WinX64 -L/usr/lib64 -m64 -mwindows
 
 else ifeq ($(config),debug_linuxx86)
-TARGETDIR = ../build/FPL_Crackout/LinuxX86_Debug
-TARGET = $(TARGETDIR)/FPL_Crackout
-OBJDIR = ../immediates/FPL_Crackout/LinuxX86_Debug
+TARGETDIR = ../build/FPL_NoRuntimeLinking/LinuxX86_Debug
+TARGET = $(TARGETDIR)/FPL_NoRuntimeLinking
+OBJDIR = ../immediates/FPL_NoRuntimeLinking/LinuxX86_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g -std=c++11
-LIBS += -lm
-ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32
-define POSTBUILDCMDS
-	@echo Running postbuild commands
-	cp -rf "data" "../build/FPL_Crackout/LinuxX86_Debug/data/"
-endef
+LIBS += -lm -lpthread -lGL -lvulkan -lasound -lX11
+ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -L/usr/lib32 -m32
 
 else ifeq ($(config),debug_linuxx64)
-TARGETDIR = ../build/FPL_Crackout/LinuxX64_Debug
-TARGET = $(TARGETDIR)/FPL_Crackout
-OBJDIR = ../immediates/FPL_Crackout/LinuxX64_Debug
+TARGETDIR = ../build/FPL_NoRuntimeLinking/LinuxX64_Debug
+TARGET = $(TARGETDIR)/FPL_NoRuntimeLinking
+OBJDIR = ../immediates/FPL_NoRuntimeLinking/LinuxX64_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g -std=c++11
-LIBS += -lm
-ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib64 -m64
-define POSTBUILDCMDS
-	@echo Running postbuild commands
-	cp -rf "data" "../build/FPL_Crackout/LinuxX64_Debug/data/"
-endef
+LIBS += -lm -lpthread -lGL -lvulkan -lasound -lX11
+ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -L/usr/lib64 -m64
 
 else ifeq ($(config),debug_linuxarm32)
-TARGETDIR = ../build/FPL_Crackout/LinuxARM32_Debug
-TARGET = $(TARGETDIR)/FPL_Crackout
-OBJDIR = ../immediates/FPL_Crackout/LinuxARM32_Debug
+TARGETDIR = ../build/FPL_NoRuntimeLinking/LinuxARM32_Debug
+TARGET = $(TARGETDIR)/FPL_NoRuntimeLinking
+OBJDIR = ../immediates/FPL_NoRuntimeLinking/LinuxARM32_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O0 -g
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O0 -g -std=c++11
-LIBS += -lm
-ALL_LDFLAGS += $(LDFLAGS)
-define POSTBUILDCMDS
-	@echo Running postbuild commands
-	cp -rf "data" "../build/FPL_Crackout/LinuxARM32_Debug/data/"
-endef
+LIBS += -lm -lpthread -lGL -lvulkan -lasound -lX11
+ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32
 
 else ifeq ($(config),debug_linuxarm64)
-TARGETDIR = ../build/FPL_Crackout/LinuxARM64_Debug
-TARGET = $(TARGETDIR)/FPL_Crackout
-OBJDIR = ../immediates/FPL_Crackout/LinuxARM64_Debug
+TARGETDIR = ../build/FPL_NoRuntimeLinking/LinuxARM64_Debug
+TARGET = $(TARGETDIR)/FPL_NoRuntimeLinking
+OBJDIR = ../immediates/FPL_NoRuntimeLinking/LinuxARM64_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O0 -g
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O0 -g -std=c++11
-LIBS += -lm
-ALL_LDFLAGS += $(LDFLAGS)
-define POSTBUILDCMDS
-	@echo Running postbuild commands
-	cp -rf "data" "../build/FPL_Crackout/LinuxARM64_Debug/data/"
-endef
+LIBS += -lm -lpthread -lGL -lvulkan -lasound -lX11
+ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32
 
 else ifeq ($(config),debug_unixx86)
-TARGETDIR = ../build/FPL_Crackout/UnixX86_Debug
-TARGET = $(TARGETDIR)/FPL_Crackout
-OBJDIR = ../immediates/FPL_Crackout/UnixX86_Debug
+TARGETDIR = ../build/FPL_NoRuntimeLinking/UnixX86_Debug
+TARGET = $(TARGETDIR)/FPL_NoRuntimeLinking
+OBJDIR = ../immediates/FPL_NoRuntimeLinking/UnixX86_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g -std=c++11
-LIBS += -lm
-ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32
-define POSTBUILDCMDS
-	@echo Running postbuild commands
-	cp -rf "data" "../build/FPL_Crackout/UnixX86_Debug/data/"
-endef
+LIBS += -lm -lpthread -lGL -lvulkan -lasound -lX11
+ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -L/usr/lib32 -m32
 
 else ifeq ($(config),debug_unixx64)
-TARGETDIR = ../build/FPL_Crackout/UnixX64_Debug
-TARGET = $(TARGETDIR)/FPL_Crackout
-OBJDIR = ../immediates/FPL_Crackout/UnixX64_Debug
+TARGETDIR = ../build/FPL_NoRuntimeLinking/UnixX64_Debug
+TARGET = $(TARGETDIR)/FPL_NoRuntimeLinking
+OBJDIR = ../immediates/FPL_NoRuntimeLinking/UnixX64_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g -std=c++11
-LIBS += -lm
-ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib64 -m64
-define POSTBUILDCMDS
-	@echo Running postbuild commands
-	cp -rf "data" "../build/FPL_Crackout/UnixX64_Debug/data/"
-endef
+LIBS += -lm -lpthread -lGL -lvulkan -lasound -lX11
+ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -L/usr/lib64 -m64
 
 else ifeq ($(config),debug_unixarm32)
-TARGETDIR = ../build/FPL_Crackout/UnixARM32_Debug
-TARGET = $(TARGETDIR)/FPL_Crackout
-OBJDIR = ../immediates/FPL_Crackout/UnixARM32_Debug
+TARGETDIR = ../build/FPL_NoRuntimeLinking/UnixARM32_Debug
+TARGET = $(TARGETDIR)/FPL_NoRuntimeLinking
+OBJDIR = ../immediates/FPL_NoRuntimeLinking/UnixARM32_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O0 -g
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O0 -g -std=c++11
-LIBS += -lm
-ALL_LDFLAGS += $(LDFLAGS)
-define POSTBUILDCMDS
-	@echo Running postbuild commands
-	cp -rf "data" "../build/FPL_Crackout/UnixARM32_Debug/data/"
-endef
+LIBS += -lm -lpthread -lGL -lvulkan -lasound -lX11
+ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32
 
 else ifeq ($(config),debug_unixarm64)
-TARGETDIR = ../build/FPL_Crackout/UnixARM64_Debug
-TARGET = $(TARGETDIR)/FPL_Crackout
-OBJDIR = ../immediates/FPL_Crackout/UnixARM64_Debug
+TARGETDIR = ../build/FPL_NoRuntimeLinking/UnixARM64_Debug
+TARGET = $(TARGETDIR)/FPL_NoRuntimeLinking
+OBJDIR = ../immediates/FPL_NoRuntimeLinking/UnixARM64_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O0 -g
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O0 -g -std=c++11
-LIBS += -lm
-ALL_LDFLAGS += $(LDFLAGS)
-define POSTBUILDCMDS
-	@echo Running postbuild commands
-	cp -rf "data" "../build/FPL_Crackout/UnixARM64_Debug/data/"
-endef
+LIBS += -lm -lpthread -lGL -lvulkan -lasound -lX11
+ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32
 
 else ifeq ($(config),release_winx86)
-TARGETDIR = ../build/FPL_Crackout/WinX86_Release
-TARGET = $(TARGETDIR)/FPL_Crackout.exe
-OBJDIR = ../immediates/FPL_Crackout/WinX86_Release
+TARGETDIR = ../build/FPL_NoRuntimeLinking/WinX86_Release
+TARGET = $(TARGETDIR)/FPL_NoRuntimeLinking.exe
+OBJDIR = ../immediates/FPL_NoRuntimeLinking/WinX86_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O2
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O2 -std=c++11
-LIBS +=
-ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32 -mwindows -s
-define POSTBUILDCMDS
-	@echo Running postbuild commands
-	cp -rf "data" "../build/FPL_Crackout/WinX86_Release/data/"
-endef
+LIBS += -lopengl32 -ldsound -lxinput -lvulkan-1
+ALL_LDFLAGS += $(LDFLAGS) -L../dependencies/vulkan/lib/WinX86 -L/usr/lib32 -m32 -mwindows -s
 
 else ifeq ($(config),release_winx64)
-TARGETDIR = ../build/FPL_Crackout/WinX64_Release
-TARGET = $(TARGETDIR)/FPL_Crackout.exe
-OBJDIR = ../immediates/FPL_Crackout/WinX64_Release
+TARGETDIR = ../build/FPL_NoRuntimeLinking/WinX64_Release
+TARGET = $(TARGETDIR)/FPL_NoRuntimeLinking.exe
+OBJDIR = ../immediates/FPL_NoRuntimeLinking/WinX64_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O2
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O2 -std=c++11
-LIBS +=
-ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib64 -m64 -mwindows -s
-define POSTBUILDCMDS
-	@echo Running postbuild commands
-	cp -rf "data" "../build/FPL_Crackout/WinX64_Release/data/"
-endef
+LIBS += -lopengl32 -ldsound -lxinput -lvulkan-1
+ALL_LDFLAGS += $(LDFLAGS) -L../dependencies/vulkan/lib/WinX64 -L/usr/lib64 -m64 -mwindows -s
 
 else ifeq ($(config),release_linuxx86)
-TARGETDIR = ../build/FPL_Crackout/LinuxX86_Release
-TARGET = $(TARGETDIR)/FPL_Crackout
-OBJDIR = ../immediates/FPL_Crackout/LinuxX86_Release
+TARGETDIR = ../build/FPL_NoRuntimeLinking/LinuxX86_Release
+TARGET = $(TARGETDIR)/FPL_NoRuntimeLinking
+OBJDIR = ../immediates/FPL_NoRuntimeLinking/LinuxX86_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O2
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O2 -std=c++11
-LIBS += -lm
-ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32 -s
-define POSTBUILDCMDS
-	@echo Running postbuild commands
-	cp -rf "data" "../build/FPL_Crackout/LinuxX86_Release/data/"
-endef
+LIBS += -lm -lpthread -lGL -lvulkan -lasound -lX11
+ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -L/usr/lib32 -m32 -s
 
 else ifeq ($(config),release_linuxx64)
-TARGETDIR = ../build/FPL_Crackout/LinuxX64_Release
-TARGET = $(TARGETDIR)/FPL_Crackout
-OBJDIR = ../immediates/FPL_Crackout/LinuxX64_Release
+TARGETDIR = ../build/FPL_NoRuntimeLinking/LinuxX64_Release
+TARGET = $(TARGETDIR)/FPL_NoRuntimeLinking
+OBJDIR = ../immediates/FPL_NoRuntimeLinking/LinuxX64_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O2
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O2 -std=c++11
-LIBS += -lm
-ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib64 -m64 -s
-define POSTBUILDCMDS
-	@echo Running postbuild commands
-	cp -rf "data" "../build/FPL_Crackout/LinuxX64_Release/data/"
-endef
+LIBS += -lm -lpthread -lGL -lvulkan -lasound -lX11
+ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -L/usr/lib64 -m64 -s
 
 else ifeq ($(config),release_linuxarm32)
-TARGETDIR = ../build/FPL_Crackout/LinuxARM32_Release
-TARGET = $(TARGETDIR)/FPL_Crackout
-OBJDIR = ../immediates/FPL_Crackout/LinuxARM32_Release
+TARGETDIR = ../build/FPL_NoRuntimeLinking/LinuxARM32_Release
+TARGET = $(TARGETDIR)/FPL_NoRuntimeLinking
+OBJDIR = ../immediates/FPL_NoRuntimeLinking/LinuxARM32_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O2
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O2 -std=c++11
-LIBS += -lm
-ALL_LDFLAGS += $(LDFLAGS) -s
-define POSTBUILDCMDS
-	@echo Running postbuild commands
-	cp -rf "data" "../build/FPL_Crackout/LinuxARM32_Release/data/"
-endef
+LIBS += -lm -lpthread -lGL -lvulkan -lasound -lX11
+ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -s
 
 else ifeq ($(config),release_linuxarm64)
-TARGETDIR = ../build/FPL_Crackout/LinuxARM64_Release
-TARGET = $(TARGETDIR)/FPL_Crackout
-OBJDIR = ../immediates/FPL_Crackout/LinuxARM64_Release
+TARGETDIR = ../build/FPL_NoRuntimeLinking/LinuxARM64_Release
+TARGET = $(TARGETDIR)/FPL_NoRuntimeLinking
+OBJDIR = ../immediates/FPL_NoRuntimeLinking/LinuxARM64_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O2
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O2 -std=c++11
-LIBS += -lm
-ALL_LDFLAGS += $(LDFLAGS) -s
-define POSTBUILDCMDS
-	@echo Running postbuild commands
-	cp -rf "data" "../build/FPL_Crackout/LinuxARM64_Release/data/"
-endef
+LIBS += -lm -lpthread -lGL -lvulkan -lasound -lX11
+ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -s
 
 else ifeq ($(config),release_unixx86)
-TARGETDIR = ../build/FPL_Crackout/UnixX86_Release
-TARGET = $(TARGETDIR)/FPL_Crackout
-OBJDIR = ../immediates/FPL_Crackout/UnixX86_Release
+TARGETDIR = ../build/FPL_NoRuntimeLinking/UnixX86_Release
+TARGET = $(TARGETDIR)/FPL_NoRuntimeLinking
+OBJDIR = ../immediates/FPL_NoRuntimeLinking/UnixX86_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O2
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O2 -std=c++11
-LIBS += -lm
-ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32 -s
-define POSTBUILDCMDS
-	@echo Running postbuild commands
-	cp -rf "data" "../build/FPL_Crackout/UnixX86_Release/data/"
-endef
+LIBS += -lm -lpthread -lGL -lvulkan -lasound -lX11
+ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -L/usr/lib32 -m32 -s
 
 else ifeq ($(config),release_unixx64)
-TARGETDIR = ../build/FPL_Crackout/UnixX64_Release
-TARGET = $(TARGETDIR)/FPL_Crackout
-OBJDIR = ../immediates/FPL_Crackout/UnixX64_Release
+TARGETDIR = ../build/FPL_NoRuntimeLinking/UnixX64_Release
+TARGET = $(TARGETDIR)/FPL_NoRuntimeLinking
+OBJDIR = ../immediates/FPL_NoRuntimeLinking/UnixX64_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O2
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O2 -std=c++11
-LIBS += -lm
-ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib64 -m64 -s
-define POSTBUILDCMDS
-	@echo Running postbuild commands
-	cp -rf "data" "../build/FPL_Crackout/UnixX64_Release/data/"
-endef
+LIBS += -lm -lpthread -lGL -lvulkan -lasound -lX11
+ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -L/usr/lib64 -m64 -s
 
 else ifeq ($(config),release_unixarm32)
-TARGETDIR = ../build/FPL_Crackout/UnixARM32_Release
-TARGET = $(TARGETDIR)/FPL_Crackout
-OBJDIR = ../immediates/FPL_Crackout/UnixARM32_Release
+TARGETDIR = ../build/FPL_NoRuntimeLinking/UnixARM32_Release
+TARGET = $(TARGETDIR)/FPL_NoRuntimeLinking
+OBJDIR = ../immediates/FPL_NoRuntimeLinking/UnixARM32_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O2
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O2 -std=c++11
-LIBS += -lm
-ALL_LDFLAGS += $(LDFLAGS) -s
-define POSTBUILDCMDS
-	@echo Running postbuild commands
-	cp -rf "data" "../build/FPL_Crackout/UnixARM32_Release/data/"
-endef
+LIBS += -lm -lpthread -lGL -lvulkan -lasound -lX11
+ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -s
 
 else ifeq ($(config),release_unixarm64)
-TARGETDIR = ../build/FPL_Crackout/UnixARM64_Release
-TARGET = $(TARGETDIR)/FPL_Crackout
-OBJDIR = ../immediates/FPL_Crackout/UnixARM64_Release
+TARGETDIR = ../build/FPL_NoRuntimeLinking/UnixARM64_Release
+TARGET = $(TARGETDIR)/FPL_NoRuntimeLinking
+OBJDIR = ../immediates/FPL_NoRuntimeLinking/UnixARM64_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O2
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O2 -std=c++11
-LIBS += -lm
-ALL_LDFLAGS += $(LDFLAGS) -s
-define POSTBUILDCMDS
-	@echo Running postbuild commands
-	cp -rf "data" "../build/FPL_Crackout/UnixARM64_Release/data/"
-endef
+LIBS += -lm -lpthread -lGL -lvulkan -lasound -lX11
+ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -s
 
 endif
 
@@ -371,8 +293,8 @@ endif
 GENERATED :=
 OBJECTS :=
 
-GENERATED += $(OBJDIR)/fpl_crackout.o
-OBJECTS += $(OBJDIR)/fpl_crackout.o
+GENERATED += $(OBJDIR)/fpl_noruntimelinking.o
+OBJECTS += $(OBJDIR)/fpl_noruntimelinking.o
 
 # Rules
 # #############################################
@@ -382,7 +304,7 @@ all: $(TARGET)
 
 $(TARGET): $(GENERATED) $(OBJECTS) $(LDDEPS) | $(TARGETDIR)
 	$(PRELINKCMDS)
-	@echo Linking FPL_Crackout
+	@echo Linking FPL_NoRuntimeLinking
 	$(SILENT) $(LINKCMD)
 	$(POSTBUILDCMDS)
 
@@ -403,7 +325,7 @@ else
 endif
 
 clean:
-	@echo Cleaning FPL_Crackout
+	@echo Cleaning FPL_NoRuntimeLinking
 ifeq (posix,$(SHELLTYPE))
 	$(SILENT) rm -f  $(TARGET)
 	$(SILENT) rm -rf $(GENERATED)
@@ -436,7 +358,7 @@ endif
 # File Rules
 # #############################################
 
-$(OBJDIR)/fpl_crackout.o: fpl_crackout.cpp
+$(OBJDIR)/fpl_noruntimelinking.o: fpl_noruntimelinking.cpp
 	@echo "$(notdir $<)"
 	$(SILENT) $(CXX) $(ALL_CXXFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
 

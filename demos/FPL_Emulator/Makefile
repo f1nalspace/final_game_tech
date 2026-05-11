@@ -78,208 +78,286 @@ define PREBUILDCMDS
 endef
 define PRELINKCMDS
 endef
-define POSTBUILDCMDS
-endef
 
 ifeq ($(config),debug_winx86)
-TARGETDIR = ../build/FPL_NoCRT/WinX86_Debug
-TARGET = $(TARGETDIR)/FPL_NoCRT.exe
-OBJDIR = ../immediates/FPL_NoCRT/WinX86_Debug
+TARGETDIR = ../build/FPL_Emulator/WinX86_Debug
+TARGET = $(TARGETDIR)/FPL_Emulator.exe
+OBJDIR = ../immediates/FPL_Emulator/WinX86_Debug
 DEFINES += -DDEBUG
-ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g -std=c99 -GS- -Gs9999999 -GL-
-ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g -fno-stack-protector -GS- -Gs9999999 -GL-
-LIBS += -lkernel32
-ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32 /NODEFAULTLIB -STACK:0x100000,0x100000
+ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g -std=c99
+ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g
+LIBS +=
+ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32 -mwindows
+define POSTBUILDCMDS
+	@echo Running postbuild commands
+	cp -rf "roms" "../build/FPL_Emulator/WinX86_Debug/roms/"
+endef
 
 else ifeq ($(config),debug_winx64)
-TARGETDIR = ../build/FPL_NoCRT/WinX64_Debug
-TARGET = $(TARGETDIR)/FPL_NoCRT.exe
-OBJDIR = ../immediates/FPL_NoCRT/WinX64_Debug
+TARGETDIR = ../build/FPL_Emulator/WinX64_Debug
+TARGET = $(TARGETDIR)/FPL_Emulator.exe
+OBJDIR = ../immediates/FPL_Emulator/WinX64_Debug
 DEFINES += -DDEBUG
-ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g -std=c99 -GS- -Gs9999999 -GL-
-ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g -fno-stack-protector -GS- -Gs9999999 -GL-
-LIBS += -lkernel32
-ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib64 -m64 /NODEFAULTLIB -STACK:0x100000,0x100000
+ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g -std=c99
+ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g
+LIBS +=
+ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib64 -m64 -mwindows
+define POSTBUILDCMDS
+	@echo Running postbuild commands
+	cp -rf "roms" "../build/FPL_Emulator/WinX64_Debug/roms/"
+endef
 
 else ifeq ($(config),debug_linuxx86)
-TARGETDIR = ../build/FPL_NoCRT/LinuxX86_Debug
-TARGET = $(TARGETDIR)/FPL_NoCRT
-OBJDIR = ../immediates/FPL_NoCRT/LinuxX86_Debug
+TARGETDIR = ../build/FPL_Emulator/LinuxX86_Debug
+TARGET = $(TARGETDIR)/FPL_Emulator
+OBJDIR = ../immediates/FPL_Emulator/LinuxX86_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g
 LIBS += -lm
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32
+define POSTBUILDCMDS
+	@echo Running postbuild commands
+	cp -rf "roms" "../build/FPL_Emulator/LinuxX86_Debug/roms/"
+endef
 
 else ifeq ($(config),debug_linuxx64)
-TARGETDIR = ../build/FPL_NoCRT/LinuxX64_Debug
-TARGET = $(TARGETDIR)/FPL_NoCRT
-OBJDIR = ../immediates/FPL_NoCRT/LinuxX64_Debug
+TARGETDIR = ../build/FPL_Emulator/LinuxX64_Debug
+TARGET = $(TARGETDIR)/FPL_Emulator
+OBJDIR = ../immediates/FPL_Emulator/LinuxX64_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g
 LIBS += -lm
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib64 -m64
+define POSTBUILDCMDS
+	@echo Running postbuild commands
+	cp -rf "roms" "../build/FPL_Emulator/LinuxX64_Debug/roms/"
+endef
 
 else ifeq ($(config),debug_linuxarm32)
-TARGETDIR = ../build/FPL_NoCRT/LinuxARM32_Debug
-TARGET = $(TARGETDIR)/FPL_NoCRT
-OBJDIR = ../immediates/FPL_NoCRT/LinuxARM32_Debug
+TARGETDIR = ../build/FPL_Emulator/LinuxARM32_Debug
+TARGET = $(TARGETDIR)/FPL_Emulator
+OBJDIR = ../immediates/FPL_Emulator/LinuxARM32_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O0 -g
 LIBS += -lm
 ALL_LDFLAGS += $(LDFLAGS)
+define POSTBUILDCMDS
+	@echo Running postbuild commands
+	cp -rf "roms" "../build/FPL_Emulator/LinuxARM32_Debug/roms/"
+endef
 
 else ifeq ($(config),debug_linuxarm64)
-TARGETDIR = ../build/FPL_NoCRT/LinuxARM64_Debug
-TARGET = $(TARGETDIR)/FPL_NoCRT
-OBJDIR = ../immediates/FPL_NoCRT/LinuxARM64_Debug
+TARGETDIR = ../build/FPL_Emulator/LinuxARM64_Debug
+TARGET = $(TARGETDIR)/FPL_Emulator
+OBJDIR = ../immediates/FPL_Emulator/LinuxARM64_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O0 -g
 LIBS += -lm
 ALL_LDFLAGS += $(LDFLAGS)
+define POSTBUILDCMDS
+	@echo Running postbuild commands
+	cp -rf "roms" "../build/FPL_Emulator/LinuxARM64_Debug/roms/"
+endef
 
 else ifeq ($(config),debug_unixx86)
-TARGETDIR = ../build/FPL_NoCRT/UnixX86_Debug
-TARGET = $(TARGETDIR)/FPL_NoCRT
-OBJDIR = ../immediates/FPL_NoCRT/UnixX86_Debug
+TARGETDIR = ../build/FPL_Emulator/UnixX86_Debug
+TARGET = $(TARGETDIR)/FPL_Emulator
+OBJDIR = ../immediates/FPL_Emulator/UnixX86_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g
 LIBS += -lm
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32
+define POSTBUILDCMDS
+	@echo Running postbuild commands
+	cp -rf "roms" "../build/FPL_Emulator/UnixX86_Debug/roms/"
+endef
 
 else ifeq ($(config),debug_unixx64)
-TARGETDIR = ../build/FPL_NoCRT/UnixX64_Debug
-TARGET = $(TARGETDIR)/FPL_NoCRT
-OBJDIR = ../immediates/FPL_NoCRT/UnixX64_Debug
+TARGETDIR = ../build/FPL_Emulator/UnixX64_Debug
+TARGET = $(TARGETDIR)/FPL_Emulator
+OBJDIR = ../immediates/FPL_Emulator/UnixX64_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g
 LIBS += -lm
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib64 -m64
+define POSTBUILDCMDS
+	@echo Running postbuild commands
+	cp -rf "roms" "../build/FPL_Emulator/UnixX64_Debug/roms/"
+endef
 
 else ifeq ($(config),debug_unixarm32)
-TARGETDIR = ../build/FPL_NoCRT/UnixARM32_Debug
-TARGET = $(TARGETDIR)/FPL_NoCRT
-OBJDIR = ../immediates/FPL_NoCRT/UnixARM32_Debug
+TARGETDIR = ../build/FPL_Emulator/UnixARM32_Debug
+TARGET = $(TARGETDIR)/FPL_Emulator
+OBJDIR = ../immediates/FPL_Emulator/UnixARM32_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O0 -g
 LIBS += -lm
 ALL_LDFLAGS += $(LDFLAGS)
+define POSTBUILDCMDS
+	@echo Running postbuild commands
+	cp -rf "roms" "../build/FPL_Emulator/UnixARM32_Debug/roms/"
+endef
 
 else ifeq ($(config),debug_unixarm64)
-TARGETDIR = ../build/FPL_NoCRT/UnixARM64_Debug
-TARGET = $(TARGETDIR)/FPL_NoCRT
-OBJDIR = ../immediates/FPL_NoCRT/UnixARM64_Debug
+TARGETDIR = ../build/FPL_Emulator/UnixARM64_Debug
+TARGET = $(TARGETDIR)/FPL_Emulator
+OBJDIR = ../immediates/FPL_Emulator/UnixARM64_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O0 -g
 LIBS += -lm
 ALL_LDFLAGS += $(LDFLAGS)
+define POSTBUILDCMDS
+	@echo Running postbuild commands
+	cp -rf "roms" "../build/FPL_Emulator/UnixARM64_Debug/roms/"
+endef
 
 else ifeq ($(config),release_winx86)
-TARGETDIR = ../build/FPL_NoCRT/WinX86_Release
-TARGET = $(TARGETDIR)/FPL_NoCRT.exe
-OBJDIR = ../immediates/FPL_NoCRT/WinX86_Release
+TARGETDIR = ../build/FPL_Emulator/WinX86_Release
+TARGET = $(TARGETDIR)/FPL_Emulator.exe
+OBJDIR = ../immediates/FPL_Emulator/WinX86_Release
 DEFINES += -DNDEBUG
-ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O2 -std=c99 -GS- -Gs9999999 -GL-
-ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O2 -fno-stack-protector -GS- -Gs9999999 -GL-
-LIBS += -lkernel32
-ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32 -s /NODEFAULTLIB -STACK:0x100000,0x100000
+ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O2 -std=c99
+ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O2
+LIBS +=
+ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32 -mwindows -s
+define POSTBUILDCMDS
+	@echo Running postbuild commands
+	cp -rf "roms" "../build/FPL_Emulator/WinX86_Release/roms/"
+endef
 
 else ifeq ($(config),release_winx64)
-TARGETDIR = ../build/FPL_NoCRT/WinX64_Release
-TARGET = $(TARGETDIR)/FPL_NoCRT.exe
-OBJDIR = ../immediates/FPL_NoCRT/WinX64_Release
+TARGETDIR = ../build/FPL_Emulator/WinX64_Release
+TARGET = $(TARGETDIR)/FPL_Emulator.exe
+OBJDIR = ../immediates/FPL_Emulator/WinX64_Release
 DEFINES += -DNDEBUG
-ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O2 -std=c99 -GS- -Gs9999999 -GL-
-ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O2 -fno-stack-protector -GS- -Gs9999999 -GL-
-LIBS += -lkernel32
-ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib64 -m64 -s /NODEFAULTLIB -STACK:0x100000,0x100000
+ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O2 -std=c99
+ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O2
+LIBS +=
+ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib64 -m64 -mwindows -s
+define POSTBUILDCMDS
+	@echo Running postbuild commands
+	cp -rf "roms" "../build/FPL_Emulator/WinX64_Release/roms/"
+endef
 
 else ifeq ($(config),release_linuxx86)
-TARGETDIR = ../build/FPL_NoCRT/LinuxX86_Release
-TARGET = $(TARGETDIR)/FPL_NoCRT
-OBJDIR = ../immediates/FPL_NoCRT/LinuxX86_Release
+TARGETDIR = ../build/FPL_Emulator/LinuxX86_Release
+TARGET = $(TARGETDIR)/FPL_Emulator
+OBJDIR = ../immediates/FPL_Emulator/LinuxX86_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O2
 LIBS += -lm
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32 -s
+define POSTBUILDCMDS
+	@echo Running postbuild commands
+	cp -rf "roms" "../build/FPL_Emulator/LinuxX86_Release/roms/"
+endef
 
 else ifeq ($(config),release_linuxx64)
-TARGETDIR = ../build/FPL_NoCRT/LinuxX64_Release
-TARGET = $(TARGETDIR)/FPL_NoCRT
-OBJDIR = ../immediates/FPL_NoCRT/LinuxX64_Release
+TARGETDIR = ../build/FPL_Emulator/LinuxX64_Release
+TARGET = $(TARGETDIR)/FPL_Emulator
+OBJDIR = ../immediates/FPL_Emulator/LinuxX64_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O2
 LIBS += -lm
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib64 -m64 -s
+define POSTBUILDCMDS
+	@echo Running postbuild commands
+	cp -rf "roms" "../build/FPL_Emulator/LinuxX64_Release/roms/"
+endef
 
 else ifeq ($(config),release_linuxarm32)
-TARGETDIR = ../build/FPL_NoCRT/LinuxARM32_Release
-TARGET = $(TARGETDIR)/FPL_NoCRT
-OBJDIR = ../immediates/FPL_NoCRT/LinuxARM32_Release
+TARGETDIR = ../build/FPL_Emulator/LinuxARM32_Release
+TARGET = $(TARGETDIR)/FPL_Emulator
+OBJDIR = ../immediates/FPL_Emulator/LinuxARM32_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O2
 LIBS += -lm
 ALL_LDFLAGS += $(LDFLAGS) -s
+define POSTBUILDCMDS
+	@echo Running postbuild commands
+	cp -rf "roms" "../build/FPL_Emulator/LinuxARM32_Release/roms/"
+endef
 
 else ifeq ($(config),release_linuxarm64)
-TARGETDIR = ../build/FPL_NoCRT/LinuxARM64_Release
-TARGET = $(TARGETDIR)/FPL_NoCRT
-OBJDIR = ../immediates/FPL_NoCRT/LinuxARM64_Release
+TARGETDIR = ../build/FPL_Emulator/LinuxARM64_Release
+TARGET = $(TARGETDIR)/FPL_Emulator
+OBJDIR = ../immediates/FPL_Emulator/LinuxARM64_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O2
 LIBS += -lm
 ALL_LDFLAGS += $(LDFLAGS) -s
+define POSTBUILDCMDS
+	@echo Running postbuild commands
+	cp -rf "roms" "../build/FPL_Emulator/LinuxARM64_Release/roms/"
+endef
 
 else ifeq ($(config),release_unixx86)
-TARGETDIR = ../build/FPL_NoCRT/UnixX86_Release
-TARGET = $(TARGETDIR)/FPL_NoCRT
-OBJDIR = ../immediates/FPL_NoCRT/UnixX86_Release
+TARGETDIR = ../build/FPL_Emulator/UnixX86_Release
+TARGET = $(TARGETDIR)/FPL_Emulator
+OBJDIR = ../immediates/FPL_Emulator/UnixX86_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O2
 LIBS += -lm
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32 -s
+define POSTBUILDCMDS
+	@echo Running postbuild commands
+	cp -rf "roms" "../build/FPL_Emulator/UnixX86_Release/roms/"
+endef
 
 else ifeq ($(config),release_unixx64)
-TARGETDIR = ../build/FPL_NoCRT/UnixX64_Release
-TARGET = $(TARGETDIR)/FPL_NoCRT
-OBJDIR = ../immediates/FPL_NoCRT/UnixX64_Release
+TARGETDIR = ../build/FPL_Emulator/UnixX64_Release
+TARGET = $(TARGETDIR)/FPL_Emulator
+OBJDIR = ../immediates/FPL_Emulator/UnixX64_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O2
 LIBS += -lm
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib64 -m64 -s
+define POSTBUILDCMDS
+	@echo Running postbuild commands
+	cp -rf "roms" "../build/FPL_Emulator/UnixX64_Release/roms/"
+endef
 
 else ifeq ($(config),release_unixarm32)
-TARGETDIR = ../build/FPL_NoCRT/UnixARM32_Release
-TARGET = $(TARGETDIR)/FPL_NoCRT
-OBJDIR = ../immediates/FPL_NoCRT/UnixARM32_Release
+TARGETDIR = ../build/FPL_Emulator/UnixARM32_Release
+TARGET = $(TARGETDIR)/FPL_Emulator
+OBJDIR = ../immediates/FPL_Emulator/UnixARM32_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O2
 LIBS += -lm
 ALL_LDFLAGS += $(LDFLAGS) -s
+define POSTBUILDCMDS
+	@echo Running postbuild commands
+	cp -rf "roms" "../build/FPL_Emulator/UnixARM32_Release/roms/"
+endef
 
 else ifeq ($(config),release_unixarm64)
-TARGETDIR = ../build/FPL_NoCRT/UnixARM64_Release
-TARGET = $(TARGETDIR)/FPL_NoCRT
-OBJDIR = ../immediates/FPL_NoCRT/UnixARM64_Release
+TARGETDIR = ../build/FPL_Emulator/UnixARM64_Release
+TARGET = $(TARGETDIR)/FPL_Emulator
+OBJDIR = ../immediates/FPL_Emulator/UnixARM64_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O2
 LIBS += -lm
 ALL_LDFLAGS += $(LDFLAGS) -s
+define POSTBUILDCMDS
+	@echo Running postbuild commands
+	cp -rf "roms" "../build/FPL_Emulator/UnixARM64_Release/roms/"
+endef
 
 endif
 
@@ -293,8 +371,8 @@ endif
 GENERATED :=
 OBJECTS :=
 
-GENERATED += $(OBJDIR)/fpl_nocrt.o
-OBJECTS += $(OBJDIR)/fpl_nocrt.o
+GENERATED += $(OBJDIR)/fpl_emulator.o
+OBJECTS += $(OBJDIR)/fpl_emulator.o
 
 # Rules
 # #############################################
@@ -304,7 +382,7 @@ all: $(TARGET)
 
 $(TARGET): $(GENERATED) $(OBJECTS) $(LDDEPS) | $(TARGETDIR)
 	$(PRELINKCMDS)
-	@echo Linking FPL_NoCRT
+	@echo Linking FPL_Emulator
 	$(SILENT) $(LINKCMD)
 	$(POSTBUILDCMDS)
 
@@ -325,7 +403,7 @@ else
 endif
 
 clean:
-	@echo Cleaning FPL_NoCRT
+	@echo Cleaning FPL_Emulator
 ifeq (posix,$(SHELLTYPE))
 	$(SILENT) rm -f  $(TARGET)
 	$(SILENT) rm -rf $(GENERATED)
@@ -358,7 +436,7 @@ endif
 # File Rules
 # #############################################
 
-$(OBJDIR)/fpl_nocrt.o: fpl_nocrt.c
+$(OBJDIR)/fpl_emulator.o: fpl_emulator.c
 	@echo "$(notdir $<)"
 	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
 

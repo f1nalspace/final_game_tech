@@ -32,7 +32,6 @@ INCLUDES += -I../.. -I../additions -I../dependencies
 FORCE_INCLUDE +=
 ALL_CPPFLAGS += $(CPPFLAGS) -MD -MP $(DEFINES) $(INCLUDES)
 ALL_RESFLAGS += $(RESFLAGS) $(DEFINES) $(INCLUDES)
-LDDEPS +=
 LINKCMD = $(CC) -o "$@" $(OBJECTS) $(RESOURCES) $(ALL_LDFLAGS) $(LIBS)
 # Auto detect OS and Target
 ifeq ($(OS),Windows_NT)
@@ -82,203 +81,223 @@ define POSTBUILDCMDS
 endef
 
 ifeq ($(config),debug_winx86)
-TARGETDIR = ../build/FPL_NoCRT/WinX86_Debug
-TARGET = $(TARGETDIR)/FPL_NoCRT.exe
-OBJDIR = ../immediates/FPL_NoCRT/WinX86_Debug
-DEFINES += -DDEBUG
-ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g -std=c99 -GS- -Gs9999999 -GL-
-ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g -fno-stack-protector -GS- -Gs9999999 -GL-
-LIBS += -lkernel32
-ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32 /NODEFAULTLIB -STACK:0x100000,0x100000
-
-else ifeq ($(config),debug_winx64)
-TARGETDIR = ../build/FPL_NoCRT/WinX64_Debug
-TARGET = $(TARGETDIR)/FPL_NoCRT.exe
-OBJDIR = ../immediates/FPL_NoCRT/WinX64_Debug
-DEFINES += -DDEBUG
-ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g -std=c99 -GS- -Gs9999999 -GL-
-ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g -fno-stack-protector -GS- -Gs9999999 -GL-
-LIBS += -lkernel32
-ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib64 -m64 /NODEFAULTLIB -STACK:0x100000,0x100000
-
-else ifeq ($(config),debug_linuxx86)
-TARGETDIR = ../build/FPL_NoCRT/LinuxX86_Debug
-TARGET = $(TARGETDIR)/FPL_NoCRT
-OBJDIR = ../immediates/FPL_NoCRT/LinuxX86_Debug
+TARGETDIR = ../build/FPL_StaticLib/WinX86_Debug
+TARGET = $(TARGETDIR)/FPL_StaticLib_Client.exe
+OBJDIR = ../immediates/FPL_StaticLib_Client/WinX86_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g
-LIBS += -lm
+LIBS += ../build/FPL_StaticLib/WinX86_Debug/FPL_StaticLib_Host.lib
+LDDEPS += ../build/FPL_StaticLib/WinX86_Debug/FPL_StaticLib_Host.lib
+ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32 -mwindows
+
+else ifeq ($(config),debug_winx64)
+TARGETDIR = ../build/FPL_StaticLib/WinX64_Debug
+TARGET = $(TARGETDIR)/FPL_StaticLib_Client.exe
+OBJDIR = ../immediates/FPL_StaticLib_Client/WinX64_Debug
+DEFINES += -DDEBUG
+ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g -std=c99
+ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g
+LIBS += ../build/FPL_StaticLib/WinX64_Debug/FPL_StaticLib_Host.lib
+LDDEPS += ../build/FPL_StaticLib/WinX64_Debug/FPL_StaticLib_Host.lib
+ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib64 -m64 -mwindows
+
+else ifeq ($(config),debug_linuxx86)
+TARGETDIR = ../build/FPL_StaticLib/LinuxX86_Debug
+TARGET = $(TARGETDIR)/FPL_StaticLib_Client
+OBJDIR = ../immediates/FPL_StaticLib_Client/LinuxX86_Debug
+DEFINES += -DDEBUG
+ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g -std=c99
+ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g
+LIBS += ../build/FPL_StaticLib/LinuxX86_Debug/libFPL_StaticLib_Host.a -lm
+LDDEPS += ../build/FPL_StaticLib/LinuxX86_Debug/libFPL_StaticLib_Host.a
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32
 
 else ifeq ($(config),debug_linuxx64)
-TARGETDIR = ../build/FPL_NoCRT/LinuxX64_Debug
-TARGET = $(TARGETDIR)/FPL_NoCRT
-OBJDIR = ../immediates/FPL_NoCRT/LinuxX64_Debug
+TARGETDIR = ../build/FPL_StaticLib/LinuxX64_Debug
+TARGET = $(TARGETDIR)/FPL_StaticLib_Client
+OBJDIR = ../immediates/FPL_StaticLib_Client/LinuxX64_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g
-LIBS += -lm
+LIBS += ../build/FPL_StaticLib/LinuxX64_Debug/libFPL_StaticLib_Host.a -lm
+LDDEPS += ../build/FPL_StaticLib/LinuxX64_Debug/libFPL_StaticLib_Host.a
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib64 -m64
 
 else ifeq ($(config),debug_linuxarm32)
-TARGETDIR = ../build/FPL_NoCRT/LinuxARM32_Debug
-TARGET = $(TARGETDIR)/FPL_NoCRT
-OBJDIR = ../immediates/FPL_NoCRT/LinuxARM32_Debug
+TARGETDIR = ../build/FPL_StaticLib/LinuxARM32_Debug
+TARGET = $(TARGETDIR)/FPL_StaticLib_Client
+OBJDIR = ../immediates/FPL_StaticLib_Client/LinuxARM32_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O0 -g
-LIBS += -lm
+LIBS += ../build/FPL_StaticLib/LinuxARM32_Debug/libFPL_StaticLib_Host.a -lm
+LDDEPS += ../build/FPL_StaticLib/LinuxARM32_Debug/libFPL_StaticLib_Host.a
 ALL_LDFLAGS += $(LDFLAGS)
 
 else ifeq ($(config),debug_linuxarm64)
-TARGETDIR = ../build/FPL_NoCRT/LinuxARM64_Debug
-TARGET = $(TARGETDIR)/FPL_NoCRT
-OBJDIR = ../immediates/FPL_NoCRT/LinuxARM64_Debug
+TARGETDIR = ../build/FPL_StaticLib/LinuxARM64_Debug
+TARGET = $(TARGETDIR)/FPL_StaticLib_Client
+OBJDIR = ../immediates/FPL_StaticLib_Client/LinuxARM64_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O0 -g
-LIBS += -lm
+LIBS += ../build/FPL_StaticLib/LinuxARM64_Debug/libFPL_StaticLib_Host.a -lm
+LDDEPS += ../build/FPL_StaticLib/LinuxARM64_Debug/libFPL_StaticLib_Host.a
 ALL_LDFLAGS += $(LDFLAGS)
 
 else ifeq ($(config),debug_unixx86)
-TARGETDIR = ../build/FPL_NoCRT/UnixX86_Debug
-TARGET = $(TARGETDIR)/FPL_NoCRT
-OBJDIR = ../immediates/FPL_NoCRT/UnixX86_Debug
+TARGETDIR = ../build/FPL_StaticLib/UnixX86_Debug
+TARGET = $(TARGETDIR)/FPL_StaticLib_Client
+OBJDIR = ../immediates/FPL_StaticLib_Client/UnixX86_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g
-LIBS += -lm
+LIBS += ../build/FPL_StaticLib/UnixX86_Debug/libFPL_StaticLib_Host.a -lm
+LDDEPS += ../build/FPL_StaticLib/UnixX86_Debug/libFPL_StaticLib_Host.a
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32
 
 else ifeq ($(config),debug_unixx64)
-TARGETDIR = ../build/FPL_NoCRT/UnixX64_Debug
-TARGET = $(TARGETDIR)/FPL_NoCRT
-OBJDIR = ../immediates/FPL_NoCRT/UnixX64_Debug
+TARGETDIR = ../build/FPL_StaticLib/UnixX64_Debug
+TARGET = $(TARGETDIR)/FPL_StaticLib_Client
+OBJDIR = ../immediates/FPL_StaticLib_Client/UnixX64_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g
-LIBS += -lm
+LIBS += ../build/FPL_StaticLib/UnixX64_Debug/libFPL_StaticLib_Host.a -lm
+LDDEPS += ../build/FPL_StaticLib/UnixX64_Debug/libFPL_StaticLib_Host.a
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib64 -m64
 
 else ifeq ($(config),debug_unixarm32)
-TARGETDIR = ../build/FPL_NoCRT/UnixARM32_Debug
-TARGET = $(TARGETDIR)/FPL_NoCRT
-OBJDIR = ../immediates/FPL_NoCRT/UnixARM32_Debug
+TARGETDIR = ../build/FPL_StaticLib/UnixARM32_Debug
+TARGET = $(TARGETDIR)/FPL_StaticLib_Client
+OBJDIR = ../immediates/FPL_StaticLib_Client/UnixARM32_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O0 -g
-LIBS += -lm
+LIBS += ../build/FPL_StaticLib/UnixARM32_Debug/libFPL_StaticLib_Host.a -lm
+LDDEPS += ../build/FPL_StaticLib/UnixARM32_Debug/libFPL_StaticLib_Host.a
 ALL_LDFLAGS += $(LDFLAGS)
 
 else ifeq ($(config),debug_unixarm64)
-TARGETDIR = ../build/FPL_NoCRT/UnixARM64_Debug
-TARGET = $(TARGETDIR)/FPL_NoCRT
-OBJDIR = ../immediates/FPL_NoCRT/UnixARM64_Debug
+TARGETDIR = ../build/FPL_StaticLib/UnixARM64_Debug
+TARGET = $(TARGETDIR)/FPL_StaticLib_Client
+OBJDIR = ../immediates/FPL_StaticLib_Client/UnixARM64_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O0 -g
-LIBS += -lm
+LIBS += ../build/FPL_StaticLib/UnixARM64_Debug/libFPL_StaticLib_Host.a -lm
+LDDEPS += ../build/FPL_StaticLib/UnixARM64_Debug/libFPL_StaticLib_Host.a
 ALL_LDFLAGS += $(LDFLAGS)
 
 else ifeq ($(config),release_winx86)
-TARGETDIR = ../build/FPL_NoCRT/WinX86_Release
-TARGET = $(TARGETDIR)/FPL_NoCRT.exe
-OBJDIR = ../immediates/FPL_NoCRT/WinX86_Release
-DEFINES += -DNDEBUG
-ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O2 -std=c99 -GS- -Gs9999999 -GL-
-ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O2 -fno-stack-protector -GS- -Gs9999999 -GL-
-LIBS += -lkernel32
-ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32 -s /NODEFAULTLIB -STACK:0x100000,0x100000
-
-else ifeq ($(config),release_winx64)
-TARGETDIR = ../build/FPL_NoCRT/WinX64_Release
-TARGET = $(TARGETDIR)/FPL_NoCRT.exe
-OBJDIR = ../immediates/FPL_NoCRT/WinX64_Release
-DEFINES += -DNDEBUG
-ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O2 -std=c99 -GS- -Gs9999999 -GL-
-ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O2 -fno-stack-protector -GS- -Gs9999999 -GL-
-LIBS += -lkernel32
-ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib64 -m64 -s /NODEFAULTLIB -STACK:0x100000,0x100000
-
-else ifeq ($(config),release_linuxx86)
-TARGETDIR = ../build/FPL_NoCRT/LinuxX86_Release
-TARGET = $(TARGETDIR)/FPL_NoCRT
-OBJDIR = ../immediates/FPL_NoCRT/LinuxX86_Release
+TARGETDIR = ../build/FPL_StaticLib/WinX86_Release
+TARGET = $(TARGETDIR)/FPL_StaticLib_Client.exe
+OBJDIR = ../immediates/FPL_StaticLib_Client/WinX86_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O2
-LIBS += -lm
+LIBS += ../build/FPL_StaticLib/WinX86_Release/FPL_StaticLib_Host.lib
+LDDEPS += ../build/FPL_StaticLib/WinX86_Release/FPL_StaticLib_Host.lib
+ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32 -mwindows -s
+
+else ifeq ($(config),release_winx64)
+TARGETDIR = ../build/FPL_StaticLib/WinX64_Release
+TARGET = $(TARGETDIR)/FPL_StaticLib_Client.exe
+OBJDIR = ../immediates/FPL_StaticLib_Client/WinX64_Release
+DEFINES += -DNDEBUG
+ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O2 -std=c99
+ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O2
+LIBS += ../build/FPL_StaticLib/WinX64_Release/FPL_StaticLib_Host.lib
+LDDEPS += ../build/FPL_StaticLib/WinX64_Release/FPL_StaticLib_Host.lib
+ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib64 -m64 -mwindows -s
+
+else ifeq ($(config),release_linuxx86)
+TARGETDIR = ../build/FPL_StaticLib/LinuxX86_Release
+TARGET = $(TARGETDIR)/FPL_StaticLib_Client
+OBJDIR = ../immediates/FPL_StaticLib_Client/LinuxX86_Release
+DEFINES += -DNDEBUG
+ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O2 -std=c99
+ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O2
+LIBS += ../build/FPL_StaticLib/LinuxX86_Release/libFPL_StaticLib_Host.a -lm
+LDDEPS += ../build/FPL_StaticLib/LinuxX86_Release/libFPL_StaticLib_Host.a
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32 -s
 
 else ifeq ($(config),release_linuxx64)
-TARGETDIR = ../build/FPL_NoCRT/LinuxX64_Release
-TARGET = $(TARGETDIR)/FPL_NoCRT
-OBJDIR = ../immediates/FPL_NoCRT/LinuxX64_Release
+TARGETDIR = ../build/FPL_StaticLib/LinuxX64_Release
+TARGET = $(TARGETDIR)/FPL_StaticLib_Client
+OBJDIR = ../immediates/FPL_StaticLib_Client/LinuxX64_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O2
-LIBS += -lm
+LIBS += ../build/FPL_StaticLib/LinuxX64_Release/libFPL_StaticLib_Host.a -lm
+LDDEPS += ../build/FPL_StaticLib/LinuxX64_Release/libFPL_StaticLib_Host.a
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib64 -m64 -s
 
 else ifeq ($(config),release_linuxarm32)
-TARGETDIR = ../build/FPL_NoCRT/LinuxARM32_Release
-TARGET = $(TARGETDIR)/FPL_NoCRT
-OBJDIR = ../immediates/FPL_NoCRT/LinuxARM32_Release
+TARGETDIR = ../build/FPL_StaticLib/LinuxARM32_Release
+TARGET = $(TARGETDIR)/FPL_StaticLib_Client
+OBJDIR = ../immediates/FPL_StaticLib_Client/LinuxARM32_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O2
-LIBS += -lm
+LIBS += ../build/FPL_StaticLib/LinuxARM32_Release/libFPL_StaticLib_Host.a -lm
+LDDEPS += ../build/FPL_StaticLib/LinuxARM32_Release/libFPL_StaticLib_Host.a
 ALL_LDFLAGS += $(LDFLAGS) -s
 
 else ifeq ($(config),release_linuxarm64)
-TARGETDIR = ../build/FPL_NoCRT/LinuxARM64_Release
-TARGET = $(TARGETDIR)/FPL_NoCRT
-OBJDIR = ../immediates/FPL_NoCRT/LinuxARM64_Release
+TARGETDIR = ../build/FPL_StaticLib/LinuxARM64_Release
+TARGET = $(TARGETDIR)/FPL_StaticLib_Client
+OBJDIR = ../immediates/FPL_StaticLib_Client/LinuxARM64_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O2
-LIBS += -lm
+LIBS += ../build/FPL_StaticLib/LinuxARM64_Release/libFPL_StaticLib_Host.a -lm
+LDDEPS += ../build/FPL_StaticLib/LinuxARM64_Release/libFPL_StaticLib_Host.a
 ALL_LDFLAGS += $(LDFLAGS) -s
 
 else ifeq ($(config),release_unixx86)
-TARGETDIR = ../build/FPL_NoCRT/UnixX86_Release
-TARGET = $(TARGETDIR)/FPL_NoCRT
-OBJDIR = ../immediates/FPL_NoCRT/UnixX86_Release
+TARGETDIR = ../build/FPL_StaticLib/UnixX86_Release
+TARGET = $(TARGETDIR)/FPL_StaticLib_Client
+OBJDIR = ../immediates/FPL_StaticLib_Client/UnixX86_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O2
-LIBS += -lm
+LIBS += ../build/FPL_StaticLib/UnixX86_Release/libFPL_StaticLib_Host.a -lm
+LDDEPS += ../build/FPL_StaticLib/UnixX86_Release/libFPL_StaticLib_Host.a
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32 -s
 
 else ifeq ($(config),release_unixx64)
-TARGETDIR = ../build/FPL_NoCRT/UnixX64_Release
-TARGET = $(TARGETDIR)/FPL_NoCRT
-OBJDIR = ../immediates/FPL_NoCRT/UnixX64_Release
+TARGETDIR = ../build/FPL_StaticLib/UnixX64_Release
+TARGET = $(TARGETDIR)/FPL_StaticLib_Client
+OBJDIR = ../immediates/FPL_StaticLib_Client/UnixX64_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O2
-LIBS += -lm
+LIBS += ../build/FPL_StaticLib/UnixX64_Release/libFPL_StaticLib_Host.a -lm
+LDDEPS += ../build/FPL_StaticLib/UnixX64_Release/libFPL_StaticLib_Host.a
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib64 -m64 -s
 
 else ifeq ($(config),release_unixarm32)
-TARGETDIR = ../build/FPL_NoCRT/UnixARM32_Release
-TARGET = $(TARGETDIR)/FPL_NoCRT
-OBJDIR = ../immediates/FPL_NoCRT/UnixARM32_Release
+TARGETDIR = ../build/FPL_StaticLib/UnixARM32_Release
+TARGET = $(TARGETDIR)/FPL_StaticLib_Client
+OBJDIR = ../immediates/FPL_StaticLib_Client/UnixARM32_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O2
-LIBS += -lm
+LIBS += ../build/FPL_StaticLib/UnixARM32_Release/libFPL_StaticLib_Host.a -lm
+LDDEPS += ../build/FPL_StaticLib/UnixARM32_Release/libFPL_StaticLib_Host.a
 ALL_LDFLAGS += $(LDFLAGS) -s
 
 else ifeq ($(config),release_unixarm64)
-TARGETDIR = ../build/FPL_NoCRT/UnixARM64_Release
-TARGET = $(TARGETDIR)/FPL_NoCRT
-OBJDIR = ../immediates/FPL_NoCRT/UnixARM64_Release
+TARGETDIR = ../build/FPL_StaticLib/UnixARM64_Release
+TARGET = $(TARGETDIR)/FPL_StaticLib_Client
+OBJDIR = ../immediates/FPL_StaticLib_Client/UnixARM64_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O2
-LIBS += -lm
+LIBS += ../build/FPL_StaticLib/UnixARM64_Release/libFPL_StaticLib_Host.a -lm
+LDDEPS += ../build/FPL_StaticLib/UnixARM64_Release/libFPL_StaticLib_Host.a
 ALL_LDFLAGS += $(LDFLAGS) -s
 
 endif
@@ -293,8 +312,8 @@ endif
 GENERATED :=
 OBJECTS :=
 
-GENERATED += $(OBJDIR)/fpl_nocrt.o
-OBJECTS += $(OBJDIR)/fpl_nocrt.o
+GENERATED += $(OBJDIR)/fpl_staticlib_client.o
+OBJECTS += $(OBJDIR)/fpl_staticlib_client.o
 
 # Rules
 # #############################################
@@ -304,7 +323,7 @@ all: $(TARGET)
 
 $(TARGET): $(GENERATED) $(OBJECTS) $(LDDEPS) | $(TARGETDIR)
 	$(PRELINKCMDS)
-	@echo Linking FPL_NoCRT
+	@echo Linking FPL_StaticLib_Client
 	$(SILENT) $(LINKCMD)
 	$(POSTBUILDCMDS)
 
@@ -325,7 +344,7 @@ else
 endif
 
 clean:
-	@echo Cleaning FPL_NoCRT
+	@echo Cleaning FPL_StaticLib_Client
 ifeq (posix,$(SHELLTYPE))
 	$(SILENT) rm -f  $(TARGET)
 	$(SILENT) rm -rf $(GENERATED)
@@ -358,7 +377,7 @@ endif
 # File Rules
 # #############################################
 
-$(OBJDIR)/fpl_nocrt.o: fpl_nocrt.c
+$(OBJDIR)/fpl_staticlib_client.o: fpl_staticlib_client.c
 	@echo "$(notdir $<)"
 	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
 
