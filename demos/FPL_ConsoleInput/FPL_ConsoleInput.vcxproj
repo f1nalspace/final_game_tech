@@ -35,32 +35,32 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{02244D11-EE07-0E67-5768-08BA436BF8E8}</ProjectGuid>
+    <ProjectGuid>{A9216EB4-951A-8D06-BE4C-728BAAA46C12}</ProjectGuid>
     <IgnoreWarnCompileDuplicatedFilename>true</IgnoreWarnCompileDuplicatedFilename>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>FPL_StaticLib_Host</RootNamespace>
+    <RootNamespace>FPL_ConsoleInput</RootNamespace>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX86|Win32'" Label="Configuration">
-    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <CharacterSet>Unicode</CharacterSet>
     <PlatformToolset>v143</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX64|x64'" Label="Configuration">
-    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <CharacterSet>Unicode</CharacterSet>
     <PlatformToolset>v143</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX86|Win32'" Label="Configuration">
-    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <CharacterSet>Unicode</CharacterSet>
     <PlatformToolset>v143</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX64|x64'" Label="Configuration">
-    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <CharacterSet>Unicode</CharacterSet>
     <PlatformToolset>v143</PlatformToolset>
@@ -82,28 +82,32 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX86|Win32'">
-    <OutDir>$(ProjectDir)..\build\FPL_StaticLib\WinX86_Debug\</OutDir>
-    <IntDir>$(ProjectDir)..\immediates\FPL_StaticLib_Host\WinX86_Debug\</IntDir>
-    <TargetName>FPL_StaticLib_Host</TargetName>
-    <TargetExt>.lib</TargetExt>
+    <LinkIncremental>true</LinkIncremental>
+    <OutDir>$(ProjectDir)..\build\FPL_ConsoleInput\WinX86_Debug\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\FPL_ConsoleInput\WinX86_Debug\</IntDir>
+    <TargetName>FPL_ConsoleInput</TargetName>
+    <TargetExt>.exe</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX64|x64'">
-    <OutDir>$(ProjectDir)..\build\FPL_StaticLib\WinX64_Debug\</OutDir>
-    <IntDir>$(ProjectDir)..\immediates\FPL_StaticLib_Host\WinX64_Debug\</IntDir>
-    <TargetName>FPL_StaticLib_Host</TargetName>
-    <TargetExt>.lib</TargetExt>
+    <LinkIncremental>true</LinkIncremental>
+    <OutDir>$(ProjectDir)..\build\FPL_ConsoleInput\WinX64_Debug\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\FPL_ConsoleInput\WinX64_Debug\</IntDir>
+    <TargetName>FPL_ConsoleInput</TargetName>
+    <TargetExt>.exe</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX86|Win32'">
-    <OutDir>$(ProjectDir)..\build\FPL_StaticLib\WinX86_Release\</OutDir>
-    <IntDir>$(ProjectDir)..\immediates\FPL_StaticLib_Host\WinX86_Release\</IntDir>
-    <TargetName>FPL_StaticLib_Host</TargetName>
-    <TargetExt>.lib</TargetExt>
+    <LinkIncremental>false</LinkIncremental>
+    <OutDir>$(ProjectDir)..\build\FPL_ConsoleInput\WinX86_Release\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\FPL_ConsoleInput\WinX86_Release\</IntDir>
+    <TargetName>FPL_ConsoleInput</TargetName>
+    <TargetExt>.exe</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX64|x64'">
-    <OutDir>$(ProjectDir)..\build\FPL_StaticLib\WinX64_Release\</OutDir>
-    <IntDir>$(ProjectDir)..\immediates\FPL_StaticLib_Host\WinX64_Release\</IntDir>
-    <TargetName>FPL_StaticLib_Host</TargetName>
-    <TargetExt>.lib</TargetExt>
+    <LinkIncremental>false</LinkIncremental>
+    <OutDir>$(ProjectDir)..\build\FPL_ConsoleInput\WinX64_Release\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\FPL_ConsoleInput\WinX64_Release\</IntDir>
+    <TargetName>FPL_ConsoleInput</TargetName>
+    <TargetExt>.exe</TargetExt>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX86|Win32'">
     <ClCompile>
@@ -119,7 +123,7 @@
       <ExternalWarningLevel>Level3</ExternalWarningLevel>
     </ClCompile>
     <Link>
-      <SubSystem>Windows</SubSystem>
+      <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <ProjectReference>
@@ -139,7 +143,7 @@
       <ExternalWarningLevel>Level3</ExternalWarningLevel>
     </ClCompile>
     <Link>
-      <SubSystem>Windows</SubSystem>
+      <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <ProjectReference>
@@ -162,7 +166,7 @@
       <ExternalWarningLevel>Level3</ExternalWarningLevel>
     </ClCompile>
     <Link>
-      <SubSystem>Windows</SubSystem>
+      <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
@@ -187,7 +191,7 @@
       <ExternalWarningLevel>Level3</ExternalWarningLevel>
     </ClCompile>
     <Link>
-      <SubSystem>Windows</SubSystem>
+      <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
@@ -196,7 +200,7 @@
     </ProjectReference>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="final_platform_layer.c" />
+    <ClCompile Include="fpl_console_input.c" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

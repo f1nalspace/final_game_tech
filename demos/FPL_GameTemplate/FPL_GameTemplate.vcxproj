@@ -35,32 +35,32 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{02244D11-EE07-0E67-5768-08BA436BF8E8}</ProjectGuid>
+    <ProjectGuid>{5C79F1D9-4872-102C-71A4-F5B05DFCEF37}</ProjectGuid>
     <IgnoreWarnCompileDuplicatedFilename>true</IgnoreWarnCompileDuplicatedFilename>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>FPL_StaticLib_Host</RootNamespace>
+    <RootNamespace>FPL_GameTemplate</RootNamespace>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX86|Win32'" Label="Configuration">
-    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <CharacterSet>Unicode</CharacterSet>
     <PlatformToolset>v143</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX64|x64'" Label="Configuration">
-    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <CharacterSet>Unicode</CharacterSet>
     <PlatformToolset>v143</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX86|Win32'" Label="Configuration">
-    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <CharacterSet>Unicode</CharacterSet>
     <PlatformToolset>v143</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX64|x64'" Label="Configuration">
-    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <CharacterSet>Unicode</CharacterSet>
     <PlatformToolset>v143</PlatformToolset>
@@ -82,28 +82,32 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX86|Win32'">
-    <OutDir>$(ProjectDir)..\build\FPL_StaticLib\WinX86_Debug\</OutDir>
-    <IntDir>$(ProjectDir)..\immediates\FPL_StaticLib_Host\WinX86_Debug\</IntDir>
-    <TargetName>FPL_StaticLib_Host</TargetName>
-    <TargetExt>.lib</TargetExt>
+    <LinkIncremental>true</LinkIncremental>
+    <OutDir>$(ProjectDir)..\build\FPL_GameTemplate\WinX86_Debug\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\FPL_GameTemplate\WinX86_Debug\</IntDir>
+    <TargetName>FPL_GameTemplate</TargetName>
+    <TargetExt>.exe</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX64|x64'">
-    <OutDir>$(ProjectDir)..\build\FPL_StaticLib\WinX64_Debug\</OutDir>
-    <IntDir>$(ProjectDir)..\immediates\FPL_StaticLib_Host\WinX64_Debug\</IntDir>
-    <TargetName>FPL_StaticLib_Host</TargetName>
-    <TargetExt>.lib</TargetExt>
+    <LinkIncremental>true</LinkIncremental>
+    <OutDir>$(ProjectDir)..\build\FPL_GameTemplate\WinX64_Debug\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\FPL_GameTemplate\WinX64_Debug\</IntDir>
+    <TargetName>FPL_GameTemplate</TargetName>
+    <TargetExt>.exe</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX86|Win32'">
-    <OutDir>$(ProjectDir)..\build\FPL_StaticLib\WinX86_Release\</OutDir>
-    <IntDir>$(ProjectDir)..\immediates\FPL_StaticLib_Host\WinX86_Release\</IntDir>
-    <TargetName>FPL_StaticLib_Host</TargetName>
-    <TargetExt>.lib</TargetExt>
+    <LinkIncremental>false</LinkIncremental>
+    <OutDir>$(ProjectDir)..\build\FPL_GameTemplate\WinX86_Release\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\FPL_GameTemplate\WinX86_Release\</IntDir>
+    <TargetName>FPL_GameTemplate</TargetName>
+    <TargetExt>.exe</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX64|x64'">
-    <OutDir>$(ProjectDir)..\build\FPL_StaticLib\WinX64_Release\</OutDir>
-    <IntDir>$(ProjectDir)..\immediates\FPL_StaticLib_Host\WinX64_Release\</IntDir>
-    <TargetName>FPL_StaticLib_Host</TargetName>
-    <TargetExt>.lib</TargetExt>
+    <LinkIncremental>false</LinkIncremental>
+    <OutDir>$(ProjectDir)..\build\FPL_GameTemplate\WinX64_Release\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\FPL_GameTemplate\WinX64_Release\</IntDir>
+    <TargetName>FPL_GameTemplate</TargetName>
+    <TargetExt>.exe</TargetExt>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX86|Win32'">
     <ClCompile>
@@ -124,6 +128,9 @@
     </Link>
     <ProjectReference>
     </ProjectReference>
+    <PostBuildEvent>
+      <Command>xcopy /Q /E /Y /I "$(ProjectDir)\data" "..\build\FPL_GameTemplate\WinX86_Debug\data\"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX64|x64'">
     <ClCompile>
@@ -144,6 +151,9 @@
     </Link>
     <ProjectReference>
     </ProjectReference>
+    <PostBuildEvent>
+      <Command>xcopy /Q /E /Y /I "$(ProjectDir)\data" "..\build\FPL_GameTemplate\WinX64_Debug\data\"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX86|Win32'">
     <ClCompile>
@@ -169,6 +179,9 @@
     </Link>
     <ProjectReference>
     </ProjectReference>
+    <PostBuildEvent>
+      <Command>xcopy /Q /E /Y /I "$(ProjectDir)\data" "..\build\FPL_GameTemplate\WinX86_Release\data\"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX64|x64'">
     <ClCompile>
@@ -194,9 +207,34 @@
     </Link>
     <ProjectReference>
     </ProjectReference>
+    <PostBuildEvent>
+      <Command>xcopy /Q /E /Y /I "$(ProjectDir)\data" "..\build\FPL_GameTemplate\WinX64_Release\data\"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="final_platform_layer.c" />
+    <ClInclude Include="..\..\final_dynamic_opengl.h" />
+    <ClInclude Include="..\..\final_memory.h" />
+    <ClInclude Include="..\..\final_platform_layer.h" />
+    <ClInclude Include="..\additions\final_assets.h" />
+    <ClInclude Include="..\additions\final_audio.h" />
+    <ClInclude Include="..\additions\final_audioconversion.h" />
+    <ClInclude Include="..\additions\final_audiosystem.h" />
+    <ClInclude Include="..\additions\final_fontloader.h" />
+    <ClInclude Include="..\additions\final_fonts.h" />
+    <ClInclude Include="..\additions\final_game.h" />
+    <ClInclude Include="..\additions\final_gameplatform.h" />
+    <ClInclude Include="..\additions\final_geometry.h" />
+    <ClInclude Include="..\additions\final_math.h" />
+    <ClInclude Include="..\additions\final_opengl_render.h" />
+    <ClInclude Include="..\additions\final_random.h" />
+    <ClInclude Include="..\additions\final_render.h" />
+    <ClInclude Include="..\additions\final_utils.h" />
+    <ClInclude Include="..\dependencies\stb\stb_image.h" />
+    <ClInclude Include="..\dependencies\stb\stb_truetype.h" />
+    <ClInclude Include="fpl_gametemplate.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="fpl_gametemplate.c" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

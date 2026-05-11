@@ -1,0 +1,77 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Additions">
+      <UniqueIdentifier>{445E88DE-B0C8-3C55-F906-EEFA65B01AAA}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Dependencies">
+      <UniqueIdentifier>{6C01343A-5864-C3DE-01EA-FB94ED2B8F61}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty">
+      <UniqueIdentifier>{107145F9-FC28-8746-6530-60A251072237}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\final_dynamic_opengl.h">
+      <Filter>Dependencies</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\final_memory.h">
+      <Filter>Dependencies</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\final_platform_layer.h">
+      <Filter>Dependencies</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\final_assets.h">
+      <Filter>Additions</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\final_audio.h">
+      <Filter>Additions</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\final_audioconversion.h">
+      <Filter>Additions</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\final_audiosystem.h">
+      <Filter>Additions</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\final_fontloader.h">
+      <Filter>Additions</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\final_fonts.h">
+      <Filter>Additions</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\final_game.h">
+      <Filter>Additions</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\final_gameplatform.h">
+      <Filter>Additions</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\final_geometry.h">
+      <Filter>Additions</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\final_math.h">
+      <Filter>Additions</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\final_opengl_render.h">
+      <Filter>Additions</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\final_random.h">
+      <Filter>Additions</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\final_render.h">
+      <Filter>Additions</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\final_utils.h">
+      <Filter>Additions</Filter>
+    </ClInclude>
+    <ClInclude Include="..\dependencies\stb\stb_image.h">
+      <Filter>ThirdParty</Filter>
+    </ClInclude>
+    <ClInclude Include="..\dependencies\stb\stb_truetype.h">
+      <Filter>ThirdParty</Filter>
+    </ClInclude>
+    <ClInclude Include="fpl_gametemplate.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="fpl_gametemplate.c" />
+  </ItemGroup>
+</Project>
