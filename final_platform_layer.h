@@ -8238,13 +8238,6 @@ typedef struct fplMouseState {
 fpl_platform_api bool fplPollMouseState(fplMouseState *outState);
 
 /**
-* @brief Queries the cursor position in screen coordinates, relative to the root screen.
-* @param[out] outX Reference to the outgoing X position.
-* @param[out] outY Reference to the outgoing Y position.
-*/
-fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY);
-
-/**
 * @typedef fplGamepadName
 * @brief A typedef that defines the name of a game controller.
 */
@@ -9155,6 +9148,13 @@ fpl_platform_api bool fplSetWindowState(const fplWindowState newState);
 * @note The text input event is always handled, regardless of this setting.
 */
 fpl_common_api void fplSetWindowInputEvents(const bool enabled);
+
+/**
+* @brief Queries the cursor position in screen coordinates, relative to the root screen.
+* @param[out] outX Reference to the outgoing X position.
+* @param[out] outY Reference to the outgoing Y position.
+*/
+fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY);
 
 /** @} */
 
@@ -19950,35 +19950,6 @@ fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
 #endif // FPL__ENABLE_INPUT
 
 #if defined(FPL__ENABLE_WINDOW)
-fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY) {
-	FPL__CheckArgumentNull(outX, false);
-	FPL__CheckArgumentNull(outY, false);
-	FPL__CheckPlatform(false);
-	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	const fpl__Win32Api *wapi = &appState->winApi;
-	POINT p;
-	if (wapi->user.GetCursorPos(&p) == TRUE) {
-#if 0
-		HMONITOR monitor = wapi->user.MonitorFromPoint(p, MONITOR_DEFAULTTONEAREST);
-		if (monitor != fpl_null) {
-			MONITORINFOEXW info = fplZeroInit;
-			info.cbSize = sizeof(info);
-			if (wapi->user.GetMonitorInfoW(monitor, (LPMONITORINFO)&info) != 0) {
-				*outX = p.x - info.rcMonitor.left;
-				*outY = p.y - info.rcMonitor.top;
-				return(true);
-			}
-		}
-#else
-		*outX = p.x;
-		*outY = p.y;
-		return(true);
-#endif
-	}
-	return(false);
-}
-
 fpl_internal BOOL WINAPI fpl__Win32MonitorCountEnumProc(HMONITOR monitorHandle, HDC hdc, LPRECT rect, LPARAM userData) {
 	size_t *count = (size_t *)(uintptr_t)userData;
 	*count = *count + 1;
@@ -20153,6 +20124,34 @@ fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *modes
 	return(result);
 }
 
+fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY) {
+	FPL__CheckArgumentNull(outX, false);
+	FPL__CheckArgumentNull(outY, false);
+	FPL__CheckPlatform(false);
+	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
+	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32Api *wapi = &appState->winApi;
+	POINT p;
+	if (wapi->user.GetCursorPos(&p) == TRUE) {
+#if 0
+		HMONITOR monitor = wapi->user.MonitorFromPoint(p, MONITOR_DEFAULTTONEAREST);
+		if (monitor != fpl_null) {
+			MONITORINFOEXW info = fplZeroInit;
+			info.cbSize = sizeof(info);
+			if (wapi->user.GetMonitorInfoW(monitor, (LPMONITORINFO)&info) != 0) {
+				*outX = p.x - info.rcMonitor.left;
+				*outY = p.y - info.rcMonitor.top;
+				return(true);
+			}
+		}
+#else
+		*outX = p.x;
+		*outY = p.y;
+		return(true);
+#endif
+	}
+	return(false);
+}
 #endif // FPL__ENABLE_WINDOW
 
 fpl_internal LCTYPE fpl__Win32GetLocaleLCIDFromFormat(const fplLocaleFormat format) {
@@ -24788,6 +24787,29 @@ fpl_platform_api bool fplSetClipboardText(const char *text) {
 	bool result = x11Api->XGetSelectionOwner(windowState->display, windowState->clipboardAtom) == windowState->window;
 	return(result);
 }
+
+fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY) {
+	FPL__CheckArgumentNull(outX, false);
+	FPL__CheckArgumentNull(outY, false);
+	FPL__CheckPlatform(false);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	Window rootRet = 0;
+	Window childRet = 0;
+	int rootX = 0;
+	int rootY = 0;
+	int winX = 0;
+	int winY = 0;
+	unsigned int mask = 0;
+	if (x11Api->XQueryPointer(windowState->display, windowState->window, &rootRet, &childRet, &rootX, &rootY, &winX, &winY, &mask)) {
+		*outX = winX;
+		*outY = winY;
+		return(true);
+	}
+	return(false);
+}
 #endif // FPL__ENABLE_WINDOW
 
 fpl_platform_api bool fplPollKeyboardState(fplKeyboardState *outState) {
@@ -24812,28 +24834,6 @@ fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
 #	endif
 }
 
-fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY) {
-	FPL__CheckArgumentNull(outX, false);
-	FPL__CheckArgumentNull(outY, false);
-	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__X11SubplatformState *subplatform = &appState->x11;
-	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
-	Window rootRet = 0;
-	Window childRet = 0;
-	int rootX = 0;
-	int rootY = 0;
-	int winX = 0;
-	int winY = 0;
-	unsigned int mask = 0;
-	if (x11Api->XQueryPointer(windowState->display, windowState->window, &rootRet, &childRet, &rootX, &rootY, &winX, &winY, &mask)) {
-		*outX = winX;
-		*outY = winY;
-		return(true);
-	}
-	return(false);
-}
 #endif // FPL_SUBPLATFORM_X11
 
 // ############################################################################
