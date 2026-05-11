@@ -24852,7 +24852,7 @@ typedef FPL__FUNC_GLX_glXDestroyContext(fpl__func_glx_glXDestroyContext);
 typedef FPL__FUNC_GLX_glXMakeCurrent(fpl__func_glx_glXMakeCurrent);
 #define FPL__FUNC_GLX_glXSwapBuffers(name) void name(Display *dpy, GLXDrawable drawable)
 typedef FPL__FUNC_GLX_glXSwapBuffers(fpl__func_glx_glXSwapBuffers);
-#define FPL__FUNC_GLX_glXGetProcAddress(name) void *name(const GLubyte *procName)
+#define FPL__FUNC_GLX_glXGetProcAddress(name) void (*name(const GLubyte *procName))(void)
 typedef FPL__FUNC_GLX_glXGetProcAddress(fpl__func_glx_glXGetProcAddress);
 #define FPL__FUNC_GLX_glXChooseFBConfig(name) GLXFBConfig *name(Display *dpy, int screen, const int *attrib_list, int *nelements)
 typedef FPL__FUNC_GLX_glXChooseFBConfig(fpl__func_glx_glXChooseFBConfig);
