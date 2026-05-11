@@ -214,6 +214,9 @@ SOFTWARE.
 	- New: Added function fplPathNormalize() for normalizing any partial path into a absolute path
 	- New: Added function fplTryStringToS32Len that is a more safe-method than to fplStringToS32
 	- New: Added function fplTryStringToS32 that is a more safe-method than to fplStringToS32
+	- New: Added function fplFileTryGetSizeFromPath that returns a bool and writes the size to a uint64_t out parameter, disambiguating 0-byte files from errors
+	- New: Added function fplFileTryGetSizeFromHandle that returns a bool and writes the size to a uint64_t out parameter, disambiguating 0-byte files from errors
+	- New: Added macro FPL_MAX_VERSION_PART_LENGTH for the maximum length of a version part string
 	- New: [Win32] Implemented function fplFileAppendBinary() for Win32 API
 	- New: [POSIX] Implemented function fplFileAppendBinary() for POSIX Unix API
 	- New: [Win32] Implemented function fplPathNormalize() for Win32 API
@@ -222,6 +225,10 @@ SOFTWARE.
 	- Improved: Better documentation of the preprocessor setup blocks
 	- Improved: Added fplStaticAssert checks in the non-opaque branch verifying that the real Win32/POSIX/X11 handle types fit into the opaque-branch buffers (catches portability breakage at compile time instead of corrupting memory at runtime)
 	- Improved: fplDateTime documentation now states explicitly that pre-1970 dates are intentionally not supported (epoch is unsigned and fplDateTimeCreate rejects year < 1970)
+	- Improved: fplWideStringToUTF8String / fplUTF8StringToWideString now use wchar.h with mbrtowc / wcrtomb directly instead of doing redundant work
+	- Improved: Simplified fplPathCombine by removing all internal memory allocation
+	- Improved: Added output-buffer convention block to header documenting size-required return semantics
+	- Improved: Normalized @param[in] / @param[out] tags across the API documentation
 	- Fixed: Fixed duplicate platform includes
 	- Fixed: fpLGetAlignmentOffset() was not guarding the alignment argument in all cases
 	- Fixed: fplS32ToString() was not handling negative values correctly
@@ -234,13 +241,19 @@ SOFTWARE.
 	- Fixed: fplGetErrorCount / fplGetErrorByIndex  / fplGetLastError and pushing of errors was not thread-safe
 	- Fixed: fplAlignAs was using a condition based macro, which is not supported for some compilers
 	- Fixed[#183]: fpl_internal_inline was not compiling on GCC/Clang
+	- Fixed: fplDirectoryListBegin lifetime issue — path and filter are now copied into fpl__InternalFileRootInfo buffers instead of held by reference
+	- Fixed: FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL define was being set twice
 	- Fixed: [Win32] fplFileSetPosition32 / fplFileGetSizeFromPath32 / fplFileGetSizeFromHandle32 was not using the best suitable API function
+	- Fixed: [Win32] GetModuleFileNameW and SHGetFolderPathW return values were not error-checked
 	- Fixed: [POSIX] Fixed pthread fpl__POSIXSemaphoreHandle was not used
 	- Fixed: [POSIX] dirint.h and sched.h was not included always
+	- Fixed: [POSIX] fplDateTime functions were not thread-safe — now use localtime_r / gmtime_r
+	- Fixed: [POSIX] fplDirectoriesCreate was not separator-tolerant
 	- Fixed[#184]: [POSIX] fplDirectoriesCreate() does not create parent sub-directories
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
 	- Changed: Ensure that std types has the correct sizes always using equals
 	- Changed: fplFileWriteBlock*() changed to const for the source argument
+	- Changed: fplExtractFilePath return type changed from int to size_t
 	- Changed: [POSIX] Disabled FPL_NO_PLATFORM_INCLUDES for pthread includes
 	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
 
@@ -255,16 +268,29 @@ SOFTWARE.
 	- Fixed: [X11] Fixed ClientMessage for Atom netWMPing was not calling XFlush
 	- Fixed: [X11] Fixed wrong X11 type aliases
 	- Fixed: [X11] fpl__X11Window opaque pointer was wrong sized
+	- Fixed: [X11] FPL__FUNC_X11_XOpenDisplay vs XOpenDisplay ABI mismatch
+	- Fixed: [X11] FPL__FUNC_X11_XSetErrorHandler vs XSetErrorHandler ABI mismatch
+	- Fixed: [X11] fpl__X11Display vs Display and fpl__X11Visual vs Visual type mismatches
+	- Fixed: [X11] Compile errors when using opaque X11 types
 	- Fixed[#181]: [X11] fpl__X11ParseUriPaths does not do any URI decoding, resulting in most-likely unuseable file paths
+	- Changed: [X11] Window size and position are no longer overwritten on creation
+	- Changed: [X11] Default window size changed to 720p (1280x720)
 	- Changed: [X11] Disabled FPL_NO_PLATFORM_INCLUDES for Xlib includes
 
 	#### Video
+	- Fixed: [OpenGL] Wrong GLubyte type when __gl_h_ is not present
+	- Fixed: [OpenGL] FPL__FUNC_GLX_glXGetProcAddress vs glXGetProcAddress ABI mismatch
+	- Fixed: [OpenGL] GL/glx.h was not included when FPL_NO_RUNTIME_LINKING is disabled
+	- Fixed: [Vulkan] Vulkan headers were not included when FPL_NO_RUNTIME_LINKING is set
 	- Renamed: fplOpenGLCompabilityFlags -> fplOpenGLCompatibilityFlags (incl. enum values and fplOpenGLSettings::compabilityFlags -> compatibilityFlags) - typo fix
 
 	#### Audio
 	- New[#35]: Implemented PulseAudio audio backend
 	- New[#186]: Implemented PipeWire audio backend
-	- Fixed: fpl__ReadAudioFramesFromClient was not returning frameCount always and produce silence bytes for the remaining samples
+	- Fixed: fpl__ReadAudioFramesFromClient was not returning frameCount always and produce silence bytes for the remaining samples (now enforced via asserts at all call sites)
+	- Fixed: [PulseAudio] ABI mismatches in backend function pointer signatures
+	- Fixed: [PulseAudio] Defines were not handled correctly for FPL_NO_RUNTIME_LINKING
+	- Fixed: [ALSA] Defines were not handled correctly for FPL_NO_RUNTIME_LINKING
 	- Fixed[#182]: [ALSA] Fixed default audio devices are not detected in modern linux audio systems
 	- Changed: fplSetDefaultAudioSettings() sets audio backend type to automatic
 	- Changed: [ALSA] Audio device enumeration prints out each audio device to verbose log
@@ -284,6 +310,7 @@ SOFTWARE.
 	- New: Added struct fplGamepadInfo, that describes a controller for the mapping resolver callback
 	- New: Added typedef fplGamepadMappingResolverFn, the callback type fired once per controller connect on raw-HID gamepad backends
 	- New: Added macros FPL_GAMEPAD_BUTTON_COUNT, FPL_GAMEPAD_GUID_BYTES, FPL_GAMEPAD_DATA_MAX_AXES, FPL_GAMEPAD_DATA_MAX_BUTTONS, FPL_GAMEPAD_DATA_MAX_HATS
+	- New: Added macro FPL_GAMEPAD_MAPPING_RESOLVE_CALLBACK
 	- New: Added enum fplInputSourceType
 	- New: Added struct fplInputBackendMask
 	- New: Added function fplInputBackendMaskIsEnabled
@@ -293,9 +320,15 @@ SOFTWARE.
 	- New: Added function fplGamepadMappingApplyDefault
 	- New[#178]: Separate input system from windowing system, by introducing a input backend system
 	- New[#187]: Implemented DirectInput input backend
+	- New: Added input device enumeration API
+	- New: Added no-window fplPollEvent / fplPollEvents pump for input-only / headless applications
+	- New: Multi-backend gamepad polling merge — multiple gamepad backends can be polled in parallel and merged into a single state
 	- Improved: [Win32/DInput] Backend now routes DIJOYSTATE through fplGamepadMappingApply / fplGamepadMappingApplyDefault, with the resolver from fplGamepadSettings.mappingResolver invoked once per controller connect to install a custom fplGamepadMapping
 	- Improved: [Linux/Joystick] /dev/input/jsX backend now feeds JS_EVENT_AXIS/BUTTON into a fplGamepadData snapshot, calls the mappingResolver with VID/PID/version read from /sys/class/input/jsX/device/id, and applies fplGamepadMappingApply when a mapping is installed (legacy behavior preserved when no resolver returns true)
+	- Improved: [Linux/Joystick] Auto-detection of controllers with log throttling
+	- Improved: Gamepad connect/disconnect is now handled in the poll state
 	- Improved[#88]: Gamepad input device is not locked to /dev/input/js0 anymore
+	- Fixed: [Linux/Joystick] init-message check was incorrect
 	- Changed: Extented struct fplInputSettings with fields for new input system
 	- Changed: Extented struct fplGamepadState with union action buttons (down/right/left/up) and (A/B/X/Y)
 
