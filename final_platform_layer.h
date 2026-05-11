@@ -28935,10 +28935,10 @@ fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendALSADescriptor =
 // ############################################################################
 #if defined(FPL__ENABLE_AUDIO_PULSEAUDIO)
 
-// @NOTE(final/PulseAudio): The PulseAudio backend is runtime-linked by default, so the PulseAudio development headers are not required.
 #if defined(FPL_NO_RUNTIME_LINKING)
 #	define FPL__PULSEAUDIO_USE_REAL_HEADERS
 #endif
+
 #if !defined(FPL__PULSEAUDIO_ANONYMOUS_HEADERS) && !defined(FPL__PULSEAUDIO_USE_REAL_HEADERS)
 #	define FPL__PULSEAUDIO_ANONYMOUS_HEADERS
 #endif
