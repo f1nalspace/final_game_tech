@@ -319,6 +319,7 @@ SOFTWARE.
 	- Changed: fplGetAudioDeviceInfo and the backend getAudioDeviceInfo contract now require a non-null deviceId (no implicit default-device path)
 	- Changed: fplSetDefaultAudioSettings() sets audio backend type to automatic
 	- Changed: [ALSA] Audio device enumeration prints out each audio device to verbose log
+	- Fixed: fplGetTargetAudioFrameCount used a broken fake-round formula (wrong direction ratio for downsampling, negative fractional cast); replaced with `round((double)in * outRate / inRate)`
 
 	#### Input
 	- New: Added struct fplGamepadSettings, that stores several properties required for updating/polling game controllers frequently
@@ -33896,28 +33897,9 @@ fpl_common_api uint32_t fplGetTargetAudioFrameCount(const uint32_t inputFrameCou
 	if (inputSampleRate == outputSampleRate) {
 		return inputFrameCount;
 	}
-
-	float inRatio = inputSampleRate / (float)outputSampleRate;
-	float outRatio = 1.0f / inRatio;
-
-	float ratio;
-
-	if (inputSampleRate > outputSampleRate) {
-		ratio = inRatio;
-	} else {
-		fplAssert(outputSampleRate > inputSampleRate);
-		ratio = outRatio;
-	}
-
-	float f = inputFrameCount * ratio;
-	uint32_t full = (uint32_t)f;
-	float fraction = full - f;
-
-	// @TODO(final): This is not correct to fake round the additional frame, but it works for most cases
-	uint32_t add = fraction != 0 ? (uint32_t)(fraction + 0.5f) : 0;
-
-	uint32_t result = full + add;
-
+	// outFrames = round(inFrames * outRate / inRate) using double + 0.5 trick
+	double f = (double)inputFrameCount * (double)outputSampleRate / (double)inputSampleRate;
+	uint32_t result = (uint32_t)(f + 0.5);
 	return result;
 }
 
