@@ -64,7 +64,7 @@ typedef uint16_t fplGamepadInputBindingEncoded;
 // Total binding slots in a mapping (buttons + axes).
 #define FPL_GAMEPAD_BINDING_COUNT  (FPL_GAMEPAD_BUTTON_COUNT + FPL_GAMEPAD_AXIS_COUNT)
 // On-disk per-entry size: 16 + 1 + 20*2 = 57 bytes.
-#define FPL_GAMEPAD_BLOB_ENTRY_SIZE (FPL_GAMEPAD_GUID_BYTES + 1 + FPL_GAMEPAD_BINDING_COUNT * 2)
+#define FPL_GAMEPAD_BLOB_ENTRY_SIZE (FPL_GAMEPAD_GUID_SIZE + 1 + FPL_GAMEPAD_BINDING_COUNT * 2)
 
 // Returns true if every field of b fits inside its packed bit width (lossless encode possible).
 static fpl_force_inline bool fplBindingFitsEncoded(const fplGamepadInputBinding *b) {
@@ -129,11 +129,11 @@ static int fpl__HexDigit(char c) {
 }
 
 // Decodes 32 hex chars at hex into 16 raw bytes. Returns false on malformed input.
-static bool fpl__DecodeGuid(const char *hex, size_t hexLen, uint8_t outBytes[FPL_GAMEPAD_GUID_BYTES]) {
-	if (hexLen != FPL_GAMEPAD_GUID_BYTES * 2) {
+static bool fpl__DecodeGuid(const char *hex, size_t hexLen, uint8_t outBytes[FPL_GAMEPAD_GUID_SIZE]) {
+	if (hexLen != FPL_GAMEPAD_GUID_SIZE * 2) {
 		return false;
 	}
-	for (size_t i = 0; i < FPL_GAMEPAD_GUID_BYTES; ++i) {
+	for (size_t i = 0; i < FPL_GAMEPAD_GUID_SIZE; ++i) {
 		int hi = fpl__HexDigit(hex[i * 2]);
 		int lo = fpl__HexDigit(hex[i * 2 + 1]);
 		if (hi < 0 || lo < 0) {
@@ -397,11 +397,11 @@ bool fplEncodeGamepadMappingEntry(const fplGamepadMapping *mapping, uint8_t out[
 			return false;
 		}
 	}
-	for (size_t i = 0; i < FPL_GAMEPAD_GUID_BYTES; ++i) {
+	for (size_t i = 0; i < FPL_GAMEPAD_GUID_SIZE; ++i) {
 		out[i] = mapping->guid[i];
 	}
-	out[FPL_GAMEPAD_GUID_BYTES] = (uint8_t)mapping->platform;
-	uint8_t *bp = out + FPL_GAMEPAD_GUID_BYTES + 1;
+	out[FPL_GAMEPAD_GUID_SIZE] = (uint8_t)mapping->platform;
+	uint8_t *bp = out + FPL_GAMEPAD_GUID_SIZE + 1;
 	for (size_t i = 0; i < FPL_GAMEPAD_BUTTON_COUNT; ++i) {
 		fpl__WriteU16LE(bp, fplEncodeBinding(&mapping->buttons[i]));
 		bp += 2;
@@ -415,11 +415,11 @@ bool fplEncodeGamepadMappingEntry(const fplGamepadMapping *mapping, uint8_t out[
 
 // Deserializes one fixed-size entry into a mapping struct.
 void fplDecodeGamepadMappingEntry(const uint8_t in[FPL_GAMEPAD_BLOB_ENTRY_SIZE], fplGamepadMapping *outMapping) {
-	for (size_t i = 0; i < FPL_GAMEPAD_GUID_BYTES; ++i) {
+	for (size_t i = 0; i < FPL_GAMEPAD_GUID_SIZE; ++i) {
 		outMapping->guid[i] = in[i];
 	}
-	outMapping->platform = (fplGamepadPlatform)in[FPL_GAMEPAD_GUID_BYTES];
-	const uint8_t *bp = in + FPL_GAMEPAD_GUID_BYTES + 1;
+	outMapping->platform = (fplGamepadPlatform)in[FPL_GAMEPAD_GUID_SIZE];
+	const uint8_t *bp = in + FPL_GAMEPAD_GUID_SIZE + 1;
 	for (size_t i = 0; i < FPL_GAMEPAD_BUTTON_COUNT; ++i) {
 		fplDecodeBinding(fpl__ReadU16LE(bp), &outMapping->buttons[i]);
 		bp += 2;
@@ -431,8 +431,8 @@ void fplDecodeGamepadMappingEntry(const uint8_t in[FPL_GAMEPAD_BLOB_ENTRY_SIZE],
 }
 
 // Compares two raw GUIDs lexicographically. <0 if a<b, 0 equal, >0 if a>b.
-static int fpl__CompareGuid(const uint8_t a[FPL_GAMEPAD_GUID_BYTES], const uint8_t b[FPL_GAMEPAD_GUID_BYTES]) {
-	for (size_t i = 0; i < FPL_GAMEPAD_GUID_BYTES; ++i) {
+static int fpl__CompareGuid(const uint8_t a[FPL_GAMEPAD_GUID_SIZE], const uint8_t b[FPL_GAMEPAD_GUID_SIZE]) {
+	for (size_t i = 0; i < FPL_GAMEPAD_GUID_SIZE; ++i) {
 		if (a[i] != b[i]) {
 			return (int)a[i] - (int)b[i];
 		}
@@ -455,7 +455,7 @@ uint32_t fplDecompressGamepadMappingTable(const uint8_t *blob, uint32_t entryCou
 }
 
 // Looks up a mapping in an already-decompressed, GUID-sorted table. Prefers an exact platform match, falls back to the first GUID match.
-bool fplFindGamepadMapping(const fplGamepadMapping *table, uint32_t tableCount, const uint8_t guid[FPL_GAMEPAD_GUID_BYTES], fplGamepadPlatform platform, fplGamepadMapping *outMapping) {
+bool fplFindGamepadMapping(const fplGamepadMapping *table, uint32_t tableCount, const uint8_t guid[FPL_GAMEPAD_GUID_SIZE], fplGamepadPlatform platform, fplGamepadMapping *outMapping) {
 	if (table == fpl_null || outMapping == fpl_null || tableCount == 0) {
 		return false;
 	}
