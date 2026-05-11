@@ -277,6 +277,8 @@ SOFTWARE.
 	- Fixed: [X11] fpl__X11Display vs Display and fpl__X11Visual vs Visual type mismatches
 	- Fixed: [X11] Compile errors when using opaque X11 types
 	- Fixed[#181]: [X11] fpl__X11ParseUriPaths does not do any URI decoding, resulting in most-likely unuseable file paths
+	- Fixed: [X11] fplQueryCursorPosition returned window-relative coords instead of screen-relative; now matches Win32 GetCursorPos by returning root-window coords
+	- Fixed: [X11] fplQueryCursorPosition was compiled outside FPL__ENABLE_WINDOW guard, breaking window-disabled builds
 	- Changed: [X11] Window size and position are no longer overwritten on creation
 	- Changed: [X11] Default window size changed to 720p (1280x720)
 	- Changed: [X11] Disabled FPL_NO_PLATFORM_INCLUDES for Xlib includes
@@ -24804,8 +24806,8 @@ fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY) {
 	int winY = 0;
 	unsigned int mask = 0;
 	if (x11Api->XQueryPointer(windowState->display, windowState->window, &rootRet, &childRet, &rootX, &rootY, &winX, &winY, &mask)) {
-		*outX = winX;
-		*outY = winY;
+		*outX = rootX;
+		*outY = rootY;
 		return(true);
 	}
 	return(false);
