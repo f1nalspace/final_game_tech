@@ -5,7 +5,7 @@
 #define STBTT_STATIC
 #include "stb_truetype.h"
 
-#include <GL/GL.h>
+#include <GL/gl.h>
 
 struct BakedCodePoint {
 	float s0;
@@ -24,7 +24,7 @@ int main(int argc, char *argv[]) {
 	fplSettings settings = {};
 	fplSetDefaultSettings(&settings);
 	settings.video.backend = fplVideoBackendType_OpenGL;
-	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
+	settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Legacy;
 	if(fplPlatformInit(fplInitFlags_Video, &settings)) {
 		glEnable(GL_DEPTH_TEST);
 		glDepthFunc(GL_LEQUAL);
@@ -137,7 +137,7 @@ int main(int argc, char *argv[]) {
 
 			float fontScale = 64.0f;
 
-			const char *text = "öÖ^Final-Platform-Layer";
+			const char *text = "ï¿½ï¿½^Final-Platform-Layer";
 
 			float x = w * 0.5f;
 			float y = h * 0.5f;

@@ -16,4 +16,4 @@ project "FontRendering"
 	filter {}
 
 	filter "system:linux"
-		links { "m" }
+		links { "m", "GL" }
