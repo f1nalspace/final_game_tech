@@ -11391,7 +11391,7 @@ typedef struct fpl__InputBackendX11Kbm {
 typedef FPL__FUNC_X11_XFree(fpl__func_x11_XFree);
 #define FPL__FUNC_X11_XFlush(name) int name(Display *display)
 typedef FPL__FUNC_X11_XFlush(fpl__func_x11_XFlush);
-#define FPL__FUNC_X11_XOpenDisplay(name) Display *name(char *display_name)
+#define FPL__FUNC_X11_XOpenDisplay(name) Display *name(const char *display_name)
 typedef FPL__FUNC_X11_XOpenDisplay(fpl__func_x11_XOpenDisplay);
 #define FPL__FUNC_X11_XCloseDisplay(name) int name(Display *display)
 typedef FPL__FUNC_X11_XCloseDisplay(fpl__func_x11_XCloseDisplay);
@@ -11481,7 +11481,7 @@ typedef FPL__FUNC_X11_XQueryPointer(fpl__func_x11_XQueryPointer);
 typedef FPL__FUNC_X11_XConvertSelection(fpl__func_x11_XConvertSelection);
 #define FPL__FUNC_X11_XInitThreads(name) Status name(void)
 typedef FPL__FUNC_X11_XInitThreads(fpl__func_x11_XInitThreads);
-#define FPL__FUNC_X11_XSetErrorHandler(name) XErrorHandler name(XErrorHandler *handler)
+#define FPL__FUNC_X11_XSetErrorHandler(name) XErrorHandler name(XErrorHandler handler)
 typedef FPL__FUNC_X11_XSetErrorHandler(fpl__func_x11_XSetErrorHandler);
 
 typedef struct fpl__X11Api {
