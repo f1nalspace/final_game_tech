@@ -28933,13 +28933,14 @@ fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendALSADescriptor =
 #if defined(FPL__ENABLE_AUDIO_PULSEAUDIO)
 
 // @NOTE(final/PulseAudio): The PulseAudio backend is runtime-linked by default, so the PulseAudio development headers are not required.
-#if !defined(FPL__ANONYMOUS_PULSEAUDIO_HEADERS) && !defined(FPL_NO_RUNTIME_LINKING)
-#	define FPL__ANONYMOUS_PULSEAUDIO_HEADERS
+#if defined(FPL_NO_RUNTIME_LINKING)
+#	define FPL__PULSEAUDIO_USE_REAL_HEADERS
+#endif
+#if !defined(FPL__PULSEAUDIO_ANONYMOUS_HEADERS) && !defined(FPL__PULSEAUDIO_USE_REAL_HEADERS)
+#	define FPL__PULSEAUDIO_ANONYMOUS_HEADERS
 #endif
 
-
-
-#if defined(FPL__ANONYMOUS_PULSEAUDIO_HEADERS)
+#if defined(FPL__PULSEAUDIO_ANONYMOUS_HEADERS)
 // Opaque handles
 typedef void pa_mainloop_api;
 typedef void pa_threaded_mainloop;
@@ -28947,6 +28948,8 @@ typedef void pa_context;
 typedef void pa_stream;
 typedef void pa_operation;
 typedef void pa_proplist;
+typedef void pa_spawn_api;
+typedef void pa_cvolume;
 
 // Time / size typedefs
 typedef uint64_t pa_usec_t;
@@ -29095,11 +29098,10 @@ typedef void(*pa_stream_request_cb_t)(pa_stream *stream, size_t numberOfBytes, v
 typedef void(*pa_stream_success_cb_t)(pa_stream *stream, int success, void *userData);
 typedef void(*pa_sink_info_cb_t)(pa_context *context, const pa_sink_info *info, int eol, void *userData);
 typedef void(*pa_free_cb_t)(void *buffer);
-
 #else
 // @TODO(final/PulseAudio): Remove PulseAudio include when runtime linking is enabled
 #	include <pulse/pulseaudio.h>
-#endif // FPL__ANONYMOUS_PULSEAUDIO_HEADERS
+#endif // FPL__PULSEAUDIO_ANONYMOUS_HEADERS
 
 // Function typedefs for all PulseAudio runtime-loaded functions
 #define FPL__PULSEAUDIO_FUNC_pa_threaded_mainloop_new(name) pa_threaded_mainloop *name(void)
