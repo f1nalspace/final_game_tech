@@ -1,3 +1,7 @@
 #!/bin/sh
 rm -rf build
-rm -rf cmake
+rm -rf Build
+rm -rf bin
+rm -rf cmake*
+rm -rf immediates*
+rm -rf Immediates*
