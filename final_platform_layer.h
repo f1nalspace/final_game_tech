@@ -309,6 +309,8 @@ SOFTWARE.
 	- Fixed: [PulseAudio] Defines were not handled correctly for FPL_NO_RUNTIME_LINKING
 	- Fixed: [ALSA] Defines were not handled correctly for FPL_NO_RUNTIME_LINKING
 	- Fixed[#182]: [ALSA] Fixed default audio devices are not detected in modern linux audio systems
+	- Improved: [ALSA] fpl__MapAudioFormatToAlsaFormat now uses an indexed lookup table covering all fplAudioFormatType values incl. F64
+	- Improved: [ALSA] fpl__MapAlsaFormatToAudioFormat now uses a lookup table that also handles native-endian aliases (SND_PCM_FORMAT_S16/S32/FLOAT/FLOAT64) and FLOAT64 variants
 	- Changed: fplSetDefaultAudioSettings() sets audio backend type to automatic
 	- Changed: [ALSA] Audio device enumeration prints out each audio device to verbose log
 
@@ -29602,39 +29604,26 @@ fpl_internal FPL_AUDIO_BACKEND_STOP_DEVICE_FUNC(fpl__AudioBackendAlsaStopDevice)
 }
 
 fpl_internal snd_pcm_format_t fpl__MapAudioFormatToAlsaFormat(fplAudioFormatType format) {
-	// @TODO(final): [ALSA] Mapping table from fplAudioFormatType to snd_pcm_format_t here!
-	bool isBigEndian = fplIsBigEndian();
-	if (isBigEndian) {
-		switch (format) {
-			case fplAudioFormatType_U8:
-				return SND_PCM_FORMAT_U8;
-			case fplAudioFormatType_S16:
-				return SND_PCM_FORMAT_S16_BE;
-			case fplAudioFormatType_S24:
-				return SND_PCM_FORMAT_S24_3BE;
-			case fplAudioFormatType_S32:
-				return SND_PCM_FORMAT_S32_BE;
-			case fplAudioFormatType_F32:
-				return SND_PCM_FORMAT_FLOAT_BE;
-			default:
-				return SND_PCM_FORMAT_UNKNOWN;
-		}
-	} else {
-		switch (format) {
-			case fplAudioFormatType_U8:
-				return SND_PCM_FORMAT_U8;
-			case fplAudioFormatType_S16:
-				return SND_PCM_FORMAT_S16_LE;
-			case fplAudioFormatType_S24:
-				return SND_PCM_FORMAT_S24_3LE;
-			case fplAudioFormatType_S32:
-				return SND_PCM_FORMAT_S32_LE;
-			case fplAudioFormatType_F32:
-				return SND_PCM_FORMAT_FLOAT_LE;
-			default:
-				return SND_PCM_FORMAT_UNKNOWN;
-		}
+	// Indexed by fplAudioFormatType. Order must match the enum (None, U8, S16, S24, S32, S64, F32, F64).
+	// SND_PCM_FORMAT_UNKNOWN marks formats ALSA has no direct equivalent for.
+	static const struct {
+		snd_pcm_format_t le;
+		snd_pcm_format_t be;
+	} fpl__alsaFmtMap[] = {
+		/* None */ { SND_PCM_FORMAT_UNKNOWN,   SND_PCM_FORMAT_UNKNOWN },
+		/* U8   */ { SND_PCM_FORMAT_U8,        SND_PCM_FORMAT_U8 },
+		/* S16  */ { SND_PCM_FORMAT_S16_LE,    SND_PCM_FORMAT_S16_BE },
+		/* S24  */ { SND_PCM_FORMAT_S24_3LE,   SND_PCM_FORMAT_S24_3BE },
+		/* S32  */ { SND_PCM_FORMAT_S32_LE,    SND_PCM_FORMAT_S32_BE },
+		/* S64  */ { SND_PCM_FORMAT_UNKNOWN,   SND_PCM_FORMAT_UNKNOWN },
+		/* F32  */ { SND_PCM_FORMAT_FLOAT_LE,  SND_PCM_FORMAT_FLOAT_BE },
+		/* F64  */ { SND_PCM_FORMAT_FLOAT64_LE, SND_PCM_FORMAT_FLOAT64_BE },
+	};
+	if ((uint32_t)format >= fplArrayCount(fpl__alsaFmtMap)) {
+		return SND_PCM_FORMAT_UNKNOWN;
 	}
+	bool isBigEndian = fplIsBigEndian();
+	return isBigEndian ? fpl__alsaFmtMap[(uint32_t)format].be : fpl__alsaFmtMap[(uint32_t)format].le;
 }
 
 fpl_internal FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl__AudioBackendAlsaMainLoop) {
@@ -29647,25 +29636,33 @@ fpl_internal FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl__AudioBackendAlsaMainLoop) {
 }
 
 fpl_internal fplAudioFormatType fpl__MapAlsaFormatToAudioFormat(snd_pcm_format_t format) {
-	// @TODO(final): [ALSA] Mapping table from snd_pcm_format_t to fplAudioFormatType here!
-	switch (format) {
-		case SND_PCM_FORMAT_U8:
-			return fplAudioFormatType_U8;
-		case SND_PCM_FORMAT_S16_BE:
-		case SND_PCM_FORMAT_S16_LE:
-			return fplAudioFormatType_S16;
-		case SND_PCM_FORMAT_S24_3BE:
-		case SND_PCM_FORMAT_S24_3LE:
-			return fplAudioFormatType_S24;
-		case SND_PCM_FORMAT_S32_BE:
-		case SND_PCM_FORMAT_S32_LE:
-			return fplAudioFormatType_S32;
-		case SND_PCM_FORMAT_FLOAT_BE:
-		case SND_PCM_FORMAT_FLOAT_LE:
-			return fplAudioFormatType_F32;
-		default:
-			return fplAudioFormatType_None;
+	// Linear scan; both endian variants and native aliases (SND_PCM_FORMAT_S16 etc.) map to the same FPL type.
+	static const struct {
+		snd_pcm_format_t alsa;
+		fplAudioFormatType fpl;
+	} fpl__alsaToFmtMap[] = {
+		{ SND_PCM_FORMAT_U8,          fplAudioFormatType_U8 },
+		{ SND_PCM_FORMAT_S16_LE,      fplAudioFormatType_S16 },
+		{ SND_PCM_FORMAT_S16_BE,      fplAudioFormatType_S16 },
+		{ SND_PCM_FORMAT_S16,         fplAudioFormatType_S16 },
+		{ SND_PCM_FORMAT_S24_3LE,     fplAudioFormatType_S24 },
+		{ SND_PCM_FORMAT_S24_3BE,     fplAudioFormatType_S24 },
+		{ SND_PCM_FORMAT_S32_LE,      fplAudioFormatType_S32 },
+		{ SND_PCM_FORMAT_S32_BE,      fplAudioFormatType_S32 },
+		{ SND_PCM_FORMAT_S32,         fplAudioFormatType_S32 },
+		{ SND_PCM_FORMAT_FLOAT_LE,    fplAudioFormatType_F32 },
+		{ SND_PCM_FORMAT_FLOAT_BE,    fplAudioFormatType_F32 },
+		{ SND_PCM_FORMAT_FLOAT,       fplAudioFormatType_F32 },
+		{ SND_PCM_FORMAT_FLOAT64_LE,  fplAudioFormatType_F64 },
+		{ SND_PCM_FORMAT_FLOAT64_BE,  fplAudioFormatType_F64 },
+		{ SND_PCM_FORMAT_FLOAT64,     fplAudioFormatType_F64 },
+	};
+	for (size_t i = 0; i < fplArrayCount(fpl__alsaToFmtMap); ++i) {
+		if (fpl__alsaToFmtMap[i].alsa == format) {
+			return fpl__alsaToFmtMap[i].fpl;
+		}
 	}
+	return fplAudioFormatType_None;
 }
 
 fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendAlsaInitialize) {

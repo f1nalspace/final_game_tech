@@ -62,8 +62,8 @@ Last refresh: 2026-05-11
 - [ ] `[ALSA] fpl__AudioBackendAlsaGetAudioDeviceInfo` — returns `NotImplemented` (line 30117)
 - [ ] `[PulseAudio] fpl__AudioBackendPulseAudioGetAudioDeviceInfo` — returns `NotImplemented` (line 31007)
 - [ ] `[PipeWire] fpl__AudioBackendPipeWireGetAudioDeviceInfo` — returns `NotImplemented` (line 32461)
-- [ ] `[ALSA]` Mapping table `fplAudioFormatType -> snd_pcm_format_t` (line 29589)
-- [ ] `[ALSA]` Mapping table `snd_pcm_format_t -> fplAudioFormatType` (line 29634)
+- [x] ~~`[ALSA]` Mapping table `fplAudioFormatType -> snd_pcm_format_t`~~ — done: indexed lookup, covers F64; S64 marked UNKNOWN (no ALSA equivalent)
+- [x] ~~`[ALSA]` Mapping table `snd_pcm_format_t -> fplAudioFormatType`~~ — done: lookup table, handles native-endian aliases + FLOAT64
 - [ ] `[ALSA]` Optional `dmix`/`hw` device id `:%d,%d` probe (line 29794, 30103)
 - [ ] `[PipeWire]` Remove PipeWire include when runtime linking is enabled (line 31563)
 - [ ] Audio backend descriptor from audio settings (line 32928)
