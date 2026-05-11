@@ -42,7 +42,8 @@ Last refresh: 2026-05-11
 
 ## Window (Win32)
 
-- [ ] Multi-monitor origin assumption may be wrong in `fplGetWindowDisplay` — uses 0,0 (line 15444)
+- [x] ~~Multi-monitor origin assumption in `fpl__Win32EnterFullscreen` resolution-change path~~ — fixed: anchors to xpos/ypos or target monitor origin
+- [x] ~~`fpl__Win32EnterFullscreen` non-resolution-change path wrote `ypos+h` into `.top` instead of `.bottom`~~ — fixed
 - [ ] Read ACL for full permission detection (line 19115)
 
 ## Unix Platform

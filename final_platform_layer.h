@@ -275,6 +275,8 @@ SOFTWARE.
 	- Improved: [X11] fpl__X11Display / Visual / GC / Image are now forward-declared incomplete struct types instead of `typedef void`, so `fpl__X11Display *` is a distinct, type-safe pointer rather than an alias for `void *`
 	- Fixed: [Win32] Fixed last event from event queue was never used, when there is no events from the window
 	- Fixed: [Win32] Lost/Got focus event was not detected properly
+	- Fixed: [Win32] fpl__Win32EnterFullscreen assumed (0,0) origin in resolution-change path — now anchors to xpos/ypos or target monitor origin (multi-monitor safe)
+	- Fixed: [Win32] fpl__Win32EnterFullscreen non-resolution-change path wrote ypos+height into windowRect.top instead of windowRect.bottom
 	- Fixed: [X11] Fixed last event from event queue was never used, when there is no events from the window
 	- Fixed: [X11] Fixed window support was not disabled when X11 is not present
 	- Fixed: [X11] Fixed fplPollEvent() was not handling the events properly, resulting in not processing any events anymore
@@ -15450,9 +15452,14 @@ fpl_internal bool fpl__Win32EnterFullscreen(const int32_t xpos, const int32_t yp
 		}
 
 		RECT windowRect;
-		// @TODO(final/Win32): This may not be correct to assume 0, 0 as origin for the current display
-		windowRect.left = 0;
-		windowRect.top = 0;
+		// Anchor to xpos/ypos when valid, otherwise to the target monitor's origin (multi-monitor safe).
+		if ((xpos != INT32_MAX) && (ypos != INT32_MAX)) {
+			windowRect.left = xpos;
+			windowRect.top = ypos;
+		} else {
+			windowRect.left = monitor.rcMonitor.left;
+			windowRect.top = monitor.rcMonitor.top;
+		}
 		windowRect.right = windowRect.left + useFullscreenWidth;
 		windowRect.bottom = windowRect.top + useFullscreenHeight;
 
@@ -15478,7 +15485,7 @@ fpl_internal bool fpl__Win32EnterFullscreen(const int32_t xpos, const int32_t yp
 			windowRect.left = xpos;
 			windowRect.top = ypos;
 			windowRect.right = xpos + fullscreenWidth;
-			windowRect.top = ypos + fullscreenHeight;
+			windowRect.bottom = ypos + fullscreenHeight;
 		} else {
 			windowRect = monitor.rcMonitor;
 		}
