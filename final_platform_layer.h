@@ -24805,9 +24805,15 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_Win32OpenGL_Construct(void) {
 //
 // ############################################################################
 #if defined(FPL__ENABLE_VIDEO_OPENGL) && defined(FPL_SUBPLATFORM_X11)
+
+#if defined(FPL_NO_RUNTIME_LINKING)
+#	include "GL/glx.h"
+#endif
+
 #ifndef __gl_h_
 typedef uint8_t GLubyte;
 #endif
+
 #ifndef GLX_H
 typedef XID GLXDrawable;
 typedef XID GLXWindow;
