@@ -70,7 +70,7 @@ Last refresh: 2026-05-11
 - [ ] Audio backend descriptor from audio settings (line 32928)
 - [ ] OSS backend — planned, not implemented (Known Limitation)
 - [ ] Extended audio device infos do not contain format list yet (Known Limitation)
-- [ ] Resampler edge case — fake-round extra frame workaround (line 33890)
+- [x] ~~Resampler edge case — fake-round extra frame workaround (line 33890)~~ — done: replaced with `round(in * outRate/inRate)` using double; additions resampler now calls fplGetTargetAudioFrameCount; 44100<->48000 round-trip tests added.
 
 ## Input / Gamepad
 
