@@ -229,6 +229,7 @@ SOFTWARE.
 	- Improved: Simplified fplPathCombine by removing all internal memory allocation
 	- Improved: Added output-buffer convention block to header documenting size-required return semantics
 	- Improved: Normalized @param[in] / @param[out] tags across the API documentation
+	- Improved: [POSIX] Improved fplOSGetVersionInfos() by adding support for retrieving detailed version information on BSD/macOS/other Unix systems
 	- Fixed: Fixed duplicate platform includes
 	- Fixed: fpLGetAlignmentOffset() was not guarding the alignment argument in all cases
 	- Fixed: fplS32ToString() was not handling negative values correctly
