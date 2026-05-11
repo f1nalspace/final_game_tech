@@ -2719,11 +2719,7 @@ typedef enum fplX86InstructionSetLevel {
 #		define FPL__SUPPORT_AUDIO_DIRECTSOUND // <dsound.h> is always present on windows
 #	endif
 #	if !defined(FPL_NO_AUDIO_ALSA) && defined(FPL_PLATFORM_LINUX)
-#		if fplHasInclude(<alsa/asoundlib.h>)
-#			define FPL__SUPPORT_AUDIO_ALSA
-#		else
-#			warning "FPL-Warning: ALSA audio development library is missing. Please install 'libasound2-dev' and try again!"
-#		endif
+#		define FPL__SUPPORT_AUDIO_ALSA
 #	endif
 #	if !defined(FPL_NO_AUDIO_PULSEAUDIO) && defined(FPL_PLATFORM_LINUX)
 #		define FPL__SUPPORT_AUDIO_PULSEAUDIO // PulseAudio backend uses runtime linking to libpulse.so.0, no dev headers are required
@@ -27632,109 +27628,18 @@ fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendDirectShowDescri
 // ############################################################################
 #if defined(FPL__ENABLE_AUDIO_ALSA)
 
-// @NOTE(final): ALSA on Raspberry, due to high latency requires large audio buffers, so below we have a table mapped from device names to a scaling factor.
-typedef struct {
-	const char *deviceName;
-	float scale;
-} fpl__AlsaBufferScale;
+#if defined(FPL_NO_RUNTIME_LINKING)
+#	define FPL__ALSA_USE_REAL_HEADERS
+#endif
 
-fpl_globalvar fpl__AlsaBufferScale fpl__globalAlsaBufferScales[] = {
-	fplStructInit(fpl__AlsaBufferScale, "*bcm2835*", 2.0f),
-};
+#if !defined(FPL__ALSA_ANONYMOUS_HEADERS) && !defined(FPL__ALSA_USE_REAL_HEADERS)
+#	define FPL__ALSA_ANONYMOUS_HEADERS
 
-fpl_internal float fpl__AlsaGetBufferScale(const char *deviceName) {
-	if (fplGetStringLength(deviceName) > 0) {
-		for (int i = 0; i < fplArrayCount(fpl__globalAlsaBufferScales); ++i) {
-			const char *testDeviceName = fpl__globalAlsaBufferScales[i].deviceName;
-			if (fplIsStringMatchWildcard(deviceName, testDeviceName)) {
-				float scale = fpl__globalAlsaBufferScales[i].scale;
-				return(scale);
-			}
-		}
-	}
-	return(1.0f);
-}
-
-fpl_internal uint32_t fpl__AlsaScaleBufferSize(const uint32_t bufferSize, const float scale) {
-	uint32_t result = fplMax(1, (uint32_t)(bufferSize * scale));
-	return(result);
-}
-
-// Sets the default audio channel map a alsa backend
-fpl_internal void fpl__SetAudioDefaultChannelMapALSA(const uint16_t channels, const fplAudioChannelLayout layout, fplAudioChannelMap *outChannelMap) {
-	fplClearStruct(outChannelMap);
-
-	if (channels == 0 || layout == fplAudioChannelLayout_Unsupported) {
-		return;
-	}
-
-	if (channels == 1 || layout == fplAudioChannelLayout_Mono) {
-		outChannelMap->speakers[0] = fplAudioChannelType_FrontCenter;
-	} else if (channels == 2 || layout == fplAudioChannelLayout_Stereo) {
-		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
-		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
-	} else if (channels == 3) {
-		if (layout == fplAudioChannelLayout_2_1) {
-			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
-			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
-			outChannelMap->speakers[2] = fplAudioChannelType_LowFrequency;
-		} else {
-			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
-			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
-			outChannelMap->speakers[2] = fplAudioChannelType_FrontCenter;
-		}
-	} else if (channels == 4) {
-		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
-		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
-		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
-		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
-	} else if (channels == 5) {
-		if (layout == fplAudioChannelLayout_4_1) {
-			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
-			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
-			outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
-			outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
-			outChannelMap->speakers[4] = fplAudioChannelType_LowFrequency;
-		} else {
-			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
-			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
-			outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
-			outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
-			outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
-		}
-	} else if (channels == 6) {
-		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
-		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
-		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
-		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
-		outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
-		outChannelMap->speakers[5] = fplAudioChannelType_LowFrequency;
-	} else if (channels == 7) {
-		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
-		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
-		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
-		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
-		outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
-		outChannelMap->speakers[5] = fplAudioChannelType_LowFrequency;
-		outChannelMap->speakers[6] = fplAudioChannelType_BackCenter;
-	} else {
-		fplAssert(channels >= 8);
-		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
-		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
-		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
-		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
-		outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
-		outChannelMap->speakers[5] = fplAudioChannelType_LowFrequency;
-		outChannelMap->speakers[6] = fplAudioChannelType_SideLeft;
-		outChannelMap->speakers[7] = fplAudioChannelType_SideRight;
-	}
-}
-
-#if defined(FPL__ANONYMOUS_ALSA_HEADERS)
 typedef void snd_pcm_t;
 typedef void snd_pcm_format_mask_t;
 typedef void snd_pcm_hw_params_t;
 typedef void snd_pcm_sw_params_t;
+typedef void snd_pcm_info_t;
 
 typedef uint64_t snd_pcm_uframes_t;
 typedef int64_t snd_pcm_sframes_t;
@@ -27826,7 +27731,7 @@ typedef enum snd_pcm_access_t {
 #else
 // @TODO(final/ALSA): Remove ALSA include when runtime linking is enabled
 #	include <alsa/asoundlib.h>
-#endif // FPL__ANONYMOUS_ALSA_HEADERS
+#endif // FPL__ALSA_ANONYMOUS_HEADERS
 
 #define FPL__ALSA_FUNC_snd_pcm_open(name) int name(snd_pcm_t **pcm, const char *name, snd_pcm_stream_t stream, int mode)
 typedef FPL__ALSA_FUNC_snd_pcm_open(fpl__alsa_func_snd_pcm_open);
@@ -28054,6 +27959,104 @@ fpl_internal bool fpl__LoadAlsaApi(fpl__AlsaAudioApi *alsaApi) {
 		fpl__UnloadAlsaApi(alsaApi);
 	}
 	return(result);
+}
+
+// @NOTE(final): ALSA on Raspberry, due to high latency requires large audio buffers, so below we have a table mapped from device names to a scaling factor.
+typedef struct {
+	const char *deviceName;
+	float scale;
+} fpl__AlsaBufferScale;
+
+fpl_globalvar fpl__AlsaBufferScale fpl__globalAlsaBufferScales[] = {
+	fplStructInit(fpl__AlsaBufferScale, "*bcm2835*", 2.0f),
+};
+
+fpl_internal float fpl__AlsaGetBufferScale(const char *deviceName) {
+	if (fplGetStringLength(deviceName) > 0) {
+		for (int i = 0; i < fplArrayCount(fpl__globalAlsaBufferScales); ++i) {
+			const char *testDeviceName = fpl__globalAlsaBufferScales[i].deviceName;
+			if (fplIsStringMatchWildcard(deviceName, testDeviceName)) {
+				float scale = fpl__globalAlsaBufferScales[i].scale;
+				return(scale);
+			}
+		}
+	}
+	return(1.0f);
+}
+
+fpl_internal uint32_t fpl__AlsaScaleBufferSize(const uint32_t bufferSize, const float scale) {
+	uint32_t result = fplMax(1, (uint32_t)(bufferSize * scale));
+	return(result);
+}
+
+// Sets the default audio channel map a alsa backend
+fpl_internal void fpl__SetAudioDefaultChannelMapALSA(const uint16_t channels, const fplAudioChannelLayout layout, fplAudioChannelMap *outChannelMap) {
+	fplClearStruct(outChannelMap);
+
+	if (channels == 0 || layout == fplAudioChannelLayout_Unsupported) {
+		return;
+	}
+
+	if (channels == 1 || layout == fplAudioChannelLayout_Mono) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontCenter;
+	} else if (channels == 2 || layout == fplAudioChannelLayout_Stereo) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+	} else if (channels == 3) {
+		if (layout == fplAudioChannelLayout_2_1) {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_LowFrequency;
+		} else {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_FrontCenter;
+		}
+	} else if (channels == 4) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+	} else if (channels == 5) {
+		if (layout == fplAudioChannelLayout_4_1) {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+			outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+			outChannelMap->speakers[4] = fplAudioChannelType_LowFrequency;
+		} else {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+			outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+			outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
+		}
+	} else if (channels == 6) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+		outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
+		outChannelMap->speakers[5] = fplAudioChannelType_LowFrequency;
+	} else if (channels == 7) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+		outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
+		outChannelMap->speakers[5] = fplAudioChannelType_LowFrequency;
+		outChannelMap->speakers[6] = fplAudioChannelType_BackCenter;
+	} else {
+		fplAssert(channels >= 8);
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+		outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
+		outChannelMap->speakers[5] = fplAudioChannelType_LowFrequency;
+		outChannelMap->speakers[6] = fplAudioChannelType_SideLeft;
+		outChannelMap->speakers[7] = fplAudioChannelType_SideRight;
+	}
 }
 
 fpl_internal uint32_t fpl__AudioWaitForFramesAlsa(const fplAudioFormat *deviceFormat, fpl__AlsaAudioBackend *backend, bool *requiresRestart) {
