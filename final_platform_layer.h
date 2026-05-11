@@ -25519,7 +25519,7 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_Win32Software_Construct(void) {
 // ############################################################################
 #if defined(FPL__ENABLE_VIDEO_VULKAN)
 
-#if !fplHasInclude(<vulkan/vulkan.h>) || defined(FPL_NO_PLATFORM_INCLUDES)
+#if (!fplHasInclude(<vulkan/vulkan.h>) || defined(FPL_NO_PLATFORM_INCLUDES)) && !defined(FPL_NO_RUNTIME_LINKING)
 
 #if defined(FPL_PLATFORM_WINDOWS)
 #	define fpl__VKAPI_CALL __stdcall
@@ -25734,6 +25734,7 @@ typedef void (fpl__VKAPI_PTR *fpl__func_vkDestroyDebugUtilsMessengerEXT)(fpl__Vk
 #	if !defined(FPL_NO_RUNTIME_LINKING)
 #		define VK_NO_PROTOTYPES
 #	endif
+
 #	include <vulkan/vulkan.h>
 
 #	define fpl__VKAPI_CALL VKAPI_CALL
@@ -26303,7 +26304,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Vulkan_Initial
 	creationInfo.window = windowState->x11.window;
 
 	FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Create Vulkan X11 Surface for display '%p', window '%d' and Vulkan instance '%p'", creationInfo.dpy, creationInfo.window, nativeBackend->instanceHandle);
-	fpl__VkResult creationResult = createProc(nativeBackend->instanceHandle, &creationInfo, nativeBackend->allocator, &surfaceHandle);
+	fpl__VkResult creationResult = (fpl__VkResult)createProc(nativeBackend->instanceHandle, &creationInfo, nativeBackend->allocator, &surfaceHandle);
 	if (creationResult != FPL__VK_SUCCESS) {
 		FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "Failed creating vulkan surface KHR for X11 -> (VkResult: %d)!", creationResult);
 		return(false);
