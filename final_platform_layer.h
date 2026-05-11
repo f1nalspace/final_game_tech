@@ -2719,13 +2719,19 @@ typedef enum fplX86InstructionSetLevel {
 #		define FPL__SUPPORT_AUDIO_DIRECTSOUND // <dsound.h> is always present on windows
 #	endif
 #	if !defined(FPL_NO_AUDIO_ALSA) && defined(FPL_PLATFORM_LINUX)
-#		define FPL__SUPPORT_AUDIO_ALSA
+#		if !defined(FPL_NO_RUNTIME_LINKING) || fplHasInclude(<alsa/asoundlib.h>)
+#			define FPL__SUPPORT_AUDIO_ALSA
+#		endif
 #	endif
 #	if !defined(FPL_NO_AUDIO_PULSEAUDIO) && defined(FPL_PLATFORM_LINUX)
-#		define FPL__SUPPORT_AUDIO_PULSEAUDIO // PulseAudio backend uses runtime linking to libpulse.so.0, no dev headers are required
+#		if !defined(FPL_NO_RUNTIME_LINKING) || fplHasInclude(<pulse/pulseaudio.h>)
+#			define FPL__SUPPORT_AUDIO_PULSEAUDIO // PulseAudio backend uses runtime linking to libpulse.so.0, no dev headers are required
+#		endif
 #	endif
 #	if !defined(FPL_NO_AUDIO_PIPEWIRE) && defined(FPL_PLATFORM_LINUX)
-#		define FPL__SUPPORT_AUDIO_PIPEWIRE // PipeWire backend uses runtime linking to libpipewire-0.3.so.0, no dev headers are required
+#		if !defined(FPL_NO_RUNTIME_LINKING) || fplHasInclude(<pipewire/pipewire.h>)
+#			define FPL__SUPPORT_AUDIO_PIPEWIRE // PipeWire backend uses runtime linking to libpipewire-0.3.so.0, no dev headers are required
+#		endif
 #	endif
 #endif // FPL__SUPPORT_AUDIO
 
@@ -27729,7 +27735,6 @@ typedef enum snd_pcm_access_t {
 #define SND_PCM_NO_AUTO_CHANNELS 0x00020000
 #define	SND_PCM_NO_AUTO_FORMAT 0x00040000
 #else
-// @TODO(final/ALSA): Remove ALSA include when runtime linking is enabled
 #	include <alsa/asoundlib.h>
 #endif // FPL__ALSA_ANONYMOUS_HEADERS
 
@@ -29102,7 +29107,6 @@ typedef void(*pa_stream_success_cb_t)(pa_stream *stream, int success, void *user
 typedef void(*pa_sink_info_cb_t)(pa_context *context, const pa_sink_info *info, int eol, void *userData);
 typedef void(*pa_free_cb_t)(void *buffer);
 #else
-// @TODO(final/PulseAudio): Remove PulseAudio include when runtime linking is enabled
 #	include <pulse/pulseaudio.h>
 #endif // FPL__PULSEAUDIO_ANONYMOUS_HEADERS
 
@@ -30012,13 +30016,15 @@ fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendPulseAudioDescri
 // ############################################################################
 #if defined(FPL__ENABLE_AUDIO_PIPEWIRE)
 
-// @NOTE(final/PipeWire): The PipeWire backend is runtime-linked by default, so the PipeWire development headers are not required.
-// To disable anonymous headers and include the real <pipewire/pipewire.h> header instead, define FPL_PIPEWIRE_USE_REAL_HEADERS.
-#if !defined(FPL__ANONYMOUS_PIPEWIRE_HEADERS) && !defined(FPL_PIPEWIRE_USE_REAL_HEADERS)
-#	define FPL__ANONYMOUS_PIPEWIRE_HEADERS
+#if defined(FPL_NO_RUNTIME_LINKING)
+#	define FPL_PIPEWIRE_USE_REAL_HEADERS
 #endif
 
-#if defined(FPL__ANONYMOUS_PIPEWIRE_HEADERS)
+#if !defined(FPL__PIPEWIRE_ANONYMOUS_HEADERS) && !defined(FPL_PIPEWIRE_USE_REAL_HEADERS)
+#	define FPL__PIPEWIRE_ANONYMOUS_HEADERS
+#endif
+
+#if defined(FPL__PIPEWIRE_ANONYMOUS_HEADERS)
 // Opaque handles. PipeWire never exposes the internals of these structures, so we can treat them as void-sized handles.
 typedef void pw_thread_loop;
 typedef void pw_loop;
@@ -30266,7 +30272,7 @@ struct pw_buffer {
 #	include <spa/param/audio/raw.h>
 #	include <spa/param/audio/format-utils.h>
 #	include <spa/pod/builder.h>
-#endif // FPL__ANONYMOUS_PIPEWIRE_HEADERS
+#endif // FPL__PIPEWIRE_ANONYMOUS_HEADERS
 
 // Function typedefs for all PipeWire runtime-loaded functions
 #define FPL__PIPEWIRE_FUNC_pw_init(name) void name(int *argc, char ***argv)
