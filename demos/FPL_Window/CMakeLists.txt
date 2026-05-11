@@ -6,43 +6,26 @@ cmake_minimum_required(VERSION 3.10)
 #
 # -----------------------------------------------------------------------------
 
-project(FPL_AudioPlayer C)
+project(FPL_Window C)
 
 set(MY_COMPILER "c99")
 
-set(MY_EXTERNAL_LIBS
-	"m"
-	)
+set(MY_EXTERNAL_LIBS "")
 
 set(MY_INCLUDE_DIRS
 	"../../"
-	"../additions/"
-	"../dependencies/"
 	)
 
 set(MY_HEADER_FILES
 	"../../final_platform_layer.h"
-	"../additions/final_audio.h"
-	"../additions/final_audiosystem.h"
-	"../additions/final_audioconversion.h"
-	"../additions/final_audiodemo.h"
-	"../additions/final_buffer.h"
-	"../additions/final_mp3loader.h"
-	"../additions/final_vorbisloader.h"
-	"../additions/final_waveloader.h"
 	)
 
 set(MY_TRANSLATION_UNITS
-	"fpl_audioplayer.c"
+	"fpl_window.c"
 	)
 
 set(MY_DEFINES
 	-DFPL_IMPLEMENTATION
-	-DFPL_LOGGING
-	-DFINAL_AUDIOSYSTEM_IMPLEMENTATION
-	-DFINAL_GRAPHICS_IMPLEMENTATION
-	-DFINAL_WAVELOADER_IMPLEMENTATION
-	-DMA_USE_RUNTIME_LINKING_FOR_PTHREAD
 	)
 
 # -----------------------------------------------------------------------------

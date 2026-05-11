@@ -5,9 +5,10 @@ cmake_minimum_required(VERSION 3.10)
 # Project settings
 #
 # -----------------------------------------------------------------------------
+
 project(FOGL_Test C)
 
-set(MY_COMPILER c99)
+set(MY_COMPILER "c99")
 
 set(MY_EXTERNAL_LIBS "")
 

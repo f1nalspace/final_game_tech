@@ -5,13 +5,14 @@ cmake_minimum_required(VERSION 3.10)
 # Project settings
 #
 # -----------------------------------------------------------------------------
-project(FPL_ConsoleInput)
 
-set(MY_COMPILER c99)
+project(FPL_ConsoleInput C)
+
+set(MY_COMPILER "c99")
 
 set(MY_EXTERNAL_LIBS
-	m
-	pthread
+	"m"
+	"pthread"
 	)
 
 set(MY_INCLUDE_DIRS

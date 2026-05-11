@@ -10,7 +10,9 @@ project(Final_Testbed CXX)
 
 set(MY_COMPILER "cpp11")
 
-set(MY_EXTERNAL_LIBS "m")
+set(MY_EXTERNAL_LIBS
+	"m"
+	)
 
 set(MY_INCLUDE_DIRS
 	"../../"
@@ -50,6 +52,45 @@ elseif(CMAKE_SIZEOF_VOID_P EQUAL 4)
 else()
 	set(THIS_ARCH unknown)
 endif()
+
+# Output path setup
+set(THIS_ROOT_PATH_RELATIVE ../)
+get_filename_component(THIS_ROOT_PATH ${THIS_ROOT_PATH_RELATIVE} ABSOLUTE)
+
+set(THIS_EXECUTABLE_NAME ${PROJECT_NAME})
+set(THIS_EXECUTABLE_PATH ${THIS_ROOT_PATH}/build/${PROJECT_NAME}/${CMAKE_SYSTEM_NAME}-${THIS_ARCH}-${CMAKE_BUILD_TYPE})
+
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${THIS_EXECUTABLE_PATH})
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${THIS_EXECUTABLE_PATH})
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${THIS_EXECUTABLE_PATH})
+
+# Diagnostics as english
+add_compile_options(-fdiagnostics-plain-output)
+add_compile_options(-fdiagnostics-color=always)
+add_compile_options(-fdiagnostics-format=text)
+add_compile_options(-fdiagnostics-show-option)
+set(ENV{LC_ALL} "C")
+set(ENV{LANG} "C")
+
+# Build info
+message(STATUS "\n")
+message(STATUS "Project: ${PROJECT_NAME}")
+message(STATUS "---------------------------------------------------------------")
+message(STATUS "Architecture: ${THIS_ARCH}")
+message(STATUS "Compiler standard: ${MY_COMPILER}")
+message(STATUS "External libraries: ${MY_EXTERNAL_LIBS}")
+message(STATUS "Include directories: ${MY_INCLUDE_DIRS}")
+message(STATUS "Header files: ${MY_HEADER_FILES}")
+message(STATUS "Translation units: ${MY_TRANSLATION_UNITS}")
+message(STATUS "Defines: ${MY_DEFINES}")
+message(STATUS "Current source dir: ${CMAKE_CURRENT_SOURCE_DIR}")
+message(STATUS "Root dir: ${THIS_ROOT_PATH}")
+message(STATUS "Executable path: ${THIS_EXECUTABLE_PATH}")
+message(STATUS "Executable name: ${THIS_EXECUTABLE_NAME}")
+message(STATUS "---------------------------------------------------------------\n")
+
+# Project executable (must come first before anything else)
+add_executable(${PROJECT_NAME} ${MY_TRANSLATION_UNITS})
 
 # Compiler detection
 if(DEFINED MY_COMPILER AND NOT "${MY_COMPILER}" STREQUAL "")
@@ -94,45 +135,7 @@ else()
 	message(FATAL_ERROR "Compiler is not set, set MY_COMPILER to a correct c or cpp standard!")
 endif()
 
-# Output path setup
-set(THIS_ROOT_PATH_RELATIVE ../)
-get_filename_component(THIS_ROOT_PATH ${THIS_ROOT_PATH_RELATIVE} ABSOLUTE)
-
-set(THIS_EXECUTABLE_NAME ${PROJECT_NAME})
-set(THIS_EXECUTABLE_PATH ${THIS_ROOT_PATH}/build/${PROJECT_NAME}/${CMAKE_SYSTEM_NAME}-${THIS_ARCH}-${CMAKE_BUILD_TYPE})
-
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${THIS_EXECUTABLE_PATH})
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${THIS_EXECUTABLE_PATH})
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${THIS_EXECUTABLE_PATH})
-
-# Diagnostics as english
-add_compile_options(-fdiagnostics-plain-output)
-add_compile_options(-fdiagnostics-color=always)
-add_compile_options(-fdiagnostics-format=text)
-add_compile_options(-fdiagnostics-show-option)
-set(ENV{LC_ALL} "C")
-set(ENV{LANG} "C")
-
-# Build info
-message(STATUS "\n")
-message(STATUS "Project: ${PROJECT_NAME}")
-message(STATUS "---------------------------------------------------------------")
-message(STATUS "Architecture: ${THIS_ARCH}")
-message(STATUS "Compiler standard: ${MY_COMPILER}")
-message(STATUS "External libraries: ${MY_EXTERNAL_LIBS}")
-message(STATUS "Include directories: ${MY_INCLUDE_DIRS}")
-message(STATUS "Header files: ${MY_HEADER_FILES}")
-message(STATUS "Translation units: ${MY_TRANSLATION_UNITS}")
-message(STATUS "Defines: ${MY_DEFINES}")
-message(STATUS "Current source dir: ${CMAKE_CURRENT_SOURCE_DIR}")
-message(STATUS "Root dir: ${THIS_ROOT_PATH}")
-message(STATUS "Executable path: ${THIS_EXECUTABLE_PATH}")
-message(STATUS "Executable name: ${THIS_EXECUTABLE_NAME}")
-message(STATUS "---------------------------------------------------------------\n")
-
 # Build target
-add_executable(${PROJECT_NAME} ${MY_TRANSLATION_UNITS})
-
 target_compile_definitions(${PROJECT_NAME} PRIVATE ${MY_DEFINES})
 
 target_include_directories(${PROJECT_NAME} PRIVATE ${MY_INCLUDE_DIRS})

@@ -5,32 +5,35 @@ cmake_minimum_required(VERSION 3.10)
 # Project settings
 #
 # -----------------------------------------------------------------------------
+
 project(Final_AudioTest C)
 
-set(MY_COMPILER c99)
+set(MY_COMPILER "c99")
 
-set(MY_EXTERNAL_LIBS m)
+set(MY_EXTERNAL_LIBS
+	"m"
+	)
 
 set(MY_INCLUDE_DIRS
-    "../../"
-    "../additions/"
-    "../dependencies/"
-)
+	"../../"
+	"../additions/"
+	"../dependencies/"
+	)
 
 set(MY_HEADER_FILES
-    "../../final_platform_layer.h"
-)
+	"../../final_platform_layer.h"
+	)
 
 set(MY_TRANSLATION_UNITS
-    "final_audiotest.c"
-)
+	"final_audiotest.c"
+	)
 
 set(MY_DEFINES
-    -DFPL_IMPLEMENTATION
-    -DFPL_NO_WINDOW
-    -DFPL_NO_UNDEF
-    -DMA_USE_RUNTIME_LINKING_FOR_PTHREAD
-)
+	-DFPL_IMPLEMENTATION
+	-DFPL_NO_WINDOW
+	-DFPL_NO_UNDEF
+	-DMA_USE_RUNTIME_LINKING_FOR_PTHREAD
+	)
 
 # -----------------------------------------------------------------------------
 #
@@ -40,15 +43,15 @@ set(MY_DEFINES
 
 # Architecture detection
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|ARM64")
-    set(THIS_ARCH arm64)
+	set(THIS_ARCH arm64)
 elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "arm")
-    set(THIS_ARCH arm32)
+	set(THIS_ARCH arm32)
 elseif(CMAKE_SIZEOF_VOID_P EQUAL 8)
-    set(THIS_ARCH x64)
+	set(THIS_ARCH x64)
 elseif(CMAKE_SIZEOF_VOID_P EQUAL 4)
-    set(THIS_ARCH x86)
+	set(THIS_ARCH x86)
 else()
-    set(THIS_ARCH unknown)
+	set(THIS_ARCH unknown)
 endif()
 
 # Output path setup
@@ -92,45 +95,45 @@ add_executable(${PROJECT_NAME} ${MY_TRANSLATION_UNITS})
 
 # Compiler detection
 if(DEFINED MY_COMPILER AND NOT "${MY_COMPILER}" STREQUAL "")
-    if(MY_COMPILER MATCHES "^c[0-9]+$")
-        enable_language(C)
-        set(CMAKE_C_STANDARD_REQUIRED ON)
-        set(CMAKE_C_EXTENSIONS OFF)
+	if(MY_COMPILER MATCHES "^c[0-9]+$")
+		enable_language(C)
+		set(CMAKE_C_STANDARD_REQUIRED ON)
+		set(CMAKE_C_EXTENSIONS OFF)
 
-        if(MY_COMPILER STREQUAL "c99")
-            set(CMAKE_C_STANDARD 99)
-            target_compile_features(${PROJECT_NAME} PUBLIC c_std_99)
-        elseif(MY_COMPILER STREQUAL "c11")
-            set(CMAKE_C_STANDARD 11)
-            target_compile_features(${PROJECT_NAME} PUBLIC c_std_11)
-        elseif(MY_COMPILER STREQUAL "c17")
-            set(CMAKE_C_STANDARD 17)
-            target_compile_features(${PROJECT_NAME} PUBLIC c_std_17)
-        else()
-            message(FATAL_ERROR "Unsupported C Compiler: ${MY_COMPILER}")
-        endif()
-    elseif(MY_COMPILER MATCHES "^cpp[0-9]+$")
-        enable_language(CXX)
-        set(CMAKE_CXX_STANDARD_REQUIRED ON)
+		if(MY_COMPILER STREQUAL "c99")
+			set(CMAKE_C_STANDARD 99)
+			target_compile_features(${PROJECT_NAME} PUBLIC c_std_99)
+		elseif(MY_COMPILER STREQUAL "c11")
+			set(CMAKE_C_STANDARD 11)
+			target_compile_features(${PROJECT_NAME} PUBLIC c_std_11)
+		elseif(MY_COMPILER STREQUAL "c17")
+			set(CMAKE_C_STANDARD 17)
+			target_compile_features(${PROJECT_NAME} PUBLIC c_std_17)
+		else()
+			message(FATAL_ERROR "Unsupported C Compiler: ${MY_COMPILER}")
+		endif()
+	elseif(MY_COMPILER MATCHES "^cpp[0-9]+$")
+		enable_language(CXX)
+		set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-        if(MY_COMPILER STREQUAL "cpp11")
-            set(CMAKE_CXX_STANDARD 11)
-        elseif(MY_COMPILER STREQUAL "cpp14")
-            set(CMAKE_CXX_STANDARD 14)
-        elseif(MY_COMPILER STREQUAL "cpp17")
-            set(CMAKE_CXX_STANDARD 17)
-        elseif(MY_COMPILER STREQUAL "cpp20")
-            set(CMAKE_CXX_STANDARD 20)
-        elseif(MY_COMPILER STREQUAL "cpp23")
-            set(CMAKE_CXX_STANDARD 23)
-        else()
-            message(FATAL_ERROR "Unsupported C++ Compiler: ${MY_COMPILER}")
-        endif()
-    else()
-        message(FATAL_ERROR "Unknown Compiler: ${MY_COMPILER}")
-    endif()
+		if(MY_COMPILER STREQUAL "cpp11")
+			set(CMAKE_CXX_STANDARD 11)
+		elseif(MY_COMPILER STREQUAL "cpp14")
+			set(CMAKE_CXX_STANDARD 14)
+		elseif(MY_COMPILER STREQUAL "cpp17")
+			set(CMAKE_CXX_STANDARD 17)
+		elseif(MY_COMPILER STREQUAL "cpp20")
+			set(CMAKE_CXX_STANDARD 20)
+		elseif(MY_COMPILER STREQUAL "cpp23")
+			set(CMAKE_CXX_STANDARD 23)
+		else()
+			message(FATAL_ERROR "Unsupported C++ Compiler: ${MY_COMPILER}")
+		endif()
+	else()
+		message(FATAL_ERROR "Unknown Compiler: ${MY_COMPILER}")
+	endif()
 else()
-    message(FATAL_ERROR "Compiler is not set, set MY_COMPILER to a correct c or cpp standard!")
+	message(FATAL_ERROR "Compiler is not set, set MY_COMPILER to a correct c or cpp standard!")
 endif()
 
 # Build target
@@ -142,9 +145,9 @@ target_link_libraries(${PROJECT_NAME} ${MY_EXTERNAL_LIBS} ${CMAKE_DL_LIBS})
 
 # Post-build copy of resource folder
 if(DEFINED MY_RESOURCE_FOLDER AND NOT "${MY_RESOURCE_FOLDER}" STREQUAL "")
-    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_SOURCE_DIR}/${MY_RESOURCE_FOLDER}
-            $<TARGET_FILE_DIR:${PROJECT_NAME}>/${MY_RESOURCE_FOLDER}
-    )
+	add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+			COMMAND ${CMAKE_COMMAND} -E copy_directory
+			${CMAKE_SOURCE_DIR}/${MY_RESOURCE_FOLDER}
+			$<TARGET_FILE_DIR:${PROJECT_NAME}>/${MY_RESOURCE_FOLDER}
+	)
 endif()
