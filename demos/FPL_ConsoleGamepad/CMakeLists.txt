@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.10)
 # Project settings
 #
 # -----------------------------------------------------------------------------
-project(FPL_ConsoleGamepad)
+project(FPL_ConsoleInput)
 
 set(MY_COMPILER c99)
 
@@ -23,7 +23,7 @@ set(MY_HEADER_FILES
 	)
 
 set(MY_TRANSLATION_UNITS
-	"fpl_console_gamepad.c"
+	"fpl_console_input.c"
 	)
 
 set(MY_DEFINES

@@ -1,6 +1,6 @@
 # Project
-APP_NAME = FPL_ConsoleGamepad
-SOURCE_FILES = fpl_console_gamepad.c
+APP_NAME = FPL_ConsoleInput
+SOURCE_FILES = fpl_console_input.c
 LIBS = -ldl -lpthread
 INCLUDES = -I../../
 ARCH_TYPE = x64
