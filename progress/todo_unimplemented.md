@@ -47,9 +47,9 @@ Last refresh: 2026-05-11
 - [ ] `fplGetSystemLocale` (line 25550)
 - [ ] `fplGetUserLocale` (line 25555)
 - [ ] `fplGetInputLocale` (line 25560)
-- [ ] POSIX `st_atim` vs `st_atime` fallback detection for older POSIX (line 11087)
-- [ ] `sched_getscheduler` POSIX standard coverage check (line 20624)
-- [ ] LC_ALL restore in `fpl__LinuxReleasePlatform`
+- [x] POSIX `st_atim` vs `st_atime` fallback detection for older POSIX
+- [x] `sched_getscheduler` POSIX standard coverage check
+- [x] LC_ALL restore in `fpl__LinuxReleasePlatform`
 
 ## Audio
 
