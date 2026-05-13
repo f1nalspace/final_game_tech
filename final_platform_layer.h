@@ -254,6 +254,7 @@ SOFTWARE.
 	- Fixed: [POSIX] dirint.h and sched.h was not included always
 	- Fixed: [POSIX] fplDateTime functions were not thread-safe — now use localtime_r / gmtime_r
 	- Fixed: [POSIX] fplDirectoriesCreate was not separator-tolerant
+	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Fixed[#184]: [POSIX] fplDirectoriesCreate() does not create parent sub-directories
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
 	- Changed: Ensure that std types has the correct sizes always using equals
@@ -11351,7 +11352,8 @@ typedef struct fpl__PosixAppState {
 // ############################################################################
 #if defined(FPL_PLATFORM_LINUX)
 typedef struct fpl__LinuxInitState {
-	int dummy;
+	char prevLocale[256];
+	fpl_b32 hasPrevLocale;
 } fpl__LinuxInitState;
 
 #if defined(FPL__ENABLE_INPUT_LINUX_JOYSTICK)
@@ -24862,10 +24864,20 @@ fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
 #	include <linux/joystick.h> // js_event, axis_state, etc.
 
 fpl_internal void fpl__LinuxReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
+	fpl__LinuxInitState *plinux = &initState->plinux;
+	if (plinux->hasPrevLocale) {
+		setlocale(LC_ALL, plinux->prevLocale);
+		plinux->hasPrevLocale = false;
+	}
 }
 
 fpl_internal bool fpl__LinuxInitPlatform(const fplInitFlags initFlags, const fplSettings *initSettings, fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
-	// TODO(final): Remember LC_ALL and restore in fpl__LinuxReleasePlatform
+	fpl__LinuxInitState *plinux = &initState->plinux;
+	const char *currentLocale = setlocale(LC_ALL, fpl_null);
+	if (currentLocale != fpl_null) {
+		fplCopyString(currentLocale, plinux->prevLocale, fplArrayCount(plinux->prevLocale));
+		plinux->hasPrevLocale = true;
+	}
 	setlocale(LC_ALL, "");
 	return true;
 }
