@@ -261,6 +261,8 @@ SOFTWARE.
 	- Changed: fplFileWriteBlock*() changed to const for the source argument
 	- Changed: fplExtractFilePath return type changed from int to size_t
 	- Changed: [POSIX] Disabled FPL_NO_PLATFORM_INCLUDES for pthread includes
+	- Changed: [POSIX] `st_atim` vs `st_atime` fallback detection for older POSIX
+	- Changed: [POSIX] `sched_getscheduler` POSIX standard coverage check
 	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
 
 	#### Window
@@ -11091,11 +11093,19 @@ typedef struct fpl__Win32WindowState {
 #	include <pwd.h> // getpwuid
 #	include <dirent.h> // DIR, dirent
 
-// @TODO(final): Detect the case of (Older POSIX versions where st_atim != st_atime)
+// Map st_atime/st_mtime/st_ctime to the POSIX.1-2008 nanosecond fields (st_atim.tv_sec, ...)
+// when available. On older POSIX or platforms without timespec stat fields, fall back to the
+// legacy time_t members directly (no remap needed).
+// Android has its own definitions, so we skip the remap there.
 #if !defined(FPL_PLATFORM_ANDROID)
-# define st_atime st_atim.tv_sec
-# define st_mtime st_mtim.tv_sec
-# define st_ctime st_ctim.tv_sec
+#	if (defined(_POSIX_C_SOURCE) && _POSIX_C_SOURCE >= 200809L) || \
+		(defined(_XOPEN_SOURCE) && _XOPEN_SOURCE >= 700) || \
+		defined(__USE_XOPEN2K8) || defined(_STATBUF_ST_NSEC) || \
+		defined(FPL_PLATFORM_LINUX)
+#		define st_atime st_atim.tv_sec
+#		define st_mtime st_mtim.tv_sec
+#		define st_ctime st_ctim.tv_sec
+#	endif
 #endif
 
 #if defined(FPL_PLATFORM_LINUX)
@@ -20634,8 +20644,13 @@ fpl_platform_api fplThreadHandle *fplThreadCreateWithParameters(fplThreadParamet
 				}
 #endif
 			} else {
-				// @TODO(final): Is sched_getscheduler supported for all POSIX standards?
+				// sched_getscheduler is part of the optional POSIX Priority Scheduling option (_POSIX_PRIORITY_SCHEDULING).
+				// Not all POSIX-conformant systems provide it, so guard the call.
+#if defined(_POSIX_PRIORITY_SCHEDULING) && (_POSIX_PRIORITY_SCHEDULING > 0)
 				scheduler = sched_getscheduler(0);
+#else
+				scheduler = -1;
+#endif
 			}
 
 			// Stack size
