@@ -23,11 +23,6 @@ Last refresh: 2026-05-11
 - [ ] Arm64 — only partial support
 - [ ] Unix/BSD — only partial support
 - [ ] Raspberry Pi — only partial support
-- [ ] MacOS / iOS — not supported (no hardware)
-- [ ] x64 — untested
-- [ ] Intel compiler — untested
-- [ ] MingW32 / MingW64 — untested
-- [ ] CC ARM — untested
 
 ## CPU
 
