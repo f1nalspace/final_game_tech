@@ -35,11 +35,6 @@ Last refresh: 2026-05-11
 - [ ] `fplCPUGetName` for non-x86 architectures (line 13819)
 - [ ] Generic non-x86 CPU query path (Known Limitation)
 
-## Window / Display (X11)
-
-- [ ] X11 OEM1-OEM8 key mapping (line 22743)
-- [ ] X11 display resolution + refresh rate switching (line 24584)
-
 ## Window (Win32)
 
 - [x] ~~Multi-monitor origin assumption in `fpl__Win32EnterFullscreen` resolution-change path~~ — fixed: anchors to xpos/ypos or target monitor origin
@@ -71,12 +66,6 @@ Last refresh: 2026-05-11
 - [ ] OSS backend — planned, not implemented (Known Limitation)
 - [ ] Extended audio device infos do not contain format list yet (Known Limitation)
 - [x] ~~Resampler edge case — fake-round extra frame workaround (line 33890)~~ — done: replaced with `round(in * outRate/inRate)` using double; additions resampler now calls fplGetTargetAudioFrameCount; 44100<->48000 round-trip tests added.
-
-## Input / Gamepad
-
-- [ ] Unix gamepad via raw `fd` — planned, not implemented (Known Limitation)
-- [ ] Linux evdev input backend (`FPL__SUPPORT_INPUT_LINUX_EVDEV` defined but not used)
-- [ ] Linux udev input backend (`FPL__SUPPORT_INPUT_LINUX_UDEV` defined but not used)
 
 ## Video
 
