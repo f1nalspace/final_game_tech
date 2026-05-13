@@ -2805,8 +2805,6 @@ typedef enum fplX86InstructionSetLevel {
 // FPL_NO_INPUT_WIN32 = Disable Win32 keyboard/mouse backend
 // FPL_NO_INPUT_X11 = Disable X11 keyboard/mouse backend
 // FPL_NO_INPUT_LINUX_JOYSTICK = Disable /dev/input/jsX backend (Linux)
-// FPL_NO_INPUT_LINUX_EVDEV = Disable /dev/input/eventX backend (Linux)
-// FPL_NO_INPUT_LINUX_UDEV = Disable udev hotplug backend (Linux)
 // FPL_NO_INPUT_UNIX_GAMEPAD = Disable BSD/Unix gamepad backend
 //
 #if !defined(FPL_NO_INPUT)
@@ -2831,12 +2829,6 @@ typedef enum fplX86InstructionSetLevel {
 #	endif
 #	if !defined(FPL_NO_INPUT_LINUX_JOYSTICK) && defined(FPL_PLATFORM_LINUX)
 #		define FPL__SUPPORT_INPUT_LINUX_JOYSTICK
-#	endif
-#	if !defined(FPL_NO_INPUT_LINUX_EVDEV) && defined(FPL_PLATFORM_LINUX)
-#		define FPL__SUPPORT_INPUT_LINUX_EVDEV
-#	endif
-#	if !defined(FPL_NO_INPUT_LINUX_UDEV) && defined(FPL_PLATFORM_LINUX)
-#		define FPL__SUPPORT_INPUT_LINUX_UDEV
 #	endif
 #	if !defined(FPL_NO_INPUT_UNIX_GAMEPAD) && defined(FPL_SUBPLATFORM_POSIX)
 #		define FPL__SUPPORT_INPUT_UNIX_GAMEPAD
@@ -2907,12 +2899,6 @@ typedef enum fplX86InstructionSetLevel {
 #	endif
 #	if defined(FPL__SUPPORT_INPUT_LINUX_JOYSTICK)
 #		define FPL__ENABLE_INPUT_LINUX_JOYSTICK
-#	endif
-#	if defined(FPL__SUPPORT_INPUT_LINUX_EVDEV)
-#		define FPL__ENABLE_INPUT_LINUX_EVDEV
-#	endif
-#	if defined(FPL__SUPPORT_INPUT_LINUX_UDEV)
-#		define FPL__ENABLE_INPUT_LINUX_UDEV
 #	endif
 #	if defined(FPL__SUPPORT_INPUT_UNIX_GAMEPAD)
 #		define FPL__ENABLE_INPUT_UNIX_GAMEPAD
