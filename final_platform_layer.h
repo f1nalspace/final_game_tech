@@ -29378,23 +29378,223 @@ fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendDirectShowDescri
 // ############################################################################
 #if defined(FPL__ENABLE_AUDIO_WASAPI)
 
-// Phase 1 scaffolding: backend descriptor is visible so that explicit selection
-// via fplAudioBackendType_WASAPI is wired through. All function-table entries
-// return fplAudioResultType_NotImplemented (or no-op for void) until later phases.
+#	include <mmreg.h>
+#	include <mmsystem.h>
+
+// Minimal PROPVARIANT used only for IPropertyStore::GetValue / PropVariantClear.
+// Layout matches the official PROPVARIANT well enough for the pwszVal case we use.
+typedef struct fpl__WasapiPropVariant {
+	WORD vt;
+	WORD wReserved1;
+	WORD wReserved2;
+	WORD wReserved3;
+	union {
+		WCHAR *pwszVal;
+		char pad[16];
+	} u;
+} fpl__WasapiPropVariant;
+
+typedef struct fpl__WasapiPropertyKey {
+	fpl__Win32Guid fmtid;
+	DWORD pid;
+} fpl__WasapiPropertyKey;
+
+// EDataFlow / ERole / DEVICE_STATE / AUDCLNT enums (mmdeviceapi.h / audioclient.h)
+typedef enum fpl__WasapiEDataFlow {
+	fpl__WasapiEDataFlow_eRender = 0,
+	fpl__WasapiEDataFlow_eCapture = 1,
+	fpl__WasapiEDataFlow_eAll = 2,
+} fpl__WasapiEDataFlow;
+
+typedef enum fpl__WasapiERole {
+	fpl__WasapiERole_eConsole = 0,
+	fpl__WasapiERole_eMultimedia = 1,
+	fpl__WasapiERole_eCommunications = 2,
+} fpl__WasapiERole;
+
+typedef enum fpl__WasapiShareMode {
+	fpl__WasapiShareMode_Shared = 0,
+	fpl__WasapiShareMode_Exclusive = 1,
+} fpl__WasapiShareMode;
+
+#define FPL__WASAPI_DEVICE_STATE_ACTIVE             0x00000001
+#define FPL__WASAPI_STGM_READ                       0x00000000L
+
+#define FPL__WASAPI_AUDCLNT_STREAMFLAGS_EVENTCALLBACK       0x00040000
+#define FPL__WASAPI_AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY 0x08000000
+#define FPL__WASAPI_AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM      0x80000000
+
+#define FPL__WASAPI_AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED       ((HRESULT)0x88890019)
+
+// CLSIDs / IIDs / PROPERTYKEYs we resolve at runtime via CoCreateInstance / IPropertyStore::GetValue.
+fpl_globalvar const fpl__Win32Guid FPL__WASAPI_CLSID_MMDeviceEnumerator = { 0xBCDE0395, 0xE52F, 0x467C, { 0x8E, 0x3D, 0xC4, 0x57, 0x92, 0x91, 0x69, 0x2E } };
+fpl_globalvar const fpl__Win32Guid FPL__WASAPI_IID_IMMDeviceEnumerator  = { 0xA95664D2, 0x9614, 0x4F35, { 0xA7, 0x46, 0xDE, 0x8D, 0xB6, 0x36, 0x17, 0xE6 } };
+fpl_globalvar const fpl__Win32Guid FPL__WASAPI_IID_IAudioClient         = { 0x1CB9AD4C, 0xDBFA, 0x4C32, { 0xB1, 0x78, 0xC2, 0xF5, 0x68, 0xA7, 0x03, 0xB2 } };
+fpl_globalvar const fpl__Win32Guid FPL__WASAPI_IID_IAudioRenderClient   = { 0xF294ACFC, 0x3146, 0x4483, { 0xA7, 0xBF, 0xAD, 0xDC, 0xA7, 0xC2, 0x60, 0xE2 } };
+
+fpl_globalvar const fpl__WasapiPropertyKey FPL__WASAPI_PKEY_Device_FriendlyName = {
+	{ 0xA45C254E, 0xDF1C, 0x4EFD, { 0x80, 0x20, 0x67, 0xD1, 0x46, 0xA8, 0x50, 0xE0 } },
+	14
+};
+
+// COM interfaces. We forward-declare the structs, then declare the vtables.
+// Method order must match the real Windows interfaces exactly (binary compat).
+typedef struct fpl__IMMDevice            fpl__IMMDevice;
+typedef struct fpl__IMMDeviceCollection  fpl__IMMDeviceCollection;
+typedef struct fpl__IMMDeviceEnumerator  fpl__IMMDeviceEnumerator;
+typedef struct fpl__IPropertyStore       fpl__IPropertyStore;
+typedef struct fpl__IAudioClient         fpl__IAudioClient;
+typedef struct fpl__IAudioRenderClient   fpl__IAudioRenderClient;
+
+typedef struct fpl__IMMDeviceEnumeratorVtbl {
+	HRESULT (STDMETHODCALLTYPE *QueryInterface)(fpl__IMMDeviceEnumerator *self, const fpl__Win32Guid *riid, void **ppv);
+	ULONG   (STDMETHODCALLTYPE *AddRef)(fpl__IMMDeviceEnumerator *self);
+	ULONG   (STDMETHODCALLTYPE *Release)(fpl__IMMDeviceEnumerator *self);
+	HRESULT (STDMETHODCALLTYPE *EnumAudioEndpoints)(fpl__IMMDeviceEnumerator *self, fpl__WasapiEDataFlow dataFlow, DWORD dwStateMask, fpl__IMMDeviceCollection **ppDevices);
+	HRESULT (STDMETHODCALLTYPE *GetDefaultAudioEndpoint)(fpl__IMMDeviceEnumerator *self, fpl__WasapiEDataFlow dataFlow, fpl__WasapiERole role, fpl__IMMDevice **ppEndpoint);
+	HRESULT (STDMETHODCALLTYPE *GetDevice)(fpl__IMMDeviceEnumerator *self, const WCHAR *pwstrId, fpl__IMMDevice **ppDevice);
+	HRESULT (STDMETHODCALLTYPE *RegisterEndpointNotificationCallback)(fpl__IMMDeviceEnumerator *self, void *pClient);
+	HRESULT (STDMETHODCALLTYPE *UnregisterEndpointNotificationCallback)(fpl__IMMDeviceEnumerator *self, void *pClient);
+} fpl__IMMDeviceEnumeratorVtbl;
+struct fpl__IMMDeviceEnumerator { fpl__IMMDeviceEnumeratorVtbl *lpVtbl; };
+
+typedef struct fpl__IMMDeviceCollectionVtbl {
+	HRESULT (STDMETHODCALLTYPE *QueryInterface)(fpl__IMMDeviceCollection *self, const fpl__Win32Guid *riid, void **ppv);
+	ULONG   (STDMETHODCALLTYPE *AddRef)(fpl__IMMDeviceCollection *self);
+	ULONG   (STDMETHODCALLTYPE *Release)(fpl__IMMDeviceCollection *self);
+	HRESULT (STDMETHODCALLTYPE *GetCount)(fpl__IMMDeviceCollection *self, UINT *pCount);
+	HRESULT (STDMETHODCALLTYPE *Item)(fpl__IMMDeviceCollection *self, UINT nDevice, fpl__IMMDevice **ppDevice);
+} fpl__IMMDeviceCollectionVtbl;
+struct fpl__IMMDeviceCollection { fpl__IMMDeviceCollectionVtbl *lpVtbl; };
+
+typedef struct fpl__IMMDeviceVtbl {
+	HRESULT (STDMETHODCALLTYPE *QueryInterface)(fpl__IMMDevice *self, const fpl__Win32Guid *riid, void **ppv);
+	ULONG   (STDMETHODCALLTYPE *AddRef)(fpl__IMMDevice *self);
+	ULONG   (STDMETHODCALLTYPE *Release)(fpl__IMMDevice *self);
+	HRESULT (STDMETHODCALLTYPE *Activate)(fpl__IMMDevice *self, const fpl__Win32Guid *iid, DWORD dwClsCtx, fpl__WasapiPropVariant *pActivationParams, void **ppInterface);
+	HRESULT (STDMETHODCALLTYPE *OpenPropertyStore)(fpl__IMMDevice *self, DWORD stgmAccess, fpl__IPropertyStore **ppProperties);
+	HRESULT (STDMETHODCALLTYPE *GetId)(fpl__IMMDevice *self, WCHAR **ppstrId);
+	HRESULT (STDMETHODCALLTYPE *GetState)(fpl__IMMDevice *self, DWORD *pState);
+} fpl__IMMDeviceVtbl;
+struct fpl__IMMDevice { fpl__IMMDeviceVtbl *lpVtbl; };
+
+typedef struct fpl__IPropertyStoreVtbl {
+	HRESULT (STDMETHODCALLTYPE *QueryInterface)(fpl__IPropertyStore *self, const fpl__Win32Guid *riid, void **ppv);
+	ULONG   (STDMETHODCALLTYPE *AddRef)(fpl__IPropertyStore *self);
+	ULONG   (STDMETHODCALLTYPE *Release)(fpl__IPropertyStore *self);
+	HRESULT (STDMETHODCALLTYPE *GetCount)(fpl__IPropertyStore *self, DWORD *pCount);
+	HRESULT (STDMETHODCALLTYPE *GetAt)(fpl__IPropertyStore *self, DWORD iProp, fpl__WasapiPropertyKey *pKey);
+	HRESULT (STDMETHODCALLTYPE *GetValue)(fpl__IPropertyStore *self, const fpl__WasapiPropertyKey *key, fpl__WasapiPropVariant *pv);
+	HRESULT (STDMETHODCALLTYPE *SetValue)(fpl__IPropertyStore *self, const fpl__WasapiPropertyKey *key, const fpl__WasapiPropVariant *pv);
+	HRESULT (STDMETHODCALLTYPE *Commit)(fpl__IPropertyStore *self);
+} fpl__IPropertyStoreVtbl;
+struct fpl__IPropertyStore { fpl__IPropertyStoreVtbl *lpVtbl; };
+
+typedef int64_t fpl__WasapiReferenceTime;
+
+typedef struct fpl__IAudioClientVtbl {
+	HRESULT (STDMETHODCALLTYPE *QueryInterface)(fpl__IAudioClient *self, const fpl__Win32Guid *riid, void **ppv);
+	ULONG   (STDMETHODCALLTYPE *AddRef)(fpl__IAudioClient *self);
+	ULONG   (STDMETHODCALLTYPE *Release)(fpl__IAudioClient *self);
+	HRESULT (STDMETHODCALLTYPE *Initialize)(fpl__IAudioClient *self, fpl__WasapiShareMode shareMode, DWORD streamFlags, fpl__WasapiReferenceTime bufferDuration, fpl__WasapiReferenceTime periodicity, const WAVEFORMATEX *pFormat, const fpl__Win32Guid *pAudioSessionGuid);
+	HRESULT (STDMETHODCALLTYPE *GetBufferSize)(fpl__IAudioClient *self, UINT32 *pNumBufferFrames);
+	HRESULT (STDMETHODCALLTYPE *GetStreamLatency)(fpl__IAudioClient *self, fpl__WasapiReferenceTime *pLatency);
+	HRESULT (STDMETHODCALLTYPE *GetCurrentPadding)(fpl__IAudioClient *self, UINT32 *pNumPaddingFrames);
+	HRESULT (STDMETHODCALLTYPE *IsFormatSupported)(fpl__IAudioClient *self, fpl__WasapiShareMode shareMode, const WAVEFORMATEX *pFormat, WAVEFORMATEX **ppClosestMatch);
+	HRESULT (STDMETHODCALLTYPE *GetMixFormat)(fpl__IAudioClient *self, WAVEFORMATEX **ppDeviceFormat);
+	HRESULT (STDMETHODCALLTYPE *GetDevicePeriod)(fpl__IAudioClient *self, fpl__WasapiReferenceTime *pDefaultDevicePeriod, fpl__WasapiReferenceTime *pMinimumDevicePeriod);
+	HRESULT (STDMETHODCALLTYPE *Start)(fpl__IAudioClient *self);
+	HRESULT (STDMETHODCALLTYPE *Stop)(fpl__IAudioClient *self);
+	HRESULT (STDMETHODCALLTYPE *Reset)(fpl__IAudioClient *self);
+	HRESULT (STDMETHODCALLTYPE *SetEventHandle)(fpl__IAudioClient *self, HANDLE eventHandle);
+	HRESULT (STDMETHODCALLTYPE *GetService)(fpl__IAudioClient *self, const fpl__Win32Guid *riid, void **ppv);
+} fpl__IAudioClientVtbl;
+struct fpl__IAudioClient { fpl__IAudioClientVtbl *lpVtbl; };
+
+typedef struct fpl__IAudioRenderClientVtbl {
+	HRESULT (STDMETHODCALLTYPE *QueryInterface)(fpl__IAudioRenderClient *self, const fpl__Win32Guid *riid, void **ppv);
+	ULONG   (STDMETHODCALLTYPE *AddRef)(fpl__IAudioRenderClient *self);
+	ULONG   (STDMETHODCALLTYPE *Release)(fpl__IAudioRenderClient *self);
+	HRESULT (STDMETHODCALLTYPE *GetBuffer)(fpl__IAudioRenderClient *self, UINT32 numFramesRequested, BYTE **ppData);
+	HRESULT (STDMETHODCALLTYPE *ReleaseBuffer)(fpl__IAudioRenderClient *self, UINT32 numFramesWritten, DWORD dwFlags);
+} fpl__IAudioRenderClientVtbl;
+struct fpl__IAudioRenderClient { fpl__IAudioRenderClientVtbl *lpVtbl; };
+
+// ole32.dll runtime-linked entry points.
+#define FPL__FUNC_WASAPI_CoInitializeEx(name)   HRESULT WINAPI name(LPVOID pvReserved, DWORD dwCoInit)
+typedef FPL__FUNC_WASAPI_CoInitializeEx(fpl__func_wasapi_CoInitializeEx);
+#define FPL__FUNC_WASAPI_CoUninitialize(name)   void WINAPI name(void)
+typedef FPL__FUNC_WASAPI_CoUninitialize(fpl__func_wasapi_CoUninitialize);
+#define FPL__FUNC_WASAPI_CoCreateInstance(name) HRESULT WINAPI name(const fpl__Win32Guid *rclsid, LPUNKNOWN pUnkOuter, DWORD dwClsContext, const fpl__Win32Guid *riid, LPVOID *ppv)
+typedef FPL__FUNC_WASAPI_CoCreateInstance(fpl__func_wasapi_CoCreateInstance);
+#define FPL__FUNC_WASAPI_CoTaskMemFree(name)    void WINAPI name(LPVOID pv)
+typedef FPL__FUNC_WASAPI_CoTaskMemFree(fpl__func_wasapi_CoTaskMemFree);
+#define FPL__FUNC_WASAPI_PropVariantClear(name) HRESULT WINAPI name(fpl__WasapiPropVariant *pvar)
+typedef FPL__FUNC_WASAPI_PropVariantClear(fpl__func_wasapi_PropVariantClear);
 
 typedef struct {
-	int placeholder;
+	HMODULE oleLibrary;
+	fpl__func_wasapi_CoInitializeEx *CoInitializeEx;
+	fpl__func_wasapi_CoUninitialize *CoUninitialize;
+	fpl__func_wasapi_CoCreateInstance *CoCreateInstance;
+	fpl__func_wasapi_CoTaskMemFree *CoTaskMemFree;
+	fpl__func_wasapi_PropVariantClear *PropVariantClear;
+} fpl__WasapiApi;
+
+fpl_internal void fpl__UnloadWasapiApi(fpl__WasapiApi *wasapiApi) {
+	fplAssert(wasapiApi != fpl_null);
+	if (wasapiApi->oleLibrary != fpl_null) {
+		FreeLibrary(wasapiApi->oleLibrary);
+	}
+	fplClearStruct(wasapiApi);
+}
+
+fpl_internal bool fpl__LoadWasapiApi(fpl__WasapiApi *wasapiApi) {
+	fplAssert(wasapiApi != fpl_null);
+	bool result = false;
+	const char *oleLibraryName = "ole32.dll";
+	fplClearStruct(wasapiApi);
+	do {
+		HMODULE oleLibrary = fpl_null;
+		FPL__WIN32_LOAD_LIBRARY(FPL__MODULE_AUDIO_WASAPI, oleLibrary, oleLibraryName);
+		wasapiApi->oleLibrary = oleLibrary;
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_WASAPI, oleLibrary, oleLibraryName, wasapiApi, fpl__func_wasapi_CoInitializeEx, CoInitializeEx);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_WASAPI, oleLibrary, oleLibraryName, wasapiApi, fpl__func_wasapi_CoUninitialize, CoUninitialize);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_WASAPI, oleLibrary, oleLibraryName, wasapiApi, fpl__func_wasapi_CoCreateInstance, CoCreateInstance);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_WASAPI, oleLibrary, oleLibraryName, wasapiApi, fpl__func_wasapi_CoTaskMemFree, CoTaskMemFree);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_WASAPI, oleLibrary, oleLibraryName, wasapiApi, fpl__func_wasapi_PropVariantClear, PropVariantClear);
+		result = true;
+	} while (0);
+	if (!result) {
+		fpl__UnloadWasapiApi(wasapiApi);
+	}
+	return(result);
+}
+
+// Phase 2: the backend now carries the API container, but no COM objects are
+// brought up yet. Initialize smoke-tests the loader and returns NotImplemented.
+typedef struct {
+	fpl__WasapiApi api;
 } fpl__AudioBackendWasapi;
 
 fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudiobackendWasapiInitialize) {
+	fpl__AudioBackendWasapi *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendWasapi);
+	fplAssert(impl != fpl_null);
 	(void)context;
-	(void)backend;
+	fplClearStruct(impl);
+	if (!fpl__LoadWasapiApi(&impl->api)) {
+		return(fplAudioResultType_ApiFailed);
+	}
+	fpl__UnloadWasapiApi(&impl->api);
 	return(fplAudioResultType_NotImplemented);
 }
 
 fpl_internal FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl__AudiobackendWasapiRelease) {
+	fpl__AudioBackendWasapi *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendWasapi);
 	(void)context;
-	(void)backend;
+	if (impl != fpl_null) {
+		fpl__UnloadWasapiApi(&impl->api);
+	}
 	return(true);
 }
 
