@@ -31124,21 +31124,260 @@ fpl_internal FPL_AUDIO_BACKEND_STOP_MAIN_LOOP_FUNC(fpl__AudioBackendOssStopMainL
 	impl->breakMainLoop = true;
 }
 
+fpl_internal const char *fpl__OssFindChar(const char *s, const char c) {
+	if (s == fpl_null) {
+		return fpl_null;
+	}
+	while (*s != '\0') {
+		if (*s == c) {
+			return s;
+		}
+		++s;
+	}
+	return fpl_null;
+}
+
+fpl_internal const char *fpl__OssFindSubstr(const char *haystack, const char *needle) {
+	if (haystack == fpl_null || needle == fpl_null) {
+		return fpl_null;
+	}
+	size_t needleLen = 0;
+	while (needle[needleLen] != '\0') {
+		++needleLen;
+	}
+	if (needleLen == 0) {
+		return haystack;
+	}
+	for (const char *p = haystack; *p != '\0'; ++p) {
+		size_t i = 0;
+		while (i < needleLen && p[i] == needle[i]) {
+			++i;
+		}
+		if (i == needleLen) {
+			return p;
+		}
+	}
+	return fpl_null;
+}
+
+typedef struct {
+	char path[256];
+	char name[FPL_MAX_NAME_LENGTH];
+	bool isDefault;
+} fpl__OssEnumeratedDevice;
+
+fpl_internal uint32_t fpl__OssParseSndstat(fpl__OssEnumeratedDevice *outDevices, const uint32_t maxDevices) {
+	int statFd = open("/dev/sndstat", O_RDONLY);
+	if (statFd < 0) {
+		return 0;
+	}
+	char buffer[8192];
+	ssize_t total = 0;
+	for (;;) {
+		ssize_t n = read(statFd, buffer + total, sizeof(buffer) - 1 - (size_t)total);
+		if (n < 0) {
+			if (errno == EINTR) {
+				continue;
+			}
+			break;
+		}
+		if (n == 0) {
+			break;
+		}
+		total += n;
+		if ((size_t)total >= sizeof(buffer) - 1) {
+			break;
+		}
+	}
+	close(statFd);
+	if (total <= 0) {
+		return 0;
+	}
+	buffer[total] = '\0';
+
+	uint32_t count = 0;
+	char *line = buffer;
+	while (line != fpl_null && *line != '\0' && count < maxDevices) {
+		char *eol = (char *)fpl__OssFindChar(line, '\n');
+		if (eol != fpl_null) {
+			*eol = '\0';
+		}
+
+		if (line[0] == 'p' && line[1] == 'c' && line[2] == 'm') {
+			const char *p = line + 3;
+			uint32_t idx = 0;
+			bool hasIdx = false;
+			while (*p >= '0' && *p <= '9') {
+				idx = idx * 10 + (uint32_t)(*p - '0');
+				hasIdx = true;
+				++p;
+			}
+			if (hasIdx && *p == ':') {
+				const char *lt = fpl__OssFindChar(p, '<');
+				const char *gt = (lt != fpl_null) ? fpl__OssFindChar(lt, '>') : fpl_null;
+				char descBuf[FPL_MAX_NAME_LENGTH];
+				descBuf[0] = '\0';
+				if (lt != fpl_null && gt != fpl_null && gt > lt + 1) {
+					size_t descLen = (size_t)(gt - lt - 1);
+					if (descLen >= fplArrayCount(descBuf)) {
+						descLen = fplArrayCount(descBuf) - 1;
+					}
+					for (size_t i = 0; i < descLen; ++i) {
+						descBuf[i] = lt[1 + i];
+					}
+					descBuf[descLen] = '\0';
+				}
+
+				// Accept devices marked play/duplex; skip rec-only entries.
+				bool isPlayable = true;
+				const char *openParen = fpl__OssFindChar(p, '(');
+				if (openParen != fpl_null) {
+					const char *closeParen = fpl__OssFindChar(openParen, ')');
+					if (closeParen != fpl_null) {
+						bool foundPlay = false;
+						for (const char *q = openParen; q + 4 <= closeParen; ++q) {
+							if (q[0] == 'p' && q[1] == 'l' && q[2] == 'a' && q[3] == 'y') {
+								foundPlay = true;
+								break;
+							}
+						}
+						isPlayable = foundPlay;
+					}
+				}
+
+				if (isPlayable) {
+					fpl__OssEnumeratedDevice *entry = &outDevices[count];
+					fplStringFormat(entry->path, fplArrayCount(entry->path), "/dev/dsp%u", idx);
+					if (descBuf[0] != '\0') {
+						fplCopyString(descBuf, entry->name, fplArrayCount(entry->name));
+					} else {
+						fplStringFormat(entry->name, fplArrayCount(entry->name), "OSS Device %u", idx);
+					}
+					entry->isDefault = (fpl__OssFindSubstr(p, "default") != fpl_null);
+					++count;
+				}
+			}
+		}
+
+		if (eol != fpl_null) {
+			line = eol + 1;
+		} else {
+			line = fpl_null;
+		}
+	}
+	return count;
+}
+
+fpl_internal uint32_t fpl__OssProbeDspDevices(fpl__OssEnumeratedDevice *outDevices, const uint32_t maxDevices) {
+	uint32_t count = 0;
+	struct stat st;
+
+	if (count < maxDevices && stat("/dev/dsp", &st) == 0) {
+		fpl__OssEnumeratedDevice *entry = &outDevices[count];
+		fplCopyString("/dev/dsp", entry->path, fplArrayCount(entry->path));
+		fplCopyString("OSS Default Device", entry->name, fplArrayCount(entry->name));
+		entry->isDefault = true;
+		++count;
+	}
+
+	for (uint32_t i = 0; i < 8 && count < maxDevices; ++i) {
+		char path[64];
+		fplStringFormat(path, fplArrayCount(path), "/dev/dsp%u", i);
+		if (stat(path, &st) != 0) {
+			continue;
+		}
+		fpl__OssEnumeratedDevice *entry = &outDevices[count];
+		fplCopyString(path, entry->path, fplArrayCount(entry->path));
+		fplStringFormat(entry->name, fplArrayCount(entry->name), "OSS Device %u", i);
+		entry->isDefault = false;
+		++count;
+	}
+
+	return count;
+}
+
 fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendOssGetAudioDevices) {
 	(void)context;
 	(void)backend;
-	(void)maxDeviceCount;
-	(void)deviceInfoSize;
-	(void)deviceInfos;
-	return 0;
+
+	fpl__OssEnumeratedDevice scratch[16];
+	uint32_t count = fpl__OssParseSndstat(scratch, fplArrayCount(scratch));
+	if (count == 0) {
+		count = fpl__OssProbeDspDevices(scratch, fplArrayCount(scratch));
+	}
+
+	if (deviceInfos == fpl_null) {
+		return count;
+	}
+
+	uint32_t emitted = 0;
+	for (uint32_t i = 0; i < count; ++i) {
+		if (emitted >= maxDeviceCount) {
+			FPL__WARNING(FPL__MODULE_AUDIO_OSS, "Capacity of '%lu' for audio device infos has been reached. '%lu' audio devices are not included in the result", maxDeviceCount, count - emitted);
+			break;
+		}
+		fplAudioDeviceInfo *outInfo = (fplAudioDeviceInfo *)((uint8_t *)deviceInfos + (deviceInfoSize * emitted));
+		fplClearStruct(outInfo);
+		outInfo->isDefault = scratch[i].isDefault;
+		fplCopyString(scratch[i].path, outInfo->id.oss, fplArrayCount(outInfo->id.oss));
+		fplCopyString(scratch[i].name, outInfo->name, fplArrayCount(outInfo->name));
+		++emitted;
+	}
+	return emitted;
 }
 
 fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendOssGetAudioDeviceInfo) {
 	(void)context;
 	(void)backend;
-	(void)targetDevice;
+	fplAssertPtr(targetDevice);
 	fplClearStruct(outDeviceInfo);
-	return fplAudioResultType_NotImplemented;
+
+	if (fplGetStringLength(targetDevice->oss) == 0) {
+		return fplAudioResultType_InvalidArguments;
+	}
+
+	struct stat st;
+	if (stat(targetDevice->oss, &st) != 0) {
+		return fplAudioResultType_DeviceByIdNotFound;
+	}
+
+	fplCopyString(targetDevice->oss, outDeviceInfo->info.id.oss, fplArrayCount(outDeviceInfo->info.id.oss));
+	fplCopyString(targetDevice->oss, outDeviceInfo->info.name, fplArrayCount(outDeviceInfo->info.name));
+	outDeviceInfo->info.isDefault = fplIsStringEqual(targetDevice->oss, "/dev/dsp");
+
+	// Best-effort: open the device read-only to query supported formats. Fail silently
+	// if it is busy; the caller still gets identity info.
+	outDeviceInfo->supportedFormatCount = 0;
+	int probeFd = open(targetDevice->oss, O_WRONLY | O_NONBLOCK);
+	if (probeFd >= 0) {
+		int mask = 0;
+		if (ioctl(probeFd, SNDCTL_DSP_GETFMTS, &mask) == 0) {
+			static const fplAudioFormatType candidateTypes[] = {
+				fplAudioFormatType_U8,
+				fplAudioFormatType_S16,
+				fplAudioFormatType_S24,
+				fplAudioFormatType_S32,
+				fplAudioFormatType_F32,
+			};
+			static const uint32_t candidateRates[] = { 44100, 48000 };
+			static const uint16_t candidateChannels[] = { 1, 2 };
+			size_t slots = fplArrayCount(outDeviceInfo->supportedFormats);
+			for (size_t t = 0; t < fplArrayCount(candidateTypes) && outDeviceInfo->supportedFormatCount < slots; ++t) {
+				int ossFmt = fpl__MapAudioFormatToOSSFormat(candidateTypes[t]);
+				if (ossFmt == 0 || (mask & ossFmt) == 0) {
+					continue;
+				}
+				for (size_t r = 0; r < fplArrayCount(candidateRates) && outDeviceInfo->supportedFormatCount < slots; ++r) {
+					for (size_t c = 0; c < fplArrayCount(candidateChannels) && outDeviceInfo->supportedFormatCount < slots; ++c) {
+						outDeviceInfo->supportedFormats[outDeviceInfo->supportedFormatCount++] =
+							fplEncodeAudioFormatU64(candidateRates[r], candidateChannels[c], candidateTypes[t]);
+					}
+				}
+			}
+		}
+		close(probeFd);
+	}
+	return fplAudioResultType_Success;
 }
 
 fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendOSSDescriptor = {
