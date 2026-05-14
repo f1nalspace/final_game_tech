@@ -2804,6 +2804,7 @@ typedef enum fplX86InstructionSetLevel {
 // FPL_NO_AUDIO_ALSA = Disable ALSA audio backend
 // FPL_NO_AUDIO_PULSEAUDIO = Disable PulseAudio audio backend
 // FPL_NO_AUDIO_PIPEWIRE = Disable PipeWire audio backend
+// FPL_NO_AUDIO_OSS = Disable OSS audio backend
 //
 #if !defined(FPL_NO_AUDIO)
 #	define FPL__SUPPORT_AUDIO
@@ -2826,6 +2827,11 @@ typedef enum fplX86InstructionSetLevel {
 #	if !defined(FPL_NO_AUDIO_PIPEWIRE) && (defined(FPL_PLATFORM_LINUX) || defined(FPL_PLATFORM_UNIX))
 #		if !defined(FPL_NO_RUNTIME_LINKING) || fplHasInclude(<pipewire/pipewire.h>)
 #			define FPL__SUPPORT_AUDIO_PIPEWIRE // PipeWire backend uses runtime linking to libpipewire-0.3.so.0, no dev headers are required
+#		endif
+#	endif
+#	if !defined(FPL_NO_AUDIO_OSS) && defined(FPL_SUBPLATFORM_BSD)
+#		if fplHasInclude(<sys/soundcard.h>)
+#			define FPL__SUPPORT_AUDIO_OSS // OSS backend uses direct ioctl/write on /dev/dsp, no library linking required
 #		endif
 #	endif
 #endif // FPL__SUPPORT_AUDIO
@@ -2912,6 +2918,9 @@ typedef enum fplX86InstructionSetLevel {
 #	endif
 #	if defined(FPL__SUPPORT_AUDIO_PIPEWIRE)
 #		define FPL__ENABLE_AUDIO_PIPEWIRE
+#	endif
+#	if defined(FPL__SUPPORT_AUDIO_OSS)
+#		define FPL__ENABLE_AUDIO_OSS
 #	endif
 #endif // FPL__SUPPORT_AUDIO
 
@@ -5199,6 +5208,8 @@ typedef enum fplAudioBackendType {
 	fplAudioBackendType_PulseAudio,
 	//! PipeWire audio backend.
 	fplAudioBackendType_PipeWire,
+	//! OSS audio backend.
+	fplAudioBackendType_OSS,
 	//! Custom audio backend.
 	fplAudioBackendType_Custom,
 
@@ -5485,6 +5496,10 @@ typedef union fplAudioDeviceID {
 	//! PipeWire node id.
 	uint32_t pipewire;
 #endif
+#if defined(FPL__ENABLE_AUDIO_OSS)
+	//! OSS device path (e.g. "/dev/dsp" or "/dev/dsp1").
+	char oss[256];
+#endif
 	//! Field for preventing union to be empty.
 	uint8_t dummy[256];
 } fplAudioDeviceID;
@@ -5562,6 +5577,19 @@ typedef struct fplPipeWireAudioSettings {
 } fplPipeWireAudioSettings;
 #endif
 
+#if defined(FPL__ENABLE_AUDIO_OSS)
+/**
+* @struct fplOSSAudioSettings
+* @brief Stores settings for the OSS audio backend.
+*/
+typedef struct fplOSSAudioSettings {
+	//! If non-zero, the OSS device is opened in blocking mode instead of the default non-blocking mode.
+	fpl_b32 noNonBlocking;
+	//! Optional override for the fragment size exponent (log2 of fragment bytes). Zero means FPL picks automatically.
+	uint32_t fragmentExponent;
+} fplOSSAudioSettings;
+#endif
+
 /**
 * @union fplSpecificAudioSettings
 * @brief Stores backend-specific audio settings.
@@ -5578,6 +5606,10 @@ typedef union fplSpecificAudioSettings {
 #if defined(FPL__ENABLE_AUDIO_PIPEWIRE)
 	//! PipeWire-specific settings.
 	fplPipeWireAudioSettings pipewire;
+#endif
+#if defined(FPL__ENABLE_AUDIO_OSS)
+	//! OSS-specific settings.
+	fplOSSAudioSettings oss;
 #endif
 	//! Field for preventing union to be empty.
 	int dummy;
@@ -10053,6 +10085,7 @@ fpl_main int main(int argc, char **args);
 #define FPL__MODULE_AUDIO_ALSA "ALSA"
 #define FPL__MODULE_AUDIO_PULSEAUDIO "PulseAudio"
 #define FPL__MODULE_AUDIO_PIPEWIRE "PipeWire"
+#define FPL__MODULE_AUDIO_OSS "OSS"
 
 #define FPL__MODULE_VIDEO "Video"
 #define FPL__MODULE_VIDEO_OPENGL "OpenGL"
@@ -33315,6 +33348,7 @@ fpl_globalvar fplAudioBackendType fpl__global_defaultAudioBackendTypes[] = {
 	fplAudioBackendType_PipeWire,
 	fplAudioBackendType_PulseAudio,
 	fplAudioBackendType_Alsa,
+	fplAudioBackendType_OSS,
 	fplAudioBackendType_Custom,
 };
 
@@ -33371,6 +33405,9 @@ fpl_internal uint32_t fpl__GetAudioBackendDescriptors(const uint32_t maxDescript
 #if defined(FPL__ENABLE_AUDIO_PIPEWIRE)
 				desc = &fpl__global_audioBackendPipeWireDescriptor;
 #endif
+				break;
+
+			case fplAudioBackendType_OSS:
 				break;
 
 			case fplAudioBackendType_Custom:
@@ -34274,6 +34311,7 @@ fpl_globalvar const char *fpl__globalAudioBackendNameTable[FPL__AUDIOBACKENDTYPE
 	FPL__ENUM_NAME("ALSA", fplAudioBackendType_Alsa),
 	FPL__ENUM_NAME("PulseAudio", fplAudioBackendType_PulseAudio),
 	FPL__ENUM_NAME("PipeWire", fplAudioBackendType_PipeWire),
+	FPL__ENUM_NAME("OSS", fplAudioBackendType_OSS),
 	FPL__ENUM_NAME("Custom", fplAudioBackendType_Custom),
 };
 fplStaticAssert(fplArrayCount(fpl__globalAudioBackendNameTable) == FPL__AUDIOBACKENDTYPE_COUNT);
