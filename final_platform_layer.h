@@ -328,6 +328,9 @@ SOFTWARE.
 	- Fixed: fpl__InitAudio() was raising an assertion instead of returning fplAudioResultType_NoBackendsFound, when no backends are available
 	- Fixed: [PulseAudio] ABI mismatches in backend function pointer signatures
 	- Fixed: [PulseAudio] Defines were not handled correctly for FPL_NO_RUNTIME_LINKING
+	- Fixed: [PulseAudio] Dropped PA_STREAM_ADJUST_LATENCY and left maxlength at server default to avoid underruns on sinks with their own buffering (e.g. pulse-over-OSS on FreeBSD)
+	- Fixed: [PulseAudio] Seed frameSize before pa_stream_connect_playback so the first write callback can succeed
+	- Fixed: [PulseAudio,PipeWire] Backend gate widened from FPL_PLATFORM_LINUX to also include FPL_PLATFORM_UNIX (FreeBSD/BSD)
 	- Fixed: [ALSA] Defines were not handled correctly for FPL_NO_RUNTIME_LINKING
 	- Fixed[#182]: [ALSA] Fixed default audio devices are not detected in modern linux audio systems
 	- Improved: [ALSA] fpl__MapAudioFormatToAlsaFormat now uses an indexed lookup table covering all fplAudioFormatType values incl. F64
