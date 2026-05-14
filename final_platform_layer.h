@@ -29571,31 +29571,70 @@ fpl_internal bool fpl__LoadWasapiApi(fpl__WasapiApi *wasapiApi) {
 	return(result);
 }
 
-// Phase 2: the backend now carries the API container, but no COM objects are
-// brought up yet. Initialize smoke-tests the loader and returns NotImplemented.
+// COM init constants. We define them locally so we never depend on objbase.h.
+#define FPL__WASAPI_COINIT_APARTMENTTHREADED 0x2
+#define FPL__WASAPI_RPC_E_CHANGED_MODE       ((HRESULT)0x80010106L)
+
 typedef struct {
 	fpl__WasapiApi api;
+	fpl__IMMDeviceEnumerator *enumerator;
+	bool comInitialized;
 } fpl__AudioBackendWasapi;
+
+fpl_internal FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl__AudiobackendWasapiRelease) {
+	fpl__AudioBackendWasapi *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendWasapi);
+	(void)context;
+	if (impl == fpl_null) {
+		return(true);
+	}
+	if (impl->enumerator != fpl_null) {
+		impl->enumerator->lpVtbl->Release(impl->enumerator);
+		impl->enumerator = fpl_null;
+	}
+	if (impl->comInitialized && impl->api.CoUninitialize != fpl_null) {
+		impl->api.CoUninitialize();
+		impl->comInitialized = false;
+	}
+	fpl__UnloadWasapiApi(&impl->api);
+	return(true);
+}
 
 fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudiobackendWasapiInitialize) {
 	fpl__AudioBackendWasapi *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendWasapi);
 	fplAssert(impl != fpl_null);
 	(void)context;
 	fplClearStruct(impl);
+
 	if (!fpl__LoadWasapiApi(&impl->api)) {
+		FPL__ERROR(FPL__MODULE_AUDIO_WASAPI, "Failed to load WASAPI runtime API!");
 		return(fplAudioResultType_ApiFailed);
 	}
-	fpl__UnloadWasapiApi(&impl->api);
-	return(fplAudioResultType_NotImplemented);
-}
 
-fpl_internal FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl__AudiobackendWasapiRelease) {
-	fpl__AudioBackendWasapi *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendWasapi);
-	(void)context;
-	if (impl != fpl_null) {
-		fpl__UnloadWasapiApi(&impl->api);
+	// Apartment-threaded init. S_OK means we now own COM on this thread and must
+	// pair it with CoUninitialize. S_FALSE means COM was already initialized in
+	// this apartment by someone else (still owns a ref, must not Uninit). Anything
+	// matching RPC_E_CHANGED_MODE means the caller already picked another model;
+	// continue without pairing.
+	HRESULT hr = impl->api.CoInitializeEx(fpl_null, FPL__WASAPI_COINIT_APARTMENTTHREADED);
+	if (hr == S_OK) {
+		impl->comInitialized = true;
+	} else if (hr == S_FALSE) {
+		impl->api.CoUninitialize();
+		impl->comInitialized = false;
+	} else if (hr != FPL__WASAPI_RPC_E_CHANGED_MODE) {
+		FPL__ERROR(FPL__MODULE_AUDIO_WASAPI, "CoInitializeEx failed (HRESULT 0x%08lx)", (unsigned long)hr);
+		fpl__AudiobackendWasapiRelease(context, backend);
+		return(fplAudioResultType_ApiFailed);
 	}
-	return(true);
+
+	hr = impl->api.CoCreateInstance(&FPL__WASAPI_CLSID_MMDeviceEnumerator, fpl_null, CLSCTX_ALL, &FPL__WASAPI_IID_IMMDeviceEnumerator, (LPVOID *)&impl->enumerator);
+	if (FAILED(hr) || impl->enumerator == fpl_null) {
+		FPL__ERROR(FPL__MODULE_AUDIO_WASAPI, "CoCreateInstance(MMDeviceEnumerator) failed (HRESULT 0x%08lx)", (unsigned long)hr);
+		fpl__AudiobackendWasapiRelease(context, backend);
+		return(fplAudioResultType_ApiFailed);
+	}
+
+	return(fplAudioResultType_Success);
 }
 
 fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudiobackendWasapiGetAudioDevices) {
