@@ -13086,7 +13086,6 @@ fpl_internal bool fpl__IsEqualsMemory(const void *a, const void *b, const size_t
 	size_t s = size;
 	// @SPEED(final): This may be very slow, so we should use a faster function for comparing memory.
 	bool result = true;
-#if 1
 	while (s-- > 0) {
 		if (*ptrA != *ptrB) {
 			result = false;
@@ -13095,9 +13094,6 @@ fpl_internal bool fpl__IsEqualsMemory(const void *a, const void *b, const size_t
 		ptrA++;
 		ptrB++;
 	}
-#else
-	result = memcmp(a, b, size) == 0;
-#endif
 	return(result);
 }
 
@@ -13105,7 +13101,6 @@ fpl_internal bool fpl__IsZeroMemory(const void *memory, const size_t size) {
 	const uint8_t *ptr = (const uint8_t *)memory;
 	// @SPEED(final): This may be very slow, so we should use a faster function for comparing memory.
 	bool result = true;
-#if 1
 	size_t s = size;
 	while (s-- > 0) {
 		if (*ptr) {
@@ -13114,9 +13109,6 @@ fpl_internal bool fpl__IsZeroMemory(const void *memory, const size_t size) {
 		}
 		ptr++;
 	}
-#else
-	result = memcmp(a, b, size) == 0;
-#endif
 	return(result);
 }
 
