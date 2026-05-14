@@ -29611,6 +29611,7 @@ typedef struct {
 	HANDLE stopEvent;
 	uint32_t actualBufferSizeInFrames;
 	bool comInitialized;
+	bool isExclusive;
 	volatile bool breakMainLoop;
 } fpl__AudioBackendWasapi;
 
@@ -30034,6 +30035,7 @@ fpl_internal FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(fpl__AudiobackendWasapiReleas
 	}
 	impl->actualBufferSizeInFrames = 0;
 	impl->breakMainLoop = false;
+	impl->isExclusive = false;
 	return(true);
 }
 
@@ -30093,13 +30095,55 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendWasapiIni
 		fpl__Win32CopyGuid(&FPL__GUID_KSDATAFORMAT_SUBTYPE_PCM, &requestedWfx.SubFormat);
 	}
 
-	// Resolve the final WAVEFORMATEX via IsFormatSupported (SHARED) or GetMixFormat as a
-	// last-resort. Storage for the closest match is heap-allocated by WASAPI and freed here.
+	// Format-negotiation result. negotiatedHeapFmt is non-null only when WASAPI allocated it
+	// (S_FALSE closest match or GetMixFormat); CoTaskMemFree it before returning.
 	WAVEFORMATEX *negotiatedHeapFmt = fpl_null;
 	WAVEFORMATEX *finalFmt = fpl_null;
 	WAVEFORMATEXTENSIBLE finalFmtStorage = fplZeroInit;
+	bool useExclusive = (fplGetAudioShareMode(targetFormat->mode) == fplAudioShareMode_Exclusive);
 
-	{
+	// Exclusive negotiation. WASAPI requires the exact driver format — pass NULL for closest.
+	// On failure, walk a candidate rate/bits matrix at the requested channel count. If nothing
+	// matches, fall back to shared mode (v1 behavior — never fail init outright).
+	if (useExclusive) {
+		WAVEFORMATEXTENSIBLE candidate = requestedWfx;
+		HRESULT hrEx = impl->audioClient->lpVtbl->IsFormatSupported(impl->audioClient, fpl__WasapiShareMode_Exclusive, (WAVEFORMATEX *)&candidate, fpl_null);
+		bool matched = (hrEx == S_OK);
+
+		if (!matched) {
+			static const uint32_t exRates[] = { 48000, 44100, 96000, 192000 };
+			static const fplAudioFormatType exTypes[] = {
+				fplAudioFormatType_S16,
+				fplAudioFormatType_S32,
+				fplAudioFormatType_S24,
+				fplAudioFormatType_F32,
+			};
+			for (size_t r = 0; r < fplArrayCount(exRates) && !matched; ++r) {
+				for (size_t t = 0; t < fplArrayCount(exTypes) && !matched; ++t) {
+					fplAudioFormat probe = fplZeroInit;
+					probe.sampleRate = exRates[r];
+					probe.channels = requestedWfx.Format.nChannels;
+					probe.type = exTypes[t];
+					fpl__BuildWaveFormatExtensible(&probe, outputChannelMap, &candidate);
+					hrEx = impl->audioClient->lpVtbl->IsFormatSupported(impl->audioClient, fpl__WasapiShareMode_Exclusive, (WAVEFORMATEX *)&candidate, fpl_null);
+					if (hrEx == S_OK) {
+						matched = true;
+					}
+				}
+			}
+		}
+
+		if (matched) {
+			finalFmtStorage = candidate;
+			finalFmt = (WAVEFORMATEX *)&finalFmtStorage;
+		} else {
+			FPL__WARNING(FPL__MODULE_AUDIO_WASAPI, "Exclusive mode not supported for requested format (HRESULT 0x%08lx) — falling back to shared mode", (unsigned long)hrEx);
+			useExclusive = false;
+		}
+	}
+
+	// Shared negotiation (also the fallback when exclusive failed).
+	if (!useExclusive) {
 		WAVEFORMATEX *closest = fpl_null;
 		HRESULT hr = impl->audioClient->lpVtbl->IsFormatSupported(impl->audioClient, fpl__WasapiShareMode_Shared, (WAVEFORMATEX *)&requestedWfx, &closest);
 		if (hr == S_OK) {
@@ -30125,28 +30169,66 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendWasapiIni
 		}
 	}
 
-	// Buffer duration in 100-ns units. WASAPI's actual buffer may be larger.
-	uint32_t requestedFrames = targetFormat->bufferSizeInFrames;
-	if (requestedFrames == 0 && targetFormat->bufferSizeInMilliseconds > 0) {
-		requestedFrames = (uint32_t)(((uint64_t)targetFormat->bufferSizeInMilliseconds * finalFmt->nSamplesPerSec) / 1000);
+	// Buffer duration / periodicity in 100-ns units.
+	// Shared: hnsPeriodicity must be 0.
+	// Exclusive event-driven: hnsBufferDuration and hnsPeriodicity must be equal. The driver
+	// dictates the alignment via GetDevicePeriod; we clamp the requested period to >= minimum.
+	fpl__WasapiReferenceTime hnsBufferDuration = 0;
+	fpl__WasapiReferenceTime hnsPeriodicity = 0;
+	if (useExclusive) {
+		fpl__WasapiReferenceTime defaultPeriod = 0;
+		fpl__WasapiReferenceTime minPeriod = 0;
+		if (FAILED(impl->audioClient->lpVtbl->GetDevicePeriod(impl->audioClient, &defaultPeriod, &minPeriod))) {
+			if (negotiatedHeapFmt != fpl_null) {
+				impl->api.CoTaskMemFree(negotiatedHeapFmt);
+			}
+			FPL__WASAPI_INIT_ERROR(fplAudioResultType_DeviceFailure, "IAudioClient::GetDevicePeriod failed");
+		}
+		fpl__WasapiReferenceTime period = defaultPeriod;
+		uint32_t requestedFrames = targetFormat->bufferSizeInFrames;
+		if (requestedFrames == 0 && targetFormat->bufferSizeInMilliseconds > 0) {
+			requestedFrames = (uint32_t)(((uint64_t)targetFormat->bufferSizeInMilliseconds * finalFmt->nSamplesPerSec) / 1000);
+		}
+		if (requestedFrames > 0) {
+			uint16_t periods = targetFormat->periods > 0 ? targetFormat->periods : 2;
+			fpl__WasapiReferenceTime req = fpl__WasapiFramesToHns(requestedFrames / periods, finalFmt->nSamplesPerSec);
+			if (req < minPeriod) {
+				req = minPeriod;
+			}
+			if (req < period) {
+				period = req;
+			}
+		}
+		hnsBufferDuration = period;
+		hnsPeriodicity = period;
+	} else {
+		uint32_t requestedFrames = targetFormat->bufferSizeInFrames;
+		if (requestedFrames == 0 && targetFormat->bufferSizeInMilliseconds > 0) {
+			requestedFrames = (uint32_t)(((uint64_t)targetFormat->bufferSizeInMilliseconds * finalFmt->nSamplesPerSec) / 1000);
+		}
+		if (requestedFrames == 0) {
+			requestedFrames = (uint32_t)((finalFmt->nSamplesPerSec * 25) / 1000);
+		}
+		hnsBufferDuration = fpl__WasapiFramesToHns(requestedFrames, finalFmt->nSamplesPerSec);
+		hnsPeriodicity = 0;
 	}
-	if (requestedFrames == 0) {
-		requestedFrames = (uint32_t)((finalFmt->nSamplesPerSec * 25) / 1000);
-	}
-	fpl__WasapiReferenceTime hnsBufferDuration = fpl__WasapiFramesToHns(requestedFrames, finalFmt->nSamplesPerSec);
 
+	// Stream flags. Exclusive event-driven cannot use AUTOCONVERTPCM / SRC_DEFAULT_QUALITY.
 	DWORD streamFlags = FPL__WASAPI_AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
-	if (audioSettings == fpl_null || !audioSettings->wasapi.noAutoConvertSampleRate) {
+	if (!useExclusive && (audioSettings == fpl_null || !audioSettings->wasapi.noAutoConvertSampleRate)) {
 		streamFlags |= FPL__WASAPI_AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM;
 		streamFlags |= FPL__WASAPI_AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY;
 	}
 
+	fpl__WasapiShareMode initShareMode = useExclusive ? fpl__WasapiShareMode_Exclusive : fpl__WasapiShareMode_Shared;
+
 	// Initialize. AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED is recoverable by querying the
-	// aligned buffer size, releasing + reactivating the client, and retrying. Cap to 2 retries.
+	// aligned buffer size, releasing + reactivating the client, and retrying with the
+	// driver-aligned period. Cap to 2 retries.
 	const int maxRetries = 2;
 	HRESULT initHr = S_OK;
 	for (int attempt = 0; attempt <= maxRetries; ++attempt) {
-		initHr = impl->audioClient->lpVtbl->Initialize(impl->audioClient, fpl__WasapiShareMode_Shared, streamFlags, hnsBufferDuration, 0, finalFmt, fpl_null);
+		initHr = impl->audioClient->lpVtbl->Initialize(impl->audioClient, initShareMode, streamFlags, hnsBufferDuration, hnsPeriodicity, finalFmt, fpl_null);
 		if (initHr != FPL__WASAPI_AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED) {
 			break;
 		}
@@ -30161,14 +30243,20 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendWasapiIni
 		if (FAILED(hrAct) || impl->audioClient == fpl_null) {
 			break;
 		}
-		hnsBufferDuration = fpl__WasapiFramesToHns(alignedFrames, finalFmt->nSamplesPerSec);
+		fpl__WasapiReferenceTime alignedPeriod = fpl__WasapiFramesToHns(alignedFrames, finalFmt->nSamplesPerSec);
+		hnsBufferDuration = alignedPeriod;
+		if (useExclusive) {
+			hnsPeriodicity = alignedPeriod;
+		}
 	}
 	if (FAILED(initHr)) {
 		if (negotiatedHeapFmt != fpl_null) {
 			impl->api.CoTaskMemFree(negotiatedHeapFmt);
 		}
-		FPL__WASAPI_INIT_ERROR(fplAudioResultType_DeviceFailure, "IAudioClient::Initialize failed (HRESULT 0x%08lx)", (unsigned long)initHr);
+		FPL__WASAPI_INIT_ERROR(fplAudioResultType_DeviceFailure, "IAudioClient::Initialize (%s) failed (HRESULT 0x%08lx)", (useExclusive ? "exclusive" : "shared"), (unsigned long)initHr);
 	}
+
+	impl->isExclusive = useExclusive;
 
 	// Event handle for the WASAPI buffer-available signal.
 	impl->bufferEvent = CreateEventW(fpl_null, FALSE, FALSE, fpl_null);
@@ -30277,7 +30365,8 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendWasapiIni
 	}
 
 	FPL_LOG(fplLogLevel_Info, FPL__MODULE_AUDIO_WASAPI,
-		"Using internal format (Channels: %u, Samplerate: %u, Type: %s, Periods: %u, Buffer frames: %u)",
+		"Using internal format (Mode: %s, Channels: %u, Samplerate: %u, Type: %s, Periods: %u, Buffer frames: %u)",
+		(impl->isExclusive ? "Exclusive" : "Shared"),
 		internalFormat.channels,
 		internalFormat.sampleRate,
 		fplGetAudioFormatName(internalFormat.type),
