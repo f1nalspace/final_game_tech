@@ -10,9 +10,11 @@ project(FPL_OpenGL C)
 
 set(MY_COMPILER "c99")
 
+find_package(OpenGL REQUIRED)
+
 set(MY_EXTERNAL_LIBS
 	"m"
-	"GL"
+	OpenGL::GL
 	)
 
 set(MY_INCLUDE_DIRS
