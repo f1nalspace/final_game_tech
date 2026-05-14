@@ -334,8 +334,8 @@ SOFTWARE.
 	- New: [WASAPI] Implemented GetAudioDevices via IMMDeviceCollection enumeration of eRender endpoints (UTF-16 device id, UTF-8 friendly name, default flag via GetDefaultAudioEndpoint)
 	- New: [WASAPI] Implemented GetAudioDeviceInfo with format probing via IsFormatSupported across a rate/channel/type matrix; mix format is always recorded
 	- New: [WASAPI] Exclusive mode honors fplAudioMode/fplAudioShareMode; falls back to shared mode on driver rejection rather than failing init
-	- Changed: Extracted shared Win32 helper fpl__BuildWaveFormatExtensible (formerly fpl__SetupWaveFormatDirectSound) and the channel-mask map/unmap helpers so DirectSound and WASAPI share one WAVEFORMATEXTENSIBLE builder
-	- Fixed: fpl__BuildWaveFormatExtensible now sets WAVEFORMATEX.cbSize to sizeof(WAVEFORMATEXTENSIBLE)-sizeof(WAVEFORMATEX) (22) instead of full-struct size; DirectSound tolerated the prior wrong value, WASAPI's IsFormatSupported is strict
+	- Changed: Extracted shared Win32 helper fpl__Win32BuildWaveFormatExtensible (formerly fpl__SetupWaveFormatDirectSound) and the channel-mask map/unmap helpers so DirectSound and WASAPI share one WAVEFORMATEXTENSIBLE builder
+	- Fixed: fpl__Win32BuildWaveFormatExtensible now sets WAVEFORMATEX.cbSize to sizeof(WAVEFORMATEXTENSIBLE)-sizeof(WAVEFORMATEX) (22) instead of full-struct size; DirectSound tolerated the prior wrong value, WASAPI's IsFormatSupported is strict
 	- Fixed: fpl__ReadAudioFramesFromClient was not returning frameCount always and produce silence bytes for the remaining samples (now enforced via asserts at all call sites)
 	- Fixed: fpl__InitAudio() was raising an assertion instead of returning fplAudioResultType_NoBackendsFound, when no backends are available
 	- Fixed: [PulseAudio] ABI mismatches in backend function pointer signatures
@@ -28521,7 +28521,7 @@ fpl_internal bool fpl__IsAudioDeviceStarted(fplAudioContext *context);
 #	include <mmsystem.h>
 
 // Convert a flag from a dwChannelMask to a fplAudioChannelType
-fpl_internal fplAudioChannelType fpl__MapWin32AudioChannelIdToAudioSpeakerFlags(const DWORD id) {
+fpl_internal fplAudioChannelType fpl__Win32MapAudioChannelIdToAudioSpeakerFlags(const DWORD id) {
 	switch (id) {
 		case SPEAKER_FRONT_LEFT:            return fplAudioChannelType_FrontLeft;
 		case SPEAKER_FRONT_RIGHT:           return fplAudioChannelType_FrontRight;
@@ -28546,7 +28546,7 @@ fpl_internal fplAudioChannelType fpl__MapWin32AudioChannelIdToAudioSpeakerFlags(
 }
 
 // Convert a fplAudioChannelType to flag for dwChannelMask
-fpl_internal DWORD fpl__MapAudioSpeakerFlagsToWin32AudioChannelId(const fplAudioChannelType audioChannelFlags) {
+fpl_internal DWORD fpl__Win32MapAudioSpeakerFlagsToAudioChannelId(const fplAudioChannelType audioChannelFlags) {
 	switch (audioChannelFlags) {
 		case fplAudioChannelType_FrontLeft:            return SPEAKER_FRONT_LEFT;
 		case fplAudioChannelType_FrontRight:           return SPEAKER_FRONT_RIGHT;
@@ -28571,7 +28571,7 @@ fpl_internal DWORD fpl__MapAudioSpeakerFlagsToWin32AudioChannelId(const fplAudio
 }
 
 // Fill out the mapping table from a win32 channel mask and number of channels
-fpl_internal void fpl__CreateChannelsMappingFromChannelMask(const DWORD channelMask, const uint16_t channels, fplAudioChannelMap *channelMap) {
+fpl_internal void fpl__Win32CreateChannelsMappingFromChannelMask(const DWORD channelMask, const uint16_t channels, fplAudioChannelMap *channelMap) {
 	fplClearStruct(channelMap);
 	if ((channels == 1) && ((channelMask == 0) || fplIsMaskSet(channelMask, SPEAKER_FRONT_CENTER))) {
 		channelMap->speakers[0] = fplAudioChannelType_FrontCenter;
@@ -28583,7 +28583,7 @@ fpl_internal void fpl__CreateChannelsMappingFromChannelMask(const DWORD channelM
 		for (uint32_t bit = 0; bit < 32; ++bit) {
 			DWORD bitMask = (channelMask & (1UL << bit));
 			if (bitMask != 0) {
-				fplAudioChannelType flags = fpl__MapWin32AudioChannelIdToAudioSpeakerFlags(bitMask);
+				fplAudioChannelType flags = fpl__Win32MapAudioChannelIdToAudioSpeakerFlags(bitMask);
 				channelMap->speakers[channelIndex++] = flags;
 			}
 		}
@@ -28591,11 +28591,11 @@ fpl_internal void fpl__CreateChannelsMappingFromChannelMask(const DWORD channelM
 }
 
 // Get a dwChannelMask from the specified channel map and number of channels
-fpl_internal DWORD fpl__GetWin32AudioChannelMaskFromMapping(const fplAudioChannelMap *channelMap, const uint16_t channels) {
+fpl_internal DWORD fpl__Win32GetAudioChannelMaskFromMapping(const fplAudioChannelMap *channelMap, const uint16_t channels) {
 	fplAssert(channelMap != fpl_null);
 	DWORD result = 0;
 	for (uint16_t channelIndex = 0; channelIndex < channels; ++channelIndex) {
-		DWORD channelValue = fpl__MapAudioSpeakerFlagsToWin32AudioChannelId(channelMap->speakers[channelIndex]);
+		DWORD channelValue = fpl__Win32MapAudioSpeakerFlagsToAudioChannelId(channelMap->speakers[channelIndex]);
 		result |= channelValue;
 	}
 	return result;
@@ -28603,7 +28603,7 @@ fpl_internal DWORD fpl__GetWin32AudioChannelMaskFromMapping(const fplAudioChanne
 
 // Converts an audio format with its channel map into a WAVEFORMATEXTENSIBLE.
 // Shared by DirectSound and WASAPI. channelMap may be null for unspecified mask.
-fpl_internal void fpl__BuildWaveFormatExtensible(const fplAudioFormat *sourceFormat, const fplAudioChannelMap *channelMap, WAVEFORMATEXTENSIBLE *outputWaveFormat) {
+fpl_internal void fpl__Win32BuildWaveFormatExtensible(const fplAudioFormat *sourceFormat, const fplAudioChannelMap *channelMap, WAVEFORMATEXTENSIBLE *outputWaveFormat) {
 	WAVEFORMATEXTENSIBLE waveFormat = fplZeroInit;
 	waveFormat.Format.cbSize = sizeof(waveFormat) - sizeof(WAVEFORMATEX);
 	waveFormat.Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
@@ -28619,7 +28619,7 @@ fpl_internal void fpl__BuildWaveFormatExtensible(const fplAudioFormat *sourceFor
 		fpl__Win32CopyGuid(&FPL__GUID_KSDATAFORMAT_SUBTYPE_PCM, &waveFormat.SubFormat);
 	}
 	if (channelMap != fpl_null) {
-		waveFormat.dwChannelMask = fpl__GetWin32AudioChannelMaskFromMapping(channelMap, sourceFormat->channels);
+		waveFormat.dwChannelMask = fpl__Win32GetAudioChannelMaskFromMapping(channelMap, sourceFormat->channels);
 	} else {
 		waveFormat.dwChannelMask = 0;
 	}
@@ -28987,7 +28987,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendDirectSou
 	// Convert source format to wave format
 	fplAudioChannelLayout channelLayout = targetFormat->channelLayout;
 	WAVEFORMATEXTENSIBLE waveFormat = fplZeroInit;
-	fpl__BuildWaveFormatExtensible(targetFormat, outputChannelMap, &waveFormat);
+	fpl__Win32BuildWaveFormatExtensible(targetFormat, outputChannelMap, &waveFormat);
 
 	// Query device
 	fplAudioDeviceInfo internalDevice = fplZeroInit;
@@ -29068,7 +29068,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendDirectSou
 			waveFormat.dwChannelMask = FPL__DirectSound_ChannelMask_Mono;
 			channelLayout = fplAudioChannelLayout_Mono;
 		}
-		fpl__CreateChannelsMappingFromChannelMask(waveFormat.dwChannelMask, waveFormat.Format.nChannels, outputChannelMap);
+		fpl__Win32CreateChannelsMappingFromChannelMask(waveFormat.dwChannelMask, waveFormat.Format.nChannels, outputChannelMap);
 	} else {
 		fplAssert(targetFormat->channels > 0);
 		fplAssert(targetFormat->channelLayout >= fplAudioChannelLayout_First && targetFormat->channelLayout <= fplAudioChannelLayout_Last);
@@ -29983,7 +29983,7 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudiobackendWasap
 				probe.channels = candidateChannels[c];
 				probe.type = candidateTypes[t];
 				WAVEFORMATEXTENSIBLE wfx;
-				fpl__BuildWaveFormatExtensible(&probe, fpl_null, &wfx);
+				fpl__Win32BuildWaveFormatExtensible(&probe, fpl_null, &wfx);
 
 				WAVEFORMATEX *closest = fpl_null;
 				HRESULT hr = client->lpVtbl->IsFormatSupported(client, fpl__WasapiShareMode_Shared, (WAVEFORMATEX *)&wfx, &closest);
@@ -30086,7 +30086,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendWasapiIni
 	fplAudioChannelLayout outChannelLayout = targetFormat->channelLayout;
 
 	WAVEFORMATEXTENSIBLE requestedWfx = fplZeroInit;
-	fpl__BuildWaveFormatExtensible(targetFormat, outputChannelMap, &requestedWfx);
+	fpl__Win32BuildWaveFormatExtensible(targetFormat, outputChannelMap, &requestedWfx);
 
 	// Sanitize unset/auto fields with sensible WASAPI defaults so IsFormatSupported has a real candidate.
 	if (requestedWfx.Format.nSamplesPerSec == 0) {
@@ -30132,7 +30132,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendWasapiIni
 					probe.sampleRate = exRates[r];
 					probe.channels = requestedWfx.Format.nChannels;
 					probe.type = exTypes[t];
-					fpl__BuildWaveFormatExtensible(&probe, outputChannelMap, &candidate);
+					fpl__Win32BuildWaveFormatExtensible(&probe, outputChannelMap, &candidate);
 					hrEx = impl->audioClient->lpVtbl->IsFormatSupported(impl->audioClient, fpl__WasapiShareMode_Exclusive, (WAVEFORMATEX *)&candidate, fpl_null);
 					if (hrEx == S_OK) {
 						matched = true;
@@ -30320,7 +30320,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendWasapiIni
 		resolvedChannelMask = ((const WAVEFORMATEXTENSIBLE *)finalFmt)->dwChannelMask;
 	}
 
-	fpl__CreateChannelsMappingFromChannelMask(resolvedChannelMask, finalFmt->nChannels, outputChannelMap);
+	fpl__Win32CreateChannelsMappingFromChannelMask(resolvedChannelMask, finalFmt->nChannels, outputChannelMap);
 	if (outChannelLayout == fplAudioChannelLayout_Automatic) {
 		if (finalFmt->nChannels == 1) {
 			outChannelLayout = fplAudioChannelLayout_Mono;
