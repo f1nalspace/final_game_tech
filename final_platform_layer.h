@@ -2202,10 +2202,28 @@ SOFTWARE.
 #endif // FPL_COMPILER
 
 //
+// HasInclude
+// Must be available before platform detection, so X11 subplatform can be gated on header presence.
+//
+#if defined(__has_include)
+#	define fpl__m_HasInclude(inc) __has_include(inc)
+#else
+#	define fpl__m_HasInclude(inc) (1)
+#endif
+
+/**
+* @def fplHasInclude
+* @brief Test for include existence.
+* @param[in] inc Path to the include file.
+* @return A boolean indicating whether the specified include has been found or not.
+*/
+#define fplHasInclude(inc) fpl__m_HasInclude(inc)
+
+//
 // Platform preprocessor detection
-// 
+//
 // https://sourceforge.net/p/predef/wiki/OperatingSystems/
-// 
+//
 // Only platforms that are supported are listed
 //
 #if defined(_WIN32) || defined(_WIN64)
@@ -2687,23 +2705,6 @@ typedef enum fplX86InstructionSetLevel {
 #		define FPL__ENABLE_C_ASSERT
 #	endif
 #endif // FPL__ENABLE_ASSERTIONS
-
-//
-// HasInclude
-//
-#if defined(__has_include)
-#	define fpl__m_HasInclude(inc) __has_include(inc)
-#else
-#	define fpl__m_HasInclude(inc) (1)
-#endif
-
-/**
-* @def fplHasInclude
-* @brief Test for include existence.
-* @param[in] inc Path to the include file.
-* @return A boolean indicating whether the specified include has been found or not.
-*/
-#define fplHasInclude(inc) fpl__m_HasInclude(inc)
 
 //
 // Window preprocessor setup
