@@ -12110,14 +12110,10 @@ typedef struct fpl__X11Xdnd {
 	Atom format;
 } fpl__X11Xdnd;
 
-#define FPL__FUNC_X11_ErrorHandlerCallback(name) int name(Display *display, XErrorEvent *ev)
-typedef FPL__FUNC_X11_ErrorHandlerCallback(fpl__func_X11ErrorHandlerCallback);
-
 typedef struct fpl__X11WindowState {
 	fpl__X11WindowStateInfo lastWindowStateInfo;
 	Colormap colorMap;
 	Display *display;
-	fpl__func_X11ErrorHandlerCallback *lastErrorHandler;
 	fpl__X11Xdnd xdnd;
 	Window root;
 	Window window;
@@ -22688,12 +22684,6 @@ fpl_internal void fpl__X11ReleaseWindow(const fpl__X11SubplatformState *subplatf
 		FPL_LOG_DEBUG("X11", "Close display '%p'", windowState->display);
 		x11Api->XCloseDisplay(windowState->display);
 		windowState->display = fpl_null;
-
-#if 0
-		FPL_LOG_DEBUG("X11", "Restore previous error handler '%p'", windowState->lastErrorHandler);
-		x11Api->XSetErrorHandler(windowState->lastErrorHandler);
-#endif
-
 	}
 	fplClearStruct(windowState);
 }
@@ -22976,33 +22966,12 @@ fpl_internal void fpl__X11LoadWindowIcon(const fpl__X11Api *x11Api, fpl__X11Wind
 	x11Api->XFlush(x11WinState->display);
 }
 
-#if 0
-fpl_internal int fpl__X11ErrorHandler(Display *display, XErrorEvent *ev) {
-	FPL__CheckPlatform(0);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__X11SubplatformState *subplatform = &appState->x11;
-	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
-
-	if (windowState->lastErrorHandler != fpl_null) {
-		return windowState->lastErrorHandler(display, ev);
-	}
-
-	return(0);
-}
-#endif
-
 fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *appState, fpl__X11SubplatformState *subplatform, fpl__X11WindowState *windowState, const fpl__SetupWindowCallbacks *setupCallbacks) {
 	fplAssert((initSettings != fpl_null) && (currentWindowSettings != fpl_null) && (appState != fpl_null) && (subplatform != fpl_null) && (windowState != fpl_null) && (setupCallbacks != fpl_null));
 	const fpl__X11Api *x11Api = &subplatform->api;
 
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Set init threads");
 	x11Api->XInitThreads();
-
-#if 0
-	FPL_LOG_DEBUG("X11", "Enable error handler");
-	windowState->lastErrorHandler = x11Api->XSetErrorHandler(fpl__X11ErrorHandler);
-#endif
 
 	const fplWindowSettings *initWindowSettings = &initSettings->window;
 
