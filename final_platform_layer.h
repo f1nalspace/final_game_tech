@@ -187,6 +187,7 @@ SOFTWARE.
 	- Improved type safety for opaque X11/Win32/POSIX handles with compile-time size checks
 	- Implemented missing X11 window surface (display API, clipboard, fullscreen rect, window state, resizable/floating, cursor query)
 	- Improved POSIX support (BSD/macOS version detection, thread-safe date time, separator-tolerant directory creation)
+	- Improved UNIX/BSD support
 	- Reworked and normalized API documentation across the header
 	- Numerous ABI, runtime-linking, and platform-specific bugfixes (X11, ALSA, OpenGL, Vulkan)
 	- Several breaking changes in string/path/window-title APIs (now return required size)
@@ -219,13 +220,7 @@ SOFTWARE.
 	- New: Added function fplPathNormalize() for normalizing any partial path into a absolute path
 	- New: Added function fplTryStringToS32Len that is a more safe-method than to fplStringToS32
 	- New: Added function fplTryStringToS32 that is a more safe-method than to fplStringToS32
-	- New: Added function fplFileTryGetSizeFromPath that returns a bool and writes the size to a uint64_t out parameter, disambiguating 0-byte files from errors
-	- New: Added function fplFileTryGetSizeFromHandle that returns a bool and writes the size to a uint64_t out parameter, disambiguating 0-byte files from errors
 	- New: Added macro FPL_MAX_VERSION_PART_LENGTH for the maximum length of a version part string
-	- New: [Win32] Implemented function fplFileAppendBinary() for Win32 API
-	- New: [POSIX] Implemented function fplFileAppendBinary() for POSIX Unix API
-	- New: [Win32] Implemented function fplPathNormalize() for Win32 API
-	- New: [POSIX] Implemented function fplPathNormalize() for POSIX Unix API
 	- New[#183]: Added macro fpl_extern_inline
 	- Improved: Better documentation of the preprocessor setup blocks
 	- Improved: Added fplStaticAssert checks in the non-opaque branch verifying that the real Win32/POSIX/X11 handle types fit into the opaque-branch buffers (catches portability breakage at compile time instead of corrupting memory at runtime)
@@ -248,31 +243,41 @@ SOFTWARE.
 	- Fixed: fplGetErrorCount / fplGetErrorByIndex  / fplGetLastError and pushing of errors was not thread-safe
 	- Fixed: fplAlignAs was using a condition based macro, which is not supported for some compilers
 	- Fixed[#183]: fpl_internal_inline was not compiling on GCC/Clang
-	- Fixed: fplDirectoryListBegin lifetime issue — path and filter are now copied into fpl__InternalFileRootInfo buffers instead of held by reference
 	- Fixed: FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL define was being set twice
-	- Fixed: [Win32] fplFileSetPosition32 / fplFileGetSizeFromPath32 / fplFileGetSizeFromHandle32 was not using the best suitable API function
-	- Fixed: [Win32] GetModuleFileNameW and SHGetFolderPathW return values were not error-checked
-	- Fixed: [POSIX] Fixed pthread fpl__POSIXSemaphoreHandle was not used
-	- Fixed: [POSIX] dirint.h and sched.h was not included always
 	- Fixed: [POSIX] fplDateTime functions were not thread-safe — now use localtime_r / gmtime_r
-	- Fixed: [POSIX] fplDirectoriesCreate was not separator-tolerant
 	- Fixed: [POSIX] fplMemoryAllocate was not compiling in FreeBSD (MAP_ANONYMOUS vs MAP_ANON)
-	- Fixed: [POSIX] fpl__PThreadLoadApi fails on missing pthread library in FreeBSD
-	- Fixed: [BSD] fplGetExecutableFilePath returned 0 on FreeBSD/DragonFly (procfs not mounted) — now uses sysctl(KERN_PROC_PATHNAME) before falling back to /proc
 	- New: [Unix/BSD] Implemented fplGetSystemLocale / fplGetUserLocale / fplGetInputLocale via setlocale + ISO-639 conversion (shared fpl__PosixLocaleToISO639 helper)
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
-	- Fixed[#184]: [POSIX] fplDirectoriesCreate() does not create parent sub-directories
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
 	- Changed: Ensure that std types has the correct sizes always using equals
-	- Changed: fplFileWriteBlock*() changed to const for the source argument
-	- Changed: fplExtractFilePath return type changed from int to size_t
 	- Changed: [POSIX] Disabled FPL_NO_PLATFORM_INCLUDES for pthread includes
-	- Changed: [POSIX] `st_atim` vs `st_atime` fallback detection for older POSIX
-	- Changed: [POSIX] `sched_getscheduler` POSIX standard coverage check
 	- Changed: [BSD] Define __BSD_VISIBLE on BSD platforms
 	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
+
+	#### Threading
+	- Changed: [POSIX] `sched_getscheduler` POSIX standard coverage check
 	- Removed: [POSIX] Removed unused pthread_setschedprio loader/typedef/API-table entry (not exported by FreeBSD libthr, never called by FPL)
+	- Fixed: [POSIX] Fixed pthread fpl__POSIXSemaphoreHandle was not used
+	- Fixed: [POSIX] fpl__PThreadLoadApi fails on missing pthread library in FreeBSD
+
+	#### IO
+	- New: Added function fplFileTryGetSizeFromPath that returns a bool and writes the size to a uint64_t out parameter, disambiguating 0-byte files from errors
+	- New: Added function fplFileTryGetSizeFromHandle that returns a bool and writes the size to a uint64_t out parameter, disambiguating 0-byte files from errors
+	- New: [Win32] Implemented function fplFileAppendBinary() for Win32 API
+	- New: [POSIX] Implemented function fplFileAppendBinary() for POSIX Unix API
+	- New: [Win32] Implemented function fplPathNormalize() for Win32 API
+	- New: [POSIX] Implemented function fplPathNormalize() for POSIX Unix API
+	- Changed: fplFileWriteBlock*() changed to const for the source argument
+	- Changed: fplExtractFilePath return type changed from int to size_t
+	- Changed: [POSIX] `st_atim` vs `st_atime` fallback detection for older POSIX
+	- Fixed: fplDirectoryListBegin lifetime issue — path and filter are now copied into fpl__InternalFileRootInfo buffers instead of held by reference
+	- Fixed: [POSIX] fplDirectoriesCreate was not separator-tolerant
+	- Fixed: [BSD] fplGetExecutableFilePath returned 0 on FreeBSD/DragonFly (procfs not mounted) — now uses sysctl(KERN_PROC_PATHNAME) before falling back to /proc
+	- Fixed: [Win32] fplFileSetPosition32 / fplFileGetSizeFromPath32 / fplFileGetSizeFromHandle32 was not using the best suitable API function
+	- Fixed: [Win32] GetModuleFileNameW and SHGetFolderPathW return values were not error-checked
+	- Fixed: [POSIX] dirint.h and sched.h was not included always
+	- Fixed[#184]: [POSIX] fplDirectoriesCreate() does not create parent sub-directories
 
 	#### Window
 	- New: [X11] Implemented fplSetWindowCursorEnabled
