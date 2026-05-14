@@ -2815,12 +2815,12 @@ typedef enum fplX86InstructionSetLevel {
 #			define FPL__SUPPORT_AUDIO_ALSA
 #		endif
 #	endif
-#	if !defined(FPL_NO_AUDIO_PULSEAUDIO) && defined(FPL_PLATFORM_LINUX)
+#	if !defined(FPL_NO_AUDIO_PULSEAUDIO) && (defined(FPL_PLATFORM_LINUX) || defined(FPL_PLATFORM_UNIX))
 #		if !defined(FPL_NO_RUNTIME_LINKING) || fplHasInclude(<pulse/pulseaudio.h>)
 #			define FPL__SUPPORT_AUDIO_PULSEAUDIO // PulseAudio backend uses runtime linking to libpulse.so.0, no dev headers are required
 #		endif
 #	endif
-#	if !defined(FPL_NO_AUDIO_PIPEWIRE) && defined(FPL_PLATFORM_LINUX)
+#	if !defined(FPL_NO_AUDIO_PIPEWIRE) && (defined(FPL_PLATFORM_LINUX) || defined(FPL_PLATFORM_UNIX))
 #		if !defined(FPL_NO_RUNTIME_LINKING) || fplHasInclude(<pipewire/pipewire.h>)
 #			define FPL__SUPPORT_AUDIO_PIPEWIRE // PipeWire backend uses runtime linking to libpipewire-0.3.so.0, no dev headers are required
 #		endif
