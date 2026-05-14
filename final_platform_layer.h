@@ -28505,12 +28505,126 @@ fpl_internal bool fpl__IsAudioDeviceStarted(fplAudioContext *context);
 
 // ############################################################################
 //
+// > AUDIO_WIN32_SHARED (channel-mask + WAVEFORMATEXTENSIBLE helpers shared by DirectSound and WASAPI)
+//
+// ############################################################################
+#if defined(FPL__ENABLE_AUDIO_DIRECTSOUND) || defined(FPL__ENABLE_AUDIO_WASAPI)
+#	include <mmreg.h>
+#	include <mmsystem.h>
+
+// Convert a flag from a dwChannelMask to a fplAudioChannelType
+fpl_internal fplAudioChannelType fpl__MapWin32AudioChannelIdToAudioSpeakerFlags(const DWORD id) {
+	switch (id) {
+		case SPEAKER_FRONT_LEFT:            return fplAudioChannelType_FrontLeft;
+		case SPEAKER_FRONT_RIGHT:           return fplAudioChannelType_FrontRight;
+		case SPEAKER_FRONT_CENTER:          return fplAudioChannelType_FrontCenter;
+		case SPEAKER_LOW_FREQUENCY:         return fplAudioChannelType_LowFrequency;
+		case SPEAKER_BACK_LEFT:             return fplAudioChannelType_BackLeft;
+		case SPEAKER_BACK_RIGHT:            return fplAudioChannelType_BackRight;
+		case SPEAKER_FRONT_LEFT_OF_CENTER:  return fplAudioChannelType_FrontLeftOfCenter;
+		case SPEAKER_FRONT_RIGHT_OF_CENTER: return fplAudioChannelType_FrontRightOfCenter;
+		case SPEAKER_BACK_CENTER:           return fplAudioChannelType_BackCenter;
+		case SPEAKER_SIDE_LEFT:             return fplAudioChannelType_SideLeft;
+		case SPEAKER_SIDE_RIGHT:            return fplAudioChannelType_SideRight;
+		case SPEAKER_TOP_CENTER:            return fplAudioChannelType_TopCenter;
+		case SPEAKER_TOP_FRONT_LEFT:        return fplAudioChannelType_TopFrontLeft;
+		case SPEAKER_TOP_FRONT_CENTER:      return fplAudioChannelType_TopFrontCenter;
+		case SPEAKER_TOP_FRONT_RIGHT:       return fplAudioChannelType_TopFrontRight;
+		case SPEAKER_TOP_BACK_LEFT:         return fplAudioChannelType_TopBackLeft;
+		case SPEAKER_TOP_BACK_CENTER:       return fplAudioChannelType_TopBackCenter;
+		case SPEAKER_TOP_BACK_RIGHT:        return fplAudioChannelType_TopBackRight;
+		default: return fplAudioChannelType_None;
+	}
+}
+
+// Convert a fplAudioChannelType to flag for dwChannelMask
+fpl_internal DWORD fpl__MapAudioSpeakerFlagsToWin32AudioChannelId(const fplAudioChannelType audioChannelFlags) {
+	switch (audioChannelFlags) {
+		case fplAudioChannelType_FrontLeft:            return SPEAKER_FRONT_LEFT;
+		case fplAudioChannelType_FrontRight:           return SPEAKER_FRONT_RIGHT;
+		case fplAudioChannelType_FrontCenter:          return SPEAKER_FRONT_CENTER;
+		case fplAudioChannelType_LowFrequency:         return SPEAKER_LOW_FREQUENCY;
+		case fplAudioChannelType_BackLeft:             return SPEAKER_BACK_LEFT;
+		case fplAudioChannelType_BackRight:            return SPEAKER_BACK_RIGHT;
+		case fplAudioChannelType_FrontLeftOfCenter:    return SPEAKER_FRONT_LEFT_OF_CENTER;
+		case fplAudioChannelType_FrontRightOfCenter:   return SPEAKER_FRONT_RIGHT_OF_CENTER;
+		case fplAudioChannelType_BackCenter:           return SPEAKER_BACK_CENTER;
+		case fplAudioChannelType_SideLeft:             return SPEAKER_SIDE_LEFT;
+		case fplAudioChannelType_SideRight:            return SPEAKER_SIDE_RIGHT;
+		case fplAudioChannelType_TopCenter:            return SPEAKER_TOP_CENTER;
+		case fplAudioChannelType_TopFrontLeft:         return SPEAKER_TOP_FRONT_LEFT;
+		case fplAudioChannelType_TopFrontCenter:       return SPEAKER_TOP_FRONT_CENTER;
+		case fplAudioChannelType_TopFrontRight:        return SPEAKER_TOP_FRONT_RIGHT;
+		case fplAudioChannelType_TopBackLeft:          return SPEAKER_TOP_BACK_LEFT;
+		case fplAudioChannelType_TopBackCenter:        return SPEAKER_TOP_BACK_CENTER;
+		case fplAudioChannelType_TopBackRight:         return SPEAKER_TOP_BACK_RIGHT;
+		default: return 0;
+	}
+}
+
+// Fill out the mapping table from a win32 channel mask and number of channels
+fpl_internal void fpl__CreateChannelsMappingFromChannelMask(const DWORD channelMask, const uint16_t channels, fplAudioChannelMap *channelMap) {
+	fplClearStruct(channelMap);
+	if ((channels == 1) && ((channelMask == 0) || fplIsMaskSet(channelMask, SPEAKER_FRONT_CENTER))) {
+		channelMap->speakers[0] = fplAudioChannelType_FrontCenter;
+	} else if (channels == 2 && channelMask == 0) {
+		channelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		channelMap->speakers[1] = fplAudioChannelType_FrontRight;
+	} else {
+		uint32_t channelIndex = 0;
+		for (uint32_t bit = 0; bit < 32; ++bit) {
+			DWORD bitMask = (channelMask & (1UL << bit));
+			if (bitMask != 0) {
+				fplAudioChannelType flags = fpl__MapWin32AudioChannelIdToAudioSpeakerFlags(bitMask);
+				channelMap->speakers[channelIndex++] = flags;
+			}
+		}
+	}
+}
+
+// Get a dwChannelMask from the specified channel map and number of channels
+fpl_internal DWORD fpl__GetWin32AudioChannelMaskFromMapping(const fplAudioChannelMap *channelMap, const uint16_t channels) {
+	fplAssert(channelMap != fpl_null);
+	DWORD result = 0;
+	for (uint16_t channelIndex = 0; channelIndex < channels; ++channelIndex) {
+		DWORD channelValue = fpl__MapAudioSpeakerFlagsToWin32AudioChannelId(channelMap->speakers[channelIndex]);
+		result |= channelValue;
+	}
+	return result;
+}
+
+// Converts an audio format with its channel map into a WAVEFORMATEXTENSIBLE.
+// Shared by DirectSound and WASAPI. channelMap may be null for unspecified mask.
+fpl_internal void fpl__BuildWaveFormatExtensible(const fplAudioFormat *sourceFormat, const fplAudioChannelMap *channelMap, WAVEFORMATEXTENSIBLE *outputWaveFormat) {
+	WAVEFORMATEXTENSIBLE waveFormat = fplZeroInit;
+	waveFormat.Format.cbSize = sizeof(waveFormat) - sizeof(WAVEFORMATEX);
+	waveFormat.Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
+	waveFormat.Format.nChannels = (WORD)sourceFormat->channels;
+	waveFormat.Format.nSamplesPerSec = (DWORD)sourceFormat->sampleRate;
+	waveFormat.Format.wBitsPerSample = (WORD)fplGetAudioSampleSizeInBytes(sourceFormat->type) * 8;
+	waveFormat.Format.nBlockAlign = (waveFormat.Format.nChannels * waveFormat.Format.wBitsPerSample) / 8;
+	waveFormat.Format.nAvgBytesPerSec = waveFormat.Format.nBlockAlign * waveFormat.Format.nSamplesPerSec;
+	waveFormat.Samples.wValidBitsPerSample = waveFormat.Format.wBitsPerSample;
+	if ((sourceFormat->type == fplAudioFormatType_F32) || (sourceFormat->type == fplAudioFormatType_F64)) {
+		fpl__Win32CopyGuid(&FPL__GUID_KSDATAFORMAT_SUBTYPE_IEEE_FLOAT, &waveFormat.SubFormat);
+	} else {
+		fpl__Win32CopyGuid(&FPL__GUID_KSDATAFORMAT_SUBTYPE_PCM, &waveFormat.SubFormat);
+	}
+	if (channelMap != fpl_null) {
+		waveFormat.dwChannelMask = fpl__GetWin32AudioChannelMaskFromMapping(channelMap, sourceFormat->channels);
+	} else {
+		waveFormat.dwChannelMask = 0;
+	}
+	*outputWaveFormat = waveFormat;
+}
+#endif // FPL__ENABLE_AUDIO_DIRECTSOUND || FPL__ENABLE_AUDIO_WASAPI
+
+// ############################################################################
+//
 // > AUDIO_BACKEND_DIRECTSOUND
 //
 // ############################################################################
 #if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
-#	include <mmreg.h>
-#	include <mmsystem.h>
 #	include <dsound.h>
 
 #define FPL__FUNC_DSOUND_DirectSoundCreate(name) HRESULT WINAPI name(const GUID* pcGuidDevice, LPDIRECTSOUND *ppDS8, LPUNKNOWN pUnkOuter)
@@ -28766,107 +28880,6 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudiobackendDirec
 	return fplAudioResultType_Success;
 }
 
-// Convert a flag from a dwChannelMask to a fplAudioChannelType
-fpl_internal fplAudioChannelType fpl__MapWin32AudioChannelIdToAudioSpeakerFlags(const DWORD id) {
-	switch (id) {
-		case SPEAKER_FRONT_LEFT:            return fplAudioChannelType_FrontLeft;
-		case SPEAKER_FRONT_RIGHT:           return fplAudioChannelType_FrontRight;
-		case SPEAKER_FRONT_CENTER:          return fplAudioChannelType_FrontCenter;
-		case SPEAKER_LOW_FREQUENCY:         return fplAudioChannelType_LowFrequency;
-		case SPEAKER_BACK_LEFT:             return fplAudioChannelType_BackLeft;
-		case SPEAKER_BACK_RIGHT:            return fplAudioChannelType_BackRight;
-		case SPEAKER_FRONT_LEFT_OF_CENTER:  return fplAudioChannelType_FrontLeftOfCenter;
-		case SPEAKER_FRONT_RIGHT_OF_CENTER: return fplAudioChannelType_FrontRightOfCenter;
-		case SPEAKER_BACK_CENTER:           return fplAudioChannelType_BackCenter;
-		case SPEAKER_SIDE_LEFT:             return fplAudioChannelType_SideLeft;
-		case SPEAKER_SIDE_RIGHT:            return fplAudioChannelType_SideRight;
-		case SPEAKER_TOP_CENTER:            return fplAudioChannelType_TopCenter;
-		case SPEAKER_TOP_FRONT_LEFT:        return fplAudioChannelType_TopFrontLeft;
-		case SPEAKER_TOP_FRONT_CENTER:      return fplAudioChannelType_TopFrontCenter;
-		case SPEAKER_TOP_FRONT_RIGHT:       return fplAudioChannelType_TopFrontRight;
-		case SPEAKER_TOP_BACK_LEFT:         return fplAudioChannelType_TopBackLeft;
-		case SPEAKER_TOP_BACK_CENTER:       return fplAudioChannelType_TopBackCenter;
-		case SPEAKER_TOP_BACK_RIGHT:        return fplAudioChannelType_TopBackRight;
-		default: return fplAudioChannelType_None;
-	}
-}
-
-// Convert a fplAudioChannelType to flag for dwChannelMask
-fpl_internal DWORD fpl__MapAudioSpeakerFlagsToWin32AudioChannelId(const fplAudioChannelType audioChannelFlags) {
-	switch (audioChannelFlags) {
-		case fplAudioChannelType_FrontLeft:            return SPEAKER_FRONT_LEFT;
-		case fplAudioChannelType_FrontRight:           return SPEAKER_FRONT_RIGHT;
-		case fplAudioChannelType_FrontCenter:          return SPEAKER_FRONT_CENTER;
-		case fplAudioChannelType_LowFrequency:         return SPEAKER_LOW_FREQUENCY;
-		case fplAudioChannelType_BackLeft:             return SPEAKER_BACK_LEFT;
-		case fplAudioChannelType_BackRight:            return SPEAKER_BACK_RIGHT;
-		case fplAudioChannelType_FrontLeftOfCenter:    return SPEAKER_FRONT_LEFT_OF_CENTER;
-		case fplAudioChannelType_FrontRightOfCenter:   return SPEAKER_FRONT_RIGHT_OF_CENTER;
-		case fplAudioChannelType_BackCenter:           return SPEAKER_BACK_CENTER;
-		case fplAudioChannelType_SideLeft:             return SPEAKER_SIDE_LEFT;
-		case fplAudioChannelType_SideRight:            return SPEAKER_SIDE_RIGHT;
-		case fplAudioChannelType_TopCenter:            return SPEAKER_TOP_CENTER;
-		case fplAudioChannelType_TopFrontLeft:         return SPEAKER_TOP_FRONT_LEFT;
-		case fplAudioChannelType_TopFrontCenter:       return SPEAKER_TOP_FRONT_CENTER;
-		case fplAudioChannelType_TopFrontRight:        return SPEAKER_TOP_FRONT_RIGHT;
-		case fplAudioChannelType_TopBackLeft:          return SPEAKER_TOP_BACK_LEFT;
-		case fplAudioChannelType_TopBackCenter:        return SPEAKER_TOP_BACK_CENTER;
-		case fplAudioChannelType_TopBackRight:         return SPEAKER_TOP_BACK_RIGHT;
-		default: return 0;
-	}
-}
-
-// Fill out the mapping table from a win32 channel mask and number of channels
-fpl_internal void fpl__CreateChannelsMappingFromChannelMask(const DWORD channelMask, const uint16_t channels, fplAudioChannelMap *channelMap) {
-	fplClearStruct(channelMap);
-	if ((channels == 1) && ((channelMask == 0) || fplIsMaskSet(channelMask, SPEAKER_FRONT_CENTER))) {
-		channelMap->speakers[0] = fplAudioChannelType_FrontCenter;
-	} else if (channels == 2 && channelMask == 0) {
-		channelMap->speakers[0] = fplAudioChannelType_FrontLeft;
-		channelMap->speakers[1] = fplAudioChannelType_FrontRight;
-	} else {
-		uint32_t channelIndex = 0;
-		for (uint32_t bit = 0; bit < 32; ++bit) {
-			DWORD bitMask = (channelMask & (1UL << bit));
-			if (bitMask != 0) {
-				fplAudioChannelType flags = fpl__MapWin32AudioChannelIdToAudioSpeakerFlags(bitMask);
-				channelMap->speakers[channelIndex++] = flags;
-			}
-		}
-	}
-}
-
-// Get a dwChannelMaskl from the specified channel map and number of channels
-fpl_internal DWORD fpl__GetWin32AudioChannelMaskFromMapping(const fplAudioChannelMap *channelMap, const uint16_t channels) {
-	fplAssert(channelMap != fpl_null);
-	DWORD result = 0;
-	for (uint16_t channelIndex = 0; channelIndex < channels; ++channelIndex) {
-		DWORD channelValue = fpl__MapAudioSpeakerFlagsToWin32AudioChannelId(channelMap->speakers[channelIndex]);
-		result |= channelValue;
-	}
-	return result;
-}
-
-// Converts a audio format with its channel map into a WAVEFORMATEXTENSIBLE
-fpl_internal void fpl__SetupWaveFormatDirectSound(const fplAudioFormat *sourceFormat, const fplAudioChannelMap *channelMap, WAVEFORMATEXTENSIBLE *outputWaveFormat) {
-	WAVEFORMATEXTENSIBLE waveFormat = fplZeroInit;
-	waveFormat.Format.cbSize = sizeof(waveFormat);
-	waveFormat.Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
-	waveFormat.Format.nChannels = (WORD)sourceFormat->channels;
-	waveFormat.Format.nSamplesPerSec = (DWORD)sourceFormat->sampleRate;
-	waveFormat.Format.wBitsPerSample = (WORD)fplGetAudioSampleSizeInBytes(sourceFormat->type) * 8;
-	waveFormat.Format.nBlockAlign = (waveFormat.Format.nChannels * waveFormat.Format.wBitsPerSample) / 8;
-	waveFormat.Format.nAvgBytesPerSec = waveFormat.Format.nBlockAlign * waveFormat.Format.nSamplesPerSec;
-	waveFormat.Samples.wValidBitsPerSample = waveFormat.Format.wBitsPerSample;
-	if ((sourceFormat->type == fplAudioFormatType_F32) || (sourceFormat->type == fplAudioFormatType_F64)) {
-		fpl__Win32CopyGuid(&FPL__GUID_KSDATAFORMAT_SUBTYPE_IEEE_FLOAT, &waveFormat.SubFormat);
-	} else {
-		fpl__Win32CopyGuid(&FPL__GUID_KSDATAFORMAT_SUBTYPE_PCM, &waveFormat.SubFormat);
-	}
-	waveFormat.dwChannelMask = fpl__GetWin32AudioChannelMaskFromMapping(channelMap, sourceFormat->channels);
-	*outputWaveFormat = waveFormat;
-}
-
 fpl_internal FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(fpl__AudiobackendDirectSoundReleaseDevice) {
 	fpl__AudioBackendDirectSound *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendDirectSound);
 	fplAssert(impl != fpl_null);
@@ -28966,7 +28979,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendDirectSou
 	// Convert source format to wave format
 	fplAudioChannelLayout channelLayout = targetFormat->channelLayout;
 	WAVEFORMATEXTENSIBLE waveFormat = fplZeroInit;
-	fpl__SetupWaveFormatDirectSound(targetFormat, outputChannelMap, &waveFormat);
+	fpl__BuildWaveFormatExtensible(targetFormat, outputChannelMap, &waveFormat);
 
 	// Query device
 	fplAudioDeviceInfo internalDevice = fplZeroInit;
@@ -29792,12 +29805,198 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudiobackendWasapiGet
 	return(emitted);
 }
 
+// Translate a WAVEFORMATEX/EXTENSIBLE returned by WASAPI back into our fplAudioFormatType.
+// Returns fplAudioFormatType_None if the format is something we cannot represent.
+fpl_internal fplAudioFormatType fpl__WasapiMapWaveFormatToAudioFormat(const WAVEFORMATEX *wfx) {
+	if (wfx == fpl_null) {
+		return(fplAudioFormatType_None);
+	}
+	WORD tag = wfx->wFormatTag;
+	const fpl__Win32Guid *subFormat = fpl_null;
+	if (tag == WAVE_FORMAT_EXTENSIBLE && wfx->cbSize >= (sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX))) {
+		const WAVEFORMATEXTENSIBLE *ext = (const WAVEFORMATEXTENSIBLE *)wfx;
+		subFormat = (const fpl__Win32Guid *)&ext->SubFormat;
+	}
+	bool isFloat = (tag == WAVE_FORMAT_IEEE_FLOAT);
+	bool isPcm = (tag == WAVE_FORMAT_PCM);
+	if (subFormat != fpl_null) {
+		if (fpl__IsEqualsMemory(subFormat, &FPL__GUID_KSDATAFORMAT_SUBTYPE_IEEE_FLOAT, sizeof(*subFormat))) {
+			isFloat = true;
+		} else if (fpl__IsEqualsMemory(subFormat, &FPL__GUID_KSDATAFORMAT_SUBTYPE_PCM, sizeof(*subFormat))) {
+			isPcm = true;
+		}
+	}
+	if (isFloat) {
+		if (wfx->wBitsPerSample == 32) {
+			return(fplAudioFormatType_F32);
+		}
+		if (wfx->wBitsPerSample == 64) {
+			return(fplAudioFormatType_F64);
+		}
+	} else if (isPcm) {
+		switch (wfx->wBitsPerSample) {
+			case 8:  return(fplAudioFormatType_U8);
+			case 16: return(fplAudioFormatType_S16);
+			case 24: return(fplAudioFormatType_S24);
+			case 32: return(fplAudioFormatType_S32);
+			default: break;
+		}
+	}
+	return(fplAudioFormatType_None);
+}
+
+// Activate IAudioClient on a device id (empty id → default render endpoint).
+// Returns Success and fills *outDevice/*outClient on success. Caller releases both.
+fpl_internal fplAudioResultType fpl__WasapiOpenClientForDevice(fpl__AudioBackendWasapi *impl, const wchar_t *deviceId, fpl__IMMDevice **outDevice, fpl__IAudioClient **outClient) {
+	*outDevice = fpl_null;
+	*outClient = fpl_null;
+	HRESULT hr;
+	if (deviceId == fpl_null || deviceId[0] == 0) {
+		hr = impl->enumerator->lpVtbl->GetDefaultAudioEndpoint(impl->enumerator, fpl__WasapiEDataFlow_eRender, fpl__WasapiERole_eConsole, outDevice);
+	} else {
+		hr = impl->enumerator->lpVtbl->GetDevice(impl->enumerator, deviceId, outDevice);
+	}
+	if (FAILED(hr) || *outDevice == fpl_null) {
+		return(fplAudioResultType_DeviceByIdNotFound);
+	}
+	hr = (*outDevice)->lpVtbl->Activate(*outDevice, &FPL__WASAPI_IID_IAudioClient, CLSCTX_ALL, fpl_null, (void **)outClient);
+	if (FAILED(hr) || *outClient == fpl_null) {
+		(*outDevice)->lpVtbl->Release(*outDevice);
+		*outDevice = fpl_null;
+		return(fplAudioResultType_ApiFailed);
+	}
+	return(fplAudioResultType_Success);
+}
+
 fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudiobackendWasapiGetAudioDeviceInfo) {
+	fpl__AudioBackendWasapi *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendWasapi);
+	fplAssert(impl != fpl_null);
+	fplAssertPtr(targetDevice);
 	(void)context;
-	(void)backend;
-	(void)targetDevice;
-	(void)outDeviceInfo;
-	return(fplAudioResultType_NotImplemented);
+	fplClearStruct(outDeviceInfo);
+
+	if (impl->enumerator == fpl_null) {
+		FPL__WARNING(FPL__MODULE_AUDIO_WASAPI, "Device enumerator is not initialized!");
+		return(fplAudioResultType_ApiFailed);
+	}
+
+	fpl__IMMDevice *device = fpl_null;
+	fpl__IAudioClient *client = fpl_null;
+	fplAudioResultType openRes = fpl__WasapiOpenClientForDevice(impl, targetDevice->wasapi, &device, &client);
+	if (openRes != fplAudioResultType_Success) {
+		return(openRes);
+	}
+
+	// Identity: copy the device id (resolve default if input was empty) and friendly name.
+	WCHAR *resolvedId = fpl_null;
+	if (SUCCEEDED(device->lpVtbl->GetId(device, &resolvedId)) && resolvedId != fpl_null) {
+		fpl__WasapiCopyDeviceID(outDeviceInfo->info.id.wasapi, fplArrayCount(outDeviceInfo->info.id.wasapi), resolvedId);
+		impl->api.CoTaskMemFree(resolvedId);
+	}
+
+	{
+		fpl__IMMDevice *defaultDevice = fpl_null;
+		if (SUCCEEDED(impl->enumerator->lpVtbl->GetDefaultAudioEndpoint(impl->enumerator, fpl__WasapiEDataFlow_eRender, fpl__WasapiERole_eConsole, &defaultDevice)) && defaultDevice != fpl_null) {
+			WCHAR *defId = fpl_null;
+			if (SUCCEEDED(defaultDevice->lpVtbl->GetId(defaultDevice, &defId)) && defId != fpl_null) {
+				bool eq = true;
+				for (size_t k = 0; ; ++k) {
+					if (outDeviceInfo->info.id.wasapi[k] != defId[k]) {
+						eq = false;
+						break;
+					}
+					if (outDeviceInfo->info.id.wasapi[k] == 0) {
+						break;
+					}
+				}
+				outDeviceInfo->info.isDefault = eq;
+				impl->api.CoTaskMemFree(defId);
+			}
+			defaultDevice->lpVtbl->Release(defaultDevice);
+		}
+	}
+
+	{
+		fpl__IPropertyStore *props = fpl_null;
+		if (SUCCEEDED(device->lpVtbl->OpenPropertyStore(device, FPL__WASAPI_STGM_READ, &props)) && props != fpl_null) {
+			fpl__WasapiPropVariant pv = fplZeroInit;
+			if (SUCCEEDED(props->lpVtbl->GetValue(props, &FPL__WASAPI_PKEY_Device_FriendlyName, &pv)) && pv.u.pwszVal != fpl_null) {
+				size_t wlen = 0;
+				while (pv.u.pwszVal[wlen] != 0) {
+					++wlen;
+				}
+				if (wlen > 0) {
+					fplWideStringToUTF8String(pv.u.pwszVal, wlen, outDeviceInfo->info.name, fplArrayCount(outDeviceInfo->info.name));
+				}
+			}
+			impl->api.PropVariantClear(&pv);
+			props->lpVtbl->Release(props);
+		}
+	}
+
+	// Always record the mix format as supported.
+	const size_t slots = fplArrayCount(outDeviceInfo->supportedFormats);
+	outDeviceInfo->supportedFormatCount = 0;
+
+	WAVEFORMATEX *mixFmt = fpl_null;
+	if (SUCCEEDED(client->lpVtbl->GetMixFormat(client, &mixFmt)) && mixFmt != fpl_null) {
+		fplAudioFormatType mixType = fpl__WasapiMapWaveFormatToAudioFormat(mixFmt);
+		if (mixType != fplAudioFormatType_None && outDeviceInfo->supportedFormatCount < slots) {
+			outDeviceInfo->supportedFormats[outDeviceInfo->supportedFormatCount++] = fplEncodeAudioFormatU64(mixFmt->nSamplesPerSec, mixFmt->nChannels, mixType);
+		}
+		impl->api.CoTaskMemFree(mixFmt);
+	}
+
+	// Probe a standard rate/channel/type matrix in shared mode. Accept only S_OK; ignore
+	// S_FALSE (closest-match is only a hint, not a guarantee of support).
+	static const uint32_t candidateRates[] = { 44100, 48000, 88200, 96000, 192000 };
+	static const uint16_t candidateChannels[] = { 1, 2, 4, 6, 8 };
+	static const fplAudioFormatType candidateTypes[] = {
+		fplAudioFormatType_U8,
+		fplAudioFormatType_S16,
+		fplAudioFormatType_S24,
+		fplAudioFormatType_S32,
+		fplAudioFormatType_F32,
+	};
+
+	for (size_t r = 0; r < fplArrayCount(candidateRates) && outDeviceInfo->supportedFormatCount < slots; ++r) {
+		for (size_t c = 0; c < fplArrayCount(candidateChannels) && outDeviceInfo->supportedFormatCount < slots; ++c) {
+			for (size_t t = 0; t < fplArrayCount(candidateTypes) && outDeviceInfo->supportedFormatCount < slots; ++t) {
+				fplAudioFormat probe = fplZeroInit;
+				probe.sampleRate = candidateRates[r];
+				probe.channels = candidateChannels[c];
+				probe.type = candidateTypes[t];
+				WAVEFORMATEXTENSIBLE wfx;
+				fpl__BuildWaveFormatExtensible(&probe, fpl_null, &wfx);
+
+				WAVEFORMATEX *closest = fpl_null;
+				HRESULT hr = client->lpVtbl->IsFormatSupported(client, fpl__WasapiShareMode_Shared, (WAVEFORMATEX *)&wfx, &closest);
+				if (closest != fpl_null) {
+					impl->api.CoTaskMemFree(closest);
+				}
+				if (hr != S_OK) {
+					continue;
+				}
+
+				// Skip if already recorded (e.g. mix format collision).
+				fplAudioFormatU64 enc = fplEncodeAudioFormatU64(candidateRates[r], candidateChannels[c], candidateTypes[t]);
+				bool duplicate = false;
+				for (size_t i = 0; i < outDeviceInfo->supportedFormatCount; ++i) {
+					if (outDeviceInfo->supportedFormats[i] == enc) {
+						duplicate = true;
+						break;
+					}
+				}
+				if (!duplicate) {
+					outDeviceInfo->supportedFormats[outDeviceInfo->supportedFormatCount++] = enc;
+				}
+			}
+		}
+	}
+
+	client->lpVtbl->Release(client);
+	device->lpVtbl->Release(device);
+	return(fplAudioResultType_Success);
 }
 
 fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendWasapiInitializeDevice) {
