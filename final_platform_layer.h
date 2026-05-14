@@ -28869,7 +28869,7 @@ fpl_internal BOOL CALLBACK fpl__GetDeviceCallbackDirectSound(LPGUID lpGuid, LPCW
 	return TRUE;
 }
 
-fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudiobackendDirectSoundGetAudioDevices) {
+fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendDirectSoundGetAudioDevices) {
 	fpl__AudioBackendDirectSound *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendDirectSound);
 	fplAssert(impl != fpl_null);
 
@@ -28893,7 +28893,7 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudiobackendDirectSou
 	return(result);
 }
 
-fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudiobackendDirectSoundGetAudioDeviceInfo) {
+fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendDirectSoundGetAudioDeviceInfo) {
 	fpl__AudioBackendDirectSound *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendDirectSound);
 	fplAssert(impl != fpl_null);
 	fplAssertPtr(targetDevice);
@@ -28925,7 +28925,7 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudiobackendDirec
 	return fplAudioResultType_Success;
 }
 
-fpl_internal FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(fpl__AudiobackendDirectSoundReleaseDevice) {
+fpl_internal FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(fpl__AudioBackendDirectSoundReleaseDevice) {
 	fpl__AudioBackendDirectSound *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendDirectSound);
 	fplAssert(impl != fpl_null);
 
@@ -28964,11 +28964,11 @@ fpl_internal FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(fpl__AudiobackendDirectSoundR
 	return true;
 }
 
-fpl_internal FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl__AudiobackendDirectSoundRelease) {
+fpl_internal FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl__AudioBackendDirectSoundRelease) {
 	fpl__AudioBackendDirectSound *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendDirectSound);
 	fplAssert(impl != fpl_null);
 
-	fpl__AudiobackendDirectSoundReleaseDevice(context, backend);
+	fpl__AudioBackendDirectSoundReleaseDevice(context, backend);
 
 	fpl__UnloadDirectSoundApi(&impl->api);
 
@@ -28977,13 +28977,13 @@ fpl_internal FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl__AudiobackendDirectSoundRelease)
 	return true;
 }
 
-fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudiobackendDirectSoundInitialize) {
+fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendDirectSoundInitialize) {
 	fpl__AudioBackendDirectSound *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendDirectSound);
 	fplAssert(impl != fpl_null);
 
 #define FPL__DSOUND_INIT_ERROR(ret, format, ...) do { \
 	FPL__ERROR(FPL__MODULE_AUDIO_DIRECTSOUND, format, ## __VA_ARGS__); \
-	fpl__AudiobackendDirectSoundRelease(context, backend); \
+	fpl__AudioBackendDirectSoundRelease(context, backend); \
 	return ret; \
 } while (0)
 
@@ -28998,13 +28998,13 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudiobackendDirectSoundIniti
 #undef FPL__DSOUND_INIT_ERROR
 }
 
-fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendDirectSoundInitializeDevice) {
+fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendDirectSoundInitializeDevice) {
 	fpl__AudioBackendDirectSound *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendDirectSound);
 	fplAssert(impl != fpl_null);
 
 #define FPL__DSOUND_INIT_ERROR(ret, format, ...) do { \
 	FPL__ERROR(FPL__MODULE_AUDIO_DIRECTSOUND, format, ## __VA_ARGS__); \
-	fpl__AudiobackendDirectSoundReleaseDevice(context, backend); \
+	fpl__AudioBackendDirectSoundReleaseDevice(context, backend); \
 	return ret; \
 } while (0)
 
@@ -29414,12 +29414,12 @@ fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendDirectShowDescri
 		fplStructField(fplAudioBackendDescriptorHeader, isValid, true),
 	}),
 	fplStructField(fplAudioBackendDescriptor, table, {
-		fplStructField(fplAudioBackendFunctionTable, initialize, fpl__AudiobackendDirectSoundInitialize),
-		fplStructField(fplAudioBackendFunctionTable, release, fpl__AudiobackendDirectSoundRelease),
-		fplStructField(fplAudioBackendFunctionTable, getAudioDevices, fpl__AudiobackendDirectSoundGetAudioDevices),
-		fplStructField(fplAudioBackendFunctionTable, getAudioDeviceInfo, fpl__AudiobackendDirectSoundGetAudioDeviceInfo),
-		fplStructField(fplAudioBackendFunctionTable, initializeDevice, fpl__AudiobackendDirectSoundInitializeDevice),
-		fplStructField(fplAudioBackendFunctionTable, releaseDevice, fpl__AudiobackendDirectSoundReleaseDevice),
+		fplStructField(fplAudioBackendFunctionTable, initialize, fpl__AudioBackendDirectSoundInitialize),
+		fplStructField(fplAudioBackendFunctionTable, release, fpl__AudioBackendDirectSoundRelease),
+		fplStructField(fplAudioBackendFunctionTable, getAudioDevices, fpl__AudioBackendDirectSoundGetAudioDevices),
+		fplStructField(fplAudioBackendFunctionTable, getAudioDeviceInfo, fpl__AudioBackendDirectSoundGetAudioDeviceInfo),
+		fplStructField(fplAudioBackendFunctionTable, initializeDevice, fpl__AudioBackendDirectSoundInitializeDevice),
+		fplStructField(fplAudioBackendFunctionTable, releaseDevice, fpl__AudioBackendDirectSoundReleaseDevice),
 		fplStructField(fplAudioBackendFunctionTable, startDevice, fpl__AudioBackendDirectSoundStartDevice),
 		fplStructField(fplAudioBackendFunctionTable, stopDevice, fpl__AudioBackendDirectSoundStopDevice),
 		fplStructField(fplAudioBackendFunctionTable, mainLoop, fpl__AudioBackendDirectSoundMainLoop),
@@ -29660,7 +29660,7 @@ typedef struct {
 	volatile bool breakMainLoop;
 } fpl__AudioBackendWasapi;
 
-fpl_internal FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl__AudiobackendWasapiRelease) {
+fpl_internal FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl__AudioBackendWasapiRelease) {
 	fpl__AudioBackendWasapi *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendWasapi);
 	(void)context;
 	if (impl == fpl_null) {
@@ -29678,7 +29678,7 @@ fpl_internal FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl__AudiobackendWasapiRelease) {
 	return(true);
 }
 
-fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudiobackendWasapiInitialize) {
+fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendWasapiInitialize) {
 	fpl__AudioBackendWasapi *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendWasapi);
 	fplAssert(impl != fpl_null);
 	(void)context;
@@ -29702,14 +29702,14 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudiobackendWasapiInitialize
 		impl->comInitialized = false;
 	} else if (hr != FPL__WASAPI_RPC_E_CHANGED_MODE) {
 		FPL__ERROR(FPL__MODULE_AUDIO_WASAPI, "CoInitializeEx failed (HRESULT 0x%08lx)", (unsigned long)hr);
-		fpl__AudiobackendWasapiRelease(context, backend);
+		fpl__AudioBackendWasapiRelease(context, backend);
 		return(fplAudioResultType_ApiFailed);
 	}
 
 	hr = impl->api.CoCreateInstance(&FPL__WASAPI_CLSID_MMDeviceEnumerator, fpl_null, CLSCTX_ALL, &FPL__WASAPI_IID_IMMDeviceEnumerator, (LPVOID *)&impl->enumerator);
 	if (FAILED(hr) || impl->enumerator == fpl_null) {
 		FPL__ERROR(FPL__MODULE_AUDIO_WASAPI, "CoCreateInstance(MMDeviceEnumerator) failed (HRESULT 0x%08lx)", (unsigned long)hr);
-		fpl__AudiobackendWasapiRelease(context, backend);
+		fpl__AudioBackendWasapiRelease(context, backend);
 		return(fplAudioResultType_ApiFailed);
 	}
 
@@ -29739,7 +29739,7 @@ fpl_internal bool fpl__WasapiCopyDeviceID(wchar_t *dst, size_t dstCap, const wch
 	return(fits);
 }
 
-fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudiobackendWasapiGetAudioDevices) {
+fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendWasapiGetAudioDevices) {
 	fpl__AudioBackendWasapi *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendWasapi);
 	fplAssert(impl != fpl_null);
 	(void)context;
@@ -29921,7 +29921,7 @@ fpl_internal fplAudioResultType fpl__WasapiOpenClientForDevice(fpl__AudioBackend
 	return(fplAudioResultType_Success);
 }
 
-fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudiobackendWasapiGetAudioDeviceInfo) {
+fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendWasapiGetAudioDeviceInfo) {
 	fpl__AudioBackendWasapi *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendWasapi);
 	fplAssert(impl != fpl_null);
 	fplAssertPtr(targetDevice);
@@ -30052,7 +30052,7 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudiobackendWasap
 	return(fplAudioResultType_Success);
 }
 
-fpl_internal FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(fpl__AudiobackendWasapiReleaseDevice) {
+fpl_internal FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(fpl__AudioBackendWasapiReleaseDevice) {
 	fpl__AudioBackendWasapi *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendWasapi);
 	(void)context;
 	if (impl == fpl_null) {
@@ -30092,7 +30092,7 @@ fpl_internal fpl__WasapiReferenceTime fpl__WasapiFramesToHns(uint32_t frames, ui
 	return((fpl__WasapiReferenceTime)(((uint64_t)frames * 10000000ULL + (sampleRate / 2)) / sampleRate));
 }
 
-fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendWasapiInitializeDevice) {
+fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendWasapiInitializeDevice) {
 	fpl__AudioBackendWasapi *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendWasapi);
 	fplAssert(impl != fpl_null);
 	fplAssertPtr(targetFormat);
@@ -30101,7 +30101,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendWasapiIni
 
 #define FPL__WASAPI_INIT_ERROR(ret, fmt, ...) do { \
 		FPL__ERROR(FPL__MODULE_AUDIO_WASAPI, fmt, ## __VA_ARGS__); \
-		fpl__AudiobackendWasapiReleaseDevice(context, backend); \
+		fpl__AudioBackendWasapiReleaseDevice(context, backend); \
 		return ret; \
 	} while (0)
 
@@ -30425,7 +30425,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendWasapiIni
 #undef FPL__WASAPI_INIT_ERROR
 }
 
-fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudiobackendWasapiStartDevice) {
+fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudioBackendWasapiStartDevice) {
 	fpl__AudioBackendWasapi *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendWasapi);
 	fplAssert(impl != fpl_null);
 	(void)context;
@@ -30458,7 +30458,7 @@ fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudiobackendWasapiStartDev
 	return(fplAudioResultType_Success);
 }
 
-fpl_internal FPL_AUDIO_BACKEND_STOP_DEVICE_FUNC(fpl__AudiobackendWasapiStopDevice) {
+fpl_internal FPL_AUDIO_BACKEND_STOP_DEVICE_FUNC(fpl__AudioBackendWasapiStopDevice) {
 	fpl__AudioBackendWasapi *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendWasapi);
 	(void)context;
 	if (impl == fpl_null || impl->audioClient == fpl_null) {
@@ -30469,7 +30469,7 @@ fpl_internal FPL_AUDIO_BACKEND_STOP_DEVICE_FUNC(fpl__AudiobackendWasapiStopDevic
 	return(true);
 }
 
-fpl_internal FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl__AudiobackendWasapiMainLoop) {
+fpl_internal FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl__AudioBackendWasapiMainLoop) {
 	fpl__AudioBackendWasapi *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendWasapi);
 	fplAssert(impl != fpl_null);
 	(void)context;
@@ -30507,7 +30507,7 @@ fpl_internal FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl__AudiobackendWasapiMainLoop) {
 	}
 }
 
-fpl_internal FPL_AUDIO_BACKEND_STOP_MAIN_LOOP_FUNC(fpl__AudiobackendWasapiStopMainLoop) {
+fpl_internal FPL_AUDIO_BACKEND_STOP_MAIN_LOOP_FUNC(fpl__AudioBackendWasapiStopMainLoop) {
 	fpl__AudioBackendWasapi *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendWasapi);
 	(void)context;
 	if (impl == fpl_null) {
@@ -30531,16 +30531,16 @@ fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendWasapiDescriptor
 		fplStructField(fplAudioBackendDescriptorHeader, isValid, true),
 	}),
 	fplStructField(fplAudioBackendDescriptor, table, {
-		fplStructField(fplAudioBackendFunctionTable, initialize, fpl__AudiobackendWasapiInitialize),
-		fplStructField(fplAudioBackendFunctionTable, release, fpl__AudiobackendWasapiRelease),
-		fplStructField(fplAudioBackendFunctionTable, getAudioDevices, fpl__AudiobackendWasapiGetAudioDevices),
-		fplStructField(fplAudioBackendFunctionTable, getAudioDeviceInfo, fpl__AudiobackendWasapiGetAudioDeviceInfo),
-		fplStructField(fplAudioBackendFunctionTable, initializeDevice, fpl__AudiobackendWasapiInitializeDevice),
-		fplStructField(fplAudioBackendFunctionTable, releaseDevice, fpl__AudiobackendWasapiReleaseDevice),
-		fplStructField(fplAudioBackendFunctionTable, startDevice, fpl__AudiobackendWasapiStartDevice),
-		fplStructField(fplAudioBackendFunctionTable, stopDevice, fpl__AudiobackendWasapiStopDevice),
-		fplStructField(fplAudioBackendFunctionTable, mainLoop, fpl__AudiobackendWasapiMainLoop),
-		fplStructField(fplAudioBackendFunctionTable, stopMainLoop, fpl__AudiobackendWasapiStopMainLoop),
+		fplStructField(fplAudioBackendFunctionTable, initialize, fpl__AudioBackendWasapiInitialize),
+		fplStructField(fplAudioBackendFunctionTable, release, fpl__AudioBackendWasapiRelease),
+		fplStructField(fplAudioBackendFunctionTable, getAudioDevices, fpl__AudioBackendWasapiGetAudioDevices),
+		fplStructField(fplAudioBackendFunctionTable, getAudioDeviceInfo, fpl__AudioBackendWasapiGetAudioDeviceInfo),
+		fplStructField(fplAudioBackendFunctionTable, initializeDevice, fpl__AudioBackendWasapiInitializeDevice),
+		fplStructField(fplAudioBackendFunctionTable, releaseDevice, fpl__AudioBackendWasapiReleaseDevice),
+		fplStructField(fplAudioBackendFunctionTable, startDevice, fpl__AudioBackendWasapiStartDevice),
+		fplStructField(fplAudioBackendFunctionTable, stopDevice, fpl__AudioBackendWasapiStopDevice),
+		fplStructField(fplAudioBackendFunctionTable, mainLoop, fpl__AudioBackendWasapiMainLoop),
+		fplStructField(fplAudioBackendFunctionTable, stopMainLoop, fpl__AudioBackendWasapiStopMainLoop),
 	}),
 };
 
