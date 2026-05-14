@@ -334,6 +334,7 @@ SOFTWARE.
 	- New: Added struct fplWasapiAudioSettings
 	- New[#35]: Implemented PulseAudio audio backend
 	- New[#186]: Implemented PipeWire audio backend
+	- New[#34]: Implemented OSS audio backend
 	- New[#33]: Implemented WASAPI audio backend
 	- New: [DirectSound] Implemented getAudioDeviceInfo via DirectSoundEnumerateW lookup-by-GUID
 	- New: [ALSA] Implemented getAudioDeviceInfo via snd_device_name_hint lookup-by-name
