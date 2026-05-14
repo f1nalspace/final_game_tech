@@ -11,8 +11,16 @@ project(FPL_AudioPlayer C)
 set(MY_COMPILER "c99")
 
 set(MY_EXTERNAL_LIBS
-	"m"
 	)
+
+if(UNIX)
+	list(APPEND MY_EXTERNAL_LIBS "m")
+endif()
+
+if(UNIX AND NOT APPLE)
+	find_package(X11 REQUIRED)
+	list(APPEND MY_EXTERNAL_LIBS X11::X11)
+endif()
 
 set(MY_INCLUDE_DIRS
 	"../../"

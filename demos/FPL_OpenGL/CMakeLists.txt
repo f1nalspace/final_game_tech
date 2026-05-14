@@ -13,9 +13,17 @@ set(MY_COMPILER "c99")
 find_package(OpenGL REQUIRED)
 
 set(MY_EXTERNAL_LIBS
-	"m"
 	OpenGL::GL
 	)
+
+if(UNIX)
+	list(APPEND MY_EXTERNAL_LIBS "m")
+endif()
+
+if(UNIX AND NOT APPLE)
+	find_package(X11 REQUIRED)
+	list(APPEND MY_EXTERNAL_LIBS X11::X11)
+endif()
 
 set(MY_INCLUDE_DIRS
 	"../../"
