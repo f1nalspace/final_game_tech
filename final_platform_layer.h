@@ -9991,7 +9991,6 @@ fpl_main int main(int argc, char **args);
 // You can use the following strings to search for implementation blocks - including the > prefix:
 //
 // > COMPILER_CONFIG
-// > PLATFORM_INCLUDES
 //
 // > INTERNAL_TOP
 // > INTERNAL_LOGGING
@@ -10003,6 +10002,7 @@ fpl_main int main(int argc, char **args);
 // > TYPES_WIN32
 // > TYPES_POSIX
 // > TYPES_LINUX
+// > TYPES_UNIX
 // > TYPES_X11
 //
 // > PLATFORM_STATES
@@ -10010,10 +10010,14 @@ fpl_main int main(int argc, char **args);
 // > COMMON
 //
 // > WIN32_PLATFORM
+// > WIN32_XINPUT
+// > WIN32_DINPUT
+// > WIN32_INPUT_KBM
 // > POSIX_SUBPLATFORM (Linux, Unix)
 // > STD_STRINGS_SUBPLATFORM
 // > STD_CONSOLE_SUBPLATFORM
 // > X11_SUBPLATFORM
+// > X11_INPUT_KBM
 // > LINUX_PLATFORM
 // > UNIX_PLATFORM
 //
@@ -10024,9 +10028,15 @@ fpl_main int main(int argc, char **args);
 // > VIDEO_BACKEND_SOFTWARE_X11
 // > VIDEO_BACKEND_VULKAN
 //
+// > AUDIO_BACKEND_API
 // > AUDIO_BACKENDS
+// > AUDIO_WIN32_SHARED
 // > AUDIO_BACKEND_DIRECTSOUND
+// > AUDIO_BACKEND_WASAPI
 // > AUDIO_BACKEND_ALSA
+// > AUDIO_BACKEND_OSS
+// > AUDIO_BACKEND_PULSEAUDIO
+// > AUDIO_BACKEND_PIPEWIRE
 //
 // > SYSTEM_AUDIO_L1
 // > SYSTEM_VIDEO_L1
