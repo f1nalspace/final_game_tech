@@ -31565,6 +31565,9 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPulseAudi
 		pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
 		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "PulseAudio: unable to compute frame size from target format!");
 	}
+	// Seed frameSize from the requested sample spec so the write callback can run if libpulse fires it
+	// during pa_stream_connect_playback (before we read back the negotiated format below).
+	pulseAudioBackend->frameSize = frameSizeInBytes;
 	uint32_t totalBufferBytes = targetFormat->bufferSizeInFrames * frameSizeInBytes;
 	uint32_t periodCount = targetFormat->periods > 0 ? targetFormat->periods : 2;
 	uint32_t periodBytes = totalBufferBytes / periodCount;
