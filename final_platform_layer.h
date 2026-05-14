@@ -265,6 +265,7 @@ SOFTWARE.
 	- Changed: [POSIX] Disabled FPL_NO_PLATFORM_INCLUDES for pthread includes
 	- Changed: [POSIX] `st_atim` vs `st_atime` fallback detection for older POSIX
 	- Changed: [POSIX] `sched_getscheduler` POSIX standard coverage check
+	- Changed: [BSD] Define __BSD_VISIBLE on BSD platforms
 	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
 
 	#### Window
@@ -2243,6 +2244,12 @@ SOFTWARE.
 #	define FPL_SUBPLATFORM_STD_CONSOLE
 #elif defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__bsdi__)
 	// @NOTE(final): BSD is treated as a subplatform for now
+	// MAP_ANON and other BSD APIs are gated behind __BSD_VISIBLE in <sys/cdefs.h>.
+	// Compiling with -std=c99 implicitly sets _POSIX_C_SOURCE which disables __BSD_VISIBLE.
+	// Force it on before any system header is included.
+#	if !defined(__BSD_VISIBLE)
+#		define __BSD_VISIBLE 1
+#	endif
 #	define FPL_PLATFORM_UNIX
 #	define FPL_PLATFORM_NAME "BSD"
 #	define FPL_SUBPLATFORM_BSD
