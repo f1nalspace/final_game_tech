@@ -33028,7 +33028,7 @@ fpl_internal FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl__AudioBackendPulseAudioMainLoo
 fpl_internal FPL_AUDIO_BACKEND_STOP_MAIN_LOOP_FUNC(fpl__AudioBackendPulseAudioStopMainLoop);
 
 // Sets the default audio channel map for the PulseAudio backend
-fpl_internal void fpl__PulseAudio_SetAudioDefaultChannelMap(const uint16_t channels, const fplAudioChannelLayout layout, fplAudioChannelMap *outChannelMap) {
+fpl_internal void fpl__PulseAudioSetAudioDefaultChannelMap(const uint16_t channels, const fplAudioChannelLayout layout, fplAudioChannelMap *outChannelMap) {
 	fplClearStruct(outChannelMap);
 
 	if (channels == 0 || layout == fplAudioChannelLayout_Unsupported) {
@@ -33098,7 +33098,7 @@ fpl_internal void fpl__PulseAudio_SetAudioDefaultChannelMap(const uint16_t chann
 }
 
 // Map a fplAudioFormatType to a pulseaudio pa_sample_format_t.
-fpl_internal pa_sample_format_t fpl__PulseAudio_MapAudioFormatTypeToSampleFormat(const fplAudioFormatType format) {
+fpl_internal pa_sample_format_t fpl__PulseAudioMapAudioFormatTypeToSampleFormat(const fplAudioFormatType format) {
 	bool isBigEndian = fplIsBigEndian();
 	switch (format) {
 		case fplAudioFormatType_U8:
@@ -33117,7 +33117,7 @@ fpl_internal pa_sample_format_t fpl__PulseAudio_MapAudioFormatTypeToSampleFormat
 }
 
 // Map a pulseaudio pa_sample_format_t back to a fplAudioFormatType.
-fpl_internal fplAudioFormatType fpl__PulseAudio_MapSampleFormatToAudioFormatType(const pa_sample_format_t sampleFormat) {
+fpl_internal fplAudioFormatType fpl__PulseAudioMapSampleFormatToAudioFormatType(const pa_sample_format_t sampleFormat) {
 	switch (sampleFormat) {
 		case PA_SAMPLE_U8:
 			return fplAudioFormatType_U8;
@@ -33141,7 +33141,7 @@ fpl_internal fplAudioFormatType fpl__PulseAudio_MapSampleFormatToAudioFormatType
 }
 
 // Context state callback. Wakes the initialization thread whenever the context state changes.
-fpl_internal void fpl__PulseAudio_ContextStateCallback(pa_context *context, void *userData) {
+fpl_internal void fpl__PulseAudioContextStateCallback(pa_context *context, void *userData) {
 	fplAudioBackend *backend = (fplAudioBackend *)userData;
 	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
 	fplAssert(pulseAudioBackend != fpl_null);
@@ -33163,7 +33163,7 @@ fpl_internal void fpl__PulseAudio_ContextStateCallback(pa_context *context, void
 }
 
 // Stream state callback. Wakes the initialization thread whenever the stream state changes.
-fpl_internal void fpl__PulseAudio_StreamStateCallback(pa_stream *stream, void *userData) {
+fpl_internal void fpl__PulseAudioStreamStateCallback(pa_stream *stream, void *userData) {
 	fplAudioBackend *backend = (fplAudioBackend *)userData;
 	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
 	fplAssert(pulseAudioBackend != fpl_null);
@@ -33185,7 +33185,7 @@ fpl_internal void fpl__PulseAudio_StreamStateCallback(pa_stream *stream, void *u
 }
 
 // Success callback used for operations that we want to wait on.
-fpl_internal void fpl__PulseAudio_StreamSuccessCallback(pa_stream *stream, int success, void *userData) {
+fpl_internal void fpl__PulseAudioStreamSuccessCallback(pa_stream *stream, int success, void *userData) {
 	(void)stream;
 	(void)success;
 	fplAudioBackend *backend = (fplAudioBackend *)userData;
@@ -33198,7 +33198,7 @@ fpl_internal void fpl__PulseAudio_StreamSuccessCallback(pa_stream *stream, int s
 // Stream write callback. Pulls audio from the client via fpl__ReadAudioFramesFromClient and writes it to pulseaudio.
 // fpl__ReadAudioFramesFromClient always fills the full requested frame count (padded with silence on underrun),
 // so we trust the buffer is complete and write the full clamped chunk every iteration.
-fpl_internal void fpl__PulseAudio_StreamWriteCallback(pa_stream *stream, size_t requestedBytes, void *userData) {
+fpl_internal void fpl__PulseAudioStreamWriteCallback(pa_stream *stream, size_t requestedBytes, void *userData) {
 	fplAudioBackend *backend = (fplAudioBackend *)userData;
 	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
 	fplAssert(pulseAudioBackend != fpl_null);
@@ -33233,7 +33233,7 @@ fpl_internal void fpl__PulseAudio_StreamWriteCallback(pa_stream *stream, size_t 
 
 // Sink-info-list callback. Fires once per sink, then once more with eol > 0 as terminator.
 // Fills the iteration context in the backend with one fplAudioDeviceInfo record per sink.
-fpl_internal void fpl__PulseAudio_SinkInfoListCallback(pa_context *context, const pa_sink_info *info, int eol, void *userData) {
+fpl_internal void fpl__PulseAudioSinkInfoListCallback(pa_context *context, const pa_sink_info *info, int eol, void *userData) {
 	(void)context;
 	fplAudioBackend *backend = (fplAudioBackend *)userData;
 	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
@@ -33266,7 +33266,7 @@ fpl_internal void fpl__PulseAudio_SinkInfoListCallback(pa_context *context, cons
 }
 
 // Sink-info-by-index callback. Copies the sink name into resolvedSinkName so pa_stream_connect_playback can consume it.
-fpl_internal void fpl__PulseAudio_SinkNameByIndexCallback(pa_context *context, const pa_sink_info *info, int eol, void *userData) {
+fpl_internal void fpl__PulseAudioSinkNameByIndexCallback(pa_context *context, const pa_sink_info *info, int eol, void *userData) {
 	(void)context;
 	fplAudioBackend *backend = (fplAudioBackend *)userData;
 	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
@@ -33282,7 +33282,7 @@ fpl_internal void fpl__PulseAudio_SinkNameByIndexCallback(pa_context *context, c
 }
 
 // Wait for a pulseaudio operation to reach a terminal state, while the mainloop is locked by the caller.
-fpl_internal void fpl__PulseAudio_WaitForOperation(fpl__PulseAudioBackend *pulseAudioBackend, pa_operation *operation) {
+fpl_internal void fpl__PulseAudioWaitForOperation(fpl__PulseAudioBackend *pulseAudioBackend, pa_operation *operation) {
 	fplAssert(pulseAudioBackend != fpl_null);
 	const fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
 	if (operation == fpl_null) {
@@ -33331,7 +33331,7 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendPulseAudi
 	iter->deviceInfoSize = deviceInfoSize;
 	iter->maxDeviceCount = maxDeviceCount;
 
-	pa_operation *sinkListOperation = pulseAudioApi->pa_context_get_sink_info_list(pulseAudioBackend->context, fpl__PulseAudio_SinkInfoListCallback, backend);
+	pa_operation *sinkListOperation = pulseAudioApi->pa_context_get_sink_info_list(pulseAudioBackend->context, fpl__PulseAudioSinkInfoListCallback, backend);
 	if (sinkListOperation != fpl_null) {
 		while (!iter->isDone && pulseAudioApi->pa_operation_get_state(sinkListOperation) == PA_OPERATION_RUNNING) {
 			pulseAudioApi->pa_threaded_mainloop_wait(pulseAudioBackend->mainloop);
@@ -33377,7 +33377,7 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendPulse
 	iter->deviceInfoSize = sizeof(outDeviceInfo->info);
 	iter->maxDeviceCount = 1;
 
-	pa_operation *op = api->pa_context_get_sink_info_by_index(impl->context, targetDevice->pulse, fpl__PulseAudio_SinkInfoListCallback, backend);
+	pa_operation *op = api->pa_context_get_sink_info_by_index(impl->context, targetDevice->pulse, fpl__PulseAudioSinkInfoListCallback, backend);
 	if (op != fpl_null) {
 		while (!iter->isDone && api->pa_operation_get_state(op) == PA_OPERATION_RUNNING) {
 			api->pa_threaded_mainloop_wait(impl->mainloop);
@@ -33489,7 +33489,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPulseAudi
 		pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
 		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed creating pulseaudio context!");
 	}
-	pulseAudioApi->pa_context_set_state_callback(pulseAudioBackend->context, fpl__PulseAudio_ContextStateCallback, backend);
+	pulseAudioApi->pa_context_set_state_callback(pulseAudioBackend->context, fpl__PulseAudioContextStateCallback, backend);
 	const char *pulseServerName = (fplGetStringLength(pulseAudioBackend->serverName) > 0) ? pulseAudioBackend->serverName : fpl_null;
 	if (pulseAudioApi->pa_context_connect(pulseAudioBackend->context, pulseServerName, PA_CONTEXT_NOFLAGS, fpl_null) < 0) {
 		int errorCode = pulseAudioApi->pa_context_errno(pulseAudioBackend->context);
@@ -33507,7 +33507,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPulseAudi
 
 	// Build the target sample spec + channel map from the requested fplAudioFormat.
 	pa_sample_spec sampleSpec = fplZeroInit;
-	sampleSpec.format = fpl__PulseAudio_MapAudioFormatTypeToSampleFormat(targetFormat->type);
+	sampleSpec.format = fpl__PulseAudioMapAudioFormatTypeToSampleFormat(targetFormat->type);
 	if ((int)sampleSpec.format < 0) {
 		sampleSpec.format = fplIsBigEndian() ? PA_SAMPLE_S16BE : PA_SAMPLE_S16LE;
 	}
@@ -33518,7 +33518,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPulseAudi
 	pulseAudioApi->pa_channel_map_init_auto(&channelMap, sampleSpec.channels, PA_CHANNEL_MAP_DEFAULT);
 
 	// Build the buffer attributes. tlength is total buffer size in bytes.
-	uint32_t frameSizeInBytes = (uint32_t)sampleSpec.channels * fplGetAudioSampleSizeInBytes(fpl__PulseAudio_MapSampleFormatToAudioFormatType(sampleSpec.format));
+	uint32_t frameSizeInBytes = (uint32_t)sampleSpec.channels * fplGetAudioSampleSizeInBytes(fpl__PulseAudioMapSampleFormatToAudioFormatType(sampleSpec.format));
 	if (frameSizeInBytes == 0) {
 		pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
 		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "PulseAudio: unable to compute frame size from target format!");
@@ -33544,8 +33544,8 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPulseAudi
 		pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
 		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed creating pulseaudio stream: %s!", pulseAudioApi->pa_strerror(errorCode));
 	}
-	pulseAudioApi->pa_stream_set_state_callback(pulseAudioBackend->stream, fpl__PulseAudio_StreamStateCallback, backend);
-	pulseAudioApi->pa_stream_set_write_callback(pulseAudioBackend->stream, fpl__PulseAudio_StreamWriteCallback, backend);
+	pulseAudioApi->pa_stream_set_state_callback(pulseAudioBackend->stream, fpl__PulseAudioStreamStateCallback, backend);
+	pulseAudioApi->pa_stream_set_write_callback(pulseAudioBackend->stream, fpl__PulseAudioStreamWriteCallback, backend);
 
 	// PA_STREAM_ADJUST_LATENCY forces pulse to honor tlength as a hard target; on sinks with their own buffering this causes underruns. Leaving it off lets pulse pick a sane working latency around our tlength hint.
 	pa_stream_flags_t streamFlags = (pa_stream_flags_t)(PA_STREAM_START_CORKED | PA_STREAM_AUTO_TIMING_UPDATE);
@@ -33555,8 +33555,8 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPulseAudi
 	pulseAudioBackend->resolvedSinkName[0] = '\0';
 	const char *requestedDeviceName = fpl_null;
 	if (targetDevice != fpl_null && fplGetStringLength(targetDevice->name) > 0) {
-		pa_operation *resolveOperation = pulseAudioApi->pa_context_get_sink_info_by_index(pulseAudioBackend->context, targetDevice->id.pulse, fpl__PulseAudio_SinkNameByIndexCallback, backend);
-		fpl__PulseAudio_WaitForOperation(pulseAudioBackend, resolveOperation);
+		pa_operation *resolveOperation = pulseAudioApi->pa_context_get_sink_info_by_index(pulseAudioBackend->context, targetDevice->id.pulse, fpl__PulseAudioSinkNameByIndexCallback, backend);
+		fpl__PulseAudioWaitForOperation(pulseAudioBackend, resolveOperation);
 		if (fplGetStringLength(pulseAudioBackend->resolvedSinkName) > 0) {
 			requestedDeviceName = pulseAudioBackend->resolvedSinkName;
 		} else {
@@ -33583,7 +33583,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPulseAudi
 	const pa_buffer_attr *actualBufferAttr = pulseAudioApi->pa_stream_get_buffer_attr(pulseAudioBackend->stream);
 
 	fplAudioFormat internalFormat = fplZeroInit;
-	internalFormat.type = fpl__PulseAudio_MapSampleFormatToAudioFormatType(actualSampleSpec->format);
+	internalFormat.type = fpl__PulseAudioMapSampleFormatToAudioFormatType(actualSampleSpec->format);
 	internalFormat.sampleRate = actualSampleSpec->rate;
 	internalFormat.channels = actualSampleSpec->channels;
 	internalFormat.channelLayout = fplGetDefaultAudioChannelLayoutFromChannels(internalFormat.channels);
@@ -33603,7 +33603,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPulseAudi
 	pulseAudioBackend->frameSize = actualFrameSize;
 
 	// Build the output channel map from the actual pulseaudio channel map.
-	fpl__PulseAudio_SetAudioDefaultChannelMap((uint16_t)actualChannelMap->channels, internalFormat.channelLayout, outputChannelMap);
+	fpl__PulseAudioSetAudioDefaultChannelMap((uint16_t)actualChannelMap->channels, internalFormat.channelLayout, outputChannelMap);
 
 	// Build the output device info from the negotiated stream sink.
 	fplAudioDeviceInfo internalDevice = fplZeroInit;
@@ -33636,8 +33636,8 @@ fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudioBackendPulseAudioStar
 		return fplAudioResultType_DeviceNotInitialized;
 	}
 	pulseAudioApi->pa_threaded_mainloop_lock(pulseAudioBackend->mainloop);
-	pa_operation *corkOperation = pulseAudioApi->pa_stream_cork(pulseAudioBackend->stream, 0, fpl__PulseAudio_StreamSuccessCallback, backend);
-	fpl__PulseAudio_WaitForOperation(pulseAudioBackend, corkOperation);
+	pa_operation *corkOperation = pulseAudioApi->pa_stream_cork(pulseAudioBackend->stream, 0, fpl__PulseAudioStreamSuccessCallback, backend);
+	fpl__PulseAudioWaitForOperation(pulseAudioBackend, corkOperation);
 	pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
 	return fplAudioResultType_Success;
 }
@@ -33651,10 +33651,10 @@ fpl_internal FPL_AUDIO_BACKEND_STOP_DEVICE_FUNC(fpl__AudioBackendPulseAudioStopD
 		return true;
 	}
 	pulseAudioApi->pa_threaded_mainloop_lock(pulseAudioBackend->mainloop);
-	pa_operation *corkOperation = pulseAudioApi->pa_stream_cork(pulseAudioBackend->stream, 1, fpl__PulseAudio_StreamSuccessCallback, backend);
-	fpl__PulseAudio_WaitForOperation(pulseAudioBackend, corkOperation);
-	pa_operation *flushOperation = pulseAudioApi->pa_stream_flush(pulseAudioBackend->stream, fpl__PulseAudio_StreamSuccessCallback, backend);
-	fpl__PulseAudio_WaitForOperation(pulseAudioBackend, flushOperation);
+	pa_operation *corkOperation = pulseAudioApi->pa_stream_cork(pulseAudioBackend->stream, 1, fpl__PulseAudioStreamSuccessCallback, backend);
+	fpl__PulseAudioWaitForOperation(pulseAudioBackend, corkOperation);
+	pa_operation *flushOperation = pulseAudioApi->pa_stream_flush(pulseAudioBackend->stream, fpl__PulseAudioStreamSuccessCallback, backend);
+	fpl__PulseAudioWaitForOperation(pulseAudioBackend, flushOperation);
 	pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
 	return true;
 }
@@ -34186,7 +34186,7 @@ fpl_internal FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl__AudioBackendPipeWireMainLoop)
 fpl_internal FPL_AUDIO_BACKEND_STOP_MAIN_LOOP_FUNC(fpl__AudioBackendPipeWireStopMainLoop);
 
 // Map a fplAudioFormatType to a SPA audio format.
-fpl_internal uint32_t fpl__PipeWire_MapAudioFormatTypeToSampleFormat(const fplAudioFormatType format) {
+fpl_internal uint32_t fpl__PipeWireMapAudioFormatTypeToSampleFormat(const fplAudioFormatType format) {
 	bool isBigEndian = fplIsBigEndian();
 	switch (format) {
 		case fplAudioFormatType_U8:
@@ -34205,7 +34205,7 @@ fpl_internal uint32_t fpl__PipeWire_MapAudioFormatTypeToSampleFormat(const fplAu
 }
 
 // Map a SPA audio format back to a fplAudioFormatType.
-fpl_internal fplAudioFormatType fpl__PipeWire_MapSampleFormatToAudioFormatType(const uint32_t spaAudioFormat) {
+fpl_internal fplAudioFormatType fpl__PipeWireMapSampleFormatToAudioFormatType(const uint32_t spaAudioFormat) {
 	switch (spaAudioFormat) {
 		case SPA_AUDIO_FORMAT_U8:
 			return fplAudioFormatType_U8;
@@ -34247,7 +34247,7 @@ SPA_POD_SCALAR_PAD_SIZE)
 // Size of SPA object body header
 #define SPA_POD_OBJECT_BODY_HEADER_SIZE 8u // object type + object id
 
-fpl_internal_inline fplAudioChannelType fpl__PipeWire_MapToAudioChannelType(const uint32_t value) {
+fpl_internal_inline fplAudioChannelType fpl__PipeWireMapToAudioChannelType(const uint32_t value) {
 	switch (value) {
 		case SPA_AUDIO_CHANNEL_FL:
 			return fplAudioChannelType_FrontLeft;
@@ -34272,7 +34272,7 @@ fpl_internal_inline fplAudioChannelType fpl__PipeWire_MapToAudioChannelType(cons
 	}
 }
 
-fpl_internal void fpl__PipeWire_FPLAudioChannelMap(const uint32_t channels, const fplAudioChannelLayout layout, fplAudioChannelMap *outChannelMap) {
+fpl_internal void fpl__PipeWireFPLAudioChannelMap(const uint32_t channels, const fplAudioChannelLayout layout, fplAudioChannelMap *outChannelMap) {
 	fplAssertPtr(outChannelMap);
 	fplClearStruct(outChannelMap);
 	if (channels == 0 || layout == fplAudioChannelLayout_Unsupported) {
@@ -34347,7 +34347,7 @@ fpl_internal void fpl__PipeWire_FPLAudioChannelMap(const uint32_t channels, cons
 	}
 }
 
-fpl_internal void fpl__PipeWire_BuildChannelMap(const uint32_t channels, const fplAudioChannelLayout layout, const uint32_t maxChannelCount, uint32_t *outChannelMap) {
+fpl_internal void fpl__PipeWireBuildChannelMap(const uint32_t channels, const fplAudioChannelLayout layout, const uint32_t maxChannelCount, uint32_t *outChannelMap) {
 	if (channels == 0 || layout == fplAudioChannelLayout_Unsupported || channels > maxChannelCount) {
 		return;
 	}
@@ -34423,7 +34423,7 @@ fpl_internal void fpl__PipeWire_BuildChannelMap(const uint32_t channels, const f
 // Builds a SPA POD for SPA_TYPE_OBJECT_Format with id SPA_PARAM_EnumFormat.
 // Layout: object header (8) + object body (8 + 5 props * 24 = 128) = 136 bytes.
 // Each Id/Int prop = 8 (key+flags) + 8 (pod header) + 8 (4-byte body + 4-byte pad).
-fpl_internal uint32_t fpl__PipeWire_BuildAudioFormatPod(uint8_t *buffer, const size_t bufferSize, const uint32_t spaAudioFormat, const uint32_t sampleRate, const uint32_t channels, uint32_t *channelMap) {
+fpl_internal uint32_t fpl__PipeWireBuildAudioFormatPod(uint8_t *buffer, const size_t bufferSize, const uint32_t spaAudioFormat, const uint32_t sampleRate, const uint32_t channels, uint32_t *channelMap) {
 	if (!buffer || bufferSize == 0 || channels == 0 || channelMap == fpl_null)
         return 0;
 
@@ -34530,7 +34530,7 @@ fpl_internal uint32_t fpl__PipeWire_BuildAudioFormatPod(uint8_t *buffer, const s
 }
 
 // Helper: find a value in a spa_dict for a given key.
-fpl_internal const char *fpl__PipeWire_SpaDictLookup(const struct spa_dict *dict, const char *key) {
+fpl_internal const char *fpl__PipeWireSpaDictLookup(const struct spa_dict *dict, const char *key) {
 	if (dict == fpl_null || key == fpl_null) {
 		return fpl_null;
 	}
@@ -34546,11 +34546,11 @@ fpl_internal const char *fpl__PipeWire_SpaDictLookup(const struct spa_dict *dict
 // Enumeration-only core listener callbacks. These never touch the persistent
 // fpl__PipeWireAudioBackend state because the `data` pointer is a local
 // fpl__PipeWireEnumState allocated on the stack of GetAudioDevices.
-fpl_internal void fpl__PipeWire_EnumCoreInfoCallback(void *data, const void *info) {
+fpl_internal void fpl__PipeWireEnumCoreInfoCallback(void *data, const void *info) {
 	(void)data;
 	(void)info;
 }
-fpl_internal void fpl__PipeWire_EnumCoreDoneCallback(void *data, uint32_t id, int seq) {
+fpl_internal void fpl__PipeWireEnumCoreDoneCallback(void *data, uint32_t id, int seq) {
 	fpl__PipeWireEnumState *s = (fpl__PipeWireEnumState *)data;
 	if (s == fpl_null) {
 		return;
@@ -34562,7 +34562,7 @@ fpl_internal void fpl__PipeWire_EnumCoreDoneCallback(void *data, uint32_t id, in
 		}
 	}
 }
-fpl_internal void fpl__PipeWire_EnumCoreErrorCallback(void *data, uint32_t id, int seq, int res, const char *message) {
+fpl_internal void fpl__PipeWireEnumCoreErrorCallback(void *data, uint32_t id, int seq, int res, const char *message) {
 	(void)seq;
 	(void)res;
 	fpl__PipeWireEnumState *s = (fpl__PipeWireEnumState *)data;
@@ -34579,10 +34579,10 @@ fpl_internal void fpl__PipeWire_EnumCoreErrorCallback(void *data, uint32_t id, i
 
 fpl_globalvar struct pw_core_events fpl__global_pipeWireEnumCoreEvents = {
 	PW_VERSION_CORE_EVENTS,
-	fpl__PipeWire_EnumCoreInfoCallback,
-	fpl__PipeWire_EnumCoreDoneCallback,
+	fpl__PipeWireEnumCoreInfoCallback,
+	fpl__PipeWireEnumCoreDoneCallback,
 	fpl_null,
-	fpl__PipeWire_EnumCoreErrorCallback,
+	fpl__PipeWireEnumCoreErrorCallback,
 	fpl_null,
 	fpl_null,
 	fpl_null,
@@ -34591,7 +34591,7 @@ fpl_globalvar struct pw_core_events fpl__global_pipeWireEnumCoreEvents = {
 };
 
 // Registry listener callbacks, operating on a stack-local fpl__PipeWireEnumState.
-fpl_internal void fpl__PipeWire_EnumRegistryGlobalCallback(void *data, uint32_t id, uint32_t permissions, const char *type, uint32_t version, const struct spa_dict *props) {
+fpl_internal void fpl__PipeWireEnumRegistryGlobalCallback(void *data, uint32_t id, uint32_t permissions, const char *type, uint32_t version, const struct spa_dict *props) {
 	(void)permissions;
 	(void)version;
 	fpl__PipeWireEnumState *s = (fpl__PipeWireEnumState *)data;
@@ -34601,7 +34601,7 @@ fpl_internal void fpl__PipeWire_EnumRegistryGlobalCallback(void *data, uint32_t 
 	if (type == fpl_null || !fplIsStringEqual(type, "PipeWire:Interface:Node")) {
 		return;
 	}
-	const char *mediaClass = fpl__PipeWire_SpaDictLookup(props, PW_KEY_MEDIA_CLASS);
+	const char *mediaClass = fpl__PipeWireSpaDictLookup(props, PW_KEY_MEDIA_CLASS);
 	if (mediaClass == fpl_null) {
 		return;
 	}
@@ -34611,12 +34611,12 @@ fpl_internal void fpl__PipeWire_EnumRegistryGlobalCallback(void *data, uint32_t 
 	if (s->hasTargetId && id != s->targetId) {
 		return;
 	}
-	const char *description = fpl__PipeWire_SpaDictLookup(props, PW_KEY_NODE_DESCRIPTION);
+	const char *description = fpl__PipeWireSpaDictLookup(props, PW_KEY_NODE_DESCRIPTION);
 	if (description == fpl_null) {
-		description = fpl__PipeWire_SpaDictLookup(props, PW_KEY_NODE_NICK);
+		description = fpl__PipeWireSpaDictLookup(props, PW_KEY_NODE_NICK);
 	}
 	if (description == fpl_null) {
-		description = fpl__PipeWire_SpaDictLookup(props, PW_KEY_NODE_NAME);
+		description = fpl__PipeWireSpaDictLookup(props, PW_KEY_NODE_NAME);
 	}
 	if (s->deviceInfos != fpl_null && s->deviceInfoSize > 0) {
 		if (s->resultCount >= s->maxDeviceCount) {
@@ -34634,29 +34634,29 @@ fpl_internal void fpl__PipeWire_EnumRegistryGlobalCallback(void *data, uint32_t 
 	}
 	++s->resultCount;
 }
-fpl_internal void fpl__PipeWire_EnumRegistryGlobalRemoveCallback(void *data, uint32_t id) {
+fpl_internal void fpl__PipeWireEnumRegistryGlobalRemoveCallback(void *data, uint32_t id) {
 	(void)data;
 	(void)id;
 }
 
 fpl_globalvar struct pw_registry_events fpl__global_pipeWireEnumRegistryEvents = {
 	PW_VERSION_REGISTRY_EVENTS,
-	fpl__PipeWire_EnumRegistryGlobalCallback,
-	fpl__PipeWire_EnumRegistryGlobalRemoveCallback,
+	fpl__PipeWireEnumRegistryGlobalCallback,
+	fpl__PipeWireEnumRegistryGlobalRemoveCallback,
 };
 
 // Stream listener callbacks.
-fpl_internal void fpl__PipeWire_StreamDestroyCallback(void *data) { (void)data; }
-fpl_internal void fpl__PipeWire_StreamControlInfoCallback(void *data, uint32_t id, const void *control) { (void)data; (void)id; (void)control; }
-fpl_internal void fpl__PipeWire_StreamIoChangedCallback(void *data, uint32_t id, void *area, uint32_t size) { (void)data; (void)id; (void)area; (void)size; }
-fpl_internal void fpl__PipeWire_StreamParamChangedCallback(void *data, uint32_t id, const struct spa_pod *param) { (void)data; (void)id; (void)param; }
-fpl_internal void fpl__PipeWire_StreamAddBufferCallback(void *data, void *buffer) { (void)data; (void)buffer; }
-fpl_internal void fpl__PipeWire_StreamRemoveBufferCallback(void *data, void *buffer) { (void)data; (void)buffer; }
-fpl_internal void fpl__PipeWire_StreamDrainedCallback(void *data) { (void)data; }
-fpl_internal void fpl__PipeWire_StreamCommandCallback(void *data, const struct spa_command *command) { (void)data; (void)command; }
-fpl_internal void fpl__PipeWire_StreamTriggerDoneCallback(void *data) { (void)data; }
+fpl_internal void fpl__PipeWireStreamDestroyCallback(void *data) { (void)data; }
+fpl_internal void fpl__PipeWireStreamControlInfoCallback(void *data, uint32_t id, const void *control) { (void)data; (void)id; (void)control; }
+fpl_internal void fpl__PipeWireStreamIoChangedCallback(void *data, uint32_t id, void *area, uint32_t size) { (void)data; (void)id; (void)area; (void)size; }
+fpl_internal void fpl__PipeWireStreamParamChangedCallback(void *data, uint32_t id, const struct spa_pod *param) { (void)data; (void)id; (void)param; }
+fpl_internal void fpl__PipeWireStreamAddBufferCallback(void *data, void *buffer) { (void)data; (void)buffer; }
+fpl_internal void fpl__PipeWireStreamRemoveBufferCallback(void *data, void *buffer) { (void)data; (void)buffer; }
+fpl_internal void fpl__PipeWireStreamDrainedCallback(void *data) { (void)data; }
+fpl_internal void fpl__PipeWireStreamCommandCallback(void *data, const struct spa_command *command) { (void)data; (void)command; }
+fpl_internal void fpl__PipeWireStreamTriggerDoneCallback(void *data) { (void)data; }
 
-fpl_internal void fpl__PipeWire_StreamStateChangedCallback(void *data, enum pw_stream_state old, enum pw_stream_state state, const char *error) {
+fpl_internal void fpl__PipeWireStreamStateChangedCallback(void *data, enum pw_stream_state old, enum pw_stream_state state, const char *error) {
 	(void)old;
 	fplAudioBackend *backend = (fplAudioBackend *)data;
 	fpl__PipeWireAudioBackend *pw = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PipeWireAudioBackend);
@@ -34683,7 +34683,7 @@ fpl_internal void fpl__PipeWire_StreamStateChangedCallback(void *data, enum pw_s
 	}
 }
 
-fpl_internal void fpl__PipeWire_StreamProcessCallback(void *data) {
+fpl_internal void fpl__PipeWireStreamProcessCallback(void *data) {
 	fplAudioBackend *backend = (fplAudioBackend *)data;
 	fpl__PipeWireAudioBackend *pw = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PipeWireAudioBackend);
 	fplAssert(pw != fpl_null);
@@ -34720,17 +34720,17 @@ fpl_internal void fpl__PipeWire_StreamProcessCallback(void *data) {
 
 fpl_globalvar struct pw_stream_events fpl__global_pipeWireStreamEvents = {
 	PW_VERSION_STREAM_EVENTS,
-	fpl__PipeWire_StreamDestroyCallback,
-	fpl__PipeWire_StreamStateChangedCallback,
-	fpl__PipeWire_StreamControlInfoCallback,
-	fpl__PipeWire_StreamIoChangedCallback,
-	fpl__PipeWire_StreamParamChangedCallback,
-	fpl__PipeWire_StreamAddBufferCallback,
-	fpl__PipeWire_StreamRemoveBufferCallback,
-	fpl__PipeWire_StreamProcessCallback,
-	fpl__PipeWire_StreamDrainedCallback,
-	fpl__PipeWire_StreamCommandCallback,
-	fpl__PipeWire_StreamTriggerDoneCallback,
+	fpl__PipeWireStreamDestroyCallback,
+	fpl__PipeWireStreamStateChangedCallback,
+	fpl__PipeWireStreamControlInfoCallback,
+	fpl__PipeWireStreamIoChangedCallback,
+	fpl__PipeWireStreamParamChangedCallback,
+	fpl__PipeWireStreamAddBufferCallback,
+	fpl__PipeWireStreamRemoveBufferCallback,
+	fpl__PipeWireStreamProcessCallback,
+	fpl__PipeWireStreamDrainedCallback,
+	fpl__PipeWireStreamCommandCallback,
+	fpl__PipeWireStreamTriggerDoneCallback,
 };
 
 fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendPipeWireInitialize) {
@@ -34760,7 +34760,7 @@ fpl_internal FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl__AudioBackendPipeWireRelease) {
 
 // Runs a one-shot registry enumeration using the caller-prepared enumState (deviceInfos buffer, maxDeviceCount, optional targetId filter).
 // All thread-loop/context/registry state is local so the persistent playback state inside the backend is never touched.
-fpl_internal bool fpl__PipeWire_RunRegistryEnum(const fpl__PipeWireApi *api, fpl__PipeWireEnumState *enumState) {
+fpl_internal bool fpl__PipeWireRunRegistryEnum(const fpl__PipeWireApi *api, fpl__PipeWireEnumState *enumState) {
 	fplAssertPtr(api);
 	fplAssertPtr(enumState);
 	enumState->api = api;
@@ -34850,7 +34850,7 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendPipeWireG
 	enumState.deviceInfoSize = deviceInfoSize;
 	enumState.maxDeviceCount = maxDeviceCount;
 
-	fpl__PipeWire_RunRegistryEnum(api, &enumState);
+	fpl__PipeWireRunRegistryEnum(api, &enumState);
 
 	if (enumState.overflowCount > 0) {
 		FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, "Capacity of '%u' for audio device infos has been reached. '%u' audio devices are not included in the result", maxDeviceCount, enumState.overflowCount);
@@ -34879,7 +34879,7 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendPipeW
 	enumState.targetId = targetDevice->pipewire;
 	enumState.hasTargetId = true;
 
-	if (!fpl__PipeWire_RunRegistryEnum(api, &enumState)) {
+	if (!fpl__PipeWireRunRegistryEnum(api, &enumState)) {
 		return fplAudioResultType_DeviceFailure;
 	}
 	if (enumState.resultCount == 0) {
@@ -34991,7 +34991,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPipeWireI
 	}
 
 	// Build the target sample format.
-	uint32_t spaAudioFormat = fpl__PipeWire_MapAudioFormatTypeToSampleFormat(targetFormat->type);
+	uint32_t spaAudioFormat = fpl__PipeWireMapAudioFormatTypeToSampleFormat(targetFormat->type);
 	if (spaAudioFormat == SPA_AUDIO_FORMAT_UNKNOWN) {
 		spaAudioFormat = fplIsBigEndian() ? SPA_AUDIO_FORMAT_S16_BE : SPA_AUDIO_FORMAT_S16_LE;
 	}
@@ -34999,7 +34999,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPipeWireI
 	uint32_t sampleRate = targetFormat->sampleRate;
 	fplAudioChannelLayout channelLayout = fplGetDefaultAudioChannelLayoutFromChannels(channelCount);
 
-	uint32_t localFrameSize = (uint32_t)channelCount * fplGetAudioSampleSizeInBytes(fpl__PipeWire_MapSampleFormatToAudioFormatType(spaAudioFormat));
+	uint32_t localFrameSize = (uint32_t)channelCount * fplGetAudioSampleSizeInBytes(fpl__PipeWireMapSampleFormatToAudioFormatType(spaAudioFormat));
 	if (localFrameSize == 0) {
 		api->pw_thread_loop_unlock(pw->threadLoop);
 		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "PipeWire: unable to compute frame size from target format!");
@@ -35035,11 +35035,11 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPipeWireI
 
 	// Build channel map
 	uint32_t nativeChannelMap[32] = fplZeroInit;
-	fpl__PipeWire_BuildChannelMap(channelCount, channelLayout, fplArrayCount(nativeChannelMap), nativeChannelMap);
+	fpl__PipeWireBuildChannelMap(channelCount, channelLayout, fplArrayCount(nativeChannelMap), nativeChannelMap);
 
 	// Build the EnumFormat POD.
 	uint8_t podBuffer[256];
-	uint32_t podSize = fpl__PipeWire_BuildAudioFormatPod(podBuffer, sizeof(podBuffer), spaAudioFormat, sampleRate, (uint32_t)channelCount, nativeChannelMap);
+	uint32_t podSize = fpl__PipeWireBuildAudioFormatPod(podBuffer, sizeof(podBuffer), spaAudioFormat, sampleRate, (uint32_t)channelCount, nativeChannelMap);
 	if (podSize == 0) {
 		api->pw_thread_loop_unlock(pw->threadLoop);
 		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed building PipeWire format POD!");
@@ -35066,7 +35066,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPipeWireI
 
 	// Fill the output format (we use the requested format, since PipeWire negotiates implicitly).
 	fplAudioFormat internalFormat = fplZeroInit;
-	internalFormat.type = fpl__PipeWire_MapSampleFormatToAudioFormatType(spaAudioFormat);
+	internalFormat.type = fpl__PipeWireMapSampleFormatToAudioFormatType(spaAudioFormat);
 	internalFormat.sampleRate = sampleRate;
 	internalFormat.channels = channelCount;
 	internalFormat.channelLayout = channelLayout;
@@ -35075,7 +35075,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPipeWireI
 	internalFormat.bufferSizeInMilliseconds = fplGetAudioBufferSizeInMilliseconds(internalFormat.sampleRate, internalFormat.bufferSizeInFrames);
 	internalFormat.mode = targetFormat->mode;
 
-	fpl__PipeWire_FPLAudioChannelMap(channelCount, channelLayout, outputChannelMap);
+	fpl__PipeWireFPLAudioChannelMap(channelCount, channelLayout, outputChannelMap);
 
 	fplAudioDeviceInfo internalDevice = fplZeroInit;
 	if (targetDevice != fpl_null && fplGetStringLength(targetDevice->name) > 0) {
