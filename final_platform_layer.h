@@ -200,6 +200,7 @@ SOFTWARE.
 	- Changed: fplCopyString is now returning the total number of characters required or returns zero on errors
 	- Changed: fplGetWindowTitle is now returning the total number of characters required or returns zero on errors
 	- Changed: Renamed fplInitFlags_GameController to fplInitFlags_Gamepad due to naming inconsisitency
+	- Added: fplGetCurrentThreadId() now returns uint64_t (was uint32_t) and fplThreadHandle.id widened to uint64_t to portably hold pthread_t
 
 	### Details
 
@@ -6540,7 +6541,8 @@ typedef struct fplThreadHandle {
 	//! Thread state.
 	volatile fplThreadState currentState;
 	//! The identifier of the thread.
-	uint32_t id;
+	// 64-bit to portably hold pthread_t (which is a pointer on glibc/FreeBSD) without truncation.
+	uint64_t id;
 	//! Is this thread valid.
 	volatile fpl_b32 isValid;
 	//! Is this thread stopping.
@@ -6703,7 +6705,7 @@ fpl_common_api size_t fplGetUsedThreadCount(void);
 * @brief Gets the thread id for the current thread.
 * @return Returns the thread id for the current thread.
 */
-fpl_platform_api uint32_t fplGetCurrentThreadId(void);
+fpl_platform_api uint64_t fplGetCurrentThreadId(void);
 
 /**
 * @brief Creates and starts a thread and returns the handle to it.
@@ -18134,9 +18136,9 @@ fpl_internal DWORD WINAPI fpl__Win32ThreadProc(void *data) {
 	ExitThread(0);
 }
 
-fpl_platform_api uint32_t fplGetCurrentThreadId(void) {
+fpl_platform_api uint64_t fplGetCurrentThreadId(void) {
 	DWORD threadId = GetCurrentThreadId();
-	uint32_t result = (uint32_t)threadId;
+	uint64_t result = (uint64_t)threadId;
 	return(result);
 }
 
@@ -20263,7 +20265,8 @@ fpl_internal bool fpl__PosixInitSubplatform(const fplInitFlags initFlags, const 
 	}
 
 	pthread_t currentThreadHandle = pthreadApi->pthread_self();
-	uint32_t mainThreadId = (uint32_t)currentThreadHandle;
+	// pthread_t may be a pointer or integer; route through uintptr_t to silence Wpointer-to-int-cast.
+	uint64_t mainThreadId = (uint64_t)(uintptr_t)currentThreadHandle;
 	fplThreadHandle *mainThread = &fpl__global__ThreadState.mainThread;
 	fplClearStruct(mainThread);
 	mainThread->id = mainThreadId;
@@ -20619,12 +20622,12 @@ fpl_platform_api bool fplThreadTerminate(fplThreadHandle *thread) {
 	}
 }
 
-fpl_platform_api uint32_t fplGetCurrentThreadId(void) {
+fpl_platform_api uint64_t fplGetCurrentThreadId(void) {
 	FPL__CheckPlatform(0);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
 	pthread_t currentThread = pthreadApi->pthread_self();
-	uint32_t result = (uint32_t)currentThread;
+	uint64_t result = (uint64_t)(uintptr_t)currentThread;
 	return(result);
 }
 
@@ -20726,7 +20729,7 @@ fpl_platform_api fplThreadHandle *fplThreadCreateWithParameters(fplThreadParamet
 			FPL__ERROR(FPL__MODULE_THREADING, "Failed creating thread, error code: %d", threadRes);
 		}
 		if (threadRes == 0) {
-			thread->id = (uint32_t)thread->internalHandle.posixThread;
+			thread->id = (uint64_t)(uintptr_t)thread->internalHandle.posixThread;
 			thread->isValid = true;
 			result = thread;
 		} else {
