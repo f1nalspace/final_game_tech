@@ -31185,23 +31185,16 @@ fpl_internal void fpl__PulseAudio_StreamStateCallback(pa_stream *stream, void *u
 	fplAssert(pulseAudioBackend != fpl_null);
 	const fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
 	pa_stream_state_t state = pulseAudioApi->pa_stream_get_state(stream);
-	FPL_LOG_TRACE(FPL__MODULE_AUDIO_PULSEAUDIO, "Stream state changed to %d", (int)state);
 	switch (state) {
 		case PA_STREAM_READY:
-			FPL_LOG_DEBUG(FPL__MODULE_AUDIO_PULSEAUDIO, "Stream is READY");
 			pulseAudioBackend->isStreamReady = 1;
 			pulseAudioApi->pa_threaded_mainloop_signal(pulseAudioBackend->mainloop, 0);
 			break;
 		case PA_STREAM_FAILED:
-		case PA_STREAM_TERMINATED: {
-			int errorCode = pulseAudioApi->pa_context_errno(pulseAudioBackend->context);
-			FPL_LOG_DEBUG(FPL__MODULE_AUDIO_PULSEAUDIO, "Stream %s, err=%d (%s)",
-				state == PA_STREAM_FAILED ? "FAILED" : "TERMINATED",
-				errorCode,
-				pulseAudioApi->pa_strerror(errorCode));
+		case PA_STREAM_TERMINATED:
 			pulseAudioBackend->isStreamFailed = 1;
 			pulseAudioApi->pa_threaded_mainloop_signal(pulseAudioBackend->mainloop, 0);
-		} break;
+			break;
 		default:
 			break;
 	}
@@ -31227,28 +31220,17 @@ fpl_internal void fpl__PulseAudio_StreamWriteCallback(pa_stream *stream, size_t 
 	fplAssert(pulseAudioBackend != fpl_null);
 	const fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
 	uint32_t frameSize = pulseAudioBackend->frameSize;
-	FPL_LOG_TRACE(FPL__MODULE_AUDIO_PULSEAUDIO, "Stream write callback fired, requestedBytes=%zu, frameSize=%lu", requestedBytes, (unsigned long)frameSize);
 	if (frameSize == 0) {
-		FPL_LOG_WARN(FPL__MODULE_AUDIO_PULSEAUDIO, "Stream write callback skipped: frameSize is zero");
 		return;
 	}
 	size_t remainingBytes = requestedBytes;
-	size_t totalWrittenBytes = 0;
-	uint32_t iteration = 0;
 	while (remainingBytes >= frameSize) {
 		void *destinationBuffer = fpl_null;
 		size_t chunkBytes = remainingBytes;
-		int beginWriteResult = pulseAudioApi->pa_stream_begin_write(stream, &destinationBuffer, &chunkBytes);
-		if (beginWriteResult < 0) {
-			int errorCode = pulseAudioApi->pa_context_errno(pulseAudioBackend->context);
-			FPL_LOG_WARN(FPL__MODULE_AUDIO_PULSEAUDIO, "pa_stream_begin_write failed at iter=%lu, err=%d (%s)",
-				(unsigned long)iteration, errorCode, pulseAudioApi->pa_strerror(errorCode));
+		if (pulseAudioApi->pa_stream_begin_write(stream, &destinationBuffer, &chunkBytes) < 0) {
 			break;
 		}
-		FPL_LOG_TRACE(FPL__MODULE_AUDIO_PULSEAUDIO, "begin_write iter=%lu offered chunkBytes=%zu (remaining=%zu)",
-			(unsigned long)iteration, chunkBytes, remainingBytes);
 		if (destinationBuffer == fpl_null || chunkBytes < frameSize) {
-			FPL_LOG_TRACE(FPL__MODULE_AUDIO_PULSEAUDIO, "begin_write returned too-small chunk, bailing (destBuf=%p chunkBytes=%zu)", destinationBuffer, chunkBytes);
 			if (destinationBuffer != fpl_null) {
 				pulseAudioApi->pa_stream_cancel_write(stream);
 			}
@@ -31258,19 +31240,11 @@ fpl_internal void fpl__PulseAudio_StreamWriteCallback(pa_stream *stream, size_t 
 		size_t chunkFrameBytes = (size_t)chunkFrames * frameSize;
 		uint32_t framesRead = fpl__ReadAudioFramesFromClient(backend, chunkFrames, destinationBuffer);
 		fplAssert(framesRead == chunkFrames);
-		int writeResult = pulseAudioApi->pa_stream_write(stream, destinationBuffer, chunkFrameBytes, fpl_null, 0, PA_SEEK_RELATIVE);
-		if (writeResult < 0) {
-			int errorCode = pulseAudioApi->pa_context_errno(pulseAudioBackend->context);
-			FPL_LOG_WARN(FPL__MODULE_AUDIO_PULSEAUDIO, "pa_stream_write failed at iter=%lu, err=%d (%s)",
-				(unsigned long)iteration, errorCode, pulseAudioApi->pa_strerror(errorCode));
+		if (pulseAudioApi->pa_stream_write(stream, destinationBuffer, chunkFrameBytes, fpl_null, 0, PA_SEEK_RELATIVE) < 0) {
 			break;
 		}
-		totalWrittenBytes += chunkFrameBytes;
 		remainingBytes -= chunkFrameBytes;
-		++iteration;
 	}
-	FPL_LOG_DEBUG(FPL__MODULE_AUDIO_PULSEAUDIO, "Stream write callback done: requested=%zu, written=%zu, iterations=%lu, leftover=%zu",
-		requestedBytes, totalWrittenBytes, (unsigned long)iteration, remainingBytes);
 }
 
 // Sink-info-list callback. Fires once per sink, then once more with eol > 0 as terminator.
@@ -31578,13 +31552,6 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPulseAudi
 	bufferAttributes.prebuf = (uint32_t)-1;
 	bufferAttributes.minreq = periodBytes;
 	bufferAttributes.fragsize = (uint32_t)-1;
-	FPL_LOG_DEBUG(FPL__MODULE_AUDIO_PULSEAUDIO, "Requested buffer attr: maxlength=%lu tlength=%lu prebuf=-1 minreq=%lu (frameSizeInBytes=%lu, bufferSizeInFrames=%lu, periods=%lu)",
-		(unsigned long)bufferAttributes.maxlength,
-		(unsigned long)bufferAttributes.tlength,
-		(unsigned long)bufferAttributes.minreq,
-		(unsigned long)frameSizeInBytes,
-		(unsigned long)targetFormat->bufferSizeInFrames,
-		(unsigned long)periodCount);
 
 	// Create the stream and wire up the state + write callbacks.
 	pulseAudioBackend->stream = pulseAudioApi->pa_stream_new(pulseAudioBackend->context, pulseAudioBackend->streamName, &sampleSpec, &channelMap);
@@ -31684,12 +31651,10 @@ fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudioBackendPulseAudioStar
 	if (pulseAudioBackend->mainloop == fpl_null || pulseAudioBackend->stream == fpl_null) {
 		return fplAudioResultType_DeviceNotInitialized;
 	}
-	FPL_LOG_DEBUG(FPL__MODULE_AUDIO_PULSEAUDIO, "StartDevice: uncorking stream");
 	pulseAudioApi->pa_threaded_mainloop_lock(pulseAudioBackend->mainloop);
 	pa_operation *corkOperation = pulseAudioApi->pa_stream_cork(pulseAudioBackend->stream, 0, fpl__PulseAudio_StreamSuccessCallback, backend);
 	fpl__PulseAudio_WaitForOperation(pulseAudioBackend, corkOperation);
 	pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
-	FPL_LOG_DEBUG(FPL__MODULE_AUDIO_PULSEAUDIO, "StartDevice: uncork done");
 	return fplAudioResultType_Success;
 }
 
