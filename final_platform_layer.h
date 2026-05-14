@@ -256,6 +256,7 @@ SOFTWARE.
 	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
 
 	#### Threading
+	- New: [Unix] Added struct fplUnixSignalEvent
 	- Changed: [POSIX] `sched_getscheduler` POSIX standard coverage check
 	- Removed: [POSIX] Removed unused pthread_setschedprio loader/typedef/API-table entry (not exported by FreeBSD libthr, never called by FPL)
 	- Fixed: [POSIX] Fixed pthread fpl__POSIXSemaphoreHandle was not used
@@ -6622,6 +6623,23 @@ typedef struct fplMutexHandle {
 	fplInternalMutexHandle internalHandle;
 } fplMutexHandle;
 
+#if defined(FPL_PLATFORM_UNIX)
+/**
+* @struct fplUnixSignalEvent
+* @brief Mimics a signal event for the unix platform using a mutex/condition variable and two states.
+*/
+typedef struct fplUnixSignalEvent {
+	//! Mutex handle
+	fpl__POSIXMutexHandle mutex;
+	//! Condition variable handle
+	fpl__POSIXConditionVariable cond;
+	//! Is the signal set
+	uint32_t isSet;
+	//! Is the signal manual reset
+	uint32_t manualReset;
+} fplUnixSignalEvent;
+#endif
+
 /**
 * @union fplInternalSignalHandle
 * @brief Stores the internal signal handle for any platform.
@@ -6633,6 +6651,9 @@ typedef union fplInternalSignalHandle {
 #elif defined(FPL_PLATFORM_LINUX)
 	//! Linux event handle.
 	fpl__LinuxSignalHandle linuxEventHandle;
+#elif defined(FPL_PLATFORM_UNIX)
+	//! Unix signal event
+	fplUnixSignalEvent unixEvent;
 #endif
 } fplInternalSignalHandle;
 
