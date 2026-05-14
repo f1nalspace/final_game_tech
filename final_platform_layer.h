@@ -2805,6 +2805,7 @@ typedef enum fplX86InstructionSetLevel {
 //
 // FPL_NO_AUDIO = Disable audio support entirely
 // FPL_NO_AUDIO_DIRECTSOUND = Disable DirectSound audio backend
+// FPL_NO_AUDIO_WASAPI = Disable WASAPI audio backend
 // FPL_NO_AUDIO_ALSA = Disable ALSA audio backend
 // FPL_NO_AUDIO_PULSEAUDIO = Disable PulseAudio audio backend
 // FPL_NO_AUDIO_PIPEWIRE = Disable PipeWire audio backend
@@ -2817,6 +2818,9 @@ typedef enum fplX86InstructionSetLevel {
 #if defined(FPL__SUPPORT_AUDIO)
 #	if !defined(FPL_NO_AUDIO_DIRECTSOUND) && defined(FPL_PLATFORM_WINDOWS)
 #		define FPL__SUPPORT_AUDIO_DIRECTSOUND // <dsound.h> is always present on windows
+#	endif
+#	if !defined(FPL_NO_AUDIO_WASAPI) && defined(FPL_PLATFORM_WINDOWS)
+#		define FPL__SUPPORT_AUDIO_WASAPI // WASAPI uses runtime linking to ole32.dll, no dev headers required
 #	endif
 #	if !defined(FPL_NO_AUDIO_ALSA) && defined(FPL_PLATFORM_LINUX)
 #		if !defined(FPL_NO_RUNTIME_LINKING) || fplHasInclude(<alsa/asoundlib.h>)
@@ -2913,6 +2917,9 @@ typedef enum fplX86InstructionSetLevel {
 #	define FPL__ENABLE_AUDIO
 #	if defined(FPL__SUPPORT_AUDIO_DIRECTSOUND)
 #		define FPL__ENABLE_AUDIO_DIRECTSOUND
+#	endif
+#	if defined(FPL__SUPPORT_AUDIO_WASAPI)
+#		define FPL__ENABLE_AUDIO_WASAPI
 #	endif
 #	if defined(FPL__SUPPORT_AUDIO_ALSA)
 #		define FPL__ENABLE_AUDIO_ALSA
@@ -5206,6 +5213,8 @@ typedef enum fplAudioBackendType {
 	fplAudioBackendType_Auto,
 	//! DirectSound audio backend.
 	fplAudioBackendType_DirectSound,
+	//! WASAPI audio backend.
+	fplAudioBackendType_WASAPI,
 	//! ALSA audio backend.
 	fplAudioBackendType_Alsa,
 	//! PulseAudio audio backend.
@@ -5488,6 +5497,10 @@ typedef union fplAudioDeviceID {
 	//! DirectShow Device GUID.
 	fpl__Win32Guid dshow;
 #endif
+#if defined(FPL__ENABLE_AUDIO_WASAPI)
+	//! WASAPI endpoint ID (null-terminated UTF-16, from IMMDevice::GetId).
+	wchar_t wasapi[128];
+#endif
 #if defined(FPL__ENABLE_AUDIO_ALSA)
 	//! ALSA Device ID.
 	char alsa[256];
@@ -5594,6 +5607,18 @@ typedef struct fplOSSAudioSettings {
 } fplOSSAudioSettings;
 #endif
 
+#if defined(FPL__ENABLE_AUDIO_WASAPI)
+/**
+* @struct fplWasapiAudioSettings
+* @brief Stores settings for the WASAPI audio backend.
+* @note Exclusive vs. shared mode is selected via @ref fplAudioMode / @ref fplAudioShareMode in @ref fplAudioFormat, not here.
+*/
+typedef struct fplWasapiAudioSettings {
+	//! If non-zero, disable WASAPI's automatic sample rate conversion (AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM).
+	fpl_b32 noAutoConvertSampleRate;
+} fplWasapiAudioSettings;
+#endif
+
 /**
 * @union fplSpecificAudioSettings
 * @brief Stores backend-specific audio settings.
@@ -5614,6 +5639,10 @@ typedef union fplSpecificAudioSettings {
 #if defined(FPL__ENABLE_AUDIO_OSS)
 	//! OSS-specific settings.
 	fplOSSAudioSettings oss;
+#endif
+#if defined(FPL__ENABLE_AUDIO_WASAPI)
+	//! WASAPI-specific settings.
+	fplWasapiAudioSettings wasapi;
 #endif
 	//! Field for preventing union to be empty.
 	int dummy;
@@ -10086,6 +10115,7 @@ fpl_main int main(int argc, char **args);
 
 #define FPL__MODULE_AUDIO "Audio"
 #define FPL__MODULE_AUDIO_DIRECTSOUND "DirectSound"
+#define FPL__MODULE_AUDIO_WASAPI "WASAPI"
 #define FPL__MODULE_AUDIO_ALSA "ALSA"
 #define FPL__MODULE_AUDIO_PULSEAUDIO "PulseAudio"
 #define FPL__MODULE_AUDIO_PIPEWIRE "PipeWire"
@@ -29343,6 +29373,117 @@ fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendDirectShowDescri
 
 // ############################################################################
 //
+// > AUDIO_BACKEND_WASAPI
+//
+// ############################################################################
+#if defined(FPL__ENABLE_AUDIO_WASAPI)
+
+// Phase 1 scaffolding: backend descriptor is visible so that explicit selection
+// via fplAudioBackendType_WASAPI is wired through. All function-table entries
+// return fplAudioResultType_NotImplemented (or no-op for void) until later phases.
+
+typedef struct {
+	int placeholder;
+} fpl__AudioBackendWasapi;
+
+fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudiobackendWasapiInitialize) {
+	(void)context;
+	(void)backend;
+	return(fplAudioResultType_NotImplemented);
+}
+
+fpl_internal FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl__AudiobackendWasapiRelease) {
+	(void)context;
+	(void)backend;
+	return(true);
+}
+
+fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudiobackendWasapiGetAudioDevices) {
+	(void)context;
+	(void)backend;
+	(void)maxDeviceCount;
+	(void)deviceInfoSize;
+	(void)deviceInfos;
+	return(0);
+}
+
+fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudiobackendWasapiGetAudioDeviceInfo) {
+	(void)context;
+	(void)backend;
+	(void)targetDevice;
+	(void)outDeviceInfo;
+	return(fplAudioResultType_NotImplemented);
+}
+
+fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendWasapiInitializeDevice) {
+	(void)context;
+	(void)backend;
+	(void)audioSettings;
+	(void)targetFormat;
+	(void)targetDevice;
+	(void)outputFormat;
+	(void)outputDevice;
+	(void)outputChannelMap;
+	return(fplAudioResultType_NotImplemented);
+}
+
+fpl_internal FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(fpl__AudiobackendWasapiReleaseDevice) {
+	(void)context;
+	(void)backend;
+	return(true);
+}
+
+fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudiobackendWasapiStartDevice) {
+	(void)context;
+	(void)backend;
+	return(fplAudioResultType_NotImplemented);
+}
+
+fpl_internal FPL_AUDIO_BACKEND_STOP_DEVICE_FUNC(fpl__AudiobackendWasapiStopDevice) {
+	(void)context;
+	(void)backend;
+	return(true);
+}
+
+fpl_internal FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl__AudiobackendWasapiMainLoop) {
+	(void)context;
+	(void)backend;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_STOP_MAIN_LOOP_FUNC(fpl__AudiobackendWasapiStopMainLoop) {
+	(void)context;
+	(void)backend;
+}
+
+fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendWasapiDescriptor = {
+	fplStructField(fplAudioBackendDescriptor, header, {
+		fplStructField(fplAudioBackendDescriptorHeader, idName, {
+			fplStructField(fplAudioBackendDescriptorIDName, id, { 0x3ec995c4, 0x63a2, 0x43b0, { 0xbb, 0xce, 0x77, 0x0a, 0xdc, 0xcb, 0x91, 0x3e } }),
+			fplStructField(fplAudioBackendDescriptorIDName, name, "WASAPI"),
+		}),
+		fplStructField(fplAudioBackendDescriptorHeader, type, fplAudioBackendType_WASAPI),
+		fplStructField(fplAudioBackendDescriptorHeader, backendSize, sizeof(fpl__AudioBackendWasapi)),
+		fplStructField(fplAudioBackendDescriptorHeader, isAsync, false),
+		fplStructField(fplAudioBackendDescriptorHeader, isValid, true),
+	}),
+	fplStructField(fplAudioBackendDescriptor, table, {
+		fplStructField(fplAudioBackendFunctionTable, initialize, fpl__AudiobackendWasapiInitialize),
+		fplStructField(fplAudioBackendFunctionTable, release, fpl__AudiobackendWasapiRelease),
+		fplStructField(fplAudioBackendFunctionTable, getAudioDevices, fpl__AudiobackendWasapiGetAudioDevices),
+		fplStructField(fplAudioBackendFunctionTable, getAudioDeviceInfo, fpl__AudiobackendWasapiGetAudioDeviceInfo),
+		fplStructField(fplAudioBackendFunctionTable, initializeDevice, fpl__AudiobackendWasapiInitializeDevice),
+		fplStructField(fplAudioBackendFunctionTable, releaseDevice, fpl__AudiobackendWasapiReleaseDevice),
+		fplStructField(fplAudioBackendFunctionTable, startDevice, fpl__AudiobackendWasapiStartDevice),
+		fplStructField(fplAudioBackendFunctionTable, stopDevice, fpl__AudiobackendWasapiStopDevice),
+		fplStructField(fplAudioBackendFunctionTable, mainLoop, fpl__AudiobackendWasapiMainLoop),
+		fplStructField(fplAudioBackendFunctionTable, stopMainLoop, fpl__AudiobackendWasapiStopMainLoop),
+	}),
+};
+
+#endif // FPL__ENABLE_AUDIO_WASAPI
+
+// ############################################################################
+//
 // > AUDIO_BACKEND_ALSA
 //
 // ############################################################################
@@ -34168,6 +34309,12 @@ fpl_internal uint32_t fpl__GetAudioBackendDescriptors(const uint32_t maxDescript
 #endif
 				break;
 
+			case fplAudioBackendType_WASAPI:
+#if defined(FPL__ENABLE_AUDIO_WASAPI)
+				desc = &fpl__global_audioBackendWasapiDescriptor;
+#endif
+				break;
+
 			case fplAudioBackendType_Alsa:
 #if defined(FPL__ENABLE_AUDIO_ALSA)
 				desc = &fpl__global_audioBackendALSADescriptor;
@@ -35090,6 +35237,7 @@ fpl_globalvar const char *fpl__globalAudioBackendNameTable[FPL__AUDIOBACKENDTYPE
 	FPL__ENUM_NAME("None", fplAudioBackendType_None),
 	FPL__ENUM_NAME("Automatic", fplAudioBackendType_Auto),
 	FPL__ENUM_NAME("DirectSound", fplAudioBackendType_DirectSound),
+	FPL__ENUM_NAME("WASAPI", fplAudioBackendType_WASAPI),
 	FPL__ENUM_NAME("ALSA", fplAudioBackendType_Alsa),
 	FPL__ENUM_NAME("PulseAudio", fplAudioBackendType_PulseAudio),
 	FPL__ENUM_NAME("PipeWire", fplAudioBackendType_PipeWire),

@@ -74,10 +74,9 @@ Changes:
 2. Module-name constant `FPL__MODULE_AUDIO_WASAPI "WASAPI"` near `FPL__MODULE_AUDIO_DIRECTSOUND`.
 3. Public enum: add `fplAudioBackendType_WASAPI` after `fplAudioBackendType_DirectSound` (~`5208`). Keep `_Last = _Custom`.
 4. `fplAudioDeviceID` union (~`5486`): add `wchar_t wasapi[128];` under `#if defined(FPL__ENABLE_AUDIO_WASAPI)`. Confirm with `fplStaticAssert(sizeof(...wasapi) <= 256)`.
-5. `fplWasapiAudioSettings` struct and `wasapi` field in `fplSpecificAudioSettings`. `useExclusiveMode` is declared now but ignored until phase 9 so the public ABI does not change later:
+5. `fplWasapiAudioSettings` struct and `wasapi` field in `fplSpecificAudioSettings`. Exclusive vs. shared is **not** declared here — FPL already exposes that via `fplAudioMode` / `fplAudioShareMode` in `fplAudioFormat`. WASAPI-only knobs:
    ```c
    typedef struct fplWasapiAudioSettings {
-       fpl_b32 useExclusiveMode;           // honored from phase 9 onward
        fpl_b32 noAutoConvertSampleRate;
    } fplWasapiAudioSettings;
    ```
@@ -320,7 +319,7 @@ Commit: `WASAPI: Promote to default Windows audio backend (DSound fallback)`.
 
 ## Phase 9 — Exclusive Mode
 
-Goal: Honor `fplWasapiAudioSettings.useExclusiveMode`. When set, open the endpoint in `AUDCLNT_SHAREMODE_EXCLUSIVE` for lower latency and bit-exact playback. Shared mode stays the default.
+Goal: Honor `fplAudioShareMode_Exclusive` (via `fplAudioMode` in `fplAudioFormat`). When set, open the endpoint in `AUDCLNT_SHAREMODE_EXCLUSIVE` for lower latency and bit-exact playback. Shared mode stays the default.
 
 Background: exclusive mode bypasses the Windows audio engine. The driver dictates supported formats; `AUTOCONVERTPCM` and `SRC_DEFAULT_QUALITY` are not allowed. `Initialize` returns `AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED` more aggressively, and the period alignment rules from `GetDevicePeriod` must be respected. Reference: miniaudio `ma_device_init__wasapi` exclusive branch.
 
@@ -328,7 +327,7 @@ Changes:
 
 1. `fpl__AudioBackendWasapi`: track `bool isExclusive`.
 2. `InitializeDevice` — split the existing shared-mode path into a small dispatcher:
-   - If `audioSettings->wasapi.useExclusiveMode` is set, call `fpl__WasapiInitDeviceExclusive`. On failure, log a warning and fall back to shared mode (do not fail the whole init unless the user passed a "strict" flag — for v1 always fall back).
+   - Inspect `fplGetAudioShareMode(targetFormat->mode)` (or equivalent helper). If it returns `fplAudioShareMode_Exclusive`, call `fpl__WasapiInitDeviceExclusive`. On failure, log a warning and fall back to shared mode (do not fail the whole init unless the user passed a "strict" flag — for v1 always fall back).
    - Otherwise call `fpl__WasapiInitDeviceShared` (the existing phase-6 logic, refactored into its own function).
 3. `fpl__WasapiInitDeviceExclusive` recipe:
    - Resolve device + activate `IAudioClient` exactly as in shared mode.
@@ -348,9 +347,9 @@ Changes:
 6. Documentation in the settings struct: update the `useExclusiveMode` comment to describe the fallback behavior.
 
 Done when:
-- With `useExclusiveMode = 0`: behavior identical to phase 7/8.
-- With `useExclusiveMode = 1` on a device that supports exclusive: playback works, latency measurably lower than shared mode. `fplGetAudioDeviceInfo` of the running device reports the exact requested format.
-- With `useExclusiveMode = 1` on a device that does **not** support the requested format in exclusive mode: warning logged, falls back to shared mode without failing init.
+- With a shared-mode `fplAudioMode`: behavior identical to phase 7/8.
+- With an exclusive-mode `fplAudioMode` on a device that supports the requested format: playback works, latency measurably lower than shared mode. `fplGetAudioDeviceInfo` of the running device reports the exact requested format.
+- With an exclusive-mode `fplAudioMode` on a device that does **not** support the requested format in exclusive mode: warning logged, falls back to shared mode without failing init.
 - 60-second soak in exclusive mode at 44.1 kHz and 48 kHz stereo: no underruns.
 
 Commit: `WASAPI: Implement exclusive-mode playback path`.
