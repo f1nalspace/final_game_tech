@@ -35321,9 +35321,11 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 			fplSetDefaultAudioSettings(&audioSettings);
 		}
 		maxAudioBackendSize = fpl__GetMaxAudioBackendSize(&audioSettings);
-		fpl__PushPlatformMemory(audioMemoryBlock, sizeof(fpl__AudioState), 16, FPL__ARBITARY_PADDING);
-		fpl__PushPlatformMemory(audioMemoryBlock, maxAudioBackendSize, 16, 0);
-		offsetToAudioBackend = sizeof(fpl__AudioState) + FPL__ARBITARY_PADDING;
+		if (maxAudioBackendSize > 0) {
+			fpl__PushPlatformMemory(audioMemoryBlock, sizeof(fpl__AudioState), 16, FPL__ARBITARY_PADDING);
+			fpl__PushPlatformMemory(audioMemoryBlock, maxAudioBackendSize, 16, 0);
+			offsetToAudioBackend = sizeof(fpl__AudioState) + FPL__ARBITARY_PADDING;
+		}
 	}
 #	endif
 
@@ -35486,6 +35488,13 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 	// Init Audio
 #	if defined(FPL__ENABLE_AUDIO)
 	if (fplIsMaskSet(appState->initFlags, fplInitFlags_Audio)) {
+		if (maxAudioBackendSize == 0) {
+			FPL__CRITICAL(FPL__MODULE_CORE, "No audio backend found");
+			fpl__ReleasePlatformStates(initState, appState);
+			return(fpl__SetPlatformResult(fplPlatformResultType_FailedAudio));
+		}
+
+		fplAssert(audioMemoryBlock->size > 0);
 		fplAssert(audioMemoryBlock->offset > 0);
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Audio State with size '%zu'", audioMemoryBlock->size);
 		appState->audio.mem = platformMemory + audioMemoryBlock->offset;
