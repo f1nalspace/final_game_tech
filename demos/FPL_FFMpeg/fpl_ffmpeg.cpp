@@ -4140,7 +4140,7 @@ static void ReleaseMedia(PlayerState &state, const PlayingState finishState, con
 	SetPlayingState(state, finishState);
 }
 
-static bool LoadMedia(PlayerState &state, const char *mediaURL, const uint32_t mainThreadId) {
+static bool LoadMedia(PlayerState &state, const char *mediaURL, const uint64_t mainThreadId) {
 	fplAssert(state.state == PlayingState::Unloaded || state.state == PlayingState::Failed);
 
 	bool isURL = fplIsStringMatchWildcard(mediaURL, "http://*") || fplIsStringMatchWildcard(mediaURL, "https://*");
