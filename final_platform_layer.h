@@ -290,9 +290,10 @@ SOFTWARE.
 	- Fixed: [X11] FPL__FUNC_X11_XSetErrorHandler vs XSetErrorHandler ABI mismatch
 	- Fixed: [X11] fpl__X11Display vs Display and fpl__X11Visual vs Visual type mismatches
 	- Fixed: [X11] Compile errors when using opaque X11 types
-	- Fixed[#181]: [X11] fpl__X11ParseUriPaths does not do any URI decoding, resulting in most-likely unuseable file paths
 	- Fixed: [X11] fplQueryCursorPosition returned window-relative coords instead of screen-relative; now matches Win32 GetCursorPos by returning root-window coords
 	- Fixed: [X11] fplQueryCursorPosition was compiled outside FPL__ENABLE_WINDOW guard, breaking window-disabled builds
+	- Fixed: [X11] FPL_SUBPLATFORM_X11 was set, even when X11 was not available
+	- Fixed[#181]: [X11] fpl__X11ParseUriPaths does not do any URI decoding, resulting in most-likely unuseable file paths
 	- Changed: [X11] Window size and position are no longer overwritten on creation
 	- Changed: [X11] Default window size changed to 720p (1280x720)
 	- Changed: [X11] Disabled FPL_NO_PLATFORM_INCLUDES for Xlib includes
@@ -2233,7 +2234,9 @@ SOFTWARE.
 #	define FPL_PLATFORM_LINUX
 #	define FPL_PLATFORM_NAME "Linux"
 #	define FPL_SUBPLATFORM_POSIX
-#	define FPL_SUBPLATFORM_X11
+#	if fplHasInclude(<X11/X.h>)
+#		define FPL_SUBPLATFORM_X11
+#	endif
 #	define FPL_SUBPLATFORM_STD_STRINGS
 #	define FPL_SUBPLATFORM_STD_CONSOLE
 #elif defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__bsdi__)
@@ -2242,14 +2245,18 @@ SOFTWARE.
 #	define FPL_PLATFORM_NAME "BSD"
 #	define FPL_SUBPLATFORM_BSD
 #	define FPL_SUBPLATFORM_POSIX
-#	define FPL_SUBPLATFORM_X11
+#	if fplHasInclude(<X11/X.h>)
+#		define FPL_SUBPLATFORM_X11
+#	endif
 #	define FPL_SUBPLATFORM_STD_STRINGS
 #	define FPL_SUBPLATFORM_STD_CONSOLE
 #elif defined(unix) || defined(__unix) || defined(__unix__)
 #	define FPL_PLATFORM_UNIX
 #	define FPL_PLATFORM_NAME "Unix"
 #	define FPL_SUBPLATFORM_POSIX
-#	define FPL_SUBPLATFORM_X11
+#	if fplHasInclude(<X11/X.h>)
+#		define FPL_SUBPLATFORM_X11
+#	endif
 #	define FPL_SUBPLATFORM_STD_STRINGS
 #	define FPL_SUBPLATFORM_STD_CONSOLE
 #else
@@ -2715,11 +2722,9 @@ typedef enum fplX86InstructionSetLevel {
 #	define FPL__SUPPORT_WINDOW
 #endif
 #if defined(FPL__SUPPORT_WINDOW)
-#	if defined(FPL_SUBPLATFORM_X11)
-#		if !fplHasInclude(<X11/X.h>)
-#			warning "FPL-Warning: X11 development library is missing, windowing support is disabled. Please install 'libX11-dev' and try again!"
-#			undef FPL__SUPPORT_WINDOW
-#		endif
+#	if (defined(FPL_PLATFORM_LINUX) || defined(FPL_PLATFORM_UNIX)) && !defined(FPL_SUBPLATFORM_X11)
+#		warning "FPL-Warning: X11 development library is missing, windowing support is disabled. Please install 'libX11-dev' and try again!"
+#		undef FPL__SUPPORT_WINDOW
 #	endif
 #endif // FPL__SUPPORT_WINDOW
 
