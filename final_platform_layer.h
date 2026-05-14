@@ -259,6 +259,8 @@ SOFTWARE.
 	- Fixed: [POSIX] fplMemoryAllocate was not compiling in FreeBSD (MAP_ANONYMOUS vs MAP_ANON)
 	- Fixed: [POSIX] fpl__PThreadLoadApi fails on missing pthread library in FreeBSD
 	- Fixed: [BSD] fplGetExecutableFilePath returned 0 on FreeBSD/DragonFly (procfs not mounted) — now uses sysctl(KERN_PROC_PATHNAME) before falling back to /proc
+	- New: [Unix/BSD] Implemented fplGetSystemLocale / fplGetUserLocale / fplGetInputLocale via setlocale + ISO-639 conversion (shared fpl__PosixLocaleToISO639 helper)
+	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Fixed[#184]: [POSIX] fplDirectoriesCreate() does not create parent sub-directories
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -11434,7 +11436,8 @@ typedef struct fpl__LinuxAppState {
 // ############################################################################
 #if defined(FPL_PLATFORM_UNIX)
 typedef struct fpl__UnixInitState {
-	int dummy;
+	char prevLocale[256];
+	fpl_b32 hasPrevLocale;
 } fpl__UnixInitState;
 
 typedef struct fpl__UnixAppState {
@@ -22397,6 +22400,31 @@ fpl_platform_api bool fplOSGetVersionInfos(fplOSVersionInfos *outInfos) {
 	return(result);
 }
 
+//
+// POSIX Localization
+//
+
+// Converts a POSIX locale string (e.g. "de_DE.UTF-8") to an ISO-639 / RFC-4646
+// language tag (e.g. "de-DE") by replacing '_' with '-' and trimming everything
+// from the first '.' onward (the codeset and any @modifier).
+fpl_internal size_t fpl__PosixLocaleToISO639(const char *source, char *target, const size_t maxTargetLen) {
+	size_t result = fplGetStringLength(source);
+	if (target != fpl_null) {
+		fplCopyStringLen(source, result, target, maxTargetLen);
+		char *p = target;
+		while (*p) {
+			if (*p == '_') {
+				*p = '-';
+			} else if (*p == '.') {
+				*p = '\0';
+				break;
+			}
+			++p;
+		}
+	}
+	return(result);
+}
+
 #endif // FPL_SUBPLATFORM_POSIX
 
 // ############################################################################
@@ -25578,47 +25606,26 @@ fpl_platform_api bool fplMemoryGetInfos(fplMemoryInfos *outInfos) {
 }
 
 //
-// Linux Paths
-//
-fpl_internal size_t fpl__LinuxLocaleToISO639(const char *source, char *target, const size_t maxTargetLen) {
-	size_t result = fplGetStringLength(source);
-	if (target != fpl_null) {
-		fplCopyStringLen(source, result, target, maxTargetLen);
-		char *p = target;
-		while (*p) {
-			if (*p == '_') {
-				*p = '-'; // Replace underscore with minus
-			} else if (*p == '.') {
-				*p = '\0'; // Replace dot with zero char
-				break;
-			}
-			++p;
-		}
-	}
-	return(result);
-}
-
-//
 // Linux Localization
 //
 fpl_platform_api size_t fplGetSystemLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
 	FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, 0);
 	char *locale = setlocale(LC_CTYPE, NULL);
-	size_t result = fpl__LinuxLocaleToISO639(locale, buffer, maxBufferLen);
+	size_t result = fpl__PosixLocaleToISO639(locale, buffer, maxBufferLen);
 	return(result);
 }
 
 fpl_platform_api size_t fplGetUserLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
 	FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, 0);
 	char *locale = setlocale(LC_ALL, NULL);
-	size_t result = fpl__LinuxLocaleToISO639(locale, buffer, maxBufferLen);
+	size_t result = fpl__PosixLocaleToISO639(locale, buffer, maxBufferLen);
 	return(result);
 }
 
 fpl_platform_api size_t fplGetInputLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
 	FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, 0);
 	char *locale = setlocale(LC_ALL, NULL);
-	size_t result = fpl__LinuxLocaleToISO639(locale, buffer, maxBufferLen);
+	size_t result = fpl__PosixLocaleToISO639(locale, buffer, maxBufferLen);
 	return(result);
 }
 
@@ -25630,10 +25637,24 @@ fpl_platform_api size_t fplGetInputLocale(const fplLocaleFormat targetFormat, ch
 //
 // ############################################################################
 #if defined(FPL_PLATFORM_UNIX)
+#	include <locale.h> // setlocale
+
 fpl_internal void fpl__UnixReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
+	fpl__UnixInitState *punix = &initState->punix;
+	if (punix->hasPrevLocale) {
+		setlocale(LC_ALL, punix->prevLocale);
+		punix->hasPrevLocale = false;
+	}
 }
 
 fpl_internal bool fpl__UnixInitPlatform(const fplInitFlags initFlags, const fplSettings *initSettings, fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
+	fpl__UnixInitState *punix = &initState->punix;
+	const char *currentLocale = setlocale(LC_ALL, fpl_null);
+	if (currentLocale != fpl_null) {
+		fplCopyString(currentLocale, punix->prevLocale, fplArrayCount(punix->prevLocale));
+		punix->hasPrevLocale = true;
+	}
+	setlocale(LC_ALL, "");
 	return true;
 }
 
@@ -25696,18 +25717,24 @@ fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
 // Unix Localization
 //
 fpl_platform_api size_t fplGetSystemLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
-	// @IMPLEMENT(final/Unix): fplGetSystemLocale
-	return(0);
+	FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, 0);
+	char *locale = setlocale(LC_CTYPE, NULL);
+	size_t result = fpl__PosixLocaleToISO639(locale, buffer, maxBufferLen);
+	return(result);
 }
 
 fpl_platform_api size_t fplGetUserLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
-	// @IMPLEMENT(final/Unix): fplGetUserLocale
-	return(0);
+	FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, 0);
+	char *locale = setlocale(LC_ALL, NULL);
+	size_t result = fpl__PosixLocaleToISO639(locale, buffer, maxBufferLen);
+	return(result);
 }
 
 fpl_platform_api size_t fplGetInputLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
-	// @IMPLEMENT(final/Unix): fplGetInputLocale
-	return(0);
+	FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, 0);
+	char *locale = setlocale(LC_ALL, NULL);
+	size_t result = fpl__PosixLocaleToISO639(locale, buffer, maxBufferLen);
+	return(result);
 }
 #endif // FPL_PLATFORM_UNIX
 
