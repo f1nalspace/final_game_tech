@@ -257,6 +257,7 @@ SOFTWARE.
 	- Fixed: [POSIX] fplDateTime functions were not thread-safe — now use localtime_r / gmtime_r
 	- Fixed: [POSIX] fplDirectoriesCreate was not separator-tolerant
 	- Fixed: [POSIX] fplMemoryAllocate was not compiling in FreeBSD (MAP_ANONYMOUS vs MAP_ANON)
+	- Fixed: [POSIX] fpl__PThreadLoadApi fails on missing pthread library in FreeBSD
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Fixed[#184]: [POSIX] fplDirectoriesCreate() does not create parent sub-directories
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -11296,6 +11297,11 @@ fpl_internal void fpl__PThreadUnloadApi(fpl__PThreadApi *pthreadApi) {
 
 fpl_internal bool fpl__PThreadLoadApi(fpl__PThreadApi *pthreadApi) {
 	const char *libpthreadFileNames[] = {
+#if defined(FPL_SUBPLATFORM_BSD)
+		// FreeBSD/NetBSD/etc ship pthread as libthr.
+		"libthr.so",
+		"libthr.so.3",
+#endif
 		"libpthread.so",
 		"libpthread.so.0",
 	};
