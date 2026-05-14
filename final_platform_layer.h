@@ -30292,25 +30292,97 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendWasapiIni
 }
 
 fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudiobackendWasapiStartDevice) {
+	fpl__AudioBackendWasapi *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendWasapi);
+	fplAssert(impl != fpl_null);
 	(void)context;
-	(void)backend;
-	return(fplAudioResultType_NotImplemented);
+
+	if (impl->audioClient == fpl_null || impl->renderClient == fpl_null) {
+		FPL__ERROR(FPL__MODULE_AUDIO_WASAPI, "Audio device is not initialized!");
+		return(fplAudioResultType_DeviceNotInitialized);
+	}
+
+	// Pre-fill the entire buffer so playback starts without an underrun.
+	BYTE *dst = fpl_null;
+	HRESULT hr = impl->renderClient->lpVtbl->GetBuffer(impl->renderClient, impl->actualBufferSizeInFrames, &dst);
+	if (FAILED(hr) || dst == fpl_null) {
+		FPL__ERROR(FPL__MODULE_AUDIO_WASAPI, "Initial GetBuffer failed (HRESULT 0x%08lx)", (unsigned long)hr);
+		return(fplAudioResultType_DeviceFailure);
+	}
+	uint32_t framesRead = fpl__ReadAudioFramesFromClient(backend, impl->actualBufferSizeInFrames, dst);
+	fplAssert(framesRead == impl->actualBufferSizeInFrames);
+	(void)framesRead;
+	impl->renderClient->lpVtbl->ReleaseBuffer(impl->renderClient, impl->actualBufferSizeInFrames, 0);
+
+	ResetEvent(impl->stopEvent);
+	impl->breakMainLoop = false;
+
+	hr = impl->audioClient->lpVtbl->Start(impl->audioClient);
+	if (FAILED(hr)) {
+		FPL__ERROR(FPL__MODULE_AUDIO_WASAPI, "IAudioClient::Start failed (HRESULT 0x%08lx)", (unsigned long)hr);
+		return(fplAudioResultType_DeviceFailure);
+	}
+	return(fplAudioResultType_Success);
 }
 
 fpl_internal FPL_AUDIO_BACKEND_STOP_DEVICE_FUNC(fpl__AudiobackendWasapiStopDevice) {
+	fpl__AudioBackendWasapi *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendWasapi);
 	(void)context;
-	(void)backend;
+	if (impl == fpl_null || impl->audioClient == fpl_null) {
+		return(true);
+	}
+	impl->audioClient->lpVtbl->Stop(impl->audioClient);
+	impl->audioClient->lpVtbl->Reset(impl->audioClient);
 	return(true);
 }
 
 fpl_internal FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl__AudiobackendWasapiMainLoop) {
+	fpl__AudioBackendWasapi *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendWasapi);
+	fplAssert(impl != fpl_null);
 	(void)context;
-	(void)backend;
+
+	if (impl->audioClient == fpl_null || impl->renderClient == fpl_null || impl->bufferEvent == fpl_null || impl->stopEvent == fpl_null) {
+		FPL__ERROR(FPL__MODULE_AUDIO_WASAPI, "MainLoop entered with uninitialized device!");
+		return;
+	}
+
+	HANDLE waits[2] = { impl->bufferEvent, impl->stopEvent };
+	while (!impl->breakMainLoop) {
+		DWORD r = WaitForMultipleObjects(2, waits, FALSE, INFINITE);
+		if (r != WAIT_OBJECT_0) {
+			break;
+		}
+
+		UINT32 padding = 0;
+		if (FAILED(impl->audioClient->lpVtbl->GetCurrentPadding(impl->audioClient, &padding))) {
+			break;
+		}
+		uint32_t framesAvailable = (padding < impl->actualBufferSizeInFrames) ? (impl->actualBufferSizeInFrames - padding) : 0;
+		if (framesAvailable == 0) {
+			continue;
+		}
+
+		BYTE *dst = fpl_null;
+		HRESULT hr = impl->renderClient->lpVtbl->GetBuffer(impl->renderClient, framesAvailable, &dst);
+		if (FAILED(hr) || dst == fpl_null) {
+			break;
+		}
+		uint32_t framesRead = fpl__ReadAudioFramesFromClient(backend, framesAvailable, dst);
+		fplAssert(framesRead == framesAvailable);
+		(void)framesRead;
+		impl->renderClient->lpVtbl->ReleaseBuffer(impl->renderClient, framesAvailable, 0);
+	}
 }
 
 fpl_internal FPL_AUDIO_BACKEND_STOP_MAIN_LOOP_FUNC(fpl__AudiobackendWasapiStopMainLoop) {
+	fpl__AudioBackendWasapi *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendWasapi);
 	(void)context;
-	(void)backend;
+	if (impl == fpl_null) {
+		return;
+	}
+	impl->breakMainLoop = true;
+	if (impl->stopEvent != fpl_null) {
+		SetEvent(impl->stopEvent);
+	}
 }
 
 fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendWasapiDescriptor = {
