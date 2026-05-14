@@ -84,6 +84,9 @@ Todo:
 	- Multiple audio tracks
 
 Changelog:
+	## 2026-05-14
+	- Show audio backend name in title
+
 	## 2026-04-03
 	- Updated documentations
 
@@ -313,11 +316,13 @@ typedef struct AudioDemo {
 static void UpdateTitle(AudioDemo *demo, const char *audioTrackName, const bool isRealTime, const double fps) {
 	char titleBuffer[256];
 	const char *rtString = (isRealTime ? "RT" : "BUF");
+	const fplAudioBackendType backendType = fplGetAudioBackendType();
+	const char *audioBackendName = fplGetAudioBackendName(backendType);
 	const fplSettings *settings = fplGetCurrentSettings();
 	if (fplGetStringLength(audioTrackName) > 0)
-        fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "%s (%s, %u Hz, %u ch) - %s [%.3f fps]", APP_TITLE, rtString, demo->targetAudioFormat.sampleRate, demo->targetAudioFormat.channels, audioTrackName, fps);
+        fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "%s (%s, %s, %u Hz, %u ch) - %s [%.3f fps]", APP_TITLE, rtString, audioBackendName, demo->targetAudioFormat.sampleRate, demo->targetAudioFormat.channels, audioTrackName, fps);
 	else
-        fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "%s (%s, %u Hz, %u ch) [%.3f fps]", APP_TITLE, rtString, demo->targetAudioFormat.sampleRate, demo->targetAudioFormat.channels, fps);
+        fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "%s (%s, %s, %u Hz, %u ch) [%.3f fps]", APP_TITLE, rtString, audioBackendName, demo->targetAudioFormat.sampleRate, demo->targetAudioFormat.channels, fps);
 	fplSetWindowTitle(titleBuffer);
 }
 
