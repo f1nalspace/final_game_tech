@@ -25698,11 +25698,8 @@ fpl_platform_api bool fplSignalSet(fplSignalHandle *signal) {
 //
 fpl_platform_api bool fplMemoryGetInfos(fplMemoryInfos *outInfos) {
 	FPL__CheckArgumentNull(outInfos, false);
-	bool result = false;
-
-	// https://git.i-scream.org/?p=libstatgrab.git;a=blob;f=src/libstatgrab/memory_stats.c;h=a6f6fb926b72d3b691848202e397e3db58255648;hb=HEAD
-
-	return(result);
+	// @IMPLEMENT(final/Linux): fplMemoryGetInfos
+	return(false);
 }
 
 //
