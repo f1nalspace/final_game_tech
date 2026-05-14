@@ -29637,13 +29637,146 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudiobackendWasapiInitialize
 	return(fplAudioResultType_Success);
 }
 
+// Copy a WASAPI device id (UTF-16 from IMMDevice::GetId) into the fixed-size slot,
+// truncating to capacity-1 wchars and always null-terminating. Returns true if the
+// full id fit; false if it had to be truncated.
+fpl_internal bool fpl__WasapiCopyDeviceID(wchar_t *dst, size_t dstCap, const wchar_t *src) {
+	fplAssert(dst != fpl_null && dstCap > 0);
+	if (src == fpl_null) {
+		dst[0] = 0;
+		return(true);
+	}
+	size_t len = 0;
+	while (src[len] != 0) {
+		++len;
+	}
+	size_t maxCopy = dstCap - 1;
+	bool fits = (len <= maxCopy);
+	size_t copyLen = fits ? len : maxCopy;
+	for (size_t i = 0; i < copyLen; ++i) {
+		dst[i] = src[i];
+	}
+	dst[copyLen] = 0;
+	return(fits);
+}
+
 fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudiobackendWasapiGetAudioDevices) {
+	fpl__AudioBackendWasapi *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendWasapi);
+	fplAssert(impl != fpl_null);
 	(void)context;
-	(void)backend;
-	(void)maxDeviceCount;
-	(void)deviceInfoSize;
-	(void)deviceInfos;
-	return(0);
+
+	if (impl->enumerator == fpl_null) {
+		FPL__WARNING(FPL__MODULE_AUDIO_WASAPI, "Device enumerator is not initialized!");
+		return(0);
+	}
+
+	fpl__IMMDeviceCollection *collection = fpl_null;
+	HRESULT hr = impl->enumerator->lpVtbl->EnumAudioEndpoints(impl->enumerator, fpl__WasapiEDataFlow_eRender, FPL__WASAPI_DEVICE_STATE_ACTIVE, &collection);
+	if (FAILED(hr) || collection == fpl_null) {
+		FPL__WARNING(FPL__MODULE_AUDIO_WASAPI, "EnumAudioEndpoints failed (HRESULT 0x%08lx)", (unsigned long)hr);
+		return(0);
+	}
+
+	UINT count = 0;
+	hr = collection->lpVtbl->GetCount(collection, &count);
+	if (FAILED(hr)) {
+		collection->lpVtbl->Release(collection);
+		FPL__WARNING(FPL__MODULE_AUDIO_WASAPI, "IMMDeviceCollection::GetCount failed (HRESULT 0x%08lx)", (unsigned long)hr);
+		return(0);
+	}
+
+	// If the caller is only asking for the count, return it without filling.
+	if (deviceInfos == fpl_null) {
+		collection->lpVtbl->Release(collection);
+		return((uint32_t)count);
+	}
+
+	// Resolve the default render endpoint once so each found device can mark itself.
+	wchar_t defaultId[256];
+	defaultId[0] = 0;
+	{
+		fpl__IMMDevice *defaultDevice = fpl_null;
+		HRESULT hrDef = impl->enumerator->lpVtbl->GetDefaultAudioEndpoint(impl->enumerator, fpl__WasapiEDataFlow_eRender, fpl__WasapiERole_eConsole, &defaultDevice);
+		if (SUCCEEDED(hrDef) && defaultDevice != fpl_null) {
+			WCHAR *defPwsz = fpl_null;
+			if (SUCCEEDED(defaultDevice->lpVtbl->GetId(defaultDevice, &defPwsz)) && defPwsz != fpl_null) {
+				fpl__WasapiCopyDeviceID(defaultId, fplArrayCount(defaultId), defPwsz);
+				impl->api.CoTaskMemFree(defPwsz);
+			}
+			defaultDevice->lpVtbl->Release(defaultDevice);
+		}
+	}
+
+	uint32_t emitted = 0;
+	uint32_t overflow = 0;
+	for (UINT i = 0; i < count; ++i) {
+		if (emitted >= maxDeviceCount) {
+			overflow = count - emitted;
+			break;
+		}
+
+		fpl__IMMDevice *device = fpl_null;
+		if (FAILED(collection->lpVtbl->Item(collection, i, &device)) || device == fpl_null) {
+			continue;
+		}
+
+		WCHAR *pwszId = fpl_null;
+		bool gotId = false;
+		if (SUCCEEDED(device->lpVtbl->GetId(device, &pwszId)) && pwszId != fpl_null) {
+			gotId = true;
+		}
+
+		fplAudioDeviceInfo *outInfo = (fplAudioDeviceInfo *)((uint8_t *)deviceInfos + (deviceInfoSize * emitted));
+		fplClearStruct(outInfo);
+
+		if (gotId) {
+			if (!fpl__WasapiCopyDeviceID(outInfo->id.wasapi, fplArrayCount(outInfo->id.wasapi), pwszId)) {
+				FPL__WARNING(FPL__MODULE_AUDIO_WASAPI, "Device id was truncated to fit fplAudioDeviceID.wasapi");
+			}
+			if (defaultId[0] != 0) {
+				bool isDefault = true;
+				for (size_t k = 0; ; ++k) {
+					if (outInfo->id.wasapi[k] != defaultId[k]) {
+						isDefault = false;
+						break;
+					}
+					if (outInfo->id.wasapi[k] == 0) {
+						break;
+					}
+				}
+				outInfo->isDefault = isDefault;
+			}
+		}
+
+		fpl__IPropertyStore *props = fpl_null;
+		if (SUCCEEDED(device->lpVtbl->OpenPropertyStore(device, FPL__WASAPI_STGM_READ, &props)) && props != fpl_null) {
+			fpl__WasapiPropVariant pv = fplZeroInit;
+			if (SUCCEEDED(props->lpVtbl->GetValue(props, &FPL__WASAPI_PKEY_Device_FriendlyName, &pv)) && pv.u.pwszVal != fpl_null) {
+				size_t wlen = 0;
+				while (pv.u.pwszVal[wlen] != 0) {
+					++wlen;
+				}
+				if (wlen > 0) {
+					fplWideStringToUTF8String(pv.u.pwszVal, wlen, outInfo->name, fplArrayCount(outInfo->name));
+				}
+			}
+			impl->api.PropVariantClear(&pv);
+			props->lpVtbl->Release(props);
+		}
+
+		if (pwszId != fpl_null) {
+			impl->api.CoTaskMemFree(pwszId);
+		}
+		device->lpVtbl->Release(device);
+		++emitted;
+	}
+
+	collection->lpVtbl->Release(collection);
+
+	if (overflow > 0) {
+		FPL__WARNING(FPL__MODULE_AUDIO_WASAPI, "Capacity of '%lu' for audio device infos has been reached. '%lu' audio devices are not included in the result", (unsigned long)maxDeviceCount, (unsigned long)overflow);
+	}
+	return(emitted);
 }
 
 fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudiobackendWasapiGetAudioDeviceInfo) {
