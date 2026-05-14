@@ -2042,7 +2042,7 @@ struct AppState {
 	FontBuffer fontBuffer;
 	fplWindowSize viewport;
 	LoadState loadState;	
-	uint32_t mainThreadId;
+	uint64_t mainThreadId;
 };
 
 static void ReleaseLoadState(AppState &state) {

@@ -2837,8 +2837,8 @@ typedef enum fplX86InstructionSetLevel {
 #			define FPL__SUPPORT_AUDIO_PIPEWIRE // PipeWire backend uses runtime linking to libpipewire-0.3.so.0, no dev headers are required
 #		endif
 #	endif
-#	if !defined(FPL_NO_AUDIO_OSS) && defined(FPL_SUBPLATFORM_BSD)
-#		if fplHasInclude(<sys/soundcard.h>)
+#	if !defined(FPL_NO_AUDIO_OSS) && (defined(FPL_PLATFORM_LINUX) || defined(FPL_PLATFORM_UNIX))
+#		if !defined(FPL_NO_RUNTIME_LINKING) || fplHasInclude(<sys/soundcard.h>)
 #			define FPL__SUPPORT_AUDIO_OSS // OSS backend uses direct ioctl/write on /dev/dsp, no library linking required
 #		endif
 #	endif

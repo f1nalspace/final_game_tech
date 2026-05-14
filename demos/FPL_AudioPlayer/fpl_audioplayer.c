@@ -1367,8 +1367,11 @@ int main(int argc, char **args) {
 	//settings.audio.targetFormat.bufferSizeInFrames = 512;
 
 	// Force audio backend to a specific type
+	//settings.audio.backend = fplAudioBackendType_DirectSound;
 	//settings.audio.backend = fplAudioBackendType_PipeWire;
 	//settings.audio.backend = fplAudioBackendType_PulseAudio;
+	//settings.audio.backend = fplAudioBackendType_Alsa;
+	//settings.audio.backend = fplAudioBackendType_OSS;
 
 	// Disable auto start/stop of audio playback
 	settings.audio.startAuto = false;
