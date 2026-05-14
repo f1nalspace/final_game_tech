@@ -31185,16 +31185,23 @@ fpl_internal void fpl__PulseAudio_StreamStateCallback(pa_stream *stream, void *u
 	fplAssert(pulseAudioBackend != fpl_null);
 	const fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
 	pa_stream_state_t state = pulseAudioApi->pa_stream_get_state(stream);
+	FPL_LOG_TRACE(FPL__MODULE_AUDIO_PULSEAUDIO, "Stream state changed to %d", (int)state);
 	switch (state) {
 		case PA_STREAM_READY:
+			FPL_LOG_DEBUG(FPL__MODULE_AUDIO_PULSEAUDIO, "Stream is READY");
 			pulseAudioBackend->isStreamReady = 1;
 			pulseAudioApi->pa_threaded_mainloop_signal(pulseAudioBackend->mainloop, 0);
 			break;
 		case PA_STREAM_FAILED:
-		case PA_STREAM_TERMINATED:
+		case PA_STREAM_TERMINATED: {
+			int errorCode = pulseAudioApi->pa_context_errno(pulseAudioBackend->context);
+			FPL_LOG_DEBUG(FPL__MODULE_AUDIO_PULSEAUDIO, "Stream %s, err=%d (%s)",
+				state == PA_STREAM_FAILED ? "FAILED" : "TERMINATED",
+				errorCode,
+				pulseAudioApi->pa_strerror(errorCode));
 			pulseAudioBackend->isStreamFailed = 1;
 			pulseAudioApi->pa_threaded_mainloop_signal(pulseAudioBackend->mainloop, 0);
-			break;
+		} break;
 		default:
 			break;
 	}
@@ -31220,7 +31227,9 @@ fpl_internal void fpl__PulseAudio_StreamWriteCallback(pa_stream *stream, size_t 
 	fplAssert(pulseAudioBackend != fpl_null);
 	const fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
 	uint32_t frameSize = pulseAudioBackend->frameSize;
+	FPL_LOG_TRACE(FPL__MODULE_AUDIO_PULSEAUDIO, "Stream write callback fired, requestedBytes=%zu, frameSize=%lu", requestedBytes, (unsigned long)frameSize);
 	if (frameSize == 0) {
+		FPL_LOG_WARN(FPL__MODULE_AUDIO_PULSEAUDIO, "Stream write callback skipped: frameSize is zero");
 		return;
 	}
 	size_t remainingBytes = requestedBytes;
@@ -31646,10 +31655,12 @@ fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudioBackendPulseAudioStar
 	if (pulseAudioBackend->mainloop == fpl_null || pulseAudioBackend->stream == fpl_null) {
 		return fplAudioResultType_DeviceNotInitialized;
 	}
+	FPL_LOG_DEBUG(FPL__MODULE_AUDIO_PULSEAUDIO, "StartDevice: uncorking stream");
 	pulseAudioApi->pa_threaded_mainloop_lock(pulseAudioBackend->mainloop);
 	pa_operation *corkOperation = pulseAudioApi->pa_stream_cork(pulseAudioBackend->stream, 0, fpl__PulseAudio_StreamSuccessCallback, backend);
 	fpl__PulseAudio_WaitForOperation(pulseAudioBackend, corkOperation);
 	pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
+	FPL_LOG_DEBUG(FPL__MODULE_AUDIO_PULSEAUDIO, "StartDevice: uncork done");
 	return fplAudioResultType_Success;
 }
 
