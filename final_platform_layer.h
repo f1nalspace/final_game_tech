@@ -325,6 +325,7 @@ SOFTWARE.
 	- New[#35]: Implemented PulseAudio audio backend
 	- New[#186]: Implemented PipeWire audio backend
 	- Fixed: fpl__ReadAudioFramesFromClient was not returning frameCount always and produce silence bytes for the remaining samples (now enforced via asserts at all call sites)
+	- Fixed: fpl__InitAudio() was raising an assertion instead of returning fplAudioResultType_NoBackendsFound, when no backends are available
 	- Fixed: [PulseAudio] ABI mismatches in backend function pointer signatures
 	- Fixed: [PulseAudio] Defines were not handled correctly for FPL_NO_RUNTIME_LINKING
 	- Fixed: [ALSA] Defines were not handled correctly for FPL_NO_RUNTIME_LINKING
@@ -33774,6 +33775,10 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 	}
 
 	fpl__PlatformBackendState *platformAudioState = &fpl__global__AppState->audio;
+	if (platformAudioState->maxBackendSize == 0 || platformAudioState->mem == fpl_null) {
+		return fplAudioResultType_NoBackendsFound;
+	}
+
 	fplAssert(platformAudioState->maxBackendSize > 0);
 	fplAssert(platformAudioState->offsetToBackend > 0);
 	fplAssert(platformAudioState->mem != fpl_null);
