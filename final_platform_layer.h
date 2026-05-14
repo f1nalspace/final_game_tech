@@ -269,6 +269,7 @@ SOFTWARE.
 	- Changed: [POSIX] `sched_getscheduler` POSIX standard coverage check
 	- Changed: [BSD] Define __BSD_VISIBLE on BSD platforms
 	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
+	- Removed: [POSIX] Removed unused pthread_setschedprio loader/typedef/API-table entry (not exported by FreeBSD libthr, never called by FPL)
 
 	#### Window
 	- New: [X11] Implemented fplSetWindowCursorEnabled
@@ -11168,8 +11169,6 @@ typedef FPL__FUNC_PTHREAD_pthread_self(fpl__pthread_func_pthread_self);
 typedef FPL__FUNC_PTHREAD_pthread_setschedparam(fpl__pthread_func_pthread_setschedparam);
 #define FPL__FUNC_PTHREAD_pthread_getschedparam(name) int name(pthread_t thread, int *policy, struct sched_param *param)
 typedef FPL__FUNC_PTHREAD_pthread_getschedparam(fpl__pthread_func_pthread_getschedparam);
-#define FPL__FUNC_PTHREAD_pthread_setschedprio(name) int name(pthread_t thread, int prio)
-typedef FPL__FUNC_PTHREAD_pthread_setschedprio(fpl__pthread_func_pthread_setschedprio);
 
 #define FPL__FUNC_PTHREAD_pthread_attr_init(name) int name(pthread_attr_t *attr)
 typedef FPL__FUNC_PTHREAD_pthread_attr_init(fpl__pthread_func_pthread_attr_init);
@@ -11243,7 +11242,6 @@ typedef struct fpl__PThreadApi {
 	fpl__pthread_func_pthread_self *pthread_self;
 	fpl__pthread_func_pthread_setschedparam *pthread_setschedparam;
 	fpl__pthread_func_pthread_getschedparam *pthread_getschedparam;
-	fpl__pthread_func_pthread_setschedprio *pthread_setschedprio;
 
 	fpl__pthread_func_pthread_create *pthread_create;
 	fpl__pthread_func_pthread_kill *pthread_kill;
@@ -11317,8 +11315,6 @@ fpl_internal bool fpl__PThreadLoadApi(fpl__PThreadApi *pthreadApi) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_self, pthread_self);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_setschedparam, pthread_setschedparam);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_getschedparam, pthread_getschedparam);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_setschedprio, pthread_setschedprio);
-
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_create, pthread_create);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_kill, pthread_kill);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_join, pthread_join);
