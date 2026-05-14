@@ -31025,10 +31025,68 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendOssInitia
 #undef FPL__OSS_INIT_ERROR
 }
 
+fpl_internal bool fpl__GetAudioFramesFromClientOss(fplAudioContext *context, fplAudioBackend *backend) {
+	fpl__OssAudioBackend *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__OssAudioBackend);
+	fplAssert(impl != fpl_null);
+
+	if (!fpl__IsAudioDeviceStarted(context) && fpl__AudioGetDeviceState(context) != fpl__AudioDeviceState_Starting) {
+		return false;
+	}
+	if (impl->breakMainLoop) {
+		return false;
+	}
+
+	uint32_t frameSize = fplGetAudioFrameSizeInBytes(backend->internalFormat.type, backend->internalFormat.channels);
+	if (frameSize == 0) {
+		return false;
+	}
+	uint32_t frameCount = impl->intermediaryBufferSize / frameSize;
+	if (frameCount == 0) {
+		return false;
+	}
+	uint32_t framesRead = fpl__ReadAudioFramesFromClient(backend, frameCount, impl->intermediaryBuffer);
+	fplAssert(framesRead == frameCount);
+
+	uint8_t *writePtr = (uint8_t *)impl->intermediaryBuffer;
+	size_t remaining = (size_t)framesRead * frameSize;
+	while (remaining > 0) {
+		if (impl->breakMainLoop) {
+			return false;
+		}
+		ssize_t written = write(impl->fd, writePtr, remaining);
+		if (written < 0) {
+			if (errno == EINTR) {
+				continue;
+			}
+			if (errno == EAGAIN) {
+				// Non-blocking fd: wait for the device to become writable.
+				struct pollfd pfd;
+				pfd.fd = impl->fd;
+				pfd.events = POLLOUT;
+				pfd.revents = 0;
+				poll(&pfd, 1, 100);
+				continue;
+			}
+			FPL__ERROR(FPL__MODULE_AUDIO_OSS, "OSS write failed (errno %d)", errno);
+			return false;
+		}
+		writePtr += written;
+		remaining -= (size_t)written;
+	}
+	return true;
+}
+
 fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudioBackendOssStartDevice) {
 	fpl__OssAudioBackend *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__OssAudioBackend);
 	fplAssert(impl != fpl_null);
-	(void)context;
+	if (impl->fd < 0) {
+		FPL__ERROR(FPL__MODULE_AUDIO_OSS, "OSS device is not open");
+		return fplAudioResultType_Failed;
+	}
+	if (!fpl__GetAudioFramesFromClientOss(context, backend)) {
+		FPL__ERROR(FPL__MODULE_AUDIO_OSS, "Failed to prime OSS audio device with initial frames");
+		return fplAudioResultType_Failed;
+	}
 	return fplAudioResultType_Success;
 }
 
@@ -31036,14 +31094,27 @@ fpl_internal FPL_AUDIO_BACKEND_STOP_DEVICE_FUNC(fpl__AudioBackendOssStopDevice) 
 	fpl__OssAudioBackend *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__OssAudioBackend);
 	fplAssert(impl != fpl_null);
 	(void)context;
+	if (impl->fd < 0) {
+		return true;
+	}
+#if defined(SNDCTL_DSP_HALT)
+	if (ioctl(impl->fd, SNDCTL_DSP_HALT, fpl_null) == 0) {
+		return true;
+	}
+#endif
+	if (ioctl(impl->fd, SNDCTL_DSP_RESET, fpl_null) < 0) {
+		FPL__ERROR(FPL__MODULE_AUDIO_OSS, "Failed to stop OSS device (errno %d)", errno);
+		return false;
+	}
 	return true;
 }
 
 fpl_internal FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl__AudioBackendOssMainLoop) {
 	fpl__OssAudioBackend *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__OssAudioBackend);
 	fplAssert(impl != fpl_null);
-	(void)context;
 	impl->breakMainLoop = false;
+	while (!impl->breakMainLoop && fpl__GetAudioFramesFromClientOss(context, backend)) {
+	}
 }
 
 fpl_internal FPL_AUDIO_BACKEND_STOP_MAIN_LOOP_FUNC(fpl__AudioBackendOssStopMainLoop) {
