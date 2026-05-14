@@ -179,7 +179,7 @@ SOFTWARE.
 	- New input backend system decoupled from windowing, with multi-backend polling and merging
 	- New SDL-compatible gamepad mapping system with resolver callbacks and device enumeration
 	- New DirectInput backend on Windows and improved /dev/input/jsX backend on Linux
-	- New PulseAudio and PipeWire audio backends
+	- New PulseAudio, PipeWire and OSS audio backends (OSS covers FreeBSD/NetBSD/OpenBSD/DragonFly)
 	- New date time API with UTC/local support and thread-safe queries
 	- New file/path helpers: append-binary, path normalization, safe size queries, safe string-to-int parsing
 	- New headless/no-window event pump for input-only applications
@@ -324,6 +324,10 @@ SOFTWARE.
 	#### Audio
 	- New[#35]: Implemented PulseAudio audio backend
 	- New[#186]: Implemented PipeWire audio backend
+	- New: Implemented OSS audio backend for BSD platforms (FreeBSD/NetBSD/OpenBSD/DragonFly), gated on FPL_SUBPLATFORM_BSD and <sys/soundcard.h>; uses direct ioctl/write on /dev/dsp without runtime linking
+	- New: [OSS] Added enum fplAudioBackendType_OSS, struct fplOSSAudioSettings (noNonBlocking, fragmentExponent) and oss field in fplAudioDeviceID
+	- New: [OSS] Implemented device enumeration via /dev/sndstat parsing with /dev/dsp{0..7} stat() fallback for systems without sndstat
+	- New: [OSS] Implemented getAudioDeviceInfo that populates supported format list via SNDCTL_DSP_GETFMTS probe
 	- Fixed: fpl__ReadAudioFramesFromClient was not returning frameCount always and produce silence bytes for the remaining samples (now enforced via asserts at all call sites)
 	- Fixed: fpl__InitAudio() was raising an assertion instead of returning fplAudioResultType_NoBackendsFound, when no backends are available
 	- Fixed: [PulseAudio] ABI mismatches in backend function pointer signatures
