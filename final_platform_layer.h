@@ -180,6 +180,7 @@ SOFTWARE.
 	- New SDL-compatible gamepad mapping system with resolver callbacks and device enumeration
 	- New DirectInput backend on Windows and improved /dev/input/jsX backend on Linux
 	- New PulseAudio, PipeWire and OSS audio backends (OSS covers FreeBSD/NetBSD/OpenBSD/DragonFly)
+	- New WASAPI audio backend
 	- New date time API with UTC/local support and thread-safe queries
 	- New file/path helpers: append-binary, path normalization, safe size queries, safe string-to-int parsing
 	- New headless/no-window event pump for input-only applications
@@ -222,6 +223,7 @@ SOFTWARE.
 	- New: Added function fplTryStringToS32 that is a more safe-method than to fplStringToS32
 	- New: Added macro FPL_MAX_VERSION_PART_LENGTH for the maximum length of a version part string
 	- New[#183]: Added macro fpl_extern_inline
+	- New: [Unix/BSD] Implemented fplGetSystemLocale / fplGetUserLocale / fplGetInputLocale via setlocale + ISO-639 conversion (shared fpl__PosixLocaleToISO639 helper)
 	- Improved: Better documentation of the preprocessor setup blocks
 	- Improved: Added fplStaticAssert checks in the non-opaque branch verifying that the real Win32/POSIX/X11 handle types fit into the opaque-branch buffers (catches portability breakage at compile time instead of corrupting memory at runtime)
 	- Improved: fplDateTime documentation now states explicitly that pre-1970 dates are intentionally not supported (epoch is unsigned and fplDateTimeCreate rejects year < 1970)
@@ -246,7 +248,6 @@ SOFTWARE.
 	- Fixed: FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL define was being set twice
 	- Fixed: [POSIX] fplDateTime functions were not thread-safe — now use localtime_r / gmtime_r
 	- Fixed: [POSIX] fplMemoryAllocate was not compiling in FreeBSD (MAP_ANONYMOUS vs MAP_ANON)
-	- New: [Unix/BSD] Implemented fplGetSystemLocale / fplGetUserLocale / fplGetInputLocale via setlocale + ISO-639 conversion (shared fpl__PosixLocaleToISO639 helper)
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -322,40 +323,32 @@ SOFTWARE.
 	- Renamed: fplOpenGLCompabilityFlags -> fplOpenGLCompatibilityFlags (incl. enum values and fplOpenGLSettings::compabilityFlags -> compatibilityFlags) - typo fix
 
 	#### Audio
+	- New: Implemented OSS audio backend for BSD platforms (FreeBSD/NetBSD/OpenBSD/DragonFly), gated on FPL_SUBPLATFORM_BSD and <sys/soundcard.h>; uses direct ioctl/write on /dev/dsp without runtime linking
+	- New: Added enum value fplAudioBackendType_PulseAudio
+	- New: Added enum value fplAudioBackendType_PipeWire
+	- New: Added enum value fplAudioBackendType_OSS
+	- New: Added enum value fplAudioBackendType_WASAPI
+	- New: Added struct fplPulseAudioSettings
+	- New: Added struct fplPipeWireAudioSettings
+	- New: Added struct fplOSSAudioSettings
+	- New: Added struct fplWasapiAudioSettings
 	- New[#35]: Implemented PulseAudio audio backend
 	- New[#186]: Implemented PipeWire audio backend
-	- New: Implemented OSS audio backend for BSD platforms (FreeBSD/NetBSD/OpenBSD/DragonFly), gated on FPL_SUBPLATFORM_BSD and <sys/soundcard.h>; uses direct ioctl/write on /dev/dsp without runtime linking
-	- New: [OSS] Added enum fplAudioBackendType_OSS, struct fplOSSAudioSettings (noNonBlocking, fragmentExponent) and oss field in fplAudioDeviceID
-	- New: [OSS] Implemented device enumeration via /dev/sndstat parsing with /dev/dsp{0..7} stat() fallback for systems without sndstat
-	- New: [OSS] Implemented getAudioDeviceInfo that populates supported format list via SNDCTL_DSP_GETFMTS probe
-	- New: Implemented WASAPI audio backend (Windows render, event-driven, shared + exclusive modes); runtime-linked via ole32.dll with no SDK-header dependency; hand-rolled COM vtables for IMMDeviceEnumerator/Collection/Device, IPropertyStore, IAudioClient, IAudioRenderClient
-	- New: [WASAPI] Added enum value fplAudioBackendType_WASAPI, struct fplWasapiAudioSettings (noAutoConvertSampleRate), wasapi field in fplAudioDeviceID, and FPL_NO_AUDIO_WASAPI compile-time gate
-	- New: [WASAPI] WASAPI is now the default Windows audio backend (probed before DirectSound); DirectSound remains as automatic fallback
-	- New: [WASAPI] Implemented GetAudioDevices via IMMDeviceCollection enumeration of eRender endpoints (UTF-16 device id, UTF-8 friendly name, default flag via GetDefaultAudioEndpoint)
-	- New: [WASAPI] Implemented GetAudioDeviceInfo with format probing via IsFormatSupported across a rate/channel/type matrix; mix format is always recorded
-	- New: [WASAPI] Exclusive mode honors fplAudioMode/fplAudioShareMode; falls back to shared mode on driver rejection rather than failing init
-	- Changed: Extracted shared Win32 helper fpl__Win32BuildWaveFormatExtensible (formerly fpl__SetupWaveFormatDirectSound) and the channel-mask map/unmap helpers so DirectSound and WASAPI share one WAVEFORMATEXTENSIBLE builder
+	- New[#33]: Implemented WASAPI audio backend
+	- New: [DirectSound] Implemented getAudioDeviceInfo via DirectSoundEnumerateW lookup-by-GUID
+	- New: [ALSA] Implemented getAudioDeviceInfo via snd_device_name_hint lookup-by-name
+	- Changed: WASAPI is now the default Windows audio backend (probed before DirectSound); DirectSound remains as automatic fallback
+	- Changed: fplGetAudioDeviceInfo and the backend getAudioDeviceInfo contract now require a non-null deviceId (no implicit default-device path)
+	- Changed: fplSetDefaultAudioSettings() sets audio backend type to automatic
+	- Changed: [ALSA] Audio device enumeration prints out each audio device to verbose log
 	- Fixed: fpl__Win32BuildWaveFormatExtensible now sets WAVEFORMATEX.cbSize to sizeof(WAVEFORMATEXTENSIBLE)-sizeof(WAVEFORMATEX) (22) instead of full-struct size; DirectSound tolerated the prior wrong value, WASAPI's IsFormatSupported is strict
 	- Fixed: fpl__ReadAudioFramesFromClient was not returning frameCount always and produce silence bytes for the remaining samples (now enforced via asserts at all call sites)
 	- Fixed: fpl__InitAudio() was raising an assertion instead of returning fplAudioResultType_NoBackendsFound, when no backends are available
-	- Fixed: [PulseAudio] ABI mismatches in backend function pointer signatures
-	- Fixed: [PulseAudio] Defines were not handled correctly for FPL_NO_RUNTIME_LINKING
-	- Fixed: [PulseAudio] Dropped PA_STREAM_ADJUST_LATENCY and left maxlength at server default to avoid underruns on sinks with their own buffering (e.g. pulse-over-OSS on FreeBSD)
-	- Fixed: [PulseAudio] Seed frameSize before pa_stream_connect_playback so the first write callback can succeed
-	- Fixed: [PulseAudio,PipeWire] Backend gate widened from FPL_PLATFORM_LINUX to also include FPL_PLATFORM_UNIX (FreeBSD/BSD)
+	- Fixed: fplGetTargetAudioFrameCount used a broken fake-round formula (wrong direction ratio for downsampling, negative fractional cast); replaced with `round((double)in * outRate / inRate)`
 	- Fixed: [ALSA] Defines were not handled correctly for FPL_NO_RUNTIME_LINKING
 	- Fixed[#182]: [ALSA] Fixed default audio devices are not detected in modern linux audio systems
 	- Improved: [ALSA] fpl__MapAudioFormatToAlsaFormat now uses an indexed lookup table covering all fplAudioFormatType values incl. F64
 	- Improved: [ALSA] fpl__MapAlsaFormatToAudioFormat now uses a lookup table that also handles native-endian aliases (SND_PCM_FORMAT_S16/S32/FLOAT/FLOAT64) and FLOAT64 variants
-	- New: [DirectSound] Implemented getAudioDeviceInfo via DirectSoundEnumerateW lookup-by-GUID
-	- New: [ALSA] Implemented getAudioDeviceInfo via snd_device_name_hint lookup-by-name
-	- New: [PulseAudio] Implemented getAudioDeviceInfo via pa_context_get_sink_info_by_index
-	- New: [PipeWire] Implemented getAudioDeviceInfo via registry enumeration filtered by node id
-	- Improved: [PipeWire] Extracted shared fpl__PipeWire_RunRegistryEnum helper; enum state gained targetId/hasTargetId so single-device lookup and full enumeration use one code path
-	- Changed: fplGetAudioDeviceInfo and the backend getAudioDeviceInfo contract now require a non-null deviceId (no implicit default-device path)
-	- Changed: fplSetDefaultAudioSettings() sets audio backend type to automatic
-	- Changed: [ALSA] Audio device enumeration prints out each audio device to verbose log
-	- Fixed: fplGetTargetAudioFrameCount used a broken fake-round formula (wrong direction ratio for downsampling, negative fractional cast); replaced with `round((double)in * outRate / inRate)`
 
 	#### Input
 	- New: Added struct fplGamepadSettings, that stores several properties required for updating/polling game controllers frequently
