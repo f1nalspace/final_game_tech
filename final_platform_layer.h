@@ -35194,6 +35194,7 @@ fplStaticAssert(fplArrayCount(fpl__global_audioResultTypeNameTable) == FPL__AUDI
 #define FPL__AUDIO_BACKEND_TYPE_COUNT FPL__ENUM_COUNT(fplAudioBackendType_First, fplAudioResultType_Last)
 
 fpl_globalvar fplAudioBackendType fpl__global_defaultAudioBackendTypes[] = {
+	fplAudioBackendType_WASAPI,
 	fplAudioBackendType_DirectSound,
 	fplAudioBackendType_PipeWire,
 	fplAudioBackendType_PulseAudio,
