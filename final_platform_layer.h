@@ -30914,7 +30914,7 @@ fpl_internal uint32_t fpl__AlsaScaleBufferSize(const uint32_t bufferSize, const 
 }
 
 // Sets the default audio channel map a alsa backend
-fpl_internal void fpl__SetAudioDefaultChannelMapALSA(const uint16_t channels, const fplAudioChannelLayout layout, fplAudioChannelMap *outChannelMap) {
+fpl_internal void fpl__SetAudioDefaultChannelMapAlsa(const uint16_t channels, const fplAudioChannelLayout layout, fplAudioChannelMap *outChannelMap) {
 	fplClearStruct(outChannelMap);
 
 	if (channels == 0 || layout == fplAudioChannelLayout_Unsupported) {
@@ -31293,7 +31293,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendAlsaInitialize) 
 #undef FPL__ALSA_INIT_ERROR
 }
 
-fpl_internal uint32_t fpl__ALSADefineDefaultAudioDevices(const fplAudioShareMode shareMode, const char **outputNames, const size_t maxOutputNameCount) {
+fpl_internal uint32_t fpl__AlsaDefineDefaultAudioDevices(const fplAudioShareMode shareMode, const char **outputNames, const size_t maxOutputNameCount) {
 	const char *defaultDeviceNames[16] = fplZeroInit;
 	uint32_t defaultDeviceCount = 0;
 	defaultDeviceNames[defaultDeviceCount++] = "default";
@@ -31319,14 +31319,14 @@ fpl_internal uint32_t fpl__ALSADefineDefaultAudioDevices(const fplAudioShareMode
 	return defaultDeviceCount;
 }
 
-fpl_internal bool fpl__ALSAIsOutputAudioDevice(const char *ioid) {
+fpl_internal bool fpl__AlsaIsOutputAudioDevice(const char *ioid) {
 	const bool isOutputDevice = ioid != fpl_null && fplIsStringEqual(ioid, "Output");
 	const bool isDuplexDevice = ioid == fpl_null;
 	const bool result = isOutputDevice || isDuplexDevice;
 	return result;
 }
 
-fpl_internal bool fpl__ALSAIsDefaultAudioDevice(const char *name) {
+fpl_internal bool fpl__AlsaIsDefaultAudioDevice(const char *name) {
 	if (name == fpl_null) {
 		return false;
 	}
@@ -31391,7 +31391,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	int openMode = SND_PCM_NO_AUTO_RESAMPLE | SND_PCM_NO_AUTO_CHANNELS | SND_PCM_NO_AUTO_FORMAT;
 	if (alsaDeviceID == fpl_null || fplGetStringLength(alsaDeviceID) == 0) {
 		const char *defaultDeviceNames[16] = fplZeroInit;
-		const uint32_t defaultDeviceCount = fpl__ALSADefineDefaultAudioDevices(shareMode, defaultDeviceNames, fplArrayCount(defaultDeviceNames));
+		const uint32_t defaultDeviceCount = fpl__AlsaDefineDefaultAudioDevices(shareMode, defaultDeviceNames, fplArrayCount(defaultDeviceNames));
 
 		bool isDeviceOpen = false;
 		for (size_t defaultDeviceIndex = 0; defaultDeviceIndex < defaultDeviceCount; ++defaultDeviceIndex) {
@@ -31416,7 +31416,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 		if (alsaApi->snd_pcm_open(&impl->pcmDevice, alsaDeviceID, stream, openMode) < 0) {
 			FPL__ALSA_INIT_ERROR(fplAudioResultType_NoDeviceFound, "PCM audio device by id '%s' not found!", alsaDeviceID);
 		}
-		internalDevice.isDefault = fpl__ALSAIsDefaultAudioDevice(alsaDeviceID);
+		internalDevice.isDefault = fpl__AlsaIsDefaultAudioDevice(alsaDeviceID);
 		fplCopyString(alsaDeviceID, internalDevice.id.alsa, fplArrayCount(internalDevice.id.alsa));
 		fplCopyString(alsaDeviceID, internalDevice.name, fplArrayCount(internalDevice.name));
 	}
@@ -31440,7 +31440,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 		const char *pcmName = alsaApi->snd_pcm_info_get_name(pcmInfo);
 		if (fplGetStringLength(pcmName) > 0) {
 			fplCopyString(pcmName, internalDevice.name, fplArrayCount(internalDevice.name));
-			if (fpl__ALSAIsDefaultAudioDevice(pcmName)) {
+			if (fpl__AlsaIsDefaultAudioDevice(pcmName)) {
 				char **ppDeviceHints;
 				if (alsaApi->snd_device_name_hint(-1, "pcm", (void ***)&ppDeviceHints) == 0) {
 					char **ppNextDeviceHint = ppDeviceHints;
@@ -31450,7 +31450,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 						char *hintIOID = alsaApi->snd_device_name_get_hint(*ppNextDeviceHint, "IOID");
 
 						bool foundDevice = false;
-						if (fpl__ALSAIsOutputAudioDevice(hintIOID)) {
+						if (fpl__AlsaIsOutputAudioDevice(hintIOID)) {
 							if (fplIsStringEqual(hintName, pcmName)) {
 								fplCopyString(hintDesc, internalDevice.name, fplArrayCount(internalDevice.name));
 								foundDevice = true;
@@ -31579,7 +31579,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	internalFormat.channelLayout = fplGetDefaultAudioChannelLayoutFromChannels(internalChannels);
 
 	// Initialize channel map
-	fpl__SetAudioDefaultChannelMapALSA(internalFormat.channels, internalFormat.channelLayout, outputChannelMap);
+	fpl__SetAudioDefaultChannelMapAlsa(internalFormat.channels, internalFormat.channelLayout, outputChannelMap);
 
 	//
 	// Sample rate
@@ -31673,7 +31673,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 #undef FPL__ALSA_INIT_ERROR
 }
 
-fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendALSAGetAudioDeviceInfo) {
+fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendAlsaGetAudioDeviceInfo) {
 	fpl__AlsaAudioBackend *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AlsaAudioBackend);
 	fplAssert(impl != fpl_null);
 	fplAssertPtr(targetDevice);
@@ -31773,7 +31773,7 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendAlsaGetAu
 			}
 
 			// Only add output or duplex devices
-			if (fpl__ALSAIsOutputAudioDevice(ioid)) {
+			if (fpl__AlsaIsOutputAudioDevice(ioid)) {
 				if (deviceInfos != fpl_null) {
 					if (result >= maxDeviceCount) {
 						++capacityOverflow;
@@ -31813,7 +31813,7 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendAlsaGetAu
 	return(result);
 }
 
-fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendALSADescriptor = {
+fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendAlsaDescriptor = {
 
 	fplStructField(fplAudioBackendDescriptor, header, {
 		fplStructField(fplAudioBackendDescriptorHeader, idName, {
@@ -31829,7 +31829,7 @@ fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendALSADescriptor =
 		fplStructField(fplAudioBackendFunctionTable, initialize, fpl__AudioBackendAlsaInitialize),
 		fplStructField(fplAudioBackendFunctionTable, release, fpl__AudioBackendAlsaRelease),
 		fplStructField(fplAudioBackendFunctionTable, getAudioDevices, fpl__AudioBackendAlsaGetAudioDevices),
-		fplStructField(fplAudioBackendFunctionTable, getAudioDeviceInfo, fpl__AudioBackendALSAGetAudioDeviceInfo),
+		fplStructField(fplAudioBackendFunctionTable, getAudioDeviceInfo, fpl__AudioBackendAlsaGetAudioDeviceInfo),
 		fplStructField(fplAudioBackendFunctionTable, initializeDevice, fpl__AudioBackendAlsaInitializeDevice),
 		fplStructField(fplAudioBackendFunctionTable, releaseDevice, fpl__AudioBackendAlsaReleaseDevice),
 		fplStructField(fplAudioBackendFunctionTable, startDevice, fpl__AudioBackendAlsaStartDevice),
@@ -31862,7 +31862,7 @@ typedef struct {
 	volatile bool breakMainLoop;
 } fpl__OssAudioBackend;
 
-fpl_internal int fpl__MapAudioFormatToOSSFormat(fplAudioFormatType format) {
+fpl_internal int fpl__MapAudioFormatToOssFormat(fplAudioFormatType format) {
 	// Indexed by fplAudioFormatType (None, U8, S16, S24, S32, S64, F32, F64).
 	// Zero marks formats with no native OSS equivalent on this build.
 	static const int fpl__ossFmtMap[] = {
@@ -31903,7 +31903,7 @@ fpl_internal int fpl__MapAudioFormatToOSSFormat(fplAudioFormatType format) {
 	return fpl__ossFmtMap[(uint32_t)format];
 }
 
-fpl_internal fplAudioFormatType fpl__MapOSSFormatToAudioFormat(int ossFormat) {
+fpl_internal fplAudioFormatType fpl__MapOssFormatToAudioFormat(int ossFormat) {
 	switch (ossFormat) {
 		case AFMT_U8:
 			return fplAudioFormatType_U8;
@@ -31944,7 +31944,7 @@ fpl_internal fplAudioFormatType fpl__MapOSSFormatToAudioFormat(int ossFormat) {
 	}
 }
 
-fpl_internal void fpl__SetAudioDefaultChannelMapOSS(const uint16_t channels, const fplAudioChannelLayout layout, fplAudioChannelMap *outChannelMap) {
+fpl_internal void fpl__SetAudioDefaultChannelMapOss(const uint16_t channels, const fplAudioChannelLayout layout, fplAudioChannelMap *outChannelMap) {
 	fplClearStruct(outChannelMap);
 
 	if (channels == 0 || layout == fplAudioChannelLayout_Unsupported) {
@@ -32013,7 +32013,7 @@ fpl_internal void fpl__SetAudioDefaultChannelMapOSS(const uint16_t channels, con
 	}
 }
 
-fpl_internal uint32_t fpl__OSSLog2OfPowerOfTwo(uint32_t value) {
+fpl_internal uint32_t fpl__OssLog2OfPowerOfTwo(uint32_t value) {
 	uint32_t result = 0;
 	while (value > 1) {
 		value >>= 1;
@@ -32101,7 +32101,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendOssInitia
 
 	// Pick a supported format. Prefer the caller-requested format, then walk a fallback list.
 	int chosenFormat = 0;
-	int preferred = fpl__MapAudioFormatToOSSFormat(targetFormat->type);
+	int preferred = fpl__MapAudioFormatToOssFormat(targetFormat->type);
 	if (preferred != 0 && (formatMask & preferred) != 0) {
 		chosenFormat = preferred;
 	} else {
@@ -32113,7 +32113,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendOssInitia
 			fplAudioFormatType_U8,
 		};
 		for (size_t i = 0; i < fplArrayCount(fallbackChain); ++i) {
-			int candidate = fpl__MapAudioFormatToOSSFormat(fallbackChain[i]);
+			int candidate = fpl__MapAudioFormatToOssFormat(fallbackChain[i]);
 			if (candidate != 0 && (formatMask & candidate) != 0) {
 				chosenFormat = candidate;
 				break;
@@ -32124,7 +32124,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendOssInitia
 		FPL__OSS_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "No supported OSS format for device '%s'", devicePath);
 	}
 
-	internalFormat.type = fpl__MapOSSFormatToAudioFormat(chosenFormat);
+	internalFormat.type = fpl__MapOssFormatToAudioFormat(chosenFormat);
 	if (internalFormat.type == fplAudioFormatType_None) {
 		FPL__OSS_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "OSS format '%d' has no FPL mapping for device '%s'", chosenFormat, devicePath);
 	}
@@ -32162,7 +32162,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendOssInitia
 	if (fragSizePOT < 64) {
 		fragSizePOT = 64;
 	}
-	uint32_t fragExp = fpl__OSSLog2OfPowerOfTwo(fragSizePOT);
+	uint32_t fragExp = fpl__OssLog2OfPowerOfTwo(fragSizePOT);
 	if (audioSettings != fpl_null && audioSettings->oss.fragmentExponent > 0) {
 		fragExp = audioSettings->oss.fragmentExponent;
 	}
@@ -32177,7 +32177,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendOssInitia
 	}
 	if (setFormat != chosenFormat) {
 		// Driver replaced our choice — accept whatever it picked if we can map it.
-		fplAudioFormatType remapped = fpl__MapOSSFormatToAudioFormat(setFormat);
+		fplAudioFormatType remapped = fpl__MapOssFormatToAudioFormat(setFormat);
 		if (remapped == fplAudioFormatType_None) {
 			FPL__OSS_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "OSS driver substituted unknown format '%d' for device '%s'", setFormat, devicePath);
 		}
@@ -32224,7 +32224,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendOssInitia
 	}
 	impl->intermediaryBufferSize = intermediarySize;
 
-	fpl__SetAudioDefaultChannelMapOSS(internalFormat.channels, internalFormat.channelLayout, outputChannelMap);
+	fpl__SetAudioDefaultChannelMapOss(internalFormat.channels, internalFormat.channelLayout, outputChannelMap);
 
 	*outputFormat = internalFormat;
 	*outputDevice = internalDevice;
@@ -32536,7 +32536,7 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendOssGe
 			static const uint16_t candidateChannels[] = { 1, 2 };
 			size_t slots = fplArrayCount(outDeviceInfo->supportedFormats);
 			for (size_t t = 0; t < fplArrayCount(candidateTypes) && outDeviceInfo->supportedFormatCount < slots; ++t) {
-				int ossFmt = fpl__MapAudioFormatToOSSFormat(candidateTypes[t]);
+				int ossFmt = fpl__MapAudioFormatToOssFormat(candidateTypes[t]);
 				if (ossFmt == 0 || (mask & ossFmt) == 0) {
 					continue;
 				}
@@ -32553,7 +32553,7 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendOssGe
 	return fplAudioResultType_Success;
 }
 
-fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendOSSDescriptor = {
+fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendOssDescriptor = {
 	fplStructField(fplAudioBackendDescriptor, header, {
 		fplStructField(fplAudioBackendDescriptorHeader, idName, {
 			fplStructField(fplAudioBackendDescriptorIDName, id, { 0x6f73734f, 0x4253, 0x4444, { 0xa1, 0x07, 0x4f, 0x53, 0x53, 0x42, 0x53, 0x44 } }),
@@ -35346,7 +35346,7 @@ fpl_internal uint32_t fpl__GetAudioBackendDescriptors(const uint32_t maxDescript
 
 			case fplAudioBackendType_Alsa:
 #if defined(FPL__ENABLE_AUDIO_ALSA)
-				desc = &fpl__global_audioBackendALSADescriptor;
+				desc = &fpl__global_audioBackendAlsaDescriptor;
 #endif
 				break;
 
@@ -35364,7 +35364,7 @@ fpl_internal uint32_t fpl__GetAudioBackendDescriptors(const uint32_t maxDescript
 
 			case fplAudioBackendType_OSS:
 #if defined(FPL__ENABLE_AUDIO_OSS)
-				desc = &fpl__global_audioBackendOSSDescriptor;
+				desc = &fpl__global_audioBackendOssDescriptor;
 #endif
 				break;
 
