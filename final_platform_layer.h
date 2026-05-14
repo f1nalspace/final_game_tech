@@ -328,6 +328,14 @@ SOFTWARE.
 	- New: [OSS] Added enum fplAudioBackendType_OSS, struct fplOSSAudioSettings (noNonBlocking, fragmentExponent) and oss field in fplAudioDeviceID
 	- New: [OSS] Implemented device enumeration via /dev/sndstat parsing with /dev/dsp{0..7} stat() fallback for systems without sndstat
 	- New: [OSS] Implemented getAudioDeviceInfo that populates supported format list via SNDCTL_DSP_GETFMTS probe
+	- New: Implemented WASAPI audio backend (Windows render, event-driven, shared + exclusive modes); runtime-linked via ole32.dll with no SDK-header dependency; hand-rolled COM vtables for IMMDeviceEnumerator/Collection/Device, IPropertyStore, IAudioClient, IAudioRenderClient
+	- New: [WASAPI] Added enum value fplAudioBackendType_WASAPI, struct fplWasapiAudioSettings (noAutoConvertSampleRate), wasapi field in fplAudioDeviceID, and FPL_NO_AUDIO_WASAPI compile-time gate
+	- New: [WASAPI] WASAPI is now the default Windows audio backend (probed before DirectSound); DirectSound remains as automatic fallback
+	- New: [WASAPI] Implemented GetAudioDevices via IMMDeviceCollection enumeration of eRender endpoints (UTF-16 device id, UTF-8 friendly name, default flag via GetDefaultAudioEndpoint)
+	- New: [WASAPI] Implemented GetAudioDeviceInfo with format probing via IsFormatSupported across a rate/channel/type matrix; mix format is always recorded
+	- New: [WASAPI] Exclusive mode honors fplAudioMode/fplAudioShareMode; falls back to shared mode on driver rejection rather than failing init
+	- Changed: Extracted shared Win32 helper fpl__BuildWaveFormatExtensible (formerly fpl__SetupWaveFormatDirectSound) and the channel-mask map/unmap helpers so DirectSound and WASAPI share one WAVEFORMATEXTENSIBLE builder
+	- Fixed: fpl__BuildWaveFormatExtensible now sets WAVEFORMATEX.cbSize to sizeof(WAVEFORMATEXTENSIBLE)-sizeof(WAVEFORMATEX) (22) instead of full-struct size; DirectSound tolerated the prior wrong value, WASAPI's IsFormatSupported is strict
 	- Fixed: fpl__ReadAudioFramesFromClient was not returning frameCount always and produce silence bytes for the remaining samples (now enforced via asserts at all call sites)
 	- Fixed: fpl__InitAudio() was raising an assertion instead of returning fplAudioResultType_NoBackendsFound, when no backends are available
 	- Fixed: [PulseAudio] ABI mismatches in backend function pointer signatures
