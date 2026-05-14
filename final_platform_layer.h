@@ -10377,6 +10377,42 @@ fpl_internal uint32_t fpl__RoundToPowerOfTwo(const uint32_t input) {
 	}
 }
 
+fpl_internal const char *fpl__StringFindChar(const char *s, const char c) {
+	if (s == fpl_null) {
+		return fpl_null;
+	}
+	while (*s != '\0') {
+		if (*s == c) {
+			return s;
+		}
+		++s;
+	}
+	return fpl_null;
+}
+
+fpl_internal const char *fpl__StringFindSubstr(const char *haystack, const char *needle) {
+	if (haystack == fpl_null || needle == fpl_null) {
+		return fpl_null;
+	}
+	size_t needleLen = 0;
+	while (needle[needleLen] != '\0') {
+		++needleLen;
+	}
+	if (needleLen == 0) {
+		return haystack;
+	}
+	for (const char *p = haystack; *p != '\0'; ++p) {
+		size_t i = 0;
+		while (i < needleLen && p[i] == needle[i]) {
+			++i;
+		}
+		if (i == needleLen) {
+			return p;
+		}
+	}
+	return fpl_null;
+}
+
 fpl_internal bool fpl__AddLineWhenAnyMatches(const char *line, const char **wildcards, const size_t maxWildcardCount, const size_t maxLineSize, const size_t maxLineCount, char **outLines, size_t *outCount) {
 	for (size_t i = 0; i < maxWildcardCount; ++i) {
 		const char *wildcard = wildcards[i];
@@ -32297,42 +32333,6 @@ fpl_internal FPL_AUDIO_BACKEND_STOP_MAIN_LOOP_FUNC(fpl__AudioBackendOssStopMainL
 	impl->breakMainLoop = true;
 }
 
-fpl_internal const char *fpl__OssFindChar(const char *s, const char c) {
-	if (s == fpl_null) {
-		return fpl_null;
-	}
-	while (*s != '\0') {
-		if (*s == c) {
-			return s;
-		}
-		++s;
-	}
-	return fpl_null;
-}
-
-fpl_internal const char *fpl__OssFindSubstr(const char *haystack, const char *needle) {
-	if (haystack == fpl_null || needle == fpl_null) {
-		return fpl_null;
-	}
-	size_t needleLen = 0;
-	while (needle[needleLen] != '\0') {
-		++needleLen;
-	}
-	if (needleLen == 0) {
-		return haystack;
-	}
-	for (const char *p = haystack; *p != '\0'; ++p) {
-		size_t i = 0;
-		while (i < needleLen && p[i] == needle[i]) {
-			++i;
-		}
-		if (i == needleLen) {
-			return p;
-		}
-	}
-	return fpl_null;
-}
-
 typedef struct {
 	char path[256];
 	char name[FPL_MAX_NAME_LENGTH];
@@ -32371,7 +32371,7 @@ fpl_internal uint32_t fpl__OssParseSndstat(fpl__OssEnumeratedDevice *outDevices,
 	uint32_t count = 0;
 	char *line = buffer;
 	while (line != fpl_null && *line != '\0' && count < maxDevices) {
-		char *eol = (char *)fpl__OssFindChar(line, '\n');
+		char *eol = (char *)fpl__StringFindChar(line, '\n');
 		if (eol != fpl_null) {
 			*eol = '\0';
 		}
@@ -32386,8 +32386,8 @@ fpl_internal uint32_t fpl__OssParseSndstat(fpl__OssEnumeratedDevice *outDevices,
 				++p;
 			}
 			if (hasIdx && *p == ':') {
-				const char *lt = fpl__OssFindChar(p, '<');
-				const char *gt = (lt != fpl_null) ? fpl__OssFindChar(lt, '>') : fpl_null;
+				const char *lt = fpl__StringFindChar(p, '<');
+				const char *gt = (lt != fpl_null) ? fpl__StringFindChar(lt, '>') : fpl_null;
 				char descBuf[FPL_MAX_NAME_LENGTH];
 				descBuf[0] = '\0';
 				if (lt != fpl_null && gt != fpl_null && gt > lt + 1) {
@@ -32403,9 +32403,9 @@ fpl_internal uint32_t fpl__OssParseSndstat(fpl__OssEnumeratedDevice *outDevices,
 
 				// Accept devices marked play/duplex; skip rec-only entries.
 				bool isPlayable = true;
-				const char *openParen = fpl__OssFindChar(p, '(');
+				const char *openParen = fpl__StringFindChar(p, '(');
 				if (openParen != fpl_null) {
-					const char *closeParen = fpl__OssFindChar(openParen, ')');
+					const char *closeParen = fpl__StringFindChar(openParen, ')');
 					if (closeParen != fpl_null) {
 						bool foundPlay = false;
 						for (const char *q = openParen; q + 4 <= closeParen; ++q) {
@@ -32426,7 +32426,7 @@ fpl_internal uint32_t fpl__OssParseSndstat(fpl__OssEnumeratedDevice *outDevices,
 					} else {
 						fplStringFormat(entry->name, fplArrayCount(entry->name), "OSS Device %u", idx);
 					}
-					entry->isDefault = (fpl__OssFindSubstr(p, "default") != fpl_null);
+					entry->isDefault = (fpl__StringFindSubstr(p, "default") != fpl_null);
 					++count;
 				}
 			}
