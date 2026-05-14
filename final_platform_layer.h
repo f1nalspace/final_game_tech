@@ -31572,7 +31572,8 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPulseAudi
 	uint32_t periodCount = targetFormat->periods > 0 ? targetFormat->periods : 2;
 	uint32_t periodBytes = totalBufferBytes / periodCount;
 	pa_buffer_attr bufferAttributes = fplZeroInit;
-	bufferAttributes.maxlength = totalBufferBytes;
+	// maxlength = -1 lets pulse pick a roomy server-side buffer; clamping it to tlength causes underruns on sinks with their own buffering (e.g. pulse-over-OSS on FreeBSD).
+	bufferAttributes.maxlength = (uint32_t)-1;
 	bufferAttributes.tlength = totalBufferBytes;
 	bufferAttributes.prebuf = (uint32_t)-1;
 	bufferAttributes.minreq = periodBytes;
@@ -31595,7 +31596,8 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPulseAudi
 	pulseAudioApi->pa_stream_set_state_callback(pulseAudioBackend->stream, fpl__PulseAudio_StreamStateCallback, backend);
 	pulseAudioApi->pa_stream_set_write_callback(pulseAudioBackend->stream, fpl__PulseAudio_StreamWriteCallback, backend);
 
-	pa_stream_flags_t streamFlags = (pa_stream_flags_t)(PA_STREAM_START_CORKED | PA_STREAM_ADJUST_LATENCY | PA_STREAM_AUTO_TIMING_UPDATE);
+	// PA_STREAM_ADJUST_LATENCY forces pulse to honor tlength as a hard target; on sinks with their own buffering this causes underruns. Leaving it off lets pulse pick a sane working latency around our tlength hint.
+	pa_stream_flags_t streamFlags = (pa_stream_flags_t)(PA_STREAM_START_CORKED | PA_STREAM_AUTO_TIMING_UPDATE);
 
 	// Resolve the target sink name from id.pulse (sink index) so pa_stream_connect_playback gets the actual sink name.
 	// Passing NULL lets pulseaudio pick the default sink.
