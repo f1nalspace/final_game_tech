@@ -10367,16 +10367,6 @@ fpl_internal uint32_t fpl__PrevPowerOfTwo(const uint32_t input) {
 	return(result);
 }
 
-fpl_internal uint32_t fpl__RoundToPowerOfTwo(const uint32_t input) {
-	uint32_t prev = fpl__PrevPowerOfTwo(input);
-	uint32_t next = fpl__NextPowerOfTwo(input);
-	if ((next - input) < (input - prev)) {
-		return prev;
-	} else {
-		return next;
-	}
-}
-
 fpl_internal const char *fpl__StringFindChar(const char *s, const char c) {
 	if (s == fpl_null) {
 		return fpl_null;
@@ -12997,10 +12987,6 @@ fpl_internal void fpl__ArgumentMinError(const char *funcName, const int line, co
 fpl_internal void fpl__ArgumentMaxError(const char *funcName, const int line, const char *paramName, const size_t value, const size_t maxValue) {
 	FPL__M_ERROR(funcName, line, FPL__MODULE_ARGS, "%s parameter '%zu' must be less or equal than '%zu'", paramName, value, maxValue);
 }
-fpl_internal void fpl__ArgumentRangeError(const char *funcName, const int line, const char *paramName, const size_t value, const size_t minValue, const size_t maxValue) {
-	FPL__M_ERROR(funcName, line, FPL__MODULE_ARGS, "%s parameter '%zu' must be in range of '%zu' to '%zu'", paramName, value, minValue, maxValue);
-}
-
 #define FPL__CheckArgumentInvalid(arg, cond, ret) \
 	if((cond)) { \
 		fpl__ArgumentInvalidError(FPL_FUNCTION_NAME, __LINE__, #arg); \
@@ -15751,18 +15737,6 @@ fpl_internal void fpl__Win32LoadCursor(const fpl__Win32Api *wapi, const fpl__Win
 		wapi->user.SetCursor(fpl__win32_LoadCursor(fpl_null, IDC_ARROW));
 	} else {
 		wapi->user.SetCursor(fpl_null);
-	}
-}
-
-fpl_internal void fpl__Win32UpdateClipRect(const fpl__Win32Api *wapi, const fpl__Win32WindowState *window) {
-	if (window != fpl_null) {
-		RECT clipRect;
-		wapi->user.GetClientRect(window->windowHandle, &clipRect);
-		wapi->user.ClientToScreen(window->windowHandle, (POINT *)&clipRect.left);
-		wapi->user.ClientToScreen(window->windowHandle, (POINT *)&clipRect.right);
-		wapi->user.ClipCursor(&clipRect);
-	} else {
-		wapi->user.ClipCursor(fpl_null);
 	}
 }
 
@@ -18811,22 +18785,6 @@ fpl_internal fplFileTimeStamp fpl__Win32ConvertFileTimeToUnixTimestamp(const FIL
 		result = (ticks.QuadPart / FPL__WIN32_TICKS_PER_SEC) - FPL__WIN32_UNIX_EPOCH_DIFFERENCE;
 	}
 	return(result);
-}
-
-fpl_internal FILETIME fpl__Win32ConvertUnixTimestampToFileTime(const fplFileTimeStamp unixTimeStamp) {
-	// Ticks are defined in 100 ns = 10000000 secs
-	// 100 ns = milliseconds * 10000
-	// Windows ticks starts at 1601-01-01T00:00:00Z
-	// Unix secs starts at 1970-01-01T00:00:00Z
-	if (unixTimeStamp > 0) {
-		uint64_t ticks = (unixTimeStamp + FPL__WIN32_UNIX_EPOCH_DIFFERENCE) * FPL__WIN32_TICKS_PER_SEC;
-		FILETIME result;
-		result.dwLowDateTime = (DWORD)ticks;
-		result.dwHighDateTime = ticks >> 32;
-		return(result);
-	}
-	FILETIME empty = fplZeroInit;
-	return(empty);
 }
 
 fpl_platform_api bool fplFileOpenBinary(const char *filePath, fplFileHandle *outHandle) {
@@ -27853,16 +27811,6 @@ fpl_internal uint32_t fpl__VersionInfoToVulkanVersion(const fplVersionInfo *vers
 	uint32_t patch = fplStringToS32(versionInfo->version.parts.fix);
 	uint32_t result = FPL__VK_MAKE_VERSION(major, minor, patch);
 	return(result);
-}
-
-fpl_internal const char *fpl__GetVulkanMessageSeverityName(const fpl__VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity) {
-	switch (messageSeverity) {
-		case FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT: return "ERROR";
-		case FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT: return "WARNING";
-		case FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT: return "INFO";
-		case FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT: return "VERBOSE";
-		default: return "Unknown";
-	}
 }
 
 fpl_internal fpl__VKAPI_ATTR fpl__VkBool32 fpl__VKAPI_CALL fpl__VulkanDebugCallback(fpl__VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, fpl__VkDebugUtilsMessageTypeFlagsEXT messageType, const fpl__VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, void *pUserData) {
