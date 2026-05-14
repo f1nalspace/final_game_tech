@@ -1907,8 +1907,8 @@ struct PlayerState {
 	bool32 seekByBytes;
 };
 
-static void ReleaseMedia(PlayerState &state, const PlayingState finishState, const uint32_t mainThreadId);
-static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const uint32_t mainThreadId);
+static void ReleaseMedia(PlayerState &state, const PlayingState finishState, const uint64_t mainThreadId);
+static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const uint64_t mainThreadId);
 
 static void VideoDecodingThreadProc(const fplThreadHandle *thread, void *userData);
 static void AudioDecodingThreadProc(const fplThreadHandle *thread, void *userData);
