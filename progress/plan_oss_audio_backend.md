@@ -1,6 +1,6 @@
 # Plan: OSS Audio Backend for BSD
 
-Status: Planned — not yet implemented.
+Status: Done — implemented and verified on FreeBSD across all FPL audio demos (2026-05-14).
 Author: collaborative plan, 2026-05-14.
 Reference backend: ALSA (`final_platform_layer.h` lines ~29309-30599).
 
