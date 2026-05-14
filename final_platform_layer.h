@@ -30653,6 +30653,166 @@ typedef struct {
 	volatile bool breakMainLoop;
 } fpl__OssAudioBackend;
 
+fpl_internal int fpl__MapAudioFormatToOSSFormat(fplAudioFormatType format) {
+	// Indexed by fplAudioFormatType (None, U8, S16, S24, S32, S64, F32, F64).
+	// Zero marks formats with no native OSS equivalent on this build.
+	static const int fpl__ossFmtMap[] = {
+		/* None */ 0,
+		/* U8   */ AFMT_U8,
+#if defined(AFMT_S16_NE)
+		/* S16  */ AFMT_S16_NE,
+#elif defined(AFMT_S16_LE)
+		/* S16  */ AFMT_S16_LE,
+#else
+		/* S16  */ 0,
+#endif
+#if defined(AFMT_S24_NE)
+		/* S24  */ AFMT_S24_NE,
+#elif defined(AFMT_S24_LE)
+		/* S24  */ AFMT_S24_LE,
+#else
+		/* S24  */ 0,
+#endif
+#if defined(AFMT_S32_NE)
+		/* S32  */ AFMT_S32_NE,
+#elif defined(AFMT_S32_LE)
+		/* S32  */ AFMT_S32_LE,
+#else
+		/* S32  */ 0,
+#endif
+		/* S64  */ 0,
+#if defined(AFMT_FLOAT)
+		/* F32  */ AFMT_FLOAT,
+#else
+		/* F32  */ 0,
+#endif
+		/* F64  */ 0,
+	};
+	if ((uint32_t)format >= fplArrayCount(fpl__ossFmtMap)) {
+		return 0;
+	}
+	return fpl__ossFmtMap[(uint32_t)format];
+}
+
+fpl_internal fplAudioFormatType fpl__MapOSSFormatToAudioFormat(int ossFormat) {
+	switch (ossFormat) {
+		case AFMT_U8:
+			return fplAudioFormatType_U8;
+#if defined(AFMT_S16_NE)
+		case AFMT_S16_NE:
+			return fplAudioFormatType_S16;
+#endif
+#if defined(AFMT_S16_LE) && (!defined(AFMT_S16_NE) || AFMT_S16_LE != AFMT_S16_NE)
+		case AFMT_S16_LE:
+			return fplAudioFormatType_S16;
+#endif
+#if defined(AFMT_S16_BE) && (!defined(AFMT_S16_NE) || AFMT_S16_BE != AFMT_S16_NE)
+		case AFMT_S16_BE:
+			return fplAudioFormatType_S16;
+#endif
+#if defined(AFMT_S24_NE)
+		case AFMT_S24_NE:
+			return fplAudioFormatType_S24;
+#endif
+#if defined(AFMT_S24_LE) && (!defined(AFMT_S24_NE) || AFMT_S24_LE != AFMT_S24_NE)
+		case AFMT_S24_LE:
+			return fplAudioFormatType_S24;
+#endif
+#if defined(AFMT_S32_NE)
+		case AFMT_S32_NE:
+			return fplAudioFormatType_S32;
+#endif
+#if defined(AFMT_S32_LE) && (!defined(AFMT_S32_NE) || AFMT_S32_LE != AFMT_S32_NE)
+		case AFMT_S32_LE:
+			return fplAudioFormatType_S32;
+#endif
+#if defined(AFMT_FLOAT)
+		case AFMT_FLOAT:
+			return fplAudioFormatType_F32;
+#endif
+		default:
+			return fplAudioFormatType_None;
+	}
+}
+
+fpl_internal void fpl__SetAudioDefaultChannelMapOSS(const uint16_t channels, const fplAudioChannelLayout layout, fplAudioChannelMap *outChannelMap) {
+	fplClearStruct(outChannelMap);
+
+	if (channels == 0 || layout == fplAudioChannelLayout_Unsupported) {
+		return;
+	}
+
+	if (channels == 1 || layout == fplAudioChannelLayout_Mono) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontCenter;
+	} else if (channels == 2 || layout == fplAudioChannelLayout_Stereo) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+	} else if (channels == 3) {
+		if (layout == fplAudioChannelLayout_2_1) {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_LowFrequency;
+		} else {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_FrontCenter;
+		}
+	} else if (channels == 4) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+	} else if (channels == 5) {
+		if (layout == fplAudioChannelLayout_4_1) {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+			outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+			outChannelMap->speakers[4] = fplAudioChannelType_LowFrequency;
+		} else {
+			outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+			outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+			outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+			outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+			outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
+		}
+	} else if (channels == 6) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+		outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
+		outChannelMap->speakers[5] = fplAudioChannelType_LowFrequency;
+	} else if (channels == 7) {
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+		outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
+		outChannelMap->speakers[5] = fplAudioChannelType_LowFrequency;
+		outChannelMap->speakers[6] = fplAudioChannelType_BackCenter;
+	} else {
+		fplAssert(channels >= 8);
+		outChannelMap->speakers[0] = fplAudioChannelType_FrontLeft;
+		outChannelMap->speakers[1] = fplAudioChannelType_FrontRight;
+		outChannelMap->speakers[2] = fplAudioChannelType_BackLeft;
+		outChannelMap->speakers[3] = fplAudioChannelType_BackRight;
+		outChannelMap->speakers[4] = fplAudioChannelType_FrontCenter;
+		outChannelMap->speakers[5] = fplAudioChannelType_LowFrequency;
+		outChannelMap->speakers[6] = fplAudioChannelType_SideLeft;
+		outChannelMap->speakers[7] = fplAudioChannelType_SideRight;
+	}
+}
+
+fpl_internal uint32_t fpl__OSSLog2OfPowerOfTwo(uint32_t value) {
+	uint32_t result = 0;
+	while (value > 1) {
+		value >>= 1;
+		++result;
+	}
+	return result;
+}
+
 fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendOssInitialize) {
 	fpl__OssAudioBackend *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__OssAudioBackend);
 	fplAssert(impl != fpl_null);
@@ -30691,15 +30851,178 @@ fpl_internal FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl__AudioBackendOssRelease) {
 fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendOssInitializeDevice) {
 	fpl__OssAudioBackend *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__OssAudioBackend);
 	fplAssert(impl != fpl_null);
-	(void)context;
-	(void)audioSettings;
-	(void)targetFormat;
-	(void)targetDevice;
-	(void)outputFormat;
-	(void)outputDevice;
-	(void)outputChannelMap;
-	FPL__ERROR(FPL__MODULE_AUDIO_OSS, "OSS device initialization is not implemented yet");
-	return fplAudioResultType_NotImplemented;
+
+#	define FPL__OSS_INIT_ERROR(ret, format, ...) do { \
+		FPL__ERROR(FPL__MODULE_AUDIO_OSS, format, ## __VA_ARGS__); \
+		fpl__AudioBackendOssReleaseDevice(context, backend); \
+		return ret; \
+	} while (0)
+
+	const char *requestedDevicePath = fpl_null;
+	if (targetDevice != fpl_null && fplGetStringLength(targetDevice->id.oss) > 0) {
+		requestedDevicePath = targetDevice->id.oss;
+	}
+	const char *devicePath = (requestedDevicePath != fpl_null) ? requestedDevicePath : "/dev/dsp";
+
+	const bool useNonBlocking = (audioSettings == fpl_null) || !audioSettings->oss.noNonBlocking;
+	int openFlags = O_WRONLY;
+	if (useNonBlocking) {
+		openFlags |= O_NONBLOCK;
+	}
+
+	FPL_LOG_DEBUG(FPL__MODULE_AUDIO_OSS, "Opening OSS audio device '%s'", devicePath);
+	int fd = open(devicePath, openFlags);
+	if (fd < 0) {
+		FPL__OSS_INIT_ERROR(fplAudioResultType_NoDeviceFound, "Failed to open OSS audio device '%s' (errno %d)", devicePath, errno);
+	}
+	impl->fd = fd;
+
+	fplAudioDeviceInfo internalDevice = fplZeroInit;
+	fplCopyString(devicePath, internalDevice.id.oss, fplArrayCount(internalDevice.id.oss));
+	fplCopyString(devicePath, internalDevice.name, fplArrayCount(internalDevice.name));
+	internalDevice.isDefault = (requestedDevicePath == fpl_null);
+
+	fplAudioFormat internalFormat = fplZeroInit;
+
+	// Query supported formats
+	int formatMask = 0;
+	if (ioctl(fd, SNDCTL_DSP_GETFMTS, &formatMask) < 0) {
+		FPL__OSS_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed to query OSS format mask for device '%s' (errno %d)", devicePath, errno);
+	}
+
+	// Pick a supported format. Prefer the caller-requested format, then walk a fallback list.
+	int chosenFormat = 0;
+	int preferred = fpl__MapAudioFormatToOSSFormat(targetFormat->type);
+	if (preferred != 0 && (formatMask & preferred) != 0) {
+		chosenFormat = preferred;
+	} else {
+		static const fplAudioFormatType fallbackChain[] = {
+			fplAudioFormatType_S16,
+			fplAudioFormatType_F32,
+			fplAudioFormatType_S32,
+			fplAudioFormatType_S24,
+			fplAudioFormatType_U8,
+		};
+		for (size_t i = 0; i < fplArrayCount(fallbackChain); ++i) {
+			int candidate = fpl__MapAudioFormatToOSSFormat(fallbackChain[i]);
+			if (candidate != 0 && (formatMask & candidate) != 0) {
+				chosenFormat = candidate;
+				break;
+			}
+		}
+	}
+	if (chosenFormat == 0) {
+		FPL__OSS_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "No supported OSS format for device '%s'", devicePath);
+	}
+
+	internalFormat.type = fpl__MapOSSFormatToAudioFormat(chosenFormat);
+	if (internalFormat.type == fplAudioFormatType_None) {
+		FPL__OSS_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "OSS format '%d' has no FPL mapping for device '%s'", chosenFormat, devicePath);
+	}
+
+	uint32_t channels = targetFormat->channels;
+	if (channels == 0) {
+		channels = 2;
+	}
+	uint32_t sampleRate = targetFormat->sampleRate;
+	if (sampleRate == 0) {
+		sampleRate = 48000;
+	}
+	uint32_t periods = targetFormat->periods;
+	if (periods == 0) {
+		periods = 2;
+	}
+	uint32_t bufferFrames = targetFormat->bufferSizeInFrames;
+	if (bufferFrames == 0) {
+		bufferFrames = fplGetAudioBufferSizeInFrames(sampleRate, 40);
+	}
+
+	// Compute fragment exponent (log2 of fragment bytes). Setting fragments first matches
+	// the OSS spec recommendation of changing buffer parameters immediately after open().
+	uint32_t periodFrames = bufferFrames / periods;
+	if (periodFrames == 0) {
+		periodFrames = 1;
+	}
+	uint32_t sampleBytes = fplGetAudioSampleSizeInBytes(internalFormat.type);
+	if (sampleBytes == 0) {
+		FPL__OSS_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "FPL audio format '%s' reports zero sample size", fplGetAudioFormatName(internalFormat.type));
+	}
+	uint32_t frameBytes = sampleBytes * channels;
+	uint32_t periodBytes = periodFrames * frameBytes;
+	uint32_t fragSizePOT = fpl__NextPowerOfTwo(periodBytes);
+	if (fragSizePOT < 64) {
+		fragSizePOT = 64;
+	}
+	uint32_t fragExp = fpl__OSSLog2OfPowerOfTwo(fragSizePOT);
+	if (audioSettings != fpl_null && audioSettings->oss.fragmentExponent > 0) {
+		fragExp = audioSettings->oss.fragmentExponent;
+	}
+	int fragArg = (int)((periods << 16) | (fragExp & 0xFFFF));
+	if (ioctl(fd, SNDCTL_DSP_SETFRAGMENT, &fragArg) < 0) {
+		FPL__OSS_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed to set OSS fragment (periods %lu, exp %lu) for device '%s' (errno %d)", periods, fragExp, devicePath, errno);
+	}
+
+	int setFormat = chosenFormat;
+	if (ioctl(fd, SNDCTL_DSP_SETFMT, &setFormat) < 0) {
+		FPL__OSS_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed to set OSS format '%d' for device '%s' (errno %d)", chosenFormat, devicePath, errno);
+	}
+	if (setFormat != chosenFormat) {
+		// Driver replaced our choice — accept whatever it picked if we can map it.
+		fplAudioFormatType remapped = fpl__MapOSSFormatToAudioFormat(setFormat);
+		if (remapped == fplAudioFormatType_None) {
+			FPL__OSS_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "OSS driver substituted unknown format '%d' for device '%s'", setFormat, devicePath);
+		}
+		internalFormat.type = remapped;
+		sampleBytes = fplGetAudioSampleSizeInBytes(internalFormat.type);
+		frameBytes = sampleBytes * channels;
+	}
+
+	int setChannels = (int)channels;
+	if (ioctl(fd, SNDCTL_DSP_CHANNELS, &setChannels) < 0) {
+		FPL__OSS_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed to set OSS channels '%lu' for device '%s' (errno %d)", channels, devicePath, errno);
+	}
+	channels = (uint32_t)setChannels;
+	frameBytes = sampleBytes * channels;
+	internalFormat.channels = (uint16_t)channels;
+	internalFormat.channelLayout = fplGetDefaultAudioChannelLayoutFromChannels((uint16_t)channels);
+
+	int setRate = (int)sampleRate;
+	if (ioctl(fd, SNDCTL_DSP_SPEED, &setRate) < 0) {
+		FPL__OSS_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed to set OSS sample rate '%lu' for device '%s' (errno %d)", sampleRate, devicePath, errno);
+	}
+	internalFormat.sampleRate = (uint32_t)setRate;
+
+	// Query actual buffer layout. GETOSPACE reports current fragment count and size.
+	audio_buf_info bufInfo = fplZeroInit;
+	if (ioctl(fd, SNDCTL_DSP_GETOSPACE, &bufInfo) < 0) {
+		FPL__OSS_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed to query OSS output buffer info for device '%s' (errno %d)", devicePath, errno);
+	}
+	if (bufInfo.fragsize <= 0 || bufInfo.fragstotal <= 0 || frameBytes == 0) {
+		FPL__OSS_INIT_ERROR(fplAudioResultType_DeviceFailure, "OSS reported invalid buffer geometry for device '%s' (fragsize=%d, fragstotal=%d)", devicePath, bufInfo.fragsize, bufInfo.fragstotal);
+	}
+	uint32_t actualPeriodFrames = (uint32_t)bufInfo.fragsize / frameBytes;
+	if (actualPeriodFrames == 0) {
+		actualPeriodFrames = 1;
+	}
+	internalFormat.periods = (uint32_t)bufInfo.fragstotal;
+	internalFormat.bufferSizeInFrames = actualPeriodFrames * internalFormat.periods;
+	internalFormat.bufferSizeInMilliseconds = fplGetAudioBufferSizeInMilliseconds(internalFormat.sampleRate, internalFormat.bufferSizeInFrames);
+
+	uint32_t intermediarySize = (uint32_t)bufInfo.fragsize;
+	impl->intermediaryBuffer = fpl__AllocateDynamicMemory(intermediarySize, 16);
+	if (impl->intermediaryBuffer == fpl_null) {
+		FPL__OSS_INIT_ERROR(fplAudioResultType_OutOfMemory, "Failed allocating OSS intermediary buffer of '%lu' bytes for device '%s'", intermediarySize, devicePath);
+	}
+	impl->intermediaryBufferSize = intermediarySize;
+
+	fpl__SetAudioDefaultChannelMapOSS(internalFormat.channels, internalFormat.channelLayout, outputChannelMap);
+
+	*outputFormat = internalFormat;
+	*outputDevice = internalDevice;
+
+	return fplAudioResultType_Success;
+
+#undef FPL__OSS_INIT_ERROR
 }
 
 fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudioBackendOssStartDevice) {
