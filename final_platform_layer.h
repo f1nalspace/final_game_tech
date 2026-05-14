@@ -258,6 +258,7 @@ SOFTWARE.
 	- Fixed: [POSIX] fplDirectoriesCreate was not separator-tolerant
 	- Fixed: [POSIX] fplMemoryAllocate was not compiling in FreeBSD (MAP_ANONYMOUS vs MAP_ANON)
 	- Fixed: [POSIX] fpl__PThreadLoadApi fails on missing pthread library in FreeBSD
+	- Fixed: [BSD] fplGetExecutableFilePath returned 0 on FreeBSD/DragonFly (procfs not mounted) — now uses sysctl(KERN_PROC_PATHNAME) before falling back to /proc
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Fixed[#184]: [POSIX] fplDirectoriesCreate() does not create parent sub-directories
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -21910,13 +21911,38 @@ fpl_platform_api size_t fplCPUGetCoreCount(void) {
 }
 
 fpl_platform_api size_t fplGetExecutableFilePath(char *destPath, const size_t maxDestLen) {
+	char buf[FPL_MAX_PATH_LENGTH];
+	size_t result = 0;
+
+#if defined(__FreeBSD__) || defined(__DragonFly__)
+	// FreeBSD/DragonFly do not mount procfs by default, so readlink("/proc/curproc/file")
+	// usually fails. sysctl(KERN_PROC_PATHNAME) is the canonical way to get the absolute
+	// path of the running executable.
+	{
+		int mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, -1 };
+		size_t cb = sizeof(buf);
+		if (sysctl(mib, 4, buf, &cb, fpl_null, 0) == 0 && cb > 0) {
+			// cb includes the trailing NUL written by the kernel.
+			size_t len = cb;
+			if (buf[len - 1] == '\0') {
+				len -= 1;
+			}
+			result = len;
+			if (destPath != fpl_null) {
+				size_t requiredLen = len + 1;
+				FPL__CheckArgumentMin(maxDestLen, requiredLen, 0);
+				fplCopyStringLen(buf, len, destPath, maxDestLen);
+			}
+			return(result);
+		}
+	}
+#endif
+
 	const char *procNames[] = {
 		"/proc/self/exe",
 		"/proc/curproc/exe",
 		"/proc/curproc/file",
 	};
-	char buf[FPL_MAX_PATH_LENGTH];
-	size_t result = 0;
 	for (int i = 0; i < fplArrayCount(procNames); ++i) {
 		const char *procName = procNames[i];
 		ssize_t n = readlink(procName, buf, fplArrayCount(buf) - 1);
