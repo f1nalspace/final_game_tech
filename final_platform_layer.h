@@ -31810,7 +31810,7 @@ typedef struct {
 	volatile bool breakMainLoop;
 } fpl__OssAudioBackend;
 
-fpl_internal int fpl__MapAudioFormatToOssFormat(fplAudioFormatType format) {
+fpl_internal int fpl__OssMapAudioFormatToSampleFormat(fplAudioFormatType format) {
 	// Indexed by fplAudioFormatType (None, U8, S16, S24, S32, S64, F32, F64).
 	// Zero marks formats with no native OSS equivalent on this build.
 	static const int fpl__ossFmtMap[] = {
@@ -32049,7 +32049,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendOssInitia
 
 	// Pick a supported format. Prefer the caller-requested format, then walk a fallback list.
 	int chosenFormat = 0;
-	int preferred = fpl__MapAudioFormatToOssFormat(targetFormat->type);
+	int preferred = fpl__OssMapAudioFormatToSampleFormat(targetFormat->type);
 	if (preferred != 0 && (formatMask & preferred) != 0) {
 		chosenFormat = preferred;
 	} else {
@@ -32061,7 +32061,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendOssInitia
 			fplAudioFormatType_U8,
 		};
 		for (size_t i = 0; i < fplArrayCount(fallbackChain); ++i) {
-			int candidate = fpl__MapAudioFormatToOssFormat(fallbackChain[i]);
+			int candidate = fpl__OssMapAudioFormatToSampleFormat(fallbackChain[i]);
 			if (candidate != 0 && (formatMask & candidate) != 0) {
 				chosenFormat = candidate;
 				break;
@@ -32484,7 +32484,7 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendOssGe
 			static const uint16_t candidateChannels[] = { 1, 2 };
 			size_t slots = fplArrayCount(outDeviceInfo->supportedFormats);
 			for (size_t t = 0; t < fplArrayCount(candidateTypes) && outDeviceInfo->supportedFormatCount < slots; ++t) {
-				int ossFmt = fpl__MapAudioFormatToOssFormat(candidateTypes[t]);
+				int ossFmt = fpl__OssMapAudioFormatToSampleFormat(candidateTypes[t]);
 				if (ossFmt == 0 || (mask & ossFmt) == 0) {
 					continue;
 				}
