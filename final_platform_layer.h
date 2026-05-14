@@ -25615,6 +25615,53 @@ fpl_platform_api bool fplMemoryGetInfos(fplMemoryInfos *outInfos) {
 }
 
 //
+// Unix Threading (stubs)
+//
+fpl_platform_api bool fplSignalInit(fplSignalHandle *signal, const fplSignalValue initialValue) {
+	// @IMPLEMENT(final/Unix): fplSignalInit
+	return(false);
+}
+
+fpl_platform_api void fplSignalDestroy(fplSignalHandle *signal) {
+	// @IMPLEMENT(final/Unix): fplSignalDestroy
+}
+
+fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const fplTimeoutValue timeout) {
+	// @IMPLEMENT(final/Unix): fplSignalWaitForOne
+	return(false);
+}
+
+fpl_platform_api bool fplSignalWaitForAll(fplSignalHandle **signals, const size_t count, const size_t stride, const fplTimeoutValue timeout) {
+	// @IMPLEMENT(final/Unix): fplSignalWaitForAll
+	return(false);
+}
+
+fpl_platform_api bool fplSignalWaitForAny(fplSignalHandle **signals, const size_t count, const size_t stride, const fplTimeoutValue timeout) {
+	// @IMPLEMENT(final/Unix): fplSignalWaitForAny
+	return(false);
+}
+
+fpl_platform_api bool fplSignalSet(fplSignalHandle *signal) {
+	// @IMPLEMENT(final/Unix): fplSignalSet
+	return(false);
+}
+
+fpl_platform_api bool fplSignalReset(fplSignalHandle *signal) {
+	// @IMPLEMENT(final/Unix): fplSignalReset
+	return(false);
+}
+
+//
+// Unix Input (stubs)
+//
+#if defined(FPL__ENABLE_INPUT)
+fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
+	// @IMPLEMENT(final/Unix): fplPollGamepadStates
+	return(false);
+}
+#endif // FPL__ENABLE_INPUT
+
+//
 // Unix Localization
 //
 fpl_platform_api size_t fplGetSystemLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
