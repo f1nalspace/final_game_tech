@@ -30064,7 +30064,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendWasapiIni
 
 	// Open device + IAudioClient (resolves default endpoint if id is empty).
 	{
-		fplAudioResultType openRes = fpl__WasapiOpenClientForDevice(impl, targetDevice->wasapi, &impl->device, &impl->audioClient);
+		fplAudioResultType openRes = fpl__WasapiOpenClientForDevice(impl, targetDevice->id.wasapi, &impl->device, &impl->audioClient);
 		if (openRes != fplAudioResultType_Success) {
 			FPL__WASAPI_INIT_ERROR(openRes, "Failed to open WASAPI render endpoint!");
 		}
