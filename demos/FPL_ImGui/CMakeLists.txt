@@ -67,7 +67,9 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${THIS_EXECUTABLE_PATH})
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${THIS_EXECUTABLE_PATH})
 
 # Diagnostics as english
-add_compile_options(-fdiagnostics-plain-output)
+if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+	add_compile_options(-fdiagnostics-plain-output)
+endif()
 add_compile_options(-fdiagnostics-color=always)
 add_compile_options(-fdiagnostics-format=text)
 add_compile_options(-fdiagnostics-show-option)
