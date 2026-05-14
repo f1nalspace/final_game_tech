@@ -234,6 +234,7 @@ SOFTWARE.
 	- Improved: Added output-buffer convention block to header documenting size-required return semantics
 	- Improved: Normalized @param[in] / @param[out] tags across the API documentation
 	- Improved: [POSIX] Improved fplOSGetVersionInfos() by adding support for retrieving detailed version information on BSD/macOS/other Unix systems
+	- Improved: [POSIX] fplCPUGetCoreCount was not working/compiling in FreeBSD
 	- Fixed: Fixed duplicate platform includes
 	- Fixed: fpLGetAlignmentOffset() was not guarding the alignment argument in all cases
 	- Fixed: fplS32ToString() was not handling negative values correctly
@@ -254,6 +255,7 @@ SOFTWARE.
 	- Fixed: [POSIX] dirint.h and sched.h was not included always
 	- Fixed: [POSIX] fplDateTime functions were not thread-safe — now use localtime_r / gmtime_r
 	- Fixed: [POSIX] fplDirectoriesCreate was not separator-tolerant
+	- Fixed: [POSIX] fplMemoryAllocate was not compiling in FreeBSD (MAP_ANONYMOUS vs MAP_ANON)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Fixed[#184]: [POSIX] fplDirectoriesCreate() does not create parent sub-directories
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -20233,6 +20235,14 @@ fpl_platform_api size_t fplGetInputLocale(const fplLocaleFormat targetFormat, ch
 //
 // ############################################################################
 #if defined(FPL_SUBPLATFORM_POSIX)
+
+#	if defined(FPL_SUBPLATFORM_BSD)
+#		include <sys/sysctl.h> // sysctl, CTL_HW, HW_NCPU
+#		define FPL__MAP_ANONYMOUS MAP_ANON
+#	else
+#		define FPL__MAP_ANONYMOUS MAP_ANONYMOUS
+#	endif
+
 fpl_internal void fpl__PosixReleaseSubplatform(fpl__PosixAppState *appState) {
 	fpl__PThreadUnloadApi(&appState->pthreadApi);
 }
@@ -21212,10 +21222,10 @@ fpl_platform_api void fplDynamicLibraryUnload(fplDynamicLibraryHandle *handle) {
 //
 fpl_platform_api void *fplMemoryAllocate(const size_t size) {
 	FPL__CheckArgumentZero(size, fpl_null);
-	// @NOTE(final): MAP_ANONYMOUS ensures that the memory is cleared to zero.
+	// @NOTE(final): FPL__MAP_ANONYMOUS ensures that the memory is cleared to zero.
 	// Allocate empty memory to hold the size + some arbitary padding + the actual data
 	size_t newSize = sizeof(size_t) + FPL__MEMORY_PADDING + size;
-	void *basePtr = mmap(fpl_null, newSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	void *basePtr = mmap(fpl_null, newSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | FPL__MAP_ANONYMOUS, -1, 0);
 	// Write the size at the beginning
 	*(size_t *)basePtr = newSize;
 	// The resulting address starts after the arbitary padding
@@ -21873,7 +21883,17 @@ fpl_platform_api size_t fplSessionGetUsername(char *nameBuffer, const size_t max
 }
 
 fpl_platform_api size_t fplCPUGetCoreCount(void) {
-	size_t result = sysconf(_SC_NPROCESSORS_ONLN);
+#if defined(FPL_SUBPLATFORM_BSD)
+	int mib[2] = { CTL_HW, HW_NCPU };
+	int n = 0;
+	size_t len = sizeof(n);
+	size_t result = (sysctl(mib, 2, &n, &len, fpl_null, 0) == 0 && n > 0) ? (size_t)n : 1;
+#elif defined(_SC_NPROCESSORS_ONLN)
+	long n = sysconf(_SC_NPROCESSORS_ONLN);
+	size_t result = (n > 0) ? (size_t)n : 1;
+#else
+	size_t result = 1;
+#endif
 	return(result);
 }
 
