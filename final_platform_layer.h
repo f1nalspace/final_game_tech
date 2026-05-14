@@ -30633,6 +30633,148 @@ fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendALSADescriptor =
 
 // ############################################################################
 //
+// > AUDIO_BACKEND_OSS
+//
+// ############################################################################
+#if defined(FPL__ENABLE_AUDIO_OSS)
+
+#include <sys/soundcard.h>
+#include <sys/ioctl.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <errno.h>
+#include <poll.h>
+
+typedef struct {
+	int fd;
+	void *intermediaryBuffer;
+	uint32_t intermediaryBufferSize;
+	volatile bool breakMainLoop;
+} fpl__OssAudioBackend;
+
+fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendOssInitialize) {
+	fpl__OssAudioBackend *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__OssAudioBackend);
+	fplAssert(impl != fpl_null);
+	(void)context;
+	impl->fd = -1;
+	impl->intermediaryBuffer = fpl_null;
+	impl->intermediaryBufferSize = 0;
+	impl->breakMainLoop = false;
+	return fplAudioResultType_Success;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(fpl__AudioBackendOssReleaseDevice) {
+	fpl__OssAudioBackend *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__OssAudioBackend);
+	fplAssert(impl != fpl_null);
+	(void)context;
+	if (impl->fd >= 0) {
+		close(impl->fd);
+		impl->fd = -1;
+	}
+	if (impl->intermediaryBuffer != fpl_null) {
+		fpl__ReleaseDynamicMemory(impl->intermediaryBuffer);
+		impl->intermediaryBuffer = fpl_null;
+	}
+	impl->intermediaryBufferSize = 0;
+	return true;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl__AudioBackendOssRelease) {
+	fpl__OssAudioBackend *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__OssAudioBackend);
+	fplAssert(impl != fpl_null);
+	fpl__AudioBackendOssReleaseDevice(context, backend);
+	fplClearStruct(impl);
+	return true;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendOssInitializeDevice) {
+	fpl__OssAudioBackend *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__OssAudioBackend);
+	fplAssert(impl != fpl_null);
+	(void)context;
+	(void)audioSettings;
+	(void)targetFormat;
+	(void)targetDevice;
+	(void)outputFormat;
+	(void)outputDevice;
+	(void)outputChannelMap;
+	FPL__ERROR(FPL__MODULE_AUDIO_OSS, "OSS device initialization is not implemented yet");
+	return fplAudioResultType_NotImplemented;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudioBackendOssStartDevice) {
+	fpl__OssAudioBackend *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__OssAudioBackend);
+	fplAssert(impl != fpl_null);
+	(void)context;
+	return fplAudioResultType_Success;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_STOP_DEVICE_FUNC(fpl__AudioBackendOssStopDevice) {
+	fpl__OssAudioBackend *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__OssAudioBackend);
+	fplAssert(impl != fpl_null);
+	(void)context;
+	return true;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl__AudioBackendOssMainLoop) {
+	fpl__OssAudioBackend *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__OssAudioBackend);
+	fplAssert(impl != fpl_null);
+	(void)context;
+	impl->breakMainLoop = false;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_STOP_MAIN_LOOP_FUNC(fpl__AudioBackendOssStopMainLoop) {
+	fpl__OssAudioBackend *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__OssAudioBackend);
+	fplAssert(impl != fpl_null);
+	(void)context;
+	impl->breakMainLoop = true;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendOssGetAudioDevices) {
+	(void)context;
+	(void)backend;
+	(void)maxDeviceCount;
+	(void)deviceInfoSize;
+	(void)deviceInfos;
+	return 0;
+}
+
+fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendOssGetAudioDeviceInfo) {
+	(void)context;
+	(void)backend;
+	(void)targetDevice;
+	fplClearStruct(outDeviceInfo);
+	return fplAudioResultType_NotImplemented;
+}
+
+fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendOSSDescriptor = {
+	fplStructField(fplAudioBackendDescriptor, header, {
+		fplStructField(fplAudioBackendDescriptorHeader, idName, {
+			fplStructField(fplAudioBackendDescriptorIDName, id, { 0x6f73734f, 0x4253, 0x4444, { 0xa1, 0x07, 0x4f, 0x53, 0x53, 0x42, 0x53, 0x44 } }),
+			fplStructField(fplAudioBackendDescriptorIDName, name, "OSS"),
+		}),
+		fplStructField(fplAudioBackendDescriptorHeader, type, fplAudioBackendType_OSS),
+		fplStructField(fplAudioBackendDescriptorHeader, backendSize, sizeof(fpl__OssAudioBackend)),
+		fplStructField(fplAudioBackendDescriptorHeader, isAsync, false),
+		fplStructField(fplAudioBackendDescriptorHeader, isValid, true),
+	}),
+	fplStructField(fplAudioBackendDescriptor, table, {
+		fplStructField(fplAudioBackendFunctionTable, initialize, fpl__AudioBackendOssInitialize),
+		fplStructField(fplAudioBackendFunctionTable, release, fpl__AudioBackendOssRelease),
+		fplStructField(fplAudioBackendFunctionTable, getAudioDevices, fpl__AudioBackendOssGetAudioDevices),
+		fplStructField(fplAudioBackendFunctionTable, getAudioDeviceInfo, fpl__AudioBackendOssGetAudioDeviceInfo),
+		fplStructField(fplAudioBackendFunctionTable, initializeDevice, fpl__AudioBackendOssInitializeDevice),
+		fplStructField(fplAudioBackendFunctionTable, releaseDevice, fpl__AudioBackendOssReleaseDevice),
+		fplStructField(fplAudioBackendFunctionTable, startDevice, fpl__AudioBackendOssStartDevice),
+		fplStructField(fplAudioBackendFunctionTable, stopDevice, fpl__AudioBackendOssStopDevice),
+		fplStructField(fplAudioBackendFunctionTable, mainLoop, fpl__AudioBackendOssMainLoop),
+		fplStructField(fplAudioBackendFunctionTable, stopMainLoop, fpl__AudioBackendOssStopMainLoop),
+	}),
+};
+#endif // FPL__ENABLE_AUDIO_OSS
+
+// ############################################################################
+//
 // > AUDIO_BACKEND_PULSEAUDIO
 //
 // ############################################################################
@@ -33408,6 +33550,9 @@ fpl_internal uint32_t fpl__GetAudioBackendDescriptors(const uint32_t maxDescript
 				break;
 
 			case fplAudioBackendType_OSS:
+#if defined(FPL__ENABLE_AUDIO_OSS)
+				desc = &fpl__global_audioBackendOSSDescriptor;
+#endif
 				break;
 
 			case fplAudioBackendType_Custom:
