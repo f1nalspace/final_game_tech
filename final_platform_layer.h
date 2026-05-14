@@ -29604,7 +29604,14 @@ fpl_internal bool fpl__LoadWasapiApi(fpl__WasapiApi *wasapiApi) {
 typedef struct {
 	fpl__WasapiApi api;
 	fpl__IMMDeviceEnumerator *enumerator;
+	fpl__IMMDevice *device;
+	fpl__IAudioClient *audioClient;
+	fpl__IAudioRenderClient *renderClient;
+	HANDLE bufferEvent;
+	HANDLE stopEvent;
+	uint32_t actualBufferSizeInFrames;
 	bool comInitialized;
+	volatile bool breakMainLoop;
 } fpl__AudioBackendWasapi;
 
 fpl_internal FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl__AudiobackendWasapiRelease) {
@@ -29999,22 +30006,289 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudiobackendWasap
 	return(fplAudioResultType_Success);
 }
 
-fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendWasapiInitializeDevice) {
+fpl_internal FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(fpl__AudiobackendWasapiReleaseDevice) {
+	fpl__AudioBackendWasapi *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendWasapi);
 	(void)context;
-	(void)backend;
-	(void)audioSettings;
-	(void)targetFormat;
-	(void)targetDevice;
-	(void)outputFormat;
-	(void)outputDevice;
-	(void)outputChannelMap;
-	return(fplAudioResultType_NotImplemented);
+	if (impl == fpl_null) {
+		return(true);
+	}
+	if (impl->renderClient != fpl_null) {
+		impl->renderClient->lpVtbl->Release(impl->renderClient);
+		impl->renderClient = fpl_null;
+	}
+	if (impl->audioClient != fpl_null) {
+		impl->audioClient->lpVtbl->Release(impl->audioClient);
+		impl->audioClient = fpl_null;
+	}
+	if (impl->device != fpl_null) {
+		impl->device->lpVtbl->Release(impl->device);
+		impl->device = fpl_null;
+	}
+	if (impl->bufferEvent != fpl_null) {
+		CloseHandle(impl->bufferEvent);
+		impl->bufferEvent = fpl_null;
+	}
+	if (impl->stopEvent != fpl_null) {
+		CloseHandle(impl->stopEvent);
+		impl->stopEvent = fpl_null;
+	}
+	impl->actualBufferSizeInFrames = 0;
+	impl->breakMainLoop = false;
+	return(true);
 }
 
-fpl_internal FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(fpl__AudiobackendWasapiReleaseDevice) {
+// Convert a frame count at a given sample rate to 100-nanosecond reference-time units.
+fpl_internal fpl__WasapiReferenceTime fpl__WasapiFramesToHns(uint32_t frames, uint32_t sampleRate) {
+	if (sampleRate == 0) {
+		return(0);
+	}
+	return((fpl__WasapiReferenceTime)(((uint64_t)frames * 10000000ULL + (sampleRate / 2)) / sampleRate));
+}
+
+fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudiobackendWasapiInitializeDevice) {
+	fpl__AudioBackendWasapi *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendWasapi);
+	fplAssert(impl != fpl_null);
+	fplAssertPtr(targetFormat);
+	fplAssertPtr(targetDevice);
 	(void)context;
-	(void)backend;
-	return(true);
+
+#define FPL__WASAPI_INIT_ERROR(ret, fmt, ...) do { \
+		FPL__ERROR(FPL__MODULE_AUDIO_WASAPI, fmt, ## __VA_ARGS__); \
+		fpl__AudiobackendWasapiReleaseDevice(context, backend); \
+		return ret; \
+	} while (0)
+
+	if (impl->enumerator == fpl_null) {
+		FPL__WASAPI_INIT_ERROR(fplAudioResultType_ApiFailed, "Device enumerator is not initialized!");
+	}
+
+	// Open device + IAudioClient (resolves default endpoint if id is empty).
+	{
+		fplAudioResultType openRes = fpl__WasapiOpenClientForDevice(impl, targetDevice->wasapi, &impl->device, &impl->audioClient);
+		if (openRes != fplAudioResultType_Success) {
+			FPL__WASAPI_INIT_ERROR(openRes, "Failed to open WASAPI render endpoint!");
+		}
+	}
+
+	// Build candidate WAVEFORMATEXTENSIBLE from the target format. The channel map fed in is
+	// best-effort; we may have to fall back to the mix format if the request is unsupported.
+	fpl__SetAudioDefaultChannelMapWin32(targetFormat->channels, targetFormat->channelLayout, outputChannelMap);
+	fplAudioChannelLayout outChannelLayout = targetFormat->channelLayout;
+
+	WAVEFORMATEXTENSIBLE requestedWfx = fplZeroInit;
+	fpl__BuildWaveFormatExtensible(targetFormat, outputChannelMap, &requestedWfx);
+
+	// Sanitize unset/auto fields with sensible WASAPI defaults so IsFormatSupported has a real candidate.
+	if (requestedWfx.Format.nSamplesPerSec == 0) {
+		requestedWfx.Format.nSamplesPerSec = 48000;
+	}
+	if (requestedWfx.Format.nChannels == 0) {
+		requestedWfx.Format.nChannels = 2;
+	}
+	if (requestedWfx.Format.wBitsPerSample == 0) {
+		requestedWfx.Format.wBitsPerSample = 16;
+		requestedWfx.Samples.wValidBitsPerSample = 16;
+		requestedWfx.Format.nBlockAlign = (requestedWfx.Format.nChannels * requestedWfx.Format.wBitsPerSample) / 8;
+		requestedWfx.Format.nAvgBytesPerSec = requestedWfx.Format.nBlockAlign * requestedWfx.Format.nSamplesPerSec;
+		fpl__Win32CopyGuid(&FPL__GUID_KSDATAFORMAT_SUBTYPE_PCM, &requestedWfx.SubFormat);
+	}
+
+	// Resolve the final WAVEFORMATEX via IsFormatSupported (SHARED) or GetMixFormat as a
+	// last-resort. Storage for the closest match is heap-allocated by WASAPI and freed here.
+	WAVEFORMATEX *negotiatedHeapFmt = fpl_null;
+	WAVEFORMATEX *finalFmt = fpl_null;
+	WAVEFORMATEXTENSIBLE finalFmtStorage = fplZeroInit;
+
+	{
+		WAVEFORMATEX *closest = fpl_null;
+		HRESULT hr = impl->audioClient->lpVtbl->IsFormatSupported(impl->audioClient, fpl__WasapiShareMode_Shared, (WAVEFORMATEX *)&requestedWfx, &closest);
+		if (hr == S_OK) {
+			finalFmtStorage = requestedWfx;
+			finalFmt = (WAVEFORMATEX *)&finalFmtStorage;
+			if (closest != fpl_null) {
+				impl->api.CoTaskMemFree(closest);
+			}
+		} else if (hr == S_FALSE && closest != fpl_null) {
+			negotiatedHeapFmt = closest;
+			finalFmt = negotiatedHeapFmt;
+		} else {
+			if (closest != fpl_null) {
+				impl->api.CoTaskMemFree(closest);
+			}
+			WAVEFORMATEX *mixFmt = fpl_null;
+			HRESULT hrMix = impl->audioClient->lpVtbl->GetMixFormat(impl->audioClient, &mixFmt);
+			if (FAILED(hrMix) || mixFmt == fpl_null) {
+				FPL__WASAPI_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed to negotiate a supported format (IsFormatSupported HRESULT 0x%08lx, GetMixFormat HRESULT 0x%08lx)", (unsigned long)hr, (unsigned long)hrMix);
+			}
+			negotiatedHeapFmt = mixFmt;
+			finalFmt = negotiatedHeapFmt;
+		}
+	}
+
+	// Buffer duration in 100-ns units. WASAPI's actual buffer may be larger.
+	uint32_t requestedFrames = targetFormat->bufferSizeInFrames;
+	if (requestedFrames == 0 && targetFormat->bufferSizeInMilliseconds > 0) {
+		requestedFrames = (uint32_t)(((uint64_t)targetFormat->bufferSizeInMilliseconds * finalFmt->nSamplesPerSec) / 1000);
+	}
+	if (requestedFrames == 0) {
+		requestedFrames = (uint32_t)((finalFmt->nSamplesPerSec * 25) / 1000);
+	}
+	fpl__WasapiReferenceTime hnsBufferDuration = fpl__WasapiFramesToHns(requestedFrames, finalFmt->nSamplesPerSec);
+
+	DWORD streamFlags = FPL__WASAPI_AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
+	if (audioSettings == fpl_null || !audioSettings->wasapi.noAutoConvertSampleRate) {
+		streamFlags |= FPL__WASAPI_AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM;
+		streamFlags |= FPL__WASAPI_AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY;
+	}
+
+	// Initialize. AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED is recoverable by querying the
+	// aligned buffer size, releasing + reactivating the client, and retrying. Cap to 2 retries.
+	const int maxRetries = 2;
+	HRESULT initHr = S_OK;
+	for (int attempt = 0; attempt <= maxRetries; ++attempt) {
+		initHr = impl->audioClient->lpVtbl->Initialize(impl->audioClient, fpl__WasapiShareMode_Shared, streamFlags, hnsBufferDuration, 0, finalFmt, fpl_null);
+		if (initHr != FPL__WASAPI_AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED) {
+			break;
+		}
+		UINT32 alignedFrames = 0;
+		if (FAILED(impl->audioClient->lpVtbl->GetBufferSize(impl->audioClient, &alignedFrames)) || alignedFrames == 0) {
+			break;
+		}
+		// Re-activate IAudioClient on the same device.
+		impl->audioClient->lpVtbl->Release(impl->audioClient);
+		impl->audioClient = fpl_null;
+		HRESULT hrAct = impl->device->lpVtbl->Activate(impl->device, &FPL__WASAPI_IID_IAudioClient, CLSCTX_ALL, fpl_null, (void **)&impl->audioClient);
+		if (FAILED(hrAct) || impl->audioClient == fpl_null) {
+			break;
+		}
+		hnsBufferDuration = fpl__WasapiFramesToHns(alignedFrames, finalFmt->nSamplesPerSec);
+	}
+	if (FAILED(initHr)) {
+		if (negotiatedHeapFmt != fpl_null) {
+			impl->api.CoTaskMemFree(negotiatedHeapFmt);
+		}
+		FPL__WASAPI_INIT_ERROR(fplAudioResultType_DeviceFailure, "IAudioClient::Initialize failed (HRESULT 0x%08lx)", (unsigned long)initHr);
+	}
+
+	// Event handle for the WASAPI buffer-available signal.
+	impl->bufferEvent = CreateEventW(fpl_null, FALSE, FALSE, fpl_null);
+	if (impl->bufferEvent == fpl_null) {
+		if (negotiatedHeapFmt != fpl_null) {
+			impl->api.CoTaskMemFree(negotiatedHeapFmt);
+		}
+		FPL__WASAPI_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed creating WASAPI buffer event");
+	}
+	HRESULT hrEvt = impl->audioClient->lpVtbl->SetEventHandle(impl->audioClient, impl->bufferEvent);
+	if (FAILED(hrEvt)) {
+		if (negotiatedHeapFmt != fpl_null) {
+			impl->api.CoTaskMemFree(negotiatedHeapFmt);
+		}
+		FPL__WASAPI_INIT_ERROR(fplAudioResultType_DeviceFailure, "IAudioClient::SetEventHandle failed (HRESULT 0x%08lx)", (unsigned long)hrEvt);
+	}
+
+	if (FAILED(impl->audioClient->lpVtbl->GetBufferSize(impl->audioClient, &impl->actualBufferSizeInFrames))) {
+		if (negotiatedHeapFmt != fpl_null) {
+			impl->api.CoTaskMemFree(negotiatedHeapFmt);
+		}
+		FPL__WASAPI_INIT_ERROR(fplAudioResultType_DeviceFailure, "IAudioClient::GetBufferSize failed");
+	}
+
+	HRESULT hrSvc = impl->audioClient->lpVtbl->GetService(impl->audioClient, &FPL__WASAPI_IID_IAudioRenderClient, (void **)&impl->renderClient);
+	if (FAILED(hrSvc) || impl->renderClient == fpl_null) {
+		if (negotiatedHeapFmt != fpl_null) {
+			impl->api.CoTaskMemFree(negotiatedHeapFmt);
+		}
+		FPL__WASAPI_INIT_ERROR(fplAudioResultType_DeviceFailure, "IAudioClient::GetService(IAudioRenderClient) failed (HRESULT 0x%08lx)", (unsigned long)hrSvc);
+	}
+
+	// Stop event: manual-reset, used to break the main loop.
+	impl->stopEvent = CreateEventW(fpl_null, TRUE, FALSE, fpl_null);
+	if (impl->stopEvent == fpl_null) {
+		if (negotiatedHeapFmt != fpl_null) {
+			impl->api.CoTaskMemFree(negotiatedHeapFmt);
+		}
+		FPL__WASAPI_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed creating WASAPI stop event");
+	}
+
+	// Translate the negotiated WAVEFORMATEX back into our format types.
+	fplAudioFormatType resolvedType = fpl__WasapiMapWaveFormatToAudioFormat(finalFmt);
+	if (resolvedType == fplAudioFormatType_None) {
+		if (negotiatedHeapFmt != fpl_null) {
+			impl->api.CoTaskMemFree(negotiatedHeapFmt);
+		}
+		FPL__WASAPI_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Negotiated WASAPI format is not representable by FPL");
+	}
+
+	DWORD resolvedChannelMask = 0;
+	if (finalFmt->wFormatTag == WAVE_FORMAT_EXTENSIBLE && finalFmt->cbSize >= (sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX))) {
+		resolvedChannelMask = ((const WAVEFORMATEXTENSIBLE *)finalFmt)->dwChannelMask;
+	}
+
+	fpl__CreateChannelsMappingFromChannelMask(resolvedChannelMask, finalFmt->nChannels, outputChannelMap);
+	if (outChannelLayout == fplAudioChannelLayout_Automatic) {
+		if (finalFmt->nChannels == 1) {
+			outChannelLayout = fplAudioChannelLayout_Mono;
+		} else if (finalFmt->nChannels == 2) {
+			outChannelLayout = fplAudioChannelLayout_Stereo;
+		} else if (finalFmt->nChannels == 6) {
+			outChannelLayout = fplAudioChannelLayout_5_1;
+		} else if (finalFmt->nChannels == 8) {
+			outChannelLayout = fplAudioChannelLayout_7_1;
+		}
+	}
+
+	fplAudioFormat internalFormat = fplZeroInit;
+	internalFormat.type = resolvedType;
+	internalFormat.sampleRate = finalFmt->nSamplesPerSec;
+	internalFormat.channels = finalFmt->nChannels;
+	internalFormat.channelLayout = outChannelLayout;
+	internalFormat.periods = (uint16_t)fplMax(2, fplMin(targetFormat->periods, 4));
+	internalFormat.bufferSizeInFrames = impl->actualBufferSizeInFrames;
+	internalFormat.bufferSizeInMilliseconds = (uint32_t)(((uint64_t)impl->actualBufferSizeInFrames * 1000) / finalFmt->nSamplesPerSec);
+	internalFormat.mode = targetFormat->mode;
+
+	fplAudioDeviceInfo internalDevice = fplZeroInit;
+	{
+		WCHAR *resolvedId = fpl_null;
+		if (SUCCEEDED(impl->device->lpVtbl->GetId(impl->device, &resolvedId)) && resolvedId != fpl_null) {
+			fpl__WasapiCopyDeviceID(internalDevice.id.wasapi, fplArrayCount(internalDevice.id.wasapi), resolvedId);
+			impl->api.CoTaskMemFree(resolvedId);
+		}
+		fpl__IPropertyStore *props = fpl_null;
+		if (SUCCEEDED(impl->device->lpVtbl->OpenPropertyStore(impl->device, FPL__WASAPI_STGM_READ, &props)) && props != fpl_null) {
+			fpl__WasapiPropVariant pv = fplZeroInit;
+			if (SUCCEEDED(props->lpVtbl->GetValue(props, &FPL__WASAPI_PKEY_Device_FriendlyName, &pv)) && pv.u.pwszVal != fpl_null) {
+				size_t wlen = 0;
+				while (pv.u.pwszVal[wlen] != 0) {
+					++wlen;
+				}
+				if (wlen > 0) {
+					fplWideStringToUTF8String(pv.u.pwszVal, wlen, internalDevice.name, fplArrayCount(internalDevice.name));
+				}
+			}
+			impl->api.PropVariantClear(&pv);
+			props->lpVtbl->Release(props);
+		}
+	}
+
+	if (negotiatedHeapFmt != fpl_null) {
+		impl->api.CoTaskMemFree(negotiatedHeapFmt);
+		negotiatedHeapFmt = fpl_null;
+	}
+
+	FPL_LOG(fplLogLevel_Info, FPL__MODULE_AUDIO_WASAPI,
+		"Using internal format (Channels: %u, Samplerate: %u, Type: %s, Periods: %u, Buffer frames: %u)",
+		internalFormat.channels,
+		internalFormat.sampleRate,
+		fplGetAudioFormatName(internalFormat.type),
+		internalFormat.periods,
+		internalFormat.bufferSizeInFrames);
+
+	*outputFormat = internalFormat;
+	*outputDevice = internalDevice;
+	return(fplAudioResultType_Success);
+
+#undef FPL__WASAPI_INIT_ERROR
 }
 
 fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudiobackendWasapiStartDevice) {
