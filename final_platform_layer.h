@@ -16003,24 +16003,6 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			}
 		} break;
 
-#if 0
-		case WM_SETFOCUS:
-		{
-			if (!fpl__Win32WindowGotFocus(wapi, win32Window)) {
-				break;
-			}
-			return 0;
-		} break;
-
-		case WM_KILLFOCUS:
-		{
-			if (!fpl__Win32WindowLostFocus(wapi, win32Window)) {
-				break;
-			}
-			return 0;
-		} break;
-#endif
-
 		case WM_ACTIVATEAPP:
 		{
 			if (wParam == 1) {
@@ -20277,22 +20259,9 @@ fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY) {
 	const fpl__Win32Api *wapi = &appState->winApi;
 	POINT p;
 	if (wapi->user.GetCursorPos(&p) == TRUE) {
-#if 0
-		HMONITOR monitor = wapi->user.MonitorFromPoint(p, MONITOR_DEFAULTTONEAREST);
-		if (monitor != fpl_null) {
-			MONITORINFOEXW info = fplZeroInit;
-			info.cbSize = sizeof(info);
-			if (wapi->user.GetMonitorInfoW(monitor, (LPMONITORINFO)&info) != 0) {
-				*outX = p.x - info.rcMonitor.left;
-				*outY = p.y - info.rcMonitor.top;
-				return(true);
-			}
-		}
-#else
 		*outX = p.x;
 		*outY = p.y;
 		return(true);
-#endif
 	}
 	return(false);
 }
