@@ -257,6 +257,7 @@ SOFTWARE.
 
 	#### Threading
 	- New: [Unix] Added struct fplUnixSignalEvent
+	- New: [Unix] Implemented fplSignal* for Unix/BSD
 	- Changed: [POSIX] `sched_getscheduler` POSIX standard coverage check
 	- Removed: [POSIX] Removed unused pthread_setschedprio loader/typedef/API-table entry (not exported by FreeBSD libthr, never called by FPL)
 	- Fixed: [POSIX] Fixed pthread fpl__POSIXSemaphoreHandle was not used
@@ -25693,40 +25694,275 @@ fpl_platform_api bool fplMemoryGetInfos(fplMemoryInfos *outInfos) {
 }
 
 //
-// Unix Threading (stubs)
+// Unix Threading - Auto-reset event emulated via pthread mutex + cond.
 //
+// BSD/Unix has no eventfd, so signals are emulated using a per-signal pthread
+// mutex + condition variable + isSet flag (auto-reset semantics matching Win32
+// CreateEvent(bManualReset=FALSE) and Linux eventfd). The pthread state is
+// stored inline in fplInternalSignalHandle - no heap allocation. Multi-wait is
+// coordinated via a single static global mutex + cond that Set broadcasts on,
+// avoiding per-signal waitgroup tracking.
+//
+fpl_globalvar pthread_mutex_t fpl__unixSignalMultiMutex = PTHREAD_MUTEX_INITIALIZER;
+fpl_globalvar pthread_cond_t fpl__unixSignalMultiCond = PTHREAD_COND_INITIALIZER;
+
+fpl_internal bool fpl__UnixSignalWaitOne(const fpl__PThreadApi *pthreadApi, fplSignalHandle *signal, const fplTimeoutValue timeout) {
+	pthread_mutex_t *mut = (pthread_mutex_t *)&signal->internalHandle.unixEvent.mutex;
+	pthread_cond_t *cond = (pthread_cond_t *)&signal->internalHandle.unixEvent.cond;
+	bool signaled = false;
+	pthreadApi->pthread_mutex_lock(mut);
+	if (timeout == FPL_TIMEOUT_INFINITE) {
+		while (!signal->internalHandle.unixEvent.isSet) {
+			if (pthreadApi->pthread_cond_wait(cond, mut) != 0) {
+				pthreadApi->pthread_mutex_unlock(mut);
+				return false;
+			}
+		}
+		signaled = true;
+	} else {
+		struct timespec deadline;
+		fpl__InitWaitTimeSpec(timeout, &deadline);
+		while (!signal->internalHandle.unixEvent.isSet) {
+			int rc = pthreadApi->pthread_cond_timedwait(cond, mut, &deadline);
+			if (rc == ETIMEDOUT) {
+				if (signal->internalHandle.unixEvent.isSet) {
+					break;
+				}
+				pthreadApi->pthread_mutex_unlock(mut);
+				return false;
+			}
+			if (rc != 0) {
+				pthreadApi->pthread_mutex_unlock(mut);
+				return false;
+			}
+		}
+		signaled = true;
+	}
+	// Auto-reset consumes the signal; manual-reset leaves it set.
+	if (!signal->internalHandle.unixEvent.manualReset) {
+		signal->internalHandle.unixEvent.isSet = 0;
+	}
+	pthreadApi->pthread_mutex_unlock(mut);
+	return signaled;
+}
+
+fpl_internal bool fpl__UnixSignalWaitMultiple(fplSignalHandle **signals, const uint32_t minCount, const uint32_t maxCount, const size_t stride, const fplTimeoutValue timeout) {
+	FPL__CheckArgumentNull(signals, false);
+	FPL__CheckArgumentMax(maxCount, FPL_MAX_SIGNAL_COUNT, false);
+	FPL__CheckPlatform(false);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	const size_t actualStride = stride > 0 ? stride : sizeof(fplSignalHandle *);
+
+	for (uint32_t i = 0; i < maxCount; ++i) {
+		fplSignalHandle *signal = *(fplSignalHandle **)((uint8_t *)signals + i * actualStride);
+		if (signal == fpl_null) {
+			FPL__ERROR(FPL__MODULE_THREADING, "Signal for index '%d' is null", i);
+			return false;
+		}
+		if (!signal->isValid) {
+			FPL__ERROR(FPL__MODULE_THREADING, "Signal '%p' for index '%d' is not valid", signal, i);
+			return false;
+		}
+	}
+
+	bool consumed[FPL_MAX_SIGNAL_COUNT];
+	for (uint32_t i = 0; i < maxCount; ++i) {
+		consumed[i] = false;
+	}
+
+	struct timespec deadline;
+	if (timeout != FPL_TIMEOUT_INFINITE) {
+		fpl__InitWaitTimeSpec(timeout, &deadline);
+	}
+
+	pthreadApi->pthread_mutex_lock(&fpl__unixSignalMultiMutex);
+
+	uint32_t consumedCount = 0;
+	bool timedOut = false;
+	while (consumedCount < minCount && !timedOut) {
+		// Scan & consume any set signals not yet consumed.
+		for (uint32_t i = 0; i < maxCount; ++i) {
+			if (consumed[i]) {
+				continue;
+			}
+			fplSignalHandle *signal = *(fplSignalHandle **)((uint8_t *)signals + i * actualStride);
+			pthread_mutex_t *mut = (pthread_mutex_t *)&signal->internalHandle.unixEvent.mutex;
+			pthreadApi->pthread_mutex_lock(mut);
+			if (signal->internalHandle.unixEvent.isSet) {
+				if (!signal->internalHandle.unixEvent.manualReset) {
+					signal->internalHandle.unixEvent.isSet = 0;
+				}
+				consumed[i] = true;
+				++consumedCount;
+			}
+			pthreadApi->pthread_mutex_unlock(mut);
+			if (consumedCount >= minCount) {
+				break;
+			}
+		}
+		if (consumedCount >= minCount) {
+			break;
+		}
+
+		int rc;
+		if (timeout == FPL_TIMEOUT_INFINITE) {
+			rc = pthreadApi->pthread_cond_wait(&fpl__unixSignalMultiCond, &fpl__unixSignalMultiMutex);
+		} else {
+			rc = pthreadApi->pthread_cond_timedwait(&fpl__unixSignalMultiCond, &fpl__unixSignalMultiMutex, &deadline);
+		}
+		if (rc != 0) {
+			// ETIMEDOUT or error - do one final scan under the global mutex below before giving up.
+			timedOut = true;
+		}
+	}
+
+	// Final scan after wakeup or timeout - we may have been notified just before timeout fired.
+	if (consumedCount < minCount) {
+		for (uint32_t i = 0; i < maxCount && consumedCount < minCount; ++i) {
+			if (consumed[i]) {
+				continue;
+			}
+			fplSignalHandle *signal = *(fplSignalHandle **)((uint8_t *)signals + i * actualStride);
+			pthread_mutex_t *mut = (pthread_mutex_t *)&signal->internalHandle.unixEvent.mutex;
+			pthreadApi->pthread_mutex_lock(mut);
+			if (signal->internalHandle.unixEvent.isSet) {
+				if (!signal->internalHandle.unixEvent.manualReset) {
+					signal->internalHandle.unixEvent.isSet = 0;
+				}
+				consumed[i] = true;
+				++consumedCount;
+			}
+			pthreadApi->pthread_mutex_unlock(mut);
+		}
+	}
+
+	pthreadApi->pthread_mutex_unlock(&fpl__unixSignalMultiMutex);
+
+	if (consumedCount < minCount) {
+		// Rollback - restore consumed signals so caller sees an atomic all-or-nothing failure.
+		for (uint32_t i = 0; i < maxCount; ++i) {
+			if (!consumed[i]) {
+				continue;
+			}
+			fplSignalHandle *signal = *(fplSignalHandle **)((uint8_t *)signals + i * actualStride);
+			pthread_mutex_t *mut = (pthread_mutex_t *)&signal->internalHandle.unixEvent.mutex;
+			pthread_cond_t *cond = (pthread_cond_t *)&signal->internalHandle.unixEvent.cond;
+			pthreadApi->pthread_mutex_lock(mut);
+			signal->internalHandle.unixEvent.isSet = 1;
+			pthreadApi->pthread_cond_signal(cond);
+			pthreadApi->pthread_mutex_unlock(mut);
+		}
+		return false;
+	}
+	return true;
+}
+
 fpl_platform_api bool fplSignalInit(fplSignalHandle *signal, const fplSignalValue initialValue) {
-	// @IMPLEMENT(final/Unix): fplSignalInit
-	return(false);
+	FPL__CheckArgumentNull(signal, false);
+	if (signal->isValid) {
+		FPL__ERROR(FPL__MODULE_THREADING, "Signal '%p' is already valid", signal);
+		return false;
+	}
+	FPL__CheckPlatform(false);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+
+	fplClearStruct(signal);
+	pthread_mutex_t *mut = (pthread_mutex_t *)&signal->internalHandle.unixEvent.mutex;
+	pthread_cond_t *cond = (pthread_cond_t *)&signal->internalHandle.unixEvent.cond;
+	if (pthreadApi->pthread_mutex_init(mut, fpl_null) != 0) {
+		FPL__ERROR(FPL__MODULE_THREADING, "Failed initializing signal mutex '%p'", signal);
+		return false;
+	}
+	if (pthreadApi->pthread_cond_init(cond, fpl_null) != 0) {
+		pthreadApi->pthread_mutex_destroy(mut);
+		FPL__ERROR(FPL__MODULE_THREADING, "Failed initializing signal cond '%p'", signal);
+		return false;
+	}
+	signal->internalHandle.unixEvent.isSet = (initialValue == fplSignalValue_Set) ? 1 : 0;
+	signal->internalHandle.unixEvent.manualReset = 0;
+	signal->isValid = true;
+	return true;
 }
 
 fpl_platform_api void fplSignalDestroy(fplSignalHandle *signal) {
-	// @IMPLEMENT(final/Unix): fplSignalDestroy
+	if (signal == fpl_null || !signal->isValid) {
+		return;
+	}
+	FPL__CheckPlatformNoRet();
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	pthread_mutex_t *mut = (pthread_mutex_t *)&signal->internalHandle.unixEvent.mutex;
+	pthread_cond_t *cond = (pthread_cond_t *)&signal->internalHandle.unixEvent.cond;
+	pthreadApi->pthread_cond_destroy(cond);
+	pthreadApi->pthread_mutex_destroy(mut);
+	fplClearStruct(signal);
 }
 
 fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const fplTimeoutValue timeout) {
-	// @IMPLEMENT(final/Unix): fplSignalWaitForOne
-	return(false);
+	FPL__CheckArgumentNull(signal, false);
+	if (!signal->isValid) {
+		FPL__ERROR(FPL__MODULE_THREADING, "Signal '%p' is not valid", signal);
+		return false;
+	}
+	FPL__CheckPlatform(false);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	return fpl__UnixSignalWaitOne(pthreadApi, signal, timeout);
 }
 
 fpl_platform_api bool fplSignalWaitForAll(fplSignalHandle **signals, const size_t count, const size_t stride, const fplTimeoutValue timeout) {
-	// @IMPLEMENT(final/Unix): fplSignalWaitForAll
-	return(false);
+	return fpl__UnixSignalWaitMultiple(signals, (uint32_t)count, (uint32_t)count, stride, timeout);
 }
 
 fpl_platform_api bool fplSignalWaitForAny(fplSignalHandle **signals, const size_t count, const size_t stride, const fplTimeoutValue timeout) {
-	// @IMPLEMENT(final/Unix): fplSignalWaitForAny
-	return(false);
+	return fpl__UnixSignalWaitMultiple(signals, 1, (uint32_t)count, stride, timeout);
 }
 
 fpl_platform_api bool fplSignalSet(fplSignalHandle *signal) {
-	// @IMPLEMENT(final/Unix): fplSignalSet
-	return(false);
+	FPL__CheckArgumentNull(signal, false);
+	if (!signal->isValid) {
+		FPL__ERROR(FPL__MODULE_THREADING, "Signal '%p' is not valid", signal);
+		return false;
+	}
+	FPL__CheckPlatform(false);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	pthread_mutex_t *mut = (pthread_mutex_t *)&signal->internalHandle.unixEvent.mutex;
+	pthread_cond_t *cond = (pthread_cond_t *)&signal->internalHandle.unixEvent.cond;
+
+	pthreadApi->pthread_mutex_lock(mut);
+	signal->internalHandle.unixEvent.isSet = 1;
+	if (signal->internalHandle.unixEvent.manualReset) {
+		pthreadApi->pthread_cond_broadcast(cond);
+	} else {
+		pthreadApi->pthread_cond_signal(cond);
+	}
+	pthreadApi->pthread_mutex_unlock(mut);
+
+	// Wake any multi-wait waiters parked on the global cond.
+	pthreadApi->pthread_mutex_lock(&fpl__unixSignalMultiMutex);
+	pthreadApi->pthread_cond_broadcast(&fpl__unixSignalMultiCond);
+	pthreadApi->pthread_mutex_unlock(&fpl__unixSignalMultiMutex);
+
+	return true;
 }
 
 fpl_platform_api bool fplSignalReset(fplSignalHandle *signal) {
-	// @IMPLEMENT(final/Unix): fplSignalReset
-	return(false);
+	FPL__CheckArgumentNull(signal, false);
+	if (!signal->isValid) {
+		FPL__ERROR(FPL__MODULE_THREADING, "Signal '%p' is not valid", signal);
+		return false;
+	}
+	FPL__CheckPlatform(false);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	pthread_mutex_t *mut = (pthread_mutex_t *)&signal->internalHandle.unixEvent.mutex;
+	pthreadApi->pthread_mutex_lock(mut);
+	signal->internalHandle.unixEvent.isSet = 0;
+	pthreadApi->pthread_mutex_unlock(mut);
+	return true;
 }
 
 //
