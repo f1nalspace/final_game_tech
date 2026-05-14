@@ -28414,7 +28414,7 @@ fpl_globalvar const fpl__Win32Guid FPL__GUID_KSDATAFORMAT_SUBTYPE_PCM = { 0x0000
 fpl_globalvar const fpl__Win32Guid FPL__GUID_KSDATAFORMAT_SUBTYPE_IEEE_FLOAT = { 0x00000003, 0x0000, 0x0010, { 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71 } };
 
 // Sets the default channel for a win32 audio backend, such directsound, wasapi, etc.
-fpl_internal void fpl__SetAudioDefaultChannelMapWin32(const uint16_t channels, const fplAudioChannelLayout layout, fplAudioChannelMap *outChannelMap) {
+fpl_internal void fpl__Win32SetDefaultAudioChannelMap(const uint16_t channels, const fplAudioChannelLayout layout, fplAudioChannelMap *outChannelMap) {
 	fplClearStruct(outChannelMap);
 
 	if (channels == 0 || layout == fplAudioChannelLayout_Unsupported) {
@@ -28967,7 +28967,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendDirectSou
 	}
 
 	// Initialize channel map
-	fpl__SetAudioDefaultChannelMapWin32(targetFormat->channels, targetFormat->channelLayout, outputChannelMap);
+	fpl__Win32SetDefaultAudioChannelMap(targetFormat->channels, targetFormat->channelLayout, outputChannelMap);
 
 	// Convert source format to wave format
 	fplAudioChannelLayout channelLayout = targetFormat->channelLayout;
@@ -30067,7 +30067,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendWasapiIni
 
 	// Build candidate WAVEFORMATEXTENSIBLE from the target format. The channel map fed in is
 	// best-effort; we may have to fall back to the mix format if the request is unsupported.
-	fpl__SetAudioDefaultChannelMapWin32(targetFormat->channels, targetFormat->channelLayout, outputChannelMap);
+	fpl__Win32SetDefaultAudioChannelMap(targetFormat->channels, targetFormat->channelLayout, outputChannelMap);
 	fplAudioChannelLayout outChannelLayout = targetFormat->channelLayout;
 
 	WAVEFORMATEXTENSIBLE requestedWfx = fplZeroInit;
@@ -30862,7 +30862,7 @@ fpl_internal uint32_t fpl__AlsaScaleBufferSize(const uint32_t bufferSize, const 
 }
 
 // Sets the default audio channel map a alsa backend
-fpl_internal void fpl__SetAudioDefaultChannelMapAlsa(const uint16_t channels, const fplAudioChannelLayout layout, fplAudioChannelMap *outChannelMap) {
+fpl_internal void fpl__AlsaSetDefaultAudioChannelMap(const uint16_t channels, const fplAudioChannelLayout layout, fplAudioChannelMap *outChannelMap) {
 	fplClearStruct(outChannelMap);
 
 	if (channels == 0 || layout == fplAudioChannelLayout_Unsupported) {
@@ -31527,7 +31527,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	internalFormat.channelLayout = fplGetDefaultAudioChannelLayoutFromChannels(internalChannels);
 
 	// Initialize channel map
-	fpl__SetAudioDefaultChannelMapAlsa(internalFormat.channels, internalFormat.channelLayout, outputChannelMap);
+	fpl__AlsaSetDefaultAudioChannelMap(internalFormat.channels, internalFormat.channelLayout, outputChannelMap);
 
 	//
 	// Sample rate
@@ -31892,7 +31892,7 @@ fpl_internal fplAudioFormatType fpl__MapOssFormatToAudioFormat(int ossFormat) {
 	}
 }
 
-fpl_internal void fpl__SetAudioDefaultChannelMapOss(const uint16_t channels, const fplAudioChannelLayout layout, fplAudioChannelMap *outChannelMap) {
+fpl_internal void fpl__OssSetDefaultAudioChannelMap(const uint16_t channels, const fplAudioChannelLayout layout, fplAudioChannelMap *outChannelMap) {
 	fplClearStruct(outChannelMap);
 
 	if (channels == 0 || layout == fplAudioChannelLayout_Unsupported) {
@@ -32172,7 +32172,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendOssInitia
 	}
 	impl->intermediaryBufferSize = intermediarySize;
 
-	fpl__SetAudioDefaultChannelMapOss(internalFormat.channels, internalFormat.channelLayout, outputChannelMap);
+	fpl__OssSetDefaultAudioChannelMap(internalFormat.channels, internalFormat.channelLayout, outputChannelMap);
 
 	*outputFormat = internalFormat;
 	*outputDevice = internalDevice;
@@ -32976,7 +32976,7 @@ fpl_internal FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl__AudioBackendPulseAudioMainLoo
 fpl_internal FPL_AUDIO_BACKEND_STOP_MAIN_LOOP_FUNC(fpl__AudioBackendPulseAudioStopMainLoop);
 
 // Sets the default audio channel map for the PulseAudio backend
-fpl_internal void fpl__PulseAudioSetAudioDefaultChannelMap(const uint16_t channels, const fplAudioChannelLayout layout, fplAudioChannelMap *outChannelMap) {
+fpl_internal void fpl__PulseAudioSetDefaultAudioChannelMap(const uint16_t channels, const fplAudioChannelLayout layout, fplAudioChannelMap *outChannelMap) {
 	fplClearStruct(outChannelMap);
 
 	if (channels == 0 || layout == fplAudioChannelLayout_Unsupported) {
@@ -33551,7 +33551,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPulseAudi
 	pulseAudioBackend->frameSize = actualFrameSize;
 
 	// Build the output channel map from the actual pulseaudio channel map.
-	fpl__PulseAudioSetAudioDefaultChannelMap((uint16_t)actualChannelMap->channels, internalFormat.channelLayout, outputChannelMap);
+	fpl__PulseAudioSetDefaultAudioChannelMap((uint16_t)actualChannelMap->channels, internalFormat.channelLayout, outputChannelMap);
 
 	// Build the output device info from the negotiated stream sink.
 	fplAudioDeviceInfo internalDevice = fplZeroInit;
@@ -34220,7 +34220,7 @@ fpl_internal_inline fplAudioChannelType fpl__PipeWireMapToAudioChannelType(const
 	}
 }
 
-fpl_internal void fpl__PipeWireFPLAudioChannelMap(const uint32_t channels, const fplAudioChannelLayout layout, fplAudioChannelMap *outChannelMap) {
+fpl_internal void fpl__PipeWireSetDefaultAudioChannelMap(const uint32_t channels, const fplAudioChannelLayout layout, fplAudioChannelMap *outChannelMap) {
 	fplAssertPtr(outChannelMap);
 	fplClearStruct(outChannelMap);
 	if (channels == 0 || layout == fplAudioChannelLayout_Unsupported) {
@@ -35023,7 +35023,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPipeWireI
 	internalFormat.bufferSizeInMilliseconds = fplGetAudioBufferSizeInMilliseconds(internalFormat.sampleRate, internalFormat.bufferSizeInFrames);
 	internalFormat.mode = targetFormat->mode;
 
-	fpl__PipeWireFPLAudioChannelMap(channelCount, channelLayout, outputChannelMap);
+	fpl__PipeWireSetDefaultAudioChannelMap(channelCount, channelLayout, outputChannelMap);
 
 	fplAudioDeviceInfo internalDevice = fplZeroInit;
 	if (targetDevice != fpl_null && fplGetStringLength(targetDevice->name) > 0) {
