@@ -29552,8 +29552,20 @@ fpl_internal void fpl__UnloadWasapiApi(fpl__WasapiApi *wasapiApi) {
 fpl_internal bool fpl__LoadWasapiApi(fpl__WasapiApi *wasapiApi) {
 	fplAssert(wasapiApi != fpl_null);
 	bool result = false;
-	const char *oleLibraryName = "ole32.dll";
 	fplClearStruct(wasapiApi);
+#if defined(FPL_NO_RUNTIME_LINKING)
+	// Cast through void* because our typedefs use fpl__Win32Guid* / fpl__WasapiPropVariant*,
+	// while the SDK declarations use REFIID/REFCLSID/PROPVARIANT* — layout-compatible, but
+	// the C/C++ type systems will not accept the direct assignment.
+	wasapiApi->oleLibrary = fpl_null;
+	wasapiApi->CoInitializeEx = (fpl__func_wasapi_CoInitializeEx *)(void *)CoInitializeEx;
+	wasapiApi->CoUninitialize = (fpl__func_wasapi_CoUninitialize *)(void *)CoUninitialize;
+	wasapiApi->CoCreateInstance = (fpl__func_wasapi_CoCreateInstance *)(void *)CoCreateInstance;
+	wasapiApi->CoTaskMemFree = (fpl__func_wasapi_CoTaskMemFree *)(void *)CoTaskMemFree;
+	wasapiApi->PropVariantClear = (fpl__func_wasapi_PropVariantClear *)(void *)PropVariantClear;
+	result = true;
+#else
+	const char *oleLibraryName = "ole32.dll";
 	do {
 		HMODULE oleLibrary = fpl_null;
 		FPL__WIN32_LOAD_LIBRARY(FPL__MODULE_AUDIO_WASAPI, oleLibrary, oleLibraryName);
@@ -29565,6 +29577,7 @@ fpl_internal bool fpl__LoadWasapiApi(fpl__WasapiApi *wasapiApi) {
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_WASAPI, oleLibrary, oleLibraryName, wasapiApi, fpl__func_wasapi_PropVariantClear, PropVariantClear);
 		result = true;
 	} while (0);
+#endif
 	if (!result) {
 		fpl__UnloadWasapiApi(wasapiApi);
 	}
