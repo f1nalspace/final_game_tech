@@ -305,6 +305,7 @@ SOFTWARE.
 	- Improved: Fixed multiple errors in fplGamepadGuid @brief ("a 16-byte guid for identify a game controler" → "a 16-byte GUID used to identify a game controller")
 	- Improved: Fixed "otuput" typo in fplGetDisplays @param doc
 	- Improved: Fixed word-order error in fplGetTargetAudioFrameCount @return ("Returns the number target audio frames" → "Returns the target number of audio frames")
+	- Improved: Fixed extraneous "in" in fplWindowDropFiles.fileCount description ("Number of dropped in files" → "Number of dropped files")
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -9066,7 +9067,7 @@ typedef struct fplWindowDropFiles {
 	fplMemoryBlock internalMemory;
 	//! File paths (Do not release this memory, it's automatically released after the event is processed).
 	const char **files;
-	//! Number of dropped in files.
+	//! Number of dropped files.
 	size_t fileCount;
 } fplWindowDropFiles;
 
