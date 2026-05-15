@@ -266,6 +266,7 @@ SOFTWARE.
 	- Improved: Fixed grammar and proper-noun capitalization on FPL_IS_IDE / FPL__M_IS_IDE descriptions ("a IDE" → "an IDE", "jetbrains" → "JetBrains", "Intellisense" → "IntelliSense")
 	- Improved: Fixed grammar in fpl_b32 @brief ("a integer based" → "an integer-based")
 	- Improved: Shortened the multi-sentence paragraph in fpl_b32 @note down to a single-sentence usage hint
+	- Improved: Promoted FPL_NOT_IMPLEMENTED from a one-line `//!` comment to a proper @def/@brief block and reworded the awkward description ("This will full-on crash ... always")
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -3267,7 +3268,10 @@ fplStaticAssert(sizeof(size_t) == sizeof(uint32_t));
 * @{
 */
 
-//! This will full-on crash when something is not implemented always
+/**
+* @def FPL_NOT_IMPLEMENTED
+* @brief Crashes the application via a null-pointer write. Marks code paths that are not implemented.
+*/
 #define FPL_NOT_IMPLEMENTED {*(int *)0 = 0xBAD;}
 
 #if defined(FPL_IS_C99)
