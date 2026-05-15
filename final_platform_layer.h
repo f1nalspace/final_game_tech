@@ -210,6 +210,7 @@ SOFTWARE.
 	### Details
 
 	#### Core
+	- New: Added FPL_IS_C17, FPL_IS_C23 and FPL_IS_CPP23 detection
 	- New: Added macro FPL_CACHELINE_SIZE that detects the cacheline size from the detected CPU architectures
 	- New: Added macro fplIsMaskSet that returns true when a bit mask matches a specified bit value
 	- New: Added enum fplDateTimeType, that defines the types of date times, such as UTC or local
@@ -1911,6 +1912,8 @@ SOFTWARE.
 //
 // @note C99 is supported since MSVC 2015.
 // @note C11 is supported since MSVC 2019.
+// @note C17 is supported since MSVC 2019 16.8 (/std:c17).
+// @note C23 is partially supported since MSVC 2022 17.9 (/std:clatest).
 //
 #if defined(__cplusplus)
 	/**
@@ -1950,6 +1953,14 @@ SOFTWARE.
 		*/
 #		define FPL_IS_CPP20
 #	endif
+
+#	if (__cplusplus >= 202302L)
+		/**
+		* @def FPL_IS_CPP23
+		* @brief C++/23 compiler detected.
+		*/
+#		define FPL_IS_CPP23
+#	endif
 #elif defined(_MSC_VER)
 #	if (_MSC_VER >= 1900)
 		/**
@@ -1964,6 +1975,22 @@ SOFTWARE.
 			* @brief C11 compiler detected (MSVC).
 			*/
 #			define FPL_IS_C11
+#		endif
+
+#		if (_MSC_VER >= 1928)
+			/**
+			* @def FPL_IS_C17
+			* @brief C17 compiler detected (MSVC).
+			*/
+#			define FPL_IS_C17
+#		endif
+
+#		if (_MSC_VER >= 1939)
+			/**
+			* @def FPL_IS_C23
+			* @brief C23 compiler detected (MSVC).
+			*/
+#			define FPL_IS_C23
 #		endif
 
 #	else
@@ -1982,6 +2009,22 @@ SOFTWARE.
 		* @brief C11 compiler detected.
 		*/
 #		define FPL_IS_C11
+#	endif
+
+#	if __STDC_VERSION__ >= 201710L
+		/**
+		* @def FPL_IS_C17
+		* @brief C17 compiler detected.
+		*/
+#		define FPL_IS_C17
+#	endif
+
+#	if __STDC_VERSION__ >= 202311L
+		/**
+		* @def FPL_IS_C23
+		* @brief C23 compiler detected.
+		*/
+#		define FPL_IS_C23
 #	endif
 #else
 #	error "This C compiler is not supported!"
