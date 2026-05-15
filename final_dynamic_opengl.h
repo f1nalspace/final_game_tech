@@ -361,7 +361,7 @@ extern "C" {
 #endif
 	} fglOpenGLWindowHandle;
 
-	//! OpenGL window handle
+	//! OpenGL rendering context (platform-tagged union of Win32 HGLRC or POSIX/GLX context)
 	typedef union fglOpenGLRenderingContext {
 #if defined(FGL_PLATFORM_WIN32)
 		//! Win32 rendering context
@@ -372,7 +372,7 @@ extern "C" {
 #endif
 	} fglOpenGLRenderingContext;
 
-	//! OpenGL rendering context
+	//! Combined OpenGL context handle, holding the window handle, the rendering context and a validity flag
 	typedef struct fglOpenGLContext {
 		//! Window handle container
 		fglOpenGLWindowHandle windowHandle;
