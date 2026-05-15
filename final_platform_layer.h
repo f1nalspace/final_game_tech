@@ -299,6 +299,7 @@ SOFTWARE.
 	- Fixed: fplConditionInit @note told readers to call fplSignalDestroy() when done — should be fplConditionDestroy() (signal/condition copy-paste mismatch)
 	- Improved: Swept the non-standard plural "informations" → "information" across six doc blocks (OSSession, Files defgroup, fplInternalFileRootInfo, fplFileEntry, Input defgroup, fplWindowDropFiles, Locale defgroup)
 	- Improved: Fixed grammar in the Files defgroup @brief ("This category contains and types and functions for handling files & directories" → "types and functions for handling files and directories")
+	- Improved: Normalized "filehandle" → "file handle" across ten doc blocks (Win32/POSIX handle typedefs, fplInternalFileHandle, fplFileHandle, fplInternalFileEntryHandle, fplFileEntry)
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -3793,7 +3794,7 @@ typedef HINSTANCE fpl__Win32InstanceHandle;
 typedef HMODULE fpl__Win32LibraryHandle;
 //! A win32 thread handle
 typedef HANDLE fpl__Win32ThreadHandle;
-//! A win32 filehandle
+//! A win32 file handle
 typedef HANDLE fpl__Win32FileHandle;
 //! A win32 mutex handle
 typedef CRITICAL_SECTION fpl__Win32MutexHandle;
@@ -3822,7 +3823,7 @@ fplStaticAssert(sizeof(CRITICAL_SECTION) <= sizeof(uint64_t[16]));
 
 //! A POSIX library handle
 typedef void *fpl__POSIXLibraryHandle;
-//! A POSIX filehandle
+//! A POSIX file handle
 typedef int fpl__POSIXFileHandle;
 //! A POSIX directory handle
 typedef DIR *fpl__POSIXDirHandle;
@@ -7414,24 +7415,24 @@ fpl_common_api size_t fplS32ToString(const int32_t value, char *buffer, const si
 
 /**
 * @union fplInternalFileHandle
-* @brief A union containing the internal filehandle for any platform.
+* @brief A union containing the internal file handle for any platform.
 */
 typedef union fplInternalFileHandle {
 #if defined(FPL_PLATFORM_WINDOWS)
-	//! Win32 filehandle.
+	//! Win32 file handle.
 	fpl__Win32FileHandle win32FileHandle;
 #elif defined(FPL_SUBPLATFORM_POSIX)
-	//! POSIX filehandle.
+	//! POSIX file handle.
 	fpl__POSIXFileHandle posixFileHandle;
 #endif
 } fplInternalFileHandle;
 
 /**
 * @struct fplFileHandle
-* @brief The filehandle structure.
+* @brief The file handle structure.
 */
 typedef struct fplFileHandle {
-	//! Internal filehandle.
+	//! Internal file handle.
 	fplInternalFileHandle internalHandle;
 	//! File opened successfully.
 	fpl_b32 isValid;
@@ -7537,11 +7538,11 @@ FPL_ENUM_AS_FLAGS_OPERATORS(fplFileAttributeFlags);
 
 /**
 * @union fplInternalFileEntryHandle
-* @brief A union containing the internal filehandle for any platform.
+* @brief A union containing the internal file handle for any platform.
 */
 typedef union fplInternalFileEntryHandle {
 #if defined(FPL_PLATFORM_WINDOWS)
-	//! Win32 filehandle.
+	//! Win32 file handle.
 	fpl__Win32FileHandle win32FileHandle;
 #elif defined(FPL_SUBPLATFORM_POSIX)
 	//! Posix directory handle.
@@ -7583,7 +7584,7 @@ typedef struct fplFileTimeStamps {
 typedef struct fplFileEntry {
 	//! Name.
 	char name[FPL_MAX_FILENAME_LENGTH];
-	//! Internal filehandle.
+	//! Internal file handle.
 	fplInternalFileEntryHandle internalHandle;
 	//! Internal root info.
 	fplInternalFileRootInfo internalRoot;
