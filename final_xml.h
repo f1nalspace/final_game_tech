@@ -5,18 +5,18 @@ final_xml.h
 	About
 -------------------------------------------------------------------------------
 
-A open source single header file XML parser C99 library.
+An open source single header file XML parser C99 library.
 
-This library is designed to parse a xml-byte stream.
+This library is designed to parse an XML byte stream.
 It has bare minimum error handling and a limited set of features.
 
-The main usage is to read xml files, such as .TMX
-or other asset xml based file formats.
+The main usage is to read XML files, such as .TMX
+or other asset XML based file formats.
 
 It uses a block allocator memory scheme based on malloc.
 Use FXML_MALLOC/FXML_FREE to provide your own memory allocation function.
 
-The only dependencies are a C99 complaint compiler.
+The only dependencies are a C99 compliant compiler.
 
 -------------------------------------------------------------------------------
 	Getting started
@@ -39,7 +39,7 @@ fxmlContext ctx = FXML_ZERO_INIT;
 if(fxmlInitFromMemory(xml1, strlen(xml1), &ctx)) {
 	fxmlTag root = FXML_ZERO_INIT;
 	if(fxmlParse(&ctx, &root)) {
-		// Parsed result is stored in the root tag, including all childrens and attributes
+		// Parsed result is stored in the root tag, including all children and attributes
 	}
 	fxmlFree(&ctx);
 }
@@ -77,7 +77,7 @@ SOFTWARE.
 	\file final_xml.h
 	\version v0.3.1 alpha
 	\author Torsten Spaete
-	\brief Final XML (FXML) - A open source C99 single file header xml parser library.
+	\brief Final XML (FXML) - An open source C99 single file header XML parser library.
 */
 
 /*!
