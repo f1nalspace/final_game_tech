@@ -303,6 +303,7 @@ SOFTWARE.
 	- Improved: Fixed typo in fplFileTimeStamps @brief ("filestamps" → "timestamps")
 	- Improved: Fixed grammar in Input defgroup @brief ("contains the types and function for query keyboard / mouse / game pad information" → "types and functions for querying keyboard, mouse and gamepad information")
 	- Improved: Fixed multiple errors in fplGamepadGuid @brief ("a 16-byte guid for identify a game controler" → "a 16-byte GUID used to identify a game controller")
+	- Improved: Fixed "otuput" typo in fplGetDisplays @param doc
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -9461,7 +9462,7 @@ fpl_platform_api size_t fplGetDisplayCount(void);
 
 /**
 * @brief Gets information about all active displays.
-* @param[out] outDisplays The otuput array of display information structures @ref fplDisplayInfo.
+* @param[out] outDisplays The output array of display information structures @ref fplDisplayInfo.
 * @param[in] maxDisplayCount The maximum number of display infos available in the output array.
 * @return Returns the total number of active displays.
 */
