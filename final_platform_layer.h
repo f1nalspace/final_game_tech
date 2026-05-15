@@ -5641,30 +5641,15 @@ typedef uint32_t(fpl_audio_client_read_callback)(const fplAudioFormat *deviceFor
 * @struct fplAudioSettings
 * @brief Stores audio settings, such as format, device info, callbacks, backend, etc.
 *
-* The @ref targetFormat field describes the desired audio format. During
-* @ref fplPlatformInit / @ref fplAudioInit the platform probes backends in a
-* tier-based order, keeping sample rate sacred until the very last tier:
+* The @ref targetFormat field describes the desired audio format.
+* During @ref fplPlatformInit / @ref fplAudioInit the platform probes backends in a tier-based order, keeping sample rate sacred until the very last tier:
 *
-* 1. Exact match: (user.sampleRate, user.channels, user.type).
+* 1. Exact match: (sampleRate, channels, type).
 * 2. Sample rate + channels match, type relaxed against the fallback type table.
 * 3. Sample rate + type match, channels relaxed against the fallback channels table.
 * 4. Sample rate match only, channels and type relaxed.
 * 5. Full fallback: rate, channels and type all relaxed.
-* 6. Backend-native: every backend is offered a blank format and may pick
-*    whatever its own internal default is (e.g. OSS uses /dev/dsp's reported
-*    capabilities). This is the very-last resort when no tier above produced
-*    a match.
-*
-* An axis is treated as "sacred" by a tier only when the caller actually
-* locked that field on @ref targetFormat. Leaving a field at its zero/auto
-* value means the caller has no preference, so that axis is iterated against
-* the fallback table even on Tier 1.
-*
-* Within each tier every registered audio backend is tried in order before the
-* next candidate is evaluated. First success wins. So a caller that asks for
-* 44100/S16 will get exactly that from any backend that supports it natively,
-* and never get a silently substituted rate as long as at least one backend
-* can serve the rate at any channel/type combination.
+* 6. Backend-native: every backend is offered a blank format and may pick whatever its own internal default is (e.g. OSS uses /dev/dsp's reported capabilities). This is the very-last resort when no tier above produced a match.
 */
 typedef struct fplAudioSettings {
 	//! The target format.
