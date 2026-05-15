@@ -56,7 +56,6 @@ Last refresh: 2026-05-15
 - [x] ~~Supported-formats list~~ — dropped: `fplAudioDeviceInfoExtended` removed, `fplGetAudioDeviceInfo` returns plain `fplAudioDeviceInfo`. Native format already available via `fplGetAudioHardwareFormat`.
 - [ ] `[ALSA]` Optional `dmix`/`hw` device id `:%d,%d` probe (line 31369)
 - [ ] `[PipeWire]` Remove PipeWire include when runtime linking is enabled (line 33949)
-- [ ] Audio backend descriptor from audio settings (line 35362)
 - [x] ~~OSS backend — planned, not implemented~~ — done, available on Linux and BSD/Unix
 - [x] ~~WASAPI backend~~ — done, default on Windows
 
@@ -75,7 +74,7 @@ Last refresh: 2026-05-15
 - `@IMPLEMENT` markers remaining: 3
   - CPU caps / CPU name for non-x86 (13955, 13960)
   - fplPollGamepadStates Unix (26043)
-- `@TODO` markers remaining: 9
+- `@TODO` markers remaining: 8
   - Win32 Read ACL (19261)
   - X11 OEM1-8 keys (22963)
   - X11 resolution/refresh change (24804)
@@ -84,6 +83,5 @@ Last refresh: 2026-05-15
   - Vulkan settings validation (27928)
   - ALSA dmix/hw probe (31369)
   - PipeWire include under runtime linking (33949)
-  - Audio backend descriptor from settings (35362)
 - `NotImplemented` audio device-info returns: 0 (all backends implement GetAudioDeviceInfo)
 
