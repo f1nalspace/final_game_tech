@@ -224,6 +224,7 @@ SOFTWARE.
 	- New: Added function fplTryStringToS32 that is a more safe-method than to fplStringToS32
 	- New: Added macro FPL_MAX_VERSION_PART_LENGTH for the maximum length of a version part string
 	- New[#183]: Added macro fpl_extern_inline
+	- New[#190]: [Linux] Implemented fplMemoryGetUsage via sysinfo() and /proc/meminfo parsing
 	- New: [Unix/BSD] Implemented fplGetSystemLocale / fplGetUserLocale / fplGetInputLocale via setlocale + ISO-639 conversion (shared fpl__PosixLocaleToISO639 helper)
 	- Improved: Better documentation of the preprocessor setup blocks
 	- Improved: Added fplStaticAssert checks in the non-opaque branch verifying that the real Win32/POSIX/X11 handle types fit into the opaque-branch buffers (catches portability breakage at compile time instead of corrupting memory at runtime)
@@ -256,7 +257,6 @@ SOFTWARE.
 	- Changed: [POSIX] Disabled FPL_NO_PLATFORM_INCLUDES for pthread includes
 	- Changed: [BSD] Define __BSD_VISIBLE on BSD platforms
 	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
-	- New: [Linux] Implemented fplMemoryGetUsage via sysinfo() and /proc/meminfo parsing
 
 	#### Threading
 	- New: [Unix] Added struct fplUnixSignalEvent
