@@ -5604,12 +5604,12 @@ typedef struct fplOSSAudioSettings {
 #if defined(FPL__ENABLE_AUDIO_WASAPI)
 /**
 * @struct fplWasapiAudioSettings
-* @brief Stores settings for the WASAPI audio backend.
+* @brief Stores settings for the WASAPI audio backend (currently empty; reserved for future fields).
 * @note Exclusive vs. shared mode is selected via @ref fplAudioMode / @ref fplAudioShareMode in @ref fplAudioFormat, not here.
+* @note FPL never resamples; WASAPI is strict — if the requested format is not natively supported the probe falls through to the next backend.
 */
 typedef struct fplWasapiAudioSettings {
-	//! If non-zero, enable WASAPI's automatic sample rate / format conversion (AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM). Off by default so the backend either serves the requested format natively or fails (letting FPL probe the next backend). FPL itself never resamples.
-	fpl_b32 autoConvertSampleRate;
+	fpl_b32 _reserved;
 } fplWasapiAudioSettings;
 #endif
 
@@ -29565,8 +29565,6 @@ typedef enum fpl__WasapiShareMode {
 #define FPL__WASAPI_STGM_READ                       0x00000000L
 
 #define FPL__WASAPI_AUDCLNT_STREAMFLAGS_EVENTCALLBACK       0x00040000
-#define FPL__WASAPI_AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY 0x08000000
-#define FPL__WASAPI_AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM      0x80000000
 
 #define FPL__WASAPI_AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED       ((HRESULT)0x88890019)
 
@@ -30166,9 +30164,9 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendWasapiIni
 		fpl__Win32CopyGuid(&FPL__GUID_KSDATAFORMAT_SUBTYPE_PCM, &requestedWfx.SubFormat);
 	}
 
-	// Format-negotiation result. negotiatedHeapFmt is non-null only when WASAPI allocated it
-	// (S_FALSE closest match or GetMixFormat); CoTaskMemFree it before returning.
-	WAVEFORMATEX *negotiatedHeapFmt = fpl_null;
+	// Format-negotiation result. finalFmt always points into the stack-local finalFmtStorage
+	// (FPL never accepts a WASAPI-allocated heap format — strict mode rejects non-S_OK responses
+	// before they get assigned here).
 	WAVEFORMATEX *finalFmt = fpl_null;
 	WAVEFORMATEXTENSIBLE finalFmtStorage = fplZeroInit;
 	bool useExclusive = (fplGetAudioShareMode(targetFormat->mode) == fplAudioShareMode_Exclusive);
@@ -30216,30 +30214,18 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendWasapiIni
 	// Shared negotiation (also the fallback when exclusive failed).
 	// FPL does not resample. Strict policy: only accept S_OK from IsFormatSupported so the probe
 	// loop can move on to the next backend (e.g. DirectSound) when WASAPI cannot natively serve
-	// the requested format. If the caller opts in via wasapi.autoConvertSampleRate, we always
-	// pass the requested format to Initialize() and let AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM convert
-	// inside the WASAPI engine. IsFormatSupported does not consider AUTOCONVERTPCM so its result
-	// is informational only in that mode.
-	bool useAutoConvert = (!useExclusive) && (audioSettings != fpl_null) && (audioSettings->wasapi.autoConvertSampleRate != 0);
+	// the requested format.
 	if (!useExclusive) {
-		if (useAutoConvert) {
+		WAVEFORMATEX *closest = fpl_null;
+		HRESULT hr = impl->audioClient->lpVtbl->IsFormatSupported(impl->audioClient, fpl__WasapiShareMode_Shared, (WAVEFORMATEX *)&requestedWfx, &closest);
+		if (closest != fpl_null) {
+			impl->api.CoTaskMemFree(closest);
+		}
+		if (hr == S_OK) {
 			finalFmtStorage = requestedWfx;
 			finalFmt = (WAVEFORMATEX *)&finalFmtStorage;
 		} else {
-			WAVEFORMATEX *closest = fpl_null;
-			HRESULT hr = impl->audioClient->lpVtbl->IsFormatSupported(impl->audioClient, fpl__WasapiShareMode_Shared, (WAVEFORMATEX *)&requestedWfx, &closest);
-			if (hr == S_OK) {
-				finalFmtStorage = requestedWfx;
-				finalFmt = (WAVEFORMATEX *)&finalFmtStorage;
-				if (closest != fpl_null) {
-					impl->api.CoTaskMemFree(closest);
-				}
-			} else {
-				if (closest != fpl_null) {
-					impl->api.CoTaskMemFree(closest);
-				}
-				FPL__WASAPI_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Requested format not natively supported by WASAPI in shared mode (IsFormatSupported HRESULT 0x%08lx); enable wasapi.autoConvertSampleRate to accept any PCM format", (unsigned long)hr);
-			}
+			FPL__WASAPI_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Requested format not natively supported by WASAPI in shared mode (IsFormatSupported HRESULT 0x%08lx)", (unsigned long)hr);
 		}
 	}
 
@@ -30253,9 +30239,6 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendWasapiIni
 		fpl__WasapiReferenceTime defaultPeriod = 0;
 		fpl__WasapiReferenceTime minPeriod = 0;
 		if (FAILED(impl->audioClient->lpVtbl->GetDevicePeriod(impl->audioClient, &defaultPeriod, &minPeriod))) {
-			if (negotiatedHeapFmt != fpl_null) {
-				impl->api.CoTaskMemFree(negotiatedHeapFmt);
-			}
 			FPL__WASAPI_INIT_ERROR(fplAudioResultType_DeviceFailure, "IAudioClient::GetDevicePeriod failed");
 		}
 		fpl__WasapiReferenceTime period = defaultPeriod;
@@ -30287,13 +30270,9 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendWasapiIni
 		hnsPeriodicity = 0;
 	}
 
-	// Stream flags. Exclusive event-driven cannot use AUTOCONVERTPCM / SRC_DEFAULT_QUALITY.
-	// AUTOCONVERTPCM is only enabled when the caller explicitly opts in (and we already accepted a non-exact format above).
+	// Stream flags. Event-callback only; FPL never resamples so we never enable WASAPI's
+	// in-engine PCM conversion (the requested format is always natively supported here).
 	DWORD streamFlags = FPL__WASAPI_AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
-	if (useAutoConvert) {
-		streamFlags |= FPL__WASAPI_AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM;
-		streamFlags |= FPL__WASAPI_AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY;
-	}
 
 	fpl__WasapiShareMode initShareMode = useExclusive ? fpl__WasapiShareMode_Exclusive : fpl__WasapiShareMode_Shared;
 
@@ -30325,9 +30304,6 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendWasapiIni
 		}
 	}
 	if (FAILED(initHr)) {
-		if (negotiatedHeapFmt != fpl_null) {
-			impl->api.CoTaskMemFree(negotiatedHeapFmt);
-		}
 		FPL__WASAPI_INIT_ERROR(fplAudioResultType_DeviceFailure, "IAudioClient::Initialize (%s) failed (HRESULT 0x%08lx)", (useExclusive ? "exclusive" : "shared"), (unsigned long)initHr);
 	}
 
@@ -30336,49 +30312,31 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendWasapiIni
 	// Event handle for the WASAPI buffer-available signal.
 	impl->bufferEvent = CreateEventW(fpl_null, FALSE, FALSE, fpl_null);
 	if (impl->bufferEvent == fpl_null) {
-		if (negotiatedHeapFmt != fpl_null) {
-			impl->api.CoTaskMemFree(negotiatedHeapFmt);
-		}
 		FPL__WASAPI_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed creating WASAPI buffer event");
 	}
 	HRESULT hrEvt = impl->audioClient->lpVtbl->SetEventHandle(impl->audioClient, impl->bufferEvent);
 	if (FAILED(hrEvt)) {
-		if (negotiatedHeapFmt != fpl_null) {
-			impl->api.CoTaskMemFree(negotiatedHeapFmt);
-		}
 		FPL__WASAPI_INIT_ERROR(fplAudioResultType_DeviceFailure, "IAudioClient::SetEventHandle failed (HRESULT 0x%08lx)", (unsigned long)hrEvt);
 	}
 
 	if (FAILED(impl->audioClient->lpVtbl->GetBufferSize(impl->audioClient, &impl->actualBufferSizeInFrames))) {
-		if (negotiatedHeapFmt != fpl_null) {
-			impl->api.CoTaskMemFree(negotiatedHeapFmt);
-		}
 		FPL__WASAPI_INIT_ERROR(fplAudioResultType_DeviceFailure, "IAudioClient::GetBufferSize failed");
 	}
 
 	HRESULT hrSvc = impl->audioClient->lpVtbl->GetService(impl->audioClient, &FPL__WASAPI_IID_IAudioRenderClient, (void **)&impl->renderClient);
 	if (FAILED(hrSvc) || impl->renderClient == fpl_null) {
-		if (negotiatedHeapFmt != fpl_null) {
-			impl->api.CoTaskMemFree(negotiatedHeapFmt);
-		}
 		FPL__WASAPI_INIT_ERROR(fplAudioResultType_DeviceFailure, "IAudioClient::GetService(IAudioRenderClient) failed (HRESULT 0x%08lx)", (unsigned long)hrSvc);
 	}
 
 	// Stop event: manual-reset, used to break the main loop.
 	impl->stopEvent = CreateEventW(fpl_null, TRUE, FALSE, fpl_null);
 	if (impl->stopEvent == fpl_null) {
-		if (negotiatedHeapFmt != fpl_null) {
-			impl->api.CoTaskMemFree(negotiatedHeapFmt);
-		}
 		FPL__WASAPI_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed creating WASAPI stop event");
 	}
 
 	// Translate the negotiated WAVEFORMATEX back into our format types.
 	fplAudioFormatType resolvedType = fpl__WasapiMapWaveFormatToAudioFormat(finalFmt);
 	if (resolvedType == fplAudioFormatType_None) {
-		if (negotiatedHeapFmt != fpl_null) {
-			impl->api.CoTaskMemFree(negotiatedHeapFmt);
-		}
 		FPL__WASAPI_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Negotiated WASAPI format is not representable by FPL");
 	}
 
@@ -30432,11 +30390,6 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendWasapiIni
 			impl->api.PropVariantClear(&pv);
 			props->lpVtbl->Release(props);
 		}
-	}
-
-	if (negotiatedHeapFmt != fpl_null) {
-		impl->api.CoTaskMemFree(negotiatedHeapFmt);
-		negotiatedHeapFmt = fpl_null;
 	}
 
 	FPL_LOG(fplLogLevel_Info, FPL__MODULE_AUDIO_WASAPI,
