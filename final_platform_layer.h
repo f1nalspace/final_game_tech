@@ -281,6 +281,7 @@ SOFTWARE.
 	- Fixed: fplDateTime struct fields were commented with plain `//` instead of `//!` — doxygen silently skipped them; now extracted correctly
 	- Fixed: fplDateTimeErrors enum members were commented with plain `//` instead of `//!` — doxygen silently skipped them; also added a description for the previously undocumented `_None` value
 	- Fixed: fplDateTimeCreationResult was tagged as `@enum` even though it is a `struct`; struct fields were commented with `//` instead of `//!`; also fixed grammar on the `success` field ("successfully" → "successful")
+	- Fixed: fplDateTimeResult struct fields were commented with plain `//` instead of `//!` — doxygen silently skipped them; now extracted correctly
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -4089,21 +4090,21 @@ fpl_common_api fplDateTimeCreationResult fplDateTimeCreate(const uint16_t year, 
 * @brief Stores the components for a date and time, that may be computed from a date time stamp.
 */
 typedef struct fplDateTimeResult {
-	// Year in range of 0-9999
+	//! Year in range of 0-9999.
 	uint16_t year;
-	// Millisecond in range of 0-999
+	//! Millisecond in range of 0-999.
 	uint16_t millisecond;
-	// Month in range of 1-12
+	//! Month in range of 1-12.
 	uint8_t month;
-	// Day in range of 1-31
+	//! Day in range of 1-31.
 	uint8_t day;
-	// Hour in range of 0-23
+	//! Hour in range of 0-23.
 	uint8_t hour;
-	// Minute in range of 0-59
+	//! Minute in range of 0-59.
 	uint8_t minute;
-	// Second in range of 0-59
+	//! Second in range of 0-59.
 	uint8_t second;
-	// Padding to align to 16-bytes
+	//! Padding to align to 16-bytes.
 	uint8_t padding[7];
 } fplDateTimeResult;
 
