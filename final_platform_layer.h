@@ -298,6 +298,7 @@ SOFTWARE.
 	- Improved: Replaced the vague "When this is set to infinite" timeout description with a concrete @ref FPL_TIMEOUT_INFINITE reference across the eight thread/mutex/semaphore/signal/condition wait functions
 	- Fixed: fplConditionInit @note told readers to call fplSignalDestroy() when done — should be fplConditionDestroy() (signal/condition copy-paste mismatch)
 	- Improved: Swept the non-standard plural "informations" → "information" across six doc blocks (OSSession, Files defgroup, fplInternalFileRootInfo, fplFileEntry, Input defgroup, fplWindowDropFiles, Locale defgroup)
+	- Improved: Fixed grammar in the Files defgroup @brief ("This category contains and types and functions for handling files & directories" → "types and functions for handling files and directories")
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -7406,7 +7407,7 @@ fpl_common_api size_t fplS32ToString(const int32_t value, char *buffer, const si
 // ----------------------------------------------------------------------------
 /**
 * @defgroup Files Files/IO functions
-* @brief This category contains and types and functions for handling files & directories
+* @brief This category contains types and functions for handling files and directories.
 * @{
 */
 // ----------------------------------------------------------------------------
