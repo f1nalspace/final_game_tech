@@ -25731,12 +25731,13 @@ fpl_platform_api bool fplMemoryGetUsage(fplMemoryInfos *outInfos) {
 // Multi-wait coordination uses a shared mutex+cond on fpl__UnixAppState.
 //
 fpl_internal bool fpl__UnixSignalWaitOne(const fpl__PThreadApi *pthreadApi, fplSignalHandle *signal, const fplTimeoutValue timeout) {
-	pthread_mutex_t *mut = (pthread_mutex_t *)&signal->internalHandle.unixEvent.mutex;
-	pthread_cond_t *cond = (pthread_cond_t *)&signal->internalHandle.unixEvent.cond;
+	fplUnixSignalEvent *ev = &signal->internalHandle.unixEvent;
+	pthread_mutex_t *mut = (pthread_mutex_t *)&ev->mutex;
+	pthread_cond_t *cond = (pthread_cond_t *)&ev->cond;
 	bool signaled = false;
 	pthreadApi->pthread_mutex_lock(mut);
 	if (timeout == FPL_TIMEOUT_INFINITE) {
-		while (!signal->internalHandle.unixEvent.isSet) {
+		while (!ev->isSet) {
 			if (pthreadApi->pthread_cond_wait(cond, mut) != 0) {
 				pthreadApi->pthread_mutex_unlock(mut);
 				return false;
@@ -25746,10 +25747,10 @@ fpl_internal bool fpl__UnixSignalWaitOne(const fpl__PThreadApi *pthreadApi, fplS
 	} else {
 		struct timespec deadline;
 		fpl__InitWaitTimeSpec(timeout, &deadline);
-		while (!signal->internalHandle.unixEvent.isSet) {
+		while (!ev->isSet) {
 			int rc = pthreadApi->pthread_cond_timedwait(cond, mut, &deadline);
 			if (rc == ETIMEDOUT) {
-				if (signal->internalHandle.unixEvent.isSet) {
+				if (ev->isSet) {
 					break;
 				}
 				pthreadApi->pthread_mutex_unlock(mut);
@@ -25763,8 +25764,8 @@ fpl_internal bool fpl__UnixSignalWaitOne(const fpl__PThreadApi *pthreadApi, fplS
 		signaled = true;
 	}
 	// Auto-reset consumes the signal; manual-reset leaves it set.
-	if (!signal->internalHandle.unixEvent.manualReset) {
-		signal->internalHandle.unixEvent.isSet = 0;
+	if (!ev->manualReset) {
+		ev->isSet = 0;
 	}
 	pthreadApi->pthread_mutex_unlock(mut);
 	return signaled;
@@ -25816,11 +25817,12 @@ fpl_internal bool fpl__UnixSignalWaitMultiple(fplSignalHandle **signals, const u
 				continue;
 			}
 			fplSignalHandle *signal = *(fplSignalHandle **)((uint8_t *)signals + i * actualStride);
-			pthread_mutex_t *mut = (pthread_mutex_t *)&signal->internalHandle.unixEvent.mutex;
+			fplUnixSignalEvent *ev = &signal->internalHandle.unixEvent;
+			pthread_mutex_t *mut = (pthread_mutex_t *)&ev->mutex;
 			pthreadApi->pthread_mutex_lock(mut);
-			if (signal->internalHandle.unixEvent.isSet) {
-				if (!signal->internalHandle.unixEvent.manualReset) {
-					signal->internalHandle.unixEvent.isSet = 0;
+			if (ev->isSet) {
+				if (!ev->manualReset) {
+					ev->isSet = 0;
 				}
 				consumed[i] = true;
 				++consumedCount;
@@ -25853,11 +25855,12 @@ fpl_internal bool fpl__UnixSignalWaitMultiple(fplSignalHandle **signals, const u
 				continue;
 			}
 			fplSignalHandle *signal = *(fplSignalHandle **)((uint8_t *)signals + i * actualStride);
-			pthread_mutex_t *mut = (pthread_mutex_t *)&signal->internalHandle.unixEvent.mutex;
+			fplUnixSignalEvent *ev = &signal->internalHandle.unixEvent;
+			pthread_mutex_t *mut = (pthread_mutex_t *)&ev->mutex;
 			pthreadApi->pthread_mutex_lock(mut);
-			if (signal->internalHandle.unixEvent.isSet) {
-				if (!signal->internalHandle.unixEvent.manualReset) {
-					signal->internalHandle.unixEvent.isSet = 0;
+			if (ev->isSet) {
+				if (!ev->manualReset) {
+					ev->isSet = 0;
 				}
 				consumed[i] = true;
 				++consumedCount;
@@ -25875,10 +25878,11 @@ fpl_internal bool fpl__UnixSignalWaitMultiple(fplSignalHandle **signals, const u
 				continue;
 			}
 			fplSignalHandle *signal = *(fplSignalHandle **)((uint8_t *)signals + i * actualStride);
-			pthread_mutex_t *mut = (pthread_mutex_t *)&signal->internalHandle.unixEvent.mutex;
-			pthread_cond_t *cond = (pthread_cond_t *)&signal->internalHandle.unixEvent.cond;
+			fplUnixSignalEvent *ev = &signal->internalHandle.unixEvent;
+			pthread_mutex_t *mut = (pthread_mutex_t *)&ev->mutex;
+			pthread_cond_t *cond = (pthread_cond_t *)&ev->cond;
 			pthreadApi->pthread_mutex_lock(mut);
-			signal->internalHandle.unixEvent.isSet = 1;
+			ev->isSet = 1;
 			pthreadApi->pthread_cond_signal(cond);
 			pthreadApi->pthread_mutex_unlock(mut);
 		}
@@ -25898,8 +25902,9 @@ fpl_platform_api bool fplSignalInit(fplSignalHandle *signal, const fplSignalValu
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
 
 	fplClearStruct(signal);
-	pthread_mutex_t *mut = (pthread_mutex_t *)&signal->internalHandle.unixEvent.mutex;
-	pthread_cond_t *cond = (pthread_cond_t *)&signal->internalHandle.unixEvent.cond;
+	fplUnixSignalEvent *ev = &signal->internalHandle.unixEvent;
+	pthread_mutex_t *mut = (pthread_mutex_t *)&ev->mutex;
+	pthread_cond_t *cond = (pthread_cond_t *)&ev->cond;
 	if (pthreadApi->pthread_mutex_init(mut, fpl_null) != 0) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Failed initializing signal mutex '%p'", signal);
 		return false;
@@ -25909,8 +25914,8 @@ fpl_platform_api bool fplSignalInit(fplSignalHandle *signal, const fplSignalValu
 		FPL__ERROR(FPL__MODULE_THREADING, "Failed initializing signal cond '%p'", signal);
 		return false;
 	}
-	signal->internalHandle.unixEvent.isSet = (initialValue == fplSignalValue_Set) ? 1 : 0;
-	signal->internalHandle.unixEvent.manualReset = 0;
+	ev->isSet = (initialValue == fplSignalValue_Set) ? 1 : 0;
+	ev->manualReset = 0;
 	signal->isValid = true;
 	return true;
 }
@@ -25922,8 +25927,9 @@ fpl_platform_api void fplSignalDestroy(fplSignalHandle *signal) {
 	FPL__CheckPlatformNoRet();
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
-	pthread_mutex_t *mut = (pthread_mutex_t *)&signal->internalHandle.unixEvent.mutex;
-	pthread_cond_t *cond = (pthread_cond_t *)&signal->internalHandle.unixEvent.cond;
+	fplUnixSignalEvent *ev = &signal->internalHandle.unixEvent;
+	pthread_mutex_t *mut = (pthread_mutex_t *)&ev->mutex;
+	pthread_cond_t *cond = (pthread_cond_t *)&ev->cond;
 	pthreadApi->pthread_cond_destroy(cond);
 	pthreadApi->pthread_mutex_destroy(mut);
 	fplClearStruct(signal);
@@ -25963,12 +25969,13 @@ fpl_platform_api bool fplSignalSet(fplSignalHandle *signal) {
 	pthread_mutex_t *globalMutex = &unixApp->signalMultipleWaitMutex;
 	pthread_cond_t *globalCondition = &unixApp->signalMultipleWaitCondition;
 
-	pthread_mutex_t *mut = (pthread_mutex_t *)&signal->internalHandle.unixEvent.mutex;
-	pthread_cond_t *cond = (pthread_cond_t *)&signal->internalHandle.unixEvent.cond;
+	fplUnixSignalEvent *ev = &signal->internalHandle.unixEvent;
+	pthread_mutex_t *mut = (pthread_mutex_t *)&ev->mutex;
+	pthread_cond_t *cond = (pthread_cond_t *)&ev->cond;
 
 	pthreadApi->pthread_mutex_lock(mut);
-	signal->internalHandle.unixEvent.isSet = 1;
-	if (signal->internalHandle.unixEvent.manualReset) {
+	ev->isSet = 1;
+	if (ev->manualReset) {
 		pthreadApi->pthread_cond_broadcast(cond);
 	} else {
 		pthreadApi->pthread_cond_signal(cond);
@@ -25992,9 +25999,10 @@ fpl_platform_api bool fplSignalReset(fplSignalHandle *signal) {
 	FPL__CheckPlatform(false);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
-	pthread_mutex_t *mut = (pthread_mutex_t *)&signal->internalHandle.unixEvent.mutex;
+	fplUnixSignalEvent *ev = &signal->internalHandle.unixEvent;
+	pthread_mutex_t *mut = (pthread_mutex_t *)&ev->mutex;
 	pthreadApi->pthread_mutex_lock(mut);
-	signal->internalHandle.unixEvent.isSet = 0;
+	ev->isSet = 0;
 	pthreadApi->pthread_mutex_unlock(mut);
 	return true;
 }
