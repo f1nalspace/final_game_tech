@@ -6649,10 +6649,7 @@ typedef enum fplThreadPriority {
 	fplThreadPriority_Last = fplThreadPriority_Highest,
 } fplThreadPriority;
 
-/**
-* @typedef fplThreadHandle
-* @brief Forward declared thread handle.
-*/
+// Forward declaration; the documented definition lives a few lines below.
 typedef struct fplThreadHandle fplThreadHandle;
 
 /**
