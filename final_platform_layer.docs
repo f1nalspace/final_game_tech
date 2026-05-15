@@ -120,10 +120,12 @@
 		- Raw audio asyncronous playback
 		- Device iteration and selection
 		- Backends:
+		    - WASAPI
 			- DirectSound
 			- ALSA
 			- PulseAudio
 			- PipeWire
+			- OSS
 	- Memory
 		- Allocation and Deallocation
 		- Custom Alignment functions
@@ -551,7 +553,7 @@
 
 	Example:
 	@code{.c}
-	fplClearErrors();
+	fplErrorsClear();
 	@endcode
 */
 
@@ -3987,6 +3989,12 @@
 		</tr>
 		<tr>
 			<td>Video</td>
+			<td>FPL_NO_VIDEO_VULKAN</td>
+			<td>Define this to disable the Vulkan video backend.</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Video</td>
 			<td>FPL_NO_VIDEO_SOFTWARE</td>
 			<td>Define this to disable the Software video backend.</td>
 			<td>Not set by default</td>
@@ -4000,6 +4008,12 @@
 		</tr>
 		<tr>
 			<td>Audio</td>
+			<td>FPL_NO_AUDIO_WASAPI</td>
+			<td>Define this to disable WASAPI support entirely.</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Audio</td>
 			<td>FPL_NO_AUDIO_DIRECTSOUND</td>
 			<td>Define this to disable DirectSound support entirely.</td>
 			<td>Not set by default</td>
@@ -4008,6 +4022,24 @@
 			<td>Audio</td>
 			<td>FPL_NO_AUDIO_ALSA</td>
 			<td>Define this to disable ALSA support entirely.</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Audio</td>
+			<td>FPL_NO_AUDIO_PULSEAUDIO</td>
+			<td>Define this to disable PulseAudio support entirely.</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Audio</td>
+			<td>FPL_NO_AUDIO_PIPEWIRE</td>
+			<td>Define this to disable PipeWire support entirely.</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Audio</td>
+			<td>FPL_NO_AUDIO_OSS</td>
+			<td>Define this to disable OSS support entirely.</td>
 			<td>Not set by default</td>
 		</tr>
 
@@ -4051,24 +4083,6 @@
 			<td>Input</td>
 			<td>FPL_NO_INPUT_LINUX_JOYSTICK</td>
 			<td>Define this to disable the /dev/input/jsX gamepad backend (Linux).</td>
-			<td>Not set by default</td>
-		</tr>
-		<tr>
-			<td>Input</td>
-			<td>FPL_NO_INPUT_LINUX_EVDEV</td>
-			<td>Define this to disable the /dev/input/eventX evdev backend (Linux).</td>
-			<td>Not set by default</td>
-		</tr>
-		<tr>
-			<td>Input</td>
-			<td>FPL_NO_INPUT_LINUX_UDEV</td>
-			<td>Define this to disable the udev hotplug backend (Linux).</td>
-			<td>Not set by default</td>
-		</tr>
-		<tr>
-			<td>Input</td>
-			<td>FPL_NO_INPUT_UNIX_GAMEPAD</td>
-			<td>Define this to disable the BSD/Unix gamepad backend.</td>
 			<td>Not set by default</td>
 		</tr>
 
