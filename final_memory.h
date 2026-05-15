@@ -5,9 +5,9 @@ final_memory.h
 	About
 -------------------------------------------------------------------------------
 
-A open source single header file library for using heap memory like a stack.
+An open source single header file library for using heap memory like a stack.
 
-The only dependencies are a C99 complaint compiler.
+The only dependencies are a C99 compliant compiler.
 
 -------------------------------------------------------------------------------
 	Getting started
@@ -150,7 +150,7 @@ SOFTWARE.
 	\file final_memory.h
 	\version v1.0.1
 	\author Torsten Spaete
-	\brief Final Memory (FMEM) - A open source C99 single file header memory library.
+	\brief Final Memory (FMEM) - An open source C99 single file header memory library.
 */
 
 /*!
@@ -161,7 +161,7 @@ SOFTWARE.
 	- Changed: Moved FMEM_MEMSET, FMEM_MALLOC, FMEM_ASSERT into the implementation block
 
 	## v1.0.0:
-	- New: Added fmemPushArray() to allocate a array with a type
+	- New: Added fmemPushArray() to allocate an array with a type
 	- New: Added fmemPushString() to allocate a zero-terminated string
 
 	## v0.3.1 alpha:
@@ -173,7 +173,7 @@ SOFTWARE.
 	- New: Added function fmemCreate()
 
 	## v0.2.1 alpha:
-	- Fixed: Two inline functions was not found in GCC
+	- Fixed: Two inline functions were not found in GCC
 
 	## v0.2 alpha:
 	- Added: New function fmemGetHeader
