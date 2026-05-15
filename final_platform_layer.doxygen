@@ -2062,8 +2062,8 @@ ENABLE_PREPROCESSING   = YES
 # The default value is: NO.
 # This tag requires that the tag ENABLE_PREPROCESSING is set to YES.
 
-# NOTE(final): This must be set to NO to prevent expand macro defines like fpl_api, fpl_extern, etc.
-MACRO_EXPANSION        = NO
+# NOTE(final): Must be YES so EXPAND_AS_DEFINED below works (limited via EXPAND_ONLY_PREDEF).
+MACRO_EXPANSION        = YES
 
 # If the EXPAND_ONLY_PREDEF and MACRO_EXPANSION tags are both set to YES then
 # the macro expansion is limited to the macros specified with the PREDEFINED and
@@ -2071,8 +2071,8 @@ MACRO_EXPANSION        = NO
 # The default value is: NO.
 # This tag requires that the tag ENABLE_PREPROCESSING is set to YES.
 
-# NOTE(final): Does not work
-EXPAND_ONLY_PREDEF     = NO
+# NOTE(final): Limit expansion to the macros listed in EXPAND_AS_DEFINED below.
+EXPAND_ONLY_PREDEF     = YES
 
 # If the MACRO_EXPANSION and EXPAND_ONLY_PREDEF tags are set to YES then this
 # tag can be used to specify a list of macro names that should be expanded. The
@@ -2081,8 +2081,8 @@ EXPAND_ONLY_PREDEF     = NO
 # definition found in the source code.
 # This tag requires that the tag ENABLE_PREPROCESSING is set to YES.
 
-# NOTE(final): Does not work
-EXPAND_AS_DEFINED      = 
+# NOTE(final): Expand only this macro so Doxygen can see the typedef name produced by it.
+EXPAND_AS_DEFINED      = FPL_GAMEPAD_MAPPING_RESOLVE_CALLBACK
 
 # The PREDEFINED tag can be used to specify one or more macro names that are
 # defined before the preprocessor is started (similar to the -D option of e.g.
