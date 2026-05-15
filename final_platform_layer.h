@@ -25712,12 +25712,12 @@ fpl_internal bool fpl__UnixInitPlatform(const fplInitFlags initFlags, const fplS
 
 	// Initialize mutex and condition for signal multiple wait
 	if (pthreadApi->pthread_mutex_init(&unixApp->signalMultipleWaitMutex, fpl_null) != 0) {
-		FPL__FATAL(FPL__MODULE_THREADING, "Failed initializing global mutex for signal multiple wait");
+		FPL__CRITICAL(FPL__MODULE_THREADING, "Failed initializing global mutex for signal multiple wait");
 		return false;
 	}
 	if (pthreadApi->pthread_cond_init(&unixApp->signalMultipleWaitCondition, fpl_null) != 0) {
 		pthreadApi->pthread_mutex_destroy(&unixApp->signalMultipleWaitMutex);
-		FPL__FATAL(FPL__MODULE_THREADING, "Failed initializing global condition for signal multiple wait");
+		FPL__CRITICAL(FPL__MODULE_THREADING, "Failed initializing global condition for signal multiple wait");
 		return false;
 	}
 
