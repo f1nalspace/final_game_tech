@@ -275,6 +275,7 @@ SOFTWARE.
 	- Improved: Fixed "endianess" → "endianness" misspelling in the prose of fplGetEndianess32 documentation (symbol names retained for API compatibility)
 	- Improved: Corrected FPL_ENUM_AS_FLAGS_OPERATORS @brief — the macro is part of the public surface, not internal, and now describes its purpose (bitwise operator overloads for C++)
 	- Improved: Fixed "lowerspace" → "lowercase" typo in the windef.h NOMINMAX rationale comment
+	- Fixed: fplTimestamp.win32.qpc was documented as "Query performance count in 10th nanoseconds" — QPC ticks run at the platform-dependent QueryPerformanceFrequency, not a fixed 100 ns unit; doc now states this
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -3938,7 +3939,7 @@ typedef union fplTimestamp {
 #if defined(FPL_PLATFORM_WINDOWS)
 	//! Win32 specifics.
 	struct {
-		//! Query performance count in 10th nanoseconds.
+		//! Raw QueryPerformanceCounter tick count (frequency is platform-dependent, query via QueryPerformanceFrequency).
 		fpl__Win32LargeInteger qpc;
 		//! Tick count in milliseconds.
 		uint64_t ticks;
