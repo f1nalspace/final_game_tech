@@ -2,7 +2,7 @@
 * @file final_tiletrace.hpp
 * @version v1.02
 * @author Torsten Spaete
-* @brief Final TileTrace (FTT) - a open source single file header c++ contour tile tracing library.
+* @brief Final TileTrace (FTT) - an open source single file header C++ contour tile tracing library.
 *
 * This creates chainshapes out of any solid tilemap based on a contour tracing algorithm.
 *
@@ -16,7 +16,7 @@ final_tiletrace.hpp
 Open-Source Single-File Header C++ Library by Torsten Spaete
 
 This creates chainshapes out of any solid tilemap based on a contour tracing algorithm.
-It will try to create as less chain shapes as possible.
+It will try to create as few chain shapes as possible.
 
 - Supports block tiles only!
 
@@ -401,7 +401,7 @@ namespace ftt {
 		inline size_t GetEdgeCount() const {
 			return data.mainEdges.size();
 		}
-		//! Returns a edge by the given index
+		//! Returns an edge by the given index
 		inline const Edge &GetEdge(uint32_t index) const {
 			return data.mainEdges[index];
 		}
@@ -413,7 +413,7 @@ namespace ftt {
 		inline size_t GetOpenTileCount() const {
 			return data.openList.size();
 		}
-		//! Returns a open tile pointer by the given index
+		//! Returns an open tile pointer by the given index
 		inline Tile *GetOpenTile(uint32_t index) const {
 			return data.openList[index];
 		}
@@ -431,7 +431,7 @@ namespace ftt {
 	ftt_api void InitTileTracer(TileTracerData *tracer, const Vec2u &tileCount, uint8_t *mapTiles);
 	//! Executes the next step for the given tracer data
 	ftt_api bool NextTileTraceStep(TileTracerData *tracer);
-	//! Runs the full tracer until it is done for the the given tracer data.
+	//! Runs the full tracer until it is done for the given tracer data.
 	ftt_api void RunTileTracer(TileTracerData *tracer);
 };
 #endif
