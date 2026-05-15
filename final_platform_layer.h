@@ -262,6 +262,7 @@ SOFTWARE.
 	- Improved: Fixed grammar and clarified description of fplAsm ("A assembler compiler instruction" → "An assembler keyword (asm) that is compiler-specific")
 	- Improved: Added missing trailing period in fplMinAlignment @return description
 	- Improved: Clarified fpl_main @brief — it is an empty linkage marker placed in front of the user-defined main entry, not a "main entry point API definition"
+	- Improved: Added missing @def/@brief documentation blocks for FPL_APPTYPE_WINDOW and FPL_APPTYPE_CONSOLE
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -2662,10 +2663,16 @@ SOFTWARE.
 #	endif
 #elif !defined(FPL_NO_APPTYPE) && !(defined(FPL_APPTYPE_CONSOLE) || defined(FPL_APPTYPE_WINDOW))
 #	if !defined(FPL_NO_WINDOW)
-		//! Detected window application type
+		/**
+		* @def FPL_APPTYPE_WINDOW
+		* @brief Application is built as a windowed application (a window is created by FPL).
+		*/
 #		define FPL_APPTYPE_WINDOW
 #	else
-		//! Detected console application type
+		/**
+		* @def FPL_APPTYPE_CONSOLE
+		* @brief Application is built as a console application (no window is created by FPL).
+		*/
 #		define FPL_APPTYPE_CONSOLE
 #	endif
 #endif
