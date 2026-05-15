@@ -5,15 +5,15 @@ final_dynamic_opengl.h
 	About
 -------------------------------------------------------------------------------
 
-A open source single header file OpenGL-Loader C99 library.
+An open source single header file OpenGL-Loader C99 library.
 
-This library is designed to load all the opengl functions for you so you can start right away with OpenGL up to version 4.6.
+This library is designed to load all the OpenGL functions for you so you can start right away with OpenGL up to version 4.6.
 It even can create a rendering context for you, if needed.
 
-Due to removing any kind of linking madness, all opengl functions are defined as static - so its private to this header file only!
-Therefore you can use this library in one file only and cannot use in combination with other opengl libraries.
+Due to removing any kind of linking madness, all OpenGL functions are defined as static - so its private to this header file only!
+Therefore you can use this library in one file only and cannot use in combination with other OpenGL libraries.
 
-The only dependencies are built-in operating system libraries and a C99 complaint compiler.
+The only dependencies are built-in operating system libraries and a C99 compliant compiler.
 
 Required linking is bare minimum:
 	Win32: Link to kernel32.lib
@@ -25,7 +25,7 @@ Required linking is bare minimum:
 
 - Drop this file into your main C/C++ project and include it in one place you do the rendering.
 - Define FGL_IMPLEMENTATION before including this header file in that translation unit.
-- Load the library with fglLoadOpenGL(), while a opengl rendering context is already activated - or create a context using fglCreateOpenGLContext()
+- Load the library with fglLoadOpenGL(), while an OpenGL rendering context is already activated - or create a context using fglCreateOpenGLContext()
 - Use all the OpenGL features you want
 - Unload the library with fglUnloadOpenGL() when you are done
 - Destroy the context when you created it using fglDestroyOpenGLContext()
@@ -49,7 +49,7 @@ if (fglLoadOpenGL(true)) {
 #define FGL_IMPLEMENTATION
 #include <final_dynamic_opengl.h>
 
-// Load opengl library without loading all the functions - functions are loaded separately later
+// Load OpenGL library without loading all the functions - functions are loaded separately later
 if (fglLoadOpenGL(false)) {
 
 	// Fill out window handle (This is platform dependent!)
@@ -105,7 +105,7 @@ SOFTWARE.
 	\file final_dynamic_opengl.h
 	\version v1.0.0
 	\author Torsten Spaete
-	\brief Final Dynamic OpenGL (FGL) - A open source C99 single file header OpenGL-Loader library.
+	\brief Final Dynamic OpenGL (FGL) - An open source C99 single file header OpenGL-Loader library.
 */
 
 // ****************************************************************************
