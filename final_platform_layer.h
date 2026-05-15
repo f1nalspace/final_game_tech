@@ -202,6 +202,7 @@ SOFTWARE.
 	- Changed: fplCopyString is now returning the total number of characters required or returns zero on errors
 	- Changed: fplGetWindowTitle is now returning the total number of characters required or returns zero on errors
 	- Changed: Renamed fplInitFlags_GameController to fplInitFlags_Gamepad due to naming inconsisitency
+	- Changed: Renamed fplMemoryGetInfos to fplMemoryGetUsage
 	- Added: fplGetCurrentThreadId() now returns uint64_t (was uint32_t) and fplThreadHandle.id widened to uint64_t to portably hold pthread_t
 
 	### Details
@@ -4623,7 +4624,7 @@ fpl_common_api void fplMemoryAlignedFree(void *ptr);
 * @return Returns true when the memory info was retrieved, false otherwise.
 * @see @ref section_category_hardware_memstate
 */
-fpl_platform_api bool fplMemoryGetInfos(fplMemoryInfos *outInfos);
+fpl_platform_api bool fplMemoryGetUsage(fplMemoryInfos *outInfos);
 
 /** @} */
 
@@ -18167,7 +18168,7 @@ fpl_platform_api fplCPUArchType fplCPUGetArchitecture(void) {
 
 #define FPL__FUNC_WIN32_KERNEL32_GetPhysicallyInstalledSystemMemory(name) BOOL WINAPI name(PULONGLONG TotalMemoryInKilobytes)
 typedef FPL__FUNC_WIN32_KERNEL32_GetPhysicallyInstalledSystemMemory(fpl__win32_kernel_func_GetPhysicallyInstalledSystemMemory);
-fpl_platform_api bool fplMemoryGetInfos(fplMemoryInfos *outInfos) {
+fpl_platform_api bool fplMemoryGetUsage(fplMemoryInfos *outInfos) {
 	FPL__CheckArgumentNull(outInfos, false);
 	bool result = false;
 
@@ -25630,9 +25631,9 @@ fpl_platform_api bool fplSignalSet(fplSignalHandle *signal) {
 //
 // Linux Hardware
 //
-fpl_platform_api bool fplMemoryGetInfos(fplMemoryInfos *outInfos) {
+fpl_platform_api bool fplMemoryGetUsage(fplMemoryInfos *outInfos) {
 	FPL__CheckArgumentNull(outInfos, false);
-	// @IMPLEMENT(final/Linux): fplMemoryGetInfos
+	// @IMPLEMENT(final/Linux): fplMemoryGetUsage
 	return(false);
 }
 
@@ -25692,8 +25693,8 @@ fpl_internal bool fpl__UnixInitPlatform(const fplInitFlags initFlags, const fplS
 //
 // Unix Hardware
 //
-fpl_platform_api bool fplMemoryGetInfos(fplMemoryInfos *outInfos) {
-	// @IMPLEMENT(final/Unix): fplMemoryGetInfos
+fpl_platform_api bool fplMemoryGetUsage(fplMemoryInfos *outInfos) {
+	// @IMPLEMENT(final/Unix): fplMemoryGetUsage
 	return(false);
 }
 
