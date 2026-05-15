@@ -279,6 +279,7 @@ SOFTWARE.
 	- Improved: Fixed grammar on fplTimestamp.unused field description ("Field for preventing union to be empty" → "Padding field that prevents the union from being empty when no platform branch matches")
 	- Fixed: fplDateTimeType enum members were commented with plain `//` instead of `//!` — doxygen silently skipped them; now extracted correctly
 	- Fixed: fplDateTime struct fields were commented with plain `//` instead of `//!` — doxygen silently skipped them; now extracted correctly
+	- Fixed: fplDateTimeErrors enum members were commented with plain `//` instead of `//!` — doxygen silently skipped them; also added a description for the previously undocumented `_None` value
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -4035,18 +4036,19 @@ typedef struct fplDateTime {
 * @brief Defines the date time error flags.
 */
 typedef enum fplDateTimeErrors {
+	//! No error.
 	fplDateTimeErrors_None = 0,
-	// Invalid year, expected range is 1970 or higher.
+	//! Invalid year, expected range is 1970 or higher.
 	fplDateTimeErrors_InvalidYear = 1 << 0,
-	// Invalid month, expected range is 1-12.
+	//! Invalid month, expected range is 1-12.
 	fplDateTimeErrors_InvalidMonth = 1 << 1,
-	// Invalid day, expected range is 1-31.
+	//! Invalid day, expected range is 1-31.
 	fplDateTimeErrors_InvalidDay = 1 << 2,
-	// Invalid hour, expected range is 0-23.
+	//! Invalid hour, expected range is 0-23.
 	fplDateTimeErrors_InvalidHour = 1 << 3,
-	// Invalid minute, expected range is 0-59.
+	//! Invalid minute, expected range is 0-59.
 	fplDateTimeErrors_InvalidMinute = 1 << 4,
-	// Invalid second, expected range is 0-59.
+	//! Invalid second, expected range is 0-59.
 	fplDateTimeErrors_InvalidSecond = 1 << 5,
 } fplDateTimeErrors;
 FPL_ENUM_AS_FLAGS_OPERATORS(fplDateTimeErrors);
