@@ -293,6 +293,7 @@ SOFTWARE.
 	- Fixed: FPL_GAMEPAD_MAPPING_RESOLVE_CALLBACK doc block used the non-existent name "FPL_GAMEPAD_MAPPING_RESOLVE_FUNC" and the invalid tag `@define`; corrected to the real name with `@def`, and added the `[in]` direction qualifier on the `@param`
 	- Fixed: FPL_GAMEPAD_GUID_SIZE doc used the invalid tag `@define` instead of `@def`; also capitalized "GUID" in the @brief
 	- Fixed: fplGetDynamicLibraryProc @return was an incomplete sentence ("Returns the procedure address … or when the procedure is not found …") with no failure-value description; now correctly states that fpl_null is returned on failure
+	- Fixed: fplDynamicLibraryUnload @see pointed at itself; corrected to point at the companion function fplDynamicLibraryLoad
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -6546,7 +6547,7 @@ fpl_platform_api void *fplGetDynamicLibraryProc(const fplDynamicLibraryHandle *h
 /**
 * @brief Unloads the loaded library and resets the handle to zero.
 * @param[in, out] handle Reference to the library handle @ref fplDynamicLibraryHandle.
-* @see @ref fplDynamicLibraryUnload
+* @see @ref fplDynamicLibraryLoad
 */
 fpl_platform_api void fplDynamicLibraryUnload(fplDynamicLibraryHandle *handle);
 
