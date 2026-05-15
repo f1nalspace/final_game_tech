@@ -260,6 +260,7 @@ SOFTWARE.
 	- Fixed: fplStaticAssert generated colliding identifiers because the token-paste used `##line_##counter` (the literal token `line_`) instead of `##line##_##counter` — multiple static asserts in the same translation unit redefined the same symbol
 	- Improved: Added missing @def/@brief documentation blocks for FPL_PLATFORM_WINDOWS, FPL_PLATFORM_LINUX, FPL_PLATFORM_UNIX, FPL_PLATFORM_NAME, FPL_SUBPLATFORM_POSIX, FPL_SUBPLATFORM_X11, FPL_SUBPLATFORM_BSD, FPL_SUBPLATFORM_STD_STRINGS and FPL_SUBPLATFORM_STD_CONSOLE
 	- Improved: Fixed grammar and clarified description of fplAsm ("A assembler compiler instruction" → "An assembler keyword (asm) that is compiler-specific")
+	- Improved: Added missing trailing period in fplMinAlignment @return description
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -2414,7 +2415,7 @@ SOFTWARE.
 /**
 * @def fplMinAlignment
 * @brief Minimum structure alignment in bytes.
-* @return The minimum alignment in bytes
+* @return The minimum alignment in bytes.
 */
 #define fplMinAlignment fpl__MinAlignment
 
