@@ -272,6 +272,7 @@ SOFTWARE.
 	- Improved: Stripped trailing whitespace from the fplGetAlignmentOffset macro definition line
 	- Improved: Fixed typo and missing period in fplIsMaskSet documentation ("the given mask in set" → "is set", added trailing period on @param mask)
 	- Improved: Added missing @enum and @union documentation blocks for fplEndianessType and fplEndianess
+	- Improved: Fixed "endianess" → "endianness" misspelling in the prose of fplGetEndianess32 documentation (symbol names retained for API compatibility)
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -3460,8 +3461,8 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 
 /**
 * @def fplGetEndianess32
-* @brief Returns the unsigned 32-bit integer value, that represents the current platform endianess that is built from the values (0, 1, 2, 3).
-* @return Unsigned 32-bit integer endianess.
+* @brief Returns the unsigned 32-bit integer value that represents the current platform endianness, built from the byte sequence (0, 1, 2, 3).
+* @return Unsigned 32-bit integer endianness probe value.
 */
 #define fplGetEndianess32() (fpl__global_endianessOrder.value)
 
