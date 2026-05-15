@@ -1856,8 +1856,7 @@ SOFTWARE.
 	@section section_support_status_supported_archs Supported Architectures
 
 	- x86
-	- x86_64
-	- x64 (untested)
+	- x64
 	- Arm32 (partially)
 	- Arm64 (partially)
 
@@ -1865,7 +1864,7 @@ SOFTWARE.
 
 	- Windows 7 or higher
 	- Linux 2.6 or higher
-	- Unix/BSD (Partially)
+	- Unix/BSD
 	- Raspberry Pi (Partially)
 
 	@section section_support_status_supported_compilers Supported Compilers
