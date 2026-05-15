@@ -270,6 +270,7 @@ SOFTWARE.
 	- Improved: Normalized doxygen return tags by converting all 22 `@result` occurrences to `@return` for consistency
 	- Improved: fplStructInit and fplStructField now document their variadic argument with the standard doxygen `...` token instead of a confusing `_` formal name
 	- Improved: Stripped trailing whitespace from the fplGetAlignmentOffset macro definition line
+	- Improved: Fixed typo and missing period in fplIsMaskSet documentation ("the given mask in set" → "is set", added trailing period on @param mask)
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -3402,9 +3403,9 @@ fplStaticAssert(sizeof(size_t) == sizeof(uint32_t));
 
 /**
 * @def fplIsMaskSet
-* @brief Returns true when the given mask in set in the value.
+* @brief Returns true when the given mask is set in the value.
 * @param[in] value Value to check.
-* @param[in] mask Bit mask to check
+* @param[in] mask Bit mask to check.
 * @return True if the mask is set, false otherwise.
 */
 #define fplIsMaskSet(value, mask) (((value) & (mask)) == (mask))
