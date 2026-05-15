@@ -3079,7 +3079,9 @@
 	@section section_category_threading_mutexes_overview Overview
 	This section explains how to create and handle Mutexes.<br>
 	A mutex is a Kernel-Level object used to prevent race conditions when multiple Threads access the same code section.<br>
-	With a Mutex, you can ensure that only one thread at a time can access a code section.
+	With a Mutex, you can ensure that only one thread at a time can access a code section.<br>
+	<br>
+	See @ref page_category_threading_sync for a comparison with the other synchronization primitives.
 
 	@section section_category_threading_mutexes_init Initialize a Mutex
 	Call @ref fplMutexInit() with a pointer to @ref fplMutexHandle argument, to initialize a Mutex.<br>
@@ -3150,7 +3152,9 @@
 	A Signal is a Kernel-Level object used to notify one or multiple waiting Threads.<br>
 	It internally contains a Value which is either @ref fplSignalValue_Set or @ref fplSignalValue_Unset.<br>
 	When this value gets changed, all Threads which wait on that Signal will wake up.<br>
-	They can be shared across process boundaries and may be used as standalone locks to shared data, but the number of Signals is limited by the OS that can be allocated at a time.
+	They can be shared across process boundaries and may be used as standalone locks to shared data, but the number of Signals is limited by the OS that can be allocated at a time.<br>
+	<br>
+	See @ref page_category_threading_sync for a comparison with the other synchronization primitives.
 
 	@section section_category_threading_signals_init Initialize a Signal
 	Call @ref fplSignalInit() with a pointer to @ref fplSignalHandle as an argument, to initialize a Signal.<br>
@@ -3291,7 +3295,9 @@
 	This section explains how to create and handle Condition-Variables.<br>
 	A Condition-Variable is a User-Level Object used to let Threads wait until a Condition-Variable is signaled or broadcasted.<br>
 	Unlike @subpage page_category_threading_signals, Condition-Variables requires you to use a @ref fplMutexHandle as a locking mechanism.<br>
-	They cannot be shared across process boundaries but the number of Condition-Variables is only limited by the amount of memory you have.
+	They cannot be shared across process boundaries but the number of Condition-Variables is only limited by the amount of memory you have.<br>
+	<br>
+	See @ref page_category_threading_sync for a comparison with the other synchronization primitives.
 
 	@section category_threading_conditions_init Initialize a Condition-Variable
 	Call @ref fplConditionInit() with a pointer to @ref fplConditionVariable as an argument, to initialize a Condition-Variable.<br>
@@ -3357,7 +3363,9 @@
 	@section section_category_threading_semaphores_overview Overview
 	This section explains how to create and manage semaphores.<br>
 	Semaphores are similar to @subpage page_category_threading_mutexes "Mutexes" but have one major difference: Any Thread can release it!<br>
-	It internally uses an atomic counter which gets incremented and decremented.
+	It internally uses an atomic counter which gets incremented and decremented.<br>
+	<br>
+	See @ref page_category_threading_sync for a comparison with the other synchronization primitives.
 
 	@section category_threading_semaphores_init Initialize a Semaphore
 	Call @ref fplSemaphoreInit() to initialize a Semaphore with a @ref fplSemaphoreHandle as an argument. Also, you need to specify the initial value for the Semaphore to start with.<br>
@@ -3423,7 +3431,9 @@
 	These instructions are available as built-in intrinsics in any modern C/C++ compiler.<br>
 	In FPL these are called Atomics and are wrapper functions around those intrinsics.<br>
 	<br>
-	Atomics functions generate memory barriers (or fences) to ensure that memory operations are completed in order.
+	Atomics functions generate memory barriers (or fences) to ensure that memory operations are completed in order.<br>
+	<br>
+	See @ref page_category_threading_sync for a comparison with the other synchronization primitives.
 
 	@section category_threading_atomics_add Fetch-And-Add (Add)
 	With a Fetch-And-Add instruction, you can do an atomic addition and get back the previous value (**before** the add) as an atomic operation.<br>
@@ -3651,11 +3661,114 @@
 	@page page_category_threading_sync Synchronization methods
 	@tableofcontents
 
-	@todo(final): Explain why we need this
+	@section section_category_threading_sync_why Why synchronization is needed
 
-	@todo(final): Add examples of solving race conditions (Mutexes, Signals, Condition-Variables, Semaphores, Atomics)
+	When multiple Threads access the same data, reads and writes can interleave in any order.<br>
+	Without synchronization the result is a race condition: lost updates, torn reads, or inconsistent state.<br>
+	<br>
+	Even a single statement like <b>counter++</b> is not atomic - it is a load, an add and a store.<br>
+	Two threads running it in parallel can both read the same value, add one, and write back the same result - losing one increment.<br>
+	<br>
+	Synchronization primitives serialize access to shared data or signal state changes between Threads, so the program behaves as intended.
 
-	@todo(final): Add a comparison table to show the difference between the different types.
+	@section section_category_threading_sync_examples Solving race conditions
+
+	@subsection subsection_category_threading_sync_example_mutex Mutex - protect a critical section
+
+	Use a @ref fplMutexHandle to ensure only one Thread executes a code section at a time.
+
+	@code{.c}
+	static fplMutexHandle counterMutex;
+	static uint32_t sharedCounter;
+
+	void IncrementCounter() {
+		fplMutexLock(&counterMutex);
+		++sharedCounter; // safe: only one Thread at a time
+		fplMutexUnlock(&counterMutex);
+	}
+	@endcode
+
+	@subsection subsection_category_threading_sync_example_signal Signal - notify waiting Threads
+
+	Use a @ref fplSignalHandle when one Thread must tell others that something happened (e.g. work is ready).
+
+	@code{.c}
+	static fplSignalHandle workReady;
+
+	void ProducerThread() {
+		// ... produce work ...
+		fplSignalSet(&workReady); // wake all waiters
+	}
+
+	void ConsumerThread() {
+		fplSignalWaitForOne(&workReady, FPL_TIMEOUT_INFINITE);
+		// ... consume work ...
+	}
+	@endcode
+
+	@subsection subsection_category_threading_sync_example_cond Condition-Variable - wait for a predicate
+
+	Use a @ref fplConditionVariable together with a @ref fplMutexHandle when waiters must check a condition under a lock and re-check after wakeup.
+
+	@code{.c}
+	static fplMutexHandle queueMutex;
+	static fplConditionVariable queueCond;
+	static int itemCount;
+
+	void Push() {
+		fplMutexLock(&queueMutex);
+		++itemCount;
+		fplConditionSignal(&queueCond); // wake one waiter
+		fplMutexUnlock(&queueMutex);
+	}
+
+	void Pop() {
+		fplMutexLock(&queueMutex);
+		while (itemCount == 0) { // re-check after wakeup
+			fplConditionWait(&queueCond, &queueMutex, FPL_TIMEOUT_INFINITE);
+		}
+		--itemCount;
+		fplMutexUnlock(&queueMutex);
+	}
+	@endcode
+
+	@subsection subsection_category_threading_sync_example_semaphore Semaphore - limit concurrent access
+
+	Use a @ref fplSemaphoreHandle to allow up to N Threads into a section at the same time.
+
+	@code{.c}
+	static fplSemaphoreHandle pool; // init with N permits
+
+	void UseResource() {
+		fplSemaphoreWait(&pool, FPL_TIMEOUT_INFINITE); // take a permit
+		// ... use one of N shared resources ...
+		fplSemaphoreRelease(&pool); // give it back
+	}
+	@endcode
+
+	@subsection subsection_category_threading_sync_example_atomic Atomics - lock-free single-value updates
+
+	Use atomics when only a single integer or pointer needs to be updated safely, without a Mutex.
+
+	@code{.c}
+	static volatile uint32_t counter;
+
+	void IncrementCounter() {
+		fplAtomicAddAndFetchU32(&counter, 1); // safe without a lock
+	}
+	@endcode
+
+	@section section_category_threading_sync_comparison Comparison
+
+	| Primitive          | Purpose                              | Scope            | Cost     | Notes                                                  |
+	|--------------------|--------------------------------------|------------------|----------|--------------------------------------------------------|
+	| @ref fplMutexHandle        | Mutual exclusion of a code section   | Same process     | Low      | Only the owner Thread can unlock                       |
+	| @ref fplSignalHandle       | Notify one or many waiters           | Cross-process    | Medium   | Set/Reset is not Thread-Safe by itself                 |
+	| @ref fplConditionVariable  | Wait for a predicate under a Mutex   | Same process     | Medium   | Requires a Mutex; supports signal and broadcast        |
+	| @ref fplSemaphoreHandle    | Limit N concurrent accessors         | Same process     | Medium   | Any Thread can release; counted permits                |
+	| Atomics                    | Lock-free op on a single value       | Same process     | Lowest   | One variable at a time; includes a memory barrier      |
+
+	@note Pick the lightest primitive that fits the problem. Atomics for a single value, a Mutex for a small critical section, a Condition-Variable when waiting on a predicate, a Semaphore for bounded resources, a Signal for cross-process or fan-out notifications.
 */
 
 /*!
