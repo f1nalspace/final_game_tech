@@ -289,6 +289,7 @@ SOFTWARE.
 	- Fixed: fplGraphicsApiSettings.dummy was documented as "Field for preventing union to be empty" but the surrounding type is a struct, not a union; description now correctly references the struct
 	- Fixed: fplAudioDeviceID.dshow was documented as "DirectShow Device GUID" — the backend is DirectSound, not DirectShow; doc now reads "DirectSound device GUID"
 	- Improved: Fixed grammar on fplAudioDeviceID.dummy field description ("Field for preventing union to be empty" → "Padding field that prevents the union from being empty when no audio backend is enabled")
+	- Improved: Fixed the same "Field for preventing union/struct to be empty" grammar on six remaining padding fields (fplSpecificAudioSettings.dummy, fplLogWriterConsole.dummy, fplInternalConditionVariable.dummy, fplVideoWindow.dummy, fplVideoSurface.dummy, fplVideoRequirements.dummy)
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -5746,7 +5747,7 @@ typedef union fplSpecificAudioSettings {
 	//! OSS-specific settings.
 	fplOSSAudioSettings oss;
 #endif
-	//! Field for preventing union to be empty.
+	//! Padding field that prevents the union from being empty.
 	int dummy;
 } fplSpecificAudioSettings;
 
@@ -6350,7 +6351,7 @@ FPL_ENUM_AS_FLAGS_OPERATORS(fplLogWriterFlags);
 * @brief Stores console logging properties.
 */
 typedef struct fplLogWriterConsole {
-	//! Field for preventing struct to be empty.
+	//! Padding field that prevents the struct from being empty.
 	int dummy;
 } fplLogWriterConsole;
 
@@ -6873,7 +6874,7 @@ typedef union fplInternalConditionVariable {
 	//! POSIX condition variable.
 	fpl__POSIXConditionVariable posixCondition;
 #endif
-	//! Field for preventing union to be empty.
+	//! Padding field that prevents the union from being empty.
 	int dummy;
 } fplInternalConditionVariable;
 
@@ -9632,7 +9633,7 @@ typedef union fplVideoWindow {
 #elif defined(FPL_SUBPLATFORM_X11)
 	fplVideoWindowX11 x11;
 #endif
-	//! Field for preventing union to be empty.
+	//! Padding field that prevents the union from being empty.
 	int dummy;
 } fplVideoWindow;
 
@@ -9654,7 +9655,7 @@ typedef struct fplVideoSurface {
 	fplVideoSurfaceOpenGL opengl;
 #endif
 
-	//! Field for preventing union to be empty.
+	//! Padding field that prevents the union from being empty.
 	int dummy;
 } fplVideoSurface;
 
@@ -9680,7 +9681,7 @@ typedef union fplVideoRequirements {
 	//! The requirements for Vulkan backend.
 	fplVideoRequirementsVulkan vulkan;
 #endif // FPL__ENABLE_VIDEO_VULKAN
-	//! Field for preventing union to be empty.
+	//! Padding field that prevents the union from being empty.
 	int dummy;
 } fplVideoRequirements;
 
