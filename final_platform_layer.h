@@ -268,6 +268,7 @@ SOFTWARE.
 	- Improved: Shortened the multi-sentence paragraph in fpl_b32 @note down to a single-sentence usage hint
 	- Improved: Promoted FPL_NOT_IMPLEMENTED from a one-line `//!` comment to a proper @def/@brief block and reworded the awkward description ("This will full-on crash ... always")
 	- Improved: Normalized doxygen return tags by converting all 22 `@result` occurrences to `@return` for consistency
+	- Improved: fplStructInit and fplStructField now document their variadic argument with the standard doxygen `...` token instead of a confusing `_` formal name
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -3307,7 +3308,7 @@ fplStaticAssert(sizeof(size_t) == sizeof(uint32_t));
 * @def fplStructInit
 * @brief Initializes a struct by the given type.
 * @param[in] type The identifier of the struct.
-* @param[in] _ Value of the struct from variable arguments (...) without braces in between.
+* @param[in] ... Value of the struct from variable arguments without braces in between.
 * @return The initialized struct command.
 */
 #define fplStructInit fpl__m_StructInit
@@ -3317,7 +3318,7 @@ fplStaticAssert(sizeof(size_t) == sizeof(uint32_t));
 * @brief Defines a single field in a struct.
 * @param[in] type The identifier of the struct.
 * @param[in] name The name of the field.
-* @param[in] _ Value of the field from variable arguments (...).
+* @param[in] ... Value of the field from variable arguments.
 * @return The constructed field.
 */
 #define fplStructField fpl__m_StructField
