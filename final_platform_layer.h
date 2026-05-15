@@ -290,6 +290,7 @@ SOFTWARE.
 	- Fixed: fplAudioDeviceID.dshow was documented as "DirectShow Device GUID" — the backend is DirectSound, not DirectShow; doc now reads "DirectSound device GUID"
 	- Improved: Fixed grammar on fplAudioDeviceID.dummy field description ("Field for preventing union to be empty" → "Padding field that prevents the union from being empty when no audio backend is enabled")
 	- Improved: Fixed the same "Field for preventing union/struct to be empty" grammar on six remaining padding fields (fplSpecificAudioSettings.dummy, fplLogWriterConsole.dummy, fplInternalConditionVariable.dummy, fplVideoWindow.dummy, fplVideoSurface.dummy, fplVideoRequirements.dummy)
+	- Fixed: FPL_GAMEPAD_MAPPING_RESOLVE_CALLBACK doc block used the non-existent name "FPL_GAMEPAD_MAPPING_RESOLVE_FUNC" and the invalid tag `@define`; corrected to the real name with `@def`, and added the `[in]` direction qualifier on the `@param`
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -5982,9 +5983,9 @@ typedef struct fplGamepadInfo fplGamepadInfo;
 typedef struct fplGamepadMapping fplGamepadMapping;
 
 /**
- * @define FPL_GAMEPAD_MAPPING_RESOLVE_FUNC
+ * @def FPL_GAMEPAD_MAPPING_RESOLVE_CALLBACK
  * @brief Defines a prototype for a gamepad mapping resolver function.
- * @param name The name of the function.
+ * @param[in] name The name of the function.
  * @return A boolean indicating the result.
  */
 #define FPL_GAMEPAD_MAPPING_RESOLVE_CALLBACK(name) bool name(const fplGamepadInfo *info, fplGamepadMapping *outMapping, void *userData)
