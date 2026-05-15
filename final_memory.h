@@ -243,6 +243,7 @@ SOFTWARE.
 //! Returns the number of bytes for the given terabytes
 #define FMEM_TERABYTES(value) ((FMEM_GIGABYTES(value) * 1024ull))
 
+/*! \brief Flags controlling a single @ref fmemPush call. */
 typedef enum fmemPushFlags {
 	//! No push flags
 	fmemPushFlags_None = 0,
@@ -252,6 +253,7 @@ typedef enum fmemPushFlags {
 	fmemPushFlags_ForceBlock = 1 << 1,
 } fmemPushFlags;
 
+/*! \brief Kind of an @ref fmemMemoryBlock — controls growth and ownership semantics. */
 typedef enum fmemType {
 	//! Unlimited size, grows additional blocks if needed
 	fmemType_Growable = 0,
@@ -261,6 +263,7 @@ typedef enum fmemType {
 	fmemType_Temporary,
 } fmemType;
 
+/*! \brief Push permission flag stored on a block (allow or deny further pushes). */
 typedef enum fmemPermission {
 	//! Allowed
 	fmemPermission_Allowed = 0,
@@ -268,6 +271,7 @@ typedef enum fmemPermission {
 	fmemPermission_Denied,
 } fmemPermission;
 
+/*! \brief Internal linked-list header that precedes the payload of each allocated block. */
 typedef struct fmemBlockHeader {
 	//! Previous block
 	struct fmemMemoryBlock *prev;
@@ -275,6 +279,7 @@ typedef struct fmemBlockHeader {
 	struct fmemMemoryBlock *next;
 } fmemBlockHeader;
 
+/*! \brief A memory block used as a stack allocator (fixed, growable, or temporary). */
 typedef struct fmemMemoryBlock {
 	//! Source memory pointer if present
 	void *source;
