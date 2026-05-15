@@ -256,6 +256,7 @@ SOFTWARE.
 	- Fixed: [POSIX] fplDateTime functions were not thread-safe — now use localtime_r / gmtime_r
 	- Fixed: [POSIX] fplMemoryAllocate was not compiling in FreeBSD (MAP_ANONYMOUS vs MAP_ANON)
 	- Fixed: FPL_CACHELINE_SIZE on PowerPC64 used `defined(defined(FPL_ARCH_POWERPC64))` and never matched — PPC64 silently fell through to the 64-byte default instead of the intended 128
+	- Fixed: FPL_X86_CPU_INSTR_SET_LEVEL swapped the __SSSE3__ and __SSE3__ branches — Supplemental SSE3 was reported as SSE3 and vice versa
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -2747,9 +2748,9 @@ typedef enum fplX86InstructionSetLevel {
 #elif defined(__SSE4_1__)
 #	define FPL__M_X86_CPU_INSTR_SET_LEVEL fplX86InstructionSetLevel_SSE4_1
 #elif defined(__SSSE3__)
-#	define FPL__M_X86_CPU_INSTR_SET_LEVEL fplX86InstructionSetLevel_SSE3
-#elif defined(__SSE3__)
 #	define FPL__M_X86_CPU_INSTR_SET_LEVEL fplX86InstructionSetLevel_SSSE3
+#elif defined(__SSE3__)
+#	define FPL__M_X86_CPU_INSTR_SET_LEVEL fplX86InstructionSetLevel_SSE3
 #elif defined(__SSE2__) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2) || defined(FPL_ARCH_X64)
 #	define FPL__M_X86_CPU_INSTR_SET_LEVEL fplX86InstructionSetLevel_SSE2
 #elif defined(__SSE__) || (defined(_M_IX86_FP) && _M_IX86_FP >= 1)
