@@ -11578,7 +11578,10 @@ typedef struct fpl__UnixInitState {
 } fpl__UnixInitState;
 
 typedef struct fpl__UnixAppState {
-	int dummy;
+	// Global mutex to lock signal multiple waiters
+	pthread_mutex_t signalMultipleWaitMutex;
+	// Global condition to wake up multiple waiters
+	pthread_cond_t signalMultipleWaitCondition;
 } fpl__UnixAppState;
 #endif // FPL_PLATFORM_UNIX
 
@@ -12361,7 +12364,7 @@ struct fpl__PlatformAppState {
 #	elif defined(FPL_PLATFORM_LINUX)
 		fpl__LinuxAppState plinux;
 #	elif defined(FPL_PLATFORM_UNIX)
-		fpl__UnixAppState plinux;
+		fpl__UnixAppState punix;
 #	endif
 	};
 };
@@ -25672,21 +25675,46 @@ fpl_platform_api size_t fplGetInputLocale(const fplLocaleFormat targetFormat, ch
 #	include <locale.h> // setlocale
 
 fpl_internal void fpl__UnixReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
-	fpl__UnixInitState *punix = &initState->punix;
-	if (punix->hasPrevLocale) {
-		setlocale(LC_ALL, punix->prevLocale);
-		punix->hasPrevLocale = false;
+	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	fpl__UnixInitState *unixInit = &initState->punix;
+	fpl__UnixAppState *unixApp = &appState->punix;
+
+	// Restore user locale
+	if (unixInit->hasPrevLocale) {
+		setlocale(LC_ALL, unixInit->prevLocale);
+		unixInit->hasPrevLocale = false;
 	}
+
+	// Destroy signal multiple wait condition and mutex
+	pthreadApi->pthread_cond_destroy(&unixApp->signalMultipleWaitCondition);
+	pthreadApi->pthread_mutex_destroy(&unixApp->signalMultipleWaitMutex);
 }
 
 fpl_internal bool fpl__UnixInitPlatform(const fplInitFlags initFlags, const fplSettings *initSettings, fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
-	fpl__UnixInitState *punix = &initState->punix;
+	const fpl__PosixAppState *posixApp = &appState->posix;
+	const fpl__PThreadApi *pthreadApi = &posixApp->pthreadApi;
+	fpl__UnixInitState *unixInit = &initState->punix;
+	fpl__UnixAppState *unixApp = &appState->punix;
+
+	// Preserve current user locale
 	const char *currentLocale = setlocale(LC_ALL, fpl_null);
 	if (currentLocale != fpl_null) {
-		fplCopyString(currentLocale, punix->prevLocale, fplArrayCount(punix->prevLocale));
-		punix->hasPrevLocale = true;
+		fplCopyString(currentLocale, unixInit->prevLocale, fplArrayCount(unixInit->prevLocale));
+		unixInit->hasPrevLocale = true;
 	}
 	setlocale(LC_ALL, "");
+
+	// Initialize mutex and condition for signal multiple wait
+	if (pthreadApi->pthread_mutex_init(&unixApp->signalMultipleWaitMutex, fpl_null) != 0) {
+		FPL__FATAL(FPL__MODULE_THREADING, "Failed initializing global mutex for signal multiple wait");
+		return false;
+	}
+	if (pthreadApi->pthread_cond_init(&unixApp->signalMultipleWaitCondition, fpl_null) != 0) {
+		pthreadApi->pthread_mutex_destroy(&unixApp->signalMultipleWaitMutex);
+		FPL__FATAL(FPL__MODULE_THREADING, "Failed initializing global condition for signal multiple wait");
+		return false;
+	}
+
 	return true;
 }
 
@@ -25700,10 +25728,8 @@ fpl_platform_api bool fplMemoryGetUsage(fplMemoryInfos *outInfos) {
 
 //
 // Unix Threading (Auto-reset event emulated via pthread mutex/cond)
+// Multi-wait coordination uses a shared mutex+cond on fpl__UnixAppState.
 //
-fpl_globalvar pthread_mutex_t fpl__unixSignalMultiMutex = PTHREAD_MUTEX_INITIALIZER;
-fpl_globalvar pthread_cond_t fpl__unixSignalMultiCond = PTHREAD_COND_INITIALIZER;
-
 fpl_internal bool fpl__UnixSignalWaitOne(const fpl__PThreadApi *pthreadApi, fplSignalHandle *signal, const fplTimeoutValue timeout) {
 	pthread_mutex_t *mut = (pthread_mutex_t *)&signal->internalHandle.unixEvent.mutex;
 	pthread_cond_t *cond = (pthread_cond_t *)&signal->internalHandle.unixEvent.cond;
@@ -25748,9 +25774,14 @@ fpl_internal bool fpl__UnixSignalWaitMultiple(fplSignalHandle **signals, const u
 	FPL__CheckArgumentNull(signals, false);
 	FPL__CheckArgumentMax(maxCount, FPL_MAX_SIGNAL_COUNT, false);
 	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+
 	const size_t actualStride = stride > 0 ? stride : sizeof(fplSignalHandle *);
+
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	fpl__UnixAppState *unixApp = &appState->punix;
+	pthread_mutex_t *globalMutex = &unixApp->signalMultipleWaitMutex;
+	pthread_cond_t *globalCondition = &unixApp->signalMultipleWaitCondition;
 
 	for (uint32_t i = 0; i < maxCount; ++i) {
 		fplSignalHandle *signal = *(fplSignalHandle **)((uint8_t *)signals + i * actualStride);
@@ -25774,7 +25805,7 @@ fpl_internal bool fpl__UnixSignalWaitMultiple(fplSignalHandle **signals, const u
 		fpl__InitWaitTimeSpec(timeout, &deadline);
 	}
 
-	pthreadApi->pthread_mutex_lock(&fpl__unixSignalMultiMutex);
+	pthreadApi->pthread_mutex_lock(globalMutex);
 
 	uint32_t consumedCount = 0;
 	bool timedOut = false;
@@ -25805,9 +25836,9 @@ fpl_internal bool fpl__UnixSignalWaitMultiple(fplSignalHandle **signals, const u
 
 		int rc;
 		if (timeout == FPL_TIMEOUT_INFINITE) {
-			rc = pthreadApi->pthread_cond_wait(&fpl__unixSignalMultiCond, &fpl__unixSignalMultiMutex);
+			rc = pthreadApi->pthread_cond_wait(globalCondition, globalMutex);
 		} else {
-			rc = pthreadApi->pthread_cond_timedwait(&fpl__unixSignalMultiCond, &fpl__unixSignalMultiMutex, &deadline);
+			rc = pthreadApi->pthread_cond_timedwait(globalCondition, globalMutex, &deadline);
 		}
 		if (rc != 0) {
 			// ETIMEDOUT or error - do one final scan under the global mutex below before giving up.
@@ -25835,7 +25866,7 @@ fpl_internal bool fpl__UnixSignalWaitMultiple(fplSignalHandle **signals, const u
 		}
 	}
 
-	pthreadApi->pthread_mutex_unlock(&fpl__unixSignalMultiMutex);
+	pthreadApi->pthread_mutex_unlock(globalMutex);
 
 	if (consumedCount < minCount) {
 		// Rollback - restore consumed signals so caller sees an atomic all-or-nothing failure.
@@ -25925,8 +25956,13 @@ fpl_platform_api bool fplSignalSet(fplSignalHandle *signal) {
 		return false;
 	}
 	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
+
+	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	fpl__UnixAppState *unixApp = &appState->punix;
+	pthread_mutex_t *globalMutex = &unixApp->signalMultipleWaitMutex;
+	pthread_cond_t *globalCondition = &unixApp->signalMultipleWaitCondition;
+
 	pthread_mutex_t *mut = (pthread_mutex_t *)&signal->internalHandle.unixEvent.mutex;
 	pthread_cond_t *cond = (pthread_cond_t *)&signal->internalHandle.unixEvent.cond;
 
@@ -25939,10 +25975,10 @@ fpl_platform_api bool fplSignalSet(fplSignalHandle *signal) {
 	}
 	pthreadApi->pthread_mutex_unlock(mut);
 
-	// Wake any multi-wait waiters parked on the global cond.
-	pthreadApi->pthread_mutex_lock(&fpl__unixSignalMultiMutex);
-	pthreadApi->pthread_cond_broadcast(&fpl__unixSignalMultiCond);
-	pthreadApi->pthread_mutex_unlock(&fpl__unixSignalMultiMutex);
+	// Wake any multi-wait waiters parked on the shared cond.
+	pthreadApi->pthread_mutex_lock(globalMutex);
+	pthreadApi->pthread_cond_broadcast(globalCondition);
+	pthreadApi->pthread_mutex_unlock(globalMutex);
 
 	return true;
 }
