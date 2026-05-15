@@ -316,12 +316,59 @@ extern "C" {
 		bool isError;
 	} fxmlContext;
 
+	/*!
+		\brief Initializes a context from a memory buffer.
+		\param[in] data Pointer to the XML byte stream (must remain valid for the lifetime of the context).
+		\param[in] dataSize Size of the input buffer in bytes.
+		\param[out] outContext Reference to the context to fill in.
+		\return True when the context was initialized, false when any argument is null/zero.
+	*/
 	fxml_api bool fxmlInitFromMemory(const void *data, const size_t dataSize, fxmlContext *outContext);
+
+	/*!
+		\brief Parses the XML stream stored in the context into a tree rooted at @p outRoot.
+		\param[in,out] context Reference to an initialized @ref fxmlContext.
+		\param[out] outRoot Reference to the root tag that receives the parsed tree.
+		\return True on success, false on parse error (inspect `context->errorType`).
+	*/
 	fxml_api bool fxmlParse(fxmlContext *context, fxmlTag *outRoot);
+
+	/*!
+		\brief Releases all memory blocks owned by the context.
+		\param[in,out] context Reference to the context to release. Safe to pass null.
+	*/
 	fxml_api void fxmlFree(fxmlContext *context);
+
+	/*!
+		\brief Finds the first direct child element with the given name.
+		\param[in] tag Reference to the parent tag to search under.
+		\param[in] name The element name to look for.
+		\return Pointer to the matching child tag, or null when nothing was found.
+	*/
 	fxml_api const fxmlTag *fxmlFindTagByName(const fxmlTag *tag, const char *name);
+
+	/*!
+		\brief Finds the first attribute on @p tag with the given name.
+		\param[in] tag Reference to the tag whose attributes are scanned.
+		\param[in] name The attribute name to look for.
+		\return Pointer to the matching attribute, or null when nothing was found.
+	*/
 	fxml_api const fxmlTag *fxmlFindAttributeByName(const fxmlTag *tag, const char *name);
+
+	/*!
+		\brief Convenience wrapper around @ref fxmlFindAttributeByName that returns the attribute value directly.
+		\param[in] tag Reference to the tag whose attributes are scanned.
+		\param[in] attrName The attribute name to look for.
+		\return Pointer to the attribute value string, or null when the attribute was not found.
+	*/
 	fxml_api const char *fxmlGetAttributeValue(const fxmlTag *tag, const char *attrName);
+
+	/*!
+		\brief Convenience wrapper around @ref fxmlFindTagByName that returns the child's text value directly.
+		\param[in] tag Reference to the parent tag to search under.
+		\param[in] tagName The child element name to look for.
+		\return Pointer to the child element's text value, or null when the child was not found.
+	*/
 	fxml_api const char *fxmlGetTagValue(const fxmlTag *tag, const char *tagName);
 
 #ifdef __cplusplus
