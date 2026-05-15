@@ -267,6 +267,7 @@ SOFTWARE.
 	- Improved: Fixed grammar in fpl_b32 @brief ("a integer based" → "an integer-based")
 	- Improved: Shortened the multi-sentence paragraph in fpl_b32 @note down to a single-sentence usage hint
 	- Improved: Promoted FPL_NOT_IMPLEMENTED from a one-line `//!` comment to a proper @def/@brief block and reworded the awkward description ("This will full-on crash ... always")
+	- Improved: Normalized doxygen return tags by converting all 22 `@result` occurrences to `@return` for consistency
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -3289,7 +3290,7 @@ fplStaticAssert(sizeof(size_t) == sizeof(uint32_t));
 /**
 * @def fplZeroInit
 * @brief Initializes a struct to zero.
-* @result The command that initializes a struct to zero, e.g. {0} or {}.
+* @return The command that initializes a struct to zero, e.g. {0} or {}.
 */
 #define fplZeroInit fpl__m_ZeroInit
 
@@ -3326,7 +3327,7 @@ fplStaticAssert(sizeof(size_t) == sizeof(uint32_t));
 * @brief Returns the offset for the value to satisfy the given alignment boundary.
 * @param[in] value Value to align.
 * @param[in] alignment Alignment boundary.
-* @result Offset to satisfy the alignment boundary.
+* @return Offset to satisfy the alignment boundary.
 */
 #define fplGetAlignmentOffset(value, alignment) ( (((alignment) > 1) && (((value) & ((alignment) - 1)) != 0)) ? ((alignment) - ((value) & ((alignment) - 1))) : 0)			
 
@@ -3335,7 +3336,7 @@ fplStaticAssert(sizeof(size_t) == sizeof(uint32_t));
 * @brief Returns the given size, extended to satisfy the given alignment boundary.
 * @param[in] size Size to align.
 * @param[in] alignment Alignment boundary.
-* @result Aligned size.
+* @return Aligned size.
 */
 #define fplGetAlignedSize(size, alignment) (((size) > 0 && (alignment) > 0) ? ((size) + fplGetAlignmentOffset(size, alignment)) : (size))
 
@@ -3344,7 +3345,7 @@ fplStaticAssert(sizeof(size_t) == sizeof(uint32_t));
 * @brief Returns true when the given pointer address is aligned to the given alignment.
 * @param[in] ptr Pointer to check.
 * @param[in] alignment Alignment boundary.
-* @result True if the pointer is aligned, false otherwise.
+* @return True if the pointer is aligned, false otherwise.
 */
 #define fplIsAligned(ptr, alignment) (((uintptr_t)(const void *)(ptr)) % (alignment) == 0)
 
@@ -3352,7 +3353,7 @@ fplStaticAssert(sizeof(size_t) == sizeof(uint32_t));
 * @def fplIsPowerOfTwo
 * @brief Returns true when the given value is a power of two.
 * @param[in] value Value to check.
-* @result True if the value is a power of two, false otherwise.
+* @return True if the value is a power of two, false otherwise.
 */
 #define fplIsPowerOfTwo(value) (((value) != 0) && (((value) & (~(value) + 1)) == (value)))
 
@@ -3361,7 +3362,7 @@ fplStaticAssert(sizeof(size_t) == sizeof(uint32_t));
 * @brief Returns true when the given value has the given bit set.
 * @param[in] value Value to check.
 * @param[in] bit Bit position to check.
-* @result True if the bit is set, false otherwise.
+* @return True if the bit is set, false otherwise.
 */
 #define fplIsBitSet(value, bit) (((value) >> (bit)) & 0x1)
 
@@ -3369,7 +3370,7 @@ fplStaticAssert(sizeof(size_t) == sizeof(uint32_t));
 * @def fplKiloBytes
 * @brief Returns the number of bytes for the given kilobytes.
 * @param[in] value Value in kilobytes.
-* @result Number of bytes.
+* @return Number of bytes.
 */
 #define fplKiloBytes(value) (((value) * 1024ull))
 
@@ -3377,7 +3378,7 @@ fplStaticAssert(sizeof(size_t) == sizeof(uint32_t));
 * @def fplMegaBytes
 * @brief Returns the number of bytes for the given megabytes.
 * @param[in] value Value in megabytes.
-* @result Number of bytes.
+* @return Number of bytes.
 */
 #define fplMegaBytes(value) ((fplKiloBytes(value) * 1024ull))
 
@@ -3385,7 +3386,7 @@ fplStaticAssert(sizeof(size_t) == sizeof(uint32_t));
 * @def fplGigaBytes
 * @brief Returns the number of bytes for the given gigabytes.
 * @param[in] value Value in gigabytes.
-* @result Number of bytes.
+* @return Number of bytes.
 */
 #define fplGigaBytes(value) ((fplMegaBytes(value) * 1024ull))
 
@@ -3393,7 +3394,7 @@ fplStaticAssert(sizeof(size_t) == sizeof(uint32_t));
 * @def fplTeraBytes
 * @brief Returns the number of bytes for the given terabytes.
 * @param[in] value Value in terabytes.
-* @result Number of bytes.
+* @return Number of bytes.
 */
 #define fplTeraBytes(value) ((fplGigaBytes(value) * 1024ull))
 
@@ -3402,7 +3403,7 @@ fplStaticAssert(sizeof(size_t) == sizeof(uint32_t));
 * @brief Returns true when the given mask in set in the value.
 * @param[in] value Value to check.
 * @param[in] mask Bit mask to check
-* @result True if the mask is set, false otherwise.
+* @return True if the mask is set, false otherwise.
 */
 #define fplIsMaskSet(value, mask) (((value) & (mask)) == (mask))
 
@@ -3434,21 +3435,21 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 /**
 * @def fplIsBigEndian
 * @brief Gets a value indicating whether the current platform is big-endian or not.
-* @result Returns true if the platform is big-endian, false otherwise.
+* @return Returns true if the platform is big-endian, false otherwise.
 */
 #define fplIsBigEndian() (fpl__global_endianessOrder.value == fplEndianessType_Big)
 
 /**
 * @def fplIsLittleEndian
 * @brief Gets a value indicating whether the current platform is little-endian or not.
-* @result Returns true if the platform is little-endian, false otherwise.
+* @return Returns true if the platform is little-endian, false otherwise.
 */
 #define fplIsLittleEndian() (fpl__global_endianessOrder.value == fplEndianessType_Little)
 
 /**
 * @def fplGetEndianess32
 * @brief Returns the unsigned 32-bit integer value, that represents the current platform endianess that is built from the values (0, 1, 2, 3).
-* @result Unsigned 32-bit integer endianess.
+* @return Unsigned 32-bit integer endianess.
 */
 #define fplGetEndianess32() (fpl__global_endianessOrder.value)
 
@@ -3482,7 +3483,7 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 * @def fplArrayCount
 * @brief Returns the element count from a static array. This should ideally produce a compile error when passing a pointer to it.
 * @param[in] arr Array to count elements.
-* @result Element count.
+* @return Element count.
 */
 #define fplArrayCount(arr) fpl__m_ArrayCount(arr)
 
@@ -3491,7 +3492,7 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 * @brief Returns the offset in bytes for the specified structure type and field name.
 * @param[in] type Structure type.
 * @param[in] field Field name.
-* @result Offset in bytes.
+* @return Offset in bytes.
 */
 #define fplOffsetOf(type, field) ((size_t)(&(((type*)(0))->field)))
 
@@ -3500,7 +3501,7 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 * @brief Returns the smallest value of A and B.
 * @param[in] a First value.
 * @param[in] b Second value.
-* @result Smallest value.
+* @return Smallest value.
 */
 #define fplMin(a, b) ((a) < (b) ? (a) : (b))
 
@@ -3509,7 +3510,7 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 * @brief Returns the biggest value of A and B.
 * @param[in] a First value.
 * @param[in] b Second value.
-* @result Biggest value.
+* @return Biggest value.
 */
 #define fplMax(a, b) ((a) > (b) ? (a) : (b))
 
@@ -28441,7 +28442,7 @@ struct fplAudioBackend;
 * @brief Initializes the specified @ref fplAudioBackend
 * @param[in] context The @ref fplAudioContext reference
 * @param[in] backend The @ref fplAudioBackend reference
-* @result Returns a @ref fplAudioResultType
+* @return Returns a @ref fplAudioResultType
 */
 typedef	FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl_audio_backend_initialize_func);
 
@@ -28456,7 +28457,7 @@ typedef	FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl_audio_backend_get_audio
 * @brief Releases the specified @ref fplAudioBackend
 * @param[in] context The @ref fplAudioContext reference
 * @param[in] backend The @ref fplAudioBackend reference
-* @result Returns a boolean indicating whether the backend was released or not
+* @return Returns a boolean indicating whether the backend was released or not
 */
 typedef	FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl_audio_backend_release_func);
 
@@ -28469,7 +28470,7 @@ typedef	FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl_audio_backend_release_func);
 * @param[out] outputFormat The @ref fplAudioFormat reference, that specifies the output audio format
 * @param[out] outputChannelMap The @ref fplAudioChannelMap reference, that specifies the output channel map
 * @param[out] outputDevice The @ref fplAudioDeviceInfo reference, that specifies the output device info
-* @result Returns a @ref fplAudioResultType
+* @return Returns a @ref fplAudioResultType
 */
 #define FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(name) fplAudioResultType name(struct fplAudioContext *context, struct fplAudioBackend *backend, const fplSpecificAudioSettings *audioSettings, const fplAudioFormat *targetFormat, const fplAudioDeviceInfo *targetDevice, fplAudioFormat *outputFormat, fplAudioDeviceInfo *outputDevice, fplAudioChannelMap *outputChannelMap)
 typedef	FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl_audio_backend_initialize_device_func);
@@ -28479,7 +28480,7 @@ typedef	FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl_audio_backend_initialize_de
 * @brief Releases the device of the specified @ref fplAudioBackend
 * @param[in] context The @ref fplAudioContext reference
 * @param[in] backend The @ref fplAudioBackend reference
-* @result Returns a boolean indicating whether the device of the @ref fplAudioBackend was released or not
+* @return Returns a boolean indicating whether the device of the @ref fplAudioBackend was released or not
 */
 typedef	FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(fpl_audio_backend_release_device_func);
 
