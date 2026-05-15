@@ -273,6 +273,7 @@ SOFTWARE.
 	- Improved: Fixed typo and missing period in fplIsMaskSet documentation ("the given mask in set" → "is set", added trailing period on @param mask)
 	- Improved: Added missing @enum and @union documentation blocks for fplEndianessType and fplEndianess
 	- Improved: Fixed "endianess" → "endianness" misspelling in the prose of fplGetEndianess32 documentation (symbol names retained for API compatibility)
+	- Improved: Corrected FPL_ENUM_AS_FLAGS_OPERATORS @brief — the macro is part of the public surface, not internal, and now describes its purpose (bitwise operator overloads for C++)
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -3573,7 +3574,7 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 
 /**
 * @def FPL_ENUM_AS_FLAGS_OPERATORS
-* @brief Internal macro used to create required enum operators for C++.
+* @brief Defines bitwise operator overloads for the given enum type (C++ only, no-op in C).
 * @param[in] type The type of the enum.
 */
 #define FPL_ENUM_AS_FLAGS_OPERATORS(type) FPL__M_ENUM_AS_FLAGS_OPERATORS(type)
