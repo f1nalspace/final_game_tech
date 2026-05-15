@@ -292,6 +292,7 @@ SOFTWARE.
 	- Improved: Fixed the same "Field for preventing union/struct to be empty" grammar on six remaining padding fields (fplSpecificAudioSettings.dummy, fplLogWriterConsole.dummy, fplInternalConditionVariable.dummy, fplVideoWindow.dummy, fplVideoSurface.dummy, fplVideoRequirements.dummy)
 	- Fixed: FPL_GAMEPAD_MAPPING_RESOLVE_CALLBACK doc block used the non-existent name "FPL_GAMEPAD_MAPPING_RESOLVE_FUNC" and the invalid tag `@define`; corrected to the real name with `@def`, and added the `[in]` direction qualifier on the `@param`
 	- Fixed: FPL_GAMEPAD_GUID_SIZE doc used the invalid tag `@define` instead of `@def`; also capitalized "GUID" in the @brief
+	- Fixed: fplGetDynamicLibraryProc @return was an incomplete sentence ("Returns the procedure address … or when the procedure is not found …") with no failure-value description; now correctly states that fpl_null is returned on failure
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -6537,7 +6538,7 @@ fpl_platform_api bool fplDynamicLibraryLoad(const char *libraryFilePath, fplDyna
 * @brief Returns the dynamic library procedure address for the given procedure name.
 * @param[in] handle Reference to the library handle @ref fplDynamicLibraryHandle.
 * @param[in] name The name of the procedure.
-* @return Returns the procedure address for the given procedure name or when the procedure is not found or the library is not loaded.
+* @return Returns the procedure address for the given procedure name, or @ref fpl_null when the procedure is not found or the library is not loaded.
 * @see @ref section_category_dll_getprocaddr
 */
 fpl_platform_api void *fplGetDynamicLibraryProc(const fplDynamicLibraryHandle *handle, const char *name);
