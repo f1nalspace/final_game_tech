@@ -287,6 +287,7 @@ SOFTWARE.
 	- Fixed: fplAtomicCompareAndSwapSize doc pointed readers at fplAtomicIsCompareAndSwapPtr() instead of fplAtomicIsCompareAndSwapSize()
 	- Improved: Fixed "User opaque user data" → "Opaque user data" on fplVulkanSettings.userData (stray duplicate word)
 	- Fixed: fplGraphicsApiSettings.dummy was documented as "Field for preventing union to be empty" but the surrounding type is a struct, not a union; description now correctly references the struct
+	- Fixed: fplAudioDeviceID.dshow was documented as "DirectShow Device GUID" — the backend is DirectSound, not DirectShow; doc now reads "DirectSound device GUID"
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -5623,7 +5624,7 @@ typedef struct fplAudioFormat {
 */
 typedef union fplAudioDeviceID {
 #if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
-	//! DirectShow Device GUID.
+	//! DirectSound device GUID.
 	fpl__Win32Guid dshow;
 #endif
 #if defined(FPL__ENABLE_AUDIO_WASAPI)
