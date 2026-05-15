@@ -288,6 +288,7 @@ SOFTWARE.
 	- Improved: Fixed "User opaque user data" → "Opaque user data" on fplVulkanSettings.userData (stray duplicate word)
 	- Fixed: fplGraphicsApiSettings.dummy was documented as "Field for preventing union to be empty" but the surrounding type is a struct, not a union; description now correctly references the struct
 	- Fixed: fplAudioDeviceID.dshow was documented as "DirectShow Device GUID" — the backend is DirectSound, not DirectShow; doc now reads "DirectSound device GUID"
+	- Improved: Fixed grammar on fplAudioDeviceID.dummy field description ("Field for preventing union to be empty" → "Padding field that prevents the union from being empty when no audio backend is enabled")
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -5647,7 +5648,7 @@ typedef union fplAudioDeviceID {
 	//! OSS device path (e.g. "/dev/dsp" or "/dev/dsp1").
 	char oss[256];
 #endif
-	//! Field for preventing union to be empty.
+	//! Padding field that prevents the union from being empty when no audio backend is enabled.
 	uint8_t dummy[256];
 } fplAudioDeviceID;
 
