@@ -286,6 +286,7 @@ SOFTWARE.
 	- Fixed: Six atomic increment functions (fplAtomicIncrementU32/U64/S32/S64/Size/Ptr) used the invalid doxygen tag `@return[in]` — the `[in]` direction qualifier only belongs to `@param`. Stripped to plain `@return`
 	- Fixed: fplAtomicCompareAndSwapSize doc pointed readers at fplAtomicIsCompareAndSwapPtr() instead of fplAtomicIsCompareAndSwapSize()
 	- Improved: Fixed "User opaque user data" → "Opaque user data" on fplVulkanSettings.userData (stray duplicate word)
+	- Fixed: fplGraphicsApiSettings.dummy was documented as "Field for preventing union to be empty" but the surrounding type is a struct, not a union; description now correctly references the struct
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -5305,7 +5306,7 @@ typedef struct fplGraphicsApiSettings {
 	//! Vulkan settings.
 	fplVulkanSettings vulkan;
 #endif
-	//! Field for preventing union to be empty.
+	//! Padding field that prevents the struct from being empty when no graphics backends are enabled.
 	int dummy;
 } fplGraphicsApiSettings;
 
