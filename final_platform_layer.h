@@ -297,6 +297,7 @@ SOFTWARE.
 	- Fixed: fplThreadState @typedef referenced itself via @ref ("A type definition for mapping fplThreadState into a 32-bit integer") — now correctly references the source enum @ref fplThreadStates
 	- Improved: Replaced the vague "When this is set to infinite" timeout description with a concrete @ref FPL_TIMEOUT_INFINITE reference across the eight thread/mutex/semaphore/signal/condition wait functions
 	- Fixed: fplConditionInit @note told readers to call fplSignalDestroy() when done — should be fplConditionDestroy() (signal/condition copy-paste mismatch)
+	- Improved: Swept the non-standard plural "informations" → "information" across six doc blocks (OSSession, Files defgroup, fplInternalFileRootInfo, fplFileEntry, Input defgroup, fplWindowDropFiles, Locale defgroup)
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -4840,7 +4841,7 @@ fpl_platform_api bool fplOSGetVersionInfos(fplOSVersionInfos *outInfos);
 // ----------------------------------------------------------------------------
 /**
 * @defgroup OSSession Session Infos
-* @brief This category contains functions for retrieving current session informations, such as username, etc.
+* @brief This category contains functions for retrieving current session information, such as username, etc.
 * @{
 */
 // ----------------------------------------------------------------------------
@@ -7549,7 +7550,7 @@ typedef union fplInternalFileEntryHandle {
 
 /**
 * @struct fplInternalFileRootInfo
-* @brief A structure containing the internal root file informations.
+* @brief A structure containing the internal root file information.
 */
 typedef struct fplInternalFileRootInfo {
 	//! Saved root path.
@@ -7576,7 +7577,7 @@ typedef struct fplFileTimeStamps {
 
 /**
 * @struct fplFileEntry
-* @brief A structure containing the informations for a file or directory (name, type, attributes, etc.).
+* @brief A structure containing the information for a file or directory (name, type, attributes, etc.).
 */
 typedef struct fplFileEntry {
 	//! Name.
@@ -8027,7 +8028,7 @@ fpl_common_api size_t fplPathCombine(char *destPath, const size_t maxDestPathLen
 // ----------------------------------------------------------------------------
 /**
 * @defgroup Input
-* @brief This category contains the types and function for query keyboard / mouse / game pad informations
+* @brief This category contains the types and function for query keyboard / mouse / game pad information
 * @{
 */
 // ----------------------------------------------------------------------------
@@ -9051,7 +9052,7 @@ typedef enum fplWindowEventType {
 
 /**
 * @struct fplWindowDropFiles
-* @brief A structure containing number and dropped files informations.
+* @brief A structure containing number and dropped files information.
 */
 typedef struct fplWindowDropFiles {
 	//! The internal memory block, do not touch.
@@ -10024,7 +10025,7 @@ fpl_common_api bool fplDecodeAudioFormatU64(const fplAudioFormatU64 format64, ui
 // ----------------------------------------------------------------------------
 /**
 * @defgroup Localization Localization functions
-* @brief This category contains functions for getting informations about current locale
+* @brief This category contains functions for getting information about current locale
 * @{
 */
 // ----------------------------------------------------------------------------
