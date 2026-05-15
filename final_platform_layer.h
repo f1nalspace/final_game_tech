@@ -276,6 +276,7 @@ SOFTWARE.
 	- Improved: Corrected FPL_ENUM_AS_FLAGS_OPERATORS @brief — the macro is part of the public surface, not internal, and now describes its purpose (bitwise operator overloads for C++)
 	- Improved: Fixed "lowerspace" → "lowercase" typo in the windef.h NOMINMAX rationale comment
 	- Fixed: fplTimestamp.win32.qpc was documented as "Query performance count in 10th nanoseconds" — QPC ticks run at the platform-dependent QueryPerformanceFrequency, not a fixed 100 ns unit; doc now states this
+	- Improved: Fixed grammar on fplTimestamp.unused field description ("Field for preventing union to be empty" → "Padding field that prevents the union from being empty when no platform branch matches")
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -3953,7 +3954,7 @@ typedef union fplTimestamp {
 		int64_t nanoSeconds;
 	} posix;
 #endif
-	//! Field for preventing union to be empty.
+	//! Padding field that prevents the union from being empty when no platform branch matches.
 	uint64_t unused;
 } fplTimestamp;
 
