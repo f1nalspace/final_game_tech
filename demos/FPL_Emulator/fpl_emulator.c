@@ -306,8 +306,6 @@ static FGB_ALLOCATE_MEMORY_CALLBACK(frontend_AllocateMemory) {
 		}
 	}
 
-	size_t remainingSize = fmemGetRemainingSize(&transientMem->temporary);
-
 	uint8_t *result = fmemPush(&transientMem->temporary, size, fmemPushFlags_Clear);
 	if (result == fpl_null) {
 		FPL_LOG_ERROR("Frontend", "Not enough memory in transient block. Expect %zu bytes but got %zu bytes", size, remainingSize);
@@ -389,7 +387,7 @@ static void EndPerformanceCounter(PerformanceCounter *counter, const fplTimestam
 	double duration = fplTimestampElapsed(counter->start, counter->end);
 	size_t x = counter->count++;
 
-	int deltaIndex = x % PERFORMANCE_COUNTER_DELTA_CAPACITY;
+	size_t deltaIndex = x % PERFORMANCE_COUNTER_DELTA_CAPACITY;
 	counter->deltas[deltaIndex] = duration;
 
 	counter->minSecs = counter->maxSecs = 0;
@@ -699,7 +697,6 @@ typedef struct {
 	fmemMemoryBlock disassemblyMemory;
 
 	UIButtonData pauseOrResumeButton;
-	UIButtonData resumeButton;
 	UIButtonData frameStepButton;
 	UIButtonData singleStepButton;
 	UIButtonData microStepButton;
@@ -1064,7 +1061,7 @@ static char TextBuffer[256];
 const float inv255 = 1.0f / 255.0f;
 
 static Color4f FGBColorToLinearColor(const fgbColor color) {
-	Color4f result = { color.r * inv255, color.g * inv255, color.b * inv255, 1.0f };
+	Color4f result = { (float)color.r * inv255, (float)color.g * inv255, (float)color.b * inv255, 1.0f };
 	return result;
 }
 	
@@ -1223,17 +1220,14 @@ static void DrawDisplayState(Application *app, const fgbPPU *ppu, const float x,
 
 	for (int i = 0; i < ppu->pipeline.fifo.len; ++i) {
 		int p = (ppu->pipeline.fifo.out + i) % fifoCapacity;
-
 		fgbPixel fifoPixel = ppu->pipeline.fifo.pixels[p];
-
 		Color4f color = FGBColorToLinearColor(fifoPixel.color);
-
-		RendererDrawFilledQuad(tmpX + i * fifoCellWidth, tmpY, fifoCellWidth, fifoHeight, color);
+		RendererDrawFilledQuad(tmpX + (float)i * fifoCellWidth, tmpY, fifoCellWidth, fifoHeight, color);
 	}
 
 	RendererDrawStrokedQuad(tmpX, tmpY, fifoWidth, fifoHeight, 2.0f, ColorGray);
 	for (int i = 1; i < fifoCapacity; ++i) {
-		RendererDrawLine(tmpX + i * fifoCellWidth, tmpY, tmpX + i * fifoCellWidth, tmpY + fifoHeight, 1.0f, ColorGray);
+		RendererDrawLine(tmpX + (float)i * fifoCellWidth, tmpY, tmpX + (float)i * fifoCellWidth, tmpY + fifoHeight, 1.0f, ColorGray);
 	}
 
 	textY -= fifoHeight;
@@ -1718,8 +1712,8 @@ static void DrawDisplay(const Application *app, const float x, const float y, co
 			const int textureSizeLocation = appShader->textureSizeLocation;
 			const int imageSizeLocation = appShader->imageSizeLocation;
 
-			const Vec2f textureSize = V2fInit(tex->width, tex->height);
-			const Vec2f imageSize = V2fInit(FGB_DISPLAY_WIDTH, FGB_DISPLAY_HEIGHT);
+			const Vec2f textureSize = V2fInit((float)tex->width, (float)tex->height);
+			const Vec2f imageSize = V2fInit((float)FGB_DISPLAY_WIDTH, (float)FGB_DISPLAY_HEIGHT);
 
 			RendererShaderBind(shaderProgram);
 
@@ -1745,7 +1739,7 @@ static void DrawDisplay(const Application *app, const float x, const float y, co
 	}
 }
 
-static void DrawBackgroundMap(UIContext *uiCtx, const Application *app, const float x, const float y, const float w, const float h) {
+static void DrawBackgroundMap(const UIContext *uiCtx, const Application *app, const float x, const float y, const float w, const float h) {
 	const Emulator *emulator = &app->emulator;
 
 	const Texture *tex = &app->backgroundMapTexture;
@@ -1769,34 +1763,28 @@ static void DrawBackgroundMap(UIContext *uiCtx, const Application *app, const fl
 
 	float tileSize = insideWidth / (float)gridCountX;
 
-	float totalTilesWidth = gridCountX * tileSize;
-	float totalTilesHeight = gridCountY * tileSize;
+	float totalTilesWidth = (float)gridCountX * tileSize;
+	float totalTilesHeight = (float)gridCountY * tileSize;
 
 	float tilesX = insideX;
 	float tilesY = insideY + insideHeight;
-	if (totalTilesHeight <= insideHeight) {
-		int a = 42;
-	} else {
-		// Need to do some aspect ratio stuff?
-		int b = 42;
-	}
 
 	float texY = insideY + insideHeight - totalTilesHeight;
 	RendererDrawTexturedQuad(tex->id, insideX, texY, insideWidth, totalTilesHeight, ColorWhite, uMin, vMin, uMax, vMax);
 
 	Color4f gridLineColor = { 0.1f, 0.1f, 0.1f, 0.25f };
 	for (uint8_t i = 0; i <= gridCountX; ++i) {
-		float gridLineX0 = tilesX + i * tileSize;
+		float gridLineX0 = tilesX + (float)i * tileSize;
 		float gridLineY0 = tilesY;
-		float gridLineX1 = tilesX + i * tileSize;
+		float gridLineX1 = tilesX + (float)i * tileSize;
 		float gridLineY1 = tilesY - totalTilesHeight;
 		RendererDrawLine(gridLineX0, gridLineY0, gridLineX1, gridLineY1, 1.0f, gridLineColor);
 	}
 	for (uint8_t i = 0; i <= gridCountY; ++i) {
 		float gridLineX0 = tilesX;
-		float gridLineY0 = tilesY - i * tileSize;
+		float gridLineY0 = tilesY - (float)i * tileSize;
 		float gridLineX1 = tilesX + totalTilesWidth;
-		float gridLineY1 = tilesY - i * tileSize;
+		float gridLineY1 = tilesY - (float)i * tileSize;
 		RendererDrawLine(gridLineX0, gridLineY0, gridLineX1, gridLineY1, 1.0f, gridLineColor);
 	}
 
@@ -1861,7 +1849,7 @@ static void DrawBackground(const Application *app, const float x, const float y,
 	RendererDrawTexturedQuad(tex->id, x + border * 2.0f, y + border * 2.0f, w - border * 4.0f, h - border * 4.0f, ColorWhite, uMin, vMin, uMax, vMax);
 }
 
-static void DrawTiles(UIContext *uiCtx, const Texture *tex, const float x, const float y, const float w, const float h, const float aspect) {
+static void DrawTiles(const UIContext *uiCtx, const Texture *tex, const float x, const float y, const float w, const float h, const float aspect) {
 	const float uMin = 0.0f;
 	const float uMax = tex->uScale;
 	const float vMin = tex->vScale;
@@ -1891,17 +1879,17 @@ static void DrawTiles(UIContext *uiCtx, const Texture *tex, const float x, const
 	RendererDrawTexturedQuad(tex->id, rx, ry, rw, rh, ColorWhite, uMin, vMin, uMax, vMax);
 
 	for (uint8_t i = 0; i <= gridCountX; ++i) {
-		const float gridLineX0 = rx + i * tileSize;
+		const float gridLineX0 = rx + (float)i * tileSize;
 		const float gridLineY0 = ry;
-		const float gridLineX1 = rx + i * tileSize;
+		const float gridLineX1 = rx + (float)i * tileSize;
 		const float gridLineY1 = ry + totalTilesHeight;
 		RendererDrawLine(gridLineX0, gridLineY0, gridLineX1, gridLineY1, 1.0f, gridLineColor);
 	}
 	for (uint8_t i = 0; i <= gridCountY; ++i) {
 		const float gridLineX0 = rx;
-		const float gridLineY0 = ry + i * tileSize;
+		const float gridLineY0 = ry + (float)i * tileSize;
 		const float gridLineX1 = rx + totalTilesWidth;
-		const float gridLineY1 = ry + i * tileSize;
+		const float gridLineY1 = ry + (float)i * tileSize;
 		RendererDrawLine(gridLineX0, gridLineY0, gridLineX1, gridLineY1, 1.0f, gridLineColor);
 	}
 }
@@ -1944,7 +1932,7 @@ static void DrawBreakpoints(Application *app, const float x, const float y, cons
 }
 
 static void DrawPalette(const float x, const float y, const float cellWidth, const float cellHeight, const Color4f *colors, const uint8_t colorCount) {
-	float totalWidth = cellWidth * colorCount;
+	float totalWidth = cellWidth * (float)colorCount;
 	float totalHeight = cellHeight;
 
 	float border = 1.0f;
@@ -1955,10 +1943,10 @@ static void DrawPalette(const float x, const float y, const float cellWidth, con
 	RendererDrawStrokedQuad(x + border * 0.5f, y + border * 0.5f, totalWidth - border, totalHeight - border, 1.0f, ColorGray);
 
 	for (uint8_t colorIndex = 1; colorIndex < colorCount; ++colorIndex) {
-		RendererDrawLine(x + colorIndex * cellWidth, y, x + colorIndex * cellWidth, y + cellHeight, 1.0f, ColorGray);
+		RendererDrawLine(x + (float)colorIndex * cellWidth, y, x + (float)colorIndex * cellWidth, y + cellHeight, 1.0f, ColorGray);
 	}
 	for (uint8_t colorIndex = 0; colorIndex < colorCount; ++colorIndex) {
-		float colX = x + colorIndex * cellWidth + border;
+		float colX = x + (float)colorIndex * cellWidth + border;
 		float colY = y + border;
 		RendererDrawFilledQuad(colX, colY, colW, colH, colors[colorIndex]);
 	}
@@ -2178,16 +2166,12 @@ static void DrawPalettes(Application *app, const float x, const float y, const f
 
 static char performanceLabelBuffer[1024] = { 0 };
 
-static void DrawPerformanceCounter(UIContext *uiCtx, const float x, const float y, const char *name, const Color4f foregroundColor, const PerformanceCounter *counter) {
+static void DrawPerformanceCounter(const UIContext *uiCtx, const float x, const float y, const char *name, const Color4f foregroundColor, const PerformanceCounter *counter) {
 	double avgTimeMs = GetPerformanceCounterAvg(counter) * 1000.0;
 	fplStringFormat(performanceLabelBuffer, fplArrayCount(performanceLabelBuffer), "%s: %.5f / %.5f / %.5f ms [%zu]", name, counter->minSecs * 1000.0, counter->maxSecs * 1000.0, avgTimeMs, counter->count);
 
 	size_t textLen = fplGetStringLength(performanceLabelBuffer);
 	UIString(uiCtx, x, y, foregroundColor, performanceLabelBuffer, textLen);
-}
-
-static void PauseGameboy(Application *app, fgbSystem *system) {
-	fgbPause(system);
 }
 
 static void ResumeGameboy(Application *app, fgbSystem *system) {
@@ -2199,7 +2183,7 @@ static void ResumeGameboy(Application *app, fgbSystem *system) {
 	WakeupEmulatorThread(emulator);
 }
 
-static void DrawPerformanceMetrics(UIContext *uiCtx, const Application *app, const float x, const float y, const float w, const float h) {
+static void DrawPerformanceMetrics(const UIContext *uiCtx, const Application *app, const float x, const float y, const float w, const float h) {
 	const float charHeight = UIGetFontHeight(uiCtx);
 	const float lineHeight = UIGetLineHeight(uiCtx);
 
@@ -2295,7 +2279,7 @@ static void RenderDebugFrame(Application *app, const InputState *input) {
 	const int cartInfoLineCount = 3;
 	const float cartInfoPadding = 6.0f;
 	const float cartInfoWidth = middleWidth;
-	const float cartInfoHeight = cartInfoLineCount * lineHeight + cartInfoPadding * 2.0f;
+	const float cartInfoHeight = (float)cartInfoLineCount * lineHeight + cartInfoPadding * 2.0f;
 	const float cartInfoX = leftSideWidth;
 	const float cartInfoY = h - cartInfoHeight;
 
@@ -2718,8 +2702,8 @@ static void RenderDebugFrame(Application *app, const InputState *input) {
 		const float statesDialogContentX = statesDlg->dialog.window.pos.x + statesDialogMargin;
 		const float statesDialogContentY = statesDlg->dialog.window.pos.y + statesDialogMargin;
 
-		const float statesGridCellWidth = (statesDialogContentWidth - statesDialogGridColumnSpacing * (statesDialogGridNumColumns - 1)) / (float)statesDialogGridNumColumns;
-		const float statesGridCellHeight = (statesDialogContentHeight - statesDialogGridRowSpacing * (statesDialogGridNumRows - 1)) / (float)statesDialogGridNumRows;
+		const float statesGridCellWidth = (statesDialogContentWidth - statesDialogGridColumnSpacing * (float)(statesDialogGridNumColumns - 1)) / (float)statesDialogGridNumColumns;
+		const float statesGridCellHeight = (statesDialogContentHeight - statesDialogGridRowSpacing * (float)(statesDialogGridNumRows - 1)) / (float)statesDialogGridNumRows;
 
 		Color4f labelColor0 = { 0.0f, 0.0f, 0.0f, 1.0f };
 		Color4f labelColor1 = { 1.0f, 1.0f, 1.0f, 1.0f };
@@ -2729,7 +2713,7 @@ static void RenderDebugFrame(Application *app, const InputState *input) {
 
 		const Texture *firstTexture = &app->displayTexture;
 
-		float stateTextureAspect = firstTexture->width / (float)firstTexture->height;
+		float stateTextureAspect = (float)firstTexture->width / (float)firstTexture->height;
 
 		Viewport4f stateTextureView = VP4fComputeByAspect(screenSize, stateTextureAspect);
 
@@ -2810,7 +2794,7 @@ static void RenderDebugFrame(Application *app, const InputState *input) {
 			// "Start" was pressed?
 			const ControllerInput *controller = &input->controllers[input->activeControllerIndex];
 			if (UIWasPressed(&controller->start)) {
-				int slotIndex = statesDlg->selectedSlotPos.row * statesDialogGridNumColumns + statesDlg->selectedSlotPos.column;
+				const uint32_t slotIndex = statesDlg->selectedSlotPos.row * statesDialogGridNumColumns + statesDlg->selectedSlotPos.column;
 
 				FGB_ASSERT(slotIndex < fplArrayCount(emulator->states.snapshots));
 				FGB_ASSERT(slotIndex < fplArrayCount(emulator->states.textures));
@@ -2833,6 +2817,8 @@ static void RenderDebugFrame(Application *app, const InputState *input) {
 								stateTexture->state = TextureState_Update;
 							}
 						}
+						break;
+					default:
 						break;
 				}
 
@@ -2904,16 +2890,12 @@ static void RenderDebugFrame(Application *app, const InputState *input) {
 #endif
 }
 
-static void RenderGameFrame(Application *app, const InputState *input) {
+static void RenderGameFrame(const Application *app, const InputState *input) {
 	RendererSetViewport(app->viewport.x, app->viewport.y, app->viewport.w, app->viewport.h);
 
 	RendererClear(0.1f, 0.3f, 0.7f, 1.0f);
 
 	RendererSetModelViewProjectionMatrix(&app->viewProjectionMat.m[0]);
-
-	const Emulator *emulator = &app->emulator;
-
-	const fgbSystem *system = &emulator->system;
 
 	const float w = (float)app->viewport.w;
 	const float h = (float)app->viewport.h;
@@ -3007,15 +2989,9 @@ static void TestQuirkFMEM() {
 static void FillWithRandomPixels(fgbColor *colors, const uint32_t width, const uint32_t height) {
 	for (uint32_t y = 0; y < height; ++y) {
 		for (uint32_t x = 0; x < width; ++x) {
-			//uint32_t color = 0xFFFF0000;
 			uint8_t r = rand() % UINT8_MAX;
 			uint8_t g = rand() % UINT8_MAX;
 			uint8_t b = rand() % UINT8_MAX;
-			//uint8_t r = 0;
-			//uint8_t g = 0;
-			//uint8_t b = 0;
-			uint8_t a = 255;
-			//uint32_t color = (r << 0) | (g << 8) | (b << 16) | (a << 24);
 			fgbColor color = { .r = r, .g = g, .b = b };
 			colors[y * width + x] = color;
 		}
@@ -3207,7 +3183,7 @@ static void UpdateActiveController(InputState *input, const int newIndex) {
 		input->activeControllerIndex = -1;	
 		for (uint32_t i = fplArrayCount(input->controllers) - 1; i > 0; i--) {
 			if (input->controllers[i].state == ControllerState_Connected) {
-				input->activeControllerIndex = i;
+				input->activeControllerIndex = (int32_t)i;
 				break;
 			}
 		}
@@ -3221,10 +3197,11 @@ static void ProcessControllerButton(const InputState *oldInput, InputState *newI
 	const UIButtonState *oldButton = oldController->buttons + buttonIndex;
 	UIButtonState *newButton = newController->buttons + buttonIndex;
 	
-	bool isKeyboard = controllerIndex == 0;
+	const bool isKeyboard = controllerIndex == 0;
 	
-	if (isKeyboard)
-		UpdateActiveController(newInput, controllerIndex);
+	if (isKeyboard) {
+		UpdateActiveController(newInput, (int32_t)controllerIndex);
+	}
 
 	if (isKeyboard)
 		UpdateKeyboardButtonState(newButton, isDown);
@@ -3283,6 +3260,9 @@ static void ProcessEvents(Application *app, const InputState *oldInput, InputSta
 						case fplKey_F1:
 							UpdateKeyboardButtonState(&newInput->debug.toggleDebug, isDown);
 							break;
+
+						default:
+							break;
 					}
 				}
 			}
@@ -3300,7 +3280,7 @@ static void ProcessEvents(Application *app, const InputState *oldInput, InputSta
 						// Only connect a controller when at least one mapped button is pressed
 							newController->state = ControllerState_Connected;
 						if (ev.gamepad.state.isActive) {
-							UpdateActiveController(newInput, controllerIndex);
+							UpdateActiveController(newInput, (int32_t)controllerIndex);
 						}
 					} break;
 
@@ -3338,10 +3318,13 @@ static void ProcessEvents(Application *app, const InputState *oldInput, InputSta
 							}
 
 							if (changed) {
-								UpdateActiveController(newInput, controllerIndex);
+								UpdateActiveController(newInput, (int32_t)controllerIndex);
 							}
 						}
 					} break;
+
+					default:
+						break;
 				}
 			}
 			break;
@@ -3370,6 +3353,8 @@ static void ProcessEvents(Application *app, const InputState *oldInput, InputSta
 							case fplMouseButtonType_Middle:
 								UpdateKeyboardButtonState(&newInput->mouse.middle, isDown);
 								break;
+							default:
+								break;
 						}
 					} break;
 
@@ -3377,6 +3362,9 @@ static void ProcessEvents(Application *app, const InputState *oldInput, InputSta
 					{
 						newInput->mouse.wheelDelta = ev.mouse.wheelDelta;
 					} break;
+
+					default:
+						break;
 				}
 			}
 			break;
@@ -3402,8 +3390,14 @@ static void ProcessEvents(Application *app, const InputState *oldInput, InputSta
 							fplAlwaysAssert(!"Failed beginnning a temorary memory");
 						}
 					} break;
+
+					default:
+						break;
 				}
 			} break;
+
+			default:
+				break;
 		}
 	}
 }
@@ -3541,7 +3535,6 @@ static float AudioClipF32(const float value) {
 typedef struct {
 	fgbSystem *system;
 	Emulator *emulator;
-	float *audioSamples;
 } AudioThreadState;
 
 static uint32_t AudioThreadCallback(const fplAudioFormat *deviceFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
@@ -3592,9 +3585,9 @@ static uint32_t AudioThreadCallback(const fplAudioFormat *deviceFormat, const ui
 		for (uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
 			for (uint8_t channelIndex = 0; channelIndex < 2; ++channelIndex) {
 				uint8_t rawSample = AudioTempSampels[frameIndex * 2 + channelIndex];
-				float sampleF32 = rawSample / 255.0f;
+				float sampleF32 = (float)rawSample / 255.0f;
 				uint8_t sampleU8 = (uint8_t)((sampleF32 * emulator->masterVolume) * 255.0f);
-				int16_t sampleS16 = (sampleU8 << 8) - INT16_MIN;
+				int16_t sampleS16 = (int16_t)((sampleU8 << 8) - INT16_MIN);
 				out16[frameIndex * 2 + channelIndex] = sampleS16;
 			}
 		}
@@ -3825,7 +3818,7 @@ static void EmulatorUnloadGame(Emulator *emulator) {
 		WakeupEmulatorThread(emulator);
 		fgbShutdown(&emulator->system);
 	}
-	for (uint8_t i = 0; i < fplArrayCount(emulator->states.snapshots); ++i) {
+	for (size_t i = 0; i < fplArrayCount(emulator->states.snapshots); ++i) {
 		fgbSnapshot *snapshot = emulator->states.snapshots + i;
 		fplClearStruct(snapshot);
 
@@ -3889,7 +3882,7 @@ static bool EmulatorLoadGame(Emulator *emulator, const char *filePath) {
 	}
 
 	// Load states from files
-	for (uint8_t i = 0; i < fplArrayCount(emulator->states.snapshots); ++i) {
+	for (size_t i = 0; i < fplArrayCount(emulator->states.snapshots); ++i) {
 		fgbSnapshot *snapshot = emulator->states.snapshots + i;
 		Texture *texture = emulator->states.textures + i;
 
@@ -4016,7 +4009,7 @@ static void SwapInput(InputState **oldInput, InputState **newInput) {
 	*oldInput = tmp;
 }
 
-static void SetupGameboxInput(InputState *newInput, fgbSystem *system) {
+static void SetupGameboxInput(const InputState *newInput, fgbSystem *system) {
 	// Translate controller states to game boy buttons
 	if (newInput->activeControllerIndex > -1) {
 		int index = newInput->activeControllerIndex;
@@ -4078,10 +4071,8 @@ static void InitializeUI(Application *app) {
 	UISetFont(uiCtx, &app->fontData, app->fontTexture.id, charHeight, lineHeight);
 }
 
-static void PrepareInputUI(Application *app, InputState *newInput) {
+static void PrepareInputUI(Application *app, const InputState *newInput) {
 	UIContext *uiCtx = &app->uiCtx;
-	Emulator *emulator = &app->emulator;
-	fgbSystem *system = &emulator->system;
 
 	UIInputState uiInputState = fplZeroInit;
 	uiInputState.leftMouse = newInput->mouse.left;
@@ -4096,7 +4087,7 @@ static void PrepareInputUI(Application *app, InputState *newInput) {
 	UIContextSetInput(uiCtx, &uiInputState);
 }
 
-static void HandleDefaultInput(Application *app, InputState *newInput) {
+static void HandleDefaultInput(Application *app, const InputState *newInput) {
 	Emulator *emulator = &app->emulator;
 	fgbSystem *system = &emulator->system;
 
@@ -4124,7 +4115,7 @@ static bool HasGameboxVideoChanges(const Emulator *emulator) {
 }
 
 static void UploadStateTextures(States *states) {
-	for (uint8_t i = 0; i < fplArrayCount(states->snapshots); ++i) {
+	for (size_t i = 0; i < fplArrayCount(states->snapshots); ++i) {
 		fgbSnapshot *snapshot = states->snapshots + i;
 		Texture *texture = states->textures + i;
 		if (texture->state == TextureState_Update) {
@@ -4233,14 +4224,14 @@ static void PrepareFrame(Application *app, const fplWindowSize size) {
 	float translationX = w * (1.0f - scale) * 0.5f;
 	float translationY = h * (1.0f - scale) * 0.5f;
 
-	app->windowSize = V2iInit(size.width, size.height);
+	app->windowSize = V2iInit((int)size.width, (int)size.height);
 	app->viewMat = M4fMult(M4fScaleScalar(scale), M4fTranslationV2(V2fInit(translationX, translationY)));
 	app->projectionMat = M4fOrthoRH(0.0f, (float)size.width, 0.0f, (float)size.height, 0.0f, 1.0f);
 	app->viewProjectionMat = M4fMult(app->projectionMat, app->viewMat);
-	app->viewport = VP4iInit(0, 0, size.width, size.height);
+	app->viewport = VP4iInit(0, 0, (int)size.width, (int)size.height);
 }
 
-static void UpdateWindowTitle(Emulator *emulator, const double frameRate) {
+static void UpdateWindowTitle(const Emulator *emulator, const double frameRate) {
 	static char windowTitleBuffer[512];
 
 	const char *gamePakTitle = fplExtractFileName(emulator->system.gamePak.filePath);

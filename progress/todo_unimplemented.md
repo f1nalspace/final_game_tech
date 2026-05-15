@@ -3,19 +3,25 @@
 Tracking missing or partial implementations in `final_platform_layer.h`.
 Sourced from `@IMPLEMENT`, `@TODO`, `NotImplemented` returns, and Known Limitations section.
 
-Last refresh: 2026-05-11
+Last refresh: 2026-05-14
 
-## Recently Implemented (no longer TODO)
+## Recently Implemented (since 2026-05-11)
+
+- [x] `[OSS]` Full backend — enumeration via `/dev/sndstat`, blocking-write main loop, format probing populates `supportedFormats`
+- [x] `[WASAPI]` Full backend — COM + IMMDeviceEnumerator init, IMMDeviceCollection enumeration, shared-mode event-driven main loop, exclusive-mode playback path, format probing populates `supportedFormats`
+- [x] `[WASAPI]` Promoted to default Windows audio backend (DirectSound is now fallback)
+- [x] `[Linux] fplGetSystemLocale` / `fplGetUserLocale` / `fplGetInputLocale` — via `setlocale` + `fpl__PosixLocaleToISO639`
+- [x] `[Unix]` Locale init/release with LC_ALL save/restore in `fpl__UnixInitPlatform` / `fpl__UnixReleasePlatform`
+
+## Earlier (since 2026-05-11 baseline)
 
 - [x] `[X11] fplSetWindowCursorEnabled`
-- [x] `[X11] fplIsWindowResizable` / `fplSetWindowResizeable`
-- [x] `[X11] fplIsWindowFloating` / `fplSetWindowFloating`
-- [x] `[X11] fplGetWindowState` / `fplSetWindowState`
-- [x] `[X11] fplGetDisplayCount` / `fplGetDisplays` / `fplGetPrimaryDisplay`
-- [x] `[X11] fplGetWindowDisplay` / `fplGetDisplayFromPosition` / `fplGetDisplayModes`
-- [x] `[X11] fplSetWindowFullscreenRect`
-- [x] `[X11] fplGetClipboardText` / `fplSetClipboardText`
-- [x] `[X11] fplQueryCursorPosition` — now returns screen-relative coords (matches Win32 GetCursorPos), correctly guarded under FPL__ENABLE_WINDOW
+- [x] `[X11]` Resizable / Floating / WindowState / display surface (count, get, primary, from-position, modes, window-display, fullscreen-rect)
+- [x] `[X11]` Clipboard get/set, screen-relative cursor position
+- [x] `[Audio]` GetAudioDeviceInfo for DirectSound, ALSA, PulseAudio, PipeWire
+- [x] `[ALSA]` Bidirectional fplAudioFormatType <-> snd_pcm_format_t mapping tables
+- [x] Resampler rounding fix (44100 <-> 48000 round-trip safe)
+- [x] `[Win32]` fpl__Win32EnterFullscreen multi-monitor + top/bottom rect fix
 
 ## Platform / Architecture Coverage
 
@@ -26,55 +32,65 @@ Last refresh: 2026-05-11
 
 ## CPU
 
-- [ ] `fplCPUGetCapabilities` for non-x86 architectures (line 13814)
-- [ ] `fplCPUGetName` for non-x86 architectures (line 13819)
+- [ ] `fplCPUGetCapabilities` for non-x86 architectures (line 13955)
+- [ ] `fplCPUGetName` for non-x86 architectures (line 13960)
 - [ ] Generic non-x86 CPU query path (Known Limitation)
 
-## Window (Win32)
+## Window
 
-- [x] ~~Multi-monitor origin assumption in `fpl__Win32EnterFullscreen` resolution-change path~~ — fixed: anchors to xpos/ypos or target monitor origin
-- [x] ~~`fpl__Win32EnterFullscreen` non-resolution-change path wrote `ypos+h` into `.top` instead of `.bottom`~~ — fixed
-- [ ] Read ACL for full permission detection (line 19115)
+- [ ] `[Win32]` Read ACL for full permission detection (line 19261)
+- [ ] `[X11]` Map OEM1–OEM8 key (line 22963)
+- [ ] `[X11]` Display resolution + refresh-rate change (line 24804)
 
-## Unix Platform
+## Unix / Linux Platform
 
-- [ ] `fplMemoryGetInfos` (line 25542) — Known Limitation: no unix memory query
-- [ ] `fplGetSystemLocale` (line 25550)
-- [ ] `fplGetUserLocale` (line 25555)
-- [ ] `fplGetInputLocale` (line 25560)
-- [x] POSIX `st_atim` vs `st_atime` fallback detection for older POSIX
-- [x] `sched_getscheduler` POSIX standard coverage check
-- [x] LC_ALL restore in `fpl__LinuxReleasePlatform`
+- [ ] `[Linux] fplMemoryGetInfos` (line 25701) — Known Limitation: no unix memory query
+- [ ] `[Unix] fplMemoryGetInfos` (line 25762) — Known Limitation
+- [ ] `[Unix] fplPollGamepadStates` (line 26043) — Known Limitation: no unix gamepad support (fd backend planned)
 
 ## Audio
 
-- [x] ~~`[DirectSound] GetAudioDeviceInfo`~~ — done: lookup by GUID via DirectSoundEnumerateW
-- [x] ~~`[ALSA] GetAudioDeviceInfo`~~ — done: lookup by name via snd_device_name_hint
-- [x] ~~`[PulseAudio] GetAudioDeviceInfo`~~ — done: pa_context_get_sink_info_by_index
-- [x] ~~`[PipeWire] GetAudioDeviceInfo`~~ — done: registry enum filtered by node id, shared helper with full enumeration
-- [ ] Phase 2 (next): supported-formats list per backend — currently `supportedFormatCount = 0` placeholder
-- [x] ~~`[ALSA]` Mapping table `fplAudioFormatType -> snd_pcm_format_t`~~ — done: indexed lookup, covers F64; S64 marked UNKNOWN (no ALSA equivalent)
-- [x] ~~`[ALSA]` Mapping table `snd_pcm_format_t -> fplAudioFormatType`~~ — done: lookup table, handles native-endian aliases + FLOAT64
-- [ ] `[ALSA]` Optional `dmix`/`hw` device id `:%d,%d` probe (line 29794, 30103)
-- [ ] `[PipeWire]` Remove PipeWire include when runtime linking is enabled (line 31563)
-- [ ] Audio backend descriptor from audio settings (line 32928)
-- [ ] OSS backend — planned, not implemented (Known Limitation)
-- [ ] Extended audio device infos do not contain format list yet (Known Limitation)
-- [x] ~~Resampler edge case — fake-round extra frame workaround (line 33890)~~ — done: replaced with `round(in * outRate/inRate)` using double; additions resampler now calls fplGetTargetAudioFrameCount; 44100<->48000 round-trip tests added.
+- [ ] Supported-formats list — still 0 for `DirectSound`, `ALSA`, `PulseAudio`, `PipeWire` (WASAPI + OSS now populate it). Known Limitation entry still present.
+- [ ] `[ALSA]` Optional `dmix`/`hw` device id `:%d,%d` probe (line 31369)
+- [ ] `[PipeWire]` Remove PipeWire include when runtime linking is enabled (line 33949)
+- [ ] Audio backend descriptor from audio settings (line 35362)
+- [x] ~~OSS backend — planned, not implemented~~ — done, available on Linux and BSD/Unix
+- [x] ~~WASAPI backend~~ — done, default on Windows
 
 ## Video
 
-- [ ] Vulkan message-type filtering in `fplVulkanSettings` (line 27373)
-- [ ] Validate Vulkan video settings (line 27420)
+- [ ] Vulkan message-type filtering in `fplVulkanSettings` (line 27881)
+- [ ] Validate Vulkan video settings (line 27928)
 
 ## Internal
 
-- [ ] Replace pointer mapping table with static offset table (line 24985)
+- [ ] Replace pointer mapping table with static offset table (line 25215)
 - [ ] Crash path when feature not implemented is full-on crash (no graceful fallback)
 
-## Source markers (as of 2026-05-11)
+## Source markers (as of 2026-05-14)
 
-- `@IMPLEMENT` markers remaining: 6 (DirectSound device info, Unix memory/locale x3, CPU caps/name)
-- `@TODO` markers remaining: 11
-- `NotImplemented` audio device-info returns: 4 (DirectSound, ALSA, PulseAudio, PipeWire)
-- All previously-listed `@IMPLEMENT(final/X11)` markers are now gone — entire X11 window/display/clipboard surface landed
+- `@IMPLEMENT` markers remaining: 5
+  - CPU caps / CPU name for non-x86 (13955, 13960)
+  - fplMemoryGetInfos Linux + Unix (25701, 25762)
+  - fplPollGamepadStates Unix (26043)
+- `@TODO` markers remaining: 9
+  - Win32 Read ACL (19261)
+  - X11 OEM1-8 keys (22963)
+  - X11 resolution/refresh change (24804)
+  - Pointer-table → offset-table (25215)
+  - Vulkan message filter (27881)
+  - Vulkan settings validation (27928)
+  - ALSA dmix/hw probe (31369)
+  - PipeWire include under runtime linking (33949)
+  - Audio backend descriptor from settings (35362)
+- `NotImplemented` audio device-info returns: 0 (all backends implement GetAudioDeviceInfo)
+
+## Known Limitations still listed in header (line 1885)
+
+- Some window features not implemented in X11
+- Some CPU query features not implemented in non-x86 platforms
+- Linux gamepad device locked to `/dev/input/js0`
+- No unix memory query functions
+- No unix audio backend (OSS is planned) — **stale: OSS landed**, update text
+- No unix gamepad support (fd is planned)
+- Extended audio device infos do not contain formats yet — **partially stale: WASAPI + OSS populate them**, update text

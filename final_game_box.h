@@ -15156,7 +15156,7 @@ static void fgb__TraceInstruction(fgbSystem *system, const fgbInstructionRegiste
 	FGB__TRACE(system, fgb__KindName_Core, buf);
 }
 
-static bool fgb__FetchDecodeExecute(fgbSystem *system, const uint32_t startFrameIndex, const fgbCPURegisters *startRegs, const uint16_t opCode) {
+static bool fgb__FetchDecodeExecute(fgbSystem *system, const uint32_t startFrameIndex, const fgbCPURegisters *startRegs, const uint8_t opCode) {
 	fgbCPU *cpu = &system->cpu;
 	fgbPPU *ppu = &system->ppu;
 	fgbCPURegisters *regs = &cpu->registers;
