@@ -283,6 +283,7 @@ SOFTWARE.
 	- Fixed: fplDateTimeCreationResult was tagged as `@enum` even though it is a `struct`; struct fields were commented with `//` instead of `//!`; also fixed grammar on the `success` field ("successfully" → "successful")
 	- Fixed: fplDateTimeResult struct fields were commented with plain `//` instead of `//!` — doxygen silently skipped them; now extracted correctly
 	- Improved: Reworded the awkward and inaccurate fplDateTimeQuery @brief ("Gets the current date time and offset and the number of milliseconds in the specified format" → "Gets the current date and time in the specified format (UTC or local)")
+	- Fixed: Six atomic increment functions (fplAtomicIncrementU32/U64/S32/S64/Size/Ptr) used the invalid doxygen tag `@return[in]` — the `[in]` direction qualifier only belongs to `@param`. Stripped to plain `@return`
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -4342,7 +4343,7 @@ fpl_common_api void *fplAtomicAddAndFetchPtr(volatile void **dest, const intptr_
 /**
 * @brief Increments the given 32-bit unsigned integer by one atomically.
 * @param[in,out] dest The target value to increment to.
-* @return[in] Returns the value after the increment.
+* @return Returns the value after the increment.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_inc
 */
@@ -4350,7 +4351,7 @@ fpl_platform_api uint32_t fplAtomicIncrementU32(volatile uint32_t *dest);
 /**
 * @brief Increments the given 64-bit unsigned integer by one atomically.
 * @param[in,out] dest The target value to increment to.
-* @return[in] Returns the value after the increment.
+* @return Returns the value after the increment.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_inc
 */
@@ -4358,7 +4359,7 @@ fpl_platform_api uint64_t fplAtomicIncrementU64(volatile uint64_t *dest);
 /**
 * @brief Increments the given 32-bit signed integer by one atomically.
 * @param[in,out] dest The target value to increment to.
-* @return[in] Returns the value after the increment.
+* @return Returns the value after the increment.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_inc
 */
@@ -4366,7 +4367,7 @@ fpl_platform_api int32_t fplAtomicIncrementS32(volatile int32_t *dest);
 /**
 * @brief Increments the given 64-bit signed integer by one atomically.
 * @param[in,out] dest The target value to increment to.
-* @return[in] Returns the value after the increment.
+* @return Returns the value after the increment.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_inc
 */
@@ -4374,7 +4375,7 @@ fpl_platform_api int64_t fplAtomicIncrementS64(volatile int64_t *dest);
 /**
 * @brief Increments the given size by one atomically.
 * @param[in,out] dest The target value to increment to.
-* @return[in] Returns the value after the increment.
+* @return Returns the value after the increment.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_inc
 */
@@ -4382,7 +4383,7 @@ fpl_common_api size_t fplAtomicIncrementSize(volatile size_t *dest);
 /**
 * @brief Increments/Advances the given pointer by one atomically.
 * @param[in,out] dest The target value to increment to.
-* @return[in] Returns the next address, after the increment.
+* @return Returns the next address, after the increment.
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_inc
 */
