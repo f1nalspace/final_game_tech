@@ -133,12 +133,61 @@ int main(int argc, char **args) {
 
 ---
 
-## Scene 6 — OpenGL Application (03:15 – 04:15)
+## Scene 6 — Video Backends: Context vs. API (03:15 – 04:45)
 
-**On-screen code:**
+**Important clarification up front:**
+FPL creates the **video context** for you — the window surface, the GL/Vulkan device, and the swap-buffer plumbing. It does **not** load the OpenGL or Vulkan function pointers. That part is on you.
+
+**On-screen split:**
+
+| Backend                          | Works out of the box? | What you need extra                                  |
+|----------------------------------|-----------------------|------------------------------------------------------|
+| `fplVideoBackendType_Software`   | ✅ Yes                | Nothing — write raw pixels to the backbuffer         |
+| `fplVideoBackendType_OpenGL` (legacy / fixed-function) | ✅ Mostly | `<GL/gl.h>` is enough for GL 1.x calls               |
+| `fplVideoBackendType_OpenGL` (modern / Core) | ⚠️ Needs a loader   | Use `final_dynamic_opengl.h` or GLEW/glad to load GL ≥ 1.2 entry points |
+| `fplVideoBackendType_Vulkan`     | ⚠️ Needs a loader     | The Vulkan SDK / `vulkan.h` plus volk or your own loader — `vulkan.h` alone does **not** resolve functions |
+
+### Software backend — ready to render
+
 ```c
 #define FPL_IMPLEMENTATION
 #include <final_platform_layer.h>
+
+int main(int argc, char **args) {
+    fplSettings settings = fplMakeDefaultSettings();
+    settings.video.backend = fplVideoBackendType_Software;
+
+    if (fplPlatformInit(fplInitFlags_Video, &settings)) {
+        while (fplWindowUpdate()) {
+            fplEvent ev;
+            while (fplPollEvent(&ev)) { /* input */ }
+
+            // Grab the backbuffer and write raw pixels — that's it.
+            fplVideoBackBuffer *bb = fplGetVideoBackBuffer();
+            uint32_t *pixels = (uint32_t *)bb->pixels;
+            for (uint32_t y = 0; y < bb->height; ++y) {
+                for (uint32_t x = 0; x < bb->width; ++x) {
+                    pixels[y * bb->pixelStride + x] = 0xFF202040;
+                }
+            }
+
+            fplVideoFlip();
+        }
+        fplPlatformRelease();
+    }
+    return 0;
+}
+```
+
+### OpenGL backend — context yes, functions no
+
+```c
+#define FPL_IMPLEMENTATION
+#include <final_platform_layer.h>
+
+// For modern GL you need a loader. FPL ships its own:
+#define FGL_IMPLEMENTATION
+#include <final_dynamic_opengl.h>
 
 int main(int argc, char **args) {
     fplSettings settings = fplMakeDefaultSettings();
@@ -149,28 +198,67 @@ int main(int argc, char **args) {
     settings.video.graphics.opengl.majorVersion = 3;
     settings.video.graphics.opengl.minorVersion = 3;
 
-    if (fplPlatformInit(fplInitFlags_Video, &settings)) {
-        while (fplWindowUpdate()) {
-            fplEvent ev;
-            while (fplPollEvent(&ev)) {
-                // handle input
-            }
+    if (!fplPlatformInit(fplInitFlags_Video, &settings)) { return -1; }
 
-            // your render code here
+    // FPL gave you a valid GL context. Now load the entry points.
+    if (!fglLoadOpenGL(true)) { return -1; }
 
-            fplVideoFlip();
-        }
-        fplPlatformRelease();
-        return 0;
+    while (fplWindowUpdate()) {
+        fplEvent ev;
+        while (fplPollEvent(&ev)) { /* input */ }
+
+        // Now you can call glClear, glDrawArrays, shaders, VAOs, etc.
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        fplVideoFlip();
     }
-    return -1;
+
+    fglUnloadOpenGL();
+    fplPlatformRelease();
+    return 0;
+}
+```
+
+> For **legacy / fixed-function** OpenGL (GL 1.1 — `glBegin`, `glVertex`, etc.), the system `<GL/gl.h>` (or `<gl/GL.h>` on Windows) is usually enough — no loader required. The moment you want shaders, VBOs, or anything beyond GL 1.1, you need a loader like `final_dynamic_opengl.h`.
+
+### Vulkan backend — surface yes, API no
+
+```c
+#define FPL_IMPLEMENTATION
+#include <final_platform_layer.h>
+
+#include <vulkan/vulkan.h>   // header only — no function pointers
+// You still need a loader: volk, the Vulkan SDK loader, or your own.
+
+int main(int argc, char **args) {
+    fplSettings settings = fplMakeDefaultSettings();
+    settings.video.backend = fplVideoBackendType_Vulkan;
+
+    if (!fplPlatformInit(fplInitFlags_Video, &settings)) { return -1; }
+
+    // FPL created the Vulkan instance and surface.
+    // You still need to load Vulkan, create device, swap-chain, command buffers, etc.
+
+    while (fplWindowUpdate()) {
+        fplEvent ev;
+        while (fplPollEvent(&ev)) { /* input */ }
+        // your Vulkan rendering goes here
+        fplVideoFlip();
+    }
+
+    fplPlatformRelease();
+    return 0;
 }
 ```
 
 **Narration:**
-> "That is the entire boilerplate for an OpenGL window, with input polling and swap-buffer presentation. Switch `fplVideoBackendType_OpenGL` to `fplVideoBackendType_Vulkan` and you get a Vulkan surface instead. Switch to `fplVideoBackendType_Software` and you get a raw pixel framebuffer.
+> "FPL hands you a usable window and a usable graphics context — but it does not bring the rendering API itself. Software rendering works the moment FPL is initialized: you just write pixels into the backbuffer.
 >
-> The settings struct gives you fine-grained control of every subsystem at startup — but the defaults are sensible enough that you usually never touch them."
+> For OpenGL, the legacy fixed-function pipeline works out of the box with the system `GL/gl.h`. Anything modern — shaders, VBOs, Core profile — needs a loader. FPL ships its own, `final_dynamic_opengl.h`, but GLEW or glad work just as well.
+>
+> For Vulkan, the story is the same: FPL creates the surface and swapchain hooks, but `vulkan.h` is a header, not a library. You bring volk, the SDK loader, or your own.
+>
+> This is intentional. FPL stays out of the renderer's business — it just gives the renderer a place to live."
 
 ---
 
@@ -200,6 +288,7 @@ int main(int argc, char **args) {
 
 - **No macOS support.** Apple's deprecation of OpenGL and the cost of a separate Objective-C / Cocoa backend put it out of scope. Linux and BSD are first-class instead.
 - **Single window only.** FPL deliberately does not support multiple windows. If your application needs multi-window, FPL is not the right tool.
+- **No audio sample conversion.** You have to provide the samples in the correct format the hardware device expects.
 - **No high-level rendering.** FPL gives you a context — not a sprite batcher, not a scene graph. You bring your own renderer.
 - **No asset pipeline.** No image loader, no model loader, no font rasterizer. The repo ships optional helpers (in `demos/additions/`), but the core library is platform-only.
 - **No networking.** Sockets are out of scope.
