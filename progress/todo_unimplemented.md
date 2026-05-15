@@ -7,10 +7,11 @@ Last refresh: 2026-05-15
 
 ## Recently Implemented (since 2026-05-11)
 
+- [x] Dropped `fplAudioDeviceInfoExtended` and `supportedFormats` — `fplGetAudioDeviceInfo` now returns plain `fplAudioDeviceInfo`; per-backend probe code removed (unreliable across resampling stacks)
 - [x] `[Linux] fplMemoryGetUsage` — via `sysinfo()` + `/proc/meminfo` parsing (Cached + Buffers + SReclaimable for cache totals, swap for page counts)
 - [x] `[Unix/BSD] fplMemoryGetUsage` — via sysctl (`hw.physmem`/`hw.realmem`, `vm.stats.vm.v_free_count`/`v_inactive_count`/`v_cache_count`, per-device `vm.swap_info.N` iteration with local `struct xswdev` accepting v1/v2 layouts)
-- [x] `[OSS]` Full backend — enumeration via `/dev/sndstat`, blocking-write main loop, format probing populates `supportedFormats`
-- [x] `[WASAPI]` Full backend — COM + IMMDeviceEnumerator init, IMMDeviceCollection enumeration, shared-mode event-driven main loop, exclusive-mode playback path, format probing populates `supportedFormats`
+- [x] `[OSS]` Full backend — enumeration via `/dev/sndstat`, blocking-write main loop
+- [x] `[WASAPI]` Full backend — COM + IMMDeviceEnumerator init, IMMDeviceCollection enumeration, shared-mode event-driven main loop, exclusive-mode playback path
 - [x] `[WASAPI]` Promoted to default Windows audio backend (DirectSound is now fallback)
 - [x] `[Linux] fplGetSystemLocale` / `fplGetUserLocale` / `fplGetInputLocale` — via `setlocale` + `fpl__PosixLocaleToISO639`
 - [x] `[Unix]` Locale init/release with LC_ALL save/restore in `fpl__UnixInitPlatform` / `fpl__UnixReleasePlatform`
@@ -52,7 +53,7 @@ Last refresh: 2026-05-15
 
 ## Audio
 
-- [ ] Supported-formats list — still 0 for `DirectSound`, `ALSA`, `PulseAudio`, `PipeWire` (WASAPI + OSS now populate it). Known Limitation entry still present.
+- [x] ~~Supported-formats list~~ — dropped: `fplAudioDeviceInfoExtended` removed, `fplGetAudioDeviceInfo` returns plain `fplAudioDeviceInfo`. Native format already available via `fplGetAudioHardwareFormat`.
 - [ ] `[ALSA]` Optional `dmix`/`hw` device id `:%d,%d` probe (line 31369)
 - [ ] `[PipeWire]` Remove PipeWire include when runtime linking is enabled (line 33949)
 - [ ] Audio backend descriptor from audio settings (line 35362)
@@ -94,4 +95,4 @@ Last refresh: 2026-05-15
 - No unix memory query functions
 - No unix audio backend (OSS is planned) — **stale: OSS landed**, update text
 - No unix gamepad support (fd is planned)
-- Extended audio device infos do not contain formats yet — **partially stale: WASAPI + OSS populate them**, update text
+- Extended audio device infos do not contain formats yet — **stale: fplAudioDeviceInfoExtended removed, no longer applicable**

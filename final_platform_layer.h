@@ -203,6 +203,8 @@ SOFTWARE.
 	- Changed: fplGetWindowTitle is now returning the total number of characters required or returns zero on errors
 	- Changed: Renamed fplInitFlags_GameController to fplInitFlags_Gamepad due to naming inconsisitency
 	- Changed: Renamed fplMemoryGetInfos to fplMemoryGetUsage
+	- Changed: fplGetAudioDeviceInfo now returns a plain fplAudioDeviceInfo (no extended/supportedFormats variant — backend-reported lists were unreliable; use fplGetAudioHardwareFormat for the native format)
+	- Removed: struct fplAudioDeviceInfoExtended (rolled into fplAudioDeviceInfo)
 	- Added: fplGetCurrentThreadId() now returns uint64_t (was uint32_t) and fplThreadHandle.id widened to uint64_t to portably hold pthread_t
 
 	### Details
@@ -430,7 +432,6 @@ SOFTWARE.
 	- New: Added enum fplCPUCapabilitiesType that stores the CPU capabilieis type
 	- New: Added enum fplX86InstructionSetLevel that defines the X86 instruction set level, that is detected at compile time.
 	- New: Added struct fplAudioChannelMap that stores an array of the audio channel configuration
-	- New: Added struct fplAudioDeviceInfoExtended that stores the @ref fplAudioDeviceInfo and the supported formats as U64
 	- New: Added struct fplX86CPUCapabilities that stores the features for a X86 based CPU
 	- New: Added struct fplARMCPUCapabilities that stores the features for a ARM based CPU
 	- New: Added enum value @ref fplAudioDefaultFields_ChannelLayout to fplAudioDefaultFields
@@ -438,7 +439,7 @@ SOFTWARE.
 	- New: Added define FPL_X86_CPU_INSTR_SET_LEVEL
 	- New: Added function fplAudioInit() that manually loads the audio system
 	- New: Added function fplAudioRelease() that manually unloads/releases the audio system
-	- New: Added function fplGetAudioDeviceInfo() that returns a @ref fplAudioDeviceInfoExtended from a device id
+	- New: Added function fplGetAudioDeviceInfo() that returns a @ref fplAudioDeviceInfo from a device id
 	- New: Added function fplGetAudioLatencyType() that returns a @ref fplAudioLatencyType from a @ref fplAudioMode
 	- New: Added function fplGetAudioShareMode() that returns a @ref fplAudioShareMode from a @ref fplAudioMode
 	- New: Added function fplCreateAudioMode() that returns a @ref fplAudioMode from a @ref fplAudioLatencyType and @ref fplAudioShareMode
@@ -446,7 +447,7 @@ SOFTWARE.
 	- New: Added function fplGetDefaultAudioChannelLayoutFromChannels() that returns default @ref fplAudioChannelLayout from the number of audio channels
 	- New: Added function fplEncodeAudioFormatU64() that encodes a sample rate, number of channels and type into a 64-bit
 	- New: Added function fplDecodeAudioFormatU64() that decodes a 64-bit value into a sample rate, number of channels and type
-	- New: Added function fplGetAudioDeviceInfo() that returns a @ref fplAudioDeviceInfoExtended from a @ref fplAudioDeviceID
+	- New: Added function fplGetAudioDeviceInfo() that returns a @ref fplAudioDeviceInfo from a @ref fplAudioDeviceID
 	- New: Added function fplGetAudioChannelMap() that returns the @ref fplAudioChannelMap for the active audio backend
 	- New: Added function fplGetCPUCapabilitiesTypeName() that returns the name of a @ref fplCPUCapabilitiesType
 	- New: Added function fplGetTargetAudioFrameCount() that computes the target audio frames for an input/out sample rate from number of input frames
@@ -5545,19 +5546,6 @@ typedef struct fplAudioDeviceInfo {
 	fplAudioDeviceID id;
 } fplAudioDeviceInfo;
 
-/**
-* @struct fplAudioDeviceInfoExtended
-* @brief Stores the @ref fplAudioDeviceInfo and the supported formats.
-*/
-typedef struct fplAudioDeviceInfoExtended {
-	//! The base @ref fplAudioDeviceInfo.
-	fplAudioDeviceInfo info;
-	//! Supported audio formats.
-	fplAudioFormatU64 supportedFormats[63];
-	//! Number of supported formats.
-	size_t supportedFormatCount;
-} fplAudioDeviceInfoExtended;
-
 #if defined(FPL__ENABLE_AUDIO_ALSA)
 /**
 * @struct fplAlsaAudioSettings
@@ -9778,12 +9766,12 @@ fpl_common_api bool fplSetAudioClientReadCallback(fpl_audio_client_read_callback
 fpl_common_api uint32_t fplGetAudioDevices(const uint32_t maxDeviceCount, const uint32_t deviceInfoSize, fplAudioDeviceInfo *outDevices);
 
 /**
-* @brief Gets the full audio device info extended for the specified audio device ID.
+* @brief Gets the audio device info for the specified audio device ID.
 * @param[in] deviceId The audio device ID.
-* @param[out] outDeviceInfo The output audio device info extended structure @ref fplAudioDeviceInfoExtended.
+* @param[out] outDeviceInfo The output audio device info structure @ref fplAudioDeviceInfo.
 * @return Returns a boolean indicating whether the function succeeded or not.
 */
-fpl_common_api bool fplGetAudioDeviceInfo(const fplAudioDeviceID *deviceId, fplAudioDeviceInfoExtended *outDeviceInfo);
+fpl_common_api bool fplGetAudioDeviceInfo(const fplAudioDeviceID *deviceId, fplAudioDeviceInfo *outDeviceInfo);
 
 /**
 * @brief Computes the number of bytes required to write one sample with one channel.
@@ -28371,7 +28359,7 @@ typedef	FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl_audio_backend_initialize_func);
 #define FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(name) uint32_t name(struct fplAudioContext *context, struct fplAudioBackend *backend, const uint32_t maxDeviceCount, const uint32_t deviceInfoSize, fplAudioDeviceInfo *deviceInfos)
 typedef	FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl_audio_backend_get_audio_devices_func);
 
-#define FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(name) fplAudioResultType name(struct fplAudioContext *context, struct fplAudioBackend *backend, const fplAudioDeviceID *targetDevice, fplAudioDeviceInfoExtended *outDeviceInfo)
+#define FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(name) fplAudioResultType name(struct fplAudioContext *context, struct fplAudioBackend *backend, const fplAudioDeviceID *targetDevice, fplAudioDeviceInfo *outDeviceInfo)
 typedef	FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl_audio_backend_get_audio_device_info_func);
 
 #define FPL_AUDIO_BACKEND_RELEASE_FUNC(name) bool name(struct fplAudioContext *context, struct fplAudioBackend *backend)
@@ -29006,8 +28994,8 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendDirec
 	fplAssert(sizeof(GUID) == sizeof(targetDevice->dshow));
 	fpl__DirectSoundDeviceInfos infos = fplZeroInit;
 	infos.maxDeviceCount = 1;
-	infos.deviceInfos = &outDeviceInfo->info;
-	infos.deviceInfoSize = sizeof(outDeviceInfo->info);
+	infos.deviceInfos = outDeviceInfo;
+	infos.deviceInfoSize = sizeof(*outDeviceInfo);
 	infos.isLookup = true;
 	fpl__Win32CopyGuid(&targetDevice->dshow, &infos.lookupID);
 
@@ -29018,8 +29006,6 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendDirec
 		return fplAudioResultType_DeviceByIdNotFound;
 	}
 
-	// Format list is populated by a later phase.
-	outDeviceInfo->supportedFormatCount = 0;
 	return fplAudioResultType_Success;
 }
 
@@ -30041,7 +30027,7 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendWasap
 	// Identity: copy the device id (resolve default if input was empty) and friendly name.
 	WCHAR *resolvedId = fpl_null;
 	if (SUCCEEDED(device->lpVtbl->GetId(device, &resolvedId)) && resolvedId != fpl_null) {
-		fpl__WasapiCopyDeviceID(outDeviceInfo->info.id.wasapi, fplArrayCount(outDeviceInfo->info.id.wasapi), resolvedId);
+		fpl__WasapiCopyDeviceID(outDeviceInfo->id.wasapi, fplArrayCount(outDeviceInfo->id.wasapi), resolvedId);
 		impl->api.CoTaskMemFree(resolvedId);
 	}
 
@@ -30052,15 +30038,15 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendWasap
 			if (SUCCEEDED(defaultDevice->lpVtbl->GetId(defaultDevice, &defId)) && defId != fpl_null) {
 				bool eq = true;
 				for (size_t k = 0; ; ++k) {
-					if (outDeviceInfo->info.id.wasapi[k] != defId[k]) {
+					if (outDeviceInfo->id.wasapi[k] != defId[k]) {
 						eq = false;
 						break;
 					}
-					if (outDeviceInfo->info.id.wasapi[k] == 0) {
+					if (outDeviceInfo->id.wasapi[k] == 0) {
 						break;
 					}
 				}
-				outDeviceInfo->info.isDefault = eq;
+				outDeviceInfo->isDefault = eq;
 				impl->api.CoTaskMemFree(defId);
 			}
 			defaultDevice->lpVtbl->Release(defaultDevice);
@@ -30077,71 +30063,11 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendWasap
 					++wlen;
 				}
 				if (wlen > 0) {
-					fplWideStringToUTF8String(pv.u.pwszVal, wlen, outDeviceInfo->info.name, fplArrayCount(outDeviceInfo->info.name));
+					fplWideStringToUTF8String(pv.u.pwszVal, wlen, outDeviceInfo->name, fplArrayCount(outDeviceInfo->name));
 				}
 			}
 			impl->api.PropVariantClear(&pv);
 			props->lpVtbl->Release(props);
-		}
-	}
-
-	// Always record the mix format as supported.
-	const size_t slots = fplArrayCount(outDeviceInfo->supportedFormats);
-	outDeviceInfo->supportedFormatCount = 0;
-
-	WAVEFORMATEX *mixFmt = fpl_null;
-	if (SUCCEEDED(client->lpVtbl->GetMixFormat(client, &mixFmt)) && mixFmt != fpl_null) {
-		fplAudioFormatType mixType = fpl__WasapiMapWaveFormatToAudioFormat(mixFmt);
-		if (mixType != fplAudioFormatType_None && outDeviceInfo->supportedFormatCount < slots) {
-			outDeviceInfo->supportedFormats[outDeviceInfo->supportedFormatCount++] = fplEncodeAudioFormatU64(mixFmt->nSamplesPerSec, mixFmt->nChannels, mixType);
-		}
-		impl->api.CoTaskMemFree(mixFmt);
-	}
-
-	// Probe a standard rate/channel/type matrix in shared mode. Accept only S_OK; ignore
-	// S_FALSE (closest-match is only a hint, not a guarantee of support).
-	static const uint32_t candidateRates[] = { 44100, 48000, 88200, 96000, 192000 };
-	static const uint16_t candidateChannels[] = { 1, 2, 4, 6, 8 };
-	static const fplAudioFormatType candidateTypes[] = {
-		fplAudioFormatType_U8,
-		fplAudioFormatType_S16,
-		fplAudioFormatType_S24,
-		fplAudioFormatType_S32,
-		fplAudioFormatType_F32,
-	};
-
-	for (size_t r = 0; r < fplArrayCount(candidateRates) && outDeviceInfo->supportedFormatCount < slots; ++r) {
-		for (size_t c = 0; c < fplArrayCount(candidateChannels) && outDeviceInfo->supportedFormatCount < slots; ++c) {
-			for (size_t t = 0; t < fplArrayCount(candidateTypes) && outDeviceInfo->supportedFormatCount < slots; ++t) {
-				fplAudioFormat probe = fplZeroInit;
-				probe.sampleRate = candidateRates[r];
-				probe.channels = candidateChannels[c];
-				probe.type = candidateTypes[t];
-				WAVEFORMATEXTENSIBLE wfx;
-				fpl__Win32BuildWaveFormatExtensible(&probe, fpl_null, &wfx);
-
-				WAVEFORMATEX *closest = fpl_null;
-				HRESULT hr = client->lpVtbl->IsFormatSupported(client, fpl__WasapiShareMode_Shared, (WAVEFORMATEX *)&wfx, &closest);
-				if (closest != fpl_null) {
-					impl->api.CoTaskMemFree(closest);
-				}
-				if (hr != S_OK) {
-					continue;
-				}
-
-				// Skip if already recorded (e.g. mix format collision).
-				fplAudioFormatU64 enc = fplEncodeAudioFormatU64(candidateRates[r], candidateChannels[c], candidateTypes[t]);
-				bool duplicate = false;
-				for (size_t i = 0; i < outDeviceInfo->supportedFormatCount; ++i) {
-					if (outDeviceInfo->supportedFormats[i] == enc) {
-						duplicate = true;
-						break;
-					}
-				}
-				if (!duplicate) {
-					outDeviceInfo->supportedFormats[outDeviceInfo->supportedFormatCount++] = enc;
-				}
-			}
 		}
 	}
 
@@ -31798,13 +31724,13 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendAlsaG
 		char *name = alsaApi->snd_device_name_get_hint(*ppNextDeviceHint, "NAME");
 		char *desc = alsaApi->snd_device_name_get_hint(*ppNextDeviceHint, "DESC");
 		if (name != fpl_null && fplIsStringEqual(name, targetDevice->alsa)) {
-			fplCopyString(name, outDeviceInfo->info.id.alsa, fplArrayCount(outDeviceInfo->info.id.alsa));
+			fplCopyString(name, outDeviceInfo->id.alsa, fplArrayCount(outDeviceInfo->id.alsa));
 			if (desc != fpl_null) {
-				fplCopyString(desc, outDeviceInfo->info.name, fplArrayCount(outDeviceInfo->info.name));
+				fplCopyString(desc, outDeviceInfo->name, fplArrayCount(outDeviceInfo->name));
 			} else {
-				fplCopyString(name, outDeviceInfo->info.name, fplArrayCount(outDeviceInfo->info.name));
+				fplCopyString(name, outDeviceInfo->name, fplArrayCount(outDeviceInfo->name));
 			}
-			outDeviceInfo->info.isDefault =
+			outDeviceInfo->isDefault =
 				fplIsStringEqual(name, "default") ||
 				fplIsStringEqual(name, "pulse") ||
 				fplIsStringEqual(name, "pipewire");
@@ -31824,8 +31750,6 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendAlsaG
 		return fplAudioResultType_DeviceByIdNotFound;
 	}
 
-	// Format list is populated by a later phase.
-	outDeviceInfo->supportedFormatCount = 0;
 	return fplAudioResultType_Success;
 }
 
@@ -32612,42 +32536,9 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendOssGe
 		return fplAudioResultType_DeviceByIdNotFound;
 	}
 
-	fplCopyString(targetDevice->oss, outDeviceInfo->info.id.oss, fplArrayCount(outDeviceInfo->info.id.oss));
-	fplCopyString(targetDevice->oss, outDeviceInfo->info.name, fplArrayCount(outDeviceInfo->info.name));
-	outDeviceInfo->info.isDefault = fplIsStringEqual(targetDevice->oss, "/dev/dsp");
-
-	// Best-effort: open the device read-only to query supported formats. Fail silently
-	// if it is busy; the caller still gets identity info.
-	outDeviceInfo->supportedFormatCount = 0;
-	int probeFd = open(targetDevice->oss, O_WRONLY | O_NONBLOCK);
-	if (probeFd >= 0) {
-		int mask = 0;
-		if (ioctl(probeFd, SNDCTL_DSP_GETFMTS, &mask) == 0) {
-			static const fplAudioFormatType candidateTypes[] = {
-				fplAudioFormatType_U8,
-				fplAudioFormatType_S16,
-				fplAudioFormatType_S24,
-				fplAudioFormatType_S32,
-				fplAudioFormatType_F32,
-			};
-			static const uint32_t candidateRates[] = { 44100, 48000 };
-			static const uint16_t candidateChannels[] = { 1, 2 };
-			size_t slots = fplArrayCount(outDeviceInfo->supportedFormats);
-			for (size_t t = 0; t < fplArrayCount(candidateTypes) && outDeviceInfo->supportedFormatCount < slots; ++t) {
-				int ossFmt = fpl__OssMapAudioFormatToSampleFormat(candidateTypes[t]);
-				if (ossFmt == 0 || (mask & ossFmt) == 0) {
-					continue;
-				}
-				for (size_t r = 0; r < fplArrayCount(candidateRates) && outDeviceInfo->supportedFormatCount < slots; ++r) {
-					for (size_t c = 0; c < fplArrayCount(candidateChannels) && outDeviceInfo->supportedFormatCount < slots; ++c) {
-						outDeviceInfo->supportedFormats[outDeviceInfo->supportedFormatCount++] =
-							fplEncodeAudioFormatU64(candidateRates[r], candidateChannels[c], candidateTypes[t]);
-					}
-				}
-			}
-		}
-		close(probeFd);
-	}
+	fplCopyString(targetDevice->oss, outDeviceInfo->id.oss, fplArrayCount(outDeviceInfo->id.oss));
+	fplCopyString(targetDevice->oss, outDeviceInfo->name, fplArrayCount(outDeviceInfo->name));
+	outDeviceInfo->isDefault = fplIsStringEqual(targetDevice->oss, "/dev/dsp");
 	return fplAudioResultType_Success;
 }
 
@@ -33480,8 +33371,8 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendPulse
 	// SinkInfoListCallback writes one fplAudioDeviceInfo per sink into iter->deviceInfos.
 	fpl__PulseDeviceIterationContext *iter = &impl->iterContext;
 	fplClearStruct(iter);
-	iter->deviceInfos = &outDeviceInfo->info;
-	iter->deviceInfoSize = sizeof(outDeviceInfo->info);
+	iter->deviceInfos = outDeviceInfo;
+	iter->deviceInfoSize = sizeof(*outDeviceInfo);
 	iter->maxDeviceCount = 1;
 
 	pa_operation *op = api->pa_context_get_sink_info_by_index(impl->context, targetDevice->pulse, fpl__PulseAudioSinkInfoListCallback, backend);
@@ -33500,8 +33391,6 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendPulse
 		return fplAudioResultType_DeviceByIdNotFound;
 	}
 
-	// Format list is populated by a later phase.
-	outDeviceInfo->supportedFormatCount = 0;
 	return fplAudioResultType_Success;
 }
 
@@ -34982,8 +34871,8 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendPipeW
 	}
 
 	fpl__PipeWireEnumState enumState = fplZeroInit;
-	enumState.deviceInfos = &outDeviceInfo->info;
-	enumState.deviceInfoSize = sizeof(outDeviceInfo->info);
+	enumState.deviceInfos = outDeviceInfo;
+	enumState.deviceInfoSize = sizeof(*outDeviceInfo);
 	enumState.maxDeviceCount = 1;
 	enumState.targetId = targetDevice->pipewire;
 	enumState.hasTargetId = true;
@@ -34995,8 +34884,6 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendPipeW
 		return fplAudioResultType_DeviceByIdNotFound;
 	}
 
-	// Format list is populated by a later phase.
-	outDeviceInfo->supportedFormatCount = 0;
 	return fplAudioResultType_Success;
 }
 
@@ -36858,7 +36745,7 @@ fpl_common_api uint32_t fplGetAudioDevices(const uint32_t maxDeviceCount, const 
 	return(result);
 }
 
-fpl_common_api bool fplGetAudioDeviceInfo(const fplAudioDeviceID *deviceId, fplAudioDeviceInfoExtended *outDeviceInfo) {
+fpl_common_api bool fplGetAudioDeviceInfo(const fplAudioDeviceID *deviceId, fplAudioDeviceInfo *outDeviceInfo) {
 	FPL__CheckArgumentNull(outDeviceInfo, false);
 	FPL__CheckArgumentNull(deviceId, false);
 	FPL__CheckPlatform(false);
