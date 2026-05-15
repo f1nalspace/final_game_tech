@@ -256,6 +256,7 @@ SOFTWARE.
 	- Changed: [POSIX] Disabled FPL_NO_PLATFORM_INCLUDES for pthread includes
 	- Changed: [BSD] Define __BSD_VISIBLE on BSD platforms
 	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
+	- New: [Linux] Implemented fplMemoryGetUsage via sysinfo() and /proc/meminfo parsing
 
 	#### Threading
 	- New: [Unix] Added struct fplUnixSignalEvent
@@ -25006,6 +25007,7 @@ fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
 #	include <sys/eventfd.h> // eventfd
 #	include <sys/epoll.h> // epoll_create, epoll_ctl, epoll_wait
 #	include <sys/select.h> // select
+#	include <sys/sysinfo.h> // sysinfo, struct sysinfo
 #	include <linux/joystick.h> // js_event, axis_state, etc.
 
 fpl_internal void fpl__LinuxReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
@@ -25640,10 +25642,95 @@ fpl_platform_api bool fplSignalSet(fplSignalHandle *signal) {
 //
 // Linux Hardware
 //
+
+// Parse one "Key:  <number> kB" line from /proc/meminfo, accumulating any matched keys (in bytes) into *outBytes.
+// Returns the number of keys still missing.
+fpl_internal int fpl__LinuxParseMeminfo(const char *const *keys, uint64_t *outBytes, int keyCount) {
+	int missing = keyCount;
+	for (int i = 0; i < keyCount; ++i) {
+		outBytes[i] = 0;
+	}
+	FILE *f = fopen("/proc/meminfo", "r");
+	if (f == fpl_null) {
+		return missing;
+	}
+	char line[256];
+	while (missing > 0 && fgets(line, sizeof(line), f) != fpl_null) {
+		for (int i = 0; i < keyCount; ++i) {
+			if (outBytes[i] != 0) {
+				continue;
+			}
+			size_t klen = 0;
+			while (keys[i][klen] != '\0') {
+				++klen;
+			}
+			if (line[klen] != ':') {
+				continue;
+			}
+			bool match = true;
+			for (size_t k = 0; k < klen; ++k) {
+				if (line[k] != keys[i][k]) {
+					match = false;
+					break;
+				}
+			}
+			if (!match) {
+				continue;
+			}
+			const char *p = line + klen + 1;
+			while (*p == ' ' || *p == '\t') {
+				++p;
+			}
+			uint64_t value = 0;
+			while (*p >= '0' && *p <= '9') {
+				value = value * 10ull + (uint64_t)(*p - '0');
+				++p;
+			}
+			// /proc/meminfo values are always in kB
+			outBytes[i] = value * 1024ull;
+			--missing;
+			break;
+		}
+	}
+	fclose(f);
+	return missing;
+}
+
 fpl_platform_api bool fplMemoryGetUsage(fplMemoryInfos *outInfos) {
 	FPL__CheckArgumentNull(outInfos, false);
-	// @IMPLEMENT(final/Linux): fplMemoryGetUsage
-	return(false);
+	struct sysinfo info = fplZeroInit;
+	if (sysinfo(&info) != 0) {
+		return false;
+	}
+	long pageSize = sysconf(_SC_PAGESIZE);
+	if (pageSize <= 0) {
+		pageSize = 4096;
+	}
+	uint64_t memUnit = (info.mem_unit > 0) ? (uint64_t)info.mem_unit : 1ull;
+	fplClearStruct(outInfos);
+	outInfos->pageSize = (uint64_t)pageSize;
+	outInfos->totalPhysicalSize = (uint64_t)info.totalram * memUnit;
+	outInfos->installedPhysicalSize = outInfos->totalPhysicalSize;
+	outInfos->freePhysicalSize = (uint64_t)info.freeram * memUnit;
+	// Page counts derived from swap (Linux equivalent of Win32 page file)
+	uint64_t totalSwapBytes = (uint64_t)info.totalswap * memUnit;
+	uint64_t freeSwapBytes = (uint64_t)info.freeswap * memUnit;
+	outInfos->totalPageCount = totalSwapBytes / (uint64_t)pageSize;
+	outInfos->freePageCount = freeSwapBytes / (uint64_t)pageSize;
+	// Cache totals from /proc/meminfo: Cached (page cache) + Buffers (block buffer cache) + SReclaimable (reclaimable slab).
+	// All of this is reclaimable on memory pressure, so freeCacheSize mirrors totalCacheSize.
+	// sysinfo's bufferram covers only Buffers, which understates the real cache by orders of magnitude.
+	const char *cacheKeys[3] = { "Cached", "Buffers", "SReclaimable" };
+	uint64_t cacheValues[3] = { 0 };
+	fpl__LinuxParseMeminfo(cacheKeys, cacheValues, 3);
+	uint64_t cacheTotal = cacheValues[0] + cacheValues[1] + cacheValues[2];
+	if (cacheTotal == 0) {
+		// Fallback to sysinfo buffer cache if /proc/meminfo is unavailable
+		cacheTotal = (uint64_t)info.bufferram * memUnit;
+	}
+	outInfos->totalCacheSize = cacheTotal;
+	outInfos->freeCacheSize = cacheTotal;
+	return true;
 }
 
 //
