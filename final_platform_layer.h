@@ -269,6 +269,7 @@ SOFTWARE.
 	- Improved: Promoted FPL_NOT_IMPLEMENTED from a one-line `//!` comment to a proper @def/@brief block and reworded the awkward description ("This will full-on crash ... always")
 	- Improved: Normalized doxygen return tags by converting all 22 `@result` occurrences to `@return` for consistency
 	- Improved: fplStructInit and fplStructField now document their variadic argument with the standard doxygen `...` token instead of a confusing `_` formal name
+	- Improved: Stripped trailing whitespace from the fplGetAlignmentOffset macro definition line
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -3330,7 +3331,7 @@ fplStaticAssert(sizeof(size_t) == sizeof(uint32_t));
 * @param[in] alignment Alignment boundary.
 * @return Offset to satisfy the alignment boundary.
 */
-#define fplGetAlignmentOffset(value, alignment) ( (((alignment) > 1) && (((value) & ((alignment) - 1)) != 0)) ? ((alignment) - ((value) & ((alignment) - 1))) : 0)			
+#define fplGetAlignmentOffset(value, alignment) ( (((alignment) > 1) && (((value) & ((alignment) - 1)) != 0)) ? ((alignment) - ((value) & ((alignment) - 1))) : 0)
 
 /**
 * @def fplGetAlignedSize
