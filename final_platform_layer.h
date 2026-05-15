@@ -25699,14 +25699,7 @@ fpl_platform_api bool fplMemoryGetUsage(fplMemoryInfos *outInfos) {
 }
 
 //
-// Unix Threading - Auto-reset event emulated via pthread mutex + cond.
-//
-// BSD/Unix has no eventfd, so signals are emulated using a per-signal pthread
-// mutex + condition variable + isSet flag (auto-reset semantics matching Win32
-// CreateEvent(bManualReset=FALSE) and Linux eventfd). The pthread state is
-// stored inline in fplInternalSignalHandle - no heap allocation. Multi-wait is
-// coordinated via a single static global mutex + cond that Set broadcasts on,
-// avoiding per-signal waitgroup tracking.
+// Unix Threading (Auto-reset event emulated via pthread mutex/cond)
 //
 fpl_globalvar pthread_mutex_t fpl__unixSignalMultiMutex = PTHREAD_MUTEX_INITIALIZER;
 fpl_globalvar pthread_cond_t fpl__unixSignalMultiCond = PTHREAD_COND_INITIALIZER;
