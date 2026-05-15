@@ -336,7 +336,6 @@ SOFTWARE.
 	- New: Added struct fplPulseAudioSettings
 	- New: Added struct fplPipeWireAudioSettings
 	- New: Added struct fplOSSAudioSettings
-	- New: Added struct fplWasapiAudioSettings
 	- New[#35]: Implemented PulseAudio audio backend
 	- New[#186]: Implemented PipeWire audio backend
 	- New[#34]: Implemented OSS audio backend
@@ -5601,18 +5600,6 @@ typedef struct fplOSSAudioSettings {
 } fplOSSAudioSettings;
 #endif
 
-#if defined(FPL__ENABLE_AUDIO_WASAPI)
-/**
-* @struct fplWasapiAudioSettings
-* @brief Stores settings for the WASAPI audio backend (currently empty; reserved for future fields).
-* @note Exclusive vs. shared mode is selected via @ref fplAudioMode / @ref fplAudioShareMode in @ref fplAudioFormat, not here.
-* @note FPL never resamples; WASAPI is strict — if the requested format is not natively supported the probe falls through to the next backend.
-*/
-typedef struct fplWasapiAudioSettings {
-	fpl_b32 _reserved;
-} fplWasapiAudioSettings;
-#endif
-
 /**
 * @union fplSpecificAudioSettings
 * @brief Stores backend-specific audio settings.
@@ -5633,10 +5620,6 @@ typedef union fplSpecificAudioSettings {
 #if defined(FPL__ENABLE_AUDIO_OSS)
 	//! OSS-specific settings.
 	fplOSSAudioSettings oss;
-#endif
-#if defined(FPL__ENABLE_AUDIO_WASAPI)
-	//! WASAPI-specific settings.
-	fplWasapiAudioSettings wasapi;
 #endif
 	//! Field for preventing union to be empty.
 	int dummy;
