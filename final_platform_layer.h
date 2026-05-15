@@ -294,6 +294,7 @@ SOFTWARE.
 	- Fixed: FPL_GAMEPAD_GUID_SIZE doc used the invalid tag `@define` instead of `@def`; also capitalized "GUID" in the @brief
 	- Fixed: fplGetDynamicLibraryProc @return was an incomplete sentence ("Returns the procedure address … or when the procedure is not found …") with no failure-value description; now correctly states that fpl_null is returned on failure
 	- Fixed: fplDynamicLibraryUnload @see pointed at itself; corrected to point at the companion function fplDynamicLibraryLoad
+	- Fixed: fplThreadState @typedef referenced itself via @ref ("A type definition for mapping fplThreadState into a 32-bit integer") — now correctly references the source enum @ref fplThreadStates
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -6651,7 +6652,7 @@ typedef enum fplThreadStates {
 
 /**
 * @typedef fplThreadState
-* @brief A type definition for mapping @ref fplThreadState into a 32-bit integer.
+* @brief A type definition that maps @ref fplThreadStates into a 32-bit integer for atomic storage.
 */
 typedef uint32_t fplThreadState;
 
