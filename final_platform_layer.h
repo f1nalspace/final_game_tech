@@ -176,6 +176,7 @@ SOFTWARE.
 
 	### Overview
 	- First stable release
+
 	- New input backend system decoupled from windowing, with multi-backend polling and merging
 	- New SDL-compatible gamepad mapping system with resolver callbacks and device enumeration
 	- New DirectInput backend on Windows and improved /dev/input/jsX backend on Linux
@@ -201,12 +202,12 @@ SOFTWARE.
 	- Changed: fplCopyStringLen is now returning the total number of characters required or returns zero on errors
 	- Changed: fplCopyString is now returning the total number of characters required or returns zero on errors
 	- Changed: fplGetWindowTitle is now returning the total number of characters required or returns zero on errors
+	- Changed: fplGetAudioDeviceInfo now returns a plain fplAudioDeviceInfo (no extended/supportedFormats variant — backend-reported lists were unreliable; use fplGetAudioHardwareFormat for the native format)
 	- Changed: Renamed fplInitFlags_GameController to fplInitFlags_Gamepad due to naming inconsisitency
 	- Changed: Renamed fplMemoryGetInfos to fplMemoryGetUsage
-	- Changed: fplGetAudioDeviceInfo now returns a plain fplAudioDeviceInfo (no extended/supportedFormats variant — backend-reported lists were unreliable; use fplGetAudioHardwareFormat for the native format)
+	- Changed: fplGetCurrentThreadId() now returns uint64_t (was uint32_t) and fplThreadHandle.id widened to uint64_t to portably hold pthread_t
 	- Removed: struct fplAudioDeviceInfoExtended (rolled into fplAudioDeviceInfo)
 	- Removed: enum value fplAudioBackendType_Custom (no public custom-backend API)
-	- Added: fplGetCurrentThreadId() now returns uint64_t (was uint32_t) and fplThreadHandle.id widened to uint64_t to portably hold pthread_t
 
 	### Details
 
@@ -232,86 +233,37 @@ SOFTWARE.
 	- New[#26]: [Unix/BSD] Implemented fplMemoryGetUsage via sysctl (hw.*, vm.*)
 	- New: [Unix/BSD] Implemented fplGetSystemLocale / fplGetUserLocale / fplGetInputLocale via setlocale + ISO-639 conversion (shared fpl__PosixLocaleToISO639 helper)
 	- Improved: Better documentation of the preprocessor setup blocks
+	- Improved: Better and consistent documentation of the entire public API
 	- Improved: Added fplStaticAssert checks in the non-opaque branch verifying that the real Win32/POSIX/X11 handle types fit into the opaque-branch buffers (catches portability breakage at compile time instead of corrupting memory at runtime)
-	- Improved: fplDateTime documentation now states explicitly that pre-1970 dates are intentionally not supported (epoch is unsigned and fplDateTimeCreate rejects year < 1970)
+	- Improved: fplDateTime documentation now states explicitly that pre-1970 dates are intentionally not supported
 	- Improved: fplWideStringToUTF8String / fplUTF8StringToWideString now use wchar.h with mbrtowc / wcrtomb directly instead of doing redundant work
 	- Improved: Simplified fplPathCombine by removing all internal memory allocation
-	- Improved: Added output-buffer convention block to header documenting size-required return semantics
-	- Improved: Normalized @param[in] / @param[out] tags across the API documentation
 	- Improved: [POSIX] Improved fplOSGetVersionInfos() by adding support for retrieving detailed version information on BSD/macOS/other Unix systems
 	- Improved: [POSIX] fplCPUGetCoreCount was not working/compiling in FreeBSD
 	- Fixed: Fixed duplicate platform includes
+	- Fixed: Fixed documentation typos and misspellings
 	- Fixed: fpLGetAlignmentOffset() was not guarding the alignment argument in all cases
 	- Fixed: fplS32ToString() was not handling negative values correctly
 	- Fixed: fplStringFormatArgs must always NUL-terminate even when the buffer is too small
-	- Fixed: Fixed documentations for fplStringToS32Len and fplStringToS32
 	- Fixed: fplStringFormat and fplStringFormatArgs was not implemented correctly due to its documentation rules
 	- Fixed: fplStringToS32Len and fplStringToS32 was not implemented correctly due to its documentation rules
 	- Fixed: Calls to fpl__AllocateTemporaryMemory use either fpl__MinAlignment or 16 or more
 	- Fixed: fplCPUID, fplCPURDTSC, fplCPUXCR0 was not detected on GCC/Clang
 	- Fixed: fplGetErrorCount / fplGetErrorByIndex  / fplGetLastError and pushing of errors was not thread-safe
 	- Fixed: fplAlignAs was using a condition based macro, which is not supported for some compilers
-	- Fixed[#183]: fpl_internal_inline was not compiling on GCC/Clang
-	- Fixed: FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL define was being set twice
-	- Fixed: [POSIX] fplDateTime functions were not thread-safe — now use localtime_r / gmtime_r
-	- Fixed: [POSIX] fplMemoryAllocate was not compiling in FreeBSD (MAP_ANONYMOUS vs MAP_ANON)
 	- Fixed: FPL_CACHELINE_SIZE on PowerPC64 used `defined(defined(FPL_ARCH_POWERPC64))` and never matched — PPC64 silently fell through to the 64-byte default instead of the intended 128
 	- Fixed: FPL_X86_CPU_INSTR_SET_LEVEL swapped the __SSSE3__ and __SSE3__ branches — Supplemental SSE3 was reported as SSE3 and vice versa
 	- Fixed: fplStaticAssert generated colliding identifiers because the token-paste used `##line_##counter` (the literal token `line_`) instead of `##line##_##counter` — multiple static asserts in the same translation unit redefined the same symbol
-	- Improved: Added missing @def/@brief documentation blocks for FPL_PLATFORM_WINDOWS, FPL_PLATFORM_LINUX, FPL_PLATFORM_UNIX, FPL_PLATFORM_NAME, FPL_SUBPLATFORM_POSIX, FPL_SUBPLATFORM_X11, FPL_SUBPLATFORM_BSD, FPL_SUBPLATFORM_STD_STRINGS and FPL_SUBPLATFORM_STD_CONSOLE
-	- Improved: Fixed grammar and clarified description of fplAsm ("A assembler compiler instruction" → "An assembler keyword (asm) that is compiler-specific")
-	- Improved: Added missing trailing period in fplMinAlignment @return description
-	- Improved: Clarified fpl_main @brief — it is an empty linkage marker placed in front of the user-defined main entry, not a "main entry point API definition"
-	- Improved: Added missing @def/@brief documentation blocks for FPL_APPTYPE_WINDOW and FPL_APPTYPE_CONSOLE
-	- Improved: Fixed grammar and proper-noun capitalization on FPL_IS_IDE / FPL__M_IS_IDE descriptions ("a IDE" → "an IDE", "jetbrains" → "JetBrains", "Intellisense" → "IntelliSense")
-	- Improved: Fixed grammar in fpl_b32 @brief ("a integer based" → "an integer-based")
-	- Improved: Shortened the multi-sentence paragraph in fpl_b32 @note down to a single-sentence usage hint
-	- Improved: Promoted FPL_NOT_IMPLEMENTED from a one-line `//!` comment to a proper @def/@brief block and reworded the awkward description ("This will full-on crash ... always")
-	- Improved: Normalized doxygen return tags by converting all 22 `@result` occurrences to `@return` for consistency
-	- Improved: fplStructInit and fplStructField now document their variadic argument with the standard doxygen `...` token instead of a confusing `_` formal name
-	- Improved: Stripped trailing whitespace from the fplGetAlignmentOffset macro definition line
-	- Improved: Fixed typo and missing period in fplIsMaskSet documentation ("the given mask in set" → "is set", added trailing period on @param mask)
-	- Improved: Added missing @enum and @union documentation blocks for fplEndianessType and fplEndianess
-	- Improved: Fixed "endianess" → "endianness" misspelling in the prose of fplGetEndianess32 documentation (symbol names retained for API compatibility)
-	- Improved: Corrected FPL_ENUM_AS_FLAGS_OPERATORS @brief — the macro is part of the public surface, not internal, and now describes its purpose (bitwise operator overloads for C++)
-	- Improved: Fixed "lowerspace" → "lowercase" typo in the windef.h NOMINMAX rationale comment
-	- Fixed: fplTimestamp.win32.qpc was documented as "Query performance count in 10th nanoseconds" — QPC ticks run at the platform-dependent QueryPerformanceFrequency, not a fixed 100 ns unit; doc now states this
-	- Improved: Fixed grammar on fplTimestamp.unused field description ("Field for preventing union to be empty" → "Padding field that prevents the union from being empty when no platform branch matches")
-	- Fixed: fplDateTimeType enum members were commented with plain `//` instead of `//!` — doxygen silently skipped them; now extracted correctly
-	- Fixed: fplDateTime struct fields were commented with plain `//` instead of `//!` — doxygen silently skipped them; now extracted correctly
-	- Fixed: fplDateTimeErrors enum members were commented with plain `//` instead of `//!` — doxygen silently skipped them; also added a description for the previously undocumented `_None` value
-	- Fixed: fplDateTimeCreationResult was tagged as `@enum` even though it is a `struct`; struct fields were commented with `//` instead of `//!`; also fixed grammar on the `success` field ("successfully" → "successful")
-	- Fixed: fplDateTimeResult struct fields were commented with plain `//` instead of `//!` — doxygen silently skipped them; now extracted correctly
-	- Improved: Reworded the awkward and inaccurate fplDateTimeQuery @brief ("Gets the current date time and offset and the number of milliseconds in the specified format" → "Gets the current date and time in the specified format (UTC or local)")
-	- Fixed: Six atomic increment functions (fplAtomicIncrementU32/U64/S32/S64/Size/Ptr) used the invalid doxygen tag `@return[in]` — the `[in]` direction qualifier only belongs to `@param`. Stripped to plain `@return`
-	- Fixed: fplAtomicCompareAndSwapSize doc pointed readers at fplAtomicIsCompareAndSwapPtr() instead of fplAtomicIsCompareAndSwapSize()
-	- Improved: Fixed "User opaque user data" → "Opaque user data" on fplVulkanSettings.userData (stray duplicate word)
-	- Fixed: fplGraphicsApiSettings.dummy was documented as "Field for preventing union to be empty" but the surrounding type is a struct, not a union; description now correctly references the struct
-	- Fixed: fplAudioDeviceID.dshow was documented as "DirectShow Device GUID" — the backend is DirectSound, not DirectShow; doc now reads "DirectSound device GUID"
-	- Improved: Fixed grammar on fplAudioDeviceID.dummy field description ("Field for preventing union to be empty" → "Padding field that prevents the union from being empty when no audio backend is enabled")
-	- Improved: Fixed the same "Field for preventing union/struct to be empty" grammar on six remaining padding fields (fplSpecificAudioSettings.dummy, fplLogWriterConsole.dummy, fplInternalConditionVariable.dummy, fplVideoWindow.dummy, fplVideoSurface.dummy, fplVideoRequirements.dummy)
-	- Fixed: FPL_GAMEPAD_MAPPING_RESOLVE_CALLBACK doc block used the non-existent name "FPL_GAMEPAD_MAPPING_RESOLVE_FUNC" and the invalid tag `@define`; corrected to the real name with `@def`, and added the `[in]` direction qualifier on the `@param`
-	- Fixed: FPL_GAMEPAD_GUID_SIZE doc used the invalid tag `@define` instead of `@def`; also capitalized "GUID" in the @brief
-	- Fixed: fplGetDynamicLibraryProc @return was an incomplete sentence ("Returns the procedure address … or when the procedure is not found …") with no failure-value description; now correctly states that fpl_null is returned on failure
-	- Fixed: fplDynamicLibraryUnload @see pointed at itself; corrected to point at the companion function fplDynamicLibraryLoad
-	- Fixed: fplThreadState @typedef referenced itself via @ref ("A type definition for mapping fplThreadState into a 32-bit integer") — now correctly references the source enum @ref fplThreadStates
-	- Improved: Replaced the vague "When this is set to infinite" timeout description with a concrete @ref FPL_TIMEOUT_INFINITE reference across the eight thread/mutex/semaphore/signal/condition wait functions
-	- Fixed: fplConditionInit @note told readers to call fplSignalDestroy() when done — should be fplConditionDestroy() (signal/condition copy-paste mismatch)
-	- Improved: Swept the non-standard plural "informations" → "information" across six doc blocks (OSSession, Files defgroup, fplInternalFileRootInfo, fplFileEntry, Input defgroup, fplWindowDropFiles, Locale defgroup)
-	- Improved: Fixed grammar in the Files defgroup @brief ("This category contains and types and functions for handling files & directories" → "types and functions for handling files and directories")
-	- Improved: Normalized "filehandle" → "file handle" across ten doc blocks (Win32/POSIX handle typedefs, fplInternalFileHandle, fplFileHandle, fplInternalFileEntryHandle, fplFileEntry)
-	- Improved: Fixed typo in fplFileTimeStamps @brief ("filestamps" → "timestamps")
-	- Improved: Fixed grammar in Input defgroup @brief ("contains the types and function for query keyboard / mouse / game pad information" → "types and functions for querying keyboard, mouse and gamepad information")
-	- Improved: Fixed multiple errors in fplGamepadGuid @brief ("a 16-byte guid for identify a game controler" → "a 16-byte GUID used to identify a game controller")
-	- Improved: Fixed "otuput" typo in fplGetDisplays @param doc
-	- Improved: Fixed word-order error in fplGetTargetAudioFrameCount @return ("Returns the number target audio frames" → "Returns the target number of audio frames")
-	- Improved: Fixed extraneous "in" in fplWindowDropFiles.fileCount description ("Number of dropped in files" → "Number of dropped files")
-	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
+	- Fixed[#183]: fpl_internal_inline was not compiling on GCC/Clang
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
+	- Fixed: [POSIX] FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL define was being set twice
+	- Fixed: [POSIX] fplDateTime functions were not thread-safe — now use localtime_r / gmtime_r
+	- Fixed: [POSIX] fplMemoryAllocate was not compiling in FreeBSD (MAP_ANONYMOUS vs MAP_ANON)
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
 	- Changed: Ensure that std types has the correct sizes always using equals
 	- Changed: [POSIX] Disabled FPL_NO_PLATFORM_INCLUDES for pthread includes
 	- Changed: [BSD] Define __BSD_VISIBLE on BSD platforms
+	- Changed: [UNIX] Init/release platform now save and restore LC_ALL across startup/shutdown
 	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
 
 	#### Threading
@@ -423,7 +375,7 @@ SOFTWARE.
 	- New: Added struct fplGamepadMapping, that holds a complete mapping from raw device inputs onto FPL's logical gamepad layout
 	- New: Added struct fplGamepadData, that captures a backend-agnostic snapshot of raw device input for use with fplGamepadMapping
 	- New: Added struct fplGamepadInfo, that describes a controller for the mapping resolver callback
-	- New: Added typedef fplGamepadMappingResolverFn, the callback type fired once per controller connect on raw-HID gamepad backends
+	- New: Added typedef fpl_gamepad_mapping_resolver_callback, the callback type fired once per controller connect on raw-HID gamepad backends
 	- New: Added macros FPL_GAMEPAD_BUTTON_COUNT, FPL_GAMEPAD_GUID_BYTES, FPL_GAMEPAD_DATA_MAX_AXES, FPL_GAMEPAD_DATA_MAX_BUTTONS, FPL_GAMEPAD_DATA_MAX_HATS
 	- New: Added macro FPL_GAMEPAD_MAPPING_RESOLVE_CALLBACK
 	- New: Added enum fplInputSourceType
@@ -6006,7 +5958,7 @@ typedef struct fplGamepadMapping fplGamepadMapping;
 #define FPL_GAMEPAD_MAPPING_RESOLVE_CALLBACK(name) bool name(const fplGamepadInfo *info, fplGamepadMapping *outMapping, void *userData)
 
 /**
-* @typedef fplGamepadMappingResolverFn
+* @typedef fpl_gamepad_mapping_resolver_callback
 * @brief Optional callback invoked once per controller connect on raw-HID gamepad backends (DirectInput, Linux joystick/evdev, etc.) to install a custom @ref fplGamepadMapping for the device.
 * @param[in]  info        Backend-built description of the device that just connected.
 * @param[out] outMapping  Mapping to fill in when the resolver wants to override the default convention.
@@ -8035,7 +7987,7 @@ fpl_common_api size_t fplPathCombine(char *destPath, const size_t maxDestPathLen
 
 // ----------------------------------------------------------------------------
 /**
-* @defgroup Input
+* @defgroup Input Input types and functions
 * @brief This category contains the types and functions for querying keyboard, mouse and gamepad information.
 * @{
 */
@@ -8827,7 +8779,7 @@ typedef struct fplGamepadData {
 
 /**
 * @struct fplGamepadInfo
-* @brief Read-only description of a controller passed to a @ref fplGamepadMappingResolverFn at connect time.
+* @brief Read-only description of a controller passed to a @ref fpl_gamepad_mapping_resolver_callback at connect time.
 */
 typedef struct fplGamepadInfo {
 	//! Raw 16-byte SDL-compatible GUID built by the backend.

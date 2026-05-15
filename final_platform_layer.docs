@@ -1239,17 +1239,17 @@
 	Each input source has its own flag in @ref fplInitFlags:
 	- @ref fplInitFlags_Keyboard
 	- @ref fplInitFlags_Mouse
-	- @ref fplInitFlags_GameController
+	- @ref fplInitFlags_Gamepad
 
 	The composite @ref fplInitFlags_Input is the bitwise OR of all three. @ref fplInitFlags_All also enables every input source.<br>
 	<br>
-	@ref fplInitFlags_Window implies @ref fplInitFlags_Keyboard and @ref fplInitFlags_Mouse, so windowed applications keep working without changes. Gamepads must always be requested explicitly with @ref fplInitFlags_GameController.
+	@ref fplInitFlags_Window implies @ref fplInitFlags_Keyboard and @ref fplInitFlags_Mouse, so windowed applications keep working without changes. Gamepads must always be requested explicitly with @ref fplInitFlags_Gamepad.
 
 	@code{.c}
 	// Console-only application that polls a gamepad
 	fplSettings settings;
 	fplSetDefaultSettings(&settings);
-	if (fplPlatformInit(fplInitFlags_GameController, &settings)) {
+	if (fplPlatformInit(fplInitFlags_Gamepad, &settings)) {
 		// ...
 	}
 	@endcode
@@ -1330,9 +1330,9 @@
 
 	See the @c FPL_ConsoleGamepad demo for a complete @c FPL_NO_WINDOW example.
 
-	@section section_catecory_input_config_param_controllerdetectionfrequency Controller detection frequency
+	@section section_catecory_input_config_param_gamepad_detection_frequency Controller detection frequency
 
-	Use @ref fplInputSettings.gameControllers.detectionFrequency to change the frequency (in milliseconds) at which gamepad backends scan for newly connected or removed controllers.<br>
+	Use @ref fplInputSettings.gamepad.detectionFrequency to change the frequency (in milliseconds) at which gamepad backends scan for newly connected or removed controllers.<br>
 	<br>
 	Setting this to zero forces a scan every frame, which is not recommended due to its cost. The default value is suitable for most games.
 
@@ -1345,13 +1345,9 @@
 	Define @c FPL_NO_INPUT before the implementation include to remove the entire input subsystem. To remove a single backend without disabling the rest, define one of:
 	- @c FPL_NO_INPUT_XINPUT
 	- @c FPL_NO_INPUT_DINPUT
-	- @c FPL_NO_INPUT_RAWINPUT
 	- @c FPL_NO_INPUT_WIN32
 	- @c FPL_NO_INPUT_X11
 	- @c FPL_NO_INPUT_LINUX_JOYSTICK
-	- @c FPL_NO_INPUT_LINUX_EVDEV
-	- @c FPL_NO_INPUT_LINUX_UDEV
-	- @c FPL_NO_INPUT_UNIX_GAMEPAD
 
 	See @subpage page_compiler_options for the full list.
 
@@ -1541,7 +1537,7 @@
 
 	@section section_category_video_legacy_opengl_init Initialize Legacy OpenGL
 
-	To initialize a legacy OpenGL (up to GL version 2.1) rendering context you simply set the @ref fplInitFlags_Video flag in the @ref fplPlatformInit() call and change the video backend type to @ref fplVideoBackendType_OpenGL and set the @ref fplOpenGLSettings.compabilityFlags to @ref fplOpenGLCompabilityFlags_Legacy .<br>
+	To initialize a legacy OpenGL (up to GL version 2.1) rendering context you simply set the @ref fplInitFlags_Video flag in the @ref fplPlatformInit() call and change the video backend type to @ref fplVideoBackendType_OpenGL and set the @ref fplOpenGLSettings.compatibilityFlags to @ref fplOpenGLCompatibilityFlags_Legacy .<br>
 	<br>
 	This will work in ~99% on all supported platforms - if not please post an issue for that platform/configuration/video-card ;-)
 
@@ -1552,7 +1548,7 @@
 
 	// Forcing the video backend to be legacy OpenGL
 	videoSettings.backend = fplVideoBackendType_OpenGL;
-	videoSettings.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
+	videoSettings.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Legacy;
 
 	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
 		// ... your code here
@@ -1581,8 +1577,8 @@
 	To initialize a modern OpenGL (3.0+) rendering context, you simply set the @ref fplInitFlags_Video flag in the @ref fplPlatformInit() call and change the video backend type to @ref fplVideoBackendType_OpenGL and setup the following parameters:<br>
 	- Set the @ref fplOpenGLSettings.majorVersion to 3 or higher
 	- Set the @ref fplOpenGLSettings.minorVersion to 0 or higher
-	- Set the @ref fplOpenGLSettings.compabilityFlags to either a @ref fplOpenGLCompabilityFlags_Core or @ref fplOpenGLCompabilityFlags_Compability
-	- Optionally add the @ref fplOpenGLCompabilityFlags_Forward flag for removing obsolete functions
+	- Set the @ref fplOpenGLSettings.compatibilityFlags to either a @ref fplOpenGLCompatibilityFlags_Core or @ref fplOpenGLCompatibilityFlags_Compatibility
+	- Optionally add the @ref fplOpenGLCompatibilityFlags_Forward flag for removing obsolete functions
 
 	@code{.c}
 	fplSettings settings;
@@ -1591,7 +1587,7 @@
 
 	// Forcing the video backend to be modern OpenGL with Core profile and for GL version 3.3
 	videoSettings.backend = fplVideoBackendType_OpenGL;
-	videoSettings.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
+	videoSettings.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Core;
 	videoSettings.graphics.opengl.majorVersion = 3;
 	videoSettings.graphics.opengl.minorVersion = 3;
 
@@ -1628,7 +1624,7 @@
 
 	// Forcing the video backend to be modern OpenGL with Core profile and for GL version 3.3
 	videoSettings.backend = fplVideoBackendType_OpenGL;
-	videoSettings.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
+	videoSettings.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Core;
 	videoSettings.graphics.opengl.majorVersion = 3;
 	videoSettings.graphics.opengl.minorVersion = 3;
 
@@ -2271,7 +2267,7 @@
 	
 	| 4/8 bytes for x86/x64           | Alignment * 2 bytes   | n-bytes                                                                       |
 	|---------------------------------|-----------------------|-------------------------------------------------------------------------------|
-	| **Address of the base-pointer** | **Alignment padding** | \ref subsection_category_memory_handling_normal_datalayout "Data layout"      |
+	| **Address of the base-pointer** | **Alignment padding** | @ref subsection_category_memory_handling_normal_datalayout "Data layout"      |
 
 	@section section_category_memory_handling_ops Memory operations
 
@@ -2386,13 +2382,13 @@
 
 	@section section_category_hardware_memstate Query memory state
 
-	With @ref fplMemoryGetInfos() you can query the current memory state.<br>
+	With @ref fplMemoryGetUsage() you can query the current memory state.<br>
 	This includes the size of the physical memory, the current memory usage, and more.<br>
 	See @ref fplMemoryInfos for more details.<br>
 
 	@code{.c}
 	fplMemoryInfos memInfos = fplZeroInit;
-	if (fplMemoryGetInfos(&memInfos)) {
+	if (fplMemoryGetUsage(&memInfos)) {
 		fplConsoleFormatOut("%llu of %llu physical memory is available.\n", memInfos.freePhysicalSize, memInfos.totalPhysicalSize);
 	}
 	@endcode
@@ -4520,7 +4516,7 @@
 			fplSettings settings = fplMakeDefaultSettings();
 			settings.video.backend = fplVideoBackendType_OpenGL;
 			fplCopyString("FPL Modern OpenGL", settings.window.title, fplArrayCount(settings.window.title));
-			settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
+			settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Core;
 			settings.video.graphics.opengl.majorVersion = 3;
 			settings.video.graphics.opengl.minorVersion = 3;
 			settings.video.graphics.opengl.multiSamplingCount = 4;
