@@ -225,6 +225,7 @@ SOFTWARE.
 	- New: Added macro FPL_MAX_VERSION_PART_LENGTH for the maximum length of a version part string
 	- New[#183]: Added macro fpl_extern_inline
 	- New[#190]: [Linux] Implemented fplMemoryGetUsage via sysinfo() and /proc/meminfo parsing
+	- New[#26]: [Unix/BSD] Implemented fplMemoryGetUsage via sysctl (hw.physmem/realmem, vm.stats.vm.*, vm.swap_total/reserved)
 	- New: [Unix/BSD] Implemented fplGetSystemLocale / fplGetUserLocale / fplGetInputLocale via setlocale + ISO-639 conversion (shared fpl__PosixLocaleToISO639 helper)
 	- Improved: Better documentation of the preprocessor setup blocks
 	- Improved: Added fplStaticAssert checks in the non-opaque branch verifying that the real Win32/POSIX/X11 handle types fit into the opaque-branch buffers (catches portability breakage at compile time instead of corrupting memory at runtime)
@@ -25815,8 +25816,70 @@ fpl_internal bool fpl__UnixInitPlatform(const fplInitFlags initFlags, const fplS
 // Unix Hardware
 //
 fpl_platform_api bool fplMemoryGetUsage(fplMemoryInfos *outInfos) {
-	// @IMPLEMENT(final/Unix): fplMemoryGetUsage
-	return(false);
+	FPL__CheckArgumentNull(outInfos, false);
+	fplClearStruct(outInfos);
+
+	long pageSize = sysconf(_SC_PAGESIZE);
+	if (pageSize <= 0) {
+		pageSize = 4096;
+	}
+	outInfos->pageSize = (uint64_t)pageSize;
+
+	// hw.physmem = total RAM the kernel addresses (post-reservation), 64-bit on modern BSDs.
+	// hw.realmem = installed RAM (pre-reservation), FreeBSD-specific; fall back to physmem elsewhere.
+	uint64_t physmem = 0;
+	size_t len = sizeof(physmem);
+	if (sysctlbyname("hw.physmem", &physmem, &len, fpl_null, 0) == 0) {
+		outInfos->totalPhysicalSize = physmem;
+	}
+	uint64_t realmem = 0;
+	len = sizeof(realmem);
+	if (sysctlbyname("hw.realmem", &realmem, &len, fpl_null, 0) == 0) {
+		outInfos->installedPhysicalSize = realmem;
+	} else {
+		outInfos->installedPhysicalSize = outInfos->totalPhysicalSize;
+	}
+
+	// Free physical pages. vm.stats.vm.v_free_count is a u_int (32-bit) page count on FreeBSD.
+	uint32_t freePages = 0;
+	len = sizeof(freePages);
+	if (sysctlbyname("vm.stats.vm.v_free_count", &freePages, &len, fpl_null, 0) == 0) {
+		outInfos->freePhysicalSize = (uint64_t)freePages * (uint64_t)pageSize;
+	}
+
+	// Cache = inactive + cache pages. On FreeBSD these are reclaimable file-cache-backed pages
+	// (mirrors the Linux Cached+Buffers+SReclaimable interpretation). v_cache_count is mostly 0
+	// on FreeBSD 12+ since the dedicated cache queue was retired, but we still query it for completeness.
+	uint32_t inactivePages = 0;
+	len = sizeof(inactivePages);
+	if (sysctlbyname("vm.stats.vm.v_inactive_count", &inactivePages, &len, fpl_null, 0) != 0) {
+		inactivePages = 0;
+	}
+	uint32_t cachePages = 0;
+	len = sizeof(cachePages);
+	if (sysctlbyname("vm.stats.vm.v_cache_count", &cachePages, &len, fpl_null, 0) != 0) {
+		cachePages = 0;
+	}
+	uint64_t cacheBytes = ((uint64_t)inactivePages + (uint64_t)cachePages) * (uint64_t)pageSize;
+	outInfos->totalCacheSize = cacheBytes;
+	outInfos->freeCacheSize = cacheBytes;
+
+	// Swap totals via vm.swap_total / vm.swap_reserved (size_t on FreeBSD 13+).
+	// If unavailable (older FreeBSD, NetBSD/OpenBSD without these), page counts stay 0.
+	uint64_t swapTotal = 0;
+	len = sizeof(swapTotal);
+	if (sysctlbyname("vm.swap_total", &swapTotal, &len, fpl_null, 0) == 0 && swapTotal > 0) {
+		uint64_t swapReserved = 0;
+		len = sizeof(swapReserved);
+		if (sysctlbyname("vm.swap_reserved", &swapReserved, &len, fpl_null, 0) != 0) {
+			swapReserved = 0;
+		}
+		outInfos->totalPageCount = swapTotal / (uint64_t)pageSize;
+		uint64_t swapFree = (swapReserved > swapTotal) ? 0 : (swapTotal - swapReserved);
+		outInfos->freePageCount = swapFree / (uint64_t)pageSize;
+	}
+
+	return true;
 }
 
 //
