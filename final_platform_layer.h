@@ -278,6 +278,7 @@ SOFTWARE.
 	- Fixed: fplTimestamp.win32.qpc was documented as "Query performance count in 10th nanoseconds" — QPC ticks run at the platform-dependent QueryPerformanceFrequency, not a fixed 100 ns unit; doc now states this
 	- Improved: Fixed grammar on fplTimestamp.unused field description ("Field for preventing union to be empty" → "Padding field that prevents the union from being empty when no platform branch matches")
 	- Fixed: fplDateTimeType enum members were commented with plain `//` instead of `//!` — doxygen silently skipped them; now extracted correctly
+	- Fixed: fplDateTime struct fields were commented with plain `//` instead of `//!` — doxygen silently skipped them; now extracted correctly
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -4021,11 +4022,11 @@ typedef enum fplDateTimeType {
 * @note Pre-1970 dates are intentionally not supported — `epoch` is unsigned and `fplDateTimeCreate` rejects `year < 1970`.
 */
 typedef struct fplDateTime {
-	// Unix epoch in seconds since 1970-01-01 00:00:00. Unsigned because pre-1970 dates are not supported.
+	//! Unix epoch in seconds since 1970-01-01 00:00:00. Unsigned because pre-1970 dates are not supported.
 	uint64_t epoch;
-	// Milliseconds that are added after the epoch.
+	//! Milliseconds that are added after the epoch.
 	uint32_t milliseconds;
-	// UTC offset in minutes, to convert back into UTC format. This is zero when the date time is UTC or +0.
+	//! UTC offset in minutes, to convert back into UTC format. This is zero when the date time is UTC or +0.
 	int32_t utcOffset;
 } fplDateTime;
 
