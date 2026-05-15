@@ -255,6 +255,7 @@ SOFTWARE.
 	- Fixed: FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL define was being set twice
 	- Fixed: [POSIX] fplDateTime functions were not thread-safe — now use localtime_r / gmtime_r
 	- Fixed: [POSIX] fplMemoryAllocate was not compiling in FreeBSD (MAP_ANONYMOUS vs MAP_ANON)
+	- Fixed: FPL_CACHELINE_SIZE on PowerPC64 used `defined(defined(FPL_ARCH_POWERPC64))` and never matched — PPC64 silently fell through to the 64-byte default instead of the intended 128
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -2175,7 +2176,7 @@ SOFTWARE.
 	* @brief Cacheline size for ARM64 Architecture (128-bytes).
 	*/
 #	define FPL_CACHELINE_SIZE 128
-#elif defined(defined(FPL_ARCH_POWERPC64))
+#elif defined(FPL_ARCH_POWERPC64)
 	/**
 	* @def FPL_CACHELINE_SIZE
 	* @brief Cacheline size for Power-PC Architecture (128-bytes).
