@@ -1889,13 +1889,8 @@ SOFTWARE.
 
 	@section section_support_status_known_limitation Known Limitations
 
-	- Some window features not implemented in X11
 	- Some CPU query features not implemented in non-x86 platforms
-	- Linux gamepad device locked to /dev/input/js0 for now
-	- No unix memory query functions
-	- No unix audio backend implemented (OSS is planned)
 	- No unix gamepad support implemented (fd is planned)
-	- Extended audio device infos does not contain formats yet
 
 	@section section_support_status_unsupported Not Supported
 
