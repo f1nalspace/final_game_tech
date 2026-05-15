@@ -31,6 +31,8 @@ set(MY_TRANSLATION_UNITS
 
 set(MY_DEFINES "")
 
+set(MY_RESOURCE_FOLDER "roms")
+
 # -----------------------------------------------------------------------------
 #
 # Do not change the following lines
