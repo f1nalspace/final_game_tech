@@ -121,8 +121,6 @@ Backend init/release per attempt is the cost of correctness — backends share o
 
 ### Deletions / cleanups
 
-- `fplWasapiAudioSettings.autoConvertSampleRate` — removed (WASAPI is strict-only after this; the spec already covers the negotiation in the tier loop).
-- `fplWasapiAudioSettings` — removed (not needed anymore, can always be re-created if needed)
 - `fpl__global_AudioFormat_FallbackFields[]` — removed (replaced by tier enum).
 - `fpl__PopulateFallbackAudioFormats` — replaced by tier-aware `fpl__PopulateProbeCandidates`.
 
