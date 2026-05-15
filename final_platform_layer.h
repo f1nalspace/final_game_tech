@@ -284,6 +284,7 @@ SOFTWARE.
 	- Fixed: fplDateTimeResult struct fields were commented with plain `//` instead of `//!` — doxygen silently skipped them; now extracted correctly
 	- Improved: Reworded the awkward and inaccurate fplDateTimeQuery @brief ("Gets the current date time and offset and the number of milliseconds in the specified format" → "Gets the current date and time in the specified format (UTC or local)")
 	- Fixed: Six atomic increment functions (fplAtomicIncrementU32/U64/S32/S64/Size/Ptr) used the invalid doxygen tag `@return[in]` — the `[in]` direction qualifier only belongs to `@param`. Stripped to plain `@return`
+	- Fixed: fplAtomicCompareAndSwapSize doc pointed readers at fplAtomicIsCompareAndSwapPtr() instead of fplAtomicIsCompareAndSwapSize()
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -4444,7 +4445,7 @@ fpl_platform_api int64_t fplAtomicCompareAndSwapS64(volatile int64_t *dest, cons
 * @param[in] exchange The value to exchange with.
 * @return Returns the value of the destination before the swap, regardless of the result.
 * @note Ensures that memory operations are completed in order.
-* @note Use @ref fplAtomicIsCompareAndSwapPtr() when you want to check if the exchange has happened or not.
+* @note Use @ref fplAtomicIsCompareAndSwapSize() when you want to check if the exchange has happened or not.
 * @see @ref category_threading_atomics_cas
 */
 fpl_common_api size_t fplAtomicCompareAndSwapSize(volatile size_t *dest, const size_t comparand, const size_t exchange);
