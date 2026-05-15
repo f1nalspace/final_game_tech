@@ -271,6 +271,7 @@ SOFTWARE.
 	- Improved: fplStructInit and fplStructField now document their variadic argument with the standard doxygen `...` token instead of a confusing `_` formal name
 	- Improved: Stripped trailing whitespace from the fplGetAlignmentOffset macro definition line
 	- Improved: Fixed typo and missing period in fplIsMaskSet documentation ("the given mask in set" → "is set", added trailing period on @param mask)
+	- Improved: Added missing @enum and @union documentation blocks for fplEndianessType and fplEndianess
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -3414,6 +3415,10 @@ fplStaticAssert(sizeof(size_t) == sizeof(uint32_t));
 // Endianess
 //
 
+/**
+* @enum fplEndianessType
+* @brief Sentinel values used to detect the byte order of the host platform at runtime.
+*/
 typedef enum fplEndianessType {
 	//! Little-endian type
 	fplEndianessType_Little = 0x04030201,
@@ -3421,6 +3426,10 @@ typedef enum fplEndianessType {
 	fplEndianessType_Big = 0x01020304,
 } fplEndianessType;
 
+/**
+* @union fplEndianess
+* @brief Byte-order probe union that overlays a 32-bit integer with its raw bytes.
+*/
 typedef union {
 	//! Value as 4 unsigned chars
 	unsigned char bytes[4];
