@@ -304,6 +304,7 @@ SOFTWARE.
 	- Improved: Fixed grammar in Input defgroup @brief ("contains the types and function for query keyboard / mouse / game pad information" → "types and functions for querying keyboard, mouse and gamepad information")
 	- Improved: Fixed multiple errors in fplGamepadGuid @brief ("a 16-byte guid for identify a game controler" → "a 16-byte GUID used to identify a game controller")
 	- Improved: Fixed "otuput" typo in fplGetDisplays @param doc
+	- Improved: Fixed word-order error in fplGetTargetAudioFrameCount @return ("Returns the number target audio frames" → "Returns the target number of audio frames")
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -9966,7 +9967,7 @@ fpl_common_api uint32_t fplGetAudioBufferSizeInBytes(const fplAudioFormatType fo
 * @param[in] inputFrameCount The input frame count.
 * @param[in] inputSampleRate The input sample rate in Hz.
 * @param[in] outputSampleRate The output sample rate in Hz.
-* @return Returns the number target audio frames.
+* @return Returns the target number of audio frames.
 */
 fpl_common_api uint32_t fplGetTargetAudioFrameCount(const uint32_t inputFrameCount, const uint32_t inputSampleRate, const uint32_t outputSampleRate);
 
