@@ -175,82 +175,144 @@ SOFTWARE.
 extern "C" {
 #endif  // __cplusplus
 
+	/*! \brief Kind of an @ref fxmlTag node in the parsed tree. */
 	typedef enum fxmlTagType {
+		//! Unset / not a real tag.
 		fxmlTagType_None = 0,
+		//! Synthetic top-level container that owns the document.
 		fxmlTagType_Root,
+		//! XML declaration `<?xml ... ?>`.
 		fxmlTagType_Declaration,
+		//! Regular XML element `<name>...</name>`.
 		fxmlTagType_Element,
+		//! Attribute node attached to an element or declaration.
 		fxmlTagType_Attribute,
+		//! XML comment `<!-- ... -->`.
 		fxmlTagType_Comment,
 	} fxmlTagType;
 
+	/*! \brief Non-owning string slice into the source XML buffer. */
 	typedef struct fxmlString {
+		//! Pointer to the first character.
 		const char *start;
+		//! Length in bytes (no NUL).
 		size_t len;
 	} fxmlString;
 
+	/*! \brief Singly-linked memory block used by the FXML bump allocator. */
 	typedef struct fxmlMemory {
+		//! Start of the usable payload area inside the block.
 		void *base;
+		//! Next block in the allocator chain (null at end).
 		struct fxmlMemory *next;
+		//! Number of bytes consumed in the payload area.
 		size_t used;
+		//! Total payload capacity in bytes.
 		size_t capacity;
 	} fxmlMemory;
 
+	/*! \brief A node in the parsed XML tree (root, element, attribute, declaration, or comment). */
 	typedef struct fxmlTag {
+		//! NUL-terminated tag or attribute name (null for comments and root).
 		const char *name;
+		//! NUL-terminated text/attribute value (null when not applicable).
 		const char *value;
+		//! Parent tag in the tree (null for the root).
 		struct fxmlTag *parent;
+		//! Next sibling under the same parent.
 		struct fxmlTag *nextSibling;
+		//! Previous sibling under the same parent.
 		struct fxmlTag *prevSibling;
+		//! First attribute attached to this tag.
 		struct fxmlTag *firstAttribute;
+		//! Last attribute attached to this tag.
 		struct fxmlTag *lastAttribute;
+		//! First child element/comment/declaration.
 		struct fxmlTag *firstChild;
+		//! Last child element/comment/declaration.
 		struct fxmlTag *lastChild;
+		//! Kind of node (@ref fxmlTagType).
 		fxmlTagType type;
+		//! True once the closing tag (or self-closing slash) has been seen.
 		bool isClosed;
 	} fxmlTag;
 
+	/*! \brief Error reason set on the @ref fxmlContext when parsing fails. */
 	typedef enum fxmlErrorType {
+		//! No error.
 		fxmlErrorType_None = 0,
 
+		//! Memory allocation failed.
 		fxmlErrorType_OutOfMemory,
+		//! Failed to decode an XML escape sequence (`&...;`).
 		fxmlErrorType_StringDecodingFailed,
+		//! Encountered an unexpected character.
 		fxmlErrorType_UnexpectedChar,
+		//! Document does not contain exactly one root element.
 		fxmlErrorType_RootTagMissing,
+		//! A tag was opened but never closed.
 		fxmlErrorType_TagNotClosed,
+		//! Expected a namespace identifier after `:`.
 		fxmlErrorType_ExpectNamespaceIdent,
 
+		//! Expected the start of a comment (`<!--`).
 		fxmlErrorType_ExpectCommentStart,
+		//! Expected the end of a comment (`-->`).
 		fxmlErrorType_ExpectCommentEnd,
+		//! Failure while parsing a comment.
 		fxmlErrorType_CommentParseError,
 
+		//! Expected the declaration identifier after `<?`.
 		fxmlErrorType_ExpectDeclarationIdent,
+		//! Expected the start of a declaration (`<?`).
 		fxmlErrorType_ExpectDeclarationBegin,
+		//! Expected the end of a declaration (`?>`).
 		fxmlErrorType_ExpectDeclarationEnd,
+		//! Failure while parsing a declaration.
 		fxmlErrorType_DeclarationParseError,
 
+		//! Expected `=` after an attribute name.
 		fxmlErrorType_ExpectAttributeAssignment,
+		//! Expected the opening or closing `"` of an attribute value.
 		fxmlErrorType_ExpectAttributeQuote,
+		//! Failure while parsing attributes.
 		fxmlErrorType_AttributesParseError,
 
+		//! Expected the start of a tag (`<`).
 		fxmlErrorType_ExpectTagStart,
+		//! Expected the end of a tag (`>`).
 		fxmlErrorType_ExpectTagEnd,
+		//! Expected an identifier after `<` or `</`.
 		fxmlErrorType_ExpectTagIdent,
+		//! Tag name exceeds the fixed-size buffer.
 		fxmlErrorType_TagNameTooLong,
+		//! Closing tag name does not match the matching opening tag.
 		fxmlErrorType_ClosingTagMismatch,
+		//! Invalid character inside a tag name.
 		fxmlErrorType_InvalidTagChar,
+		//! Failure while parsing a tag.
 		fxmlErrorType_TagParseError,
 	} fxmlErrorType;
 
+	/*! \brief Parsing context. Initialize with @ref fxmlInitFromMemory, release with @ref fxmlFree. */
 	typedef struct fxmlContext {
+		//! Original input buffer pointer.
 		const void *data;
+		//! Current read cursor inside the input buffer.
 		const char *ptr;
+		//! Total size of the input buffer in bytes.
 		size_t size;
+		//! Head of the allocator block chain.
 		fxmlMemory *firstMem;
+		//! Tail of the allocator block chain.
 		fxmlMemory *lastMem;
+		//! Root tag of the parsed document.
 		fxmlTag *root;
+		//! Current parent during parsing.
 		fxmlTag *curParent;
+		//! Concrete error reason when @ref isError is true (@ref fxmlErrorType).
 		fxmlErrorType errorType;
+		//! Set to true once a parse error has been reported.
 		bool isError;
 	} fxmlContext;
 
