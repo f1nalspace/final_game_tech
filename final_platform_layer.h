@@ -12797,7 +12797,7 @@ fpl_internal void fpl__HandleKeyboardButtonEvent(fpl__PlatformWindowState *windo
 		buttonStateName = "Repeat";
 	else
 		buttonStateName = "Released";
-	FPL_LOG_INFO(FPL__MODULE_OS, "[%llu] Keyboard button event with keycode: '%llu', state: '%s'", time, keyCode, buttonStateName);
+	FPL_LOG_TRACE(FPL__MODULE_OS, "[%llu] Keyboard button event with keycode: '%llu', state: '%s'", time, keyCode, buttonStateName);
 #endif
 
 	fplKey mappedKey = fpl__GetMappedKey(windowState, keyCode);
@@ -16648,7 +16648,7 @@ FPL__FUNC_INPUT_WIN32_XINPUT_XInputGetCapabilities(fpl__InputWin32XInputGetCapab
 fpl_internal void fpl__Win32UnloadXInputApi(fpl__InputWin32XInputApi *xinputApi) {
 	fplAssert(xinputApi != fpl_null);
 	if (xinputApi->xinputLibrary) {
-		FPL_LOG_DEBUG("XInput", "Unload XInput Library");
+		FPL_LOG_DEBUG(FPL__MODULE_XINPUT, "Unload XInput Library");
 		FreeLibrary(xinputApi->xinputLibrary);
 		xinputApi->xinputLibrary = fpl_null;
 		xinputApi->XInputGetState = fpl__InputWin32XInputGetStateStub;
@@ -18252,7 +18252,7 @@ fpl_internal bool fpl__Win32SetThreadPriority(HANDLE threadHandle, const fplThre
 			win32Priority = THREAD_PRIORITY_TIME_CRITICAL;
 			break;
 		default:
-			FPL__ERROR("Threading", "The thread priority %d is not supported", newPriority);
+			FPL__ERROR(FPL__MODULE_THREADING, "The thread priority %d is not supported", newPriority);
 			return(false);
 	}
 	bool result = SetThreadPriority(threadHandle, win32Priority) == TRUE;
@@ -22663,20 +22663,20 @@ fpl_internal void fpl__X11ReleaseWindow(const fpl__X11SubplatformState *subplatf
 		windowState->invisibleCursor = 0;
 	}
 	if (windowState->window) {
-		FPL_LOG_DEBUG("X11", "Hide window '%d' from display '%p'", (int)windowState->window, windowState->display);
+		FPL_LOG_DEBUG(FPL__MODULE_X11, "Hide window '%d' from display '%p'", (int)windowState->window, windowState->display);
 		x11Api->XUnmapWindow(windowState->display, windowState->window);
-		FPL_LOG_DEBUG("X11", "Destroy window '%d' on display '%p'", (int)windowState->window, windowState->display);
+		FPL_LOG_DEBUG(FPL__MODULE_X11, "Destroy window '%d' on display '%p'", (int)windowState->window, windowState->display);
 		x11Api->XDestroyWindow(windowState->display, windowState->window);
 		x11Api->XFlush(windowState->display);
 		windowState->window = 0;
 	}
 	if (windowState->colorMap) {
-		FPL_LOG_DEBUG("X11", "Release color map '%d' from display '%p'", (int)windowState->colorMap, windowState->display);
+		FPL_LOG_DEBUG(FPL__MODULE_X11, "Release color map '%d' from display '%p'", (int)windowState->colorMap, windowState->display);
 		x11Api->XFreeColormap(windowState->display, windowState->colorMap);
 		windowState->colorMap = 0;
 	}
 	if (windowState->display) {
-		FPL_LOG_DEBUG("X11", "Close display '%p'", windowState->display);
+		FPL_LOG_DEBUG(FPL__MODULE_X11, "Close display '%p'", windowState->display);
 		x11Api->XCloseDisplay(windowState->display);
 		windowState->display = fpl_null;
 	}
@@ -23580,7 +23580,7 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 			Time keyTime = ev->xkey.time;
 			Time lastPressTime = winState->keyPressTimes[keyCode];
 			Time diffTime = keyTime - lastPressTime;
-			FPL_LOG_INFO("X11", "Diff for key '%llu', time: %lu, diff: %lu, last: %lu", keyCode, keyTime, diffTime, lastPressTime);
+			FPL_LOG_TRACE(FPL__MODULE_X11, "Diff for key '%llu', time: %lu, diff: %lu, last: %lu", keyCode, keyTime, diffTime, lastPressTime);
 			if (diffTime == keyTime || (diffTime > 0 && diffTime < (1 << 31))) {
 				if (keyCode) {
 					fpl__HandleKeyboardButtonEvent(winState, (uint64_t)keyTime, keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Press, false);
@@ -31421,16 +31421,16 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 		bool isDeviceOpen = false;
 		for (size_t defaultDeviceIndex = 0; defaultDeviceIndex < defaultDeviceCount; ++defaultDeviceIndex) {
 			const char *defaultDeviceName = defaultDeviceNames[defaultDeviceIndex];
-			FPL_LOG_DEBUG("ALSA", "Opening PCM audio device '%s'", defaultDeviceName);
+			FPL_LOG_DEBUG(FPL__MODULE_AUDIO_ALSA, "Opening PCM audio device '%s'", defaultDeviceName);
 			if (alsaApi->snd_pcm_open(&impl->pcmDevice, defaultDeviceName, stream, openMode) == 0) {
-				FPL_LOG_DEBUG("ALSA", "Successfully opened PCM audio device '%s'", defaultDeviceName);
+				FPL_LOG_DEBUG(FPL__MODULE_AUDIO_ALSA, "Successfully opened PCM audio device '%s'", defaultDeviceName);
 				isDeviceOpen = true;
 				internalDevice.isDefault = true;
 				fplCopyString(defaultDeviceName, internalDevice.id.alsa, fplArrayCount(internalDevice.id.alsa));
 				fplCopyString("default", internalDevice.name, fplArrayCount(internalDevice.name));
 				break;
 			} else {
-				FPL_LOG_WARN("ALSA", "Failed opening default PCM audio device '%s'!", defaultDeviceName);
+				FPL_LOG_WARN(FPL__MODULE_AUDIO_ALSA, "Failed opening default PCM audio device '%s'!", defaultDeviceName);
 			}
 		}
 		if (!isDeviceOpen) {
@@ -31520,14 +31520,14 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	// Get hardware parameters
 	//
 
-	FPL_LOG_DEBUG("ALSA", "Get hardware parameters from device '%s'", internalDeviceId);
+	FPL_LOG_DEBUG(FPL__MODULE_AUDIO_ALSA, "Get hardware parameters from device '%s'", internalDeviceId);
 	size_t hardwareParamsSize = alsaApi->snd_pcm_hw_params_sizeof();
 	hardwareParams = (snd_pcm_hw_params_t *)fpl__AllocateTemporaryMemory(hardwareParamsSize, 8);
 	fplMemoryClear(hardwareParams, hardwareParamsSize);
 	if (alsaApi->snd_pcm_hw_params_any(impl->pcmDevice, hardwareParams) < 0) {
 		FPL__ALSA_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed getting hardware parameters from device '%s'!", internalDeviceId);
 	}
-	FPL_LOG_DEBUG("ALSA", "Successfullyy got hardware parameters from device '%s'", internalDeviceId);
+	FPL_LOG_DEBUG(FPL__MODULE_AUDIO_ALSA, "Successfully got hardware parameters from device '%s'", internalDeviceId);
 
 	//
 	// Access mode (Interleaved MMap or Standard readi/writei)
@@ -31537,7 +31537,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 		if (alsaApi->snd_pcm_hw_params_set_access(impl->pcmDevice, hardwareParams, SND_PCM_ACCESS_MMAP_INTERLEAVED) == 0) {
 			impl->isUsingMMap = true;
 		} else {
-			FPL_LOG_ERROR("ALSA", "Failed setting MMap access mode for device '%s', trying fallback to standard mode!", internalDeviceId);
+			FPL_LOG_WARN(FPL__MODULE_AUDIO_ALSA, "Failed setting MMap access mode for device '%s', trying fallback to standard mode!", internalDeviceId);
 		}
 	}
 	if (!impl->isUsingMMap) {
@@ -33162,14 +33162,14 @@ fpl_internal void fpl__PulseAudioStreamStateCallback(pa_stream *stream, void *us
 	FPL_LOG_TRACE(FPL__MODULE_AUDIO_PULSEAUDIO, "Stream state changed to %d", (int)state);
 	switch (state) {
 		case PA_STREAM_READY:
-			FPL_LOG_DEBUG(FPL__MODULE_AUDIO_PULSEAUDIO, "Stream is READY");
+			FPL_LOG_TRACE(FPL__MODULE_AUDIO_PULSEAUDIO, "Stream is READY");
 			pulseAudioBackend->isStreamReady = 1;
 			pulseAudioApi->pa_threaded_mainloop_signal(pulseAudioBackend->mainloop, 0);
 			break;
 		case PA_STREAM_FAILED:
 		case PA_STREAM_TERMINATED: {
 			int errorCode = pulseAudioApi->pa_context_errno(pulseAudioBackend->context);
-			FPL_LOG_DEBUG(FPL__MODULE_AUDIO_PULSEAUDIO, "Stream %s, err=%d (%s)",
+			FPL_LOG_TRACE(FPL__MODULE_AUDIO_PULSEAUDIO, "Stream %s, err=%d (%s)",
 				state == PA_STREAM_FAILED ? "FAILED" : "TERMINATED",
 				errorCode,
 				pulseAudioApi->pa_strerror(errorCode));
@@ -37147,13 +37147,13 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 				fplAudioContext *context = &commonAudioState->context;
 				fpl__AudioDeviceState deviceState = fpl__AudioGetDeviceState(context);
 				if (deviceState != fpl__AudioDeviceState_Stopped) {
-					FPL_LOG_DEBUG("Core", "Stop Audio (Auto)");
+					FPL_LOG_DEBUG(FPL__MODULE_CORE, "Stop Audio (Auto)");
 					fplStopAudio();
 				}
 			}
 		}
 
-		FPL_LOG_DEBUG("Core", "Release Audio");
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release Audio");
 		fpl__AudioState *audioState = fpl__GetAudioState(appState);
 		if (audioState != fpl_null) {
 			fpl__ReleaseAudio(audioState);
@@ -37213,11 +37213,11 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 		// Release sub platforms
 		{
 #		if defined(FPL_SUBPLATFORM_X11)
-			FPL_LOG_DEBUG("Core", "Release X11 Subplatform");
+			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release X11 Subplatform");
 			fpl__X11ReleaseSubplatform(&appState->x11);
 #		endif
 #		if defined(FPL_SUBPLATFORM_POSIX)
-			FPL_LOG_DEBUG("Core", "Release POSIX Subplatform");
+			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release POSIX Subplatform");
 			fpl__PosixReleaseSubplatform(&appState->posix);
 #		endif
 		}
@@ -37382,25 +37382,25 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 	// Initialize sub-platforms
 #	if defined(FPL_SUBPLATFORM_POSIX)
 	{
-		FPL_LOG_DEBUG("Core", "Initialize POSIX Subplatform:");
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Initialize POSIX Subplatform:");
 		if (!fpl__PosixInitSubplatform(initFlags, initSettings, &initState->posix, &appState->posix)) {
-			FPL__CRITICAL("Core", "Failed initializing POSIX Subplatform!");
+			FPL__CRITICAL(FPL__MODULE_CORE, "Failed initializing POSIX Subplatform!");
 			fpl__ReleasePlatformStates(initState, appState);
 			return(fpl__SetPlatformResult(fplPlatformResultType_FailedPlatform));
 		}
-		FPL_LOG_DEBUG("Core", "Successfully initialized POSIX Subplatform");
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully initialized POSIX Subplatform");
 	}
 #	endif // FPL_SUBPLATFORM_POSIX
 
 #	if defined(FPL_SUBPLATFORM_X11)
 	{
-		FPL_LOG_DEBUG("Core", "Initialize X11 Subplatform:");
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Initialize X11 Subplatform:");
 		if (!fpl__X11InitSubplatform(&appState->x11)) {
-			FPL__CRITICAL("Core", "Failed initializing X11 Subplatform!");
+			FPL__CRITICAL(FPL__MODULE_CORE, "Failed initializing X11 Subplatform!");
 			fpl__ReleasePlatformStates(initState, appState);
 			return(fpl__SetPlatformResult(fplPlatformResultType_FailedPlatform));
 		}
-		FPL_LOG_DEBUG("Core", "Successfully initialized X11 Subplatform");
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully initialized X11 Subplatform");
 	}
 #	endif // FPL_SUBPLATFORM_X11
 
