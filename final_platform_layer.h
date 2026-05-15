@@ -258,6 +258,7 @@ SOFTWARE.
 	- Fixed: FPL_CACHELINE_SIZE on PowerPC64 used `defined(defined(FPL_ARCH_POWERPC64))` and never matched — PPC64 silently fell through to the 64-byte default instead of the intended 128
 	- Fixed: FPL_X86_CPU_INSTR_SET_LEVEL swapped the __SSSE3__ and __SSE3__ branches — Supplemental SSE3 was reported as SSE3 and vice versa
 	- Fixed: fplStaticAssert generated colliding identifiers because the token-paste used `##line_##counter` (the literal token `line_`) instead of `##line##_##counter` — multiple static asserts in the same translation unit redefined the same symbol
+	- Improved: Added missing @def/@brief documentation blocks for FPL_PLATFORM_WINDOWS, FPL_PLATFORM_LINUX, FPL_PLATFORM_UNIX, FPL_PLATFORM_NAME, FPL_SUBPLATFORM_POSIX, FPL_SUBPLATFORM_X11, FPL_SUBPLATFORM_BSD, FPL_SUBPLATFORM_STD_STRINGS and FPL_SUBPLATFORM_STD_CONSOLE
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -2300,16 +2301,44 @@ SOFTWARE.
 // Only platforms that are supported are listed
 //
 #if defined(_WIN32) || defined(_WIN64)
+	/**
+	* @def FPL_PLATFORM_WINDOWS
+	* @brief Windows platform detected.
+	*/
 #	define FPL_PLATFORM_WINDOWS
+	/**
+	* @def FPL_PLATFORM_NAME
+	* @brief Display name of the detected platform.
+	*/
 #	define FPL_PLATFORM_NAME "Windows"
 #elif defined(__linux__) || defined(__gnu_linux__)
+	/**
+	* @def FPL_PLATFORM_LINUX
+	* @brief Linux platform detected.
+	*/
 #	define FPL_PLATFORM_LINUX
 #	define FPL_PLATFORM_NAME "Linux"
+	/**
+	* @def FPL_SUBPLATFORM_POSIX
+	* @brief POSIX subplatform detected.
+	*/
 #	define FPL_SUBPLATFORM_POSIX
 #	if fplHasInclude(<X11/X.h>)
+		/**
+		* @def FPL_SUBPLATFORM_X11
+		* @brief X11 subplatform detected.
+		*/
 #		define FPL_SUBPLATFORM_X11
 #	endif
+	/**
+	* @def FPL_SUBPLATFORM_STD_STRINGS
+	* @brief C standard library string functions are used as the strings subplatform.
+	*/
 #	define FPL_SUBPLATFORM_STD_STRINGS
+	/**
+	* @def FPL_SUBPLATFORM_STD_CONSOLE
+	* @brief C standard library stdio functions are used as the console subplatform.
+	*/
 #	define FPL_SUBPLATFORM_STD_CONSOLE
 #elif defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__bsdi__)
 	// @NOTE(final): BSD is treated as a subplatform for now
@@ -2319,8 +2348,16 @@ SOFTWARE.
 #	if !defined(__BSD_VISIBLE)
 #		define __BSD_VISIBLE 1
 #	endif
+	/**
+	* @def FPL_PLATFORM_UNIX
+	* @brief Unix or BSD platform detected.
+	*/
 #	define FPL_PLATFORM_UNIX
 #	define FPL_PLATFORM_NAME "BSD"
+	/**
+	* @def FPL_SUBPLATFORM_BSD
+	* @brief BSD subplatform detected (FreeBSD, NetBSD, OpenBSD, DragonFly, BSDi).
+	*/
 #	define FPL_SUBPLATFORM_BSD
 #	define FPL_SUBPLATFORM_POSIX
 #	if fplHasInclude(<X11/X.h>)
