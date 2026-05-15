@@ -10276,6 +10276,7 @@ fpl_internal void fpl__LogWriteVarArgs(const char *funcName, const int lineNumbe
 #	define FPL_LOG_INFO(mod, format, ...)
 #	define FPL_LOG_VERBOSE(mod, format, ...)
 #	define FPL_LOG_DEBUG(mod, format, ...)
+#	define FPL_LOG_TRACE(mod, format, ...)
 #	define FPL_LOG_FUNCTION(mod)
 
 #endif
