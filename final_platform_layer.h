@@ -347,6 +347,7 @@ SOFTWARE.
 	- Changed: fplSetDefaultAudioSettings() sets audio backend type to automatic
 	- Changed: [ALSA] Audio device enumeration prints out each audio device to verbose log
 	- Fixed: fpl__InitAudio probe loop is now fallback-outer, backend-inner so every backend is tried with the exact target format first; also fixed off-by-one in test-format list
+	- Fixed: Audio backend probing is now tier-based - perfect match -> rate+channels -> rate+type -> rate -> full fallback - keeping sample rate sacred until the last tier
 	- Fixed: fpl__Win32BuildWaveFormatExtensible now sets WAVEFORMATEX.cbSize to sizeof(WAVEFORMATEXTENSIBLE)-sizeof(WAVEFORMATEX) (22) instead of full-struct size; DirectSound tolerated the prior wrong value, WASAPI's IsFormatSupported is strict
 	- Fixed: fpl__ReadAudioFramesFromClient was not returning frameCount always and produce silence bytes for the remaining samples (now enforced via asserts at all call sites)
 	- Fixed: fpl__InitAudio() was raising an assertion instead of returning fplAudioResultType_NoBackendsFound, when no backends are available
@@ -5639,6 +5640,22 @@ typedef uint32_t(fpl_audio_client_read_callback)(const fplAudioFormat *deviceFor
 /**
 * @struct fplAudioSettings
 * @brief Stores audio settings, such as format, device info, callbacks, backend, etc.
+*
+* The @ref targetFormat field describes the desired audio format. During
+* @ref fplPlatformInit / @ref fplAudioInit the platform probes backends in a
+* tier-based order, keeping sample rate sacred until the very last tier:
+*
+* 1. Exact match: (user.sampleRate, user.channels, user.type).
+* 2. Sample rate + channels match, type relaxed against the fallback type table.
+* 3. Sample rate + type match, channels relaxed against the fallback channels table.
+* 4. Sample rate match only, channels and type relaxed.
+* 5. Full fallback: rate, channels and type all relaxed.
+*
+* Within each tier every registered audio backend is tried in order before the
+* next candidate is evaluated. First success wins. So a caller that asks for
+* 44100/S16 will get exactly that from any backend that supports it natively,
+* and never get a silently substituted rate as long as at least one backend
+* can serve the rate at any channel/type combination.
 */
 typedef struct fplAudioSettings {
 	//! The target format.
@@ -35605,20 +35622,17 @@ fpl_internal void fpl__ReleaseAudio(fpl__AudioState *audioState) {
 #endif
 }
 
-fpl_globalvar const fplAudioDefaultFields fpl__global_AudioFormat_FallbackFields[] = {
-	fplAudioDefaultFields_None, // Use all fields
-
-	fplAudioDefaultFields_Type,
-	fplAudioDefaultFields_Type | fplAudioDefaultFields_SampleRate,
-
-	fplAudioDefaultFields_SampleRate,
-	fplAudioDefaultFields_SampleRate | fplAudioDefaultFields_Type,
-
-	fplAudioDefaultFields_Channels,
-	fplAudioDefaultFields_Channels | fplAudioDefaultFields_Type,
-
-	fplAudioDefaultFields_SampleRate | fplAudioDefaultFields_Type | fplAudioDefaultFields_Channels,
-};
+// Tier-based probe order used by fpl__InitAudio. Sample rate is the most
+// expensive field to convert in caller code, so it stays sacred until the
+// very last tier; channels and type are relaxed earlier.
+typedef enum fpl__AudioProbeTier {
+	fpl__AudioProbeTier_Exact = 0,        // user.rate + user.channels + user.type
+	fpl__AudioProbeTier_RateAndChannels,  // user.rate + user.channels + FallbackTypes
+	fpl__AudioProbeTier_RateAndType,      // user.rate + FallbackChannels + user.type
+	fpl__AudioProbeTier_RateOnly,         // user.rate + FallbackChannels x FallbackTypes
+	fpl__AudioProbeTier_Anything,         // FallbackSampleRates x FallbackChannels x FallbackTypes
+	fpl__AudioProbeTier_Count,
+} fpl__AudioProbeTier;
 
 fpl_globalvar const fplAudioFormatType fpl__global_AudioFormat_FallbackTypes[] = {
 	fplAudioFormatType_F32,
@@ -35641,65 +35655,91 @@ fpl_globalvar const uint16_t fpl__global_AudioFormat_FallbackChannels[] = {
 	1,
 };
 
-fpl_internal size_t fpl__PopulateFallbackAudioFormats(const fplAudioDefaultFields defaultFields, const size_t maxOutputFormatCount, fplAudioFormatU64 *outFormats) {
-	if (defaultFields == fplAudioDefaultFields_None) {
+// Builds the candidate (sampleRate, channels, type) list for the given probe tier.
+// The order is deterministic and matches the spec in plan_audio_backend_probing.md.
+// Candidates that exactly equal the user's target are skipped on relaxed tiers,
+// since Tier 0 has already covered that combination.
+fpl_internal size_t fpl__PopulateProbeCandidates(const fpl__AudioProbeTier tier, const fplAudioFormat *userTarget, const size_t maxOut, fplAudioFormatU64 *outCandidates) {
+	if (userTarget == fpl_null || outCandidates == fpl_null || maxOut == 0) {
 		return 0;
 	}
 
-	const uint32_t channelCount = fplArrayCount(fpl__global_AudioFormat_FallbackChannels);
-	const uint32_t sampleRateCount = fplArrayCount(fpl__global_AudioFormat_FallbackSampleRates);
-	const uint32_t typeCount = fplArrayCount(fpl__global_AudioFormat_FallbackTypes);
+	const uint32_t userRate = userTarget->sampleRate;
+	const uint16_t userChannels = userTarget->channels;
+	const fplAudioFormatType userType = userTarget->type;
 
-	bool isDefaultChannel = fplIsMaskSet(defaultFields, fplAudioDefaultFields_Channels);
-	bool isDefaultType = fplIsMaskSet(defaultFields, fplAudioDefaultFields_Type);
-	bool isDefaultSampleRate = fplIsMaskSet(defaultFields, fplAudioDefaultFields_SampleRate);
+	const size_t typeCount = fplArrayCount(fpl__global_AudioFormat_FallbackTypes);
+	const size_t channelCount = fplArrayCount(fpl__global_AudioFormat_FallbackChannels);
+	const size_t sampleRateCount = fplArrayCount(fpl__global_AudioFormat_FallbackSampleRates);
 
-	size_t requiredCount = 0;
-	if (isDefaultChannel) {
-		if (requiredCount == 0)
-			requiredCount = channelCount;
-		else
-			requiredCount = requiredCount * channelCount;
-	}
-	if (isDefaultType) {
-		if (requiredCount == 0)
-			requiredCount = typeCount;
-		else
-			requiredCount = requiredCount * typeCount;
-	}
-	if (isDefaultSampleRate) {
-		if (requiredCount == 0)
-			requiredCount = sampleRateCount;
-		else
-			requiredCount = requiredCount * sampleRateCount;
-	}
+	size_t count = 0;
 
-	if (outFormats == fpl_null) {
-		return requiredCount;
-	}
+	switch (tier) {
+		case fpl__AudioProbeTier_Exact:
+		{
+			if (count < maxOut) {
+				outCandidates[count++] = fplEncodeAudioFormatU64(userRate, userChannels, userType);
+			}
+		} break;
 
-	uint32_t actualChannelCount = isDefaultChannel ? channelCount : 1;
-	uint32_t actualTypeCount = isDefaultType ? typeCount : 1;
-	uint32_t actualSampleRateCount = isDefaultSampleRate ? sampleRateCount : 1;
+		case fpl__AudioProbeTier_RateAndChannels:
+		{
+			for (size_t t = 0; t < typeCount && count < maxOut; ++t) {
+				const fplAudioFormatType type = fpl__global_AudioFormat_FallbackTypes[t];
+				if (type == userType) {
+					continue;
+				}
+				outCandidates[count++] = fplEncodeAudioFormatU64(userRate, userChannels, type);
+			}
+		} break;
 
-	size_t totalCount = 0;
-	for (uint32_t channelIndex = 0; channelIndex < actualChannelCount; ++channelIndex) {
-		uint16_t channel = isDefaultChannel ? fpl__global_AudioFormat_FallbackChannels[channelIndex] : 0;
-		for (uint32_t typeIndex = 0; typeIndex < actualTypeCount; ++typeIndex) {
-			fplAudioFormatType type = isDefaultType ? fpl__global_AudioFormat_FallbackTypes[typeIndex] : fplAudioFormatType_None;
-			for (uint32_t sampleRateIndex = 0; sampleRateIndex < actualSampleRateCount; ++sampleRateIndex) {
-				uint32_t sampleRate = isDefaultSampleRate ? fpl__global_AudioFormat_FallbackSampleRates[sampleRateIndex] : 0;
-				uint64_t format = fplEncodeAudioFormatU64(sampleRate, channel, type);
-				if (totalCount < maxOutputFormatCount) {
-					outFormats[totalCount++] = format;
-				} else {
-					break;
+		case fpl__AudioProbeTier_RateAndType:
+		{
+			for (size_t c = 0; c < channelCount && count < maxOut; ++c) {
+				const uint16_t channels = fpl__global_AudioFormat_FallbackChannels[c];
+				if (channels == userChannels) {
+					continue;
+				}
+				outCandidates[count++] = fplEncodeAudioFormatU64(userRate, channels, userType);
+			}
+		} break;
+
+		case fpl__AudioProbeTier_RateOnly:
+		{
+			for (size_t c = 0; c < channelCount && count < maxOut; ++c) {
+				const uint16_t channels = fpl__global_AudioFormat_FallbackChannels[c];
+				for (size_t t = 0; t < typeCount && count < maxOut; ++t) {
+					const fplAudioFormatType type = fpl__global_AudioFormat_FallbackTypes[t];
+					if (channels == userChannels && type == userType) {
+						continue;
+					}
+					outCandidates[count++] = fplEncodeAudioFormatU64(userRate, channels, type);
 				}
 			}
-		}
+		} break;
+
+		case fpl__AudioProbeTier_Anything:
+		{
+			for (size_t r = 0; r < sampleRateCount && count < maxOut; ++r) {
+				const uint32_t rate = fpl__global_AudioFormat_FallbackSampleRates[r];
+				for (size_t c = 0; c < channelCount && count < maxOut; ++c) {
+					const uint16_t channels = fpl__global_AudioFormat_FallbackChannels[c];
+					for (size_t t = 0; t < typeCount && count < maxOut; ++t) {
+						const fplAudioFormatType type = fpl__global_AudioFormat_FallbackTypes[t];
+						if (rate == userRate && channels == userChannels && type == userType) {
+							continue;
+						}
+						outCandidates[count++] = fplEncodeAudioFormatU64(rate, channels, type);
+					}
+				}
+			}
+		} break;
+
+		default:
+			break;
 	}
 
-	return totalCount;
+	return count;
 }
 
 fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSettings, fpl__AudioState *audioState) {
@@ -35754,64 +35794,47 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 
 	fplAudioChannelMap channelsMapping = fplZeroInit;
 
-	const uint32_t defaultFallbackFieldCount = fplArrayCount(fpl__global_AudioFormat_FallbackFields);
+	static fplAudioFormatU64 candidates[64] = fplZeroInit;
 
-	static fplAudioDefaultFields fallbackFields[16] = fplZeroInit;
-	fplAssert(fplArrayCount(fallbackFields) >= defaultFallbackFieldCount);
+	// Resolve the effective user target. Any zero fields in audioSettings->targetFormat
+	// get replaced with FPL defaults here, so the tier-builder always operates on
+	// concrete (rate, channels, type) values rather than zero placeholders.
+	fplAudioFormat effectiveUserTarget = fplZeroInit;
+	fpl__SetupAudioDeviceFormat(&audioSettings->targetFormat, &effectiveUserTarget);
 
-	static fplAudioFormatU64 testFormats[64] = fplZeroInit;
-
-	// Build the fallback-fields list once. defaultFields are derived from the user-supplied
-	// targetFormat (purely an input-shape transform), so the list does not depend on which
-	// backend is probed.
-	fplAudioFormat probeDesired = fplZeroInit;
-	fpl__SetupAudioDeviceFormat(&audioSettings->targetFormat, &probeDesired);
-	uint32_t fallbackFieldCount = 0;
-	if (probeDesired.defaultFields != fplAudioDefaultFields_None) {
-		fallbackFields[fallbackFieldCount++] = probeDesired.defaultFields;
-	}
-	for (uint32_t i = 0; i < fplArrayCount(fpl__global_AudioFormat_FallbackFields); ++i) {
-		fallbackFields[fallbackFieldCount++] = fpl__global_AudioFormat_FallbackFields[i];
-	}
-
-	// Probe loop is fallback-outer, test-format-middle, backend-inner. This way every
-	// registered backend gets a shot at the user's exact requested format before any of
-	// them gets to try a substituted sample rate / type. Critical for the "no FPL-side
-	// conversion" design: when WASAPI cannot serve 44100/S16 natively but DirectSound
-	// can, DirectSound wins instead of WASAPI silently substituting the engine mix format.
+	// Probe loop is tier-outer, candidate-middle, backend-inner. Sample rate is sacred
+	// until Tier_Anything: every registered backend gets a shot at the user's exact
+	// rate before any of them gets to probe at a substituted rate. This guarantees the
+	// "no FPL-side conversion" design - e.g. when WASAPI cannot serve 44100/S16
+	// natively but DirectSound can, DirectSound wins on Tier_Exact instead of WASAPI
+	// silently substituting the engine mix format on a later tier.
 	// Because all backends share the same `backend` memory chunk, we fully init+release
 	// per attempt rather than holding multiple backends initialized simultaneously.
 	fplAudioResultType resultType = fplAudioResultType_NoBackendsFound;
 	bool probeSucceeded = false;
-	for (uint32_t fallbackFieldIndex = 0; fallbackFieldIndex < fallbackFieldCount && !probeSucceeded; ++fallbackFieldIndex) {
-		fplAudioDefaultFields fallbackFieldsMask = fallbackFields[fallbackFieldIndex];
+	for (uint32_t tierIndex = 0; tierIndex < (uint32_t)fpl__AudioProbeTier_Count && !probeSucceeded; ++tierIndex) {
+		const fpl__AudioProbeTier tier = (fpl__AudioProbeTier)tierIndex;
+		const size_t candidateCount = fpl__PopulateProbeCandidates(tier, &effectiveUserTarget, fplArrayCount(candidates), candidates);
 
-		size_t testFormatCount = fpl__PopulateFallbackAudioFormats(fallbackFieldsMask, fplArrayCount(testFormats) - 1, testFormats);
-		// Always also probe the exact requested target format in every fallback round (the
-		// fallback substitutions never include the user's verbatim format, so without this
-		// entry an exact match would only be checked on the _None round).
-		testFormats[testFormatCount++] = fplEncodeAudioFormatU64(audioSettings->targetFormat.sampleRate, audioSettings->targetFormat.channels, audioSettings->targetFormat.type);
+		for (size_t candidateIndex = 0; candidateIndex < candidateCount && !probeSucceeded; ++candidateIndex) {
+			const fplAudioFormatU64 candidate = candidates[candidateIndex];
 
-		for (uint32_t testFormatIndex = 0; testFormatIndex < testFormatCount && !probeSucceeded; ++testFormatIndex) {
-			fplAudioFormatU64 testFormat = testFormats[testFormatIndex];
+			uint32_t candRate = 0;
+			uint16_t candChannels = 0;
+			fplAudioFormatType candType = fplAudioFormatType_None;
+			if (!fplDecodeAudioFormatU64(candidate, &candRate, &candChannels, &candType)) {
+				continue;
+			}
 
-			fplAudioFormat currentTargetFormat = audioSettings->targetFormat;
+			// Start from the effective user target so periods/bufferSize/mode/etc.
+			// stay intact, then overwrite only the probed axes.
+			fplAudioFormat currentTargetFormat = effectiveUserTarget;
 			currentTargetFormat.defaultFields = fplAudioDefaultFields_None;
-
-			uint32_t currentSampleRate;
-			uint16_t currentChannels;
-			fplAudioFormatType currentType;
-			if (fplDecodeAudioFormatU64(testFormat, &currentSampleRate, &currentChannels, &currentType)) {
-				if (fplIsMaskSet(fallbackFieldsMask, fplAudioDefaultFields_Channels)) {
-					currentTargetFormat.channels = currentChannels;
-					currentTargetFormat.channelLayout = fplGetDefaultAudioChannelLayoutFromChannels(currentChannels);
-				}
-				if (fplIsMaskSet(fallbackFieldsMask, fplAudioDefaultFields_Type)) {
-					currentTargetFormat.type = currentType;
-				}
-				if (fplIsMaskSet(fallbackFieldsMask, fplAudioDefaultFields_SampleRate)) {
-					currentTargetFormat.sampleRate = currentSampleRate;
-				}
+			currentTargetFormat.sampleRate = candRate;
+			currentTargetFormat.type = candType;
+			if (candChannels != effectiveUserTarget.channels) {
+				currentTargetFormat.channels = candChannels;
+				currentTargetFormat.channelLayout = fplGetDefaultAudioChannelLayoutFromChannels(candChannels);
 			}
 
 			for (size_t backendIndex = 0; backendIndex < audioBackendCount && !probeSucceeded; ++backendIndex) {
@@ -35837,7 +35860,7 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 				const char *formatTypeName = fplGetAudioFormatName(backend->desiredFormat.type);
 				const char *backendName = descriptor->header.idName.name;
 
-				FPL_LOG_DEBUG(FPL__MODULE_AUDIO, "Probing backend '%s' with settings (SampleRate=%u, Channels=%u, Type='%s')", backendName, backend->desiredFormat.sampleRate, backend->desiredFormat.channels, formatTypeName);
+				FPL_LOG_DEBUG(FPL__MODULE_AUDIO, "Probing backend '%s' tier=%u with settings (SampleRate=%u, Channels=%u, Type='%s')", backendName, tierIndex, backend->desiredFormat.sampleRate, backend->desiredFormat.channels, formatTypeName);
 				fplClearStruct(&backend->internalFormat);
 				fplAudioResultType deviceResult = descriptor->table.initializeDevice(context, backend, &audioSettings->specific, &backend->desiredFormat, &audioSettings->targetDevice, &backend->internalFormat, &backend->internalDevice, &channelsMapping);
 				if (deviceResult != fplAudioResultType_Success) {
