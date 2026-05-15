@@ -399,22 +399,22 @@ extern "C" {
 	//! Sets the context parameters to default values
 	fgl_api void fglSetDefaultOpenGLContextCreationParameters(fglOpenGLContextCreationParameters *outParams);
 
-	//! Create a opengl context
+	//! Create an OpenGL context
 	fgl_api bool fglCreateOpenGLContext(const fglOpenGLContextCreationParameters *contextCreationParams, fglOpenGLContext *outContext);
 
-	//! Destroy the given opengl context
+	//! Destroy the given OpenGL context
 	fgl_api void fglDestroyOpenGLContext(fglOpenGLContext *context);
 
-	//! Does all the things to get opengl up and running
+	//! Does all the things to get OpenGL up and running
 	fgl_api bool fglLoadOpenGL(const bool loadFunctions);
 
-	//! Releases all resources allocated for opengl
+	//! Releases all resources allocated for OpenGL
 	fgl_api void fglUnloadOpenGL();
 
-	//! Load all opengl functions
+	//! Load all OpenGL functions
 	fgl_api void fglLoadOpenGLFunctions();
 
-	//! Presents the current frame for the given opengl context
+	//! Presents the current frame for the given OpenGL context
 	fgl_api void fglPresentOpenGL(const fglOpenGLContext *context);
 
 	//! Returns last error string
