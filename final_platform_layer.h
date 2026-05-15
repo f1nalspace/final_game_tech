@@ -280,6 +280,7 @@ SOFTWARE.
 	- Fixed: fplDateTimeType enum members were commented with plain `//` instead of `//!` — doxygen silently skipped them; now extracted correctly
 	- Fixed: fplDateTime struct fields were commented with plain `//` instead of `//!` — doxygen silently skipped them; now extracted correctly
 	- Fixed: fplDateTimeErrors enum members were commented with plain `//` instead of `//!` — doxygen silently skipped them; also added a description for the previously undocumented `_None` value
+	- Fixed: fplDateTimeCreationResult was tagged as `@enum` even though it is a `struct`; struct fields were commented with `//` instead of `//!`; also fixed grammar on the `success` field ("successfully" → "successful")
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -4054,17 +4055,17 @@ typedef enum fplDateTimeErrors {
 FPL_ENUM_AS_FLAGS_OPERATORS(fplDateTimeErrors);
 
 /**
-* @enum fplDateTimeCreationResult
+* @struct fplDateTimeCreationResult
 * @brief Stores the result of a date time creation.
 */
 typedef struct fplDateTimeCreationResult {
-	// The resulting date time.
+	//! The resulting date time.
 	fplDateTime dateTime;
-	// The creation error flags.
+	//! The creation error flags.
 	fplDateTimeErrors errors;
-	// A value indicating whether the creation was successfully or not.
+	//! A value indicating whether the creation was successful or not.
 	bool success;
-	// Alignment padding
+	//! Alignment padding.
 	uint8_t padding[3];
 } fplDateTimeCreationResult;
 
