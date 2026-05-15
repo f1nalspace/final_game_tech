@@ -346,7 +346,7 @@ extern "C" {
 		fglOpenGLProfileType_LegacyProfile = 0,
 		//! Core profile
 		fglOpenGLProfileType_CoreProfile,
-		//! Compability profile
+		//! Compatibility profile (note: enum value name retains the original "Compability" spelling for API compatibility)
 		fglOpenGLProfileType_CompabilityProfile,
 	} fglOpenGLProfileType;
 
@@ -392,7 +392,7 @@ extern "C" {
 		uint32_t minorVersion;
 		//! Desired profile type
 		fglOpenGLProfileType profile;
-		//! Is forward compability enabled
+		//! Is forward compatibility enabled (note: field name retains the original "Compability" spelling for API compatibility)
 		bool forwardCompability;
 	} fglOpenGLContextCreationParameters;
 
