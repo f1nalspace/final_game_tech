@@ -248,7 +248,7 @@ typedef enum fmemPushFlags {
 	fmemPushFlags_None = 0,
 	//! Clear region to zero
 	fmemPushFlags_Clear = 1 << 0,
-	//! Indicates that a push always creates an memory block for the allocation
+	//! Indicates that a push always creates a memory block for the allocation
 	fmemPushFlags_ForceBlock = 1 << 1,
 } fmemPushFlags;
 
@@ -292,7 +292,7 @@ typedef struct fmemMemoryBlock {
 	size_t minBlockSize;
 	//! Type
 	fmemType type;
-	// !Push permission
+	//! Push permission.
 	fmemPermission allowPush;
 } fmemMemoryBlock;
 
@@ -328,7 +328,7 @@ fmem_api fmemBlockHeader *fmemGetHeader(fmemMemoryBlock *block);
 //! Gets memory for a struct from the block and return a pointer to the struct
 #define fmemPushStruct(block, type, flags) (type *)fmemPush(block, sizeof(type), flags)
 
-//! Gets memory for a array with the specified type from the block and return a pointer to the array
+//! Gets memory for an array with the specified type from the block and returns a pointer to the array.
 #define fmemPushArray(block, type, count, flags) (type *)fmemPush(block, sizeof(type) * (count), flags)
 
 //! Gets memory for a null-terminated string with the specified length from the block and return a pointer to the base
