@@ -257,6 +257,7 @@ SOFTWARE.
 	- Fixed: [POSIX] fplMemoryAllocate was not compiling in FreeBSD (MAP_ANONYMOUS vs MAP_ANON)
 	- Fixed: FPL_CACHELINE_SIZE on PowerPC64 used `defined(defined(FPL_ARCH_POWERPC64))` and never matched — PPC64 silently fell through to the 64-byte default instead of the intended 128
 	- Fixed: FPL_X86_CPU_INSTR_SET_LEVEL swapped the __SSSE3__ and __SSE3__ branches — Supplemental SSE3 was reported as SSE3 and vice versa
+	- Fixed: fplStaticAssert generated colliding identifiers because the token-paste used `##line_##counter` (the literal token `line_`) instead of `##line##_##counter` — multiple static asserts in the same translation unit redefined the same symbol
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -3036,7 +3037,7 @@ typedef enum fplX86InstructionSetLevel {
 #	endif // FPL__ENABLE_C_ASSERT
 #	if !defined(fpl__m_StaticAssert)
 #		define FPL__M_STATICASSERT_0(exp, line, counter) \
-			int fpl__ct_assert_##line_##counter(int ct_assert_failed[(exp)?1:-1])
+			int fpl__ct_assert_##line##_##counter(int ct_assert_failed[(exp)?1:-1])
 #		define fpl__m_StaticAssert(exp) \
 			FPL__M_STATICASSERT_0(exp, __LINE__, __COUNTER__)
 #	endif
