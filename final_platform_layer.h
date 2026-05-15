@@ -301,6 +301,7 @@ SOFTWARE.
 	- Improved: Fixed grammar in the Files defgroup @brief ("This category contains and types and functions for handling files & directories" → "types and functions for handling files and directories")
 	- Improved: Normalized "filehandle" → "file handle" across ten doc blocks (Win32/POSIX handle typedefs, fplInternalFileHandle, fplFileHandle, fplInternalFileEntryHandle, fplFileEntry)
 	- Improved: Fixed typo in fplFileTimeStamps @brief ("filestamps" → "timestamps")
+	- Improved: Fixed grammar in Input defgroup @brief ("contains the types and function for query keyboard / mouse / game pad information" → "types and functions for querying keyboard, mouse and gamepad information")
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -8031,7 +8032,7 @@ fpl_common_api size_t fplPathCombine(char *destPath, const size_t maxDestPathLen
 // ----------------------------------------------------------------------------
 /**
 * @defgroup Input
-* @brief This category contains the types and function for query keyboard / mouse / game pad information
+* @brief This category contains the types and functions for querying keyboard, mouse and gamepad information.
 * @{
 */
 // ----------------------------------------------------------------------------
