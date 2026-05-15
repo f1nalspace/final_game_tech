@@ -205,6 +205,7 @@ SOFTWARE.
 	- Changed: Renamed fplMemoryGetInfos to fplMemoryGetUsage
 	- Changed: fplGetAudioDeviceInfo now returns a plain fplAudioDeviceInfo (no extended/supportedFormats variant — backend-reported lists were unreliable; use fplGetAudioHardwareFormat for the native format)
 	- Removed: struct fplAudioDeviceInfoExtended (rolled into fplAudioDeviceInfo)
+	- Removed: enum value fplAudioBackendType_Custom (no public custom-backend API)
 	- Added: fplGetCurrentThreadId() now returns uint64_t (was uint32_t) and fplThreadHandle.id widened to uint64_t to portably hold pthread_t
 
 	### Details
@@ -5267,13 +5268,11 @@ typedef enum fplAudioBackendType {
 	fplAudioBackendType_PipeWire,
 	//! OSS audio backend.
 	fplAudioBackendType_OSS,
-	//! Custom audio backend.
-	fplAudioBackendType_Custom,
 
 	//! First @ref fplAudioBackendType.
 	fplAudioBackendType_First = fplAudioBackendType_None,
 	//! Last @ref fplAudioBackendType.
-	fplAudioBackendType_Last = fplAudioBackendType_Custom,
+	fplAudioBackendType_Last = fplAudioBackendType_OSS,
 } fplAudioBackendType;
 
 /**
@@ -35284,7 +35283,6 @@ fpl_globalvar fplAudioBackendType fpl__global_defaultAudioBackendTypes[] = {
 	fplAudioBackendType_PulseAudio,
 	fplAudioBackendType_Alsa,
 	fplAudioBackendType_OSS,
-	fplAudioBackendType_Custom,
 };
 
 fpl_internal uint32_t fpl__GetAudioBackendDescriptors(const uint32_t maxDescriptorCount, const fplAudioSettings *audioSettings, fplAudioBackendDescriptor *outputDescriptors) {
@@ -35352,10 +35350,6 @@ fpl_internal uint32_t fpl__GetAudioBackendDescriptors(const uint32_t maxDescript
 #if defined(FPL__ENABLE_AUDIO_OSS)
 				desc = &fpl__global_audioBackendOssDescriptor;
 #endif
-				break;
-
-			case fplAudioBackendType_Custom:
-				// @TODO(final): Get audio backend descriptor from audio settings
 				break;
 		}
 
@@ -36317,7 +36311,7 @@ fpl_common_api const char *fplGetAudioFormatName(const fplAudioFormatType format
 
 #define FPL__AUDIOBACKENDTYPE_COUNT FPL__ENUM_COUNT(fplAudioBackendType_First, fplAudioBackendType_Last)
 fplStaticAssert(fplAudioBackendType_None == fplAudioBackendType_First);
-fplStaticAssert(fplAudioBackendType_Custom == fplAudioBackendType_Last);
+fplStaticAssert(fplAudioBackendType_OSS == fplAudioBackendType_Last);
 fpl_globalvar const char *fpl__globalAudioBackendNameTable[FPL__AUDIOBACKENDTYPE_COUNT] = {
 	FPL__ENUM_NAME("None", fplAudioBackendType_None),
 	FPL__ENUM_NAME("Automatic", fplAudioBackendType_Auto),
@@ -36327,7 +36321,6 @@ fpl_globalvar const char *fpl__globalAudioBackendNameTable[FPL__AUDIOBACKENDTYPE
 	FPL__ENUM_NAME("PulseAudio", fplAudioBackendType_PulseAudio),
 	FPL__ENUM_NAME("PipeWire", fplAudioBackendType_PipeWire),
 	FPL__ENUM_NAME("OSS", fplAudioBackendType_OSS),
-	FPL__ENUM_NAME("Custom", fplAudioBackendType_Custom),
 };
 fplStaticAssert(fplArrayCount(fpl__globalAudioBackendNameTable) == FPL__AUDIOBACKENDTYPE_COUNT);
 
