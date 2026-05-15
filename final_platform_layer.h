@@ -25512,13 +25512,15 @@ fpl_platform_api bool fplSignalInit(fplSignalHandle *signal, const fplSignalValu
 	}
 	fplClearStruct(signal);
 	signal->isValid = true;
-	signal->internalHandle.linuxEventHandle = linuxEventHandle;
+	fplInternalSignalHandle *intHandle = &signal->internalHandle;
+	intHandle->linuxEventHandle = linuxEventHandle;
 	return(true);
 }
 
 fpl_platform_api void fplSignalDestroy(fplSignalHandle *signal) {
 	if (signal != fpl_null && signal->isValid) {
-		close(signal->internalHandle.linuxEventHandle);
+		fplInternalSignalHandle *intHandle = &signal->internalHandle;
+		close(intHandle->linuxEventHandle);
 		fplClearStruct(signal);
 	}
 }
@@ -25529,7 +25531,8 @@ fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const fplTime
 		FPL__ERROR(FPL__MODULE_THREADING, "Signal '%p' is not valid", signal);
 		return(false);
 	}
-	int ev = signal->internalHandle.linuxEventHandle;
+	fplInternalSignalHandle *intHandle = &signal->internalHandle;
+	int ev = intHandle->linuxEventHandle;
 	if (timeout == FPL_TIMEOUT_INFINITE) {
 		uint64_t value;
 		read(ev, &value, sizeof(value));
@@ -25579,7 +25582,8 @@ fpl_internal bool fpl__LinuxSignalWaitForMultiple(fplSignalHandle *signals[], co
 		events[index].events = EPOLLIN;
 		events[index].data.u32 = index;
 		fplSignalHandle *signal = *(fplSignalHandle **)((uint8_t *)signals + index * actualStride);
-		int x = epoll_ctl(e, EPOLL_CTL_ADD, signal->internalHandle.linuxEventHandle, events + index);
+		fplInternalSignalHandle *intHandle = &signal->internalHandle;
+		int x = epoll_ctl(e, EPOLL_CTL_ADD, intHandle->linuxEventHandle, events + index);
 		fplAssert(x == 0);
 	}
 
@@ -25599,7 +25603,8 @@ fpl_internal bool fpl__LinuxSignalWaitForMultiple(fplSignalHandle *signals[], co
 		for (int eventIndex = 0; eventIndex < ret; eventIndex++) {
 			uint32_t signalIndex = revent[eventIndex].data.u32;
 			fplSignalHandle *signal = *(fplSignalHandle **)((uint8_t *)signals + signalIndex * actualStride);
-			epoll_ctl(e, EPOLL_CTL_DEL, signal->internalHandle.linuxEventHandle, NULL);
+			fplInternalSignalHandle *intHandle = &signal->internalHandle;
+			epoll_ctl(e, EPOLL_CTL_DEL, intHandle->linuxEventHandle, NULL);
 		}
 		eventsResult = revent[0].data.u32;
 		waiting -= ret;
@@ -25626,7 +25631,8 @@ fpl_platform_api bool fplSignalSet(fplSignalHandle *signal) {
 		return(false);
 	}
 	uint64_t value = 1;
-	int writtenBytes = write(signal->internalHandle.linuxEventHandle, &value, sizeof(value));
+	fplInternalSignalHandle *intHandle = &signal->internalHandle;
+	int writtenBytes = write(intHandle->linuxEventHandle, &value, sizeof(value));
 	bool result = writtenBytes == sizeof(value);
 	return(result);
 }
