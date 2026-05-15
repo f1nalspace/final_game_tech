@@ -25864,20 +25864,44 @@ fpl_platform_api bool fplMemoryGetUsage(fplMemoryInfos *outInfos) {
 	outInfos->totalCacheSize = cacheBytes;
 	outInfos->freeCacheSize = cacheBytes;
 
-	// Swap totals via vm.swap_total / vm.swap_reserved (size_t on FreeBSD 13+).
-	// If unavailable (older FreeBSD, NetBSD/OpenBSD without these), page counts stay 0.
-	uint64_t swapTotal = 0;
-	len = sizeof(swapTotal);
-	if (sysctlbyname("vm.swap_total", &swapTotal, &len, fpl_null, 0) == 0 && swapTotal > 0) {
-		uint64_t swapReserved = 0;
-		len = sizeof(swapReserved);
-		if (sysctlbyname("vm.swap_reserved", &swapReserved, &len, fpl_null, 0) != 0) {
-			swapReserved = 0;
+	// Swap totals: iterate per-device vm.swap_info.N and read struct xswdev. vm.swap_reserved is
+	// commit-reservation accounting (can exceed swap_total due to overcommit) and must not be used
+	// as "used swap". xswdev.xsw_used is the only authoritative used-page counter.
+	// xswdev ABI from <vm/swap_pager.h> on FreeBSD; declared locally to avoid pulling that header.
+	// __BSD_VISIBLE is set by FPL on BSD, so xsw_dev is uint32_t (XSWDEV_VERSION=2 layout).
+#if defined(__FreeBSD__)
+	{
+		struct fpl__xswdev_freebsd {
+			u_int xsw_version;
+			uint32_t xsw_dev;
+			int xsw_flags;
+			int xsw_nblks;
+			int xsw_used;
+		};
+		int mib[16];
+		size_t mibLen = fplArrayCount(mib);
+		if (sysctlnametomib("vm.swap_info", mib, &mibLen) == 0 && mibLen < fplArrayCount(mib)) {
+			uint64_t totalBlocks = 0;
+			uint64_t usedBlocks = 0;
+			for (int n = 0; n < 64; ++n) {
+				struct fpl__xswdev_freebsd xsw = fplZeroInit;
+				mib[mibLen] = n;
+				size_t xswLen = sizeof(xsw);
+				if (sysctl(mib, (u_int)(mibLen + 1), &xsw, &xswLen, fpl_null, 0) != 0) {
+					break;
+				}
+				if (xsw.xsw_version != 2) {
+					break;
+				}
+				totalBlocks += (uint64_t)(uint32_t)xsw.xsw_nblks;
+				usedBlocks += (uint64_t)(uint32_t)xsw.xsw_used;
+			}
+			// xsw_nblks/xsw_used are already in page-size units (kernel "swap blocks" == pages).
+			outInfos->totalPageCount = totalBlocks;
+			outInfos->freePageCount = (usedBlocks > totalBlocks) ? 0 : (totalBlocks - usedBlocks);
 		}
-		outInfos->totalPageCount = swapTotal / (uint64_t)pageSize;
-		uint64_t swapFree = (swapReserved > swapTotal) ? 0 : (swapTotal - swapReserved);
-		outInfos->freePageCount = swapFree / (uint64_t)pageSize;
 	}
+#endif
 
 	return true;
 }
