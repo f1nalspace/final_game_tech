@@ -274,6 +274,7 @@ SOFTWARE.
 	- Improved: Added missing @enum and @union documentation blocks for fplEndianessType and fplEndianess
 	- Improved: Fixed "endianess" → "endianness" misspelling in the prose of fplGetEndianess32 documentation (symbol names retained for API compatibility)
 	- Improved: Corrected FPL_ENUM_AS_FLAGS_OPERATORS @brief — the macro is part of the public surface, not internal, and now describes its purpose (bitwise operator overloads for C++)
+	- Improved: Fixed "lowerspace" → "lowercase" typo in the windef.h NOMINMAX rationale comment
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -3586,7 +3587,7 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 #	define FPL__HAS_PLATFORM_INCLUDES
 
 #	if defined(FPL_PLATFORM_WINDOWS)
-		// @NOTE(final): windef.h defines min/max macros in lowerspace, this will break for example std::min/max, so we have to tell the header we dont want this!
+		// @NOTE(final): windef.h defines min/max macros in lowercase, this will break for example std::min/max, so we have to tell the header we dont want this!
 #		if !defined(NOMINMAX)
 #			define NOMINMAX
 #		endif
