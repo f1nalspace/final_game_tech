@@ -302,6 +302,7 @@ SOFTWARE.
 	- Improved: Normalized "filehandle" → "file handle" across ten doc blocks (Win32/POSIX handle typedefs, fplInternalFileHandle, fplFileHandle, fplInternalFileEntryHandle, fplFileEntry)
 	- Improved: Fixed typo in fplFileTimeStamps @brief ("filestamps" → "timestamps")
 	- Improved: Fixed grammar in Input defgroup @brief ("contains the types and function for query keyboard / mouse / game pad information" → "types and functions for querying keyboard, mouse and gamepad information")
+	- Improved: Fixed multiple errors in fplGamepadGuid @brief ("a 16-byte guid for identify a game controler" → "a 16-byte GUID used to identify a game controller")
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -8505,7 +8506,7 @@ typedef char fplGamepadName[FPL_MAX_NAME_LENGTH];
 
 /**
 * @typedef fplGamepadGuid
-* @brief A typedef that defines a 16-byte guid for identify a game controler.
+* @brief A typedef that defines a 16-byte GUID used to identify a game controller.
 */
 typedef uint8_t fplGamepadGuid[FPL_GAMEPAD_GUID_SIZE];
 
