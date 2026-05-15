@@ -87,12 +87,3 @@ Last refresh: 2026-05-15
   - Audio backend descriptor from settings (35362)
 - `NotImplemented` audio device-info returns: 0 (all backends implement GetAudioDeviceInfo)
 
-## Known Limitations still listed in header (line 1885)
-
-- Some window features not implemented in X11
-- Some CPU query features not implemented in non-x86 platforms
-- Linux gamepad device locked to `/dev/input/js0`
-- No unix memory query functions
-- No unix audio backend (OSS is planned) — **stale: OSS landed**, update text
-- No unix gamepad support (fd is planned)
-- Extended audio device infos do not contain formats yet — **stale: fplAudioDeviceInfoExtended removed, no longer applicable**
