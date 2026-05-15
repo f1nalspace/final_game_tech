@@ -282,6 +282,7 @@ SOFTWARE.
 	- Fixed: fplDateTimeErrors enum members were commented with plain `//` instead of `//!` — doxygen silently skipped them; also added a description for the previously undocumented `_None` value
 	- Fixed: fplDateTimeCreationResult was tagged as `@enum` even though it is a `struct`; struct fields were commented with `//` instead of `//!`; also fixed grammar on the `success` field ("successfully" → "successful")
 	- Fixed: fplDateTimeResult struct fields were commented with plain `//` instead of `//!` — doxygen silently skipped them; now extracted correctly
+	- Improved: Reworded the awkward and inaccurate fplDateTimeQuery @brief ("Gets the current date time and offset and the number of milliseconds in the specified format" → "Gets the current date and time in the specified format (UTC or local)")
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -4109,7 +4110,7 @@ typedef struct fplDateTimeResult {
 } fplDateTimeResult;
 
 /**
-* @brief Gets the current date time and offset and the number of milliseconds in the specified format.
+* @brief Gets the current date and time in the specified format (UTC or local).
 * @param[in] type The target date time format as @ref fplDateTimeType.
 * @return Returns the date time structure as @ref fplDateTime.
 */
