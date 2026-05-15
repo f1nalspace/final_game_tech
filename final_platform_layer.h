@@ -296,6 +296,7 @@ SOFTWARE.
 	- Fixed: fplDynamicLibraryUnload @see pointed at itself; corrected to point at the companion function fplDynamicLibraryLoad
 	- Fixed: fplThreadState @typedef referenced itself via @ref ("A type definition for mapping fplThreadState into a 32-bit integer") — now correctly references the source enum @ref fplThreadStates
 	- Improved: Replaced the vague "When this is set to infinite" timeout description with a concrete @ref FPL_TIMEOUT_INFINITE reference across the eight thread/mutex/semaphore/signal/condition wait functions
+	- Fixed: fplConditionInit @note told readers to call fplSignalDestroy() when done — should be fplConditionDestroy() (signal/condition copy-paste mismatch)
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -7123,7 +7124,7 @@ fpl_platform_api bool fplSignalReset(fplSignalHandle *signal);
 * @brief Initializes the given condition.
 * @param[in, out] condition Reference to the condition variable structure @ref fplConditionVariable.
 * @return Returns true when initialization was successful, false otherwise.
-* @note Use @ref fplSignalDestroy() when you are done with this Condition Variable to release its resources.
+* @note Use @ref fplConditionDestroy() when you are done with this Condition Variable to release its resources.
 * @see @ref category_threading_conditions_init
 */
 fpl_platform_api bool fplConditionInit(fplConditionVariable *condition);
