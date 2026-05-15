@@ -408,7 +408,7 @@ INLINE_SIMPLE_STRUCTS  = NO
 # types are typedef'ed and only the typedef is referenced, never the tag name.
 # The default value is: NO.
 
-TYPEDEF_HIDES_STRUCT   = NO
+TYPEDEF_HIDES_STRUCT   = YES
 
 # The size of the symbol lookup cache can be set using LOOKUP_CACHE_SIZE. This
 # cache is used to resolve symbols given their name and scope. Since this can be
@@ -2093,7 +2093,10 @@ EXPAND_AS_DEFINED      = FPL_GAMEPAD_MAPPING_RESOLVE_CALLBACK
 # This tag requires that the tag ENABLE_PREPROCESSING is set to YES.
 
 # NOTE(final): Add here all the defines you want for FPL, showing up in the documentation - which are not enabled by default
-PREDEFINED             = FPL_LOGGING
+# Empty expansions hide function-like macro calls (fplStaticAssert, FPL_ENUM_AS_FLAGS_OPERATORS) so they don't appear as undocumented functions.
+PREDEFINED             = FPL_LOGGING \
+                         "fplStaticAssert(x)=" \
+                         "FPL_ENUM_AS_FLAGS_OPERATORS(x)="
 
 # If the SKIP_FUNCTION_MACROS tag is set to YES then doxygen's preprocessor will
 # remove all references to function-like macros that are alone on a line, have
