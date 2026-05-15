@@ -295,6 +295,7 @@ SOFTWARE.
 	- Fixed: fplGetDynamicLibraryProc @return was an incomplete sentence ("Returns the procedure address … or when the procedure is not found …") with no failure-value description; now correctly states that fpl_null is returned on failure
 	- Fixed: fplDynamicLibraryUnload @see pointed at itself; corrected to point at the companion function fplDynamicLibraryLoad
 	- Fixed: fplThreadState @typedef referenced itself via @ref ("A type definition for mapping fplThreadState into a 32-bit integer") — now correctly references the source enum @ref fplThreadStates
+	- Improved: Replaced the vague "When this is set to infinite" timeout description with a concrete @ref FPL_TIMEOUT_INFINITE reference across the eight thread/mutex/semaphore/signal/condition wait functions
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -6987,7 +6988,7 @@ fpl_platform_api bool fplThreadTerminate(fplThreadHandle *thread);
 /**
 * @brief Waits until the given thread is done running or the given timeout has been reached.
 * @param[in] thread Reference to the thread handle structure.
-* @param[in] timeout The number of milliseconds to wait. When this is set to infinite, it will wait indefinitely.
+* @param[in] timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE, it will wait indefinitely.
 * @return Returns true when the thread completes or when the timeout has been reached, false otherwise.
 * @see @ref subsection_category_threading_threads_wait_single
 */
@@ -6998,7 +6999,7 @@ fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle *thread, const fplTime
 * @param[in] threads Reference to the first thread handle pointer.
 * @param[in] count The number of threads.
 * @param[in] stride The size in bytes to the next thread handle. When this is set to zero, the array default is used.
-* @param[in] timeout The number of milliseconds to wait. When this is set to infinite, it will wait indefinitely.
+* @param[in] timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE, it will wait indefinitely.
 * @return Returns true when all threads complete or when the timeout has been reached, false otherwise.
 * @see @ref subsection_category_threading_threads_wait_all
 */
@@ -7009,7 +7010,7 @@ fpl_platform_api bool fplThreadWaitForAll(fplThreadHandle **threads, const size_
 * @param[in] threads Reference to the first thread handle @ref fplThreadHandle.
 * @param[in] count The number of threads.
 * @param[in] stride The size in bytes to the next thread handle. When this is set to zero, the size of the thread handle is used.
-* @param[in] timeout The number of milliseconds to wait. When this is set to infinite, it will wait indefinitely.
+* @param[in] timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE, it will wait indefinitely.
 * @return Returns true when one thread completes or when the timeout has been reached, false otherwise.
 * @see @ref subsection_category_threading_threads_wait_any
 */
@@ -7074,7 +7075,7 @@ fpl_platform_api void fplSignalDestroy(fplSignalHandle *signal);
 /**
 * @brief Waits until the given signal is woken up.
 * @param[in, out] signal Reference to the signal handle structure @ref fplSignalHandle.
-* @param[in] timeout The number of milliseconds to wait. When this is set to infinite, it will wait indefinitely.
+* @param[in] timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE, it will wait indefinitely.
 * @return Returns true when the signal woke up or the timeout has been reached, false otherwise.
 * @see @ref subsection_category_threading_signals_wait_single
 */
@@ -7085,7 +7086,7 @@ fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const fplTime
 * @param[in, out] signals Reference to the first signal handle structure @ref fplSignalHandle.
 * @param[in] count The number of signals.
 * @param[in] stride The size in bytes to the next signal handle. When this is set to zero, the array default is used.
-* @param[in] timeout The number of milliseconds to wait. When this is set to infinite, it will wait indefinitely.
+* @param[in] timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE, it will wait indefinitely.
 * @return Returns true when all signals woke up or the timeout has been reached, false otherwise.
 * @see @ref subsection_category_threading_signals_wait_all
 */
@@ -7096,7 +7097,7 @@ fpl_platform_api bool fplSignalWaitForAll(fplSignalHandle **signals, const size_
 * @param[in, out] signals Reference to the first signal handle structure @ref fplSignalHandle.
 * @param[in] count The number of signals.
 * @param[in] stride The size in bytes to the next signal handle. When this is set to zero, the array default is used.
-* @param[in] timeout The number of milliseconds to wait. When this is set to infinite, it will wait indefinitely.
+* @param[in] timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE, it will wait indefinitely.
 * @return Returns true when any of the signals woke up or the timeout has been reached, false otherwise.
 * @see @ref subsection_category_threading_signals_wait_any
 */
@@ -7138,7 +7139,7 @@ fpl_platform_api void fplConditionDestroy(fplConditionVariable *condition);
 * @brief Sleeps on the given condition and releases the mutex when done.
 * @param[in, out] condition Reference to the condition variable structure.
 * @param[in, out] mutex Reference to the mutex handle structure @ref fplConditionVariable.
-* @param[in] timeout The number of milliseconds to wait. When this is set to infinite, it will wait indefinitely.
+* @param[in] timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE, it will wait indefinitely.
 * @return Returns true when the function succeeds, false otherwise.
 * @see @ref category_threading_conditions_wait_single
 */
@@ -7180,7 +7181,7 @@ fpl_platform_api void fplSemaphoreDestroy(fplSemaphoreHandle *semaphore);
 /**
 * @brief Waits for the semaphore until it gets signaled or the timeout has been reached.
 * @param[in, out] semaphore Reference to the semaphore handle structure @ref fplSemaphoreHandle.
-* @param[in] timeout The number of milliseconds to wait. When this is set to infinite, it will wait indefinitely.
+* @param[in] timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE, it will wait indefinitely.
 * @return Returns true when the semaphore got signaled, false otherwise.
 * @note When a semaphore gets signaled, the semaphore value is decreased by one.
 * @see @ref category_threading_semaphores_wait
