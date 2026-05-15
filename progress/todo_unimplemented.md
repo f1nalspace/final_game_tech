@@ -3,10 +3,12 @@
 Tracking missing or partial implementations in `final_platform_layer.h`.
 Sourced from `@IMPLEMENT`, `@TODO`, `NotImplemented` returns, and Known Limitations section.
 
-Last refresh: 2026-05-14
+Last refresh: 2026-05-15
 
 ## Recently Implemented (since 2026-05-11)
 
+- [x] `[Linux] fplMemoryGetUsage` — via `sysinfo()` + `/proc/meminfo` parsing (Cached + Buffers + SReclaimable for cache totals, swap for page counts)
+- [x] `[Unix/BSD] fplMemoryGetUsage` — via sysctl (`hw.physmem`/`hw.realmem`, `vm.stats.vm.v_free_count`/`v_inactive_count`/`v_cache_count`, per-device `vm.swap_info.N` iteration with local `struct xswdev` accepting v1/v2 layouts)
 - [x] `[OSS]` Full backend — enumeration via `/dev/sndstat`, blocking-write main loop, format probing populates `supportedFormats`
 - [x] `[WASAPI]` Full backend — COM + IMMDeviceEnumerator init, IMMDeviceCollection enumeration, shared-mode event-driven main loop, exclusive-mode playback path, format probing populates `supportedFormats`
 - [x] `[WASAPI]` Promoted to default Windows audio backend (DirectSound is now fallback)
@@ -44,8 +46,8 @@ Last refresh: 2026-05-14
 
 ## Unix / Linux Platform
 
-- [ ] `[Linux] fplMemoryGetInfos` (line 25701) — Known Limitation: no unix memory query
-- [ ] `[Unix] fplMemoryGetInfos` (line 25762) — Known Limitation
+- [x] ~~`[Linux] fplMemoryGetInfos`~~ — renamed to `fplMemoryGetUsage`, implemented via `sysinfo()` + `/proc/meminfo`
+- [x] ~~`[Unix] fplMemoryGetInfos`~~ — renamed to `fplMemoryGetUsage`, implemented via sysctl on FreeBSD (xswdev iteration for swap)
 - [ ] `[Unix] fplPollGamepadStates` (line 26043) — Known Limitation: no unix gamepad support (fd backend planned)
 
 ## Audio
@@ -67,11 +69,10 @@ Last refresh: 2026-05-14
 - [ ] Replace pointer mapping table with static offset table (line 25215)
 - [ ] Crash path when feature not implemented is full-on crash (no graceful fallback)
 
-## Source markers (as of 2026-05-14)
+## Source markers (as of 2026-05-15)
 
-- `@IMPLEMENT` markers remaining: 5
+- `@IMPLEMENT` markers remaining: 3
   - CPU caps / CPU name for non-x86 (13955, 13960)
-  - fplMemoryGetInfos Linux + Unix (25701, 25762)
   - fplPollGamepadStates Unix (26043)
 - `@TODO` markers remaining: 9
   - Win32 Read ACL (19261)
