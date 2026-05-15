@@ -264,6 +264,7 @@ SOFTWARE.
 	- Improved: Clarified fpl_main @brief — it is an empty linkage marker placed in front of the user-defined main entry, not a "main entry point API definition"
 	- Improved: Added missing @def/@brief documentation blocks for FPL_APPTYPE_WINDOW and FPL_APPTYPE_CONSOLE
 	- Improved: Fixed grammar and proper-noun capitalization on FPL_IS_IDE / FPL__M_IS_IDE descriptions ("a IDE" → "an IDE", "jetbrains" → "JetBrains", "Intellisense" → "IntelliSense")
+	- Improved: Fixed grammar in fpl_b32 @brief ("a integer based" → "an integer-based")
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -3229,7 +3230,7 @@ fpl_internal fpl_force_inline void fpl__m_DebugBreak(void) { __asm__ __volatile_
 
 /**
 * @typedef fpl_b32
-* @brief Defines a integer based boolean that has a width of 32-bit.
+* @brief Defines an integer-based boolean that has a width of 32-bit.
 * @note Used for boolean fields inside public structs to keep their layout stable across C/C++ compilers (where `bool` size is implementation-defined) and to support atomic-style access. New API surfaces should still use the C99 `bool` type for return values and parameters; `fpl_b32` is reserved for ABI-stable struct fields.
 */
 typedef int32_t fpl_b32;
