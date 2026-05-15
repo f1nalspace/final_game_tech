@@ -25867,8 +25867,10 @@ fpl_platform_api bool fplMemoryGetUsage(fplMemoryInfos *outInfos) {
 	// Swap totals: iterate per-device vm.swap_info.N and read struct xswdev. vm.swap_reserved is
 	// commit-reservation accounting (can exceed swap_total due to overcommit) and must not be used
 	// as "used swap". xswdev.xsw_used is the only authoritative used-page counter.
-	// xswdev ABI from <vm/swap_pager.h> on FreeBSD; declared locally to avoid pulling that header.
-	// __BSD_VISIBLE is set by FPL on BSD, so xsw_dev is uint32_t (XSWDEV_VERSION=2 layout).
+	// xswdev ABI from <vm/swap_pager.h>; declared locally to avoid pulling that header.
+	// Layout matches XSWDEV_VERSION_11 (20 bytes) — kernels with COMPAT_FREEBSD11 (GENERIC default)
+	// honor the request size and respond with that compat layout (xsw_version == 1). xsw_nblks /
+	// xsw_used are identical between v1 and v2 (only xsw_dev width differs), so v1/v2 are both fine.
 #if defined(__FreeBSD__)
 	{
 		struct fpl__xswdev_freebsd {
@@ -25890,7 +25892,7 @@ fpl_platform_api bool fplMemoryGetUsage(fplMemoryInfos *outInfos) {
 				if (sysctl(mib, (u_int)(mibLen + 1), &xsw, &xswLen, fpl_null, 0) != 0) {
 					break;
 				}
-				if (xsw.xsw_version != 2) {
+				if (xsw.xsw_version != 1 && xsw.xsw_version != 2) {
 					break;
 				}
 				totalBlocks += (uint64_t)(uint32_t)xsw.xsw_nblks;
