@@ -225,7 +225,7 @@ SOFTWARE.
 	- New: Added macro FPL_MAX_VERSION_PART_LENGTH for the maximum length of a version part string
 	- New[#183]: Added macro fpl_extern_inline
 	- New[#190]: [Linux] Implemented fplMemoryGetUsage via sysinfo() and /proc/meminfo parsing
-	- New[#26]: [Unix/BSD] Implemented fplMemoryGetUsage via sysctl (hw.physmem/realmem, vm.stats.vm.*, vm.swap_total/reserved)
+	- New[#26]: [Unix/BSD] Implemented fplMemoryGetUsage via sysctl (hw.*, vm.*)
 	- New: [Unix/BSD] Implemented fplGetSystemLocale / fplGetUserLocale / fplGetInputLocale via setlocale + ISO-639 conversion (shared fpl__PosixLocaleToISO639 helper)
 	- Improved: Better documentation of the preprocessor setup blocks
 	- Improved: Added fplStaticAssert checks in the non-opaque branch verifying that the real Win32/POSIX/X11 handle types fit into the opaque-branch buffers (catches portability breakage at compile time instead of corrupting memory at runtime)
