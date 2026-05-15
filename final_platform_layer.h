@@ -263,6 +263,7 @@ SOFTWARE.
 	- Improved: Added missing trailing period in fplMinAlignment @return description
 	- Improved: Clarified fpl_main @brief — it is an empty linkage marker placed in front of the user-defined main entry, not a "main entry point API definition"
 	- Improved: Added missing @def/@brief documentation blocks for FPL_APPTYPE_WINDOW and FPL_APPTYPE_CONSOLE
+	- Improved: Fixed grammar and proper-noun capitalization on FPL_IS_IDE / FPL__M_IS_IDE descriptions ("a IDE" → "an IDE", "jetbrains" → "JetBrains", "Intellisense" → "IntelliSense")
 	- Changed: [Unix/BSD] Init/release platform now save and restore LC_ALL across startup/shutdown (mirrors Linux fix #189)
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
 	- Changed: Use fplIsMaskSet for all bit flags checks to make such checks more robust
@@ -2728,7 +2729,7 @@ SOFTWARE.
 #	define FPL__ENABLE_DEBUG
 #endif
 
-//! Is any IDE active, such as Intellisense or any jetbrains IDE?
+//! Is any IDE active, such as IntelliSense or any JetBrains IDE?
 #if defined(__INTELLISENSE__) || defined(__JETBRAINS_IDE__)
 #	define FPL__M_IS_IDE 1
 #else
@@ -2737,8 +2738,8 @@ SOFTWARE.
 
 /**
 * @def FPL_IS_IDE
-* @brief Is set when a IDE is active, like Intellisense or jetbrains.
-* @return A boolean indicating whether a IDE is active or not.
+* @brief Is set when an IDE is active, like IntelliSense or JetBrains.
+* @return A boolean indicating whether an IDE is active or not.
 */
 #define FPL_IS_IDE FPL__M_IS_IDE
 
