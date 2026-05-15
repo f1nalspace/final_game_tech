@@ -30216,38 +30216,30 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendWasapiIni
 	// Shared negotiation (also the fallback when exclusive failed).
 	// FPL does not resample. Strict policy: only accept S_OK from IsFormatSupported so the probe
 	// loop can move on to the next backend (e.g. DirectSound) when WASAPI cannot natively serve
-	// the requested format. If the caller explicitly opts in via wasapi.autoConvertSampleRate,
-	// fall back to the WASAPI engine's closest match / mix format and let AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM convert.
+	// the requested format. If the caller opts in via wasapi.autoConvertSampleRate, we always
+	// pass the requested format to Initialize() and let AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM convert
+	// inside the WASAPI engine. IsFormatSupported does not consider AUTOCONVERTPCM so its result
+	// is informational only in that mode.
 	bool useAutoConvert = (!useExclusive) && (audioSettings != fpl_null) && (audioSettings->wasapi.autoConvertSampleRate != 0);
 	if (!useExclusive) {
-		WAVEFORMATEX *closest = fpl_null;
-		HRESULT hr = impl->audioClient->lpVtbl->IsFormatSupported(impl->audioClient, fpl__WasapiShareMode_Shared, (WAVEFORMATEX *)&requestedWfx, &closest);
-		if (hr == S_OK) {
+		if (useAutoConvert) {
 			finalFmtStorage = requestedWfx;
 			finalFmt = (WAVEFORMATEX *)&finalFmtStorage;
-			if (closest != fpl_null) {
-				impl->api.CoTaskMemFree(closest);
-			}
-		} else if (useAutoConvert && hr == S_FALSE && closest != fpl_null) {
-			negotiatedHeapFmt = closest;
-			finalFmt = negotiatedHeapFmt;
-		} else if (useAutoConvert) {
-			if (closest != fpl_null) {
-				impl->api.CoTaskMemFree(closest);
-			}
-			WAVEFORMATEX *mixFmt = fpl_null;
-			HRESULT hrMix = impl->audioClient->lpVtbl->GetMixFormat(impl->audioClient, &mixFmt);
-			if (FAILED(hrMix) || mixFmt == fpl_null) {
-				FPL__WASAPI_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed to negotiate a supported format (IsFormatSupported HRESULT 0x%08lx, GetMixFormat HRESULT 0x%08lx)", (unsigned long)hr, (unsigned long)hrMix);
-			}
-			negotiatedHeapFmt = mixFmt;
-			finalFmt = negotiatedHeapFmt;
 		} else {
-			// Strict: requested format not natively supported. Let the probe loop pick another backend.
-			if (closest != fpl_null) {
-				impl->api.CoTaskMemFree(closest);
+			WAVEFORMATEX *closest = fpl_null;
+			HRESULT hr = impl->audioClient->lpVtbl->IsFormatSupported(impl->audioClient, fpl__WasapiShareMode_Shared, (WAVEFORMATEX *)&requestedWfx, &closest);
+			if (hr == S_OK) {
+				finalFmtStorage = requestedWfx;
+				finalFmt = (WAVEFORMATEX *)&finalFmtStorage;
+				if (closest != fpl_null) {
+					impl->api.CoTaskMemFree(closest);
+				}
+			} else {
+				if (closest != fpl_null) {
+					impl->api.CoTaskMemFree(closest);
+				}
+				FPL__WASAPI_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Requested format not natively supported by WASAPI in shared mode (IsFormatSupported HRESULT 0x%08lx); enable wasapi.autoConvertSampleRate to accept any PCM format", (unsigned long)hr);
 			}
-			FPL__WASAPI_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Requested format not natively supported by WASAPI in shared mode (IsFormatSupported HRESULT 0x%08lx); enable wasapi.autoConvertSampleRate to accept a different format", (unsigned long)hr);
 		}
 	}
 
