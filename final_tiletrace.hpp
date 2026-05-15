@@ -4,7 +4,7 @@
 * @author Torsten Spaete
 * @brief Final TileTrace (FTT) - a open source single file header c++ contour tile tracing library.
 *
-* This creates chainshapes out of any solid tilemap based on a contour tracing algorythmn.
+* This creates chainshapes out of any solid tilemap based on a contour tracing algorithm.
 *
 * @mainpage
 * Summary of the Final TileTrace (FTT) project.
@@ -15,7 +15,7 @@
 final_tiletrace.hpp
 Open-Source Single-File Header C++ Library by Torsten Spaete
 
-This creates chainshapes out of any solid tilemap based on a contour tracing algorythmn.
+This creates chainshapes out of any solid tilemap based on a contour tracing algorithm.
 It will try to create as less chain shapes as possible.
 
 - Supports block tiles only!
@@ -30,7 +30,7 @@ It will try to create as less chain shapes as possible.
 
 # PREPROCESSOR OVERRIDES
 
-# ALGORYTHM
+# ALGORITHM
 
 ## Overview
 
@@ -191,7 +191,7 @@ After the algorithm completes (NextTileTraceStep returns false):
 
 # TODO
 
-[ ] Finish algorythmn documentation
+[ ] Finish algorithm documentation
 
 # LICENSE
 
@@ -445,7 +445,7 @@ namespace ftt {
 	/*
 	https://en.wikipedia.org/wiki/Moore_neighborhood
 
-	How this algotythm works:
+	How this algorithm works:
 
 	Find first/next start:
 	- Find first solid tile anywhere in the map -> Start-Tile
