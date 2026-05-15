@@ -543,7 +543,7 @@ static void TestHardware(void) {
 	}
 
 	fplMemoryInfos memInfos = fplZeroInit;
-	fplMemoryGetInfos(&memInfos);
+	fplMemoryGetUsage(&memInfos);
 	ftMsg("Installed physical memory (bytes): %llu\n", (unsigned long long)memInfos.totalPhysicalSize);
 	ftMsg("Total physical memory (bytes): %llu\n", (unsigned long long)memInfos.totalPhysicalSize);
 	ftMsg("Available physical memory (bytes): %llu\n", (unsigned long long)memInfos.freePhysicalSize);
