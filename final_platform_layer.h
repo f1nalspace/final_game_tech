@@ -10391,7 +10391,7 @@ fpl_internal void fpl__LogWriteVarArgs(const char *funcName, const int lineNumbe
 #define FPL__M_ERROR(funcName, line, mod, format, ...) fpl__HandleError(funcName, line, fplLogLevel_Error, FPL__MODULE_CONCAT(mod, format), ## __VA_ARGS__)
 #define FPL__M_WARNING(funcName, line, mod, format, ...) fpl__HandleError(funcName, line, fplLogLevel_Warning, FPL__MODULE_CONCAT(mod, format), ## __VA_ARGS__)
 
-#define FPL__CRITICAL(mod, format, ...)  FPL__M_CRITICAL(FPL_FUNCTION_NAME, __LINE__, mod, format, ## __VA_ARGS__)
+#define FPL__CRITICAL(mod, format, ...) FPL__M_CRITICAL(FPL_FUNCTION_NAME, __LINE__, mod, format, ## __VA_ARGS__)
 #define FPL__ERROR(mod, format, ...) FPL__M_ERROR(FPL_FUNCTION_NAME, __LINE__, mod, format, ## __VA_ARGS__)
 #define FPL__WARNING(mod, format, ...) FPL__M_WARNING(FPL_FUNCTION_NAME, __LINE__, mod, format, ## __VA_ARGS__)
 
@@ -12694,36 +12694,36 @@ fpl_common_api bool fplGamepadMappingApplyDefault(const fplGamepadData *input, f
 	}
 	// Sticks (DInput convention: Z = right X, RZ = right Y; Y inverted to XInput sense).
 	if (input->axisCount > 0) {
-		outState->leftStickX  =  input->axes[0];
+		outState->leftStickX = input->axes[0];
 	}
 	if (input->axisCount > 1) {
-		outState->leftStickY  = -input->axes[1];
+		outState->leftStickY = -input->axes[1];
 	}
 	if (input->axisCount > 2) {
-		outState->rightStickX =  input->axes[2];
+		outState->rightStickX = input->axes[2];
 	}
 	if (input->axisCount > 5) {
 		outState->rightStickY = -input->axes[5];
 	}
 	// Triggers map from -1..+1 to 0..1 to match XInput sense.
 	if (input->axisCount > 6) {
-		outState->leftTrigger  = (input->axes[6] + 1.0f) * 0.5f;
+		outState->leftTrigger = (input->axes[6] + 1.0f) * 0.5f;
 	}
 	if (input->axisCount > 7) {
 		outState->rightTrigger = (input->axes[7] + 1.0f) * 0.5f;
 	}
 	// Buttons by SDL's unknown-DInput convention.
 	static const struct { uint32_t btn; size_t off; } map[] = {
-		{ 0,  fplOffsetOf(fplGamepadState, actionA)        },
-		{ 1,  fplOffsetOf(fplGamepadState, actionB)        },
-		{ 2,  fplOffsetOf(fplGamepadState, actionX)        },
-		{ 3,  fplOffsetOf(fplGamepadState, actionY)        },
-		{ 4,  fplOffsetOf(fplGamepadState, leftShoulder)   },
-		{ 5,  fplOffsetOf(fplGamepadState, rightShoulder)  },
-		{ 8,  fplOffsetOf(fplGamepadState, back)           },
-		{ 9,  fplOffsetOf(fplGamepadState, start)          },
-		{ 10, fplOffsetOf(fplGamepadState, leftThumb)      },
-		{ 11, fplOffsetOf(fplGamepadState, rightThumb)     },
+		{ 0,  fplOffsetOf(fplGamepadState, actionA) },
+		{ 1,  fplOffsetOf(fplGamepadState, actionB) },
+		{ 2,  fplOffsetOf(fplGamepadState, actionX) },
+		{ 3,  fplOffsetOf(fplGamepadState, actionY) },
+		{ 4,  fplOffsetOf(fplGamepadState, leftShoulder) },
+		{ 5,  fplOffsetOf(fplGamepadState, rightShoulder) },
+		{ 8,  fplOffsetOf(fplGamepadState, back) },
+		{ 9,  fplOffsetOf(fplGamepadState, start) },
+		{ 10, fplOffsetOf(fplGamepadState, leftThumb) },
+		{ 11, fplOffsetOf(fplGamepadState, rightThumb) },
 	};
 	for (size_t i = 0; i < fplArrayCount(map); ++i) {
 		if (map[i].btn < input->buttonCount && input->buttons[map[i].btn]) {
@@ -12734,10 +12734,10 @@ fpl_common_api bool fplGamepadMappingApplyDefault(const fplGamepadData *input, f
 	// Hat 0 → dpad.
 	if (input->hatCount > 0) {
 		uint8_t h = input->hats[0];
-		outState->dpadUp.isDown    = (h & 0x1) != 0;
+		outState->dpadUp.isDown = (h & 0x1) != 0;
 		outState->dpadRight.isDown = (h & 0x2) != 0;
-		outState->dpadDown.isDown  = (h & 0x4) != 0;
-		outState->dpadLeft.isDown  = (h & 0x8) != 0;
+		outState->dpadDown.isDown = (h & 0x4) != 0;
+		outState->dpadLeft.isDown = (h & 0x8) != 0;
 	}
 	return true;
 }
@@ -12765,16 +12765,16 @@ fpl_internal void fpl__GamepadFinalizeState(fplGamepadState *state) {
 
 // Builds a 16-byte SDL-style gamepad GUID from a USB VID/PID/version triple. Used by raw-HID backends (DInput, Linux joydev, etc.) when filling fplGamepadInfo for the resolver.
 fpl_internal void fpl__GamepadBuildSDLGuid(const uint16_t bus, const uint16_t vid, const uint16_t pid, const uint16_t version, const uint16_t nameCrc16, fplGamepadGuid outGuid) {
-	outGuid[0]  = (uint8_t)(bus & 0xFF);
-	outGuid[1]  = (uint8_t)((bus >> 8) & 0xFF);
-	outGuid[2]  = (uint8_t)(nameCrc16 & 0xFF);
-	outGuid[3]  = (uint8_t)((nameCrc16 >> 8) & 0xFF);
-	outGuid[4]  = (uint8_t)(vid & 0xFF);
-	outGuid[5]  = (uint8_t)((vid >> 8) & 0xFF);
-	outGuid[6]  = 0;
-	outGuid[7]  = 0;
-	outGuid[8]  = (uint8_t)(pid & 0xFF);
-	outGuid[9]  = (uint8_t)((pid >> 8) & 0xFF);
+	outGuid[0] = (uint8_t)(bus & 0xFF);
+	outGuid[1] = (uint8_t)((bus >> 8) & 0xFF);
+	outGuid[2] = (uint8_t)(nameCrc16 & 0xFF);
+	outGuid[3] = (uint8_t)((nameCrc16 >> 8) & 0xFF);
+	outGuid[4] = (uint8_t)(vid & 0xFF);
+	outGuid[5] = (uint8_t)((vid >> 8) & 0xFF);
+	outGuid[6] = 0;
+	outGuid[7] = 0;
+	outGuid[8] = (uint8_t)(pid & 0xFF);
+	outGuid[9] = (uint8_t)((pid >> 8) & 0xFF);
 	outGuid[10] = 0;
 	outGuid[11] = 0;
 	outGuid[12] = (uint8_t)(version & 0xFF);
@@ -13439,20 +13439,20 @@ fpl_common_api size_t fplS32ToString(const int32_t value, char *buffer, const si
 
 	bool isNegative = false;
 	if (value < 0) {
-        isNegative = true;
-        // Convert to unsigned to avoid overflow on INT32_MIN
-        v = (uint32_t)(-(value + 1)) + 1;
-    } else {
-        v = (uint32_t)value;
-    }
+		isNegative = true;
+		// Convert to unsigned to avoid overflow on INT32_MIN
+		v = (uint32_t)(-(value + 1)) + 1;
+	} else {
+		v = (uint32_t)value;
+	}
 
 	// Count digits
-    uint32_t tmp = v;
-    size_t digitCount = 0;
-    do {
-        tmp /= 10;
-        digitCount++;
-    } while (tmp != 0);
+	uint32_t tmp = v;
+	size_t digitCount = 0;
+	do {
+		tmp /= 10;
+		digitCount++;
+	} while (tmp != 0);
 
 	size_t result = digitCount + (isNegative ? 1 : 0);
 
@@ -13686,11 +13686,11 @@ fpl_common_api void fplMemoryAlignedFree(void *ptr) {
 			} \
 		} \
 		const uint8_t *sourceData8 = (const uint8_t *)source + copiedBytes; \
-        const uint8_t *sourceData8End = (const uint8_t *)source + sourceSize; \
-        uint8_t *destData8 = (uint8_t *)dest + copiedBytes; \
-        while (sourceData8 < sourceData8End) { \
-            *destData8++ = *sourceData8++; \
-        } \
+		const uint8_t *sourceData8End = (const uint8_t *)source + sourceSize; \
+		uint8_t *destData8 = (uint8_t *)dest + copiedBytes; \
+		while (sourceData8 < sourceData8End) { \
+			*destData8++ = *sourceData8++; \
+		} \
 	} while (0);
 
 fpl_common_api void fplMemorySet(void *mem, const uint8_t value, const size_t size) {
