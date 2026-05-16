@@ -3603,11 +3603,6 @@ struct IUnknown;
 #		endif
 #	endif // FPL_PLATFORM_WINDOWS
 
-#	if defined(FPL_SUBPLATFORM_POSIX)
-#		include <pthread.h> // pthread_t, pthread_mutex_, pthread_cond_, pthread_barrier_
-#		include <semaphore.h> // sem_t
-#	endif // FPL_SUBPLATFORM_POSIX
-
 #	if defined(FPL_SUBPLATFORM_X11)
 #		include <X11/X.h> // Window
 #		include <X11/Xlib.h> // Display
@@ -3618,6 +3613,7 @@ struct IUnknown;
 
 #endif // !FPL_NO_PLATFORM_INCLUDES
 
+// NOTE(final): pthread.h/semaphore.h is always present in POSIX
 #if defined(FPL_SUBPLATFORM_POSIX)
 #	include <pthread.h> // pthread_t, pthread_mutex_, pthread_cond_, pthread_barrier_
 #	include <semaphore.h> // sem_t
