@@ -371,7 +371,7 @@ static void RunLegacy() {
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
 
-	glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
+	glClearColor(0.08f, 0.12f, 0.19f, 1.0f);
 
 	LogoImage logo = LoadOpenGLLogo();
 
@@ -662,7 +662,7 @@ static bool RunModern() {
 	glEnable(GL_DEPTH_TEST);
 	glDisable(GL_CULL_FACE);
 
-	glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
+	glClearColor(0.08f, 0.12f, 0.19f, 1.0f);
 
 	fplTimestamp lastFrameTime = fplTimestampQuery();
 	int frameIndex = 0;
