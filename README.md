@@ -12,7 +12,7 @@ Core library is the Final Platform Layer (FPL) library that contains various dem
 
 | Name                                             | Description                                 | Platforms        | Language | Latest Version | State       | Size ~  |
 |--------------------------------------------------|---------------------------------------------|------------------|----------|----------------|-------------|---------|
-| [final_platform_layer.h](final_platform_layer.h) | Single file platform abstraction library    | Win32/Linux/Unix | C99      | 1.0.0          | Finished    | 1200 KB |
+| [final_platform_layer.h](final_platform_layer.h) | Single file platform abstraction library    | Win32/Linux/Unix | C99      | 1.0.0          | Finished    | 1500 KB |
 | [final_dynamic_opengl.h](final_dynamic_opengl.h) | Single file opengl loader library           | Win32/Linux/Unix | C99      | 1.0.0          | Finished    | 512 KB  |
 | [final_game_box.h](final_game_box.h)             | Single file gameboy DMG/CGB emulator        | Independent      | C99      | 1.3.0          | Finished    | 600 KB  |
 | [final_memory.h](final_memory.h)                 | Single file heap memory handling library    | Independent      | C99      | 1.0.1          | Finished    | 24 KB   |
