@@ -14163,7 +14163,7 @@ fpl_common_api size_t fplAtomicExchangeSize(volatile size_t *target, const size_
 	size_t result = (size_t)fplAtomicExchangeU32((volatile uint32_t *)target, (uint32_t)value);
 #else
 #	error "Unsupported architecture/platform!"
-#endif  // FPL_ARCH
+#endif // FPL_ARCH
 	return (result);
 }
 fpl_common_api void *fplAtomicExchangePtr(volatile void **target, const void *value) {
@@ -14174,7 +14174,7 @@ fpl_common_api void *fplAtomicExchangePtr(volatile void **target, const void *va
 	void *result = (void *)fplAtomicExchangeU32((volatile uint32_t *)target, (uint32_t)value);
 #else
 #	error "Unsupported architecture/platform!"
-#endif  // FPL_ARCH
+#endif // FPL_ARCH
 	return (result);
 }
 
@@ -14231,7 +14231,7 @@ fpl_common_api size_t fplAtomicLoadSize(volatile size_t *source) {
 	size_t result = (size_t)fplAtomicLoadU32((volatile uint32_t *)source);
 #else
 #	error "Unsupported architecture/platform!"
-#endif  // FPL_ARCH
+#endif // FPL_ARCH
 	return(result);
 }
 fpl_common_api void fplAtomicStoreSize(volatile size_t *dest, const size_t value) {
@@ -14241,7 +14241,7 @@ fpl_common_api void fplAtomicStoreSize(volatile size_t *dest, const size_t value
 	fplAtomicStoreU32((volatile uint32_t *)dest, (uint32_t)value);
 #else
 #	error "Unsupported architecture/platform!"
-#endif  // FPL_ARCH
+#endif // FPL_ARCH
 }
 
 fpl_common_api void *fplAtomicLoadPtr(volatile void **source) {
@@ -14251,7 +14251,7 @@ fpl_common_api void *fplAtomicLoadPtr(volatile void **source) {
 	void *result = (void *)fplAtomicLoadU32((volatile uint32_t *)source);
 #else
 #	error "Unsupported architecture/platform!"
-#endif  // FPL_ARCH
+#endif // FPL_ARCH
 	return(result);
 }
 fpl_common_api void fplAtomicStorePtr(volatile void **dest, const void *value) {
@@ -14261,7 +14261,7 @@ fpl_common_api void fplAtomicStorePtr(volatile void **dest, const void *value) {
 	fplAtomicStoreU32((volatile uint32_t *)dest, (uint32_t)value);
 #else
 #	error "Unsupported architecture/platform!"
-#endif  // FPL_ARCH
+#endif // FPL_ARCH
 }
 
 #endif // FPL__COMMON_ATOMICS_DEFINED
@@ -14729,23 +14729,23 @@ fpl_globalvar const char *fpl__global_KeyNameTable[] = {
 	FPL__ENUM_NAME("NumPad9", fplKey_NumPad9),					// 0x69
 
 	// 0x6A–0x6F NumPad operations
-	FPL__ENUM_NAME("Multiply",  fplKey_Multiply),				// 0x6A
-	FPL__ENUM_NAME("Add",       fplKey_Add),					// 0x6B
+	FPL__ENUM_NAME("Multiply", fplKey_Multiply),				// 0x6A
+	FPL__ENUM_NAME("Add", fplKey_Add),					// 0x6B
 	FPL__ENUM_NAME("Separator", fplKey_Separator),				// 0x6C
 	FPL__ENUM_NAME("Substract", fplKey_Substract),				// 0x6D
-	FPL__ENUM_NAME("Decimal",   fplKey_Decimal),				// 0x6E
-	FPL__ENUM_NAME("Divide",    fplKey_Divide),					// 0x6F
+	FPL__ENUM_NAME("Decimal", fplKey_Decimal),				// 0x6E
+	FPL__ENUM_NAME("Divide", fplKey_Divide),					// 0x6F
 
 	// 0x70–0x87 Function keys F1–F16
-	FPL__ENUM_NAME("F1",  fplKey_F1),							// 0x70
-	FPL__ENUM_NAME("F2",  fplKey_F2),							// 0x71
-	FPL__ENUM_NAME("F3",  fplKey_F3),							// 0x72
-	FPL__ENUM_NAME("F4",  fplKey_F4),							// 0x73
-	FPL__ENUM_NAME("F5",  fplKey_F5),							// 0x74
-	FPL__ENUM_NAME("F6",  fplKey_F6),							// 0x75
-	FPL__ENUM_NAME("F7",  fplKey_F7),							// 0x76
-	FPL__ENUM_NAME("F8",  fplKey_F8),							// 0x77
-	FPL__ENUM_NAME("F9",  fplKey_F9),							// 0x78
+	FPL__ENUM_NAME("F1", fplKey_F1),							// 0x70
+	FPL__ENUM_NAME("F2", fplKey_F2),							// 0x71
+	FPL__ENUM_NAME("F3", fplKey_F3),							// 0x72
+	FPL__ENUM_NAME("F4", fplKey_F4),							// 0x73
+	FPL__ENUM_NAME("F5", plKey_F5),							// 0x74
+	FPL__ENUM_NAME("F6", fplKey_F6),							// 0x75
+	FPL__ENUM_NAME("F7", fplKey_F7),							// 0x76
+	FPL__ENUM_NAME("F8", fplKey_F8),							// 0x77
+	FPL__ENUM_NAME("F9", fplKey_F9),							// 0x78
 	FPL__ENUM_NAME("F10", fplKey_F10),							// 0x79
 	FPL__ENUM_NAME("F11", fplKey_F11),							// 0x7A
 	FPL__ENUM_NAME("F12", fplKey_F12),							// 0x7B
@@ -14812,13 +14812,13 @@ fpl_globalvar const char *fpl__global_KeyNameTable[] = {
 	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xAC
 
 	// 0xAD–0xB3 Media keys
-	FPL__ENUM_NAME("VolumeMute",      fplKey_VolumeMute),		// 0xAD
-	FPL__ENUM_NAME("VolumeDown",      fplKey_VolumeDown),		// 0xAE
-	FPL__ENUM_NAME("VolumeUp",        fplKey_VolumeUp),			// 0xAF
-	FPL__ENUM_NAME("MediaNextTrack",  fplKey_MediaNextTrack),	// 0xB0
-	FPL__ENUM_NAME("MediaPrevTrack",  fplKey_MediaPrevTrack),	// 0xB1
-	FPL__ENUM_NAME("MediaStop",       fplKey_MediaStop),		// 0xB2
-	FPL__ENUM_NAME("MediaPlayPause",  fplKey_MediaPlayPause),	// 0xB3
+	FPL__ENUM_NAME("VolumeMute", fplKey_VolumeMute),		// 0xAD
+	FPL__ENUM_NAME("VolumeDown", fplKey_VolumeDown),		// 0xAE
+	FPL__ENUM_NAME("VolumeUp", fplKey_VolumeUp),			// 0xAF
+	FPL__ENUM_NAME("MediaNextTrack", fplKey_MediaNextTrack),	// 0xB0
+	FPL__ENUM_NAME("MediaPrevTrack", fplKey_MediaPrevTrack),	// 0xB1
+	FPL__ENUM_NAME("MediaStop", fplKey_MediaStop),		// 0xB2
+	FPL__ENUM_NAME("MediaPlayPause", fplKey_MediaPlayPause),	// 0xB3
 
 	// 0xB4–0xB9 Don't care
 	FPL__ENUM_NAME(fpl_null, fplKey_None),						// 0xB4
@@ -17041,81 +17041,81 @@ static const GUID fpl__GUID_POV = { 0xA36D02F2, 0xC9F3, 0x11CF, { 0xBF, 0xC7, 0x
 // Cross-language COM dispatch helpers. dinput.h exposes IDirectInput8_* / IDirectInputDevice8_*
 // macros only in C; in C++ the methods are called directly on the interface.
 #if defined(__cplusplus)
-#	define fpl__DI8_Release(p)                       ((p)->Release())
-#	define fpl__DI8_CreateDevice(p,a,b,c)            ((p)->CreateDevice(a,b,c))
-#	define fpl__DI8_EnumDevices(p,a,b,c,d)           ((p)->EnumDevices(a,b,c,d))
-#	define fpl__DID8_Release(p)                      ((p)->Release())
-#	define fpl__DID8_GetCapabilities(p,a)            ((p)->GetCapabilities(a))
-#	define fpl__DID8_SetDataFormat(p,a)              ((p)->SetDataFormat(a))
-#	define fpl__DID8_SetCooperativeLevel(p,a,b)      ((p)->SetCooperativeLevel(a,b))
-#	define fpl__DID8_SetProperty(p,a,b)              ((p)->SetProperty(a,b))
-#	define fpl__DID8_Acquire(p)                      ((p)->Acquire())
-#	define fpl__DID8_Unacquire(p)                    ((p)->Unacquire())
-#	define fpl__DID8_GetDeviceState(p,a,b)           ((p)->GetDeviceState(a,b))
-#	define fpl__DID8_Poll(p)                         ((p)->Poll())
+#	define fpl__DI8_Release(p)						 ((p)->Release())
+#	define fpl__DI8_CreateDevice(p,a,b,c)			 ((p)->CreateDevice(a,b,c))
+#	define fpl__DI8_EnumDevices(p,a,b,c,d)			 ((p)->EnumDevices(a,b,c,d))
+#	define fpl__DID8_Release(p)						 ((p)->Release())
+#	define fpl__DID8_GetCapabilities(p,a)			 ((p)->GetCapabilities(a))
+#	define fpl__DID8_SetDataFormat(p,a)				 ((p)->SetDataFormat(a))
+#	define fpl__DID8_SetCooperativeLevel(p,a,b)		 ((p)->SetCooperativeLevel(a,b))
+#	define fpl__DID8_SetProperty(p,a,b)				 ((p)->SetProperty(a,b))
+#	define fpl__DID8_Acquire(p)						 ((p)->Acquire())
+#	define fpl__DID8_Unacquire(p)					 ((p)->Unacquire())
+#	define fpl__DID8_GetDeviceState(p,a,b)			 ((p)->GetDeviceState(a,b))
+#	define fpl__DID8_Poll(p)						 ((p)->Poll())
 #else
-#	define fpl__DI8_Release(p)                       ((p)->lpVtbl->Release(p))
-#	define fpl__DI8_CreateDevice(p,a,b,c)            ((p)->lpVtbl->CreateDevice(p,a,b,c))
-#	define fpl__DI8_EnumDevices(p,a,b,c,d)           ((p)->lpVtbl->EnumDevices(p,a,b,c,d))
-#	define fpl__DID8_Release(p)                      ((p)->lpVtbl->Release(p))
-#	define fpl__DID8_GetCapabilities(p,a)            ((p)->lpVtbl->GetCapabilities(p,a))
-#	define fpl__DID8_SetDataFormat(p,a)              ((p)->lpVtbl->SetDataFormat(p,a))
-#	define fpl__DID8_SetCooperativeLevel(p,a,b)      ((p)->lpVtbl->SetCooperativeLevel(p,a,b))
-#	define fpl__DID8_SetProperty(p,a,b)              ((p)->lpVtbl->SetProperty(p,a,b))
-#	define fpl__DID8_Acquire(p)                      ((p)->lpVtbl->Acquire(p))
-#	define fpl__DID8_Unacquire(p)                    ((p)->lpVtbl->Unacquire(p))
-#	define fpl__DID8_GetDeviceState(p,a,b)           ((p)->lpVtbl->GetDeviceState(p,a,b))
-#	define fpl__DID8_Poll(p)                         ((p)->lpVtbl->Poll(p))
+#	define fpl__DI8_Release(p)						 ((p)->lpVtbl->Release(p))
+#	define fpl__DI8_CreateDevice(p,a,b,c)			 ((p)->lpVtbl->CreateDevice(p,a,b,c))
+#	define fpl__DI8_EnumDevices(p,a,b,c,d)			 ((p)->lpVtbl->EnumDevices(p,a,b,c,d))
+#	define fpl__DID8_Release(p)						 ((p)->lpVtbl->Release(p))
+#	define fpl__DID8_GetCapabilities(p,a)			 ((p)->lpVtbl->GetCapabilities(p,a))
+#	define fpl__DID8_SetDataFormat(p,a)				 ((p)->lpVtbl->SetDataFormat(p,a))
+#	define fpl__DID8_SetCooperativeLevel(p,a,b)		 ((p)->lpVtbl->SetCooperativeLevel(p,a,b))
+#	define fpl__DID8_SetProperty(p,a,b)				 ((p)->lpVtbl->SetProperty(p,a,b))
+#	define fpl__DID8_Acquire(p)						 ((p)->lpVtbl->Acquire(p))
+#	define fpl__DID8_Unacquire(p)					 ((p)->lpVtbl->Unacquire(p))
+#	define fpl__DID8_GetDeviceState(p,a,b)			 ((p)->lpVtbl->GetDeviceState(p,a,b))
+#	define fpl__DID8_Poll(p)						 ((p)->lpVtbl->Poll(p))
 #endif
 
 // Data format mirroring c_dfDIJoystick: 6 axes + 2 sliders + 4 POVs + 32 buttons.
 // Bound to the canonical DIJOYSTATE layout via DIJOFS_* offsets. Optional flag
 // lets DirectInput silently skip objects the device does not expose.
 static DIOBJECTDATAFORMAT fpl__DIJoy_Objects[] = {
-	{ &fpl__GUID_XAxis,  DIJOFS_X,         DIDFT_AXIS   | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, DIDOI_ASPECTPOSITION },
-	{ &fpl__GUID_YAxis,  DIJOFS_Y,         DIDFT_AXIS   | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, DIDOI_ASPECTPOSITION },
-	{ &fpl__GUID_ZAxis,  DIJOFS_Z,         DIDFT_AXIS   | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, DIDOI_ASPECTPOSITION },
-	{ &fpl__GUID_RxAxis, DIJOFS_RX,        DIDFT_AXIS   | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, DIDOI_ASPECTPOSITION },
-	{ &fpl__GUID_RyAxis, DIJOFS_RY,        DIDFT_AXIS   | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, DIDOI_ASPECTPOSITION },
-	{ &fpl__GUID_RzAxis, DIJOFS_RZ,        DIDFT_AXIS   | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, DIDOI_ASPECTPOSITION },
-	{ &fpl__GUID_Slider, DIJOFS_SLIDER(0), DIDFT_AXIS   | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, DIDOI_ASPECTPOSITION },
-	{ &fpl__GUID_Slider, DIJOFS_SLIDER(1), DIDFT_AXIS   | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, DIDOI_ASPECTPOSITION },
-	{ &fpl__GUID_POV,    DIJOFS_POV(0),    DIDFT_POV    | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ &fpl__GUID_POV,    DIJOFS_POV(1),    DIDFT_POV    | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ &fpl__GUID_POV,    DIJOFS_POV(2),    DIDFT_POV    | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ &fpl__GUID_POV,    DIJOFS_POV(3),    DIDFT_POV    | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ fpl_null, DIJOFS_BUTTON( 0), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ fpl_null, DIJOFS_BUTTON( 1), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ fpl_null, DIJOFS_BUTTON( 2), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ fpl_null, DIJOFS_BUTTON( 3), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ fpl_null, DIJOFS_BUTTON( 4), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ fpl_null, DIJOFS_BUTTON( 5), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ fpl_null, DIJOFS_BUTTON( 6), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ fpl_null, DIJOFS_BUTTON( 7), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ fpl_null, DIJOFS_BUTTON( 8), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ fpl_null, DIJOFS_BUTTON( 9), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ fpl_null, DIJOFS_BUTTON(10), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ fpl_null, DIJOFS_BUTTON(11), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ fpl_null, DIJOFS_BUTTON(12), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ fpl_null, DIJOFS_BUTTON(13), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ fpl_null, DIJOFS_BUTTON(14), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ fpl_null, DIJOFS_BUTTON(15), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ fpl_null, DIJOFS_BUTTON(16), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ fpl_null, DIJOFS_BUTTON(17), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ fpl_null, DIJOFS_BUTTON(18), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ fpl_null, DIJOFS_BUTTON(19), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ fpl_null, DIJOFS_BUTTON(20), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ fpl_null, DIJOFS_BUTTON(21), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ fpl_null, DIJOFS_BUTTON(22), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ fpl_null, DIJOFS_BUTTON(23), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ fpl_null, DIJOFS_BUTTON(24), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ fpl_null, DIJOFS_BUTTON(25), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ fpl_null, DIJOFS_BUTTON(26), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ fpl_null, DIJOFS_BUTTON(27), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ fpl_null, DIJOFS_BUTTON(28), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ fpl_null, DIJOFS_BUTTON(29), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ fpl_null, DIJOFS_BUTTON(30), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
-	{ fpl_null, DIJOFS_BUTTON(31), DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ &fpl__GUID_XAxis,		DIJOFS_X,			DIDFT_AXIS | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, DIDOI_ASPECTPOSITION },
+	{ &fpl__GUID_YAxis,		DIJOFS_Y,			DIDFT_AXIS | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, DIDOI_ASPECTPOSITION },
+	{ &fpl__GUID_ZAxis,		DIJOFS_Z,			DIDFT_AXIS | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, DIDOI_ASPECTPOSITION },
+	{ &fpl__GUID_RxAxis,	DIJOFS_RX,			DIDFT_AXIS | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, DIDOI_ASPECTPOSITION },
+	{ &fpl__GUID_RyAxis,	DIJOFS_RY,			DIDFT_AXIS | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, DIDOI_ASPECTPOSITION },
+	{ &fpl__GUID_RzAxis,	DIJOFS_RZ,			DIDFT_AXIS | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, DIDOI_ASPECTPOSITION },
+	{ &fpl__GUID_Slider,	DIJOFS_SLIDER(0),	DIDFT_AXIS | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, DIDOI_ASPECTPOSITION },
+	{ &fpl__GUID_Slider,	DIJOFS_SLIDER(1),	DIDFT_AXIS | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, DIDOI_ASPECTPOSITION },
+	{ &fpl__GUID_POV,		DIJOFS_POV(0),		DIDFT_POV | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ &fpl__GUID_POV,		DIJOFS_POV(1),		DIDFT_POV | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ &fpl__GUID_POV,		DIJOFS_POV(2),		DIDFT_POV | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ &fpl__GUID_POV,		DIJOFS_POV(3),		DIDFT_POV | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null,				DIJOFS_BUTTON( 0),	DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null,				DIJOFS_BUTTON( 1), 	DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null,				DIJOFS_BUTTON( 2), 	DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null,				DIJOFS_BUTTON( 3), 	DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null,				DIJOFS_BUTTON( 4), 	DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, 			DIJOFS_BUTTON( 5), 	DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, 			DIJOFS_BUTTON( 6), 	DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, 			DIJOFS_BUTTON( 7), 	DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, 			DIJOFS_BUTTON( 8), 	DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, 			DIJOFS_BUTTON( 9), 	DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, 			DIJOFS_BUTTON(10), 	DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, 			DIJOFS_BUTTON(11), 	DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, 			DIJOFS_BUTTON(12), 	DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, 			DIJOFS_BUTTON(13), 	DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, 			DIJOFS_BUTTON(14), 	DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, 			DIJOFS_BUTTON(15), 	DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, 			DIJOFS_BUTTON(16), 	DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, 			DIJOFS_BUTTON(17), 	DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, 			DIJOFS_BUTTON(18), 	DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, 			DIJOFS_BUTTON(19), 	DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, 			DIJOFS_BUTTON(20), 	DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, 			DIJOFS_BUTTON(21), 	DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, 			DIJOFS_BUTTON(22), 	DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, 			DIJOFS_BUTTON(23), 	DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, 			DIJOFS_BUTTON(24), 	DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, 			DIJOFS_BUTTON(25), 	DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, 			DIJOFS_BUTTON(26), 	DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, 			DIJOFS_BUTTON(27), 	DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, 			DIJOFS_BUTTON(28), 	DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, 			DIJOFS_BUTTON(29), 	DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, 			DIJOFS_BUTTON(30), 	DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
+	{ fpl_null, 			DIJOFS_BUTTON(31), 	DIDFT_BUTTON | DIDFT_ANYINSTANCE | DIDFT_OPTIONAL, 0 },
 };
 
 static const DIDATAFORMAT fpl__DIJoy_DataFormat = {
@@ -17275,9 +17275,9 @@ fpl_internal void fpl__Win32DInput_FillRawInput(const DIJOYSTATE *src, fplGamepa
 	const float center = 32767.5f;
 	const float invHalf = 1.0f / 32767.5f;
 	float a[8];
-	a[0] = ((float)src->lX  - center) * invHalf;
-	a[1] = ((float)src->lY  - center) * invHalf;
-	a[2] = ((float)src->lZ  - center) * invHalf;
+	a[0] = ((float)src->lX - center) * invHalf;
+	a[1] = ((float)src->lY - center) * invHalf;
+	a[2] = ((float)src->lZ - center) * invHalf;
 	a[3] = ((float)src->lRx - center) * invHalf;
 	a[4] = ((float)src->lRy - center) * invHalf;
 	a[5] = ((float)src->lRz - center) * invHalf;
