@@ -29751,21 +29751,21 @@ struct fpl__IAudioClient { fpl__IAudioClientVtbl *lpVtbl; };
 
 typedef struct fpl__IAudioRenderClientVtbl {
 	HRESULT (STDMETHODCALLTYPE *QueryInterface)(fpl__IAudioRenderClient *self, const fpl__Win32Guid *riid, void **ppv);
-	ULONG   (STDMETHODCALLTYPE *AddRef)(fpl__IAudioRenderClient *self);
-	ULONG   (STDMETHODCALLTYPE *Release)(fpl__IAudioRenderClient *self);
+	ULONG	(STDMETHODCALLTYPE *AddRef)(fpl__IAudioRenderClient *self);
+	ULONG	(STDMETHODCALLTYPE *Release)(fpl__IAudioRenderClient *self);
 	HRESULT (STDMETHODCALLTYPE *GetBuffer)(fpl__IAudioRenderClient *self, UINT32 numFramesRequested, BYTE **ppData);
 	HRESULT (STDMETHODCALLTYPE *ReleaseBuffer)(fpl__IAudioRenderClient *self, UINT32 numFramesWritten, DWORD dwFlags);
 } fpl__IAudioRenderClientVtbl;
 struct fpl__IAudioRenderClient { fpl__IAudioRenderClientVtbl *lpVtbl; };
 
 // ole32.dll runtime-linked entry points.
-#define FPL__FUNC_WASAPI_CoInitializeEx(name)   HRESULT WINAPI name(LPVOID pvReserved, DWORD dwCoInit)
+#define FPL__FUNC_WASAPI_CoInitializeEx(name) HRESULT WINAPI name(LPVOID pvReserved, DWORD dwCoInit)
 typedef FPL__FUNC_WASAPI_CoInitializeEx(fpl__func_wasapi_CoInitializeEx);
-#define FPL__FUNC_WASAPI_CoUninitialize(name)   void WINAPI name(void)
+#define FPL__FUNC_WASAPI_CoUninitialize(name) void WINAPI name(void)
 typedef FPL__FUNC_WASAPI_CoUninitialize(fpl__func_wasapi_CoUninitialize);
 #define FPL__FUNC_WASAPI_CoCreateInstance(name) HRESULT WINAPI name(const fpl__Win32Guid *rclsid, LPUNKNOWN pUnkOuter, DWORD dwClsContext, const fpl__Win32Guid *riid, LPVOID *ppv)
 typedef FPL__FUNC_WASAPI_CoCreateInstance(fpl__func_wasapi_CoCreateInstance);
-#define FPL__FUNC_WASAPI_CoTaskMemFree(name)    void WINAPI name(LPVOID pv)
+#define FPL__FUNC_WASAPI_CoTaskMemFree(name) void WINAPI name(LPVOID pv)
 typedef FPL__FUNC_WASAPI_CoTaskMemFree(fpl__func_wasapi_CoTaskMemFree);
 #define FPL__FUNC_WASAPI_PropVariantClear(name) HRESULT WINAPI name(fpl__WasapiPropVariant *pvar)
 typedef FPL__FUNC_WASAPI_PropVariantClear(fpl__func_wasapi_PropVariantClear);
@@ -29824,7 +29824,7 @@ fpl_internal bool fpl__LoadWasapiApi(fpl__WasapiApi *wasapiApi) {
 
 // COM init constants. We define them locally so we never depend on objbase.h.
 #define FPL__WASAPI_COINIT_APARTMENTTHREADED 0x2
-#define FPL__WASAPI_RPC_E_CHANGED_MODE       ((HRESULT)0x80010106L)
+#define FPL__WASAPI_RPC_E_CHANGED_MODE ((HRESULT)0x80010106L)
 
 typedef struct {
 	fpl__WasapiApi api;
@@ -30068,7 +30068,7 @@ fpl_internal fplAudioFormatType fpl__WasapiMapWaveFormatToAudioFormat(const WAVE
 		}
 	} else if (isPcm) {
 		switch (wfx->wBitsPerSample) {
-			case 8:  return(fplAudioFormatType_U8);
+			case 8:	return(fplAudioFormatType_U8);
 			case 16: return(fplAudioFormatType_S16);
 			case 24: return(fplAudioFormatType_S24);
 			case 32: return(fplAudioFormatType_S32);
@@ -31297,14 +31297,14 @@ fpl_internal snd_pcm_format_t fpl__MapAudioFormatToAlsaFormat(fplAudioFormatType
 		snd_pcm_format_t le;
 		snd_pcm_format_t be;
 	} fpl__alsaFmtMap[] = {
-		/* None */ { SND_PCM_FORMAT_UNKNOWN,   SND_PCM_FORMAT_UNKNOWN },
-		/* U8   */ { SND_PCM_FORMAT_U8,        SND_PCM_FORMAT_U8 },
-		/* S16  */ { SND_PCM_FORMAT_S16_LE,    SND_PCM_FORMAT_S16_BE },
-		/* S24  */ { SND_PCM_FORMAT_S24_3LE,   SND_PCM_FORMAT_S24_3BE },
-		/* S32  */ { SND_PCM_FORMAT_S32_LE,    SND_PCM_FORMAT_S32_BE },
-		/* S64  */ { SND_PCM_FORMAT_UNKNOWN,   SND_PCM_FORMAT_UNKNOWN },
-		/* F32  */ { SND_PCM_FORMAT_FLOAT_LE,  SND_PCM_FORMAT_FLOAT_BE },
-		/* F64  */ { SND_PCM_FORMAT_FLOAT64_LE, SND_PCM_FORMAT_FLOAT64_BE },
+		/* None */ { SND_PCM_FORMAT_UNKNOWN,	SND_PCM_FORMAT_UNKNOWN },
+		/* U8	*/ { SND_PCM_FORMAT_U8,			SND_PCM_FORMAT_U8 },
+		/* S16	*/ { SND_PCM_FORMAT_S16_LE,		SND_PCM_FORMAT_S16_BE },
+		/* S24	*/ { SND_PCM_FORMAT_S24_3LE,	SND_PCM_FORMAT_S24_3BE },
+		/* S32	*/ { SND_PCM_FORMAT_S32_LE,		SND_PCM_FORMAT_S32_BE },
+		/* S64	*/ { SND_PCM_FORMAT_UNKNOWN,	SND_PCM_FORMAT_UNKNOWN },
+		/* F32	*/ { SND_PCM_FORMAT_FLOAT_LE,	SND_PCM_FORMAT_FLOAT_BE },
+		/* F64	*/ { SND_PCM_FORMAT_FLOAT64_LE,	SND_PCM_FORMAT_FLOAT64_BE },
 	};
 	if ((uint32_t)format >= fplArrayCount(fpl__alsaFmtMap)) {
 		return SND_PCM_FORMAT_UNKNOWN;
@@ -31328,21 +31328,21 @@ fpl_internal fplAudioFormatType fpl__MapAlsaFormatToAudioFormat(snd_pcm_format_t
 		snd_pcm_format_t alsa;
 		fplAudioFormatType fpl;
 	} fpl__alsaToFmtMap[] = {
-		{ SND_PCM_FORMAT_U8,          fplAudioFormatType_U8 },
-		{ SND_PCM_FORMAT_S16_LE,      fplAudioFormatType_S16 },
-		{ SND_PCM_FORMAT_S16_BE,      fplAudioFormatType_S16 },
-		{ SND_PCM_FORMAT_S16,         fplAudioFormatType_S16 },
-		{ SND_PCM_FORMAT_S24_3LE,     fplAudioFormatType_S24 },
-		{ SND_PCM_FORMAT_S24_3BE,     fplAudioFormatType_S24 },
-		{ SND_PCM_FORMAT_S32_LE,      fplAudioFormatType_S32 },
-		{ SND_PCM_FORMAT_S32_BE,      fplAudioFormatType_S32 },
-		{ SND_PCM_FORMAT_S32,         fplAudioFormatType_S32 },
-		{ SND_PCM_FORMAT_FLOAT_LE,    fplAudioFormatType_F32 },
-		{ SND_PCM_FORMAT_FLOAT_BE,    fplAudioFormatType_F32 },
-		{ SND_PCM_FORMAT_FLOAT,       fplAudioFormatType_F32 },
-		{ SND_PCM_FORMAT_FLOAT64_LE,  fplAudioFormatType_F64 },
-		{ SND_PCM_FORMAT_FLOAT64_BE,  fplAudioFormatType_F64 },
-		{ SND_PCM_FORMAT_FLOAT64,     fplAudioFormatType_F64 },
+		{ SND_PCM_FORMAT_U8,			fplAudioFormatType_U8 },
+		{ SND_PCM_FORMAT_S16_LE,		fplAudioFormatType_S16 },
+		{ SND_PCM_FORMAT_S16_BE,		fplAudioFormatType_S16 },
+		{ SND_PCM_FORMAT_S16,			fplAudioFormatType_S16 },
+		{ SND_PCM_FORMAT_S24_3LE,		fplAudioFormatType_S24 },
+		{ SND_PCM_FORMAT_S24_3BE,		fplAudioFormatType_S24 },
+		{ SND_PCM_FORMAT_S32_LE,		fplAudioFormatType_S32 },
+		{ SND_PCM_FORMAT_S32_BE,		fplAudioFormatType_S32 },
+		{ SND_PCM_FORMAT_S32,			fplAudioFormatType_S32 },
+		{ SND_PCM_FORMAT_FLOAT_LE,		fplAudioFormatType_F32 },
+		{ SND_PCM_FORMAT_FLOAT_BE,		fplAudioFormatType_F32 },
+		{ SND_PCM_FORMAT_FLOAT,			fplAudioFormatType_F32 },
+		{ SND_PCM_FORMAT_FLOAT64_LE,	fplAudioFormatType_F64 },
+		{ SND_PCM_FORMAT_FLOAT64_BE,	fplAudioFormatType_F64 },
+		{ SND_PCM_FORMAT_FLOAT64,		fplAudioFormatType_F64 },
 	};
 	for (size_t i = 0; i < fplArrayCount(fpl__alsaToFmtMap); ++i) {
 		if (fpl__alsaToFmtMap[i].alsa == format) {
@@ -31358,8 +31358,8 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendAlsaInitialize) 
 
 #	define FPL__ALSA_INIT_ERROR(ret, format, ...) do { \
 		FPL__ERROR(FPL__MODULE_AUDIO_ALSA, format, ## __VA_ARGS__); \
-        fpl__AudioBackendAlsaRelease(context, backend); \
-        return ret; \
+		fpl__AudioBackendAlsaRelease(context, backend); \
+		return ret; \
 	} while (0)
 
 	// Load ALSA library
@@ -31440,12 +31440,12 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	snd_pcm_info_t *pcmInfo = fpl_null;
 
 #	define FPL__ALSA_INIT_ERROR(ret, format, ...) do { \
-        if (pcmInfo != fpl_null) fpl__ReleaseTemporaryMemory(pcmInfo); \
-        if (softwareParams != fpl_null) fpl__ReleaseTemporaryMemory(softwareParams); \
-        if (hardwareParams != fpl_null) fpl__ReleaseTemporaryMemory(hardwareParams); \
+		if (pcmInfo != fpl_null) fpl__ReleaseTemporaryMemory(pcmInfo); \
+		if (softwareParams != fpl_null) fpl__ReleaseTemporaryMemory(softwareParams); \
+		if (hardwareParams != fpl_null) fpl__ReleaseTemporaryMemory(hardwareParams); \
 		FPL__ERROR(FPL__MODULE_AUDIO_ALSA, format, ## __VA_ARGS__); \
-        fpl__AudioBackendAlsaReleaseDevice(context, backend); \
-        return ret; \
+		fpl__AudioBackendAlsaReleaseDevice(context, backend); \
+		return ret; \
 	} while (0)
 
 	// Test ALSA library
@@ -31944,35 +31944,35 @@ fpl_internal int fpl__OssMapAudioFormatToSampleFormat(fplAudioFormatType format)
 	// Zero marks formats with no native OSS equivalent on this build.
 	static const int fpl__ossFmtMap[] = {
 		/* None */ 0,
-		/* U8   */ AFMT_U8,
+		/* U8 */ AFMT_U8,
 #if defined(AFMT_S16_NE)
-		/* S16  */ AFMT_S16_NE,
+		/* S1 */ AFMT_S16_NE,
 #elif defined(AFMT_S16_LE)
-		/* S16  */ AFMT_S16_LE,
+		/* S1 */ AFMT_S16_LE,
 #else
-		/* S16  */ 0,
+		/* S16 */ 0,
 #endif
 #if defined(AFMT_S24_NE)
-		/* S24  */ AFMT_S24_NE,
+		/* S24 */ AFMT_S24_NE,
 #elif defined(AFMT_S24_LE)
-		/* S24  */ AFMT_S24_LE,
+		/* S24 */ AFMT_S24_LE,
 #else
-		/* S24  */ 0,
+		/* S24 */ 0,
 #endif
 #if defined(AFMT_S32_NE)
-		/* S32  */ AFMT_S32_NE,
+		/* S32 */ AFMT_S32_NE,
 #elif defined(AFMT_S32_LE)
-		/* S32  */ AFMT_S32_LE,
+		/* S32 */ AFMT_S32_LE,
 #else
-		/* S32  */ 0,
+		/* S32 */ 0,
 #endif
-		/* S64  */ 0,
+		/* S64 */ 0,
 #if defined(AFMT_FLOAT)
-		/* F32  */ AFMT_FLOAT,
+		/* F32 */ AFMT_FLOAT,
 #else
-		/* F32  */ 0,
+		/* F32 */ 0,
 #endif
-		/* F64  */ 0,
+		/* F64 */ 0,
 	};
 	if ((uint32_t)format >= fplArrayCount(fpl__ossFmtMap)) {
 		return 0;
@@ -33794,7 +33794,7 @@ struct spa_dict {
 };
 
 // Opaque storage for spa_hook. The real struct is 48 bytes on all 64-bit platforms:
-//   struct spa_list link (16) + struct spa_callbacks cb (16) + removed fn pointer (8) + priv pointer (8) = 48
+//	 struct spa_list link (16) + struct spa_callbacks cb (16) + removed fn pointer (8) + priv pointer (8) = 48
 // We use uint64_t words to enforce 8 byte alignment.
 struct spa_hook {
 	uint64_t fpl__opaqueWords[6];
@@ -34282,10 +34282,10 @@ fpl_internal fplAudioFormatType fpl__PipeWireMapSampleFormatToAudioFormatType(co
 }
 
 // SPA POD sizes for scalar properties
-#define SPA_POD_PROP_HEADER_SIZE   8u   // key + flags
-#define SPA_POD_SCALAR_SIZE        8u   // pod header (size+type)
-#define SPA_POD_SCALAR_BODY_SIZE   4u   // actual value
-#define SPA_POD_SCALAR_PAD_SIZE    4u   // padding to 8 bytes
+#define SPA_POD_PROP_HEADER_SIZE   8u	// key + flags
+#define SPA_POD_SCALAR_SIZE		   8u	// pod header (size+type)
+#define SPA_POD_SCALAR_BODY_SIZE   4u	// actual value
+#define SPA_POD_SCALAR_PAD_SIZE	   4u	// padding to 8 bytes
 
 // Total size of one scalar property
 #define SPA_POD_PROP_SCALAR_TOTAL_SIZE \
@@ -34295,7 +34295,7 @@ SPA_POD_SCALAR_BODY_SIZE + \
 SPA_POD_SCALAR_PAD_SIZE)
 
 // Size of SPA object header
-#define SPA_POD_OBJECT_HEADER_SIZE 8u   // size + type
+#define SPA_POD_OBJECT_HEADER_SIZE 8u // size + type
 
 // Size of SPA object body header
 #define SPA_POD_OBJECT_BODY_HEADER_SIZE 8u // object type + object id
