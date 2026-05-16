@@ -228,6 +228,7 @@ SOFTWARE.
 	- New: Added function fplTryStringToS32Len that is a more safe-method than to fplStringToS32
 	- New: Added function fplTryStringToS32 that is a more safe-method than to fplStringToS32
 	- New: Added macro FPL_MAX_VERSION_PART_LENGTH for the maximum length of a version part string
+	- New: Added init flags fplInitFlags_Keyboard, fplInitFlags_Mouse, fplInitFlags_Input
 	- New[#183]: Added macro fpl_extern_inline
 	- New[#190]: [Linux] Implemented fplMemoryGetUsage via sysinfo() and /proc/meminfo parsing
 	- New[#26]: [Unix/BSD] Implemented fplMemoryGetUsage via sysctl (hw.*, vm.*)
@@ -363,28 +364,44 @@ SOFTWARE.
 	- Improved: [ALSA] fpl__MapAlsaFormatToAudioFormat now uses a lookup table that also handles native-endian aliases (SND_PCM_FORMAT_S16/S32/FLOAT/FLOAT64) and FLOAT64 variants
 
 	#### Input
-	- New: Added struct fplGamepadSettings, that stores several properties required for updating/polling game controllers frequently
+	- New: Added enum value fplMouseButtonType_X1 / fplMouseButtonType_X2 (extra mouse buttons)
 	- New: Added enum values fplKey_First / fplKey_Last to fplKey enum
-	- New: Added common function fplKeyGetName() for getting the name for a fplKey
 	- New: Added enum fplInputBackendType
+	- New: Added enum fplInputConnectionState (Unknown/Connected/Disconnected)
+	- New: Added enum fplInputDeviceFeatureFlags (None/Polling/Events/Hotplug)
 	- New: Added enum fplGamepadInputType, that defines the source kind (button/axis/hat) referenced by a fplGamepadInputBinding
 	- New: Added enum fplGamepadAxisSign, that defines the half-axis selector (full/positive/negative) for axis bindings
 	- New: Added enum fplGamepadAxisType, that defines the logical analog axis slots filled by a fplGamepadMapping
 	- New: Added enum fplGamepadPlatform, that mirrors the SDL gamecontrollerdb "platform:" tag (Windows/Linux/MacOS/Android/iOS)
+	- New: Added struct fplGamepadSettings, that stores several properties required for updating/polling game controllers frequently
 	- New: Added struct fplGamepadInputBinding, that describes a raw input source bound to one logical FPL gamepad slot
 	- New: Added struct fplGamepadMapping, that holds a complete mapping from raw device inputs onto FPL's logical gamepad layout
 	- New: Added struct fplGamepadData, that captures a backend-agnostic snapshot of raw device input for use with fplGamepadMapping
 	- New: Added struct fplGamepadInfo, that describes a controller for the mapping resolver callback
+	- New: Added struct fplInputBackendSupport
+	- New: Added struct fplInputDevice
+	- New: Added struct fplInputDeviceGuid
 	- New: Added typedef fpl_gamepad_mapping_resolver_callback, the callback type fired once per controller connect on raw-HID gamepad backends
-	- New: Added macros FPL_GAMEPAD_BUTTON_COUNT, FPL_GAMEPAD_GUID_BYTES, FPL_GAMEPAD_DATA_MAX_AXES, FPL_GAMEPAD_DATA_MAX_BUTTONS, FPL_GAMEPAD_DATA_MAX_HATS
-	- New: Added macro FPL_GAMEPAD_MAPPING_RESOLVE_CALLBACK
+	- New: Added typedef fplGamepadGuid
+	- New: Added macros FPL_GAMEPAD_BUTTON_COUNT, FPL_GAMEPAD_GUID_SIZE, FPL_GAMEPAD_DATA_MAX_AXES, FPL_GAMEPAD_DATA_MAX_BUTTONS, FPL_GAMEPAD_DATA_MAX_HATS, FPL_GAMEPAD_MAPPING_RESOLVE_CALLBACK
+	- New: Added macros FPL_MAX_INPUT_BACKEND_COUNT, FPL_MAX_INPUT_DEVICE_COUNT, FPL_MAX_INPUT_DEVICE_NAME
 	- New: Added enum fplInputSourceType
 	- New: Added struct fplInputBackendMask
+	- New: Added function fplKeyGetName() for getting the name for a fplKey
 	- New: Added function fplInputBackendMaskIsEnabled
 	- New: Added function fplInputBackendMaskEnable
 	- New: Added function fplInputBackendMaskDisable
 	- New: Added function fplGamepadMappingApply
 	- New: Added function fplGamepadMappingApplyDefault
+	- New: Added function fplGetInputBackendSupport
+	- New: Added function fplGetInputBackendSupportByType
+	- New: Added function fplGetInputDevices
+	- New: Added function fplGetKeyboardDevices
+	- New: Added function fplGetMouseDevices
+	- New: Added function fplGetGamepadDevices
+	- New: Added function fplFindInputDevice
+	- New: Added function fplUpdateInputDevices
+	- New: Added function fplSetDefaultGamepadSettings
 	- New[#178]: Separate input system from windowing system, by introducing a input backend system
 	- New[#187]: Implemented DirectInput input backend
 	- New: Added input device enumeration API
