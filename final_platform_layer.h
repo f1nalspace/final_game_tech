@@ -325,7 +325,7 @@ SOFTWARE.
 	- Fixed: [X11] fplQueryCursorPosition was compiled outside FPL__ENABLE_WINDOW guard, breaking window-disabled builds
 	- Fixed: [X11] FPL_SUBPLATFORM_X11 was set, even when X11 was not available
 	- Fixed: [X11] _NET_WM_ICON pixel packing promoted uint8_t operands to int before shifting — alpha/red values >= 128 overflowed the signed int (UB) and could corrupt the icon; bytes are now cast to unsigned long first
-	- Fixed: [X11] Window had no WM_CLASS set — GNOME/mutter treated it as an orphan and showed a generic icon and "Unknown" as name; WM_CLASS is now set from the window title via XSetClassHint
+	- Fixed[#58]: [X11] Window had no WM_CLASS set — GNOME/mutter treated it as an orphan and showed a generic icon and "Unknown" as name; WM_CLASS is now set from the window title via XSetClassHint
 	- Fixed[#181]: [X11] fpl__X11ParseUriPaths does not do any URI decoding, resulting in most-likely unuseable file paths
 	- Changed: [X11] Window size and position are no longer overwritten on creation
 	- Changed: [X11] Default window size changed to 720p (1280x720)
