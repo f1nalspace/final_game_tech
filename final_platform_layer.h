@@ -250,7 +250,7 @@ SOFTWARE.
 	- Fixed: fplStringToS32Len and fplStringToS32 was not implemented correctly due to its documentation rules
 	- Fixed: Calls to fpl__AllocateTemporaryMemory use either fpl__MinAlignment or 16 or more
 	- Fixed: fplCPUID, fplCPURDTSC, fplCPUXCR0 was not detected on GCC/Clang
-	- Fixed: fplGetErrorCount / fplGetErrorByIndex  / fplGetLastError and pushing of errors was not thread-safe
+	- Fixed: fplGetErrorCount / fplGetErrorByIndex / fplGetLastError and pushing of errors was not thread-safe
 	- Fixed: fplAlignAs was using a condition based macro, which is not supported for some compilers
 	- Fixed: FPL_CACHELINE_SIZE on PowerPC64 used `defined(defined(FPL_ARCH_POWERPC64))` and never matched — PPC64 silently fell through to the 64-byte default instead of the intended 128
 	- Fixed: FPL_X86_CPU_INSTR_SET_LEVEL swapped the __SSSE3__ and __SSE3__ branches — Supplemental SSE3 was reported as SSE3 and vice versa
@@ -3636,19 +3636,19 @@ struct IUnknown;
 // CRT Includes, such as stdio.h, stdlib.h, when enabled
 //
 #if defined(FPL_COMPILER_MSVC)
-#    include <intrin.h> // __cpuid, _Interlocked*
+#	 include <intrin.h> // __cpuid, _Interlocked*
 #elif defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG)
-#    if defined(FPL_ARCH_X86) || defined(FPL_ARCH_X64)
-#        include <cpuid.h> // __cpuid_count
-#    endif // X86 or X64
+#	 if defined(FPL_ARCH_X86) || defined(FPL_ARCH_X64)
+#		 include <cpuid.h> // __cpuid_count
+#	 endif // X86 or X64
 #endif
 
 // Only include CRT, when needed
 #if !defined(FPL_NO_CRT)
 #	 include <stdio.h> // stdin, stdout, stderr, fprintf, vfprintf, vsnprintf, getchar
-#    include <stdlib.h> // wcstombs, mbstowcs, getenv
+#	 include <stdlib.h> // wcstombs, mbstowcs, getenv
 #	 include <wchar.h> // mbrtowc, wcsrtombs, mbsrtowcs
-#    include <locale.h> // setlocale, struct lconv, localeconv
+#	 include <locale.h> // setlocale, struct lconv, localeconv
 #endif
 
 // Always include sched.h and dirint.h
@@ -3666,10 +3666,10 @@ struct IUnknown;
 
 //! A win32 GUID (opaque, min 16 bytes)
 typedef struct fpl__Win32Guid {
-	uint32_t  Data1;
+	uint32_t Data1;
 	uint16_t Data2;
 	uint16_t Data3;
-	uint8_t  Data4[8];
+	uint8_t	Data4[8];
 } fpl__Win32Guid;
 //! A win32 HANDLE pointer (opaque, sizeof(void*): 4 bytes on Win32, 8 bytes on Win64).
 typedef void *fpl__Win32Handle;
@@ -5977,9 +5977,9 @@ typedef struct fplGamepadMapping fplGamepadMapping;
 /**
 * @typedef fpl_gamepad_mapping_resolver_callback
 * @brief Optional callback invoked once per controller connect on raw-HID gamepad backends (DirectInput, Linux joystick/evdev, etc.) to install a custom @ref fplGamepadMapping for the device.
-* @param[in]  info        Backend-built description of the device that just connected.
-* @param[out] outMapping  Mapping to fill in when the resolver wants to override the default convention.
-* @param[in]  userData    Opaque pointer the user supplied via @ref fplGamepadSettings.
+* @param[in] info Backend-built description of the device that just connected.
+* @param[out] outMapping Mapping to fill in when the resolver wants to override the default convention.
+* @param[in] userData Opaque pointer the user supplied via @ref fplGamepadSettings.
 * @return true to install @p outMapping for this device, false to fall back to the default convention.
 * @note The callback runs once at connect time on the platform input thread; do not block.
 */
@@ -8820,17 +8820,17 @@ typedef struct fplGamepadInfo {
 
 /**
 * @brief Applies a @ref fplGamepadMapping over a raw device snapshot and writes the result into @p outState.
-* @param[in]  mapping    Mapping to evaluate.
-* @param[in]  input      Raw device snapshot collected by the backend.
-* @param[out] outState   Logical gamepad state populated from the mapping.
+* @param[in] mapping Mapping to evaluate.
+* @param[in] input Raw device snapshot collected by the backend.
+* @param[out] outState Logical gamepad state populated from the mapping.
 * @return false when any pointer is null, true on success. Buttons and analog axes are written; deviceName/isConnected/isActive are left untouched.
 */
 fpl_common_api bool fplGamepadMappingApply(const fplGamepadMapping *mapping, const fplGamepadData *input, fplGamepadState *outState);
 
 /**
 * @brief Applies the built-in default convention to a raw device snapshot when no mapping is installed.
-* @param[in]  input      Raw device snapshot collected by the backend.
-* @param[out] outState   Logical gamepad state populated from the default convention.
+* @param[in] input Raw device snapshot collected by the backend.
+* @param[out] outState Logical gamepad state populated from the default convention.
 * @return false when any pointer is null, true on success.
 * @note The default convention follows SDL's "unknown DInput device" layout — buttons 0..3 → A/B/X/Y, 4/5 → shoulders, 8/9 → back/start, 10/11 → thumb buttons; axes 0/1 → left stick, 2/5 → right stick (XYZ-RZ DInput quirk), 6/7 → triggers; hat[0] → dpad. Backends that produce a different raw layout (e.g. Linux joydev) should still align with this ordering for the default to be useful.
 */
