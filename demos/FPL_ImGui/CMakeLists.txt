@@ -10,10 +10,15 @@ project(FPL_ImGui CXX)
 
 set(MY_COMPILER "cpp11")
 
-set(MY_EXTERNAL_LIBS
-	"m"
-	"GL"
-	)
+set(MY_EXTERNAL_LIBS "")
+
+# Demo calls OpenGL directly via <GL/gl.h>
+find_package(OpenGL REQUIRED)
+list(APPEND MY_EXTERNAL_LIBS OpenGL::GL)
+
+if(UNIX)
+	list(APPEND MY_EXTERNAL_LIBS "m")
+endif()
 
 set(MY_INCLUDE_DIRS
 	"../../"

@@ -10,10 +10,7 @@ project(FPL_ConsoleInput C)
 
 set(MY_COMPILER "c99")
 
-set(MY_EXTERNAL_LIBS
-	"m"
-	"pthread"
-	)
+set(MY_EXTERNAL_LIBS "")
 
 set(MY_INCLUDE_DIRS
 	"../../"

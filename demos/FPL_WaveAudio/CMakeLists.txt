@@ -10,9 +10,12 @@ project(FPL_WaveAudio C)
 
 set(MY_COMPILER "c99")
 
-set(MY_EXTERNAL_LIBS
-	"m"
-	)
+set(MY_EXTERNAL_LIBS "")
+
+# Math library (math.h)
+if(UNIX)
+	list(APPEND MY_EXTERNAL_LIBS "m")
+endif()
 
 set(MY_INCLUDE_DIRS
 	"../../"
