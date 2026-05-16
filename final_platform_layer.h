@@ -17303,10 +17303,10 @@ fpl_internal void fpl__Win32DInput_FillRawInput(const DIJOYSTATE *src, fplGamepa
 	uint8_t mask = 0;
 	DWORD pov = src->rgdwPOV[0];
 	if (pov != 0xFFFFFFFFu && (pov & 0xFFFFu) != 0xFFFFu) {
-		if (pov >= 31500u || pov <  4500u) {
+		if (pov >= 31500u || pov < 4500u) {
 			mask |= 0x1;
 		}
-		if (pov >=  4500u && pov < 13500u) {
+		if (pov >= 4500u && pov < 13500u) {
 			mask |= 0x2;
 		}
 		if (pov >= 13500u && pov < 22500u) {
@@ -20755,7 +20755,7 @@ fpl_platform_api fplSeconds fplTimestampElapsed(const fplTimestamp start, const 
 }
 
 fpl_platform_api fplMilliseconds fplMillisecondsQuery(void) {
-	struct timeval  tv;
+	struct timeval tv;
 	gettimeofday(&tv, fpl_null);
 	fplMilliseconds result = (fplMilliseconds)(tv.tv_sec * 1000 + ((uint64_t)tv.tv_usec / 1000));
 	return(result);
@@ -22152,8 +22152,8 @@ fpl_platform_api size_t fplPathNormalize(const char *sourcePath, char *destPath,
 	}
 	char resolvedPath[FPL_MAX_PATH_LENGTH];
 	if (realpath(sourcePath, resolvedPath) == fpl_null) {
-        return 0;
-    }
+		return 0;
+	}
 	size_t result = fplGetStringLength(resolvedPath);
 	if (destPath != fpl_null) {
 		size_t requiredLen = result + 1;
@@ -22515,17 +22515,17 @@ fpl_platform_api bool fplOSGetVersionInfos(fplOSVersionInfos *outInfos) {
 			bool nameIsContent;
 		};
 		const struct fpl__SingleLineReleaseSource singleLineSources[] = {
-			{"/etc/redhat-release",     "Red Hat",      true},
-			{"/etc/centos-release",     "CentOS",       true},
-			{"/etc/fedora-release",     "Fedora",       true},
-			{"/etc/oracle-release",     "Oracle Linux", true},
-			{"/etc/SuSE-release",       "SUSE",         true},
-			{"/etc/gentoo-release",     "Gentoo",       true},
-			{"/etc/mandriva-release",   "Mandriva",     true},
-			{"/etc/slackware-version",  "Slackware",    true},
-			{"/etc/alpine-release",     "Alpine Linux", false},
-			{"/etc/arch-release",       "Arch Linux",   false},
-			{"/etc/debian_version",     "Debian",       false},
+			{"/etc/redhat-release",		"Red Hat",		true},
+			{"/etc/centos-release",		"CentOS",		true},
+			{"/etc/fedora-release",		"Fedora",		true},
+			{"/etc/oracle-release",		"Oracle Linux",	true},
+			{"/etc/SuSE-release",		"SUSE",			true},
+			{"/etc/gentoo-release",		"Gentoo",		true},
+			{"/etc/mandriva-release",	"Mandriva",		true},
+			{"/etc/slackware-version",	"Slackware",	true},
+			{"/etc/alpine-release",		"Alpine Linux",	false},
+			{"/etc/arch-release",		"Arch Linux",	false},
+			{"/etc/debian_version",		"Debian",		false},
 		};
 		for (size_t i = 0; i < fplArrayCount(singleLineSources); ++i) {
 			const struct fpl__SingleLineReleaseSource *src = &singleLineSources[i];
@@ -25731,8 +25731,7 @@ fpl_platform_api bool fplSignalSet(fplSignalHandle *signal) {
 // Linux Hardware
 //
 
-// Parse one "Key:  <number> kB" line from /proc/meminfo, accumulating any matched keys (in bytes) into *outBytes.
-// Returns the number of keys still missing.
+// Parse memory info "Key: <number> kB" line from /proc/meminfo, accumulating any matched keys (in bytes) into *outBytes.
 fpl_internal int fpl__LinuxParseMeminfo(const char *const *keys, uint64_t *outBytes, int keyCount) {
 	int missing = keyCount;
 	for (int i = 0; i < keyCount; ++i) {
@@ -26882,7 +26881,7 @@ typedef GLXFBConfig_Void *GLXFBConfig;
 #define GLX_RGBA_TYPE 0x8014
 #endif
 
-#define FPL__FUNC_GLX_glXQueryVersion(name) Bool name(Display *dpy,  int *major,  int *minor)
+#define FPL__FUNC_GLX_glXQueryVersion(name) Bool name(Display *dpy, int *major, int *minor)
 typedef FPL__FUNC_GLX_glXQueryVersion(fpl__func_glx_glXQueryVersion);
 #define FPL__FUNC_GLX_glXChooseVisual(name) XVisualInfo* name(Display *dpy, int screen, int *attribList)
 typedef FPL__FUNC_GLX_glXChooseVisual(fpl__func_glx_glXChooseVisual);
@@ -27581,7 +27580,7 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_Win32Software_Construct(void) {
 #define FPL__VK_MAX_DESCRIPTION_SIZE 256
 
 #define FPL__VK_MAKE_VERSION(major, minor, patch) \
-    ((((uint32_t)(major)) << 22) | (((uint32_t)(minor)) << 12) | ((uint32_t)(patch)))
+	((((uint32_t)(major)) << 22) | (((uint32_t)(minor)) << 12) | ((uint32_t)(patch)))
 
 typedef enum fpl__VkResult {
 	FPL__VK_ERROR_OUT_OF_HOST_MEMORY = -1,
@@ -28745,24 +28744,24 @@ fpl_internal bool fpl__IsAudioDeviceStarted(fplAudioContext *context);
 // Convert a flag from a dwChannelMask to a fplAudioChannelType
 fpl_internal fplAudioChannelType fpl__Win32MapAudioChannelIdToAudioSpeakerFlags(const DWORD id) {
 	switch (id) {
-		case SPEAKER_FRONT_LEFT:            return fplAudioChannelType_FrontLeft;
-		case SPEAKER_FRONT_RIGHT:           return fplAudioChannelType_FrontRight;
-		case SPEAKER_FRONT_CENTER:          return fplAudioChannelType_FrontCenter;
-		case SPEAKER_LOW_FREQUENCY:         return fplAudioChannelType_LowFrequency;
-		case SPEAKER_BACK_LEFT:             return fplAudioChannelType_BackLeft;
-		case SPEAKER_BACK_RIGHT:            return fplAudioChannelType_BackRight;
-		case SPEAKER_FRONT_LEFT_OF_CENTER:  return fplAudioChannelType_FrontLeftOfCenter;
+		case SPEAKER_FRONT_LEFT:			return fplAudioChannelType_FrontLeft;
+		case SPEAKER_FRONT_RIGHT:			return fplAudioChannelType_FrontRight;
+		case SPEAKER_FRONT_CENTER:			return fplAudioChannelType_FrontCenter;
+		case SPEAKER_LOW_FREQUENCY:			return fplAudioChannelType_LowFrequency;
+		case SPEAKER_BACK_LEFT:				return fplAudioChannelType_BackLeft;
+		case SPEAKER_BACK_RIGHT:			return fplAudioChannelType_BackRight;
+		case SPEAKER_FRONT_LEFT_OF_CENTER:	return fplAudioChannelType_FrontLeftOfCenter;
 		case SPEAKER_FRONT_RIGHT_OF_CENTER: return fplAudioChannelType_FrontRightOfCenter;
-		case SPEAKER_BACK_CENTER:           return fplAudioChannelType_BackCenter;
-		case SPEAKER_SIDE_LEFT:             return fplAudioChannelType_SideLeft;
-		case SPEAKER_SIDE_RIGHT:            return fplAudioChannelType_SideRight;
-		case SPEAKER_TOP_CENTER:            return fplAudioChannelType_TopCenter;
-		case SPEAKER_TOP_FRONT_LEFT:        return fplAudioChannelType_TopFrontLeft;
-		case SPEAKER_TOP_FRONT_CENTER:      return fplAudioChannelType_TopFrontCenter;
-		case SPEAKER_TOP_FRONT_RIGHT:       return fplAudioChannelType_TopFrontRight;
-		case SPEAKER_TOP_BACK_LEFT:         return fplAudioChannelType_TopBackLeft;
-		case SPEAKER_TOP_BACK_CENTER:       return fplAudioChannelType_TopBackCenter;
-		case SPEAKER_TOP_BACK_RIGHT:        return fplAudioChannelType_TopBackRight;
+		case SPEAKER_BACK_CENTER:			return fplAudioChannelType_BackCenter;
+		case SPEAKER_SIDE_LEFT:				return fplAudioChannelType_SideLeft;
+		case SPEAKER_SIDE_RIGHT:			return fplAudioChannelType_SideRight;
+		case SPEAKER_TOP_CENTER:			return fplAudioChannelType_TopCenter;
+		case SPEAKER_TOP_FRONT_LEFT:		return fplAudioChannelType_TopFrontLeft;
+		case SPEAKER_TOP_FRONT_CENTER:		return fplAudioChannelType_TopFrontCenter;
+		case SPEAKER_TOP_FRONT_RIGHT:		return fplAudioChannelType_TopFrontRight;
+		case SPEAKER_TOP_BACK_LEFT:			return fplAudioChannelType_TopBackLeft;
+		case SPEAKER_TOP_BACK_CENTER:		return fplAudioChannelType_TopBackCenter;
+		case SPEAKER_TOP_BACK_RIGHT:		return fplAudioChannelType_TopBackRight;
 		default: return fplAudioChannelType_None;
 	}
 }
@@ -28770,24 +28769,24 @@ fpl_internal fplAudioChannelType fpl__Win32MapAudioChannelIdToAudioSpeakerFlags(
 // Convert a fplAudioChannelType to flag for dwChannelMask
 fpl_internal DWORD fpl__Win32MapAudioSpeakerFlagsToAudioChannelId(const fplAudioChannelType audioChannelFlags) {
 	switch (audioChannelFlags) {
-		case fplAudioChannelType_FrontLeft:            return SPEAKER_FRONT_LEFT;
-		case fplAudioChannelType_FrontRight:           return SPEAKER_FRONT_RIGHT;
-		case fplAudioChannelType_FrontCenter:          return SPEAKER_FRONT_CENTER;
-		case fplAudioChannelType_LowFrequency:         return SPEAKER_LOW_FREQUENCY;
-		case fplAudioChannelType_BackLeft:             return SPEAKER_BACK_LEFT;
-		case fplAudioChannelType_BackRight:            return SPEAKER_BACK_RIGHT;
-		case fplAudioChannelType_FrontLeftOfCenter:    return SPEAKER_FRONT_LEFT_OF_CENTER;
+		case fplAudioChannelType_FrontLeft:			   return SPEAKER_FRONT_LEFT;
+		case fplAudioChannelType_FrontRight:		   return SPEAKER_FRONT_RIGHT;
+		case fplAudioChannelType_FrontCenter:		   return SPEAKER_FRONT_CENTER;
+		case fplAudioChannelType_LowFrequency:		   return SPEAKER_LOW_FREQUENCY;
+		case fplAudioChannelType_BackLeft:			   return SPEAKER_BACK_LEFT;
+		case fplAudioChannelType_BackRight:			   return SPEAKER_BACK_RIGHT;
+		case fplAudioChannelType_FrontLeftOfCenter:	   return SPEAKER_FRONT_LEFT_OF_CENTER;
 		case fplAudioChannelType_FrontRightOfCenter:   return SPEAKER_FRONT_RIGHT_OF_CENTER;
-		case fplAudioChannelType_BackCenter:           return SPEAKER_BACK_CENTER;
-		case fplAudioChannelType_SideLeft:             return SPEAKER_SIDE_LEFT;
-		case fplAudioChannelType_SideRight:            return SPEAKER_SIDE_RIGHT;
-		case fplAudioChannelType_TopCenter:            return SPEAKER_TOP_CENTER;
-		case fplAudioChannelType_TopFrontLeft:         return SPEAKER_TOP_FRONT_LEFT;
-		case fplAudioChannelType_TopFrontCenter:       return SPEAKER_TOP_FRONT_CENTER;
-		case fplAudioChannelType_TopFrontRight:        return SPEAKER_TOP_FRONT_RIGHT;
-		case fplAudioChannelType_TopBackLeft:          return SPEAKER_TOP_BACK_LEFT;
-		case fplAudioChannelType_TopBackCenter:        return SPEAKER_TOP_BACK_CENTER;
-		case fplAudioChannelType_TopBackRight:         return SPEAKER_TOP_BACK_RIGHT;
+		case fplAudioChannelType_BackCenter:		   return SPEAKER_BACK_CENTER;
+		case fplAudioChannelType_SideLeft:			   return SPEAKER_SIDE_LEFT;
+		case fplAudioChannelType_SideRight:			   return SPEAKER_SIDE_RIGHT;
+		case fplAudioChannelType_TopCenter:			   return SPEAKER_TOP_CENTER;
+		case fplAudioChannelType_TopFrontLeft:		   return SPEAKER_TOP_FRONT_LEFT;
+		case fplAudioChannelType_TopFrontCenter:	   return SPEAKER_TOP_FRONT_CENTER;
+		case fplAudioChannelType_TopFrontRight:		   return SPEAKER_TOP_FRONT_RIGHT;
+		case fplAudioChannelType_TopBackLeft:		   return SPEAKER_TOP_BACK_LEFT;
+		case fplAudioChannelType_TopBackCenter:		   return SPEAKER_TOP_BACK_CENTER;
+		case fplAudioChannelType_TopBackRight:		   return SPEAKER_TOP_BACK_RIGHT;
 		default: return 0;
 	}
 }
@@ -29658,18 +29657,18 @@ typedef enum fpl__WasapiShareMode {
 	fpl__WasapiShareMode_Exclusive = 1,
 } fpl__WasapiShareMode;
 
-#define FPL__WASAPI_DEVICE_STATE_ACTIVE             0x00000001
-#define FPL__WASAPI_STGM_READ                       0x00000000L
+#define FPL__WASAPI_DEVICE_STATE_ACTIVE 0x00000001
+#define FPL__WASAPI_STGM_READ 0x00000000L
 
-#define FPL__WASAPI_AUDCLNT_STREAMFLAGS_EVENTCALLBACK       0x00040000
+#define FPL__WASAPI_AUDCLNT_STREAMFLAGS_EVENTCALLBACK 0x00040000
 
-#define FPL__WASAPI_AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED       ((HRESULT)0x88890019)
+#define FPL__WASAPI_AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED ((HRESULT)0x88890019)
 
 // CLSIDs / IIDs / PROPERTYKEYs we resolve at runtime via CoCreateInstance / IPropertyStore::GetValue.
 fpl_globalvar const fpl__Win32Guid FPL__WASAPI_CLSID_MMDeviceEnumerator = { 0xBCDE0395, 0xE52F, 0x467C, { 0x8E, 0x3D, 0xC4, 0x57, 0x92, 0x91, 0x69, 0x2E } };
-fpl_globalvar const fpl__Win32Guid FPL__WASAPI_IID_IMMDeviceEnumerator  = { 0xA95664D2, 0x9614, 0x4F35, { 0xA7, 0x46, 0xDE, 0x8D, 0xB6, 0x36, 0x17, 0xE6 } };
-fpl_globalvar const fpl__Win32Guid FPL__WASAPI_IID_IAudioClient         = { 0x1CB9AD4C, 0xDBFA, 0x4C32, { 0xB1, 0x78, 0xC2, 0xF5, 0x68, 0xA7, 0x03, 0xB2 } };
-fpl_globalvar const fpl__Win32Guid FPL__WASAPI_IID_IAudioRenderClient   = { 0xF294ACFC, 0x3146, 0x4483, { 0xA7, 0xBF, 0xAD, 0xDC, 0xA7, 0xC2, 0x60, 0xE2 } };
+fpl_globalvar const fpl__Win32Guid FPL__WASAPI_IID_IMMDeviceEnumerator = { 0xA95664D2, 0x9614, 0x4F35, { 0xA7, 0x46, 0xDE, 0x8D, 0xB6, 0x36, 0x17, 0xE6 } };
+fpl_globalvar const fpl__Win32Guid FPL__WASAPI_IID_IAudioClient = { 0x1CB9AD4C, 0xDBFA, 0x4C32, { 0xB1, 0x78, 0xC2, 0xF5, 0x68, 0xA7, 0x03, 0xB2 } };
+fpl_globalvar const fpl__Win32Guid FPL__WASAPI_IID_IAudioRenderClient = { 0xF294ACFC, 0x3146, 0x4483, { 0xA7, 0xBF, 0xAD, 0xDC, 0xA7, 0xC2, 0x60, 0xE2 } };
 
 fpl_globalvar const fpl__WasapiPropertyKey FPL__WASAPI_PKEY_Device_FriendlyName = {
 	{ 0xA45C254E, 0xDF1C, 0x4EFD, { 0x80, 0x20, 0x67, 0xD1, 0x46, 0xA8, 0x50, 0xE0 } },
@@ -29678,17 +29677,17 @@ fpl_globalvar const fpl__WasapiPropertyKey FPL__WASAPI_PKEY_Device_FriendlyName 
 
 // COM interfaces. We forward-declare the structs, then declare the vtables.
 // Method order must match the real Windows interfaces exactly (binary compat).
-typedef struct fpl__IMMDevice            fpl__IMMDevice;
-typedef struct fpl__IMMDeviceCollection  fpl__IMMDeviceCollection;
-typedef struct fpl__IMMDeviceEnumerator  fpl__IMMDeviceEnumerator;
-typedef struct fpl__IPropertyStore       fpl__IPropertyStore;
-typedef struct fpl__IAudioClient         fpl__IAudioClient;
-typedef struct fpl__IAudioRenderClient   fpl__IAudioRenderClient;
+typedef struct fpl__IMMDevice fpl__IMMDevice;
+typedef struct fpl__IMMDeviceCollection fpl__IMMDeviceCollection;
+typedef struct fpl__IMMDeviceEnumerator fpl__IMMDeviceEnumerator;
+typedef struct fpl__IPropertyStore fpl__IPropertyStore;
+typedef struct fpl__IAudioClient fpl__IAudioClient;
+typedef struct fpl__IAudioRenderClient fpl__IAudioRenderClient;
 
 typedef struct fpl__IMMDeviceEnumeratorVtbl {
 	HRESULT (STDMETHODCALLTYPE *QueryInterface)(fpl__IMMDeviceEnumerator *self, const fpl__Win32Guid *riid, void **ppv);
-	ULONG   (STDMETHODCALLTYPE *AddRef)(fpl__IMMDeviceEnumerator *self);
-	ULONG   (STDMETHODCALLTYPE *Release)(fpl__IMMDeviceEnumerator *self);
+	ULONG	(STDMETHODCALLTYPE *AddRef)(fpl__IMMDeviceEnumerator *self);
+	ULONG	(STDMETHODCALLTYPE *Release)(fpl__IMMDeviceEnumerator *self);
 	HRESULT (STDMETHODCALLTYPE *EnumAudioEndpoints)(fpl__IMMDeviceEnumerator *self, fpl__WasapiEDataFlow dataFlow, DWORD dwStateMask, fpl__IMMDeviceCollection **ppDevices);
 	HRESULT (STDMETHODCALLTYPE *GetDefaultAudioEndpoint)(fpl__IMMDeviceEnumerator *self, fpl__WasapiEDataFlow dataFlow, fpl__WasapiERole role, fpl__IMMDevice **ppEndpoint);
 	HRESULT (STDMETHODCALLTYPE *GetDevice)(fpl__IMMDeviceEnumerator *self, const WCHAR *pwstrId, fpl__IMMDevice **ppDevice);
@@ -29699,8 +29698,8 @@ struct fpl__IMMDeviceEnumerator { fpl__IMMDeviceEnumeratorVtbl *lpVtbl; };
 
 typedef struct fpl__IMMDeviceCollectionVtbl {
 	HRESULT (STDMETHODCALLTYPE *QueryInterface)(fpl__IMMDeviceCollection *self, const fpl__Win32Guid *riid, void **ppv);
-	ULONG   (STDMETHODCALLTYPE *AddRef)(fpl__IMMDeviceCollection *self);
-	ULONG   (STDMETHODCALLTYPE *Release)(fpl__IMMDeviceCollection *self);
+	ULONG	(STDMETHODCALLTYPE *AddRef)(fpl__IMMDeviceCollection *self);
+	ULONG	(STDMETHODCALLTYPE *Release)(fpl__IMMDeviceCollection *self);
 	HRESULT (STDMETHODCALLTYPE *GetCount)(fpl__IMMDeviceCollection *self, UINT *pCount);
 	HRESULT (STDMETHODCALLTYPE *Item)(fpl__IMMDeviceCollection *self, UINT nDevice, fpl__IMMDevice **ppDevice);
 } fpl__IMMDeviceCollectionVtbl;
@@ -29708,8 +29707,8 @@ struct fpl__IMMDeviceCollection { fpl__IMMDeviceCollectionVtbl *lpVtbl; };
 
 typedef struct fpl__IMMDeviceVtbl {
 	HRESULT (STDMETHODCALLTYPE *QueryInterface)(fpl__IMMDevice *self, const fpl__Win32Guid *riid, void **ppv);
-	ULONG   (STDMETHODCALLTYPE *AddRef)(fpl__IMMDevice *self);
-	ULONG   (STDMETHODCALLTYPE *Release)(fpl__IMMDevice *self);
+	ULONG	(STDMETHODCALLTYPE *AddRef)(fpl__IMMDevice *self);
+	ULONG	(STDMETHODCALLTYPE *Release)(fpl__IMMDevice *self);
 	HRESULT (STDMETHODCALLTYPE *Activate)(fpl__IMMDevice *self, const fpl__Win32Guid *iid, DWORD dwClsCtx, fpl__WasapiPropVariant *pActivationParams, void **ppInterface);
 	HRESULT (STDMETHODCALLTYPE *OpenPropertyStore)(fpl__IMMDevice *self, DWORD stgmAccess, fpl__IPropertyStore **ppProperties);
 	HRESULT (STDMETHODCALLTYPE *GetId)(fpl__IMMDevice *self, WCHAR **ppstrId);
@@ -29719,8 +29718,8 @@ struct fpl__IMMDevice { fpl__IMMDeviceVtbl *lpVtbl; };
 
 typedef struct fpl__IPropertyStoreVtbl {
 	HRESULT (STDMETHODCALLTYPE *QueryInterface)(fpl__IPropertyStore *self, const fpl__Win32Guid *riid, void **ppv);
-	ULONG   (STDMETHODCALLTYPE *AddRef)(fpl__IPropertyStore *self);
-	ULONG   (STDMETHODCALLTYPE *Release)(fpl__IPropertyStore *self);
+	ULONG	(STDMETHODCALLTYPE *AddRef)(fpl__IPropertyStore *self);
+	ULONG	(STDMETHODCALLTYPE *Release)(fpl__IPropertyStore *self);
 	HRESULT (STDMETHODCALLTYPE *GetCount)(fpl__IPropertyStore *self, DWORD *pCount);
 	HRESULT (STDMETHODCALLTYPE *GetAt)(fpl__IPropertyStore *self, DWORD iProp, fpl__WasapiPropertyKey *pKey);
 	HRESULT (STDMETHODCALLTYPE *GetValue)(fpl__IPropertyStore *self, const fpl__WasapiPropertyKey *key, fpl__WasapiPropVariant *pv);
@@ -29733,8 +29732,8 @@ typedef int64_t fpl__WasapiReferenceTime;
 
 typedef struct fpl__IAudioClientVtbl {
 	HRESULT (STDMETHODCALLTYPE *QueryInterface)(fpl__IAudioClient *self, const fpl__Win32Guid *riid, void **ppv);
-	ULONG   (STDMETHODCALLTYPE *AddRef)(fpl__IAudioClient *self);
-	ULONG   (STDMETHODCALLTYPE *Release)(fpl__IAudioClient *self);
+	ULONG	(STDMETHODCALLTYPE *AddRef)(fpl__IAudioClient *self);
+	ULONG	(STDMETHODCALLTYPE *Release)(fpl__IAudioClient *self);
 	HRESULT (STDMETHODCALLTYPE *Initialize)(fpl__IAudioClient *self, fpl__WasapiShareMode shareMode, DWORD streamFlags, fpl__WasapiReferenceTime bufferDuration, fpl__WasapiReferenceTime periodicity, const WAVEFORMATEX *pFormat, const fpl__Win32Guid *pAudioSessionGuid);
 	HRESULT (STDMETHODCALLTYPE *GetBufferSize)(fpl__IAudioClient *self, UINT32 *pNumBufferFrames);
 	HRESULT (STDMETHODCALLTYPE *GetStreamLatency)(fpl__IAudioClient *self, fpl__WasapiReferenceTime *pLatency);
