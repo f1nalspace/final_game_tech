@@ -4,17 +4,19 @@ Name:
 	FOGL | Test
 
 Description:
-	This demo shows how to use the "Final Dynamic OpenGL" library, which is a
-	full OpenGL-Header and Loader.
+	This demo shows how to use the "Final Dynamic OpenGL" library, which is a full OpenGL-Header and Loader.
 
 Requirements:
-	- C++ Compiler
+	- C99 Compiler
 	- Final Platform Layer
 
 Author:
 	Torsten Spaete
 
 Changelog:
+	## 2026-05-16
+	- Reflect api changes in FPL 1.0.0
+
 	## 2018-10-22
 	- Reflect api changes in FPL 0.9.3
 
@@ -41,14 +43,24 @@ License:
 #define USE_LEGACY_OPENGL 1
 #define USE_FPL_OPENGL_CONTEXT_CREATION 1
 
-#define FPL_IMPLEMENTATION
-#if !USE_FPL_OPENGL_CONTEXT_CREATION
+#ifndef FPL_IMPLEMENTATION
+#	define FPL_IMPLEMENTATION
+#endif
+
+#if !USE_FPL_OPENGL_CONTEXT_CREATION && !defined(FPL_NO_VIDEO_OPENGL)
 #	define FPL_NO_VIDEO_OPENGL
 #endif
+
 #include <final_platform_layer.h>
 
-#define FGL_IMPLEMENTATION
-#define FGL_AS_PRIVATE
+#ifndef FGL_IMPLEMENTATION
+#	define FGL_IMPLEMENTATION
+#endif
+
+#ifndef FGL_AS_PRIVATE
+#	define FGL_AS_PRIVATE
+#endif
+
 #include <final_dynamic_opengl.h>
 
 static GLuint CreateShaderType(GLenum type, const char *source) {
