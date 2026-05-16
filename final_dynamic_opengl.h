@@ -73,6 +73,14 @@ if (fglLoadOpenGL(false)) {
 }
 
 -------------------------------------------------------------------------------
+	Ignore Platform Includes
+-------------------------------------------------------------------------------
+
+By default header files are included, when FGL_HAS_INCLUDE finds them, unless you explicitly define FGL_NO_PLATFORM_INCLUDES.
+
+When FGL_NO_PLATFORM_INCLUDES is defined, no header files such as Windows.h and any of the xlib includes are included.
+
+-------------------------------------------------------------------------------
 	License
 -------------------------------------------------------------------------------
 
@@ -119,8 +127,10 @@ SOFTWARE.
 	\tableofcontents
 
 	# v1.0.0:
-	- Fixed warnings for initialization of function prototypes with fgl_api
-	- Fixed wrong X11 window handle
+	- New: Added macro FGL_HAS_INCLUDE
+	- Fixed: Fixed warnings for initialization of function prototypes with fgl_api
+	- Fixed: Fixed wrong X11 window handle
+	- Fixed[X11]: Removed X11 header inclusion when FGL_NO_PLATFORM_INCLUDES is defined or when XLib includes is missing
 
 	# v0.4.0.0 beta:
 
@@ -320,16 +330,27 @@ typedef struct fglWin32OpenGLRenderingContext {
 
 #elif defined(FGL_PLATFORM_POSIX)
 #	include <dlfcn.h> // dlopen
-#	include <X11/X.h>
-#	include <X11/Xlib.h>
-#	include <X11/Xutil.h> // XVisualInfo
+
+#	if (!FGL_HAS_INCLUDE(<X11/X.h>) || defined(FGL_NO_PLATFORM_INCLUDES)) && !defined(FGL_X11_NO_HEADERS)
+#		define FGL_X11_NO_HEADERS
+#	endif
+
+#	if !defined(FGL_X11_NO_HEADERS)
+#		include <X11/X.h>
+#		include <X11/Xlib.h>
+#		define fgl__X11Display Display
+#		define fgl__X11Window Window
+#	else
+		typedef void fgl__X11Display;
+		typedef unsigned long fgl__X11Window;
+#	endif
 
 //! Posix OpenGL window handle
 typedef struct fglPosixOpenGLWindowHandle {
 	//! Display
-	Display *display;
+	fgl__X11Display *display;
 	//! Window
-	Window window;
+	fgl__X11Window window;
 } fglPosixOpenGLWindowHandle;
 
 typedef struct fglPosixOpenGLRenderingContext {
