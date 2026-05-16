@@ -325,6 +325,9 @@
 	@subpage page_category_timings_datetime <br>
 	@subpage page_category_timings_measurement <br>
 
+	@section section_category_localization Localization
+	@subpage page_category_localization <br>
+
 	@section section_category_dll Dynamic Library Loading
 	@subpage page_category_dll <br>
 
@@ -2701,6 +2704,50 @@
 	- Use @ref fplMillisecondsQuery() for simple, coarse measurements where high precision is not required.
 	- A @ref fplTimestamp value is platform-dependent and must never be interpreted directly - only compare it with @ref fplTimestampElapsed() .
 	- The starting point of both clocks is undefined, so only the difference between two queries is meaningful.
+*/
+
+/*!
+	@page page_category_localization Query Locale information
+	@tableofcontents
+
+	FPL provides a couple of functions for querying the currently configured locale.<br>
+	A locale is written into a caller-provided string buffer in a format described by the @ref fplLocaleFormat enumeration.<br>
+	<br>
+	Currently the only supported format is @ref fplLocaleFormat_ISO639, which produces ISO-639 strings like `en-US` or `de-DE`.
+
+	@section section_category_localization_query Querying a locale
+
+	FPL distinguishes three kinds of locale:<br>
+
+	| Function                | Returns the locale of                          |
+	|-------------------------|-------------------------------------------------|
+	| @ref fplGetUserLocale()   | The current user account                       |
+	| @ref fplGetSystemLocale() | The operating system / system-wide setting      |
+	| @ref fplGetInputLocale()  | The active keyboard / input layout              |
+
+	All three functions share the same signature - pass the desired @ref fplLocaleFormat, a destination buffer and its maximum length.<br>
+	They return the number of characters written, excluding the null terminator.<br>
+
+	@code{.c}
+	char localeBuffer[16];
+
+	// Query the current user locale, e.g. "en-US"
+	if (fplGetUserLocale(fplLocaleFormat_ISO639, localeBuffer, fplArrayCount(localeBuffer)) > 0) {
+		fplConsoleFormatOut("User locale: %s\n", localeBuffer);
+	}
+
+	// Query the system locale
+	if (fplGetSystemLocale(fplLocaleFormat_ISO639, localeBuffer, fplArrayCount(localeBuffer)) > 0) {
+		fplConsoleFormatOut("System locale: %s\n", localeBuffer);
+	}
+
+	// Query the input/keyboard locale
+	if (fplGetInputLocale(fplLocaleFormat_ISO639, localeBuffer, fplArrayCount(localeBuffer)) > 0) {
+		fplConsoleFormatOut("Input locale: %s\n", localeBuffer);
+	}
+	@endcode
+
+	@note A return value of zero means the locale could not be determined or the buffer was too small.
 */
 
 /*!
