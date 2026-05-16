@@ -2467,19 +2467,24 @@
 
 	FPL provides a few macro functions useful for dealing with memory:<br>
 	
-	| Name                | What it does                                               |
-    |---------------------|------------------------------------------------------------|
-	| @ref fplZeroInit    | Initializes a struct with zero                             |
-	| @ref fplStructInit  | Initializes a struct with values                           |
-	| @ref fplStructSet   | Overwrites a struct with the given value                   |
-	| @ref fplClearStruct | Clears the given struct pointer to zero                    |
-	| @ref fplCopyStruct  | Copies the source struct data into the destination pointer |
-	| @ref fplArrayCount  | Returns the number of elements in fixed sized array        |
-	| @ref fplOffsetOf    | Returns the byte-offset to a field in a struct             |
-	| @ref fplKiloBytes   | Converts the given kilobytes value into bytes              |
-	| @ref fplMegaBytes   | Converts the given megabytes value into bytes              |
-	| @ref fplGigaBytes   | Converts the given gigabytes value into bytes              |
-	| @ref fplTeraBytes   | Converts the given terabytes value into bytes              |
+	| Name                       | What it does                                               |
+    |----------------------------|------------------------------------------------------------|
+	| @ref fplZeroInit           | Initializes a struct with zero                             |
+	| @ref fplStructInit         | Initializes a struct with values                           |
+	| @ref fplStructSet          | Overwrites a struct with the given value                   |
+	| @ref fplStructField        | Defines a single field in a struct                         |
+	| @ref fplClearStruct        | Clears the given struct pointer to zero                    |
+	| @ref fplCopyStruct         | Copies the source struct data into the destination pointer |
+	| @ref fplArrayCount         | Returns the number of elements in fixed sized array        |
+	| @ref fplOffsetOf           | Returns the byte-offset to a field in a struct             |
+	| @ref fplGetAlignmentOffset | Returns the offset needed to satisfy an alignment boundary |
+	| @ref fplGetAlignedSize     | Extends a size to satisfy an alignment boundary            |
+	| @ref fplIsAligned          | Returns true when a pointer address is aligned             |
+	| @ref fplStackAllocate      | Allocates the given number of bytes on the stack           |
+	| @ref fplKiloBytes          | Converts the given kilobytes value into bytes              |
+	| @ref fplMegaBytes          | Converts the given megabytes value into bytes              |
+	| @ref fplGigaBytes          | Converts the given gigabytes value into bytes              |
+	| @ref fplTeraBytes          | Converts the given terabytes value into bytes              |
 */
 
 /*!
