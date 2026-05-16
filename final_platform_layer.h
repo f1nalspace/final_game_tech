@@ -257,6 +257,9 @@ SOFTWARE.
 	- Fixed: fplStaticAssert generated colliding identifiers because the token-paste used `##line_##counter` (the literal token `line_`) instead of `##line##_##counter` — multiple static asserts in the same translation unit redefined the same symbol
 	- Fixed[#183]: fpl_internal_inline was not compiling on GCC/Clang
 	- Fixed[#189]: [Linux] Remember and restore LC_ALL locale on linux startup/shutdown
+	- Fixed: [POSIX] FPL_NO_RUNTIME_LINKING did not compile - optional pthread functions (pthread_yield removed in glibc 2.34, pthread_timedjoin_np GNU extension) are now left null with caller fallback
+	- Fixed: [POSIX] FPL_NO_RUNTIME_LINKING semaphore loading - sem_* function assignments now cast to the FPL prototype, fixing the mismatch against the opaque fpl__POSIXSemaphoreHandle type
+	- Fixed: [Audio] ALSA/PulseAudio/PipeWire reported "api not loaded" under FPL_NO_RUNTIME_LINKING because the library handle is never set - the api pointer is now used as a loaded sentinel
 	- Fixed: [POSIX] FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL define was being set twice
 	- Fixed: [POSIX] fplDateTime functions were not thread-safe — now use localtime_r / gmtime_r
 	- Fixed: [POSIX] fplMemoryAllocate was not compiling in FreeBSD (MAP_ANONYMOUS vs MAP_ANON)
@@ -12073,10 +12076,12 @@ typedef struct fpl__Win32WindowState {
 #	define FPL__POSIX_GET_FUNCTION_ADDRESS FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK
 #else
 #	define FPL__POSIX_LOAD_LIBRARY(mod, target, libName)
+	// NOTE(final): Without runtime linking optional functions cannot be probed and may not even be declared (e.g. pthread_yield is removed in glibc 2.34, pthread_timedjoin_np is a GNU extension), so they are left null and the caller falls back.
 #	define FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL(mod, libHandle, libName, target, type, name) \
-		(target)->name = name
+		(target)->name = fpl_null
+	// NOTE(final): The cast mirrors the runtime-linking path and is required when opaque handles make the FPL prototype differ from the real one.
 #	define FPL__POSIX_GET_FUNCTION_ADDRESS(mod, libHandle, libName, target, type, name) \
-		(target)->name = name
+		(target)->name = (type *)name
 #endif
 
 #define FPL__FUNC_PTHREAD_pthread_self(name) pthread_t name(void)
@@ -31696,9 +31701,11 @@ typedef struct {
 
 fpl_internal void fpl__UnloadAlsaApi(fpl__AlsaAudioApi *alsaApi) {
 	fplAssert(alsaApi != fpl_null);
+#if !defined(FPL_NO_RUNTIME_LINKING)
 	if (alsaApi->libHandle != fpl_null) {
 		dlclose(alsaApi->libHandle);
 	}
+#endif
 	fplClearStruct(alsaApi);
 }
 
@@ -31760,7 +31767,12 @@ fpl_internal bool fpl__LoadAlsaApi(fpl__AlsaAudioApi *alsaApi) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi, fpl__alsa_func_snd_pcm_info_sizeof, snd_pcm_info_sizeof);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi, fpl__alsa_func_snd_pcm_info, snd_pcm_info);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi, fpl__alsa_func_snd_pcm_info_get_name, snd_pcm_info_get_name);
+#if defined(FPL_NO_RUNTIME_LINKING)
+			// Without runtime linking the functions are direct-linked - use the api pointer as a non-null "loaded" sentinel
+			alsaApi->libHandle = (void *)alsaApi;
+#else
 			alsaApi->libHandle = libHandle;
+#endif
 			result = true;
 		} while (0);
 		if (result) {
@@ -33788,9 +33800,11 @@ typedef struct {
 
 fpl_internal void fpl__UnloadPulseAudioApi(fpl__PulseAudioApi *pulseAudioApi) {
 	fplAssert(pulseAudioApi != fpl_null);
+#if !defined(FPL_NO_RUNTIME_LINKING)
 	if (pulseAudioApi->libHandle != fpl_null) {
 		dlclose(pulseAudioApi->libHandle);
 	}
+#endif
 	fplClearStruct(pulseAudioApi);
 }
 
@@ -33856,7 +33870,12 @@ fpl_internal bool fpl__LoadPulseAudioApi(fpl__PulseAudioApi *pulseAudioApi) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_sample_size, pa_sample_size);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_bytes_per_second, pa_bytes_per_second);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PULSEAUDIO, libHandle, libName, pulseAudioApi, fpl__pa_func_pa_usec_to_bytes, pa_usec_to_bytes);
+#if defined(FPL_NO_RUNTIME_LINKING)
+			// Without runtime linking the functions are direct-linked - use the api pointer as a non-null "loaded" sentinel
+			pulseAudioApi->libHandle = (void *)pulseAudioApi;
+#else
 			pulseAudioApi->libHandle = libHandle;
+#endif
 			result = true;
 		} while (0);
 		if (result) {
@@ -34971,9 +34990,11 @@ typedef struct {
 
 fpl_internal void fpl__UnloadPipeWireApi(fpl__PipeWireApi *pipeWireApi) {
 	fplAssert(pipeWireApi != fpl_null);
+#if !defined(FPL_NO_RUNTIME_LINKING)
 	if (pipeWireApi->libHandle != fpl_null) {
 		dlclose(pipeWireApi->libHandle);
 	}
+#endif
 	fplClearStruct(pipeWireApi);
 }
 
@@ -35023,7 +35044,12 @@ fpl_internal bool fpl__LoadPipeWireApi(fpl__PipeWireApi *pipeWireApi) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_properties_set, pw_properties_set);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_properties_setf, pw_properties_setf);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_proxy_destroy, pw_proxy_destroy);
+#if defined(FPL_NO_RUNTIME_LINKING)
+			// Without runtime linking the functions are direct-linked - use the api pointer as a non-null "loaded" sentinel
+			pipeWireApi->libHandle = (void *)pipeWireApi;
+#else
 			pipeWireApi->libHandle = libHandle;
+#endif
 			result = true;
 		} while (0);
 		if (result) {
