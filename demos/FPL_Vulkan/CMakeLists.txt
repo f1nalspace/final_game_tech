@@ -12,6 +12,11 @@ set(MY_COMPILER "c99")
 
 set(MY_EXTERNAL_LIBS "")
 
+# final_math.h pulls in C math functions (cosf, sinf, ...)
+if(UNIX)
+	list(APPEND MY_EXTERNAL_LIBS "m")
+endif()
+
 set(MY_INCLUDE_DIRS
 	"../../"
 	"../additions/"
@@ -32,13 +37,9 @@ set(MY_DEFINES
 	-DFPL_LOGGING
 	)
 
-set(MY_SHADER_SOURCE_DIR "shaders")
-set(MY_SHADER_OUTPUT_DIR "shaders/spv")
-set(MY_SHADER_GLSL_SOURCES
-	"${MY_SHADER_SOURCE_DIR}/vert.vert"
-	"${MY_SHADER_SOURCE_DIR}/frag_random.frag"
-	"${MY_SHADER_SOURCE_DIR}/frag_color.frag"
-	)
+# NOTE: Shaders are compiled offline. The GLSL sources and the compiled .spv
+# binaries live in the shaders/ folder, and shaders.h embeds the .spv blobs
+# via apps/staticdatamaker. The build does NOT invoke glslc.
 
 # -----------------------------------------------------------------------------
 #
@@ -159,31 +160,3 @@ if(DEFINED MY_RESOURCE_FOLDER AND NOT "${MY_RESOURCE_FOLDER}" STREQUAL "")
 	)
 endif()
 
-# -----------------------------------------------------------------------------
-#
-# Shader compilation
-#
-# -----------------------------------------------------------------------------
-
-file(MAKE_DIRECTORY ${THIS_EXECUTABLE_PATH}/${MY_SHADER_OUTPUT_DIR})
-
-set(SPIRV_OUTPUTS "")
-
-foreach(SHADER_FILE ${MY_SHADER_GLSL_SOURCES})
-	get_filename_component(SHADER_NAME ${SHADER_FILE} NAME_WE)
-	set(GLSL_FILE "${CMAKE_CURRENT_SOURCE_DIR}/${SHADER_FILE}")
-	set(SPIRV_FILE "${THIS_EXECUTABLE_PATH}/${MY_SHADER_OUTPUT_DIR}/${SHADER_NAME}.spv")
-
-	add_custom_command(
-		OUTPUT ${SPIRV_FILE}
-		COMMAND glslc ${GLSL_FILE} -o ${SPIRV_FILE}
-		DEPENDS ${GLSL_FILE}
-		COMMENT "Compiling ${GLSL_FILE} to ${SPIRV_FILE}"
-	)
-
-	list(APPEND SPIRV_OUTPUTS ${SPIRV_FILE})
-endforeach()
-
-add_custom_target(shaders ALL DEPENDS ${SPIRV_OUTPUTS})
-
-add_dependencies(${PROJECT_NAME} shaders)
