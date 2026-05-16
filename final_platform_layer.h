@@ -10798,7 +10798,6 @@ typedef struct fpl__InputBackendDInput {
 // Win32 keyboard/mouse backend instance owned by fpl__InputContext.
 // In windowed mode WM_* events arrive via fpl__InputSystem_HandleNativeEvent and polling uses the user window for ScreenToClient.
 // In detached mode (FPL_NO_WINDOW or fplInputSettings.detachFromWindow) the backend creates a hidden HWND_MESSAGE.
-// So future WM_INPUT/WM_DEVICECHANGE delivery has a target; polling currently returns screen-relative mouse coordinates because there is no client area.
 typedef struct fpl__InputBackendWin32 {
 	HWND messageWindow;
 	ATOM messageWindowClass;
@@ -11529,7 +11528,6 @@ fpl_internal void fpl__PThreadUnloadApi(fpl__PThreadApi *pthreadApi) {
 fpl_internal bool fpl__PThreadLoadApi(fpl__PThreadApi *pthreadApi) {
 	const char *libpthreadFileNames[] = {
 #if defined(FPL_SUBPLATFORM_BSD)
-		// FreeBSD/NetBSD/etc ship pthread as libthr.
 		"libthr.so",
 		"libthr.so.3",
 #endif
@@ -15206,7 +15204,6 @@ fpl_internal uint32_t fpl__BuildInputBackendDescriptors(fpl__InputBackendDescrip
 		out[count].supportedSources = fplInputSourceType_Gamepad;
 		out[count].supportsEvents = true;
 		out[count].supportsPolling = true;
-		// Hotplug currently via polling scan; flips to true once the udev backend (step 11) is in.
 		out[count].supportsHotplug = false;
 		count++;
 	}
@@ -17562,9 +17559,6 @@ fpl_internal bool fpl__InputBackendWin32_Init(fpl__InputBackendWin32 *backend, c
 	detached = true;
 #	endif
 	if (detached) {
-		// Hidden HWND_MESSAGE for receiving WM_INPUT/WM_DEVICECHANGE in future steps.
-		// Polling already works against the global cursor/key state, so the message window
-		// is created but the wndproc just defers to DefWindowProcW for now.
 		WNDCLASSEXW wc = fplZeroInit;
 		wc.cbSize = sizeof(wc);
 		wc.lpfnWndProc = wapi->user.DefWindowProcW;
@@ -18220,7 +18214,7 @@ fpl_platform_api size_t fplSessionGetUsername(char *nameBuffer, const size_t max
 fpl_platform_api size_t fplCPUGetCoreCount(void) {
 	SYSTEM_INFO sysInfo = fplZeroInit;
 	GetSystemInfo(&sysInfo);
-	// @NOTE(final): For now this returns the number of logical processors, which is the actual core count in most cases.
+	// @NOTE(final): For now, this returns the number of logical processors, which is the actual core count in most cases.
 	size_t result = sysInfo.dwNumberOfProcessors;
 	return(result);
 }
@@ -26327,7 +26321,7 @@ fpl_platform_api size_t fplGetInputLocale(const fplLocaleFormat targetFormat, ch
 // Video Backend Abstraction
 //
 
-// Video data used for every backend (Software backbuffer for now)
+// Shared video data used for every backend
 typedef struct fpl__VideoData {
 #if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 	fplVideoBackBuffer backbuffer;
@@ -37765,7 +37759,7 @@ fpl_common_api fplPlatformType fplGetPlatformType(void) {
 #		if !defined(NOMINMAX)
 #			define NOMINMAX
 #		endif
-		// @NOTE(final): For now we dont want any network, com or gdi stuff at all, maybe later who knows.
+		// @NOTE(final): For now we don't want any network, com or gdi stuff at all, maybe later who knows.
 #		if !defined(WIN32_LEAN_AND_MEAN)
 #			define WIN32_LEAN_AND_MEAN 1
 #		endif
