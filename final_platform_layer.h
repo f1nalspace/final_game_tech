@@ -3619,14 +3619,6 @@ struct IUnknown;
 #	include <semaphore.h> // sem_t
 #endif // FPL_SUBPLATFORM_POSIX
 
-#if defined(FPL_SUBPLATFORM_X11)
-#	include <X11/X.h> // Window
-#	include <X11/Xlib.h> // Display
-#	include <X11/Xutil.h> // XVisualInfo
-#	include <X11/Xatom.h> // XA_CARDINAL
-#	include <X11/keysym.h> // Keyboard symbols (XK_Escape, etc.)
-#endif // FPL_SUBPLATFORM_X11
-
 //
 // Special Includes, such as intrin.h or cpuid.h
 // CRT Includes, such as stdio.h, stdlib.h, when enabled
