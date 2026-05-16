@@ -26,12 +26,22 @@ License:
 
 // We are a entry point
 #define FPL_ENTRYPOINT
+
 // We are a console application
-#define FPL_APPTYPE_CONSOLE
+#ifndef FPL_APPTYPE_CONSOLE
+#	define FPL_APPTYPE_CONSOLE
+#endif
+
 // Disable platform includes, such as windows.h, pthread.h, etc.
-#define FPL_NO_PLATFORM_INCLUDES
+#ifndef FPL_NO_PLATFORM_INCLUDES
+#	define FPL_NO_PLATFORM_INCLUDES
+#endif
+
 // Use semi-opaque handles in the header
-#define FPL_OPAQUE_HANDLES
+#ifndef FPL_OPAQUE_HANDLES
+#	define FPL_OPAQUE_HANDLES
+#endif
+
 // FPL header
 #include <final_platform_layer.h>
 
