@@ -76,9 +76,11 @@ if (fglLoadOpenGL(false)) {
 	Ignore Platform Includes
 -------------------------------------------------------------------------------
 
-By default header files are included, when FGL_HAS_INCLUDE finds them, unless you explicitly define FGL_NO_PLATFORM_INCLUDES.
+By default header files are included when FGL_HAS_INCLUDE finds them, unless you explicitly define FGL_NO_PLATFORM_INCLUDES.
 
-When FGL_NO_PLATFORM_INCLUDES is defined, no header files such as Windows.h and any of the xlib includes are included.
+When FGL_NO_PLATFORM_INCLUDES is defined, no header files such as <Windows.h> or <X11/X.h> or <X11/Xlib.h> are included.
+
+Define FGL_X11_NO_HEADERS to only exclude X11 header files.
 
 -------------------------------------------------------------------------------
 	License
