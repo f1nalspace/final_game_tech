@@ -996,7 +996,7 @@ SOFTWARE.
 	- Removed: fplClearEvents()
 	- Fixed: fplStaticAssert was not compiling on gcc/clang C99 mode
 	- Fixed: Corrected a ton of misspellings in the documentation
-	- Fixed: Define for FPL_DEBUG was missing a raute symbol
+	- Fixed: Define FPL_DEBUG was missing a pound symbol
 	- Fixed: Use va_copy for all va_list function arguments
 	- New: Added fplFlushFile()
 	- New: Added fplAtomicAddAndFetchPtr()
@@ -17816,8 +17816,10 @@ fpl_internal bool fpl__Win32ThreadWaitForMultiple(fplThreadHandle **threads, con
 fpl_internal bool fpl__Win32SignalWaitForMultiple(fplSignalHandle **signals, const size_t count, const size_t stride, const fplTimeoutValue timeout, const bool waitForAll) {
 	FPL__CheckArgumentNull(signals, false);
 	FPL__CheckArgumentMax(count, FPL_MAX_SIGNAL_COUNT, false);
-	// @MEMORY(final): This wastes a lof memory, use temporary memory allocation here
+
+	// @MEMORY(final): This wastes a lot memory, use temporary memory allocation here.
 	HANDLE signalHandles[FPL_MAX_SIGNAL_COUNT];
+
 	const size_t actualStride = stride > 0 ? stride : sizeof(fplSignalHandle *);
 	for (uint32_t index = 0; index < count; ++index) {
 		fplSignalHandle *availableSignal = *(fplSignalHandle **)((uint8_t *)signals + index * actualStride);
