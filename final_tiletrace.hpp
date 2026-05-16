@@ -212,8 +212,12 @@ SOFTWARE.
 
 # VERSION HISTORY
 
-- v1.01:
+- v1.0.2:
+	* Documented algorithm in broad details
+
+- v1.0.1:
 	* Added additional C++ api
+
 - v1.0:
 	* Initial version
 
