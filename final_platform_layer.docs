@@ -299,6 +299,7 @@
 
 	@section section_category_general General
 	@subpage page_category_initialization <br>
+	@subpage page_category_settings <br>
 	@subpage page_category_errorhandling <br>
 	@subpage page_category_logging <br>
 
@@ -495,6 +496,90 @@
 	Optionally you can use @ref fplMakeDefaultSettings to create a default filled @ref fplSettings structure, which can be directly used for @ref fplPlatformInit()<br>
 	<br>
 	If needed you can get the currently used @ref fplSettings configuration by calling @ref fplGetCurrentSettings()
+*/
+
+/*!
+	@page page_category_settings Settings & Configuration
+	@tableofcontents
+
+	FPL is configured through a single @ref fplSettings structure, which is passed to @ref fplPlatformInit() .<br>
+	It groups all configuration into one container with a sub-structure for each subsystem:<br>
+
+	| Field     | Type                  | Configures                                      |
+	|-----------|-----------------------|-------------------------------------------------|
+	| `window`  | @ref fplWindowSettings  | Window title, size, position, style, callbacks  |
+	| `video`   | @ref fplVideoSettings   | Video backend (OpenGL, Vulkan, Software), vsync |
+	| `audio`   | @ref fplAudioSettings   | Audio backend, format, device, buffer sizes     |
+	| `input`   | @ref fplInputSettings   | Input backends, gamepad detection frequency     |
+	| `console` | @ref fplConsoleSettings | Console subsystem configuration                 |
+	| `memory`  | @ref fplMemorySettings  | Custom memory allocator configuration           |
+
+	@section section_category_settings_defaults Creating default settings
+
+	You should never use an uninitialized @ref fplSettings structure. FPL provides two ways to obtain a fully populated default configuration.<br>
+	<br>
+	Use @ref fplMakeDefaultSettings() to get a settings structure by value:<br>
+
+	@code{.c}
+	fplSettings settings = fplMakeDefaultSettings();
+	@endcode
+
+	Or use @ref fplSetDefaultSettings() to reset an existing structure in place:<br>
+
+	@code{.c}
+	fplSettings settings;
+	fplSetDefaultSettings(&settings);
+	@endcode
+
+	@note Neither function changes the active settings - they only fill the structure. The settings only take effect when passed to @ref fplPlatformInit() .
+
+	@section section_category_settings_modify Modifying settings
+
+	After creating the defaults, change only the fields you care about, then pass the structure into @ref fplPlatformInit() .<br>
+
+	@code{.c}
+	fplSettings settings = fplMakeDefaultSettings();
+	fplCopyString("My Game", settings.window.title, fplArrayCount(settings.window.title));
+	settings.window.windowSize.width = 1280;
+	settings.window.windowSize.height = 720;
+
+	if (fplPlatformInit(fplInitFlags_All, &settings)) {
+		// ...
+		fplPlatformRelease();
+	}
+	@endcode
+
+	See @ref section_category_initialization_with_settings for the full initialization workflow.
+
+	@section section_category_settings_subdefaults Per-subsystem default helpers
+
+	If you only want to reset a single subsystem, FPL provides dedicated helper functions:<br>
+
+	| Function                       | Resets                  |
+	|--------------------------------|-------------------------|
+	| @ref fplSetDefaultWindowSettings()  | @ref fplWindowSettings  |
+	| @ref fplSetDefaultVideoSettings()   | @ref fplVideoSettings   |
+	| @ref fplSetDefaultAudioSettings()   | @ref fplAudioSettings   |
+	| @ref fplSetDefaultInputSettings()   | @ref fplInputSettings   |
+	| @ref fplSetDefaultConsoleSettings() | @ref fplConsoleSettings |
+
+	@code{.c}
+	fplVideoSettings videoSettings;
+	fplSetDefaultVideoSettings(&videoSettings);
+	@endcode
+
+	@section section_category_settings_current Querying the active settings
+
+	Once the platform is initialized, you can retrieve the currently active configuration by calling @ref fplGetCurrentSettings() .<br>
+	It returns a read-only pointer to the @ref fplSettings used by FPL.<br>
+
+	@code{.c}
+	const fplSettings *current = fplGetCurrentSettings();
+	fplConsoleFormatOut("Window size: %dx%d\n",
+		current->window.windowSize.width, current->window.windowSize.height);
+	@endcode
+
+	@note Modifying the returned structure has no effect on the running platform. Settings are applied at @ref fplPlatformInit() time only.
 */
 
 /*!
