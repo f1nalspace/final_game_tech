@@ -237,6 +237,12 @@ SOFTWARE.
 #	error "This platform/compiler is not supported!"
 #endif
 
+#if defined(__has_include)
+#	define FGL_HAS_INCLUDE(inc) __has_include(inc)
+#else
+#	define FGL_HAS_INCLUDE(inc) (1)
+#endif
+
 //
 // We do not support already active opengl headers/libraries
 //
