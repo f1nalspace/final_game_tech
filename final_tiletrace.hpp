@@ -189,15 +189,11 @@ After the algorithm completes (NextTileTraceStep returns false):
 [X] Block tile contour tracing
 [X] Creating optimized chain segments
 
-# TODO
-
-[ ] Finish algorithm documentation
-
 # LICENSE
 
 MIT License
 
-Copyright (c) 2017-2019 Torsten Spaete
+Copyright (c) 2017-2026 Torsten Spaete
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
 the Software without restriction, including without limitation the rights to
