@@ -3595,7 +3595,7 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 #		if !defined(WIN32_LEAN_AND_MEAN)
 #			define WIN32_LEAN_AND_MEAN 1
 #		endif
-		// @STUPID(final): Workaround for "combaseapi.h(229): error C2187: syntax error: 'identifier' was unexpected here"
+		// @HACK(final/Win32): Workaround for "combaseapi.h(229): error C2187: syntax error: 'identifier' was unexpected here"
 struct IUnknown;
 #		include <windows.h> // Win32 api
 #		if _WIN32_WINNT < 0x0600
@@ -25240,7 +25240,7 @@ fpl_internal void fpl__InputLinuxJoystickStateUpdateEvent(const struct js_event 
 
 	fplGamepadState *padState = &controller->state;
 
-	// @TODO(final): Use a static offset table instead of a pointer mapping table
+	// @TODO(final/LinuxJoystick): Use a static offset table instead of a pointer mapping table
 	fplGamepadButton *buttonMappingTable[12] = fplZeroInit;
 	buttonMappingTable[0] = &padState->actionA;
 	buttonMappingTable[1] = &padState->actionB;
@@ -28109,7 +28109,7 @@ fpl_internal bool fpl__VulkanCreateDebugMessenger(const fplVulkanSettings *setti
 	userData->userData = settings->userData;
 	userData->validationMode = settings->validationLayerMode;
 
-	// @TODO(final): Message type filtering in fplVulkanSettings
+	// @TODO(final/Vulkan): Message type filtering in fplVulkanSettings
 	fpl__VkDebugUtilsMessageTypeFlagsEXT messageTypes =
 		FPL__VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
 		FPL__VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
@@ -28156,7 +28156,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_Vulkan_Prep
 			return(false);
 		}
 
-		// @TODO(final): Validate vulkan video settings
+		// @TODO(final/Vulkan): Validate vulkan video settings
 
 		//
 		// Validate required instance extensions and layers
