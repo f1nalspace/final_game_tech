@@ -1365,8 +1365,83 @@
 	@note When the window is in fullscreen mode, @ref fplWindowState_Fullscreen is returned from @ref fplGetWindowState() always.
 	@warning The window state @ref fplWindowState_Fullscreen can never be set.
 
+	@section section_category_window_style_clipboard Reading/Writing the clipboard
+
+	FPL can read and write the system clipboard text.<br>
+
+	- Use @ref fplGetClipboardText() to read the current clipboard text into a destination buffer.
+	- Use @ref fplSetClipboardText() to overwrite the clipboard text with a new string.
+
+	Both functions return a boolean indicating success.<br>
+
+	@code{.c}
+	// Write text into the clipboard
+	fplSetClipboardText("Copied from FPL");
+
+	// Read text from the clipboard
+	char clipboard[256];
+	if (fplGetClipboardText(clipboard, fplArrayCount(clipboard))) {
+		fplConsoleFormatOut("Clipboard: %s\n", clipboard);
+	}
+	@endcode
+
+	@note @ref fplGetClipboardText() returns false when the clipboard does not contain any text.
+
+	@section section_category_window_style_displays Querying displays/monitors
+
+	FPL can enumerate the connected displays and query their properties through the @ref fplDisplayInfo and @ref fplDisplayMode structures.<br>
+
+	@subsection subsection_category_window_style_displays_enumerate Enumerating displays
+
+	Use @ref fplGetDisplayCount() to get the number of active displays, and @ref fplGetDisplays() to fill an array of @ref fplDisplayInfo structures.<br>
+
+	@code{.c}
+	fplDisplayInfo displays[8];
+	size_t displayCount = fplGetDisplays(displays, fplArrayCount(displays));
+	for (size_t i = 0; i < displayCount; ++i) {
+		fplConsoleFormatOut("Display '%s' %dx%d%s\n",
+			displays[i].id,
+			displays[i].physicalSize.width, displays[i].physicalSize.height,
+			displays[i].isPrimary ? " (primary)" : "");
+	}
+	@endcode
+
+	@subsection subsection_category_window_style_displays_specific Querying a specific display
+
+	FPL provides several functions to retrieve a single @ref fplDisplayInfo "display info":<br>
+
+	- @ref fplGetPrimaryDisplay() gets the primary display.
+	- @ref fplGetWindowDisplay() gets the display the FPL window is currently on.
+	- @ref fplGetDisplayFromPosition() gets the display that contains a given screen coordinate.
+
+	@code{.c}
+	fplDisplayInfo info;
+
+	// Get the display the window currently lives on
+	if (fplGetWindowDisplay(&info)) {
+		fplConsoleFormatOut("Window is on display '%s'\n", info.id);
+	}
+	@endcode
+
+	@subsection subsection_category_window_style_displays_modes Querying display modes
+
+	Use @ref fplGetDisplayModes() to retrieve the supported @ref fplDisplayMode entries (size, color depth, refresh rate) for a display id.<br>
+
+	@code{.c}
+	fplDisplayInfo primary;
+	if (fplGetPrimaryDisplay(&primary)) {
+		fplDisplayMode modes[64];
+		size_t modeCount = fplGetDisplayModes(primary.id, modes, fplArrayCount(modes));
+		for (size_t i = 0; i < modeCount; ++i) {
+			fplConsoleFormatOut("%dx%d @ %d Hz, %d bpp\n",
+				modes[i].width, modes[i].height,
+				modes[i].refreshRate, modes[i].colorBits);
+		}
+	}
+	@endcode
+
 	@section section_category_window_style_notes Notes
-	
+
 	@note Use @ref fplSetDefaultWindowSettings() to initialize a @ref fplWindowSettings to a default state.<br>
 */
 
