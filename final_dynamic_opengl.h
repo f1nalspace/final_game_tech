@@ -80,6 +80,8 @@ By default header files are included when FGL_HAS_INCLUDE finds them, unless you
 
 When FGL_NO_PLATFORM_INCLUDES is defined, no header files such as <Windows.h> or <X11/X.h> or <X11/Xlib.h> are included.
 
+Define FGL_WIN32_NO_HEADERS to only exclude the <Windows.h> header file.
+
 Define FGL_X11_NO_HEADERS to only exclude X11 header files.
 
 -------------------------------------------------------------------------------
@@ -130,6 +132,8 @@ SOFTWARE.
 
 	# v1.0.0:
 	- New: Added macro FGL_HAS_INCLUDE
+	- New[Win32]: Support for FGL_NO_PLATFORM_INCLUDES and FGL_WIN32_NO_HEADERS - no Windows.h is required anymore
+	- New[POSIX, GLX]: Implemented legacy and modern GLX context creation
 	- Fixed: Fixed warnings for initialization of function prototypes with fgl_api
 	- Fixed: Fixed wrong X11 window handle
 	- Fixed[X11]: Removed X11 header inclusion when FGL_NO_PLATFORM_INCLUDES is defined or when XLib includes is missing
@@ -189,8 +193,6 @@ SOFTWARE.
 /*!
 	\page page_todo Todo
 	\tableofcontents
-
-	- [POSIX, GLX] Implement context creation
 
 */
 
@@ -309,10 +311,86 @@ SOFTWARE.
 // Platform includes
 //
 #if defined(FGL_PLATFORM_WIN32)
-#	ifndef WIN32_LEAN_AND_MEAN
-#		define WIN32_LEAN_AND_MEAN 1
+
+#	if (!FGL_HAS_INCLUDE(<windows.h>) || defined(FGL_NO_PLATFORM_INCLUDES)) && !defined(FGL_WIN32_NO_HEADERS)
+#		define FGL_WIN32_NO_HEADERS
 #	endif
-#	include <Windows.h>
+
+#	if !defined(FGL_WIN32_NO_HEADERS)
+#		ifndef WIN32_LEAN_AND_MEAN
+#			define WIN32_LEAN_AND_MEAN 1
+#		endif
+#		include <Windows.h>
+#	else
+	// Self-defined: no Windows.h is required; the minimal Win32/WGL ABI is declared here.
+#		if !defined(WINAPI)
+#			define WINAPI __stdcall
+#		endif
+#		if !defined(CONST)
+#			define CONST const
+#		endif
+
+	typedef int BOOL;
+	typedef unsigned int UINT;
+	typedef unsigned long DWORD;
+	typedef unsigned short WORD;
+	typedef unsigned char BYTE;
+	typedef float FLOAT;
+	typedef const char *LPCSTR;
+
+	typedef struct fgl__Win32_HWND__ *HWND;
+	typedef struct fgl__Win32_HDC__ *HDC;
+	typedef struct fgl__Win32_HGLRC__ *HGLRC;
+	typedef struct fgl__Win32_HINSTANCE__ *HINSTANCE;
+	typedef HINSTANCE HMODULE;
+	typedef int (WINAPI *PROC)(void);
+
+	typedef struct tagPIXELFORMATDESCRIPTOR {
+		WORD nSize;
+		WORD nVersion;
+		DWORD dwFlags;
+		BYTE iPixelType;
+		BYTE cColorBits;
+		BYTE cRedBits;
+		BYTE cRedShift;
+		BYTE cGreenBits;
+		BYTE cGreenShift;
+		BYTE cBlueBits;
+		BYTE cBlueShift;
+		BYTE cAlphaBits;
+		BYTE cAlphaShift;
+		BYTE cAccumBits;
+		BYTE cAccumRedBits;
+		BYTE cAccumGreenBits;
+		BYTE cAccumBlueBits;
+		BYTE cAccumAlphaBits;
+		BYTE cDepthBits;
+		BYTE cStencilBits;
+		BYTE cAuxBuffers;
+		BYTE iLayerType;
+		BYTE bReserved;
+		DWORD dwLayerMask;
+		DWORD dwVisibleMask;
+		DWORD dwDamageMask;
+	} PIXELFORMATDESCRIPTOR;
+	typedef PIXELFORMATDESCRIPTOR *LPPIXELFORMATDESCRIPTOR;
+
+#		define PFD_TYPE_RGBA 0
+#		define PFD_MAIN_PLANE 0
+#		define PFD_DOUBLEBUFFER 0x00000001
+#		define PFD_DRAW_TO_WINDOW 0x00000004
+#		define PFD_SUPPORT_OPENGL 0x00000020
+
+#		if defined(__cplusplus)
+extern "C" {
+#		endif
+	HMODULE WINAPI LoadLibraryA(LPCSTR lpLibFileName);
+	BOOL WINAPI FreeLibrary(HMODULE hLibModule);
+	PROC WINAPI GetProcAddress(HMODULE hModule, LPCSTR lpProcName);
+#		if defined(__cplusplus)
+}
+#		endif
+#	endif // FGL_WIN32_NO_HEADERS
 
 //! Win32 OpenGL window handle
 typedef struct fglWin32OpenGLWindowHandle {
@@ -347,6 +425,54 @@ typedef struct fglWin32OpenGLRenderingContext {
 		typedef unsigned long fgl__X11Window;
 #	endif
 
+	// Self-defined: no GLX headers are required; the GLX handles are passed opaquely.
+	typedef struct fgl__GLXContextRec *fgl__GLXContext;
+	typedef struct fgl__GLXFBConfigRec *fgl__GLXFBConfig;
+
+	// Self-defined: minimal X11 ABI required for matching the GLX context to the window visual.
+	typedef void fgl__X11Visual;
+	typedef void fgl__X11Screen;
+	typedef unsigned long fgl__X11VisualID;
+
+	//! X11 visual info (ABI compatible layout of XVisualInfo)
+	typedef struct fgl__X11VisualInfo {
+		fgl__X11Visual *visual;
+		fgl__X11VisualID visualid;
+		int screen;
+		int depth;
+		int clazz;
+		unsigned long red_mask;
+		unsigned long green_mask;
+		unsigned long blue_mask;
+		int colormap_size;
+		int bits_per_rgb;
+	} fgl__X11VisualInfo;
+
+	//! X11 window attributes (ABI compatible layout of XWindowAttributes)
+	typedef struct fgl__X11WindowAttributes {
+		int x, y;
+		int width, height;
+		int border_width;
+		int depth;
+		fgl__X11Visual *visual;
+		unsigned long root;
+		int clazz;
+		int bit_gravity;
+		int win_gravity;
+		int backing_store;
+		unsigned long backing_planes;
+		unsigned long backing_pixel;
+		int save_under;
+		unsigned long colormap;
+		int map_installed;
+		int map_state;
+		long all_event_masks;
+		long your_event_mask;
+		long do_not_propagate_mask;
+		int override_redirect;
+		fgl__X11Screen *screen;
+	} fgl__X11WindowAttributes;
+
 //! Posix OpenGL window handle
 typedef struct fglPosixOpenGLWindowHandle {
 	//! Display
@@ -356,8 +482,8 @@ typedef struct fglPosixOpenGLWindowHandle {
 } fglPosixOpenGLWindowHandle;
 
 typedef struct fglPosixOpenGLRenderingContext {
-	//! Dummy
-	int dummy;
+	//! GLX rendering context
+	fgl__GLXContext context;
 } fglPosixOpenGLRenderingContext;
 #endif
 
@@ -7069,15 +7195,66 @@ static bool fgl__Win32CreateOpenGLContext(fglWin32OpenGLApi *api, const fglOpenG
 	return true;
 }
 #elif defined(FGL_PLATFORM_POSIX)
-#define FGL_FUNC_POSIX_GLX_glXGetProcAddress(name) void *name(const char *name)
+// GLX
+#define FGL_GLX_CONTEXT_DEBUG_BIT_ARB 0x0001
+#define FGL_GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB 0x0002
+#define FGL_GLX_CONTEXT_CORE_PROFILE_BIT_ARB 0x00000001
+#define FGL_GLX_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB 0x00000002
+#define FGL_GLX_CONTEXT_MAJOR_VERSION_ARB 0x2091
+#define FGL_GLX_CONTEXT_MINOR_VERSION_ARB 0x2092
+#define FGL_GLX_CONTEXT_FLAGS_ARB 0x2094
+#define FGL_GLX_CONTEXT_PROFILE_MASK_ARB 0x9126
+
+// X11
+#define FGL_X11_VisualIDMask 0x1
+
+#define FGL_FUNC_POSIX_GLX_glXGetProcAddress(name) void *name(const char *procName)
 typedef FGL_FUNC_POSIX_GLX_glXGetProcAddress(fgl_func_posix_glx_glXGetProcAddress);
+#define FGL_FUNC_POSIX_GLX_glXCreateContext(name) fgl__GLXContext name(fgl__X11Display *dpy, fgl__X11VisualInfo *vis, fgl__GLXContext shareList, int direct)
+typedef FGL_FUNC_POSIX_GLX_glXCreateContext(fgl_func_posix_glx_glXCreateContext);
+#define FGL_FUNC_POSIX_GLX_glXDestroyContext(name) void name(fgl__X11Display *dpy, fgl__GLXContext ctx)
+typedef FGL_FUNC_POSIX_GLX_glXDestroyContext(fgl_func_posix_glx_glXDestroyContext);
+#define FGL_FUNC_POSIX_GLX_glXMakeCurrent(name) int name(fgl__X11Display *dpy, fgl__X11Window drawable, fgl__GLXContext ctx)
+typedef FGL_FUNC_POSIX_GLX_glXMakeCurrent(fgl_func_posix_glx_glXMakeCurrent);
+#define FGL_FUNC_POSIX_GLX_glXSwapBuffers(name) void name(fgl__X11Display *dpy, fgl__X11Window drawable)
+typedef FGL_FUNC_POSIX_GLX_glXSwapBuffers(fgl_func_posix_glx_glXSwapBuffers);
+#define FGL_FUNC_POSIX_GLX_glXGetFBConfigs(name) fgl__GLXFBConfig *name(fgl__X11Display *dpy, int screen, int *nElements)
+typedef FGL_FUNC_POSIX_GLX_glXGetFBConfigs(fgl_func_posix_glx_glXGetFBConfigs);
+#define FGL_FUNC_POSIX_GLX_glXGetVisualFromFBConfig(name) fgl__X11VisualInfo *name(fgl__X11Display *dpy, fgl__GLXFBConfig config)
+typedef FGL_FUNC_POSIX_GLX_glXGetVisualFromFBConfig(fgl_func_posix_glx_glXGetVisualFromFBConfig);
+#define FGL_FUNC_POSIX_GLX_glXCreateContextAttribsARB(name) fgl__GLXContext name(fgl__X11Display *dpy, fgl__GLXFBConfig config, fgl__GLXContext shareContext, int direct, const int *attribList)
+typedef FGL_FUNC_POSIX_GLX_glXCreateContextAttribsARB(fgl_func_posix_glx_glXCreateContextAttribsARB);
+
+#define FGL_FUNC_POSIX_X11_XGetWindowAttributes(name) int name(fgl__X11Display *dpy, fgl__X11Window w, fgl__X11WindowAttributes *attribs)
+typedef FGL_FUNC_POSIX_X11_XGetWindowAttributes(fgl_func_posix_x11_XGetWindowAttributes);
+#define FGL_FUNC_POSIX_X11_XGetVisualInfo(name) fgl__X11VisualInfo *name(fgl__X11Display *dpy, long mask, fgl__X11VisualInfo *templ, int *nItems)
+typedef FGL_FUNC_POSIX_X11_XGetVisualInfo(fgl_func_posix_x11_XGetVisualInfo);
+#define FGL_FUNC_POSIX_X11_XVisualIDFromVisual(name) fgl__X11VisualID name(fgl__X11Visual *visual)
+typedef FGL_FUNC_POSIX_X11_XVisualIDFromVisual(fgl_func_posix_x11_XVisualIDFromVisual);
+#define FGL_FUNC_POSIX_X11_XFree(name) int name(void *data)
+typedef FGL_FUNC_POSIX_X11_XFree(fgl_func_posix_x11_XFree);
 
 typedef struct fglPosixOpenGLApi {
 	void *libraryHandle;
+	void *x11LibraryHandle;
 	fgl_func_posix_glx_glXGetProcAddress *glXGetProcAddress;
+	fgl_func_posix_glx_glXCreateContext *glXCreateContext;
+	fgl_func_posix_glx_glXDestroyContext *glXDestroyContext;
+	fgl_func_posix_glx_glXMakeCurrent *glXMakeCurrent;
+	fgl_func_posix_glx_glXSwapBuffers *glXSwapBuffers;
+	fgl_func_posix_glx_glXGetFBConfigs *glXGetFBConfigs;
+	fgl_func_posix_glx_glXGetVisualFromFBConfig *glXGetVisualFromFBConfig;
+	fgl_func_posix_glx_glXCreateContextAttribsARB *glXCreateContextAttribsARB;
+	fgl_func_posix_x11_XGetWindowAttributes *XGetWindowAttributes;
+	fgl_func_posix_x11_XGetVisualInfo *XGetVisualInfo;
+	fgl_func_posix_x11_XVisualIDFromVisual *XVisualIDFromVisual;
+	fgl_func_posix_x11_XFree *XFree;
 } fglPosixOpenGLApi;
 
 static void fgl__PosixUnloadOpenGL(fglPosixOpenGLApi *api) {
+	if(api->x11LibraryHandle != fgl_null) {
+		dlclose(api->x11LibraryHandle);
+	}
 	if(api->libraryHandle != fgl_null) {
 		dlclose(api->libraryHandle);
 	}
@@ -7094,6 +7271,12 @@ static bool fgl__PosixLoadOpenGL(fglPosixOpenGLApi *api) {
 		glLibraryHandle = dlopen(posixLibraryNames[i], RTLD_NOW);
 		if(glLibraryHandle != fgl_null) {
 			api->glXGetProcAddress = (fgl_func_posix_glx_glXGetProcAddress *)dlsym(glLibraryHandle, "glXGetProcAddress");
+			api->glXCreateContext = (fgl_func_posix_glx_glXCreateContext *)dlsym(glLibraryHandle, "glXCreateContext");
+			api->glXDestroyContext = (fgl_func_posix_glx_glXDestroyContext *)dlsym(glLibraryHandle, "glXDestroyContext");
+			api->glXMakeCurrent = (fgl_func_posix_glx_glXMakeCurrent *)dlsym(glLibraryHandle, "glXMakeCurrent");
+			api->glXSwapBuffers = (fgl_func_posix_glx_glXSwapBuffers *)dlsym(glLibraryHandle, "glXSwapBuffers");
+			api->glXGetFBConfigs = (fgl_func_posix_glx_glXGetFBConfigs *)dlsym(glLibraryHandle, "glXGetFBConfigs");
+			api->glXGetVisualFromFBConfig = (fgl_func_posix_glx_glXGetVisualFromFBConfig *)dlsym(glLibraryHandle, "glXGetVisualFromFBConfig");
 			break;
 		}
 	}
@@ -7102,16 +7285,216 @@ static bool fgl__PosixLoadOpenGL(fglPosixOpenGLApi *api) {
 		return false;
 	}
 	api->libraryHandle = glLibraryHandle;
+
+	// X11 is required to query the visual the target window was created with
+	const char *x11LibraryNames[] = {
+		"libX11.so.6",
+		"libX11.so",
+	};
+	void *x11LibraryHandle = fgl_null;
+	for(int i = 0; i < FGL_ARRAYCOUNT(x11LibraryNames); ++i) {
+		x11LibraryHandle = dlopen(x11LibraryNames[i], RTLD_NOW);
+		if(x11LibraryHandle != fgl_null) {
+			api->XGetWindowAttributes = (fgl_func_posix_x11_XGetWindowAttributes *)dlsym(x11LibraryHandle, "XGetWindowAttributes");
+			api->XGetVisualInfo = (fgl_func_posix_x11_XGetVisualInfo *)dlsym(x11LibraryHandle, "XGetVisualInfo");
+			api->XVisualIDFromVisual = (fgl_func_posix_x11_XVisualIDFromVisual *)dlsym(x11LibraryHandle, "XVisualIDFromVisual");
+			api->XFree = (fgl_func_posix_x11_XFree *)dlsym(x11LibraryHandle, "XFree");
+			break;
+		}
+	}
+	if(x11LibraryHandle == fgl_null) {
+		fgl__SetLastError("Failed loading posix libX11.so!");
+		return false;
+	}
+	api->x11LibraryHandle = x11LibraryHandle;
 	return(true);
 }
 
+// Finds the framebuffer configuration matching the given window visual id
+static fgl__GLXFBConfig fgl__PosixFindFBConfigForVisual(fglPosixOpenGLApi *api, fgl__X11Display *display, int screen, fgl__X11VisualID visualId) {
+	if(api->glXGetFBConfigs == fgl_null || api->glXGetVisualFromFBConfig == fgl_null) {
+		return fgl_null;
+	}
+	int fbConfigCount = 0;
+	fgl__GLXFBConfig *fbConfigs = api->glXGetFBConfigs(display, screen, &fbConfigCount);
+	if(fbConfigs == fgl_null || fbConfigCount == 0) {
+		return fgl_null;
+	}
+	fgl__GLXFBConfig result = fgl_null;
+	for(int i = 0; i < fbConfigCount; ++i) {
+		fgl__X11VisualInfo *vi = api->glXGetVisualFromFBConfig(display, fbConfigs[i]);
+		if(vi != fgl_null) {
+			bool isMatch = (vi->visualid == visualId);
+			api->XFree(vi);
+			if(isMatch) {
+				result = fbConfigs[i];
+				break;
+			}
+		}
+	}
+	api->XFree(fbConfigs);
+	return result;
+}
+
 static bool fgl__PosixCreateOpenGLContext(fglPosixOpenGLApi *api, const fglOpenGLContextCreationParameters *contextCreationParams, fglOpenGLContext *outContext) {
-	// @TODO(final): Implement POSIX/GLX context creation
-	return false;
+	fgl__X11Display *display = contextCreationParams->windowHandle.posix.display;
+	fgl__X11Window window = contextCreationParams->windowHandle.posix.window;
+	if(display == fgl_null) {
+		fgl__SetLastError("Missing posix display handle in opengl context creation!");
+		return false;
+	}
+	if(window == 0) {
+		fgl__SetLastError("Missing posix window handle in opengl context creation!");
+		return false;
+	}
+	if(api->glXCreateContext == fgl_null || api->glXDestroyContext == fgl_null || api->glXMakeCurrent == fgl_null) {
+		fgl__SetLastError("Required GLX functions are not available!");
+		return false;
+	}
+	if(api->XGetWindowAttributes == fgl_null || api->XGetVisualInfo == fgl_null || api->XVisualIDFromVisual == fgl_null || api->XFree == fgl_null) {
+		fgl__SetLastError("Required X11 functions are not available!");
+		return false;
+	}
+
+	outContext->windowHandle.posix.display = display;
+	outContext->windowHandle.posix.window = window;
+
+	// Query the visual the target window was created with, so the GLX context is compatible with it
+	fgl__X11WindowAttributes windowAttribs = FGL_ZERO_INIT;
+	if(!api->XGetWindowAttributes(display, window, &windowAttribs)) {
+		fgl__SetLastError("Failed querying window attributes for display '%p' and window '%lu'!", display, (unsigned long)window);
+		return false;
+	}
+	fgl__X11VisualID windowVisualId = api->XVisualIDFromVisual(windowAttribs.visual);
+
+	// Get the matching visual info for the window visual id
+	fgl__X11VisualInfo visualInfoTemplate = FGL_ZERO_INIT;
+	visualInfoTemplate.visualid = windowVisualId;
+	int visualInfoCount = 0;
+	fgl__X11VisualInfo *visualInfo = api->XGetVisualInfo(display, FGL_X11_VisualIDMask, &visualInfoTemplate, &visualInfoCount);
+	if(visualInfo == fgl_null || visualInfoCount == 0) {
+		fgl__SetLastError("Failed getting visual info for window visual id '%lu' on display '%p'!", (unsigned long)windowVisualId, display);
+		return false;
+	}
+	const int screen = visualInfo->screen;
+
+	// Create legacy GLX rendering context (glXCreateContext) using the window visual
+	fgl__GLXContext legacyRenderingContext = api->glXCreateContext(display, visualInfo, fgl_null, 1);
+	api->XFree(visualInfo);
+	if(legacyRenderingContext == fgl_null) {
+		fgl__SetLastError("Failed creating GLX legacy rendering context for display '%p'!", display);
+		return false;
+	}
+
+	if(!api->glXMakeCurrent(display, window, legacyRenderingContext)) {
+		fgl__SetLastError("Failed activating GLX legacy rendering context '%p' for display '%p'!", legacyRenderingContext, display);
+		api->glXDestroyContext(display, legacyRenderingContext);
+		return false;
+	}
+
+	// Load modern context creation extension while the legacy context is active
+	api->glXCreateContextAttribsARB = (fgl_func_posix_glx_glXCreateContextAttribsARB *)api->glXGetProcAddress("glXCreateContextAttribsARB");
+
+	api->glXMakeCurrent(display, 0, fgl_null);
+
+	fgl__GLXContext activeRenderingContext;
+	if(contextCreationParams->profile != fglOpenGLProfileType_LegacyProfile) {
+		// @NOTE(final): This is only available in OpenGL 3.0+
+
+		if(!(contextCreationParams->majorVersion >= 3 && contextCreationParams->minorVersion >= 0)) {
+			fgl__SetLastError("You have not specified the 'majorVersion' and 'minorVersion' in the Context Creation Params!");
+			api->glXDestroyContext(display, legacyRenderingContext);
+			return false;
+		}
+		if(api->glXCreateContextAttribsARB == fgl_null) {
+			fgl__SetLastError("glXCreateContextAttribsARB is not available, modern OpenGL is not available for your video card");
+			api->glXDestroyContext(display, legacyRenderingContext);
+			return false;
+		}
+
+		int profile = 0;
+		int flags = 0;
+		if(contextCreationParams->profile == fglOpenGLProfileType_CoreProfile) {
+			profile = FGL_GLX_CONTEXT_CORE_PROFILE_BIT_ARB;
+		} else if(contextCreationParams->profile == fglOpenGLProfileType_CompabilityProfile) {
+			profile = FGL_GLX_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB;
+		} else {
+			fgl__SetLastError("No opengl compability profile selected, please specific either fglOpenGLProfileType_CoreProfile or fglOpenGLProfileType_CompabilityProfile");
+			api->glXDestroyContext(display, legacyRenderingContext);
+			return false;
+		}
+		if(contextCreationParams->forwardCompability) {
+			flags = FGL_GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
+		}
+
+		// Find the framebuffer configuration matching the window visual
+		fgl__GLXFBConfig fbConfig = fgl__PosixFindFBConfigForVisual(api, display, screen, windowVisualId);
+		if(fbConfig == fgl_null) {
+			fgl__SetLastError("Failed finding GLX framebuffer configuration for window visual id '%lu' on display '%p' and screen '%d'!", (unsigned long)windowVisualId, display, screen);
+			api->glXDestroyContext(display, legacyRenderingContext);
+			return false;
+		}
+
+		int contextAttribIndex = 0;
+		int contextAttribList[20 + 1] = FGL_ZERO_INIT;
+		contextAttribList[contextAttribIndex++] = FGL_GLX_CONTEXT_MAJOR_VERSION_ARB;
+		contextAttribList[contextAttribIndex++] = (int)contextCreationParams->majorVersion;
+		contextAttribList[contextAttribIndex++] = FGL_GLX_CONTEXT_MINOR_VERSION_ARB;
+		contextAttribList[contextAttribIndex++] = (int)contextCreationParams->minorVersion;
+		contextAttribList[contextAttribIndex++] = FGL_GLX_CONTEXT_PROFILE_MASK_ARB;
+		contextAttribList[contextAttribIndex++] = profile;
+		if(flags > 0) {
+			contextAttribList[contextAttribIndex++] = FGL_GLX_CONTEXT_FLAGS_ARB;
+			contextAttribList[contextAttribIndex++] = flags;
+		}
+
+		// Create modern opengl rendering context
+		fgl__GLXContext modernRenderingContext = api->glXCreateContextAttribsARB(display, fbConfig, fgl_null, 1, contextAttribList);
+		if(modernRenderingContext != fgl_null) {
+			if(!api->glXMakeCurrent(display, window, modernRenderingContext)) {
+				fgl__SetLastError("Warning: Failed activating Modern OpenGL Rendering Context for version (%d.%d) and profile (%d) and display '%p') -> Fallback to legacy context", contextCreationParams->majorVersion, contextCreationParams->minorVersion, contextCreationParams->profile, display);
+
+				api->glXDestroyContext(display, modernRenderingContext);
+				modernRenderingContext = fgl_null;
+
+				// Fallback to legacy context
+				api->glXMakeCurrent(display, window, legacyRenderingContext);
+				activeRenderingContext = legacyRenderingContext;
+			} else {
+				// Destroy legacy rendering context
+				api->glXDestroyContext(display, legacyRenderingContext);
+				legacyRenderingContext = fgl_null;
+				activeRenderingContext = modernRenderingContext;
+			}
+		} else {
+			fgl__SetLastError("Warning: Failed creating Modern OpenGL Rendering Context for version (%d.%d) and profile (%d) and display '%p') -> Fallback to legacy context", contextCreationParams->majorVersion, contextCreationParams->minorVersion, contextCreationParams->profile, display);
+
+			// Fallback to legacy context
+			api->glXMakeCurrent(display, window, legacyRenderingContext);
+			activeRenderingContext = legacyRenderingContext;
+		}
+	} else {
+		// Caller wants legacy context
+		api->glXMakeCurrent(display, window, legacyRenderingContext);
+		activeRenderingContext = legacyRenderingContext;
+	}
+	assert(activeRenderingContext != fgl_null);
+	outContext->renderingContext.posix.context = activeRenderingContext;
+	outContext->isValid = true;
+	return true;
 }
 
 static void fgl__PosixDestroyOpenGLContext(fglPosixOpenGLApi *api, fglOpenGLContext *context) {
-	// @TODO(final): Implement POSIX/GLX context destroying
+	fgl__X11Display *display = context->windowHandle.posix.display;
+	if(context->renderingContext.posix.context != fgl_null) {
+		if(api->glXMakeCurrent != fgl_null) {
+			api->glXMakeCurrent(display, 0, fgl_null);
+		}
+		if(api->glXDestroyContext != fgl_null) {
+			api->glXDestroyContext(display, context->renderingContext.posix.context);
+		}
+		context->renderingContext.posix.context = fgl_null;
+	}
 }
 #endif
 
@@ -8406,6 +8789,12 @@ fgl_api void fglPresentOpenGL(const fglOpenGLContext *context) {
 #	if defined(FGL_PLATFORM_WIN32)
 	if(context->windowHandle.win32.deviceContext != fgl_null) {
 		state->win32.gdi32.SwapBuffers(context->windowHandle.win32.deviceContext);
+	}
+#	elif defined(FGL_PLATFORM_POSIX)
+	if(context->windowHandle.posix.display != fgl_null && context->windowHandle.posix.window != 0) {
+		if(state->posix.glXSwapBuffers != fgl_null) {
+			state->posix.glXSwapBuffers(context->windowHandle.posix.display, context->windowHandle.posix.window);
+		}
 	}
 #	endif
 }
