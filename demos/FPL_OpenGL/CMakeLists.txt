@@ -23,6 +23,7 @@ endif()
 set(MY_INCLUDE_DIRS
 	"../../"
 	"../additions/"
+	"../dependencies/"
 	)
 
 set(MY_HEADER_FILES
