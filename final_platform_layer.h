@@ -1920,6 +1920,7 @@ SOFTWARE.
 
 	- Some CPU query features not implemented in non-x86 platforms
 	- No unix gamepad support implemented (fd is planned)
+	- [X11] On GNOME the dash/taskbar icon is not taken from _NET_WM_ICON - GNOME resolves it from an installed .desktop file matched against WM_CLASS. FPL sets WM_CLASS from the window title; the application must ship a .desktop file with a matching StartupWMClass to get a dash/taskbar icon
 
 	@section section_support_status_unsupported Not Supported
 
