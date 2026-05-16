@@ -324,6 +324,7 @@ SOFTWARE.
 	- Fixed: [X11] fplQueryCursorPosition returned window-relative coords instead of screen-relative; now matches Win32 GetCursorPos by returning root-window coords
 	- Fixed: [X11] fplQueryCursorPosition was compiled outside FPL__ENABLE_WINDOW guard, breaking window-disabled builds
 	- Fixed: [X11] FPL_SUBPLATFORM_X11 was set, even when X11 was not available
+	- Fixed: [X11] _NET_WM_ICON pixel packing promoted uint8_t operands to int before shifting — alpha/red values >= 128 overflowed the signed int (UB) and could corrupt the icon; bytes are now cast to unsigned long first
 	- Fixed[#181]: [X11] fpl__X11ParseUriPaths does not do any URI decoding, resulting in most-likely unuseable file paths
 	- Changed: [X11] Window size and position are no longer overwritten on creation
 	- Changed: [X11] Default window size changed to 720p (1280x720)
@@ -23833,9 +23834,14 @@ fpl_internal void fpl__X11LoadWindowIcon(const fpl__X11Api *x11Api, fpl__X11Wind
 			fplAssert(iconSource->type == fplImageType_RGBA);
 			*target++ = (int32_t)iconSource->width;
 			*target++ = (int32_t)iconSource->height;
-			const uint32_t *source = (const uint32_t *)iconSource->data;
 			for (int j = 0; j < iconSource->width * iconSource->height; ++j) {
-				*target++ = (iconSource->data[j * 4 + 0] << 16) | (iconSource->data[j * 4 + 1] << 8) | (iconSource->data[j * 4 + 2] << 0) | (iconSource->data[j * 4 + 3] << 24);
+				// _NET_WM_ICON pixels are ARGB. Cast each byte to unsigned long before shifting, otherwise the
+				// uint8_t operand is promoted to int and an alpha or red value >= 128 overflows the signed int (UB).
+				unsigned long r = (unsigned long)iconSource->data[j * 4 + 0];
+				unsigned long g = (unsigned long)iconSource->data[j * 4 + 1];
+				unsigned long b = (unsigned long)iconSource->data[j * 4 + 2];
+				unsigned long a = (unsigned long)iconSource->data[j * 4 + 3];
+				*target++ = (long)((a << 24) | (r << 16) | (g << 8) | (b << 0));
 			}
 		}
 
