@@ -1920,7 +1920,6 @@ SOFTWARE.
 
 	- Some CPU query features not implemented in non-x86 platforms
 	- No unix gamepad support implemented (fd is planned)
-	- [X11] On GNOME the dash/taskbar icon is not taken from _NET_WM_ICON - GNOME resolves it from an installed .desktop file matched against WM_CLASS. FPL sets WM_CLASS from the window title; the application must ship a .desktop file with a matching StartupWMClass to get a dash/taskbar icon
 	- [Vulkan] The debug messenger message-type filter (GENERAL/VALIDATION/PERFORMANCE) is hardcoded to all types - fplVulkanSettings only exposes severity filtering, not message-type filtering
 	- [Vulkan] When FPL creates the Vulkan instance itself, fplVulkanSettings (appName/engineName/versions/apiVersion) are passed through without validation - invalid values surface later as a raw vkCreateInstance VkResult instead of an early FPL error
 

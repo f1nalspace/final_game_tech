@@ -79,7 +79,7 @@
 	@subsection subsection_intro_supported_platforms Which platforms are supported by FPL?
 	- Windows (x86/x64)
 	- Linux (x86/x64/arm)
-	- Unix/BSD (x86/x64, partially)
+	- Unix/BSD (x86/x64)
 
 	For more details see the page: @subpage page_support_status
 	
@@ -93,11 +93,13 @@
 		- Compiler detection
 		- Architecture detection
 		- OS detection
+		- Runtime/Static Linking Support
 	- Window
 		- Create and handle a Single Window
 		- Fullscreen toggling
 		- Event handling
 		- Clipboard string reading and writing
+		- Monitor-Info Iteration
 	- Input (Event-based or by Polling)
 		- Text input (Event-based only)
 		- Keyboard
@@ -142,7 +144,7 @@
 		- Loading of Shared Libraries (DLL on Windows, .so on Linux)
 		- Function Pointer Lookup
 	- IO
-		- Path functions
+		- Path
 			- Query User Home Directory
 			- Query Executable Path
 			- Extract Filename, Extension and Path
@@ -152,17 +154,18 @@
 			- Reading and Writing of Binary Files (32-bit and 64-bit)
 			- Iterate over Files/Directories
 			- Rename/Copy/Delete/Move operations
-	- Hardware info retrieval
+	- Hardware Info
 		- Query Processor Infos (Core count, Name)
 		- Query Current Memory State (Physical size, Virtual Size, Page Size, etc.)
 		- Query System Architecture
-	- OS info retrieval
+	- OS Info
 		- Query logged in Username
 		- Query OS infos (Name, Version)
 	- Timings
 		- Get number of seconds (Low and High precision) used for profiling and delta calculations
 		- Get number of milliseconds (Low and High precision) used for simple measurement
-	- String conversion functions
+		- Query current date time (Local or UTC)
+	- Strings
 		- UTF-8 <-> Widestring
 		- Copy
 		- Comparing
@@ -251,7 +254,9 @@
 
 	@section section_usage_multiple_translation_units How to use FPL in multiple translation units?
 
-	To use FPL in multiple translation units, it is recommended to create a separated "final_platform_layer.c" file in the same directory FPL is located and define the implementation there only:<br>
+	To use FPL in multiple translation units, it is recommended to create a separate "final_platform_layer.c" file in the same directory FPL is located and define the implementation there only.<br>
+
+	@note It is very important that the features you define in the translation units matches the header inclusion! For example using **FPL_NO_VIDEO** in one place, but not in the others will propably result in compile errors.
 
 	<b>final_platform_layer.c</b>:
 	@code{.c}
@@ -264,7 +269,7 @@
 	<br>
 	In your main translation-unit, you just include the entry point only using the preprocessor define **FPL_ENTRYPOINT**.
 
-	<b>main_translation_unit.c</b>:
+	<b>main.c</b>:
 	@code{.c}
 	#define FPL_ENTRYPOINT // Integrate entrypoint only
 	#include "final_platform_layer.h"
@@ -273,6 +278,7 @@
 	@section section_usage_static_library How to use FPL in a static library?
 
 	To use FPL as a/in static library you do the same steps required for using FPL in multiple translation units.
+
 	See @ref section_usage_multiple_translation_units for more details.
 
 	@section section_usage_codecomments How do I get the code-documentation to show up in the IDE?
