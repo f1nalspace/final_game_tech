@@ -34478,108 +34478,108 @@ fpl_internal void fpl__PipeWireBuildChannelMap(const uint32_t channels, const fp
 // Each Id/Int prop = 8 (key+flags) + 8 (pod header) + 8 (4-byte body + 4-byte pad).
 fpl_internal uint32_t fpl__PipeWireBuildAudioFormatPod(uint8_t *buffer, const size_t bufferSize, const uint32_t spaAudioFormat, const uint32_t sampleRate, const uint32_t channels, uint32_t *channelMap) {
 	if (!buffer || bufferSize == 0 || channels == 0 || channelMap == fpl_null)
-        return 0;
+		return 0;
 
-    // ---- Scalar property definitions ----
-    const uint32_t numScalarProps = 5u;
+	// ---- Scalar property definitions ----
+	const uint32_t numScalarProps = 5u;
 
-    struct ScalarProp {
-        uint32_t key;
-        uint32_t childType;
-        uint32_t value;
-    } scalarProps[5] = {
-        { SPA_FORMAT_mediaType,      SPA_TYPE_Id,  SPA_MEDIA_TYPE_audio },
-        { SPA_FORMAT_mediaSubtype,   SPA_TYPE_Id,  SPA_MEDIA_SUBTYPE_raw },
-        { SPA_FORMAT_AUDIO_format,   SPA_TYPE_Id,  spaAudioFormat },
-        { SPA_FORMAT_AUDIO_rate,     SPA_TYPE_Int, sampleRate },
-        { SPA_FORMAT_AUDIO_channels, SPA_TYPE_Int, channels }
-    };
+	struct ScalarProp {
+		uint32_t key;
+		uint32_t childType;
+		uint32_t value;
+	} scalarProps[5] = {
+		{ SPA_FORMAT_mediaType,		 SPA_TYPE_Id,  SPA_MEDIA_TYPE_audio },
+		{ SPA_FORMAT_mediaSubtype,	 SPA_TYPE_Id,  SPA_MEDIA_SUBTYPE_raw },
+		{ SPA_FORMAT_AUDIO_format,	 SPA_TYPE_Id,  spaAudioFormat },
+		{ SPA_FORMAT_AUDIO_rate,	 SPA_TYPE_Int, sampleRate },
+		{ SPA_FORMAT_AUDIO_channels, SPA_TYPE_Int, channels }
+	};
 
-    // ---- Size calculations ----
+	// ---- Size calculations ----
 
-    // Scalar property size
-    const uint32_t scalarPropSize =
-        SPA_POD_PROP_HEADER_SIZE +
-        SPA_POD_SCALAR_SIZE +
-        SPA_POD_SCALAR_BODY_SIZE +
-        SPA_POD_SCALAR_PAD_SIZE;
+	// Scalar property size
+	const uint32_t scalarPropSize =
+		SPA_POD_PROP_HEADER_SIZE +
+		SPA_POD_SCALAR_SIZE +
+		SPA_POD_SCALAR_BODY_SIZE +
+		SPA_POD_SCALAR_PAD_SIZE;
 
-    // Channel map array pod size
-    const uint32_t arrayBodySize =
-        8u + channels * sizeof(uint32_t); // childType + childSize + values[]
+	// Channel map array pod size
+	const uint32_t arrayBodySize =
+		8u + channels * sizeof(uint32_t); // childType + childSize + values[]
 
-    const uint32_t arrayPodSize =
-        SPA_POD_PROP_HEADER_SIZE + // key + flags
-        8u +                       // pod header (size + type)
-        arrayBodySize;
+	const uint32_t arrayPodSize =
+		SPA_POD_PROP_HEADER_SIZE + // key + flags
+		8u +					   // pod header (size + type)
+		arrayBodySize;
 
-    const uint32_t numTotalProps = numScalarProps + 1; // + channel map
+	const uint32_t numTotalProps = numScalarProps + 1; // + channel map
 
-    const uint32_t objectBodySize =
-        SPA_POD_OBJECT_BODY_HEADER_SIZE +
-        numScalarProps * scalarPropSize +
-        arrayPodSize;
+	const uint32_t objectBodySize =
+		SPA_POD_OBJECT_BODY_HEADER_SIZE +
+		numScalarProps * scalarPropSize +
+		arrayPodSize;
 
-    const uint32_t totalSize =
-        SPA_POD_OBJECT_HEADER_SIZE +
-        objectBodySize;
+	const uint32_t totalSize =
+		SPA_POD_OBJECT_HEADER_SIZE +
+		objectBodySize;
 
-    if (bufferSize < totalSize)
-        return 0;
+	if (bufferSize < totalSize)
+		return 0;
 
-    fplMemoryClear(buffer, totalSize);
+	fplMemoryClear(buffer, totalSize);
 
-    // ---- Write object header ----
-    uint32_t *u32 = (uint32_t *)buffer;
-    u32[0] = objectBodySize;
-    u32[1] = SPA_TYPE_Object;
+	// ---- Write object header ----
+	uint32_t *u32 = (uint32_t *)buffer;
+	u32[0] = objectBodySize;
+	u32[1] = SPA_TYPE_Object;
 
-    // ---- Write object body header ----
-    u32[2] = SPA_TYPE_OBJECT_Format;
-    u32[3] = SPA_PARAM_EnumFormat;
+	// ---- Write object body header ----
+	u32[2] = SPA_TYPE_OBJECT_Format;
+	u32[3] = SPA_PARAM_EnumFormat;
 
-    uint8_t *cursor =
-        buffer + SPA_POD_OBJECT_HEADER_SIZE + SPA_POD_OBJECT_BODY_HEADER_SIZE;
+	uint8_t *cursor =
+		buffer + SPA_POD_OBJECT_HEADER_SIZE + SPA_POD_OBJECT_BODY_HEADER_SIZE;
 
-    // ---- Write scalar properties ----
-    for (uint32_t i = 0; i < numScalarProps; ++i) {
-        uint32_t *p = (uint32_t *)cursor;
+	// ---- Write scalar properties ----
+	for (uint32_t i = 0; i < numScalarProps; ++i) {
+		uint32_t *p = (uint32_t *)cursor;
 
-        p[0] = scalarProps[i].key;
-        p[1] = 0; // flags
+		p[0] = scalarProps[i].key;
+		p[1] = 0; // flags
 
-        p[2] = SPA_POD_SCALAR_BODY_SIZE; // child body size
-        p[3] = scalarProps[i].childType;
+		p[2] = SPA_POD_SCALAR_BODY_SIZE; // child body size
+		p[3] = scalarProps[i].childType;
 
-        p[4] = scalarProps[i].value;
-        p[5] = 0; // padding
+		p[4] = scalarProps[i].value;
+		p[5] = 0; // padding
 
-        cursor += scalarPropSize;
-    }
+		cursor += scalarPropSize;
+	}
 
-    // ---- Write channel map array property ----
-    {
-        uint32_t *p = (uint32_t *)cursor;
+	// ---- Write channel map array property ----
+	{
+		uint32_t *p = (uint32_t *)cursor;
 
-        // Property header
-        p[0] = SPA_FORMAT_AUDIO_position;
-        p[1] = 0; // flags
+		// Property header
+		p[0] = SPA_FORMAT_AUDIO_position;
+		p[1] = 0; // flags
 
-        // Array pod header
-        p[2] = arrayBodySize;   // pod.size
-        p[3] = SPA_TYPE_Array;  // pod.type
+		// Array pod header
+		p[2] = arrayBodySize;	// pod.size
+		p[3] = SPA_TYPE_Array;	// pod.type
 
-        // Array child size + type (spa_pod: size first, type second)
-        p[4] = sizeof(uint32_t); // child.size
-        p[5] = SPA_TYPE_Id;      // child.type
+		// Array child size + type (spa_pod: size first, type second)
+		p[4] = sizeof(uint32_t); // child.size
+		p[5] = SPA_TYPE_Id;		 // child.type
 
-        // Values
-        uint32_t *vals = p + 6;
-        for (uint32_t i = 0; i < channels; i++)
-            vals[i] = channelMap[i];
-    }
+		// Values
+		uint32_t *vals = p + 6;
+		for (uint32_t i = 0; i < channels; i++)
+			vals[i] = channelMap[i];
+	}
 
-    return totalSize;
+	return totalSize;
 }
 
 // Helper: find a value in a spa_dict for a given key.
@@ -35717,11 +35717,11 @@ fpl_internal void fpl__ReleaseAudio(fpl__AudioState *audioState) {
 // expensive field to convert in caller code, so it stays sacred until the
 // very last tier; channels and type are relaxed earlier.
 typedef enum fpl__AudioProbeTier {
-	fpl__AudioProbeTier_Exact = 0,        // user.rate + user.channels + user.type
+	fpl__AudioProbeTier_Exact = 0,		  // user.rate + user.channels + user.type
 	fpl__AudioProbeTier_RateAndChannels,  // user.rate + user.channels + FallbackTypes
-	fpl__AudioProbeTier_RateAndType,      // user.rate + FallbackChannels + user.type
-	fpl__AudioProbeTier_RateOnly,         // user.rate + FallbackChannels x FallbackTypes
-	fpl__AudioProbeTier_Anything,         // FallbackSampleRates x FallbackChannels x FallbackTypes
+	fpl__AudioProbeTier_RateAndType,	  // user.rate + FallbackChannels + user.type
+	fpl__AudioProbeTier_RateOnly,		  // user.rate + FallbackChannels x FallbackTypes
+	fpl__AudioProbeTier_Anything,		  // FallbackSampleRates x FallbackChannels x FallbackTypes
 	fpl__AudioProbeTier_BackendDefaults,  // very-last resort - hand each backend a blank format and let it pick its native
 	fpl__AudioProbeTier_Count,
 } fpl__AudioProbeTier;
@@ -37685,8 +37685,8 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 #	if defined(FPL__ENABLE_INPUT)
 	{
 		fplInputSourceType requestedSources = fplInputSourceType_None;
-		if (fplIsMaskSet(appState->initFlags, fplInitFlags_Keyboard))       requestedSources = (fplInputSourceType)(requestedSources | fplInputSourceType_Keyboard);
-		if (fplIsMaskSet(appState->initFlags, fplInitFlags_Mouse))          requestedSources = (fplInputSourceType)(requestedSources | fplInputSourceType_Mouse);
+		if (fplIsMaskSet(appState->initFlags, fplInitFlags_Keyboard))		requestedSources = (fplInputSourceType)(requestedSources | fplInputSourceType_Keyboard);
+		if (fplIsMaskSet(appState->initFlags, fplInitFlags_Mouse))			requestedSources = (fplInputSourceType)(requestedSources | fplInputSourceType_Mouse);
 		if (fplIsMaskSet(appState->initFlags, fplInitFlags_Gamepad)) requestedSources = (fplInputSourceType)(requestedSources | fplInputSourceType_Gamepad);
 		// Back-compat: a window implies keyboard + mouse input. Gamepad still requires an explicit flag.
 		if (fplIsMaskSet(appState->initFlags, fplInitFlags_Window)) {
