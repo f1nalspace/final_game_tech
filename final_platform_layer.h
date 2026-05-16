@@ -12830,7 +12830,11 @@ typedef FPL__FUNC_XRR_XRRGetOutputPrimary(fpl__func_xrr_XRRGetOutputPrimary);
 
 
 // Direct extern declarations for non-runtime-linking builds (no X11 headers present)
+// The XRandR library exports C symbols - C linkage is required so C++ builds do not mangle them
 #if defined(FPL_NO_RUNTIME_LINKING)
+#if defined(__cplusplus)
+extern "C" {
+#endif
 extern FPL__FUNC_XRR_XRRFreeCrtcInfo(XRRFreeCrtcInfo);
 extern FPL__FUNC_XRR_XRRFreeOutputInfo(XRRFreeOutputInfo);
 extern FPL__FUNC_XRR_XRRFreeScreenResources(XRRFreeScreenResources);
@@ -12839,6 +12843,9 @@ extern FPL__FUNC_XRR_XRRGetOutputInfo(XRRGetOutputInfo);
 extern FPL__FUNC_XRR_XRRGetOutputPrimary(XRRGetOutputPrimary);
 extern FPL__FUNC_XRR_XRRGetScreenResourcesCurrent(XRRGetScreenResourcesCurrent);
 extern FPL__FUNC_XRR_XRRQueryExtension(XRRQueryExtension);
+#if defined(__cplusplus)
+}
+#endif
 #endif
 
 typedef struct fpl__XrandRApi {
@@ -12914,10 +12921,17 @@ typedef FPL__FUNC_XINERAMA_XineramaQueryScreens(fpl__func_xinerama_XineramaQuery
 
 
 // Direct extern declarations for non-runtime-linking builds (no X11 headers present)
+// The Xinerama library exports C symbols - C linkage is required so C++ builds do not mangle them
 #if defined(FPL_NO_RUNTIME_LINKING)
+#if defined(__cplusplus)
+extern "C" {
+#endif
 extern FPL__FUNC_XINERAMA_XineramaIsActive(XineramaIsActive);
 extern FPL__FUNC_XINERAMA_XineramaQueryExtension(XineramaQueryExtension);
 extern FPL__FUNC_XINERAMA_XineramaQueryScreens(XineramaQueryScreens);
+#if defined(__cplusplus)
+}
+#endif
 #endif
 
 typedef struct fpl__XineramaApi {
