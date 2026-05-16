@@ -318,7 +318,11 @@
 	@section section_category_platform Platform
 	@subpage page_category_platform <br>
 	@subpage page_category_hardware <br>
-	
+
+	@section section_category_timings Timings
+	@subpage page_category_timings_datetime <br>
+	@subpage page_category_timings_measurement <br>
+
 	@section section_category_dll Dynamic Library Loading
 	@subpage page_category_dll <br>
 
@@ -2413,6 +2417,158 @@
 		}
 	}
 	@endcode
+*/
+
+/*!
+	@page page_category_timings_datetime Query Date & Time
+	@tableofcontents
+
+	FPL provides a couple of functions for querying and constructing calendar date and time values.<br>
+	A date time is stored in the @ref fplDateTime structure, which holds the Unix epoch (seconds since 1970-01-01), additional milliseconds and the UTC offset in minutes.<br>
+	<br>
+	@note Pre-1970 dates are not supported. The epoch field is unsigned and @ref fplDateTimeCreate() rejects any year below 1970.<br>
+	<br>
+	For pure delta/profiling measurements, use the functions described in @ref page_category_timings_measurement instead.
+
+	@section section_category_timings_datetime_query Query the current date and time
+
+	You can query the current date and time by calling @ref fplDateTimeQuery() and passing a @ref fplDateTimeType value.<br>
+	Pass @ref fplDateTimeType_UTC to get the time in UTC (+0) or @ref fplDateTimeType_Local to get the local time including the current UTC offset.<br>
+
+	@code{.c}
+	// Query the current local date time
+	fplDateTime now = fplDateTimeQuery(fplDateTimeType_Local);
+
+	// Query the current UTC date time
+	fplDateTime utcNow = fplDateTimeQuery(fplDateTimeType_UTC);
+	@endcode
+
+	The returned @ref fplDateTime is not directly human readable - it stores the epoch, milliseconds and UTC offset only.<br>
+	To get the individual date and time components, use @ref fplFormatDateTime() (see @ref section_category_timings_datetime_format).
+
+	@section section_category_timings_datetime_format Extract the date and time components
+
+	To break a @ref fplDateTime into its individual fields (year, month, day, hour, etc.), call @ref fplFormatDateTime() .<br>
+	It returns a @ref fplDateTimeResult, which contains the year, month, day, hour, minute, second and millisecond.<br>
+	<br>
+	The @ref fplDateTimeType argument controls whether the components are computed in UTC or local time.<br>
+
+	@code{.c}
+	fplDateTime now = fplDateTimeQuery(fplDateTimeType_Local);
+
+	// Compute the individual components in local time
+	fplDateTimeResult fields = fplFormatDateTime(now, fplDateTimeType_Local);
+
+	fplConsoleFormatOut("%04d-%02d-%02d %02d:%02d:%02d.%03d\n",
+		fields.year, fields.month, fields.day,
+		fields.hour, fields.minute, fields.second, fields.millisecond);
+	@endcode
+
+	@section section_category_timings_datetime_create Create a date and time
+
+	You can construct a @ref fplDateTime from individual components by calling @ref fplDateTimeCreate() .<br>
+	It takes the year, month, day, hour, minute, second, millisecond and the UTC offset in minutes.<br>
+	<br>
+	The result is returned as a @ref fplDateTimeCreationResult. Always check the `success` field before using the resulting date time.<br>
+	If the creation fails, the `errors` field contains a combination of @ref fplDateTimeErrors flags describing which component was invalid.<br>
+
+	@code{.c}
+	// Create the date time 2026-05-16 13:45:00.000 in UTC (+0)
+	fplDateTimeCreationResult result = fplDateTimeCreate(2026, 5, 16, 13, 45, 0, 0, 0);
+	if (result.success) {
+		fplDateTime dateTime = result.dateTime;
+		// Do something with the date time
+	} else {
+		if (result.errors & fplDateTimeErrors_InvalidYear) {
+			// The year was out of range (expected 1970 or higher)
+		}
+	}
+	@endcode
+
+	@note If invalid arguments are passed, an empty date time is returned and `success` is set to false.
+
+	@section section_category_timings_datetime_notes Notes
+
+	- The @ref fplDateTime structure is the canonical storage format - convert it with @ref fplFormatDateTime() only when you need the individual fields.
+	- The `utcOffset` field is zero when the date time is UTC or +0, otherwise it holds the offset in minutes used to convert back into UTC.
+	- @ref fplDateTimeQuery() and @ref fplFormatDateTime() are platform functions, while @ref fplDateTimeCreate() is a common function available on all platforms.
+*/
+
+/*!
+	@page page_category_timings_measurement Time Measurement & Profiling
+	@tableofcontents
+
+	FPL provides a couple of functions for measuring elapsed time, used for profiling, delta time calculations and timeouts.<br>
+	<br>
+	@note These functions are meant for delta measurements only. They are not tied to a calendar date and the starting point is undefined (OS start, system start, etc.).<br>
+	To query the current calendar date and time, see @ref page_category_timings_datetime instead.
+
+	@section section_category_timings_measurement_highprecision High precision measurement
+
+	For the most precise time measurement, use @ref fplTimestampQuery() to capture a @ref fplTimestamp.<br>
+	A @ref fplTimestamp is an opaque value - it only has meaning when compared against another timestamp.<br>
+	<br>
+	To get the elapsed time between two timestamps, call @ref fplTimestampElapsed() . It returns the delta in seconds as @ref fplSeconds (a 64-bit double).<br>
+
+	@code{.c}
+	// Capture the starting timestamp
+	fplTimestamp start = fplTimestampQuery();
+
+	// ... do some work ...
+
+	// Capture the finishing timestamp and compute the delta
+	fplTimestamp finish = fplTimestampQuery();
+	fplSeconds elapsed = fplTimestampElapsed(start, finish);
+
+	fplConsoleFormatOut("Work took %f seconds\n", elapsed);
+	@endcode
+
+	This is the recommended way to compute frame delta times in a game loop:
+
+	@code{.c}
+	fplTimestamp last = fplTimestampQuery();
+	while (running) {
+		fplTimestamp now = fplTimestampQuery();
+		fplSeconds deltaTime = fplTimestampElapsed(last, now);
+		last = now;
+
+		// Update the game using deltaTime
+	}
+	@endcode
+
+	@section section_category_timings_measurement_lowprecision Low precision measurement
+
+	For simple, less precise measurements you can use @ref fplMillisecondsQuery() .<br>
+	It returns the current system clock in milliseconds as @ref fplMilliseconds (a 64-bit unsigned integer), counted from some fixed but undefined starting point.<br>
+
+	@code{.c}
+	fplMilliseconds start = fplMillisecondsQuery();
+
+	// ... do some work ...
+
+	fplMilliseconds elapsed = fplMillisecondsQuery() - start;
+	fplConsoleFormatOut("Work took %llu milliseconds\n", elapsed);
+	@endcode
+
+	@section section_category_timings_measurement_timeouts Timeout values
+
+	A number of FPL functions (mutexes, signals, semaphores, etc.) accept a timeout argument expressed as a @ref fplTimeoutValue.<br>
+	This is a timeout in milliseconds. To wait indefinitely, pass the @ref FPL_TIMEOUT_INFINITE constant.<br>
+
+	@code{.c}
+	// Wait at most 500 milliseconds
+	fplTimeoutValue timeout = 500;
+
+	// Wait forever
+	fplTimeoutValue infinite = FPL_TIMEOUT_INFINITE;
+	@endcode
+
+	@section section_category_timings_measurement_notes Notes
+
+	- Use @ref fplTimestampQuery() / @ref fplTimestampElapsed() when precision matters (profiling, frame delta time).
+	- Use @ref fplMillisecondsQuery() for simple, coarse measurements where high precision is not required.
+	- A @ref fplTimestamp value is platform-dependent and must never be interpreted directly - only compare it with @ref fplTimestampElapsed() .
+	- The starting point of both clocks is undefined, so only the difference between two queries is meaningful.
 */
 
 /*!
