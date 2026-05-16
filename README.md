@@ -39,7 +39,6 @@ Core library is the Final Platform Layer (FPL) library that contains various dem
 ├── assets/                         # Assets for the repo itself, like the logo
 ├── apps/                           # Converters and utility applications (mostly used internally)
 ├── demos/                          # Demo applications for all libraries (C99 or C++/11)
-├── internal/                       # Internal and temporary files 
 ├── screenshots/                    # Screenshots of the demo applications 
 ```
 
@@ -123,6 +122,8 @@ All libraries in the root folder of this repository are open-source and use the 
 ![FPL_NBodySimulation](screenshots/FPL_NBodySimulation.png)
 
 ![FPL_OpenGL](screenshots/FPL_OpenGL.png)
+
+![FPL_Vulkan](screenshots/FPL_Vulkan.png)
 
 ![FPL_Raytracer](screenshots/FPL_Raytracer.png)
 
