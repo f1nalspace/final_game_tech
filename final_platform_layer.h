@@ -325,6 +325,7 @@ SOFTWARE.
 	- Fixed: [X11] fplQueryCursorPosition was compiled outside FPL__ENABLE_WINDOW guard, breaking window-disabled builds
 	- Fixed: [X11] FPL_SUBPLATFORM_X11 was set, even when X11 was not available
 	- Fixed: [X11] _NET_WM_ICON pixel packing promoted uint8_t operands to int before shifting — alpha/red values >= 128 overflowed the signed int (UB) and could corrupt the icon; bytes are now cast to unsigned long first
+	- Fixed: [X11] Window had no WM_CLASS set — GNOME/mutter treated it as an orphan and showed a generic icon and "Unknown" as name; WM_CLASS is now set from the window title via XSetClassHint
 	- Fixed[#181]: [X11] fpl__X11ParseUriPaths does not do any URI decoding, resulting in most-likely unuseable file paths
 	- Changed: [X11] Window size and position are no longer overwritten on creation
 	- Changed: [X11] Default window size changed to 720p (1280x720)
@@ -3707,6 +3708,7 @@ typedef XWindowAttributes fpl__X11_XWindowAttributes;
 typedef XVisualInfo fpl__X11_XVisualInfo;
 typedef XSizeHints fpl__X11_XSizeHints;
 typedef XTextProperty fpl__X11_XTextProperty;
+typedef XClassHint fpl__X11_XClassHint;
 typedef XGCValues fpl__X11_XGCValues;
 typedef XColor fpl__X11_XColor;
 
@@ -4170,6 +4172,11 @@ typedef struct fpl__X11_XSizeHints {
 	int base_width, base_height;
 	int win_gravity;
 } fpl__X11_XSizeHints;
+
+typedef struct fpl__X11_XClassHint {
+	char *res_name;
+	char *res_class;
+} fpl__X11_XClassHint;
 
 // Opaque incomplete type, only ever used through a pointer
 typedef struct fpl__X11_XTextPropertyRec fpl__X11_XTextProperty;
@@ -12479,6 +12486,8 @@ typedef FPL__FUNC_X11_XStringListToTextProperty(fpl__func_x11_XStringListToTextP
 typedef FPL__FUNC_X11_XSetWMIconName(fpl__func_x11_XSetWMIconName);
 #define FPL__FUNC_X11_XSetWMName(name) void name(fpl__X11_Display* display, fpl__X11_Window w, fpl__X11_XTextProperty *text_prop)
 typedef FPL__FUNC_X11_XSetWMName(fpl__func_x11_XSetWMName);
+#define FPL__FUNC_X11_XSetClassHint(name) fpl__X11_Status name(fpl__X11_Display* display, fpl__X11_Window w, fpl__X11_XClassHint *class_hints)
+typedef FPL__FUNC_X11_XSetClassHint(fpl__func_x11_XSetClassHint);
 #define FPL__FUNC_X11_XQueryKeymap(name) int name(fpl__X11_Display* display, char [32])
 typedef FPL__FUNC_X11_XQueryKeymap(fpl__func_x11_XQueryKeymap);
 #define FPL__FUNC_X11_XQueryPointer(name) fpl__X11_Bool name(fpl__X11_Display* display, fpl__X11_Window w, fpl__X11_Window* root_return, fpl__X11_Window* child_return, int* root_x_return, int* root_y_return, int* win_x_return, int* win_y_return, unsigned int* mask_return)
@@ -12572,6 +12581,7 @@ extern FPL__FUNC_X11_XSetErrorHandler(XSetErrorHandler);
 extern FPL__FUNC_X11_XSetSelectionOwner(XSetSelectionOwner);
 extern FPL__FUNC_X11_XSetWMIconName(XSetWMIconName);
 extern FPL__FUNC_X11_XSetWMName(XSetWMName);
+extern FPL__FUNC_X11_XSetClassHint(XSetClassHint);
 extern FPL__FUNC_X11_XSetWMNormalHints(XSetWMNormalHints);
 extern FPL__FUNC_X11_XSetWMProtocols(XSetWMProtocols);
 extern FPL__FUNC_X11_XStoreName(XStoreName);
@@ -12627,6 +12637,7 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XStringListToTextProperty *XStringListToTextProperty;
 	fpl__func_x11_XSetWMIconName *XSetWMIconName;
 	fpl__func_x11_XSetWMName *XSetWMName;
+	fpl__func_x11_XSetClassHint *XSetClassHint;
 	fpl__func_x11_XQueryKeymap *XQueryKeymap;
 	fpl__func_x11_XQueryPointer *XQueryPointer;
 	fpl__func_x11_XConvertSelection *XConvertSelection;
@@ -12713,6 +12724,7 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XStringListToTextProperty, XStringListToTextProperty);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetWMIconName, XSetWMIconName);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetWMName, XSetWMName);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetClassHint, XSetClassHint);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XQueryKeymap, XQueryKeymap);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XQueryPointer, XQueryPointer);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XConvertSelection, XConvertSelection);
@@ -23808,7 +23820,9 @@ fpl_internal fplKey fpl__X11TranslateKeySymbol(const fpl__X11_KeySym keySym) {
 
 #if defined(FPL__ENABLE_WINDOW)
 fpl_internal void fpl__X11LoadWindowIcon(const fpl__X11Api *x11Api, fpl__X11WindowState *x11WinState, fplWindowSettings *windowSettings) {
-	// @BUG(final/X11): Setting the window icon on X11 does not fail, but it does not show up in any of the bars in gnome/ubuntu the icon is always shown as "unset"
+	// @NOTE(final/X11): The icon is published via _NET_WM_ICON. EWMH window managers (KDE/XFCE/GNOME) pick it up.
+	// GNOME additionally requires WM_CLASS to identify the window (set in fpl__X11InitWindow); for the dash/taskbar
+	// icon GNOME maps WM_CLASS to an installed .desktop file - that part is the application's responsibility.
 
 	int iconSourceCount = 0;
 	fplImageSource iconSources[2] = fplZeroInit;
@@ -24030,6 +24044,16 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Show window '%d' on display '%p' with title '%s'", (int)windowState->window, windowState->display, nameBuffer);
 	fpl__X11LoadWindowIcon(x11Api, windowState, currentWindowSettings);
 	fplSetWindowTitle(nameBuffer);
+
+	// Set WM_CLASS so EWMH window managers can identify the application.
+	// Without WM_CLASS, GNOME/mutter treats the window as an orphan and shows a generic icon and "Unknown" as its name.
+	if (x11Api->XSetClassHint != fpl_null) {
+		fpl__X11_XClassHint classHint = fplZeroInit;
+		classHint.res_name = nameBuffer;
+		classHint.res_class = nameBuffer;
+		x11Api->XSetClassHint(windowState->display, windowState->window, &classHint);
+	}
+
 	x11Api->XMapWindow(windowState->display, windowState->window);
 	x11Api->XFlush(windowState->display);
 
@@ -25738,7 +25762,8 @@ fpl_platform_api void fplSetWindowPosition(const int32_t left, const int32_t top
 }
 
 fpl_platform_api void fplSetWindowTitle(const char *title) {
-	// @BUG(final/X11): Setting the window title on X11 works, but it wont be set for the icon in the bars in gnome/ubuntu the icon title is always "Unbekannt" on my german environment.
+	// @NOTE(final/X11): The title is published via _NET_WM_NAME / _NET_WM_ICON_NAME. EWMH window managers pick it up.
+	// GNOME requires WM_CLASS (set in fpl__X11InitWindow) to associate the window with an application name.
 
 	FPL__CheckArgumentNullNoRet(title);
 	FPL__CheckPlatformNoRet();
