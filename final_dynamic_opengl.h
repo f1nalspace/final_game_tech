@@ -134,6 +134,7 @@ SOFTWARE.
 	- New: Added macro FGL_HAS_INCLUDE
 	- New[Win32]: Support for FGL_NO_PLATFORM_INCLUDES and FGL_WIN32_NO_HEADERS - no Windows.h is required anymore
 	- New[POSIX, GLX]: Implemented legacy and modern GLX context creation
+	- Changed[Win32]: Self-defined Win32 ABI now uses fgl__Win32/FGL_WIN32_ prefixed names to avoid namespace collisions
 	- Fixed: Fixed warnings for initialization of function prototypes with fgl_api
 	- Fixed: Fixed wrong X11 window handle
 	- Fixed[X11]: Removed X11 header inclusion when FGL_NO_PLATFORM_INCLUDES is defined or when XLib includes is missing
@@ -321,72 +322,86 @@ SOFTWARE.
 #			define WIN32_LEAN_AND_MEAN 1
 #		endif
 #		include <Windows.h>
+
+	// Map the FGL Win32 ABI names onto the actual Windows.h types/constants
+#		define FGL_WIN32_API WINAPI
+	typedef HWND fgl__Win32HWND;
+	typedef HDC fgl__Win32HDC;
+	typedef HGLRC fgl__Win32HGLRC;
+	typedef HMODULE fgl__Win32HMODULE;
+	typedef BOOL fgl__Win32BOOL;
+	typedef UINT fgl__Win32UINT;
+	typedef FLOAT fgl__Win32FLOAT;
+	typedef LPCSTR fgl__Win32LPCSTR;
+	typedef PROC fgl__Win32PROC;
+	typedef PIXELFORMATDESCRIPTOR fgl__Win32PIXELFORMATDESCRIPTOR;
+	typedef LPPIXELFORMATDESCRIPTOR fgl__Win32LPPIXELFORMATDESCRIPTOR;
+#		define FGL_WIN32_PFD_TYPE_RGBA PFD_TYPE_RGBA
+#		define FGL_WIN32_PFD_MAIN_PLANE PFD_MAIN_PLANE
+#		define FGL_WIN32_PFD_DOUBLEBUFFER PFD_DOUBLEBUFFER
+#		define FGL_WIN32_PFD_DRAW_TO_WINDOW PFD_DRAW_TO_WINDOW
+#		define FGL_WIN32_PFD_SUPPORT_OPENGL PFD_SUPPORT_OPENGL
 #	else
 	// Self-defined: no Windows.h is required; the minimal Win32/WGL ABI is declared here.
-#		if !defined(WINAPI)
-#			define WINAPI __stdcall
-#		endif
-#		if !defined(CONST)
-#			define CONST const
-#		endif
+#		define FGL_WIN32_API __stdcall
 
-	typedef int BOOL;
-	typedef unsigned int UINT;
-	typedef unsigned long DWORD;
-	typedef unsigned short WORD;
-	typedef unsigned char BYTE;
-	typedef float FLOAT;
-	typedef const char *LPCSTR;
+	typedef int fgl__Win32BOOL;
+	typedef unsigned int fgl__Win32UINT;
+	typedef unsigned long fgl__Win32DWORD;
+	typedef unsigned short fgl__Win32WORD;
+	typedef unsigned char fgl__Win32BYTE;
+	typedef float fgl__Win32FLOAT;
+	typedef const char *fgl__Win32LPCSTR;
 
-	typedef struct fgl__Win32_HWND__ *HWND;
-	typedef struct fgl__Win32_HDC__ *HDC;
-	typedef struct fgl__Win32_HGLRC__ *HGLRC;
-	typedef struct fgl__Win32_HINSTANCE__ *HINSTANCE;
-	typedef HINSTANCE HMODULE;
-	typedef int (WINAPI *PROC)(void);
+	typedef struct fgl__Win32HWND__ *fgl__Win32HWND;
+	typedef struct fgl__Win32HDC__ *fgl__Win32HDC;
+	typedef struct fgl__Win32HGLRC__ *fgl__Win32HGLRC;
+	typedef struct fgl__Win32HINSTANCE__ *fgl__Win32HINSTANCE;
+	typedef fgl__Win32HINSTANCE fgl__Win32HMODULE;
+	typedef int (FGL_WIN32_API *fgl__Win32PROC)(void);
 
-	typedef struct tagPIXELFORMATDESCRIPTOR {
-		WORD nSize;
-		WORD nVersion;
-		DWORD dwFlags;
-		BYTE iPixelType;
-		BYTE cColorBits;
-		BYTE cRedBits;
-		BYTE cRedShift;
-		BYTE cGreenBits;
-		BYTE cGreenShift;
-		BYTE cBlueBits;
-		BYTE cBlueShift;
-		BYTE cAlphaBits;
-		BYTE cAlphaShift;
-		BYTE cAccumBits;
-		BYTE cAccumRedBits;
-		BYTE cAccumGreenBits;
-		BYTE cAccumBlueBits;
-		BYTE cAccumAlphaBits;
-		BYTE cDepthBits;
-		BYTE cStencilBits;
-		BYTE cAuxBuffers;
-		BYTE iLayerType;
-		BYTE bReserved;
-		DWORD dwLayerMask;
-		DWORD dwVisibleMask;
-		DWORD dwDamageMask;
-	} PIXELFORMATDESCRIPTOR;
-	typedef PIXELFORMATDESCRIPTOR *LPPIXELFORMATDESCRIPTOR;
+	typedef struct fgl__Win32PIXELFORMATDESCRIPTOR {
+		fgl__Win32WORD nSize;
+		fgl__Win32WORD nVersion;
+		fgl__Win32DWORD dwFlags;
+		fgl__Win32BYTE iPixelType;
+		fgl__Win32BYTE cColorBits;
+		fgl__Win32BYTE cRedBits;
+		fgl__Win32BYTE cRedShift;
+		fgl__Win32BYTE cGreenBits;
+		fgl__Win32BYTE cGreenShift;
+		fgl__Win32BYTE cBlueBits;
+		fgl__Win32BYTE cBlueShift;
+		fgl__Win32BYTE cAlphaBits;
+		fgl__Win32BYTE cAlphaShift;
+		fgl__Win32BYTE cAccumBits;
+		fgl__Win32BYTE cAccumRedBits;
+		fgl__Win32BYTE cAccumGreenBits;
+		fgl__Win32BYTE cAccumBlueBits;
+		fgl__Win32BYTE cAccumAlphaBits;
+		fgl__Win32BYTE cDepthBits;
+		fgl__Win32BYTE cStencilBits;
+		fgl__Win32BYTE cAuxBuffers;
+		fgl__Win32BYTE iLayerType;
+		fgl__Win32BYTE bReserved;
+		fgl__Win32DWORD dwLayerMask;
+		fgl__Win32DWORD dwVisibleMask;
+		fgl__Win32DWORD dwDamageMask;
+	} fgl__Win32PIXELFORMATDESCRIPTOR;
+	typedef fgl__Win32PIXELFORMATDESCRIPTOR *fgl__Win32LPPIXELFORMATDESCRIPTOR;
 
-#		define PFD_TYPE_RGBA 0
-#		define PFD_MAIN_PLANE 0
-#		define PFD_DOUBLEBUFFER 0x00000001
-#		define PFD_DRAW_TO_WINDOW 0x00000004
-#		define PFD_SUPPORT_OPENGL 0x00000020
+#		define FGL_WIN32_PFD_TYPE_RGBA 0
+#		define FGL_WIN32_PFD_MAIN_PLANE 0
+#		define FGL_WIN32_PFD_DOUBLEBUFFER 0x00000001
+#		define FGL_WIN32_PFD_DRAW_TO_WINDOW 0x00000004
+#		define FGL_WIN32_PFD_SUPPORT_OPENGL 0x00000020
 
 #		if defined(__cplusplus)
 extern "C" {
 #		endif
-	HMODULE WINAPI LoadLibraryA(LPCSTR lpLibFileName);
-	BOOL WINAPI FreeLibrary(HMODULE hLibModule);
-	PROC WINAPI GetProcAddress(HMODULE hModule, LPCSTR lpProcName);
+	fgl__Win32HMODULE FGL_WIN32_API LoadLibraryA(fgl__Win32LPCSTR lpLibFileName);
+	fgl__Win32BOOL FGL_WIN32_API FreeLibrary(fgl__Win32HMODULE hLibModule);
+	fgl__Win32PROC FGL_WIN32_API GetProcAddress(fgl__Win32HMODULE hModule, fgl__Win32LPCSTR lpProcName);
 #		if defined(__cplusplus)
 }
 #		endif
@@ -395,9 +410,9 @@ extern "C" {
 //! Win32 OpenGL window handle
 typedef struct fglWin32OpenGLWindowHandle {
 	//! Window handle
-	HWND windowHandle;
+	fgl__Win32HWND windowHandle;
 	//! Device context
-	HDC deviceContext;
+	fgl__Win32HDC deviceContext;
 	//! Bool to indicate to release DC when done
 	bool requireToReleaseDC;
 } fglWin32OpenGLWindowHandle;
@@ -405,7 +420,7 @@ typedef struct fglWin32OpenGLWindowHandle {
 //! Win32 OpenGL rendering context
 typedef struct fglWin32OpenGLRenderingContext {
 	//! Rendering context
-	HGLRC renderingContext;
+	fgl__Win32HGLRC renderingContext;
 } fglWin32OpenGLRenderingContext;
 
 #elif defined(FGL_PLATFORM_POSIX)
@@ -6893,19 +6908,19 @@ static void fgl__SetLastError(const char *format, ...);
 
 #if defined(FGL_PLATFORM_WIN32)
 // User32.dll
-#define FGL_FUNC_WIN32_USER32_ReleaseDC(name) int WINAPI name(HWND hWnd, HDC hDC)
+#define FGL_FUNC_WIN32_USER32_ReleaseDC(name) int FGL_WIN32_API name(fgl__Win32HWND hWnd, fgl__Win32HDC hDC)
 typedef FGL_FUNC_WIN32_USER32_ReleaseDC(fgl_func_win32_user32_ReleaseDC);
-#define FGL_FUNC_WIN32_USER32_GetDC(name) HDC WINAPI name(HWND hWnd)
+#define FGL_FUNC_WIN32_USER32_GetDC(name) fgl__Win32HDC FGL_WIN32_API name(fgl__Win32HWND hWnd)
 typedef FGL_FUNC_WIN32_USER32_GetDC(fgl_func_win32_user32_GetDC);
 
 // Gdi32.dll
-#define FGL_FUNC_WIN32_GDI32_ChoosePixelFormat(name) int WINAPI name(HDC hdc, CONST PIXELFORMATDESCRIPTOR *ppfd)
+#define FGL_FUNC_WIN32_GDI32_ChoosePixelFormat(name) int FGL_WIN32_API name(fgl__Win32HDC hdc, const fgl__Win32PIXELFORMATDESCRIPTOR *ppfd)
 typedef FGL_FUNC_WIN32_GDI32_ChoosePixelFormat(fgl_func_win32_gdi32_ChoosePixelFormat);
-#define FGL_FUNC_WIN32_GDI32_SetPixelFormat(name) BOOL WINAPI name(HDC hdc, int format, CONST PIXELFORMATDESCRIPTOR *ppfd)
+#define FGL_FUNC_WIN32_GDI32_SetPixelFormat(name) fgl__Win32BOOL FGL_WIN32_API name(fgl__Win32HDC hdc, int format, const fgl__Win32PIXELFORMATDESCRIPTOR *ppfd)
 typedef FGL_FUNC_WIN32_GDI32_SetPixelFormat(fgl_func_win32_gdi32_SetPixelFormat);
-#define FGL_FUNC_WIN32_GDI32_DescribePixelFormat(name) int WINAPI name(HDC hdc, int iPixelFormat, UINT nBytes, LPPIXELFORMATDESCRIPTOR ppfd)
+#define FGL_FUNC_WIN32_GDI32_DescribePixelFormat(name) int FGL_WIN32_API name(fgl__Win32HDC hdc, int iPixelFormat, fgl__Win32UINT nBytes, fgl__Win32LPPIXELFORMATDESCRIPTOR ppfd)
 typedef FGL_FUNC_WIN32_GDI32_DescribePixelFormat(fgl_func_win32_gdi32_DescribePixelFormat);
-#define FGL_FUNC_WIN32_GDI32_SwapBuffers(name) BOOL WINAPI name(HDC)
+#define FGL_FUNC_WIN32_GDI32_SwapBuffers(name) fgl__Win32BOOL FGL_WIN32_API name(fgl__Win32HDC)
 typedef FGL_FUNC_WIN32_GDI32_SwapBuffers(fgl_func_win32_gdi32_SwapBuffers);
 
 // OpenGL32.dll
@@ -6939,30 +6954,30 @@ typedef FGL_FUNC_WIN32_GDI32_SwapBuffers(fgl_func_win32_gdi32_SwapBuffers);
 #define FGL_WGL_SWAP_EXCHANGE_ARB 0x2028
 #define FGL_WGL_TYPE_RGBA_ARB 0x202B
 
-#define FGL_FUNC_WIN32_OPENGL32_wglMakeCurrent(name) BOOL WINAPI name(HDC deviceContext, HGLRC renderingContext)
+#define FGL_FUNC_WIN32_OPENGL32_wglMakeCurrent(name) fgl__Win32BOOL FGL_WIN32_API name(fgl__Win32HDC deviceContext, fgl__Win32HGLRC renderingContext)
 typedef FGL_FUNC_WIN32_OPENGL32_wglMakeCurrent(fgl_func_win32_opengl32_wglMakeCurrent);
-#define FGL_FUNC_WIN32_OPENGL32_wglGetProcAddress(name) PROC WINAPI name(LPCSTR procedure)
+#define FGL_FUNC_WIN32_OPENGL32_wglGetProcAddress(name) fgl__Win32PROC FGL_WIN32_API name(fgl__Win32LPCSTR procedure)
 typedef FGL_FUNC_WIN32_OPENGL32_wglGetProcAddress(fgl_func_win32_opengl32_wglGetProcAddress);
-#define FGL_FUNC_WIN32_OPENGL32_wglDeleteContext(name) BOOL WINAPI name(HGLRC renderingContext)
+#define FGL_FUNC_WIN32_OPENGL32_wglDeleteContext(name) fgl__Win32BOOL FGL_WIN32_API name(fgl__Win32HGLRC renderingContext)
 typedef FGL_FUNC_WIN32_OPENGL32_wglDeleteContext(fgl_func_win32_opengl32_wglDeleteContext);
-#define FGL_FUNC_WIN32_OPENGL32_wglCreateContext(name) HGLRC WINAPI name(HDC deviceContext)
+#define FGL_FUNC_WIN32_OPENGL32_wglCreateContext(name) fgl__Win32HGLRC FGL_WIN32_API name(fgl__Win32HDC deviceContext)
 typedef FGL_FUNC_WIN32_OPENGL32_wglCreateContext(fgl_func_win32_opengl32_wglCreateContext);
-#define FGL_FUNC_WIN32_OPENGL32_wglChoosePixelFormatARB(name) BOOL WINAPI name(HDC hdc, const int *piAttribIList, const FLOAT *pfAttribFList, UINT nMaxFormats, int *piFormats, UINT *nNumFormats)
+#define FGL_FUNC_WIN32_OPENGL32_wglChoosePixelFormatARB(name) fgl__Win32BOOL FGL_WIN32_API name(fgl__Win32HDC hdc, const int *piAttribIList, const fgl__Win32FLOAT *pfAttribFList, fgl__Win32UINT nMaxFormats, int *piFormats, fgl__Win32UINT *nNumFormats)
 typedef FGL_FUNC_WIN32_OPENGL32_wglChoosePixelFormatARB(fgl_func_win32_opengl32_wglChoosePixelFormatARB);
-#define FGL_FUNC_WIN32_OPENGL32_wglCreateContextAttribsARB(name) HGLRC WINAPI name(HDC hDC, HGLRC hShareContext, const int *attribList)
+#define FGL_FUNC_WIN32_OPENGL32_wglCreateContextAttribsARB(name) fgl__Win32HGLRC FGL_WIN32_API name(fgl__Win32HDC hDC, fgl__Win32HGLRC hShareContext, const int *attribList)
 typedef FGL_FUNC_WIN32_OPENGL32_wglCreateContextAttribsARB(fgl_func_win32_opengl32_wglCreateContextAttribsARB);
-#define FGL_FUNC_WIN32_OPENGL32_wglSwapIntervalEXT(name) BOOL WINAPI name(int interval)
+#define FGL_FUNC_WIN32_OPENGL32_wglSwapIntervalEXT(name) fgl__Win32BOOL FGL_WIN32_API name(int interval)
 typedef FGL_FUNC_WIN32_OPENGL32_wglSwapIntervalEXT(fgl_func_win32_opengl32_wglSwapIntervalEXT);
 
 typedef struct fglWin32OpenGLApi {
 	struct {
-		HMODULE libraryHandle;
+		fgl__Win32HMODULE libraryHandle;
 		fgl_func_win32_user32_GetDC *GetDC;
 		fgl_func_win32_user32_ReleaseDC *ReleaseDC;
 	} user32;
 
 	struct {
-		HMODULE libraryHandle;
+		fgl__Win32HMODULE libraryHandle;
 		fgl_func_win32_gdi32_ChoosePixelFormat *ChoosePixelFormat;
 		fgl_func_win32_gdi32_SetPixelFormat *SetPixelFormat;
 		fgl_func_win32_gdi32_DescribePixelFormat *DescribePixelFormat;
@@ -6970,7 +6985,7 @@ typedef struct fglWin32OpenGLApi {
 	} gdi32;
 
 	struct {
-		HMODULE libraryHandle;
+		fgl__Win32HMODULE libraryHandle;
 		fgl_func_win32_opengl32_wglMakeCurrent *wglMakeCurrent;
 		fgl_func_win32_opengl32_wglGetProcAddress *wglGetProcAddress;
 		fgl_func_win32_opengl32_wglDeleteContext *wglDeleteContext;
@@ -7019,7 +7034,7 @@ static bool fgl__Win32LoadOpenGL(fglWin32OpenGLApi *api) {
 	const char *win32LibraryNames[] = {
 		"opengl32.dll",
 	};
-	HMODULE glLibraryHandle = fgl_null;
+	fgl__Win32HMODULE glLibraryHandle = fgl_null;
 	for(int i = 0; i < FGL_ARRAYCOUNT(win32LibraryNames); ++i) {
 		glLibraryHandle = LoadLibraryA(win32LibraryNames[i]);
 		if(glLibraryHandle != fgl_null) {
@@ -7052,8 +7067,8 @@ static void fgl__Win32DestroyOpenGLContext(fglWin32OpenGLApi *api, fglOpenGLCont
 }
 
 static bool fgl__Win32CreateOpenGLContext(fglWin32OpenGLApi *api, const fglOpenGLContextCreationParameters *contextCreationParams, fglOpenGLContext *outContext) {
-	HDC deviceContext = contextCreationParams->windowHandle.win32.deviceContext;
-	HWND handle = contextCreationParams->windowHandle.win32.windowHandle;
+	fgl__Win32HDC deviceContext = contextCreationParams->windowHandle.win32.deviceContext;
+	fgl__Win32HWND handle = contextCreationParams->windowHandle.win32.windowHandle;
 	bool requireToReleaseDC = false;
 	if(deviceContext == fgl_null) {
 		if(handle == fgl_null) {
@@ -7068,15 +7083,15 @@ static bool fgl__Win32CreateOpenGLContext(fglWin32OpenGLApi *api, const fglOpenG
 	outContext->windowHandle.win32.windowHandle = handle;
 	outContext->windowHandle.win32.requireToReleaseDC = requireToReleaseDC;
 
-	PIXELFORMATDESCRIPTOR pfd = FGL_ZERO_INIT;
+	fgl__Win32PIXELFORMATDESCRIPTOR pfd = FGL_ZERO_INIT;
 	pfd.nSize = sizeof(pfd);
 	pfd.nVersion = 1;
-	pfd.dwFlags = PFD_DOUBLEBUFFER | PFD_SUPPORT_OPENGL | PFD_DRAW_TO_WINDOW;
-	pfd.iPixelType = PFD_TYPE_RGBA;
+	pfd.dwFlags = FGL_WIN32_PFD_DOUBLEBUFFER | FGL_WIN32_PFD_SUPPORT_OPENGL | FGL_WIN32_PFD_DRAW_TO_WINDOW;
+	pfd.iPixelType = FGL_WIN32_PFD_TYPE_RGBA;
 	pfd.cColorBits = 32;
 	pfd.cDepthBits = 24;
 	pfd.cAlphaBits = 8;
-	pfd.iLayerType = PFD_MAIN_PLANE;
+	pfd.iLayerType = FGL_WIN32_PFD_MAIN_PLANE;
 
 	int pixelFormat = api->gdi32.ChoosePixelFormat(deviceContext, &pfd);
 	if(!pixelFormat) {
@@ -7093,7 +7108,7 @@ static bool fgl__Win32CreateOpenGLContext(fglWin32OpenGLApi *api, const fglOpenG
 
 	api->gdi32.DescribePixelFormat(deviceContext, pixelFormat, sizeof(pfd), &pfd);
 
-	HGLRC legacyRenderingContext = api->opengl32.wglCreateContext(deviceContext);
+	fgl__Win32HGLRC legacyRenderingContext = api->opengl32.wglCreateContext(deviceContext);
 	if(!legacyRenderingContext) {
 		fgl__SetLastError("Failed win32 creating opengl legacy rendering context for device context '%p'!", deviceContext);
 		fgl__Win32DestroyOpenGLContext(api, outContext);
@@ -7111,7 +7126,7 @@ static bool fgl__Win32CreateOpenGLContext(fglWin32OpenGLApi *api, const fglOpenG
 
 	api->opengl32.wglMakeCurrent(fgl_null, fgl_null);
 
-	HGLRC activeRenderingContext;
+	fgl__Win32HGLRC activeRenderingContext;
 	if(contextCreationParams->profile != fglOpenGLProfileType_LegacyProfile) {
 		// @NOTE(final): This is only available in OpenGL 3.0+
 
@@ -7160,7 +7175,7 @@ static bool fgl__Win32CreateOpenGLContext(fglWin32OpenGLApi *api, const fglOpenG
 		}
 
 		// Create modern opengl rendering context
-		HGLRC modernRenderingContext = api->opengl32.wglCreateContextAttribsARB(deviceContext, 0, contextAttribList);
+		fgl__Win32HGLRC modernRenderingContext = api->opengl32.wglCreateContextAttribsARB(deviceContext, 0, contextAttribList);
 		if(modernRenderingContext) {
 			if(!api->opengl32.wglMakeCurrent(deviceContext, modernRenderingContext)) {
 				fgl__SetLastError("Warning: Failed activating Modern OpenGL Rendering Context for version (%d.%d) and profile (%d) and DC '%x') -> Fallback to legacy context", contextCreationParams->majorVersion, contextCreationParams->minorVersion, contextCreationParams->profile, deviceContext);
