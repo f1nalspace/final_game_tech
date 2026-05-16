@@ -302,6 +302,7 @@
 	@subpage page_category_settings <br>
 	@subpage page_category_errorhandling <br>
 	@subpage page_category_logging <br>
+	@subpage page_category_console <br>
 
 	@section section_category_window Window
 	@subpage page_category_window_basics <br>
@@ -791,6 +792,52 @@
 	@note I highly recommend never defining this in your code, but rather outside in your build-configuration.
 
 
+*/
+
+/*!
+	@page page_category_console Console Input/Output
+	@tableofcontents
+
+	FPL provides a couple of functions for writing text to the console and reading a single character from it.<br>
+	These work with the standard output and standard error streams.<br>
+	<br>
+	@note To get an actual console window on Windows, include the @ref fplInitFlags_Console flag when calling @ref fplPlatformInit() .
+
+	@section section_category_console_out Writing text
+
+	Use @ref fplConsoleOut() to write plain text to the standard output and @ref fplConsoleError() to write plain text to the standard error stream.<br>
+
+	@code{.c}
+	fplConsoleOut("Hello from standard output\n");
+	fplConsoleError("Something went wrong\n");
+	@endcode
+
+	@section section_category_console_formatout Writing formatted text
+
+	For printf-style formatting, use @ref fplConsoleFormatOut() for the standard output and @ref fplConsoleFormatError() for the standard error stream.<br>
+	Both take a format string followed by a variable number of arguments.<br>
+
+	@code{.c}
+	int frame = 42;
+	fplConsoleFormatOut("Current frame: %d\n", frame);
+	fplConsoleFormatError("Failed to load asset '%s'\n", "player.png");
+	@endcode
+
+	@section section_category_console_input Reading a character
+
+	Use @ref fplConsoleWaitForCharInput() to block until a single character is typed into the console input, and return it.<br>
+
+	@code{.c}
+	fplConsoleOut("Press any key to continue...\n");
+	char c = fplConsoleWaitForCharInput();
+	fplConsoleFormatOut("You pressed: %c\n", c);
+	@endcode
+
+	@section section_category_console_notes Notes
+
+	- @ref fplConsoleOut() and @ref fplConsoleError() are simple wrappers around `fprintf(stdout)` / `fprintf(stderr)`.
+	- @ref fplConsoleFormatOut() and @ref fplConsoleFormatError() are wrappers around `vfprintf()`.
+	- @ref fplConsoleWaitForCharInput() is a wrapper around `getchar()`.
 */
 
 /*!
