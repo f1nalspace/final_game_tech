@@ -28,7 +28,7 @@ Description:
 #include "utils.h"
 
 typedef struct {
-	uint32_t x;
+	ShaderProgram *activeProgram;
 } RendererContextImpl;
 
 const APITextureFormat InvalidAPITextureFormat = fplZeroInit;
@@ -128,7 +128,7 @@ static APITextureFormat GetOpenGLTextureFormat(const TextureFormat format) {
 	}
 }
 
-extern RendererContext *RendererCreate(fmemMemoryBlock *memory) {
+extern RendererContext *RendererCreate(fmemMemoryBlock *memory, RendererSupport *outSupport) {
 	if (memory == fpl_null) {
 		return fpl_null;
 	}
@@ -141,6 +141,15 @@ extern RendererContext *RendererCreate(fmemMemoryBlock *memory) {
 	if (result == fpl_null) {
 		return fpl_null;
 	}
+
+	const char *openglVersion = glGetString(GL_VERSION);
+
+	fplVersionInfo versionInfo = fplZeroInit;
+	fpl__ParseVersionString(openglVersion, &versionInfo);
+
+	outSupport->majorVersion = fplStringToS32(versionInfo.version.parts.major);
+	outSupport->minorVersion = fplStringToS32(versionInfo.version.parts.minor);
+	outSupport->hasGLSL = ((outSupport->majorVersion == 2 && outSupport->minorVersion >= 1) || (outSupport->majorVersion >= 3));
 
 	glClearColor(0.1f, 0.3f, 0.7f, 1.0f);
 
@@ -161,7 +170,7 @@ extern void RendererDestroy(RendererContext *context) {
 	}
 }
 
-extern void ReleaseTexture(Texture *texture) {
+extern void RendererTextureRelease(Texture *texture) {
 	if (texture == fpl_null) {
 		return;
 	}
@@ -174,7 +183,7 @@ extern void ReleaseTexture(Texture *texture) {
 	fplClearStruct(texture);
 }
 
-extern Texture UploadTexture(const uint32_t width, const uint32_t height, const TextureFormat format, const TextureFilter textureFilter, const void *data) {
+extern Texture RendererTextureUpload(const uint32_t width, const uint32_t height, const TextureFormat format, const TextureFilter textureFilter, const void *data) {
 	APITextureFormat openGLTextureFormat = GetOpenGLTextureFormat(format);
 	GLuint openglTextureFilter = GetOpenGLTextureFilter(textureFilter);
 
@@ -205,7 +214,7 @@ extern Texture UploadTexture(const uint32_t width, const uint32_t height, const 
 	return result;
 }
 
-extern Texture AllocateTexture(fmemMemoryBlock *mem, const uint32_t width, const uint32_t height, const TextureFormat format, const TextureFilter textureFilter) {
+extern Texture RendererTextureAllocate(fmemMemoryBlock *mem, const uint32_t width, const uint32_t height, const TextureFormat format, const TextureFilter textureFilter) {
 	APITextureFormat openGLTextureFormat = GetOpenGLTextureFormat(format);
 	GLuint openglTextureFilter = GetOpenGLTextureFilter(textureFilter);
 
@@ -247,7 +256,7 @@ extern Texture AllocateTexture(fmemMemoryBlock *mem, const uint32_t width, const
 	return result;
 }
 
-extern Texture LoadTextureFromMemory(const uint8_t *data, const size_t size, const TextureFormat format, const TextureFilter textureFilter, const uint32_t actualWidth, const uint32_t actualHeight) {
+extern Texture RendererTextureLoadFromMemory(const uint8_t *data, const size_t size, const TextureFormat format, const TextureFilter textureFilter, const uint32_t actualWidth, const uint32_t actualHeight) {
 	int requiredComponents = GetComponentsFromTextureFormat(format);
 
 	stbi_set_flip_vertically_on_load(1);
@@ -306,7 +315,7 @@ extern Texture LoadTextureFromMemory(const uint8_t *data, const size_t size, con
 	return result;
 }
 
-extern void ClearTexture(const Texture *texture) {
+extern void RendererTextureClear(const Texture *texture) {
 	glBindTexture(GL_TEXTURE_2D, texture->id);
 	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
 				texture->width, texture->height,
@@ -317,7 +326,7 @@ extern void ClearTexture(const Texture *texture) {
 	CheckGLError();
 }
 
-extern void UpdateTexture(const Texture *texture) {
+extern void RendererTextureUpdate(const Texture *texture) {
 	glBindTexture(GL_TEXTURE_2D, texture->id);
 	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
 				texture->width, texture->height,
@@ -328,34 +337,34 @@ extern void UpdateTexture(const Texture *texture) {
 	CheckGLError();
 }
 
-extern void SetViewport(const int x, const int y, const int w, const int h) {
+extern void RendererSetViewport(const int x, const int y, const int w, const int h) {
 	glViewport(x, y, w, h);
 }
 
-extern void EnableClipping() {
+extern void RendererEnableClipping() {
 	glEnable(GL_SCISSOR_TEST);	
 }
 
-extern void SetViewClipRect(const Mat4f *projMat, const Mat4f *viewMat, const Viewport4i *viewport, const float x, const float y, const float w, const float h) {
+extern void RendererSetViewClipRect(const Mat4f *projMat, const Mat4f *viewMat, const Viewport4i *viewport, const float x, const float y, const float w, const float h) {
 	// TODO(final): Not correct, we need to convert the world coordinates to screen coordinates
 	glScissor((int)x, (int)y, (int)w, (int)h);
 }
 
-extern void DisableClipping() {
+extern void RendererDisableClipping() {
 	glDisable(GL_SCISSOR_TEST);
 }
 
-extern void Clear(const float r, const float g, const float b, const float a) {
+extern void RendererClear(const float r, const float g, const float b, const float a) {
 	glClearColor(r, g, b, a);
 	glClear(GL_COLOR_BUFFER_BIT);
 }
 
-extern void SetModelViewProjectionMatrix(const float *mvp) {
+extern void RendererSetModelViewProjectionMatrix(const float *mvp) {
 	glMatrixMode(GL_MODELVIEW);
 	glLoadMatrixf(mvp);
 }
 
-extern void DrawStrokedQuad(const float x, const float y, const float w, const float h, const float lineWidth, const Color4f color) {
+extern void RendererDrawStrokedQuad(const float x, const float y, const float w, const float h, const float lineWidth, const Color4f color) {
 	glEnable(GL_BLEND);
 	glColor4fv(&color.r);
 	glLineWidth(lineWidth);
@@ -370,7 +379,7 @@ extern void DrawStrokedQuad(const float x, const float y, const float w, const f
 	glDisable(GL_BLEND);
 }
 
-extern void DrawFilledQuad(const float x, const float y, const float w, const float h, const Color4f color) {
+extern void RendererDrawFilledQuad(const float x, const float y, const float w, const float h, const Color4f color) {
 	glEnable(GL_BLEND);
 	glColor4fv(&color.r);
 	glBegin(GL_QUADS);
@@ -383,7 +392,7 @@ extern void DrawFilledQuad(const float x, const float y, const float w, const fl
 	glDisable(GL_BLEND);
 }
 
-extern void DrawLine(const float x0, const float y0, const float x1, const float y1, const float lineWidth, const Color4f color) {
+extern void RendererDrawLine(const float x0, const float y0, const float x1, const float y1, const float lineWidth, const Color4f color) {
 	glEnable(GL_BLEND);
 	glColor4fv(&color.r);
 	glLineWidth(lineWidth);
@@ -396,7 +405,7 @@ extern void DrawLine(const float x0, const float y0, const float x1, const float
 	glDisable(GL_BLEND);
 }
 
-extern void DrawControlBorders(const float x, const float y, const float w, const float h, const float lineWidth, const Color4f *color0, const Color4f *color1, const Color4f *color2, const ControlBorderFlags flags, const bool isDown) {
+extern void RendererDrawControlBorders(const float x, const float y, const float w, const float h, const float lineWidth, const Color4f *color0, const Color4f *color1, const Color4f *color2, const ControlBorderFlags flags, const bool isDown) {
 	bool drawLeft = (flags & ControlBorderFlags_Left) == ControlBorderFlags_Left;
 	bool drawRight = (flags & ControlBorderFlags_Right) == ControlBorderFlags_Right;
 	bool drawTop = (flags & ControlBorderFlags_Top) == ControlBorderFlags_Top;
@@ -477,12 +486,12 @@ extern void DrawControlBorders(const float x, const float y, const float w, cons
 	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);	
 }
 
-extern void DrawControlBorder(const float x, const float y, const float w, const float h, const float lineWidth, const Color4f *color0, const Color4f *color1, const Color4f *color2, const bool isDown) {
-	DrawControlBorders(x, y, w, h, lineWidth, color0, color1, color2, ControlBorderFlags_All, isDown);
+extern void RendererDrawControlBorder(const float x, const float y, const float w, const float h, const float lineWidth, const Color4f *color0, const Color4f *color1, const Color4f *color2, const bool isDown) {
+	RendererDrawControlBorders(x, y, w, h, lineWidth, color0, color1, color2, ControlBorderFlags_All, isDown);
 }
 
 
-extern void DrawTexturedQuad(
+extern void RendererDrawTexturedQuad(
 	const TextureID textureId,
 	const float x,
 	const float y,
@@ -495,6 +504,7 @@ extern void DrawTexturedQuad(
 	const float v1) {
 	glEnable(GL_BLEND);
 
+	glActiveTexture(GL_TEXTURE0);
 	glEnable(GL_TEXTURE_2D);
 	glBindTexture(GL_TEXTURE_2D, textureId);
 
@@ -513,7 +523,7 @@ extern void DrawTexturedQuad(
 	glDisable(GL_BLEND);
 }
 
-extern void DrawString(const LoadedFont *font, const TextureID textureId, const char *text, const size_t textLen, const float x, const float y, const float scale, const Color4f color) {
+extern void RendererDrawString(const LoadedFont *font, const TextureID textureId, const char *text, const size_t textLen, const float x, const float y, const float scale, const Color4f color) {
 	glEnable(GL_BLEND);
 
 	glEnable(GL_TEXTURE_2D);
@@ -566,4 +576,255 @@ extern void DrawString(const LoadedFont *font, const TextureID textureId, const 
 	glDisable(GL_TEXTURE_2D);
 
 	glDisable(GL_BLEND);
+}
+
+extern bool RendererShaderIsValid(const ShaderProgram *program) {
+	return (program != fpl_null && program->id != 0);
+}
+
+static GLuint Renderer__CreateAndCompileShader(const GLuint shaderType, const char *source, const size_t sourceLen, ShaderError *outError) {
+	GLuint id = glCreateShader(shaderType);
+	if (id == 0) {
+		outError->type = ShaderErrorType_FailedCreatingHandle;
+		return 0;
+	}
+
+	GLint outSourceLen = sourceLen;
+	glShaderSource(id, 1, &source, &outSourceLen);
+	glCompileShader(id);
+
+	GLint isCompiled = 0;
+	glGetShaderiv(id, GL_COMPILE_STATUS, &isCompiled);
+
+	if(isCompiled == GL_FALSE) {
+		GLint maxLength = 0;
+		glGetShaderiv(id, GL_INFO_LOG_LENGTH, &maxLength);
+		if (maxLength > fplArrayCount(outError->message)) {
+			maxLength = fplArrayCount(outError->message);
+		}
+		glGetShaderInfoLog(id, maxLength, &maxLength, outError->message);
+		glDeleteShader(id);
+		return 0;
+	}
+
+	return id;
+}
+
+extern bool RendererShaderCreate(const char *vertexSource, const char *fragmentSource, ShaderProgram *outProgram, ShaderError *outError) {
+	if (vertexSource == fpl_null || fragmentSource == fpl_null || outProgram == fpl_null || outError == fpl_null) {
+		return false;
+	}
+
+	const size_t vertexSourceLen = fplGetStringLength(vertexSource);
+	const size_t fragmentSourceLen = fplGetStringLength(fragmentSource);
+	if (vertexSourceLen == 0 || fragmentSourceLen == 0) {
+		outError->type = ShaderErrorType_InvalidSource;
+		return false;
+	}
+
+	fplClearStruct(outError);
+
+	bool result = false;
+
+	GLuint vertexShaderId = 0;
+	GLuint fragmentShaderId = 0;
+
+	vertexShaderId = Renderer__CreateAndCompileShader(GL_VERTEX_SHADER, vertexSource, vertexSourceLen, outError);
+	if (vertexShaderId == 0) {
+		goto cleanup;
+	}
+
+	fragmentShaderId = Renderer__CreateAndCompileShader(GL_FRAGMENT_SHADER, fragmentSource, fragmentSourceLen, outError);
+	if (fragmentShaderId == 0) {
+		goto cleanup;
+	}
+
+	GLuint program = glCreateProgram();
+	if (program == 0) {
+		outError->type = ShaderErrorType_FailedCreatingHandle;
+		goto cleanup;
+	}
+
+	glAttachShader(program, vertexShaderId);
+	glAttachShader(program, fragmentShaderId);
+	glLinkProgram(program);
+
+	GLint isLinked = 0;
+	glGetProgramiv(program, GL_LINK_STATUS, (int *)&isLinked);
+	if (isLinked == GL_FALSE) {
+		GLint maxLength = 0;
+		glGetProgramiv(program, GL_INFO_LOG_LENGTH, &maxLength);
+		if (maxLength > fplArrayCount(outError->message)) {
+			maxLength = fplArrayCount(outError->message);
+		}
+		glGetProgramInfoLog(program, maxLength, &maxLength, outError->message);
+		glDeleteProgram(program);
+		goto cleanup;
+	}
+
+	glDetachShader(program, vertexShaderId);
+	glDetachShader(program, fragmentShaderId);
+
+	fplClearStruct(outProgram);
+	outProgram->id = program;
+
+	result = true;
+
+cleanup:
+	if (vertexShaderId != 0) {
+		glDeleteShader(vertexShaderId);
+	}
+	if (fragmentShaderId != 0) {
+		glDeleteShader(fragmentShaderId);
+	}
+	return result;
+}
+
+extern void RendererShaderRelease(ShaderProgram *program) {
+	if (!RendererShaderIsValid(program)) {
+		return;
+	}
+	glDeleteProgram(program->id);
+	fplClearStruct(program);
+}
+
+extern void RendererShaderBind(const ShaderProgram *program) {
+	if (!RendererShaderIsValid(program)) {
+		return;
+	}
+	glUseProgram(program->id);
+}
+
+extern void RendererShaderUnbind(const ShaderProgram *program) {
+	if (!RendererShaderIsValid(program)) {
+		return;
+	}
+	glUseProgram(0);
+}
+
+extern int32_t RendererShaderGetUniformLocation(const ShaderProgram *program, const char *name) {
+	if (!RendererShaderIsValid(program) || name == fpl_null || name[0] == '\0') {
+		return -1;
+	}
+	return glGetUniformLocation(program->id, name);
+}
+
+extern int32_t RendererShaderGetAttribLocation(const ShaderProgram *program, const char *name) {
+	if (!RendererShaderIsValid(program) || name == fpl_null || name[0] == '\0') {
+		return -1;
+	}
+	return fgl_glGetAttribLocation(program->id, name);
+}
+
+
+extern void RendererShaderUniform1f(const ShaderProgram *program, const int32_t location, const float v0) {
+	if (!RendererShaderIsValid(program) || location < 0) {
+		return;
+	}
+	glUniform1f(location, v0);
+}
+
+extern void RendererShaderUniform2f(const ShaderProgram *program, const int32_t location, const float v0, const float v1) {
+	if (!RendererShaderIsValid(program) || location < 0) {
+		return;
+	}
+	glUniform2f(location, v0, v1);
+}
+
+extern void RendererShaderUniform3f(const ShaderProgram *program, const int32_t location, const float v0, const float v1, const float v2) {
+	if (!RendererShaderIsValid(program) || location < 0) {
+		return;
+	}
+	glUniform3f(location, v0, v1, v2);
+}
+
+extern void RendererShaderUniform4f(const ShaderProgram *program, const int32_t location, const float v0, const float v1, const float v2, const float v3) {
+	if (!RendererShaderIsValid(program) || location < 0) {
+		return;
+	}
+	glUniform4f(location, v0, v1, v2, v3);
+}
+
+extern void RendererShaderUniform1i(const ShaderProgram *program, const int32_t location, const int32_t v0) {
+	if (!RendererShaderIsValid(program) || location < 0) {
+		return;
+	}
+	glUniform1i(location, v0);
+}
+
+extern void RendererShaderUniform2i(const ShaderProgram *program, const int32_t location, const int32_t v0, const int32_t v1) {
+	if (!RendererShaderIsValid(program) || location < 0) {
+		return;
+	}
+	glUniform2i(location, v0, v1);
+}
+
+extern void RendererShaderUniform3i(const ShaderProgram *program, const int32_t location, const int32_t v0, const int32_t v1, const int32_t v2) {
+	if (!RendererShaderIsValid(program) || location < 0) {
+		return;
+	}
+	glUniform3i(location, v0, v1, v2);
+}
+
+extern void RendererShaderUniform4i(const ShaderProgram *program, const int32_t location, const int32_t v0, const int32_t v1, const int32_t v2, const int32_t v3) {
+	if (!RendererShaderIsValid(program) || location < 0) {
+		return;
+	}
+	glUniform4i(location, v0, v1, v2, v3);
+}
+
+extern void RendererShaderUniform1ui(const ShaderProgram *program, const int32_t location, const uint32_t v0) {
+	if (!RendererShaderIsValid(program) || location < 0) {
+		return;
+	}
+	glUniform1ui(location, v0);
+}
+
+extern void RendererShaderUniform2ui(const ShaderProgram *program, const int32_t location, const uint32_t v0, const uint32_t v1) {
+	if (!RendererShaderIsValid(program) || location < 0) {
+		return;
+	}
+	glUniform2ui(location, v0, v1);
+}
+
+extern void RendererShaderUniform3ui(const ShaderProgram *program, const int32_t location, const uint32_t v0, const uint32_t v1, const uint32_t v2) {
+	if (!RendererShaderIsValid(program) || location < 0) {
+		return;
+	}
+	glUniform3ui(location, v0, v1, v2);
+}
+
+extern void RendererShaderUniform4ui(const ShaderProgram *program, const int32_t location, const uint32_t v0, const uint32_t v1, const uint32_t v2, const uint32_t v3) {
+	if (!RendererShaderIsValid(program) || location < 0) {
+		return;
+	}
+	glUniform4ui(location, v0, v1, v2, v3);
+}
+
+extern void RendererShaderUniformVec2f(const ShaderProgram *program, const int32_t location, const Vec2f v) {
+	if (!RendererShaderIsValid(program) || location < 0) {
+		return;
+	}
+	glUniform2f(location, v.x, v.y);
+}
+
+extern void RendererShaderUniformVec3f(const ShaderProgram *program, const int32_t location, const Vec3f v) {
+	if (!RendererShaderIsValid(program) || location < 0) {
+		return;
+	}
+	glUniform3f(location, v.x, v.y, v.z);
+}
+
+extern void RendererShaderUniformVec4f(const ShaderProgram *program, const int32_t location, const Vec4f v) {
+	if (!RendererShaderIsValid(program) || location < 0) {
+		return;
+	}
+	glUniform4f(location, v.x, v.y, v.z, v.w);
+}
+
+extern void RendererShaderUniformMat4f(const ShaderProgram *program, const int32_t location, const Mat4f m) {
+	if (!RendererShaderIsValid(program) || location < 0) {
+		return;
+	}
+	glUniformMatrix4fv(location, 1, GL_FALSE, (const GLfloat *)m.m);
 }

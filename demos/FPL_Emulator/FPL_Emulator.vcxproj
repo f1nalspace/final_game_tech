@@ -126,6 +126,8 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <ProjectReference>
+    </ProjectReference>
     <PostBuildEvent>
       <Command>xcopy /Q /E /Y /I "$(ProjectDir)\roms" "..\build\FPL_Emulator\WinX86_Debug\roms\"</Command>
     </PostBuildEvent>
@@ -147,6 +149,8 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <ProjectReference>
+    </ProjectReference>
     <PostBuildEvent>
       <Command>xcopy /Q /E /Y /I "$(ProjectDir)\roms" "..\build\FPL_Emulator\WinX64_Debug\roms\"</Command>
     </PostBuildEvent>
@@ -173,6 +177,8 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
     </Link>
+    <ProjectReference>
+    </ProjectReference>
     <PostBuildEvent>
       <Command>xcopy /Q /E /Y /I "$(ProjectDir)\roms" "..\build\FPL_Emulator\WinX86_Release\roms\"</Command>
     </PostBuildEvent>
@@ -199,6 +205,8 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
     </Link>
+    <ProjectReference>
+    </ProjectReference>
     <PostBuildEvent>
       <Command>xcopy /Q /E /Y /I "$(ProjectDir)\roms" "..\build\FPL_Emulator\WinX64_Release\roms\"</Command>
     </PostBuildEvent>

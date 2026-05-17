@@ -284,7 +284,7 @@ fpl_extern bool FontLoadFromMemory(MemoryAllocator *allocator, const void *data,
 	}
 
 #if FINAL_FONTLOADER_BETTERQUALITY
-	packedChars = (stbtt_packedchar *)MemoryAllocatorAlloc(charCount * sizeof(stbtt_packedchar));
+	packedChars = (stbtt_packedchar *)MemoryAllocatorAlloc(allocator, charCount * sizeof(stbtt_packedchar));
 	if (packedChars == fpl_null) {
 		// TODO(final): Logging (Insufficient memory)
 		InternalFontLoadFromMemoryShutdown(allocator, packedChars, atlasAlphaBitmap, glyphs, kerningTable, defaultAdvance);

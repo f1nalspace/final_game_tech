@@ -5,9 +5,9 @@ final_memory.h
 	About
 -------------------------------------------------------------------------------
 
-A open source single header file library for using heap memory like a stack.
+An open source single header file library for using heap memory like a stack.
 
-The only dependencies are a C99 complaint compiler.
+The only dependencies are a C99 compliant compiler.
 
 -------------------------------------------------------------------------------
 	Getting started
@@ -150,7 +150,7 @@ SOFTWARE.
 	\file final_memory.h
 	\version v1.0.1
 	\author Torsten Spaete
-	\brief Final Memory (FMEM) - A open source C99 single file header memory library.
+	\brief Final Memory (FMEM) - An open source C99 single file header memory library.
 */
 
 /*!
@@ -161,7 +161,7 @@ SOFTWARE.
 	- Changed: Moved FMEM_MEMSET, FMEM_MALLOC, FMEM_ASSERT into the implementation block
 
 	## v1.0.0:
-	- New: Added fmemPushArray() to allocate a array with a type
+	- New: Added fmemPushArray() to allocate an array with a type
 	- New: Added fmemPushString() to allocate a zero-terminated string
 
 	## v0.3.1 alpha:
@@ -173,7 +173,7 @@ SOFTWARE.
 	- New: Added function fmemCreate()
 
 	## v0.2.1 alpha:
-	- Fixed: Two inline functions was not found in GCC
+	- Fixed: Two inline functions were not found in GCC
 
 	## v0.2 alpha:
 	- Added: New function fmemGetHeader
@@ -243,15 +243,17 @@ SOFTWARE.
 //! Returns the number of bytes for the given terabytes
 #define FMEM_TERABYTES(value) ((FMEM_GIGABYTES(value) * 1024ull))
 
+/*! \brief Flags controlling a single @ref fmemPush call. */
 typedef enum fmemPushFlags {
 	//! No push flags
 	fmemPushFlags_None = 0,
 	//! Clear region to zero
 	fmemPushFlags_Clear = 1 << 0,
-	//! Indicates that a push always creates an memory block for the allocation
+	//! Indicates that a push always creates a memory block for the allocation
 	fmemPushFlags_ForceBlock = 1 << 1,
 } fmemPushFlags;
 
+/*! \brief Kind of an @ref fmemMemoryBlock — controls growth and ownership semantics. */
 typedef enum fmemType {
 	//! Unlimited size, grows additional blocks if needed
 	fmemType_Growable = 0,
@@ -261,6 +263,7 @@ typedef enum fmemType {
 	fmemType_Temporary,
 } fmemType;
 
+/*! \brief Push permission flag stored on a block (allow or deny further pushes). */
 typedef enum fmemPermission {
 	//! Allowed
 	fmemPermission_Allowed = 0,
@@ -268,6 +271,7 @@ typedef enum fmemPermission {
 	fmemPermission_Denied,
 } fmemPermission;
 
+/*! \brief Internal linked-list header that precedes the payload of each allocated block. */
 typedef struct fmemBlockHeader {
 	//! Previous block
 	struct fmemMemoryBlock *prev;
@@ -275,6 +279,7 @@ typedef struct fmemBlockHeader {
 	struct fmemMemoryBlock *next;
 } fmemBlockHeader;
 
+/*! \brief A memory block used as a stack allocator (fixed, growable, or temporary). */
 typedef struct fmemMemoryBlock {
 	//! Source memory pointer if present
 	void *source;
@@ -292,7 +297,7 @@ typedef struct fmemMemoryBlock {
 	size_t minBlockSize;
 	//! Type
 	fmemType type;
-	// !Push permission
+	//! Push permission.
 	fmemPermission allowPush;
 } fmemMemoryBlock;
 
@@ -328,7 +333,7 @@ fmem_api fmemBlockHeader *fmemGetHeader(fmemMemoryBlock *block);
 //! Gets memory for a struct from the block and return a pointer to the struct
 #define fmemPushStruct(block, type, flags) (type *)fmemPush(block, sizeof(type), flags)
 
-//! Gets memory for a array with the specified type from the block and return a pointer to the array
+//! Gets memory for an array with the specified type from the block and returns a pointer to the array.
 #define fmemPushArray(block, type, count, flags) (type *)fmemPush(block, sizeof(type) * (count), flags)
 
 //! Gets memory for a null-terminated string with the specified length from the block and return a pointer to the base

@@ -558,7 +558,7 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 	const char *platformName = fplGetPlatformName(fplGetPlatformType());
 	const char *archName = fplCPUGetArchName(fplCPUGetArchitecture());
 	fplMemoryInfos memInfos = fplZeroInit;
-	fplMemoryGetInfos(&memInfos);
+	fplMemoryGetUsage(&memInfos);
 
 	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- Platform: %s", platformName);
 	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- Architecture: %s", archName);

@@ -32,7 +32,7 @@ typedef uint16_t GameControllerInputBindingEncoded;
 
 fpl_extern void fplDecodeGamepadMappingEntry(const uint8_t in[GAMECONTROLLER_BLOB_ENTRY_SIZE], fplGamepadMapping *outMapping);
 fpl_extern uint32_t fplDecompressGamepadMappingTable(const uint8_t *blob, uint32_t entryCount, fplGamepadMapping *outMappings, uint32_t maxMappings);
-fpl_extern bool fplFindGamepadMapping(const fplGamepadMapping *table, uint32_t tableCount, const fplGamepadGuid guid, fplGamepadPlatform platform, fplGamepadMapping *outMapping);
+fpl_extern bool fplFindGamepadMapping(const fplGamepadMapping *table, const size_t tableCount, const fplGamepadGuid guid, fplGamepadPlatform platform, fplGamepadMapping *outMapping);
 fpl_extern fplGamepadPlatform fplGetGamepadPlatform(const fplPlatformType type);
 
 #endif // FINAL_GAMECONTROLLER_H
@@ -441,16 +441,17 @@ fpl_extern uint32_t fplDecompressGamepadMappingTable(const uint8_t *blob, uint32
 }
 
 // Looks up a mapping in an already-decompressed, GUID-sorted table. Prefers an exact platform match, falls back to the first GUID match.
-fpl_extern bool fplFindGamepadMapping(const fplGamepadMapping *table, uint32_t tableCount, const fplGamepadGuid guid, fplGamepadPlatform platform, fplGamepadMapping *outMapping) {
+fpl_extern bool fplFindGamepadMapping(const fplGamepadMapping *table, const size_t tableCount, const fplGamepadGuid guid, fplGamepadPlatform platform, fplGamepadMapping *outMapping) {
 	if (table == fpl_null || outMapping == fpl_null || tableCount == 0) {
 		return false;
 	}
 
-	int32_t lo = 0;
-	int32_t hi = (int32_t)tableCount - 1;
-	int32_t found = -1;
+	const int count = (int)tableCount;
+	int lo = 0;
+	int hi = count - 1;
+	int found = -1;
 	while (lo <= hi) {
-		int32_t mid = lo + (hi - lo) / 2;
+		int mid = lo + (hi - lo) / 2;
 		int cmp = fpl__CompareGuid(table[mid].guid, guid);
 		if (cmp < 0) {
 			lo = mid + 1;
@@ -465,12 +466,12 @@ fpl_extern bool fplFindGamepadMapping(const fplGamepadMapping *table, uint32_t t
 		return false;
 	}
 
-	int32_t start = found;
+	int start = found;
 	while (start > 0 && fpl__CompareGuid(table[start - 1].guid, guid) == 0) {
 		--start;
 	}
-	int32_t fallback = -1;
-	for (int32_t i = start; i < (int32_t)tableCount; ++i) {
+	int fallback = -1;
+	for (int i = start; i < count; ++i) {
 		if (fpl__CompareGuid(table[i].guid, guid) != 0) {
 			break;
 		}

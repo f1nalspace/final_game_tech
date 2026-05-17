@@ -2,9 +2,9 @@
 * @file final_tiletrace.hpp
 * @version v1.02
 * @author Torsten Spaete
-* @brief Final TileTrace (FTT) - a open source single file header c++ contour tile tracing library.
+* @brief Final TileTrace (FTT) - an open source single file header C++ contour tile tracing library.
 *
-* This creates chainshapes out of any solid tilemap based on a contour tracing algorythmn.
+* This creates chainshapes out of any solid tilemap based on a contour tracing algorithm.
 *
 * @mainpage
 * Summary of the Final TileTrace (FTT) project.
@@ -15,8 +15,8 @@
 final_tiletrace.hpp
 Open-Source Single-File Header C++ Library by Torsten Spaete
 
-This creates chainshapes out of any solid tilemap based on a contour tracing algorythmn.
-It will try to create as less chain shapes as possible.
+This creates chainshapes out of any solid tilemap based on a contour tracing algorithm.
+It will try to create as few chain shapes as possible.
 
 - Supports block tiles only!
 
@@ -30,7 +30,7 @@ It will try to create as less chain shapes as possible.
 
 # PREPROCESSOR OVERRIDES
 
-# ALGORYTHM
+# ALGORITHM
 
 ## Overview
 
@@ -189,15 +189,11 @@ After the algorithm completes (NextTileTraceStep returns false):
 [X] Block tile contour tracing
 [X] Creating optimized chain segments
 
-# TODO
-
-[ ] Finish algorythmn documentation
-
 # LICENSE
 
 MIT License
 
-Copyright (c) 2017-2019 Torsten Spaete
+Copyright (c) 2017-2026 Torsten Spaete
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
 the Software without restriction, including without limitation the rights to
@@ -216,8 +212,12 @@ SOFTWARE.
 
 # VERSION HISTORY
 
-- v1.01:
+- v1.0.2:
+	* Documented algorithm in broad details
+
+- v1.0.1:
 	* Added additional C++ api
+
 - v1.0:
 	* Initial version
 
@@ -401,7 +401,7 @@ namespace ftt {
 		inline size_t GetEdgeCount() const {
 			return data.mainEdges.size();
 		}
-		//! Returns a edge by the given index
+		//! Returns an edge by the given index
 		inline const Edge &GetEdge(uint32_t index) const {
 			return data.mainEdges[index];
 		}
@@ -413,7 +413,7 @@ namespace ftt {
 		inline size_t GetOpenTileCount() const {
 			return data.openList.size();
 		}
-		//! Returns a open tile pointer by the given index
+		//! Returns an open tile pointer by the given index
 		inline Tile *GetOpenTile(uint32_t index) const {
 			return data.openList[index];
 		}
@@ -431,7 +431,7 @@ namespace ftt {
 	ftt_api void InitTileTracer(TileTracerData *tracer, const Vec2u &tileCount, uint8_t *mapTiles);
 	//! Executes the next step for the given tracer data
 	ftt_api bool NextTileTraceStep(TileTracerData *tracer);
-	//! Runs the full tracer until it is done for the the given tracer data.
+	//! Runs the full tracer until it is done for the given tracer data.
 	ftt_api void RunTileTracer(TileTracerData *tracer);
 };
 #endif
@@ -445,7 +445,7 @@ namespace ftt {
 	/*
 	https://en.wikipedia.org/wiki/Moore_neighborhood
 
-	How this algotythm works:
+	How this algorithm works:
 
 	Find first/next start:
 	- Find first solid tile anywhere in the map -> Start-Tile
