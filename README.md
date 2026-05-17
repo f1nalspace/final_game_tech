@@ -109,11 +109,13 @@ All libraries in the root folder of this repository are open-source and use the 
 
 ![FPL_AudioPlayer](screenshots/FPL_AudioPlayer.png)
 
-![FPL_Crackout](screenshots/FPL_Crackout.png)
+![Fluid Sandbox](screenshots/FluidSandbox.png)
 
 ![FPL_Emulator](screenshots/FPL_Emulator.png)
 
 ![FPL_FFMpeg](screenshots/FPL_FFMpeg.png)
+
+![FPL_Crackout](screenshots/FPL_Crackout.png)
 
 ![FPL_ImageViewer](screenshots/FPL_ImageViewer.png)
 
