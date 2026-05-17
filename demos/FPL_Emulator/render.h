@@ -79,29 +79,87 @@ extern const Color4f ColorDarkGray;
 
 typedef void RendererContext;
 
-extern RendererContext *RendererCreate(fmemMemoryBlock *memory);
+typedef struct {
+	int majorVersion;
+	int minorVersion;
+	bool hasGLSL;
+} RendererSupport;
+
+extern RendererContext *RendererCreate(fmemMemoryBlock *memory, RendererSupport *outSupport);
 extern void RendererDestroy(RendererContext *context);
 
-extern Texture UploadTexture(const uint32_t width, const uint32_t height, const TextureFormat format, const TextureFilter textureFilter, const void *data);
-extern Texture AllocateTexture(fmemMemoryBlock *mem, const uint32_t width, const uint32_t height, const TextureFormat format, const TextureFilter textureFilter);
-extern Texture LoadTextureFromMemory(const uint8_t *data, const size_t size, const TextureFormat format, const TextureFilter textureFilter, const uint32_t actualWidth, const uint32_t actualHeight);
-extern void ReleaseTexture(Texture *texture);
-extern void UpdateTexture(const Texture *texture);
-extern void ClearTexture(const Texture *texture);
+extern Texture RendererTextureUpload(const uint32_t width, const uint32_t height, const TextureFormat format, const TextureFilter textureFilter, const void *data);
+extern Texture RendererTextureAllocate(fmemMemoryBlock *mem, const uint32_t width, const uint32_t height, const TextureFormat format, const TextureFilter textureFilter);
+extern Texture RendererTextureLoadFromMemory(const uint8_t *data, const size_t size, const TextureFormat format, const TextureFilter textureFilter, const uint32_t actualWidth, const uint32_t actualHeight);
+extern void RendererTextureRelease(Texture *texture);
+extern void RendererTextureUpdate(const Texture *texture);
+extern void RendererTextureClear(const Texture *texture);
 
-extern void SetViewport(const int x, const int y, const int w, const int h);
+typedef enum ShaderType {
+	ShaderType_Vertex = 0,
+	ShaderType_Fragment,
+	ShaderType_Count,
+} ShaderType;
 
-extern void EnableClipping();
-extern void SetViewClipRect(const Mat4f *projMat, const Mat4f *viewMat, const Viewport4i *viewport, const float x, const float y, const float w, const float h);
-extern void DisableClipping();
+typedef enum ShaderErrorType {
+	ShaderErrorType_InvalidSource,
+	ShaderErrorType_FailedCreatingHandle,
+	ShaderErrorType_Parse,
+	ShaderErrorType_Compilation,
+	ShaderErrorType_Linking,
+} ShaderErrorType;
 
-extern void Clear(const float r, const float g, const float b, const float a);
+typedef struct ShaderError {
+	ShaderErrorType type;
+	char message[1024];
+} ShaderError;
 
-extern void SetModelViewProjectionMatrix(const float *mvp);
+typedef struct ShaderProgram {
+	uint32_t id;
+} ShaderProgram;
 
-extern void DrawString(const LoadedFont *font, const TextureID textureId, const char *text, const size_t textLen, const float x, const float y, const float scale, const Color4f color);
+extern bool RendererShaderIsValid(const ShaderProgram *program);
+extern bool RendererShaderCreate(const char *vertexSource, const char *fragmentSource, ShaderProgram *outProgram, ShaderError *outError);
+extern void RendererShaderRelease(ShaderProgram *program);
+extern void RendererShaderBind(const ShaderProgram *program);
+extern void RendererShaderUnbind(const ShaderProgram *program);
 
-extern void DrawTexturedQuad(
+extern int32_t RendererShaderGetUniformLocation(const ShaderProgram *program, const char *name);
+extern int32_t RendererShaderGetAttribLocation(const ShaderProgram *program, const char *name);
+
+extern void RendererShaderUniform1f(const ShaderProgram *program, const int32_t location, const float v0);
+extern void RendererShaderUniform2f(const ShaderProgram *program, const int32_t location, const float v0, const float v1);
+extern void RendererShaderUniform3f(const ShaderProgram *program, const int32_t location, const float v0, const float v1, const float v2);
+extern void RendererShaderUniform4f(const ShaderProgram *program, const int32_t location, const float v0, const float v1, const float v2, const float v3);
+
+extern void RendererShaderUniform1i(const ShaderProgram *program, const int32_t location, const int32_t v0);
+extern void RendererShaderUniform2i(const ShaderProgram *program, const int32_t location, const int32_t v0, const int32_t v1);
+extern void RendererShaderUniform3i(const ShaderProgram *program, const int32_t location, const int32_t v0, const int32_t v1, const int32_t v2);
+extern void RendererShaderUniform4i(const ShaderProgram *program, const int32_t location, const int32_t v0, const int32_t v1, const int32_t v2, const int32_t v3);
+
+extern void RendererShaderUniform1ui(const ShaderProgram *program, const int32_t location, const uint32_t v0);
+extern void RendererShaderUniform2ui(const ShaderProgram *program, const int32_t location, const uint32_t v0, const uint32_t v1);
+extern void RendererShaderUniform3ui(const ShaderProgram *program, const int32_t location, const uint32_t v0, const uint32_t v1, const uint32_t v2);
+extern void RendererShaderUniform4ui(const ShaderProgram *program, const int32_t location, const uint32_t v0, const uint32_t v1, const uint32_t v2, const uint32_t v3);
+
+extern void RendererShaderUniformVec2f(const ShaderProgram *program, const int32_t location, const Vec2f v);
+extern void RendererShaderUniformVec3f(const ShaderProgram *program, const int32_t location, const Vec3f v);
+extern void RendererShaderUniformVec4f(const ShaderProgram *program, const int32_t location, const Vec4f v);
+extern void RendererShaderUniformMat4f(const ShaderProgram *program, const int32_t location, const Mat4f m);
+
+extern void RendererSetViewport(const int x, const int y, const int w, const int h);
+
+extern void RendererEnableClipping();
+extern void RendererSetViewClipRect(const Mat4f *projMat, const Mat4f *viewMat, const Viewport4i *viewport, const float x, const float y, const float w, const float h);
+extern void RendererDisableClipping();
+
+extern void RendererClear(const float r, const float g, const float b, const float a);
+
+extern void RendererSetModelViewProjectionMatrix(const float *mvp);
+
+extern void RendererDrawString(const LoadedFont *font, const TextureID textureId, const char *text, const size_t textLen, const float x, const float y, const float scale, const Color4f color);
+
+extern void RendererDrawTexturedQuad(
 	const TextureID textureId,
 	const float x,
 	const float y,
@@ -113,11 +171,24 @@ extern void DrawTexturedQuad(
 	const float u1,
 	const float v1);
 
-extern void DrawFilledQuad(const float x, const float y, const float w, const float h, const Color4f color);
+extern void RendererDrawTexturedQuadShader(
+	const ShaderProgram *program,
+	const TextureID samplerId,
+	const int32_t samplerLocation,
+	const float x,
+	const float y,
+	const float w,
+	const float h,
+	const float u0,
+	const float v0,
+	const float u1,
+	const float v1);
 
-extern void DrawStrokedQuad(const float x, const float y, const float w, const float h, const float lineWidth, const Color4f color);
+extern void RendererDrawFilledQuad(const float x, const float y, const float w, const float h, const Color4f color);
 
-extern void DrawLine(const float x0, const float y0, const float x1, const float y1, const float lineWidth, const Color4f color);
+extern void RendererDrawStrokedQuad(const float x, const float y, const float w, const float h, const float lineWidth, const Color4f color);
+
+extern void RendererDrawLine(const float x0, const float y0, const float x1, const float y1, const float lineWidth, const Color4f color);
 
 typedef enum {
 	ControlBorderFlags_None = 0,
@@ -128,6 +199,6 @@ typedef enum {
 	ControlBorderFlags_All = ControlBorderFlags_Left | ControlBorderFlags_Right | ControlBorderFlags_Top | ControlBorderFlags_Bottom,
 } ControlBorderFlags;
 
-extern void DrawControlBorders(const float x, const float y, const float w, const float h, const float lineWidth, const Color4f *color0, const Color4f *color1, const Color4f *color2, const ControlBorderFlags flags, const bool isDown);
+extern void RendererDrawControlBorders(const float x, const float y, const float w, const float h, const float lineWidth, const Color4f *color0, const Color4f *color1, const Color4f *color2, const ControlBorderFlags flags, const bool isDown);
 
-extern void DrawControlBorder(const float x, const float y, const float w, const float h, const float lineWidth, const Color4f *color0, const Color4f *color1, const Color4f *color2, const bool isDown);
+extern void RendererDrawControlBorder(const float x, const float y, const float w, const float h, const float lineWidth, const Color4f *color0, const Color4f *color1, const Color4f *color2, const bool isDown);

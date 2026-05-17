@@ -30,6 +30,7 @@
 #include <vector>
 #include <ostream>
 #include <cctype>
+#include <cstring>
 #include <inttypes.h>
 #include <map>
 #include <assert.h>

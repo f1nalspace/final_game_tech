@@ -47,6 +47,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2026-05-09
+	- Shader support for gameboy display (Bilinear, HQ2x, HQ4x, Cat-Mull-Rom, Bicubic)
+
 	## 2026-04-19
 	- Support for CGB rom file extension
 	- Support for render CGB palettes
@@ -137,6 +140,7 @@ License:
 #include "ui.c"
 #include "render.c"
 #include "utils.c"
+#include "shaders.h"
 
 // Is the debug UI enabled at startup
 #define DEBUG_AT_START 1
@@ -302,8 +306,6 @@ static FGB_ALLOCATE_MEMORY_CALLBACK(frontend_AllocateMemory) {
 		}
 	}
 
-	size_t remainingSize = fmemGetRemainingSize(&transientMem->temporary);
-
 	uint8_t *result = fmemPush(&transientMem->temporary, size, fmemPushFlags_Clear);
 	if (result == fpl_null) {
 		FPL_LOG_ERROR("Frontend", "Not enough memory in transient block. Expect %zu bytes but got %zu bytes", size, remainingSize);
@@ -385,7 +387,7 @@ static void EndPerformanceCounter(PerformanceCounter *counter, const fplTimestam
 	double duration = fplTimestampElapsed(counter->start, counter->end);
 	size_t x = counter->count++;
 
-	int deltaIndex = x % PERFORMANCE_COUNTER_DELTA_CAPACITY;
+	size_t deltaIndex = x % PERFORMANCE_COUNTER_DELTA_CAPACITY;
 	counter->deltas[deltaIndex] = duration;
 
 	counter->minSecs = counter->maxSecs = 0;
@@ -636,11 +638,30 @@ typedef struct {
 } EmulatorParameters;
 
 typedef struct {
+	ShaderProgram program;
+	ShaderError error;
+	int32_t textureSamplerLocation;
+	int32_t textureSizeLocation;
+	int32_t imageSizeLocation;
+	bool isValid;
+} AppShader;
+
+typedef enum {
+	AppShaderType_None = 0,
+	AppShaderType_Bilinear,
+	AppShaderType_HQ2X,
+	AppShaderType_HQ4X,
+	AppShaderType_BicubicHermite,
+	AppShaderType_BicubicLagrange,
+	AppShaderType_CatmullRom4,
+} AppShaderType;
+
+typedef struct {
 	UIContext uiCtx;
 
 	char romsPath[1024];
 	char defaultGameRomFilePath[1024];
-		
+	
 	LoadedFont fontData;
 	LoadedFont fontDataLarge;
 
@@ -658,6 +679,14 @@ typedef struct {
 
 	Viewport4i viewport;
 
+	AppShader nearestShader;
+	AppShader bilinearShader;
+	AppShader catmullRom4Shader;
+	AppShader hq2xShader;
+	AppShader hq4xShader;
+	AppShader bicubicLagrangeShader;
+	AppShader bicubicHermiteShader;
+
 	Vec2i windowSize;
 
 	UIListboxData console;
@@ -668,7 +697,6 @@ typedef struct {
 	fmemMemoryBlock disassemblyMemory;
 
 	UIButtonData pauseOrResumeButton;
-	UIButtonData resumeButton;
 	UIButtonData frameStepButton;
 	UIButtonData singleStepButton;
 	UIButtonData microStepButton;
@@ -695,6 +723,14 @@ typedef struct {
 	UICheckboxData ppuWindowCheckbox;
 	UICheckboxData ppuSpritesCheckbox;
 
+	UICheckboxData shaderNearestCheckbox;
+	UICheckboxData shaderBilinearCheckbox;
+	UICheckboxData shaderCatmullRom4Checkbox;
+	UICheckboxData shaderHQ2XCheckbox;
+	UICheckboxData shaderHQ4XCheckbox;
+	UICheckboxData shaderBicubicLagrangeCheckbox;
+	UICheckboxData shaderBicubicHermiteCheckbox;
+
 	UITabControlData leftTabControl;
 	UITabControlData rightTabControl;
 
@@ -706,7 +742,10 @@ typedef struct {
 
 	fpl_b32 isValid;
 
+	AppShaderType activeShaderType;
+
 	bool isDebugEnabled;
+	bool isShaderSupported;
 
 	fplTimestamp lastDisassemblyScrollTime;
 	uint64_t lastDisassemblyScrollPC;
@@ -822,7 +861,7 @@ static bool InitEmulator(fmemMemoryBlock *mem, Emulator *emulator) {
 	}
 
 	for (int i = 0; i < fplArrayCount(emulator->states.textures); ++i) {
-		emulator->states.textures[i] = AllocateTexture(mem, FGB_DISPLAY_WIDTH, FGB_DISPLAY_HEIGHT, TextureFormat_RGBA, TextureFilter_Nearest);
+		emulator->states.textures[i] = RendererTextureAllocate(mem, FGB_DISPLAY_WIDTH, FGB_DISPLAY_HEIGHT, TextureFormat_RGBA, TextureFilter_Nearest);
 	}
 
 	DisplayFrameQueueInit(&emulator->displayQueue);
@@ -873,12 +912,25 @@ static void ReleaseEmulator(Emulator *emulator) {
 	}
 
 	for (int i = 0; i < fplArrayCount(emulator->states.textures); ++i)
-		ReleaseTexture(&emulator->states.textures[i]);
+		RendererTextureRelease(&emulator->states.textures[i]);
 
 	fplClearStruct(emulator);
 }
 
-static Application *CreateApplication(fmemMemoryBlock *mem, const EmulatorParameters *parameters) {
+static void UpdateAppShaderLocations(AppShader *appShader) {
+	appShader->textureSamplerLocation = RendererShaderGetUniformLocation(&appShader->program, "textureSampler");
+	appShader->textureSizeLocation = RendererShaderGetUniformLocation(&appShader->program, "textureSize");
+	appShader->imageSizeLocation = RendererShaderGetUniformLocation(&appShader->program, "imageSize");
+}
+
+static void LoadAppShader(AppShader *shader, const char *vertexSource, const char *fragmentSource) {
+	if (RendererShaderCreate(vertexSource, fragmentSource, &shader->program, &shader->error)) {
+		UpdateAppShaderLocations(shader);
+		shader->isValid = true;
+	}
+}
+
+static Application *CreateApplication(fmemMemoryBlock *mem, const EmulatorParameters *parameters, const RendererSupport *rendererSupport) {
 	Application *app = fmemPushStruct(mem, Application, fmemPushFlags_Clear);
 	if (app == fpl_null) {
 		return fpl_null;
@@ -913,13 +965,29 @@ static Application *CreateApplication(fmemMemoryBlock *mem, const EmulatorParame
 	app->disassemblyHashTable = IndexHashtableInit(&app->disassemblyMemory);
 
 	// Load/Allocate textures
-	app->fontTexture = UploadTexture(app->fontData.atlasWidth, app->fontData.atlasHeight, TextureFormat_Alpha, TextureFilter_Linear, app->fontData.atlasAlphaBitmap);
-	app->fontTextureLarge = UploadTexture(app->fontDataLarge.atlasWidth, app->fontDataLarge.atlasHeight, TextureFormat_Alpha, TextureFilter_Linear, app->fontDataLarge.atlasAlphaBitmap);
-	app->displayTexture = AllocateTexture(mem, FGB_DISPLAY_WIDTH, FGB_DISPLAY_HEIGHT, TextureFormat_RGBA, TextureFilter_Nearest);
-	app->tileMapTexture = AllocateTexture(mem, FGB_TILEMAP_WIDTH, FGB_TILEMAP_HEIGHT, TextureFormat_RGBA, TextureFilter_Nearest);
-	app->backgroundMapTexture = AllocateTexture(mem, FGB_BACKGROUND_MAP_WIDTH, FGB_BACKGROUND_MAP_HEIGHT, TextureFormat_RGBA, TextureFilter_Nearest);
-	app->cursorTexture = LoadTextureFromMemory(ptr_mouseCursor, sizeOf_mouseCursor, TextureFormat_Automatic, TextureFilter_Linear, 0, 0);
-	app->gbTexture = LoadTextureFromMemory(ptr_gameboyImage, sizeOf_gameboyImage, TextureFormat_Automatic, TextureFilter_Linear, 619, 1024);
+	app->fontTexture = RendererTextureUpload(app->fontData.atlasWidth, app->fontData.atlasHeight, TextureFormat_Alpha, TextureFilter_Linear, app->fontData.atlasAlphaBitmap);
+	app->fontTextureLarge = RendererTextureUpload(app->fontDataLarge.atlasWidth, app->fontDataLarge.atlasHeight, TextureFormat_Alpha, TextureFilter_Linear, app->fontDataLarge.atlasAlphaBitmap);
+	app->displayTexture = RendererTextureAllocate(mem, FGB_DISPLAY_WIDTH, FGB_DISPLAY_HEIGHT, TextureFormat_RGBA, TextureFilter_Nearest);
+	app->tileMapTexture = RendererTextureAllocate(mem, FGB_TILEMAP_WIDTH, FGB_TILEMAP_HEIGHT, TextureFormat_RGBA, TextureFilter_Nearest);
+	app->backgroundMapTexture = RendererTextureAllocate(mem, FGB_BACKGROUND_MAP_WIDTH, FGB_BACKGROUND_MAP_HEIGHT, TextureFormat_RGBA, TextureFilter_Nearest);
+	app->cursorTexture = RendererTextureLoadFromMemory(ptr_mouseCursor, sizeOf_mouseCursor, TextureFormat_Automatic, TextureFilter_Linear, 0, 0);
+	app->gbTexture = RendererTextureLoadFromMemory(ptr_gameboyImage, sizeOf_gameboyImage, TextureFormat_Automatic, TextureFilter_Linear, 619, 1024);
+
+	// Load shaders
+	if (rendererSupport->hasGLSL) {
+		LoadAppShader(&app->nearestShader, g_shaderVertexPosTexcoord, g_shaderFragmentTextureColor);
+		LoadAppShader(&app->bilinearShader, g_shaderVertexPosTexcoord, g_shaderFragmentTextureBilinear);
+		LoadAppShader(&app->catmullRom4Shader, g_shaderVertexPosTexcoord, g_shaderFragmentTextureCatmullRom);
+		LoadAppShader(&app->hq2xShader, g_shaderVertexPosTexcoord, g_shaderFragmentTextureHQ2X);
+		LoadAppShader(&app->hq4xShader, g_shaderVertexPosTexcoord, g_shaderFragmentTextureHQ4X);
+		LoadAppShader(&app->bicubicLagrangeShader, g_shaderVertexPosTexcoord, g_shaderFragmentTextureBicubicLagrange);
+		LoadAppShader(&app->bicubicHermiteShader, g_shaderVertexPosTexcoord, g_shaderFragmentTextureBicubicHermite);
+		app->isShaderSupported = app->bilinearShader.isValid;
+		app->activeShaderType = AppShaderType_None;
+	} else {
+		app->isShaderSupported = false;
+		app->activeShaderType = AppShaderType_None;
+	}
 
 	// Init UI
 	UIInitContext(&app->uiCtx, UITheme_Dark);
@@ -950,13 +1018,21 @@ static void ReleaseApplication(Application **appRef) {
 
 	ReleaseEmulator(&app->emulator);
 
-	ReleaseTexture(&app->cursorTexture);
-	ReleaseTexture(&app->tileMapTexture);
-	ReleaseTexture(&app->displayTexture);
-	ReleaseTexture(&app->backgroundMapTexture);
-	ReleaseTexture(&app->fontTexture);
-	ReleaseTexture(&app->fontTextureLarge);
-	ReleaseTexture(&app->gbTexture);
+	RendererShaderRelease(&app->nearestShader.program);
+	RendererShaderRelease(&app->bilinearShader.program);
+	RendererShaderRelease(&app->catmullRom4Shader.program);
+	RendererShaderRelease(&app->hq2xShader.program);
+	RendererShaderRelease(&app->hq4xShader.program);
+	RendererShaderRelease(&app->bicubicLagrangeShader.program);
+	RendererShaderRelease(&app->bicubicHermiteShader.program);
+
+	RendererTextureRelease(&app->cursorTexture);
+	RendererTextureRelease(&app->tileMapTexture);
+	RendererTextureRelease(&app->displayTexture);
+	RendererTextureRelease(&app->backgroundMapTexture);
+	RendererTextureRelease(&app->fontTexture);
+	RendererTextureRelease(&app->fontTextureLarge);
+	RendererTextureRelease(&app->gbTexture);
 
 	fmemFree(&app->disassemblyMemory);
 	fmemFree(&app->consoleMemory);
@@ -985,7 +1061,7 @@ static char TextBuffer[256];
 const float inv255 = 1.0f / 255.0f;
 
 static Color4f FGBColorToLinearColor(const fgbColor color) {
-	Color4f result = { color.r * inv255, color.g * inv255, color.b * inv255, 1.0f };
+	Color4f result = { (float)color.r * inv255, (float)color.g * inv255, (float)color.b * inv255, 1.0f };
 	return result;
 }
 	
@@ -1144,17 +1220,14 @@ static void DrawDisplayState(Application *app, const fgbPPU *ppu, const float x,
 
 	for (int i = 0; i < ppu->pipeline.fifo.len; ++i) {
 		int p = (ppu->pipeline.fifo.out + i) % fifoCapacity;
-
 		fgbPixel fifoPixel = ppu->pipeline.fifo.pixels[p];
-
 		Color4f color = FGBColorToLinearColor(fifoPixel.color);
-
-		DrawFilledQuad(tmpX + i * fifoCellWidth, tmpY, fifoCellWidth, fifoHeight, color);
+		RendererDrawFilledQuad(tmpX + (float)i * fifoCellWidth, tmpY, fifoCellWidth, fifoHeight, color);
 	}
 
-	DrawStrokedQuad(tmpX, tmpY, fifoWidth, fifoHeight, 2.0f, ColorGray);
+	RendererDrawStrokedQuad(tmpX, tmpY, fifoWidth, fifoHeight, 2.0f, ColorGray);
 	for (int i = 1; i < fifoCapacity; ++i) {
-		DrawLine(tmpX + i * fifoCellWidth, tmpY, tmpX + i * fifoCellWidth, tmpY + fifoHeight, 1.0f, ColorGray);
+		RendererDrawLine(tmpX + (float)i * fifoCellWidth, tmpY, tmpX + (float)i * fifoCellWidth, tmpY + fifoHeight, 1.0f, ColorGray);
 	}
 
 	textY -= fifoHeight;
@@ -1582,21 +1655,40 @@ static void TransferPixelsToTexture(const fgbColor *sourcePixels, const uint32_t
 	texture->hasPixels = true;
 }
 
+static const AppShader* GetActiveAppShader(const Application *app) {
+	switch (app->activeShaderType) {
+		case AppShaderType_Bilinear:
+			return &app->bilinearShader;
+		case AppShaderType_HQ2X:
+			return &app->hq2xShader;
+		case AppShaderType_HQ4X:
+			return &app->hq4xShader;
+		case AppShaderType_BicubicHermite:
+			return &app->bicubicHermiteShader;
+		case AppShaderType_BicubicLagrange:
+			return &app->bicubicLagrangeShader;
+		case AppShaderType_CatmullRom4:
+			return &app->catmullRom4Shader;
+		default:
+			return &app->nearestShader;
+	}
+}
+
 static void DrawDisplay(const Application *app, const float x, const float y, const float w, const float h, const float aspect) {
 	const UIContext *uiCtx = &app->uiCtx;
 
 	const Texture *tex = &app->displayTexture;
-	float uMin = 0.0f;
-	float uMax = tex->uScale;
-	float vMin = tex->vScale;
-	float vMax = 0.0f;
-	float border = 1.0f;
+	const float uMin = 0.0f;
+	const float uMax = tex->uScale;
+	const float vMin = tex->vScale;
+	const float vMax = 0.0f;
+	const float border = 1.0f;
 
-	float fontHeight = UIGetFontHeight(uiCtx);
+	const float fontHeight = UIGetFontHeight(uiCtx);
 
-	Vec2f screenSize = V2fInit(w, h);
+	const Vec2f screenSize = V2fInit(w, h);
 
-	Viewport4f displayView = VP4fComputeByAspect(screenSize, aspect);
+	const Viewport4f displayView = VP4fComputeByAspect(screenSize, aspect);
 
 	float boyWidth = displayView.w;
 	float boyHeight = displayView.h;
@@ -1612,19 +1704,42 @@ static void DrawDisplay(const Application *app, const float x, const float y, co
 	}
 
 	if (app->emulator.isActive) {
-		DrawTexturedQuad(tex->id, boyX, boyY, boyWidth, boyHeight, ColorWhite, uMin, vMin, uMax, vMax);
+		const AppShader *appShader;
+		if (app->isShaderSupported && app->activeShaderType != AppShaderType_None && (appShader = GetActiveAppShader(app)) != fpl_null) {
+			const ShaderProgram *shaderProgram = &appShader->program;
+
+			const int textureSamplerLocation = appShader->textureSamplerLocation;
+			const int textureSizeLocation = appShader->textureSizeLocation;
+			const int imageSizeLocation = appShader->imageSizeLocation;
+
+			const Vec2f textureSize = V2fInit((float)tex->width, (float)tex->height);
+			const Vec2f imageSize = V2fInit((float)FGB_DISPLAY_WIDTH, (float)FGB_DISPLAY_HEIGHT);
+
+			RendererShaderBind(shaderProgram);
+
+			RendererShaderUniform1i(shaderProgram, textureSamplerLocation, 0);
+			RendererShaderUniformVec2f(shaderProgram, textureSizeLocation, textureSize);
+			RendererShaderUniformVec2f(shaderProgram, imageSizeLocation, imageSize);
+
+			RendererDrawTexturedQuad(tex->id, boyX, boyY, boyWidth, boyHeight, ColorWhite, 0.0f, 1.0f, 1.0f, 0.0f);
+
+			RendererShaderUnbind(shaderProgram);
+
+		} else {
+			RendererDrawTexturedQuad(tex->id, boyX, boyY, boyWidth, boyHeight, ColorWhite, uMin, vMin, uMax, vMax);
+		}
 	} else {
-		DrawFilledQuad(x + border * 2.0f, y + border * 2.0f, w - border * 4.0f, h - border * 4.0f, ColorBlack);
+		RendererDrawFilledQuad(x + border * 2.0f, y + border * 2.0f, w - border * 4.0f, h - border * 4.0f, ColorBlack);
 
 		const char *insertGameText = "No Game Pak loaded";
 		size_t textLen = fplGetStringLength(insertGameText);
 		Vec2f textSize = FontGetTextSize(&app->fontData, insertGameText, textLen, fontHeight * 2.0f);
 
-		DrawString(&app->fontData, app->fontTexture.id, insertGameText, textLen, x + (w - textSize.w) * 0.5f, y + (h - textSize.h) * 0.5f - fontHeight, fontHeight * 2.0f, ColorWhite);
+		RendererDrawString(&app->fontData, app->fontTexture.id, insertGameText, textLen, x + (w - textSize.w) * 0.5f, y + (h - textSize.h) * 0.5f - fontHeight, fontHeight * 2.0f, ColorWhite);
 	}
 }
 
-static void DrawBackgroundMap(UIContext *uiCtx, const Application *app, const float x, const float y, const float w, const float h) {
+static void DrawBackgroundMap(const UIContext *uiCtx, const Application *app, const float x, const float y, const float w, const float h) {
 	const Emulator *emulator = &app->emulator;
 
 	const Texture *tex = &app->backgroundMapTexture;
@@ -1648,35 +1763,29 @@ static void DrawBackgroundMap(UIContext *uiCtx, const Application *app, const fl
 
 	float tileSize = insideWidth / (float)gridCountX;
 
-	float totalTilesWidth = gridCountX * tileSize;
-	float totalTilesHeight = gridCountY * tileSize;
+	float totalTilesWidth = (float)gridCountX * tileSize;
+	float totalTilesHeight = (float)gridCountY * tileSize;
 
 	float tilesX = insideX;
 	float tilesY = insideY + insideHeight;
-	if (totalTilesHeight <= insideHeight) {
-		int a = 42;
-	} else {
-		// Need to do some aspect ratio stuff?
-		int b = 42;
-	}
 
 	float texY = insideY + insideHeight - totalTilesHeight;
-	DrawTexturedQuad(tex->id, insideX, texY, insideWidth, totalTilesHeight, ColorWhite, uMin, vMin, uMax, vMax);
+	RendererDrawTexturedQuad(tex->id, insideX, texY, insideWidth, totalTilesHeight, ColorWhite, uMin, vMin, uMax, vMax);
 
 	Color4f gridLineColor = { 0.1f, 0.1f, 0.1f, 0.25f };
 	for (uint8_t i = 0; i <= gridCountX; ++i) {
-		float gridLineX0 = tilesX + i * tileSize;
+		float gridLineX0 = tilesX + (float)i * tileSize;
 		float gridLineY0 = tilesY;
-		float gridLineX1 = tilesX + i * tileSize;
+		float gridLineX1 = tilesX + (float)i * tileSize;
 		float gridLineY1 = tilesY - totalTilesHeight;
-		DrawLine(gridLineX0, gridLineY0, gridLineX1, gridLineY1, 1.0f, gridLineColor);
+		RendererDrawLine(gridLineX0, gridLineY0, gridLineX1, gridLineY1, 1.0f, gridLineColor);
 	}
 	for (uint8_t i = 0; i <= gridCountY; ++i) {
 		float gridLineX0 = tilesX;
-		float gridLineY0 = tilesY - i * tileSize;
+		float gridLineY0 = tilesY - (float)i * tileSize;
 		float gridLineX1 = tilesX + totalTilesWidth;
-		float gridLineY1 = tilesY - i * tileSize;
-		DrawLine(gridLineX0, gridLineY0, gridLineX1, gridLineY1, 1.0f, gridLineColor);
+		float gridLineY1 = tilesY - (float)i * tileSize;
+		RendererDrawLine(gridLineX0, gridLineY0, gridLineX1, gridLineY1, 1.0f, gridLineColor);
 	}
 
 	float pixelsPerTile = tileSize / (float)8.0f;
@@ -1706,25 +1815,25 @@ static void DrawBackgroundMap(UIContext *uiCtx, const Application *app, const fl
 
 	if (isHorizontalWrap && isVerticalWrap) {
 		// Bottom Right
-		DrawStrokedQuad(tilesX + scrollX, tilesY - scrollY - yRemaining, xRemaining, yRemaining, 2.0f, ColorRed);
+		RendererDrawStrokedQuad(tilesX + scrollX, tilesY - scrollY - yRemaining, xRemaining, yRemaining, 2.0f, ColorRed);
 		// Bottom Left
-		DrawStrokedQuad(tilesX, tilesY - scrollY - yRemaining, xDepth, yRemaining, 2.0f, ColorRed);
+		RendererDrawStrokedQuad(tilesX, tilesY - scrollY - yRemaining, xDepth, yRemaining, 2.0f, ColorRed);
 		// Top Right
-		DrawStrokedQuad(tilesX + scrollX, tilesY - yDepth, xRemaining, yDepth, 2.0f, ColorRed);
+		RendererDrawStrokedQuad(tilesX + scrollX, tilesY - yDepth, xRemaining, yDepth, 2.0f, ColorRed);
 		// Top Left
-		DrawStrokedQuad(tilesX, tilesY - yDepth, xDepth, yDepth, 2.0f, ColorRed);
+		RendererDrawStrokedQuad(tilesX, tilesY - yDepth, xDepth, yDepth, 2.0f, ColorRed);
 	} else if (isHorizontalWrap && !isVerticalWrap) {
 		// Right
-		DrawStrokedQuad(tilesX + scrollX, tilesY - scrollY - scrollHeight, xRemaining, scrollHeight, 2.0f, ColorRed);
+		RendererDrawStrokedQuad(tilesX + scrollX, tilesY - scrollY - scrollHeight, xRemaining, scrollHeight, 2.0f, ColorRed);
 		// Left
-		DrawStrokedQuad(tilesX, tilesY - scrollY - scrollHeight, xDepth, scrollHeight, 2.0f, ColorRed);
+		RendererDrawStrokedQuad(tilesX, tilesY - scrollY - scrollHeight, xDepth, scrollHeight, 2.0f, ColorRed);
 	} else if (isVerticalWrap && !isHorizontalWrap) {
 		// Bottom
-		DrawStrokedQuad(tilesX + scrollX, tilesY - scrollY - yRemaining, scrollWidth, yRemaining, 2.0f, ColorRed);
+		RendererDrawStrokedQuad(tilesX + scrollX, tilesY - scrollY - yRemaining, scrollWidth, yRemaining, 2.0f, ColorRed);
 		// Top
-		DrawStrokedQuad(tilesX + scrollX, tilesY - yDepth, scrollWidth, yDepth, 2.0f, ColorRed);
+		RendererDrawStrokedQuad(tilesX + scrollX, tilesY - yDepth, scrollWidth, yDepth, 2.0f, ColorRed);
 	} else {
-		DrawStrokedQuad(tilesX + scrollX, tilesY - scrollY - scrollHeight, scrollWidth, scrollHeight, 2.0f, ColorRed);
+		RendererDrawStrokedQuad(tilesX + scrollX, tilesY - scrollY - scrollHeight, scrollWidth, scrollHeight, 2.0f, ColorRed);
 	}
 }
 
@@ -1735,12 +1844,12 @@ static void DrawBackground(const Application *app, const float x, const float y,
 	float vMin = tex->vScale;
 	float vMax = 0.0f;
 	float border = 1.0f;
-	DrawFilledQuad(x, y, w, h, ColorBlack);
-	DrawStrokedQuad(x + border * 0.5f, y + border * 0.5f, w - border, h - border, border, ColorWhite);
-	DrawTexturedQuad(tex->id, x + border * 2.0f, y + border * 2.0f, w - border * 4.0f, h - border * 4.0f, ColorWhite, uMin, vMin, uMax, vMax);
+	RendererDrawFilledQuad(x, y, w, h, ColorBlack);
+	RendererDrawStrokedQuad(x + border * 0.5f, y + border * 0.5f, w - border, h - border, border, ColorWhite);
+	RendererDrawTexturedQuad(tex->id, x + border * 2.0f, y + border * 2.0f, w - border * 4.0f, h - border * 4.0f, ColorWhite, uMin, vMin, uMax, vMax);
 }
 
-static void DrawTiles(UIContext *uiCtx, const Texture *tex, const float x, const float y, const float w, const float h, const float aspect) {
+static void DrawTiles(const UIContext *uiCtx, const Texture *tex, const float x, const float y, const float w, const float h, const float aspect) {
 	const float uMin = 0.0f;
 	const float uMax = tex->uScale;
 	const float vMin = tex->vScale;
@@ -1767,21 +1876,21 @@ static void DrawTiles(UIContext *uiCtx, const Texture *tex, const float x, const
 
 	UIPanel(uiCtx, x, y, w, h, true);
 
-	DrawTexturedQuad(tex->id, rx, ry, rw, rh, ColorWhite, uMin, vMin, uMax, vMax);
+	RendererDrawTexturedQuad(tex->id, rx, ry, rw, rh, ColorWhite, uMin, vMin, uMax, vMax);
 
 	for (uint8_t i = 0; i <= gridCountX; ++i) {
-		const float gridLineX0 = rx + i * tileSize;
+		const float gridLineX0 = rx + (float)i * tileSize;
 		const float gridLineY0 = ry;
-		const float gridLineX1 = rx + i * tileSize;
+		const float gridLineX1 = rx + (float)i * tileSize;
 		const float gridLineY1 = ry + totalTilesHeight;
-		DrawLine(gridLineX0, gridLineY0, gridLineX1, gridLineY1, 1.0f, gridLineColor);
+		RendererDrawLine(gridLineX0, gridLineY0, gridLineX1, gridLineY1, 1.0f, gridLineColor);
 	}
 	for (uint8_t i = 0; i <= gridCountY; ++i) {
 		const float gridLineX0 = rx;
-		const float gridLineY0 = ry + i * tileSize;
+		const float gridLineY0 = ry + (float)i * tileSize;
 		const float gridLineX1 = rx + totalTilesWidth;
-		const float gridLineY1 = ry + i * tileSize;
-		DrawLine(gridLineX0, gridLineY0, gridLineX1, gridLineY1, 1.0f, gridLineColor);
+		const float gridLineY1 = ry + (float)i * tileSize;
+		RendererDrawLine(gridLineX0, gridLineY0, gridLineX1, gridLineY1, 1.0f, gridLineColor);
 	}
 }
 
@@ -1823,7 +1932,7 @@ static void DrawBreakpoints(Application *app, const float x, const float y, cons
 }
 
 static void DrawPalette(const float x, const float y, const float cellWidth, const float cellHeight, const Color4f *colors, const uint8_t colorCount) {
-	float totalWidth = cellWidth * colorCount;
+	float totalWidth = cellWidth * (float)colorCount;
 	float totalHeight = cellHeight;
 
 	float border = 1.0f;
@@ -1831,15 +1940,15 @@ static void DrawPalette(const float x, const float y, const float cellWidth, con
 	float colW = cellWidth - border * 2.0f;
 	float colH = cellHeight - border * 2.0f;
 
-	DrawStrokedQuad(x + border * 0.5f, y + border * 0.5f, totalWidth - border, totalHeight - border, 1.0f, ColorGray);
+	RendererDrawStrokedQuad(x + border * 0.5f, y + border * 0.5f, totalWidth - border, totalHeight - border, 1.0f, ColorGray);
 
 	for (uint8_t colorIndex = 1; colorIndex < colorCount; ++colorIndex) {
-		DrawLine(x + colorIndex * cellWidth, y, x + colorIndex * cellWidth, y + cellHeight, 1.0f, ColorGray);
+		RendererDrawLine(x + (float)colorIndex * cellWidth, y, x + (float)colorIndex * cellWidth, y + cellHeight, 1.0f, ColorGray);
 	}
 	for (uint8_t colorIndex = 0; colorIndex < colorCount; ++colorIndex) {
-		float colX = x + colorIndex * cellWidth + border;
+		float colX = x + (float)colorIndex * cellWidth + border;
 		float colY = y + border;
-		DrawFilledQuad(colX, colY, colW, colH, colors[colorIndex]);
+		RendererDrawFilledQuad(colX, colY, colW, colH, colors[colorIndex]);
 	}
 }
 
@@ -2057,16 +2166,12 @@ static void DrawPalettes(Application *app, const float x, const float y, const f
 
 static char performanceLabelBuffer[1024] = { 0 };
 
-static void DrawPerformanceCounter(UIContext *uiCtx, const float x, const float y, const char *name, const Color4f foregroundColor, const PerformanceCounter *counter) {
+static void DrawPerformanceCounter(const UIContext *uiCtx, const float x, const float y, const char *name, const Color4f foregroundColor, const PerformanceCounter *counter) {
 	double avgTimeMs = GetPerformanceCounterAvg(counter) * 1000.0;
 	fplStringFormat(performanceLabelBuffer, fplArrayCount(performanceLabelBuffer), "%s: %.5f / %.5f / %.5f ms [%zu]", name, counter->minSecs * 1000.0, counter->maxSecs * 1000.0, avgTimeMs, counter->count);
 
 	size_t textLen = fplGetStringLength(performanceLabelBuffer);
 	UIString(uiCtx, x, y, foregroundColor, performanceLabelBuffer, textLen);
-}
-
-static void PauseGameboy(Application *app, fgbSystem *system) {
-	fgbPause(system);
 }
 
 static void ResumeGameboy(Application *app, fgbSystem *system) {
@@ -2078,7 +2183,7 @@ static void ResumeGameboy(Application *app, fgbSystem *system) {
 	WakeupEmulatorThread(emulator);
 }
 
-static void DrawPerformanceMetrics(UIContext *uiCtx, const Application *app, const float x, const float y, const float w, const float h) {
+static void DrawPerformanceMetrics(const UIContext *uiCtx, const Application *app, const float x, const float y, const float w, const float h) {
 	const float charHeight = UIGetFontHeight(uiCtx);
 	const float lineHeight = UIGetLineHeight(uiCtx);
 
@@ -2174,7 +2279,7 @@ static void RenderDebugFrame(Application *app, const InputState *input) {
 	const int cartInfoLineCount = 3;
 	const float cartInfoPadding = 6.0f;
 	const float cartInfoWidth = middleWidth;
-	const float cartInfoHeight = cartInfoLineCount * lineHeight + cartInfoPadding * 2.0f;
+	const float cartInfoHeight = (float)cartInfoLineCount * lineHeight + cartInfoPadding * 2.0f;
 	const float cartInfoX = leftSideWidth;
 	const float cartInfoY = h - cartInfoHeight;
 
@@ -2202,17 +2307,24 @@ static void RenderDebugFrame(Application *app, const InputState *input) {
 	const float userButtonWidth = ((userButtonsWidth - (userButtonsPadding * 2.0f) - userButtonSpacing * (float)(userButtonCount - 1)) / (float)userButtonCount);
 	const float userButtonHeight = userButtonsHeight - (userButtonsPadding * 2.0f);
 
+	const float shaderControlHeight = app->isShaderSupported ? 1.5f * lineHeight : 0;
+	const float shaderControlWidth = middleWidth;
+	const float shaderControlX = leftSideWidth;
+	const float shaderControlY = h - cartInfoHeight - displayStateHeight - soundStateHeight - shaderControlHeight;
+	const float shaderControlPanelPadding = 8.0f;
+	const bool isShaderControlVisible = app->isShaderSupported;
+
 	const float boyAspect = FGB_DISPLAY_WIDTH / (float)FGB_DISPLAY_HEIGHT;
 	const float boyWidth = middleWidth;
-	const float boyHeight = h - (cartInfoHeight + displayStateHeight + soundStateHeight + userButtonsHeight);
+	const float boyHeight = h - (cartInfoHeight + displayStateHeight + soundStateHeight + userButtonsHeight + shaderControlHeight);
 	const float boyX = leftSideWidth;
 	const float boyY = userButtonsHeight;
 
-	SetViewport(app->viewport.x, app->viewport.y, app->viewport.w, app->viewport.h);
+	RendererSetViewport(app->viewport.x, app->viewport.y, app->viewport.w, app->viewport.h);
 
-	Clear(0.1f, 0.3f, 0.7f, 1.0f);
+	RendererClear(0.1f, 0.3f, 0.7f, 1.0f);
 
-	SetModelViewProjectionMatrix(&app->viewProjectionMat.m[0]);
+	RendererSetModelViewProjectionMatrix(&app->viewProjectionMat.m[0]);
 
 	Emulator *emulator = &app->emulator;
 	fgbSystem *system = &emulator->system;
@@ -2251,6 +2363,11 @@ static void RenderDebugFrame(Application *app, const InputState *input) {
 	tmpY -= lineHeight;
 
 	//
+	// CPU
+	//
+	DrawCPUState(app, system, cpuStateX, cpuStateY, cpuStateWidth, cpuStateHeight, cpuStatePadding);
+
+	//
 	// Display Registers
 	//
 	DrawDisplayState(app, &system->ppu, displayStateX, displayStateY, displayStateWidth, displayStateHeight, displayStatePadding);
@@ -2261,9 +2378,56 @@ static void RenderDebugFrame(Application *app, const InputState *input) {
 	DrawSoundState(app, system, soundStateX, soundStateY, soundStateWidth, soundStateHeight, soundStatePadding);
 
 	//
-	// CPU
+	// Shader Control
 	//
-	DrawCPUState(app, system, cpuStateX, cpuStateY, cpuStateWidth, cpuStateHeight, cpuStatePadding);
+	if (isShaderControlVisible) {
+		UIPanel(uiCtx, shaderControlX, shaderControlY, shaderControlWidth, shaderControlHeight, false);
+
+		tmpX = shaderControlX + shaderControlPanelPadding;
+		tmpY = shaderControlY + lineHeight * 0.25f;
+
+		const bool nearestSupported = app->nearestShader.isValid;
+		if (UICheckbox(uiCtx, &app->shaderNearestCheckbox, tmpX, tmpY, "Nearest", true, app->activeShaderType == AppShaderType_None, nearestSupported)) {
+			app->activeShaderType = AppShaderType_None;
+		}
+		tmpX += app->shaderNearestCheckbox.currentWidth + shaderControlPanelPadding;
+
+		const bool bilinearSupported = app->bilinearShader.isValid;
+		if (UICheckbox(uiCtx, &app->shaderBilinearCheckbox, tmpX, tmpY, "Bilinear", true, app->activeShaderType == AppShaderType_Bilinear, bilinearSupported)) {
+			app->activeShaderType = AppShaderType_Bilinear;
+		}
+		tmpX += app->shaderBilinearCheckbox.currentWidth + shaderControlPanelPadding;
+
+		const bool hq2xSupported = app->hq2xShader.isValid;
+		if (UICheckbox(uiCtx, &app->shaderHQ2XCheckbox, tmpX, tmpY, "HQ2x", true, app->activeShaderType == AppShaderType_HQ2X, hq2xSupported)) {
+			app->activeShaderType = AppShaderType_HQ2X;
+		}
+		tmpX += app->shaderHQ4XCheckbox.currentWidth + shaderControlPanelPadding;
+
+		const bool hq4xSupported = app->hq4xShader.isValid;
+		if (UICheckbox(uiCtx, &app->shaderHQ4XCheckbox, tmpX, tmpY, "HQ4x", true, app->activeShaderType == AppShaderType_HQ4X, hq4xSupported)) {
+			app->activeShaderType = AppShaderType_HQ4X;
+		}
+		tmpX += app->shaderHQ4XCheckbox.currentWidth + shaderControlPanelPadding;
+
+		const bool bicubicHermiteSupported = app->bicubicHermiteShader.isValid;
+		if (UICheckbox(uiCtx, &app->shaderBicubicHermiteCheckbox, tmpX, tmpY, "Bicubic-H", true, app->activeShaderType == AppShaderType_BicubicHermite, bicubicHermiteSupported)) {
+			app->activeShaderType = AppShaderType_BicubicHermite;
+		}
+		tmpX += app->shaderBicubicHermiteCheckbox.currentWidth + shaderControlPanelPadding;
+
+		const bool bicubicLagrangeSupported = app->bicubicLagrangeShader.isValid;
+		if (UICheckbox(uiCtx, &app->shaderBicubicLagrangeCheckbox, tmpX, tmpY, "Bicubic-L", true, app->activeShaderType == AppShaderType_BicubicLagrange, bicubicLagrangeSupported)) {
+			app->activeShaderType = AppShaderType_BicubicLagrange;
+		}
+		tmpX += app->shaderBicubicLagrangeCheckbox.currentWidth + shaderControlPanelPadding;
+
+		const bool catmullRom4Supported = app->catmullRom4Shader.isValid;
+		if (UICheckbox(uiCtx, &app->shaderCatmullRom4Checkbox, tmpX, tmpY, "CatMullRom", true, app->activeShaderType == AppShaderType_CatmullRom4, catmullRom4Supported)) {
+			app->activeShaderType = AppShaderType_CatmullRom4;
+		}
+		tmpX += app->shaderCatmullRom4Checkbox.currentWidth + shaderControlPanelPadding;
+	}
 
 	//
 	// Actions
@@ -2538,8 +2702,8 @@ static void RenderDebugFrame(Application *app, const InputState *input) {
 		const float statesDialogContentX = statesDlg->dialog.window.pos.x + statesDialogMargin;
 		const float statesDialogContentY = statesDlg->dialog.window.pos.y + statesDialogMargin;
 
-		const float statesGridCellWidth = (statesDialogContentWidth - statesDialogGridColumnSpacing * (statesDialogGridNumColumns - 1)) / (float)statesDialogGridNumColumns;
-		const float statesGridCellHeight = (statesDialogContentHeight - statesDialogGridRowSpacing * (statesDialogGridNumRows - 1)) / (float)statesDialogGridNumRows;
+		const float statesGridCellWidth = (statesDialogContentWidth - statesDialogGridColumnSpacing * (float)(statesDialogGridNumColumns - 1)) / (float)statesDialogGridNumColumns;
+		const float statesGridCellHeight = (statesDialogContentHeight - statesDialogGridRowSpacing * (float)(statesDialogGridNumRows - 1)) / (float)statesDialogGridNumRows;
 
 		Color4f labelColor0 = { 0.0f, 0.0f, 0.0f, 1.0f };
 		Color4f labelColor1 = { 1.0f, 1.0f, 1.0f, 1.0f };
@@ -2549,7 +2713,7 @@ static void RenderDebugFrame(Application *app, const InputState *input) {
 
 		const Texture *firstTexture = &app->displayTexture;
 
-		float stateTextureAspect = firstTexture->width / (float)firstTexture->height;
+		float stateTextureAspect = (float)firstTexture->width / (float)firstTexture->height;
 
 		Viewport4f stateTextureView = VP4fComputeByAspect(screenSize, stateTextureAspect);
 
@@ -2587,7 +2751,7 @@ static void RenderDebugFrame(Application *app, const InputState *input) {
 
 				float textureAlpha = isSlotSelected ? 1.0f : 0.5f;
 				Color4f textureColor = { 1.0f, 1.0f, 1.0f, textureAlpha };
-				DrawTexturedQuad(texture->id, textureX, textureY, textureW, textureH, textureColor, uMin, vMin, uMax, vMax);
+				RendererDrawTexturedQuad(texture->id, textureX, textureY, textureW, textureH, textureColor, uMin, vMin, uMax, vMax);
 
 				// Date time + Game title
 				const char *gameTitle = snapshot->gameInfo.title.text;
@@ -2612,7 +2776,7 @@ static void RenderDebugFrame(Application *app, const InputState *input) {
 				}
 
 				float labelHeight = lineHeight + statesDialogGridLabelMargin + 4.0f;
-				DrawFilledQuad(gridX + 2.0f, gridY + 2.0f, statesGridCellWidth - 4.0f, labelHeight, gameLabelBackground);
+				RendererDrawFilledQuad(gridX + 2.0f, gridY + 2.0f, statesGridCellWidth - 4.0f, labelHeight, gameLabelBackground);
 
 				const char *label = labelBuffer;
 				size_t labelLen = fplGetStringLength(label);
@@ -2630,7 +2794,7 @@ static void RenderDebugFrame(Application *app, const InputState *input) {
 			// "Start" was pressed?
 			const ControllerInput *controller = &input->controllers[input->activeControllerIndex];
 			if (UIWasPressed(&controller->start)) {
-				int slotIndex = statesDlg->selectedSlotPos.row * statesDialogGridNumColumns + statesDlg->selectedSlotPos.column;
+				const uint32_t slotIndex = statesDlg->selectedSlotPos.row * statesDialogGridNumColumns + statesDlg->selectedSlotPos.column;
 
 				FGB_ASSERT(slotIndex < fplArrayCount(emulator->states.snapshots));
 				FGB_ASSERT(slotIndex < fplArrayCount(emulator->states.textures));
@@ -2653,6 +2817,8 @@ static void RenderDebugFrame(Application *app, const InputState *input) {
 								stateTexture->state = TextureState_Update;
 							}
 						}
+						break;
+					default:
 						break;
 				}
 
@@ -2720,27 +2886,24 @@ static void RenderDebugFrame(Application *app, const InputState *input) {
 	float mouseCursorWidth = 32.0f;
 	float mouseCursorHeight = 32.0f;
 	Vec2f mousePos = input->mouse.worldPos;
-	DrawTexturedQuad(app->cursorTexture.id, mousePos.x, mousePos.y - mouseCursorHeight, mouseCursorWidth, mouseCursorHeight, ColorWhite, 0.0f, 0.0f, 1.0f, 1.0f);
+	RendererDrawTexturedQuad(app->cursorTexture.id, mousePos.x, mousePos.y - mouseCursorHeight, mouseCursorWidth, mouseCursorHeight, ColorWhite, 0.0f, 0.0f, 1.0f, 1.0f);
 #endif
 }
 
-static void RenderGameFrame(Application *app, const InputState *input) {
-	SetViewport(app->viewport.x, app->viewport.y, app->viewport.w, app->viewport.h);
+static void RenderGameFrame(const Application *app, const InputState *input) {
+	RendererSetViewport(app->viewport.x, app->viewport.y, app->viewport.w, app->viewport.h);
 
-	Clear(0.1f, 0.3f, 0.7f, 1.0f);
+	RendererClear(0.1f, 0.3f, 0.7f, 1.0f);
 
-	SetModelViewProjectionMatrix(&app->viewProjectionMat.m[0]);
-
-	const Emulator *emulator = &app->emulator;
-
-	const fgbSystem *system = &emulator->system;
+	RendererSetModelViewProjectionMatrix(&app->viewProjectionMat.m[0]);
 
 	const float w = (float)app->viewport.w;
 	const float h = (float)app->viewport.h;
 
-	float displayAspect = FGB_DISPLAY_WIDTH / (float)FGB_DISPLAY_HEIGHT;
+	const float displayAspect = FGB_DISPLAY_WIDTH / (float)FGB_DISPLAY_HEIGHT;
 
-	DrawFilledQuad(0, 0, w, h, ColorBlack);
+	RendererDrawFilledQuad(0, 0, w, h, ColorBlack);
+
 	DrawDisplay(app, 0, 0, w, h, displayAspect);
 }
 
@@ -2776,6 +2939,7 @@ typedef enum {
 	ExitCode_OutOfMemory,
 	ExitCode_FailedInitializePlatform,
 	ExitCode_FailedInitializeRenderer,
+	ExitCode_FailedLoadingShaders,
 	ExitCode_FailedLoadingGamePak,
 	ExitCode_FailedInitializeGamebox,
 	ExitCode_FailedStartingThread,
@@ -2825,15 +2989,9 @@ static void TestQuirkFMEM() {
 static void FillWithRandomPixels(fgbColor *colors, const uint32_t width, const uint32_t height) {
 	for (uint32_t y = 0; y < height; ++y) {
 		for (uint32_t x = 0; x < width; ++x) {
-			//uint32_t color = 0xFFFF0000;
 			uint8_t r = rand() % UINT8_MAX;
 			uint8_t g = rand() % UINT8_MAX;
 			uint8_t b = rand() % UINT8_MAX;
-			//uint8_t r = 0;
-			//uint8_t g = 0;
-			//uint8_t b = 0;
-			uint8_t a = 255;
-			//uint32_t color = (r << 0) | (g << 8) | (b << 16) | (a << 24);
 			fgbColor color = { .r = r, .g = g, .b = b };
 			colors[y * width + x] = color;
 		}
@@ -3025,7 +3183,7 @@ static void UpdateActiveController(InputState *input, const int newIndex) {
 		input->activeControllerIndex = -1;	
 		for (uint32_t i = fplArrayCount(input->controllers) - 1; i > 0; i--) {
 			if (input->controllers[i].state == ControllerState_Connected) {
-				input->activeControllerIndex = i;
+				input->activeControllerIndex = (int32_t)i;
 				break;
 			}
 		}
@@ -3039,10 +3197,11 @@ static void ProcessControllerButton(const InputState *oldInput, InputState *newI
 	const UIButtonState *oldButton = oldController->buttons + buttonIndex;
 	UIButtonState *newButton = newController->buttons + buttonIndex;
 	
-	bool isKeyboard = controllerIndex == 0;
+	const bool isKeyboard = controllerIndex == 0;
 	
-	if (isKeyboard)
-		UpdateActiveController(newInput, controllerIndex);
+	if (isKeyboard) {
+		UpdateActiveController(newInput, (int32_t)controllerIndex);
+	}
 
 	if (isKeyboard)
 		UpdateKeyboardButtonState(newButton, isDown);
@@ -3101,6 +3260,9 @@ static void ProcessEvents(Application *app, const InputState *oldInput, InputSta
 						case fplKey_F1:
 							UpdateKeyboardButtonState(&newInput->debug.toggleDebug, isDown);
 							break;
+
+						default:
+							break;
 					}
 				}
 			}
@@ -3118,7 +3280,7 @@ static void ProcessEvents(Application *app, const InputState *oldInput, InputSta
 						// Only connect a controller when at least one mapped button is pressed
 							newController->state = ControllerState_Connected;
 						if (ev.gamepad.state.isActive) {
-							UpdateActiveController(newInput, controllerIndex);
+							UpdateActiveController(newInput, (int32_t)controllerIndex);
 						}
 					} break;
 
@@ -3156,10 +3318,13 @@ static void ProcessEvents(Application *app, const InputState *oldInput, InputSta
 							}
 
 							if (changed) {
-								UpdateActiveController(newInput, controllerIndex);
+								UpdateActiveController(newInput, (int32_t)controllerIndex);
 							}
 						}
 					} break;
+
+					default:
+						break;
 				}
 			}
 			break;
@@ -3188,6 +3353,8 @@ static void ProcessEvents(Application *app, const InputState *oldInput, InputSta
 							case fplMouseButtonType_Middle:
 								UpdateKeyboardButtonState(&newInput->mouse.middle, isDown);
 								break;
+							default:
+								break;
 						}
 					} break;
 
@@ -3195,6 +3362,9 @@ static void ProcessEvents(Application *app, const InputState *oldInput, InputSta
 					{
 						newInput->mouse.wheelDelta = ev.mouse.wheelDelta;
 					} break;
+
+					default:
+						break;
 				}
 			}
 			break;
@@ -3220,8 +3390,14 @@ static void ProcessEvents(Application *app, const InputState *oldInput, InputSta
 							fplAlwaysAssert(!"Failed beginnning a temorary memory");
 						}
 					} break;
+
+					default:
+						break;
 				}
 			} break;
+
+			default:
+				break;
 		}
 	}
 }
@@ -3359,7 +3535,6 @@ static float AudioClipF32(const float value) {
 typedef struct {
 	fgbSystem *system;
 	Emulator *emulator;
-	float *audioSamples;
 } AudioThreadState;
 
 static uint32_t AudioThreadCallback(const fplAudioFormat *deviceFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
@@ -3410,9 +3585,9 @@ static uint32_t AudioThreadCallback(const fplAudioFormat *deviceFormat, const ui
 		for (uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
 			for (uint8_t channelIndex = 0; channelIndex < 2; ++channelIndex) {
 				uint8_t rawSample = AudioTempSampels[frameIndex * 2 + channelIndex];
-				float sampleF32 = rawSample / 255.0f;
+				float sampleF32 = (float)rawSample / 255.0f;
 				uint8_t sampleU8 = (uint8_t)((sampleF32 * emulator->masterVolume) * 255.0f);
-				int16_t sampleS16 = (sampleU8 << 8) - INT16_MIN;
+				int16_t sampleS16 = (int16_t)((sampleU8 << 8) - INT16_MIN);
 				out16[frameIndex * 2 + channelIndex] = sampleS16;
 			}
 		}
@@ -3643,13 +3818,13 @@ static void EmulatorUnloadGame(Emulator *emulator) {
 		WakeupEmulatorThread(emulator);
 		fgbShutdown(&emulator->system);
 	}
-	for (uint8_t i = 0; i < fplArrayCount(emulator->states.snapshots); ++i) {
+	for (size_t i = 0; i < fplArrayCount(emulator->states.snapshots); ++i) {
 		fgbSnapshot *snapshot = emulator->states.snapshots + i;
 		fplClearStruct(snapshot);
 
 		Texture *texture = emulator->states.textures + i;
 		ClearPixelsTexture(texture);
-		UpdateTexture(texture);
+		RendererTextureUpdate(texture);
 	}
 }
 
@@ -3707,7 +3882,7 @@ static bool EmulatorLoadGame(Emulator *emulator, const char *filePath) {
 	}
 
 	// Load states from files
-	for (uint8_t i = 0; i < fplArrayCount(emulator->states.snapshots); ++i) {
+	for (size_t i = 0; i < fplArrayCount(emulator->states.snapshots); ++i) {
 		fgbSnapshot *snapshot = emulator->states.snapshots + i;
 		Texture *texture = emulator->states.textures + i;
 
@@ -3715,10 +3890,10 @@ static bool EmulatorLoadGame(Emulator *emulator, const char *filePath) {
 
 		if (fgbSnapshotLoadFromFile(&emulator->system, filePath, i, snapshot)) {
 			TransferPixelsToTexture(snapshot->ppu.display, FGB_DISPLAY_WIDTH, FGB_DISPLAY_HEIGHT, texture);
-			UpdateTexture(texture);
+			RendererTextureUpdate(texture);
 		} else {
 			ClearPixelsTexture(texture);
-			UpdateTexture(texture);
+			RendererTextureUpdate(texture);
 		}
 	}
 
@@ -3834,7 +4009,7 @@ static void SwapInput(InputState **oldInput, InputState **newInput) {
 	*oldInput = tmp;
 }
 
-static void SetupGameboxInput(InputState *newInput, fgbSystem *system) {
+static void SetupGameboxInput(const InputState *newInput, fgbSystem *system) {
 	// Translate controller states to game boy buttons
 	if (newInput->activeControllerIndex > -1) {
 		int index = newInput->activeControllerIndex;
@@ -3896,10 +4071,8 @@ static void InitializeUI(Application *app) {
 	UISetFont(uiCtx, &app->fontData, app->fontTexture.id, charHeight, lineHeight);
 }
 
-static void PrepareInputUI(Application *app, InputState *newInput) {
+static void PrepareInputUI(Application *app, const InputState *newInput) {
 	UIContext *uiCtx = &app->uiCtx;
-	Emulator *emulator = &app->emulator;
-	fgbSystem *system = &emulator->system;
 
 	UIInputState uiInputState = fplZeroInit;
 	uiInputState.leftMouse = newInput->mouse.left;
@@ -3914,7 +4087,7 @@ static void PrepareInputUI(Application *app, InputState *newInput) {
 	UIContextSetInput(uiCtx, &uiInputState);
 }
 
-static void HandleDefaultInput(Application *app, InputState *newInput) {
+static void HandleDefaultInput(Application *app, const InputState *newInput) {
 	Emulator *emulator = &app->emulator;
 	fgbSystem *system = &emulator->system;
 
@@ -3942,16 +4115,16 @@ static bool HasGameboxVideoChanges(const Emulator *emulator) {
 }
 
 static void UploadStateTextures(States *states) {
-	for (uint8_t i = 0; i < fplArrayCount(states->snapshots); ++i) {
+	for (size_t i = 0; i < fplArrayCount(states->snapshots); ++i) {
 		fgbSnapshot *snapshot = states->snapshots + i;
 		Texture *texture = states->textures + i;
 		if (texture->state == TextureState_Update) {
 			TransferPixelsToTexture(snapshot->ppu.display, FGB_DISPLAY_WIDTH, FGB_DISPLAY_HEIGHT, texture);
-			UpdateTexture(texture);
+			RendererTextureUpdate(texture);
 			texture->state = TextureState_None;
 		} else if (texture->state == TextureState_Clear) {
 			ClearPixelsTexture(texture);
-			ClearTexture(texture);
+			RendererTextureClear(texture);
 		}
 	}
 }
@@ -3969,15 +4142,15 @@ static void UploadGameboxTextures(Application *app) {
 
 	if (DisplayFrameQueuePopNewest(&emulator->displayQueue, &scratchDisplay)) {
 		TransferPixelsToTexture(scratchDisplay.pixels, FGB_DISPLAY_WIDTH, FGB_DISPLAY_HEIGHT, &app->displayTexture);
-		UpdateTexture(&app->displayTexture);
+		RendererTextureUpdate(&app->displayTexture);
 	}
 	if (BackgroundMapFrameQueuePopNewest(&emulator->backgroundMapQueue, &scratchBgMap)) {
 		TransferPixelsToTexture(scratchBgMap.pixels, FGB_BACKGROUND_MAP_WIDTH, FGB_BACKGROUND_MAP_HEIGHT, &app->backgroundMapTexture);
-		UpdateTexture(&app->backgroundMapTexture);
+		RendererTextureUpdate(&app->backgroundMapTexture);
 	}
 	if (TilemapFrameQueuePopNewest(&emulator->tilemapQueue, &scratchTilemap)) {
 		TransferPixelsToTexture(scratchTilemap.pixels, FGB_TILEMAP_WIDTH, FGB_TILEMAP_HEIGHT, &app->tileMapTexture);
-		UpdateTexture(&app->tileMapTexture);
+		RendererTextureUpdate(&app->tileMapTexture);
 	}
 }
 
@@ -4051,14 +4224,14 @@ static void PrepareFrame(Application *app, const fplWindowSize size) {
 	float translationX = w * (1.0f - scale) * 0.5f;
 	float translationY = h * (1.0f - scale) * 0.5f;
 
-	app->windowSize = V2iInit(size.width, size.height);
+	app->windowSize = V2iInit((int)size.width, (int)size.height);
 	app->viewMat = M4fMult(M4fScaleScalar(scale), M4fTranslationV2(V2fInit(translationX, translationY)));
 	app->projectionMat = M4fOrthoRH(0.0f, (float)size.width, 0.0f, (float)size.height, 0.0f, 1.0f);
 	app->viewProjectionMat = M4fMult(app->projectionMat, app->viewMat);
-	app->viewport = VP4iInit(0, 0, size.width, size.height);
+	app->viewport = VP4iInit(0, 0, (int)size.width, (int)size.height);
 }
 
-static void UpdateWindowTitle(Emulator *emulator, const double frameRate) {
+static void UpdateWindowTitle(const Emulator *emulator, const double frameRate) {
 	static char windowTitleBuffer[512];
 
 	const char *gamePakTitle = fplExtractFileName(emulator->system.gamePak.filePath);
@@ -4144,14 +4317,17 @@ int main(int argc, char **argv) {
 	}
 
 	// Initialize the renderer (OpenGL)
-	renderer = RendererCreate(&mainMemory);
+	RendererSupport rendererSupport = fplZeroInit;
+	renderer = RendererCreate(&mainMemory, &rendererSupport);
 	if (renderer == fpl_null) {
 		exitCode = ExitCode_FailedInitializeRenderer;
 		goto shutdown;
 	}
 
+
+
 	// Create Application & Emulator resources and start the threads
-	app = CreateApplication(&mainMemory, &parameters);
+	app = CreateApplication(&mainMemory, &parameters, &rendererSupport);
 	if (app == fpl_null) {
 		exitCode = ExitCode_OutOfMemory;
 		goto shutdown;

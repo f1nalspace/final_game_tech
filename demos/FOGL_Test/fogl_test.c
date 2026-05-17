@@ -4,17 +4,19 @@ Name:
 	FOGL | Test
 
 Description:
-	This demo shows how to use the "Final Dynamic OpenGL" library, which is a
-	full OpenGL-Header and Loader.
+	This demo shows how to use the "Final Dynamic OpenGL" library, which is a full OpenGL-Header and Loader.
 
 Requirements:
-	- C++ Compiler
+	- C99 Compiler
 	- Final Platform Layer
 
 Author:
 	Torsten Spaete
 
 Changelog:
+	## 2026-05-16
+	- Reflect api changes in FPL 1.0.0
+
 	## 2018-10-22
 	- Reflect api changes in FPL 0.9.3
 
@@ -33,223 +35,235 @@ Changelog:
 	- Forced Visual-Studio-Project to compile in C++ always
 
 License:
-	Copyright (c) 2017-2019 Torsten Spaete
+	Copyright (c) 2017-2026 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
 
 #define USE_LEGACY_OPENGL 1
-#define USE_FPL_OPENGL_CONTEXT_CREATION 1
+#define USE_FPL_OPENGL_CONTEXT_CREATION 0
 
-#define FPL_IMPLEMENTATION
-#if !USE_FPL_OPENGL_CONTEXT_CREATION
+#ifndef FPL_IMPLEMENTATION
+#	define FPL_IMPLEMENTATION
+#endif
+
+#if !USE_FPL_OPENGL_CONTEXT_CREATION && !defined(FPL_NO_VIDEO_OPENGL)
 #	define FPL_NO_VIDEO_OPENGL
 #endif
+
 #include <final_platform_layer.h>
 
-#define FGL_IMPLEMENTATION
-#define FGL_AS_PRIVATE
+#ifndef FGL_IMPLEMENTATION
+#	define FGL_IMPLEMENTATION
+#endif
+
+#ifndef FGL_AS_PRIVATE
+#	define FGL_AS_PRIVATE
+#endif
+
 #include <final_dynamic_opengl.h>
 
 static GLuint CreateShaderType(GLenum type, const char *source) {
-	GLuint shaderId = glCreateShader(type);
+    GLuint shaderId = glCreateShader(type);
 
-	glShaderSource(shaderId, 1, &source, fgl_null);
-	glCompileShader(shaderId);
+    glShaderSource(shaderId, 1, &source, fgl_null);
+    glCompileShader(shaderId);
 
-	GLint compileResult;
-	glGetShaderiv(shaderId, GL_COMPILE_STATUS, &compileResult);
-	if(!compileResult) {
-		GLint infoLen;
-		glGetShaderiv(shaderId, GL_INFO_LOG_LENGTH, &infoLen);
-		char *info = (char *)fplStackAllocate(infoLen);
-		glGetShaderInfoLog(shaderId, infoLen, &infoLen, info);
-		fplConsoleFormatError("Failed compiling %s shader!\n", (type == GL_VERTEX_SHADER ? "vertex" : "fragment"));
-		fplConsoleFormatError("%s\n", info);
-	}
+    GLint compileResult;
+    glGetShaderiv(shaderId, GL_COMPILE_STATUS, &compileResult);
+    if (!compileResult) {
+        GLint infoLen;
+        glGetShaderiv(shaderId, GL_INFO_LOG_LENGTH, &infoLen);
+        char *info = (char *) fplStackAllocate(infoLen);
+        glGetShaderInfoLog(shaderId, infoLen, &infoLen, info);
+        fplConsoleFormatError("Failed compiling %s shader!\n", (type == GL_VERTEX_SHADER ? "vertex" : "fragment"));
+        fplConsoleFormatError("%s\n", info);
+    }
 
-	return(shaderId);
+    return (shaderId);
 }
 
 static GLuint CreateShaderProgram(const char *name, const char *vertexSource, const char *fragmentSource) {
-	GLuint programId = glCreateProgram();
+    GLuint programId = glCreateProgram();
 
-	GLuint vertexShader = CreateShaderType(GL_VERTEX_SHADER, vertexSource);
-	GLuint fragmentShader = CreateShaderType(GL_FRAGMENT_SHADER, fragmentSource);
+    GLuint vertexShader = CreateShaderType(GL_VERTEX_SHADER, vertexSource);
+    GLuint fragmentShader = CreateShaderType(GL_FRAGMENT_SHADER, fragmentSource);
 
-	glAttachShader(programId, vertexShader);
-	glAttachShader(programId, fragmentShader);
-	glLinkProgram(programId);
-	glValidateProgram(programId);
+    glAttachShader(programId, vertexShader);
+    glAttachShader(programId, fragmentShader);
+    glLinkProgram(programId);
+    glValidateProgram(programId);
 
-	GLint linkResult;
-	glGetProgramiv(programId, GL_LINK_STATUS, &linkResult);
-	if(!linkResult) {
-		GLint infoLen;
-		glGetProgramiv(programId, GL_INFO_LOG_LENGTH, &infoLen);
+    GLint linkResult;
+    glGetProgramiv(programId, GL_LINK_STATUS, &linkResult);
+    if (!linkResult) {
+        GLint infoLen;
+        glGetProgramiv(programId, GL_INFO_LOG_LENGTH, &infoLen);
 
-		char *info = (char *)fplStackAllocate(infoLen);
-		glGetProgramInfoLog(programId, infoLen, &infoLen, info);
-		fplConsoleFormatError("Failed linking '%s' shader!\n", name);
-		fplConsoleFormatError("%s\n", info);
-	}
+        char *info = (char *) fplStackAllocate(infoLen);
+        glGetProgramInfoLog(programId, infoLen, &infoLen, info);
+        fplConsoleFormatError("Failed linking '%s' shader!\n", name);
+        fplConsoleFormatError("%s\n", info);
+    }
 
-	glDeleteShader(fragmentShader);
-	glDeleteShader(vertexShader);
+    glDeleteShader(fragmentShader);
+    glDeleteShader(vertexShader);
 
-	return(programId);
+    return (programId);
 }
 
 static void RunModern(const fglOpenGLContext *context) {
-	const char *version = (const char *)glGetString(GL_VERSION);
-	const char *vendor = (const char *)glGetString(GL_VENDOR);
-	const char *renderer = (const char *)glGetString(GL_RENDERER);
-	fplConsoleFormatOut("OpenGL version: %s\n", version);
-	fplConsoleFormatOut("OpenGL vendor: %s\n", vendor);
-	fplConsoleFormatOut("OpenGL renderer: %s\n", renderer);
+    const char *version = (const char *) glGetString(GL_VERSION);
+    const char *vendor = (const char *) glGetString(GL_VENDOR);
+    const char *renderer = (const char *) glGetString(GL_RENDERER);
+    fplConsoleFormatOut("OpenGL version: %s\n", version);
+    fplConsoleFormatOut("OpenGL vendor: %s\n", vendor);
+    fplConsoleFormatOut("OpenGL renderer: %s\n", renderer);
 
-	GLuint vertexArrayID;
-	glGenVertexArrays(1, &vertexArrayID);
-	glBindVertexArray(vertexArrayID);
+    GLuint vertexArrayID;
+    glGenVertexArrays(1, &vertexArrayID);
+    glBindVertexArray(vertexArrayID);
 
-	const char *glslVersion = (const char *)glGetString(GL_SHADING_LANGUAGE_VERSION);
-	fplConsoleFormatOut("OpenGL GLSL Version %s:\n", glslVersion);
+    const char *glslVersion = (const char *) glGetString(GL_SHADING_LANGUAGE_VERSION);
+    fplConsoleFormatOut("OpenGL GLSL Version %s:\n", glslVersion);
 
-	int profileMask;
-	int contextFlags;
-	glGetIntegerv(GL_CONTEXT_PROFILE_MASK, &profileMask);
-	glGetIntegerv(GL_CONTEXT_FLAGS, &contextFlags);
-	fplConsoleFormatOut("OpenGL supported profiles:\n");
-	fplConsoleFormatOut("\tCore: %s\n", ((profileMask & GL_CONTEXT_CORE_PROFILE_BIT) ? "yes" : "no"));
-	fplConsoleFormatOut("\tForward: %s\n", ((contextFlags & GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT) ? "yes" : "no"));
+    int profileMask;
+    int contextFlags;
+    glGetIntegerv(GL_CONTEXT_PROFILE_MASK, &profileMask);
+    glGetIntegerv(GL_CONTEXT_FLAGS, &contextFlags);
+    fplConsoleFormatOut("OpenGL supported profiles:\n");
+    fplConsoleFormatOut("\tCore: %s\n", ((profileMask & GL_CONTEXT_CORE_PROFILE_BIT) ? "yes" : "no"));
+    fplConsoleFormatOut("\tForward: %s\n", ((contextFlags & GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT) ? "yes" : "no"));
 
-	fplConsoleOut("Running modern opengl\n");
+    fplConsoleOut("Running modern opengl\n");
 
-	const char vertexSource[] = {
-		"#version 330 core\n"
-		"\n"
-		"layout(location = 0) in vec4 inPosition;\n"
-		"\n"
-		"void main() {\n"
-		"\tgl_Position = inPosition;\n"
-		"}\n"
-	};
+    const char vertexSource[] = {
+        "#version 330 core\n"
+        "\n"
+        "layout(location = 0) in vec4 inPosition;\n"
+        "\n"
+        "void main() {\n"
+        "\tgl_Position = inPosition;\n"
+        "}\n"
+    };
 
-	const char fragmentSource[] = {
-		"#version 330 core\n"
-		"\n"
-		"layout(location = 0) out vec4 outColor;\n"
-		"\n"
-		"void main() {\n"
-		"\toutColor = vec4(1.0, 0.0, 0.0, 1.0);\n"
-		"}\n"
-	};
+    const char fragmentSource[] = {
+        "#version 330 core\n"
+        "\n"
+        "layout(location = 0) out vec4 outColor;\n"
+        "\n"
+        "void main() {\n"
+        "\toutColor = vec4(1.0, 0.0, 0.0, 1.0);\n"
+        "}\n"
+    };
 
-	GLuint shaderProgram = CreateShaderProgram("Test", vertexSource, fragmentSource);
+    GLuint shaderProgram = CreateShaderProgram("Test", vertexSource, fragmentSource);
 
-	float vertices[] = {
-		0.0f, 0.5f,
-		-0.5f, -0.5f,
-		0.5f, -0.5f
-	};
-	GLuint buffer;
-	glGenBuffers(1, &buffer);
-	glBindBuffer(GL_ARRAY_BUFFER, buffer);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
+    float vertices[] = {
+        0.0f, 0.5f,
+        -0.5f, -0.5f,
+        0.5f, -0.5f
+    };
+    GLuint buffer;
+    glGenBuffers(1, &buffer);
+    glBindBuffer(GL_ARRAY_BUFFER, buffer);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-	glUseProgram(shaderProgram);
+    glUseProgram(shaderProgram);
 
-	glBindBuffer(GL_ARRAY_BUFFER, buffer);
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 2, fgl_null);
+    glBindBuffer(GL_ARRAY_BUFFER, buffer);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 2, fgl_null);
 
-	glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
-	while(fplWindowUpdate()) {
-		fplEvent ev;
-		while(fplPollEvent(&ev)) {}
+    glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
+    while (fplWindowUpdate()) {
+        fplEvent ev;
+        while (fplPollEvent(&ev)) {
+        }
 
-		fplWindowSize windowArea;
-		fplGetWindowSize(&windowArea);
-		glViewport(0, 0, windowArea.width, windowArea.height);
+        fplWindowSize windowArea;
+        fplGetWindowSize(&windowArea);
+        glViewport(0, 0, windowArea.width, windowArea.height);
 
-		glClear(GL_COLOR_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT);
 
-		glDrawArrays(GL_TRIANGLES, 0, 3);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
 
 #if USE_FPL_OPENGL_CONTEXT_CREATION
-		fplVideoFlip();
+        fplVideoFlip();
 #else
-		fglPresentOpenGL(context);
+        fglPresentOpenGL(context);
 #endif
-	}
+    }
 
-	glDisableVertexAttribArray(0);
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glDisableVertexAttribArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-	glBindVertexArray(0);
-	glDeleteVertexArrays(1, &vertexArrayID);
-
+    glBindVertexArray(0);
+    glDeleteVertexArrays(1, &vertexArrayID);
 }
 
 int main(int argc, char **args) {
-	int result = 0;
-	fplSettings settings;
-	fplSetDefaultSettings(&settings);
+    int result = 0;
+    fplSettings settings;
+    fplSetDefaultSettings(&settings);
 
-	fplInitFlags initFlags;
+    fplInitFlags initFlags;
 #if USE_FPL_OPENGL_CONTEXT_CREATION
-	initFlags = fplInitFlags_Video;
-	settings.video.driver = fplVideoDriverType_OpenGL;
+    initFlags = fplInitFlags_Video;
+    settings.video.backend = fplVideoBackendType_OpenGL;
 #	if !USE_LEGACY_OPENGL
-	fplCopyString("FPL Modern OpenGL", settings.window.title, fplArrayCount(settings.window.title));
-	settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Core;
-	settings.video.graphics.opengl.majorVersion = 3;
-	settings.video.graphics.opengl.minorVersion = 3;
+    fplCopyString("FPL Modern OpenGL", settings.window.title, fplArrayCount(settings.window.title));
+    settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Core;
+    settings.video.graphics.opengl.majorVersion = 3;
+    settings.video.graphics.opengl.minorVersion = 3;
 #	else
-	fplCopyString("FPL Legacy OpenGL", settings.window.title, fplArrayCount(settings.window.title));
-	settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Legacy;
+    fplCopyString("FPL Legacy OpenGL", settings.window.title, fplArrayCount(settings.window.title));
+    settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Legacy;
 #	endif
 #else
-	initFlags = fplInitFlags_Window;
+    initFlags = fplInitFlags_Window;
 #endif // USE_FPL_OPENGL_CONTEXT_CREATION
 
-	if(fplPlatformInit(initFlags, &settings)) {
-
+    if (fplPlatformInit(initFlags, &settings)) {
 #if USE_FPL_OPENGL_CONTEXT_CREATION
-		if(fglLoadOpenGL(true)) {
-			RunModern(fgl_null);
-			fglUnloadOpenGL();
-		}
+        if (fglLoadOpenGL(true)) {
+            RunModern(fgl_null);
+            fglUnloadOpenGL();
+        }
 #else
-		fglOpenGLContextCreationParameters contextCreationParams = { 0 };
+        fglOpenGLContextCreationParameters contextCreationParams = {0};
 #	if !USE_LEGACY_OPENGL
-		fplCopyAnsiString("DYNGL Modern OpenGL", settings.window.windowTitle, fplArrayCount(settings.window.windowTitle));
-		contextCreationParams.profile = fglOpenGLProfileType_CoreProfile;
-		contextCreationParams.majorVersion = 3;
-		contextCreationParams.minorVersion = 3;
+        fplCopyString("DYNGL Modern OpenGL", settings.window.title, fplArrayCount(settings.window.title));
+        contextCreationParams.profile = fglOpenGLProfileType_CoreProfile;
+        contextCreationParams.majorVersion = 3;
+        contextCreationParams.minorVersion = 3;
 #	else
-		fplCopyAnsiString("DYNGL Legacy OpenGL", settings.window.windowTitle, fplArrayCount(settings.window.windowTitle));
-		contextCreationParams.profile = fdyngl::OpenGLProfileType::LegacyProfile;
+        fplCopyString("DYNGL Legacy OpenGL", settings.window.title, fplArrayCount(settings.window.title));
+        contextCreationParams.profile = fglOpenGLProfileType_LegacyProfile;
 #	endif
-#	if defined(FGL_PLATFORM_WIN32)
-		contextCreationParams.windowHandle.win32.deviceContext = fpl__global__AppState->window.win32.deviceContext;
+#	if defined(FGL_PLATFORM_WIN32) && defined(FPL_PLATFORM_WINDOWS)
+        contextCreationParams.windowHandle.win32.deviceContext = fpl__global__AppState->window.win32.deviceContext;
+#	elif defined(FGL_PLATFORM_LINUX) && defined(FPL_SUBPLATFORM_X11)
+        contextCreationParams.windowHandle.posix.display = fpl__global__AppState->window.x11.display;
+        contextCreationParams.windowHandle.posix.window = fpl__global__AppState->window.x11.window;
 #	endif
-		fglOpenGLContext glContext = { 0 };
-		if(fglLoadOpenGL(false)) {
-			if(fglCreateOpenGLContext(&contextCreationParams, &glContext)) {
-				fglLoadOpenGLFunctions();
-				RunModern(&glContext);
-				fglDestroyOpenGLContext(&glContext);
-		}
-			fglUnloadOpenGL();
-	}
+        fglOpenGLContext glContext = {0};
+        if (fglLoadOpenGL(false)) {
+            if (fglCreateOpenGLContext(&contextCreationParams, &glContext)) {
+                fglLoadOpenGLFunctions();
+                RunModern(&glContext);
+                fglDestroyOpenGLContext(&glContext);
+            }
+            fglUnloadOpenGL();
+        }
 #endif // USE_FPL_OPENGL_CONTEXT_CREATION
 
-		fplPlatformRelease();
-		result = 0;
-} else {
-		result = -1;
-	}
-	return(result);
+        fplPlatformRelease();
+        result = 0;
+    } else {
+        result = -1;
+    }
+    return (result);
 }

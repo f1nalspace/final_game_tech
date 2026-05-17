@@ -132,6 +132,8 @@
       <AdditionalDependencies>kernel32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalOptions>/NODEFAULTLIB -STACK:0x100000,0x100000 %(AdditionalOptions)</AdditionalOptions>
     </Link>
+    <ProjectReference>
+    </ProjectReference>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX64|x64'">
     <ClCompile>
@@ -156,6 +158,8 @@
       <AdditionalDependencies>kernel32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalOptions>/NODEFAULTLIB -STACK:0x100000,0x100000 %(AdditionalOptions)</AdditionalOptions>
     </Link>
+    <ProjectReference>
+    </ProjectReference>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX86|Win32'">
     <ClCompile>
@@ -185,6 +189,8 @@
       <AdditionalDependencies>kernel32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalOptions>/NODEFAULTLIB -STACK:0x100000,0x100000 %(AdditionalOptions)</AdditionalOptions>
     </Link>
+    <ProjectReference>
+    </ProjectReference>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX64|x64'">
     <ClCompile>
@@ -214,6 +220,8 @@
       <AdditionalDependencies>kernel32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalOptions>/NODEFAULTLIB -STACK:0x100000,0x100000 %(AdditionalOptions)</AdditionalOptions>
     </Link>
+    <ProjectReference>
+    </ProjectReference>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="tinycrt.h" />

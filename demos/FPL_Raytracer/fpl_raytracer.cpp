@@ -494,7 +494,7 @@ struct WorkQueue {
 
 	void Push(Raytracer *rayTracer, const Scene *scene, const u32 xMin, const u32 yMin, const u32 xMaxPlusOne, const u32 yMaxPlusOne) {
 		const fplThreadHandle *mainThread = fplGetMainThread();
-		u32 threadId = fplGetCurrentThreadId();
+		u64 threadId = fplGetCurrentThreadId();
 		fplAssert(threadId == mainThread->id);
 		fplAssert(workOrderCount < capacity);
 		u32 index = workOrderCount++;

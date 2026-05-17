@@ -268,15 +268,29 @@ void FPLSecurityTests_Paths(void) {
  *  FILE I/O TESTS  (analysis sections 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 2.7, 2.8)
  * ===========================================================================*/
 
-static const char *fsec__GetTempPath(char *buf, size_t bufLen,
-                                     const char *base) {
-	/* Build "<exeDir>/<base>" where <exeDir> = parent of fplGetExecutableFilePath. */
+// Build "<exeDir>/<base>" where <exeDir> = parent of fplGetExecutableFilePath.
+// Returns false (and asserts early) if any step fails — e.g. fplGetExecutableFilePath
+// returning 0 on FreeBSD when procfs is not mounted, which would otherwise yield
+// "/<base>" and silently try to write into the filesystem root.
+static bool fsec__GetTempPath(char *buf, size_t bufLen, const char *base) {
 	char exePath[FPL_MAX_PATH_LENGTH];
-	(void)fplGetExecutableFilePath(exePath, fplArrayCount(exePath));
+	size_t exeLen = fplGetExecutableFilePath(exePath, fplArrayCount(exePath));
+	FSEC_ASSERT_TRUE(exeLen > 0);
+	if (exeLen == 0) {
+		return false;
+	}
 	char exeDir[FPL_MAX_PATH_LENGTH];
-	(void)fplExtractFilePath(exePath, exeDir, fplArrayCount(exeDir));
-	(void)fplPathCombine(buf, bufLen, 2, exeDir, base);
-	return buf;
+	size_t dirLen = fplExtractFilePath(exePath, exeDir, fplArrayCount(exeDir));
+	FSEC_ASSERT_TRUE(dirLen > 0);
+	if (dirLen == 0) {
+		return false;
+	}
+	size_t combined = fplPathCombine(buf, bufLen, 2, exeDir, base);
+	FSEC_ASSERT_TRUE(combined > 0);
+	if (combined == 0) {
+		return false;
+	}
+	return true;
 }
 
 static void fsec__File_WriteFixture(const char *path, const void *data,
@@ -296,7 +310,7 @@ static void fsec__File_WriteFixture(const char *path, const void *data,
 static void fsec__File_ReadBlock64Accumulates(void) {
 	fsec__Banner("files", "fplFileReadBlock64 returns total bytes");
 	char path[FPL_MAX_PATH_LENGTH];
-	(void)fsec__GetTempPath(path, sizeof(path), "fsec_read64.bin");
+	FSEC_ASSERT_TRUE(fsec__GetTempPath(path, sizeof(path), "fsec_read64.bin"));
 	unsigned char payload[1024];
 	for (size_t i = 0; i < sizeof(payload); ++i) payload[i] = (unsigned char)i;
 	fsec__File_WriteFixture(path, payload, sizeof(payload));
@@ -319,7 +333,7 @@ static void fsec__File_ReadBlock64Accumulates(void) {
 static void fsec__File_ReadBlock32RespectsMax(void) {
 	fsec__Banner("files", "fplFileReadBlock32 honours maxTargetBufferSize");
 	char path[FPL_MAX_PATH_LENGTH];
-	(void)fsec__GetTempPath(path, sizeof(path), "fsec_readmax.bin");
+	FSEC_ASSERT_TRUE(fsec__GetTempPath(path, sizeof(path), "fsec_readmax.bin"));
 	unsigned char payload[256];
 	for (size_t i = 0; i < sizeof(payload); ++i) payload[i] = (unsigned char)(i ^ 0x5A);
 	fsec__File_WriteFixture(path, payload, sizeof(payload));
@@ -344,7 +358,7 @@ static void fsec__File_ReadBlock32RespectsMax(void) {
 static void fsec__File_GetPosition64ReturnsActualPosition(void) {
 	fsec__Banner("files", "fplFileGetPosition64 returns real position");
 	char path[FPL_MAX_PATH_LENGTH];
-	(void)fsec__GetTempPath(path, sizeof(path), "fsec_pos64.bin");
+	FSEC_ASSERT_TRUE(fsec__GetTempPath(path, sizeof(path), "fsec_pos64.bin"));
 	const char data[] = "abcdefghijklmnopqrstuvwxyz";
 	fsec__File_WriteFixture(path, data, sizeof(data) - 1);
 
@@ -363,8 +377,8 @@ static void fsec__File_CopyTargetMatchesSource(void) {
 	fsec__Banner("files", "fplFileCopy produces matching target");
 	char src[FPL_MAX_PATH_LENGTH];
 	char dst[FPL_MAX_PATH_LENGTH];
-	(void)fsec__GetTempPath(src, sizeof(src), "fsec_copy_src.bin");
-	(void)fsec__GetTempPath(dst, sizeof(dst), "fsec_copy_dst.bin");
+	FSEC_ASSERT_TRUE(fsec__GetTempPath(src, sizeof(src), "fsec_copy_src.bin"));
+	FSEC_ASSERT_TRUE(fsec__GetTempPath(dst, sizeof(dst), "fsec_copy_dst.bin"));
 
 	const char payload[] = "FPL-COPY-FIXTURE";
 	fsec__File_WriteFixture(src, payload, sizeof(payload) - 1);
@@ -395,8 +409,8 @@ static void fsec__File_MoveSwitchesPaths(void) {
 	fsec__Banner("files", "fplFileMove relocates source to target");
 	char src[FPL_MAX_PATH_LENGTH];
 	char dst[FPL_MAX_PATH_LENGTH];
-	(void)fsec__GetTempPath(src, sizeof(src), "fsec_move_src.bin");
-	(void)fsec__GetTempPath(dst, sizeof(dst), "fsec_move_dst.bin");
+	FSEC_ASSERT_TRUE(fsec__GetTempPath(src, sizeof(src), "fsec_move_src.bin"));
+	FSEC_ASSERT_TRUE(fsec__GetTempPath(dst, sizeof(dst), "fsec_move_dst.bin"));
 
 	const char payload[] = "FPL-MOVE-FIXTURE";
 	fsec__File_WriteFixture(src, payload, sizeof(payload) - 1);

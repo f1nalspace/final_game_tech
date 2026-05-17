@@ -251,9 +251,10 @@ typedef struct StringTable {
 	StaticMemoryPool pool;
 } StringTable;
 
-StringTable AllocStringTable() {
+StringTable AllocStringTable(const uint32_t initialCapacity) {
 	StringTable result = fplZeroInit;
-	result.pool = AllocStaticMemoryPool(4);
+	uint32_t poolChunks = initialCapacity > 0 ? initialCapacity : 4;
+	result.pool = AllocStaticMemoryPool(poolChunks);
 	INIT_GROWABLE_ARRAY(&result.arr, const char *);
 	return(result);
 }

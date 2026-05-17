@@ -1,3 +1,15 @@
+/*
+Name:
+	Final Audio Conversion
+
+Description:
+	Sample format conversion, interleave/deinterleave, and SinC resampling.
+
+Changelog:
+	- Changed: AudioResampleInterleaved / AudioResampleDeinterleaved now derive inFrameCount and outFrameCount via fplGetTargetAudioFrameCount so the resampler agrees with the FPL frame-count formula by construction.
+	- New: Added TestResampleFrameCount + TestResampleInterleaved_44100_48000_Roundtrip in TestAudioSamplesSuite covering 44100<->48000 round-trip and edge block sizes.
+*/
+
 #ifndef FINAL_AUDIO_CONVERSION_H
 #define FINAL_AUDIO_CONVERSION_H
 
@@ -543,7 +555,7 @@ static AudioResampleResult AudioWeightedSampleSumDownSampling(const uint16_t cha
     const float srcToTgtRatio = (float)sourceSampleRate / (float)targetSampleRate;
 
     // Clear output buffer
-    memset(outSamples, 0, targetFrameCount * channelCount * sizeof(float));
+	fplMemoryClear(outSamples, targetFrameCount * channelCount * sizeof(float));
 
     for (uint32_t tgtFrame = 0; tgtFrame < targetFrameCount; ++tgtFrame) {
         // Calculate the corresponding source frame
@@ -587,17 +599,10 @@ fpl_extern AudioResampleResult AudioResampleInterleaved(const AudioChannelIndex 
 		return zero;
 	}
 
-	AudioFrameIndex inFrameCount;
-	AudioFrameIndex outFrameCount;
-	if (outSampleRate > inSampleRate) {
-		double upSamplingFactor = outSampleRate / (double)inSampleRate;
-		inFrameCount = fplMin((AudioFrameIndex)round(minOutputFrameCount / upSamplingFactor), maxInputFrameCount);
-		outFrameCount = (AudioFrameIndex)round(inFrameCount * upSamplingFactor);
-	} else {
-		double downSamplingFactor = inSampleRate / (double)outSampleRate;
-		inFrameCount = fplMin((AudioFrameIndex)round(minOutputFrameCount * downSamplingFactor), maxInputFrameCount);
-		outFrameCount = (AudioFrameIndex)round(inFrameCount / downSamplingFactor);
-	}
+	// Back-solve input frames needed for desired output frames, then forward-solve actual output frames.
+	// Uses fplGetTargetAudioFrameCount so callers and resampler agree on the rounding formula.
+	AudioFrameIndex inFrameCount = fplMin(fplGetTargetAudioFrameCount(minOutputFrameCount, outSampleRate, inSampleRate), maxInputFrameCount);
+	AudioFrameIndex outFrameCount = fplGetTargetAudioFrameCount(inFrameCount, inSampleRate, outSampleRate);
 
 	// Return just the number of frames, when the buffers was null
 	if (inSamples == fpl_null || outSamples == fpl_null) {
@@ -618,17 +623,8 @@ fpl_extern AudioResampleResult AudioResampleDeinterleaved(const AudioChannelInde
 		return zero;
 	}
 
-	AudioFrameIndex inFrameCount;
-	AudioFrameIndex outFrameCount;
-	if (outSampleRate > inSampleRate) {
-		double upSamplingFactor = outSampleRate / (double)inSampleRate;
-		inFrameCount = fplMin((AudioFrameIndex)round(minOutputFrameCount / upSamplingFactor), maxInputFrameCount);
-		outFrameCount = (AudioFrameIndex)round(inFrameCount * upSamplingFactor);
-	} else {
-		double downSamplingFactor = inSampleRate / (double)outSampleRate;
-		inFrameCount = fplMin((AudioFrameIndex)round(minOutputFrameCount * downSamplingFactor), maxInputFrameCount);
-		outFrameCount = (AudioFrameIndex)round(inFrameCount / downSamplingFactor);
-	}
+	AudioFrameIndex inFrameCount = fplMin(fplGetTargetAudioFrameCount(minOutputFrameCount, outSampleRate, inSampleRate), maxInputFrameCount);
+	AudioFrameIndex outFrameCount = fplGetTargetAudioFrameCount(inFrameCount, inSampleRate, outSampleRate);
 
 	// Return just the number of frames, when the buffers was null
 	if (inSamples == fpl_null || outSamples == fpl_null) {
@@ -857,8 +853,7 @@ fpl_extern bool IsAudioDeinterleavedSamplesEqual(const AudioFrameIndex numFrames
 	for(AudioChannelIndex channelIndex = 0; channelIndex < numChannels; ++channelIndex) {
 		const void *aLine = a[channelIndex];
 		const void *bLine = b[channelIndex];
-		int r = memcmp(aLine, bLine, lineWidth);
-		if(r != 0) {
+		if(!fpl__IsEqualsMemory(aLine, bLine, lineWidth)) {
 			return(false);
 		}
 	}
@@ -867,8 +862,7 @@ fpl_extern bool IsAudioDeinterleavedSamplesEqual(const AudioFrameIndex numFrames
 
 fpl_extern bool IsAudioInterleavedSamplesEqual(const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const size_t formatSize, const void *a, const void *b) {
 	size_t totalWidth = numFrames * numChannels * formatSize;
-	int r = memcmp(a, b, totalWidth);
-	if(r != 0) {
+	if(!fpl__IsEqualsMemory(a, b, totalWidth)) {
 		return(false);
 	}
 	return(true);
@@ -1083,10 +1077,92 @@ static void TestAudioSamplesInterleave() {
 	}
 }
 
+static void TestResampleFrameCount() {
+	// Same rate → identity
+	fplAlwaysAssert(fplGetTargetAudioFrameCount(0, 44100, 48000) == 0);
+	fplAlwaysAssert(fplGetTargetAudioFrameCount(100, 0, 48000) == 0);
+	fplAlwaysAssert(fplGetTargetAudioFrameCount(100, 44100, 0) == 0);
+	fplAlwaysAssert(fplGetTargetAudioFrameCount(1234, 48000, 48000) == 1234);
+
+	// 44100 → 48000 (upsample, factor 48000/44100 = 1.08843...)
+	fplAlwaysAssert(fplGetTargetAudioFrameCount(44100, 44100, 48000) == 48000);
+	fplAlwaysAssert(fplGetTargetAudioFrameCount(441, 44100, 48000) == 480);
+	fplAlwaysAssert(fplGetTargetAudioFrameCount(4410, 44100, 48000) == 4800);
+	// 1000 * 48000/44100 = 1088.4354 → 1088
+	fplAlwaysAssert(fplGetTargetAudioFrameCount(1000, 44100, 48000) == 1088);
+
+	// 48000 → 44100 (downsample, factor 44100/48000 = 0.91875)
+	fplAlwaysAssert(fplGetTargetAudioFrameCount(48000, 48000, 44100) == 44100);
+	fplAlwaysAssert(fplGetTargetAudioFrameCount(480, 48000, 44100) == 441);
+	fplAlwaysAssert(fplGetTargetAudioFrameCount(4800, 48000, 44100) == 4410);
+	// 1000 * 44100/48000 = 918.75 → 919
+	fplAlwaysAssert(fplGetTargetAudioFrameCount(1000, 48000, 44100) == 919);
+}
+
+static void TestResampleInterleaved_44100_48000_Roundtrip() {
+	// Test that AudioResampleInterleaved produces the expected outputCount and
+	// matches fplGetTargetAudioFrameCount for both directions.
+	const AudioChannelIndex channels = 2;
+	const AudioFrameIndex maxIn = 512;
+
+	const AudioFrameIndex blockSizes[] = { 64, 128, 240, 256, 441, 480 };
+	const size_t blockCount = fplArrayCount(blockSizes);
+
+	// Allocate scratch buffers (interleaved F32, stereo)
+	float inBuf[512 * 2] = fplZeroInit;
+	float outBuf[512 * 2] = fplZeroInit;
+
+	// Fill input with -1..1 ramp (deterministic)
+	for (AudioFrameIndex i = 0; i < 512; ++i) {
+		float t = (float)i / 511.0f;
+		float s = -1.0f + 2.0f * t;
+		inBuf[i * 2 + 0] = s;
+		inBuf[i * 2 + 1] = s;
+	}
+
+	for (size_t b = 0; b < blockCount; ++b) {
+		const AudioFrameIndex minOut = blockSizes[b];
+
+		// 44100 → 48000
+		{
+			AudioResampleResult r = AudioResampleInterleaved(channels, 44100, 48000, minOut, maxIn, inBuf, outBuf);
+			// Resampler picks inFrameCount such that round(inFrameCount * 48000/44100) >= minOut.
+			fplAlwaysAssert(r.inputCount > 0);
+			fplAlwaysAssert(r.inputCount <= maxIn);
+			// Output must equal fplGetTargetAudioFrameCount(inputCount, inRate, outRate).
+			AudioFrameIndex expected = fplGetTargetAudioFrameCount(r.inputCount, 44100, 48000);
+			fplAlwaysAssert(r.outputCount == expected);
+		}
+
+		// 48000 → 44100
+		{
+			AudioResampleResult r = AudioResampleInterleaved(channels, 48000, 44100, minOut, maxIn, inBuf, outBuf);
+			fplAlwaysAssert(r.inputCount > 0);
+			fplAlwaysAssert(r.inputCount <= maxIn);
+			AudioFrameIndex expected = fplGetTargetAudioFrameCount(r.inputCount, 48000, 44100);
+			fplAlwaysAssert(r.outputCount == expected);
+		}
+	}
+
+	// Verify that the canonical block 441 ↔ 480 round-trips exactly.
+	{
+		AudioResampleResult r = AudioResampleInterleaved(channels, 44100, 48000, 480, maxIn, inBuf, outBuf);
+		fplAlwaysAssert(r.inputCount == 441);
+		fplAlwaysAssert(r.outputCount == 480);
+	}
+	{
+		AudioResampleResult r = AudioResampleInterleaved(channels, 48000, 44100, 441, maxIn, inBuf, outBuf);
+		fplAlwaysAssert(r.inputCount == 480);
+		fplAlwaysAssert(r.outputCount == 441);
+	}
+}
+
 fpl_extern void TestAudioSamplesSuite() {
 	TestAudioSamplesConversion();
 	TestAudioSamplesDeinterleave();
 	TestAudioSamplesInterleave();
+	TestResampleFrameCount();
+	TestResampleInterleaved_44100_48000_Roundtrip();
 }
 
 #endif // FINAL_AUDIO_CONVERSION_H

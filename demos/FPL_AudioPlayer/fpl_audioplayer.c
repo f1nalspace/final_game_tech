@@ -84,6 +84,9 @@ Todo:
 	- Multiple audio tracks
 
 Changelog:
+	## 2026-05-14
+	- Show audio backend name in title
+
 	## 2026-04-03
 	- Updated documentations
 
@@ -313,11 +316,13 @@ typedef struct AudioDemo {
 static void UpdateTitle(AudioDemo *demo, const char *audioTrackName, const bool isRealTime, const double fps) {
 	char titleBuffer[256];
 	const char *rtString = (isRealTime ? "RT" : "BUF");
+	const fplAudioBackendType backendType = fplGetAudioBackendType();
+	const char *audioBackendName = fplGetAudioBackendName(backendType);
 	const fplSettings *settings = fplGetCurrentSettings();
 	if (fplGetStringLength(audioTrackName) > 0)
-        fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "%s (%s, %u Hz, %u ch) - %s [%.3f fps]", APP_TITLE, rtString, demo->targetAudioFormat.sampleRate, demo->targetAudioFormat.channels, audioTrackName, fps);
+        fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "%s (%s, %s, %u Hz, %u ch) - %s [%.3f fps]", APP_TITLE, rtString, audioBackendName, demo->targetAudioFormat.sampleRate, demo->targetAudioFormat.channels, audioTrackName, fps);
 	else
-        fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "%s (%s, %u Hz, %u ch) [%.3f fps]", APP_TITLE, rtString, demo->targetAudioFormat.sampleRate, demo->targetAudioFormat.channels, fps);
+        fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "%s (%s, %s, %u Hz, %u ch) [%.3f fps]", APP_TITLE, rtString, audioBackendName, demo->targetAudioFormat.sampleRate, demo->targetAudioFormat.channels, fps);
 	fplSetWindowTitle(titleBuffer);
 }
 
@@ -1310,6 +1315,39 @@ static bool SetAudioTrackSourceFromFile(AudioSystem *audioSys, AudioTrackSource 
 	return true;
 }
 
+static void SetupAudioBackendAndFormat(fplAudioSettings *audio) {
+	// Overwrite number of channels and/or layout
+	audio->targetFormat.channelLayout = fplAudioChannelLayout_Stereo;
+
+	// Overwrite audio device format / sample format
+	//audio->targetFormat.type = fplAudioFormatType_U8;
+	//audio->targetFormat.type = fplAudioFormatType_S16;
+	//audio->targetFormat.type = fplAudioFormatType_S24;
+	//audio->targetFormat.type = fplAudioFormatType_S32;
+	//audio->targetFormat.type = fplAudioFormatType_S64;
+	//audio->targetFormat.type = fplAudioFormatType_F32;
+	//audio->targetFormat.type = fplAudioFormatType_F64;
+
+	// Overwrite samplerate in Hz
+	//audio->targetFormat.sampleRate = 11025;
+	//audio->targetFormat.sampleRate = 22050;
+	//audio->targetFormat.sampleRate = 44100;
+	//audio->targetFormat.sampleRate = 48000;
+	//audio->targetFormat.sampleRate = 88200;
+
+	// Overwrite buffer size in milliseconds or in frames
+	//audio->targetFormat.bufferSizeInMilliseconds = 16;
+	//audio->targetFormat.bufferSizeInFrames = 512;
+
+	// Overwrite audio backend to a specific type
+	//audio->backend = fplAudioBackendType_WASAPI;
+	//audio->backend = fplAudioBackendType_DirectSound;
+	//audio->backend = fplAudioBackendType_PipeWire;
+	//audio->backend = fplAudioBackendType_PulseAudio;
+	//audio->backend = fplAudioBackendType_Alsa;
+	//audio->backend = fplAudioBackendType_OSS;
+}
+
 int main(int argc, char **args) {
 	size_t fileCount = argc >= 2 ? argc - 1 : 0;
 	const char **files = (fileCount > 0) ? (const char **)args + 1 : fpl_null;
@@ -1343,27 +1381,7 @@ int main(int argc, char **args) {
 	settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Legacy;
 	settings.video.isVSync = true;
 
-	// Set audio device format
-	//settings.audio.targetFormat.type = fplAudioFormatType_S16;
-
-	// Set number of channels
-	settings.audio.targetFormat.channels = 2;
-	settings.audio.targetFormat.channelLayout = fplAudioChannelLayout_Stereo;
-
-	// Set samplerate in Hz
-	//settings.audio.targetFormat.sampleRate = 11025;
-	//settings.audio.targetFormat.sampleRate = 22050;
-	//settings.audio.targetFormat.sampleRate = 44100;
-	settings.audio.targetFormat.sampleRate = 48000;
-	//settings.audio.targetFormat.sampleRate = 88200;
-
-	// Optionally set buffer size in milliseconds or in frames
-	//settings.audio.targetFormat.bufferSizeInMilliseconds = 16;
-	//settings.audio.targetFormat.bufferSizeInFrames = 512;
-
-	// Force audio backend to a specific type
-	//settings.audio.backend = fplAudioBackendType_PipeWire;
-	//settings.audio.backend = fplAudioBackendType_PulseAudio;
+	SetupAudioBackendAndFormat(&settings.audio);
 
 	// Disable auto start/stop of audio playback
 	settings.audio.startAuto = false;

@@ -235,7 +235,7 @@ static ImVec4 clear_color = ImColor(114, 144, 154);
 static size_t displayCount = 0;
 static size_t audioDeviceCount = 0;
 static fplDisplayInfo displays[16] = fplZeroInit;
-static fplAudioDeviceInfoExtended audioDevices[16] = fplZeroInit;
+static fplAudioDeviceInfo audioDevices[16] = fplZeroInit;
 
 static void UpdateAndRender(const float deltaTime) {
 	ImGuiIO& io = ImGui::GetIO();
@@ -317,8 +317,8 @@ static void UpdateAndRender(const float deltaTime) {
 	ImGui::Begin("Audio Devices", &showAudioDevicesWindow);
 	ImGui::Text("Count: %zu", audioDeviceCount);
 	for(size_t i = 0; i < audioDeviceCount; ++i) {
-		fplAudioDeviceInfoExtended *info = audioDevices + i;
-		ImGui::BulletText("Audio Device[%zu]: %s%s", i, info->info.name, (info->info.isDefault ? " [Default]" : ""));
+		fplAudioDeviceInfo *info = audioDevices + i;
+		ImGui::BulletText("Audio Device[%zu]: %s%s", i, info->name, (info->isDefault ? " [Default]" : ""));
 	}
 	ImGui::End();
 
@@ -338,7 +338,7 @@ int main(int argc, char **args) {
 	if(fplPlatformInit(fplInitFlags_All, &settings)) {
 		displayCount = fplGetDisplays(displays, fplArrayCount(displays));
 
-		audioDeviceCount = fplGetAudioDevices(fplArrayCount(audioDevices), sizeof(audioDevices[0]), (fplAudioDeviceInfo *)audioDevices);
+		audioDeviceCount = fplGetAudioDevices(fplArrayCount(audioDevices), sizeof(audioDevices[0]), audioDevices);
 
 		InitImGUI();
 

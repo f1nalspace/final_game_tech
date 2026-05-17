@@ -42,7 +42,7 @@ Requirements:
 static int CompareMappingsByGuid(const void *a, const void *b) {
 	const fplGamepadMapping *ma = (const fplGamepadMapping *)a;
 	const fplGamepadMapping *mb = (const fplGamepadMapping *)b;
-	return memcmp(ma->guid, mb->guid, FPL_GAMEPAD_GUID_BYTES);
+	return memcmp(ma->guid, mb->guid, FPL_GAMEPAD_GUID_SIZE);
 }
 
 int main(int argc, char **argv) {

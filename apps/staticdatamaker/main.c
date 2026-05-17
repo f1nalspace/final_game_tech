@@ -31,8 +31,8 @@ int main(int argc, char **argv) {
 		dataName = argv[2];
 	}
 
-	FILE *file;
-	if(fopen_s(&file, filePath, "rb") != 0) {
+	FILE *file = fopen(filePath, "rb");
+	if(file == NULL) {
 		return(-1);
 	}
 	fseek(file, 0, SEEK_END);
@@ -43,7 +43,7 @@ int main(int argc, char **argv) {
 		fclose(file);
 		return(-1);
 	}
-	fread_s(mem, size, size, 1, file);
+	fread(mem, size, 1, file);
 	fclose(file);
 
 	const char *dataTypeName;
