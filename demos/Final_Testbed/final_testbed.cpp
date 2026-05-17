@@ -59,7 +59,7 @@ struct Asset {
 
 struct GameState {
 	Asset debugFont;
-	Viewport viewport;
+	Viewport4i viewport;
 	float angle;
 	bool isExiting;
 };
@@ -68,7 +68,7 @@ static bool Init(GameState &state) {
 	state.debugFont.type = AssetType::Font;
 	state.debugFont.loadState = AssetLoadState::Unloaded;
 	size_t fontDataSize = fplArrayCount(fontDataArray);
-	if (LoadFontFromMemory(fontDataArray, fontDataSize, 0, 36.0f, 32, 128, 512, 512, false, &state.debugFont.font.data)) {
+	if (FontLoadFromMemory(fpl_null, fontDataArray, fontDataSize, 0, 36.0f, 32, 128, 512, 512, false, &state.debugFont.font.data)) {
 		state.debugFont.loadState = AssetLoadState::ToUpload;
 	}
 	state.angle = 0.0f;
@@ -76,12 +76,12 @@ static bool Init(GameState &state) {
 }
 
 static void Kill(GameState *state) {
-	ReleaseFont(&state->debugFont.font.data);
+	FontFree(fpl_null, &state->debugFont.font.data);
 }
 
-extern bool GameInit(GameMemory &gameMemory) {
-	GameState *state = (GameState *)fmemPush(gameMemory.memory, sizeof(GameState), fmemPushFlags_Clear);
-	gameMemory.game = state;
+extern bool GameInit(GameMemory *gameMemory, const int argumentCount, char **arguments) {
+	GameState *state = (GameState *)fmemPush(gameMemory->memory, sizeof(GameState), fmemPushFlags_Clear);
+	gameMemory->game = state;
 	if (!Init(*state)) {
 		GameRelease(gameMemory);
 		return(false);
@@ -89,46 +89,46 @@ extern bool GameInit(GameMemory &gameMemory) {
 	return(true);
 }
 
-extern void GameRelease(GameMemory &gameMemory) {
-	GameState *state = gameMemory.game;
+extern void GameRelease(GameMemory *gameMemory) {
+	GameState *state = gameMemory->game;
 	if (state != nullptr) {
 		Kill(state);
 	}
 }
 
-extern bool IsGameExiting(GameMemory &gameMemory) {
-	GameState *state = gameMemory.game;
+extern bool IsGameExiting(GameMemory *gameMemory) {
+	GameState *state = gameMemory->game;
 	fplAssert(state != nullptr);
 	return state->isExiting;
 }
 
-extern void GameInput(GameMemory &gameMemory, const Input &input) {
-	if (!input.isActive) {
+extern void GameInput(GameMemory *gameMemory, const Input *input) {
+	if (!input->isActive) {
 		return;
 	}
-	GameState *state = gameMemory.game;
+	GameState *state = gameMemory->game;
 	fplAssert(state != nullptr);
 	state->viewport.x = 0;
 	state->viewport.y = 0;
-	state->viewport.w = input.windowSize.w;
-	state->viewport.h = input.windowSize.h;
+	state->viewport.w = input->windowSize.w;
+	state->viewport.h = input->windowSize.h;
 }
 
-extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
-	if (!input.isActive) {
+extern void GameUpdate(GameMemory *gameMemory, const Input *input) {
+	if (!input->isActive) {
 		return;
 	}
-	GameState *state = gameMemory.game;
+	GameState *state = gameMemory->game;
 	fplAssert(state != nullptr);
-	state->angle += input.fixedDeltaTime * 0.1f;
+	state->angle += input->fixedDeltaTime * 0.1f;
 }
 
-static Rect2f ComputeAspectRect(Vec2f targetSize, Vec2f sourceSize, Ratio sourceRatio) {
+static Rect2f ComputeAspectRect(Vec2f targetSize, Vec2f sourceSize, Ratio64 sourceRatio) {
 	float aspect_ratio;
 	if (sourceRatio.numerator == 0.0) {
 		aspect_ratio = 0.0f;
 	} else {
-		aspect_ratio = (float)ComputeRatio(sourceRatio);
+		aspect_ratio = (float)Ratio64Compute(sourceRatio);
 	}
 	if (aspect_ratio <= 0.0f) {
 		aspect_ratio = 1.0f;
@@ -149,20 +149,21 @@ static Rect2f ComputeAspectRect(Vec2f targetSize, Vec2f sourceSize, Ratio source
 	return(result);
 }
 
-extern void GameRender(GameMemory &gameMemory, const float alpha) {
-	GameState *state = gameMemory.game;
+extern void GameRender(GameMemory *gameMemory, const Input *input, const float alpha) {
+	GameState *state = gameMemory->game;
 	fplAssert(state != nullptr);
-	RenderState &renderState = *gameMemory.render;
+
+	RenderState *renderState = gameMemory->render;
 
 	if (state->debugFont.loadState == AssetLoadState::ToUpload) {
 		fplAssert(state->debugFont.type == AssetType::Font);
 		const LoadedFont &font = state->debugFont.font.data;
-		PushTexture(renderState, &state->debugFont.font.texture, font.atlasAlphaBitmap, font.atlasWidth, font.atlasHeight, 1, TextureFilterType::Linear, TextureWrapMode::ClampToEdge, false, false);
+		RenderPushTexture(renderState, &state->debugFont.font.texture, font.atlasAlphaBitmap, font.atlasWidth, font.atlasHeight, 1, TextureFilterType_Linear, TextureWrapMode_ClampToEdge, false, false);
 		state->debugFont.loadState = AssetLoadState::Loaded;
 	}
 
-	PushViewport(renderState, state->viewport.x, state->viewport.y, state->viewport.w, state->viewport.h);
-	PushClear(renderState, V4fInit(0.1f, 0.2f, 0.3f, 1), ClearFlags::Color);
+	RenderPushViewport(renderState, state->viewport.x, state->viewport.y, state->viewport.w, state->viewport.h);
+	RenderPushClear(renderState, V4fInit(0.1f, 0.2f, 0.3f, 1), ClearFlags_Color);
 
 	float w = 10.0f, h = 6.0f;
 	Vec2f viewSize = V2fInit(w, h);
@@ -173,15 +174,16 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 #define DEMO DEMO_IMAGEFIT
 
 #if DEMO == DEMO_IMAGEFIT
-	Mat4f proj = Mat4OrthoRH(0.0f, viewSize.w, viewSize.h, 0.0f, 0.0f, 1.0f);
-	Mat4f view = Mat4TranslationV2(V2fInit(0, 0)) * Mat4ScaleV2(V2fInit(1, 1));
-	SetMatrix(renderState, proj * view);
+	Mat4f proj = M4fOrthoRH(0.0f, viewSize.w, viewSize.h, 0.0f, 0.0f, 1.0f);
+	Mat4f view = M4fTranslationV2(V2fInit(0, 0)) * M4fScaleV2(V2fInit(1, 1));
+	Mat4f mvp = proj * view;
+	RenderSetMatrix(renderState, &mvp);
 
 	Vec2f maxSize = viewSize * 0.75f;
 	Vec2f maxPos = (viewSize - maxSize) * 0.5f;
 
 	Vec2f sourceImageSize = V2fInit(1000, 100);
-	Ratio sourceImageAspect = MakeRatio(1, 1);
+	Ratio64 sourceImageAspect = Ratio64Init(1, 1);
 	float containerAspect = maxSize.w / maxSize.h;
 
 	Rect2f imageRect = ComputeAspectRect(maxSize, sourceImageSize, sourceImageAspect);
@@ -192,14 +194,14 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 
 	Vec2f imageCenter = maxPos + imageRect.pos + imageExt;
 
-	PushRectangle(renderState, maxPos, maxSize, V4fInit(1, 1, 1, 1), false, 1.0f);
+	RenderPushRectangle(renderState, maxPos, maxSize, V4fInit(1, 1, 1, 1), false, 1.0f);
 
-	PushRectangle(renderState, maxPos + imageRect.pos, imageSize, V4fInit(1, 0, 0, 1), false, 1.0f);
+	RenderPushRectangle(renderState, maxPos + imageRect.pos, imageSize, V4fInit(1, 0, 0, 1), false, 1.0f);
 
 	float imageRot = state->angle;
 
-	Mat4f initialTranslationMat = Mat4TranslationV2(imageCenter);
-	Mat4f imageRotMat = Mat4RotationZFromAngle(imageRot);
+	Mat4f initialTranslationMat = M4fTranslationV2(imageCenter);
+	Mat4f imageRotMat = M4fRotationZ(imageRot);
 	Mat4f imageMat = initialTranslationMat * imageRotMat;
 
 	Vec2f verts[] = {
@@ -209,10 +211,10 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 		V2fInit(-imageExt.w, imageExt.h),
 	};
 
-	Vec2f min = Vec4MultMat4(imageRotMat, V4fInitXY(verts[0], 0.0f, 1.0f)).xy;
+	Vec2f min = V4fMultM4f(imageRotMat, V4fInitXY(verts[0], 0.0f, 1.0f)).xy;
 	Vec2f max = min;
 	for (int i = 1; i < fplArrayCount(verts); ++i) {
-		Vec2f v = Vec4MultMat4(imageRotMat, V4fInitXY(verts[i], 0.0f, 1.0f)).xy;
+		Vec2f v = V4fMultM4f(imageRotMat, V4fInitXY(verts[i], 0.0f, 1.0f)).xy;
 		min = V2fMin(min, v);
 		max = V2fMax(max, v);
 	}
@@ -229,40 +231,43 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 
 	Vec2f scaledSize = imageSize * factor;
 
-	PushMatrix(renderState, imageMat);
-	PushRectangle(renderState, -imageExt, imageSize, V4fInit(0, 1, 0, 1), false, 1.0f);
-	PopMatrix(renderState);
+	RenderPushMatrix(renderState, &imageMat, MatrixMode_Push);
+	RenderPushRectangle(renderState, -imageExt, imageSize, V4fInit(0, 1, 0, 1), false, 1.0f);
+	RenderPopMatrix(renderState);
 
-	PushRectangle(renderState, imageCenter - rotatedSize * 0.5f, rotatedSize, V4fInit(0, 0, 1, 1), false, 1.0f);
+	RenderPushRectangle(renderState, imageCenter - rotatedSize * 0.5f, rotatedSize, V4fInit(0, 0, 1, 1), false, 1.0f);
 
-	PushMatrix(renderState, imageMat);
-	PushRectangle(renderState, -scaledSize * 0.5f, scaledSize, V4fInit(0, 1, 1, 1), false, 2.0f);
-	PopMatrix(renderState);
+	RenderPushMatrix(renderState, &imageMat, MatrixMode_Push);
+	RenderPushRectangle(renderState, -scaledSize * 0.5f, scaledSize, V4fInit(0, 1, 1, 1), false, 2.0f);
+	RenderPopMatrix(renderState);
 #endif // DEMO_IMAGEFIT
 
 #if DEMO == DEMO_TEST
-	Mat4f proj = Mat4OrthoRH(-viewSize.w * 0.5f, viewSize.w * 0.5f, -viewSize.h * 0.5f, viewSize.h * 0.5f, 0.0f, 1.0f);
-	Mat4f view = Mat4TranslationV2(V2fInit(0, 0)) * Mat4ScaleV2(V2fInit(1, 1));
-	SetMatrix(renderState, proj * view);
+	Mat4f proj = M4fOrthoRH(-viewSize.w * 0.5f, viewSize.w * 0.5f, -viewSize.h * 0.5f, viewSize.h * 0.5f, 0.0f, 1.0f);
+	Mat4f view = M4fTranslationV2(V2fInit(0, 0)) * M4fScaleV2(V2fInit(1, 1));
+	Mat4f mvp = proj * view;
+	RenderSetMatrix(renderState, &mvp);
 
-	PushRectangleCenter(renderState, V2fInit(0, 0), V2fInit(w * 0.2f, h * 0.2f), V4fInit(1, 1, 1, 1), false, 1.0f);
+	RenderPushRectangleCenter(renderState, V2fInit(0, 0), V2fInit(w * 0.2f, h * 0.2f), V4fInit(1, 1, 1, 1), false, 1.0f);
 
-	PushRectangleCenter(renderState, V2fInit(0, 0), V2fInit(w * 0.1f, h * 0.1f), V4fInit(1, 1, 1, 1), true, 0.0f);
+	RenderPushRectangleCenter(renderState, V2fInit(0, 0), V2fInit(w * 0.1f, h * 0.1f), V4fInit(1, 1, 1, 1), true, 0.0f);
 
 	Vec2f verts[] = {
 		V2fInit(0.0f, h * 0.3f),
 		V2fInit(-w * 0.3f, -h * 0.3f),
 		V2fInit(w * 0.3f, -h * 0.3f),
 	};
-	PushVertices(renderState, verts, fplArrayCount(verts), true, V4fInit(0, 1, 1, 1), DrawMode::Lines, true, 1.0f);
+	RenderPushVertices(renderState, verts, fplArrayCount(verts), true, V4fInit(0, 1, 1, 1), DrawMode_Lines, true, 1.0f);
 
-	view = Mat4TranslationV2(V2fInit(w * 0.25f, -h * 0.1f)) * Mat4ScaleV2(V2fInit(0.5f, 0.5f));
-	SetMatrix(renderState, proj * view);
-	PushVertices(renderState, verts, fplArrayCount(verts), true, V4fInit(1, 0, 1, 1), DrawMode::Polygon, true, 1.0f);
+	view = M4fTranslationV2(V2fInit(w * 0.25f, -h * 0.1f)) * M4fScaleV2(V2fInit(0.5f, 0.5f));
+	mvp = proj * view;
+	RenderSetMatrix(renderState, &mvp);
+	RenderPushVertices(renderState, verts, fplArrayCount(verts), true, V4fInit(1, 0, 1, 1), DrawMode_Polygon, true, 1.0f);
 
-	view = Mat4TranslationV2(V2fInit(0, 0));
-	SetMatrix(renderState, proj * view);
-	PushText(renderState, "Hello", 5, &state->debugFont.font.data, &state->debugFont.font.texture, V2fInit(0, 0), h * 0.1f, 0.0f, 0.0f, V4fInit(1, 0, 0, 1));
+	view = M4fTranslationV2(V2fInit(0, 0));
+	mvp = proj * view;
+	RenderSetMatrix(renderState, &mvp);
+	RenderPushText(renderState, "Hello", 5, &state->debugFont.font.data, &state->debugFont.font.texture, V2fInit(0, 0), h * 0.1f, 0.0f, 0.0f, V4fInit(1, 0, 0, 1));
 
 #endif // DEMO_TEST
 }
@@ -272,9 +277,9 @@ extern void GameUpdateAndRender(GameMemory &gameMemory, const Input &input, cons
 
 int main(int argc, char **argv) {
 	GameConfiguration config = {};
-	config.title = "Final´s Testbed";
+	config.title = "Finalï¿½s Testbed";
 	config.hideMouseCursor = false;
 	config.disableInactiveDetection = true;
-	int result = GameMain(config);
+	int result = GameMain(&config, argc, argv);
 	return(result);
 }

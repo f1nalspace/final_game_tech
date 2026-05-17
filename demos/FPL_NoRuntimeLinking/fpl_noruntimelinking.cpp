@@ -30,9 +30,14 @@ License:
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
-
+#ifndef FPL_IMPLEMENTATION
 #define FPL_IMPLEMENTATION
+#endif
+
+#ifndef FPL_NO_RUNTIME_LINKING
 #define FPL_NO_RUNTIME_LINKING
+#endif
+
 #include <final_platform_layer.h>
 
 int main(int argc, char **args) {

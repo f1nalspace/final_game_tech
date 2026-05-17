@@ -1,3 +1,47 @@
+-- Inject auto-detect of OS/arch into the workspace Makefile so `make` without
+-- arguments builds for the host instead of premake's hardcoded defaultplatform.
+local p = premake
+local gmake = p.modules.gmake
+if gmake then
+	p.override(gmake, "defaultconfig", function(base, target)
+		if target.class and target.class.name == "workspace" then
+			p.x("ifndef config")
+			p.x("  ifeq ($(OS),Windows_NT)")
+			p.x("    AUTO_OS := win")
+			p.x("    ifeq ($(PROCESSOR_ARCHITECTURE),AMD64)")
+			p.x("      AUTO_ARCH := x64")
+			p.x("    else")
+			p.x("      AUTO_ARCH := x86")
+			p.x("    endif")
+			p.x("  else")
+			p.x("    AUTO_UNAME_S := $(shell uname -s)")
+			p.x("    AUTO_UNAME_M := $(shell uname -m)")
+			p.x("    ifeq ($(AUTO_UNAME_S),Linux)")
+			p.x("      AUTO_OS := linux")
+			p.x("    else")
+			p.x("      AUTO_OS := unix")
+			p.x("    endif")
+			p.x("    ifeq ($(AUTO_UNAME_M),x86_64)")
+			p.x("      AUTO_ARCH := x64")
+			p.x("    else ifeq ($(AUTO_UNAME_M),aarch64)")
+			p.x("      AUTO_ARCH := arm64")
+			p.x("    else ifeq ($(AUTO_UNAME_M),arm64)")
+			p.x("      AUTO_ARCH := arm64")
+			p.x("    else ifneq (,$(filter armv%%,$(AUTO_UNAME_M)))")
+			p.x("      AUTO_ARCH := arm32")
+			p.x("    else")
+			p.x("      AUTO_ARCH := x86")
+			p.x("    endif")
+			p.x("  endif")
+			p.x("  config := debug_$(AUTO_OS)$(AUTO_ARCH)")
+			p.x("endif")
+			p.x("")
+		else
+			base(target)
+		end
+	end)
+end
+
 -- Based on https://github.com/bluebird75/lua_get_os_name/blob/master/get_os_name.lua
 local function getOSArchitecture()
 	local raw_os_name, raw_arch_name = '', ''
@@ -78,10 +122,52 @@ print("Detected OS/Arch: " .. currentOSFamily .. "/" .. currentArchitectureFamil
 
 workspace "demos_final_platform_layer"
 	configurations
-	{ 
+	{
 		"Debug",
 		"Release",
 	}
+
+	-- Auto-detect OS/architecture at make-time and override premake's hardcoded default
+	makesettings [[
+# Auto detect OS and Target
+ifeq ($(OS),Windows_NT)
+    AUTO_OS := windows
+    ifeq ($(PROCESSOR_ARCHITECTURE),AMD64)
+        AUTO_ARCH := x64
+    else
+        AUTO_ARCH := x86
+    endif
+else
+    AUTO_UNAME_S := $(shell uname -s)
+    AUTO_UNAME_M := $(shell uname -m)
+    ifeq ($(AUTO_UNAME_S),Linux)
+        AUTO_OS := linux
+    else
+        AUTO_OS := unix
+    endif
+    ifeq ($(AUTO_UNAME_M),x86_64)
+        AUTO_ARCH := x64
+    else ifeq ($(AUTO_UNAME_M),aarch64)
+        AUTO_ARCH := arm64
+    else ifeq ($(AUTO_UNAME_M),arm64)
+        AUTO_ARCH := arm64
+    else ifneq (,$(filter armv%,$(AUTO_UNAME_M)))
+        AUTO_ARCH := arm32
+    else
+        AUTO_ARCH := x86
+    endif
+endif
+
+# Only override config when not explicitly passed on the command line
+ifeq ($(filter config=%,$(MAKEOVERRIDES)),)
+    ifeq ($(origin buildcfg),undefined)
+        AUTO_BUILDCFG := debug
+    else
+        AUTO_BUILDCFG := $(buildcfg)
+    endif
+    override config := $(AUTO_BUILDCFG)_$(AUTO_OS)$(AUTO_ARCH)
+endif
+]]
 	
 	flags
     {
@@ -228,7 +314,7 @@ group "Apps"
 
 group "Console"
 	include "FPL_Console/premake5";
-	
+
 group "Audio"
 	include "FPL_AudioPlayer/premake5";
 	include "FPL_SimpleAudio/premake5";
@@ -246,6 +332,7 @@ group "Graphics"
 	
 group "Input"
 	include "FPL_Input/premake5";
+	include "FPL_ConsoleInput/premake5";
 
 group "Window"
 	include "FPL_Window/premake5";
@@ -253,7 +340,7 @@ group "Window"
 group "Test"
 	include "FPL_Test/premake5";
 
-group "Compability"
+group "Compatibility"
 	include "FPL_NoPlatformIncludes/premake5";
 	include "FPL_NoRuntimeLinking/premake5";
 	include "FPL_DynamicLib_Host/premake5";

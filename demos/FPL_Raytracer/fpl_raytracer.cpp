@@ -494,7 +494,7 @@ struct WorkQueue {
 
 	void Push(Raytracer *rayTracer, const Scene *scene, const u32 xMin, const u32 yMin, const u32 xMaxPlusOne, const u32 yMaxPlusOne) {
 		const fplThreadHandle *mainThread = fplGetMainThread();
-		u32 threadId = fplGetCurrentThreadId();
+		u64 threadId = fplGetCurrentThreadId();
 		fplAssert(threadId == mainThread->id);
 		fplAssert(workOrderCount < capacity);
 		u32 index = workOrderCount++;
@@ -896,7 +896,7 @@ int main(int argc, char **argv) {
 
 #if USE_OPENGL_NO_RAYTRACE
 	settings.video.backend = fplVideoBackendType_OpenGL;
-	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
+	settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Legacy;
 #else
 	settings.video.backend = fplVideoBackendType_Software;
 #endif

@@ -5,15 +5,15 @@ final_dynamic_opengl.h
 	About
 -------------------------------------------------------------------------------
 
-A open source single header file OpenGL-Loader C99 library.
+An open source single header file OpenGL-Loader C99 library.
 
-This library is designed to load all the opengl functions for you so you can start right away with OpenGL up to version 4.6.
+This library is designed to load all the OpenGL functions for you so you can start right away with OpenGL up to version 4.6.
 It even can create a rendering context for you, if needed.
 
-Due to removing any kind of linking madness, all opengl functions are defined as static - so its private to this header file only!
-Therefore you can use this library in one file only and cannot use in combination with other opengl libraries.
+Due to removing any kind of linking madness, all OpenGL functions are defined as static - so its private to this header file only!
+Therefore you can use this library in one file only and cannot use in combination with other OpenGL libraries.
 
-The only dependencies are built-in operating system libraries and a C99 complaint compiler.
+The only dependencies are built-in operating system libraries and a C99 compliant compiler.
 
 Required linking is bare minimum:
 	Win32: Link to kernel32.lib
@@ -25,7 +25,7 @@ Required linking is bare minimum:
 
 - Drop this file into your main C/C++ project and include it in one place you do the rendering.
 - Define FGL_IMPLEMENTATION before including this header file in that translation unit.
-- Load the library with fglLoadOpenGL(), while a opengl rendering context is already activated - or create a context using fglCreateOpenGLContext()
+- Load the library with fglLoadOpenGL(), while an OpenGL rendering context is already activated - or create a context using fglCreateOpenGLContext()
 - Use all the OpenGL features you want
 - Unload the library with fglUnloadOpenGL() when you are done
 - Destroy the context when you created it using fglDestroyOpenGLContext()
@@ -49,7 +49,7 @@ if (fglLoadOpenGL(true)) {
 #define FGL_IMPLEMENTATION
 #include <final_dynamic_opengl.h>
 
-// Load opengl library without loading all the functions - functions are loaded separately later
+// Load OpenGL library without loading all the functions - functions are loaded separately later
 if (fglLoadOpenGL(false)) {
 
 	// Fill out window handle (This is platform dependent!)
@@ -71,6 +71,18 @@ if (fglLoadOpenGL(false)) {
 	}
 	fglUnloadOpenGL();
 }
+
+-------------------------------------------------------------------------------
+	Ignore Platform Includes
+-------------------------------------------------------------------------------
+
+By default header files are included when FGL_HAS_INCLUDE finds them, unless you explicitly define FGL_NO_PLATFORM_INCLUDES.
+
+When FGL_NO_PLATFORM_INCLUDES is defined, no header files such as <Windows.h> or <X11/X.h> or <X11/Xlib.h> are included.
+
+Define FGL_WIN32_NO_HEADERS to only exclude the <Windows.h> header file.
+
+Define FGL_X11_NO_HEADERS to only exclude X11 header files.
 
 -------------------------------------------------------------------------------
 	License
@@ -105,7 +117,7 @@ SOFTWARE.
 	\file final_dynamic_opengl.h
 	\version v1.0.0
 	\author Torsten Spaete
-	\brief Final Dynamic OpenGL (FGL) - A open source C99 single file header OpenGL-Loader library.
+	\brief Final Dynamic OpenGL (FGL) - An open source C99 single file header OpenGL-Loader library.
 */
 
 // ****************************************************************************
@@ -119,7 +131,13 @@ SOFTWARE.
 	\tableofcontents
 
 	# v1.0.0:
-	- Release
+	- New: Added macro FGL_HAS_INCLUDE
+	- New[Win32]: Support for FGL_NO_PLATFORM_INCLUDES and FGL_WIN32_NO_HEADERS - no Windows.h is required anymore
+	- New[POSIX, GLX]: Implemented legacy and modern GLX context creation
+	- Changed[Win32]: Self-defined Win32 ABI now uses fgl__Win32/FGL_WIN32_ prefixed names to avoid namespace collisions
+	- Fixed: Fixed warnings for initialization of function prototypes with fgl_api
+	- Fixed: Fixed wrong X11 window handle
+	- Fixed[X11]: Removed X11 header inclusion when FGL_NO_PLATFORM_INCLUDES is defined or when XLib includes is missing
 
 	# v0.4.0.0 beta:
 
@@ -176,8 +194,6 @@ SOFTWARE.
 /*!
 	\page page_todo Todo
 	\tableofcontents
-
-	- [POSIX, GLX] Implement context creation
 
 */
 
@@ -236,6 +252,12 @@ SOFTWARE.
 #	error "This platform/compiler is not supported!"
 #endif
 
+#if defined(__has_include)
+#	define FGL_HAS_INCLUDE(inc) __has_include(inc)
+#else
+#	define FGL_HAS_INCLUDE(inc) (1)
+#endif
+
 //
 // We do not support already active opengl headers/libraries
 //
@@ -290,17 +312,107 @@ SOFTWARE.
 // Platform includes
 //
 #if defined(FGL_PLATFORM_WIN32)
-#	ifndef WIN32_LEAN_AND_MEAN
-#		define WIN32_LEAN_AND_MEAN 1
+
+#	if (!FGL_HAS_INCLUDE(<windows.h>) || defined(FGL_NO_PLATFORM_INCLUDES)) && !defined(FGL_WIN32_NO_HEADERS)
+#		define FGL_WIN32_NO_HEADERS
 #	endif
-#	include <Windows.h>
+
+#	if !defined(FGL_WIN32_NO_HEADERS)
+#		ifndef WIN32_LEAN_AND_MEAN
+#			define WIN32_LEAN_AND_MEAN 1
+#		endif
+#		include <Windows.h>
+
+	// Map the FGL Win32 ABI names onto the actual Windows.h types/constants
+#		define FGL_WIN32_API WINAPI
+	typedef HWND fgl__Win32HWND;
+	typedef HDC fgl__Win32HDC;
+	typedef HGLRC fgl__Win32HGLRC;
+	typedef HMODULE fgl__Win32HMODULE;
+	typedef BOOL fgl__Win32BOOL;
+	typedef UINT fgl__Win32UINT;
+	typedef FLOAT fgl__Win32FLOAT;
+	typedef LPCSTR fgl__Win32LPCSTR;
+	typedef PROC fgl__Win32PROC;
+	typedef PIXELFORMATDESCRIPTOR fgl__Win32PIXELFORMATDESCRIPTOR;
+	typedef LPPIXELFORMATDESCRIPTOR fgl__Win32LPPIXELFORMATDESCRIPTOR;
+#		define FGL_WIN32_PFD_TYPE_RGBA PFD_TYPE_RGBA
+#		define FGL_WIN32_PFD_MAIN_PLANE PFD_MAIN_PLANE
+#		define FGL_WIN32_PFD_DOUBLEBUFFER PFD_DOUBLEBUFFER
+#		define FGL_WIN32_PFD_DRAW_TO_WINDOW PFD_DRAW_TO_WINDOW
+#		define FGL_WIN32_PFD_SUPPORT_OPENGL PFD_SUPPORT_OPENGL
+#	else
+	// Self-defined: no Windows.h is required; the minimal Win32/WGL ABI is declared here.
+#		define FGL_WIN32_API __stdcall
+
+	typedef int fgl__Win32BOOL;
+	typedef unsigned int fgl__Win32UINT;
+	typedef unsigned long fgl__Win32DWORD;
+	typedef unsigned short fgl__Win32WORD;
+	typedef unsigned char fgl__Win32BYTE;
+	typedef float fgl__Win32FLOAT;
+	typedef const char *fgl__Win32LPCSTR;
+
+	typedef struct fgl__Win32HWND__ *fgl__Win32HWND;
+	typedef struct fgl__Win32HDC__ *fgl__Win32HDC;
+	typedef struct fgl__Win32HGLRC__ *fgl__Win32HGLRC;
+	typedef struct fgl__Win32HINSTANCE__ *fgl__Win32HINSTANCE;
+	typedef fgl__Win32HINSTANCE fgl__Win32HMODULE;
+	typedef int (FGL_WIN32_API *fgl__Win32PROC)(void);
+
+	typedef struct fgl__Win32PIXELFORMATDESCRIPTOR {
+		fgl__Win32WORD nSize;
+		fgl__Win32WORD nVersion;
+		fgl__Win32DWORD dwFlags;
+		fgl__Win32BYTE iPixelType;
+		fgl__Win32BYTE cColorBits;
+		fgl__Win32BYTE cRedBits;
+		fgl__Win32BYTE cRedShift;
+		fgl__Win32BYTE cGreenBits;
+		fgl__Win32BYTE cGreenShift;
+		fgl__Win32BYTE cBlueBits;
+		fgl__Win32BYTE cBlueShift;
+		fgl__Win32BYTE cAlphaBits;
+		fgl__Win32BYTE cAlphaShift;
+		fgl__Win32BYTE cAccumBits;
+		fgl__Win32BYTE cAccumRedBits;
+		fgl__Win32BYTE cAccumGreenBits;
+		fgl__Win32BYTE cAccumBlueBits;
+		fgl__Win32BYTE cAccumAlphaBits;
+		fgl__Win32BYTE cDepthBits;
+		fgl__Win32BYTE cStencilBits;
+		fgl__Win32BYTE cAuxBuffers;
+		fgl__Win32BYTE iLayerType;
+		fgl__Win32BYTE bReserved;
+		fgl__Win32DWORD dwLayerMask;
+		fgl__Win32DWORD dwVisibleMask;
+		fgl__Win32DWORD dwDamageMask;
+	} fgl__Win32PIXELFORMATDESCRIPTOR;
+	typedef fgl__Win32PIXELFORMATDESCRIPTOR *fgl__Win32LPPIXELFORMATDESCRIPTOR;
+
+#		define FGL_WIN32_PFD_TYPE_RGBA 0
+#		define FGL_WIN32_PFD_MAIN_PLANE 0
+#		define FGL_WIN32_PFD_DOUBLEBUFFER 0x00000001
+#		define FGL_WIN32_PFD_DRAW_TO_WINDOW 0x00000004
+#		define FGL_WIN32_PFD_SUPPORT_OPENGL 0x00000020
+
+#		if defined(__cplusplus)
+extern "C" {
+#		endif
+	fgl__Win32HMODULE FGL_WIN32_API LoadLibraryA(fgl__Win32LPCSTR lpLibFileName);
+	fgl__Win32BOOL FGL_WIN32_API FreeLibrary(fgl__Win32HMODULE hLibModule);
+	fgl__Win32PROC FGL_WIN32_API GetProcAddress(fgl__Win32HMODULE hModule, fgl__Win32LPCSTR lpProcName);
+#		if defined(__cplusplus)
+}
+#		endif
+#	endif // FGL_WIN32_NO_HEADERS
 
 //! Win32 OpenGL window handle
 typedef struct fglWin32OpenGLWindowHandle {
 	//! Window handle
-	HWND windowHandle;
+	fgl__Win32HWND windowHandle;
 	//! Device context
-	HDC deviceContext;
+	fgl__Win32HDC deviceContext;
 	//! Bool to indicate to release DC when done
 	bool requireToReleaseDC;
 } fglWin32OpenGLWindowHandle;
@@ -308,26 +420,85 @@ typedef struct fglWin32OpenGLWindowHandle {
 //! Win32 OpenGL rendering context
 typedef struct fglWin32OpenGLRenderingContext {
 	//! Rendering context
-	HGLRC renderingContext;
+	fgl__Win32HGLRC renderingContext;
 } fglWin32OpenGLRenderingContext;
 
 #elif defined(FGL_PLATFORM_POSIX)
 #	include <dlfcn.h> // dlopen
-#	include <X11/X.h>
-#	include <X11/Xlib.h>
-#	include <X11/Xutil.h> // XVisualInfo
+
+#	if (!FGL_HAS_INCLUDE(<X11/X.h>) || defined(FGL_NO_PLATFORM_INCLUDES)) && !defined(FGL_X11_NO_HEADERS)
+#		define FGL_X11_NO_HEADERS
+#	endif
+
+#	if !defined(FGL_X11_NO_HEADERS)
+#		include <X11/X.h>
+#		include <X11/Xlib.h>
+#		define fgl__X11Display Display
+#		define fgl__X11Window Window
+#	else
+		typedef void fgl__X11Display;
+		typedef unsigned long fgl__X11Window;
+#	endif
+
+	// Self-defined: no GLX headers are required; the GLX handles are passed opaquely.
+	typedef struct fgl__GLXContextRec *fgl__GLXContext;
+	typedef struct fgl__GLXFBConfigRec *fgl__GLXFBConfig;
+
+	// Self-defined: minimal X11 ABI required for matching the GLX context to the window visual.
+	typedef void fgl__X11Visual;
+	typedef void fgl__X11Screen;
+	typedef unsigned long fgl__X11VisualID;
+
+	//! X11 visual info (ABI compatible layout of XVisualInfo)
+	typedef struct fgl__X11VisualInfo {
+		fgl__X11Visual *visual;
+		fgl__X11VisualID visualid;
+		int screen;
+		int depth;
+		int clazz;
+		unsigned long red_mask;
+		unsigned long green_mask;
+		unsigned long blue_mask;
+		int colormap_size;
+		int bits_per_rgb;
+	} fgl__X11VisualInfo;
+
+	//! X11 window attributes (ABI compatible layout of XWindowAttributes)
+	typedef struct fgl__X11WindowAttributes {
+		int x, y;
+		int width, height;
+		int border_width;
+		int depth;
+		fgl__X11Visual *visual;
+		unsigned long root;
+		int clazz;
+		int bit_gravity;
+		int win_gravity;
+		int backing_store;
+		unsigned long backing_planes;
+		unsigned long backing_pixel;
+		int save_under;
+		unsigned long colormap;
+		int map_installed;
+		int map_state;
+		long all_event_masks;
+		long your_event_mask;
+		long do_not_propagate_mask;
+		int override_redirect;
+		fgl__X11Screen *screen;
+	} fgl__X11WindowAttributes;
 
 //! Posix OpenGL window handle
 typedef struct fglPosixOpenGLWindowHandle {
 	//! Display
-	Display *display;
+	fgl__X11Display *display;
 	//! Window
-	Window *window;
+	fgl__X11Window window;
 } fglPosixOpenGLWindowHandle;
 
 typedef struct fglPosixOpenGLRenderingContext {
-	//! Dummy
-	int dummy;
+	//! GLX rendering context
+	fgl__GLXContext context;
 } fglPosixOpenGLRenderingContext;
 #endif
 
@@ -345,7 +516,7 @@ extern "C" {
 		fglOpenGLProfileType_LegacyProfile = 0,
 		//! Core profile
 		fglOpenGLProfileType_CoreProfile,
-		//! Compability profile
+		//! Compatibility profile (note: enum value name retains the original "Compability" spelling for API compatibility)
 		fglOpenGLProfileType_CompabilityProfile,
 	} fglOpenGLProfileType;
 
@@ -360,7 +531,7 @@ extern "C" {
 #endif
 	} fglOpenGLWindowHandle;
 
-	//! OpenGL window handle
+	//! OpenGL rendering context (platform-tagged union of Win32 HGLRC or POSIX/GLX context)
 	typedef union fglOpenGLRenderingContext {
 #if defined(FGL_PLATFORM_WIN32)
 		//! Win32 rendering context
@@ -371,7 +542,7 @@ extern "C" {
 #endif
 	} fglOpenGLRenderingContext;
 
-	//! OpenGL rendering context
+	//! Combined OpenGL context handle, holding the window handle, the rendering context and a validity flag
 	typedef struct fglOpenGLContext {
 		//! Window handle container
 		fglOpenGLWindowHandle windowHandle;
@@ -391,29 +562,29 @@ extern "C" {
 		uint32_t minorVersion;
 		//! Desired profile type
 		fglOpenGLProfileType profile;
-		//! Is forward compability enabled
+		//! Is forward compatibility enabled (note: field name retains the original "Compability" spelling for API compatibility)
 		bool forwardCompability;
 	} fglOpenGLContextCreationParameters;
 
 	//! Sets the context parameters to default values
 	fgl_api void fglSetDefaultOpenGLContextCreationParameters(fglOpenGLContextCreationParameters *outParams);
 
-	//! Create a opengl context
+	//! Create an OpenGL context
 	fgl_api bool fglCreateOpenGLContext(const fglOpenGLContextCreationParameters *contextCreationParams, fglOpenGLContext *outContext);
 
-	//! Destroy the given opengl context
+	//! Destroy the given OpenGL context
 	fgl_api void fglDestroyOpenGLContext(fglOpenGLContext *context);
 
-	//! Does all the things to get opengl up and running
+	//! Does all the things to get OpenGL up and running
 	fgl_api bool fglLoadOpenGL(const bool loadFunctions);
 
-	//! Releases all resources allocated for opengl
+	//! Releases all resources allocated for OpenGL
 	fgl_api void fglUnloadOpenGL();
 
-	//! Load all opengl functions
+	//! Load all OpenGL functions
 	fgl_api void fglLoadOpenGLFunctions();
 
-	//! Presents the current frame for the given opengl context
+	//! Presents the current frame for the given OpenGL context
 	fgl_api void fglPresentOpenGL(const fglOpenGLContext *context);
 
 	//! Returns last error string
@@ -5604,1105 +5775,1105 @@ extern "C" {
 		//
 		// *******************************************************************************
 #		if GL_VERSION_1_1
-			fgl_api fgl_func_glAccum* fgl_glAccum = fgl_null;
-			fgl_api fgl_func_glAlphaFunc* fgl_glAlphaFunc = fgl_null;
-			fgl_api fgl_func_glAreTexturesResident* fgl_glAreTexturesResident = fgl_null;
-			fgl_api fgl_func_glArrayElement* fgl_glArrayElement = fgl_null;
-			fgl_api fgl_func_glBegin* fgl_glBegin = fgl_null;
-			fgl_api fgl_func_glBindTexture* fgl_glBindTexture = fgl_null;
-			fgl_api fgl_func_glBitmap* fgl_glBitmap = fgl_null;
-			fgl_api fgl_func_glBlendFunc* fgl_glBlendFunc = fgl_null;
-			fgl_api fgl_func_glCallList* fgl_glCallList = fgl_null;
-			fgl_api fgl_func_glCallLists* fgl_glCallLists = fgl_null;
-			fgl_api fgl_func_glClear* fgl_glClear = fgl_null;
-			fgl_api fgl_func_glClearAccum* fgl_glClearAccum = fgl_null;
-			fgl_api fgl_func_glClearColor* fgl_glClearColor = fgl_null;
-			fgl_api fgl_func_glClearDepth* fgl_glClearDepth = fgl_null;
-			fgl_api fgl_func_glClearIndex* fgl_glClearIndex = fgl_null;
-			fgl_api fgl_func_glClearStencil* fgl_glClearStencil = fgl_null;
-			fgl_api fgl_func_glClipPlane* fgl_glClipPlane = fgl_null;
-			fgl_api fgl_func_glColor3b* fgl_glColor3b = fgl_null;
-			fgl_api fgl_func_glColor3bv* fgl_glColor3bv = fgl_null;
-			fgl_api fgl_func_glColor3d* fgl_glColor3d = fgl_null;
-			fgl_api fgl_func_glColor3dv* fgl_glColor3dv = fgl_null;
-			fgl_api fgl_func_glColor3f* fgl_glColor3f = fgl_null;
-			fgl_api fgl_func_glColor3fv* fgl_glColor3fv = fgl_null;
-			fgl_api fgl_func_glColor3i* fgl_glColor3i = fgl_null;
-			fgl_api fgl_func_glColor3iv* fgl_glColor3iv = fgl_null;
-			fgl_api fgl_func_glColor3s* fgl_glColor3s = fgl_null;
-			fgl_api fgl_func_glColor3sv* fgl_glColor3sv = fgl_null;
-			fgl_api fgl_func_glColor3ub* fgl_glColor3ub = fgl_null;
-			fgl_api fgl_func_glColor3ubv* fgl_glColor3ubv = fgl_null;
-			fgl_api fgl_func_glColor3ui* fgl_glColor3ui = fgl_null;
-			fgl_api fgl_func_glColor3uiv* fgl_glColor3uiv = fgl_null;
-			fgl_api fgl_func_glColor3us* fgl_glColor3us = fgl_null;
-			fgl_api fgl_func_glColor3usv* fgl_glColor3usv = fgl_null;
-			fgl_api fgl_func_glColor4b* fgl_glColor4b = fgl_null;
-			fgl_api fgl_func_glColor4bv* fgl_glColor4bv = fgl_null;
-			fgl_api fgl_func_glColor4d* fgl_glColor4d = fgl_null;
-			fgl_api fgl_func_glColor4dv* fgl_glColor4dv = fgl_null;
-			fgl_api fgl_func_glColor4f* fgl_glColor4f = fgl_null;
-			fgl_api fgl_func_glColor4fv* fgl_glColor4fv = fgl_null;
-			fgl_api fgl_func_glColor4i* fgl_glColor4i = fgl_null;
-			fgl_api fgl_func_glColor4iv* fgl_glColor4iv = fgl_null;
-			fgl_api fgl_func_glColor4s* fgl_glColor4s = fgl_null;
-			fgl_api fgl_func_glColor4sv* fgl_glColor4sv = fgl_null;
-			fgl_api fgl_func_glColor4ub* fgl_glColor4ub = fgl_null;
-			fgl_api fgl_func_glColor4ubv* fgl_glColor4ubv = fgl_null;
-			fgl_api fgl_func_glColor4ui* fgl_glColor4ui = fgl_null;
-			fgl_api fgl_func_glColor4uiv* fgl_glColor4uiv = fgl_null;
-			fgl_api fgl_func_glColor4us* fgl_glColor4us = fgl_null;
-			fgl_api fgl_func_glColor4usv* fgl_glColor4usv = fgl_null;
-			fgl_api fgl_func_glColorMask* fgl_glColorMask = fgl_null;
-			fgl_api fgl_func_glColorMaterial* fgl_glColorMaterial = fgl_null;
-			fgl_api fgl_func_glColorPointer* fgl_glColorPointer = fgl_null;
-			fgl_api fgl_func_glCopyPixels* fgl_glCopyPixels = fgl_null;
-			fgl_api fgl_func_glCopyTexImage1D* fgl_glCopyTexImage1D = fgl_null;
-			fgl_api fgl_func_glCopyTexImage2D* fgl_glCopyTexImage2D = fgl_null;
-			fgl_api fgl_func_glCopyTexSubImage1D* fgl_glCopyTexSubImage1D = fgl_null;
-			fgl_api fgl_func_glCopyTexSubImage2D* fgl_glCopyTexSubImage2D = fgl_null;
-			fgl_api fgl_func_glCullFace* fgl_glCullFace = fgl_null;
-			fgl_api fgl_func_glDeleteLists* fgl_glDeleteLists = fgl_null;
-			fgl_api fgl_func_glDeleteTextures* fgl_glDeleteTextures = fgl_null;
-			fgl_api fgl_func_glDepthFunc* fgl_glDepthFunc = fgl_null;
-			fgl_api fgl_func_glDepthMask* fgl_glDepthMask = fgl_null;
-			fgl_api fgl_func_glDepthRange* fgl_glDepthRange = fgl_null;
-			fgl_api fgl_func_glDisable* fgl_glDisable = fgl_null;
-			fgl_api fgl_func_glDisableClientState* fgl_glDisableClientState = fgl_null;
-			fgl_api fgl_func_glDrawArrays* fgl_glDrawArrays = fgl_null;
-			fgl_api fgl_func_glDrawBuffer* fgl_glDrawBuffer = fgl_null;
-			fgl_api fgl_func_glDrawElements* fgl_glDrawElements = fgl_null;
-			fgl_api fgl_func_glDrawPixels* fgl_glDrawPixels = fgl_null;
-			fgl_api fgl_func_glEdgeFlag* fgl_glEdgeFlag = fgl_null;
-			fgl_api fgl_func_glEdgeFlagPointer* fgl_glEdgeFlagPointer = fgl_null;
-			fgl_api fgl_func_glEdgeFlagv* fgl_glEdgeFlagv = fgl_null;
-			fgl_api fgl_func_glEnable* fgl_glEnable = fgl_null;
-			fgl_api fgl_func_glEnableClientState* fgl_glEnableClientState = fgl_null;
-			fgl_api fgl_func_glEnd* fgl_glEnd = fgl_null;
-			fgl_api fgl_func_glEndList* fgl_glEndList = fgl_null;
-			fgl_api fgl_func_glEvalCoord1d* fgl_glEvalCoord1d = fgl_null;
-			fgl_api fgl_func_glEvalCoord1dv* fgl_glEvalCoord1dv = fgl_null;
-			fgl_api fgl_func_glEvalCoord1f* fgl_glEvalCoord1f = fgl_null;
-			fgl_api fgl_func_glEvalCoord1fv* fgl_glEvalCoord1fv = fgl_null;
-			fgl_api fgl_func_glEvalCoord2d* fgl_glEvalCoord2d = fgl_null;
-			fgl_api fgl_func_glEvalCoord2dv* fgl_glEvalCoord2dv = fgl_null;
-			fgl_api fgl_func_glEvalCoord2f* fgl_glEvalCoord2f = fgl_null;
-			fgl_api fgl_func_glEvalCoord2fv* fgl_glEvalCoord2fv = fgl_null;
-			fgl_api fgl_func_glEvalMesh1* fgl_glEvalMesh1 = fgl_null;
-			fgl_api fgl_func_glEvalMesh2* fgl_glEvalMesh2 = fgl_null;
-			fgl_api fgl_func_glEvalPoint1* fgl_glEvalPoint1 = fgl_null;
-			fgl_api fgl_func_glEvalPoint2* fgl_glEvalPoint2 = fgl_null;
-			fgl_api fgl_func_glFeedbackBuffer* fgl_glFeedbackBuffer = fgl_null;
-			fgl_api fgl_func_glFinish* fgl_glFinish = fgl_null;
-			fgl_api fgl_func_glFlush* fgl_glFlush = fgl_null;
-			fgl_api fgl_func_glFogf* fgl_glFogf = fgl_null;
-			fgl_api fgl_func_glFogfv* fgl_glFogfv = fgl_null;
-			fgl_api fgl_func_glFogi* fgl_glFogi = fgl_null;
-			fgl_api fgl_func_glFogiv* fgl_glFogiv = fgl_null;
-			fgl_api fgl_func_glFrontFace* fgl_glFrontFace = fgl_null;
-			fgl_api fgl_func_glFrustum* fgl_glFrustum = fgl_null;
-			fgl_api fgl_func_glGenLists* fgl_glGenLists = fgl_null;
-			fgl_api fgl_func_glGenTextures* fgl_glGenTextures = fgl_null;
-			fgl_api fgl_func_glGetBooleanv* fgl_glGetBooleanv = fgl_null;
-			fgl_api fgl_func_glGetClipPlane* fgl_glGetClipPlane = fgl_null;
-			fgl_api fgl_func_glGetDoublev* fgl_glGetDoublev = fgl_null;
-			fgl_api fgl_func_glGetError* fgl_glGetError = fgl_null;
-			fgl_api fgl_func_glGetFloatv* fgl_glGetFloatv = fgl_null;
-			fgl_api fgl_func_glGetIntegerv* fgl_glGetIntegerv = fgl_null;
-			fgl_api fgl_func_glGetLightfv* fgl_glGetLightfv = fgl_null;
-			fgl_api fgl_func_glGetLightiv* fgl_glGetLightiv = fgl_null;
-			fgl_api fgl_func_glGetMapdv* fgl_glGetMapdv = fgl_null;
-			fgl_api fgl_func_glGetMapfv* fgl_glGetMapfv = fgl_null;
-			fgl_api fgl_func_glGetMapiv* fgl_glGetMapiv = fgl_null;
-			fgl_api fgl_func_glGetMaterialfv* fgl_glGetMaterialfv = fgl_null;
-			fgl_api fgl_func_glGetMaterialiv* fgl_glGetMaterialiv = fgl_null;
-			fgl_api fgl_func_glGetPixelMapfv* fgl_glGetPixelMapfv = fgl_null;
-			fgl_api fgl_func_glGetPixelMapuiv* fgl_glGetPixelMapuiv = fgl_null;
-			fgl_api fgl_func_glGetPixelMapusv* fgl_glGetPixelMapusv = fgl_null;
-			fgl_api fgl_func_glGetPointerv* fgl_glGetPointerv = fgl_null;
-			fgl_api fgl_func_glGetPolygonStipple* fgl_glGetPolygonStipple = fgl_null;
-			fgl_api fgl_func_glGetString* fgl_glGetString = fgl_null;
-			fgl_api fgl_func_glGetTexEnvfv* fgl_glGetTexEnvfv = fgl_null;
-			fgl_api fgl_func_glGetTexEnviv* fgl_glGetTexEnviv = fgl_null;
-			fgl_api fgl_func_glGetTexGendv* fgl_glGetTexGendv = fgl_null;
-			fgl_api fgl_func_glGetTexGenfv* fgl_glGetTexGenfv = fgl_null;
-			fgl_api fgl_func_glGetTexGeniv* fgl_glGetTexGeniv = fgl_null;
-			fgl_api fgl_func_glGetTexImage* fgl_glGetTexImage = fgl_null;
-			fgl_api fgl_func_glGetTexLevelParameterfv* fgl_glGetTexLevelParameterfv = fgl_null;
-			fgl_api fgl_func_glGetTexLevelParameteriv* fgl_glGetTexLevelParameteriv = fgl_null;
-			fgl_api fgl_func_glGetTexParameterfv* fgl_glGetTexParameterfv = fgl_null;
-			fgl_api fgl_func_glGetTexParameteriv* fgl_glGetTexParameteriv = fgl_null;
-			fgl_api fgl_func_glHint* fgl_glHint = fgl_null;
-			fgl_api fgl_func_glIndexMask* fgl_glIndexMask = fgl_null;
-			fgl_api fgl_func_glIndexPointer* fgl_glIndexPointer = fgl_null;
-			fgl_api fgl_func_glIndexd* fgl_glIndexd = fgl_null;
-			fgl_api fgl_func_glIndexdv* fgl_glIndexdv = fgl_null;
-			fgl_api fgl_func_glIndexf* fgl_glIndexf = fgl_null;
-			fgl_api fgl_func_glIndexfv* fgl_glIndexfv = fgl_null;
-			fgl_api fgl_func_glIndexi* fgl_glIndexi = fgl_null;
-			fgl_api fgl_func_glIndexiv* fgl_glIndexiv = fgl_null;
-			fgl_api fgl_func_glIndexs* fgl_glIndexs = fgl_null;
-			fgl_api fgl_func_glIndexsv* fgl_glIndexsv = fgl_null;
-			fgl_api fgl_func_glIndexub* fgl_glIndexub = fgl_null;
-			fgl_api fgl_func_glIndexubv* fgl_glIndexubv = fgl_null;
-			fgl_api fgl_func_glInitNames* fgl_glInitNames = fgl_null;
-			fgl_api fgl_func_glInterleavedArrays* fgl_glInterleavedArrays = fgl_null;
-			fgl_api fgl_func_glIsEnabled* fgl_glIsEnabled = fgl_null;
-			fgl_api fgl_func_glIsList* fgl_glIsList = fgl_null;
-			fgl_api fgl_func_glIsTexture* fgl_glIsTexture = fgl_null;
-			fgl_api fgl_func_glLightModelf* fgl_glLightModelf = fgl_null;
-			fgl_api fgl_func_glLightModelfv* fgl_glLightModelfv = fgl_null;
-			fgl_api fgl_func_glLightModeli* fgl_glLightModeli = fgl_null;
-			fgl_api fgl_func_glLightModeliv* fgl_glLightModeliv = fgl_null;
-			fgl_api fgl_func_glLightf* fgl_glLightf = fgl_null;
-			fgl_api fgl_func_glLightfv* fgl_glLightfv = fgl_null;
-			fgl_api fgl_func_glLighti* fgl_glLighti = fgl_null;
-			fgl_api fgl_func_glLightiv* fgl_glLightiv = fgl_null;
-			fgl_api fgl_func_glLineStipple* fgl_glLineStipple = fgl_null;
-			fgl_api fgl_func_glLineWidth* fgl_glLineWidth = fgl_null;
-			fgl_api fgl_func_glListBase* fgl_glListBase = fgl_null;
-			fgl_api fgl_func_glLoadIdentity* fgl_glLoadIdentity = fgl_null;
-			fgl_api fgl_func_glLoadMatrixd* fgl_glLoadMatrixd = fgl_null;
-			fgl_api fgl_func_glLoadMatrixf* fgl_glLoadMatrixf = fgl_null;
-			fgl_api fgl_func_glLoadName* fgl_glLoadName = fgl_null;
-			fgl_api fgl_func_glLogicOp* fgl_glLogicOp = fgl_null;
-			fgl_api fgl_func_glMap1d* fgl_glMap1d = fgl_null;
-			fgl_api fgl_func_glMap1f* fgl_glMap1f = fgl_null;
-			fgl_api fgl_func_glMap2d* fgl_glMap2d = fgl_null;
-			fgl_api fgl_func_glMap2f* fgl_glMap2f = fgl_null;
-			fgl_api fgl_func_glMapGrid1d* fgl_glMapGrid1d = fgl_null;
-			fgl_api fgl_func_glMapGrid1f* fgl_glMapGrid1f = fgl_null;
-			fgl_api fgl_func_glMapGrid2d* fgl_glMapGrid2d = fgl_null;
-			fgl_api fgl_func_glMapGrid2f* fgl_glMapGrid2f = fgl_null;
-			fgl_api fgl_func_glMaterialf* fgl_glMaterialf = fgl_null;
-			fgl_api fgl_func_glMaterialfv* fgl_glMaterialfv = fgl_null;
-			fgl_api fgl_func_glMateriali* fgl_glMateriali = fgl_null;
-			fgl_api fgl_func_glMaterialiv* fgl_glMaterialiv = fgl_null;
-			fgl_api fgl_func_glMatrixMode* fgl_glMatrixMode = fgl_null;
-			fgl_api fgl_func_glMultMatrixd* fgl_glMultMatrixd = fgl_null;
-			fgl_api fgl_func_glMultMatrixf* fgl_glMultMatrixf = fgl_null;
-			fgl_api fgl_func_glNewList* fgl_glNewList = fgl_null;
-			fgl_api fgl_func_glNormal3b* fgl_glNormal3b = fgl_null;
-			fgl_api fgl_func_glNormal3bv* fgl_glNormal3bv = fgl_null;
-			fgl_api fgl_func_glNormal3d* fgl_glNormal3d = fgl_null;
-			fgl_api fgl_func_glNormal3dv* fgl_glNormal3dv = fgl_null;
-			fgl_api fgl_func_glNormal3f* fgl_glNormal3f = fgl_null;
-			fgl_api fgl_func_glNormal3fv* fgl_glNormal3fv = fgl_null;
-			fgl_api fgl_func_glNormal3i* fgl_glNormal3i = fgl_null;
-			fgl_api fgl_func_glNormal3iv* fgl_glNormal3iv = fgl_null;
-			fgl_api fgl_func_glNormal3s* fgl_glNormal3s = fgl_null;
-			fgl_api fgl_func_glNormal3sv* fgl_glNormal3sv = fgl_null;
-			fgl_api fgl_func_glNormalPointer* fgl_glNormalPointer = fgl_null;
-			fgl_api fgl_func_glOrtho* fgl_glOrtho = fgl_null;
-			fgl_api fgl_func_glPassThrough* fgl_glPassThrough = fgl_null;
-			fgl_api fgl_func_glPixelMapfv* fgl_glPixelMapfv = fgl_null;
-			fgl_api fgl_func_glPixelMapuiv* fgl_glPixelMapuiv = fgl_null;
-			fgl_api fgl_func_glPixelMapusv* fgl_glPixelMapusv = fgl_null;
-			fgl_api fgl_func_glPixelStoref* fgl_glPixelStoref = fgl_null;
-			fgl_api fgl_func_glPixelStorei* fgl_glPixelStorei = fgl_null;
-			fgl_api fgl_func_glPixelTransferf* fgl_glPixelTransferf = fgl_null;
-			fgl_api fgl_func_glPixelTransferi* fgl_glPixelTransferi = fgl_null;
-			fgl_api fgl_func_glPixelZoom* fgl_glPixelZoom = fgl_null;
-			fgl_api fgl_func_glPointSize* fgl_glPointSize = fgl_null;
-			fgl_api fgl_func_glPolygonMode* fgl_glPolygonMode = fgl_null;
-			fgl_api fgl_func_glPolygonOffset* fgl_glPolygonOffset = fgl_null;
-			fgl_api fgl_func_glPolygonStipple* fgl_glPolygonStipple = fgl_null;
-			fgl_api fgl_func_glPopAttrib* fgl_glPopAttrib = fgl_null;
-			fgl_api fgl_func_glPopClientAttrib* fgl_glPopClientAttrib = fgl_null;
-			fgl_api fgl_func_glPopMatrix* fgl_glPopMatrix = fgl_null;
-			fgl_api fgl_func_glPopName* fgl_glPopName = fgl_null;
-			fgl_api fgl_func_glPrioritizeTextures* fgl_glPrioritizeTextures = fgl_null;
-			fgl_api fgl_func_glPushAttrib* fgl_glPushAttrib = fgl_null;
-			fgl_api fgl_func_glPushClientAttrib* fgl_glPushClientAttrib = fgl_null;
-			fgl_api fgl_func_glPushMatrix* fgl_glPushMatrix = fgl_null;
-			fgl_api fgl_func_glPushName* fgl_glPushName = fgl_null;
-			fgl_api fgl_func_glRasterPos2d* fgl_glRasterPos2d = fgl_null;
-			fgl_api fgl_func_glRasterPos2dv* fgl_glRasterPos2dv = fgl_null;
-			fgl_api fgl_func_glRasterPos2f* fgl_glRasterPos2f = fgl_null;
-			fgl_api fgl_func_glRasterPos2fv* fgl_glRasterPos2fv = fgl_null;
-			fgl_api fgl_func_glRasterPos2i* fgl_glRasterPos2i = fgl_null;
-			fgl_api fgl_func_glRasterPos2iv* fgl_glRasterPos2iv = fgl_null;
-			fgl_api fgl_func_glRasterPos2s* fgl_glRasterPos2s = fgl_null;
-			fgl_api fgl_func_glRasterPos2sv* fgl_glRasterPos2sv = fgl_null;
-			fgl_api fgl_func_glRasterPos3d* fgl_glRasterPos3d = fgl_null;
-			fgl_api fgl_func_glRasterPos3dv* fgl_glRasterPos3dv = fgl_null;
-			fgl_api fgl_func_glRasterPos3f* fgl_glRasterPos3f = fgl_null;
-			fgl_api fgl_func_glRasterPos3fv* fgl_glRasterPos3fv = fgl_null;
-			fgl_api fgl_func_glRasterPos3i* fgl_glRasterPos3i = fgl_null;
-			fgl_api fgl_func_glRasterPos3iv* fgl_glRasterPos3iv = fgl_null;
-			fgl_api fgl_func_glRasterPos3s* fgl_glRasterPos3s = fgl_null;
-			fgl_api fgl_func_glRasterPos3sv* fgl_glRasterPos3sv = fgl_null;
-			fgl_api fgl_func_glRasterPos4d* fgl_glRasterPos4d = fgl_null;
-			fgl_api fgl_func_glRasterPos4dv* fgl_glRasterPos4dv = fgl_null;
-			fgl_api fgl_func_glRasterPos4f* fgl_glRasterPos4f = fgl_null;
-			fgl_api fgl_func_glRasterPos4fv* fgl_glRasterPos4fv = fgl_null;
-			fgl_api fgl_func_glRasterPos4i* fgl_glRasterPos4i = fgl_null;
-			fgl_api fgl_func_glRasterPos4iv* fgl_glRasterPos4iv = fgl_null;
-			fgl_api fgl_func_glRasterPos4s* fgl_glRasterPos4s = fgl_null;
-			fgl_api fgl_func_glRasterPos4sv* fgl_glRasterPos4sv = fgl_null;
-			fgl_api fgl_func_glReadBuffer* fgl_glReadBuffer = fgl_null;
-			fgl_api fgl_func_glReadPixels* fgl_glReadPixels = fgl_null;
-			fgl_api fgl_func_glRectd* fgl_glRectd = fgl_null;
-			fgl_api fgl_func_glRectdv* fgl_glRectdv = fgl_null;
-			fgl_api fgl_func_glRectf* fgl_glRectf = fgl_null;
-			fgl_api fgl_func_glRectfv* fgl_glRectfv = fgl_null;
-			fgl_api fgl_func_glRecti* fgl_glRecti = fgl_null;
-			fgl_api fgl_func_glRectiv* fgl_glRectiv = fgl_null;
-			fgl_api fgl_func_glRects* fgl_glRects = fgl_null;
-			fgl_api fgl_func_glRectsv* fgl_glRectsv = fgl_null;
-			fgl_api fgl_func_glRenderMode* fgl_glRenderMode = fgl_null;
-			fgl_api fgl_func_glRotated* fgl_glRotated = fgl_null;
-			fgl_api fgl_func_glRotatef* fgl_glRotatef = fgl_null;
-			fgl_api fgl_func_glScaled* fgl_glScaled = fgl_null;
-			fgl_api fgl_func_glScalef* fgl_glScalef = fgl_null;
-			fgl_api fgl_func_glScissor* fgl_glScissor = fgl_null;
-			fgl_api fgl_func_glSelectBuffer* fgl_glSelectBuffer = fgl_null;
-			fgl_api fgl_func_glShadeModel* fgl_glShadeModel = fgl_null;
-			fgl_api fgl_func_glStencilFunc* fgl_glStencilFunc = fgl_null;
-			fgl_api fgl_func_glStencilMask* fgl_glStencilMask = fgl_null;
-			fgl_api fgl_func_glStencilOp* fgl_glStencilOp = fgl_null;
-			fgl_api fgl_func_glTexCoord1d* fgl_glTexCoord1d = fgl_null;
-			fgl_api fgl_func_glTexCoord1dv* fgl_glTexCoord1dv = fgl_null;
-			fgl_api fgl_func_glTexCoord1f* fgl_glTexCoord1f = fgl_null;
-			fgl_api fgl_func_glTexCoord1fv* fgl_glTexCoord1fv = fgl_null;
-			fgl_api fgl_func_glTexCoord1i* fgl_glTexCoord1i = fgl_null;
-			fgl_api fgl_func_glTexCoord1iv* fgl_glTexCoord1iv = fgl_null;
-			fgl_api fgl_func_glTexCoord1s* fgl_glTexCoord1s = fgl_null;
-			fgl_api fgl_func_glTexCoord1sv* fgl_glTexCoord1sv = fgl_null;
-			fgl_api fgl_func_glTexCoord2d* fgl_glTexCoord2d = fgl_null;
-			fgl_api fgl_func_glTexCoord2dv* fgl_glTexCoord2dv = fgl_null;
-			fgl_api fgl_func_glTexCoord2f* fgl_glTexCoord2f = fgl_null;
-			fgl_api fgl_func_glTexCoord2fv* fgl_glTexCoord2fv = fgl_null;
-			fgl_api fgl_func_glTexCoord2i* fgl_glTexCoord2i = fgl_null;
-			fgl_api fgl_func_glTexCoord2iv* fgl_glTexCoord2iv = fgl_null;
-			fgl_api fgl_func_glTexCoord2s* fgl_glTexCoord2s = fgl_null;
-			fgl_api fgl_func_glTexCoord2sv* fgl_glTexCoord2sv = fgl_null;
-			fgl_api fgl_func_glTexCoord3d* fgl_glTexCoord3d = fgl_null;
-			fgl_api fgl_func_glTexCoord3dv* fgl_glTexCoord3dv = fgl_null;
-			fgl_api fgl_func_glTexCoord3f* fgl_glTexCoord3f = fgl_null;
-			fgl_api fgl_func_glTexCoord3fv* fgl_glTexCoord3fv = fgl_null;
-			fgl_api fgl_func_glTexCoord3i* fgl_glTexCoord3i = fgl_null;
-			fgl_api fgl_func_glTexCoord3iv* fgl_glTexCoord3iv = fgl_null;
-			fgl_api fgl_func_glTexCoord3s* fgl_glTexCoord3s = fgl_null;
-			fgl_api fgl_func_glTexCoord3sv* fgl_glTexCoord3sv = fgl_null;
-			fgl_api fgl_func_glTexCoord4d* fgl_glTexCoord4d = fgl_null;
-			fgl_api fgl_func_glTexCoord4dv* fgl_glTexCoord4dv = fgl_null;
-			fgl_api fgl_func_glTexCoord4f* fgl_glTexCoord4f = fgl_null;
-			fgl_api fgl_func_glTexCoord4fv* fgl_glTexCoord4fv = fgl_null;
-			fgl_api fgl_func_glTexCoord4i* fgl_glTexCoord4i = fgl_null;
-			fgl_api fgl_func_glTexCoord4iv* fgl_glTexCoord4iv = fgl_null;
-			fgl_api fgl_func_glTexCoord4s* fgl_glTexCoord4s = fgl_null;
-			fgl_api fgl_func_glTexCoord4sv* fgl_glTexCoord4sv = fgl_null;
-			fgl_api fgl_func_glTexCoordPointer* fgl_glTexCoordPointer = fgl_null;
-			fgl_api fgl_func_glTexEnvf* fgl_glTexEnvf = fgl_null;
-			fgl_api fgl_func_glTexEnvfv* fgl_glTexEnvfv = fgl_null;
-			fgl_api fgl_func_glTexEnvi* fgl_glTexEnvi = fgl_null;
-			fgl_api fgl_func_glTexEnviv* fgl_glTexEnviv = fgl_null;
-			fgl_api fgl_func_glTexGend* fgl_glTexGend = fgl_null;
-			fgl_api fgl_func_glTexGendv* fgl_glTexGendv = fgl_null;
-			fgl_api fgl_func_glTexGenf* fgl_glTexGenf = fgl_null;
-			fgl_api fgl_func_glTexGenfv* fgl_glTexGenfv = fgl_null;
-			fgl_api fgl_func_glTexGeni* fgl_glTexGeni = fgl_null;
-			fgl_api fgl_func_glTexGeniv* fgl_glTexGeniv = fgl_null;
-			fgl_api fgl_func_glTexImage1D* fgl_glTexImage1D = fgl_null;
-			fgl_api fgl_func_glTexImage2D* fgl_glTexImage2D = fgl_null;
-			fgl_api fgl_func_glTexParameterf* fgl_glTexParameterf = fgl_null;
-			fgl_api fgl_func_glTexParameterfv* fgl_glTexParameterfv = fgl_null;
-			fgl_api fgl_func_glTexParameteri* fgl_glTexParameteri = fgl_null;
-			fgl_api fgl_func_glTexParameteriv* fgl_glTexParameteriv = fgl_null;
-			fgl_api fgl_func_glTexSubImage1D* fgl_glTexSubImage1D = fgl_null;
-			fgl_api fgl_func_glTexSubImage2D* fgl_glTexSubImage2D = fgl_null;
-			fgl_api fgl_func_glTranslated* fgl_glTranslated = fgl_null;
-			fgl_api fgl_func_glTranslatef* fgl_glTranslatef = fgl_null;
-			fgl_api fgl_func_glVertex2d* fgl_glVertex2d = fgl_null;
-			fgl_api fgl_func_glVertex2dv* fgl_glVertex2dv = fgl_null;
-			fgl_api fgl_func_glVertex2f* fgl_glVertex2f = fgl_null;
-			fgl_api fgl_func_glVertex2fv* fgl_glVertex2fv = fgl_null;
-			fgl_api fgl_func_glVertex2i* fgl_glVertex2i = fgl_null;
-			fgl_api fgl_func_glVertex2iv* fgl_glVertex2iv = fgl_null;
-			fgl_api fgl_func_glVertex2s* fgl_glVertex2s = fgl_null;
-			fgl_api fgl_func_glVertex2sv* fgl_glVertex2sv = fgl_null;
-			fgl_api fgl_func_glVertex3d* fgl_glVertex3d = fgl_null;
-			fgl_api fgl_func_glVertex3dv* fgl_glVertex3dv = fgl_null;
-			fgl_api fgl_func_glVertex3f* fgl_glVertex3f = fgl_null;
-			fgl_api fgl_func_glVertex3fv* fgl_glVertex3fv = fgl_null;
-			fgl_api fgl_func_glVertex3i* fgl_glVertex3i = fgl_null;
-			fgl_api fgl_func_glVertex3iv* fgl_glVertex3iv = fgl_null;
-			fgl_api fgl_func_glVertex3s* fgl_glVertex3s = fgl_null;
-			fgl_api fgl_func_glVertex3sv* fgl_glVertex3sv = fgl_null;
-			fgl_api fgl_func_glVertex4d* fgl_glVertex4d = fgl_null;
-			fgl_api fgl_func_glVertex4dv* fgl_glVertex4dv = fgl_null;
-			fgl_api fgl_func_glVertex4f* fgl_glVertex4f = fgl_null;
-			fgl_api fgl_func_glVertex4fv* fgl_glVertex4fv = fgl_null;
-			fgl_api fgl_func_glVertex4i* fgl_glVertex4i = fgl_null;
-			fgl_api fgl_func_glVertex4iv* fgl_glVertex4iv = fgl_null;
-			fgl_api fgl_func_glVertex4s* fgl_glVertex4s = fgl_null;
-			fgl_api fgl_func_glVertex4sv* fgl_glVertex4sv = fgl_null;
-			fgl_api fgl_func_glVertexPointer* fgl_glVertexPointer = fgl_null;
-			fgl_api fgl_func_glViewport* fgl_glViewport = fgl_null;
+			fgl_func_glAccum* fgl_glAccum = fgl_null;
+			fgl_func_glAlphaFunc* fgl_glAlphaFunc = fgl_null;
+			fgl_func_glAreTexturesResident* fgl_glAreTexturesResident = fgl_null;
+			fgl_func_glArrayElement* fgl_glArrayElement = fgl_null;
+			fgl_func_glBegin* fgl_glBegin = fgl_null;
+			fgl_func_glBindTexture* fgl_glBindTexture = fgl_null;
+			fgl_func_glBitmap* fgl_glBitmap = fgl_null;
+			fgl_func_glBlendFunc* fgl_glBlendFunc = fgl_null;
+			fgl_func_glCallList* fgl_glCallList = fgl_null;
+			fgl_func_glCallLists* fgl_glCallLists = fgl_null;
+			fgl_func_glClear* fgl_glClear = fgl_null;
+			fgl_func_glClearAccum* fgl_glClearAccum = fgl_null;
+			fgl_func_glClearColor* fgl_glClearColor = fgl_null;
+			fgl_func_glClearDepth* fgl_glClearDepth = fgl_null;
+			fgl_func_glClearIndex* fgl_glClearIndex = fgl_null;
+			fgl_func_glClearStencil* fgl_glClearStencil = fgl_null;
+			fgl_func_glClipPlane* fgl_glClipPlane = fgl_null;
+			fgl_func_glColor3b* fgl_glColor3b = fgl_null;
+			fgl_func_glColor3bv* fgl_glColor3bv = fgl_null;
+			fgl_func_glColor3d* fgl_glColor3d = fgl_null;
+			fgl_func_glColor3dv* fgl_glColor3dv = fgl_null;
+			fgl_func_glColor3f* fgl_glColor3f = fgl_null;
+			fgl_func_glColor3fv* fgl_glColor3fv = fgl_null;
+			fgl_func_glColor3i* fgl_glColor3i = fgl_null;
+			fgl_func_glColor3iv* fgl_glColor3iv = fgl_null;
+			fgl_func_glColor3s* fgl_glColor3s = fgl_null;
+			fgl_func_glColor3sv* fgl_glColor3sv = fgl_null;
+			fgl_func_glColor3ub* fgl_glColor3ub = fgl_null;
+			fgl_func_glColor3ubv* fgl_glColor3ubv = fgl_null;
+			fgl_func_glColor3ui* fgl_glColor3ui = fgl_null;
+			fgl_func_glColor3uiv* fgl_glColor3uiv = fgl_null;
+			fgl_func_glColor3us* fgl_glColor3us = fgl_null;
+			fgl_func_glColor3usv* fgl_glColor3usv = fgl_null;
+			fgl_func_glColor4b* fgl_glColor4b = fgl_null;
+			fgl_func_glColor4bv* fgl_glColor4bv = fgl_null;
+			fgl_func_glColor4d* fgl_glColor4d = fgl_null;
+			fgl_func_glColor4dv* fgl_glColor4dv = fgl_null;
+			fgl_func_glColor4f* fgl_glColor4f = fgl_null;
+			fgl_func_glColor4fv* fgl_glColor4fv = fgl_null;
+			fgl_func_glColor4i* fgl_glColor4i = fgl_null;
+			fgl_func_glColor4iv* fgl_glColor4iv = fgl_null;
+			fgl_func_glColor4s* fgl_glColor4s = fgl_null;
+			fgl_func_glColor4sv* fgl_glColor4sv = fgl_null;
+			fgl_func_glColor4ub* fgl_glColor4ub = fgl_null;
+			fgl_func_glColor4ubv* fgl_glColor4ubv = fgl_null;
+			fgl_func_glColor4ui* fgl_glColor4ui = fgl_null;
+			fgl_func_glColor4uiv* fgl_glColor4uiv = fgl_null;
+			fgl_func_glColor4us* fgl_glColor4us = fgl_null;
+			fgl_func_glColor4usv* fgl_glColor4usv = fgl_null;
+			fgl_func_glColorMask* fgl_glColorMask = fgl_null;
+			fgl_func_glColorMaterial* fgl_glColorMaterial = fgl_null;
+			fgl_func_glColorPointer* fgl_glColorPointer = fgl_null;
+			fgl_func_glCopyPixels* fgl_glCopyPixels = fgl_null;
+			fgl_func_glCopyTexImage1D* fgl_glCopyTexImage1D = fgl_null;
+			fgl_func_glCopyTexImage2D* fgl_glCopyTexImage2D = fgl_null;
+			fgl_func_glCopyTexSubImage1D* fgl_glCopyTexSubImage1D = fgl_null;
+			fgl_func_glCopyTexSubImage2D* fgl_glCopyTexSubImage2D = fgl_null;
+			fgl_func_glCullFace* fgl_glCullFace = fgl_null;
+			fgl_func_glDeleteLists* fgl_glDeleteLists = fgl_null;
+			fgl_func_glDeleteTextures* fgl_glDeleteTextures = fgl_null;
+			fgl_func_glDepthFunc* fgl_glDepthFunc = fgl_null;
+			fgl_func_glDepthMask* fgl_glDepthMask = fgl_null;
+			fgl_func_glDepthRange* fgl_glDepthRange = fgl_null;
+			fgl_func_glDisable* fgl_glDisable = fgl_null;
+			fgl_func_glDisableClientState* fgl_glDisableClientState = fgl_null;
+			fgl_func_glDrawArrays* fgl_glDrawArrays = fgl_null;
+			fgl_func_glDrawBuffer* fgl_glDrawBuffer = fgl_null;
+			fgl_func_glDrawElements* fgl_glDrawElements = fgl_null;
+			fgl_func_glDrawPixels* fgl_glDrawPixels = fgl_null;
+			fgl_func_glEdgeFlag* fgl_glEdgeFlag = fgl_null;
+			fgl_func_glEdgeFlagPointer* fgl_glEdgeFlagPointer = fgl_null;
+			fgl_func_glEdgeFlagv* fgl_glEdgeFlagv = fgl_null;
+			fgl_func_glEnable* fgl_glEnable = fgl_null;
+			fgl_func_glEnableClientState* fgl_glEnableClientState = fgl_null;
+			fgl_func_glEnd* fgl_glEnd = fgl_null;
+			fgl_func_glEndList* fgl_glEndList = fgl_null;
+			fgl_func_glEvalCoord1d* fgl_glEvalCoord1d = fgl_null;
+			fgl_func_glEvalCoord1dv* fgl_glEvalCoord1dv = fgl_null;
+			fgl_func_glEvalCoord1f* fgl_glEvalCoord1f = fgl_null;
+			fgl_func_glEvalCoord1fv* fgl_glEvalCoord1fv = fgl_null;
+			fgl_func_glEvalCoord2d* fgl_glEvalCoord2d = fgl_null;
+			fgl_func_glEvalCoord2dv* fgl_glEvalCoord2dv = fgl_null;
+			fgl_func_glEvalCoord2f* fgl_glEvalCoord2f = fgl_null;
+			fgl_func_glEvalCoord2fv* fgl_glEvalCoord2fv = fgl_null;
+			fgl_func_glEvalMesh1* fgl_glEvalMesh1 = fgl_null;
+			fgl_func_glEvalMesh2* fgl_glEvalMesh2 = fgl_null;
+			fgl_func_glEvalPoint1* fgl_glEvalPoint1 = fgl_null;
+			fgl_func_glEvalPoint2* fgl_glEvalPoint2 = fgl_null;
+			fgl_func_glFeedbackBuffer* fgl_glFeedbackBuffer = fgl_null;
+			fgl_func_glFinish* fgl_glFinish = fgl_null;
+			fgl_func_glFlush* fgl_glFlush = fgl_null;
+			fgl_func_glFogf* fgl_glFogf = fgl_null;
+			fgl_func_glFogfv* fgl_glFogfv = fgl_null;
+			fgl_func_glFogi* fgl_glFogi = fgl_null;
+			fgl_func_glFogiv* fgl_glFogiv = fgl_null;
+			fgl_func_glFrontFace* fgl_glFrontFace = fgl_null;
+			fgl_func_glFrustum* fgl_glFrustum = fgl_null;
+			fgl_func_glGenLists* fgl_glGenLists = fgl_null;
+			fgl_func_glGenTextures* fgl_glGenTextures = fgl_null;
+			fgl_func_glGetBooleanv* fgl_glGetBooleanv = fgl_null;
+			fgl_func_glGetClipPlane* fgl_glGetClipPlane = fgl_null;
+			fgl_func_glGetDoublev* fgl_glGetDoublev = fgl_null;
+			fgl_func_glGetError* fgl_glGetError = fgl_null;
+			fgl_func_glGetFloatv* fgl_glGetFloatv = fgl_null;
+			fgl_func_glGetIntegerv* fgl_glGetIntegerv = fgl_null;
+			fgl_func_glGetLightfv* fgl_glGetLightfv = fgl_null;
+			fgl_func_glGetLightiv* fgl_glGetLightiv = fgl_null;
+			fgl_func_glGetMapdv* fgl_glGetMapdv = fgl_null;
+			fgl_func_glGetMapfv* fgl_glGetMapfv = fgl_null;
+			fgl_func_glGetMapiv* fgl_glGetMapiv = fgl_null;
+			fgl_func_glGetMaterialfv* fgl_glGetMaterialfv = fgl_null;
+			fgl_func_glGetMaterialiv* fgl_glGetMaterialiv = fgl_null;
+			fgl_func_glGetPixelMapfv* fgl_glGetPixelMapfv = fgl_null;
+			fgl_func_glGetPixelMapuiv* fgl_glGetPixelMapuiv = fgl_null;
+			fgl_func_glGetPixelMapusv* fgl_glGetPixelMapusv = fgl_null;
+			fgl_func_glGetPointerv* fgl_glGetPointerv = fgl_null;
+			fgl_func_glGetPolygonStipple* fgl_glGetPolygonStipple = fgl_null;
+			fgl_func_glGetString* fgl_glGetString = fgl_null;
+			fgl_func_glGetTexEnvfv* fgl_glGetTexEnvfv = fgl_null;
+			fgl_func_glGetTexEnviv* fgl_glGetTexEnviv = fgl_null;
+			fgl_func_glGetTexGendv* fgl_glGetTexGendv = fgl_null;
+			fgl_func_glGetTexGenfv* fgl_glGetTexGenfv = fgl_null;
+			fgl_func_glGetTexGeniv* fgl_glGetTexGeniv = fgl_null;
+			fgl_func_glGetTexImage* fgl_glGetTexImage = fgl_null;
+			fgl_func_glGetTexLevelParameterfv* fgl_glGetTexLevelParameterfv = fgl_null;
+			fgl_func_glGetTexLevelParameteriv* fgl_glGetTexLevelParameteriv = fgl_null;
+			fgl_func_glGetTexParameterfv* fgl_glGetTexParameterfv = fgl_null;
+			fgl_func_glGetTexParameteriv* fgl_glGetTexParameteriv = fgl_null;
+			fgl_func_glHint* fgl_glHint = fgl_null;
+			fgl_func_glIndexMask* fgl_glIndexMask = fgl_null;
+			fgl_func_glIndexPointer* fgl_glIndexPointer = fgl_null;
+			fgl_func_glIndexd* fgl_glIndexd = fgl_null;
+			fgl_func_glIndexdv* fgl_glIndexdv = fgl_null;
+			fgl_func_glIndexf* fgl_glIndexf = fgl_null;
+			fgl_func_glIndexfv* fgl_glIndexfv = fgl_null;
+			fgl_func_glIndexi* fgl_glIndexi = fgl_null;
+			fgl_func_glIndexiv* fgl_glIndexiv = fgl_null;
+			fgl_func_glIndexs* fgl_glIndexs = fgl_null;
+			fgl_func_glIndexsv* fgl_glIndexsv = fgl_null;
+			fgl_func_glIndexub* fgl_glIndexub = fgl_null;
+			fgl_func_glIndexubv* fgl_glIndexubv = fgl_null;
+			fgl_func_glInitNames* fgl_glInitNames = fgl_null;
+			fgl_func_glInterleavedArrays* fgl_glInterleavedArrays = fgl_null;
+			fgl_func_glIsEnabled* fgl_glIsEnabled = fgl_null;
+			fgl_func_glIsList* fgl_glIsList = fgl_null;
+			fgl_func_glIsTexture* fgl_glIsTexture = fgl_null;
+			fgl_func_glLightModelf* fgl_glLightModelf = fgl_null;
+			fgl_func_glLightModelfv* fgl_glLightModelfv = fgl_null;
+			fgl_func_glLightModeli* fgl_glLightModeli = fgl_null;
+			fgl_func_glLightModeliv* fgl_glLightModeliv = fgl_null;
+			fgl_func_glLightf* fgl_glLightf = fgl_null;
+			fgl_func_glLightfv* fgl_glLightfv = fgl_null;
+			fgl_func_glLighti* fgl_glLighti = fgl_null;
+			fgl_func_glLightiv* fgl_glLightiv = fgl_null;
+			fgl_func_glLineStipple* fgl_glLineStipple = fgl_null;
+			fgl_func_glLineWidth* fgl_glLineWidth = fgl_null;
+			fgl_func_glListBase* fgl_glListBase = fgl_null;
+			fgl_func_glLoadIdentity* fgl_glLoadIdentity = fgl_null;
+			fgl_func_glLoadMatrixd* fgl_glLoadMatrixd = fgl_null;
+			fgl_func_glLoadMatrixf* fgl_glLoadMatrixf = fgl_null;
+			fgl_func_glLoadName* fgl_glLoadName = fgl_null;
+			fgl_func_glLogicOp* fgl_glLogicOp = fgl_null;
+			fgl_func_glMap1d* fgl_glMap1d = fgl_null;
+			fgl_func_glMap1f* fgl_glMap1f = fgl_null;
+			fgl_func_glMap2d* fgl_glMap2d = fgl_null;
+			fgl_func_glMap2f* fgl_glMap2f = fgl_null;
+			fgl_func_glMapGrid1d* fgl_glMapGrid1d = fgl_null;
+			fgl_func_glMapGrid1f* fgl_glMapGrid1f = fgl_null;
+			fgl_func_glMapGrid2d* fgl_glMapGrid2d = fgl_null;
+			fgl_func_glMapGrid2f* fgl_glMapGrid2f = fgl_null;
+			fgl_func_glMaterialf* fgl_glMaterialf = fgl_null;
+			fgl_func_glMaterialfv* fgl_glMaterialfv = fgl_null;
+			fgl_func_glMateriali* fgl_glMateriali = fgl_null;
+			fgl_func_glMaterialiv* fgl_glMaterialiv = fgl_null;
+			fgl_func_glMatrixMode* fgl_glMatrixMode = fgl_null;
+			fgl_func_glMultMatrixd* fgl_glMultMatrixd = fgl_null;
+			fgl_func_glMultMatrixf* fgl_glMultMatrixf = fgl_null;
+			fgl_func_glNewList* fgl_glNewList = fgl_null;
+			fgl_func_glNormal3b* fgl_glNormal3b = fgl_null;
+			fgl_func_glNormal3bv* fgl_glNormal3bv = fgl_null;
+			fgl_func_glNormal3d* fgl_glNormal3d = fgl_null;
+			fgl_func_glNormal3dv* fgl_glNormal3dv = fgl_null;
+			fgl_func_glNormal3f* fgl_glNormal3f = fgl_null;
+			fgl_func_glNormal3fv* fgl_glNormal3fv = fgl_null;
+			fgl_func_glNormal3i* fgl_glNormal3i = fgl_null;
+			fgl_func_glNormal3iv* fgl_glNormal3iv = fgl_null;
+			fgl_func_glNormal3s* fgl_glNormal3s = fgl_null;
+			fgl_func_glNormal3sv* fgl_glNormal3sv = fgl_null;
+			fgl_func_glNormalPointer* fgl_glNormalPointer = fgl_null;
+			fgl_func_glOrtho* fgl_glOrtho = fgl_null;
+			fgl_func_glPassThrough* fgl_glPassThrough = fgl_null;
+			fgl_func_glPixelMapfv* fgl_glPixelMapfv = fgl_null;
+			fgl_func_glPixelMapuiv* fgl_glPixelMapuiv = fgl_null;
+			fgl_func_glPixelMapusv* fgl_glPixelMapusv = fgl_null;
+			fgl_func_glPixelStoref* fgl_glPixelStoref = fgl_null;
+			fgl_func_glPixelStorei* fgl_glPixelStorei = fgl_null;
+			fgl_func_glPixelTransferf* fgl_glPixelTransferf = fgl_null;
+			fgl_func_glPixelTransferi* fgl_glPixelTransferi = fgl_null;
+			fgl_func_glPixelZoom* fgl_glPixelZoom = fgl_null;
+			fgl_func_glPointSize* fgl_glPointSize = fgl_null;
+			fgl_func_glPolygonMode* fgl_glPolygonMode = fgl_null;
+			fgl_func_glPolygonOffset* fgl_glPolygonOffset = fgl_null;
+			fgl_func_glPolygonStipple* fgl_glPolygonStipple = fgl_null;
+			fgl_func_glPopAttrib* fgl_glPopAttrib = fgl_null;
+			fgl_func_glPopClientAttrib* fgl_glPopClientAttrib = fgl_null;
+			fgl_func_glPopMatrix* fgl_glPopMatrix = fgl_null;
+			fgl_func_glPopName* fgl_glPopName = fgl_null;
+			fgl_func_glPrioritizeTextures* fgl_glPrioritizeTextures = fgl_null;
+			fgl_func_glPushAttrib* fgl_glPushAttrib = fgl_null;
+			fgl_func_glPushClientAttrib* fgl_glPushClientAttrib = fgl_null;
+			fgl_func_glPushMatrix* fgl_glPushMatrix = fgl_null;
+			fgl_func_glPushName* fgl_glPushName = fgl_null;
+			fgl_func_glRasterPos2d* fgl_glRasterPos2d = fgl_null;
+			fgl_func_glRasterPos2dv* fgl_glRasterPos2dv = fgl_null;
+			fgl_func_glRasterPos2f* fgl_glRasterPos2f = fgl_null;
+			fgl_func_glRasterPos2fv* fgl_glRasterPos2fv = fgl_null;
+			fgl_func_glRasterPos2i* fgl_glRasterPos2i = fgl_null;
+			fgl_func_glRasterPos2iv* fgl_glRasterPos2iv = fgl_null;
+			fgl_func_glRasterPos2s* fgl_glRasterPos2s = fgl_null;
+			fgl_func_glRasterPos2sv* fgl_glRasterPos2sv = fgl_null;
+			fgl_func_glRasterPos3d* fgl_glRasterPos3d = fgl_null;
+			fgl_func_glRasterPos3dv* fgl_glRasterPos3dv = fgl_null;
+			fgl_func_glRasterPos3f* fgl_glRasterPos3f = fgl_null;
+			fgl_func_glRasterPos3fv* fgl_glRasterPos3fv = fgl_null;
+			fgl_func_glRasterPos3i* fgl_glRasterPos3i = fgl_null;
+			fgl_func_glRasterPos3iv* fgl_glRasterPos3iv = fgl_null;
+			fgl_func_glRasterPos3s* fgl_glRasterPos3s = fgl_null;
+			fgl_func_glRasterPos3sv* fgl_glRasterPos3sv = fgl_null;
+			fgl_func_glRasterPos4d* fgl_glRasterPos4d = fgl_null;
+			fgl_func_glRasterPos4dv* fgl_glRasterPos4dv = fgl_null;
+			fgl_func_glRasterPos4f* fgl_glRasterPos4f = fgl_null;
+			fgl_func_glRasterPos4fv* fgl_glRasterPos4fv = fgl_null;
+			fgl_func_glRasterPos4i* fgl_glRasterPos4i = fgl_null;
+			fgl_func_glRasterPos4iv* fgl_glRasterPos4iv = fgl_null;
+			fgl_func_glRasterPos4s* fgl_glRasterPos4s = fgl_null;
+			fgl_func_glRasterPos4sv* fgl_glRasterPos4sv = fgl_null;
+			fgl_func_glReadBuffer* fgl_glReadBuffer = fgl_null;
+			fgl_func_glReadPixels* fgl_glReadPixels = fgl_null;
+			fgl_func_glRectd* fgl_glRectd = fgl_null;
+			fgl_func_glRectdv* fgl_glRectdv = fgl_null;
+			fgl_func_glRectf* fgl_glRectf = fgl_null;
+			fgl_func_glRectfv* fgl_glRectfv = fgl_null;
+			fgl_func_glRecti* fgl_glRecti = fgl_null;
+			fgl_func_glRectiv* fgl_glRectiv = fgl_null;
+			fgl_func_glRects* fgl_glRects = fgl_null;
+			fgl_func_glRectsv* fgl_glRectsv = fgl_null;
+			fgl_func_glRenderMode* fgl_glRenderMode = fgl_null;
+			fgl_func_glRotated* fgl_glRotated = fgl_null;
+			fgl_func_glRotatef* fgl_glRotatef = fgl_null;
+			fgl_func_glScaled* fgl_glScaled = fgl_null;
+			fgl_func_glScalef* fgl_glScalef = fgl_null;
+			fgl_func_glScissor* fgl_glScissor = fgl_null;
+			fgl_func_glSelectBuffer* fgl_glSelectBuffer = fgl_null;
+			fgl_func_glShadeModel* fgl_glShadeModel = fgl_null;
+			fgl_func_glStencilFunc* fgl_glStencilFunc = fgl_null;
+			fgl_func_glStencilMask* fgl_glStencilMask = fgl_null;
+			fgl_func_glStencilOp* fgl_glStencilOp = fgl_null;
+			fgl_func_glTexCoord1d* fgl_glTexCoord1d = fgl_null;
+			fgl_func_glTexCoord1dv* fgl_glTexCoord1dv = fgl_null;
+			fgl_func_glTexCoord1f* fgl_glTexCoord1f = fgl_null;
+			fgl_func_glTexCoord1fv* fgl_glTexCoord1fv = fgl_null;
+			fgl_func_glTexCoord1i* fgl_glTexCoord1i = fgl_null;
+			fgl_func_glTexCoord1iv* fgl_glTexCoord1iv = fgl_null;
+			fgl_func_glTexCoord1s* fgl_glTexCoord1s = fgl_null;
+			fgl_func_glTexCoord1sv* fgl_glTexCoord1sv = fgl_null;
+			fgl_func_glTexCoord2d* fgl_glTexCoord2d = fgl_null;
+			fgl_func_glTexCoord2dv* fgl_glTexCoord2dv = fgl_null;
+			fgl_func_glTexCoord2f* fgl_glTexCoord2f = fgl_null;
+			fgl_func_glTexCoord2fv* fgl_glTexCoord2fv = fgl_null;
+			fgl_func_glTexCoord2i* fgl_glTexCoord2i = fgl_null;
+			fgl_func_glTexCoord2iv* fgl_glTexCoord2iv = fgl_null;
+			fgl_func_glTexCoord2s* fgl_glTexCoord2s = fgl_null;
+			fgl_func_glTexCoord2sv* fgl_glTexCoord2sv = fgl_null;
+			fgl_func_glTexCoord3d* fgl_glTexCoord3d = fgl_null;
+			fgl_func_glTexCoord3dv* fgl_glTexCoord3dv = fgl_null;
+			fgl_func_glTexCoord3f* fgl_glTexCoord3f = fgl_null;
+			fgl_func_glTexCoord3fv* fgl_glTexCoord3fv = fgl_null;
+			fgl_func_glTexCoord3i* fgl_glTexCoord3i = fgl_null;
+			fgl_func_glTexCoord3iv* fgl_glTexCoord3iv = fgl_null;
+			fgl_func_glTexCoord3s* fgl_glTexCoord3s = fgl_null;
+			fgl_func_glTexCoord3sv* fgl_glTexCoord3sv = fgl_null;
+			fgl_func_glTexCoord4d* fgl_glTexCoord4d = fgl_null;
+			fgl_func_glTexCoord4dv* fgl_glTexCoord4dv = fgl_null;
+			fgl_func_glTexCoord4f* fgl_glTexCoord4f = fgl_null;
+			fgl_func_glTexCoord4fv* fgl_glTexCoord4fv = fgl_null;
+			fgl_func_glTexCoord4i* fgl_glTexCoord4i = fgl_null;
+			fgl_func_glTexCoord4iv* fgl_glTexCoord4iv = fgl_null;
+			fgl_func_glTexCoord4s* fgl_glTexCoord4s = fgl_null;
+			fgl_func_glTexCoord4sv* fgl_glTexCoord4sv = fgl_null;
+			fgl_func_glTexCoordPointer* fgl_glTexCoordPointer = fgl_null;
+			fgl_func_glTexEnvf* fgl_glTexEnvf = fgl_null;
+			fgl_func_glTexEnvfv* fgl_glTexEnvfv = fgl_null;
+			fgl_func_glTexEnvi* fgl_glTexEnvi = fgl_null;
+			fgl_func_glTexEnviv* fgl_glTexEnviv = fgl_null;
+			fgl_func_glTexGend* fgl_glTexGend = fgl_null;
+			fgl_func_glTexGendv* fgl_glTexGendv = fgl_null;
+			fgl_func_glTexGenf* fgl_glTexGenf = fgl_null;
+			fgl_func_glTexGenfv* fgl_glTexGenfv = fgl_null;
+			fgl_func_glTexGeni* fgl_glTexGeni = fgl_null;
+			fgl_func_glTexGeniv* fgl_glTexGeniv = fgl_null;
+			fgl_func_glTexImage1D* fgl_glTexImage1D = fgl_null;
+			fgl_func_glTexImage2D* fgl_glTexImage2D = fgl_null;
+			fgl_func_glTexParameterf* fgl_glTexParameterf = fgl_null;
+			fgl_func_glTexParameterfv* fgl_glTexParameterfv = fgl_null;
+			fgl_func_glTexParameteri* fgl_glTexParameteri = fgl_null;
+			fgl_func_glTexParameteriv* fgl_glTexParameteriv = fgl_null;
+			fgl_func_glTexSubImage1D* fgl_glTexSubImage1D = fgl_null;
+			fgl_func_glTexSubImage2D* fgl_glTexSubImage2D = fgl_null;
+			fgl_func_glTranslated* fgl_glTranslated = fgl_null;
+			fgl_func_glTranslatef* fgl_glTranslatef = fgl_null;
+			fgl_func_glVertex2d* fgl_glVertex2d = fgl_null;
+			fgl_func_glVertex2dv* fgl_glVertex2dv = fgl_null;
+			fgl_func_glVertex2f* fgl_glVertex2f = fgl_null;
+			fgl_func_glVertex2fv* fgl_glVertex2fv = fgl_null;
+			fgl_func_glVertex2i* fgl_glVertex2i = fgl_null;
+			fgl_func_glVertex2iv* fgl_glVertex2iv = fgl_null;
+			fgl_func_glVertex2s* fgl_glVertex2s = fgl_null;
+			fgl_func_glVertex2sv* fgl_glVertex2sv = fgl_null;
+			fgl_func_glVertex3d* fgl_glVertex3d = fgl_null;
+			fgl_func_glVertex3dv* fgl_glVertex3dv = fgl_null;
+			fgl_func_glVertex3f* fgl_glVertex3f = fgl_null;
+			fgl_func_glVertex3fv* fgl_glVertex3fv = fgl_null;
+			fgl_func_glVertex3i* fgl_glVertex3i = fgl_null;
+			fgl_func_glVertex3iv* fgl_glVertex3iv = fgl_null;
+			fgl_func_glVertex3s* fgl_glVertex3s = fgl_null;
+			fgl_func_glVertex3sv* fgl_glVertex3sv = fgl_null;
+			fgl_func_glVertex4d* fgl_glVertex4d = fgl_null;
+			fgl_func_glVertex4dv* fgl_glVertex4dv = fgl_null;
+			fgl_func_glVertex4f* fgl_glVertex4f = fgl_null;
+			fgl_func_glVertex4fv* fgl_glVertex4fv = fgl_null;
+			fgl_func_glVertex4i* fgl_glVertex4i = fgl_null;
+			fgl_func_glVertex4iv* fgl_glVertex4iv = fgl_null;
+			fgl_func_glVertex4s* fgl_glVertex4s = fgl_null;
+			fgl_func_glVertex4sv* fgl_glVertex4sv = fgl_null;
+			fgl_func_glVertexPointer* fgl_glVertexPointer = fgl_null;
+			fgl_func_glViewport* fgl_glViewport = fgl_null;
 #		endif //GL_VERSION_1_1
 
 #		if GL_VERSION_1_2
-			fgl_api fgl_func_glDrawRangeElements* fgl_glDrawRangeElements = fgl_null;
-			fgl_api fgl_func_glTexImage3D* fgl_glTexImage3D = fgl_null;
-			fgl_api fgl_func_glTexSubImage3D* fgl_glTexSubImage3D = fgl_null;
-			fgl_api fgl_func_glCopyTexSubImage3D* fgl_glCopyTexSubImage3D = fgl_null;
+			fgl_func_glDrawRangeElements* fgl_glDrawRangeElements = fgl_null;
+			fgl_func_glTexImage3D* fgl_glTexImage3D = fgl_null;
+			fgl_func_glTexSubImage3D* fgl_glTexSubImage3D = fgl_null;
+			fgl_func_glCopyTexSubImage3D* fgl_glCopyTexSubImage3D = fgl_null;
 #		endif //GL_VERSION_1_2
 
 #		if GL_VERSION_1_3
-			fgl_api fgl_func_glActiveTexture* fgl_glActiveTexture = fgl_null;
-			fgl_api fgl_func_glSampleCoverage* fgl_glSampleCoverage = fgl_null;
-			fgl_api fgl_func_glCompressedTexImage3D* fgl_glCompressedTexImage3D = fgl_null;
-			fgl_api fgl_func_glCompressedTexImage2D* fgl_glCompressedTexImage2D = fgl_null;
-			fgl_api fgl_func_glCompressedTexImage1D* fgl_glCompressedTexImage1D = fgl_null;
-			fgl_api fgl_func_glCompressedTexSubImage3D* fgl_glCompressedTexSubImage3D = fgl_null;
-			fgl_api fgl_func_glCompressedTexSubImage2D* fgl_glCompressedTexSubImage2D = fgl_null;
-			fgl_api fgl_func_glCompressedTexSubImage1D* fgl_glCompressedTexSubImage1D = fgl_null;
-			fgl_api fgl_func_glGetCompressedTexImage* fgl_glGetCompressedTexImage = fgl_null;
-			fgl_api fgl_func_glClientActiveTexture* fgl_glClientActiveTexture = fgl_null;
-			fgl_api fgl_func_glMultiTexCoord1d* fgl_glMultiTexCoord1d = fgl_null;
-			fgl_api fgl_func_glMultiTexCoord1dv* fgl_glMultiTexCoord1dv = fgl_null;
-			fgl_api fgl_func_glMultiTexCoord1f* fgl_glMultiTexCoord1f = fgl_null;
-			fgl_api fgl_func_glMultiTexCoord1fv* fgl_glMultiTexCoord1fv = fgl_null;
-			fgl_api fgl_func_glMultiTexCoord1i* fgl_glMultiTexCoord1i = fgl_null;
-			fgl_api fgl_func_glMultiTexCoord1iv* fgl_glMultiTexCoord1iv = fgl_null;
-			fgl_api fgl_func_glMultiTexCoord1s* fgl_glMultiTexCoord1s = fgl_null;
-			fgl_api fgl_func_glMultiTexCoord1sv* fgl_glMultiTexCoord1sv = fgl_null;
-			fgl_api fgl_func_glMultiTexCoord2d* fgl_glMultiTexCoord2d = fgl_null;
-			fgl_api fgl_func_glMultiTexCoord2dv* fgl_glMultiTexCoord2dv = fgl_null;
-			fgl_api fgl_func_glMultiTexCoord2f* fgl_glMultiTexCoord2f = fgl_null;
-			fgl_api fgl_func_glMultiTexCoord2fv* fgl_glMultiTexCoord2fv = fgl_null;
-			fgl_api fgl_func_glMultiTexCoord2i* fgl_glMultiTexCoord2i = fgl_null;
-			fgl_api fgl_func_glMultiTexCoord2iv* fgl_glMultiTexCoord2iv = fgl_null;
-			fgl_api fgl_func_glMultiTexCoord2s* fgl_glMultiTexCoord2s = fgl_null;
-			fgl_api fgl_func_glMultiTexCoord2sv* fgl_glMultiTexCoord2sv = fgl_null;
-			fgl_api fgl_func_glMultiTexCoord3d* fgl_glMultiTexCoord3d = fgl_null;
-			fgl_api fgl_func_glMultiTexCoord3dv* fgl_glMultiTexCoord3dv = fgl_null;
-			fgl_api fgl_func_glMultiTexCoord3f* fgl_glMultiTexCoord3f = fgl_null;
-			fgl_api fgl_func_glMultiTexCoord3fv* fgl_glMultiTexCoord3fv = fgl_null;
-			fgl_api fgl_func_glMultiTexCoord3i* fgl_glMultiTexCoord3i = fgl_null;
-			fgl_api fgl_func_glMultiTexCoord3iv* fgl_glMultiTexCoord3iv = fgl_null;
-			fgl_api fgl_func_glMultiTexCoord3s* fgl_glMultiTexCoord3s = fgl_null;
-			fgl_api fgl_func_glMultiTexCoord3sv* fgl_glMultiTexCoord3sv = fgl_null;
-			fgl_api fgl_func_glMultiTexCoord4d* fgl_glMultiTexCoord4d = fgl_null;
-			fgl_api fgl_func_glMultiTexCoord4dv* fgl_glMultiTexCoord4dv = fgl_null;
-			fgl_api fgl_func_glMultiTexCoord4f* fgl_glMultiTexCoord4f = fgl_null;
-			fgl_api fgl_func_glMultiTexCoord4fv* fgl_glMultiTexCoord4fv = fgl_null;
-			fgl_api fgl_func_glMultiTexCoord4i* fgl_glMultiTexCoord4i = fgl_null;
-			fgl_api fgl_func_glMultiTexCoord4iv* fgl_glMultiTexCoord4iv = fgl_null;
-			fgl_api fgl_func_glMultiTexCoord4s* fgl_glMultiTexCoord4s = fgl_null;
-			fgl_api fgl_func_glMultiTexCoord4sv* fgl_glMultiTexCoord4sv = fgl_null;
-			fgl_api fgl_func_glLoadTransposeMatrixf* fgl_glLoadTransposeMatrixf = fgl_null;
-			fgl_api fgl_func_glLoadTransposeMatrixd* fgl_glLoadTransposeMatrixd = fgl_null;
-			fgl_api fgl_func_glMultTransposeMatrixf* fgl_glMultTransposeMatrixf = fgl_null;
-			fgl_api fgl_func_glMultTransposeMatrixd* fgl_glMultTransposeMatrixd = fgl_null;
+			fgl_func_glActiveTexture* fgl_glActiveTexture = fgl_null;
+			fgl_func_glSampleCoverage* fgl_glSampleCoverage = fgl_null;
+			fgl_func_glCompressedTexImage3D* fgl_glCompressedTexImage3D = fgl_null;
+			fgl_func_glCompressedTexImage2D* fgl_glCompressedTexImage2D = fgl_null;
+			fgl_func_glCompressedTexImage1D* fgl_glCompressedTexImage1D = fgl_null;
+			fgl_func_glCompressedTexSubImage3D* fgl_glCompressedTexSubImage3D = fgl_null;
+			fgl_func_glCompressedTexSubImage2D* fgl_glCompressedTexSubImage2D = fgl_null;
+			fgl_func_glCompressedTexSubImage1D* fgl_glCompressedTexSubImage1D = fgl_null;
+			fgl_func_glGetCompressedTexImage* fgl_glGetCompressedTexImage = fgl_null;
+			fgl_func_glClientActiveTexture* fgl_glClientActiveTexture = fgl_null;
+			fgl_func_glMultiTexCoord1d* fgl_glMultiTexCoord1d = fgl_null;
+			fgl_func_glMultiTexCoord1dv* fgl_glMultiTexCoord1dv = fgl_null;
+			fgl_func_glMultiTexCoord1f* fgl_glMultiTexCoord1f = fgl_null;
+			fgl_func_glMultiTexCoord1fv* fgl_glMultiTexCoord1fv = fgl_null;
+			fgl_func_glMultiTexCoord1i* fgl_glMultiTexCoord1i = fgl_null;
+			fgl_func_glMultiTexCoord1iv* fgl_glMultiTexCoord1iv = fgl_null;
+			fgl_func_glMultiTexCoord1s* fgl_glMultiTexCoord1s = fgl_null;
+			fgl_func_glMultiTexCoord1sv* fgl_glMultiTexCoord1sv = fgl_null;
+			fgl_func_glMultiTexCoord2d* fgl_glMultiTexCoord2d = fgl_null;
+			fgl_func_glMultiTexCoord2dv* fgl_glMultiTexCoord2dv = fgl_null;
+			fgl_func_glMultiTexCoord2f* fgl_glMultiTexCoord2f = fgl_null;
+			fgl_func_glMultiTexCoord2fv* fgl_glMultiTexCoord2fv = fgl_null;
+			fgl_func_glMultiTexCoord2i* fgl_glMultiTexCoord2i = fgl_null;
+			fgl_func_glMultiTexCoord2iv* fgl_glMultiTexCoord2iv = fgl_null;
+			fgl_func_glMultiTexCoord2s* fgl_glMultiTexCoord2s = fgl_null;
+			fgl_func_glMultiTexCoord2sv* fgl_glMultiTexCoord2sv = fgl_null;
+			fgl_func_glMultiTexCoord3d* fgl_glMultiTexCoord3d = fgl_null;
+			fgl_func_glMultiTexCoord3dv* fgl_glMultiTexCoord3dv = fgl_null;
+			fgl_func_glMultiTexCoord3f* fgl_glMultiTexCoord3f = fgl_null;
+			fgl_func_glMultiTexCoord3fv* fgl_glMultiTexCoord3fv = fgl_null;
+			fgl_func_glMultiTexCoord3i* fgl_glMultiTexCoord3i = fgl_null;
+			fgl_func_glMultiTexCoord3iv* fgl_glMultiTexCoord3iv = fgl_null;
+			fgl_func_glMultiTexCoord3s* fgl_glMultiTexCoord3s = fgl_null;
+			fgl_func_glMultiTexCoord3sv* fgl_glMultiTexCoord3sv = fgl_null;
+			fgl_func_glMultiTexCoord4d* fgl_glMultiTexCoord4d = fgl_null;
+			fgl_func_glMultiTexCoord4dv* fgl_glMultiTexCoord4dv = fgl_null;
+			fgl_func_glMultiTexCoord4f* fgl_glMultiTexCoord4f = fgl_null;
+			fgl_func_glMultiTexCoord4fv* fgl_glMultiTexCoord4fv = fgl_null;
+			fgl_func_glMultiTexCoord4i* fgl_glMultiTexCoord4i = fgl_null;
+			fgl_func_glMultiTexCoord4iv* fgl_glMultiTexCoord4iv = fgl_null;
+			fgl_func_glMultiTexCoord4s* fgl_glMultiTexCoord4s = fgl_null;
+			fgl_func_glMultiTexCoord4sv* fgl_glMultiTexCoord4sv = fgl_null;
+			fgl_func_glLoadTransposeMatrixf* fgl_glLoadTransposeMatrixf = fgl_null;
+			fgl_func_glLoadTransposeMatrixd* fgl_glLoadTransposeMatrixd = fgl_null;
+			fgl_func_glMultTransposeMatrixf* fgl_glMultTransposeMatrixf = fgl_null;
+			fgl_func_glMultTransposeMatrixd* fgl_glMultTransposeMatrixd = fgl_null;
 #		endif //GL_VERSION_1_3
 
 #		if GL_VERSION_1_4
-			fgl_api fgl_func_glBlendFuncSeparate* fgl_glBlendFuncSeparate = fgl_null;
-			fgl_api fgl_func_glMultiDrawArrays* fgl_glMultiDrawArrays = fgl_null;
-			fgl_api fgl_func_glMultiDrawElements* fgl_glMultiDrawElements = fgl_null;
-			fgl_api fgl_func_glPointParameterf* fgl_glPointParameterf = fgl_null;
-			fgl_api fgl_func_glPointParameterfv* fgl_glPointParameterfv = fgl_null;
-			fgl_api fgl_func_glPointParameteri* fgl_glPointParameteri = fgl_null;
-			fgl_api fgl_func_glPointParameteriv* fgl_glPointParameteriv = fgl_null;
-			fgl_api fgl_func_glFogCoordf* fgl_glFogCoordf = fgl_null;
-			fgl_api fgl_func_glFogCoordfv* fgl_glFogCoordfv = fgl_null;
-			fgl_api fgl_func_glFogCoordd* fgl_glFogCoordd = fgl_null;
-			fgl_api fgl_func_glFogCoorddv* fgl_glFogCoorddv = fgl_null;
-			fgl_api fgl_func_glFogCoordPointer* fgl_glFogCoordPointer = fgl_null;
-			fgl_api fgl_func_glSecondaryColor3b* fgl_glSecondaryColor3b = fgl_null;
-			fgl_api fgl_func_glSecondaryColor3bv* fgl_glSecondaryColor3bv = fgl_null;
-			fgl_api fgl_func_glSecondaryColor3d* fgl_glSecondaryColor3d = fgl_null;
-			fgl_api fgl_func_glSecondaryColor3dv* fgl_glSecondaryColor3dv = fgl_null;
-			fgl_api fgl_func_glSecondaryColor3f* fgl_glSecondaryColor3f = fgl_null;
-			fgl_api fgl_func_glSecondaryColor3fv* fgl_glSecondaryColor3fv = fgl_null;
-			fgl_api fgl_func_glSecondaryColor3i* fgl_glSecondaryColor3i = fgl_null;
-			fgl_api fgl_func_glSecondaryColor3iv* fgl_glSecondaryColor3iv = fgl_null;
-			fgl_api fgl_func_glSecondaryColor3s* fgl_glSecondaryColor3s = fgl_null;
-			fgl_api fgl_func_glSecondaryColor3sv* fgl_glSecondaryColor3sv = fgl_null;
-			fgl_api fgl_func_glSecondaryColor3ub* fgl_glSecondaryColor3ub = fgl_null;
-			fgl_api fgl_func_glSecondaryColor3ubv* fgl_glSecondaryColor3ubv = fgl_null;
-			fgl_api fgl_func_glSecondaryColor3ui* fgl_glSecondaryColor3ui = fgl_null;
-			fgl_api fgl_func_glSecondaryColor3uiv* fgl_glSecondaryColor3uiv = fgl_null;
-			fgl_api fgl_func_glSecondaryColor3us* fgl_glSecondaryColor3us = fgl_null;
-			fgl_api fgl_func_glSecondaryColor3usv* fgl_glSecondaryColor3usv = fgl_null;
-			fgl_api fgl_func_glSecondaryColorPointer* fgl_glSecondaryColorPointer = fgl_null;
-			fgl_api fgl_func_glWindowPos2d* fgl_glWindowPos2d = fgl_null;
-			fgl_api fgl_func_glWindowPos2dv* fgl_glWindowPos2dv = fgl_null;
-			fgl_api fgl_func_glWindowPos2f* fgl_glWindowPos2f = fgl_null;
-			fgl_api fgl_func_glWindowPos2fv* fgl_glWindowPos2fv = fgl_null;
-			fgl_api fgl_func_glWindowPos2i* fgl_glWindowPos2i = fgl_null;
-			fgl_api fgl_func_glWindowPos2iv* fgl_glWindowPos2iv = fgl_null;
-			fgl_api fgl_func_glWindowPos2s* fgl_glWindowPos2s = fgl_null;
-			fgl_api fgl_func_glWindowPos2sv* fgl_glWindowPos2sv = fgl_null;
-			fgl_api fgl_func_glWindowPos3d* fgl_glWindowPos3d = fgl_null;
-			fgl_api fgl_func_glWindowPos3dv* fgl_glWindowPos3dv = fgl_null;
-			fgl_api fgl_func_glWindowPos3f* fgl_glWindowPos3f = fgl_null;
-			fgl_api fgl_func_glWindowPos3fv* fgl_glWindowPos3fv = fgl_null;
-			fgl_api fgl_func_glWindowPos3i* fgl_glWindowPos3i = fgl_null;
-			fgl_api fgl_func_glWindowPos3iv* fgl_glWindowPos3iv = fgl_null;
-			fgl_api fgl_func_glWindowPos3s* fgl_glWindowPos3s = fgl_null;
-			fgl_api fgl_func_glWindowPos3sv* fgl_glWindowPos3sv = fgl_null;
-			fgl_api fgl_func_glBlendColor* fgl_glBlendColor = fgl_null;
-			fgl_api fgl_func_glBlendEquation* fgl_glBlendEquation = fgl_null;
+			fgl_func_glBlendFuncSeparate* fgl_glBlendFuncSeparate = fgl_null;
+			fgl_func_glMultiDrawArrays* fgl_glMultiDrawArrays = fgl_null;
+			fgl_func_glMultiDrawElements* fgl_glMultiDrawElements = fgl_null;
+			fgl_func_glPointParameterf* fgl_glPointParameterf = fgl_null;
+			fgl_func_glPointParameterfv* fgl_glPointParameterfv = fgl_null;
+			fgl_func_glPointParameteri* fgl_glPointParameteri = fgl_null;
+			fgl_func_glPointParameteriv* fgl_glPointParameteriv = fgl_null;
+			fgl_func_glFogCoordf* fgl_glFogCoordf = fgl_null;
+			fgl_func_glFogCoordfv* fgl_glFogCoordfv = fgl_null;
+			fgl_func_glFogCoordd* fgl_glFogCoordd = fgl_null;
+			fgl_func_glFogCoorddv* fgl_glFogCoorddv = fgl_null;
+			fgl_func_glFogCoordPointer* fgl_glFogCoordPointer = fgl_null;
+			fgl_func_glSecondaryColor3b* fgl_glSecondaryColor3b = fgl_null;
+			fgl_func_glSecondaryColor3bv* fgl_glSecondaryColor3bv = fgl_null;
+			fgl_func_glSecondaryColor3d* fgl_glSecondaryColor3d = fgl_null;
+			fgl_func_glSecondaryColor3dv* fgl_glSecondaryColor3dv = fgl_null;
+			fgl_func_glSecondaryColor3f* fgl_glSecondaryColor3f = fgl_null;
+			fgl_func_glSecondaryColor3fv* fgl_glSecondaryColor3fv = fgl_null;
+			fgl_func_glSecondaryColor3i* fgl_glSecondaryColor3i = fgl_null;
+			fgl_func_glSecondaryColor3iv* fgl_glSecondaryColor3iv = fgl_null;
+			fgl_func_glSecondaryColor3s* fgl_glSecondaryColor3s = fgl_null;
+			fgl_func_glSecondaryColor3sv* fgl_glSecondaryColor3sv = fgl_null;
+			fgl_func_glSecondaryColor3ub* fgl_glSecondaryColor3ub = fgl_null;
+			fgl_func_glSecondaryColor3ubv* fgl_glSecondaryColor3ubv = fgl_null;
+			fgl_func_glSecondaryColor3ui* fgl_glSecondaryColor3ui = fgl_null;
+			fgl_func_glSecondaryColor3uiv* fgl_glSecondaryColor3uiv = fgl_null;
+			fgl_func_glSecondaryColor3us* fgl_glSecondaryColor3us = fgl_null;
+			fgl_func_glSecondaryColor3usv* fgl_glSecondaryColor3usv = fgl_null;
+			fgl_func_glSecondaryColorPointer* fgl_glSecondaryColorPointer = fgl_null;
+			fgl_func_glWindowPos2d* fgl_glWindowPos2d = fgl_null;
+			fgl_func_glWindowPos2dv* fgl_glWindowPos2dv = fgl_null;
+			fgl_func_glWindowPos2f* fgl_glWindowPos2f = fgl_null;
+			fgl_func_glWindowPos2fv* fgl_glWindowPos2fv = fgl_null;
+			fgl_func_glWindowPos2i* fgl_glWindowPos2i = fgl_null;
+			fgl_func_glWindowPos2iv* fgl_glWindowPos2iv = fgl_null;
+			fgl_func_glWindowPos2s* fgl_glWindowPos2s = fgl_null;
+			fgl_func_glWindowPos2sv* fgl_glWindowPos2sv = fgl_null;
+			fgl_func_glWindowPos3d* fgl_glWindowPos3d = fgl_null;
+			fgl_func_glWindowPos3dv* fgl_glWindowPos3dv = fgl_null;
+			fgl_func_glWindowPos3f* fgl_glWindowPos3f = fgl_null;
+			fgl_func_glWindowPos3fv* fgl_glWindowPos3fv = fgl_null;
+			fgl_func_glWindowPos3i* fgl_glWindowPos3i = fgl_null;
+			fgl_func_glWindowPos3iv* fgl_glWindowPos3iv = fgl_null;
+			fgl_func_glWindowPos3s* fgl_glWindowPos3s = fgl_null;
+			fgl_func_glWindowPos3sv* fgl_glWindowPos3sv = fgl_null;
+			fgl_func_glBlendColor* fgl_glBlendColor = fgl_null;
+			fgl_func_glBlendEquation* fgl_glBlendEquation = fgl_null;
 #		endif //GL_VERSION_1_4
 
 #		if GL_VERSION_1_5
-			fgl_api fgl_func_glGenQueries* fgl_glGenQueries = fgl_null;
-			fgl_api fgl_func_glDeleteQueries* fgl_glDeleteQueries = fgl_null;
-			fgl_api fgl_func_glIsQuery* fgl_glIsQuery = fgl_null;
-			fgl_api fgl_func_glBeginQuery* fgl_glBeginQuery = fgl_null;
-			fgl_api fgl_func_glEndQuery* fgl_glEndQuery = fgl_null;
-			fgl_api fgl_func_glGetQueryiv* fgl_glGetQueryiv = fgl_null;
-			fgl_api fgl_func_glGetQueryObjectiv* fgl_glGetQueryObjectiv = fgl_null;
-			fgl_api fgl_func_glGetQueryObjectuiv* fgl_glGetQueryObjectuiv = fgl_null;
-			fgl_api fgl_func_glBindBuffer* fgl_glBindBuffer = fgl_null;
-			fgl_api fgl_func_glDeleteBuffers* fgl_glDeleteBuffers = fgl_null;
-			fgl_api fgl_func_glGenBuffers* fgl_glGenBuffers = fgl_null;
-			fgl_api fgl_func_glIsBuffer* fgl_glIsBuffer = fgl_null;
-			fgl_api fgl_func_glBufferData* fgl_glBufferData = fgl_null;
-			fgl_api fgl_func_glBufferSubData* fgl_glBufferSubData = fgl_null;
-			fgl_api fgl_func_glGetBufferSubData* fgl_glGetBufferSubData = fgl_null;
-			fgl_api fgl_func_glMapBuffer* fgl_glMapBuffer = fgl_null;
-			fgl_api fgl_func_glUnmapBuffer* fgl_glUnmapBuffer = fgl_null;
-			fgl_api fgl_func_glGetBufferParameteriv* fgl_glGetBufferParameteriv = fgl_null;
-			fgl_api fgl_func_glGetBufferPointerv* fgl_glGetBufferPointerv = fgl_null;
+			fgl_func_glGenQueries* fgl_glGenQueries = fgl_null;
+			fgl_func_glDeleteQueries* fgl_glDeleteQueries = fgl_null;
+			fgl_func_glIsQuery* fgl_glIsQuery = fgl_null;
+			fgl_func_glBeginQuery* fgl_glBeginQuery = fgl_null;
+			fgl_func_glEndQuery* fgl_glEndQuery = fgl_null;
+			fgl_func_glGetQueryiv* fgl_glGetQueryiv = fgl_null;
+			fgl_func_glGetQueryObjectiv* fgl_glGetQueryObjectiv = fgl_null;
+			fgl_func_glGetQueryObjectuiv* fgl_glGetQueryObjectuiv = fgl_null;
+			fgl_func_glBindBuffer* fgl_glBindBuffer = fgl_null;
+			fgl_func_glDeleteBuffers* fgl_glDeleteBuffers = fgl_null;
+			fgl_func_glGenBuffers* fgl_glGenBuffers = fgl_null;
+			fgl_func_glIsBuffer* fgl_glIsBuffer = fgl_null;
+			fgl_func_glBufferData* fgl_glBufferData = fgl_null;
+			fgl_func_glBufferSubData* fgl_glBufferSubData = fgl_null;
+			fgl_func_glGetBufferSubData* fgl_glGetBufferSubData = fgl_null;
+			fgl_func_glMapBuffer* fgl_glMapBuffer = fgl_null;
+			fgl_func_glUnmapBuffer* fgl_glUnmapBuffer = fgl_null;
+			fgl_func_glGetBufferParameteriv* fgl_glGetBufferParameteriv = fgl_null;
+			fgl_func_glGetBufferPointerv* fgl_glGetBufferPointerv = fgl_null;
 #		endif //GL_VERSION_1_5
 
 #		if GL_VERSION_2_0
-			fgl_api fgl_func_glBlendEquationSeparate* fgl_glBlendEquationSeparate = fgl_null;
-			fgl_api fgl_func_glDrawBuffers* fgl_glDrawBuffers = fgl_null;
-			fgl_api fgl_func_glStencilOpSeparate* fgl_glStencilOpSeparate = fgl_null;
-			fgl_api fgl_func_glStencilFuncSeparate* fgl_glStencilFuncSeparate = fgl_null;
-			fgl_api fgl_func_glStencilMaskSeparate* fgl_glStencilMaskSeparate = fgl_null;
-			fgl_api fgl_func_glAttachShader* fgl_glAttachShader = fgl_null;
-			fgl_api fgl_func_glBindAttribLocation* fgl_glBindAttribLocation = fgl_null;
-			fgl_api fgl_func_glCompileShader* fgl_glCompileShader = fgl_null;
-			fgl_api fgl_func_glCreateProgram* fgl_glCreateProgram = fgl_null;
-			fgl_api fgl_func_glCreateShader* fgl_glCreateShader = fgl_null;
-			fgl_api fgl_func_glDeleteProgram* fgl_glDeleteProgram = fgl_null;
-			fgl_api fgl_func_glDeleteShader* fgl_glDeleteShader = fgl_null;
-			fgl_api fgl_func_glDetachShader* fgl_glDetachShader = fgl_null;
-			fgl_api fgl_func_glDisableVertexAttribArray* fgl_glDisableVertexAttribArray = fgl_null;
-			fgl_api fgl_func_glEnableVertexAttribArray* fgl_glEnableVertexAttribArray = fgl_null;
-			fgl_api fgl_func_glGetActiveAttrib* fgl_glGetActiveAttrib = fgl_null;
-			fgl_api fgl_func_glGetActiveUniform* fgl_glGetActiveUniform = fgl_null;
-			fgl_api fgl_func_glGetAttachedShaders* fgl_glGetAttachedShaders = fgl_null;
-			fgl_api fgl_func_glGetAttribLocation* fgl_glGetAttribLocation = fgl_null;
-			fgl_api fgl_func_glGetProgramiv* fgl_glGetProgramiv = fgl_null;
-			fgl_api fgl_func_glGetProgramInfoLog* fgl_glGetProgramInfoLog = fgl_null;
-			fgl_api fgl_func_glGetShaderiv* fgl_glGetShaderiv = fgl_null;
-			fgl_api fgl_func_glGetShaderInfoLog* fgl_glGetShaderInfoLog = fgl_null;
-			fgl_api fgl_func_glGetShaderSource* fgl_glGetShaderSource = fgl_null;
-			fgl_api fgl_func_glGetUniformLocation* fgl_glGetUniformLocation = fgl_null;
-			fgl_api fgl_func_glGetUniformfv* fgl_glGetUniformfv = fgl_null;
-			fgl_api fgl_func_glGetUniformiv* fgl_glGetUniformiv = fgl_null;
-			fgl_api fgl_func_glGetVertexAttribdv* fgl_glGetVertexAttribdv = fgl_null;
-			fgl_api fgl_func_glGetVertexAttribfv* fgl_glGetVertexAttribfv = fgl_null;
-			fgl_api fgl_func_glGetVertexAttribiv* fgl_glGetVertexAttribiv = fgl_null;
-			fgl_api fgl_func_glGetVertexAttribPointerv* fgl_glGetVertexAttribPointerv = fgl_null;
-			fgl_api fgl_func_glIsProgram* fgl_glIsProgram = fgl_null;
-			fgl_api fgl_func_glIsShader* fgl_glIsShader = fgl_null;
-			fgl_api fgl_func_glLinkProgram* fgl_glLinkProgram = fgl_null;
-			fgl_api fgl_func_glShaderSource* fgl_glShaderSource = fgl_null;
-			fgl_api fgl_func_glUseProgram* fgl_glUseProgram = fgl_null;
-			fgl_api fgl_func_glUniform1f* fgl_glUniform1f = fgl_null;
-			fgl_api fgl_func_glUniform2f* fgl_glUniform2f = fgl_null;
-			fgl_api fgl_func_glUniform3f* fgl_glUniform3f = fgl_null;
-			fgl_api fgl_func_glUniform4f* fgl_glUniform4f = fgl_null;
-			fgl_api fgl_func_glUniform1i* fgl_glUniform1i = fgl_null;
-			fgl_api fgl_func_glUniform2i* fgl_glUniform2i = fgl_null;
-			fgl_api fgl_func_glUniform3i* fgl_glUniform3i = fgl_null;
-			fgl_api fgl_func_glUniform4i* fgl_glUniform4i = fgl_null;
-			fgl_api fgl_func_glUniform1fv* fgl_glUniform1fv = fgl_null;
-			fgl_api fgl_func_glUniform2fv* fgl_glUniform2fv = fgl_null;
-			fgl_api fgl_func_glUniform3fv* fgl_glUniform3fv = fgl_null;
-			fgl_api fgl_func_glUniform4fv* fgl_glUniform4fv = fgl_null;
-			fgl_api fgl_func_glUniform1iv* fgl_glUniform1iv = fgl_null;
-			fgl_api fgl_func_glUniform2iv* fgl_glUniform2iv = fgl_null;
-			fgl_api fgl_func_glUniform3iv* fgl_glUniform3iv = fgl_null;
-			fgl_api fgl_func_glUniform4iv* fgl_glUniform4iv = fgl_null;
-			fgl_api fgl_func_glUniformMatrix2fv* fgl_glUniformMatrix2fv = fgl_null;
-			fgl_api fgl_func_glUniformMatrix3fv* fgl_glUniformMatrix3fv = fgl_null;
-			fgl_api fgl_func_glUniformMatrix4fv* fgl_glUniformMatrix4fv = fgl_null;
-			fgl_api fgl_func_glValidateProgram* fgl_glValidateProgram = fgl_null;
-			fgl_api fgl_func_glVertexAttrib1d* fgl_glVertexAttrib1d = fgl_null;
-			fgl_api fgl_func_glVertexAttrib1dv* fgl_glVertexAttrib1dv = fgl_null;
-			fgl_api fgl_func_glVertexAttrib1f* fgl_glVertexAttrib1f = fgl_null;
-			fgl_api fgl_func_glVertexAttrib1fv* fgl_glVertexAttrib1fv = fgl_null;
-			fgl_api fgl_func_glVertexAttrib1s* fgl_glVertexAttrib1s = fgl_null;
-			fgl_api fgl_func_glVertexAttrib1sv* fgl_glVertexAttrib1sv = fgl_null;
-			fgl_api fgl_func_glVertexAttrib2d* fgl_glVertexAttrib2d = fgl_null;
-			fgl_api fgl_func_glVertexAttrib2dv* fgl_glVertexAttrib2dv = fgl_null;
-			fgl_api fgl_func_glVertexAttrib2f* fgl_glVertexAttrib2f = fgl_null;
-			fgl_api fgl_func_glVertexAttrib2fv* fgl_glVertexAttrib2fv = fgl_null;
-			fgl_api fgl_func_glVertexAttrib2s* fgl_glVertexAttrib2s = fgl_null;
-			fgl_api fgl_func_glVertexAttrib2sv* fgl_glVertexAttrib2sv = fgl_null;
-			fgl_api fgl_func_glVertexAttrib3d* fgl_glVertexAttrib3d = fgl_null;
-			fgl_api fgl_func_glVertexAttrib3dv* fgl_glVertexAttrib3dv = fgl_null;
-			fgl_api fgl_func_glVertexAttrib3f* fgl_glVertexAttrib3f = fgl_null;
-			fgl_api fgl_func_glVertexAttrib3fv* fgl_glVertexAttrib3fv = fgl_null;
-			fgl_api fgl_func_glVertexAttrib3s* fgl_glVertexAttrib3s = fgl_null;
-			fgl_api fgl_func_glVertexAttrib3sv* fgl_glVertexAttrib3sv = fgl_null;
-			fgl_api fgl_func_glVertexAttrib4Nbv* fgl_glVertexAttrib4Nbv = fgl_null;
-			fgl_api fgl_func_glVertexAttrib4Niv* fgl_glVertexAttrib4Niv = fgl_null;
-			fgl_api fgl_func_glVertexAttrib4Nsv* fgl_glVertexAttrib4Nsv = fgl_null;
-			fgl_api fgl_func_glVertexAttrib4Nub* fgl_glVertexAttrib4Nub = fgl_null;
-			fgl_api fgl_func_glVertexAttrib4Nubv* fgl_glVertexAttrib4Nubv = fgl_null;
-			fgl_api fgl_func_glVertexAttrib4Nuiv* fgl_glVertexAttrib4Nuiv = fgl_null;
-			fgl_api fgl_func_glVertexAttrib4Nusv* fgl_glVertexAttrib4Nusv = fgl_null;
-			fgl_api fgl_func_glVertexAttrib4bv* fgl_glVertexAttrib4bv = fgl_null;
-			fgl_api fgl_func_glVertexAttrib4d* fgl_glVertexAttrib4d = fgl_null;
-			fgl_api fgl_func_glVertexAttrib4dv* fgl_glVertexAttrib4dv = fgl_null;
-			fgl_api fgl_func_glVertexAttrib4f* fgl_glVertexAttrib4f = fgl_null;
-			fgl_api fgl_func_glVertexAttrib4fv* fgl_glVertexAttrib4fv = fgl_null;
-			fgl_api fgl_func_glVertexAttrib4iv* fgl_glVertexAttrib4iv = fgl_null;
-			fgl_api fgl_func_glVertexAttrib4s* fgl_glVertexAttrib4s = fgl_null;
-			fgl_api fgl_func_glVertexAttrib4sv* fgl_glVertexAttrib4sv = fgl_null;
-			fgl_api fgl_func_glVertexAttrib4ubv* fgl_glVertexAttrib4ubv = fgl_null;
-			fgl_api fgl_func_glVertexAttrib4uiv* fgl_glVertexAttrib4uiv = fgl_null;
-			fgl_api fgl_func_glVertexAttrib4usv* fgl_glVertexAttrib4usv = fgl_null;
-			fgl_api fgl_func_glVertexAttribPointer* fgl_glVertexAttribPointer = fgl_null;
+			fgl_func_glBlendEquationSeparate* fgl_glBlendEquationSeparate = fgl_null;
+			fgl_func_glDrawBuffers* fgl_glDrawBuffers = fgl_null;
+			fgl_func_glStencilOpSeparate* fgl_glStencilOpSeparate = fgl_null;
+			fgl_func_glStencilFuncSeparate* fgl_glStencilFuncSeparate = fgl_null;
+			fgl_func_glStencilMaskSeparate* fgl_glStencilMaskSeparate = fgl_null;
+			fgl_func_glAttachShader* fgl_glAttachShader = fgl_null;
+			fgl_func_glBindAttribLocation* fgl_glBindAttribLocation = fgl_null;
+			fgl_func_glCompileShader* fgl_glCompileShader = fgl_null;
+			fgl_func_glCreateProgram* fgl_glCreateProgram = fgl_null;
+			fgl_func_glCreateShader* fgl_glCreateShader = fgl_null;
+			fgl_func_glDeleteProgram* fgl_glDeleteProgram = fgl_null;
+			fgl_func_glDeleteShader* fgl_glDeleteShader = fgl_null;
+			fgl_func_glDetachShader* fgl_glDetachShader = fgl_null;
+			fgl_func_glDisableVertexAttribArray* fgl_glDisableVertexAttribArray = fgl_null;
+			fgl_func_glEnableVertexAttribArray* fgl_glEnableVertexAttribArray = fgl_null;
+			fgl_func_glGetActiveAttrib* fgl_glGetActiveAttrib = fgl_null;
+			fgl_func_glGetActiveUniform* fgl_glGetActiveUniform = fgl_null;
+			fgl_func_glGetAttachedShaders* fgl_glGetAttachedShaders = fgl_null;
+			fgl_func_glGetAttribLocation* fgl_glGetAttribLocation = fgl_null;
+			fgl_func_glGetProgramiv* fgl_glGetProgramiv = fgl_null;
+			fgl_func_glGetProgramInfoLog* fgl_glGetProgramInfoLog = fgl_null;
+			fgl_func_glGetShaderiv* fgl_glGetShaderiv = fgl_null;
+			fgl_func_glGetShaderInfoLog* fgl_glGetShaderInfoLog = fgl_null;
+			fgl_func_glGetShaderSource* fgl_glGetShaderSource = fgl_null;
+			fgl_func_glGetUniformLocation* fgl_glGetUniformLocation = fgl_null;
+			fgl_func_glGetUniformfv* fgl_glGetUniformfv = fgl_null;
+			fgl_func_glGetUniformiv* fgl_glGetUniformiv = fgl_null;
+			fgl_func_glGetVertexAttribdv* fgl_glGetVertexAttribdv = fgl_null;
+			fgl_func_glGetVertexAttribfv* fgl_glGetVertexAttribfv = fgl_null;
+			fgl_func_glGetVertexAttribiv* fgl_glGetVertexAttribiv = fgl_null;
+			fgl_func_glGetVertexAttribPointerv* fgl_glGetVertexAttribPointerv = fgl_null;
+			fgl_func_glIsProgram* fgl_glIsProgram = fgl_null;
+			fgl_func_glIsShader* fgl_glIsShader = fgl_null;
+			fgl_func_glLinkProgram* fgl_glLinkProgram = fgl_null;
+			fgl_func_glShaderSource* fgl_glShaderSource = fgl_null;
+			fgl_func_glUseProgram* fgl_glUseProgram = fgl_null;
+			fgl_func_glUniform1f* fgl_glUniform1f = fgl_null;
+			fgl_func_glUniform2f* fgl_glUniform2f = fgl_null;
+			fgl_func_glUniform3f* fgl_glUniform3f = fgl_null;
+			fgl_func_glUniform4f* fgl_glUniform4f = fgl_null;
+			fgl_func_glUniform1i* fgl_glUniform1i = fgl_null;
+			fgl_func_glUniform2i* fgl_glUniform2i = fgl_null;
+			fgl_func_glUniform3i* fgl_glUniform3i = fgl_null;
+			fgl_func_glUniform4i* fgl_glUniform4i = fgl_null;
+			fgl_func_glUniform1fv* fgl_glUniform1fv = fgl_null;
+			fgl_func_glUniform2fv* fgl_glUniform2fv = fgl_null;
+			fgl_func_glUniform3fv* fgl_glUniform3fv = fgl_null;
+			fgl_func_glUniform4fv* fgl_glUniform4fv = fgl_null;
+			fgl_func_glUniform1iv* fgl_glUniform1iv = fgl_null;
+			fgl_func_glUniform2iv* fgl_glUniform2iv = fgl_null;
+			fgl_func_glUniform3iv* fgl_glUniform3iv = fgl_null;
+			fgl_func_glUniform4iv* fgl_glUniform4iv = fgl_null;
+			fgl_func_glUniformMatrix2fv* fgl_glUniformMatrix2fv = fgl_null;
+			fgl_func_glUniformMatrix3fv* fgl_glUniformMatrix3fv = fgl_null;
+			fgl_func_glUniformMatrix4fv* fgl_glUniformMatrix4fv = fgl_null;
+			fgl_func_glValidateProgram* fgl_glValidateProgram = fgl_null;
+			fgl_func_glVertexAttrib1d* fgl_glVertexAttrib1d = fgl_null;
+			fgl_func_glVertexAttrib1dv* fgl_glVertexAttrib1dv = fgl_null;
+			fgl_func_glVertexAttrib1f* fgl_glVertexAttrib1f = fgl_null;
+			fgl_func_glVertexAttrib1fv* fgl_glVertexAttrib1fv = fgl_null;
+			fgl_func_glVertexAttrib1s* fgl_glVertexAttrib1s = fgl_null;
+			fgl_func_glVertexAttrib1sv* fgl_glVertexAttrib1sv = fgl_null;
+			fgl_func_glVertexAttrib2d* fgl_glVertexAttrib2d = fgl_null;
+			fgl_func_glVertexAttrib2dv* fgl_glVertexAttrib2dv = fgl_null;
+			fgl_func_glVertexAttrib2f* fgl_glVertexAttrib2f = fgl_null;
+			fgl_func_glVertexAttrib2fv* fgl_glVertexAttrib2fv = fgl_null;
+			fgl_func_glVertexAttrib2s* fgl_glVertexAttrib2s = fgl_null;
+			fgl_func_glVertexAttrib2sv* fgl_glVertexAttrib2sv = fgl_null;
+			fgl_func_glVertexAttrib3d* fgl_glVertexAttrib3d = fgl_null;
+			fgl_func_glVertexAttrib3dv* fgl_glVertexAttrib3dv = fgl_null;
+			fgl_func_glVertexAttrib3f* fgl_glVertexAttrib3f = fgl_null;
+			fgl_func_glVertexAttrib3fv* fgl_glVertexAttrib3fv = fgl_null;
+			fgl_func_glVertexAttrib3s* fgl_glVertexAttrib3s = fgl_null;
+			fgl_func_glVertexAttrib3sv* fgl_glVertexAttrib3sv = fgl_null;
+			fgl_func_glVertexAttrib4Nbv* fgl_glVertexAttrib4Nbv = fgl_null;
+			fgl_func_glVertexAttrib4Niv* fgl_glVertexAttrib4Niv = fgl_null;
+			fgl_func_glVertexAttrib4Nsv* fgl_glVertexAttrib4Nsv = fgl_null;
+			fgl_func_glVertexAttrib4Nub* fgl_glVertexAttrib4Nub = fgl_null;
+			fgl_func_glVertexAttrib4Nubv* fgl_glVertexAttrib4Nubv = fgl_null;
+			fgl_func_glVertexAttrib4Nuiv* fgl_glVertexAttrib4Nuiv = fgl_null;
+			fgl_func_glVertexAttrib4Nusv* fgl_glVertexAttrib4Nusv = fgl_null;
+			fgl_func_glVertexAttrib4bv* fgl_glVertexAttrib4bv = fgl_null;
+			fgl_func_glVertexAttrib4d* fgl_glVertexAttrib4d = fgl_null;
+			fgl_func_glVertexAttrib4dv* fgl_glVertexAttrib4dv = fgl_null;
+			fgl_func_glVertexAttrib4f* fgl_glVertexAttrib4f = fgl_null;
+			fgl_func_glVertexAttrib4fv* fgl_glVertexAttrib4fv = fgl_null;
+			fgl_func_glVertexAttrib4iv* fgl_glVertexAttrib4iv = fgl_null;
+			fgl_func_glVertexAttrib4s* fgl_glVertexAttrib4s = fgl_null;
+			fgl_func_glVertexAttrib4sv* fgl_glVertexAttrib4sv = fgl_null;
+			fgl_func_glVertexAttrib4ubv* fgl_glVertexAttrib4ubv = fgl_null;
+			fgl_func_glVertexAttrib4uiv* fgl_glVertexAttrib4uiv = fgl_null;
+			fgl_func_glVertexAttrib4usv* fgl_glVertexAttrib4usv = fgl_null;
+			fgl_func_glVertexAttribPointer* fgl_glVertexAttribPointer = fgl_null;
 #		endif //GL_VERSION_2_0
 
 #		if GL_VERSION_2_1
-			fgl_api fgl_func_glUniformMatrix2x3fv* fgl_glUniformMatrix2x3fv = fgl_null;
-			fgl_api fgl_func_glUniformMatrix3x2fv* fgl_glUniformMatrix3x2fv = fgl_null;
-			fgl_api fgl_func_glUniformMatrix2x4fv* fgl_glUniformMatrix2x4fv = fgl_null;
-			fgl_api fgl_func_glUniformMatrix4x2fv* fgl_glUniformMatrix4x2fv = fgl_null;
-			fgl_api fgl_func_glUniformMatrix3x4fv* fgl_glUniformMatrix3x4fv = fgl_null;
-			fgl_api fgl_func_glUniformMatrix4x3fv* fgl_glUniformMatrix4x3fv = fgl_null;
+			fgl_func_glUniformMatrix2x3fv* fgl_glUniformMatrix2x3fv = fgl_null;
+			fgl_func_glUniformMatrix3x2fv* fgl_glUniformMatrix3x2fv = fgl_null;
+			fgl_func_glUniformMatrix2x4fv* fgl_glUniformMatrix2x4fv = fgl_null;
+			fgl_func_glUniformMatrix4x2fv* fgl_glUniformMatrix4x2fv = fgl_null;
+			fgl_func_glUniformMatrix3x4fv* fgl_glUniformMatrix3x4fv = fgl_null;
+			fgl_func_glUniformMatrix4x3fv* fgl_glUniformMatrix4x3fv = fgl_null;
 #		endif //GL_VERSION_2_1
 
 #		if GL_VERSION_3_0
-			fgl_api fgl_func_glColorMaski* fgl_glColorMaski = fgl_null;
-			fgl_api fgl_func_glGetBooleani_v* fgl_glGetBooleani_v = fgl_null;
-			fgl_api fgl_func_glGetIntegeri_v* fgl_glGetIntegeri_v = fgl_null;
-			fgl_api fgl_func_glEnablei* fgl_glEnablei = fgl_null;
-			fgl_api fgl_func_glDisablei* fgl_glDisablei = fgl_null;
-			fgl_api fgl_func_glIsEnabledi* fgl_glIsEnabledi = fgl_null;
-			fgl_api fgl_func_glBeginTransformFeedback* fgl_glBeginTransformFeedback = fgl_null;
-			fgl_api fgl_func_glEndTransformFeedback* fgl_glEndTransformFeedback = fgl_null;
-			fgl_api fgl_func_glBindBufferRange* fgl_glBindBufferRange = fgl_null;
-			fgl_api fgl_func_glBindBufferBase* fgl_glBindBufferBase = fgl_null;
-			fgl_api fgl_func_glTransformFeedbackVaryings* fgl_glTransformFeedbackVaryings = fgl_null;
-			fgl_api fgl_func_glGetTransformFeedbackVarying* fgl_glGetTransformFeedbackVarying = fgl_null;
-			fgl_api fgl_func_glClampColor* fgl_glClampColor = fgl_null;
-			fgl_api fgl_func_glBeginConditionalRender* fgl_glBeginConditionalRender = fgl_null;
-			fgl_api fgl_func_glEndConditionalRender* fgl_glEndConditionalRender = fgl_null;
-			fgl_api fgl_func_glVertexAttribIPointer* fgl_glVertexAttribIPointer = fgl_null;
-			fgl_api fgl_func_glGetVertexAttribIiv* fgl_glGetVertexAttribIiv = fgl_null;
-			fgl_api fgl_func_glGetVertexAttribIuiv* fgl_glGetVertexAttribIuiv = fgl_null;
-			fgl_api fgl_func_glVertexAttribI1i* fgl_glVertexAttribI1i = fgl_null;
-			fgl_api fgl_func_glVertexAttribI2i* fgl_glVertexAttribI2i = fgl_null;
-			fgl_api fgl_func_glVertexAttribI3i* fgl_glVertexAttribI3i = fgl_null;
-			fgl_api fgl_func_glVertexAttribI4i* fgl_glVertexAttribI4i = fgl_null;
-			fgl_api fgl_func_glVertexAttribI1ui* fgl_glVertexAttribI1ui = fgl_null;
-			fgl_api fgl_func_glVertexAttribI2ui* fgl_glVertexAttribI2ui = fgl_null;
-			fgl_api fgl_func_glVertexAttribI3ui* fgl_glVertexAttribI3ui = fgl_null;
-			fgl_api fgl_func_glVertexAttribI4ui* fgl_glVertexAttribI4ui = fgl_null;
-			fgl_api fgl_func_glVertexAttribI1iv* fgl_glVertexAttribI1iv = fgl_null;
-			fgl_api fgl_func_glVertexAttribI2iv* fgl_glVertexAttribI2iv = fgl_null;
-			fgl_api fgl_func_glVertexAttribI3iv* fgl_glVertexAttribI3iv = fgl_null;
-			fgl_api fgl_func_glVertexAttribI4iv* fgl_glVertexAttribI4iv = fgl_null;
-			fgl_api fgl_func_glVertexAttribI1uiv* fgl_glVertexAttribI1uiv = fgl_null;
-			fgl_api fgl_func_glVertexAttribI2uiv* fgl_glVertexAttribI2uiv = fgl_null;
-			fgl_api fgl_func_glVertexAttribI3uiv* fgl_glVertexAttribI3uiv = fgl_null;
-			fgl_api fgl_func_glVertexAttribI4uiv* fgl_glVertexAttribI4uiv = fgl_null;
-			fgl_api fgl_func_glVertexAttribI4bv* fgl_glVertexAttribI4bv = fgl_null;
-			fgl_api fgl_func_glVertexAttribI4sv* fgl_glVertexAttribI4sv = fgl_null;
-			fgl_api fgl_func_glVertexAttribI4ubv* fgl_glVertexAttribI4ubv = fgl_null;
-			fgl_api fgl_func_glVertexAttribI4usv* fgl_glVertexAttribI4usv = fgl_null;
-			fgl_api fgl_func_glGetUniformuiv* fgl_glGetUniformuiv = fgl_null;
-			fgl_api fgl_func_glBindFragDataLocation* fgl_glBindFragDataLocation = fgl_null;
-			fgl_api fgl_func_glGetFragDataLocation* fgl_glGetFragDataLocation = fgl_null;
-			fgl_api fgl_func_glUniform1ui* fgl_glUniform1ui = fgl_null;
-			fgl_api fgl_func_glUniform2ui* fgl_glUniform2ui = fgl_null;
-			fgl_api fgl_func_glUniform3ui* fgl_glUniform3ui = fgl_null;
-			fgl_api fgl_func_glUniform4ui* fgl_glUniform4ui = fgl_null;
-			fgl_api fgl_func_glUniform1uiv* fgl_glUniform1uiv = fgl_null;
-			fgl_api fgl_func_glUniform2uiv* fgl_glUniform2uiv = fgl_null;
-			fgl_api fgl_func_glUniform3uiv* fgl_glUniform3uiv = fgl_null;
-			fgl_api fgl_func_glUniform4uiv* fgl_glUniform4uiv = fgl_null;
-			fgl_api fgl_func_glTexParameterIiv* fgl_glTexParameterIiv = fgl_null;
-			fgl_api fgl_func_glTexParameterIuiv* fgl_glTexParameterIuiv = fgl_null;
-			fgl_api fgl_func_glGetTexParameterIiv* fgl_glGetTexParameterIiv = fgl_null;
-			fgl_api fgl_func_glGetTexParameterIuiv* fgl_glGetTexParameterIuiv = fgl_null;
-			fgl_api fgl_func_glClearBufferiv* fgl_glClearBufferiv = fgl_null;
-			fgl_api fgl_func_glClearBufferuiv* fgl_glClearBufferuiv = fgl_null;
-			fgl_api fgl_func_glClearBufferfv* fgl_glClearBufferfv = fgl_null;
-			fgl_api fgl_func_glClearBufferfi* fgl_glClearBufferfi = fgl_null;
-			fgl_api fgl_func_glGetStringi* fgl_glGetStringi = fgl_null;
-			fgl_api fgl_func_glIsRenderbuffer* fgl_glIsRenderbuffer = fgl_null;
-			fgl_api fgl_func_glBindRenderbuffer* fgl_glBindRenderbuffer = fgl_null;
-			fgl_api fgl_func_glDeleteRenderbuffers* fgl_glDeleteRenderbuffers = fgl_null;
-			fgl_api fgl_func_glGenRenderbuffers* fgl_glGenRenderbuffers = fgl_null;
-			fgl_api fgl_func_glRenderbufferStorage* fgl_glRenderbufferStorage = fgl_null;
-			fgl_api fgl_func_glGetRenderbufferParameteriv* fgl_glGetRenderbufferParameteriv = fgl_null;
-			fgl_api fgl_func_glIsFramebuffer* fgl_glIsFramebuffer = fgl_null;
-			fgl_api fgl_func_glBindFramebuffer* fgl_glBindFramebuffer = fgl_null;
-			fgl_api fgl_func_glDeleteFramebuffers* fgl_glDeleteFramebuffers = fgl_null;
-			fgl_api fgl_func_glGenFramebuffers* fgl_glGenFramebuffers = fgl_null;
-			fgl_api fgl_func_glCheckFramebufferStatus* fgl_glCheckFramebufferStatus = fgl_null;
-			fgl_api fgl_func_glFramebufferTexture1D* fgl_glFramebufferTexture1D = fgl_null;
-			fgl_api fgl_func_glFramebufferTexture2D* fgl_glFramebufferTexture2D = fgl_null;
-			fgl_api fgl_func_glFramebufferTexture3D* fgl_glFramebufferTexture3D = fgl_null;
-			fgl_api fgl_func_glFramebufferRenderbuffer* fgl_glFramebufferRenderbuffer = fgl_null;
-			fgl_api fgl_func_glGetFramebufferAttachmentParameteriv* fgl_glGetFramebufferAttachmentParameteriv = fgl_null;
-			fgl_api fgl_func_glGenerateMipmap* fgl_glGenerateMipmap = fgl_null;
-			fgl_api fgl_func_glBlitFramebuffer* fgl_glBlitFramebuffer = fgl_null;
-			fgl_api fgl_func_glRenderbufferStorageMultisample* fgl_glRenderbufferStorageMultisample = fgl_null;
-			fgl_api fgl_func_glFramebufferTextureLayer* fgl_glFramebufferTextureLayer = fgl_null;
-			fgl_api fgl_func_glMapBufferRange* fgl_glMapBufferRange = fgl_null;
-			fgl_api fgl_func_glFlushMappedBufferRange* fgl_glFlushMappedBufferRange = fgl_null;
-			fgl_api fgl_func_glBindVertexArray* fgl_glBindVertexArray = fgl_null;
-			fgl_api fgl_func_glDeleteVertexArrays* fgl_glDeleteVertexArrays = fgl_null;
-			fgl_api fgl_func_glGenVertexArrays* fgl_glGenVertexArrays = fgl_null;
-			fgl_api fgl_func_glIsVertexArray* fgl_glIsVertexArray = fgl_null;
+			fgl_func_glColorMaski* fgl_glColorMaski = fgl_null;
+			fgl_func_glGetBooleani_v* fgl_glGetBooleani_v = fgl_null;
+			fgl_func_glGetIntegeri_v* fgl_glGetIntegeri_v = fgl_null;
+			fgl_func_glEnablei* fgl_glEnablei = fgl_null;
+			fgl_func_glDisablei* fgl_glDisablei = fgl_null;
+			fgl_func_glIsEnabledi* fgl_glIsEnabledi = fgl_null;
+			fgl_func_glBeginTransformFeedback* fgl_glBeginTransformFeedback = fgl_null;
+			fgl_func_glEndTransformFeedback* fgl_glEndTransformFeedback = fgl_null;
+			fgl_func_glBindBufferRange* fgl_glBindBufferRange = fgl_null;
+			fgl_func_glBindBufferBase* fgl_glBindBufferBase = fgl_null;
+			fgl_func_glTransformFeedbackVaryings* fgl_glTransformFeedbackVaryings = fgl_null;
+			fgl_func_glGetTransformFeedbackVarying* fgl_glGetTransformFeedbackVarying = fgl_null;
+			fgl_func_glClampColor* fgl_glClampColor = fgl_null;
+			fgl_func_glBeginConditionalRender* fgl_glBeginConditionalRender = fgl_null;
+			fgl_func_glEndConditionalRender* fgl_glEndConditionalRender = fgl_null;
+			fgl_func_glVertexAttribIPointer* fgl_glVertexAttribIPointer = fgl_null;
+			fgl_func_glGetVertexAttribIiv* fgl_glGetVertexAttribIiv = fgl_null;
+			fgl_func_glGetVertexAttribIuiv* fgl_glGetVertexAttribIuiv = fgl_null;
+			fgl_func_glVertexAttribI1i* fgl_glVertexAttribI1i = fgl_null;
+			fgl_func_glVertexAttribI2i* fgl_glVertexAttribI2i = fgl_null;
+			fgl_func_glVertexAttribI3i* fgl_glVertexAttribI3i = fgl_null;
+			fgl_func_glVertexAttribI4i* fgl_glVertexAttribI4i = fgl_null;
+			fgl_func_glVertexAttribI1ui* fgl_glVertexAttribI1ui = fgl_null;
+			fgl_func_glVertexAttribI2ui* fgl_glVertexAttribI2ui = fgl_null;
+			fgl_func_glVertexAttribI3ui* fgl_glVertexAttribI3ui = fgl_null;
+			fgl_func_glVertexAttribI4ui* fgl_glVertexAttribI4ui = fgl_null;
+			fgl_func_glVertexAttribI1iv* fgl_glVertexAttribI1iv = fgl_null;
+			fgl_func_glVertexAttribI2iv* fgl_glVertexAttribI2iv = fgl_null;
+			fgl_func_glVertexAttribI3iv* fgl_glVertexAttribI3iv = fgl_null;
+			fgl_func_glVertexAttribI4iv* fgl_glVertexAttribI4iv = fgl_null;
+			fgl_func_glVertexAttribI1uiv* fgl_glVertexAttribI1uiv = fgl_null;
+			fgl_func_glVertexAttribI2uiv* fgl_glVertexAttribI2uiv = fgl_null;
+			fgl_func_glVertexAttribI3uiv* fgl_glVertexAttribI3uiv = fgl_null;
+			fgl_func_glVertexAttribI4uiv* fgl_glVertexAttribI4uiv = fgl_null;
+			fgl_func_glVertexAttribI4bv* fgl_glVertexAttribI4bv = fgl_null;
+			fgl_func_glVertexAttribI4sv* fgl_glVertexAttribI4sv = fgl_null;
+			fgl_func_glVertexAttribI4ubv* fgl_glVertexAttribI4ubv = fgl_null;
+			fgl_func_glVertexAttribI4usv* fgl_glVertexAttribI4usv = fgl_null;
+			fgl_func_glGetUniformuiv* fgl_glGetUniformuiv = fgl_null;
+			fgl_func_glBindFragDataLocation* fgl_glBindFragDataLocation = fgl_null;
+			fgl_func_glGetFragDataLocation* fgl_glGetFragDataLocation = fgl_null;
+			fgl_func_glUniform1ui* fgl_glUniform1ui = fgl_null;
+			fgl_func_glUniform2ui* fgl_glUniform2ui = fgl_null;
+			fgl_func_glUniform3ui* fgl_glUniform3ui = fgl_null;
+			fgl_func_glUniform4ui* fgl_glUniform4ui = fgl_null;
+			fgl_func_glUniform1uiv* fgl_glUniform1uiv = fgl_null;
+			fgl_func_glUniform2uiv* fgl_glUniform2uiv = fgl_null;
+			fgl_func_glUniform3uiv* fgl_glUniform3uiv = fgl_null;
+			fgl_func_glUniform4uiv* fgl_glUniform4uiv = fgl_null;
+			fgl_func_glTexParameterIiv* fgl_glTexParameterIiv = fgl_null;
+			fgl_func_glTexParameterIuiv* fgl_glTexParameterIuiv = fgl_null;
+			fgl_func_glGetTexParameterIiv* fgl_glGetTexParameterIiv = fgl_null;
+			fgl_func_glGetTexParameterIuiv* fgl_glGetTexParameterIuiv = fgl_null;
+			fgl_func_glClearBufferiv* fgl_glClearBufferiv = fgl_null;
+			fgl_func_glClearBufferuiv* fgl_glClearBufferuiv = fgl_null;
+			fgl_func_glClearBufferfv* fgl_glClearBufferfv = fgl_null;
+			fgl_func_glClearBufferfi* fgl_glClearBufferfi = fgl_null;
+			fgl_func_glGetStringi* fgl_glGetStringi = fgl_null;
+			fgl_func_glIsRenderbuffer* fgl_glIsRenderbuffer = fgl_null;
+			fgl_func_glBindRenderbuffer* fgl_glBindRenderbuffer = fgl_null;
+			fgl_func_glDeleteRenderbuffers* fgl_glDeleteRenderbuffers = fgl_null;
+			fgl_func_glGenRenderbuffers* fgl_glGenRenderbuffers = fgl_null;
+			fgl_func_glRenderbufferStorage* fgl_glRenderbufferStorage = fgl_null;
+			fgl_func_glGetRenderbufferParameteriv* fgl_glGetRenderbufferParameteriv = fgl_null;
+			fgl_func_glIsFramebuffer* fgl_glIsFramebuffer = fgl_null;
+			fgl_func_glBindFramebuffer* fgl_glBindFramebuffer = fgl_null;
+			fgl_func_glDeleteFramebuffers* fgl_glDeleteFramebuffers = fgl_null;
+			fgl_func_glGenFramebuffers* fgl_glGenFramebuffers = fgl_null;
+			fgl_func_glCheckFramebufferStatus* fgl_glCheckFramebufferStatus = fgl_null;
+			fgl_func_glFramebufferTexture1D* fgl_glFramebufferTexture1D = fgl_null;
+			fgl_func_glFramebufferTexture2D* fgl_glFramebufferTexture2D = fgl_null;
+			fgl_func_glFramebufferTexture3D* fgl_glFramebufferTexture3D = fgl_null;
+			fgl_func_glFramebufferRenderbuffer* fgl_glFramebufferRenderbuffer = fgl_null;
+			fgl_func_glGetFramebufferAttachmentParameteriv* fgl_glGetFramebufferAttachmentParameteriv = fgl_null;
+			fgl_func_glGenerateMipmap* fgl_glGenerateMipmap = fgl_null;
+			fgl_func_glBlitFramebuffer* fgl_glBlitFramebuffer = fgl_null;
+			fgl_func_glRenderbufferStorageMultisample* fgl_glRenderbufferStorageMultisample = fgl_null;
+			fgl_func_glFramebufferTextureLayer* fgl_glFramebufferTextureLayer = fgl_null;
+			fgl_func_glMapBufferRange* fgl_glMapBufferRange = fgl_null;
+			fgl_func_glFlushMappedBufferRange* fgl_glFlushMappedBufferRange = fgl_null;
+			fgl_func_glBindVertexArray* fgl_glBindVertexArray = fgl_null;
+			fgl_func_glDeleteVertexArrays* fgl_glDeleteVertexArrays = fgl_null;
+			fgl_func_glGenVertexArrays* fgl_glGenVertexArrays = fgl_null;
+			fgl_func_glIsVertexArray* fgl_glIsVertexArray = fgl_null;
 #		endif //GL_VERSION_3_0
 
 #		if GL_VERSION_3_1
-			fgl_api fgl_func_glDrawArraysInstanced* fgl_glDrawArraysInstanced = fgl_null;
-			fgl_api fgl_func_glDrawElementsInstanced* fgl_glDrawElementsInstanced = fgl_null;
-			fgl_api fgl_func_glTexBuffer* fgl_glTexBuffer = fgl_null;
-			fgl_api fgl_func_glPrimitiveRestartIndex* fgl_glPrimitiveRestartIndex = fgl_null;
-			fgl_api fgl_func_glCopyBufferSubData* fgl_glCopyBufferSubData = fgl_null;
-			fgl_api fgl_func_glGetUniformIndices* fgl_glGetUniformIndices = fgl_null;
-			fgl_api fgl_func_glGetActiveUniformsiv* fgl_glGetActiveUniformsiv = fgl_null;
-			fgl_api fgl_func_glGetActiveUniformName* fgl_glGetActiveUniformName = fgl_null;
-			fgl_api fgl_func_glGetUniformBlockIndex* fgl_glGetUniformBlockIndex = fgl_null;
-			fgl_api fgl_func_glGetActiveUniformBlockiv* fgl_glGetActiveUniformBlockiv = fgl_null;
-			fgl_api fgl_func_glGetActiveUniformBlockName* fgl_glGetActiveUniformBlockName = fgl_null;
-			fgl_api fgl_func_glUniformBlockBinding* fgl_glUniformBlockBinding = fgl_null;
+			fgl_func_glDrawArraysInstanced* fgl_glDrawArraysInstanced = fgl_null;
+			fgl_func_glDrawElementsInstanced* fgl_glDrawElementsInstanced = fgl_null;
+			fgl_func_glTexBuffer* fgl_glTexBuffer = fgl_null;
+			fgl_func_glPrimitiveRestartIndex* fgl_glPrimitiveRestartIndex = fgl_null;
+			fgl_func_glCopyBufferSubData* fgl_glCopyBufferSubData = fgl_null;
+			fgl_func_glGetUniformIndices* fgl_glGetUniformIndices = fgl_null;
+			fgl_func_glGetActiveUniformsiv* fgl_glGetActiveUniformsiv = fgl_null;
+			fgl_func_glGetActiveUniformName* fgl_glGetActiveUniformName = fgl_null;
+			fgl_func_glGetUniformBlockIndex* fgl_glGetUniformBlockIndex = fgl_null;
+			fgl_func_glGetActiveUniformBlockiv* fgl_glGetActiveUniformBlockiv = fgl_null;
+			fgl_func_glGetActiveUniformBlockName* fgl_glGetActiveUniformBlockName = fgl_null;
+			fgl_func_glUniformBlockBinding* fgl_glUniformBlockBinding = fgl_null;
 #		endif //GL_VERSION_3_1
 
 #		if GL_VERSION_3_2
-			fgl_api fgl_func_glDrawElementsBaseVertex* fgl_glDrawElementsBaseVertex = fgl_null;
-			fgl_api fgl_func_glDrawRangeElementsBaseVertex* fgl_glDrawRangeElementsBaseVertex = fgl_null;
-			fgl_api fgl_func_glDrawElementsInstancedBaseVertex* fgl_glDrawElementsInstancedBaseVertex = fgl_null;
-			fgl_api fgl_func_glMultiDrawElementsBaseVertex* fgl_glMultiDrawElementsBaseVertex = fgl_null;
-			fgl_api fgl_func_glProvokingVertex* fgl_glProvokingVertex = fgl_null;
-			fgl_api fgl_func_glFenceSync* fgl_glFenceSync = fgl_null;
-			fgl_api fgl_func_glIsSync* fgl_glIsSync = fgl_null;
-			fgl_api fgl_func_glDeleteSync* fgl_glDeleteSync = fgl_null;
-			fgl_api fgl_func_glClientWaitSync* fgl_glClientWaitSync = fgl_null;
-			fgl_api fgl_func_glWaitSync* fgl_glWaitSync = fgl_null;
-			fgl_api fgl_func_glGetInteger64v* fgl_glGetInteger64v = fgl_null;
-			fgl_api fgl_func_glGetSynciv* fgl_glGetSynciv = fgl_null;
-			fgl_api fgl_func_glGetInteger64i_v* fgl_glGetInteger64i_v = fgl_null;
-			fgl_api fgl_func_glGetBufferParameteri64v* fgl_glGetBufferParameteri64v = fgl_null;
-			fgl_api fgl_func_glFramebufferTexture* fgl_glFramebufferTexture = fgl_null;
-			fgl_api fgl_func_glTexImage2DMultisample* fgl_glTexImage2DMultisample = fgl_null;
-			fgl_api fgl_func_glTexImage3DMultisample* fgl_glTexImage3DMultisample = fgl_null;
-			fgl_api fgl_func_glGetMultisamplefv* fgl_glGetMultisamplefv = fgl_null;
-			fgl_api fgl_func_glSampleMaski* fgl_glSampleMaski = fgl_null;
+			fgl_func_glDrawElementsBaseVertex* fgl_glDrawElementsBaseVertex = fgl_null;
+			fgl_func_glDrawRangeElementsBaseVertex* fgl_glDrawRangeElementsBaseVertex = fgl_null;
+			fgl_func_glDrawElementsInstancedBaseVertex* fgl_glDrawElementsInstancedBaseVertex = fgl_null;
+			fgl_func_glMultiDrawElementsBaseVertex* fgl_glMultiDrawElementsBaseVertex = fgl_null;
+			fgl_func_glProvokingVertex* fgl_glProvokingVertex = fgl_null;
+			fgl_func_glFenceSync* fgl_glFenceSync = fgl_null;
+			fgl_func_glIsSync* fgl_glIsSync = fgl_null;
+			fgl_func_glDeleteSync* fgl_glDeleteSync = fgl_null;
+			fgl_func_glClientWaitSync* fgl_glClientWaitSync = fgl_null;
+			fgl_func_glWaitSync* fgl_glWaitSync = fgl_null;
+			fgl_func_glGetInteger64v* fgl_glGetInteger64v = fgl_null;
+			fgl_func_glGetSynciv* fgl_glGetSynciv = fgl_null;
+			fgl_func_glGetInteger64i_v* fgl_glGetInteger64i_v = fgl_null;
+			fgl_func_glGetBufferParameteri64v* fgl_glGetBufferParameteri64v = fgl_null;
+			fgl_func_glFramebufferTexture* fgl_glFramebufferTexture = fgl_null;
+			fgl_func_glTexImage2DMultisample* fgl_glTexImage2DMultisample = fgl_null;
+			fgl_func_glTexImage3DMultisample* fgl_glTexImage3DMultisample = fgl_null;
+			fgl_func_glGetMultisamplefv* fgl_glGetMultisamplefv = fgl_null;
+			fgl_func_glSampleMaski* fgl_glSampleMaski = fgl_null;
 #		endif //GL_VERSION_3_2
 
 #		if GL_VERSION_3_3
-			fgl_api fgl_func_glBindFragDataLocationIndexed* fgl_glBindFragDataLocationIndexed = fgl_null;
-			fgl_api fgl_func_glGetFragDataIndex* fgl_glGetFragDataIndex = fgl_null;
-			fgl_api fgl_func_glGenSamplers* fgl_glGenSamplers = fgl_null;
-			fgl_api fgl_func_glDeleteSamplers* fgl_glDeleteSamplers = fgl_null;
-			fgl_api fgl_func_glIsSampler* fgl_glIsSampler = fgl_null;
-			fgl_api fgl_func_glBindSampler* fgl_glBindSampler = fgl_null;
-			fgl_api fgl_func_glSamplerParameteri* fgl_glSamplerParameteri = fgl_null;
-			fgl_api fgl_func_glSamplerParameteriv* fgl_glSamplerParameteriv = fgl_null;
-			fgl_api fgl_func_glSamplerParameterf* fgl_glSamplerParameterf = fgl_null;
-			fgl_api fgl_func_glSamplerParameterfv* fgl_glSamplerParameterfv = fgl_null;
-			fgl_api fgl_func_glSamplerParameterIiv* fgl_glSamplerParameterIiv = fgl_null;
-			fgl_api fgl_func_glSamplerParameterIuiv* fgl_glSamplerParameterIuiv = fgl_null;
-			fgl_api fgl_func_glGetSamplerParameteriv* fgl_glGetSamplerParameteriv = fgl_null;
-			fgl_api fgl_func_glGetSamplerParameterIiv* fgl_glGetSamplerParameterIiv = fgl_null;
-			fgl_api fgl_func_glGetSamplerParameterfv* fgl_glGetSamplerParameterfv = fgl_null;
-			fgl_api fgl_func_glGetSamplerParameterIuiv* fgl_glGetSamplerParameterIuiv = fgl_null;
-			fgl_api fgl_func_glQueryCounter* fgl_glQueryCounter = fgl_null;
-			fgl_api fgl_func_glGetQueryObjecti64v* fgl_glGetQueryObjecti64v = fgl_null;
-			fgl_api fgl_func_glGetQueryObjectui64v* fgl_glGetQueryObjectui64v = fgl_null;
-			fgl_api fgl_func_glVertexAttribDivisor* fgl_glVertexAttribDivisor = fgl_null;
-			fgl_api fgl_func_glVertexAttribP1ui* fgl_glVertexAttribP1ui = fgl_null;
-			fgl_api fgl_func_glVertexAttribP1uiv* fgl_glVertexAttribP1uiv = fgl_null;
-			fgl_api fgl_func_glVertexAttribP2ui* fgl_glVertexAttribP2ui = fgl_null;
-			fgl_api fgl_func_glVertexAttribP2uiv* fgl_glVertexAttribP2uiv = fgl_null;
-			fgl_api fgl_func_glVertexAttribP3ui* fgl_glVertexAttribP3ui = fgl_null;
-			fgl_api fgl_func_glVertexAttribP3uiv* fgl_glVertexAttribP3uiv = fgl_null;
-			fgl_api fgl_func_glVertexAttribP4ui* fgl_glVertexAttribP4ui = fgl_null;
-			fgl_api fgl_func_glVertexAttribP4uiv* fgl_glVertexAttribP4uiv = fgl_null;
-			fgl_api fgl_func_glVertexP2ui* fgl_glVertexP2ui = fgl_null;
-			fgl_api fgl_func_glVertexP2uiv* fgl_glVertexP2uiv = fgl_null;
-			fgl_api fgl_func_glVertexP3ui* fgl_glVertexP3ui = fgl_null;
-			fgl_api fgl_func_glVertexP3uiv* fgl_glVertexP3uiv = fgl_null;
-			fgl_api fgl_func_glVertexP4ui* fgl_glVertexP4ui = fgl_null;
-			fgl_api fgl_func_glVertexP4uiv* fgl_glVertexP4uiv = fgl_null;
-			fgl_api fgl_func_glTexCoordP1ui* fgl_glTexCoordP1ui = fgl_null;
-			fgl_api fgl_func_glTexCoordP1uiv* fgl_glTexCoordP1uiv = fgl_null;
-			fgl_api fgl_func_glTexCoordP2ui* fgl_glTexCoordP2ui = fgl_null;
-			fgl_api fgl_func_glTexCoordP2uiv* fgl_glTexCoordP2uiv = fgl_null;
-			fgl_api fgl_func_glTexCoordP3ui* fgl_glTexCoordP3ui = fgl_null;
-			fgl_api fgl_func_glTexCoordP3uiv* fgl_glTexCoordP3uiv = fgl_null;
-			fgl_api fgl_func_glTexCoordP4ui* fgl_glTexCoordP4ui = fgl_null;
-			fgl_api fgl_func_glTexCoordP4uiv* fgl_glTexCoordP4uiv = fgl_null;
-			fgl_api fgl_func_glMultiTexCoordP1ui* fgl_glMultiTexCoordP1ui = fgl_null;
-			fgl_api fgl_func_glMultiTexCoordP1uiv* fgl_glMultiTexCoordP1uiv = fgl_null;
-			fgl_api fgl_func_glMultiTexCoordP2ui* fgl_glMultiTexCoordP2ui = fgl_null;
-			fgl_api fgl_func_glMultiTexCoordP2uiv* fgl_glMultiTexCoordP2uiv = fgl_null;
-			fgl_api fgl_func_glMultiTexCoordP3ui* fgl_glMultiTexCoordP3ui = fgl_null;
-			fgl_api fgl_func_glMultiTexCoordP3uiv* fgl_glMultiTexCoordP3uiv = fgl_null;
-			fgl_api fgl_func_glMultiTexCoordP4ui* fgl_glMultiTexCoordP4ui = fgl_null;
-			fgl_api fgl_func_glMultiTexCoordP4uiv* fgl_glMultiTexCoordP4uiv = fgl_null;
-			fgl_api fgl_func_glNormalP3ui* fgl_glNormalP3ui = fgl_null;
-			fgl_api fgl_func_glNormalP3uiv* fgl_glNormalP3uiv = fgl_null;
-			fgl_api fgl_func_glColorP3ui* fgl_glColorP3ui = fgl_null;
-			fgl_api fgl_func_glColorP3uiv* fgl_glColorP3uiv = fgl_null;
-			fgl_api fgl_func_glColorP4ui* fgl_glColorP4ui = fgl_null;
-			fgl_api fgl_func_glColorP4uiv* fgl_glColorP4uiv = fgl_null;
-			fgl_api fgl_func_glSecondaryColorP3ui* fgl_glSecondaryColorP3ui = fgl_null;
-			fgl_api fgl_func_glSecondaryColorP3uiv* fgl_glSecondaryColorP3uiv = fgl_null;
+			fgl_func_glBindFragDataLocationIndexed* fgl_glBindFragDataLocationIndexed = fgl_null;
+			fgl_func_glGetFragDataIndex* fgl_glGetFragDataIndex = fgl_null;
+			fgl_func_glGenSamplers* fgl_glGenSamplers = fgl_null;
+			fgl_func_glDeleteSamplers* fgl_glDeleteSamplers = fgl_null;
+			fgl_func_glIsSampler* fgl_glIsSampler = fgl_null;
+			fgl_func_glBindSampler* fgl_glBindSampler = fgl_null;
+			fgl_func_glSamplerParameteri* fgl_glSamplerParameteri = fgl_null;
+			fgl_func_glSamplerParameteriv* fgl_glSamplerParameteriv = fgl_null;
+			fgl_func_glSamplerParameterf* fgl_glSamplerParameterf = fgl_null;
+			fgl_func_glSamplerParameterfv* fgl_glSamplerParameterfv = fgl_null;
+			fgl_func_glSamplerParameterIiv* fgl_glSamplerParameterIiv = fgl_null;
+			fgl_func_glSamplerParameterIuiv* fgl_glSamplerParameterIuiv = fgl_null;
+			fgl_func_glGetSamplerParameteriv* fgl_glGetSamplerParameteriv = fgl_null;
+			fgl_func_glGetSamplerParameterIiv* fgl_glGetSamplerParameterIiv = fgl_null;
+			fgl_func_glGetSamplerParameterfv* fgl_glGetSamplerParameterfv = fgl_null;
+			fgl_func_glGetSamplerParameterIuiv* fgl_glGetSamplerParameterIuiv = fgl_null;
+			fgl_func_glQueryCounter* fgl_glQueryCounter = fgl_null;
+			fgl_func_glGetQueryObjecti64v* fgl_glGetQueryObjecti64v = fgl_null;
+			fgl_func_glGetQueryObjectui64v* fgl_glGetQueryObjectui64v = fgl_null;
+			fgl_func_glVertexAttribDivisor* fgl_glVertexAttribDivisor = fgl_null;
+			fgl_func_glVertexAttribP1ui* fgl_glVertexAttribP1ui = fgl_null;
+			fgl_func_glVertexAttribP1uiv* fgl_glVertexAttribP1uiv = fgl_null;
+			fgl_func_glVertexAttribP2ui* fgl_glVertexAttribP2ui = fgl_null;
+			fgl_func_glVertexAttribP2uiv* fgl_glVertexAttribP2uiv = fgl_null;
+			fgl_func_glVertexAttribP3ui* fgl_glVertexAttribP3ui = fgl_null;
+			fgl_func_glVertexAttribP3uiv* fgl_glVertexAttribP3uiv = fgl_null;
+			fgl_func_glVertexAttribP4ui* fgl_glVertexAttribP4ui = fgl_null;
+			fgl_func_glVertexAttribP4uiv* fgl_glVertexAttribP4uiv = fgl_null;
+			fgl_func_glVertexP2ui* fgl_glVertexP2ui = fgl_null;
+			fgl_func_glVertexP2uiv* fgl_glVertexP2uiv = fgl_null;
+			fgl_func_glVertexP3ui* fgl_glVertexP3ui = fgl_null;
+			fgl_func_glVertexP3uiv* fgl_glVertexP3uiv = fgl_null;
+			fgl_func_glVertexP4ui* fgl_glVertexP4ui = fgl_null;
+			fgl_func_glVertexP4uiv* fgl_glVertexP4uiv = fgl_null;
+			fgl_func_glTexCoordP1ui* fgl_glTexCoordP1ui = fgl_null;
+			fgl_func_glTexCoordP1uiv* fgl_glTexCoordP1uiv = fgl_null;
+			fgl_func_glTexCoordP2ui* fgl_glTexCoordP2ui = fgl_null;
+			fgl_func_glTexCoordP2uiv* fgl_glTexCoordP2uiv = fgl_null;
+			fgl_func_glTexCoordP3ui* fgl_glTexCoordP3ui = fgl_null;
+			fgl_func_glTexCoordP3uiv* fgl_glTexCoordP3uiv = fgl_null;
+			fgl_func_glTexCoordP4ui* fgl_glTexCoordP4ui = fgl_null;
+			fgl_func_glTexCoordP4uiv* fgl_glTexCoordP4uiv = fgl_null;
+			fgl_func_glMultiTexCoordP1ui* fgl_glMultiTexCoordP1ui = fgl_null;
+			fgl_func_glMultiTexCoordP1uiv* fgl_glMultiTexCoordP1uiv = fgl_null;
+			fgl_func_glMultiTexCoordP2ui* fgl_glMultiTexCoordP2ui = fgl_null;
+			fgl_func_glMultiTexCoordP2uiv* fgl_glMultiTexCoordP2uiv = fgl_null;
+			fgl_func_glMultiTexCoordP3ui* fgl_glMultiTexCoordP3ui = fgl_null;
+			fgl_func_glMultiTexCoordP3uiv* fgl_glMultiTexCoordP3uiv = fgl_null;
+			fgl_func_glMultiTexCoordP4ui* fgl_glMultiTexCoordP4ui = fgl_null;
+			fgl_func_glMultiTexCoordP4uiv* fgl_glMultiTexCoordP4uiv = fgl_null;
+			fgl_func_glNormalP3ui* fgl_glNormalP3ui = fgl_null;
+			fgl_func_glNormalP3uiv* fgl_glNormalP3uiv = fgl_null;
+			fgl_func_glColorP3ui* fgl_glColorP3ui = fgl_null;
+			fgl_func_glColorP3uiv* fgl_glColorP3uiv = fgl_null;
+			fgl_func_glColorP4ui* fgl_glColorP4ui = fgl_null;
+			fgl_func_glColorP4uiv* fgl_glColorP4uiv = fgl_null;
+			fgl_func_glSecondaryColorP3ui* fgl_glSecondaryColorP3ui = fgl_null;
+			fgl_func_glSecondaryColorP3uiv* fgl_glSecondaryColorP3uiv = fgl_null;
 #		endif //GL_VERSION_3_3
 
 #		if GL_VERSION_4_0
-			fgl_api fgl_func_glMinSampleShading* fgl_glMinSampleShading = fgl_null;
-			fgl_api fgl_func_glBlendEquationi* fgl_glBlendEquationi = fgl_null;
-			fgl_api fgl_func_glBlendEquationSeparatei* fgl_glBlendEquationSeparatei = fgl_null;
-			fgl_api fgl_func_glBlendFunci* fgl_glBlendFunci = fgl_null;
-			fgl_api fgl_func_glBlendFuncSeparatei* fgl_glBlendFuncSeparatei = fgl_null;
-			fgl_api fgl_func_glDrawArraysIndirect* fgl_glDrawArraysIndirect = fgl_null;
-			fgl_api fgl_func_glDrawElementsIndirect* fgl_glDrawElementsIndirect = fgl_null;
-			fgl_api fgl_func_glUniform1d* fgl_glUniform1d = fgl_null;
-			fgl_api fgl_func_glUniform2d* fgl_glUniform2d = fgl_null;
-			fgl_api fgl_func_glUniform3d* fgl_glUniform3d = fgl_null;
-			fgl_api fgl_func_glUniform4d* fgl_glUniform4d = fgl_null;
-			fgl_api fgl_func_glUniform1dv* fgl_glUniform1dv = fgl_null;
-			fgl_api fgl_func_glUniform2dv* fgl_glUniform2dv = fgl_null;
-			fgl_api fgl_func_glUniform3dv* fgl_glUniform3dv = fgl_null;
-			fgl_api fgl_func_glUniform4dv* fgl_glUniform4dv = fgl_null;
-			fgl_api fgl_func_glUniformMatrix2dv* fgl_glUniformMatrix2dv = fgl_null;
-			fgl_api fgl_func_glUniformMatrix3dv* fgl_glUniformMatrix3dv = fgl_null;
-			fgl_api fgl_func_glUniformMatrix4dv* fgl_glUniformMatrix4dv = fgl_null;
-			fgl_api fgl_func_glUniformMatrix2x3dv* fgl_glUniformMatrix2x3dv = fgl_null;
-			fgl_api fgl_func_glUniformMatrix2x4dv* fgl_glUniformMatrix2x4dv = fgl_null;
-			fgl_api fgl_func_glUniformMatrix3x2dv* fgl_glUniformMatrix3x2dv = fgl_null;
-			fgl_api fgl_func_glUniformMatrix3x4dv* fgl_glUniformMatrix3x4dv = fgl_null;
-			fgl_api fgl_func_glUniformMatrix4x2dv* fgl_glUniformMatrix4x2dv = fgl_null;
-			fgl_api fgl_func_glUniformMatrix4x3dv* fgl_glUniformMatrix4x3dv = fgl_null;
-			fgl_api fgl_func_glGetUniformdv* fgl_glGetUniformdv = fgl_null;
-			fgl_api fgl_func_glGetSubroutineUniformLocation* fgl_glGetSubroutineUniformLocation = fgl_null;
-			fgl_api fgl_func_glGetSubroutineIndex* fgl_glGetSubroutineIndex = fgl_null;
-			fgl_api fgl_func_glGetActiveSubroutineUniformiv* fgl_glGetActiveSubroutineUniformiv = fgl_null;
-			fgl_api fgl_func_glGetActiveSubroutineUniformName* fgl_glGetActiveSubroutineUniformName = fgl_null;
-			fgl_api fgl_func_glGetActiveSubroutineName* fgl_glGetActiveSubroutineName = fgl_null;
-			fgl_api fgl_func_glUniformSubroutinesuiv* fgl_glUniformSubroutinesuiv = fgl_null;
-			fgl_api fgl_func_glGetUniformSubroutineuiv* fgl_glGetUniformSubroutineuiv = fgl_null;
-			fgl_api fgl_func_glGetProgramStageiv* fgl_glGetProgramStageiv = fgl_null;
-			fgl_api fgl_func_glPatchParameteri* fgl_glPatchParameteri = fgl_null;
-			fgl_api fgl_func_glPatchParameterfv* fgl_glPatchParameterfv = fgl_null;
-			fgl_api fgl_func_glBindTransformFeedback* fgl_glBindTransformFeedback = fgl_null;
-			fgl_api fgl_func_glDeleteTransformFeedbacks* fgl_glDeleteTransformFeedbacks = fgl_null;
-			fgl_api fgl_func_glGenTransformFeedbacks* fgl_glGenTransformFeedbacks = fgl_null;
-			fgl_api fgl_func_glIsTransformFeedback* fgl_glIsTransformFeedback = fgl_null;
-			fgl_api fgl_func_glPauseTransformFeedback* fgl_glPauseTransformFeedback = fgl_null;
-			fgl_api fgl_func_glResumeTransformFeedback* fgl_glResumeTransformFeedback = fgl_null;
-			fgl_api fgl_func_glDrawTransformFeedback* fgl_glDrawTransformFeedback = fgl_null;
-			fgl_api fgl_func_glDrawTransformFeedbackStream* fgl_glDrawTransformFeedbackStream = fgl_null;
-			fgl_api fgl_func_glBeginQueryIndexed* fgl_glBeginQueryIndexed = fgl_null;
-			fgl_api fgl_func_glEndQueryIndexed* fgl_glEndQueryIndexed = fgl_null;
-			fgl_api fgl_func_glGetQueryIndexediv* fgl_glGetQueryIndexediv = fgl_null;
+			fgl_func_glMinSampleShading* fgl_glMinSampleShading = fgl_null;
+			fgl_func_glBlendEquationi* fgl_glBlendEquationi = fgl_null;
+			fgl_func_glBlendEquationSeparatei* fgl_glBlendEquationSeparatei = fgl_null;
+			fgl_func_glBlendFunci* fgl_glBlendFunci = fgl_null;
+			fgl_func_glBlendFuncSeparatei* fgl_glBlendFuncSeparatei = fgl_null;
+			fgl_func_glDrawArraysIndirect* fgl_glDrawArraysIndirect = fgl_null;
+			fgl_func_glDrawElementsIndirect* fgl_glDrawElementsIndirect = fgl_null;
+			fgl_func_glUniform1d* fgl_glUniform1d = fgl_null;
+			fgl_func_glUniform2d* fgl_glUniform2d = fgl_null;
+			fgl_func_glUniform3d* fgl_glUniform3d = fgl_null;
+			fgl_func_glUniform4d* fgl_glUniform4d = fgl_null;
+			fgl_func_glUniform1dv* fgl_glUniform1dv = fgl_null;
+			fgl_func_glUniform2dv* fgl_glUniform2dv = fgl_null;
+			fgl_func_glUniform3dv* fgl_glUniform3dv = fgl_null;
+			fgl_func_glUniform4dv* fgl_glUniform4dv = fgl_null;
+			fgl_func_glUniformMatrix2dv* fgl_glUniformMatrix2dv = fgl_null;
+			fgl_func_glUniformMatrix3dv* fgl_glUniformMatrix3dv = fgl_null;
+			fgl_func_glUniformMatrix4dv* fgl_glUniformMatrix4dv = fgl_null;
+			fgl_func_glUniformMatrix2x3dv* fgl_glUniformMatrix2x3dv = fgl_null;
+			fgl_func_glUniformMatrix2x4dv* fgl_glUniformMatrix2x4dv = fgl_null;
+			fgl_func_glUniformMatrix3x2dv* fgl_glUniformMatrix3x2dv = fgl_null;
+			fgl_func_glUniformMatrix3x4dv* fgl_glUniformMatrix3x4dv = fgl_null;
+			fgl_func_glUniformMatrix4x2dv* fgl_glUniformMatrix4x2dv = fgl_null;
+			fgl_func_glUniformMatrix4x3dv* fgl_glUniformMatrix4x3dv = fgl_null;
+			fgl_func_glGetUniformdv* fgl_glGetUniformdv = fgl_null;
+			fgl_func_glGetSubroutineUniformLocation* fgl_glGetSubroutineUniformLocation = fgl_null;
+			fgl_func_glGetSubroutineIndex* fgl_glGetSubroutineIndex = fgl_null;
+			fgl_func_glGetActiveSubroutineUniformiv* fgl_glGetActiveSubroutineUniformiv = fgl_null;
+			fgl_func_glGetActiveSubroutineUniformName* fgl_glGetActiveSubroutineUniformName = fgl_null;
+			fgl_func_glGetActiveSubroutineName* fgl_glGetActiveSubroutineName = fgl_null;
+			fgl_func_glUniformSubroutinesuiv* fgl_glUniformSubroutinesuiv = fgl_null;
+			fgl_func_glGetUniformSubroutineuiv* fgl_glGetUniformSubroutineuiv = fgl_null;
+			fgl_func_glGetProgramStageiv* fgl_glGetProgramStageiv = fgl_null;
+			fgl_func_glPatchParameteri* fgl_glPatchParameteri = fgl_null;
+			fgl_func_glPatchParameterfv* fgl_glPatchParameterfv = fgl_null;
+			fgl_func_glBindTransformFeedback* fgl_glBindTransformFeedback = fgl_null;
+			fgl_func_glDeleteTransformFeedbacks* fgl_glDeleteTransformFeedbacks = fgl_null;
+			fgl_func_glGenTransformFeedbacks* fgl_glGenTransformFeedbacks = fgl_null;
+			fgl_func_glIsTransformFeedback* fgl_glIsTransformFeedback = fgl_null;
+			fgl_func_glPauseTransformFeedback* fgl_glPauseTransformFeedback = fgl_null;
+			fgl_func_glResumeTransformFeedback* fgl_glResumeTransformFeedback = fgl_null;
+			fgl_func_glDrawTransformFeedback* fgl_glDrawTransformFeedback = fgl_null;
+			fgl_func_glDrawTransformFeedbackStream* fgl_glDrawTransformFeedbackStream = fgl_null;
+			fgl_func_glBeginQueryIndexed* fgl_glBeginQueryIndexed = fgl_null;
+			fgl_func_glEndQueryIndexed* fgl_glEndQueryIndexed = fgl_null;
+			fgl_func_glGetQueryIndexediv* fgl_glGetQueryIndexediv = fgl_null;
 #		endif //GL_VERSION_4_0
 
 #		if GL_VERSION_4_1
-			fgl_api fgl_func_glReleaseShaderCompiler* fgl_glReleaseShaderCompiler = fgl_null;
-			fgl_api fgl_func_glShaderBinary* fgl_glShaderBinary = fgl_null;
-			fgl_api fgl_func_glGetShaderPrecisionFormat* fgl_glGetShaderPrecisionFormat = fgl_null;
-			fgl_api fgl_func_glDepthRangef* fgl_glDepthRangef = fgl_null;
-			fgl_api fgl_func_glClearDepthf* fgl_glClearDepthf = fgl_null;
-			fgl_api fgl_func_glGetProgramBinary* fgl_glGetProgramBinary = fgl_null;
-			fgl_api fgl_func_glProgramBinary* fgl_glProgramBinary = fgl_null;
-			fgl_api fgl_func_glProgramParameteri* fgl_glProgramParameteri = fgl_null;
-			fgl_api fgl_func_glUseProgramStages* fgl_glUseProgramStages = fgl_null;
-			fgl_api fgl_func_glActiveShaderProgram* fgl_glActiveShaderProgram = fgl_null;
-			fgl_api fgl_func_glCreateShaderProgramv* fgl_glCreateShaderProgramv = fgl_null;
-			fgl_api fgl_func_glBindProgramPipeline* fgl_glBindProgramPipeline = fgl_null;
-			fgl_api fgl_func_glDeleteProgramPipelines* fgl_glDeleteProgramPipelines = fgl_null;
-			fgl_api fgl_func_glGenProgramPipelines* fgl_glGenProgramPipelines = fgl_null;
-			fgl_api fgl_func_glIsProgramPipeline* fgl_glIsProgramPipeline = fgl_null;
-			fgl_api fgl_func_glGetProgramPipelineiv* fgl_glGetProgramPipelineiv = fgl_null;
-			fgl_api fgl_func_glProgramUniform1i* fgl_glProgramUniform1i = fgl_null;
-			fgl_api fgl_func_glProgramUniform1iv* fgl_glProgramUniform1iv = fgl_null;
-			fgl_api fgl_func_glProgramUniform1f* fgl_glProgramUniform1f = fgl_null;
-			fgl_api fgl_func_glProgramUniform1fv* fgl_glProgramUniform1fv = fgl_null;
-			fgl_api fgl_func_glProgramUniform1d* fgl_glProgramUniform1d = fgl_null;
-			fgl_api fgl_func_glProgramUniform1dv* fgl_glProgramUniform1dv = fgl_null;
-			fgl_api fgl_func_glProgramUniform1ui* fgl_glProgramUniform1ui = fgl_null;
-			fgl_api fgl_func_glProgramUniform1uiv* fgl_glProgramUniform1uiv = fgl_null;
-			fgl_api fgl_func_glProgramUniform2i* fgl_glProgramUniform2i = fgl_null;
-			fgl_api fgl_func_glProgramUniform2iv* fgl_glProgramUniform2iv = fgl_null;
-			fgl_api fgl_func_glProgramUniform2f* fgl_glProgramUniform2f = fgl_null;
-			fgl_api fgl_func_glProgramUniform2fv* fgl_glProgramUniform2fv = fgl_null;
-			fgl_api fgl_func_glProgramUniform2d* fgl_glProgramUniform2d = fgl_null;
-			fgl_api fgl_func_glProgramUniform2dv* fgl_glProgramUniform2dv = fgl_null;
-			fgl_api fgl_func_glProgramUniform2ui* fgl_glProgramUniform2ui = fgl_null;
-			fgl_api fgl_func_glProgramUniform2uiv* fgl_glProgramUniform2uiv = fgl_null;
-			fgl_api fgl_func_glProgramUniform3i* fgl_glProgramUniform3i = fgl_null;
-			fgl_api fgl_func_glProgramUniform3iv* fgl_glProgramUniform3iv = fgl_null;
-			fgl_api fgl_func_glProgramUniform3f* fgl_glProgramUniform3f = fgl_null;
-			fgl_api fgl_func_glProgramUniform3fv* fgl_glProgramUniform3fv = fgl_null;
-			fgl_api fgl_func_glProgramUniform3d* fgl_glProgramUniform3d = fgl_null;
-			fgl_api fgl_func_glProgramUniform3dv* fgl_glProgramUniform3dv = fgl_null;
-			fgl_api fgl_func_glProgramUniform3ui* fgl_glProgramUniform3ui = fgl_null;
-			fgl_api fgl_func_glProgramUniform3uiv* fgl_glProgramUniform3uiv = fgl_null;
-			fgl_api fgl_func_glProgramUniform4i* fgl_glProgramUniform4i = fgl_null;
-			fgl_api fgl_func_glProgramUniform4iv* fgl_glProgramUniform4iv = fgl_null;
-			fgl_api fgl_func_glProgramUniform4f* fgl_glProgramUniform4f = fgl_null;
-			fgl_api fgl_func_glProgramUniform4fv* fgl_glProgramUniform4fv = fgl_null;
-			fgl_api fgl_func_glProgramUniform4d* fgl_glProgramUniform4d = fgl_null;
-			fgl_api fgl_func_glProgramUniform4dv* fgl_glProgramUniform4dv = fgl_null;
-			fgl_api fgl_func_glProgramUniform4ui* fgl_glProgramUniform4ui = fgl_null;
-			fgl_api fgl_func_glProgramUniform4uiv* fgl_glProgramUniform4uiv = fgl_null;
-			fgl_api fgl_func_glProgramUniformMatrix2fv* fgl_glProgramUniformMatrix2fv = fgl_null;
-			fgl_api fgl_func_glProgramUniformMatrix3fv* fgl_glProgramUniformMatrix3fv = fgl_null;
-			fgl_api fgl_func_glProgramUniformMatrix4fv* fgl_glProgramUniformMatrix4fv = fgl_null;
-			fgl_api fgl_func_glProgramUniformMatrix2dv* fgl_glProgramUniformMatrix2dv = fgl_null;
-			fgl_api fgl_func_glProgramUniformMatrix3dv* fgl_glProgramUniformMatrix3dv = fgl_null;
-			fgl_api fgl_func_glProgramUniformMatrix4dv* fgl_glProgramUniformMatrix4dv = fgl_null;
-			fgl_api fgl_func_glProgramUniformMatrix2x3fv* fgl_glProgramUniformMatrix2x3fv = fgl_null;
-			fgl_api fgl_func_glProgramUniformMatrix3x2fv* fgl_glProgramUniformMatrix3x2fv = fgl_null;
-			fgl_api fgl_func_glProgramUniformMatrix2x4fv* fgl_glProgramUniformMatrix2x4fv = fgl_null;
-			fgl_api fgl_func_glProgramUniformMatrix4x2fv* fgl_glProgramUniformMatrix4x2fv = fgl_null;
-			fgl_api fgl_func_glProgramUniformMatrix3x4fv* fgl_glProgramUniformMatrix3x4fv = fgl_null;
-			fgl_api fgl_func_glProgramUniformMatrix4x3fv* fgl_glProgramUniformMatrix4x3fv = fgl_null;
-			fgl_api fgl_func_glProgramUniformMatrix2x3dv* fgl_glProgramUniformMatrix2x3dv = fgl_null;
-			fgl_api fgl_func_glProgramUniformMatrix3x2dv* fgl_glProgramUniformMatrix3x2dv = fgl_null;
-			fgl_api fgl_func_glProgramUniformMatrix2x4dv* fgl_glProgramUniformMatrix2x4dv = fgl_null;
-			fgl_api fgl_func_glProgramUniformMatrix4x2dv* fgl_glProgramUniformMatrix4x2dv = fgl_null;
-			fgl_api fgl_func_glProgramUniformMatrix3x4dv* fgl_glProgramUniformMatrix3x4dv = fgl_null;
-			fgl_api fgl_func_glProgramUniformMatrix4x3dv* fgl_glProgramUniformMatrix4x3dv = fgl_null;
-			fgl_api fgl_func_glValidateProgramPipeline* fgl_glValidateProgramPipeline = fgl_null;
-			fgl_api fgl_func_glGetProgramPipelineInfoLog* fgl_glGetProgramPipelineInfoLog = fgl_null;
-			fgl_api fgl_func_glVertexAttribL1d* fgl_glVertexAttribL1d = fgl_null;
-			fgl_api fgl_func_glVertexAttribL2d* fgl_glVertexAttribL2d = fgl_null;
-			fgl_api fgl_func_glVertexAttribL3d* fgl_glVertexAttribL3d = fgl_null;
-			fgl_api fgl_func_glVertexAttribL4d* fgl_glVertexAttribL4d = fgl_null;
-			fgl_api fgl_func_glVertexAttribL1dv* fgl_glVertexAttribL1dv = fgl_null;
-			fgl_api fgl_func_glVertexAttribL2dv* fgl_glVertexAttribL2dv = fgl_null;
-			fgl_api fgl_func_glVertexAttribL3dv* fgl_glVertexAttribL3dv = fgl_null;
-			fgl_api fgl_func_glVertexAttribL4dv* fgl_glVertexAttribL4dv = fgl_null;
-			fgl_api fgl_func_glVertexAttribLPointer* fgl_glVertexAttribLPointer = fgl_null;
-			fgl_api fgl_func_glGetVertexAttribLdv* fgl_glGetVertexAttribLdv = fgl_null;
-			fgl_api fgl_func_glViewportArrayv* fgl_glViewportArrayv = fgl_null;
-			fgl_api fgl_func_glViewportIndexedf* fgl_glViewportIndexedf = fgl_null;
-			fgl_api fgl_func_glViewportIndexedfv* fgl_glViewportIndexedfv = fgl_null;
-			fgl_api fgl_func_glScissorArrayv* fgl_glScissorArrayv = fgl_null;
-			fgl_api fgl_func_glScissorIndexed* fgl_glScissorIndexed = fgl_null;
-			fgl_api fgl_func_glScissorIndexedv* fgl_glScissorIndexedv = fgl_null;
-			fgl_api fgl_func_glDepthRangeArrayv* fgl_glDepthRangeArrayv = fgl_null;
-			fgl_api fgl_func_glDepthRangeIndexed* fgl_glDepthRangeIndexed = fgl_null;
-			fgl_api fgl_func_glGetFloati_v* fgl_glGetFloati_v = fgl_null;
-			fgl_api fgl_func_glGetDoublei_v* fgl_glGetDoublei_v = fgl_null;
+			fgl_func_glReleaseShaderCompiler* fgl_glReleaseShaderCompiler = fgl_null;
+			fgl_func_glShaderBinary* fgl_glShaderBinary = fgl_null;
+			fgl_func_glGetShaderPrecisionFormat* fgl_glGetShaderPrecisionFormat = fgl_null;
+			fgl_func_glDepthRangef* fgl_glDepthRangef = fgl_null;
+			fgl_func_glClearDepthf* fgl_glClearDepthf = fgl_null;
+			fgl_func_glGetProgramBinary* fgl_glGetProgramBinary = fgl_null;
+			fgl_func_glProgramBinary* fgl_glProgramBinary = fgl_null;
+			fgl_func_glProgramParameteri* fgl_glProgramParameteri = fgl_null;
+			fgl_func_glUseProgramStages* fgl_glUseProgramStages = fgl_null;
+			fgl_func_glActiveShaderProgram* fgl_glActiveShaderProgram = fgl_null;
+			fgl_func_glCreateShaderProgramv* fgl_glCreateShaderProgramv = fgl_null;
+			fgl_func_glBindProgramPipeline* fgl_glBindProgramPipeline = fgl_null;
+			fgl_func_glDeleteProgramPipelines* fgl_glDeleteProgramPipelines = fgl_null;
+			fgl_func_glGenProgramPipelines* fgl_glGenProgramPipelines = fgl_null;
+			fgl_func_glIsProgramPipeline* fgl_glIsProgramPipeline = fgl_null;
+			fgl_func_glGetProgramPipelineiv* fgl_glGetProgramPipelineiv = fgl_null;
+			fgl_func_glProgramUniform1i* fgl_glProgramUniform1i = fgl_null;
+			fgl_func_glProgramUniform1iv* fgl_glProgramUniform1iv = fgl_null;
+			fgl_func_glProgramUniform1f* fgl_glProgramUniform1f = fgl_null;
+			fgl_func_glProgramUniform1fv* fgl_glProgramUniform1fv = fgl_null;
+			fgl_func_glProgramUniform1d* fgl_glProgramUniform1d = fgl_null;
+			fgl_func_glProgramUniform1dv* fgl_glProgramUniform1dv = fgl_null;
+			fgl_func_glProgramUniform1ui* fgl_glProgramUniform1ui = fgl_null;
+			fgl_func_glProgramUniform1uiv* fgl_glProgramUniform1uiv = fgl_null;
+			fgl_func_glProgramUniform2i* fgl_glProgramUniform2i = fgl_null;
+			fgl_func_glProgramUniform2iv* fgl_glProgramUniform2iv = fgl_null;
+			fgl_func_glProgramUniform2f* fgl_glProgramUniform2f = fgl_null;
+			fgl_func_glProgramUniform2fv* fgl_glProgramUniform2fv = fgl_null;
+			fgl_func_glProgramUniform2d* fgl_glProgramUniform2d = fgl_null;
+			fgl_func_glProgramUniform2dv* fgl_glProgramUniform2dv = fgl_null;
+			fgl_func_glProgramUniform2ui* fgl_glProgramUniform2ui = fgl_null;
+			fgl_func_glProgramUniform2uiv* fgl_glProgramUniform2uiv = fgl_null;
+			fgl_func_glProgramUniform3i* fgl_glProgramUniform3i = fgl_null;
+			fgl_func_glProgramUniform3iv* fgl_glProgramUniform3iv = fgl_null;
+			fgl_func_glProgramUniform3f* fgl_glProgramUniform3f = fgl_null;
+			fgl_func_glProgramUniform3fv* fgl_glProgramUniform3fv = fgl_null;
+			fgl_func_glProgramUniform3d* fgl_glProgramUniform3d = fgl_null;
+			fgl_func_glProgramUniform3dv* fgl_glProgramUniform3dv = fgl_null;
+			fgl_func_glProgramUniform3ui* fgl_glProgramUniform3ui = fgl_null;
+			fgl_func_glProgramUniform3uiv* fgl_glProgramUniform3uiv = fgl_null;
+			fgl_func_glProgramUniform4i* fgl_glProgramUniform4i = fgl_null;
+			fgl_func_glProgramUniform4iv* fgl_glProgramUniform4iv = fgl_null;
+			fgl_func_glProgramUniform4f* fgl_glProgramUniform4f = fgl_null;
+			fgl_func_glProgramUniform4fv* fgl_glProgramUniform4fv = fgl_null;
+			fgl_func_glProgramUniform4d* fgl_glProgramUniform4d = fgl_null;
+			fgl_func_glProgramUniform4dv* fgl_glProgramUniform4dv = fgl_null;
+			fgl_func_glProgramUniform4ui* fgl_glProgramUniform4ui = fgl_null;
+			fgl_func_glProgramUniform4uiv* fgl_glProgramUniform4uiv = fgl_null;
+			fgl_func_glProgramUniformMatrix2fv* fgl_glProgramUniformMatrix2fv = fgl_null;
+			fgl_func_glProgramUniformMatrix3fv* fgl_glProgramUniformMatrix3fv = fgl_null;
+			fgl_func_glProgramUniformMatrix4fv* fgl_glProgramUniformMatrix4fv = fgl_null;
+			fgl_func_glProgramUniformMatrix2dv* fgl_glProgramUniformMatrix2dv = fgl_null;
+			fgl_func_glProgramUniformMatrix3dv* fgl_glProgramUniformMatrix3dv = fgl_null;
+			fgl_func_glProgramUniformMatrix4dv* fgl_glProgramUniformMatrix4dv = fgl_null;
+			fgl_func_glProgramUniformMatrix2x3fv* fgl_glProgramUniformMatrix2x3fv = fgl_null;
+			fgl_func_glProgramUniformMatrix3x2fv* fgl_glProgramUniformMatrix3x2fv = fgl_null;
+			fgl_func_glProgramUniformMatrix2x4fv* fgl_glProgramUniformMatrix2x4fv = fgl_null;
+			fgl_func_glProgramUniformMatrix4x2fv* fgl_glProgramUniformMatrix4x2fv = fgl_null;
+			fgl_func_glProgramUniformMatrix3x4fv* fgl_glProgramUniformMatrix3x4fv = fgl_null;
+			fgl_func_glProgramUniformMatrix4x3fv* fgl_glProgramUniformMatrix4x3fv = fgl_null;
+			fgl_func_glProgramUniformMatrix2x3dv* fgl_glProgramUniformMatrix2x3dv = fgl_null;
+			fgl_func_glProgramUniformMatrix3x2dv* fgl_glProgramUniformMatrix3x2dv = fgl_null;
+			fgl_func_glProgramUniformMatrix2x4dv* fgl_glProgramUniformMatrix2x4dv = fgl_null;
+			fgl_func_glProgramUniformMatrix4x2dv* fgl_glProgramUniformMatrix4x2dv = fgl_null;
+			fgl_func_glProgramUniformMatrix3x4dv* fgl_glProgramUniformMatrix3x4dv = fgl_null;
+			fgl_func_glProgramUniformMatrix4x3dv* fgl_glProgramUniformMatrix4x3dv = fgl_null;
+			fgl_func_glValidateProgramPipeline* fgl_glValidateProgramPipeline = fgl_null;
+			fgl_func_glGetProgramPipelineInfoLog* fgl_glGetProgramPipelineInfoLog = fgl_null;
+			fgl_func_glVertexAttribL1d* fgl_glVertexAttribL1d = fgl_null;
+			fgl_func_glVertexAttribL2d* fgl_glVertexAttribL2d = fgl_null;
+			fgl_func_glVertexAttribL3d* fgl_glVertexAttribL3d = fgl_null;
+			fgl_func_glVertexAttribL4d* fgl_glVertexAttribL4d = fgl_null;
+			fgl_func_glVertexAttribL1dv* fgl_glVertexAttribL1dv = fgl_null;
+			fgl_func_glVertexAttribL2dv* fgl_glVertexAttribL2dv = fgl_null;
+			fgl_func_glVertexAttribL3dv* fgl_glVertexAttribL3dv = fgl_null;
+			fgl_func_glVertexAttribL4dv* fgl_glVertexAttribL4dv = fgl_null;
+			fgl_func_glVertexAttribLPointer* fgl_glVertexAttribLPointer = fgl_null;
+			fgl_func_glGetVertexAttribLdv* fgl_glGetVertexAttribLdv = fgl_null;
+			fgl_func_glViewportArrayv* fgl_glViewportArrayv = fgl_null;
+			fgl_func_glViewportIndexedf* fgl_glViewportIndexedf = fgl_null;
+			fgl_func_glViewportIndexedfv* fgl_glViewportIndexedfv = fgl_null;
+			fgl_func_glScissorArrayv* fgl_glScissorArrayv = fgl_null;
+			fgl_func_glScissorIndexed* fgl_glScissorIndexed = fgl_null;
+			fgl_func_glScissorIndexedv* fgl_glScissorIndexedv = fgl_null;
+			fgl_func_glDepthRangeArrayv* fgl_glDepthRangeArrayv = fgl_null;
+			fgl_func_glDepthRangeIndexed* fgl_glDepthRangeIndexed = fgl_null;
+			fgl_func_glGetFloati_v* fgl_glGetFloati_v = fgl_null;
+			fgl_func_glGetDoublei_v* fgl_glGetDoublei_v = fgl_null;
 #		endif //GL_VERSION_4_1
 
 #		if GL_VERSION_4_2
-			fgl_api fgl_func_glDrawArraysInstancedBaseInstance* fgl_glDrawArraysInstancedBaseInstance = fgl_null;
-			fgl_api fgl_func_glDrawElementsInstancedBaseInstance* fgl_glDrawElementsInstancedBaseInstance = fgl_null;
-			fgl_api fgl_func_glDrawElementsInstancedBaseVertexBaseInstance* fgl_glDrawElementsInstancedBaseVertexBaseInstance = fgl_null;
-			fgl_api fgl_func_glGetInternalformativ* fgl_glGetInternalformativ = fgl_null;
-			fgl_api fgl_func_glGetActiveAtomicCounterBufferiv* fgl_glGetActiveAtomicCounterBufferiv = fgl_null;
-			fgl_api fgl_func_glBindImageTexture* fgl_glBindImageTexture = fgl_null;
-			fgl_api fgl_func_glMemoryBarrier* fgl_glMemoryBarrier = fgl_null;
-			fgl_api fgl_func_glTexStorage1D* fgl_glTexStorage1D = fgl_null;
-			fgl_api fgl_func_glTexStorage2D* fgl_glTexStorage2D = fgl_null;
-			fgl_api fgl_func_glTexStorage3D* fgl_glTexStorage3D = fgl_null;
-			fgl_api fgl_func_glDrawTransformFeedbackInstanced* fgl_glDrawTransformFeedbackInstanced = fgl_null;
-			fgl_api fgl_func_glDrawTransformFeedbackStreamInstanced* fgl_glDrawTransformFeedbackStreamInstanced = fgl_null;
+			fgl_func_glDrawArraysInstancedBaseInstance* fgl_glDrawArraysInstancedBaseInstance = fgl_null;
+			fgl_func_glDrawElementsInstancedBaseInstance* fgl_glDrawElementsInstancedBaseInstance = fgl_null;
+			fgl_func_glDrawElementsInstancedBaseVertexBaseInstance* fgl_glDrawElementsInstancedBaseVertexBaseInstance = fgl_null;
+			fgl_func_glGetInternalformativ* fgl_glGetInternalformativ = fgl_null;
+			fgl_func_glGetActiveAtomicCounterBufferiv* fgl_glGetActiveAtomicCounterBufferiv = fgl_null;
+			fgl_func_glBindImageTexture* fgl_glBindImageTexture = fgl_null;
+			fgl_func_glMemoryBarrier* fgl_glMemoryBarrier = fgl_null;
+			fgl_func_glTexStorage1D* fgl_glTexStorage1D = fgl_null;
+			fgl_func_glTexStorage2D* fgl_glTexStorage2D = fgl_null;
+			fgl_func_glTexStorage3D* fgl_glTexStorage3D = fgl_null;
+			fgl_func_glDrawTransformFeedbackInstanced* fgl_glDrawTransformFeedbackInstanced = fgl_null;
+			fgl_func_glDrawTransformFeedbackStreamInstanced* fgl_glDrawTransformFeedbackStreamInstanced = fgl_null;
 #		endif //GL_VERSION_4_2
 
 #		if GL_VERSION_4_3
-			fgl_api fgl_func_glClearBufferData* fgl_glClearBufferData = fgl_null;
-			fgl_api fgl_func_glClearBufferSubData* fgl_glClearBufferSubData = fgl_null;
-			fgl_api fgl_func_glDispatchCompute* fgl_glDispatchCompute = fgl_null;
-			fgl_api fgl_func_glDispatchComputeIndirect* fgl_glDispatchComputeIndirect = fgl_null;
-			fgl_api fgl_func_glCopyImageSubData* fgl_glCopyImageSubData = fgl_null;
-			fgl_api fgl_func_glFramebufferParameteri* fgl_glFramebufferParameteri = fgl_null;
-			fgl_api fgl_func_glGetFramebufferParameteriv* fgl_glGetFramebufferParameteriv = fgl_null;
-			fgl_api fgl_func_glGetInternalformati64v* fgl_glGetInternalformati64v = fgl_null;
-			fgl_api fgl_func_glInvalidateTexSubImage* fgl_glInvalidateTexSubImage = fgl_null;
-			fgl_api fgl_func_glInvalidateTexImage* fgl_glInvalidateTexImage = fgl_null;
-			fgl_api fgl_func_glInvalidateBufferSubData* fgl_glInvalidateBufferSubData = fgl_null;
-			fgl_api fgl_func_glInvalidateBufferData* fgl_glInvalidateBufferData = fgl_null;
-			fgl_api fgl_func_glInvalidateFramebuffer* fgl_glInvalidateFramebuffer = fgl_null;
-			fgl_api fgl_func_glInvalidateSubFramebuffer* fgl_glInvalidateSubFramebuffer = fgl_null;
-			fgl_api fgl_func_glMultiDrawArraysIndirect* fgl_glMultiDrawArraysIndirect = fgl_null;
-			fgl_api fgl_func_glMultiDrawElementsIndirect* fgl_glMultiDrawElementsIndirect = fgl_null;
-			fgl_api fgl_func_glGetProgramInterfaceiv* fgl_glGetProgramInterfaceiv = fgl_null;
-			fgl_api fgl_func_glGetProgramResourceIndex* fgl_glGetProgramResourceIndex = fgl_null;
-			fgl_api fgl_func_glGetProgramResourceName* fgl_glGetProgramResourceName = fgl_null;
-			fgl_api fgl_func_glGetProgramResourceiv* fgl_glGetProgramResourceiv = fgl_null;
-			fgl_api fgl_func_glGetProgramResourceLocation* fgl_glGetProgramResourceLocation = fgl_null;
-			fgl_api fgl_func_glGetProgramResourceLocationIndex* fgl_glGetProgramResourceLocationIndex = fgl_null;
-			fgl_api fgl_func_glShaderStorageBlockBinding* fgl_glShaderStorageBlockBinding = fgl_null;
-			fgl_api fgl_func_glTexBufferRange* fgl_glTexBufferRange = fgl_null;
-			fgl_api fgl_func_glTexStorage2DMultisample* fgl_glTexStorage2DMultisample = fgl_null;
-			fgl_api fgl_func_glTexStorage3DMultisample* fgl_glTexStorage3DMultisample = fgl_null;
-			fgl_api fgl_func_glTextureView* fgl_glTextureView = fgl_null;
-			fgl_api fgl_func_glBindVertexBuffer* fgl_glBindVertexBuffer = fgl_null;
-			fgl_api fgl_func_glVertexAttribFormat* fgl_glVertexAttribFormat = fgl_null;
-			fgl_api fgl_func_glVertexAttribIFormat* fgl_glVertexAttribIFormat = fgl_null;
-			fgl_api fgl_func_glVertexAttribLFormat* fgl_glVertexAttribLFormat = fgl_null;
-			fgl_api fgl_func_glVertexAttribBinding* fgl_glVertexAttribBinding = fgl_null;
-			fgl_api fgl_func_glVertexBindingDivisor* fgl_glVertexBindingDivisor = fgl_null;
-			fgl_api fgl_func_glDebugMessageControl* fgl_glDebugMessageControl = fgl_null;
-			fgl_api fgl_func_glDebugMessageInsert* fgl_glDebugMessageInsert = fgl_null;
-			fgl_api fgl_func_glDebugMessageCallback* fgl_glDebugMessageCallback = fgl_null;
-			fgl_api fgl_func_glGetDebugMessageLog* fgl_glGetDebugMessageLog = fgl_null;
-			fgl_api fgl_func_glPushDebugGroup* fgl_glPushDebugGroup = fgl_null;
-			fgl_api fgl_func_glPopDebugGroup* fgl_glPopDebugGroup = fgl_null;
-			fgl_api fgl_func_glObjectLabel* fgl_glObjectLabel = fgl_null;
-			fgl_api fgl_func_glGetObjectLabel* fgl_glGetObjectLabel = fgl_null;
-			fgl_api fgl_func_glObjectPtrLabel* fgl_glObjectPtrLabel = fgl_null;
-			fgl_api fgl_func_glGetObjectPtrLabel* fgl_glGetObjectPtrLabel = fgl_null;
+			fgl_func_glClearBufferData* fgl_glClearBufferData = fgl_null;
+			fgl_func_glClearBufferSubData* fgl_glClearBufferSubData = fgl_null;
+			fgl_func_glDispatchCompute* fgl_glDispatchCompute = fgl_null;
+			fgl_func_glDispatchComputeIndirect* fgl_glDispatchComputeIndirect = fgl_null;
+			fgl_func_glCopyImageSubData* fgl_glCopyImageSubData = fgl_null;
+			fgl_func_glFramebufferParameteri* fgl_glFramebufferParameteri = fgl_null;
+			fgl_func_glGetFramebufferParameteriv* fgl_glGetFramebufferParameteriv = fgl_null;
+			fgl_func_glGetInternalformati64v* fgl_glGetInternalformati64v = fgl_null;
+			fgl_func_glInvalidateTexSubImage* fgl_glInvalidateTexSubImage = fgl_null;
+			fgl_func_glInvalidateTexImage* fgl_glInvalidateTexImage = fgl_null;
+			fgl_func_glInvalidateBufferSubData* fgl_glInvalidateBufferSubData = fgl_null;
+			fgl_func_glInvalidateBufferData* fgl_glInvalidateBufferData = fgl_null;
+			fgl_func_glInvalidateFramebuffer* fgl_glInvalidateFramebuffer = fgl_null;
+			fgl_func_glInvalidateSubFramebuffer* fgl_glInvalidateSubFramebuffer = fgl_null;
+			fgl_func_glMultiDrawArraysIndirect* fgl_glMultiDrawArraysIndirect = fgl_null;
+			fgl_func_glMultiDrawElementsIndirect* fgl_glMultiDrawElementsIndirect = fgl_null;
+			fgl_func_glGetProgramInterfaceiv* fgl_glGetProgramInterfaceiv = fgl_null;
+			fgl_func_glGetProgramResourceIndex* fgl_glGetProgramResourceIndex = fgl_null;
+			fgl_func_glGetProgramResourceName* fgl_glGetProgramResourceName = fgl_null;
+			fgl_func_glGetProgramResourceiv* fgl_glGetProgramResourceiv = fgl_null;
+			fgl_func_glGetProgramResourceLocation* fgl_glGetProgramResourceLocation = fgl_null;
+			fgl_func_glGetProgramResourceLocationIndex* fgl_glGetProgramResourceLocationIndex = fgl_null;
+			fgl_func_glShaderStorageBlockBinding* fgl_glShaderStorageBlockBinding = fgl_null;
+			fgl_func_glTexBufferRange* fgl_glTexBufferRange = fgl_null;
+			fgl_func_glTexStorage2DMultisample* fgl_glTexStorage2DMultisample = fgl_null;
+			fgl_func_glTexStorage3DMultisample* fgl_glTexStorage3DMultisample = fgl_null;
+			fgl_func_glTextureView* fgl_glTextureView = fgl_null;
+			fgl_func_glBindVertexBuffer* fgl_glBindVertexBuffer = fgl_null;
+			fgl_func_glVertexAttribFormat* fgl_glVertexAttribFormat = fgl_null;
+			fgl_func_glVertexAttribIFormat* fgl_glVertexAttribIFormat = fgl_null;
+			fgl_func_glVertexAttribLFormat* fgl_glVertexAttribLFormat = fgl_null;
+			fgl_func_glVertexAttribBinding* fgl_glVertexAttribBinding = fgl_null;
+			fgl_func_glVertexBindingDivisor* fgl_glVertexBindingDivisor = fgl_null;
+			fgl_func_glDebugMessageControl* fgl_glDebugMessageControl = fgl_null;
+			fgl_func_glDebugMessageInsert* fgl_glDebugMessageInsert = fgl_null;
+			fgl_func_glDebugMessageCallback* fgl_glDebugMessageCallback = fgl_null;
+			fgl_func_glGetDebugMessageLog* fgl_glGetDebugMessageLog = fgl_null;
+			fgl_func_glPushDebugGroup* fgl_glPushDebugGroup = fgl_null;
+			fgl_func_glPopDebugGroup* fgl_glPopDebugGroup = fgl_null;
+			fgl_func_glObjectLabel* fgl_glObjectLabel = fgl_null;
+			fgl_func_glGetObjectLabel* fgl_glGetObjectLabel = fgl_null;
+			fgl_func_glObjectPtrLabel* fgl_glObjectPtrLabel = fgl_null;
+			fgl_func_glGetObjectPtrLabel* fgl_glGetObjectPtrLabel = fgl_null;
 #		endif //GL_VERSION_4_3
 
 #		if GL_VERSION_4_4
-			fgl_api fgl_func_glBufferStorage* fgl_glBufferStorage = fgl_null;
-			fgl_api fgl_func_glClearTexImage* fgl_glClearTexImage = fgl_null;
-			fgl_api fgl_func_glClearTexSubImage* fgl_glClearTexSubImage = fgl_null;
-			fgl_api fgl_func_glBindBuffersBase* fgl_glBindBuffersBase = fgl_null;
-			fgl_api fgl_func_glBindBuffersRange* fgl_glBindBuffersRange = fgl_null;
-			fgl_api fgl_func_glBindTextures* fgl_glBindTextures = fgl_null;
-			fgl_api fgl_func_glBindSamplers* fgl_glBindSamplers = fgl_null;
-			fgl_api fgl_func_glBindImageTextures* fgl_glBindImageTextures = fgl_null;
-			fgl_api fgl_func_glBindVertexBuffers* fgl_glBindVertexBuffers = fgl_null;
+			fgl_func_glBufferStorage* fgl_glBufferStorage = fgl_null;
+			fgl_func_glClearTexImage* fgl_glClearTexImage = fgl_null;
+			fgl_func_glClearTexSubImage* fgl_glClearTexSubImage = fgl_null;
+			fgl_func_glBindBuffersBase* fgl_glBindBuffersBase = fgl_null;
+			fgl_func_glBindBuffersRange* fgl_glBindBuffersRange = fgl_null;
+			fgl_func_glBindTextures* fgl_glBindTextures = fgl_null;
+			fgl_func_glBindSamplers* fgl_glBindSamplers = fgl_null;
+			fgl_func_glBindImageTextures* fgl_glBindImageTextures = fgl_null;
+			fgl_func_glBindVertexBuffers* fgl_glBindVertexBuffers = fgl_null;
 #		endif //GL_VERSION_4_4
 
 #		if GL_VERSION_4_5
-			fgl_api fgl_func_glClipControl* fgl_glClipControl = fgl_null;
-			fgl_api fgl_func_glCreateTransformFeedbacks* fgl_glCreateTransformFeedbacks = fgl_null;
-			fgl_api fgl_func_glTransformFeedbackBufferBase* fgl_glTransformFeedbackBufferBase = fgl_null;
-			fgl_api fgl_func_glTransformFeedbackBufferRange* fgl_glTransformFeedbackBufferRange = fgl_null;
-			fgl_api fgl_func_glGetTransformFeedbackiv* fgl_glGetTransformFeedbackiv = fgl_null;
-			fgl_api fgl_func_glGetTransformFeedbacki_v* fgl_glGetTransformFeedbacki_v = fgl_null;
-			fgl_api fgl_func_glGetTransformFeedbacki64_v* fgl_glGetTransformFeedbacki64_v = fgl_null;
-			fgl_api fgl_func_glCreateBuffers* fgl_glCreateBuffers = fgl_null;
-			fgl_api fgl_func_glNamedBufferStorage* fgl_glNamedBufferStorage = fgl_null;
-			fgl_api fgl_func_glNamedBufferData* fgl_glNamedBufferData = fgl_null;
-			fgl_api fgl_func_glNamedBufferSubData* fgl_glNamedBufferSubData = fgl_null;
-			fgl_api fgl_func_glCopyNamedBufferSubData* fgl_glCopyNamedBufferSubData = fgl_null;
-			fgl_api fgl_func_glClearNamedBufferData* fgl_glClearNamedBufferData = fgl_null;
-			fgl_api fgl_func_glClearNamedBufferSubData* fgl_glClearNamedBufferSubData = fgl_null;
-			fgl_api fgl_func_glMapNamedBuffer* fgl_glMapNamedBuffer = fgl_null;
-			fgl_api fgl_func_glMapNamedBufferRange* fgl_glMapNamedBufferRange = fgl_null;
-			fgl_api fgl_func_glUnmapNamedBuffer* fgl_glUnmapNamedBuffer = fgl_null;
-			fgl_api fgl_func_glFlushMappedNamedBufferRange* fgl_glFlushMappedNamedBufferRange = fgl_null;
-			fgl_api fgl_func_glGetNamedBufferParameteriv* fgl_glGetNamedBufferParameteriv = fgl_null;
-			fgl_api fgl_func_glGetNamedBufferParameteri64v* fgl_glGetNamedBufferParameteri64v = fgl_null;
-			fgl_api fgl_func_glGetNamedBufferPointerv* fgl_glGetNamedBufferPointerv = fgl_null;
-			fgl_api fgl_func_glGetNamedBufferSubData* fgl_glGetNamedBufferSubData = fgl_null;
-			fgl_api fgl_func_glCreateFramebuffers* fgl_glCreateFramebuffers = fgl_null;
-			fgl_api fgl_func_glNamedFramebufferRenderbuffer* fgl_glNamedFramebufferRenderbuffer = fgl_null;
-			fgl_api fgl_func_glNamedFramebufferParameteri* fgl_glNamedFramebufferParameteri = fgl_null;
-			fgl_api fgl_func_glNamedFramebufferTexture* fgl_glNamedFramebufferTexture = fgl_null;
-			fgl_api fgl_func_glNamedFramebufferTextureLayer* fgl_glNamedFramebufferTextureLayer = fgl_null;
-			fgl_api fgl_func_glNamedFramebufferDrawBuffer* fgl_glNamedFramebufferDrawBuffer = fgl_null;
-			fgl_api fgl_func_glNamedFramebufferDrawBuffers* fgl_glNamedFramebufferDrawBuffers = fgl_null;
-			fgl_api fgl_func_glNamedFramebufferReadBuffer* fgl_glNamedFramebufferReadBuffer = fgl_null;
-			fgl_api fgl_func_glInvalidateNamedFramebufferData* fgl_glInvalidateNamedFramebufferData = fgl_null;
-			fgl_api fgl_func_glInvalidateNamedFramebufferSubData* fgl_glInvalidateNamedFramebufferSubData = fgl_null;
-			fgl_api fgl_func_glClearNamedFramebufferiv* fgl_glClearNamedFramebufferiv = fgl_null;
-			fgl_api fgl_func_glClearNamedFramebufferuiv* fgl_glClearNamedFramebufferuiv = fgl_null;
-			fgl_api fgl_func_glClearNamedFramebufferfv* fgl_glClearNamedFramebufferfv = fgl_null;
-			fgl_api fgl_func_glClearNamedFramebufferfi* fgl_glClearNamedFramebufferfi = fgl_null;
-			fgl_api fgl_func_glBlitNamedFramebuffer* fgl_glBlitNamedFramebuffer = fgl_null;
-			fgl_api fgl_func_glCheckNamedFramebufferStatus* fgl_glCheckNamedFramebufferStatus = fgl_null;
-			fgl_api fgl_func_glGetNamedFramebufferParameteriv* fgl_glGetNamedFramebufferParameteriv = fgl_null;
-			fgl_api fgl_func_glGetNamedFramebufferAttachmentParameteriv* fgl_glGetNamedFramebufferAttachmentParameteriv = fgl_null;
-			fgl_api fgl_func_glCreateRenderbuffers* fgl_glCreateRenderbuffers = fgl_null;
-			fgl_api fgl_func_glNamedRenderbufferStorage* fgl_glNamedRenderbufferStorage = fgl_null;
-			fgl_api fgl_func_glNamedRenderbufferStorageMultisample* fgl_glNamedRenderbufferStorageMultisample = fgl_null;
-			fgl_api fgl_func_glGetNamedRenderbufferParameteriv* fgl_glGetNamedRenderbufferParameteriv = fgl_null;
-			fgl_api fgl_func_glCreateTextures* fgl_glCreateTextures = fgl_null;
-			fgl_api fgl_func_glTextureBuffer* fgl_glTextureBuffer = fgl_null;
-			fgl_api fgl_func_glTextureBufferRange* fgl_glTextureBufferRange = fgl_null;
-			fgl_api fgl_func_glTextureStorage1D* fgl_glTextureStorage1D = fgl_null;
-			fgl_api fgl_func_glTextureStorage2D* fgl_glTextureStorage2D = fgl_null;
-			fgl_api fgl_func_glTextureStorage3D* fgl_glTextureStorage3D = fgl_null;
-			fgl_api fgl_func_glTextureStorage2DMultisample* fgl_glTextureStorage2DMultisample = fgl_null;
-			fgl_api fgl_func_glTextureStorage3DMultisample* fgl_glTextureStorage3DMultisample = fgl_null;
-			fgl_api fgl_func_glTextureSubImage1D* fgl_glTextureSubImage1D = fgl_null;
-			fgl_api fgl_func_glTextureSubImage2D* fgl_glTextureSubImage2D = fgl_null;
-			fgl_api fgl_func_glTextureSubImage3D* fgl_glTextureSubImage3D = fgl_null;
-			fgl_api fgl_func_glCompressedTextureSubImage1D* fgl_glCompressedTextureSubImage1D = fgl_null;
-			fgl_api fgl_func_glCompressedTextureSubImage2D* fgl_glCompressedTextureSubImage2D = fgl_null;
-			fgl_api fgl_func_glCompressedTextureSubImage3D* fgl_glCompressedTextureSubImage3D = fgl_null;
-			fgl_api fgl_func_glCopyTextureSubImage1D* fgl_glCopyTextureSubImage1D = fgl_null;
-			fgl_api fgl_func_glCopyTextureSubImage2D* fgl_glCopyTextureSubImage2D = fgl_null;
-			fgl_api fgl_func_glCopyTextureSubImage3D* fgl_glCopyTextureSubImage3D = fgl_null;
-			fgl_api fgl_func_glTextureParameterf* fgl_glTextureParameterf = fgl_null;
-			fgl_api fgl_func_glTextureParameterfv* fgl_glTextureParameterfv = fgl_null;
-			fgl_api fgl_func_glTextureParameteri* fgl_glTextureParameteri = fgl_null;
-			fgl_api fgl_func_glTextureParameterIiv* fgl_glTextureParameterIiv = fgl_null;
-			fgl_api fgl_func_glTextureParameterIuiv* fgl_glTextureParameterIuiv = fgl_null;
-			fgl_api fgl_func_glTextureParameteriv* fgl_glTextureParameteriv = fgl_null;
-			fgl_api fgl_func_glGenerateTextureMipmap* fgl_glGenerateTextureMipmap = fgl_null;
-			fgl_api fgl_func_glBindTextureUnit* fgl_glBindTextureUnit = fgl_null;
-			fgl_api fgl_func_glGetTextureImage* fgl_glGetTextureImage = fgl_null;
-			fgl_api fgl_func_glGetCompressedTextureImage* fgl_glGetCompressedTextureImage = fgl_null;
-			fgl_api fgl_func_glGetTextureLevelParameterfv* fgl_glGetTextureLevelParameterfv = fgl_null;
-			fgl_api fgl_func_glGetTextureLevelParameteriv* fgl_glGetTextureLevelParameteriv = fgl_null;
-			fgl_api fgl_func_glGetTextureParameterfv* fgl_glGetTextureParameterfv = fgl_null;
-			fgl_api fgl_func_glGetTextureParameterIiv* fgl_glGetTextureParameterIiv = fgl_null;
-			fgl_api fgl_func_glGetTextureParameterIuiv* fgl_glGetTextureParameterIuiv = fgl_null;
-			fgl_api fgl_func_glGetTextureParameteriv* fgl_glGetTextureParameteriv = fgl_null;
-			fgl_api fgl_func_glCreateVertexArrays* fgl_glCreateVertexArrays = fgl_null;
-			fgl_api fgl_func_glDisableVertexArrayAttrib* fgl_glDisableVertexArrayAttrib = fgl_null;
-			fgl_api fgl_func_glEnableVertexArrayAttrib* fgl_glEnableVertexArrayAttrib = fgl_null;
-			fgl_api fgl_func_glVertexArrayElementBuffer* fgl_glVertexArrayElementBuffer = fgl_null;
-			fgl_api fgl_func_glVertexArrayVertexBuffer* fgl_glVertexArrayVertexBuffer = fgl_null;
-			fgl_api fgl_func_glVertexArrayVertexBuffers* fgl_glVertexArrayVertexBuffers = fgl_null;
-			fgl_api fgl_func_glVertexArrayAttribBinding* fgl_glVertexArrayAttribBinding = fgl_null;
-			fgl_api fgl_func_glVertexArrayAttribFormat* fgl_glVertexArrayAttribFormat = fgl_null;
-			fgl_api fgl_func_glVertexArrayAttribIFormat* fgl_glVertexArrayAttribIFormat = fgl_null;
-			fgl_api fgl_func_glVertexArrayAttribLFormat* fgl_glVertexArrayAttribLFormat = fgl_null;
-			fgl_api fgl_func_glVertexArrayBindingDivisor* fgl_glVertexArrayBindingDivisor = fgl_null;
-			fgl_api fgl_func_glGetVertexArrayiv* fgl_glGetVertexArrayiv = fgl_null;
-			fgl_api fgl_func_glGetVertexArrayIndexediv* fgl_glGetVertexArrayIndexediv = fgl_null;
-			fgl_api fgl_func_glGetVertexArrayIndexed64iv* fgl_glGetVertexArrayIndexed64iv = fgl_null;
-			fgl_api fgl_func_glCreateSamplers* fgl_glCreateSamplers = fgl_null;
-			fgl_api fgl_func_glCreateProgramPipelines* fgl_glCreateProgramPipelines = fgl_null;
-			fgl_api fgl_func_glCreateQueries* fgl_glCreateQueries = fgl_null;
-			fgl_api fgl_func_glGetQueryBufferObjecti64v* fgl_glGetQueryBufferObjecti64v = fgl_null;
-			fgl_api fgl_func_glGetQueryBufferObjectiv* fgl_glGetQueryBufferObjectiv = fgl_null;
-			fgl_api fgl_func_glGetQueryBufferObjectui64v* fgl_glGetQueryBufferObjectui64v = fgl_null;
-			fgl_api fgl_func_glGetQueryBufferObjectuiv* fgl_glGetQueryBufferObjectuiv = fgl_null;
-			fgl_api fgl_func_glMemoryBarrierByRegion* fgl_glMemoryBarrierByRegion = fgl_null;
-			fgl_api fgl_func_glGetTextureSubImage* fgl_glGetTextureSubImage = fgl_null;
-			fgl_api fgl_func_glGetCompressedTextureSubImage* fgl_glGetCompressedTextureSubImage = fgl_null;
-			fgl_api fgl_func_glGetGraphicsResetStatus* fgl_glGetGraphicsResetStatus = fgl_null;
-			fgl_api fgl_func_glGetnCompressedTexImage* fgl_glGetnCompressedTexImage = fgl_null;
-			fgl_api fgl_func_glGetnTexImage* fgl_glGetnTexImage = fgl_null;
-			fgl_api fgl_func_glGetnUniformdv* fgl_glGetnUniformdv = fgl_null;
-			fgl_api fgl_func_glGetnUniformfv* fgl_glGetnUniformfv = fgl_null;
-			fgl_api fgl_func_glGetnUniformiv* fgl_glGetnUniformiv = fgl_null;
-			fgl_api fgl_func_glGetnUniformuiv* fgl_glGetnUniformuiv = fgl_null;
-			fgl_api fgl_func_glReadnPixels* fgl_glReadnPixels = fgl_null;
-			fgl_api fgl_func_glGetnMapdv* fgl_glGetnMapdv = fgl_null;
-			fgl_api fgl_func_glGetnMapfv* fgl_glGetnMapfv = fgl_null;
-			fgl_api fgl_func_glGetnMapiv* fgl_glGetnMapiv = fgl_null;
-			fgl_api fgl_func_glGetnPixelMapfv* fgl_glGetnPixelMapfv = fgl_null;
-			fgl_api fgl_func_glGetnPixelMapuiv* fgl_glGetnPixelMapuiv = fgl_null;
-			fgl_api fgl_func_glGetnPixelMapusv* fgl_glGetnPixelMapusv = fgl_null;
-			fgl_api fgl_func_glGetnPolygonStipple* fgl_glGetnPolygonStipple = fgl_null;
-			fgl_api fgl_func_glGetnColorTable* fgl_glGetnColorTable = fgl_null;
-			fgl_api fgl_func_glGetnConvolutionFilter* fgl_glGetnConvolutionFilter = fgl_null;
-			fgl_api fgl_func_glGetnSeparableFilter* fgl_glGetnSeparableFilter = fgl_null;
-			fgl_api fgl_func_glGetnHistogram* fgl_glGetnHistogram = fgl_null;
-			fgl_api fgl_func_glGetnMinmax* fgl_glGetnMinmax = fgl_null;
-			fgl_api fgl_func_glTextureBarrier* fgl_glTextureBarrier = fgl_null;
+			fgl_func_glClipControl* fgl_glClipControl = fgl_null;
+			fgl_func_glCreateTransformFeedbacks* fgl_glCreateTransformFeedbacks = fgl_null;
+			fgl_func_glTransformFeedbackBufferBase* fgl_glTransformFeedbackBufferBase = fgl_null;
+			fgl_func_glTransformFeedbackBufferRange* fgl_glTransformFeedbackBufferRange = fgl_null;
+			fgl_func_glGetTransformFeedbackiv* fgl_glGetTransformFeedbackiv = fgl_null;
+			fgl_func_glGetTransformFeedbacki_v* fgl_glGetTransformFeedbacki_v = fgl_null;
+			fgl_func_glGetTransformFeedbacki64_v* fgl_glGetTransformFeedbacki64_v = fgl_null;
+			fgl_func_glCreateBuffers* fgl_glCreateBuffers = fgl_null;
+			fgl_func_glNamedBufferStorage* fgl_glNamedBufferStorage = fgl_null;
+			fgl_func_glNamedBufferData* fgl_glNamedBufferData = fgl_null;
+			fgl_func_glNamedBufferSubData* fgl_glNamedBufferSubData = fgl_null;
+			fgl_func_glCopyNamedBufferSubData* fgl_glCopyNamedBufferSubData = fgl_null;
+			fgl_func_glClearNamedBufferData* fgl_glClearNamedBufferData = fgl_null;
+			fgl_func_glClearNamedBufferSubData* fgl_glClearNamedBufferSubData = fgl_null;
+			fgl_func_glMapNamedBuffer* fgl_glMapNamedBuffer = fgl_null;
+			fgl_func_glMapNamedBufferRange* fgl_glMapNamedBufferRange = fgl_null;
+			fgl_func_glUnmapNamedBuffer* fgl_glUnmapNamedBuffer = fgl_null;
+			fgl_func_glFlushMappedNamedBufferRange* fgl_glFlushMappedNamedBufferRange = fgl_null;
+			fgl_func_glGetNamedBufferParameteriv* fgl_glGetNamedBufferParameteriv = fgl_null;
+			fgl_func_glGetNamedBufferParameteri64v* fgl_glGetNamedBufferParameteri64v = fgl_null;
+			fgl_func_glGetNamedBufferPointerv* fgl_glGetNamedBufferPointerv = fgl_null;
+			fgl_func_glGetNamedBufferSubData* fgl_glGetNamedBufferSubData = fgl_null;
+			fgl_func_glCreateFramebuffers* fgl_glCreateFramebuffers = fgl_null;
+			fgl_func_glNamedFramebufferRenderbuffer* fgl_glNamedFramebufferRenderbuffer = fgl_null;
+			fgl_func_glNamedFramebufferParameteri* fgl_glNamedFramebufferParameteri = fgl_null;
+			fgl_func_glNamedFramebufferTexture* fgl_glNamedFramebufferTexture = fgl_null;
+			fgl_func_glNamedFramebufferTextureLayer* fgl_glNamedFramebufferTextureLayer = fgl_null;
+			fgl_func_glNamedFramebufferDrawBuffer* fgl_glNamedFramebufferDrawBuffer = fgl_null;
+			fgl_func_glNamedFramebufferDrawBuffers* fgl_glNamedFramebufferDrawBuffers = fgl_null;
+			fgl_func_glNamedFramebufferReadBuffer* fgl_glNamedFramebufferReadBuffer = fgl_null;
+			fgl_func_glInvalidateNamedFramebufferData* fgl_glInvalidateNamedFramebufferData = fgl_null;
+			fgl_func_glInvalidateNamedFramebufferSubData* fgl_glInvalidateNamedFramebufferSubData = fgl_null;
+			fgl_func_glClearNamedFramebufferiv* fgl_glClearNamedFramebufferiv = fgl_null;
+			fgl_func_glClearNamedFramebufferuiv* fgl_glClearNamedFramebufferuiv = fgl_null;
+			fgl_func_glClearNamedFramebufferfv* fgl_glClearNamedFramebufferfv = fgl_null;
+			fgl_func_glClearNamedFramebufferfi* fgl_glClearNamedFramebufferfi = fgl_null;
+			fgl_func_glBlitNamedFramebuffer* fgl_glBlitNamedFramebuffer = fgl_null;
+			fgl_func_glCheckNamedFramebufferStatus* fgl_glCheckNamedFramebufferStatus = fgl_null;
+			fgl_func_glGetNamedFramebufferParameteriv* fgl_glGetNamedFramebufferParameteriv = fgl_null;
+			fgl_func_glGetNamedFramebufferAttachmentParameteriv* fgl_glGetNamedFramebufferAttachmentParameteriv = fgl_null;
+			fgl_func_glCreateRenderbuffers* fgl_glCreateRenderbuffers = fgl_null;
+			fgl_func_glNamedRenderbufferStorage* fgl_glNamedRenderbufferStorage = fgl_null;
+			fgl_func_glNamedRenderbufferStorageMultisample* fgl_glNamedRenderbufferStorageMultisample = fgl_null;
+			fgl_func_glGetNamedRenderbufferParameteriv* fgl_glGetNamedRenderbufferParameteriv = fgl_null;
+			fgl_func_glCreateTextures* fgl_glCreateTextures = fgl_null;
+			fgl_func_glTextureBuffer* fgl_glTextureBuffer = fgl_null;
+			fgl_func_glTextureBufferRange* fgl_glTextureBufferRange = fgl_null;
+			fgl_func_glTextureStorage1D* fgl_glTextureStorage1D = fgl_null;
+			fgl_func_glTextureStorage2D* fgl_glTextureStorage2D = fgl_null;
+			fgl_func_glTextureStorage3D* fgl_glTextureStorage3D = fgl_null;
+			fgl_func_glTextureStorage2DMultisample* fgl_glTextureStorage2DMultisample = fgl_null;
+			fgl_func_glTextureStorage3DMultisample* fgl_glTextureStorage3DMultisample = fgl_null;
+			fgl_func_glTextureSubImage1D* fgl_glTextureSubImage1D = fgl_null;
+			fgl_func_glTextureSubImage2D* fgl_glTextureSubImage2D = fgl_null;
+			fgl_func_glTextureSubImage3D* fgl_glTextureSubImage3D = fgl_null;
+			fgl_func_glCompressedTextureSubImage1D* fgl_glCompressedTextureSubImage1D = fgl_null;
+			fgl_func_glCompressedTextureSubImage2D* fgl_glCompressedTextureSubImage2D = fgl_null;
+			fgl_func_glCompressedTextureSubImage3D* fgl_glCompressedTextureSubImage3D = fgl_null;
+			fgl_func_glCopyTextureSubImage1D* fgl_glCopyTextureSubImage1D = fgl_null;
+			fgl_func_glCopyTextureSubImage2D* fgl_glCopyTextureSubImage2D = fgl_null;
+			fgl_func_glCopyTextureSubImage3D* fgl_glCopyTextureSubImage3D = fgl_null;
+			fgl_func_glTextureParameterf* fgl_glTextureParameterf = fgl_null;
+			fgl_func_glTextureParameterfv* fgl_glTextureParameterfv = fgl_null;
+			fgl_func_glTextureParameteri* fgl_glTextureParameteri = fgl_null;
+			fgl_func_glTextureParameterIiv* fgl_glTextureParameterIiv = fgl_null;
+			fgl_func_glTextureParameterIuiv* fgl_glTextureParameterIuiv = fgl_null;
+			fgl_func_glTextureParameteriv* fgl_glTextureParameteriv = fgl_null;
+			fgl_func_glGenerateTextureMipmap* fgl_glGenerateTextureMipmap = fgl_null;
+			fgl_func_glBindTextureUnit* fgl_glBindTextureUnit = fgl_null;
+			fgl_func_glGetTextureImage* fgl_glGetTextureImage = fgl_null;
+			fgl_func_glGetCompressedTextureImage* fgl_glGetCompressedTextureImage = fgl_null;
+			fgl_func_glGetTextureLevelParameterfv* fgl_glGetTextureLevelParameterfv = fgl_null;
+			fgl_func_glGetTextureLevelParameteriv* fgl_glGetTextureLevelParameteriv = fgl_null;
+			fgl_func_glGetTextureParameterfv* fgl_glGetTextureParameterfv = fgl_null;
+			fgl_func_glGetTextureParameterIiv* fgl_glGetTextureParameterIiv = fgl_null;
+			fgl_func_glGetTextureParameterIuiv* fgl_glGetTextureParameterIuiv = fgl_null;
+			fgl_func_glGetTextureParameteriv* fgl_glGetTextureParameteriv = fgl_null;
+			fgl_func_glCreateVertexArrays* fgl_glCreateVertexArrays = fgl_null;
+			fgl_func_glDisableVertexArrayAttrib* fgl_glDisableVertexArrayAttrib = fgl_null;
+			fgl_func_glEnableVertexArrayAttrib* fgl_glEnableVertexArrayAttrib = fgl_null;
+			fgl_func_glVertexArrayElementBuffer* fgl_glVertexArrayElementBuffer = fgl_null;
+			fgl_func_glVertexArrayVertexBuffer* fgl_glVertexArrayVertexBuffer = fgl_null;
+			fgl_func_glVertexArrayVertexBuffers* fgl_glVertexArrayVertexBuffers = fgl_null;
+			fgl_func_glVertexArrayAttribBinding* fgl_glVertexArrayAttribBinding = fgl_null;
+			fgl_func_glVertexArrayAttribFormat* fgl_glVertexArrayAttribFormat = fgl_null;
+			fgl_func_glVertexArrayAttribIFormat* fgl_glVertexArrayAttribIFormat = fgl_null;
+			fgl_func_glVertexArrayAttribLFormat* fgl_glVertexArrayAttribLFormat = fgl_null;
+			fgl_func_glVertexArrayBindingDivisor* fgl_glVertexArrayBindingDivisor = fgl_null;
+			fgl_func_glGetVertexArrayiv* fgl_glGetVertexArrayiv = fgl_null;
+			fgl_func_glGetVertexArrayIndexediv* fgl_glGetVertexArrayIndexediv = fgl_null;
+			fgl_func_glGetVertexArrayIndexed64iv* fgl_glGetVertexArrayIndexed64iv = fgl_null;
+			fgl_func_glCreateSamplers* fgl_glCreateSamplers = fgl_null;
+			fgl_func_glCreateProgramPipelines* fgl_glCreateProgramPipelines = fgl_null;
+			fgl_func_glCreateQueries* fgl_glCreateQueries = fgl_null;
+			fgl_func_glGetQueryBufferObjecti64v* fgl_glGetQueryBufferObjecti64v = fgl_null;
+			fgl_func_glGetQueryBufferObjectiv* fgl_glGetQueryBufferObjectiv = fgl_null;
+			fgl_func_glGetQueryBufferObjectui64v* fgl_glGetQueryBufferObjectui64v = fgl_null;
+			fgl_func_glGetQueryBufferObjectuiv* fgl_glGetQueryBufferObjectuiv = fgl_null;
+			fgl_func_glMemoryBarrierByRegion* fgl_glMemoryBarrierByRegion = fgl_null;
+			fgl_func_glGetTextureSubImage* fgl_glGetTextureSubImage = fgl_null;
+			fgl_func_glGetCompressedTextureSubImage* fgl_glGetCompressedTextureSubImage = fgl_null;
+			fgl_func_glGetGraphicsResetStatus* fgl_glGetGraphicsResetStatus = fgl_null;
+			fgl_func_glGetnCompressedTexImage* fgl_glGetnCompressedTexImage = fgl_null;
+			fgl_func_glGetnTexImage* fgl_glGetnTexImage = fgl_null;
+			fgl_func_glGetnUniformdv* fgl_glGetnUniformdv = fgl_null;
+			fgl_func_glGetnUniformfv* fgl_glGetnUniformfv = fgl_null;
+			fgl_func_glGetnUniformiv* fgl_glGetnUniformiv = fgl_null;
+			fgl_func_glGetnUniformuiv* fgl_glGetnUniformuiv = fgl_null;
+			fgl_func_glReadnPixels* fgl_glReadnPixels = fgl_null;
+			fgl_func_glGetnMapdv* fgl_glGetnMapdv = fgl_null;
+			fgl_func_glGetnMapfv* fgl_glGetnMapfv = fgl_null;
+			fgl_func_glGetnMapiv* fgl_glGetnMapiv = fgl_null;
+			fgl_func_glGetnPixelMapfv* fgl_glGetnPixelMapfv = fgl_null;
+			fgl_func_glGetnPixelMapuiv* fgl_glGetnPixelMapuiv = fgl_null;
+			fgl_func_glGetnPixelMapusv* fgl_glGetnPixelMapusv = fgl_null;
+			fgl_func_glGetnPolygonStipple* fgl_glGetnPolygonStipple = fgl_null;
+			fgl_func_glGetnColorTable* fgl_glGetnColorTable = fgl_null;
+			fgl_func_glGetnConvolutionFilter* fgl_glGetnConvolutionFilter = fgl_null;
+			fgl_func_glGetnSeparableFilter* fgl_glGetnSeparableFilter = fgl_null;
+			fgl_func_glGetnHistogram* fgl_glGetnHistogram = fgl_null;
+			fgl_func_glGetnMinmax* fgl_glGetnMinmax = fgl_null;
+			fgl_func_glTextureBarrier* fgl_glTextureBarrier = fgl_null;
 #		endif //GL_VERSION_4_5
 
 #		if GL_VERSION_4_6
-			fgl_api fgl_func_glSpecializeShader* fgl_glSpecializeShader = fgl_null;
-			fgl_api fgl_func_glMultiDrawArraysIndirectCount* fgl_glMultiDrawArraysIndirectCount = fgl_null;
-			fgl_api fgl_func_glMultiDrawElementsIndirectCount* fgl_glMultiDrawElementsIndirectCount = fgl_null;
-			fgl_api fgl_func_glPolygonOffsetClamp* fgl_glPolygonOffsetClamp = fgl_null;
+			fgl_func_glSpecializeShader* fgl_glSpecializeShader = fgl_null;
+			fgl_func_glMultiDrawArraysIndirectCount* fgl_glMultiDrawArraysIndirectCount = fgl_null;
+			fgl_func_glMultiDrawElementsIndirectCount* fgl_glMultiDrawElementsIndirectCount = fgl_null;
+			fgl_func_glPolygonOffsetClamp* fgl_glPolygonOffsetClamp = fgl_null;
 #		endif //GL_VERSION_4_6
 
 #	endif // !defined(FPL_AS_PRIVATE)
@@ -6737,19 +6908,19 @@ static void fgl__SetLastError(const char *format, ...);
 
 #if defined(FGL_PLATFORM_WIN32)
 // User32.dll
-#define FGL_FUNC_WIN32_USER32_ReleaseDC(name) int WINAPI name(HWND hWnd, HDC hDC)
+#define FGL_FUNC_WIN32_USER32_ReleaseDC(name) int FGL_WIN32_API name(fgl__Win32HWND hWnd, fgl__Win32HDC hDC)
 typedef FGL_FUNC_WIN32_USER32_ReleaseDC(fgl_func_win32_user32_ReleaseDC);
-#define FGL_FUNC_WIN32_USER32_GetDC(name) HDC WINAPI name(HWND hWnd)
+#define FGL_FUNC_WIN32_USER32_GetDC(name) fgl__Win32HDC FGL_WIN32_API name(fgl__Win32HWND hWnd)
 typedef FGL_FUNC_WIN32_USER32_GetDC(fgl_func_win32_user32_GetDC);
 
 // Gdi32.dll
-#define FGL_FUNC_WIN32_GDI32_ChoosePixelFormat(name) int WINAPI name(HDC hdc, CONST PIXELFORMATDESCRIPTOR *ppfd)
+#define FGL_FUNC_WIN32_GDI32_ChoosePixelFormat(name) int FGL_WIN32_API name(fgl__Win32HDC hdc, const fgl__Win32PIXELFORMATDESCRIPTOR *ppfd)
 typedef FGL_FUNC_WIN32_GDI32_ChoosePixelFormat(fgl_func_win32_gdi32_ChoosePixelFormat);
-#define FGL_FUNC_WIN32_GDI32_SetPixelFormat(name) BOOL WINAPI name(HDC hdc, int format, CONST PIXELFORMATDESCRIPTOR *ppfd)
+#define FGL_FUNC_WIN32_GDI32_SetPixelFormat(name) fgl__Win32BOOL FGL_WIN32_API name(fgl__Win32HDC hdc, int format, const fgl__Win32PIXELFORMATDESCRIPTOR *ppfd)
 typedef FGL_FUNC_WIN32_GDI32_SetPixelFormat(fgl_func_win32_gdi32_SetPixelFormat);
-#define FGL_FUNC_WIN32_GDI32_DescribePixelFormat(name) int WINAPI name(HDC hdc, int iPixelFormat, UINT nBytes, LPPIXELFORMATDESCRIPTOR ppfd)
+#define FGL_FUNC_WIN32_GDI32_DescribePixelFormat(name) int FGL_WIN32_API name(fgl__Win32HDC hdc, int iPixelFormat, fgl__Win32UINT nBytes, fgl__Win32LPPIXELFORMATDESCRIPTOR ppfd)
 typedef FGL_FUNC_WIN32_GDI32_DescribePixelFormat(fgl_func_win32_gdi32_DescribePixelFormat);
-#define FGL_FUNC_WIN32_GDI32_SwapBuffers(name) BOOL WINAPI name(HDC)
+#define FGL_FUNC_WIN32_GDI32_SwapBuffers(name) fgl__Win32BOOL FGL_WIN32_API name(fgl__Win32HDC)
 typedef FGL_FUNC_WIN32_GDI32_SwapBuffers(fgl_func_win32_gdi32_SwapBuffers);
 
 // OpenGL32.dll
@@ -6783,30 +6954,30 @@ typedef FGL_FUNC_WIN32_GDI32_SwapBuffers(fgl_func_win32_gdi32_SwapBuffers);
 #define FGL_WGL_SWAP_EXCHANGE_ARB 0x2028
 #define FGL_WGL_TYPE_RGBA_ARB 0x202B
 
-#define FGL_FUNC_WIN32_OPENGL32_wglMakeCurrent(name) BOOL WINAPI name(HDC deviceContext, HGLRC renderingContext)
+#define FGL_FUNC_WIN32_OPENGL32_wglMakeCurrent(name) fgl__Win32BOOL FGL_WIN32_API name(fgl__Win32HDC deviceContext, fgl__Win32HGLRC renderingContext)
 typedef FGL_FUNC_WIN32_OPENGL32_wglMakeCurrent(fgl_func_win32_opengl32_wglMakeCurrent);
-#define FGL_FUNC_WIN32_OPENGL32_wglGetProcAddress(name) PROC WINAPI name(LPCSTR procedure)
+#define FGL_FUNC_WIN32_OPENGL32_wglGetProcAddress(name) fgl__Win32PROC FGL_WIN32_API name(fgl__Win32LPCSTR procedure)
 typedef FGL_FUNC_WIN32_OPENGL32_wglGetProcAddress(fgl_func_win32_opengl32_wglGetProcAddress);
-#define FGL_FUNC_WIN32_OPENGL32_wglDeleteContext(name) BOOL WINAPI name(HGLRC renderingContext)
+#define FGL_FUNC_WIN32_OPENGL32_wglDeleteContext(name) fgl__Win32BOOL FGL_WIN32_API name(fgl__Win32HGLRC renderingContext)
 typedef FGL_FUNC_WIN32_OPENGL32_wglDeleteContext(fgl_func_win32_opengl32_wglDeleteContext);
-#define FGL_FUNC_WIN32_OPENGL32_wglCreateContext(name) HGLRC WINAPI name(HDC deviceContext)
+#define FGL_FUNC_WIN32_OPENGL32_wglCreateContext(name) fgl__Win32HGLRC FGL_WIN32_API name(fgl__Win32HDC deviceContext)
 typedef FGL_FUNC_WIN32_OPENGL32_wglCreateContext(fgl_func_win32_opengl32_wglCreateContext);
-#define FGL_FUNC_WIN32_OPENGL32_wglChoosePixelFormatARB(name) BOOL WINAPI name(HDC hdc, const int *piAttribIList, const FLOAT *pfAttribFList, UINT nMaxFormats, int *piFormats, UINT *nNumFormats)
+#define FGL_FUNC_WIN32_OPENGL32_wglChoosePixelFormatARB(name) fgl__Win32BOOL FGL_WIN32_API name(fgl__Win32HDC hdc, const int *piAttribIList, const fgl__Win32FLOAT *pfAttribFList, fgl__Win32UINT nMaxFormats, int *piFormats, fgl__Win32UINT *nNumFormats)
 typedef FGL_FUNC_WIN32_OPENGL32_wglChoosePixelFormatARB(fgl_func_win32_opengl32_wglChoosePixelFormatARB);
-#define FGL_FUNC_WIN32_OPENGL32_wglCreateContextAttribsARB(name) HGLRC WINAPI name(HDC hDC, HGLRC hShareContext, const int *attribList)
+#define FGL_FUNC_WIN32_OPENGL32_wglCreateContextAttribsARB(name) fgl__Win32HGLRC FGL_WIN32_API name(fgl__Win32HDC hDC, fgl__Win32HGLRC hShareContext, const int *attribList)
 typedef FGL_FUNC_WIN32_OPENGL32_wglCreateContextAttribsARB(fgl_func_win32_opengl32_wglCreateContextAttribsARB);
-#define FGL_FUNC_WIN32_OPENGL32_wglSwapIntervalEXT(name) BOOL WINAPI name(int interval)
+#define FGL_FUNC_WIN32_OPENGL32_wglSwapIntervalEXT(name) fgl__Win32BOOL FGL_WIN32_API name(int interval)
 typedef FGL_FUNC_WIN32_OPENGL32_wglSwapIntervalEXT(fgl_func_win32_opengl32_wglSwapIntervalEXT);
 
 typedef struct fglWin32OpenGLApi {
 	struct {
-		HMODULE libraryHandle;
+		fgl__Win32HMODULE libraryHandle;
 		fgl_func_win32_user32_GetDC *GetDC;
 		fgl_func_win32_user32_ReleaseDC *ReleaseDC;
 	} user32;
 
 	struct {
-		HMODULE libraryHandle;
+		fgl__Win32HMODULE libraryHandle;
 		fgl_func_win32_gdi32_ChoosePixelFormat *ChoosePixelFormat;
 		fgl_func_win32_gdi32_SetPixelFormat *SetPixelFormat;
 		fgl_func_win32_gdi32_DescribePixelFormat *DescribePixelFormat;
@@ -6814,7 +6985,7 @@ typedef struct fglWin32OpenGLApi {
 	} gdi32;
 
 	struct {
-		HMODULE libraryHandle;
+		fgl__Win32HMODULE libraryHandle;
 		fgl_func_win32_opengl32_wglMakeCurrent *wglMakeCurrent;
 		fgl_func_win32_opengl32_wglGetProcAddress *wglGetProcAddress;
 		fgl_func_win32_opengl32_wglDeleteContext *wglDeleteContext;
@@ -6863,7 +7034,7 @@ static bool fgl__Win32LoadOpenGL(fglWin32OpenGLApi *api) {
 	const char *win32LibraryNames[] = {
 		"opengl32.dll",
 	};
-	HMODULE glLibraryHandle = fgl_null;
+	fgl__Win32HMODULE glLibraryHandle = fgl_null;
 	for(int i = 0; i < FGL_ARRAYCOUNT(win32LibraryNames); ++i) {
 		glLibraryHandle = LoadLibraryA(win32LibraryNames[i]);
 		if(glLibraryHandle != fgl_null) {
@@ -6896,8 +7067,8 @@ static void fgl__Win32DestroyOpenGLContext(fglWin32OpenGLApi *api, fglOpenGLCont
 }
 
 static bool fgl__Win32CreateOpenGLContext(fglWin32OpenGLApi *api, const fglOpenGLContextCreationParameters *contextCreationParams, fglOpenGLContext *outContext) {
-	HDC deviceContext = contextCreationParams->windowHandle.win32.deviceContext;
-	HWND handle = contextCreationParams->windowHandle.win32.windowHandle;
+	fgl__Win32HDC deviceContext = contextCreationParams->windowHandle.win32.deviceContext;
+	fgl__Win32HWND handle = contextCreationParams->windowHandle.win32.windowHandle;
 	bool requireToReleaseDC = false;
 	if(deviceContext == fgl_null) {
 		if(handle == fgl_null) {
@@ -6912,15 +7083,15 @@ static bool fgl__Win32CreateOpenGLContext(fglWin32OpenGLApi *api, const fglOpenG
 	outContext->windowHandle.win32.windowHandle = handle;
 	outContext->windowHandle.win32.requireToReleaseDC = requireToReleaseDC;
 
-	PIXELFORMATDESCRIPTOR pfd = FGL_ZERO_INIT;
+	fgl__Win32PIXELFORMATDESCRIPTOR pfd = FGL_ZERO_INIT;
 	pfd.nSize = sizeof(pfd);
 	pfd.nVersion = 1;
-	pfd.dwFlags = PFD_DOUBLEBUFFER | PFD_SUPPORT_OPENGL | PFD_DRAW_TO_WINDOW;
-	pfd.iPixelType = PFD_TYPE_RGBA;
+	pfd.dwFlags = FGL_WIN32_PFD_DOUBLEBUFFER | FGL_WIN32_PFD_SUPPORT_OPENGL | FGL_WIN32_PFD_DRAW_TO_WINDOW;
+	pfd.iPixelType = FGL_WIN32_PFD_TYPE_RGBA;
 	pfd.cColorBits = 32;
 	pfd.cDepthBits = 24;
 	pfd.cAlphaBits = 8;
-	pfd.iLayerType = PFD_MAIN_PLANE;
+	pfd.iLayerType = FGL_WIN32_PFD_MAIN_PLANE;
 
 	int pixelFormat = api->gdi32.ChoosePixelFormat(deviceContext, &pfd);
 	if(!pixelFormat) {
@@ -6937,7 +7108,7 @@ static bool fgl__Win32CreateOpenGLContext(fglWin32OpenGLApi *api, const fglOpenG
 
 	api->gdi32.DescribePixelFormat(deviceContext, pixelFormat, sizeof(pfd), &pfd);
 
-	HGLRC legacyRenderingContext = api->opengl32.wglCreateContext(deviceContext);
+	fgl__Win32HGLRC legacyRenderingContext = api->opengl32.wglCreateContext(deviceContext);
 	if(!legacyRenderingContext) {
 		fgl__SetLastError("Failed win32 creating opengl legacy rendering context for device context '%p'!", deviceContext);
 		fgl__Win32DestroyOpenGLContext(api, outContext);
@@ -6955,7 +7126,7 @@ static bool fgl__Win32CreateOpenGLContext(fglWin32OpenGLApi *api, const fglOpenG
 
 	api->opengl32.wglMakeCurrent(fgl_null, fgl_null);
 
-	HGLRC activeRenderingContext;
+	fgl__Win32HGLRC activeRenderingContext;
 	if(contextCreationParams->profile != fglOpenGLProfileType_LegacyProfile) {
 		// @NOTE(final): This is only available in OpenGL 3.0+
 
@@ -7004,7 +7175,7 @@ static bool fgl__Win32CreateOpenGLContext(fglWin32OpenGLApi *api, const fglOpenG
 		}
 
 		// Create modern opengl rendering context
-		HGLRC modernRenderingContext = api->opengl32.wglCreateContextAttribsARB(deviceContext, 0, contextAttribList);
+		fgl__Win32HGLRC modernRenderingContext = api->opengl32.wglCreateContextAttribsARB(deviceContext, 0, contextAttribList);
 		if(modernRenderingContext) {
 			if(!api->opengl32.wglMakeCurrent(deviceContext, modernRenderingContext)) {
 				fgl__SetLastError("Warning: Failed activating Modern OpenGL Rendering Context for version (%d.%d) and profile (%d) and DC '%x') -> Fallback to legacy context", contextCreationParams->majorVersion, contextCreationParams->minorVersion, contextCreationParams->profile, deviceContext);
@@ -7039,15 +7210,66 @@ static bool fgl__Win32CreateOpenGLContext(fglWin32OpenGLApi *api, const fglOpenG
 	return true;
 }
 #elif defined(FGL_PLATFORM_POSIX)
-#define FGL_FUNC_POSIX_GLX_glXGetProcAddress(name) void *name(const char *name)
+// GLX
+#define FGL_GLX_CONTEXT_DEBUG_BIT_ARB 0x0001
+#define FGL_GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB 0x0002
+#define FGL_GLX_CONTEXT_CORE_PROFILE_BIT_ARB 0x00000001
+#define FGL_GLX_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB 0x00000002
+#define FGL_GLX_CONTEXT_MAJOR_VERSION_ARB 0x2091
+#define FGL_GLX_CONTEXT_MINOR_VERSION_ARB 0x2092
+#define FGL_GLX_CONTEXT_FLAGS_ARB 0x2094
+#define FGL_GLX_CONTEXT_PROFILE_MASK_ARB 0x9126
+
+// X11
+#define FGL_X11_VisualIDMask 0x1
+
+#define FGL_FUNC_POSIX_GLX_glXGetProcAddress(name) void *name(const char *procName)
 typedef FGL_FUNC_POSIX_GLX_glXGetProcAddress(fgl_func_posix_glx_glXGetProcAddress);
+#define FGL_FUNC_POSIX_GLX_glXCreateContext(name) fgl__GLXContext name(fgl__X11Display *dpy, fgl__X11VisualInfo *vis, fgl__GLXContext shareList, int direct)
+typedef FGL_FUNC_POSIX_GLX_glXCreateContext(fgl_func_posix_glx_glXCreateContext);
+#define FGL_FUNC_POSIX_GLX_glXDestroyContext(name) void name(fgl__X11Display *dpy, fgl__GLXContext ctx)
+typedef FGL_FUNC_POSIX_GLX_glXDestroyContext(fgl_func_posix_glx_glXDestroyContext);
+#define FGL_FUNC_POSIX_GLX_glXMakeCurrent(name) int name(fgl__X11Display *dpy, fgl__X11Window drawable, fgl__GLXContext ctx)
+typedef FGL_FUNC_POSIX_GLX_glXMakeCurrent(fgl_func_posix_glx_glXMakeCurrent);
+#define FGL_FUNC_POSIX_GLX_glXSwapBuffers(name) void name(fgl__X11Display *dpy, fgl__X11Window drawable)
+typedef FGL_FUNC_POSIX_GLX_glXSwapBuffers(fgl_func_posix_glx_glXSwapBuffers);
+#define FGL_FUNC_POSIX_GLX_glXGetFBConfigs(name) fgl__GLXFBConfig *name(fgl__X11Display *dpy, int screen, int *nElements)
+typedef FGL_FUNC_POSIX_GLX_glXGetFBConfigs(fgl_func_posix_glx_glXGetFBConfigs);
+#define FGL_FUNC_POSIX_GLX_glXGetVisualFromFBConfig(name) fgl__X11VisualInfo *name(fgl__X11Display *dpy, fgl__GLXFBConfig config)
+typedef FGL_FUNC_POSIX_GLX_glXGetVisualFromFBConfig(fgl_func_posix_glx_glXGetVisualFromFBConfig);
+#define FGL_FUNC_POSIX_GLX_glXCreateContextAttribsARB(name) fgl__GLXContext name(fgl__X11Display *dpy, fgl__GLXFBConfig config, fgl__GLXContext shareContext, int direct, const int *attribList)
+typedef FGL_FUNC_POSIX_GLX_glXCreateContextAttribsARB(fgl_func_posix_glx_glXCreateContextAttribsARB);
+
+#define FGL_FUNC_POSIX_X11_XGetWindowAttributes(name) int name(fgl__X11Display *dpy, fgl__X11Window w, fgl__X11WindowAttributes *attribs)
+typedef FGL_FUNC_POSIX_X11_XGetWindowAttributes(fgl_func_posix_x11_XGetWindowAttributes);
+#define FGL_FUNC_POSIX_X11_XGetVisualInfo(name) fgl__X11VisualInfo *name(fgl__X11Display *dpy, long mask, fgl__X11VisualInfo *templ, int *nItems)
+typedef FGL_FUNC_POSIX_X11_XGetVisualInfo(fgl_func_posix_x11_XGetVisualInfo);
+#define FGL_FUNC_POSIX_X11_XVisualIDFromVisual(name) fgl__X11VisualID name(fgl__X11Visual *visual)
+typedef FGL_FUNC_POSIX_X11_XVisualIDFromVisual(fgl_func_posix_x11_XVisualIDFromVisual);
+#define FGL_FUNC_POSIX_X11_XFree(name) int name(void *data)
+typedef FGL_FUNC_POSIX_X11_XFree(fgl_func_posix_x11_XFree);
 
 typedef struct fglPosixOpenGLApi {
 	void *libraryHandle;
+	void *x11LibraryHandle;
 	fgl_func_posix_glx_glXGetProcAddress *glXGetProcAddress;
+	fgl_func_posix_glx_glXCreateContext *glXCreateContext;
+	fgl_func_posix_glx_glXDestroyContext *glXDestroyContext;
+	fgl_func_posix_glx_glXMakeCurrent *glXMakeCurrent;
+	fgl_func_posix_glx_glXSwapBuffers *glXSwapBuffers;
+	fgl_func_posix_glx_glXGetFBConfigs *glXGetFBConfigs;
+	fgl_func_posix_glx_glXGetVisualFromFBConfig *glXGetVisualFromFBConfig;
+	fgl_func_posix_glx_glXCreateContextAttribsARB *glXCreateContextAttribsARB;
+	fgl_func_posix_x11_XGetWindowAttributes *XGetWindowAttributes;
+	fgl_func_posix_x11_XGetVisualInfo *XGetVisualInfo;
+	fgl_func_posix_x11_XVisualIDFromVisual *XVisualIDFromVisual;
+	fgl_func_posix_x11_XFree *XFree;
 } fglPosixOpenGLApi;
 
 static void fgl__PosixUnloadOpenGL(fglPosixOpenGLApi *api) {
+	if(api->x11LibraryHandle != fgl_null) {
+		dlclose(api->x11LibraryHandle);
+	}
 	if(api->libraryHandle != fgl_null) {
 		dlclose(api->libraryHandle);
 	}
@@ -7064,6 +7286,12 @@ static bool fgl__PosixLoadOpenGL(fglPosixOpenGLApi *api) {
 		glLibraryHandle = dlopen(posixLibraryNames[i], RTLD_NOW);
 		if(glLibraryHandle != fgl_null) {
 			api->glXGetProcAddress = (fgl_func_posix_glx_glXGetProcAddress *)dlsym(glLibraryHandle, "glXGetProcAddress");
+			api->glXCreateContext = (fgl_func_posix_glx_glXCreateContext *)dlsym(glLibraryHandle, "glXCreateContext");
+			api->glXDestroyContext = (fgl_func_posix_glx_glXDestroyContext *)dlsym(glLibraryHandle, "glXDestroyContext");
+			api->glXMakeCurrent = (fgl_func_posix_glx_glXMakeCurrent *)dlsym(glLibraryHandle, "glXMakeCurrent");
+			api->glXSwapBuffers = (fgl_func_posix_glx_glXSwapBuffers *)dlsym(glLibraryHandle, "glXSwapBuffers");
+			api->glXGetFBConfigs = (fgl_func_posix_glx_glXGetFBConfigs *)dlsym(glLibraryHandle, "glXGetFBConfigs");
+			api->glXGetVisualFromFBConfig = (fgl_func_posix_glx_glXGetVisualFromFBConfig *)dlsym(glLibraryHandle, "glXGetVisualFromFBConfig");
 			break;
 		}
 	}
@@ -7072,16 +7300,216 @@ static bool fgl__PosixLoadOpenGL(fglPosixOpenGLApi *api) {
 		return false;
 	}
 	api->libraryHandle = glLibraryHandle;
+
+	// X11 is required to query the visual the target window was created with
+	const char *x11LibraryNames[] = {
+		"libX11.so.6",
+		"libX11.so",
+	};
+	void *x11LibraryHandle = fgl_null;
+	for(int i = 0; i < FGL_ARRAYCOUNT(x11LibraryNames); ++i) {
+		x11LibraryHandle = dlopen(x11LibraryNames[i], RTLD_NOW);
+		if(x11LibraryHandle != fgl_null) {
+			api->XGetWindowAttributes = (fgl_func_posix_x11_XGetWindowAttributes *)dlsym(x11LibraryHandle, "XGetWindowAttributes");
+			api->XGetVisualInfo = (fgl_func_posix_x11_XGetVisualInfo *)dlsym(x11LibraryHandle, "XGetVisualInfo");
+			api->XVisualIDFromVisual = (fgl_func_posix_x11_XVisualIDFromVisual *)dlsym(x11LibraryHandle, "XVisualIDFromVisual");
+			api->XFree = (fgl_func_posix_x11_XFree *)dlsym(x11LibraryHandle, "XFree");
+			break;
+		}
+	}
+	if(x11LibraryHandle == fgl_null) {
+		fgl__SetLastError("Failed loading posix libX11.so!");
+		return false;
+	}
+	api->x11LibraryHandle = x11LibraryHandle;
 	return(true);
 }
 
+// Finds the framebuffer configuration matching the given window visual id
+static fgl__GLXFBConfig fgl__PosixFindFBConfigForVisual(fglPosixOpenGLApi *api, fgl__X11Display *display, int screen, fgl__X11VisualID visualId) {
+	if(api->glXGetFBConfigs == fgl_null || api->glXGetVisualFromFBConfig == fgl_null) {
+		return fgl_null;
+	}
+	int fbConfigCount = 0;
+	fgl__GLXFBConfig *fbConfigs = api->glXGetFBConfigs(display, screen, &fbConfigCount);
+	if(fbConfigs == fgl_null || fbConfigCount == 0) {
+		return fgl_null;
+	}
+	fgl__GLXFBConfig result = fgl_null;
+	for(int i = 0; i < fbConfigCount; ++i) {
+		fgl__X11VisualInfo *vi = api->glXGetVisualFromFBConfig(display, fbConfigs[i]);
+		if(vi != fgl_null) {
+			bool isMatch = (vi->visualid == visualId);
+			api->XFree(vi);
+			if(isMatch) {
+				result = fbConfigs[i];
+				break;
+			}
+		}
+	}
+	api->XFree(fbConfigs);
+	return result;
+}
+
 static bool fgl__PosixCreateOpenGLContext(fglPosixOpenGLApi *api, const fglOpenGLContextCreationParameters *contextCreationParams, fglOpenGLContext *outContext) {
-	// @TODO(final): Implement POSIX/GLX context creation
-	return false;
+	fgl__X11Display *display = contextCreationParams->windowHandle.posix.display;
+	fgl__X11Window window = contextCreationParams->windowHandle.posix.window;
+	if(display == fgl_null) {
+		fgl__SetLastError("Missing posix display handle in opengl context creation!");
+		return false;
+	}
+	if(window == 0) {
+		fgl__SetLastError("Missing posix window handle in opengl context creation!");
+		return false;
+	}
+	if(api->glXCreateContext == fgl_null || api->glXDestroyContext == fgl_null || api->glXMakeCurrent == fgl_null) {
+		fgl__SetLastError("Required GLX functions are not available!");
+		return false;
+	}
+	if(api->XGetWindowAttributes == fgl_null || api->XGetVisualInfo == fgl_null || api->XVisualIDFromVisual == fgl_null || api->XFree == fgl_null) {
+		fgl__SetLastError("Required X11 functions are not available!");
+		return false;
+	}
+
+	outContext->windowHandle.posix.display = display;
+	outContext->windowHandle.posix.window = window;
+
+	// Query the visual the target window was created with, so the GLX context is compatible with it
+	fgl__X11WindowAttributes windowAttribs = FGL_ZERO_INIT;
+	if(!api->XGetWindowAttributes(display, window, &windowAttribs)) {
+		fgl__SetLastError("Failed querying window attributes for display '%p' and window '%lu'!", display, (unsigned long)window);
+		return false;
+	}
+	fgl__X11VisualID windowVisualId = api->XVisualIDFromVisual(windowAttribs.visual);
+
+	// Get the matching visual info for the window visual id
+	fgl__X11VisualInfo visualInfoTemplate = FGL_ZERO_INIT;
+	visualInfoTemplate.visualid = windowVisualId;
+	int visualInfoCount = 0;
+	fgl__X11VisualInfo *visualInfo = api->XGetVisualInfo(display, FGL_X11_VisualIDMask, &visualInfoTemplate, &visualInfoCount);
+	if(visualInfo == fgl_null || visualInfoCount == 0) {
+		fgl__SetLastError("Failed getting visual info for window visual id '%lu' on display '%p'!", (unsigned long)windowVisualId, display);
+		return false;
+	}
+	const int screen = visualInfo->screen;
+
+	// Create legacy GLX rendering context (glXCreateContext) using the window visual
+	fgl__GLXContext legacyRenderingContext = api->glXCreateContext(display, visualInfo, fgl_null, 1);
+	api->XFree(visualInfo);
+	if(legacyRenderingContext == fgl_null) {
+		fgl__SetLastError("Failed creating GLX legacy rendering context for display '%p'!", display);
+		return false;
+	}
+
+	if(!api->glXMakeCurrent(display, window, legacyRenderingContext)) {
+		fgl__SetLastError("Failed activating GLX legacy rendering context '%p' for display '%p'!", legacyRenderingContext, display);
+		api->glXDestroyContext(display, legacyRenderingContext);
+		return false;
+	}
+
+	// Load modern context creation extension while the legacy context is active
+	api->glXCreateContextAttribsARB = (fgl_func_posix_glx_glXCreateContextAttribsARB *)api->glXGetProcAddress("glXCreateContextAttribsARB");
+
+	api->glXMakeCurrent(display, 0, fgl_null);
+
+	fgl__GLXContext activeRenderingContext;
+	if(contextCreationParams->profile != fglOpenGLProfileType_LegacyProfile) {
+		// @NOTE(final): This is only available in OpenGL 3.0+
+
+		if(!(contextCreationParams->majorVersion >= 3 && contextCreationParams->minorVersion >= 0)) {
+			fgl__SetLastError("You have not specified the 'majorVersion' and 'minorVersion' in the Context Creation Params!");
+			api->glXDestroyContext(display, legacyRenderingContext);
+			return false;
+		}
+		if(api->glXCreateContextAttribsARB == fgl_null) {
+			fgl__SetLastError("glXCreateContextAttribsARB is not available, modern OpenGL is not available for your video card");
+			api->glXDestroyContext(display, legacyRenderingContext);
+			return false;
+		}
+
+		int profile = 0;
+		int flags = 0;
+		if(contextCreationParams->profile == fglOpenGLProfileType_CoreProfile) {
+			profile = FGL_GLX_CONTEXT_CORE_PROFILE_BIT_ARB;
+		} else if(contextCreationParams->profile == fglOpenGLProfileType_CompabilityProfile) {
+			profile = FGL_GLX_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB;
+		} else {
+			fgl__SetLastError("No opengl compability profile selected, please specific either fglOpenGLProfileType_CoreProfile or fglOpenGLProfileType_CompabilityProfile");
+			api->glXDestroyContext(display, legacyRenderingContext);
+			return false;
+		}
+		if(contextCreationParams->forwardCompability) {
+			flags = FGL_GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
+		}
+
+		// Find the framebuffer configuration matching the window visual
+		fgl__GLXFBConfig fbConfig = fgl__PosixFindFBConfigForVisual(api, display, screen, windowVisualId);
+		if(fbConfig == fgl_null) {
+			fgl__SetLastError("Failed finding GLX framebuffer configuration for window visual id '%lu' on display '%p' and screen '%d'!", (unsigned long)windowVisualId, display, screen);
+			api->glXDestroyContext(display, legacyRenderingContext);
+			return false;
+		}
+
+		int contextAttribIndex = 0;
+		int contextAttribList[20 + 1] = FGL_ZERO_INIT;
+		contextAttribList[contextAttribIndex++] = FGL_GLX_CONTEXT_MAJOR_VERSION_ARB;
+		contextAttribList[contextAttribIndex++] = (int)contextCreationParams->majorVersion;
+		contextAttribList[contextAttribIndex++] = FGL_GLX_CONTEXT_MINOR_VERSION_ARB;
+		contextAttribList[contextAttribIndex++] = (int)contextCreationParams->minorVersion;
+		contextAttribList[contextAttribIndex++] = FGL_GLX_CONTEXT_PROFILE_MASK_ARB;
+		contextAttribList[contextAttribIndex++] = profile;
+		if(flags > 0) {
+			contextAttribList[contextAttribIndex++] = FGL_GLX_CONTEXT_FLAGS_ARB;
+			contextAttribList[contextAttribIndex++] = flags;
+		}
+
+		// Create modern opengl rendering context
+		fgl__GLXContext modernRenderingContext = api->glXCreateContextAttribsARB(display, fbConfig, fgl_null, 1, contextAttribList);
+		if(modernRenderingContext != fgl_null) {
+			if(!api->glXMakeCurrent(display, window, modernRenderingContext)) {
+				fgl__SetLastError("Warning: Failed activating Modern OpenGL Rendering Context for version (%d.%d) and profile (%d) and display '%p') -> Fallback to legacy context", contextCreationParams->majorVersion, contextCreationParams->minorVersion, contextCreationParams->profile, display);
+
+				api->glXDestroyContext(display, modernRenderingContext);
+				modernRenderingContext = fgl_null;
+
+				// Fallback to legacy context
+				api->glXMakeCurrent(display, window, legacyRenderingContext);
+				activeRenderingContext = legacyRenderingContext;
+			} else {
+				// Destroy legacy rendering context
+				api->glXDestroyContext(display, legacyRenderingContext);
+				legacyRenderingContext = fgl_null;
+				activeRenderingContext = modernRenderingContext;
+			}
+		} else {
+			fgl__SetLastError("Warning: Failed creating Modern OpenGL Rendering Context for version (%d.%d) and profile (%d) and display '%p') -> Fallback to legacy context", contextCreationParams->majorVersion, contextCreationParams->minorVersion, contextCreationParams->profile, display);
+
+			// Fallback to legacy context
+			api->glXMakeCurrent(display, window, legacyRenderingContext);
+			activeRenderingContext = legacyRenderingContext;
+		}
+	} else {
+		// Caller wants legacy context
+		api->glXMakeCurrent(display, window, legacyRenderingContext);
+		activeRenderingContext = legacyRenderingContext;
+	}
+	assert(activeRenderingContext != fgl_null);
+	outContext->renderingContext.posix.context = activeRenderingContext;
+	outContext->isValid = true;
+	return true;
 }
 
 static void fgl__PosixDestroyOpenGLContext(fglPosixOpenGLApi *api, fglOpenGLContext *context) {
-	// @TODO(final): Implement POSIX/GLX context destroying
+	fgl__X11Display *display = context->windowHandle.posix.display;
+	if(context->renderingContext.posix.context != fgl_null) {
+		if(api->glXMakeCurrent != fgl_null) {
+			api->glXMakeCurrent(display, 0, fgl_null);
+		}
+		if(api->glXDestroyContext != fgl_null) {
+			api->glXDestroyContext(display, context->renderingContext.posix.context);
+		}
+		context->renderingContext.posix.context = fgl_null;
+	}
 }
 #endif
 
@@ -8376,6 +8804,12 @@ fgl_api void fglPresentOpenGL(const fglOpenGLContext *context) {
 #	if defined(FGL_PLATFORM_WIN32)
 	if(context->windowHandle.win32.deviceContext != fgl_null) {
 		state->win32.gdi32.SwapBuffers(context->windowHandle.win32.deviceContext);
+	}
+#	elif defined(FGL_PLATFORM_POSIX)
+	if(context->windowHandle.posix.display != fgl_null && context->windowHandle.posix.window != 0) {
+		if(state->posix.glXSwapBuffers != fgl_null) {
+			state->posix.glXSwapBuffers(context->windowHandle.posix.display, context->windowHandle.posix.window);
+		}
 	}
 #	endif
 }

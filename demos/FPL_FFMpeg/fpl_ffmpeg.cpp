@@ -159,8 +159,12 @@ License:
 -------------------------------------------------------------------------------
 */
 
-#define FPL_IMPLEMENTATION
-#define FPL_LOGGING
+#ifndef FPL_IMPLEMENTATION
+#	define FPL_IMPLEMENTATION
+#endif
+#ifndef FPL_LOGGING
+#	define FPL_LOGGING
+#endif
 #define FPL_LOG_TO_DEBUGOUT
 #define FPL_NO_VIDEO_VULKAN
 #include <final_platform_layer.h>
@@ -1903,8 +1907,8 @@ struct PlayerState {
 	bool32 seekByBytes;
 };
 
-static void ReleaseMedia(PlayerState &state, const PlayingState finishState, const uint32_t mainThreadId);
-static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const uint32_t mainThreadId);
+static void ReleaseMedia(PlayerState &state, const PlayingState finishState, const uint64_t mainThreadId);
+static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const uint64_t mainThreadId);
 
 static void VideoDecodingThreadProc(const fplThreadHandle *thread, void *userData);
 static void AudioDecodingThreadProc(const fplThreadHandle *thread, void *userData);
@@ -1952,7 +1956,7 @@ static const char *GetPlayingStateText(const PlayingState state) {
 	}
 }
 
-static void StopAndReleaseMedia(PlayerState &state, const uint32_t mainThreadId) {
+static void StopAndReleaseMedia(PlayerState &state, const uint64_t mainThreadId) {
 	SetPlayingState(state, PlayingState::Stopping);
 
 	// Stop audio
@@ -1980,7 +1984,7 @@ static void StopAndReleaseMedia(PlayerState &state, const uint32_t mainThreadId)
 	globalMemStats = {};
 };
 
-static bool LoadAndPlayMedia(PlayerState &state, const char *mediaURL, const uint32_t mainThreadId) {
+static bool LoadAndPlayMedia(PlayerState &state, const char *mediaURL, const uint64_t mainThreadId) {
 	fplAssert(state.state == PlayingState::Unloaded || state.state == PlayingState::Failed);
 
 	if (!LoadMedia(state, mediaURL, mainThreadId)) {
@@ -2010,7 +2014,7 @@ static bool LoadAndPlayMedia(PlayerState &state, const char *mediaURL, const uin
 	return true;
 }
 
-static void ReleasePlayer(PlayerState &state, const uint32_t mainThreadId) {
+static void ReleasePlayer(PlayerState &state, const uint64_t mainThreadId) {
 	StopAndReleaseMedia(state, mainThreadId);
 	state = {};
 }
@@ -2038,7 +2042,7 @@ struct AppState {
 	FontBuffer fontBuffer;
 	fplWindowSize viewport;
 	LoadState loadState;	
-	uint32_t mainThreadId;
+	uint64_t mainThreadId;
 };
 
 static void ReleaseLoadState(AppState &state) {
@@ -2088,7 +2092,7 @@ static void LoadMediaAsync(AppState &state, const char *url) {
 	}
 }
 
-static void ReleaseApp(AppState &state, const uint32_t mainThreadId) {
+static void ReleaseApp(AppState &state, const uint64_t mainThreadId) {
 	ReleaseLoadState(state);
 		
 	ReleasePlayer(state.player, mainThreadId);
@@ -3706,8 +3710,8 @@ failed:
 	return false;
 }
 
-static void ReleaseVideo(VideoContext &video, const uint32_t mainThreadId) {
-	uint32_t localThreadId = fplGetCurrentThreadId();
+static void ReleaseVideo(VideoContext &video, const uint64_t mainThreadId) {
+	const uint64_t localThreadId = fplGetCurrentThreadId();
 	if (localThreadId == mainThreadId) {
 		ReleaseVideoRendering(video);
 	} else {
@@ -3723,13 +3727,13 @@ static void ReleaseVideo(VideoContext &video, const uint32_t mainThreadId) {
 	video = {};
 }
 
-static bool InitializeVideo(PlayerState &state, const char *mediaFilePath, const uint32_t mainThreadId) {
+static bool InitializeVideo(PlayerState &state, const char *mediaFilePath, const uint64_t mainThreadId) {
 	VideoContext &video = state.video;
 	AVCodecContext *videoCodexCtx = video.stream.codecContext;
 
 	AVPixelFormat targetPixelFormat;
 
-	uint32_t localThreadId;
+	uint64_t localThreadId;
 
 	// Init video decoder
 	if (!InitDecoder(video.decoder, &state, &state.reader, &video.stream, MAX_VIDEO_FRAME_QUEUE_COUNT, 1)) {
@@ -4090,7 +4094,7 @@ failed:
 	return false;
 }
 
-static void ReleaseMedia(PlayerState &state, const PlayingState finishState, const uint32_t mainThreadId) {
+static void ReleaseMedia(PlayerState &state, const PlayingState finishState, const uint64_t mainThreadId) {
 	SetPlayingState(state, PlayingState::Unloading);
 
 	DestroyDecoder(state.audio.decoder);
@@ -4136,7 +4140,7 @@ static void ReleaseMedia(PlayerState &state, const PlayingState finishState, con
 	SetPlayingState(state, finishState);
 }
 
-static bool LoadMedia(PlayerState &state, const char *mediaURL, const uint32_t mainThreadId) {
+static bool LoadMedia(PlayerState &state, const char *mediaURL, const uint64_t mainThreadId) {
 	fplAssert(state.state == PlayingState::Unloaded || state.state == PlayingState::Failed);
 
 	bool isURL = fplIsStringMatchWildcard(mediaURL, "http://*") || fplIsStringMatchWildcard(mediaURL, "https://*");
@@ -4324,7 +4328,7 @@ int main(int argc, char **argv) {
 	fplCopyString("FPL FFmpeg Demo", settings.window.title, fplArrayCount(settings.window.title));
 #if USE_HARDWARE_RENDERING
 	settings.video.backend = fplVideoBackendType_OpenGL;
-	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
+	settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Core;
 	settings.video.graphics.opengl.majorVersion = 3;
 	settings.video.graphics.opengl.minorVersion = 3;
 #else

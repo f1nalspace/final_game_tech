@@ -127,6 +127,8 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>..\build\FPL_DynamicLib\WinX86_Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
+    <ProjectReference>
+    </ProjectReference>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX64|x64'">
     <ClCompile>
@@ -146,6 +148,8 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>..\build\FPL_DynamicLib\WinX64_Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
+    <ProjectReference>
+    </ProjectReference>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX86|Win32'">
     <ClCompile>
@@ -170,6 +174,8 @@
       <OptimizeReferences>true</OptimizeReferences>
       <AdditionalLibraryDirectories>..\build\FPL_DynamicLib\WinX86_Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
+    <ProjectReference>
+    </ProjectReference>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX64|x64'">
     <ClCompile>
@@ -194,6 +200,8 @@
       <OptimizeReferences>true</OptimizeReferences>
       <AdditionalLibraryDirectories>..\build\FPL_DynamicLib\WinX64_Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
+    <ProjectReference>
+    </ProjectReference>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="fpl_dynamiclib_client.c" />

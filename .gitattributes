@@ -17,4 +17,10 @@
 *.mkv binary
 *.pdf binary
 *.zip binary
+*.rar binary
+*.7z binary
 *.gb binary
+*.ase binary
+*.vcxproj text
+*.filters text
+*.sln text

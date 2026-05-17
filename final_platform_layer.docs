@@ -16,7 +16,7 @@
 	<br>
 	FPL supports the platforms <b>Windows</b>/<b>Linux</b>/<b>Unix</b> for the architectures <b>x86</b>/<b>x64</b>/<b>arm</b>.<br>
 	<br>
-	The only dependencies are built-in operating system libraries and a <b>C99</b> or <b>C++/11</b> compliant compiler.<br>
+	The only dependencies are built-in operating system libraries and a <b>C99</b> or <b>C++11</b> compliant compiler.<br>
 	<br>
 	It is released under the @subpage page_license "MIT License". This license allows you to use FPL freely in any software, for private or commercial usages.<br>
 
@@ -53,7 +53,7 @@
 	- Multithreading (Threads, Mutexes, Signals, Conditions)
 	- String conversions UTF8 <-> WideString
 	- Allocating Memory
-	- Retrieve Hardware & OS Informations
+	- Retrieve Hardware & OS Information
 	
 	The main focus is game/media/simulation development, so the default settings will create a window, set up an OpenGL rendering context, and initialize audio playback on any platform.<br>
 	<br>
@@ -63,7 +63,7 @@
 	A single header file library (as the name implies) is a development library designed to be one file only.<br>
 	Such a file contains the header (API) and the body (Implementation) in one file but separated and controlled by compiler conditions.<br>
 	Due to the nature of a single-header-file library, all the sources come with it - so it is most likely licensed by a public domain license.<br>
-	Also, such libraries mostly do not require any dependencies at all, to making them more friendly to the user.<br>
+	Also, such libraries mostly do not require any dependencies at all, making them more friendly to the user.<br>
 	This makes it easy to use the library however you want (with source, Static-linked, As a DLL, Private use only).<br>
 	<br>
 	So, why then is FPL based on that?<br>
@@ -79,12 +79,12 @@
 	@subsection subsection_intro_supported_platforms Which platforms are supported by FPL?
 	- Windows (x86/x64)
 	- Linux (x86/x64/arm)
-	- Unix/BSD (x86/x64, partially)
+	- Unix/BSD (x86/x64)
 
 	For more details see the page: @subpage page_support_status
 	
 	@subsection subsection_intro_supported_compilers Which compilers are supported by FPL?
-	FPL should compile on any <b>C99</b> or <b>C++/11</b> compliant compiler, such as <b>MSVC</b>, <b>GCC</b>, <b>Clang</b>, etc.
+	FPL should compile on any <b>C99</b> or <b>C++11</b> compliant compiler, such as <b>MSVC</b>, <b>GCC</b>, <b>Clang</b>, etc.
 	
 	@subsection section_intro_features What can FPL do?
 	Read below a detailed feature overview of FPL:
@@ -93,28 +93,41 @@
 		- Compiler detection
 		- Architecture detection
 		- OS detection
+		- Runtime/Static Linking Support
 	- Window
 		- Create and handle a Single Window
 		- Fullscreen toggling
 		- Event handling
 		- Clipboard string reading and writing
+		- Monitor-Info Iteration
 	- Input (Event-based or by Polling)
 		- Text input (Event-based only)
 		- Keyboard
 		- Mouse
-		- Game Controllers
+		- Gamepads
+		- Backends:
+		    - Win32 Keyboard/Mouse
+		    - Win32 DirectInput
+		    - Win32 XInput
+		    - X11 Keyboard/Mouse
+		    - Linux Joystick
 	- Video:
 		- Graphics initialization
 		- Backends:
 			- OpenGL 1.x (Legacy)
 			- OpenGL 3.x or higher (Modern)
+			- Vulkan
 			- Software Backbuffer
 	- Audio
-		- Raw audio asyncronous playback
+		- Raw audio asynchronous playback
 		- Device iteration and selection
 		- Backends:
+		    - WASAPI
 			- DirectSound
 			- ALSA
+			- PulseAudio
+			- PipeWire
+			- OSS
 	- Memory
 		- Allocation and Deallocation
 		- Custom Alignment functions
@@ -131,7 +144,7 @@
 		- Loading of Shared Libraries (DLL on Windows, .so on Linux)
 		- Function Pointer Lookup
 	- IO
-		- Path functions
+		- Path
 			- Query User Home Directory
 			- Query Executable Path
 			- Extract Filename, Extension and Path
@@ -141,17 +154,18 @@
 			- Reading and Writing of Binary Files (32-bit and 64-bit)
 			- Iterate over Files/Directories
 			- Rename/Copy/Delete/Move operations
-	- Hardware info retrievement
+	- Hardware Info
 		- Query Processor Infos (Core count, Name)
 		- Query Current Memory State (Physical size, Virtual Size, Page Size, etc.)
 		- Query System Architecture
-	- OS info retrievement
+	- OS Info
 		- Query logged in Username
 		- Query OS infos (Name, Version)
 	- Timings
 		- Get number of seconds (Low and High precision) used for profiling and delta calculations
-		- Get number of milliseconds (Low and High precision) user for simple measurement
-	- String conversion functions
+		- Get number of milliseconds (Low and High precision) used for simple measurement
+		- Query current date time (Local or UTC)
+	- Strings
 		- UTF-8 <-> Widestring
 		- Copy
 		- Comparing
@@ -198,19 +212,19 @@
 
 	@section section_usage_requirements Requirements
 
-	FPL uses built-in operating system libraries and requires a <b>C99</b> or <b>C++/11</b> compliant compiler.<br>
+	FPL uses built-in operating system libraries and requires a <b>C99</b> or <b>C++11</b> compliant compiler.<br>
 	Depending on the compiler and platform - linking to one system library may be needed:
 
 	@subsection usage_requirements_win32 Win32
 	- Link against "kernel32.lib"
 
 	@subsection usage_requirements_unix Unix/Linux
-	- Link against "libld.so"
+	- Link against "libdl.so"
 	- Compiler parameter "-pthread" (<a href="https://gcc.gnu.org/onlinedocs/gcc/Preprocessor-Options.html#Preprocessor-Options">GCC Preprocessor Options</a>)
 
 	@subsection usage_requirements_crt C-Runtime optional
 	By default, FPL uses the CRT (C-Runtime-Library) for functions such as vsnprintf(), but its usage is optional.<br>
-	To learn how to use FPL without the CRT more details, see the page @subpage page_nocrt
+	To learn how to use FPL without the CRT, see the page @subpage page_nocrt
 
 	@section section_usage_howtouse How to use FPL?
 	In your main C/C++ translation-unit include the header file and call @ref fplPlatformInit() and @ref fplPlatformRelease() respectively:
@@ -240,7 +254,9 @@
 
 	@section section_usage_multiple_translation_units How to use FPL in multiple translation units?
 
-	To use FPL in multiple translation units, it is recommended to create a separated "final_platform_layer.c" file in the same directory FPL is located and define the implementation there only:<br>
+	To use FPL in multiple translation units, it is recommended to create a separate "final_platform_layer.c" file in the same directory FPL is located and define the implementation there only.<br>
+
+	@note It is very important that the features you define in the translation units matches the header inclusion! For example using **FPL_NO_VIDEO** in one place, but not in the others will propably result in compile errors.
 
 	<b>final_platform_layer.c</b>:
 	@code{.c}
@@ -253,7 +269,7 @@
 	<br>
 	In your main translation-unit, you just include the entry point only using the preprocessor define **FPL_ENTRYPOINT**.
 
-	<b>main_translation_unit.c</b>:
+	<b>main.c</b>:
 	@code{.c}
 	#define FPL_ENTRYPOINT // Integrate entrypoint only
 	#include "final_platform_layer.h"
@@ -262,12 +278,13 @@
 	@section section_usage_static_library How to use FPL in a static library?
 
 	To use FPL as a/in static library you do the same steps required for using FPL in multiple translation units.
+
 	See @ref section_usage_multiple_translation_units for more details.
 
 	@section section_usage_codecomments How do I get the code-documentation to show up in the IDE?
 
-	When FPL is compiled directly in your main translation-unit, some IDE's read the comments from the implementation bodies instead of from the header definitions.<br>
-	This is wrong, but we can't help it. Those editors just are not designed for single-header-file libraries :-(
+	When FPL is compiled directly in your main translation-unit, some IDEs read the comments from the implementation bodies instead of from the header definitions.<br>
+	This is wrong, but we can't help it. Those editors just aren't designed for single-header-file libraries :-(
 
 	But do not fear, you can get the comments to show up in your IDE properly, just compile the implementation into a separated translation-unit only.<br>
 	This way the IDE will parse the comments from the API declaration only. See @ref section_usage_multiple_translation_units for more details.
@@ -282,8 +299,10 @@
 
 	@section section_category_general General
 	@subpage page_category_initialization <br>
+	@subpage page_category_settings <br>
 	@subpage page_category_errorhandling <br>
 	@subpage page_category_logging <br>
+	@subpage page_category_console <br>
 
 	@section section_category_window Window
 	@subpage page_category_window_basics <br>
@@ -301,7 +320,14 @@
 	@section section_category_platform Platform
 	@subpage page_category_platform <br>
 	@subpage page_category_hardware <br>
-	
+
+	@section section_category_timings Timings
+	@subpage page_category_timings_datetime <br>
+	@subpage page_category_timings_measurement <br>
+
+	@section section_category_localization Localization
+	@subpage page_category_localization <br>
+
 	@section section_category_dll Dynamic Library Loading
 	@subpage page_category_dll <br>
 
@@ -411,7 +437,7 @@
 	Therefore, you should always check the result using @ref fplGetPlatformResult() !<br>
 	This returns a @ref fplPlatformResultType enum which is @ref fplPlatformResultType_Success when initialization succeeded.<br>
 	<br>
-	Also, you should release the platform when the initialization was successful only!<br>
+	Also, you should release the platform only when initialization was successful!<br>
 	If something goes wrong the remaining resources are already cleaned up by FPL automatically.<br>
 	<br>
 	Also, you should use @ref fplGetLastError() to print out the actual error when the initialization fails!<br>
@@ -477,6 +503,90 @@
 */
 
 /*!
+	@page page_category_settings Settings & Configuration
+	@tableofcontents
+
+	FPL is configured through a single @ref fplSettings structure, which is passed to @ref fplPlatformInit() .<br>
+	It groups all configuration into one container with a sub-structure for each subsystem:<br>
+
+	| Field     | Type                  | Configures                                      |
+	|-----------|-----------------------|-------------------------------------------------|
+	| `window`  | @ref fplWindowSettings  | Window title, size, position, style, callbacks  |
+	| `video`   | @ref fplVideoSettings   | Video backend (OpenGL, Vulkan, Software), vsync |
+	| `audio`   | @ref fplAudioSettings   | Audio backend, format, device, buffer sizes     |
+	| `input`   | @ref fplInputSettings   | Input backends, gamepad detection frequency     |
+	| `console` | @ref fplConsoleSettings | Console subsystem configuration                 |
+	| `memory`  | @ref fplMemorySettings  | Custom memory allocator configuration           |
+
+	@section section_category_settings_defaults Creating default settings
+
+	You should never use an uninitialized @ref fplSettings structure. FPL provides two ways to obtain a fully populated default configuration.<br>
+	<br>
+	Use @ref fplMakeDefaultSettings() to get a settings structure by value:<br>
+
+	@code{.c}
+	fplSettings settings = fplMakeDefaultSettings();
+	@endcode
+
+	Or use @ref fplSetDefaultSettings() to reset an existing structure in place:<br>
+
+	@code{.c}
+	fplSettings settings;
+	fplSetDefaultSettings(&settings);
+	@endcode
+
+	@note Neither function changes the active settings - they only fill the structure. The settings only take effect when passed to @ref fplPlatformInit() .
+
+	@section section_category_settings_modify Modifying settings
+
+	After creating the defaults, change only the fields you care about, then pass the structure into @ref fplPlatformInit() .<br>
+
+	@code{.c}
+	fplSettings settings = fplMakeDefaultSettings();
+	fplCopyString("My Game", settings.window.title, fplArrayCount(settings.window.title));
+	settings.window.windowSize.width = 1280;
+	settings.window.windowSize.height = 720;
+
+	if (fplPlatformInit(fplInitFlags_All, &settings)) {
+		// ...
+		fplPlatformRelease();
+	}
+	@endcode
+
+	See @ref section_category_initialization_with_settings for the full initialization workflow.
+
+	@section section_category_settings_subdefaults Per-subsystem default helpers
+
+	If you only want to reset a single subsystem, FPL provides dedicated helper functions:<br>
+
+	| Function                       | Resets                  |
+	|--------------------------------|-------------------------|
+	| @ref fplSetDefaultWindowSettings()  | @ref fplWindowSettings  |
+	| @ref fplSetDefaultVideoSettings()   | @ref fplVideoSettings   |
+	| @ref fplSetDefaultAudioSettings()   | @ref fplAudioSettings   |
+	| @ref fplSetDefaultInputSettings()   | @ref fplInputSettings   |
+	| @ref fplSetDefaultConsoleSettings() | @ref fplConsoleSettings |
+
+	@code{.c}
+	fplVideoSettings videoSettings;
+	fplSetDefaultVideoSettings(&videoSettings);
+	@endcode
+
+	@section section_category_settings_current Querying the active settings
+
+	Once the platform is initialized, you can retrieve the currently active configuration by calling @ref fplGetCurrentSettings() .<br>
+	It returns a read-only pointer to the @ref fplSettings used by FPL.<br>
+
+	@code{.c}
+	const fplSettings *current = fplGetCurrentSettings();
+	fplConsoleFormatOut("Window size: %dx%d\n",
+		current->window.windowSize.width, current->window.windowSize.height);
+	@endcode
+
+	@note Modifying the returned structure has no effect on the running platform. Settings are applied at @ref fplPlatformInit() time only.
+*/
+
+/*!
 	@page page_category_errorhandling Error handling
 	@tableofcontents
 
@@ -525,7 +635,7 @@
 
 	@section section_category_errorhandling_getbyindex Get error by index
 
-	Use @ref fplGetErrorByIndex() to get a error string for the given index in range @ref fplGetErrorCount() .
+	Use @ref fplGetErrorByIndex() to get an error string for the given index in range @ref fplGetErrorCount() .
 
 	Example:
 	@code{.c}
@@ -542,7 +652,7 @@
 
 	Example:
 	@code{.c}
-	fplClearErrors();
+	fplErrorsClear();
 	@endcode
 */
 
@@ -558,12 +668,12 @@
 	You can change the maximum log-level using @ref fplSetMaxLogLevel() . By default, this is set to @ref fplLogLevel_Critical which means that only system-wide critical errors will be reported.<br>
 	When the logging system is enabled, you can get or change the configuration using @ref fplGetLogSettings() / @ref fplSetLogSettings() respectively.<br>
 
-	This configuration has two modes, a mode in which you can define one writer for every log level and one mode in which you have a writer for each log-level separately. By default, it uses the first mode, which is one writer for all log-levels.<br>
+	This configuration has two modes: one shared writer used for every log level, or a separate writer for each log level. By default, it uses the first mode - one writer for all log levels.<br>
 	To change this behavior, you can set the preprocessor definition **FPL_LOG_MULTIPLE_WRITERS**. With this, you can change the logging in every detail.<br>
 
 	A log writer can be configured to log to multiple logging-targets.<br>
 	<br>
-	FPL supports up-to 4 log-targets:
+	FPL supports up to 4 log targets:
 	- Console standard output
 	- Console error output
 	- Debug console output
@@ -642,19 +752,19 @@
 	
 	@subsection subsection_category_assertions_runtime Runtime assertion
 
-	You can use the macro function @ref fplAssert() to trigger an runtime assertion in a debug-build.<br>
+	You can use the macro function @ref fplAssert() to trigger a runtime assertion in a debug-build.<br>
 	When the condition in your assertion is false, your application will crash immediately.
 
 	Example:
 	@code{.c}
-	// When i is less than 5 this code will trigger a assertion that will crash your application immediately.
+	// When i is less than 5 this code will trigger an assertion that will crash your application immediately.
 	fplAssert(i >= 5);
 
-	// Will trigger a assertion when the "str" pointer is null.
+	// Will trigger an assertion when the "str" pointer is null.
 	fplAssert(str != fpl_null);
 	@endcode
 
-	@warning When you are building in release-mode runtime-time assertions are compiled out entirely - unless you have specific **FPL_FORCE_ASSERTIONS**!
+	@warning When you are building in release-mode, runtime assertions are compiled out entirely - unless you have specified **FPL_FORCE_ASSERTIONS**!
 	@warning Do not call any important functions inside an assertion statement, because it will get compiled out eventually.
 
 	@subsection subsection_category_assertions_static Compile-time / static assertion
@@ -672,7 +782,7 @@
 	fplStaticAssert(sizeof(myStruct) == 8);
 	@endcode
 
-	@warning When you are building in release-mode compile-time assertions are compiled out entirely - unless you have specific **FPL_FORCE_ASSERTIONS**!
+	@warning When you are building in release-mode, compile-time assertions are compiled out entirely - unless you have specified **FPL_FORCE_ASSERTIONS**!
 	@warning Do not call any important functions inside an assertion statement, because it will get compiled out eventually.
 
 	@subsection subsection_category_assertions_enabledisable Enable/Disable assertions
@@ -682,9 +792,55 @@
 	<br>
 	You can use **FPL_DEBUG** or **FPL_RELEASE** to force either a "Release" or "Debug" mode.<br>
 	See @subpage page_compiler_options for more details.<br>
-	@note I highly recommend to never define this in your code, but rather outside in your build-configuration.
+	@note I highly recommend never defining this in your code, but rather outside in your build-configuration.
 
 
+*/
+
+/*!
+	@page page_category_console Console Input/Output
+	@tableofcontents
+
+	FPL provides a couple of functions for writing text to the console and reading a single character from it.<br>
+	These work with the standard output and standard error streams.<br>
+	<br>
+	@note To get an actual console window on Windows, include the @ref fplInitFlags_Console flag when calling @ref fplPlatformInit() .
+
+	@section section_category_console_out Writing text
+
+	Use @ref fplConsoleOut() to write plain text to the standard output and @ref fplConsoleError() to write plain text to the standard error stream.<br>
+
+	@code{.c}
+	fplConsoleOut("Hello from standard output\n");
+	fplConsoleError("Something went wrong\n");
+	@endcode
+
+	@section section_category_console_formatout Writing formatted text
+
+	For printf-style formatting, use @ref fplConsoleFormatOut() for the standard output and @ref fplConsoleFormatError() for the standard error stream.<br>
+	Both take a format string followed by a variable number of arguments.<br>
+
+	@code{.c}
+	int frame = 42;
+	fplConsoleFormatOut("Current frame: %d\n", frame);
+	fplConsoleFormatError("Failed to load asset '%s'\n", "player.png");
+	@endcode
+
+	@section section_category_console_input Reading a character
+
+	Use @ref fplConsoleWaitForCharInput() to block until a single character is typed into the console input, and return it.<br>
+
+	@code{.c}
+	fplConsoleOut("Press any key to continue...\n");
+	char c = fplConsoleWaitForCharInput();
+	fplConsoleFormatOut("You pressed: %c\n", c);
+	@endcode
+
+	@section section_category_console_notes Notes
+
+	- @ref fplConsoleOut() and @ref fplConsoleError() are simple wrappers around `fprintf(stdout)` / `fprintf(stderr)`.
+	- @ref fplConsoleFormatOut() and @ref fplConsoleFormatError() are wrappers around `vfprintf()`.
+	- @ref fplConsoleWaitForCharInput() is a wrapper around `getchar()`.
 */
 
 /*!
@@ -702,7 +858,7 @@
 
 	@section section_window_basics_mainloop Main loop
 
-	After you initialize FPL with a window, you have to create some sort of a loop to keep the window open until you close them.<br>
+	After you initialize FPL with a window, you have to create some sort of a loop to keep the window open until you close it.<br>
 	This is required because the operating systems use an event-based system to communicate with the window and your application.<br>
 	If no communication happens with your window and your app, the window will no longer be responsive - so make sure to communicate properly.<br>
 	<br>
@@ -726,7 +882,7 @@
 
 	@section section_window_basics_shutdown Shutdown the window
 
-	Simply call @ref fplWindowShutdown to shutdown the window, while it is still running.<br>
+	Simply call @ref fplWindowShutdown to shut down the window while it is still running.<br>
 	<br>
 	You can also query the running state of the window by calling @ref fplIsWindowRunning() .<br>
 
@@ -752,7 +908,7 @@
 
 	@section section_category_window_events_handling Handling the Events
 
-	Each event has a @ref fplEvent.type field which you can check on to read the actual data (Keyboard, Mouse, Window, etc.).
+	Each event has a @ref fplEvent.type field which you can check to read the actual data (Keyboard, Mouse, Window, etc.).
 
 	@code{.c}
 	fplEvent currentEvent;
@@ -799,13 +955,13 @@
 
 	@subsection subsection_category_window_events_handle_event_buttonstate Button states
 
-	All mouse/keyboard or gamepad button states are descriped as a @ref fplButtonState.<br>
+	All mouse/keyboard or gamepad button states are described as a @ref fplButtonState.<br>
 	<br>
 	To detect a non-repeatable button press, you simply compare against @ref fplButtonState_Press.<br>
 	To detect a repeatable button press, you simply compare against @ref fplButtonState_Repeat.<br>
-	To detect a non button press, you simply compare against @ref fplButtonState_Release.<br>
+	To detect a button release, you simply compare against @ref fplButtonState_Release.<br>
 	<br>
-	If you just want to know if a key is pressed or hold-down, just do a greater equals comparison of @ref fplButtonState_Press and you are golden.
+	If you just want to know if a key is pressed or held down, just do a greater-or-equal comparison against @ref fplButtonState_Press and you are golden.
 
 	@subsection subsection_category_window_events_handle_event_type_mouse Mouse events
 
@@ -1209,30 +1365,219 @@
 	@note When the window is in fullscreen mode, @ref fplWindowState_Fullscreen is returned from @ref fplGetWindowState() always.
 	@warning The window state @ref fplWindowState_Fullscreen can never be set.
 
+	@section section_category_window_style_clipboard Reading/Writing the clipboard
+
+	FPL can read and write the system clipboard text.<br>
+
+	- Use @ref fplGetClipboardText() to read the current clipboard text into a destination buffer.
+	- Use @ref fplSetClipboardText() to overwrite the clipboard text with a new string.
+
+	Both functions return a boolean indicating success.<br>
+
+	@code{.c}
+	// Write text into the clipboard
+	fplSetClipboardText("Copied from FPL");
+
+	// Read text from the clipboard
+	char clipboard[256];
+	if (fplGetClipboardText(clipboard, fplArrayCount(clipboard))) {
+		fplConsoleFormatOut("Clipboard: %s\n", clipboard);
+	}
+	@endcode
+
+	@note @ref fplGetClipboardText() returns false when the clipboard does not contain any text.
+
+	@section section_category_window_style_displays Querying displays/monitors
+
+	FPL can enumerate the connected displays and query their properties through the @ref fplDisplayInfo and @ref fplDisplayMode structures.<br>
+
+	@subsection subsection_category_window_style_displays_enumerate Enumerating displays
+
+	Use @ref fplGetDisplayCount() to get the number of active displays, and @ref fplGetDisplays() to fill an array of @ref fplDisplayInfo structures.<br>
+
+	@code{.c}
+	fplDisplayInfo displays[8];
+	size_t displayCount = fplGetDisplays(displays, fplArrayCount(displays));
+	for (size_t i = 0; i < displayCount; ++i) {
+		fplConsoleFormatOut("Display '%s' %dx%d%s\n",
+			displays[i].id,
+			displays[i].physicalSize.width, displays[i].physicalSize.height,
+			displays[i].isPrimary ? " (primary)" : "");
+	}
+	@endcode
+
+	@subsection subsection_category_window_style_displays_specific Querying a specific display
+
+	FPL provides several functions to retrieve a single @ref fplDisplayInfo "display info":<br>
+
+	- @ref fplGetPrimaryDisplay() gets the primary display.
+	- @ref fplGetWindowDisplay() gets the display the FPL window is currently on.
+	- @ref fplGetDisplayFromPosition() gets the display that contains a given screen coordinate.
+
+	@code{.c}
+	fplDisplayInfo info;
+
+	// Get the display the window currently lives on
+	if (fplGetWindowDisplay(&info)) {
+		fplConsoleFormatOut("Window is on display '%s'\n", info.id);
+	}
+	@endcode
+
+	@subsection subsection_category_window_style_displays_modes Querying display modes
+
+	Use @ref fplGetDisplayModes() to retrieve the supported @ref fplDisplayMode entries (size, color depth, refresh rate) for a display id.<br>
+
+	@code{.c}
+	fplDisplayInfo primary;
+	if (fplGetPrimaryDisplay(&primary)) {
+		fplDisplayMode modes[64];
+		size_t modeCount = fplGetDisplayModes(primary.id, modes, fplArrayCount(modes));
+		for (size_t i = 0; i < modeCount; ++i) {
+			fplConsoleFormatOut("%dx%d @ %d Hz, %d bpp\n",
+				modes[i].width, modes[i].height,
+				modes[i].refreshRate, modes[i].colorBits);
+		}
+	}
+	@endcode
+
 	@section section_category_window_style_notes Notes
-	
+
 	@note Use @ref fplSetDefaultWindowSettings() to initialize a @ref fplWindowSettings to a default state.<br>
 */
 
 /*!
 	@page page_category_input_config Input configuration
 	@tableofcontents
-	
-	@section section_catecory_input_config_param_controllerdetectionfrequency Controller detection frequency
 
-	Use @ref fplInputSettings.controllerDetectionFrequency to change the frequency (in milliseconds) for detecting new or removed game controllers.
+	@section section_category_input_config_overview Overview
 
-	If this is set to zero, new or removed game controllers are detected for every frame - which is not recommended due to performance issues.
+	The input subsystem is split into three independent sources - <b>Keyboard</b>, <b>Mouse</b> and <b>Gamepad</b> - and into multiple backends per platform (XInput, Win32 keyboard/mouse, X11 keyboard/mouse, Linux Joystick, etc.).<br>
+	Sources are selected through the @ref fplInitFlags passed to @ref fplPlatformInit, while backends are selected through the @ref fplInputSettings structure or compiled out via preprocessor switches.<br>
+	<br>
+	Input can be used with or without a window. When no window is present, the backends operate in detached mode and the application drives the subsystem itself - see @ref section_category_input_config_no_window.
 
-	@section section_catecory_input_config_param_disabledevents Disable controller handling as events
+	@section section_category_input_config_initflags Selecting input sources via init flags
 
-	Set @ref fplInputSettings.disabledEvents to '1' to disable all game controller events, if needed.
-		
+	Each input source has its own flag in @ref fplInitFlags :
+	- @ref fplInitFlags_Keyboard
+	- @ref fplInitFlags_Mouse
+	- @ref fplInitFlags_Gamepad
+
+	The composite @ref fplInitFlags_Input is the bitwise OR of all three. @ref fplInitFlags_All also enables every input source.<br>
+	<br>
+	@ref fplInitFlags_Window implies @ref fplInitFlags_Keyboard and @ref fplInitFlags_Mouse, so windowed applications keep working without changes. Gamepads must always be requested explicitly with @ref fplInitFlags_Gamepad.
+
+	@code{.c}
+	// Console-only application that polls a gamepad
+	fplSettings settings;
+	fplSetDefaultSettings(&settings);
+	if (fplPlatformInit(fplInitFlags_Gamepad, &settings)) {
+		// ...
+	}
+	@endcode
+
+	@section section_category_input_config_backends Selecting input backends
+
+	A backend is a concrete implementation that talks to the operating system (XInput, /dev/input/jsX, X11, etc.). Several backends can be active at once - for example XInput and DirectInput cover different gamepad classes on Windows.<br>
+	<br>
+	By default all backends compiled into the build are enabled. To restrict which backends are used at runtime, populate @ref fplInputSettings.enabledBackends with @ref fplInputBackendMaskEnable / @ref fplInputBackendMaskDisable :
+
+	@code{.c}
+	fplSettings settings;
+	fplSetDefaultSettings(&settings);
+	fplInputBackendMask *backends = &settings.input.enabledBackends;
+
+	// Use only XInput for gamepads
+	*backends = (fplInputBackendMask){0};
+	fplInputBackendMaskEnable(backends, fplInputBackendType_XInput);
+	fplInputBackendMaskEnable(backends, fplInputBackendType_Win32);
+
+	if (fplPlatformInit(fplInitFlags_Input, &settings)) {
+		// ...
+	}
+	@endcode
+
+	Bits for backends that are not compiled in (or not supported on the current platform) are silently ignored at init time.<br>
+	<br>
+	To inspect which backends the build supports use @ref fplGetInputBackendSupport :
+
+	@code{.c}
+	fplInputBackendSupport supports[16];
+	uint32_t count = fplGetInputBackendSupport(supports, fplArrayCount(supports));
+	for (uint32_t i = 0; i < count; ++i) {
+		// supports[i].name, supports[i].type, supports[i].supportedSources, ...
+	}
+	@endcode
+
+	A single backend descriptor can be looked up via @ref fplGetInputBackendSupportByType.
+
+	@section section_category_input_config_devices Enumerating input devices
+
+	After @ref fplPlatformInit, the input subsystem maintains a list of devices visible to all enabled backends. Use @ref fplGetInputDevices to enumerate them, optionally filtered by source:
+
+	@code{.c}
+	fplInputDevice devices[FPL_MAX_INPUT_DEVICE_COUNT];
+	uint32_t count = fplGetInputDevices(fplInputSourceType_Gamepad, devices, fplArrayCount(devices));
+	for (uint32_t i = 0; i < count; ++i) {
+		fplInputDevice *dev = &devices[i];
+		// dev->name, dev->backend, dev->connection, dev->state.gamepad, ...
+	}
+	@endcode
+
+	Each device exposes a stable @ref fplInputDeviceGuid that survives reconnects on the same backend slot. Use @ref fplFindInputDevice to look up a single device by GUID later.<br>
+	<br>
+	Convenience wrappers @ref fplGetKeyboardDevices, @ref fplGetMouseDevices, @ref fplGetGamepadDevices return only devices of the requested source type.
+
+	@section section_category_input_config_no_window Using input without a window
+
+	When @ref fplInitFlags_Window is not set (or @ref fplInputSettings.detachFromWindow is enabled), the keyboard and mouse backends initialize in detached mode:
+	- On Windows the Win32 backend creates a hidden HWND_MESSAGE window for raw input.
+	- On Linux the X11 backend opens its own Display connection.
+
+	The application is responsible for driving the subsystem each frame, since there is no window event loop. Either of the following works:
+	- Call @ref fplUpdateInputDevices once per frame; gamepad connect/disconnect/state events are pushed to the internal event queue and polled state is refreshed.
+	- Call @ref fplPollEvent / @ref fplPollEvents in a loop - they call into the input system internally when no window is present.
+
+	@code{.c}
+	while (running) {
+		fplUpdateInputDevices();
+
+		fplGamepadStates pads;
+		if (fplPollGamepadStates(&pads)) {
+			// ...
+		}
+		fplThreadSleep(16);
+	}
+	@endcode
+
+	See the @c FPL_ConsoleGamepad demo for a complete @c FPL_NO_WINDOW example.
+
+	@section section_category_input_config_param_gamepad_detection_frequency Controller detection frequency
+
+	Use @ref fplGamepadSettings.detectionFrequency (accessed via @ref fplInputSettings.gamepad) to change the frequency (in milliseconds) at which gamepad backends scan for newly connected or removed controllers.<br>
+	<br>
+	Setting this to zero forces a scan every frame, which is not recommended due to its cost. The default value is suitable for most games.
+
+	@section section_category_input_config_param_disabledevents Disable input events
+
+	Set @ref fplInputSettings.disabledEvents to <b>true</b> to suppress all input events. Polling functions like @ref fplPollKeyboardState, @ref fplPollMouseState and @ref fplPollGamepadStates continue to work regardless of this flag.
+
+	@section section_category_input_config_compile_switches Compile-time switches
+
+	Define @c FPL_NO_INPUT before the implementation include to remove the entire input subsystem. To remove a single backend without disabling the rest, define one of:
+	- @c FPL_NO_INPUT_XINPUT
+	- @c FPL_NO_INPUT_DINPUT
+	- @c FPL_NO_INPUT_WIN32
+	- @c FPL_NO_INPUT_X11
+	- @c FPL_NO_INPUT_LINUX_JOYSTICK
+
+	See @subpage page_compiler_options for the full list.
+
 	@section section_category_input_config_default Initialize to default settings
-	
+
 	If needed you can use @ref fplSetDefaultInputSettings to reset the @ref fplInputSettings structure to a default state.<br>
 	<br>
-	You dont have to use this call, if you have already initialized the @ref fplSettings structure by @ref fplMakeDefaultSettings() or @ref fplSetDefaultSettings()
+	You don't have to use this call if you have already initialized the @ref fplSettings structure via @ref fplMakeDefaultSettings or @ref fplSetDefaultSettings.
 */
 
 /*!
@@ -1258,7 +1603,7 @@
 
 	@subsection subsection_category_input_polling_disableevents Disable Input-Events
 
-	If you are only use polling to get your input states, you should disable the input-events entirely.<br>
+	If you only use polling to get your input states, you should disable the input-events entirely.<br>
 	This is done by simply setting the @ref fplInputSettings.disabledEvents to "1" in your @ref fplSettings structure.
 
 	@subsection subsection_category_input_polling_keyboard Keyboard
@@ -1317,6 +1662,12 @@
 	@subsection subsection_category_input_polling_tips Tips
 
 	@note You can always use all those polling functions, regardless of the @ref fplInputSettings.disabledEvents field!
+
+	@subsection subsection_category_input_polling_no_window Polling without a window
+
+	When the application runs without a window (@c FPL_NO_WINDOW or @ref fplInputSettings.detachFromWindow), the input subsystem is not driven by a window event loop. Call @ref fplUpdateInputDevices once per frame to refresh cached state and dispatch gamepad connect/disconnect events. @ref fplPollEvent and @ref fplPollEvents also work in this mode and drive the input subsystem internally.<br>
+	<br>
+	See @ref section_category_input_config_no_window for a full example.
 */
 
 /*!
@@ -1332,7 +1683,7 @@
 	@subsection category_video_general_init_default Default video output
 
 	If you don't specify any settings then the video backend is automatically detected, depending on your operating system and supported hardware and software.<br>
-	By default, this is most likely be legacy OpenGL - which is supported on almost every video card on any OS.<br>
+	By default, this is most likely legacy OpenGL - which is supported on almost every video card on any OS.<br>
 	<br>
 	But this is not the recommended way to initialize video output, because you are responsible for handling any video output yourself.<br>
 
@@ -1361,12 +1712,12 @@
 	}
 	@endcode
 	
-	@section category_video_general_vsync Enable/Disable Vertical Synchronisation
+	@section category_video_general_vsync Enable/Disable Vertical Synchronization
 
 	If you want to enable/disable vertical synchronization you simply set the fplVideoSettings.isVSync field respectively.
 	<br>
 	@note There is no guarantee that vertical synchronization is supported by your video device or selected backend.
-	@note Software video output does not support vertical synchronisation!
+	@note Software video output does not support vertical synchronization!
 
 	@section category_video_general_disable Disable unneeded video backends
 
@@ -1392,7 +1743,7 @@
 	@endcode
 
 	@note Keep in mind that this is not useful for window-based applications!
-	@note If you writing a console application and don't want any video output whatsoever you set the **FPL_NO_WINDOW** which automatically disables any video devices as well.
+	@note If you are writing a console application and don't want any video output whatsoever, set **FPL_NO_WINDOW** which automatically disables any video devices as well.
 
 	@section category_video_general_notes Notes
 
@@ -1408,7 +1759,7 @@
 
 	@section section_category_video_legacy_opengl_init Initialize Legacy OpenGL
 
-	To initialize a legacy OpenGL (up to GL version 2.1) rendering context you simply set the @ref fplInitFlags_Video flag in the @ref fplPlatformInit() call and change the video backend type to @ref fplVideoBackendType_OpenGL and set the @ref fplOpenGLSettings.compabilityFlags to @ref fplOpenGLCompabilityFlags_Legacy .<br>
+	To initialize a legacy OpenGL (up to GL version 2.1) rendering context you simply set the @ref fplInitFlags_Video flag in the @ref fplPlatformInit() call and change the video backend type to @ref fplVideoBackendType_OpenGL and set the @ref fplOpenGLSettings.compatibilityFlags to @ref fplOpenGLCompatibilityFlags_Legacy .<br>
 	<br>
 	This will work in ~99% on all supported platforms - if not please post an issue for that platform/configuration/video-card ;-)
 
@@ -1419,7 +1770,7 @@
 
 	// Forcing the video backend to be legacy OpenGL
 	videoSettings.backend = fplVideoBackendType_OpenGL;
-	videoSettings.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
+	videoSettings.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Legacy;
 
 	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
 		// ... your code here
@@ -1436,7 +1787,7 @@
 	@subsection subsection_category_video_legacy_opengl_usage_present Presenting your frame
 
 	Call @ref fplVideoFlip() to present the frame to the screen.<br>
-	Its recommend to call this after each draw call of your frame at the end of the main-loop.
+	It is recommended to call this after each draw call of your frame at the end of the main-loop.
 */
 
 /*!
@@ -1448,8 +1799,8 @@
 	To initialize a modern OpenGL (3.0+) rendering context, you simply set the @ref fplInitFlags_Video flag in the @ref fplPlatformInit() call and change the video backend type to @ref fplVideoBackendType_OpenGL and setup the following parameters:<br>
 	- Set the @ref fplOpenGLSettings.majorVersion to 3 or higher
 	- Set the @ref fplOpenGLSettings.minorVersion to 0 or higher
-	- Set the @ref fplOpenGLSettings.compabilityFlags to either a @ref fplOpenGLCompabilityFlags_Core or @ref fplOpenGLCompabilityFlags_Compability
-	- Optionally add the @ref fplOpenGLCompabilityFlags_Forward flag for removing obsolete functions
+	- Set the @ref fplOpenGLSettings.compatibilityFlags to either a @ref fplOpenGLCompatibilityFlags_Core or @ref fplOpenGLCompatibilityFlags_Compatibility
+	- Optionally add the @ref fplOpenGLCompatibilityFlags_Forward flag for removing obsolete functions
 
 	@code{.c}
 	fplSettings settings;
@@ -1458,7 +1809,7 @@
 
 	// Forcing the video backend to be modern OpenGL with Core profile and for GL version 3.3
 	videoSettings.backend = fplVideoBackendType_OpenGL;
-	videoSettings.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
+	videoSettings.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Core;
 	videoSettings.graphics.opengl.majorVersion = 3;
 	videoSettings.graphics.opengl.minorVersion = 3;
 
@@ -1471,7 +1822,7 @@
 
 	@subsection subsection_category_video_modern_opengl_usage_extensions Extensions loader
 
-	To use modern OpenGL, you need some sort of a OpenGL extension loader which gives you access to the constants and functions like glCreateProgram().<br>
+	To use modern OpenGL, you need some sort of an OpenGL extension loader which gives you access to the constants and functions like glCreateProgram().<br>
 	You can either use a third-party C/C++ Library for doing that for you or use/write your own OpenGL loader. FPL should work in both ways.<br>
 	<br>
 	List of tested OpenGL loaders:
@@ -1481,7 +1832,7 @@
 	@subsection subsection_category_video_modern_opengl_present Presenting your frame
 
 	Call @ref fplVideoFlip() to present the frame to the screen.<br>
-	Its recommend to call this after each draw call of your frame at the end of the main-loop.
+	It is recommended to call this after each draw call of your frame at the end of the main-loop.
 
 	@subsection subsection_category_video_modern_opengl_multisampling Multisample anti-aliasing (MSAA)
 
@@ -1495,7 +1846,7 @@
 
 	// Forcing the video backend to be modern OpenGL with Core profile and for GL version 3.3
 	videoSettings.backend = fplVideoBackendType_OpenGL;
-	videoSettings.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
+	videoSettings.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Core;
 	videoSettings.graphics.opengl.majorVersion = 3;
 	videoSettings.graphics.opengl.minorVersion = 3;
 
@@ -1527,7 +1878,7 @@
 	
 	FPL can create the Instance and the Surface for you.
 	
-	The surface creation is mandatory, but an exiting instance can optionally be passed to the @ref fplSettings structure if needed.
+	The surface creation is mandatory, but an existing instance can optionally be passed to the @ref fplSettings structure if needed.
 	
 	- @ref section_category_video_vulkan_init_full
 	- @ref section_category_video_vulkan_init_surfaceonly
@@ -1602,7 +1953,7 @@
 	vulkanSettings->instance = yourVulkanInstance; // Pass in your vulkan instance to FPL
 	
 	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
-		// ... Vulkan Surface is created now and are ready to use
+		// ... Vulkan Surface is created now and ready to use
 	}
 	@endcode
 	
@@ -1680,7 +2031,7 @@
 	@subsection subsection_category_video_software_present Presenting your frame
 
 	Call @ref fplVideoFlip() to draw the pixels from the backbuffer to the window.<br>
-	Its recommend to call this after each draw call of your frame at the end of the main-loop.
+	It is recommended to call this after each draw call of your frame at the end of the main-loop.
 
 	@subsection subsection_category_video_software_drawing Drawing
 
@@ -1705,7 +2056,7 @@
 	@subsection subsection_category_video_software_outrect Limiting the output rectangle (Stretching vs non-stretched)
 
 	To force the pixels to be shown in a fixed rectangle you simply enable the @ref fplVideoBackBuffer.useOutputRect field and update the @ref fplVideoBackBuffer.outputRect as needed.<br>
-	This mimics a "viewport" which is similar to OpenGLs glViewport().<br>
+	This mimics a "viewport" which is similar to OpenGL's glViewport().<br>
 	<br>
 	If you don't use this feature all pixels are fully stretched to the current window area always!
 
@@ -1764,7 +2115,7 @@
 
 	@section section_category_video_software_notes Notes
 
-	- There is no software rendering functions built-in! If you want to draw for example a circle, you have to roll out your drawCircle() function - which may use Bresenham as its base or something.<br>
+	- There are no software rendering functions built-in! If you want to draw a circle for example, you have to roll your own drawCircle() function - which may use Bresenham as its base or something.<br>
 	- Vertical synchronization is not supported for software video backends!
 */
 
@@ -1896,9 +2247,9 @@
 	}
 	@endcode
 	
-	@section section_category_audio_multichannel_layout Setting a Audio Channel Layout
+	@section section_category_audio_multichannel_layout Setting an Audio Channel Layout
 
-	By default, FPL uses the native audio channel layout for your default sound device, by you can overwrite it by setting the @ref fplAudioChannelLayout in the @ref fplAudioSettings structure:<br>
+	By default, FPL uses the native audio channel layout for your default sound device, but you can overwrite it by setting the @ref fplAudioChannelLayout in the @ref fplAudioSettings structure:<br>
 
 	@code{.c}
 	fplSettings settings;
@@ -1916,7 +2267,7 @@
 	}
 	@endcode
 	
-	@note Note, that you have to call @ref fplGetAudioChannelMap() to get the actual audio channel mapping table, that maps each audio channel to a @ref fplAudioChannelType.
+	@note You have to call @ref fplGetAudioChannelMap() to get the actual audio channel mapping table, which maps each audio channel to a @ref fplAudioChannelType.
 
 	@section section_category_audio_multichannel_mapping Channel Mapping
 	
@@ -1977,7 +2328,7 @@
 				fplAudioResultType resultType = fplAudioInit(&newAudioSettings);
 				if (resultType != newAudioSettings_Success) {
 					// Handle error
-					// No need to stop release the audio system, this is done automatically
+					// No need to stop or release the audio system, this is done automatically
 				} else {
 					// Success, you can start the playback now
 					fplPlayAudio();
@@ -2010,9 +2361,9 @@
 	- Number of audio frames required
 	- If your sound device uses more than two channels, you have to call @ref fplGetAudioChannelMap() to get the channel mapping for each audio channel.
 
-	All these informations are provided by the @ref fpl_audio_client_read_callback callback function.<br>
+	All this information is provided by the @ref fpl_audio_client_read_callback callback function.<br>
 	<br>
-	The required format are stored as an argument to your call, see @ref fplAudioFormat or call @ref fplGetAudioHardwareFormat() to get this information before the audio playback is started.
+	The required format is stored as an argument to your call, see @ref fplAudioFormat or call @ref fplGetAudioHardwareFormat() to get this information before the audio playback is started.
 
 	@section section_category_audio_writesamples_functions Useful functions
 
@@ -2051,7 +2402,7 @@
 
 	@note FPL does not provide any functionality for doing any kind of DSP or format conversion!<br>
 	@note You are responsible for filling out the samples in the correct format your audio device expects!
-	@note Repect the audio channel map, otherwise samples may be played back on the wrong speaker!
+	@note Respect the audio channel map, otherwise samples may be played back on the wrong speaker!
 */
 
 /*!
@@ -2083,7 +2434,7 @@
 
 	@note This function does nothing more than calling the proper operating-system function such as **VirtualAlloc()** or **mmap()** .
 	@attention The memory is not guaranteed to be aligned, but depending on the OS it may be aligned to something.
-	@warning Do not write before this pointer, otherwise, you may overwrite meta-informations required for releasing the memory later on.
+	@warning Do not write before this pointer, otherwise, you may overwrite meta-information required for releasing the memory later on.
 
 	@subsection section_category_memory_normal_free Free memory
 
@@ -2122,9 +2473,9 @@
 	// ...
 	@endcode
 
-	@note The size of the memory block may be greater than the size you requested, due to alignment padding and meta-informations.
+	@note The size of the memory block may be greater than the size you requested, due to alignment padding and meta-information.
 	@attention The alignment parameter must be a power-of-two based value, otherwise, the function will fail.
-	@warning Do not write before this pointer, otherwise you will overwrite meta-informations required for releasing the memory later on.
+	@warning Do not write before this pointer, otherwise you will overwrite meta-information required for releasing the memory later on.
 
 	@subsection subsection_category_memory_handling_aligned_free Free aligned memory
 
@@ -2134,11 +2485,11 @@
 
 	@subsection subsection_category_memory_handling_aligned_datalayout Data layout of aligned memory
 
-	Here you can see the full data-layout for a aligned memory block:
+	Here you can see the full data-layout for an aligned memory block:
 	
 	| 4/8 bytes for x86/x64           | Alignment * 2 bytes   | n-bytes                                                                       |
 	|---------------------------------|-----------------------|-------------------------------------------------------------------------------|
-	| **Address of the base-pointer** | **Alignment padding** | \ref subsection_category_memory_handling_normal_datalayout "Data layout"      |
+	| **Address of the base-pointer** | **Alignment padding** | @ref subsection_category_memory_handling_normal_datalayout "Data layout"      |
 
 	@section section_category_memory_handling_ops Memory operations
 
@@ -2191,26 +2542,31 @@
 
 	FPL provides a few macro functions useful for dealing with memory:<br>
 	
-	| Name                | What it does                                               |
-    |---------------------|------------------------------------------------------------|
-	| @ref fplZeroInit    | Initializes a struct with zero                             |
-	| @ref fplStructInit  | Initializes a struct with values                           |
-	| @ref fplStructSet   | Overwrites a struct with the given value                   |
-	| @ref fplClearStruct | Clears the given struct pointer to zero                    |
-	| @ref fplCopyStruct  | Copies the source struct data into the destination pointer |
-	| @ref fplArrayCount  | Returns the number of elements in fixed sized array        |
-	| @ref fplOffsetOf    | Returns the byte-offset to a field in a struct             |
-	| @ref fplKiloBytes   | Converts the given kilobytes value into bytes              |
-	| @ref fplMegaBytes   | Converts the given megabytes value into bytes              |
-	| @ref fplGigaBytes   | Converts the given gigabytes value into bytes              |
-	| @ref fplTeraBytes   | Converts the given terabytes value into bytes              |
+	| Name                       | What it does                                               |
+    |----------------------------|------------------------------------------------------------|
+	| @ref fplZeroInit           | Initializes a struct with zero                             |
+	| @ref fplStructInit         | Initializes a struct with values                           |
+	| @ref fplStructSet          | Overwrites a struct with the given value                   |
+	| @ref fplStructField        | Defines a single field in a struct                         |
+	| @ref fplClearStruct        | Clears the given struct pointer to zero                    |
+	| @ref fplCopyStruct         | Copies the source struct data into the destination pointer |
+	| @ref fplArrayCount         | Returns the number of elements in fixed sized array        |
+	| @ref fplOffsetOf           | Returns the byte-offset to a field in a struct             |
+	| @ref fplGetAlignmentOffset | Returns the offset needed to satisfy an alignment boundary |
+	| @ref fplGetAlignedSize     | Extends a size to satisfy an alignment boundary            |
+	| @ref fplIsAligned          | Returns true when a pointer address is aligned             |
+	| @ref fplStackAllocate      | Allocates the given number of bytes on the stack           |
+	| @ref fplKiloBytes          | Converts the given kilobytes value into bytes              |
+	| @ref fplMegaBytes          | Converts the given megabytes value into bytes              |
+	| @ref fplGigaBytes          | Converts the given gigabytes value into bytes              |
+	| @ref fplTeraBytes          | Converts the given terabytes value into bytes              |
 */
 
 /*!
 	@page page_category_hardware Query Hardware information
 	@tableofcontents
 
-	FPL provides a couple of functions for getting hardware functions, such as CPU & memory Infos, etc.<br>
+	FPL provides a couple of functions for retrieving hardware information, such as CPU & memory infos, etc.<br>
 
 	@section section_category_hardware_corecount Get number of CPU-Cores
 
@@ -2225,7 +2581,7 @@
 
 	@section section_category_hardware_cpuarch Get CPU architecture
 
-	You can query the CPU architecture type by calling @ref fplCPUGetArchitecture() . This will return a @ref fplCPUArchType value, which you can use test for different architecture types.<br>
+	You can query the CPU architecture type by calling @ref fplCPUGetArchitecture() . This will return a @ref fplCPUArchType value, which you can use to test for different architecture types.<br>
 	<br>
 	Use @ref fplCPUGetArchName() to convert a @ref fplCPUArchType into a string.<br>
 
@@ -2253,13 +2609,13 @@
 
 	@section section_category_hardware_memstate Query memory state
 
-	With @ref fplMemoryGetInfos() you can query the current memory state.<br>
+	With @ref fplMemoryGetUsage() you can query the current memory state.<br>
 	This includes the size of the physical memory, the current memory usage, and more.<br>
 	See @ref fplMemoryInfos for more details.<br>
 
 	@code{.c}
 	fplMemoryInfos memInfos = fplZeroInit;
-	if (fplMemoryGetInfos(&memInfos)) {
+	if (fplMemoryGetUsage(&memInfos)) {
 		fplConsoleFormatOut("%llu of %llu physical memory is available.\n", memInfos.freePhysicalSize, memInfos.totalPhysicalSize);
 	}
 	@endcode
@@ -2279,10 +2635,206 @@
 */
 
 /*!
+	@page page_category_timings_datetime Query Date & Time
+	@tableofcontents
+
+	FPL provides a couple of functions for querying and constructing calendar date and time values.<br>
+	A date time is stored in the @ref fplDateTime structure, which holds the Unix epoch (seconds since 1970-01-01), additional milliseconds and the UTC offset in minutes.<br>
+	<br>
+	@note Pre-1970 dates are not supported. The epoch field is unsigned and @ref fplDateTimeCreate() rejects any year below 1970.<br>
+	<br>
+	For pure delta/profiling measurements, use the functions described in @ref page_category_timings_measurement instead.
+
+	@section section_category_timings_datetime_query Query the current date and time
+
+	You can query the current date and time by calling @ref fplDateTimeQuery() and passing a @ref fplDateTimeType value.<br>
+	Pass @ref fplDateTimeType_UTC to get the time in UTC (+0) or @ref fplDateTimeType_Local to get the local time including the current UTC offset.<br>
+
+	@code{.c}
+	// Query the current local date time
+	fplDateTime now = fplDateTimeQuery(fplDateTimeType_Local);
+
+	// Query the current UTC date time
+	fplDateTime utcNow = fplDateTimeQuery(fplDateTimeType_UTC);
+	@endcode
+
+	The returned @ref fplDateTime is not directly human readable - it stores the epoch, milliseconds and UTC offset only.<br>
+	To get the individual date and time components, use @ref fplFormatDateTime() (see @ref section_category_timings_datetime_format).
+
+	@section section_category_timings_datetime_format Extract the date and time components
+
+	To break a @ref fplDateTime into its individual fields (year, month, day, hour, etc.), call @ref fplFormatDateTime() .<br>
+	It returns a @ref fplDateTimeResult, which contains the year, month, day, hour, minute, second and millisecond.<br>
+	<br>
+	The @ref fplDateTimeType argument controls whether the components are computed in UTC or local time.<br>
+
+	@code{.c}
+	fplDateTime now = fplDateTimeQuery(fplDateTimeType_Local);
+
+	// Compute the individual components in local time
+	fplDateTimeResult fields = fplFormatDateTime(now, fplDateTimeType_Local);
+
+	fplConsoleFormatOut("%04d-%02d-%02d %02d:%02d:%02d.%03d\n",
+		fields.year, fields.month, fields.day,
+		fields.hour, fields.minute, fields.second, fields.millisecond);
+	@endcode
+
+	@section section_category_timings_datetime_create Create a date and time
+
+	You can construct a @ref fplDateTime from individual components by calling @ref fplDateTimeCreate() .<br>
+	It takes the year, month, day, hour, minute, second, millisecond and the UTC offset in minutes.<br>
+	<br>
+	The result is returned as a @ref fplDateTimeCreationResult. Always check the `success` field before using the resulting date time.<br>
+	If the creation fails, the `errors` field contains a combination of @ref fplDateTimeErrors flags describing which component was invalid.<br>
+
+	@code{.c}
+	// Create the date time 2026-05-16 13:45:00.000 in UTC (+0)
+	fplDateTimeCreationResult result = fplDateTimeCreate(2026, 5, 16, 13, 45, 0, 0, 0);
+	if (result.success) {
+		fplDateTime dateTime = result.dateTime;
+		// Do something with the date time
+	} else {
+		if (result.errors & fplDateTimeErrors_InvalidYear) {
+			// The year was out of range (expected 1970 or higher)
+		}
+	}
+	@endcode
+
+	@note If invalid arguments are passed, an empty date time is returned and `success` is set to false.
+
+	@section section_category_timings_datetime_notes Notes
+
+	- The @ref fplDateTime structure is the canonical storage format - convert it with @ref fplFormatDateTime() only when you need the individual fields.
+	- The `utcOffset` field is zero when the date time is UTC or +0, otherwise it holds the offset in minutes used to convert back into UTC.
+	- @ref fplDateTimeQuery() and @ref fplFormatDateTime() are platform functions, while @ref fplDateTimeCreate() is a common function available on all platforms.
+*/
+
+/*!
+	@page page_category_timings_measurement Time Measurement & Profiling
+	@tableofcontents
+
+	FPL provides a couple of functions for measuring elapsed time, used for profiling, delta time calculations and timeouts.<br>
+	<br>
+	@note These functions are meant for delta measurements only. They are not tied to a calendar date and the starting point is undefined (OS start, system start, etc.).<br>
+	To query the current calendar date and time, see @ref page_category_timings_datetime instead.
+
+	@section section_category_timings_measurement_highprecision High precision measurement
+
+	For the most precise time measurement, use @ref fplTimestampQuery() to capture a @ref fplTimestamp.<br>
+	A @ref fplTimestamp is an opaque value - it only has meaning when compared against another timestamp.<br>
+	<br>
+	To get the elapsed time between two timestamps, call @ref fplTimestampElapsed() . It returns the delta in seconds as @ref fplSeconds (a 64-bit double).<br>
+
+	@code{.c}
+	// Capture the starting timestamp
+	fplTimestamp start = fplTimestampQuery();
+
+	// ... do some work ...
+
+	// Capture the finishing timestamp and compute the delta
+	fplTimestamp finish = fplTimestampQuery();
+	fplSeconds elapsed = fplTimestampElapsed(start, finish);
+
+	fplConsoleFormatOut("Work took %f seconds\n", elapsed);
+	@endcode
+
+	This is the recommended way to compute frame delta times in a game loop:
+
+	@code{.c}
+	fplTimestamp last = fplTimestampQuery();
+	while (running) {
+		fplTimestamp now = fplTimestampQuery();
+		fplSeconds deltaTime = fplTimestampElapsed(last, now);
+		last = now;
+
+		// Update the game using deltaTime
+	}
+	@endcode
+
+	@section section_category_timings_measurement_lowprecision Low precision measurement
+
+	For simple, less precise measurements you can use @ref fplMillisecondsQuery() .<br>
+	It returns the current system clock in milliseconds as @ref fplMilliseconds (a 64-bit unsigned integer), counted from some fixed but undefined starting point.<br>
+
+	@code{.c}
+	fplMilliseconds start = fplMillisecondsQuery();
+
+	// ... do some work ...
+
+	fplMilliseconds elapsed = fplMillisecondsQuery() - start;
+	fplConsoleFormatOut("Work took %llu milliseconds\n", elapsed);
+	@endcode
+
+	@section section_category_timings_measurement_timeouts Timeout values
+
+	A number of FPL functions (mutexes, signals, semaphores, etc.) accept a timeout argument expressed as a @ref fplTimeoutValue.<br>
+	This is a timeout in milliseconds. To wait indefinitely, pass the @ref FPL_TIMEOUT_INFINITE constant.<br>
+
+	@code{.c}
+	// Wait at most 500 milliseconds
+	fplTimeoutValue timeout = 500;
+
+	// Wait forever
+	fplTimeoutValue infinite = FPL_TIMEOUT_INFINITE;
+	@endcode
+
+	@section section_category_timings_measurement_notes Notes
+
+	- Use @ref fplTimestampQuery() / @ref fplTimestampElapsed() when precision matters (profiling, frame delta time).
+	- Use @ref fplMillisecondsQuery() for simple, coarse measurements where high precision is not required.
+	- A @ref fplTimestamp value is platform-dependent and must never be interpreted directly - only compare it with @ref fplTimestampElapsed() .
+	- The starting point of both clocks is undefined, so only the difference between two queries is meaningful.
+*/
+
+/*!
+	@page page_category_localization Query Locale information
+	@tableofcontents
+
+	FPL provides a couple of functions for querying the currently configured locale.<br>
+	A locale is written into a caller-provided string buffer in a format described by the @ref fplLocaleFormat enumeration.<br>
+	<br>
+	Currently the only supported format is @ref fplLocaleFormat_ISO639, which produces ISO-639 strings like `en-US` or `de-DE`.
+
+	@section section_category_localization_query Querying a locale
+
+	FPL distinguishes three kinds of locale:<br>
+
+	| Function                | Returns the locale of                          |
+	|-------------------------|-------------------------------------------------|
+	| @ref fplGetUserLocale()   | The current user account                       |
+	| @ref fplGetSystemLocale() | The operating system / system-wide setting      |
+	| @ref fplGetInputLocale()  | The active keyboard / input layout              |
+
+	All three functions share the same signature - pass the desired @ref fplLocaleFormat, a destination buffer and its maximum length.<br>
+	They return the number of characters written, excluding the null terminator.<br>
+
+	@code{.c}
+	char localeBuffer[16];
+
+	// Query the current user locale, e.g. "en-US"
+	if (fplGetUserLocale(fplLocaleFormat_ISO639, localeBuffer, fplArrayCount(localeBuffer)) > 0) {
+		fplConsoleFormatOut("User locale: %s\n", localeBuffer);
+	}
+
+	// Query the system locale
+	if (fplGetSystemLocale(fplLocaleFormat_ISO639, localeBuffer, fplArrayCount(localeBuffer)) > 0) {
+		fplConsoleFormatOut("System locale: %s\n", localeBuffer);
+	}
+
+	// Query the input/keyboard locale
+	if (fplGetInputLocale(fplLocaleFormat_ISO639, localeBuffer, fplArrayCount(localeBuffer)) > 0) {
+		fplConsoleFormatOut("Input locale: %s\n", localeBuffer);
+	}
+	@endcode
+
+	@note A return value of zero means the locale could not be determined or the buffer was too small.
+*/
+
+/*!
 	@page page_category_platform Query Platform/OS information
 	@tableofcontents
 
-	FPL provides a couple of functions for query operating system or platform information.
+	FPL provides a couple of functions for querying operating system or platform information.
 
 	@section section_category_platform_type Get Current Platform Type/Name
 			Use @ref fplGetPlatformType() to get the current @ref fplPlatformType .<br>
@@ -2418,7 +2970,7 @@
 	@subsection subsection_category_io_binaryfiles_write_create Creating a Binary File
 
 	To create a binary file, simply declare a @ref fplFileHandle somewhere and call fplFileCreateBinary() with a valid UTF-8 path to open it.<br>
-	If the file already exists, it will be overridden automatically.<br>
+	If the file already exists, it will be overwritten automatically.<br>
 
 	@code{.c}
 	fplFileHandle fileHandle;
@@ -2456,7 +3008,7 @@
 
 	@subsection subsection_category_io_binaryfiles_pos_get Getting the current file position
 
-	Call @ref fplFileGetPosition() to get the current file position from a opened @ref fplFileHandle .
+	Call @ref fplFileGetPosition() to get the current file position from an opened @ref fplFileHandle .
 
 	@code{.c}
 	fplFileHandle fileHandle = ...
@@ -2465,14 +3017,14 @@
 
 	@subsection subsection_category_io_binaryfiles_pos_set Setting the current file position (Seeking)
 
-	Call @ref fplFileSetPosition() to set the current file position on a opened @ref fplFileHandle .<br>
+	Call @ref fplFileSetPosition() to set the current file position on an opened @ref fplFileHandle .<br>
 
 	@code{.c}
 	fplFileHandle fileHandle = ...
 	// Seek 4-bytes forwards from the current position
 	fplFileSetPosition(&fileHandle, 4, fplFilePositionMode_Current);
 
-	// Seek 8-bytes backwards from the current position
+	// Seek 4-bytes backwards from the current position
 	fplFileSetPosition(&fileHandle, -4, fplFilePositionMode_Current);
 
 	// Seek to the 128-byte from the beginning (Absolute seeking)
@@ -2487,7 +3039,7 @@
 
 	@section section_category_io_binaryfiles_32vs64 Default vs 32-bit vs 64-bit
 
-	There are three versions for file reading/writing and seekings:<br>
+	There are three versions for file reading/writing and seeking:<br>
 	- A version which uses uint32_t or int32_t (32-bit only, Limited to 2 GB of file = 2^31).<br>
 	- A version which uses uint64_t or int64_t (64-bit only, Limited to 2 TB of file = 2^63).<br>
 	- A default version which uses size_t or intptr_t always and use either the 32-bit or the 64-bit, depending on the compiled CPU-Architecture.<br>
@@ -2508,7 +3060,7 @@
 
 	Limited to 32-bit:<br>
 	- @ref fplFileSetPosition32()
-	- @ref fplFileSetPosition32()
+	- @ref fplFileGetPosition32()
 	- @ref fplFileReadBlock32()
 	- @ref fplFileWriteBlock32()
 	- @ref fplFileGetSizeFromPath32()
@@ -2518,7 +3070,7 @@
 
 	Up to 2-TB (64-bit):<br>
 	- @ref fplFileSetPosition64()
-	- @ref fplFileSetPosition64()
+	- @ref fplFileGetPosition64()
 	- @ref fplFileReadBlock64()
 	- @ref fplFileWriteBlock64()
 	- @ref fplFileGetSizeFromPath64()
@@ -2565,7 +3117,7 @@
 
 	@note This is the recommended way to construct any kind of path because it will handle path separators correctly.
 	@note This function is designed to be compatible with .NET <b>Path.Combine()</b>.
-	@warning Do not pass the wrong number of maximum arguments as a third-argument, otherwise, your application may end crashing horribly.
+	@warning Do not pass the wrong number of maximum arguments as a third-argument, otherwise, your application may end up crashing horribly.
 
 	@subsection subsection_category_io_paths_utils_extractfilepath Extracting the file path
 
@@ -2657,7 +3209,7 @@
 	@note The original path is not altered in any way, therefore the source arguments are defined as const.
 	@warning Do not use manually constructed source paths with fixed path separators such as <b>/</b> or <b>\\</b>, otherwise you will lose platform independence! Use @ref fplPathCombine() to build new paths from multiple paths if needed.
 
-	@section section_category_io_paths_get Retrievement of paths
+	@section section_category_io_paths_get Retrieving paths
 
 	@subsection subsection_category_io_paths_get_home Getting the home directory path
 
@@ -2673,7 +3225,7 @@
 	// ... Do something with the homePath
 	@endcode
 
-	@note There is no guarantee that this path ends with a trailing path separator, such as <b>/</b> on POSIX or <b>\\</b> on Win32! If needed use @ref fplEnforcePathSeparator to force a path separator on always.
+	@note There is no guarantee that this path ends with a trailing path separator, such as <b>/</b> on POSIX or <b>\\</b> on Win32! If needed use @ref fplEnforcePathSeparator to always enforce a path separator.
 	@warning The return value of @ref fplGetHomePath returns the pointer to the last-written character and <b>NOT</b> the pointer to the first character!
 
 	@subsection subsection_category_io_paths_get_exepath Get executable file path
@@ -2696,7 +3248,7 @@
 	}
 	@endcode
 
-	@note There is no guarantee that this path ends with a trailing path separator, such as <b>/</b> on POSIX or <b>\\</b> on Win32! If needed use @ref fplEnforcePathSeparator to force a path separator on always.
+	@note There is no guarantee that this path ends with a trailing path separator, such as <b>/</b> on POSIX or <b>\\</b> on Win32! If needed use @ref fplEnforcePathSeparator to always enforce a path separator.
 	@note The name of the executable is always included in the path and will contain the file extension if there is one.
 	@warning The return value of @ref fplExtractFilePath returns the pointer to the last-written character and <b>NOT</b> the pointer to the first character!
 
@@ -2709,7 +3261,7 @@
 	Use @ref fplDirectoryListBegin() to start finding files in a path.<br>
 	If this function succeeds, the result for the first match is written into the @ref fplFileEntry structure.<br>
 	<br>
-	After this you repeatly call @ref fplDirectoryListNext(), to get the next match into @ref fplFileEntry structure - until the function returns false.<br>
+	After this you repeatedly call @ref fplDirectoryListNext(), to get the next match into the @ref fplFileEntry structure - until the function returns false.<br>
 
 	<b>Example:</b>
 	@code{.c}
@@ -2797,7 +3349,7 @@
 		file_list_t outFileList;
 		init_file_list(&outFileList);
 		GetFilesFromDirectory(rootPath, true, &outFileList);
-		// ... do someting with out file list
+		// ... do something with our file list
 		free_file_list(&outFileList);
 		return 0;
 	}
@@ -2946,9 +3498,11 @@
 	@tableofcontents
 
 	@section section_category_threading_mutexes_overview Overview
-	This section explains how to create and handling of Mutexes.<br>
+	This section explains how to create and handle Mutexes.<br>
 	A mutex is a Kernel-Level object used to prevent race conditions when multiple Threads access the same code section.<br>
-	With a Mutex, you can ensure that only one thread at a time can access a code section.
+	With a Mutex, you can ensure that only one thread at a time can access a code section.<br>
+	<br>
+	See @ref page_category_threading_sync for a comparison with the other synchronization primitives.
 
 	@section section_category_threading_mutexes_init Initialize a Mutex
 	Call @ref fplMutexInit() with a pointer to @ref fplMutexHandle argument, to initialize a Mutex.<br>
@@ -2969,7 +3523,7 @@
 
 	@subsection subsection_category_threading_mutexes_locking_lock Locking a Mutex
 	Call @ref fplMutexLock() with a pointer to @ref fplMutexHandle as an argument, to lock a Mutex.<br>
-	It this Mutex is already locked, the current thread will wait forever until it gets unlocked by the owner Thread.<br>
+	If this Mutex is already locked, the current thread will wait forever until it gets unlocked by the owner Thread.<br>
 	If this Mutex is not locked yet, it will be locked by the calling Thread.<br>
 
 	@note You should always unlock the @ref fplMutexHandle as soon as possible - on the same call stack.<br>
@@ -3000,7 +3554,7 @@
 	    fplMutexUnlock(&mutex);
 	}
 
-	// Dont wait for the mutex to be unlocked, just try to lock it
+	// Don't wait for the mutex to be unlocked, just try to lock it
 	if (fplMutexTryLock(&mutex)) {
     	// Do something in this critical section here
 	    fplMutexUnlock(&mutex);
@@ -3018,8 +3572,10 @@
 	This section explains how to create and manage Signals.<br>
 	A Signal is a Kernel-Level object used to notify one or multiple waiting Threads.<br>
 	It internally contains a Value which is either @ref fplSignalValue_Set or @ref fplSignalValue_Unset.<br>
-	When this value gets changed, all Threads which waits on that Signal will wakeup.<br>
-	They can be shared across process boundaries and may be used as standalone locks to shared data, but the number of Signals is limited by the OS that can be allocated at a time.
+	When this value gets changed, all Threads which wait on that Signal will wake up.<br>
+	They can be shared across process boundaries and may be used as standalone locks to shared data, but the number of Signals is limited by the OS that can be allocated at a time.<br>
+	<br>
+	See @ref page_category_threading_sync for a comparison with the other synchronization primitives.
 
 	@section section_category_threading_signals_init Initialize a Signal
 	Call @ref fplSignalInit() with a pointer to @ref fplSignalHandle as an argument, to initialize a Signal.<br>
@@ -3157,10 +3713,12 @@
 	@tableofcontents
 
 	@section section_category_threading_conditions_overview Overview
-	This section explains how to create and handling of Condition-Variables.<br>
+	This section explains how to create and handle Condition-Variables.<br>
 	A Condition-Variable is a User-Level Object used to let Threads wait until a Condition-Variable is signaled or broadcasted.<br>
 	Unlike @subpage page_category_threading_signals, Condition-Variables requires you to use a @ref fplMutexHandle as a locking mechanism.<br>
-	They cannot be shared across process boundaries but the number of Condition-Variables is only limited by the amount of memory you have.
+	They cannot be shared across process boundaries but the number of Condition-Variables is only limited by the amount of memory you have.<br>
+	<br>
+	See @ref page_category_threading_sync for a comparison with the other synchronization primitives.
 
 	@section category_threading_conditions_init Initialize a Condition-Variable
 	Call @ref fplConditionInit() with a pointer to @ref fplConditionVariable as an argument, to initialize a Condition-Variable.<br>
@@ -3179,7 +3737,7 @@
 	@section category_threading_conditions_wait_single Waiting on a Condition-Variable
 	Call @ref fplConditionWait() with a pointer to @ref fplConditionVariable and a pointer to @ref fplMutexHandle as an argument, to let a thread wait on that Condition-Variable.<br>
 	Also, you need to specify the number of milliseconds you want the Thread to wait. If **FPL_TIMEOUT_INFINITE** is passed, it will wait forever.<br>
-	@note Conditions must be called inside a locked critical-section or undefined behavior may happen.
+	@note Conditions must be called inside a locked critical-section or undefined behavior may occur.
 
 	@code{.c}
 	fplMutexLock(&mutex);
@@ -3201,7 +3759,7 @@
 	@section category_threading_conditions_signal Send a Signal to a Condition-Variable to one waiting Thread
 	Call @ref fplConditionSignal() with a pointer to @ref fplConditionVariable, to signal any waiting Threads.<br>
 	If you want to let multiple Threads waits on the same Condition-Variable, use @ref fplConditionBroadcast() instead.<br>
-	@note Unlike Signals Condition-Variables does not need a Mutex for signaling.
+	@note Unlike Signals, Condition-Variables do not need a Mutex for signaling.
 
 	@code{.c}
 	// Send a Signal to the Condition-Variable to one waiting Thread
@@ -3211,7 +3769,7 @@
 	@section category_threading_conditions_broadcast Send a Condition-Variable Broadcast to all waiting Threads
 	Call @ref fplConditionBroadcast() with a pointer to @ref fplConditionVariable, to signal all waiting Threads.<br>
 	If you just need a single Thread to wait on the Condition-Variable, use @ref fplConditionSignal() instead.<br>
-	@note Unlike Signals Condition-Variables does not need a Mutex for signaling a Condition-Variable.
+	@note Unlike Signals, Condition-Variables do not need a Mutex for signaling a Condition-Variable.
 
 	@code{.c}
 	// Broadcast a Signal to the Condition-Variable to all waiting Threads
@@ -3226,11 +3784,13 @@
 	@section section_category_threading_semaphores_overview Overview
 	This section explains how to create and manage semaphores.<br>
 	Semaphores are similar to @subpage page_category_threading_mutexes "Mutexes" but have one major difference: Any Thread can release it!<br>
-	It internally uses an atomic counter which gets incremented and decremented.
+	It internally uses an atomic counter which gets incremented and decremented.<br>
+	<br>
+	See @ref page_category_threading_sync for a comparison with the other synchronization primitives.
 
 	@section category_threading_semaphores_init Initialize a Semaphore
 	Call @ref fplSemaphoreInit() to initialize a Semaphore with a @ref fplSemaphoreHandle as an argument. Also, you need to specify the initial value for the Semaphore to start with.<br>
-	Call @ref fplSemaphoreDestroy() when you are done with that Semaphore to let it releases its internal resources.
+	Call @ref fplSemaphoreDestroy() when you are done with that Semaphore to let it release its internal resources.
 
 	@code{.c}
 	fplSemaphoreHandle semaphore;
@@ -3262,7 +3822,7 @@
 	A thread can only wait on one single Semaphore at a time - if you need to wait on multiple Semaphores, you should consider using @subpage page_category_threading_signals .
 
 	@section subsection_category_threading_semaphores_trywait Trying to wait on a Semaphore
-	@ref fplSemaphoreTryWait() is the same as @ref fplSemaphoreWait() , except that if the decrement cannot immediately perform, the current thread will not be _blocked_.
+	@ref fplSemaphoreTryWait() is the same as @ref fplSemaphoreWait() , except that if the decrement cannot be performed immediately, the current thread will not be _blocked_.
 
 	@section category_threading_semaphores_post Releasing the Semaphore
 	Call @ref fplSemaphoreRelease() with the @ref fplSemaphoreHandle in question, to release a Semaphore and signal all waiting Threads.<br>	 
@@ -3288,14 +3848,16 @@
 
 	@section category_threading_atomics_overview Overview
 	This section explains what atomics is and how they are used.<br>
-	Since decades CPUs have hardware CPU instructions for doing thread-safe math and compare operations built-in.<br>
+	For decades CPUs have had built-in hardware instructions for doing thread-safe math and compare operations.<br>
 	These instructions are available as built-in intrinsics in any modern C/C++ compiler.<br>
 	In FPL these are called Atomics and are wrapper functions around those intrinsics.<br>
 	<br>
-	Atomics functions generate memory barriers (or fences) to ensure that memory operations are completed in order.
+	Atomics functions generate memory barriers (or fences) to ensure that memory operations are completed in order.<br>
+	<br>
+	See @ref page_category_threading_sync for a comparison with the other synchronization primitives.
 
 	@section category_threading_atomics_add Fetch-And-Add (Add)
-	With a Fetch-And-Add instruction, you can do an atomic addition and get the previous value **before** the add back as an atomic operation.<br>
+	With a Fetch-And-Add instruction, you can do an atomic addition and get back the previous value (**before** the add) as an atomic operation.<br>
 
 	Pseudo code:
 	@code
@@ -3304,7 +3866,7 @@
 	return oldValue;
 	@endcode
 
-	FPL have several versions for that for various datatypes:
+	FPL has several versions for various datatypes:
 	- @ref fplAtomicFetchAndAddU32()
 	- @ref fplAtomicFetchAndAddU64()
 	- @ref fplAtomicFetchAndAddS32()
@@ -3319,7 +3881,7 @@
 	@endcode
 
 	@section category_threading_atomics_inc Add-And-Fetch (Increment)
-	With an Add-And-Fetch instruction, you can do an atomic addition by **one** and get the new value back **after** the increment as an atomic operation.<br>
+	With an Add-And-Fetch instruction, you can do an atomic addition by **one** and get back the new value (**after** the increment) as an atomic operation.<br>
 	
 	Pseudo code:
 	@code
@@ -3328,7 +3890,7 @@
 	return newValue;
 	@endcode
 
-	FPL have several versions for that for various datatypes:
+	FPL has several versions for various datatypes:
 	- @ref fplAtomicAddAndFetchU32()
 	- @ref fplAtomicAddAndFetchU64()
 	- @ref fplAtomicAddAndFetchS32()
@@ -3343,7 +3905,7 @@
 	@endcode
 
 	@section category_threading_atomics_exchange Exchange
-	With a Exchange instruction, you can do an atomic exchange and get the previous value back **before** the change as an atomic operation.<br>
+	With an Exchange instruction, you can do an atomic exchange and get back the previous value (**before** the change) as an atomic operation.<br>
 	
 	Pseudo code:
 	@code
@@ -3352,7 +3914,7 @@
 	return oldValue;
 	@endcode
 
-	FPL have several versions for that for various datatypes:
+	FPL has several versions for various datatypes:
 	- @ref fplAtomicExchangeU32()
 	- @ref fplAtomicExchangeU64()
 	- @ref fplAtomicExchangeS32()
@@ -3366,7 +3928,7 @@
 	uint32_t newValue = fplAtomicStoreU32(&storageValue, 1337);
 	@endcode
 
-	@note The exchange atomics is identical to @ref category_threading_atomics_store, except that the exchange atomics will return the previous value before the change.
+	@note The exchange atomic is identical to @ref category_threading_atomics_store, except that it returns the previous value before the change.
 
 	@section category_threading_atomics_store Store
 	With a Store instruction, you can do a memory write as an atomic operation.<br>
@@ -3376,7 +3938,7 @@
 	*storageValue = newValue;
 	@endcode
 
-	FPL have several versions for that for various datatypes:
+	FPL has several versions for various datatypes:
 	- @ref fplAtomicStoreU32()
 	- @ref fplAtomicStoreU64()
 	- @ref fplAtomicStoreS32()
@@ -3390,7 +3952,7 @@
 	fplAtomicStoreU32(&storageValue, 1337);
 	@endcode
 
-	@note The store atomics is identical to @ref category_threading_atomics_exchange, except that the store atomics won't return any value.
+	@note The store atomic is identical to @ref category_threading_atomics_exchange, except that it does not return any value.
 
 	@section category_threading_atomics_load Load
 	With a Load instruction, you can do a memory read as an atomic operation.<br>
@@ -3400,7 +3962,7 @@
 	return *storageValue;
 	@endcode
 
-	FPL have several versions for that for various datatypes:
+	FPL has several versions for various datatypes:
 	- @ref fplAtomicLoadU32()
 	- @ref fplAtomicLoadU64()
 	- @ref fplAtomicLoadS32()
@@ -3427,7 +3989,7 @@
 	return oldValue;
 	@endcode
 
-	FPL have several versions for that for various datatypes:
+	FPL has several versions for various datatypes:
 	- @ref fplAtomicCompareAndSwapU32()
 	- @ref fplAtomicCompareAndSwapU64()
 	- @ref fplAtomicCompareAndSwapS32()
@@ -3452,7 +4014,7 @@
 	if (fplAtomicIsCompareAndSwapU32(&storageValue, 0, 1337)) {
 		// The first thread executing this to 1337 will get here
 	} else {
-		// All other threads gets here
+		// All other threads get here
 	}
 	@endcode
 
@@ -3466,7 +4028,7 @@
 	int theValue;
 	int valueIsPublished = 0;
 	void updateValue(int newValue) {
-		// The compiler may move the write above the the value set
+		// The compiler may reorder these two writes
 		theValue = newValue;
 		valueIsPublished = 1;
 	}
@@ -3505,9 +4067,9 @@
 	@endcode
 
 	@subsection subsection_category_threading_atomics_barriers_read_or_write Read or Write
-	In some special cases you don't have to issue a full memory barrier like @ref fplAtomicReadWriteFence(), so you can just use a read or write barrier only:<br>
-	- You can use @ref fplAtomicReadFence() to just ensure memory writes are completed before future ones only (Plus preventing from compiler reordering memory writes).<br>
-	- You can use @ref fplAtomicWriteFence() to just ensure memory reads are completed before future ones only (Plus preventing from compiler reordering memory reads).<br>
+	In some special cases you don't have to issue a full memory barrier like @ref fplAtomicReadWriteFence() - you can use a read or write barrier only:<br>
+	- Use @ref fplAtomicReadFence() to ensure prior memory reads complete before future ones (and prevent the compiler from reordering memory reads).<br>
+	- Use @ref fplAtomicWriteFence() to ensure prior memory writes complete before future ones (and prevent the compiler from reordering memory writes).<br>
 
 	@subsection subsection_category_threading_atomics_barriers_atomics Atomics vs Barriers?
 
@@ -3520,11 +4082,114 @@
 	@page page_category_threading_sync Synchronization methods
 	@tableofcontents
 
-	@todo(final): Explain why we need this
+	@section section_category_threading_sync_why Why synchronization is needed
 
-	@todo(final): Add examples of solving race conditions (Mutexes, Signals, Condition-Variables, Semaphores, Atomics)
+	When multiple Threads access the same data, reads and writes can interleave in any order.<br>
+	Without synchronization the result is a race condition: lost updates, torn reads, or inconsistent state.<br>
+	<br>
+	Even a single statement like <b>counter++</b> is not atomic - it is a load, an add and a store.<br>
+	Two threads running it in parallel can both read the same value, add one, and write back the same result - losing one increment.<br>
+	<br>
+	Synchronization primitives serialize access to shared data or signal state changes between Threads, so the program behaves as intended.
 
-	@todo(final): Add a comparison table to show the difference between the different types.
+	@section section_category_threading_sync_examples Solving race conditions
+
+	@subsection subsection_category_threading_sync_example_mutex Mutex - protect a critical section
+
+	Use a @ref fplMutexHandle to ensure only one Thread executes a code section at a time.
+
+	@code{.c}
+	static fplMutexHandle counterMutex;
+	static uint32_t sharedCounter;
+
+	void IncrementCounter() {
+		fplMutexLock(&counterMutex);
+		++sharedCounter; // safe: only one Thread at a time
+		fplMutexUnlock(&counterMutex);
+	}
+	@endcode
+
+	@subsection subsection_category_threading_sync_example_signal Signal - notify waiting Threads
+
+	Use a @ref fplSignalHandle when one Thread must tell others that something happened (e.g. work is ready).
+
+	@code{.c}
+	static fplSignalHandle workReady;
+
+	void ProducerThread() {
+		// ... produce work ...
+		fplSignalSet(&workReady); // wake all waiters
+	}
+
+	void ConsumerThread() {
+		fplSignalWaitForOne(&workReady, FPL_TIMEOUT_INFINITE);
+		// ... consume work ...
+	}
+	@endcode
+
+	@subsection subsection_category_threading_sync_example_cond Condition-Variable - wait for a predicate
+
+	Use a @ref fplConditionVariable together with a @ref fplMutexHandle when waiters must check a condition under a lock and re-check after wakeup.
+
+	@code{.c}
+	static fplMutexHandle queueMutex;
+	static fplConditionVariable queueCond;
+	static int itemCount;
+
+	void Push() {
+		fplMutexLock(&queueMutex);
+		++itemCount;
+		fplConditionSignal(&queueCond); // wake one waiter
+		fplMutexUnlock(&queueMutex);
+	}
+
+	void Pop() {
+		fplMutexLock(&queueMutex);
+		while (itemCount == 0) { // re-check after wakeup
+			fplConditionWait(&queueCond, &queueMutex, FPL_TIMEOUT_INFINITE);
+		}
+		--itemCount;
+		fplMutexUnlock(&queueMutex);
+	}
+	@endcode
+
+	@subsection subsection_category_threading_sync_example_semaphore Semaphore - limit concurrent access
+
+	Use a @ref fplSemaphoreHandle to allow up to N Threads into a section at the same time.
+
+	@code{.c}
+	static fplSemaphoreHandle pool; // init with N permits
+
+	void UseResource() {
+		fplSemaphoreWait(&pool, FPL_TIMEOUT_INFINITE); // take a permit
+		// ... use one of N shared resources ...
+		fplSemaphoreRelease(&pool); // give it back
+	}
+	@endcode
+
+	@subsection subsection_category_threading_sync_example_atomic Atomics - lock-free single-value updates
+
+	Use atomics when only a single integer or pointer needs to be updated safely, without a Mutex.
+
+	@code{.c}
+	static volatile uint32_t counter;
+
+	void IncrementCounter() {
+		fplAtomicAddAndFetchU32(&counter, 1); // safe without a lock
+	}
+	@endcode
+
+	@section section_category_threading_sync_comparison Comparison
+
+	| Primitive          | Purpose                              | Scope            | Cost     | Notes                                                  |
+	|--------------------|--------------------------------------|------------------|----------|--------------------------------------------------------|
+	| @ref fplMutexHandle        | Mutual exclusion of a code section   | Same process     | Low      | Only the owner Thread can unlock                       |
+	| @ref fplSignalHandle       | Notify one or many waiters           | Cross-process    | Medium   | Set/Reset is not Thread-Safe by itself                 |
+	| @ref fplConditionVariable  | Wait for a predicate under a Mutex   | Same process     | Medium   | Requires a Mutex; supports signal and broadcast        |
+	| @ref fplSemaphoreHandle    | Limit N concurrent accessors         | Same process     | Medium   | Any Thread can release; counted permits                |
+	| Atomics                    | Lock-free op on a single value       | Same process     | Lowest   | One variable at a time; includes a memory barrier      |
+
+	@note Pick the lightest primitive that fits the problem. Atomics for a single value, a Mutex for a small critical section, a Condition-Variable when waiting on a predicate, a Semaphore for bounded resources, a Signal for cross-process or fan-out notifications.
 */
 
 /*!
@@ -3537,16 +4202,16 @@
 	Final Platform Layer is released under the @subpage page_license "MIT License".<br>
 	This license allows you to use FPL freely in any software.<br>
 
-	@subsection subsection_faq_costs I did pay for FPL, did I get ripped-of?
+	@subsection subsection_faq_costs I did pay for FPL, did I get ripped off?
 	Yes, you are! FPL is fully open source and costs nothing.
 
 	@subsection subsection_faq_inwhatlanguage In what language is FPL written?
-	Final Platform Layer is written in C99 for simplicity and best portability, but is C++/11 compatible as well.<br>
+	Final Platform Layer is written in C99 for simplicity and best portability, but is C++11 compatible as well.<br>
 	It uses standard types such as uint32_t or intptr_t from <stdint.h> <stddef.h> and <stdbool.h> to ensure correctness on all platforms.<br>
-	For certain features such as printf(), getchar() the CRT (C-Runtime-Library) are used, but you can disable it if needed.<br>
+	For certain features such as printf(), getchar() the CRT (C-Runtime-Library) is used, but you can disable it if needed.<br>
 
 	@subsection subsection_faq_whyshouldiuse What makes it different from other platform abstraction libraries, such as SDL/SFML, etc. ?
-	- FPL is designed to require bare minimum linking to the OS (kernel32.lib / libld.so) only.
+	- FPL is designed to require bare minimum linking to the OS (kernel32.lib / libdl.so) only.
 	- It does not require any dependencies or build-systems to get it running.
 	- It has a lightweight feature set.
 	- No data hiding -> everything is accessible.
@@ -3559,7 +4224,7 @@
 	Also the entire API definition is documented inline and it comes with a full detailed changelog.<br>
 
 	@subsection subsection_faq_howdoesitwork How does it work?
-	FPL relies heavy on preprocessor defines, used for detecting the current architecture / compiler / operating system.<br>
+	FPL relies heavily on preprocessor defines, used for detecting the current architecture / compiler / operating system.<br>
 	This makes it possible to enable/disable certain code-paths for certain platform/compiler combinations.<br>
 	Only built-in OS operating system functions are used in every situation and the usage of standard library functions is prevented by all means.<br>
 	<br>
@@ -3595,7 +4260,7 @@
 	- FFMPEG
 
 	But it won't work with other platform abstraction libraries such as SDL, SFML, GLUT, GLFW, etc.<br>
-	All these other platform abstraction libraries have their way of providing the main entry point and may not compatibility with each other.
+	All these other platform abstraction libraries have their own way of providing the main entry point and may not be compatible with each other.
 */
 
 /*!
@@ -3608,7 +4273,7 @@
 
 	- **programming**: Writing demos, helping me fixing bugs, implement new platforms, etc.
 	- **testing and filing bug reports**: Testing FPL on different platforms/compilers (https://github.com/f1nalspace/final_game_tech/issues)
-	- **improving the documentation**: Improving the documentation, by fixing spelling errors or fill-out missing pages/sections.
+	- **improving the documentation**: Improving the documentation, by fixing spelling errors or filling out missing pages/sections.
 	- **Send in feedback**: Write feedback, answer questions, or post ideas (https://fpl.handmade.network/forums)
 	
 	I have always welcomed users whose only contribution is simply using FPL, giving me feedback on how to improve it and telling others about it. Thank you for supporting FPL.
@@ -3670,7 +4335,7 @@
 
 	Some limitations can be corrected by setting up the compiler properly, such as stack size, security checks, etc.<br>
 	<br>
-	So if you are fine with that, the next section describes how to do disable the CRT usage in FPL.
+	So if you are fine with that, the next section describes how to disable the CRT usage in FPL.
 
 	@section section_nocrt_requirements Requirements for disabling the CRT in FPL
 
@@ -3679,7 +4344,7 @@
 	- You already disabled the CRT by compiler settings
 	- You fixed the security checks and stack size by compiler settings
 
-	@section bsection_nocrt_disableit Disable the CRT in FPL
+	@section section_nocrt_disableit Disable the CRT in FPL
 
 	To disable the use of the C-Runtime Library, you need to set certain preprocessor definitions:
 
@@ -3689,7 +4354,7 @@
 	@code{.c}
 	#define FPL_NO_CRT // Disable CRT support in FPL
 	#define FPL_APPTYPE_CONSOLE // or FPL_APPTYPE_WINDOW
-	#define FPL_IMPLEMENTATION // FPL_NO_CRT must be set set in the implementation only
+	#define FPL_IMPLEMENTATION // FPL_NO_CRT must be set in the implementation only
 	#include <final_platform_layer.h>
 	@endcode
 
@@ -3858,6 +4523,12 @@
 		</tr>
 		<tr>
 			<td>Video</td>
+			<td>FPL_NO_VIDEO_VULKAN</td>
+			<td>Define this to disable the Vulkan video backend.</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Video</td>
 			<td>FPL_NO_VIDEO_SOFTWARE</td>
 			<td>Define this to disable the Software video backend.</td>
 			<td>Not set by default</td>
@@ -3871,6 +4542,12 @@
 		</tr>
 		<tr>
 			<td>Audio</td>
+			<td>FPL_NO_AUDIO_WASAPI</td>
+			<td>Define this to disable WASAPI support entirely.</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Audio</td>
 			<td>FPL_NO_AUDIO_DIRECTSOUND</td>
 			<td>Define this to disable DirectSound support entirely.</td>
 			<td>Not set by default</td>
@@ -3879,6 +4556,67 @@
 			<td>Audio</td>
 			<td>FPL_NO_AUDIO_ALSA</td>
 			<td>Define this to disable ALSA support entirely.</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Audio</td>
+			<td>FPL_NO_AUDIO_PULSEAUDIO</td>
+			<td>Define this to disable PulseAudio support entirely.</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Audio</td>
+			<td>FPL_NO_AUDIO_PIPEWIRE</td>
+			<td>Define this to disable PipeWire support entirely.</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Audio</td>
+			<td>FPL_NO_AUDIO_OSS</td>
+			<td>Define this to disable OSS support entirely.</td>
+			<td>Not set by default</td>
+		</tr>
+
+		<tr>
+			<td>Input</td>
+			<td>FPL_NO_INPUT</td>
+			<td>Define this to disable the entire input subsystem (keyboard, mouse and gamepad backends).</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Input</td>
+			<td>FPL_NO_INPUT_XINPUT</td>
+			<td>Define this to disable the XInput gamepad backend (Windows).</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Input</td>
+			<td>FPL_NO_INPUT_DINPUT</td>
+			<td>Define this to disable the DirectInput gamepad backend (Windows).</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Input</td>
+			<td>FPL_NO_INPUT_RAWINPUT</td>
+			<td>Define this to disable the RawInput keyboard/mouse backend (Windows).</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Input</td>
+			<td>FPL_NO_INPUT_WIN32</td>
+			<td>Define this to disable the Win32 keyboard/mouse backend.</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Input</td>
+			<td>FPL_NO_INPUT_X11</td>
+			<td>Define this to disable the X11 keyboard/mouse backend.</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Input</td>
+			<td>FPL_NO_INPUT_LINUX_JOYSTICK</td>
+			<td>Define this to disable the /dev/input/jsX gamepad backend (Linux).</td>
 			<td>Not set by default</td>
 		</tr>
 
@@ -3918,13 +4656,13 @@
 			<td>Application</td>
 			<td>FPL_NO_APPTYPE</td>
 			<td>Define this to disable the application type detection.</td>
-			<td>By default this are not set and the application type is detected automatically.</td>
+			<td>By default this is not set and the application type is detected automatically.</td>
 		</tr>
 		<tr>
 			<td>Application</td>
 			<td>FPL_APPTYPE_CONSOLE</td>
 			<td>Define this to force your application to be a console application.<br>When this is set the window support will be compiled out!</td>
-			<td>By default this are set when FPL_NO_WINDOW is defined.</td>
+			<td>By default this is set when FPL_NO_WINDOW is defined.</td>
 		</tr>
 		<tr>
 			<td>Application</td>
@@ -3948,9 +4686,9 @@
 	If you need this information for whatever reason you can simply compare the defines:
 
 	- **FPL_PLATFORM_WIN32** or **FPL_PLATFORM_LINUX** or **FPL_PLATFORM_UNIX** ...
-	- **FPL_ARCH_X64** or **FPL_ARCH_X86** or **FPL_ARCH_ARM64* ...
+	- **FPL_ARCH_X64** or **FPL_ARCH_X86** or **FPL_ARCH_ARM64** ...
 
-	All these defines have no values set, there are just "defined" - use always defined() for checking them.
+	All these defines have no values set, they are just "defined" - always use defined() for checking them.
 
 	@code{.c}
 	#if defined(FPL_PLATFORM_WINDOWS)
@@ -3970,7 +4708,7 @@
 
 	To prevent code duplication for platform combinations, FPL uses sub-platforms - which are no real platforms, but rather principles or standards the actual operating system is built-on.<br>
 	For example "Linux" is detected as **FPL_PLATFORM_LINUX** but uses POSIX as a sub-platform **FPL_SUBPLATFORM_POSIX**.<br>
-	Another example is "FreeBSD" which is a UNIX-based operation system that uses POSIX standards as well, so it uses the same POSIX sub-platform.<br>
+	Another example is "FreeBSD" which is a UNIX-based operating system that uses POSIX standards as well, so it uses the same POSIX sub-platform.<br>
 */
 
 /*!
@@ -4326,7 +5064,7 @@
 			fplSettings settings = fplMakeDefaultSettings();
 			settings.video.backend = fplVideoBackendType_OpenGL;
 			fplCopyString("FPL Modern OpenGL", settings.window.title, fplArrayCount(settings.window.title));
-			settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
+			settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Core;
 			settings.video.graphics.opengl.majorVersion = 3;
 			settings.video.graphics.opengl.minorVersion = 3;
 			settings.video.graphics.opengl.multiSamplingCount = 4;
@@ -4436,7 +5174,7 @@
 		if (fplPlatformInit(fplInitFlags_Audio, &settings)) {
 			// You can overwrite the client read callback and user data if you want to
 			fplSetAudioClientReadCallback(FillAudioBuffer, &audioTest);
-			// Start audio playback (This will start calling clientReadCallback regulary)
+			// Start audio playback (This will start calling clientReadCallback regularly)
 			if (fplPlayAudio() == fplAudioResult_Success) {
 				// Print out the native audio format
 				fplAudioFormat nativeFormat = fplGetAudioHardwareFormat();
@@ -4462,7 +5200,7 @@
 
 	@section section_mit_license MIT License
 
-	Copyright (c) 2017-2023 Torsten Spaete<br>
+	Copyright (c) 2017-2026 Torsten Spaete<br>
 	<br>
 	Permission is hereby granted, free of charge, to any person obtaining a copy of<br>
 	this software and associated documentation files (the "Software"), to deal in<br>

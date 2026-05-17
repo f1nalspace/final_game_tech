@@ -17,6 +17,8 @@ Description:
 // Style
 //
 
+#define DEBUG_RENDER_FONT_LINES 0
+
 #define INV_COLOR_BYTE (1.0f / 255.0f)
 
 #define RGB4F(r, g, b) { INV_COLOR_BYTE * (float)(r), INV_COLOR_BYTE * (float)(g), INV_COLOR_BYTE * (float)(b), 1.0f }
@@ -489,10 +491,10 @@ extern void UIPanel(const UIContext *ctx, const float x, const float y, const fl
 	const UIBorderStyle *buttonBorderStyle = &ctx->style->buttonBorder;
 	const UIControlStyle *controlStyle = &ctx->style->face;
 
-	float borderThickness = 1.5f;
+	const float borderThickness = 1.5f;
 
-	DrawFilledQuad(x, y, w, h, controlStyle->background.normal);
-	DrawControlBorder(x, y, w, h, borderThickness, &buttonBorderStyle->bright, &buttonBorderStyle->dark, &buttonBorderStyle->darkest, isDown);
+	RendererDrawFilledQuad(x, y, w, h, controlStyle->background.normal);
+	RendererDrawControlBorder(x, y, w, h, borderThickness, &buttonBorderStyle->bright, &buttonBorderStyle->dark, &buttonBorderStyle->darkest, isDown);
 }
 
 //
@@ -500,33 +502,45 @@ extern void UIPanel(const UIContext *ctx, const float x, const float y, const fl
 //
 
 extern void UIString(const UIContext *ctx, const float x, const float y, const Color4f color, const char *text, const size_t textLen) {
-	TextureID fontTextureId = ctx->font.currentFontTextureID;
+	const TextureID fontTextureId = ctx->font.currentFontTextureID;
 	fplAssert(fontTextureId != 0);
 
-	const LoadedFont *font = ctx->font.currentFont;
-	fplAssert(font != fpl_null);
+	const UIFont *font = &ctx->font;
 
-	const float lineHeight = ctx->font.lineHeight;
-	const float fontHeight = ctx->font.fontHeight;
+	const LoadedFont *loadedFont = font->currentFont;
+	fplAssert(loadedFont != fpl_null);
 
-	size_t actualLen = textLen > textLen ? textLen : fplGetStringLength(text);
+	const float fontHeight = UIGetFontHeight(ctx);
 
-	DrawString(font, fontTextureId, text, actualLen, x, y, fontHeight, color);
+	const size_t actualLen = textLen > 0 ? textLen : fplGetStringLength(text);
+
+	RendererDrawString(loadedFont, fontTextureId, text, actualLen, x, y, fontHeight, color);
+
+#if DEBUG_RENDER_FONT_LINES
+	const Color4f lineColorDescent = fplStructInit(Color4f, 1.0f, 0.0f, 0.0f, 1.0f);
+	const Color4f lineColorAscent = fplStructInit(Color4f, 0.0f, 1.0f, 0.0f, 1.0f);
+	const float descent = loadedFont->info.descent * fontHeight;
+	const float ascent = loadedFont->info.ascent * fontHeight;
+	const Vec2f s = FontGetTextSize(loadedFont, text, actualLen, fontHeight);
+	RendererDrawLine(x, y - descent, x + s.w, y - descent, 1.0f, lineColorDescent);
+	RendererDrawLine(x, y + ascent, x + s.w, y + ascent, 1.0f, lineColorAscent);
+#endif
 }
 
 extern Vec2f UIGetStringSize(const UIContext *ctx, const char *text, const size_t textLen) {
-	TextureID fontTextureId = ctx->font.currentFontTextureID;
+	const TextureID fontTextureId = ctx->font.currentFontTextureID;
 	fplAssert(fontTextureId != 0);
 
-	const LoadedFont *font = ctx->font.currentFont;
-	fplAssert(font != fpl_null);
+	const UIFont *font = &ctx->font;
 
-	const float lineHeight = ctx->font.lineHeight;
-	const float fontHeight = ctx->font.fontHeight;
+	const LoadedFont *loadedFont = font->currentFont;
+	fplAssert(loadedFont != fpl_null);
 
-	size_t actualLen = textLen > textLen ? textLen : fplGetStringLength(text);
+	const float fontHeight = UIGetFontHeight(ctx);
 
-	Vec2f s = FontGetTextSize(font, text, actualLen, fontHeight);
+	const size_t actualLen = textLen > 0 ? textLen : fplGetStringLength(text);
+
+	const Vec2f s = FontGetTextSize(loadedFont, text, actualLen, fontHeight);
 
 	return fplStructInit(Vec2f, s.x, s.y);
 }
@@ -558,8 +572,10 @@ extern void UIListbox(UIContext *ctx, UIListboxData *listbox, const float x, con
 	const LoadedFont *font = ctx->font.currentFont;
 	fplAssert(font != fpl_null);
 
-	const float lineHeight = ctx->font.lineHeight;
-	const float fontHeight = ctx->font.fontHeight;
+	const float lineHeight = UIGetLineHeight(ctx);
+	const float fontHeight = UIGetFontHeight(ctx);
+	const float descent = font->info.descent * fontHeight;
+	const float ascent = font->info.ascent * fontHeight;
 
 	const float borderThickness = 1.5f;
 
@@ -568,11 +584,11 @@ extern void UIListbox(UIContext *ctx, UIListboxData *listbox, const float x, con
 
 	UIRectangle listboxRect = MakeRectangle(x, y, w, h);
 
-	DrawFilledQuad(x, y, w, h, listboxStyle->background.normal);
-	DrawControlBorder(x, y, w, h, borderThickness, &buttonBorderStyle->bright, &buttonBorderStyle->dark, &buttonBorderStyle->darkest, true);
+	RendererDrawFilledQuad(x, y, w, h, listboxStyle->background.normal);
+	RendererDrawControlBorder(x, y, w, h, borderThickness, &buttonBorderStyle->bright, &buttonBorderStyle->dark, &buttonBorderStyle->darkest, true);
 
-	EnableClipping();
-	SetViewClipRect(&ctx->input.projectionMat, &ctx->input.viewMat, &ctx->input.viewport, x, y, w, h);
+	RendererEnableClipping();
+	RendererSetViewClipRect(&ctx->input.projectionMat, &ctx->input.viewMat, &ctx->input.viewport, x, y, w, h);
 
 	float availableWidth = w;
 
@@ -583,7 +599,9 @@ extern void UIListbox(UIContext *ctx, UIListboxData *listbox, const float x, con
 
 	size_t lineOffset = 0;
 
-	float verticalScrollOffset = 0;
+	// verticalScrollOffset stores first-visible-line index as float [0, missingLineCount].
+	// Resize-stable: line index is independent of pixel height.
+	float pixelScrollOffset = 0;
 
 	bool scrollbarIsVisible = false;
 
@@ -597,53 +615,71 @@ extern void UIListbox(UIContext *ctx, UIListboxData *listbox, const float x, con
 		verticalScrollHeight = h - verticalScrollBarHeight;
 
 		size_t missingLineCount = listbox->values.count - maxVisibleLineCount;
-
 		size_t halfVisibleLineCount = maxVisibleLineCount / 2;
 
 		listbox->lastVerticalScrollOffset = listbox->verticalScrollOffset;
 
 		if (listbox->scrollRequest.hasRequest) {
-			// Always aim for the center of the listbox, when requesting to scroll
-			size_t targetIndex = fplMax(0, fplMin(listbox->scrollRequest.index - halfVisibleLineCount, missingLineCount));
-
-			float targetScale = (float)targetIndex / (float)missingLineCount;
-
-			listbox->verticalScrollOffset = verticalScrollHeight * targetScale;
-
+			size_t targetIndex = listbox->scrollRequest.index;
+			size_t currentFirst = (size_t)listbox->verticalScrollOffset;
+			size_t currentLast = currentFirst + maxVisibleLineCount - 1;
+			// Only scroll if target is outside the current visible range
+			if (targetIndex < currentFirst || targetIndex > currentLast) {
+				// Center the target; clamp to valid range
+				size_t targetFirst = (targetIndex > halfVisibleLineCount)
+					? (targetIndex - halfVisibleLineCount) : 0;
+				if (targetFirst > missingLineCount)
+					targetFirst = missingLineCount;
+				listbox->verticalScrollOffset = (float)targetFirst;
+			}
 			listbox->scrollRequest.hasRequest = false;
 			listbox->scrollRequest.index = 0;
 		}
 
-		verticalScrollOffset = fplMax(0.0f, fplMin(listbox->verticalScrollOffset, verticalScrollHeight));
-		listbox->verticalScrollOffset = verticalScrollOffset;
+		// Clamp first-visible-line to [0, missingLineCount]
+		listbox->verticalScrollOffset = fplMax(0.0f, fplMin(listbox->verticalScrollOffset, (float)missingLineCount));
 
-		float verticalScrollPercentage = verticalScrollOffset / verticalScrollHeight;
+		lineOffset = (size_t)listbox->verticalScrollOffset;
 
-		lineOffset = fplMax(0, (size_t)(verticalScrollPercentage * missingLineCount));
+		// Derive pixel offset for thumb from line position
+		pixelScrollOffset = (missingLineCount > 0)
+			? ((float)lineOffset / (float)missingLineCount) * verticalScrollHeight
+			: 0.0f;
 
 		scrollbarIsVisible = true;
 	} else {
-		listbox->lastVerticalScrollOffset = listbox->verticalScrollOffset = 0;
+		listbox->lastVerticalScrollOffset = listbox->verticalScrollOffset = 0.0f;
 	}
+
+	const Color4f lineColorDescent = fplStructInit(Color4f, 1.0f, 0.0f, 0.0f, 1.0f);
+	const Color4f lineColorAscent = fplStructInit(Color4f, 0.0f, 1.0f, 0.0f, 1.0f);
 
 	for (size_t visibleLineIndex = 0; visibleLineIndex < visibleLineCount; ++visibleLineIndex) {
 		String *entry = listbox->values.entries + visibleLineIndex + lineOffset;
 		size_t len = entry->len;
 		const char *text = entry->text;
 
+		Vec2f textSize = FontGetTextSize(font, text, len, fontHeight);
+
 		bool isHighlight = (listbox->highlightLineNum > 0) && (visibleLineIndex + lineOffset) == (listbox->highlightLineNum - 1);
 
 		float lineWidth = availableWidth;
 		float lineX = x;
 		float lineY = y + h - lineHeight - visibleLineIndex * lineHeight;
+		float blockY = lineY - descent;
 		float textY = lineY;
 
 		if (isHighlight) {
-			DrawFilledQuad(lineX, lineY, lineWidth, lineHeight, listboxStyle->highlight.background);
-			DrawString(font, fontTextureId, text, len, x, textY, fontHeight, listboxStyle->highlight.foreground);
+			RendererDrawFilledQuad(lineX, blockY, lineWidth, lineHeight, listboxStyle->highlight.background);
+			RendererDrawString(font, fontTextureId, text, len, x, textY, fontHeight, listboxStyle->highlight.foreground);
 		} else {
-			DrawString(font, fontTextureId, text, len, x, textY, fontHeight, listboxStyle->foreground.normal);
+			RendererDrawString(font, fontTextureId, text, len, x, textY, fontHeight, listboxStyle->foreground.normal);
 		}
+
+#if DEBUG_RENDER_FONT_LINES
+		RendererDrawLine(x, textY + ascent, x + textSize.w, textY + ascent, 1.0f, lineColorAscent);
+		RendererDrawLine(x, textY - descent, x + textSize.w, textY - descent, 1.0f, lineColorDescent);
+#endif
 	}
 
 	Color4f scrollbarBackground = fplStructInit(Color4f, 0.25f, 0.25f, 0.25f, 1.0f);
@@ -658,14 +694,14 @@ extern void UIListbox(UIContext *ctx, UIListboxData *listbox, const float x, con
 			vertScrollCenterX - verticalScrollWidth * 0.5f,
 			vertScrollCenterY - vertScrollHeight * 0.5f,
 			verticalScrollWidth, vertScrollHeight);
-		DrawFilledQuad(background.x, background.y, background.w, background.h, scrollbarBackground);
+		RendererDrawFilledQuad(background.x, background.y, background.w, background.h, scrollbarBackground);
 
 		//float tempBarWidth = verticalScrollWidth * 0.5f;
 		//DrawFilledQuad(vertScrollCenterX - tempBarWidth * 0.5f, vertScrollCenterY - verticalScrollHeight * 0.5f, tempBarWidth, verticalScrollHeight, 0.25f, 0.5f, 0.25f);
 
 		UIRectangle scrollbar = MakeRectangle(
 			vertScrollCenterX - vertScrollbarWidth * 0.5f,
-			vertScrollCenterY - verticalScrollBarHeight * 0.5f + verticalScrollHeight * 0.5f - verticalScrollOffset,
+			vertScrollCenterY - verticalScrollBarHeight * 0.5f + verticalScrollHeight * 0.5f - pixelScrollOffset,
 			vertScrollbarWidth, verticalScrollBarHeight);
 
 		bool isMouseInsideScrollbar = IsPointInsideRectangle(&scrollbar, ctx->input.mousePos.x, ctx->input.mousePos.y);
@@ -677,7 +713,8 @@ extern void UIListbox(UIContext *ctx, UIListboxData *listbox, const float x, con
 				} else {
 					Vec2f dragOffset;
 					if (UpdateDragging(ctx->input.mousePos, &listbox->dragging, &dragOffset)) {
-						listbox->verticalScrollOffset -= dragOffset.y;
+						size_t missingLineCount = listbox->values.count - maxVisibleLineCount;
+						listbox->verticalScrollOffset -= dragOffset.y * (float)missingLineCount / verticalScrollHeight;
 					}
 				}
 			}
@@ -687,30 +724,29 @@ extern void UIListbox(UIContext *ctx, UIListboxData *listbox, const float x, con
 					BeginDragging(ctx->input.mousePos, &listbox->dragging);
 				}
 			}
-		}
 
-		bool isMouseInsideListbox = IsPointInsideRectangle(&listboxRect, ctx->input.mousePos.x, ctx->input.mousePos.y);
+			bool isMouseInsideListbox = IsPointInsideRectangle(&listboxRect, ctx->input.mousePos.x, ctx->input.mousePos.y);
 
-		if (isMouseInsideListbox && !listbox->dragging.isActive && ctx->input.mouseWheelDelta != 0.0f) {
-			float wheelScroll = verticalScrollHeight / ((float)maxVisibleLineCount * fontHeight) * 0.1f;
-			listbox->verticalScrollOffset -= wheelScroll * ctx->input.mouseWheelDelta;
+			if (isMouseInsideListbox && !listbox->dragging.isActive && ctx->input.mouseWheelDelta != 0.0f) {
+				listbox->verticalScrollOffset -= 3.0f * ctx->input.mouseWheelDelta;
+			}
 		}
 
 		// Scrollbar button
 		const float scrollbarBorder = 2.0f;
 		if (isMouseInsideScrollbar) {
-			DrawFilledQuad(scrollbar.x, scrollbar.y, scrollbar.w, scrollbar.h, controlStyle->background.hover);
+			RendererDrawFilledQuad(scrollbar.x, scrollbar.y, scrollbar.w, scrollbar.h, controlStyle->background.hover);
 		} else {
-			DrawFilledQuad(scrollbar.x, scrollbar.y, scrollbar.w, scrollbar.h, controlStyle->background.normal);
+			RendererDrawFilledQuad(scrollbar.x, scrollbar.y, scrollbar.w, scrollbar.h, controlStyle->background.normal);
 		}
-		DrawControlBorder(scrollbar.x, scrollbar.y, scrollbar.w, scrollbar.h, scrollbarBorder, &buttonBorderStyle->bright, &buttonBorderStyle->dark, &buttonBorderStyle->darkest, listbox->dragging.isActive);
+		RendererDrawControlBorder(scrollbar.x, scrollbar.y, scrollbar.w, scrollbar.h, scrollbarBorder, &buttonBorderStyle->bright, &buttonBorderStyle->dark, &buttonBorderStyle->darkest, listbox->dragging.isActive);
 	} else {
 		if (allowInput) {
 			StopDragging(&listbox->dragging);
 		}
 	}
 
-	DisableClipping();
+	RendererDisableClipping();
 }
 
 //
@@ -723,17 +759,20 @@ extern bool UIButton(UIContext *ctx, UIButtonData *button, const float x, const 
 	const UIBorderStyle *buttonBorderStyle = &ctx->style->buttonBorder;
 	const UIControlStyle *controlStyle = &ctx->style->face;
 
-	const float fontHeight = ctx->font.fontHeight;
-
-	const float borderThickness = 1.5f;
-
-	TextureID fontTextureId = ctx->font.currentFontTextureID;
-	fplAssert(fontTextureId != 0);
+	const float fontHeight = UIGetFontHeight(ctx);
 
 	const LoadedFont *font = ctx->font.currentFont;
 	fplAssert(font != fpl_null);
 
-	UIRectangle rect = MakeRectangle(x, y, w, h);
+	const float descent = font->info.descent * fontHeight;
+	const float ascent = font->info.ascent * fontHeight;
+
+	const float borderThickness = 1.5f;
+
+	const TextureID fontTextureId = ctx->font.currentFontTextureID;
+	fplAssert(fontTextureId != 0);
+
+	const UIRectangle rect = MakeRectangle(x, y, w, h);
 
 	bool wasPressed = allowInput && UI__MouseInteraction(ctx, &button->mouseInteraction, &rect, isEnabled);
 
@@ -761,15 +800,22 @@ extern bool UIButton(UIContext *ctx, UIButtonData *button, const float x, const 
 		}
 	}
 
-	DrawFilledQuad(x, y, w, h, backgroundColor);
-	DrawControlBorder(x, y, w, h, borderThickness, &buttonBorderStyle->bright, &buttonBorderStyle->dark, &buttonBorderStyle->darkest, !isDisabled && isDown);
+	RendererDrawFilledQuad(x, y, w, h, backgroundColor);
+	RendererDrawControlBorder(x, y, w, h, borderThickness, &buttonBorderStyle->bright, &buttonBorderStyle->dark, &buttonBorderStyle->darkest, !isDisabled && isDown);
 
-	Vec2f size = FontGetTextSize(font, label, labelLen, fontHeight);
+	const Vec2f size = FontGetTextSize(font, label, labelLen, fontHeight);
 
-	float labelX = x + (w - size.w) * 0.5f;
-	float labelY = y + (h - size.h) * 0.5f;
+	const float labelX = x + (w - size.w) * 0.5f;
+	const float labelY = y + (h - size.h) * 0.5f;
 
-	DrawString(font, fontTextureId, label, labelLen, labelX, labelY, fontHeight, foregroundColor);
+	RendererDrawString(font, fontTextureId, label, labelLen, labelX, labelY, fontHeight, foregroundColor);
+
+#if DEBUG_RENDER_FONT_LINES
+	const Color4f lineColorDescent = fplStructInit(Color4f, 1.0f, 0.0f, 0.0f, 1.0f);
+	const Color4f lineColorAscent = fplStructInit(Color4f, 0.0f, 1.0f, 0.0f, 1.0f);
+	RendererDrawLine(labelX, labelY + ascent, labelX + size.w, labelY + ascent, 1.0f, lineColorAscent);
+	RendererDrawLine(labelX, labelY - descent, labelX + size.w, labelY - descent, 1.0f, lineColorDescent);
+#endif
 
 	return wasPressed;
 }
@@ -802,14 +848,17 @@ extern UITabContent UITabControl(UIContext *ctx, UITabControlData *tabControl, c
 
 	const float borderThickness = 1.5f;
 
-	const float fontHeight = ctx->font.fontHeight;
-	const float lineHeight = ctx->font.lineHeight;
-
 	TextureID fontTextureId = ctx->font.currentFontTextureID;
 	fplAssert(fontTextureId != 0);
 
+	const float lineHeight = UIGetLineHeight(ctx);
+	const float fontHeight = UIGetFontHeight(ctx);
+
 	const LoadedFont *font = ctx->font.currentFont;
 	fplAssert(font != fpl_null);
+
+	const float descent = font->info.descent * fontHeight;
+	const float ascent = font->info.ascent * fontHeight;
 
 	const float controlWidth = w - margin * 2.0f;
 	const float controlHeight = h - margin * 2.0f;
@@ -845,9 +894,9 @@ extern UITabContent UITabControl(UIContext *ctx, UITabControlData *tabControl, c
 
 	const float controlHeightWithoutHeader = controlHeight - headerHeight;
 
-	DrawFilledQuad(controlX, controlY, controlWidth, controlHeightWithoutHeader, controlStyle->background.normal);
+	RendererDrawFilledQuad(controlX, controlY, controlWidth, controlHeightWithoutHeader, controlStyle->background.normal);
 
-	DrawControlBorders(controlX, controlY, controlWidth, controlHeightWithoutHeader, borderThickness, &buttonBorderStyle->bright, &buttonBorderStyle->dark, &buttonBorderStyle->darkest, ControlBorderFlags_Bottom | ControlBorderFlags_Left | ControlBorderFlags_Right, false);
+	RendererDrawControlBorders(controlX, controlY, controlWidth, controlHeightWithoutHeader, borderThickness, &buttonBorderStyle->bright, &buttonBorderStyle->dark, &buttonBorderStyle->darkest, ControlBorderFlags_Bottom | ControlBorderFlags_Left | ControlBorderFlags_Right, false);
 
 	static UIRectangle tabAreas[8];
 	fplClearStruct(tabAreas);
@@ -887,21 +936,24 @@ extern UITabContent UITabControl(UIContext *ctx, UITabControlData *tabControl, c
 		}
 
 		if (isTabHover && allowHover) {
-			DrawFilledQuad(tabHeaderItemX, tabHeaderItemY, tabHeaderItemWidth, tabHeaderItemHeight, controlStyle->background.hover);
+			RendererDrawFilledQuad(tabHeaderItemX, tabHeaderItemY, tabHeaderItemWidth, tabHeaderItemHeight, controlStyle->background.hover);
 		} else {
-			DrawFilledQuad(tabHeaderItemX, tabHeaderItemY, tabHeaderItemWidth, tabHeaderItemHeight, controlStyle->background.normal);
+			RendererDrawFilledQuad(tabHeaderItemX, tabHeaderItemY, tabHeaderItemWidth, tabHeaderItemHeight, controlStyle->background.normal);
 		}
 
-		DrawControlBorders(tabHeaderItemX, tabHeaderItemY, tabHeaderItemWidth, tabHeaderItemHeight, borderThickness, &buttonBorderStyle->bright, &buttonBorderStyle->dark, &buttonBorderStyle->darkest, ControlBorderFlags_Top | ControlBorderFlags_Left | ControlBorderFlags_Right, false);
+		RendererDrawControlBorders(tabHeaderItemX, tabHeaderItemY, tabHeaderItemWidth, tabHeaderItemHeight, borderThickness, &buttonBorderStyle->bright, &buttonBorderStyle->dark, &buttonBorderStyle->darkest, ControlBorderFlags_Top | ControlBorderFlags_Left | ControlBorderFlags_Right, false);
 
 		if (tabControl->activeTab == tab) {
 			activeTabArea = *tabArea;
 		} else {
-			DrawControlBorders(tabHeaderItemX, tabHeaderItemY, tabHeaderItemWidth, tabHeaderItemHeight, borderThickness, &buttonBorderStyle->bright, &buttonBorderStyle->dark, &buttonBorderStyle->darkest, ControlBorderFlags_Bottom, true);
+			RendererDrawControlBorders(tabHeaderItemX, tabHeaderItemY, tabHeaderItemWidth, tabHeaderItemHeight, borderThickness, &buttonBorderStyle->bright, &buttonBorderStyle->dark, &buttonBorderStyle->darkest, ControlBorderFlags_Bottom, true);
 		}
 
 		tabHeaderItemX += tabHeaderItemWidth;
 	}
+
+	const Color4f lineColorDescent = fplStructInit(Color4f, 1.0f, 0.0f, 0.0f, 1.0f);
+	const Color4f lineColorAscent = fplStructInit(Color4f, 0.0f, 1.0f, 0.0f, 1.0f);
 
 	for (uint8_t tabIndex = 0; tabIndex < tabCount; ++tabIndex) {
 		const UITab *tab = tabs[tabIndex];
@@ -926,7 +978,13 @@ extern UITabContent UITabControl(UIContext *ctx, UITabControlData *tabControl, c
 		} else {
 			foregroundColor = controlStyle->foreground.normal;
 		}
-		DrawString(font, fontTextureId, tab->label, labelLen, tabHeaderLabelX, tabHeaderLabelY, fontHeight, foregroundColor);
+
+		RendererDrawString(font, fontTextureId, tab->label, labelLen, tabHeaderLabelX, tabHeaderLabelY, fontHeight, foregroundColor);
+
+#if DEBUG_RENDER_FONT_LINES
+		RendererDrawLine(tabHeaderLabelX, tabHeaderLabelY + ascent, tabHeaderLabelX + labelSize.w, tabHeaderLabelY + ascent, 1.0f, lineColorAscent);
+		RendererDrawLine(tabHeaderLabelX, tabHeaderLabelY - descent, tabHeaderLabelX + labelSize.w, tabHeaderLabelY - descent, 1.0f, lineColorDescent);
+#endif
 	}
 
 	fplAssert(tabCount > 0);
@@ -934,7 +992,7 @@ extern UITabContent UITabControl(UIContext *ctx, UITabControlData *tabControl, c
 
 	const float hiddenBorderTabX = lastArea.x + lastArea.w;
 	const float hiddenBorderTabWidth = (headerX + headerWidth) - (lastArea.x + lastArea.w);
-	DrawControlBorders(hiddenBorderTabX, tabHeaderItemY, hiddenBorderTabWidth, headerHeight, borderThickness, &buttonBorderStyle->bright, &buttonBorderStyle->dark, &buttonBorderStyle->darkest, ControlBorderFlags_Bottom, true);
+	RendererDrawControlBorders(hiddenBorderTabX, tabHeaderItemY, hiddenBorderTabWidth, headerHeight, borderThickness, &buttonBorderStyle->bright, &buttonBorderStyle->dark, &buttonBorderStyle->darkest, ControlBorderFlags_Bottom, true);
 
 	const float contentHeight = controlHeight - headerHeight - contentPadding * 2.0f;
 	const float contentWidth = controlWidth - contentPadding * 2.0f;
@@ -960,8 +1018,8 @@ extern bool UICheckbox(UIContext *ctx, UICheckboxData *checkbox, const float x, 
 	const UIControlStyle *controlStyle = &ctx->style->face;
 	const UICheckboxStyle *checkboxStyle = &ctx->style->checkbox;
 
-	const float fontHeight = ctx->font.fontHeight;
-	const float lineHeight = ctx->font.lineHeight;
+	const float lineHeight = UIGetLineHeight(ctx);
+	const float fontHeight = UIGetFontHeight(ctx);
 
 	TextureID fontTextureId = ctx->font.currentFontTextureID;
 	fplAssert(fontTextureId != 0);
@@ -1004,20 +1062,20 @@ extern bool UICheckbox(UIContext *ctx, UICheckboxData *checkbox, const float x, 
 
 	if (isEnabled) {
 		if (isHover) {
-			DrawFilledQuad(x, y, boxWidth, boxHeight, controlStyle->background.hover);
+			RendererDrawFilledQuad(x, y, boxWidth, boxHeight, controlStyle->background.hover);
 		} else {
-			DrawFilledQuad(x, y, boxWidth, boxHeight, controlStyle->background.normal);
+			RendererDrawFilledQuad(x, y, boxWidth, boxHeight, controlStyle->background.normal);
 		}
 	} else {
-		DrawFilledQuad(x, y, boxWidth, boxHeight, controlStyle->background.disabled);
+		RendererDrawFilledQuad(x, y, boxWidth, boxHeight, controlStyle->background.disabled);
 	}
 
-	DrawControlBorder(x, y, boxWidth, boxHeight, borderThickness, &buttonBorderStyle->bright, &buttonBorderStyle->dark, &buttonBorderStyle->darkest, true);
+	RendererDrawControlBorder(x, y, boxWidth, boxHeight, borderThickness, &buttonBorderStyle->bright, &buttonBorderStyle->dark, &buttonBorderStyle->darkest, true);
 
 	if (isChecked) {
-		DrawFilledQuad(checkX, checkY, checkWidth, checkHeight, checkboxStyle->checked);
+		RendererDrawFilledQuad(checkX, checkY, checkWidth, checkHeight, checkboxStyle->checked);
 	} else {
-		DrawFilledQuad(checkX, checkY, checkWidth, checkHeight, checkboxStyle->notChecked);
+		RendererDrawFilledQuad(checkX, checkY, checkWidth, checkHeight, checkboxStyle->notChecked);
 	}
 
 	if (showLabel) {
@@ -1025,7 +1083,18 @@ extern bool UICheckbox(UIContext *ctx, UICheckboxData *checkbox, const float x, 
 		if (labelLen > 0) {
 			Vec2f labelSize = FontGetTextSize(font, label, labelLen, fontHeight);
 			const float labelY = y + (boxHeight - labelSize.h) * 0.5f;
-			DrawString(font, fontTextureId, label, labelLen, labelX, labelY, fontHeight, foregroundColor);
+
+			RendererDrawString(font, fontTextureId, label, labelLen, labelX, labelY, fontHeight, foregroundColor);
+
+#if DEBUG_RENDER_FONT_LINES
+			const float descent = font->info.descent * fontHeight;
+			const float ascent = font->info.ascent * fontHeight;
+			const Color4f lineColorDescent = fplStructInit(Color4f, 1.0f, 0.0f, 0.0f, 1.0f);
+			const Color4f lineColorAscent = fplStructInit(Color4f, 0.0f, 1.0f, 0.0f, 1.0f);
+			RendererDrawLine(labelX, labelY + ascent, labelX + labelSize.w, labelY + ascent, 1.0f, lineColorAscent);
+			RendererDrawLine(labelX, labelY - descent, labelX + labelSize.w, labelY - descent, 1.0f, lineColorDescent);
+#endif
+
 			totalWidth += labelSpacing + labelSize.w;
 		}
 	}
@@ -1084,7 +1153,7 @@ extern bool UIBeginDialog(UIContext *ctx, UIDialogData *dialog, const float w, c
 
 	// Draw full gray over parent
 	Color4f backColor = { 0.0f, 0.0f, 0.0f, 0.5f };
-	DrawFilledQuad(parentWindow.pos.x, parentWindow.pos.y, parentWindow.pos.w, parentWindow.pos.h, backColor);
+	RendererDrawFilledQuad(parentWindow.pos.x, parentWindow.pos.y, parentWindow.pos.w, parentWindow.pos.h, backColor);
 
 	// Draw panel
 	UIPanel(ctx, x, y, w, h, false);

@@ -186,122 +186,6 @@ typedef struct AudioStaticBuffer {
 	AudioFrameIndex maxFrameCount;
 } AudioStaticBuffer;
 
-typedef struct AudioBufferPointer {
-	uint8_t *samples;
-	AudioFrameIndex totalFrameCount;
-	AudioFrameIndex usedFrameCount;
-	AudioChannelIndex channels;
-	uint16_t frameStride;
-} AudioBufferPointer;
-
-fpl_inline AudioBufferPointer AudioBufferPointerCreateFromStaticBuffer(AudioStaticBuffer *staticBuffer, const AudioChannelIndex numChannels, const size_t sampleSize) {
-	fplAssertPtr(staticBuffer);
-	fplAssert(numChannels > 0);
-	fplAssert(sampleSize > 0 && sampleSize <= 8);
-	AudioBufferPointer result = fplZeroInit;
-	result.samples = staticBuffer->samples;
-	result.totalFrameCount = staticBuffer->maxFrameCount;
-	result.usedFrameCount = 0;
-	result.channels = numChannels;
-	result.frameStride = (uint16_t)(numChannels * sampleSize);
-	return result;
-}
-
-fpl_inline AudioBufferPointer AudioBufferPointerCreateFromAudioBuffer(AudioBuffer *audioBuffer, const AudioChannelIndex numChannels, const size_t sampleSize) {
-	fplAssertPtr(audioBuffer);
-	fplAssert(numChannels > 0);
-	fplAssert(sampleSize > 0 && sampleSize <= 8);
-	AudioBufferPointer result = fplZeroInit;
-	result.samples = audioBuffer->samples;
-	result.totalFrameCount = audioBuffer->frameCount;
-	result.usedFrameCount = 0;
-	result.channels = numChannels;
-	result.frameStride = (uint16_t)(numChannels * sampleSize);
-	return result;
-}
-
-fpl_inline bool AudioBufferPointerIsValid(const AudioBufferPointer *buffer) {
-	if (buffer == fpl_null) {
-		return false;
-	}
-	if (buffer->totalFrameCount == 0 || buffer->channels == 0 || buffer->frameStride == 0) {
-		return false;
-	}
-	if (buffer->samples == fpl_null) {
-		return false;
-	}
-	return true;
-}
-
-fpl_inline bool AudioBufferPointerIsEOF(const AudioBufferPointer *buffer) {
-	const bool result = (buffer->usedFrameCount >= buffer->totalFrameCount);
-	return result;
-}
-
-fpl_inline AudioFrameIndex AudioBufferPointerGetRemainingFrameCount(const AudioBufferPointer *buffer) {
-	if (!AudioBufferPointerIsValid(buffer) || AudioBufferPointerIsEOF(buffer)) {
-		return 0;
-	}
-	const AudioFrameIndex result = buffer->totalFrameCount - buffer->usedFrameCount;
-	return result;
-}
-
-fpl_inline AudioSampleIndex AudioBufferPointerGetRemainingSampleCount(const AudioBufferPointer *buffer) {
-	if (!AudioBufferPointerIsValid(buffer) || AudioBufferPointerIsEOF(buffer)) {
-		return 0;
-	}
-	const AudioFrameIndex frameCount = buffer->totalFrameCount - buffer->usedFrameCount;
-	const AudioSampleIndex result = frameCount * buffer->channels;
-	return result;
-}
-
-fpl_inline float *AudioBufferPointerGetDataF32(AudioBufferPointer *buffer) {
-	if (!AudioBufferPointerIsValid(buffer) || AudioBufferPointerIsEOF(buffer)) {
-		return fpl_null;
-	}
-	const size_t offset = buffer->usedFrameCount * buffer->frameStride;
-	float *result = (float *)buffer->samples + offset;
-	return result;
-}
-
-fpl_inline uint8_t *AudioBufferPointerGetDataU8(AudioBufferPointer *buffer) {
-	if (!AudioBufferPointerIsValid(buffer) || AudioBufferPointerIsEOF(buffer)) {
-		return fpl_null;
-	}
-	const size_t offset = buffer->usedFrameCount * buffer->frameStride;
-	uint8_t *result = (uint8_t *)buffer->samples + offset;
-	return result;
-}
-
-fpl_inline bool AudioBufferPointerAdvance(AudioBufferPointer *buffer, const AudioFrameIndex frameCount) {
-	if (!AudioBufferPointerIsValid(buffer) || AudioBufferPointerIsEOF(buffer) || (frameCount == 0)) {
-		return false;
-	}
-	const AudioFrameIndex remainingFrameCount = buffer->totalFrameCount - buffer->usedFrameCount;
-	if (remainingFrameCount < frameCount) {
-		return false;
-	}
-	buffer->usedFrameCount += frameCount;
-	return true;
-}
-
-fpl_inline bool AudioBufferPointerSeek(AudioBufferPointer *buffer, const AudioFrameIndex frameIndex) {
-	if (!AudioBufferPointerIsValid(buffer) || frameIndex >= buffer->totalFrameCount) {
-		return false;
-	}
-	buffer->usedFrameCount = frameIndex;
-	return true;
-}
-
-fpl_inline bool AudioBufferPointerClearSamples(AudioBufferPointer *buffer) {
-	if (!AudioBufferPointerIsValid(buffer)) {
-		return false;
-	}
-	const size_t totalSize = buffer->totalFrameCount * buffer->frameStride;
-	fplMemoryClear(buffer->samples, totalSize);
-	return true;
-}
-
 typedef struct PCMWaveFormat {
 	//! Total frame count
 	uint32_t frameCount;
@@ -439,7 +323,7 @@ static void HalfNormalizeFFT(FFTDouble* values, const size_t size) {
 
 static void ForwardFFT(const FFTDouble* in, const size_t size, FFTDouble* out) {
 	FFTCore(in, size, 1, out, FFTDirection_Forward);
-	HalfNormalizeFFT(out, size);
+	NormalizeFFT(out, size);
 }
 
 static void BackwardFFT(const FFTDouble* in, const size_t size, FFTDouble* out) {
@@ -520,7 +404,7 @@ static void WindowFunctionCore(double* output, const size_t length, const double
 	}
 	for (size_t index = 0; index <= N - 1; index++)
 	{
-		double k = 2.0 * M_PI * index / (double)N;
+		double k = 2.0 * M_PI * index / (double)(N - 1);
 		output[index] = a0 - a1 * cos(k) + a2 * cos(2.0 * k) - a3 * cos(3.0 * k) + a4 * cos(4.0 * k);
 	}
 }

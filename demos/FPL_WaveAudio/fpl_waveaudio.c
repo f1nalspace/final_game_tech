@@ -27,7 +27,9 @@ License:
 */
 
 // Include FPL
-#define FPL_IMPLEMENTATION
+#ifndef FPL_IMPLEMENTATION
+#	define FPL_IMPLEMENTATION
+#endif
 #define FPL_NO_VIDEO
 #define FPL_NO_WINDOW
 #include <final_platform_layer.h>
@@ -296,6 +298,39 @@ static uint32_t AudioPlaybackThread(const fplAudioFormat *nativeFormat, const ui
 	return frameCount;
 }
 
+static void SetupAudioBackendAndFormat(fplAudioSettings *audio) {
+	// Overwrite number of channels and/or layout
+	audio->targetFormat.channelLayout = fplAudioChannelLayout_Stereo;
+
+	// Overwrite audio device format / sample format
+	//audio->targetFormat.type = fplAudioFormatType_U8;
+	audio->targetFormat.type = fplAudioFormatType_S16;
+	//audio->targetFormat.type = fplAudioFormatType_S24;
+	//audio->targetFormat.type = fplAudioFormatType_S32;
+	//audio->targetFormat.type = fplAudioFormatType_S64;
+	//audio->targetFormat.type = fplAudioFormatType_F32;
+	//audio->targetFormat.type = fplAudioFormatType_F64;
+
+	// Overwrite samplerate in Hz
+	//audio->targetFormat.sampleRate = 11025;
+	//audio->targetFormat.sampleRate = 22050;
+	audio->targetFormat.sampleRate = 44100;
+	//audio->targetFormat.sampleRate = 48000;
+	//audio->targetFormat.sampleRate = 88200;
+
+	// Overwrite buffer size in milliseconds or in frames
+	//audio->targetFormat.bufferSizeInMilliseconds = 16;
+	//audio->targetFormat.bufferSizeInFrames = 512;
+
+	// Overwrite audio backend to a specific type
+	//audio->backend = fplAudioBackendType_WASAPI;
+	//audio->backend = fplAudioBackendType_DirectSound;
+	//audio->backend = fplAudioBackendType_PipeWire;
+	//audio->backend = fplAudioBackendType_PulseAudio;
+	//audio->backend = fplAudioBackendType_Alsa;
+	//audio->backend = fplAudioBackendType_OSS;
+}
+
 int main(int argc, char **argv) {
 	// We may got a wave file from the arguments
 	const char *waveFilePath = fpl_null;
@@ -312,15 +347,8 @@ int main(int argc, char **argv) {
 	fplCopyString("FPL Demo | WaveAudio", settings.console.title, fplArrayCount(settings.console.title));
 
 	fplSetDefaultSettings(&settings);
-	
-	// Try to force stereo channel layout
-	settings.audio.targetFormat.channelLayout = fplAudioChannelLayout_Stereo;
 
-	// Try to force S16 as format
-	settings.audio.targetFormat.type = fplAudioFormatType_S16;
-
-	// Try to force to 44100 Hz, which is the most common used sample rate
-	settings.audio.targetFormat.sampleRate = 44100;
+	SetupAudioBackendAndFormat(&settings.audio);
 
 	// Do not start and stop the playback automatically
 	settings.audio.startAuto = false;
