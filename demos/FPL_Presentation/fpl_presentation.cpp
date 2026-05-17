@@ -2726,6 +2726,10 @@ int main(int argc, char **argv) {
 
 		bool audioInitialized = AudioSystemInit(audioSys, &audioDeviceFormat);
 
+		if (audioInitialized) {
+			AudioSystemSetMasterVolume(audioSys, 0.25f);
+		}
+
 		glDisable(GL_DEPTH_TEST);
 
 		glEnable(GL_CULL_FACE);
