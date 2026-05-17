@@ -1242,6 +1242,13 @@ struct SoundManager {
 			return nullptr;
 		}
 
+		if (!AudioSystemAddSource(audioSystem, source)) {
+			AudioMemory *memory = &audioSystem->memory;
+			FreeAudioBuffer(memory, &source->buffer);
+			FreeAudioMemory(memory, source);
+			return nullptr;
+		}
+
 		fplAssert(numSounds < fplArrayCount(sounds));
 		LoadedSound *sound = sounds + numSounds;
 		*sound = {};
