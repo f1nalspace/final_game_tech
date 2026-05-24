@@ -2374,6 +2374,10 @@ static bool ftd__parseBlockInto(ftd__Parser *p, const ftdType *type, void *outSt
 		}
 		if (p->cur.kind != ftd__Tok_Ident) {
 			ftd__emit(p->ctx, ftdSeverity_Error, p->cur.span, "expected field name");
+			// Force forward progress: skipToNewlineOrEOF stops on closing
+			// delimiters, so a stray ')'/'}'/']' inside the block could loop
+			// forever. Step past it.
+			ftd__parserAdvance(p);
 			ftd__skipToNewlineOrEOF(p);
 			continue;
 		}
@@ -2798,6 +2802,10 @@ FTD_API ftdResult ftdParseString(ftdContext *ctx,
 			continue;
 		}
 		ftd__emit(ctx, ftdSeverity_Error, p.cur.span, "unexpected token at top level");
+		// Always advance at least once so we make forward progress, even when
+		// the offending token is a stray closing delimiter that
+		// ftd__skipToNewlineOrEOF refuses to step over.
+		ftd__parserAdvance(&p);
 		ftd__skipToNewlineOrEOF(&p);
 	}
 
