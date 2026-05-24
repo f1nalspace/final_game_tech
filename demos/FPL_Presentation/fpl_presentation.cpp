@@ -64,14 +64,19 @@ License:
 // Contains image files as byte-array (FPL-Logos)
 #include "images.h"
 
+#define FTD_IMPLEMENTATION
+#include <final_ftd.h>
+
 // Presentation definition and serialization
 #define PRESENTATION_IMPLEMENTATION
 #include "presentation.h"
 
 // Contains the slide text for the FPL presentation
-#include "slides.h" // TextDefinition, SlideDefinition
+//#include "slides.h" // TextDefinition, SlideDefinition
 
 #include "types.h" // HorizontalAlignment, VerticalAlignment
+
+#include "builtin.h" // FontResources, SoundResources
 
 #define DRAW_ROTATING_CUBE 1
 #define USE_LETTERBOX_VIEWPORT 0
@@ -1284,6 +1289,16 @@ struct SoundManager {
 	}
 };
 
+struct PresentationManager {
+	const char *basePath;
+
+	static PresentationManager Make(const char *basePath) {
+		PresentationManager result = {};
+		result.basePath = basePath;
+		return result;
+	}
+};
+
 struct Label {
 	TextStyle style;
 	Vec2f pos;
@@ -1523,6 +1538,7 @@ struct App {
 	RandomSeries entropy;
 	String appPath;
 	String dataPath;
+	String presentationsPath;
 };
 
 static Vec2f ComputeTextSize(const LoadedFont &font, const char *text, const size_t textLen, const float charHeight) {
@@ -2779,6 +2795,10 @@ int main(int argc, char **argv) {
 			fplPathCombine(app.dataPath, app.dataPath, 2, (const char *)app.appPath, "data");
 		}
 
+		size_t presentationsPathLen = fplPathCombine(nullptr, 0, 2, (const char *)app.dataPath, "presentations");
+		String presentationsPath = app.strings.MakeString(presentationsPathLen);
+		fplPathCombine(presentationsPath, presentationsPath, 2, (const char *)app.dataPath, "presentations");
+
 		size_t soundsBasePathLen = fplPathCombine(nullptr, 0, 2, (const char *)app.dataPath, "sounds");
 		String soundsBasePath = app.strings.MakeString(soundsBasePathLen);
 		fplPathCombine(soundsBasePath, soundsBasePath, 2, (const char *)app.dataPath, "sounds");
@@ -2786,6 +2806,8 @@ int main(int argc, char **argv) {
 		size_t imagesBasePathLen = fplPathCombine(nullptr, 0, 2, (const char *)app.dataPath, "images");
 		String imagesBasePath = app.strings.MakeString(imagesBasePathLen);
 		fplPathCombine(imagesBasePath, imagesBasePath, 2, (const char *)app.dataPath, "images");
+
+		app.presentationsPath = presentationsPath;
 
 		app.soundMng = SoundManager::Make(audioSys, soundsBasePath);
 
@@ -2850,7 +2872,22 @@ int main(int argc, char **argv) {
 			}
 		}
 
-		BuildPresentation(FPLPresentation, app.renderer, app.soundMng, app.presentation);
+		size_t presentationFilePathLen = fplPathCombine(nullptr, 0, 2, (const char *)app.presentationsPath, "fpl_presentation.ftd");
+		String presentationFilePath = app.strings.MakeString(presentationFilePathLen);
+		fplPathCombine(presentationFilePath, presentationFilePath, 2, (const char *)app.presentationsPath, "fpl_presentation.ftd");
+
+		ftdContext *ctx = ftdCreate(NULL);
+		ftdRegisterStruct(ctx, &BackgroundStyleType);
+
+		if (const ftdResult res = ftdParseFile(ctx, presentationFilePath); !res.ok) {
+			for (uint32_t i = 0; i < res.diagnosticCount; ++i) {
+				fplConsoleFormatError("%s\n", res.diagnostics[i].message);
+			}
+		} else {
+			const PresentationDefinition *presentationDefinition = static_cast<const PresentationDefinition *>(ftdLookup(ctx, "MyAppConfig", nullptr));
+			BuildPresentation(*presentationDefinition, app.renderer, app.soundMng, app.presentation);
+			ftdDestroy(ctx);
+		}
 
 		UpdatePresentationVariables(app.presentation);
 
