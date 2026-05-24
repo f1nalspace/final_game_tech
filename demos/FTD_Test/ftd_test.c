@@ -26,6 +26,7 @@ Changelog:
 #include <final_ftd.h>
 
 #include "fpl_presentation_types.h"
+#include "fpl_presentation_ftd_data.h"
 
 #include <stdio.h>
 #include <stdlib.h>
