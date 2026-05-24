@@ -35,6 +35,29 @@ helper functions.
 	}
 	ftdDestroy(ctx);
 
+The host (your C code) describes the shape of the data via small static
+tables of `ftdField` / `ftdType` / `ftdEnumValue`. The parser uses those
+tables to drive parsing — it never introspects your C structs at runtime.
+This means a single header parses anything, as long as you describe it.
+
+The general flow is always:
+
+	1. Define C structs / enums / unions you want to read from a .ftd file.
+	2. Define matching ftdField[] tables and an ftdType for each struct/enum.
+	3. ftdCreate() a context.
+	4. ftdRegisterStruct / ftdRegisterEnum / ftdRegisterAlias /
+	   ftdRegisterGlobal / ftdRegisterHelper / ftdSetArraySlot.
+	5. ftdParseString() or ftdParseFile().
+	6. ftdLookup() the named instances and constants you care about.
+	7. ftdDestroy() when finished.
+
+The rest of this header explains, in order:
+
+	- The .ftd file format (lexical rules, statements, value forms).
+	- The host-side API (registering types, enums, aliases, globals, helpers,
+	  array slots; arrays in detail; diagnostics; hot-reload).
+	- The override macros (drop libc, BYO allocator, etc.).
+
 -------------------------------------------------------------------------------
 	Switches
 -------------------------------------------------------------------------------
@@ -249,6 +272,788 @@ helper functions.
 	What is NOT in the format: arithmetic / expressions (a + b, 1 << 3),
 	#include / file composition, variables / templates / for-each loops,
 	reflection or runtime field introspection, serialization (writing .ftd).
+
+-------------------------------------------------------------------------------
+	Host API guide
+-------------------------------------------------------------------------------
+
+	Everything below describes how *you* describe your C data to the parser
+	so it can populate it. None of this is read from the .ftd file — these
+	are static tables you write once per struct or enum.
+
+	== Schema building blocks ==
+
+	`ftdField` describes one field in a struct:
+
+	    struct ftdField {
+	        const char    *name;          // field name as it appears in .ftd
+	        uint32_t       offset;        // offsetof(YourStruct, member)
+	        ftdFieldKind   kind;          // Bool / S32 / Struct / Array / ...
+	        const ftdType *subtype;       // element / nested-struct / enum type
+	        const char    *discriminator; // unions only — sibling field name
+	        uint32_t       unionTag;      // unions only — matching enum value
+	        uint32_t       flags;         // ftdFieldFlag_*
+	    };
+
+	`ftdType` describes one C type (struct OR enum):
+
+	    struct ftdType {
+	        const char         *name;        // name used in .ftd
+	        size_t              size;        // sizeof(YourStruct)
+	        size_t              align;       // _Alignof(YourStruct)
+	        const ftdField     *fields;      // NULL for enums
+	        uint32_t            fieldCount;
+	        const ftdEnumValue *enumValues;  // NULL for structs
+	        uint32_t            enumValueCount;
+	    };
+
+	`ftdEnumValue` is the obvious { name, intValue } pair.
+
+	The tables are `static const` — no allocation, no registration ceremony
+	beyond a single ftdRegister* call that captures the pointer.
+
+	== Scalar fields ==
+
+	The full list of scalar field kinds: ftdFieldKind_Bool / _S8 / _S16 /
+	_S32 / _S64 / _U8 / _U16 / _U32 / _U64 / _F32 / _F64 / _String. Strings
+	in C are `const char *`; the parser arena owns the bytes for the
+	lifetime of the parse (see "Lifetimes" below).
+
+	    // 1. C type
+	    typedef struct V2f { float x, y; } V2f;
+
+	    // 2. Schema
+	    static const ftdField V2f_fields[] = {
+	        { "x", offsetof(V2f, x), ftdFieldKind_F32, NULL, NULL, 0, 0 },
+	        { "y", offsetof(V2f, y), ftdFieldKind_F32, NULL, NULL, 0, 0 },
+	    };
+	    static const ftdType V2f_type = {
+	        "V2f", sizeof(V2f), _Alignof(V2f),
+	        V2f_fields, 2, NULL, 0,
+	    };
+
+	    // 3. Register
+	    ftdRegisterStruct(ctx, &V2f_type);
+
+	    // 4. .ftd source
+	    //     V2f Origin = V2f(0, 0)              // positional constructor
+	    //     V2f Centre = V2f{ x = 0.5  y = 0.5 } // named-field constructor
+
+	    // 5. Access
+	    const V2f *p = (const V2f *)ftdLookup(ctx, "Centre", NULL);
+	    printf("%f, %f\n", p->x, p->y);
+
+	A full-mixed scalar example demonstrating coercion + the `string` kind:
+
+	    typedef struct AllScalars {
+	        bool        b;
+	        int32_t     i32;
+	        uint64_t    u64;
+	        float       f32;
+	        double      f64;
+	        const char *str;
+	    } AllScalars;
+	    static const ftdField AllScalars_fields[] = {
+	        { "b",   offsetof(AllScalars, b),   ftdFieldKind_Bool,   NULL, NULL, 0, 0 },
+	        { "i32", offsetof(AllScalars, i32), ftdFieldKind_S32,    NULL, NULL, 0, 0 },
+	        { "u64", offsetof(AllScalars, u64), ftdFieldKind_U64,    NULL, NULL, 0, 0 },
+	        { "f32", offsetof(AllScalars, f32), ftdFieldKind_F32,    NULL, NULL, 0, 0 },
+	        { "f64", offsetof(AllScalars, f64), ftdFieldKind_F64,    NULL, NULL, 0, 0 },
+	        { "str", offsetof(AllScalars, str), ftdFieldKind_String, NULL, NULL, 0, 0 },
+	    };
+
+	    // .ftd:
+	    //     AllScalars S {
+	    //         b   = true
+	    //         i32 = 3.9          # float -> int truncates to 3
+	    //         u64 = 0xCAFEBABE
+	    //         f32 = 42           # int  -> float promotes to 42.0
+	    //         str = "hi"
+	    //     }
+
+	== Enums ==
+
+	    // 1. C type
+	    typedef enum Color { Color_Red = 0, Color_Green = 1, Color_Blue = 2 } Color;
+
+	    // 2. Schema — note: no fields, just enumValues.
+	    static const ftdEnumValue Color_values[] = {
+	        { "Red", 0 }, { "Green", 1 }, { "Blue", 2 },
+	    };
+	    static const ftdType Color_type = {
+	        "Color", sizeof(int), _Alignof(int),
+	        NULL, 0,                       // no struct fields
+	        Color_values, 3,
+	    };
+
+	    // A field of enum kind stores a 4-byte int at `offset`:
+	    typedef struct Pixel { Color color; } Pixel;
+	    static const ftdField Pixel_fields[] = {
+	        { "color", offsetof(Pixel, color),
+	          ftdFieldKind_Enum, &Color_type, NULL, 0, 0 },
+	    };
+	    static const ftdType Pixel_type = {
+	        "Pixel", sizeof(Pixel), _Alignof(Pixel),
+	        Pixel_fields, 1, NULL, 0,
+	    };
+
+	    // 3. Register both
+	    ftdRegisterEnum  (ctx, &Color_type);
+	    ftdRegisterStruct(ctx, &Pixel_type);
+
+	    // 4. .ftd
+	    //     Pixel A { color = Red }              // short form
+	    //     Pixel B { color = Color.Blue }       // fully qualified
+
+	    // 5. Access
+	    const Pixel *a = (const Pixel *)ftdLookup(ctx, "A", NULL);
+	    assert(a->color == Color_Red);
+
+	== Nested structs ==
+
+	A struct field whose type is itself a registered struct uses
+	ftdFieldKind_Struct with `subtype` pointing to that struct's ftdType.
+	The nested struct's bytes live inline in the parent — no pointer
+	indirection.
+
+	    typedef struct ImageBlock {
+	        const char *imageName;
+	        V2f         size;       // nested V2f, inline
+	    } ImageBlock;
+
+	    static const ftdField ImageBlock_fields[] = {
+	        { "imageName", offsetof(ImageBlock, imageName),
+	          ftdFieldKind_String, NULL,       NULL, 0, 0 },
+	        { "size",      offsetof(ImageBlock, size),
+	          ftdFieldKind_Struct, &V2f_type,  NULL, 0, 0 },
+	    };
+
+	    // .ftd — three equivalent ways to set the nested struct:
+	    //
+	    //     ImageBlock A { imageName = "x.png"  size = V2f(8, 8) }
+	    //     ImageBlock B { imageName = "x.png"  size { x = 8  y = 8 } }
+	    //     ImageBlock C { imageName = "x.png"  size.x = 8  size.y = 8 }
+	    //
+	    // The dotted form auto-descends only into Struct fields.
+
+	== Unions ==
+
+	A C union must be paired with a "discriminator" — a sibling enum field
+	that picks the active variant. Each variant is described with kind
+	ftdFieldKind_Union; `discriminator` names the sibling field and
+	`unionTag` is the enum integer value that selects this variant.
+
+	    // 1. C types
+	    typedef enum BlockType { BlockType_Text = 0, BlockType_Image = 1 } BlockType;
+
+	    typedef struct TextBlock  { const char *content; float fontSize; } TextBlock;
+	    typedef struct ImageBlock { const char *imageName; V2f size;     } ImageBlock;
+
+	    typedef struct Block {
+	        BlockType type;        // discriminator
+	        union {
+	            TextBlock  text;
+	            ImageBlock image;
+	        };
+	    } Block;
+
+	    // 2. Schema — the discriminator is a normal Enum field; each
+	    //    variant is a Union field whose `discriminator` names the
+	    //    discriminator field and `unionTag` is its required value.
+	    static const ftdField Block_fields[] = {
+	      { "type",  offsetof(Block, type),
+	        ftdFieldKind_Enum,  &BlockType_type,  NULL,   0,                0 },
+	      { "text",  offsetof(Block, text),
+	        ftdFieldKind_Union, &TextBlock_type,  "type", BlockType_Text,   0 },
+	      { "image", offsetof(Block, image),
+	        ftdFieldKind_Union, &ImageBlock_type, "type", BlockType_Image,  0 },
+	    };
+	    static const ftdType Block_type = {
+	        "Block", sizeof(Block), _Alignof(Block),
+	        Block_fields, 3, NULL, 0,
+	    };
+
+	    // 3. .ftd
+	    //     Block A {
+	    //         type = Text                          # discriminator first
+	    //         text { content = "hi"   fontSize = 12 }
+	    //     }
+	    //     Block B {
+	    //         type = Image
+	    //         image { imageName = "x.png"  size = V2f(8, 8) }
+	    //     }
+
+	    // 4. Access
+	    const Block *a = (const Block *)ftdLookup(ctx, "A", NULL);
+	    if (a->type == BlockType_Text)  use(&a->text);
+	    if (a->type == BlockType_Image) use(&a->image);
+
+	Setting a variant whose tag does not match the current discriminator
+	value is a warning (the bytes are left untouched). For best results
+	always write the discriminator field *before* the variant block.
+
+	== References ==
+
+	A pointer field that should point at a named instance / host global /
+	const uses ftdFieldKind_Ref; `subtype` names the pointee's type for
+	documentation only — the parser writes a raw `void *` at `offset`.
+
+	    // 1. C types
+	    typedef struct Resource { const char *name; int32_t id; } Resource;
+	    typedef struct Linker   { const Resource *primary;
+	                              const Resource *secondary; } Linker;
+
+	    // 2. Schema
+	    static const ftdField Linker_fields[] = {
+	      { "primary",   offsetof(Linker, primary),
+	        ftdFieldKind_Ref, &Resource_type, NULL, 0, 0 },
+	      { "secondary", offsetof(Linker, secondary),
+	        ftdFieldKind_Ref, &Resource_type, NULL, 0, 0 },
+	    };
+
+	    // 3. .ftd — three ways to set a reference:
+	    //
+	    //   Resource A { name = "first"  id = 1 }
+	    //   Linker   L1 { primary = A }                // backward ref
+	    //
+	    //   Linker   L2 { primary = LaterDef }         // forward ref
+	    //   Resource LaterDef { name = "later"  id = 2 }
+	    //
+	    //   Linker   L3 { primary = ImageResources.Atlas }  // host global
+	    //                                              // (dotted path)
+
+	    // 4. Access
+	    const Linker *l = (const Linker *)ftdLookup(ctx, "L1", NULL);
+	    printf("%s\n", l->primary->name);   // "first"
+
+	Forward references unresolved at end-of-parse are reported as warnings,
+	not errors; the pointer is left NULL.
+
+	== Aliases ==
+
+	Aliases rename one symbol to another. They participate in lookup so a
+	short name resolves to the real target. There are two kinds:
+
+	  1. File-local aliases — declared inside the .ftd file with the
+	     `alias` keyword. They live only as long as the parse:
+
+	         # rename a type
+	         alias V2f = Vec2f
+
+	         # rename a specific enum value (qualified target)
+	         alias Center = HorizontalAlignment.Center
+
+	         # optional type prefix is for documentation only — parser
+	         # ignores it. Both lines below behave identically:
+	         alias              Arimo = FontResources.Arimo
+	         alias FontResource Arimo = FontResources.Arimo
+
+	         # chained aliases — folded transparently
+	         alias V2f  = Vec2f
+	         alias Pos  = V2f          # Pos -> V2f -> Vec2f
+	         V2f Foo = Pos(1, 2)       # works, resolves through both
+
+	  2. Host-registered aliases — installed before parsing via
+	     ftdRegisterAlias(ctx, "Vector2", "V2f"). They survive across
+	     ftdResetParse() and across multiple parses of the same context.
+	     Use them for project-wide naming conventions you want enforced
+	     everywhere without putting them in every .ftd file:
+
+	         ftdRegisterAlias(ctx, "Vector2", "V2f");
+
+	         // .ftd can now use either name interchangeably:
+	         //     Vector2 P = Vector2(7, 8)
+	         //     V2f     Q = V2f(7, 8)
+
+	Loops are detected (depth-limited).
+
+	== Globals ==
+
+	A "global" is a host-side C object exposed to .ftd by a dotted-path
+	name. Use globals for pre-loaded resources (images, sounds, fonts) or
+	shared singletons that should not be re-declared in every file.
+
+	    // 1. C objects (real data the host owns)
+	    static const FontResource Arimo             = { "Arimo.ttf" };
+	    static const FontResource BitStreamVeraSans = { "VeraSans.ttf" };
+
+	    // 2. Register them under a dotted namespace
+	    ftdRegisterGlobal(ctx, "FontResources.Arimo",
+	                      &FontResource_type, &Arimo);
+	    ftdRegisterGlobal(ctx, "FontResources.BitStreamVeraSans",
+	                      &FontResource_type, &BitStreamVeraSans);
+
+	    // 3. .ftd — refer by full path, or by a local alias:
+	    //
+	    //     alias Arimo = FontResources.Arimo
+	    //     HeaderDef H {
+	    //         font {
+	    //             name = Arimo                            # via alias
+	    //             style = FontResources.BitStreamVeraSans # full path
+	    //             size = 24.0
+	    //         }
+	    //     }
+
+	Globals participate in reference lookup, so any ftdFieldKind_Ref field
+	whose schema matches can point at a global with no extra work.
+
+	== Helpers (custom functions like RGBA / RGBA24) ==
+
+	A helper is a C callback that turns positional .ftd arguments into a
+	value of a known ftdType. Use it for math-y constructors that don't
+	naturally map to struct literals.
+
+	    // 1. C side
+	    static bool RGBAHelper(ftdContext *ctx, const ftdValue *args,
+	                           uint32_t argCount, void *outValue,
+	                           void *userData) {
+	        (void)ctx; (void)userData;
+	        Vec4f *o = (Vec4f *)outValue;
+	        // ftdValue.kind tells you what came in; here we expect ints.
+	        o->x = (float)(argCount >= 1 ? args[0].as.i : 0) / 255.0f;
+	        o->y = (float)(argCount >= 2 ? args[1].as.i : 0) / 255.0f;
+	        o->z = (float)(argCount >= 3 ? args[2].as.i : 0) / 255.0f;
+	        o->w = (float)(argCount >= 4 ? args[3].as.i : 255) / 255.0f;
+	        return true; // false = abort with diagnostic
+	    }
+
+	    // RGBA24(hex, alpha) -> Vec4f: pack a 24-bit hex color
+	    static bool RGBA24Helper(ftdContext *ctx, const ftdValue *args,
+	                             uint32_t argCount, void *outValue,
+	                             void *userData) {
+	        (void)ctx; (void)userData;
+	        Vec4f *o = (Vec4f *)outValue;
+	        uint64_t hex = (argCount >= 1) ? (uint64_t)args[0].as.u : 0;
+	        uint64_t a   = (argCount >= 2) ? (uint64_t)args[1].as.i : 255;
+	        o->x = (float)((hex >> 16) & 0xFF) / 255.0f;
+	        o->y = (float)((hex >>  8) & 0xFF) / 255.0f;
+	        o->z = (float)((hex      ) & 0xFF) / 255.0f;
+	        o->w = (float)(a & 0xFF) / 255.0f;
+	        return true;
+	    }
+
+	    // 2. Register — name + return type
+	    ftdRegisterHelper(ctx, "RGBA",   &Vec4f_type, RGBAHelper,   NULL);
+	    ftdRegisterHelper(ctx, "RGBA24", &Vec4f_type, RGBA24Helper, NULL);
+
+	    // 3. .ftd
+	    //     V4f Red    = RGBA(255, 0, 0, 255)
+	    //     V4f Orange = RGBA24(0xFF8000, 200)
+
+	The parser allocates the result from its arena (size taken from the
+	helper's return type), zero-fills it, then calls the helper to populate.
+	Arguments arrive as ftdValue records — inspect `kind`
+	(Bool/Int/UInt/Float/String) and read from `as`. Return false to abort
+	(the call site reports a generic helper-failed diagnostic).
+
+	== Arrays — three flavors ==
+
+	Arrays in .ftd always look the same in the source:
+
+	    field = [ a, b, c ]              // commas, newlines, or both
+	    field = [
+	        a
+	        b
+	        c
+	    ]
+	    field = []                       // empty (still allocates sentinel)
+
+	The host picks how the parsed elements land in the C struct.
+
+	  (1) ftdArrayHandle (smallest schema, generic storage)
+
+	      The simplest form. The library writes results into a single
+	      ftdArrayHandle slot.
+
+	          // 1. C type
+	          typedef struct Slide {
+	              const char    *title;
+	              ftdArrayHandle blocks;   // .data, .count, .capacity
+	          } Slide;
+
+	          // 2. Schema
+	          static const ftdField Slide_fields[] = {
+	            { "title",  offsetof(Slide, title),
+	              ftdFieldKind_String, NULL,        NULL, 0, 0 },
+	            { "blocks", offsetof(Slide, blocks),
+	              ftdFieldKind_Array,  &Block_type, NULL, 0, 0 },
+	          };
+	          static const ftdType Slide_type = {
+	              "Slide", sizeof(Slide), _Alignof(Slide),
+	              Slide_fields, 2, NULL, 0,
+	          };
+
+	          // 3. .ftd
+	          //     Slide S {
+	          //         title = "S1"
+	          //         blocks = [
+	          //             Block { type = Text  text { content = "a"  fontSize = 1 } }
+	          //             Block { type = Text  text { content = "b"  fontSize = 2 } }
+	          //         ]
+	          //     }
+
+	          // 4. Access
+	          const Slide *s = (const Slide *)ftdLookup(ctx, "S", NULL);
+	          const Block *items = (const Block *)s->blocks.data;
+	          for (uint32_t i = 0; i < s->blocks.count; ++i) { use(&items[i]); }
+
+	  (2) ArrayData / ArrayCount / ArrayCapacity (ergonomic native fields)
+
+	      Use these when you want plain `T*` + count in your struct. Field
+	      names share a prefix and end with ".data" / ".count" /
+	      ".capacity". The .ftd source still writes `blocks = [...]`.
+
+	          // 1. C type
+	          typedef struct Slide {
+	              Block    *items;       // blocks.data
+	              uint32_t  itemCount;   // blocks.count
+	              uint32_t  itemCap;     // blocks.capacity  (optional)
+	          } Slide;
+
+	          // 2. Schema — three rows for the one .ftd field "blocks":
+	          static const ftdField Slide_fields[] = {
+	            { "blocks.data",     offsetof(Slide, items),
+	              ftdFieldKind_ArrayData,     &Block_type, NULL, 0, 0 },
+	            { "blocks.count",    offsetof(Slide, itemCount),
+	              ftdFieldKind_ArrayCount,    NULL,        NULL, 0, 0 },
+	            { "blocks.capacity", offsetof(Slide, itemCap),
+	              ftdFieldKind_ArrayCapacity, NULL,        NULL, 0, 0 },
+	          };
+
+	          // 3. .ftd — same as flavor (1):
+	          //     Slide S { blocks = [ Block { ... }  Block { ... } ] }
+
+	          // 4. Access
+	          const Slide *s = (const Slide *)ftdLookup(ctx, "S", NULL);
+	          for (uint32_t i = 0; i < s->itemCount; ++i) { use(&s->items[i]); }
+
+	      Only .data is required; .count and .capacity are independently
+	      optional. Count and capacity are written as uint32_t.
+
+	  (3) Custom slot binding (host structs you don't control)
+
+	      For C structs whose layout doesn't match either pattern above —
+	      e.g. nested data/count inside a sub-struct — bind one specific
+	      array field to explicit data / count offsets at registration
+	      time:
+
+	          // 1. C type — `blocks` is itself a struct
+	          typedef struct ArrayOfBlocks {
+	              Block    *items;
+	              uint32_t  itemCount;
+	          } ArrayOfBlocks;
+	          typedef struct Slide {
+	              const char   *title;
+	              ArrayOfBlocks blocks;
+	          } Slide;
+
+	          // 2. Schema — leave "blocks" declared as a plain Array field
+	          //    of Block, then override its layout:
+	          static const ftdField Slide_fields[] = {
+	            { "title",  offsetof(Slide, title),
+	              ftdFieldKind_String, NULL,        NULL, 0, 0 },
+	            { "blocks", offsetof(Slide, blocks),
+	              ftdFieldKind_Array,  &Block_type, NULL, 0, 0 },
+	          };
+
+	          // 3. Register, then bind the slot:
+	          ftdRegisterStruct(ctx, &Slide_type);
+	          ftdSetArraySlot(ctx, &Slide_type, "blocks",
+	                          offsetof(Slide, blocks.items),
+	                          offsetof(Slide, blocks.itemCount),
+	                          sizeof(uint32_t));     // 4 or 8
+
+	  Sentinel element
+
+	  In *every* flavor above the parser appends one extra zero-initialized
+	  element past the last real entry. `count` (or `ftdArrayHandle.count`)
+	  is unchanged; `capacity` (or the buffer length) is `count + 1` or
+	  larger. An empty `[]` produces a 1-slot zero buffer. This lets you
+	  iterate without consulting count:
+
+	      // pick any field your real entries always set:
+	      for (Block *e = s->items; e->text.content != NULL; ++e) { use(e); }
+
+	  Arrays of references
+
+	  When the array element is itself a reference to another named
+	  instance (e.g. "slides" is a list of pointers to top-level Slides),
+	  the buffer stride equals the element type's size. The simplest
+	  pattern is a one-pointer wrapper type:
+
+	      // 1. C wrapper
+	      typedef struct SlideRef { const Slide *slide; } SlideRef;
+
+	      // 2. Wrapper type — no fields, just size/align
+	      static const ftdType SlideRef_type = {
+	          "SlideRef", sizeof(SlideRef), _Alignof(SlideRef),
+	          NULL, 0, NULL, 0,
+	      };
+
+	      // 3. The owning struct uses SlideRef as the element type
+	      typedef struct Presentation {
+	          ftdArrayHandle slides;       // each element is a SlideRef
+	      } Presentation;
+	      static const ftdField Presentation_fields[] = {
+	        { "slides", offsetof(Presentation, slides),
+	          ftdFieldKind_Array, &SlideRef_type, NULL, 0, 0 },
+	      };
+
+	      // 4. .ftd — name each slide instance previously declared
+	      //     Presentation P { slides = [ Intro, WhoAmI, Outro ] }
+
+	      // 5. Access
+	      const Presentation *p = (const Presentation *)ftdLookup(ctx, "P", NULL);
+	      const SlideRef *refs = (const SlideRef *)p->slides.data;
+	      use(refs[0].slide);   // -> the Intro instance
+
+	== Lifetimes ==
+
+	Everything the parser produces (strings, parsed instances, array
+	buffers, diagnostics) lives in the context's parse arena. It is freed
+	on the next ftdResetParse(), the next ftdParseString/File call (which
+	resets implicitly), or on ftdDestroy().
+
+	Schema tables (the ftdType / ftdField / ftdEnumValue you declared) and
+	host-registered globals live in *your* memory — the parser only stores
+	pointers. Keep them alive at least as long as the context.
+
+	Hot-reload pattern:
+
+	    while (running) {
+	        if (file_changed("config.ftd")) {
+	            ftdParseFile(ctx, "config.ftd");   // ← implicit reset
+	            cfg = ftdLookup(ctx, "Root", NULL);
+	        }
+	        ...
+	    }
+
+	Schema registrations survive across resets; aliases declared inside the
+	.ftd file are dropped (they live in the parse arena).
+
+	== Diagnostics ==
+
+	`ftdResult` from a parse call contains:
+
+	    bool   ok;            // false if any error was emitted
+	    uint32_t errorCount;
+	    uint32_t warningCount;
+	    uint32_t diagnosticCount;
+	    const ftdDiagnostic *diagnostics;   // span + message per entry
+
+	Iterate diagnostics for a human-readable report:
+
+	    for (uint32_t i = 0; i < res.diagnosticCount; ++i) {
+	        const ftdDiagnostic *d = &res.diagnostics[i];
+	        fprintf(stderr, "%s:%u:%u: %s: %s\n",
+	            d->span.file ? d->span.file : "?",
+	            d->span.line, d->span.column,
+	            d->severity == ftdSeverity_Error ? "error" : "warning",
+	            d->message);
+	    }
+
+	The pointer is owned by the parse arena — copy out anything you need
+	before the next parse.
+
+	== Lookup ==
+
+	    const ftdType *outType = NULL;
+	    const Slide *intro = (const Slide *)ftdLookup(ctx, "Intro", &outType);
+	    if (intro != NULL) { ... }
+
+	Dotted-path lookups work too: `ftdLookup(ctx, "ResourceTable.Mine", ...)`.
+	Lookup returns NULL when the name is not a const / named instance /
+	global (aliases are folded transparently; enum *types* alone are not
+	values).
+
+	== Custom allocator ==
+
+	Pass your own allocator to ftdCreate to avoid the default calloc/free:
+
+	    typedef struct MyState { size_t totalBytes; int count; } MyState;
+
+	    static void *MyAlloc(size_t size, size_t align, void *ud) {
+	        MyState *s = (MyState *)ud;
+	        s->totalBytes += size;
+	        s->count++;
+	        return aligned_alloc(align ? align : 16, size);
+	    }
+	    static void MyFree(void *ptr, void *ud) {
+	        (void)ud;
+	        free(ptr);
+	    }
+
+	    MyState state = { 0 };
+	    ftdAllocator al = { MyAlloc, MyFree, &state };
+	    ftdContext *ctx = ftdCreate(&al);
+
+	The allocator is asked for chunks of FTD_ARENA_CHUNK_SIZE plus
+	occasional large allocations for oversized payloads (long strings,
+	wide arrays). Returning NULL is recoverable: subsequent parse calls
+	report an out-of-memory diagnostic and stop early. After ftdDestroy()
+	every allocation made through the allocator has been freed.
+
+	== One-line API reference ==
+
+	    ftdContext *ftdCreate(const ftdAllocator *al);
+	    void        ftdDestroy(ftdContext *ctx);
+	    void        ftdResetParse(ftdContext *ctx);
+
+	    void ftdRegisterStruct (ftdContext *ctx, const ftdType *type);
+	    void ftdRegisterEnum   (ftdContext *ctx, const ftdType *type);
+	    void ftdRegisterAlias  (ftdContext *ctx, const char *alias,
+	                                             const char *target);
+	    void ftdRegisterGlobal (ftdContext *ctx, const char *dottedName,
+	                                             const ftdType *type,
+	                                             const void *value);
+	    void ftdRegisterHelper (ftdContext *ctx, const char *name,
+	                                             const ftdType *returnType,
+	                                             ftdHelperFn fn,
+	                                             void *userData);
+	    void ftdSetArraySlot   (ftdContext *ctx, const ftdType *owner,
+	                                             const char *fieldName,
+	                                             uint32_t dataOffset,
+	                                             uint32_t countOffset,
+	                                             uint32_t countSize);
+
+	    ftdResult ftdParseString(ftdContext *ctx, const char *src,
+	                             size_t length, const char *displayName);
+	    ftdResult ftdParseFile  (ftdContext *ctx, const char *filePath);
+
+	    const void *ftdLookup(ftdContext *ctx, const char *dottedName,
+	                          const ftdType **outType);
+
+	== Putting it all together ==
+
+	A small but realistic end-to-end example that exercises scalars,
+	enums, refs, host globals, helpers, an alias, and an array bundle:
+
+	    // ---- C types ------------------------------------------------------
+	    typedef enum   ItemKind { ItemKind_Weapon=0, ItemKind_Potion=1 } ItemKind;
+	    typedef struct V4f { float r,g,b,a; } V4f;
+	    typedef struct Icon { const char *name; } Icon;
+
+	    typedef struct Item {
+	        const char *displayName;
+	        ItemKind    kind;
+	        V4f         tint;
+	        const Icon *icon;
+	    } Item;
+
+	    typedef struct Inventory {
+	        const char *owner;
+	        Item       *items;
+	        uint32_t    itemCount;
+	    } Inventory;
+
+	    // ---- Field tables -------------------------------------------------
+	    static const ftdEnumValue ItemKind_values[] = {
+	        { "Weapon", 0 }, { "Potion", 1 },
+	    };
+	    static const ftdType ItemKind_type = {
+	        "ItemKind", sizeof(int), _Alignof(int),
+	        NULL, 0, ItemKind_values, 2,
+	    };
+	    static const ftdField V4f_fields[] = {
+	        { "r", offsetof(V4f, r), ftdFieldKind_F32, NULL, NULL, 0, 0 },
+	        { "g", offsetof(V4f, g), ftdFieldKind_F32, NULL, NULL, 0, 0 },
+	        { "b", offsetof(V4f, b), ftdFieldKind_F32, NULL, NULL, 0, 0 },
+	        { "a", offsetof(V4f, a), ftdFieldKind_F32, NULL, NULL, 0, 0 },
+	    };
+	    static const ftdType V4f_type = {
+	        "V4f", sizeof(V4f), _Alignof(V4f),
+	        V4f_fields, 4, NULL, 0,
+	    };
+	    static const ftdField Icon_fields[] = {
+	        { "name", offsetof(Icon, name), ftdFieldKind_String, NULL, NULL, 0, 0 },
+	    };
+	    static const ftdType Icon_type = {
+	        "Icon", sizeof(Icon), _Alignof(Icon),
+	        Icon_fields, 1, NULL, 0,
+	    };
+	    static const ftdField Item_fields[] = {
+	        { "displayName", offsetof(Item, displayName),
+	          ftdFieldKind_String, NULL,           NULL, 0, 0 },
+	        { "kind",        offsetof(Item, kind),
+	          ftdFieldKind_Enum,   &ItemKind_type, NULL, 0, 0 },
+	        { "tint",        offsetof(Item, tint),
+	          ftdFieldKind_Struct, &V4f_type,      NULL, 0, 0 },
+	        { "icon",        offsetof(Item, icon),
+	          ftdFieldKind_Ref,    &Icon_type,     NULL, 0, 0 },
+	    };
+	    static const ftdType Item_type = {
+	        "Item", sizeof(Item), _Alignof(Item),
+	        Item_fields, 4, NULL, 0,
+	    };
+	    static const ftdField Inventory_fields[] = {
+	        { "owner",        offsetof(Inventory, owner),
+	          ftdFieldKind_String,        NULL,        NULL, 0, 0 },
+	        { "items.data",   offsetof(Inventory, items),
+	          ftdFieldKind_ArrayData,     &Item_type,  NULL, 0, 0 },
+	        { "items.count",  offsetof(Inventory, itemCount),
+	          ftdFieldKind_ArrayCount,    NULL,        NULL, 0, 0 },
+	    };
+	    static const ftdType Inventory_type = {
+	        "Inventory", sizeof(Inventory), _Alignof(Inventory),
+	        Inventory_fields, 3, NULL, 0,
+	    };
+
+	    // ---- Helper -------------------------------------------------------
+	    static bool RGBA(ftdContext *c, const ftdValue *a, uint32_t n,
+	                     void *out, void *ud) {
+	        (void)c; (void)ud;
+	        V4f *o = (V4f *)out;
+	        o->r = (float)(n>=1 ? a[0].as.i : 0) / 255.0f;
+	        o->g = (float)(n>=2 ? a[1].as.i : 0) / 255.0f;
+	        o->b = (float)(n>=3 ? a[2].as.i : 0) / 255.0f;
+	        o->a = (float)(n>=4 ? a[3].as.i : 255) / 255.0f;
+	        return true;
+	    }
+
+	    // ---- Host globals -------------------------------------------------
+	    static const Icon Icon_Sword  = { "sword.png" };
+	    static const Icon Icon_Bottle = { "bottle.png" };
+
+	    // ---- Wire it up ---------------------------------------------------
+	    ftdContext *ctx = ftdCreate(NULL);
+	    ftdRegisterEnum   (ctx, &ItemKind_type);
+	    ftdRegisterStruct (ctx, &V4f_type);
+	    ftdRegisterStruct (ctx, &Icon_type);
+	    ftdRegisterStruct (ctx, &Item_type);
+	    ftdRegisterStruct (ctx, &Inventory_type);
+	    ftdRegisterHelper (ctx, "RGBA", &V4f_type, RGBA, NULL);
+	    ftdRegisterGlobal (ctx, "Icons.Sword",  &Icon_type, &Icon_Sword);
+	    ftdRegisterGlobal (ctx, "Icons.Bottle", &Icon_type, &Icon_Bottle);
+	    ftdRegisterAlias  (ctx, "Color", "V4f");   // host-side alias
+
+	    // ---- .ftd source --------------------------------------------------
+	    static const char *src =
+	      "alias Sword  = Icons.Sword          # file-local alias\n"
+	      "alias Bottle = Icons.Bottle\n"
+	      "Color Red   = Color(1, 0, 0, 1)     # via host alias\n"
+	      "Inventory Bag {\n"
+	      "    owner = \"Hero\"\n"
+	      "    items = [\n"
+	      "        Item { displayName = \"Sword\"  kind = Weapon\n"
+	      "               tint = Red             icon = Sword }\n"
+	      "        Item { displayName = \"Heal\"   kind = Potion\n"
+	      "               tint = RGBA(0,255,0,255)  icon = Bottle }\n"
+	      "    ]\n"
+	      "}\n";
+
+	    // ---- Parse + access ----------------------------------------------
+	    ftdResult r = ftdParseString(ctx, src, strlen(src), "demo");
+	    if (r.ok) {
+	        const Inventory *bag = (const Inventory *)ftdLookup(ctx, "Bag", NULL);
+	        for (uint32_t i = 0; i < bag->itemCount; ++i) {
+	            const Item *it = &bag->items[i];
+	            printf("%s (%s) icon=%s\n",
+	                it->displayName,
+	                it->kind == ItemKind_Weapon ? "Weapon" : "Potion",
+	                it->icon ? it->icon->name : "(none)");
+	        }
+	    }
+	    ftdDestroy(ctx);
 
 -------------------------------------------------------------------------------
 	License
