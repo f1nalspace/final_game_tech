@@ -992,6 +992,111 @@ static void TestCommaAndNewlineSeparators(void) {
 	ftdDestroy(ctx);
 }
 
+// Decomposed array via the new ftdFieldKind_ArrayData/Count/Capacity field
+// kinds. The host type stores items as a plain pointer + count (+ optional
+// capacity); the .ftd source still writes `blocks = [ ... ]` as usual.
+typedef struct BundleHost {
+	const char *title;
+	Block      *items;     // blocks.data
+	uint32_t    itemCount; // blocks.count
+	uint32_t    itemCap;   // blocks.capacity
+} BundleHost;
+
+static const ftdField BundleHost_fields[] = {
+	{ "title",           offsetof(BundleHost, title),     ftdFieldKind_String,        NULL,        NULL, 0, 0 },
+	{ "blocks.data",     offsetof(BundleHost, items),     ftdFieldKind_ArrayData,     &Block_type, NULL, 0, 0 },
+	{ "blocks.count",    offsetof(BundleHost, itemCount), ftdFieldKind_ArrayCount,    NULL,        NULL, 0, 0 },
+	{ "blocks.capacity", offsetof(BundleHost, itemCap),   ftdFieldKind_ArrayCapacity, NULL,        NULL, 0, 0 },
+};
+static const ftdType BundleHost_type = {
+	"BundleHost", sizeof(BundleHost), _Alignof(BundleHost),
+	BundleHost_fields, 4,
+	NULL, 0
+};
+
+// Same as BundleHost but only the .data + .count fields are declared —
+// .capacity is omitted to verify it stays optional.
+typedef struct BundleHostNoCap {
+	Block    *items;
+	uint32_t  itemCount;
+} BundleHostNoCap;
+
+static const ftdField BundleHostNoCap_fields[] = {
+	{ "blocks.data",  offsetof(BundleHostNoCap, items),     ftdFieldKind_ArrayData,  &Block_type, NULL, 0, 0 },
+	{ "blocks.count", offsetof(BundleHostNoCap, itemCount), ftdFieldKind_ArrayCount, NULL,        NULL, 0, 0 },
+};
+static const ftdType BundleHostNoCap_type = {
+	"BundleHostNoCap", sizeof(BundleHostNoCap), _Alignof(BundleHostNoCap),
+	BundleHostNoCap_fields, 2,
+	NULL, 0
+};
+
+static void TestArrayBundleFields(void) {
+	ftdContext *ctx = MakeCommonContext();
+	ftdRegisterStruct(ctx, &BundleHost_type);
+
+	const char *src =
+		"BundleHost B {\n"
+		"    title = \"bundle\"\n"
+		"    blocks = [\n"
+		"        Block { type = Text   text  { content = \"a\" fontSize = 1 } }\n"
+		"        Block { type = Image  image { imageName = \"x.png\" size = V2f(8, 8) } }\n"
+		"        Block { type = Text   text  { content = \"c\" fontSize = 3 } }\n"
+		"    ]\n"
+		"}\n";
+	ftdResult r = ParseLiteral(ctx, src);
+	ftdAlwaysAssert(r.ok);
+
+	const BundleHost *b = (const BundleHost *)ftdLookup(ctx, "B", NULL);
+	ftdAlwaysAssert(b != NULL);
+	ftdAlwaysAssert(strcmp(b->title, "bundle") == 0);
+	ftdAlwaysAssert(b->itemCount == 3);
+	ftdAlwaysAssert(b->itemCap   >= 3);
+	ftdAlwaysAssert(b->items     != NULL);
+	ftdAlwaysAssert(b->items[0].type == BlockType_Text);
+	ftdAlwaysAssert(strcmp(b->items[0].text.content, "a") == 0);
+	ftdAlwaysAssert(b->items[1].type == BlockType_Image);
+	ftdAlwaysAssert(strcmp(b->items[1].image.imageName, "x.png") == 0);
+	ftdAlwaysAssert(b->items[2].type == BlockType_Text);
+	ftdAlwaysAssert(strcmp(b->items[2].text.content, "c") == 0);
+
+	// Empty array zero-fills count and leaves data NULL.
+	ftdResetParse(ctx);
+	{
+		const char *src2 = "BundleHost B { blocks = [] }\n";
+		ftdResult r2 = ParseLiteral(ctx, src2);
+		ftdAlwaysAssert(r2.ok);
+		const BundleHost *b2 = (const BundleHost *)ftdLookup(ctx, "B", NULL);
+		ftdAlwaysAssert(b2 != NULL);
+		ftdAlwaysAssert(b2->itemCount == 0);
+		ftdAlwaysAssert(b2->items == NULL);
+	}
+
+	ftdDestroy(ctx);
+}
+
+static void TestArrayBundleOptionalCapacity(void) {
+	ftdContext *ctx = MakeCommonContext();
+	ftdRegisterStruct(ctx, &BundleHostNoCap_type);
+
+	const char *src =
+		"BundleHostNoCap B {\n"
+		"    blocks = [\n"
+		"        Block { type = Text  text { content = \"only\" fontSize = 9 } }\n"
+		"    ]\n"
+		"}\n";
+	ftdResult r = ParseLiteral(ctx, src);
+	ftdAlwaysAssert(r.ok);
+
+	const BundleHostNoCap *b = (const BundleHostNoCap *)ftdLookup(ctx, "B", NULL);
+	ftdAlwaysAssert(b != NULL);
+	ftdAlwaysAssert(b->itemCount == 1);
+	ftdAlwaysAssert(b->items != NULL);
+	ftdAlwaysAssert(strcmp(b->items[0].text.content, "only") == 0);
+
+	ftdDestroy(ctx);
+}
+
 #if !defined(FTD_NO_STDIO)
 static void TestParseFile(void) {
 	const char *path = "ftd_test_tmp.ftd";
@@ -1359,6 +1464,8 @@ int main(int argc, char **args) {
 	TestNullAndBoolLiteral();
 	TestRepeatedFieldLastWins();
 	TestCommaAndNewlineSeparators();
+	TestArrayBundleFields();
+	TestArrayBundleOptionalCapacity();
 #if !defined(FTD_NO_STDIO)
 	TestParseFile();
 	TestParseMissingFile();

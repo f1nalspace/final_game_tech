@@ -313,6 +313,21 @@ typedef enum ftdFieldKind {
 	ftdFieldKind_Array,
 	ftdFieldKind_Ref,
 	ftdFieldKind_Union,
+
+	// Array decomposed into separate host-struct fields. Use these instead of
+	// the single ftdArrayHandle-backed ftdFieldKind_Array when you prefer
+	// ergonomic native fields like:
+	//     T        *items;
+	//     uint32_t  itemCount;
+	//     uint32_t  itemCapacity;
+	// Field names share a prefix and end with ".data" / ".count" / ".capacity"
+	// — for example "blocks.data", "blocks.count", "blocks.capacity". The .ftd
+	// source still uses the bare prefix: `blocks = [ ... ]`.
+	// .data is required and carries the element type in `subtype`. The other
+	// two are optional. Count and capacity are written as uint32_t.
+	ftdFieldKind_ArrayData,
+	ftdFieldKind_ArrayCount,
+	ftdFieldKind_ArrayCapacity,
 } ftdFieldKind;
 
 typedef enum ftdFieldFlags {
@@ -1832,9 +1847,18 @@ static void ftd__writeScalar(void *out, ftdFieldKind kind, const ftdValue *v) {
 // -----------------------------------------------------------------------------
 // Parsing forward declarations
 // -----------------------------------------------------------------------------
+typedef struct ftd__ArrayBundle {
+	const ftdField *data;     // required (ftdFieldKind_ArrayData, subtype = elemType)
+	const ftdField *count;    // optional (ftdFieldKind_ArrayCount)
+	const ftdField *capacity; // optional (ftdFieldKind_ArrayCapacity)
+	const ftdType  *elemType;
+} ftd__ArrayBundle;
+
 static bool ftd__parseValue(ftd__Parser *p, const ftdField *fieldHint, const ftdType *typeHint, ftdValue *out);
 static bool ftd__parseBlockInto(ftd__Parser *p, const ftdType *type, void *outStruct);
 static bool ftd__parseArrayInto(ftd__Parser *p, const ftdField *arrayField, void *ownerStruct);
+static bool ftd__parseArrayBundle(ftd__Parser *p, const ftd__ArrayBundle *bundle, void *ownerStruct);
+static bool ftd__findArrayBundle(const ftdType *t, const char *name, ftd__ArrayBundle *out);
 static void ftd__skipToNewlineOrEOF(ftd__Parser *p);
 static void ftd__skipBalanced(ftd__Parser *p);
 
@@ -2382,6 +2406,37 @@ static bool ftd__parseBlockInto(ftd__Parser *p, const ftdType *type, void *outSt
 			continue;
 		}
 
+		// Detect array-bundle reference (name where name.data exists in the
+		// type's field table). Only triggers when the next token is `=` or `[`
+		// so a regular field path like `foo.x = ...` is unaffected.
+		{
+			const ftd__Token *pk = ftd__parserPeek(p);
+			if (pk->kind == ftd__Tok_Eq || pk->kind == ftd__Tok_LBracket) {
+				ftd__ArrayBundle bundle;
+				if (ftd__findArrayBundle(type, p->cur.str, &bundle)) {
+					ftdSourceSpan nameSpan = p->cur.span;
+					ftd__parserAdvance(p); // consume name
+					if (p->cur.kind == ftd__Tok_Eq) {
+						ftd__parserAdvance(p);
+					}
+					if (p->cur.kind == ftd__Tok_LBracket) {
+						ftd__parseArrayBundle(p, &bundle, outStruct);
+					} else {
+						ftd__emit(p->ctx, ftdSeverity_Warning, nameSpan,
+							"expected '[' for array '%.*s'",
+							(int)(strchr(bundle.data->name, '.') - bundle.data->name),
+							bundle.data->name);
+						ftd__skipToNewlineOrEOF(p);
+					}
+					if (p->cur.kind == ftd__Tok_Comma) {
+						ftd__parserAdvance(p);
+					}
+					ftd__skipNewlines(p);
+					continue;
+				}
+			}
+		}
+
 		// resolve path
 		void *slot = NULL;
 		const ftdType *slotType = NULL;
@@ -2482,6 +2537,134 @@ static void ftd__arrayWriteResult(ftd__Parser *p, const ftdField *arrayField, vo
 		h->count = count;
 		h->capacity = capacity;
 	}
+}
+
+// -----------------------------------------------------------------------------
+// Array bundle: an array split into three host-struct fields
+// ("X.data" / "X.count" / "X.capacity") instead of one ftdArrayHandle.
+// .data is required; .count and .capacity are optional. Element type comes
+// from the .data field's `subtype`.
+// -----------------------------------------------------------------------------
+static bool ftd__findArrayBundle(const ftdType *t, const char *name, ftd__ArrayBundle *out) {
+	memset(out, 0, sizeof(*out));
+	if (t == NULL || t->fields == NULL || name == NULL) {
+		return false;
+	}
+	size_t nameLen = strlen(name);
+	for (uint32_t i = 0; i < t->fieldCount; ++i) {
+		const ftdField *f = &t->fields[i];
+		if (f->name == NULL) {
+			continue;
+		}
+		if (strncmp(f->name, name, nameLen) != 0) {
+			continue;
+		}
+		if (f->name[nameLen] != '.') {
+			continue;
+		}
+		const char *sub = f->name + nameLen + 1;
+		if (f->kind == ftdFieldKind_ArrayData && strcmp(sub, "data") == 0) {
+			out->data = f;
+			out->elemType = f->subtype;
+		} else if (f->kind == ftdFieldKind_ArrayCount && strcmp(sub, "count") == 0) {
+			out->count = f;
+		} else if (f->kind == ftdFieldKind_ArrayCapacity && strcmp(sub, "capacity") == 0) {
+			out->capacity = f;
+		}
+	}
+	return out->data != NULL;
+}
+
+static void ftd__bundleWriteResult(const ftd__ArrayBundle *bundle, void *ownerStruct,
+                                   void *data, uint32_t count, uint32_t capacity) {
+	uint8_t *base = (uint8_t *)ownerStruct;
+	if (bundle->data != NULL) {
+		*(void **)(base + bundle->data->offset) = data;
+	}
+	if (bundle->count != NULL) {
+		*(uint32_t *)(base + bundle->count->offset) = count;
+	}
+	if (bundle->capacity != NULL) {
+		*(uint32_t *)(base + bundle->capacity->offset) = capacity;
+	}
+}
+
+// Read array elements into a fresh, contiguous, arena-owned buffer, then hand
+// the buffer + count + capacity to the bundle. Mirrors ftd__parseArrayInto
+// element handling so refs/structs/fixups all behave identically.
+static bool ftd__parseArrayBundle(ftd__Parser *p, const ftd__ArrayBundle *bundle, void *ownerStruct) {
+	if (!ftd__match(p, ftd__Tok_LBracket)) {
+		return false;
+	}
+	const ftdType *elemType = bundle->elemType;
+	if (elemType == NULL) {
+		ftd__skipBalanced(p);
+		ftd__bundleWriteResult(bundle, ownerStruct, NULL, 0, 0);
+		return true;
+	}
+	size_t elemSize = elemType->size > 0 ? elemType->size : sizeof(void *);
+	size_t elemAlign = elemType->align > 0 ? elemType->align : 8;
+
+	uint8_t *data = NULL;
+	uint32_t count = 0;
+	uint32_t capacity = 0;
+
+	for (;;) {
+		ftd__skipNewlines(p);
+		if (p->cur.kind == ftd__Tok_RBracket) {
+			ftd__parserAdvance(p);
+			break;
+		}
+		if (p->cur.kind == ftd__Tok_EOF) {
+			break;
+		}
+
+		if (count >= capacity) {
+			uint32_t newCap = capacity == 0 ? 4 : capacity * 2;
+			uint8_t *newData = (uint8_t *)ftd__arenaAlloc(&p->ctx->parseArena, newCap * elemSize, elemAlign);
+			if (newData == NULL) {
+				break;
+			}
+			if (data != NULL && count > 0) {
+				memcpy(newData, data, count * elemSize);
+			}
+			data = newData;
+			capacity = newCap;
+		}
+
+		void *elemSlot = data + count * elemSize;
+		ftdValue val;
+		ftd__parseValue(p, NULL, elemType, &val);
+
+		if (val.kind == ftdValueKind_Struct && val.as.ptr != NULL && elemType->size > 0) {
+			memcpy(elemSlot, val.as.ptr, elemType->size);
+		} else if (val.kind == ftdValueKind_Ref) {
+			if (val.type == (const ftdType *)(uintptr_t)1) {
+				char **stub = (char **)val.as.ptr;
+				if (stub != NULL) {
+					ftd__scheduleFixup(p, (void **)elemSlot, *stub, val.span, elemType);
+				}
+			} else {
+				*(void **)elemSlot = val.as.ptr;
+			}
+		}
+		count++;
+
+		ftd__skipNewlines(p);
+		if (ftd__match(p, ftd__Tok_Comma)) {
+			continue;
+		}
+		if (p->cur.kind == ftd__Tok_RBracket) {
+			ftd__parserAdvance(p);
+			break;
+		}
+		if (p->cur.kind == ftd__Tok_Newline) {
+			continue;
+		}
+	}
+
+	ftd__bundleWriteResult(bundle, ownerStruct, data, count, capacity);
+	return true;
 }
 
 static bool ftd__parseArrayInto(ftd__Parser *p, const ftdField *arrayField, void *ownerStruct) {
