@@ -55,8 +55,10 @@ helper functions.
 | FTD_STRNCMP(a, b, n)        | strncmp     |
 | FTD_STRTOD(s, end)          | strtod      |
 | FTD_VSNPRINTF(b, n, fmt, ap)| vsnprintf   |
-| FTD_CALLOC(nmemb, size)     | calloc      | Used only by the default allocator
-| FTD_FREE(ptr)               | free        | (i.e. when ftdCreate(NULL) is used).
+| FTD_CALLOC(nmemb, size)     | calloc      | Used by the default allocator.
+| FTD_MALLOC(size)            | malloc      | Used by ftdParseFile() (gated by
+| FTD_FREE(ptr)               | free        | FTD_NO_STDIO) and the default
+|                             |             | allocator.
 | FTD_ARENA_CHUNK_SIZE        | 65536       | Default size of each arena chunk.
 | FTD_API                     | extern      | Linkage qualifier on public functions.
 
@@ -515,11 +517,11 @@ FTD_API const void *ftdLookup(ftdContext *ctx, const char *dottedName, const ftd
 #	if !defined(FTD_MEMCPY)    || !defined(FTD_MEMSET)  || !defined(FTD_MEMCMP)   \
 	 || !defined(FTD_STRLEN)    || !defined(FTD_STRCMP)  || !defined(FTD_STRNCMP)  \
 	 || !defined(FTD_STRTOD)    || !defined(FTD_VSNPRINTF) || !defined(FTD_ASSERT)
-#		error "FTD_NO_STDIO is set: you must define FTD_MEMCPY/MEMSET/MEMCMP/STRLEN/STRCMP/STRNCMP/STRTOD/VSNPRINTF/ASSERT (and, unless FTD_NO_DEFAULT_ALLOCATOR is set, FTD_CALLOC/FTD_FREE)."
+#		error "FTD_NO_STDIO is set: you must define FTD_MEMCPY/MEMSET/MEMCMP/STRLEN/STRCMP/STRNCMP/STRTOD/VSNPRINTF/ASSERT (and, unless FTD_NO_DEFAULT_ALLOCATOR is set, FTD_CALLOC/FTD_MALLOC/FTD_FREE)."
 #	endif
 #	if !defined(FTD_NO_DEFAULT_ALLOCATOR)
-#		if !defined(FTD_CALLOC) || !defined(FTD_FREE)
-#			error "FTD_NO_STDIO is set without FTD_NO_DEFAULT_ALLOCATOR: also define FTD_CALLOC and FTD_FREE."
+#		if !defined(FTD_CALLOC) || !defined(FTD_MALLOC) || !defined(FTD_FREE)
+#			error "FTD_NO_STDIO is set without FTD_NO_DEFAULT_ALLOCATOR: also define FTD_CALLOC, FTD_MALLOC and FTD_FREE."
 #		endif
 #	endif
 #endif
@@ -529,7 +531,8 @@ FTD_API const void *ftdLookup(ftdContext *ctx, const char *dottedName, const ftd
 	 || !defined(FTD_STRLEN) || !defined(FTD_STRCMP) || !defined(FTD_STRNCMP)
 #		include <string.h>
 #	endif
-#	if !defined(FTD_STRTOD) || (!defined(FTD_NO_DEFAULT_ALLOCATOR) && (!defined(FTD_CALLOC) || !defined(FTD_FREE)))
+#	if !defined(FTD_STRTOD) || !defined(FTD_MALLOC) || !defined(FTD_FREE) \
+	 || (!defined(FTD_NO_DEFAULT_ALLOCATOR) && !defined(FTD_CALLOC))
 #		include <stdlib.h>
 #	endif
 #	if !defined(FTD_VSNPRINTF)
@@ -567,12 +570,18 @@ FTD_API const void *ftdLookup(ftdContext *ctx, const char *dottedName, const ftd
 #if !defined(FTD_ASSERT)
 #	define FTD_ASSERT(expr)               assert(expr)
 #endif
+// FTD_MALLOC / FTD_FREE are the raw alloc/free pair. The default allocator
+// uses FTD_CALLOC (zero-init) and FTD_FREE. ftdParseFile (only present when
+// !FTD_NO_STDIO) uses FTD_MALLOC / FTD_FREE for its file-read buffer.
+#if !defined(FTD_MALLOC)
+#	define FTD_MALLOC(size)               malloc(size)
+#endif
+#if !defined(FTD_FREE)
+#	define FTD_FREE(ptr)                  free(ptr)
+#endif
 #if !defined(FTD_NO_DEFAULT_ALLOCATOR)
 #	if !defined(FTD_CALLOC)
 #		define FTD_CALLOC(nmemb, size)        calloc((nmemb), (size))
-#	endif
-#	if !defined(FTD_FREE)
-#		define FTD_FREE(ptr)                  free(ptr)
 #	endif
 #endif
 
@@ -3145,7 +3154,7 @@ FTD_API ftdResult ftdParseFile(ftdContext *ctx, const char *filePath) {
 		return ctx->lastResult;
 	}
 	fseek(fp, 0, SEEK_SET);
-	char *buf = (char *)malloc((size_t)sz + 1);
+	char *buf = (char *)FTD_MALLOC((size_t)sz + 1);
 	if (buf == NULL) {
 		fclose(fp);
 		ftdResetParse(ctx);
@@ -3159,7 +3168,7 @@ FTD_API ftdResult ftdParseFile(ftdContext *ctx, const char *filePath) {
 	fclose(fp);
 	buf[got] = '\0';
 	ftdResult r = ftdParseString(ctx, buf, got, filePath);
-	free(buf);
+	FTD_FREE(buf);
 	return r;
 }
 #endif
