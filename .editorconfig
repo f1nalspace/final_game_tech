@@ -1,0 +1,203 @@
+# EditorConfig for the Final Game Tech repository
+# Code style is derived from final_platform_layer.h and applies to all
+# projects, apps, demos and headers in this repository.
+# See https://editorconfig.org
+
+root = true
+
+# Defaults for every file
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = tab
+indent_size = 4
+tab_width = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# C/C++ sources and headers (matches FPL style)
+[*.{c,c++,cc,cpp,cppm,cxx,h,h++,hh,hpp,hxx,inl,ipp,ixx,tlh,tli}]
+
+# Visual C++ Code Style settings
+cpp_generate_documentation_comments = doxygen_slash_star
+
+# Visual C++ Formatting settings
+indent_style = tab
+indent_size = 4
+tab_width = 4
+cpp_indent_braces = false
+cpp_indent_multi_line_relative_to = statement_begin
+cpp_indent_within_parentheses = indent
+cpp_indent_preserve_within_parentheses = false
+cpp_indent_case_contents = true
+cpp_indent_case_labels = true
+cpp_indent_case_contents_when_block = false
+cpp_indent_lambda_braces_when_parameter = false
+cpp_indent_goto_labels = one_left
+cpp_indent_preprocessor = leftmost_column
+cpp_indent_access_specifiers = false
+cpp_indent_namespace_contents = true
+cpp_indent_preserve_comments = true
+cpp_new_line_before_open_brace_namespace = same_line
+cpp_new_line_before_open_brace_type = same_line
+cpp_new_line_before_open_brace_function = same_line
+cpp_new_line_before_open_brace_block = same_line
+cpp_new_line_before_open_brace_lambda = same_line
+cpp_new_line_scope_braces_on_separate_lines = false
+cpp_new_line_close_brace_same_line_empty_type = false
+cpp_new_line_close_brace_same_line_empty_function = false
+cpp_new_line_before_catch = false
+cpp_new_line_before_else = false
+cpp_new_line_before_while_in_do_while = false
+cpp_space_before_function_open_parenthesis = remove
+cpp_space_within_parameter_list_parentheses = false
+cpp_space_between_empty_parameter_list_parentheses = false
+cpp_space_after_keywords_in_control_flow_statements = true
+cpp_space_within_control_flow_statement_parentheses = false
+cpp_space_before_lambda_open_parenthesis = false
+cpp_space_within_cast_parentheses = false
+cpp_space_after_cast_close_parenthesis = false
+cpp_space_within_expression_parentheses = false
+cpp_space_before_block_open_brace = true
+cpp_space_between_empty_braces = false
+cpp_space_before_initializer_list_open_brace = true
+cpp_space_within_initializer_list_braces = true
+cpp_space_preserve_in_initializer_list = true
+cpp_space_before_open_square_bracket = false
+cpp_space_within_square_brackets = false
+cpp_space_before_empty_square_brackets = false
+cpp_space_between_empty_square_brackets = false
+cpp_space_group_square_brackets = true
+cpp_space_within_lambda_brackets = false
+cpp_space_between_empty_lambda_brackets = false
+cpp_space_before_comma = false
+cpp_space_after_comma = true
+cpp_space_remove_around_member_operators = true
+cpp_space_before_inheritance_colon = true
+cpp_space_before_constructor_colon = true
+cpp_space_remove_before_semicolon = true
+cpp_space_after_semicolon = true
+cpp_space_remove_around_unary_operator = true
+cpp_space_around_binary_operator = insert
+cpp_space_around_assignment_operator = insert
+cpp_space_pointer_reference_alignment = right
+cpp_space_around_ternary_operator = insert
+cpp_use_unreal_engine_macro_formatting = true
+cpp_wrap_preserve_blocks = one_liners
+
+# Visual C++ Include Cleanup settings
+cpp_include_cleanup_add_missing_error_tag_type = suggestion
+cpp_include_cleanup_remove_unused_error_tag_type = dimmed
+cpp_include_cleanup_optimize_unused_error_tag_type = suggestion
+cpp_include_cleanup_sort_after_edits = false
+cpp_sort_includes_error_tag_type = none
+cpp_sort_includes_priority_case_sensitive = false
+cpp_sort_includes_priority_style = quoted
+cpp_includes_style = default
+cpp_includes_use_forward_slash = true
+
+# IntelliJ / CLion formatter settings (mirror the cpp_* rules above)
+ij_continuation_indent_size = 4
+ij_c_keep_line_breaks = true
+ij_c_keep_blank_lines_in_code = 2
+ij_c_keep_blank_lines_in_declarations = 2
+ij_c_keep_first_column_comment = true
+
+# Braces: K&R / same line
+ij_c_brace_style = end_of_line
+ij_c_class_brace_style = end_of_line
+ij_c_function_brace_style = end_of_line
+ij_c_block_brace_style = end_of_line
+ij_c_namespace_brace_style = end_of_line
+ij_c_indent_class_members = true
+ij_c_indent_namespace_members = true
+ij_c_indent_case_from_switch = true
+ij_c_indent_visibility_keywords = false
+ij_c_indent_preprocessor_directives = 0
+ij_c_block_comment_at_first_column = true
+ij_c_line_comment_at_first_column = false
+ij_c_line_comment_add_space = true
+
+# Spaces around keywords and parentheses
+ij_c_space_after_keywords_in_control_flow_statements = true
+ij_c_space_before_method_parentheses = false
+ij_c_space_before_method_call_parentheses = false
+ij_c_space_before_if_parentheses = true
+ij_c_space_before_for_parentheses = true
+ij_c_space_before_while_parentheses = true
+ij_c_space_before_switch_parentheses = true
+ij_c_space_before_catch_parentheses = true
+ij_c_space_within_method_parentheses = false
+ij_c_space_within_empty_method_parentheses = false
+ij_c_space_within_method_call_parentheses = false
+ij_c_space_within_if_parentheses = false
+ij_c_space_within_for_parentheses = false
+ij_c_space_within_while_parentheses = false
+ij_c_space_within_switch_parentheses = false
+ij_c_space_within_catch_parentheses = false
+ij_c_space_within_cast_parentheses = false
+ij_c_space_within_parentheses = false
+ij_c_space_after_cast = false
+
+# Spaces around braces
+ij_c_space_before_block_left_brace = true
+ij_c_space_before_method_left_brace = true
+ij_c_space_before_class_left_brace = true
+ij_c_space_before_namespace_left_brace = true
+ij_c_space_before_if_left_brace = true
+ij_c_space_before_for_left_brace = true
+ij_c_space_before_while_left_brace = true
+ij_c_space_before_switch_left_brace = true
+ij_c_space_before_else_left_brace = true
+ij_c_space_before_catch_left_brace = true
+
+# else / catch / while on same line as }
+ij_c_else_on_new_line = false
+ij_c_catch_on_new_line = false
+ij_c_while_on_new_line = false
+
+# Spaces around operators and punctuation
+ij_c_space_before_comma = false
+ij_c_space_after_comma = true
+ij_c_space_before_semicolon = false
+ij_c_space_after_semicolon = true
+ij_c_space_around_assignment_operators = true
+ij_c_space_around_logical_operators = true
+ij_c_space_around_equality_operators = true
+ij_c_space_around_relational_operators = true
+ij_c_space_around_bitwise_operators = true
+ij_c_space_around_additive_operators = true
+ij_c_space_around_multiplicative_operators = true
+ij_c_space_around_shift_operators = true
+ij_c_space_around_unary_operator = false
+ij_c_space_before_question = true
+ij_c_space_after_question = true
+ij_c_space_before_colon = true
+ij_c_space_after_colon = true
+
+# Initializer list braces: `{ a, b }`
+ij_c_space_within_braces = true
+ij_c_space_within_brackets = false
+ij_c_space_before_array_initializer_left_brace = true
+
+# Pointer alignment: `int *p` (right-aligned with the identifier)
+ij_c_pointer_alignment = right
+ij_c_reference_alignment = right
+
+# Build / project files
+[*.{lua,bat,sh,sln,vcxproj,vcxproj.filters,props,targets}]
+indent_style = tab
+indent_size = 4
+tab_width = 4
+
+# Documentation and config text
+[*.{md,txt,doxygen,docs}]
+indent_style = tab
+indent_size = 4
+tab_width = 4
+trim_trailing_whitespace = false
+
+# YAML / JSON commonly require spaces
+[*.{yml,yaml,json}]
+indent_style = space
+indent_size = 2
