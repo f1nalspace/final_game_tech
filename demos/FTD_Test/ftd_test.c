@@ -1182,41 +1182,21 @@ static void TestParsePresentationAliasesNoTypes(void) {
 }
 
 // -----------------------------------------------------------------------------
-// Presentation file: locate fpl_presentation.ftd relative to a few likely cwds
+// Presentation: the source is embedded via fpl_presentation_ftd_data.h so the
+// test does not depend on the current working directory or filesystem layout.
+// These tests do not need ftdParseFile, so they run even with FTD_NO_STDIO.
 // -----------------------------------------------------------------------------
-#if !defined(FTD_NO_STDIO)
-static const char *LocatePresentationFile(void) {
-	static const char *candidates[] = {
-		"fpl_presentation.ftd",
-		"demos/FTD_Test/fpl_presentation.ftd",
-		"../../demos/FTD_Test/fpl_presentation.ftd",
-		"../../../demos/FTD_Test/fpl_presentation.ftd",
-		"../../../../demos/FTD_Test/fpl_presentation.ftd",
-		NULL,
-	};
-	for (uint32_t i = 0; candidates[i] != NULL; ++i) {
-		FILE *fp = fopen(candidates[i], "rb");
-		if (fp != NULL) {
-			fclose(fp);
-			return candidates[i];
-		}
-	}
-	return NULL;
-}
 
-// Parse the full presentation file with NO host types registered at all.
+// Parse the full presentation source with NO host types registered at all.
 // This is purely a robustness check: the parser must not hang or crash on
 // unknown types, unknown helpers, or stray closing delimiters left behind
 // while it recovers. We expect lots of errors here — that is fine.
 static void TestParsePresentationNoTypesRegistered(void) {
-	const char *path = LocatePresentationFile();
-	if (path == NULL) {
-		fprintf(stderr, "  (skipping no-types presentation test: fpl_presentation.ftd not found)\n");
-		return;
-	}
 	ftdContext *ctx = ftdCreate(NULL);
 	ftdAlwaysAssert(ctx != NULL);
-	ftdResult r = ftdParseFile(ctx, path);
+	ftdResult r = ftdParseString(ctx,
+		fpl_presentation_ftd, sizeof(fpl_presentation_ftd) - 1,
+		"fpl_presentation.ftd");
 	// Lots of errors are OK; what we *require* is that the parser returned
 	// and that the diagnostic count is finite. A failure here used to manifest
 	// as an infinite loop / hang.
@@ -1225,21 +1205,18 @@ static void TestParsePresentationNoTypesRegistered(void) {
 	ftdDestroy(ctx);
 }
 
-// Parse the full presentation file with the schema from fpl_presentation_types.h
+// Parse the full presentation source with the schema from fpl_presentation_types.h
 // fully registered. This verifies that a real-world FTD document round-trips
 // cleanly: types, enums, aliases, helpers, host globals, refs, unions and
 // arrays all working together.
 static void TestParsePresentationFull(void) {
-	const char *path = LocatePresentationFile();
-	if (path == NULL) {
-		fprintf(stderr, "  (skipping full presentation test: fpl_presentation.ftd not found)\n");
-		return;
-	}
 	ftdContext *ctx = ftdCreate(NULL);
 	ftdAlwaysAssert(ctx != NULL);
 	FplPresentationTypes_Register(ctx);
 
-	ftdResult r = ftdParseFile(ctx, path);
+	ftdResult r = ftdParseString(ctx,
+		fpl_presentation_ftd, sizeof(fpl_presentation_ftd) - 1,
+		"fpl_presentation.ftd");
 	if (!r.ok) {
 		for (uint32_t i = 0; i < r.diagnosticCount && i < 20; ++i) {
 			const ftdDiagnostic *d = &r.diagnostics[i];
@@ -1305,7 +1282,6 @@ static void TestParsePresentationFull(void) {
 
 	ftdDestroy(ctx);
 }
-#endif
 
 // -----------------------------------------------------------------------------
 // Stress: many top-level statements
@@ -1386,9 +1362,9 @@ int main(int argc, char **args) {
 #if !defined(FTD_NO_STDIO)
 	TestParseFile();
 	TestParseMissingFile();
+#endif
 	TestParsePresentationNoTypesRegistered();
 	TestParsePresentationFull();
-#endif
 	TestParsePresentationFullNoAliases();
 	TestParsePresentationAliasesNoTypes();
 	TestStressMany();
