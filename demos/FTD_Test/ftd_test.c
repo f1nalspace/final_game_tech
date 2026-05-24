@@ -25,6 +25,8 @@ Changelog:
 #define FTD_IMPLEMENTATION
 #include <final_ftd.h>
 
+#include "fpl_presentation_types.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1018,6 +1020,292 @@ static void TestParseMissingFile(void) {
 }
 #endif
 
+// Parse an inline source against the full presentation schema while using
+// *no* aliases (neither file-local nor host-registered). The schema types
+// (Vec2f / Vec4f / Block / Slide / ...) and the RGBA helper are addressed
+// directly by their registered names, the enum values by their fully
+// qualified path, and the host-side resources by their dotted-path globals.
+// This isolates "does the parser handle the full type system end-to-end"
+// from "does alias resolution work".
+static void TestParsePresentationFullNoAliases(void) {
+	ftdContext *ctx = ftdCreate(NULL);
+	ftdAlwaysAssert(ctx != NULL);
+	FplPresentationTypes_Register(ctx);
+
+	const char *src =
+		"BackgroundStyle BG {\n"
+		"    kind           = BackgroundKind.HalfGradientHorizontal\n"
+		"    primaryColor   = RGBA24(0x000000, 255)\n"
+		"    secondaryColor = RGBA(15, 13, 80, 255)\n"
+		"}\n"
+		"\n"
+		"TextStyle TS {\n"
+		"    foregroundColor = Vec4f(1, 1, 1, 1)\n"
+		"    shadowColor     = Vec4f(0, 0, 0, 1)\n"
+		"    shadowOffset    = Vec2f(2, 1)\n"
+		"    drawShadow      = true\n"
+		"}\n"
+		"\n"
+		"Slide OnlySlide {\n"
+		"    title      = \"NoAliases\"\n"
+		"    duration   = 7.5\n"
+		"    rotation   = Rotation{ angleDegrees = 30.0, axis = Vec3f(0, 1, 0) }\n"
+		"    background = BG\n"
+		"    talk       = \"single line\"\n"
+		"    blocks = [\n"
+		"        Block {\n"
+		"            type = BlockType.Text\n"
+		"            pos  = Vec2f(0.1, 0.2)\n"
+		"            size = Vec2f(0.5, 0.5)\n"
+		"            contentAlignment = ContentAlignment{ h = HorizontalAlignment.Center, v = VerticalAlignment.Middle }\n"
+		"            text { text = \"hi\"  textAlign = TextAlign.Center  fontSize = 24.0  color = Vec4f(1,1,1,1) }\n"
+		"        }\n"
+		"        Block {\n"
+		"            type = BlockType.Image\n"
+		"            pos  = Vec2f(0.0, 0.0)\n"
+		"            size = Vec2f(1.0, 1.0)\n"
+		"            contentAlignment = ContentAlignment{ h = HorizontalAlignment.Left, v = VerticalAlignment.Top }\n"
+		"            image { imageResource = ImageResources.MagicHat  size = Vec2f(0.8, 0.8)  keepAspect = true  tintColor = Vec4f(1,1,1,1) }\n"
+		"        }\n"
+		"    ]\n"
+		"    sounds = [\n"
+		"        SoundInstance{ name = SoundResources.Intro1  startTime = 1.0 }\n"
+		"    ]\n"
+		"}\n"
+		"\n"
+		"HeaderDefinition H {\n"
+		"    font { name = FontResources.Arimo  size = 24.0  lineScale = 1.15  style = TS }\n"
+		"    height = 32.0  leftText = \"L\"  centerText = \"\"  rightText = \"\"  padding = Vec2f(2, 2)\n"
+		"}\n"
+		"FooterDefinition F {\n"
+		"    font { name = FontResources.Arimo  size = 24.0  lineScale = 1.15  style = TS }\n"
+		"    height = 32.0  leftText = \"l\"  centerText = \"c\"  rightText = \"r\"  padding = Vec2f(2, 3)\n"
+		"}\n"
+		"\n"
+		"Presentation P {\n"
+		"    slideSize = Vec2f(1280, 720)\n"
+		"    padding   = 20.0\n"
+		"    slides    = [ OnlySlide ]\n"
+		"    header    = H\n"
+		"    footer    = F\n"
+		"    titleFont   { name = FontResources.Arimo              size = 64.0  lineScale = 1.15  style = TS }\n"
+		"    normalFont  { name = FontResources.Arimo              size = 42.0  lineScale = 1.15  style = TS }\n"
+		"    consoleFont { name = FontResources.BitStreamVerySans  size = 36.0  lineScale = 1.15  style = TS }\n"
+		"}\n";
+
+	ftdResult r = ftdParseString(ctx, src, strlen(src), "<noaliases>");
+	if (!r.ok) {
+		for (uint32_t i = 0; i < r.diagnosticCount && i < 20; ++i) {
+			const ftdDiagnostic *d = &r.diagnostics[i];
+			fprintf(stderr, "  diag[%u] %s:%u:%u: sev=%d %s\n",
+				i, d->span.file ? d->span.file : "?",
+				d->span.line, d->span.column,
+				(int)d->severity, d->message);
+		}
+	}
+	ftdAlwaysAssert(r.ok);
+	ftdAlwaysAssert(r.errorCount == 0);
+
+	const PresentationRoot *p = (const PresentationRoot *)ftdLookup(ctx, "P", NULL);
+	ftdAlwaysAssert(p != NULL);
+	ftdAlwaysAssert(ftdAlmostEqual(p->slideSize.x, 1280.0));
+	ftdAlwaysAssert(p->slides.count == 1);
+	ftdAlwaysAssert(p->header != NULL && strcmp(p->header->leftText, "L") == 0);
+	ftdAlwaysAssert(p->footer != NULL && strcmp(p->footer->centerText, "c") == 0);
+
+	const PresentationSlide *s = (const PresentationSlide *)ftdLookup(ctx, "OnlySlide", NULL);
+	ftdAlwaysAssert(s != NULL);
+	ftdAlwaysAssert(strcmp(s->title, "NoAliases") == 0);
+	ftdAlwaysAssert(ftdAlmostEqual(s->duration, 7.5));
+	ftdAlwaysAssert(s->background != NULL && s->background->kind == BackgroundKind_HalfGradientHorizontal);
+	ftdAlwaysAssert(s->blocks.count == 2);
+	ftdAlwaysAssert(s->sounds.count == 1);
+
+	const PresentationBlock *blocks = (const PresentationBlock *)s->blocks.data;
+	ftdAlwaysAssert(blocks[0].type == PresentationBlockType_Text);
+	ftdAlwaysAssert(strcmp(blocks[0].text.text, "hi") == 0);
+	ftdAlwaysAssert(blocks[1].type == PresentationBlockType_Image);
+	ftdAlwaysAssert(blocks[1].image.imageResource == &ImageRes_MagicHat);
+	ftdAlwaysAssert(blocks[1].image.keepAspect == true);
+
+	const SoundInstance *sounds = (const SoundInstance *)s->sounds.data;
+	ftdAlwaysAssert(sounds[0].name == &SoundRes_Intro1);
+	ftdAlwaysAssert(ftdAlmostEqual(sounds[0].startTime, 1.0));
+
+	const PresentationSlideRef *refs = (const PresentationSlideRef *)p->slides.data;
+	ftdAlwaysAssert(refs[0].slide == s);
+
+	ftdDestroy(ctx);
+}
+
+// Vice-versa of TestParsePresentationFullNoAliases: register *only* aliases
+// (no struct/enum types, no helpers, no globals). The aliases point at
+// names that resolve to nothing, so every typed declaration should fail
+// with an "unknown type" error. What we care about: the parser still
+// terminates cleanly and reports those errors instead of looping or
+// crashing on stale alias chains.
+static void TestParsePresentationAliasesNoTypes(void) {
+	ftdContext *ctx = ftdCreate(NULL);
+	ftdAlwaysAssert(ctx != NULL);
+
+	// Aliases identical to the ones in fpl_presentation.ftd, plus a couple of
+	// enum-value aliases. None of the targets are registered.
+	ftdRegisterAlias(ctx, "V2f",    "Vec2f");
+	ftdRegisterAlias(ctx, "V3f",    "Vec3f");
+	ftdRegisterAlias(ctx, "V4f",    "Vec4f");
+	ftdRegisterAlias(ctx, "Left",   "HorizontalAlignment.Left");
+	ftdRegisterAlias(ctx, "Center", "HorizontalAlignment.Center");
+	ftdRegisterAlias(ctx, "Top",    "VerticalAlignment.Top");
+	ftdRegisterAlias(ctx, "Arimo",  "FontResources.Arimo");
+
+	const char *src =
+		"V2f A = V2f(1, 2)\n"
+		"V4f W = V4f(1, 1, 1, 1)\n"
+		"Slide S {\n"
+		"    title    = \"x\"\n"
+		"    rotation = { angleDegrees = 0.0, axis = V3f(1, 1, 1) }\n"
+		"}\n"
+		"BackgroundStyle BG { kind = HalfGradientHorizontal }\n";
+
+	ftdResult r = ftdParseString(ctx, src, strlen(src), "<aliases-only>");
+	// Parser must return; errors are expected (unknown target types).
+	ftdAlwaysAssert(r.diagnosticCount == r.errorCount + r.warningCount);
+	ftdAlwaysAssert(r.errorCount > 0);
+	// All names declared in the source must be missing from lookup.
+	ftdAlwaysAssert(ftdLookup(ctx, "A",  NULL) == NULL);
+	ftdAlwaysAssert(ftdLookup(ctx, "W",  NULL) == NULL);
+	ftdAlwaysAssert(ftdLookup(ctx, "S",  NULL) == NULL);
+	ftdAlwaysAssert(ftdLookup(ctx, "BG", NULL) == NULL);
+
+	ftdDestroy(ctx);
+}
+
+// -----------------------------------------------------------------------------
+// Presentation file: locate fpl_presentation.ftd relative to a few likely cwds
+// -----------------------------------------------------------------------------
+#if !defined(FTD_NO_STDIO)
+static const char *LocatePresentationFile(void) {
+	static const char *candidates[] = {
+		"fpl_presentation.ftd",
+		"demos/FTD_Test/fpl_presentation.ftd",
+		"../../demos/FTD_Test/fpl_presentation.ftd",
+		"../../../demos/FTD_Test/fpl_presentation.ftd",
+		"../../../../demos/FTD_Test/fpl_presentation.ftd",
+		NULL,
+	};
+	for (uint32_t i = 0; candidates[i] != NULL; ++i) {
+		FILE *fp = fopen(candidates[i], "rb");
+		if (fp != NULL) {
+			fclose(fp);
+			return candidates[i];
+		}
+	}
+	return NULL;
+}
+
+// Parse the full presentation file with NO host types registered at all.
+// This is purely a robustness check: the parser must not hang or crash on
+// unknown types, unknown helpers, or stray closing delimiters left behind
+// while it recovers. We expect lots of errors here — that is fine.
+static void TestParsePresentationNoTypesRegistered(void) {
+	const char *path = LocatePresentationFile();
+	if (path == NULL) {
+		fprintf(stderr, "  (skipping no-types presentation test: fpl_presentation.ftd not found)\n");
+		return;
+	}
+	ftdContext *ctx = ftdCreate(NULL);
+	ftdAlwaysAssert(ctx != NULL);
+	ftdResult r = ftdParseFile(ctx, path);
+	// Lots of errors are OK; what we *require* is that the parser returned
+	// and that the diagnostic count is finite. A failure here used to manifest
+	// as an infinite loop / hang.
+	ftdAlwaysAssert(r.diagnosticCount == r.errorCount + r.warningCount);
+	ftdAlwaysAssert(r.errorCount > 0); // unknown types must be reported
+	ftdDestroy(ctx);
+}
+
+// Parse the full presentation file with the schema from fpl_presentation_types.h
+// fully registered. This verifies that a real-world FTD document round-trips
+// cleanly: types, enums, aliases, helpers, host globals, refs, unions and
+// arrays all working together.
+static void TestParsePresentationFull(void) {
+	const char *path = LocatePresentationFile();
+	if (path == NULL) {
+		fprintf(stderr, "  (skipping full presentation test: fpl_presentation.ftd not found)\n");
+		return;
+	}
+	ftdContext *ctx = ftdCreate(NULL);
+	ftdAlwaysAssert(ctx != NULL);
+	FplPresentationTypes_Register(ctx);
+
+	ftdResult r = ftdParseFile(ctx, path);
+	if (!r.ok) {
+		for (uint32_t i = 0; i < r.diagnosticCount && i < 20; ++i) {
+			const ftdDiagnostic *d = &r.diagnostics[i];
+			fprintf(stderr, "  diag[%u] %s:%u:%u: sev=%d %s\n",
+				i, d->span.file ? d->span.file : "?",
+				d->span.line, d->span.column,
+				(int)d->severity, d->message);
+		}
+	}
+	ftdAlwaysAssert(r.ok);
+	ftdAlwaysAssert(r.errorCount == 0);
+
+	// Root presentation object
+	const ftdType *rootType = NULL;
+	const PresentationRoot *root = (const PresentationRoot *)ftdLookup(ctx, "FPLPresentation", &rootType);
+	ftdAlwaysAssert(root != NULL);
+	ftdAlwaysAssert(rootType == &PresentationRoot_type);
+	ftdAlwaysAssert(ftdAlmostEqual(root->slideSize.x, 1280.0));
+	ftdAlwaysAssert(ftdAlmostEqual(root->slideSize.y, 720.0));
+	ftdAlwaysAssert(ftdAlmostEqual(root->padding,     20.0));
+	ftdAlwaysAssert(root->slides.count == 13);
+	ftdAlwaysAssert(root->slides.data  != NULL);
+	ftdAlwaysAssert(root->header != NULL);
+	ftdAlwaysAssert(root->footer != NULL);
+
+	// Header / Footer
+	ftdAlwaysAssert(strcmp(root->header->leftText, "Final-Platform-Layer") == 0);
+	ftdAlwaysAssert(root->footer->leftText != NULL);
+	ftdAlwaysAssert(strstr(root->footer->centerText, "Torsten Spaete") != NULL);
+
+	// Top-level constants
+	const float *titleSize = (const float *)ftdLookup(ctx, "TitleFontSize", NULL);
+	ftdAlwaysAssert(titleSize != NULL);
+	ftdAlwaysAssert(ftdAlmostEqual(*titleSize, 64.0));
+
+	const Vec4f *white = (const Vec4f *)ftdLookup(ctx, "White", NULL);
+	ftdAlwaysAssert(white != NULL);
+	ftdAlwaysAssert(ftdAlmostEqual(white->x, 1.0));
+	ftdAlwaysAssert(ftdAlmostEqual(white->w, 1.0));
+
+	// Named slide instance
+	const PresentationSlide *intro = (const PresentationSlide *)ftdLookup(ctx, "Intro", NULL);
+	ftdAlwaysAssert(intro != NULL);
+	ftdAlwaysAssert(intro->title != NULL && strcmp(intro->title, "Introduction") == 0);
+	ftdAlwaysAssert(ftdAlmostEqual(intro->duration, 18.5));
+	ftdAlwaysAssert(intro->background != NULL);
+	ftdAlwaysAssert(intro->background->kind == BackgroundKind_HalfGradientHorizontal);
+	ftdAlwaysAssert(intro->blocks.count == 1);
+	ftdAlwaysAssert(intro->sounds.count == 2);
+
+	// Resolve the first slide ref in the root's `slides` array.
+	const PresentationSlideRef *slideRefs = (const PresentationSlideRef *)root->slides.data;
+	ftdAlwaysAssert(slideRefs[0].slide == intro);
+
+	// Spot-check a couple of the later slides
+	const PresentationSlide *features = (const PresentationSlide *)ftdLookup(ctx, "Features", NULL);
+	ftdAlwaysAssert(features != NULL);
+	ftdAlwaysAssert(features->blocks.count == 20);
+
+	const PresentationSlide *thanks = (const PresentationSlide *)ftdLookup(ctx, "Thanks", NULL);
+	ftdAlwaysAssert(thanks != NULL);
+	ftdAlwaysAssert(strcmp(thanks->title, "Thanks!") == 0);
+
+	ftdDestroy(ctx);
+}
+#endif
+
 // -----------------------------------------------------------------------------
 // Stress: many top-level statements
 // -----------------------------------------------------------------------------
@@ -1097,7 +1385,11 @@ int main(int argc, char **args) {
 #if !defined(FTD_NO_STDIO)
 	TestParseFile();
 	TestParseMissingFile();
+	TestParsePresentationNoTypesRegistered();
+	TestParsePresentationFull();
 #endif
+	TestParsePresentationFullNoAliases();
+	TestParsePresentationAliasesNoTypes();
 	TestStressMany();
 
 	printf("All FTD tests passed.\n");
