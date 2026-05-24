@@ -1,7 +1,6 @@
 #pragma once
 
 #include "fonts.h"
-
 #include "presentation.h"
 
 namespace FontResources {
