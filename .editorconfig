@@ -197,7 +197,8 @@ indent_size = 4
 tab_width = 4
 trim_trailing_whitespace = false
 
-# YAML / JSON commonly require spaces
+# YAML / JSON — tabs to stay consistent with the rest of the repo
 [*.{yml,yaml,json}]
-indent_style = space
-indent_size = 2
+indent_style = tab
+indent_size = 4
+tab_width = 4
