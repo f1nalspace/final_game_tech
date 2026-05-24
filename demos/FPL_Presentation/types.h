@@ -6,6 +6,8 @@
 
 #include <final_audiosystem.h>
 
+#include <final_ftd.h>
+
 typedef int32_t b32;
 
 enum class HorizontalAlignment {
@@ -33,6 +35,15 @@ struct BackgroundStyle {
 	BackgroundKind kind;
 	Vec4f primaryColor;
 	Vec4f secondaryColor;
+};
+static constexpr ftdField BackgroundStyleFields[] = {
+	{ "kind", offsetof(BackgroundStyle, kind), ftdFieldKind_Enum },
+	{ "primaryColor", offsetof(BackgroundStyle, primaryColor), ftdFieldKind_Struct },
+	{ "secondaryColor", offsetof(BackgroundStyle, primaryColor), ftdFieldKind_Struct },
+};
+static constexpr ftdType BackgroundStyleType = {
+	.name = "BackgroundStyle", .size = sizeof(BackgroundStyle), .align = alignof(BackgroundStyle),
+	.fields = BackgroundStyleFields, .fieldCount = fplArrayCount(BackgroundStyleFields),
 };
 
 static BackgroundStyle MakeBackground(const Vec4f &primaryColor, const Vec4f& secondaryColor, const BackgroundKind kind = BackgroundKind::HalfGradientHorizontal) {
