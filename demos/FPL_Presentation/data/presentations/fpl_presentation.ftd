@@ -1,0 +1,751 @@
+# =============================================================================
+# FPL Presentation - Final Text Data (FTD) format
+# See format.md in this folder for the full specification.
+#
+# Resources (fonts, sounds, images) are NOT declared in this file. They are
+# pre-registered by the host application under three groups:
+#   FontResources.<Name>     -> const FontResource *
+#   SoundResources.<Name>    -> const SoundResource *
+#   ImageResources.<Name>    -> const ImageResource *
+# Reference them anywhere by their dotted path (or by a local `alias`).
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Type aliases
+# -----------------------------------------------------------------------------
+alias V2f = Vec2f
+alias V3f = Vec3f
+alias V4f = Vec4f
+
+# -----------------------------------------------------------------------------
+# Enum value aliases
+# -----------------------------------------------------------------------------
+alias Left   = HorizontalAlignment.Left
+alias Center = HorizontalAlignment.Center
+alias Right  = HorizontalAlignment.Right
+alias Top    = VerticalAlignment.Top
+alias Middle = VerticalAlignment.Middle
+alias Bottom = VerticalAlignment.Bottom
+
+# -----------------------------------------------------------------------------
+# Short aliases for host-registered resources used a lot below
+# -----------------------------------------------------------------------------
+alias FontResource Arimo             = FontResources.Arimo
+alias FontResource BitStreamVerySans = FontResources.BitStreamVerySans
+
+# Feature cards
+alias ImageResource Card_CPU              = ImageResources.Card_CPU
+alias ImageResource Card_Memory           = ImageResources.Card_Memory
+alias ImageResource Card_C_Language       = ImageResources.Card_C_Language
+alias ImageResource Card_Audio            = ImageResources.Card_Audio
+alias ImageResource Card_Video            = ImageResources.Card_Video
+alias ImageResource Card_WindowManagement = ImageResources.Card_WindowManagement
+alias ImageResource Card_Performance      = ImageResources.Card_Performance
+alias ImageResource Card_NoDependencies   = ImageResources.Card_NoDependencies
+alias ImageResource Card_KeyboardMouse    = ImageResources.Card_KeyboardMouse
+alias ImageResource Card_Gamepad          = ImageResources.Card_Gamepad
+
+# Misc art
+alias ImageResource MagicHat      = ImageResources.MagicHat
+alias ImageResource Arigatou      = ImageResources.Arigatou
+alias ImageResource MinimumSource = ImageResources.MinimumSource
+
+# Topic art
+alias ImageResource DataVisualization = ImageResources.DataVisualization
+alias ImageResource GameDev           = ImageResources.GameDev
+alias ImageResource MultimediaDev     = ImageResources.MultimediaDev
+alias ImageResource SimulationDev     = ImageResources.SimulationDev
+alias ImageResource Code              = ImageResources.Code
+
+# Vendor logos
+alias ImageResource Vendor_FreeBSD    = ImageResources.Vendor_FreeBSD
+alias ImageResource Vendor_Linux      = ImageResources.Vendor_Linux
+alias ImageResource Vendor_Windows    = ImageResources.Vendor_Windows
+alias ImageResource Vendor_Raspberry  = ImageResources.Vendor_Raspberry
+alias ImageResource Vendor_OpenGL     = ImageResources.Vendor_OpenGL
+alias ImageResource Vendor_Vulkan     = ImageResources.Vendor_Vulkan
+alias ImageResource Vendor_DirectX    = ImageResources.Vendor_DirectX
+alias ImageResource Vendor_Alsa       = ImageResources.Vendor_Alsa
+alias ImageResource Vendor_XLib       = ImageResources.Vendor_XLib
+
+# Demo screenshots
+alias ImageResource Demo_ImGUI           = ImageResources.Demo_ImGUI
+alias ImageResource Demo_FFMPEG          = ImageResources.Demo_FFMPEG
+alias ImageResource Demo_NBodySimulation = ImageResources.Demo_NBodySimulation
+alias ImageResource Demo_Audio           = ImageResources.Demo_Audio
+alias ImageResource Demo_Input           = ImageResources.Demo_Input
+alias ImageResource Demo_Crackout        = ImageResources.Demo_Crackout
+alias ImageResource Demo_OpenGL          = ImageResources.Demo_OpenGL
+alias ImageResource Demo_Raytracer       = ImageResources.Demo_Raytracer
+
+# How-it-works icons
+alias ImageResource Feature_SingleHeaderFile  = ImageResources.Feature_SingleHeaderFile
+alias ImageResource Feature_RuntimeLinking    = ImageResources.Feature_RuntimeLinking
+alias ImageResource Feature_PreProcessor      = ImageResources.Feature_PreProcessor
+alias ImageResource Feature_NoCodeDuplication = ImageResources.Feature_NoCodeDuplication
+
+# Sounds
+alias SoundResource Intro1     = SoundResources.Intro1
+alias SoundResource Intro2     = SoundResources.Intro2
+alias SoundResource WhoAmi1    = SoundResources.WhoAmi1
+alias SoundResource What1      = SoundResources.What1
+alias SoundResource What2      = SoundResources.What2
+alias SoundResource Motivation = SoundResources.Motivation
+
+# -----------------------------------------------------------------------------
+# File-local constants
+# -----------------------------------------------------------------------------
+float CodeFontSize     = 24.0
+float FeaturesFontSize = 32.0
+float HeaderFontSize   = 24.0
+float TitleFontSize    = 64.0
+float NormalFontSize   = 42.0
+float ConsoleFontSize  = 36.0
+float DefaultLineScale = 1.15
+
+V4f White        = V4f(1, 1, 1, 1)
+V4f Black        = V4f(0, 0, 0, 1)
+V4f WhiteHalf    = V4f(1, 1, 1, 0.5)
+V4f WhiteSoft    = V4f(1, 1, 1, 0.85)
+V4f WhiteFaint   = V4f(1, 1, 1, 0.65)
+V4f WhiteGhost   = V4f(1, 1, 1, 0.05)
+V4f LinkGreen    = V4f(0.0, 0.8, 0.2, 1.0)
+
+V2f TextShadowOffset = V2f(2, 1)
+
+# -----------------------------------------------------------------------------
+# Backgrounds (HalfGradientHorizontal: primary -> secondary)
+# RGBA24(hex, alpha) and RGBA(r,g,b,a) return linear-space Vec4f.
+# -----------------------------------------------------------------------------
+BackgroundStyle FixedBackground { kind = HalfGradientHorizontal  primaryColor = RGBA24(0x000000, 255)  secondaryColor = RGBA24(0x0483AF, 100) }
+BackgroundStyle DarkBlueBack    { kind = HalfGradientHorizontal  primaryColor = RGBA24(0x000000, 255)  secondaryColor = RGBA(15, 13, 80, 255) }
+
+# DarkBlue -> LightBlue
+BackgroundStyle Background1  { kind = HalfGradientHorizontal  primaryColor = RGBA24(0x000000, 255)  secondaryColor = RGBA24(0x333789, 100) }
+BackgroundStyle Background2  { kind = HalfGradientHorizontal  primaryColor = RGBA24(0x000000, 255)  secondaryColor = RGBA24(0x1E5AA3, 100) }
+BackgroundStyle Background3  { kind = HalfGradientHorizontal  primaryColor = RGBA24(0x000000, 255)  secondaryColor = RGBA24(0x0483AF, 100) }
+
+# Green -> Yellow
+BackgroundStyle Background4  { kind = HalfGradientHorizontal  primaryColor = RGBA24(0x000000, 255)  secondaryColor = RGBA24(0x057F47, 100) }
+BackgroundStyle Background5  { kind = HalfGradientHorizontal  primaryColor = RGBA24(0x000000, 255)  secondaryColor = RGBA24(0x7AB30B, 100) }
+BackgroundStyle Background6  { kind = HalfGradientHorizontal  primaryColor = RGBA24(0x000000, 255)  secondaryColor = RGBA24(0xF2E500, 100) }
+
+# LightOrange -> DarkOrange
+BackgroundStyle Background7  { kind = HalfGradientHorizontal  primaryColor = RGBA24(0x000000, 255)  secondaryColor = RGBA24(0xFDBD00, 100) }
+BackgroundStyle Background8  { kind = HalfGradientHorizontal  primaryColor = RGBA24(0x000000, 255)  secondaryColor = RGBA24(0xEE7B00, 100) }
+BackgroundStyle Background9  { kind = HalfGradientHorizontal  primaryColor = RGBA24(0x000000, 255)  secondaryColor = RGBA24(0xE54B0A, 100) }
+BackgroundStyle Background10 { kind = HalfGradientHorizontal  primaryColor = RGBA24(0x000000, 255)  secondaryColor = RGBA24(0xE54B0A, 200) }
+
+# Red -> Purple
+BackgroundStyle Background11 { kind = HalfGradientHorizontal  primaryColor = RGBA24(0x000000, 255)  secondaryColor = RGBA24(0xDC0012, 100) }
+BackgroundStyle Background12 { kind = HalfGradientHorizontal  primaryColor = RGBA24(0x000000, 255)  secondaryColor = RGBA24(0xB7006A, 100) }
+BackgroundStyle Background13 { kind = HalfGradientHorizontal  primaryColor = RGBA24(0x000000, 255)  secondaryColor = RGBA24(0x59227A, 100) }
+
+# Purple -> Brown
+BackgroundStyle Background14 { kind = HalfGradientHorizontal  primaryColor = RGBA24(0x000000, 255)  secondaryColor = RGBA24(0x237b75, 100) }
+BackgroundStyle Background15 { kind = HalfGradientHorizontal  primaryColor = RGBA24(0x000000, 255)  secondaryColor = RGBA24(0x6d7b23, 100) }
+BackgroundStyle Background16 { kind = HalfGradientHorizontal  primaryColor = RGBA24(0x000000, 255)  secondaryColor = RGBA24(0x7b5223, 100) }
+
+# -----------------------------------------------------------------------------
+# Text styles
+# -----------------------------------------------------------------------------
+TextStyle BasicStyle {
+    foregroundColor = White
+    shadowColor     = Black
+    shadowOffset    = TextShadowOffset
+    drawShadow      = true
+}
+
+TextStyle HeaderStyle {
+    foregroundColor = White
+    shadowColor     = Black
+    shadowOffset    = V2f(1, 1)
+    drawShadow      = true
+}
+
+# -----------------------------------------------------------------------------
+# Slides
+# -----------------------------------------------------------------------------
+
+Slide Intro {
+    title    = "Introduction"
+    duration = 18.5
+    rotation = { angleDegrees = 0.0, axis = V3f(1, 1, 1) }
+    background = FixedBackground
+
+    talk = "Hi! I am Torsten"
+           "Today, i would like to introduce you to a project of mine that i have been working on for several years"
+           "It is called 'Final Platform Layer' or short FPL and is a platform abstraction library for C and C++"
+
+    blocks = [
+        {
+            type = Text
+            pos  = V2f(0.0, 0.0)
+            size = V2f(1.0, 1.0)
+            contentAlignment = { h = Center, v = Middle }
+            text {
+                text      = "Introducing Final-Platform-Layer (FPL)\n"
+                            "A lightweight platform abstraction library written in C99\n"
+                textAlign = Center
+            }
+        }
+    ]
+
+    sounds = [
+        { name = Intro1, startTime = 1.0  }
+        { name = Intro2, startTime = 10.0 }
+    ]
+}
+
+Slide WhoAmI {
+    title    = "Who am I"
+    duration = 20.5
+    rotation = { angleDegrees = 15.0, axis = V3f(1, 1, 1) }
+    background = FixedBackground
+
+    talk = "I am Torsten Spaete"
+           "A professional software engineer with more than 25 years of programming experience"
+           "My main focus is data-visualization, software-architecture, multimedia and game development"
+
+    blocks = [
+        {
+            type = Image
+            pos  = V2f(0.0, 0.0)
+            size = V2f(0.45, 0.45)
+            contentAlignment = { h = Left, v = Top }
+            image {
+                imageResource = DataVisualization
+                size       = V2f(1.0, 1.0)
+                keepAspect = true
+                tintColor  = WhiteHalf
+            }
+        }
+        {
+            type = Image
+            pos  = V2f(0.55, 0.0)
+            size = V2f(0.45, 0.45)
+            contentAlignment = { h = Right, v = Top }
+            image {
+                imageResource = MultimediaDev
+                size       = V2f(1.0, 1.0)
+                keepAspect = true
+                tintColor  = WhiteHalf
+            }
+        }
+        {
+            type = Image
+            pos  = V2f(0.0, 0.50)
+            size = V2f(0.45, 0.45)
+            contentAlignment = { h = Left, v = Bottom }
+            image {
+                imageResource = SimulationDev
+                size       = V2f(1.0, 1.0)
+                keepAspect = true
+                tintColor  = WhiteHalf
+            }
+        }
+        {
+            type = Image
+            pos  = V2f(0.55, 0.50)
+            size = V2f(0.45, 0.45)
+            contentAlignment = { h = Right, v = Bottom }
+            image {
+                imageResource = GameDev
+                size       = V2f(1.0, 1.0)
+                keepAspect = true
+                tintColor  = WhiteHalf
+            }
+        }
+        {
+            type = Text
+            pos  = V2f(0.0, 0.0)
+            size = V2f(1.0, 1.0)
+            contentAlignment = { h = Center, v = Middle }
+            text {
+                text      = "I am Torsten Spaete\n"
+                            "A professional software engineer\n"
+                            "25+ years of programming experience\n"
+                textAlign = Center
+            }
+        }
+    ]
+
+    sounds = [
+        { name = WhoAmi1, startTime = 2.0 }
+    ]
+}
+
+Slide WhatIsFPL {
+    title    = "What is FPL"
+    duration = 33.0
+    rotation = { angleDegrees = -45.0, axis = V3f(0, 1, 1) }
+    background = FixedBackground
+
+    talk = "Final-Platform-Layer (or short 'FPL') is a lightweight platform-abstraction library written in C99,"
+           "that gives you access to low-level systems, hardware devices and operating system functions,"
+           "in a platform independent and easy-to-use API."
+           ""
+           "For example you can:"
+           "- Play audio samples on any audio device"
+           "- Create and manage windows, including the initialization of a video graphics api, such as OpenGL, Vulkan"
+           "- Query keyboard, mouse and gamepad input"
+           "- Execute code in parallel, using several multithreading techniques"
+           "- Allocate and free memory directly on the platform, without the use of malloc or free"
+           "- Modify and query files & directories"
+           "- Query several platform and hardware informations"
+           "- and much more"
+           ""
+           "Its main usage is multimedia and game development, but it can be used to write any kind of software."
+           "'FPL' is designed to be fast in compile and run time and can be integrated however you like."
+
+    blocks = [
+        {
+            type = Image
+            pos  = V2f(0.0, -0.1)
+            size = V2f(1.0, 1.0)
+            contentAlignment = { h = Center, v = Middle }
+            image {
+                imageResource = Code
+                size       = V2f(1.0, 1.2)
+                keepAspect = false
+                tintColor  = WhiteGhost
+            }
+        }
+        {
+            type = Text
+            pos  = V2f(0.0, 0.0)
+            size = V2f(1.0, 1.0)
+            contentAlignment = { h = Center, v = Middle }
+            text {
+                text      = "Final-Platform-Layer (or short 'FPL')\n"
+                            "is a lightweight library written in C99 with support for C++.\n"
+                            "\n"
+                            "It provides a powerful and easy to use API,\n"
+                            "that gives you access to low-level systems, hardware devices,\n"
+                            "operating system functions and many more."
+                textAlign = Left
+            }
+        }
+    ]
+
+    sounds = [
+        { name = What1, startTime = 1.0  }
+        { name = What2, startTime = 17.0 }
+    ]
+}
+
+Slide Motivation {
+    title    = "Motivation"
+    duration = 31.0
+    rotation = { angleDegrees = 70.0, axis = V3f(1.0, 0.1, 0.0) }
+    background = FixedBackground
+
+    talk = "C/C++ has very limited access to the underlying platform."
+           "Even in modern C++, you still don't have direct access to a lot of systems."
+           "To access low-level systems, such as audio or video or windowing systems, you either need to use third-party libraries"
+           "or write platform-specific code directly for every platform you want to support."
+
+    blocks = [
+        {
+            type = Text
+            pos  = V2f(0.0, 0.0)
+            size = V2f(1.0, 1.0)
+            contentAlignment = { h = Center, v = Middle }
+            text {
+                text      = "C/C++ has very limited access to the underlying platform,\n"
+                            "so you either have to use third-party libraries or\n"
+                            "write platform specific code directly.\n"
+                textAlign = Left
+            }
+        }
+    ]
+
+    sounds = [
+        { name = Motivation, startTime = 2.0 }
+    ]
+}
+
+Slide Features {
+    title    = "Features"
+    duration = 0.0
+    rotation = { angleDegrees = 30.0, axis = V3f(0.0, 1.0, 0.1) }
+    background = FixedBackground
+
+    talk = "FPL was designed to make the creation of multimedia applications or games very easy."
+           ""
+           "- It can create and manage a window for you, including the handling of events"
+           "- It can handle keyboard & mouse devices"
+           "- It can handle gamepads as well"
+           "- It can initialize a graphics backend for you, such as OpenGL, Vulkan or allows you to put pixels directly on the screen"
+           "- It can play back sound samples asynchrously"
+           "- It is written in C99 for simplicity and best portability, but is 100% c++ compatible"
+           "- It is designed to be fast in compile and runtime"
+           "- It does not require any build-systems or thirdparty libraries"
+           "- It gives you control of memory allocations and handles memory very gracefully"
+           "- It supports the major architectures: X86, X64 and ARM"
+           "- It supports many compilers and platforms and provides useful utilities fo work with them"
+           "- It is highly configurable and many features can be compiled out, if needed"
+           "- It provides useful primitives to create code that runs on different threads"
+           "- In addition it contains a ton of useful functions and macros"
+
+    blocks = [
+        # Row 1 - cards
+        { type = Image  pos = V2f(0.0, 0.1)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Top }  image { imageResource = Card_WindowManagement  size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.2, 0.1)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Top }  image { imageResource = Card_KeyboardMouse     size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.4, 0.1)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Top }  image { imageResource = Card_Gamepad           size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.6, 0.1)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Top }  image { imageResource = Card_Video             size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.8, 0.1)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Top }  image { imageResource = Card_Audio             size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+
+        # Row 1 - labels
+        { type = Text  pos = V2f(0.0, 0.3)  size = V2f(0.2, 0.1)  contentAlignment = { h = Center, v = Top }  text { text = "Window Management"    textAlign = Left  fontSize = 20.0 } }
+        { type = Text  pos = V2f(0.2, 0.3)  size = V2f(0.2, 0.1)  contentAlignment = { h = Center, v = Top }  text { text = "Input Handling"       textAlign = Left  fontSize = 20.0 } }
+        { type = Text  pos = V2f(0.4, 0.3)  size = V2f(0.2, 0.1)  contentAlignment = { h = Center, v = Top }  text { text = "Gamepad Support"      textAlign = Left  fontSize = 20.0 } }
+        { type = Text  pos = V2f(0.6, 0.3)  size = V2f(0.2, 0.1)  contentAlignment = { h = Center, v = Top }  text { text = "Video Initialization" textAlign = Left  fontSize = 20.0 } }
+        { type = Text  pos = V2f(0.8, 0.3)  size = V2f(0.2, 0.1)  contentAlignment = { h = Center, v = Top }  text { text = "Audio Playback"       textAlign = Left  fontSize = 20.0 } }
+
+        # Row 2 - cards
+        { type = Image  pos = V2f(0.0, 0.55)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Top }  image { imageResource = Card_C_Language      size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.2, 0.55)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Top }  image { imageResource = Card_Performance     size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.4, 0.55)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Top }  image { imageResource = Card_NoDependencies  size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.6, 0.55)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Top }  image { imageResource = Card_Memory          size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.8, 0.55)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Top }  image { imageResource = Card_CPU             size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+
+        # Row 2 - labels
+        { type = Text  pos = V2f(0.0, 0.75)  size = V2f(0.2, 0.1)  contentAlignment = { h = Center, v = Top }  text { text = "Written in C99"         textAlign = Left  fontSize = 20.0 } }
+        { type = Text  pos = V2f(0.2, 0.75)  size = V2f(0.2, 0.1)  contentAlignment = { h = Center, v = Top }  text { text = "High Performance"       textAlign = Left  fontSize = 20.0 } }
+        { type = Text  pos = V2f(0.4, 0.75)  size = V2f(0.2, 0.1)  contentAlignment = { h = Center, v = Top }  text { text = "No Dependencies"        textAlign = Left  fontSize = 20.0 } }
+        { type = Text  pos = V2f(0.6, 0.75)  size = V2f(0.2, 0.1)  contentAlignment = { h = Center, v = Top }  text { text = "Small Memory Footprint" textAlign = Left  fontSize = 20.0 } }
+        { type = Text  pos = V2f(0.8, 0.75)  size = V2f(0.2, 0.1)  contentAlignment = { h = Center, v = Top }  text { text = "Architecture Support"   textAlign = Left  fontSize = 20.0 } }
+    ]
+}
+
+Slide Platforms {
+    title    = "Supported Platforms"
+    duration = 0.0
+    rotation = { angleDegrees = 75.0, axis = V3f(-0.5, 0.65, 0.5) }
+    background = FixedBackground
+
+    talk = "FPL supports the major operating systems, such as Windows, Linux, Raspberry Pi and Unix or BSD"
+
+    blocks = [
+        { type = Image  pos = V2f(0.0, 0.2)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Bottom }  image { imageResource = Vendor_Windows    size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.1, 0.2)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Bottom }  image { imageResource = Vendor_Linux      size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.2, 0.2)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Bottom }  image { imageResource = Vendor_Raspberry  size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.3, 0.2)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Bottom }  image { imageResource = Vendor_FreeBSD    size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.4, 0.6)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Bottom }  image { imageResource = Vendor_OpenGL     size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.5, 0.6)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Bottom }  image { imageResource = Vendor_Vulkan     size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.6, 0.6)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Bottom }  image { imageResource = Vendor_DirectX    size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.7, 0.6)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Bottom }  image { imageResource = Vendor_Alsa       size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.8, 0.6)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Bottom }  image { imageResource = Vendor_XLib       size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+    ]
+}
+
+Slide Magic {
+    title    = "How it works"
+    duration = 0.0
+    rotation = { angleDegrees = -15.0, axis = V3f(0.7, 0.6, 0.3) }
+    background = FixedBackground
+
+    talk = "It works with Magic!"
+
+    blocks = [
+        {
+            type = Image
+            pos  = V2f(-0.15, 0.0)
+            size = V2f(1.0, 1.0)
+            contentAlignment = { h = Center, v = Middle }
+            image {
+                imageResource = MagicHat
+                size       = V2f(0.75, 0.75)
+                keepAspect = true
+                tintColor  = White
+            }
+        }
+        {
+            type = Text
+            pos  = V2f(0.0, 0.0)
+            size = V2f(1.0, 1.0)
+            contentAlignment = { h = Center, v = Middle }
+            text {
+                text      = "Magic!"
+                textAlign = Left
+                fontSize  = 128.0
+            }
+        }
+    ]
+}
+
+Slide HowItWorks {
+    title    = "How it actually works"
+    duration = 0.0
+    rotation = { angleDegrees = 45.0, axis = V3f(0.5, 0.5, 0.5) }
+    background = FixedBackground
+
+    talk = "Of course, there is no magic involved - it uses just a few tricks."
+           ""
+           "FPL is a 'single-header-file-library', so it contains the full header or API and implementation for every platform in a single C file"
+           "It makes heavy use of the pre-processor to detect compiler/platform/hardware/driver setups"
+           "It prevents code duplication by using sub platforms"
+           "It uses runtime linking by default, so everything is automatically loaded on demand"
+
+    blocks = [
+        { type = Image  pos = V2f(0.05, 0.125)  size = V2f(0.15, 0.65)  contentAlignment = { h = Left, v = Middle }  image { imageResource = Feature_SingleHeaderFile   size = V2f(1, 1)  keepAspect = false  tintColor = White } }
+        { type = Image  pos = V2f(0.30, 0.125)  size = V2f(0.15, 0.65)  contentAlignment = { h = Left, v = Middle }  image { imageResource = Feature_PreProcessor       size = V2f(1, 1)  keepAspect = false  tintColor = White } }
+        { type = Image  pos = V2f(0.55, 0.125)  size = V2f(0.15, 0.65)  contentAlignment = { h = Left, v = Middle }  image { imageResource = Feature_NoCodeDuplication  size = V2f(1, 1)  keepAspect = false  tintColor = White } }
+        { type = Image  pos = V2f(0.80, 0.125)  size = V2f(0.15, 0.65)  contentAlignment = { h = Left, v = Middle }  image { imageResource = Feature_RuntimeLinking     size = V2f(1, 1)  keepAspect = false  tintColor = White } }
+    ]
+}
+
+Slide Constraints {
+    title    = "Constraints"
+    duration = 0.0
+    rotation = { angleDegrees = 65.0, axis = V3f(0.0, 0.5, 1.0) }
+    background = FixedBackground
+
+    talk = "FPL is lightweight, so the feature set is limited. As a result, you'll need to provide some functionality."
+           ""
+           "Video rendering is intentionally excluded, giving users the flexibility to integrate their own solutions"
+           ""
+           "Audio sample conversion is intentionally excluded, giving users the flexibility to integrate their own solutions"
+           ""
+           "Platform support are limited to X86 or ARM, both with support for 32-bit or 64-bit"
+           "More platforms may be added in the future, such as MacOS, Android or server-based platforms."
+
+    blocks = [
+        {
+            type = Text
+            pos  = V2f(0.0, 0.0)
+            size = V2f(1.0, 1.0)
+            contentAlignment = { h = Center, v = Middle }
+            text {
+                text      = "- Video rendering must be provided yourself\n"
+                            "\n"
+                            "- Audio sample conversion must be provided yourself\n"
+                            "\n"
+                            "Platform support are constrained to:\n"
+                            "- X86/X64/ARM32/ARM64\n"
+                            "- Windows/Linux/Unix\n"
+                textAlign = Left
+                fontSize  = 40.0
+            }
+        }
+    ]
+}
+
+Slide HowToUse {
+    title    = "How to use"
+    duration = 0.0
+    rotation = { angleDegrees = 75.0, axis = V3f(0.0, 1.0, 0.0) }
+    background = FixedBackground
+
+    talk = ""
+
+    blocks = [
+        {
+            type = Image
+            pos  = V2f(0.075, 0.0)
+            size = V2f(0.85, 1.0)
+            contentAlignment = { h = Center, v = Middle }
+            image {
+                imageResource = MinimumSource
+                size       = V2f(1.0, 1.0)
+                keepAspect = false
+                tintColor  = WhiteSoft
+            }
+        }
+    ]
+}
+
+Slide Demos {
+    title    = "Demos!"
+    duration = 0.0
+    rotation = { angleDegrees = -45.0, axis = V3f(1.0, 0.5, 0.25) }
+    background = FixedBackground
+
+    talk = "FPL comes with a lot of fully working demos, so you can learn how it works."
+
+    blocks = [
+        { type = Image  pos = V2f(0.00, 0.0)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Demo_ImGUI            size = V2f(1, 1)  keepAspect = true  tintColor = WhiteFaint } }
+        { type = Image  pos = V2f(0.25, 0.0)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Demo_FFMPEG           size = V2f(1, 1)  keepAspect = true  tintColor = WhiteFaint } }
+        { type = Image  pos = V2f(0.50, 0.0)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Demo_Audio            size = V2f(1, 1)  keepAspect = true  tintColor = WhiteFaint } }
+        { type = Image  pos = V2f(0.75, 0.0)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Demo_Input            size = V2f(1, 1)  keepAspect = true  tintColor = WhiteFaint } }
+        { type = Image  pos = V2f(0.00, 0.6)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Demo_OpenGL           size = V2f(1, 1)  keepAspect = true  tintColor = WhiteFaint } }
+        { type = Image  pos = V2f(0.25, 0.6)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Demo_Crackout         size = V2f(1, 1)  keepAspect = true  tintColor = WhiteFaint } }
+        { type = Image  pos = V2f(0.50, 0.6)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Demo_Raytracer        size = V2f(1, 1)  keepAspect = true  tintColor = WhiteFaint } }
+        { type = Image  pos = V2f(0.75, 0.6)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Demo_NBodySimulation  size = V2f(1, 1)  keepAspect = true  tintColor = WhiteFaint } }
+
+        {
+            type = Text
+            pos  = V2f(0.0, 0.3)
+            size = V2f(1.0, 0.1)
+            contentAlignment = { h = Center, v = Middle }
+            text {
+                text      = "FPL comes with a variety of demos:"
+                textAlign = Center
+                fontSize  = FeaturesFontSize
+            }
+        }
+        {
+            type = Text
+            pos  = V2f(0.0, 0.4)
+            size = V2f(1.0, 0.1)
+            contentAlignment = { h = Center, v = Middle }
+            text {
+                text      = "https://github.com/f1nalspace/final_game_tech/tree/master/demos"
+                textAlign = Center
+                fontSize  = FeaturesFontSize
+                color     = LinkGreen
+            }
+        }
+    ]
+}
+
+Slide Links {
+    title    = "Links"
+    duration = 0.0
+    rotation = { angleDegrees = 65.0, axis = V3f(1, 0, 0) }
+    background = FixedBackground
+
+    talk = "If you are interested about learning more about FPL, you can visit the official website: libfpl.org"
+           ""
+           "Or go to the github repository directly"
+           ""
+           "If you are watching this presentation over a streaming platform, you can also find all the links in the description below."
+
+    blocks = [
+        {
+            type = Text
+            pos  = V2f(0.25, 0.0)  size = V2f(0.5, 0.1)
+            contentAlignment = { h = Left, v = Middle }
+            text { text = "Official website (details, releases, documentation):"  textAlign = Left  fontSize = FeaturesFontSize }
+        }
+        {
+            type = Text
+            pos  = V2f(0.25, 0.1)  size = V2f(0.5, 0.1)
+            contentAlignment = { h = Left, v = Middle }
+            text { text = "https://libfpl.org"  textAlign = Left  fontSize = FeaturesFontSize  color = LinkGreen }
+        }
+        {
+            type = Text
+            pos  = V2f(0.25, 0.3)  size = V2f(0.5, 0.1)
+            contentAlignment = { h = Left, v = Middle }
+            text { text = "Github (sources, issue-tracker, project management):"  textAlign = Left  fontSize = FeaturesFontSize }
+        }
+        {
+            type = Text
+            pos  = V2f(0.25, 0.4)  size = V2f(0.5, 0.1)
+            contentAlignment = { h = Left, v = Middle }
+            text { text = "https://github.com/f1nalspace/final_game_tech"  textAlign = Left  fontSize = FeaturesFontSize  color = LinkGreen }
+        }
+        {
+            type = Text
+            pos  = V2f(0.25, 0.6)  size = V2f(0.5, 0.1)
+            contentAlignment = { h = Left, v = Middle }
+            text { text = "Handmade-Network (community):"  textAlign = Left  fontSize = FeaturesFontSize }
+        }
+        {
+            type = Text
+            pos  = V2f(0.25, 0.7)  size = V2f(0.5, 0.1)
+            contentAlignment = { h = Left, v = Middle }
+            text { text = "https://fpl.handmade.network"  textAlign = Left  fontSize = FeaturesFontSize  color = LinkGreen }
+        }
+    ]
+}
+
+Slide Thanks {
+    title    = "Thanks!"
+    duration = 0.0
+    rotation = { angleDegrees = 0.0, axis = V3f(1, 1, 1) }   # 0 deg => identity quaternion
+    background = FixedBackground
+
+    talk = "Thank you for watching this presentation and i hope you will give FPL a try."
+           ""
+           "Feel free to post any questions or feedback on github or if possible, as a comment to this video."
+           ""
+           "As always, keep coding!"
+
+    blocks = [
+        {
+            type = Image
+            pos  = V2f(0.4, 0.4)  size = V2f(0.6, 0.6)
+            contentAlignment = { h = Right, v = Bottom }
+            image {
+                imageResource = Arigatou
+                size       = V2f(1.0, 1.0)
+                keepAspect = true
+                tintColor  = WhiteFaint
+            }
+        }
+        {
+            type = Text
+            pos  = V2f(0, 0)  size = V2f(1, 1)
+            contentAlignment = { h = Center, v = Middle }
+            text {
+                text      = "Thank you for your attention!"
+                textAlign = Center
+            }
+        }
+    ]
+}
+
+# -----------------------------------------------------------------------------
+# Header / Footer
+# -----------------------------------------------------------------------------
+HeaderDefinition Header {
+    font {
+        name      = Arimo              # host-registered FontResource (via alias)
+        size      = HeaderFontSize
+        lineScale = DefaultLineScale
+        style     = HeaderStyle
+    }
+    height     = 32.0
+    leftText   = "Final-Platform-Layer"
+    centerText = ""
+    rightText  = ""
+    padding    = V2f(2, 2)
+}
+
+FooterDefinition Footer {
+    font {
+        name      = Arimo
+        size      = HeaderFontSize
+        lineScale = DefaultLineScale
+        style     = HeaderStyle
+    }
+    height     = 32.0
+    leftText   = "%SLIDE_NAME%"
+    centerText = "Copyright (C) 2017-2025 Torsten Spaete"
+    rightText  = "Page %SLIDE_NUM% of %SLIDE_COUNT%"
+    padding    = V2f(2, 3)
+}
+
+# -----------------------------------------------------------------------------
+# Presentation root - the entry point a loader should resolve
+# -----------------------------------------------------------------------------
+Presentation FPLPresentation {
+    slideSize = V2f(1280.0, 720.0)
+    padding   = 20.0
+
+    slides = [
+        Intro
+        WhoAmI
+        WhatIsFPL
+        Motivation
+        Features
+        Platforms
+        Magic
+        HowItWorks
+        Constraints
+        HowToUse
+        Demos
+        Links
+        Thanks
+    ]
+
+    header = Header
+    footer = Footer
+
+    titleFont   { name = Arimo              size = TitleFontSize    lineScale = DefaultLineScale  style = BasicStyle }
+    normalFont  { name = Arimo              size = NormalFontSize   lineScale = DefaultLineScale  style = BasicStyle }
+    consoleFont { name = BitStreamVerySans  size = ConsoleFontSize  lineScale = DefaultLineScale  style = BasicStyle }
+}
