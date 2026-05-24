@@ -2663,6 +2663,22 @@ static bool ftd__parseArrayBundle(ftd__Parser *p, const ftd__ArrayBundle *bundle
 		}
 	}
 
+	// Always leave at least one zero-initialized sentinel element past the
+	// last real entry, so callers can iterate `for (T *e = items; !is_empty(e); ++e)`
+	// without consulting count. arenaAlloc zero-fills, so an existing extra
+	// slot needs no further work; we only grow if count fully fills capacity.
+	if (count >= capacity) {
+		uint32_t newCap = capacity + 1;
+		uint8_t *newData = (uint8_t *)ftd__arenaAlloc(&p->ctx->parseArena, newCap * elemSize, elemAlign);
+		if (newData != NULL) {
+			if (data != NULL && count > 0) {
+				memcpy(newData, data, count * elemSize);
+			}
+			data = newData;
+			capacity = newCap;
+		}
+	}
+
 	ftd__bundleWriteResult(bundle, ownerStruct, data, count, capacity);
 	return true;
 }
@@ -2737,6 +2753,20 @@ static bool ftd__parseArrayInto(ftd__Parser *p, const ftdField *arrayField, void
 		}
 		if (p->cur.kind == ftd__Tok_Newline) {
 			continue;
+		}
+	}
+
+	// Append a zero-initialized sentinel element past the last real entry so
+	// callers can detect the end of the array without consulting count.
+	if (count >= capacity) {
+		uint32_t newCap = capacity + 1;
+		uint8_t *newData = (uint8_t *)ftd__arenaAlloc(&p->ctx->parseArena, newCap * elemSize, elemAlign);
+		if (newData != NULL) {
+			if (data != NULL && count > 0) {
+				memcpy(newData, data, count * elemSize);
+			}
+			data = newData;
+			capacity = newCap;
 		}
 	}
 

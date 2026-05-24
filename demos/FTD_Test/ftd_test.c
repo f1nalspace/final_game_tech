@@ -1060,7 +1060,17 @@ static void TestArrayBundleFields(void) {
 	ftdAlwaysAssert(b->items[2].type == BlockType_Text);
 	ftdAlwaysAssert(strcmp(b->items[2].text.content, "c") == 0);
 
-	// Empty array zero-fills count and leaves data NULL.
+	// Sentinel: arrays always own one trailing zero-initialized element past
+	// the last real entry, so itemCap > itemCount and items[itemCount] is
+	// fully zero. The empty array case is the simplest: count=0, but data
+	// is still a valid one-slot zero buffer.
+	ftdAlwaysAssert(b->itemCap > b->itemCount);
+	{
+		const Block *sentinel = &b->items[b->itemCount];
+		ftdAlwaysAssert(sentinel->type == 0);
+		ftdAlwaysAssert(sentinel->text.content == NULL);
+	}
+
 	ftdResetParse(ctx);
 	{
 		const char *src2 = "BundleHost B { blocks = [] }\n";
@@ -1069,7 +1079,13 @@ static void TestArrayBundleFields(void) {
 		const BundleHost *b2 = (const BundleHost *)ftdLookup(ctx, "B", NULL);
 		ftdAlwaysAssert(b2 != NULL);
 		ftdAlwaysAssert(b2->itemCount == 0);
-		ftdAlwaysAssert(b2->items == NULL);
+		// Sentinel-only: data is allocated and zero so callers can do
+		// `for (Block *e = b2->items; e->type != 0 || e->text.content != NULL; ++e)`
+		// without checking itemCount.
+		ftdAlwaysAssert(b2->items != NULL);
+		ftdAlwaysAssert(b2->itemCap >= 1);
+		ftdAlwaysAssert(b2->items[0].type == 0);
+		ftdAlwaysAssert(b2->items[0].text.content == NULL);
 	}
 
 	ftdDestroy(ctx);
