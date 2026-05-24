@@ -1132,6 +1132,7 @@ typedef struct ftd__Token {
 
 typedef struct ftd__Lexer {
 	const char *src;
+	const char *cur;     // src + pos; mirrors `pos` for easier debugging (always in sync)
 	size_t      length;
 	size_t      pos;
 	uint32_t    line;
@@ -1199,6 +1200,7 @@ static void ftd__lexerInit(ftd__Lexer *lex, ftdContext *ctx, const char *src, si
 	if (len >= 3 && (uint8_t)src[0] == 0xEF && (uint8_t)src[1] == 0xBB && (uint8_t)src[2] == 0xBF) {
 		lex->pos = 3;
 	}
+	lex->cur = src + lex->pos;
 }
 
 static int ftd__peekC(ftd__Lexer *lex, size_t off) {
@@ -1210,9 +1212,11 @@ static int ftd__peekC(ftd__Lexer *lex, size_t off) {
 
 static int ftd__nextC(ftd__Lexer *lex) {
 	if (lex->pos >= lex->length) {
+		lex->cur = lex->src + lex->length;
 		return -1;
 	}
 	int c = (uint8_t)lex->src[lex->pos++];
+	lex->cur = lex->src + lex->pos;
 	if (c == '\n') {
 		lex->line++;
 		lex->col = 1;
@@ -1490,6 +1494,7 @@ static char *ftd__readString(ftd__Lexer *lex, size_t *outLen) {
 		}
 		// restore
 		lex->pos = save;
+		lex->cur = lex->src + save;
 		lex->line = saveLine;
 		lex->col = saveCol;
 		break;
@@ -2369,6 +2374,10 @@ static bool ftd__parseBlockInto(ftd__Parser *p, const ftdType *type, void *outSt
 		}
 		if (p->cur.kind != ftd__Tok_Ident) {
 			ftd__emit(p->ctx, ftdSeverity_Error, p->cur.span, "expected field name");
+			// Force forward progress: skipToNewlineOrEOF stops on closing
+			// delimiters, so a stray ')'/'}'/']' inside the block could loop
+			// forever. Step past it.
+			ftd__parserAdvance(p);
 			ftd__skipToNewlineOrEOF(p);
 			continue;
 		}
@@ -2793,6 +2802,10 @@ FTD_API ftdResult ftdParseString(ftdContext *ctx,
 			continue;
 		}
 		ftd__emit(ctx, ftdSeverity_Error, p.cur.span, "unexpected token at top level");
+		// Always advance at least once so we make forward progress, even when
+		// the offending token is a stray closing delimiter that
+		// ftd__skipToNewlineOrEOF refuses to step over.
+		ftd__parserAdvance(&p);
 		ftd__skipToNewlineOrEOF(&p);
 	}
 
