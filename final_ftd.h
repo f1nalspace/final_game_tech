@@ -1132,6 +1132,7 @@ typedef struct ftd__Token {
 
 typedef struct ftd__Lexer {
 	const char *src;
+	const char *cur;     // src + pos; mirrors `pos` for easier debugging (always in sync)
 	size_t      length;
 	size_t      pos;
 	uint32_t    line;
@@ -1199,6 +1200,7 @@ static void ftd__lexerInit(ftd__Lexer *lex, ftdContext *ctx, const char *src, si
 	if (len >= 3 && (uint8_t)src[0] == 0xEF && (uint8_t)src[1] == 0xBB && (uint8_t)src[2] == 0xBF) {
 		lex->pos = 3;
 	}
+	lex->cur = src + lex->pos;
 }
 
 static int ftd__peekC(ftd__Lexer *lex, size_t off) {
@@ -1210,9 +1212,11 @@ static int ftd__peekC(ftd__Lexer *lex, size_t off) {
 
 static int ftd__nextC(ftd__Lexer *lex) {
 	if (lex->pos >= lex->length) {
+		lex->cur = lex->src + lex->length;
 		return -1;
 	}
 	int c = (uint8_t)lex->src[lex->pos++];
+	lex->cur = lex->src + lex->pos;
 	if (c == '\n') {
 		lex->line++;
 		lex->col = 1;
@@ -1490,6 +1494,7 @@ static char *ftd__readString(ftd__Lexer *lex, size_t *outLen) {
 		}
 		// restore
 		lex->pos = save;
+		lex->cur = lex->src + save;
 		lex->line = saveLine;
 		lex->col = saveCol;
 		break;
