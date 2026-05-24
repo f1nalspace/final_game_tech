@@ -1226,11 +1226,7 @@ struct ftdValue {
 };
 
 // Helper signature
-typedef bool (*ftdHelperFn)(ftdContext *ctx,
-                            const ftdValue *args,
-                            uint32_t        argCount,
-                            void           *outValue,
-                            void           *userData);
+typedef bool (*ftdHelperFn)(ftdContext *ctx, const ftdValue *args, uint32_t argCount, void *outValue, void *userData);
 
 // Diagnostics
 typedef enum ftdSeverity {
@@ -1266,18 +1262,10 @@ FTD_API void ftdRegisterGlobal(ftdContext *ctx, const char *dottedName, const ft
 FTD_API void ftdRegisterHelper(ftdContext *ctx, const char *name, const ftdType *returnType, ftdHelperFn fn, void *userData);
 
 // Array slot binding (custom T*+count storage)
-FTD_API void ftdSetArraySlot(ftdContext *ctx,
-                             const ftdType *ownerType,
-                             const char    *fieldName,
-                             uint32_t       dataOffset,
-                             uint32_t       countOffset,
-                             uint32_t       countSize);
+FTD_API void ftdSetArraySlot(ftdContext *ctx, const ftdType *ownerType, const char *fieldName, uint32_t dataOffset, uint32_t countOffset, uint32_t countSize);
 
 // Parsing
-FTD_API ftdResult ftdParseString(ftdContext *ctx,
-                                 const char *source,
-                                 size_t      length,
-                                 const char *displayName);
+FTD_API ftdResult ftdParseString(ftdContext *ctx, const char *source, size_t length, const char *displayName);
 
 #if !defined(FTD_NO_STDIO)
 FTD_API ftdResult ftdParseFile(ftdContext *ctx, const char *filePath);
@@ -1978,12 +1966,7 @@ FTD_API void ftdRegisterHelper(ftdContext *ctx, const char *name, const ftdType 
 	s->as.helper.returnType = returnType;
 }
 
-FTD_API void ftdSetArraySlot(ftdContext *ctx,
-                             const ftdType *ownerType,
-                             const char    *fieldName,
-                             uint32_t       dataOffset,
-                             uint32_t       countOffset,
-                             uint32_t       countSize) {
+FTD_API void ftdSetArraySlot(ftdContext *ctx, const ftdType *ownerType, const char *fieldName, uint32_t dataOffset, uint32_t countOffset, uint32_t countSize) {
 	if (ctx == NULL || ownerType == NULL || fieldName == NULL) {
 		return;
 	}
@@ -3872,10 +3855,7 @@ static void ftd__finalizeResult(ftdContext *ctx) {
 // -----------------------------------------------------------------------------
 // Public parsing entry points
 // -----------------------------------------------------------------------------
-FTD_API ftdResult ftdParseString(ftdContext *ctx,
-                                 const char *source,
-                                 size_t      length,
-                                 const char *displayName) {
+FTD_API ftdResult ftdParseString(ftdContext *ctx, const char *source, size_t length, const char *displayName) {
 	ftdResult empty;
 	FTD_MEMSET(&empty, 0, sizeof(empty));
 	if (ctx == NULL || source == NULL) {
