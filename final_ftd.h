@@ -39,12 +39,26 @@ helper functions.
 	Switches
 -------------------------------------------------------------------------------
 
-| Macro                       | Default | Effect
-| FTD_NO_STDIO                | off     | Compiles out ftdParseFile().
-| FTD_NO_DEFAULT_ALLOCATOR    | off     | Removes the malloc/free default.
-| FTD_ASSERT(expr)            | assert  | Override for internal sanity checks.
-| FTD_ARENA_CHUNK_SIZE        | 65536   | Default size of each arena chunk.
-| FTD_API                     | extern  | Linkage qualifier on public functions.
+| Macro                       | Default     | Effect
+| FTD_NO_STDIO                | off         | Compiles out ftdParseFile(); also
+|                             |             | refuses to include <string.h> /
+|                             |             | <stdio.h> / <stdlib.h> / <assert.h>
+|                             |             | and requires every FTD_* override
+|                             |             | macro below to be defined.
+| FTD_NO_DEFAULT_ALLOCATOR    | off         | Removes the calloc/free default.
+| FTD_ASSERT(expr)            | assert      | Internal sanity check.
+| FTD_MEMCPY(dst, src, n)     | memcpy      | C-mem* / C-str* / strtod / vsnprintf
+| FTD_MEMSET(dst, c, n)       | memset      | overrides. Default to libc; supply
+| FTD_MEMCMP(a, b, n)         | memcmp      | your own to drop all libc deps.
+| FTD_STRLEN(s)               | strlen      |
+| FTD_STRCMP(a, b)            | strcmp      |
+| FTD_STRNCMP(a, b, n)        | strncmp     |
+| FTD_STRTOD(s, end)          | strtod      |
+| FTD_VSNPRINTF(b, n, fmt, ap)| vsnprintf   |
+| FTD_CALLOC(nmemb, size)     | calloc      | Used only by the default allocator
+| FTD_FREE(ptr)               | free        | (i.e. when ftdCreate(NULL) is used).
+| FTD_ARENA_CHUNK_SIZE        | 65536       | Default size of each arena chunk.
+| FTD_API                     | extern      | Linkage qualifier on public functions.
 
 -------------------------------------------------------------------------------
 	FTD file format specification
@@ -478,19 +492,88 @@ FTD_API const void *ftdLookup(ftdContext *ctx, const char *dottedName, const ftd
 #if defined(FTD_IMPLEMENTATION) && !defined(FINAL_FTD_IMPLEMENTED)
 #define FINAL_FTD_IMPLEMENTED
 
-#include <string.h>
-#include <stdarg.h>
-#include <stdlib.h>
-#include <ctype.h>
-#include <math.h>
+// -----------------------------------------------------------------------------
+// Standard library function overrides
+//
+// Every libc routine the implementation needs goes through a FTD_* macro so
+// you can drop in your own replacement (a freestanding runtime, a sanitized
+// build, etc.). Default implementations forward to the C standard library.
+//
+// FTD_NO_STDIO is the strict mode: when defined, the library refuses to
+// include <string.h> / <stdio.h> / <stdlib.h> / <assert.h>, and every macro
+// below MUST be user-provided. This makes it easy to verify that no hidden
+// libc dependency leaks back in.
+//
+// In normal (default) mode, only the macros you actually leave undefined
+// pull in their backing libc header — overriding one does not force you to
+// override the others.
+// -----------------------------------------------------------------------------
 
-#if !defined(FTD_NO_STDIO)
-#	include <stdio.h>
+#include <stdarg.h>  // va_list / va_start / va_end / va_copy — language-level
+
+#if defined(FTD_NO_STDIO)
+#	if !defined(FTD_MEMCPY)    || !defined(FTD_MEMSET)  || !defined(FTD_MEMCMP)   \
+	 || !defined(FTD_STRLEN)    || !defined(FTD_STRCMP)  || !defined(FTD_STRNCMP)  \
+	 || !defined(FTD_STRTOD)    || !defined(FTD_VSNPRINTF) || !defined(FTD_ASSERT)
+#		error "FTD_NO_STDIO is set: you must define FTD_MEMCPY/MEMSET/MEMCMP/STRLEN/STRCMP/STRNCMP/STRTOD/VSNPRINTF/ASSERT (and, unless FTD_NO_DEFAULT_ALLOCATOR is set, FTD_CALLOC/FTD_FREE)."
+#	endif
+#	if !defined(FTD_NO_DEFAULT_ALLOCATOR)
+#		if !defined(FTD_CALLOC) || !defined(FTD_FREE)
+#			error "FTD_NO_STDIO is set without FTD_NO_DEFAULT_ALLOCATOR: also define FTD_CALLOC and FTD_FREE."
+#		endif
+#	endif
 #endif
 
-#ifndef FTD_ASSERT
-#	include <assert.h>
-#	define FTD_ASSERT(expr) assert(expr)
+#if !defined(FTD_NO_STDIO)
+#	if !defined(FTD_MEMCPY) || !defined(FTD_MEMSET) || !defined(FTD_MEMCMP) \
+	 || !defined(FTD_STRLEN) || !defined(FTD_STRCMP) || !defined(FTD_STRNCMP)
+#		include <string.h>
+#	endif
+#	if !defined(FTD_STRTOD) || (!defined(FTD_NO_DEFAULT_ALLOCATOR) && (!defined(FTD_CALLOC) || !defined(FTD_FREE)))
+#		include <stdlib.h>
+#	endif
+#	if !defined(FTD_VSNPRINTF)
+#		include <stdio.h>
+#	endif
+#	if !defined(FTD_ASSERT)
+#		include <assert.h>
+#	endif
+#endif
+
+#if !defined(FTD_MEMCPY)
+#	define FTD_MEMCPY(dst, src, n)        memcpy((dst), (src), (n))
+#endif
+#if !defined(FTD_MEMSET)
+#	define FTD_MEMSET(dst, c, n)          memset((dst), (c), (n))
+#endif
+#if !defined(FTD_MEMCMP)
+#	define FTD_MEMCMP(a, b, n)            memcmp((a), (b), (n))
+#endif
+#if !defined(FTD_STRLEN)
+#	define FTD_STRLEN(s)                  strlen(s)
+#endif
+#if !defined(FTD_STRCMP)
+#	define FTD_STRCMP(a, b)               strcmp((a), (b))
+#endif
+#if !defined(FTD_STRNCMP)
+#	define FTD_STRNCMP(a, b, n)           strncmp((a), (b), (n))
+#endif
+#if !defined(FTD_STRTOD)
+#	define FTD_STRTOD(s, end)             strtod((s), (end))
+#endif
+#if !defined(FTD_VSNPRINTF)
+#	define FTD_VSNPRINTF(buf, n, fmt, ap) vsnprintf((buf), (n), (fmt), (ap))
+#endif
+#if !defined(FTD_ASSERT)
+#	define FTD_ASSERT(expr)               assert(expr)
+#endif
+#if !defined(FTD_NO_DEFAULT_ALLOCATOR)
+#	if !defined(FTD_CALLOC)
+#		define FTD_CALLOC(nmemb, size)        calloc((nmemb), (size))
+#	endif
+#	if !defined(FTD_FREE)
+#		define FTD_FREE(ptr)                  free(ptr)
+#	endif
 #endif
 
 #ifdef __cplusplus
@@ -506,12 +589,12 @@ extern "C" {
 static void *ftd__defaultAlloc(size_t size, size_t align, void *userData) {
 	FTD__UNUSED(userData);
 	FTD__UNUSED(align);
-	void *p = calloc(1, size);
+	void *p = FTD_CALLOC(1, size);
 	return p;
 }
 static void ftd__defaultFree(void *ptr, void *userData) {
 	FTD__UNUSED(userData);
-	free(ptr);
+	FTD_FREE(ptr);
 }
 static const ftdAllocator ftd__defaultAllocator = {
 	ftd__defaultAlloc, ftd__defaultFree, NULL
@@ -590,7 +673,7 @@ static void *ftd__arenaAlloc(ftd__Arena *a, size_t size, size_t align) {
 		if (off + size <= c->capacity) {
 			c->used = off + size;
 			void *p = base + off;
-			memset(p, 0, size);
+			FTD_MEMSET(p, 0, size);
 			return p;
 		}
 		ftd__ArenaChunk *nc = ftd__arenaAllocChunk(a, size + align);
@@ -608,7 +691,7 @@ static char *ftd__arenaStrDupN(ftd__Arena *a, const char *src, size_t length) {
 		return NULL;
 	}
 	if (length > 0) {
-		memcpy(dst, src, length);
+		FTD_MEMCPY(dst, src, length);
 	}
 	dst[length] = '\0';
 	return dst;
@@ -618,7 +701,7 @@ static char *ftd__arenaStrDup(ftd__Arena *a, const char *src) {
 	if (src == NULL) {
 		return NULL;
 	}
-	return ftd__arenaStrDupN(a, src, strlen(src));
+	return ftd__arenaStrDupN(a, src, FTD_STRLEN(src));
 }
 
 static void ftd__arenaResetKeepFirst(ftd__Arena *a) {
@@ -665,7 +748,7 @@ static uint32_t ftd__fnv1a(const char *data, size_t len) {
 	return h;
 }
 static uint32_t ftd__fnv1aStr(const char *s) {
-	return ftd__fnv1a(s, strlen(s));
+	return ftd__fnv1a(s, FTD_STRLEN(s));
 }
 
 // -----------------------------------------------------------------------------
@@ -738,7 +821,7 @@ static ftd__Symbol *ftd__symTableSlot(ftd__SymTable *t, const char *name, uint32
 			}
 			return s;
 		}
-		if (s->hash == hash && strcmp(s->name, name) == 0) {
+		if (s->hash == hash && FTD_STRCMP(s->name, name) == 0) {
 			if (outExists) {
 				*outExists = true;
 			}
@@ -805,7 +888,7 @@ static const ftd__Symbol *ftd__symTableLookup(const ftd__SymTable *t, const char
 		if (s->kind == ftd__Sym_None) {
 			return NULL;
 		}
-		if (s->hash == hash && strcmp(s->name, name) == 0) {
+		if (s->hash == hash && FTD_STRCMP(s->name, name) == 0) {
 			return s;
 		}
 		idx = (idx + 1) & t->mask;
@@ -932,7 +1015,7 @@ FTD_API ftdContext *ftdCreate(const ftdAllocator *allocator) {
 		return NULL;
 	}
 	ftdContext *ctx = (ftdContext *)raw;
-	memset(ctx, 0, sizeof(*ctx));
+	FTD_MEMSET(ctx, 0, sizeof(*ctx));
 	ctx->allocator = *al;
 
 	ftd__arenaInit(&ctx->schemaArena, &ctx->allocator, FTD_ARENA_CHUNK_SIZE);
@@ -970,7 +1053,7 @@ FTD_API void ftdResetParse(ftdContext *ctx) {
 	ctx->diagCount = 0;
 	ctx->diagArray = NULL;
 	ctx->currentSourceName = NULL;
-	memset(&ctx->lastResult, 0, sizeof(ctx->lastResult));
+	FTD_MEMSET(&ctx->lastResult, 0, sizeof(ctx->lastResult));
 }
 
 // -----------------------------------------------------------------------------
@@ -1006,15 +1089,18 @@ FTD_API void ftdRegisterEnum(ftdContext *ctx, const ftdType *type) {
 	// Also register `EnumName.Value` fully-qualified for each enum value
 	for (uint32_t i = 0; i < type->enumValueCount; ++i) {
 		const ftdEnumValue *ev = &type->enumValues[i];
-		size_t total = strlen(type->name) + 1 + strlen(ev->name) + 1;
+		size_t typeNameLen = FTD_STRLEN(type->name);
+		size_t valNameLen  = FTD_STRLEN(ev->name);
+		size_t total = typeNameLen + 1 + valNameLen + 1;
 		char *qn = (char *)ftd__arenaAlloc(&ctx->schemaArena, total, 1);
 		if (qn == NULL) {
 			continue;
 		}
 		// build "EnumName.Value"
-		strcpy(qn, type->name);
-		strcat(qn, ".");
-		strcat(qn, ev->name);
+		FTD_MEMCPY(qn, type->name, typeNameLen);
+		qn[typeNameLen] = '.';
+		FTD_MEMCPY(qn + typeNameLen + 1, ev->name, valNameLen);
+		qn[total - 1] = '\0';
 		uint32_t qh = ftd__fnv1aStr(qn);
 		ftd__Symbol *qs = ftd__symTableInsert(&ctx->schemaSyms, qn, qh);
 		if (qs != NULL) {
@@ -1103,7 +1189,7 @@ FTD_API void ftdSetArraySlot(ftdContext *ctx,
 static const ftd__ArraySlot *ftd__findArraySlot(const ftdContext *ctx, const ftdType *owner, const char *fieldName) {
 	const ftd__ArraySlot *cur = ctx->arraySlots;
 	while (cur != NULL) {
-		if (cur->ownerType == owner && strcmp(cur->fieldName, fieldName) == 0) {
+		if (cur->ownerType == owner && FTD_STRCMP(cur->fieldName, fieldName) == 0) {
 			return cur;
 		}
 		cur = cur->next;
@@ -1161,7 +1247,7 @@ typedef struct ftd__Lexer {
 static const char *ftd__formatMsg(ftdContext *ctx, const char *fmt, va_list ap) {
 	va_list aq;
 	va_copy(aq, ap);
-	int needed = vsnprintf(NULL, 0, fmt, aq);
+	int needed = FTD_VSNPRINTF(NULL, 0, fmt, aq);
 	va_end(aq);
 	if (needed < 0) {
 		return ftd__arenaStrDup(&ctx->parseArena, "(format error)");
@@ -1170,7 +1256,7 @@ static const char *ftd__formatMsg(ftdContext *ctx, const char *fmt, va_list ap) 
 	if (buf == NULL) {
 		return "";
 	}
-	vsnprintf(buf, (size_t)needed + 1, fmt, ap);
+	FTD_VSNPRINTF(buf, (size_t)needed + 1, fmt, ap);
 	return buf;
 }
 
@@ -1407,9 +1493,9 @@ static void ftd__readNumber(ftd__Lexer *lex, ftd__Token *tok, bool negative) {
 		if (n >= sizeof(small)) {
 			n = sizeof(small) - 1;
 		}
-		memcpy(small, lex->src + numStart, n);
+		FTD_MEMCPY(small, lex->src + numStart, n);
 		small[n] = '\0';
-		double d = strtod(small, NULL);
+		double d = FTD_STRTOD(small, NULL);
 		tok->kind = ftd__Tok_Float;
 		tok->f = d;
 	} else {
@@ -1470,7 +1556,7 @@ static char *ftd__readString(ftd__Lexer *lex, size_t *outLen) {
 							break;
 						}
 						if (buf) {
-							memcpy(nb, buf, len);
+							FTD_MEMCPY(nb, buf, len);
 						}
 						buf = nb;
 						cap = ncap;
@@ -1489,7 +1575,7 @@ static char *ftd__readString(ftd__Lexer *lex, size_t *outLen) {
 					break;
 				}
 				if (buf) {
-					memcpy(nb, buf, len);
+					FTD_MEMCPY(nb, buf, len);
 				}
 				buf = nb;
 				cap = ncap;
@@ -1530,7 +1616,7 @@ static char *ftd__readString(ftd__Lexer *lex, size_t *outLen) {
 		size_t ncap = cap + 1;
 		char *nb = (char *)ftd__arenaAlloc(arena, ncap, 1);
 		if (nb) {
-			memcpy(nb, buf, len);
+			FTD_MEMCPY(nb, buf, len);
 			buf = nb;
 			cap = ncap;
 		}
@@ -1543,7 +1629,7 @@ static char *ftd__readString(ftd__Lexer *lex, size_t *outLen) {
 }
 
 static void ftd__lexNext(ftd__Lexer *lex, ftd__Token *tok) {
-	memset(tok, 0, sizeof(*tok));
+	FTD_MEMSET(tok, 0, sizeof(*tok));
 	bool sawNL = false;
 	bool hasMore = ftd__skipTrivia(lex, &sawNL);
 	if (sawNL) {
@@ -1647,13 +1733,13 @@ static void ftd__lexNext(ftd__Lexer *lex, ftd__Token *tok) {
 		const char *ptr = lex->src + idStart;
 
 		// Reserved words
-		if (idLen == 4 && memcmp(ptr, "true", 4) == 0) {
+		if (idLen == 4 && FTD_MEMCMP(ptr, "true", 4) == 0) {
 			tok->kind = ftd__Tok_Bool; tok->b = true;
-		} else if (idLen == 5 && memcmp(ptr, "false", 5) == 0) {
+		} else if (idLen == 5 && FTD_MEMCMP(ptr, "false", 5) == 0) {
 			tok->kind = ftd__Tok_Bool; tok->b = false;
-		} else if (idLen == 4 && memcmp(ptr, "null", 4) == 0) {
+		} else if (idLen == 4 && FTD_MEMCMP(ptr, "null", 4) == 0) {
 			tok->kind = ftd__Tok_Null;
-		} else if (idLen == 5 && memcmp(ptr, "alias", 5) == 0) {
+		} else if (idLen == 5 && FTD_MEMCMP(ptr, "alias", 5) == 0) {
 			tok->kind = ftd__Tok_KwAlias;
 		} else {
 			tok->kind = ftd__Tok_Ident;
@@ -1745,7 +1831,7 @@ static bool ftd__lookupEnumValue(const ftdType *enumType, const char *name, int3
 		return false;
 	}
 	for (uint32_t i = 0; i < enumType->enumValueCount; ++i) {
-		if (strcmp(enumType->enumValues[i].name, name) == 0) {
+		if (FTD_STRCMP(enumType->enumValues[i].name, name) == 0) {
 			*outValue = enumType->enumValues[i].value;
 			return true;
 		}
@@ -1759,7 +1845,7 @@ static const ftdField *ftd__findField(const ftdType *t, const char *name) {
 		return NULL;
 	}
 	for (uint32_t i = 0; i < t->fieldCount; ++i) {
-		if (strcmp(t->fields[i].name, name) == 0) {
+		if (FTD_STRCMP(t->fields[i].name, name) == 0) {
 			return &t->fields[i];
 		}
 	}
@@ -1879,10 +1965,10 @@ static const char *ftd__parseQName(ftd__Parser *p) {
 			while (ncap < nlen + 1) ncap *= 2; \
 			char *nb = (char *)ftd__arenaAlloc(&p->ctx->parseArena, ncap, 1); \
 			if (nb == NULL) { return NULL; } \
-			if (buf) memcpy(nb, buf, len); \
+			if (buf) FTD_MEMCPY(nb, buf, len); \
 			buf = nb; cap = ncap; \
 		} \
-		memcpy(buf + len, (src), (slen)); \
+		FTD_MEMCPY(buf + len, (src), (slen)); \
 		len = nlen; \
 		buf[len] = '\0'; \
 	} while (0)
@@ -1990,7 +2076,7 @@ static bool ftd__parsePositionalInto(ftd__Parser *p, const ftdType *type, void *
 					ftd__writeScalar(slot, f->kind, &val);
 				} else if (f->kind == ftdFieldKind_Struct && val.kind == ftdValueKind_Struct && val.as.ptr != NULL) {
 					if (f->subtype != NULL && f->subtype->size > 0) {
-						memcpy(slot, val.as.ptr, f->subtype->size);
+						FTD_MEMCPY(slot, val.as.ptr, f->subtype->size);
 					}
 				} else if (f->kind == ftdFieldKind_Ref) {
 					*(void **)slot = val.as.ptr;
@@ -2070,7 +2156,7 @@ static bool ftd__callHelper(ftd__Parser *p, const ftd__Symbol *helperSym, ftdVal
 // Parse a single value
 // -----------------------------------------------------------------------------
 static bool ftd__parseValue(ftd__Parser *p, const ftdField *fieldHint, const ftdType *typeHint, ftdValue *out) {
-	memset(out, 0, sizeof(*out));
+	FTD_MEMSET(out, 0, sizeof(*out));
 	out->span = p->cur.span;
 
 	ftd__TokKind k = p->cur.kind;
@@ -2336,7 +2422,7 @@ static void ftd__writeFieldValue(ftd__Parser *p, const ftdField *field, void *fi
 	}
 	if (field->kind == ftdFieldKind_Struct) {
 		if (v->kind == ftdValueKind_Struct && v->as.ptr != NULL && field->subtype != NULL) {
-			memcpy(fieldSlot, v->as.ptr, field->subtype->size);
+			FTD_MEMCPY(fieldSlot, v->as.ptr, field->subtype->size);
 		}
 		return;
 	}
@@ -2372,7 +2458,7 @@ static void ftd__writeFieldValue(ftd__Parser *p, const ftdField *field, void *fi
 			}
 		}
 		if (v->kind == ftdValueKind_Struct && v->as.ptr != NULL && field->subtype != NULL) {
-			memcpy(fieldSlot, v->as.ptr, field->subtype->size);
+			FTD_MEMCPY(fieldSlot, v->as.ptr, field->subtype->size);
 		}
 		return;
 	}
@@ -2422,10 +2508,14 @@ static bool ftd__parseBlockInto(ftd__Parser *p, const ftdType *type, void *outSt
 					if (p->cur.kind == ftd__Tok_LBracket) {
 						ftd__parseArrayBundle(p, &bundle, outStruct);
 					} else {
+						// Diagnostic shows the user-typed prefix (before the dot).
+						const char *bname = bundle.data->name;
+						int prefixLen = 0;
+						while (bname[prefixLen] != '\0' && bname[prefixLen] != '.') {
+							prefixLen++;
+						}
 						ftd__emit(p->ctx, ftdSeverity_Warning, nameSpan,
-							"expected '[' for array '%.*s'",
-							(int)(strchr(bundle.data->name, '.') - bundle.data->name),
-							bundle.data->name);
+							"expected '[' for array '%.*s'", prefixLen, bname);
 						ftd__skipToNewlineOrEOF(p);
 					}
 					if (p->cur.kind == ftd__Tok_Comma) {
@@ -2546,29 +2636,29 @@ static void ftd__arrayWriteResult(ftd__Parser *p, const ftdField *arrayField, vo
 // from the .data field's `subtype`.
 // -----------------------------------------------------------------------------
 static bool ftd__findArrayBundle(const ftdType *t, const char *name, ftd__ArrayBundle *out) {
-	memset(out, 0, sizeof(*out));
+	FTD_MEMSET(out, 0, sizeof(*out));
 	if (t == NULL || t->fields == NULL || name == NULL) {
 		return false;
 	}
-	size_t nameLen = strlen(name);
+	size_t nameLen = FTD_STRLEN(name);
 	for (uint32_t i = 0; i < t->fieldCount; ++i) {
 		const ftdField *f = &t->fields[i];
 		if (f->name == NULL) {
 			continue;
 		}
-		if (strncmp(f->name, name, nameLen) != 0) {
+		if (FTD_STRNCMP(f->name, name, nameLen) != 0) {
 			continue;
 		}
 		if (f->name[nameLen] != '.') {
 			continue;
 		}
 		const char *sub = f->name + nameLen + 1;
-		if (f->kind == ftdFieldKind_ArrayData && strcmp(sub, "data") == 0) {
+		if (f->kind == ftdFieldKind_ArrayData && FTD_STRCMP(sub, "data") == 0) {
 			out->data = f;
 			out->elemType = f->subtype;
-		} else if (f->kind == ftdFieldKind_ArrayCount && strcmp(sub, "count") == 0) {
+		} else if (f->kind == ftdFieldKind_ArrayCount && FTD_STRCMP(sub, "count") == 0) {
 			out->count = f;
-		} else if (f->kind == ftdFieldKind_ArrayCapacity && strcmp(sub, "capacity") == 0) {
+		} else if (f->kind == ftdFieldKind_ArrayCapacity && FTD_STRCMP(sub, "capacity") == 0) {
 			out->capacity = f;
 		}
 	}
@@ -2626,7 +2716,7 @@ static bool ftd__parseArrayBundle(ftd__Parser *p, const ftd__ArrayBundle *bundle
 				break;
 			}
 			if (data != NULL && count > 0) {
-				memcpy(newData, data, count * elemSize);
+				FTD_MEMCPY(newData, data, count * elemSize);
 			}
 			data = newData;
 			capacity = newCap;
@@ -2637,7 +2727,7 @@ static bool ftd__parseArrayBundle(ftd__Parser *p, const ftd__ArrayBundle *bundle
 		ftd__parseValue(p, NULL, elemType, &val);
 
 		if (val.kind == ftdValueKind_Struct && val.as.ptr != NULL && elemType->size > 0) {
-			memcpy(elemSlot, val.as.ptr, elemType->size);
+			FTD_MEMCPY(elemSlot, val.as.ptr, elemType->size);
 		} else if (val.kind == ftdValueKind_Ref) {
 			if (val.type == (const ftdType *)(uintptr_t)1) {
 				char **stub = (char **)val.as.ptr;
@@ -2672,7 +2762,7 @@ static bool ftd__parseArrayBundle(ftd__Parser *p, const ftd__ArrayBundle *bundle
 		uint8_t *newData = (uint8_t *)ftd__arenaAlloc(&p->ctx->parseArena, newCap * elemSize, elemAlign);
 		if (newData != NULL) {
 			if (data != NULL && count > 0) {
-				memcpy(newData, data, count * elemSize);
+				FTD_MEMCPY(newData, data, count * elemSize);
 			}
 			data = newData;
 			capacity = newCap;
@@ -2718,7 +2808,7 @@ static bool ftd__parseArrayInto(ftd__Parser *p, const ftdField *arrayField, void
 				break;
 			}
 			if (data != NULL && count > 0) {
-				memcpy(newData, data, count * elemSize);
+				FTD_MEMCPY(newData, data, count * elemSize);
 			}
 			data = newData;
 			capacity = newCap;
@@ -2730,7 +2820,7 @@ static bool ftd__parseArrayInto(ftd__Parser *p, const ftdField *arrayField, void
 
 		// Write into element slot based on element type
 		if (val.kind == ftdValueKind_Struct && val.as.ptr != NULL && elemType->size > 0) {
-			memcpy(elemSlot, val.as.ptr, elemType->size);
+			FTD_MEMCPY(elemSlot, val.as.ptr, elemType->size);
 		} else if (val.kind == ftdValueKind_Ref) {
 			if (val.type == (const ftdType *)(uintptr_t)1) {
 				char **stub = (char **)val.as.ptr;
@@ -2763,7 +2853,7 @@ static bool ftd__parseArrayInto(ftd__Parser *p, const ftdField *arrayField, void
 		uint8_t *newData = (uint8_t *)ftd__arenaAlloc(&p->ctx->parseArena, newCap * elemSize, elemAlign);
 		if (newData != NULL) {
 			if (data != NULL && count > 0) {
-				memcpy(newData, data, count * elemSize);
+				FTD_MEMCPY(newData, data, count * elemSize);
 			}
 			data = newData;
 			capacity = newCap;
@@ -2870,7 +2960,7 @@ static void ftd__parseTypedDecl(ftd__Parser *p) {
 			void *mem = ftd__arenaAlloc(&p->ctx->parseArena, t->size, t->align ? t->align : 8);
 			if (mem != NULL) {
 				if (val.kind == ftdValueKind_Struct && val.as.ptr != NULL) {
-					memcpy(mem, val.as.ptr, t->size);
+					FTD_MEMCPY(mem, val.as.ptr, t->size);
 				}
 				ftd__Symbol *s = ftd__symTableInsert(&p->ctx->parseSyms, internName, declHash);
 				if (s != NULL) {
@@ -2973,7 +3063,7 @@ FTD_API ftdResult ftdParseString(ftdContext *ctx,
                                  size_t      length,
                                  const char *displayName) {
 	ftdResult empty;
-	memset(&empty, 0, sizeof(empty));
+	FTD_MEMSET(&empty, 0, sizeof(empty));
 	if (ctx == NULL || source == NULL) {
 		return empty;
 	}
@@ -2991,11 +3081,11 @@ FTD_API ftdResult ftdParseString(ftdContext *ctx,
 		ftd__finalizeResult(ctx);
 		return ctx->lastResult;
 	}
-	memcpy(copy, source, length);
+	FTD_MEMCPY(copy, source, length);
 	copy[length] = '\0';
 
 	ftd__Parser p;
-	memset(&p, 0, sizeof(p));
+	FTD_MEMSET(&p, 0, sizeof(p));
 	p.ctx = ctx;
 	ftd__lexerInit(&p.lex, ctx, copy, length);
 	ftd__parserAdvance(&p);
@@ -3030,7 +3120,7 @@ FTD_API ftdResult ftdParseString(ftdContext *ctx,
 #if !defined(FTD_NO_STDIO)
 FTD_API ftdResult ftdParseFile(ftdContext *ctx, const char *filePath) {
 	ftdResult empty;
-	memset(&empty, 0, sizeof(empty));
+	FTD_MEMSET(&empty, 0, sizeof(empty));
 	if (ctx == NULL || filePath == NULL) {
 		return empty;
 	}
