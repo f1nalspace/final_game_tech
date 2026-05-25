@@ -227,7 +227,7 @@ Slide Intro {
 Slide WhoAmI {
     name    = "Who am I"
     duration = 20.5
-    rotation = { angleDegrees = 15.0, axis = V3f(1, 1, 1) }
+    rotation = QuatFromAngleAxis(15.0, V3f(1, 1, 1))
     background = Backgrounds.FixedBackground
 
     talk = "I am Torsten Spaete"
@@ -305,7 +305,7 @@ Slide WhoAmI {
 Slide WhatIsFPL {
     name    = "What is FPL"
     duration = 33.0
-    rotation = { angleDegrees = -45.0, axis = V3f(0, 1, 1) }
+    rotation = QuatFromAngleAxis(-45.0, V3f(0, 1, 1))
     background = Backgrounds.FixedBackground
 
     talk = "Final-Platform-Layer (or short 'FPL') is a lightweight platform-abstraction library written in C99,"
@@ -364,7 +364,7 @@ Slide WhatIsFPL {
 Slide Motivation {
     name    = "Motivation"
     duration = 31.0
-    rotation = { angleDegrees = 70.0, axis = V3f(1.0, 0.1, 0.0) }
+    rotation = QuatFromAngleAxis(70.0, V3f(1.0, 0.1, 0.0))
     background = Backgrounds.FixedBackground
 
     talk = "C/C++ has very limited access to the underlying platform."
@@ -395,7 +395,7 @@ Slide Motivation {
 Slide Features {
     name    = "Features"
     duration = 0.0
-    rotation = { angleDegrees = 30.0, axis = V3f(0.0, 1.0, 0.1) }
+    rotation = QuatFromAngleAxis(30.0, V3f(0.0, 1.0, 0.1))
     background = Backgrounds.FixedBackground
 
     talk = "FPL was designed to make the creation of multimedia applications or games very easy."
@@ -449,7 +449,7 @@ Slide Features {
 Slide Platforms {
     name    = "Supported Platforms"
     duration = 0.0
-    rotation = { angleDegrees = 75.0, axis = V3f(-0.5, 0.65, 0.5) }
+    rotation = QuatFromAngleAxis(75.0, V3f(-0.5, 0.65, 0.5))
     background = Backgrounds.FixedBackground
 
     talk = "FPL supports the major operating systems, such as Windows, Linux, Raspberry Pi and Unix or BSD"
@@ -470,7 +470,7 @@ Slide Platforms {
 Slide Magic {
     name    = "How it works"
     duration = 0.0
-    rotation = { angleDegrees = -15.0, axis = V3f(0.7, 0.6, 0.3) }
+    rotation = QuatFromAngleAxis(-15.0, V3f(0.7, 0.6, 0.3))
     background = Backgrounds.FixedBackground
 
     talk = "It works with Magic!"
@@ -505,7 +505,7 @@ Slide Magic {
 Slide HowItWorks {
     name    = "How it actually works"
     duration = 0.0
-    rotation = { angleDegrees = 45.0, axis = V3f(0.5, 0.5, 0.5) }
+    rotation = QuatFromAngleAxis(45.0, V3f(0.5, 0.5, 0.5))
     background = Backgrounds.FixedBackground
 
     talk = "Of course, there is no magic involved - it uses just a few tricks."
@@ -526,7 +526,7 @@ Slide HowItWorks {
 Slide Constraints {
     name    = "Constraints"
     duration = 0.0
-    rotation = { angleDegrees = 65.0, axis = V3f(0.0, 0.5, 1.0) }
+    rotation = QuatFromAngleAxis(65.0, V3f(0.0, 0.5, 1.0))
     background = Backgrounds.FixedBackground
 
     talk = "FPL is lightweight, so the feature set is limited. As a result, you'll need to provide some functionality."
@@ -562,7 +562,7 @@ Slide Constraints {
 Slide HowToUse {
     name    = "How to use"
     duration = 0.0
-    rotation = { angleDegrees = 75.0, axis = V3f(0.0, 1.0, 0.0) }
+    rotation = QuatFromAngleAxis(75.0, V3f(0.0, 1.0, 0.0))
     background = Backgrounds.FixedBackground
 
     talk = ""
@@ -586,7 +586,7 @@ Slide HowToUse {
 Slide Demos {
     name    = "Demos!"
     duration = 0.0
-    rotation = { angleDegrees = -45.0, axis = V3f(1.0, 0.5, 0.25) }
+    rotation = QuatFromAngleAxis(-45.0, V3f(1.0, 0.5, 0.25))
     background = Backgrounds.FixedBackground
 
     talk = "FPL comes with a lot of fully working demos, so you can learn how it works."
@@ -630,7 +630,7 @@ Slide Demos {
 Slide Links {
     name    = "Links"
     duration = 0.0
-    rotation = { angleDegrees = 65.0, axis = V3f(1, 0, 0) }
+    rotation = QuatFromAngleAxis(65.0, V3f(1, 0, 0))
     background = Backgrounds.FixedBackground
 
     talk = "If you are interested about learning more about FPL, you can visit the official website: libfpl.org"
@@ -682,7 +682,7 @@ Slide Links {
 Slide Thanks {
     name    = "Thanks!"
     duration = 0.0
-    rotation = { angleDegrees = 0.0, axis = V3f(1, 1, 1) }   # 0 deg => identity quaternion
+    rotation = QuatFromAngleAxis(0.0, V3f(1, 1, 1))   # 0 deg => identity quaternion
     background = Backgrounds.FixedBackground
 
     talk = "Thank you for watching this presentation and i hope you will give FPL a try."
