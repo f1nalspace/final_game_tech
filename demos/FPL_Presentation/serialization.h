@@ -256,7 +256,6 @@ namespace SlideDefinitionStructDef {
 }
 FTD_BIND_TYPE(SlideDefinition, SlideDefinitionStructDef::Type);
 
-
 namespace PresentationDefinitionStructDef {
     static constexpr ftdField Fields[] = {
         FTD_FIELD_ARRAY_DATA(PresentationDefinition, slides, slides),

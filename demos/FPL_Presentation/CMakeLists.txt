@@ -20,7 +20,6 @@ set(MY_INCLUDE_DIRS
 set(MY_HEADER_FILES
 	"../../final_platform_layer.h"
 	"images.h"
-	"slides.h"
 	"types.h"
 	"fonts.h"
 	)
