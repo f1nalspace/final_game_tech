@@ -342,9 +342,11 @@ The rest of this header explains, in order:
 	== Scalar fields ==
 
 	The full list of scalar field kinds: ftdFieldKind_Bool / _S8 / _S16 /
-	_S32 / _S64 / _U8 / _U16 / _U32 / _U64 / _F32 / _F64 / _String. Strings
-	in C are `const char *`; the parser arena owns the bytes for the
-	lifetime of the parse (see "Lifetimes" below).
+	_S32 / _S64 / _U8 / _U16 / _U32 / _U64 / _F32 / _F64 / _String / _Size.
+	Strings in C are `const char *`; the parser arena owns the bytes for
+	the lifetime of the parse (see "Lifetimes" below). _Size stores a
+	host-native `size_t` (4 or 8 bytes); the `size` and `size_t` qualified
+	type names in declarations map to it.
 
 	    // 1. C type
 	    typedef struct V2f { float x, y; } V2f;
@@ -834,6 +836,41 @@ The rest of this header explains, in order:
 	      const SlideRef *refs = (const SlideRef *)p->slides.data;
 	      use(refs[0].slide);   // -> the Intro instance
 
+	== Memory blobs ==
+
+	Raw byte/word buffers split across three host-struct fields, mirroring
+	the array-bundle layout but with a hardcoded element type and size_t
+	siblings. Use ftdFieldKind_MemoryData8 (uint8_t *) or _MemoryData64
+	(uint64_t *) for the data pointer; ftdFieldKind_MemorySize and
+	_MemoryCapacity for the size_t siblings. Field names share a prefix
+	and end with ".data" / ".size" / ".capacity".
+
+	    // 1. C type
+	    typedef struct RomHost {
+	        uint8_t *romData;
+	        size_t   romSize;
+	        size_t   romCap;       // optional
+	    } RomHost;
+
+	    // 2. Schema
+	    static const ftdField RomHost_fields[] = {
+	      { "rom.data",     offsetof(RomHost, romData),
+	        ftdFieldKind_MemoryData8,    NULL, NULL, 0, 0 },
+	      { "rom.size",     offsetof(RomHost, romSize),
+	        ftdFieldKind_MemorySize,     NULL, NULL, 0, 0 },
+	      { "rom.capacity", offsetof(RomHost, romCap),
+	        ftdFieldKind_MemoryCapacity, NULL, NULL, 0, 0 },
+	    };
+
+	    // 3. .ftd source — two accepted forms:
+	    //     RomHost A { rom = [ 0xDE 0xAD 0xBE 0xEF ] }   // inline literal
+	    //     RomHost B { rom = A }                          // ref to A's blob
+
+	Only .data is required; .size and .capacity are independently
+	optional. Reference form requires the named instance to have the same
+	owner type as the receiving field. Unlike array bundles no sentinel
+	element is appended.
+
 	== Lifetimes ==
 
 	Everything the parser produces (strings, parsed instances, array
@@ -1180,6 +1217,27 @@ typedef enum ftdFieldKind {
 	ftdFieldKind_ArrayData,
 	ftdFieldKind_ArrayCount,
 	ftdFieldKind_ArrayCapacity,
+
+	// Standalone size_t scalar field. Stored as the host's size_t (4 or 8
+	// bytes). In .ftd it is written as a plain integer literal.
+	ftdFieldKind_Size,
+
+	// Raw memory blob decomposed into separate host-struct fields. Mirrors the
+	// ArrayData/ArrayCount/ArrayCapacity triplet, but the element type is
+	// hardcoded (uint8_t for MemoryData8, uint64_t for MemoryData64) and
+	// MemorySize/MemoryCapacity are written as size_t. Field names share a
+	// prefix and end with ".data" / ".size" / ".capacity" — for example
+	// "rom.data", "rom.size", "rom.capacity". The .ftd source uses the bare
+	// prefix and accepts either an inline numeric literal array
+	// (`rom = [ 0xDE 0xAD 0xBE 0xEF ]`) or a reference to another previously
+	// declared instance of the same owner type (`rom = OtherInstance`), in
+	// which case the data pointer, size and capacity are copied directly from
+	// that instance's matching memory bundle.
+	// .data is required; .size and .capacity are optional.
+	ftdFieldKind_MemoryData8,
+	ftdFieldKind_MemoryData64,
+	ftdFieldKind_MemorySize,
+	ftdFieldKind_MemoryCapacity,
 } ftdFieldKind;
 
 typedef enum ftdFieldFlags {
@@ -1826,8 +1884,8 @@ static const ftd__BuiltinEntry ftd__builtinTable[] = {
 	{"uint32", ftdFieldKind_U32, 4},
 	{"u64", ftdFieldKind_U64, 8},
 	{"uint64", ftdFieldKind_U64, 8},
-	{"size", ftdFieldKind_U64, 8},
-	{"size_t", ftdFieldKind_U64, 8},
+	{"size", ftdFieldKind_Size, sizeof(size_t)},
+	{"size_t", ftdFieldKind_Size, sizeof(size_t)},
 	{"f32", ftdFieldKind_F32, 4},
 	{"float", ftdFieldKind_F32, 4},
 	{"f64", ftdFieldKind_F64, 8},
@@ -2844,6 +2902,7 @@ static size_t ftd__scalarSize(ftdFieldKind k) {
 		case ftdFieldKind_F64: return 8;
 		case ftdFieldKind_String: return sizeof(const char *);
 		case ftdFieldKind_Enum: return 4;
+		case ftdFieldKind_Size: return sizeof(size_t);
 		default: return 0;
 	}
 }
@@ -2939,6 +2998,13 @@ static void ftd__writeScalar(void *out, ftdFieldKind kind, const ftdValue *v) {
 			*(int32_t *) out = x;
 		}
 		break;
+		case ftdFieldKind_Size: {
+			size_t x = (size_t) (v->kind == ftdValueKind_Float
+				                     ? (uint64_t) v->as.f
+				                     : (v->kind == ftdValueKind_Int ? (uint64_t) v->as.i : v->as.u));
+			*(size_t *) out = x;
+		}
+		break;
 		default: break;
 	}
 }
@@ -2953,6 +3019,13 @@ typedef struct ftd__ArrayBundle {
 	const ftdType *elemType;
 } ftd__ArrayBundle;
 
+typedef struct ftd__MemoryBundle {
+	const ftdField *data; // required (ftdFieldKind_MemoryData8 or _MemoryData64)
+	const ftdField *size; // optional (ftdFieldKind_MemorySize)
+	const ftdField *capacity; // optional (ftdFieldKind_MemoryCapacity)
+	size_t elemSize; // 1 for MemoryData8, 8 for MemoryData64
+} ftd__MemoryBundle;
+
 static bool ftd__parseValue(ftd__Parser *p, const ftdField *fieldHint, const ftdType *typeHint, ftdValue *out);
 
 static bool ftd__parseBlockInto(ftd__Parser *p, const ftdType *type, void *outStruct);
@@ -2962,6 +3035,11 @@ static bool ftd__parseArrayInto(ftd__Parser *p, const ftdField *arrayField, void
 static bool ftd__parseArrayBundle(ftd__Parser *p, const ftd__ArrayBundle *bundle, void *ownerStruct);
 
 static bool ftd__findArrayBundle(const ftdType *t, const char *name, ftd__ArrayBundle *out);
+
+static bool ftd__parseMemoryBundle(ftd__Parser *p, const ftd__MemoryBundle *bundle,
+                                   const ftdType *ownerType, void *ownerStruct);
+
+static bool ftd__findMemoryBundle(const ftdType *t, const char *name, ftd__MemoryBundle *out);
 
 static void ftd__skipToNewlineOrEOF(ftd__Parser *p);
 
@@ -3095,7 +3173,7 @@ static bool ftd__parsePositionalInto(ftd__Parser *p, const ftdType *type, void *
 			if (ftd__parseValue(p, f, f->subtype, &val)) {
 				// write into struct based on field kind
 				void *slot = (uint8_t *) outStruct + f->offset;
-				if (f->kind >= ftdFieldKind_Bool && f->kind <= ftdFieldKind_Enum) {
+				if ((f->kind >= ftdFieldKind_Bool && f->kind <= ftdFieldKind_Enum) || f->kind == ftdFieldKind_Size) {
 					ftd__writeScalar(slot, f->kind, &val);
 				} else if (f->kind == ftdFieldKind_Struct && val.kind == ftdValueKind_Struct && val.as.ptr != NULL) {
 					if (f->subtype != NULL && f->subtype->size > 0) {
@@ -3323,6 +3401,9 @@ static bool ftd__parseValue(ftd__Parser *p, const ftdField *fieldHint, const ftd
 						case ftdFieldKind_String: out->kind = ftdValueKind_String;
 							out->as.str = *(const char *const *) cp;
 							break;
+						case ftdFieldKind_Size: out->kind = ftdValueKind_UInt;
+							out->as.u = (uint64_t) *(const size_t *) cp;
+							break;
 						default: break;
 					}
 					return true;
@@ -3465,7 +3546,7 @@ static void ftd__writeFieldValue(ftd__Parser *p, const ftdField *field, void *fi
 	if (field->flags & ftdFieldFlag_Hidden) {
 		return;
 	}
-	if (field->kind >= ftdFieldKind_Bool && field->kind <= ftdFieldKind_Enum) {
+	if ((field->kind >= ftdFieldKind_Bool && field->kind <= ftdFieldKind_Enum) || field->kind == ftdFieldKind_Size) {
 		ftd__writeScalar(fieldSlot, field->kind, v);
 		return;
 	}
@@ -3539,6 +3620,28 @@ static bool ftd__parseBlockInto(ftd__Parser *p, const ftdType *type, void *outSt
 			ftd__parserAdvance(p);
 			ftd__skipToNewlineOrEOF(p);
 			continue;
+		}
+
+		// Detect memory-bundle reference (name where name.data is a
+		// MemoryData8/64 field). Same trigger as the array-bundle detection
+		// below.
+		{
+			const ftd__Token *pk = ftd__parserPeek(p);
+			if (pk->kind == ftd__Tok_Eq || pk->kind == ftd__Tok_LBracket) {
+				ftd__MemoryBundle mbundle;
+				if (ftd__findMemoryBundle(type, p->cur.str, &mbundle)) {
+					ftd__parserAdvance(p); // consume name
+					if (p->cur.kind == ftd__Tok_Eq) {
+						ftd__parserAdvance(p);
+					}
+					ftd__parseMemoryBundle(p, &mbundle, type, outStruct);
+					if (p->cur.kind == ftd__Tok_Comma) {
+						ftd__parserAdvance(p);
+					}
+					ftd__skipNewlines(p);
+					continue;
+				}
+			}
 		}
 
 		// Detect array-bundle reference (name where name.data exists in the
@@ -3912,6 +4015,169 @@ static bool ftd__parseArrayInto(ftd__Parser *p, const ftdField *arrayField, void
 
 	ftd__arrayWriteResult(p, arrayField, ownerStruct, data, count, capacity);
 	return true;
+}
+
+// -----------------------------------------------------------------------------
+// Memory bundle: a raw memory blob split into ".data" + ".size" + ".capacity"
+// host-struct fields. .data is uint8_t* (MemoryData8) or uint64_t* (MemoryData64);
+// .size and .capacity are size_t. Source forms:
+//   prefix = [ N1 N2 N3 ... ]   -> inline numeric literal
+//   prefix = OtherInstance      -> copy bundle slots from another instance of
+//                                  the same owner type (must own a same-named
+//                                  memory bundle).
+// .size and .capacity are optional. No sentinel element is appended.
+// -----------------------------------------------------------------------------
+static bool ftd__findMemoryBundle(const ftdType *t, const char *name, ftd__MemoryBundle *out) {
+	FTD_MEMSET(out, 0, sizeof(*out));
+	if (t == NULL || t->fields == NULL || name == NULL) {
+		return false;
+	}
+	size_t nameLen = FTD_STRLEN(name);
+	for (uint32_t i = 0; i < t->fieldCount; ++i) {
+		const ftdField *f = &t->fields[i];
+		if (f->name == NULL) {
+			continue;
+		}
+		if (FTD_STRNCMP(f->name, name, nameLen) != 0) {
+			continue;
+		}
+		if (f->name[nameLen] != '.') {
+			continue;
+		}
+		const char *sub = f->name + nameLen + 1;
+		if (f->kind == ftdFieldKind_MemoryData8 && FTD_STRCMP(sub, "data") == 0) {
+			out->data = f;
+			out->elemSize = 1;
+		} else if (f->kind == ftdFieldKind_MemoryData64 && FTD_STRCMP(sub, "data") == 0) {
+			out->data = f;
+			out->elemSize = 8;
+		} else if (f->kind == ftdFieldKind_MemorySize && FTD_STRCMP(sub, "size") == 0) {
+			out->size = f;
+		} else if (f->kind == ftdFieldKind_MemoryCapacity && FTD_STRCMP(sub, "capacity") == 0) {
+			out->capacity = f;
+		}
+	}
+	return out->data != NULL;
+}
+
+static void ftd__memoryWriteResult(const ftd__MemoryBundle *bundle, void *ownerStruct,
+                                   void *data, size_t size, size_t capacity) {
+	uint8_t *base = (uint8_t *) ownerStruct;
+	if (bundle->data != NULL) {
+		*(void **) (base + bundle->data->offset) = data;
+	}
+	if (bundle->size != NULL) {
+		*(size_t *) (base + bundle->size->offset) = size;
+	}
+	if (bundle->capacity != NULL) {
+		*(size_t *) (base + bundle->capacity->offset) = capacity;
+	}
+}
+
+static bool ftd__parseMemoryBundle(ftd__Parser *p, const ftd__MemoryBundle *bundle,
+                                   const ftdType *ownerType, void *ownerStruct) {
+	if (p->cur.kind == ftd__Tok_LBracket) {
+		ftd__parserAdvance(p); // consume '['
+		uint8_t *data = NULL;
+		size_t size = 0;
+		size_t capacity = 0;
+		size_t elemSize = bundle->elemSize;
+
+		for (;;) {
+			ftd__skipNewlines(p);
+			if (p->cur.kind == ftd__Tok_RBracket) {
+				ftd__parserAdvance(p);
+				break;
+			}
+			if (p->cur.kind == ftd__Tok_EOF) {
+				break;
+			}
+
+			if (size >= capacity) {
+				size_t newCap = capacity == 0 ? 16 : capacity * 2;
+				uint8_t *newData = (uint8_t *) ftd__arenaAlloc(&p->ctx->parseArena, newCap * elemSize, elemSize);
+				if (newData == NULL) {
+					break;
+				}
+				if (data != NULL && size > 0) {
+					FTD_MEMCPY(newData, data, size * elemSize);
+				}
+				data = newData;
+				capacity = newCap;
+			}
+
+			ftdValue val;
+			ftd__parseValue(p, NULL, NULL, &val);
+			uint64_t u;
+			if (val.kind == ftdValueKind_Int) {
+				u = (uint64_t) val.as.i;
+			} else if (val.kind == ftdValueKind_UInt) {
+				u = val.as.u;
+			} else if (val.kind == ftdValueKind_Float) {
+				u = (uint64_t) val.as.f;
+			} else if (val.kind == ftdValueKind_Bool) {
+				u = val.as.b ? 1u : 0u;
+			} else {
+				u = 0;
+				ftd__emit(p->ctx, ftdSeverity_Warning, val.span,
+				          "expected numeric literal in memory blob");
+			}
+			if (elemSize == 1) {
+				data[size] = (uint8_t) u;
+			} else {
+				((uint64_t *) data)[size] = u;
+			}
+			size++;
+
+			ftd__skipNewlines(p);
+			if (ftd__match(p, ftd__Tok_Comma)) {
+				continue;
+			}
+			if (p->cur.kind == ftd__Tok_RBracket) {
+				ftd__parserAdvance(p);
+				break;
+			}
+			if (p->cur.kind == ftd__Tok_Newline) {
+				continue;
+			}
+		}
+
+		ftd__memoryWriteResult(bundle, ownerStruct, data, size, capacity);
+		return true;
+	}
+
+	if (p->cur.kind == ftd__Tok_Ident) {
+		ftdSourceSpan span = p->cur.span;
+		const char *name = ftd__parseQName(p);
+		if (name == NULL) {
+			return false;
+		}
+		const ftd__Symbol *sym = ftd__resolveAlias(p->ctx, name, 0);
+		if (sym == NULL || (sym->kind != ftd__Sym_Instance && sym->kind != ftd__Sym_Global)) {
+			ftd__emit(p->ctx, ftdSeverity_Error, span,
+			          "memory reference '%s' must name an instance or global", name);
+			ftd__memoryWriteResult(bundle, ownerStruct, NULL, 0, 0);
+			return true;
+		}
+		if (sym->type != ownerType) {
+			ftd__emit(p->ctx, ftdSeverity_Error, span,
+			          "memory reference '%s' has type '%s', expected '%s'",
+			          name, sym->type ? sym->type->name : "?", ownerType ? ownerType->name : "?");
+			ftd__memoryWriteResult(bundle, ownerStruct, NULL, 0, 0);
+			return true;
+		}
+		const uint8_t *srcBase = (const uint8_t *) sym->as.constPtr;
+		void *srcData = *(void *const *) (srcBase + bundle->data->offset);
+		size_t srcSize = bundle->size != NULL ? *(const size_t *) (srcBase + bundle->size->offset) : 0;
+		size_t srcCap = bundle->capacity != NULL ? *(const size_t *) (srcBase + bundle->capacity->offset) : srcSize;
+		ftd__memoryWriteResult(bundle, ownerStruct, srcData, srcSize, srcCap);
+		return true;
+	}
+
+	ftd__emit(p->ctx, ftdSeverity_Error, p->cur.span,
+	          "expected '[' literal or instance name for memory blob");
+	ftd__skipToNewlineOrEOF(p);
+	return false;
 }
 
 // -----------------------------------------------------------------------------
