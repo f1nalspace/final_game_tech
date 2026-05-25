@@ -7,7 +7,13 @@
 #   FontResources.<Name>     -> const FontResource *
 #   SoundResources.<Name>    -> const SoundResource *
 #   ImageResources.<Name>    -> const ImageResource *
-# Reference them anywhere by their dotted path (or by a local `alias`).
+#
+# This file gathers those host-registered names into FTD namespaces (the
+# untyped `Name { ... }` blocks below) so the slides can refer to short,
+# grouped paths like `Cards.CPU` or `MyResources.sounds.Intro1` instead of
+# the long original `ImageResources.Card_CPU` / `SoundResources.Intro1`.
+# Namespaces are not parsed into any C struct - they live only in the
+# parser's symbol table and exist purely to organize references.
 # =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -28,69 +34,94 @@ alias Middle = VerticalAlignment.Middle
 alias Bottom = VerticalAlignment.Bottom
 
 # -----------------------------------------------------------------------------
-# Short aliases for host-registered resources used a lot below
+# Resource namespaces - group the host-registered globals so they are reachable
+# through short dotted paths.
 # -----------------------------------------------------------------------------
-alias FontResource Arimo             = FontResources.Arimo
-alias FontResource BitStreamVerySans = FontResources.BitStreamVerySans
+Fonts {
+    Arimo             = FontResources.Arimo
+    BitStreamVerySans = FontResources.BitStreamVerySans
+}
 
-# Feature cards
-alias ImageResource Card_CPU              = ImageResources.Card_CPU
-alias ImageResource Card_Memory           = ImageResources.Card_Memory
-alias ImageResource Card_C_Language       = ImageResources.Card_C_Language
-alias ImageResource Card_Audio            = ImageResources.Card_Audio
-alias ImageResource Card_Video            = ImageResources.Card_Video
-alias ImageResource Card_WindowManagement = ImageResources.Card_WindowManagement
-alias ImageResource Card_Performance      = ImageResources.Card_Performance
-alias ImageResource Card_NoDependencies   = ImageResources.Card_NoDependencies
-alias ImageResource Card_KeyboardMouse    = ImageResources.Card_KeyboardMouse
-alias ImageResource Card_Gamepad          = ImageResources.Card_Gamepad
+Cards {
+    CPU              = ImageResources.Card_CPU
+    Memory           = ImageResources.Card_Memory
+    C_Language       = ImageResources.Card_C_Language
+    Audio            = ImageResources.Card_Audio
+    Video            = ImageResources.Card_Video
+    WindowManagement = ImageResources.Card_WindowManagement
+    Performance      = ImageResources.Card_Performance
+    NoDependencies   = ImageResources.Card_NoDependencies
+    KeyboardMouse    = ImageResources.Card_KeyboardMouse
+    Gamepad          = ImageResources.Card_Gamepad
+}
 
-# Misc art
-alias ImageResource MagicHat      = ImageResources.MagicHat
-alias ImageResource Arigatou      = ImageResources.Arigatou
-alias ImageResource MinimumSource = ImageResources.MinimumSource
+Misc {
+    MagicHat      = ImageResources.MagicHat
+    Arigatou      = ImageResources.Arigatou
+    MinimumSource = ImageResources.MinimumSource
+}
 
-# Topic art
-alias ImageResource DataVisualization = ImageResources.DataVisualization
-alias ImageResource GameDev           = ImageResources.GameDev
-alias ImageResource MultimediaDev     = ImageResources.MultimediaDev
-alias ImageResource SimulationDev     = ImageResources.SimulationDev
-alias ImageResource Code              = ImageResources.Code
+Topics {
+    DataVisualization = ImageResources.DataVisualization
+    GameDev           = ImageResources.GameDev
+    MultimediaDev     = ImageResources.MultimediaDev
+    SimulationDev     = ImageResources.SimulationDev
+    Code              = ImageResources.Code
+}
 
-# Vendor logos
-alias ImageResource Vendor_FreeBSD    = ImageResources.Vendor_FreeBSD
-alias ImageResource Vendor_Linux      = ImageResources.Vendor_Linux
-alias ImageResource Vendor_Windows    = ImageResources.Vendor_Windows
-alias ImageResource Vendor_Raspberry  = ImageResources.Vendor_Raspberry
-alias ImageResource Vendor_OpenGL     = ImageResources.Vendor_OpenGL
-alias ImageResource Vendor_Vulkan     = ImageResources.Vendor_Vulkan
-alias ImageResource Vendor_DirectX    = ImageResources.Vendor_DirectX
-alias ImageResource Vendor_Alsa       = ImageResources.Vendor_Alsa
-alias ImageResource Vendor_XLib       = ImageResources.Vendor_XLib
+Vendors {
+    FreeBSD   = ImageResources.Vendor_FreeBSD
+    Linux     = ImageResources.Vendor_Linux
+    Windows   = ImageResources.Vendor_Windows
+    Raspberry = ImageResources.Vendor_Raspberry
+    OpenGL    = ImageResources.Vendor_OpenGL
+    Vulkan    = ImageResources.Vendor_Vulkan
+    DirectX   = ImageResources.Vendor_DirectX
+    Alsa      = ImageResources.Vendor_Alsa
+    XLib      = ImageResources.Vendor_XLib
+}
 
-# Demo screenshots
-alias ImageResource Demo_ImGUI           = ImageResources.Demo_ImGUI
-alias ImageResource Demo_FFMPEG          = ImageResources.Demo_FFMPEG
-alias ImageResource Demo_NBodySimulation = ImageResources.Demo_NBodySimulation
-alias ImageResource Demo_Audio           = ImageResources.Demo_Audio
-alias ImageResource Demo_Input           = ImageResources.Demo_Input
-alias ImageResource Demo_Crackout        = ImageResources.Demo_Crackout
-alias ImageResource Demo_OpenGL          = ImageResources.Demo_OpenGL
-alias ImageResource Demo_Raytracer       = ImageResources.Demo_Raytracer
+Demos {
+    ImGUI           = ImageResources.Demo_ImGUI
+    FFMPEG          = ImageResources.Demo_FFMPEG
+    NBodySimulation = ImageResources.Demo_NBodySimulation
+    Audio           = ImageResources.Demo_Audio
+    Input           = ImageResources.Demo_Input
+    Crackout        = ImageResources.Demo_Crackout
+    OpenGL          = ImageResources.Demo_OpenGL
+    Raytracer       = ImageResources.Demo_Raytracer
+}
 
-# How-it-works icons
-alias ImageResource Feature_SingleHeaderFile  = ImageResources.Feature_SingleHeaderFile
-alias ImageResource Feature_RuntimeLinking    = ImageResources.Feature_RuntimeLinking
-alias ImageResource Feature_PreProcessor      = ImageResources.Feature_PreProcessor
-alias ImageResource Feature_NoCodeDuplication = ImageResources.Feature_NoCodeDuplication
+HowItWorksIcons {
+    SingleHeaderFile  = ImageResources.Feature_SingleHeaderFile
+    RuntimeLinking    = ImageResources.Feature_RuntimeLinking
+    PreProcessor      = ImageResources.Feature_PreProcessor
+    NoCodeDuplication = ImageResources.Feature_NoCodeDuplication
+}
 
-# Sounds
-alias SoundResource Intro1     = SoundResources.Intro1
-alias SoundResource Intro2     = SoundResources.Intro2
-alias SoundResource WhoAmi1    = SoundResources.WhoAmi1
-alias SoundResource What1      = SoundResources.What1
-alias SoundResource What2      = SoundResources.What2
-alias SoundResource Motivation = SoundResources.Motivation
+Sounds {
+    Intro1     = SoundResources.Intro1
+    Intro2     = SoundResources.Intro2
+    WhoAmi1    = SoundResources.WhoAmi1
+    What1      = SoundResources.What1
+    What2      = SoundResources.What2
+    Motivation = SoundResources.Motivation
+}
+
+# A top-level umbrella that bundles the per-category namespaces, reached via
+# nested dotted paths like `MyResources.sounds.Intro1`. The members are
+# themselves namespace references — accessing a deeper member transparently
+# folds through this layer.
+MyResources {
+    fonts   = Fonts
+    cards   = Cards
+    misc    = Misc
+    topics  = Topics
+    vendors = Vendors
+    demos   = Demos
+    icons   = HowItWorksIcons
+    sounds  = Sounds
+}
 
 # -----------------------------------------------------------------------------
 # File-local constants
@@ -192,8 +223,8 @@ Slide Intro {
     ]
 
     sounds = [
-        { name = Intro1, startTime = 1.0  }
-        { name = Intro2, startTime = 10.0 }
+        { name = MyResources.sounds.Intro1, startTime = 1.0  }
+        { name = MyResources.sounds.Intro2, startTime = 10.0 }
     ]
 }
 
@@ -214,7 +245,7 @@ Slide WhoAmI {
             size = V2f(0.45, 0.45)
             contentAlignment = { h = Left, v = Top }
             image {
-                imageResource = DataVisualization
+                imageResource = Topics.DataVisualization
                 size       = V2f(1.0, 1.0)
                 keepAspect = true
                 tintColor  = WhiteHalf
@@ -226,7 +257,7 @@ Slide WhoAmI {
             size = V2f(0.45, 0.45)
             contentAlignment = { h = Right, v = Top }
             image {
-                imageResource = MultimediaDev
+                imageResource = Topics.MultimediaDev
                 size       = V2f(1.0, 1.0)
                 keepAspect = true
                 tintColor  = WhiteHalf
@@ -238,7 +269,7 @@ Slide WhoAmI {
             size = V2f(0.45, 0.45)
             contentAlignment = { h = Left, v = Bottom }
             image {
-                imageResource = SimulationDev
+                imageResource = Topics.SimulationDev
                 size       = V2f(1.0, 1.0)
                 keepAspect = true
                 tintColor  = WhiteHalf
@@ -250,7 +281,7 @@ Slide WhoAmI {
             size = V2f(0.45, 0.45)
             contentAlignment = { h = Right, v = Bottom }
             image {
-                imageResource = GameDev
+                imageResource = Topics.GameDev
                 size       = V2f(1.0, 1.0)
                 keepAspect = true
                 tintColor  = WhiteHalf
@@ -271,7 +302,7 @@ Slide WhoAmI {
     ]
 
     sounds = [
-        { name = WhoAmi1, startTime = 2.0 }
+        { name = MyResources.sounds.WhoAmi1, startTime = 2.0 }
     ]
 }
 
@@ -305,7 +336,7 @@ Slide WhatIsFPL {
             size = V2f(1.0, 1.0)
             contentAlignment = { h = Center, v = Middle }
             image {
-                imageResource = Code
+                imageResource = Topics.Code
                 size       = V2f(1.0, 1.2)
                 keepAspect = false
                 tintColor  = WhiteGhost
@@ -329,8 +360,8 @@ Slide WhatIsFPL {
     ]
 
     sounds = [
-        { name = What1, startTime = 1.0  }
-        { name = What2, startTime = 17.0 }
+        { name = MyResources.sounds.What1, startTime = 1.0  }
+        { name = MyResources.sounds.What2, startTime = 17.0 }
     ]
 }
 
@@ -361,7 +392,7 @@ Slide Motivation {
     ]
 
     sounds = [
-        { name = Motivation, startTime = 2.0 }
+        { name = MyResources.sounds.Motivation, startTime = 2.0 }
     ]
 }
 
@@ -390,11 +421,11 @@ Slide Features {
 
     blocks = [
         # Row 1 - cards
-        { type = Image  pos = V2f(0.0, 0.1)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Top }  image { imageResource = Card_WindowManagement  size = V2f(1, 1)  keepAspect = true  tintColor = White } }
-        { type = Image  pos = V2f(0.2, 0.1)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Top }  image { imageResource = Card_KeyboardMouse     size = V2f(1, 1)  keepAspect = true  tintColor = White } }
-        { type = Image  pos = V2f(0.4, 0.1)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Top }  image { imageResource = Card_Gamepad           size = V2f(1, 1)  keepAspect = true  tintColor = White } }
-        { type = Image  pos = V2f(0.6, 0.1)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Top }  image { imageResource = Card_Video             size = V2f(1, 1)  keepAspect = true  tintColor = White } }
-        { type = Image  pos = V2f(0.8, 0.1)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Top }  image { imageResource = Card_Audio             size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.0, 0.1)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Top }  image { imageResource = Cards.WindowManagement  size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.2, 0.1)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Top }  image { imageResource = Cards.KeyboardMouse     size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.4, 0.1)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Top }  image { imageResource = Cards.Gamepad           size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.6, 0.1)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Top }  image { imageResource = Cards.Video             size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.8, 0.1)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Top }  image { imageResource = Cards.Audio             size = V2f(1, 1)  keepAspect = true  tintColor = White } }
 
         # Row 1 - labels
         { type = Text  pos = V2f(0.0, 0.3)  size = V2f(0.2, 0.1)  contentAlignment = { h = Center, v = Top }  text { text = "Window Management"    textAlign = Left  fontSize = 20.0 } }
@@ -404,11 +435,11 @@ Slide Features {
         { type = Text  pos = V2f(0.8, 0.3)  size = V2f(0.2, 0.1)  contentAlignment = { h = Center, v = Top }  text { text = "Audio Playback"       textAlign = Left  fontSize = 20.0 } }
 
         # Row 2 - cards
-        { type = Image  pos = V2f(0.0, 0.55)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Top }  image { imageResource = Card_C_Language      size = V2f(1, 1)  keepAspect = true  tintColor = White } }
-        { type = Image  pos = V2f(0.2, 0.55)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Top }  image { imageResource = Card_Performance     size = V2f(1, 1)  keepAspect = true  tintColor = White } }
-        { type = Image  pos = V2f(0.4, 0.55)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Top }  image { imageResource = Card_NoDependencies  size = V2f(1, 1)  keepAspect = true  tintColor = White } }
-        { type = Image  pos = V2f(0.6, 0.55)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Top }  image { imageResource = Card_Memory          size = V2f(1, 1)  keepAspect = true  tintColor = White } }
-        { type = Image  pos = V2f(0.8, 0.55)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Top }  image { imageResource = Card_CPU             size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.0, 0.55)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Top }  image { imageResource = Cards.C_Language      size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.2, 0.55)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Top }  image { imageResource = Cards.Performance     size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.4, 0.55)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Top }  image { imageResource = Cards.NoDependencies  size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.6, 0.55)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Top }  image { imageResource = Cards.Memory          size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.8, 0.55)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Top }  image { imageResource = Cards.CPU             size = V2f(1, 1)  keepAspect = true  tintColor = White } }
 
         # Row 2 - labels
         { type = Text  pos = V2f(0.0, 0.75)  size = V2f(0.2, 0.1)  contentAlignment = { h = Center, v = Top }  text { text = "Written in C99"         textAlign = Left  fontSize = 20.0 } }
@@ -428,15 +459,15 @@ Slide Platforms {
     talk = "FPL supports the major operating systems, such as Windows, Linux, Raspberry Pi and Unix or BSD"
 
     blocks = [
-        { type = Image  pos = V2f(0.0, 0.2)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Bottom }  image { imageResource = Vendor_Windows    size = V2f(1, 1)  keepAspect = true  tintColor = White } }
-        { type = Image  pos = V2f(0.1, 0.2)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Bottom }  image { imageResource = Vendor_Linux      size = V2f(1, 1)  keepAspect = true  tintColor = White } }
-        { type = Image  pos = V2f(0.2, 0.2)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Bottom }  image { imageResource = Vendor_Raspberry  size = V2f(1, 1)  keepAspect = true  tintColor = White } }
-        { type = Image  pos = V2f(0.3, 0.2)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Bottom }  image { imageResource = Vendor_FreeBSD    size = V2f(1, 1)  keepAspect = true  tintColor = White } }
-        { type = Image  pos = V2f(0.4, 0.6)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Bottom }  image { imageResource = Vendor_OpenGL     size = V2f(1, 1)  keepAspect = true  tintColor = White } }
-        { type = Image  pos = V2f(0.5, 0.6)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Bottom }  image { imageResource = Vendor_Vulkan     size = V2f(1, 1)  keepAspect = true  tintColor = White } }
-        { type = Image  pos = V2f(0.6, 0.6)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Bottom }  image { imageResource = Vendor_DirectX    size = V2f(1, 1)  keepAspect = true  tintColor = White } }
-        { type = Image  pos = V2f(0.7, 0.6)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Bottom }  image { imageResource = Vendor_Alsa       size = V2f(1, 1)  keepAspect = true  tintColor = White } }
-        { type = Image  pos = V2f(0.8, 0.6)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Bottom }  image { imageResource = Vendor_XLib       size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.0, 0.2)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Bottom }  image { imageResource = Vendors.Windows    size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.1, 0.2)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Bottom }  image { imageResource = Vendors.Linux      size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.2, 0.2)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Bottom }  image { imageResource = Vendors.Raspberry  size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.3, 0.2)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Bottom }  image { imageResource = Vendors.FreeBSD    size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.4, 0.6)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Bottom }  image { imageResource = Vendors.OpenGL     size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.5, 0.6)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Bottom }  image { imageResource = Vendors.Vulkan     size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.6, 0.6)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Bottom }  image { imageResource = Vendors.DirectX    size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.7, 0.6)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Bottom }  image { imageResource = Vendors.Alsa       size = V2f(1, 1)  keepAspect = true  tintColor = White } }
+        { type = Image  pos = V2f(0.8, 0.6)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Bottom }  image { imageResource = Vendors.XLib       size = V2f(1, 1)  keepAspect = true  tintColor = White } }
     ]
 }
 
@@ -455,7 +486,7 @@ Slide Magic {
             size = V2f(1.0, 1.0)
             contentAlignment = { h = Center, v = Middle }
             image {
-                imageResource = MagicHat
+                imageResource = Misc.MagicHat
                 size       = V2f(0.75, 0.75)
                 keepAspect = true
                 tintColor  = White
@@ -489,10 +520,10 @@ Slide HowItWorks {
            "It uses runtime linking by default, so everything is automatically loaded on demand"
 
     blocks = [
-        { type = Image  pos = V2f(0.05, 0.125)  size = V2f(0.15, 0.65)  contentAlignment = { h = Left, v = Middle }  image { imageResource = Feature_SingleHeaderFile   size = V2f(1, 1)  keepAspect = false  tintColor = White } }
-        { type = Image  pos = V2f(0.30, 0.125)  size = V2f(0.15, 0.65)  contentAlignment = { h = Left, v = Middle }  image { imageResource = Feature_PreProcessor       size = V2f(1, 1)  keepAspect = false  tintColor = White } }
-        { type = Image  pos = V2f(0.55, 0.125)  size = V2f(0.15, 0.65)  contentAlignment = { h = Left, v = Middle }  image { imageResource = Feature_NoCodeDuplication  size = V2f(1, 1)  keepAspect = false  tintColor = White } }
-        { type = Image  pos = V2f(0.80, 0.125)  size = V2f(0.15, 0.65)  contentAlignment = { h = Left, v = Middle }  image { imageResource = Feature_RuntimeLinking     size = V2f(1, 1)  keepAspect = false  tintColor = White } }
+        { type = Image  pos = V2f(0.05, 0.125)  size = V2f(0.15, 0.65)  contentAlignment = { h = Left, v = Middle }  image { imageResource = HowItWorksIcons.SingleHeaderFile   size = V2f(1, 1)  keepAspect = false  tintColor = White } }
+        { type = Image  pos = V2f(0.30, 0.125)  size = V2f(0.15, 0.65)  contentAlignment = { h = Left, v = Middle }  image { imageResource = HowItWorksIcons.PreProcessor       size = V2f(1, 1)  keepAspect = false  tintColor = White } }
+        { type = Image  pos = V2f(0.55, 0.125)  size = V2f(0.15, 0.65)  contentAlignment = { h = Left, v = Middle }  image { imageResource = HowItWorksIcons.NoCodeDuplication  size = V2f(1, 1)  keepAspect = false  tintColor = White } }
+        { type = Image  pos = V2f(0.80, 0.125)  size = V2f(0.15, 0.65)  contentAlignment = { h = Left, v = Middle }  image { imageResource = HowItWorksIcons.RuntimeLinking     size = V2f(1, 1)  keepAspect = false  tintColor = White } }
     ]
 }
 
@@ -547,7 +578,7 @@ Slide HowToUse {
             size = V2f(0.85, 1.0)
             contentAlignment = { h = Center, v = Middle }
             image {
-                imageResource = MinimumSource
+                imageResource = Misc.MinimumSource
                 size       = V2f(1.0, 1.0)
                 keepAspect = false
                 tintColor  = WhiteSoft
@@ -565,14 +596,14 @@ Slide Demos {
     talk = "FPL comes with a lot of fully working demos, so you can learn how it works."
 
     blocks = [
-        { type = Image  pos = V2f(0.00, 0.0)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Demo_ImGUI            size = V2f(1, 1)  keepAspect = true  tintColor = WhiteFaint } }
-        { type = Image  pos = V2f(0.25, 0.0)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Demo_FFMPEG           size = V2f(1, 1)  keepAspect = true  tintColor = WhiteFaint } }
-        { type = Image  pos = V2f(0.50, 0.0)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Demo_Audio            size = V2f(1, 1)  keepAspect = true  tintColor = WhiteFaint } }
-        { type = Image  pos = V2f(0.75, 0.0)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Demo_Input            size = V2f(1, 1)  keepAspect = true  tintColor = WhiteFaint } }
-        { type = Image  pos = V2f(0.00, 0.6)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Demo_OpenGL           size = V2f(1, 1)  keepAspect = true  tintColor = WhiteFaint } }
-        { type = Image  pos = V2f(0.25, 0.6)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Demo_Crackout         size = V2f(1, 1)  keepAspect = true  tintColor = WhiteFaint } }
-        { type = Image  pos = V2f(0.50, 0.6)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Demo_Raytracer        size = V2f(1, 1)  keepAspect = true  tintColor = WhiteFaint } }
-        { type = Image  pos = V2f(0.75, 0.6)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Demo_NBodySimulation  size = V2f(1, 1)  keepAspect = true  tintColor = WhiteFaint } }
+        { type = Image  pos = V2f(0.00, 0.0)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Demos.ImGUI            size = V2f(1, 1)  keepAspect = true  tintColor = WhiteFaint } }
+        { type = Image  pos = V2f(0.25, 0.0)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Demos.FFMPEG           size = V2f(1, 1)  keepAspect = true  tintColor = WhiteFaint } }
+        { type = Image  pos = V2f(0.50, 0.0)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Demos.Audio            size = V2f(1, 1)  keepAspect = true  tintColor = WhiteFaint } }
+        { type = Image  pos = V2f(0.75, 0.0)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Demos.Input            size = V2f(1, 1)  keepAspect = true  tintColor = WhiteFaint } }
+        { type = Image  pos = V2f(0.00, 0.6)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Demos.OpenGL           size = V2f(1, 1)  keepAspect = true  tintColor = WhiteFaint } }
+        { type = Image  pos = V2f(0.25, 0.6)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Demos.Crackout         size = V2f(1, 1)  keepAspect = true  tintColor = WhiteFaint } }
+        { type = Image  pos = V2f(0.50, 0.6)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Demos.Raytracer        size = V2f(1, 1)  keepAspect = true  tintColor = WhiteFaint } }
+        { type = Image  pos = V2f(0.75, 0.6)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Demos.NBodySimulation  size = V2f(1, 1)  keepAspect = true  tintColor = WhiteFaint } }
 
         {
             type = Text
@@ -670,7 +701,7 @@ Slide Thanks {
             pos  = V2f(0.4, 0.4)  size = V2f(0.6, 0.6)
             contentAlignment = { h = Right, v = Bottom }
             image {
-                imageResource = Arigatou
+                imageResource = Misc.Arigatou
                 size       = V2f(1.0, 1.0)
                 keepAspect = true
                 tintColor  = WhiteFaint
@@ -693,7 +724,7 @@ Slide Thanks {
 # -----------------------------------------------------------------------------
 HeaderDefinition Header {
     font {
-        name      = Arimo              # host-registered FontResource (via alias)
+        name      = Fonts.Arimo           # via Fonts namespace
         size      = HeaderFontSize
         lineScale = DefaultLineScale
         style     = HeaderStyle
@@ -707,7 +738,7 @@ HeaderDefinition Header {
 
 FooterDefinition Footer {
     font {
-        name      = Arimo
+        name      = Fonts.Arimo
         size      = HeaderFontSize
         lineScale = DefaultLineScale
         style     = HeaderStyle
@@ -745,7 +776,7 @@ Presentation FPLPresentation {
     header = Header
     footer = Footer
 
-    titleFont   { name = Arimo              size = TitleFontSize    lineScale = DefaultLineScale  style = BasicStyle }
-    normalFont  { name = Arimo              size = NormalFontSize   lineScale = DefaultLineScale  style = BasicStyle }
-    consoleFont { name = BitStreamVerySans  size = ConsoleFontSize  lineScale = DefaultLineScale  style = BasicStyle }
+    titleFont   { name = MyResources.fonts.Arimo              size = TitleFontSize    lineScale = DefaultLineScale  style = BasicStyle }
+    normalFont  { name = MyResources.fonts.Arimo              size = NormalFontSize   lineScale = DefaultLineScale  style = BasicStyle }
+    consoleFont { name = MyResources.fonts.BitStreamVerySans  size = ConsoleFontSize  lineScale = DefaultLineScale  style = BasicStyle }
 }

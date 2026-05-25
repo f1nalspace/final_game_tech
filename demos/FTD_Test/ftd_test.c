@@ -694,6 +694,199 @@ static void TestGlobalRegistration(void) {
 	ftdDestroy(ctx);
 }
 
+// -----------------------------------------------------------------------------
+// Namespaces: the untyped `Name { ... }` block. Members are not parsed into a
+// C struct - they live only in the parser's symbol table and are reached via
+// dotted paths. A member RHS that is a bare qname becomes an alias; anything
+// else (literal, constructor, ref) becomes a parse-time const.
+// -----------------------------------------------------------------------------
+
+// Scalar / struct / typed-ref members. Verifies that:
+//   * a float member parsed as a scalar is fetchable through ftdLookup;
+//   * a struct member produced by a constructor (V4f(...)) survives lookup
+//     and can be assigned to a struct-typed field elsewhere;
+//   * a Ref member that points at a host-registered Global is honored when
+//     the field that consumes it is a Ref of the matching type.
+static Resource s_nsGlobalRes = { "nsGlobalRes", 7777 };
+
+static void TestNamespaceBasicMembers(void) {
+	ftdContext *ctx = MakeCommonContext();
+	ftdRegisterGlobal(ctx, "BuiltinRes.Mine", &Resource_type, &s_nsGlobalRes);
+
+	const char *src =
+		"MyDefaults {\n"
+		"    headerSize = 24.0\n"
+		"    accentColor = V4f(0.1, 0.2, 0.3, 1.0)\n"
+		"    mainResource = BuiltinRes.Mine\n"
+		"}\n"
+		"AllScalars S { f32 = MyDefaults.headerSize }\n"
+		"Linker      L { primary = MyDefaults.mainResource }\n";
+
+	ftdResult r = ParseLiteral(ctx, src);
+	ftdAlwaysAssert(r.ok);
+	ftdAlwaysAssert(r.errorCount == 0);
+
+	// Direct dotted lookup of the scalar member.
+	const double *headerSize = (const double *)ftdLookup(ctx, "MyDefaults.headerSize", NULL);
+	ftdAlwaysAssert(headerSize != NULL);
+	ftdAlwaysAssert(ftdAlmostEqual(*headerSize, 24.0));
+
+	// Direct dotted lookup of the struct-valued member.
+	const ftdType *colorType = NULL;
+	const V4f *accent = (const V4f *)ftdLookup(ctx, "MyDefaults.accentColor", &colorType);
+	ftdAlwaysAssert(accent != NULL);
+	ftdAlwaysAssert(colorType == &V4f_type);
+	ftdAlwaysAssert(ftdAlmostEqual(accent->a, 1.0));
+
+	// Direct dotted lookup of the global-ref member should fold through the
+	// alias and yield the original Global pointer.
+	const Resource *res = (const Resource *)ftdLookup(ctx, "MyDefaults.mainResource", NULL);
+	ftdAlwaysAssert(res == &s_nsGlobalRes);
+
+	// Scalar member feeding a struct field at parse time.
+	const AllScalars *s = (const AllScalars *)ftdLookup(ctx, "S", NULL);
+	ftdAlwaysAssert(s != NULL);
+	ftdAlwaysAssert(ftdAlmostEqual(s->f32, 24.0));
+
+	// Ref-of-Resource field receiving a namespace member.
+	const Linker *l = (const Linker *)ftdLookup(ctx, "L", NULL);
+	ftdAlwaysAssert(l != NULL);
+	ftdAlwaysAssert(l->primary == &s_nsGlobalRes);
+
+	ftdDestroy(ctx);
+}
+
+// Partial nesting: a member RHS that is itself a namespace name becomes an
+// alias to that namespace. Dotted access then transparently folds through
+// the layer, so `Outer.sub.member` resolves to `Inner.member`.
+static Resource s_nsNestedA = { "nestedA", 1 };
+static Resource s_nsNestedB = { "nestedB", 2 };
+
+static void TestNamespaceNested(void) {
+	ftdContext *ctx = MakeCommonContext();
+	ftdRegisterGlobal(ctx, "Hosted.A", &Resource_type, &s_nsNestedA);
+	ftdRegisterGlobal(ctx, "Hosted.B", &Resource_type, &s_nsNestedB);
+
+	const char *src =
+		"Inner {\n"
+		"    a = Hosted.A\n"
+		"    b = Hosted.B\n"
+		"}\n"
+		"Outer {\n"
+		"    sub = Inner\n"
+		"    direct = Hosted.A\n"
+		"}\n"
+		"Linker L1 { primary = Outer.sub.a   secondary = Outer.sub.b }\n"
+		"Linker L2 { primary = Outer.direct }\n";
+
+	ftdResult r = ParseLiteral(ctx, src);
+	ftdAlwaysAssert(r.ok);
+	ftdAlwaysAssert(r.errorCount == 0);
+
+	// Nested dotted path folds Outer.sub -> Inner, then resolves .a / .b.
+	const Linker *l1 = (const Linker *)ftdLookup(ctx, "L1", NULL);
+	ftdAlwaysAssert(l1 != NULL);
+	ftdAlwaysAssert(l1->primary   == &s_nsNestedA);
+	ftdAlwaysAssert(l1->secondary == &s_nsNestedB);
+
+	// Direct (non-nested) member alongside the nesting still works.
+	const Linker *l2 = (const Linker *)ftdLookup(ctx, "L2", NULL);
+	ftdAlwaysAssert(l2 != NULL);
+	ftdAlwaysAssert(l2->primary == &s_nsNestedA);
+
+	// And the full nested dotted path is reachable from ftdLookup itself.
+	const Resource *deep = (const Resource *)ftdLookup(ctx, "Outer.sub.a", NULL);
+	ftdAlwaysAssert(deep == &s_nsNestedA);
+
+	ftdDestroy(ctx);
+}
+
+// Namespaces share names with file-local constants and named instances, all
+// living in the parse-arena symbol table. ftdResetParse must drop them
+// alongside everything else.
+static void TestNamespaceClearedOnReset(void) {
+	ftdContext *ctx = MakeCommonContext();
+	ftdRegisterGlobal(ctx, "Builtin.X", &Resource_type, &s_nsGlobalRes);
+
+	const char *src =
+		"Cache { x = Builtin.X }\n"
+		"Linker L { primary = Cache.x }\n";
+	ftdResult r1 = ParseLiteral(ctx, src);
+	ftdAlwaysAssert(r1.ok);
+	ftdAlwaysAssert(ftdLookup(ctx, "Cache.x", NULL) == &s_nsGlobalRes);
+
+	// A fresh parse with no namespace should not see the previous one.
+	const char *src2 = "Linker L { primary = Cache.x }\n";
+	ftdResult r2 = ParseLiteral(ctx, src2);
+	ftdAlwaysAssert(r2.ok); // unresolved fixup -> warning, not error
+	ftdAlwaysAssert(r2.warningCount >= 1);
+	const Linker *l = (const Linker *)ftdLookup(ctx, "L", NULL);
+	ftdAlwaysAssert(l != NULL);
+	ftdAlwaysAssert(l->primary == NULL);
+
+	ftdDestroy(ctx);
+}
+
+// Namespaces are NOT parsed into a C struct: there is no host type for them
+// and asking ftdLookup for the namespace name itself must return NULL (it
+// is not a value). Members fetched via the dotted path are still resolvable.
+static void TestNamespaceIsNotAValue(void) {
+	ftdContext *ctx = MakeCommonContext();
+	const char *src =
+		"Pal {\n"
+		"    red = V4f(1, 0, 0, 1)\n"
+		"}\n";
+	ftdResult r = ParseLiteral(ctx, src);
+	ftdAlwaysAssert(r.ok);
+
+	const ftdType *outType = (const ftdType *)0x1; // sentinel
+	const void *p = ftdLookup(ctx, "Pal", &outType);
+	ftdAlwaysAssert(p == NULL);
+	ftdAlwaysAssert(outType == NULL);
+
+	const V4f *red = (const V4f *)ftdLookup(ctx, "Pal.red", NULL);
+	ftdAlwaysAssert(red != NULL && ftdAlmostEqual(red->r, 1.0));
+
+	ftdDestroy(ctx);
+}
+
+// Diagnostics for malformed namespaces: dotted namespace name is rejected,
+// missing '=' after member name is an error, but the parser still recovers.
+static void TestNamespaceErrors(void) {
+	ftdContext *ctx = MakeCommonContext();
+
+	// Dotted namespace name is rejected.
+	{
+		const char *src =
+			"Foo.Bar {\n"
+			"    x = 1.0\n"
+			"}\n";
+		ftdResult r = ParseLiteral(ctx, src);
+		ftdAlwaysAssert(!r.ok);
+		ftdAlwaysAssert(r.errorCount >= 1);
+		// member must NOT have been registered under either flat name.
+		ftdAlwaysAssert(ftdLookup(ctx, "Foo.Bar.x", NULL) == NULL);
+		ftdAlwaysAssert(ftdLookup(ctx, "Bar.x",     NULL) == NULL);
+	}
+
+	// Missing '=' after member is an error, parser must recover and continue.
+	ftdResetParse(ctx);
+	{
+		const char *src =
+			"NS {\n"
+			"    bad\n"
+			"    good = 7\n"
+			"}\n";
+		ftdResult r = ParseLiteral(ctx, src);
+		ftdAlwaysAssert(r.errorCount >= 1);
+		const int64_t *good = (const int64_t *)ftdLookup(ctx, "NS.good", NULL);
+		ftdAlwaysAssert(good != NULL);
+		ftdAlwaysAssert(*good == 7);
+	}
+
+	ftdDestroy(ctx);
+}
+
 static uint64_t ValueToUInt(const ftdValue *v) {
 	switch (v->kind) {
 		case ftdValueKind_UInt:  return v->as.u;
@@ -1467,6 +1660,11 @@ int main(int argc, char **args) {
 	TestRefAndForwardReference();
 	TestUnresolvedReferenceWarning();
 	TestGlobalRegistration();
+	TestNamespaceBasicMembers();
+	TestNamespaceNested();
+	TestNamespaceClearedOnReset();
+	TestNamespaceIsNotAValue();
+	TestNamespaceErrors();
 	TestUserRegisteredColorHelpers();
 	TestCustomHelper();
 	TestConstantInterning();
