@@ -1788,6 +1788,452 @@ static void TestStressMany(void) {
 	ftdDestroy(ctx);
 }
 
+// -----------------------------------------------------------------------------
+// Regression: floats with fractional digits in positional struct calls and
+// inline anonymous structs as array elements. Reported failure: pos/size
+// fields of array-element blocks came out as zero for values like 0.45 /
+// 0.3178, while 0.0 and 1.0 worked.
+// -----------------------------------------------------------------------------
+static void TestFractionalFloatsInPositionalStruct(void) {
+	ftdContext *ctx = MakeCommonContext();
+	const char *src =
+		"V2f P0 = V2f(0.0, 0.0)\n"
+		"V2f P1 = V2f(0.45, 0.45)\n"
+		"V2f P2 = V2f(0.3178, 0.9999)\n"
+		"V2f P3 = V2f(-0.4, 1.0)\n"
+		"V2f P4 = V2f{x = 0.55, y = 0.50}\n";
+	ftdResult r = ParseLiteral(ctx, src);
+	ftdAlwaysAssert(r.ok);
+	const V2f *p0 = (const V2f *)ftdLookup(ctx, "P0", NULL);
+	const V2f *p1 = (const V2f *)ftdLookup(ctx, "P1", NULL);
+	const V2f *p2 = (const V2f *)ftdLookup(ctx, "P2", NULL);
+	const V2f *p3 = (const V2f *)ftdLookup(ctx, "P3", NULL);
+	const V2f *p4 = (const V2f *)ftdLookup(ctx, "P4", NULL);
+	ftdAlwaysAssert(p0 && ftdAlmostEqual(p0->x, 0.0)    && ftdAlmostEqual(p0->y, 0.0));
+	ftdAlwaysAssert(p1 && ftdAlmostEqual(p1->x, 0.45)   && ftdAlmostEqual(p1->y, 0.45));
+	ftdAlwaysAssert(p2 && ftdAlmostEqual(p2->x, 0.3178) && ftdAlmostEqual(p2->y, 0.9999));
+	ftdAlwaysAssert(p3 && ftdAlmostEqual(p3->x, -0.4)   && ftdAlmostEqual(p3->y, 1.0));
+	ftdAlwaysAssert(p4 && ftdAlmostEqual(p4->x, 0.55)   && ftdAlmostEqual(p4->y, 0.50));
+	ftdDestroy(ctx);
+}
+
+static void TestFractionalFloatsInArrayElementsInline(void) {
+	// Anonymous inline element bodies (no `Block` prefix), mirroring how the
+	// FPL_Presentation .ftd writes its blocks array.
+	ftdContext *ctx = MakeCommonContext();
+	const char *src =
+		"Slide S {\n"
+		"    title = \"frac\"\n"
+		"    blocks = [\n"
+		"        { pos = V2f(0.0,    0.0)    type = Text   text  { content = \"a\" fontSize = 12 } }\n"
+		"        { pos = V2f(0.45,   0.45)   type = Text   text  { content = \"b\" fontSize = 13 } }\n"
+		"        { pos = V2f(0.3178, 0.9999) type = Image  image { imageName = \"x.png\" size = V2f(0.55, 0.50) } }\n"
+		"        { pos = V2f(-0.4,   1.0)    type = Text   text  { content = \"d\" fontSize = 14 } }\n"
+		"    ]\n"
+		"}\n";
+	ftdResult r = ParseLiteral(ctx, src);
+	ftdAlwaysAssert(r.ok);
+	const Slide *s = (const Slide *)ftdLookup(ctx, "S", NULL);
+	ftdAlwaysAssert(s && s->blocks.count == 4);
+	const Block *items = (const Block *)s->blocks.data;
+	ftdAlwaysAssert(ftdAlmostEqual(items[0].pos.x, 0.0)    && ftdAlmostEqual(items[0].pos.y, 0.0));
+	ftdAlwaysAssert(ftdAlmostEqual(items[1].pos.x, 0.45)   && ftdAlmostEqual(items[1].pos.y, 0.45));
+	ftdAlwaysAssert(ftdAlmostEqual(items[2].pos.x, 0.3178) && ftdAlmostEqual(items[2].pos.y, 0.9999));
+	ftdAlwaysAssert(items[2].type == BlockType_Image);
+	ftdAlwaysAssert(ftdAlmostEqual(items[2].image.size.x, 0.55) && ftdAlmostEqual(items[2].image.size.y, 0.50));
+	ftdAlwaysAssert(ftdAlmostEqual(items[3].pos.x, -0.4)   && ftdAlmostEqual(items[3].pos.y, 1.0));
+	ftdDestroy(ctx);
+}
+
+// Block sibling-named "size" via positional V2f does not exist in the Block
+// schema, but ImageBlock (a union arm of Block) has its own `size` field.
+// Verify the outer-vs-union name collision is resolved correctly when both
+// appear in the same parsed body.
+static void TestUnionArmFieldNameShadow(void) {
+	// Add a top-level `size` to Block via a sibling test schema so we can
+	// observe potential collisions with ImageBlock.size. We reuse the existing
+	// Block schema and just verify ImageBlock.size doesn't bleed into pos.
+	ftdContext *ctx = MakeCommonContext();
+	const char *src =
+		"Block B {\n"
+		"    pos  = V2f(0.45, 0.45)\n"
+		"    type = Image\n"
+		"    image {\n"
+		"        imageName = \"i.png\"\n"
+		"        size      = V2f(0.55, 0.50)\n"
+		"    }\n"
+		"}\n";
+	ftdResult r = ParseLiteral(ctx, src);
+	ftdAlwaysAssert(r.ok);
+	const Block *b = (const Block *)ftdLookup(ctx, "B", NULL);
+	ftdAlwaysAssert(b != NULL);
+	ftdAlwaysAssert(ftdAlmostEqual(b->pos.x, 0.45) && ftdAlmostEqual(b->pos.y, 0.45));
+	ftdAlwaysAssert(b->type == BlockType_Image);
+	ftdAlwaysAssert(ftdAlmostEqual(b->image.size.x, 0.55) && ftdAlmostEqual(b->image.size.y, 0.50));
+	ftdAlwaysAssert(strcmp(b->image.imageName, "i.png") == 0);
+	ftdDestroy(ctx);
+}
+
+// -----------------------------------------------------------------------------
+// Dotted field access on registered struct instances/globals/consts:
+//   Sounds.Intro1.name → reads the `name` field of the resolved Resource
+// Added to the parser via ftd__resolveAlias field-walking.
+// -----------------------------------------------------------------------------
+static Resource g_ResourceSword = { "Sword", 7 };
+
+static void TestDottedFieldAccessOnGlobal(void) {
+	ftdContext *ctx = MakeCommonContext();
+	ftdRegisterGlobal(ctx, "Sounds.Intro1", &Resource_type, &g_ResourceSword);
+	const char *src =
+		"AllScalars S {\n"
+		"    str = Sounds.Intro1.name\n"
+		"    i32 = Sounds.Intro1.id\n"
+		"}\n";
+	ftdResult r = ParseLiteral(ctx, src);
+	ftdAlwaysAssert(r.ok);
+	const AllScalars *s = (const AllScalars *)ftdLookup(ctx, "S", NULL);
+	ftdAlwaysAssert(s != NULL);
+	ftdAlwaysAssert(s->str != NULL);
+	ftdAlwaysAssert(strcmp(s->str, "Sword") == 0);
+	ftdAlwaysAssert(s->i32 == 7);
+	ftdDestroy(ctx);
+}
+
+static void TestDottedFieldAccessOnInstance(void) {
+	// Instance declared in source, then referenced via a sub-field from
+	// another value. Ensures parseSyms lookup finds instances too.
+	ftdContext *ctx = MakeCommonContext();
+	const char *src =
+		"Resource Snd1 { name = \"intro\" id = 42 }\n"
+		"AllScalars S {\n"
+		"    str = Snd1.name\n"
+		"    i32 = Snd1.id\n"
+		"}\n";
+	ftdResult r = ParseLiteral(ctx, src);
+	ftdAlwaysAssert(r.ok);
+	const AllScalars *s = (const AllScalars *)ftdLookup(ctx, "S", NULL);
+	ftdAlwaysAssert(s != NULL);
+	ftdAlwaysAssert(s->str && strcmp(s->str, "intro") == 0);
+	ftdAlwaysAssert(s->i32 == 42);
+	ftdDestroy(ctx);
+}
+
+static void TestDottedFieldAccessChained(void) {
+	// Block has a nested `pos` struct; verify Block.pos.x can be read out
+	// of a named instance through the field-walk path.
+	ftdContext *ctx = MakeCommonContext();
+	const char *src =
+		"Block B { pos = V2f(0.625, 0.125)  type = Text  text { content = \"x\" fontSize = 1 } }\n"
+		"AllScalars S { f32 = B.pos.x   f64 = B.pos.y }\n";
+	ftdResult r = ParseLiteral(ctx, src);
+	ftdAlwaysAssert(r.ok);
+	const AllScalars *s = (const AllScalars *)ftdLookup(ctx, "S", NULL);
+	ftdAlwaysAssert(s != NULL);
+	ftdAlwaysAssert(ftdAlmostEqual(s->f32, 0.625));
+	ftdAlwaysAssert(ftdAlmostEqual(s->f64, 0.125));
+	ftdDestroy(ctx);
+}
+
+// -----------------------------------------------------------------------------
+// Struct arrays initialized via global refs (the "fonts = [Fonts.Debug, …]"
+// pattern). The parseValue change uses typeHint as a fallback so refs to
+// globals of matching type are returned as a Struct value and memcpy'd into
+// the element slot, instead of writing a raw pointer into the first 8 bytes.
+// -----------------------------------------------------------------------------
+typedef struct ResourceList {
+	const Resource *items;
+	uint32_t        itemCount;
+} ResourceList;
+
+static const ftdField ResourceList_fields[] = {
+	{ "items.data",  offsetof(ResourceList, items),     ftdFieldKind_ArrayData,  &Resource_type, NULL, 0, 0 },
+	{ "items.count", offsetof(ResourceList, itemCount), ftdFieldKind_ArrayCount, NULL,           NULL, 0, 0 },
+};
+static const ftdType ResourceList_type = {
+	"ResourceList", sizeof(ResourceList), _Alignof(ResourceList),
+	ResourceList_fields, 2,
+	NULL, 0
+};
+
+static Resource g_R1 = { "one",   1 };
+static Resource g_R2 = { "two",   2 };
+static Resource g_R3 = { "three", 3 };
+
+static void TestStructArrayFromGlobalRefs(void) {
+	ftdContext *ctx = MakeCommonContext();
+	ftdRegisterStruct(ctx, &ResourceList_type);
+	ftdRegisterGlobal(ctx, "Bank.R1", &Resource_type, &g_R1);
+	ftdRegisterGlobal(ctx, "Bank.R2", &Resource_type, &g_R2);
+	ftdRegisterGlobal(ctx, "Bank.R3", &Resource_type, &g_R3);
+	const char *src =
+		"ResourceList L {\n"
+		"    items = [\n"
+		"        Bank.R1\n"
+		"        Bank.R2\n"
+		"        Bank.R3\n"
+		"    ]\n"
+		"}\n";
+	ftdResult r = ParseLiteral(ctx, src);
+	ftdAlwaysAssert(r.ok);
+	const ResourceList *l = (const ResourceList *)ftdLookup(ctx, "L", NULL);
+	ftdAlwaysAssert(l != NULL);
+	ftdAlwaysAssert(l->itemCount == 3);
+	ftdAlwaysAssert(l->items != NULL);
+	ftdAlwaysAssert(l->items[0].name != NULL && strcmp(l->items[0].name, "one")   == 0 && l->items[0].id == 1);
+	ftdAlwaysAssert(l->items[1].name != NULL && strcmp(l->items[1].name, "two")   == 0 && l->items[1].id == 2);
+	ftdAlwaysAssert(l->items[2].name != NULL && strcmp(l->items[2].name, "three") == 0 && l->items[2].id == 3);
+	ftdDestroy(ctx);
+}
+
+// -----------------------------------------------------------------------------
+// Nested ArrayData inside a struct field. Schema mirrors PresentationFile,
+// where the root has both a sub-struct `definition` (containing slides[]) AND
+// its own top-level arrays. Verifies that nested array-bundle parsing writes
+// into the correct nested struct base, and the outer arrays still resolve.
+// -----------------------------------------------------------------------------
+typedef struct Inner {
+	const V2f *points;
+	uint32_t   pointCount;
+} Inner;
+
+typedef struct Outer {
+	Inner            inner;
+	const Resource  *resources;
+	uint32_t         resourceCount;
+} Outer;
+
+static const ftdField Inner_fields[] = {
+	{ "points.data",  offsetof(Inner, points),     ftdFieldKind_ArrayData,  &V2f_type, NULL, 0, 0 },
+	{ "points.count", offsetof(Inner, pointCount), ftdFieldKind_ArrayCount, NULL,      NULL, 0, 0 },
+};
+static const ftdType Inner_type = {
+	"Inner", sizeof(Inner), _Alignof(Inner),
+	Inner_fields, 2,
+	NULL, 0
+};
+
+static const ftdField Outer_fields[] = {
+	{ "inner",            offsetof(Outer, inner),         ftdFieldKind_Struct,     &Inner_type,    NULL, 0, 0 },
+	{ "resources.data",   offsetof(Outer, resources),     ftdFieldKind_ArrayData,  &Resource_type, NULL, 0, 0 },
+	{ "resources.count",  offsetof(Outer, resourceCount), ftdFieldKind_ArrayCount, NULL,           NULL, 0, 0 },
+};
+static const ftdType Outer_type = {
+	"Outer", sizeof(Outer), _Alignof(Outer),
+	Outer_fields, 3,
+	NULL, 0
+};
+
+// -----------------------------------------------------------------------------
+// Reproduce FPL_Presentation BlockDefinition layout exactly:
+//   - pos:Vec2f, size:Vec2f, contentAlignment:struct{h,v enums}, type:enum,
+//     union{text, image} where ImageBlock also has its own `size` field.
+// -----------------------------------------------------------------------------
+typedef enum HAlign { HAlign_Left=0, HAlign_Center=1, HAlign_Right=2 } HAlign;
+typedef enum VAlign { VAlign_Top =0, VAlign_Middle=1, VAlign_Bottom=2 } VAlign;
+
+typedef struct BlockAlign {
+	HAlign h;
+	VAlign v;
+} BlockAlign;
+
+typedef struct TextBD {
+	V4f         color;
+	const char *text;
+	float       fontSize;
+	HAlign      textAlign;
+} TextBD;
+
+typedef struct ImageBD {
+	V4f          tintColor;
+	V2f          size;
+	const char  *imageRef;
+	bool         keepAspect;
+} ImageBD;
+
+typedef struct BlockDef {
+	V2f         pos;
+	V2f         size;
+	BlockAlign  contentAlignment;
+	BlockType   type;
+	union {
+		TextBD  text;
+		ImageBD image;
+	};
+} BlockDef;
+
+typedef struct PresFile {
+	const BlockDef *blocks;
+	uint32_t        blockCount;
+} PresFile;
+
+static const ftdEnumValue HAlign_values[] = { {"Left",0}, {"Center",1}, {"Right",2} };
+static const ftdType HAlign_type = { "HAlign", sizeof(int), _Alignof(int), NULL,0, HAlign_values,3 };
+static const ftdEnumValue VAlign_values[] = { {"Top",0}, {"Middle",1}, {"Bottom",2} };
+static const ftdType VAlign_type = { "VAlign", sizeof(int), _Alignof(int), NULL,0, VAlign_values,3 };
+
+static const ftdField BlockAlign_fields[] = {
+	{ "h", offsetof(BlockAlign, h), ftdFieldKind_Enum, &HAlign_type, NULL, 0, 0 },
+	{ "v", offsetof(BlockAlign, v), ftdFieldKind_Enum, &VAlign_type, NULL, 0, 0 },
+};
+static const ftdType BlockAlign_type = {
+	"BlockAlign", sizeof(BlockAlign), _Alignof(BlockAlign),
+	BlockAlign_fields, 2, NULL, 0
+};
+
+static const ftdField TextBD_fields[] = {
+	{ "color",     offsetof(TextBD, color),     ftdFieldKind_Struct, &V4f_type,    NULL, 0, 0 },
+	{ "text",      offsetof(TextBD, text),      ftdFieldKind_String, NULL,         NULL, 0, 0 },
+	{ "fontSize",  offsetof(TextBD, fontSize),  ftdFieldKind_F32,    NULL,         NULL, 0, 0 },
+	{ "textAlign", offsetof(TextBD, textAlign), ftdFieldKind_Enum,   &HAlign_type, NULL, 0, 0 },
+};
+static const ftdType TextBD_type = {
+	"TextBD", sizeof(TextBD), _Alignof(TextBD),
+	TextBD_fields, 4, NULL, 0
+};
+
+static const ftdField ImageBD_fields[] = {
+	{ "tintColor",   offsetof(ImageBD, tintColor),   ftdFieldKind_Struct, &V4f_type, NULL, 0, 0 },
+	{ "size",        offsetof(ImageBD, size),        ftdFieldKind_Struct, &V2f_type, NULL, 0, 0 },
+	{ "imageRef",    offsetof(ImageBD, imageRef),    ftdFieldKind_String, NULL,      NULL, 0, 0 },
+	{ "keepAspect",  offsetof(ImageBD, keepAspect),  ftdFieldKind_Bool,   NULL,      NULL, 0, 0 },
+};
+static const ftdType ImageBD_type = {
+	"ImageBD", sizeof(ImageBD), _Alignof(ImageBD),
+	ImageBD_fields, 4, NULL, 0
+};
+
+static const ftdField BlockDef_fields[] = {
+	{ "pos",              offsetof(BlockDef, pos),              ftdFieldKind_Struct, &V2f_type,        NULL,   0,               0 },
+	{ "size",             offsetof(BlockDef, size),             ftdFieldKind_Struct, &V2f_type,        NULL,   0,               0 },
+	{ "contentAlignment", offsetof(BlockDef, contentAlignment), ftdFieldKind_Struct, &BlockAlign_type, NULL,   0,               0 },
+	{ "type",             offsetof(BlockDef, type),             ftdFieldKind_Enum,   &BlockType_type,  NULL,   0,               0 },
+	{ "text",             offsetof(BlockDef, text),             ftdFieldKind_Union,  &TextBD_type,     "type", BlockType_Text,  0 },
+	{ "image",            offsetof(BlockDef, image),            ftdFieldKind_Union,  &ImageBD_type,    "type", BlockType_Image, 0 },
+};
+static const ftdType BlockDef_type = {
+	"BlockDef", sizeof(BlockDef), _Alignof(BlockDef),
+	BlockDef_fields, 6, NULL, 0
+};
+
+static const ftdField PresFile_fields[] = {
+	{ "blocks.data",  offsetof(PresFile, blocks),     ftdFieldKind_ArrayData,  &BlockDef_type, NULL, 0, 0 },
+	{ "blocks.count", offsetof(PresFile, blockCount), ftdFieldKind_ArrayCount, NULL,           NULL, 0, 0 },
+};
+static const ftdType PresFile_type = {
+	"PresFile", sizeof(PresFile), _Alignof(PresFile),
+	PresFile_fields, 2, NULL, 0
+};
+
+static void TestBlockDefLayoutMatchesPresentation(void) {
+	ftdContext *ctx = MakeCommonContext();
+	ftdRegisterEnum  (ctx, &HAlign_type);
+	ftdRegisterEnum  (ctx, &VAlign_type);
+	ftdRegisterStruct(ctx, &BlockAlign_type);
+	ftdRegisterStruct(ctx, &TextBD_type);
+	ftdRegisterStruct(ctx, &ImageBD_type);
+	ftdRegisterStruct(ctx, &BlockDef_type);
+	ftdRegisterStruct(ctx, &PresFile_type);
+
+	// Exactly matches the .ftd block bodies in fpl_presentation.ftd.
+	const char *src =
+		"PresFile P {\n"
+		"    blocks = [\n"
+		"        {\n"
+		"            type = Image\n"
+		"            pos  = V2f(0.0, 0.0)\n"
+		"            size = V2f(0.45, 0.45)\n"
+		"            contentAlignment = { h = Left, v = Top }\n"
+		"            image {\n"
+		"                imageRef   = \"x.png\"\n"
+		"                size       = V2f(1.0, 1.0)\n"
+		"                keepAspect = true\n"
+		"                tintColor  = V4f(1, 1, 1, 0.5)\n"
+		"            }\n"
+		"        }\n"
+		"        {\n"
+		"            type = Image\n"
+		"            pos  = V2f(0.55, 0.0)\n"
+		"            size = V2f(0.45, 0.45)\n"
+		"            contentAlignment = { h = Right, v = Top }\n"
+		"            image {\n"
+		"                imageRef   = \"y.png\"\n"
+		"                size       = V2f(1.0, 1.0)\n"
+		"                keepAspect = true\n"
+		"                tintColor  = V4f(1, 1, 1, 0.5)\n"
+		"            }\n"
+		"        }\n"
+		"        {\n"
+		"            type = Image\n"
+		"            pos  = V2f(0.0, 0.50)\n"
+		"            size = V2f(0.45, 0.45)\n"
+		"            contentAlignment = { h = Left, v = Bottom }\n"
+		"            image {\n"
+		"                imageRef   = \"z.png\"\n"
+		"                size       = V2f(0.3178, 0.9999)\n"
+		"                keepAspect = true\n"
+		"                tintColor  = V4f(1, 1, 1, 0.5)\n"
+		"            }\n"
+		"        }\n"
+		"    ]\n"
+		"}\n";
+	ftdResult r = ParseLiteral(ctx, src);
+	ftdAlwaysAssert(r.ok);
+	const PresFile *p = (const PresFile *)ftdLookup(ctx, "P", NULL);
+	ftdAlwaysAssert(p && p->blockCount == 3 && p->blocks != NULL);
+	const BlockDef *bs = p->blocks;
+
+	ftdAlwaysAssert(ftdAlmostEqual(bs[0].pos.x,  0.0)  && ftdAlmostEqual(bs[0].pos.y,  0.0));
+	ftdAlwaysAssert(ftdAlmostEqual(bs[0].size.x, 0.45) && ftdAlmostEqual(bs[0].size.y, 0.45));
+	ftdAlwaysAssert(bs[0].contentAlignment.h == HAlign_Left && bs[0].contentAlignment.v == VAlign_Top);
+	ftdAlwaysAssert(bs[0].type == BlockType_Image);
+	ftdAlwaysAssert(ftdAlmostEqual(bs[0].image.size.x, 1.0) && ftdAlmostEqual(bs[0].image.size.y, 1.0));
+
+	ftdAlwaysAssert(ftdAlmostEqual(bs[1].pos.x,  0.55) && ftdAlmostEqual(bs[1].pos.y,  0.0));
+	ftdAlwaysAssert(ftdAlmostEqual(bs[1].size.x, 0.45) && ftdAlmostEqual(bs[1].size.y, 0.45));
+	ftdAlwaysAssert(bs[1].contentAlignment.h == HAlign_Right && bs[1].contentAlignment.v == VAlign_Top);
+
+	ftdAlwaysAssert(ftdAlmostEqual(bs[2].pos.x,  0.0)    && ftdAlmostEqual(bs[2].pos.y,  0.50));
+	ftdAlwaysAssert(ftdAlmostEqual(bs[2].size.x, 0.45)   && ftdAlmostEqual(bs[2].size.y, 0.45));
+	ftdAlwaysAssert(bs[2].contentAlignment.h == HAlign_Left && bs[2].contentAlignment.v == VAlign_Bottom);
+	ftdAlwaysAssert(ftdAlmostEqual(bs[2].image.size.x, 0.3178) && ftdAlmostEqual(bs[2].image.size.y, 0.9999));
+
+	ftdDestroy(ctx);
+}
+
+static void TestNestedArrayBundleInsideStruct(void) {
+	ftdContext *ctx = MakeCommonContext();
+	ftdRegisterStruct(ctx, &Inner_type);
+	ftdRegisterStruct(ctx, &Outer_type);
+	const char *src =
+		"Outer O {\n"
+		"    inner {\n"
+		"        points = [\n"
+		"            V2f(0.45, 0.55)\n"
+		"            V2f(0.3178, 0.9999)\n"
+		"            V2f(-1.5, 2.25)\n"
+		"        ]\n"
+		"    }\n"
+		"    resources = [\n"
+		"        Resource { name = \"a\" id = 1 }\n"
+		"        Resource { name = \"b\" id = 2 }\n"
+		"    ]\n"
+		"}\n";
+	ftdResult r = ParseLiteral(ctx, src);
+	ftdAlwaysAssert(r.ok);
+	const Outer *o = (const Outer *)ftdLookup(ctx, "O", NULL);
+	ftdAlwaysAssert(o != NULL);
+	ftdAlwaysAssert(o->inner.pointCount == 3);
+	ftdAlwaysAssert(o->inner.points != NULL);
+	ftdAlwaysAssert(ftdAlmostEqual(o->inner.points[0].x, 0.45)   && ftdAlmostEqual(o->inner.points[0].y, 0.55));
+	ftdAlwaysAssert(ftdAlmostEqual(o->inner.points[1].x, 0.3178) && ftdAlmostEqual(o->inner.points[1].y, 0.9999));
+	ftdAlwaysAssert(ftdAlmostEqual(o->inner.points[2].x, -1.5)   && ftdAlmostEqual(o->inner.points[2].y, 2.25));
+	ftdAlwaysAssert(o->resourceCount == 2);
+	ftdAlwaysAssert(o->resources != NULL);
+	ftdAlwaysAssert(strcmp(o->resources[0].name, "a") == 0 && o->resources[0].id == 1);
+	ftdAlwaysAssert(strcmp(o->resources[1].name, "b") == 0 && o->resources[1].id == 2);
+	ftdDestroy(ctx);
+}
+
 int main(int argc, char **args) {
 	(void)argc; (void)args;
 
@@ -1844,6 +2290,16 @@ int main(int argc, char **args) {
 	TestParsePresentationFullNoAliases();
 	TestParsePresentationAliasesNoTypes();
 	TestStressMany();
+
+	TestFractionalFloatsInPositionalStruct();
+	TestFractionalFloatsInArrayElementsInline();
+	TestUnionArmFieldNameShadow();
+	TestDottedFieldAccessOnGlobal();
+	TestDottedFieldAccessOnInstance();
+	TestDottedFieldAccessChained();
+	TestStructArrayFromGlobalRefs();
+	TestNestedArrayBundleInsideStruct();
+	TestBlockDefLayoutMatchesPresentation();
 
 	printf("All FTD tests passed.\n");
 	return 0;
