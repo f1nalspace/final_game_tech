@@ -1,5 +1,7 @@
 #pragma once
 
+#include <type_traits>
+
 #include <final_ftd.h>
 
 // C++ helpers for defining FTD schema tables.
@@ -100,8 +102,12 @@ namespace ftd {
 #define FTD_FIELD_KIND_SUB(StructT, member, kind, subTypePtr) \
 	ftdField{ #member, (uint32_t)offsetof(StructT, member), (kind), (subTypePtr) }
 
+// Element type is deduced from decltype(member[0]): plain arrays and
+// pointers both yield T& or const T&, which strip down to T via the type
+// traits below. The deduced element type must be bound with FTD_BIND_TYPE.
 #define FTD_FIELD_ARRAY_DATA(StructT, arrayKey, member) \
-	ftdField{ #arrayKey ".data", (uint32_t)offsetof(StructT, member), ftdFieldKind_ArrayData, nullptr }
+	ftdField{ #arrayKey ".data", (uint32_t)offsetof(StructT, member), ftdFieldKind_ArrayData, \
+	          ::ftd::TypeOf<typename ::std::remove_cv<typename ::std::remove_reference<decltype(StructT::member[0])>::type>::type>::value }
 
 #define FTD_FIELD_ARRAY_SIZE(StructT, arrayKey, member) \
 	ftdField{ #arrayKey ".count", (uint32_t)offsetof(StructT, member), ftdFieldKind_ArrayCount, nullptr }
