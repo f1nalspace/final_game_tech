@@ -2879,7 +2879,9 @@ int main(int argc, char **argv) {
 		String presentationFilePath = app.strings.MakePath(app.presentationsPath, "fpl_presentation.ftd");
 
 		ftdContext *ctx = ftdCreate(NULL);
-		ftdRegisterStruct(ctx, &BackgroundStyleType);
+		ftdRegisterStruct(ctx, &Vec4fType::Type);
+		ftdRegisterEnum(ctx, &BackgroundKindTypeDef::Type);
+		ftdRegisterStruct(ctx, &BackgroundStyleTypeDef::Type);
 
 		if (const ftdResult res = ftdParseFile(ctx, presentationFilePath); !res.ok) {
 			for (uint32_t i = 0; i < res.diagnosticCount; ++i) {
