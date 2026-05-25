@@ -109,6 +109,9 @@ namespace ftd {
 #define FTD_FIELD_ARRAY_CAPACITY(StructT, member) \
 	ftdField{ #member, (uint32_t)offsetof(StructT, member), ftdFieldKind_ArrayCapacity, nullptr }
 
+#define FTD_FIELD_HIDDEN(name) \
+	ftdField{ name, 0, ftdFieldKind_String, nullptr, 0, ftdFieldFlag_Hidden }
+
 // Struct ftdType literal. Name is stringized from the C++ type.
 #define FTD_TYPE_STRUCT(StructT, FieldsArr) \
 	ftdType{ .name = #StructT, .size = sizeof(StructT), .align = alignof(StructT), \
