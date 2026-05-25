@@ -2890,8 +2890,12 @@ int main(int argc, char **argv) {
 				fplConsoleFormatError("%s on line '%d', column '%d'\n", diag.message, diag.span.line, diag.span.column);
 			}
 		} else {
-			const PresentationDefinition *presentationDefinition = static_cast<const PresentationDefinition *>(ftdLookup(ctx, "MyAppConfig", nullptr));
-			BuildPresentation(*presentationDefinition, app.renderer, app.soundMng, app.presentation);
+			const PresentationFile *presentationFile = static_cast<const PresentationFile *>(ftdLookup(ctx, "FPLPresentationFile", nullptr));
+			if (presentationFile != nullptr) {
+				BuildPresentation(presentationFile->definition, app.renderer, app.soundMng, app.presentation);
+			} else {
+				fplConsoleFormatError("Failed to look up 'FPLPresentation' in %s\n", (const char *)presentationFilePath);
+			}
 			ftdDestroy(ctx);
 		}
 #else
