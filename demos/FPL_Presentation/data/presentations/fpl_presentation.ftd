@@ -219,8 +219,8 @@ Slide Intro {
     ]
 
     sounds = [
-        { name = Sounds.Intro1, startTime = 1.0  }
-        { name = Sounds.Intro2, startTime = 10.0 }
+        { name = Sounds.Intro1.name, startTime = 1.0  }
+        { name = Sounds.Intro2.name, startTime = 10.0 }
     ]
 }
 
@@ -298,7 +298,7 @@ Slide WhoAmI {
     ]
 
     sounds = [
-        { name = Sounds.WhoAmi1, startTime = 2.0 }
+        { name = Sounds.WhoAmi1.name, startTime = 2.0 }
     ]
 }
 
@@ -356,8 +356,8 @@ Slide WhatIsFPL {
     ]
 
     sounds = [
-        { name = Sounds.What1, startTime = 1.0  }
-        { name = Sounds.What2, startTime = 17.0 }
+        { name = Sounds.What1.name, startTime = 1.0  }
+        { name = Sounds.What2.name, startTime = 17.0 }
     ]
 }
 
@@ -388,7 +388,7 @@ Slide Motivation {
     ]
 
     sounds = [
-        { name = Sounds.Motivation, startTime = 2.0 }
+        { name = Sounds.Motivation.name, startTime = 2.0 }
     ]
 }
 
@@ -720,7 +720,7 @@ Slide Thanks {
 # -----------------------------------------------------------------------------
 HeaderDefinition Header {
     font {
-        name      = Fonts.Arimo
+        name      = Fonts.Arimo.name
         size      = Const.HeaderFontSize
         lineScale = Const.DefaultLineScale
         style     = TextStyles.Header
@@ -734,7 +734,7 @@ HeaderDefinition Header {
 
 FooterDefinition Footer {
     font {
-        name      = Fonts.Arimo
+        name      = Fonts.Arimo.name
         size      = Const.HeaderFontSize
         lineScale = Const.DefaultLineScale
         style     = TextStyles.Header
@@ -772,9 +772,9 @@ PresentationDefinition FPLPresentation {
     header = Header
     footer = Footer
 
-    titleFont   { name = Fonts.Arimo              size = Const.TitleFontSize    lineScale = Const.DefaultLineScale  style = TextStyles.Basic }
-    normalFont  { name = Fonts.Arimo              size = Const.NormalFontSize   lineScale = Const.DefaultLineScale  style = TextStyles.Basic }
-    consoleFont { name = Fonts.BitStreamVerySans  size = Const.ConsoleFontSize  lineScale = Const.DefaultLineScale  style = TextStyles.Basic }
+    titleFont   { name = Fonts.Arimo.name              size = Const.TitleFontSize    lineScale = Const.DefaultLineScale  style = TextStyles.Basic }
+    normalFont  { name = Fonts.Arimo.name              size = Const.NormalFontSize   lineScale = Const.DefaultLineScale  style = TextStyles.Basic }
+    consoleFont { name = Fonts.BitStreamVerySans.name  size = Const.ConsoleFontSize  lineScale = Const.DefaultLineScale  style = TextStyles.Basic }
 }
 
 # -----------------------------------------------------------------------------
