@@ -2788,6 +2788,8 @@ static bool ftd__match(ftd__Parser *p, ftd__TokKind k) {
 	return false;
 }
 
+static const ftdField *ftd__findField(const ftdType *t, const char *name);
+
 // Resolve an alias chain to a final symbol. If the direct lookup misses, try
 // to walk dotted prefixes — for "A.B.C", look up "A.B" then "A" (longest
 // first); if the prefix is an alias, fold its target and append the unconsumed
@@ -2849,6 +2851,55 @@ static const ftd__Symbol *ftd__resolveAlias(ftdContext *ctx, const char *name, i
 			FTD_MEMCPY(combined + tgtLen + 1, suffix, suffixLen);
 			combined[tgtLen + 1 + suffixLen] = '\0';
 			return ftd__resolveAlias(ctx, combined, depth + 1);
+		}
+		// Prefix is a struct-bearing symbol — try to walk the suffix as a
+		// chain of field names through its registered type, producing a
+		// synthetic symbol that points at the resolved field's storage.
+		// Enables paths like `Sounds.Intro1.name` (read the `name` field of a
+		// registered Resource instance).
+		if ((ps->kind == ftd__Sym_Const || ps->kind == ftd__Sym_Global || ps->kind == ftd__Sym_Instance) &&
+		    ps->type != NULL && ps->as.constPtr != NULL) {
+			const ftdType *curType = ps->type;
+			const uint8_t *curBase = (const uint8_t *) ps->as.constPtr;
+			const char *segStart = name + i;
+			const char *cur = segStart;
+			while (*cur != '\0') {
+				const char *segEnd = cur;
+				while (*segEnd != '\0' && *segEnd != '.') {
+					segEnd++;
+				}
+				size_t segLen = (size_t) (segEnd - cur);
+				if (segLen == 0 || segLen >= 256) {
+					return NULL;
+				}
+				char segName[256];
+				FTD_MEMCPY(segName, cur, segLen);
+				segName[segLen] = '\0';
+				const ftdField *f = ftd__findField(curType, segName);
+				if (f == NULL) {
+					return NULL;
+				}
+				const uint8_t *fieldAddr = curBase + f->offset;
+				if (*segEnd == '\0') {
+					ftd__Symbol *synth = (ftd__Symbol *) ftd__arenaAlloc(&ctx->parseArena, sizeof(ftd__Symbol), 8);
+					if (synth == NULL) {
+						return NULL;
+					}
+					synth->name = name;
+					synth->hash = 0;
+					synth->kind = ftd__Sym_Const;
+					synth->type = f->subtype;
+					synth->scalarKind = (f->kind == ftdFieldKind_Struct) ? ftdFieldKind_None : f->kind;
+					synth->as.constPtr = fieldAddr;
+					return synth;
+				}
+				if (f->kind != ftdFieldKind_Struct || f->subtype == NULL) {
+					return NULL;
+				}
+				curBase = fieldAddr;
+				curType = f->subtype;
+				cur = segEnd + 1;
+			}
 		}
 		// Namespace prefix exists but the full "<ns>.<rest>" member is not
 		// registered — nothing more we can do.
