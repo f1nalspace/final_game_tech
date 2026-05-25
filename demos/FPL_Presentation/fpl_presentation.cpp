@@ -71,9 +71,6 @@ License:
 #define PRESENTATION_IMPLEMENTATION
 #include "presentation.h"
 
-// Contains the slide text for the FPL presentation
-#include "slides.h" // TextDefinition, SlideDefinition
-
 #include "types.h" // HorizontalAlignment, VerticalAlignment
 
 #include "builtin.h" // FontResources, SoundResources
@@ -2727,6 +2724,50 @@ static uint32_t AudioPlaybackCallback(const fplAudioFormat *outFormat, const uin
 	return result;
 }
 
+static void AddImageResources(App &app, const Resource imageResources[], const size_t imageResourceCount) {
+	for (size_t i = 0; i < imageResourceCount; ++i) {
+		const Resource &res = imageResources[i];
+		switch (res.type) {
+			case ResourceType::Memory:
+			{
+				app.renderer.AddImageFromMemory(res.name, res.memory.data, res.memory.length);
+			} break;
+
+			case ResourceType::File:
+			{
+				String path = app.strings.MakePath(app.renderer.imagesBasePath, res.file.filePath);
+				app.renderer.AddImageFromFile(res.name, path);
+			} break;
+
+			default:
+				break;
+		}
+	}
+}
+
+static void AddSoundResources(App &app, const Resource soundResources[], const size_t soundResourceCount) {
+	for (size_t i = 0; i < soundResourceCount; ++i) {
+		const Resource &res = soundResources[i];
+		switch (res.type) {
+			case ResourceType::File:
+			{
+				String path = app.strings.MakePath(app.soundMng.basePath, res.file.filePath);
+				app.soundMng.AddSoundFromFile(res.name, path);
+			} break;
+
+			default:
+				break;
+		}
+	}
+}
+
+static void LoadResources(App &app, const PresentationFile &presentation) {
+	AddImageResources(app, BuiltinImages::All, fplArrayCount(BuiltinImages::All));
+	AddImageResources(app, presentation.images, presentation.imageCount);
+
+	AddSoundResources(app, presentation.sounds, presentation.soundCount);
+}
+
 int main(int argc, char **argv) {
 	const char *argDataPath = nullptr;
 	if (argc >= 2) {
@@ -2847,38 +2888,6 @@ int main(int argc, char **argv) {
 		app.renderer.AddFontFromFile("c:/windows/fonts/arial.ttf", "Arial", 24);
 #endif
 
-		size_t imageResourceCount = fplArrayCount(BuiltinImages::All);
-		for (size_t i = 0; i < imageResourceCount; ++i) {
-			const Resource &res = BuiltinImages::All[i];
-
-			switch (res.type) {
-				case ResourceType::Memory:
-				{
-					app.renderer.AddImageFromMemory(res.name, res.memory.data, res.memory.length);
-				} break;
-
-				case ResourceType::File:
-				{
-					String path = app.strings.MakePath(app.renderer.imagesBasePath, res.file.filePath);
-					app.renderer.AddImageFromFile(res.name, path);
-				} break;
-			}
-		}
-
-		size_t soundResourceCount = fplArrayCount(BuiltinSounds::All);
-		for (size_t i = 0; i < soundResourceCount; ++i) {
-			const Resource &res = BuiltinSounds::All[i];
-
-			switch (res.type) {
-				case ResourceType::File:
-				{
-					String path = app.strings.MakePath(app.soundMng.basePath, res.file.filePath);
-					app.soundMng.AddSoundFromFile(res.name, path);
-				} break;
-			}
-		}
-
-#if 1
 		String presentationFilePath = app.strings.MakePath(app.presentationsPath, "fpl_presentation.ftd");
 
 		ftdContext *ctx = ftdCreate(NULL);
@@ -2892,15 +2901,13 @@ int main(int argc, char **argv) {
 		} else {
 			const PresentationFile *presentationFile = static_cast<const PresentationFile *>(ftdLookup(ctx, "FPLPresentationFile", nullptr));
 			if (presentationFile != nullptr) {
+				LoadResources(app, *presentationFile);
 				BuildPresentation(presentationFile->definition, app.renderer, app.soundMng, app.presentation);
 			} else {
 				fplConsoleFormatError("Failed to look up 'FPLPresentationFile' in %s\n", (const char *)presentationFilePath);
 			}
 			ftdDestroy(ctx);
 		}
-#else
-		BuildPresentation(FPLPresentation, app.renderer, app.soundMng, app.presentation);
-#endif
 
 		UpdatePresentationVariables(app.presentation);
 
