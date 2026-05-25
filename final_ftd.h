@@ -3465,9 +3465,18 @@ static bool ftd__parseValue(ftd__Parser *p, const ftdField *fieldHint, const ftd
 					out->as.i = *(const int32_t *) sym->as.constPtr;
 					return true;
 				}
-				// struct const/global/instance — pass as ref or struct
-				if (fieldHint != NULL && fieldHint->kind == ftdFieldKind_Struct && fieldHint->subtype != NULL && sym->
-				    type == fieldHint->subtype) {
+				// struct const/global/instance — pass as ref or struct.
+				// Prefer Struct when the expected type matches the symbol type,
+				// so the caller can memcpy the value instead of taking its address.
+				// fieldHint covers single-field assignment; typeHint covers array
+				// elements where parseValue is called without a field.
+				const ftdType *expectedStructType = NULL;
+				if (fieldHint != NULL && fieldHint->kind == ftdFieldKind_Struct) {
+					expectedStructType = fieldHint->subtype;
+				} else if (fieldHint == NULL && typeHint != NULL) {
+					expectedStructType = typeHint;
+				}
+				if (expectedStructType != NULL && sym->type == expectedStructType) {
 					out->kind = ftdValueKind_Struct;
 					out->type = sym->type;
 					out->as.ptr = (void *) sym->as.constPtr;
