@@ -1306,6 +1306,157 @@ static void TestArrayBundleOptionalCapacity(void) {
 	ftdDestroy(ctx);
 }
 
+// Standalone size_t scalar via ftdFieldKind_Size.
+typedef struct SizeHost {
+	size_t small;
+	size_t big;
+} SizeHost;
+
+static const ftdField SizeHost_fields[] = {
+	{ "small", offsetof(SizeHost, small), ftdFieldKind_Size, NULL, NULL, 0, 0 },
+	{ "big",   offsetof(SizeHost, big),   ftdFieldKind_Size, NULL, NULL, 0, 0 },
+};
+static const ftdType SizeHost_type = {
+	"SizeHost", sizeof(SizeHost), _Alignof(SizeHost),
+	SizeHost_fields, 2,
+	NULL, 0
+};
+
+static void TestSizeScalar(void) {
+	ftdContext *ctx = MakeCommonContext();
+	ftdRegisterStruct(ctx, &SizeHost_type);
+
+	const char *src =
+		"size_t Cap = 4096\n"
+		"SizeHost S { small = 17  big = 0xCAFEBABE }\n";
+	ftdResult r = ParseLiteral(ctx, src);
+	ftdAlwaysAssert(r.ok);
+
+	const size_t *cap = (const size_t *)ftdLookup(ctx, "Cap", NULL);
+	ftdAlwaysAssert(cap != NULL);
+	ftdAlwaysAssert(*cap == 4096u);
+
+	const SizeHost *s = (const SizeHost *)ftdLookup(ctx, "S", NULL);
+	ftdAlwaysAssert(s != NULL);
+	ftdAlwaysAssert(s->small == 17u);
+	ftdAlwaysAssert(s->big   == 0xCAFEBABEu);
+
+	ftdDestroy(ctx);
+}
+
+// Raw memory blob (uint8_t*) split into rom.data + rom.size + rom.capacity.
+typedef struct Rom8Host {
+	const char *name;
+	uint8_t    *romData;
+	size_t      romSize;
+	size_t      romCap;
+} Rom8Host;
+
+static const ftdField Rom8Host_fields[] = {
+	{ "name",         offsetof(Rom8Host, name),    ftdFieldKind_String,           NULL, NULL, 0, 0 },
+	{ "rom.data",     offsetof(Rom8Host, romData), ftdFieldKind_MemoryData8,      NULL, NULL, 0, 0 },
+	{ "rom.size",     offsetof(Rom8Host, romSize), ftdFieldKind_MemorySize,       NULL, NULL, 0, 0 },
+	{ "rom.capacity", offsetof(Rom8Host, romCap),  ftdFieldKind_MemoryCapacity,   NULL, NULL, 0, 0 },
+};
+static const ftdType Rom8Host_type = {
+	"Rom8Host", sizeof(Rom8Host), _Alignof(Rom8Host),
+	Rom8Host_fields, 4,
+	NULL, 0
+};
+
+// Raw memory blob (uint64_t*) with only .data + .size (no capacity sibling).
+typedef struct Rom64Host {
+	uint64_t *words;
+	size_t    wordCount;
+} Rom64Host;
+
+static const ftdField Rom64Host_fields[] = {
+	{ "blob.data", offsetof(Rom64Host, words),     ftdFieldKind_MemoryData64, NULL, NULL, 0, 0 },
+	{ "blob.size", offsetof(Rom64Host, wordCount), ftdFieldKind_MemorySize,   NULL, NULL, 0, 0 },
+};
+static const ftdType Rom64Host_type = {
+	"Rom64Host", sizeof(Rom64Host), _Alignof(Rom64Host),
+	Rom64Host_fields, 2,
+	NULL, 0
+};
+
+static void TestMemoryBundle8Inline(void) {
+	ftdContext *ctx = MakeCommonContext();
+	ftdRegisterStruct(ctx, &Rom8Host_type);
+
+	const char *src =
+		"Rom8Host R {\n"
+		"    name = \"boot\"\n"
+		"    rom = [ 0xDE 0xAD 0xBE 0xEF 0x01 0x02 0x03 0x04 ]\n"
+		"}\n";
+	ftdResult r = ParseLiteral(ctx, src);
+	ftdAlwaysAssert(r.ok);
+
+	const Rom8Host *h = (const Rom8Host *)ftdLookup(ctx, "R", NULL);
+	ftdAlwaysAssert(h != NULL);
+	ftdAlwaysAssert(strcmp(h->name, "boot") == 0);
+	ftdAlwaysAssert(h->romSize == 8);
+	ftdAlwaysAssert(h->romCap  >= h->romSize);
+	ftdAlwaysAssert(h->romData != NULL);
+	ftdAlwaysAssert(h->romData[0] == 0xDE);
+	ftdAlwaysAssert(h->romData[1] == 0xAD);
+	ftdAlwaysAssert(h->romData[2] == 0xBE);
+	ftdAlwaysAssert(h->romData[3] == 0xEF);
+	ftdAlwaysAssert(h->romData[7] == 0x04);
+
+	ftdDestroy(ctx);
+}
+
+static void TestMemoryBundle64Inline(void) {
+	ftdContext *ctx = MakeCommonContext();
+	ftdRegisterStruct(ctx, &Rom64Host_type);
+
+	const char *src =
+		"Rom64Host R {\n"
+		"    blob = [ 0x1122334455667788 0xAABBCCDDEEFF0011 0x42 ]\n"
+		"}\n";
+	ftdResult r = ParseLiteral(ctx, src);
+	ftdAlwaysAssert(r.ok);
+
+	const Rom64Host *h = (const Rom64Host *)ftdLookup(ctx, "R", NULL);
+	ftdAlwaysAssert(h != NULL);
+	ftdAlwaysAssert(h->wordCount == 3);
+	ftdAlwaysAssert(h->words != NULL);
+	ftdAlwaysAssert(h->words[0] == 0x1122334455667788ULL);
+	ftdAlwaysAssert(h->words[1] == 0xAABBCCDDEEFF0011ULL);
+	ftdAlwaysAssert(h->words[2] == 0x42ULL);
+
+	ftdDestroy(ctx);
+}
+
+static void TestMemoryBundleReference(void) {
+	ftdContext *ctx = MakeCommonContext();
+	ftdRegisterStruct(ctx, &Rom8Host_type);
+
+	const char *src =
+		"Rom8Host A {\n"
+		"    name = \"src\"\n"
+		"    rom = [ 0x10 0x20 0x30 0x40 ]\n"
+		"}\n"
+		"Rom8Host B {\n"
+		"    name = \"alias\"\n"
+		"    rom = A\n"
+		"}\n";
+	ftdResult r = ParseLiteral(ctx, src);
+	ftdAlwaysAssert(r.ok);
+
+	const Rom8Host *a = (const Rom8Host *)ftdLookup(ctx, "A", NULL);
+	const Rom8Host *b = (const Rom8Host *)ftdLookup(ctx, "B", NULL);
+	ftdAlwaysAssert(a != NULL && b != NULL);
+	ftdAlwaysAssert(b->romData == a->romData);
+	ftdAlwaysAssert(b->romSize == a->romSize);
+	ftdAlwaysAssert(b->romCap  == a->romCap);
+	ftdAlwaysAssert(b->romData[0] == 0x10);
+	ftdAlwaysAssert(b->romData[3] == 0x40);
+
+	ftdDestroy(ctx);
+}
+
 #if !defined(FTD_NO_STDIO)
 static void TestParseFile(void) {
 	const char *path = "ftd_test_tmp.ftd";
@@ -1680,6 +1831,10 @@ int main(int argc, char **args) {
 	TestCommaAndNewlineSeparators();
 	TestArrayBundleFields();
 	TestArrayBundleOptionalCapacity();
+	TestSizeScalar();
+	TestMemoryBundle8Inline();
+	TestMemoryBundle64Inline();
+	TestMemoryBundleReference();
 #if !defined(FTD_NO_STDIO)
 	TestParseFile();
 	TestParseMissingFile();
