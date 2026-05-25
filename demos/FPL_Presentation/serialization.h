@@ -125,6 +125,7 @@ namespace SlideDefinitionStructDef {
         FTD_FIELD_ARRAY_SIZE(SlideDefinition, blockCount),
         FTD_FIELD_ARRAY_SIZE(SlideDefinition, soundCount),
         FTD_FIELD(SlideDefinition, duration),
+        FTD_FIELD_HIDDEN("talk")
     };
     static constexpr ftdType Type = {
         .name = "Slide", .size = sizeof(SlideDefinition), .align = alignof(SlideDefinition),
@@ -162,12 +163,8 @@ namespace ArgumentHelpers {
     }
 
     static Vec3f ArgToVec3f(const ftdValue *v) {
-        switch (v->kind) {
-            case ftdValueKind_Struct: {
-                void *x = v->as.ptr;
-            }
-            default:
-                break;
+        if (v->kind == ftdValueKind_Struct && v->as.ptr != nullptr && v->type == &Vec3fStructDef::Type) {
+            return *(const Vec3f *)v->as.ptr;
         }
         return V3fZero();
     }
@@ -216,9 +213,9 @@ namespace MathHelpers {
         (void)ctx; (void)userData;
         Quaternion *o = (Quaternion *)outValue;
         if (argCount == 2) {
-            const float rotationAngle = ArgumentHelpers::ArgToFloat(&args[0]);
+            const float rotationAngleDeg = ArgumentHelpers::ArgToFloat(&args[0]);
             const Vec3f rotationDir = ArgumentHelpers::ArgToVec3f(&args[1]);
-            *o = QuatFromAngleAxis(rotationAngle, rotationDir);
+            *o = QuatFromAngleAxis(F32DegreesToRadians(rotationAngleDeg), rotationDir);
             return true;
         } else {
             return false;
