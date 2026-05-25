@@ -101,7 +101,7 @@ namespace BackgroundStyleStructDef {
     };
     static constexpr ftdType Type = FTD_TYPE_STRUCT(BackgroundStyle, Fields);
 }
-FTD_BIND_TYPE(BackgroundStyle, BackgroundStyleStructDef::Type)
+FTD_BIND_TYPE(BackgroundStyle, BackgroundStyleStructDef::Type);
 
 namespace TextStyleStructDef {
     static constexpr ftdField Fields[] = {
@@ -113,17 +113,128 @@ namespace TextStyleStructDef {
     };
     static constexpr ftdType Type = FTD_TYPE_STRUCT(TextStyle, Fields);
 }
-FTD_BIND_TYPE(TextStyle, TextStyleStructDef::Type)
+FTD_BIND_TYPE(TextStyle, TextStyleStructDef::Type);
+
+namespace FontDefinitionStructDef {
+    static constexpr ftdField Fields[] = {
+        FTD_FIELD(FontDefinition, name),
+        FTD_FIELD(FontDefinition, size),
+        FTD_FIELD(FontDefinition, lineScale),
+        FTD_FIELD_STRUCT(FontDefinition, style),
+    };
+    static constexpr ftdType Type = FTD_TYPE_STRUCT(FontDefinition, Fields);
+}
+FTD_BIND_TYPE(FontDefinition, FontDefinitionStructDef::Type);
+
+namespace HeaderDefinitionStructDef {
+    static constexpr ftdField Fields[] = {
+        FTD_FIELD_STRUCT(HeaderDefinition, font),
+        FTD_FIELD(HeaderDefinition, height),
+        FTD_FIELD(HeaderDefinition, leftText),
+        FTD_FIELD(HeaderDefinition, centerText),
+        FTD_FIELD(HeaderDefinition, rightText),
+        FTD_FIELD_STRUCT(HeaderDefinition, padding),
+    };
+    static constexpr ftdType Type = FTD_TYPE_STRUCT(HeaderDefinition, Fields);
+}
+FTD_BIND_TYPE(HeaderDefinition, HeaderDefinitionStructDef::Type);
+
+namespace FooterDefinitionStructDef {
+    static constexpr ftdField Fields[] = {
+        FTD_FIELD_STRUCT(FooterDefinition, font),
+        FTD_FIELD(FooterDefinition, height),
+        FTD_FIELD(FooterDefinition, leftText),
+        FTD_FIELD(FooterDefinition, centerText),
+        FTD_FIELD(FooterDefinition, rightText),
+        FTD_FIELD_STRUCT(FooterDefinition, padding),
+    };
+    static constexpr ftdType Type = FTD_TYPE_STRUCT(FooterDefinition, Fields);
+}
+FTD_BIND_TYPE(FooterDefinition, FooterDefinitionStructDef::Type);
+
+namespace BlockTypeEnumDef {
+    static constexpr ftdEnumValue Values[] = {
+        FTD_ENUM_VALUE(BlockType, None),
+        FTD_ENUM_VALUE(BlockType, Text),
+        FTD_ENUM_VALUE(BlockType, Image),
+    };
+    static constexpr ftdType Type = FTD_TYPE_ENUM(BlockType, Values);
+}
+FTD_BIND_TYPE(BlockType, BlockTypeEnumDef::Type);
+
+namespace HorizontalAlignmentEnumDef {
+    static constexpr ftdEnumValue Values[] = {
+        FTD_ENUM_VALUE(HorizontalAlignment, Left),
+        FTD_ENUM_VALUE(HorizontalAlignment, Center),
+        FTD_ENUM_VALUE(HorizontalAlignment, Right),
+    };
+    static constexpr ftdType Type = FTD_TYPE_ENUM(HorizontalAlignment, Values);
+}
+FTD_BIND_TYPE(HorizontalAlignment, HorizontalAlignmentEnumDef::Type);
+
+namespace VerticalAlignmentEnumDef {
+    static constexpr ftdEnumValue Values[] = {
+        FTD_ENUM_VALUE(VerticalAlignment, Top),
+        FTD_ENUM_VALUE(VerticalAlignment, Middle),
+        FTD_ENUM_VALUE(VerticalAlignment, Bottom),
+    };
+    static constexpr ftdType Type = FTD_TYPE_ENUM(VerticalAlignment, Values);
+}
+FTD_BIND_TYPE(VerticalAlignment, HorizontalAlignmentEnumDef::Type);
+
+namespace BlockAlignmentStructDef {
+    static constexpr ftdField Fields[] = {
+        FTD_FIELD_ENUM(BlockAlignment, h, &HorizontalAlignmentEnumDef::Type),
+        FTD_FIELD_ENUM(BlockAlignment, v, &VerticalAlignmentEnumDef::Type),
+    };
+    static constexpr ftdType Type = FTD_TYPE_STRUCT(BlockAlignment, Fields);
+}
+FTD_BIND_TYPE(BlockAlignment, BlockAlignmentStructDef::Type);
+
+namespace TextBlockDefinitionStructDef {
+    static constexpr ftdField Fields[] = {
+        FTD_FIELD_STRUCT(TextBlockDefinition, color),
+        FTD_FIELD(TextBlockDefinition, text),
+        FTD_FIELD(TextBlockDefinition, fontSize),
+        FTD_FIELD_ENUM(TextBlockDefinition, textAlign, &HorizontalAlignmentEnumDef::Type),
+    };
+    static constexpr ftdType Type = FTD_TYPE_STRUCT(TextBlockDefinition, Fields);
+}
+FTD_BIND_TYPE(TextBlockDefinition, TextBlockDefinitionStructDef::Type);
+
+namespace ImageBlockDefinitionStructDef {
+    static constexpr ftdField Fields[] = {
+        FTD_FIELD_STRUCT(ImageBlockDefinition, tintColor),
+        FTD_FIELD_STRUCT(ImageBlockDefinition, size),
+        FTD_FIELD_REF(ImageBlockDefinition, imageResource, &ResourceStructDef::Type),
+        FTD_FIELD(ImageBlockDefinition, keepAspect),
+    };
+    static constexpr ftdType Type = FTD_TYPE_STRUCT(ImageBlockDefinition, Fields);
+}
+FTD_BIND_TYPE(ImageBlockDefinition, ImageBlockDefinitionStructDef::Type);
+
+namespace BlockDefinitionStructDef {
+    static constexpr ftdField Fields[] = {
+        FTD_FIELD_STRUCT(BlockDefinition, pos),
+        FTD_FIELD_STRUCT(BlockDefinition, size),
+        FTD_FIELD_ENUM(BlockDefinition, type, &BlockTypeEnumDef::Type),
+        FTD_FIELD_STRUCT(BlockDefinition, contentAlignment),
+        FTD_FIELD_UNION(BlockDefinition, text, &TextBlockDefinitionStructDef::Type, "type", BlockType::Text),
+        FTD_FIELD_UNION(BlockDefinition, image, &ImageBlockDefinitionStructDef::Type, "type", BlockType::Image),
+    };
+    static constexpr ftdType Type = FTD_TYPE_STRUCT(BlockDefinition, Fields);
+}
+FTD_BIND_TYPE(BlockDefinition, BlockDefinitionStructDef::Type);
 
 namespace SlideDefinitionStructDef {
     static constexpr ftdField Fields[] = {
         FTD_FIELD(SlideDefinition, name),
-        FTD_FIELD_ARRAY_DATA(SlideDefinition, blocks),
-        FTD_FIELD_ARRAY_DATA(SlideDefinition, sounds),
+        FTD_FIELD_ARRAY_DATA(SlideDefinition, blocks, blocks),
+        FTD_FIELD_ARRAY_DATA(SlideDefinition, sounds, sounds),
         FTD_FIELD_STRUCT(SlideDefinition, background),
         FTD_FIELD_STRUCT(SlideDefinition, rotation),
-        FTD_FIELD_ARRAY_SIZE(SlideDefinition, blockCount),
-        FTD_FIELD_ARRAY_SIZE(SlideDefinition, soundCount),
+        FTD_FIELD_ARRAY_SIZE(SlideDefinition, blocks, blockCount),
+        FTD_FIELD_ARRAY_SIZE(SlideDefinition, sounds, soundCount),
         FTD_FIELD(SlideDefinition, duration),
         FTD_FIELD_HIDDEN("talk")
     };
@@ -132,7 +243,40 @@ namespace SlideDefinitionStructDef {
         .fields = (Fields), .fieldCount = (uint32_t)fplArrayCount(Fields)
     };
 }
-FTD_BIND_TYPE(SlideDefinition, SlideDefinitionStructDef::Type)
+FTD_BIND_TYPE(SlideDefinition, SlideDefinitionStructDef::Type);
+
+namespace PresentationDefinitionStructDef {
+    static constexpr ftdField Fields[] = {
+        FTD_FIELD_ARRAY_DATA(PresentationDefinition, slides, slides),
+        FTD_FIELD_ARRAY_SIZE(PresentationDefinition, slides, slideCount),
+        FTD_FIELD_STRUCT(PresentationDefinition, slideSize),
+        FTD_FIELD_STRUCT(PresentationDefinition, header),
+        FTD_FIELD_STRUCT(PresentationDefinition, footer),
+        FTD_FIELD_STRUCT(PresentationDefinition, titleFont),
+        FTD_FIELD_STRUCT(PresentationDefinition, normalFont),
+        FTD_FIELD_STRUCT(PresentationDefinition, consoleFont),
+        FTD_FIELD(PresentationDefinition, padding),
+    };
+    static constexpr ftdType Type = {
+        .name = "PresentationDefinition", .size = sizeof(PresentationDefinition), .align = alignof(PresentationDefinition),
+        .fields = (Fields), .fieldCount = (uint32_t)fplArrayCount(Fields)
+    };
+}
+FTD_BIND_TYPE(PresentationDefinition, PresentationDefinitionStructDef::Type);
+
+namespace PresentationFileStructDef {
+    static constexpr ftdField Fields[] = {
+        FTD_FIELD_STRUCT(PresentationFile, definition),
+        FTD_FIELD_ARRAY_DATA(PresentationFile, fonts, fonts),
+        FTD_FIELD_ARRAY_DATA(PresentationFile, sounds, sounds),
+        FTD_FIELD_ARRAY_DATA(PresentationFile, images, images),
+        FTD_FIELD_ARRAY_SIZE(PresentationFile, fonts, fontCount),
+        FTD_FIELD_ARRAY_SIZE(PresentationFile, sounds, soundCount),
+        FTD_FIELD_ARRAY_SIZE(PresentationFile, images, imageCount),
+    };
+    static constexpr ftdType Type = FTD_TYPE_STRUCT(PresentationFile, Fields);
+}
+FTD_BIND_TYPE(PresentationFile, PresentationFileStructDef::Type);
 
 namespace ArgumentHelpers {
     static uint32_t ArgToU32(const ftdValue *v) {
@@ -234,8 +378,15 @@ inline void RegisterSerializationTypes(ftdContext *ctx) {
     ftdRegisterEnum(ctx, &BackgroundKindEnumDef::Type);
     ftdRegisterStruct(ctx, &BackgroundStyleStructDef::Type);
 
+    // FontDefinition
+    ftdRegisterStruct(ctx, &FontDefinitionStructDef::Type);
+
     // TextStyle
     ftdRegisterStruct(ctx, &TextStyleStructDef::Type);
+
+    // Header/Footer Definition
+    ftdRegisterStruct(ctx, &HeaderDefinitionStructDef::Type);
+    ftdRegisterStruct(ctx, &FooterDefinitionStructDef::Type);
 
     // Resource
     ftdRegisterEnum(ctx, &ResourceTypeEnumDef::Type);
@@ -243,8 +394,15 @@ inline void RegisterSerializationTypes(ftdContext *ctx) {
     ftdRegisterStruct(ctx, &MemoryResourceStructDef::Type);
     ftdRegisterStruct(ctx, &ResourceStructDef::Type);
 
+    // BlockDefinition
+    ftdRegisterEnum(ctx, &BlockTypeEnumDef::Type);
+    ftdRegisterStruct(ctx, &BlockDefinitionStructDef::Type);
+
     // SlideDefinition
     ftdRegisterStruct(ctx, &SlideDefinitionStructDef::Type);
+
+    // PresentationDefinition
+    ftdRegisterStruct(ctx, &PresentationDefinitionStructDef::Type);
 
     // Color helpers
     ftdRegisterHelper(ctx, "RGBA24", &Vec4fStructDef::Type, ColorHelpers::RGBA24, nullptr);
@@ -253,4 +411,10 @@ inline void RegisterSerializationTypes(ftdContext *ctx) {
 
     // Math helpers
     ftdRegisterHelper(ctx, "QuatFromAngleAxis", &QuaternionStructDef::Type, MathHelpers::QuaternionFromAngleAxis, nullptr);
+
+    // Register globals
+    ftdRegisterGlobal(ctx, "BuiltinFonts.Debug", &ResourceStructDef::Type, &BuiltinFonts::Debug);
+    ftdRegisterGlobal(ctx, "BuiltinFonts.Arimo", &ResourceStructDef::Type, &BuiltinFonts::Arimo);
+    ftdRegisterGlobal(ctx, "BuiltinFonts.SulphurPoint", &ResourceStructDef::Type, &BuiltinFonts::SulphurPoint);
+    ftdRegisterGlobal(ctx, "BuiltinFonts.BitStreamVerySans", &ResourceStructDef::Type, &BuiltinFonts::BitStreamVerySans);
 }

@@ -108,8 +108,8 @@ static BlockAlignment MakeAlign(HorizontalAlignment h = HorizontalAlignment::Lef
 struct BlockDefinition {
 	Vec2f pos;
 	Vec2f size;
-	BlockType type;
 	BlockAlignment contentAlignment;
+	BlockType type;
 	union {
 		TextBlockDefinition text;
 		ImageBlockDefinition image;
@@ -235,7 +235,7 @@ struct PresentationFile {
 	const Resource *fonts;
 	const Resource *sounds;
 	const Resource *images;
-	size_t fontCont;
+	size_t fontCount;
 	size_t soundCount;
 	size_t imageCount;
 };

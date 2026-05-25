@@ -100,14 +100,14 @@ namespace ftd {
 #define FTD_FIELD_KIND_SUB(StructT, member, kind, subTypePtr) \
 	ftdField{ #member, (uint32_t)offsetof(StructT, member), (kind), (subTypePtr) }
 
-#define FTD_FIELD_ARRAY_DATA(StructT, member) \
-	ftdField{ #member, (uint32_t)offsetof(StructT, member), ftdFieldKind_ArrayData, nullptr }
+#define FTD_FIELD_ARRAY_DATA(StructT, arrayKey, member) \
+	ftdField{ #arrayKey ".data", (uint32_t)offsetof(StructT, member), ftdFieldKind_ArrayData, nullptr }
 
-#define FTD_FIELD_ARRAY_SIZE(StructT, member) \
-	ftdField{ #member, (uint32_t)offsetof(StructT, member), ftdFieldKind_ArrayCount, nullptr }
+#define FTD_FIELD_ARRAY_SIZE(StructT, arrayKey, member) \
+	ftdField{ #arrayKey ".count", (uint32_t)offsetof(StructT, member), ftdFieldKind_ArrayCount, nullptr }
 
-#define FTD_FIELD_ARRAY_CAPACITY(StructT, member) \
-	ftdField{ #member, (uint32_t)offsetof(StructT, member), ftdFieldKind_ArrayCapacity, nullptr }
+#define FTD_FIELD_ARRAY_CAPACITY(StructT, arrayKey, member) \
+	ftdField{ #arrayKey ".capacity", (uint32_t)offsetof(StructT, member), ftdFieldKind_ArrayCapacity, nullptr }
 
 #define FTD_FIELD_HIDDEN(name) \
 	ftdField{ name, 0, ftdFieldKind_String, nullptr, 0, ftdFieldFlag_Hidden }

@@ -2886,7 +2886,8 @@ int main(int argc, char **argv) {
 
 		if (const ftdResult res = ftdParseFile(ctx, presentationFilePath); !res.ok) {
 			for (uint32_t i = 0; i < res.diagnosticCount; ++i) {
-				fplConsoleFormatError("%s\n", res.diagnostics[i].message);
+				ftdDiagnostic diag = res.diagnostics[i];
+				fplConsoleFormatError("%s on line '%d', column '%d'\n", diag.message, diag.span.line, diag.span.column);
 			}
 		} else {
 			const PresentationDefinition *presentationDefinition = static_cast<const PresentationDefinition *>(ftdLookup(ctx, "MyAppConfig", nullptr));
