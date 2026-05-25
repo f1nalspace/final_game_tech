@@ -197,7 +197,7 @@ TextStyles {
 Slide Intro {
     name    = "Introduction"
     duration = 18.5
-    rotation = { angleDegrees = 0.0, axis = V3f(1, 1, 1) }
+    rotation = QuatFromAngleAxis(0.0, V3f(1, 1, 1))
     background = Backgrounds.FixedBackground
 
     talk = "Hi! I am Torsten"

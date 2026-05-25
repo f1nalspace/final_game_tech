@@ -2590,7 +2590,7 @@ static void AddSlideFromDefinition(Renderer &renderer, SoundManager &soundMng, P
 	slide->state = {};
 	slide->rotation = inSlide.rotation;
 	slide->background = inSlide.background;
-	slide->autoTransitionInSeconds = inSlide.autoTransitionInSeconds;
+	slide->autoTransitionInSeconds = inSlide.duration;
 
 	Rect2f area = AddHeaderAndFooter(slide, inPresentation.header, inPresentation.footer);
 
@@ -2878,7 +2878,7 @@ int main(int argc, char **argv) {
 			}
 		}
 
-#if 0
+#if 1
 		String presentationFilePath = app.strings.MakePath(app.presentationsPath, "fpl_presentation.ftd");
 
 		ftdContext *ctx = ftdCreate(NULL);

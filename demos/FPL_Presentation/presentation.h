@@ -153,7 +153,7 @@ struct SlideDefinition {
 	Quaternion rotation;
 	size_t blockCount;
 	size_t soundCount;
-	double autoTransitionInSeconds;
+	double duration;
 };
 
 template<size_t N>
@@ -168,7 +168,7 @@ static SlideDefinition MakeSlideDef(const char* name, BlockDefinition(&blocks)[N
 	}
 	result.rotation = rotation;
 	result.blockCount = N;
-	result.autoTransitionInSeconds = autoTransitionInSeconds;
+	result.duration = autoTransitionInSeconds;
 	return(result);
 }
 
@@ -189,7 +189,7 @@ static SlideDefinition MakeSlideDef(const char* name, BlockDefinition(&blocks)[N
 	result.rotation = rotation;
 	result.blockCount = NBlocks;
 	result.soundCount = NSounds;
-	result.autoTransitionInSeconds = autoTransitionInSeconds;
+	result.duration = autoTransitionInSeconds;
 	return(result);
 }
 

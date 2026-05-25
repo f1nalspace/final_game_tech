@@ -15,6 +15,16 @@ namespace Vec2fStructDef {
 }
 FTD_BIND_TYPE(Vec2f, Vec2fStructDef::Type)
 
+namespace Vec3fStructDef {
+    static constexpr ftdField Fields[] = {
+        FTD_FIELD(Vec3f, x),
+        FTD_FIELD(Vec3f, y),
+        FTD_FIELD(Vec3f, z),
+    };
+    static constexpr ftdType Type = FTD_TYPE_STRUCT(Vec3f, Fields);
+}
+FTD_BIND_TYPE(Vec3f, Vec3fStructDef::Type)
+
 namespace Vec4fStructDef {
     static constexpr ftdField Fields[] = {
         FTD_FIELD(Vec4f, x),
@@ -114,7 +124,7 @@ namespace SlideDefinitionStructDef {
         FTD_FIELD_STRUCT(SlideDefinition, rotation),
         FTD_FIELD_ARRAY_SIZE(SlideDefinition, blockCount),
         FTD_FIELD_ARRAY_SIZE(SlideDefinition, soundCount),
-        FTD_FIELD(SlideDefinition, autoTransitionInSeconds),
+        FTD_FIELD(SlideDefinition, duration),
     };
     static constexpr ftdType Type = {
         .name = "Slide", .size = sizeof(SlideDefinition), .align = alignof(SlideDefinition),
@@ -123,8 +133,7 @@ namespace SlideDefinitionStructDef {
 }
 FTD_BIND_TYPE(SlideDefinition, SlideDefinitionStructDef::Type)
 
-// Color helpers callable from .ftd source: RGBA24(hex, alpha) -> Vec4f.
-namespace ColorHelpers {
+namespace ArgumentHelpers {
     static uint32_t ArgToU32(const ftdValue *v) {
         switch (v->kind) {
             case ftdValueKind_UInt:  return (uint32_t)v->as.u;
@@ -143,13 +152,38 @@ namespace ColorHelpers {
         }
     }
 
+    static float ArgToFloat(const ftdValue *v) {
+        switch (v->kind) {
+            case ftdValueKind_UInt:  return (float)v->as.u;
+            case ftdValueKind_Int:   return (float)v->as.i;
+            case ftdValueKind_Float: return (float)v->as.f;
+            default:                 return 0.0f;
+        }
+    }
+
+    static Vec3f ArgToVec3f(const ftdValue *v) {
+        switch (v->kind) {
+            case ftdValueKind_Struct: {
+                void *x = v->as.ptr;
+            }
+            default:
+                break;
+        }
+        return V3fZero();
+    }
+}
+
+// Color helpers callable from .ftd source: RGBA24(hex, alpha) -> Vec4f.
+namespace ColorHelpers {
+
+
     // RGBA24(0xRRGGBB, alpha) packs a 24-bit color literal plus an 8-bit alpha into a Vec4f with each channel normalized to 0..1.
     // Missing alpha defaults to 255 (fully opaque).
     static bool RGBA24(ftdContext *ctx, const ftdValue *args, uint32_t argCount, void *outValue, void *userData) {
         (void)ctx; (void)userData;
         Vec4f *o = (Vec4f *)outValue;
-        const uint32_t hex = (argCount >= 1) ? ArgToU32(&args[0]) : 0;
-        const uint8_t a  = (argCount >= 2) ? ArgToU8(&args[1]) : 255;
+        const uint32_t hex = (argCount >= 1) ? ArgumentHelpers::ArgToU32(&args[0]) : 0;
+        const uint8_t a  = (argCount >= 2) ? ArgumentHelpers::ArgToU8(&args[1]) : 255;
         *o = RGBAToLinearHex24(hex, a);
         return true;
     }
@@ -158,7 +192,7 @@ namespace ColorHelpers {
     static bool RGBA32(ftdContext *ctx, const ftdValue *args, uint32_t argCount, void *outValue, void *userData) {
         (void)ctx; (void)userData;
         Vec4f *o = (Vec4f *)outValue;
-        const uint32_t hex = (argCount == 1) ? ArgToU32(&args[0]) : 0;
+        const uint32_t hex = (argCount == 1) ? ArgumentHelpers::ArgToU32(&args[0]) : 0;
         *o = BGRAUnpack4x8(hex);
         return true;
     }
@@ -168,18 +202,34 @@ namespace ColorHelpers {
     static bool RGBA(ftdContext *ctx, const ftdValue *args, uint32_t argCount, void *outValue, void *userData) {
         (void)ctx; (void)userData;
         Vec4f *o = (Vec4f *)outValue;
-        const uint8_t r = (argCount >= 1) ? ArgToU8(&args[0]) : 0;
-        const uint8_t g = (argCount >= 2) ? ArgToU8(&args[1]) : 0;
-        const uint8_t b = (argCount >= 3) ? ArgToU8(&args[2]) : 0;
-        const uint8_t a = (argCount >= 4) ? ArgToU8(&args[3]) : 255;
+        const uint8_t r = (argCount >= 1) ? ArgumentHelpers::ArgToU8(&args[0]) : 0;
+        const uint8_t g = (argCount >= 2) ? ArgumentHelpers::ArgToU8(&args[1]) : 0;
+        const uint8_t b = (argCount >= 3) ? ArgumentHelpers::ArgToU8(&args[2]) : 0;
+        const uint8_t a = (argCount >= 4) ? ArgumentHelpers::ArgToU8(&args[3]) : 255;
         *o = RGBAToLinearRaw(r, g, b, a);
         return true;
+    }
+}
+
+namespace MathHelpers {
+    static bool QuaternionFromAngleAxis(ftdContext *ctx, const ftdValue *args, uint32_t argCount, void *outValue, void *userData) {
+        (void)ctx; (void)userData;
+        Quaternion *o = (Quaternion *)outValue;
+        if (argCount == 2) {
+            const float rotationAngle = ArgumentHelpers::ArgToFloat(&args[0]);
+            const Vec3f rotationDir = ArgumentHelpers::ArgToVec3f(&args[1]);
+            *o = QuatFromAngleAxis(rotationAngle, rotationDir);
+            return true;
+        } else {
+            return false;
+        }
     }
 }
 
 inline void RegisterSerializationTypes(ftdContext *ctx) {
     // Math
     ftdRegisterStruct(ctx, &Vec2fStructDef::Type);
+    ftdRegisterStruct(ctx, &Vec3fStructDef::Type);
     ftdRegisterStruct(ctx, &Vec4fStructDef::Type);
     ftdRegisterStruct(ctx, &QuaternionStructDef::Type);
 
@@ -203,4 +253,7 @@ inline void RegisterSerializationTypes(ftdContext *ctx) {
     ftdRegisterHelper(ctx, "RGBA24", &Vec4fStructDef::Type, ColorHelpers::RGBA24, nullptr);
     ftdRegisterHelper(ctx, "RGBA32", &Vec4fStructDef::Type, ColorHelpers::RGBA32, nullptr);
     ftdRegisterHelper(ctx, "RGBA",   &Vec4fStructDef::Type, ColorHelpers::RGBA, nullptr);
+
+    // Math helpers
+    ftdRegisterHelper(ctx, "QuatFromAngleAxis", &QuaternionStructDef::Type, MathHelpers::QuaternionFromAngleAxis, nullptr);
 }
