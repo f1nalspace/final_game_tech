@@ -78,6 +78,8 @@ License:
 
 #include "builtin.h" // FontResources, SoundResources
 
+#include "serialization.h"
+
 #define DRAW_ROTATING_CUBE 1
 #define USE_LETTERBOX_VIEWPORT 0
 #define CUBE_ONLY 0
@@ -2879,9 +2881,7 @@ int main(int argc, char **argv) {
 		String presentationFilePath = app.strings.MakePath(app.presentationsPath, "fpl_presentation.ftd");
 
 		ftdContext *ctx = ftdCreate(NULL);
-		ftdRegisterStruct(ctx, &Vec4fType::Type);
-		ftdRegisterEnum(ctx, &BackgroundKindTypeDef::Type);
-		ftdRegisterStruct(ctx, &BackgroundStyleTypeDef::Type);
+		RegisterSerializationTypes(ctx);
 
 		if (const ftdResult res = ftdParseFile(ctx, presentationFilePath); !res.ok) {
 			for (uint32_t i = 0; i < res.diagnosticCount; ++i) {
