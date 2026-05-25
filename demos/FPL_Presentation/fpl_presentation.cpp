@@ -2894,7 +2894,7 @@ int main(int argc, char **argv) {
 			if (presentationFile != nullptr) {
 				BuildPresentation(presentationFile->definition, app.renderer, app.soundMng, app.presentation);
 			} else {
-				fplConsoleFormatError("Failed to look up 'FPLPresentation' in %s\n", (const char *)presentationFilePath);
+				fplConsoleFormatError("Failed to look up 'FPLPresentationFile' in %s\n", (const char *)presentationFilePath);
 			}
 			ftdDestroy(ctx);
 		}
