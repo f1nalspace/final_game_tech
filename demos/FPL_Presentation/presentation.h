@@ -142,53 +142,39 @@ static BlockDefinition MakeImageDef(const Vec2f& pos, const Vec2f& size, BlockAl
 	return(result);
 }
 
-constexpr size_t MaxBlockCount = 32;
-constexpr size_t MaxAudioSoundCount = 4;
-
 struct SlideDefinition {
 	const char* name;
-	BlockDefinition blocks[MaxBlockCount];
-	SoundDefinition sounds[MaxAudioSoundCount];
+	const BlockDefinition *blocks;
+	const SoundDefinition *sounds;
 	BackgroundStyle background;
 	Quaternion rotation;
-	size_t blockCount;
-	size_t soundCount;
+	uint32_t blockCount;
+	uint32_t soundCount;
 	double duration;
 };
 
 template<size_t N>
-static SlideDefinition MakeSlideDef(const char* name, BlockDefinition(&blocks)[N], const BackgroundStyle& background, const Quaternion& rotation, const double autoTransitionInSeconds = 0.0) {
-	fplAssert(N < MaxBlockCount);
-
+static SlideDefinition MakeSlideDef(const char* name, const BlockDefinition(&blocks)[N], const BackgroundStyle& background, const Quaternion& rotation, const double autoTransitionInSeconds = 0.0) {
 	SlideDefinition result = {};
 	result.name = name;
 	result.background = background;
-	for (size_t i = 0; i < N; ++i) {
-		result.blocks[i] = blocks[i];
-	}
+	result.blocks = blocks;
+	result.blockCount = (uint32_t)N;
 	result.rotation = rotation;
-	result.blockCount = N;
 	result.duration = autoTransitionInSeconds;
 	return(result);
 }
 
 template<size_t NBlocks, size_t NSounds>
-static SlideDefinition MakeSlideDef(const char* name, BlockDefinition(&blocks)[NBlocks], SoundDefinition(&sounds)[NSounds], const BackgroundStyle& background, const Quaternion& rotation, const double autoTransitionInSeconds = 0.0) {
-	fplAssert(NBlocks < MaxBlockCount);
-	fplAssert(NSounds < MaxAudioSoundCount);
-
+static SlideDefinition MakeSlideDef(const char* name, const BlockDefinition(&blocks)[NBlocks], const SoundDefinition(&sounds)[NSounds], const BackgroundStyle& background, const Quaternion& rotation, const double autoTransitionInSeconds = 0.0) {
 	SlideDefinition result = {};
 	result.name = name;
 	result.background = background;
-	for (size_t i = 0; i < NBlocks; ++i) {
-		result.blocks[i] = blocks[i];
-	}
-	for (size_t i = 0; i < NSounds; ++i) {
-		result.sounds[i] = sounds[i];
-	}
+	result.blocks = blocks;
+	result.blockCount = (uint32_t)NBlocks;
+	result.sounds = sounds;
+	result.soundCount = (uint32_t)NSounds;
 	result.rotation = rotation;
-	result.blockCount = NBlocks;
-	result.soundCount = NSounds;
 	result.duration = autoTransitionInSeconds;
 	return(result);
 }
@@ -220,7 +206,7 @@ struct FooterDefinition {
 
 struct PresentationDefinition {
 	const SlideDefinition* slides;
-	size_t slideCount;
+	uint32_t slideCount;
 	Vec2f slideSize;
 	HeaderDefinition header;
 	FooterDefinition footer;
@@ -235,9 +221,9 @@ struct PresentationFile {
 	const Resource *fonts;
 	const Resource *sounds;
 	const Resource *images;
-	size_t fontCount;
-	size_t soundCount;
-	size_t imageCount;
+	uint32_t fontCount;
+	uint32_t soundCount;
+	uint32_t imageCount;
 };
 
 #endif // PRESENTATION_H
