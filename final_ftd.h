@@ -70,13 +70,12 @@ The rest of this header explains, in order:
 |                             |             | macro below to be defined.
 | FTD_NO_DEFAULT_ALLOCATOR    | off         | Removes the calloc/free default.
 | FTD_ASSERT(expr)            | assert      | Internal sanity check.
-| FTD_MEMCPY(dst, src, n)     | memcpy      | C-mem* / C-str* / strtod / vsnprintf
+| FTD_MEMCPY(dst, src, n)     | memcpy      | C-mem* / C-str* / vsnprintf
 | FTD_MEMSET(dst, c, n)       | memset      | overrides. Default to libc; supply
 | FTD_MEMCMP(a, b, n)         | memcmp      | your own to drop all libc deps.
 | FTD_STRLEN(s)               | strlen      |
 | FTD_STRCMP(a, b)            | strcmp      |
 | FTD_STRNCMP(a, b, n)        | strncmp     |
-| FTD_STRTOD(s, end)          | strtod      |
 | FTD_VSNPRINTF(b, n, fmt, ap)| vsnprintf   |
 | FTD_CALLOC(nmemb, size)     | calloc      | Used by the default allocator.
 | FTD_MALLOC(size)            | malloc      | Used by ftdParseFile() (gated by
@@ -1407,8 +1406,8 @@ FTD_API const void *ftdLookup(ftdContext *ctx, const char *dottedName, const ftd
 #if defined(FTD_NO_STDIO)
 #	if !defined(FTD_MEMCPY)    || !defined(FTD_MEMSET)  || !defined(FTD_MEMCMP)   \
 	 || !defined(FTD_STRLEN)    || !defined(FTD_STRCMP)  || !defined(FTD_STRNCMP)  \
-	 || !defined(FTD_STRTOD)    || !defined(FTD_VSNPRINTF) || !defined(FTD_ASSERT)
-#		error "FTD_NO_STDIO is set: you must define FTD_MEMCPY/MEMSET/MEMCMP/STRLEN/STRCMP/STRNCMP/STRTOD/VSNPRINTF/ASSERT (and, unless FTD_NO_DEFAULT_ALLOCATOR is set, FTD_CALLOC/FTD_MALLOC/FTD_FREE)."
+	 || !defined(FTD_VSNPRINTF) || !defined(FTD_ASSERT)
+#		error "FTD_NO_STDIO is set: you must define FTD_MEMCPY/MEMSET/MEMCMP/STRLEN/STRCMP/STRNCMP/VSNPRINTF/ASSERT (and, unless FTD_NO_DEFAULT_ALLOCATOR is set, FTD_CALLOC/FTD_MALLOC/FTD_FREE)."
 #	endif
 #	if !defined(FTD_NO_DEFAULT_ALLOCATOR)
 #		if !defined(FTD_CALLOC) || !defined(FTD_MALLOC) || !defined(FTD_FREE)
@@ -1422,7 +1421,7 @@ FTD_API const void *ftdLookup(ftdContext *ctx, const char *dottedName, const ftd
 	 || !defined(FTD_STRLEN) || !defined(FTD_STRCMP) || !defined(FTD_STRNCMP)
 #		include <string.h>
 #	endif
-#	if !defined(FTD_STRTOD) || !defined(FTD_MALLOC) || !defined(FTD_FREE) \
+#	if !defined(FTD_MALLOC) || !defined(FTD_FREE) \
 	 || (!defined(FTD_NO_DEFAULT_ALLOCATOR) && !defined(FTD_CALLOC))
 #		include <stdlib.h>
 #	endif
@@ -1451,9 +1450,6 @@ FTD_API const void *ftdLookup(ftdContext *ctx, const char *dottedName, const ftd
 #endif
 #if !defined(FTD_STRNCMP)
 #	define FTD_STRNCMP(a, b, n)           strncmp((a), (b), (n))
-#endif
-#if !defined(FTD_STRTOD)
-#	define FTD_STRTOD(s, end)             strtod((s), (end))
 #endif
 #if !defined(FTD_VSNPRINTF)
 #	define FTD_VSNPRINTF(buf, n, fmt, ap) vsnprintf((buf), (n), (fmt), (ap))
@@ -2401,18 +2397,48 @@ static void ftd__readNumber(ftd__Lexer *lex, ftd__Token *tok, bool negative) {
 
 	tok->span = ftd__makeSpan(lex, startPos, startLine, startCol);
 	if (isFloat) {
-		// parse via strtod over the original lexeme (minus suffix);
-		// the lexeme already includes the sign when negative=true
-		size_t numStart = startPos;
-		size_t numEnd = suffixStart;
-		char small[64];
-		size_t n = numEnd - numStart;
-		if (n >= sizeof(small)) {
-			n = sizeof(small) - 1;
+		// Parse the lexeme manually so the result is locale-independent.
+		// strtod is locale-aware: on locales where the decimal separator is
+		// ',' (e.g. German), strtod("0.45") returns 0 because '.' is not a
+		// recognised separator. FTD always uses '.' so we parse it ourselves.
+		// The lexer has already validated the shape: [-]?DIGITS(.DIGITS)?([eE][+-]?DIGITS)?
+		const char *s = lex->src + startPos;
+		const char *e = lex->src + suffixStart;
+		double sign = 1.0;
+		if (s < e && *s == '-') { sign = -1.0; s++; }
+		else if (s < e && *s == '+') { s++; }
+		double intPart = 0.0;
+		while (s < e && *s >= '0' && *s <= '9') {
+			intPart = intPart * 10.0 + (double)(*s - '0');
+			s++;
 		}
-		FTD_MEMCPY(small, lex->src + numStart, n);
-		small[n] = '\0';
-		double d = FTD_STRTOD(small, NULL);
+		double fracPart = 0.0;
+		double fracDiv = 1.0;
+		if (s < e && *s == '.') {
+			s++;
+			while (s < e && *s >= '0' && *s <= '9') {
+				fracPart = fracPart * 10.0 + (double)(*s - '0');
+				fracDiv *= 10.0;
+				s++;
+			}
+		}
+		double mantissa = (intPart + fracPart / fracDiv) * sign;
+		int32_t expVal = 0;
+		int32_t expSign = 1;
+		if (s < e && (*s == 'e' || *s == 'E')) {
+			s++;
+			if (s < e && *s == '-') { expSign = -1; s++; }
+			else if (s < e && *s == '+') { s++; }
+			while (s < e && *s >= '0' && *s <= '9') {
+				expVal = expVal * 10 + (*s - '0');
+				s++;
+			}
+		}
+		double pow10 = 1.0;
+		for (int32_t i = 0; i < expVal; ++i) {
+			pow10 *= 10.0;
+		}
+		double d = (expSign > 0) ? (mantissa * pow10) : (mantissa / pow10);
 		tok->kind = ftd__Tok_Float;
 		tok->f = d;
 	} else {
