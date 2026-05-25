@@ -6,16 +6,16 @@
 #include "presentation.h"
 #include "ftd_helper.h"
 
-namespace Vec2fTypeDef {
+namespace Vec2fStructDef {
     static constexpr ftdField Fields[] = {
         FTD_FIELD(Vec2f, x),
         FTD_FIELD(Vec2f, y),
     };
     static constexpr ftdType Type = FTD_TYPE_STRUCT(Vec2f, Fields);
 }
-FTD_BIND_TYPE(Vec2f, Vec2fTypeDef::Type)
+FTD_BIND_TYPE(Vec2f, Vec2fStructDef::Type)
 
-namespace Vec4fTypeDef {
+namespace Vec4fStructDef {
     static constexpr ftdField Fields[] = {
         FTD_FIELD(Vec4f, x),
         FTD_FIELD(Vec4f, y),
@@ -24,7 +24,18 @@ namespace Vec4fTypeDef {
     };
     static constexpr ftdType Type = FTD_TYPE_STRUCT(Vec4f, Fields);
 }
-FTD_BIND_TYPE(Vec4f, Vec4fTypeDef::Type)
+FTD_BIND_TYPE(Vec4f, Vec4fStructDef::Type)
+
+namespace QuaternionStructDef {
+    static constexpr ftdField Fields[] = {
+        FTD_FIELD(Quaternion, x),
+        FTD_FIELD(Quaternion, y),
+        FTD_FIELD(Quaternion, z),
+        FTD_FIELD(Quaternion, w),
+    };
+    static constexpr ftdType Type = FTD_TYPE_STRUCT(Quaternion, Fields);
+}
+FTD_BIND_TYPE(Quaternion, QuaternionStructDef::Type)
 
 namespace ResourceTypeEnumDef {
     static constexpr ftdEnumValue Values[] = {
@@ -35,14 +46,14 @@ namespace ResourceTypeEnumDef {
     static constexpr ftdType Type = FTD_TYPE_ENUM(ResourceType, Values);
 }
 
-namespace FileResourceTypeDef {
+namespace FileResourceStructDef {
     static constexpr ftdField Fields[] = {
         FTD_FIELD(FileResource, filePath),
     };
     static constexpr ftdType Type = FTD_TYPE_STRUCT(FileResource, Fields);
 }
 
-namespace MemoryResourceTypeDef {
+namespace MemoryResourceStructDef {
     static constexpr ftdField Fields[] = {
         FTD_FIELD_KIND(MemoryResource, data, ftdFieldKind_MemoryData8),
         FTD_FIELD_KIND(MemoryResource, length, ftdFieldKind_MemorySize),
@@ -50,12 +61,12 @@ namespace MemoryResourceTypeDef {
     static constexpr ftdType Type = FTD_TYPE_STRUCT(MemoryResource, Fields);
 }
 
-namespace ResourceTypeDef {
+namespace ResourceStructDef {
     static constexpr ftdField Fields[] = {
         FTD_FIELD(Resource, name),
         FTD_FIELD_ENUM(Resource, type, &ResourceTypeEnumDef::Type),
-        FTD_FIELD_UNION(Resource, file, &FileResourceTypeDef::Type, "type", ResourceType::File),
-        FTD_FIELD_UNION(Resource, memory, &MemoryResourceTypeDef::Type, "type", ResourceType::Memory),
+        FTD_FIELD_UNION(Resource, file, &FileResourceStructDef::Type, "type", ResourceType::File),
+        FTD_FIELD_UNION(Resource, memory, &MemoryResourceStructDef::Type, "type", ResourceType::Memory),
     };
     static constexpr ftdType Type = FTD_TYPE_STRUCT(Resource, Fields);
 }
@@ -72,7 +83,7 @@ namespace BackgroundKindEnumDef {
     static constexpr ftdType Type = FTD_TYPE_ENUM(BackgroundKind, Values);
 }
 
-namespace BackgroundStyleTypeDef {
+namespace BackgroundStyleStructDef {
     static constexpr ftdField Fields[] = {
         FTD_FIELD_ENUM(BackgroundStyle, kind, &BackgroundKindEnumDef::Type),
         FTD_FIELD_STRUCT(BackgroundStyle, primaryColor),
@@ -80,6 +91,37 @@ namespace BackgroundStyleTypeDef {
     };
     static constexpr ftdType Type = FTD_TYPE_STRUCT(BackgroundStyle, Fields);
 }
+FTD_BIND_TYPE(BackgroundStyle, BackgroundStyleStructDef::Type)
+
+namespace TextStyleStructDef {
+    static constexpr ftdField Fields[] = {
+        FTD_FIELD_STRUCT(TextStyle, background),
+        FTD_FIELD_STRUCT(TextStyle, foregroundColor),
+        FTD_FIELD_STRUCT(TextStyle, shadowColor),
+        FTD_FIELD_STRUCT(TextStyle, shadowOffset),
+        FTD_FIELD(TextStyle, drawShadow),
+    };
+    static constexpr ftdType Type = FTD_TYPE_STRUCT(TextStyle, Fields);
+}
+FTD_BIND_TYPE(TextStyle, TextStyleStructDef::Type)
+
+namespace SlideDefinitionStructDef {
+    static constexpr ftdField Fields[] = {
+        FTD_FIELD(SlideDefinition, name),
+        FTD_FIELD_ARRAY_DATA(SlideDefinition, blocks),
+        FTD_FIELD_ARRAY_DATA(SlideDefinition, sounds),
+        FTD_FIELD_STRUCT(SlideDefinition, background),
+        FTD_FIELD_STRUCT(SlideDefinition, rotation),
+        FTD_FIELD_ARRAY_SIZE(SlideDefinition, blockCount),
+        FTD_FIELD_ARRAY_SIZE(SlideDefinition, soundCount),
+        FTD_FIELD(SlideDefinition, autoTransitionInSeconds),
+    };
+    static constexpr ftdType Type = {
+        .name = "Slide", .size = sizeof(SlideDefinition), .align = alignof(SlideDefinition),
+        .fields = (Fields), .fieldCount = (uint32_t)fplArrayCount(Fields)
+    };
+}
+FTD_BIND_TYPE(SlideDefinition, SlideDefinitionStructDef::Type)
 
 // Color helpers callable from .ftd source: RGBA24(hex, alpha) -> Vec4f.
 namespace ColorHelpers {
@@ -137,21 +179,28 @@ namespace ColorHelpers {
 
 inline void RegisterSerializationTypes(ftdContext *ctx) {
     // Math
-    ftdRegisterStruct(ctx, &Vec2fTypeDef::Type);
-    ftdRegisterStruct(ctx, &Vec4fTypeDef::Type);
+    ftdRegisterStruct(ctx, &Vec2fStructDef::Type);
+    ftdRegisterStruct(ctx, &Vec4fStructDef::Type);
+    ftdRegisterStruct(ctx, &QuaternionStructDef::Type);
 
     // BackgroundStyle
     ftdRegisterEnum(ctx, &BackgroundKindEnumDef::Type);
-    ftdRegisterStruct(ctx, &BackgroundStyleTypeDef::Type);
+    ftdRegisterStruct(ctx, &BackgroundStyleStructDef::Type);
+
+    // TextStyle
+    ftdRegisterStruct(ctx, &TextStyleStructDef::Type);
 
     // Resource
     ftdRegisterEnum(ctx, &ResourceTypeEnumDef::Type);
-    ftdRegisterStruct(ctx, &FileResourceTypeDef::Type);
-    ftdRegisterStruct(ctx, &MemoryResourceTypeDef::Type);
-    ftdRegisterStruct(ctx, &ResourceTypeDef::Type);
+    ftdRegisterStruct(ctx, &FileResourceStructDef::Type);
+    ftdRegisterStruct(ctx, &MemoryResourceStructDef::Type);
+    ftdRegisterStruct(ctx, &ResourceStructDef::Type);
+
+    // SlideDefinition
+    ftdRegisterStruct(ctx, &SlideDefinitionStructDef::Type);
 
     // Color helpers
-    ftdRegisterHelper(ctx, "RGBA24", &Vec4fTypeDef::Type, ColorHelpers::RGBA24, nullptr);
-    ftdRegisterHelper(ctx, "RGBA32", &Vec4fTypeDef::Type, ColorHelpers::RGBA32, nullptr);
-    ftdRegisterHelper(ctx, "RGBA",   &Vec4fTypeDef::Type, ColorHelpers::RGBA, nullptr);
+    ftdRegisterHelper(ctx, "RGBA24", &Vec4fStructDef::Type, ColorHelpers::RGBA24, nullptr);
+    ftdRegisterHelper(ctx, "RGBA32", &Vec4fStructDef::Type, ColorHelpers::RGBA32, nullptr);
+    ftdRegisterHelper(ctx, "RGBA",   &Vec4fStructDef::Type, ColorHelpers::RGBA, nullptr);
 }

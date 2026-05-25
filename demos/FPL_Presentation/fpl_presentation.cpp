@@ -72,7 +72,7 @@ License:
 #include "presentation.h"
 
 // Contains the slide text for the FPL presentation
-//#include "slides.h" // TextDefinition, SlideDefinition
+#include "slides.h" // TextDefinition, SlideDefinition
 
 #include "types.h" // HorizontalAlignment, VerticalAlignment
 
@@ -2878,6 +2878,7 @@ int main(int argc, char **argv) {
 			}
 		}
 
+#if 0
 		String presentationFilePath = app.strings.MakePath(app.presentationsPath, "fpl_presentation.ftd");
 
 		ftdContext *ctx = ftdCreate(NULL);
@@ -2892,6 +2893,9 @@ int main(int argc, char **argv) {
 			BuildPresentation(*presentationDefinition, app.renderer, app.soundMng, app.presentation);
 			ftdDestroy(ctx);
 		}
+#else
+		BuildPresentation(FPLPresentation, app.renderer, app.soundMng, app.presentation);
+#endif
 
 		UpdatePresentationVariables(app.presentation);
 

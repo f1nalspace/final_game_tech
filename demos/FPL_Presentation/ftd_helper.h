@@ -100,6 +100,15 @@ namespace ftd {
 #define FTD_FIELD_KIND_SUB(StructT, member, kind, subTypePtr) \
 	ftdField{ #member, (uint32_t)offsetof(StructT, member), (kind), (subTypePtr) }
 
+#define FTD_FIELD_ARRAY_DATA(StructT, member) \
+	ftdField{ #member, (uint32_t)offsetof(StructT, member), ftdFieldKind_ArrayData, nullptr }
+
+#define FTD_FIELD_ARRAY_SIZE(StructT, member) \
+	ftdField{ #member, (uint32_t)offsetof(StructT, member), ftdFieldKind_ArrayCount, nullptr }
+
+#define FTD_FIELD_ARRAY_CAPACITY(StructT, member) \
+	ftdField{ #member, (uint32_t)offsetof(StructT, member), ftdFieldKind_ArrayCapacity, nullptr }
+
 // Struct ftdType literal. Name is stringized from the C++ type.
 #define FTD_TYPE_STRUCT(StructT, FieldsArr) \
 	ftdType{ .name = #StructT, .size = sizeof(StructT), .align = alignof(StructT), \

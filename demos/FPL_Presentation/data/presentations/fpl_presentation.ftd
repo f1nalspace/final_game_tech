@@ -195,7 +195,7 @@ TextStyles {
 # -----------------------------------------------------------------------------
 
 Slide Intro {
-    title    = "Introduction"
+    name    = "Introduction"
     duration = 18.5
     rotation = { angleDegrees = 0.0, axis = V3f(1, 1, 1) }
     background = Backgrounds.FixedBackground
@@ -225,7 +225,7 @@ Slide Intro {
 }
 
 Slide WhoAmI {
-    title    = "Who am I"
+    name    = "Who am I"
     duration = 20.5
     rotation = { angleDegrees = 15.0, axis = V3f(1, 1, 1) }
     background = Backgrounds.FixedBackground
@@ -303,7 +303,7 @@ Slide WhoAmI {
 }
 
 Slide WhatIsFPL {
-    title    = "What is FPL"
+    name    = "What is FPL"
     duration = 33.0
     rotation = { angleDegrees = -45.0, axis = V3f(0, 1, 1) }
     background = Backgrounds.FixedBackground
@@ -362,7 +362,7 @@ Slide WhatIsFPL {
 }
 
 Slide Motivation {
-    title    = "Motivation"
+    name    = "Motivation"
     duration = 31.0
     rotation = { angleDegrees = 70.0, axis = V3f(1.0, 0.1, 0.0) }
     background = Backgrounds.FixedBackground
@@ -393,7 +393,7 @@ Slide Motivation {
 }
 
 Slide Features {
-    title    = "Features"
+    name    = "Features"
     duration = 0.0
     rotation = { angleDegrees = 30.0, axis = V3f(0.0, 1.0, 0.1) }
     background = Backgrounds.FixedBackground
@@ -447,7 +447,7 @@ Slide Features {
 }
 
 Slide Platforms {
-    title    = "Supported Platforms"
+    name    = "Supported Platforms"
     duration = 0.0
     rotation = { angleDegrees = 75.0, axis = V3f(-0.5, 0.65, 0.5) }
     background = Backgrounds.FixedBackground
@@ -468,7 +468,7 @@ Slide Platforms {
 }
 
 Slide Magic {
-    title    = "How it works"
+    name    = "How it works"
     duration = 0.0
     rotation = { angleDegrees = -15.0, axis = V3f(0.7, 0.6, 0.3) }
     background = Backgrounds.FixedBackground
@@ -503,7 +503,7 @@ Slide Magic {
 }
 
 Slide HowItWorks {
-    title    = "How it actually works"
+    name    = "How it actually works"
     duration = 0.0
     rotation = { angleDegrees = 45.0, axis = V3f(0.5, 0.5, 0.5) }
     background = Backgrounds.FixedBackground
@@ -524,7 +524,7 @@ Slide HowItWorks {
 }
 
 Slide Constraints {
-    title    = "Constraints"
+    name    = "Constraints"
     duration = 0.0
     rotation = { angleDegrees = 65.0, axis = V3f(0.0, 0.5, 1.0) }
     background = Backgrounds.FixedBackground
@@ -560,7 +560,7 @@ Slide Constraints {
 }
 
 Slide HowToUse {
-    title    = "How to use"
+    name    = "How to use"
     duration = 0.0
     rotation = { angleDegrees = 75.0, axis = V3f(0.0, 1.0, 0.0) }
     background = Backgrounds.FixedBackground
@@ -584,7 +584,7 @@ Slide HowToUse {
 }
 
 Slide Demos {
-    title    = "Demos!"
+    name    = "Demos!"
     duration = 0.0
     rotation = { angleDegrees = -45.0, axis = V3f(1.0, 0.5, 0.25) }
     background = Backgrounds.FixedBackground
@@ -628,7 +628,7 @@ Slide Demos {
 }
 
 Slide Links {
-    title    = "Links"
+    name    = "Links"
     duration = 0.0
     rotation = { angleDegrees = 65.0, axis = V3f(1, 0, 0) }
     background = Backgrounds.FixedBackground
@@ -680,7 +680,7 @@ Slide Links {
 }
 
 Slide Thanks {
-    title    = "Thanks!"
+    name    = "Thanks!"
     duration = 0.0
     rotation = { angleDegrees = 0.0, axis = V3f(1, 1, 1) }   # 0 deg => identity quaternion
     background = Backgrounds.FixedBackground
