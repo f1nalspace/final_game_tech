@@ -252,12 +252,10 @@ namespace SlideDefinitionStructDef {
         FTD_FIELD_ARRAY_SIZE(SlideDefinition, sounds, soundCount),
         FTD_FIELD(SlideDefinition, duration),
     };
-    static constexpr ftdType Type = {
-        .name = "Slide", .size = sizeof(SlideDefinition), .align = alignof(SlideDefinition),
-        .fields = (Fields), .fieldCount = (uint32_t)fplArrayCount(Fields)
-    };
+    static constexpr ftdType Type = FTD_TYPE_STRUCT(SlideDefinition, Fields);
 }
 FTD_BIND_TYPE(SlideDefinition, SlideDefinitionStructDef::Type);
+
 
 namespace PresentationDefinitionStructDef {
     static constexpr ftdField Fields[] = {
@@ -271,10 +269,7 @@ namespace PresentationDefinitionStructDef {
         FTD_FIELD_STRUCT(PresentationDefinition, consoleFont),
         FTD_FIELD(PresentationDefinition, padding),
     };
-    static constexpr ftdType Type = {
-        .name = "PresentationDefinition", .size = sizeof(PresentationDefinition), .align = alignof(PresentationDefinition),
-        .fields = (Fields), .fieldCount = (uint32_t)fplArrayCount(Fields)
-    };
+    static constexpr ftdType Type = FTD_TYPE_STRUCT(PresentationDefinition, Fields);
 }
 FTD_BIND_TYPE(PresentationDefinition, PresentationDefinitionStructDef::Type);
 

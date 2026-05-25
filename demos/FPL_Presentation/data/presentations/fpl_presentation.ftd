@@ -194,7 +194,7 @@ TextStyles {
 # Slides
 # -----------------------------------------------------------------------------
 
-Slide Intro {
+SlideDefinition Intro {
     name    = "Introduction"
     duration = 18.5
     rotation = QuatFromAngleAxis(0.0, V3f(1, 1, 1))
@@ -224,7 +224,7 @@ Slide Intro {
     ]
 }
 
-Slide WhoAmI {
+SlideDefinition WhoAmI {
     name    = "Who am I"
     duration = 20.5
     rotation = QuatFromAngleAxis(15.0, V3f(1, 1, 1))
@@ -302,7 +302,7 @@ Slide WhoAmI {
     ]
 }
 
-Slide WhatIsFPL {
+SlideDefinition WhatIsFPL {
     name    = "What is FPL"
     duration = 33.0
     rotation = QuatFromAngleAxis(-45.0, V3f(0, 1, 1))
@@ -361,7 +361,7 @@ Slide WhatIsFPL {
     ]
 }
 
-Slide Motivation {
+SlideDefinition Motivation {
     name    = "Motivation"
     duration = 31.0
     rotation = QuatFromAngleAxis(70.0, V3f(1.0, 0.1, 0.0))
@@ -392,7 +392,7 @@ Slide Motivation {
     ]
 }
 
-Slide Features {
+SlideDefinition Features {
     name    = "Features"
     duration = 0.0
     rotation = QuatFromAngleAxis(30.0, V3f(0.0, 1.0, 0.1))
@@ -446,7 +446,7 @@ Slide Features {
     ]
 }
 
-Slide Platforms {
+SlideDefinition Platforms {
     name    = "Supported Platforms"
     duration = 0.0
     rotation = QuatFromAngleAxis(75.0, V3f(-0.5, 0.65, 0.5))
@@ -467,7 +467,7 @@ Slide Platforms {
     ]
 }
 
-Slide Magic {
+SlideDefinition Magic {
     name    = "How it works"
     duration = 0.0
     rotation = QuatFromAngleAxis(-15.0, V3f(0.7, 0.6, 0.3))
@@ -502,7 +502,7 @@ Slide Magic {
     ]
 }
 
-Slide HowItWorks {
+SlideDefinition HowItWorks {
     name    = "How it actually works"
     duration = 0.0
     rotation = QuatFromAngleAxis(45.0, V3f(0.5, 0.5, 0.5))
@@ -523,7 +523,7 @@ Slide HowItWorks {
     ]
 }
 
-Slide Constraints {
+SlideDefinition Constraints {
     name    = "Constraints"
     duration = 0.0
     rotation = QuatFromAngleAxis(65.0, V3f(0.0, 0.5, 1.0))
@@ -559,7 +559,7 @@ Slide Constraints {
     ]
 }
 
-Slide HowToUse {
+SlideDefinition HowToUse {
     name    = "How to use"
     duration = 0.0
     rotation = QuatFromAngleAxis(75.0, V3f(0.0, 1.0, 0.0))
@@ -583,7 +583,7 @@ Slide HowToUse {
     ]
 }
 
-Slide Demos {
+SlideDefinition Demos {
     name    = "Demos!"
     duration = 0.0
     rotation = QuatFromAngleAxis(-45.0, V3f(1.0, 0.5, 0.25))
@@ -627,7 +627,7 @@ Slide Demos {
     ]
 }
 
-Slide Links {
+SlideDefinition Links {
     name    = "Links"
     duration = 0.0
     rotation = QuatFromAngleAxis(65.0, V3f(1, 0, 0))
@@ -679,7 +679,7 @@ Slide Links {
     ]
 }
 
-Slide Thanks {
+SlideDefinition Thanks {
     name    = "Thanks!"
     duration = 0.0
     rotation = QuatFromAngleAxis(0.0, V3f(1, 1, 1))   # 0 deg => identity quaternion
