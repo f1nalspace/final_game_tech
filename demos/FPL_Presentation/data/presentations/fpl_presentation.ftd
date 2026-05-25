@@ -791,7 +791,7 @@ PresentationFile FPLPresentationFile {
         Fonts.SulphurPoint
         Fonts.BitStreamVerySans
     ]
-    fontCont = 4
+    fontCount = 4
 
     sounds = [
         Sounds.Intro1
