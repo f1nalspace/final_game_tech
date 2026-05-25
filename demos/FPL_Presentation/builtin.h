@@ -3,14 +3,14 @@
 #include "fonts.h"
 #include "presentation.h"
 
-namespace FontResources {
+namespace BuiltinFonts {
     static const Resource Debug = Resource::CreateFromMemory("Debug", ptr_bitstreamVerySansFontData, sizeOf_bitstreamVerySansFontData);
     static const Resource Arimo = Resource::CreateFromMemory("Arimo", ptr_arimoRegularFontData, sizeOf_arimoRegularFontData);
     static const Resource SulphurPoint = Resource::CreateFromMemory("Sulphur Point", ptr_sulphurPointRegularData, sizeOf_sulphurPointRegularData);
     static const Resource BitStreamVerySans = Resource::CreateFromMemory("Bitstream Vera Sans", ptr_bitstreamVerySansFontData, sizeOf_bitstreamVerySansFontData);
 };
 
-namespace SoundResources {
+namespace BuiltinSounds {
     static const Resource Intro1 = Resource::CreateFromFile("fpl_intro1.mp3");
     static const Resource Intro2 = Resource::CreateFromFile("fpl_intro2.mp3");
     static const Resource WhoAmi1 = Resource::CreateFromFile("fpl_whoami1.mp3");
@@ -28,7 +28,7 @@ namespace SoundResources {
     };
 }
 
-namespace ImageResources {
+namespace BuiltinImages {
 	static Resource FPLLogo128x128 = Resource::CreateFromMemory("FPL Logo 128x128", ptr_fplLogo128x128ImageData, sizeOf_fplLogo128x128ImageData);
 	static Resource FPLLogo512x512 = Resource::CreateFromMemory("FPL Logo 512x512", ptr_fplLogo512x512ImageData, sizeOf_fplLogo512x512ImageData);
 

@@ -2140,7 +2140,7 @@ static void DrawRotatingCubeOnly(App &app, const Vec2i &winSize) {
 	Mat4f view = M4fTranslation(V2f(w * 0.5f, h * 0.5f)) * scale;
 	Vec2f zoomOffset = V2f(-w * 0.5f, -h * 0.5f);
 
-	const LoadedImage *cubeImage = renderer.FindImage(ImageResources::FPLLogo512x512.name);
+	const LoadedImage *cubeImage = renderer.FindImage(BuiltinImages::FPLLogo512x512.name);
 
 	fplAssert(winSize.w > 0 && winSize.h > 0);
 	renderer.cubeFramebuffer.Bind();
@@ -2259,7 +2259,7 @@ static void RenderFrame(App &app, const Vec2i &winSize) {
 		// Cube
 		//
 		if (renderer.options.showCube) {
-			const LoadedImage *cubeImage = renderer.FindImage(ImageResources::FPLLogo512x512.name);
+			const LoadedImage *cubeImage = renderer.FindImage(BuiltinImages::FPLLogo512x512.name);
 
 			fplAssert(winSize.w > 0 && winSize.h > 0);
 			renderer.cubeFramebuffer.Bind();
@@ -2385,7 +2385,7 @@ static Rect2f AddHeaderAndFooter(Slide *slide, const HeaderDefinition &headerDef
 
 	Label *fplTimeLabelTopCenter = slide->AddLabel("%CURRENT_TIME%", rectTop->pos + V2f(rectTop->size.w * 0.5f, rectTop->size.h - headerPadding.y), headerFontName, headerFontSize, HorizontalAlignment::Center, VerticalAlignment::Bottom, headerFontStyle);
 
-	Image *fplLogo = slide->AddImage(rectTop->pos + V2f(w - logoSize.w, 0), logoSize, ImageResources::FPLLogo128x128.name);
+	Image *fplLogo = slide->AddImage(rectTop->pos + V2f(w - logoSize.w, 0), logoSize, BuiltinImages::FPLLogo128x128.name);
 
 	Rect *rectBottom = slide->AddRect(V2f(0, h - footerHeight), V2f(w, footerHeight));
 	rectBottom->style.background.primaryColor = RGBAToLinearRaw(0, 0, 0, 255);
@@ -2824,30 +2824,30 @@ int main(int argc, char **argv) {
 		app.renderer = Renderer::Init(renderOptions, &app.strings, imagesBasePath);
 
 		// First font is always the debug font
-		app.renderer.debugFont = app.renderer.AddFontFromResource(FontResources::BitStreamVerySans, 16.0f);
+		app.renderer.debugFont = app.renderer.AddFontFromResource(BuiltinFonts::BitStreamVerySans, 16.0f);
 
-		app.renderer.AddFontFromResource(FontResources::BitStreamVerySans, 32.0f);
-		app.renderer.AddFontFromResource(FontResources::BitStreamVerySans, 48.0f);
-		app.renderer.AddFontFromResource(FontResources::Arimo, 16.0f);
-		app.renderer.AddFontFromResource(FontResources::Arimo, 24.0f);
-		app.renderer.AddFontFromResource(FontResources::Arimo, 32.0f);
-		app.renderer.AddFontFromResource(FontResources::Arimo, 40.0f);
-		app.renderer.AddFontFromResource(FontResources::Arimo, 48.0f);
-		app.renderer.AddFontFromResource(FontResources::Arimo, 56.0f);
-		app.renderer.AddFontFromResource(FontResources::Arimo, 64.0f);
-		app.renderer.AddFontFromResource(FontResources::Arimo, 72.0f);
-		app.renderer.AddFontFromResource(FontResources::Arimo, 84.0f);
-		app.renderer.AddFontFromResource(FontResources::Arimo, 96.0f);
-		app.renderer.AddFontFromResource(FontResources::Arimo, 108.0f);
-		app.renderer.AddFontFromResource(FontResources::Arimo, 132.0f);
+		app.renderer.AddFontFromResource(BuiltinFonts::BitStreamVerySans, 32.0f);
+		app.renderer.AddFontFromResource(BuiltinFonts::BitStreamVerySans, 48.0f);
+		app.renderer.AddFontFromResource(BuiltinFonts::Arimo, 16.0f);
+		app.renderer.AddFontFromResource(BuiltinFonts::Arimo, 24.0f);
+		app.renderer.AddFontFromResource(BuiltinFonts::Arimo, 32.0f);
+		app.renderer.AddFontFromResource(BuiltinFonts::Arimo, 40.0f);
+		app.renderer.AddFontFromResource(BuiltinFonts::Arimo, 48.0f);
+		app.renderer.AddFontFromResource(BuiltinFonts::Arimo, 56.0f);
+		app.renderer.AddFontFromResource(BuiltinFonts::Arimo, 64.0f);
+		app.renderer.AddFontFromResource(BuiltinFonts::Arimo, 72.0f);
+		app.renderer.AddFontFromResource(BuiltinFonts::Arimo, 84.0f);
+		app.renderer.AddFontFromResource(BuiltinFonts::Arimo, 96.0f);
+		app.renderer.AddFontFromResource(BuiltinFonts::Arimo, 108.0f);
+		app.renderer.AddFontFromResource(BuiltinFonts::Arimo, 132.0f);
 
 #if 0
 		app.renderer.AddFontFromFile("c:/windows/fonts/arial.ttf", "Arial", 24);
 #endif
 
-		size_t imageResourceCount = fplArrayCount(ImageResources::All);
+		size_t imageResourceCount = fplArrayCount(BuiltinImages::All);
 		for (size_t i = 0; i < imageResourceCount; ++i) {
-			const Resource &res = ImageResources::All[i];
+			const Resource &res = BuiltinImages::All[i];
 
 			switch (res.type) {
 				case ResourceType::Memory:
@@ -2863,9 +2863,9 @@ int main(int argc, char **argv) {
 			}
 		}
 
-		size_t soundResourceCount = fplArrayCount(SoundResources::All);
+		size_t soundResourceCount = fplArrayCount(BuiltinSounds::All);
 		for (size_t i = 0; i < soundResourceCount; ++i) {
-			const Resource &res = SoundResources::All[i];
+			const Resource &res = BuiltinSounds::All[i];
 
 			switch (res.type) {
 				case ResourceType::File:
