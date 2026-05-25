@@ -123,7 +123,7 @@ The rest of this header explains, in order:
 
 	== Top-level statements ==
 
-	Three forms (separated by newlines):
+	Four forms (separated by newlines):
 
 	  1. Alias - rename a type, enum value, or host identifier.
 	         alias V2f = Vec2f
@@ -140,6 +140,33 @@ The rest of this header explains, in order:
 	             type = File
 	             file { relativeFilePath = "card_cpu.png" }
 	         }
+
+	  4. Namespace - an untyped container that groups named members so they
+	     can be accessed via a dotted path (think of it like a tiny C++
+	     `namespace`). The block has no type name: a bare identifier is
+	     immediately followed by `{ ... }`. Each member is `name = value`.
+	     The value may be a literal, a constructor call, a helper call, or a
+	     bare reference to another name (including another namespace, which
+	     gives a re-export / sub-namespace). Namespaces are NOT parsed into a
+	     C struct — they live only in the parser's symbol table and have no
+	     host-side schema.
+
+	         MyFontResources {
+	             Arimo = FontResources.Arimo            # alias-style member
+	         }
+
+	         MyResources {
+	             fplLogoImage128 = ImageResources.FPLLogo128x128
+	             fonts           = MyFontResources      # nest by reference
+	             accent          = RGBA24(0xFF8000, 255) # evaluated value
+	         }
+
+	     Access uses a plain dot anywhere a value is expected:
+	         imageResource = MyResources.fplLogoImage128
+	         font          = MyResources.fonts.Arimo
+	     Dotted lookup folds through alias members transparently, so a path
+	     like `MyResources.fonts.Arimo` resolves all the way to whatever
+	     `FontResources.Arimo` ultimately points at.
 
 	== Inline value forms (anywhere a value is expected) ==
 
@@ -1585,6 +1612,11 @@ typedef enum ftd__SymKind {
 	ftd__Sym_Instance,
 	ftd__Sym_Helper,
 	ftd__Sym_Builtin,
+	// Untyped container: a name that scopes members accessed via dotted path
+	// (e.g. "MyResources.fontX"). Members live as separate symbols whose name
+	// is "<namespace>.<member>". The namespace itself has no payload — it
+	// only exists so lookup and diagnostics know the name was declared.
+	ftd__Sym_Namespace,
 } ftd__SymKind;
 
 typedef struct ftd__Symbol {
@@ -2698,7 +2730,13 @@ static bool ftd__match(ftd__Parser *p, ftd__TokKind k) {
 	return false;
 }
 
-// Resolve an alias chain to a final symbol.
+// Resolve an alias chain to a final symbol. If the direct lookup misses, try
+// to walk dotted prefixes — for "A.B.C", look up "A.B" then "A" (longest
+// first); if the prefix is an alias, fold its target and append the unconsumed
+// suffix, then retry. This is what makes namespace traversal like
+// "MyResources.fonts.Arimo" work: "MyResources.fonts" resolves to an alias
+// pointing at the inner namespace "MyFontResources", and the recursion then
+// finds "MyFontResources.Arimo".
 static const ftd__Symbol *ftd__resolveAlias(ftdContext *ctx, const char *name, int depth) {
 	if (depth > 16) {
 		return NULL;
@@ -2707,13 +2745,58 @@ static const ftd__Symbol *ftd__resolveAlias(ftdContext *ctx, const char *name, i
 	if (s == NULL) {
 		s = ftd__symTableLookup(&ctx->schemaSyms, name);
 	}
-	if (s == NULL) {
+	if (s != NULL) {
+		if (s->kind == ftd__Sym_Alias) {
+			return ftd__resolveAlias(ctx, s->as.aliasTarget, depth + 1);
+		}
+		return s;
+	}
+
+	// Direct miss: walk dotted prefixes from longest to shortest.
+	size_t nameLen = FTD_STRLEN(name);
+	for (size_t i = nameLen; i > 0; --i) {
+		if (name[i - 1] != '.') {
+			continue;
+		}
+		size_t prefixLen = i - 1;
+		char small[256];
+		char *prefix;
+		if (prefixLen + 1 <= sizeof(small)) {
+			prefix = small;
+		} else {
+			prefix = (char *) ftd__arenaAlloc(&ctx->parseArena, prefixLen + 1, 1);
+			if (prefix == NULL) {
+				return NULL;
+			}
+		}
+		FTD_MEMCPY(prefix, name, prefixLen);
+		prefix[prefixLen] = '\0';
+		const ftd__Symbol *ps = ftd__symTableLookup(&ctx->parseSyms, prefix);
+		if (ps == NULL) {
+			ps = ftd__symTableLookup(&ctx->schemaSyms, prefix);
+		}
+		if (ps == NULL) {
+			continue;
+		}
+		if (ps->kind == ftd__Sym_Alias) {
+			const char *suffix = name + i;
+			size_t suffixLen = nameLen - i;
+			size_t tgtLen = FTD_STRLEN(ps->as.aliasTarget);
+			char *combined = (char *) ftd__arenaAlloc(&ctx->parseArena, tgtLen + 1 + suffixLen + 1, 1);
+			if (combined == NULL) {
+				return NULL;
+			}
+			FTD_MEMCPY(combined, ps->as.aliasTarget, tgtLen);
+			combined[tgtLen] = '.';
+			FTD_MEMCPY(combined + tgtLen + 1, suffix, suffixLen);
+			combined[tgtLen + 1 + suffixLen] = '\0';
+			return ftd__resolveAlias(ctx, combined, depth + 1);
+		}
+		// Namespace prefix exists but the full "<ns>.<rest>" member is not
+		// registered — nothing more we can do.
 		return NULL;
 	}
-	if (s->kind == ftd__Sym_Alias) {
-		return ftd__resolveAlias(ctx, s->as.aliasTarget, depth + 1);
-	}
-	return s;
+	return NULL;
 }
 
 // Lookup an enum value name (short or qualified) given a known enum type.
@@ -3877,6 +3960,188 @@ static void ftd__parseAlias(ftd__Parser *p) {
 	(void) first;
 }
 
+// Body of a namespace block. The opening '{' has already been consumed by the
+// caller, and `nsName` is the bare identifier that named the namespace.
+//
+// Members look like:
+//     memberName = <value>
+// where <value> is one of:
+//   * a bare qname like "BuiltinFonts.Arimo" or "OtherNamespace"   -> the
+//     member becomes an alias to that target (so it resolves through the
+//     normal alias-folding path, including into other namespaces);
+//   * any other inline value form (literal, helper call, constructor)
+//     -> the member becomes a parse-time const carrying the evaluated value.
+//
+// Either way, the member is registered under the flat name "<nsName>.<member>"
+// in the parse-arena symbol table.
+static void ftd__parseNamespaceBody(ftd__Parser *p, const char *nsName) {
+	// Register the namespace itself so dotted-prefix lookup can find it.
+	const char *nsIntern = ftd__arenaStrDup(&p->ctx->parseArena, nsName);
+	if (nsIntern == NULL) {
+		return;
+	}
+	uint32_t nsHash = ftd__fnv1aStr(nsIntern);
+	ftd__Symbol *nsSym = ftd__symTableInsert(&p->ctx->parseSyms, nsIntern, nsHash);
+	if (nsSym != NULL && nsSym->kind == ftd__Sym_None) {
+		nsSym->kind = ftd__Sym_Namespace;
+	}
+	size_t nsLen = FTD_STRLEN(nsIntern);
+
+	for (;;) {
+		ftd__skipNewlines(p);
+		if (p->cur.kind == ftd__Tok_RBrace) {
+			ftd__parserAdvance(p);
+			break;
+		}
+		if (p->cur.kind == ftd__Tok_EOF) {
+			ftd__emit(p->ctx, ftdSeverity_Error, p->cur.span,
+			          "unexpected EOF inside namespace '%s'", nsName);
+			break;
+		}
+		if (p->cur.kind != ftd__Tok_Ident) {
+			ftd__emit(p->ctx, ftdSeverity_Error, p->cur.span,
+			          "expected member name in namespace '%s'", nsName);
+			ftd__parserAdvance(p);
+			ftd__skipToNewlineOrEOF(p);
+			continue;
+		}
+
+		const char *memberName = ftd__arenaStrDup(&p->ctx->parseArena, p->cur.str);
+		ftdSourceSpan memberSpan = p->cur.span;
+		ftd__parserAdvance(p);
+
+		// Build "<nsName>.<member>" in the parse arena.
+		size_t mLen = FTD_STRLEN(memberName);
+		char *fullName = (char *) ftd__arenaAlloc(&p->ctx->parseArena, nsLen + 1 + mLen + 1, 1);
+		if (fullName == NULL) {
+			break;
+		}
+		FTD_MEMCPY(fullName, nsIntern, nsLen);
+		fullName[nsLen] = '.';
+		FTD_MEMCPY(fullName + nsLen + 1, memberName, mLen);
+		fullName[nsLen + 1 + mLen] = '\0';
+		uint32_t fullHash = ftd__fnv1aStr(fullName);
+
+		if (!ftd__match(p, ftd__Tok_Eq)) {
+			ftd__emit(p->ctx, ftdSeverity_Error, p->cur.span,
+			          "expected '=' after namespace member '%s'", memberName);
+			ftd__skipToNewlineOrEOF(p);
+			continue;
+		}
+
+		// Bare-qname RHS becomes an alias. We detect this by Ident-not-followed-
+		// by-paren/brace — that rules out constructors like V4f(...) or helper
+		// calls like RGBA24(...) and block forms like Type{ ... }, which must
+		// run through ftd__parseValue.
+		if (p->cur.kind == ftd__Tok_Ident) {
+			const ftd__Token *pk = ftd__parserPeek(p);
+			bool callOrBlock = (pk->kind == ftd__Tok_LParen || pk->kind == ftd__Tok_LBrace);
+			if (!callOrBlock) {
+				const char *target = ftd__parseQName(p);
+				if (target != NULL) {
+					const char *tgIntern = ftd__arenaStrDup(&p->ctx->parseArena, target);
+					ftd__Symbol *ms = ftd__symTableInsert(&p->ctx->parseSyms, fullName, fullHash);
+					if (ms != NULL) {
+						ms->kind = ftd__Sym_Alias;
+						ms->as.aliasTarget = tgIntern;
+					}
+				}
+				if (p->cur.kind == ftd__Tok_Comma) {
+					ftd__parserAdvance(p);
+				}
+				ftd__skipNewlines(p);
+				continue;
+			}
+		}
+
+		// Anything else: evaluate as a value and store a parse-time const.
+		ftdValue val;
+		ftd__parseValue(p, NULL, NULL, &val);
+
+		ftd__Symbol *ms = ftd__symTableInsert(&p->ctx->parseSyms, fullName, fullHash);
+		if (ms != NULL) {
+			ms->kind = ftd__Sym_Const;
+			switch (val.kind) {
+				case ftdValueKind_Bool: {
+					bool *m = (bool *) ftd__arenaAlloc(&p->ctx->parseArena, sizeof(bool), 1);
+					if (m != NULL) {
+						*m = val.as.b;
+						ms->scalarKind = ftdFieldKind_Bool;
+						ms->as.constPtr = m;
+					}
+				}
+				break;
+				case ftdValueKind_Int: {
+					int64_t *m = (int64_t *) ftd__arenaAlloc(&p->ctx->parseArena, sizeof(int64_t), 8);
+					if (m != NULL) {
+						*m = val.as.i;
+						ms->scalarKind = ftdFieldKind_S64;
+						ms->as.constPtr = m;
+					}
+				}
+				break;
+				case ftdValueKind_UInt: {
+					uint64_t *m = (uint64_t *) ftd__arenaAlloc(&p->ctx->parseArena, sizeof(uint64_t), 8);
+					if (m != NULL) {
+						*m = val.as.u;
+						ms->scalarKind = ftdFieldKind_U64;
+						ms->as.constPtr = m;
+					}
+				}
+				break;
+				case ftdValueKind_Float: {
+					double *m = (double *) ftd__arenaAlloc(&p->ctx->parseArena, sizeof(double), 8);
+					if (m != NULL) {
+						*m = val.as.f;
+						ms->scalarKind = ftdFieldKind_F64;
+						ms->as.constPtr = m;
+					}
+				}
+				break;
+				case ftdValueKind_String: {
+					const char **m = (const char **) ftd__arenaAlloc(&p->ctx->parseArena, sizeof(const char *), 8);
+					if (m != NULL) {
+						*m = val.as.str;
+						ms->scalarKind = ftdFieldKind_String;
+						ms->as.constPtr = m;
+					}
+				}
+				break;
+				case ftdValueKind_Enum: {
+					int32_t *m = (int32_t *) ftd__arenaAlloc(&p->ctx->parseArena, sizeof(int32_t), 4);
+					if (m != NULL) {
+						*m = (int32_t) val.as.i;
+						ms->scalarKind = ftdFieldKind_Enum;
+						ms->type = val.type;
+						ms->as.constPtr = m;
+					}
+				}
+				break;
+				case ftdValueKind_Struct: {
+					ms->type = val.type;
+					ms->as.constPtr = val.as.ptr;
+				}
+				break;
+				case ftdValueKind_Ref: {
+					ms->type = val.type;
+					ms->as.constPtr = val.as.ptr;
+				}
+				break;
+				default: {
+					ftd__emit(p->ctx, ftdSeverity_Warning, memberSpan,
+					          "namespace member '%s' has no usable value", memberName);
+				}
+				break;
+			}
+		}
+
+		if (p->cur.kind == ftd__Tok_Comma) {
+			ftd__parserAdvance(p);
+		}
+		ftd__skipNewlines(p);
+	}
+}
+
 static void ftd__parseTypedDecl(ftd__Parser *p) {
 	if (p->cur.kind != ftd__Tok_Ident) {
 		ftd__skipToNewlineOrEOF(p);
@@ -3884,6 +4149,28 @@ static void ftd__parseTypedDecl(ftd__Parser *p) {
 	}
 	ftdSourceSpan typeSpan = p->cur.span;
 	const char *typeName = ftd__parseQName(p);
+
+	// Untyped namespace form: <Name> { ... } — no type prefix, no decl name.
+	// A namespace name must be a single identifier (no dots).
+	if (p->cur.kind == ftd__Tok_LBrace) {
+		bool hasDot = false;
+		for (const char *c = typeName; *c != '\0'; ++c) {
+			if (*c == '.') {
+				hasDot = true;
+				break;
+			}
+		}
+		if (hasDot) {
+			ftd__emit(p->ctx, ftdSeverity_Error, typeSpan,
+			          "namespace name '%s' must be a single identifier", typeName);
+			ftd__skipBalanced(p);
+			return;
+		}
+		ftd__parserAdvance(p); // consume '{'
+		ftd__parseNamespaceBody(p, typeName);
+		return;
+	}
+
 	const ftd__Symbol *typeSym = ftd__resolveAlias(p->ctx, typeName, 0);
 
 	if (typeSym == NULL) {
