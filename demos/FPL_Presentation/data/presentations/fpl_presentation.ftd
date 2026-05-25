@@ -138,7 +138,7 @@ Const {
 
 # -----------------------------------------------------------------------------
 # Backgrounds (HalfGradientHorizontal: primary -> secondary)
-# RGBA24(hex, alpha) and RGBA(r,g,b,a) return linear-space Vec4f.
+# RGBA24(0xRRGGBB, 0xAA), RGBA32(0xRRGGBBAA), and RGBA(0xRR,0xGG,0xBB,0xAA) return linear-space Vec4f.
 # -----------------------------------------------------------------------------
 Backgrounds {
     FixedBackground = BackgroundStyle { kind = HalfGradientHorizontal  primaryColor = RGBA24(0x000000, 255)  secondaryColor = RGBA24(0x0483AF, 100) }
