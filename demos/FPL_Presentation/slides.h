@@ -66,8 +66,8 @@ namespace FPLPresentationData {
 		};
 
 		static SoundDefinition Sounds[] = {
-			MakeSoundDef(SoundResources::Intro1, 1.0),
-			MakeSoundDef(SoundResources::Intro2, 10.0),
+			MakeSoundDef(BuiltinSounds::Intro1, 1.0),
+			MakeSoundDef(BuiltinSounds::Intro2, 10.0),
 		};
 
 		static Quaternion Rot = QuatFromAngleAxis(rotationAngle.radians, rotationDir);
@@ -92,19 +92,19 @@ namespace FPLPresentationData {
 		static BlockDefinition Blocks[] = {
 			MakeImageDef(
 				V2f(0.0f, 0.0f), V2f(0.45f, 0.45f), MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Top),
-				&ImageResources::DataVisualization, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.5f)
+				&BuiltinImages::DataVisualization, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.5f)
 			),
 			MakeImageDef(
 				V2f(0.55f, 0.0f), V2f(0.45f, 0.45f), MakeAlign(HorizontalAlignment::Right, VerticalAlignment::Top),
-				&ImageResources::MultimediaDev, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.5f)
+				&BuiltinImages::MultimediaDev, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.5f)
 			),
 			MakeImageDef(
 				V2f(0.0f, 0.50f), V2f(0.45f, 0.45f), MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Bottom),
-				&ImageResources::SimulationDev, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.5f)
+				&BuiltinImages::SimulationDev, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.5f)
 			),
 			MakeImageDef(
 				V2f(0.55f, 0.50f), V2f(0.45f, 0.45f), MakeAlign(HorizontalAlignment::Right, VerticalAlignment::Bottom),
-				&ImageResources::GameDev, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.5f)
+				&BuiltinImages::GameDev, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.5f)
 			),
 
 			MakeTextDef(
@@ -117,7 +117,7 @@ namespace FPLPresentationData {
 		};
 
 		static SoundDefinition Sounds[] = {
-			MakeSoundDef(SoundResources::WhoAmi1, 2.0),
+			MakeSoundDef(BuiltinSounds::WhoAmi1, 2.0),
 		};
 
 		static Quaternion Rot = QuatFromAngleAxis(rotationAngle.radians, rotationDir);
@@ -155,7 +155,7 @@ namespace FPLPresentationData {
 		static BlockDefinition Blocks[] = {
 			MakeImageDef(
 				V2f(0.0f, -0.1f), V2f(1.0f, 1.0f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				&ImageResources::Code, V2f(1.0f, 1.2f), false, V4f(1.0f, 1.0f, 1.0f, 0.05f)
+				&BuiltinImages::Code, V2f(1.0f, 1.2f), false, V4f(1.0f, 1.0f, 1.0f, 0.05f)
 			),
 
 			MakeTextDef(
@@ -171,8 +171,8 @@ namespace FPLPresentationData {
 		};
 
 		static SoundDefinition Sounds[] = {
-			MakeSoundDef(SoundResources::What1, 1.0),
-			MakeSoundDef(SoundResources::What2, 17.0),
+			MakeSoundDef(BuiltinSounds::What1, 1.0),
+			MakeSoundDef(BuiltinSounds::What2, 17.0),
 		};
 
 		static Quaternion Rot = QuatFromAngleAxis(rotationAngle.radians, rotationDir);
@@ -206,7 +206,7 @@ namespace FPLPresentationData {
 		};
 
 		static SoundDefinition Sounds[] = {
-			MakeSoundDef(SoundResources::Motivation, 2.0),
+			MakeSoundDef(BuiltinSounds::Motivation, 2.0),
 		};
 
 		static Quaternion Rot = QuatFromAngleAxis(rotationAngle.radians, rotationDir);
@@ -247,23 +247,23 @@ namespace FPLPresentationData {
 			// Cards for first row
 			MakeImageDef(
 				V2f(0.0f, 0.1f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
-				&ImageResources::Card_WindowManagement, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+				&BuiltinImages::Card_WindowManagement, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 			MakeImageDef(
 				V2f(0.2f, 0.1f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
-				&ImageResources::Card_KeyboardMouse, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+				&BuiltinImages::Card_KeyboardMouse, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 			MakeImageDef(
 				V2f(0.4f, 0.1f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
-				&ImageResources::Card_Gamepad, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+				&BuiltinImages::Card_Gamepad, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 			MakeImageDef(
 				V2f(0.6f, 0.1f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
-				&ImageResources::Card_Video, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+				&BuiltinImages::Card_Video, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 			MakeImageDef(
 				V2f(0.8f, 0.1f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
-				&ImageResources::Card_Audio, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+				&BuiltinImages::Card_Audio, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 
 			// Labels for first row
@@ -291,23 +291,23 @@ namespace FPLPresentationData {
 			// Cards for second row
 			MakeImageDef(
 				V2f(0.0f, 0.55f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
-				&ImageResources::Card_C_Language, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+				&BuiltinImages::Card_C_Language, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 			MakeImageDef(
 				V2f(0.2f, 0.55f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
-				&ImageResources::Card_Performance, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+				&BuiltinImages::Card_Performance, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 			MakeImageDef(
 				V2f(0.4f, 0.55f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
-				&ImageResources::Card_NoDependencies, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+				&BuiltinImages::Card_NoDependencies, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 			MakeImageDef(
 				V2f(0.6f, 0.55f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
-				&ImageResources::Card_Memory, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+				&BuiltinImages::Card_Memory, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 			MakeImageDef(
 				V2f(0.8f, 0.55f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
-				&ImageResources::Card_CPU, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+				&BuiltinImages::Card_CPU, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 
 			// Labels for second row
@@ -353,39 +353,39 @@ namespace FPLPresentationData {
 		static BlockDefinition Blocks[] = {
 			MakeImageDef(
 				V2f(0.0f, 0.2f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
-				&ImageResources::Vendor_Windows, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+				&BuiltinImages::Vendor_Windows, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 			MakeImageDef(
 				V2f(0.1f, 0.2f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
-				&ImageResources::Vendor_Linux, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+				&BuiltinImages::Vendor_Linux, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 			MakeImageDef(
 				V2f(0.2f, 0.2f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
-				&ImageResources::Vendor_Raspberry, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+				&BuiltinImages::Vendor_Raspberry, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 			MakeImageDef(
 				V2f(0.3f, 0.2f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
-				&ImageResources::Vendor_FreeBSD, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+				&BuiltinImages::Vendor_FreeBSD, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 			MakeImageDef(
 				V2f(0.4f, 0.6f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
-				&ImageResources::Vendor_OpenGL, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+				&BuiltinImages::Vendor_OpenGL, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 			MakeImageDef(
 				V2f(0.5f, 0.6f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
-				&ImageResources::Vendor_Vulkan, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+				&BuiltinImages::Vendor_Vulkan, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 			MakeImageDef(
 				V2f(0.6f, 0.6f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
-				&ImageResources::Vendor_DirectX, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+				&BuiltinImages::Vendor_DirectX, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 			MakeImageDef(
 				V2f(0.7f, 0.6f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
-				&ImageResources::Vendor_Alsa, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+				&BuiltinImages::Vendor_Alsa, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 			MakeImageDef(
 				V2f(0.8f, 0.6f), V2f(0.2f, 0.2f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Bottom),
-				&ImageResources::Vendor_XLib, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
+				&BuiltinImages::Vendor_XLib, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 1.0f)
 			),
 		};
 
@@ -409,7 +409,7 @@ namespace FPLPresentationData {
 		static BlockDefinition Blocks[] = {
 			MakeImageDef(
 				V2f(-0.15f, 0.0f), V2f(1.0f, 1.0f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				&ImageResources::MagicHat, V2f(0.75f, 0.75f), true),
+				&BuiltinImages::MagicHat, V2f(0.75f, 0.75f), true),
 
 			MakeTextDef(
 				V2f(0.0f,0.0f),V2f(1.0f,1.0f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
@@ -443,19 +443,19 @@ namespace FPLPresentationData {
 		static BlockDefinition Blocks[] = {
 			MakeImageDef(
 				V2f(0.05f, 0.125f), V2f(0.15f, 0.65f), MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Middle),
-				&ImageResources::Feature_SingleHeaderFile, V2f(1.0f, 1.0f), false),
+				&BuiltinImages::Feature_SingleHeaderFile, V2f(1.0f, 1.0f), false),
 
 			MakeImageDef(
 				V2f(0.3f, 0.125f), V2f(0.15f, 0.65f), MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Middle),
-				&ImageResources::Feature_PreProcessor, V2f(1.0f, 1.0f), false),
+				&BuiltinImages::Feature_PreProcessor, V2f(1.0f, 1.0f), false),
 				
 			MakeImageDef(
 				V2f(0.55f, 0.125f), V2f(0.15f, 0.65f), MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Middle),
-				&ImageResources::Feature_NoCodeDuplication, V2f(1.0f, 1.0f), false),
+				&BuiltinImages::Feature_NoCodeDuplication, V2f(1.0f, 1.0f), false),
 
 			MakeImageDef(
 				V2f(0.80f, 0.125f), V2f(0.15f, 0.65f), MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Middle),
-				&ImageResources::Feature_RuntimeLinking, V2f(1.0f, 1.0f), false),
+				&BuiltinImages::Feature_RuntimeLinking, V2f(1.0f, 1.0f), false),
 		};
 
 		static Quaternion Rot = QuatFromAngleAxis(rotationAngle.radians, rotationDir);
@@ -516,7 +516,7 @@ namespace FPLPresentationData {
 		static BlockDefinition Blocks[] = {
 			MakeImageDef(
 				V2f(0.075f, 0.0f), V2f(0.85f, 1.0f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				&ImageResources::MinimumSource, V2f(1.0f, 1.0f), false, V4f(1.0f, 1.0f, 1.0f, 0.85f)
+				&BuiltinImages::MinimumSource, V2f(1.0f, 1.0f), false, V4f(1.0f, 1.0f, 1.0f, 0.85f)
 			),
 		};
 
@@ -540,35 +540,35 @@ namespace FPLPresentationData {
 		static BlockDefinition Blocks[] = {
 			MakeImageDef(
 				V2f(0.0f, 0.0f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				&ImageResources::Demo_ImGUI, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.65f)
+				&BuiltinImages::Demo_ImGUI, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.65f)
 			),
 			MakeImageDef(
 				V2f(0.25f, 0.0f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				&ImageResources::Demo_FFMPEG, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.65f)
+				&BuiltinImages::Demo_FFMPEG, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.65f)
 			),
 			MakeImageDef(
 				V2f(0.5f, 0.0f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				&ImageResources::Demo_Audio, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.65f)
+				&BuiltinImages::Demo_Audio, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.65f)
 			),
 			MakeImageDef(
 				V2f(0.75f, 0.0f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				&ImageResources::Demo_Input, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.65f)
+				&BuiltinImages::Demo_Input, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.65f)
 			),
 			MakeImageDef(
 				V2f(0.0f, 0.6f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				&ImageResources::Demo_OpenGL, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.65f)
+				&BuiltinImages::Demo_OpenGL, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.65f)
 			),
 			MakeImageDef(
 				V2f(0.25f, 0.6f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				&ImageResources::Demo_Crackout, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.65f)
+				&BuiltinImages::Demo_Crackout, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.65f)
 			),
 			MakeImageDef(
 				V2f(0.5f, 0.6f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				&ImageResources::Demo_Raytracer, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.65f)
+				&BuiltinImages::Demo_Raytracer, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.65f)
 			),
 			MakeImageDef(
 				V2f(0.75f, 0.6f), V2f(0.25f, 0.25f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				&ImageResources::Demo_NBodySimulation, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.65f)
+				&BuiltinImages::Demo_NBodySimulation, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.65f)
 			),
 
 			MakeTextDef(
@@ -662,7 +662,7 @@ namespace FPLPresentationData {
 		static BlockDefinition Blocks[] = {
 			MakeImageDef(
 				V2f(0.4f, 0.4f), V2f(0.6f, 0.6f), MakeAlign(HorizontalAlignment::Right, VerticalAlignment::Bottom),
-				&ImageResources::Arigatou, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.65f)
+				&BuiltinImages::Arigatou, V2f(1.0f, 1.0f), true, V4f(1.0f, 1.0f, 1.0f, 0.65f)
 			),
 
 			MakeTextDef(
@@ -714,7 +714,7 @@ namespace FPLPresentationData {
 	};
 
 	static const HeaderDefinition  Header = {
-		/* font */ {FontResources::Arimo.name, 24.0f, 1.15f, FPLPresentationData::HeaderStyle},
+		/* font */ {BuiltinFonts::Arimo.name, 24.0f, 1.15f, FPLPresentationData::HeaderStyle},
 		/* height */ 32.0f,
 		/* leftText */ "Final-Platform-Layer",
 		/* centerText */ "",
@@ -722,7 +722,7 @@ namespace FPLPresentationData {
 		/* padding */ V2f(2,2),
 	};
 	static const FooterDefinition  Footer = {
-		/* font */ {FontResources::Arimo.name, 24.0f, 1.15f, FPLPresentationData::HeaderStyle},
+		/* font */ {BuiltinFonts::Arimo.name, 24.0f, 1.15f, FPLPresentationData::HeaderStyle},
 		/* height */ 32.0f,
 		/* leftText */ "%SLIDE_NAME%",
 		/* centerText */ "Copyright (C) 2017-2025 Torsten Spaete",
@@ -737,8 +737,8 @@ static const PresentationDefinition FPLPresentation = {
 	/* slideSize */ 	V2f(1280.0f,720.0f),
 	/* header */ 		FPLPresentationData::Header,
 	/* footer */ 		FPLPresentationData::Footer,
-	/* titleFont */ 	{FontResources::Arimo.name, 64.0f, 1.15f, FPLPresentationData::BasicStyle},
-	/* normalFont */ 	{FontResources::Arimo.name, 42.0f, 1.15f, FPLPresentationData::BasicStyle},
-	/* consoleFont */ 	{FontResources::BitStreamVerySans.name, 36.0f, 1.15f, FPLPresentationData::BasicStyle},
+	/* titleFont */ 	{BuiltinFonts::Arimo.name, 64.0f, 1.15f, FPLPresentationData::BasicStyle},
+	/* normalFont */ 	{BuiltinFonts::Arimo.name, 42.0f, 1.15f, FPLPresentationData::BasicStyle},
+	/* consoleFont */ 	{BuiltinFonts::BitStreamVerySans.name, 36.0f, 1.15f, FPLPresentationData::BasicStyle},
 	/* padding */ 	 	20.0f,
 };
