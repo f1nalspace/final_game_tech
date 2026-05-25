@@ -5,6 +5,7 @@
 #include "types.h"
 #include "presentation.h"
 #include "ftd_helper.h"
+#include "builtin.h"
 
 namespace Vec2fStructDef {
     static constexpr ftdField Fields[] = {
@@ -62,6 +63,7 @@ namespace FileResourceStructDef {
     };
     static constexpr ftdType Type = FTD_TYPE_STRUCT(FileResource, Fields);
 }
+FTD_BIND_TYPE(FileResource, FileResourceStructDef::Type)
 
 namespace MemoryResourceStructDef {
     static constexpr ftdField Fields[] = {
@@ -70,6 +72,7 @@ namespace MemoryResourceStructDef {
     };
     static constexpr ftdType Type = FTD_TYPE_STRUCT(MemoryResource, Fields);
 }
+FTD_BIND_TYPE(MemoryResource, MemoryResourceStructDef::Type)
 
 namespace ResourceStructDef {
     static constexpr ftdField Fields[] = {
@@ -80,6 +83,17 @@ namespace ResourceStructDef {
     };
     static constexpr ftdType Type = FTD_TYPE_STRUCT(Resource, Fields);
 }
+FTD_BIND_TYPE(Resource, ResourceStructDef::Type)
+
+namespace SoundDefinitionStructDef {
+    static constexpr ftdField Fields[] = {
+        FTD_FIELD(SoundDefinition, name),
+        FTD_FIELD(SoundDefinition, startTime),
+        FTD_FIELD(SoundDefinition, targetDuration),
+    };
+    static constexpr ftdType Type = FTD_TYPE_STRUCT(SoundDefinition, Fields);
+}
+FTD_BIND_TYPE(SoundDefinition, SoundDefinitionStructDef::Type)
 
 namespace BackgroundKindEnumDef {
     static constexpr ftdEnumValue Values[] = {
@@ -180,7 +194,7 @@ namespace VerticalAlignmentEnumDef {
     };
     static constexpr ftdType Type = FTD_TYPE_ENUM(VerticalAlignment, Values);
 }
-FTD_BIND_TYPE(VerticalAlignment, HorizontalAlignmentEnumDef::Type);
+FTD_BIND_TYPE(VerticalAlignment, VerticalAlignmentEnumDef::Type);
 
 namespace BlockAlignmentStructDef {
     static constexpr ftdField Fields[] = {
@@ -374,6 +388,11 @@ inline void RegisterSerializationTypes(ftdContext *ctx) {
     ftdRegisterStruct(ctx, &Vec4fStructDef::Type);
     ftdRegisterStruct(ctx, &QuaternionStructDef::Type);
 
+    // Alignment enums
+    ftdRegisterEnum(ctx, &HorizontalAlignmentEnumDef::Type);
+    ftdRegisterEnum(ctx, &VerticalAlignmentEnumDef::Type);
+    ftdRegisterStruct(ctx, &BlockAlignmentStructDef::Type);
+
     // BackgroundStyle
     ftdRegisterEnum(ctx, &BackgroundKindEnumDef::Type);
     ftdRegisterStruct(ctx, &BackgroundStyleStructDef::Type);
@@ -394,15 +413,19 @@ inline void RegisterSerializationTypes(ftdContext *ctx) {
     ftdRegisterStruct(ctx, &MemoryResourceStructDef::Type);
     ftdRegisterStruct(ctx, &ResourceStructDef::Type);
 
-    // BlockDefinition
+    // Sound
+    ftdRegisterStruct(ctx, &SoundDefinitionStructDef::Type);
+
+    // Block
     ftdRegisterEnum(ctx, &BlockTypeEnumDef::Type);
+    ftdRegisterStruct(ctx, &TextBlockDefinitionStructDef::Type);
+    ftdRegisterStruct(ctx, &ImageBlockDefinitionStructDef::Type);
     ftdRegisterStruct(ctx, &BlockDefinitionStructDef::Type);
 
-    // SlideDefinition
+    // Slide / Presentation
     ftdRegisterStruct(ctx, &SlideDefinitionStructDef::Type);
-
-    // PresentationDefinition
     ftdRegisterStruct(ctx, &PresentationDefinitionStructDef::Type);
+    ftdRegisterStruct(ctx, &PresentationFileStructDef::Type);
 
     // Color helpers
     ftdRegisterHelper(ctx, "RGBA24", &Vec4fStructDef::Type, ColorHelpers::RGBA24, nullptr);
@@ -412,9 +435,13 @@ inline void RegisterSerializationTypes(ftdContext *ctx) {
     // Math helpers
     ftdRegisterHelper(ctx, "QuatFromAngleAxis", &QuaternionStructDef::Type, MathHelpers::QuaternionFromAngleAxis, nullptr);
 
-    // Register globals
-    ftdRegisterGlobal(ctx, "BuiltinFonts.Debug", &ResourceStructDef::Type, &BuiltinFonts::Debug);
-    ftdRegisterGlobal(ctx, "BuiltinFonts.Arimo", &ResourceStructDef::Type, &BuiltinFonts::Arimo);
-    ftdRegisterGlobal(ctx, "BuiltinFonts.SulphurPoint", &ResourceStructDef::Type, &BuiltinFonts::SulphurPoint);
+    // BuiltinFonts globals
+    ftdRegisterGlobal(ctx, "BuiltinFonts.Debug",             &ResourceStructDef::Type, &BuiltinFonts::Debug);
+    ftdRegisterGlobal(ctx, "BuiltinFonts.Arimo",             &ResourceStructDef::Type, &BuiltinFonts::Arimo);
+    ftdRegisterGlobal(ctx, "BuiltinFonts.SulphurPoint",      &ResourceStructDef::Type, &BuiltinFonts::SulphurPoint);
     ftdRegisterGlobal(ctx, "BuiltinFonts.BitStreamVerySans", &ResourceStructDef::Type, &BuiltinFonts::BitStreamVerySans);
+
+    // BuiltinImages globals
+    ftdRegisterGlobal(ctx, "BuiltinImages.FPLLogo128x128",        &ResourceStructDef::Type, &BuiltinImages::FPLLogo128x128);
+    ftdRegisterGlobal(ctx, "BuiltinImages.FPLLogo512x512",        &ResourceStructDef::Type, &BuiltinImages::FPLLogo512x512);
 }
