@@ -4,21 +4,21 @@
 #include "presentation.h"
 
 namespace FontResources {
-    static FontResource Debug = { ptr_bitstreamVerySansFontData, sizeOf_bitstreamVerySansFontData, "Debug" };
-    static FontResource Arimo = { ptr_arimoRegularFontData, sizeOf_arimoRegularFontData, "Arimo" };
-    static FontResource SulphurPoint = { ptr_sulphurPointRegularData, sizeOf_sulphurPointRegularData, "Sulphur Point" };
-    static FontResource BitStreamVerySans = { ptr_bitstreamVerySansFontData, sizeOf_bitstreamVerySansFontData, "Bitstream Vera Sans" };
+    static const Resource Debug = Resource::CreateFromMemory("Debug", ptr_bitstreamVerySansFontData, sizeOf_bitstreamVerySansFontData);
+    static const Resource Arimo = Resource::CreateFromMemory("Arimo", ptr_arimoRegularFontData, sizeOf_arimoRegularFontData);
+    static const Resource SulphurPoint = Resource::CreateFromMemory("Sulphur Point", ptr_sulphurPointRegularData, sizeOf_sulphurPointRegularData);
+    static const Resource BitStreamVerySans = Resource::CreateFromMemory("Bitstream Vera Sans", ptr_bitstreamVerySansFontData, sizeOf_bitstreamVerySansFontData);
 };
 
 namespace SoundResources {
-    static const SoundResource Intro1 = SoundResource::CreateFromFile("fpl_intro1.mp3");
-    static const SoundResource Intro2 = SoundResource::CreateFromFile("fpl_intro2.mp3");
-    static const SoundResource WhoAmi1 = SoundResource::CreateFromFile("fpl_whoami1.mp3");
-    static const SoundResource What1 = SoundResource::CreateFromFile("fpl_what1.mp3");
-    static const SoundResource What2 = SoundResource::CreateFromFile("fpl_what2.mp3");
-    static const SoundResource Motivation = SoundResource::CreateFromFile("fpl_motivation.mp3");
+    static const Resource Intro1 = Resource::CreateFromFile("fpl_intro1.mp3");
+    static const Resource Intro2 = Resource::CreateFromFile("fpl_intro2.mp3");
+    static const Resource WhoAmi1 = Resource::CreateFromFile("fpl_whoami1.mp3");
+    static const Resource What1 = Resource::CreateFromFile("fpl_what1.mp3");
+    static const Resource What2 = Resource::CreateFromFile("fpl_what2.mp3");
+    static const Resource Motivation = Resource::CreateFromFile("fpl_motivation.mp3");
 
-    static const SoundResource All[] = {
+    static const Resource All[] = {
         Intro1,
         Intro2,
         WhoAmi1,
@@ -29,57 +29,57 @@ namespace SoundResources {
 }
 
 namespace ImageResources {
-	static ImageResource FPLLogo128x128 = ImageResource::CreateFromMemory("FPL Logo 128x128", ptr_fplLogo128x128ImageData, sizeOf_fplLogo128x128ImageData);
-	static ImageResource FPLLogo512x512 = ImageResource::CreateFromMemory("FPL Logo 512x512", ptr_fplLogo512x512ImageData, sizeOf_fplLogo512x512ImageData);
+	static Resource FPLLogo128x128 = Resource::CreateFromMemory("FPL Logo 128x128", ptr_fplLogo128x128ImageData, sizeOf_fplLogo128x128ImageData);
+	static Resource FPLLogo512x512 = Resource::CreateFromMemory("FPL Logo 512x512", ptr_fplLogo512x512ImageData, sizeOf_fplLogo512x512ImageData);
 
-	static ImageResource Card_CPU = ImageResource::CreateFromFile("card_cpu.png");
-	static ImageResource Card_Memory = ImageResource::CreateFromFile("card_memory.png");
-	static ImageResource Card_C_Language = ImageResource::CreateFromFile("card_c_language.png");
-	static ImageResource Card_Audio = ImageResource::CreateFromFile("card_audio.png");
-	static ImageResource Card_Video = ImageResource::CreateFromFile("card_video.png");
-	static ImageResource Card_WindowManagement = ImageResource::CreateFromFile("card_window_management.png");
-	static ImageResource Card_Performance = ImageResource::CreateFromFile("card_performance.png");
-	static ImageResource Card_NoDependencies = ImageResource::CreateFromFile("card_no_deps.png");
-	static ImageResource Card_KeyboardMouse = ImageResource::CreateFromFile("card_keyboard_mouse.png");
-	static ImageResource Card_Gamepad = ImageResource::CreateFromFile("card_gamepad.png");
+	static Resource Card_CPU = Resource::CreateFromFile("card_cpu.png");
+	static Resource Card_Memory = Resource::CreateFromFile("card_memory.png");
+	static Resource Card_C_Language = Resource::CreateFromFile("card_c_language.png");
+	static Resource Card_Audio = Resource::CreateFromFile("card_audio.png");
+	static Resource Card_Video = Resource::CreateFromFile("card_video.png");
+	static Resource Card_WindowManagement = Resource::CreateFromFile("card_window_management.png");
+	static Resource Card_Performance = Resource::CreateFromFile("card_performance.png");
+	static Resource Card_NoDependencies = Resource::CreateFromFile("card_no_deps.png");
+	static Resource Card_KeyboardMouse = Resource::CreateFromFile("card_keyboard_mouse.png");
+	static Resource Card_Gamepad = Resource::CreateFromFile("card_gamepad.png");
 
-	static ImageResource MagicHat = ImageResource::CreateFromFile("magic_hat.png");
-	static ImageResource Arigatou = ImageResource::CreateFromFile("arigatou.png");
-	static ImageResource MinimumSource = ImageResource::CreateFromFile("minimum_source.png");
+	static Resource MagicHat = Resource::CreateFromFile("magic_hat.png");
+	static Resource Arigatou = Resource::CreateFromFile("arigatou.png");
+	static Resource MinimumSource = Resource::CreateFromFile("minimum_source.png");
 
-	static ImageResource DataVisualization = ImageResource::CreateFromFile("data-visualization.png");
-	static ImageResource GameDev = ImageResource::CreateFromFile("game_dev.png");
-	static ImageResource MultimediaDev = ImageResource::CreateFromFile("multimedia_dev.png");
-	static ImageResource SimulationDev = ImageResource::CreateFromFile("sim_dev.png");
+	static Resource DataVisualization = Resource::CreateFromFile("data-visualization.png");
+	static Resource GameDev = Resource::CreateFromFile("game_dev.png");
+	static Resource MultimediaDev = Resource::CreateFromFile("multimedia_dev.png");
+	static Resource SimulationDev = Resource::CreateFromFile("sim_dev.png");
 
-	static ImageResource Code = ImageResource::CreateFromFile("code.png");
+	static Resource Code = Resource::CreateFromFile("code.png");
 
-	static ImageResource Vendor_FreeBSD = ImageResource::CreateFromFile("vendor-freebsd.png");
-	static ImageResource Vendor_Linux = ImageResource::CreateFromFile("vendor-linux.png");
-	static ImageResource Vendor_Windows = ImageResource::CreateFromFile("vendor-windows.png");
-	static ImageResource Vendor_Raspberry = ImageResource::CreateFromFile("vendor-raspberry_pi.png");
-	static ImageResource Vendor_OpenSource = ImageResource::CreateFromFile("vendor-open_source.png");
-	static ImageResource Vendor_OpenGL = ImageResource::CreateFromFile("vendor-opengl.png");
-	static ImageResource Vendor_Vulkan = ImageResource::CreateFromFile("vendor-vulkan.png");
-	static ImageResource Vendor_DirectX = ImageResource::CreateFromFile("vendor-directx.png");
-	static ImageResource Vendor_Alsa = ImageResource::CreateFromFile("vendor-alsa.png");
-	static ImageResource Vendor_XLib = ImageResource::CreateFromFile("vendor-xlib.png");
+	static Resource Vendor_FreeBSD = Resource::CreateFromFile("vendor-freebsd.png");
+	static Resource Vendor_Linux = Resource::CreateFromFile("vendor-linux.png");
+	static Resource Vendor_Windows = Resource::CreateFromFile("vendor-windows.png");
+	static Resource Vendor_Raspberry = Resource::CreateFromFile("vendor-raspberry_pi.png");
+	static Resource Vendor_OpenSource = Resource::CreateFromFile("vendor-open_source.png");
+	static Resource Vendor_OpenGL = Resource::CreateFromFile("vendor-opengl.png");
+	static Resource Vendor_Vulkan = Resource::CreateFromFile("vendor-vulkan.png");
+	static Resource Vendor_DirectX = Resource::CreateFromFile("vendor-directx.png");
+	static Resource Vendor_Alsa = Resource::CreateFromFile("vendor-alsa.png");
+	static Resource Vendor_XLib = Resource::CreateFromFile("vendor-xlib.png");
 
-	static ImageResource Demo_ImGUI = ImageResource::CreateFromFile("demo_imgui.png");
-	static ImageResource Demo_FFMPEG = ImageResource::CreateFromFile("demo_ffmpeg.png");
-	static ImageResource Demo_NBodySimulation = ImageResource::CreateFromFile("demo_nbodysim.png");
-	static ImageResource Demo_Audio = ImageResource::CreateFromFile("demo_audio.png");
-	static ImageResource Demo_Input = ImageResource::CreateFromFile("demo_input.png");
-	static ImageResource Demo_Crackout = ImageResource::CreateFromFile("demo_crackout.png");
-	static ImageResource Demo_OpenGL = ImageResource::CreateFromFile("demo_opengl.png");
-	static ImageResource Demo_Raytracer = ImageResource::CreateFromFile("demo_raytracer.png");
+	static Resource Demo_ImGUI = Resource::CreateFromFile("demo_imgui.png");
+	static Resource Demo_FFMPEG = Resource::CreateFromFile("demo_ffmpeg.png");
+	static Resource Demo_NBodySimulation = Resource::CreateFromFile("demo_nbodysim.png");
+	static Resource Demo_Audio = Resource::CreateFromFile("demo_audio.png");
+	static Resource Demo_Input = Resource::CreateFromFile("demo_input.png");
+	static Resource Demo_Crackout = Resource::CreateFromFile("demo_crackout.png");
+	static Resource Demo_OpenGL = Resource::CreateFromFile("demo_opengl.png");
+	static Resource Demo_Raytracer = Resource::CreateFromFile("demo_raytracer.png");
 
-	static ImageResource Feature_SingleHeaderFile = ImageResource::CreateFromFile("singleheaderfile.png");
-	static ImageResource Feature_RuntimeLinking = ImageResource::CreateFromFile("runtimelinking.png");
-	static ImageResource Feature_PreProcessor = ImageResource::CreateFromFile("preprocessor.png");
-	static ImageResource Feature_NoCodeDuplication = ImageResource::CreateFromFile("nocodeduplication.png");
+	static Resource Feature_SingleHeaderFile = Resource::CreateFromFile("singleheaderfile.png");
+	static Resource Feature_RuntimeLinking = Resource::CreateFromFile("runtimelinking.png");
+	static Resource Feature_PreProcessor = Resource::CreateFromFile("preprocessor.png");
+	static Resource Feature_NoCodeDuplication = Resource::CreateFromFile("nocodeduplication.png");
 
-	static const ImageResource All[] = {
+	static const Resource All[] = {
 		FPLLogo128x128,
 		FPLLogo512x512,
 

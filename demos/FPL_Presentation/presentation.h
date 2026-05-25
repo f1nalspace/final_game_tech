@@ -8,33 +8,49 @@
 #include "types.h"
 #include "fonts.h"
 
-enum class SoundResourceType : uintptr_t {
+enum class ResourceType : uintptr_t {
 	None = 0,
 	File,
+	Memory
 };
 
-struct FileSoundResource {
-	const char* relativeFilePath;
+struct FileResource {
+	const char *filePath;
 };
 
-struct SoundResource {
-	const char* name;
-	SoundResourceType type;
+struct MemoryResource {
+	const uint8_t *data;
+	size_t length;
+};
+
+struct Resource {
+	const char *name;
+	ResourceType type;
 
 	union {
-		FileSoundResource file;
+		FileResource file;
+		MemoryResource memory;
 	};
 
-	static SoundResource CreateFromFile(const char *name, const char* relativeFilePath) {
-		SoundResource result = {};
-		result.type = SoundResourceType::File;
+	static Resource CreateFromMemory(const char *name, const uint8_t *data, const size_t length) {
+		Resource result = {};
 		result.name = name;
-		result.file.relativeFilePath = relativeFilePath;
+		result.type = ResourceType::Memory;
+		result.memory.data = data;
+		result.memory.length = length;
 		return result;
 	}
 
-	static SoundResource CreateFromFile(const char* relativeFilePath) {
-		const char* filename = fplExtractFileName(relativeFilePath);
+	static Resource CreateFromFile(const char *name, const char *relativeFilePath) {
+		Resource result = {};
+		result.type = ResourceType::File;
+		result.name = name;
+		result.file.filePath = relativeFilePath;
+		return result;
+	}
+
+	static Resource CreateFromFile(const char *relativeFilePath) {
+		const char *filename = fplExtractFileName(relativeFilePath);
 		return CreateFromFile(filename, relativeFilePath);
 	}
 };
@@ -53,62 +69,9 @@ static SoundDefinition MakeSoundDef(const char* name, const float startTime, con
 	return result;
 }
 
-static SoundDefinition MakeSoundDef(const SoundResource& resource, const float startTime = 0.0f, const float targetDuration = FLT_MAX) {
+static SoundDefinition MakeSoundDef(const Resource& resource, const float startTime = 0.0f, const float targetDuration = FLT_MAX) {
 	return MakeSoundDef(resource.name, startTime, targetDuration);
 }
-
-enum class ImageResourceType : uintptr_t {
-	None = 0,
-	File,
-	Memory
-};
-
-struct FileImageResource {
-	const char *relativeFilePath;
-};
-
-struct MemoryImageResource {
-	const uint8_t *data;
-	size_t length;
-};
-
-struct ImageResource {
-	const char *name;
-	ImageResourceType type;
-	
-	union {
-		FileImageResource file;
-		MemoryImageResource memory;
-	};
-
-	static ImageResource CreateFromMemory(const char *name, const uint8_t *data, const size_t length) {
-		ImageResource result = {};
-		result.name = name;
-		result.type = ImageResourceType::Memory;
-		result.memory.data = data;
-		result.memory.length = length;
-		return result;
-	}
-
-	static ImageResource CreateFromFile(const char *name, const char *relativeFilePath) {
-		ImageResource result = {};
-		result.type = ImageResourceType::File;
-		result.name = name;
-		result.file.relativeFilePath = relativeFilePath;
-		return result;
-	}
-
-	static ImageResource CreateFromFile(const char *relativeFilePath) {
-		const char *filename = fplExtractFileName(relativeFilePath);
-		return CreateFromFile(filename, relativeFilePath);
-	}
-};
-
-struct FontResource {
-	const uint8_t *data;
-	size_t size;
-	const char *name;
-};
 
 enum class BlockType {
 	None = 0,
@@ -126,7 +89,7 @@ struct TextBlockDefinition {
 struct ImageBlockDefinition {
 	Vec4f tintColor;
 	Vec2f size;
-	const ImageResource *imageResource;
+	const Resource *imageResource;
 	bool keepAspect;
 };
 
@@ -166,7 +129,7 @@ static BlockDefinition MakeTextDef(const Vec2f& pos, const Vec2f& size, BlockAli
 	return(result);
 }
 
-static BlockDefinition MakeImageDef(const Vec2f& pos, const Vec2f& size, BlockAlignment contentAlignment, const ImageResource *imageResource, const Vec2f& imageSize, const bool keepAspect, const Vec4f &tintColor = V4f(1, 1, 1, 1)) {
+static BlockDefinition MakeImageDef(const Vec2f& pos, const Vec2f& size, BlockAlignment contentAlignment, const Resource *imageResource, const Vec2f& imageSize, const bool keepAspect, const Vec4f &tintColor = V4f(1, 1, 1, 1)) {
 	BlockDefinition result = {};
 	result.pos = pos;
 	result.size = size;
@@ -269,29 +232,12 @@ struct PresentationDefinition {
 
 struct PresentationFile {
 	PresentationDefinition definition;
-	const FontResource *fontResources;
-	const SoundResource* soundResources;
-	const SoundResource* imageResources;
-	size_t fontResourceCount;
-	size_t sourceResourceCount;
-	size_t imageResourceCount;
+	const Resource *fonts;
+	const Resource *sounds;
+	const Resource *images;
+	size_t fontCont;
+	size_t soundCount;
+	size_t imageCount;
 };
 
-fpl_extern void SerializePresentationToFile(const PresentationDefinition *definition, const char *filePath);
-fpl_extern PresentationFile DeserializePresentationFromFile(const char* filePath);
-
 #endif // PRESENTATION_H
-
-#if (defined(PRESENTATION_IMPLEMENTATION) && !defined(PRESENTATION_IMPLEMENTED)) || FPL_IS_IDE
-#define PRESENTATION_IMPLEMENTED
-
-fpl_extern void SerializePresentationToFile(const PresentationDefinition* definition, const char* filePath) {
-
-}
-
-fpl_extern PresentationFile DeserializePresentationFromFile(const char* filePath) {
-	PresentationFile result = fplZeroInit;
-	return result;
-}
-
-#endif // PRESENTATION_IMPLEMENTATION

@@ -448,6 +448,13 @@ public:
 		return(result);
 	}
 
+	String MakePath(const char *a, const char *b) {
+		size_t pathLen = fplPathCombine(nullptr, 0, 2, a, b);
+		String result = MakeString(pathLen);
+		fplPathCombine(result, result, 2, a, b);
+		return result;
+	}
+
 	void ReleaseAll() {
 		Entry *p = first;
 		while (p != nullptr) {
@@ -779,10 +786,10 @@ enum class AssetState: uint32_t {
 struct ImageAsset {
 	ImageID id;
 	ImageTexture texture;
-	const ImageResource *resource;
+	const Resource *resource;
 	volatile AssetState state;
 
-	static ImageAsset Create(const ImageID &id, const ImageResource *resource) {
+	static ImageAsset Create(const ImageID &id, const Resource *resource) {
 		ImageAsset result = {};
 		result.id = id;
 		result.resource = resource;
@@ -976,20 +983,20 @@ struct Renderer {
 		return(0);
 	}
 
-	const LoadedFont *AddFontFromResource(const FontResource &resource, const float fontSize, const uint32_t minChar = 32, const uint32_t maxChar = 255) {
+	const LoadedFont *AddFontFromMemory(const char *name, const uint8_t *data, const float fontSize, const uint32_t minChar = 32, const uint32_t maxChar = 255) {
 		fplAssert(numFonts < fplArrayCount(fonts));
 		LoadedFont *font = fonts + numFonts;
-		if (!LoadedFont::LoadFromMemory(font, resource.data, 0, fontSize, minChar, maxChar)) {
+		if (!LoadedFont::LoadFromMemory(font, data, 0, fontSize, minChar, maxChar)) {
 			return {};
 		}
 		numFonts++;
-		FontID id = FontID::Make(*strings, resource.name);
+		FontID id = FontID::Make(*strings, name);
 		font->id = id;
 		qsort(fonts, numFonts, sizeof(fonts[0]), CompareFont);
 		return(font);
 	}
 
-	const LoadedFont *AddFontFromFile(const char *filePath, const char *name, const float fontSize, const uint32_t minChar = 32, const uint32_t maxChar = 255) {
+	const LoadedFont *AddFontFromFile(const char *name, const char *filePath, const float fontSize, const uint32_t minChar = 32, const uint32_t maxChar = 255) {
 		fplAssert(numFonts < fplArrayCount(fonts));
 		LoadedFont *font = fonts + numFonts;
 		if (!LoadedFont::LoadFromFile(font, filePath, 0, fontSize, minChar, maxChar)) {
@@ -1000,6 +1007,18 @@ struct Renderer {
 		font->id = id;
 		qsort(fonts, numFonts, sizeof(fonts[0]), CompareFont);
 		return(font);
+	}
+
+	const LoadedFont *AddFontFromResource(const Resource &resource, const float fontSize, const uint32_t minChar = 32, const uint32_t maxChar = 255) {
+		switch (resource.type) {
+			case ResourceType::File:
+				return AddFontFromFile(resource.name, resource.file.filePath, fontSize, minChar, maxChar);
+			case ResourceType::Memory:
+				return AddFontFromMemory(resource.name, resource.memory.data, fontSize, minChar, maxChar);
+			default:
+			case ResourceType::None:
+				return nullptr;
+		}
 	}
 
 	inline const LoadedFont *FindFont(const char *name, const float fontSize = 0.0f) const {
@@ -2785,27 +2804,16 @@ int main(int argc, char **argv) {
 		size_t appPathLen = fplExtractFilePath(app.appPath, nullptr, 0);
 		app.appPath[appPathLen] = '\0';
 
-		size_t dataPathLen;
-		if ((dataPathLen = fplGetStringLength(argDataPath)) > 0) {
-			app.dataPath = (String)app.strings.MakeString(dataPathLen);
-			fplCopyString(argDataPath, app.dataPath, app.dataPath);
+		size_t dataPathLen = fplGetStringLength(argDataPath);
+		if (dataPathLen > 0) {
+			app.dataPath = app.strings.CopyString(argDataPath, dataPathLen);
 		} else {
-			dataPathLen = fplPathCombine(nullptr, 0, 2, (const char *)app.appPath, "data");
-			app.dataPath = app.strings.MakeString(dataPathLen);
-			fplPathCombine(app.dataPath, app.dataPath, 2, (const char *)app.appPath, "data");
+			app.dataPath = app.strings.MakePath(app.appPath, "data");
 		}
 
-		size_t presentationsPathLen = fplPathCombine(nullptr, 0, 2, (const char *)app.dataPath, "presentations");
-		String presentationsPath = app.strings.MakeString(presentationsPathLen);
-		fplPathCombine(presentationsPath, presentationsPath, 2, (const char *)app.dataPath, "presentations");
-
-		size_t soundsBasePathLen = fplPathCombine(nullptr, 0, 2, (const char *)app.dataPath, "sounds");
-		String soundsBasePath = app.strings.MakeString(soundsBasePathLen);
-		fplPathCombine(soundsBasePath, soundsBasePath, 2, (const char *)app.dataPath, "sounds");
-
-		size_t imagesBasePathLen = fplPathCombine(nullptr, 0, 2, (const char *)app.dataPath, "images");
-		String imagesBasePath = app.strings.MakeString(imagesBasePathLen);
-		fplPathCombine(imagesBasePath, imagesBasePath, 2, (const char *)app.dataPath, "images");
+		String presentationsPath = app.strings.MakePath(app.dataPath, "presentations");
+		String soundsBasePath = app.strings.MakePath(app.dataPath, "sounds");
+		String imagesBasePath = app.strings.MakePath(app.dataPath, "images");
 
 		app.presentationsPath = presentationsPath;
 
@@ -2839,19 +2847,17 @@ int main(int argc, char **argv) {
 
 		size_t imageResourceCount = fplArrayCount(ImageResources::All);
 		for (size_t i = 0; i < imageResourceCount; ++i) {
-			const ImageResource &res = ImageResources::All[i];
+			const Resource &res = ImageResources::All[i];
 
 			switch (res.type) {
-				case ImageResourceType::Memory:
+				case ResourceType::Memory:
 				{
 					app.renderer.AddImageFromMemory(res.name, res.memory.data, res.memory.length);
 				} break;
 
-				case ImageResourceType::File:
+				case ResourceType::File:
 				{
-					size_t pathLen = fplPathCombine(nullptr, 0, 2, app.renderer.imagesBasePath.base, res.file.relativeFilePath);
-					String path = app.strings.MakeString(pathLen);
-					fplPathCombine(path, path, 2, app.renderer.imagesBasePath.base, res.file.relativeFilePath);
+					String path = app.strings.MakePath(app.renderer.imagesBasePath, res.file.filePath);
 					app.renderer.AddImageFromFile(res.name, path);
 				} break;
 			}
@@ -2859,22 +2865,18 @@ int main(int argc, char **argv) {
 
 		size_t soundResourceCount = fplArrayCount(SoundResources::All);
 		for (size_t i = 0; i < soundResourceCount; ++i) {
-			const SoundResource &res = SoundResources::All[i];
+			const Resource &res = SoundResources::All[i];
 
 			switch (res.type) {
-				case SoundResourceType::File:
+				case ResourceType::File:
 				{
-					size_t pathLen = fplPathCombine(nullptr, 0, 2, app.soundMng.basePath, res.file.relativeFilePath);
-					String path = app.strings.MakeString(pathLen);
-					fplPathCombine(path, path, 2, app.soundMng.basePath, res.file.relativeFilePath);
+					String path = app.strings.MakePath(app.soundMng.basePath, res.file.filePath);
 					app.soundMng.AddSoundFromFile(res.name, path);
 				} break;
 			}
 		}
 
-		size_t presentationFilePathLen = fplPathCombine(nullptr, 0, 2, (const char *)app.presentationsPath, "fpl_presentation.ftd");
-		String presentationFilePath = app.strings.MakeString(presentationFilePathLen);
-		fplPathCombine(presentationFilePath, presentationFilePath, 2, (const char *)app.presentationsPath, "fpl_presentation.ftd");
+		String presentationFilePath = app.strings.MakePath(app.presentationsPath, "fpl_presentation.ftd");
 
 		ftdContext *ctx = ftdCreate(NULL);
 		ftdRegisterStruct(ctx, &BackgroundStyleType);
