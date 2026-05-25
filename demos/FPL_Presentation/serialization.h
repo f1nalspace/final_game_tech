@@ -243,6 +243,7 @@ FTD_BIND_TYPE(BlockDefinition, BlockDefinitionStructDef::Type);
 namespace SlideDefinitionStructDef {
     static constexpr ftdField Fields[] = {
         FTD_FIELD(SlideDefinition, name),
+        FTD_FIELD(SlideDefinition, talk),
         FTD_FIELD_ARRAY_DATA(SlideDefinition, blocks, blocks),
         FTD_FIELD_ARRAY_DATA(SlideDefinition, sounds, sounds),
         FTD_FIELD_STRUCT(SlideDefinition, background),
@@ -250,7 +251,6 @@ namespace SlideDefinitionStructDef {
         FTD_FIELD_ARRAY_SIZE(SlideDefinition, blocks, blockCount),
         FTD_FIELD_ARRAY_SIZE(SlideDefinition, sounds, soundCount),
         FTD_FIELD(SlideDefinition, duration),
-        FTD_FIELD_HIDDEN("talk")
     };
     static constexpr ftdType Type = {
         .name = "Slide", .size = sizeof(SlideDefinition), .align = alignof(SlideDefinition),

@@ -144,6 +144,7 @@ static BlockDefinition MakeImageDef(const Vec2f& pos, const Vec2f& size, BlockAl
 
 struct SlideDefinition {
 	const char* name;
+	const char* talk;
 	const BlockDefinition *blocks;
 	const SoundDefinition *sounds;
 	BackgroundStyle background;
