@@ -1679,6 +1679,11 @@ typedef struct ftd__Symbol {
 	ftd__SymKind kind;
 	const ftdType *type;
 	ftdFieldKind scalarKind; // for Const/Builtin of scalar types
+	// Source location where this symbol was defined. Set for parse-arena
+	// symbols (aliases, instances, consts, namespaces) so post-parse
+	// validation can point at the original declaration. Zeroed for
+	// schema symbols and synthesized field-walk results.
+	ftdSourceSpan defSpan;
 	union {
 		const char *aliasTarget;
 		void *ptr;
@@ -3553,8 +3558,14 @@ static bool ftd__parseValue(ftd__Parser *p, const ftdField *fieldHint, const ftd
 		}
 
 		// 5. Enum short-form against fieldHint? already tried. Try any in-scope enum (rare).
-		// 6. Otherwise — error
+		// 6. Otherwise — error. If the undefined name is followed by '(' or
+		//    '{' (constructor/helper call form), consume the balanced group so
+		//    its arguments don't cascade into spurious top-level errors. The
+		//    root-cause diagnostic about the undefined name itself is enough.
 		ftd__emit(p->ctx, ftdSeverity_Error, out->span, "undefined name '%s'", name);
+		if (p->cur.kind == ftd__Tok_LParen || p->cur.kind == ftd__Tok_LBrace) {
+			ftd__skipBalanced(p);
+		}
 		out->kind = ftdValueKind_None;
 		return true;
 	}
@@ -4279,12 +4290,14 @@ static void ftd__parseAlias(ftd__Parser *p) {
 		return;
 	}
 
+	ftdSourceSpan aliasSpan = p->cur.span;
 	const char *first = ftd__parseQName(p);
 	const char *aliasName = first;
 	const char *target = NULL;
 
 	if (p->cur.kind == ftd__Tok_Ident) {
 		// We had "alias Type Name = ..." form. The first qname was the type prefix; current is the actual name.
+		aliasSpan = p->cur.span;
 		aliasName = ftd__parseQName(p);
 	}
 
@@ -4298,6 +4311,7 @@ static void ftd__parseAlias(ftd__Parser *p) {
 		ftd__skipToNewlineOrEOF(p);
 		return;
 	}
+	ftdSourceSpan targetSpan = p->cur.span;
 	target = ftd__parseQName(p);
 
 	// Register in parse-time symbols (so resetParse drops them)
@@ -4308,8 +4322,10 @@ static void ftd__parseAlias(ftd__Parser *p) {
 	if (s != NULL) {
 		s->kind = ftd__Sym_Alias;
 		s->as.aliasTarget = tg;
+		s->defSpan = targetSpan;
 	}
 	(void) first;
+	(void) aliasSpan;
 }
 
 // Body of a namespace block. The opening '{' has already been consumed by the
@@ -4389,6 +4405,7 @@ static void ftd__parseNamespaceBody(ftd__Parser *p, const char *nsName) {
 			const ftd__Token *pk = ftd__parserPeek(p);
 			bool callOrBlock = (pk->kind == ftd__Tok_LParen || pk->kind == ftd__Tok_LBrace);
 			if (!callOrBlock) {
+				ftdSourceSpan targetSpan = p->cur.span;
 				const char *target = ftd__parseQName(p);
 				if (target != NULL) {
 					const char *tgIntern = ftd__arenaStrDup(&p->ctx->parseArena, target);
@@ -4396,6 +4413,7 @@ static void ftd__parseNamespaceBody(ftd__Parser *p, const char *nsName) {
 					if (ms != NULL) {
 						ms->kind = ftd__Sym_Alias;
 						ms->as.aliasTarget = tgIntern;
+						ms->defSpan = targetSpan;
 					}
 				}
 				if (p->cur.kind == ftd__Tok_Comma) {
@@ -4619,6 +4637,136 @@ static void ftd__parseTypedDecl(ftd__Parser *p) {
 }
 
 // -----------------------------------------------------------------------------
+// Alias validation pass: every alias target must resolve to something the
+// parser/lookup machinery understands. This catches:
+//   * `alias V3f = Vec3f` when Vec3f was never registered;
+//   * `alias Left = HorizontalAlignment.Left` when the enum is missing;
+//   * namespace members like `Arimo = BuiltinFonts.Arimo` when the root
+//     namespace/global is missing — in that case the diagnostic names the
+//     missing root, not the full chain, so the user fixes the underlying
+//     cause instead of every downstream reference.
+// -----------------------------------------------------------------------------
+
+// Check whether `target` (possibly dotted) is a valid alias destination.
+// Walks the same name space as ftdLookup/parseValue, plus accepts
+// "<Enum>.<Value>" forms.
+static bool ftd__targetResolves(ftdContext *ctx, const char *target, int depth) {
+	if (target == NULL || *target == '\0' || depth > 16) {
+		return false;
+	}
+
+	// Direct symbol hit (covers types, enums, helpers, namespaces, globals,
+	// instances, consts, builtins, and aliases — recursively).
+	const ftd__Symbol *direct = ftd__symTableLookup(&ctx->parseSyms, target);
+	if (direct == NULL) {
+		direct = ftd__symTableLookup(&ctx->schemaSyms, target);
+	}
+	if (direct != NULL) {
+		if (direct->kind == ftd__Sym_Alias) {
+			return ftd__targetResolves(ctx, direct->as.aliasTarget, depth + 1);
+		}
+		return true;
+	}
+
+	// resolveAlias already knows how to walk dotted prefixes for namespaces,
+	// instances, globals and field paths — reuse it.
+	if (ftd__resolveAlias(ctx, target, 0) != NULL) {
+		return true;
+	}
+
+	// Last try: <EnumName>.<Value> — enum values are not stored as their own
+	// symbols, so resolveAlias misses them.
+	const char *lastDot = NULL;
+	for (const char *c = target; *c != '\0'; ++c) {
+		if (*c == '.') {
+			lastDot = c;
+		}
+	}
+	if (lastDot != NULL) {
+		size_t headLen = (size_t)(lastDot - target);
+		char head[256];
+		if (headLen + 1 > sizeof(head)) {
+			return false;
+		}
+		FTD_MEMCPY(head, target, headLen);
+		head[headLen] = '\0';
+		const ftd__Symbol *headSym = ftd__symTableLookup(&ctx->parseSyms, head);
+		if (headSym == NULL) {
+			headSym = ftd__symTableLookup(&ctx->schemaSyms, head);
+		}
+		if (headSym != NULL && headSym->kind == ftd__Sym_Enum && headSym->type != NULL) {
+			int32_t dummy;
+			if (ftd__lookupEnumValue(headSym->type, lastDot + 1, &dummy)) {
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+// Find the leading dotted segment of `target` that is the actual missing
+// piece. Returns a strdup'd buffer (parse arena) or NULL if `target` itself
+// is the missing root.
+static const char *ftd__missingRootOf(ftdContext *ctx, const char *target) {
+	// Empty dot is impossible. Find the longest existing prefix; the segment
+	// *after* it is the first missing piece.
+	const char *firstDot = NULL;
+	for (const char *c = target; *c != '\0'; ++c) {
+		if (*c == '.') {
+			firstDot = c;
+			break;
+		}
+	}
+	if (firstDot == NULL) {
+		return target;
+	}
+	size_t headLen = (size_t)(firstDot - target);
+	char *head = (char *)ftd__arenaAlloc(&ctx->parseArena, headLen + 1, 1);
+	if (head == NULL) {
+		return target;
+	}
+	FTD_MEMCPY(head, target, headLen);
+	head[headLen] = '\0';
+	const ftd__Symbol *headSym = ftd__symTableLookup(&ctx->parseSyms, head);
+	if (headSym == NULL) {
+		headSym = ftd__symTableLookup(&ctx->schemaSyms, head);
+	}
+	if (headSym == NULL) {
+		return head;
+	}
+	return target;
+}
+
+static void ftd__validateAliases(ftd__Parser *p) {
+	ftdContext *ctx = p->ctx;
+	ftd__SymTable *t = &ctx->parseSyms;
+	if (t->entries == NULL) {
+		return;
+	}
+	for (uint32_t i = 0; i < t->capacity; ++i) {
+		ftd__Symbol *s = &t->entries[i];
+		if (s->kind != ftd__Sym_Alias) {
+			continue;
+		}
+		const char *target = s->as.aliasTarget;
+		if (ftd__targetResolves(ctx, target, 0)) {
+			continue;
+		}
+		const char *missing = ftd__missingRootOf(ctx, target);
+		if (missing != NULL && FTD_STRCMP(missing, target) != 0) {
+			ftd__emit(ctx, ftdSeverity_Error, s->defSpan,
+			          "alias '%s' refers to undefined '%s' in target '%s'",
+			          s->name, missing, target);
+		} else {
+			ftd__emit(ctx, ftdSeverity_Error, s->defSpan,
+			          "alias '%s' refers to undefined '%s'",
+			          s->name, target);
+		}
+	}
+}
+
+// -----------------------------------------------------------------------------
 // Fixup resolution pass
 // -----------------------------------------------------------------------------
 static void ftd__resolveFixups(ftd__Parser *p) {
@@ -4716,6 +4864,7 @@ FTD_API ftdResult ftdParseString(ftdContext *ctx, const char *source, size_t len
 		ftd__skipToNewlineOrEOF(&p);
 	}
 
+	ftd__validateAliases(&p);
 	ftd__resolveFixups(&p);
 	ftd__finalizeResult(ctx);
 	return ctx->lastResult;

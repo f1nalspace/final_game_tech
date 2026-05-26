@@ -1021,6 +1021,87 @@ static void TestUnknownTypeError(void) {
 	ftdDestroy(ctx);
 }
 
+// Validation: alias target type must be registered. Detect early at the alias
+// declaration site, not only when the alias is used.
+static void TestAliasTargetUnregisteredType(void) {
+	ftdContext *ctx = MakeCommonContext();
+	// Vec3f is intentionally NOT registered.
+	const char *src = "alias V3f = Vec3f\n";
+	ftdResult r = ParseLiteral(ctx, src);
+	ftdAlwaysAssert(!r.ok);
+	ftdAlwaysAssert(r.errorCount >= 1);
+	bool foundTarget = false;
+	for (uint32_t i = 0; i < r.diagnosticCount; ++i) {
+		if (strstr(r.diagnostics[i].message, "Vec3f") != NULL) {
+			foundTarget = true;
+			break;
+		}
+	}
+	ftdAlwaysAssert(foundTarget);
+	ftdDestroy(ctx);
+}
+
+// Validation: enum-qualified alias target. The enum 'HorizontalAlignment' is
+// not registered, so the alias declaration must fail.
+static void TestAliasTargetUnregisteredEnum(void) {
+	ftdContext *ctx = MakeCommonContext();
+	const char *src = "alias Left = HorizontalAlignment.Left\n";
+	ftdResult r = ParseLiteral(ctx, src);
+	ftdAlwaysAssert(!r.ok);
+	ftdAlwaysAssert(r.errorCount >= 1);
+	bool found = false;
+	for (uint32_t i = 0; i < r.diagnosticCount; ++i) {
+		if (strstr(r.diagnostics[i].message, "HorizontalAlignment") != NULL) {
+			found = true;
+			break;
+		}
+	}
+	ftdAlwaysAssert(found);
+	ftdDestroy(ctx);
+}
+
+// Validation: namespace member RHS that references an unknown root must
+// report the missing root, not just downstream undefined-name errors.
+static void TestNamespaceMemberUnknownTarget(void) {
+	ftdContext *ctx = MakeCommonContext();
+	const char *src =
+		"Fonts {\n"
+		"    Arimo = BuiltinFonts.Arimo\n"
+		"}\n";
+	ftdResult r = ParseLiteral(ctx, src);
+	ftdAlwaysAssert(!r.ok);
+	ftdAlwaysAssert(r.errorCount >= 1);
+	bool found = false;
+	for (uint32_t i = 0; i < r.diagnosticCount; ++i) {
+		if (strstr(r.diagnostics[i].message, "BuiltinFonts") != NULL) {
+			found = true;
+			break;
+		}
+	}
+	ftdAlwaysAssert(found);
+	ftdDestroy(ctx);
+}
+
+// Validation: passing an undefined alias as a helper argument must produce a
+// clear, non-cascading error referring to the undefined name itself.
+static void TestHelperArgUndefinedAlias(void) {
+	ftdContext *ctx = MakeCommonContext();
+	ftdRegisterHelper(ctx, "RGBA", &V4f_type, RGBAHelper, NULL);
+	const char *src = "V4f X = RGBA(V3f(1, 2, 3))\n";
+	ftdResult r = ParseLiteral(ctx, src);
+	ftdAlwaysAssert(!r.ok);
+	ftdAlwaysAssert(r.errorCount >= 1);
+	bool foundV3f = false;
+	for (uint32_t i = 0; i < r.diagnosticCount; ++i) {
+		if (strstr(r.diagnostics[i].message, "V3f") != NULL) {
+			foundV3f = true;
+			break;
+		}
+	}
+	ftdAlwaysAssert(foundV3f);
+	ftdDestroy(ctx);
+}
+
 static void TestDiagnosticsHaveSpans(void) {
 	ftdContext *ctx = MakeCommonContext();
 	const char *src = "NoSuchType X = 1\n";
@@ -2267,6 +2348,10 @@ int main(int argc, char **args) {
 	TestConstantInterning();
 	TestUnknownFieldWarningRecovery();
 	TestUnknownTypeError();
+	TestAliasTargetUnregisteredType();
+	TestAliasTargetUnregisteredEnum();
+	TestNamespaceMemberUnknownTarget();
+	TestHelperArgUndefinedAlias();
 	TestDiagnosticsHaveSpans();
 	TestResetParseHotReload();
 	TestLookupNotFound();
