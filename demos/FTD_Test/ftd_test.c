@@ -432,7 +432,7 @@ static void TestCoercion(void) {
 	ftdDestroy(ctx);
 }
 
-static void TestAlias(void) {
+static void TestAliasBasic(void) {
 	ftdContext *ctx = MakeCommonContext();
 	const char *src =
 		"alias Vec2  = V2f\n"
@@ -449,7 +449,7 @@ static void TestAlias(void) {
 	ftdDestroy(ctx);
 }
 
-static void TestRegisterAliasFromHost(void) {
+static void TestAliasHostRegistered(void) {
 	ftdContext *ctx = MakeCommonContext();
 	ftdRegisterAlias(ctx, "Vector2", "V2f");
 	const char *src = "Vector2 P = Vector2(7, 8)\n";
@@ -1062,7 +1062,7 @@ static void TestAliasTargetUnregisteredEnum(void) {
 
 // Validation: namespace member RHS that references an unknown root must
 // report the missing root, not just downstream undefined-name errors.
-static void TestNamespaceMemberUnknownTarget(void) {
+static void TestNamespaceMemberAliasTargetUnknown(void) {
 	ftdContext *ctx = MakeCommonContext();
 	const char *src =
 		"Fonts {\n"
@@ -2318,54 +2318,89 @@ static void TestNestedArrayBundleInsideStruct(void) {
 int main(int argc, char **args) {
 	(void)argc; (void)args;
 
+	// Context lifecycle, lookup, allocator
 	TestContextLifecycle();
 	TestEmptySource();
+	TestCustomAllocator();
+	TestLookupNotFound();
+	TestLookupReturnsType();
+	TestResetParseHotReload();
+
+	// Lexer: comments, literals, separators
 	TestComments();
 	TestNumberLiterals();
 	TestStringEscapesAndConcatenation();
+	TestNullAndBoolLiteral();
+	TestCommaAndNewlineSeparators();
+
+	// Scalars and coercion
 	TestAllScalarsInStruct();
 	TestCoercion();
-	TestAlias();
-	TestRegisterAliasFromHost();
-	TestNestedStructAndDottedPath();
+	TestRepeatedFieldLastWins();
+	TestSizeScalar();
+
+	// Structs: constructors, nesting, unions, field shadowing
 	TestPositionalAndInlineForms();
 	TestPositionalMissingArgsZeroInit();
+	TestNestedStructAndDottedPath();
+	TestUnionMatchAndMismatch();
+	TestUnionArmFieldNameShadow();
+	TestFractionalFloatsInPositionalStruct();
+	TestFractionalFloatsInArrayElementsInline();
+
+	// Enums
 	TestEnumShortAndQualified();
+
+	// Aliases
+	TestAliasBasic();
+	TestAliasHostRegistered();
+
+	// Arrays (default handle, custom slot, decomposed bundle fields)
 	TestArrayDefaultHandle();
 	TestArrayEmpty();
 	TestArrayCustomSlot();
-	TestUnionMatchAndMismatch();
+	TestArrayBundleFields();
+	TestArrayBundleOptionalCapacity();
+	TestNestedArrayBundleInsideStruct();
+	TestStructArrayFromGlobalRefs();
+
+	// Memory bundles
+	TestMemoryBundle8Inline();
+	TestMemoryBundle64Inline();
+	TestMemoryBundleReference();
+
+	// References and forward refs
 	TestRefAndForwardReference();
 	TestUnresolvedReferenceWarning();
+
+	// Globals and dotted field access on instances/globals
 	TestGlobalRegistration();
+	TestDottedFieldAccessOnGlobal();
+	TestDottedFieldAccessOnInstance();
+	TestDottedFieldAccessChained();
+
+	// Namespaces (untyped scoping containers)
 	TestNamespaceBasicMembers();
 	TestNamespaceNested();
 	TestNamespaceClearedOnReset();
 	TestNamespaceIsNotAValue();
 	TestNamespaceErrors();
+
+	// Host-registered helpers and parse-time constants
 	TestUserRegisteredColorHelpers();
 	TestCustomHelper();
 	TestConstantInterning();
+
+	// Diagnostics and validation
 	TestUnknownFieldWarningRecovery();
 	TestUnknownTypeError();
 	TestAliasTargetUnregisteredType();
 	TestAliasTargetUnregisteredEnum();
-	TestNamespaceMemberUnknownTarget();
+	TestNamespaceMemberAliasTargetUnknown();
 	TestHelperArgUndefinedAlias();
 	TestDiagnosticsHaveSpans();
-	TestResetParseHotReload();
-	TestLookupNotFound();
-	TestLookupReturnsType();
-	TestCustomAllocator();
-	TestNullAndBoolLiteral();
-	TestRepeatedFieldLastWins();
-	TestCommaAndNewlineSeparators();
-	TestArrayBundleFields();
-	TestArrayBundleOptionalCapacity();
-	TestSizeScalar();
-	TestMemoryBundle8Inline();
-	TestMemoryBundle64Inline();
-	TestMemoryBundleReference();
+
+	// File I/O and large real-world presentation parsing
 #if !defined(FTD_NO_STDIO)
 	TestParseFile();
 	TestParseMissingFile();
@@ -2374,17 +2409,10 @@ int main(int argc, char **args) {
 	TestParsePresentationFull();
 	TestParsePresentationFullNoAliases();
 	TestParsePresentationAliasesNoTypes();
-	TestStressMany();
-
-	TestFractionalFloatsInPositionalStruct();
-	TestFractionalFloatsInArrayElementsInline();
-	TestUnionArmFieldNameShadow();
-	TestDottedFieldAccessOnGlobal();
-	TestDottedFieldAccessOnInstance();
-	TestDottedFieldAccessChained();
-	TestStructArrayFromGlobalRefs();
-	TestNestedArrayBundleInsideStruct();
 	TestBlockDefLayoutMatchesPresentation();
+
+	// Stress
+	TestStressMany();
 
 	printf("All FTD tests passed.\n");
 	return 0;
