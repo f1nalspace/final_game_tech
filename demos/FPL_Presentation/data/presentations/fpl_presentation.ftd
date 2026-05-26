@@ -82,7 +82,7 @@ Images {
     DataVisualization = Resource { name = "data-visualization.png" type = File  file { filePath = "data-visualization.png" } }
     GameDev           = Resource { name = "game_dev.png"           type = File  file { filePath = "game_dev.png" } }
     MultimediaDev     = Resource { name = "multimedia_dev.png"     type = File  file { filePath = "multimedia_dev.png" } }
-    SimulationDev     = Resource { name = "sim_dev.png"            type = File  file { filePath = "sim_dev.png" } }
+    FluidSandbox      = Resource { name = "sim_dev.png"            type = File  file { filePath = "sim_dev.png" } }
     Code              = Resource { name = "code.png"               type = File  file { filePath = "code.png" } }
 
     # Vendor logos
@@ -104,7 +104,7 @@ Images {
     Demo_Input           = Resource { name = "demo_input.png"     type = File  file { filePath = "demo_input.png" } }
     Demo_Crackout        = Resource { name = "demo_crackout.png"  type = File  file { filePath = "demo_crackout.png" } }
     Demo_OpenGL          = Resource { name = "demo_opengl.png"    type = File  file { filePath = "demo_opengl.png" } }
-    Demo_Raytracer       = Resource { name = "demo_raytracer.png" type = File  file { filePath = "demo_raytracer.png" } }
+    Demo_Emulator        = Resource { name = "demo_emulator.png" type = File  file { filePath = "demo_emulator.png" } }
 
     # How-it-works icons
     Feature_SingleHeaderFile  = Resource { name = "singleheaderfile.png"  type = File  file { filePath = "singleheaderfile.png" } }
@@ -265,7 +265,7 @@ SlideDefinition WhoAmI {
             size = V2f(0.45, 0.45)
             contentAlignment = { h = Left, v = Bottom }
             image {
-                imageResource = Images.SimulationDev
+                imageResource = Images.FluidSandbox
                 size       = V2f(1.0, 1.0)
                 keepAspect = true
                 tintColor  = Const.WhiteHalf
@@ -598,7 +598,7 @@ SlideDefinition Demos {
         { type = Image  pos = V2f(0.75, 0.0)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Images.Demo_Input            size = V2f(1, 1)  keepAspect = true  tintColor = Const.WhiteFaint } }
         { type = Image  pos = V2f(0.00, 0.6)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Images.Demo_OpenGL           size = V2f(1, 1)  keepAspect = true  tintColor = Const.WhiteFaint } }
         { type = Image  pos = V2f(0.25, 0.6)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Images.Demo_Crackout         size = V2f(1, 1)  keepAspect = true  tintColor = Const.WhiteFaint } }
-        { type = Image  pos = V2f(0.50, 0.6)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Images.Demo_Raytracer        size = V2f(1, 1)  keepAspect = true  tintColor = Const.WhiteFaint } }
+        { type = Image  pos = V2f(0.50, 0.6)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Images.Demo_Emulator        size = V2f(1, 1)  keepAspect = true  tintColor = Const.WhiteFaint } }
         { type = Image  pos = V2f(0.75, 0.6)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Images.Demo_NBodySimulation  size = V2f(1, 1)  keepAspect = true  tintColor = Const.WhiteFaint } }
 
         {
@@ -825,7 +825,7 @@ PresentationFile FPLPresentationFile {
         Images.DataVisualization
         Images.GameDev
         Images.MultimediaDev
-        Images.SimulationDev
+        Images.FluidSandbox
         Images.Code
 
         Images.Vendor_FreeBSD
@@ -845,7 +845,7 @@ PresentationFile FPLPresentationFile {
         Images.Demo_Input
         Images.Demo_Crackout
         Images.Demo_OpenGL
-        Images.Demo_Raytracer
+        Images.Demo_Emulator
 
         Images.Feature_SingleHeaderFile
         Images.Feature_RuntimeLinking
