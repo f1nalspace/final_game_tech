@@ -104,7 +104,8 @@ Images {
     Demo_Input           = Resource { name = "demo_input.png"     type = File  file { filePath = "demo_input.png" } }
     Demo_Crackout        = Resource { name = "demo_crackout.png"  type = File  file { filePath = "demo_crackout.png" } }
     Demo_OpenGL          = Resource { name = "demo_opengl.png"    type = File  file { filePath = "demo_opengl.png" } }
-    Demo_Emulator        = Resource { name = "demo_emulator.png" type = File  file { filePath = "demo_emulator.png" } }
+    Demo_Emulator        = Resource { name = "demo_emulator.png"  type = File  file { filePath = "demo_emulator.png" } }
+    Demo_RayTracer       = Resource { name = "demo_raytracer.png" type = File  file { filePath = "demo_raytracer.png" } }
 
     # How-it-works icons
     Feature_SingleHeaderFile  = Resource { name = "singleheaderfile.png"  type = File  file { filePath = "singleheaderfile.png" } }
@@ -231,7 +232,7 @@ SlideDefinition WhoAmI {
     background = Backgrounds.FixedBackground
 
     talk = "I am Torsten Spaete"
-           "A professional software engineer with more than 25 years of programming experience"
+           "A professional software engineer with more than 30 years of programming experience"
            "My main focus is data-visualization, software-architecture, multimedia and game development"
 
     blocks = [
@@ -291,7 +292,7 @@ SlideDefinition WhoAmI {
             text {
                 text      = "I am Torsten Spaete\n"
                             "A professional software engineer\n"
-                            "25+ years of programming experience\n"
+                            "30+ years of programming experience\n"
                 textAlign = Center
             }
         }
@@ -314,12 +315,12 @@ SlideDefinition WhatIsFPL {
            ""
            "For example you can:"
            "- Play audio samples on any audio device"
-           "- Create and manage windows, including the initialization of a video graphics api, such as OpenGL, Vulkan"
+           "- Create and manage windows, including the initialization of a graphics backend, such as OpenGL, Vulkan or even Software"
            "- Query keyboard, mouse and gamepad input"
            "- Execute code in parallel, using several multithreading techniques"
-           "- Allocate and free memory directly on the platform, without the use of malloc or free"
+           "- Allocate and free memory directly from the operating system, without depending on the C runtime"
            "- Modify and query files & directories"
-           "- Query several platform and hardware informations"
+           "- Query several platform and hardware information"
            "- and much more"
            ""
            "Its main usage is multimedia and game development, but it can be used to write any kind of software."
@@ -398,21 +399,23 @@ SlideDefinition Features {
     rotation = QuatFromAngleAxis(30.0, V3f(0.0, 1.0, 0.1))
     background = Backgrounds.FixedBackground
 
-    talk = "FPL was designed to make the creation of multimedia applications or games very easy."
+    talk = "FPL was designed to make the creation of multimedia applications and games very easy."
            ""
-           "- It can create and manage a window for you, including the handling of events"
-           "- It can handle keyboard & mouse devices"
-           "- It can handle gamepads as well"
-           "- It can initialize a graphics backend for you, such as OpenGL, Vulkan or allows you to put pixels directly on the screen"
-           "- It can play back sound samples asynchrously"
-           "- It is written in C99 for simplicity and best portability, but is 100% c++ compatible"
-           "- It is designed to be fast in compile and runtime"
-           "- It does not require any build-systems or thirdparty libraries"
-           "- It gives you control of memory allocations and handles memory very gracefully"
-           "- It supports the major architectures: X86, X64 and ARM"
-           "- It supports many compilers and platforms and provides useful utilities fo work with them"
-           "- It is highly configurable and many features can be compiled out, if needed"
-           "- It provides useful primitives to create code that runs on different threads"
+           "- It can create and manage a window, including event handling, with an optional headless mode for input-only apps"
+           "- It handles keyboard and mouse devices"
+           "- It handles gamepads through multiple backends with SDL-compatible mapping"
+           "- It initializes a graphics backend for you, such as OpenGL, Vulkan, or a software framebuffer"
+           "- It plays back audio samples asynchronously through a variety of backends"
+           "- It provides a thread-safe date & time API with UTC and local support"
+           "- It is written in C99 for simplicity and best portability, but is 100% C++ compatible"
+           "- It is designed to be fast in compile and run time"
+           "- It does not require any build systems or third-party libraries"
+           "- It gives you control over memory allocations and handles memory carefully"
+           "- It supports the major architectures: x86, x64, ARM32 and ARM64"
+           "- It supports many compilers and platforms and provides useful utilities to work with them"
+           "- It is highly configurable and most features can be compiled out, if not needed"
+           "- It provides primitives for parallel and concurrent code (threads, mutex, semaphore, condition variable, lock-free queues)"
+           "- It reports errors in a thread-safe, lock-free manner"
            "- In addition it contains a ton of useful functions and macros"
 
     blocks = [
@@ -452,7 +455,8 @@ SlideDefinition Platforms {
     rotation = QuatFromAngleAxis(75.0, V3f(-0.5, 0.65, 0.5))
     background = Backgrounds.FixedBackground
 
-    talk = "FPL supports the major operating systems, such as Windows, Linux, Raspberry Pi and Unix or BSD"
+    talk = "FPL supports the major operating systems: Windows, Linux, Raspberry Pi and Unix-like systems such as the BSD family."
+           "On top of these it integrates with the graphics, audio and windowing systems that are native to each platform."
 
     blocks = [
         { type = Image  pos = V2f(0.0, 0.2)  size = V2f(0.2, 0.2)  contentAlignment = { h = Center, v = Bottom }  image { imageResource = Images.Vendor_Windows    size = V2f(1, 1)  keepAspect = true  tintColor = Const.White } }
@@ -523,20 +527,23 @@ SlideDefinition HowItWorks {
     ]
 }
 
-SlideDefinition Constraints {
-    name    = "Constraints"
+SlideDefinition Scope {
+    name    = "Scope"
     duration = 0.0
     rotation = QuatFromAngleAxis(65.0, V3f(0.0, 0.5, 1.0))
     background = Backgrounds.FixedBackground
 
-    talk = "FPL is lightweight, so the feature set is limited. As a result, you'll need to provide some functionality."
+    talk = "FPL is deliberately lightweight. Some responsibilities are left to the application by design,"
+           "so the library stays small, fast and easy to integrate."
            ""
-           "Video rendering is intentionally excluded, giving users the flexibility to integrate their own solutions"
+           "Video rendering is intentionally excluded - FPL only sets up the graphics backend."
+           "You bring your own renderer, on top of OpenGL, Vulkan or the Software-Framebuffer."
            ""
-           "Audio sample conversion is intentionally excluded, giving users the flexibility to integrate their own solutions"
+           "Audio sample conversion is intentionally excluded - FPL hands you the raw output buffer."
+           "You bring your own mixer or resampler."
            ""
-           "Platform support are limited to X86 or ARM, both with support for 32-bit or 64-bit"
-           "More platforms may be added in the future, such as MacOS, Android or server-based platforms."
+           "Supported architectures are x86, x64, ARM32 and ARM64."
+           "Supported platforms are Windows, Linux and Unix-like systems including the BSD family."
 
     blocks = [
         {
@@ -545,13 +552,15 @@ SlideDefinition Constraints {
             size = V2f(1.0, 1.0)
             contentAlignment = { h = Center, v = Middle }
             text {
-                text      = "- Video rendering must be provided yourself\n"
+                text      = "By design, the application provides:\n"
+                            "- Video rendering (FPL only sets up the graphics context)\n"
+                            "- Audio sample conversion / mixing (FPL hands you the raw buffer)\n"
                             "\n"
-                            "- Audio sample conversion must be provided yourself\n"
+                            "Supported architectures:\n"
+                            "- x86, x64, ARM32, ARM64\n"
                             "\n"
-                            "Platform support are constrained to:\n"
-                            "- X86/X64/ARM32/ARM64\n"
-                            "- Windows/Linux/Unix\n"
+                            "Supported platforms:\n"
+                            "- Windows, Linux, Unix-like (including the BSD family)\n"
                 textAlign = Left
                 fontSize  = 40.0
             }
@@ -592,14 +601,18 @@ SlideDefinition Demos {
     talk = "FPL comes with a lot of fully working demos, so you can learn how it works."
 
     blocks = [
-        { type = Image  pos = V2f(0.00, 0.0)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Images.Demo_ImGUI            size = V2f(1, 1)  keepAspect = true  tintColor = Const.WhiteFaint } }
-        { type = Image  pos = V2f(0.25, 0.0)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Images.Demo_FFMPEG           size = V2f(1, 1)  keepAspect = true  tintColor = Const.WhiteFaint } }
-        { type = Image  pos = V2f(0.50, 0.0)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Images.Demo_Audio            size = V2f(1, 1)  keepAspect = true  tintColor = Const.WhiteFaint } }
-        { type = Image  pos = V2f(0.75, 0.0)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Images.Demo_Input            size = V2f(1, 1)  keepAspect = true  tintColor = Const.WhiteFaint } }
-        { type = Image  pos = V2f(0.00, 0.6)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Images.Demo_OpenGL           size = V2f(1, 1)  keepAspect = true  tintColor = Const.WhiteFaint } }
-        { type = Image  pos = V2f(0.25, 0.6)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Images.Demo_Crackout         size = V2f(1, 1)  keepAspect = true  tintColor = Const.WhiteFaint } }
-        { type = Image  pos = V2f(0.50, 0.6)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Images.Demo_Emulator        size = V2f(1, 1)  keepAspect = true  tintColor = Const.WhiteFaint } }
-        { type = Image  pos = V2f(0.75, 0.6)  size = V2f(0.25, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Images.Demo_NBodySimulation  size = V2f(1, 1)  keepAspect = true  tintColor = Const.WhiteFaint } }
+        # Row 1 - 5 demos
+        { type = Image  pos = V2f(0.00, 0.0)  size = V2f(0.20, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Images.Demo_ImGUI            size = V2f(1, 1)  keepAspect = true  tintColor = Const.WhiteFaint } }
+        { type = Image  pos = V2f(0.20, 0.0)  size = V2f(0.20, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Images.Demo_FFMPEG           size = V2f(1, 1)  keepAspect = true  tintColor = Const.WhiteFaint } }
+        { type = Image  pos = V2f(0.40, 0.0)  size = V2f(0.20, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Images.Demo_Audio            size = V2f(1, 1)  keepAspect = true  tintColor = Const.WhiteFaint } }
+        { type = Image  pos = V2f(0.60, 0.0)  size = V2f(0.20, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Images.Demo_Input            size = V2f(1, 1)  keepAspect = true  tintColor = Const.WhiteFaint } }
+        { type = Image  pos = V2f(0.80, 0.0)  size = V2f(0.20, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Images.Demo_RayTracer        size = V2f(1, 1)  keepAspect = true  tintColor = Const.WhiteFaint } }
+
+        # Row 2 - 4 demos centered under row 1
+        { type = Image  pos = V2f(0.10, 0.6)  size = V2f(0.20, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Images.Demo_OpenGL           size = V2f(1, 1)  keepAspect = true  tintColor = Const.WhiteFaint } }
+        { type = Image  pos = V2f(0.30, 0.6)  size = V2f(0.20, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Images.Demo_Crackout         size = V2f(1, 1)  keepAspect = true  tintColor = Const.WhiteFaint } }
+        { type = Image  pos = V2f(0.50, 0.6)  size = V2f(0.20, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Images.Demo_Emulator        size = V2f(1, 1)  keepAspect = true  tintColor = Const.WhiteFaint } }
+        { type = Image  pos = V2f(0.70, 0.6)  size = V2f(0.20, 0.25)  contentAlignment = { h = Center, v = Middle }  image { imageResource = Images.Demo_NBodySimulation  size = V2f(1, 1)  keepAspect = true  tintColor = Const.WhiteFaint } }
 
         {
             type = Text
@@ -627,54 +640,75 @@ SlideDefinition Demos {
     ]
 }
 
+SlideDefinition Meta {
+    name    = "This is a demo too"
+    duration = 0.0
+    rotation = QuatFromAngleAxis(35.0, V3f(0.3, 1.0, 0.2))
+    background = Backgrounds.FixedBackground
+
+    talk = "By the way - this presentation you are watching right now is itself a fully working FPL demo application."
+           ""
+           "Everything you see and hear - the window, the OpenGL rendering, the text layout, the audio playback, the input handling -"
+           "all of it runs on top of FPL, with no other third-party dependencies."
+           ""
+           "Even the slide format you are looking at is loaded and parsed at runtime."
+
+    blocks = [
+        {
+            type = Text
+            pos  = V2f(0.0, 0.0)
+            size = V2f(1.0, 1.0)
+            contentAlignment = { h = Center, v = Middle }
+            text {
+                text      = "This presentation is itself a fully working FPL demo.\n"
+                            "\n"
+                            "Window, OpenGL rendering, text, audio and input -\n"
+                            "all driven by FPL, with no other dependencies.\n"
+                            "\n"
+                            "Even the slide format is loaded and parsed at runtime.\n"
+                textAlign = Center
+                fontSize  = Const.NormalFontSize
+            }
+        }
+    ]
+}
+
 SlideDefinition Links {
     name    = "Links"
     duration = 0.0
     rotation = QuatFromAngleAxis(65.0, V3f(1, 0, 0))
     background = Backgrounds.FixedBackground
 
-    talk = "If you are interested about learning more about FPL, you can visit the official website: libfpl.org"
+    talk = "If you are interested in learning more about FPL, you can visit the official website: libfpl.org"
            ""
-           "Or go to the github repository directly"
+           "Or go to the GitHub repository directly."
            ""
            "If you are watching this presentation over a streaming platform, you can also find all the links in the description below."
 
     blocks = [
         {
             type = Text
-            pos  = V2f(0.25, 0.0)  size = V2f(0.5, 0.1)
+            pos  = V2f(0.25, 0.15)  size = V2f(0.5, 0.1)
             contentAlignment = { h = Left, v = Middle }
             text { text = "Official website (details, releases, documentation):"  textAlign = Left  fontSize = Const.FeaturesFontSize }
         }
         {
             type = Text
-            pos  = V2f(0.25, 0.1)  size = V2f(0.5, 0.1)
+            pos  = V2f(0.25, 0.25)  size = V2f(0.5, 0.1)
             contentAlignment = { h = Left, v = Middle }
             text { text = "https://libfpl.org"  textAlign = Left  fontSize = Const.FeaturesFontSize  color = Const.LinkGreen }
         }
         {
             type = Text
-            pos  = V2f(0.25, 0.3)  size = V2f(0.5, 0.1)
+            pos  = V2f(0.25, 0.5)  size = V2f(0.5, 0.1)
             contentAlignment = { h = Left, v = Middle }
-            text { text = "Github (sources, issue-tracker, project management):"  textAlign = Left  fontSize = Const.FeaturesFontSize }
-        }
-        {
-            type = Text
-            pos  = V2f(0.25, 0.4)  size = V2f(0.5, 0.1)
-            contentAlignment = { h = Left, v = Middle }
-            text { text = "https://github.com/f1nalspace/final_game_tech"  textAlign = Left  fontSize = Const.FeaturesFontSize  color = Const.LinkGreen }
+            text { text = "GitHub (sources, issue tracker, project management):"  textAlign = Left  fontSize = Const.FeaturesFontSize }
         }
         {
             type = Text
             pos  = V2f(0.25, 0.6)  size = V2f(0.5, 0.1)
             contentAlignment = { h = Left, v = Middle }
-            text { text = "Handmade-Network (community):"  textAlign = Left  fontSize = Const.FeaturesFontSize }
-        }
-        {
-            type = Text
-            pos  = V2f(0.25, 0.7)  size = V2f(0.5, 0.1)
-            contentAlignment = { h = Left, v = Middle }
-            text { text = "https://fpl.handmade.network"  textAlign = Left  fontSize = Const.FeaturesFontSize  color = Const.LinkGreen }
+            text { text = "https://github.com/f1nalspace/final_game_tech"  textAlign = Left  fontSize = Const.FeaturesFontSize  color = Const.LinkGreen }
         }
     ]
 }
@@ -710,6 +744,37 @@ SlideDefinition Thanks {
             text {
                 text      = "Thank you for your attention!"
                 textAlign = Center
+            }
+        }
+    ]
+}
+
+SlideDefinition License {
+    name    = "License"
+    duration = 0.0
+    rotation = QuatFromAngleAxis(50.0, V3f(0.5, 0.5, 0.5))
+    background = Backgrounds.FixedBackground
+
+    talk = "FPL is released under the MIT License."
+           ""
+           "This means you can use it freely in any software, commercial or non-commercial,"
+           "as long as the copyright notice is kept somewhere in your project."
+
+    blocks = [
+        {
+            type = Text
+            pos  = V2f(0.0, 0.0)
+            size = V2f(1.0, 1.0)
+            contentAlignment = { h = Center, v = Middle }
+            text {
+                text      = "Released under the MIT License.\n"
+                            "\n"
+                            "Free to use in any software, commercial or non-commercial.\n"
+                            "Just keep the copyright notice somewhere in your project.\n"
+                            "\n"
+                            "Copyright (c) 2017-2026 Torsten Spaete\n"
+                textAlign = Center
+                fontSize  = Const.NormalFontSize
             }
         }
     ]
@@ -762,9 +827,11 @@ PresentationDefinition FPLPresentation {
         Platforms
         Magic
         HowItWorks
-        Constraints
+        Scope
         HowToUse
         Demos
+        Meta
+        License
         Links
         Thanks
     ]
@@ -791,7 +858,6 @@ PresentationFile FPLPresentationFile {
         Fonts.SulphurPoint
         Fonts.BitStreamVerySans
     ]
-    fontCount = 4
 
     sounds = [
         Sounds.Intro1
@@ -801,7 +867,6 @@ PresentationFile FPLPresentationFile {
         Sounds.What2
         Sounds.Motivation
     ]
-    soundCount = 6
 
     images = [
         Images.FPLLogo128x128
@@ -846,11 +911,11 @@ PresentationFile FPLPresentationFile {
         Images.Demo_Crackout
         Images.Demo_OpenGL
         Images.Demo_Emulator
+        Images.Demo_RayTracer
 
         Images.Feature_SingleHeaderFile
         Images.Feature_RuntimeLinking
         Images.Feature_PreProcessor
         Images.Feature_NoCodeDuplication
     ]
-    imageCount = 41
 }
