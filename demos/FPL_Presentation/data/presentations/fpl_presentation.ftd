@@ -576,7 +576,7 @@ SlideDefinition HowToUse {
             image {
                 imageResource = Images.MinimumSource
                 size       = V2f(1.0, 1.0)
-                keepAspect = false
+                keepAspect = true
                 tintColor  = Const.WhiteSoft
             }
         }
@@ -741,7 +741,7 @@ FooterDefinition Footer {
     }
     height     = 32.0
     leftText   = "%SLIDE_NAME%"
-    centerText = "Copyright (C) 2017-2025 Torsten Spaete"
+    centerText = "Copyright (C) 2017-2026 Torsten Spaete"
     rightText  = "Page %SLIDE_NUM% of %SLIDE_COUNT%"
     padding    = V2f(2, 3)
 }
