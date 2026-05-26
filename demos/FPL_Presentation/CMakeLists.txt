@@ -28,6 +28,10 @@ set(MY_TRANSLATION_UNITS
 	"fpl_presentation.cpp"
 	)
 
+set(MY_RESOURCE_FILES
+	"data/presentations/fpl_presentation.ftd"
+	)
+
 set(MY_DEFINES "")
 
 set(MY_RESOURCE_FOLDER "data")
@@ -89,8 +93,21 @@ message(STATUS "Executable path: ${THIS_EXECUTABLE_PATH}")
 message(STATUS "Executable name: ${THIS_EXECUTABLE_NAME}")
 message(STATUS "---------------------------------------------------------------\n")
 
+# Make resource files visible in the IDE without compiling them
+if(DEFINED MY_RESOURCE_FILES AND NOT "${MY_RESOURCE_FILES}" STREQUAL "")
+	set_source_files_properties(${MY_RESOURCE_FILES} PROPERTIES HEADER_FILE_ONLY TRUE)
+
+	# Force a recompile of every translation unit whenever any resource file changes,
+	# so the POST_BUILD copy step below runs and the updated file lands in the build dir
+	set(MY_RESOURCE_DEPENDS "")
+	foreach(_res ${MY_RESOURCE_FILES})
+		list(APPEND MY_RESOURCE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/${_res}")
+	endforeach()
+	set_source_files_properties(${MY_TRANSLATION_UNITS} PROPERTIES OBJECT_DEPENDS "${MY_RESOURCE_DEPENDS}")
+endif()
+
 # Project executable (must come first before anything else)
-add_executable(${PROJECT_NAME} ${MY_TRANSLATION_UNITS})
+add_executable(${PROJECT_NAME} ${MY_TRANSLATION_UNITS} ${MY_RESOURCE_FILES})
 
 # Compiler detection
 if(DEFINED MY_COMPILER AND NOT "${MY_COMPILER}" STREQUAL "")
