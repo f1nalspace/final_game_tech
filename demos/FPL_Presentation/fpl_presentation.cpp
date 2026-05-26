@@ -2646,7 +2646,9 @@ static void AddSlideFromDefinition(Renderer &renderer, SoundManager &soundMng, P
 				}
 
 				TextStyle textStyle = normalStyle;
-				textStyle.foregroundColor = V4f((normalStyle.foregroundColor.r + textBlock.color.r) * 0.5f, (normalStyle.foregroundColor.g + textBlock.color.g) * 0.5f, (normalStyle.foregroundColor.b + textBlock.color.b) * 0.5f, 1.0f);
+				if (textBlock.color.a > 0.0f) {
+					textStyle.foregroundColor = textBlock.color;
+				}
 				AddTextBlock(renderer, *slide, textPos, text, normalFontName, textFontSize, textLineHeight, textStyle, textAlign, VerticalAlignment::Top);
 			} break;
 
