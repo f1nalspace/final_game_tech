@@ -498,7 +498,7 @@ void DemoApplication::LoadScenario(size_t scenarioIndex) {
 		switch (body->type) {
 			case SPHScenarioBodyType::SPHScenarioBodyType_Plane:
 			{
-				float distance = Vec2Dot(body->orientation.col1, body->position);
+				float distance = V2fDot(body->orientation.col1, body->position);
 				demo->AddPlane(body->orientation.col1, distance);
 			} break;
 			case SPHScenarioBodyType::SPHScenarioBodyType_Circle:
@@ -508,8 +508,8 @@ void DemoApplication::LoadScenario(size_t scenarioIndex) {
 			case SPHScenarioBodyType::SPHScenarioBodyType_LineSegment:
 			{
 				assert(body->vertexCount == 2);
-				Vec2f a = Vec2MultMat2(body->orientation, body->localVerts[0]) + body->position;
-				Vec2f b = Vec2MultMat2(body->orientation, body->localVerts[1]) + body->position;
+				Vec2f a = V2fMultMat2(body->orientation, body->localVerts[0]) + body->position;
+				Vec2f b = V2fMultMat2(body->orientation, body->localVerts[1]) + body->position;
 				demo->AddLineSegment(a, b);
 			} break;
 			case SPHScenarioBodyType::SPHScenarioBodyType_Polygon:
@@ -517,7 +517,7 @@ void DemoApplication::LoadScenario(size_t scenarioIndex) {
 				assert(body->vertexCount >= 3);
 				Vec2f verts[kMaxScenarioPolygonCount];
 				for (size_t vertexIndex = 0; vertexIndex < body->vertexCount; ++vertexIndex) {
-					verts[vertexIndex] = Vec2MultMat2(body->orientation, body->localVerts[vertexIndex]) + body->position;
+					verts[vertexIndex] = V2fMultMat2(body->orientation, body->localVerts[vertexIndex]) + body->position;
 				}
 				demo->AddPolygon(body->vertexCount, verts);
 			} break;

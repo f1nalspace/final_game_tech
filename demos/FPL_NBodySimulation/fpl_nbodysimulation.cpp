@@ -195,7 +195,7 @@ static void OpenGLAllocateTexture(Render::CommandBuffer *commandBuffer, Render::
 					pixel.g = g;
 					pixel.b = b;
 					pixel.a = 255;
-					Vec4f color = PixelToLinear(pixel);
+					Vec4f color = PixelToLinearRaw(pixel);
 					if (!allocate.isPreMultiplied) {
 						color.rgb *= color.a;
 					}

@@ -1114,6 +1114,17 @@ fpl_force_inline static Mat4f M4fOrthoRH(const float left, const float right, co
 	return (result);
 }
 
+fpl_force_inline static Mat4f M4fOrthoLH(const float left, const float right, const float bottom, const float top, const float zNear, const float zFar) {
+	Mat4f result = M4fInit(1.0f);
+	result.r[0][0] = 2.0f / (right - left);
+	result.r[1][1] = 2.0f / (top - bottom);
+	result.r[2][2] = 2.0f / (zFar - zNear);
+	result.r[3][0] = -(right + left) / (right - left);
+	result.r[3][1] = -(top + bottom) / (top - bottom);
+	result.r[3][2] = -(zFar + zNear) / (zFar - zNear);
+	return (result);
+}
+
 fpl_force_inline static Mat4f M4fPerspectiveRH(const float fov, const float aspect, const float zNear, const float zFar) {
 	float tanHalfFov = F32Tan(fov * 0.5f);
 	Mat4f result = M4fInit(0.0f);
@@ -1578,14 +1589,12 @@ fpl_force_inline Quaternion QuatRotation(const Vec3f orig, const Vec3f dest) {
 //
 // Pixel
 //
-#if 0
-static const Vec4f ColorWhite = V4fInit(.0f, 1.0f, 1.0f, 1.0f);
+static const Vec4f ColorWhite = V4fInit(1.0f, 1.0f, 1.0f, 1.0f);
 static const Vec4f ColorRed = V4fInit(1.0f, 0.0f, 0.0f, 1.0f);
 static const Vec4f ColorGreen = V4fInit(0.0f, 1.0f, 0.0f, 1.0f);
 static const Vec4f ColorBlue = V4fInit(0.0f, 0.0f, 1.0f, 1.0f);
 static const Vec4f ColorLightGray = V4fInit(0.3f, 0.3f, 0.3f, 1.0f);
 static const Vec4f ColorDarkGray = V4fInit(0.2f, 0.2f, 0.2f, 1.0f);
-#endif
 
 fpl_force_inline Pixel MakePixelFromRGBA(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a) {
 	Pixel result = fplZeroInit;
@@ -1696,6 +1705,16 @@ fpl_force_inline Vec4f PixelToLinearSRGB(const Pixel pixel) {
 	return(result);
 }
 
+fpl_force_inline Vec4f AlphaToLinear(const uint8_t alpha) {
+	Vec4f result = V4fInit(1.0f, 1.0f, 1.0f, alpha * F32InvByte);
+	return(result);
+}
+
+fpl_force_inline Vec4f RGBA32ToLinear(const uint32_t rgba) {
+	Vec4f result = PixelToLinearRaw(MakePixelFromU32(rgba));
+	return(result);
+}
+
 fpl_force_inline Vec4f RGBAToLinearRaw(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a) {
 	Pixel pixel = MakePixelFromRGBA(r, g, b, a);
 	Vec4f result = PixelToLinearRaw(pixel);
@@ -1725,6 +1744,11 @@ fpl_force_inline Pixel LinearToPixelRaw(const Vec4f linear) {
 	float a = linear.a;
 	Pixel result = fplZeroInit;
 	result.bgra = BGRAPack4x8(V4fInit(r, g, b, a));
+	return(result);
+}
+
+fpl_force_inline uint32_t LinearToRGBA32(const Vec4f linear) {
+	uint32_t result = RGBA8FromPixel(LinearToPixelRaw(linear));
 	return(result);
 }
 

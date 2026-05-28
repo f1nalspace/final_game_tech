@@ -4,7 +4,7 @@
 #include <assert.h>
 #include <stack>
 
-#include "vecmath.h"
+#include <final_math.h>
 #include "threading.h"
 #include "memory.h"
 #include <final_fontloader.h>

@@ -126,6 +126,8 @@ License:
 
 #include <string.h>
 
+#include <final_math.h>
+
 #include "shadersources.h"
 #include "imageresources.h"
 #include "version.h"
@@ -176,118 +178,6 @@ static int CompareStringLengthIgnoreCase(const char* a, const char* b, const siz
 		++count;
 	}
 	return(0);
-}
-
-typedef union Vec2f {
-	struct {
-		float x;
-		float y;
-	};
-	float m[2];
-} Vec2f;
-
-inline Vec2f V2f(const float x, const float y) {
-	Vec2f result = fplStructInit(Vec2f, x, y);
-	return(result);
-}
-
-typedef union Vec3f {
-	struct {
-		float x;
-		float y;
-		float z;
-	};
-	struct {
-		Vec2f xy;
-		float unused0;
-	};
-	struct {
-		float unused1;
-		Vec2f yz;
-	};
-	float m[3];
-} Vec3f;
-
-inline Vec3f V3f(const float x, const float y, const float z) {
-	Vec3f result = fplStructInit(Vec3f, x, y, z);
-	return(result);
-}
-
-typedef union Vec4f {
-	struct {
-		float x;
-		float y;
-		float z;
-		float w;
-	};
-	struct {
-		Vec3f xyz;
-		float unused0;
-	};
-	float m[4];
-} Vec4f;
-
-inline Vec4f V4f(const float x, const float y, const float z, const float w) {
-	Vec4f result = fplStructInit(Vec4f, x, y, z, w);
-	return(result);
-}
-
-typedef union Mat4f {
-	struct {
-		Vec4f c[4];
-	};
-	struct {
-		float r[4][4];
-	};
-	float m[16];
-} Mat4f;
-
-inline Mat4f M4f(const float value) {
-	Mat4f result;
-	result.c[0] = V4f(value, 0.0f, 0.0f, 0.0f);
-	result.c[1] = V4f(0.0f, value, 0.0f, 0.0f);
-	result.c[2] = V4f(0.0f, 0.0f, value, 0.0f);
-	result.c[3] = V4f(0.0f, 0.0f, 0.0f, value);
-	return(result);
-}
-
-inline void SetMat4fOrthoLH(const float left, const float right, const float bottom, const float top, const float zNear, const float zFar, Mat4f* outMat) {
-	*outMat = M4f(1.0f);
-	outMat->r[0][0] = 2.0f / (right - left);
-	outMat->r[1][1] = 2.0f / (top - bottom);
-	outMat->r[2][2] = 2.0f / (zFar - zNear);
-	outMat->r[3][0] = -(right + left) / (right - left);
-	outMat->r[3][1] = -(top + bottom) / (top - bottom);
-	outMat->r[3][2] = -(zFar + zNear) / (zFar - zNear);
-}
-
-inline void SetMat4fTranslation(const float x, const float y, const float z, Mat4f* outMat) {
-	*outMat = M4f(1.0f);
-	outMat->c[3].xyz = V3f(x, y, z);
-}
-
-inline void SetMat4fScale(const float x, const float y, const float z, Mat4f* outMat) {
-	*outMat = M4f(1.0f);
-	outMat->c[0].x = x;
-	outMat->c[1].y = y;
-	outMat->c[2].z = z;
-}
-
-inline void MultMat4f(const Mat4f* a, const Mat4f* b, Mat4f* r) {
-	for (int i = 0; i < 16; i += 4) {
-		for (int j = 0; j < 4; ++j) {
-			r->m[i + j] =
-				(b->m[i + 0] * a->m[j + 0])
-				+ (b->m[i + 1] * a->m[j + 4])
-				+ (b->m[i + 2] * a->m[j + 8])
-				+ (b->m[i + 3] * a->m[j + 12]);
-		}
-	}
-}
-
-inline float ScalarLerp(float a, float t, float b) {
-	float result = (1.0f - t) * a + t * b;
-	return(result);
 }
 
 typedef struct PictureFile {
@@ -1332,11 +1222,9 @@ static bool Init(ViewerState* state) {
 }
 
 inline void BuildModelMat(const float centerX, const float centerY, const float scaleX, const float scaleY, Mat4f* modelView) {
-	Mat4f modelScale;
-	Mat4f modelTranslation;
-	SetMat4fScale(scaleX, scaleY, 1.0f, &modelScale);
-	SetMat4fTranslation(centerX, centerY, 0.0f, &modelTranslation);
-	MultMat4f(&modelTranslation, &modelScale, modelView);
+	Mat4f modelScale = M4fScaleV3(V3fInit(scaleX, scaleY, 1.0f));
+	Mat4f modelTranslation = M4fTranslationV3(V3fInit(centerX, centerY, 0.0f));
+	*modelView = M4fMult(modelTranslation, modelScale);
 }
 
 static void DrawLinedRectangle(ViewerState* state, const Mat4f* vpMat, const Vec2f pos, const Vec2f ext, const Vec4f color, const float lineWidth) {
@@ -1401,13 +1289,9 @@ static void DrawLinedRectangle(ViewerState* state, const Mat4f* vpMat, const Vec
 
 static void DrawSolidRectangle(ViewerState* state, const Mat4f* vpMat, const Vec2f pos, const Vec2f ext, const Vec4f color) {
 	if (state->features.openGLMajor >= 2) {
-		Mat4f translationMat;
-		Mat4f scaleMat;
-		SetMat4fTranslation(pos.x, pos.y, 0, &translationMat);
-		SetMat4fScale(ext.x, ext.y, 1.0f, &scaleMat);
-
-		Mat4f modelMat;
-		MultMat4f(&translationMat, &scaleMat, &modelMat);
+		Mat4f translationMat = M4fTranslationV3(V3fInit(pos.x, pos.y, 0.0f));
+		Mat4f scaleMat = M4fScaleV3(V3fInit(ext.x, ext.y, 1.0f));
+		Mat4f modelMat = M4fMult(translationMat, scaleMat);
 
 		GLint locVP = glGetUniformLocation(state->colorShaderProgram, "uniVP");
 		GLint locModel = glGetUniformLocation(state->colorShaderProgram, "uniModel");
@@ -1486,8 +1370,7 @@ static void DrawTexturedRectangle(ViewerState* state, const GLuint textureId, co
 
 		glBindTexture(textureTarget, 0);
 	} else {
-		Mat4f mvp;
-		MultMat4f(vpMat, modelMat, &mvp);
+		Mat4f mvp = M4fMult(*vpMat, *modelMat);
 
 		glEnable(textureTarget);
 		glBindTexture(textureTarget, textureId);
@@ -1635,10 +1518,8 @@ static void UpdateAndRender(ViewerState* state, const float deltaTime) {
 
 	Mat4f view;
 	BuildModelMat(0.0f, 0.0f, 1.0f, 1.0f, &view);
-	Mat4f proj;
-	SetMat4fOrthoLH(screenLeft, screenRight, screenBottom, screenTop, 0.0f, 1.0f, &proj);
-	Mat4f viewProjection;
-	MultMat4f(&proj, &view, &viewProjection);
+	Mat4f proj = M4fOrthoLH(screenLeft, screenRight, screenBottom, screenTop, 0.0f, 1.0f);
+	Mat4f viewProjection = M4fMult(proj, view);
 
 	float pictureScale = 1.0f;
 	int pictureFrameSideCount = 0;

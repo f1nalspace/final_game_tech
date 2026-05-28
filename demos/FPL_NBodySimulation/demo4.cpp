@@ -20,7 +20,7 @@ namespace Demo4 {
 			bool isInGrid = SPHIsPositionInGrid(index.cellIndex.x, index.cellIndex.y);
 			fplAssert(isInGrid);
 
-			float l = Vec2Length(particle.velocity);
+			float l = V2fLength(particle.velocity);
 			fplAssert(l < 1000);
 
 			Vec2f cur = particle.curPosition;
@@ -203,7 +203,7 @@ namespace Demo4 {
 				Vec2f p = V2f((float)xIndex, (float)yIndex) * spacing;
 				p += V2f(spacing * 0.5f, spacing * 0.5f);
 				p += center - offset;
-				Vec2f jitter = Vec2RandomDirection() * kSPHKernelHeight * kSPHVolumeParticleDistributionScale;
+				Vec2f jitter = V2fRandomDirection() * kSPHKernelHeight * kSPHVolumeParticleDistributionScale;
 				p += jitter;
 				AddParticle(p, force);
 			}
@@ -294,7 +294,7 @@ namespace Demo4 {
 			if(emitter->elapsed >= rate) {
 				emitter->elapsed = 0;
 				Vec2f acceleration = emitter->direction * emitter->speed * invDeltaTime;
-				Vec2f dir = Vec2Cross(1.0f, emitter->direction);
+				Vec2f dir = V2fCrossL(1.0f, emitter->direction);
 				int count = (int)floor(emitter->radius / spacing);
 				float halfSize = (float)count * spacing * 0.5f;
 				Vec2f offset = dir * (float)count * spacing * 0.5f;
@@ -302,7 +302,7 @@ namespace Demo4 {
 					Vec2f p = dir * (float)index * spacing;
 					p += dir * spacing * 0.5f;
 					p += emitter->position - offset;
-					Vec2f jitter = Vec2RandomDirection() * kSPHKernelHeight * kSPHVolumeParticleDistributionScale;
+					Vec2f jitter = V2fRandomDirection() * kSPHKernelHeight * kSPHVolumeParticleDistributionScale;
 					p += jitter;
 					AddParticle(p, acceleration);
 				}

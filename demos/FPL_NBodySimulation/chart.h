@@ -6,7 +6,7 @@
 #include <string>
 #include <algorithm>
 
-#include "vecmath.h"
+#include <final_math.h>
 #include "render.h"
 #include "utils.h"
 #include <final_fontloader.h>
