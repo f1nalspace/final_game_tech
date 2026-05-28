@@ -7,7 +7,7 @@
 #include "vecmath.h"
 #include "threading.h"
 #include "memory.h"
-#include "font.h"
+#include <final_fontloader.h>
 
 namespace Render {
 	enum class TextureOperationType {
@@ -362,7 +362,7 @@ namespace Render {
 		result->pointSize = pointSize;
 	}
 
-	inline void RenderPushText(CommandBuffer *commandBuffer, const Vec2f &bottomLeft, const char *text, FontAtlas *font, TextureHandle texture, const float maxCharHeight, const Vec4f &textColor) {
+	inline void RenderPushText(CommandBuffer *commandBuffer, const Vec2f &bottomLeft, const char *text, LoadedFont *font, TextureHandle texture, const float maxCharHeight, const Vec4f &textColor) {
 		if (font == nullptr) {
 			return;
 		}
@@ -402,14 +402,17 @@ namespace Render {
 			if ((codePointTest >= 0) && (codePointTest < (int32_t)font->charCount)) {
 				uint32_t codePoint = at - font->firstChar;
 				FontGlyph *glyph = font->glyphs + codePoint;
+				// Centered-anchor placement: shift glyph by (0.5*w, baseline - 0.5*h + offset.y) in unit space, then to bottomLeft.
+				float baseline = FontGetBaseline(&font->info);
+				Vec2f pseudoAlign = V2f(glyph->charSize.x * 0.5f,
+				                        baseline - glyph->charSize.y * 0.5f + glyph->offset.y);
 				Vec2f offset = V2f(x, y);
-				offset += Vec2Hadamard(glyph->charSize, glyph->alignPercentage) * maxCharHeight;
+				offset += pseudoAlign * maxCharHeight;
 				offset -= V2f(glyph->charSize.x, glyph->charSize.y) * 0.5f * maxCharHeight;
 				offset += V2f(0, maxCharHeight * 0.5f);
 				Vec2f size = V2f(glyph->charSize.x, glyph->charSize.y) * maxCharHeight;
 
-				uint32_t nextCodePoint = (atNext > 0) ? atNext - font->firstChar : 0;
-				advance = GetFontCharacterAdvance(font, &codePoint, (atNext > 0) ? &nextCodePoint : nullptr) * maxCharHeight;
+				advance = FontGetCharacterAdvance(font, (uint32_t)at, (uint32_t)atNext) * maxCharHeight;
 
 				Vertex *v0 = verts + (vertexCount + 0);
 				Vertex *v1 = verts + (vertexCount + 1);

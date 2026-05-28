@@ -73,8 +73,8 @@ License:
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
 
-#define STB_TRUETYPE_IMPLEMENTATION
-#include <stb/stb_truetype.h>
+#define FINAL_FONTLOADER_IMPLEMENTATION
+#include <final_fontloader.h>
 
 #include <final_fonts.h>
 
@@ -143,57 +143,6 @@ inline void CopyWideString(const wchar_t* source, const size_t len, wchar_t* tar
 	fplMemoryCopy(source, reqLen * sizeof(wchar_t), target);
 }
 
-union Vec2f {
-	struct {
-		float x;
-		float y;
-	};
-	struct {
-		float w;
-		float h;
-	};
-	struct {
-		float u;
-		float v;
-	};
-	float m[2];
-};
-
-inline Vec2f V2f(const float x = 0.0f, const float y = 0.0f) {
-	Vec2f result = { x, y };
-	return(result);
-}
-
-union Vec2i {
-	struct {
-		int x;
-		int y;
-	};
-	struct {
-		int w;
-		int h;
-	};
-	int m[2];
-};
-
-inline Vec2i V2i(const int x, const int y) {
-	Vec2i result = { x, y };
-	return(result);
-}
-
-inline Vec2f operator*(const Vec2f& a, float b) {
-	Vec2f result = V2f(a.x * b, a.y * b);
-	return(result);
-}
-inline Vec2f operator+(const Vec2f& a, const Vec2f& b) {
-	Vec2f result = V2f(a.x + b.x, a.y + b.y);
-	return(result);
-}
-inline Vec2f& operator+=(Vec2f& a, const Vec2f& b) {
-	a = b + a;
-	return(a);
-}
-
 struct Viewport {
 	int x;
 	int y;
@@ -235,282 +184,6 @@ inline UVRect UVRectFromPos(const Vec2i& imageSize, const Vec2i& partSize, const
 	return(result);
 }
 
-typedef struct FontGlyph {
-	Vec2f offset;
-	Vec2f uvMin;
-	Vec2f uvMax;
-	Vec2f charSize;
-	uint32_t charCode;
-} FontGlyph;
-
-struct FontData {
-	uint8_t* atlasAlphaBitmap;
-	FontGlyph* glyphs;
-	float ascent;
-	float descent;
-	float lineHeight;
-	float spaceAdvance;
-	float* defaultAdvance;
-	float* kerningTable;
-	uint32_t atlasWidth;
-	uint32_t atlasHeight;
-	uint32_t firstChar;
-	uint32_t charCount;
-	bool hasKerningTable;
-};
-
-inline float GetFontAscent(const FontData* font) {
-	float result = font->ascent;
-	return(result);
-}
-
-inline float GetFontDescent(const FontData* font) {
-	float result = font->descent;
-	return(result);
-}
-
-inline float GetFontLineAdvance(const FontData* font) {
-	float result = font->lineHeight;
-	return(result);
-}
-
-static float GetFontCharacterAdvance(const FontData* font, const uint32_t thisCodePoint) {
-	float result = 0;
-	if (thisCodePoint >= font->firstChar && thisCodePoint < (font->firstChar - font->charCount)) {
-		uint32_t thisIndex = thisCodePoint - font->firstChar;
-		const FontGlyph* glyph = font->glyphs + thisIndex;
-		result = font->defaultAdvance[thisIndex];
-	}
-	return(result);
-}
-
-static int GetFontAtlasIndexFromCodePoint(const size_t fontCount, const FontData fonts[], const uint32_t codePoint) {
-	for (size_t i = 0; i < fontCount; ++i) {
-		uint32_t lastChar = fonts[i].firstChar + (fonts[i].charCount - 1);
-		if (codePoint >= fonts[i].firstChar && codePoint <= lastChar) {
-			return (int)i;
-		}
-	}
-	return -1;
-}
-
-static Vec2f GetTextSize(const wchar_t* text, const size_t textLen, const size_t fontCount, const FontData fonts[], const float maxCharHeight) {
-	float xwidth = 0.0f;
-	float ymax = 0.0f;
-	if (fontCount > 0) {
-		float xpos = 0.0f;
-		float ypos = 0.0f;
-		for (uint32_t textPos = 0; textPos < textLen; ++textPos) {
-			uint32_t at = text[textPos];
-
-			int atlasIndex = GetFontAtlasIndexFromCodePoint(fontCount, fonts, at);
-			const FontData* font;
-			if (atlasIndex > -1) {
-				font = &fonts[atlasIndex];
-			} else {
-				font = &fonts[0];
-			}
-            
-            if (font->charCount == 0)
-                continue;
-            
-            float xadvance;
-            Vec2f offset = V2f(xpos, ypos);
-            Vec2f size = V2f();
-            uint32_t lastChar = font->firstChar + (font->charCount - 1);
-            if (at >= font->firstChar && at <= lastChar) {
-                uint32_t codePoint = at - font->firstChar;
-                const FontGlyph* glyph = font->glyphs + codePoint;
-                size = glyph->charSize;
-                offset += glyph->offset;
-                offset += V2f(size.x, -size.y) * 0.5f;
-                xadvance = GetFontCharacterAdvance(font, (uint32_t)at);
-            } else {
-                xadvance = fonts[0].spaceAdvance;
-            }
-            Vec2f min = offset;
-            Vec2f max = min + V2f(xadvance, size.y);
-            xwidth += (max.x - min.x);
-            ymax = fplMax(ymax, max.y - min.y);
-            xpos += xadvance;
-		}
-	}
-	Vec2f result = V2f(xwidth, ymax) * maxCharHeight;
-	return(result);
-}
-
-static bool LoadFontFromMemory(const void* data, const size_t dataSize, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t  atlasWidth, const uint32_t atlasHeight, const bool loadKerning, FontData* outFont) {
-	if (data == fpl_null || dataSize == 0) {
-		return false;
-	}
-	if (outFont == fpl_null) {
-		return false;
-	}
-
-	fplClearStruct(outFont);
-
-	stbtt_fontinfo fontInfo = fplZeroInit;
-	int fontOffset = stbtt_GetFontOffsetForIndex((const unsigned char*)data, fontIndex);
-
-	bool result = false;
-	if (stbtt_InitFont(&fontInfo, (const unsigned char*)data, fontOffset)) {
-		uint32_t charCount = (lastChar - firstChar) + 1;
-		uint8_t* atlasAlphaBitmap = (uint8_t*)fplMemoryAllocate(atlasWidth * atlasHeight);
-		stbtt_bakedchar* packedChars = (stbtt_bakedchar*)fplMemoryAllocate(charCount * sizeof(stbtt_bakedchar));
-		stbtt_BakeFontBitmap((const unsigned char*)data, fontOffset, fontSize, atlasAlphaBitmap, atlasWidth, atlasHeight, firstChar, charCount, packedChars);
-
-		// Get metrics
-		int ascentRaw, descentRaw, lineGapRaw;
-		int spaceAdvanceRaw, spaceLeftSideBearing;
-		stbtt_GetFontVMetrics(&fontInfo, &ascentRaw, &descentRaw, &lineGapRaw);
-		stbtt_GetCodepointHMetrics(&fontInfo, ' ', &spaceAdvanceRaw, &spaceLeftSideBearing);
-
-		// Calculate scales
-		float texelU = 1.0f / (float)atlasWidth;
-		float texelV = 1.0f / (float)atlasHeight;
-		float pixelsToUnits = 1.0f / fontSize;
-
-		// Space advance in pixels
-		float spaceAdvancePx = spaceAdvanceRaw * pixelsToUnits;
-
-		// Ascent height from the baseline in pixels
-		float ascentPx = fabsf((float)ascentRaw) * pixelsToUnits;
-
-		// Descent height from the baseline in pixels
-		float descentPx = fabsf((float)descentRaw) * pixelsToUnits;
-
-		// Max height is always ascent + descent
-		float heightPx = ascentPx + descentPx;
-
-		// Calculate line height
-		float lineGapPx = lineGapRaw * pixelsToUnits;
-		float lineHeightPx = ascentPx + descentPx + lineGapPx;
-
-		size_t glyphsSize = sizeof(FontGlyph) * charCount;
-		FontGlyph* glyphs = (FontGlyph*)fplMemoryAllocate(glyphsSize);
-
-		for (uint32_t glyphIndex = 0; glyphIndex < charCount; ++glyphIndex) {
-			stbtt_bakedchar* sourceInfo = packedChars + glyphIndex;
-
-			FontGlyph* destInfo = glyphs + glyphIndex;
-			destInfo->charCode = firstChar + glyphIndex;
-
-			// Compute UV coords
-			float uMin = sourceInfo->x0 * texelU;
-			float uMax = sourceInfo->x1 * texelU;
-			float vMin = sourceInfo->y1 * texelV;
-			float vMax = sourceInfo->y0 * texelV;
-			destInfo->uvMin = V2f(uMin, vMin);
-			destInfo->uvMax = V2f(uMax, vMax);
-
-			// Compute character size
-			int charWidthInPixels = sourceInfo->x1 - sourceInfo->x0;
-			int charHeightInPixels = sourceInfo->y1 - sourceInfo->y0;
-			destInfo->charSize = V2f((float)charWidthInPixels, (float)charHeightInPixels) * pixelsToUnits;
-
-			// Compute offset to start/baseline in units
-			destInfo->offset = V2f(sourceInfo->xoff, -sourceInfo->yoff) * pixelsToUnits;
-		}
-
-		// Build kerning table & default advance table
-		size_t kerningTableSize;
-		float* kerningTable;
-		if (loadKerning) {
-			kerningTableSize = sizeof(float) * charCount * charCount;
-			kerningTable = (float*)fplMemoryAllocate(kerningTableSize);
-		} else {
-			kerningTableSize = 0;
-			kerningTable = fpl_null;
-		}
-
-		size_t defaultAdvanceSize = charCount * sizeof(float);
-		float* defaultAdvance = (float*)fplMemoryAllocate(defaultAdvanceSize);
-		for (uint32_t charIndex = firstChar; charIndex < lastChar; ++charIndex) {
-			uint32_t codePointIndex = (uint32_t)(charIndex - firstChar);
-			stbtt_bakedchar* leftInfo = packedChars + codePointIndex;
-			defaultAdvance[codePointIndex] = leftInfo->xadvance * pixelsToUnits;
-
-			if (loadKerning) {
-				for (uint32_t nextCharIndex = charIndex + 1; nextCharIndex < lastChar; ++nextCharIndex) {
-					float kerningPx = stbtt_GetCodepointKernAdvance(&fontInfo, charIndex, nextCharIndex) * pixelsToUnits;
-					if (kerningPx != 0) {
-						int widthPx = leftInfo->x1 - leftInfo->x0;
-						if (widthPx > 0) {
-							float kerning = kerningPx / (float)widthPx;
-							uint32_t a = (uint32_t)(charIndex - firstChar);
-							uint32_t b = (uint32_t)(nextCharIndex - firstChar);
-							kerningTable[a * charCount + b] = kerning;
-						}
-					}
-				}
-			}
-		}
-
-		outFont->firstChar = firstChar;
-		outFont->charCount = charCount;
-		outFont->ascent = ascentPx * pixelsToUnits;
-		outFont->descent = descentPx * pixelsToUnits;
-		outFont->lineHeight = lineHeightPx * pixelsToUnits;
-		outFont->spaceAdvance = spaceAdvancePx * pixelsToUnits;
-		outFont->glyphs = glyphs;
-		outFont->kerningTable = kerningTable;
-		outFont->hasKerningTable = loadKerning;
-		outFont->defaultAdvance = defaultAdvance;
-		outFont->atlasAlphaBitmap = atlasAlphaBitmap;
-		outFont->atlasWidth = atlasWidth;
-		outFont->atlasHeight = atlasHeight;
-
-		result = true;
-	}
-
-	return(result);
-}
-
-static bool LoadFontFromFile(const char* dataPath, const char* filename, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t atlasWidth, const uint32_t atlasHeight, const bool loadKerning, FontData* outFont) {
-	if (filename == fpl_null) {
-		return false;
-	}
-	if (outFont == fpl_null) {
-		return false;
-	}
-
-	char filePath[1024];
-	if (dataPath != fpl_null) {
-		fplCopyString(dataPath, filePath, fplArrayCount(filePath));
-		fplPathCombine(filePath, fplArrayCount(filePath), 2, dataPath, filename);
-	} else {
-		fplCopyString(filename, filePath, fplArrayCount(filePath));
-	}
-
-	bool result = false;
-
-	fplFileHandle file;
-	uint8_t* ttfBuffer = fpl_null;
-	uint32_t ttfBufferSize = 0;
-	if (fplFileOpenBinary(filePath, &file)) {
-		ttfBufferSize = fplFileGetSizeFromHandle32(&file);
-		ttfBuffer = (uint8_t*)fplMemoryAllocate(ttfBufferSize);
-		fplFileReadBlock32(&file, ttfBufferSize, ttfBuffer, ttfBufferSize);
-		fplFileClose(&file);
-	}
-
-	if (ttfBuffer != nullptr) {
-		result = LoadFontFromMemory(ttfBuffer, ttfBufferSize, fontIndex, fontSize, firstChar, lastChar, atlasWidth, atlasHeight, loadKerning, outFont);
-		fplMemoryFree(ttfBuffer);
-	}
-	return(result);
-}
-
-static void ReleaseFont(FontData* font) {
-	if (font != fpl_null) {
-		if (font->hasKerningTable) {
-			fplMemoryFree(font->kerningTable);
-		}
-		fplMemoryFree(font->glyphs);
-		fplMemoryFree(font->atlasAlphaBitmap);
-		fplClearStruct(font);
-	}
-}
 
 static void DrawSprite(const GLuint texId, const float rx, const float ry, const float uMin, const float vMin, const float uMax, const float vMax, const float xoffset, const float yoffset) {
 	glEnable(GL_TEXTURE_2D);
@@ -563,28 +236,69 @@ static void DrawArrow(const float x0, const float y0, const float x1, const floa
 	glLineWidth(1.0f);
 }
 
-static void DrawTextFont(const wchar_t* text, const size_t textLen, const size_t fontCount, const FontData fonts[], const GLuint textures[], const float x, const float y, const float maxCharHeight, const float sx, const float sy) {
+// Layout wchar_t text across an array of LoadedFonts, picking the per-codepoint atlas. Mirrors FontGetTextSizeMulti but on wchar_t.
+static Vec2f GetTextSize(const wchar_t* text, const size_t textLen, const size_t fontCount, const LoadedFont fonts[], const float maxCharHeight) {
+	if (fontCount == 0 || textLen == 0) {
+		return V2fZero();
+	}
+	float xwidth = 0.0f;
+	float ymax = 0.0f;
+	float xpos = 0.0f, ypos = 0.0f;
+	for (size_t textPos = 0; textPos < textLen; ++textPos) {
+		uint32_t at = (uint32_t)text[textPos];
+		uint32_t atNext = (textPos + 1 < textLen) ? (uint32_t)text[textPos + 1] : 0;
+		int atlasIndex = FontFindAtlasForCodepoint(fonts, fontCount, at);
+		const LoadedFont* font = (atlasIndex >= 0) ? &fonts[atlasIndex] : &fonts[0];
+		if (font->charCount == 0) {
+			continue;
+		}
+		float xadvance;
+		Vec2f offset = V2fInit(xpos, ypos);
+		Vec2f size = V2fZero();
+		uint32_t lastChar = font->firstChar + (font->charCount - 1);
+		if (at >= font->firstChar && at <= lastChar) {
+			uint32_t codePoint = at - font->firstChar;
+			const FontGlyph* glyph = font->glyphs + codePoint;
+			size = glyph->charSize;
+			offset = V2fAdd(offset, glyph->offset);
+			offset = V2fAddMultScalar(offset, V2fInit(size.x, -size.y), 0.5f);
+			xadvance = FontGetCharacterAdvance(font, at, atNext);
+		} else {
+			xadvance = fonts[0].info.spaceAdvance;
+		}
+		Vec2f mn = offset;
+		Vec2f mx = V2fAdd(mn, V2fInit(xadvance, size.y));
+		xwidth += (mx.x - mn.x);
+		ymax = fplMax(ymax, mx.y - mn.y);
+		xpos += xadvance;
+	}
+	return V2fMultScalar(V2fInit(xwidth, ymax), maxCharHeight);
+}
+
+static void DrawTextFont(const wchar_t* text, const size_t textLen, const size_t fontCount, const LoadedFont fonts[], const GLuint textures[], const float x, const float y, const float maxCharHeight, const float sx, const float sy) {
 	if (fontCount > 0) {
 		Vec2f textSize = GetTextSize(text, textLen, fontCount, fonts, maxCharHeight);
 		float xpos = x - textSize.x * 0.5f + (textSize.x * 0.5f * sx);
 		float ypos = y - textSize.y * 0.5f + (textSize.y * 0.5f * sy);
 		for (uint32_t textPos = 0; textPos < textLen; ++textPos) {
-			uint32_t at = text[textPos];
-			int atlasIndex = GetFontAtlasIndexFromCodePoint(fontCount, fonts, at);
-			const FontData* font;
+			uint32_t at = (uint32_t)text[textPos];
+			uint32_t atNext = (textPos + 1u < textLen) ? (uint32_t)text[textPos + 1] : 0u;
+			int atlasIndex = FontFindAtlasForCodepoint(fonts, fontCount, at);
+			const LoadedFont* font;
 			GLuint texture;
-			if (atlasIndex > -1) {
+			if (atlasIndex >= 0) {
 				font = &fonts[atlasIndex];
 				texture = textures[atlasIndex];
 			} else {
 				font = &fonts[0];
 				texture = textures[0];
 			}
-            if (font->charCount == 0) 
-                continue;
+			if (font->charCount == 0) {
+				continue;
+			}
 			uint32_t lastChar = font->firstChar + (font->charCount - 1);
 			float advance;
-			if ((uint32_t)at >= font->firstChar && (uint32_t)at <= lastChar) {
+			if (at >= font->firstChar && at <= lastChar) {
 				uint32_t codePoint = at - font->firstChar;
 				const FontGlyph* glyph = &font->glyphs[codePoint];
 				Vec2f size = glyph->charSize * maxCharHeight;
@@ -592,16 +306,16 @@ static void DrawTextFont(const wchar_t* text, const size_t textLen, const size_t
 				offset += glyph->offset * maxCharHeight;
 				offset += V2f(size.x, -size.y) * 0.5f;
 				DrawSprite(texture, size.x * 0.5f, size.y * 0.5f, glyph->uvMin.x, glyph->uvMin.y, glyph->uvMax.x, glyph->uvMax.y, offset.x, offset.y);
-				advance = GetFontCharacterAdvance(font, at) * maxCharHeight;
+				advance = FontGetCharacterAdvance(font, at, atNext) * maxCharHeight;
 			} else {
-				advance = fonts[0].spaceAdvance * maxCharHeight;
+				advance = fonts[0].info.spaceAdvance * maxCharHeight;
 			}
 			xpos += advance;
 		}
 	}
 }
 
-static void DrawTextFont(const wchar_t* text, const size_t fontCount, const FontData fonts[], const GLuint textures[], const float x, const float y, const float maxCharHeight, const float sx, const float sy) {
+static void DrawTextFont(const wchar_t* text, const size_t fontCount, const LoadedFont fonts[], const GLuint textures[], const float x, const float y, const float maxCharHeight, const float sx, const float sy) {
 	size_t textLen = GetWideStringLength(text);
 	DrawTextFont(text, textLen, fontCount, fonts, textures, x, y, maxCharHeight, sx, sy);
 }
@@ -1088,9 +802,9 @@ struct AppState {
 
 	InputState input;
 
-	FontData letterFontData[FontCount];
-	FontData osdFontData;
-	FontData consoleFontData;
+	LoadedFont letterFontData[FontCount];
+	LoadedFont osdFontData;
+	LoadedFont consoleFontData;
 
 	GLuint letterFontTextures[FontCount];
 	GLuint osdFontTexture;
@@ -1129,11 +843,11 @@ static void InitApp(AppState* appState) {
 	fplExtractFilePath(dataPath, dataPath, fplArrayCount(dataPath));
 	fplPathCombine(dataPath, fplArrayCount(dataPath), 2, dataPath, "data");
 
-	if (LoadFontFromMemory(ptr_fontNotoSansRegular, sizeOf_fontNotoSansRegular, 0, 48.0f, 32, 255, 512, 512, false, &appState->osdFontData)) {
+	if (FontLoadFromMemory(fpl_null, ptr_fontNotoSansRegular, sizeOf_fontNotoSansRegular, 0, 48.0f, 32, 255, 512, 512, false, &appState->osdFontData)) {
 		appState->osdFontTexture = AllocateTexture(appState->osdFontData.atlasWidth, appState->osdFontData.atlasHeight, appState->osdFontData.atlasAlphaBitmap, false, GL_LINEAR, true);
 	}
 
-	if (LoadFontFromMemory(ptr_fontVeraFontRegular, sizeOf_fontVeraFontRegular, 0, 48.0f, 32, 255, 512, 512, false, &appState->consoleFontData)) {
+	if (FontLoadFromMemory(fpl_null, ptr_fontVeraFontRegular, sizeOf_fontVeraFontRegular, 0, 48.0f, 32, 255, 512, 512, false, &appState->consoleFontData)) {
 		appState->consoleFontTexture = AllocateTexture(appState->consoleFontData.atlasWidth, appState->consoleFontData.atlasHeight, appState->consoleFontData.atlasAlphaBitmap, false, GL_LINEAR, true);
 	}
 
@@ -1143,7 +857,7 @@ static void InitApp(AppState* appState) {
 	for (int i = 0; i < FontCount; ++i) {
 		int cpStart = i * CodePointsPerAtlas;
 		int cpEnd = cpStart + (CodePointsPerAtlas - 1);
-		if (LoadFontFromMemory(ptr_fontNotoSansRegular, sizeOf_fontNotoSansRegular, 0, letterFontSize, cpStart, cpEnd, letterAtlasWidth, letterAtlasHeight, false, &appState->letterFontData[i])) {
+		if (FontLoadFromMemory(fpl_null, ptr_fontNotoSansRegular, sizeOf_fontNotoSansRegular, 0, letterFontSize, cpStart, cpEnd, letterAtlasWidth, letterAtlasHeight, false, &appState->letterFontData[i])) {
 			appState->letterFontTextures[i] = AllocateTexture(appState->letterFontData[i].atlasWidth, appState->letterFontData[i].atlasHeight, appState->letterFontData[i].atlasAlphaBitmap, false, GL_LINEAR, true);
 		}
 	}
@@ -1166,11 +880,11 @@ static void ReleaseApp(AppState* appState) {
 
 	glDeleteTextures(FontCount, &appState->letterFontTextures[0]);
 	for (int i = 0; i < FontCount; ++i) {
-		ReleaseFont(&appState->letterFontData[i]);
+		FontFree(fpl_null, &appState->letterFontData[i]);
 	}
 
 	glDeleteTextures(1, &appState->osdFontTexture);
-	ReleaseFont(&appState->osdFontData);
+	FontFree(fpl_null, &appState->osdFontData);
 }
 
 static SpritePosition ComputeSpritePosition(const Vec2f& fullCenter, const Vec2f& fullSize, const UVRect& uv) {

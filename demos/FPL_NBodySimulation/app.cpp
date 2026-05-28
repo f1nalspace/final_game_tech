@@ -9,7 +9,6 @@
 #include "sph.h"
 #include "pseudorandom.h"
 #include "chart.h"
-#include "font.h"
 
 #include "demo1.cpp"
 #include "demo2.cpp"
@@ -51,8 +50,8 @@ DemoApplication::DemoApplication() :
 	demoIndex(0),
 	demo(nullptr),
 	keyStates(),
-	osdFont(FontAtlas()),
-	chartFont(FontAtlas()),
+	osdFont(LoadedFont()),
+	chartFont(LoadedFont()),
 	chartFontTexture(nullptr),
 	osdFontTexture(nullptr)
 {
@@ -74,8 +73,8 @@ void DemoApplication::Init() {
 	bool isPremultiplied = false;
 	bool isTopDown = true;
 	
-	osdFont = LoadFontByData(ptr_fontArimoRegular, sizeOf_fontArimoRegular, 0, 50.0f, charRange[0], charRange[1], atlasSize[0], atlasSize[1]);
-	chartFont = LoadFontByData(ptr_fontArimoRegular, sizeOf_fontArimoRegular, 0, 24.0f, charRange[0], charRange[1], atlasSize[0], atlasSize[1]);
+	FontLoadFromMemory(fpl_null, ptr_fontArimoRegular, sizeOf_fontArimoRegular, 0, 50.0f, charRange[0], charRange[1], atlasSize[0], atlasSize[1], false, &osdFont);
+	FontLoadFromMemory(fpl_null, ptr_fontArimoRegular, sizeOf_fontArimoRegular, 0, 24.0f, charRange[0], charRange[1], atlasSize[0], atlasSize[1], false, &chartFont);
 	
 	Render::AllocateTexture(commandBuffer, osdFont.atlasWidth, osdFont.atlasHeight, 1, osdFont.atlasAlphaBitmap, isTopDown, isPremultiplied, &osdFontTexture);
 	Render::AllocateTexture(commandBuffer, chartFont.atlasWidth, chartFont.atlasHeight, 1, chartFont.atlasAlphaBitmap, isTopDown, isPremultiplied, &chartFontTexture);
@@ -84,8 +83,8 @@ void DemoApplication::Init() {
 }
 
 DemoApplication::~DemoApplication() {
-	ReleaseFont(&chartFont);
-	ReleaseFont(&osdFont);
+	FontFree(fpl_null, &chartFont);
+	FontFree(fpl_null, &osdFont);
 	delete demo;
 }
 
@@ -165,7 +164,7 @@ void DemoApplication::PushDemoStatistics() {
 }
 
 void DemoApplication::RenderBenchmark(OSDState *osdState, const float left, float bottom, const float width, const float height) {
-	FontAtlas *font = &chartFont;
+	LoadedFont *font = &chartFont;
 	Render::TextureHandle fontTexture = chartFontTexture;
 	float fontHeight = 16.0f;
 
@@ -369,7 +368,7 @@ void DemoApplication::UpdateAndRender(const float frameTime, const uint64_t cycl
 
 		const char *bigText = "Benchmarking";
 		float bigTextSize = 30.0f;
-		float bigTextWidth = GetTextWidth(bigText, (uint32_t)strlen(bigText), &osdFont, bigTextSize);
+		float bigTextWidth = FontGetTextSize(&osdFont, bigText, strlen(bigText), bigTextSize).x;
 		float bigTextX = w * 0.5f - bigTextWidth * 0.5f;
 		float bigTextY = h * 0.5f - bigTextSize * 0.5f;
 		Render::RenderPushText(commandBuffer, V2f(bigTextX, h * 0.5f), bigText, &osdFont, osdFontTexture, bigTextSize, V4f(1, 1, 1, 1));

@@ -3,7 +3,10 @@ Name:
 	Final Font Loader
 
 Description:
-	Simple font loader using STB_truetype.
+	Single-header font loader and glyph layout helper using STB_truetype.
+
+	One LoadedFont = one alpha atlas + one font + one contiguous codepoint range.
+	Multiple LoadedFonts can be combined via the multi-font helpers below.
 
 	This file is part of the final_framework.
 
@@ -12,6 +15,17 @@ License:
 	Copyright 2017-2026 Torsten Spaete
 
 Changelog:
+	## 2026-05-28
+	- Replaced compile-time FINAL_FONTLOADER_BETTERQUALITY with a runtime FontQuality enum
+	- Added FontLoadFromMemoryEx / FontLoadFromFileEx accepting FontQuality
+	- Added FontGetQuadCorners for 4-corner cartesian-flipped glyph layout (FFMpeg parity)
+	- Added FontGetTextSizeCodepoints for pre-decoded uint32 arrays (FPL_Input parity)
+	- Added FontFindAtlasForCodepoint and FontGetTextSizeMulti for multi-font fallback
+	- Added FontGetBaseline returning the NBody-style centered baseline correction
+	- Fixed kerning guard in FontGetCharacterAdvance (firstChar - charCount typo)
+	- Fixed FontGetTextSize ymax computation (min.h typo)
+	- Fixed defaultAdvance/kerning loop missing the last codepoint
+
 	## 2026-04-19
 	- Fixed raw to pixel scaling was incorrect
 
@@ -32,12 +46,25 @@ Changelog:
 #ifndef FINAL_FONTLOADER_H
 #define FINAL_FONTLOADER_H
 
+// Legacy define: when set, old-signature loaders default to Packed4x quality.
+// Prefer passing FontQuality_Packed4x explicitly via the *Ex loaders.
 #ifndef FINAL_FONTLOADER_BETTERQUALITY
 #define FINAL_FONTLOADER_BETTERQUALITY 0
 #endif
 
 #include <final_core.h>
 #include <final_math.h>
+
+typedef enum FontQuality {
+	// stbtt_bakedchar, no oversampling. Cheapest, blurriest at small sizes.
+	FontQuality_Baked = 0,
+	// stbtt_packedchar, oversample 1x1.
+	FontQuality_Packed1x,
+	// stbtt_packedchar, oversample 2x2.
+	FontQuality_Packed2x,
+	// stbtt_packedchar, oversample 4x4. Sharpest, largest atlas footprint.
+	FontQuality_Packed4x,
+} FontQuality;
 
 typedef struct FontGlyph {
 	Vec2f offset;
@@ -52,6 +79,15 @@ typedef struct FontQuad {
 	Vec2f uvMin;
 	Vec2f uvMax;
 } FontQuad;
+
+// 4-corner expansion of a glyph for VBO-style renderers.
+// Order: TR, TL, BL, BR. Y axis is flipped when cartesian = true.
+typedef struct FontQuadCorners {
+	Vec2f uv[4];
+	Vec2f offset[4];
+	float advance;
+	uint32_t charCode;
+} FontQuadCorners;
 
 typedef struct FontInfo {
 	float ascent;
@@ -99,11 +135,29 @@ fpl_inline float FontGetLineAdvance(const FontInfo *fontInfo) {
 	return(result);
 }
 
+// Centered baseline correction in unit-scale: shift to move the glyph midline to y=0.
+// Matches the old NBody font.h baseline = (descent - 0.5 * (ascent + descent)).
+fpl_inline float FontGetBaseline(const FontInfo *fontInfo) {
+	float result = fontInfo->descent - 0.5f * (fontInfo->ascent + fontInfo->descent);
+	return(result);
+}
+
 fpl_extern Vec2f FontGetTextSize(const LoadedFont *font, const char *text, const size_t textLen, const float maxCharHeight);
+fpl_extern Vec2f FontGetTextSizeCodepoints(const LoadedFont *font, const uint32_t *codepoints, const size_t count, const float maxCharHeight);
 fpl_extern FontQuad FontGetQuad(const LoadedFont *font, const uint32_t codePoint, const float scale);
+fpl_extern FontQuadCorners FontGetQuadCorners(const LoadedFont *font, const uint32_t codePoint, const float scale, const bool cartesian);
 fpl_extern float FontGetCharacterAdvance(const LoadedFont *font, const uint32_t thisCodePoint, const uint32_t nextCodePoint);
+
+// Returns the index of the font in fonts[] whose [firstChar..lastChar] range covers codePoint, or -1.
+fpl_extern int FontFindAtlasForCodepoint(const LoadedFont *fonts, const size_t fontCount, const uint32_t codePoint);
+// Like FontGetTextSize but walks a codepoint array and picks per-codepoint atlas via FontFindAtlasForCodepoint.
+// Fallback when no atlas covers a codepoint: fonts[0] (used only for spaceAdvance).
+fpl_extern Vec2f FontGetTextSizeMulti(const LoadedFont *fonts, const size_t fontCount, const uint32_t *codepoints, const size_t count, const float maxCharHeight);
+
 fpl_extern bool FontLoadFromFile(MemoryAllocator *allocator, const char *filePath, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t atlasWidth, const uint32_t atlasHeight, const bool loadKerning, LoadedFont *outFont);
 fpl_extern bool FontLoadFromMemory(MemoryAllocator *allocator, const void *data, const size_t dataSize, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t  atlasWidth, const uint32_t atlasHeight, const bool loadKerning, LoadedFont *outFont);
+fpl_extern bool FontLoadFromFileEx(MemoryAllocator *allocator, const char *filePath, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t atlasWidth, const uint32_t atlasHeight, const bool loadKerning, const FontQuality quality, LoadedFont *outFont);
+fpl_extern bool FontLoadFromMemoryEx(MemoryAllocator *allocator, const void *data, const size_t dataSize, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t  atlasWidth, const uint32_t atlasHeight, const bool loadKerning, const FontQuality quality, LoadedFont *outFont);
 fpl_extern void FontFree(MemoryAllocator *allocator, LoadedFont *font);
 
 #endif // FINAL_FONTLOADER_H
@@ -114,7 +168,9 @@ fpl_extern void FontFree(MemoryAllocator *allocator, LoadedFont *font);
 #define FINAL_FONTLOADER_IMPLEMENTED
 #endif
 
+#ifndef STB_TRUETYPE_IMPLEMENTATION
 #define STB_TRUETYPE_IMPLEMENTATION
+#endif
 #include <stb/stb_truetype.h>
 
 fpl_extern Vec2f FontGetTextSize(const LoadedFont *font, const char *text, const size_t textLen, const float maxCharHeight) {
@@ -124,17 +180,17 @@ fpl_extern Vec2f FontGetTextSize(const LoadedFont *font, const char *text, const
 
 	float xwidth = 0.0f;
 	float ymax = 0.0f;
-	if(font != fpl_null && font->charCount > 0) {
+	if (font->charCount > 0) {
 		float xpos = 0.0f;
 		float ypos = 0.0f;
 		uint32_t lastChar = font->firstChar + (font->charCount - 1);
-		for(uint32_t textPos = 0; textPos < textLen; ++textPos) {
-			uint32_t at = text[textPos];
-			uint32_t atNext = textPos < (textLen - 1) ? (text[textPos + 1]) : 0;
+		for (uint32_t textPos = 0; textPos < textLen; ++textPos) {
+			uint32_t at = (uint8_t)text[textPos];
+			uint32_t atNext = textPos < (textLen - 1) ? (uint8_t)text[textPos + 1] : 0;
 			float xadvance;
 			Vec2f offset = V2fInit(xpos, ypos);
 			Vec2f size = V2fZero();
-			if(at >= font->firstChar && at <= lastChar) {
+			if (at >= font->firstChar && at <= lastChar) {
 				uint32_t codePoint = at - font->firstChar;
 				const FontGlyph *glyph = font->glyphs + codePoint;
 				size = glyph->charSize;
@@ -147,7 +203,45 @@ fpl_extern Vec2f FontGetTextSize(const LoadedFont *font, const char *text, const
 			Vec2f min = offset;
 			Vec2f max = V2fAdd(min, V2fInit(xadvance, size.y));
 			xwidth += (max.x - min.x);
-			ymax = fplMax(ymax, max.y - min.h);
+			ymax = fplMax(ymax, max.y - min.y);
+			xpos += xadvance;
+		}
+	}
+	Vec2f result = V2fMultScalar(V2fInit(xwidth, ymax), maxCharHeight);
+	return(result);
+}
+
+fpl_extern Vec2f FontGetTextSizeCodepoints(const LoadedFont *font, const uint32_t *codepoints, const size_t count, const float maxCharHeight) {
+	if (font == fpl_null || codepoints == fpl_null || count == 0) {
+		return V2fZero();
+	}
+
+	float xwidth = 0.0f;
+	float ymax = 0.0f;
+	if (font->charCount > 0) {
+		float xpos = 0.0f;
+		float ypos = 0.0f;
+		uint32_t lastChar = font->firstChar + (font->charCount - 1);
+		for (size_t textPos = 0; textPos < count; ++textPos) {
+			uint32_t at = codepoints[textPos];
+			uint32_t atNext = (textPos < count - 1) ? codepoints[textPos + 1] : 0;
+			float xadvance;
+			Vec2f offset = V2fInit(xpos, ypos);
+			Vec2f size = V2fZero();
+			if (at >= font->firstChar && at <= lastChar) {
+				uint32_t codePoint = at - font->firstChar;
+				const FontGlyph *glyph = font->glyphs + codePoint;
+				size = glyph->charSize;
+				offset = V2fAdd(offset, glyph->offset);
+				offset = V2fAddMultScalar(offset, V2fInit(size.x, -size.y), 0.5f);
+				xadvance = FontGetCharacterAdvance(font, at, atNext);
+			} else {
+				xadvance = font->info.spaceAdvance;
+			}
+			Vec2f min = offset;
+			Vec2f max = V2fAdd(min, V2fInit(xadvance, size.y));
+			xwidth += (max.x - min.x);
+			ymax = fplMax(ymax, max.y - min.y);
 			xpos += xadvance;
 		}
 	}
@@ -180,27 +274,133 @@ fpl_extern FontQuad FontGetQuad(const LoadedFont *font, const uint32_t codePoint
 	return result;
 }
 
+fpl_extern FontQuadCorners FontGetQuadCorners(const LoadedFont *font, const uint32_t codePoint, const float scale, const bool cartesian) {
+	FontQuadCorners empty = fplZeroInit;
+	if (font == fpl_null) {
+		return empty;
+	}
+
+	uint32_t lastChar = font->firstChar + (font->charCount - 1);
+	if (codePoint < font->firstChar || codePoint > lastChar) {
+		return empty;
+	}
+
+	uint32_t index = codePoint - font->firstChar;
+	const FontGlyph *glyph = &font->glyphs[index];
+
+	// fontloader's glyph->offset.y is Y-up by construction (top has higher Y than bottom).
+	float x0 = glyph->offset.x * scale;
+	float y0 = glyph->offset.y * scale;
+	float x1 = x0 + glyph->charSize.x * scale;
+	float y1 = y0 - glyph->charSize.y * scale;
+
+	// Flip Y for top-down screens where Y+ points down.
+	if (!cartesian) {
+		y0 = -y0;
+		y1 = -y1;
+	}
+
+	FontQuadCorners result = fplZeroInit;
+	result.charCode = glyph->charCode;
+	result.advance = font->defaultAdvance != fpl_null ? font->defaultAdvance[index] * scale : 0.0f;
+
+	// Order: TR, TL, BL, BR
+	result.offset[0] = V2fInit(x1, y0);
+	result.offset[1] = V2fInit(x0, y0);
+	result.offset[2] = V2fInit(x0, y1);
+	result.offset[3] = V2fInit(x1, y1);
+
+	float uMin = glyph->uvMin.x;
+	float uMax = glyph->uvMax.x;
+	float vMin = glyph->uvMin.y;
+	float vMax = glyph->uvMax.y;
+	result.uv[0] = V2fInit(uMax, vMax);
+	result.uv[1] = V2fInit(uMin, vMax);
+	result.uv[2] = V2fInit(uMin, vMin);
+	result.uv[3] = V2fInit(uMax, vMin);
+
+	return result;
+}
+
 fpl_extern float FontGetCharacterAdvance(const LoadedFont *font, const uint32_t thisCodePoint, const uint32_t nextCodePoint) {
 	if (font == fpl_null) {
 		return 0.0f;
 	}
 
-	uint32_t lastChar = font->firstChar + (font->charCount - 1);
-	if (thisCodePoint < font->firstChar || thisCodePoint > lastChar) {
+	uint32_t lastCharPastOne = font->firstChar + font->charCount;
+	if (thisCodePoint < font->firstChar || thisCodePoint >= lastCharPastOne) {
 		return 0.0f;
 	}
 
-	float result = 0;
 	uint32_t thisIndex = thisCodePoint - font->firstChar;
-	const FontGlyph *glyph = font->glyphs + thisIndex;
-	result = font->defaultAdvance[thisIndex];
-	if(font->hasKerningTable) {
-		if(nextCodePoint >= font->firstChar && nextCodePoint < (font->firstChar - font->charCount)) {
+	float result = font->defaultAdvance[thisIndex];
+	if (font->hasKerningTable) {
+		// Bug fix: original used (firstChar - charCount), which underflowed for any nextCodePoint > 0.
+		if (nextCodePoint >= font->firstChar && nextCodePoint < lastCharPastOne) {
 			uint32_t nextIndex = nextCodePoint - font->firstChar;
 			float kerning = font->kerningTable[thisIndex * font->charCount + nextIndex];
 			result += kerning;
 		}
 	}
+	return(result);
+}
+
+fpl_extern int FontFindAtlasForCodepoint(const LoadedFont *fonts, const size_t fontCount, const uint32_t codePoint) {
+	if (fonts == fpl_null) {
+		return -1;
+	}
+	for (size_t i = 0; i < fontCount; ++i) {
+		if (fonts[i].charCount == 0) {
+			continue;
+		}
+		uint32_t lastChar = fonts[i].firstChar + (fonts[i].charCount - 1);
+		if (codePoint >= fonts[i].firstChar && codePoint <= lastChar) {
+			return (int)i;
+		}
+	}
+	return -1;
+}
+
+fpl_extern Vec2f FontGetTextSizeMulti(const LoadedFont *fonts, const size_t fontCount, const uint32_t *codepoints, const size_t count, const float maxCharHeight) {
+	if (fonts == fpl_null || fontCount == 0 || codepoints == fpl_null || count == 0) {
+		return V2fZero();
+	}
+
+	float xwidth = 0.0f;
+	float ymax = 0.0f;
+	float xpos = 0.0f;
+	float ypos = 0.0f;
+	for (size_t textPos = 0; textPos < count; ++textPos) {
+		uint32_t at = codepoints[textPos];
+		uint32_t atNext = (textPos < count - 1) ? codepoints[textPos + 1] : 0;
+
+		int atlasIndex = FontFindAtlasForCodepoint(fonts, fontCount, at);
+		const LoadedFont *font = (atlasIndex >= 0) ? &fonts[atlasIndex] : &fonts[0];
+		if (font->charCount == 0) {
+			continue;
+		}
+
+		float xadvance;
+		Vec2f offset = V2fInit(xpos, ypos);
+		Vec2f size = V2fZero();
+		uint32_t lastChar = font->firstChar + (font->charCount - 1);
+		if (at >= font->firstChar && at <= lastChar) {
+			uint32_t codePoint = at - font->firstChar;
+			const FontGlyph *glyph = font->glyphs + codePoint;
+			size = glyph->charSize;
+			offset = V2fAdd(offset, glyph->offset);
+			offset = V2fAddMultScalar(offset, V2fInit(size.x, -size.y), 0.5f);
+			xadvance = FontGetCharacterAdvance(font, at, atNext);
+		} else {
+			xadvance = fonts[0].info.spaceAdvance;
+		}
+		Vec2f min = offset;
+		Vec2f max = V2fAdd(min, V2fInit(xadvance, size.y));
+		xwidth += (max.x - min.x);
+		ymax = fplMax(ymax, max.y - min.y);
+		xpos += xadvance;
+	}
+	Vec2f result = V2fMultScalar(V2fInit(xwidth, ymax), maxCharHeight);
 	return(result);
 }
 
@@ -222,28 +422,23 @@ fpl_internal void InternalFontLoadFromMemoryShutdown(MemoryAllocator *allocator,
 	}
 }
 
-fpl_extern bool FontLoadFromMemory(MemoryAllocator *allocator, const void *data, const size_t dataSize, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t atlasWidth, const uint32_t atlasHeight, const bool loadKerning, LoadedFont *outFont) {
-	if(data == fpl_null || dataSize == 0 || fontSize <= 0.0f || firstChar > lastChar || atlasWidth == 0 || atlasHeight == 0 || outFont == fpl_null) {
-		// TODO(final): Logging (Invalid arguments)
+fpl_extern bool FontLoadFromMemoryEx(MemoryAllocator *allocator, const void *data, const size_t dataSize, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t atlasWidth, const uint32_t atlasHeight, const bool loadKerning, const FontQuality quality, LoadedFont *outFont) {
+	if (data == fpl_null || dataSize == 0 || fontSize <= 0.0f || firstChar > lastChar || atlasWidth == 0 || atlasHeight == 0 || outFont == fpl_null) {
 		return false;
 	}
+
+	const bool usePacked = (quality != FontQuality_Baked);
 
 	float *defaultAdvance = fpl_null;
 	float *kerningTable = fpl_null;
 	FontGlyph *glyphs = fpl_null;
 	uint8_t *atlasAlphaBitmap = fpl_null;
-
-#if FINAL_FONTLOADER_BETTERQUALITY
-	stbtt_packedchar *packedChars = fpl_null;
-#else
-	stbtt_bakedchar *packedChars = fpl_null;
-#endif
+	void *packedChars = fpl_null;
 
 	stbtt_fontinfo fontInfo = fplZeroInit;
 	int fontOffset = stbtt_GetFontOffsetForIndex((const unsigned char *)data, fontIndex);
 
-	if(!stbtt_InitFont(&fontInfo, (const unsigned char *)data, fontOffset)) {
-		// TODO(final): Logging (Failed to load with STB_TrueType)
+	if (!stbtt_InitFont(&fontInfo, (const unsigned char *)data, fontOffset)) {
 		InternalFontLoadFromMemoryShutdown(allocator, packedChars, atlasAlphaBitmap, glyphs, kerningTable, defaultAdvance);
 		return false;
 	}
@@ -255,7 +450,6 @@ fpl_extern bool FontLoadFromMemory(MemoryAllocator *allocator, const void *data,
 
 	defaultAdvance = (float *)MemoryAllocatorAlloc(allocator, defaultAdvanceSize);
 	if (defaultAdvance == fpl_null) {
-		// TODO(final): Logging (Insufficient memory)
 		InternalFontLoadFromMemoryShutdown(allocator, packedChars, atlasAlphaBitmap, glyphs, kerningTable, defaultAdvance);
 		return false;
 	}
@@ -263,7 +457,6 @@ fpl_extern bool FontLoadFromMemory(MemoryAllocator *allocator, const void *data,
 	if (loadKerning) {
 		kerningTable = (float *)MemoryAllocatorAlloc(allocator, kerningTableSize);
 		if (kerningTable == fpl_null) {
-			// TODO(final): Logging (Insufficient memory)
 			InternalFontLoadFromMemoryShutdown(allocator, packedChars, atlasAlphaBitmap, glyphs, kerningTable, defaultAdvance);
 			return false;
 		}
@@ -271,128 +464,130 @@ fpl_extern bool FontLoadFromMemory(MemoryAllocator *allocator, const void *data,
 
 	glyphs = (FontGlyph *)MemoryAllocatorAlloc(allocator, glyphsSize);
 	if (glyphs == fpl_null) {
-		// TODO(final): Logging (Insufficient memory)
 		InternalFontLoadFromMemoryShutdown(allocator, packedChars, atlasAlphaBitmap, glyphs, kerningTable, defaultAdvance);
 		return false;
 	}
 
 	atlasAlphaBitmap = (uint8_t *)MemoryAllocatorAlloc(allocator, atlasWidth * atlasHeight);
 	if (atlasAlphaBitmap == fpl_null) {
-		// TODO(final): Logging (Insufficient memory)
 		InternalFontLoadFromMemoryShutdown(allocator, packedChars, atlasAlphaBitmap, glyphs, kerningTable, defaultAdvance);
 		return false;
 	}
 
-#if FINAL_FONTLOADER_BETTERQUALITY
-	packedChars = (stbtt_packedchar *)MemoryAllocatorAlloc(allocator, charCount * sizeof(stbtt_packedchar));
-	if (packedChars == fpl_null) {
-		// TODO(final): Logging (Insufficient memory)
-		InternalFontLoadFromMemoryShutdown(allocator, packedChars, atlasAlphaBitmap, glyphs, kerningTable, defaultAdvance);
-		return false;
+	if (usePacked) {
+		packedChars = MemoryAllocatorAlloc(allocator, charCount * sizeof(stbtt_packedchar));
+		if (packedChars == fpl_null) {
+			InternalFontLoadFromMemoryShutdown(allocator, packedChars, atlasAlphaBitmap, glyphs, kerningTable, defaultAdvance);
+			return false;
+		}
+
+		int oversampleH = 1, oversampleV = 1;
+		if (quality == FontQuality_Packed2x) {
+			oversampleH = 2;
+			oversampleV = 2;
+		} else if (quality == FontQuality_Packed4x) {
+			oversampleH = 4;
+			oversampleV = 4;
+		}
+
+		stbtt_pack_range characterRange = fplZeroInit;
+		characterRange.font_size = fontSize;
+		characterRange.num_chars = charCount;
+		characterRange.first_unicode_codepoint_in_range = firstChar;
+		characterRange.chardata_for_range = (stbtt_packedchar *)packedChars;
+
+		stbtt_pack_context packContext = fplZeroInit;
+		stbtt_PackBegin(&packContext, atlasAlphaBitmap, atlasWidth, atlasHeight, atlasWidth, 0, fpl_null);
+		stbtt_PackSetOversampling(&packContext, oversampleH, oversampleV);
+		stbtt_PackFontRange(&packContext, (const unsigned char *)data, fontIndex, fontSize, firstChar, charCount, (stbtt_packedchar *)packedChars);
+		stbtt_PackEnd(&packContext);
+	} else {
+		packedChars = MemoryAllocatorAlloc(allocator, charCount * sizeof(stbtt_bakedchar));
+		if (packedChars == fpl_null) {
+			InternalFontLoadFromMemoryShutdown(allocator, packedChars, atlasAlphaBitmap, glyphs, kerningTable, defaultAdvance);
+			return false;
+		}
+		stbtt_BakeFontBitmap((const unsigned char *)data, fontOffset, fontSize, atlasAlphaBitmap, atlasWidth, atlasHeight, firstChar, charCount, (stbtt_bakedchar *)packedChars);
 	}
 
-	stbtt_pack_range characterRange = fplZeroInit;
-	characterRange.font_size = fontSize;
-	characterRange.num_chars = charCount;
-	characterRange.first_unicode_codepoint_in_range = firstChar;
-	characterRange.chardata_for_range = packedChars;
-
-	stbtt_pack_context packContext = fplZeroInit;
-	stbtt_pack_range *ranges[1] = {
-		&characterRange,
-	};
-	stbtt_PackSetOversampling(&packContext, 4, 4);
-	stbtt_PackBegin(&packContext, atlasAlphaBitmap, atlasWidth, atlasHeight, atlasWidth, 0, 0);
-	stbtt_PackFontRanges(&packContext, (const unsigned char *)data, fontIndex, ranges[0], 1);
-	stbtt_PackEnd(&packContext);
-#else
-	packedChars = (stbtt_bakedchar *)MemoryAllocatorAlloc(allocator, charCount * sizeof(stbtt_bakedchar));
-	if (packedChars == fpl_null) {
-		// TODO(final): Logging (Insufficient memory)
-		InternalFontLoadFromMemoryShutdown(allocator, packedChars, atlasAlphaBitmap, glyphs, kerningTable, defaultAdvance);
-		return false;
-	}
-	
-	// TODO(final): Handle return value
-	stbtt_BakeFontBitmap((const unsigned char *)data, fontOffset, fontSize, atlasAlphaBitmap, atlasWidth, atlasHeight, firstChar, charCount, packedChars);
-#endif
-
-	// Get metrics
 	int ascentRaw, descentRaw, lineGapRaw;
 	int spaceAdvanceRaw, spaceLeftSideBearing;
 	stbtt_GetFontVMetrics(&fontInfo, &ascentRaw, &descentRaw, &lineGapRaw);
 	stbtt_GetCodepointHMetrics(&fontInfo, ' ', &spaceAdvanceRaw, &spaceLeftSideBearing);
 
-	// Calculate scales
 	float texelU = 1.0f / (float)atlasWidth;
 	float texelV = 1.0f / (float)atlasHeight;
 	float pixelsToUnits = 1.0f / fontSize;
 	float scaleToPixels = stbtt_ScaleForPixelHeight(&fontInfo, fontSize);
 
-	// Space advance in pixels
 	float spaceAdvancePx = spaceAdvanceRaw * scaleToPixels;
-
-	// Ascent height from the baseline in pixels
 	float ascentPx = fabsf((float)ascentRaw) * scaleToPixels;
-
-	// Descent height from the baseline in pixels
 	float descentPx = fabsf((float)descentRaw) * scaleToPixels;
-
-	// Max height is always ascent + descent
-	float heightPx = ascentPx + descentPx;
-
-	// Calculate line height
 	float lineGapPx = lineGapRaw * scaleToPixels;
 	float lineHeightPx = ascentPx + descentPx + lineGapPx;
 
-	for(uint32_t glyphIndex = 0; glyphIndex < charCount; ++glyphIndex) {
-#if FINAL_FONTLOADER_BETTERQUALITY
-		stbtt_packedchar *sourceInfo = packedChars + glyphIndex;
-#else
-		stbtt_bakedchar *sourceInfo = packedChars + glyphIndex;
-#endif
+	// packedchar/bakedchar share x0/y0/x1/y1 (atlas coords, possibly oversampled), xoff/yoff/xadvance (screen pixels).
+	// Only packedchar has xoff2/yoff2 — for bakedchar derive them from atlas size (no oversampling, so atlas pixels = screen pixels).
+	for (uint32_t glyphIndex = 0; glyphIndex < charCount; ++glyphIndex) {
+		int x0, y0, x1, y1;
+		float xoff, yoff, xoff2, yoff2, xadvance;
+		if (usePacked) {
+			const stbtt_packedchar *src = ((const stbtt_packedchar *)packedChars) + glyphIndex;
+			x0 = src->x0; y0 = src->y0; x1 = src->x1; y1 = src->y1;
+			xoff = src->xoff; yoff = src->yoff;
+			xoff2 = src->xoff2; yoff2 = src->yoff2;
+			xadvance = src->xadvance;
+		} else {
+			const stbtt_bakedchar *src = ((const stbtt_bakedchar *)packedChars) + glyphIndex;
+			x0 = src->x0; y0 = src->y0; x1 = src->x1; y1 = src->y1;
+			xoff = src->xoff; yoff = src->yoff;
+			xoff2 = src->xoff + (float)(src->x1 - src->x0);
+			yoff2 = src->yoff + (float)(src->y1 - src->y0);
+			xadvance = src->xadvance;
+		}
 
 		FontGlyph *destInfo = glyphs + glyphIndex;
 		destInfo->charCode = firstChar + glyphIndex;
 
-		// Compute UV coords
-		float uMin = sourceInfo->x0 * texelU;
-		float uMax = sourceInfo->x1 * texelU;
-		float vMin = sourceInfo->y1 * texelV;
-		float vMax = sourceInfo->y0 * texelV;
+		float uMin = x0 * texelU;
+		float uMax = x1 * texelU;
+		float vMin = y1 * texelV;
+		float vMax = y0 * texelV;
 		destInfo->uvMin = V2fInit(uMin, vMin);
 		destInfo->uvMax = V2fInit(uMax, vMax);
 
-		// Compute character size
-		int charWidthInPixels = sourceInfo->x1 - sourceInfo->x0;
-		int charHeightInPixels = sourceInfo->y1 - sourceInfo->y0;
-		destInfo->charSize = V2fMultScalar(V2fInit((float)charWidthInPixels, (float)charHeightInPixels), pixelsToUnits);
+		// Screen-pixel size from xoff/xoff2 so oversampled atlases do not inflate the on-screen quad.
+		float charWidthPx = xoff2 - xoff;
+		float charHeightPx = yoff2 - yoff;
+		destInfo->charSize = V2fMultScalar(V2fInit(charWidthPx, charHeightPx), pixelsToUnits);
 
-		// Compute offset to start/baseline in units
-		destInfo->offset = V2fMultScalar(V2fInit(sourceInfo->xoff, -sourceInfo->yoff), pixelsToUnits);
+		destInfo->offset = V2fMultScalar(V2fInit(xoff, -yoff), pixelsToUnits);
+
+		defaultAdvance[glyphIndex] = xadvance * pixelsToUnits;
 	}
 
-	// Build kerning table & default advance table
-	for(uint32_t charIndex = firstChar; charIndex < lastChar; ++charIndex) {
-		uint32_t codePointIndex = (uint32_t)(charIndex - firstChar);
-#if FINAL_FONTLOADER_BETTERQUALITY
-		stbtt_packedchar *leftInfo = packedChars + codePointIndex;
-#else
-		stbtt_bakedchar *leftInfo = packedChars + codePointIndex;
-#endif
-		defaultAdvance[codePointIndex] = leftInfo->xadvance * pixelsToUnits;
-
-		if(loadKerning) {
-			for(uint32_t nextCharIndex = charIndex + 1; nextCharIndex < lastChar; ++nextCharIndex) {
+	if (loadKerning) {
+		// Bug fix: was (charIndex < lastChar) and (nextCharIndex < lastChar), missing the last codepoint pair.
+		for (uint32_t charIndex = firstChar; charIndex <= lastChar; ++charIndex) {
+			uint32_t codePointIndex = (uint32_t)(charIndex - firstChar);
+			int widthPx;
+			if (usePacked) {
+				const stbtt_packedchar *leftInfo = ((const stbtt_packedchar *)packedChars) + codePointIndex;
+				widthPx = leftInfo->x1 - leftInfo->x0;
+			} else {
+				const stbtt_bakedchar *leftInfo = ((const stbtt_bakedchar *)packedChars) + codePointIndex;
+				widthPx = leftInfo->x1 - leftInfo->x0;
+			}
+			for (uint32_t nextCharIndex = firstChar; nextCharIndex <= lastChar; ++nextCharIndex) {
+				if (nextCharIndex == charIndex) {
+					continue;
+				}
 				float kerningPx = stbtt_GetCodepointKernAdvance(&fontInfo, charIndex, nextCharIndex) * pixelsToUnits;
-				if(kerningPx != 0) {
-					int widthPx = leftInfo->x1 - leftInfo->x0;
-					if(widthPx > 0) {
-						float kerning = kerningPx / (float)widthPx;
-						uint32_t a = (uint32_t)(charIndex - firstChar);
-						uint32_t b = (uint32_t)(nextCharIndex - firstChar);
-						kerningTable[a * charCount + b] = kerning;
-					}
+				if (kerningPx != 0 && widthPx > 0) {
+					float kerning = kerningPx / (float)widthPx;
+					uint32_t a = (uint32_t)(charIndex - firstChar);
+					uint32_t b = (uint32_t)(nextCharIndex - firstChar);
+					kerningTable[a * charCount + b] = kerning;
 				}
 			}
 		}
@@ -418,6 +613,15 @@ fpl_extern bool FontLoadFromMemory(MemoryAllocator *allocator, const void *data,
 	return true;
 }
 
+fpl_extern bool FontLoadFromMemory(MemoryAllocator *allocator, const void *data, const size_t dataSize, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t atlasWidth, const uint32_t atlasHeight, const bool loadKerning, LoadedFont *outFont) {
+#if FINAL_FONTLOADER_BETTERQUALITY
+	const FontQuality defaultQuality = FontQuality_Packed4x;
+#else
+	const FontQuality defaultQuality = FontQuality_Baked;
+#endif
+	return FontLoadFromMemoryEx(allocator, data, dataSize, fontIndex, fontSize, firstChar, lastChar, atlasWidth, atlasHeight, loadKerning, defaultQuality, outFont);
+}
+
 fpl_internal void InternalFontLoadFromFileShutdown(MemoryAllocator *allocator, fplFileHandle *file, uint8_t *ttfBuffer) {
 	if (ttfBuffer != fpl_null) {
 		MemoryAllocatorFree(allocator, ttfBuffer);
@@ -427,17 +631,15 @@ fpl_internal void InternalFontLoadFromFileShutdown(MemoryAllocator *allocator, f
 	}
 }
 
-fpl_extern bool FontLoadFromFile(MemoryAllocator *allocator, const char *filePath, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t atlasWidth, const uint32_t atlasHeight, const bool loadKerning, LoadedFont *outFont) {
-	if(fplGetStringLength(filePath) == 0 || fontSize <= 0.0f || firstChar > lastChar || atlasWidth == 0 || atlasHeight == 0 || outFont == fpl_null) {
+fpl_extern bool FontLoadFromFileEx(MemoryAllocator *allocator, const char *filePath, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t atlasWidth, const uint32_t atlasHeight, const bool loadKerning, const FontQuality quality, LoadedFont *outFont) {
+	if (fplGetStringLength(filePath) == 0 || fontSize <= 0.0f || firstChar > lastChar || atlasWidth == 0 || atlasHeight == 0 || outFont == fpl_null) {
 		return false;
 	}
 
 	uint8_t *ttfBuffer = fpl_null;
-
 	fplFileHandle file = fplZeroInit;
 
 	if (!fplFileOpenBinary(filePath, &file)) {
-		// TODO(final): Logging (File not found)
 		InternalFontLoadFromFileShutdown(allocator, &file, ttfBuffer);
 		return false;
 	}
@@ -446,22 +648,19 @@ fpl_extern bool FontLoadFromFile(MemoryAllocator *allocator, const char *filePat
 
 	ttfBuffer = (uint8_t *)MemoryAllocatorAlloc(allocator, ttfBufferSize);
 	if (ttfBuffer == fpl_null) {
-		// TODO(final): Logging (Insufficient memory)
 		InternalFontLoadFromFileShutdown(allocator, &file, ttfBuffer);
 		return false;
 	}
 
 	size_t read = fplFileReadBlock(&file, ttfBufferSize, ttfBuffer, ttfBufferSize);
 	if (read != ttfBufferSize) {
-		// TODO(final): Logging (File read error)
 		InternalFontLoadFromFileShutdown(allocator, &file, ttfBuffer);
 		return false;
 	}
 
 	fplFileClose(&file);
 
-	if (!FontLoadFromMemory(allocator, ttfBuffer, ttfBufferSize, fontIndex, fontSize, firstChar, lastChar, atlasWidth, atlasHeight, loadKerning, outFont)) {
-		// TODO(final): Logging (Failed loading font from memory)
+	if (!FontLoadFromMemoryEx(allocator, ttfBuffer, ttfBufferSize, fontIndex, fontSize, firstChar, lastChar, atlasWidth, atlasHeight, loadKerning, quality, outFont)) {
 		InternalFontLoadFromFileShutdown(allocator, &file, ttfBuffer);
 		return false;
 	}
@@ -470,14 +669,23 @@ fpl_extern bool FontLoadFromFile(MemoryAllocator *allocator, const char *filePat
 	return true;
 }
 
+fpl_extern bool FontLoadFromFile(MemoryAllocator *allocator, const char *filePath, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t atlasWidth, const uint32_t atlasHeight, const bool loadKerning, LoadedFont *outFont) {
+#if FINAL_FONTLOADER_BETTERQUALITY
+	const FontQuality defaultQuality = FontQuality_Packed4x;
+#else
+	const FontQuality defaultQuality = FontQuality_Baked;
+#endif
+	return FontLoadFromFileEx(allocator, filePath, fontIndex, fontSize, firstChar, lastChar, atlasWidth, atlasHeight, loadKerning, defaultQuality, outFont);
+}
+
 fpl_extern void FontFree(MemoryAllocator *allocator, LoadedFont *font) {
 	if (font == fpl_null) {
 		return;
 	}
-	if(font->kerningTable != fpl_null) {
+	if (font->kerningTable != fpl_null) {
 		MemoryAllocatorFree(allocator, font->kerningTable);
 	}
-	if(font->defaultAdvance != fpl_null) {
+	if (font->defaultAdvance != fpl_null) {
 		MemoryAllocatorFree(allocator, font->defaultAdvance);
 	}
 	if (font->glyphs != fpl_null) {

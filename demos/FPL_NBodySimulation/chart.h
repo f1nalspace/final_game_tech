@@ -9,7 +9,7 @@
 #include "vecmath.h"
 #include "render.h"
 #include "utils.h"
-#include "font.h"
+#include <final_fontloader.h>
 
 double GetNiceNumber(double range, bool roundIt) {
 	double exponent = floor(log10(range));
@@ -88,7 +88,7 @@ struct Chart {
 		this->sampleLabels.push_back(sampleLabel);
 	}
 
-	void RenderBars(Render::CommandBuffer *commandBuffer, const float viewportLBWH[4], FontAtlas *font, Render::TextureHandle fontTexture, const float fontHeight) {
+	void RenderBars(Render::CommandBuffer *commandBuffer, const float viewportLBWH[4], LoadedFont *font, Render::TextureHandle fontTexture, const float fontHeight) {
 		float viewportLeft = viewportLBWH[0];
 		float viewportBottom = viewportLBWH[1];
 		float viewportWidth = viewportLBWH[2];
@@ -134,7 +134,7 @@ struct Chart {
 
 		float axisMargin = 10;
 		std::string maxAxisLabel = StringFormat(axisFormat.c_str(), yAxis.max);
-		float maxAxisTextWidth = GetTextWidth(maxAxisLabel.c_str(), (uint32_t)maxAxisLabel.size(), font, tickLabelFontHeight);
+		float maxAxisTextWidth = FontGetTextSize(font, maxAxisLabel.c_str(), maxAxisLabel.size(), tickLabelFontHeight).x;
 		float yAxisWidth = maxAxisTextWidth + axisMargin;
 
 		float chartWidth = areaWidth - yAxisWidth;
@@ -181,7 +181,7 @@ struct Chart {
 			double tickValue = yAxis.min + yAxis.tickSpacing * (double)tickIndex;
 			float tickHeight = yAxis.MapValueToPosition(tickValue, chartHeight);
 			std::string tickLabel = StringFormat(axisFormat.c_str(), tickValue);
-			float tickLabelWidth = GetTextWidth(tickLabel.c_str(), (uint32_t)tickLabel.size(), font, tickLabelFontHeight);
+			float tickLabelWidth = FontGetTextSize(font, tickLabel.c_str(), tickLabel.size(), tickLabelFontHeight).x;
 			float tickY = chartOriginY + tickHeight - tickLabelFontHeight * 0.5f;
 			float tickX = chartOriginX - axisMargin - tickLabelWidth;
 			Render::RenderPushText(commandBuffer, V2f(tickX, tickY), tickLabel.c_str(), font, fontTexture, tickLabelFontHeight, tickLabelColor);
@@ -209,7 +209,7 @@ struct Chart {
 		// Sample labels
 		for (size_t sampleIndex = 0; sampleIndex < sampleCount; ++sampleIndex) {
 			const char *sampleLabel = sampleLabels[sampleIndex].c_str();
-			float textWidth = (float)GetTextWidth(sampleLabel, (uint32_t)strlen(sampleLabel), font, sampleLabelFontHeight);
+			float textWidth = FontGetTextSize(font, sampleLabel, strlen(sampleLabel), sampleLabelFontHeight).x;
 			float xLeft = chartOriginX + (float)sampleIndex * sampleWidth + sampleWidth * 0.5f - textWidth * 0.5f;
 			float yMiddle = chartOriginY - sampleLabelFontHeight - sampleAxisMargin;
 			Render::RenderPushText(commandBuffer, V2f(xLeft, yMiddle), sampleLabel, font, fontTexture, sampleLabelFontHeight, V4f(1, 1, 1, 1));
@@ -226,7 +226,7 @@ struct Chart {
 			legendCurLeft += legendBulletSize + legendBulletPadding;
 
 			const char *legendLabel = series->title.c_str();
-			float labelWidth = (float)GetTextWidth(legendLabel, (uint32_t)strlen(legendLabel), font, legendFontHeight);
+			float labelWidth = FontGetTextSize(font, legendLabel, strlen(legendLabel), legendFontHeight).x;
 			float labelY = legendBottom - legendFontHeight * 0.5f + legendBulletSize * 0.5f;
 			Render::RenderPushText(commandBuffer, V2f(legendCurLeft, labelY), legendLabel, font, fontTexture, legendFontHeight, V4f(1, 1, 1, 1));
 			legendCurLeft += labelWidth + legendLabelPadding;
