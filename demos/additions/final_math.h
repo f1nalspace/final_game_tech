@@ -1589,12 +1589,12 @@ fpl_force_inline Quaternion QuatRotation(const Vec3f orig, const Vec3f dest) {
 //
 // Pixel
 //
-static const Vec4f ColorWhite = V4fInit(1.0f, 1.0f, 1.0f, 1.0f);
-static const Vec4f ColorRed = V4fInit(1.0f, 0.0f, 0.0f, 1.0f);
-static const Vec4f ColorGreen = V4fInit(0.0f, 1.0f, 0.0f, 1.0f);
-static const Vec4f ColorBlue = V4fInit(0.0f, 0.0f, 1.0f, 1.0f);
-static const Vec4f ColorLightGray = V4fInit(0.3f, 0.3f, 0.3f, 1.0f);
-static const Vec4f ColorDarkGray = V4fInit(0.2f, 0.2f, 0.2f, 1.0f);
+static const Vec4f ColorWhite = fplStructInit(Vec4f, 1.0f, 1.0f, 1.0f, 1.0f);
+static const Vec4f ColorRed = fplStructInit(Vec4f, 1.0f, 0.0f, 0.0f, 1.0f);
+static const Vec4f ColorGreen = fplStructInit(Vec4f, 0.0f, 1.0f, 0.0f, 1.0f);
+static const Vec4f ColorBlue = fplStructInit(Vec4f, 0.0f, 0.0f, 1.0f, 1.0f);
+static const Vec4f ColorLightGray = fplStructInit(Vec4f, 0.3f, 0.3f, 0.3f, 1.0f);
+static const Vec4f ColorDarkGray = fplStructInit(Vec4f, 0.2f, 0.2f, 0.2f, 1.0f);
 
 fpl_force_inline Pixel MakePixelFromRGBA(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a) {
 	Pixel result = fplZeroInit;
