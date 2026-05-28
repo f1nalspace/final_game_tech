@@ -104,11 +104,11 @@ License:
 
 #define PARTICLE_VALIDATION 0
 
+#define FINAL_FONTLOADER_IMPLEMENTATION
+#include <final_fontloader.h>
+
 #include "app.cpp"
 #include "utils.h"
-
-#define STB_TRUETYPE_IMPLEMENTATION
-#include <stb/stb_truetype.h>
 
 static Application *globalApp = nullptr;
 static float lastFrameTime = 0.0f;
@@ -190,7 +190,11 @@ static void OpenGLAllocateTexture(Render::CommandBuffer *commandBuffer, Render::
 					uint8_t r = *(sourcePixel8 + 0);
 					uint8_t g = *(sourcePixel8 + 1);
 					uint8_t b = *(sourcePixel8 + 2);
-					Pixel pixel = { r, g, b, 255 };
+					Pixel pixel;
+					pixel.r = r;
+					pixel.g = g;
+					pixel.b = b;
+					pixel.a = 255;
 					Vec4f color = PixelToLinear(pixel);
 					if (!allocate.isPreMultiplied) {
 						color.rgb *= color.a;

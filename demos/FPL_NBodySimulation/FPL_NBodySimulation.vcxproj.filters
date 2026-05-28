@@ -17,7 +17,6 @@
     <ClInclude Include="pseudorandom.h" />
     <ClInclude Include="utils.h" />
     <ClInclude Include="chart.h" />
-    <ClInclude Include="font.h" />
     <ClInclude Include="threading.h" />
     <ClInclude Include="memory.h" />
   </ItemGroup>

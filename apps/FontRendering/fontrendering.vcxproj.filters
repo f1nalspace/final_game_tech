@@ -4,7 +4,7 @@
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="stb_truetype.h" />
     <ClInclude Include="..\..\final_platform_layer.h" />
+    <ClInclude Include="..\..\demos\additions\final_fontloader.h" />
   </ItemGroup>
 </Project>

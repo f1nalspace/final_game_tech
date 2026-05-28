@@ -4,11 +4,10 @@ project "FontRendering"
 	language "C++"
 	cppdialect "C++11"
 
-	includedirs { "../../" }
+	includedirs { "../../", "../../demos/additions", "../../demos/dependencies" }
 
 	files {
 		"main.cpp",
-		"stb_truetype.h",
 	}
 
 	filter { "files:**.h" }

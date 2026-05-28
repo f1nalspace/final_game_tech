@@ -179,8 +179,8 @@ License:
 
 typedef int32_t bool32;
 
-#define STB_TRUETYPE_IMPLEMENTATION
-#include <stb/stb_truetype.h>
+#define FINAL_FONTLOADER_IMPLEMENTATION
+#include <final_fontloader.h>
 
 #if USE_HARDWARE_RENDERING
 #	define FGL_IMPLEMENTATION
@@ -1360,137 +1360,6 @@ struct SeekState {
 //
 // Font
 //
-struct FontChar {
-	// Cartesian coordinates: TR, TL, BL, BR
-
-	// Just for debug purposes
-	uint32_t charCode;
-	Vec2f uv[4]; // In range of 0.0 to 1.0
-	Vec2f offset[4]; // In range of -1.0 to 1.0
-	float advance; // In range of -1.0 to 1.0
-};
-
-struct FontInfo {
-	FontChar *chars;
-	uint8_t *atlasBitmap;
-	float ascent;
-	float descent;
-	float lineGap;
-	uint32_t atlasWidth;
-	uint32_t atlasHeight;
-	uint32_t firstChar;
-	uint32_t charCount;
-	bool32 isValid;
-};
-
-static FontChar GetFontChar(const FontInfo &info, const uint32_t codePoint) {
-	uint32_t lastCharPastOne = info.firstChar + info.charCount;
-	if (codePoint >= info.firstChar && codePoint < lastCharPastOne) {
-		uint32_t charIndex = codePoint - info.firstChar;
-		FontChar result = info.chars[charIndex];
-		return(result);
-	}
-	FontChar empty = fplZeroInit;
-	return empty;
-}
-
-static void ReleaseFontInfo(FontInfo &font) {
-	if (font.chars)
-		fplMemoryFree(font.chars);
-	if (font.atlasBitmap)
-		fplMemoryFree(font.atlasBitmap);
-}
-
-static bool LoadFontInfo(const uint8_t *data, const size_t dataSize, const uint32_t atlasWidth, const uint32_t atlasHeight, const uint32_t firstChar, const uint32_t charCount, const float fontSize, FontInfo *outFont) {
-	FontInfo font = {};
-	font.atlasWidth = atlasWidth;
-	font.atlasHeight = atlasHeight;
-	font.firstChar = firstChar;
-	font.charCount = charCount;
-
-	int fontIndex = 0;
-	int fontOffset = stbtt_GetFontOffsetForIndex(data, fontIndex);
-	stbtt_fontinfo nativeInfo;
-	if (!stbtt_InitFont(&nativeInfo, data, fontOffset)) {
-		return(false);
-	}
-
-	// TODO: One memory block for both
-	font.atlasBitmap = (uint8_t *)fplMemoryAllocate(font.atlasWidth * font.atlasHeight);
-	font.chars = (FontChar *)fplMemoryAllocate(font.charCount * sizeof(*font.chars));
-
-	int ascent = 0;
-	int descent = 0;
-	int lineGap = 0;
-
-	float fontScale = 1.0f / fontSize;
-	float pixelScale = stbtt_ScaleForPixelHeight(&nativeInfo, fontSize);
-	stbtt_GetFontVMetrics(&nativeInfo, &ascent, &descent, &lineGap);
-
-	font.ascent = (float)ascent * pixelScale * fontScale;
-	font.descent = (float)descent * pixelScale * fontScale;
-	font.lineGap = (float)lineGap * pixelScale * fontScale;
-
-	stbtt_pack_context context;
-	if (!stbtt_PackBegin(&context, font.atlasBitmap, font.atlasWidth, font.atlasHeight, 0, 1, nullptr)) {
-		ReleaseFontInfo(font);
-		return(false);
-	}
-
-	int oversampleX = 2, oversampleY = 2;
-	stbtt_PackSetOversampling(&context, oversampleX, oversampleY);
-
-	stbtt_packedchar *packedChars = (stbtt_packedchar *)STBTT_malloc(sizeof(stbtt_packedchar) * font.charCount, nullptr);
-	if (!stbtt_PackFontRange(&context, data, 0, fontSize, font.firstChar, font.charCount, packedChars)) {
-		STBTT_free(packedChars, nullptr);
-		ReleaseFontInfo(font);
-		return(false);
-	}
-
-	float invAtlasW = 1.0f / (float)font.atlasWidth;
-	float invAtlasH = 1.0f / (float)font.atlasHeight;
-
-	float baseline = font.ascent;
-
-	for (uint32_t charIndex = 0; charIndex < font.charCount; ++charIndex) {
-		const stbtt_packedchar *b = packedChars + charIndex;
-
-		FontChar *outChar = font.chars + charIndex;
-
-		float s0 = b->x0 * invAtlasW;
-		float s1 = b->x1 * invAtlasW;
-		float t0 = b->y0 * invAtlasH;
-		float t1 = b->y1 * invAtlasH;
-
-		float x0 = b->xoff * pixelScale;
-		float x1 = b->xoff2 * pixelScale;
-
-		// Y must be inverted, to flip letter (Cartesian conversion)
-		float y0 = b->yoff * -pixelScale;
-		float y1 = b->yoff2 * -pixelScale;
-
-		// Y must be inverted, to flip letter (Cartesian conversion)
-		outChar->offset[0] = V2f(x1, y0); // Top-right
-		outChar->offset[1] = V2f(x0, y0); // Top-left
-		outChar->offset[2] = V2f(x0, y1); // Bottom-left
-		outChar->offset[3] = V2f(x1, y1); // Bottom-right
-
-		outChar->uv[0] = V2f(s1, t0);
-		outChar->uv[1] = V2f(s0, t0);
-		outChar->uv[2] = V2f(s0, t1);
-		outChar->uv[3] = V2f(s1, t1);
-
-		outChar->advance = b->xadvance * pixelScale;
-	}
-
-	STBTT_free(packedChars, nullptr);
-
-	stbtt_PackEnd(&context);
-
-	*outFont = font;
-
-	return(true);
-}
 
 enum class TextRenderMode {
 	Baseline = 0,
@@ -1749,26 +1618,11 @@ static void PushQuadToBuffer(FontBuffer &buffer, const Vec2f &position, const Ve
 	CheckGLError();
 }
 
-static Vec2f ComputeTextSize(const FontInfo &info, const char *text, const float scale) {
-	const char *s = text;
-	Vec2f result = V2f(0, 0);
-	while (*s) {
-		FontChar glyph = GetFontChar(info, *s);
-
-		Vec2f p0 = glyph.offset[0] * scale;
-		Vec2f p1 = glyph.offset[1] * scale;
-		Vec2f p2 = glyph.offset[2] * scale;
-		Vec2f p3 = glyph.offset[3] * scale;
-
-		// @TODO(final): Compute actual text rectangle
-
-		result += V2f(glyph.advance * scale, 0.0f);
-		++s;
-	}
-	return result;
+static Vec2f ComputeTextSize(const LoadedFont &info, const char *text, const float scale) {
+	return FontGetTextSize(&info, text, fplGetStringLength(text), scale);
 }
 
-static void PushTextToBuffer(FontBuffer &buffer, const FontInfo &info, const char *text, const float scale, const Vec2f &position, const Vec4f &color, const TextRenderMode mode) {
+static void PushTextToBuffer(FontBuffer &buffer, const LoadedFont &info, const char *text, const float scale, const Vec2f &position, const Vec4f &color, const TextRenderMode mode) {
 	uint32_t textLen = (uint32_t)fplGetStringLength(text);
 	if (textLen > 0) {
 		uint32_t indexCount = textLen * 6;
@@ -1792,12 +1646,14 @@ static void PushTextToBuffer(FontBuffer &buffer, const FontInfo &info, const cha
 		uint32_t vertexIndex = vertexStart;
 		uint32_t elementIndex = indexStart;
 		while (*s) {
-			FontChar glyph = GetFontChar(info, *s);
+			uint32_t codePoint = (uint8_t)*s;
+			uint32_t nextCodePoint = (s[1] != 0) ? (uint8_t)s[1] : 0;
+			FontQuadCorners glyph = FontGetQuadCorners(&info, codePoint, scale, /*cartesian=*/true);
 
-			Vec3f p0 = V3f(offset + glyph.offset[0] * scale, 0.0f);
-			Vec3f p1 = V3f(offset + glyph.offset[1] * scale, 0.0f);
-			Vec3f p2 = V3f(offset + glyph.offset[2] * scale, 0.0f);
-			Vec3f p3 = V3f(offset + glyph.offset[3] * scale, 0.0f);
+			Vec3f p0 = V3f(offset + glyph.offset[0], 0.0f);
+			Vec3f p1 = V3f(offset + glyph.offset[1], 0.0f);
+			Vec3f p2 = V3f(offset + glyph.offset[2], 0.0f);
+			Vec3f p3 = V3f(offset + glyph.offset[3], 0.0f);
 
 			verts[vertexIndex++] = { V4f(p0, 1.0f), color, glyph.uv[0] }; // Top-right
 			verts[vertexIndex++] = { V4f(p1, 1.0f), color, glyph.uv[1] }; // Top-left
@@ -1813,7 +1669,8 @@ static void PushTextToBuffer(FontBuffer &buffer, const FontInfo &info, const cha
 
 			buffer.ib.lastIndex += 4;
 
-			offset += V2f(glyph.advance * scale, 0.0f);
+			float advance = FontGetCharacterAdvance(&info, codePoint, nextCodePoint) * scale;
+			offset += V2f(advance, 0.0f);
 
 			++s;
 		}
@@ -1844,9 +1701,9 @@ static void ReleaseFontBuffer(FontBuffer &buffer) {
 }
 static void ClearFontBuffer(FontBuffer &buffer) {
 }
-static void PushTextToBuffer(FontBuffer &buffer, const FontInfo &info, const char *text, const float scale, const Vec2f &position, const Vec4f &color, const TextRenderMode mode) {
+static void PushTextToBuffer(FontBuffer &buffer, const LoadedFont &info, const char *text, const float scale, const Vec2f &position, const Vec4f &color, const TextRenderMode mode) {
 }
-static Vec2f ComputeTextSize(const FontInfo &info, const char *text, const float scale) {
+static Vec2f ComputeTextSize(const LoadedFont &info, const char *text, const float scale) {
 	return V2fZero();
 }
 #endif // USE_HARDWARE_RENDERING
@@ -2038,7 +1895,7 @@ struct LoadState {
 
 struct AppState {
 	PlayerState player;
-	FontInfo fontInfo;
+	LoadedFont fontInfo;
 	FontBuffer fontBuffer;
 	fplWindowSize viewport;
 	LoadState loadState;	
@@ -2098,7 +1955,7 @@ static void ReleaseApp(AppState &state, const uint64_t mainThreadId) {
 	ReleasePlayer(state.player, mainThreadId);
 
 	ReleaseFontBuffer(state.fontBuffer);
-	ReleaseFontInfo(state.fontInfo);
+	FontFree(fpl_null, &state.fontInfo);
 }
 
 static bool InitApp(AppState &state) {
@@ -2124,13 +1981,13 @@ static bool InitApp(AppState &state) {
 	// Font Info
 	uint32_t firstChar = ' ';
 	uint32_t charCount = '~' - firstChar;
-	if (!LoadFontInfo(ptr_fontSulphurPointRegular, sizeOf_fontSulphurPointRegular, 1024, 1024, firstChar, charCount, 32.0f, &state.fontInfo)) {
+	if (!FontLoadFromMemoryEx(fpl_null, ptr_fontSulphurPointRegular, sizeOf_fontSulphurPointRegular, 0, 32.0f, firstChar, firstChar + charCount - 1, 1024, 1024, false, FontQuality_Packed2x, &state.fontInfo)) {
 		ReleaseApp(state, state.mainThreadId);
 		return(false);
 	}
 
 	// Font Buffer
-	state.fontBuffer = AllocFontBuffer(state.fontInfo.atlasWidth, state.fontInfo.atlasHeight, state.fontInfo.atlasBitmap);
+	state.fontBuffer = AllocFontBuffer(state.fontInfo.atlasWidth, state.fontInfo.atlasHeight, state.fontInfo.atlasAlphaBitmap);
 
 	// Player
 	InitPlayer(state.player);
@@ -3156,8 +3013,8 @@ static void RenderOSD(AppState *state, const Mat4f &proj, const float w, const f
 
 	float osdFontSize = (float)h / 40.0f;
 	float largeOsdFontSize = (float)h / 20.0f;
-	float fontHeight = osdFontSize * (state->fontInfo.ascent + state->fontInfo.descent);
-	float fontBaseline = osdFontSize * state->fontInfo.ascent;
+	float fontHeight = osdFontSize * (state->fontInfo.info.ascent + state->fontInfo.info.descent);
+	float fontBaseline = osdFontSize * state->fontInfo.info.ascent;
 	float fontLineHeight = fontHeight * 1.25f;
 	Vec2f osdPos = V2f(0.0f, h - fontBaseline);
 	Vec2f centerPos = V2f(w * 0.5f, h * 0.5f);
