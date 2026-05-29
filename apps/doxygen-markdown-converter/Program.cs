@@ -12,11 +12,11 @@ namespace doxygen_markdown_converter;
 ///   source-dir       Folder containing the generated Doxygen *.html files.
 ///   target-dir       Folder (wiki repository root) where *.md files are written.
 ///   index-map-name   Optional. Markdown file name that "index.html" maps to.
-///                    Defaults to "FPL-Documentation.md".
+///                    Defaults to "Final-Platform-Layer.md".
 /// </summary>
 internal static class Program
 {
-    private const string DefaultIndexMapName = "FPL-Documentation.md";
+    private const string DefaultIndexMapName = "Final-Platform-Layer.md";
 
     private static int Main(string[] args)
     {
