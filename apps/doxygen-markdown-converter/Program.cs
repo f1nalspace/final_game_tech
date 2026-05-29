@@ -60,12 +60,21 @@ internal static class Program
             return 1;
         }
 
-        // Build the html-file -> wiki-slug map first, so links inside any page
-        // can be rewritten to the correct target page while it is converted.
-        var linkMap = new LinkMap(indexMapName);
+        // Pass 1: read every page title so file names (and therefore the wiki's
+        // page titles) and inter-page links can be derived up front.
+        var titles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (string file in htmlFiles)
-            linkMap.Register(Path.GetFileName(file));
+        {
+            string name = Path.GetFileName(file);
+            string? title = null;
+            try { title = DoxygenMarkdownConverter.ReadTitle(file); }
+            catch { /* fall back to the file name below */ }
+            titles[name] = string.IsNullOrWhiteSpace(title)
+                ? Path.GetFileNameWithoutExtension(name)
+                : title!;
+        }
 
+        var linkMap = new LinkMap(indexMapName, titles);
         var converter = new DoxygenMarkdownConverter(linkMap);
 
         int converted = 0;
@@ -88,6 +97,21 @@ internal static class Program
                 failed++;
                 Console.Error.WriteLine($"  FAILED {htmlName}: {ex.Message}");
             }
+        }
+
+        // Generate the custom navigation sidebar (mirrors Doxygen's structure).
+        try
+        {
+            string indexTitle = titles.TryGetValue("index.html", out string? it) && !string.IsNullOrWhiteSpace(it)
+                ? it
+                : Path.GetFileNameWithoutExtension(indexMapName);
+            string sidebar = new SidebarBuilder(sourceDir, linkMap).Build(indexTitle);
+            File.WriteAllText(Path.Combine(targetDir, "_Sidebar.md"), sidebar, new UTF8Encoding(false));
+            Console.WriteLine("  _Sidebar.md (navigation) written");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"  WARN: could not write _Sidebar.md: {ex.Message}");
         }
 
         Console.WriteLine();

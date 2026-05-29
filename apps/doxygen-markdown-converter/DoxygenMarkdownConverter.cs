@@ -43,9 +43,8 @@ internal sealed class DoxygenMarkdownConverter
 
         var sb = new StringBuilder();
 
-        string? title = ExtractTitle(doc);
-        if (!string.IsNullOrEmpty(title))
-            sb.Append("# ").Append(title).Append("\n\n");
+        // No leading "# Title": GitHub already shows the page title (derived from
+        // the file name) as the page header, so emitting one would duplicate it.
 
         HtmlNode? content =
             doc.DocumentNode.SelectSingleNode("//div[@class='contents']")
@@ -55,6 +54,14 @@ internal sealed class DoxygenMarkdownConverter
             RenderChildren(content, sb, new Ctx());
 
         return Normalize(sb.ToString());
+    }
+
+    /// <summary>Loads a Doxygen html file and returns its page title (or null).</summary>
+    public static string? ReadTitle(string path)
+    {
+        var doc = new HtmlDocument { OptionDefaultStreamEncoding = Encoding.UTF8 };
+        doc.Load(path, Encoding.UTF8);
+        return ExtractTitle(doc);
     }
 
     private static string? ExtractTitle(HtmlDocument doc)

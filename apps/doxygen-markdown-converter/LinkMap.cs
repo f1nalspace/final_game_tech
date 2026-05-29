@@ -1,59 +1,71 @@
 using System.Text;
+using HtmlAgilityPack;
 
 namespace doxygen_markdown_converter;
 
 /// <summary>
-/// Maps Doxygen HTML file names to GitHub-wiki page locations and rewrites
-/// links between them.
+/// Maps Doxygen HTML file names to GitHub-wiki page slugs and rewrites links.
 ///
-/// Layout produced:
-/// <code>
-///   &lt;wiki-root&gt;/FPL-Documentation.md          (from index.html)
-///   &lt;wiki-root&gt;/FPL-Documentation/&lt;page&gt;.md   (every other page)
-/// </code>
-/// The sub-folder is named after the index page (without extension). Links are
-/// emitted as <em>relative</em> paths computed between the two files, so they
-/// resolve correctly regardless of which folder a page lives in (root index ->
-/// folder page, folder page -> sibling, folder page -> root index).
+/// A GitHub wiki is a flat namespace: every page is a single <c>*.md</c> file in
+/// the repo root and the page's display name (shown in the auto "Pages" panel
+/// and as the page header) is derived from the <em>file name</em> with dashes
+/// turned into spaces. There is no title metadata.
+///
+/// So to give pages real titles we name each file after its Doxygen page title,
+/// slugified (e.g. "Console functions" -> <c>Console-functions.md</c>, which the
+/// wiki shows as "Console functions"). The index page keeps the explicit name
+/// supplied on the command line. Slugs are de-duplicated so collisions (several
+/// Doxygen index pages share a title) stay unique.
 /// </summary>
 internal sealed class LinkMap
 {
     private const string IndexHtml = "index.html";
 
-    private readonly string _indexSlug;   // e.g. "FPL-Documentation"
-    private readonly string _folder;      // sub-folder for non-index pages
-    private readonly HashSet<string> _known = new(StringComparer.OrdinalIgnoreCase);
+    private readonly string _indexSlug;
+    private readonly Dictionary<string, string> _htmlToSlug =
+        new(StringComparer.OrdinalIgnoreCase);
 
-    public LinkMap(string indexMarkdownName)
+    /// <param name="indexMarkdownName">Markdown file name index.html maps to.</param>
+    /// <param name="htmlTitles">Map of html file name -> raw page title.</param>
+    public LinkMap(string indexMarkdownName, IReadOnlyDictionary<string, string> htmlTitles)
     {
         _indexSlug = Path.GetFileNameWithoutExtension(indexMarkdownName);
-        _folder = _indexSlug;
-        _known.Add(IndexHtml);
+
+        var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { _indexSlug };
+        _htmlToSlug[IndexHtml] = _indexSlug;
+
+        // Deterministic ordering so de-dup suffixes are stable across runs.
+        foreach (string html in htmlTitles.Keys.OrderBy(k => k, StringComparer.Ordinal))
+        {
+            if (html.Equals(IndexHtml, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            string title = htmlTitles[html];
+            string baseSlug = Slugify(title);
+            if (baseSlug.Length == 0)
+                baseSlug = Slugify(Path.GetFileNameWithoutExtension(html));
+
+            string slug = baseSlug;
+            for (int n = 2; used.Contains(slug); n++)
+                slug = $"{baseSlug}-{n}";
+
+            used.Add(slug);
+            _htmlToSlug[html] = slug;
+        }
     }
 
-    /// <summary>Records that a given Doxygen html file exists in the source set.</summary>
-    public void Register(string htmlFileName) => _known.Add(htmlFileName);
+    /// <summary>Output markdown file name for a source html file.</summary>
+    public string MarkdownFileFor(string htmlFileName) => SlugFor(htmlFileName) + ".md";
+
+    /// <summary>Wiki slug (page name without extension) for a source html file.</summary>
+    public string SlugFor(string htmlFileName) =>
+        _htmlToSlug.TryGetValue(htmlFileName, out string? slug)
+            ? slug
+            : Slugify(Path.GetFileNameWithoutExtension(htmlFileName));
 
     /// <summary>
-    /// Output markdown file path (relative to the wiki root) for a source html file.
-    /// </summary>
-    public string MarkdownFileFor(string htmlFileName) => WikiPath(htmlFileName) + ".md";
-
-    /// <summary>
-    /// Wiki path of a page relative to the wiki root, without extension.
-    /// index.html -> "FPL-Documentation"; everything else -> "FPL-Documentation/&lt;base&gt;".
-    /// </summary>
-    private string WikiPath(string htmlFileName)
-    {
-        if (htmlFileName.Equals(IndexHtml, StringComparison.OrdinalIgnoreCase))
-            return _indexSlug;
-        string baseName = Path.GetFileNameWithoutExtension(htmlFileName);
-        return $"{_folder}/{baseName}";
-    }
-
-    /// <summary>
-    /// Rewrites a Doxygen href found on <paramref name="currentHtmlFile"/> into a
-    /// wiki-compatible (relative) link target. Returns <c>null</c> to drop the link.
+    /// Rewrites a Doxygen href (found on <paramref name="currentHtmlFile"/>) into
+    /// a wiki link target. Returns <c>null</c> to drop the link.
     /// </summary>
     public string? RewriteHref(string href, string currentHtmlFile)
     {
@@ -67,8 +79,7 @@ internal sealed class LinkMap
             href.StartsWith("//"))
             return href;
 
-        // Pure in-page anchor: kept as-is; the converter emits matching
-        // <a name="..."></a> markers so it resolves.
+        // Pure in-page anchor: the converter emits matching <a name="..."></a>.
         if (href.StartsWith('#'))
             return href;
 
@@ -84,45 +95,45 @@ internal sealed class LinkMap
         if (file.Length == 0)
             return href;
 
-        // Internal Doxygen page -> relative wiki link.
         if (file.EndsWith(".html", StringComparison.OrdinalIgnoreCase))
         {
-            // Link to the current page itself: prefer a plain in-page anchor.
-            if (file.Equals(currentHtmlFile, StringComparison.OrdinalIgnoreCase))
-                return anchor.Length > 0 ? $"#{anchor}" : WikiPath(file).Split('/')[^1];
+            // Link into the current page -> prefer a plain in-page anchor.
+            if (file.Equals(currentHtmlFile, StringComparison.OrdinalIgnoreCase) &&
+                anchor.Length > 0)
+                return $"#{anchor}";
 
-            string rel = MakeRelative(WikiPath(currentHtmlFile), WikiPath(file));
-            return anchor.Length > 0 ? $"{rel}#{anchor}" : rel;
+            string slug = SlugFor(file);
+            return anchor.Length > 0 ? $"{slug}#{anchor}" : slug;
         }
 
-        // Anything else (images, css, ...) keeps its relative path.
+        // Images / other resources keep their relative path.
         return href;
     }
 
     /// <summary>
-    /// Relative path from one wiki file to another (both "/"-separated, no
-    /// extension). The last segment of each path is the file name.
+    /// Turns a page title into a GitHub-wiki-safe slug: ASCII alphanumerics are
+    /// kept, every other run of characters becomes a single dash. The wiki then
+    /// renders the dashes back as spaces in the page title.
     /// </summary>
-    private static string MakeRelative(string fromPath, string toPath)
+    public static string Slugify(string title)
     {
-        string[] from = fromPath.Split('/');
-        string[] to = toPath.Split('/');
-        int fromDirLen = from.Length - 1;
-        int toDirLen = to.Length - 1;
-
-        int common = 0;
-        while (common < fromDirLen && common < toDirLen &&
-               string.Equals(from[common], to[common], StringComparison.OrdinalIgnoreCase))
-            common++;
-
-        var sb = new StringBuilder();
-        for (int up = common; up < fromDirLen; up++)
-            sb.Append("../");
-        for (int down = common; down < toDirLen; down++)
-            sb.Append(to[down]).Append('/');
-        sb.Append(to[^1]);
-
-        string rel = sb.ToString();
-        return rel.Length == 0 ? to[^1] : rel;
+        string t = HtmlEntity.DeEntitize(title);
+        var sb = new StringBuilder(t.Length);
+        bool lastDash = false;
+        foreach (char c in t)
+        {
+            bool keep = c is (>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or (>= '0' and <= '9');
+            if (keep)
+            {
+                sb.Append(c);
+                lastDash = false;
+            }
+            else if (!lastDash)
+            {
+                sb.Append('-');
+                lastDash = true;
+            }
+        }
+        return sb.ToString().Trim('-');
     }
 }
