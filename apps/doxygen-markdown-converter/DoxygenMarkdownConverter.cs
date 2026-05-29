@@ -189,10 +189,15 @@ internal sealed class DoxygenMarkdownConverter
         var inline = new StringBuilder();
         void Flush()
         {
-            string t = CollapseWs(inline.ToString()).Trim();
-            if (t.Length > 0)
-                sb.Append(t).Append("\n\n");
+            // Each <br>-separated line (newline marker) becomes its own paragraph.
+            string raw = inline.ToString();
             inline.Clear();
+            foreach (string part in raw.Split('\n'))
+            {
+                string line = CollapseWs(part).Trim();
+                if (line.Length > 0)
+                    sb.Append(line).Append("\n\n");
+            }
         }
 
         foreach (HtmlNode child in node.ChildNodes)
@@ -574,7 +579,10 @@ internal sealed class DoxygenMarkdownConverter
         switch (node.Name)
         {
             case "br":
-                sb.Append(ctx.InTableCell ? "<br>" : "  \n");
+                // In a table cell a real <br> is the only way to break a line.
+                // Elsewhere emit a newline marker that RenderMixed turns into a
+                // paragraph break (Doxygen uses <br> as its line separator).
+                sb.Append(ctx.InTableCell ? "<br>" : "\n");
                 break;
 
             case "b": case "strong":
