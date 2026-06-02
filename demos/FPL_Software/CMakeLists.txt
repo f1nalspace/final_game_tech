@@ -12,9 +12,14 @@ set(MY_COMPILER "c99")
 
 set(MY_EXTERNAL_LIBS "")
 
+if(UNIX)
+	list(APPEND MY_EXTERNAL_LIBS "m")
+endif()
+
 set(MY_INCLUDE_DIRS
 	"../../"
 	"../additions/"
+	"../dependencies/"
 	)
 
 set(MY_HEADER_FILES
