@@ -22,6 +22,9 @@ Changelog
 	- Fixed QuatToMat4() was not computing in column-major order
 	- Fixed V2iProject() was not computing NCD correctly
 	- Added M4fTranspose() that transposes a Mat4f
+	- Added struct Mat3f
+	- Added functions M3fInit, M3fIdentity, M3fCopy and M3f() C++ variants
+	- Added functions M3fFromMat4, V3fMultM3f, M3fMult, M3fTranspose, M3fTranspose, M3fScaleV2, M3fRotationZ
 
 	## 2025-12-31
 	- Added struct Vec2u
@@ -1864,6 +1867,114 @@ fpl_force_inline Viewport4f VP4fComputeByAspect(const Vec2f screenSize, const fl
 		viewOffset.y = (screenSize.h - viewSize.h) * 0.5f;
 	}
 	Viewport4f result = VP4fInit(viewOffset.x, viewOffset.y, viewSize.w, viewSize.h);
+	return(result);
+}
+
+//
+// Mat3f (column-major, r[col][row])
+//
+typedef union Mat3f {
+	struct {
+		Vec3f col1;
+		Vec3f col2;
+		Vec3f col3;
+	};
+	struct {
+		float r[3][3];
+	};
+	float m[9];
+} Mat3f;
+
+#define M3F(c1, c2, c3) {c1, c2, c3}
+#define M3FArg(m) (Mat3f)m
+
+fpl_force_inline Mat3f M3fInit(const float value) {
+	Mat3f result;
+	result.col1 = V3fInit(value, 0.0f, 0.0f);
+	result.col2 = V3fInit(0.0f, value, 0.0f);
+	result.col3 = V3fInit(0.0f, 0.0f, value);
+	return(result);
+}
+
+fpl_force_inline Mat3f M3fIdentity() {
+	return M3fInit(1.0f);
+}
+
+fpl_force_inline Mat3f M3fCopy(const Mat3f other) {
+	Mat3f result = fplStructInit(Mat3f, other.col1, other.col2, other.col3);
+	return(result);
+}
+
+#if defined(__cplusplus)
+fpl_force_inline Mat3f M3f() {
+	return M3fIdentity();
+}
+fpl_force_inline Mat3f M3f(const float value) {
+	return M3fInit(value);
+}
+fpl_force_inline Mat3f M3f(const Mat3f &other) {
+	return M3fCopy(other);
+}
+#endif
+
+// Upper-left 3x3 of a Mat4f (drops translation row/column).
+fpl_force_inline Mat3f M3fFromMat4(const Mat4f m) {
+	Mat3f result;
+	result.col1 = V3fInit(m.r[0][0], m.r[0][1], m.r[0][2]);
+	result.col2 = V3fInit(m.r[1][0], m.r[1][1], m.r[1][2]);
+	result.col3 = V3fInit(m.r[2][0], m.r[2][1], m.r[2][2]);
+	return(result);
+}
+
+// Transforms a vector: result = M * v (column-major).
+fpl_force_inline Vec3f V3fMultM3f(const Mat3f m, const Vec3f v) {
+	Vec3f result;
+	result.x = m.r[0][0] * v.x + m.r[1][0] * v.y + m.r[2][0] * v.z;
+	result.y = m.r[0][1] * v.x + m.r[1][1] * v.y + m.r[2][1] * v.z;
+	result.z = m.r[0][2] * v.x + m.r[1][2] * v.y + m.r[2][2] * v.z;
+	return(result);
+}
+
+fpl_force_inline Mat3f M3fMult(const Mat3f a, const Mat3f b) {
+	Mat3f result;
+	result.col1 = V3fMultM3f(a, b.col1);
+	result.col2 = V3fMultM3f(a, b.col2);
+	result.col3 = V3fMultM3f(a, b.col3);
+	return(result);
+}
+
+fpl_force_inline Mat3f M3fTranspose(const Mat3f m) {
+	Mat3f result;
+	for (int row = 0; row < 3; ++row) {
+		for (int col = 0; col < 3; ++col) {
+			result.r[col][row] = m.r[row][col];
+		}
+	}
+	return(result);
+}
+
+// 2D affine helpers (translation in column 3).
+fpl_force_inline Mat3f M3fTranslationV2(const Vec2f p) {
+	Mat3f result = M3fIdentity();
+	result.r[2][0] = p.x;
+	result.r[2][1] = p.y;
+	return(result);
+}
+
+fpl_force_inline Mat3f M3fScaleV2(const Vec2f s) {
+	Mat3f result = M3fIdentity();
+	result.r[0][0] = s.x;
+	result.r[1][1] = s.y;
+	return(result);
+}
+
+fpl_force_inline Mat3f M3fRotationZ(const float angle) {
+	float c = F32Cos(angle);
+	float s = F32Sin(angle);
+	Mat3f result;
+	result.col1 = V3fInit(c, s, 0.0f);
+	result.col2 = V3fInit(-s, c, 0.0f);
+	result.col3 = V3fInit(0.0f, 0.0f, 1.0f);
 	return(result);
 }
 
