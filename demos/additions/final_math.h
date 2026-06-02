@@ -26,6 +26,8 @@ Changelog
 	- Added functions M3fInit, M3fIdentity, M3fCopy and M3f() C++ variants
 	- Added functions M3fFromMat4, V3fMultM3f, M3fMult, M3fTranspose, M3fTranslationV2, M3fScaleV2, M3fRotationZ
 	- Added functions F32NaN() and F32Infinity()
+	- Added functions F32Floor() and F32Ceil()
+	- Added Doxygen documentation for all types, constants, macros and functions
 	- Removed usage of _USE_MATH_DEFINES
 
 	## 2025-12-31
@@ -1120,6 +1122,24 @@ fpl_force_inline float F32Power(const float x, const float y) {
 fpl_force_inline float F32Modulate(const float x, const float y) {
 	float result = fmodf(x, y);
 	return result;
+}
+/**
+* @brief Rounds a value down to the nearest integer.
+* @param[in] value The input value.
+* @return The largest integer value not greater than the input.
+*/
+fpl_force_inline float F32Floor(const float value) {
+	float result = floorf(value);
+	return(result);
+}
+/**
+* @brief Rounds a value up to the nearest integer.
+* @param[in] value The input value.
+* @return The smallest integer value not less than the input.
+*/
+fpl_force_inline float F32Ceil(const float value) {
+	float result = ceilf(value);
+	return(result);
 }
 /**
 * @brief Returns the smaller of two values.
