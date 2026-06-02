@@ -17,6 +17,7 @@ Changelog
 	- Fixed V2fDistanceSquared() / V3fDistanceSquared() was not implemented correctly
 	- Fixed V4fZero() was not initializing all components zo zero
 	- Fixed M4fRotationY() was not computed in column-row order
+	- Fixed M4fInverse() was not transposing the resulting matrix
 	- Added M4fTranspose() that transposes a Mat4f
 
 	## 2025-12-31
@@ -1367,7 +1368,10 @@ fpl_force_inline Mat4f M4fInverse(const Mat4f mat) {
 		Inverse.m[i] *= inverseDet;
 	}
 
-	return Inverse;
+	// The cofactor expansion above produces the inverse in row-major order;
+	// transpose it back to the column-major storage used everywhere else so
+	// M4fMult(m, M4fInverse(m)) == identity.
+	return M4fTranspose(Inverse);
 }
 
 #if defined(__cplusplus)
