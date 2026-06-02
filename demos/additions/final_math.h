@@ -1929,6 +1929,16 @@ fpl_force_inline Mat2f M2fMultTranspose(const Mat2f a, const Mat2f b) {
 //
 // Mat4f
 //
+/**
+* @brief Builds a right-handed orthographic projection matrix.
+* @param[in] left The left clipping plane.
+* @param[in] right The right clipping plane.
+* @param[in] bottom The bottom clipping plane.
+* @param[in] top The top clipping plane.
+* @param[in] zNear The near clipping plane.
+* @param[in] zFar The far clipping plane.
+* @return The orthographic projection matrix.
+*/
 fpl_force_inline static Mat4f M4fOrthoRH(const float left, const float right, const float bottom, const float top, const float zNear, const float zFar) {
 	Mat4f result = M4fInit(1.0f);
 	result.r[0][0] = 2.0f / (right - left);
@@ -1940,6 +1950,14 @@ fpl_force_inline static Mat4f M4fOrthoRH(const float left, const float right, co
 	return (result);
 }
 
+/**
+* @brief Builds a right-handed perspective projection matrix.
+* @param[in] fov The vertical field of view in radians.
+* @param[in] aspect The aspect ratio (width / height).
+* @param[in] zNear The near clipping plane.
+* @param[in] zFar The far clipping plane.
+* @return The perspective projection matrix.
+*/
 fpl_force_inline static Mat4f M4fPerspectiveRH(const float fov, const float aspect, const float zNear, const float zFar) {
 	float tanHalfFov = F32Tan(fov * 0.5f);
 	Mat4f result = M4fInit(0.0f);
@@ -1951,6 +1969,13 @@ fpl_force_inline static Mat4f M4fPerspectiveRH(const float fov, const float aspe
 	return (result);
 }
 
+/**
+* @brief Builds a right-handed view matrix looking from an eye toward a target.
+* @param[in] eye The camera position.
+* @param[in] center The target point the camera looks at.
+* @param[in] up The world up direction.
+* @return The view matrix.
+*/
 fpl_force_inline static Mat4f M4fLookAtRH(const Vec3f eye, const Vec3f center, const Vec3f up) {
 	// Forward/Side/Upward
 	const Vec3f f = V3fNormalize(V3fSub(center, eye));
@@ -1980,6 +2005,11 @@ fpl_force_inline static Mat4f M4fLookAtRH(const Vec3f eye, const Vec3f center, c
 	return (result);
 }
 
+/**
+* @brief Builds a translation matrix from a 2D offset (z translation is zero).
+* @param[in] p The x/y translation.
+* @return The translation matrix.
+*/
 fpl_force_inline static Mat4f M4fTranslationV2(const Vec2f p) {
 	Mat4f result = M4fInit(1.0f);
 	result.col4.xy = p;
@@ -1988,6 +2018,11 @@ fpl_force_inline static Mat4f M4fTranslationV2(const Vec2f p) {
 	return (result);
 }
 
+/**
+* @brief Builds a translation matrix from a 3D offset.
+* @param[in] p The x/y/z translation.
+* @return The translation matrix.
+*/
 fpl_force_inline static Mat4f M4fTranslationV3(const Vec3f p) {
 	Mat4f result = M4fInit(1.0f);
 	result.col4.xyz = p;
@@ -1995,6 +2030,11 @@ fpl_force_inline static Mat4f M4fTranslationV3(const Vec3f p) {
 	return (result);
 }
 
+/**
+* @brief Builds a translation matrix from a 4D vector used as the fourth column.
+* @param[in] p The translation column (including w).
+* @return The translation matrix.
+*/
 fpl_force_inline static Mat4f M4fTranslationV4(const Vec4f p) {
 	Mat4f result = M4fInit(1.0f);
 	result.col4 = p;
@@ -2002,17 +2042,25 @@ fpl_force_inline static Mat4f M4fTranslationV4(const Vec4f p) {
 }
 
 #if defined(__cplusplus)
+//! C++ overload building a translation matrix from a Vec2f.
 fpl_force_inline static Mat4f M4fTranslation(const Vec2f p) {
 	return M4fTranslationV2(p);
 }
+//! C++ overload building a translation matrix from a Vec3f.
 fpl_force_inline static Mat4f M4fTranslation(const Vec3f p) {
 	return M4fTranslationV3(p);
 }
+//! C++ overload building a translation matrix from a Vec4f.
 fpl_force_inline static Mat4f M4fTranslation(const Vec4f p) {
 	return M4fTranslationV4(p);
 }
 #endif // __cplusplus
 
+/**
+* @brief Builds a uniform scale matrix.
+* @param[in] s The scale applied to x, y and z.
+* @return The scale matrix.
+*/
 fpl_force_inline static Mat4f M4fScaleScalar(const float s) {
 	Mat4f result = M4fInit(1.0f);
 	result.col1.x = s;
@@ -2021,6 +2069,11 @@ fpl_force_inline static Mat4f M4fScaleScalar(const float s) {
 	return (result);
 }
 
+/**
+* @brief Builds a scale matrix from a 2D scale (z scale is one).
+* @param[in] s The x/y scale.
+* @return The scale matrix.
+*/
 fpl_force_inline static Mat4f M4fScaleV2(const Vec2f s) {
 	Mat4f result = M4fInit(1.0f);
 	result.col1.x = s.x;
@@ -2029,6 +2082,11 @@ fpl_force_inline static Mat4f M4fScaleV2(const Vec2f s) {
 	return (result);
 }
 
+/**
+* @brief Builds a scale matrix from a 3D scale.
+* @param[in] s The x/y/z scale.
+* @return The scale matrix.
+*/
 fpl_force_inline static Mat4f M4fScaleV3(const Vec3f s) {
 	Mat4f result = M4fInit(1.0f);
 	result.col1.x = s.x;
@@ -2038,17 +2096,25 @@ fpl_force_inline static Mat4f M4fScaleV3(const Vec3f s) {
 }
 
 #if defined(__cplusplus)
+//! C++ overload building a uniform scale matrix.
 fpl_force_inline static Mat4f M4fScale(const float s) {
 	return M4fScaleScalar(s);
 }
+//! C++ overload building a scale matrix from a Vec2f.
 fpl_force_inline static Mat4f M4fScale(const Vec2f p) {
 	return M4fScaleV2(p);
 }
+//! C++ overload building a scale matrix from a Vec3f.
 fpl_force_inline static Mat4f M4fScale(const Vec3f p) {
 	return M4fScaleV3(p);
 }
 #endif // __cplusplus
 
+/**
+* @brief Builds a rotation matrix around the x axis.
+* @param[in] angle The rotation angle in radians.
+* @return The rotation matrix.
+*/
 fpl_force_inline static Mat4f M4fRotationX(const float angle) {
 	float c = F32Cos(angle);
 	float s = F32Sin(angle);
@@ -2060,6 +2126,11 @@ fpl_force_inline static Mat4f M4fRotationX(const float angle) {
 	return (result);
 }
 
+/**
+* @brief Builds a rotation matrix around the y axis.
+* @param[in] angle The rotation angle in radians.
+* @return The rotation matrix.
+*/
 fpl_force_inline static Mat4f M4fRotationY(const float angle) {
 	float c = F32Cos(angle);
 	float s = F32Sin(angle);
@@ -2071,6 +2142,11 @@ fpl_force_inline static Mat4f M4fRotationY(const float angle) {
 	return (result);
 }
 
+/**
+* @brief Builds a rotation matrix around the z axis.
+* @param[in] angle The rotation angle in radians.
+* @return The rotation matrix.
+*/
 fpl_force_inline static Mat4f M4fRotationZ(const float angle) {
 	float c = F32Cos(angle);
 	float s = F32Sin(angle);
@@ -2082,6 +2158,11 @@ fpl_force_inline static Mat4f M4fRotationZ(const float angle) {
 	return (result);
 }
 
+/**
+* @brief Builds a 4x4 z-rotation matrix from a 2x2 rotation matrix.
+* @param[in] m The 2x2 rotation matrix providing the rotation.
+* @return The equivalent 4x4 z-rotation matrix.
+*/
 fpl_force_inline static Mat4f M4fRotationZFromM2f(const Mat2f m) {
 	Mat4f result;
 	result.col1 = V4fInit(m.col1.x, m.col1.y, 0.0f, 0.0f);
@@ -2091,6 +2172,12 @@ fpl_force_inline static Mat4f M4fRotationZFromM2f(const Mat2f m) {
 	return (result);
 }
 
+/**
+* @brief Multiplies two 4x4 matrices (a * b).
+* @param[in] a The left-hand matrix.
+* @param[in] b The right-hand matrix.
+* @return The matrix product a * b.
+*/
 fpl_force_inline Mat4f M4fMult(const Mat4f a, const Mat4f b) {
 	Mat4f result;
 	for (int i = 0; i < 16; i += 4) {
@@ -2105,6 +2192,11 @@ fpl_force_inline Mat4f M4fMult(const Mat4f a, const Mat4f b) {
 	return(result);
 }
 
+/**
+* @brief Transposes a 4x4 matrix.
+* @param[in] m The input matrix.
+* @return The transposed matrix.
+*/
 fpl_force_inline Mat4f M4fTranspose(const Mat4f m) {
 	Mat4f result;
 	for (int row = 0; row < 4; ++row) {
@@ -2115,6 +2207,11 @@ fpl_force_inline Mat4f M4fTranspose(const Mat4f m) {
 	return(result);
 }
 
+/**
+* @brief Computes the inverse of a 4x4 matrix.
+* @param[in] mat The input matrix.
+* @return The inverse matrix. Behavior is undefined when the matrix is singular.
+*/
 fpl_force_inline Mat4f M4fInverse(const Mat4f mat) {
 	float SubFactor00 = mat.r[2][2] * mat.r[3][3] - mat.r[3][2] * mat.r[2][3];
 	float SubFactor01 = mat.r[2][1] * mat.r[3][3] - mat.r[3][1] * mat.r[2][3];
@@ -2177,12 +2274,19 @@ fpl_force_inline Mat4f M4fInverse(const Mat4f mat) {
 }
 
 #if defined(__cplusplus)
+//! C++ operator multiplying two Mat4f matrices.
 fpl_force_inline Mat4f operator *(const Mat4f &a, const Mat4f &b) {
 	Mat4f result = M4fMult(a, b);
 	return(result);
 }
 #endif // __cplusplus
 
+/**
+* @brief Transforms a 4D vector by a 4x4 matrix (M * v).
+* @param[in] mat The column-major matrix.
+* @param[in] v The vector to transform.
+* @return The transformed vector.
+*/
 fpl_force_inline Vec4f V4fMultM4f(const Mat4f mat, const Vec4f v) {
 	// Column-major storage: r[col][row], so element (row i, col j) is r[j][i].
 	// Computes M * v, matches OpenGL matrix layout.
