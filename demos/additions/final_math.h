@@ -2909,12 +2909,25 @@ fpl_force_inline Pixel LinearToPixelSRGB(const Vec4f linear) {
 
 
 
+/**
+* @brief Divides a 4D vector by a scalar.
+* @param[in] vec The vector.
+* @param[in] divisor The scalar divisor.
+* @return The vector with each component divided by the divisor.
+*/
 fpl_force_inline Vec4f V4fDivideScalar(const Vec4f vec, const float divisor) {
 	float ratio = 1.0f / divisor;
 	Vec4f result = V4fInit(vec.x * ratio, vec.y * ratio, vec.z * ratio, vec.w * ratio);
 	return result;
 }
 
+/**
+* @brief Unprojects a screen position into 2D world space.
+* @param[in] screenPos The pixel position on screen.
+* @param[in] mvp The combined model-view-projection matrix.
+* @param[in] viewport The viewport rectangle.
+* @return The corresponding world-space position.
+*/
 fpl_force_inline Vec2f V2fUnproject(const Vec2i screenPos, const Mat4f mvp, const Viewport4i viewport) {
 	Mat4f inverse = M4fInverse(mvp);
 
@@ -2939,6 +2952,13 @@ fpl_force_inline Vec2f V2fUnproject(const Vec2i screenPos, const Mat4f mvp, cons
 	return result;
 }
 
+/**
+* @brief Projects a 2D world position to a screen pixel position (inverse of V2fUnproject).
+* @param[in] worldPos The world-space position.
+* @param[in] mvp The combined model-view-projection matrix.
+* @param[in] viewport The viewport rectangle.
+* @return The pixel position on screen, rounded to the nearest pixel.
+*/
 fpl_force_inline Vec2i V2iProject(const Vec2f worldPos, const Mat4f mvp, const Viewport4i viewport) {
 	// Convert world position to homogeneous clip space
 	Vec4f world4 = V4fInit(worldPos.x, worldPos.y, 0.0f, 1.0f);
@@ -2957,6 +2977,12 @@ fpl_force_inline Vec2i V2iProject(const Vec2f worldPos, const Mat4f mvp, const V
 	return V2iInit(screenX, screenY);
 }
 
+/**
+* @brief Computes an integer viewport that fits a target aspect ratio inside the screen (letterbox/pillarbox).
+* @param[in] screenSize The screen width and height in pixels.
+* @param[in] targetAspect The desired aspect ratio (width / height).
+* @return The centered viewport matching the target aspect ratio.
+*/
 fpl_force_inline Viewport4i VP4iComputeByAspect(const Vec2i screenSize, const float targetAspect) {
 	int targetHeight = (int)(screenSize.w / targetAspect);
 	Vec2i viewSize = V2iInit(screenSize.w, screenSize.h);
@@ -2974,6 +3000,12 @@ fpl_force_inline Viewport4i VP4iComputeByAspect(const Vec2i screenSize, const fl
 	return(result);
 }
 
+/**
+* @brief Computes a floating-point viewport that fits a target aspect ratio inside the screen (letterbox/pillarbox).
+* @param[in] screenSize The screen width and height.
+* @param[in] targetAspect The desired aspect ratio (width / height).
+* @return The centered viewport matching the target aspect ratio.
+*/
 fpl_force_inline Viewport4f VP4fComputeByAspect(const Vec2f screenSize, const float targetAspect) {
 	float targetHeight = screenSize.w / targetAspect;
 	Vec2f viewSize = V2fInit(screenSize.w, screenSize.h);
@@ -2994,21 +3026,38 @@ fpl_force_inline Viewport4f VP4fComputeByAspect(const Vec2f screenSize, const fl
 //
 // Mat3f (column-major, r[col][row])
 //
+/**
+* @union Mat3f
+* @brief A 3x3 column-major matrix of 32-bit floats, accessible by column, as r[col][row] or by index.
+* @note Storage is column-major (r[i] is column i, r[col][row]), matching the Mat4f convention.
+*/
 typedef union Mat3f {
 	struct {
+		//! The first column.
 		Vec3f col1;
+		//! The second column.
 		Vec3f col2;
+		//! The third column.
 		Vec3f col3;
 	};
 	struct {
+		//! The components as r[col][row] (column-major).
 		float r[3][3];
 	};
+	//! The components as an indexable array (column-major).
 	float m[9];
 } Mat3f;
 
+//! Brace-initializer list for a Mat3f literal from three columns.
 #define M3F(c1, c2, c3) {c1, c2, c3}
+//! Casts a brace-initializer list to a Mat3f value.
 #define M3FArg(m) (Mat3f)m
 
+/**
+* @brief Creates a diagonal 3x3 matrix with the given value on the main diagonal.
+* @param[in] value The value placed on the main diagonal.
+* @return The diagonal matrix.
+*/
 fpl_force_inline Mat3f M3fInit(const float value) {
 	Mat3f result;
 	result.col1 = V3fInit(value, 0.0f, 0.0f);
@@ -3017,28 +3066,44 @@ fpl_force_inline Mat3f M3fInit(const float value) {
 	return(result);
 }
 
+/**
+* @brief Creates a 3x3 identity matrix.
+* @return The identity matrix.
+*/
 fpl_force_inline Mat3f M3fIdentity() {
 	return M3fInit(1.0f);
 }
 
+/**
+* @brief Creates a copy of a Mat3f.
+* @param[in] other The matrix to copy.
+* @return A copy of the input matrix.
+*/
 fpl_force_inline Mat3f M3fCopy(const Mat3f other) {
 	Mat3f result = fplStructInit(Mat3f, other.col1, other.col2, other.col3);
 	return(result);
 }
 
 #if defined(__cplusplus)
+//! C++ overload constructing a 3x3 identity matrix.
 fpl_force_inline Mat3f M3f() {
 	return M3fIdentity();
 }
+//! C++ overload constructing a diagonal Mat3f.
 fpl_force_inline Mat3f M3f(const float value) {
 	return M3fInit(value);
 }
+//! C++ overload constructing a Mat3f from another Mat3f.
 fpl_force_inline Mat3f M3f(const Mat3f &other) {
 	return M3fCopy(other);
 }
 #endif
 
-// Upper-left 3x3 of a Mat4f (drops translation row/column).
+/**
+* @brief Extracts the upper-left 3x3 of a Mat4f (drops the translation row/column).
+* @param[in] m The source 4x4 matrix.
+* @return The upper-left 3x3 matrix.
+*/
 fpl_force_inline Mat3f M3fFromMat4(const Mat4f m) {
 	Mat3f result;
 	result.col1 = V3fInit(m.r[0][0], m.r[0][1], m.r[0][2]);
@@ -3047,7 +3112,12 @@ fpl_force_inline Mat3f M3fFromMat4(const Mat4f m) {
 	return(result);
 }
 
-// Transforms a vector: result = M * v (column-major).
+/**
+* @brief Transforms a 3D vector by a 3x3 matrix (M * v).
+* @param[in] m The column-major matrix.
+* @param[in] v The vector to transform.
+* @return The transformed vector.
+*/
 fpl_force_inline Vec3f V3fMultM3f(const Mat3f m, const Vec3f v) {
 	Vec3f result;
 	result.x = m.r[0][0] * v.x + m.r[1][0] * v.y + m.r[2][0] * v.z;
@@ -3056,6 +3126,12 @@ fpl_force_inline Vec3f V3fMultM3f(const Mat3f m, const Vec3f v) {
 	return(result);
 }
 
+/**
+* @brief Multiplies two 3x3 matrices (a * b).
+* @param[in] a The left-hand matrix.
+* @param[in] b The right-hand matrix.
+* @return The matrix product a * b.
+*/
 fpl_force_inline Mat3f M3fMult(const Mat3f a, const Mat3f b) {
 	Mat3f result;
 	result.col1 = V3fMultM3f(a, b.col1);
@@ -3064,6 +3140,11 @@ fpl_force_inline Mat3f M3fMult(const Mat3f a, const Mat3f b) {
 	return(result);
 }
 
+/**
+* @brief Transposes a 3x3 matrix.
+* @param[in] m The input matrix.
+* @return The transposed matrix.
+*/
 fpl_force_inline Mat3f M3fTranspose(const Mat3f m) {
 	Mat3f result;
 	for (int row = 0; row < 3; ++row) {
@@ -3074,7 +3155,11 @@ fpl_force_inline Mat3f M3fTranspose(const Mat3f m) {
 	return(result);
 }
 
-// 2D affine helpers (translation in column 3).
+/**
+* @brief Builds a 2D affine translation matrix (translation in column 3).
+* @param[in] p The x/y translation.
+* @return The translation matrix.
+*/
 fpl_force_inline Mat3f M3fTranslationV2(const Vec2f p) {
 	Mat3f result = M3fIdentity();
 	result.r[2][0] = p.x;
@@ -3082,6 +3167,11 @@ fpl_force_inline Mat3f M3fTranslationV2(const Vec2f p) {
 	return(result);
 }
 
+/**
+* @brief Builds a 2D affine scale matrix.
+* @param[in] s The x/y scale.
+* @return The scale matrix.
+*/
 fpl_force_inline Mat3f M3fScaleV2(const Vec2f s) {
 	Mat3f result = M3fIdentity();
 	result.r[0][0] = s.x;
@@ -3089,6 +3179,11 @@ fpl_force_inline Mat3f M3fScaleV2(const Vec2f s) {
 	return(result);
 }
 
+/**
+* @brief Builds a 3x3 rotation matrix around the z axis.
+* @param[in] angle The rotation angle in radians.
+* @return The rotation matrix.
+*/
 fpl_force_inline Mat3f M3fRotationZ(const float angle) {
 	float c = F32Cos(angle);
 	float s = F32Sin(angle);
