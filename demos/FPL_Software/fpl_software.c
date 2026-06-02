@@ -28,6 +28,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2026-06-02
+	- Pixel rendering pipeline (quads, lines, circles, triangles, texture-mapped)
+
 	## 2025-01-28
 	- Fixed makefiles for CC/CMake was broken
 
