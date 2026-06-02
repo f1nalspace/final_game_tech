@@ -181,7 +181,6 @@ typedef struct SubPixelMotionScenario {
 
 typedef struct AppScenarios {
 	ScenarioType current;
-	bool bilinear;
 	union {
 		PlanesScenario planes;
 		PixelPrimitivesScenario pixelPrimitives;
@@ -556,17 +555,15 @@ static void ScenarioRender(AppScenarios *app, fplVideoBackBuffer *bb) {
 		case ScenarioType_PixelPrimitives: RenderPixelPrimitives(&app->data.pixelPrimitives, bb); break;
 		case ScenarioType_OrthoPipeline: RenderOrthoPipeline(&app->data.orthoPipeline, bb); break;
 		case ScenarioType_VectorShapes: RenderVectorShapes(&app->data.vectorShapes, bb); break;
-		case ScenarioType_TexturedQuad: RenderTexturedQuad(&app->data.texturedQuad, bb, app->bilinear); break;
-		case ScenarioType_SubPixelMotion: RenderSubPixelMotion(&app->data.subPixelMotion, bb, app->bilinear); break;
+		case ScenarioType_TexturedQuad: RenderTexturedQuad(&app->data.texturedQuad, bb, false); break;
+		case ScenarioType_SubPixelMotion: RenderSubPixelMotion(&app->data.subPixelMotion, bb, true); break;
 		default: break;
 	}
 }
 
 static void UpdateWindowTitle(const AppScenarios *app) {
 	char title[256];
-	fplStringFormat(title, fplArrayCount(title), "Software Rendering - [F1] %s (%d/%d) - [F2] Filter: %s",
-		ScenarioName(app->current), (int)app->current + 1, (int)ScenarioType_Count,
-		app->bilinear ? "Bilinear" : "Nearest");
+	fplStringFormat(title, fplArrayCount(title), "Software Rendering - [F1] %s (%d/%d)", ScenarioName(app->current), (int)app->current + 1, (int)ScenarioType_Count);
 	fplSetWindowTitle(title);
 }
 
@@ -583,7 +580,6 @@ int main(int argc, char **args) {
 		fplVideoBackBuffer *initialBackBuffer = fplGetVideoBackBuffer();
 
 		AppScenarios app = fplZeroInit;
-		app.bilinear = true;
 		ScenarioInit(&app, ScenarioType_Planes, initialBackBuffer);
 		UpdateWindowTitle(&app);
 
@@ -597,9 +593,6 @@ int main(int argc, char **args) {
 						ScenarioCleanup(&app);
 						ScenarioType next = (ScenarioType)((app.current + 1) % ScenarioType_Count);
 						ScenarioInit(&app, next, bb);
-						UpdateWindowTitle(&app);
-					} else if (ev.keyboard.mappedKey == fplKey_F2) {
-						app.bilinear = !app.bilinear;
 						UpdateWindowTitle(&app);
 					}
 				}
