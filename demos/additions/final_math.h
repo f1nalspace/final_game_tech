@@ -2646,6 +2646,14 @@ static const Vec4f ColorLightGray = V4fInit(0.3f, 0.3f, 0.3f, 1.0f);
 static const Vec4f ColorDarkGray = V4fInit(0.2f, 0.2f, 0.2f, 1.0f);
 #endif
 
+/**
+* @brief Creates a Pixel from separate red, green, blue and alpha bytes.
+* @param[in] r The red channel.
+* @param[in] g The green channel.
+* @param[in] b The blue channel.
+* @param[in] a The alpha channel.
+* @return The initialized pixel.
+*/
 fpl_force_inline Pixel MakePixelFromRGBA(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a) {
 	Pixel result = fplZeroInit;
 	result.r = r;
@@ -2654,6 +2662,11 @@ fpl_force_inline Pixel MakePixelFromRGBA(const uint8_t r, const uint8_t g, const
 	result.a = a;
 	return(result);
 }
+/**
+* @brief Creates a Pixel from a packed RGBA uint32 (red in the lowest byte).
+* @param[in] rgba The packed RGBA value.
+* @return The initialized pixel.
+*/
 fpl_force_inline Pixel MakePixelFromU32(const uint32_t rgba) {
 	Pixel result = fplZeroInit;
 	result.r = (uint8_t)((rgba >> 0) & 0xFF);
@@ -2663,24 +2676,55 @@ fpl_force_inline Pixel MakePixelFromU32(const uint32_t rgba) {
 	return(result);
 }
 
+/**
+* @brief Packs red, green, blue and alpha bytes into an RGBA uint32 (red in the lowest byte).
+* @param[in] r The red channel.
+* @param[in] g The green channel.
+* @param[in] b The blue channel.
+* @param[in] a The alpha channel.
+* @return The packed RGBA value.
+*/
 fpl_force_inline uint32_t RGBA8FromRGBA(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a) {
 	uint32_t result = (a << 24) | (b << 16) | (g << 8) | (r << 0);
 	return(result);
 }
+/**
+* @brief Packs a Pixel into an RGBA uint32 (red in the lowest byte).
+* @param[in] pixel The source pixel.
+* @return The packed RGBA value.
+*/
 fpl_force_inline uint32_t RGBA8FromPixel(const Pixel pixel) {
 	uint32_t result = RGBA8FromRGBA(pixel.r, pixel.g, pixel.b, pixel.a);
 	return(result);
 }
 
+/**
+* @brief Packs red, green, blue and alpha bytes into a BGRA uint32 (blue in the lowest byte).
+* @param[in] r The red channel.
+* @param[in] g The green channel.
+* @param[in] b The blue channel.
+* @param[in] a The alpha channel.
+* @return The packed BGRA value.
+*/
 fpl_force_inline uint32_t BGRA8FromRGBA(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a) {
 	uint32_t result = (a << 24) | (r << 16) | (g << 8) | (b << 0);
 	return(result);
 }
+/**
+* @brief Returns the packed BGRA uint32 of a Pixel.
+* @param[in] pixel The source pixel.
+* @return The packed BGRA value.
+*/
 fpl_force_inline uint32_t BGRA8FromPixel(const Pixel pixel) {
 	uint32_t result = pixel.bgra;
 	return(result);
 }
 
+/**
+* @brief Packs a normalized RGBA color (0..1) into a BGRA uint32.
+* @param[in] unpacked The color with components in the range [0, 1].
+* @return The packed BGRA value.
+*/
 fpl_force_inline uint32_t BGRAPack4x8(const Vec4f unpacked) {
 	uint32_t result = (
 		(RoundF32ToU8(unpacked.a) << 24) |
@@ -2690,6 +2734,11 @@ fpl_force_inline uint32_t BGRAPack4x8(const Vec4f unpacked) {
 	return(result);
 }
 
+/**
+* @brief Unpacks a BGRA uint32 into a normalized RGBA color (0..1).
+* @param[in] packed The packed BGRA value.
+* @return The color with components in the range [0, 1].
+*/
 fpl_force_inline Vec4f BGRAUnpack4x8(const uint32_t packed) {
 	Vec4f result = fplZeroInit;
 	result.b = RoundU8ToF32((packed >> 0) & 0xFF);
@@ -2699,6 +2748,11 @@ fpl_force_inline Vec4f BGRAUnpack4x8(const uint32_t packed) {
 	return(result);
 }
 
+/**
+* @brief Packs a normalized RGBA color (0..1) into a Pixel.
+* @param[in] unpacked The color with components in the range [0, 1].
+* @return The packed pixel.
+*/
 fpl_force_inline Pixel PixelPack(const Vec4f unpacked) {
 	Pixel result = fplZeroInit;
 	result.r = RoundF32ToU8(unpacked.r);
@@ -2708,6 +2762,11 @@ fpl_force_inline Pixel PixelPack(const Vec4f unpacked) {
 	return(result);
 }
 
+/**
+* @brief Unpacks a Pixel into a normalized RGBA color (0..1).
+* @param[in] packed The source pixel.
+* @return The color with components in the range [0, 1].
+*/
 fpl_force_inline Vec4f PixelUnpack(const Pixel packed) {
 	Vec4f result = fplZeroInit;
 	result.r = RoundU8ToF32(packed.r & 0xFF);
@@ -2717,6 +2776,11 @@ fpl_force_inline Vec4f PixelUnpack(const Pixel packed) {
 	return(result);
 }
 
+/**
+* @brief Converts an sRGB-encoded channel value to linear space.
+* @param[in] x The sRGB value in the range [0, 1].
+* @return The linear value in the range [0, 1].
+*/
 fpl_force_inline float SRGBToLinear(const float x) {
 	if (x <= 0.0f)
 		return 0.0f;
@@ -2728,6 +2792,11 @@ fpl_force_inline float SRGBToLinear(const float x) {
 		return F32Power((x + 0.055f) / 1.055f, 2.4f);
 }
 
+/**
+* @brief Converts a linear channel value to sRGB space.
+* @param[in] x The linear value in the range [0, 1].
+* @return The sRGB-encoded value in the range [0, 1].
+*/
 fpl_force_inline float LinearToSRGB(const float x) {
 	if (x <= 0.0f)
 		return 0.0f;
@@ -2739,11 +2808,21 @@ fpl_force_inline float LinearToSRGB(const float x) {
 		return F32Power(x, 1.0f / 2.4f) * 1.055f - 0.055f;
 }
 
+/**
+* @brief Unpacks a Pixel to a normalized color without sRGB conversion.
+* @param[in] pixel The source pixel.
+* @return The color with components in the range [0, 1].
+*/
 fpl_force_inline Vec4f PixelToLinearRaw(const Pixel pixel) {
 	Vec4f result = BGRAUnpack4x8(pixel.bgra);
 	return(result);
 }
 
+/**
+* @brief Unpacks a Pixel and converts its RGB channels from sRGB to linear space.
+* @param[in] pixel The source pixel (sRGB-encoded RGB, linear alpha).
+* @return The color in linear space with components in the range [0, 1].
+*/
 fpl_force_inline Vec4f PixelToLinearSRGB(const Pixel pixel) {
 	Vec4f unpacked = BGRAUnpack4x8(pixel.bgra);
 	Vec4f result =
@@ -2755,18 +2834,39 @@ fpl_force_inline Vec4f PixelToLinearSRGB(const Pixel pixel) {
 	return(result);
 }
 
+/**
+* @brief Builds a normalized color from RGBA bytes without sRGB conversion.
+* @param[in] r The red channel.
+* @param[in] g The green channel.
+* @param[in] b The blue channel.
+* @param[in] a The alpha channel.
+* @return The color with components in the range [0, 1].
+*/
 fpl_force_inline Vec4f RGBAToLinearRaw(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a) {
 	Pixel pixel = MakePixelFromRGBA(r, g, b, a);
 	Vec4f result = PixelToLinearRaw(pixel);
 	return(result);
 }
 
+/**
+* @brief Builds a linear color from sRGB-encoded RGBA bytes.
+* @param[in] r The red channel (sRGB-encoded).
+* @param[in] g The green channel (sRGB-encoded).
+* @param[in] b The blue channel (sRGB-encoded).
+* @param[in] a The alpha channel (linear).
+* @return The color in linear space with components in the range [0, 1].
+*/
 fpl_force_inline Vec4f RGBAToLinearSRGB(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a) {
 	Pixel pixel = MakePixelFromRGBA(r, g, b, a);
 	Vec4f result = PixelToLinearSRGB(pixel);
 	return(result);
 }
 
+/**
+* @brief Builds a normalized opaque color from a 24-bit hex RGB value (0xRRGGBB).
+* @param[in] hexValue24 The packed 24-bit RGB value.
+* @return The color with components in the range [0, 1] and alpha set to 1.
+*/
 fpl_force_inline Vec4f RGBAToLinearHex24(const uint32_t hexValue24) {
 	uint8_t r = (hexValue24 >> 16) & 0xFF;
 	uint8_t g = (hexValue24 >> 8) & 0xFF;
@@ -2777,6 +2877,11 @@ fpl_force_inline Vec4f RGBAToLinearHex24(const uint32_t hexValue24) {
 	return(result);
 }
 
+/**
+* @brief Packs a normalized color into a Pixel without sRGB conversion.
+* @param[in] linear The color with components in the range [0, 1].
+* @return The packed pixel.
+*/
 fpl_force_inline Pixel LinearToPixelRaw(const Vec4f linear) {
 	float r = linear.r;
 	float g = linear.g;
@@ -2787,6 +2892,11 @@ fpl_force_inline Pixel LinearToPixelRaw(const Vec4f linear) {
 	return(result);
 }
 
+/**
+* @brief Converts a linear color to sRGB and packs it into a Pixel.
+* @param[in] linear The color in linear space with components in the range [0, 1].
+* @return The packed pixel with sRGB-encoded RGB and linear alpha.
+*/
 fpl_force_inline Pixel LinearToPixelSRGB(const Vec4f linear) {
 	float r = LinearToSRGB(linear.r);
 	float g = LinearToSRGB(linear.g);
