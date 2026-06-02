@@ -25,6 +25,7 @@ Changelog
 	- Added struct Mat3f
 	- Added functions M3fInit, M3fIdentity, M3fCopy and M3f() C++ variants
 	- Added functions M3fFromMat4, V3fMultM3f, M3fMult, M3fTranspose, M3fTranspose, M3fScaleV2, M3fRotationZ
+	- Removed usage of _USE_MATH_DEFINES
 
 	## 2025-12-31
 	- Added struct Vec2u
@@ -84,11 +85,9 @@ Changelog
 
 #include <stdlib.h> // rand, RAND_MAX
 
-#ifndef _USE_MATH_DEFINES
-#define _USE_MATH_DEFINES 1
-#endif
 // Only math functions (sinf, cosf, sqrtf, ...) are taken from math.h.
-// All constants are defined ourselves below, so no math.h/float.h constants.
+// All constants are defined ourselves below, so no math.h/float.h constants
+// and no need for _USE_MATH_DEFINES.
 #include <math.h>
 
 const float F32MaxValue = 3.402823466e+38f;   // FLT_MAX
