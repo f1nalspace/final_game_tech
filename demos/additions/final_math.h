@@ -19,6 +19,7 @@ Changelog
 	- Fixed M4fRotationY() was not computed in column-row order
 	- Fixed M4fInverse() was not transposing the resulting matrix
 	- Fixed V4fMultM4f() was not computing in column-major order
+	- Fixed QuatToMat4() was not computing in column-major order
 	- Added M4fTranspose() that transposes a Mat4f
 
 	## 2025-12-31
@@ -1421,20 +1422,23 @@ fpl_force_inline Mat4f QuatToMat4(const Quaternion q) {
 	result.r[1][1] = (-sqx + sqy - sqz + sqw) * invs;
 	result.r[2][2] = (-sqx - sqy + sqz + sqw) * invs;
 
+	// Off-diagonals stored column-major (r[col][row]) to match M4fMult /
+	// V4fMultM4f / the GL-uploaded layout, so the matrix rotates the same
+	// direction as QuatMultV3f.
 	tmp1 = q.x * q.y;
 	tmp2 = q.z * q.w;
-	result.r[1][0] = 2.0f * (tmp1 + tmp2) * invs;
-	result.r[0][1] = 2.0f * (tmp1 - tmp2) * invs;
+	result.r[0][1] = 2.0f * (tmp1 + tmp2) * invs;
+	result.r[1][0] = 2.0f * (tmp1 - tmp2) * invs;
 
 	tmp1 = q.x * q.z;
 	tmp2 = q.y * q.w;
-	result.r[2][0] = 2.0f * (tmp1 - tmp2) * invs;
-	result.r[0][2] = 2.0f * (tmp1 + tmp2) * invs;
+	result.r[0][2] = 2.0f * (tmp1 - tmp2) * invs;
+	result.r[2][0] = 2.0f * (tmp1 + tmp2) * invs;
 
 	tmp1 = q.y * q.z;
 	tmp2 = q.x * q.w;
-	result.r[2][1] = 2.0f * (tmp1 + tmp2) * invs;
-	result.r[1][2] = 2.0f * (tmp1 - tmp2) * invs;
+	result.r[1][2] = 2.0f * (tmp1 + tmp2) * invs;
+	result.r[2][1] = 2.0f * (tmp1 - tmp2) * invs;
 
 	return(result);
 }
