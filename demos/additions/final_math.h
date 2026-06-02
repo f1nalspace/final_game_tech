@@ -91,28 +91,54 @@ Changelog
 // and no need for _USE_MATH_DEFINES.
 #include <math.h>
 
-const float F32MaxValue = 3.402823466e+38f;   // FLT_MAX
-const float F32MinValue = 1.175494351e-38f;   // FLT_MIN (smallest normal positive)
+//! Largest finite 32-bit float (FLT_MAX).
+const float F32MaxValue = 3.402823466e+38f;
+//! Smallest normal positive 32-bit float (FLT_MIN).
+const float F32MinValue = 1.175494351e-38f;
+//! Ratio of a circle's circumference to its diameter (Pi).
 const float F32Pi = 3.14159265358979323846f;
-const float F32Tau = 6.28318530717958647692f; // 2*Pi
+//! Full turn in radians (2*Pi).
+const float F32Tau = 6.28318530717958647692f;
+//! Factor to convert degrees to radians.
 const float F32Deg2Rad = 3.14159265358979323846f / 180.0f;
+//! Factor to convert radians to degrees.
 const float F32Rad2Deg = 180.0f / 3.14159265358979323846f;
-const float F32Epsilon = 1.192092896e-07f;    // FLT_EPSILON
+//! Smallest difference between two representable floats (FLT_EPSILON).
+const float F32Epsilon = 1.192092896e-07f;
+//! Reciprocal of 255, to map a byte 0..255 into 0..1.
 const float F32InvByte = 1.0f / 255.0f;
 
 //
 // Ratio64 type
 //
+
+/**
+* @struct Ratio64
+* @brief A double-precision fraction (numerator over denominator).
+*/
 typedef struct Ratio64 {
+	//! The dividend of the ratio.
 	double numerator;
+	//! The divisor of the ratio.
 	double denominator;
 } Ratio64;
 
+/**
+* @brief Creates a Ratio64 from a numerator and denominator.
+* @param[in] numerator The dividend.
+* @param[in] denominator The divisor.
+* @return The initialized Ratio64.
+*/
 fpl_force_inline Ratio64 Ratio64Init(double numerator, double denominator) {
 	Ratio64 result = fplStructInit(Ratio64, numerator, denominator);
 	return(result);
 }
 
+/**
+* @brief Computes the value of the ratio (numerator / denominator).
+* @param[in] ratio The ratio to evaluate.
+* @return The quotient as a double. Asserts when the denominator is zero.
+*/
 fpl_force_inline double Ratio64Compute(const Ratio64 ratio) {
 	fplAssert(ratio.denominator != 0);
 	double result = ratio.numerator / ratio.denominator;
@@ -123,146 +149,255 @@ fpl_force_inline double Ratio64Compute(const Ratio64 ratio) {
 // Vector types
 //
 
+/**
+* @union Vec2i
+* @brief A 2D vector of signed integers, accessible as x/y, w/h or by index.
+*/
 typedef union Vec2i {
 	struct {
-		int x, y;
+		//! The first component (x or width).
+		int x;
+		//! The second component (y or height).
+		int y;
 	};
 	struct {
 		int w, h;
 	};
+	//! The components as an indexable array.
 	int m[2];
 } Vec2i;
 
+//! Brace-initializer list for a Vec2i literal.
 #define V2I(x, y) {x, y}
+//! Casts a brace-initializer list to a Vec2i value.
 #define V2IArg(v) (Vec2i)v
 
+/**
+* @brief Creates a zero Vec2i.
+* @return A Vec2i with both components set to zero.
+*/
 fpl_force_inline Vec2i V2iZero() {
 	Vec2i result = fplZeroInit;
 	return(result);
 }
 
+/**
+* @brief Creates a copy of a Vec2i.
+* @param[in] v The vector to copy.
+* @return A copy of the input vector.
+*/
 fpl_force_inline Vec2i V2iCopy(const Vec2i v) {
 	Vec2i result = fplStructInit(Vec2i, v.x, v.y);
 	return(result);
 }
 
+/**
+* @brief Creates a Vec2i from two components.
+* @param[in] x The x component.
+* @param[in] y The y component.
+* @return The initialized vector.
+*/
 fpl_force_inline Vec2i V2iInit(const int x, const int y) {
 	Vec2i result = fplStructInit(Vec2i, x, y);
 	return(result);
 }
 
+/**
+* @brief Creates a Vec2i with both components set to the same scalar.
+* @param[in] value The value for both components.
+* @return The initialized vector.
+*/
 fpl_force_inline Vec2i V2iInitScalar(const int value) {
 	Vec2i result = fplStructInit(Vec2i, value, value);
 	return(result);
 }
 
 #if defined(__cplusplus)
+//! C++ overload constructing a zero Vec2i.
 fpl_force_inline Vec2i V2i() {
 	return V2iZero();
 }
+//! C++ overload constructing a Vec2i from a single scalar.
 fpl_force_inline Vec2i V2i(const int value) {
 	return V2iInitScalar(value);
 }
+//! C++ overload constructing a Vec2i from two components.
 fpl_force_inline Vec2i V2i(const int x, const int y) {
 	return V2iInit(x, y);
 }
 #endif
 
+/**
+* @union Vec2u
+* @brief A 2D vector of unsigned integers, accessible as x/y, w/h or by index.
+*/
 typedef union Vec2u {
 	struct {
-		uint32_t x, y;
+		//! The first component (x or width).
+		uint32_t x;
+		//! The second component (y or height).
+		uint32_t y;
 	};
 	struct {
 		uint32_t w, h;
 	};
+	//! The components as an indexable array.
 	int m[2];
 } Vec2u;
 
+//! Brace-initializer list for a Vec2u literal.
 #define V2U(x, y) {x, y}
+//! Casts a brace-initializer list to a Vec2u value.
 #define V2UArg(v) (Vec2u)v
 
+/**
+* @brief Creates a zero Vec2u.
+* @return A Vec2u with both components set to zero.
+*/
 fpl_force_inline Vec2u V2uZero() {
 	Vec2u result = fplZeroInit;
 	return(result);
 }
 
+/**
+* @brief Creates a copy of a Vec2u.
+* @param[in] v The vector to copy.
+* @return A copy of the input vector.
+*/
 fpl_force_inline Vec2u V2uCopy(const Vec2u v) {
 	Vec2u result = fplStructInit(Vec2u, v.x, v.y);
 	return(result);
 }
 
+/**
+* @brief Creates a Vec2u from two components.
+* @param[in] x The x component.
+* @param[in] y The y component.
+* @return The initialized vector.
+*/
 fpl_force_inline Vec2u V2uInit(const uint32_t x, const uint32_t y) {
 	Vec2u result = fplStructInit(Vec2u, x, y);
 	return(result);
 }
 
+/**
+* @brief Creates a Vec2u with both components set to the same scalar.
+* @param[in] value The value for both components.
+* @return The initialized vector.
+*/
 fpl_force_inline Vec2u V2uInitScalar(const uint32_t value) {
 	Vec2u result = fplStructInit(Vec2u, value, value);
 	return(result);
 }
 
 #if defined(__cplusplus)
+//! C++ overload constructing a zero Vec2u.
 fpl_force_inline Vec2u V2u() {
 	return V2uZero();
 }
+//! C++ overload constructing a Vec2u from a single scalar.
 fpl_force_inline Vec2u V2u(const uint32_t value) {
 	return V2uInitScalar(value);
 }
+//! C++ overload constructing a Vec2u from two components.
 fpl_force_inline Vec2u V2u(const uint32_t x, const uint32_t y) {
 	return V2uInit(x, y);
 }
 #endif
 
+/**
+* @union Vec2f
+* @brief A 2D vector of 32-bit floats, accessible as x/y, w/h or by index.
+*/
 typedef union Vec2f {
 	struct {
-		float x, y;
+		//! The first component (x or width).
+		float x;
+		//! The second component (y or height).
+		float y;
 	};
 	struct {
 		float w, h;
 	};
+	//! The components as an indexable array.
 	float m[2];
 } Vec2f;
 
+//! Brace-initializer list for a Vec2f literal.
 #define V2F(x, y) {x, y}
+//! Casts a brace-initializer list to a Vec2f value.
 #define V2FArg(v) (Vec2f)v
 
+/**
+* @brief Creates a zero Vec2f.
+* @return A Vec2f with both components set to zero.
+*/
 fpl_force_inline Vec2f V2fZero() {
 	Vec2f result = fplZeroInit;
 	return(result);
 }
 
+/**
+* @brief Creates a copy of a Vec2f.
+* @param[in] v The vector to copy.
+* @return A copy of the input vector.
+*/
 fpl_force_inline Vec2f V2fCopy(const Vec2f v) {
 	Vec2f result = fplStructInit(Vec2f, v.x, v.y);
 	return(result);
 }
 
+/**
+* @brief Creates a Vec2f from two components.
+* @param[in] x The x component.
+* @param[in] y The y component.
+* @return The initialized vector.
+*/
 fpl_force_inline Vec2f V2fInit(const float x, const float y) {
 	Vec2f result = fplStructInit(Vec2f, x, y);
 	return(result);
 }
 
+/**
+* @brief Creates a Vec2f with both components set to the same scalar.
+* @param[in] value The value for both components.
+* @return The initialized vector.
+*/
 fpl_force_inline Vec2f V2fInitScalar(const float value) {
 	Vec2f result = fplStructInit(Vec2f, value, value);
 	return(result);
 }
 
+/**
+* @brief Creates a Vec2f from a Vec2i, converting each component to float.
+* @param[in] v The integer vector to convert.
+* @return The converted float vector.
+*/
 fpl_force_inline Vec2f V2fInitV2i(const Vec2i v) {
 	Vec2f result = fplStructInit(Vec2f, (float)v.x, (float)v.y);
 	return(result);
 }
 
 #if defined(__cplusplus)
+//! C++ overload constructing a zero Vec2f.
 fpl_force_inline Vec2f V2f() {
 	return V2fZero();
 }
+//! C++ overload constructing a Vec2f from a single scalar.
 fpl_force_inline Vec2f V2f(const float value) {
 	return V2fInitScalar(value);
 }
+//! C++ overload constructing a Vec2f from two components.
 fpl_force_inline Vec2f V2f(const float x, const float y) {
 	return V2fInit(x, y);
 }
 #endif
 
+/**
+* @brief Creates a Vec2f from a Vec2u, converting each component to float.
+* @param[in] v The unsigned integer vector to convert.
+* @return The converted float vector.
+*/
 fpl_force_inline Vec2f V2fInitV2u(const Vec2u v) {
 	Vec2f result = fplStructInit(Vec2f, (float)v.x, (float)v.y);
 	return(result);
@@ -271,19 +406,38 @@ fpl_force_inline Vec2f V2fInitV2u(const Vec2u v) {
 //
 // Rect2f type
 //
+
+/**
+* @struct Rect2f
+* @brief An axis-aligned 2D rectangle defined by a position and a size.
+*/
 typedef struct Rect2f {
+	//! The top-left position of the rectangle.
 	Vec2f pos;
+	//! The width and height of the rectangle.
 	Vec2f size;
 } Rect2f;
 
+//! Brace-initializer list for a Rect2f literal.
 #define R2F(p, s) {p, s}
+//! Casts a brace-initializer list to a Rect2f value.
 #define R2FArg(v) (Rect2f)v
 
+/**
+* @brief Creates a Rect2f from a position and a size.
+* @param[in] pos The top-left position.
+* @param[in] size The width and height.
+* @return The initialized rectangle.
+*/
 fpl_force_inline Rect2f R2fInit(const Vec2f pos, const Vec2f size) {
 	Rect2f result = fplStructInit(Rect2f, pos, size);
 	return(result);
 }
 
+/**
+* @union Vec3f
+* @brief A 3D vector of 32-bit floats, accessible as x/y/z, u/v/w, r/g/b, 2D swizzles or by index.
+*/
 typedef union Vec3f {
 	struct {
 		float x, y, z;
@@ -313,55 +467,94 @@ typedef union Vec3f {
 	float m[3];
 } Vec3f;
 
+//! Brace-initializer list for a Vec3f literal.
 #define V3F(x, y, z) {x, y, z}
+//! Casts a brace-initializer list to a Vec3f value.
 #define V3FArg(v) (Vec3f)v
 
+/**
+* @brief Creates a zero Vec3f.
+* @return A Vec3f with all components set to zero.
+*/
 fpl_force_inline Vec3f V3fZero() {
 	Vec3f result = fplZeroInit;
 	return(result);
 }
 
+/**
+* @brief Creates a Vec3f with all components set to the same scalar.
+* @param[in] scalar The value for all three components.
+* @return The initialized vector.
+*/
 fpl_force_inline Vec3f V3fInitScalar(const float scalar) {
 	Vec3f result = fplStructInit(Vec3f, scalar, scalar, scalar);
 	return(result);
 }
 
+/**
+* @brief Creates a Vec3f from a Vec2f and a z component.
+* @param[in] other The x/y components.
+* @param[in] z The z component.
+* @return The initialized vector.
+*/
 fpl_force_inline Vec3f V3fInitXY(const Vec2f other, const float z) {
 	Vec3f result = fplStructInit(Vec3f, other.x, other.y, z);
 	return(result);
 }
 
+/**
+* @brief Creates a copy of a Vec3f.
+* @param[in] other The vector to copy.
+* @return A copy of the input vector.
+*/
 fpl_force_inline Vec3f V3fCopy(const Vec3f other) {
 	Vec3f result = fplStructInit(Vec3f, other.x, other.y, other.z);
 	return(result);
 }
 
+/**
+* @brief Creates a Vec3f from three components.
+* @param[in] x The x component.
+* @param[in] y The y component.
+* @param[in] z The z component.
+* @return The initialized vector.
+*/
 fpl_force_inline Vec3f V3fInit(const float x, const float y, const float z) {
 	Vec3f result = fplStructInit(Vec3f, x, y, z);
 	return(result);
 }
 
 #if defined(__cplusplus)
+//! C++ overload constructing a zero Vec3f.
 fpl_force_inline Vec3f V3f() {
 	return V3fZero();
 }
+//! C++ overload constructing a Vec3f from another Vec3f.
 fpl_force_inline Vec3f V3f(const Vec3f &other) {
 	return V3fCopy(other);
 }
+//! C++ overload constructing a Vec3f from a single scalar.
 fpl_force_inline Vec3f V3f(const float value) {
 	return V3fInitScalar(value);
 }
+//! C++ overload constructing a Vec3f from x/y with z set to zero.
 fpl_force_inline Vec3f V3f(const float x, const float y) {
 	return V3fInit(x, y, 0.0f);
 }
+//! C++ overload constructing a Vec3f from a Vec2f and a z component.
 fpl_force_inline Vec3f V3f(const Vec2f &v, const float z) {
 	return V3fInitXY(v, z);
 }
+//! C++ overload constructing a Vec3f from three components.
 fpl_force_inline Vec3f V3f(const float x, const float y, const float z) {
 	return V3fInit(x, y, z);
 }
 #endif
 
+/**
+* @union Vec4f
+* @brief A 4D vector of 32-bit floats, accessible as x/y/z/w, r/g/b/a, sub-vectors or by index.
+*/
 typedef union Vec4f {
 	struct {
 		union {
@@ -399,101 +592,177 @@ typedef union Vec4f {
 	float m[4];
 } Vec4f;
 
+//! Brace-initializer list for a Vec4f literal.
 #define V4F(x, y, z, w) {x, y, z, w}
+//! Casts a brace-initializer list to a Vec4f value.
 #define V4FArg(v) (Vec4f)v
 
+/**
+* @brief Creates a zero Vec4f.
+* @return A Vec4f with all components set to zero.
+*/
 fpl_force_inline Vec4f V4fZero() {
 	Vec4f result = fplStructInit(Vec4f, 0, 0, 0, 0);
 	return(result);
 }
 
+/**
+* @brief Creates a copy of a Vec4f.
+* @param[in] other The vector to copy.
+* @return A copy of the input vector.
+*/
 fpl_force_inline Vec4f V4fCopy(const Vec4f other) {
 	Vec4f result = fplStructInit(Vec4f, other.x, other.y, other.z, other.w);
 	return(result);
 }
 
+/**
+* @brief Creates a Vec4f from four components.
+* @param[in] x The x component.
+* @param[in] y The y component.
+* @param[in] z The z component.
+* @param[in] w The w component.
+* @return The initialized vector.
+*/
 fpl_force_inline Vec4f V4fInit(const float x, const float y, const float z, const float w) {
 	Vec4f result = fplStructInit(Vec4f, x, y, z, w);
 	return(result);
 }
 
+/**
+* @brief Creates a Vec4f from a Vec3f and a w component.
+* @param[in] v The x/y/z components.
+* @param[in] w The w component.
+* @return The initialized vector.
+*/
 fpl_force_inline Vec4f V4fInitXYZ(const Vec3f v, const float w) {
 	Vec4f result = fplStructInit(Vec4f, v.x, v.y, v.z, w);
 	return(result);
 }
 
+/**
+* @brief Creates a Vec4f from a Vec2f plus z and w components.
+* @param[in] v The x/y components.
+* @param[in] z The z component.
+* @param[in] w The w component.
+* @return The initialized vector.
+*/
 fpl_force_inline Vec4f V4fInitXY(const Vec2f v, const float z, const float w) {
 	Vec4f result = fplStructInit(Vec4f, v.x, v.y, z, w);
 	return(result);
 }
 
 #if defined(__cplusplus)
+//! C++ overload constructing a zero Vec4f.
 fpl_force_inline Vec4f V4f() {
 	return V4fZero();
 }
+//! C++ overload constructing a Vec4f from another Vec4f.
 fpl_force_inline Vec4f V4f(const Vec4f &other) {
 	return V4fCopy(other);
 }
+//! C++ overload constructing a Vec4f from a Vec2f plus z and w.
 fpl_force_inline Vec4f V4f(const Vec2f &v, const float z, const float w) {
 	return V4fInitXY(v, z, w);
 }
+//! C++ overload constructing a Vec4f from a Vec3f and a w component.
 fpl_force_inline Vec4f V4f(const Vec3f &v, const float w) {
 	return V4fInitXYZ(v, w);
 }
+//! C++ overload constructing a Vec4f from x/y/z with w set to one.
 fpl_force_inline Vec4f V4f(const float x, const float y, const float z) {
 	return V4fInit(x, y, z, 1.0f);
 }
+//! C++ overload constructing a Vec4f from four components.
 fpl_force_inline Vec4f V4f(const float x, const float y, const float z, const float w) {
 	return V4fInit(x, y, z, w);
 }
 #endif
 
+/**
+* @union Mat2f
+* @brief A 2x2 column-major matrix of 32-bit floats, accessible by column or by index.
+*/
 typedef union Mat2f {
 	struct {
+		//! The first column.
 		Vec2f col1;
+		//! The second column.
 		Vec2f col2;
 	};
+	//! The components as an indexable array (column-major).
 	float m[4];
 } Mat2f;
 
+//! Brace-initializer list for a Mat2f literal from two columns.
 #define M2F(c1, c2) {c1, c2}
+//! Casts a brace-initializer list to a Mat2f value.
 #define M2FArg(m) (Mat2f)m
 
+/**
+* @brief Creates a 2x2 identity matrix.
+* @return The identity matrix.
+*/
 fpl_force_inline Mat2f M2fDefault() {
 	Mat2f result = fplStructInit(Mat2f, V2fInit(1, 0), V2fInit(0, 1));
 	return(result);
 }
 
+/**
+* @brief Creates a copy of a Mat2f.
+* @param[in] other The matrix to copy.
+* @return A copy of the input matrix.
+*/
 fpl_force_inline Mat2f M2fCopy(const Mat2f other) {
 	Mat2f result = fplStructInit(Mat2f, other.col1, other.col2);
 	return(result);
 }
 
 #if defined(__cplusplus)
+//! C++ overload constructing a 2x2 identity matrix.
 fpl_force_inline Mat2f M2f() {
 	return M2fDefault();
 }
+//! C++ overload constructing a Mat2f from another Mat2f.
 fpl_force_inline Mat2f M2f(const Mat2f &other) {
 	return M2fCopy(other);
 }
 #endif
 
+/**
+* @union Mat4f
+* @brief A 4x4 column-major matrix of 32-bit floats, accessible by column, as r[col][row] or by index.
+* @note Storage is column-major (GL-compatible): r[i] is column i and the transform is M * v.
+*/
 typedef union Mat4f {
 	struct {
+		//! The first column.
 		Vec4f col1;
+		//! The second column.
 		Vec4f col2;
+		//! The third column.
 		Vec4f col3;
+		//! The fourth column (typically the translation).
 		Vec4f col4;
 	};
 	struct {
+		//! The components as r[col][row] (column-major).
 		float r[4][4];
 	};
+	//! The components as an indexable array (column-major).
 	float m[16];
 } Mat4f;
 
+//! Brace-initializer list for a Mat4f literal from four columns.
 #define M4F(c1, c2, c3, c4) {c1, c2, c3, c4}
+//! Casts a brace-initializer list to a Mat4f value.
 #define M4FArg(m) (Mat4f)m
 
+/**
+* @brief Creates a diagonal 4x4 matrix with the given value on the main diagonal.
+* @param[in] value The value placed on the main diagonal.
+* @return The diagonal matrix.
+*/
 fpl_force_inline Mat4f M4fInit(const float value) {
 	Mat4f result = {
 		V4fInit(value, 0.0f, 0.0f, 0.0f),
@@ -504,20 +773,31 @@ fpl_force_inline Mat4f M4fInit(const float value) {
 	return(result);
 }
 
+/**
+* @brief Creates a 4x4 identity matrix.
+* @return The identity matrix.
+*/
 fpl_force_inline Mat4f M4fIdentity() {
 	Mat4f result = M4fInit(1.0f);
 	return(result);
 }
 
+/**
+* @brief Creates a copy of a Mat4f.
+* @param[in] other The matrix to copy.
+* @return A copy of the input matrix.
+*/
 fpl_force_inline Mat4f M4fCopy(const Mat4f other) {
 	Mat4f result = fplStructInit(Mat4f, other.col1, other.col2, other.col3, other.col4);
 	return(result);
 }
 
 #if defined(__cplusplus)
+//! C++ overload constructing a diagonal Mat4f (identity by default).
 fpl_force_inline Mat4f M4f(const float value = 1.0f) {
 	return M4fInit(value);
 }
+//! C++ overload constructing a Mat4f from another Mat4f.
 fpl_force_inline Mat4f M4f(const Mat4f &other) {
 	return M4fCopy(other);
 }
@@ -526,22 +806,43 @@ fpl_force_inline Mat4f M4f(const Mat4f &other) {
 //
 // Quaternion
 //
+
+/**
+* @union Quaternion
+* @brief A quaternion stored as a scalar w and a vector part (x, y, z).
+*/
 typedef union Quaternion {
 	struct {
+		//! The scalar (real) part, same as w.
 		float s;
+		//! The vector (imaginary) part, same as x/y/z.
 		Vec3f n;
 	};
 	struct {
+		//! The scalar (real) part.
 		float w;
+		//! The imaginary x component.
 		float x;
+		//! The imaginary y component.
 		float y;
+		//! The imaginary z component.
 		float z;
 	};
 } Quaternion;
 
+//! Brace-initializer list for a Quaternion literal.
 #define QU(w, x, y, z) {w, x, y, z}
+//! Casts a brace-initializer list to a Quaternion value.
 #define QUArg(v) (Quaternion)v
 
+/**
+* @brief Creates a quaternion from its scalar and imaginary components.
+* @param[in] w The scalar (real) part.
+* @param[in] x The imaginary x component.
+* @param[in] y The imaginary y component.
+* @param[in] z The imaginary z component.
+* @return The initialized quaternion.
+*/
 fpl_force_inline Quaternion QuatInit(const float w, const float x, const float y, const float z) {
 	Quaternion result;
 	result.w = w;
@@ -551,11 +852,21 @@ fpl_force_inline Quaternion QuatInit(const float w, const float x, const float y
 	return(result);
 }
 
+/**
+* @brief Creates the identity quaternion (no rotation).
+* @return The identity quaternion (w=1, x=y=z=0).
+*/
 fpl_force_inline Quaternion QuatIdentity() {
 	Quaternion result = QuatInit(1.0f, 0.0f, 0.0f, 0.0f);
 	return(result);
 }
 
+/**
+* @brief Creates a quaternion from a scalar and a vector part.
+* @param[in] s The scalar (real) part.
+* @param[in] axis The vector (imaginary) part.
+* @return The initialized quaternion.
+*/
 fpl_force_inline Quaternion QuatInitSXYZ(const float s, const Vec3f axis) {
 	Quaternion result;
 	result.s = s;
@@ -564,12 +875,15 @@ fpl_force_inline Quaternion QuatInitSXYZ(const float s, const Vec3f axis) {
 }
 
 #if defined(__cplusplus)
+//! C++ overload constructing the identity quaternion.
 fpl_force_inline Quaternion Quat() {
 	return QuatIdentity();
 }
+//! C++ overload constructing a quaternion from its four components.
 fpl_force_inline Quaternion Quat(const float w, const float x, const float y, const float z) {
 	return QuatInit(w, x, y, z);
 }
+//! C++ overload constructing a quaternion from a scalar and a vector part.
 fpl_force_inline Quaternion Quat(const float s, const Vec3f &axis) {
 	return QuatInitSXYZ(s, axis);
 }
@@ -579,41 +893,92 @@ fpl_force_inline Quaternion Quat(const float s, const Vec3f &axis) {
 // Color & Pixel
 //
 
+/**
+* @union Pixel
+* @brief A 32-bit BGRA color, accessible per channel, as a packed uint or by index.
+*/
 typedef union Pixel {
 	struct {
-		uint8_t b, g, r, a;
+		//! The blue channel.
+		uint8_t b;
+		//! The green channel.
+		uint8_t g;
+		//! The red channel.
+		uint8_t r;
+		//! The alpha channel.
+		uint8_t a;
 	};
+	//! The channels packed as a single uint32_t in BGRA order.
 	uint32_t bgra;
+	//! The channels as an indexable array.
 	uint8_t m[4];
 } Pixel;
 
+//! Brace-initializer list for a Pixel literal in BGRA order.
 #define PX(b, g, r, a) {b, g, r, a}
+//! Casts a brace-initializer list to a Pixel value.
 #define PXArg(p) (Pixel)p
 
+/**
+* @struct Viewport4i
+* @brief An integer viewport rectangle (x, y, width, height).
+*/
 typedef struct Viewport4i {
+	//! The left edge in pixels.
 	int32_t x;
+	//! The bottom/top edge in pixels.
 	int32_t y;
+	//! The width in pixels.
 	int32_t w;
+	//! The height in pixels.
 	int32_t h;
 } Viewport4i;
 
+//! Brace-initializer list for a Viewport4i literal.
 #define VP4I(x, y, w, h) {x, y, w, h}
+//! Casts a brace-initializer list to a Viewport4i value.
 #define VP4IArg(vp) (Viewport4i)vp
 
+/**
+* @brief Creates a Viewport4i from position and size.
+* @param[in] x The left edge.
+* @param[in] y The bottom/top edge.
+* @param[in] w The width.
+* @param[in] h The height.
+* @return The initialized viewport.
+*/
 fpl_force_inline Viewport4i VP4iInit(const int32_t x, const int32_t y, const int32_t w, const int32_t h) {
 	return fplStructInit(Viewport4i, x, y, w, h);
 }
 
+/**
+* @struct Viewport4f
+* @brief A floating-point viewport rectangle (x, y, width, height).
+*/
 typedef struct Viewport4f {
+	//! The left edge.
 	float x;
+	//! The bottom/top edge.
 	float y;
+	//! The width.
 	float w;
+	//! The height.
 	float h;
 } Viewport4f;
 
+//! Brace-initializer list for a Viewport4f literal.
 #define VP4F(x, y, w, h) {x, y, w, h}
+//! Casts a brace-initializer list to a Viewport4f value.
 #define VP4FArg(vp) (Viewport4f)vp
 
+/**
+* @brief Creates a Viewport4f from position and size.
+* @param[in] x The left edge.
+* @param[in] y The bottom/top edge.
+* @param[in] w The width.
+* @param[in] h The height.
+* @return The initialized viewport.
+*/
 fpl_force_inline Viewport4f VP4fInit(const float x, const float y, const float w, const float h) {
 	return fplStructInit(Viewport4f, x, y, w, h);
 }
