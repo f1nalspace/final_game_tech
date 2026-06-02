@@ -141,6 +141,12 @@ static void TestScalars(void) {
 	CHECK_F(F32SquareRoot(16.0f), 4.0f);
 	CHECK_F(F32Power(2.0f, 10.0f), 1024.0f);
 	CHECK_F(F32Modulate(7.0f, 3.0f), 1.0f);
+	CHECK_F(F32Floor(3.7f), 3.0f);
+	CHECK_F(F32Floor(-3.2f), -4.0f);
+	CHECK_F(F32Floor(5.0f), 5.0f);
+	CHECK_F(F32Ceil(3.2f), 4.0f);
+	CHECK_F(F32Ceil(-3.7f), -3.0f);
+	CHECK_F(F32Ceil(5.0f), 5.0f);
 	CHECK_F(F32Sin(0.0f), 0.0f);
 	CHECK_F(F32Cos(0.0f), 1.0f);
 	CHECK_F(F32Sin(F32Pi * 0.5f), 1.0f);
