@@ -986,21 +986,38 @@ fpl_force_inline Viewport4f VP4fInit(const float x, const float y, const float w
 //
 // Scalar
 //
-// Self-defined quiet NaN (no math.h NAN dependency).
+/**
+* @brief Returns a quiet NaN without depending on math.h NAN.
+* @return A 32-bit quiet NaN.
+*/
 fpl_force_inline float F32NaN() {
 	union { uint32_t u; float f; } bits;
 	bits.u = 0x7FC00000u;
 	return bits.f;
 }
+/**
+* @brief Returns positive infinity without depending on math.h INFINITY.
+* @return A 32-bit positive infinity.
+*/
 fpl_force_inline float F32Infinity() {
 	union { uint32_t u; float f; } bits;
 	bits.u = 0x7F800000u;
 	return bits.f;
 }
+/**
+* @brief Tests whether a float is NaN.
+* @param[in] x The value to test.
+* @return True when the value is NaN, false otherwise.
+*/
 fpl_force_inline bool F32IsNaN(const float x) {
 	// NaN is the only value not equal to itself (no math.h dependency).
 	return x != x;
 }
+/**
+* @brief Returns the sign of a float.
+* @param[in] x The value to test.
+* @return -1 for negative, +1 for positive, 0 for zero, and NaN when the input is NaN.
+*/
 fpl_force_inline float F32Sign(const float x) {
 	if(F32IsNaN(x)) {
 		return F32NaN();
@@ -1011,82 +1028,189 @@ fpl_force_inline float F32Sign(const float x) {
 	int b = (x > 0.0f) - (x < 0.0f);
 	return (float)b;
 }
+/**
+* @brief Computes the cosine of an angle.
+* @param[in] angle The angle in radians.
+* @return The cosine of the angle.
+*/
 fpl_force_inline float F32Cos(const float angle) {
 	float result = cosf(angle);
 	return(result);
 }
+/**
+* @brief Computes the sine of an angle.
+* @param[in] angle The angle in radians.
+* @return The sine of the angle.
+*/
 fpl_force_inline float F32Sin(const float angle) {
 	float result = sinf(angle);
 	return(result);
 }
+/**
+* @brief Computes the tangent of an angle.
+* @param[in] angle The angle in radians.
+* @return The tangent of the angle.
+*/
 fpl_force_inline float F32Tan(const float angle) {
 	float result = tanf(angle);
 	return(result);
 }
+/**
+* @brief Computes the arc cosine.
+* @param[in] x The value, expected in the range [-1, 1].
+* @return The angle in radians.
+*/
 fpl_force_inline float F32ArcCos(const float x) {
 	float result = acosf(x);
 	return(result);
 }
+/**
+* @brief Computes the arc sine.
+* @param[in] x The value, expected in the range [-1, 1].
+* @return The angle in radians.
+*/
 fpl_force_inline float F32ArcSin(const float x) {
 	float result = asinf(x);
 	return(result);
 }
+/**
+* @brief Computes the arc tangent.
+* @param[in] x The value.
+* @return The angle in radians.
+*/
 fpl_force_inline float F32ArcTan(const float x) {
 	float result = atanf(x);
 	return(result);
 }
+/**
+* @brief Computes the arc tangent of y/x using the signs of both arguments to pick the quadrant.
+* @param[in] y The y coordinate.
+* @param[in] x The x coordinate.
+* @return The angle in radians in the range (-Pi, Pi].
+*/
 fpl_force_inline float F32ArcTan2(const float y, const float x) {
 	float result = atan2f(y, x);
 	return(result);
 }
+/**
+* @brief Computes the absolute value.
+* @param[in] value The input value.
+* @return The absolute value.
+*/
 fpl_force_inline float F32Abs(const float value) {
 	float result = fabsf(value);
 	return(result);
 }
+/**
+* @brief Raises a base to a power.
+* @param[in] x The base.
+* @param[in] y The exponent.
+* @return x raised to the power of y.
+*/
 fpl_force_inline float F32Power(const float x, const float y) {
 	float result = powf(x, y);
 	return(result);
 }
+/**
+* @brief Computes the floating-point remainder of x/y.
+* @param[in] x The dividend.
+* @param[in] y The divisor.
+* @return The remainder of x divided by y.
+*/
 fpl_force_inline float F32Modulate(const float x, const float y) {
 	float result = fmodf(x, y);
 	return result;
 }
+/**
+* @brief Returns the smaller of two values.
+* @param[in] a The first value.
+* @param[in] b The second value.
+* @return The minimum of a and b.
+*/
 fpl_force_inline float F32Min(const float a, const float b) {
 	float result = a < b ? a : b;
 	return(result);
 }
+/**
+* @brief Returns the larger of two values.
+* @param[in] a The first value.
+* @param[in] b The second value.
+* @return The maximum of a and b.
+*/
 fpl_force_inline float F32Max(const float a, const float b) {
 	float result = a > b ? a : b;
 	return(result);
 }
+/**
+* @brief Computes the square root.
+* @param[in] value The input value, expected to be non-negative.
+* @return The square root of the value.
+*/
 fpl_force_inline float F32SquareRoot(const float value) {
 	float result = sqrtf(value);
 	return(result);
 }
+/**
+* @brief Converts radians to degrees.
+* @param[in] radians The angle in radians.
+* @return The angle in degrees.
+*/
 fpl_force_inline float F32RadiansToDegrees(const float radians) {
 	float result = radians * F32Rad2Deg;
 	return(result);
 }
+/**
+* @brief Converts degrees to radians.
+* @param[in] degrees The angle in degrees.
+* @return The angle in radians.
+*/
 fpl_force_inline float F32DegreesToRadians(const float degrees) {
 	float result = degrees * F32Deg2Rad;
 	return(result);
 }
 
+/**
+* @brief Linearly interpolates between two values.
+* @param[in] a The start value (at t=0).
+* @param[in] t The interpolation factor, typically in [0, 1].
+* @param[in] b The end value (at t=1).
+* @return The interpolated value.
+*/
 fpl_force_inline float F32Lerp(float a, float t, float b) {
 	float result = (1.0f - t) * a + t * b;
 	return(result);
 }
 
+/**
+* @brief Blends an old value toward a new value by a weight.
+* @param[in] oldValue The previous value (at t=0).
+* @param[in] t The weight of the new value, typically in [0, 1].
+* @param[in] newValue The new value (at t=1).
+* @return The blended value.
+*/
 fpl_force_inline float F32Avg(float oldValue, float t, float newValue) {
 	float result = t * newValue + (1.0f - t) * oldValue;
 	return(result);
 }
 
+/**
+* @brief Clamps a value into an inclusive range.
+* @param[in] value The value to clamp.
+* @param[in] min The lower bound.
+* @param[in] max The upper bound.
+* @return The clamped value.
+*/
 fpl_force_inline float F32Clamp(float value, float min, float max) {
 	float result = fplMin(fplMax(value, min), max);
 	return(result);
 }
 
+/**
+* @brief Computes the shortest signed angular distance between two angles.
+* @param[in] a0 The start angle in radians.
+* @param[in] a1 The end angle in radians.
+* @return The shortest signed distance in radians.
+*/
 fpl_force_inline float F32GetBestAngleDistance(float a0, float a1) {
 	float max = F32Pi * 2;
 	float da = fmodf(a1 - a0, max);
@@ -1094,23 +1218,45 @@ fpl_force_inline float F32GetBestAngleDistance(float a0, float a1) {
 	return(result);
 }
 
+/**
+* @brief Interpolates between two angles along the shortest path.
+* @param[in] a The start angle in radians (at t=0).
+* @param[in] t The interpolation factor, typically in [0, 1].
+* @param[in] b The end angle in radians (at t=1).
+* @return The interpolated angle in radians.
+*/
 fpl_force_inline float F32AngleLerp(float a, float t, float b) {
 	float angleDistance = F32GetBestAngleDistance(a, b);
 	float result = F32Lerp(a, t, a + angleDistance);
 	return(result);
 }
 
+/**
+* @brief Normalizes an angle into the range [0, 2*Pi).
+* @param[in] angle The angle in radians.
+* @return The normalized angle in radians.
+*/
 fpl_force_inline float F32AngleNormalize(const float angle) {
 	float x = F32Modulate(angle, F32Tau);
 	if (x < 0.0f) x += F32Tau;
 	return x;
 }
 
+/**
+* @brief Rounds a normalized float (0..1) to a byte (0..255).
+* @param[in] value The value in the range [0, 1].
+* @return The rounded byte value.
+*/
 fpl_force_inline uint8_t RoundF32ToU8(float value) {
 	uint8_t result = (uint8_t)(value * 255.0f + 0.5f);
 	return(result);
 }
 
+/**
+* @brief Converts a byte (0..255) to a normalized float (0..1).
+* @param[in] value The byte value.
+* @return The value mapped into the range [0, 1].
+*/
 fpl_force_inline float RoundU8ToF32(uint8_t value) {
 	float result = value * F32InvByte;
 	return(result);
