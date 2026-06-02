@@ -18,6 +18,7 @@ Changelog
 	- Fixed V4fZero() was not initializing all components zo zero
 	- Fixed M4fRotationY() was not computed in column-row order
 	- Fixed M4fInverse() was not transposing the resulting matrix
+	- Fixed V4fMultM4f() was not computing in column-major order
 	- Added M4fTranspose() that transposes a Mat4f
 
 	## 2025-12-31
@@ -1382,11 +1383,13 @@ fpl_force_inline Mat4f operator *(const Mat4f &a, const Mat4f &b) {
 #endif // __cplusplus
 
 fpl_force_inline Vec4f V4fMultM4f(const Mat4f mat, const Vec4f v) {
+	// Column-major storage: r[col][row], so element (row i, col j) is r[j][i].
+	// Computes M * v, matches OpenGL matrix layout.
 	Vec4f result;
-	result.x = mat.r[0][0] * v.m[0] + mat.r[0][1] * v.m[1] + mat.r[0][2] * v.m[2] + mat.r[0][3] * v.m[3];
-	result.y = mat.r[1][0] * v.m[0] + mat.r[1][1] * v.m[1] + mat.r[1][2] * v.m[2] + mat.r[1][3] * v.m[3];
-	result.z = mat.r[2][0] * v.m[0] + mat.r[2][1] * v.m[1] + mat.r[2][2] * v.m[2] + mat.r[2][3] * v.m[3];
-	result.w = mat.r[3][0] * v.m[0] + mat.r[3][1] * v.m[1] + mat.r[3][2] * v.m[2] + mat.r[3][3] * v.m[3];
+	result.x = mat.r[0][0] * v.x + mat.r[1][0] * v.y + mat.r[2][0] * v.z + mat.r[3][0] * v.w;
+	result.y = mat.r[0][1] * v.x + mat.r[1][1] * v.y + mat.r[2][1] * v.z + mat.r[3][1] * v.w;
+	result.z = mat.r[0][2] * v.x + mat.r[1][2] * v.y + mat.r[2][2] * v.z + mat.r[3][2] * v.w;
+	result.w = mat.r[0][3] * v.x + mat.r[1][3] * v.y + mat.r[2][3] * v.z + mat.r[3][3] * v.w;
 	return(result);
 }
 
