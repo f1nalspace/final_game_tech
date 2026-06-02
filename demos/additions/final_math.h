@@ -12,6 +12,8 @@ License:
 	Copyright 2017-2026 Torsten Spaete
 
 Changelog
+	## 2026-02-06
+	- Standalone math constants, no more relying on math.h or float.h
 	## 2025-12-31
 	- Added struct Vec2u
 	- Added function V2iProject() that reverses V2fUnproject()
@@ -73,16 +75,17 @@ Changelog
 #ifndef _USE_MATH_DEFINES
 #define _USE_MATH_DEFINES 1
 #endif
+// Only math functions (sinf, cosf, sqrtf, ...) are taken from math.h.
+// All constants are defined ourselves below, so no math.h/float.h constants.
 #include <math.h>
-#include <float.h>
 
-const float F32MaxValue = FLT_MAX;
-const float F32MinValue = FLT_MIN;
-const float F32Pi = (float)M_PI;
-const float F32Tau = (float)M_PI * 2.0f;
-const float F32Deg2Rad = (float)M_PI / 180.0f;
-const float F32Rad2Deg = 180.0f / (float)M_PI;
-const float F32Epsilon = FLT_EPSILON;
+const float F32MaxValue = 3.402823466e+38f;   // FLT_MAX
+const float F32MinValue = 1.175494351e-38f;   // FLT_MIN (smallest normal positive)
+const float F32Pi = 3.14159265358979323846f;
+const float F32Tau = 6.28318530717958647692f; // 2*Pi
+const float F32Deg2Rad = 3.14159265358979323846f / 180.0f;
+const float F32Rad2Deg = 180.0f / 3.14159265358979323846f;
+const float F32Epsilon = 1.192092896e-07f;    // FLT_EPSILON
 const float F32InvByte = 1.0f / 255.0f;
 
 //
@@ -606,12 +609,24 @@ fpl_force_inline Viewport4f VP4fInit(const float x, const float y, const float w
 //
 // Scalar
 //
+// Self-defined quiet NaN (no math.h NAN dependency).
+fpl_force_inline float F32NaN() {
+	union { uint32_t u; float f; } bits;
+	bits.u = 0x7FC00000u;
+	return bits.f;
+}
+fpl_force_inline float F32Infinity() {
+	union { uint32_t u; float f; } bits;
+	bits.u = 0x7F800000u;
+	return bits.f;
+}
 fpl_force_inline bool F32IsNaN(const float x) {
-	return isnan(x);
+	// NaN is the only value not equal to itself (no math.h dependency).
+	return x != x;
 }
 fpl_force_inline float F32Sign(const float x) {
 	if(F32IsNaN(x)) {
-		return NAN;
+		return F32NaN();
 	}
 	if(x == 0.0) {
 		return 0.0;
@@ -874,7 +889,7 @@ fpl_force_inline Vec2f V2fMajorAxis(const Vec2f v) {
 
 fpl_force_inline Vec2f V2fRandomDirection() {
 	float d = rand() / (float)RAND_MAX;
-	float angle = d * ((float)M_PI * 2.0f);
+	float angle = d * F32Tau;
 	Vec2f result = V2fInit(F32Cos(angle), F32Sin(angle));
 	return(result);
 }
