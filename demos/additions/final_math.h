@@ -15,6 +15,7 @@ Changelog
 	## 2026-02-06
 	- Standalone math constants, no more relying on math.h or float.h
 	- Fixed V2fDistanceSquared() / V3fDistanceSquared() was not implemented correctly
+	- Fixed V4fZero() was not initializing all components zo zero
 
 	## 2025-12-31
 	- Added struct Vec2u
@@ -393,7 +394,7 @@ typedef union Vec4f {
 #define V4FArg(v) (Vec4f)v
 
 fpl_force_inline Vec4f V4fZero() {
-	Vec4f result = fplStructInit(Vec4f, 0, 0, 0, 1);
+	Vec4f result = fplStructInit(Vec4f, 0, 0, 0, 0);
 	return(result);
 }
 
