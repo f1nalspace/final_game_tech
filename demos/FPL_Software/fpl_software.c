@@ -7,7 +7,7 @@ Description:
 	Software rendering demo with multiple switchable scenarios.
 
 	Scenarios (cycle with F1):
-	  1. Planes          - 4 planes + a bouncing quad (original demo, Phase 1).
+	  1. Planes          - 4 planes + a bouncing quad (original demo).
 	  2. Pixel Primitives - filled quads, H/V lines, filled circles + clipping.
 	  3. Ortho Pipeline   - orthographic projection + model matrix (OpenGL style).
 	  4. Vector Shapes    - float quads/lines/circles, filled/stroked, thickness.
@@ -16,8 +16,8 @@ Description:
 
 	F2 toggles bilinear filtering (textured scenarios).
 
-	The pixel layer (Phase 1) is top-down (y-down). The pipeline layer (Phase 2)
-	uses OpenGL coordinates (y-up, glOrtho-style, texture v-up).
+	The pixel layer is top-down (y-down).
+	The pipeline layer uses OpenGL coordinates (y-up, glOrtho-style, texture v-up).
 
 Requirements:
 	- C99 Compiler
@@ -262,7 +262,7 @@ static void ScenarioCleanup(AppScenarios *app) {
 }
 
 //
-// Scenario: Planes (Phase 1 baseline)
+// Scenario: Planes
 //
 
 static void UpdatePlanes(PlanesScenario *s, fplVideoBackBuffer *bb, float dt) {
@@ -322,7 +322,7 @@ static void RenderPlanes(PlanesScenario *s, fplVideoBackBuffer *bb) {
 }
 
 //
-// Scenario: Pixel Primitives (Phase 1.1-1.3)
+// Scenario: Pixel Primitives
 //
 
 static void UpdatePixelPrimitives(PixelPrimitivesScenario *s, fplVideoBackBuffer *bb, float dt) {
@@ -358,7 +358,7 @@ static void RenderPixelPrimitives(PixelPrimitivesScenario *s, fplVideoBackBuffer
 }
 
 //
-// Scenario: Ortho Pipeline (Phase 2.1-2.2)
+// Scenario: Ortho Pipeline
 //
 
 static void UpdateOrthoPipeline(OrthoPipelineScenario *s, float dt) {
@@ -395,7 +395,7 @@ static void RenderOrthoPipeline(OrthoPipelineScenario *s, fplVideoBackBuffer *bb
 }
 
 //
-// Scenario: Vector Shapes (Phase 2.2-2.4)
+// Scenario: Vector Shapes
 //
 
 static void UpdateVectorShapes(VectorShapesScenario *s, float dt) {
@@ -453,7 +453,7 @@ static void RenderVectorShapes(VectorShapesScenario *s, fplVideoBackBuffer *bb) 
 }
 
 //
-// Scenario: Textured Quad (Phase 2.5-2.6)
+// Scenario: Textured Quad
 //
 
 static void UpdateTexturedQuad(TexturedQuadScenario *s, float dt) {
@@ -493,7 +493,7 @@ static void RenderTexturedQuad(TexturedQuadScenario *s, fplVideoBackBuffer *bb, 
 }
 
 //
-// Scenario: Sub-Pixel Motion (Phase 2.7)
+// Scenario: Sub-Pixel Motion
 //
 
 static void UpdateSubPixelMotion(SubPixelMotionScenario *s, float dt) {
