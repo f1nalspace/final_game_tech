@@ -12,6 +12,22 @@ License:
 	Copyright 2017-2026 Torsten Spaete
 
 Changelog
+	## 2026-06-02
+	- Standalone math constants (no float.h, no math.h constants); math.h kept only for functions
+	- Fixed V2fDistanceSquared() / V3fDistanceSquared() was not implemented correctly
+	- Fixed V4fZero() was not initializing all components to zero
+	- Fixed M4fRotationY() had the sine sign swapped (was the transposed rotation)
+	- Fixed M4fInverse() was not transposing the resulting matrix
+	- Fixed V4fMultM4f() was not computing in column-major order
+	- Fixed QuatToMat4() was not computing in column-major order
+	- Fixed V2iProject() was not computing NDC correctly
+	- Added M4fTranspose() that transposes a Mat4f
+	- Added struct Mat3f
+	- Added functions M3fInit, M3fIdentity, M3fCopy and M3f() C++ variants
+	- Added functions M3fFromMat4, V3fMultM3f, M3fMult, M3fTranspose, M3fTranslationV2, M3fScaleV2, M3fRotationZ
+	- Added functions F32NaN() and F32Infinity()
+	- Removed usage of _USE_MATH_DEFINES
+
 	## 2025-12-31
 	- Added struct Vec2u
 	- Added function V2iProject() that reverses V2fUnproject()
@@ -70,19 +86,18 @@ Changelog
 
 #include <stdlib.h> // rand, RAND_MAX
 
-#ifndef _USE_MATH_DEFINES
-#define _USE_MATH_DEFINES 1
-#endif
+// Only math functions (sinf, cosf, sqrtf, ...) are taken from math.h.
+// All constants are defined ourselves below, so no math.h/float.h constants
+// and no need for _USE_MATH_DEFINES.
 #include <math.h>
-#include <float.h>
 
-const float F32MaxValue = FLT_MAX;
-const float F32MinValue = FLT_MIN;
-const float F32Pi = (float)M_PI;
-const float F32Tau = (float)M_PI * 2.0f;
-const float F32Deg2Rad = (float)M_PI / 180.0f;
-const float F32Rad2Deg = 180.0f / (float)M_PI;
-const float F32Epsilon = FLT_EPSILON;
+const float F32MaxValue = 3.402823466e+38f;   // FLT_MAX
+const float F32MinValue = 1.175494351e-38f;   // FLT_MIN (smallest normal positive)
+const float F32Pi = 3.14159265358979323846f;
+const float F32Tau = 6.28318530717958647692f; // 2*Pi
+const float F32Deg2Rad = 3.14159265358979323846f / 180.0f;
+const float F32Rad2Deg = 180.0f / 3.14159265358979323846f;
+const float F32Epsilon = 1.192092896e-07f;    // FLT_EPSILON
 const float F32InvByte = 1.0f / 255.0f;
 
 //
@@ -388,7 +403,7 @@ typedef union Vec4f {
 #define V4FArg(v) (Vec4f)v
 
 fpl_force_inline Vec4f V4fZero() {
-	Vec4f result = fplStructInit(Vec4f, 0, 0, 0, 1);
+	Vec4f result = fplStructInit(Vec4f, 0, 0, 0, 0);
 	return(result);
 }
 
@@ -606,12 +621,24 @@ fpl_force_inline Viewport4f VP4fInit(const float x, const float y, const float w
 //
 // Scalar
 //
+// Self-defined quiet NaN (no math.h NAN dependency).
+fpl_force_inline float F32NaN() {
+	union { uint32_t u; float f; } bits;
+	bits.u = 0x7FC00000u;
+	return bits.f;
+}
+fpl_force_inline float F32Infinity() {
+	union { uint32_t u; float f; } bits;
+	bits.u = 0x7F800000u;
+	return bits.f;
+}
 fpl_force_inline bool F32IsNaN(const float x) {
-	return isnan(x);
+	// NaN is the only value not equal to itself (no math.h dependency).
+	return x != x;
 }
 fpl_force_inline float F32Sign(const float x) {
 	if(F32IsNaN(x)) {
-		return NAN;
+		return F32NaN();
 	}
 	if(x == 0.0) {
 		return 0.0;
@@ -828,8 +855,9 @@ fpl_force_inline Vec2f V2fMultMat2(const Mat2f A, const Vec2f v) {
 }
 
 fpl_force_inline float V2fDistanceSquared(const Vec2f a, const Vec2f b) {
-	float f = (b.x - a.x) * (b.y - a.y);
-	float result = f * f;
+	float dx = b.x - a.x;
+	float dy = b.y - a.y;
+	float result = dx * dx + dy * dy;
 	return(result);
 }
 
@@ -874,7 +902,7 @@ fpl_force_inline Vec2f V2fMajorAxis(const Vec2f v) {
 
 fpl_force_inline Vec2f V2fRandomDirection() {
 	float d = rand() / (float)RAND_MAX;
-	float angle = d * ((float)M_PI * 2.0f);
+	float angle = d * F32Tau;
 	Vec2f result = V2fInit(F32Cos(angle), F32Sin(angle));
 	return(result);
 }
@@ -963,8 +991,10 @@ fpl_force_inline float V3fDot(const Vec3f a, const Vec3f b) {
 }
 
 fpl_force_inline float V3fDistanceSquared(const Vec3f a, const Vec3f b) {
-	float f = (b.x - a.x) * (b.y - a.y) * (b.z - a.z);
-	float result = f * f;
+	float dx = b.x - a.x;
+	float dy = b.y - a.y;
+	float dz = b.z - a.z;
+	float result = dx * dx + dy * dy + dz * dz;
 	return(result);
 }
 
@@ -1249,9 +1279,9 @@ fpl_force_inline static Mat4f M4fRotationY(const float angle) {
 	float c = F32Cos(angle);
 	float s = F32Sin(angle);
 	Mat4f result;
-	result.col1 = V4fInit(c, 0.0f, s, 0.0f);
+	result.col1 = V4fInit(c, 0.0f, -s, 0.0f);
 	result.col2 = V4fInit(0.0f, 1.0f, 0.0f, 0.0f);
-	result.col3 = V4fInit(-s, 0.0f, c, 0.0f);
+	result.col3 = V4fInit(s, 0.0f, c, 0.0f);
 	result.col4 = V4fInit(0.0f, 0.0f, 0.0f, 1.0f);
 	return (result);
 }
@@ -1285,6 +1315,16 @@ fpl_force_inline Mat4f M4fMult(const Mat4f a, const Mat4f b) {
 				+ (b.m[i + 1] * a.m[j + 4])
 				+ (b.m[i + 2] * a.m[j + 8])
 				+ (b.m[i + 3] * a.m[j + 12]);
+		}
+	}
+	return(result);
+}
+
+fpl_force_inline Mat4f M4fTranspose(const Mat4f m) {
+	Mat4f result;
+	for (int row = 0; row < 4; ++row) {
+		for (int col = 0; col < 4; ++col) {
+			result.r[col][row] = m.r[row][col];
 		}
 	}
 	return(result);
@@ -1345,7 +1385,10 @@ fpl_force_inline Mat4f M4fInverse(const Mat4f mat) {
 		Inverse.m[i] *= inverseDet;
 	}
 
-	return Inverse;
+	// The cofactor expansion above produces the inverse in row-major order;
+	// transpose it back to the column-major storage used everywhere else so
+	// M4fMult(m, M4fInverse(m)) == identity.
+	return M4fTranspose(Inverse);
 }
 
 #if defined(__cplusplus)
@@ -1356,11 +1399,13 @@ fpl_force_inline Mat4f operator *(const Mat4f &a, const Mat4f &b) {
 #endif // __cplusplus
 
 fpl_force_inline Vec4f V4fMultM4f(const Mat4f mat, const Vec4f v) {
+	// Column-major storage: r[col][row], so element (row i, col j) is r[j][i].
+	// Computes M * v, matches OpenGL matrix layout.
 	Vec4f result;
-	result.x = mat.r[0][0] * v.m[0] + mat.r[0][1] * v.m[1] + mat.r[0][2] * v.m[2] + mat.r[0][3] * v.m[3];
-	result.y = mat.r[1][0] * v.m[0] + mat.r[1][1] * v.m[1] + mat.r[1][2] * v.m[2] + mat.r[1][3] * v.m[3];
-	result.z = mat.r[2][0] * v.m[0] + mat.r[2][1] * v.m[1] + mat.r[2][2] * v.m[2] + mat.r[2][3] * v.m[3];
-	result.w = mat.r[3][0] * v.m[0] + mat.r[3][1] * v.m[1] + mat.r[3][2] * v.m[2] + mat.r[3][3] * v.m[3];
+	result.x = mat.r[0][0] * v.x + mat.r[1][0] * v.y + mat.r[2][0] * v.z + mat.r[3][0] * v.w;
+	result.y = mat.r[0][1] * v.x + mat.r[1][1] * v.y + mat.r[2][1] * v.z + mat.r[3][1] * v.w;
+	result.z = mat.r[0][2] * v.x + mat.r[1][2] * v.y + mat.r[2][2] * v.z + mat.r[3][2] * v.w;
+	result.w = mat.r[0][3] * v.x + mat.r[1][3] * v.y + mat.r[2][3] * v.z + mat.r[3][3] * v.w;
 	return(result);
 }
 
@@ -1392,20 +1437,23 @@ fpl_force_inline Mat4f QuatToMat4(const Quaternion q) {
 	result.r[1][1] = (-sqx + sqy - sqz + sqw) * invs;
 	result.r[2][2] = (-sqx - sqy + sqz + sqw) * invs;
 
+	// Off-diagonals stored column-major (r[col][row]) to match M4fMult /
+	// V4fMultM4f / the GL-uploaded layout, so the matrix rotates the same
+	// direction as QuatMultV3f.
 	tmp1 = q.x * q.y;
 	tmp2 = q.z * q.w;
-	result.r[1][0] = 2.0f * (tmp1 + tmp2) * invs;
-	result.r[0][1] = 2.0f * (tmp1 - tmp2) * invs;
+	result.r[0][1] = 2.0f * (tmp1 + tmp2) * invs;
+	result.r[1][0] = 2.0f * (tmp1 - tmp2) * invs;
 
 	tmp1 = q.x * q.z;
 	tmp2 = q.y * q.w;
-	result.r[2][0] = 2.0f * (tmp1 - tmp2) * invs;
-	result.r[0][2] = 2.0f * (tmp1 + tmp2) * invs;
+	result.r[0][2] = 2.0f * (tmp1 - tmp2) * invs;
+	result.r[2][0] = 2.0f * (tmp1 + tmp2) * invs;
 
 	tmp1 = q.y * q.z;
 	tmp2 = q.x * q.w;
-	result.r[2][1] = 2.0f * (tmp1 + tmp2) * invs;
-	result.r[1][2] = 2.0f * (tmp1 - tmp2) * invs;
+	result.r[1][2] = 2.0f * (tmp1 + tmp2) * invs;
+	result.r[2][1] = 2.0f * (tmp1 - tmp2) * invs;
 
 	return(result);
 }
@@ -1795,8 +1843,6 @@ fpl_force_inline Vec2f V2fUnproject(const Vec2i screenPos, const Mat4f mvp, cons
 }
 
 fpl_force_inline Vec2i V2iProject(const Vec2f worldPos, const Mat4f mvp, const Viewport4i viewport) {
-	const Vec2f one = V2fInit(1.0f, 1.0f);
-
 	// Convert world position to homogeneous clip space
 	Vec4f world4 = V4fInit(worldPos.x, worldPos.y, 0.0f, 1.0f);
 	Vec4f clip = V4fMultM4f(mvp, world4);
@@ -1804,12 +1850,12 @@ fpl_force_inline Vec2i V2iProject(const Vec2f worldPos, const Mat4f mvp, const V
 	// Perspective divide -> NDC (-1 to +1)
 	Vec4f ndc = V4fDivideScalar(clip, clip.w);
 
-	// Convert NDC -> linear viewport space (0 to 1)
-	Vec2f linear = V2fAddMultScalar(ndc.xy, one, 0.5f);
+	// Convert NDC -> linear viewport space (0 to 1): ndc * 0.5 + 0.5
+	Vec2f linear = V2fInit(ndc.x * 0.5f + 0.5f, ndc.y * 0.5f + 0.5f);
 
-	// Convert linear -> screen coordinates inside viewport
-	int screenX = (int)(viewport.x + linear.x * viewport.w);
-	int screenY = (int)(viewport.y + linear.y * viewport.h);
+	// Convert linear -> screen coordinates inside viewport (rounded to nearest pixel)
+	int screenX = (int)(viewport.x + linear.x * viewport.w + 0.5f);
+	int screenY = (int)(viewport.y + linear.y * viewport.h + 0.5f);
 
 	return V2iInit(screenX, screenY);
 }
@@ -1845,6 +1891,114 @@ fpl_force_inline Viewport4f VP4fComputeByAspect(const Vec2f screenSize, const fl
 		viewOffset.y = (screenSize.h - viewSize.h) * 0.5f;
 	}
 	Viewport4f result = VP4fInit(viewOffset.x, viewOffset.y, viewSize.w, viewSize.h);
+	return(result);
+}
+
+//
+// Mat3f (column-major, r[col][row])
+//
+typedef union Mat3f {
+	struct {
+		Vec3f col1;
+		Vec3f col2;
+		Vec3f col3;
+	};
+	struct {
+		float r[3][3];
+	};
+	float m[9];
+} Mat3f;
+
+#define M3F(c1, c2, c3) {c1, c2, c3}
+#define M3FArg(m) (Mat3f)m
+
+fpl_force_inline Mat3f M3fInit(const float value) {
+	Mat3f result;
+	result.col1 = V3fInit(value, 0.0f, 0.0f);
+	result.col2 = V3fInit(0.0f, value, 0.0f);
+	result.col3 = V3fInit(0.0f, 0.0f, value);
+	return(result);
+}
+
+fpl_force_inline Mat3f M3fIdentity() {
+	return M3fInit(1.0f);
+}
+
+fpl_force_inline Mat3f M3fCopy(const Mat3f other) {
+	Mat3f result = fplStructInit(Mat3f, other.col1, other.col2, other.col3);
+	return(result);
+}
+
+#if defined(__cplusplus)
+fpl_force_inline Mat3f M3f() {
+	return M3fIdentity();
+}
+fpl_force_inline Mat3f M3f(const float value) {
+	return M3fInit(value);
+}
+fpl_force_inline Mat3f M3f(const Mat3f &other) {
+	return M3fCopy(other);
+}
+#endif
+
+// Upper-left 3x3 of a Mat4f (drops translation row/column).
+fpl_force_inline Mat3f M3fFromMat4(const Mat4f m) {
+	Mat3f result;
+	result.col1 = V3fInit(m.r[0][0], m.r[0][1], m.r[0][2]);
+	result.col2 = V3fInit(m.r[1][0], m.r[1][1], m.r[1][2]);
+	result.col3 = V3fInit(m.r[2][0], m.r[2][1], m.r[2][2]);
+	return(result);
+}
+
+// Transforms a vector: result = M * v (column-major).
+fpl_force_inline Vec3f V3fMultM3f(const Mat3f m, const Vec3f v) {
+	Vec3f result;
+	result.x = m.r[0][0] * v.x + m.r[1][0] * v.y + m.r[2][0] * v.z;
+	result.y = m.r[0][1] * v.x + m.r[1][1] * v.y + m.r[2][1] * v.z;
+	result.z = m.r[0][2] * v.x + m.r[1][2] * v.y + m.r[2][2] * v.z;
+	return(result);
+}
+
+fpl_force_inline Mat3f M3fMult(const Mat3f a, const Mat3f b) {
+	Mat3f result;
+	result.col1 = V3fMultM3f(a, b.col1);
+	result.col2 = V3fMultM3f(a, b.col2);
+	result.col3 = V3fMultM3f(a, b.col3);
+	return(result);
+}
+
+fpl_force_inline Mat3f M3fTranspose(const Mat3f m) {
+	Mat3f result;
+	for (int row = 0; row < 3; ++row) {
+		for (int col = 0; col < 3; ++col) {
+			result.r[col][row] = m.r[row][col];
+		}
+	}
+	return(result);
+}
+
+// 2D affine helpers (translation in column 3).
+fpl_force_inline Mat3f M3fTranslationV2(const Vec2f p) {
+	Mat3f result = M3fIdentity();
+	result.r[2][0] = p.x;
+	result.r[2][1] = p.y;
+	return(result);
+}
+
+fpl_force_inline Mat3f M3fScaleV2(const Vec2f s) {
+	Mat3f result = M3fIdentity();
+	result.r[0][0] = s.x;
+	result.r[1][1] = s.y;
+	return(result);
+}
+
+fpl_force_inline Mat3f M3fRotationZ(const float angle) {
+	float c = F32Cos(angle);
+	float s = F32Sin(angle);
+	Mat3f result;
+	result.col1 = V3fInit(c, s, 0.0f);
+	result.col2 = V3fInit(-s, c, 0.0f);
+	result.col3 = V3fInit(0.0f, 0.0f, 1.0f);
 	return(result);
 }
 
