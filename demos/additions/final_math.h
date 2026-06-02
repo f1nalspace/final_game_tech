@@ -16,6 +16,7 @@ Changelog
 	- Standalone math constants, no more relying on math.h or float.h
 	- Fixed V2fDistanceSquared() / V3fDistanceSquared() was not implemented correctly
 	- Fixed V4fZero() was not initializing all components zo zero
+	- Fixed M4fRotationY() was not computed in column-row order
 
 	## 2025-12-31
 	- Added struct Vec2u
@@ -1259,9 +1260,9 @@ fpl_force_inline static Mat4f M4fRotationY(const float angle) {
 	float c = F32Cos(angle);
 	float s = F32Sin(angle);
 	Mat4f result;
-	result.col1 = V4fInit(c, 0.0f, s, 0.0f);
+	result.col1 = V4fInit(c, 0.0f, -s, 0.0f);
 	result.col2 = V4fInit(0.0f, 1.0f, 0.0f, 0.0f);
-	result.col3 = V4fInit(-s, 0.0f, c, 0.0f);
+	result.col3 = V4fInit(s, 0.0f, c, 0.0f);
 	result.col4 = V4fInit(0.0f, 0.0f, 0.0f, 1.0f);
 	return (result);
 }
