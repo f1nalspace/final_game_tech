@@ -12,19 +12,20 @@ License:
 	Copyright 2017-2026 Torsten Spaete
 
 Changelog
-	## 2026-02-06
-	- Standalone math constants, no more relying on math.h or float.h
+	## 2026-06-02
+	- Standalone math constants (no float.h, no math.h constants); math.h kept only for functions
 	- Fixed V2fDistanceSquared() / V3fDistanceSquared() was not implemented correctly
-	- Fixed V4fZero() was not initializing all components zo zero
-	- Fixed M4fRotationY() was not computed in column-row order
+	- Fixed V4fZero() was not initializing all components to zero
+	- Fixed M4fRotationY() had the sine sign swapped (was the transposed rotation)
 	- Fixed M4fInverse() was not transposing the resulting matrix
 	- Fixed V4fMultM4f() was not computing in column-major order
 	- Fixed QuatToMat4() was not computing in column-major order
-	- Fixed V2iProject() was not computing NCD correctly
+	- Fixed V2iProject() was not computing NDC correctly
 	- Added M4fTranspose() that transposes a Mat4f
 	- Added struct Mat3f
 	- Added functions M3fInit, M3fIdentity, M3fCopy and M3f() C++ variants
-	- Added functions M3fFromMat4, V3fMultM3f, M3fMult, M3fTranspose, M3fTranspose, M3fScaleV2, M3fRotationZ
+	- Added functions M3fFromMat4, V3fMultM3f, M3fMult, M3fTranspose, M3fTranslationV2, M3fScaleV2, M3fRotationZ
+	- Added functions F32NaN() and F32Infinity()
 	- Removed usage of _USE_MATH_DEFINES
 
 	## 2025-12-31
