@@ -14,6 +14,8 @@ License:
 Changelog
 	## 2026-02-06
 	- Standalone math constants, no more relying on math.h or float.h
+	- Fixed V2fDistanceSquared() / V3fDistanceSquared() was not implemented correctly
+
 	## 2025-12-31
 	- Added struct Vec2u
 	- Added function V2iProject() that reverses V2fUnproject()
@@ -843,8 +845,9 @@ fpl_force_inline Vec2f V2fMultMat2(const Mat2f A, const Vec2f v) {
 }
 
 fpl_force_inline float V2fDistanceSquared(const Vec2f a, const Vec2f b) {
-	float f = (b.x - a.x) * (b.y - a.y);
-	float result = f * f;
+	float dx = b.x - a.x;
+	float dy = b.y - a.y;
+	float result = dx * dx + dy * dy;
 	return(result);
 }
 
@@ -978,8 +981,10 @@ fpl_force_inline float V3fDot(const Vec3f a, const Vec3f b) {
 }
 
 fpl_force_inline float V3fDistanceSquared(const Vec3f a, const Vec3f b) {
-	float f = (b.x - a.x) * (b.y - a.y) * (b.z - a.z);
-	float result = f * f;
+	float dx = b.x - a.x;
+	float dy = b.y - a.y;
+	float dz = b.z - a.z;
+	float result = dx * dx + dy * dy + dz * dz;
 	return(result);
 }
 
