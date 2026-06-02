@@ -1122,6 +1122,24 @@ fpl_force_inline float F32Modulate(const float x, const float y) {
 	return result;
 }
 /**
+* @brief Rounds a value down to the nearest integer.
+* @param[in] value The input value.
+* @return The largest integer value not greater than the input.
+*/
+fpl_force_inline float F32Floor(const float value) {
+	float result = floorf(value);
+	return(result);
+}
+/**
+* @brief Rounds a value up to the nearest integer.
+* @param[in] value The input value.
+* @return The smallest integer value not less than the input.
+*/
+fpl_force_inline float F32Ceil(const float value) {
+	float result = ceilf(value);
+	return(result);
+}
+/**
 * @brief Returns the smaller of two values.
 * @param[in] a The first value.
 * @param[in] b The second value.
