@@ -20,6 +20,7 @@ Changelog
 	- Fixed M4fInverse() was not transposing the resulting matrix
 	- Fixed V4fMultM4f() was not computing in column-major order
 	- Fixed QuatToMat4() was not computing in column-major order
+	- Fixed V2iProject() was not computing NCD correctly
 	- Added M4fTranspose() that transposes a Mat4f
 
 	## 2025-12-31
@@ -1815,8 +1816,6 @@ fpl_force_inline Vec2f V2fUnproject(const Vec2i screenPos, const Mat4f mvp, cons
 }
 
 fpl_force_inline Vec2i V2iProject(const Vec2f worldPos, const Mat4f mvp, const Viewport4i viewport) {
-	const Vec2f one = V2fInit(1.0f, 1.0f);
-
 	// Convert world position to homogeneous clip space
 	Vec4f world4 = V4fInit(worldPos.x, worldPos.y, 0.0f, 1.0f);
 	Vec4f clip = V4fMultM4f(mvp, world4);
@@ -1824,12 +1823,12 @@ fpl_force_inline Vec2i V2iProject(const Vec2f worldPos, const Mat4f mvp, const V
 	// Perspective divide -> NDC (-1 to +1)
 	Vec4f ndc = V4fDivideScalar(clip, clip.w);
 
-	// Convert NDC -> linear viewport space (0 to 1)
-	Vec2f linear = V2fAddMultScalar(ndc.xy, one, 0.5f);
+	// Convert NDC -> linear viewport space (0 to 1): ndc * 0.5 + 0.5
+	Vec2f linear = V2fInit(ndc.x * 0.5f + 0.5f, ndc.y * 0.5f + 0.5f);
 
-	// Convert linear -> screen coordinates inside viewport
-	int screenX = (int)(viewport.x + linear.x * viewport.w);
-	int screenY = (int)(viewport.y + linear.y * viewport.h);
+	// Convert linear -> screen coordinates inside viewport (rounded to nearest pixel)
+	int screenX = (int)(viewport.x + linear.x * viewport.w + 0.5f);
+	int screenY = (int)(viewport.y + linear.y * viewport.h + 0.5f);
 
 	return V2iInit(screenX, screenY);
 }
