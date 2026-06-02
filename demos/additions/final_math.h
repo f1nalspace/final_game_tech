@@ -26,6 +26,8 @@ Changelog
 	- Added functions M3fInit, M3fIdentity, M3fCopy and M3f() C++ variants
 	- Added functions M3fFromMat4, V3fMultM3f, M3fMult, M3fTranspose, M3fTranslationV2, M3fScaleV2, M3fRotationZ
 	- Added functions F32NaN() and F32Infinity()
+	- Added functions F32Floor() and F32Ceil()
+	- Added Doxygen documentation for all types, constants, macros and functions
 	- Removed usage of _USE_MATH_DEFINES
 
 	## 2025-12-31
