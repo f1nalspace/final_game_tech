@@ -671,6 +671,14 @@ fpl_force_inline float F32SquareRoot(const float value) {
 	float result = sqrtf(value);
 	return(result);
 }
+fpl_force_inline float F32Floor(const float value) {
+	float result = floorf(value);
+	return(result);
+}
+fpl_force_inline float F32Ceil(const float value) {
+	float result = ceilf(value);
+	return(result);
+}
 fpl_force_inline float F32RadiansToDegrees(const float radians) {
 	float result = radians * F32Rad2Deg;
 	return(result);
