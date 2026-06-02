@@ -1265,86 +1265,145 @@ fpl_force_inline float RoundU8ToF32(uint8_t value) {
 //
 // Vec2f
 //
+/**
+* @brief Adds two vectors component-wise.
+* @param[in] a The first vector.
+* @param[in] b The second vector.
+* @return The sum a + b.
+*/
 fpl_force_inline Vec2f V2fAdd(const Vec2f a, const Vec2f b) {
 	Vec2f result = V2fInit(a.x + b.x, a.y + b.y);
 	return(result);
 }
 
+/**
+* @brief Subtracts two vectors component-wise.
+* @param[in] a The vector to subtract from.
+* @param[in] b The vector to subtract.
+* @return The difference a - b.
+*/
 fpl_force_inline Vec2f V2fSub(const Vec2f a, const Vec2f b) {
 	Vec2f result = V2fInit(a.x - b.x, a.y - b.y);
 	return(result);
 }
 
+/**
+* @brief Multiplies a vector by a scalar.
+* @param[in] v The vector.
+* @param[in] s The scalar.
+* @return The scaled vector.
+*/
 fpl_force_inline Vec2f V2fMultScalar(const Vec2f v, const float s) {
 	Vec2f result = V2fInit(v.x * s, v.y * s);
 	return(result);
 }
 
+/**
+* @brief Adds a scaled vector to another vector (a + b * s).
+* @param[in] a The base vector.
+* @param[in] b The vector to scale and add.
+* @param[in] s The scalar applied to b.
+* @return The result a + b * s.
+*/
 fpl_force_inline Vec2f V2fAddMultScalar(const Vec2f a, const Vec2f b, const float s) {
 	Vec2f result = V2fInit(a.x + b.x * s, a.y + b.y * s);
 	return(result);
 }
 
 #if defined(__cplusplus)
+//! C++ operator multiplying a Vec2f by a scalar.
 fpl_force_inline Vec2f operator*(const Vec2f &v, float s) {
 	Vec2f result = V2fMultScalar(v, s);
 	return(result);
 }
 
+//! C++ operator multiplying a scalar by a Vec2f.
 fpl_force_inline Vec2f operator*(float s, const Vec2f &v) {
 	Vec2f result = V2fMultScalar(v, s);
 	return(result);
 }
 
+//! C++ compound operator scaling a Vec2f in place.
 fpl_force_inline Vec2f &operator*=(Vec2f &v, float s) {
 	v = V2fMultScalar(v, s);
 	return(v);
 }
 
+//! C++ unary negation of a Vec2f.
 fpl_force_inline Vec2f operator-(const Vec2f &v) {
 	Vec2f result = V2fInit(-v.x, -v.y);
 	return(result);
 }
 
+//! C++ operator adding two Vec2f vectors.
 fpl_force_inline Vec2f operator+(const Vec2f &a, const Vec2f &b) {
 	Vec2f result = V2fAdd(a, b);
 	return(result);
 }
 
+//! C++ compound operator adding a Vec2f in place.
 fpl_force_inline Vec2f &operator+=(Vec2f &a, const Vec2f &b) {
 	a = V2fAdd(a, b);
 	return(a);
 }
 
+//! C++ operator subtracting two Vec2f vectors.
 fpl_force_inline Vec2f operator-(const Vec2f &a, const Vec2f &b) {
 	Vec2f result = V2fSub(a, b);
 	return(result);
 }
 
+//! C++ compound operator subtracting a Vec2f in place.
 fpl_force_inline Vec2f &operator-=(Vec2f &a, const Vec2f &b) {
 	a = V2fSub(a, b);
 	return(a);
 }
 #endif // __cplusplus
 
+/**
+* @brief Computes the component-wise absolute value.
+* @param[in] v The input vector.
+* @return The vector with absolute components.
+*/
 fpl_force_inline Vec2f V2fAbs(const Vec2f v) {
 	return V2fInit(F32Abs(v.x), F32Abs(v.y));
 }
 
+/**
+* @brief Negates a vector.
+* @param[in] v The input vector.
+* @return The negated vector.
+*/
 fpl_force_inline Vec2f V2fNegate(const Vec2f v) {
 	return V2fInit(-v.x, -v.y);
 }
 
+/**
+* @brief Computes the dot product of two vectors.
+* @param[in] a The first vector.
+* @param[in] b The second vector.
+* @return The dot product.
+*/
 fpl_force_inline float V2fDot(const Vec2f a, const Vec2f b) {
 	float result = a.x * b.x + a.y * b.y;
 	return(result);
 }
 
+/**
+* @brief Computes the length (magnitude) of a vector.
+* @param[in] v The input vector.
+* @return The Euclidean length.
+*/
 fpl_force_inline float V2fLength(const Vec2f v) {
 	float result = sqrtf(v.x * v.x + v.y * v.y);
 	return(result);
 }
 
+/**
+* @brief Normalizes a vector to unit length.
+* @param[in] v The input vector.
+* @return The unit-length vector, or the original vector when its length is zero.
+*/
 fpl_force_inline Vec2f V2fNormalize(const Vec2f v) {
 	float l = V2fLength(v);
 	if (l == 0) {
@@ -1355,16 +1414,34 @@ fpl_force_inline Vec2f V2fNormalize(const Vec2f v) {
 	return(result);
 }
 
+/**
+* @brief Computes the component-wise (Hadamard) product of two vectors.
+* @param[in] a The first vector.
+* @param[in] b The second vector.
+* @return The component-wise product.
+*/
 fpl_force_inline Vec2f V2fHadamard(const Vec2f a, const Vec2f b) {
 	Vec2f result = V2fInit(a.x * b.x, a.y * b.y);
 	return(result);
 }
 
+/**
+* @brief Transforms a vector by a 2x2 matrix (A * v).
+* @param[in] A The column-major 2x2 matrix.
+* @param[in] v The vector to transform.
+* @return The transformed vector.
+*/
 fpl_force_inline Vec2f V2fMultMat2(const Mat2f A, const Vec2f v) {
 	Vec2f result = V2fInit(A.col1.x * v.x + A.col2.x * v.y, A.col1.y * v.x + A.col2.y * v.y);
 	return(result);
 }
 
+/**
+* @brief Computes the squared distance between two points.
+* @param[in] a The first point.
+* @param[in] b The second point.
+* @return The squared distance.
+*/
 fpl_force_inline float V2fDistanceSquared(const Vec2f a, const Vec2f b) {
 	float dx = b.x - a.x;
 	float dy = b.y - a.y;
@@ -1372,35 +1449,70 @@ fpl_force_inline float V2fDistanceSquared(const Vec2f a, const Vec2f b) {
 	return(result);
 }
 
+/**
+* @brief Returns the left perpendicular vector (rotated 90 degrees CCW).
+* @param[in] v The input vector.
+* @return The perpendicular vector (-y, x).
+*/
 fpl_force_inline Vec2f V2fPerp(const Vec2f v) {
 	return V2fInit(-v.y, v.x);
 }
 
-/* Returns the right perpendicular vector */
+/**
+* @brief Returns the right perpendicular vector (vector-scalar cross product).
+* @param[in] a The input vector.
+* @param[in] s The scalar.
+* @return The right perpendicular vector (s*y, -s*x).
+*/
 fpl_force_inline Vec2f V2fCrossR(const Vec2f a, float s) {
 	return V2fInit(s * a.y, -s * a.x);
 }
 
-/* Returns the left perpendicular vector */
+/**
+* @brief Returns the left perpendicular vector (scalar-vector cross product).
+* @param[in] s The scalar.
+* @param[in] a The input vector.
+* @return The left perpendicular vector (-s*y, s*x).
+*/
 fpl_force_inline Vec2f V2fCrossL(float s, const Vec2f a) {
 	return V2fInit(-s * a.y, s * a.x);
 }
 
-/* Returns the Z-rotation from two vectors */
+/**
+* @brief Returns the scalar (z) component of the 2D cross product.
+* @param[in] a The first vector.
+* @param[in] b The second vector.
+* @return The signed area of the parallelogram (a.x*b.y - a.y*b.x).
+*/
 fpl_force_inline float V2fCrossZ(const Vec2f a, const Vec2f b) {
 	return a.x * b.y - a.y * b.x;
 }
 
+/**
+* @brief Computes the angle of an axis vector.
+* @param[in] axis The direction vector.
+* @return The angle in radians measured from the positive x axis.
+*/
 fpl_force_inline float V2fAngleFromAxis(const Vec2f axis) {
 	float result = F32ArcTan2(axis.y, axis.x);
 	return(result);
 }
 
+/**
+* @brief Computes a unit direction vector from an angle.
+* @param[in] angle The angle in radians.
+* @return The unit vector (cos, sin).
+*/
 fpl_force_inline Vec2f V2fAxisFromAngle(const float angle) {
 	Vec2f result = V2fInit(F32Cos(angle), F32Sin(angle));
 	return(result);
 }
 
+/**
+* @brief Returns the dominant axis of a vector as a signed unit axis.
+* @param[in] v The input vector.
+* @return A unit vector along the axis with the larger magnitude, signed to match the input.
+*/
 fpl_force_inline Vec2f V2fMajorAxis(const Vec2f v) {
 	float x = F32Abs(v.x);
 	float y = F32Abs(v.y);
@@ -1411,6 +1523,10 @@ fpl_force_inline Vec2f V2fMajorAxis(const Vec2f v) {
 	}
 }
 
+/**
+* @brief Generates a random unit direction vector.
+* @return A unit vector pointing in a uniformly random direction.
+*/
 fpl_force_inline Vec2f V2fRandomDirection() {
 	float d = rand() / (float)RAND_MAX;
 	float angle = d * F32Tau;
@@ -1418,6 +1534,13 @@ fpl_force_inline Vec2f V2fRandomDirection() {
 	return(result);
 }
 
+/**
+* @brief Linearly interpolates between two vectors.
+* @param[in] a The start vector (at t=0).
+* @param[in] t The interpolation factor, typically in [0, 1].
+* @param[in] b The end vector (at t=1).
+* @return The interpolated vector.
+*/
 fpl_force_inline Vec2f V2fLerp(const Vec2f a, const float t, const Vec2f b) {
 	Vec2f result;
 	result.x = F32Lerp(a.x, t, b.x);
@@ -1425,16 +1548,35 @@ fpl_force_inline Vec2f V2fLerp(const Vec2f a, const float t, const Vec2f b) {
 	return(result);
 }
 
+/**
+* @brief Computes the component-wise minimum of two vectors.
+* @param[in] a The first vector.
+* @param[in] b The second vector.
+* @return The component-wise minimum.
+*/
 fpl_force_inline Vec2f V2fMin(const Vec2f a, const Vec2f b) {
 	Vec2f result = V2fInit(F32Min(a.x, b.x), F32Min(a.y, b.y));
 	return(result);
 }
 
+/**
+* @brief Computes the component-wise maximum of two vectors.
+* @param[in] a The first vector.
+* @param[in] b The second vector.
+* @return The component-wise maximum.
+*/
 fpl_force_inline Vec2f V2fMax(const Vec2f a, const Vec2f b) {
 	Vec2f result = V2fInit(F32Max(a.x, b.x), F32Max(a.y, b.y));
 	return(result);
 }
 
+/**
+* @brief Clamps a vector component-wise into an inclusive range.
+* @param[in] value The vector to clamp.
+* @param[in] min The component-wise lower bound.
+* @param[in] max The component-wise upper bound.
+* @return The clamped vector.
+*/
 fpl_force_inline Vec2f V2fClamp(const Vec2f value, const Vec2f min, const Vec2f max) {
 	Vec2f result = V2fMin(V2fMax(value, min), max);
 	return(result);
@@ -1443,26 +1585,56 @@ fpl_force_inline Vec2f V2fClamp(const Vec2f value, const Vec2f min, const Vec2f 
 //
 // Vec2i
 //
+/**
+* @brief Adds two integer vectors component-wise.
+* @param[in] a The first vector.
+* @param[in] b The second vector.
+* @return The sum a + b.
+*/
 fpl_force_inline Vec2i V2iAdd(const Vec2i a, const Vec2i b) {
 	Vec2i result = V2iInit(a.x + b.x, a.y + b.y);
 	return(result);
 }
 
+/**
+* @brief Subtracts two integer vectors component-wise.
+* @param[in] a The vector to subtract from.
+* @param[in] b The vector to subtract.
+* @return The difference a - b.
+*/
 fpl_force_inline Vec2i V2iSub(const Vec2i a, const Vec2i b) {
 	Vec2i result = V2iInit(a.x - b.x, a.y - b.y);
 	return(result);
 }
 
+/**
+* @brief Multiplies two integer vectors component-wise.
+* @param[in] a The first vector.
+* @param[in] b The second vector.
+* @return The component-wise product.
+*/
 fpl_force_inline Vec2i V2iMult(const Vec2i a, const Vec2i b) {
 	Vec2i result = V2iInit(a.x * b.x, a.y * b.y);
 	return(result);
 }
 
+/**
+* @brief Divides two integer vectors component-wise.
+* @param[in] a The dividend vector.
+* @param[in] b The divisor vector.
+* @return The component-wise quotient.
+*/
 fpl_force_inline Vec2i V2iDiv(const Vec2i a, const Vec2i b) {
 	Vec2i result = V2iInit(a.x / b.x, a.y / b.y);
 	return(result);
 }
 
+/**
+* @brief Tests two integer vectors for equality.
+* @param[in] a The first vector.
+* @param[in] b The second vector.
+* @return True when both components are equal.
+*/
 fpl_force_inline bool V2iEquals(const Vec2i a, const Vec2i b) {
 	bool result = a.x == b.x && a.y == b.y;
 	return(result);
