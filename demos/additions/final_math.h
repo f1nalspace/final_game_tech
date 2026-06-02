@@ -1643,36 +1643,76 @@ fpl_force_inline bool V2iEquals(const Vec2i a, const Vec2i b) {
 //
 // Vec3f
 //
+/**
+* @brief Negates a vector.
+* @param[in] v The input vector.
+* @return The negated vector.
+*/
 fpl_force_inline Vec3f V3fNegate(const Vec3f v) {
 	Vec3f result = V3fInit(-v.x, -v.y, -v.z);
 	return(result);
 }
 
+/**
+* @brief Computes the component-wise absolute value.
+* @param[in] v The input vector.
+* @return The vector with absolute components.
+*/
 fpl_force_inline Vec3f V3fAbs(const Vec3f v) {
 	Vec3f result = V3fInit(F32Abs(v.x), F32Abs(v.y), F32Abs(v.z));
 	return(result);
 }
 
+/**
+* @brief Multiplies a vector by a scalar.
+* @param[in] v The vector.
+* @param[in] s The scalar.
+* @return The scaled vector.
+*/
 fpl_force_inline Vec3f V3fMultScalar(const Vec3f v, const float s) {
 	Vec3f result = V3fInit(v.x * s, v.y * s, v.z * s);
 	return(result);
 }
 
+/**
+* @brief Adds two vectors component-wise.
+* @param[in] a The first vector.
+* @param[in] b The second vector.
+* @return The sum a + b.
+*/
 fpl_force_inline Vec3f V3fAdd(const Vec3f a, const Vec3f b) {
 	Vec3f result = V3fInit(a.x + b.x, a.y + b.y, a.z + b.z);
 	return(result);
 }
 
+/**
+* @brief Subtracts two vectors component-wise.
+* @param[in] a The vector to subtract from.
+* @param[in] b The vector to subtract.
+* @return The difference a - b.
+*/
 fpl_force_inline Vec3f V3fSub(const Vec3f a, const Vec3f b) {
 	Vec3f result = V3fInit(a.x - b.x, a.y - b.y, a.z - b.z);
 	return(result);
 }
 
+/**
+* @brief Computes the dot product of two vectors.
+* @param[in] a The first vector.
+* @param[in] b The second vector.
+* @return The dot product.
+*/
 fpl_force_inline float V3fDot(const Vec3f a, const Vec3f b) {
 	float result = a.x * b.x + a.y * b.y + a.z * b.z;
 	return(result);
 }
 
+/**
+* @brief Computes the squared distance between two points.
+* @param[in] a The first point.
+* @param[in] b The second point.
+* @return The squared distance.
+*/
 fpl_force_inline float V3fDistanceSquared(const Vec3f a, const Vec3f b) {
 	float dx = b.x - a.x;
 	float dy = b.y - a.y;
@@ -1681,16 +1721,31 @@ fpl_force_inline float V3fDistanceSquared(const Vec3f a, const Vec3f b) {
 	return(result);
 }
 
+/**
+* @brief Computes the squared length (magnitude) of a vector.
+* @param[in] v The input vector.
+* @return The squared Euclidean length.
+*/
 fpl_force_inline float V3fLength2(const Vec3f v) {
 	float result = V3fDot(v, v);
 	return(result);
 }
 
+/**
+* @brief Computes the length (magnitude) of a vector.
+* @param[in] v The input vector.
+* @return The Euclidean length.
+*/
 fpl_force_inline float V3fLength(const Vec3f v) {
 	float result = sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
 	return(result);
 }
 
+/**
+* @brief Normalizes a vector to unit length.
+* @param[in] v The input vector.
+* @return The unit-length vector, or the original vector when its length is zero.
+*/
 fpl_force_inline Vec3f V3fNormalize(const Vec3f v) {
 	float l = V3fLength(v);
 	if (l == 0) {
@@ -1701,6 +1756,12 @@ fpl_force_inline Vec3f V3fNormalize(const Vec3f v) {
 	return(result);
 }
 
+/**
+* @brief Computes the cross product of two vectors.
+* @param[in] a The first vector.
+* @param[in] b The second vector.
+* @return The cross product a x b, perpendicular to both inputs.
+*/
 fpl_force_inline Vec3f V3fCross(const Vec3f a, const Vec3f b) {
 	Vec3f result = V3fInit(
 		a.y * b.z - a.z * b.y,
@@ -1709,6 +1770,13 @@ fpl_force_inline Vec3f V3fCross(const Vec3f a, const Vec3f b) {
 	return(result);
 }
 
+/**
+* @brief Linearly interpolates between two vectors.
+* @param[in] a The start vector (at t=0).
+* @param[in] t The interpolation factor, typically in [0, 1].
+* @param[in] b The end vector (at t=1).
+* @return The interpolated vector.
+*/
 fpl_force_inline Vec3f V3fLerp(const Vec3f a, float t, const Vec3f b) {
 	Vec3f result;
 	result.x = F32Lerp(a.x, t, b.x);
@@ -1717,6 +1785,12 @@ fpl_force_inline Vec3f V3fLerp(const Vec3f a, float t, const Vec3f b) {
 	return(result);
 }
 
+/**
+* @brief Computes the component-wise (Hadamard) product of two vectors.
+* @param[in] a The first vector.
+* @param[in] b The second vector.
+* @return The component-wise product.
+*/
 fpl_force_inline Vec3f V3fHadamard(const Vec3f a, const Vec3f b) {
 	Vec3f result;
 	result.x = a.x * b.x;
@@ -1726,41 +1800,49 @@ fpl_force_inline Vec3f V3fHadamard(const Vec3f a, const Vec3f b) {
 }
 
 #if defined(__cplusplus)
+//! C++ operator multiplying a scalar by a Vec3f.
 fpl_force_inline Vec3f operator*(float s, const Vec3f &v) {
 	Vec3f result = V3fMultScalar(v, s);
 	return(result);
 }
 
+//! C++ operator multiplying a Vec3f by a scalar.
 fpl_force_inline Vec3f operator*(const Vec3f &v, float s) {
 	Vec3f result = V3fMultScalar(v, s);
 	return(result);
 }
 
+//! C++ compound operator scaling a Vec3f in place.
 fpl_force_inline Vec3f &operator*=(Vec3f &v, float s) {
 	v = s * v;
 	return(v);
 }
 
+//! C++ operator adding two Vec3f vectors.
 fpl_force_inline Vec3f operator+(const Vec3f &a, const Vec3f &b) {
 	Vec3f result = V3fAdd(a, b);
 	return(result);
 }
 
+//! C++ compound operator adding a Vec3f in place.
 fpl_force_inline Vec3f &operator+=(Vec3f &a, const Vec3f &b) {
 	a = a + b;
 	return(a);
 }
 
+//! C++ operator subtracting two Vec3f vectors.
 fpl_force_inline Vec3f operator-(const Vec3f &a, const Vec3f &b) {
 	Vec3f result = V3fSub(a, b);
 	return(result);
 }
 
+//! C++ unary negation of a Vec3f.
 fpl_force_inline Vec3f operator-(const Vec3f &v) {
 	Vec3f result = V3fNegate(v);
 	return(result);
 }
 
+//! C++ compound operator subtracting a Vec3f in place.
 fpl_force_inline Vec3f &operator-=(Vec3f &a, const Vec3f &b) {
 	a = a - b;
 	return(a);
@@ -1770,6 +1852,11 @@ fpl_force_inline Vec3f &operator-=(Vec3f &a, const Vec3f &b) {
 //
 // Mat2f
 //
+/**
+* @brief Creates a 2x2 rotation matrix from an angle.
+* @param[in] angle The rotation angle in radians.
+* @return The rotation matrix.
+*/
 fpl_force_inline Mat2f M2fFromAngle(float angle) {
 	float s = F32Sin(angle);
 	float c = F32Cos(angle);
@@ -1779,6 +1866,11 @@ fpl_force_inline Mat2f M2fFromAngle(float angle) {
 	return(result);
 }
 
+/**
+* @brief Creates a 2x2 rotation matrix from an axis (first column).
+* @param[in] axis The direction used as the first column; the second column is its left perpendicular.
+* @return The rotation matrix.
+*/
 fpl_force_inline Mat2f M2fFromAxis(const Vec2f axis) {
 	Mat2f result;
 	result.col1 = axis;
@@ -1786,6 +1878,11 @@ fpl_force_inline Mat2f M2fFromAxis(const Vec2f axis) {
 	return(result);
 }
 
+/**
+* @brief Transposes a 2x2 matrix.
+* @param[in] m The input matrix.
+* @return The transposed matrix.
+*/
 fpl_force_inline Mat2f M2fTranspose(const Mat2f m) {
 	Mat2f result;
 	result.col1 = V2fInit(m.col1.x, m.col2.x);
@@ -1793,6 +1890,12 @@ fpl_force_inline Mat2f M2fTranspose(const Mat2f m) {
 	return(result);
 }
 
+/**
+* @brief Multiplies two 2x2 matrices (a * b).
+* @param[in] a The left-hand matrix.
+* @param[in] b The right-hand matrix.
+* @return The matrix product a * b.
+*/
 fpl_force_inline Mat2f M2fMult(const Mat2f a, const Mat2f b) {
 	Mat2f result;
 	result.col1 = V2fMultMat2(a, b.col1);
@@ -1800,12 +1903,22 @@ fpl_force_inline Mat2f M2fMult(const Mat2f a, const Mat2f b) {
 	return(result);
 }
 
+/**
+* @brief Extracts the rotation angle from a 2x2 rotation matrix.
+* @param[in] mat The rotation matrix.
+* @return The angle in radians.
+*/
 fpl_force_inline float M2fToAngle(const Mat2f mat) {
 	float result = V2fAngleFromAxis(mat.col1);
 	return(result);
 }
 
-/* Generates a 2x2 matrix for doing B to A conversion */
+/**
+* @brief Multiplies the transpose of a by b, transforming from frame B to frame A.
+* @param[in] a The matrix whose transpose is used on the left.
+* @param[in] b The right-hand matrix.
+* @return The product transpose(a) * b.
+*/
 fpl_force_inline Mat2f M2fMultTranspose(const Mat2f a, const Mat2f b) {
 	Mat2f result;
 	result.col1 = V2fInit(V2fDot(a.col1, b.col1), V2fDot(a.col2, b.col1));
