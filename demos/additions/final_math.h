@@ -2301,12 +2301,23 @@ fpl_force_inline Vec4f V4fMultM4f(const Mat4f mat, const Vec4f v) {
 //
 // Quaternion
 //
+/**
+* @brief Computes the dot product of two quaternions.
+* @param[in] a The first quaternion.
+* @param[in] b The second quaternion.
+* @return The dot product.
+*/
 fpl_force_inline float QuatDot(const Quaternion a, const Quaternion b) {
 	Vec4f tmp = V4fInit(a.x * b.x, a.y * b.y, a.z * b.z, a.w * b.w);
 	float result = (tmp.x + tmp.y) + (tmp.z + tmp.w);
 	return(result);
 }
 
+/**
+* @brief Converts a quaternion to a 4x4 rotation matrix.
+* @param[in] q The quaternion (need not be normalized).
+* @return The equivalent column-major rotation matrix.
+*/
 fpl_force_inline Mat4f QuatToMat4(const Quaternion q) {
 	// https://www.euclideanspace.com/maths/geometry/rotations/conversions/quaternionToMatrix/index.htm
 
@@ -2347,11 +2358,21 @@ fpl_force_inline Mat4f QuatToMat4(const Quaternion q) {
 	return(result);
 }
 
+/**
+* @brief Computes the length (magnitude) of a quaternion.
+* @param[in] q The input quaternion.
+* @return The Euclidean length.
+*/
 fpl_force_inline float QuatLength(const Quaternion q) {
 	float result = F32SquareRoot(QuatDot(q, q));
 	return(result);
 }
 
+/**
+* @brief Normalizes a quaternion to unit length.
+* @param[in] q The input quaternion.
+* @return The unit quaternion, or the identity quaternion when the length is zero.
+*/
 fpl_force_inline Quaternion QuatNormalize(const Quaternion q) {
 	float len = QuatLength(q);
 	if (len <= 0.0f) {
@@ -2362,21 +2383,45 @@ fpl_force_inline Quaternion QuatNormalize(const Quaternion q) {
 	return(result);
 }
 
+/**
+* @brief Adds two quaternions component-wise.
+* @param[in] a The first quaternion.
+* @param[in] b The second quaternion.
+* @return The sum a + b.
+*/
 fpl_force_inline Quaternion QuatAdd(const Quaternion a, const Quaternion b) {
 	Quaternion result = QuatInit(a.w + b.w, a.x + b.x, a.y + b.y, a.z + b.z);
 	return(result);
 }
 
+/**
+* @brief Subtracts two quaternions component-wise.
+* @param[in] a The quaternion to subtract from.
+* @param[in] b The quaternion to subtract.
+* @return The difference a - b.
+*/
 fpl_force_inline Quaternion QuatSub(const Quaternion a, const Quaternion b) {
 	Quaternion result = QuatInit(a.w - b.w, a.x - b.x, a.y - b.y, a.z - b.z);
 	return(result);
 }
 
+/**
+* @brief Multiplies a quaternion by a scalar.
+* @param[in] q The quaternion.
+* @param[in] s The scalar.
+* @return The scaled quaternion.
+*/
 fpl_force_inline Quaternion QuatMultScalar(const Quaternion q, const float s) {
 	Quaternion result = QuatInit(q.w * s, q.x * s, q.y * s, q.z * s);
 	return(result);
 }
 
+/**
+* @brief Rotates a 3D vector by a quaternion.
+* @param[in] q The rotation quaternion.
+* @param[in] v The vector to rotate.
+* @return The rotated vector.
+*/
 fpl_force_inline Vec3f QuatMultV3f(const Quaternion q, const Vec3f v) {
 	Vec3f quatVector = V3fInit(q.x, q.y, q.z);
 	Vec3f uv = V3fCross(quatVector, v);
@@ -2388,6 +2433,12 @@ fpl_force_inline Vec3f QuatMultV3f(const Quaternion q, const Vec3f v) {
 	return(result);
 }
 
+/**
+* @brief Rotates the xyz part of a 4D vector by a quaternion, leaving w unchanged.
+* @param[in] q The rotation quaternion.
+* @param[in] v The vector to rotate.
+* @return The rotated vector with w preserved.
+*/
 fpl_force_inline Vec4f QuatMultV4f(const Quaternion q, const Vec4f v) {
 	Vec3f quatVector = V3fInit(q.x, q.y, q.z);
 	Vec3f uv = V3fCross(quatVector, v.xyz);
@@ -2400,6 +2451,11 @@ fpl_force_inline Vec4f QuatMultV4f(const Quaternion q, const Vec4f v) {
 	return(result);
 }
 
+/**
+* @brief Computes the conjugate of a quaternion (negates the vector part).
+* @param[in] quat The input quaternion.
+* @return The conjugate quaternion.
+*/
 fpl_force_inline Quaternion QuatConjugate(const Quaternion quat) {
 	float s = quat.s;
 	Vec3f n = V3fMultScalar(quat.n, -1);
@@ -2407,6 +2463,11 @@ fpl_force_inline Quaternion QuatConjugate(const Quaternion quat) {
 	return(result);
 }
 
+/**
+* @brief Computes the inverse of a quaternion.
+* @param[in] q The input quaternion.
+* @return The inverse quaternion (conjugate divided by squared length).
+*/
 fpl_force_inline Quaternion QuatInverse(const Quaternion q) {
 	Quaternion con = QuatConjugate(q);
 	float d = QuatDot(q, q);
@@ -2415,6 +2476,11 @@ fpl_force_inline Quaternion QuatInverse(const Quaternion q) {
 	return(result);
 }
 
+/**
+* @brief Extracts the rotation axis from a quaternion.
+* @param[in] q The input quaternion.
+* @return The unit rotation axis, or the z axis when the rotation angle is near zero.
+*/
 fpl_force_inline Vec3f QuatAxis(const Quaternion q) {
 	float tmp1 = 1.0f - q.w * q.w;
 	if (tmp1 <= 0.0f) {
@@ -2425,6 +2491,12 @@ fpl_force_inline Vec3f QuatAxis(const Quaternion q) {
 	return(result);
 }
 
+/**
+* @brief Multiplies two quaternions (Hamilton product), composing their rotations.
+* @param[in] a The first quaternion.
+* @param[in] b The second quaternion.
+* @return The product a * b.
+*/
 fpl_force_inline Quaternion QuatCross(const Quaternion a, const Quaternion b) {
 	float w = a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z;
 	float x = a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y;
@@ -2434,6 +2506,13 @@ fpl_force_inline Quaternion QuatCross(const Quaternion a, const Quaternion b) {
 	return(result);
 }
 
+/**
+* @brief Linearly interpolates between two quaternions (non-normalized).
+* @param[in] a The start quaternion (at t=0).
+* @param[in] t The interpolation factor, typically in [0, 1].
+* @param[in] b The end quaternion (at t=1).
+* @return The interpolated quaternion.
+*/
 fpl_force_inline Quaternion QuatLerp(const Quaternion a, const float t, const Quaternion b) {
 	Quaternion tmp1 = QuatMultScalar(a, 1.0f - t);
 	Quaternion tmp2 = QuatMultScalar(b, t);
@@ -2441,11 +2520,22 @@ fpl_force_inline Quaternion QuatLerp(const Quaternion a, const float t, const Qu
 	return(result);
 }
 
+/**
+* @brief Computes the rotation angle of a quaternion.
+* @param[in] q The input quaternion (assumed normalized).
+* @return The rotation angle in radians.
+*/
 fpl_force_inline float QuatAngle(const Quaternion q) {
 	float result = F32ArcCos(q.w) * 2.0f;
 	return(result);
 }
 
+/**
+* @brief Builds a quaternion from a rotation angle around an axis.
+* @param[in] angle The rotation angle in radians.
+* @param[in] axis The rotation axis (assumed normalized).
+* @return The rotation quaternion.
+*/
 fpl_force_inline Quaternion QuatFromAngleAxis(const float angle, const Vec3f axis) {
 	Quaternion result;
 	float const a = angle;
@@ -2457,11 +2547,21 @@ fpl_force_inline Quaternion QuatFromAngleAxis(const float angle, const Vec3f axi
 	return(result);
 }
 
+/**
+* @brief Extracts the roll (rotation around the z axis) from a quaternion.
+* @param[in] q The input quaternion.
+* @return The roll angle in radians.
+*/
 fpl_force_inline float QuatRoll(const Quaternion q) {
 	float result = F32ArcTan2(2.0f * (q.x * q.y + q.w * q.z), q.w * q.w + q.x * q.x - q.y * q.y - q.z * q.z);
 	return(result);
 }
 
+/**
+* @brief Extracts the pitch (rotation around the x axis) from a quaternion.
+* @param[in] q The input quaternion.
+* @return The pitch angle in radians.
+*/
 fpl_force_inline float QuatPitch(const Quaternion q) {
 	const float y = 2.0f * (q.y * q.z + q.w * q.x);
 	const float x = q.w * q.w - q.x * q.x - q.y * q.y + q.z * q.z;
@@ -2474,11 +2574,22 @@ fpl_force_inline float QuatPitch(const Quaternion q) {
 	return(result);
 }
 
+/**
+* @brief Extracts the yaw (rotation around the y axis) from a quaternion.
+* @param[in] q The input quaternion.
+* @return The yaw angle in radians.
+*/
 fpl_force_inline float QuatYaw(const Quaternion q) {
 	float result = F32ArcSin(F32Clamp(-2.0f * (q.x * q.z - q.w * q.y), 1.0f, 1.0f));
 	return(result);
 }
 
+/**
+* @brief Builds a quaternion that rotates one direction onto another.
+* @param[in] orig The starting direction (assumed normalized).
+* @param[in] dest The target direction (assumed normalized).
+* @return The rotation quaternion mapping orig to dest.
+*/
 fpl_force_inline Quaternion QuatRotation(const Vec3f orig, const Vec3f dest) {
 	float cosTheta = V3fDot(orig, dest);
 	Vec3f rotationAxis;
