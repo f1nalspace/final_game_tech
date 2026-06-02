@@ -66,6 +66,9 @@ extern void PipelineSetModel(PixelPipeline *pipeline, const Vec2f position, cons
 extern void PipelineResetModel(PixelPipeline *pipeline);
 // Projects a world point to screen pixel coordinates.
 extern Vec2f PipelineProject(const PixelPipeline *pipeline, const Vec2f world);
+// Row-vector transform (result = v * M). final_math.h matrices store translation
+// in the bottom row, so V4fMultM4f cannot be used. Handy inside vertex shaders.
+extern Vec4f GfxTransform(const Mat4f m, const Vec4f v);
 
 // Arbitrary quad (4 world corners, CW or CCW). Filled or stroked with thickness (screen pixels).
 extern void PipelineDrawQuad(const PixelPipeline *pipeline, fplVideoBackBuffer *backBuffer, const Vec2f p0, const Vec2f p1, const Vec2f p2, const Vec2f p3, const uint32_t color, const bool filled, const float thickness);
@@ -96,6 +99,68 @@ extern bool TextureLoadFromFile(Texture2D *texture, const char *filePath);
 
 // Texture-mapped quad with 4 UV coordinates (one per corner). bilinear toggles sub-pixel filtering.
 extern void PipelineDrawTexturedQuad(const PixelPipeline *pipeline, fplVideoBackBuffer *backBuffer, const Vec2f p0, const Vec2f p1, const Vec2f p2, const Vec2f p3, const Vec2f uv0, const Vec2f uv1, const Vec2f uv2, const Vec2f uv3, const Texture2D *texture, const bool bilinear);
+
+//
+// Programmable triangle pipeline (software vertex/fragment shaders).
+//
+// A tiny OpenGL-style pipeline: vertex shader -> clip space -> perspective
+// divide -> viewport -> edge-function rasterization with perspective-correct
+// varyings -> depth test -> fragment shader. Shaders are plain C99 function
+// pointers (no shading language); uniforms live in ShaderGlobals and per-vertex
+// inputs/outputs are flat float arrays, mirroring GLSL attributes/varyings.
+//
+
+// Maximum interpolated varyings (besides clip position) a vertex shader may emit.
+#define GFX_MAX_VARYINGS 12
+
+// Uniform state shared by both shader stages (GLSL "uniform").
+typedef struct ShaderGlobals {
+	Mat4f mvp;         // Model-view-projection, row-vector: clip = vertex * mvp.
+	Mat4f model;       // Model matrix alone (e.g. for world-space effects).
+	Vec3f lightDir;    // Normalized light direction.
+	float time;        // Seconds, for animation.
+	const void *user;  // Optional extra uniform state.
+} ShaderGlobals;
+
+// Vertex shader output: clip-space position plus varyings interpolated per fragment.
+typedef struct VertexOutput {
+	Vec4f position;                    // Clip space (before perspective divide).
+	float varyings[GFX_MAX_VARYINGS];  // Perspective-correct interpolated to fragments.
+} VertexOutput;
+
+// Vertex shader: maps one vertex's raw attributes to a VertexOutput.
+typedef VertexOutput(*VertexShaderFn)(const ShaderGlobals *globals, const float *attributes);
+// Fragment shader: maps interpolated varyings to a packed 0xAARRGGBB color.
+typedef uint32_t(*FragmentShaderFn)(const ShaderGlobals *globals, const float *varyings);
+
+// One draw command: an array-of-structs vertex buffer plus the two shader stages.
+typedef struct DrawCall {
+	const float *vertices;          // attributeCount floats per vertex, vertexCount vertices.
+	int attributeCount;             // Floats per vertex.
+	int varyingCount;               // Varyings the vertex shader fills (<= GFX_MAX_VARYINGS).
+	int vertexCount;                // Total vertices, drawn as triangles (multiple of 3).
+	VertexShaderFn vertexShader;
+	FragmentShaderFn fragmentShader;
+} DrawCall;
+
+// Per-pixel float depth buffer paired with a backbuffer.
+typedef struct DepthBuffer {
+	float *values;  // width*height, smaller is nearer.
+	int width;
+	int height;
+} DepthBuffer;
+
+// Allocates or resizes the depth buffer to the given size.
+extern void DepthBufferReset(DepthBuffer *depth, const int width, const int height);
+// Frees the depth buffer and clears the struct.
+extern void DepthBufferRelease(DepthBuffer *depth);
+// Fills the whole depth buffer with a value (typically 1.0 = far plane).
+extern void DepthBufferClear(DepthBuffer *depth, const float value);
+
+// Runs the programmable pipeline for one draw call. Triangles whose vertices are
+// at or behind the camera are skipped (no near-plane clipping). depth may be NULL
+// to disable depth testing.
+extern void GfxDrawTriangles(fplVideoBackBuffer *backBuffer, DepthBuffer *depth, const ShaderGlobals *globals, const DrawCall *draw);
 
 #endif // FINAL_GRAPHICS_H
 
@@ -304,7 +369,7 @@ extern void BackbufferDrawRect(fplVideoBackBuffer *backBuffer, const float x0, c
 
 // Row-vector transform (result = v * M). The final_math.h ortho/translation
 // matrices store translation in the bottom row, so V4fMultM4f cannot be used.
-static Vec4f GfxTransform(const Mat4f m, const Vec4f v) {
+extern Vec4f GfxTransform(const Mat4f m, const Vec4f v) {
 	Vec4f r;
 	r.x = v.x * m.r[0][0] + v.y * m.r[1][0] + v.z * m.r[2][0] + v.w * m.r[3][0];
 	r.y = v.x * m.r[0][1] + v.y * m.r[1][1] + v.z * m.r[2][1] + v.w * m.r[3][1];
@@ -607,6 +672,131 @@ extern void PipelineDrawTexturedQuad(const PixelPipeline *pipeline, fplVideoBack
 	Vec2f s3 = PipelineProject(pipeline, p3);
 	GfxRasterTexTri(backBuffer, s0, s1, s2, uv0, uv1, uv2, texture, bilinear);
 	GfxRasterTexTri(backBuffer, s0, s2, s3, uv0, uv2, uv3, texture, bilinear);
+}
+
+//
+// Programmable triangle pipeline implementation
+//
+
+extern void DepthBufferReset(DepthBuffer *depth, const int width, const int height) {
+	if (depth->values == NULL || depth->width != width || depth->height != height) {
+		if (depth->values != NULL) {
+			fplMemoryFree(depth->values);
+		}
+		depth->values = (float *)fplMemoryAllocate((size_t)width * height * sizeof(float));
+		depth->width = width;
+		depth->height = height;
+	}
+}
+
+extern void DepthBufferRelease(DepthBuffer *depth) {
+	if (depth->values != NULL) {
+		fplMemoryFree(depth->values);
+	}
+	depth->values = NULL;
+	depth->width = 0;
+	depth->height = 0;
+}
+
+extern void DepthBufferClear(DepthBuffer *depth, const float value) {
+	int count = depth->width * depth->height;
+	for (int i = 0; i < count; ++i) {
+		depth->values[i] = value;
+	}
+}
+
+// Signed area of triangle (a, b, c); sign encodes winding.
+static float GfxEdge(const float ax, const float ay, const float bx, const float by, const float cx, const float cy) {
+	return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+}
+
+extern void GfxDrawTriangles(fplVideoBackBuffer *backBuffer, DepthBuffer *depth, const ShaderGlobals *globals, const DrawCall *draw) {
+	int width = (int)backBuffer->width;
+	int height = (int)backBuffer->height;
+	int varyingCount = draw->varyingCount;
+	int triCount = draw->vertexCount / 3;
+
+	for (int t = 0; t < triCount; ++t) {
+		// Vertex stage: run the vertex shader on the three vertices.
+		VertexOutput vo[3];
+		for (int i = 0; i < 3; ++i) {
+			const float *attribs = draw->vertices + (size_t)(t * 3 + i) * draw->attributeCount;
+			vo[i] = draw->vertexShader(globals, attribs);
+		}
+
+		// Reject triangles touching or behind the camera (no near-plane clipping).
+		if (vo[0].position.w <= 1e-5f || vo[1].position.w <= 1e-5f || vo[2].position.w <= 1e-5f) {
+			continue;
+		}
+
+		// Perspective divide and viewport transform (Y flipped for the top-down buffer).
+		float sx[3], sy[3], sz[3], invW[3];
+		for (int i = 0; i < 3; ++i) {
+			float iw = 1.0f / vo[i].position.w;
+			invW[i] = iw;
+			sx[i] = ((vo[i].position.x * iw) * 0.5f + 0.5f) * (float)width;
+			sy[i] = (1.0f - ((vo[i].position.y * iw) * 0.5f + 0.5f)) * (float)height;
+			sz[i] = (vo[i].position.z * iw) * 0.5f + 0.5f;
+		}
+
+		float area = GfxEdge(sx[0], sy[0], sx[1], sy[1], sx[2], sy[2]);
+		if (area == 0.0f) {
+			continue;
+		}
+		float invArea = 1.0f / area;
+
+		// Bounding box clipped to the viewport.
+		float fminX = sx[0], fmaxX = sx[0], fminY = sy[0], fmaxY = sy[0];
+		for (int i = 1; i < 3; ++i) {
+			if (sx[i] < fminX) { fminX = sx[i]; }
+			if (sx[i] > fmaxX) { fmaxX = sx[i]; }
+			if (sy[i] < fminY) { fminY = sy[i]; }
+			if (sy[i] > fmaxY) { fmaxY = sy[i]; }
+		}
+		int minX = ClampBackBufferPosition((int)F32Floor(fminX), 0, width - 1);
+		int maxX = ClampBackBufferPosition((int)F32Ceil(fmaxX), 0, width - 1);
+		int minY = ClampBackBufferPosition((int)F32Floor(fminY), 0, height - 1);
+		int maxY = ClampBackBufferPosition((int)F32Ceil(fmaxY), 0, height - 1);
+
+		for (int y = minY; y <= maxY; ++y) {
+			uint32_t *row = backBuffer->pixels + (size_t)y * backBuffer->width;
+			float *drow = (depth != NULL) ? (depth->values + (size_t)y * depth->width) : NULL;
+			float py = (float)y + 0.5f;
+			for (int x = minX; x <= maxX; ++x) {
+				float px = (float)x + 0.5f;
+
+				// Barycentric weights via edge functions; invArea handles winding sign.
+				float b0 = GfxEdge(sx[1], sy[1], sx[2], sy[2], px, py) * invArea;
+				float b1 = GfxEdge(sx[2], sy[2], sx[0], sy[0], px, py) * invArea;
+				float b2 = GfxEdge(sx[0], sy[0], sx[1], sy[1], px, py) * invArea;
+				if (b0 < 0.0f || b1 < 0.0f || b2 < 0.0f) {
+					continue;
+				}
+
+				// Depth is linear in screen space after the perspective divide.
+				float z = b0 * sz[0] + b1 * sz[1] + b2 * sz[2];
+				if (drow != NULL && z >= drow[x]) {
+					continue;
+				}
+
+				// Perspective-correct varyings: interpolate attribute/w, then divide by 1/w.
+				float w0 = b0 * invW[0];
+				float w1 = b1 * invW[1];
+				float w2 = b2 * invW[2];
+				float wsum = w0 + w1 + w2;
+				float invWsum = (wsum != 0.0f) ? (1.0f / wsum) : 0.0f;
+				float varyings[GFX_MAX_VARYINGS];
+				for (int v = 0; v < varyingCount; ++v) {
+					varyings[v] = (w0 * vo[0].varyings[v] + w1 * vo[1].varyings[v] + w2 * vo[2].varyings[v]) * invWsum;
+				}
+
+				row[x] = draw->fragmentShader(globals, varyings);
+				if (drow != NULL) {
+					drow[x] = z;
+				}
+			}
+		}
+	}
 }
 
 #endif // FINAL_GRAPHICS_IMPLEMENTATION

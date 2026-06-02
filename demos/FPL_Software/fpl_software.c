@@ -13,6 +13,10 @@ Description:
 	  4. Vector Shapes    - float quads/lines/circles, filled/stroked, thickness.
 	  5. Textured Quad    - stb-loaded texture mapped on a quad with UV control.
 	  6. Sub-Pixel Motion - smooth fractional motion, nearest vs bilinear.
+	  7. Shader Mesh (3D) - RGB triangle + floor through a programmable software
+	                        vertex/fragment shader pipeline (C99 function pointers),
+	                        with perspective + depth buffering. Same result as the
+	                        FPL_OpenGL / FPL_Vulkan demos.
 
 	F2 toggles bilinear filtering (textured scenarios).
 
@@ -29,6 +33,7 @@ Author:
 
 Changelog:
 	## 2026-06-02
+	- Programmable software vertex/fragment shader pipeline + 3D Shader Mesh scenario
 	- Pixel rendering pipeline (quads, lines, circles, triangles, texture-mapped)
 
 	## 2025-01-28
@@ -132,6 +137,7 @@ typedef enum ScenarioType {
 	ScenarioType_VectorShapes,
 	ScenarioType_TexturedQuad,
 	ScenarioType_SubPixelMotion,
+	ScenarioType_ShaderMesh,
 	ScenarioType_Count
 } ScenarioType;
 
@@ -143,6 +149,7 @@ static const char *ScenarioName(ScenarioType type) {
 		case ScenarioType_VectorShapes: return "Vector Shapes";
 		case ScenarioType_TexturedQuad: return "Textured Quad";
 		case ScenarioType_SubPixelMotion: return "Sub-Pixel Motion";
+		case ScenarioType_ShaderMesh: return "Shader Mesh (3D)";
 		default: return "Unknown";
 	}
 }
@@ -179,6 +186,11 @@ typedef struct SubPixelMotionScenario {
 	Texture2D texture;
 } SubPixelMotionScenario;
 
+typedef struct ShaderMeshScenario {
+	float time;
+	DepthBuffer depth;
+} ShaderMeshScenario;
+
 typedef struct AppScenarios {
 	ScenarioType current;
 	union {
@@ -188,6 +200,7 @@ typedef struct AppScenarios {
 		VectorShapesScenario vectorShapes;
 		TexturedQuadScenario texturedQuad;
 		SubPixelMotionScenario subPixelMotion;
+		ShaderMeshScenario shaderMesh;
 	} data;
 } AppScenarios;
 
@@ -255,6 +268,9 @@ static void ScenarioCleanup(AppScenarios *app) {
 			break;
 		case ScenarioType_SubPixelMotion:
 			TextureRelease(&app->data.subPixelMotion.texture);
+			break;
+		case ScenarioType_ShaderMesh:
+			DepthBufferRelease(&app->data.shaderMesh.depth);
 			break;
 		default:
 			break;
@@ -534,6 +550,129 @@ static void RenderSubPixelMotion(SubPixelMotionScenario *s, fplVideoBackBuffer *
 }
 
 //
+// Scenario: Shader Mesh (3D)
+//
+// A 3D triangle (interpolated RGB) standing on a quad floor, the whole scene
+// rotating, rendered through the programmable software pipeline. The vertex and
+// fragment shaders are ordinary C99 functions wired in via function pointers -
+// no shading language, same visual result as the FPL_OpenGL / FPL_Vulkan demos.
+//
+
+// Vertex layout: position (x,y,z) followed by color (r,g,b).
+#define ShaderMeshFloorRadius 2.0f
+
+static const float ShaderMeshTriangle[] = {
+	// x      y      z      r     g     b
+	 0.0f,   1.0f,  0.0f,  1.0f, 0.0f, 0.0f, // top    - red
+	-0.5f,   0.0f,  0.0f,  0.0f, 1.0f, 0.0f, // left   - green
+	 0.5f,   0.0f,  0.0f,  0.0f, 0.0f, 1.0f, // right  - blue
+};
+
+static const float ShaderMeshFloor[] = {
+	// x                      y     z                       r     g     b
+	-ShaderMeshFloorRadius,  0.0f, -ShaderMeshFloorRadius,  0.25f, 0.25f, 0.25f,
+	-ShaderMeshFloorRadius,  0.0f,  ShaderMeshFloorRadius,  0.25f, 0.25f, 0.25f,
+	 ShaderMeshFloorRadius,  0.0f,  ShaderMeshFloorRadius,  0.25f, 0.25f, 0.25f,
+	-ShaderMeshFloorRadius,  0.0f, -ShaderMeshFloorRadius,  0.25f, 0.25f, 0.25f,
+	 ShaderMeshFloorRadius,  0.0f,  ShaderMeshFloorRadius,  0.25f, 0.25f, 0.25f,
+	 ShaderMeshFloorRadius,  0.0f, -ShaderMeshFloorRadius,  0.25f, 0.25f, 0.25f,
+};
+
+// Packs three normalized floats (clamped to [0,1]) into an opaque 0xAARRGGBB color.
+static uint32_t PackRGBf(float r, float g, float b) {
+	if (r < 0.0f) { r = 0.0f; } else if (r > 1.0f) { r = 1.0f; }
+	if (g < 0.0f) { g = 0.0f; } else if (g > 1.0f) { g = 1.0f; }
+	if (b < 0.0f) { b = 0.0f; } else if (b > 1.0f) { b = 1.0f; }
+	uint32_t ri = (uint32_t)(r * 255.0f + 0.5f);
+	uint32_t gi = (uint32_t)(g * 255.0f + 0.5f);
+	uint32_t bi = (uint32_t)(b * 255.0f + 0.5f);
+	return 0xFF000000 | (ri << 16) | (gi << 8) | bi;
+}
+
+// Vertex shader: transform to clip space, pass color + object-space position as
+// varyings. Object space (not world) keeps the floor pattern locked to the
+// surface so it rotates together with the mesh.
+static VertexOutput VS_Mesh(const ShaderGlobals *g, const float *a) {
+	VertexOutput o;
+	Vec4f pos = V4fInit(a[0], a[1], a[2], 1.0f);
+	o.position = GfxTransform(g->mvp, pos);
+	o.varyings[0] = a[3]; // color r
+	o.varyings[1] = a[4]; // color g
+	o.varyings[2] = a[5]; // color b
+	o.varyings[3] = a[0]; // object x
+	o.varyings[4] = a[1]; // object y
+	o.varyings[5] = a[2]; // object z
+	return o;
+}
+
+// Fragment shader for the triangle: the classic perspective-correct RGB blend.
+static uint32_t FS_Triangle(const ShaderGlobals *g, const float *v) {
+	(void)g;
+	return PackRGBf(v[0], v[1], v[2]);
+}
+
+// Fragment shader for the floor: a procedural checkerboard with an animated ripple,
+// computed from the interpolated object-space position - true per-pixel work that
+// rotates together with the floor.
+static uint32_t FS_Floor(const ShaderGlobals *g, const float *v) {
+	float wx = v[3];
+	float wz = v[5];
+	int ix = (int)F32Floor(wx * 2.0f);
+	int iz = (int)F32Floor(wz * 2.0f);
+	float checker = ((ix + iz) & 1) ? 0.28f : 0.16f;
+	float ripple = 0.08f * F32Sin((wx + wz) * 2.5f - g->time * 2.0f);
+	float s = checker + ripple;
+	return PackRGBf(s, s, s + 0.05f);
+}
+
+static void UpdateShaderMesh(ShaderMeshScenario *s, float dt) {
+	s->time += dt;
+}
+
+static void RenderShaderMesh(ShaderMeshScenario *s, fplVideoBackBuffer *bb) {
+	ClearBackbuffer(bb, kBackColor);
+
+	int w = (int)bb->width;
+	int h = (int)bb->height;
+	DepthBufferReset(&s->depth, w, h);
+	DepthBufferClear(&s->depth, 1.0f);
+
+	// Camera + projection, matching the OpenGL/Vulkan demos.
+	float aspect = (h > 0) ? ((float)w / (float)h) : 1.0f;
+	Mat4f proj = M4fPerspectiveRH(F32DegreesToRadians(35.0f), aspect, 0.1f, 100.0f);
+	Mat4f view = M4fLookAtRH(V3fInit(2.0f, 2.0f, 3.0f), V3fInit(0.0f, 0.0f, 0.0f), V3fInit(0.0f, 1.0f, 0.0f));
+	Mat4f vp = M4fMult(proj, view);
+
+	// Spin the whole scene around the Y axis.
+	Quaternion rot = QuatFromAngleAxis(s->time, V3fInit(0.0f, 1.0f, 0.0f));
+	Mat4f model = QuatToMat4(rot);
+
+	ShaderGlobals globals = fplZeroInit;
+	globals.mvp = M4fMult(vp, model);
+	globals.model = model;
+	globals.lightDir = V3fNormalize(V3fInit(0.4f, 1.0f, 0.6f));
+	globals.time = s->time;
+
+	DrawCall floorCall = fplZeroInit;
+	floorCall.vertices = ShaderMeshFloor;
+	floorCall.attributeCount = 6;
+	floorCall.varyingCount = 6;
+	floorCall.vertexCount = fplArrayCount(ShaderMeshFloor) / 6;
+	floorCall.vertexShader = VS_Mesh;
+	floorCall.fragmentShader = FS_Floor;
+	GfxDrawTriangles(bb, &s->depth, &globals, &floorCall);
+
+	DrawCall triCall = fplZeroInit;
+	triCall.vertices = ShaderMeshTriangle;
+	triCall.attributeCount = 6;
+	triCall.varyingCount = 6;
+	triCall.vertexCount = fplArrayCount(ShaderMeshTriangle) / 6;
+	triCall.vertexShader = VS_Mesh;
+	triCall.fragmentShader = FS_Triangle;
+	GfxDrawTriangles(bb, &s->depth, &globals, &triCall);
+}
+
+//
 // Dispatch
 //
 
@@ -545,6 +684,7 @@ static void ScenarioUpdate(AppScenarios *app, fplVideoBackBuffer *bb, float dt) 
 		case ScenarioType_VectorShapes: UpdateVectorShapes(&app->data.vectorShapes, dt); break;
 		case ScenarioType_TexturedQuad: UpdateTexturedQuad(&app->data.texturedQuad, dt); break;
 		case ScenarioType_SubPixelMotion: UpdateSubPixelMotion(&app->data.subPixelMotion, dt); break;
+		case ScenarioType_ShaderMesh: UpdateShaderMesh(&app->data.shaderMesh, dt); break;
 		default: break;
 	}
 }
@@ -557,6 +697,7 @@ static void ScenarioRender(AppScenarios *app, fplVideoBackBuffer *bb) {
 		case ScenarioType_VectorShapes: RenderVectorShapes(&app->data.vectorShapes, bb); break;
 		case ScenarioType_TexturedQuad: RenderTexturedQuad(&app->data.texturedQuad, bb, false); break;
 		case ScenarioType_SubPixelMotion: RenderSubPixelMotion(&app->data.subPixelMotion, bb, true); break;
+		case ScenarioType_ShaderMesh: RenderShaderMesh(&app->data.shaderMesh, bb); break;
 		default: break;
 	}
 }
