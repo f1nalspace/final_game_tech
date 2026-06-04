@@ -411,3 +411,17 @@ reference, removed in a later step).
 - Custom math only; no `final_math.h` (2026-06-04).
 - Demo fully switched to C17 (pure `.c`); C++ `.hpp` marked obsolete, removed later (2026-06-04).
 - Default arena `minBlockSize` = 64 KB (2026-06-04).
+- CMake is the main build system — keep `demos/FTT_TileTracingDemo/CMakeLists.txt`
+  authoritative (the `.vcxproj`/`.filters` are updated too, but CMake is primary).
+
+## 12. Status (2026-06-04) — DONE
+
+- `final_tiletrace.h` written (pure C17: pluggable allocator + growing arena + dynamic
+  arrays, custom math, index-based edge/segment refs, full state-machine port).
+- Parity verified: C17 vs C++ dumper on the demo map → **byte-identical** output
+  (vertices=1486, edges=1254, segments=8; all segment vertices match). Compiles clean
+  under `gcc -std=c17 -Wall -Wextra`.
+- Demo ported to `ftt_tiletracingdemo.c` (old `.cpp` deleted); `CMakeLists.txt`,
+  `.vcxproj`, `.filters` updated to C17 + new files.
+- CMake build (`c17`) succeeds, binary produced, no warnings/errors.
+- `final_tiletrace.hpp` banner marked `@deprecated` (removal pending).
