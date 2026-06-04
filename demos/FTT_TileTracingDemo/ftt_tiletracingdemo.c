@@ -11,7 +11,7 @@ Description:
 	such as Box2D.
 
 Requirements:
-	- C++/11 Compiler
+	- C17 Compiler
 	- Final Platform Layer
 	- Final Dynamic OpenGL
 
@@ -19,6 +19,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2026-06-04
+	- Switched to the pure C17 final_tiletrace.h library and C api
+
 	## 2026-05-10
 	- Use final_dynamic_opengl instead of gl.h
 	- No more size and position overwrite of window
@@ -34,7 +37,6 @@ Changelog:
 
 	## 2018-04-23:
 	- Initial creation of this description block
-	- Forced Visual-Studio-Project to compile in C++ always
 
 License:
 	Copyright (c) 2017-2026 Torsten Spaete
@@ -50,15 +52,15 @@ License:
 #include <final_dynamic_opengl.h>
 
 #define FTT_IMPLEMENTATION
-#include "final_tiletrace.hpp"
+#include "final_tiletrace.h"
 
-constexpr int TileMapCountW = 36;
-constexpr int TileMapCountH = 62;
+#define TileMapCountW 36
+#define TileMapCountH 62
 
-constexpr float TileSize = 1.0f;
-constexpr float AreaSizeW = TileMapCountW * TileSize;
-constexpr float AreaSizeH = TileMapCountH * TileSize;
-constexpr float AspectRatio = AreaSizeW / AreaSizeH;
+#define TileSize 1.0f
+#define AreaSizeW (TileMapCountW * TileSize)
+#define AreaSizeH (TileMapCountH * TileSize)
+#define AspectRatio (AreaSizeW / AreaSizeH)
 
 static uint8_t TileMap[TileMapCountW * TileMapCountH] = {
 	1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
@@ -141,7 +143,8 @@ static void DrawTile(const int32_t x, const int32_t y, bool filled) {
 }
 
 int main(int argc, char **args) {
-	int result = 0;
+	(void)argc;
+	(void)args;
 	fplSettings settings = fplMakeDefaultSettings();
 	fplCopyString("Tile-Tracing Example", settings.window.title, fplArrayCount(settings.window.title));
 	settings.video.backend = fplVideoBackendType_OpenGL;
@@ -160,7 +163,11 @@ int main(int argc, char **args) {
 
 	bool doNextStep = false;
 
-	ftt::TileTracer tracer({ TileMapCountW, TileMapCountH }, &TileMap[0]);
+	fttTileTracer tracer;
+	fttVec2u tileCount;
+	tileCount.w = TileMapCountW;
+	tileCount.h = TileMapCountH;
+	fttInitTileTracer(&tracer, tileCount, &TileMap[0], ftt_null);
 
 	while (fplWindowUpdate()) {
 		fplEvent ev;
@@ -178,6 +185,8 @@ int main(int argc, char **args) {
 								}
 							}
 						} break;
+						default:
+							break;
 					}
 				} break;
 				default:
@@ -186,10 +195,10 @@ int main(int argc, char **args) {
 		}
 
 #if 1
-		tracer.Next();
+		fttNextTileTraceStep(&tracer);
 #else
 		if (doNextStep) {
-			tracer.Next();
+			fttNextTileTraceStep(&tracer);
 			doNextStep = false;
 		}
 #endif
@@ -199,7 +208,6 @@ int main(int argc, char **args) {
 
 		const float halfAreaWidth = AreaSizeW * 0.5f;
 		const float halfAreaHeight = AreaSizeH * 0.5f;
-		const float tileExt = TileSize * 0.5f;
 
 		// Calculate a letterboxed viewport offset and size
 		float viewScale = (float)windowArea.width / AreaSizeW;
@@ -210,6 +218,7 @@ int main(int argc, char **args) {
 			viewportWidth = (int)(viewportHeight * AspectRatio);
 			viewScale = (float)viewportWidth / AreaSizeW;
 		}
+		(void)viewScale;
 		int32_t viewportX = (windowArea.width - viewportWidth) / 2;
 		int32_t viewportY = (windowArea.height - viewportHeight) / 2;
 
@@ -228,8 +237,8 @@ int main(int argc, char **args) {
 			for (int x = 0; x < TileMapCountW; ++x) {
 				uint8_t tileValue = TileMap[y * TileMapCountW + x];
 				if (tileValue) {
-					const ftt::Tile &tile = tracer.GetTile(x, y);
-					if (tile.isSolid == -1) {
+					const fttTile *tile = fttGetTile(&tracer, x, y);
+					if (tile->isSolid == -1) {
 						glColor3f(0.75f, 0.775f, 0.75f);
 					} else {
 						glColor3f(0.5f, 0.5f, 0.5f);
@@ -256,7 +265,7 @@ int main(int argc, char **args) {
 		}
 
 		// Draw start
-		ftt::Tile *startTile = tracer.GetStartTile();
+		fttTile *startTile = fttGetStartTile(&tracer);
 		if (startTile) {
 			glColor3f(1.0f, 0.5f, 1.0f);
 			DrawTile(startTile->x, startTile->y, true);
@@ -265,8 +274,8 @@ int main(int argc, char **args) {
 		// Draw open list
 		glColor3f(0.0f, 0.0f, 0.0f);
 		glLineWidth(2.0f);
-		for (uint32_t index = 0, count = (uint32_t)tracer.GetOpenTileCount(); index < count; ++index) {
-			ftt::Tile *openTile = tracer.GetOpenTile(index);
+		for (uint32_t index = 0, count = (uint32_t)fttGetOpenTileCount(&tracer); index < count; ++index) {
+			fttTile *openTile = fttGetOpenTile(&tracer, index);
 			DrawTile(openTile->x, openTile->y, false);
 		}
 		glLineWidth(1.0f);
@@ -274,11 +283,11 @@ int main(int argc, char **args) {
 		// Draw edges
 		glColor3f(1.0f, 0.0f, 0.0f);
 		glLineWidth(3.0f);
-		for (uint32_t index = 0, count = (uint32_t)tracer.GetEdgeCount(); index < count; ++index) {
-			const ftt::Edge &edge = tracer.GetEdge(index);
-			if (!edge.isInvalid) {
-				const ftt::Vec2i &v0 = tracer.GetVertex(edge.vertIndex0);
-				const ftt::Vec2i &v1 = tracer.GetVertex(edge.vertIndex1);
+		for (uint32_t index = 0, count = (uint32_t)fttGetEdgeCount(&tracer); index < count; ++index) {
+			const fttEdge *edge = fttGetEdge(&tracer, index);
+			if (!edge->isInvalid) {
+				fttVec2i v0 = fttGetVertex(&tracer, edge->vertIndex0);
+				fttVec2i v1 = fttGetVertex(&tracer, edge->vertIndex1);
 				glBegin(GL_LINES);
 				glVertex2f(-halfAreaWidth + v0.x * TileSize, -halfAreaHeight + v0.y * TileSize);
 				glVertex2f(-halfAreaWidth + v1.x * TileSize, -halfAreaHeight + v1.y * TileSize);
@@ -290,11 +299,11 @@ int main(int argc, char **args) {
 		// Draw chain segments
 		glColor3f(0.0f, 1.0f, 0.0f);
 		glLineWidth(3.0f);
-		for (uint32_t segmentIndex = 0, count = (uint32_t)tracer.GetChainSegmentCount(); segmentIndex < count; ++segmentIndex) {
-			const ftt::ChainSegment &segment = tracer.GetChainSegment(segmentIndex);
+		for (uint32_t segmentIndex = 0, count = (uint32_t)fttGetChainSegmentCount(&tracer); segmentIndex < count; ++segmentIndex) {
+			const fttChainSegment *segment = fttGetChainSegment(&tracer, segmentIndex);
 			glBegin(GL_LINE_LOOP);
-			for (uint32_t vertexIndex = 0; vertexIndex < segment.vertices.size(); ++vertexIndex) {
-				const ftt::Vec2i &v = segment.vertices[vertexIndex];
+			for (uint32_t vertexIndex = 0, vertexCount = (uint32_t)fttGetChainSegmentVertexCount(segment); vertexIndex < vertexCount; ++vertexIndex) {
+				fttVec2i v = fttGetChainSegmentVertex(segment, vertexIndex);
 				glVertex2f(-halfAreaWidth + v.x * TileSize, -halfAreaHeight + v.y * TileSize);
 			}
 			glEnd();
@@ -302,7 +311,7 @@ int main(int argc, char **args) {
 		glLineWidth(1.0f);
 
 		// Draw current tile
-		ftt::Tile *curTile = tracer.GetCurrentTile();
+		fttTile *curTile = fttGetCurrentTile(&tracer);
 		if (curTile) {
 			glColor3f(1.0f, 1.0f, 0.0f);
 			glLineWidth(2.0f);
@@ -313,7 +322,11 @@ int main(int argc, char **args) {
 		fplVideoFlip();
 	}
 
+	fttFreeTileTracer(&tracer);
+
 	fglUnloadOpenGL();
 
 	fplPlatformRelease();
+
+	return 0;
 }

@@ -6,9 +6,9 @@ cmake_minimum_required(VERSION 3.10)
 #
 # -----------------------------------------------------------------------------
 
-project(FTT_TileTracingDemo CXX)
+project(FTT_TileTracingDemo C)
 
-set(MY_COMPILER "cpp11")
+set(MY_COMPILER "c17")
 
 set(MY_EXTERNAL_LIBS "")
 
@@ -21,10 +21,11 @@ set(MY_INCLUDE_DIRS
 set(MY_HEADER_FILES
 	"../../final_platform_layer.h"
 	"../../final_dynamic_opengl.h"
+	"../../final_tiletrace.h"
 	)
 
 set(MY_TRANSLATION_UNITS
-	"ftt_tiletracingdemo.cpp"
+	"ftt_tiletracingdemo.c"
 	)
 
 set(MY_DEFINES "")

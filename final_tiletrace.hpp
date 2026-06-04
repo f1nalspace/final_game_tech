@@ -4,6 +4,9 @@
 * @author Torsten Spaete
 * @brief Final TileTrace (FTT) - an open source single file header C++ contour tile tracing library.
 *
+* @deprecated OBSOLETE: superseded by the pure C17 "final_tiletrace.h". This C++ version
+* is kept for reference only and will be removed in a future release. Use final_tiletrace.h.
+*
 * This creates chainshapes out of any solid tilemap based on a contour tracing algorithm.
 *
 * @mainpage
