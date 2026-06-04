@@ -70,6 +70,11 @@ fttInitTileTracer(&tracer, tileCount, map, &allocator);
 FTT_IMPLEMENTATION       Define in ONE translation unit to emit the implementation.
 FTT_API_AS_PRIVATE       Set to 1 to make the public api static (single file only).
 FTT_ARENA_MIN_BLOCK_SIZE Minimum arena block size in bytes (default 65536 = 64 KB).
+FTT_ASSERT(expr)         Override the assertion macro (defaults to assert from <assert.h>).
+FTT_MALLOC(size)         Override the default allocate (defaults to malloc; skips <stdlib.h> when set with FTT_FREE).
+FTT_FREE(ptr)            Override the default release (defaults to free; skips <stdlib.h> when set with FTT_MALLOC).
+FTT_MEMCPY(dst,src,size) Override memory copy (defaults to memcpy; skips <string.h> when set with FTT_MEMMOVE).
+FTT_MEMMOVE(dst,src,size)Override memory move (defaults to memmove; skips <string.h> when set with FTT_MEMCPY).
 
 -------------------------------------------------------------------------------
 	License
@@ -160,6 +165,12 @@ SOFTWARE.
 #if !defined(FTT_ARENA_MIN_BLOCK_SIZE)
 //! Default minimum arena block size (64 KB)
 #	define FTT_ARENA_MIN_BLOCK_SIZE 65536
+#endif
+
+//! Assertion macro - define FTT_ASSERT before including to override the default (assert)
+#if !defined(FTT_ASSERT)
+#	include <assert.h>
+#	define FTT_ASSERT(expression) assert(expression)
 #endif
 
 #ifdef __cplusplus
@@ -426,9 +437,27 @@ ftt_inline fttTile *fttGetCurrentTile(const fttTileTracer *tracer) {
 #if defined(FTT_IMPLEMENTATION) && !defined(FTT_IMPLEMENTED)
 #	define FTT_IMPLEMENTED
 
-#include <stdlib.h>
-#include <string.h>
-#include <assert.h>
+// Default allocator backing - only pull in <stdlib.h> when malloc/free are not overridden
+#if !defined(FTT_MALLOC) || !defined(FTT_FREE)
+#	include <stdlib.h>
+#	if !defined(FTT_MALLOC)
+#		define FTT_MALLOC(size) malloc(size)
+#	endif
+#	if !defined(FTT_FREE)
+#		define FTT_FREE(ptr) free(ptr)
+#	endif
+#endif
+
+// Memory copy/move - only pull in <string.h> when memcpy/memmove are not overridden
+#if !defined(FTT_MEMCPY) || !defined(FTT_MEMMOVE)
+#	include <string.h>
+#	if !defined(FTT_MEMCPY)
+#		define FTT_MEMCPY(dst, src, size) memcpy(dst, src, size)
+#	endif
+#	if !defined(FTT_MEMMOVE)
+#		define FTT_MEMMOVE(dst, src, size) memmove(dst, src, size)
+#	endif
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -443,11 +472,11 @@ extern "C" {
 
 static void *ftt__DefaultAllocate(void *userData, size_t size) {
 	(void)userData;
-	return malloc(size);
+	return FTT_MALLOC(size);
 }
 static void ftt__DefaultRelease(void *userData, void *ptr) {
 	(void)userData;
-	free(ptr);
+	FTT_FREE(ptr);
 }
 
 ftt_api fttAllocator fttDefaultAllocator(void) {
@@ -482,7 +511,7 @@ static fttMemoryBlock *ftt__ArenaAddBlock(fttArena *arena, size_t minSize) {
 	}
 	size_t total = headerSize + dataSize;
 	uint8_t *mem = (uint8_t *)arena->allocator.allocate(arena->allocator.userData, total);
-	assert(mem != ftt_null);
+	FTT_ASSERT(mem != ftt_null);
 	fttMemoryBlock *block = (fttMemoryBlock *)mem;
 	block->base = mem + headerSize;
 	block->size = dataSize;
@@ -545,7 +574,7 @@ static void ftt__ArrayReserve(fttArray *a, size_t n) {
 	}
 	void *newItems = ftt__ArenaPush(a->arena, newCap * a->itemSize);
 	if (a->count > 0 && a->items != ftt_null) {
-		memcpy(newItems, a->items, a->count * a->itemSize);
+		FTT_MEMCPY(newItems, a->items, a->count * a->itemSize);
 	}
 	a->items = newItems;
 	a->capacity = newCap;
@@ -561,17 +590,17 @@ static void *ftt__ArrayPush(fttArray *a) {
 
 //! Removes an element while keeping the order of the remaining elements
 static void ftt__ArrayRemoveOrdered(fttArray *a, size_t index) {
-	assert(index < a->count);
+	FTT_ASSERT(index < a->count);
 	uint8_t *base = (uint8_t *)a->items;
 	size_t tail = a->count - index - 1;
 	if (tail > 0) {
-		memmove(base + index * a->itemSize, base + (index + 1) * a->itemSize, tail * a->itemSize);
+		FTT_MEMMOVE(base + index * a->itemSize, base + (index + 1) * a->itemSize, tail * a->itemSize);
 	}
 	a->count--;
 }
 
 static void ftt__ArrayPop(fttArray *a) {
-	assert(a->count > 0);
+	FTT_ASSERT(a->count > 0);
 	a->count--;
 }
 
@@ -643,20 +672,20 @@ static int32_t ftt__IsTileSolid(fttArray *tiles, fttVec2u dimension, int32_t x, 
 	int32_t result = false;
 	if ((x >= 0 && x < (int32_t)dimension.w) && (y >= 0 && y < (int32_t)dimension.h)) {
 		uint32_t tileIndex = ftt__ComputeTileIndex(dimension, (uint32_t)x, (uint32_t)y);
-		assert(tileIndex < dimension.w * dimension.h);
+		FTT_ASSERT(tileIndex < dimension.w * dimension.h);
 		result = FTT_ARRAY_AT(*tiles, fttTile, tileIndex).isSolid > 0;
 	}
 	return result;
 }
 
 static fttTile *ftt__GetTilePtr(fttArray *tiles, fttVec2u dimension, uint32_t x, uint32_t y) {
-	assert((x < dimension.w) && (y < dimension.h));
+	FTT_ASSERT((x < dimension.w) && (y < dimension.h));
 	uint32_t tileIndex = ftt__ComputeTileIndex(dimension, x, y);
 	return FTT_ARRAY_PTR(*tiles, fttTile, tileIndex);
 }
 
 static void ftt__SetTileSolid(fttArray *tiles, fttVec2u dimension, uint32_t x, uint32_t y, int32_t value) {
-	assert((x < dimension.w) && (y < dimension.h));
+	FTT_ASSERT((x < dimension.w) && (y < dimension.h));
 	uint32_t tileIndex = ftt__ComputeTileIndex(dimension, x, y);
 	FTT_ARRAY_PTR(*tiles, fttTile, tileIndex)->isSolid = value;
 }
@@ -762,7 +791,7 @@ static bool ftt__IsTileSharesCommonEdges(fttTileTracer *tracer, fttTileVertices 
 // ----------------------------------------------------------------------------
 
 static void ftt__RemoveSegmentVertex(fttChainSegment *chainSegment, uint32_t index) {
-	assert(index < chainSegment->vertices.count);
+	FTT_ASSERT(index < chainSegment->vertices.count);
 	ftt__ArrayRemoveOrdered(&chainSegment->vertices, index);
 }
 
@@ -941,8 +970,8 @@ static void ftt__AddTile(fttTileTracer *tracer, fttTile *tile) {
 // ----------------------------------------------------------------------------
 
 ftt_api void fttInitTileTracer(fttTileTracer *tracer, fttVec2u tileCount, const uint8_t *mapTiles, const fttAllocator *allocator) {
-	assert(tracer != ftt_null);
-	assert(mapTiles != ftt_null);
+	FTT_ASSERT(tracer != ftt_null);
+	FTT_ASSERT(mapTiles != ftt_null);
 
 	tracer->allocator = (allocator != ftt_null) ? *allocator : fttDefaultAllocator();
 	ftt__ArenaInit(&tracer->arena, tracer->allocator, FTT_ARENA_MIN_BLOCK_SIZE);
@@ -984,7 +1013,7 @@ ftt_api void fttInitTileTracer(fttTileTracer *tracer, fttVec2u tileCount, const 
 }
 
 ftt_api bool fttNextTileTraceStep(fttTileTracer *tracer) {
-	assert(tracer != ftt_null);
+	FTT_ASSERT(tracer != ftt_null);
 
 	bool result = true;
 	switch (tracer->curStep) {
@@ -1035,7 +1064,7 @@ ftt_api bool fttNextTileTraceStep(fttTileTracer *tracer) {
 
 		case FTT_STEP_FIND_NEXT_TILE:
 		{
-			assert(tracer->curTile != ftt_null);
+			FTT_ASSERT(tracer->curTile != ftt_null);
 
 			// Tile in the "forward" direction of the current tile
 			int32_t nx = tracer->curTile->x + FTT__DIRECTIONS[tracer->curTile->traceDirection].x;
@@ -1069,19 +1098,19 @@ ftt_api bool fttNextTileTraceStep(fttTileTracer *tracer) {
 		} break;
 
 		default:
-			assert(!"Invalid default case!");
+			FTT_ASSERT(!"Invalid default case!");
 	}
 	return result;
 }
 
 ftt_api void fttRunTileTracer(fttTileTracer *tracer) {
-	assert(tracer != ftt_null);
+	FTT_ASSERT(tracer != ftt_null);
 	while (fttNextTileTraceStep(tracer)) {
 	}
 }
 
 ftt_api void fttFreeTileTracer(fttTileTracer *tracer) {
-	assert(tracer != ftt_null);
+	FTT_ASSERT(tracer != ftt_null);
 	ftt__ArenaFree(&tracer->arena);
 
 	// Reset to a safe empty state
