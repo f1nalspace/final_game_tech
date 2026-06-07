@@ -12306,8 +12306,29 @@ fpl_internal bool fpl__PThreadLoadApi(fpl__PThreadApi *pthreadApi) {
 	return(result);
 }
 
+// Storing the value of a LC value, such as LC_ALL, LC_NUMERIC, etc.
+typedef char fpl__PosixLocaleName[256];
+
+typedef enum fpl__PosixLocaleFlags {
+	// No LC parameters was set
+	fpl__PosixLocaleFlags_None = 0,
+	// LC_ALL is set
+	fpl__PosixLocaleFlags_All = 1 << 0,
+	// LC_NUMERIC is set
+	fpl__PosixLocaleFlags_Numeric = 1 << 1,
+	// LC_TIME is set
+	fpl__PosixLocaleFlags_Time = 1 << 2,
+} fpl__PosixLocaleFlags;
+
+typedef struct fpl__PosixPreservedLocales {
+	fpl__PosixLocaleName allName;
+	fpl__PosixLocaleName numericName;
+	fpl__PosixLocaleName timeName;
+	fpl__PosixLocaleFlags flags;
+} fpl__PosixPreservedLocales;
+
 typedef struct fpl__PosixInitState {
-	int dummy;
+	fpl__PosixPreservedLocales preservedLocales;
 } fpl__PosixInitState;
 
 typedef struct fpl__PosixAppState {
@@ -12321,9 +12342,9 @@ typedef struct fpl__PosixAppState {
 //
 // ############################################################################
 #if defined(FPL_PLATFORM_LINUX)
+
 typedef struct fpl__LinuxInitState {
-	char prevLocale[256];
-	fpl_b32 hasPrevLocale;
+	int dummy;
 } fpl__LinuxInitState;
 
 #if defined(FPL__ENABLE_INPUT_LINUX_JOYSTICK)
@@ -12374,8 +12395,7 @@ typedef struct fpl__LinuxAppState {
 // ############################################################################
 #if defined(FPL_PLATFORM_UNIX)
 typedef struct fpl__UnixInitState {
-	char prevLocale[256];
-	fpl_b32 hasPrevLocale;
+	int dummy;
 } fpl__UnixInitState;
 
 typedef struct fpl__UnixAppState {
