@@ -21241,6 +21241,8 @@ fpl_platform_api size_t fplGetInputLocale(const fplLocaleFormat targetFormat, ch
 // ############################################################################
 #if defined(FPL_SUBPLATFORM_POSIX)
 
+#	include <locale.h> // setlocale
+
 #	if defined(FPL_SUBPLATFORM_BSD)
 #		include <sys/sysctl.h> // sysctl, CTL_HW, HW_NCPU
 #		define FPL__MAP_ANONYMOUS MAP_ANON
@@ -21248,12 +21250,28 @@ fpl_platform_api size_t fplGetInputLocale(const fplLocaleFormat targetFormat, ch
 #		define FPL__MAP_ANONYMOUS MAP_ANONYMOUS
 #	endif
 
-fpl_internal void fpl__PosixReleaseSubplatform(fpl__PosixAppState *appState) {
+fpl_internal void fpl__PosixReleaseSubplatform(fpl__PosixInitState *initState, fpl__PosixAppState *appState) {
+	// Restore preserved locales, if needed
+	fpl__PosixPreservedLocales *preservedLocales = &initState->preservedLocales;
+	if (preservedLocales->flags != fpl__PosixLocaleFlags_None) {
+		if ((preservedLocales->flags & fpl__PosixLocaleFlags_All) != 0) {
+			setlocale(LC_ALL, preservedLocales->allName);
+		}
+		if ((preservedLocales->flags & fpl__PosixLocaleFlags_Numeric) != 0) {
+			setlocale(LC_NUMERIC, preservedLocales->numericName);
+		}
+		if ((preservedLocales->flags & fpl__PosixLocaleFlags_Time) != 0) {
+			setlocale(LC_TIME, preservedLocales->timeName);
+		}
+		preservedLocales->flags = fpl__PosixLocaleFlags_None;
+	}
+
 	fpl__PThreadUnloadApi(&appState->pthreadApi);
 }
 
 fpl_internal bool fpl__PosixInitSubplatform(const fplInitFlags initFlags, const fplSettings *initSettings, fpl__PosixInitState *initState, fpl__PosixAppState *appState) {
 	fpl__PThreadApi *pthreadApi = &appState->pthreadApi;
+	fpl__PosixPreservedLocales *preservedLocales = &initState->preservedLocales;
 
 	if (!fpl__PThreadLoadApi(pthreadApi)) {
 		FPL__ERROR(FPL__MODULE_POSIX, "Failed initializing PThread API");
@@ -21268,6 +21286,32 @@ fpl_internal bool fpl__PosixInitSubplatform(const fplInitFlags initFlags, const 
 	mainThread->id = mainThreadId;
 	mainThread->internalHandle.posixThread = currentThreadHandle;
 	mainThread->currentState = fplThreadState_Running;
+
+	fplClearStruct(preservedLocales);
+
+	// Preserve current locales, if needed
+	if (initSettings->locale.isCultureInvariant) {
+		const char *currentLocaleAll = setlocale(LC_ALL, fpl_null);
+		if (currentLocaleAll != fpl_null) {
+			fplCopyString(currentLocaleAll, preservedLocales->allName, fplArrayCount(preservedLocales->allName));
+			preservedLocales->flags |= fpl__PosixLocaleFlags_All;
+		}
+		const char *currentLocaleNumeric = setlocale(LC_NUMERIC, fpl_null);
+		if (currentLocaleNumeric != fpl_null) {
+			fplCopyString(currentLocaleNumeric, preservedLocales->numericName, fplArrayCount(preservedLocales->numericName));
+			preservedLocales->flags |= fpl__PosixLocaleFlags_Numeric;
+		}
+		const char *currentLocaleTime = setlocale(LC_TIME, fpl_null);
+		if (currentLocaleTime != fpl_null) {
+			fplCopyString(currentLocaleTime, preservedLocales->timeName, fplArrayCount(preservedLocales->timeName));
+			preservedLocales->flags |= fpl__PosixLocaleFlags_Time;
+		}
+
+		// Overwrite locales to be culture-invariant
+		setlocale(LC_ALL, "C");
+		setlocale(LC_NUMERIC, "C");
+		setlocale(LC_TIME, "C");
+	}
 
 	return true;
 }
@@ -25945,7 +25989,6 @@ fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
 //
 // ############################################################################
 #if defined(FPL_PLATFORM_LINUX)
-#	include <locale.h> // setlocale
 #	include <sys/eventfd.h> // eventfd
 #	include <sys/epoll.h> // epoll_create, epoll_ctl, epoll_wait
 #	include <sys/select.h> // select
@@ -25953,21 +25996,9 @@ fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
 #	include <linux/joystick.h> // js_event, axis_state, etc.
 
 fpl_internal void fpl__LinuxReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
-	fpl__LinuxInitState *plinux = &initState->plinux;
-	if (plinux->hasPrevLocale) {
-		setlocale(LC_ALL, plinux->prevLocale);
-		plinux->hasPrevLocale = false;
-	}
 }
 
 fpl_internal bool fpl__LinuxInitPlatform(const fplInitFlags initFlags, const fplSettings *initSettings, fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
-	fpl__LinuxInitState *plinux = &initState->plinux;
-	const char *currentLocale = setlocale(LC_ALL, fpl_null);
-	if (currentLocale != fpl_null) {
-		fplCopyString(currentLocale, plinux->prevLocale, fplArrayCount(plinux->prevLocale));
-		plinux->hasPrevLocale = true;
-	}
-	setlocale(LC_ALL, "");
 	return true;
 }
 
@@ -26706,18 +26737,11 @@ fpl_platform_api size_t fplGetInputLocale(const fplLocaleFormat targetFormat, ch
 //
 // ############################################################################
 #if defined(FPL_PLATFORM_UNIX)
-#	include <locale.h> // setlocale
 
 fpl_internal void fpl__UnixReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
 	fpl__UnixInitState *unixInit = &initState->punix;
 	fpl__UnixAppState *unixApp = &appState->punix;
-
-	// Restore user locale
-	if (unixInit->hasPrevLocale) {
-		setlocale(LC_ALL, unixInit->prevLocale);
-		unixInit->hasPrevLocale = false;
-	}
 
 	// Destroy signal multiple wait condition and mutex
 	pthreadApi->pthread_cond_destroy(&unixApp->signalMultipleWaitCondition);
@@ -26729,14 +26753,6 @@ fpl_internal bool fpl__UnixInitPlatform(const fplInitFlags initFlags, const fplS
 	const fpl__PThreadApi *pthreadApi = &posixApp->pthreadApi;
 	fpl__UnixInitState *unixInit = &initState->punix;
 	fpl__UnixAppState *unixApp = &appState->punix;
-
-	// Preserve current user locale
-	const char *currentLocale = setlocale(LC_ALL, fpl_null);
-	if (currentLocale != fpl_null) {
-		fplCopyString(currentLocale, unixInit->prevLocale, fplArrayCount(unixInit->prevLocale));
-		unixInit->hasPrevLocale = true;
-	}
-	setlocale(LC_ALL, "");
 
 	// Initialize mutex and condition for signal multiple wait
 	if (pthreadApi->pthread_mutex_init(&unixApp->signalMultipleWaitMutex, fpl_null) != 0) {
@@ -38247,7 +38263,7 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 #		endif
 #		if defined(FPL_SUBPLATFORM_POSIX)
 			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release POSIX Subplatform");
-			fpl__PosixReleaseSubplatform(&appState->posix);
+			fpl__PosixReleaseSubplatform(&initState->posix, &appState->posix);
 #		endif
 		}
 
