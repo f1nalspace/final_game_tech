@@ -12345,6 +12345,12 @@ typedef struct fpl__InputLinuxJoystickGamepad {
 typedef struct fpl__InputBackendLinuxJoystick {
 	fpl__InputLinuxJoystickGamepad gamepads[FPL__INPUT_LINUX_JOYSTICK_MAX_JOYPAD_COUNT];
 	bool triedSlot[FPL__INPUT_LINUX_JOYSTICK_SCAN_COUNT];
+	// Inode of the /dev/input/jsX node we last probed-and-rejected per slot. Opening a js node is expensive
+	// on some devices (gaming mice/virtual pads do heavy work on open -- measured 15-40ms each), so we must
+	// not re-open a node we already rejected every detection scan. Combined with triedSlot[], a slot whose
+	// current node inode still equals triedInode[] is skipped without the costly open(). The inode changes
+	// when the node is recreated (hotplug), which invalidates the skip and lets the new device be probed.
+	uint64_t triedInode[FPL__INPUT_LINUX_JOYSTICK_SCAN_COUNT];
 	uint64_t lastCheckTime;
 	bool isInitialized;
 } fpl__InputBackendLinuxJoystick;
@@ -26197,14 +26203,37 @@ fpl_internal void fpl__InputLinuxJoystick_DetectControllers(const fplSettings *s
 		if (alreadyFound) continue;
 		if (freeIndex < 0) break; // All controller slots full
 
+		// Cheap presence/identity gate before the expensive open(). Opening a js node costs tens of
+		// milliseconds on some devices (gaming mice and virtual pads do heavy work on open), and a node
+		// that fails the gamepad qualification below is never claimed -- so without this gate every
+		// detection scan would re-open the same unsuitable node forever and stall the caller's frame.
+		// stat() is ~1us; if we already probed-and-rejected this exact node (same inode) we skip the
+		// open() entirely. The inode changes when the node is recreated (hotplug), which re-arms the probe.
+		struct stat slotStat;
+		if (stat(deviceName, &slotStat) != 0) {
+			backend->triedSlot[slotIndex] = false; // node gone -- forget the rejection so a future device here is probed fresh
+			backend->triedInode[slotIndex] = 0;
+			continue;
+		}
+		if (backend->triedSlot[slotIndex]) {
+			if (backend->triedInode[slotIndex] == (uint64_t)slotStat.st_ino) {
+				continue; // same node we already rejected -- do not pay for open() again
+			}
+			backend->triedSlot[slotIndex] = false; // node was recreated since last probe -- probe it fresh
+		}
+
 		errno = 0;
-		int fd = open(deviceName, O_RDONLY);
+		// Open non-blocking from the start: the init-message probe read() below must never block the
+		// caller's thread on a quirky node. joydev queues all JS_EVENT_INIT events synchronously at open(),
+		// so a real joystick still returns its first event immediately even in non-blocking mode.
+		int fd = open(deviceName, O_RDONLY | O_NONBLOCK);
 		if (fd < 0) {
 			// Silent on missing nodes — udev will replace the polling fallback in step 11.
 			if (errno == ENOENT) continue;
 			if (!backend->triedSlot[slotIndex]) {
 				FPL_LOG_DEBUG(FPL__MODULE_LINUX, "Failed opening joystick device '%s' (errno=%d)", deviceName, errno);
 				backend->triedSlot[slotIndex] = true;
+				backend->triedInode[slotIndex] = (uint64_t)slotStat.st_ino;
 			}
 			continue;
 		}
@@ -26217,6 +26246,7 @@ fpl_internal void fpl__InputLinuxJoystick_DetectControllers(const fplSettings *s
 			if (!backend->triedSlot[slotIndex]) {
 				FPL_LOG_DEBUG(FPL__MODULE_LINUX, "Joystick device '%s' does not have enough buttons/axis to map to a XInput controller!", deviceName);
 				backend->triedSlot[slotIndex] = true;
+				backend->triedInode[slotIndex] = (uint64_t)slotStat.st_ino;
 			}
 			close(fd);
 			continue;
@@ -26234,6 +26264,7 @@ fpl_internal void fpl__InputLinuxJoystick_DetectControllers(const fplSettings *s
 			if (!backend->triedSlot[slotIndex]) {
 				FPL_LOG_DEBUG(FPL__MODULE_LINUX, "Joystick device '%s' did not produce an init message", deviceName);
 				backend->triedSlot[slotIndex] = true;
+				backend->triedInode[slotIndex] = (uint64_t)slotStat.st_ino;
 			}
 			close(fd);
 			continue;
@@ -26247,7 +26278,7 @@ fpl_internal void fpl__InputLinuxJoystick_DetectControllers(const fplSettings *s
 		controller->buttonCount = numButtons;
 		fplCopyString(deviceName, controller->deviceName, fplArrayCount(controller->deviceName));
 		ioctl(fd, JSIOCGNAME(fplArrayCount(controller->displayName)), controller->displayName);
-		fcntl(fd, F_SETFL, O_NONBLOCK);
+		// fd was already opened O_NONBLOCK above, so the per-frame drain reads never block.
 
 		// Resolve which joydev axis indices correspond to ABS_HAT0X / ABS_HAT0Y. joydev never emits JS_EVENT_HAT, but the kernel folds DPad usages onto these ABS codes, so the joydev axis index varies per device — XInput F310 places them at 6/7 (after X,Y,Z,RX,RY,RZ), DInput F310 at 4/5 (only X,Y,Z,RZ are present so HAT shifts down). SDL's gamecontrollerdb almost always binds DPad as h0.* on Linux, so synthesizing raw.hats[0] from these axes lets the same mapping work across XInput/DInput modes. ABS_HAT0X = 0x10, ABS_HAT0Y = 0x11; we don't include <linux/input-event-codes.h> here to keep the header dependency footprint small.
 		controller->hat0XAxis = 0xFF;
