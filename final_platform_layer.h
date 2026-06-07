@@ -172,6 +172,15 @@ SOFTWARE.
 	@page page_changelog Changelog
 	@tableofcontents
 
+	## v1.0.1
+
+	### Overview
+	- Bugfixes
+
+	### Details
+	- New[#192]: Added struct fplLocaleSettings that controls how strings are formatted based on user locales
+	- Fixed[#192]: fplStringFormat* is not invariant, resulting in 1,54 vs 1.54
+
 	## v1.0.0
 
 	### Overview
