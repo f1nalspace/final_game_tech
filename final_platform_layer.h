@@ -160,7 +160,7 @@ SOFTWARE.
 
 /**
 	@file final_platform_layer.h
-	@version v1.0.0
+	@version v1.0.1
 	@author Torsten Spaete
 	@brief Final Platform Layer (FPL) - A C99 Single-Header-File Platform Abstraction Library
 */
