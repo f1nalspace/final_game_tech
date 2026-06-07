@@ -178,8 +178,13 @@ SOFTWARE.
 	- Bugfixes
 
 	### Details
+
+	#### Core
 	- New[#192]: Added struct fplLocaleSettings that controls how strings are formatted based on user locales
 	- Fixed[#192]: fplStringFormat* is not invariant, resulting in 1,54 vs 1.54
+
+	#### Input
+	- Fixed[#193]: Linux joystick polling hicks up blocks IO every second by default #193
 
 	## v1.0.0
 
