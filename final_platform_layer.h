@@ -6864,6 +6864,15 @@ typedef struct fplMemorySettings {
 } fplMemorySettings;
 
 /**
+* @struct fplLocaleSettings
+* @brief Stores locale specific settings that may control how any string formatting is handled.
+*/
+typedef struct fplLocaleSettings {
+	//! A flag indicating whether any string formatting should be culture invariant or not. Setting this to true, may overwrite the user locales such LC_ALL, LC_NUMERIC, LC_TIME temporary.
+	fpl_b32 isCultureInvariant;
+} fplLocaleSettings;
+
+/**
 * @struct fplSettings
 * @brief Stores settings, such as window, video, etc.
 */
@@ -6880,6 +6889,8 @@ typedef struct fplSettings {
 	fplConsoleSettings console;
 	//! Memory settings.
 	fplMemorySettings memory;
+	//! Locale settings.
+	fplLocaleSettings locale;
 } fplSettings;
 
 /**
