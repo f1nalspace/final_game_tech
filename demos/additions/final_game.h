@@ -9,6 +9,9 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
+	## 2026-06-08
+	- New: Added function ButtonWentDown() that returns whether a button went down this frame (the press/down edge)
+
 	## 2025-11-21
 	- Changed: GameRender to allow an Input argument as well
 	- Changed: Renamed ButtonWasPressed to ButtonButtonWasPressed
@@ -45,6 +48,14 @@ fpl_extern_inline bool ButtonIsDown(const ButtonState state) {
 fpl_extern_inline bool ButtonWasPressed(const ButtonState state) {
 	bool result = ((state.halfTransitionCount > 1) ||
 				  ((state.halfTransitionCount == 1) && (!state.endedDown)));
+	return(result);
+}
+
+// True on the DOWN edge (key went down this frame). Use this for press reactions
+// like a jump; ButtonWasPressed() above actually fires on the release edge.
+fpl_extern_inline bool ButtonWentDown(const ButtonState state) {
+	bool result = ((state.endedDown && state.halfTransitionCount >= 1) ||
+				  (!state.endedDown && state.halfTransitionCount >= 2));
 	return(result);
 }
 
