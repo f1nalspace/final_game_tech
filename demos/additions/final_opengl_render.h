@@ -1,5 +1,20 @@
 /*
-Temporary: Remove it when render commands are fully implemented
+Name:
+	Final OpenGL Renderer
+
+Description:
+	Implements a simple 2D-based Renderer using legacy OpenGL.
+	This is always used in combination with the final_gameplatform.h.
+
+	This file is part of the final_framework.
+
+Changelog:
+	## 2026-06-08
+	- Fixed CommandType_Clear was not clearing the entire frame, due to Scissor rectangle of the viewport
+
+License:
+	MIT License
+	Copyright 2017-2026 Torsten Spaete
 */
 
 #ifndef FINAL_OPENGL_RENDER_H
@@ -209,7 +224,7 @@ fpl_extern void RenderWithOpenGL(RenderState *renderState) {
 					ViewportCommand *cmd = (ViewportCommand *)dataStart;
 					glViewport(cmd->x, cmd->y, cmd->w, cmd->h);
 
-					// NOTE(fina): Scissor-Test is enabled by default, so we always use the same from the viewport
+					// NOTE(final): Scissor-Test is enabled by default, so we always use the same from the viewport
 					glScissor(cmd->x, cmd->y, cmd->w, cmd->h);
 				} break;
 
@@ -231,8 +246,11 @@ fpl_extern void RenderWithOpenGL(RenderState *renderState) {
 					if((cmd->flags & ClearFlags_Depth) == ClearFlags_Depth) {
 						mask |= GL_DEPTH_BUFFER_BIT;
 					}
-					glClearColor(cmd->color.r, cmd->color.g, cmd->color.g, cmd->color.a);
+					// NOTE(final): glClear honors the scissor box, so disable it for the clear to wipe the whole backbuffer (incl. the letterbox bars), then restore it.
+					glDisable(GL_SCISSOR_TEST);
+					glClearColor(cmd->color.r, cmd->color.g, cmd->color.b, cmd->color.a);
 					glClear(mask);
+					glEnable(GL_SCISSOR_TEST);
 				} break;
 
 				case CommandType_Matrix:
