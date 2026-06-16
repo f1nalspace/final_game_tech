@@ -24356,19 +24356,38 @@ fpl_internal void fpl__X11BuildKeyMap(const fpl__X11Api *x11Api, fpl__PlatformAp
 	}
 }
 
-	if (initSettings->window.isFullscreen) {
-		fplSetWindowFullscreenSize(true, initSettings->window.fullscreenSize.width, initSettings->window.fullscreenSize.height, initSettings->window.fullscreenRefreshRate);
+fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *appState, fpl__X11SubplatformState *subplatform, fpl__X11WindowState *windowState, const fpl__SetupWindowCallbacks *setupCallbacks) {
+	fplAssert((initSettings != fpl_null) && (currentWindowSettings != fpl_null) && (appState != fpl_null) && (subplatform != fpl_null) && (windowState != fpl_null) && (setupCallbacks != fpl_null));
 	const fpl__X11Api *x11Api = &subplatform->api;
 
 	if (!fpl__X11OpenDisplay(x11Api, windowState)) {
 		return false;
 	}
 
-	// Announce support for Xdnd (drag and drop)
-	{
-		const fpl__X11_Atom version = FPL__XDND_VERSION;
-		x11Api->XChangeProperty(windowState->display, windowState->window, windowState->xdndAware, FPL__X11_XA_ATOM, 32, FPL__X11_PropModeReplace, (unsigned char *)&version, 1);
+	if (setupCallbacks->preSetup != fpl_null) {
+		FPL_LOG_DEBUG(FPL__MODULE_X11, "Call Pre-Setup for fpl__X11_Window");
 		setupCallbacks->preSetup(appState, appState->initFlags, initSettings);
+	}
+
+	fpl__X11SetupVisualAndColormap(x11Api, windowState);
+
+	if (!fpl__X11CreateWindow(x11Api, initSettings, windowState)) {
+		fpl__X11ReleaseWindow(subplatform, windowState);
+		return false;
+	}
+
+	fpl__X11InternAtoms(x11Api, windowState);
+
+	// Cursor defaults
+	windowState->cursor.invisibleCursor = 0;
+	windowState->cursor.cursorEnabled = true;
+
+	fpl__X11SetupWindowManagerHints(x11Api, initSettings, currentWindowSettings, windowState);
+	fpl__X11InitInputMethod(x11Api, windowState);
+	fpl__X11BuildKeyMap(x11Api, appState, windowState);
+
+	if (initSettings->window.isFullscreen) {
+		fplSetWindowFullscreenSize(true, initSettings->window.fullscreenSize.width, initSettings->window.fullscreenSize.height, initSettings->window.fullscreenRefreshRate);
 	}
 
 	appState->window.isRunning = true;
