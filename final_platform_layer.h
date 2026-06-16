@@ -175,7 +175,9 @@ SOFTWARE.
 	## v1.0.1
 
 	### Overview
-	- Bugfixes
+	- Proper X11 input handling
+	- UTF8 decode and encode is now culture-invariant
+	- Several bugfixes
 
 	### Details
 
@@ -346,6 +348,7 @@ SOFTWARE.
 	- Fixed[#58]: [X11] Window had no WM_CLASS set — GNOME/mutter treated it as an orphan and showed a generic icon and "Unknown" as name; WM_CLASS is now set from the window title via XSetClassHint
 	- Fixed[#181]: [X11] fpl__X11ParseUriPaths does not do any URI decoding, resulting in most-likely unuseable file paths
 	- Fixed[#194]: [X11] Text input produced wrong/garbage UTF-8 — now uses Xutf8LookupString via XIM/XIC (with XLookupString fallback) and supports dead-key/compose input
+	- Fixed: [X11] Non-ASCII text input (e.g. umlauts) produced no character event under the "C" locale, because the UTF-8 from Xutf8LookupString was decoded via the locale dependent fplUTF8StringToWideString — now decoded directly
 	- Changed: [X11] Window size and position are no longer overwritten on creation
 	- Changed: [X11] Default window size changed to 720p (1280x720)
 	- New: [X11] Full support for FPL_NO_PLATFORM_INCLUDES and FPL_OPAQUE_HANDLES - no X11 headers are required anymore
