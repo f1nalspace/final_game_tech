@@ -186,6 +186,10 @@ SOFTWARE.
 	#### Input
 	- Fixed[#193]: Linux joystick polling hicks up blocks IO every second by default #193
 
+	#### X11
+	- Changed: Refactored internal X11 states into separate structs
+	- Changed: Refactored internal X11 functions init/release into separate functions
+
 	## v1.0.0
 
 	### Overview
