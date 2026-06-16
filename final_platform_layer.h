@@ -341,6 +341,7 @@ SOFTWARE.
 	- Fixed: [X11] _NET_WM_ICON pixel packing promoted uint8_t operands to int before shifting — alpha/red values >= 128 overflowed the signed int (UB) and could corrupt the icon; bytes are now cast to unsigned long first
 	- Fixed[#58]: [X11] Window had no WM_CLASS set — GNOME/mutter treated it as an orphan and showed a generic icon and "Unknown" as name; WM_CLASS is now set from the window title via XSetClassHint
 	- Fixed[#181]: [X11] fpl__X11ParseUriPaths does not do any URI decoding, resulting in most-likely unuseable file paths
+	- Fixed[#194]: [X11] Text input produced wrong/garbage UTF-8 — now uses Xutf8LookupString via XIM/XIC (with XLookupString fallback) and supports dead-key/compose input
 	- Changed: [X11] Window size and position are no longer overwritten on creation
 	- Changed: [X11] Default window size changed to 720p (1280x720)
 	- New: [X11] Full support for FPL_NO_PLATFORM_INCLUDES and FPL_OPAQUE_HANDLES - no X11 headers are required anymore
@@ -3719,6 +3720,8 @@ typedef XClientMessageEvent fpl__X11_XClientMessageEvent;
 typedef XErrorEvent fpl__X11_XErrorEvent;
 typedef XErrorHandler fpl__X11_XErrorHandler;
 typedef XComposeStatus fpl__X11_XComposeStatus;
+typedef XIM fpl__X11_XIM;
+typedef XIC fpl__X11_XIC;
 typedef XSetWindowAttributes fpl__X11_XSetWindowAttributes;
 typedef XWindowAttributes fpl__X11_XWindowAttributes;
 typedef XVisualInfo fpl__X11_XVisualInfo;
@@ -3736,6 +3739,15 @@ typedef XColor fpl__X11_XColor;
 #define FPL__X11_AnyPropertyType AnyPropertyType
 #define FPL__X11_CurrentTime CurrentTime
 #define FPL__X11_NoSymbol NoSymbol
+#define FPL__X11_XLookupNone XLookupNone
+#define FPL__X11_XLookupChars XLookupChars
+#define FPL__X11_XLookupKeySym XLookupKeySym
+#define FPL__X11_XLookupBoth XLookupBoth
+#define FPL__X11_XIMPreeditNothing XIMPreeditNothing
+#define FPL__X11_XIMStatusNothing XIMStatusNothing
+#define FPL__X11_XNInputStyle XNInputStyle
+#define FPL__X11_XNClientWindow XNClientWindow
+#define FPL__X11_XNFocusWindow XNFocusWindow
 #define FPL__X11_InputOutput InputOutput
 #define FPL__X11_ZPixmap ZPixmap
 #define FPL__X11_XYBitmap XYBitmap
@@ -3945,6 +3957,8 @@ typedef unsigned char fpl__X11_KeyCode;
 typedef int fpl__X11_Bool;
 typedef int fpl__X11_Status;
 typedef char *fpl__X11_XPointer;
+typedef struct fpl__X11_XIMRec *fpl__X11_XIM;   // opaque input method
+typedef struct fpl__X11_XICRec *fpl__X11_XIC;   // opaque input context
 typedef struct fpl__X11_XAnyEvent {
 	int type;
 	unsigned long serial;
@@ -4215,6 +4229,15 @@ typedef struct fpl__X11_XColor {
 #define FPL__X11_AnyPropertyType 0L
 #define FPL__X11_CurrentTime 0L
 #define FPL__X11_NoSymbol 0L
+#define FPL__X11_XLookupNone 1
+#define FPL__X11_XLookupChars 2
+#define FPL__X11_XLookupKeySym 3
+#define FPL__X11_XLookupBoth 4
+#define FPL__X11_XIMPreeditNothing 0x0008L
+#define FPL__X11_XIMStatusNothing 0x0400L
+#define FPL__X11_XNInputStyle "inputStyle"
+#define FPL__X11_XNClientWindow "clientWindow"
+#define FPL__X11_XNFocusWindow "focusWindow"
 #define FPL__X11_InputOutput 1
 #define FPL__X11_ZPixmap 2
 #define FPL__X11_XYBitmap 0
@@ -12510,6 +12533,25 @@ typedef FPL__FUNC_X11_XMoveWindow(fpl__func_x11_XMoveWindow);
 typedef FPL__FUNC_X11_XGetKeyboardMapping(fpl__func_x11_XGetKeyboardMapping);
 #define FPL__FUNC_X11_XLookupString(name) int name(fpl__X11_XKeyEvent* event_struct, char* buffer_return, int bytes_buffer, fpl__X11_KeySym* keysym_return, fpl__X11_XComposeStatus* status_in_out)
 typedef FPL__FUNC_X11_XLookupString(fpl__func_x11_XLookupString);
+#define FPL__FUNC_X11_XOpenIM(name) fpl__X11_XIM name(fpl__X11_Display *display, void *rdb, char *res_name, char *res_class)
+typedef FPL__FUNC_X11_XOpenIM(fpl__func_x11_XOpenIM);
+#define FPL__FUNC_X11_XCloseIM(name) fpl__X11_Status name(fpl__X11_XIM im)
+typedef FPL__FUNC_X11_XCloseIM(fpl__func_x11_XCloseIM);
+// XCreateIC is variadic: XIC XCreateIC(XIM im, ...) with NULL-terminated name/value pairs
+#define FPL__FUNC_X11_XCreateIC(name) fpl__X11_XIC name(fpl__X11_XIM im, ...)
+typedef FPL__FUNC_X11_XCreateIC(fpl__func_x11_XCreateIC);
+#define FPL__FUNC_X11_XDestroyIC(name) void name(fpl__X11_XIC ic)
+typedef FPL__FUNC_X11_XDestroyIC(fpl__func_x11_XDestroyIC);
+#define FPL__FUNC_X11_XSetICFocus(name) void name(fpl__X11_XIC ic)
+typedef FPL__FUNC_X11_XSetICFocus(fpl__func_x11_XSetICFocus);
+#define FPL__FUNC_X11_XUnsetICFocus(name) void name(fpl__X11_XIC ic)
+typedef FPL__FUNC_X11_XUnsetICFocus(fpl__func_x11_XUnsetICFocus);
+#define FPL__FUNC_X11_XSetLocaleModifiers(name) char *name(const char *modifier_list)
+typedef FPL__FUNC_X11_XSetLocaleModifiers(fpl__func_x11_XSetLocaleModifiers);
+#define FPL__FUNC_X11_Xutf8LookupString(name) int name(fpl__X11_XIC ic, fpl__X11_XKeyEvent *event, char *buffer_return, int bytes_buffer, fpl__X11_KeySym *keysym_return, fpl__X11_Status *status_return)
+typedef FPL__FUNC_X11_Xutf8LookupString(fpl__func_x11_Xutf8LookupString);
+#define FPL__FUNC_X11_XFilterEvent(name) fpl__X11_Bool name(fpl__X11_XEvent *event, fpl__X11_Window window)
+typedef FPL__FUNC_X11_XFilterEvent(fpl__func_x11_XFilterEvent);
 #define FPL__FUNC_X11_XSendEvent(name) fpl__X11_Status name(fpl__X11_Display *display, fpl__X11_Window w, fpl__X11_Bool propagate, long event_mask, fpl__X11_XEvent *event_send)
 typedef FPL__FUNC_X11_XSendEvent(fpl__func_x11_XSendEvent);
 #define FPL__FUNC_X11_XMatchVisualInfo(name) fpl__X11_Status name(fpl__X11_Display* display, int screen, int depth, int clazz, fpl__X11_XVisualInfo* vinfo_return)
@@ -12676,6 +12718,15 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XMoveWindow *XMoveWindow;
 	fpl__func_x11_XGetKeyboardMapping *XGetKeyboardMapping;
 	fpl__func_x11_XLookupString *XLookupString;
+	fpl__func_x11_XOpenIM *XOpenIM;
+	fpl__func_x11_XCloseIM *XCloseIM;
+	fpl__func_x11_XCreateIC *XCreateIC;
+	fpl__func_x11_XDestroyIC *XDestroyIC;
+	fpl__func_x11_XSetICFocus *XSetICFocus;
+	fpl__func_x11_XUnsetICFocus *XUnsetICFocus;
+	fpl__func_x11_XSetLocaleModifiers *XSetLocaleModifiers;
+	fpl__func_x11_Xutf8LookupString *Xutf8LookupString;
+	fpl__func_x11_XFilterEvent *XFilterEvent;
 	fpl__func_x11_XSendEvent *XSendEvent;
 	fpl__func_x11_XMatchVisualInfo *XMatchVisualInfo;
 	fpl__func_x11_XCreateGC *XCreateGC;
@@ -12763,6 +12814,16 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XMoveWindow, XMoveWindow);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGetKeyboardMapping, XGetKeyboardMapping);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XLookupString, XLookupString);
+			// Input-method (UTF-8 text input) functions are loaded optionally: they are null under FPL_NO_RUNTIME_LINKING (no extern needed) and the caller falls back to XLookupString.
+			FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XOpenIM, XOpenIM);
+			FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCloseIM, XCloseIM);
+			FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCreateIC, XCreateIC);
+			FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XDestroyIC, XDestroyIC);
+			FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetICFocus, XSetICFocus);
+			FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XUnsetICFocus, XUnsetICFocus);
+			FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetLocaleModifiers, XSetLocaleModifiers);
+			FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_Xutf8LookupString, Xutf8LookupString);
+			FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XFilterEvent, XFilterEvent);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSendEvent, XSendEvent);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XMatchVisualInfo, XMatchVisualInfo);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCreateGC, XCreateGC);
@@ -13069,6 +13130,8 @@ typedef struct fpl__X11WindowState {
 	fpl__X11Xdnd xdnd;
 	fpl__X11_Window root;
 	fpl__X11_Window window;
+	fpl__X11_XIM xim;   // input method (may be 0 if unavailable)
+	fpl__X11_XIC xic;   // input context (may be 0 if unavailable)
 	fpl__X11_Visual *visual;
 	fpl__X11_Atom wmProtocols;
 	fpl__X11_Atom wmDeleteWindow;
@@ -23657,6 +23720,22 @@ fpl_internal bool fpl__X11InitSubplatform(fpl__X11SubplatformState *subplatform)
 fpl_internal void fpl__X11ReleaseWindow(const fpl__X11SubplatformState *subplatform, fpl__X11WindowState *windowState) {
 	fplAssert((subplatform != fpl_null) && (windowState != fpl_null));
 	const fpl__X11Api *x11Api = &subplatform->api;
+	// Tear down the input method before destroying the window/display to avoid use-after-free inside Xlib.
+	if (windowState->xic != 0) {
+		if (x11Api->XUnsetICFocus != fpl_null) {
+			x11Api->XUnsetICFocus(windowState->xic);
+		}
+		if (x11Api->XDestroyIC != fpl_null) {
+			x11Api->XDestroyIC(windowState->xic);
+		}
+		windowState->xic = 0;
+	}
+	if (windowState->xim != 0) {
+		if (x11Api->XCloseIM != fpl_null) {
+			x11Api->XCloseIM(windowState->xim);
+		}
+		windowState->xim = 0;
+	}
 	if (windowState->invisibleCursor != 0) {
 		x11Api->XFreeCursor(windowState->display, windowState->invisibleCursor);
 		windowState->invisibleCursor = 0;
@@ -24155,6 +24234,40 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	x11Api->XMapWindow(windowState->display, windowState->window);
 	x11Api->XFlush(windowState->display);
 
+	// Enable UTF-8 capable text input via X Input Method.
+	// The C locale is already configured by the POSIX subplatform init; we only set
+	// the X11 locale modifiers here. XSetLocaleModifiers must run before XOpenIM,
+	// otherwise Xutf8LookupString can not produce correct UTF-8 for non-ASCII keys.
+	// All IM functions are loaded optionally (null under FPL_NO_RUNTIME_LINKING), so
+	// every call is guarded; when unavailable we silently fall back to XLookupString.
+	windowState->xim = 0;
+	windowState->xic = 0;
+	if (x11Api->XOpenIM != fpl_null && x11Api->XCreateIC != fpl_null && x11Api->Xutf8LookupString != fpl_null) {
+		if (x11Api->XSetLocaleModifiers != fpl_null) {
+			x11Api->XSetLocaleModifiers("");
+		}
+		fpl__X11_XIM xim = x11Api->XOpenIM(windowState->display, fpl_null, fpl_null, fpl_null);
+		if (xim != fpl_null) {
+			windowState->xim = xim;
+			const long inputStyle = FPL__X11_XIMPreeditNothing | FPL__X11_XIMStatusNothing;
+			fpl__X11_XIC xic = x11Api->XCreateIC(xim,
+				FPL__X11_XNInputStyle, inputStyle,
+				FPL__X11_XNClientWindow, windowState->window,
+				FPL__X11_XNFocusWindow, windowState->window,
+				(void *)fpl_null);
+			if (xic != fpl_null) {
+				windowState->xic = xic;
+				if (x11Api->XSetICFocus != fpl_null) {
+					x11Api->XSetICFocus(xic);
+				}
+			} else {
+				FPL__WARNING(FPL__MODULE_X11, "Failed creating X11 input context (XIC); falling back to XLookupString");
+			}
+		} else {
+			FPL__WARNING(FPL__MODULE_X11, "Failed opening X11 input method (XIM); falling back to XLookupString");
+		}
+	}
+
 	fplAssert(fplArrayCount(appState->window.keyMap) >= 256);
 
 	// @NOTE(final): Valid key range for XLib is 8 to 255
@@ -24405,15 +24518,47 @@ fpl_internal void *fpl__X11ParseUriPaths(const char *text, size_t *size, int *co
 }
 
 fpl_internal void fpl__X11HandleTextInputEvent(const fpl__X11Api *x11Api, fpl__PlatformWindowState *winState, const uint64_t keyCode, fpl__X11_XEvent *ev) {
-	char buf[32];
+	char buf[32] = fplZeroInit;
+	const int maxTextLen = (int)sizeof(buf) - 1;   // reserve one byte for the NUL terminator
 	fpl__X11_KeySym keysym = 0;
-	if (x11Api->XLookupString(&ev->xkey, buf, 32, &keysym, NULL) != FPL__X11_NoSymbol) {
-		wchar_t wideBuffer[4] = fplZeroInit;
-		fplUTF8StringToWideString(buf, fplGetStringLength(buf), wideBuffer, fplArrayCount(wideBuffer));
-		uint32_t textCode = (uint32_t)wideBuffer[0];
-		if (textCode > 0) {
-			fpl__HandleKeyboardInputEvent(winState, keyCode, textCode);
+	int textLen = 0;
+	bool isUtf8 = false;
+
+	fpl__X11WindowState *x11WinState = &winState->x11;
+	if (x11WinState->xic != 0 && x11Api->Xutf8LookupString != fpl_null) {
+		fpl__X11_Status status = 0;
+		textLen = x11Api->Xutf8LookupString(x11WinState->xic, &ev->xkey, buf, maxTextLen, &keysym, &status);
+		// status tells us what buf holds; only XLookupChars / XLookupBoth yield committed text
+		if (status == FPL__X11_XLookupChars || status == FPL__X11_XLookupBoth) {
+			isUtf8 = true;
+		} else {
+			textLen = 0;   // XLookupKeySym / XLookupNone / XBufferOverflow -> no committed text
 		}
+	} else {
+		// Fallback: no input method. XLookupString returns locale/Latin-1 bytes, not UTF-8.
+		int n = x11Api->XLookupString(&ev->xkey, buf, maxTextLen, &keysym, fpl_null);
+		if (n > 0) {
+			textLen = n;
+			isUtf8 = false;
+		}
+	}
+
+	if (textLen <= 0) {
+		return;
+	}
+	buf[textLen] = '\0';
+
+	wchar_t wideBuffer[4] = fplZeroInit;
+	if (isUtf8) {
+		fplUTF8StringToWideString(buf, (size_t)textLen, wideBuffer, fplArrayCount(wideBuffer));
+	} else {
+		// Latin-1 fallback: each returned byte is a Unicode code point in 0..255 directly.
+		unsigned char b = (unsigned char)buf[0];
+		wideBuffer[0] = (wchar_t)b;
+	}
+	uint32_t textCode = (uint32_t)wideBuffer[0];
+	if (textCode > 0) {
+		fpl__HandleKeyboardInputEvent(winState, keyCode, textCode);
 	}
 }
 #endif // FPL__ENABLE_WINDOW
@@ -24593,6 +24738,12 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Keyboard)) return true;
 			int keyState = ev->xkey.state;
 			uint64_t keyCode = (uint64_t)ev->xkey.keycode;
+			// Input-method committed text (dead-key / compose result) is delivered as a synthetic KeyPress with keycode 0.
+			// There is no physical key to debounce or emit a button event for, so just deliver the committed text.
+			if (keyCode == 0) {
+				fpl__X11HandleTextInputEvent(x11Api, winState, keyCode, ev);
+				return true;
+			}
 			fpl__X11_Time keyTime = ev->xkey.time;
 			fpl__X11_Time lastPressTime = winState->keyPressTimes[keyCode];
 			fpl__X11_Time diffTime = keyTime - lastPressTime;
@@ -24697,6 +24848,12 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 
 	if (appState->currentSettings.window.callbacks.eventCallback != fpl_null) {
 		appState->currentSettings.window.callbacks.eventCallback(fplGetPlatformType(), x11WinState, ev, appState->currentSettings.window.callbacks.eventUserData);
+	}
+
+	// Let the input method consume events it needs (dead keys, compose sequences).
+	// With no XIM present XFilterEvent returns False, so nothing is swallowed.
+	if (x11Api->XFilterEvent != fpl_null && x11Api->XFilterEvent(ev, FPL__X11_None)) {
+		return;
 	}
 
 	switch (ev->type) {
