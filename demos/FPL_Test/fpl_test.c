@@ -1776,6 +1776,136 @@ static void TestStrings(void) {
 	}
 }
 
+// Converts utf8 -> wide -> utf8 and verifies the result matches the original bytes.
+// This is platform independent even for astral code points, since the intermediate wide form
+// (UTF-32 on POSIX, UTF-16 on Windows) never needs to be inspected directly.
+static void CheckUtf8RoundTrip(const char *utf8, const size_t utf8Len) {
+	wchar_t wide[64];
+	size_t wideCount = fplUTF8StringToWideString(utf8, utf8Len, wide, fplArrayCount(wide));
+	ftAssertTrue(wideCount > 0);
+	char back[256];
+	size_t backLen = fplWideStringToUTF8String(wide, wideCount, back, fplArrayCount(back));
+	ftAssertSizeEquals(utf8Len, backLen);
+	ftAssertStringEquals(utf8, back);
+}
+
+static void TestUnicodeConversion(void) {
+	ftMsg("Test UTF-8 <-> WideString conversion (wchar_t is %zu bytes)\n", sizeof(wchar_t));
+
+	// Explicit UTF-8 byte sequences so the tests never depend on the source-file encoding.
+	// 'H'/'A'=1 byte, 'ö'=U+00F6 (2 bytes), '€'=U+20AC (3 bytes), '😀'=U+1F600 (4 bytes).
+	static const char asciiUtf8[] = { 'H', 'e', 'l', 'l', 'o', 0 };
+	static const char umlautUtf8[] = { (char)0xC3, (char)0xB6, 0 };
+	static const char euroUtf8[] = { (char)0xE2, (char)0x82, (char)0xAC, 0 };
+	static const char emojiUtf8[] = { (char)0xF0, (char)0x9F, (char)0x98, (char)0x80, 0 };
+	static const char mixedUtf8[] = { 'A', (char)0xC3, (char)0xB6, (char)0xE2, (char)0x82, (char)0xAC, (char)0xF0, (char)0x9F, (char)0x98, (char)0x80, 0 };
+
+	const uint32_t codePointA = 0x0041;
+	const uint32_t codePointUmlaut = 0x00F6;
+	const uint32_t codePointEuro = 0x20AC;
+
+	ftMsg("Test invalid arguments\n");
+	{
+		ftAssertSizeEquals(0, fplUTF8StringToWideString(fpl_null, 1, fpl_null, 0));
+		ftAssertSizeEquals(0, fplUTF8StringToWideString(asciiUtf8, 0, fpl_null, 0));
+		ftAssertSizeEquals(0, fplWideStringToUTF8String(fpl_null, 1, fpl_null, 0));
+		ftAssertSizeEquals(0, fplWideStringToUTF8String(L"A", 0, fpl_null, 0));
+	}
+
+	ftMsg("Test UTF-8 to WideString size query (dest == null)\n");
+	{
+		// A single BMP code point is exactly one wide unit on every platform.
+		ftAssertSizeEquals(5, fplUTF8StringToWideString(asciiUtf8, 5, fpl_null, 0));
+		ftAssertSizeEquals(1, fplUTF8StringToWideString(umlautUtf8, 2, fpl_null, 0));
+		ftAssertSizeEquals(1, fplUTF8StringToWideString(euroUtf8, 3, fpl_null, 0));
+	}
+
+	ftMsg("Test UTF-8 to WideString decoding (BMP code points)\n");
+	{
+		wchar_t wide[16];
+		size_t n = fplUTF8StringToWideString(asciiUtf8, 5, wide, fplArrayCount(wide));
+		ftAssertSizeEquals(5, n);
+		ftAssertU32Equals((uint32_t)'H', (uint32_t)wide[0]);
+		ftAssertU32Equals((uint32_t)'o', (uint32_t)wide[4]);
+		ftAssertU32Equals(0, (uint32_t)wide[5]);
+	}
+	{
+		wchar_t wide[16];
+		size_t n = fplUTF8StringToWideString(umlautUtf8, 2, wide, fplArrayCount(wide));
+		ftAssertSizeEquals(1, n);
+		ftAssertU32Equals(codePointUmlaut, (uint32_t)wide[0]);
+		ftAssertU32Equals(0, (uint32_t)wide[1]);
+	}
+	{
+		wchar_t wide[16];
+		size_t n = fplUTF8StringToWideString(euroUtf8, 3, wide, fplArrayCount(wide));
+		ftAssertSizeEquals(1, n);
+		ftAssertU32Equals(codePointEuro, (uint32_t)wide[0]);
+	}
+
+	ftMsg("Test WideString to UTF-8 encoding (BMP code points)\n");
+	{
+		wchar_t wide[] = { (wchar_t)codePointA, 0 };
+		char utf8[16];
+		size_t n = fplWideStringToUTF8String(wide, 1, utf8, fplArrayCount(utf8));
+		ftAssertSizeEquals(1, n);
+		ftAssertStringEquals("A", utf8);
+	}
+	{
+		wchar_t wide[] = { (wchar_t)codePointUmlaut, 0 };
+		char utf8[16];
+		size_t n = fplWideStringToUTF8String(wide, 1, utf8, fplArrayCount(utf8));
+		ftAssertSizeEquals(2, n);
+		ftAssertStringEquals(umlautUtf8, utf8);
+	}
+	{
+		wchar_t wide[] = { (wchar_t)codePointEuro, 0 };
+		char utf8[16];
+		size_t n = fplWideStringToUTF8String(wide, 1, utf8, fplArrayCount(utf8));
+		ftAssertSizeEquals(3, n);
+		ftAssertStringEquals(euroUtf8, utf8);
+	}
+
+	ftMsg("Test UTF-8 -> WideString -> UTF-8 round-trip (1 to 4 byte sequences)\n");
+	{
+		CheckUtf8RoundTrip(asciiUtf8, 5);
+		CheckUtf8RoundTrip(umlautUtf8, 2);
+		CheckUtf8RoundTrip(euroUtf8, 3);
+		CheckUtf8RoundTrip(emojiUtf8, 4);
+		CheckUtf8RoundTrip(mixedUtf8, 10);
+	}
+
+	ftMsg("Test insufficient destination buffer returns zero\n");
+	{
+		// 5 code points need room for 5 + NUL.
+		wchar_t tooSmall[1];
+		ftAssertSizeEquals(0, fplUTF8StringToWideString(asciiUtf8, 5, tooSmall, fplArrayCount(tooSmall)));
+		wchar_t exactNoNul[5];
+		ftAssertSizeEquals(0, fplUTF8StringToWideString(asciiUtf8, 5, exactNoNul, fplArrayCount(exactNoNul)));
+		wchar_t justEnough[6];
+		ftAssertSizeEquals(5, fplUTF8StringToWideString(asciiUtf8, 5, justEnough, fplArrayCount(justEnough)));
+	}
+	{
+		// '€' encodes to 3 bytes and still needs room for the NUL.
+		wchar_t wide[] = { (wchar_t)codePointEuro, 0 };
+		char tooSmall[3];
+		ftAssertSizeEquals(0, fplWideStringToUTF8String(wide, 1, tooSmall, fplArrayCount(tooSmall)));
+		char justEnough[4];
+		ftAssertSizeEquals(3, fplWideStringToUTF8String(wide, 1, justEnough, fplArrayCount(justEnough)));
+	}
+
+#if defined(FPL_SUBPLATFORM_STD_STRINGS)
+	// The POSIX implementation rejects malformed UTF-8; the Win32 codepage path substitutes U+FFFD instead.
+	ftMsg("Test malformed UTF-8 returns zero (POSIX)\n");
+	{
+		static const char loneContinuation[] = { (char)0x80, 0 };
+		ftAssertSizeEquals(0, fplUTF8StringToWideString(loneContinuation, 1, fpl_null, 0));
+		static const char truncatedLead[] = { (char)0xC3, 0 };
+		ftAssertSizeEquals(0, fplUTF8StringToWideString(truncatedLead, 1, fpl_null, 0));
+	}
+#endif
+}
+
 static void TestLocalization(void) {
 	fplPlatformInit(fplInitFlags_None, fpl_null);
 	char buffer[16];
@@ -1887,6 +2017,7 @@ int main(int argc, char *args[]) {
 	TestInlining();
 	TestSecurity();
 	TestStrings();
+	TestUnicodeConversion();
 	TestLocalization();
 	TestMemory();
 	TestOSInfos();
