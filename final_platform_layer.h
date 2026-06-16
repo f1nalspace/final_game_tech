@@ -21419,7 +21419,7 @@ fpl_internal bool fpl__PosixInitSubplatform(const fplInitFlags initFlags, const 
 	fplClearStruct(preservedLocales);
 
 	// Preserve current locales, if needed
-	if (initSettings->locale.isCultureInvariant) {
+	if (initSettings != fpl_null && initSettings->locale.isCultureInvariant) {
 		const char *currentLocaleAll = setlocale(LC_ALL, fpl_null);
 		if (currentLocaleAll != fpl_null) {
 			fplCopyString(currentLocaleAll, preservedLocales->allName, fplArrayCount(preservedLocales->allName));
