@@ -255,7 +255,7 @@ SOFTWARE.
 	- Improved: Better and consistent documentation of the entire public API
 	- Improved: Added fplStaticAssert checks in the non-opaque branch verifying that the real Win32/POSIX/X11 handle types fit into the opaque-branch buffers (catches portability breakage at compile time instead of corrupting memory at runtime)
 	- Improved: fplDateTime documentation now states explicitly that pre-1970 dates are intentionally not supported
-	- Improved: fplWideStringToUTF8String / fplUTF8StringToWideString now use wchar.h with mbrtowc / wcrtomb directly instead of doing redundant work
+	- Improved: [POSIX] fplWideStringToUTF8String / fplUTF8StringToWideString are now locale independent (manual UTF-8 encode/decode) instead of using the locale dependent mbrtowc / wcrtomb which failed under the "C" locale
 	- Improved: Simplified fplPathCombine by removing all internal memory allocation
 	- Improved: [POSIX] Improved fplOSGetVersionInfos() by adding support for retrieving detailed version information on BSD/macOS/other Unix systems
 	- Improved: [POSIX] fplCPUGetCoreCount was not working/compiling in FreeBSD
@@ -23596,25 +23596,70 @@ fpl_internal size_t fpl__PosixLocaleToISO639(const char *source, char *target, c
 // ############################################################################
 #if defined(FPL_SUBPLATFORM_STD_STRINGS)
 // @NOTE(final): stdio.h is already included
+
+// Decodes one code point from a UTF-8 sequence; writes it to outCodePoint and returns the bytes consumed, or 0 on a malformed/truncated sequence.
+fpl_internal size_t fpl__DecodeUTF8CodePoint(const char *source, const size_t available, uint32_t *outCodePoint) {
+	if (available == 0) {
+		return 0;
+	}
+	const unsigned char *bytes = (const unsigned char *)source;
+	unsigned char b0 = bytes[0];
+	if (b0 < 0x80) {
+		*outCodePoint = (uint32_t)b0;
+		return 1;
+	} else if ((b0 & 0xE0) == 0xC0 && available >= 2) {
+		*outCodePoint = (uint32_t)(((b0 & 0x1F) << 6) | (bytes[1] & 0x3F));
+		return 2;
+	} else if ((b0 & 0xF0) == 0xE0 && available >= 3) {
+		*outCodePoint = (uint32_t)(((b0 & 0x0F) << 12) | ((bytes[1] & 0x3F) << 6) | (bytes[2] & 0x3F));
+		return 3;
+	} else if ((b0 & 0xF8) == 0xF0 && available >= 4) {
+		*outCodePoint = (uint32_t)(((b0 & 0x07) << 18) | ((bytes[1] & 0x3F) << 12) | ((bytes[2] & 0x3F) << 6) | (bytes[3] & 0x3F));
+		return 4;
+	}
+	return 0;
+}
+
+// Encodes a single Unicode code point as UTF-8 into dest (which must hold at least 4 bytes); returns the bytes written, or 0 for an invalid code point.
+fpl_internal size_t fpl__EncodeUTF8CodePoint(const uint32_t codePoint, char *dest) {
+	if (codePoint < 0x80) {
+		dest[0] = (char)codePoint;
+		return 1;
+	} else if (codePoint < 0x800) {
+		dest[0] = (char)(0xC0 | (codePoint >> 6));
+		dest[1] = (char)(0x80 | (codePoint & 0x3F));
+		return 2;
+	} else if (codePoint < 0x10000) {
+		dest[0] = (char)(0xE0 | (codePoint >> 12));
+		dest[1] = (char)(0x80 | ((codePoint >> 6) & 0x3F));
+		dest[2] = (char)(0x80 | (codePoint & 0x3F));
+		return 3;
+	} else if (codePoint <= 0x10FFFF) {
+		dest[0] = (char)(0xF0 | (codePoint >> 18));
+		dest[1] = (char)(0x80 | ((codePoint >> 12) & 0x3F));
+		dest[2] = (char)(0x80 | ((codePoint >> 6) & 0x3F));
+		dest[3] = (char)(0x80 | (codePoint & 0x3F));
+		return 4;
+	}
+	return 0;
+}
+
+// @NOTE(final): These conversions are locale independent; on POSIX each wchar_t holds a full Unicode code point (UTF-32).
 fpl_platform_api size_t fplWideStringToUTF8String(const wchar_t *wideSource, const size_t wideSourceLen, char *utf8Dest, const size_t maxUtf8DestLen)
 {
 	FPL__CheckArgumentNull(wideSource, 0);
 	FPL__CheckArgumentZero(wideSourceLen, 0);
 
-	mbstate_t state;
-	fplClearStruct(&state);
-
-	size_t totalLen = 0;
-
 	// First pass: compute length
+	size_t totalLen = 0;
 	for (size_t i = 0; i < wideSourceLen; ++i) {
-		char tmp[MB_CUR_MAX];
-		const size_t res = wcrtomb(tmp, wideSource[i], &state);
-		if (res == (size_t)-1) {
+		char tmp[4];
+		const size_t written = fpl__EncodeUTF8CodePoint((uint32_t)wideSource[i], tmp);
+		if (written == 0) {
 			FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert wide-string to UTF-8");
 			return 0;
 		}
-		totalLen += res;
+		totalLen += written;
 	}
 
 	if (utf8Dest != fpl_null) {
@@ -23622,19 +23667,10 @@ fpl_platform_api size_t fplWideStringToUTF8String(const wchar_t *wideSource, con
 		if (maxUtf8DestLen < requiredLen) {
 			return 0;
 		}
-
-		fplClearStruct(&state);
-
 		size_t pos = 0;
 		for (size_t i = 0; i < wideSourceLen; ++i) {
-			const size_t res = wcrtomb(utf8Dest + pos, wideSource[i], &state);
-			if (res == (size_t)-1) {
-				FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert wide-string to UTF-8");
-				return 0;
-			}
-			pos += res;
+			pos += fpl__EncodeUTF8CodePoint((uint32_t)wideSource[i], utf8Dest + pos);
 		}
-
 		utf8Dest[pos] = '\0';
 	}
 
@@ -23646,24 +23682,17 @@ fpl_platform_api size_t fplUTF8StringToWideString(const char *utf8Source, const 
 	FPL__CheckArgumentNull(utf8Source, 0);
 	FPL__CheckArgumentZero(utf8SourceLen, 0);
 
-	mbstate_t state;
-	fplClearStruct(&state);
-
+	// First pass: count code points
 	size_t totalLen = 0;
 	size_t offset = 0;
-
-	// First pass: compute length
 	while (offset < utf8SourceLen) {
-		wchar_t wc;
-		size_t res = mbrtowc(&wc, utf8Source + offset, utf8SourceLen - offset, &state);
-		if (res == (size_t)-1 || res == (size_t)-2) {
+		uint32_t codePoint = 0;
+		const size_t consumed = fpl__DecodeUTF8CodePoint(utf8Source + offset, utf8SourceLen - offset, &codePoint);
+		if (consumed == 0) {
 			FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert UTF-8 to wide-string");
 			return 0;
 		}
-		if (res == 0) {
-			break;
-		}
-		offset += res;
+		offset += consumed;
 		totalLen += 1;
 	}
 
@@ -23672,25 +23701,15 @@ fpl_platform_api size_t fplUTF8StringToWideString(const char *utf8Source, const 
 		if (maxWideDestLen < requiredLen) {
 			return 0;
 		}
-
-		fplClearStruct(&state);
-
 		offset = 0;
 		size_t pos = 0;
-
 		while (offset < utf8SourceLen) {
-			size_t res = mbrtowc(&wideDest[pos], utf8Source + offset, utf8SourceLen - offset, &state);
-			if (res == (size_t)-1 || res == (size_t)-2) {
-				FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert UTF-8 to wide-string");
-				return 0;
-			}
-			if (res == 0) {
-				break;
-			}
-			offset += res;
+			uint32_t codePoint = 0;
+			const size_t consumed = fpl__DecodeUTF8CodePoint(utf8Source + offset, utf8SourceLen - offset, &codePoint);
+			wideDest[pos] = (wchar_t)codePoint;
+			offset += consumed;
 			pos += 1;
 		}
-
 		wideDest[pos] = L'\0';
 	}
 
