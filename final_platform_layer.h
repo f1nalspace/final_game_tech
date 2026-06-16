@@ -12610,6 +12610,8 @@ typedef FPL__FUNC_X11_XUndefineCursor(fpl__func_x11_XUndefineCursor);
 typedef FPL__FUNC_X11_XFreeCursor(fpl__func_x11_XFreeCursor);
 #define FPL__FUNC_X11_XCreateBitmapFromData(name) fpl__X11_Pixmap name(fpl__X11_Display *display, fpl__X11_Drawable d, const char *data, unsigned int width, unsigned int height)
 typedef FPL__FUNC_X11_XCreateBitmapFromData(fpl__func_x11_XCreateBitmapFromData);
+#define FPL__FUNC_X11_XFreePixmap(name) int name(fpl__X11_Display *display, fpl__X11_Pixmap pixmap)
+typedef FPL__FUNC_X11_XFreePixmap(fpl__func_x11_XFreePixmap);
 #define FPL__FUNC_X11_XCreatePixmapCursor(name) fpl__X11_Cursor name(fpl__X11_Display *display, fpl__X11_Pixmap source, fpl__X11_Pixmap mask, fpl__X11_XColor *foreground_color, fpl__X11_XColor *background_color, unsigned int x, unsigned int y)
 typedef FPL__FUNC_X11_XCreatePixmapCursor(fpl__func_x11_XCreatePixmapCursor);
 #define FPL__FUNC_X11_XSetSelectionOwner(name) int name(fpl__X11_Display *display, fpl__X11_Atom selection, fpl__X11_Window owner, fpl__X11_Time time)
@@ -12648,6 +12650,7 @@ extern FPL__FUNC_X11_XFlush(XFlush);
 extern FPL__FUNC_X11_XFree(XFree);
 extern FPL__FUNC_X11_XFreeColormap(XFreeColormap);
 extern FPL__FUNC_X11_XFreeCursor(XFreeCursor);
+extern FPL__FUNC_X11_XFreePixmap(XFreePixmap);
 extern FPL__FUNC_X11_XGetImage(XGetImage);
 extern FPL__FUNC_X11_XGetKeyboardMapping(XGetKeyboardMapping);
 extern FPL__FUNC_X11_XGetSelectionOwner(XGetSelectionOwner);
@@ -12756,6 +12759,7 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XUndefineCursor *XUndefineCursor;
 	fpl__func_x11_XFreeCursor *XFreeCursor;
 	fpl__func_x11_XCreateBitmapFromData *XCreateBitmapFromData;
+	fpl__func_x11_XFreePixmap *XFreePixmap;
 	fpl__func_x11_XCreatePixmapCursor *XCreatePixmapCursor;
 	fpl__func_x11_XSetSelectionOwner *XSetSelectionOwner;
 	fpl__func_x11_XGetSelectionOwner *XGetSelectionOwner;
@@ -12853,6 +12857,7 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XUndefineCursor, XUndefineCursor);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XFreeCursor, XFreeCursor);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCreateBitmapFromData, XCreateBitmapFromData);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XFreePixmap, XFreePixmap);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCreatePixmapCursor, XCreatePixmapCursor);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetSelectionOwner, XSetSelectionOwner);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGetSelectionOwner, XGetSelectionOwner);
@@ -13117,25 +13122,24 @@ typedef struct fpl__X11WindowStateInfo {
 	fplWindowSize size;
 } fpl__X11WindowStateInfo;
 
-typedef struct fpl__X11Xdnd {
-	int version;
-	fpl__X11_Window source;
-	fpl__X11_Atom format;
-} fpl__X11Xdnd;
-
-typedef struct fpl__X11WindowState {
-	fpl__X11WindowStateInfo lastWindowStateInfo;
-	fpl__X11_Colormap colorMap;
-	fpl__X11_Display *display;
-	fpl__X11Xdnd xdnd;
+// The actual window handles
+typedef struct fpl__X11WindowCore {
 	fpl__X11_Window root;
 	fpl__X11_Window window;
-	fpl__X11_XIM xim;   // input method (may be 0 if unavailable)
-	fpl__X11_XIC xic;   // input context (may be 0 if unavailable)
 	fpl__X11_Visual *visual;
+} fpl__X11WindowCore;
+
+// ICCCM / basic window-manager + type atoms
+typedef struct fpl__X11WMAtoms {
 	fpl__X11_Atom wmProtocols;
 	fpl__X11_Atom wmDeleteWindow;
 	fpl__X11_Atom wmState;
+	fpl__X11_Atom motifWMHints;
+	fpl__X11_Atom utf8String;
+} fpl__X11WMAtoms;
+
+// EWMH _NET_WM_* atoms
+typedef struct fpl__X11NetWMAtoms {
 	fpl__X11_Atom netWMPing;
 	fpl__X11_Atom netWMState;
 	fpl__X11_Atom netWMStateFocused;
@@ -13147,9 +13151,14 @@ typedef struct fpl__X11WindowState {
 	fpl__X11_Atom netWMIcon;
 	fpl__X11_Atom netWMName;
 	fpl__X11_Atom netWMIconName;
-	fpl__X11_Atom utf8String;
-	fpl__X11_Atom motifWMHints;
-	// drag and drop
+	fpl__X11_Atom netWMStateAbove;
+} fpl__X11NetWMAtoms;
+
+// Drag and drop runtime state + atoms
+typedef struct fpl__X11XdndState {
+	int version;
+	fpl__X11_Window source;
+	fpl__X11_Atom format;
 	fpl__X11_Atom xdndAware;
 	fpl__X11_Atom xdndEnter;
 	fpl__X11_Atom xdndPosition;
@@ -13160,18 +13169,47 @@ typedef struct fpl__X11WindowState {
 	fpl__X11_Atom xdndSelection;
 	fpl__X11_Atom xdndTypeList;
 	fpl__X11_Atom textUriList;
-	// Window styles
-	fpl__X11_Atom netWMStateAbove;
-	// Cursor
-	fpl__X11_Cursor invisibleCursor;
-	bool cursorEnabled;
-	// Clipboard
+} fpl__X11XdndState;
+
+// Clipboard atoms + outgoing buffer
+typedef struct fpl__X11ClipboardState {
 	fpl__X11_Atom clipboardAtom;
 	fpl__X11_Atom targetsAtom;
 	fpl__X11_Atom incrAtom;
 	fpl__X11_Atom selectionPropAtom;
 	char clipboardOut[FPL_MAX_BUFFER_LENGTH];
 	size_t clipboardOutLen;
+} fpl__X11ClipboardState;
+
+// Cursor visibility state
+typedef struct fpl__X11CursorState {
+	fpl__X11_Cursor invisibleCursor;
+	bool cursorEnabled;
+} fpl__X11CursorState;
+
+// Input method / input context (develop-only, issue #194)
+typedef struct fpl__X11IMState {
+	fpl__X11_XIM xim;   // input method (may be 0 if unavailable)
+	fpl__X11_XIC xic;   // input context (may be 0 if unavailable)
+} fpl__X11IMState;
+
+// Colormap + ownership flag
+typedef struct fpl__X11ColormapState {
+	fpl__X11_Colormap colorMap;
+	bool ownsColorMap;   // true only when we created the colormap (custom-visual path); a default colormap must not be freed
+} fpl__X11ColormapState;
+
+typedef struct fpl__X11WindowState {
+	fpl__X11WindowStateInfo lastWindowStateInfo;
+	fpl__X11ColormapState colormap;
+	fpl__X11_Display *display;
+	fpl__X11WindowCore core;
+	fpl__X11WMAtoms wm;
+	fpl__X11NetWMAtoms netWM;
+	fpl__X11XdndState xdnd;
+	fpl__X11ClipboardState clipboard;
+	fpl__X11CursorState cursor;
+	fpl__X11IMState im;
 	int screen;
 	int colorDepth;
 } fpl__X11WindowState;
@@ -23717,47 +23755,69 @@ fpl_internal bool fpl__X11InitSubplatform(fpl__X11SubplatformState *subplatform)
 }
 
 #if defined(FPL__ENABLE_WINDOW)
-fpl_internal void fpl__X11ReleaseWindow(const fpl__X11SubplatformState *subplatform, fpl__X11WindowState *windowState) {
-	fplAssert((subplatform != fpl_null) && (windowState != fpl_null));
-	const fpl__X11Api *x11Api = &subplatform->api;
-	// Tear down the input method before destroying the window/display to avoid use-after-free inside Xlib.
-	if (windowState->xic != 0) {
+// Tear down the input method first so it does not outlive the window/display (use-after-free inside Xlib).
+fpl_internal void fpl__X11ReleaseInputMethod(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
+	if (windowState->im.xic != 0) {
 		if (x11Api->XUnsetICFocus != fpl_null) {
-			x11Api->XUnsetICFocus(windowState->xic);
+			x11Api->XUnsetICFocus(windowState->im.xic);
 		}
 		if (x11Api->XDestroyIC != fpl_null) {
-			x11Api->XDestroyIC(windowState->xic);
+			x11Api->XDestroyIC(windowState->im.xic);
 		}
-		windowState->xic = 0;
+		windowState->im.xic = 0;
 	}
-	if (windowState->xim != 0) {
+	if (windowState->im.xim != 0) {
 		if (x11Api->XCloseIM != fpl_null) {
-			x11Api->XCloseIM(windowState->xim);
+			x11Api->XCloseIM(windowState->im.xim);
 		}
-		windowState->xim = 0;
+		windowState->im.xim = 0;
 	}
-	if (windowState->invisibleCursor != 0) {
-		x11Api->XFreeCursor(windowState->display, windowState->invisibleCursor);
-		windowState->invisibleCursor = 0;
+}
+
+fpl_internal void fpl__X11ReleaseCursor(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
+	if (windowState->cursor.invisibleCursor != 0) {
+		x11Api->XFreeCursor(windowState->display, windowState->cursor.invisibleCursor);
+		windowState->cursor.invisibleCursor = 0;
 	}
-	if (windowState->window) {
-		FPL_LOG_DEBUG(FPL__MODULE_X11, "Hide window '%d' from display '%p'", (int)windowState->window, windowState->display);
-		x11Api->XUnmapWindow(windowState->display, windowState->window);
-		FPL_LOG_DEBUG(FPL__MODULE_X11, "Destroy window '%d' on display '%p'", (int)windowState->window, windowState->display);
-		x11Api->XDestroyWindow(windowState->display, windowState->window);
+}
+
+fpl_internal void fpl__X11DestroyWindow(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
+	if (windowState->core.window) {
+		FPL_LOG_DEBUG(FPL__MODULE_X11, "Hide window '%d' from display '%p'", (int)windowState->core.window, windowState->display);
+		x11Api->XUnmapWindow(windowState->display, windowState->core.window);
+		FPL_LOG_DEBUG(FPL__MODULE_X11, "Destroy window '%d' on display '%p'", (int)windowState->core.window, windowState->display);
+		x11Api->XDestroyWindow(windowState->display, windowState->core.window);
 		x11Api->XFlush(windowState->display);
-		windowState->window = 0;
+		windowState->core.window = 0;
 	}
-	if (windowState->colorMap) {
-		FPL_LOG_DEBUG(FPL__MODULE_X11, "Release color map '%d' from display '%p'", (int)windowState->colorMap, windowState->display);
-		x11Api->XFreeColormap(windowState->display, windowState->colorMap);
-		windowState->colorMap = 0;
+}
+
+fpl_internal void fpl__X11ReleaseColormap(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
+	// Only free a colormap we created ourselves; the X default colormap is not ours to free.
+	if (windowState->colormap.colorMap && windowState->colormap.ownsColorMap) {
+		FPL_LOG_DEBUG(FPL__MODULE_X11, "Release color map '%d' from display '%p'", (int)windowState->colormap.colorMap, windowState->display);
+		x11Api->XFreeColormap(windowState->display, windowState->colormap.colorMap);
 	}
+	windowState->colormap.colorMap = 0;
+	windowState->colormap.ownsColorMap = false;
+}
+
+fpl_internal void fpl__X11CloseDisplay(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
 	if (windowState->display) {
 		FPL_LOG_DEBUG(FPL__MODULE_X11, "Close display '%p'", windowState->display);
 		x11Api->XCloseDisplay(windowState->display);
 		windowState->display = fpl_null;
 	}
+}
+
+fpl_internal void fpl__X11ReleaseWindow(const fpl__X11SubplatformState *subplatform, fpl__X11WindowState *windowState) {
+	fplAssert((subplatform != fpl_null) && (windowState != fpl_null));
+	const fpl__X11Api *x11Api = &subplatform->api;
+	fpl__X11ReleaseInputMethod(x11Api, windowState);
+	fpl__X11ReleaseCursor(x11Api, windowState);
+	fpl__X11DestroyWindow(x11Api, windowState);
+	fpl__X11ReleaseColormap(x11Api, windowState);
+	fpl__X11CloseDisplay(x11Api, windowState);
 	fplClearStruct(windowState);
 }
 #endif // FPL__ENABLE_WINDOW
@@ -24036,24 +24096,19 @@ fpl_internal void fpl__X11LoadWindowIcon(const fpl__X11Api *x11Api, fpl__X11Wind
 			}
 		}
 
-		x11Api->XChangeProperty(x11WinState->display, x11WinState->window, x11WinState->netWMIcon, FPL__X11_XA_CARDINAL, 32, FPL__X11_PropModeReplace, (unsigned char *)data, targetSize);
+		x11Api->XChangeProperty(x11WinState->display, x11WinState->core.window, x11WinState->netWM.netWMIcon, FPL__X11_XA_CARDINAL, 32, FPL__X11_PropModeReplace, (unsigned char *)data, targetSize);
 
 		fpl__ReleaseTemporaryMemory(data);
 	} else {
-		x11Api->XDeleteProperty(x11WinState->display, x11WinState->window, x11WinState->netWMIcon);
+		x11Api->XDeleteProperty(x11WinState->display, x11WinState->core.window, x11WinState->netWM.netWMIcon);
 	}
 
 	x11Api->XFlush(x11WinState->display);
 }
 
-fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *appState, fpl__X11SubplatformState *subplatform, fpl__X11WindowState *windowState, const fpl__SetupWindowCallbacks *setupCallbacks) {
-	fplAssert((initSettings != fpl_null) && (currentWindowSettings != fpl_null) && (appState != fpl_null) && (subplatform != fpl_null) && (windowState != fpl_null) && (setupCallbacks != fpl_null));
-	const fpl__X11Api *x11Api = &subplatform->api;
-
+fpl_internal bool fpl__X11OpenDisplay(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Set init threads");
 	x11Api->XInitThreads();
-
-	const fplWindowSettings *initWindowSettings = &initSettings->window;
 
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Open default fpl__X11_Display");
 	windowState->display = x11Api->XOpenDisplay(fpl_null);
@@ -24063,36 +24118,82 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	}
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Successfully opened default fpl__X11_Display: %p", windowState->display);
 
-	FPL_LOG_DEBUG(FPL__MODULE_X11, "Get default screen from display '%p'", windowState->display);
 	windowState->screen = x11Api->XDefaultScreen(windowState->display);
-	FPL_LOG_DEBUG(FPL__MODULE_X11, "Got default screen from display '%p': %d", windowState->display, windowState->screen);
+	windowState->core.root = x11Api->XRootWindow(windowState->display, windowState->screen);
+	FPL_LOG_DEBUG(FPL__MODULE_X11, "Got screen '%d' and root window '%d' from display '%p'", windowState->screen, (int)windowState->core.root, windowState->display);
+	return true;
+}
 
-	FPL_LOG_DEBUG(FPL__MODULE_X11, "Get root window from display '%p' and screen '%d'", windowState->display, windowState->screen);
-	windowState->root = x11Api->XRootWindow(windowState->display, windowState->screen);
-	FPL_LOG_DEBUG(FPL__MODULE_X11, "Got root window from display '%p' and screen '%d': %d", windowState->display, windowState->screen, (int)windowState->root);
-
-	bool usePreSetupWindow = false;
-	if (setupCallbacks->preSetup != fpl_null) {
-		FPL_LOG_DEBUG(FPL__MODULE_X11, "Call Pre-Setup for fpl__X11_Window");
-		setupCallbacks->preSetup(appState, appState->initFlags, initSettings);
-	}
-
-	fpl__X11_Visual *visual = windowState->visual;
+fpl_internal void fpl__X11SetupVisualAndColormap(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
+	fpl__X11_Visual *visual = windowState->core.visual;
 	int colorDepth = windowState->colorDepth;
-	fpl__X11_Colormap colormap;
 	if (visual != fpl_null && colorDepth > 0) {
 		FPL_LOG_DEBUG(FPL__MODULE_X11, "Got visual '%p' and color depth '%d' from pre-setup", visual, colorDepth);
-		windowState->colorMap = colormap = x11Api->XCreateColormap(windowState->display, windowState->root, visual, FPL__X11_AllocNone);
+		windowState->colormap.colorMap = x11Api->XCreateColormap(windowState->display, windowState->core.root, visual, FPL__X11_AllocNone);
+		windowState->colormap.ownsColorMap = true;
 	} else {
 		FPL_LOG_DEBUG(FPL__MODULE_X11, "Using default visual, color depth, colormap");
-		windowState->visual = visual = x11Api->XDefaultVisual(windowState->display, windowState->screen);
-		windowState->colorDepth = colorDepth = x11Api->XDefaultDepth(windowState->display, windowState->screen);
-		windowState->colorMap = colormap = x11Api->XDefaultColormap(windowState->display, windowState->screen);
+		windowState->core.visual = x11Api->XDefaultVisual(windowState->display, windowState->screen);
+		windowState->colorDepth = x11Api->XDefaultDepth(windowState->display, windowState->screen);
+		windowState->colormap.colorMap = x11Api->XDefaultColormap(windowState->display, windowState->screen);
+		windowState->colormap.ownsColorMap = false;
 	}
+	FPL_LOG_DEBUG(FPL__MODULE_X11, "Using visual '%p', color depth '%d', color map '%d'", windowState->core.visual, windowState->colorDepth, (int)windowState->colormap.colorMap);
+}
 
-	FPL_LOG_DEBUG(FPL__MODULE_X11, "Using visual: %p", visual);
-	FPL_LOG_DEBUG(FPL__MODULE_X11, "Using color depth: %d", colorDepth);
-	FPL_LOG_DEBUG(FPL__MODULE_X11, "Using color map: %d", (int)colormap);
+fpl_internal void fpl__X11InternWMAtoms(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
+	windowState->wm.utf8String = x11Api->XInternAtom(windowState->display, "UTF8_STRING", FPL__X11_False);
+	windowState->wm.wmDeleteWindow = x11Api->XInternAtom(windowState->display, "WM_DELETE_WINDOW", FPL__X11_False);
+	windowState->wm.wmProtocols = x11Api->XInternAtom(windowState->display, "WM_PROTOCOLS", FPL__X11_False);
+	windowState->wm.wmState = x11Api->XInternAtom(windowState->display, "WM_STATE", FPL__X11_False);
+	windowState->wm.motifWMHints = x11Api->XInternAtom(windowState->display, "_MOTIF_WM_HINTS", FPL__X11_False);
+}
+
+fpl_internal void fpl__X11InternNetWMAtoms(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
+	windowState->netWM.netWMPing = x11Api->XInternAtom(windowState->display, "_NET_WM_PING", FPL__X11_False);
+	windowState->netWM.netWMState = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE", FPL__X11_False);
+	windowState->netWM.netWMStateFocused = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_FOCUSED", FPL__X11_False);
+	windowState->netWM.netWMStateFullscreen = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_FULLSCREEN", FPL__X11_False);
+	windowState->netWM.netWMStateHidden = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_HIDDEN", FPL__X11_False);
+	windowState->netWM.netWMStateMaximizedVert = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_MAXIMIZED_VERT", FPL__X11_False);
+	windowState->netWM.netWMStateMaximizedHorz = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_MAXIMIZED_HORZ", FPL__X11_False);
+	windowState->netWM.netWMPid = x11Api->XInternAtom(windowState->display, "_NET_WM_PID", FPL__X11_False);
+	windowState->netWM.netWMIcon = x11Api->XInternAtom(windowState->display, "_NET_WM_ICON", FPL__X11_False);
+	windowState->netWM.netWMName = x11Api->XInternAtom(windowState->display, "_NET_WM_NAME", FPL__X11_False);
+	windowState->netWM.netWMIconName = x11Api->XInternAtom(windowState->display, "_NET_WM_ICON_NAME", FPL__X11_False);
+	windowState->netWM.netWMStateAbove = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_ABOVE", FPL__X11_False);
+}
+
+fpl_internal void fpl__X11InternXdndAtoms(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
+	windowState->xdnd.xdndAware = x11Api->XInternAtom(windowState->display, "XdndAware", FPL__X11_False);
+	windowState->xdnd.xdndEnter = x11Api->XInternAtom(windowState->display, "XdndEnter", FPL__X11_False);
+	windowState->xdnd.xdndPosition = x11Api->XInternAtom(windowState->display, "XdndPosition", FPL__X11_False);
+	windowState->xdnd.xdndStatus = x11Api->XInternAtom(windowState->display, "XdndStatus", FPL__X11_False);
+	windowState->xdnd.xdndActionCopy = x11Api->XInternAtom(windowState->display, "XdndActionCopy", FPL__X11_False);
+	windowState->xdnd.xdndDrop = x11Api->XInternAtom(windowState->display, "XdndDrop", FPL__X11_False);
+	windowState->xdnd.xdndFinished = x11Api->XInternAtom(windowState->display, "XdndFinished", FPL__X11_False);
+	windowState->xdnd.xdndSelection = x11Api->XInternAtom(windowState->display, "XdndSelection", FPL__X11_False);
+	windowState->xdnd.xdndTypeList = x11Api->XInternAtom(windowState->display, "XdndTypeList", FPL__X11_False);
+	windowState->xdnd.textUriList = x11Api->XInternAtom(windowState->display, "text/uri-list", FPL__X11_False);
+}
+
+fpl_internal void fpl__X11InternClipboardAtoms(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
+	windowState->clipboard.clipboardAtom = x11Api->XInternAtom(windowState->display, "CLIPBOARD", FPL__X11_False);
+	windowState->clipboard.targetsAtom = x11Api->XInternAtom(windowState->display, "TARGETS", FPL__X11_False);
+	windowState->clipboard.incrAtom = x11Api->XInternAtom(windowState->display, "INCR", FPL__X11_False);
+	windowState->clipboard.selectionPropAtom = x11Api->XInternAtom(windowState->display, "FPL_SELECTION", FPL__X11_False);
+}
+
+// Interned atoms live for the connection's lifetime and are dropped when the display closes, so they need no explicit free.
+fpl_internal void fpl__X11InternAtoms(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
+	fpl__X11InternWMAtoms(x11Api, windowState);
+	fpl__X11InternNetWMAtoms(x11Api, windowState);
+	fpl__X11InternXdndAtoms(x11Api, windowState);
+	fpl__X11InternClipboardAtoms(x11Api, windowState);
+}
+
+fpl_internal bool fpl__X11CreateWindow(const fpl__X11Api *x11Api, const fplSettings *initSettings, fpl__X11WindowState *windowState) {
+	const fplWindowSettings *initWindowSettings = &initSettings->window;
 
 	int flags = FPL__X11_CWColormap | FPL__X11_CWBorderPixel | FPL__X11_CWEventMask | FPL__X11_CWBitGravity | FPL__X11_CWWinGravity;
 
@@ -24106,7 +24207,7 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	}
 
 	fpl__X11_XSetWindowAttributes swa = fplZeroInit;
-	swa.colormap = colormap;
+	swa.colormap = windowState->colormap.colorMap;
 	swa.event_mask =
 		FPL__X11_StructureNotifyMask |
 		FPL__X11_ExposureMask | FPL__X11_FocusChangeMask | FPL__X11_VisibilityChangeMask |
@@ -24136,9 +24237,11 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	windowState->lastWindowStateInfo.position = fplStructInit(fplWindowPosition, windowWidth, windowHeight);
 	windowState->lastWindowStateInfo.size = fplStructInit(fplWindowSize, (uint32_t)windowX, (uint32_t)windowY);
 
-	FPL_LOG_DEBUG(FPL__MODULE_X11, "Create window with (fpl__X11_Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d'", windowState->display, (int)windowState->root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap);
-	windowState->window = x11Api->XCreateWindow(windowState->display,
-		windowState->root,
+	fpl__X11_Visual *visual = windowState->core.visual;
+	int colorDepth = windowState->colorDepth;
+	FPL_LOG_DEBUG(FPL__MODULE_X11, "Create window with (fpl__X11_Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d'", windowState->display, (int)windowState->core.root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap);
+	windowState->core.window = x11Api->XCreateWindow(windowState->display,
+		windowState->core.root,
 		windowX,
 		windowY,
 		windowWidth,
@@ -24149,67 +24252,28 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 		visual,
 		flags,
 		&swa);
-	if (!windowState->window) {
-		FPL__ERROR(FPL__MODULE_X11, "Failed creating window with (fpl__X11_Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d'!", windowState->display, (int)windowState->root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap);
-		fpl__X11ReleaseWindow(subplatform, windowState);
+	if (!windowState->core.window) {
+		FPL__ERROR(FPL__MODULE_X11, "Failed creating window with (fpl__X11_Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d'!", windowState->display, (int)windowState->core.root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap);
 		return false;
 	}
-	FPL_LOG_DEBUG(FPL__MODULE_X11, "Successfully created window with (fpl__X11_Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d': %d", windowState->display, (int)windowState->root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap, (int)windowState->window);
+	FPL_LOG_DEBUG(FPL__MODULE_X11, "Successfully created window with (fpl__X11_Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d': %d", windowState->display, (int)windowState->core.root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap, (int)windowState->core.window);
+	return true;
+}
 
-	// Type atoms
-	windowState->utf8String = x11Api->XInternAtom(windowState->display, "UTF8_STRING", FPL__X11_False);
-
-	// Window manager atoms
-	windowState->wmDeleteWindow = x11Api->XInternAtom(windowState->display, "WM_DELETE_WINDOW", FPL__X11_False);
-	windowState->wmProtocols = x11Api->XInternAtom(windowState->display, "WM_PROTOCOLS", FPL__X11_False);
-	windowState->wmState = x11Api->XInternAtom(windowState->display, "WM_STATE", FPL__X11_False);
-	windowState->netWMPing = x11Api->XInternAtom(windowState->display, "_NET_WM_PING", FPL__X11_False);
-	windowState->netWMState = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE", FPL__X11_False);
-	windowState->netWMStateFocused = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_FOCUSED", FPL__X11_False);
-	windowState->netWMStateFullscreen = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_FULLSCREEN", FPL__X11_False);
-	windowState->netWMStateHidden = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_HIDDEN", FPL__X11_False);
-	windowState->netWMStateMaximizedVert = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_MAXIMIZED_VERT", FPL__X11_False);
-	windowState->netWMStateMaximizedHorz = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_MAXIMIZED_HORZ", FPL__X11_False);
-	windowState->netWMPid = x11Api->XInternAtom(windowState->display, "_NET_WM_PID", FPL__X11_False);
-	windowState->netWMIcon = x11Api->XInternAtom(windowState->display, "_NET_WM_ICON", FPL__X11_False);
-	windowState->netWMName = x11Api->XInternAtom(windowState->display, "_NET_WM_NAME", FPL__X11_False);
-	windowState->netWMIconName = x11Api->XInternAtom(windowState->display, "_NET_WM_ICON_NAME", FPL__X11_False);
-	windowState->motifWMHints = x11Api->XInternAtom(windowState->display, "_MOTIF_WM_HINTS", FPL__X11_False);
-	// xdnd atoms
-	windowState->xdndAware = x11Api->XInternAtom(windowState->display, "XdndAware", FPL__X11_False);
-	windowState->xdndEnter = x11Api->XInternAtom(windowState->display, "XdndEnter", FPL__X11_False);
-	windowState->xdndPosition = x11Api->XInternAtom(windowState->display, "XdndPosition", FPL__X11_False);
-	windowState->xdndStatus = x11Api->XInternAtom(windowState->display, "XdndStatus", FPL__X11_False);
-	windowState->xdndActionCopy = x11Api->XInternAtom(windowState->display, "XdndActionCopy", FPL__X11_False);
-	windowState->xdndDrop = x11Api->XInternAtom(windowState->display, "XdndDrop", FPL__X11_False);
-	windowState->xdndFinished = x11Api->XInternAtom(windowState->display, "XdndFinished", FPL__X11_False);
-	windowState->xdndSelection = x11Api->XInternAtom(windowState->display, "XdndSelection", FPL__X11_False);
-	windowState->xdndTypeList = x11Api->XInternAtom(windowState->display, "XdndTypeList", FPL__X11_False);
-	windowState->textUriList = x11Api->XInternAtom(windowState->display, "text/uri-list", FPL__X11_False);
-	// Window style atoms
-	windowState->netWMStateAbove = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_ABOVE", FPL__X11_False);
-	// Clipboard atoms
-	windowState->clipboardAtom = x11Api->XInternAtom(windowState->display, "CLIPBOARD", FPL__X11_False);
-	windowState->targetsAtom = x11Api->XInternAtom(windowState->display, "TARGETS", FPL__X11_False);
-	windowState->incrAtom = x11Api->XInternAtom(windowState->display, "INCR", FPL__X11_False);
-	windowState->selectionPropAtom = x11Api->XInternAtom(windowState->display, "FPL_SELECTION", FPL__X11_False);
-	// Cursor defaults
-	windowState->invisibleCursor = 0;
-	windowState->cursorEnabled = true;
-
+fpl_internal void fpl__X11SetupWindowManagerHints(const fpl__X11Api *x11Api, const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__X11WindowState *windowState) {
 	// Register window manager protocols
 	{
 		fpl__X11_Atom protocols[] = {
-				windowState->wmDeleteWindow,
-				windowState->netWMPing
+				windowState->wm.wmDeleteWindow,
+				windowState->netWM.netWMPing
 		};
-		x11Api->XSetWMProtocols(windowState->display, windowState->window, protocols, fplArrayCount(protocols));
+		x11Api->XSetWMProtocols(windowState->display, windowState->core.window, protocols, fplArrayCount(protocols));
 	}
 
 	// Declare our process id
 	{
 		const long pid = getpid();
-		x11Api->XChangeProperty(windowState->display, windowState->window, windowState->netWMPid, FPL__X11_XA_CARDINAL, 32, FPL__X11_PropModeReplace, (unsigned char *)&pid, 1);
+		x11Api->XChangeProperty(windowState->display, windowState->core.window, windowState->netWM.netWMPid, FPL__X11_XA_CARDINAL, 32, FPL__X11_PropModeReplace, (unsigned char *)&pid, 1);
 	}
 
 	char nameBuffer[FPL_MAX_NAME_LENGTH] = fplZeroInit;
@@ -24218,7 +24282,7 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	} else {
 		fplCopyString("Unnamed FPL X11 fpl__X11_Window", nameBuffer, fplArrayCount(nameBuffer));
 	}
-	FPL_LOG_DEBUG(FPL__MODULE_X11, "Show window '%d' on display '%p' with title '%s'", (int)windowState->window, windowState->display, nameBuffer);
+	FPL_LOG_DEBUG(FPL__MODULE_X11, "Show window '%d' on display '%p' with title '%s'", (int)windowState->core.window, windowState->display, nameBuffer);
 	fpl__X11LoadWindowIcon(x11Api, windowState, currentWindowSettings);
 	fplSetWindowTitle(nameBuffer);
 
@@ -24228,35 +24292,39 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 		fpl__X11_XClassHint classHint = fplZeroInit;
 		classHint.res_name = nameBuffer;
 		classHint.res_class = nameBuffer;
-		x11Api->XSetClassHint(windowState->display, windowState->window, &classHint);
+		x11Api->XSetClassHint(windowState->display, windowState->core.window, &classHint);
 	}
 
-	x11Api->XMapWindow(windowState->display, windowState->window);
+	x11Api->XMapWindow(windowState->display, windowState->core.window);
 	x11Api->XFlush(windowState->display);
 
-	// Enable UTF-8 capable text input via X Input Method.
-	// The C locale is already configured by the POSIX subplatform init; we only set
-	// the X11 locale modifiers here. XSetLocaleModifiers must run before XOpenIM,
-	// otherwise Xutf8LookupString can not produce correct UTF-8 for non-ASCII keys.
-	// All IM functions are loaded optionally (null under FPL_NO_RUNTIME_LINKING), so
-	// every call is guarded; when unavailable we silently fall back to XLookupString.
-	windowState->xim = 0;
-	windowState->xic = 0;
+	// Announce support for Xdnd (drag and drop)
+	{
+		const fpl__X11_Atom version = FPL__XDND_VERSION;
+		x11Api->XChangeProperty(windowState->display, windowState->core.window, windowState->xdnd.xdndAware, FPL__X11_XA_ATOM, 32, FPL__X11_PropModeReplace, (unsigned char *)&version, 1);
+	}
+}
+
+// Enables UTF-8 capable text input via X Input Method; silently falls back to XLookupString when unavailable.
+// XSetLocaleModifiers must run before XOpenIM, otherwise Xutf8LookupString can not produce correct UTF-8 for non-ASCII keys.
+fpl_internal void fpl__X11InitInputMethod(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
+	windowState->im.xim = 0;
+	windowState->im.xic = 0;
 	if (x11Api->XOpenIM != fpl_null && x11Api->XCreateIC != fpl_null && x11Api->Xutf8LookupString != fpl_null) {
 		if (x11Api->XSetLocaleModifiers != fpl_null) {
 			x11Api->XSetLocaleModifiers("");
 		}
 		fpl__X11_XIM xim = x11Api->XOpenIM(windowState->display, fpl_null, fpl_null, fpl_null);
 		if (xim != fpl_null) {
-			windowState->xim = xim;
+			windowState->im.xim = xim;
 			const long inputStyle = FPL__X11_XIMPreeditNothing | FPL__X11_XIMStatusNothing;
 			fpl__X11_XIC xic = x11Api->XCreateIC(xim,
 				FPL__X11_XNInputStyle, inputStyle,
-				FPL__X11_XNClientWindow, windowState->window,
-				FPL__X11_XNFocusWindow, windowState->window,
+				FPL__X11_XNClientWindow, windowState->core.window,
+				FPL__X11_XNFocusWindow, windowState->core.window,
 				(void *)fpl_null);
 			if (xic != fpl_null) {
-				windowState->xic = xic;
+				windowState->im.xic = xic;
 				if (x11Api->XSetICFocus != fpl_null) {
 					x11Api->XSetICFocus(xic);
 				}
@@ -24267,9 +24335,10 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 			FPL__WARNING(FPL__MODULE_X11, "Failed opening X11 input method (XIM); falling back to XLookupString");
 		}
 	}
+}
 
+fpl_internal void fpl__X11BuildKeyMap(const fpl__X11Api *x11Api, fpl__PlatformAppState *appState, fpl__X11WindowState *windowState) {
 	fplAssert(fplArrayCount(appState->window.keyMap) >= 256);
-
 	// @NOTE(final): Valid key range for XLib is 8 to 255
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Build X11 Keymap");
 	fplClearStruct(appState->window.keyMap);
@@ -24281,15 +24350,21 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 		appState->window.keyMap[keyCode] = mappedKey;
 		x11Api->XFree(keySyms);
 	}
+}
 
 	if (initSettings->window.isFullscreen) {
 		fplSetWindowFullscreenSize(true, initSettings->window.fullscreenSize.width, initSettings->window.fullscreenSize.height, initSettings->window.fullscreenRefreshRate);
+	const fpl__X11Api *x11Api = &subplatform->api;
+
+	if (!fpl__X11OpenDisplay(x11Api, windowState)) {
+		return false;
 	}
 
 	// Announce support for Xdnd (drag and drop)
 	{
 		const fpl__X11_Atom version = FPL__XDND_VERSION;
 		x11Api->XChangeProperty(windowState->display, windowState->window, windowState->xdndAware, FPL__X11_XA_ATOM, 32, FPL__X11_PropModeReplace, (unsigned char *)&version, 1);
+		setupCallbacks->preSetup(appState, appState->initFlags, initSettings);
 	}
 
 	appState->window.isRunning = true;
@@ -24328,7 +24403,7 @@ fpl_internal unsigned long fpl__X11GetWindowProperty(const fpl__X11Api *x11Api, 
 
 fpl_internal const int fpl__X11GetWMState(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
 	struct { int state; fpl__X11_Window icon; } *value = NULL;
-	unsigned long numItems = fpl__X11GetWindowProperty(x11Api, windowState->display, windowState->window, windowState->wmState, windowState->wmState, (unsigned char **)&value);
+	unsigned long numItems = fpl__X11GetWindowProperty(x11Api, windowState->display, windowState->core.window, windowState->wm.wmState, windowState->wm.wmState, (unsigned char **)&value);
 	int state = FPL__X11_WithdrawnState;
 	if (value) {
 		state = value->state;
@@ -24343,18 +24418,18 @@ fpl_internal const int fpl__X11GetWMState(const fpl__X11Api *x11Api, fpl__X11Win
 
 fpl_internal unsigned int fpl__X11GetNetWMState(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
 	fpl__X11_Atom *atoms = NULL;
-	unsigned long numItems = fpl__X11GetWindowProperty(x11Api, windowState->display, windowState->window, windowState->netWMState, FPL__X11_XA_ATOM, (unsigned char **)&atoms);
+	unsigned long numItems = fpl__X11GetWindowProperty(x11Api, windowState->display, windowState->core.window, windowState->netWM.netWMState, FPL__X11_XA_ATOM, (unsigned char **)&atoms);
 	unsigned int flags = 0;
 	if (atoms) {
 		int i, maximized = 0;
 		for (i = 0; i < numItems; ++i) {
-			if (atoms[i] == windowState->netWMStateHidden) {
+			if (atoms[i] == windowState->netWM.netWMStateHidden) {
 				flags |= fpl__X11NetWMStateHiddenFlag;
-			} else if (atoms[i] == windowState->netWMStateMaximizedVert) {
+			} else if (atoms[i] == windowState->netWM.netWMStateMaximizedVert) {
 				maximized |= 1;
-			} else if (atoms[i] == windowState->netWMStateMaximizedHorz) {
+			} else if (atoms[i] == windowState->netWM.netWMStateMaximizedHorz) {
 				maximized |= 2;
-			} else if (atoms[i] == windowState->netWMStateFullscreen) {
+			} else if (atoms[i] == windowState->netWM.netWMStateFullscreen) {
 				flags |= fpl__X11NetWMStateFullscreenFlag;
 			}
 		}
@@ -24365,7 +24440,7 @@ fpl_internal unsigned int fpl__X11GetNetWMState(const fpl__X11Api *x11Api, fpl__
 		{
 			fpl__X11_XWindowAttributes attr;
 			fplMemorySet(&attr, 0, sizeof(attr));
-			x11Api->XGetWindowAttributes(windowState->display, windowState->window, &attr);
+			x11Api->XGetWindowAttributes(windowState->display, windowState->core.window, &attr);
 			if (attr.map_state == FPL__X11_IsUnmapped) {
 				flags |= fpl__X11NetWMStateHiddenFlag;
 			}
@@ -24525,9 +24600,9 @@ fpl_internal void fpl__X11HandleTextInputEvent(const fpl__X11Api *x11Api, fpl__P
 	bool isUtf8 = false;
 
 	fpl__X11WindowState *x11WinState = &winState->x11;
-	if (x11WinState->xic != 0 && x11Api->Xutf8LookupString != fpl_null) {
+	if (x11WinState->im.xic != 0 && x11Api->Xutf8LookupString != fpl_null) {
 		fpl__X11_Status status = 0;
-		textLen = x11Api->Xutf8LookupString(x11WinState->xic, &ev->xkey, buf, maxTextLen, &keysym, &status);
+		textLen = x11Api->Xutf8LookupString(x11WinState->im.xic, &ev->xkey, buf, maxTextLen, &keysym, &status);
 		// status tells us what buf holds; only XLookupChars / XLookupBoth yield committed text
 		if (status == FPL__X11_XLookupChars || status == FPL__X11_XLookupBoth) {
 			isUtf8 = true;
@@ -24548,15 +24623,14 @@ fpl_internal void fpl__X11HandleTextInputEvent(const fpl__X11Api *x11Api, fpl__P
 	}
 	buf[textLen] = '\0';
 
-	wchar_t wideBuffer[4] = fplZeroInit;
+	// Xutf8LookupString always returns UTF-8 regardless of the C locale, so decode it directly.
+	uint32_t textCode = 0;
 	if (isUtf8) {
-		fplUTF8StringToWideString(buf, (size_t)textLen, wideBuffer, fplArrayCount(wideBuffer));
+		fpl__DecodeUTF8CodePoint(buf, (size_t)textLen, &textCode);
 	} else {
 		// Latin-1 fallback: each returned byte is a Unicode code point in 0..255 directly.
-		unsigned char b = (unsigned char)buf[0];
-		wideBuffer[0] = (wchar_t)b;
+		textCode = (uint32_t)(unsigned char)buf[0];
 	}
-	uint32_t textCode = (uint32_t)wideBuffer[0];
 	if (textCode > 0) {
 		fpl__HandleKeyboardInputEvent(winState, keyCode, textCode);
 	}
@@ -24585,7 +24659,7 @@ fpl_internal bool fpl__InputBackendX11Kbm_ResolveTarget(const fpl__InputBackendX
 		const fpl__X11WindowState *windowState = &appState->window.x11;
 		if (windowState->display == fpl_null) return false;
 		*outDisplay = windowState->display;
-		*outWindow = windowState->window;
+		*outWindow = windowState->core.window;
 		return true;
 	}
 #	endif
@@ -24885,22 +24959,22 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 
 		case FPL__X11_ClientMessage:
 		{
-			if (ev->xclient.message_type == x11WinState->wmProtocols) {
+			if (ev->xclient.message_type == x11WinState->wm.wmProtocols) {
 				const fpl__X11_Atom protocol = (fpl__X11_Atom)ev->xclient.data.l[0];
 				if (protocol != FPL__X11_None) {
-					if (protocol == x11WinState->wmDeleteWindow) {
+					if (protocol == x11WinState->wm.wmDeleteWindow) {
 						// Window asked for closing
 						winState->isRunning = false;
 						fpl__PushWindowStateEvent(fplWindowEventType_Closed);
-					} else if (protocol == x11WinState->netWMPing) {
+					} else if (protocol == x11WinState->netWM.netWMPing) {
 						// Window manager asks us if we are still alive
 						fpl__X11_XEvent reply = *ev;
-						reply.xclient.window = x11WinState->root;
-						x11Api->XSendEvent(x11WinState->display, x11WinState->root, FPL__X11_False, FPL__X11_SubstructureNotifyMask | FPL__X11_SubstructureRedirectMask, &reply);
+						reply.xclient.window = x11WinState->core.root;
+						x11Api->XSendEvent(x11WinState->display, x11WinState->core.root, FPL__X11_False, FPL__X11_SubstructureNotifyMask | FPL__X11_SubstructureRedirectMask, &reply);
 						x11Api->XFlush(x11WinState->display);
 					}
 				}
-			} else if (ev->xclient.message_type == x11WinState->xdndEnter) {
+			} else if (ev->xclient.message_type == x11WinState->xdnd.xdndEnter) {
 				// A drag operation has entered the window
 				unsigned long i, count;
 				fpl__X11_Atom *formats = NULL;
@@ -24912,21 +24986,21 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 					return;
 				}
 				if (list) {
-					count = fpl__X11GetWindowProperty(x11Api, x11WinState->display, x11WinState->xdnd.source, x11WinState->xdndTypeList, FPL__X11_XA_ATOM, (unsigned char **)&formats);
+					count = fpl__X11GetWindowProperty(x11Api, x11WinState->display, x11WinState->xdnd.source, x11WinState->xdnd.xdndTypeList, FPL__X11_XA_ATOM, (unsigned char **)&formats);
 				} else {
 					count = 3;
 					formats = (fpl__X11_Atom *)ev->xclient.data.l + 2;
 				}
 				for (i = 0; i < count; ++i) {
-					if (formats[i] == x11WinState->textUriList) {
-						x11WinState->xdnd.format = x11WinState->textUriList;
+					if (formats[i] == x11WinState->xdnd.textUriList) {
+						x11WinState->xdnd.format = x11WinState->xdnd.textUriList;
 						break;
 					}
 				}
 				if (list && formats) {
 					x11Api->XFree(formats);
 				}
-			} else if (ev->xclient.message_type == x11WinState->xdndDrop) {
+			} else if (ev->xclient.message_type == x11WinState->xdnd.xdndDrop) {
 				// The drag operation has finished by dropping on the window
 				fpl__X11_Time time = FPL__X11_CurrentTime;
 				if (x11WinState->xdnd.version > FPL__XDND_VERSION) {
@@ -24937,23 +25011,23 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 						time = ev->xclient.data.l[2];
 					}
 					// Request the chosen format from the source window
-					x11Api->XConvertSelection(x11WinState->display, x11WinState->xdndSelection, x11WinState->xdnd.format, x11WinState->xdndSelection, x11WinState->window, time);
+					x11Api->XConvertSelection(x11WinState->display, x11WinState->xdnd.xdndSelection, x11WinState->xdnd.format, x11WinState->xdnd.xdndSelection, x11WinState->core.window, time);
 				} else if (x11WinState->xdnd.version >= 2) {
 					fpl__X11_XEvent reply;
 					fplMemorySet(&reply, 0, sizeof(reply));
 
 					reply.type = FPL__X11_ClientMessage;
 					reply.xclient.window = x11WinState->xdnd.source;
-					reply.xclient.message_type = x11WinState->xdndFinished;
+					reply.xclient.message_type = x11WinState->xdnd.xdndFinished;
 					reply.xclient.format = 32;
-					reply.xclient.data.l[0] = x11WinState->window;
+					reply.xclient.data.l[0] = x11WinState->core.window;
 					reply.xclient.data.l[1] = 0; // The drag was rejected
 					reply.xclient.data.l[2] = FPL__X11_None;
 
 					x11Api->XSendEvent(x11WinState->display, x11WinState->xdnd.source, FPL__X11_False, FPL__X11_NoEventMask, &reply);
 					x11Api->XFlush(x11WinState->display);
 				}
-			} else if (ev->xclient.message_type == x11WinState->xdndPosition) {
+			} else if (ev->xclient.message_type == x11WinState->xdnd.xdndPosition) {
 				// The drag operation has moved over the window
 				fpl__X11_Window dummy;
 				int xpos, ypos;
@@ -24967,9 +25041,9 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 
 				reply.type = FPL__X11_ClientMessage;
 				reply.xclient.window = x11WinState->xdnd.source;
-				reply.xclient.message_type = x11WinState->xdndStatus;
+				reply.xclient.message_type = x11WinState->xdnd.xdndStatus;
 				reply.xclient.format = 32;
-				reply.xclient.data.l[0] = x11WinState->window;
+				reply.xclient.data.l[0] = x11WinState->core.window;
 				reply.xclient.data.l[2] = 0; // Specify an empty rectangle
 				reply.xclient.data.l[3] = 0;
 
@@ -24977,7 +25051,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 					// Reply that we are ready to copy the dragged data
 					reply.xclient.data.l[1] = 1; // Accept with no rectangle
 					if (x11WinState->xdnd.version >= 2)
-						reply.xclient.data.l[4] = x11WinState->xdndActionCopy;
+						reply.xclient.data.l[4] = x11WinState->xdnd.xdndActionCopy;
 				}
 				x11Api->XSendEvent(x11WinState->display, x11WinState->xdnd.source, FPL__X11_False, FPL__X11_NoEventMask, &reply);
 				x11Api->XFlush(x11WinState->display);
@@ -24994,16 +25068,16 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			reply.xselection.target = req->target;
 			reply.xselection.time = req->time;
 			reply.xselection.property = FPL__X11_None;
-			if (req->selection == x11WinState->clipboardAtom) {
-				if (req->target == x11WinState->targetsAtom) {
+			if (req->selection == x11WinState->clipboard.clipboardAtom) {
+				if (req->target == x11WinState->clipboard.targetsAtom) {
 					fpl__X11_Atom supported[3];
-					supported[0] = x11WinState->targetsAtom;
-					supported[1] = x11WinState->utf8String;
+					supported[0] = x11WinState->clipboard.targetsAtom;
+					supported[1] = x11WinState->wm.utf8String;
 					supported[2] = FPL__X11_XA_STRING;
 					x11Api->XChangeProperty(x11WinState->display, req->requestor, req->property, FPL__X11_XA_ATOM, 32, FPL__X11_PropModeReplace, (unsigned char *)supported, 3);
 					reply.xselection.property = req->property;
-				} else if (req->target == x11WinState->utf8String || req->target == FPL__X11_XA_STRING) {
-					x11Api->XChangeProperty(x11WinState->display, req->requestor, req->property, req->target, 8, FPL__X11_PropModeReplace, (unsigned char *)x11WinState->clipboardOut, (int)x11WinState->clipboardOutLen);
+				} else if (req->target == x11WinState->wm.utf8String || req->target == FPL__X11_XA_STRING) {
+					x11Api->XChangeProperty(x11WinState->display, req->requestor, req->property, req->target, 8, FPL__X11_PropModeReplace, (unsigned char *)x11WinState->clipboard.clipboardOut, (int)x11WinState->clipboard.clipboardOutLen);
 					reply.xselection.property = req->property;
 				}
 			}
@@ -25013,7 +25087,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 
 		case FPL__X11_SelectionNotify:
 		{
-			if (ev->xselection.property == x11WinState->xdndSelection) {
+			if (ev->xselection.property == x11WinState->xdnd.xdndSelection) {
 				// The converted data from the drag operation has arrived
 				char *data;
 				const unsigned long result = fpl__X11GetWindowProperty(x11Api, x11WinState->display, ev->xselection.requestor, ev->xselection.property, ev->xselection.target, (unsigned char **)&data);
@@ -25035,11 +25109,11 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 
 					reply.type = FPL__X11_ClientMessage;
 					reply.xclient.window = x11WinState->xdnd.source;
-					reply.xclient.message_type = x11WinState->xdndFinished;
+					reply.xclient.message_type = x11WinState->xdnd.xdndFinished;
 					reply.xclient.format = 32;
-					reply.xclient.data.l[0] = x11WinState->window;
+					reply.xclient.data.l[0] = x11WinState->core.window;
 					reply.xclient.data.l[1] = result;
-					reply.xclient.data.l[2] = x11WinState->xdndActionCopy;
+					reply.xclient.data.l[2] = x11WinState->xdnd.xdndActionCopy;
 
 					x11Api->XSendEvent(x11WinState->display, x11WinState->xdnd.source, FPL__X11_False, FPL__X11_NoEventMask, &reply);
 					x11Api->XFlush(x11WinState->display);
@@ -25091,7 +25165,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 
 		case FPL__X11_PropertyNotify:
 		{
-			if (ev->xproperty.atom == x11WinState->netWMState || ev->xproperty.atom == x11WinState->wmState) {
+			if (ev->xproperty.atom == x11WinState->netWM.netWMState || ev->xproperty.atom == x11WinState->wm.wmState) {
 				fpl__X11WindowStateInfo nextWindowStateInfo = fpl__X11GetWindowStateInfo(x11Api, x11WinState);
 				fpl__X11WindowStateInfo changedWindowStateInfo = fpl__X11ReconcilWindowStateInfo(&x11WinState->lastWindowStateInfo, &nextWindowStateInfo);
 				switch (changedWindowStateInfo.visibility) {
@@ -25143,12 +25217,12 @@ fpl_platform_api void fplWindowShutdown(void) {
 		const fpl__X11WindowState *windowState = &appState->window.x11;
 		fpl__X11_XEvent ev = fplZeroInit;
 		ev.type = FPL__X11_ClientMessage;
-		ev.xclient.window = windowState->window;
-		ev.xclient.message_type = windowState->wmProtocols;
+		ev.xclient.window = windowState->core.window;
+		ev.xclient.message_type = windowState->wm.wmProtocols;
 		ev.xclient.format = 32;
-		ev.xclient.data.l[0] = windowState->wmDeleteWindow;
+		ev.xclient.data.l[0] = windowState->wm.wmDeleteWindow;
 		ev.xclient.data.l[1] = 0;
-		x11Api->XSendEvent(windowState->display, windowState->root, FPL__X11_False, FPL__X11_SubstructureRedirectMask | FPL__X11_SubstructureNotifyMask, &ev);
+		x11Api->XSendEvent(windowState->display, windowState->core.root, FPL__X11_False, FPL__X11_SubstructureRedirectMask | FPL__X11_SubstructureNotifyMask, &ev);
 	}
 }
 
@@ -25239,22 +25313,26 @@ fpl_platform_api void fplSetWindowCursorEnabled(const bool value) {
 	const fpl__X11Api *x11Api = &subplatform->api;
 	fpl__X11WindowState *windowState = &appState->window.x11;
 	if (value) {
-		x11Api->XUndefineCursor(windowState->display, windowState->window);
+		x11Api->XUndefineCursor(windowState->display, windowState->core.window);
 	} else {
-		if (windowState->invisibleCursor == 0) {
+		if (windowState->cursor.invisibleCursor == 0) {
 			char zero[8] = fplZeroInit;
-			fpl__X11_Pixmap blank = x11Api->XCreateBitmapFromData(windowState->display, windowState->window, zero, 1, 1);
+			fpl__X11_Pixmap blank = x11Api->XCreateBitmapFromData(windowState->display, windowState->core.window, zero, 1, 1);
 			if (blank != 0) {
 				fpl__X11_XColor dummy = fplZeroInit;
-				windowState->invisibleCursor = x11Api->XCreatePixmapCursor(windowState->display, blank, blank, &dummy, &dummy, 0, 0);
+				windowState->cursor.invisibleCursor = x11Api->XCreatePixmapCursor(windowState->display, blank, blank, &dummy, &dummy, 0, 0);
+				// The source pixmap is no longer needed once the cursor exists.
+				if (x11Api->XFreePixmap != fpl_null) {
+					x11Api->XFreePixmap(windowState->display, blank);
+				}
 			}
 		}
-		if (windowState->invisibleCursor != 0) {
-			x11Api->XDefineCursor(windowState->display, windowState->window, windowState->invisibleCursor);
+		if (windowState->cursor.invisibleCursor != 0) {
+			x11Api->XDefineCursor(windowState->display, windowState->core.window, windowState->cursor.invisibleCursor);
 		}
 	}
 	x11Api->XFlush(windowState->display);
-	windowState->cursorEnabled = value;
+	windowState->cursor.cursorEnabled = value;
 }
 
 fpl_platform_api bool fplGetWindowSize(fplWindowSize *outSize) {
@@ -25265,7 +25343,7 @@ fpl_platform_api bool fplGetWindowSize(fplWindowSize *outSize) {
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
 	fpl__X11_XWindowAttributes attribs;
-	x11Api->XGetWindowAttributes(windowState->display, windowState->window, &attribs);
+	x11Api->XGetWindowAttributes(windowState->display, windowState->core.window, &attribs);
 	outSize->width = attribs.width;
 	outSize->height = attribs.height;
 	return(true);
@@ -25277,7 +25355,7 @@ fpl_platform_api void fplSetWindowSize(const uint32_t width, const uint32_t heig
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
-	x11Api->XResizeWindow(windowState->display, windowState->window, width, height);
+	x11Api->XResizeWindow(windowState->display, windowState->core.window, width, height);
 	x11Api->XFlush(windowState->display);
 }
 
@@ -25305,14 +25383,14 @@ fpl_platform_api void fplSetWindowResizeable(const bool value) {
 		hints->flags = 0;
 	} else {
 		fpl__X11_XWindowAttributes attribs = fplZeroInit;
-		x11Api->XGetWindowAttributes(windowState->display, windowState->window, &attribs);
+		x11Api->XGetWindowAttributes(windowState->display, windowState->core.window, &attribs);
 		hints->flags = FPL__X11_PMinSize | FPL__X11_PMaxSize;
 		hints->min_width = attribs.width;
 		hints->min_height = attribs.height;
 		hints->max_width = attribs.width;
 		hints->max_height = attribs.height;
 	}
-	x11Api->XSetWMNormalHints(windowState->display, windowState->window, hints);
+	x11Api->XSetWMNormalHints(windowState->display, windowState->core.window, hints);
 	x11Api->XFree(hints);
 	x11Api->XFlush(windowState->display);
 	appState->currentSettings.window.isResizable = value;
@@ -25350,9 +25428,9 @@ fpl_platform_api void fplSetWindowDecorated(const bool value) {
 	hints.decorations = value ? 1 : 0;
 	hints.functions = value ? FPL__MWM_FUNC_ALL : 0;
 
-	x11Api->XChangeProperty(windowState->display, windowState->window,
-		windowState->motifWMHints,
-		windowState->motifWMHints, 32,
+	x11Api->XChangeProperty(windowState->display, windowState->core.window,
+		windowState->wm.motifWMHints,
+		windowState->wm.motifWMHints, 32,
 		FPL__X11_PropModeReplace,
 		(unsigned char *)&hints,
 		FPL__PROPERTY_MOTIF_WM_HINTS_ELEMENT_COUNT);
@@ -25370,7 +25448,7 @@ fpl_internal bool fpl__X11HasNetWMStateAtom(const fpl__X11Api *x11Api, const fpl
 	unsigned long bytesAfter = 0;
 	unsigned char *data = fpl_null;
 	bool result = false;
-	int status = x11Api->XGetWindowProperty(windowState->display, windowState->window, windowState->netWMState, 0L, 1024L, FPL__X11_False, FPL__X11_XA_ATOM, &actualType, &actualFormat, &itemCount, &bytesAfter, &data);
+	int status = x11Api->XGetWindowProperty(windowState->display, windowState->core.window, windowState->netWM.netWMState, 0L, 1024L, FPL__X11_False, FPL__X11_XA_ATOM, &actualType, &actualFormat, &itemCount, &bytesAfter, &data);
 	if (status == FPL__X11_Success && data != fpl_null) {
 		fpl__X11_Atom *atoms = (fpl__X11_Atom *)data;
 		for (unsigned long i = 0; i < itemCount; ++i) {
@@ -25389,14 +25467,14 @@ fpl_internal bool fpl__X11HasNetWMStateAtom(const fpl__X11Api *x11Api, const fpl
 fpl_internal bool fpl__X11SendNetWMState(const fpl__X11Api *x11Api, const fpl__X11WindowState *windowState, fpl__X11_Atom atom1, fpl__X11_Atom atom2, long action) {
 	fpl__X11_XEvent xev = fplZeroInit;
 	xev.type = FPL__X11_ClientMessage;
-	xev.xclient.window = windowState->window;
-	xev.xclient.message_type = windowState->netWMState;
+	xev.xclient.window = windowState->core.window;
+	xev.xclient.message_type = windowState->netWM.netWMState;
 	xev.xclient.format = 32;
 	xev.xclient.data.l[0] = action;
 	xev.xclient.data.l[1] = (long)atom1;
 	xev.xclient.data.l[2] = (long)atom2;
 	xev.xclient.data.l[3] = 1L;
-	bool result = x11Api->XSendEvent(windowState->display, windowState->root, 0, FPL__X11_SubstructureRedirectMask | FPL__X11_SubstructureNotifyMask, &xev) != 0;
+	bool result = x11Api->XSendEvent(windowState->display, windowState->core.root, 0, FPL__X11_SubstructureRedirectMask | FPL__X11_SubstructureNotifyMask, &xev) != 0;
 	x11Api->XFlush(windowState->display);
 	return(result);
 }
@@ -25407,7 +25485,7 @@ fpl_platform_api bool fplIsWindowFloating(void) {
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
-	bool result = fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWMStateAbove);
+	bool result = fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWM.netWMStateAbove);
 	return(result);
 }
 
@@ -25418,7 +25496,7 @@ fpl_platform_api void fplSetWindowFloating(const bool value) {
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
 	long action = value ? FPL__NET_WM_STATE_ADD : FPL__NET_WM_STATE_REMOVE;
-	fpl__X11SendNetWMState(x11Api, windowState, windowState->netWMStateAbove, 0, action);
+	fpl__X11SendNetWMState(x11Api, windowState, windowState->netWM.netWMStateAbove, 0, action);
 }
 
 fpl_platform_api fplWindowState fplGetWindowState(void) {
@@ -25430,19 +25508,19 @@ fpl_platform_api fplWindowState fplGetWindowState(void) {
 	if (appState->currentSettings.window.isFullscreen) {
 		return(fplWindowState_Fullscreen);
 	}
-	if (fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWMStateFullscreen)) {
+	if (fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWM.netWMStateFullscreen)) {
 		return(fplWindowState_Fullscreen);
 	}
-	if (fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWMStateHidden)) {
+	if (fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWM.netWMStateHidden)) {
 		return(fplWindowState_Iconify);
 	}
-	bool maxVert = fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWMStateMaximizedVert);
-	bool maxHorz = fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWMStateMaximizedHorz);
+	bool maxVert = fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWM.netWMStateMaximizedVert);
+	bool maxHorz = fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWM.netWMStateMaximizedHorz);
 	if (maxVert && maxHorz) {
 		return(fplWindowState_Maximize);
 	}
 	fpl__X11_XWindowAttributes attribs = fplZeroInit;
-	x11Api->XGetWindowAttributes(windowState->display, windowState->window, &attribs);
+	x11Api->XGetWindowAttributes(windowState->display, windowState->core.window, &attribs);
 	if (attribs.map_state == FPL__X11_IsViewable) {
 		return(fplWindowState_Normal);
 	}
@@ -25459,22 +25537,22 @@ fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
 	switch (newState) {
 		case fplWindowState_Iconify:
 		{
-			result = x11Api->XIconifyWindow(windowState->display, windowState->window, windowState->screen) != 0;
+			result = x11Api->XIconifyWindow(windowState->display, windowState->core.window, windowState->screen) != 0;
 			x11Api->XFlush(windowState->display);
 		} break;
 
 		case fplWindowState_Maximize:
 		{
 			if (!appState->currentSettings.window.isFullscreen) {
-				result = fpl__X11SendNetWMState(x11Api, windowState, windowState->netWMStateMaximizedVert, windowState->netWMStateMaximizedHorz, FPL__NET_WM_STATE_ADD);
+				result = fpl__X11SendNetWMState(x11Api, windowState, windowState->netWM.netWMStateMaximizedVert, windowState->netWM.netWMStateMaximizedHorz, FPL__NET_WM_STATE_ADD);
 			}
 		} break;
 
 		case fplWindowState_Normal:
 		{
-			fpl__X11SendNetWMState(x11Api, windowState, windowState->netWMStateMaximizedVert, windowState->netWMStateMaximizedHorz, FPL__NET_WM_STATE_REMOVE);
-			fpl__X11SendNetWMState(x11Api, windowState, windowState->netWMStateHidden, 0, FPL__NET_WM_STATE_REMOVE);
-			x11Api->XMapWindow(windowState->display, windowState->window);
+			fpl__X11SendNetWMState(x11Api, windowState, windowState->netWM.netWMStateMaximizedVert, windowState->netWM.netWMStateMaximizedHorz, FPL__NET_WM_STATE_REMOVE);
+			fpl__X11SendNetWMState(x11Api, windowState, windowState->netWM.netWMStateHidden, 0, FPL__NET_WM_STATE_REMOVE);
+			x11Api->XMapWindow(windowState->display, windowState->core.window);
 			x11Api->XFlush(windowState->display);
 			result = true;
 		} break;
@@ -25576,7 +25654,7 @@ fpl_platform_api size_t fplGetDisplayCount(void) {
 	size_t result = 0;
 	if (backend == fpl__X11DisplayBackend_RandR) {
 		const fpl__XrandRApi *xrr = &subplatform->xrandr;
-		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(windowState->display, windowState->root);
+		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(windowState->display, windowState->core.root);
 		if (res != fpl_null) {
 			for (int i = 0; i < res->noutput; ++i) {
 				fpl__XRROutputInfo *outInfo = xrr->XRRGetOutputInfo(windowState->display, res, res->outputs[i]);
@@ -25614,9 +25692,9 @@ fpl_platform_api size_t fplGetDisplays(fplDisplayInfo *displays, const size_t ma
 	size_t result = 0;
 	if (backend == fpl__X11DisplayBackend_RandR) {
 		const fpl__XrandRApi *xrr = &subplatform->xrandr;
-		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(windowState->display, windowState->root);
+		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(windowState->display, windowState->core.root);
 		if (res != fpl_null) {
-			fpl__RROutput primary = xrr->XRRGetOutputPrimary(windowState->display, windowState->root);
+			fpl__RROutput primary = xrr->XRRGetOutputPrimary(windowState->display, windowState->core.root);
 			for (int i = 0; i < res->noutput && result < maxDisplayCount; ++i) {
 				fpl__RROutput outId = res->outputs[i];
 				fpl__XRROutputInfo *outInfo = xrr->XRRGetOutputInfo(windowState->display, res, outId);
@@ -25647,7 +25725,7 @@ fpl_platform_api size_t fplGetDisplays(fplDisplayInfo *displays, const size_t ma
 			x11Api->XFree(screens);
 		}
 	} else {
-		fpl__X11FillDisplayInfoFromRoot(x11Api, windowState->display, windowState->root, displays);
+		fpl__X11FillDisplayInfoFromRoot(x11Api, windowState->display, windowState->core.root, displays);
 		result = 1;
 	}
 	return(result);
@@ -25664,9 +25742,9 @@ fpl_platform_api bool fplGetPrimaryDisplay(fplDisplayInfo *display) {
 	bool result = false;
 	if (backend == fpl__X11DisplayBackend_RandR) {
 		const fpl__XrandRApi *xrr = &subplatform->xrandr;
-		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(windowState->display, windowState->root);
+		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(windowState->display, windowState->core.root);
 		if (res != fpl_null) {
-			fpl__RROutput primary = xrr->XRRGetOutputPrimary(windowState->display, windowState->root);
+			fpl__RROutput primary = xrr->XRRGetOutputPrimary(windowState->display, windowState->core.root);
 			if (primary != 0) {
 				fpl__XRROutputInfo *outInfo = xrr->XRRGetOutputInfo(windowState->display, res, primary);
 				if (outInfo != fpl_null) {
@@ -25702,7 +25780,7 @@ fpl_platform_api bool fplGetPrimaryDisplay(fplDisplayInfo *display) {
 		}
 	}
 	if (!result) {
-		fpl__X11FillDisplayInfoFromRoot(x11Api, windowState->display, windowState->root, display);
+		fpl__X11FillDisplayInfoFromRoot(x11Api, windowState->display, windowState->core.root, display);
 		result = true;
 	}
 	return(result);
@@ -25714,9 +25792,9 @@ fpl_internal bool fpl__X11FindDisplayAtPoint(const fpl__X11SubplatformState *sub
 	bool result = false;
 	if (backend == fpl__X11DisplayBackend_RandR) {
 		const fpl__XrandRApi *xrr = &subplatform->xrandr;
-		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(windowState->display, windowState->root);
+		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(windowState->display, windowState->core.root);
 		if (res != fpl_null) {
-			fpl__RROutput primary = xrr->XRRGetOutputPrimary(windowState->display, windowState->root);
+			fpl__RROutput primary = xrr->XRRGetOutputPrimary(windowState->display, windowState->core.root);
 			for (int i = 0; i < res->noutput && !result; ++i) {
 				fpl__RROutput outId = res->outputs[i];
 				fpl__XRROutputInfo *outInfo = xrr->XRRGetOutputInfo(windowState->display, res, outId);
@@ -25751,7 +25829,7 @@ fpl_internal bool fpl__X11FindDisplayAtPoint(const fpl__X11SubplatformState *sub
 			x11Api->XFree(screens);
 		}
 	} else {
-		fpl__X11FillDisplayInfoFromRoot(x11Api, windowState->display, windowState->root, outDisplay);
+		fpl__X11FillDisplayInfoFromRoot(x11Api, windowState->display, windowState->core.root, outDisplay);
 		result = fpl__X11RectContains(0, 0, outDisplay->virtualSize.width, outDisplay->virtualSize.height, x, y);
 	}
 	return(result);
@@ -25765,11 +25843,11 @@ fpl_platform_api bool fplGetWindowDisplay(fplDisplayInfo *outDisplay) {
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
 	fpl__X11_XWindowAttributes attribs = fplZeroInit;
-	x11Api->XGetWindowAttributes(windowState->display, windowState->window, &attribs);
+	x11Api->XGetWindowAttributes(windowState->display, windowState->core.window, &attribs);
 	int rootX = 0;
 	int rootY = 0;
 	fpl__X11_Window child = 0;
-	x11Api->XTranslateCoordinates(windowState->display, windowState->window, windowState->root, 0, 0, &rootX, &rootY, &child);
+	x11Api->XTranslateCoordinates(windowState->display, windowState->core.window, windowState->core.root, 0, 0, &rootX, &rootY, &child);
 	int centerX = rootX + attribs.width / 2;
 	int centerY = rootY + attribs.height / 2;
 	bool result = fpl__X11FindDisplayAtPoint(subplatform, windowState, centerX, centerY, outDisplay);
@@ -25800,7 +25878,7 @@ fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *modes
 	size_t result = 0;
 	if (backend == fpl__X11DisplayBackend_RandR) {
 		const fpl__XrandRApi *xrr = &subplatform->xrandr;
-		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(windowState->display, windowState->root);
+		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(windowState->display, windowState->core.root);
 		if (res != fpl_null) {
 			fpl__XRROutputInfo *match = fpl_null;
 			for (int i = 0; i < res->noutput; ++i) {
@@ -25868,7 +25946,7 @@ fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *modes
 			}
 		} else {
 			if (fplIsStringEqual("default", id)) {
-				fpl__X11FillDisplayInfoFromRoot(x11Api, windowState->display, windowState->root, &info);
+				fpl__X11FillDisplayInfoFromRoot(x11Api, windowState->display, windowState->core.root, &info);
 				found = true;
 			}
 		}
@@ -25896,16 +25974,16 @@ fpl_platform_api bool fplSetWindowFullscreenSize(const bool value, const uint32_
 	// https://stackoverflow.com/questions/10897503/opening-a-fullscreen-opengl-window
 	fpl__X11_XEvent xev = fplZeroInit;
 	xev.type = FPL__X11_ClientMessage;
-	xev.xclient.window = windowState->window;
-	xev.xclient.message_type = windowState->netWMState;
+	xev.xclient.window = windowState->core.window;
+	xev.xclient.message_type = windowState->netWM.netWMState;
 	xev.xclient.format = 32;
 	xev.xclient.data.l[0] = value ? 1 : 0; // 1 = Add, 0 = Remove
-	xev.xclient.data.l[1] = windowState->netWMStateFullscreen; // _NET_WM_STATE_FULLSCREEN
+	xev.xclient.data.l[1] = windowState->netWM.netWMStateFullscreen; // _NET_WM_STATE_FULLSCREEN
 	xev.xclient.data.l[3] = 1l; // Application source
 
 	// @TODO(final/X11): Support for changing the display resolution + refresh rate in X11
 
-	bool result = x11Api->XSendEvent(windowState->display, windowState->root, 0, FPL__X11_SubstructureRedirectMask | FPL__X11_SubstructureNotifyMask, &xev) != 0;
+	bool result = x11Api->XSendEvent(windowState->display, windowState->core.root, 0, FPL__X11_SubstructureRedirectMask | FPL__X11_SubstructureNotifyMask, &xev) != 0;
 	if (result) {
 		appState->currentSettings.window.isFullscreen = value;
 	}
@@ -25960,7 +26038,7 @@ fpl_platform_api bool fplSetWindowFullscreenRect(const bool value, const int32_t
 			fpl__X11_Atom monAtom = x11Api->XInternAtom(windowState->display, "_NET_WM_FULLSCREEN_MONITORS", FPL__X11_False);
 			fpl__X11_XEvent xev = fplZeroInit;
 			xev.type = FPL__X11_ClientMessage;
-			xev.xclient.window = windowState->window;
+			xev.xclient.window = windowState->core.window;
 			xev.xclient.message_type = monAtom;
 			xev.xclient.format = 32;
 			xev.xclient.data.l[0] = idxTL;
@@ -25968,7 +26046,7 @@ fpl_platform_api bool fplSetWindowFullscreenRect(const bool value, const int32_t
 			xev.xclient.data.l[2] = idxTL;
 			xev.xclient.data.l[3] = idxBR;
 			xev.xclient.data.l[4] = 1L;
-			x11Api->XSendEvent(windowState->display, windowState->root, 0, FPL__X11_SubstructureRedirectMask | FPL__X11_SubstructureNotifyMask, &xev);
+			x11Api->XSendEvent(windowState->display, windowState->core.root, 0, FPL__X11_SubstructureRedirectMask | FPL__X11_SubstructureNotifyMask, &xev);
 			x11Api->XFlush(windowState->display);
 		}
 	}
@@ -26001,7 +26079,7 @@ fpl_platform_api bool fplGetWindowPosition(fplWindowPosition *outPos) {
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
 	fpl__X11_XWindowAttributes attribs;
-	x11Api->XGetWindowAttributes(windowState->display, windowState->window, &attribs);
+	x11Api->XGetWindowAttributes(windowState->display, windowState->core.window, &attribs);
 	outPos->left = attribs.x;
 	outPos->top = attribs.y;
 	return(true);
@@ -26013,7 +26091,7 @@ fpl_platform_api void fplSetWindowPosition(const int32_t left, const int32_t top
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
-	x11Api->XMoveWindow(windowState->display, windowState->window, left, top);
+	x11Api->XMoveWindow(windowState->display, windowState->core.window, left, top);
 }
 
 fpl_platform_api void fplSetWindowTitle(const char *title) {
@@ -26029,13 +26107,13 @@ fpl_platform_api void fplSetWindowTitle(const char *title) {
 
 	fplCopyString(title, appState->currentSettings.window.title, fplArrayCount(appState->currentSettings.window.title));
 
-	x11Api->XChangeProperty(windowState->display, windowState->window,
-		windowState->netWMName, windowState->utf8String, 8,
+	x11Api->XChangeProperty(windowState->display, windowState->core.window,
+		windowState->netWM.netWMName, windowState->wm.utf8String, 8,
 		FPL__X11_PropModeReplace,
 		(unsigned char *)title, (int)fplGetStringLength(title));
 
-	x11Api->XChangeProperty(windowState->display, windowState->window,
-		windowState->netWMIconName, windowState->utf8String, 8,
+	x11Api->XChangeProperty(windowState->display, windowState->core.window,
+		windowState->netWM.netWMIconName, windowState->wm.utf8String, 8,
 		FPL__X11_PropModeReplace,
 		(unsigned char *)title, (int)fplGetStringLength(title));
 
@@ -26052,12 +26130,12 @@ fpl_platform_api bool fplGetClipboardText(char *dest, const uint32_t maxDestLen)
 	const fpl__X11WindowState *windowState = &appState->window.x11;
 
 	// Self-owned: just copy local buffer
-	if (x11Api->XGetSelectionOwner(windowState->display, windowState->clipboardAtom) == windowState->window) {
-		fplCopyString(windowState->clipboardOut, dest, maxDestLen);
+	if (x11Api->XGetSelectionOwner(windowState->display, windowState->clipboard.clipboardAtom) == windowState->core.window) {
+		fplCopyString(windowState->clipboard.clipboardOut, dest, maxDestLen);
 		return(true);
 	}
 
-	x11Api->XConvertSelection(windowState->display, windowState->clipboardAtom, windowState->utf8String, windowState->selectionPropAtom, windowState->window, FPL__X11_CurrentTime);
+	x11Api->XConvertSelection(windowState->display, windowState->clipboard.clipboardAtom, windowState->wm.utf8String, windowState->clipboard.selectionPropAtom, windowState->core.window, FPL__X11_CurrentTime);
 	x11Api->XFlush(windowState->display);
 
 	// Poll for SelectionNotify, timeout 500ms
@@ -26065,7 +26143,7 @@ fpl_platform_api bool fplGetClipboardText(char *dest, const uint32_t maxDestLen)
 	fplMilliseconds startMs = fplMillisecondsQuery();
 	bool received = false;
 	while ((fplMillisecondsQuery() - startMs) < 500) {
-		if (x11Api->XCheckTypedWindowEvent(windowState->display, windowState->window, FPL__X11_SelectionNotify, &ev)) {
+		if (x11Api->XCheckTypedWindowEvent(windowState->display, windowState->core.window, FPL__X11_SelectionNotify, &ev)) {
 			received = true;
 			break;
 		}
@@ -26080,9 +26158,9 @@ fpl_platform_api bool fplGetClipboardText(char *dest, const uint32_t maxDestLen)
 	unsigned long itemCount = 0;
 	unsigned long bytesAfter = 0;
 	unsigned char *data = fpl_null;
-	int status = x11Api->XGetWindowProperty(windowState->display, windowState->window, windowState->selectionPropAtom, 0L, LONG_MAX, FPL__X11_False, FPL__X11_AnyPropertyType, &actualType, &actualFormat, &itemCount, &bytesAfter, &data);
+	int status = x11Api->XGetWindowProperty(windowState->display, windowState->core.window, windowState->clipboard.selectionPropAtom, 0L, LONG_MAX, FPL__X11_False, FPL__X11_AnyPropertyType, &actualType, &actualFormat, &itemCount, &bytesAfter, &data);
 	bool result = false;
-	if (status == FPL__X11_Success && data != fpl_null && actualType != windowState->incrAtom) {
+	if (status == FPL__X11_Success && data != fpl_null && actualType != windowState->clipboard.incrAtom) {
 		size_t copyLen = (size_t)itemCount;
 		if (copyLen >= maxDestLen) {
 			copyLen = maxDestLen - 1;
@@ -26094,7 +26172,7 @@ fpl_platform_api bool fplGetClipboardText(char *dest, const uint32_t maxDestLen)
 	if (data != fpl_null) {
 		x11Api->XFree(data);
 	}
-	x11Api->XDeleteProperty(windowState->display, windowState->window, windowState->selectionPropAtom);
+	x11Api->XDeleteProperty(windowState->display, windowState->core.window, windowState->clipboard.selectionPropAtom);
 	return(result);
 }
 
@@ -26105,11 +26183,11 @@ fpl_platform_api bool fplSetClipboardText(const char *text) {
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
 	fpl__X11WindowState *windowState = &appState->window.x11;
-	size_t copied = fplCopyString(text, windowState->clipboardOut, fplArrayCount(windowState->clipboardOut));
-	windowState->clipboardOutLen = copied;
-	x11Api->XSetSelectionOwner(windowState->display, windowState->clipboardAtom, windowState->window, FPL__X11_CurrentTime);
+	size_t copied = fplCopyString(text, windowState->clipboard.clipboardOut, fplArrayCount(windowState->clipboard.clipboardOut));
+	windowState->clipboard.clipboardOutLen = copied;
+	x11Api->XSetSelectionOwner(windowState->display, windowState->clipboard.clipboardAtom, windowState->core.window, FPL__X11_CurrentTime);
 	x11Api->XFlush(windowState->display);
-	bool result = x11Api->XGetSelectionOwner(windowState->display, windowState->clipboardAtom) == windowState->window;
+	bool result = x11Api->XGetSelectionOwner(windowState->display, windowState->clipboard.clipboardAtom) == windowState->core.window;
 	return(result);
 }
 
@@ -26128,7 +26206,7 @@ fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY) {
 	int winX = 0;
 	int winY = 0;
 	unsigned int mask = 0;
-	if (x11Api->XQueryPointer(windowState->display, windowState->window, &rootRet, &childRet, &rootX, &rootY, &winX, &winY, &mask)) {
+	if (x11Api->XQueryPointer(windowState->display, windowState->core.window, &rootRet, &childRet, &rootX, &rootY, &winX, &winY, &mask)) {
 		*outX = rootX;
 		*outY = rootY;
 		return(true);
@@ -28117,7 +28195,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_X11OpenGL_P
 	fpl__X11VideoOpenGLApi *glApi = &nativeBackend->api;
 
 	fpl__X11_Display *display = nativeWindowState->display;
-	fpl__X11_Window window = nativeWindowState->window;
+	fpl__X11_Window window = nativeWindowState->core.window;
 	int screen = nativeWindowState->screen;
 
 	FPL_LOG_DEBUG(FPL__MODULE_GLX, "Query GLX version for display '%p'", display);
@@ -28226,7 +28304,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_X11OpenGL_P
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Using visual: %p", visualInfo->visual);
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Using color depth: %d", visualInfo->depth);
 
-		nativeWindowState->visual = visualInfo->visual;
+		nativeWindowState->core.visual = visualInfo->visual;
 		nativeWindowState->colorDepth = visualInfo->depth;
 
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Release visual info '%p'", visualInfo);
@@ -28235,7 +28313,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_X11OpenGL_P
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Using existing visual info: %p", nativeBackend->visualInfo);
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Using visual: %p", nativeBackend->visualInfo->visual);
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Using color depth: %d", nativeBackend->visualInfo->depth);
-		nativeWindowState->visual = nativeBackend->visualInfo->visual;
+		nativeWindowState->core.visual = nativeBackend->visualInfo->visual;
 		nativeWindowState->colorDepth = nativeBackend->visualInfo->depth;
 	} else {
 		FPL__ERROR(FPL__MODULE_GLX, "No visual info or frame buffer config defined!");
@@ -28281,7 +28359,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Init
 	fpl__X11VideoOpenGLApi *glApi = &nativeBackend->api;
 
 	fpl__X11_Display *display = nativeWindowState->display;
-	fpl__X11_Window window = nativeWindowState->window;
+	fpl__X11_Window window = nativeWindowState->core.window;
 
 	//
 	// Create legacy context
@@ -28406,7 +28484,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Init
 
 	backend->surface.window.x11.display = (fpl__X11_Display *)display;
 	backend->surface.window.x11.window = (fpl__X11_Window)window;
-	backend->surface.window.x11.visual = (fpl__X11_Visual *)nativeWindowState->visual;
+	backend->surface.window.x11.visual = (fpl__X11_Visual *)nativeWindowState->core.visual;
 	backend->surface.window.x11.screen = nativeWindowState->screen;
 	backend->surface.opengl.renderingContext = (void *)activeRenderingContext;
 
@@ -28456,7 +28534,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__VideoBackend_X11OpenGL_Present
 	const fpl__VideoBackendX11OpenGL *nativeBackend = (fpl__VideoBackendX11OpenGL *)backend;
 	const fpl__X11WindowState *x11WinState = &appState->window.x11;
 	const fpl__X11VideoOpenGLApi *glApi = &nativeBackend->api;
-	glApi->glXSwapBuffers(x11WinState->display, x11WinState->window);
+	glApi->glXSwapBuffers(x11WinState->display, x11WinState->core.window);
 }
 
 fpl_internal fpl__VideoContext fpl__VideoBackend_X11OpenGL_Construct(void) {
@@ -28511,24 +28589,24 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11Software_In
 	const fplVideoBackBuffer *backbuffer = &data->backbuffer;
 
 	// Based on: https://bbs.archlinux.org/viewtopic.php?id=225741
-	nativeBackend->graphicsContext = x11Api->XCreateGC(nativeWindowState->display, nativeWindowState->window, 0, 0);
+	nativeBackend->graphicsContext = x11Api->XCreateGC(nativeWindowState->display, nativeWindowState->core.window, 0, 0);
 	if (nativeBackend->graphicsContext == fpl_null) {
 		return false;
 	}
 
-	nativeBackend->buffer = x11Api->XCreateImage(nativeWindowState->display, nativeWindowState->visual, 24, FPL__X11_ZPixmap, 0, (char *)backbuffer->pixels, backbuffer->width, backbuffer->height, 32, (int)backbuffer->lineWidth);
+	nativeBackend->buffer = x11Api->XCreateImage(nativeWindowState->display, nativeWindowState->core.visual, 24, FPL__X11_ZPixmap, 0, (char *)backbuffer->pixels, backbuffer->width, backbuffer->height, 32, (int)backbuffer->lineWidth);
 	if (nativeBackend->buffer == fpl_null) {
 		fpl__VideoBackend_X11Software_Shutdown(appState, windowState, backend);
 		return false;
 	}
 
 	// Initial draw pixels to the window
-	x11Api->XPutImage(nativeWindowState->display, nativeWindowState->window, nativeBackend->graphicsContext, nativeBackend->buffer, 0, 0, 0, 0, backbuffer->width, backbuffer->height);
+	x11Api->XPutImage(nativeWindowState->display, nativeWindowState->core.window, nativeBackend->graphicsContext, nativeBackend->buffer, 0, 0, 0, 0, backbuffer->width, backbuffer->height);
 	x11Api->XSync(nativeWindowState->display, FPL__X11_False);
 
 	backend->surface.window.x11.display = (fpl__X11_Display *)nativeWindowState->display;
-	backend->surface.window.x11.window = (fpl__X11_Window)nativeWindowState->window;
-	backend->surface.window.x11.visual = (fpl__X11_Visual *)nativeWindowState->visual;
+	backend->surface.window.x11.window = (fpl__X11_Window)nativeWindowState->core.window;
+	backend->surface.window.x11.visual = (fpl__X11_Visual *)nativeWindowState->core.visual;
 	backend->surface.window.x11.screen = nativeWindowState->screen;
 
 	return (true);
@@ -28551,7 +28629,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__VideoBackend_X11Software_Prese
 	const fpl__X11WindowState *x11WinState = &appState->window.x11;
 	const fpl__X11Api *x11Api = &appState->x11.api;
 	const fplVideoBackBuffer *backbuffer = &data->backbuffer;
-	x11Api->XPutImage(x11WinState->display, x11WinState->window, nativeBackend->graphicsContext, nativeBackend->buffer, 0, 0, 0, 0, backbuffer->width, backbuffer->height);
+	x11Api->XPutImage(x11WinState->display, x11WinState->core.window, nativeBackend->graphicsContext, nativeBackend->buffer, 0, 0, 0, 0, backbuffer->width, backbuffer->height);
 	x11Api->XSync(x11WinState->display, FPL__X11_False);
 }
 
@@ -29443,7 +29521,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Vulkan_Initial
 	fpl__VkXlibSurfaceCreateInfoKHR creationInfo = fplZeroInit;
 	creationInfo.sType = FPL__VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR;
 	creationInfo.dpy = (fpl__X11_Display *)windowState->x11.display;
-	creationInfo.window = windowState->x11.window;
+	creationInfo.window = windowState->x11.core.window;
 
 	FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Create Vulkan X11 Surface for display '%p', window '%d' and Vulkan instance '%p'", creationInfo.dpy, creationInfo.window, nativeBackend->instanceHandle);
 	fpl__VkResult creationResult = (fpl__VkResult)createProc(nativeBackend->instanceHandle, &creationInfo, nativeBackend->allocator, &surfaceHandle);
@@ -29467,9 +29545,9 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Vulkan_Initial
 	backend->surface.window.win32.deviceContext = windowState->win32.deviceContext;
 #elif defined(FPL_SUBPLATFORM_X11)
 	backend->surface.window.x11.display = (fpl__X11_Display *)windowState->x11.display;
-	backend->surface.window.x11.window = windowState->x11.window;
+	backend->surface.window.x11.window = windowState->x11.core.window;
 	backend->surface.window.x11.screen = windowState->x11.screen;
-	backend->surface.window.x11.visual = (fpl__X11_Visual *)windowState->x11.visual;
+	backend->surface.window.x11.visual = (fpl__X11_Visual *)windowState->x11.core.visual;
 #endif
 
 	return(true);
