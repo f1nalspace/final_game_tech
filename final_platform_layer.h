@@ -186,6 +186,7 @@ SOFTWARE.
 	- Fixed[#192]: fplStringFormat* is not invariant, resulting in 1,54 vs 1.54
 
 	#### Input
+	- Fixed[#191]: X11 keyboard mapping table initialization was not respecting XDisplayKeycodes()
 	- Fixed[#193]: Linux joystick polling hicks up blocks IO every second by default #193
 
 	#### X11
@@ -12536,6 +12537,8 @@ typedef FPL__FUNC_X11_XGetWindowAttributes(fpl__func_x11_XGetWindowAttributes);
 typedef FPL__FUNC_X11_XResizeWindow(fpl__func_x11_XResizeWindow);
 #define FPL__FUNC_X11_XMoveWindow(name) int name(fpl__X11_Display *display, fpl__X11_Window w, int x, int y)
 typedef FPL__FUNC_X11_XMoveWindow(fpl__func_x11_XMoveWindow);
+#define FPL__FUNC_X11_XDisplayKeycodes(name) fpl__X11_KeySym *name(fpl__X11_Display *display, int* ret_min_keycode, int* ret_max_keycode)
+typedef FPL__FUNC_X11_XDisplayKeycodes(fpl__func_x11_XDisplayKeycodes);
 #define FPL__FUNC_X11_XGetKeyboardMapping(name) fpl__X11_KeySym *name(fpl__X11_Display *display, fpl__X11_KeyCode first_keycode, int keycode_count, int *keysyms_per_keycode_return)
 typedef FPL__FUNC_X11_XGetKeyboardMapping(fpl__func_x11_XGetKeyboardMapping);
 #define FPL__FUNC_X11_XLookupString(name) int name(fpl__X11_XKeyEvent* event_struct, char* buffer_return, int bytes_buffer, fpl__X11_KeySym* keysym_return, fpl__X11_XComposeStatus* status_in_out)
@@ -12663,6 +12666,7 @@ extern FPL__FUNC_X11_XFreeColormap(XFreeColormap);
 extern FPL__FUNC_X11_XFreeCursor(XFreeCursor);
 extern FPL__FUNC_X11_XFreePixmap(XFreePixmap);
 extern FPL__FUNC_X11_XGetImage(XGetImage);
+extern FPL__FUNC_X11_XDisplayKeycodes(XDisplayKeycodes);
 extern FPL__FUNC_X11_XGetKeyboardMapping(XGetKeyboardMapping);
 extern FPL__FUNC_X11_XGetSelectionOwner(XGetSelectionOwner);
 extern FPL__FUNC_X11_XGetWMNormalHints(XGetWMNormalHints);
@@ -12735,6 +12739,7 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XGetWindowAttributes *XGetWindowAttributes;
 	fpl__func_x11_XResizeWindow *XResizeWindow;
 	fpl__func_x11_XMoveWindow *XMoveWindow;
+	fpl__func_x11_XDisplayKeycodes* XDisplayKeycodes;
 	fpl__func_x11_XGetKeyboardMapping *XGetKeyboardMapping;
 	fpl__func_x11_XLookupString *XLookupString;
 	fpl__func_x11_XOpenIM *XOpenIM;
@@ -12832,9 +12837,9 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGetWindowAttributes, XGetWindowAttributes);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XResizeWindow, XResizeWindow);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XMoveWindow, XMoveWindow);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XDisplayKeycodes, XDisplayKeycodes);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGetKeyboardMapping, XGetKeyboardMapping);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XLookupString, XLookupString);
-			// Input-method (UTF-8 text input) functions are required: they have extern declarations for FPL_NO_RUNTIME_LINKING builds.
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XOpenIM, XOpenIM);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCloseIM, XCloseIM);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCreateIC, XCreateIC);
@@ -24374,12 +24379,17 @@ fpl_internal void fpl__X11InitInputMethod(const fpl__X11Api *x11Api, fpl__X11Win
 
 fpl_internal void fpl__X11BuildKeyMap(const fpl__X11Api *x11Api, fpl__PlatformAppState *appState, fpl__X11WindowState *windowState) {
 	fplAssert(fplArrayCount(appState->window.keyMap) >= 256);
-	// @NOTE(final): Valid key range for XLib is 8 to 255
+
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Build X11 Keymap");
 	fplClearStruct(appState->window.keyMap);
-	for (int keyCode = 8; keyCode <= 255; ++keyCode) {
+
+	// @NOTE(final): Init key range to 8 to 255, but note that these may be overritten by XDisplayKeycodes()
+	int minKeycode=8, maxKeycode=255;
+	x11Api->XDisplayKeycodes(windowState->display, &minKeycode, &maxKeycode);
+
+	for (int keyCode = minKeycode; keyCode <= maxKeycode; ++keyCode) {
 		int dummy = 0;
-		fpl__X11_KeySym *keySyms = x11Api->XGetKeyboardMapping(windowState->display, keyCode, 1, &dummy);
+		fpl__X11_KeySym *keySyms = x11Api->XGetKeyboardMapping(windowState->display, (fpl__X11_KeyCode)keyCode, 1, &dummy);
 		fpl__X11_KeySym keySym = keySyms[0];
 		fplKey mappedKey = fpl__X11TranslateKeySymbol(keySym);
 		appState->window.keyMap[keyCode] = mappedKey;
