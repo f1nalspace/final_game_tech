@@ -13077,6 +13077,8 @@ typedef struct fpl__X11WindowState {
 	fpl__X11Xdnd xdnd;
 	fpl__X11_Window root;
 	fpl__X11_Window window;
+	fpl__X11_XIM xim;   // input method (may be 0 if unavailable)
+	fpl__X11_XIC xic;   // input context (may be 0 if unavailable)
 	fpl__X11_Visual *visual;
 	fpl__X11_Atom wmProtocols;
 	fpl__X11_Atom wmDeleteWindow;
@@ -23621,6 +23623,22 @@ fpl_internal bool fpl__X11InitSubplatform(fpl__X11SubplatformState *subplatform)
 fpl_internal void fpl__X11ReleaseWindow(const fpl__X11SubplatformState *subplatform, fpl__X11WindowState *windowState) {
 	fplAssert((subplatform != fpl_null) && (windowState != fpl_null));
 	const fpl__X11Api *x11Api = &subplatform->api;
+	// Tear down the input method before destroying the window/display to avoid use-after-free inside Xlib.
+	if (windowState->xic != 0) {
+		if (x11Api->XUnsetICFocus != fpl_null) {
+			x11Api->XUnsetICFocus(windowState->xic);
+		}
+		if (x11Api->XDestroyIC != fpl_null) {
+			x11Api->XDestroyIC(windowState->xic);
+		}
+		windowState->xic = 0;
+	}
+	if (windowState->xim != 0) {
+		if (x11Api->XCloseIM != fpl_null) {
+			x11Api->XCloseIM(windowState->xim);
+		}
+		windowState->xim = 0;
+	}
 	if (windowState->invisibleCursor != 0) {
 		x11Api->XFreeCursor(windowState->display, windowState->invisibleCursor);
 		windowState->invisibleCursor = 0;
@@ -24118,6 +24136,40 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 
 	x11Api->XMapWindow(windowState->display, windowState->window);
 	x11Api->XFlush(windowState->display);
+
+	// Enable UTF-8 capable text input via X Input Method.
+	// The C locale is already configured by the POSIX subplatform init; we only set
+	// the X11 locale modifiers here. XSetLocaleModifiers must run before XOpenIM,
+	// otherwise Xutf8LookupString can not produce correct UTF-8 for non-ASCII keys.
+	// All IM functions are loaded optionally (null under FPL_NO_RUNTIME_LINKING), so
+	// every call is guarded; when unavailable we silently fall back to XLookupString.
+	windowState->xim = 0;
+	windowState->xic = 0;
+	if (x11Api->XOpenIM != fpl_null && x11Api->XCreateIC != fpl_null && x11Api->Xutf8LookupString != fpl_null) {
+		if (x11Api->XSetLocaleModifiers != fpl_null) {
+			x11Api->XSetLocaleModifiers("");
+		}
+		fpl__X11_XIM xim = x11Api->XOpenIM(windowState->display, fpl_null, fpl_null, fpl_null);
+		if (xim != fpl_null) {
+			windowState->xim = xim;
+			const long inputStyle = FPL__X11_XIMPreeditNothing | FPL__X11_XIMStatusNothing;
+			fpl__X11_XIC xic = x11Api->XCreateIC(xim,
+				FPL__X11_XNInputStyle, inputStyle,
+				FPL__X11_XNClientWindow, windowState->window,
+				FPL__X11_XNFocusWindow, windowState->window,
+				(void *)fpl_null);
+			if (xic != fpl_null) {
+				windowState->xic = xic;
+				if (x11Api->XSetICFocus != fpl_null) {
+					x11Api->XSetICFocus(xic);
+				}
+			} else {
+				FPL__WARNING(FPL__MODULE_X11, "Failed creating X11 input context (XIC); falling back to XLookupString");
+			}
+		} else {
+			FPL__WARNING(FPL__MODULE_X11, "Failed opening X11 input method (XIM); falling back to XLookupString");
+		}
+	}
 
 	fplAssert(fplArrayCount(appState->window.keyMap) >= 256);
 
