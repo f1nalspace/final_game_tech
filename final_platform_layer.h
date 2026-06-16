@@ -12333,6 +12333,7 @@ typedef enum fpl__PosixLocaleFlags {
 	// LC_TIME is set
 	fpl__PosixLocaleFlags_Time = 1 << 2,
 } fpl__PosixLocaleFlags;
+FPL_ENUM_AS_FLAGS_OPERATORS(fpl__PosixLocaleFlags);
 
 typedef struct fpl__PosixPreservedLocales {
 	fpl__PosixLocaleName allName;
