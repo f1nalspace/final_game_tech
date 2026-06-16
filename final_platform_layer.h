@@ -327,6 +327,7 @@ SOFTWARE.
 	- Fixed: [X11] _NET_WM_ICON pixel packing promoted uint8_t operands to int before shifting — alpha/red values >= 128 overflowed the signed int (UB) and could corrupt the icon; bytes are now cast to unsigned long first
 	- Fixed[#58]: [X11] Window had no WM_CLASS set — GNOME/mutter treated it as an orphan and showed a generic icon and "Unknown" as name; WM_CLASS is now set from the window title via XSetClassHint
 	- Fixed[#181]: [X11] fpl__X11ParseUriPaths does not do any URI decoding, resulting in most-likely unuseable file paths
+	- Fixed[#194]: [X11] Text input produced wrong/garbage UTF-8 — now uses Xutf8LookupString via XIM/XIC (with XLookupString fallback) and supports dead-key/compose input
 	- Changed: [X11] Window size and position are no longer overwritten on creation
 	- Changed: [X11] Default window size changed to 720p (1280x720)
 	- New: [X11] Full support for FPL_NO_PLATFORM_INCLUDES and FPL_OPAQUE_HANDLES - no X11 headers are required anymore
@@ -24421,15 +24422,47 @@ fpl_internal void *fpl__X11ParseUriPaths(const char *text, size_t *size, int *co
 }
 
 fpl_internal void fpl__X11HandleTextInputEvent(const fpl__X11Api *x11Api, fpl__PlatformWindowState *winState, const uint64_t keyCode, fpl__X11_XEvent *ev) {
-	char buf[32];
+	char buf[32] = fplZeroInit;
+	const int maxTextLen = (int)sizeof(buf) - 1;   // reserve one byte for the NUL terminator
 	fpl__X11_KeySym keysym = 0;
-	if (x11Api->XLookupString(&ev->xkey, buf, 32, &keysym, NULL) != FPL__X11_NoSymbol) {
-		wchar_t wideBuffer[4] = fplZeroInit;
-		fplUTF8StringToWideString(buf, fplGetStringLength(buf), wideBuffer, fplArrayCount(wideBuffer));
-		uint32_t textCode = (uint32_t)wideBuffer[0];
-		if (textCode > 0) {
-			fpl__HandleKeyboardInputEvent(winState, keyCode, textCode);
+	int textLen = 0;
+	bool isUtf8 = false;
+
+	fpl__X11WindowState *x11WinState = &winState->x11;
+	if (x11WinState->xic != 0 && x11Api->Xutf8LookupString != fpl_null) {
+		fpl__X11_Status status = 0;
+		textLen = x11Api->Xutf8LookupString(x11WinState->xic, &ev->xkey, buf, maxTextLen, &keysym, &status);
+		// status tells us what buf holds; only XLookupChars / XLookupBoth yield committed text
+		if (status == FPL__X11_XLookupChars || status == FPL__X11_XLookupBoth) {
+			isUtf8 = true;
+		} else {
+			textLen = 0;   // XLookupKeySym / XLookupNone / XBufferOverflow -> no committed text
 		}
+	} else {
+		// Fallback: no input method. XLookupString returns locale/Latin-1 bytes, not UTF-8.
+		int n = x11Api->XLookupString(&ev->xkey, buf, maxTextLen, &keysym, fpl_null);
+		if (n > 0) {
+			textLen = n;
+			isUtf8 = false;
+		}
+	}
+
+	if (textLen <= 0) {
+		return;
+	}
+	buf[textLen] = '\0';
+
+	wchar_t wideBuffer[4] = fplZeroInit;
+	if (isUtf8) {
+		fplUTF8StringToWideString(buf, (size_t)textLen, wideBuffer, fplArrayCount(wideBuffer));
+	} else {
+		// Latin-1 fallback: each returned byte is a Unicode code point in 0..255 directly.
+		unsigned char b = (unsigned char)buf[0];
+		wideBuffer[0] = (wchar_t)b;
+	}
+	uint32_t textCode = (uint32_t)wideBuffer[0];
+	if (textCode > 0) {
+		fpl__HandleKeyboardInputEvent(winState, keyCode, textCode);
 	}
 }
 #endif // FPL__ENABLE_WINDOW
@@ -24609,6 +24642,12 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Keyboard)) return true;
 			int keyState = ev->xkey.state;
 			uint64_t keyCode = (uint64_t)ev->xkey.keycode;
+			// Input-method committed text (dead-key / compose result) is delivered as a synthetic KeyPress with keycode 0.
+			// There is no physical key to debounce or emit a button event for, so just deliver the committed text.
+			if (keyCode == 0) {
+				fpl__X11HandleTextInputEvent(x11Api, winState, keyCode, ev);
+				return true;
+			}
 			fpl__X11_Time keyTime = ev->xkey.time;
 			fpl__X11_Time lastPressTime = winState->keyPressTimes[keyCode];
 			fpl__X11_Time diffTime = keyTime - lastPressTime;
@@ -24713,6 +24752,12 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 
 	if (appState->currentSettings.window.callbacks.eventCallback != fpl_null) {
 		appState->currentSettings.window.callbacks.eventCallback(fplGetPlatformType(), x11WinState, ev, appState->currentSettings.window.callbacks.eventUserData);
+	}
+
+	// Let the input method consume events it needs (dead keys, compose sequences).
+	// With no XIM present XFilterEvent returns False, so nothing is swallowed.
+	if (x11Api->XFilterEvent != fpl_null && x11Api->XFilterEvent(ev, FPL__X11_None)) {
+		return;
 	}
 
 	switch (ev->type) {
