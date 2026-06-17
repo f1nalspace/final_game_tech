@@ -14,6 +14,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2026-06-17
+	- Adjusted tests to match feature that unlimited threads can be created
+
 	## 2026-05-06
 	- Converted from C++ to C99
 	- Removed AssertEquals<T> templates in favor of type-specific functions
@@ -869,74 +872,157 @@ static void ThreadLimitThreeSecProc(const fplThreadHandle *context, void *opaque
 	fplThreadSleep(3000);
 }
 
-static void ThreadLimits(const size_t overshoot) {
+// Thread storage is no longer bounded by a fixed FPL_MAX_THREAD_COUNT array, instead threads
+// are stored in a growable bucket list. The 'extra' parameter creates threads beyond a single
+// bucket so multiple buckets get exercised. All creations must succeed.
+static void ThreadStorageTest(const size_t extra) {
 	ftLine();
-	ftMsg("Thread limits test with overshoot of '%zu'\n", overshoot);
+	ftMsg("Thread storage test with '%zu' threads beyond one bucket\n", extra);
 
 	{
 		size_t usedThreadCount = fplGetUsedThreadCount();
-		size_t availableThreadCount = fplGetAvailableThreadCount();
-		ftMsg("Used/Available threads initial %zu/%zu\n", usedThreadCount, availableThreadCount);
+		ftMsg("Used threads initial %zu\n", usedThreadCount);
 		ftAssertSizeEquals(0, usedThreadCount);
-		ftAssertSizeEquals(FPL_MAX_THREAD_COUNT, availableThreadCount);
 
 		fplThreadHandle *oneThread = fplThreadCreate(ThreadLimitThreeSecProc, fpl_null);
-		usedThreadCount = fplGetUsedThreadCount();
-		availableThreadCount = fplGetAvailableThreadCount();
-		ftMsg("Used/Available threads with one active thread %zu/%zu\n", usedThreadCount, availableThreadCount);
-		ftAssertSizeEquals(1, usedThreadCount);
-		ftAssertSizeEquals(FPL_MAX_THREAD_COUNT - 1, availableThreadCount);
+		ftIsNotNull(oneThread);
+		size_t usedWithOne = fplGetUsedThreadCount();
+		size_t availableWithOne = fplGetAvailableThreadCount();
+		size_t totalWithOne = fplGetTotalThreadCount();
+		ftMsg("Used/Available/Total threads with one active thread %zu/%zu/%zu\n", usedWithOne, availableWithOne, totalWithOne);
+		ftAssertSizeEquals(1, usedWithOne);
+		// At least one bucket exists now and used + available must account for every managed slot
+		ftIsTrue(totalWithOne >= 1);
+		ftAssertSizeEquals(totalWithOne, usedWithOne + availableWithOne);
 		fplThreadWaitForOne(oneThread, 4000);
 
-		usedThreadCount = fplGetUsedThreadCount();
-		availableThreadCount = fplGetAvailableThreadCount();
-		ftMsg("Used/Available threads after single thread is done %zu/%zu\n", usedThreadCount, availableThreadCount);
-		ftAssertSizeEquals(0, usedThreadCount);
-		ftAssertSizeEquals(FPL_MAX_THREAD_COUNT, availableThreadCount);
+		size_t usedAfterDone = fplGetUsedThreadCount();
+		ftMsg("Used threads after single thread is done %zu\n", usedAfterDone);
+		ftAssertSizeEquals(0, usedAfterDone);
 	}
 
-	size_t threadCount = FPL_MAX_THREAD_COUNT + overshoot;
+	// Create more threads than a single bucket holds, every single one must be created (no fixed cap anymore)
+	size_t threadCount = FPL_MAX_THREAD_COUNT + extra;
 	ThreadLimitData *datas = (ThreadLimitData *)fplMemoryAllocate(sizeof(ThreadLimitData) * threadCount);
 	for (size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
 		ThreadLimitData *data = &datas[threadIndex];
 		bool signalInitialized = fplSignalInit(&data->signal, fplSignalValue_Unset);
 		ftIsTrue(signalInitialized);
 		data->handle = fplThreadCreate(ThreadLimitThreadProc, data);
-	}
-	for (size_t threadIndex = 0; threadIndex < threadCount - overshoot; ++threadIndex) {
-		ThreadLimitData *data = &datas[threadIndex];
 		ftIsNotNull(data->handle);
 	}
-	for (size_t threadIndex = threadCount - overshoot; threadIndex < threadCount; ++threadIndex) {
-		ThreadLimitData *data = &datas[threadIndex];
-		ftIsNull(data->handle);
-	}
+	size_t usedAll = fplGetUsedThreadCount();
+	size_t totalAll = fplGetTotalThreadCount();
+	ftMsg("Used/Total threads with %zu active threads %zu/%zu\n", threadCount, usedAll, totalAll);
+	ftAssertSizeEquals(threadCount, usedAll);
+	ftIsTrue(totalAll >= threadCount);
+
 	for (size_t signalIndex = 0; signalIndex < threadCount; ++signalIndex) {
 		ThreadLimitData *data = &datas[signalIndex];
 		fplSignalSet(&data->signal);
 	}
-	fplThreadWaitForAll(&datas[0].handle, threadCount - overshoot, sizeof(ThreadLimitData), FPL_TIMEOUT_INFINITE);
-	for (size_t threadIndex = 0; threadIndex < (threadCount - overshoot); ++threadIndex) {
+	// Wait per-thread, threadCount can exceed FPL_MAX_THREAD_COUNT which is the limit for a single multi-wait call.
+	for (size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
 		ThreadLimitData *data = &datas[threadIndex];
-		//fplThreadTerminate(data->handle);
+		fplThreadWaitForOne(data->handle, FPL_TIMEOUT_INFINITE);
+	}
+	size_t usedAfterAll = fplGetUsedThreadCount();
+	ftAssertSizeEquals(0, usedAfterAll);
+	for (size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
+		ThreadLimitData *data = &datas[threadIndex];
 		fplSignalDestroy(&data->signal);
 	}
 	fplMemoryFree(datas);
+
+	// Slot reuse, all threads have stopped so creating again must reuse slots and not grow the total
+	{
+		size_t totalBeforeReuse = fplGetTotalThreadCount();
+		fplThreadHandle *reuseThread = fplThreadCreate(EmptyThreadproc, fpl_null);
+		ftIsNotNull(reuseThread);
+		fplThreadWaitForOne(reuseThread, FPL_TIMEOUT_INFINITE);
+		size_t totalAfterReuse = fplGetTotalThreadCount();
+		ftMsg("Total threads before/after reuse %zu/%zu\n", totalBeforeReuse, totalAfterReuse);
+		ftAssertSizeEquals(totalBeforeReuse, totalAfterReuse);
+	}
+}
+
+// Hammers thread creation and teardown from multiple threads at once, regression for the
+// find-and-reserve race where two concurrent creates could be handed the same thread slot.
+typedef struct ConcurrentCreatorData {
+	volatile uint32_t *createFailures;
+	volatile uint32_t *workersRun;
+	size_t threadsPerCreator;
+} ConcurrentCreatorData;
+
+static void ConcurrentTinyWorkerProc(const fplThreadHandle *context, void *opaque) {
+	(void)context;
+	ConcurrentCreatorData *data = (ConcurrentCreatorData *)opaque;
+	fplAtomicFetchAndAddU32(data->workersRun, 1);
+}
+
+static void ConcurrentCreatorProc(const fplThreadHandle *context, void *opaque) {
+	(void)context;
+	ConcurrentCreatorData *data = (ConcurrentCreatorData *)opaque;
+	for (size_t workerIndex = 0; workerIndex < data->threadsPerCreator; ++workerIndex) {
+		fplThreadHandle *worker = fplThreadCreate(ConcurrentTinyWorkerProc, data);
+		if (worker == fpl_null) {
+			fplAtomicFetchAndAddU32(data->createFailures, 1);
+			continue;
+		}
+		fplThreadWaitForOne(worker, FPL_TIMEOUT_INFINITE);
+	}
+}
+
+static void ThreadConcurrentCreateTest(const size_t creatorCount, const size_t threadsPerCreator) {
+	ftLine();
+	ftMsg("Concurrent thread create/teardown test, %zu creators x %zu threads\n", creatorCount, threadsPerCreator);
+
+	volatile uint32_t createFailures = 0;
+	volatile uint32_t workersRun = 0;
+	ConcurrentCreatorData sharedData = fplZeroInit;
+	sharedData.createFailures = &createFailures;
+	sharedData.workersRun = &workersRun;
+	sharedData.threadsPerCreator = threadsPerCreator;
+
+	fplThreadHandle **creators = (fplThreadHandle **)fplMemoryAllocate(sizeof(fplThreadHandle *) * creatorCount);
+	for (size_t creatorIndex = 0; creatorIndex < creatorCount; ++creatorIndex) {
+		creators[creatorIndex] = fplThreadCreate(ConcurrentCreatorProc, &sharedData);
+		ftIsNotNull(creators[creatorIndex]);
+	}
+	fplThreadWaitForAll(&creators[0], creatorCount, sizeof(fplThreadHandle *), FPL_TIMEOUT_INFINITE);
+
+	uint32_t totalWorkers = fplAtomicLoadU32(&workersRun);
+	uint32_t totalFailures = fplAtomicLoadU32(&createFailures);
+	size_t usedAtEnd = fplGetUsedThreadCount();
+	ftMsg("Workers run %u, create failures %u, used at end %zu\n", totalWorkers, totalFailures, usedAtEnd);
+	ftAssertU32Equals(0, totalFailures);
+	ftAssertU32Equals((uint32_t)(creatorCount * threadsPerCreator), totalWorkers);
+	ftAssertSizeEquals(0, usedAtEnd);
+
+	fplMemoryFree(creators);
 }
 
 static void TestThreading(void) {
 	if (fplPlatformInit(fplInitFlags_None, fpl_null)) {
 		//
-		// Threading limits
+		// Thread storage (unbounded, bucketed) and counts
 		//
 		{
-			ThreadLimits(0);
-			ThreadLimits(1);
-			ThreadLimits(2);
-			ThreadLimits(4);
-			ThreadLimits(8);
-			ThreadLimits(16);
-			ThreadLimits(32);
+			ThreadStorageTest(0);
+			ThreadStorageTest(1);
+			ThreadStorageTest(2);
+			ThreadStorageTest(4);
+			ThreadStorageTest(8);
+			ThreadStorageTest(16);
+			ThreadStorageTest(32);
+		}
+
+		//
+		// Concurrent thread create/teardown (find-and-reserve race regression)
+		//
+		{
+			ThreadConcurrentCreateTest(4, 50);
+			ThreadConcurrentCreateTest(8, 100);
 		}
 
 		//

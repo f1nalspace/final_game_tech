@@ -292,9 +292,15 @@ SOFTWARE.
 	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
 
 	#### Threading
+	- New: Added function fplGetTotalThreadCount() that returns the number of thread slots currently managed by the bucket system
 	- New: [Unix] Added struct fplUnixSignalEvent
 	- New: [Unix] Implemented fplSignal* for Unix/BSD
+	- Changed: Internal thread storage is no longer a fixed array of FPL_MAX_THREAD_COUNT, threads are stored in a growable bucket list so the number of live threads is bounded only by OS/process limits (FPL_MAX_THREAD_COUNT is now the per-bucket capacity)
+	- Changed: Added macro FPL_MAX_THREAD_WAIT_COUNT for the per-call limit of fplThreadWaitForAll/Any (the thread wait helpers no longer reuse FPL_MAX_THREAD_COUNT which is now only the storage bucket size)
+	- Changed: Renamed macro FPL_MAX_SIGNAL_COUNT to FPL_MAX_SIGNAL_WAIT_COUNT, since signals are caller-owned and never stored by the library the value only ever bounded a single fplSignalWaitForAll/Any call (FPL_MAX_SIGNAL_COUNT is kept as a deprecated alias)
 	- Changed: [POSIX] `sched_getscheduler` POSIX standard coverage check
+	- Fixed: Two concurrent fplThreadCreate calls could be handed the same thread slot, the free slot is now found and reserved atomically under a lock
+	- Fixed: [Win32] A failed CreateThread leaked its reserved thread slot (it was never reset to Stopped)
 	- Removed: [POSIX] Removed unused pthread_setschedprio loader/typedef/API-table entry (not exported by FreeBSD libthr, never called by FPL)
 	- Fixed: [POSIX] Fixed pthread fpl__POSIXSemaphoreHandle was not used
 	- Fixed: [POSIX] fpl__PThreadLoadApi fails on missing pthread library in FreeBSD
@@ -7639,8 +7645,16 @@ fpl_common_api fplThreadState fplGetThreadState(fplThreadHandle *thread);
 fpl_common_api const fplThreadHandle *fplGetMainThread(void);
 
 /**
+* @brief Gets the total number of thread slots currently managed by the library.
+* @return Returns the number of thread slots allocated across all internal buckets.
+* @note This grows on demand as threads are created and is not a hard limit.
+*/
+fpl_common_api size_t fplGetTotalThreadCount(void);
+
+/**
 * @brief Gets the number of available threads.
 * @return Returns the number of available threads.
+* @note With dynamic thread storage this only reflects free slots in already-allocated buckets, more can always be created.
 */
 fpl_common_api size_t fplGetAvailableThreadCount(void);
 
@@ -14121,32 +14135,140 @@ fpl_internal void fpl__ArgumentMaxError(const char *funcName, const int line, co
 	}
 
 #if !defined(FPL_MAX_THREAD_COUNT)
-	// Maximum number of active threads you can have in your process
+	// Number of thread slots per internal bucket, the number of live threads is no longer limited to this,
+	// because the thread storage grows by appending more buckets on demand.
 #	define FPL_MAX_THREAD_COUNT 256
 #endif
 
-#if !defined(FPL_MAX_SIGNAL_COUNT)
-	// Maximum number of active signals you can wait for
-#	define FPL_MAX_SIGNAL_COUNT 256
+#if !defined(FPL_MAX_THREAD_WAIT_COUNT)
+	// Maximum number of threads you can wait for in a single fplThreadWaitForAll/fplThreadWaitForAny call.
+	// This is a per-call limit only and has nothing to do with how many threads you can create.
+#	define FPL_MAX_THREAD_WAIT_COUNT 256
 #endif
+
+// @DEPRECATED(final): FPL_MAX_SIGNAL_COUNT was a misnomer, signals are caller-owned and never stored by the
+// library, so the value only ever bounded a single multi-wait call. Honor a legacy user override here.
+#if defined(FPL_MAX_SIGNAL_COUNT) && !defined(FPL_MAX_SIGNAL_WAIT_COUNT)
+#	define FPL_MAX_SIGNAL_WAIT_COUNT FPL_MAX_SIGNAL_COUNT
+#endif
+
+#if !defined(FPL_MAX_SIGNAL_WAIT_COUNT)
+	// Maximum number of signals you can wait for in a single fplSignalWaitForAll/fplSignalWaitForAny call.
+	// On Windows the effective ceiling is MAXIMUM_WAIT_OBJECTS (64), because WaitForMultipleObjects is used.
+#	define FPL_MAX_SIGNAL_WAIT_COUNT 256
+#endif
+
+#if !defined(FPL_MAX_SIGNAL_COUNT)
+	// @DEPRECATED(final): Kept only as an alias for source compatibility, use FPL_MAX_SIGNAL_WAIT_COUNT instead.
+#	define FPL_MAX_SIGNAL_COUNT FPL_MAX_SIGNAL_WAIT_COUNT
+#endif
+
+// Number of thread slots allocated per bucket, also serves as the initial capacity.
+// Threads are no longer bounded by a single fixed array, buckets are appended on demand.
+#define FPL__THREAD_BUCKET_CAPACITY FPL_MAX_THREAD_COUNT
+
+// A single slab of thread handles, linked into a list owned by fpl__ThreadState.
+typedef struct fpl__ThreadBucket {
+	struct fpl__ThreadBucket *next;
+	size_t capacity;
+	fplThreadHandle *threads;
+} fpl__ThreadBucket;
 
 typedef struct fpl__ThreadState {
 	fplThreadHandle mainThread;
-	fplThreadHandle threads[FPL_MAX_THREAD_COUNT];
+	fpl__ThreadBucket *buckets;
+	volatile uint32_t lock;
 } fpl__ThreadState;
 
 fpl_globalvar fpl__ThreadState fpl__global__ThreadState = fplZeroInit;
 
+// Simple atomic spinlock guarding the bucket list, no init/destroy needed and the critical section is tiny.
+fpl_internal void fpl__LockThreadState(fpl__ThreadState *state) {
+	uint32_t previous = fplAtomicCompareAndSwapU32(&state->lock, 0, 1);
+	while (previous != 0) {
+		previous = fplAtomicCompareAndSwapU32(&state->lock, 0, 1);
+	}
+}
+
+fpl_internal void fpl__UnlockThreadState(fpl__ThreadState *state) {
+	fplAtomicStoreU32(&state->lock, 0);
+}
+
+// Allocates and appends a new bucket of zero-initialized thread slots to the end of the list.
+// Returns the new bucket or null when memory allocation fails. Must be called while holding the lock.
+fpl_internal fpl__ThreadBucket *fpl__AppendThreadBucket(fpl__ThreadState *state) {
+	const size_t bucketCapacity = FPL__THREAD_BUCKET_CAPACITY;
+	const size_t bucketAlignment = 16;
+	fpl__ThreadBucket *newBucket = (fpl__ThreadBucket *)fpl__AllocateDynamicMemory(sizeof(fpl__ThreadBucket), bucketAlignment);
+	if (newBucket == fpl_null) {
+		return(fpl_null);
+	}
+	size_t threadsSize = sizeof(fplThreadHandle) * bucketCapacity;
+	fplThreadHandle *threadsArray = (fplThreadHandle *)fpl__AllocateDynamicMemory(threadsSize, bucketAlignment);
+	if (threadsArray == fpl_null) {
+		fpl__ReleaseDynamicMemory(newBucket);
+		return(fpl_null);
+	}
+	// The dynamic allocator may use a custom callback that does not zero, so clear explicitly.
+	// A zeroed slot has currentState == fplThreadState_Stopped (0), which marks it free.
+	fplMemoryClear(newBucket, sizeof(fpl__ThreadBucket));
+	fplMemoryClear(threadsArray, threadsSize);
+	newBucket->capacity = bucketCapacity;
+	newBucket->threads = threadsArray;
+	if (state->buckets == fpl_null) {
+		state->buckets = newBucket;
+	} else {
+		fpl__ThreadBucket *tail = state->buckets;
+		while (tail->next != fpl_null) {
+			tail = tail->next;
+		}
+		tail->next = newBucket;
+	}
+	return(newBucket);
+}
+
+// Frees all thread buckets and resets the container so the platform can be re-initialized cleanly.
+fpl_internal void fpl__FreeThreadStateBuckets(fpl__ThreadState *state) {
+	fpl__LockThreadState(state);
+	fpl__ThreadBucket *bucket = state->buckets;
+	while (bucket != fpl_null) {
+		fpl__ThreadBucket *next = bucket->next;
+		fpl__ReleaseDynamicMemory(bucket->threads);
+		fpl__ReleaseDynamicMemory(bucket);
+		bucket = next;
+	}
+	state->buckets = fpl_null;
+	fpl__UnlockThreadState(state);
+}
+
+// Finds a free thread slot and reserves it atomically, allocating a new bucket when none is free.
+// Reserving (Stopped -> Starting) under the lock prevents two concurrent creates from grabbing the same slot.
 fpl_internal fplThreadHandle *fpl__GetFreeThread(void) {
+	fpl__ThreadState *state = &fpl__global__ThreadState;
+	fpl__LockThreadState(state);
 	fplThreadHandle *result = fpl_null;
-	for (uint32_t index = 0; index < FPL_MAX_THREAD_COUNT; ++index) {
-		fplThreadHandle *thread = fpl__global__ThreadState.threads + index;
-		fplThreadState state = fplGetThreadState(thread);
-		if (state == fplThreadState_Stopped) {
-			result = thread;
-			break;
+	fpl__ThreadBucket *bucket = state->buckets;
+	while ((result == fpl_null) && (bucket != fpl_null)) {
+		for (size_t slotIndex = 0; slotIndex < bucket->capacity; ++slotIndex) {
+			fplThreadHandle *thread = bucket->threads + slotIndex;
+			fplThreadState slotState = (fplThreadState)fplAtomicLoadU32((volatile uint32_t *)&thread->currentState);
+			if (slotState == fplThreadState_Stopped) {
+				result = thread;
+				break;
+			}
+		}
+		bucket = bucket->next;
+	}
+	if (result == fpl_null) {
+		fpl__ThreadBucket *appendedBucket = fpl__AppendThreadBucket(state);
+		if (appendedBucket != fpl_null) {
+			result = appendedBucket->threads + 0;
 		}
 	}
+	if (result != fpl_null) {
+		fplAtomicStoreU32((volatile uint32_t *)&result->currentState, (uint32_t)fplThreadState_Starting);
+	}
+	fpl__UnlockThreadState(state);
 	return(result);
 }
 
@@ -15261,25 +15383,54 @@ fpl_common_api const fplThreadHandle *fplGetMainThread(void) {
 	return(result);
 }
 
-fpl_common_api size_t fplGetAvailableThreadCount(void) {
+fpl_common_api size_t fplGetTotalThreadCount(void) {
+	fpl__ThreadState *threadState = &fpl__global__ThreadState;
+	fpl__LockThreadState(threadState);
 	size_t result = 0;
-	for (size_t threadIndex = 0; threadIndex < FPL_MAX_THREAD_COUNT; ++threadIndex) {
-		fplThreadState state = (fplThreadState)fplAtomicLoadU32((volatile uint32_t *)&fpl__global__ThreadState.threads[threadIndex].currentState);
-		if (state == fplThreadState_Stopped) {
-			++result;
-		}
+	fpl__ThreadBucket *bucket = threadState->buckets;
+	while (bucket != fpl_null) {
+		result += bucket->capacity;
+		bucket = bucket->next;
 	}
+	fpl__UnlockThreadState(threadState);
+	return(result);
+}
+
+fpl_common_api size_t fplGetAvailableThreadCount(void) {
+	fpl__ThreadState *threadState = &fpl__global__ThreadState;
+	fpl__LockThreadState(threadState);
+	size_t result = 0;
+	fpl__ThreadBucket *bucket = threadState->buckets;
+	while (bucket != fpl_null) {
+		for (size_t slotIndex = 0; slotIndex < bucket->capacity; ++slotIndex) {
+			fplThreadHandle *thread = bucket->threads + slotIndex;
+			fplThreadState state = (fplThreadState)fplAtomicLoadU32((volatile uint32_t *)&thread->currentState);
+			if (state == fplThreadState_Stopped) {
+				++result;
+			}
+		}
+		bucket = bucket->next;
+	}
+	fpl__UnlockThreadState(threadState);
 	return(result);
 }
 
 fpl_common_api size_t fplGetUsedThreadCount(void) {
+	fpl__ThreadState *threadState = &fpl__global__ThreadState;
+	fpl__LockThreadState(threadState);
 	size_t result = 0;
-	for (size_t threadIndex = 0; threadIndex < FPL_MAX_THREAD_COUNT; ++threadIndex) {
-		fplThreadState state = (fplThreadState)fplAtomicLoadU32((volatile uint32_t *)&fpl__global__ThreadState.threads[threadIndex].currentState);
-		if (state != fplThreadState_Stopped) {
-			++result;
+	fpl__ThreadBucket *bucket = threadState->buckets;
+	while (bucket != fpl_null) {
+		for (size_t slotIndex = 0; slotIndex < bucket->capacity; ++slotIndex) {
+			fplThreadHandle *thread = bucket->threads + slotIndex;
+			fplThreadState state = (fplThreadState)fplAtomicLoadU32((volatile uint32_t *)&thread->currentState);
+			if (state != fplThreadState_Stopped) {
+				++result;
+			}
 		}
+		bucket = bucket->next;
 	}
+	fpl__UnlockThreadState(threadState);
 	return(result);
 }
 
@@ -18748,8 +18899,8 @@ fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin3
 
 fpl_internal bool fpl__Win32ThreadWaitForMultiple(fplThreadHandle **threads, const size_t count, const size_t stride, const fplTimeoutValue timeout, const bool waitForAll) {
 	FPL__CheckArgumentNull(threads, false);
-	FPL__CheckArgumentMax(count, FPL_MAX_THREAD_COUNT, false);
-	fplStaticAssert(FPL_MAX_THREAD_COUNT >= MAXIMUM_WAIT_OBJECTS);
+	FPL__CheckArgumentMax(count, FPL_MAX_THREAD_WAIT_COUNT, false);
+	fplStaticAssert(FPL_MAX_THREAD_WAIT_COUNT >= MAXIMUM_WAIT_OBJECTS);
 	const size_t actualStride = stride > 0 ? stride : sizeof(fplThreadHandle *);
 	for (size_t index = 0; index < count; ++index) {
 		fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
@@ -18794,10 +18945,11 @@ fpl_internal bool fpl__Win32ThreadWaitForMultiple(fplThreadHandle **threads, con
 
 fpl_internal bool fpl__Win32SignalWaitForMultiple(fplSignalHandle **signals, const size_t count, const size_t stride, const fplTimeoutValue timeout, const bool waitForAll) {
 	FPL__CheckArgumentNull(signals, false);
-	FPL__CheckArgumentMax(count, FPL_MAX_SIGNAL_COUNT, false);
+	// @NOTE(final): WaitForMultipleObjects caps at MAXIMUM_WAIT_OBJECTS (64), so the effective ceiling on Windows is lower than FPL_MAX_SIGNAL_WAIT_COUNT.
+	FPL__CheckArgumentMax(count, FPL_MAX_SIGNAL_WAIT_COUNT, false);
 
 	// @MEMORY(final): This wastes a lot memory, use temporary memory allocation here.
-	HANDLE signalHandles[FPL_MAX_SIGNAL_COUNT];
+	HANDLE signalHandles[FPL_MAX_SIGNAL_WAIT_COUNT];
 
 	const size_t actualStride = stride > 0 ? stride : sizeof(fplSignalHandle *);
 	for (uint32_t index = 0; index < count; ++index) {
@@ -19346,6 +19498,7 @@ fpl_platform_api fplThreadHandle *fplThreadCreateWithParameters(fplThreadParamet
 		DWORD threadId = 0;
 		SIZE_T stackSize = parameters->stackSize;
 		thread->parameters = *parameters;
+		// The slot was already reserved as Starting by fpl__GetFreeThread, this keeps it consistent for reused slots.
 		thread->currentState = fplThreadState_Starting;
 		HANDLE handle = CreateThread(fpl_null, stackSize, fpl__Win32ThreadProc, thread, creationFlags, &threadId);
 		if (handle != fpl_null) {
@@ -19356,9 +19509,11 @@ fpl_platform_api fplThreadHandle *fplThreadCreateWithParameters(fplThreadParamet
 			result = thread;
 		} else {
 			FPL__ERROR(FPL__MODULE_THREADING, "Failed creating thread, error code: %d", GetLastError());
+			// Release the reserved slot back to Stopped so it can be reused.
+			fplClearStruct(thread);
 		}
 	} else {
-		FPL__ERROR(FPL__MODULE_THREADING, "All %d threads are in use, you cannot create until you free one", FPL_MAX_THREAD_COUNT);
+		FPL__ERROR(FPL__MODULE_THREADING, "Failed to allocate a thread slot, out of memory");
 	}
 	return(result);
 }
@@ -21529,7 +21684,7 @@ fpl_internal int fpl__PosixMutexCreate(const fpl__PThreadApi *pthreadApi, pthrea
 
 fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle **threads, const uint32_t minCount, const uint32_t maxCount, const size_t stride, const fplTimeoutValue timeout) {
 	FPL__CheckArgumentNull(threads, false);
-	FPL__CheckArgumentMax(maxCount, FPL_MAX_THREAD_COUNT, false);
+	FPL__CheckArgumentMax(maxCount, FPL_MAX_THREAD_WAIT_COUNT, false);
 	const size_t actualStride = stride > 0 ? stride : sizeof(fplThreadHandle *);
 	for (uint32_t index = 0; index < maxCount; ++index) {
 		fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
@@ -21540,7 +21695,7 @@ fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle **threads, con
 	}
 
 	uint32_t completeCount = 0;
-	bool isRunning[FPL_MAX_THREAD_COUNT];
+	bool isRunning[FPL_MAX_THREAD_WAIT_COUNT];
 	for (uint32_t index = 0; index < maxCount; ++index) {
 		fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
 		isRunning[index] = fplGetThreadState(thread) != fplThreadState_Stopped;
@@ -21822,7 +21977,7 @@ fpl_platform_api fplThreadHandle *fplThreadCreateWithParameters(fplThreadParamet
 	fplThreadHandle *result = fpl_null;
 	fplThreadHandle *thread = fpl__GetFreeThread();
 	if (thread != fpl_null) {
-		thread->currentState = fplThreadState_Stopped;
+		// The slot is already reserved as Starting by fpl__GetFreeThread, do not reset it to Stopped here or a concurrent create could grab it.
 		thread->parameters = *parameters;
 		thread->isValid = false;
 		thread->isStopping = false;
@@ -21919,7 +22074,7 @@ fpl_platform_api fplThreadHandle *fplThreadCreateWithParameters(fplThreadParamet
 			fplClearStruct(thread);
 		}
 	} else {
-		FPL__ERROR(FPL__MODULE_THREADING, "All %d threads are in use, you cannot create until you free one", FPL_MAX_THREAD_COUNT);
+		FPL__ERROR(FPL__MODULE_THREADING, "Failed to allocate a thread slot, out of memory");
 	}
 	return(result);
 }
@@ -26877,7 +27032,7 @@ fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const fplTime
 
 fpl_internal bool fpl__LinuxSignalWaitForMultiple(fplSignalHandle *signals[], const uint32_t minCount, const uint32_t maxCount, const size_t stride, const fplTimeoutValue timeout) {
 	FPL__CheckArgumentNull(signals, false);
-	FPL__CheckArgumentMax(maxCount, FPL_MAX_SIGNAL_COUNT, false);
+	FPL__CheckArgumentMax(maxCount, FPL_MAX_SIGNAL_WAIT_COUNT, false);
 	const size_t actualStride = stride > 0 ? stride : sizeof(fplSignalHandle *);
 	for (uint32_t index = 0; index < maxCount; ++index) {
 		fplSignalHandle *signal = *(fplSignalHandle **)((uint8_t *)signals + index * actualStride);
@@ -26897,7 +27052,7 @@ fpl_internal bool fpl__LinuxSignalWaitForMultiple(fplSignalHandle *signals[], co
 	// @MEMORY(final): This wastes a lof memory, use temporary memory allocation here
 
 	// Register events and map each to the array index
-	struct epoll_event events[FPL_MAX_SIGNAL_COUNT];
+	struct epoll_event events[FPL_MAX_SIGNAL_WAIT_COUNT];
 	for (int index = 0; index < maxCount; index++) {
 		events[index].events = EPOLLIN;
 		events[index].data.u32 = index;
@@ -26911,7 +27066,7 @@ fpl_internal bool fpl__LinuxSignalWaitForMultiple(fplSignalHandle *signals[], co
 	int t = timeout == FPL_TIMEOUT_INFINITE ? -1 : timeout;
 	int eventsResult = -1;
 	int waiting = minCount;
-	struct epoll_event revent[FPL_MAX_SIGNAL_COUNT];
+	struct epoll_event revent[FPL_MAX_SIGNAL_WAIT_COUNT];
 	while (waiting > 0) {
 		int ret = epoll_wait(e, revent, waiting, t);
 		if (ret == 0) {
@@ -27256,7 +27411,7 @@ fpl_internal bool fpl__UnixSignalWaitOne(const fpl__PThreadApi *pthreadApi, fplS
 
 fpl_internal bool fpl__UnixSignalWaitMultiple(fplSignalHandle **signals, const uint32_t minCount, const uint32_t maxCount, const size_t stride, const fplTimeoutValue timeout) {
 	FPL__CheckArgumentNull(signals, false);
-	FPL__CheckArgumentMax(maxCount, FPL_MAX_SIGNAL_COUNT, false);
+	FPL__CheckArgumentMax(maxCount, FPL_MAX_SIGNAL_WAIT_COUNT, false);
 	FPL__CheckPlatform(false);
 
 	const size_t actualStride = stride > 0 ? stride : sizeof(fplSignalHandle *);
@@ -27279,7 +27434,7 @@ fpl_internal bool fpl__UnixSignalWaitMultiple(fplSignalHandle **signals, const u
 		}
 	}
 
-	bool consumed[FPL_MAX_SIGNAL_COUNT];
+	bool consumed[FPL_MAX_SIGNAL_WAIT_COUNT];
 	for (uint32_t i = 0; i < maxCount; ++i) {
 		consumed[i] = false;
 	}
@@ -38617,6 +38772,10 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 		fplMemoryAlignedFree(appState);
 		fpl__global__AppState = fpl_null;
 	}
+
+	// Free the dynamic thread buckets while the dynamic memory settings in initState are still valid.
+	FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release Thread State Buckets");
+	fpl__FreeThreadStateBuckets(&fpl__global__ThreadState);
 
 	fplClearStruct(initState);
 }
