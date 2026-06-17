@@ -82,6 +82,7 @@ ft_api void ftAssertCharEquals(const char expectedValue, const char actualValue)
 
 ft_api void ftLine(void) {
 	fprintf(stdout, "*******************************************************************************\n");
+	fflush(stdout);
 }
 
 ft_api void ftMsg(const char *format, ...) {
@@ -89,6 +90,7 @@ ft_api void ftMsg(const char *format, ...) {
 	va_start(argList, format);
 	vfprintf(stdout, format, argList);
 	va_end(argList);
+	fflush(stdout);
 }
 
 ft_api void ftFail(const char *format, ...) {
