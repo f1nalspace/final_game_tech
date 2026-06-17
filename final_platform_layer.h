@@ -275,6 +275,8 @@ SOFTWARE.
 	- New: [Unix] Added struct fplUnixSignalEvent
 	- New: [Unix] Implemented fplSignal* for Unix/BSD
 	- Changed: Internal thread storage is no longer a fixed array of FPL_MAX_THREAD_COUNT, threads are stored in a growable bucket list so the number of live threads is bounded only by OS/process limits (FPL_MAX_THREAD_COUNT is now the per-bucket capacity)
+	- Changed: Added macro FPL_MAX_THREAD_WAIT_COUNT for the per-call limit of fplThreadWaitForAll/Any (the thread wait helpers no longer reuse FPL_MAX_THREAD_COUNT which is now only the storage bucket size)
+	- Changed: Renamed macro FPL_MAX_SIGNAL_COUNT to FPL_MAX_SIGNAL_WAIT_COUNT, since signals are caller-owned and never stored by the library the value only ever bounded a single fplSignalWaitForAll/Any call (FPL_MAX_SIGNAL_COUNT is kept as a deprecated alias)
 	- Changed: [POSIX] `sched_getscheduler` POSIX standard coverage check
 	- Fixed: Two concurrent fplThreadCreate calls could be handed the same thread slot, the free slot is now found and reserved atomically under a lock
 	- Fixed: [Win32] A failed CreateThread leaked its reserved thread slot (it was never reset to Stopped)
@@ -13959,13 +13961,32 @@ fpl_internal void fpl__ArgumentMaxError(const char *funcName, const int line, co
 	}
 
 #if !defined(FPL_MAX_THREAD_COUNT)
-	// Maximum number of active threads you can have in your process
+	// Number of thread slots per internal bucket, the number of live threads is no longer limited to this,
+	// because the thread storage grows by appending more buckets on demand.
 #	define FPL_MAX_THREAD_COUNT 256
 #endif
 
+#if !defined(FPL_MAX_THREAD_WAIT_COUNT)
+	// Maximum number of threads you can wait for in a single fplThreadWaitForAll/fplThreadWaitForAny call.
+	// This is a per-call limit only and has nothing to do with how many threads you can create.
+#	define FPL_MAX_THREAD_WAIT_COUNT 256
+#endif
+
+// @DEPRECATED(final): FPL_MAX_SIGNAL_COUNT was a misnomer, signals are caller-owned and never stored by the
+// library, so the value only ever bounded a single multi-wait call. Honor a legacy user override here.
+#if defined(FPL_MAX_SIGNAL_COUNT) && !defined(FPL_MAX_SIGNAL_WAIT_COUNT)
+#	define FPL_MAX_SIGNAL_WAIT_COUNT FPL_MAX_SIGNAL_COUNT
+#endif
+
+#if !defined(FPL_MAX_SIGNAL_WAIT_COUNT)
+	// Maximum number of signals you can wait for in a single fplSignalWaitForAll/fplSignalWaitForAny call.
+	// On Windows the effective ceiling is MAXIMUM_WAIT_OBJECTS (64), because WaitForMultipleObjects is used.
+#	define FPL_MAX_SIGNAL_WAIT_COUNT 256
+#endif
+
 #if !defined(FPL_MAX_SIGNAL_COUNT)
-	// Maximum number of active signals you can wait for
-#	define FPL_MAX_SIGNAL_COUNT 256
+	// @DEPRECATED(final): Kept only as an alias for source compatibility, use FPL_MAX_SIGNAL_WAIT_COUNT instead.
+#	define FPL_MAX_SIGNAL_COUNT FPL_MAX_SIGNAL_WAIT_COUNT
 #endif
 
 // Number of thread slots allocated per bucket, also serves as the initial capacity.
@@ -18704,8 +18725,8 @@ fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin3
 
 fpl_internal bool fpl__Win32ThreadWaitForMultiple(fplThreadHandle **threads, const size_t count, const size_t stride, const fplTimeoutValue timeout, const bool waitForAll) {
 	FPL__CheckArgumentNull(threads, false);
-	FPL__CheckArgumentMax(count, FPL_MAX_THREAD_COUNT, false);
-	fplStaticAssert(FPL_MAX_THREAD_COUNT >= MAXIMUM_WAIT_OBJECTS);
+	FPL__CheckArgumentMax(count, FPL_MAX_THREAD_WAIT_COUNT, false);
+	fplStaticAssert(FPL_MAX_THREAD_WAIT_COUNT >= MAXIMUM_WAIT_OBJECTS);
 	const size_t actualStride = stride > 0 ? stride : sizeof(fplThreadHandle *);
 	for (size_t index = 0; index < count; ++index) {
 		fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
@@ -18750,10 +18771,11 @@ fpl_internal bool fpl__Win32ThreadWaitForMultiple(fplThreadHandle **threads, con
 
 fpl_internal bool fpl__Win32SignalWaitForMultiple(fplSignalHandle **signals, const size_t count, const size_t stride, const fplTimeoutValue timeout, const bool waitForAll) {
 	FPL__CheckArgumentNull(signals, false);
-	FPL__CheckArgumentMax(count, FPL_MAX_SIGNAL_COUNT, false);
+	// @NOTE(final): WaitForMultipleObjects caps at MAXIMUM_WAIT_OBJECTS (64), so the effective ceiling on Windows is lower than FPL_MAX_SIGNAL_WAIT_COUNT.
+	FPL__CheckArgumentMax(count, FPL_MAX_SIGNAL_WAIT_COUNT, false);
 
 	// @MEMORY(final): This wastes a lot memory, use temporary memory allocation here.
-	HANDLE signalHandles[FPL_MAX_SIGNAL_COUNT];
+	HANDLE signalHandles[FPL_MAX_SIGNAL_WAIT_COUNT];
 
 	const size_t actualStride = stride > 0 ? stride : sizeof(fplSignalHandle *);
 	for (uint32_t index = 0; index < count; ++index) {
@@ -21444,7 +21466,7 @@ fpl_internal int fpl__PosixMutexCreate(const fpl__PThreadApi *pthreadApi, pthrea
 
 fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle **threads, const uint32_t minCount, const uint32_t maxCount, const size_t stride, const fplTimeoutValue timeout) {
 	FPL__CheckArgumentNull(threads, false);
-	FPL__CheckArgumentMax(maxCount, FPL_MAX_THREAD_COUNT, false);
+	FPL__CheckArgumentMax(maxCount, FPL_MAX_THREAD_WAIT_COUNT, false);
 	const size_t actualStride = stride > 0 ? stride : sizeof(fplThreadHandle *);
 	for (uint32_t index = 0; index < maxCount; ++index) {
 		fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
@@ -21455,7 +21477,7 @@ fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle **threads, con
 	}
 
 	uint32_t completeCount = 0;
-	bool isRunning[FPL_MAX_THREAD_COUNT];
+	bool isRunning[FPL_MAX_THREAD_WAIT_COUNT];
 	for (uint32_t index = 0; index < maxCount; ++index) {
 		fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
 		isRunning[index] = fplGetThreadState(thread) != fplThreadState_Stopped;
@@ -26603,7 +26625,7 @@ fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const fplTime
 
 fpl_internal bool fpl__LinuxSignalWaitForMultiple(fplSignalHandle *signals[], const uint32_t minCount, const uint32_t maxCount, const size_t stride, const fplTimeoutValue timeout) {
 	FPL__CheckArgumentNull(signals, false);
-	FPL__CheckArgumentMax(maxCount, FPL_MAX_SIGNAL_COUNT, false);
+	FPL__CheckArgumentMax(maxCount, FPL_MAX_SIGNAL_WAIT_COUNT, false);
 	const size_t actualStride = stride > 0 ? stride : sizeof(fplSignalHandle *);
 	for (uint32_t index = 0; index < maxCount; ++index) {
 		fplSignalHandle *signal = *(fplSignalHandle **)((uint8_t *)signals + index * actualStride);
@@ -26623,7 +26645,7 @@ fpl_internal bool fpl__LinuxSignalWaitForMultiple(fplSignalHandle *signals[], co
 	// @MEMORY(final): This wastes a lof memory, use temporary memory allocation here
 
 	// Register events and map each to the array index
-	struct epoll_event events[FPL_MAX_SIGNAL_COUNT];
+	struct epoll_event events[FPL_MAX_SIGNAL_WAIT_COUNT];
 	for (int index = 0; index < maxCount; index++) {
 		events[index].events = EPOLLIN;
 		events[index].data.u32 = index;
@@ -26637,7 +26659,7 @@ fpl_internal bool fpl__LinuxSignalWaitForMultiple(fplSignalHandle *signals[], co
 	int t = timeout == FPL_TIMEOUT_INFINITE ? -1 : timeout;
 	int eventsResult = -1;
 	int waiting = minCount;
-	struct epoll_event revent[FPL_MAX_SIGNAL_COUNT];
+	struct epoll_event revent[FPL_MAX_SIGNAL_WAIT_COUNT];
 	while (waiting > 0) {
 		int ret = epoll_wait(e, revent, waiting, t);
 		if (ret == 0) {
@@ -26997,7 +27019,7 @@ fpl_internal bool fpl__UnixSignalWaitOne(const fpl__PThreadApi *pthreadApi, fplS
 
 fpl_internal bool fpl__UnixSignalWaitMultiple(fplSignalHandle **signals, const uint32_t minCount, const uint32_t maxCount, const size_t stride, const fplTimeoutValue timeout) {
 	FPL__CheckArgumentNull(signals, false);
-	FPL__CheckArgumentMax(maxCount, FPL_MAX_SIGNAL_COUNT, false);
+	FPL__CheckArgumentMax(maxCount, FPL_MAX_SIGNAL_WAIT_COUNT, false);
 	FPL__CheckPlatform(false);
 
 	const size_t actualStride = stride > 0 ? stride : sizeof(fplSignalHandle *);
@@ -27020,7 +27042,7 @@ fpl_internal bool fpl__UnixSignalWaitMultiple(fplSignalHandle **signals, const u
 		}
 	}
 
-	bool consumed[FPL_MAX_SIGNAL_COUNT];
+	bool consumed[FPL_MAX_SIGNAL_WAIT_COUNT];
 	for (uint32_t i = 0; i < maxCount; ++i) {
 		consumed[i] = false;
 	}
