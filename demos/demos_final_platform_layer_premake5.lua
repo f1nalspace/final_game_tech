@@ -284,7 +284,14 @@ endif
 	-- Link to math library on *nix
 	filter "system:bsd or system:linux"
 		links { "m" }
-	
+
+	-- 32-bit targets need libatomic for the 64-bit atomic builtins.
+	-- On baseline i386/i486 (no cmpxchg8b) and ARMv5/v6 (no LDREXD) GCC emits out-of-line
+	-- __sync_*_8 calls that live in libatomic instead of inlining them. 64-bit targets do
+	-- these atomics natively and never need it. Harmless to link when unused.
+	filter "platforms:LinuxX86 or UnixX86 or LinuxARM32 or UnixARM32"
+		links { "atomic" }
+
 	-- Debug / Release
 	filter "configurations:Debug"
 		defines { "DEBUG" }
