@@ -42,6 +42,61 @@ Core library is the Final Platform Layer (FPL) library that contains various dem
 ├── screenshots/                    # Screenshots of the demo applications 
 ```
 
+## Building
+
+All demos live in their own folder under `demos/` and ship with a self-contained `CMakeLists.txt`, `Makefile` and Visual Studio project (`*.vcxproj`).
+
+### Linux/Unix (GCC + CMake)
+
+Configure the demo into a `build` subfolder, then compile:
+
+```bash
+# From the repository root, pick a demo (e.g. FPL_Crackout)
+cd demos/FPL_Crackout
+
+# Configure (Release build, using GCC)
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+
+# Compile
+cmake --build build
+```
+
+Notes:
+- Use `-DCMAKE_BUILD_TYPE=Debug` for a debug build.
+- The same steps work for any folder under `demos/` or `apps/` — just `cd` into it.
+- Each `CMakeLists.txt` already sets the language standard (C99/C11/C++11) and links the required system libraries, so no extra flags are needed.
+
+### Windows (MSVC)
+
+Open the per-library solution from the `demos/` folder (e.g. `demos/demos_final_platform_layer.sln`) in Visual Studio, select the demo as startup project and a configuration (e.g. `Release WinX64`), then build with `Ctrl+Shift+B`.
+
+To build a single demo from the command line, use MSBuild from a *Developer Command Prompt*:
+
+```bat
+cd demos\FPL_Crackout
+msbuild FPL_Crackout.vcxproj /p:Configuration="Release WinX64" /p:Platform=x64
+```
+
+### Build output and running
+
+Regardless of the toolchain, the resulting executable is placed under a common location:
+
+```
+demos/build/<ProjectName>/<Config>/<ProjectName>[.exe]
+```
+
+The `<Config>` folder name depends on the toolchain (e.g. `Linux-x64-Release` for CMake, `WinX64_Release` for MSVC). Run it from there, for example:
+
+```bash
+# Linux/Unix
+./demos/build/FPL_Crackout/Linux-x64-Release/FPL_Crackout
+```
+
+```bat
+rem Windows
+demos\build\FPL_Crackout\WinX64_Release\FPL_Crackout.exe
+```
+
 ## Contributing
 
 ### How to contribute
