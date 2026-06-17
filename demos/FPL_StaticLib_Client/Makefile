@@ -109,7 +109,7 @@ OBJDIR = ../immediates/FPL_StaticLib_Client/LinuxX86_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g
-LIBS += ../build/FPL_StaticLib/LinuxX86_Debug/libFPL_StaticLib_Host.a -lm
+LIBS += ../build/FPL_StaticLib/LinuxX86_Debug/libFPL_StaticLib_Host.a -lm -latomic
 LDDEPS += ../build/FPL_StaticLib/LinuxX86_Debug/libFPL_StaticLib_Host.a
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32
 
@@ -131,7 +131,7 @@ OBJDIR = ../immediates/FPL_StaticLib_Client/LinuxARM32_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O0 -g
-LIBS += ../build/FPL_StaticLib/LinuxARM32_Debug/libFPL_StaticLib_Host.a -lm
+LIBS += ../build/FPL_StaticLib/LinuxARM32_Debug/libFPL_StaticLib_Host.a -lm -latomic
 LDDEPS += ../build/FPL_StaticLib/LinuxARM32_Debug/libFPL_StaticLib_Host.a
 ALL_LDFLAGS += $(LDFLAGS)
 
@@ -153,7 +153,7 @@ OBJDIR = ../immediates/FPL_StaticLib_Client/UnixX86_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g
-LIBS += ../build/FPL_StaticLib/UnixX86_Debug/libFPL_StaticLib_Host.a -lm
+LIBS += ../build/FPL_StaticLib/UnixX86_Debug/libFPL_StaticLib_Host.a -lm -latomic
 LDDEPS += ../build/FPL_StaticLib/UnixX86_Debug/libFPL_StaticLib_Host.a
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32
 
@@ -175,7 +175,7 @@ OBJDIR = ../immediates/FPL_StaticLib_Client/UnixARM32_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O0 -g
-LIBS += ../build/FPL_StaticLib/UnixARM32_Debug/libFPL_StaticLib_Host.a -lm
+LIBS += ../build/FPL_StaticLib/UnixARM32_Debug/libFPL_StaticLib_Host.a -lm -latomic
 LDDEPS += ../build/FPL_StaticLib/UnixARM32_Debug/libFPL_StaticLib_Host.a
 ALL_LDFLAGS += $(LDFLAGS)
 
@@ -219,7 +219,7 @@ OBJDIR = ../immediates/FPL_StaticLib_Client/LinuxX86_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O2
-LIBS += ../build/FPL_StaticLib/LinuxX86_Release/libFPL_StaticLib_Host.a -lm
+LIBS += ../build/FPL_StaticLib/LinuxX86_Release/libFPL_StaticLib_Host.a -lm -latomic
 LDDEPS += ../build/FPL_StaticLib/LinuxX86_Release/libFPL_StaticLib_Host.a
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32 -s
 
@@ -241,7 +241,7 @@ OBJDIR = ../immediates/FPL_StaticLib_Client/LinuxARM32_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O2
-LIBS += ../build/FPL_StaticLib/LinuxARM32_Release/libFPL_StaticLib_Host.a -lm
+LIBS += ../build/FPL_StaticLib/LinuxARM32_Release/libFPL_StaticLib_Host.a -lm -latomic
 LDDEPS += ../build/FPL_StaticLib/LinuxARM32_Release/libFPL_StaticLib_Host.a
 ALL_LDFLAGS += $(LDFLAGS) -s
 
@@ -263,7 +263,7 @@ OBJDIR = ../immediates/FPL_StaticLib_Client/UnixX86_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O2
-LIBS += ../build/FPL_StaticLib/UnixX86_Release/libFPL_StaticLib_Host.a -lm
+LIBS += ../build/FPL_StaticLib/UnixX86_Release/libFPL_StaticLib_Host.a -lm -latomic
 LDDEPS += ../build/FPL_StaticLib/UnixX86_Release/libFPL_StaticLib_Host.a
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32 -s
 
@@ -285,7 +285,7 @@ OBJDIR = ../immediates/FPL_StaticLib_Client/UnixARM32_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O2
-LIBS += ../build/FPL_StaticLib/UnixARM32_Release/libFPL_StaticLib_Host.a -lm
+LIBS += ../build/FPL_StaticLib/UnixARM32_Release/libFPL_StaticLib_Host.a -lm -latomic
 LDDEPS += ../build/FPL_StaticLib/UnixARM32_Release/libFPL_StaticLib_Host.a
 ALL_LDFLAGS += $(LDFLAGS) -s
 

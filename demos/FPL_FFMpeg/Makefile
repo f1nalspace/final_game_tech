@@ -112,7 +112,7 @@ OBJDIR = ../immediates/FPL_FFMpeg/LinuxX86_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g -std=c++11
-LIBS += -lm
+LIBS += -lm -latomic
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32
 define POSTBUILDCMDS
 endef
@@ -136,7 +136,7 @@ OBJDIR = ../immediates/FPL_FFMpeg/LinuxARM32_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O0 -g
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O0 -g -std=c++11
-LIBS += -lm
+LIBS += -lm -latomic
 ALL_LDFLAGS += $(LDFLAGS)
 define POSTBUILDCMDS
 endef
@@ -160,7 +160,7 @@ OBJDIR = ../immediates/FPL_FFMpeg/UnixX86_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g -std=c++11
-LIBS += -lm
+LIBS += -lm -latomic
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32
 define POSTBUILDCMDS
 endef
@@ -184,7 +184,7 @@ OBJDIR = ../immediates/FPL_FFMpeg/UnixARM32_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O0 -g
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O0 -g -std=c++11
-LIBS += -lm
+LIBS += -lm -latomic
 ALL_LDFLAGS += $(LDFLAGS)
 define POSTBUILDCMDS
 endef
@@ -234,7 +234,7 @@ OBJDIR = ../immediates/FPL_FFMpeg/LinuxX86_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O2
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O2 -std=c++11
-LIBS += -lm
+LIBS += -lm -latomic
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32 -s
 define POSTBUILDCMDS
 endef
@@ -258,7 +258,7 @@ OBJDIR = ../immediates/FPL_FFMpeg/LinuxARM32_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O2
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O2 -std=c++11
-LIBS += -lm
+LIBS += -lm -latomic
 ALL_LDFLAGS += $(LDFLAGS) -s
 define POSTBUILDCMDS
 endef
@@ -282,7 +282,7 @@ OBJDIR = ../immediates/FPL_FFMpeg/UnixX86_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O2
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O2 -std=c++11
-LIBS += -lm
+LIBS += -lm -latomic
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32 -s
 define POSTBUILDCMDS
 endef
@@ -306,7 +306,7 @@ OBJDIR = ../immediates/FPL_FFMpeg/UnixARM32_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O2
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O2 -std=c++11
-LIBS += -lm
+LIBS += -lm -latomic
 ALL_LDFLAGS += $(LDFLAGS) -s
 define POSTBUILDCMDS
 endef
