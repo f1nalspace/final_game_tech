@@ -182,6 +182,7 @@ SOFTWARE.
 	### Details
 
 	#### Core
+	- New: Added define FPL_MULTI_TRANSLATION_UNIT to switches fpl_extern_inline from "extern inline" to "static inline"
 	- New[#192]: Added struct fplLocaleSettings that controls how strings are formatted based on user locales
 	- Fixed[#192]: fplStringFormat* is not invariant, resulting in 1,54 vs 1.54
 
@@ -2558,8 +2559,11 @@ SOFTWARE.
 #endif
 
 //! Extern inline function
+// @NOTE(final): FPL_MULTI_TRANSLATION_UNIT switches "extern inline" (unity-only) to multi-TU-safe "static inline".
 #if defined(FPL_IS_CPP)
 #	define fpl_extern_inline inline
+#elif defined(FPL_MULTI_TRANSLATION_UNIT)
+#	define fpl_extern_inline static inline
 #else
 #	define fpl_extern_inline extern inline
 #endif
