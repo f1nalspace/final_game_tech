@@ -96,7 +96,7 @@ fpl_extern void TestAudioSamplesSuite();
 
 #endif // FINAL_AUDIO_CONVERSION_H
 
-#if (defined(FINAL_AUDIO_CONVERSION_IMPLEMENTATION) || defined(FPL_IS_IDE)) && !defined(FINAL_AUDIO_CONVERSION_IMPLEMENTED)
+#if (defined(FINAL_AUDIO_CONVERSION_IMPLEMENTATION) || FPL_IS_IDE) && !defined(FINAL_AUDIO_CONVERSION_IMPLEMENTED)
 #define FINAL_AUDIO_CONVERSION_IMPLEMENTED
 
 // **********************************************************************************************************************
@@ -106,8 +106,8 @@ fpl_extern void TestAudioSamplesSuite();
 // TODO: S24 <-> S32
 // **********************************************************************************************************************
 
-const uint32_t AUDIO_INT24_MIN = -8388608;
-const uint32_t AUDIO_INT24_MAX = 8388607;
+static const uint32_t AUDIO_INT24_MIN = -8388608;
+static const uint32_t AUDIO_INT24_MAX = 8388607;
 
 static inline float ClampF32(const float x, const float min, const float max) {
 	return fplMax(min, fplMin(max, x));
@@ -374,7 +374,7 @@ static void AudioSamples_Interleave_F32_Default(const AudioFrameIndex frameCount
 // **********************************************************************************************************************
 // Resamping
 // **********************************************************************************************************************
-const float AudioPi32 = (float)M_PI;
+static const float AudioPi32 = 3.14159265358979323846f;
 
 static void AudioSinCTableInitialize(AudioSinCTable *table, const uint32_t filterRadius) {
 	fplClearStruct(table);
@@ -799,40 +799,40 @@ static SampleS24ToF32 Test_Samples_Convert_S24_F32[] = {
     {{0xFF, 0xFF, 0x7F}, 1.0f},        // Maximum value
 };
 
-const int32_t Test_4_Frames_Interleaved_S32_OneChannel[4] = {
+static const int32_t Test_4_Frames_Interleaved_S32_OneChannel[4] = {
 	42,
 	42,
 	42,
 	42,
 };
-const int32_t Test_4_Frames_Deinterleaved_S32_OneChannel[1][4] = {
+static const int32_t Test_4_Frames_Deinterleaved_S32_OneChannel[1][4] = {
 	{42, 42, 42, 42},
 };
 
-const int32_t Test_4_Frames_Interleaved_S32_TwoChannels[8] = {
+static const int32_t Test_4_Frames_Interleaved_S32_TwoChannels[8] = {
 	-INT32_MAX, INT32_MAX,
 	-INT32_MAX, INT32_MAX,
 	-INT32_MAX, INT32_MAX,
 	-INT32_MAX, INT32_MAX,
 };
-const int32_t Test_4_Frames_Deinterleaved_S32_TwoChannels[2][4] = {
+static const int32_t Test_4_Frames_Deinterleaved_S32_TwoChannels[2][4] = {
 	{-INT32_MAX, -INT32_MAX, -INT32_MAX, -INT32_MAX},
 	{INT32_MAX, INT32_MAX, INT32_MAX, INT32_MAX}
 };
 
-const void *Test_4_Frames_Deinterleaved_S32_TwoChannelsP[2] = {
+static const void *Test_4_Frames_Deinterleaved_S32_TwoChannelsP[2] = {
 	&Test_4_Frames_Deinterleaved_S32_TwoChannels[0],
 	&Test_4_Frames_Deinterleaved_S32_TwoChannels[1],
 };
 
-const int32_t Test_4_Frames_Interleaved_S32_FiveChannels[20] = {
+static const int32_t Test_4_Frames_Interleaved_S32_FiveChannels[20] = {
 	-INT32_MAX, -INT32_MAX / 2, 0, INT32_MAX / 2, INT32_MAX,
 	-INT32_MAX, -INT32_MAX / 2, 0, INT32_MAX / 2, INT32_MAX,
 	-INT32_MAX, -INT32_MAX / 2, 0, INT32_MAX / 2, INT32_MAX,
 	-INT32_MAX, -INT32_MAX / 2, 0, INT32_MAX / 2, INT32_MAX
 };
 
-const int32_t Test_4_Frames_Deinterleaved_S32_FiveChannels[5][4] = {
+static const int32_t Test_4_Frames_Deinterleaved_S32_FiveChannels[5][4] = {
 	{-INT32_MAX, -INT32_MAX, -INT32_MAX, -INT32_MAX},
 	{-INT32_MAX / 2, -INT32_MAX / 2, -INT32_MAX / 2, -INT32_MAX / 2},
 	{0, 0, 0, 0},
@@ -840,7 +840,7 @@ const int32_t Test_4_Frames_Deinterleaved_S32_FiveChannels[5][4] = {
 	{INT32_MAX, INT32_MAX, INT32_MAX, INT32_MAX}
 };
 
-const void *Test_4_Frames_Deinterleaved_S32_FiveChannelsP[5] = {
+static const void *Test_4_Frames_Deinterleaved_S32_FiveChannelsP[5] = {
 	&Test_4_Frames_Deinterleaved_S32_FiveChannels[0],
 	&Test_4_Frames_Deinterleaved_S32_FiveChannels[1],
 	&Test_4_Frames_Deinterleaved_S32_FiveChannels[2],
@@ -848,21 +848,41 @@ const void *Test_4_Frames_Deinterleaved_S32_FiveChannelsP[5] = {
 	&Test_4_Frames_Deinterleaved_S32_FiveChannels[4]
 };
 
-fpl_extern bool IsAudioDeinterleavedSamplesEqual(const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const size_t formatSize, const void **a, const void **b) {
-	size_t lineWidth = numFrames * formatSize;
-	for(AudioChannelIndex channelIndex = 0; channelIndex < numChannels; ++channelIndex) {
-		const void *aLine = a[channelIndex];
-		const void *bLine = b[channelIndex];
-		if(!fpl__IsEqualsMemory(aLine, bLine, lineWidth)) {
+// Byte-wise memory compare, kept CRT-free so the audio conversion code does not pull in <string.h>/memcmp.
+static bool Audio__IsEqualMemory(const void *a, const void *b, const size_t size) {
+	if(a == b) {
+		// Same buffer (covers both being null) -> trivially equal.
+		return(true);
+	}
+	if(a == fpl_null || b == fpl_null) {
+		// Exactly one side is null -> nothing to compare against.
+		return(false);
+	}
+	const uint8_t *bytesA = (const uint8_t *)a;
+	const uint8_t *bytesB = (const uint8_t *)b;
+	for(size_t index = 0; index < size; ++index) {
+		if(bytesA[index] != bytesB[index]) {
 			return(false);
 		}
 	}
 	return(true);
 }
 
-fpl_extern bool IsAudioInterleavedSamplesEqual(const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const size_t formatSize, const void *a, const void *b) {
+extern bool IsAudioDeinterleavedSamplesEqual(const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const size_t formatSize, const void **a, const void **b) {
+	size_t lineWidth = numFrames * formatSize;
+	for(AudioChannelIndex channelIndex = 0; channelIndex < numChannels; ++channelIndex) {
+		const void *aLine = a[channelIndex];
+		const void *bLine = b[channelIndex];
+		if(!Audio__IsEqualMemory(aLine, bLine, lineWidth)) {
+			return(false);
+		}
+	}
+	return(true);
+}
+
+extern bool IsAudioInterleavedSamplesEqual(const AudioFrameIndex numFrames, const AudioChannelIndex numChannels, const size_t formatSize, const void *a, const void *b) {
 	size_t totalWidth = numFrames * numChannels * formatSize;
-	if(!fpl__IsEqualsMemory(a, b, totalWidth)) {
+	if(!Audio__IsEqualMemory(a, b, totalWidth)) {
 		return(false);
 	}
 	return(true);
