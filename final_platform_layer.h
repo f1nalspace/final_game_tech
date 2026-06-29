@@ -185,6 +185,7 @@ SOFTWARE.
 	- New: Added define FPL_MULTI_TRANSLATION_UNIT to switches fpl_extern_inline from "extern inline" to "static inline"
 	- New[#192]: Added struct fplLocaleSettings that controls how strings are formatted based on user locales
 	- Fixed[#192]: fplStringFormat* is not invariant, resulting in 1,54 vs 1.54
+	- Fixed: Memory macros tripped a false -Wstringop-overflow by computing the byte tail from a mask instead of a running counter
 	- Fixed: FPL__MEM_MASK_16 was 0x0000000 (zero) instead of 0x1
 
 	#### Input
@@ -14740,22 +14741,20 @@ fpl_common_api void fplMemoryAlignedFree(void *ptr) {
 // Clearing memory in chunks
 #define FPL__MEMORY_SET(T, memory, size, shift, mask, value) \
 	do { \
-		size_t setBytes = 0; \
-		if (sizeof(T) > sizeof(uint8_t)) { \
-			T setValue = 0; \
-			for (uint32_t bytesIncrement = 0; bytesIncrement < sizeof(T); ++bytesIncrement) { \
-				uint32_t bitShift = bytesIncrement * 8; \
-				setValue |= ((T)value << bitShift); \
-			} \
-			T *dataBlock = (T *)(memory); \
-			T *dataBlockEnd = (T *)(memory) + (size >> shift); \
-			while (dataBlock < dataBlockEnd) { \
-				*dataBlock++ = setValue; \
-				setBytes += sizeof(T); \
-			} \
+		const size_t blockCount = (size) >> (shift); \
+		const size_t tailBytes = (size) & (mask); \
+		T setValue = 0; \
+		for (uint32_t bytesIncrement = 0; bytesIncrement < sizeof(T); ++bytesIncrement) { \
+			uint32_t bitShift = bytesIncrement * 8; \
+			setValue |= ((T)value << bitShift); \
 		} \
-		uint8_t *data8 = (uint8_t *)memory + setBytes; \
-		uint8_t *data8End = (uint8_t *)memory + size; \
+		T *dataBlock = (T *)(memory); \
+		T *dataBlockEnd = dataBlock + blockCount; \
+		while (dataBlock < dataBlockEnd) { \
+			*dataBlock++ = setValue; \
+		} \
+		uint8_t *data8 = (uint8_t *)dataBlockEnd; \
+		uint8_t *data8End = data8 + tailBytes; \
 		while (data8 < data8End) { \
 			*data8++ = value; \
 		} \
@@ -14763,17 +14762,15 @@ fpl_common_api void fplMemoryAlignedFree(void *ptr) {
 
 #define FPL__MEMORY_CLEAR(T, memory, size, shift, mask) \
 	do { \
-		size_t clearBytes = 0; \
-		if (sizeof(T) > sizeof(uint8_t)) { \
-			T *dataBlock = (T *)(memory); \
-			T *dataBlockEnd = (T *)(memory) + (size >> shift); \
-			while (dataBlock < dataBlockEnd) { \
-				*dataBlock++ = 0; \
-				clearBytes += sizeof(T); \
-			} \
+		const size_t blockCount = (size) >> (shift); \
+		const size_t tailBytes = (size) & (mask); \
+		T *dataBlock = (T *)(memory); \
+		T *dataBlockEnd = dataBlock + blockCount; \
+		while (dataBlock < dataBlockEnd) { \
+			*dataBlock++ = 0; \
 		} \
-		uint8_t *data8 = (uint8_t *)memory + clearBytes; \
-		uint8_t *data8End = (uint8_t *)memory + size; \
+		uint8_t *data8 = (uint8_t *)dataBlockEnd; \
+		uint8_t *data8End = data8 + tailBytes; \
 		while (data8 < data8End) { \
 			*data8++ = 0; \
 		} \
@@ -14781,19 +14778,17 @@ fpl_common_api void fplMemoryAlignedFree(void *ptr) {
 
 #define FPL__MEMORY_COPY(T, source, sourceSize, dest, shift, mask) \
 	do { \
-		size_t copiedBytes = 0; \
-		if (sizeof(T) > sizeof(uint8_t)) { \
-			const T *sourceDataBlock = (const T *)(source); \
-			const T *sourceDataBlockEnd = (const T *)(source) + (sourceSize >> shift); \
-			T *destDataBlock = (T *)(dest); \
-			while (sourceDataBlock < sourceDataBlockEnd) { \
-				*destDataBlock++ = *sourceDataBlock++; \
-				copiedBytes += sizeof(T); \
-			} \
+		const size_t blockCount = (sourceSize) >> (shift); \
+		const size_t tailBytes = (sourceSize) & (mask); \
+		const T *sourceDataBlock = (const T *)(source); \
+		const T *sourceDataBlockEnd = sourceDataBlock + blockCount; \
+		T *destDataBlock = (T *)(dest); \
+		while (sourceDataBlock < sourceDataBlockEnd) { \
+			*destDataBlock++ = *sourceDataBlock++; \
 		} \
-		const uint8_t *sourceData8 = (const uint8_t *)source + copiedBytes; \
-		const uint8_t *sourceData8End = (const uint8_t *)source + sourceSize; \
-		uint8_t *destData8 = (uint8_t *)dest + copiedBytes; \
+		const uint8_t *sourceData8 = (const uint8_t *)sourceDataBlockEnd; \
+		const uint8_t *sourceData8End = sourceData8 + tailBytes; \
+		uint8_t *destData8 = (uint8_t *)destDataBlock; \
 		while (sourceData8 < sourceData8End) { \
 			*destData8++ = *sourceData8++; \
 		} \
