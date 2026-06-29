@@ -185,6 +185,7 @@ SOFTWARE.
 	- New: Added define FPL_MULTI_TRANSLATION_UNIT to switches fpl_extern_inline from "extern inline" to "static inline"
 	- New[#192]: Added struct fplLocaleSettings that controls how strings are formatted based on user locales
 	- Fixed[#192]: fplStringFormat* is not invariant, resulting in 1,54 vs 1.54
+	- Fixed: FPL__MEM_MASK_16 was 0x0000000 (zero) instead of 0x1
 
 	#### Input
 	- Fixed[#191]: X11 keyboard mapping table initialization was not respecting XDisplayKeycodes()
@@ -14734,7 +14735,7 @@ fpl_common_api void fplMemoryAlignedFree(void *ptr) {
 #define FPL__MEM_SHIFT_32 2
 #define FPL__MEM_MASK_32 0x00000003
 #define FPL__MEM_SHIFT_16 1
-#define FPL__MEM_MASK_16 0x0000000
+#define FPL__MEM_MASK_16 0x00000001
 
 // Clearing memory in chunks
 #define FPL__MEMORY_SET(T, memory, size, shift, mask, value) \
