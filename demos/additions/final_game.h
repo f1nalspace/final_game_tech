@@ -11,6 +11,7 @@ Description:
 Changelog:
 	## 2026-06-30
 	- Added ControllerButtonType_ShoulderLeft and ControllerButtonType_ShoulderRight
+	- Added ControllerButtonType_ThumbLeft and ControllerButtonType_ThumbRight
 	- Increased MAX_KEYBOARD_CONTROLLER_BUTTON_MAPPING_COUNT from 32 to 128
 
 	## 2026-06-08
@@ -76,6 +77,8 @@ typedef enum ControllerButtonType {
 	ControllerButtonType_ActionStart,
 	ControllerButtonType_ShoulderLeft,
 	ControllerButtonType_ShoulderRight,
+	ControllerButtonType_ThumbLeft,
+	ControllerButtonType_ThumbRight,
 
 	ControllerButtonType_Count,
 
@@ -87,7 +90,7 @@ typedef enum ControllerButtonType {
 #define MAX_CONTROLLER_BUTTON_TYPE_COUNT (ControllerButtonType_Count)
 
 // Total number of controller buttons
-#define MAX_CONTROLLER_BUTTON_COUNT 12
+#define MAX_CONTROLLER_BUTTON_COUNT 14
 
 fplStaticAssert(MAX_CONTROLLER_BUTTON_TYPE_COUNT == MAX_CONTROLLER_BUTTON_COUNT);
 
@@ -107,6 +110,8 @@ typedef struct Controller {
 			ButtonState actionStart;
 			ButtonState leftShoulder;
 			ButtonState rightShoulder;
+			ButtonState leftThumb;
+			ButtonState rightThumb;
 		};
 		ButtonState buttons[MAX_CONTROLLER_BUTTON_COUNT];
 	};
