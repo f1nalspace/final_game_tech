@@ -10,6 +10,7 @@ Description:
 
 Changelog:
 	- Increased MAX_KEYBOARD_CONTROLLER_BUTTON_MAPPING_COUNT from 32 to 128
+
 	## 2026-06-08
 	- New: Added function ButtonWentDown() that returns whether a button went down this frame (the press/down edge)
 
@@ -71,18 +72,20 @@ typedef enum ControllerButtonType {
 	ControllerButtonType_ActionRight,
 	ControllerButtonType_ActionBack,
 	ControllerButtonType_ActionStart,
+	ControllerButtonType_ShoulderLeft,
+	ControllerButtonType_ShoulderRight,
 
 	ControllerButtonType_Count,
 
 	ControllerButtonType_First = ControllerButtonType_MoveUp,
-	ControllerButtonType_Last = ControllerButtonType_ActionStart,
+	ControllerButtonType_Last = ControllerButtonType_ShoulderRight,
 } ControllerButtonType;
 
 // Total number of controller button types
 #define MAX_CONTROLLER_BUTTON_TYPE_COUNT (ControllerButtonType_Count)
 
 // Total number of controller buttons
-#define MAX_CONTROLLER_BUTTON_COUNT 10
+#define MAX_CONTROLLER_BUTTON_COUNT 12
 
 fplStaticAssert(MAX_CONTROLLER_BUTTON_TYPE_COUNT == MAX_CONTROLLER_BUTTON_COUNT);
 
@@ -100,6 +103,8 @@ typedef struct Controller {
 			ButtonState actionRight;
 			ButtonState actionBack;
 			ButtonState actionStart;
+			ButtonState leftShoulder;
+			ButtonState rightShoulder;
 		};
 		ButtonState buttons[MAX_CONTROLLER_BUTTON_COUNT];
 	};

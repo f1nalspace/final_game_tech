@@ -264,6 +264,8 @@ fpl_internal void InternalGamePlatformProcessEvents(const KeyboardButtonMappings
 						changed |= InternalGamePlatformUpdateDigitalButtonState(&oldController->actionUp, &newController->actionUp, padstate->actionY.isDown);
 						changed |= InternalGamePlatformUpdateDigitalButtonState(&oldController->actionBack, &newController->actionBack, padstate->back.isDown);
 						changed |= InternalGamePlatformUpdateDigitalButtonState(&oldController->actionStart, &newController->actionStart, padstate->start.isDown);
+						changed |= InternalGamePlatformUpdateDigitalButtonState(&oldController->leftShoulder, &newController->leftShoulder, padstate->leftShoulder.isDown);
+						changed |= InternalGamePlatformUpdateDigitalButtonState(&oldController->rightShoulder, &newController->rightShoulder, padstate->rightShoulder.isDown);
 						if (changed) {
 							InternalGamePlatformUpdateDefaultController(currentInput, controllerIndex);
 						}
@@ -477,10 +479,12 @@ fpl_globalvar const char *g__GamePlatform__ControllerButtonTypeNameTable[] = {
 	FPL__ENUM_NAME("ActionRight", ControllerButtonType_ActionRight),
 	FPL__ENUM_NAME("ActionBack", ControllerButtonType_ActionBack),
 	FPL__ENUM_NAME("ActionStart", ControllerButtonType_ActionStart),
+	FPL__ENUM_NAME("ShoulderLeft", ControllerButtonType_ShoulderLeft),
+	FPL__ENUM_NAME("ShoulderRight", ControllerButtonType_ShoulderRight),
 };
 
 fplStaticAssert(ControllerButtonType_MoveUp == ControllerButtonType_First);
-fplStaticAssert(ControllerButtonType_ActionStart == ControllerButtonType_Last);
+fplStaticAssert(ControllerButtonType_ShoulderRight == ControllerButtonType_Last);
 
 fplStaticAssert(CONTROLLER_BUTTON_TYPE_COUNT == fplArrayCount(g__GamePlatform__ControllerButtonTypeNameTable));
 
