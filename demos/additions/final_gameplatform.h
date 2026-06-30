@@ -9,6 +9,9 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
+	## 2026-06-30
+	- Mapped ControllerButtonType_ShoulderLeft and ControllerButtonType_ShoulderRight
+
 	## 2025-12-30
 	- Fixed compile warnings
 	- Fixed lost/focus was not detected properly
