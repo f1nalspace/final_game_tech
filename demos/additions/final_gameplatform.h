@@ -525,8 +525,8 @@ fpl_internal void InternalGamePlatformAddDefaultKeyboardMappings(KeyboardButtonM
 	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_T, ControllerButtonType_ShoulderRight);
 
 	// Trigger Buttons
-	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_V, ControllerButtonType_TriggerLeft);
-	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_B, ControllerButtonType_TriggerRight);
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_V, ControllerButtonType_ThumbLeft);
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_B, ControllerButtonType_ThumbRight);
 
 	// Start/Back
 	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Return, ControllerButtonType_ActionStart);
