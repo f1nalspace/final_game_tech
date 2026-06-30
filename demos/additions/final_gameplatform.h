@@ -11,6 +11,7 @@ Description:
 Changelog:
 	## 2026-06-30
 	- Mapped ControllerButtonType_ShoulderLeft and ControllerButtonType_ShoulderRight
+	- Changed fullscreen toggle key-binding from F to Left-Alt + F
 
 	## 2025-12-30
 	- Fixed compile warnings
@@ -336,7 +337,7 @@ fpl_internal void InternalGamePlatformProcessEvents(const KeyboardButtonMappings
 							}
 						}
 						if(wasDown) {
-							if(event.keyboard.mappedKey == fplKey_F) {
+							if(event.keyboard.mappedKey == fplKey_F && (event.keyboard.modifiers & fplKeyboardModifierFlags_LAlt) != 0) {
 								bool wasFullscreen = fplIsWindowFullscreen();
 								fplSetWindowFullscreenSize(!wasFullscreen, 0, 0, 0);
 							}
