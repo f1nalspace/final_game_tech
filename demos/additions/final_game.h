@@ -9,6 +9,7 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
+	- Increased MAX_KEYBOARD_CONTROLLER_BUTTON_MAPPING_COUNT from 32 to 128
 	## 2026-06-08
 	- New: Added function ButtonWentDown() that returns whether a button went down this frame (the press/down edge)
 
@@ -125,7 +126,7 @@ typedef struct KeyboardControllerButtonMapping {
 } KeyboardControllerButtonMapping;
 
 // Total number of keyboard controller button mappings
-#define MAX_KEYBOARD_CONTROLLER_BUTTON_MAPPING_COUNT 32
+#define MAX_KEYBOARD_CONTROLLER_BUTTON_MAPPING_COUNT 128
 
 typedef struct KeyboardButtonMappings {
 	KeyboardControllerButtonMapping values[MAX_KEYBOARD_CONTROLLER_BUTTON_MAPPING_COUNT];

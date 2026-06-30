@@ -55,7 +55,7 @@ License:
 
 typedef struct GameConfiguration {
 	// Keyboard mappings
-	KeyboardButtonMappings *keyboardMappings;
+	const KeyboardButtonMappings *keyboardMappings;
 	// Title of the game
 	const char *title;
 	// Name of the user folder name (if empty, the title is used instead)
@@ -462,7 +462,6 @@ typedef struct {
 	KeyboardButtonMappings keyboardMappings;
 	KeyboardButtonStates keyboardButtonStates;
 	GameMemory gameMemory;
-	
 } GamePlatformState;
 
 #define CONTROLLER_BUTTON_TYPE_COUNT FPL__ENUM_COUNT(ControllerButtonType_First, ControllerButtonType_Last)
