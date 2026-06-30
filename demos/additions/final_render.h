@@ -8,6 +8,10 @@ Description:
 
 	This file is part of the final_framework.
 
+Changelog:
+	## 2026-06-32
+	- Added render statistic fields to RenderState (last render build/submit/swap timings)
+
 License:
 	MIT License
 	Copyright 2017-2026 Torsten Spaete
@@ -105,6 +109,12 @@ typedef struct RenderState {
 	fmemMemoryBlock memory;
 	size_t textureOperationCount;
 	size_t lastMemoryUsage;
+	// Last frame's render command buffer push timings (seconds)
+	double lastRenderBuildSeconds;
+	// Last frame's submit to rendering backend timings (seconds)
+	double lastRenderSubmitSeconds;
+	// Last frame's swap/flip/v-sync timings (seconds)
+	double lastRenderSwapSeconds;
 } RenderState;
 
 typedef enum CommandType {
