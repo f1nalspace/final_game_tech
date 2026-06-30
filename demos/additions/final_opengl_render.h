@@ -9,6 +9,9 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
+	## 2026-06-32
+	- Render CommandType_SpriteBatch that renders a batch of sprites
+
 	## 2026-06-08
 	- Fixed CommandType_Clear was not clearing the entire frame, due to Scissor rectangle of the viewport
 
@@ -178,6 +181,49 @@ fpl_extern void InitOpenGLRenderer() {
 	glEnable(GL_LINE_SMOOTH);
 
 	glEnable(GL_SCISSOR_TEST);
+}
+
+// Sprite batches are expanded into client vertex arrays and drawn in chunks of this
+// many sprites, so the scratch buffers stay a fixed ~1 MB regardless of the batch size.
+#define SPRITE_BATCH_CHUNK_SPRITES 8192
+#define SPRITE_BATCH_VERTS_PER_SPRITE 4
+
+static Vec2f _spriteBatchPos[SPRITE_BATCH_CHUNK_SPRITES * SPRITE_BATCH_VERTS_PER_SPRITE];
+static Vec2f _spriteBatchUV[SPRITE_BATCH_CHUNK_SPRITES * SPRITE_BATCH_VERTS_PER_SPRITE];
+static Vec4f _spriteBatchColor[SPRITE_BATCH_CHUNK_SPRITES * SPRITE_BATCH_VERTS_PER_SPRITE];
+
+// Expand one sprite instance into 4 quad corners (position + uv), applying the flip and
+// 90-degree rotate flags exactly like the single CommandType_Sprite path above.
+static void _ExpandSpriteInstance(const SpriteInstance *s, Vec2f *outPos, Vec2f *outUV) {
+	const bool flipU = (s->flags & SpriteFlags_FlipU) == SpriteFlags_FlipU;
+	const bool flipV = (s->flags & SpriteFlags_FlipV) == SpriteFlags_FlipV;
+	const bool rot90CW = (s->flags & SpriteFlags_Rotate_90_CW) == SpriteFlags_Rotate_90_CW;
+	const bool rot90CCW = (s->flags & SpriteFlags_Rotate_90_CCW) == SpriteFlags_Rotate_90_CCW;
+	const float uMin = flipU ? s->uvMax.x : s->uvMin.x;
+	const float uMax = flipU ? s->uvMin.x : s->uvMax.x;
+	const float vMin = flipV ? s->uvMax.y : s->uvMin.y;
+	const float vMax = flipV ? s->uvMin.y : s->uvMax.y;
+	const bool notRotated = (!rot90CW && !rot90CCW) || (rot90CW && rot90CCW);
+	const float px = s->position.x;
+	const float py = s->position.y;
+	const float ex = s->ext.w;
+	const float ey = s->ext.h;
+	if (notRotated) {
+		outUV[0] = V2fInit(uMax, vMax); outPos[0] = V2fInit(px + ex, py + ey);
+		outUV[1] = V2fInit(uMin, vMax); outPos[1] = V2fInit(px - ex, py + ey);
+		outUV[2] = V2fInit(uMin, vMin); outPos[2] = V2fInit(px - ex, py - ey);
+		outUV[3] = V2fInit(uMax, vMin); outPos[3] = V2fInit(px + ex, py - ey);
+	} else if (rot90CW) {
+		outUV[0] = V2fInit(uMin, vMax); outPos[0] = V2fInit(px + ey, py + ex);
+		outUV[1] = V2fInit(uMin, vMin); outPos[1] = V2fInit(px - ey, py + ex);
+		outUV[2] = V2fInit(uMax, vMin); outPos[2] = V2fInit(px - ey, py - ex);
+		outUV[3] = V2fInit(uMax, vMax); outPos[3] = V2fInit(px + ey, py - ex);
+	} else {
+		outUV[0] = V2fInit(uMax, vMax); outPos[0] = V2fInit(px - ey, py + ex);
+		outUV[1] = V2fInit(uMin, vMax); outPos[1] = V2fInit(px - ey, py - ex);
+		outUV[2] = V2fInit(uMin, vMin); outPos[2] = V2fInit(px + ey, py - ex);
+		outUV[3] = V2fInit(uMax, vMin); outPos[3] = V2fInit(px + ey, py + ex);
+	}
 }
 
 fpl_extern void RenderWithOpenGL(RenderState *renderState) {
@@ -361,6 +407,44 @@ fpl_extern void RenderWithOpenGL(RenderState *renderState) {
 					glEnd();
 					glBindTexture(GL_TEXTURE_2D, 0);
 					glDisable(GL_TEXTURE_2D);
+				} break;
+
+				case CommandType_SpriteBatch:
+				{
+					fplAssert(dataSize >= sizeof(SpriteBatchCommand));
+					SpriteBatchCommand *cmd = (SpriteBatchCommand *)dataStart;
+					if(cmd->count > 0) {
+						const GLuint texId = GetTextureIDFromHandle(cmd->texture);
+						glEnable(GL_TEXTURE_2D);
+						glBindTexture(GL_TEXTURE_2D, texId);
+						glEnableClientState(GL_VERTEX_ARRAY);
+						glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+						glEnableClientState(GL_COLOR_ARRAY);
+						glVertexPointer(2, GL_FLOAT, 0, _spriteBatchPos);
+						glTexCoordPointer(2, GL_FLOAT, 0, _spriteBatchUV);
+						glColorPointer(4, GL_FLOAT, 0, _spriteBatchColor);
+						size_t remainingSprites = cmd->count;
+						size_t spriteOffset = 0;
+						while(remainingSprites > 0) {
+							size_t chunkSprites = remainingSprites < SPRITE_BATCH_CHUNK_SPRITES ? remainingSprites : SPRITE_BATCH_CHUNK_SPRITES;
+							for(size_t s = 0; s < chunkSprites; ++s) {
+								const SpriteInstance *instance = &cmd->instances[spriteOffset + s];
+								size_t vertexBase = s * SPRITE_BATCH_VERTS_PER_SPRITE;
+								_ExpandSpriteInstance(instance, &_spriteBatchPos[vertexBase], &_spriteBatchUV[vertexBase]);
+								for(size_t v = 0; v < SPRITE_BATCH_VERTS_PER_SPRITE; ++v) {
+									_spriteBatchColor[vertexBase + v] = instance->color;
+								}
+							}
+							glDrawArrays(GL_QUADS, 0, (GLsizei)(chunkSprites * SPRITE_BATCH_VERTS_PER_SPRITE));
+							spriteOffset += chunkSprites;
+							remainingSprites -= chunkSprites;
+						}
+						glDisableClientState(GL_COLOR_ARRAY);
+						glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+						glDisableClientState(GL_VERTEX_ARRAY);
+						glBindTexture(GL_TEXTURE_2D, 0);
+						glDisable(GL_TEXTURE_2D);
+					}
 				} break;
 
 				case CommandType_Vertices:
