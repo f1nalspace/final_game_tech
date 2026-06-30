@@ -13,6 +13,7 @@ Changelog:
 	- Mapped ControllerButtonType_ShoulderLeft and ControllerButtonType_ShoulderRight
 	- Changed fullscreen toggle key-binding from F to Left-Alt + F
 	- Mapped all non-trigger controller buttons to keyboard
+	- Update new render statistic fields from RenderState
 
 	## 2025-12-30
 	- Fixed compile warnings
@@ -897,9 +898,17 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 		const float alphaRaw = (float)(frameAccumulator / targetDeltaTime);
 		const float alpha = F32Clamp(alphaRaw, 0.0f, 1.0f);
 		RenderReset(renderState);
+		fplTimestamp renderBuildStart = fplTimestampQuery();
 		GameRender(gameMem, newInput, alpha);
+		fplTimestamp renderBuildEnd = fplTimestampQuery();
 		RenderWithOpenGL(renderState);
+		fplTimestamp renderSubmitEnd = fplTimestampQuery();
+		renderState->lastRenderBuildSeconds = fplTimestampElapsed(renderBuildStart, renderBuildEnd);
+		renderState->lastRenderSubmitSeconds = fplTimestampElapsed(renderBuildEnd, renderSubmitEnd);
+		fplTimestamp renderSwapStart = fplTimestampQuery();
 		fplVideoFlip();
+		fplTimestamp renderSwapEnd = fplTimestampQuery();
+		renderState->lastRenderSwapSeconds = fplTimestampElapsed(renderSwapStart, renderSwapEnd);
 		++frameCount;
 
 		//
