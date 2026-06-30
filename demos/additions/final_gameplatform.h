@@ -12,6 +12,7 @@ Changelog:
 	## 2026-06-30
 	- Mapped ControllerButtonType_ShoulderLeft and ControllerButtonType_ShoulderRight
 	- Changed fullscreen toggle key-binding from F to Left-Alt + F
+	- Mapped all non-trigger controller buttons to keyboard
 
 	## 2025-12-30
 	- Fixed compile warnings
@@ -270,6 +271,8 @@ fpl_internal void InternalGamePlatformProcessEvents(const KeyboardButtonMappings
 						changed |= InternalGamePlatformUpdateDigitalButtonState(&oldController->actionStart, &newController->actionStart, padstate->start.isDown);
 						changed |= InternalGamePlatformUpdateDigitalButtonState(&oldController->leftShoulder, &newController->leftShoulder, padstate->leftShoulder.isDown);
 						changed |= InternalGamePlatformUpdateDigitalButtonState(&oldController->rightShoulder, &newController->rightShoulder, padstate->rightShoulder.isDown);
+						changed |= InternalGamePlatformUpdateDigitalButtonState(&oldController->leftThumb, &newController->leftThumb, padstate->leftThumb.isDown);
+						changed |= InternalGamePlatformUpdateDigitalButtonState(&oldController->rightThumb, &newController->rightThumb, padstate->rightThumb.isDown);
 						if (changed) {
 							InternalGamePlatformUpdateDefaultController(currentInput, controllerIndex);
 						}
@@ -496,6 +499,37 @@ fpl_internal const char *InternalGamePlatformGetControllerButtonTypeName(const C
 	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, ControllerButtonType_First, ControllerButtonType_Last);
 	const char *result = g__GamePlatform__ControllerButtonTypeNameTable[index];
 	return(result);
+}
+
+fpl_internal void InternalGamePlatformAddDefaultKeyboardMappings(KeyboardButtonMappings *keyboardMappings, KeyboardButtonStates *keyboardButtonStates) {
+	// Movement
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_A, ControllerButtonType_MoveLeft);
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Left, ControllerButtonType_MoveLeft);
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_D, ControllerButtonType_MoveRight);
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Right, ControllerButtonType_MoveRight);
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_W, ControllerButtonType_MoveUp);
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Up, ControllerButtonType_MoveUp);
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_S, ControllerButtonType_MoveDown);
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Down, ControllerButtonType_MoveDown);
+
+	// Actions
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Space, ControllerButtonType_ActionDown);
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Return, ControllerButtonType_ActionUp);
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_F, ControllerButtonType_ActionUp);
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Q, ControllerButtonType_ActionLeft);
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_E, ControllerButtonType_ActionRight);
+
+	// Shoulder Buttons
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_R, ControllerButtonType_ShoulderLeft);
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_T, ControllerButtonType_ShoulderRight);
+
+	// Trigger Buttons
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_V, ControllerButtonType_TriggerLeft);
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_B, ControllerButtonType_TriggerRight);
+
+	// Start/Back
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Return, ControllerButtonType_ActionStart);
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Escape, ControllerButtonType_ActionBack);
 }
 
 fpl_internal void GameMainShutdown(const GameConfiguration *config, GameMemory *gameMem, AudioSystem *audioSys, fmemMemoryBlock *gameMemoryBlock, fmemMemoryBlock *renderMemoryBlock) {
@@ -752,17 +786,7 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 	if (config->keyboardMappings != fpl_null && config->keyboardMappings->isCustom) {
 		fplMemoryCopy(config->keyboardMappings, sizeof(KeyboardButtonMappings), keyboardMappings);
 	} else {
-		InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_A, ControllerButtonType_MoveLeft);
-		InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Left, ControllerButtonType_MoveLeft);
-		InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_D, ControllerButtonType_MoveRight);
-		InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Right, ControllerButtonType_MoveRight);
-		InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_W, ControllerButtonType_MoveUp);
-		InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Up, ControllerButtonType_MoveUp);
-		InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_S, ControllerButtonType_MoveDown);
-		InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Down, ControllerButtonType_MoveDown);
-		InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Space, ControllerButtonType_ActionDown);
-		InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Return, ControllerButtonType_ActionStart);
-		InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Escape, ControllerButtonType_ActionBack);
+		InternalGamePlatformAddDefaultKeyboardMappings(keyboardMappings, keyboardButtonStates);
 	}
 
 	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Main Loop");
