@@ -9,6 +9,8 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
+	## 2026-06-30
+	- Added ControllerButtonType_ShoulderLeft and ControllerButtonType_ShoulderRight
 	- Increased MAX_KEYBOARD_CONTROLLER_BUTTON_MAPPING_COUNT from 32 to 128
 
 	## 2026-06-08
