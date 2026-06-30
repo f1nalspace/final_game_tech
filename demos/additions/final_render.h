@@ -11,6 +11,7 @@ Description:
 Changelog:
 	## 2026-06-32
 	- Added render statistic fields to RenderState (last render build/submit/swap timings)
+	- Added types and functions for rendering a batch of sprites (RenderAllocateSpriteBatch / RenderPushSpriteBatch)
 
 License:
 	MIT License
@@ -126,6 +127,7 @@ typedef enum CommandType {
 	CommandType_Rectangle,
 	CommandType_Vertices,
 	CommandType_Sprite,
+	CommandType_SpriteBatch,
 	CommandType_Text
 } CommandType;
 
@@ -225,6 +227,30 @@ typedef struct SpriteCommand {
 	SpriteFlags flags;
 } SpriteCommand;
 
+// One sprite inside a batch -- all instances in a SpriteBatchCommand share the same
+// texture, so they collapse into a single draw call (see RenderAllocateSpriteBatch).
+typedef struct SpriteInstance {
+	Vec4f color;
+	Vec2f position;
+	Vec2f ext;
+	Vec2f uvMin;
+	Vec2f uvMax;
+	SpriteFlags flags;
+} SpriteInstance;
+
+typedef struct SpriteBatchCommand {
+	TextureHandle texture;
+	SpriteInstance *instances;
+	size_t capacity;
+	size_t count;
+} SpriteBatchCommand;
+
+// Returned by RenderAllocateSpriteBatch: fill instances[0..count) then write *count.
+typedef struct SpriteBatchAllocation {
+	SpriteInstance *instances;
+	size_t *count;
+} SpriteBatchAllocation;
+
 typedef struct TextCommand {
 	Vec4f color;
 	Vec2f position;
@@ -251,6 +277,8 @@ fpl_extern void RenderPushQuad(RenderState *state, const Vec2f center, const flo
 fpl_extern VertexAllocation RenderAllocateVertices(RenderState *state, const size_t capacity, const Vec4f color, const DrawMode drawMode, const bool isLoop, const float thickness);
 fpl_extern void RenderPushVertices(RenderState *state, const Vec2f *verts, const size_t vertexCount, const bool copyVerts, const Vec4f color, const DrawMode drawMode, const bool isLoop, const float thickness);
 fpl_extern void RenderPushSprite(RenderState *state, const Vec2f position, const Vec2f ext, const TextureHandle texture, const Vec4f color, const UVRect uvRect, const SpriteFlags flags);
+fpl_extern SpriteBatchAllocation RenderAllocateSpriteBatch(RenderState *state, const size_t capacity, const TextureHandle texture);
+fpl_extern void RenderPushSpriteBatch(RenderState *state, const TextureHandle texture, const SpriteInstance *instances, const size_t count);
 fpl_extern void RenderPushTexture(RenderState *state, TextureHandle *targetTexture, const void *data, const uint32_t width, const uint32_t height, const uint32_t bytesPerPixel, const TextureFilterType filter, const TextureWrapMode wrap, const bool isTopDown, const bool isPreMultiplied);
 fpl_extern void RenderPopTexture(RenderState *state, TextureHandle *targetTexture);
 fpl_extern void RenderPushText(RenderState *state, const char *text, const size_t textLen, const LoadedFont *font, const TextureHandle texture, const Vec2f position, const float maxHeight, const float horizontalAlignment, const float verticalAlignment, const Vec4f color);
@@ -485,6 +513,41 @@ fpl_extern void RenderPushSprite(RenderState *state, const Vec2f position, const
 	cmd->uvMin = V2fInit(uvRect.uMin, uvRect.vMin);
 	cmd->uvMax = V2fInit(uvRect.uMax, uvRect.vMax);
 	cmd->flags = flags;
+}
+
+fpl_extern SpriteBatchAllocation RenderAllocateSpriteBatch(RenderState *state, const size_t capacity, const TextureHandle texture) {
+	SpriteBatchAllocation result = fplZeroInit;
+	if (state == fpl_null || capacity == 0) {
+		return result;
+	}
+	CommandHeader *header = _RenderPushHeader(state, CommandType_SpriteBatch);
+	SpriteBatchCommand *cmd = _RenderPushTypeAs(state, header, SpriteBatchCommand, true);
+	SpriteInstance *instances = _RenderPushTypesAs(state, header, capacity, SpriteInstance, true);
+	if (cmd == fpl_null || instances == fpl_null) {
+		return result;
+	}
+	cmd->texture = texture;
+	cmd->capacity = capacity;
+	cmd->count = 0;
+	cmd->instances = instances;
+
+	result.instances = instances;
+	result.count = &cmd->count;
+	return result;
+}
+
+fpl_extern void RenderPushSpriteBatch(RenderState *state, const TextureHandle texture, const SpriteInstance *instances, const size_t count) {
+	if (state == fpl_null || instances == fpl_null || count == 0) {
+		return;
+	}
+	SpriteBatchAllocation batch = RenderAllocateSpriteBatch(state, count, texture);
+	if (batch.instances == fpl_null) {
+		return;
+	}
+	for (size_t i = 0; i < count; ++i) {
+		batch.instances[i] = instances[i];
+	}
+	*batch.count = count;
 }
 
 fpl_extern void RenderPushTexture(RenderState *state, TextureHandle *targetTexture, const void *data, const uint32_t width, const uint32_t height, const uint32_t bytesPerPixel, const TextureFilterType filter, const TextureWrapMode wrap, const bool isTopDown, const bool isPreMultiplied) {
