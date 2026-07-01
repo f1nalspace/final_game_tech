@@ -9,6 +9,9 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
+	## 2026-07-01
+	- Added field textInput and textInputLength to Input struct
+
 	## 2026-06-30
 	- Added ControllerButtonType_ShoulderLeft and ControllerButtonType_ShoulderRight
 	- Added ControllerButtonType_ThumbLeft and ControllerButtonType_ThumbRight
@@ -94,6 +97,10 @@ typedef enum ControllerButtonType {
 
 fplStaticAssert(MAX_CONTROLLER_BUTTON_TYPE_COUNT == MAX_CONTROLLER_BUTTON_COUNT);
 
+// Max number of typed characters captured per frame (Input.textInput). One frame rarely
+// produces more than a handful of characters, so a small fixed buffer is plenty.
+#define MAX_TEXT_INPUT_LENGTH 32
+
 typedef struct Controller {
 	Vec2f analogMovement;
 	union {
@@ -167,6 +174,10 @@ typedef struct Input {
 		Controller controllers[5];
 	};
 	Mouse mouse;
+
+	// Characters typed this frame (printable text-input events, filled from fplKeyboardEventType_Input and cleared every frame). Control keys (Backspace, Tab, Return) are NOT stored here! Not null terminated!
+	char textInput[MAX_TEXT_INPUT_LENGTH];
+	int textInputLength;
 
 	// Size of window in pixels
 	Vec2i windowSize;
