@@ -9,6 +9,9 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
+	## 2026-07-01
+	- Fixed: Keyboard controller button could latch stuck-down after a same-frame press+release tap; now derived from the polled key state
+
 	## 2026-06-30
 	- Mapped ControllerButtonType_ShoulderLeft and ControllerButtonType_ShoulderRight
 	- Changed fullscreen toggle key-binding from F to Left-Alt + F
@@ -823,11 +826,28 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 			}
 		}
 		
-		// Keyboard controller buttons from all mappings
+		// Keyboard controller buttons: derive each from the polled key state (OR of every key mapped
+		// to that button type). Event accumulation latched a same-frame press+release tap as a stuck
+		// "down"; polling reflects the real key state so a released key can never get stuck.
 		for (uint32_t buttonTypeIndex = 0; buttonTypeIndex < MAX_CONTROLLER_BUTTON_TYPE_COUNT; ++buttonTypeIndex) {
-			if (keyboardButtonStates->mapped[buttonTypeIndex] && keyboardButtonStates->changed[buttonTypeIndex]) {
-				ButtonState *button = &newInput->keyboard.buttons[buttonTypeIndex];
-				bool isDown = keyboardButtonStates->states[buttonTypeIndex] > fplButtonState_Release;
+			if (!keyboardButtonStates->mapped[buttonTypeIndex]) {
+				continue;
+			}
+			ControllerButtonType buttonType = (ControllerButtonType)(ControllerButtonType_First + buttonTypeIndex);
+			fpl_b32 isDown = 0;
+			for (uint32_t mappingIndex = 0; mappingIndex < keyboardMappings->count; ++mappingIndex) {
+				const KeyboardControllerButtonMapping *mapping = keyboardMappings->values + mappingIndex;
+				if (mapping->type != buttonType) {
+					continue;
+				}
+				fplButtonState mappedKeyState = keyboardState->buttonStatesMapped[mapping->key];
+				if (mappedKeyState != fplButtonState_Release) {
+					isDown = 1;
+					break;
+				}
+			}
+			ButtonState *button = &newInput->keyboard.buttons[buttonTypeIndex];
+			if (button->endedDown != isDown) {
 				InternalGamePlatformUpdateKeyboardButtonState(button, isDown);
 			}
 		}
