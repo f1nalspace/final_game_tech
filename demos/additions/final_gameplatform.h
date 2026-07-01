@@ -11,6 +11,7 @@ Description:
 Changelog:
 	## 2026-07-01
 	- Fixed: Keyboard controller button could latch stuck-down after a same-frame press+release tap; now derived from the polled key state
+	- Added: Capture typed characters (fplKeyboardEventType_Input) into Input.textInput
 
 	## 2026-06-30
 	- Mapped ControllerButtonType_ShoulderLeft and ControllerButtonType_ShoulderRight
@@ -351,6 +352,20 @@ fpl_internal void InternalGamePlatformProcessEvents(const KeyboardButtonMappings
 						}
 					} break;
 
+					case fplKeyboardEventType_Input:
+					{
+						// Typed character. The code point is carried in keyCode; control keys
+						// (Backspace/Tab/Return) also arrive here, so filter them out -- the game
+						// reads those from the keyboard button states, not from textInput.
+						uint64_t codePoint = event.keyboard.keyCode;
+						fplKey physicalKey = event.keyboard.mappedKey;
+						bool isPrintable = codePoint > 0 && codePoint < INT16_MAX &&
+							physicalKey != fplKey_Backspace && physicalKey != fplKey_Tab && physicalKey != fplKey_Return;
+						if(isPrintable && currentInput->textInputLength < (int)fplArrayCount(currentInput->textInput)) {
+							currentInput->textInput[currentInput->textInputLength++] = (char)codePoint;
+						}
+					} break;
+
 				    default:
 				        break;
 				}
@@ -374,6 +389,9 @@ fpl_internal void InternalGamePlatformSetupInputForFrame(KeyboardButtonStates *k
 	newInput->framesPerSeconds = (float)framesPerSecond;
 	newInput->defaultControllerIndex = oldInput->defaultControllerIndex;
 	newInput->isFirstUpdateOfFrame = true;
+
+	// Typed text is per-frame: reset before this frame's events refill it.
+	newInput->textInputLength = 0;
 
 	const uint32_t controllerButtonCount = MAX_CONTROLLER_BUTTON_COUNT;
 
