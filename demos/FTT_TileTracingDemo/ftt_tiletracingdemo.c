@@ -187,33 +187,33 @@ static uint32_t RandomRange(uint32_t minInclusive, uint32_t maxInclusive) {
 	return minInclusive + ((uint32_t)rand() % span);
 }
 
-static void CarveRoom(uint8_t *tiles, uint32_t mapWidth, uint32_t mapHeight, uint32_t roomX, uint32_t roomY, uint32_t roomWidth, uint32_t roomHeight) {
+static void PlaceSolidRoom(uint8_t *tiles, uint32_t mapWidth, uint32_t mapHeight, uint32_t roomX, uint32_t roomY, uint32_t roomWidth, uint32_t roomHeight) {
 	uint32_t maxY = mapHeight - DungeonBorderMargin;
 	uint32_t maxX = mapWidth - DungeonBorderMargin;
 	for (uint32_t y = roomY; y < roomY + roomHeight && y < maxY; ++y) {
 		for (uint32_t x = roomX; x < roomX + roomWidth && x < maxX; ++x) {
-			tiles[y * mapWidth + x] = 0;
+			tiles[y * mapWidth + x] = 1;
 		}
 	}
 }
 
-static void CarveCorridor(uint8_t *tiles, uint32_t mapWidth, int32_t x0, int32_t y0, int32_t x1, int32_t y1) {
+static void PlaceSolidCorridor(uint8_t *tiles, uint32_t mapWidth, int32_t x0, int32_t y0, int32_t x1, int32_t y1) {
 	int32_t x = x0;
 	int32_t y = y0;
 	while (x != x1) {
-		tiles[(uint32_t)y * mapWidth + (uint32_t)x] = 0;
+		tiles[(uint32_t)y * mapWidth + (uint32_t)x] = 1;
 		x += (x1 > x) ? 1 : -1;
 	}
 	while (y != y1) {
-		tiles[(uint32_t)y * mapWidth + (uint32_t)x] = 0;
+		tiles[(uint32_t)y * mapWidth + (uint32_t)x] = 1;
 		y += (y1 > y) ? 1 : -1;
 	}
-	tiles[(uint32_t)y * mapWidth + (uint32_t)x] = 0;
+	tiles[(uint32_t)y * mapWidth + (uint32_t)x] = 1;
 }
 
 static void GenerateDungeon(uint8_t *tiles, uint32_t mapWidth, uint32_t mapHeight) {
 	for (uint32_t index = 0; index < mapWidth * mapHeight; ++index) {
-		tiles[index] = 1;
+		tiles[index] = 0;
 	}
 
 	int32_t previousCenterX = 0;
@@ -226,12 +226,12 @@ static void GenerateDungeon(uint8_t *tiles, uint32_t mapWidth, uint32_t mapHeigh
 		uint32_t roomX = RandomRange(DungeonBorderMargin, mapWidth - roomWidth - DungeonBorderMargin - 1);
 		uint32_t roomY = RandomRange(DungeonBorderMargin, mapHeight - roomHeight - DungeonBorderMargin - 1);
 
-		CarveRoom(tiles, mapWidth, mapHeight, roomX, roomY, roomWidth, roomHeight);
+		PlaceSolidRoom(tiles, mapWidth, mapHeight, roomX, roomY, roomWidth, roomHeight);
 
 		int32_t centerX = (int32_t)(roomX + roomWidth / 2);
 		int32_t centerY = (int32_t)(roomY + roomHeight / 2);
 		if (hasPreviousCenter) {
-			CarveCorridor(tiles, mapWidth, previousCenterX, previousCenterY, centerX, centerY);
+			PlaceSolidCorridor(tiles, mapWidth, previousCenterX, previousCenterY, centerX, centerY);
 		}
 		previousCenterX = centerX;
 		previousCenterY = centerY;
