@@ -20,8 +20,9 @@ Author:
 
 Changelog:
 	## 2026-07-07
-	- Added slope tile support: slope-aware tile rendering and three slope scenarios
-	  (simple slopes, the medium map with beveled corners, and random beveled blocks)
+	- Added slope tile support: slope-aware tile rendering and five slope scenarios
+	  (simple slopes, the medium map with beveled corners, random beveled blocks,
+	  and explicit convex and concave slope shapes)
 	- Added a line-stroke font, a minimal immediate-mode UI panel and mouse input
 	- Added pause/resume/step control over the tile tracer
 	- Added scenario switching between a small map, the original map and a randomly generated dungeon
@@ -75,6 +76,12 @@ enum {
 
 	SimpleSlopesWidth = 24,
 	SimpleSlopesHeight = 14,
+
+	ConvexWidth = 30,
+	ConvexHeight = 15,
+
+	ConcaveWidth = 30,
+	ConcaveHeight = 16,
 
 	MaxTileMapCountW = 36,
 	MaxTileMapCountH = 62,
@@ -201,6 +208,47 @@ static uint8_t Scenario5_TileMap[MaxTileMapCountW * MaxTileMapCountH];
 
 static uint8_t Scenario6_TileMap[MaxTileMapCountW * MaxTileMapCountH];
 
+// Explicit convex slope shapes (no concave/reflex corners): a triangle, a diamond, a house
+// pentagon and a beveled octagon. Authored with row 0 at the bottom of the screen (tile view is y-up).
+static const uint8_t Scenario7_TileMap[ConvexWidth * ConvexHeight] = {
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,0,   // House pentagon
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,0,
+	5,1,1,1,1,1,1,4,0,0,0,0,0,0,0,0,0,2,1,1,3,0,0,1,1,1,1,1,1,0,   // Triangle (left), octagon (mid)
+	0,5,1,1,1,1,4,0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0,5,1,1,1,1,4,0,
+	0,0,5,1,1,4,0,0,0,0,0,0,2,3,0,0,0,5,1,1,4,0,0,0,5,1,1,4,0,0,   // Diamond (mid)
+	0,0,0,5,4,0,0,0,0,0,0,0,5,4,0,0,0,0,0,0,0,0,0,0,0,5,4,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+};
+
+// Explicit concave slope shapes (with reflex corners): a V-notch crater, a sawtooth range and
+// an arrow with a notched base. Authored with row 0 at the bottom of the screen (tile view is y-up).
+static const uint8_t Scenario8_TileMap[ConcaveWidth * ConcaveHeight] = {
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	1,1,1,1,2,3,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,   // V-notch crater
+	5,1,1,1,1,1,1,1,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,5,1,1,1,1,1,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,5,1,1,1,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,5,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,   // Sawtooth range
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,5,4,5,4,5,4,5,4,5,4,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,   // Arrow with a notched base
+	0,1,1,1,1,1,4,5,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,1,1,1,1,4,0,0,5,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,1,1,1,4,0,0,0,0,5,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+};
+
 typedef struct fttScenario {
 	const char *name;
 	uint32_t width;
@@ -216,6 +264,8 @@ enum {
 	Scenario_SimpleSlopes,
 	Scenario_SlopedCorners,
 	Scenario_RandomSlopes,
+	Scenario_Convex,
+	Scenario_Concave,
 	ScenarioCount,
 };
 
@@ -227,6 +277,8 @@ static fttScenario Scenarios[ScenarioCount] = {
 	{ "4 Simple Slopes", SimpleSlopesWidth, SimpleSlopesHeight, Scenario4_TileMap },
 	{ "5 Sloped Corners", MaxTileMapCountW, MaxTileMapCountH, Scenario5_TileMap },
 	{ "6 Random Slopes", MaxTileMapCountW, MaxTileMapCountH, Scenario6_TileMap },
+	{ "7 Convex", ConvexWidth, ConvexHeight, Scenario7_TileMap },
+	{ "8 Concave", ConcaveWidth, ConcaveHeight, Scenario8_TileMap },
 };
 
 static float RandomFloat() {
