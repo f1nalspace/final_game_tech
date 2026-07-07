@@ -74,6 +74,9 @@ enum {
 	MaxTileMapCountW = 36,
 	MaxTileMapCountH = 62,
 
+	MassiveMaxTileMapCountW = 360,
+	MassiveMaxTileMapCountH = 620,
+
 	UiPanelWidthPixels = 240,
 
 	DungeonRoomCount = 14,
@@ -162,6 +165,8 @@ static const uint8_t Scenario1_TileMap[MaxTileMapCountW * MaxTileMapCountH] = {
 
 static uint8_t Scenario2_TileMap[MaxTileMapCountW * MaxTileMapCountH];
 
+static uint8_t Scenario3_TileMap[MassiveMaxTileMapCountW * MassiveMaxTileMapCountH];
+
 typedef struct fttScenario {
 	const char *name;
 	uint32_t width;
@@ -171,16 +176,23 @@ typedef struct fttScenario {
 
 enum {
 	Scenario_Simple = 0,
-	Scenario_Current = 1,
-	Scenario_Random = 2,
-	ScenarioCount = 3,
+	Scenario_Current,
+	Scenario_Random,
+	Scenario_Massive,
+	ScenarioCount,
 };
 
 static fttScenario Scenarios[ScenarioCount] = {
 	{ "0 Simple", Scenario0Width, Scenario0Height, Scenario0_TileMap },
 	{ "1 Current", MaxTileMapCountW, MaxTileMapCountH, Scenario1_TileMap },
 	{ "2 Random", MaxTileMapCountW, MaxTileMapCountH, Scenario2_TileMap },
+	{ "3 Massive", MassiveMaxTileMapCountW, MassiveMaxTileMapCountH, Scenario3_TileMap },
 };
+
+static float RandomFloat() {
+	float result = (float)rand() / (float)RAND_MAX;
+	return result;
+}
 
 static uint32_t RandomRange(uint32_t minInclusive, uint32_t maxInclusive) {
 	uint32_t span = maxInclusive - minInclusive + 1;
@@ -209,6 +221,16 @@ static void PlaceSolidCorridor(uint8_t *tiles, uint32_t mapWidth, int32_t x0, in
 		y += (y1 > y) ? 1 : -1;
 	}
 	tiles[(uint32_t)y * mapWidth + (uint32_t)x] = 1;
+}
+
+static void GenerateRandom(uint8_t *tiles, uint32_t mapWidth, uint32_t mapHeight) {
+	for (uint32_t index = 0; index < mapWidth * mapHeight; ++index) {
+		if (RandomFloat() > 0.5f) {
+			tiles[index] = 1;
+		} else {
+			tiles[index] = 0;
+		}
+	}
 }
 
 static void GenerateDungeon(uint8_t *tiles, uint32_t mapWidth, uint32_t mapHeight) {
@@ -342,7 +364,10 @@ int main(int argc, char **args) {
 	(void)args;
 
 	srand((unsigned int)time(NULL));
+
 	GenerateDungeon(Scenario2_TileMap, MaxTileMapCountW, MaxTileMapCountH);
+
+	GenerateRandom(Scenario3_TileMap, MassiveMaxTileMapCountW, MassiveMaxTileMapCountH);
 
 	fplSettings settings = fplMakeDefaultSettings();
 	fplCopyString("Tile-Tracing Example", settings.window.title, fplArrayCount(settings.window.title));
