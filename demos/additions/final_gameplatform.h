@@ -751,7 +751,16 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 	}
 
 	RenderInit(renderState, renderMemoryBlock);
-	InitOpenGLRenderer();
+
+	// InitOpenGLRenderer detects the GPU capabilities into renderState->caps so renderer-agnostic game
+	// code can read them (e.g. to gate shader features). The hard "exit if unsupported" gate is deferred.
+	InitOpenGLRenderer(&renderState->caps);
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "- GPU Caps: GL %d.%d, GLSL '%s', MaxTextureImageUnits: %d, Shaders: %s",
+		renderState->caps.glMajor, renderState->caps.glMinor, renderState->caps.glslVersion,
+		renderState->caps.maxTextureImageUnits, renderState->caps.supportsShaders ? "yes" : "no");
+	if(!renderState->caps.supportsShaders) {
+		LogWrite(LogLevel_Warning, GAMEPLATFORM_LOGPREFIX "GPU does not support shaders -- shader features will be disabled");
+	}
 
 	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Start Audio Playback");
 	fplSetAudioClientReadCallback(InternalGamePlatformAudioPlayback, audioSys);
