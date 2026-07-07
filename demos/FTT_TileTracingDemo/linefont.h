@@ -453,6 +453,165 @@ static const fttFontLineSegment FontGlyphSegments_Colon[] = {
 	{ FontColRM, FontRowBase, FontColLM, FontRowBase },
 	{ FontColLM, FontRowBase, FontColLM, FontRowLowQuarter },
 };
+static const fttFontLineSegment FontGlyphSegments_Exclaim[] = {
+	{ FontColM, FontRowCap, FontColM, FontRowLowerMid },
+	// Dot
+	{ FontColLM, FontRowLowQuarter, FontColRM, FontRowLowQuarter },
+	{ FontColRM, FontRowLowQuarter, FontColRM, FontRowBase },
+	{ FontColRM, FontRowBase, FontColLM, FontRowBase },
+	{ FontColLM, FontRowBase, FontColLM, FontRowLowQuarter },
+};
+static const fttFontLineSegment FontGlyphSegments_Quote[] = {
+	{ FontColLM, FontRowCap, FontColLM, FontRowXHeight },
+	{ FontColRM, FontRowCap, FontColRM, FontRowXHeight },
+};
+static const fttFontLineSegment FontGlyphSegments_Hash[] = {
+	{ FontColL, FontRowMiddle, FontColR, FontRowMiddle },
+	{ FontColL, FontRowLowQuarter, FontColR, FontRowLowQuarter },
+	{ FontColLM, FontRowXHeight, FontColLM, FontRowBase },
+	{ FontColRM, FontRowXHeight, FontColRM, FontRowBase },
+};
+static const fttFontLineSegment FontGlyphSegments_Dollar[] = {
+	{ FontColM, FontRowCap, FontColM, FontRowSubBase },
+	{ FontColR, FontRowUpperMid, FontColL, FontRowUpperMid },
+	{ FontColL, FontRowUpperMid, FontColL, FontRowMiddle },
+	{ FontColL, FontRowMiddle, FontColR, FontRowMiddle },
+	{ FontColR, FontRowMiddle, FontColR, FontRowBase },
+	{ FontColR, FontRowBase, FontColL, FontRowBase },
+};
+static const fttFontLineSegment FontGlyphSegments_Percent[] = {
+	{ FontColL, FontRowBase, FontColR, FontRowCap },
+	// Upper-left box
+	{ FontColL, FontRowCap, FontColLM, FontRowCap },
+	{ FontColLM, FontRowCap, FontColLM, FontRowXHeight },
+	{ FontColLM, FontRowXHeight, FontColL, FontRowXHeight },
+	{ FontColL, FontRowXHeight, FontColL, FontRowCap },
+	// Lower-right box
+	{ FontColRM, FontRowLowerMid, FontColR, FontRowLowerMid },
+	{ FontColR, FontRowLowerMid, FontColR, FontRowBase },
+	{ FontColR, FontRowBase, FontColRM, FontRowBase },
+	{ FontColRM, FontRowBase, FontColRM, FontRowLowerMid },
+};
+static const fttFontLineSegment FontGlyphSegments_Ampersand[] = {
+	{ FontColR, FontRowLowerMid, FontColL, FontRowUpperMid },
+	{ FontColL, FontRowUpperMid, FontColM, FontRowCap },
+	{ FontColM, FontRowCap, FontColRM, FontRowUpperMid },
+	{ FontColRM, FontRowUpperMid, FontColL, FontRowLowerMid },
+	{ FontColL, FontRowLowerMid, FontColM, FontRowBase },
+	{ FontColM, FontRowBase, FontColR, FontRowLowQuarter },
+};
+static const fttFontLineSegment FontGlyphSegments_Apostrophe[] = {
+	{ FontColM, FontRowCap, FontColM, FontRowXHeight },
+};
+static const fttFontLineSegment FontGlyphSegments_LeftParen[] = {
+	{ FontColRM, FontRowCap, FontColLM, FontRowXHeight },
+	{ FontColLM, FontRowXHeight, FontColLM, FontRowLowerMid },
+	{ FontColLM, FontRowLowerMid, FontColRM, FontRowBase },
+};
+static const fttFontLineSegment FontGlyphSegments_RightParen[] = {
+	{ FontColLM, FontRowCap, FontColRM, FontRowXHeight },
+	{ FontColRM, FontRowXHeight, FontColRM, FontRowLowerMid },
+	{ FontColRM, FontRowLowerMid, FontColLM, FontRowBase },
+};
+static const fttFontLineSegment FontGlyphSegments_Asterisk[] = {
+	{ FontColM, FontRowUpperMid, FontColM, FontRowLowQuarter },
+	{ FontColL, FontRowXHeight, FontColR, FontRowLowerMid },
+	{ FontColR, FontRowXHeight, FontColL, FontRowLowerMid },
+};
+static const fttFontLineSegment FontGlyphSegments_Plus[] = {
+	{ FontColM, FontRowUpperMid, FontColM, FontRowLowQuarter },
+	{ FontColL, FontRowMiddle, FontColR, FontRowMiddle },
+};
+static const fttFontLineSegment FontGlyphSegments_Comma[] = {
+	{ FontColM, FontRowLowQuarter, FontColM, FontRowBase },
+	{ FontColM, FontRowBase, FontColL, FontRowDescender },
+};
+static const fttFontLineSegment FontGlyphSegments_Semicolon[] = {
+	// Upper dot
+	{ FontColLM, FontRowMiddle, FontColRM, FontRowMiddle },
+	{ FontColRM, FontRowMiddle, FontColRM, FontRowLowerMid },
+	{ FontColRM, FontRowLowerMid, FontColLM, FontRowLowerMid },
+	{ FontColLM, FontRowLowerMid, FontColLM, FontRowMiddle },
+	// Lower tail
+	{ FontColM, FontRowLowQuarter, FontColM, FontRowBase },
+	{ FontColM, FontRowBase, FontColL, FontRowDescender },
+};
+static const fttFontLineSegment FontGlyphSegments_Less[] = {
+	{ FontColR, FontRowUpperMid, FontColL, FontRowMiddle },
+	{ FontColL, FontRowMiddle, FontColR, FontRowLowQuarter },
+};
+static const fttFontLineSegment FontGlyphSegments_Equals[] = {
+	{ FontColL, FontRowMiddle, FontColR, FontRowMiddle },
+	{ FontColL, FontRowLowQuarter, FontColR, FontRowLowQuarter },
+};
+static const fttFontLineSegment FontGlyphSegments_Greater[] = {
+	{ FontColL, FontRowUpperMid, FontColR, FontRowMiddle },
+	{ FontColR, FontRowMiddle, FontColL, FontRowLowQuarter },
+};
+static const fttFontLineSegment FontGlyphSegments_Question[] = {
+	{ FontColL, FontRowUpperMid, FontColM, FontRowCap },
+	{ FontColM, FontRowCap, FontColR, FontRowUpperMid },
+	{ FontColR, FontRowUpperMid, FontColM, FontRowMiddle },
+	{ FontColM, FontRowMiddle, FontColM, FontRowLowerMid },
+	// Dot
+	{ FontColLM, FontRowLowQuarter, FontColRM, FontRowLowQuarter },
+	{ FontColRM, FontRowLowQuarter, FontColRM, FontRowBase },
+	{ FontColRM, FontRowBase, FontColLM, FontRowBase },
+	{ FontColLM, FontRowBase, FontColLM, FontRowLowQuarter },
+};
+static const fttFontLineSegment FontGlyphSegments_At[] = {
+	// Outer ring, open at the lower-right
+	{ FontColR, FontRowMiddle, FontColR, FontRowUpperMid },
+	{ FontColR, FontRowUpperMid, FontColM, FontRowCap },
+	{ FontColM, FontRowCap, FontColL, FontRowUpperMid },
+	{ FontColL, FontRowUpperMid, FontColL, FontRowLowQuarter },
+	{ FontColL, FontRowLowQuarter, FontColM, FontRowBase },
+	{ FontColM, FontRowBase, FontColR, FontRowLowerMid },
+	// Inner box
+	{ FontColRM, FontRowMiddle, FontColLM, FontRowMiddle },
+	{ FontColLM, FontRowMiddle, FontColLM, FontRowLowerMid },
+	{ FontColLM, FontRowLowerMid, FontColRM, FontRowLowerMid },
+	{ FontColRM, FontRowLowerMid, FontColRM, FontRowMiddle },
+};
+static const fttFontLineSegment FontGlyphSegments_LeftBracket[] = {
+	{ FontColRM, FontRowCap, FontColLM, FontRowCap },
+	{ FontColLM, FontRowCap, FontColLM, FontRowBase },
+	{ FontColLM, FontRowBase, FontColRM, FontRowBase },
+};
+static const fttFontLineSegment FontGlyphSegments_RightBracket[] = {
+	{ FontColLM, FontRowCap, FontColRM, FontRowCap },
+	{ FontColRM, FontRowCap, FontColRM, FontRowBase },
+	{ FontColRM, FontRowBase, FontColLM, FontRowBase },
+};
+static const fttFontLineSegment FontGlyphSegments_Caret[] = {
+	{ FontColL, FontRowXHeight, FontColM, FontRowCap },
+	{ FontColM, FontRowCap, FontColR, FontRowXHeight },
+};
+static const fttFontLineSegment FontGlyphSegments_Grave[] = {
+	{ FontColLM, FontRowCap, FontColM, FontRowUpperMid },
+};
+static const fttFontLineSegment FontGlyphSegments_LeftBrace[] = {
+	{ FontColRM, FontRowCap, FontColM, FontRowUpperMid },
+	{ FontColM, FontRowUpperMid, FontColM, FontRowMiddle },
+	{ FontColM, FontRowMiddle, FontColL, FontRowMiddle },
+	{ FontColM, FontRowMiddle, FontColM, FontRowLowQuarter },
+	{ FontColM, FontRowLowQuarter, FontColRM, FontRowBase },
+};
+static const fttFontLineSegment FontGlyphSegments_Pipe[] = {
+	{ FontColM, FontRowCap, FontColM, FontRowBase },
+};
+static const fttFontLineSegment FontGlyphSegments_RightBrace[] = {
+	{ FontColLM, FontRowCap, FontColM, FontRowUpperMid },
+	{ FontColM, FontRowUpperMid, FontColM, FontRowMiddle },
+	{ FontColM, FontRowMiddle, FontColR, FontRowMiddle },
+	{ FontColM, FontRowMiddle, FontColM, FontRowLowQuarter },
+	{ FontColM, FontRowLowQuarter, FontColLM, FontRowBase },
+};
+static const fttFontLineSegment FontGlyphSegments_Tilde[] = {
+	{ FontColL, FontRowLowerMid, FontColLM, FontRowMiddle },
+	{ FontColLM, FontRowMiddle, FontColRM, FontRowLowerMid },
+	{ FontColRM, FontRowLowerMid, FontColR, FontRowMiddle },
+};
 
 static const fttFontGlyph FontGlyphTable[256] = {
 	['A'] = { FontGlyphSegments_A, FttFontCountOf(FontGlyphSegments_A) },
@@ -526,6 +685,32 @@ static const fttFontGlyph FontGlyphTable[256] = {
 	['/'] = { FontGlyphSegments_Slash, FttFontCountOf(FontGlyphSegments_Slash) },
 	['\\'] = { FontGlyphSegments_Backslash, FttFontCountOf(FontGlyphSegments_Backslash) },
 	[':'] = { FontGlyphSegments_Colon, FttFontCountOf(FontGlyphSegments_Colon) },
+	['!'] = { FontGlyphSegments_Exclaim, FttFontCountOf(FontGlyphSegments_Exclaim) },
+	['"'] = { FontGlyphSegments_Quote, FttFontCountOf(FontGlyphSegments_Quote) },
+	['#'] = { FontGlyphSegments_Hash, FttFontCountOf(FontGlyphSegments_Hash) },
+	['$'] = { FontGlyphSegments_Dollar, FttFontCountOf(FontGlyphSegments_Dollar) },
+	['%'] = { FontGlyphSegments_Percent, FttFontCountOf(FontGlyphSegments_Percent) },
+	['&'] = { FontGlyphSegments_Ampersand, FttFontCountOf(FontGlyphSegments_Ampersand) },
+	['\''] = { FontGlyphSegments_Apostrophe, FttFontCountOf(FontGlyphSegments_Apostrophe) },
+	['('] = { FontGlyphSegments_LeftParen, FttFontCountOf(FontGlyphSegments_LeftParen) },
+	[')'] = { FontGlyphSegments_RightParen, FttFontCountOf(FontGlyphSegments_RightParen) },
+	['*'] = { FontGlyphSegments_Asterisk, FttFontCountOf(FontGlyphSegments_Asterisk) },
+	['+'] = { FontGlyphSegments_Plus, FttFontCountOf(FontGlyphSegments_Plus) },
+	[','] = { FontGlyphSegments_Comma, FttFontCountOf(FontGlyphSegments_Comma) },
+	[';'] = { FontGlyphSegments_Semicolon, FttFontCountOf(FontGlyphSegments_Semicolon) },
+	['<'] = { FontGlyphSegments_Less, FttFontCountOf(FontGlyphSegments_Less) },
+	['='] = { FontGlyphSegments_Equals, FttFontCountOf(FontGlyphSegments_Equals) },
+	['>'] = { FontGlyphSegments_Greater, FttFontCountOf(FontGlyphSegments_Greater) },
+	['?'] = { FontGlyphSegments_Question, FttFontCountOf(FontGlyphSegments_Question) },
+	['@'] = { FontGlyphSegments_At, FttFontCountOf(FontGlyphSegments_At) },
+	['['] = { FontGlyphSegments_LeftBracket, FttFontCountOf(FontGlyphSegments_LeftBracket) },
+	[']'] = { FontGlyphSegments_RightBracket, FttFontCountOf(FontGlyphSegments_RightBracket) },
+	['^'] = { FontGlyphSegments_Caret, FttFontCountOf(FontGlyphSegments_Caret) },
+	['`'] = { FontGlyphSegments_Grave, FttFontCountOf(FontGlyphSegments_Grave) },
+	['{'] = { FontGlyphSegments_LeftBrace, FttFontCountOf(FontGlyphSegments_LeftBrace) },
+	['|'] = { FontGlyphSegments_Pipe, FttFontCountOf(FontGlyphSegments_Pipe) },
+	['}'] = { FontGlyphSegments_RightBrace, FttFontCountOf(FontGlyphSegments_RightBrace) },
+	['~'] = { FontGlyphSegments_Tilde, FttFontCountOf(FontGlyphSegments_Tilde) },
 };
 
 static void DrawLineChar(char character, float originX, float originY, float scale, float lineThickness) {
