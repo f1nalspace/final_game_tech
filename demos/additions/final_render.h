@@ -9,6 +9,12 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
+	## 2026-07-07
+	- Added generic (shader-agnostic) shader support: ShaderProgramHandle + deferred RenderPushShaderProgram / RenderPopShaderProgram
+	- Added CommandType_UseProgram / CommandType_Uniform (scalar int/float/Vec2/Vec3/Vec4/Mat4 + array variants) and their RenderPush* pushers
+	- Added CommandType_BindTexture / CommandType_UnbindTexture (bind a texture to a unit for a bound shader)
+	- Added RenderCapabilities (GL/GLSL version, max texture image units, shader support) on RenderState
+
 	## 2026-06-32
 	- Added render statistic fields to RenderState (last render build/submit/swap timings)
 	- Added types and functions for rendering a batch of sprites (RenderAllocateSpriteBatch / RenderPushSpriteBatch)
@@ -102,13 +108,48 @@ typedef struct TextureOperation {
 
 #define MAX_TEXTURE_OPERATION_COUNT 1024
 #define MAX_MATRIX_STACK_COUNT 32
+#define MAX_SHADER_OPERATION_COUNT 64
+#define UNIFORM_NAME_MAX 64
+
+// Opaque handle to a linked shader program (wraps a GLuint program id; 0/null = invalid/unsupported).
+// The renderer stays generic: it never ships any shaders, it only compiles/uses whatever source the
+// caller hands it.
+typedef void *ShaderProgramHandle;
+
+typedef enum ShaderOperationType {
+	ShaderOperationType_None = 0,
+	ShaderOperationType_CreateProgram,
+	ShaderOperationType_DestroyProgram
+} ShaderOperationType;
+
+// Deferred create/destroy of a shader program, mirroring TextureOperation: the source strings are
+// owned by the caller and must stay valid until the operation is flushed at the top of RenderWithOpenGL.
+typedef struct ShaderOperation {
+	ShaderProgramHandle *handle;
+	const char *vertexSource;
+	const char *fragmentSource;
+	ShaderOperationType type;
+} ShaderOperation;
+
+// GPU capabilities queried once at startup by the backend, exposed on RenderState so renderer-agnostic
+// game code can read them (e.g. to decide whether to enable shader features) without touching GL.
+typedef struct RenderCapabilities {
+	int glMajor;
+	int glMinor;
+	int maxTextureImageUnits;
+	bool supportsShaders;
+	char glslVersion[64];
+} RenderCapabilities;
 
 typedef struct RenderState {
 	TextureOperation textureOperations[MAX_TEXTURE_OPERATION_COUNT];
+	ShaderOperation shaderOperations[MAX_SHADER_OPERATION_COUNT];
 	Mat4f matrixStack[MAX_MATRIX_STACK_COUNT];
 	size_t matrixTop;
 	fmemMemoryBlock memory;
 	size_t textureOperationCount;
+	size_t shaderOperationCount;
+	RenderCapabilities caps;
 	size_t lastMemoryUsage;
 	// Last frame's render command buffer push timings (seconds)
 	double lastRenderBuildSeconds;
@@ -128,7 +169,11 @@ typedef enum CommandType {
 	CommandType_Vertices,
 	CommandType_Sprite,
 	CommandType_SpriteBatch,
-	CommandType_Text
+	CommandType_Text,
+	CommandType_UseProgram,
+	CommandType_Uniform,
+	CommandType_BindTexture,
+	CommandType_UnbindTexture
 } CommandType;
 
 typedef struct CommandHeader {
@@ -262,6 +307,41 @@ typedef struct TextCommand {
 	size_t textLength;
 } TextCommand;
 
+// Bind a shader program as persistent state (like the matrix): it stays active for every following
+// draw command until the next UseProgram. A null program returns to fixed-function (glUseProgram(0)).
+typedef struct UseProgramCommand {
+	ShaderProgramHandle program;
+} UseProgramCommand;
+
+typedef enum UniformType {
+	UniformType_Int = 0,
+	UniformType_Float,
+	UniformType_Vec2,
+	UniformType_Vec3,
+	UniformType_Vec4,
+	UniformType_Mat4
+} UniformType;
+
+// Set a uniform on the currently-bound program. The value payload (count elements of the type) is
+// copied inline right after this struct in the command buffer, just like TextCommand's characters.
+typedef struct UniformCommand {
+	char name[UNIFORM_NAME_MAX];
+	UniformType type;
+	uint32_t count;
+} UniformCommand;
+
+// Bind a texture to a texture unit as persistent state, so a bound shader can sample it (e.g. for
+// untextured primitives, or a secondary texture on a higher unit). Independent of the Sprite/Text
+// commands, which still bind their own texture to unit 0.
+typedef struct BindTextureCommand {
+	TextureHandle texture;
+	int32_t unit;
+} BindTextureCommand;
+
+typedef struct UnbindTextureCommand {
+	int32_t unit;
+} UnbindTextureCommand;
+
 fpl_extern void RenderInit(RenderState *state, fmemMemoryBlock block);
 fpl_extern void RenderReset(RenderState *state);
 fpl_extern void RenderPushClear(RenderState *state, const Vec4f color, const ClearFlags flags);
@@ -285,6 +365,23 @@ fpl_extern void RenderPushText(RenderState *state, const char *text, const size_
 fpl_extern void RenderPushCircle(RenderState *state, const Vec2f position, const float radius, const size_t segmentCount, const Vec4f color, const bool isFilled, const float lineWidth);
 fpl_extern void RenderPushArc(RenderState *state, const Vec2f position, const float radius, const float startAngle, const float endAngle, const size_t segmentCount, const Vec4f color, const bool isFilled, const bool withClosingLines, const float lineWidth);
 fpl_extern void RenderPushLine(RenderState *state, const Vec2f a, const Vec2f b, const Vec4f color, const float lineWidth);
+
+// Shader programs: queued create/destroy (flushed in the backend), plus binding + uniforms as
+// commands. The renderer contains no shaders of its own -- the caller supplies the GLSL source.
+fpl_extern void RenderPushShaderProgram(RenderState *state, ShaderProgramHandle *handle, const char *vertexSource, const char *fragmentSource);
+fpl_extern void RenderPopShaderProgram(RenderState *state, ShaderProgramHandle *handle);
+fpl_extern void RenderPushUseProgram(RenderState *state, ShaderProgramHandle program);
+fpl_extern void RenderPushUniformInt(RenderState *state, const char *name, const int32_t value);
+fpl_extern void RenderPushUniformFloat(RenderState *state, const char *name, const float value);
+fpl_extern void RenderPushUniformVec2(RenderState *state, const char *name, const Vec2f value);
+fpl_extern void RenderPushUniformVec3(RenderState *state, const char *name, const Vec3f value);
+fpl_extern void RenderPushUniformVec4(RenderState *state, const char *name, const Vec4f value);
+fpl_extern void RenderPushUniformMat4(RenderState *state, const char *name, const Mat4f *value);
+fpl_extern void RenderPushUniformFloatArray(RenderState *state, const char *name, const float *values, const size_t count);
+fpl_extern void RenderPushUniformVec2Array(RenderState *state, const char *name, const Vec2f *values, const size_t count);
+fpl_extern void RenderPushUniformVec3Array(RenderState *state, const char *name, const Vec3f *values, const size_t count);
+fpl_extern void RenderPushBindTexture(RenderState *state, const TextureHandle texture, const int32_t unit);
+fpl_extern void RenderPushUnbindTexture(RenderState *state, const int32_t unit);
 
 #endif // FINAL_RENDER_H
 
@@ -727,6 +824,130 @@ fpl_extern void RenderPushText(RenderState *state, const char *text, const size_
 fpl_extern void RenderPushLine(RenderState *state, const Vec2f a, const Vec2f b, const Vec4f color, const float lineWidth) {
 	Vec2f verts[] = { a, b };
 	RenderPushVertices(state, verts, 2, true, color, DrawMode_Lines, false, lineWidth);
+}
+
+fpl_extern void RenderPushShaderProgram(RenderState *state, ShaderProgramHandle *handle, const char *vertexSource, const char *fragmentSource) {
+	if (state == fpl_null || handle == fpl_null || vertexSource == fpl_null || fragmentSource == fpl_null) {
+		return;
+	}
+	if (state->shaderOperationCount >= fplArrayCount(state->shaderOperations)) {
+		return;
+	}
+	ShaderOperation *op = &state->shaderOperations[state->shaderOperationCount++];
+	fplClearStruct(op);
+	op->handle = handle;
+	op->vertexSource = vertexSource;
+	op->fragmentSource = fragmentSource;
+	op->type = ShaderOperationType_CreateProgram;
+}
+
+fpl_extern void RenderPopShaderProgram(RenderState *state, ShaderProgramHandle *handle) {
+	if (state == fpl_null || handle == fpl_null) {
+		return;
+	}
+	if (state->shaderOperationCount >= fplArrayCount(state->shaderOperations)) {
+		return;
+	}
+	ShaderOperation *op = &state->shaderOperations[state->shaderOperationCount++];
+	fplClearStruct(op);
+	op->handle = handle;
+	op->type = ShaderOperationType_DestroyProgram;
+}
+
+fpl_extern void RenderPushUseProgram(RenderState *state, ShaderProgramHandle program) {
+	if (state == fpl_null) {
+		return;
+	}
+	CommandHeader *header = _RenderPushHeader(state, CommandType_UseProgram);
+	UseProgramCommand *cmd = _RenderPushTypeAs(state, header, UseProgramCommand, true);
+	if (cmd == fpl_null) {
+		return;
+	}
+	cmd->program = program;
+}
+
+static void _RenderPushUniform(RenderState *state, const char *name, const UniformType type, const uint32_t count, const void *data, const size_t dataSize) {
+	if (state == fpl_null || name == fpl_null || count == 0 || data == fpl_null || dataSize == 0) {
+		return;
+	}
+	CommandHeader *header = _RenderPushHeader(state, CommandType_Uniform);
+	UniformCommand *cmd = _RenderPushTypeAs(state, header, UniformCommand, true);
+	uint8_t *payload = (uint8_t *)_RenderPushTypes(state, header, dataSize, sizeof(uint8_t), false);
+	if (cmd == fpl_null || payload == fpl_null) {
+		return;
+	}
+	size_t nameLength = fplGetStringLength(name);
+	fplCopyStringLen(name, nameLength, cmd->name, fplArrayCount(cmd->name));
+	cmd->type = type;
+	cmd->count = count;
+	const uint8_t *src = (const uint8_t *)data;
+	for (size_t i = 0; i < dataSize; ++i) {
+		payload[i] = src[i];
+	}
+}
+
+fpl_extern void RenderPushUniformInt(RenderState *state, const char *name, const int32_t value) {
+	_RenderPushUniform(state, name, UniformType_Int, 1, &value, sizeof(int32_t));
+}
+
+fpl_extern void RenderPushUniformFloat(RenderState *state, const char *name, const float value) {
+	_RenderPushUniform(state, name, UniformType_Float, 1, &value, sizeof(float));
+}
+
+fpl_extern void RenderPushUniformVec2(RenderState *state, const char *name, const Vec2f value) {
+	_RenderPushUniform(state, name, UniformType_Vec2, 1, &value.m[0], sizeof(float) * 2);
+}
+
+fpl_extern void RenderPushUniformVec3(RenderState *state, const char *name, const Vec3f value) {
+	_RenderPushUniform(state, name, UniformType_Vec3, 1, &value.m[0], sizeof(float) * 3);
+}
+
+fpl_extern void RenderPushUniformVec4(RenderState *state, const char *name, const Vec4f value) {
+	_RenderPushUniform(state, name, UniformType_Vec4, 1, &value.m[0], sizeof(float) * 4);
+}
+
+fpl_extern void RenderPushUniformMat4(RenderState *state, const char *name, const Mat4f *value) {
+	if (value == fpl_null) {
+		return;
+	}
+	_RenderPushUniform(state, name, UniformType_Mat4, 1, &value->m[0], sizeof(float) * 16);
+}
+
+fpl_extern void RenderPushUniformFloatArray(RenderState *state, const char *name, const float *values, const size_t count) {
+	_RenderPushUniform(state, name, UniformType_Float, (uint32_t)count, values, sizeof(float) * count);
+}
+
+fpl_extern void RenderPushUniformVec2Array(RenderState *state, const char *name, const Vec2f *values, const size_t count) {
+	_RenderPushUniform(state, name, UniformType_Vec2, (uint32_t)count, values, sizeof(float) * 2 * count);
+}
+
+fpl_extern void RenderPushUniformVec3Array(RenderState *state, const char *name, const Vec3f *values, const size_t count) {
+	_RenderPushUniform(state, name, UniformType_Vec3, (uint32_t)count, values, sizeof(float) * 3 * count);
+}
+
+fpl_extern void RenderPushBindTexture(RenderState *state, const TextureHandle texture, const int32_t unit) {
+	if (state == fpl_null) {
+		return;
+	}
+	CommandHeader *header = _RenderPushHeader(state, CommandType_BindTexture);
+	BindTextureCommand *cmd = _RenderPushTypeAs(state, header, BindTextureCommand, true);
+	if (cmd == fpl_null) {
+		return;
+	}
+	cmd->texture = texture;
+	cmd->unit = unit;
+}
+
+fpl_extern void RenderPushUnbindTexture(RenderState *state, const int32_t unit) {
+	if (state == fpl_null) {
+		return;
+	}
+	CommandHeader *header = _RenderPushHeader(state, CommandType_UnbindTexture);
+	UnbindTextureCommand *cmd = _RenderPushTypeAs(state, header, UnbindTextureCommand, true);
+	if (cmd == fpl_null) {
+		return;
+	}
+	cmd->unit = unit;
 }
 
 #endif // FINAL_RENDER_IMPLEMENTATION
