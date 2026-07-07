@@ -426,7 +426,7 @@ ftt_api void fttRunTileTracer(fttTileTracer *tracer);
 //! Releases all memory owned by the tracer.
 ftt_api void fttFreeTileTracer(fttTileTracer *tracer);
 //! Gets the progress percentage of the current state of the tracer.
-ftt_api float fttGetProgressPercentage(const fttTileTracer *tracer);
+ftt_inline float fttGetProgressPercentage(const fttTileTracer *tracer);
 
 // ****************************************************************************
 //
@@ -496,7 +496,7 @@ ftt_inline uint32_t fttGetProcessedTileCount(const fttTileTracer *tracer) {
 }
 //! Returns the overall trace progress as a percentage in the range 0.0 .. 100.0.
 //! Tile expansion (phase 1) fills the first half, edge traversal (phase 2) fills the second half.
-ftt_api float fttGetProgressPercentage(const fttTileTracer *tracer) {
+ftt_inline float fttGetProgressPercentage(const fttTileTracer *tracer) {
 	const float fullPercentage = 100.0f;
 	const float phase1SharePercentage = 50.0f;                                  // Tile expansion covers the first half
 	const float phase2SharePercentage = fullPercentage - phase1SharePercentage; // Edge traversal covers the rest
