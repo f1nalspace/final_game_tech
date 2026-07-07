@@ -74,14 +74,14 @@ enum {
 	MaxTileMapCountW = 36,
 	MaxTileMapCountH = 62,
 
-	MassiveMaxTileMapCountW = 360,
-	MassiveMaxTileMapCountH = 620,
+	DungeonMaxTileMapCountW = 360,
+	DungeonMaxTileMapCountH = 620,
 
 	UiPanelWidthPixels = 240,
 
-	DungeonRoomCount = 14,
-	DungeonRoomMinSize = 3,
-	DungeonRoomMaxSize = 7,
+	DungeonRoomCount = 50,
+	DungeonRoomMinSize = 7,
+	DungeonRoomMaxSize = 30,
 	DungeonBorderMargin = 1,
 };
 
@@ -165,7 +165,7 @@ static const uint8_t Scenario1_TileMap[MaxTileMapCountW * MaxTileMapCountH] = {
 
 static uint8_t Scenario2_TileMap[MaxTileMapCountW * MaxTileMapCountH];
 
-static uint8_t Scenario3_TileMap[MassiveMaxTileMapCountW * MassiveMaxTileMapCountH];
+static uint8_t Scenario3_TileMap[DungeonMaxTileMapCountW * DungeonMaxTileMapCountH];
 
 typedef struct fttScenario {
 	const char *name;
@@ -178,7 +178,7 @@ enum {
 	Scenario_Simple = 0,
 	Scenario_Current,
 	Scenario_Random,
-	Scenario_Massive,
+	Scenario_Dungeon,
 	ScenarioCount,
 };
 
@@ -186,7 +186,7 @@ static fttScenario Scenarios[ScenarioCount] = {
 	{ "0 Simple", Scenario0Width, Scenario0Height, Scenario0_TileMap },
 	{ "1 Current", MaxTileMapCountW, MaxTileMapCountH, Scenario1_TileMap },
 	{ "2 Random", MaxTileMapCountW, MaxTileMapCountH, Scenario2_TileMap },
-	{ "3 Massive", MassiveMaxTileMapCountW, MassiveMaxTileMapCountH, Scenario3_TileMap },
+	{ "3 Dungeon", DungeonMaxTileMapCountW, DungeonMaxTileMapCountH, Scenario3_TileMap },
 };
 
 static float RandomFloat() {
@@ -365,9 +365,9 @@ int main(int argc, char **args) {
 
 	srand((unsigned int)time(NULL));
 
-	GenerateDungeon(Scenario2_TileMap, MaxTileMapCountW, MaxTileMapCountH);
+	GenerateRandom(Scenario2_TileMap, MaxTileMapCountW, MaxTileMapCountH);
 
-	GenerateRandom(Scenario3_TileMap, MassiveMaxTileMapCountW, MassiveMaxTileMapCountH);
+	GenerateDungeon(Scenario3_TileMap, DungeonMaxTileMapCountW, DungeonMaxTileMapCountH);
 
 	fplSettings settings = fplMakeDefaultSettings();
 	fplCopyString("Tile-Tracing Example", settings.window.title, fplArrayCount(settings.window.title));
@@ -387,6 +387,7 @@ int main(int argc, char **args) {
 
 	int activeScenarioIndex = Scenario_Current;
 	bool isPaused = false;
+	bool isRunning = false;
 	bool stepRequested = false;
 	bool showGrid = true;
 
@@ -429,9 +430,14 @@ int main(int argc, char **args) {
 			}
 		}
 
-		if (!isPaused || stepRequested) {
-			fttNextTileTraceStep(&tracer);
-			stepRequested = false;
+		if (isRunning) {
+			fttRunTileTracer(&tracer);
+			isRunning = false;
+		} else {
+			if (!isPaused || stepRequested) {
+				fttNextTileTraceStep(&tracer);
+				stepRequested = false;
+			}
 		}
 
 		fplWindowSize windowArea;
@@ -602,6 +608,9 @@ int main(int argc, char **args) {
 		if (UiButton(&ui, "Reset")) {
 			InitScenarioTracer(&tracer, activeScenarioIndex, true);
 		}
+		if (UiButton(&ui, "Run")) {
+			isRunning = true;
+		}
 		UiSpacer(&ui);
 
 		UiLabel(&ui, "Progress");
@@ -611,10 +620,14 @@ int main(int argc, char **args) {
 
 		UiCheckbox(&ui, "Show Grid", &showGrid);
 
-		if (activeScenarioIndex == Scenario_Random) {
+		if (activeScenarioIndex == Scenario_Random || activeScenarioIndex == Scenario_Dungeon) {
 			UiSpacer(&ui);
 			if (UiButton(&ui, "Regenerate")) {
-				GenerateDungeon(Scenario2_TileMap, MaxTileMapCountW, MaxTileMapCountH);
+				if (activeScenarioIndex == Scenario_Random) {
+					GenerateRandom(Scenario2_TileMap, MaxTileMapCountW, MaxTileMapCountH);
+				} else {
+					GenerateDungeon(Scenario3_TileMap, DungeonMaxTileMapCountW, DungeonMaxTileMapCountH);
+				}
 				InitScenarioTracer(&tracer, activeScenarioIndex, true);
 			}
 		}
