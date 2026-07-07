@@ -23,6 +23,6 @@ We leave that uint8_t as the type, but we the use following enum to map each val
 For that i added an enum fttTileType that contains all 6 types i want to support (that may be extended later to more slope tiles).
 
 Extent the demo to allow for more scenarios:
-- 3 = A simple tile map that uses a few slopes
-- 4 = A extended version of the large tilemap version 1, but uses slopes on every corner/edge
-- 5 = A version that is randomly generated and uses slopes, of the size of scenario 1
+- A simple tile map that uses a few slopes
+- A extended version of the medium size tilemap (normal size), but uses slopes on every corner/edge
+- A version that is randomly generated and uses slopes
