@@ -302,6 +302,7 @@ endif
 -- Projects
 group "Apps"
 	include "mathtest/premake5"
+	include "tiletracetest/premake5"
 	include "gamepaddbgen/premake5"
 	include "staticdatamaker/premake5"
 	include "OpenGLExtParser/premake5"

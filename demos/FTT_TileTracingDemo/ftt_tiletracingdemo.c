@@ -20,6 +20,8 @@ Author:
 
 Changelog:
 	## 2026-07-07
+	- Added slope tile support: slope-aware tile rendering and three slope scenarios
+	  (simple slopes, the medium map with beveled corners, and random beveled blocks)
 	- Added a line-stroke font, a minimal immediate-mode UI panel and mouse input
 	- Added pause/resume/step control over the tile tracer
 	- Added scenario switching between a small map, the original map and a randomly generated dungeon
@@ -71,6 +73,9 @@ enum {
 	Scenario0Width = 12,
 	Scenario0Height = 10,
 
+	SimpleSlopesWidth = 24,
+	SimpleSlopesHeight = 14,
+
 	MaxTileMapCountW = 36,
 	MaxTileMapCountH = 62,
 
@@ -83,6 +88,10 @@ enum {
 	DungeonRoomMinSize = 7,
 	DungeonRoomMaxSize = 30,
 	DungeonBorderMargin = 1,
+
+	RandomSlopesRoomCount = 26,
+	RandomSlopesRoomMinSize = 3,
+	RandomSlopesRoomMaxSize = 9,
 };
 
 static const uint8_t Scenario0_TileMap[Scenario0Width * Scenario0Height] = {
@@ -167,6 +176,31 @@ static uint8_t Scenario2_TileMap[MaxTileMapCountW * MaxTileMapCountH];
 
 static uint8_t Scenario3_TileMap[DungeonMaxTileMapCountW * DungeonMaxTileMapCountH];
 
+// Slope tile values map to fttTileType: 2 = bottom-right, 3 = bottom-left, 4 = top-left, 5 = top-right.
+// Like the other scenarios this is authored with row 0 at the bottom of the screen (the tile view is y-up).
+static const uint8_t Scenario4_TileMap[SimpleSlopesWidth * SimpleSlopesHeight] = {
+	1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,   // Floor with a sloped chasm
+	1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,4,0,0,5,1,1,1,
+	0,5,1,1,1,1,1,1,1,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,   // Hill with sloped shoulders
+	0,0,5,1,1,1,1,1,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,5,1,1,1,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,5,1,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,1,1,3,0,0,   // Block with all four corners beveled
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,5,1,1,4,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,2,3,0,0,0,0,0,0,0,0,0,0,0,   // Floating diamond
+	0,0,0,0,0,0,0,0,0,0,0,5,4,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+};
+
+// The medium map with every convex corner beveled into a slope, and a random map of beveled blocks.
+// Both are filled at startup by MakeSlopedCorners (see below).
+static uint8_t Scenario5_TileMap[MaxTileMapCountW * MaxTileMapCountH];
+
+static uint8_t Scenario6_TileMap[MaxTileMapCountW * MaxTileMapCountH];
+
 typedef struct fttScenario {
 	const char *name;
 	uint32_t width;
@@ -179,6 +213,9 @@ enum {
 	Scenario_Current,
 	Scenario_Random,
 	Scenario_Dungeon,
+	Scenario_SimpleSlopes,
+	Scenario_SlopedCorners,
+	Scenario_RandomSlopes,
 	ScenarioCount,
 };
 
@@ -187,6 +224,9 @@ static fttScenario Scenarios[ScenarioCount] = {
 	{ "1 Current", MaxTileMapCountW, MaxTileMapCountH, Scenario1_TileMap },
 	{ "2 Random", MaxTileMapCountW, MaxTileMapCountH, Scenario2_TileMap },
 	{ "3 Dungeon", DungeonMaxTileMapCountW, DungeonMaxTileMapCountH, Scenario3_TileMap },
+	{ "4 Simple Slopes", SimpleSlopesWidth, SimpleSlopesHeight, Scenario4_TileMap },
+	{ "5 Sloped Corners", MaxTileMapCountW, MaxTileMapCountH, Scenario5_TileMap },
+	{ "6 Random Slopes", MaxTileMapCountW, MaxTileMapCountH, Scenario6_TileMap },
 };
 
 static float RandomFloat() {
@@ -261,6 +301,58 @@ static void GenerateDungeon(uint8_t *tiles, uint32_t mapWidth, uint32_t mapHeigh
 	}
 }
 
+// Copies src into dst and bevels every convex corner of a solid region into the matching slope tile.
+// A solid tile is a convex corner when exactly one perpendicular pair of neighbours is empty while the
+// opposite pair is solid - the corner between the two empty neighbours is then cut off. Out-of-bounds
+// neighbours count as empty so the outer edges of a shape get beveled too. Neighbours are read from src
+// so conversions never cascade into one another.
+static void MakeSlopedCorners(uint8_t *dst, const uint8_t *src, uint32_t mapWidth, uint32_t mapHeight) {
+	for (uint32_t y = 0; y < mapHeight; ++y) {
+		for (uint32_t x = 0; x < mapWidth; ++x) {
+			uint32_t index = y * mapWidth + x;
+			if (src[index] == 0) {
+				dst[index] = 0;
+				continue;
+			}
+
+			bool upSolid = (y > 0) && (src[(y - 1) * mapWidth + x] != 0);
+			bool downSolid = (y + 1 < mapHeight) && (src[(y + 1) * mapWidth + x] != 0);
+			bool leftSolid = (x > 0) && (src[y * mapWidth + (x - 1)] != 0);
+			bool rightSolid = (x + 1 < mapWidth) && (src[y * mapWidth + (x + 1)] != 0);
+
+			uint8_t result = 1;
+			if (!upSolid && !leftSolid && downSolid && rightSolid) {
+				result = FTT_TILE_SLOPE_BOTTOM_RIGHT;   // Cut the top-left corner
+			} else if (!upSolid && !rightSolid && downSolid && leftSolid) {
+				result = FTT_TILE_SLOPE_BOTTOM_LEFT;    // Cut the top-right corner
+			} else if (!downSolid && !leftSolid && upSolid && rightSolid) {
+				result = FTT_TILE_SLOPE_TOP_RIGHT;      // Cut the bottom-left corner
+			} else if (!downSolid && !rightSolid && upSolid && leftSolid) {
+				result = FTT_TILE_SLOPE_TOP_LEFT;       // Cut the bottom-right corner
+			}
+			dst[index] = result;
+		}
+	}
+}
+
+// Generates a random scatter of solid rectangles, then bevels their convex corners into slopes.
+static void GenerateRandomSlopes(uint8_t *tiles, uint32_t mapWidth, uint32_t mapHeight) {
+	static uint8_t solidBlocks[MaxTileMapCountW * MaxTileMapCountH];
+	for (uint32_t index = 0; index < mapWidth * mapHeight; ++index) {
+		solidBlocks[index] = 0;
+	}
+
+	for (uint32_t roomIndex = 0; roomIndex < RandomSlopesRoomCount; ++roomIndex) {
+		uint32_t roomWidth = RandomRange(RandomSlopesRoomMinSize, RandomSlopesRoomMaxSize);
+		uint32_t roomHeight = RandomRange(RandomSlopesRoomMinSize, RandomSlopesRoomMaxSize);
+		uint32_t roomX = RandomRange(1, mapWidth - roomWidth - 2);
+		uint32_t roomY = RandomRange(1, mapHeight - roomHeight - 2);
+		PlaceSolidRoom(solidBlocks, mapWidth, mapHeight, roomX, roomY, roomWidth, roomHeight);
+	}
+
+	MakeSlopedCorners(tiles, solidBlocks, mapWidth, mapHeight);
+}
+
 static void DrawTile(const int32_t x, const int32_t y, bool filled, float areaWidth, float areaHeight) {
 	float tileExt = TileSize * 0.5f;
 	float tx = -areaWidth * 0.5f + x * TileSize + TileSize * 0.5f;
@@ -274,6 +366,25 @@ static void DrawTile(const int32_t x, const int32_t y, bool filled, float areaWi
 	glVertex2f(tileExt, -tileExt);
 	glEnd();
 	glPopMatrix();
+}
+
+// Draws the actual polygon of a tile - a full quad for a solid tile, a triangle for a slope.
+// The corners come straight from the library so the fill matches the traced contour exactly.
+static void DrawTileShape(const int32_t x, const int32_t y, fttTileType tileType, bool filled, float areaWidth, float areaHeight) {
+	fttVec2i corners[4];
+	uint32_t cornerCount = fttGetTileShapeCorners(tileType, x, y, corners);
+	if (cornerCount == 0) {
+		return;
+	}
+	float halfWidth = areaWidth * 0.5f;
+	float halfHeight = areaHeight * 0.5f;
+	glBegin(filled ? GL_POLYGON : GL_LINE_LOOP);
+	for (uint32_t cornerIndex = 0; cornerIndex < cornerCount; ++cornerIndex) {
+		float px = -halfWidth + (float)corners[cornerIndex].x * TileSize;
+		float py = -halfHeight + (float)corners[cornerIndex].y * TileSize;
+		glVertex2f(px, py);
+	}
+	glEnd();
 }
 
 // Draws a small arrow centered on a tile, pointing at the neighbour tile in the given tile-space direction.
@@ -368,6 +479,11 @@ int main(int argc, char **args) {
 	GenerateRandom(Scenario2_TileMap, MaxTileMapCountW, MaxTileMapCountH);
 
 	GenerateDungeon(Scenario3_TileMap, DungeonMaxTileMapCountW, DungeonMaxTileMapCountH);
+
+	// The medium map with every convex corner beveled into a slope
+	MakeSlopedCorners(Scenario5_TileMap, Scenario1_TileMap, MaxTileMapCountW, MaxTileMapCountH);
+
+	GenerateRandomSlopes(Scenario6_TileMap, MaxTileMapCountW, MaxTileMapCountH);
 
 	fplSettings settings = fplMakeDefaultSettings();
 	fplCopyString("Tile-Tracing Example", settings.window.title, fplArrayCount(settings.window.title));
@@ -484,7 +600,7 @@ int main(int argc, char **args) {
 					} else {
 						glColor3f(0.5f, 0.5f, 0.5f);
 					}
-					DrawTile((int32_t)x, (int32_t)y, true, areaSizeW, areaSizeH);
+					DrawTileShape((int32_t)x, (int32_t)y, (fttTileType)tileValue, true, areaSizeW, areaSizeH);
 				}
 			}
 		}
@@ -620,13 +736,15 @@ int main(int argc, char **args) {
 
 		UiCheckbox(&ui, "Show Grid", &showGrid);
 
-		if (activeScenarioIndex == Scenario_Random || activeScenarioIndex == Scenario_Dungeon) {
+		if (activeScenarioIndex == Scenario_Random || activeScenarioIndex == Scenario_Dungeon || activeScenarioIndex == Scenario_RandomSlopes) {
 			UiSpacer(&ui);
 			if (UiButton(&ui, "Regenerate")) {
 				if (activeScenarioIndex == Scenario_Random) {
 					GenerateRandom(Scenario2_TileMap, MaxTileMapCountW, MaxTileMapCountH);
-				} else {
+				} else if (activeScenarioIndex == Scenario_Dungeon) {
 					GenerateDungeon(Scenario3_TileMap, DungeonMaxTileMapCountW, DungeonMaxTileMapCountH);
+				} else {
+					GenerateRandomSlopes(Scenario6_TileMap, MaxTileMapCountW, MaxTileMapCountH);
 				}
 				InitScenarioTracer(&tracer, activeScenarioIndex, true);
 			}

@@ -15,7 +15,7 @@ This is a pure C17 rewrite of the original C++ "final_tiletrace.hpp" library.
 It has no dependencies other than the C standard library and uses a growing
 arena allocator with a pluggable memory allocator (defaults to malloc/free).
 
-- Supports block tiles only!
+- Supports full block tiles and the four diagonal slope tiles (see fttTileType).
 
 -------------------------------------------------------------------------------
 	Getting started
@@ -36,7 +36,7 @@ arena allocator with a pluggable memory allocator (defaults to malloc/free).
 #define FTT_IMPLEMENTATION
 #include <final_tiletrace.h>
 
-uint8_t map[width * height] = { ... };           // 0 = empty, >0 = solid
+uint8_t map[width * height] = { ... };           // 0 = empty, 1 = solid, 2..5 = slopes (fttTileType)
 fttVec2u tileCount = { width, height };
 
 fttTileTracer tracer;
@@ -107,7 +107,7 @@ SOFTWARE.
 
 /*!
 	@file final_tiletrace.h
-	@version v2.1.0
+	@version v2.0.0
 	@author Torsten Spaete
 	@brief Final TileTrace (FTT) - A pure C17 single file header contour tile tracing library.
 */
@@ -122,13 +122,13 @@ SOFTWARE.
 	@page page_changelog Changelog
 	@tableofcontents
 
-	# v2.1.0:
-	- New: Integer progress tracking (fttGetProgressPercentage returns a 0..100 percentage)
-
 	# v2.0.0:
 	- New: Full rewrite from C++ to pure C17
 	- New: Growing arena allocator with a pluggable memory allocator (default malloc/free)
 	- New: Custom standalone math types (no external math dependency)
+	- New: Integer progress tracking (fttGetProgressPercentage returns a 0..100 percentage)
+	- New: Slope tile support - map values 2..5 map to the four diagonal slopes in fttTileType
+	- New: fttGetTileShapeCorners returns the clockwise polygon corners for any tile type (4 solid, 3 slope)
 	- Changed: The C++ class api was replaced by a plain C api (ftt prefix)
 	- Changed: Edge/segment references use indices instead of raw pointers (realloc-safe)
 
@@ -316,7 +316,7 @@ typedef enum fttTileType {
 	//     \ │
 	// 	    \│
 	//       x
-	FFT_TILE_SLOPE_TOP_RIGHT = 5,
+	FTT_TILE_SLOPE_TOP_RIGHT = 5,
 } fttTileType;
 
 //! Search direction (indexes the internal direction table)
@@ -345,6 +345,7 @@ typedef struct fttTile {
 	int32_t x, y;             //!< Tile grid coordinates
 	uint32_t traceDirection;  //!< Current scan direction index (0-3)
 	int32_t isSolid;          //!< >0 solid, 0 empty, -1 visited/removed
+	fttTileType tileType;     //!< Original tile type (solid or one of the slopes) - persists after removal
 } fttTile;
 
 //! A directed boundary edge between two vertices in mainVertices (wound clockwise around a solid tile).
@@ -356,15 +357,17 @@ typedef struct fttEdge {
 	bool isInvalid;       //!< True once this edge has been consumed by phase 2 traversal
 } fttEdge;
 
-//! The four world-space corner positions for a single tile.
-//! verts[0]=bottom-left, verts[1]=top-left, verts[2]=top-right, verts[3]=bottom-right.
+//! The world-space corner positions for a single tile, wound clockwise (screen space, y-down).
+//! A solid tile has four corners (bottom-left, top-left, top-right, bottom-right); a slope has three.
 typedef struct fttTileVertices {
-	fttVec2i verts[4];
+	fttVec2i verts[4];  //!< Corner positions (only entries [0..count-1] are valid)
+	uint32_t count;     //!< Number of valid corners (4 for solid, 3 for slopes)
 } fttTileVertices;
 
-//! Indices into fttTileTracer::mainVertices for each of a tile's four corners.
+//! Indices into fttTileTracer::mainVertices for each of a tile's corners.
 typedef struct fttTileIndices {
-	int32_t indices[4];
+	int32_t indices[4];  //!< Vertex indices (only entries [0..count-1] are valid)
+	uint32_t count;      //!< Number of valid indices (4 for solid, 3 for slopes)
 } fttTileIndices;
 
 //! Up to four directed edges produced for a single tile, with the count of valid entries.
@@ -427,6 +430,11 @@ ftt_api void fttRunTileTracer(fttTileTracer *tracer);
 ftt_api void fttFreeTileTracer(fttTileTracer *tracer);
 //! Gets the progress percentage of the current state of the tracer.
 ftt_inline float fttGetProgressPercentage(const fttTileTracer *tracer);
+
+//! Fills outCorners with the clockwise (screen space, y-down) grid-space polygon corners for a tile of the given type at (x, y).
+//! Returns the number of corners written: 4 for a solid tile, 3 for a slope, 0 for an empty tile.
+//! Useful for rendering or building collision shapes that match the traced contour.
+ftt_api uint32_t fttGetTileShapeCorners(fttTileType tileType, int32_t x, int32_t y, fttVec2i outCorners[4]);
 
 // ****************************************************************************
 //
@@ -741,6 +749,11 @@ ftt_inline int32_t ftt__Dot(fttVec2i a, fttVec2i b) {
 	return result;
 }
 
+ftt_inline int32_t ftt__Cross(fttVec2i a, fttVec2i b) {
+	int32_t result = a.x * b.y - a.y * b.x;
+	return result;
+}
+
 // Up, Right, Down, Left
 static const fttVec2i FTT__DIRECTIONS[4] = { { { 0, -1 } }, { { 1, 0 } }, { { 0, 1 } }, { { -1, 0 } } };
 
@@ -748,12 +761,13 @@ static const fttVec2i FTT__DIRECTIONS[4] = { { { 0, -1 } }, { { 1, 0 } }, { { 0,
 // Tile helpers
 // ----------------------------------------------------------------------------
 
-ftt_inline fttTile ftt__MakeTile(int32_t x, int32_t y, int32_t isSolid) {
+ftt_inline fttTile ftt__MakeTile(int32_t x, int32_t y, int32_t isSolid, fttTileType tileType) {
 	fttTile result;
 	result.x = x;
 	result.y = y;
 	result.traceDirection = 0;
 	result.isSolid = isSolid;
+	result.tileType = tileType;
 	return result;
 }
 
@@ -809,19 +823,56 @@ static fttTile *ftt__GetFirstSolidTile(fttArray *tiles, fttVec2u dimension) {
 	return ftt_null;
 }
 
+// Returns which of the four tile corners a slope removes, or -1 to keep all four (solid tile).
+// Corner indices follow the clockwise order: 0 = bottom-left, 1 = top-left, 2 = top-right, 3 = bottom-right.
+// A slope is simply the full cell with the corner opposite its right angle removed, which turns the two
+// edges meeting at that corner into a single hypotenuse while keeping the winding of all other edges intact.
+static int32_t ftt__GetSlopeRemovedCorner(fttTileType tileType) {
+	switch (tileType) {
+		case FTT_TILE_SLOPE_BOTTOM_RIGHT: return 1; // Cuts the top-left corner
+		case FTT_TILE_SLOPE_BOTTOM_LEFT:  return 2; // Cuts the top-right corner
+		case FTT_TILE_SLOPE_TOP_LEFT:     return 3; // Cuts the bottom-right corner
+		case FTT_TILE_SLOPE_TOP_RIGHT:    return 0; // Cuts the bottom-left corner
+		default:                          return -1; // Solid tile keeps all four corners
+	}
+}
+
+ftt_api uint32_t fttGetTileShapeCorners(fttTileType tileType, int32_t x, int32_t y, fttVec2i outCorners[4]) {
+	// An empty tile has no shape
+	if (tileType == FTT_TILE_EMPTY) {
+		return 0;
+	}
+
+	// The four cell corners in clockwise order (screen space, y-down)
+	fttVec2i corners[4];
+	corners[0] = ftt__V2i(x, y + 1);     // Bottom-left
+	corners[1] = ftt__V2i(x, y);         // Top-left
+	corners[2] = ftt__V2i(x + 1, y);     // Top-right
+	corners[3] = ftt__V2i(x + 1, y + 1); // Bottom-right
+
+	int32_t removedCorner = ftt__GetSlopeRemovedCorner(tileType);
+
+	uint32_t count = 0;
+	for (int32_t cornerIndex = 0; cornerIndex < 4; ++cornerIndex) {
+		if (cornerIndex == removedCorner) {
+			continue;
+		}
+		outCorners[count++] = corners[cornerIndex];
+	}
+	return count;
+}
+
 static fttTileVertices ftt__CreateTileVertices(fttTile *tile) {
 	fttTileVertices result;
-	result.verts[0] = ftt__V2i(tile->x, tile->y + 1);
-	result.verts[1] = ftt__V2i(tile->x, tile->y);
-	result.verts[2] = ftt__V2i(tile->x + 1, tile->y);
-	result.verts[3] = ftt__V2i(tile->x + 1, tile->y + 1);
+	result.count = fttGetTileShapeCorners(tile->tileType, tile->x, tile->y, result.verts);
 	return result;
 }
 
 static fttTileIndices ftt__PushTileVertices(fttTileTracer *tracer, fttTile *tile) {
 	fttTileIndices result;
 	fttTileVertices tileVerts = ftt__CreateTileVertices(tile);
-	for (uint32_t vertIndex = 0; vertIndex < 4; ++vertIndex) {
+	result.count = tileVerts.count;
+	for (uint32_t vertIndex = 0; vertIndex < tileVerts.count; ++vertIndex) {
 		fttVec2i vertex = tileVerts.verts[vertIndex];
 		int32_t matchedMainVertexIndex = -1;
 		for (uint32_t mainVertexIndex = 0; mainVertexIndex < tracer->mainVertices.count; ++mainVertexIndex) {
@@ -843,7 +894,7 @@ static fttTileIndices ftt__PushTileVertices(fttTileTracer *tracer, fttTile *tile
 static fttTileEdges ftt__CreateTileEdges(fttTileIndices tileIndices, fttTile *tile) {
 	fttTileEdges result;
 	result.count = 0;
-	uint32_t indexCount = 4;
+	uint32_t indexCount = tileIndices.count;
 	for (uint32_t index = 0; index < indexCount; ++index) {
 		int32_t e0 = tileIndices.indices[index];
 		int32_t e1 = tileIndices.indices[(index + 1) % indexCount];
@@ -874,7 +925,7 @@ static fttTileEdges ftt__RemoveOverlapEdges(fttTileTracer *tracer, fttTileEdges 
 }
 
 static bool ftt__IsTileSharesCommonEdges(fttTileTracer *tracer, fttTileVertices tileVertices) {
-	uint32_t vertexCount = 4;
+	uint32_t vertexCount = tileVertices.count;
 	for (uint32_t vertIndex = 0; vertIndex < vertexCount; ++vertIndex) {
 		fttVec2i tv0 = tileVertices.verts[vertIndex];
 		fttVec2i tv1 = tileVertices.verts[(vertIndex + 1) % vertexCount];
@@ -905,8 +956,13 @@ static void ftt__ClearLineSegmentPoints(fttChainSegment *segment, uint32_t first
 	fttVec2i first = FTT_ARRAY_AT(segment->vertices, fttVec2i, firstIndex);
 	fttVec2i d1 = ftt__Subtract(last, middle);
 	fttVec2i d2 = ftt__Subtract(middle, first);
-	int32_t d = ftt__Dot(d1, d2);
-	if (d > 0) {
+	// Only remove the middle vertex when it lies exactly on the straight line between its neighbours.
+	// The cross product tests collinearity; the dot product guards against a degenerate reversal.
+	// A plain dot-product test would wrongly collapse genuine slope corners, because a diagonal
+	// hypotenuse meets an axis-aligned edge at a shallow angle that still has a positive dot product.
+	int32_t cross = ftt__Cross(d1, d2);
+	int32_t dot = ftt__Dot(d1, d2);
+	if (cross == 0 && dot > 0) {
 		ftt__RemoveSegmentVertex(segment, middleIndex);
 	}
 }
@@ -1106,11 +1162,12 @@ ftt_api void fttInitTileTracer(fttTileTracer *tracer, fttVec2u tileCount, const 
 	for (uint32_t tileY = 0; tileY < tileCount.h; ++tileY) {
 		for (uint32_t tileX = 0; tileX < tileCount.w; ++tileX) {
 			uint32_t tileIndex = ftt__ComputeTileIndex(tileCount, tileX, tileY);
+			fttTileType tileType = (fttTileType)mapTiles[tileIndex];
 			int32_t isSolid = (int32_t)mapTiles[tileIndex];
 			if (isSolid > 0) {
 				++solidTileCount;
 			}
-			FTT_ARRAY_AT(tracer->tiles, fttTile, tileIndex) = ftt__MakeTile((int32_t)tileX, (int32_t)tileY, isSolid);
+			FTT_ARRAY_AT(tracer->tiles, fttTile, tileIndex) = ftt__MakeTile((int32_t)tileX, (int32_t)tileY, isSolid, tileType);
 		}
 	}
 
