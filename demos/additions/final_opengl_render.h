@@ -9,6 +9,11 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
+	## 2026-07-07
+	- Shader support: compile/link/validate programs (deferred create/destroy), CommandType_UseProgram / CommandType_Uniform execution
+	- CommandType_BindTexture / CommandType_UnbindTexture bind a texture to a unit for a bound shader
+	- InitOpenGLRenderer(RenderCapabilities *outCaps) detects GPU capabilities (GL/GLSL version, max texture image units, shader support) into the passed caps
+
 	## 2026-06-32
 	- Render CommandType_SpriteBatch that renders a batch of sprites
 
@@ -38,6 +43,15 @@ fpl_extern_inline GLuint GetTextureIDFromHandle(const TextureHandle handle) {
 	return (GLuint)(uintptr_t)(handle);
 }
 
+fpl_extern_inline ShaderProgramHandle GetProgramHandleFromID(const GLuint programId) {
+	return (ShaderProgramHandle)(uintptr_t)(programId);
+}
+
+fpl_extern_inline GLuint GetProgramIDFromHandle(const ShaderProgramHandle handle) {
+	return (GLuint)(uintptr_t)(handle);
+}
+
+
 fpl_extern void DrawSprite(const GLuint texId, const Vec2f offset, const Vec2f ext, const UVRect uv);
 fpl_extern void DrawPoint(const float x, const float y, const float radius, const Vec4f color);
 fpl_extern void DrawTextFont(const float x, const float y, const char *text, const size_t textLen, const LoadedFont *fontDesc, const GLuint fontTexture, const float maxCharHeight, const float sx, const float sy);
@@ -45,7 +59,10 @@ fpl_extern void DrawCircle(const float centerX, const float centerY, const float
 fpl_extern void DrawNormal(const Vec2f pos, const Vec2f normal, const float length, const Vec4f color);
 fpl_extern GLuint AllocateTexture(const uint32_t width, const uint32_t height, const void *data, const bool repeatable, const GLint filter, const bool isAlphaOnly);
 
-fpl_extern void InitOpenGLRenderer();
+// Initialize GL state and detect GPU capabilities. When outCaps is non-null it is filled with the
+// GL/GLSL version, max texture image units and shader support -- the caller may then inspect or change
+// the returned caps. Pass null to skip capability detection.
+fpl_extern void InitOpenGLRenderer(RenderCapabilities *outCaps);
 
 fpl_extern void RenderWithOpenGL(RenderState *renderState);
 
@@ -167,7 +184,7 @@ fpl_extern GLuint AllocateTexture(const uint32_t width, const uint32_t height, c
 	return(handle);
 }
 
-fpl_extern void InitOpenGLRenderer() {
+fpl_extern void InitOpenGLRenderer(RenderCapabilities *outCaps) {
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LEQUAL);
 
@@ -181,6 +198,43 @@ fpl_extern void InitOpenGLRenderer() {
 	glEnable(GL_LINE_SMOOTH);
 
 	glEnable(GL_SCISSOR_TEST);
+
+	// GPU capability detection. Generic: contains no shaders, only asks the driver what it can do.
+	if(outCaps != fpl_null) {
+		RenderCapabilities *caps = outCaps;
+		fplClearStruct(caps);
+
+		const GLubyte *versionString = glGetString(GL_VERSION);
+		if(versionString != fpl_null) {
+			// GL_VERSION begins with "<major>.<minor>"; parse leniently and ignore the vendor tail.
+			int major = 0;
+			int minor = 0;
+			const char *p = (const char *)versionString;
+			while(*p >= '0' && *p <= '9') { major = major * 10 + (*p - '0'); ++p; }
+			if(*p == '.') {
+				++p;
+				while(*p >= '0' && *p <= '9') { minor = minor * 10 + (*p - '0'); ++p; }
+			}
+			caps->glMajor = major;
+			caps->glMinor = minor;
+		}
+
+		const GLubyte *glslString = glGetString(GL_SHADING_LANGUAGE_VERSION);
+		if(glslString != fpl_null) {
+			size_t glslLength = fplGetStringLength((const char *)glslString);
+			fplCopyStringLen((const char *)glslString, glslLength, caps->glslVersion, fplArrayCount(caps->glslVersion));
+		}
+
+		GLint maxTextureImageUnits = 0;
+		glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &maxTextureImageUnits);
+		caps->maxTextureImageUnits = (int)maxTextureImageUnits;
+
+		// The most reliable shader-support check: the driver both reports >= GL 2.0 AND the loader
+		// actually resolved the shader entrypoints.
+		bool hasShaderEntrypoints = (glCreateShader != fpl_null) && (glShaderSource != fpl_null) && (glCreateProgram != fpl_null) && (glUseProgram != fpl_null) && (glGetUniformLocation != fpl_null);
+		bool hasShaderVersion = caps->glMajor >= 2;
+		caps->supportsShaders = hasShaderEntrypoints && hasShaderVersion;
+	}
 }
 
 // Sprite batches are expanded into client vertex arrays and drawn in chunks of this
@@ -226,6 +280,77 @@ static void _ExpandSpriteInstance(const SpriteInstance *s, Vec2f *outPos, Vec2f 
 	}
 }
 
+// Compile a single shader stage from source; logs the info log and returns 0 on failure.
+static GLuint _CompileShader(const GLenum shaderType, const char *source) {
+	GLuint shader = glCreateShader(shaderType);
+	if(shader == 0) {
+		return 0;
+	}
+	const GLchar *sources[1] = { (const GLchar *)source };
+	glShaderSource(shader, 1, sources, fpl_null);
+	glCompileShader(shader);
+	GLint compileStatus = 0;
+	glGetShaderiv(shader, GL_COMPILE_STATUS, &compileStatus);
+	if(compileStatus != GL_TRUE) {
+		GLchar infoLog[2048] = fplZeroInit;
+		glGetShaderInfoLog(shader, (GLsizei)fplArrayCount(infoLog), fpl_null, infoLog);
+		const char *shaderTypeName = shaderType == GL_VERTEX_SHADER ? "vertex" : "fragment";
+		fplConsoleFormatError("[OpenGL] Failed to compile %s shader:\n%s\n", shaderTypeName, infoLog);
+		glDeleteShader(shader);
+		return 0;
+	}
+	return shader;
+}
+
+// Create + compile + link + validate a program from vertex/fragment source. Returns 0 on failure.
+static GLuint _CreateShaderProgram(const char *vertexSource, const char *fragmentSource) {
+	GLuint vertexShader = _CompileShader(GL_VERTEX_SHADER, vertexSource);
+	if(vertexShader == 0) {
+		return 0;
+	}
+	GLuint fragmentShader = _CompileShader(GL_FRAGMENT_SHADER, fragmentSource);
+	if(fragmentShader == 0) {
+		glDeleteShader(vertexShader);
+		return 0;
+	}
+	GLuint program = glCreateProgram();
+	if(program == 0) {
+		glDeleteShader(vertexShader);
+		glDeleteShader(fragmentShader);
+		return 0;
+	}
+	glAttachShader(program, vertexShader);
+	glAttachShader(program, fragmentShader);
+	glLinkProgram(program);
+	GLint linkStatus = 0;
+	glGetProgramiv(program, GL_LINK_STATUS, &linkStatus);
+	if(linkStatus != GL_TRUE) {
+		GLchar infoLog[2048] = fplZeroInit;
+		glGetProgramInfoLog(program, (GLsizei)fplArrayCount(infoLog), fpl_null, infoLog);
+		fplConsoleFormatError("[OpenGL] Failed to link shader program:\n%s\n", infoLog);
+		glDeleteShader(vertexShader);
+		glDeleteShader(fragmentShader);
+		glDeleteProgram(program);
+		return 0;
+	}
+	// Validation is advisory: it can fail spuriously when samplers reference texture units with no
+	// texture bound yet (as here, right after link). So we log a warning but keep the program.
+	glValidateProgram(program);
+	GLint validateStatus = 0;
+	glGetProgramiv(program, GL_VALIDATE_STATUS, &validateStatus);
+	if(validateStatus != GL_TRUE) {
+		GLchar infoLog[2048] = fplZeroInit;
+		glGetProgramInfoLog(program, (GLsizei)fplArrayCount(infoLog), fpl_null, infoLog);
+		fplConsoleFormatError("[OpenGL] Shader program validation warning:\n%s\n", infoLog);
+	}
+	// After a successful link the shaders can be detached and deleted; the program keeps its own copy.
+	glDetachShader(program, vertexShader);
+	glDetachShader(program, fragmentShader);
+	glDeleteShader(vertexShader);
+	glDeleteShader(fragmentShader);
+	return program;
+}
+
 fpl_extern void RenderWithOpenGL(RenderState *renderState) {
 	size_t index = 0;
 	while(renderState->textureOperationCount > 0) {
@@ -247,6 +372,30 @@ fpl_extern void RenderWithOpenGL(RenderState *renderState) {
 	}
 	fplAssert(renderState->textureOperationCount == 0);
 
+	// Flush queued shader-program create/destroy operations (mirrors the texture-op flush above).
+	{
+		size_t shaderIndex = 0;
+		while(renderState->shaderOperationCount > 0) {
+			ShaderOperation *op = &renderState->shaderOperations[shaderIndex];
+			if(op->type == ShaderOperationType_CreateProgram) {
+				GLuint programId = _CreateShaderProgram(op->vertexSource, op->fragmentSource);
+				*op->handle = GetProgramHandleFromID(programId);
+			} else if(op->type == ShaderOperationType_DestroyProgram) {
+				GLuint programId = GetProgramIDFromHandle(*op->handle);
+				if(programId > 0) {
+					glDeleteProgram(programId);
+					*op->handle = fpl_null;
+				}
+			}
+			--renderState->shaderOperationCount;
+			++shaderIndex;
+		}
+	}
+	fplAssert(renderState->shaderOperationCount == 0);
+
+	// Start every frame at the fixed-function pipeline; the command stream binds a program explicitly.
+	glUseProgram(0);
+
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
 	glMatrixMode(GL_MODELVIEW);
@@ -256,6 +405,8 @@ fpl_extern void RenderWithOpenGL(RenderState *renderState) {
 		uint8_t *mem = (uint8_t *)renderState->memory.base;
 		size_t remaining = renderState->memory.used;
 		Mat4f mvpCur = M4fInit(1.0f);
+		// Program bound by the command stream; needed to resolve uniform locations for CommandType_Uniform.
+		GLuint currentProgram = 0;
 		renderState->matrixTop = 0;
 		while(remaining > 0) {
 			uint8_t *startMem = mem;
@@ -539,6 +690,61 @@ fpl_extern void RenderWithOpenGL(RenderState *renderState) {
 						}
 						glBindTexture(GL_TEXTURE_2D, 0);
 						glDisable(GL_TEXTURE_2D);
+					}
+				} break;
+
+				case CommandType_UseProgram:
+				{
+					fplAssert(dataSize == sizeof(UseProgramCommand));
+					UseProgramCommand *cmd = (UseProgramCommand *)dataStart;
+					currentProgram = GetProgramIDFromHandle(cmd->program);
+					glUseProgram(currentProgram);
+				} break;
+
+				case CommandType_BindTexture:
+				{
+					fplAssert(dataSize == sizeof(BindTextureCommand));
+					BindTextureCommand *cmd = (BindTextureCommand *)dataStart;
+					const GLuint texId = GetTextureIDFromHandle(cmd->texture);
+					glActiveTexture(GL_TEXTURE0 + cmd->unit);
+					glEnable(GL_TEXTURE_2D);
+					glBindTexture(GL_TEXTURE_2D, texId);
+					// Leave unit 0 active so the Sprite/Text commands (which assume unit 0) keep working.
+					glActiveTexture(GL_TEXTURE0);
+				} break;
+
+				case CommandType_UnbindTexture:
+				{
+					fplAssert(dataSize == sizeof(UnbindTextureCommand));
+					UnbindTextureCommand *cmd = (UnbindTextureCommand *)dataStart;
+					glActiveTexture(GL_TEXTURE0 + cmd->unit);
+					glBindTexture(GL_TEXTURE_2D, 0);
+					glDisable(GL_TEXTURE_2D);
+					glActiveTexture(GL_TEXTURE0);
+				} break;
+
+				case CommandType_Uniform:
+				{
+					fplAssert(dataSize >= sizeof(UniformCommand));
+					UniformCommand *cmd = (UniformCommand *)dataStart;
+					// A uniform with no bound program is a no-op (fixed-function has no uniforms).
+					if(currentProgram != 0) {
+						const void *payload = (const void *)(dataStart + sizeof(UniformCommand));
+						GLint loc = glGetUniformLocation(currentProgram, cmd->name);
+						if(loc >= 0) {
+							const GLfloat *f = (const GLfloat *)payload;
+							const GLint *iv = (const GLint *)payload;
+							GLsizei count = (GLsizei)cmd->count;
+							switch(cmd->type) {
+								case UniformType_Int:   glUniform1iv(loc, count, iv); break;
+								case UniformType_Float: glUniform1fv(loc, count, f); break;
+								case UniformType_Vec2:  glUniform2fv(loc, count, f); break;
+								case UniformType_Vec3:  glUniform3fv(loc, count, f); break;
+								case UniformType_Vec4:  glUniform4fv(loc, count, f); break;
+								case UniformType_Mat4:  glUniformMatrix4fv(loc, count, GL_FALSE, f); break;
+								default: break;
+							}
+						}
 					}
 				} break;
 
