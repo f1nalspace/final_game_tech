@@ -261,6 +261,61 @@ typedef struct fttArray {
 //
 // ****************************************************************************
 
+typedef enum fttTileType {
+	// Empty Space
+	FTT_TILE_EMPTY = 0,
+
+	// Solid Tile
+	// ┌─────┐
+	// │     │
+	// │     │
+	// │     │
+	// │     │
+	// │     │
+	// └─────┘
+	FTT_TILE_SOLID = 1,
+
+	// Bottom-Right Slope (surface facing top-left)
+	//       x
+	//      /│
+	//     / │
+	//    /  │
+	//   /   │
+	//  /    │
+	// x─────┘
+	FTT_TILE_SLOPE_BOTTOM_RIGHT = 2,
+
+	// Bottom-Left Slope (surface facing top-right)
+	// x
+	// │\
+	// │ \
+	// │  \
+	// │   \
+	// │    \
+	// └─────x
+	FTT_TILE_SLOPE_BOTTOM_LEFT = 3,
+
+	// Top-Left Slope (surface facing bottom-right)
+	// ┌─────x
+	// │    ╱
+	// │   ╱
+	// │  ╱
+	// │ ╱
+	// │╱
+	// x
+	FTT_TILE_SLOPE_TOP_LEFT = 4,
+
+	// Top-Right Slope  (surface facing bottom-left)
+	// x─────┐
+	//  \    │
+	//   \   │
+	//    \  │
+	//     \ │
+	// 	    \│
+	//       x
+	FFT_TILE_SLOPE_TOP_RIGHT = 5,
+} fttTileType;
+
 //! Search direction (indexes the internal direction table)
 typedef enum fttDirection {
 	FTT_DIRECTION_UP = 0,
