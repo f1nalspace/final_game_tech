@@ -22,6 +22,8 @@ set(MY_HEADER_FILES
 	"../../final_platform_layer.h"
 	"../../final_dynamic_opengl.h"
 	"../../final_tiletrace.h"
+	"linefont.h"
+	"ui.h"
 	)
 
 set(MY_TRANSLATION_UNITS
