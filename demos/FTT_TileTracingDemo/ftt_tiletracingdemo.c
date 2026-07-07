@@ -64,7 +64,6 @@ License:
 
 #include <stdlib.h>
 #include <time.h>
-#include <stdio.h>
 
 #define TileSize 1.0f
 
@@ -255,6 +254,44 @@ static void DrawTile(const int32_t x, const int32_t y, bool filled, float areaWi
 	glPopMatrix();
 }
 
+// Draws a small arrow centered on a tile, pointing at the neighbour tile in the given tile-space direction.
+// The tile-space delta (dirX, dirY) maps 1:1 to the world space used for the tilemap.
+static void DrawDirectionArrow(const int32_t tileX, const int32_t tileY, const int32_t dirX, const int32_t dirY, float areaWidth, float areaHeight) {
+	const float arrowHalfLength = TileSize * 0.42f;
+	const float arrowHeadLength = TileSize * 0.22f;
+	const float arrowHeadHalfWidth = TileSize * 0.16f;
+
+	float centerX = -areaWidth * 0.5f + tileX * TileSize + TileSize * 0.5f;
+	float centerY = -areaHeight * 0.5f + tileY * TileSize + TileSize * 0.5f;
+
+	// Direction is an axis-aligned unit vector, its perpendicular is (-dy, dx)
+	float dx = (float)dirX;
+	float dy = (float)dirY;
+	float perpX = -dy;
+	float perpY = dx;
+
+	float tipX = centerX + dx * arrowHalfLength;
+	float tipY = centerY + dy * arrowHalfLength;
+	float tailX = centerX - dx * arrowHalfLength;
+	float tailY = centerY - dy * arrowHalfLength;
+
+	float headBaseX = tipX - dx * arrowHeadLength;
+	float headBaseY = tipY - dy * arrowHeadLength;
+	float headLeftX = headBaseX + perpX * arrowHeadHalfWidth;
+	float headLeftY = headBaseY + perpY * arrowHeadHalfWidth;
+	float headRightX = headBaseX - perpX * arrowHeadHalfWidth;
+	float headRightY = headBaseY - perpY * arrowHeadHalfWidth;
+
+	glBegin(GL_LINES);
+	glVertex2f(tailX, tailY);
+	glVertex2f(tipX, tipY);
+	glVertex2f(tipX, tipY);
+	glVertex2f(headLeftX, headLeftY);
+	glVertex2f(tipX, tipY);
+	glVertex2f(headRightX, headRightY);
+	glEnd();
+}
+
 static void InitScenarioTracer(fttTileTracer *tracer, int scenarioIndex, bool freeExisting) {
 	if (freeExisting) {
 		fttFreeTileTracer(tracer);
@@ -277,6 +314,27 @@ static const char *StepName(fttStep step) {
 		case FTT_STEP_DONE: return "DONE";
 		default: return "UNKNOWN";
 	}
+}
+
+// Human readable name and tile-space delta for each scan direction, indexed by fttDirection.
+typedef struct fttDirectionInfo {
+	const char *name;
+	int32_t dx;
+	int32_t dy;
+} fttDirectionInfo;
+
+static const fttDirectionInfo DirectionInfos[FTT_DIRECTION_COUNT] = {
+	{ "UP",     0, -1 },
+	{ "RIGHT",  1,  0 },
+	{ "DOWN",   0,  1 },
+	{ "LEFT",  -1,  0 },
+};
+
+static const fttDirectionInfo *GetDirectionInfo(uint32_t direction) {
+	if (direction < FTT_DIRECTION_COUNT) {
+		return &DirectionInfos[direction];
+	}
+	return ftt_null;
 }
 
 int main(int argc, char **args) {
@@ -324,7 +382,9 @@ int main(int argc, char **args) {
 					if (ev.keyboard.type == fplKeyboardEventType_Button) {
 						bool isDown = (ev.keyboard.buttonState >= fplButtonState_Press);
 						if (ev.keyboard.mappedKey == fplKey_Space && isDown) {
-							isPaused = !isPaused;
+							// Step advances one step and pauses the simulation if it was running
+							isPaused = true;
+							stepRequested = true;
 						}
 					}
 				} break;
@@ -469,6 +529,15 @@ int main(int argc, char **args) {
 			glLineWidth(2.0f);
 			DrawTile(curTile->x, curTile->y, false, areaSizeW, areaSizeH);
 			glLineWidth(1.0f);
+
+			// Arrow at the current tile pointing at the neighbour tile currently being probed
+			const fttDirectionInfo *curDirInfo = GetDirectionInfo(curTile->traceDirection);
+			if (curDirInfo) {
+				glColor3f(0.1f, 0.35f, 1.0f);
+				glLineWidth(3.0f);
+				DrawDirectionArrow(curTile->x, curTile->y, curDirInfo->dx, curDirInfo->dy, areaSizeW, areaSizeH);
+				glLineWidth(1.0f);
+			}
 		}
 
 		// Draw the UI panel in a full-window, y-down pixel-space projection
@@ -501,6 +570,8 @@ int main(int argc, char **args) {
 			isPaused = !isPaused;
 		}
 		if (UiButton(&ui, "Step")) {
+			// Step advances one step and pauses the simulation if it was running
+			isPaused = true;
 			stepRequested = true;
 		}
 		if (UiButton(&ui, "Reset")) {
@@ -528,7 +599,7 @@ int main(int argc, char **args) {
 			const float overlayLineHeightPixels = (float)FontGridRows * overlayTextScale + overlayLineGapPixels;
 			const size_t overlayMaxLineLength = 48;
 
-			char overlayLines[8][48];
+			char overlayLines[10][48];
 			int overlayLineCount = 0;
 
 			uint32_t mapWidth = tracer.tileCount.w;
@@ -549,19 +620,23 @@ int main(int argc, char **args) {
 			uint32_t chainCount = (uint32_t)fttGetChainSegmentCount(&tracer);
 			fttTile *overlayCurTile = fttGetCurrentTile(&tracer);
 
-			snprintf(overlayLines[overlayLineCount++], overlayMaxLineLength, "Scenario: %s", activeScenario->name);
-			snprintf(overlayLines[overlayLineCount++], overlayMaxLineLength, "Map: %u x %u", mapWidth, mapHeight);
-			snprintf(overlayLines[overlayLineCount++], overlayMaxLineLength, "Status: %s", statusText);
-			snprintf(overlayLines[overlayLineCount++], overlayMaxLineLength, "Step: %s", stepName);
+			fplStringFormat(overlayLines[overlayLineCount++], overlayMaxLineLength, "Scenario: %s", activeScenario->name);
+			fplStringFormat(overlayLines[overlayLineCount++], overlayMaxLineLength, "Map: %u x %u", mapWidth, mapHeight);
+			fplStringFormat(overlayLines[overlayLineCount++], overlayMaxLineLength, "Status: %s", statusText);
+			fplStringFormat(overlayLines[overlayLineCount++], overlayMaxLineLength, "Step: %s", stepName);
 			if (overlayCurTile) {
 				int32_t curTileX = overlayCurTile->x;
 				int32_t curTileY = overlayCurTile->y;
-				snprintf(overlayLines[overlayLineCount++], overlayMaxLineLength, "Cur: %d %d", curTileX, curTileY);
+				fplStringFormat(overlayLines[overlayLineCount++], overlayMaxLineLength, "Cur: %d %d", curTileX, curTileY);
+				const fttDirectionInfo *overlayDirInfo = GetDirectionInfo(overlayCurTile->traceDirection);
+				const char *dirName = overlayDirInfo ? overlayDirInfo->name : "?";
+				fplStringFormat(overlayLines[overlayLineCount++], overlayMaxLineLength, "Dir: %s", dirName);
 			} else {
-				snprintf(overlayLines[overlayLineCount++], overlayMaxLineLength, "Cur: none");
+				fplStringFormat(overlayLines[overlayLineCount++], overlayMaxLineLength, "Cur: none");
+				fplStringFormat(overlayLines[overlayLineCount++], overlayMaxLineLength, "Dir: -");
 			}
-			snprintf(overlayLines[overlayLineCount++], overlayMaxLineLength, "Open: %u  Edges: %u", openCount, edgeCount);
-			snprintf(overlayLines[overlayLineCount++], overlayMaxLineLength, "Verts: %u  Chains: %u", vertexCount, chainCount);
+			fplStringFormat(overlayLines[overlayLineCount++], overlayMaxLineLength, "Open: %u  Edges: %u", openCount, edgeCount);
+			fplStringFormat(overlayLines[overlayLineCount++], overlayMaxLineLength, "Verts: %u  Chains: %u", vertexCount, chainCount);
 
 			float overlayMaxTextWidth = 0.0f;
 			for (int lineIndex = 0; lineIndex < overlayLineCount; ++lineIndex) {
