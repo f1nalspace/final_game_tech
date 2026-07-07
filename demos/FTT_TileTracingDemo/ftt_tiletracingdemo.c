@@ -579,6 +579,11 @@ int main(int argc, char **args) {
 		}
 		UiSpacer(&ui);
 
+		UiLabel(&ui, "Progress");
+		float progressPercentage = fttGetProgressPercentage(&tracer);
+		UiProgressBar(&ui, progressPercentage);
+		UiSpacer(&ui);
+
 		UiCheckbox(&ui, "Show Grid", &showGrid);
 
 		if (activeScenarioIndex == Scenario_Random) {
@@ -618,6 +623,8 @@ int main(int argc, char **args) {
 			uint32_t edgeCount = (uint32_t)fttGetEdgeCount(&tracer);
 			uint32_t vertexCount = (uint32_t)fttGetVertexCount(&tracer);
 			uint32_t chainCount = (uint32_t)fttGetChainSegmentCount(&tracer);
+			uint32_t processedTiles = fttGetProcessedTileCount(&tracer);
+			uint32_t totalSolidTiles = fttGetTotalSolidTileCount(&tracer);
 			fttTile *overlayCurTile = fttGetCurrentTile(&tracer);
 
 			fplStringFormat(overlayLines[overlayLineCount++], overlayMaxLineLength, "Scenario: %s", activeScenario->name);
@@ -637,6 +644,7 @@ int main(int argc, char **args) {
 			}
 			fplStringFormat(overlayLines[overlayLineCount++], overlayMaxLineLength, "Open: %u  Edges: %u", openCount, edgeCount);
 			fplStringFormat(overlayLines[overlayLineCount++], overlayMaxLineLength, "Verts: %u  Chains: %u", vertexCount, chainCount);
+			fplStringFormat(overlayLines[overlayLineCount++], overlayMaxLineLength, "Progress: %.1f%%  Tiles: %u/%u", progressPercentage, processedTiles, totalSolidTiles);
 
 			float overlayMaxTextWidth = 0.0f;
 			for (int lineIndex = 0; lineIndex < overlayLineCount; ++lineIndex) {

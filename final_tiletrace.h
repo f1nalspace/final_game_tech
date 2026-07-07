@@ -107,7 +107,7 @@ SOFTWARE.
 
 /*!
 	@file final_tiletrace.h
-	@version v2.0.0
+	@version v2.1.0
 	@author Torsten Spaete
 	@brief Final TileTrace (FTT) - A pure C17 single file header contour tile tracing library.
 */
@@ -121,6 +121,9 @@ SOFTWARE.
 /*!
 	@page page_changelog Changelog
 	@tableofcontents
+
+	# v2.1.0:
+	- New: Integer progress tracking (fttGetProgressPercentage returns a 0..100 percentage)
 
 	# v2.0.0:
 	- New: Full rewrite from C++ to pure C17
@@ -397,6 +400,12 @@ typedef struct fttTileTracer {
 	fttArray mainVertices;        //!< Deduplicated fttVec2i pool shared across all tiles
 	fttArray mainEdges;           //!< fttEdge boundary edges (phase 1 output / phase 2 input)
 	fttArray chainSegments;       //!< fttChainSegment final output (one per contiguous solid-region boundary)
+
+	// Progress tracking - integer counters used to compute a 0..100 percentage
+	uint32_t totalSolidTileCount; //!< Number of solid tiles at init (phase 1 denominator)
+	uint32_t processedTileCount;  //!< Number of solid tiles expanded so far (phase 1 numerator)
+	uint32_t totalEdgeCount;      //!< Number of boundary edges when edge traversal begins (phase 2 denominator)
+	uint32_t consumedEdgeCount;   //!< Number of boundary edges consumed into chain segments so far (phase 2 numerator)
 } fttTileTracer;
 
 // ****************************************************************************
@@ -474,6 +483,44 @@ ftt_inline fttTile *fttGetStartTile(const fttTileTracer *tracer) {
 //! Returns the current tile pointer (may be null)
 ftt_inline fttTile *fttGetCurrentTile(const fttTileTracer *tracer) {
 	return tracer->curTile;
+}
+//! Returns the total number of solid tiles the tracer started with
+ftt_inline uint32_t fttGetTotalSolidTileCount(const fttTileTracer *tracer) {
+	return tracer->totalSolidTileCount;
+}
+//! Returns the number of solid tiles expanded so far
+ftt_inline uint32_t fttGetProcessedTileCount(const fttTileTracer *tracer) {
+	return tracer->processedTileCount;
+}
+//! Returns the overall trace progress as a percentage in the range 0.0 .. 100.0.
+//! Tile expansion (phase 1) fills the first half, edge traversal (phase 2) fills the second half.
+ftt_inline float fttGetProgressPercentage(const fttTileTracer *tracer) {
+	const float fullPercentage = 100.0f;
+	const float phase1SharePercentage = 50.0f;                                  // Tile expansion covers the first half
+	const float phase2SharePercentage = fullPercentage - phase1SharePercentage; // Edge traversal covers the rest
+
+	// An empty map has nothing to trace and is trivially complete
+	if (tracer->totalSolidTileCount == 0) {
+		return fullPercentage;
+	}
+	if (tracer->curStep == FTT_STEP_DONE) {
+		return fullPercentage;
+	}
+
+	float phase1Fraction = (float)tracer->processedTileCount / (float)tracer->totalSolidTileCount;
+	float phase1Percentage = phase1Fraction * phase1SharePercentage;
+
+	float phase2Percentage = 0.0f;
+	if (tracer->totalEdgeCount > 0) {
+		float phase2Fraction = (float)tracer->consumedEdgeCount / (float)tracer->totalEdgeCount;
+		phase2Percentage = phase2Fraction * phase2SharePercentage;
+	}
+
+	float result = phase1Percentage + phase2Percentage;
+	if (result > fullPercentage) {
+		result = fullPercentage;
+	}
+	return result;
 }
 
 #ifdef __cplusplus
@@ -920,6 +967,7 @@ static bool ftt__ProcessTraverseNextEdge(fttTileTracer *tracer) {
 				ftt__OptimizeChainSegment(curChainSegment);
 			}
 			curEdge->isInvalid = true;
+			++tracer->consumedEdgeCount;
 			return true;
 		}
 	}
@@ -960,6 +1008,7 @@ static bool ftt__ProcessTraverseFindStartingEdge(fttTileTracer *tracer) {
 		tracer->lastEdgeIndex = tracer->startEdgeIndex;
 		fttEdge *startEdge = FTT_ARRAY_PTR(tracer->mainEdges, fttEdge, tracer->startEdgeIndex);
 		startEdge->isInvalid = true;
+		++tracer->consumedEdgeCount;
 		int32_t v0 = startEdge->vertIndex0;
 		int32_t v1 = startEdge->vertIndex1;
 		tracer->curStep = FTT_STEP_TRAVERSE_NEXT_EDGE;
@@ -1006,6 +1055,7 @@ static void ftt__AddTile(fttTileTracer *tracer, fttTile *tile) {
 	// Add the tile to the open list and remove it from the map
 	FTT__ARRAY_PUSH(&tracer->openList, fttTile *, tile);
 	ftt__RemoveTile(&tracer->tiles, tracer->tileCount, (uint32_t)tile->x, (uint32_t)tile->y);
+	++tracer->processedTileCount;
 
 	// Create tile vertices/indices and edges for the tile
 	fttTileIndices tileIndices = ftt__PushTileVertices(tracer, tile);
@@ -1048,12 +1098,16 @@ ftt_api void fttInitTileTracer(fttTileTracer *tracer, fttVec2u tileCount, const 
 	ftt__ArrayReserve(&tracer->mainEdges, tileTotal * 4);
 	ftt__ArrayReserve(&tracer->chainSegments, 64);
 
-	// Fill the tile array from the map
+	// Fill the tile array from the map and count how many tiles are solid
 	tracer->tiles.count = tileTotal;
+	uint32_t solidTileCount = 0;
 	for (uint32_t tileY = 0; tileY < tileCount.h; ++tileY) {
 		for (uint32_t tileX = 0; tileX < tileCount.w; ++tileX) {
 			uint32_t tileIndex = ftt__ComputeTileIndex(tileCount, tileX, tileY);
 			int32_t isSolid = (int32_t)mapTiles[tileIndex];
+			if (isSolid > 0) {
+				++solidTileCount;
+			}
 			FTT_ARRAY_AT(tracer->tiles, fttTile, tileIndex) = ftt__MakeTile((int32_t)tileX, (int32_t)tileY, isSolid);
 		}
 	}
@@ -1065,6 +1119,11 @@ ftt_api void fttInitTileTracer(fttTileTracer *tracer, fttVec2u tileCount, const 
 	tracer->startEdgeIndex = -1;
 	tracer->lastEdgeIndex = -1;
 	tracer->curChainSegmentIndex = -1;
+
+	tracer->totalSolidTileCount = solidTileCount;
+	tracer->processedTileCount = 0;
+	tracer->totalEdgeCount = 0;
+	tracer->consumedEdgeCount = 0;
 }
 
 ftt_api bool fttNextTileTraceStep(fttTileTracer *tracer) {
@@ -1107,6 +1166,8 @@ ftt_api bool fttNextTileTraceStep(fttTileTracer *tracer) {
 					// Clear all chain segments and switch to phase 2
 					ftt__ArrayClear(&tracer->chainSegments);
 					tracer->curChainSegmentIndex = -1;
+					// All boundary edges are now known - remember them as the phase 2 denominator
+					tracer->totalEdgeCount = (uint32_t)tracer->mainEdges.count;
 					tracer->curStep = FTT_STEP_TRAVERSE_FIND_STARTING_EDGE;
 				}
 			}
@@ -1191,6 +1252,10 @@ ftt_api void fttFreeTileTracer(fttTileTracer *tracer) {
 	tracer->lastEdgeIndex = -1;
 	tracer->curChainSegmentIndex = -1;
 	tracer->curStep = FTT_STEP_DONE;
+	tracer->totalSolidTileCount = 0;
+	tracer->processedTileCount = 0;
+	tracer->totalEdgeCount = 0;
+	tracer->consumedEdgeCount = 0;
 }
 
 #ifdef __cplusplus

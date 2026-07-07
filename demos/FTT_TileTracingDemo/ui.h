@@ -10,7 +10,7 @@ Description:
 	(glOrtho(0, width, height, 0, -1, 1)) so widget rects line up directly
 	with mouse coordinates from the platform layer.
 
-	Include this header after final_dynamic_opengl.h and ftt_linefont.h.
+	Include this header after final_platform_layer.h, final_dynamic_opengl.h and ftt_linefont.h.
 
 Requirements:
 	- C17 Compiler
@@ -169,6 +169,49 @@ static bool UiCheckbox(fttUiState *ui, const char *text, bool *value) {
 
 	ui->cursorY += rowHeight + UiItemSpacingPixels;
 	return *value;
+}
+
+// Draws a horizontal progress bar filled to the given percentage (0.0 .. 100.0), with the value drawn centered on top.
+static void UiProgressBar(fttUiState *ui, float percentage) {
+	const float fullPercentage = 100.0f;
+	if (percentage < 0.0f) {
+		percentage = 0.0f;
+	}
+	if (percentage > fullPercentage) {
+		percentage = fullPercentage;
+	}
+
+	float x = ui->panelX + UiPanelPaddingPixels;
+	float y = ui->cursorY;
+	float width = ui->panelWidth - UiPanelPaddingPixels * 2.0f;
+	float height = (float)UiItemHeightPixels;
+
+	// Track background
+	glColor3f(0.22f, 0.22f, 0.28f);
+	UiDrawRectFilled(x, y, width, height);
+
+	// Filled portion
+	float fillFraction = percentage / fullPercentage;
+	float fillWidth = width * fillFraction;
+	if (fillWidth > 0.0f) {
+		glColor3f(0.3f, 0.7f, 0.42f);
+		UiDrawRectFilled(x, y, fillWidth, height);
+	}
+
+	// Outline
+	glColor3f(0.55f, 0.55f, 0.62f);
+	UiDrawRectOutline(x, y, width, height, UiWidgetOutlineThickness);
+
+	// Percentage value centered on the bar
+	char text[8];
+	fplStringFormat(text, fplArrayCount(text), "%.1f%%", percentage);
+	float textWidth = MeasureLineTextWidthZ(text, UiTextScale);
+	float textX = x + (width - textWidth) * 0.5f;
+	float textY = y + (height - (float)FontGridRows * UiTextScale) * 0.5f;
+	glColor3f(0.95f, 0.97f, 0.92f);
+	DrawLineTextZ(text, textX, textY, UiTextScale, UiTextThickness);
+
+	ui->cursorY += height + UiItemSpacingPixels;
 }
 
 static bool UiRadioButton(fttUiState *ui, const char *text, int *selected, int optionValue) {
