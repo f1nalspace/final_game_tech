@@ -9,6 +9,10 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
+	## 2026-07-15
+	- Added GameUpdateLoopMode enum that controls how the update loop logic tick works
+	- Added fields updateLoopMode, maxUpdateTicksPerFrame, maxDynamicFrameTime to the GameConfiguration struct
+
 	## 2026-07-01
 	- Fixed: Keyboard controller button could latch stuck-down after a same-frame press+release tap; now derived from the polled key state
 	- Added: Capture typed characters (fplKeyboardEventType_Input) into Input.textInput
@@ -63,6 +67,20 @@ License:
 
 #include "final_game.h"
 
+// How the fixed-timestep update loop behaves when a single GameUpdate overruns the fixed step.
+typedef enum GameUpdateLoopMode {
+	// Bound the number of fixed updates per rendered frame (see maxUpdateTicksPerFrame). Time beyond
+	// that bound is DISCARDED: the simulation falls behind wall-clock (runs in slow motion) rather
+	// than queueing updates it can never work off. This is the default.
+	GameUpdateLoopMode_ClampTicks = 0,
+	// Run as many fixed updates as the accumulated time allows, with no upper bound. The original
+	// behaviour, kept for compatibility. WARNING: this is a spiral of death. An update that overruns
+	// the fixed step leaves time in the accumulator, so the next frame runs more updates, overruns
+	// further, and the game settles pinned at maxDynamicFrameTime worth of updates per frame. A
+	// simulation only ~1.4x over budget then presents as ~3 fps.
+	GameUpdateLoopMode_Unbounded,
+} GameUpdateLoopMode;
+
 typedef struct GameConfiguration {
 	// Keyboard mappings
 	const KeyboardButtonMappings *keyboardMappings;
@@ -80,6 +98,17 @@ typedef struct GameConfiguration {
 	uint32_t targetHz;
 	// Maximum render updates in Hz. If this is zero, the rendering happens on every frame - melting the GPU/CPU core.
 	uint32_t maxRenderHz;
+	// How the update loop reacts when one GameUpdate overruns the fixed step. Defaults to ClampTicks.
+	GameUpdateLoopMode updateLoopMode;
+	// Maximum fixed updates per rendered frame, for GameUpdateLoopMode_ClampTicks. Zero uses the default (4).
+	// Raise it to keep the simulation at real-time on a RENDER-bound machine: a value of N holds real time
+	// down to (targetHz / N) rendered frames per second. Lower it to render more often on an UPDATE-bound
+	// machine, at the cost of the simulation dilating further. Ignored when updateLoopMode is Unbounded.
+	uint32_t maxUpdateTicksPerFrame;
+	// Upper bound in seconds on the frame time handed to the game as Input.dynamicFrameTime. Zero uses the
+	// default (0.25). Clamped separately from the update accumulator so a load hitch (level load, alt-tab, a
+	// debugger break) cannot make render-side interpolation take one enormous step.
+	double maxDynamicFrameTime;
 	// Preferred audio format
 	fplAudioFormatType audioFormat;
 	// Indicates whether to hide the mouse cursor or not
@@ -755,12 +784,6 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 	// InitOpenGLRenderer detects the GPU capabilities into renderState->caps so renderer-agnostic game
 	// code can read them (e.g. to gate shader features). The hard "exit if unsupported" gate is deferred.
 	InitOpenGLRenderer(&renderState->caps);
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "- GPU Caps: GL %d.%d, GLSL '%s', MaxTextureImageUnits: %d, Shaders: %s",
-		renderState->caps.glMajor, renderState->caps.glMinor, renderState->caps.glslVersion,
-		renderState->caps.maxTextureImageUnits, renderState->caps.supportsShaders ? "yes" : "no");
-	if(!renderState->caps.supportsShaders) {
-		LogWrite(LogLevel_Warning, GAMEPLATFORM_LOGPREFIX "GPU does not support shaders -- shader features will be disabled");
-	}
 
 	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Start Audio Playback");
 	fplSetAudioClientReadCallback(InternalGamePlatformAudioPlayback, audioSys);
@@ -788,6 +811,26 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 
 	const double targetDeltaTime = 1.0 / (double)targetFramesHz;
 	const double maxRenderTime = maxRenderFramesHz > 0 ? 1.0 / (double)maxRenderFramesHz : 0.0;
+
+	const uint32_t defaultMaxUpdateTicksPerFrame = 4;
+	const double defaultMaxDynamicFrameTime = 0.25;
+
+	// The frame time handed to the game as dynamicFrameTime, clamped separately from the accumulator.
+	const double maxDynamicFrameTime = config->maxDynamicFrameTime > 0.0 ? config->maxDynamicFrameTime : defaultMaxDynamicFrameTime;
+
+	// Upper bound on fixed-timestep updates run per rendered frame. Without it the accumulator loop
+	// below is a spiral of death: one update that overruns the fixed step leaves time in the
+	// accumulator, so the next frame runs two updates, overruns further, and so on until the frame
+	// time hits its own clamp and the game sits pinned at a constant low framerate. Clamping the
+	// time we FEED the accumulator bounds the tick count by construction, so a simulation that
+	// cannot keep up runs in slow motion (time dilates) instead of collapsing.
+	const uint32_t maxUpdateTicksPerFrame = config->maxUpdateTicksPerFrame > 0 ? config->maxUpdateTicksPerFrame : defaultMaxUpdateTicksPerFrame;
+
+	// Unbounded mode feeds the accumulator the (dynamic-clamped) frame time, reproducing the original
+	// spiral-prone behaviour exactly. ClampTicks feeds it at most maxUpdateTicksPerFrame worth of time.
+	const bool isUpdateLoopUnbounded = config->updateLoopMode == GameUpdateLoopMode_Unbounded;
+	const double boundedAccumulatedFrameTime = targetDeltaTime * (double)maxUpdateTicksPerFrame;
+	const double maxAccumulatedFrameTime = isUpdateLoopUnbounded ? maxDynamicFrameTime : boundedAccumulatedFrameTime;
 
 	if(config->hideMouseCursor) {
 		fplSetWindowCursorEnabled(false);
@@ -919,12 +962,20 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 		// Compute frame time once and advance accumulator
 		//
 		fplTimestamp currTime = fplTimestampQuery();
-		double frameTime = fplTimestampElapsed(lastTime, currTime);
+		double rawFrameTime = fplTimestampElapsed(lastTime, currTime);
 		lastTime = currTime;
-		if (frameTime > 0.25) frameTime = 0.25;
-		frameAccumulator += frameTime;
-		framesPerSecond = frameTime > 0 ? 1.0 / frameTime : 0;
-		lastFrameTime = frameTime;
+
+		// Report the REAL framerate, measured before any clamp -- otherwise the readout floors at
+		// whatever the clamp is and hides how far behind the frame actually ran.
+		framesPerSecond = rawFrameTime > 0 ? 1.0 / rawFrameTime : 0;
+		lastFrameTime = rawFrameTime < maxDynamicFrameTime ? rawFrameTime : maxDynamicFrameTime;
+
+		// Feeding the accumulator a clamped frame time is what bounds the update loop: the
+		// accumulator can hold at most one leftover step plus maxAccumulatedFrameTime, so the loop
+		// runs at most maxUpdateTicksPerFrame times. Time beyond that is DISCARDED on purpose -- the
+		// simulation falls behind wall-clock rather than trying to catch up and falling further.
+		double accumulatedFrameTime = rawFrameTime < maxAccumulatedFrameTime ? rawFrameTime : maxAccumulatedFrameTime;
+		frameAccumulator += accumulatedFrameTime;
 
 		//
 		// Game update accumulator loop (Allow button edge events only on the first tick of this render frame)
@@ -979,8 +1030,8 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 
 		// Throttle if vsync is disabled and there is a limit of max frames
 		if (config->disableVerticalSync && maxRenderTime > 0.0) {
-			if (frameTime < maxRenderTime) {
-				double sleepSec = maxRenderTime - frameTime;
+			if (rawFrameTime < maxRenderTime) {
+				double sleepSec = maxRenderTime - rawFrameTime;
 				uint32_t sleepMS = (uint32_t)(sleepSec * 1000.0);
 				if (sleepMS > 0) {
 					// TODO(final): Use a better approach!
