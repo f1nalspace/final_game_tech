@@ -9,6 +9,18 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
+	## 2026-07-15
+	- Added TextureOperationType_SetFilter + RenderPushSetTextureFilter: change an uploaded texture's min/mag filter without re-uploading (runtime nearest<->linear switch)
+
+	## 2026-07-14
+	- Added maxTextureSize, vendor, renderer, version fields to RenderCapabilities
+
+	## 2026-07-08
+	- Added RenderTarget (framebuffer objects): RenderTargetFormat (RGBA8/R16F/R32F/RG16F/RGBA16F), up to 4 MRT color attachments + optional depth
+	- Added deferred RenderPushCreateRenderTarget / RenderPushDestroyRenderTarget (mirrors the shader-op flush) and CommandType_BindRenderTarget / _UnbindRenderTarget
+	- Added CommandType_SetBlendMode (Alpha/Additive/Opaque) for light accumulation
+	- Extended RenderCapabilities with supportsRenderTargets / supportsFloatTextures / maxColorAttachments / maxDrawBuffers
+
 	## 2026-07-07
 	- Added generic (shader-agnostic) shader support: ShaderProgramHandle + deferred RenderPushShaderProgram / RenderPopShaderProgram
 	- Added CommandType_UseProgram / CommandType_Uniform (scalar int/float/Vec2/Vec3/Vec4/Mat4 + array variants) and their RenderPush* pushers
@@ -27,9 +39,9 @@ License:
 #ifndef FINAL_RENDER_H
 #define FINAL_RENDER_H
 
+#include <final_platform_layer.h>
 #include <final_memory.h>
-
-#include "final_math.h"
+#include <final_math.h>
 #include <final_fontloader.h>
 
 typedef struct UVRect {
@@ -77,7 +89,8 @@ fpl_extern_inline UVRect UVRectFromPos(const Vec2i imageSize, const Vec2i partSi
 typedef enum TextureOperationType {
 	TextureOperationType_None = 0,
 	TextureOperationType_Upload,
-	TextureOperationType_Release
+	TextureOperationType_Release,
+	TextureOperationType_SetFilter // re-set an already-uploaded texture's min/mag filter, no re-upload
 } TextureOperationType;
 
 typedef void *TextureHandle;
@@ -109,7 +122,8 @@ typedef struct TextureOperation {
 #define MAX_TEXTURE_OPERATION_COUNT 1024
 #define MAX_MATRIX_STACK_COUNT 32
 #define MAX_SHADER_OPERATION_COUNT 64
-#define UNIFORM_NAME_MAX 64
+#define MAX_RENDER_TARGET_OPERATION_COUNT 64
+#define MAX_UNIFORM_NAME_LENGTH 64
 
 // Opaque handle to a linked shader program (wraps a GLuint program id; 0/null = invalid/unsupported).
 // The renderer stays generic: it never ships any shaders, it only compiles/uses whatever source the
@@ -126,10 +140,65 @@ typedef enum ShaderOperationType {
 // owned by the caller and must stay valid until the operation is flushed at the top of RenderWithOpenGL.
 typedef struct ShaderOperation {
 	ShaderProgramHandle *handle;
+	// Identifies the program in the log. The compile/link happens later, at the flush, far from the
+	// call that pushed it -- without a name a driver rejecting one shader out of ten reports only
+	// that "a fragment shader" failed, which is not actionable on a machine we cannot reach.
+	const char *name;
 	const char *vertexSource;
 	const char *fragmentSource;
 	ShaderOperationType type;
 } ShaderOperation;
+
+// A render target (framebuffer object) the game renders INTO instead of the screen: an off-screen
+// color buffer (or up to RENDER_TARGET_MAX_COLOR_ATTACHMENTS of them for MRT / deferred shading) plus
+// an optional depth buffer. Its color attachments are ordinary TextureHandles, so a later pass can
+// sample the result with RenderPushBindTexture. Like Lighting the caller owns the struct; the backend
+// only fills the opaque GL ids on the deferred create flush.
+#define RENDER_TARGET_MAX_COLOR_ATTACHMENTS 4
+
+// The curated set of attachment formats. RGBA8 is the default color buffer; the float formats back the
+// SDF distance field (R16F/R32F), jump-flood seed coords (RG16F) and HDR light accumulation (RGBA16F).
+// Float formats require caps.supportsFloatTextures; the backend substitutes RGBA8 when absent.
+typedef enum RenderTargetFormat {
+	RenderTargetFormat_RGBA8 = 0,
+	RenderTargetFormat_R16F,
+	RenderTargetFormat_R32F,
+	RenderTargetFormat_RG16F,
+	RenderTargetFormat_RGBA16F
+} RenderTargetFormat;
+
+typedef struct RenderTarget {
+	uint32_t width;
+	uint32_t height;
+	int colorCount;                                                       // 1..RENDER_TARGET_MAX_COLOR_ATTACHMENTS
+	RenderTargetFormat formats[RENDER_TARGET_MAX_COLOR_ATTACHMENTS];
+	TextureFilterType filter;                                             // filter applied to every color attachment
+	bool hasDepth;                                                        // attach a depth renderbuffer (for depth-tested passes)
+	TextureHandle colorTextures[RENDER_TARGET_MAX_COLOR_ATTACHMENTS];     // filled on create; sample these later
+	void *internalHandle;                                                 // wraps the GL framebuffer id (null = unallocated / failed)
+	void *depthHandle;                                                    // wraps the GL depth renderbuffer id (null = none)
+} RenderTarget;
+
+typedef enum RenderTargetOperationType {
+	RenderTargetOperationType_None = 0,
+	RenderTargetOperationType_Create,
+	RenderTargetOperationType_Destroy
+} RenderTargetOperationType;
+
+// Deferred create/destroy of a render target, mirroring ShaderOperation: the RenderTarget struct is
+// owned by the caller and must stay valid until the operation is flushed at the top of RenderWithOpenGL.
+typedef struct RenderTargetOperation {
+	RenderTarget *target;
+	RenderTargetOperationType type;
+} RenderTargetOperation;
+
+// Blend state as a persistent command (like UseProgram): stays active until the next SetBlendMode. The
+// frame starts at Alpha. Additive is the light-accumulation mode for deferred shading; Opaque overwrites.
+typedef enum BlendMode {
+	BlendMode_Alpha = 0,   // src_alpha, one_minus_src_alpha (the default everywhere)
+	BlendMode_Additive,    // one, one -- sums contributions (light accumulation)
+	BlendMode_Opaque       // one, zero -- overwrite the destination
+} BlendMode;
 
 // GPU capabilities queried once at startup by the backend, exposed on RenderState so renderer-agnostic
 // game code can read them (e.g. to decide whether to enable shader features) without touching GL.
@@ -137,19 +206,39 @@ typedef struct RenderCapabilities {
 	int glMajor;
 	int glMinor;
 	int maxTextureImageUnits;
+	// Largest texture the GPU accepts, per side (GL_MAX_TEXTURE_SIZE). Worth checking against: the
+	// reference scans are ~2480x3509, which a GPU capped at 2048 rejects -- and glTexImage2D fails
+	// silently, leaving a blank texture and no reason for it anywhere.
+	int maxTextureSize;
 	bool supportsShaders;
+	// Off-screen framebuffer objects: the FBO entrypoints resolved and the driver is new enough. Gates
+	// the whole RenderTarget path (SDF, shadow + deferred lighting buffers).
+	bool supportsRenderTargets;
+	// Float color-attachment formats (R16F/RG16F/RGBA16F/...). When false the backend downgrades those
+	// render-target formats to RGBA8.
+	bool supportsFloatTextures;
+	// MRT limits (GL_MAX_COLOR_ATTACHMENTS / GL_MAX_DRAW_BUFFERS); attachment usage is clamped to these.
+	int maxColorAttachments;
+	int maxDrawBuffers;
 	char glslVersion[64];
+	// Who the driver says it is. Kept here so renderer-agnostic code (a system report, a bug template)
+	// can name the GPU without touching GL.
+	char vendor[128];
+	char renderer[256];
+	char version[128];
 } RenderCapabilities;
 
 typedef struct RenderState {
 	TextureOperation textureOperations[MAX_TEXTURE_OPERATION_COUNT];
 	ShaderOperation shaderOperations[MAX_SHADER_OPERATION_COUNT];
 	Mat4f matrixStack[MAX_MATRIX_STACK_COUNT];
-	size_t matrixTop;
+	RenderTargetOperation renderTargetOperations[MAX_RENDER_TARGET_OPERATION_COUNT];
+	RenderCapabilities caps;
 	fmemMemoryBlock memory;
+	size_t matrixTop;
 	size_t textureOperationCount;
 	size_t shaderOperationCount;
-	RenderCapabilities caps;
+	size_t renderTargetOperationCount;
 	size_t lastMemoryUsage;
 	// Last frame's render command buffer push timings (seconds)
 	double lastRenderBuildSeconds;
@@ -173,7 +262,10 @@ typedef enum CommandType {
 	CommandType_UseProgram,
 	CommandType_Uniform,
 	CommandType_BindTexture,
-	CommandType_UnbindTexture
+	CommandType_UnbindTexture,
+	CommandType_BindRenderTarget,
+	CommandType_UnbindRenderTarget,
+	CommandType_SetBlendMode
 } CommandType;
 
 typedef struct CommandHeader {
@@ -325,7 +417,7 @@ typedef enum UniformType {
 // Set a uniform on the currently-bound program. The value payload (count elements of the type) is
 // copied inline right after this struct in the command buffer, just like TextCommand's characters.
 typedef struct UniformCommand {
-	char name[UNIFORM_NAME_MAX];
+	char name[MAX_UNIFORM_NAME_LENGTH];
 	UniformType type;
 	uint32_t count;
 } UniformCommand;
@@ -341,6 +433,22 @@ typedef struct BindTextureCommand {
 typedef struct UnbindTextureCommand {
 	int32_t unit;
 } UnbindTextureCommand;
+
+// Redirect all following draws into an off-screen render target: binds its framebuffer and sets the
+// viewport to the target's size. Stays active until UnbindRenderTarget returns to the screen. The
+// target pointer stays valid for the frame (the caller owns it), so the backend reads its ids here.
+typedef struct BindRenderTargetCommand {
+	const RenderTarget *target;
+} BindRenderTargetCommand;
+
+// (No payload) restore the default framebuffer. The caller pushes a screen viewport afterwards.
+typedef struct UnbindRenderTargetCommand {
+	int32_t unused;
+} UnbindRenderTargetCommand;
+
+typedef struct SetBlendModeCommand {
+	BlendMode mode;
+} SetBlendModeCommand;
 
 fpl_extern void RenderInit(RenderState *state, fmemMemoryBlock block);
 fpl_extern void RenderReset(RenderState *state);
@@ -360,6 +468,7 @@ fpl_extern void RenderPushSprite(RenderState *state, const Vec2f position, const
 fpl_extern SpriteBatchAllocation RenderAllocateSpriteBatch(RenderState *state, const size_t capacity, const TextureHandle texture);
 fpl_extern void RenderPushSpriteBatch(RenderState *state, const TextureHandle texture, const SpriteInstance *instances, const size_t count);
 fpl_extern void RenderPushTexture(RenderState *state, TextureHandle *targetTexture, const void *data, const uint32_t width, const uint32_t height, const uint32_t bytesPerPixel, const TextureFilterType filter, const TextureWrapMode wrap, const bool isTopDown, const bool isPreMultiplied);
+fpl_extern void RenderPushSetTextureFilter(RenderState *state, TextureHandle *targetTexture, const TextureFilterType filter);
 fpl_extern void RenderPopTexture(RenderState *state, TextureHandle *targetTexture);
 fpl_extern void RenderPushText(RenderState *state, const char *text, const size_t textLen, const LoadedFont *font, const TextureHandle texture, const Vec2f position, const float maxHeight, const float horizontalAlignment, const float verticalAlignment, const Vec4f color);
 fpl_extern void RenderPushCircle(RenderState *state, const Vec2f position, const float radius, const size_t segmentCount, const Vec4f color, const bool isFilled, const float lineWidth);
@@ -368,7 +477,7 @@ fpl_extern void RenderPushLine(RenderState *state, const Vec2f a, const Vec2f b,
 
 // Shader programs: queued create/destroy (flushed in the backend), plus binding + uniforms as
 // commands. The renderer contains no shaders of its own -- the caller supplies the GLSL source.
-fpl_extern void RenderPushShaderProgram(RenderState *state, ShaderProgramHandle *handle, const char *vertexSource, const char *fragmentSource);
+fpl_extern void RenderPushShaderProgram(RenderState *state, ShaderProgramHandle *handle, const char *name, const char *vertexSource, const char *fragmentSource);
 fpl_extern void RenderPopShaderProgram(RenderState *state, ShaderProgramHandle *handle);
 fpl_extern void RenderPushUseProgram(RenderState *state, ShaderProgramHandle program);
 fpl_extern void RenderPushUniformInt(RenderState *state, const char *name, const int32_t value);
@@ -382,6 +491,14 @@ fpl_extern void RenderPushUniformVec2Array(RenderState *state, const char *name,
 fpl_extern void RenderPushUniformVec3Array(RenderState *state, const char *name, const Vec3f *values, const size_t count);
 fpl_extern void RenderPushBindTexture(RenderState *state, const TextureHandle texture, const int32_t unit);
 fpl_extern void RenderPushUnbindTexture(RenderState *state, const int32_t unit);
+
+// Render targets (framebuffers): queued create/destroy (flushed in the backend), plus bind/unbind and a
+// blend-mode command. Sampling a target's output is just RenderPushBindTexture(target.colorTextures[i]).
+fpl_extern void RenderPushCreateRenderTarget(RenderState *state, RenderTarget *target, const uint32_t width, const uint32_t height, const RenderTargetFormat *formats, const int colorCount, const bool hasDepth, const TextureFilterType filter);
+fpl_extern void RenderPushDestroyRenderTarget(RenderState *state, RenderTarget *target);
+fpl_extern void RenderPushBindRenderTarget(RenderState *state, const RenderTarget *target);
+fpl_extern void RenderPushUnbindRenderTarget(RenderState *state);
+fpl_extern void RenderPushSetBlendMode(RenderState *state, const BlendMode mode);
 
 #endif // FINAL_RENDER_H
 
@@ -420,6 +537,8 @@ fpl_extern void RenderInit(RenderState *state, fmemMemoryBlock block) {
 	}
 	state->memory = block;
 	state->textureOperationCount = 0;
+	state->shaderOperationCount = 0;
+	state->renderTargetOperationCount = 0;
 }
 
 fpl_extern void RenderReset(RenderState *state) {
@@ -681,6 +800,23 @@ fpl_extern void RenderPopTexture(RenderState *state, TextureHandle *targetTextur
 	op->type = TextureOperationType_Release;
 }
 
+// Change the min/mag filter of a texture that is already uploaded, without re-decoding or re-uploading its
+// pixels. Used to switch the whole game between nearest and linear filtering at runtime -- glTexParameteri
+// only, so it is cheap enough to re-apply to every loaded texture on a toggle.
+fpl_extern void RenderPushSetTextureFilter(RenderState *state, TextureHandle *targetTexture, const TextureFilterType filter) {
+	if (state == fpl_null || targetTexture == fpl_null) {
+		return;
+	}
+	if (state->textureOperationCount >= fplArrayCount(state->textureOperations)) {
+		return;
+	}
+	TextureOperation *op = &state->textureOperations[state->textureOperationCount++];
+	fplClearStruct(op);
+	op->handle = targetTexture;
+	op->filter = filter;
+	op->type = TextureOperationType_SetFilter;
+}
+
 fpl_extern void RenderPushCircle(RenderState *state, const Vec2f position, const float radius, const size_t segmentCount, const Vec4f color, const bool isFilled, const float lineWidth) {
 	if (state == fpl_null || radius <= 0.0f || segmentCount < 3) {
 		return;
@@ -826,7 +962,7 @@ fpl_extern void RenderPushLine(RenderState *state, const Vec2f a, const Vec2f b,
 	RenderPushVertices(state, verts, 2, true, color, DrawMode_Lines, false, lineWidth);
 }
 
-fpl_extern void RenderPushShaderProgram(RenderState *state, ShaderProgramHandle *handle, const char *vertexSource, const char *fragmentSource) {
+fpl_extern void RenderPushShaderProgram(RenderState *state, ShaderProgramHandle *handle, const char *name, const char *vertexSource, const char *fragmentSource) {
 	if (state == fpl_null || handle == fpl_null || vertexSource == fpl_null || fragmentSource == fpl_null) {
 		return;
 	}
@@ -836,6 +972,7 @@ fpl_extern void RenderPushShaderProgram(RenderState *state, ShaderProgramHandle 
 	ShaderOperation *op = &state->shaderOperations[state->shaderOperationCount++];
 	fplClearStruct(op);
 	op->handle = handle;
+	op->name = name != fpl_null ? name : "unnamed";
 	op->vertexSource = vertexSource;
 	op->fragmentSource = fragmentSource;
 	op->type = ShaderOperationType_CreateProgram;
@@ -948,6 +1085,78 @@ fpl_extern void RenderPushUnbindTexture(RenderState *state, const int32_t unit) 
 		return;
 	}
 	cmd->unit = unit;
+}
+
+fpl_extern void RenderPushCreateRenderTarget(RenderState *state, RenderTarget *target, const uint32_t width, const uint32_t height, const RenderTargetFormat *formats, const int colorCount, const bool hasDepth, const TextureFilterType filter) {
+	if (state == fpl_null || target == fpl_null || formats == fpl_null || colorCount <= 0) {
+		return;
+	}
+	if (state->renderTargetOperationCount >= fplArrayCount(state->renderTargetOperations)) {
+		return;
+	}
+	int clampedColorCount = colorCount > RENDER_TARGET_MAX_COLOR_ATTACHMENTS ? RENDER_TARGET_MAX_COLOR_ATTACHMENTS : colorCount;
+	fplClearStruct(target);
+	target->width = width;
+	target->height = height;
+	target->colorCount = clampedColorCount;
+	target->hasDepth = hasDepth;
+	target->filter = filter;
+	for (int i = 0; i < clampedColorCount; ++i) {
+		target->formats[i] = formats[i];
+	}
+	RenderTargetOperation *op = &state->renderTargetOperations[state->renderTargetOperationCount++];
+	fplClearStruct(op);
+	op->target = target;
+	op->type = RenderTargetOperationType_Create;
+}
+
+fpl_extern void RenderPushDestroyRenderTarget(RenderState *state, RenderTarget *target) {
+	if (state == fpl_null || target == fpl_null) {
+		return;
+	}
+	if (state->renderTargetOperationCount >= fplArrayCount(state->renderTargetOperations)) {
+		return;
+	}
+	RenderTargetOperation *op = &state->renderTargetOperations[state->renderTargetOperationCount++];
+	fplClearStruct(op);
+	op->target = target;
+	op->type = RenderTargetOperationType_Destroy;
+}
+
+fpl_extern void RenderPushBindRenderTarget(RenderState *state, const RenderTarget *target) {
+	if (state == fpl_null || target == fpl_null) {
+		return;
+	}
+	CommandHeader *header = _RenderPushHeader(state, CommandType_BindRenderTarget);
+	BindRenderTargetCommand *cmd = _RenderPushTypeAs(state, header, BindRenderTargetCommand, true);
+	if (cmd == fpl_null) {
+		return;
+	}
+	cmd->target = target;
+}
+
+fpl_extern void RenderPushUnbindRenderTarget(RenderState *state) {
+	if (state == fpl_null) {
+		return;
+	}
+	CommandHeader *header = _RenderPushHeader(state, CommandType_UnbindRenderTarget);
+	UnbindRenderTargetCommand *cmd = _RenderPushTypeAs(state, header, UnbindRenderTargetCommand, true);
+	if (cmd == fpl_null) {
+		return;
+	}
+	cmd->unused = 0;
+}
+
+fpl_extern void RenderPushSetBlendMode(RenderState *state, const BlendMode mode) {
+	if (state == fpl_null) {
+		return;
+	}
+	CommandHeader *header = _RenderPushHeader(state, CommandType_SetBlendMode);
+	SetBlendModeCommand *cmd = _RenderPushTypeAs(state, header, SetBlendModeCommand, true);
+	if (cmd == fpl_null) {
+		return;
+	}
+	cmd->mode = mode;
 }
 
 #endif // FINAL_RENDER_IMPLEMENTATION
