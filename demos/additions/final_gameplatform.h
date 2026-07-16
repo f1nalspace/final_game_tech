@@ -587,7 +587,7 @@ fpl_internal void InternalGamePlatformAddDefaultKeyboardMappings(KeyboardButtonM
 
 fpl_internal void GameMainShutdown(const GameConfiguration *config, GameMemory *gameMem, AudioSystem *audioSys, fmemMemoryBlock *gameMemoryBlock, fmemMemoryBlock *renderMemoryBlock) {
 	LogWriteRaw("======================================================================");
-	LogWrite(LogLevel_Info, "Shutdown Game '%s'", config->title);
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, "Shutdown Game '%s'", config->title);
 	LogWriteRaw("======================================================================");
 
 	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Stop Audio Playback");
