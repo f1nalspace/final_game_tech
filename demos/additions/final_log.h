@@ -9,6 +9,8 @@ Description:
 
 Changelog:
 	## 2026-07-16
+	- Fixed severity filter dropping every line when the severity is LogLevel_All
+	- Fixed level name lookup being off by one after the LogLevel_All shift, reading past the array for LogLevel_Trace
 	- Changed mutex to an atomic spinlock, so the log is thread-safe without requiring an initialized platform
 	- Added a category column to LogWrite/LogWriteArgs, written into the line prefix
 	- Changed init signature to pass in the log level severity + LogSetSeverity/LogGetSeverity
@@ -85,7 +87,9 @@ fpl_extern void LogWriteArgs(const LogLevel level, const char *category, const c
 #define FINAL_LOG_IMPLEMENTED
 #endif
 
+// Indexed by LogLevel directly, so index 0 is a placeholder for LogLevel_All, which is never written as a line level
 fpl_internal const char *gLogLevelNames[] = {
+	"    ALL",
 	"  FATAL",
 	"  ERROR",
 	"   WARN",
@@ -234,7 +238,8 @@ fpl_extern void LogWriteLineBreak() {
 }
 
 fpl_extern void LogWriteArgs(const LogLevel level, const char *category, const char *format, va_list argList) {
-	if (!fplAtomicLoadU32(&gLog.isInitialized) || level < LogLevel_Min || level > LogLevel_Max || (level > LogLevel_All && level > gLog.severity)) {
+	// A severity of LogLevel_All passes every level, otherwise levels above the severity are filtered out
+	if (!fplAtomicLoadU32(&gLog.isInitialized) || level < LogLevel_Min || level > LogLevel_Max || (gLog.severity > LogLevel_All && level > gLog.severity)) {
 		return;
 	}
 
@@ -296,7 +301,8 @@ fpl_extern void LogWriteArgs(const LogLevel level, const char *category, const c
 }
 
 fpl_extern void LogWrite(const LogLevel level, const char *category, const char *format, ...) {
-	if (!fplAtomicLoadU32(&gLog.isInitialized) || level < LogLevel_Min || level > LogLevel_Max || (level > LogLevel_All && level > gLog.severity)) {
+	// Same filter as LogWriteArgs, checked early to avoid the va_list setup for filtered lines
+	if (!fplAtomicLoadU32(&gLog.isInitialized) || level < LogLevel_Min || level > LogLevel_Max || (gLog.severity > LogLevel_All && level > gLog.severity)) {
 		return;
 	}
 
