@@ -1,10 +1,17 @@
 /*
 Name:
 	Final Assets
+
 Description:
 	Simple asset system.
 
 	This file is part of the final_framework.
+
+Changelog:
+
+	## 2026-07-16
+	- Fixed heap corruption for releasing TextureData with the normal memory allocator instead of stbi_image_free()
+
 License:
 	MIT License
 	Copyright 2017-2026 Torsten Spaete
@@ -30,6 +37,13 @@ typedef struct TextureData {
 	uint32_t width;
 	uint32_t height;
 	uint32_t components;
+	// True when data came out of the image decoder (stb_image) and must be given back to it
+	// (stbi_image_free), never to a MemoryAllocator. The default allocator free is fplMemoryFree
+	// (VirtualFree), and VirtualFree page-aligns the address DOWN before validating: a LARGE decode
+	// (a multi-MB scan owns its own VirtualAlloc region, with the malloc block in the first page)
+	// rounds to exactly the region base, so the release SUCCEEDS and rips the heap's own region away
+	// while the heap still lists the block as busy -- delayed heap corruption on the next allocation.
+	bool isDecoderOwned;
 } TextureData;
 
 typedef struct TextureAsset {
@@ -66,8 +80,17 @@ fpl_extern void FontAssetFree(MemoryAllocator *allocator, FontAsset *font);
 #define FINAL_ASSETS_IMPLEMENTED
 #endif
 
+// GCC at -O3 raises a false-positive -Wstringop-overflow inside stb_image's PNG tRNS
+// parser (tc[3]): s->img_n is bounded to 1 or 3 there, but the optimizer can't prove it.
+#if defined(__GNUC__) && !defined(__clang__)
+#	pragma GCC diagnostic push
+#	pragma GCC diagnostic ignored "-Wstringop-overflow"
+#endif
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
+#if defined(__GNUC__) && !defined(__clang__)
+#	pragma GCC diagnostic pop
+#endif
 
 #define FINAL_FONTLOADER_IMPLEMENTATION
 #include <final_fontloader.h>
@@ -81,7 +104,12 @@ fpl_extern void TextureDataFree(MemoryAllocator *allocator, TextureData *texture
 		return;
 	}
 	if (TextureDataIsValid(texture)) {
-		MemoryAllocatorFree(allocator, texture->data);
+		if (texture->isDecoderOwned) {
+			// Decoder memory goes back to the decoder; see the field comment in TextureData.
+			stbi_image_free(texture->data);
+		} else {
+			MemoryAllocatorFree(allocator, texture->data);
+		}
 	}
 	fplClearStruct(texture);
 }
@@ -192,7 +220,7 @@ fpl_extern bool TextureDataLoadFromFile(MemoryAllocator *allocator, TextureData 
 		return false;
 	}
 
-	if (!fplFileReadBlock32(&file, fileLen, fileBuffer, fileLen) == fileLen) {
+	if (fplFileReadBlock32(&file, fileLen, fileBuffer, fileLen) != fileLen) {
 		// TODO(final): Logging (Failed to load the file into memory)
 		InternalTextureDataLoadFromFileShutdown(allocator, &file, fileBuffer);
 		return false;
@@ -214,6 +242,7 @@ fpl_extern bool TextureDataLoadFromFile(MemoryAllocator *allocator, TextureData 
 	target->height = imageHeight;
 	target->components = imageComponents;
 	target->data = imageData;
+	target->isDecoderOwned = true;
 
 	InternalTextureDataLoadFromFileShutdown(allocator, &file, fileBuffer);
 
