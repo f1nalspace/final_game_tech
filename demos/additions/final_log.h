@@ -8,6 +8,12 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
+	## 2026-07-16
+	- Changed mutex to an atomic spinlock, so the log is thread-safe without requiring an initialized platform
+	- Added a category column to LogWrite/LogWriteArgs, written into the line prefix
+	- Changed init signature to pass in the log level severity + LogSetSeverity/LogGetSeverity
+	- Added LogLevel_All with value of zero, moving LogLevel_Fatal to 1
+
 	## 2026-07-15
 	- Added mutex to Log to make it thread-safe and removed global storages
 
@@ -24,7 +30,8 @@ License:
 #include <final_memory.h>
 
 typedef enum LogLevel {
-	LogLevel_Fatal = 0,
+	LogLevel_All = 0,
+	LogLevel_Fatal,
 	LogLevel_Error,
 	LogLevel_Warning,
 	LogLevel_Info,
@@ -51,19 +58,24 @@ typedef struct Log {
 	fmemMemoryBlock memory;
 	// Handle to the active log file
 	fplFileHandle fileHandle;
-	// Synchronization primitive for thread safety
-	fplMutexHandle mutex;
+	// Max log level severity
+	LogLevel severity;
+	// Atomic spinlock guarding writes, so no mutex (and thus no initialized platform) is required for thread safety
+	volatile uint32_t lock;
 	// Indicates whether the log system has been initialized
-	volatile bool isInitialized;
+	volatile uint32_t isInitialized;
 } Log;
 
-fpl_extern bool LogInit(const char *logFilePath);
+fpl_extern bool LogInit(const char *logFilePath, const LogLevel severity);
 fpl_extern void LogShutdown();
+
+fpl_extern LogLevel LogGetSeverity(void);
+fpl_extern void LogSetSeverity(const LogLevel severity);
 
 fpl_extern void LogWriteRaw(const char *format, ...);
 fpl_extern void LogWriteLineBreak();
-fpl_extern void LogWrite(const LogLevel level, const char *format, ...);
-fpl_extern void LogWriteArgs(const LogLevel level, const char *format, va_list argList);
+fpl_extern void LogWrite(const LogLevel level, const char *category, const char *format, ...);
+fpl_extern void LogWriteArgs(const LogLevel level, const char *category, const char *format, va_list argList);
 
 #endif // FINAL_LOG_H
 
@@ -83,14 +95,43 @@ fpl_internal const char *gLogLevelNames[] = {
 	"  TRACE",
 };
 
+// The level and category are right-aligned and both padded and truncated to these widths, so the message column always lines up.
+enum { LogLevelColumnWidth = 7 };
+enum { LogCategoryColumnWidth = 16 };
+
+// Stand-in category for a line logged with none, so the column is never blank.
+fpl_internal const char *gLogUnknownCategory = "Unknown";
+
 static Log gLog = fplZeroInit;
 
-fpl_extern bool LogInit(const char *logFilePath) {
-	if (logFilePath == fpl_null || fplGetStringLength(logFilePath) == 0) {
-		return false;
+// Simple atomic spinlock guarding the log. It needs no init or destroy and works even before the platform is initialized, unlike a mutex.
+fpl_internal void LogAcquireLock(Log *log) {
+	uint32_t previous = fplAtomicCompareAndSwapU32(&log->lock, 0, 1);
+	while (previous != 0) {
+		previous = fplAtomicCompareAndSwapU32(&log->lock, 0, 1);
 	}
+}
 
-	if (!fplIsPlatformInitialized()) {
+fpl_internal void LogReleaseLock(Log *log) {
+	fplAtomicStoreU32(&log->lock, 0);
+}
+
+fpl_extern LogLevel LogGetSeverity(void) {
+	if (!gLog.isInitialized) {
+		return LogLevel_All;
+	}
+	return gLog.severity;
+}
+
+fpl_extern void LogSetSeverity(const LogLevel severity) {
+	if (!gLog.isInitialized) {
+		return;
+	}
+	gLog.severity = severity;
+}
+
+fpl_extern bool LogInit(const char *logFilePath, const LogLevel severity) {
+	if (logFilePath == fpl_null || fplGetStringLength(logFilePath) == 0) {
 		return false;
 	}
 
@@ -99,26 +140,22 @@ fpl_extern bool LogInit(const char *logFilePath) {
 	}
 
 	fplClearStruct(&gLog);
-
-	if (!fplMutexInit(&gLog.mutex)) {
-		return false;
-	}
+	gLog.severity = severity;
 
 	fmemMemoryBlock *mem = &gLog.memory;
 
 	if (!fmemInit(mem, fmemType_Growable, fplMegaBytes(16), 0)) {
-		fplMutexDestroy(&gLog.mutex);
 		return false;
 	}
 
 	bool success = fplFileAppendBinary(logFilePath, &gLog.fileHandle);
 	if (!success) {
 		fmemFree(mem);
-		fplMutexDestroy(&gLog.mutex);
 		return false;
 	}
 
-	gLog.isInitialized = true;
+	// Publish last, with a full barrier, so all setup writes above are visible before any thread sees the log as initialized
+	fplAtomicStoreU32(&gLog.isInitialized, 1);
 
 	return true;
 }
@@ -128,15 +165,17 @@ fpl_extern void LogShutdown() {
 		return;
 	}
 
-	fplMutexLock(&gLog.mutex);
+	LogAcquireLock(&gLog);
+
+	// Mark as uninitialized under the lock, so writers that pass the guard afterwards no longer touch the file or memory
+	fplAtomicStoreU32(&gLog.isInitialized, 0);
 
 	if (gLog.fileHandle.isValid) {
 		fplFileClose(&gLog.fileHandle);
 	}
 	fmemFree(&gLog.memory);
 
-	fplMutexUnlock(&gLog.mutex);
-	fplMutexDestroy(&gLog.mutex);
+	LogReleaseLock(&gLog);
 
 	fplClearStruct(&gLog);
 }
@@ -150,21 +189,21 @@ static void LogWriteNewlineUnsafe(void) {
 }
 
 fpl_extern void LogWriteRaw(const char *format, ...) {
-	if (!gLog.isInitialized) {
+	if (!fplAtomicLoadU32(&gLog.isInitialized)) {
 		return;
 	}
 
-	fplMutexLock(&gLog.mutex);
+	LogAcquireLock(&gLog);
 
 	if (format == fpl_null || fplGetStringLength(format) == 0) {
 		LogWriteNewlineUnsafe();
-		fplMutexUnlock(&gLog.mutex);
+		LogReleaseLock(&gLog);
 		return;
 	}
 
 	fmemMemoryBlock temporaryMemory = fplZeroInit;
 	if (!fmemBeginTemporary(&gLog.memory, &temporaryMemory)) {
-		fplMutexUnlock(&gLog.mutex);
+		LogReleaseLock(&gLog);
 		return;
 	}
 
@@ -187,29 +226,29 @@ fpl_extern void LogWriteRaw(const char *format, ...) {
 
 	fmemEndTemporary(&temporaryMemory);
 
-	fplMutexUnlock(&gLog.mutex);
+	LogReleaseLock(&gLog);
 }
 
 fpl_extern void LogWriteLineBreak() {
 	LogWriteRaw(fpl_null);
 }
 
-fpl_extern void LogWriteArgs(const LogLevel level, const char *format, va_list argList) {
-	if (!gLog.isInitialized || level < LogLevel_Min || level > LogLevel_Max) {
+fpl_extern void LogWriteArgs(const LogLevel level, const char *category, const char *format, va_list argList) {
+	if (!fplAtomicLoadU32(&gLog.isInitialized) || level < LogLevel_Min || level > LogLevel_Max || (level > LogLevel_All && level > gLog.severity)) {
 		return;
 	}
 
-	fplMutexLock(&gLog.mutex);
+	LogAcquireLock(&gLog);
 
 	if (fplGetStringLength(format) == 0) {
 		LogWriteNewlineUnsafe();
-		fplMutexUnlock(&gLog.mutex);
+		LogReleaseLock(&gLog);
 		return;
 	}
 
 	fmemMemoryBlock temporaryMemory = fplZeroInit;
 	if (!fmemBeginTemporary(&gLog.memory, &temporaryMemory)) {
-		fplMutexUnlock(&gLog.mutex);
+		LogReleaseLock(&gLog);
 		return;
 	}
 
@@ -219,6 +258,8 @@ fpl_extern void LogWriteArgs(const LogLevel level, const char *format, va_list a
 	tempString.data = (char *)temporaryMemory.base;
 
 	const char *levelName = gLogLevelNames[level];
+	bool hasCategory = category != fpl_null && fplGetStringLength(category) > 0;
+	const char *categoryName = hasCategory ? category : gLogUnknownCategory;
 	fplDateTime utcDate = fplDateTimeQuery(fplDateTimeType_UTC);
 	fplDateTimeResult utcDateRes = fplFormatDateTime(utcDate, fplDateTimeType_UTC);
 
@@ -228,7 +269,7 @@ fpl_extern void LogWriteArgs(const LogLevel level, const char *format, va_list a
 
 	tempString.length = 0;
 
-	len = fplStringFormat(ptr, tempString.allocated, "%04u-%02u-%02u %02u:%02u:%02u.%03u [%s]: ", utcDateRes.year, utcDateRes.month, utcDateRes.day, utcDateRes.hour, utcDateRes.minute, utcDateRes.second, utcDateRes.millisecond, levelName);
+	len = fplStringFormat(ptr, tempString.allocated, "%04u-%02u-%02u %02u:%02u:%02u.%03u [%*.*s] [%*.*s]: ", utcDateRes.year, utcDateRes.month, utcDateRes.day, utcDateRes.hour, utcDateRes.minute, utcDateRes.second, utcDateRes.millisecond, LogLevelColumnWidth, LogLevelColumnWidth, levelName, LogCategoryColumnWidth, LogCategoryColumnWidth, categoryName);
 	tempString.length += len;
 
 	ptr += tempString.length;
@@ -251,17 +292,17 @@ fpl_extern void LogWriteArgs(const LogLevel level, const char *format, va_list a
 
 	fmemEndTemporary(&temporaryMemory);
 
-	fplMutexUnlock(&gLog.mutex);
+	LogReleaseLock(&gLog);
 }
 
-fpl_extern void LogWrite(const LogLevel level, const char *format, ...) {
-	if (!gLog.isInitialized || level < LogLevel_Min || level > LogLevel_Max) {
+fpl_extern void LogWrite(const LogLevel level, const char *category, const char *format, ...) {
+	if (!fplAtomicLoadU32(&gLog.isInitialized) || level < LogLevel_Min || level > LogLevel_Max || (level > LogLevel_All && level > gLog.severity)) {
 		return;
 	}
 
 	va_list argList;
 	va_start(argList, format);
-	LogWriteArgs(level, format, argList);
+	LogWriteArgs(level, category, format, argList);
 	va_end(argList);
 }
 
