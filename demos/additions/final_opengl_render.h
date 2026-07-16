@@ -89,7 +89,7 @@ fpl_extern void RenderWithOpenGL(RenderState *renderState);
 // Everything the GPU driver tells us is tagged with this, padded to the same width as the other log
 // categories so the column lines up. These lines are the first thing to read when a machine we have
 // no access to renders a black screen.
-#define OPENGLRENDER_LOGPREFIX "[GL      ] "
+#define OPENGLRENDER_LOG_CATEGORY "OpenGL-Renderer"
 
 // Turn a glCheckFramebufferStatus result into something a human can act on. "0x8CD6" in a bug report
 // costs a lookup; "INCOMPLETE_ATTACHMENT" names the problem.
@@ -248,7 +248,7 @@ static void _ReportMissingUniformOnce(RenderState *renderState, const GLuint pro
 	report->program = program;
 	fplCopyString(uniformName, report->name, fplArrayCount(report->name));
 
-	LogWrite(LogLevel_Verbose, OPENGLRENDER_LOGPREFIX "Uniform '%s' has no location in program %u -- the shader does not use it (reported once)", uniformName, (unsigned)program);
+	LogWrite(LogLevel_Verbose, OPENGLRENDER_LOG_CATEGORY, "Uniform '%s' has no location in program %u -- the shader does not use it (reported once)", uniformName, (unsigned)program);
 }
 
 fpl_extern GLuint AllocateTexture(const uint32_t width, const uint32_t height, const void *data, const bool repeatable, const GLint filter, const bool isAlphaOnly) {
@@ -272,7 +272,7 @@ fpl_extern GLuint AllocateTexture(const uint32_t width, const uint32_t height, c
 	if(uploadError != GL_NO_ERROR) {
 		const uint32_t bytesPerPixel = isAlphaOnly ? 1 : 4;
 		const size_t uploadBytes = (size_t)width * (size_t)height * bytesPerPixel;
-		LogWrite(LogLevel_Error, OPENGLRENDER_LOGPREFIX "Failed to upload a %ux%u %s texture (%zu bytes): GL error 0x%X", width, height, isAlphaOnly ? "ALPHA8" : "RGBA8", uploadBytes, (unsigned)uploadError);
+		LogWrite(LogLevel_Error, OPENGLRENDER_LOG_CATEGORY, "Failed to upload a %ux%u %s texture (%zu bytes): GL error 0x%X", width, height, isAlphaOnly ? "ALPHA8" : "RGBA8", uploadBytes, (unsigned)uploadError);
 	}
 
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
@@ -297,7 +297,7 @@ static void FGL_APIENTRY _GLDebugMessageCallback(GLenum source, GLenum type, GLu
 		case GL_DEBUG_SEVERITY_NOTIFICATION: level = LogLevel_Verbose; break;
 		default:                             level = LogLevel_Info; break;
 	}
-	LogWrite(level, OPENGLRENDER_LOGPREFIX "Driver message (id %u): %s", (unsigned)id, message);
+	LogWrite(level, OPENGLRENDER_LOG_CATEGORY, "Driver message (id %u): %s", (unsigned)id, message);
 }
 
 fpl_extern bool InitOpenGLRenderer(RenderCapabilities *outCaps) {
@@ -307,9 +307,9 @@ fpl_extern bool InitOpenGLRenderer(RenderCapabilities *outCaps) {
 		glEnable(GL_DEBUG_OUTPUT);
 		glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
 		glDebugMessageCallback(_GLDebugMessageCallback, fpl_null);
-		LogWrite(LogLevel_Info, OPENGLRENDER_LOGPREFIX "Driver debug output is enabled (GL_KHR_debug)");
+		LogWrite(LogLevel_Info, OPENGLRENDER_LOG_CATEGORY, "Driver debug output is enabled (GL_KHR_debug)");
 	} else {
-		LogWrite(LogLevel_Info, OPENGLRENDER_LOGPREFIX "Driver debug output is unavailable (no GL_KHR_debug) -- driver-side messages will not appear in this log");
+		LogWrite(LogLevel_Info, OPENGLRENDER_LOG_CATEGORY, "Driver debug output is unavailable (no GL_KHR_debug) -- driver-side messages will not appear in this log");
 	}
 
 	glEnable(GL_DEPTH_TEST);
@@ -414,7 +414,7 @@ fpl_extern bool InitOpenGLRenderer(RenderCapabilities *outCaps) {
 
 			if(!caps->supportsFloatTextures) {
 				const char *probeStatusName = _GetFramebufferStatusName(probeStatus);
-				LogWrite(LogLevel_Warning, OPENGLRENDER_LOGPREFIX "The GPU reports GL %d.%d but will not complete an RGBA16F framebuffer (%s) -- float render targets are unavailable and will be downgraded to RGBA8", caps->glMajor, caps->glMinor, probeStatusName);
+				LogWrite(LogLevel_Warning, OPENGLRENDER_LOG_CATEGORY, "The GPU reports GL %d.%d but will not complete an RGBA16F framebuffer (%s) -- float render targets are unavailable and will be downgraded to RGBA8", caps->glMajor, caps->glMinor, probeStatusName);
 			}
 		}
 
@@ -427,9 +427,9 @@ fpl_extern bool InitOpenGLRenderer(RenderCapabilities *outCaps) {
 		caps->maxColorAttachments = (int)maxColorAttachments;
 		caps->maxDrawBuffers = (int)maxDrawBuffers;
 
-		LogWrite(LogLevel_Info, OPENGLRENDER_LOGPREFIX "GPU: %s -- %s", caps->vendor, caps->renderer);
-		LogWrite(LogLevel_Info, OPENGLRENDER_LOGPREFIX "Driver: GL %s, GLSL %s", caps->version, caps->glslVersion);
-		LogWrite(LogLevel_Info, OPENGLRENDER_LOGPREFIX "Caps: shaders %s, render targets %s, float targets %s (probed), max texture %dpx, %d texture unit(s), %d draw buffer(s)",
+		LogWrite(LogLevel_Info, OPENGLRENDER_LOG_CATEGORY, "GPU: %s -- %s", caps->vendor, caps->renderer);
+		LogWrite(LogLevel_Info, OPENGLRENDER_LOG_CATEGORY, "Driver: GL %s, GLSL %s", caps->version, caps->glslVersion);
+		LogWrite(LogLevel_Info, OPENGLRENDER_LOG_CATEGORY, "Caps: shaders %s, render targets %s, float targets %s (probed), max texture %dpx, %d texture unit(s), %d draw buffer(s)",
 			caps->supportsShaders ? "yes" : "no",
 			caps->supportsRenderTargets ? "yes" : "no",
 			caps->supportsFloatTextures ? "yes" : "no",
@@ -488,7 +488,7 @@ static GLuint _CompileShader(RenderState *renderState, const char *programName, 
 
 	GLuint shader = glCreateShader(shaderType);
 	if(shader == 0) {
-		LogWrite(LogLevel_Error, OPENGLRENDER_LOGPREFIX "glCreateShader failed for the %s shader of program '%s'", shaderTypeName, programName);
+		LogWrite(LogLevel_Error, OPENGLRENDER_LOG_CATEGORY, "glCreateShader failed for the %s shader of program '%s'", shaderTypeName, programName);
 		return 0;
 	}
 	const GLchar *sources[1] = { (const GLchar *)source };
@@ -502,7 +502,7 @@ static GLuint _CompileShader(RenderState *renderState, const char *programName, 
 	const bool hasInfoLog = infoLog[0] != '\0';
 
 	if(compileStatus != GL_TRUE) {
-		LogWrite(LogLevel_Error, OPENGLRENDER_LOGPREFIX "Failed to compile the %s shader of program '%s':\n%s", shaderTypeName, programName, infoLog);
+		LogWrite(LogLevel_Error, OPENGLRENDER_LOG_CATEGORY, "Failed to compile the %s shader of program '%s':\n%s", shaderTypeName, programName, infoLog);
 		glDeleteShader(shader);
 		return 0;
 	}
@@ -511,9 +511,9 @@ static GLuint _CompileShader(RenderState *renderState, const char *programName, 
 	// up first: AMD and Intel warn about constructs NVIDIA accepts silently. Dropping it means the one
 	// hint we get before the shader misbehaves on someone else's GPU is thrown away.
 	if(hasInfoLog) {
-		LogWrite(LogLevel_Warning, OPENGLRENDER_LOGPREFIX "The %s shader of program '%s' compiled with messages:\n%s", shaderTypeName, programName, infoLog);
+		LogWrite(LogLevel_Warning, OPENGLRENDER_LOG_CATEGORY, "The %s shader of program '%s' compiled with messages:\n%s", shaderTypeName, programName, infoLog);
 	} else {
-		LogWrite(LogLevel_Verbose, OPENGLRENDER_LOGPREFIX "Compiled the %s shader of program '%s'", shaderTypeName, programName);
+		LogWrite(LogLevel_Verbose, OPENGLRENDER_LOG_CATEGORY, "Compiled the %s shader of program '%s'", shaderTypeName, programName);
 	}
 
 	return shader;
@@ -534,7 +534,7 @@ static GLuint _CreateShaderProgram(RenderState *renderState, const char *name, c
 	}
 	GLuint program = glCreateProgram();
 	if(program == 0) {
-		LogWrite(LogLevel_Error, OPENGLRENDER_LOGPREFIX "glCreateProgram failed for program '%s'", programName);
+		LogWrite(LogLevel_Error, OPENGLRENDER_LOG_CATEGORY, "glCreateProgram failed for program '%s'", programName);
 		glDeleteShader(vertexShader);
 		glDeleteShader(fragmentShader);
 		return 0;
@@ -547,7 +547,7 @@ static GLuint _CreateShaderProgram(RenderState *renderState, const char *name, c
 	if(linkStatus != GL_TRUE) {
 		GLchar infoLog[2048] = fplZeroInit;
 		glGetProgramInfoLog(program, (GLsizei)fplArrayCount(infoLog), fpl_null, infoLog);
-		LogWrite(LogLevel_Error, OPENGLRENDER_LOGPREFIX "Failed to link program '%s':\n%s", programName, infoLog);
+		LogWrite(LogLevel_Error, OPENGLRENDER_LOG_CATEGORY, "Failed to link program '%s':\n%s", programName, infoLog);
 		glDeleteShader(vertexShader);
 		glDeleteShader(fragmentShader);
 		glDeleteProgram(program);
@@ -561,10 +561,10 @@ static GLuint _CreateShaderProgram(RenderState *renderState, const char *name, c
 	if(validateStatus != GL_TRUE) {
 		GLchar infoLog[2048] = fplZeroInit;
 		glGetProgramInfoLog(program, (GLsizei)fplArrayCount(infoLog), fpl_null, infoLog);
-		LogWrite(LogLevel_Warning, OPENGLRENDER_LOGPREFIX "Program '%s' failed validation (advisory, keeping it):\n%s", programName, infoLog);
+		LogWrite(LogLevel_Warning, OPENGLRENDER_LOG_CATEGORY, "Program '%s' failed validation (advisory, keeping it):\n%s", programName, infoLog);
 	}
 
-	LogWrite(LogLevel_Info, OPENGLRENDER_LOGPREFIX "Linked program '%s' (id %u)", programName, (unsigned)program);
+	LogWrite(LogLevel_Info, OPENGLRENDER_LOG_CATEGORY, "Linked program '%s' (id %u)", programName, (unsigned)program);
 	// After a successful link the shaders can be detached and deleted; the program keeps its own copy.
 	glDetachShader(program, vertexShader);
 	glDetachShader(program, fragmentShader);
@@ -640,7 +640,7 @@ static void _CreateRenderTarget(RenderState *renderState, RenderTarget *target, 
 	GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 	if(status != GL_FRAMEBUFFER_COMPLETE) {
 		const char *statusName = _GetFramebufferStatusName(status);
-		LogWrite(LogLevel_Error, OPENGLRENDER_LOGPREFIX "Render target %ux%u is incomplete: %s (0x%X) -- the feature using it will be unavailable", target->width, target->height, statusName, (unsigned)status);
+		LogWrite(LogLevel_Error, OPENGLRENDER_LOG_CATEGORY, "Render target %ux%u is incomplete: %s (0x%X) -- the feature using it will be unavailable", target->width, target->height, statusName, (unsigned)status);
 		for(int i = 0; i < colorCount; ++i) {
 			GLuint tex = GetTextureIDFromHandle(target->colorTextures[i]);
 			if(tex > 0) {
@@ -665,9 +665,9 @@ static void _CreateRenderTarget(RenderState *renderState, RenderTarget *target, 
 		const bool wasDowngraded = !supportsFloat && target->formats[0] != RenderTargetFormat_RGBA8;
 		const char *effectiveFormatName = wasDowngraded ? _GetRenderTargetFormatName(RenderTargetFormat_RGBA8) : requestedFormatName;
 		if(wasDowngraded) {
-			LogWrite(LogLevel_Warning, OPENGLRENDER_LOGPREFIX "Created render target %ux%u as %s: the GPU has no float textures, so the requested %s was downgraded", target->width, target->height, effectiveFormatName, requestedFormatName);
+			LogWrite(LogLevel_Warning, OPENGLRENDER_LOG_CATEGORY, "Created render target %ux%u as %s: the GPU has no float textures, so the requested %s was downgraded", target->width, target->height, effectiveFormatName, requestedFormatName);
 		} else {
-			LogWrite(LogLevel_Info, OPENGLRENDER_LOGPREFIX "Created render target %ux%u, format %s, %d color attachment(s), depth: %s", target->width, target->height, effectiveFormatName, colorCount, target->hasDepth ? "yes" : "no");
+			LogWrite(LogLevel_Info, OPENGLRENDER_LOG_CATEGORY, "Created render target %ux%u, format %s, %d color attachment(s), depth: %s", target->width, target->height, effectiveFormatName, colorCount, target->hasDepth ? "yes" : "no");
 		}
 	}
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);

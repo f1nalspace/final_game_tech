@@ -111,6 +111,8 @@ typedef struct GameConfiguration {
 	double maxDynamicFrameTime;
 	// Preferred audio format
 	fplAudioFormatType audioFormat;
+	// Maximum log level severity
+	LogLevel logSeverity;
 	// Indicates whether to hide the mouse cursor or not
 	bool hideMouseCursor;
 	// Indicates that the detection of a inactive vs active window
@@ -507,14 +509,14 @@ fpl_internal void InternalGamePlatformLoggingInitialize(const GameConfiguration 
 				fplPathCombine(g__GamePlatform__FilePathBuffer, fplArrayCount(g__GamePlatform__FilePathBuffer), 3, g__GamePlatform__HomePathBuffer, userFolderName, logFileName);
 			}
 
-			LogInit(g__GamePlatform__FilePathBuffer);
+			LogInit(g__GamePlatform__FilePathBuffer, config->logSeverity);
 
 			fplPlatformRelease();
 		}
 	}
 }
 
-#define GAMEPLATFORM_LOGPREFIX "[ PLATFORM ] "
+#define GAMEPLATFORM_LOG_CATEGORY "Game-Platform"
 
 typedef struct {
 	Input inputs[2];
@@ -588,27 +590,27 @@ fpl_internal void GameMainShutdown(const GameConfiguration *config, GameMemory *
 	LogWrite(LogLevel_Info, "Shutdown Game '%s'", config->title);
 	LogWriteRaw("======================================================================");
 
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Stop Audio Playback");
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Stop Audio Playback");
 	fplStopAudio();
 
 	if (gameMem != fpl_null) {
-		LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Release Game");
+		LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Release Game");
 		GameRelease(gameMem);
 	}
 
 	if (audioSys != fpl_null) {
-		LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Shutdown Audio System");
+		LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Shutdown Audio System");
 		AudioSystemShutdown(audioSys);
 	}
 
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Free Memory Blocks");
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Free Memory Blocks");
 	fmemFree(gameMemoryBlock);
 	fmemFree(renderMemoryBlock);
 
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Unload OpenGL");
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Unload OpenGL");
 	fglUnloadOpenGL();
 
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Release Platform Layer");
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Release Platform Layer");
 	fplPlatformRelease();
 
 	LogShutdown();
@@ -622,11 +624,14 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 	InternalGamePlatformLoggingInitialize(config);
 
 	LogWriteLineBreak();
+	LogWriteLineBreak();
+	LogWriteLineBreak();
+
 	LogWriteRaw("======================================================================");
-	LogWrite(LogLevel_Info, "Startup Game '%s'", config->title);
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, "Startup Game '%s'", config->title);
 	LogWriteRaw("======================================================================");
 
-	LogWrite(LogLevel_Debug, GAMEPLATFORM_LOGPREFIX "Detect Platform Configuration");
+	LogWrite(LogLevel_Debug, GAMEPLATFORM_LOG_CATEGORY, "Detect Platform Configuration");
 
 	fplSettings settings = fplZeroInit;
 	fplSetDefaultSettings(&settings);
@@ -653,26 +658,26 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 	fplMemoryInfos memInfos = fplZeroInit;
 	fplMemoryGetUsage(&memInfos);
 
-	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- Platform: %s", platformName);
-	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- Architecture: %s", archName);
-	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- Total Physical Memory: %zu bytes", memInfos.totalPhysicalSize);
-	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- Free Physical Memory: %zu bytes", memInfos.freePhysicalSize);
-	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- Title: %s", config->title);
-	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- Video Backend: %s", fplGetVideoBackendName(settings.video.backend));
-	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- Video VSync: %s", settings.video.isVSync ? "On" : "Off");
-	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- Audio format: [SampleRate: %u, Channels: %u, Type: %s]", settings.audio.targetFormat.sampleRate, settings.audio.targetFormat.channels, fplGetAudioFormatName(settings.audio.targetFormat.type));
+	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOG_CATEGORY, "- Platform: %s", platformName);
+	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOG_CATEGORY, "- Architecture: %s", archName);
+	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOG_CATEGORY, "- Total Physical Memory: %zu bytes", memInfos.totalPhysicalSize);
+	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOG_CATEGORY, "- Free Physical Memory: %zu bytes", memInfos.freePhysicalSize);
+	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOG_CATEGORY, "- Title: %s", config->title);
+	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOG_CATEGORY, "- Video Backend: %s", fplGetVideoBackendName(settings.video.backend));
+	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOG_CATEGORY, "- Video VSync: %s", settings.video.isVSync ? "On" : "Off");
+	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOG_CATEGORY, "- Audio format: [SampleRate: %u, Channels: %u, Type: %s]", settings.audio.targetFormat.sampleRate, settings.audio.targetFormat.channels, fplGetAudioFormatName(settings.audio.targetFormat.type));
 
 	if (config->keyboardMappings == fpl_null || !config->keyboardMappings->isCustom) {
-		LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- Keyboard Button Mappings: Default Keyboard Mapping");
+		LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOG_CATEGORY, "- Keyboard Button Mappings: Default Keyboard Mapping");
 	} else if (config->keyboardMappings->count == 0) {
-		LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- Keyboard Button Mappings: Disabled");
+		LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOG_CATEGORY, "- Keyboard Button Mappings: Disabled");
 	} else {
 		const uint32_t mappingCount = fplMin(config->keyboardMappings->count, MAX_KEYBOARD_CONTROLLER_BUTTON_MAPPING_COUNT);
-		LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- %u Keyboard Button Mappings:", mappingCount);
+		LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOG_CATEGORY, "- %u Keyboard Button Mappings:", mappingCount);
 		for (uint32_t mappingIndex = 0; mappingIndex < mappingCount; ++mappingIndex) {
 			const char *keyName = fplKeyGetName(config->keyboardMappings->values[mappingIndex].key);
 			const char *typeName = InternalGamePlatformGetControllerButtonTypeName(config->keyboardMappings->values[mappingIndex].type);
-			LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "[%u] Key '%s' to '%s'", mappingIndex, keyName, typeName);
+			LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOG_CATEGORY, "[%u] Key '%s' to '%s'", mappingIndex, keyName, typeName);
 		}
 	}
 
@@ -682,10 +687,10 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 
 	GamePlatformState *gamePlatformState = fpl_null;
 
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Initialize Platform Layer");
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, "Initialize Platform Layer");
 	if(!fplPlatformInit(initFlags, &settings)) {
 		const char *lastError = fplGetLastError();
-		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOGPREFIX "Failed to initialize Platform Layer -> %s", lastError);
+		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOG_CATEGORY, "Failed to initialize Platform Layer -> %s", lastError);
 		GameMainShutdown(config, fpl_null, fpl_null, &gameMemoryBlock, &renderMemoryBlock);
 		return -1;
 	}
@@ -704,9 +709,9 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 		}
 	}
 
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Load OpenGL Library");
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, "Load OpenGL Library");
 	if(!fglLoadOpenGL(true)) {
-		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOGPREFIX "Failed to load OpenGL library!");
+		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOG_CATEGORY, "Failed to load OpenGL library!");
 		GameMainShutdown(config, fpl_null, fpl_null, &gameMemoryBlock, &renderMemoryBlock);
 		return -1;
 	}
@@ -716,65 +721,65 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 	const GLubyte *glrenderer = glGetString(GL_RENDERER);
 	const GLubyte *glextensions = glGetString(GL_EXTENSIONS);
 
-	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- OpenGL Version: %s", glversion);
-	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- OpenGL Vendor: %s", glvendor);
-	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- OpenGL Renderer: %s", glrenderer);
-	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- OpenGL Extensions: %s", glextensions);
+	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOG_CATEGORY, " - OpenGL Version: %s", glversion);
+	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOG_CATEGORY, " - OpenGL Vendor: %s", glvendor);
+	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOG_CATEGORY, " - OpenGL Renderer: %s", glrenderer);
+	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOG_CATEGORY, " - OpenGL Extensions: %s", glextensions);
 
 	const size_t gameMemoryBlockSize = FMEM_MEGABYTES(128);
 
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Allocate game memory block with size %zu bytes", gameMemoryBlockSize);
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Allocate game memory block with size %zu bytes", gameMemoryBlockSize);
 	if(!fmemInit(&gameMemoryBlock, fmemType_Growable, gameMemoryBlockSize, 0)) {
-		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOGPREFIX "Failed to allocate game memory block with size %zu!", gameMemoryBlockSize);
+		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOG_CATEGORY, " Failed to allocate game memory block with size %zu!", gameMemoryBlockSize);
 		GameMainShutdown(config, fpl_null, fpl_null, &gameMemoryBlock, &renderMemoryBlock);
 		return -1;
 	}
 
 	const size_t renderMemoryBlockSize = FMEM_MEGABYTES(32);
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Allocate render memory block with size %zu bytes ]", renderMemoryBlockSize);
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Allocate render memory block with size %zu bytes ]", renderMemoryBlockSize);
 	if(!fmemInit(&renderMemoryBlock, fmemType_Growable, renderMemoryBlockSize, 0)) {
-		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOGPREFIX "Failed to allocate render memory block with size %zu!", renderMemoryBlockSize);
+		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOG_CATEGORY, " Failed to allocate render memory block with size %zu!", renderMemoryBlockSize);
 		GameMainShutdown(config, fpl_null, fpl_null, &gameMemoryBlock, &renderMemoryBlock);
 		return -1;
 	}
 
 	const size_t audioSystemSize = sizeof(AudioSystem);
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Aquire memory for audio system with size %zu bytes", audioSystemSize);
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Aquire memory for audio system with size %zu bytes", audioSystemSize);
 	AudioSystem *audioSys = fmemPushStruct(&gameMemoryBlock, AudioSystem, fmemPushFlags_Clear);
 	if (audioSys == fpl_null) {
-		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOGPREFIX "Insufficient memory for audio system, capacity is '%zu bytes', used is '%zu bytes', required is '%zu bytes'!", gameMemoryBlock.size, gameMemoryBlock.used, audioSystemSize);
+		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOG_CATEGORY, " Insufficient memory for audio system, capacity is '%zu bytes', used is '%zu bytes', required is '%zu bytes'!", gameMemoryBlock.size, gameMemoryBlock.used, audioSystemSize);
 		GameMainShutdown(config, fpl_null, audioSys, &gameMemoryBlock, &renderMemoryBlock);
 		return -1;
 	}
 
 	const size_t gamePlatformStateSize = sizeof(GamePlatformState);
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Aquire memory for game platform state with size %zu bytes", gamePlatformStateSize);
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Aquire memory for game platform state with size %zu bytes", gamePlatformStateSize);
 	gamePlatformState = fmemPushStruct(&gameMemoryBlock, GamePlatformState, fmemPushFlags_Clear);
 	if (audioSys == fpl_null) {
-		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOGPREFIX "Insufficient memory for game platform state, capacity is '%zu bytes', used is '%zu bytes', required is '%zu bytes'!", gameMemoryBlock.size, gameMemoryBlock.used, gamePlatformStateSize);
+		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOG_CATEGORY, " Insufficient memory for game platform state, capacity is '%zu bytes', used is '%zu bytes', required is '%zu bytes'!", gameMemoryBlock.size, gameMemoryBlock.used, gamePlatformStateSize);
 		GameMainShutdown(config, fpl_null, audioSys, &gameMemoryBlock, &renderMemoryBlock);
 		return -1;
 	}
 
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Query Audio Hardware Format");
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Query Audio Hardware Format");
 	if (!fplGetAudioHardwareFormat(&targetAudioFormat)) {
-		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOGPREFIX "Failed to query Audio Hardware Format!");
+		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOG_CATEGORY, " Failed to query Audio Hardware Format!");
 		GameMainShutdown(config, fpl_null, audioSys, &gameMemoryBlock, &renderMemoryBlock);
 		return -1;
 	}
 
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Initialize Audio System with target format: SampleRate: %u, Channels: %u, Type: %s", targetAudioFormat.sampleRate, targetAudioFormat.channels, fplGetAudioFormatName(targetAudioFormat.type));
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Initialize Audio System with target format: SampleRate: %u, Channels: %u, Type: %s", targetAudioFormat.sampleRate, targetAudioFormat.channels, fplGetAudioFormatName(targetAudioFormat.type));
 	if(!AudioSystemInit(audioSys, &targetAudioFormat)) {
-		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOGPREFIX "Failed to initialize Audio System with target format 'SampleRate: %u, Channels: %u, Type: %s'!", targetAudioFormat.sampleRate, targetAudioFormat.channels, fplGetAudioFormatName(targetAudioFormat.type));
+		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOG_CATEGORY, " Failed to initialize Audio System with target format 'SampleRate: %u, Channels: %u, Type: %s'!", targetAudioFormat.sampleRate, targetAudioFormat.channels, fplGetAudioFormatName(targetAudioFormat.type));
 		GameMainShutdown(config, fpl_null, audioSys, &gameMemoryBlock, &renderMemoryBlock);
 		return -1;
 	}
 
 	size_t renderStateSize = sizeof(RenderState);
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Aquire memory for render state with size %zu bytes", renderStateSize);
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Aquire memory for render state with size %zu bytes", renderStateSize);
 	RenderState *renderState = fmemPushStruct(&gameMemoryBlock, RenderState, fmemPushFlags_Clear);
 	if (renderState == fpl_null) {
-		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOGPREFIX "Insufficient memory for render state, capacity is '%zu bytes', used is '%zu bytes', required is '%zu bytes'!", gameMemoryBlock.size, gameMemoryBlock.used, renderStateSize);
+		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOG_CATEGORY, " Insufficient memory for render state, capacity is '%zu bytes', used is '%zu bytes', required is '%zu bytes'!", gameMemoryBlock.size, gameMemoryBlock.used, renderStateSize);
 		GameMainShutdown(config, fpl_null, audioSys, &gameMemoryBlock, &renderMemoryBlock);
 		return -1;
 	}
@@ -785,11 +790,11 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 	// code can read them (e.g. to gate shader features). The hard "exit if unsupported" gate is deferred.
 	InitOpenGLRenderer(&renderState->caps);
 
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Start Audio Playback");
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Start Audio Playback");
 	fplSetAudioClientReadCallback(InternalGamePlatformAudioPlayback, audioSys);
 	fplAudioResultType playAudioResult = fplPlayAudio();
 	if(playAudioResult != fplAudioResultType_Success) {
-		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOGPREFIX "Failed to start Audio Playback -> %s!", fplGetAudioResultName(playAudioResult));
+		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOG_CATEGORY, " Failed to start Audio Playback -> %s!", fplGetAudioResultName(playAudioResult));
 		GameMainShutdown(config, fpl_null, audioSys, &gameMemoryBlock, &renderMemoryBlock);
 		return -1;
 	}
@@ -799,9 +804,9 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 	gameMem->memory = &gameMemoryBlock;
 	gameMem->audio = audioSys;
 
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Initialize Game");
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Initialize Game");
 	if(!GameInit(gameMem, argumentCount, arguments)) {
-		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOGPREFIX "Game failed to initialize!");
+		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOG_CATEGORY, " Game failed to initialize!");
 		GameMainShutdown(config, gameMem, audioSys, &gameMemoryBlock, &renderMemoryBlock);
 		return -1;
 	}
@@ -863,7 +868,7 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 		InternalGamePlatformAddDefaultKeyboardMappings(keyboardMappings, keyboardButtonStates);
 	}
 
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Main Loop");
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Main Loop");
 	while(!IsGameExiting(gameMem) && fplWindowUpdate()) {
 		// Get window size
 		fplWindowSize winArea;
