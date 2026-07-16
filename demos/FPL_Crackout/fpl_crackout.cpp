@@ -1565,6 +1565,8 @@ int main(int argc, char **argv) {
 	GameConfiguration config = fplZeroInit;
 	config.title = "FPL Demo | Crackout";
 	config.hideMouseCursor = true;
+	config.userFolderName = ".crackout";
+	config.enableLog = true;
 	int result = GameMain(&config, argc, argv);
 	return(result);
 }
