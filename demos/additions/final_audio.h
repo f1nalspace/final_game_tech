@@ -1,3 +1,22 @@
+/*
+Name:
+	Final Audio
+
+Description:
+	Common audio types and helper functions shared across the audio loaders/system.
+
+	This file is part of the final_framework.
+
+Changelog:
+	## 2026-07-19
+	- Fixed DecibelToAmplitude using pow(20,..) instead of pow(10,..) (wrong gain)
+	- Fixed DecibelToPower not clamping the upper end (dB > max tripped its own assert)
+
+License:
+	MIT License
+	Copyright 2017-2026 Torsten Spaete
+*/
+
 #ifndef FINAL_AUDIO_H
 #define FINAL_AUDIO_H
 
@@ -379,7 +398,7 @@ fpl_force_inline double AmplitudeToDecibel(const double amplitude) {
 }
 
 fpl_force_inline double DecibelToAmplitude(const double dB) {
-	return pow(20.0, dB / 20.0);
+	return pow(10.0, dB / 20.0);
 }
 
 fpl_force_inline double DecibelToPower(const double dB, const double min, const double max) {
@@ -388,6 +407,8 @@ fpl_force_inline double DecibelToPower(const double dB, const double min, const 
 	double result;
 	if(dB < min) {
 		result = 0.0;
+	} else if(dB > max) {
+		result = 1.0;
 	} else {
 		result = (dB - min) / range;
 	}
