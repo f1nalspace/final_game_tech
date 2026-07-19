@@ -158,9 +158,9 @@ SOFTWARE.
 	\tableofcontents
 
 	## v1.0.2:
+	- Fixed: fmemFree never freed an owned block (its guard required source != null, but owned blocks have source == null) so growable/fixed arenas leaked entirely; guard corrected to source == null
 	- Fixed: fmemBeginTemporary on a multi-block growable arena granted the cross-chain remaining while base was only contiguous in one block (heap overflow); now clamped to this block's remaining
-	- Fixed: fmemPush now rounds every allocation up to pointer alignment so struct/array pushes are never misaligned (undefined behavior / strict-alignment crash)
-	- Fixed: fmemPushAligned now aligns the returned address (it previously only padded the size)
+	- Fixed: fmemPushAligned now aligns the returned address (it previously only padded the size, so the pointer was not actually aligned)
 
 	## v1.0.1:
 	- Changed: Moved FMEM_MEMSET, FMEM_MALLOC, FMEM_ASSERT into the implementation block
@@ -525,9 +525,11 @@ fmem_api bool fmemInitFromSource(fmemMemoryBlock *block, void *sourceMemory, con
 }
 
 fmem_api void fmemFree(fmemMemoryBlock *block) {
+	// Only owned blocks (allocated by fmemInit/fmemPush, source == null) may be freed here; borrowed blocks
+	// (fmemInitFromSource / fmemPushBlock, source != null) are owned by their source and must not be freed.
 	if ((block != fmem_null) &&
 		(block->temporary == fmem_null) &&
-		(block->source != fmem_null)) {
+		(block->source == fmem_null)) {
 		fmemMemoryBlock *freeBlock = block;
 		while (freeBlock != fmem_null) {
 			if (freeBlock->base == fmem_null || freeBlock->size == 0 || freeBlock->source != fmem_null) {
@@ -569,10 +571,9 @@ fmem_api uint8_t *fmemPush(fmemMemoryBlock *block, const size_t size, const fmem
 		return fmem_null;
 	}
 
-	// Round the request up to pointer alignment so struct/array pushes are never handed out misaligned
-	// after a preceding odd-sized push (undefined behavior, crashes on strict-alignment CPUs).
-	const size_t fmemAlignment = sizeof(void *);
-	const size_t alignedSize = (size + (fmemAlignment - 1)) & ~(fmemAlignment - 1);
+	// NOTE: fmemPush packs allocations exactly (used advances by size, no alignment padding). This is a
+	// documented contract (see FMEM_Test) that command-stream consumers rely on for tight, walkable packing.
+	// Callers that need an aligned allocation must use fmemPushAligned.
 
 	fmemMemoryBlock *bestBlock = fmem_null;
 
@@ -587,8 +588,8 @@ fmem_api uint8_t *fmemPush(fmemMemoryBlock *block, const size_t size, const fmem
 				break;
 			}
 			if (searchBlock->allowPush == fmemPermission_Allowed) {
-				if ((searchBlock->used + alignedSize) <= searchBlock->size) {
-					if (bestBlock == fmem_null || (fmem__GetSpaceAvailableFor(searchBlock, alignedSize) > fmem__GetSpaceAvailableFor(bestBlock, alignedSize))) {
+				if ((searchBlock->used + size) <= searchBlock->size) {
+					if (bestBlock == fmem_null || (fmem__GetSpaceAvailableFor(searchBlock, size) > fmem__GetSpaceAvailableFor(bestBlock, size))) {
 						bestBlock = searchBlock;
 					}
 				}
@@ -613,7 +614,7 @@ fmem_api uint8_t *fmemPush(fmemMemoryBlock *block, const size_t size, const fmem
 
 	if (bestBlock != fmem_null) {
 		result = (uint8_t *)bestBlock->base + bestBlock->used;
-		bestBlock->used += alignedSize;
+		bestBlock->used += size;
 		goto done;
 	} else {
 		if (block->type != fmemType_Growable) {
@@ -644,7 +645,7 @@ fmem_api uint8_t *fmemPush(fmemMemoryBlock *block, const size_t size, const fmem
 	}
 
 	// Allocate new block
-	blockSize = fmem__RoundToSize(alignedSize + FMEM__BLOCK_META_SIZE, actualMinBlockSize);
+	blockSize = fmem__RoundToSize(size + FMEM__BLOCK_META_SIZE, actualMinBlockSize);
 	newHeader = fmem__AllocateBlock(blockSize);
 	if (newHeader == fmem_null) {
 		result = fmem_null;
@@ -655,7 +656,7 @@ fmem_api uint8_t *fmemPush(fmemMemoryBlock *block, const size_t size, const fmem
 		// No tail found -> Setup block argument
 		block->size = blockSize - FMEM__BLOCK_META_SIZE;
 		block->base = (uint8_t *)newHeader + FMEM__BLOCK_META_SIZE;
-		block->used = alignedSize;
+		block->used = size;
 		block->source = fmem_null;
 		block->totalBlockCount = 1;
 		result = (uint8_t *)block->base;
@@ -668,7 +669,7 @@ fmem_api uint8_t *fmemPush(fmemMemoryBlock *block, const size_t size, const fmem
 	newBlock->size = blockSize - FMEM__BLOCK_META_SIZE;
 	newBlock->type = tailBlock->type;
 	newBlock->source = fmem_null;
-	newBlock->used = alignedSize;
+	newBlock->used = size;
 	newBlock->allowPush = isForcedBlock ? fmemPermission_Denied : fmemPermission_Allowed;
 	block->totalBlockCount++;
 
