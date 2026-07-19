@@ -9,6 +9,9 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
+	## 2026-07-19
+	- Fixed: Early-failure shutdown freed uninitialized memory blocks; gameMemoryBlock/renderMemoryBlock now zero-init'd so fmemFree is a safe no-op before fmemInit
+
 	## 2026-07-15
 	- Added GameUpdateLoopMode enum that controls how the update loop logic tick works
 	- Added fields updateLoopMode, maxUpdateTicksPerFrame, maxDynamicFrameTime to the GameConfiguration struct
@@ -681,8 +684,9 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 		}
 	}
 
-	fmemMemoryBlock gameMemoryBlock;
-	fmemMemoryBlock renderMemoryBlock;
+	// Zero-init so early-failure shutdown paths that call fmemFree before fmemInit are a safe no-op (fmemFree skips a zeroed block)
+	fmemMemoryBlock gameMemoryBlock = fplZeroInit;
+	fmemMemoryBlock renderMemoryBlock = fplZeroInit;
 	fplAudioFormat targetAudioFormat;
 
 	GamePlatformState *gamePlatformState = fpl_null;
