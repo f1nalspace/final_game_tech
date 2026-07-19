@@ -75,7 +75,7 @@ SOFTWARE.
 
 /*!
 	\file final_xml.h
-	\version v0.3.1 alpha
+	\version v0.3.2 alpha
 	\author Torsten Spaete
 	\brief Final XML (FXML) - An open source C99 single file header XML parser library.
 */
@@ -83,6 +83,10 @@ SOFTWARE.
 /*!
 	\page page_changelog Changelog
 	\tableofcontents
+
+	## v0.3.2 alpha:
+	- Fixed OOB reads on non-NUL-terminated input: all scan loops now bounded by data+size via fxml__Peek (incl. entity decode)
+	- Fixed misaligned fxmlTag allocations (undefined behavior): the bump allocator now rounds every allocation up to pointer alignment
 
 	## v0.3.1 alpha:
 	- Fixed memcpy_s compile error on linux by introducing FXML_MEMCPY, that can be overwritten if needed
@@ -462,10 +466,15 @@ extern "C" {
 	}
 
 	static void *fxml__AllocMemory(fxmlContext *context, const size_t size, const size_t allocCount) {
+		// Round every allocation up to pointer alignment so that struct nodes (fxmlTag) are never handed out
+		// misaligned after a preceding odd-length string allocation (undefined behavior, crashes on strict-alignment CPUs).
+		const size_t alignment = sizeof(void *);
+		size_t alignedSize = (size + (alignment - 1)) & ~(alignment - 1);
+
 		// Find block which have the required space first
 		fxmlMemory *mem = context->firstMem;
 		while(mem != fxml_null) {
-			if((mem->used + size) <= mem->capacity) {
+			if((mem->used + alignedSize) <= mem->capacity) {
 				break;
 			}
 			mem = mem->next;
@@ -473,7 +482,7 @@ extern "C" {
 
 		if(mem == fxml_null) {
 			// Allocate new block
-			size_t allocationSize = size * allocCount;
+			size_t allocationSize = alignedSize * allocCount;
 			size_t headerMemorySize = sizeof(fxmlMemory) + FXML__BLOCK_PADDING;
 			size_t blockSize = fxml__ComputeBlockSize(headerMemorySize + allocationSize, FXML__MIN_ALLOC_SIZE);
 			void *blockBase = FXML_MALLOC(blockSize);
@@ -505,7 +514,7 @@ extern "C" {
 
 
 		void *result = (uint8_t *)mem->base + mem->used;
-		mem->used += size;
+		mem->used += alignedSize;
 
 		return(result);
 	}
@@ -548,14 +557,14 @@ extern "C" {
 		while(src < srcEnd) {
 			if(*src == '&') {
 				++src;
-				if(*src == '#') {
+				if(src < srcEnd && *src == '#') {
 					++src;
 					uint64_t escapeCode = 0;
-					if(!fxml__IsNumeric(*src)) {
+					if(src >= srcEnd || !fxml__IsNumeric(*src)) {
 						context->isError = true;
 						goto done;
 					}
-					while(fxml__IsNumeric(*src)) {
+					while(src < srcEnd && fxml__IsNumeric(*src)) {
 						uint32_t v = *src - '0';
 						escapeCode = escapeCode * 10 + v;
 						++src;
@@ -563,11 +572,11 @@ extern "C" {
 					if(escapeCode > 0 && escapeCode < 256) {
 						*dst++ = (char)escapeCode;
 					}
-				} else if(fxml__IsAlpha(*src)) {
+				} else if(src < srcEnd && fxml__IsAlpha(*src)) {
 					char symbolName[16 + 1];
 					const char *symbolStart = src;
 					size_t symbolLen = 0;
-					while(fxml__IsAlpha(*src)) {
+					while(src < srcEnd && fxml__IsAlpha(*src)) {
 						size_t symbolIndex = src - symbolStart;
 						if(symbolIndex < FXML_ARRAYCOUNT(symbolName)) {
 							symbolName[symbolIndex] = *src;
@@ -588,7 +597,7 @@ extern "C" {
 						*dst++ = '>';
 					}
 				}
-				if(*src != ';') {
+				if(src >= srcEnd || *src != ';') {
 					fxml__ReportError(context, fxmlErrorType_StringDecodingFailed);
 					context->isError = true;
 					goto done;
@@ -622,13 +631,24 @@ extern "C" {
 		return(true);
 	}
 
+	// Bounds-safe read relative to the cursor: returns '\0' at or past the end of the input buffer.
+	// This makes every NUL-terminated scan loop also stop at the end of a buffer that is not NUL-terminated (memory-mapped / exact-size).
+	static char fxml__Peek(const fxmlContext *context, const size_t offset) {
+		const char *end = (const char *)context->data + context->size;
+		size_t remaining = (size_t)(end - context->ptr);
+		if(offset >= remaining) {
+			return '\0';
+		}
+		return context->ptr[offset];
+	}
+
 	static bool fxml__ParseIdent(fxmlContext *context, fxmlString *outIdent) {
-		if(!fxml__IsAlpha(*context->ptr)) {
+		if(!fxml__IsAlpha(fxml__Peek(context, 0))) {
 			return(false);
 		}
 		const char *start = context->ptr;
 		++context->ptr;
-		while(fxml__IsAlphaNumeric(*context->ptr) || *context->ptr == '_' || *context->ptr == '-') {
+		while(fxml__IsAlphaNumeric(fxml__Peek(context, 0)) || fxml__Peek(context, 0) == '_' || fxml__Peek(context, 0) == '-') {
 			++context->ptr;
 		}
 		if(outIdent != fxml_null) {
@@ -639,39 +659,39 @@ extern "C" {
 	}
 
 	static bool fxml__ParseAttribute(fxmlContext *context, fxmlString *outName, fxmlString *outValue) {
-		if(!fxml__IsAlpha(*context->ptr)) {
+		if(!fxml__IsAlpha(fxml__Peek(context, 0))) {
 			// NOTE(final): No attribute is not an error
 			return(false);
 		}
 		fxml__ParseIdent(context, outName);
-		if(context->ptr[0] == ':') {
+		if(fxml__Peek(context, 0) == ':') {
 			++context->ptr;
-			if(!fxml__IsAlpha(context->ptr[0]) || !fxml__ParseIdent(context, fxml_null)) {
+			if(!fxml__IsAlpha(fxml__Peek(context, 0)) || !fxml__ParseIdent(context, fxml_null)) {
 				fxml__ReportError(context, fxmlErrorType_ExpectNamespaceIdent);
 				return(false);
 			}
 			outName->len = context->ptr - outName->start;
 		}
 
-		if(*context->ptr != '=') {
+		if(fxml__Peek(context, 0) != '=') {
 			fxml__ReportError(context, fxmlErrorType_ExpectAttributeAssignment);
 			return false;
 		}
 		++context->ptr;
 
-		if(*context->ptr != '\"') {
+		if(fxml__Peek(context, 0) != '\"') {
 			fxml__ReportError(context, fxmlErrorType_ExpectAttributeQuote);
 			return false;
 		}
 		++context->ptr;
 
 		outValue->start = context->ptr;
-		while(*context->ptr && (*context->ptr != '\"')) {
+		while(fxml__Peek(context, 0) && (fxml__Peek(context, 0) != '\"')) {
 			++context->ptr;
 		}
 		outValue->len = context->ptr - outValue->start;
 
-		if(*context->ptr != '\"') {
+		if(fxml__Peek(context, 0) != '\"') {
 			fxml__ReportError(context, fxmlErrorType_ExpectAttributeQuote);
 			return false;
 		}
@@ -680,7 +700,7 @@ extern "C" {
 	}
 
 	static void fxml__SkipWhitespaces(fxmlContext *context) {
-		while(!context->isError && fxml__IsWhitespace(*context->ptr)) {
+		while(!context->isError && fxml__IsWhitespace(fxml__Peek(context, 0))) {
 			++context->ptr;
 		}
 	}
@@ -697,7 +717,7 @@ extern "C" {
 	}
 
 	static bool fxml__ParseAttributes(fxmlContext *context, fxmlTag *parent) {
-		while(!context->isError && *context->ptr) {
+		while(!context->isError && fxml__Peek(context, 0)) {
 			fxml__SkipWhitespaces(context);
 			fxmlString attrName = FXML_ZERO_INIT;
 			fxmlString attrValue = FXML_ZERO_INIT;
@@ -730,13 +750,13 @@ extern "C" {
 	}
 
 	static bool fxml__ParseComment(fxmlContext *context) {
-		if(context->ptr[0] != '<' || context->ptr[1] != '!') {
+		if(fxml__Peek(context, 0) != '<' || fxml__Peek(context, 1) != '!') {
 			fxml__ReportError(context, fxmlErrorType_ExpectCommentStart);
 			return(false);
 		}
 		context->ptr += 2;
 
-		if(context->ptr[0] != '-' || context->ptr[1] != '-') {
+		if(fxml__Peek(context, 0) != '-' || fxml__Peek(context, 1) != '-') {
 			fxml__ReportError(context, fxmlErrorType_ExpectCommentStart);
 			return(false);
 		}
@@ -744,10 +764,10 @@ extern "C" {
 
 		fxmlString comment = FXML_ZERO_INIT;
 		comment.start = context->ptr;
-		while(!context->isError && *context->ptr) {
-			if(context->ptr[0] == '-') {
-				if(context->ptr[1] == '-') {
-					if(context->ptr[2] != '>') {
+		while(!context->isError && fxml__Peek(context, 0)) {
+			if(fxml__Peek(context, 0) == '-') {
+				if(fxml__Peek(context, 1) == '-') {
+					if(fxml__Peek(context, 2) != '>') {
 						fxml__ReportError(context, fxmlErrorType_ExpectCommentEnd);
 						return(false);
 					} else {
@@ -772,7 +792,7 @@ extern "C" {
 
 		fxml__AddChild(context->curParent, commentTag);
 
-		if(context->ptr[0] != '-' || context->ptr[1] != '-' || context->ptr[2] != '>') {
+		if(fxml__Peek(context, 0) != '-' || fxml__Peek(context, 1) != '-' || fxml__Peek(context, 2) != '>') {
 			fxml__ReportError(context, fxmlErrorType_ExpectCommentEnd);
 			return(false);
 		}
@@ -781,7 +801,7 @@ extern "C" {
 	}
 
 	static fxmlTag *fxml__ParseDeclaration(fxmlContext *context) {
-		if(context->ptr[0] != '<' || context->ptr[1] != '?') {
+		if(fxml__Peek(context, 0) != '<' || fxml__Peek(context, 1) != '?') {
 			fxml__ReportError(context, fxmlErrorType_ExpectDeclarationBegin);
 			return(fxml_null);
 		}
@@ -789,7 +809,7 @@ extern "C" {
 		context->ptr += 2;
 
 		fxmlString declName = FXML_ZERO_INIT;
-		if(!fxml__IsAlpha(*context->ptr) || !fxml__ParseIdent(context, &declName)) {
+		if(!fxml__IsAlpha(fxml__Peek(context, 0)) || !fxml__ParseIdent(context, &declName)) {
 			fxml__ReportError(context, fxmlErrorType_ExpectDeclarationIdent);
 			return(fxml_null);
 		}
@@ -809,7 +829,7 @@ extern "C" {
 
 		fxml__AddChild(context->root, declTag);
 
-		if(context->ptr[0] != '?' || context->ptr[1] != '>') {
+		if(fxml__Peek(context, 0) != '?' || fxml__Peek(context, 1) != '>') {
 			fxml__ReportError(context, fxmlErrorType_ExpectDeclarationEnd);
 			return(fxml_null);
 		}
@@ -832,7 +852,7 @@ extern "C" {
 	} fxml__ParseTagResult;
 
 	static bool fxml__ParseTag(fxmlContext *context, fxml__ParseTagResult *outResult) {
-		if(context->ptr[0] != '<') {
+		if(fxml__Peek(context, 0) != '<') {
 			fxml__ReportError(context, fxmlErrorType_ExpectTagStart);
 			return(false);
 		}
@@ -842,13 +862,13 @@ extern "C" {
 		outResult->tagName[0] = 0;
 
 		context->ptr++;
-		if(context->ptr[0] == '/') {
+		if(fxml__Peek(context, 0) == '/') {
 			outResult->mode = fxml__ParseTagMode_Close;
 			context->ptr++;
 		}
 
 		fxmlString identStr = FXML_ZERO_INIT;
-		if(!fxml__IsAlpha(*context->ptr) || !fxml__ParseIdent(context, &identStr)) {
+		if(!fxml__IsAlpha(fxml__Peek(context, 0)) || !fxml__ParseIdent(context, &identStr)) {
 			fxml__ReportError(context, fxmlErrorType_ExpectTagIdent);
 			return(false);
 		}
@@ -864,10 +884,10 @@ extern "C" {
 		}
 		outResult->tagName[identStr.len] = 0;
 
-		if(context->ptr[0] == ':') {
+		if(fxml__Peek(context, 0) == ':') {
 			// First ident was namespace, parse real ident
 			context->ptr++;
-			if(!fxml__IsAlpha(context->ptr[0]) || !fxml__ParseIdent(context, fxml_null)) {
+			if(!fxml__IsAlpha(fxml__Peek(context, 0)) || !fxml__ParseIdent(context, fxml_null)) {
 				fxml__ReportError(context, fxmlErrorType_ExpectNamespaceIdent);
 				return(false);
 			}
@@ -893,7 +913,7 @@ extern "C" {
 				return(false);
 			}
 
-			if(context->ptr[0] == '/') {
+			if(fxml__Peek(context, 0) == '/') {
 				outResult->mode = fxml__ParseTagMode_OpenAndClose;
 				tag->isClosed = true;
 				++context->ptr;
@@ -902,7 +922,7 @@ extern "C" {
 			fxml__SkipWhitespaces(context);
 		}
 
-		if(context->ptr[0] != '>') {
+		if(fxml__Peek(context, 0) != '>') {
 			fxml__ReportError(context, fxmlErrorType_ExpectTagEnd);
 			return(false);
 		}
@@ -912,7 +932,7 @@ extern "C" {
 
 	static void fxml__ParseInnerText(fxmlContext *context, fxmlTag *tag) {
 		const char *start = context->ptr;
-		while(!context->isError && context->ptr[0] && context->ptr[0] != '<') {
+		while(!context->isError && fxml__Peek(context, 0) && fxml__Peek(context, 0) != '<') {
 			++context->ptr;
 		}
 		fxmlString value = FXML_ZERO_INIT;
@@ -945,13 +965,13 @@ extern "C" {
 		outRoot->type = fxmlTagType_Root;
 		context->root = outRoot;
 		context->curParent = outRoot;
-		while(!context->isError && *context->ptr) {
-			char c = context->ptr[0];
+		while(!context->isError && fxml__Peek(context, 0)) {
+			char c = fxml__Peek(context, 0);
 			bool readAhead = true;
 			switch(c) {
 				case '<':
 				{
-					if(context->ptr[1] == '?') {
+					if(fxml__Peek(context, 1) == '?') {
 						fxmlTag *declTag = fxml__ParseDeclaration(context);
 						if(context->isError) {
 							fxml__ReportError(context, fxmlErrorType_DeclarationParseError);
@@ -962,7 +982,7 @@ extern "C" {
 							isUTF8 = true;
 						}
 						readAhead = false;
-					} else if(context->ptr[1] == '/' || fxml__IsAlpha(context->ptr[1])) {
+					} else if(fxml__Peek(context, 1) == '/' || fxml__IsAlpha(fxml__Peek(context, 1))) {
 						fxml__ParseTagResult tagRes = FXML_ZERO_INIT;
 						if(!fxml__ParseTag(context, &tagRes)) {
 							fxml__ReportError(context, fxmlErrorType_TagParseError);
@@ -984,7 +1004,7 @@ extern "C" {
 							}
 						}
 						readAhead = false;
-					} else if(context->ptr[1] == '!') {
+					} else if(fxml__Peek(context, 1) == '!') {
 						if(!fxml__ParseComment(context)) {
 							fxml__ReportError(context, fxmlErrorType_CommentParseError);
 							break;
