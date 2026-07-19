@@ -9,6 +9,7 @@ Changelog:
 	## 2026-07-19
 	- Fixed: Producer-side clamp of outFrameCount to minOutputFrameCount so the resampler can never write minOut+1 frames past the caller's output buffer.
 	- Changed: SinC cores now precompute the SinC table once (AudioSinCTableInitialize) and sample it (GetSinCTableValue) per tap instead of calling sinf ~17x per output sample/channel.
+	- Changed: TestResampleInterleaved_44100_48000_Roundtrip now expects the clamped outputCount (min(target, minOut)) to reflect the producer-side clamp.
 
 	- Changed: AudioResampleInterleaved / AudioResampleDeinterleaved now derive inFrameCount and outFrameCount via fplGetTargetAudioFrameCount so the resampler agrees with the FPL frame-count formula by construction.
 	- New: Added TestResampleFrameCount + TestResampleInterleaved_44100_48000_Roundtrip in TestAudioSamplesSuite covering 44100<->48000 round-trip and edge block sizes.
@@ -1171,8 +1172,8 @@ static void TestResampleInterleaved_44100_48000_Roundtrip() {
 			// Resampler picks inFrameCount such that round(inFrameCount * 48000/44100) >= minOut.
 			fplAlwaysAssert(r.inputCount > 0);
 			fplAlwaysAssert(r.inputCount <= maxIn);
-			// Output must equal fplGetTargetAudioFrameCount(inputCount, inRate, outRate).
-			AudioFrameIndex expected = fplGetTargetAudioFrameCount(r.inputCount, 44100, 48000);
+			// Output equals fplGetTargetAudioFrameCount(inputCount, inRate, outRate), clamped to minOut so it can never overrun a minOut-sized buffer.
+			AudioFrameIndex expected = fplMin(fplGetTargetAudioFrameCount(r.inputCount, 44100, 48000), minOut);
 			fplAlwaysAssert(r.outputCount == expected);
 		}
 
@@ -1181,7 +1182,7 @@ static void TestResampleInterleaved_44100_48000_Roundtrip() {
 			AudioResampleResult r = AudioResampleInterleaved(channels, 48000, 44100, minOut, maxIn, inBuf, outBuf);
 			fplAlwaysAssert(r.inputCount > 0);
 			fplAlwaysAssert(r.inputCount <= maxIn);
-			AudioFrameIndex expected = fplGetTargetAudioFrameCount(r.inputCount, 48000, 44100);
+			AudioFrameIndex expected = fplMin(fplGetTargetAudioFrameCount(r.inputCount, 48000, 44100), minOut);
 			fplAlwaysAssert(r.outputCount == expected);
 		}
 	}
