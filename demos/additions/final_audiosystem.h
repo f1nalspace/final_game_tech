@@ -141,6 +141,9 @@ License:
 	Copyright 2017-2026 Torsten Spaete
 
 Changelog:
+	## 2026-07-19
+	- Fixed: AudioSystemStopOne now finds and removes the play-item entirely under playItems.lock (was traversing unlocked -> use-after-free race with the audio thread)
+
 	- Changed: ResampleChunk warning text updated — now references fplGetTargetAudioFrameCount as the authoritative formula; clamp kept defensively for arbitrary non-even ratios. 44100 <-> 48000 round-trip is exact.
 */
 
@@ -825,22 +828,20 @@ fpl_extern size_t AudioSystemGetPlayItems(AudioSystem *audioSys, AudioPlayItem *
 }
 
 fpl_extern bool AudioSystemStopOne(AudioSystem *audioSys, const AudioPlayItemID playId) {
+	// The audio device callback can RemovePlayItem concurrently, so the whole find-and-remove must run under the lock
+	bool result = false;
+	fplMutexLock(&audioSys->playItems.lock);
 	AudioPlayItem *playItem = audioSys->playItems.first;
-	AudioPlayItem *foundPlayItem = fpl_null;
 	while(playItem != fpl_null) {
 		if(playItem->id.value == playId.value) {
-			foundPlayItem = playItem;
+			RemovePlayItem(&audioSys->memory, &audioSys->playItems, playItem);
+			result = true;
 			break;
 		}
 		playItem = playItem->next;
 	}
-	if(foundPlayItem != fpl_null) {
-		fplMutexLock(&audioSys->playItems.lock);
-		RemovePlayItem(&audioSys->memory, &audioSys->playItems, foundPlayItem);
-		fplMutexUnlock(&audioSys->playItems.lock);
-		return(true);
-	}
-	return(false);
+	fplMutexUnlock(&audioSys->playItems.lock);
+	return(result);
 }
 
 fpl_extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume) {
