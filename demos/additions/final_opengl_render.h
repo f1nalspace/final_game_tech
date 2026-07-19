@@ -9,6 +9,9 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
+	## 2026-07-19
+	- Fixed: RenderWithOpenGL now stops when sizeof(CommandHeader) + dataSize exceeds the remaining buffer, so a truncated/mis-sized command can never underflow 'remaining' and walk off the buffer
+
 	## 2026-07-15
 	- Execute TextureOperationType_SetFilter: re-set an uploaded texture's GL_TEXTURE_MIN/MAG_FILTER in place (no re-upload)
 
@@ -798,6 +801,10 @@ fpl_extern void RenderWithOpenGL(RenderState *renderState) {
 			mem += sizeof(*header);
 			uint8_t *dataStart = mem;
 			size_t dataSize = header->dataSize;
+			// Defensive: never let a truncated/mis-sized command walk the executor past the command buffer
+			if (sizeof(*header) + dataSize > remaining) {
+				break;
+			}
 			switch(header->type) {
 				case CommandType_Viewport:
 				{
