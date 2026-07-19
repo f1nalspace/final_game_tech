@@ -11,6 +11,9 @@ Description:
 Changelog:
 	## 2026-07-19
 	- Fixed: Early-failure shutdown freed uninitialized memory blocks; gameMemoryBlock/renderMemoryBlock now zero-init'd so fmemFree is a safe no-op before fmemInit
+	- Fixed: Custom keyboard mappings now rebuild keyboardButtonStates->mapped[] so they actually drive controller buttons
+	- Fixed: GamePlatformState allocation null-check tested audioSys instead of gamePlatformState
+	- Fixed: Out-of-range gamepad device index now ignored instead of writing past the controllers array in release
 
 	## 2026-07-15
 	- Added GameUpdateLoopMode enum that controls how the update loop logic tick works
@@ -270,6 +273,10 @@ fpl_internal void InternalGamePlatformProcessEvents(const KeyboardButtonMappings
 				// @TODO(final): For now we just use the device index, but later it should be "added" to the controllers array and remembered somehow
 				uint32_t controllerIndex = 1 + event.gamepad.deviceIndex;
 				fplAssert(controllerIndex < fplArrayCount(currentInput->controllers));
+				if (controllerIndex >= fplArrayCount(currentInput->controllers)) {
+					// Ignore gamepads beyond the controller slots instead of writing out of bounds in release
+					break;
+				}
 				Controller *newController = &currentInput->controllers[controllerIndex];
 				Controller *oldController = &prevInput->controllers[controllerIndex];
 				switch(event.gamepad.type) {
@@ -759,7 +766,7 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 	const size_t gamePlatformStateSize = sizeof(GamePlatformState);
 	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Aquire memory for game platform state with size %zu bytes", gamePlatformStateSize);
 	gamePlatformState = fmemPushStruct(&gameMemoryBlock, GamePlatformState, fmemPushFlags_Clear);
-	if (audioSys == fpl_null) {
+	if (gamePlatformState == fpl_null) {
 		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOG_CATEGORY, " Insufficient memory for game platform state, capacity is '%zu bytes', used is '%zu bytes', required is '%zu bytes'!", gameMemoryBlock.size, gameMemoryBlock.used, gamePlatformStateSize);
 		GameMainShutdown(config, fpl_null, audioSys, &gameMemoryBlock, &renderMemoryBlock);
 		return -1;
@@ -868,6 +875,14 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 
 	if (config->keyboardMappings != fpl_null && config->keyboardMappings->isCustom) {
 		fplMemoryCopy(config->keyboardMappings, sizeof(KeyboardButtonMappings), keyboardMappings);
+		// The raw struct copy does not touch mapped[], which the poll loop gates on, so rebuild it from the copied entries
+		const uint32_t mappingCount = fplMin(keyboardMappings->count, (uint32_t)fplArrayCount(keyboardMappings->values));
+		for (uint32_t mappingIndex = 0; mappingIndex < mappingCount; ++mappingIndex) {
+			const ControllerButtonType buttonType = keyboardMappings->values[mappingIndex].type;
+			if (buttonType >= ControllerButtonType_First && buttonType <= ControllerButtonType_Last) {
+				keyboardButtonStates->mapped[buttonType] = true;
+			}
+		}
 	} else {
 		InternalGamePlatformAddDefaultKeyboardMappings(keyboardMappings, keyboardButtonStates);
 	}
