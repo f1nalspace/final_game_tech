@@ -10,6 +10,10 @@ Description:
 License:
 	MIT License
 	Copyright 2017-2026 Torsten Spaete
+
+Changelog:
+	## 2026-07-19
+	- Fixed AABB3fContainsPoint missing abs(): it reported "inside" for points outside on the negative side
 */
 
 #ifndef FINAL_GEOMETRY_H
@@ -256,8 +260,8 @@ fpl_extern_inline bool AABB3fIsOverlap(const AABB3f *a, const AABB3f *b) {
 fpl_extern_inline bool AABB3fContainsPoint(const AABB3f *aabb, const Vec3f point) {
 	Vec3f center, radius;
 	AABB3fExtract(aabb, &center, &radius);
-	Vec3f d = V3fSub(point, center);
-	bool result = (d.x < radius.x) && (d.y < radius.y) && (d.z < radius.z);
+	Vec3f d = V3fAbs(V3fSub(point, center));
+	bool result = (d.x <= radius.x) && (d.y <= radius.y) && (d.z <= radius.z);
 	return result;
 }
 
