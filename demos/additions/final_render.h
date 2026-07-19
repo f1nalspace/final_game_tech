@@ -9,6 +9,9 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
+	## 2026-07-19
+	- Fixed: A body-allocation failure mid-command now rolls back the whole command (header + partial body) so the command stream can never contain a truncated command (_RenderPushTypes no longer over-counts dataSize on failure)
+
 	## 2026-07-15
 	- Added TextureOperationType_SetFilter + RenderPushSetTextureFilter: change an uploaded texture's min/mag filter without re-uploading (runtime nearest<->linear switch)
 
@@ -240,6 +243,8 @@ typedef struct RenderState {
 	size_t shaderOperationCount;
 	size_t renderTargetOperationCount;
 	size_t lastMemoryUsage;
+	// Arena offset where the command currently being pushed started, used to roll back a partial command on allocation failure
+	size_t commandStartMemoryUsed;
 	// Last frame's render command buffer push timings (seconds)
 	double lastRenderBuildSeconds;
 	// Last frame's submit to rendering backend timings (seconds)
@@ -509,6 +514,8 @@ static CommandHeader *_RenderPushHeader(RenderState *state, const CommandType ty
 	if (state == fpl_null) {
 		return fpl_null;
 	}
+	// Remember where this command begins so a later body-allocation failure can roll back the whole command
+	state->commandStartMemoryUsed = state->memory.used;
 	CommandHeader *result = (CommandHeader *)fmemPush(&state->memory, sizeof(CommandHeader), fmemPushFlags_None);
 	if (result == fpl_null) {
 		return fpl_null;
@@ -524,6 +531,11 @@ static void *_RenderPushTypes(RenderState *state, CommandHeader *header, const s
 	}
 	size_t size = typeSize * count;
 	void *result = fmemPush(&state->memory, size, clear ? fmemPushFlags_Clear : fmemPushFlags_None);
+	if (result == fpl_null) {
+		// Roll the whole partial command (header + any earlier body parts) out of the stream so the executor never sees a truncated command
+		state->memory.used = state->commandStartMemoryUsed;
+		return fpl_null;
+	}
 	header->dataSize += size;
 	return result;
 }
