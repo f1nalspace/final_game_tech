@@ -122,6 +122,9 @@ SOFTWARE.
 	@page page_changelog Changelog
 	@tableofcontents
 
+	# v2.0.1:
+	- Fixed: Arena allocation failure (OOM) no longer dereferences a null block in release; the arena sets outOfMemory, pushes fall back to a scratch slot, and the tracer stops cleanly
+
 	# v2.0.0:
 	- New: Full rewrite from C++ to pure C17
 	- New: Growing arena allocator with a pluggable memory allocator (default malloc/free)
@@ -242,6 +245,9 @@ typedef struct fttArena {
 	fttMemoryBlock *current;      //!< Block bytes are currently bumped from
 	fttAllocator allocator;       //!< Backing allocator used to request new blocks
 	size_t minBlockSize;          //!< Minimum size for newly requested blocks
+	bool outOfMemory;             //!< Set when the backing allocator failed; the tracer stops instead of crashing
+	//! Fallback slot returned for a single element push when out of memory, so the immediate write never touches null (element is discarded). Sized to hold the largest tracer element.
+	uint8_t oomSink[128];
 } fttArena;
 
 //! A growable, arena backed, type-erased dynamic array
@@ -613,6 +619,7 @@ static void ftt__ArenaInit(fttArena *arena, fttAllocator allocator, size_t minBl
 	arena->current = ftt_null;
 	arena->allocator = allocator;
 	arena->minBlockSize = minBlockSize;
+	arena->outOfMemory = false;
 }
 
 static fttMemoryBlock *ftt__ArenaAddBlock(fttArena *arena, size_t minSize) {
@@ -624,6 +631,11 @@ static fttMemoryBlock *ftt__ArenaAddBlock(fttArena *arena, size_t minSize) {
 	size_t total = headerSize + dataSize;
 	uint8_t *mem = (uint8_t *)arena->allocator.allocate(arena->allocator.userData, total);
 	FTT_ASSERT(mem != ftt_null);
+	if (mem == ftt_null) {
+		// Fail gracefully instead of dereferencing null in release
+		arena->outOfMemory = true;
+		return ftt_null;
+	}
 	fttMemoryBlock *block = (fttMemoryBlock *)mem;
 	block->base = mem + headerSize;
 	block->size = dataSize;
@@ -646,6 +658,9 @@ static void *ftt__ArenaPush(fttArena *arena, size_t size) {
 	size_t alignedUsed = (block != ftt_null) ? ftt__AlignUp(block->used, FTT__ALIGNMENT) : 0;
 	if (block == ftt_null || (alignedUsed + size) > block->size) {
 		block = ftt__ArenaAddBlock(arena, size);
+		if (block == ftt_null) {
+			return ftt_null;
+		}
 		alignedUsed = 0;
 	}
 	void *result = block->base + alignedUsed;
@@ -685,6 +700,10 @@ static void ftt__ArrayReserve(fttArray *a, size_t n) {
 		newCap = n;
 	}
 	void *newItems = ftt__ArenaPush(a->arena, newCap * a->itemSize);
+	if (newItems == ftt_null) {
+		// Out of memory: leave the array as-is so callers keep a valid (if too-small) buffer
+		return;
+	}
 	if (a->count > 0 && a->items != ftt_null) {
 		FTT_MEMCPY(newItems, a->items, a->count * a->itemSize);
 	}
@@ -695,6 +714,12 @@ static void ftt__ArrayReserve(fttArray *a, size_t n) {
 //! Reserves room for one more element and returns a pointer to the new (uninitialized) slot
 static void *ftt__ArrayPush(fttArray *a) {
 	ftt__ArrayReserve(a, a->count + 1);
+	if (a->count + 1 > a->capacity) {
+		// Reserve failed (out of memory); return a valid scratch slot so the immediate write does not crash.
+		// The element is discarded and arena->outOfMemory lets the tracer stop.
+		FTT_ASSERT(a->itemSize <= sizeof(a->arena->oomSink));
+		return a->arena->oomSink;
+	}
 	void *slot = (uint8_t *)a->items + a->count * a->itemSize;
 	a->count++;
 	return slot;
@@ -1156,6 +1181,24 @@ ftt_api void fttInitTileTracer(fttTileTracer *tracer, fttVec2u tileCount, const 
 	ftt__ArrayReserve(&tracer->mainEdges, tileTotal * 4);
 	ftt__ArrayReserve(&tracer->chainSegments, 64);
 
+	// If the tile buffer could not be reserved (out of memory), leave the tracer in a valid, empty, done state
+	// instead of writing tiles into a null buffer below.
+	if (tracer->arena.outOfMemory || tracer->tiles.capacity < tileTotal) {
+		tracer->tiles.count = 0;
+		tracer->startTile = ftt_null;
+		tracer->curTile = ftt_null;
+		tracer->nextTile = ftt_null;
+		tracer->startEdgeIndex = -1;
+		tracer->lastEdgeIndex = -1;
+		tracer->curChainSegmentIndex = -1;
+		tracer->totalSolidTileCount = 0;
+		tracer->processedTileCount = 0;
+		tracer->totalEdgeCount = 0;
+		tracer->consumedEdgeCount = 0;
+		tracer->curStep = FTT_STEP_DONE;
+		return;
+	}
+
 	// Fill the tile array from the map and count how many tiles are solid
 	tracer->tiles.count = tileTotal;
 	uint32_t solidTileCount = 0;
@@ -1187,6 +1230,12 @@ ftt_api void fttInitTileTracer(fttTileTracer *tracer, fttVec2u tileCount, const 
 
 ftt_api bool fttNextTileTraceStep(fttTileTracer *tracer) {
 	FTT_ASSERT(tracer != ftt_null);
+
+	// Stop stepping if the arena ran out of memory (a prior push was discarded); output is incomplete but no crash
+	if (tracer->arena.outOfMemory) {
+		tracer->curStep = FTT_STEP_DONE;
+		return false;
+	}
 
 	bool result = true;
 	switch (tracer->curStep) {
