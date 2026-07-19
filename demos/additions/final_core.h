@@ -7,6 +7,11 @@ Description:
 
 	This file is part of the final_framework.
 
+Changelog:
+
+	## 2026-07-19
+	- Renamed allocate/free function pointers in MemoryAllocator to allocateFunc/freeFunc to not conflict with malloc free()
+
 License:
 	MIT License
 	Copyright 2017-2026 Torsten Spaete
@@ -24,8 +29,8 @@ typedef MEMORY_ALLOCATOR_ALLOC_FUNC(MemoryAllcatorAllocFunc);
 typedef MEMORY_ALLOCATOR_FREE_FUNC(MemoryAllocatorFreeFunc);
 
 typedef struct MemoryAllocator {
-	MemoryAllcatorAllocFunc *allocate;
-	MemoryAllocatorFreeFunc *free;
+	MemoryAllcatorAllocFunc *allocateFunc;
+	MemoryAllocatorFreeFunc *freeFunc;
 	void *userData;
 	uintptr_t padding;
 } MemoryAllocator;
@@ -56,8 +61,8 @@ fpl_internal_inline void *MemoryAllocatorAlloc(const MemoryAllocator *allocator,
 	if (allocator == fpl_null) {
 		allocator = &gDefaultMemoryAllocator;
 	}
-	fplAssertPtr(allocator->allocate);
-	void *result = allocator->allocate(size, allocator->userData);
+	fplAssertPtr(allocator->allocateFunc);
+	void *result = allocator->allocateFunc(size, allocator->userData);
 	return result;
 }
 
@@ -65,8 +70,8 @@ fpl_internal_inline void MemoryAllocatorFree(const MemoryAllocator *allocator, v
 	if (allocator == fpl_null) {
 		allocator = &gDefaultMemoryAllocator;
 	}
-	fplAssertPtr(allocator->free);
-	allocator->free(ptr, allocator->userData);
+	fplAssertPtr(allocator->freeFunc);
+	allocator->freeFunc(ptr, allocator->userData);
 }
 
 #endif // FINAL_CORE_H
