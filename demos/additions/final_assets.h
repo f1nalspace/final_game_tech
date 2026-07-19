@@ -9,6 +9,10 @@ Description:
 
 Changelog:
 
+	## 2026-07-19
+	- Fixed 32-bit overflow in TextureDataAllocate size math (w*h) that could under-allocate and heap-overflow
+	- Fixed components being set to the file's original channel count after a forced 4-channel decode
+
 	## 2026-07-16
 	- Fixed heap corruption for releasing TextureData with the normal memory allocator instead of stbi_image_free()
 
@@ -119,7 +123,7 @@ fpl_extern bool TextureDataAllocate(MemoryAllocator *allocator, TextureData *tar
 		// TODO(final): Logging (Invalid Arguments)
 		return false;
 	}
-	size_t size = w * h * sizeof(uint8_t) * components;
+	size_t size = (size_t)w * (size_t)h * (size_t)components * sizeof(uint8_t);
 	uint8_t *data = (uint8_t *)MemoryAllocatorAlloc(allocator, size);
 	if (data == fpl_null) {
 		// TODO(final): Logging (Insufficient memory)
@@ -229,8 +233,9 @@ fpl_extern bool TextureDataLoadFromFile(MemoryAllocator *allocator, TextureData 
 	int imageWidth = 0;
 	int imageHeight = 0;
 	int imageComponents = 0;
+	const int forcedComponentCount = 4;
 	stbi_set_flip_vertically_on_load(0);
-	stbi_uc *imageData = stbi_load_from_memory(fileBuffer, fileLen, &imageWidth, &imageHeight, &imageComponents, 4);
+	stbi_uc *imageData = stbi_load_from_memory(fileBuffer, fileLen, &imageWidth, &imageHeight, &imageComponents, forcedComponentCount);
 	if (imageData == fpl_null) {
 		// TODO(final): Logging (Failed to load/decode the image from memory)
 		InternalTextureDataLoadFromFileShutdown(allocator, &file, fileBuffer);
@@ -240,7 +245,8 @@ fpl_extern bool TextureDataLoadFromFile(MemoryAllocator *allocator, TextureData 
 	fplClearStruct(target);
 	target->width = imageWidth;
 	target->height = imageHeight;
-	target->components = imageComponents;
+	// stbi always decoded to forcedComponentCount channels, imageComponents only reports the file's original layout
+	target->components = forcedComponentCount;
 	target->data = imageData;
 	target->isDecoderOwned = true;
 
