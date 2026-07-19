@@ -87,6 +87,7 @@ SOFTWARE.
 	## v0.3.2 alpha:
 	- Fixed OOB reads on non-NUL-terminated input: all scan loops now bounded by data+size via fxml__Peek (incl. entity decode)
 	- Fixed misaligned fxmlTag allocations (undefined behavior): the bump allocator now rounds every allocation up to pointer alignment
+	- Fixed namespaced elements (<ns:tag>...</ns:tag>) failing with ClosingTagMismatch: tagName now spans the full namespace:localname
 
 	## v0.3.1 alpha:
 	- Fixed memcpy_s compile error on linux by introducing FXML_MEMCPY, that can be overwritten if needed
@@ -873,6 +874,17 @@ extern "C" {
 			return(false);
 		}
 
+		if(fxml__Peek(context, 0) == ':') {
+			// First ident was namespace, parse real ident. Extend identStr to cover the whole "namespace:localname".
+			context->ptr++;
+			if(!fxml__IsAlpha(fxml__Peek(context, 0)) || !fxml__ParseIdent(context, fxml_null)) {
+				fxml__ReportError(context, fxmlErrorType_ExpectNamespaceIdent);
+				return(false);
+			}
+			identStr.len = context->ptr - identStr.start;
+		}
+
+		// Capture tagName after the namespace handling so the closing tag (which also spans namespace:localname) matches.
 		size_t requiredTagNameLength = identStr.len + 1;
 		if(requiredTagNameLength > FXML_ARRAYCOUNT(outResult->tagName)) {
 			fxml__ReportError(context, fxmlErrorType_TagNameTooLong);
@@ -883,16 +895,6 @@ extern "C" {
 			outResult->tagName[i] = *(identStr.start + i);
 		}
 		outResult->tagName[identStr.len] = 0;
-
-		if(fxml__Peek(context, 0) == ':') {
-			// First ident was namespace, parse real ident
-			context->ptr++;
-			if(!fxml__IsAlpha(fxml__Peek(context, 0)) || !fxml__ParseIdent(context, fxml_null)) {
-				fxml__ReportError(context, fxmlErrorType_ExpectNamespaceIdent);
-				return(false);
-			}
-			identStr.len = context->ptr - identStr.start;
-		}
 
 		if(outResult->mode != fxml__ParseTagMode_Close) {
 			fxmlTag *tag = fxml__AllocTag(context);
