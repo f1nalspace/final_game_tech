@@ -143,6 +143,7 @@ License:
 Changelog:
 	## 2026-07-19
 	- Fixed: AudioSystemStopOne now finds and removes the play-item entirely under playItems.lock (was traversing unlocked -> use-after-free race with the audio thread)
+	- Fixed: Null-check probe/file-load allocations (PropeAudioFileFormat, AudioSystemLoadFileSource) so an out-of-memory condition bails cleanly instead of dereferencing null
 
 	- Changed: ResampleChunk warning text updated — now references fplGetTargetAudioFrameCount as the authoritative formula; clamp kept defensively for arbitrary non-even ratios. 44100 <-> 48000 round-trip is exact.
 */
@@ -449,6 +450,9 @@ static AudioFileFormat PropeAudioFileFormat(AudioSystemStream *stream) {
 
 	size_t initialBufferSize = fplMin(FINAL_AUDIO_MAX_PROBE_BYTES_COUNT, streamSize);
 	uint8_t *probeBuffer = (uint8_t *)fplMemoryAllocate(initialBufferSize);
+	if (probeBuffer == fpl_null) {
+		return AudioFileFormat_None;
+	}
 
 	size_t currentBufferSize = initialBufferSize;
 	bool requiresMoreData[2] = { 0 };
@@ -488,6 +492,9 @@ static AudioFileFormat PropeAudioFileFormat(AudioSystemStream *stream) {
 					fplMemoryFree(probeBuffer);
 					currentBufferSize = fplMax(currentBufferSize, mp3NewSize);
 					probeBuffer = (uint8_t *)fplMemoryAllocate(currentBufferSize);
+					if (probeBuffer == fpl_null) {
+						return AudioFileFormat_None;
+					}
 					if (mp3Status == MP3HeaderTestStatus_RequireMoreDataBegin) {
 						requiresMoreData[0] = true;
 					} else {
@@ -687,6 +694,10 @@ fpl_extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const c
 	}
 
 	uint8_t *buffer = (uint8_t *)fplMemoryAllocate(fileSize);
+	if (buffer == fpl_null) {
+		fplFileClose(&file);
+		return fpl_null;
+	}
 
 	AudioSystemStreamSeek(&stream, 0);
 
