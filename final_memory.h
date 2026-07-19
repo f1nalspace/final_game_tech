@@ -148,7 +148,7 @@ SOFTWARE.
 
 /*!
 	\file final_memory.h
-	\version v1.0.1
+	\version v1.0.2
 	\author Torsten Spaete
 	\brief Final Memory (FMEM) - An open source C99 single file header memory library.
 */
@@ -156,6 +156,11 @@ SOFTWARE.
 /*!
 	\page page_changelog Changelog
 	\tableofcontents
+
+	## v1.0.2:
+	- Fixed: fmemBeginTemporary on a multi-block growable arena granted the cross-chain remaining while base was only contiguous in one block (heap overflow); now clamped to this block's remaining
+	- Fixed: fmemPush now rounds every allocation up to pointer alignment so struct/array pushes are never misaligned (undefined behavior / strict-alignment crash)
+	- Fixed: fmemPushAligned now aligns the returned address (it previously only padded the size)
 
 	## v1.0.1:
 	- Changed: Moved FMEM_MEMSET, FMEM_MALLOC, FMEM_ASSERT into the implementation block
@@ -564,6 +569,11 @@ fmem_api uint8_t *fmemPush(fmemMemoryBlock *block, const size_t size, const fmem
 		return fmem_null;
 	}
 
+	// Round the request up to pointer alignment so struct/array pushes are never handed out misaligned
+	// after a preceding odd-sized push (undefined behavior, crashes on strict-alignment CPUs).
+	const size_t fmemAlignment = sizeof(void *);
+	const size_t alignedSize = (size + (fmemAlignment - 1)) & ~(fmemAlignment - 1);
+
 	fmemMemoryBlock *bestBlock = fmem_null;
 
 	bool isForcedBlock = (flags & fmemPushFlags_ForceBlock) == fmemPushFlags_ForceBlock;
@@ -577,8 +587,8 @@ fmem_api uint8_t *fmemPush(fmemMemoryBlock *block, const size_t size, const fmem
 				break;
 			}
 			if (searchBlock->allowPush == fmemPermission_Allowed) {
-				if ((searchBlock->used + size) <= searchBlock->size) {
-					if (bestBlock == fmem_null || (fmem__GetSpaceAvailableFor(searchBlock, size) > fmem__GetSpaceAvailableFor(bestBlock, size))) {
+				if ((searchBlock->used + alignedSize) <= searchBlock->size) {
+					if (bestBlock == fmem_null || (fmem__GetSpaceAvailableFor(searchBlock, alignedSize) > fmem__GetSpaceAvailableFor(bestBlock, alignedSize))) {
 						bestBlock = searchBlock;
 					}
 				}
@@ -603,7 +613,7 @@ fmem_api uint8_t *fmemPush(fmemMemoryBlock *block, const size_t size, const fmem
 
 	if (bestBlock != fmem_null) {
 		result = (uint8_t *)bestBlock->base + bestBlock->used;
-		bestBlock->used += size;
+		bestBlock->used += alignedSize;
 		goto done;
 	} else {
 		if (block->type != fmemType_Growable) {
@@ -634,7 +644,7 @@ fmem_api uint8_t *fmemPush(fmemMemoryBlock *block, const size_t size, const fmem
 	}
 
 	// Allocate new block
-	blockSize = fmem__RoundToSize(size + FMEM__BLOCK_META_SIZE, actualMinBlockSize);
+	blockSize = fmem__RoundToSize(alignedSize + FMEM__BLOCK_META_SIZE, actualMinBlockSize);
 	newHeader = fmem__AllocateBlock(blockSize);
 	if (newHeader == fmem_null) {
 		result = fmem_null;
@@ -645,7 +655,7 @@ fmem_api uint8_t *fmemPush(fmemMemoryBlock *block, const size_t size, const fmem
 		// No tail found -> Setup block argument
 		block->size = blockSize - FMEM__BLOCK_META_SIZE;
 		block->base = (uint8_t *)newHeader + FMEM__BLOCK_META_SIZE;
-		block->used = size;
+		block->used = alignedSize;
 		block->source = fmem_null;
 		block->totalBlockCount = 1;
 		result = (uint8_t *)block->base;
@@ -658,7 +668,7 @@ fmem_api uint8_t *fmemPush(fmemMemoryBlock *block, const size_t size, const fmem
 	newBlock->size = blockSize - FMEM__BLOCK_META_SIZE;
 	newBlock->type = tailBlock->type;
 	newBlock->source = fmem_null;
-	newBlock->used = size;
+	newBlock->used = alignedSize;
 	newBlock->allowPush = isForcedBlock ? fmemPermission_Denied : fmemPermission_Allowed;
 	block->totalBlockCount++;
 
@@ -681,14 +691,22 @@ fmem_api uint8_t *fmemPushAligned(fmemMemoryBlock *block, const size_t size, con
 	if (block == fmem_null || size == 0) {
 		return fmem_null;
 	}
-	if (alignment < 1) {
+	if (alignment <= 1) {
 		return fmemPush(block, size, flags);
 	}
-	size_t offset = ((((alignment) > 1) && (((size) & ((alignment)-1)) != 0)) ? ((alignment)-((size) & (alignment - 1))) : 0);
-	size_t alignedSize = size + offset;
-
-	uint8_t *result = fmemPush(block, alignedSize, flags);
-
+	// Over-allocate by (alignment - 1) so the returned pointer can be bumped up to the requested alignment.
+	// The old code aligned the size instead of the address, so the returned pointer was not actually aligned.
+	const fmemPushFlags rawFlags = (fmemPushFlags)(flags & ~fmemPushFlags_Clear);
+	uint8_t *raw = fmemPush(block, size + (alignment - 1), rawFlags);
+	if (raw == fmem_null) {
+		return fmem_null;
+	}
+	uintptr_t rawAddress = (uintptr_t)raw;
+	uintptr_t alignedAddress = (rawAddress + (alignment - 1)) & ~((uintptr_t)alignment - 1);
+	uint8_t *result = (uint8_t *)alignedAddress;
+	if (flags & fmemPushFlags_Clear) {
+		FMEM_MEMSET(result, 0, size);
+	}
 	return(result);
 }
 
@@ -721,7 +739,13 @@ fmem_api bool fmemBeginTemporary(fmemMemoryBlock *source, fmemMemoryBlock *tempo
 	if (source->base == fmem_null || source->size == 0) {
 		return(false);
 	}
-	size_t remainingSize = fmemGetRemainingSize(source);
+	// Temporary memory must be a single contiguous region, so it can only take the remaining space of THIS block.
+	// Using fmemGetRemainingSize here would sum the remaining across every block in a growable chain while
+	// temporary->base only points into this block -> the temporary would overflow this block's payload.
+	if (source->used > source->size) {
+		return(false);
+	}
+	size_t remainingSize = source->size - source->used;
 	if (remainingSize == 0) {
 		return(false);
 	}
