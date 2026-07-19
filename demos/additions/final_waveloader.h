@@ -10,6 +10,10 @@ Description:
 License:
 	MIT License
 	Copyright 2017-2026 Torsten Spaete
+
+Changelog:
+	## 2026-07-19
+	- Fixed: Malformed WAV chunk sizes now bounds-checked (no more heap over-read / div-by-zero); allocation is null-checked
 */
 
 #ifndef FINAL_WAVELOADER_H
@@ -85,12 +89,16 @@ extern bool TestWaveHeader(const uint8_t *buffer, const size_t bufferSize) {
 	return(true);
 }
 
-static void ConvertWaveFormatExToPCMWaveFormat(const WaveFormatEx *sourceFormat, const uint32_t dataSize, PCMWaveFormat *targetFormat) {
-	fplAssert((sourceFormat->bitsPerSample > 0) && (sourceFormat->bitsPerSample % 8 == 0));
+static bool ConvertWaveFormatExToPCMWaveFormat(const WaveFormatEx *sourceFormat, const uint32_t dataSize, PCMWaveFormat *targetFormat) {
 	uint16_t channelCount = sourceFormat->numberOfChannels;
-	uint32_t bytesPerSample = sourceFormat->bitsPerSample / 8;
-	uint32_t frameCount = dataSize / (channelCount * bytesPerSample);
-	
+	uint16_t bitsPerSample = sourceFormat->bitsPerSample;
+	if ((channelCount == 0) || (bitsPerSample == 0) || (bitsPerSample % 8 != 0)) {
+		return false;
+	}
+	uint32_t bytesPerSample = bitsPerSample / 8;
+	uint32_t frameSize = channelCount * bytesPerSample;
+	uint32_t frameCount = dataSize / frameSize;
+
 	targetFormat->channelCount = channelCount;
 	targetFormat->samplesPerSecond = sourceFormat->samplesPerSecond;
 	targetFormat->frameCount = frameCount;
@@ -104,11 +112,13 @@ static void ConvertWaveFormatExToPCMWaveFormat(const WaveFormatEx *sourceFormat,
 	} else if (bytesPerSample == 3) {
 		targetFormat->formatType = fplAudioFormatType_S24;
 	} else if (bytesPerSample == 4) {
-		if (sourceFormat->formatTag == WaveFormatTags_PCM)
+		if (sourceFormat->formatTag == WaveFormatTags_PCM) {
 			targetFormat->formatType = fplAudioFormatType_S32;
-		else
+		} else {
 			targetFormat->formatType = fplAudioFormatType_F32;
+		}
 	}
+	return true;
 }
 
 extern bool LoadWaveFormatFromBuffer(const uint8_t *buffer, const size_t bufferSize, PCMWaveFormat *outFormat) {
@@ -130,13 +140,23 @@ extern bool LoadWaveFormatFromBuffer(const uint8_t *buffer, const size_t bufferS
 	WaveFormatEx waveFormat = fplZeroInit;
 
 	size_t bufferPosition = sizeof(*header);
-	const WaveChunk *chunk = (const WaveChunk *)(buffer + bufferPosition);
-	while(chunk != fpl_null) {
+	while(bufferPosition + sizeof(WaveChunk) <= bufferSize) {
+		const WaveChunk *chunk = (const WaveChunk *)(buffer + bufferPosition);
+		uint32_t chunkId = chunk->id;
+		uint32_t chunkSize = chunk->size;
 		bufferPosition += sizeof(WaveChunk);
-		size_t nextChunkOffset = chunk->size;
-		switch(chunk->id) {
+		if(bufferPosition + chunkSize > bufferSize) {
+			// Chunk body exceeds the buffer, malformed
+			return false;
+		}
+		switch(chunkId) {
 			case WaveChunkId_Format:
 			{
+				// Core PCM fmt chunk is 16 bytes, the optional cbSize field makes it 18
+				const size_t minFormatChunkSize = 16;
+				if(chunkSize < minFormatChunkSize || bufferPosition + sizeof(WaveFormatEx) > bufferSize) {
+					return false;
+				}
 				const WaveFormatEx *format = (const WaveFormatEx *)(buffer + bufferPosition);
 				if(format->formatTag == WaveFormatTags_PCM) {
 					waveFormat = *format;
@@ -150,26 +170,19 @@ extern bool LoadWaveFormatFromBuffer(const uint8_t *buffer, const size_t bufferS
 
 			case WaveChunkId_Data:
 			{
-				uint32_t dataSize = chunk->size;
-				const uint8_t *data = buffer + bufferPosition;
+				uint32_t dataSize = chunkSize;
 				switch(waveFormat.formatTag) {
 					case WaveFormatTags_PCM:
 					case WaveFormatTags_IEEEFloat:
 					{
-						ConvertWaveFormatExToPCMWaveFormat(&waveFormat, dataSize, outFormat);
-						result = true;
+						if(ConvertWaveFormatExToPCMWaveFormat(&waveFormat, dataSize, outFormat)) {
+							result = true;
+						}
 					} break;
 				}
 			} break;
 		}
-
-		if((bufferPosition + nextChunkOffset + sizeof(WaveChunk)) <= bufferSize) {
-			bufferPosition += nextChunkOffset;
-			chunk = (const WaveChunk *)(buffer + bufferPosition);
-		} else {
-			chunk = fpl_null;
-			break;
-		}
+		bufferPosition += chunkSize;
 	}
 	return(result);
 }
@@ -197,13 +210,25 @@ extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, P
 	WaveFormatEx waveFormat = fplZeroInit;
 
 	size_t bufferPosition = sizeof(*header);
-	const WaveChunk *chunk = (const WaveChunk *)(buffer + bufferPosition);
-	while(chunk != fpl_null) {
+	while(bufferPosition + sizeof(WaveChunk) <= bufferSize) {
+		const WaveChunk *chunk = (const WaveChunk *)(buffer + bufferPosition);
+		uint32_t chunkId = chunk->id;
+		uint32_t chunkSize = chunk->size;
 		bufferPosition += sizeof(WaveChunk);
-		size_t nextChunkOffset = chunk->size;
-		switch(chunk->id) {
+		if(bufferPosition + chunkSize > bufferSize) {
+			// Chunk body exceeds the buffer, malformed
+			PushWaveError(outWave, "Chunk body of size '%lu' exceeds the buffer!", (unsigned long)chunkSize);
+			return false;
+		}
+		switch(chunkId) {
 			case WaveChunkId_Format:
 			{
+				// Core PCM fmt chunk is 16 bytes, the optional cbSize field makes it 18
+				const size_t minFormatChunkSize = 16;
+				if(chunkSize < minFormatChunkSize || bufferPosition + sizeof(WaveFormatEx) > bufferSize) {
+					PushWaveError(outWave, "Format chunk of size '%lu' is too small!", (unsigned long)chunkSize);
+					return false;
+				}
 				const WaveFormatEx *format = (const WaveFormatEx *)(buffer + bufferPosition);
 				if(format->formatTag == WaveFormatTags_PCM) {
 					waveFormat = *format;
@@ -218,17 +243,24 @@ extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, P
 
 			case WaveChunkId_Data:
 			{
-				uint32_t dataSize = chunk->size;
+				uint32_t dataSize = chunkSize;
 				const uint8_t *data = buffer + bufferPosition;
 				switch(waveFormat.formatTag) {
 					case WaveFormatTags_PCM:
 					case WaveFormatTags_IEEEFloat:
 					{
-						ConvertWaveFormatExToPCMWaveFormat(&waveFormat, dataSize, &outWave->format);
+						if(!ConvertWaveFormatExToPCMWaveFormat(&waveFormat, dataSize, &outWave->format)) {
+							PushWaveError(outWave, "Invalid wave format (channels or bits-per-sample)!");
+							return false;
+						}
 						size_t sampleMemorySize = outWave->format.bytesPerSample * outWave->format.channelCount * outWave->format.frameCount;
-						fplAssert(sampleMemorySize == dataSize);
+						// sampleMemorySize is derived from dataSize via integer division, so it can never exceed the verified in-buffer dataSize
 						outWave->samplesSize = sampleMemorySize;
 						outWave->isamples = (uint8_t *)fplMemoryAllocate(sampleMemorySize);
+						if(outWave->isamples == fpl_null) {
+							PushWaveError(outWave, "Failed allocating '%zu' bytes for wave samples!", sampleMemorySize);
+							return false;
+						}
 						fplMemoryCopy(data, sampleMemorySize, outWave->isamples);
 						outWave->isValid = true;
 						result = true;
@@ -236,14 +268,7 @@ extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, P
 				}
 			} break;
 		}
-
-		if((bufferPosition + nextChunkOffset + sizeof(WaveChunk)) <= bufferSize) {
-			bufferPosition += nextChunkOffset;
-			chunk = (const WaveChunk *)(buffer + bufferPosition);
-		} else {
-			chunk = fpl_null;
-			break;
-		}
+		bufferPosition += chunkSize;
 	}
 	return(result);
 }
