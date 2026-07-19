@@ -6,6 +6,10 @@ Description:
 	Sample format conversion, interleave/deinterleave, and SinC resampling.
 
 Changelog:
+	## 2026-07-19
+	- Fixed: Producer-side clamp of outFrameCount to minOutputFrameCount so the resampler can never write minOut+1 frames past the caller's output buffer.
+	- Changed: SinC cores now precompute the SinC table once (AudioSinCTableInitialize) and sample it (GetSinCTableValue) per tap instead of calling sinf ~17x per output sample/channel.
+
 	- Changed: AudioResampleInterleaved / AudioResampleDeinterleaved now derive inFrameCount and outFrameCount via fplGetTargetAudioFrameCount so the resampler agrees with the FPL frame-count formula by construction.
 	- New: Added TestResampleFrameCount + TestResampleInterleaved_44100_48000_Roundtrip in TestAudioSamplesSuite covering 44100<->48000 round-trip and edge block sizes.
 */
@@ -428,6 +432,10 @@ static AudioResampleResult Audio__ResamplingInterleaved(const uint16_t channelCo
 	// Clear samples
 	fplMemoryClear(outSamples, targetFrameCount * channelCount * sizeof(float));
 
+	// Precompute the SinC filter once and sample it per tap instead of calling sinf for every tap (major CPU saving)
+	AudioSinCTable sincTable;
+	AudioSinCTableInitialize(&sincTable, (uint32_t)filterRadius);
+
     for (uint32_t tgtFrame = 0; tgtFrame < targetFrameCount; ++tgtFrame) {
         float srcFrame = tgtFrame * tgtToSrcRatio;
         int srcFrameInt = (int)srcFrame;
@@ -452,7 +460,7 @@ static AudioResampleResult Audio__ResamplingInterleaved(const uint16_t channelCo
                 if (srcIndex >= 0 && srcIndex < (int)sourceFrameCount) {
 					float input = inSamples[srcIndex * channelCount + channel];
 					float f = r - frac;
-                    float sincValue = AudioSinC(f);
+                    float sincValue = GetSinCTableValue(&sincTable, f);
 					float output = input * sincValue;
                     sample += output;
 					weightSum += sincValue;
@@ -499,6 +507,10 @@ static AudioResampleResult Audio__ResamplingDeinterleaved(const uint16_t channel
 	const float srcToTgtRatio = (float)targetSampleRate / (float)sourceSampleRate;
     const float tgtToSrcRatio = 1.0f / srcToTgtRatio;
 
+	// Precompute the SinC filter once and sample it per tap instead of calling sinf for every tap (major CPU saving)
+	AudioSinCTable sincTable;
+	AudioSinCTableInitialize(&sincTable, (uint32_t)filterRadius);
+
 	for (uint16_t channel = 0; channel < channelCount; ++channel) {
 		const float *channelInSamples = inSamples[channel];
 		float *channelOutSamples = outSamples[channel];
@@ -528,7 +540,7 @@ static AudioResampleResult Audio__ResamplingDeinterleaved(const uint16_t channel
 				// Version with jumps
                 if (srcIndex >= 0 && srcIndex < (int)sourceFrameCount) {
 					float f = r - frac;
-                    float sincValue = AudioSinC(f);
+                    float sincValue = GetSinCTableValue(&sincTable, f);
 					float input = channelInSamples[srcIndex];
 					float output = input * sincValue;
                     sample += output;
@@ -604,6 +616,11 @@ fpl_extern AudioResampleResult AudioResampleInterleaved(const AudioChannelIndex 
 	AudioFrameIndex inFrameCount = fplMin(fplGetTargetAudioFrameCount(minOutputFrameCount, outSampleRate, inSampleRate), maxInputFrameCount);
 	AudioFrameIndex outFrameCount = fplGetTargetAudioFrameCount(inFrameCount, inSampleRate, outSampleRate);
 
+	// Forward-solving can round up to minOutputFrameCount+1; clamp so the core never writes past a minOutputFrameCount-sized outSamples buffer
+	if (outFrameCount > minOutputFrameCount) {
+		outFrameCount = minOutputFrameCount;
+	}
+
 	// Return just the number of frames, when the buffers was null
 	if (inSamples == fpl_null || outSamples == fpl_null) {
 		AudioResampleResult result = fplZeroInit;
@@ -625,6 +642,11 @@ fpl_extern AudioResampleResult AudioResampleDeinterleaved(const AudioChannelInde
 
 	AudioFrameIndex inFrameCount = fplMin(fplGetTargetAudioFrameCount(minOutputFrameCount, outSampleRate, inSampleRate), maxInputFrameCount);
 	AudioFrameIndex outFrameCount = fplGetTargetAudioFrameCount(inFrameCount, inSampleRate, outSampleRate);
+
+	// Forward-solving can round up to minOutputFrameCount+1; clamp so the core never writes past a minOutputFrameCount-sized outSamples buffer
+	if (outFrameCount > minOutputFrameCount) {
+		outFrameCount = minOutputFrameCount;
+	}
 
 	// Return just the number of frames, when the buffers was null
 	if (inSamples == fpl_null || outSamples == fpl_null) {
