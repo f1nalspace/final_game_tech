@@ -247,7 +247,7 @@ int main(int argc, char **args) {
         contextCreationParams.windowHandle.win32.deviceContext = fpl__global__AppState->window.win32.deviceContext;
 #	elif defined(FGL_PLATFORM_LINUX) && defined(FPL_SUBPLATFORM_X11)
         contextCreationParams.windowHandle.posix.display = fpl__global__AppState->window.x11.display;
-        contextCreationParams.windowHandle.posix.window = fpl__global__AppState->window.x11.window;
+        contextCreationParams.windowHandle.posix.window = fpl__global__AppState->window.x11.core.window;
 #	endif
         fglOpenGLContext glContext = {0};
         if (fglLoadOpenGL(false)) {
