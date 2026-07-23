@@ -1074,7 +1074,7 @@ static void DrawPanelLabel(const Application *app, UIContext *uiCtx, const float
 	Vec2f labelSize = UIGetStringSize(uiCtx, text, labelLen);
 	float centerLabelX = x + (w - labelSize.w) * 0.5f;
 	float centerLabelY = y + (h - labelSize.h) * 0.5f;
-	UIString(uiCtx, centerLabelX, centerLabelY, ColorDarkGray, text, labelLen);
+	UIString(uiCtx, centerLabelX, centerLabelY, Color4fDarkGray, text, labelLen);
 	UISetFont(uiCtx, lastFont.currentFont, lastFont.currentFontTextureID, lastFont.fontHeight, lastFont.lineHeight);
 }
 
@@ -1114,9 +1114,9 @@ static void DrawDisplayState(Application *app, const fgbPPU *ppu, const float x,
 	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "%s", text);
 	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
 	if (ppu->lcd.lcdc.lcdEnabled)
-		bitColor = ColorGreen;
+		bitColor = Color4fGreen;
 	else
-		bitColor = ColorRed;
+		bitColor = Color4fRed;
 	UIString(uiCtx, textX, textY, bitColor, TextBuffer, 0);
 	textX += textSize.w;
 
@@ -1225,9 +1225,9 @@ static void DrawDisplayState(Application *app, const fgbPPU *ppu, const float x,
 		RendererDrawFilledQuad(tmpX + (float)i * fifoCellWidth, tmpY, fifoCellWidth, fifoHeight, color);
 	}
 
-	RendererDrawStrokedQuad(tmpX, tmpY, fifoWidth, fifoHeight, 2.0f, ColorGray);
+	RendererDrawStrokedQuad(tmpX, tmpY, fifoWidth, fifoHeight, 2.0f, Color4fGray);
 	for (int i = 1; i < fifoCapacity; ++i) {
-		RendererDrawLine(tmpX + (float)i * fifoCellWidth, tmpY, tmpX + (float)i * fifoCellWidth, tmpY + fifoHeight, 1.0f, ColorGray);
+		RendererDrawLine(tmpX + (float)i * fifoCellWidth, tmpY, tmpX + (float)i * fifoCellWidth, tmpY + fifoHeight, 1.0f, Color4fGray);
 	}
 
 	textY -= fifoHeight;
@@ -1320,9 +1320,9 @@ static void DrawSoundState(Application *app, fgbSystem *system, const float x, c
 	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "%s", text);
 	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
 	if (soundOn)
-		bitColor = ColorGreen;
+		bitColor = Color4fGreen;
 	else
-		bitColor = ColorRed;
+		bitColor = Color4fRed;
 	UIString(uiCtx, textX, textY, bitColor, TextBuffer, 0);
 	textX += textSize.w;
 
@@ -1525,9 +1525,9 @@ static void DrawCPUState(Application *app, fgbSystem *system, const float x, con
 	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "Z ");
 	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
 	if (!r->f.zeroFlag)
-		flagColor = ColorRed;
+		flagColor = Color4fRed;
 	else
-		flagColor = ColorGreen;
+		flagColor = Color4fGreen;
 	UIString(uiCtx, tmpX, textY, flagColor, TextBuffer, 0);
 	tmpX += textSize.w;
 
@@ -1535,9 +1535,9 @@ static void DrawCPUState(Application *app, fgbSystem *system, const float x, con
 	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "N ");
 	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
 	if (!r->f.negativeFlag)
-		flagColor = ColorRed;
+		flagColor = Color4fRed;
 	else
-		flagColor = ColorGreen;
+		flagColor = Color4fGreen;
 	UIString(uiCtx, tmpX, textY, flagColor, TextBuffer, 0);
 	tmpX += textSize.w;
 
@@ -1545,9 +1545,9 @@ static void DrawCPUState(Application *app, fgbSystem *system, const float x, con
 	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "H ");
 	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
 	if (!r->f.halfCarryFlag)
-		flagColor = ColorRed;
+		flagColor = Color4fRed;
 	else
-		flagColor = ColorGreen;
+		flagColor = Color4fGreen;
 	UIString(uiCtx, tmpX, textY, flagColor, TextBuffer, 0);
 	tmpX += textSize.w;
 
@@ -1555,9 +1555,9 @@ static void DrawCPUState(Application *app, fgbSystem *system, const float x, con
 	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "C");
 	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
 	if (!r->f.fullCarryFlag)
-		flagColor = ColorRed;
+		flagColor = Color4fRed;
 	else
-		flagColor = ColorGreen;
+		flagColor = Color4fGreen;
 	UIString(uiCtx, tmpX, textY, flagColor, TextBuffer, 0);
 	tmpX += textSize.w;
 
@@ -1721,21 +1721,21 @@ static void DrawDisplay(const Application *app, const float x, const float y, co
 			RendererShaderUniformVec2f(shaderProgram, textureSizeLocation, textureSize);
 			RendererShaderUniformVec2f(shaderProgram, imageSizeLocation, imageSize);
 
-			RendererDrawTexturedQuad(tex->id, boyX, boyY, boyWidth, boyHeight, ColorWhite, 0.0f, 1.0f, 1.0f, 0.0f);
+			RendererDrawTexturedQuad(tex->id, boyX, boyY, boyWidth, boyHeight, Color4fWhite, 0.0f, 1.0f, 1.0f, 0.0f);
 
 			RendererShaderUnbind(shaderProgram);
 
 		} else {
-			RendererDrawTexturedQuad(tex->id, boyX, boyY, boyWidth, boyHeight, ColorWhite, uMin, vMin, uMax, vMax);
+			RendererDrawTexturedQuad(tex->id, boyX, boyY, boyWidth, boyHeight, Color4fWhite, uMin, vMin, uMax, vMax);
 		}
 	} else {
-		RendererDrawFilledQuad(x + border * 2.0f, y + border * 2.0f, w - border * 4.0f, h - border * 4.0f, ColorBlack);
+		RendererDrawFilledQuad(x + border * 2.0f, y + border * 2.0f, w - border * 4.0f, h - border * 4.0f, Color4fBlack);
 
 		const char *insertGameText = "No Game Pak loaded";
 		size_t textLen = fplGetStringLength(insertGameText);
 		Vec2f textSize = FontGetTextSize(&app->fontData, insertGameText, textLen, fontHeight * 2.0f);
 
-		RendererDrawString(&app->fontData, app->fontTexture.id, insertGameText, textLen, x + (w - textSize.w) * 0.5f, y + (h - textSize.h) * 0.5f - fontHeight, fontHeight * 2.0f, ColorWhite);
+		RendererDrawString(&app->fontData, app->fontTexture.id, insertGameText, textLen, x + (w - textSize.w) * 0.5f, y + (h - textSize.h) * 0.5f - fontHeight, fontHeight * 2.0f, Color4fWhite);
 	}
 }
 
@@ -1759,7 +1759,7 @@ static void DrawBackgroundMap(const UIContext *uiCtx, const Application *app, co
 	float insideWidth = w - insideMargin * 2.0f;
 	float insideHeight = h - insideMargin * 2.0f;
 
-	//DrawFilledQuad(insideX, insideY, insideWidth, insideHeight, ColorWhite);
+	//DrawFilledQuad(insideX, insideY, insideWidth, insideHeight, Color4fWhite);
 
 	float tileSize = insideWidth / (float)gridCountX;
 
@@ -1770,7 +1770,7 @@ static void DrawBackgroundMap(const UIContext *uiCtx, const Application *app, co
 	float tilesY = insideY + insideHeight;
 
 	float texY = insideY + insideHeight - totalTilesHeight;
-	RendererDrawTexturedQuad(tex->id, insideX, texY, insideWidth, totalTilesHeight, ColorWhite, uMin, vMin, uMax, vMax);
+	RendererDrawTexturedQuad(tex->id, insideX, texY, insideWidth, totalTilesHeight, Color4fWhite, uMin, vMin, uMax, vMax);
 
 	Color4f gridLineColor = { 0.1f, 0.1f, 0.1f, 0.25f };
 	for (uint8_t i = 0; i <= gridCountX; ++i) {
@@ -1815,25 +1815,25 @@ static void DrawBackgroundMap(const UIContext *uiCtx, const Application *app, co
 
 	if (isHorizontalWrap && isVerticalWrap) {
 		// Bottom Right
-		RendererDrawStrokedQuad(tilesX + scrollX, tilesY - scrollY - yRemaining, xRemaining, yRemaining, 2.0f, ColorRed);
+		RendererDrawStrokedQuad(tilesX + scrollX, tilesY - scrollY - yRemaining, xRemaining, yRemaining, 2.0f, Color4fRed);
 		// Bottom Left
-		RendererDrawStrokedQuad(tilesX, tilesY - scrollY - yRemaining, xDepth, yRemaining, 2.0f, ColorRed);
+		RendererDrawStrokedQuad(tilesX, tilesY - scrollY - yRemaining, xDepth, yRemaining, 2.0f, Color4fRed);
 		// Top Right
-		RendererDrawStrokedQuad(tilesX + scrollX, tilesY - yDepth, xRemaining, yDepth, 2.0f, ColorRed);
+		RendererDrawStrokedQuad(tilesX + scrollX, tilesY - yDepth, xRemaining, yDepth, 2.0f, Color4fRed);
 		// Top Left
-		RendererDrawStrokedQuad(tilesX, tilesY - yDepth, xDepth, yDepth, 2.0f, ColorRed);
+		RendererDrawStrokedQuad(tilesX, tilesY - yDepth, xDepth, yDepth, 2.0f, Color4fRed);
 	} else if (isHorizontalWrap && !isVerticalWrap) {
 		// Right
-		RendererDrawStrokedQuad(tilesX + scrollX, tilesY - scrollY - scrollHeight, xRemaining, scrollHeight, 2.0f, ColorRed);
+		RendererDrawStrokedQuad(tilesX + scrollX, tilesY - scrollY - scrollHeight, xRemaining, scrollHeight, 2.0f, Color4fRed);
 		// Left
-		RendererDrawStrokedQuad(tilesX, tilesY - scrollY - scrollHeight, xDepth, scrollHeight, 2.0f, ColorRed);
+		RendererDrawStrokedQuad(tilesX, tilesY - scrollY - scrollHeight, xDepth, scrollHeight, 2.0f, Color4fRed);
 	} else if (isVerticalWrap && !isHorizontalWrap) {
 		// Bottom
-		RendererDrawStrokedQuad(tilesX + scrollX, tilesY - scrollY - yRemaining, scrollWidth, yRemaining, 2.0f, ColorRed);
+		RendererDrawStrokedQuad(tilesX + scrollX, tilesY - scrollY - yRemaining, scrollWidth, yRemaining, 2.0f, Color4fRed);
 		// Top
-		RendererDrawStrokedQuad(tilesX + scrollX, tilesY - yDepth, scrollWidth, yDepth, 2.0f, ColorRed);
+		RendererDrawStrokedQuad(tilesX + scrollX, tilesY - yDepth, scrollWidth, yDepth, 2.0f, Color4fRed);
 	} else {
-		RendererDrawStrokedQuad(tilesX + scrollX, tilesY - scrollY - scrollHeight, scrollWidth, scrollHeight, 2.0f, ColorRed);
+		RendererDrawStrokedQuad(tilesX + scrollX, tilesY - scrollY - scrollHeight, scrollWidth, scrollHeight, 2.0f, Color4fRed);
 	}
 }
 
@@ -1844,9 +1844,9 @@ static void DrawBackground(const Application *app, const float x, const float y,
 	float vMin = tex->vScale;
 	float vMax = 0.0f;
 	float border = 1.0f;
-	RendererDrawFilledQuad(x, y, w, h, ColorBlack);
-	RendererDrawStrokedQuad(x + border * 0.5f, y + border * 0.5f, w - border, h - border, border, ColorWhite);
-	RendererDrawTexturedQuad(tex->id, x + border * 2.0f, y + border * 2.0f, w - border * 4.0f, h - border * 4.0f, ColorWhite, uMin, vMin, uMax, vMax);
+	RendererDrawFilledQuad(x, y, w, h, Color4fBlack);
+	RendererDrawStrokedQuad(x + border * 0.5f, y + border * 0.5f, w - border, h - border, border, Color4fWhite);
+	RendererDrawTexturedQuad(tex->id, x + border * 2.0f, y + border * 2.0f, w - border * 4.0f, h - border * 4.0f, Color4fWhite, uMin, vMin, uMax, vMax);
 }
 
 static void DrawTiles(const UIContext *uiCtx, const Texture *tex, const float x, const float y, const float w, const float h, const float aspect) {
@@ -1876,7 +1876,7 @@ static void DrawTiles(const UIContext *uiCtx, const Texture *tex, const float x,
 
 	UIPanel(uiCtx, x, y, w, h, true);
 
-	RendererDrawTexturedQuad(tex->id, rx, ry, rw, rh, ColorWhite, uMin, vMin, uMax, vMax);
+	RendererDrawTexturedQuad(tex->id, rx, ry, rw, rh, Color4fWhite, uMin, vMin, uMax, vMax);
 
 	for (uint8_t i = 0; i <= gridCountX; ++i) {
 		const float gridLineX0 = rx + (float)i * tileSize;
@@ -1940,10 +1940,10 @@ static void DrawPalette(const float x, const float y, const float cellWidth, con
 	float colW = cellWidth - border * 2.0f;
 	float colH = cellHeight - border * 2.0f;
 
-	RendererDrawStrokedQuad(x + border * 0.5f, y + border * 0.5f, totalWidth - border, totalHeight - border, 1.0f, ColorGray);
+	RendererDrawStrokedQuad(x + border * 0.5f, y + border * 0.5f, totalWidth - border, totalHeight - border, 1.0f, Color4fGray);
 
 	for (uint8_t colorIndex = 1; colorIndex < colorCount; ++colorIndex) {
-		RendererDrawLine(x + (float)colorIndex * cellWidth, y, x + (float)colorIndex * cellWidth, y + cellHeight, 1.0f, ColorGray);
+		RendererDrawLine(x + (float)colorIndex * cellWidth, y, x + (float)colorIndex * cellWidth, y + cellHeight, 1.0f, Color4fGray);
 	}
 	for (uint8_t colorIndex = 0; colorIndex < colorCount; ++colorIndex) {
 		float colX = x + (float)colorIndex * cellWidth + border;
@@ -2886,7 +2886,7 @@ static void RenderDebugFrame(Application *app, const InputState *input) {
 	float mouseCursorWidth = 32.0f;
 	float mouseCursorHeight = 32.0f;
 	Vec2f mousePos = input->mouse.worldPos;
-	RendererDrawTexturedQuad(app->cursorTexture.id, mousePos.x, mousePos.y - mouseCursorHeight, mouseCursorWidth, mouseCursorHeight, ColorWhite, 0.0f, 0.0f, 1.0f, 1.0f);
+	RendererDrawTexturedQuad(app->cursorTexture.id, mousePos.x, mousePos.y - mouseCursorHeight, mouseCursorWidth, mouseCursorHeight, Color4fWhite, 0.0f, 0.0f, 1.0f, 1.0f);
 #endif
 }
 
@@ -2902,7 +2902,7 @@ static void RenderGameFrame(const Application *app, const InputState *input) {
 
 	const float displayAspect = FGB_DISPLAY_WIDTH / (float)FGB_DISPLAY_HEIGHT;
 
-	RendererDrawFilledQuad(0, 0, w, h, ColorBlack);
+	RendererDrawFilledQuad(0, 0, w, h, Color4fBlack);
 
 	DrawDisplay(app, 0, 0, w, h, displayAspect);
 }

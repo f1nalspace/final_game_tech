@@ -35,14 +35,14 @@ const APITextureFormat InvalidAPITextureFormat = fplZeroInit;
 
 const Texture InvalidTexture = fplZeroInit;
 
-const Color4f ColorWhite = { 1.0f, 1.0f, 1.0f, 1.0f };
-const Color4f ColorBlack = { 0.0f, 0.0f, 0.0f, 1.0f };
-const Color4f ColorRed = { 1.0f, 0.0f, 0.0f, 1.0f };
-const Color4f ColorGreen = { 0.0f, 1.0f, 0.0f, 1.0f };
-const Color4f ColorBlue = { 0.0f, 0.0f, 1.0f, 1.0f };
-const Color4f ColorYellow = { 1.0f, 1.0f, 0.0f, 1.0f };
-const Color4f ColorGray = { 0.5f, 0.5f, 0.5f, 1.0f };
-const Color4f ColorDarkGray = { 0.25f, 0.25f, 0.25f, 1.0f };
+const Color4f Color4fWhite = { 1.0f, 1.0f, 1.0f, 1.0f };
+const Color4f Color4fBlack = { 0.0f, 0.0f, 0.0f, 1.0f };
+const Color4f Color4fRed = { 1.0f, 0.0f, 0.0f, 1.0f };
+const Color4f Color4fGreen = { 0.0f, 1.0f, 0.0f, 1.0f };
+const Color4f Color4fBlue = { 0.0f, 0.0f, 1.0f, 1.0f };
+const Color4f Color4fYellow = { 1.0f, 1.0f, 0.0f, 1.0f };
+const Color4f Color4fGray = { 0.5f, 0.5f, 0.5f, 1.0f };
+const Color4f Color4fDarkGray = { 0.25f, 0.25f, 0.25f, 1.0f };
 
 static char glErrorCodeBuffer[16];
 static const char *GetGLErrorString(const GLenum err) {

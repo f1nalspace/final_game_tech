@@ -68,14 +68,14 @@ extern const APITextureFormat InvalidAPITextureFormat;
 
 extern const Texture InvalidTexture;
 
-extern const Color4f ColorWhite;
-extern const Color4f ColorBlack;
-extern const Color4f ColorRed;
-extern const Color4f ColorGreen;
-extern const Color4f ColorBlue;
-extern const Color4f ColorYellow;
-extern const Color4f ColorGray;
-extern const Color4f ColorDarkGray;
+extern const Color4f Color4fWhite;
+extern const Color4f Color4fBlack;
+extern const Color4f Color4fRed;
+extern const Color4f Color4fGreen;
+extern const Color4f Color4fBlue;
+extern const Color4f Color4fYellow;
+extern const Color4f Color4fGray;
+extern const Color4f Color4fDarkGray;
 
 typedef void RendererContext;
 
