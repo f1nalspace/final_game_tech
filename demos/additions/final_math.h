@@ -12,6 +12,13 @@ License:
 	Copyright 2017-2026 Torsten Spaete
 
 Changelog
+	## 2026-07-23
+	- Restored the include of float.h, so consumers still get FLT_MAX/FLT_MIN from this header
+	- Added M4fOrthoLH()
+	- Added RGBA32ToLinear(), LinearToRGBA32() and AlphaToLinear()
+	- Enabled the color constants (ColorWhite, ColorRed, ColorGreen, ColorBlue, ColorLightGray, ColorDarkGray)
+	- Fixed ColorWhite had its red component set to zero
+
 	## 2026-06-24
 	- Fixed linking error for multiple TU builds
 
@@ -95,6 +102,10 @@ Changelog
 // All constants are defined ourselves below, so no math.h/float.h constants
 // and no need for _USE_MATH_DEFINES.
 #include <math.h>
+
+// Included for backwards compatibility only, because this header used to pull in float.h.
+// The constants below do not depend on it, but consumers may still expect FLT_MAX/FLT_MIN from here.
+#include <float.h>
 
 //! Largest finite 32-bit float (FLT_MAX).
 static const float F32MaxValue = 3.402823466e+38f;
@@ -1953,6 +1964,27 @@ fpl_extern_inline Mat2f M2fMultTranspose(const Mat2f a, const Mat2f b) {
 // Mat4f
 //
 /**
+* @brief Builds a left-handed orthographic projection matrix.
+* @param[in] left The left clipping plane.
+* @param[in] right The right clipping plane.
+* @param[in] bottom The bottom clipping plane.
+* @param[in] top The top clipping plane.
+* @param[in] zNear The near clipping plane.
+* @param[in] zFar The far clipping plane.
+* @return The orthographic projection matrix.
+*/
+fpl_extern_inline Mat4f M4fOrthoLH(const float left, const float right, const float bottom, const float top, const float zNear, const float zFar) {
+	Mat4f result = M4fInit(1.0f);
+	result.r[0][0] = 2.0f / (right - left);
+	result.r[1][1] = 2.0f / (top - bottom);
+	result.r[2][2] = 2.0f / (zFar - zNear);
+	result.r[3][0] = -(right + left) / (right - left);
+	result.r[3][1] = -(top + bottom) / (top - bottom);
+	result.r[3][2] = -(zFar + zNear) / (zFar - zNear);
+	return (result);
+}
+
+/**
 * @brief Builds a right-handed orthographic projection matrix.
 * @param[in] left The left clipping plane.
 * @param[in] right The right clipping plane.
@@ -2660,14 +2692,19 @@ fpl_extern_inline Quaternion QuatRotation(const Vec3f orig, const Vec3f dest) {
 //
 // Pixel
 //
-#if 0
-static const Vec4f ColorWhite = V4fInit(.0f, 1.0f, 1.0f, 1.0f);
-static const Vec4f ColorRed = V4fInit(1.0f, 0.0f, 0.0f, 1.0f);
-static const Vec4f ColorGreen = V4fInit(0.0f, 1.0f, 0.0f, 1.0f);
-static const Vec4f ColorBlue = V4fInit(0.0f, 0.0f, 1.0f, 1.0f);
-static const Vec4f ColorLightGray = V4fInit(0.3f, 0.3f, 0.3f, 1.0f);
-static const Vec4f ColorDarkGray = V4fInit(0.2f, 0.2f, 0.2f, 1.0f);
-#endif
+// Brace initializers are used here on purpose, because a static initializer must be a constant expression in C.
+//! Opaque white.
+static const Vec4f ColorWhite = V4F(1.0f, 1.0f, 1.0f, 1.0f);
+//! Opaque red.
+static const Vec4f ColorRed = V4F(1.0f, 0.0f, 0.0f, 1.0f);
+//! Opaque green.
+static const Vec4f ColorGreen = V4F(0.0f, 1.0f, 0.0f, 1.0f);
+//! Opaque blue.
+static const Vec4f ColorBlue = V4F(0.0f, 0.0f, 1.0f, 1.0f);
+//! Opaque light gray.
+static const Vec4f ColorLightGray = V4F(0.3f, 0.3f, 0.3f, 1.0f);
+//! Opaque dark gray.
+static const Vec4f ColorDarkGray = V4F(0.2f, 0.2f, 0.2f, 1.0f);
 
 /**
 * @brief Creates a Pixel from separate red, green, blue and alpha bytes.
@@ -2930,6 +2967,38 @@ fpl_extern_inline Pixel LinearToPixelSRGB(const Vec4f linear) {
 	return(result);
 }
 
+/**
+* @brief Builds a normalized color from a packed RGBA uint32 (red in the lowest byte) without sRGB conversion.
+* @param[in] rgba The packed RGBA value.
+* @return The color with components in the range [0, 1].
+*/
+fpl_extern_inline Vec4f RGBA32ToLinear(const uint32_t rgba) {
+	Pixel pixel = MakePixelFromU32(rgba);
+	Vec4f result = PixelToLinearRaw(pixel);
+	return(result);
+}
+
+/**
+* @brief Packs a normalized color into an RGBA uint32 (red in the lowest byte) without sRGB conversion.
+* @param[in] linear The color with components in the range [0, 1].
+* @return The packed RGBA value.
+*/
+fpl_extern_inline uint32_t LinearToRGBA32(const Vec4f linear) {
+	Pixel pixel = LinearToPixelRaw(linear);
+	uint32_t result = RGBA8FromPixel(pixel);
+	return(result);
+}
+
+/**
+* @brief Builds a white color with the given alpha byte applied.
+* @param[in] alpha The alpha channel.
+* @return The color with the RGB channels set to one and the alpha mapped into the range [0, 1].
+*/
+fpl_extern_inline Vec4f AlphaToLinear(const uint8_t alpha) {
+	float a = RoundU8ToF32(alpha);
+	Vec4f result = V4fInit(1.0f, 1.0f, 1.0f, a);
+	return(result);
+}
 
 
 /**
