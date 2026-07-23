@@ -9,6 +9,9 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
+	## 2026-07-23
+	- Changed AllocateTexture repeatable to TextureWrapMode
+
 	## 2026-07-19
 	- Fixed: RenderWithOpenGL now stops when sizeof(CommandHeader) + dataSize exceeds the remaining buffer, so a truncated/mis-sized command can never underflow 'remaining' and walk off the buffer
 
@@ -73,7 +76,7 @@ fpl_extern void DrawTextFont(const float x, const float y, const char *text, con
 fpl_extern void DrawCircle(const float centerX, const float centerY, const float radius, const bool isFilled, const Vec4f color, const int segments);
 fpl_extern void DrawNormal(const Vec2f pos, const Vec2f normal, const float length, const Vec4f color);
 
-fpl_extern GLuint AllocateTexture(const uint32_t width, const uint32_t height, const void *data, const bool repeatable, const GLint filter, const bool isAlphaOnly);
+fpl_extern GLuint AllocateTexture(const uint32_t width, const uint32_t height, const void *data, const TextureWrapMode wrap, const GLint filter, const bool isAlphaOnly);
 
 // Initialize GL state and detect GPU capabilities. When outCaps is non-null it is filled with the
 // GL/GLSL version, max texture image units and shader support -- the caller may then inspect or change
@@ -254,7 +257,18 @@ static void _ReportMissingUniformOnce(RenderState *renderState, const GLuint pro
 	LogWrite(LogLevel_Verbose, OPENGLRENDER_LOG_CATEGORY, "Uniform '%s' has no location in program %u -- the shader does not use it (reported once)", uniformName, (unsigned)program);
 }
 
-fpl_extern GLuint AllocateTexture(const uint32_t width, const uint32_t height, const void *data, const bool repeatable, const GLint filter, const bool isAlphaOnly) {
+// GL_CLAMP is the legacy border-sampling clamp; GL_CLAMP_TO_EDGE is the one that does not bleed the
+// border color into the last texel row, which is what every sheet in the game wants.
+static GLint _GetTextureWrapParameter(const TextureWrapMode wrap) {
+	switch(wrap) {
+		case TextureWrapMode_Repeat:        return GL_REPEAT;
+		case TextureWrapMode_ClampToBorder: return GL_CLAMP;
+		case TextureWrapMode_ClampToEdge:
+		default:                            return GL_CLAMP_TO_EDGE;
+	}
+}
+
+fpl_extern GLuint AllocateTexture(const uint32_t width, const uint32_t height, const void *data, const TextureWrapMode wrap, const GLint filter, const bool isAlphaOnly) {
 	if (width == 0 || height == 0) {
 		return 0;
 	}
@@ -280,8 +294,9 @@ fpl_extern GLuint AllocateTexture(const uint32_t width, const uint32_t height, c
 
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, repeatable ? GL_REPEAT : GL_CLAMP);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, repeatable ? GL_REPEAT : GL_CLAMP);
+	GLint wrapParameter = _GetTextureWrapParameter(wrap);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrapParameter);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrapParameter);
 
 	glBindTexture(GL_TEXTURE_2D, 0);
 
@@ -715,7 +730,7 @@ fpl_extern void RenderWithOpenGL(RenderState *renderState) {
 		if(op->type == TextureOperationType_Upload) {
 			bool isAlphaOnly = op->bytesPerPixel == 1;
 			GLint filter = op->filter == TextureFilterType_Nearest ? GL_NEAREST : GL_LINEAR;
-			GLuint texId = AllocateTexture(op->width, op->height, op->data, false, filter, isAlphaOnly);
+			GLuint texId = AllocateTexture(op->width, op->height, op->data, op->wrap, filter, isAlphaOnly);
 			*op->handle = GetTextureHandleFromID(texId);
 		} else if(op->type == TextureOperationType_Release) {
 			GLuint texId = GetTextureIDFromHandle(*op->handle);
