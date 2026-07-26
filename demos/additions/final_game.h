@@ -9,6 +9,9 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
+	## 2026-07-26
+	- Added fields keyTransitions and buttonTransitions to KeyboardButtonStates: the real press/release edges seen in the event stream, so a tap that falls between two keyboard polls keeps its edge
+
 	## 2026-07-01
 	- Added field textInput and textInputLength to Input struct
 
@@ -157,6 +160,14 @@ typedef struct KeyboardButtonStates {
 	fplButtonState states[MAX_CONTROLLER_BUTTON_COUNT];
 	bool changed[MAX_CONTROLLER_BUTTON_COUNT];
 	bool mapped[MAX_CONTROLLER_BUTTON_COUNT];
+	// Real press/release edges seen in the EVENT stream this frame -- one counter per fplKey and one per
+	// controller button type, auto-repeat excluded. Both ButtonState arrays are otherwise built from a
+	// once-per-frame POLL of the keyboard, and a poll cannot see a key that went down AND back up between
+	// two of them: on a long frame a quick tap (a shortcut letter, a jump) leaves the polled state
+	// identical, so its edge vanishes completely. These counts keep the edge; endedDown stays the polled
+	// truth, which is what keeps a key from latching stuck.
+	uint8_t keyTransitions[256];
+	uint8_t buttonTransitions[MAX_CONTROLLER_BUTTON_COUNT];
 } KeyboardButtonStates;
 
 typedef struct Keyboard {
