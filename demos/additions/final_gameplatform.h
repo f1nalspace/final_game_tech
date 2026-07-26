@@ -9,6 +9,10 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
+	## 2026-07-26
+	- Fixed: A key pressed AND released between two once-per-frame keyboard polls lost its edge entirely (a shortcut or a jump tapped inside one long frame simply did not happen); halfTransitionCount is now raised to the real press/release count seen in the event stream, while endedDown stays the polled truth
+	- Note: The event queue is drained BEFORE the OS keyboard state is read, and the two are independent sources (GetAsyncKeyState / XQueryKeymap), so a key released between those two reads leaves an odd edge count against an unchanged poll. Only a count whose parity matches the polled start->end transition is consumed; the odd half carries into the next frame and pairs up there. Carried halves are dropped when the window activation toggles
+
 	## 2026-07-19
 	- Fixed: Early-failure shutdown freed uninitialized memory blocks; gameMemoryBlock/renderMemoryBlock now zero-init'd so fmemFree is a safe no-op before fmemInit
 	- Fixed: Custom keyboard mappings now rebuild keyboardButtonStates->mapped[] so they actually drive controller buttons
@@ -210,6 +214,46 @@ fpl_internal_inline void InternalGamePlatformUpdateKeyboardButtonState(ButtonSta
 	++newState->halfTransitionCount;
 }
 
+// Tally one real press/release edge for `index`, saturating rather than wrapping -- 255 edges pending on a
+// single key is already far past anything a hand can produce, and a wrap to zero would drop the edge.
+fpl_internal_inline void InternalGamePlatformCountKeyTransition(uint8_t *transitions, const size_t count, const uint32_t index) {
+	if (index >= count) {
+		return;
+	}
+	if (transitions[index] < 255) {
+		++transitions[index];
+	}
+}
+
+// Give a polled button the edge count the EVENT stream saw. A poll only notices that endedDown differs from
+// last frame, so a key pressed AND released between two polls looks untouched and its edge would be lost
+// entirely; the events saw both halves. endedDown is left exactly as polled -- that is what keeps a key from
+// latching stuck.
+//
+// `pending` is a RUNNING count, not a per-frame one, because the event queue and the poll are INDEPENDENT
+// sources: the queue is drained first, then the state is read straight from the OS (GetAsyncKeyState on
+// Win32, XQueryKeymap on X11). A key released in the instant between those two reads has its press queued
+// and its release not yet, so the events say "one edge" while the poll says "nothing changed". Crediting
+// that odd edge would fire the press once now and once more when the release arrives next frame.
+//
+// So only a count whose PARITY agrees with the polled start->end transition is consumed; an odd one out is
+// left pending and pairs up with its other half on the next frame. The tap still fires -- exactly once, one
+// frame later -- instead of twice or not at all.
+fpl_internal_inline void InternalGamePlatformResolveEventTransitions(ButtonState *button, const fpl_b32 wasDown, const fpl_b32 isDown, uint8_t *pending) {
+	int desiredParity = (wasDown != isDown) ? 1 : 0;
+	int consumed = (int)*pending;
+	if ((consumed & 1) != desiredParity) {
+		--consumed; // hold one half-transition back for the frame its partner shows up in
+	}
+	if (consumed < 0) {
+		consumed = 0;
+	}
+	*pending = (uint8_t)((int)*pending - consumed);
+	if (consumed > button->halfTransitionCount) {
+		button->halfTransitionCount = consumed;
+	}
+}
+
 fpl_internal_inline bool InternalGamePlatformUpdateDigitalButtonState(const ButtonState *oldState, ButtonState *newState, const fpl_b32 isDown) {
 	newState->endedDown = isDown;
 	newState->halfTransitionCount = ((newState->endedDown == oldState->endedDown) ? 0 : 1);
@@ -367,6 +411,10 @@ fpl_internal void InternalGamePlatformProcessEvents(const KeyboardButtonMappings
 						bool isDown = event.keyboard.buttonState >= fplButtonState_Press;
 						bool wasDown = event.keyboard.buttonState == fplButtonState_Release || event.keyboard.buttonState == fplButtonState_Repeat;
 						if(isDown != wasDown) {
+							// A REAL edge (a press or a release -- isDown != wasDown excludes auto-repeat, which
+							// reports both as down). Count it per key and per mapped controller button, so the
+							// poll below can restore an edge that fell entirely between two polls.
+							InternalGamePlatformCountKeyTransition(&keyboardButtonStates->keyTransitions[0], fplArrayCount(keyboardButtonStates->keyTransitions), (uint32_t)event.keyboard.mappedKey);
 							if(!newKeyboardController->isConnected) {
 								newKeyboardController->isConnected = true;
 							}
@@ -379,6 +427,7 @@ fpl_internal void InternalGamePlatformProcessEvents(const KeyboardButtonMappings
 								if (mapping->key == event.keyboard.mappedKey) {
 									uint32_t buttonIndex = mapping->type - ControllerButtonType_First;
 									keyboardButtonStates->changed[buttonIndex] |= true;
+									InternalGamePlatformCountKeyTransition(&keyboardButtonStates->buttonTransitions[0], fplArrayCount(keyboardButtonStates->buttonTransitions), buttonIndex);
 									if (event.keyboard.buttonState > keyboardButtonStates->states[buttonIndex]) {
 										keyboardButtonStates->states[buttonIndex] = event.keyboard.buttonState;
 									}
@@ -454,6 +503,9 @@ fpl_internal void InternalGamePlatformSetupInputForFrame(KeyboardButtonStates *k
 		keyboardButtonStates->changed[buttonIndex] = false;
 		keyboardButtonStates->states[buttonIndex] = fplButtonState_Release;
 	}
+
+	// keyTransitions / buttonTransitions are deliberately NOT cleared here: they are running counts that
+	// carry an unpaired half-transition into the next frame. See InternalGamePlatformResolveEventTransitions.
 
 	// Preserve mouse buttons
 	Mouse *newMouse = &newInput->mouse;
@@ -915,9 +967,12 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 		for (uint32_t keyIndex = 0; keyIndex < keyCount; ++keyIndex) {
 			fplButtonState buttonState = keyboardState->buttonStatesMapped[keyIndex];
 			fpl_b32 isDown = buttonState != fplButtonState_Release ? 1 : 0;
-			if (newKeyboard->keys[keyIndex].endedDown != isDown) {
-				InternalGamePlatformUpdateKeyboardButtonState(&newKeyboard->keys[keyIndex], isDown);
+			ButtonState *key = &newKeyboard->keys[keyIndex];
+			fpl_b32 wasDown = key->endedDown; // still LAST frame's state -- preserved before the events ran
+			if (wasDown != isDown) {
+				InternalGamePlatformUpdateKeyboardButtonState(key, isDown);
 			}
+			InternalGamePlatformResolveEventTransitions(key, wasDown, isDown, &keyboardButtonStates->keyTransitions[keyIndex]);
 		}
 		
 		// Keyboard controller buttons: derive each from the polled key state (OR of every key mapped
@@ -941,9 +996,13 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 				}
 			}
 			ButtonState *button = &newInput->keyboard.buttons[buttonTypeIndex];
-			if (button->endedDown != isDown) {
+			fpl_b32 buttonWasDown = button->endedDown;
+			if (buttonWasDown != isDown) {
 				InternalGamePlatformUpdateKeyboardButtonState(button, isDown);
 			}
+			// Same edge rescue as the raw keys above: a jump tapped and released inside one long frame
+			// polls identical on both ends, and without this its press edge never happens.
+			InternalGamePlatformResolveEventTransitions(button, buttonWasDown, isDown, &keyboardButtonStates->buttonTransitions[buttonTypeIndex]);
 		}
 
 #if 0
@@ -975,6 +1034,11 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 			lastFPSTime = fplMillisecondsQuery();
 			updateCount = frameCount = 0;
 			InternalGamePlatformResetInput(newInput);
+			// Drop any half-transition still waiting for its partner. Focus changed, so the missing half is
+			// never coming -- keeping it would fire a phantom edge on the frame the window comes back
+			// (an Alt+Tab whose Tab release the app never saw is exactly this case).
+			fplMemoryClear(keyboardButtonStates->keyTransitions, sizeof(keyboardButtonStates->keyTransitions));
+			fplMemoryClear(keyboardButtonStates->buttonTransitions, sizeof(keyboardButtonStates->buttonTransitions));
 		}
 
 		//
