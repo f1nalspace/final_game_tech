@@ -8,7 +8,7 @@
 ░▒▓█▓▒░      ░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░             ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░             ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░ 
 ░▒▓█▓▒░      ░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓████████▓▒░       ░▒▓██████▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓████████▓▒░      ░▒▓███████▓▒░ ░▒▓██████▓▒░░▒▓█▓▒░░▒▓█▓▒░ 
 
-Final Gamebox version 1.3.0
+Final Gamebox version 1.3.1
 
 -------------------------------------------------------------------------------
 	About
@@ -62,11 +62,8 @@ The only dependencies are built-in operating system libraries and a C99 complian
 	Known Issues
 -------------------------------------------------------------------------------
 
-- Audio too fast in certain cases (e.g. Duck Tales)
-- Audio buffer underrun in certain cases, resulting in hearable audio bugs
+- Audio buffer underrun in certain cases (resulting in hearable audio bugs)
 - Interrupt timing is not correct (fails "interrupt_time" blargg test)
-- Input handling are sometimes broken (e.g. Duck Tales)
-- CGB Background/Sprite Rendering issues, resulting in weird graphical bugs for (e.g. Aladdin, Alfred's Adventure)
 - OAM Bug not implemented
 
 -------------------------------------------------------------------------------
@@ -75,12 +72,16 @@ The only dependencies are built-in operating system libraries and a C99 complian
 
 Good:
 - [DMG] Alfred Chicken
+- [CGB] Alfred's Adventure
+- [CGB] Aladdin
 - [DMG] Alleyway
 - [DMG] Dr. Mario
+- [DMG] Duck Tales: In-game music too fast, crashes with a CPU instruction error, not able to jump away from climbing vines
 - [DMG] Kirby's Dream Land
 - [DMG] Kirby's Dream Land II
 - [DMG] Mega Man - Dr. Wily's Revenge
 - [DMG] Mega Man II
+- [CGB] Mega Man Xtreme: Crashes with a CPU instruction error
 - [DMG] R-Type
 - [DMG] Retroid
 - [DMG] Rodland
@@ -91,14 +92,6 @@ Good:
 - [DMG] Tetris
 - [DMG] The Legend of Zelda - Link's Awakening
 - [DMG] Wario Land - Super Mario Land 3
-
-Partial:
-- [CGB] Alfred's Adventure: Can play, but almost no sprites are visible, alfred itself is just a couple of lines
-- [CGB] Aladdin: Can play, but almost no sprites are visible, alfred itself is just a couple of lines
-
-Do not work:
-- [DMG] Duck Tales: In-game music too fast, crashes with a CPU instruction error, not able to jump away from climbing vines
-- [CGB] Mega Man Xtreme: Crashes with a CPU instruction error
 
 -------------------------------------------------------------------------------
 	Test-ROMS Compability
@@ -130,8 +123,8 @@ scribbltests:
 - [DMG/CGB] `palettely`: Passes
 - [DMG/CGB] `scxly`: Passes
 - [DMG/CGB] `statcount-auto`: Fails
-- [DMG/CGB] `statcount`: No idea how it works
-- [DMG/CGB] `winpos`: Visually correct in all cases
+- [DMG/CGB] `statcount`: Passes
+- [DMG/CGB] `winpos`: Passes
 
 mealybug-tearoom-tests:
 - [DMG/CGB] `mealybug-tearoom-tests`: All fails
@@ -225,6 +218,17 @@ Copyright 2024-2026 Torsten Spaete
 -------------------------------------------------------------------------------
 	Changelog
 -------------------------------------------------------------------------------
+
+## v1.3.1 Bugfixes (Unreleased)
+
+### PPU
+
+- Implemented the line-153 LY quirk: LY reads 0 for all but the first 4 dots of the final V-Blank line, including the LYC comparison (fixes the mangled hi-color backgrounds in Aladdin CGB)
+- Writing STAT (FF41) no longer clobbers the read-only LCD mode and LYC coincidence bits, only the interrupt-select bits 3-6 are writable now — a forced mode change ended lines early, so frames ran short, interrupt-driven game logic sped up and emulation could abort outright (fixes the crash when pressing a button in Alfred's Adventure CGB, the too-fast sound plus crash plus stuck vine climbing in DuckTales DMG and the green-screen freeze plus too-fast audio in Mega Man Xtreme CGB, also fixes the Mooneye tests intr_1_2_timing-GS and stat_irq_blocking)
+
+### CGB
+
+- HDMA/GDMA source and destination cursors now persist and continue across transfers: FF51-FF54 writes update the internal cursors directly (with hardware bit masking) and a new FF55 start no longer re-latches them, so chained transfers continue where the previous one ended (fixes the missing sprites in Alfred's Adventure CGB)
 
 ## v1.3.0 Serial-Transfer + Bugfixes
 
@@ -5257,10 +5261,16 @@ static void fgb__Log(const fgbSystem *system, const fgbLogLevel level, const cha
 
 static void FGB__Failure(fgbSystem *system, const fgbErrorType type, const char *kind, const char *format, ...) {
 	system->state = fgbEmulationState_Error;
-	system->error.type = type;
 
-	// Format error message
-	{
+	// Keep the first failure of the current tick, because it is the root cause. Any follow-up failure
+	// is typically just fallout from it (a failed hardware tick makes the CPU cycle-bounds check trip
+	// afterwards) and would otherwise overwrite the message that explains what actually went wrong.
+	// The error is cleared at the start of every tick in fgbTick.
+	const bool isFirstFailure = system->error.type == fgbErrorType_None;
+	if (isFirstFailure) {
+		system->error.type = type;
+
+		// Format error message
 		va_list args;
 		va_start(args, format);
 		fgb__StringFormatArgs(system->error.message, FGB_ARRAYCOUNT(system->error.message), format, args);
@@ -7240,10 +7250,26 @@ static void fgb__CGBWriteHDMA(fgbSystem *system, const uint16_t address, const u
 	fgbHDMAState *hdma = &cgb->hdmaState;
 	fgbHDMARegister *reg = &hdma->reg;
 	switch (address) {
-		case 0xFF51: reg->sourceHigh = value; break;
-		case 0xFF52: reg->sourceLow = value; break;
-		case 0xFF53: reg->destHigh = value; break;
-		case 0xFF54: reg->destLow = value; break;
+		// FF51-FF54 update the internal transfer cursors directly (with the hardware bit masking).
+		// The cursors advance during transfers and are NOT reset by a new FF55 write, so a game can
+		// chain transfers and only rewrite the parts that change (e.g. Alfred's Adventure re-uploads
+		// all sprite tiles per frame by setting the destination once and kicking one GDMA per source).
+		case 0xFF51:
+			reg->sourceHigh = value;
+			hdma->sourceAddress = (uint16_t)(((uint16_t)value << 8) | (hdma->sourceAddress & 0x00F0));
+			break;
+		case 0xFF52:
+			reg->sourceLow = value;
+			hdma->sourceAddress = (uint16_t)((hdma->sourceAddress & 0xFF00) | (value & 0xF0));
+			break;
+		case 0xFF53:
+			reg->destHigh = value;
+			hdma->destAddress = (uint16_t)(0x8000 | ((uint16_t)(value & 0x1F) << 8) | (hdma->destAddress & 0x00F0));
+			break;
+		case 0xFF54:
+			reg->destLow = value;
+			hdma->destAddress = (uint16_t)((hdma->destAddress & 0x9F00) | (value & 0xF0));
+			break;
 		case 0xFF55: {
 			fgbHDMAControlRegister incoming;
 			incoming.value = value;
@@ -7255,11 +7281,10 @@ static void fgb__CGBWriteHDMA(fgbSystem *system, const uint16_t address, const u
 					hdma->bytesRemaining = (uint16_t)(((value & 0x7F) + 1) * 16);
 				}
 			} else {
-				// Idle: latch src/dst, start HDMA (bit 7 = 1) or run GDMA immediately (bit 7 = 0).
-				uint16_t src = (uint16_t)(((reg->sourceHigh << 8) | reg->sourceLow) & 0xFFF0);
-				uint16_t dst = (uint16_t)(0x8000 | (((reg->destHigh & 0x1F) << 8) | (reg->destLow & 0xF0)));
-				hdma->sourceAddress = src;
-				hdma->destAddress = dst;
+				// Idle: start HDMA (bit 7 = 1) or run GDMA immediately (bit 7 = 0).
+				// The source/destination cursors continue from where the previous transfer ended,
+				// unless the game rewrote FF51-FF54 in the meantime.
+				hdma->destAddress = (uint16_t)(0x8000 | (hdma->destAddress & 0x1FFF));
 				hdma->bytesRemaining = (uint16_t)(((value & 0x7F) + 1) * 16);
 				if (incoming.mode) {
 					hdma->inProgress = true;
@@ -9619,6 +9644,8 @@ static inline void fgb__PPUSetMode(fgbSystem *system, fgbLCDRegister *lcd, const
 #define FGB__PPU_VERTICAL_BLANK_DOTS (FGB__PPU_HORIZONTAL_BLANK_DOTS * 10)
 // Vertical Blank Line Count (Mode 1, only 0-143 is visible on the screen, 144-153 is used for doing the V-Blank)
 #define FGB__PPU_VERTICAL_BLANK_LINE_COUNT (FGB_DISPLAY_HEIGHT + 10)
+// Line-153 quirk: on the last V-Blank line the LY register reads 153 only for this many dots, then reads 0 for the rest of the line
+#define FGB__PPU_LINE153_LY_RESET_DOTS 4
 
 static inline uint8_t fgb__PPUDecodeColorIndex(const uint8_t first, const uint8_t second, const uint8_t bit) {
 	FGB_ASSERT(bit >= 0 && bit <= 7);
@@ -10074,12 +10101,21 @@ static void fgb__PPULCDRegisterWrite(fgbSystem *system, const uint16_t address, 
 		} break;
 		case 0xFF41:
 		{
-			// Reset mode and LYC always when STAT was forcefully changed
-			fgbPPUMode oldMode = lcd->stat.lcdMode;
-			lcd->stat.u8 = value & 0b11111000;
-			fgbPPUMode newMode = lcd->stat.lcdMode;
+			// Bits 0-2 (LCD mode + LYC coincidence flag) are read-only on hardware, only the
+			// interrupt-select bits 3-6 are writable. Taking the mode bits from the written value
+			// desynchronizes the PPU state machine: a STAT write during V-Blank dropped the PPU
+			// into H-Blank in the middle of the line, which then blew past the 456-dot line budget.
+			// Bit 7 is unused and always reads as 1 (handled on the read side).
+			const uint8_t statWritableBitsMask = 0b01111000;
+			const uint8_t statReadOnlyBitsMask = 0b00000111;
 
-			if (oldMode != newMode) {
+			uint8_t oldWritableBits = lcd->stat.u8 & statWritableBitsMask;
+			uint8_t newWritableBits = value & statWritableBitsMask;
+			uint8_t currentReadOnlyBits = lcd->stat.u8 & statReadOnlyBitsMask;
+
+			lcd->stat.u8 = newWritableBits | currentReadOnlyBits;
+
+			if (oldWritableBits != newWritableBits) {
 				fgb__Breakpoint(system, fgbBreakpointType_LCDControlMode);
 			}
 
@@ -10916,10 +10952,18 @@ static void fgb__PPUModeVerticalBlank(fgbSystem *system) {
 	fgbPPU *ppu = &system->ppu;
 	fgbLCDRegister *lcd = &ppu->lcd;
 
-	if (ppu->state.lineTicks >= FGB__PPU_HORIZONTAL_BLANK_DOTS) {
-		fgb__PPUIncrementLine(system);
+	// Line-153 quirk: on the last V-Blank line, LY reads 153 only for the first few dots and then reads 0
+	// for the remainder of the line while the PPU is still in V-Blank. The LYC comparison follows the read value,
+	// so a LYC=0 STAT interrupt fires during line 153 already. Beam-racing games (e.g. Aladdin CGB palette
+	// streaming) poll for LY==0 and rely on the head start this gives them inside V-Blank.
+	if (lcd->ly == (FGB__PPU_VERTICAL_BLANK_LINE_COUNT - 1) && ppu->state.lineTicks >= FGB__PPU_LINE153_LY_RESET_DOTS) {
+		lcd->ly = 0;
+		fgb__PPUCompareLine(system);
+	}
 
-		if (lcd->ly >= FGB__PPU_VERTICAL_BLANK_LINE_COUNT) {
+	if (ppu->state.lineTicks >= FGB__PPU_HORIZONTAL_BLANK_DOTS) {
+		// LY==0 here means the quirked line 153 has completed -> the new frame begins
+		if (lcd->ly == 0) {
 			fgb__PPUSetMode(system, lcd, fgbPPUMode_OAMSearch);
 
 			fgb__PPUResetLine(system);
@@ -10936,6 +10980,8 @@ static void fgb__PPUModeVerticalBlank(fgbSystem *system) {
 			ppu->state.frameTicks = 0;
 
 			fgb__Breakpoint(system, fgbBreakpointType_PPUFrameEnd);
+		} else {
+			fgb__PPUIncrementLine(system);
 		}
 
 		ppu->state.lineTicks = 0;
@@ -15015,6 +15061,9 @@ static bool fgb__PowerOn(fgbSystem *system, const bool isScreenEnabled, const ui
 	fgbClearStruct(joypad);
 	fgbClearStruct(apu);
 	fgbClearStruct(cgbState);
+
+	// Clear any previous failure, so a stale error cannot swallow a failure happening from here on (FGB__Failure keeps the first error)
+	fgbClearStruct(&system->error);
 
 	fgb__TimerInit(timer);
 
