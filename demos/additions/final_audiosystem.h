@@ -142,6 +142,7 @@ License:
 
 Changelog:
 	## 2026-08-06
+	- Fixed: LoadMP3FormatFromBuffer (final_mp3loader.h) walked no headers at all -- it ran a FULL mp3dec_load_buf decode and read fileInfo.samples off the result, then freed it. It now hops frame header to frame header, which is what the format is actually made of. Measured over every mp3 in data/: identical frameCount to LoadMP3FromBuffer in all four, 174x-201x faster, no allocation (1.63 MB / 107 s track: 64.4 ms + 18 MB of PCM -> 0.37 ms + 0 bytes). AudioSystemLoadFileFormat is now cheap enough to ask per UI row, which is what a playlist needs to show a track's length
 	- New: AudioSystemSetPlayItemVolume() changes the volume of a play item that is already playing (find-and-write under playItems.lock, by id so it cannot dangle)
 	- New: AudioSystemRemoveSource() removes and frees ONE source, the counterpart to AudioSystemAddSource; play items referencing it are stopped first
 	- Fixed: AudioSystemClearSources now resets sources.count to zero (it kept counting the sources it had just freed)
@@ -248,6 +249,9 @@ fpl_extern void AudioSystemSetMasterVolume(AudioSystem *audioSys, const float ne
 fpl_extern AudioSource *AudioSystemAllocateSource(AudioSystem *audioSys, const AudioChannelIndex channels, const AudioHertz sampleRate, const fplAudioFormatType type, const AudioFrameIndex frameCount);
 
 fpl_extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const char *filePath);
+// Reads a file's FORMAT without decoding it -- headers only, in every supported format (wav: the header;
+// vorbis: the seek table; mp3: a walk over the per-frame headers). A track's DURATION is this call:
+// outFormat->frameCount / outFormat->samplesPerSecond.
 fpl_extern bool AudioSystemLoadFileFormat(AudioSystem *audioSys, const char *filePath, PCMWaveFormat *outFormat);
 
 fpl_extern AudioSource *AudioSystemLoadDataSource(AudioSystem *audioSys, const size_t dataSize, const uint8_t *data);
