@@ -141,6 +141,12 @@ License:
 	Copyright 2017-2026 Torsten Spaete
 
 Changelog:
+	## 2026-08-06
+	- New: AudioSystemSetPlayItemVolume() changes the volume of a play item that is already playing (find-and-write under playItems.lock, by id so it cannot dangle)
+	- New: AudioSystemRemoveSource() removes and frees ONE source, the counterpart to AudioSystemAddSource; play items referencing it are stopped first
+	- Fixed: AudioSystemClearSources now resets sources.count to zero (it kept counting the sources it had just freed)
+	- Fixed: AudioSystemClearSources now stops all play items first (clearing while something played left a play item pointing at freed samples)
+
 	## 2026-07-19
 	- Fixed: AudioSystemStopOne now finds and removes the play-item entirely under playItems.lock (was traversing unlocked -> use-after-free race with the audio thread)
 	- Fixed: Null-check probe/file-load allocations (PropeAudioFileFormat, AudioSystemLoadFileSource) so an out-of-memory condition bails cleanly instead of dereferencing null
@@ -249,10 +255,19 @@ fpl_extern bool AudioSystemLoadDataFormat(AudioSystem *audioSys, const size_t da
 
 fpl_extern bool AudioSystemAddSource(AudioSystem *audioSys, AudioSource *source);
 
+// Remove ONE source and free it, the counterpart to AudioSystemAddSource. Any play item still referencing it is stopped first, so the caller never has to.
+// Returns false when the source is not in the list (it is then left untouched).
+fpl_extern bool AudioSystemRemoveSource(AudioSystem *audioSys, AudioSource *source);
+
 fpl_extern AudioFrameIndex AudioSystemWriteFrames(AudioSystem *audioSys, void *outSamples, const fplAudioFormat *outFormat, const AudioFrameIndex frameCount, const bool advance);
 
 fpl_extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume);
 fpl_extern bool AudioSystemStopOne(AudioSystem *audioSys, const AudioPlayItemID playId);
+
+// Change the volume of a play item that is ALREADY playing (fades, a volume slider). Takes an id and not a pointer on purpose:
+// the audio thread frees a finished play item, so an id is the only handle that cannot dangle.
+// Returns false when the item no longer exists, which is not an error - it just finished.
+fpl_extern bool AudioSystemSetPlayItemVolume(AudioSystem *audioSys, const AudioPlayItemID playId, const float volume);
 fpl_extern void AudioSystemStopAll(AudioSystem *audioSys);
 fpl_extern void AudioSystemClearSources(AudioSystem *audioSys);
 fpl_extern size_t AudioSystemGetPlayItems(AudioSystem *audioSys, AudioPlayItem *dest, const size_t maxDestCount);
@@ -846,6 +861,27 @@ fpl_extern bool AudioSystemStopOne(AudioSystem *audioSys, const AudioPlayItemID 
 	while(playItem != fpl_null) {
 		if(playItem->id.value == playId.value) {
 			RemovePlayItem(&audioSys->memory, &audioSys->playItems, playItem);
+			result = true;
+			break;
+		}
+		playItem = playItem->next;
+	}
+	fplMutexUnlock(&audioSys->playItems.lock);
+	return(result);
+}
+
+fpl_extern bool AudioSystemSetPlayItemVolume(AudioSystem *audioSys, const AudioPlayItemID playId, const float volume) {
+	if(audioSys == fpl_null) {
+		return false;
+	}
+	// The audio device callback reads item->volume under this same lock (ProcessSinglePlayItem) and can RemovePlayItem
+	// concurrently, so the whole find-and-write must run under it
+	bool result = false;
+	fplMutexLock(&audioSys->playItems.lock);
+	AudioPlayItem *playItem = audioSys->playItems.first;
+	while(playItem != fpl_null) {
+		if(playItem->id.value == playId.value) {
+			playItem->volume = volume;
 			result = true;
 			break;
 		}
@@ -1611,9 +1647,68 @@ fpl_extern void AudioSystemStopAll(AudioSystem *audioSys) {
 	fplMutexUnlock(&audioSys->writeFramesLock);
 }
 
+fpl_extern bool AudioSystemRemoveSource(AudioSystem *audioSys, AudioSource *source) {
+	if(audioSys == fpl_null || source == fpl_null || audioSys->isShutdown) {
+		return false;
+	}
+
+	AudioMemory *memory = &audioSys->memory;
+	AudioSources *sources = &audioSys->sources;
+
+	// Play items first: one still pointing at this source would read freed samples on the very next mix.
+	// Its own lock section - the audio thread only ever takes playItems.lock, so there is no lock order to invert here
+	fplMutexLock(&audioSys->playItems.lock);
+	AudioPlayItem *playItem = audioSys->playItems.first;
+	while(playItem != fpl_null) {
+		AudioPlayItem *nextPlayItem = playItem->next;
+		if(playItem->source == source) {
+			RemovePlayItem(memory, &audioSys->playItems, playItem);
+		}
+		playItem = nextPlayItem;
+	}
+	fplMutexUnlock(&audioSys->playItems.lock);
+
+	// Singly linked, so the predecessor is found by walking (AudioSource has no prev pointer)
+	bool result = false;
+	fplMutexLock(&sources->lock);
+	AudioSource *previous = fpl_null;
+	AudioSource *current = sources->first;
+	while(current != fpl_null) {
+		if(current == source) {
+			if(previous == fpl_null) {
+				sources->first = current->next;
+			} else {
+				previous->next = current->next;
+			}
+			if(sources->last == current) {
+				sources->last = previous;
+			}
+			--sources->count;
+			result = true;
+			break;
+		}
+		previous = current;
+		current = current->next;
+	}
+	fplMutexUnlock(&sources->lock);
+
+	// Freed outside the lock: it is unreachable now, and nothing else in here allocates
+	if(result) {
+		source->next = fpl_null;
+		FreeAudioBuffer(memory, &source->buffer);
+		FreeAudioMemory(memory, source);
+	}
+
+	return(result);
+}
+
 fpl_extern void AudioSystemClearSources(AudioSystem *audioSys) {
 	if(audioSys == fpl_null || audioSys->isShutdown)
 		return;
+
+	// A play item outliving the source it points at would read freed samples on the next mix, so nothing is left playing.
+	// AudioSystemShutdown already did this before calling here; a second pass over an empty list costs nothing
+	AudioSystemStopAll(audioSys);
 
 	AudioMemory *memory = &audioSys->memory;
 	AudioSources *sources = &audioSys->sources;
@@ -1627,6 +1722,8 @@ fpl_extern void AudioSystemClearSources(AudioSystem *audioSys) {
 		source = next;
 	}
 	sources->first = sources->last = fpl_null;
+	// The count was left standing here, so every source query after a clear reported the sources that were just freed
+	sources->count = 0;
 	fplMutexUnlock(&sources->lock);
 }
 
