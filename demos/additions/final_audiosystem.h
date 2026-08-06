@@ -147,6 +147,9 @@ Changelog:
 	- New: AudioSystemRemoveSource() removes and frees ONE source, the counterpart to AudioSystemAddSource; play items referencing it are stopped first
 	- Fixed: AudioSystemClearSources now resets sources.count to zero (it kept counting the sources it had just freed)
 	- Fixed: AudioSystemClearSources now stops all play items first (clearing while something played left a play item pointing at freed samples)
+	- New: AudioSystemGetTargetFormat() / AudioSystemGetSourceStats() report the device format and the resident sources + the PCM bytes they hold, so a diagnostic readout no longer has to reach into AudioSystem.targetFormat and walk sources itself
+	- New: AudioSystemSetPlayItemPaused() pauses/resumes a play item that is already playing. The mixer skips a paused item without touching its framesPlayed, so resuming continues from the exact frame it stopped on - AudioSystemStopOne frees the item and forgets where it was, which is not the same thing
+	- New: AudioSystemSetSuspended() / AudioSystemIsSuspended() pause the WHOLE mixer - AudioSystemWriteFrames returns silence and advances nothing, so everything resumes on the frame it stopped on (a pause, not a mute)
 
 	## 2026-07-19
 	- Fixed: AudioSystemStopOne now finds and removes the play-item entirely under playItems.lock (was traversing unlocked -> use-after-free race with the audio thread)
@@ -196,6 +199,9 @@ typedef struct AudioPlayItem {
 	AudioPlayItemID id;
 	float volume;
 	bool isRepeat;
+	// Skipped by the mixer while set, WITHOUT touching framesPlayed - so resuming carries on from the exact frame it stopped on.
+	// That is the whole difference between this and AudioSystemStopOne, which frees the item and forgets where it was
+	bool isPaused;
 } AudioPlayItem;
 
 typedef struct AudioSources {
@@ -239,6 +245,10 @@ typedef struct AudioSystem {
 	fplMutexHandle writeFramesLock;
 	float masterVolume;
 	bool isShutdown;
+	// While set, AudioSystemWriteFrames hands the device SILENCE and advances nothing. Written from the
+	// game thread, read on the audio thread, and deliberately a plain bool: the worst a torn read can do is
+	// mix one more buffer, which is a few milliseconds of sound nobody was listening to anyway.
+	bool isSuspended;
 } AudioSystem;
 
 fpl_extern bool AudioSystemInit(AudioSystem *audioSys, const fplAudioFormat *targetFormat);
@@ -265,6 +275,13 @@ fpl_extern bool AudioSystemRemoveSource(AudioSystem *audioSys, AudioSource *sour
 
 fpl_extern AudioFrameIndex AudioSystemWriteFrames(AudioSystem *audioSys, void *outSamples, const fplAudioFormat *outFormat, const AudioFrameIndex frameCount, const bool advance);
 
+// Suspend or resume the WHOLE mixer. While suspended the device is fed silence and no play item advances, so
+// this is a PAUSE and not a mute: every position, every fade and the playlist all stand still, and what comes
+// back is the exact frame that was playing when it stopped. What a game uses when its window loses focus --
+// music playing on to an empty desktop is the thing this prevents.
+fpl_extern void AudioSystemSetSuspended(AudioSystem *audioSys, const bool suspended);
+fpl_extern bool AudioSystemIsSuspended(const AudioSystem *audioSys);
+
 fpl_extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume);
 fpl_extern bool AudioSystemStopOne(AudioSystem *audioSys, const AudioPlayItemID playId);
 
@@ -272,12 +289,25 @@ fpl_extern bool AudioSystemStopOne(AudioSystem *audioSys, const AudioPlayItemID 
 // the audio thread frees a finished play item, so an id is the only handle that cannot dangle.
 // Returns false when the item no longer exists, which is not an error - it just finished.
 fpl_extern bool AudioSystemSetPlayItemVolume(AudioSystem *audioSys, const AudioPlayItemID playId, const float volume);
+
+// Pause or resume a play item that is already playing. The mixer skips it while paused and leaves its position alone, so resuming continues from the exact frame it stopped on -
+// which is what separates this from AudioSystemStopOne, which frees the item and forgets where it was. Takes an id for the same reason the volume setter does.
+// Returns false when the item no longer exists.
+fpl_extern bool AudioSystemSetPlayItemPaused(AudioSystem *audioSys, const AudioPlayItemID playId, const bool paused);
 fpl_extern void AudioSystemStopAll(AudioSystem *audioSys);
 fpl_extern void AudioSystemClearSources(AudioSystem *audioSys);
 fpl_extern size_t AudioSystemGetPlayItems(AudioSystem *audioSys, AudioPlayItem *dest, const size_t maxDestCount);
 
 fpl_extern AudioSource *AudioSystemGetSourceByID(AudioSystem *audioSys, const AudioSourceID id);
 fpl_extern size_t AudioSystemGetSources(AudioSystem *audioSys, AudioSource *dest, const size_t maxDestCount);
+
+// The DEVICE format everything is mixed and converted to. Written once by AudioSystemInit and never again, so this needs no lock.
+// For a diagnostic readout ("48000 Hz, 2 ch, S16"), which would otherwise have to reach into AudioSystem.targetFormat itself.
+fpl_extern bool AudioSystemGetTargetFormat(const AudioSystem *audioSys, AudioFormat *outFormat);
+
+// How many sources are resident, and (when outByteCount is given) how many bytes of decoded PCM they hold between them. Walks the list under sources.lock.
+// The count on its own says nothing about the memory that actually matters - a fully decoded track is roughly 11x its size on disk.
+fpl_extern size_t AudioSystemGetSourceStats(AudioSystem *audioSys, size_t *outByteCount);
 
 // @TODO(final): Move to final_audiodemo.h, make a audio source more "Generative"
 fpl_extern void AudioGenerateSineWave(AudioSineWaveData *waveData, void *outSamples, const fplAudioFormatType outFormat, const AudioHertz outSampleRate, const AudioChannelIndex channels, const AudioFrameIndex frameCount);
@@ -395,6 +425,20 @@ fpl_extern bool AudioSystemInit(AudioSystem *audioSys, const fplAudioFormat *tar
 
 fpl_extern void AudioSystemSetMasterVolume(AudioSystem *audioSys, const float newMasterVolume) {
 	audioSys->masterVolume = newMasterVolume;
+}
+
+fpl_extern void AudioSystemSetSuspended(AudioSystem *audioSys, const bool suspended) {
+	if (audioSys == fpl_null) {
+		return; // no device: there is nothing to suspend, and no caller should have to check
+	}
+	audioSys->isSuspended = suspended;
+}
+
+fpl_extern bool AudioSystemIsSuspended(const AudioSystem *audioSys) {
+	if (audioSys == fpl_null) {
+		return false;
+	}
+	return audioSys->isSuspended;
 }
 
 fpl_extern bool AudioSystemAddSource(AudioSystem *audioSys, AudioSource *source) {
@@ -895,6 +939,26 @@ fpl_extern bool AudioSystemSetPlayItemVolume(AudioSystem *audioSys, const AudioP
 	return(result);
 }
 
+fpl_extern bool AudioSystemSetPlayItemPaused(AudioSystem *audioSys, const AudioPlayItemID playId, const bool paused) {
+	if(audioSys == fpl_null) {
+		return false;
+	}
+	// Same reasoning as the volume setter: the device callback reads this flag under this lock and can free the item concurrently
+	bool result = false;
+	fplMutexLock(&audioSys->playItems.lock);
+	AudioPlayItem *playItem = audioSys->playItems.first;
+	while(playItem != fpl_null) {
+		if(playItem->id.value == playId.value) {
+			playItem->isPaused = paused;
+			result = true;
+			break;
+		}
+		playItem = playItem->next;
+	}
+	fplMutexUnlock(&audioSys->playItems.lock);
+	return(result);
+}
+
 fpl_extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume) {
 	if((audioSys == fpl_null) || (source == fpl_null)) {
 		AudioPlayItemID empty = fplZeroInit;
@@ -914,6 +978,7 @@ fpl_extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const Au
 	playItem->source = source;
 	playItem->isRepeat = repeat;
 	playItem->volume = volume;
+	playItem->isPaused = false;
 
 	fplMutexLock(&audioSys->playItems.lock);
 	if(audioSys->playItems.last == fpl_null) {
@@ -1483,6 +1548,12 @@ static AudioFrameIndex WritePlayItemsToMixer2(AudioSystem *audioSys, const Audio
 			continue;
 		}
 
+		// A PAUSED item is skipped the same way, but it is never removed and its framesPlayed is left alone, so unpausing continues from where it stopped
+		if (item->isPaused) {
+			item = item->next;
+			continue;
+		}
+
 		// Process this play item through the full pipeline
 		const AudioFrameIndex itemOutputFrames = ProcessSinglePlayItem(audioSys, item, targetFrameCount, mixingBuffer);
 		if (itemOutputFrames > maxOutputFrameCount) {
@@ -1561,6 +1632,14 @@ fpl_extern AudioFrameIndex AudioSystemWriteFrames(AudioSystem *audioSys, void *o
 	fplAssert(audioSys->targetFormat.format == outFormat->type);
 	fplAssert(audioSys->targetFormat.channels == outFormat->channels);
 	fplAssert(audioSys->targetFormat.channels <= MAX_AUDIO_STATIC_BUFFER_CHANNEL_COUNT);
+
+	if(audioSys->isSuspended) {
+		// Silence, and NOTHING else touched -- no play item advanced, no source consumed, no lock taken.
+		// That is what makes this a pause: the mixer picks up exactly where it left off.
+		size_t suspendedFrameStride = fplGetAudioFrameSizeInBytes(audioSys->targetFormat.format, audioSys->targetFormat.channels);
+		fplMemoryClear(outSamples, suspendedFrameStride * frameCount);
+		return(frameCount);
+	}
 
 	fplMutexLock(&audioSys->writeFramesLock);
 
@@ -1729,6 +1808,36 @@ fpl_extern void AudioSystemClearSources(AudioSystem *audioSys) {
 	// The count was left standing here, so every source query after a clear reported the sources that were just freed
 	sources->count = 0;
 	fplMutexUnlock(&sources->lock);
+}
+
+fpl_extern bool AudioSystemGetTargetFormat(const AudioSystem *audioSys, AudioFormat *outFormat) {
+	if(audioSys == fpl_null || outFormat == fpl_null)
+		return(false);
+	*outFormat = audioSys->targetFormat;
+	return(true);
+}
+
+fpl_extern size_t AudioSystemGetSourceStats(AudioSystem *audioSys, size_t *outByteCount) {
+	if(outByteCount != fpl_null)
+		*outByteCount = 0;
+	if(audioSys == fpl_null || audioSys->isShutdown)
+		return(0);
+
+	AudioSources *sources = &audioSys->sources;
+	fplMutexLock(&sources->lock);
+	size_t sourceCount = 0;
+	size_t byteCount = 0;
+	AudioSource *source = sources->first;
+	while(source != fpl_null) {
+		++sourceCount;
+		byteCount += source->buffer.bufferSize;
+		source = source->next;
+	}
+	fplMutexUnlock(&sources->lock);
+
+	if(outByteCount != fpl_null)
+		*outByteCount = byteCount;
+	return(sourceCount);
 }
 
 fpl_extern void AudioSystemShutdown(AudioSystem *audioSys) {
