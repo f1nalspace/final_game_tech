@@ -6,6 +6,9 @@ Description:
 	Sample format conversion, interleave/deinterleave, and SinC resampling.
 
 Changelog:
+	## 2026-08-07
+	- Fixed: Both SinC cores now band-limit to the OUTPUT Nyquist when DOWNSAMPLING - the kernel is stretched by the downsampling factor (and its tap count with it) instead of staying at the source-rate cutoff, which was aliasing every rate reduction, mildly at 48000->44100 and badly at the larger ratios pitched playback produces. Upsampling is unchanged, and so is the table's [-filterRadius, +filterRadius] domain
+
 	## 2026-07-19
 	- Fixed: Producer-side clamp of outFrameCount to minOutputFrameCount so the resampler can never write minOut+1 frames past the caller's output buffer.
 	- Changed: SinC cores now precompute the SinC table once (AudioSinCTableInitialize) and sample it (GetSinCTableValue) per tap instead of calling sinf ~17x per output sample/channel.
@@ -437,6 +440,20 @@ static AudioResampleResult Audio__ResamplingInterleaved(const uint16_t channelCo
 	AudioSinCTable sincTable;
 	AudioSinCTableInitialize(&sincTable, (uint32_t)filterRadius);
 
+	// DOWNSAMPLING has to band-limit to the OUTPUT Nyquist, not the source one, or everything above the target
+	// rate's half folds back as aliasing - which on bright material (a metallic transient, a cymbal) is the
+	// harsh ringing that gives cheap resampling away. The kernel is defined in SOURCE samples, so lowering its
+	// cutoff by the downsampling factor means STRETCHING it by that factor: the same sinc, wider, sampled over
+	// proportionally more taps. Upsampling keeps the source-rate kernel, which is already the right cutoff.
+	//
+	// The table's domain stays [-filterRadius, +filterRadius] because the tap offset is divided by the same
+	// scale it widened by; only the number of taps grows (radius 8 at 2x downsampling is 33 taps per output
+	// sample per channel). Amplitude needs no 1/scale correction - the weightSum normalization below already
+	// divides it out.
+	const float kernelScale = (tgtToSrcRatio > 1.0f) ? tgtToSrcRatio : 1.0f;
+	const float inverseKernelScale = 1.0f / kernelScale;
+	const int scaledFilterRadius = (int)((float)filterRadius * kernelScale + 0.5f);
+
     for (uint32_t tgtFrame = 0; tgtFrame < targetFrameCount; ++tgtFrame) {
         float srcFrame = tgtFrame * tgtToSrcRatio;
         int srcFrameInt = (int)srcFrame;
@@ -444,29 +461,18 @@ static AudioResampleResult Audio__ResamplingInterleaved(const uint16_t channelCo
         for (uint16_t channel = 0; channel < channelCount; ++channel) {
             float sample = 0.0f;
 			float weightSum = 0.0f;
-            for (int r = -filterRadius; r <= filterRadius; ++r) {
+            for (int r = -scaledFilterRadius; r <= scaledFilterRadius; ++r) {
                 int srcIndex = srcFrameInt + r;
 
-#if 0
-				// Version without jumps
-				float f = r - frac;
-				float sincValue = AudioSinC(f);
-				int mask = (srcIndex >= 0 && srcIndex < (int)sourceFrameCount) ? 1 : 0;
-				float input = inSamples[(srcIndex * channelCount + channel) * mask];
-				float value = input * sincValue;
-				float output = value * mask;
-				sample += output;
-#else
 				// Version with jumps
                 if (srcIndex >= 0 && srcIndex < (int)sourceFrameCount) {
 					float input = inSamples[srcIndex * channelCount + channel];
-					float f = r - frac;
+					float f = ((float)r - frac) * inverseKernelScale;
                     float sincValue = GetSinCTableValue(&sincTable, f);
 					float output = input * sincValue;
                     sample += output;
 					weightSum += sincValue;
                 }
-#endif
             }
 
 			// Normalize the output sample
@@ -512,6 +518,11 @@ static AudioResampleResult Audio__ResamplingDeinterleaved(const uint16_t channel
 	AudioSinCTable sincTable;
 	AudioSinCTableInitialize(&sincTable, (uint32_t)filterRadius);
 
+	// The same band-limiting the interleaved core does, for the same reason -- see the comment there.
+	const float kernelScale = (tgtToSrcRatio > 1.0f) ? tgtToSrcRatio : 1.0f;
+	const float inverseKernelScale = 1.0f / kernelScale;
+	const int scaledFilterRadius = (int)((float)filterRadius * kernelScale + 0.5f);
+
 	for (uint16_t channel = 0; channel < channelCount; ++channel) {
 		const float *channelInSamples = inSamples[channel];
 		float *channelOutSamples = outSamples[channel];
@@ -525,29 +536,17 @@ static AudioResampleResult Audio__ResamplingDeinterleaved(const uint16_t channel
 
 			float sample = 0.0f;
 			float weightSum = 0.0f;
-            for (int r = -filterRadius; r <= filterRadius; ++r) {
+            for (int r = -scaledFilterRadius; r <= scaledFilterRadius; ++r) {
                 int srcIndex = srcFrameInt + r;
-#if 0
-				// Version without jumps
-				float f = r - frac;
-				float sincValue = AudioSinC(f);
-				int mask = (srcIndex >= 0 && srcIndex < (int)sourceFrameCount) ? 1 : 0;
-				float input = channelInSamples[srcIndex * mask];
-				float value = input * sincValue;
-				float output = value * mask;
-				sample += output;
-				weightSum += sincValue;
-#else
 				// Version with jumps
                 if (srcIndex >= 0 && srcIndex < (int)sourceFrameCount) {
-					float f = r - frac;
+					float f = ((float)r - frac) * inverseKernelScale;
                     float sincValue = GetSinCTableValue(&sincTable, f);
 					float input = channelInSamples[srcIndex];
 					float output = input * sincValue;
                     sample += output;
 					weightSum += sincValue;
                 }
-#endif
             }
 
 			// Normalize the output sample
