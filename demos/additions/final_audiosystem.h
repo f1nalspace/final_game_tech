@@ -142,7 +142,8 @@ License:
 
 Changelog:
 	## 2026-08-07
-	- Changed (API BREAKING): AudioSystemPlaySource() takes a fifth argument, `pitch`. Every existing call site must add it; pass 1.0f for the previous behaviour, which costs nothing (see AudioPitchNeutralTolerance). It is a parameter rather than a post-play setter because pitch is a property of THAT play - a setter would leave the first mixed buffer sounding at the wrong rate before it landed
+	- New: AudioSystemDefaultPitch - the file as recorded (1.0f), what every call site that does not care about pitch passes. A macro, so it is a constant expression in C99, C++ and MSVC alike
+	- Changed (API BREAKING): AudioSystemPlaySource() takes a fifth argument, `pitch`. Every existing call site must add it; pass AudioSystemDefaultPitch for the previous behaviour, which costs nothing (see AudioPitchNeutralTolerance). It is a parameter rather than a post-play setter because pitch is a property of THAT play - a setter would leave the first mixed buffer sounding at the wrong rate before it landed
 	- New: AudioSystemSetPlayItemPitch() changes the pitch of a play item that is already playing (find-and-write under playItems.lock, by id, exactly like the volume setter) - so a pitch control can be dragged and HEARD while it moves, which is the only way to judge one on a sound effect that is over before the slider settles
 	- New: AudioPlayItem.pitch - a varispeed playback rate (2 = an octave up and half as long, 0.5 = an octave down and twice as long). It needs no stage of its own: a rate conversion is decided by the RATIO alone, so ProcessSinglePlayItem simply tells the resampler the source has a different sample rate than it has, and the output still lands exactly on the device rate. A pitch within AudioPitchNeutralTolerance (0.1%) of 1 passes the source rate through UNCHANGED, so an unpitched clip keeps the memcpy passthrough and the even-ratio fast paths instead of falling onto the SinC branch over a slider's rounding error
 
@@ -293,15 +294,19 @@ fpl_extern AudioFrameIndex AudioSystemWriteFrames(AudioSystem *audioSys, void *o
 fpl_extern void AudioSystemSetSuspended(AudioSystem *audioSys, const bool suspended);
 fpl_extern bool AudioSystemIsSuspended(const AudioSystem *audioSys);
 
+// The file as recorded, which is what a caller that does not care about pitch passes. A macro and not a
+// `const float` so it works unchanged in C99, C++ and MSVC, and can be used where a constant expression is required.
+#define AudioSystemDefaultPitch 1.0f
+
 // How close to 1 a pitch has to be to count as UNPITCHED. Below this the source's own sample rate is passed to
 // the resampler untouched, so a clip that matches the device still takes the memcpy passthrough and an even
 // ratio still takes the cheap up/down path -- a slider quantizing to 0.9999999 must not silently push every
 // sound in the game onto the SinC branch forever. 0.1% is about 0.017 semitones: inaudible by a wide margin.
 #define AudioPitchNeutralTolerance 0.001f
 
-// Play a source. `pitch` is the playback rate multiplier (see AudioPlayItem.pitch); pass 1 for the file as
-// recorded, which costs nothing. Values <= 0 are treated as 1 rather than refused: silence would be the one
-// outcome nobody could debug.
+// Play a source. `pitch` is the playback rate multiplier (see AudioPlayItem.pitch); pass AudioSystemDefaultPitch
+// for the file as recorded, which costs nothing. Values <= 0 are treated as 1 rather than refused: silence would
+// be the one outcome nobody could debug.
 fpl_extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume, const float pitch);
 fpl_extern bool AudioSystemStopOne(AudioSystem *audioSys, const AudioPlayItemID playId);
 
