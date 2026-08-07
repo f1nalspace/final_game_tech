@@ -144,6 +144,7 @@ Changelog:
 	## 2026-08-07
 	- New: AudioSystemDefaultPitch - the file as recorded (1.0f), what every call site that does not care about pitch passes. A macro, so it is a constant expression in C99, C++ and MSVC alike
 	- Changed (API BREAKING): AudioSystemPlaySource() takes a fifth argument, `pitch`. Every existing call site must add it; pass AudioSystemDefaultPitch for the previous behaviour, which costs nothing (see AudioPitchNeutralTolerance). It is a parameter rather than a post-play setter because pitch is a property of THAT play - a setter would leave the first mixed buffer sounding at the wrong rate before it landed
+	- New: AudioSystemSetPlayItemRepeat() turns looping on or off on a play item that is already playing. Clearing it lets the current pass FINISH and the item free itself normally, which is what a "stop looping" control has to mean - AudioSystemStopOne would cut the sound off mid-note instead
 	- New: AudioSystemSetPlayItemPitch() changes the pitch of a play item that is already playing (find-and-write under playItems.lock, by id, exactly like the volume setter) - so a pitch control can be dragged and HEARD while it moves, which is the only way to judge one on a sound effect that is over before the slider settles
 	- New: AudioPlayItem.pitch - a varispeed playback rate (2 = an octave up and half as long, 0.5 = an octave down and twice as long). It needs no stage of its own: a rate conversion is decided by the RATIO alone, so ProcessSinglePlayItem simply tells the resampler the source has a different sample rate than it has, and the output still lands exactly on the device rate. A pitch within AudioPitchNeutralTolerance (0.1%) of 1 passes the source rate through UNCHANGED, so an unpitched clip keeps the memcpy passthrough and the even-ratio fast paths instead of falling onto the SinC branch over a slider's rounding error
 
@@ -321,6 +322,12 @@ fpl_extern bool AudioSystemSetPlayItemVolume(AudioSystem *audioSys, const AudioP
 // The rate changes from the next mixed chunk; frames already written to the device keep the old one.
 // Returns false when the item no longer exists, which is not an error - it just finished.
 fpl_extern bool AudioSystemSetPlayItemPitch(AudioSystem *audioSys, const AudioPlayItemID playId, const float pitch);
+
+// Change whether a play item that is already playing REPEATS. Clearing it lets the current pass finish and the
+// item free itself normally, which is what "stop looping" should mean - AudioSystemStopOne would cut it off
+// mid-sound instead. Setting it makes an item that has not ended yet carry on. Takes an id for the same reason
+// the volume setter does. Returns false when the item no longer exists, which is not an error - it just ended.
+fpl_extern bool AudioSystemSetPlayItemRepeat(AudioSystem *audioSys, const AudioPlayItemID playId, const bool repeat);
 
 // Pause or resume a play item that is already playing. The mixer skips it while paused and leaves its position alone, so resuming continues from the exact frame it stopped on -
 // which is what separates this from AudioSystemStopOne, which frees the item and forgets where it was. Takes an id for the same reason the volume setter does.
@@ -983,6 +990,27 @@ fpl_extern bool AudioSystemSetPlayItemPitch(AudioSystem *audioSys, const AudioPl
 	while(playItem != fpl_null) {
 		if(playItem->id.value == playId.value) {
 			playItem->pitch = pitch;
+			result = true;
+			break;
+		}
+		playItem = playItem->next;
+	}
+	fplMutexUnlock(&audioSys->playItems.lock);
+	return(result);
+}
+
+fpl_extern bool AudioSystemSetPlayItemRepeat(AudioSystem *audioSys, const AudioPlayItemID playId, const bool repeat) {
+	if(audioSys == fpl_null) {
+		return false;
+	}
+	// Same find-and-write under the same lock as the volume and pitch setters, and for the same reason: the
+	// audio device callback reads item->isRepeat (ProcessSinglePlayItem) and can RemovePlayItem concurrently
+	bool result = false;
+	fplMutexLock(&audioSys->playItems.lock);
+	AudioPlayItem *playItem = audioSys->playItems.first;
+	while(playItem != fpl_null) {
+		if(playItem->id.value == playId.value) {
+			playItem->isRepeat = repeat;
 			result = true;
 			break;
 		}
