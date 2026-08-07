@@ -1088,7 +1088,7 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 					// Mark as playing
 					track->sourceID = source->id;
 					fplAtomicStoreS32(&track->state, AudioTrackState_Ready);
-					track->playID = AudioSystemPlaySource(&demo->audioSys, source, false, 1.0f);
+					track->playID = AudioSystemPlaySource(&demo->audioSys, source, false, 1.0f, 1.0f);
 
 					// Allocate full audio buffer and fully load the 
 					AudioFrameIndex sourceFrameCount = source->buffer.frameCount;
@@ -1124,7 +1124,7 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 				}
 			
 				fplAtomicStoreS32(&track->state, AudioTrackState_Ready);
-				track->playID = AudioSystemPlaySource(&demo->audioSys, source, false, 1.0f);
+				track->playID = AudioSystemPlaySource(&demo->audioSys, source, false, 1.0f, 1.0f);
 
 				// Allocate full audio buffer
 				AudioFrameIndex sourceFrameCount = source->buffer.frameCount;
