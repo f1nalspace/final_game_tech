@@ -9,6 +9,9 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
+	## 2026-08-07
+	- Added a free ROTATION angle to sprites: SpriteCommand.rotation / SpriteInstance.rotation (radians, CCW, about the sprite center) plus RenderPushSpriteRotate. RenderPushSprite is unchanged and pushes no rotation. Rotated sprites still batch, unlike the caller-side model-matrix trick they replace
+
 	## 2026-07-19
 	- Fixed: A body-allocation failure mid-command now rolls back the whole command (header + partial body) so the command stream can never contain a truncated command (_RenderPushTypes no longer over-counts dataSize on failure)
 
@@ -367,6 +370,11 @@ typedef struct SpriteCommand {
 	Vec2f uvMax;
 	TextureHandle texture;
 	SpriteFlags flags;
+	// Free rotation about the sprite's own center, radians, counter-clockwise. 0 = axis-aligned, which is
+	// what everything that never rotates passes. This is applied to the quad's CORNERS, so it composes with
+	// the flip and 90-degree flags above rather than replacing them: those permute the UVs, this turns the
+	// geometry.
+	float rotation;
 } SpriteCommand;
 
 // One sprite inside a batch -- all instances in a SpriteBatchCommand share the same
@@ -378,6 +386,9 @@ typedef struct SpriteInstance {
 	Vec2f uvMin;
 	Vec2f uvMax;
 	SpriteFlags flags;
+	// Same meaning as SpriteCommand.rotation above. RenderAllocateSpriteBatch hands out CLEARED instances,
+	// so a filler that never rotates simply leaves this alone.
+	float rotation;
 } SpriteInstance;
 
 typedef struct SpriteBatchCommand {
@@ -470,6 +481,9 @@ fpl_extern void RenderPushQuad(RenderState *state, const Vec2f center, const flo
 fpl_extern VertexAllocation RenderAllocateVertices(RenderState *state, const size_t capacity, const Vec4f color, const DrawMode drawMode, const bool isLoop, const float thickness);
 fpl_extern void RenderPushVertices(RenderState *state, const Vec2f *verts, const size_t vertexCount, const bool copyVerts, const Vec4f color, const DrawMode drawMode, const bool isLoop, const float thickness);
 fpl_extern void RenderPushSprite(RenderState *state, const Vec2f position, const Vec2f ext, const TextureHandle texture, const Vec4f color, const UVRect uvRect, const SpriteFlags flags);
+// Same sprite, turned by `rotation` radians (counter-clockwise) about its own center. Everything that does
+// not rotate keeps calling RenderPushSprite above.
+fpl_extern void RenderPushSpriteRotate(RenderState *state, const Vec2f position, const Vec2f ext, const TextureHandle texture, const Vec4f color, const UVRect uvRect, const SpriteFlags flags, const float rotation);
 fpl_extern SpriteBatchAllocation RenderAllocateSpriteBatch(RenderState *state, const size_t capacity, const TextureHandle texture);
 fpl_extern void RenderPushSpriteBatch(RenderState *state, const TextureHandle texture, const SpriteInstance *instances, const size_t count);
 fpl_extern void RenderPushTexture(RenderState *state, TextureHandle *targetTexture, const void *data, const uint32_t width, const uint32_t height, const uint32_t bytesPerPixel, const TextureFilterType filter, const TextureWrapMode wrap, const bool isTopDown, const bool isPreMultiplied);
@@ -724,7 +738,7 @@ fpl_extern void RenderPushVertices(RenderState *state, const Vec2f *verts, const
 	cmd->isLoop = isLoop;
 }
 
-fpl_extern void RenderPushSprite(RenderState *state, const Vec2f position, const Vec2f ext, const TextureHandle texture, const Vec4f color, const UVRect uvRect, const SpriteFlags flags) {
+fpl_extern void RenderPushSpriteRotate(RenderState *state, const Vec2f position, const Vec2f ext, const TextureHandle texture, const Vec4f color, const UVRect uvRect, const SpriteFlags flags, const float rotation) {
 	if (state == fpl_null) {
 		return;
 	}
@@ -741,6 +755,12 @@ fpl_extern void RenderPushSprite(RenderState *state, const Vec2f position, const
 	cmd->uvMin = V2fInit(uvRect.uMin, uvRect.vMin);
 	cmd->uvMax = V2fInit(uvRect.uMax, uvRect.vMax);
 	cmd->flags = flags;
+	cmd->rotation = rotation;
+}
+
+fpl_extern void RenderPushSprite(RenderState *state, const Vec2f position, const Vec2f ext, const TextureHandle texture, const Vec4f color, const UVRect uvRect, const SpriteFlags flags) {
+	const float noRotation = 0.0f;
+	RenderPushSpriteRotate(state, position, ext, texture, color, uvRect, flags, noRotation);
 }
 
 fpl_extern SpriteBatchAllocation RenderAllocateSpriteBatch(RenderState *state, const size_t capacity, const TextureHandle texture) {

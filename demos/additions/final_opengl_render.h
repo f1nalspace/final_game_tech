@@ -9,6 +9,9 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
+	## 2026-08-07
+	- Sprites carry a free rotation angle: _ExpandSpriteInstance turns the quad corners about the sprite center, and CommandType_Sprite now expands through that same function instead of emitting its own corners, so a single sprite and a batched one cannot drift apart
+
 	## 2026-07-23
 	- Changed AllocateTexture repeatable to TextureWrapMode
 
@@ -460,14 +463,21 @@ fpl_extern bool InitOpenGLRenderer(RenderCapabilities *outCaps) {
 // Sprite batches are expanded into client vertex arrays and drawn in chunks of this
 // many sprites, so the scratch buffers stay a fixed ~1 MB regardless of the batch size.
 #define SPRITE_BATCH_CHUNK_SPRITES 8192
-#define SPRITE_BATCH_VERTS_PER_SPRITE 4
+// A sprite quad is four corners; one batched sprite therefore expands to that many verts.
+#define SPRITE_QUAD_CORNER_COUNT 4
+#define SPRITE_BATCH_VERTS_PER_SPRITE SPRITE_QUAD_CORNER_COUNT
 
 static Vec2f _spriteBatchPos[SPRITE_BATCH_CHUNK_SPRITES * SPRITE_BATCH_VERTS_PER_SPRITE];
 static Vec2f _spriteBatchUV[SPRITE_BATCH_CHUNK_SPRITES * SPRITE_BATCH_VERTS_PER_SPRITE];
 static Vec4f _spriteBatchColor[SPRITE_BATCH_CHUNK_SPRITES * SPRITE_BATCH_VERTS_PER_SPRITE];
 
-// Expand one sprite instance into 4 quad corners (position + uv), applying the flip and
-// 90-degree rotate flags exactly like the single CommandType_Sprite path above.
+// Expand one sprite instance into 4 quad corners (position + uv), applying the flip flags, the 90-degree
+// rotate flags and the free rotation angle. BOTH sprite paths go through here -- the batch below and the
+// single CommandType_Sprite -- so a rotated sprite cannot come out different depending on how it was pushed.
+//
+// The corners are built as OFFSETS from the sprite center first and only translated at the end, because
+// that is what the free rotation needs something to turn. The 90-degree flags swap the two extents: a
+// quarter-turned cell is as wide as the cell is tall.
 static void _ExpandSpriteInstance(const SpriteInstance *s, Vec2f *outPos, Vec2f *outUV) {
 	const bool flipU = (s->flags & SpriteFlags_FlipU) == SpriteFlags_FlipU;
 	const bool flipV = (s->flags & SpriteFlags_FlipV) == SpriteFlags_FlipV;
@@ -478,25 +488,40 @@ static void _ExpandSpriteInstance(const SpriteInstance *s, Vec2f *outPos, Vec2f 
 	const float vMin = flipV ? s->uvMax.y : s->uvMin.y;
 	const float vMax = flipV ? s->uvMin.y : s->uvMax.y;
 	const bool notRotated = (!rot90CW && !rot90CCW) || (rot90CW && rot90CCW);
-	const float px = s->position.x;
-	const float py = s->position.y;
 	const float ex = s->ext.w;
 	const float ey = s->ext.h;
 	if (notRotated) {
-		outUV[0] = V2fInit(uMax, vMax); outPos[0] = V2fInit(px + ex, py + ey);
-		outUV[1] = V2fInit(uMin, vMax); outPos[1] = V2fInit(px - ex, py + ey);
-		outUV[2] = V2fInit(uMin, vMin); outPos[2] = V2fInit(px - ex, py - ey);
-		outUV[3] = V2fInit(uMax, vMin); outPos[3] = V2fInit(px + ex, py - ey);
+		outUV[0] = V2fInit(uMax, vMax); outPos[0] = V2fInit(ex, ey);
+		outUV[1] = V2fInit(uMin, vMax); outPos[1] = V2fInit(-ex, ey);
+		outUV[2] = V2fInit(uMin, vMin); outPos[2] = V2fInit(-ex, -ey);
+		outUV[3] = V2fInit(uMax, vMin); outPos[3] = V2fInit(ex, -ey);
 	} else if (rot90CW) {
-		outUV[0] = V2fInit(uMin, vMax); outPos[0] = V2fInit(px + ey, py + ex);
-		outUV[1] = V2fInit(uMin, vMin); outPos[1] = V2fInit(px - ey, py + ex);
-		outUV[2] = V2fInit(uMax, vMin); outPos[2] = V2fInit(px - ey, py - ex);
-		outUV[3] = V2fInit(uMax, vMax); outPos[3] = V2fInit(px + ey, py - ex);
+		outUV[0] = V2fInit(uMin, vMax); outPos[0] = V2fInit(ey, ex);
+		outUV[1] = V2fInit(uMin, vMin); outPos[1] = V2fInit(-ey, ex);
+		outUV[2] = V2fInit(uMax, vMin); outPos[2] = V2fInit(-ey, -ex);
+		outUV[3] = V2fInit(uMax, vMax); outPos[3] = V2fInit(ey, -ex);
 	} else {
-		outUV[0] = V2fInit(uMax, vMax); outPos[0] = V2fInit(px - ey, py + ex);
-		outUV[1] = V2fInit(uMin, vMax); outPos[1] = V2fInit(px - ey, py - ex);
-		outUV[2] = V2fInit(uMin, vMin); outPos[2] = V2fInit(px + ey, py - ex);
-		outUV[3] = V2fInit(uMax, vMin); outPos[3] = V2fInit(px + ey, py + ex);
+		outUV[0] = V2fInit(uMax, vMax); outPos[0] = V2fInit(-ey, ex);
+		outUV[1] = V2fInit(uMin, vMax); outPos[1] = V2fInit(-ey, -ex);
+		outUV[2] = V2fInit(uMin, vMin); outPos[2] = V2fInit(ey, -ex);
+		outUV[3] = V2fInit(uMax, vMin); outPos[3] = V2fInit(ey, ex);
+	}
+	const float px = s->position.x;
+	const float py = s->position.y;
+	if (s->rotation != 0.0f) {
+		const float cosAngle = F32Cos(s->rotation);
+		const float sinAngle = F32Sin(s->rotation);
+		for (int cornerIndex = 0; cornerIndex < SPRITE_QUAD_CORNER_COUNT; ++cornerIndex) {
+			const float offsetX = outPos[cornerIndex].x;
+			const float offsetY = outPos[cornerIndex].y;
+			float rotatedX = offsetX * cosAngle - offsetY * sinAngle;
+			float rotatedY = offsetX * sinAngle + offsetY * cosAngle;
+			outPos[cornerIndex] = V2fInit(px + rotatedX, py + rotatedY);
+		}
+	} else {
+		for (int cornerIndex = 0; cornerIndex < SPRITE_QUAD_CORNER_COUNT; ++cornerIndex) {
+			outPos[cornerIndex] = V2fInit(px + outPos[cornerIndex].x, py + outPos[cornerIndex].y);
+		}
 	}
 }
 
@@ -897,70 +922,28 @@ fpl_extern void RenderWithOpenGL(RenderState *renderState) {
 					fplAssert(dataSize == sizeof(SpriteCommand));
 					SpriteCommand *cmd = (SpriteCommand *)dataStart;
 					const GLuint texId = GetTextureIDFromHandle(cmd->texture);
-					const bool flipU = (cmd->flags & SpriteFlags_FlipU) == SpriteFlags_FlipU;
-					const bool flipV = (cmd->flags & SpriteFlags_FlipV) == SpriteFlags_FlipV;
-					const bool rot90CW = (cmd->flags & SpriteFlags_Rotate_90_CW) == SpriteFlags_Rotate_90_CW;
-					const bool rot90CCW = (cmd->flags & SpriteFlags_Rotate_90_CCW) == SpriteFlags_Rotate_90_CCW;
-					const float uMin = flipU ? cmd->uvMax.x : cmd->uvMin.x;
-					const float uMax = flipU ? cmd->uvMin.x :  cmd->uvMax.x;
-					const float vMin = flipV ? cmd->uvMax.y : cmd->uvMin.y;
-					const float vMax = flipV ? cmd->uvMin.y : cmd->uvMax.y;
-					const bool notRotated = (!rot90CW && !rot90CCW) || (rot90CW && rot90CCW);
+					// One sprite is one instance. Expanded by the SAME function the batch path uses, so the
+					// flips, the 90-degree steps and the free rotation can never behave differently between
+					// a sprite pushed on its own and the same sprite pushed inside a batch.
+					SpriteInstance singleInstance = fplZeroInit;
+					singleInstance.color = cmd->color;
+					singleInstance.position = cmd->position;
+					singleInstance.ext = cmd->ext;
+					singleInstance.uvMin = cmd->uvMin;
+					singleInstance.uvMax = cmd->uvMax;
+					singleInstance.flags = cmd->flags;
+					singleInstance.rotation = cmd->rotation;
+					Vec2f cornerPositions[SPRITE_QUAD_CORNER_COUNT];
+					Vec2f cornerTexCoords[SPRITE_QUAD_CORNER_COUNT];
+					_ExpandSpriteInstance(&singleInstance, cornerPositions, cornerTexCoords);
 					glEnable(GL_TEXTURE_2D);
 					glBindTexture(GL_TEXTURE_2D, texId);
 					glColor4fv(&cmd->color.m[0]);
 					glBegin(GL_QUADS);
-
-					if (notRotated) {
-						// Top Right
-						glTexCoord2f(uMax, vMax); 
-						glVertex2f(cmd->position.x + cmd->ext.w, cmd->position.y + cmd->ext.h);
-
-						// Top Left
-						glTexCoord2f(uMin, vMax); 
-						glVertex2f(cmd->position.x - cmd->ext.w, cmd->position.y + cmd->ext.h);
-
-						// Bottom Left
-						glTexCoord2f(uMin, vMin); 
-						glVertex2f(cmd->position.x - cmd->ext.w, cmd->position.y - cmd->ext.h);
-
-						// Bottom Right
-						glTexCoord2f(uMax, vMin); 
-						glVertex2f(cmd->position.x + cmd->ext.w, cmd->position.y - cmd->ext.h);
-					} else if (rot90CW) {
-						// Top-right (was top-left)
-						glTexCoord2f(uMin, vMax); 
-						glVertex2f(cmd->position.x + cmd->ext.h, cmd->position.y + cmd->ext.w);
-
-						// Top-left (was bottom-left)
-						glTexCoord2f(uMin, vMin); 
-						glVertex2f(cmd->position.x - cmd->ext.h, cmd->position.y + cmd->ext.w);
-
-						// Bottom-left (was bottom-right)
-						glTexCoord2f(uMax, vMin); 
-						glVertex2f(cmd->position.x - cmd->ext.h, cmd->position.y - cmd->ext.w);
-
-						// Bottom-right (was top-right)
-						glTexCoord2f(uMax, vMax); 
-						glVertex2f(cmd->position.x + cmd->ext.h, cmd->position.y - cmd->ext.w);
-					} else if (rot90CCW) {
-						// Top-left (was top-right)
-						glTexCoord2f(uMax, vMax);
-						glVertex2f(cmd->position.x - cmd->ext.h, cmd->position.y + cmd->ext.w);
-
-						// Bottom-left (was top-left)
-						glTexCoord2f(uMin, vMax);
-						glVertex2f(cmd->position.x - cmd->ext.h, cmd->position.y - cmd->ext.w);
-
-						// Bottom-right (was bottom-left)
-						glTexCoord2f(uMin, vMin);
-						glVertex2f(cmd->position.x + cmd->ext.h, cmd->position.y - cmd->ext.w);
-
-						// Top-right (was bottom-right)
-						glTexCoord2f(uMax, vMin);
-						glVertex2f(cmd->position.x + cmd->ext.h, cmd->position.y + cmd->ext.w);
+					for (int cornerIndex = 0; cornerIndex < SPRITE_QUAD_CORNER_COUNT; ++cornerIndex) {
+						glTexCoord2f(cornerTexCoords[cornerIndex].x, cornerTexCoords[cornerIndex].y);
+						glVertex2f(cornerPositions[cornerIndex].x, cornerPositions[cornerIndex].y);
 					}
-
 					glEnd();
 					glBindTexture(GL_TEXTURE_2D, 0);
 					glDisable(GL_TEXTURE_2D);
