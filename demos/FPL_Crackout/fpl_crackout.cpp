@@ -16,6 +16,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2026-08-07
+	- Changed: Reflect for API change final_audiosystem.h (AudioSystemPlaySource takes a pitch, passing AudioSystemDefaultPitch)
+
 	## 2025-11-21
 	- Changed: Reflect for API changes final_game.h (GameRender has an additional Input argument)
 	- Changed: Reflect for API changes final_game.h (WasPressed / IsDown was renamed to ButtonWasPressed / ButtonIsDown)
@@ -671,7 +674,7 @@ static void LoadLevel(GameState &state, int levelSeed) {
 	// Play music (Stop previous ones first)
 	AudioSystemStopOne(state.audioSys, state.assets.gameMusicPlayId);
 	AudioSystemStopOne(state.audioSys, state.assets.menuMusicPlayId);
-	state.assets.gameMusicPlayId = AudioSystemPlaySource(state.audioSys, state.assets.gameMusic, true, 0.5f);
+	state.assets.gameMusicPlayId = AudioSystemPlaySource(state.audioSys, state.assets.gameMusic, true, 0.5f, AudioSystemDefaultPitch);
 }
 
 
@@ -806,7 +809,7 @@ static bool InitGame(GameState &state) {
 	state.menu = {};
 
 	// Play menu music
-	state.assets.menuMusicPlayId = AudioSystemPlaySource(state.audioSys, state.assets.menuMusic, true, 0.5f);
+	state.assets.menuMusicPlayId = AudioSystemPlaySource(state.audioSys, state.assets.menuMusic, true, 0.5f, AudioSystemDefaultPitch);
 #else
 	StartGame(state);
 #endif
@@ -935,7 +938,7 @@ static void HandleBallCollision(GameState &state, Ball &ball, Entity &other, b2C
 	}
 
 	// Play sound
-	AudioSystemPlaySource(state.audioSys, state.assets.ballHitSound, false, 0.5f);
+	AudioSystemPlaySource(state.audioSys, state.assets.ballHitSound, false, 0.5f, AudioSystemDefaultPitch);
 }
 
 struct CollisionPair {
@@ -1126,7 +1129,7 @@ static void UpdatePlayMode(GameState &state, const Input &input) {
 	if(state.lifes == 0) {
 		AudioSystemStopOne(state.audioSys, state.assets.gameMusicPlayId);
 		AudioSystemStopOne(state.audioSys, state.assets.menuMusicPlayId);
-		state.assets.menuMusicPlayId = AudioSystemPlaySource(state.audioSys, state.assets.menuMusic, true, 0.5f);
+		state.assets.menuMusicPlayId = AudioSystemPlaySource(state.audioSys, state.assets.menuMusic, true, 0.5f, AudioSystemDefaultPitch);
 		state.mode = GameMode::GameOver;
 		return;
 	}

@@ -84,6 +84,9 @@ Todo:
 	- Multiple audio tracks
 
 Changelog:
+	## 2026-08-07
+	- Changed: Reflect for API change final_audiosystem.h (AudioSystemPlaySource takes a pitch, passing AudioSystemDefaultPitch)
+
 	## 2026-05-14
 	- Show audio backend name in title
 
@@ -1088,7 +1091,7 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 					// Mark as playing
 					track->sourceID = source->id;
 					fplAtomicStoreS32(&track->state, AudioTrackState_Ready);
-					track->playID = AudioSystemPlaySource(&demo->audioSys, source, false, 1.0f, 1.0f);
+					track->playID = AudioSystemPlaySource(&demo->audioSys, source, false, 1.0f, AudioSystemDefaultPitch);
 
 					// Allocate full audio buffer and fully load the 
 					AudioFrameIndex sourceFrameCount = source->buffer.frameCount;
@@ -1124,7 +1127,7 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 				}
 			
 				fplAtomicStoreS32(&track->state, AudioTrackState_Ready);
-				track->playID = AudioSystemPlaySource(&demo->audioSys, source, false, 1.0f, 1.0f);
+				track->playID = AudioSystemPlaySource(&demo->audioSys, source, false, 1.0f, AudioSystemDefaultPitch);
 
 				// Allocate full audio buffer
 				AudioFrameIndex sourceFrameCount = source->buffer.frameCount;

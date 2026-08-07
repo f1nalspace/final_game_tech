@@ -109,7 +109,7 @@ static bool PlayAudioTrack(AudioSystem *audioSys, AudioTrackList *tracklist, con
 			fplAssert(track->sourceID.value > 0);
 			AudioSource *source = AudioSystemGetSourceByID(audioSys, track->sourceID);
 			if(source != fpl_null) {
-				track->playID = AudioSystemPlaySource(audioSys, source, false, 1.0f, 1.0f);
+				track->playID = AudioSystemPlaySource(audioSys, source, false, 1.0f, AudioSystemDefaultPitch);
 
 				// We either have never initialized the full buffer or the buffer 
 				bool isSameBuffer = AreAudioBuffersEqual(&track->outputFullBuffer, &source->buffer);
@@ -204,7 +204,7 @@ static bool LoadAudioTrackList(AudioSystem *audioSys, const AudioTrackSource *so
 
 					track->sourceID = source->id;
 					if(autoPlay) {
-						AudioPlayItemID playID = AudioSystemPlaySource(audioSys, source, false, 1.0f, 1.0f);
+						AudioPlayItemID playID = AudioSystemPlaySource(audioSys, source, false, 1.0f, AudioSystemDefaultPitch);
 						track->playID = playID;
 					}
 				}
@@ -243,7 +243,7 @@ static bool LoadAudioTrackList(AudioSystem *audioSys, const AudioTrackSource *so
 				track->state = AudioTrackState_Full;
 
 				if(autoPlay) {
-					AudioPlayItemID playID = AudioSystemPlaySource(audioSys, source, true, 1.0f, 1.0f);
+					AudioPlayItemID playID = AudioSystemPlaySource(audioSys, source, true, 1.0f, AudioSystemDefaultPitch);
 					track->playID = playID;
 				}
 			}
