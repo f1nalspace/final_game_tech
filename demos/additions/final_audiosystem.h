@@ -141,6 +141,11 @@ License:
 	Copyright 2017-2026 Torsten Spaete
 
 Changelog:
+	## 2026-08-07
+	- Changed (API BREAKING): AudioSystemPlaySource() takes a fifth argument, `pitch`. Every existing call site must add it; pass 1.0f for the previous behaviour, which costs nothing (see AudioPitchNeutralTolerance). It is a parameter rather than a post-play setter because pitch is a property of THAT play - a setter would leave the first mixed buffer sounding at the wrong rate before it landed
+	- New: AudioSystemSetPlayItemPitch() changes the pitch of a play item that is already playing (find-and-write under playItems.lock, by id, exactly like the volume setter) - so a pitch control can be dragged and HEARD while it moves, which is the only way to judge one on a sound effect that is over before the slider settles
+	- New: AudioPlayItem.pitch - a varispeed playback rate (2 = an octave up and half as long, 0.5 = an octave down and twice as long). It needs no stage of its own: a rate conversion is decided by the RATIO alone, so ProcessSinglePlayItem simply tells the resampler the source has a different sample rate than it has, and the output still lands exactly on the device rate. A pitch within AudioPitchNeutralTolerance (0.1%) of 1 passes the source rate through UNCHANGED, so an unpitched clip keeps the memcpy passthrough and the even-ratio fast paths instead of falling onto the SinC branch over a slider's rounding error
+
 	## 2026-08-06
 	- Fixed: LoadMP3FormatFromBuffer (final_mp3loader.h) walked no headers at all -- it ran a FULL mp3dec_load_buf decode and read fileInfo.samples off the result, then freed it. It now hops frame header to frame header, which is what the format is actually made of. Measured over every mp3 in data/: identical frameCount to LoadMP3FromBuffer in all four, 174x-201x faster, no allocation (1.63 MB / 107 s track: 64.4 ms + 18 MB of PCM -> 0.37 ms + 0 bytes). AudioSystemLoadFileFormat is now cheap enough to ask per UI row, which is what a playlist needs to show a track's length
 	- New: AudioSystemSetPlayItemVolume() changes the volume of a play item that is already playing (find-and-write under playItems.lock, by id so it cannot dangle)
@@ -198,6 +203,12 @@ typedef struct AudioPlayItem {
 	struct AudioPlayItem *prev;
 	AudioPlayItemID id;
 	float volume;
+	// Playback rate multiplier: 2 = an octave up and half as long, 0.5 = an octave down and twice as long.
+	// VARISPEED, like changing a tape's speed -- pitch and duration move together, there is no time-stretch
+	// anywhere in this mixer. Applied by telling the resampler the source has a different sample rate than it
+	// really has, which is all a rate conversion ever needed: it is decided by the RATIO alone.
+	// 1 (or anything within AudioPitchNeutralTolerance of it) is the file as recorded and costs nothing.
+	float pitch;
 	bool isRepeat;
 	// Skipped by the mixer while set, WITHOUT touching framesPlayed - so resuming carries on from the exact frame it stopped on.
 	// That is the whole difference between this and AudioSystemStopOne, which frees the item and forgets where it was
@@ -282,13 +293,29 @@ fpl_extern AudioFrameIndex AudioSystemWriteFrames(AudioSystem *audioSys, void *o
 fpl_extern void AudioSystemSetSuspended(AudioSystem *audioSys, const bool suspended);
 fpl_extern bool AudioSystemIsSuspended(const AudioSystem *audioSys);
 
-fpl_extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume);
+// How close to 1 a pitch has to be to count as UNPITCHED. Below this the source's own sample rate is passed to
+// the resampler untouched, so a clip that matches the device still takes the memcpy passthrough and an even
+// ratio still takes the cheap up/down path -- a slider quantizing to 0.9999999 must not silently push every
+// sound in the game onto the SinC branch forever. 0.1% is about 0.017 semitones: inaudible by a wide margin.
+#define AudioPitchNeutralTolerance 0.001f
+
+// Play a source. `pitch` is the playback rate multiplier (see AudioPlayItem.pitch); pass 1 for the file as
+// recorded, which costs nothing. Values <= 0 are treated as 1 rather than refused: silence would be the one
+// outcome nobody could debug.
+fpl_extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume, const float pitch);
 fpl_extern bool AudioSystemStopOne(AudioSystem *audioSys, const AudioPlayItemID playId);
 
 // Change the volume of a play item that is ALREADY playing (fades, a volume slider). Takes an id and not a pointer on purpose:
 // the audio thread frees a finished play item, so an id is the only handle that cannot dangle.
 // Returns false when the item no longer exists, which is not an error - it just finished.
 fpl_extern bool AudioSystemSetPlayItemVolume(AudioSystem *audioSys, const AudioPlayItemID playId, const float volume);
+
+// Change the PITCH of a play item that is already playing, so a pitch control can be dragged and heard while
+// it moves - which on a sound effect is the only way to judge one, most being over before a slider settles.
+// Takes an id for the same reason the volume setter does. Values <= 0 are ignored rather than obeyed.
+// The rate changes from the next mixed chunk; frames already written to the device keep the old one.
+// Returns false when the item no longer exists, which is not an error - it just finished.
+fpl_extern bool AudioSystemSetPlayItemPitch(AudioSystem *audioSys, const AudioPlayItemID playId, const float pitch);
 
 // Pause or resume a play item that is already playing. The mixer skips it while paused and leaves its position alone, so resuming continues from the exact frame it stopped on -
 // which is what separates this from AudioSystemStopOne, which frees the item and forgets where it was. Takes an id for the same reason the volume setter does.
@@ -939,6 +966,27 @@ fpl_extern bool AudioSystemSetPlayItemVolume(AudioSystem *audioSys, const AudioP
 	return(result);
 }
 
+fpl_extern bool AudioSystemSetPlayItemPitch(AudioSystem *audioSys, const AudioPlayItemID playId, const float pitch) {
+	if(audioSys == fpl_null || pitch <= 0.0f) {
+		return false;
+	}
+	// Same find-and-write under the same lock as the volume setter, and for the same reason: the audio device
+	// callback reads item->pitch (ProcessSinglePlayItem) and can RemovePlayItem concurrently
+	bool result = false;
+	fplMutexLock(&audioSys->playItems.lock);
+	AudioPlayItem *playItem = audioSys->playItems.first;
+	while(playItem != fpl_null) {
+		if(playItem->id.value == playId.value) {
+			playItem->pitch = pitch;
+			result = true;
+			break;
+		}
+		playItem = playItem->next;
+	}
+	fplMutexUnlock(&audioSys->playItems.lock);
+	return(result);
+}
+
 fpl_extern bool AudioSystemSetPlayItemPaused(AudioSystem *audioSys, const AudioPlayItemID playId, const bool paused) {
 	if(audioSys == fpl_null) {
 		return false;
@@ -959,7 +1007,7 @@ fpl_extern bool AudioSystemSetPlayItemPaused(AudioSystem *audioSys, const AudioP
 	return(result);
 }
 
-fpl_extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume) {
+fpl_extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume, const float pitch) {
 	if((audioSys == fpl_null) || (source == fpl_null)) {
 		AudioPlayItemID empty = fplZeroInit;
 		return(empty);
@@ -978,6 +1026,9 @@ fpl_extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const Au
 	playItem->source = source;
 	playItem->isRepeat = repeat;
 	playItem->volume = volume;
+	// A pitch of zero or below would consume no input and sound like nothing at all -- the one failure nobody
+	// could debug from the outside. Treat it as the file as recorded.
+	playItem->pitch = (pitch > 0.0f) ? pitch : 1.0f;
 	playItem->isPaused = false;
 
 	fplMutexLock(&audioSys->playItems.lock);
@@ -1380,6 +1431,31 @@ static AudioResampleResult ResampleChunk(const AudioChannelIndex channels, const
 *   - mixingBuffer: outRemainingFrameCount counts down from targetFrameCount, preventing overflow.
 *   - Source data:  Bounded by inTotalFrameCount - framesPlayed[0].
 */
+// The sample rate the resampler is TOLD the source has, which is the only thing pitch changes. A rate
+// conversion is decided by the RATIO alone -- claiming a 44100 Hz source is 47187 Hz while the device stays at
+// 48000 consumes the clip 7% faster and still lands exactly on the device rate, so pitch needs no stage of its
+// own and the output rate never moves.
+//
+// A neutral pitch returns the source rate UNCHANGED (not merely something close to it), which is what keeps an
+// unpitched clip on the memcpy passthrough or the even-ratio path instead of the SinC branch.
+static AudioHertz ResolvePitchedSampleRate(const AudioHertz sourceSampleRate, const float pitch) {
+	if (pitch <= 0.0f) {
+		return sourceSampleRate;
+	}
+	float distanceFromNeutral = pitch - 1.0f;
+	if (distanceFromNeutral < 0.0f) {
+		distanceFromNeutral = -distanceFromNeutral;
+	}
+	if (distanceFromNeutral <= AudioPitchNeutralTolerance) {
+		return sourceSampleRate;
+	}
+	float pitchedRate = (float)sourceSampleRate * pitch + 0.5f;
+	if (pitchedRate < 1.0f) {
+		return sourceSampleRate; // an absurd pitch would round the rate to zero, which the resampler refuses
+	}
+	return (AudioHertz)pitchedRate;
+}
+
 static AudioFrameIndex ProcessSinglePlayItem(AudioSystem *audioSys, AudioPlayItem *item, const AudioFrameIndex targetFrameCount, float *mixingBuffer) {
 	const AudioHertz outSampleRate = audioSys->targetFormat.sampleRate;
 	const AudioChannelIndex outChannelCount = audioSys->targetFormat.channels;
@@ -1388,7 +1464,8 @@ static AudioFrameIndex ProcessSinglePlayItem(AudioSystem *audioSys, AudioPlayIte
 	const AudioFormat *srcFormat = &source->format;
 	const AudioBuffer *srcBuffer = &source->buffer;
 
-	const AudioHertz inSampleRate = srcFormat->sampleRate;
+	// The PITCHED rate, which is the source's own whenever the item is not pitched -- see ResolvePitchedSampleRate.
+	const AudioHertz inSampleRate = ResolvePitchedSampleRate(srcFormat->sampleRate, item->pitch);
 	const AudioFrameIndex inTotalFrameCount = srcBuffer->frameCount;
 	const AudioChannelIndex inChannelCount = srcFormat->channels;
 	const fplAudioFormatType inFormat = srcFormat->format;
