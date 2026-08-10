@@ -9,6 +9,9 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
+	## 2026-08-10
+	- Execute CommandType_RectangleGradient: one glColor4fv per quad corner, so the ramp is interpolated by the pipeline (GL_SMOOTH) instead of by a run of flat strips
+
 	## 2026-08-07
 	- Sprites carry a free rotation angle: _ExpandSpriteInstance turns the quad corners about the sprite center, and CommandType_Sprite now expands through that same function instead of emitting its own corners, so a single sprite and a batched one cannot drift apart
 
@@ -914,6 +917,30 @@ fpl_extern void RenderWithOpenGL(RenderState *renderState) {
 					glVertex2f(cmd->bottomLeft.x, cmd->bottomLeft.y + cmd->size.h);
 					glVertex2f(cmd->bottomLeft.x, cmd->bottomLeft.y);
 					glVertex2f(cmd->bottomLeft.x + cmd->size.w, cmd->bottomLeft.y);
+					glEnd();
+				} break;
+
+				case CommandType_RectangleGradient:
+				{
+					fplAssert(dataSize == sizeof(RectangleGradientCommand));
+					RectangleGradientCommand *cmd = (RectangleGradientCommand *)dataStart;
+					// One color per CORNER and the pipeline interpolates between them (GL_SMOOTH is the default
+					// shade model), which is the whole point: a ramp drawn as flat strips bands at any step count.
+					const bool isHorizontal = cmd->axis == GradientAxis_Horizontal;
+					const float left = cmd->bottomLeft.x;
+					const float right = cmd->bottomLeft.x + cmd->size.w;
+					const float bottom = cmd->bottomLeft.y;
+					const float top = cmd->bottomLeft.y + cmd->size.h;
+					// The start color sits on the axis' MIN edge, so both corners on that edge carry it.
+					Vec4f topRightColor = cmd->endColor;
+					Vec4f bottomLeftColor = cmd->startColor;
+					Vec4f topLeftColor = isHorizontal ? cmd->startColor : cmd->endColor;
+					Vec4f bottomRightColor = isHorizontal ? cmd->endColor : cmd->startColor;
+					glBegin(GL_QUADS);
+					glColor4fv(&topRightColor.m[0]); glVertex2f(right, top);
+					glColor4fv(&topLeftColor.m[0]); glVertex2f(left, top);
+					glColor4fv(&bottomLeftColor.m[0]); glVertex2f(left, bottom);
+					glColor4fv(&bottomRightColor.m[0]); glVertex2f(right, bottom);
 					glEnd();
 				} break;
 

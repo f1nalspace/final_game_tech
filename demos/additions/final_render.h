@@ -9,6 +9,9 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
+	## 2026-08-10
+	- Added GRADIENT rectangles: GradientAxis + RectangleGradientCommand + RenderPushRectangleGradient / RenderPushRectangleGradientMinMax. One color per corner, so the pipeline interpolates the ramp across the quad -- the alternative every caller had was a run of flat strips, and those band visibly
+
 	## 2026-08-07
 	- Added a free ROTATION angle to sprites: SpriteCommand.rotation / SpriteInstance.rotation (radians, CCW, about the sprite center) plus RenderPushSpriteRotate. RenderPushSprite is unchanged and pushes no rotation. Rotated sprites still batch, unlike the caller-side model-matrix trick they replace
 
@@ -263,6 +266,7 @@ typedef enum CommandType {
 	CommandType_Scissor,
 	CommandType_Matrix,
 	CommandType_Rectangle,
+	CommandType_RectangleGradient,
 	CommandType_Vertices,
 	CommandType_Sprite,
 	CommandType_SpriteBatch,
@@ -325,6 +329,24 @@ typedef struct RectangleCommand {
 	float lineWidth;
 	bool isFilled;
 } RectangleCommand;
+
+// Which way a gradient rectangle RAMPS: from its left edge to its right (horizontal), or from its bottom
+// edge to its top (vertical). The start color always sits on the MIN edge of that axis.
+typedef enum GradientAxis {
+	GradientAxis_Horizontal = 0,
+	GradientAxis_Vertical
+} GradientAxis;
+
+// A filled rectangle whose color is INTERPOLATED from one edge to the other: one color per corner, so the
+// pipeline draws the ramp itself. Without it a gradient costs a run of flat strips, and those band -- no
+// number of steps makes stepped alpha smooth, it only makes the steps smaller.
+typedef struct RectangleGradientCommand {
+	Vec4f startColor; // on the MIN edge of `axis`
+	Vec4f endColor;   // ... and on the max edge
+	Vec2f bottomLeft;
+	Vec2f size;
+	GradientAxis axis;
+} RectangleGradientCommand;
 
 typedef enum DrawMode {
 	DrawMode_None,
@@ -477,6 +499,8 @@ fpl_extern void RenderPopMatrix(RenderState *state);
 fpl_extern void RenderPushRectangle(RenderState *state, const Vec2f bottomLeft, const Vec2f size, const Vec4f color, const bool isFilled, const float lineWidth);
 fpl_extern void RenderPushRectangleCenter(RenderState *state, const Vec2f center, const Vec2f ext, const Vec4f color, const bool isFilled, const float lineWidth);
 fpl_extern void RenderPushRectangleMinMax(RenderState *state, const Vec2f min, const Vec2f max, const Vec4f color, const bool isFilled, const float lineWidth);
+fpl_extern void RenderPushRectangleGradient(RenderState *state, const Vec2f bottomLeft, const Vec2f size, const Vec4f startColor, const Vec4f endColor, const GradientAxis axis);
+fpl_extern void RenderPushRectangleGradientMinMax(RenderState *state, const Vec2f min, const Vec2f max, const Vec4f startColor, const Vec4f endColor, const GradientAxis axis);
 fpl_extern void RenderPushQuad(RenderState *state, const Vec2f center, const float radius, const Vec4f color, const bool isFilled, const float lineWidth);
 fpl_extern VertexAllocation RenderAllocateVertices(RenderState *state, const size_t capacity, const Vec4f color, const DrawMode drawMode, const bool isLoop, const float thickness);
 fpl_extern void RenderPushVertices(RenderState *state, const Vec2f *verts, const size_t vertexCount, const bool copyVerts, const Vec4f color, const DrawMode drawMode, const bool isLoop, const float thickness);
@@ -670,6 +694,27 @@ fpl_extern void RenderPushRectangleCenter(RenderState *state, const Vec2f center
 	Vec2f bottomLeft = V2fSub(center, ext);
 	Vec2f size = V2fMultScalar(ext, 2.0f);
 	RenderPushRectangle(state, bottomLeft, size, color, isFilled, lineWidth);
+}
+
+fpl_extern void RenderPushRectangleGradient(RenderState *state, const Vec2f bottomLeft, const Vec2f size, const Vec4f startColor, const Vec4f endColor, const GradientAxis axis) {
+	if (state == fpl_null) {
+		return;
+	}
+	CommandHeader *header = _RenderPushHeader(state, CommandType_RectangleGradient);
+	RectangleGradientCommand *cmd = _RenderPushTypeAs(state, header, RectangleGradientCommand, true);
+	if (cmd == fpl_null) {
+		return;
+	}
+	cmd->bottomLeft = bottomLeft;
+	cmd->size = size;
+	cmd->startColor = startColor;
+	cmd->endColor = endColor;
+	cmd->axis = axis;
+}
+
+fpl_extern void RenderPushRectangleGradientMinMax(RenderState *state, const Vec2f min, const Vec2f max, const Vec4f startColor, const Vec4f endColor, const GradientAxis axis) {
+	Vec2f size = V2fSub(max, min);
+	RenderPushRectangleGradient(state, min, size, startColor, endColor, axis);
 }
 
 fpl_extern void RenderPushRectangleMinMax(RenderState *state, const Vec2f min, const Vec2f max, const Vec4f color, const bool isFilled, const float lineWidth) {
