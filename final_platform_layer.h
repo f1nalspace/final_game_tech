@@ -185,6 +185,7 @@ SOFTWARE.
 	#### Core
 	- New: Added define FPL_MULTI_TRANSLATION_UNIT to switches fpl_extern_inline from "extern inline" to "static inline"
 	- Fixed: [POSIX] Every log line was written twice, because the default log writers use the debug output in addition to the console and fplDebugOut() writes into the console on every platform but Windows - the default writers only use the debug output on Windows now
+	- Fixed: FPL_LOG_MULTIPLE_WRITERS did not compile anymore, the default settings still wrote the field logToError that was removed from fplLogWriterConsole (the error console is selected by fplLogWriterFlags_ErrorConsole)
 	- New[#192]: Added struct fplLocaleSettings that controls how strings are formatted based on user locales
 	- Fixed[#192]: fplStringFormat* is not invariant, resulting in 1,54 vs 1.54
 	- Fixed: Memory macros tripped a false -Wstringop-overflow by computing the byte tail from a mask instead of a running counter
@@ -11542,7 +11543,6 @@ fpl_internal void fpl__LogWrite(const char *funcName, const int lineNumber, cons
 	fplLogSettings *settings = &fpl__global__LogSettings;
 	if (!settings->isInitialized) {
 #if defined(FPL_LOG_MULTIPLE_WRITERS)
-		settings->criticalWriter.console.logToError = true;
 		settings->criticalWriter.flags = fplLogWriterFlags_ErrorConsole | FPL__LOG_DEFAULT_ADDITIONAL_FLAGS;
 		settings->errorWriter = settings->criticalWriter;
 		settings->warningWriter = settings->criticalWriter;
