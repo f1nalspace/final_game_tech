@@ -35,10 +35,10 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{5C79F1D9-4872-102C-71A4-F5B05DFCEF37}</ProjectGuid>
+    <ProjectGuid>{2FA9BD54-1B76-1860-448F-060830BB4DEE}</ProjectGuid>
     <IgnoreWarnCompileDuplicatedFilename>true</IgnoreWarnCompileDuplicatedFilename>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>FPL_GameTemplate</RootNamespace>
+    <RootNamespace>mathtest</RootNamespace>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX86|Win32'" Label="Configuration">
@@ -83,30 +83,30 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX86|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <OutDir>$(ProjectDir)..\build\FPL_GameTemplate\WinX86_Debug\</OutDir>
-    <IntDir>$(ProjectDir)..\immediates\FPL_GameTemplate\WinX86_Debug\</IntDir>
-    <TargetName>FPL_GameTemplate</TargetName>
+    <OutDir>$(ProjectDir)..\build\mathtest\WinX86_Debug\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\mathtest\WinX86_Debug\</IntDir>
+    <TargetName>mathtest</TargetName>
     <TargetExt>.exe</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX64|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <OutDir>$(ProjectDir)..\build\FPL_GameTemplate\WinX64_Debug\</OutDir>
-    <IntDir>$(ProjectDir)..\immediates\FPL_GameTemplate\WinX64_Debug\</IntDir>
-    <TargetName>FPL_GameTemplate</TargetName>
+    <OutDir>$(ProjectDir)..\build\mathtest\WinX64_Debug\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\mathtest\WinX64_Debug\</IntDir>
+    <TargetName>mathtest</TargetName>
     <TargetExt>.exe</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX86|Win32'">
     <LinkIncremental>false</LinkIncremental>
-    <OutDir>$(ProjectDir)..\build\FPL_GameTemplate\WinX86_Release\</OutDir>
-    <IntDir>$(ProjectDir)..\immediates\FPL_GameTemplate\WinX86_Release\</IntDir>
-    <TargetName>FPL_GameTemplate</TargetName>
+    <OutDir>$(ProjectDir)..\build\mathtest\WinX86_Release\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\mathtest\WinX86_Release\</IntDir>
+    <TargetName>mathtest</TargetName>
     <TargetExt>.exe</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX64|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <OutDir>$(ProjectDir)..\build\FPL_GameTemplate\WinX64_Release\</OutDir>
-    <IntDir>$(ProjectDir)..\immediates\FPL_GameTemplate\WinX64_Release\</IntDir>
-    <TargetName>FPL_GameTemplate</TargetName>
+    <OutDir>$(ProjectDir)..\build\mathtest\WinX64_Release\</OutDir>
+    <IntDir>$(ProjectDir)..\immediates\mathtest\WinX64_Release\</IntDir>
+    <TargetName>mathtest</TargetName>
     <TargetExt>.exe</TargetExt>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX86|Win32'">
@@ -114,7 +114,7 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <PreprocessorDefinitions>DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\..;..\additions;..\dependencies;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..;..\..\demos\additions;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
       <Optimization>Disabled</Optimization>
       <MinimalRebuild>false</MinimalRebuild>
@@ -123,19 +123,18 @@
       <ExternalWarningLevel>Level3</ExternalWarningLevel>
     </ClCompile>
     <Link>
-      <SubSystem>Windows</SubSystem>
+      <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
-    <PostBuildEvent>
-      <Command>xcopy /Q /E /Y /I "$(ProjectDir)\data" "..\build\FPL_GameTemplate\WinX86_Debug\data\"</Command>
-    </PostBuildEvent>
+    <ProjectReference>
+    </ProjectReference>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug WinX64|x64'">
     <ClCompile>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <PreprocessorDefinitions>DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\..;..\additions;..\dependencies;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..;..\..\demos\additions;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
       <Optimization>Disabled</Optimization>
       <MinimalRebuild>false</MinimalRebuild>
@@ -144,19 +143,18 @@
       <ExternalWarningLevel>Level3</ExternalWarningLevel>
     </ClCompile>
     <Link>
-      <SubSystem>Windows</SubSystem>
+      <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
-    <PostBuildEvent>
-      <Command>xcopy /Q /E /Y /I "$(ProjectDir)\data" "..\build\FPL_GameTemplate\WinX64_Debug\data\"</Command>
-    </PostBuildEvent>
+    <ProjectReference>
+    </ProjectReference>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX86|Win32'">
     <ClCompile>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\..;..\additions;..\dependencies;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..;..\..\demos\additions;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>None</DebugInformationFormat>
       <Optimization>Full</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
@@ -168,21 +166,20 @@
       <ExternalWarningLevel>Level3</ExternalWarningLevel>
     </ClCompile>
     <Link>
-      <SubSystem>Windows</SubSystem>
+      <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
     </Link>
-    <PostBuildEvent>
-      <Command>xcopy /Q /E /Y /I "$(ProjectDir)\data" "..\build\FPL_GameTemplate\WinX86_Release\data\"</Command>
-    </PostBuildEvent>
+    <ProjectReference>
+    </ProjectReference>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release WinX64|x64'">
     <ClCompile>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\..;..\additions;..\dependencies;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..;..\..\demos\additions;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>None</DebugInformationFormat>
       <Optimization>Full</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
@@ -194,39 +191,16 @@
       <ExternalWarningLevel>Level3</ExternalWarningLevel>
     </ClCompile>
     <Link>
-      <SubSystem>Windows</SubSystem>
+      <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
     </Link>
-    <PostBuildEvent>
-      <Command>xcopy /Q /E /Y /I "$(ProjectDir)\data" "..\build\FPL_GameTemplate\WinX64_Release\data\"</Command>
-    </PostBuildEvent>
+    <ProjectReference>
+    </ProjectReference>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\final_dynamic_opengl.h" />
-    <ClInclude Include="..\..\final_memory.h" />
-    <ClInclude Include="..\..\final_platform_layer.h" />
-    <ClInclude Include="..\additions\final_assets.h" />
-    <ClInclude Include="..\additions\final_audio.h" />
-    <ClInclude Include="..\additions\final_audioconversion.h" />
-    <ClInclude Include="..\additions\final_audiosystem.h" />
-    <ClInclude Include="..\additions\final_fontloader.h" />
-    <ClInclude Include="..\additions\final_fonts.h" />
-    <ClInclude Include="..\additions\final_game.h" />
-    <ClInclude Include="..\additions\final_gameplatform.h" />
-    <ClInclude Include="..\additions\final_geometry.h" />
-    <ClInclude Include="..\additions\final_math.h" />
-    <ClInclude Include="..\additions\final_opengl_render.h" />
-    <ClInclude Include="..\additions\final_random.h" />
-    <ClInclude Include="..\additions\final_render.h" />
-    <ClInclude Include="..\additions\final_utils.h" />
-    <ClInclude Include="..\dependencies\stb\stb_image.h" />
-    <ClInclude Include="..\dependencies\stb\stb_truetype.h" />
-    <ClInclude Include="fpl_gametemplate.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="fpl_gametemplate.c" />
+    <ClCompile Include="mathtest.c" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
