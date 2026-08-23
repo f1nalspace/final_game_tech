@@ -170,6 +170,17 @@ static void ProcessTestsWriteSpam(const int32_t totalSize) {
 
 // Runs the requested child behavior and returns the exit code the parent will see
 static int ProcessTestsRunAsChild(const ProcessTestChildMode mode, const int argc, char *args[]) {
+#if defined(FPL_LOGGING)
+	// The child must stay silent. Its own log output would go to the very same standard-output
+	// the parent captures and would show up as unexpected text there.
+	fplLogSettings silentLogSettings = fplZeroInit;
+	silentLogSettings.isInitialized = true;
+	silentLogSettings.maxLevel = fplLogLevel_Critical;
+	for (size_t writerIndex = 0; writerIndex < fplArrayCount(silentLogSettings.writers); ++writerIndex) {
+		silentLogSettings.writers[writerIndex].flags = fplLogWriterFlags_None;
+	}
+	fplSetLogSettings(&silentLogSettings);
+#endif
 	if (!fplPlatformInit(fplInitFlags_None, fpl_null)) {
 		return(processTestChildFailureExitCode);
 	}

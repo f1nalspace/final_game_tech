@@ -7634,6 +7634,7 @@ fpl_platform_api bool fplProcessWait(fplProcessHandle *handle, const fplTimeoutV
 * @brief Is the specified process still running?
 * @param[in, out] handle Reference to the process handle @ref fplProcessHandle.
 * @return Returns true when the process is still running, false otherwise.
+* @note This does not read from any redirected stream. When streams are captured, call @ref fplProcessUpdate() in the same loop, otherwise the process blocks as soon as it has filled the pipe buffer.
 */
 fpl_platform_api bool fplProcessIsRunning(fplProcessHandle *handle);
 

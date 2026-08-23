@@ -856,6 +856,25 @@ Typen, Deklarationen und Doxygen-Doku im Header, Modul-Konstante `FPL__MODULE_PR
 
 **Nebenbei vereinheitlicht:** Die Prüfung auf noch nicht implementierte Optionen liegt jetzt als `fpl__IsProcessContextSupported()` in COMMON statt doppelt in beiden Plattformen. Sie deckt zusätzlich `Detached` und `KillOnParentExit` ab — die waren vorher stillschweigend ignoriert worden.
 
+### Phase 3 — erledigt (Capture über eine Pipe)
+Unterstützt sind jetzt alle Kombinationen, die mit **einer** Pipe auskommen: `CaptureOutput`, `CaptureError` und `CaptureBoth` (merged, also `2>&1`). Getrennte Streams und der Callback bleiben Phase 4 und werden weiterhin ausdrücklich als `NotImplemented` gemeldet.
+
+**Gemeinsam (COMMON):**
+- Capture-Buffer mit dem Prefix-Header aus 7.1: `fpl__EnsureProcessBufferCapacity()` alloziert neu und kopiert um (FPL hat kein `realloc`), Start 4 KB, danach Verdopplung.
+- `fpl__PushProcessStreamText()` schreibt in den Buffer und respektiert `maxCaptureSize`. Bei Überschreitung wird **weitergelesen und verworfen**, nicht abgebrochen — sonst würde das Kind an der vollen Pipe hängenbleiben. `isTruncated` landet im Result.
+- `fpl__MoveProcessStreamBuffers()` verschiebt die Buffer beim Wait ins Result (Besitzübergang aus 7.3), `fpl__ReleaseProcessStreamBuffers()` räumt weg, was nie übergeben wurde.
+- `fpl__ValidateProcessContext()` ersetzt die alte Ja/Nein-Prüfung und unterscheidet jetzt **falsch** (`InvalidArguments`: Stream ohne Ziel, Ziel ohne Stream, Callback-Flag ohne Callback) von **noch nicht da** (`NotImplemented`).
+
+**POSIX:** Pipe vor dem Fork, Parent-Ende `FD_CLOEXEC` + `O_NONBLOCK`, im Kind `dup2` auf `STDOUT_FILENO` und bei merged zusätzlich auf `STDERR_FILENO`. Der Parent schließt das Write-Ende sofort — sonst kommt nie ein EOF. Gepumpt wird mit `read()` bis `EAGAIN`, gewartet mit `poll()` in 20-ms-Scheiben.
+
+**Win32:** `CreatePipe` mit vererbbarem Write-Ende, Lese-Ende per `SetHandleInformation` **nicht** vererbbar. `STARTF_USESTDHANDLES` mit **allen drei** Handles belegt — für nicht umgeleitete Streams `GetStdHandle`, und falls das (GUI-App) nichts liefert, ein Handle auf `NUL`. Gepumpt wird mit `PeekNamedPipe` + `ReadFile`, weil anonyme Pipes kein Overlapped-IO können; `ERROR_BROKEN_PIPE` ist das EOF. `bInheritHandles` nur beim Capture.
+
+**Der Deadlock ist die eigentliche Arbeit:** `fplProcessWait()` pumpt jetzt *während* des Wartens und bricht erst ab, wenn der Prozess beendet **und** der Stream am Ende ist. Wer erst wartet und dann liest, hängt, sobald das Kind den 64-KB-Pipe-Puffer füllt.
+
+**Verifiziert (POSIX):** 8/8 Funktionstests — stdout, stderr allein, merged, **1,29 MB in 23 ms ohne Deadlock**, `maxCaptureSize` schneidet ab und das Kind läuft trotzdem zu Ende, asynchrones Pumpen über `fplProcessUpdate()`, gecapturete Fehlermeldung eines scheiternden Kindes, und die noch nicht implementierten Kombinationen. ASan + UBSan sauber, keine Leaks. Win32-Seite wieder nur per Compile-Check gegen das Stub-Windows.
+
+**Nebenbefund für die Doku:** Wird ein FPL-Programm gecaptured, landet dessen **eigene Log-Ausgabe** im gecaptureten Text — der Standard-Log-Writer schreibt auf stdout. Die Testkinder schalten ihr Logging deshalb ab. Gehört als Hinweis in die `.docs`.
+
 ### Demo — erledigt (aus Phase 7 vorgezogen)
 `demos/FPL_Process/` nach dem Vorbild von `demos/FPL_Console` (C99, `FPL_NO_WINDOW`/`NO_VIDEO`/`NO_AUDIO`), mit CMakeLists.txt, Makefile, premake5.lua und den drei Visual-Studio-Dateien (eigene Projekt-GUID), eingetragen in `demos_final_platform_layer_premake5.lua` (Gruppe "Console") und `demos_final_platform_layer.sln`.
 
@@ -863,7 +882,7 @@ Die Demo zeigt sieben Szenarien, die auf beiden Plattformen dasselbe tun und nur
 Start mit Warten, Argument-Array mit Leerzeichen, eigenes Arbeitsverzeichnis, Exit-Code als Normalfall und als Fehler, nicht gefundenes Programm, Wait mit Timeout und anschließendem Stop, asynchroner Start mit `fplProcessIsRunning()`-Polling und `fplProcessRequestStop()`.
 Ohne Argumente läuft die Szenario-Tour, mit Argumenten startet die Demo genau das übergebene Programm — praktisch zum Ausprobieren.
 
-Sobald Capture/Redirect (Phase 3/4) steht, kommen die entsprechenden Szenarien dazu; bis dahin erbt das Kind die Konsole des Parents.
+Mit Phase 3 sammeln die Warte-Szenarien die Kindausgabe selbst ein und geben sie eingerückt unter dem jeweiligen Kopf aus — das frühere Vermischen durch Puffern ist damit weg. Dazu kamen zwei Capture-Szenarien: 1 MB Ausgabe ohne Deadlock und `maxCaptureSize`. Für beide startet die Demo sich selbst mit `--spam <bytes>`, damit das auf jeder Plattform gleich funktioniert.
 
 ### Tests — erledigt (aus Phase 7 vorgezogen)
 `demos/FPL_Test/process_tests.c`, eingebunden wie `security_tests.c` (per `#include` in `fpl_test.c`), Einstiegspunkt `FPLProcessTests_All()` über die Testgruppe `TestProcess()`.
@@ -884,13 +903,13 @@ Testgruppen: aktuelle Prozess-ID, ungültige Argumente (jeder Einstiegspunkt mit
 | Phase | Was dazukommt |
 |---|---|
 | 2 (Win32) | Sobald ein Windows-Lauf möglich ist: `AccessDenied` festnageln, `RequestStop` mit `KillProcessTree` testen. Die Signal-Asserts bleiben POSIX-only, weil Windows keine Signale kennt |
-| 3 (Capture merged) | `--child-echo`/`--child-error` über den gecapturten Text prüfen; `--child-spam <bytes>` als Deadlock-Regressionstest; `maxCaptureSize` → `isTruncated`; den NotImplemented-Block für Capture entfernen |
+| 3 (Capture merged) | **erledigt**: `--child-both` und `--child-spam <bytes>` ergänzt, Testgruppen `ProcessTestsCapture` (stdout, stderr, merged, 1 MB ohne Deadlock, Truncation, Pumpen von Hand, Close ohne Result) und `ProcessTestsCaptureFailures` (Stream ohne Ziel, Ziel ohne Stream, Callback-Flag ohne Callback) |
 | 4 (Capture separat) | Getrennte Buffer, Callback-Modus, Buffer+Callback gleichzeitig, `LineBuffered` |
 | 5 (stdin) | `--child-cat` gegen Text-, Callback- und Stream-Modus; NotImplemented-Block für Input entfernen |
 | 6 (Shell/Flags) | Temporäres `.sh`/`.bat` mit `shellMode`, Custom-Interpreter, `NoWindow`, `KillProcessTree`; NotImplemented-Block für Shell entfernen |
 
 ### Offen
-Phase 3 (Capture merged), 4 (Capture separat + Callbacks), 5 (stdin), 6 (shellMode, NoWindow, Detached, KillOnParentExit), 7 (`.docs`, Changelog, Capture-Szenarien in Demo und Tests).
+Phase 4 (Capture separat + Callbacks), 5 (stdin), 6 (shellMode, NoWindow, Detached, KillOnParentExit), 7 (`.docs`, Changelog, Capture-Szenarien in Demo und Tests).
 `fplProcessStart()` meldet für noch nicht implementierte Optionen (`shellMode`, `captureFlags`, `inputMode`) ausdrücklich `fplProcessResultType_NotImplemented`, statt sie still zu ignorieren.
 
 ---

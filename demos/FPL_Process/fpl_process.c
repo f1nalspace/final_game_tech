@@ -15,6 +15,7 @@ Author:
 
 Changelog:
 	## 2026-08-23
+	- Added the capture scenarios
 	- Initial creation of this demo
 
 License:
@@ -58,12 +59,23 @@ License:
 
 #define DemoMissingProgram "this_program_does_not_exist_xyz"
 
+// Argument that makes this demo write a lot of text, used to show that a big output is captured without deadlocking
+#define DemoSpamArgument "--spam"
+
 // Milliseconds we wait in the timeout scenario, the child runs a lot longer than that
 static const fplTimeoutValue demoShortWaitTimeout = 250;
 // Milliseconds slept between two polls of fplProcessIsRunning()
 static const uint32_t demoPollIntervalInMilliseconds = 100;
 // Number of polls before the demo gives up and stops the child
 static const int demoMaxPollCount = 5;
+// Number of characters written in one go by the spam mode
+static const size_t demoSpamChunkSize = 1024;
+// Number of characters the spam mode writes in total
+static const int32_t demoSpamTotalSize = 1000000;
+// Number of characters the capture is limited to in the truncation scenario
+static const size_t demoCaptureLimit = 256;
+// Number of characters of the captured text the demo prints at most
+static const size_t demoMaxPrintedCaptureSize = 400;
 
 static const char *GetProcessResultTypeName(const fplProcessResultType type) {
 	switch (type) {
@@ -92,6 +104,24 @@ static const char *GetProcessResultTypeName(const fplProcessResultType type) {
 	}
 }
 
+static void PrintProcessBuffer(const char *name, const fplProcessBuffer *buffer, const bool isTruncated) {
+	if ((buffer->text == fpl_null) || (buffer->len == 0)) {
+		return;
+	}
+	fplConsoleFormatOut("  -> %s (%zu bytes%s):\n", name, buffer->len, isTruncated ? ", truncated" : "");
+	if (buffer->len <= demoMaxPrintedCaptureSize) {
+		fplConsoleFormatOut("%s", buffer->text);
+	} else {
+		// A big capture is only shown in part, the interesting thing here is the size
+		char preview[512];
+		fplCopyStringLen(buffer->text, demoMaxPrintedCaptureSize, preview, fplArrayCount(preview));
+		fplConsoleFormatOut("%s\n     ... (%zu more bytes)\n", preview, buffer->len - demoMaxPrintedCaptureSize);
+	}
+	if (buffer->text[buffer->len - 1] != '\n') {
+		fplConsoleOut("\n");
+	}
+}
+
 static void PrintProcessResult(const fplProcessResult *result) {
 	const char *typeName = GetProcessResultTypeName(result->type);
 	fplConsoleFormatOut("  -> type: %s, exited: %s, exit code: %d", typeName, result->hasExited ? "yes" : "no", result->exitCode);
@@ -102,6 +132,8 @@ static void PrintProcessResult(const fplProcessResult *result) {
 		fplConsoleFormatOut(", native error: %lu", (unsigned long)result->nativeErrorCode);
 	}
 	fplConsoleOut("\n");
+	PrintProcessBuffer("output", &result->output, result->isTruncated);
+	PrintProcessBuffer("error", &result->error, result->isTruncated);
 }
 
 static void PrintScenarioHeader(const char *title) {
@@ -128,8 +160,9 @@ static void RunSimpleScenario(void) {
 	fplProcessContext context = fplZeroInit;
 	context.name = DemoEchoProgram;
 	context.argumentLine = DemoEchoArgumentLine;
+	context.captureFlags = fplProcessCaptureFlags_CaptureBoth;
 	context.flags = fplProcessFlags_AutoWait;
-	RunAndWait("Start a program and wait for it", &context);
+	RunAndWait("Start a program and capture what it writes", &context);
 }
 
 static void RunArgumentArrayScenario(void) {
@@ -139,6 +172,7 @@ static void RunArgumentArrayScenario(void) {
 	context.name = DemoArgumentProgram;
 	context.arguments = arguments;
 	context.argumentCount = fplArrayCount(arguments);
+	context.captureFlags = fplProcessCaptureFlags_CaptureBoth;
 	context.flags = fplProcessFlags_AutoWait;
 	RunAndWait("Pass arguments as an array", &context);
 }
@@ -148,6 +182,7 @@ static void RunWorkDirScenario(void) {
 	context.name = DemoWorkDirProgram;
 	context.argumentLine = DemoWorkDirArgumentLine;
 	context.workDir = DemoWorkDirPath;
+	context.captureFlags = fplProcessCaptureFlags_CaptureBoth;
 	context.flags = fplProcessFlags_AutoWait;
 	RunAndWait("Run in a different work directory", &context);
 }
@@ -157,6 +192,7 @@ static void RunExitCodeScenario(void) {
 	fplProcessContext contextWithoutErrorFlag = fplZeroInit;
 	contextWithoutErrorFlag.name = DemoExitCodeProgram;
 	contextWithoutErrorFlag.argumentLine = DemoExitCodeArgumentLine;
+	contextWithoutErrorFlag.captureFlags = fplProcessCaptureFlags_CaptureBoth;
 	contextWithoutErrorFlag.flags = fplProcessFlags_AutoWait;
 	RunAndWait("Exit code is not an error by default", &contextWithoutErrorFlag);
 
@@ -226,6 +262,74 @@ static void RunAsyncScenario(void) {
 	fplProcessClose(&handle);
 }
 
+// Writes a lot of text, so the capture scenarios have something to chew on
+static void RunSpamMode(const int32_t totalSize) {
+	char chunk[1025];
+	for (size_t charIndex = 0; charIndex < demoSpamChunkSize; ++charIndex) {
+		chunk[charIndex] = 'x';
+	}
+	chunk[demoSpamChunkSize] = 0;
+	int32_t remainingSize = totalSize;
+	while (remainingSize >= (int32_t)demoSpamChunkSize) {
+		fplConsoleOut(chunk);
+		remainingSize -= (int32_t)demoSpamChunkSize;
+	}
+	if (remainingSize > 0) {
+		chunk[remainingSize] = 0;
+		fplConsoleOut(chunk);
+	}
+}
+
+// Starts this very demo again, so the scenario works the same way on every platform
+static void BuildSpamContext(fplProcessContext *outContext, char *executablePath, const size_t maxExecutablePathLen, char *argumentLine, const size_t maxArgumentLineLen) {
+	fplGetExecutableFilePath(executablePath, maxExecutablePathLen);
+	fplStringFormat(argumentLine, maxArgumentLineLen, "%s %d", DemoSpamArgument, demoSpamTotalSize);
+	fplClearStruct(outContext);
+	outContext->name = executablePath;
+	outContext->argumentLine = argumentLine;
+	outContext->flags = fplProcessFlags_AutoWait;
+}
+
+static void RunLargeCaptureScenario(void) {
+	PrintScenarioHeader("Capture a lot more than one pipe buffer holds");
+	char executablePath[FPL_MAX_PATH_LENGTH];
+	char argumentLine[FPL_MAX_BUFFER_LENGTH];
+	fplProcessContext context;
+	BuildSpamContext(&context, executablePath, fplArrayCount(executablePath), argumentLine, fplArrayCount(argumentLine));
+	context.captureFlags = fplProcessCaptureFlags_CaptureBoth;
+
+	fplProcessHandle handle = fplZeroInit;
+	fplProcessResult result = fplZeroInit;
+	fplMilliseconds startTime = fplMillisecondsQuery();
+	bool started = fplProcessStart(&context, &handle, &result);
+	fplMilliseconds elapsedTime = fplMillisecondsQuery() - startTime;
+	if (started) {
+		fplConsoleFormatOut("  captured %zu bytes in %llu ms, truncated: %s\n", result.output.len, (unsigned long long)elapsedTime, result.isTruncated ? "yes" : "no");
+	}
+	PrintProcessResult(&result);
+	fplProcessFreeResult(&result);
+	fplProcessClose(&handle);
+}
+
+static void RunCaptureLimitScenario(void) {
+	PrintScenarioHeader("Limit how much is captured");
+	char executablePath[FPL_MAX_PATH_LENGTH];
+	char argumentLine[FPL_MAX_BUFFER_LENGTH];
+	fplProcessContext context;
+	BuildSpamContext(&context, executablePath, fplArrayCount(executablePath), argumentLine, fplArrayCount(argumentLine));
+	context.captureFlags = fplProcessCaptureFlags_CaptureBoth;
+	context.maxCaptureSize = demoCaptureLimit;
+
+	fplProcessHandle handle = fplZeroInit;
+	fplProcessResult result = fplZeroInit;
+	if (fplProcessStart(&context, &handle, &result)) {
+		fplConsoleFormatOut("  the child wrote %d bytes, the capture kept %zu of them\n", demoSpamTotalSize, result.output.len);
+	}
+	PrintProcessResult(&result);
+	fplProcessFreeResult(&result);
+	fplProcessClose(&handle);
+}
+
 // Runs the program the user passed on the command line, so the demo can start anything
 static void RunUserProgram(const int argumentCount, char **arguments) {
 	const char *programName = arguments[0];
@@ -235,6 +339,7 @@ static void RunUserProgram(const int argumentCount, char **arguments) {
 	context.name = programName;
 	context.arguments = programArguments;
 	context.argumentCount = programArgumentCount;
+	context.captureFlags = fplProcessCaptureFlags_CaptureBoth;
 	context.flags = fplProcessFlags_AutoWait;
 	RunAndWait("Run the program from the command line", &context);
 }
@@ -242,6 +347,14 @@ static void RunUserProgram(const int argumentCount, char **arguments) {
 int main(int argc, char *args[]) {
 	if (!fplPlatformInit(fplInitFlags_All, fpl_null)) {
 		return(-1);
+	}
+
+	// This demo starts itself for the capture scenarios, that mode replaces the whole run
+	if ((argc > 2) && fplIsStringEqual(args[1], DemoSpamArgument)) {
+		int32_t spamSize = fplStringToS32(args[2]);
+		RunSpamMode(spamSize);
+		fplPlatformRelease();
+		return(0);
 	}
 
 	uint64_t currentProcessId = fplProcessGetCurrentId();
@@ -255,6 +368,8 @@ int main(int argc, char *args[]) {
 		RunWorkDirScenario();
 		RunExitCodeScenario();
 		RunMissingProgramScenario();
+		RunLargeCaptureScenario();
+		RunCaptureLimitScenario();
 		RunTimeoutScenario();
 		RunAsyncScenario();
 		fplConsoleOut("\nPass a program and its arguments to this demo, to run it directly\n");
