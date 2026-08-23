@@ -7429,7 +7429,7 @@ typedef enum fplProcessInputMode {
 typedef enum fplProcessShellMode {
 	//! Execute the process directly, without any shell.
 	fplProcessShellMode_None = 0,
-	//! Execute the command line through the default system shell (cmd.exe on Windows, /bin/sh on POSIX).
+	//! Execute the command line through the default system shell (the ComSpec of the environment or cmd.exe on Windows, /bin/sh on POSIX).
 	fplProcessShellMode_Default,
 	//! Execute the command line through the shell or interpreter from @ref fplProcessContext.shellPath.
 	fplProcessShellMode_Custom,
@@ -7444,13 +7444,13 @@ typedef enum fplProcessFlags {
 	fplProcessFlags_None = 0,
 	//! Wait for the process to be terminated, before returning from @ref fplProcessStart().
 	fplProcessFlags_AutoWait = 1 << 0,
-	//! Do not create a console window for the child process (Windows only).
+	//! Do not create a console window for the child process (Windows only). Has no effect together with @ref fplProcessFlags_Detached.
 	fplProcessFlags_NoWindow = 1 << 1,
-	//! Detach the child process, so it survives the exit of the parent process.
+	//! Detach the child process, so it survives the exit of the parent process. On Windows the child gets no console, on POSIX it gets its own session and is detached from the terminal.
 	fplProcessFlags_Detached = 1 << 2,
 	//! Stop the entire process tree instead of the direct child process only.
 	fplProcessFlags_KillProcessTree = 1 << 3,
-	//! Kill the child process automatically, when the parent process exits.
+	//! Kill the child process automatically, when the parent process exits. Cannot be combined with @ref fplProcessFlags_Detached and is supported on Windows and Linux only.
 	fplProcessFlags_KillOnParentExit = 1 << 4,
 	//! Push the redirected text into the @ref fpl_process_output_callback as complete lines only. Has no effect on the captured buffers.
 	fplProcessFlags_LineBuffered = 1 << 5,
@@ -7473,9 +7473,9 @@ typedef struct fplProcessContext {
 	const char **arguments;
 	//! The work directory path or fpl_null for using the current directory.
 	const char *workDir;
-	//! The path of the shell or interpreter, used for @ref fplProcessShellMode_Custom.
+	//! The path of the shell or interpreter, used for @ref fplProcessShellMode_Custom (for example "/bin/bash" or "powershell.exe").
 	const char *shellPath;
-	//! The argument that tells the custom shell to execute the command line or fpl_null for using the default argument.
+	//! The argument that tells the shell to execute the command line or fpl_null for using the default argument ("-c" on POSIX, "/s /c" for the default shell and "/c" for a custom shell on Windows).
 	const char *shellArgument;
 	//! The text written into the standard-input, used for @ref fplProcessInputMode_Text.
 	const char *inputText;
@@ -7623,6 +7623,8 @@ typedef struct fplProcessHandle {
 * @return Returns true when the process was started, false otherwise.
 * @note The handle must be released with @ref fplProcessClose(), even when the process has exited already.
 * @note The captured buffers in the result must be released with @ref fplProcessFreeResult().
+* @note Without a shell mode, a @ref fplProcessContext.name without any path separator is searched in the PATH of the environment.
+* @note A shell mode composes exactly one command line: @ref fplProcessContext.name and @ref fplProcessContext.argumentLine are taken over unchanged, so both may use shell syntax or be the source code of an interpreter, while the entries of @ref fplProcessContext.arguments are quoted. A program path containing spaces has to be quoted by the caller in that case.
 */
 fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProcessHandle *outHandle, fplProcessResult *outResult);
 
@@ -12534,6 +12536,9 @@ typedef struct fpl__Win32WindowState {
 #	include <dirent.h> // DIR, dirent
 #	include <sys/wait.h> // waitpid, WIFEXITED
 #	include <poll.h> // poll, struct pollfd
+#	if defined(FPL_PLATFORM_LINUX)
+#		include <sys/prctl.h> // prctl, PR_SET_PDEATHSIG
+#	endif
 
 // Map st_atime/st_mtime/st_ctime to the POSIX.1-2008 nanosecond fields (st_atim.tv_sec, ...)
 // when available. On older POSIX or platforms without timespec stat fields, fall back to the
@@ -17569,13 +17574,12 @@ fpl_internal void fpl__ReleaseProcessStreamBuffers(fpl__ProcessStreams *streams)
 	}
 }
 
-// Checks the context for options that are either wrong or not implemented yet.
+// Checks the context for options that contradict each other or are missing something they need.
 // Returns fplProcessResultType_Success when the context can be used as is.
-// @TODO(final): Remove each not-implemented check below, as soon as the matching feature is done.
 fpl_internal fplProcessResultType fpl__ValidateProcessContext(const fplProcessContext *context) {
-	if (context->shellMode != fplProcessShellMode_None) {
-		FPL__ERROR(FPL__MODULE_PROCESS, "The shell mode %d is not implemented yet", (int)context->shellMode);
-		return(fplProcessResultType_NotImplemented);
+	if ((context->shellMode == fplProcessShellMode_Custom) && (context->shellPath == fpl_null)) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "The shell mode %d requires a shell path", (int)context->shellMode);
+		return(fplProcessResultType_InvalidArguments);
 	}
 	if ((context->inputMode == fplProcessInputMode_Text) && (context->inputText == fpl_null)) {
 		FPL__ERROR(FPL__MODULE_PROCESS, "The input mode %d requires an input text", (int)context->inputMode);
@@ -17585,13 +17589,12 @@ fpl_internal fplProcessResultType fpl__ValidateProcessContext(const fplProcessCo
 		FPL__ERROR(FPL__MODULE_PROCESS, "The input mode %d requires an input callback", (int)context->inputMode);
 		return(fplProcessResultType_InvalidArguments);
 	}
-	if ((context->flags & fplProcessFlags_Detached) == fplProcessFlags_Detached) {
-		FPL__ERROR(FPL__MODULE_PROCESS, "The detached flag is not implemented yet");
-		return(fplProcessResultType_NotImplemented);
-	}
-	if ((context->flags & fplProcessFlags_KillOnParentExit) == fplProcessFlags_KillOnParentExit) {
-		FPL__ERROR(FPL__MODULE_PROCESS, "The kill-on-parent-exit flag is not implemented yet");
-		return(fplProcessResultType_NotImplemented);
+	bool isDetached = (context->flags & fplProcessFlags_Detached) == fplProcessFlags_Detached;
+	bool killsOnParentExit = (context->flags & fplProcessFlags_KillOnParentExit) == fplProcessFlags_KillOnParentExit;
+	if (isDetached && killsOnParentExit) {
+		// One flag lets the child survive this process, the other one kills it exactly then
+		FPL__ERROR(FPL__MODULE_PROCESS, "The detached flag and the kill-on-parent-exit flag contradict each other");
+		return(fplProcessResultType_InvalidArguments);
 	}
 
 	fplProcessCaptureFlags captureFlags = context->captureFlags;
@@ -22493,15 +22496,39 @@ fpl_platform_api size_t fplGetInputLocale(const fplLocaleFormat targetFormat, ch
 
 // Exit code reported for a process that was stopped forcefully
 #define FPL__WIN32_PROCESS_STOP_EXIT_CODE 1
+// Maximum number of handles a child can inherit, one per standard stream
+#define FPL__WIN32_PROCESS_MAX_INHERITABLE_HANDLE_COUNT 3
+// Name of the environment variable holding the path of the command processor
+#define FPL__WIN32_PROCESS_SHELL_ENVIRONMENT_NAME L"ComSpec"
+// Command processor used when the environment does not name one
+#define FPL__WIN32_PROCESS_DEFAULT_SHELL_PATH "cmd.exe"
+// Arguments for the default command processor. The /s makes cmd.exe strip exactly the outer quotes
+// of the command line, without it the quote handling depends on what the command line contains.
+#define FPL__WIN32_PROCESS_DEFAULT_SHELL_ARGUMENT "/s /c"
+// Argument a custom shell gets when the caller does not specify one
+#define FPL__WIN32_PROCESS_CUSTOM_SHELL_ARGUMENT "/c"
 
 typedef struct fpl__Win32ProcessStartArgs {
-	//! Single memory block holding the wide command line followed by the wide work directory.
+	//! Single memory block holding the wide command line, its unmodified copy and the wide work directory.
 	void *memory;
 	//! Mutable wide command line, CreateProcessW is allowed to write into it.
 	wchar_t *commandLine;
+	//! Untouched copy of the command line, used when the start has to be repeated.
+	wchar_t *commandLineBackup;
 	//! Wide work directory or fpl_null when the current directory is used.
 	wchar_t *workDir;
+	//! Number of bytes in the command line, including the null-terminator.
+	size_t commandLineSize;
 } fpl__Win32ProcessStartArgs;
+
+typedef struct fpl__Win32ProcessShell {
+	//! Buffer holding the path of the default shell, when it was taken from the environment.
+	char pathBuffer[FPL_MAX_PATH_LENGTH];
+	//! Path of the shell to start or fpl_null when no shell is used.
+	const char *path;
+	//! Argument that tells the shell to execute the command line.
+	const char *argument;
+} fpl__Win32ProcessShell;
 
 // Appends a single argument to the command line, using the quoting rules the Microsoft C runtime expects.
 // Pass null as the target buffer to measure the required number of characters only.
@@ -22604,11 +22631,25 @@ fpl_internal size_t fpl__Win32AppendCommandLineProgram(const char *programName, 
 	return(offset);
 }
 
-// Builds the full command line as UTF-8, because the quoting rules are much easier to apply on single bytes.
+// Appends a text to the command line, without applying any quoting rule to it.
 // Pass null as the target buffer to measure the required number of characters only.
-fpl_internal size_t fpl__Win32BuildCommandLine(const fplProcessContext *context, char *targetBuffer) {
+fpl_internal size_t fpl__Win32AppendCommandLineText(const char *text, char *targetBuffer, const size_t targetOffset) {
+	size_t offset = targetOffset;
+	size_t textLen = fplGetStringLength(text);
+	for (size_t charIndex = 0; charIndex < textLen; ++charIndex) {
+		if (targetBuffer != fpl_null) {
+			targetBuffer[offset] = text[charIndex];
+		}
+		++offset;
+	}
+	return(offset);
+}
+
+// Appends the program and its arguments, this is the command line a process is started with directly.
+// Pass null as the target buffer to measure the required number of characters only.
+fpl_internal size_t fpl__Win32AppendCommandLineProgramAndArguments(const fplProcessContext *context, char *targetBuffer, const size_t targetOffset) {
 	// The program name is always the first entry, so CreateProcessW can search it in PATH
-	size_t offset = fpl__Win32AppendCommandLineProgram(context->name, targetBuffer, 0);
+	size_t offset = fpl__Win32AppendCommandLineProgram(context->name, targetBuffer, targetOffset);
 	bool useArgumentArray = (context->arguments != fpl_null) && (context->argumentCount > 0);
 	if (useArgumentArray) {
 		for (size_t argumentIndex = 0; argumentIndex < context->argumentCount; ++argumentIndex) {
@@ -22627,13 +22668,66 @@ fpl_internal size_t fpl__Win32BuildCommandLine(const fplProcessContext *context,
 				targetBuffer[offset] = ' ';
 			}
 			++offset;
-			for (size_t charIndex = 0; charIndex < argumentLineLen; ++charIndex) {
-				if (targetBuffer != fpl_null) {
-					targetBuffer[offset] = context->argumentLine[charIndex];
-				}
-				++offset;
-			}
+			offset = fpl__Win32AppendCommandLineText(context->argumentLine, targetBuffer, offset);
 		}
+	}
+	return(offset);
+}
+
+// Appends the command line for a shell start: the shell, the argument that tells it to execute a command
+// and the command itself as one quoted block. The name is taken over unchanged, so it can use shell syntax
+// or be the source code of an interpreter, only the entries of an argument array are quoted.
+// Pass null as the target buffer to measure the required number of characters only.
+fpl_internal size_t fpl__Win32AppendShellCommandLine(const fplProcessContext *context, const fpl__Win32ProcessShell *shell, char *targetBuffer, const size_t targetOffset) {
+	const char quoteChar = '"';
+	size_t offset = fpl__Win32AppendCommandLineProgram(shell->path, targetBuffer, targetOffset);
+	if (targetBuffer != fpl_null) {
+		targetBuffer[offset] = ' ';
+	}
+	++offset;
+	// The shell argument may be more than one token, so it is never quoted
+	offset = fpl__Win32AppendCommandLineText(shell->argument, targetBuffer, offset);
+	if (targetBuffer != fpl_null) {
+		targetBuffer[offset] = ' ';
+		targetBuffer[offset + 1] = quoteChar;
+	}
+	offset += 2;
+	offset = fpl__Win32AppendCommandLineText(context->name, targetBuffer, offset);
+	bool useArgumentArray = (context->arguments != fpl_null) && (context->argumentCount > 0);
+	if (useArgumentArray) {
+		for (size_t argumentIndex = 0; argumentIndex < context->argumentCount; ++argumentIndex) {
+			if (targetBuffer != fpl_null) {
+				targetBuffer[offset] = ' ';
+			}
+			++offset;
+			const char *argument = context->arguments[argumentIndex];
+			offset = fpl__Win32AppendCommandLineArgument(argument, targetBuffer, offset);
+		}
+	} else if (context->argumentLine != fpl_null) {
+		size_t argumentLineLen = fplGetStringLength(context->argumentLine);
+		if (argumentLineLen > 0) {
+			if (targetBuffer != fpl_null) {
+				targetBuffer[offset] = ' ';
+			}
+			++offset;
+			offset = fpl__Win32AppendCommandLineText(context->argumentLine, targetBuffer, offset);
+		}
+	}
+	if (targetBuffer != fpl_null) {
+		targetBuffer[offset] = quoteChar;
+	}
+	++offset;
+	return(offset);
+}
+
+// Builds the full command line as UTF-8, because the quoting rules are much easier to apply on single bytes.
+// Pass null as the target buffer to measure the required number of characters only.
+fpl_internal size_t fpl__Win32BuildCommandLine(const fplProcessContext *context, const fpl__Win32ProcessShell *shell, char *targetBuffer) {
+	size_t offset;
+	if (shell->path != fpl_null) {
+		offset = fpl__Win32AppendShellCommandLine(context, shell, targetBuffer, 0);
+	} else {
+		offset = fpl__Win32AppendCommandLineProgramAndArguments(context, targetBuffer, 0);
 	}
 	if (targetBuffer != fpl_null) {
 		targetBuffer[offset] = 0;
@@ -22641,10 +22735,34 @@ fpl_internal size_t fpl__Win32BuildCommandLine(const fplProcessContext *context,
 	return(offset);
 }
 
-fpl_internal bool fpl__Win32CreateProcessStartArgs(const fplProcessContext *context, fpl__Win32ProcessStartArgs *outArgs) {
+// Determines the shell to start the command line with. The path of the default shell comes from the
+// environment, so a system with a different command processor is honored.
+fpl_internal void fpl__Win32GetProcessShell(const fplProcessContext *context, fpl__Win32ProcessShell *outShell) {
+	fplClearStruct(outShell);
+	if (context->shellMode == fplProcessShellMode_None) {
+		return;
+	}
+	if (context->shellMode == fplProcessShellMode_Custom) {
+		outShell->path = context->shellPath;
+		outShell->argument = (context->shellArgument != fpl_null) ? context->shellArgument : FPL__WIN32_PROCESS_CUSTOM_SHELL_ARGUMENT;
+		return;
+	}
+	outShell->path = FPL__WIN32_PROCESS_DEFAULT_SHELL_PATH;
+	wchar_t shellPathWide[FPL_MAX_PATH_LENGTH];
+	DWORD shellPathWideLen = GetEnvironmentVariableW(FPL__WIN32_PROCESS_SHELL_ENVIRONMENT_NAME, shellPathWide, (DWORD)fplArrayCount(shellPathWide));
+	if ((shellPathWideLen > 0) && (shellPathWideLen < (DWORD)fplArrayCount(shellPathWide))) {
+		size_t writtenLen = fplWideStringToUTF8String(shellPathWide, (size_t)shellPathWideLen, outShell->pathBuffer, fplArrayCount(outShell->pathBuffer));
+		if (writtenLen > 0) {
+			outShell->path = outShell->pathBuffer;
+		}
+	}
+	outShell->argument = (context->shellArgument != fpl_null) ? context->shellArgument : FPL__WIN32_PROCESS_DEFAULT_SHELL_ARGUMENT;
+}
+
+fpl_internal bool fpl__Win32CreateProcessStartArgs(const fplProcessContext *context, const fpl__Win32ProcessShell *shell, fpl__Win32ProcessStartArgs *outArgs) {
 	fplClearStruct(outArgs);
 
-	size_t commandLineUtf8Len = fpl__Win32BuildCommandLine(context, fpl_null);
+	size_t commandLineUtf8Len = fpl__Win32BuildCommandLine(context, shell, fpl_null);
 	if (commandLineUtf8Len == 0) {
 		return(false);
 	}
@@ -22653,7 +22771,7 @@ fpl_internal bool fpl__Win32CreateProcessStartArgs(const fplProcessContext *cont
 	if (commandLineUtf8 == fpl_null) {
 		return(false);
 	}
-	fpl__Win32BuildCommandLine(context, commandLineUtf8);
+	fpl__Win32BuildCommandLine(context, shell, commandLineUtf8);
 
 	size_t commandLineWideLen = fplUTF8StringToWideString(commandLineUtf8, commandLineUtf8Len, fpl_null, 0);
 	if (commandLineWideLen == 0) {
@@ -22666,9 +22784,11 @@ fpl_internal bool fpl__Win32CreateProcessStartArgs(const fplProcessContext *cont
 		workDirWideLen = fplUTF8StringToWideString(context->workDir, workDirUtf8Len, fpl_null, 0);
 	}
 
+	// The copy of the command line is there, because CreateProcessW is allowed to write into the original
+	// and a second attempt with the same command line needs it untouched
 	size_t commandLineWideSize = (commandLineWideLen + 1) * sizeof(wchar_t);
 	size_t workDirWideSize = (workDirWideLen > 0) ? ((workDirWideLen + 1) * sizeof(wchar_t)) : 0;
-	void *memory = fpl__AllocateDynamicMemory(commandLineWideSize + workDirWideSize, FPL__PROCESS_MEMORY_ALIGNMENT);
+	void *memory = fpl__AllocateDynamicMemory((commandLineWideSize * 2) + workDirWideSize, FPL__PROCESS_MEMORY_ALIGNMENT);
 	if (memory == fpl_null) {
 		fpl__ReleaseTemporaryMemory(commandLineUtf8);
 		return(false);
@@ -22678,16 +22798,28 @@ fpl_internal bool fpl__Win32CreateProcessStartArgs(const fplProcessContext *cont
 	fplUTF8StringToWideString(commandLineUtf8, commandLineUtf8Len, commandLineWide, commandLineWideLen + 1);
 	fpl__ReleaseTemporaryMemory(commandLineUtf8);
 
+	wchar_t *commandLineBackupWide = (wchar_t *)((uint8_t *)memory + commandLineWideSize);
+	fplMemoryCopy(commandLineWide, commandLineWideSize, commandLineBackupWide);
+
 	wchar_t *workDirWide = fpl_null;
 	if (workDirWideSize > 0) {
-		workDirWide = (wchar_t *)((uint8_t *)memory + commandLineWideSize);
+		workDirWide = (wchar_t *)((uint8_t *)memory + (commandLineWideSize * 2));
 		fplUTF8StringToWideString(context->workDir, workDirUtf8Len, workDirWide, workDirWideLen + 1);
 	}
 
 	outArgs->memory = memory;
 	outArgs->commandLine = commandLineWide;
+	outArgs->commandLineBackup = commandLineBackupWide;
 	outArgs->workDir = workDirWide;
+	outArgs->commandLineSize = commandLineWideSize;
 	return(true);
+}
+
+// Puts the command line back into the state it had before a CreateProcessW call
+fpl_internal void fpl__Win32RestoreProcessCommandLine(fpl__Win32ProcessStartArgs *args) {
+	if ((args->commandLine != fpl_null) && (args->commandLineBackup != fpl_null)) {
+		fplMemoryCopy(args->commandLineBackup, args->commandLineSize, args->commandLine);
+	}
 }
 
 fpl_internal void fpl__Win32ReleaseProcessStartArgs(fpl__Win32ProcessStartArgs *args) {
@@ -22925,6 +23057,69 @@ fpl_internal HANDLE fpl__Win32GetInheritableStdHandle(const DWORD stdHandleId, H
 	return(fpl__Win32GetNullDeviceHandle(outCreatedNullHandle));
 }
 
+// One process wide job object for fplProcessFlags_KillOnParentExit. It is created on demand and never closed
+// by FPL, because the operating system closes it when this process exits - and exactly that kills every child
+// that is still in it. A second job would be needed for the process tree anyway, so it is kept separate.
+fpl_globalvar volatile void *fpl__global__Win32KillOnParentExitJobHandle = fpl_null;
+
+fpl_internal HANDLE fpl__Win32GetKillOnParentExitJob(void) {
+	HANDLE existingJobHandle = (HANDLE)fplAtomicLoadPtr(&fpl__global__Win32KillOnParentExitJobHandle);
+	if (existingJobHandle != fpl_null) {
+		return(existingJobHandle);
+	}
+	HANDLE jobHandle = CreateJobObjectW(fpl_null, fpl_null);
+	if (jobHandle == fpl_null) {
+		return(fpl_null);
+	}
+	JOBOBJECT_EXTENDED_LIMIT_INFORMATION jobLimits = fplZeroInit;
+	jobLimits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+	if (!SetInformationJobObject(jobHandle, JobObjectExtendedLimitInformation, &jobLimits, sizeof(jobLimits))) {
+		CloseHandle(jobHandle);
+		return(fpl_null);
+	}
+	// Another thread may have been faster, in that case its job is the one everybody uses
+	HANDLE previousJobHandle = (HANDLE)fplAtomicCompareAndSwapPtr(&fpl__global__Win32KillOnParentExitJobHandle, fpl_null, jobHandle);
+	if (previousJobHandle != fpl_null) {
+		CloseHandle(jobHandle);
+		return(previousJobHandle);
+	}
+	return(jobHandle);
+}
+
+// Collects the handles the child is allowed to inherit, so nothing else of this process leaks into it.
+// A handle that is not inheritable is left out, it would make CreateProcessW fail with the list.
+fpl_internal size_t fpl__Win32CollectInheritableHandles(const STARTUPINFOW *startupInfo, HANDLE *targetHandles, const size_t maxTargetHandleCount) {
+	HANDLE candidateHandles[] = { startupInfo->hStdInput, startupInfo->hStdOutput, startupInfo->hStdError };
+	size_t handleCount = 0;
+	for (size_t candidateIndex = 0; candidateIndex < fplArrayCount(candidateHandles); ++candidateIndex) {
+		HANDLE candidateHandle = candidateHandles[candidateIndex];
+		if ((candidateHandle == fpl_null) || (candidateHandle == INVALID_HANDLE_VALUE)) {
+			continue;
+		}
+		DWORD handleFlags = 0;
+		if (!GetHandleInformation(candidateHandle, &handleFlags)) {
+			continue;
+		}
+		if ((handleFlags & HANDLE_FLAG_INHERIT) != HANDLE_FLAG_INHERIT) {
+			continue;
+		}
+		if (handleCount >= maxTargetHandleCount) {
+			continue;
+		}
+		// The same handle can be used for more than one stream, for example a merged capture
+		bool isCollectedAlready = false;
+		for (size_t handleIndex = 0; (handleIndex < handleCount) && !isCollectedAlready; ++handleIndex) {
+			isCollectedAlready = (targetHandles[handleIndex] == candidateHandle);
+		}
+		if (isCollectedAlready) {
+			continue;
+		}
+		targetHandles[handleCount] = candidateHandle;
+		++handleCount;
+	}
+	return(handleCount);
+}
+
 // Collects the exit code of the process and caches it in the handle.
 // The state is decided by the wait and never by comparing the exit code against STILL_ACTIVE,
 // because a process that really exits with that value would be indistinguishable from a running one.
@@ -22969,8 +23164,11 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 		return(false);
 	}
 
+	fpl__Win32ProcessShell shell = fplZeroInit;
+	fpl__Win32GetProcessShell(context, &shell);
+
 	fpl__Win32ProcessStartArgs startArgs = fplZeroInit;
-	if (!fpl__Win32CreateProcessStartArgs(context, &startArgs)) {
+	if (!fpl__Win32CreateProcessStartArgs(context, &shell, &startArgs)) {
 		FPL__ERROR(FPL__MODULE_PROCESS, "Failed building the command line for the process '%s'", context->name);
 		startResult.type = fplProcessResultType_OutOfMemory;
 		if (outResult != fpl_null) {
@@ -22990,15 +23188,31 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 		}
 	}
 
+	// The shared job dies with this process and takes every child in it along, that is the whole trick here
+	bool killsOnParentExit = (context->flags & fplProcessFlags_KillOnParentExit) == fplProcessFlags_KillOnParentExit;
+	HANDLE killOnParentExitJobHandle = fpl_null;
+	if (killsOnParentExit) {
+		killOnParentExitJobHandle = fpl__Win32GetKillOnParentExitJob();
+		if (killOnParentExitJobHandle == fpl_null) {
+			FPL__WARNING(FPL__MODULE_PROCESS, "Failed creating the kill-on-parent-exit job object with code %lu, the process '%s' will survive this process", GetLastError(), context->name);
+		}
+	}
+
 	DWORD creationFlags = 0;
-	if ((context->flags & fplProcessFlags_NoWindow) == fplProcessFlags_NoWindow) {
+	bool isDetached = (context->flags & fplProcessFlags_Detached) == fplProcessFlags_Detached;
+	if (isDetached) {
+		// A detached process has no console at all, so it does not react to a control event of this
+		// console anymore and a CREATE_NO_WINDOW would be ignored
+		creationFlags |= DETACHED_PROCESS;
+	} else if ((context->flags & fplProcessFlags_NoWindow) == fplProcessFlags_NoWindow) {
 		creationFlags |= CREATE_NO_WINDOW;
 	}
 	if (useProcessTree) {
 		// The new process group is what a graceful stop can send its control event to
 		creationFlags |= CREATE_NEW_PROCESS_GROUP;
 	}
-	if (jobHandle != fpl_null) {
+	bool startsSuspended = (jobHandle != fpl_null) || (killOnParentExitJobHandle != fpl_null);
+	if (startsSuspended) {
 		creationFlags |= CREATE_SUSPENDED;
 	}
 
@@ -23026,8 +23240,11 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 	HANDLE inputWriteHandle = fpl_null;
 	HANDLE nullDeviceHandle = fpl_null;
 
-	STARTUPINFOW startupInfo = fplZeroInit;
-	startupInfo.cb = sizeof(startupInfo);
+	// The extended variant is used as soon as the handles the child inherits are listed explicitly,
+	// its first member is the plain STARTUPINFOW, so both cases share the same fields
+	STARTUPINFOEXW startupInfoEx = fplZeroInit;
+	STARTUPINFOW *startupInfo = &startupInfoEx.StartupInfo;
+	startupInfo->cb = sizeof(STARTUPINFOW);
 
 	if (usesStdHandles) {
 		streams = fpl__Win32CreateProcessStreams(context);
@@ -23074,32 +23291,85 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 
 		// As soon as STARTF_USESTDHANDLES is used, all three handles must be valid, otherwise a child
 		// that touches a stream we did not redirect fails with an obscure error
-		startupInfo.dwFlags |= STARTF_USESTDHANDLES;
+		startupInfo->dwFlags |= STARTF_USESTDHANDLES;
 		if (usesInputPipe) {
-			startupInfo.hStdInput = inputReadHandle;
+			startupInfo->hStdInput = inputReadHandle;
 		} else if (usesNullInput) {
 			// Reading from the null device gives an immediate end-of-file, so an interactive child cannot block
-			startupInfo.hStdInput = fpl__Win32GetNullDeviceHandle(&nullDeviceHandle);
+			startupInfo->hStdInput = fpl__Win32GetNullDeviceHandle(&nullDeviceHandle);
 		} else {
-			startupInfo.hStdInput = fpl__Win32GetInheritableStdHandle(STD_INPUT_HANDLE, &nullDeviceHandle);
+			startupInfo->hStdInput = fpl__Win32GetInheritableStdHandle(STD_INPUT_HANDLE, &nullDeviceHandle);
 		}
-		startupInfo.hStdOutput = usesOutputPipe ? outputWriteHandle : fpl__Win32GetInheritableStdHandle(STD_OUTPUT_HANDLE, &nullDeviceHandle);
+		startupInfo->hStdOutput = usesOutputPipe ? outputWriteHandle : fpl__Win32GetInheritableStdHandle(STD_OUTPUT_HANDLE, &nullDeviceHandle);
 		if (mergesErrorIntoOutput) {
-			startupInfo.hStdError = outputWriteHandle;
+			startupInfo->hStdError = outputWriteHandle;
 		} else if (usesErrorPipe) {
-			startupInfo.hStdError = errorWriteHandle;
+			startupInfo->hStdError = errorWriteHandle;
 		} else {
-			startupInfo.hStdError = fpl__Win32GetInheritableStdHandle(STD_ERROR_HANDLE, &nullDeviceHandle);
+			startupInfo->hStdError = fpl__Win32GetInheritableStdHandle(STD_ERROR_HANDLE, &nullDeviceHandle);
+		}
+	}
+
+	// Handles are only inherited when a stream is redirected. Without the explicit list every inheritable
+	// handle of this process would end up in the child, a socket of another thread for example, and the
+	// child would keep it alive long after this process has closed it.
+	BOOL inheritHandles = usesStdHandles ? TRUE : FALSE;
+	HANDLE inheritableHandles[FPL__WIN32_PROCESS_MAX_INHERITABLE_HANDLE_COUNT];
+	size_t inheritableHandleCount = 0;
+	if (usesStdHandles) {
+		inheritableHandleCount = fpl__Win32CollectInheritableHandles(startupInfo, inheritableHandles, fplArrayCount(inheritableHandles));
+	}
+	LPPROC_THREAD_ATTRIBUTE_LIST attributeList = fpl_null;
+	bool isAttributeListInitialized = false;
+	if (inheritableHandleCount > 0) {
+		SIZE_T attributeListSize = 0;
+		InitializeProcThreadAttributeList(fpl_null, 1, 0, &attributeListSize);
+		if (attributeListSize > 0) {
+			attributeList = (LPPROC_THREAD_ATTRIBUTE_LIST)fpl__AllocateTemporaryMemory((size_t)attributeListSize, FPL__PROCESS_MEMORY_ALIGNMENT);
+		}
+		if (attributeList != fpl_null) {
+			isAttributeListInitialized = InitializeProcThreadAttributeList(attributeList, 1, 0, &attributeListSize) != 0;
+			BOOL attributeResult = FALSE;
+			if (isAttributeListInitialized) {
+				attributeResult = UpdateProcThreadAttribute(attributeList, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, inheritableHandles, inheritableHandleCount * sizeof(HANDLE), fpl_null, fpl_null);
+			}
+			if (attributeResult) {
+				startupInfoEx.lpAttributeList = attributeList;
+				startupInfo->cb = sizeof(startupInfoEx);
+				creationFlags |= EXTENDED_STARTUPINFO_PRESENT;
+			} else {
+				FPL__WARNING(FPL__MODULE_PROCESS, "Failed building the handle list for the process '%s' with code %lu", context->name, GetLastError());
+				if (isAttributeListInitialized) {
+					DeleteProcThreadAttributeList(attributeList);
+					isAttributeListInitialized = false;
+				}
+				fpl__ReleaseTemporaryMemory(attributeList);
+				attributeList = fpl_null;
+			}
 		}
 	}
 
 	PROCESS_INFORMATION processInfo = fplZeroInit;
-
-	// Handles are only inherited when a stream is redirected. FPL itself never creates inheritable handles,
-	// so the pipe is the only thing the child receives.
-	// @TODO(final/Win32): Restrict the inheritance to exactly the pipe handles through PROC_THREAD_ATTRIBUTE_HANDLE_LIST
-	BOOL inheritHandles = usesStdHandles ? TRUE : FALSE;
-	BOOL createResult = CreateProcessW(fpl_null, startArgs.commandLine, fpl_null, fpl_null, inheritHandles, creationFlags, fpl_null, startArgs.workDir, &startupInfo, &processInfo);
+	BOOL createResult = CreateProcessW(fpl_null, startArgs.commandLine, fpl_null, fpl_null, inheritHandles, creationFlags, fpl_null, startArgs.workDir, startupInfo, &processInfo);
+	if (!createResult && (startupInfoEx.lpAttributeList != fpl_null)) {
+		// Not every handle is allowed in a handle list, a console handle for example. Falling back to the
+		// plain inheritance keeps the process startable, it just inherits more than we would like.
+		DWORD attributeErrorCode = GetLastError();
+		FPL__WARNING(FPL__MODULE_PROCESS, "Failed starting the process '%s' with an explicit handle list with code %lu, retrying with the default handle inheritance", context->name, attributeErrorCode);
+		startupInfoEx.lpAttributeList = fpl_null;
+		startupInfo->cb = sizeof(STARTUPINFOW);
+		creationFlags &= ~(DWORD)EXTENDED_STARTUPINFO_PRESENT;
+		// CreateProcessW is allowed to write into the command line, so the second attempt gets the copy
+		fpl__Win32RestoreProcessCommandLine(&startArgs);
+		createResult = CreateProcessW(fpl_null, startArgs.commandLine, fpl_null, fpl_null, inheritHandles, creationFlags, fpl_null, startArgs.workDir, startupInfo, &processInfo);
+	}
+	if (attributeList != fpl_null) {
+		if (isAttributeListInitialized) {
+			DeleteProcThreadAttributeList(attributeList);
+		}
+		fpl__ReleaseTemporaryMemory(attributeList);
+		attributeList = fpl_null;
+	}
 
 	// The child owns its own duplicates from here on, so the parent must let go of the write ends.
 	// Without this the read ends would never reach their end-of-file.
@@ -23146,6 +23416,15 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 			CloseHandle(jobHandle);
 			jobHandle = fpl_null;
 		}
+	}
+	if (killOnParentExitJobHandle != fpl_null) {
+		// A process can be part of more than one job since Windows 8 only, on anything older this is the
+		// second job and the assignment fails
+		if (!AssignProcessToJobObject(killOnParentExitJobHandle, processInfo.hProcess)) {
+			FPL__WARNING(FPL__MODULE_PROCESS, "Failed assigning the process '%s' to the kill-on-parent-exit job object with code %lu, it will survive this process", context->name, GetLastError());
+		}
+	}
+	if (startsSuspended) {
 		ResumeThread(processInfo.hThread);
 	}
 
@@ -25547,11 +25826,20 @@ fpl_internal size_t fpl__PosixLocaleToISO639(const char *source, char *target, c
 // Number of milliseconds slept between two non-blocking waitpid calls, when a timeout is used
 #define FPL__POSIX_PROCESS_WAIT_SLICE_MILLISECONDS 1
 
+// Path of the shell used for fplProcessShellMode_Default, it is required to exist by POSIX
+#define FPL__POSIX_PROCESS_DEFAULT_SHELL_PATH "/bin/sh"
+// Name the default shell sees as its own argv[0]
+#define FPL__POSIX_PROCESS_DEFAULT_SHELL_NAME "sh"
+// Argument that tells a POSIX shell to execute the following command line
+#define FPL__POSIX_PROCESS_DEFAULT_SHELL_ARGUMENT "-c"
+
 typedef struct fpl__PosixProcessExecArgs {
 	//! Single memory block holding the argument array followed by all argument strings.
 	void *memory;
-	//! Null-terminated argument array, the first entry is the executable itself.
+	//! Null-terminated argument array, the first entry is the name the started program sees as its own argv[0].
 	char **argv;
+	//! Path of the program that is executed, this is the shell itself when a shell mode is used.
+	char *executablePath;
 	//! Number of arguments, without the terminating null-entry.
 	size_t argumentCount;
 } fpl__PosixProcessExecArgs;
@@ -25617,9 +25905,142 @@ fpl_internal size_t fpl__PosixSplitArgumentLine(const char *argumentLine, char *
 	return(argumentCount);
 }
 
+// Appends one argument to a shell command line, wrapped in single quotes, because a POSIX shell takes every
+// character inside them literally. A contained single quote is the only special case: it has to leave the
+// quoted section, gets escaped on its own and enters the section again.
+// Pass null as the target buffer to just count the required number of characters.
+fpl_internal size_t fpl__PosixAppendShellQuotedArgument(const char *argument, char *targetBuffer, const size_t targetOffset) {
+	const char quoteChar = '\'';
+	const char escapeChar = '\\';
+	size_t offset = targetOffset;
+	size_t argumentLen = fplGetStringLength(argument);
+	if (targetBuffer != fpl_null) {
+		targetBuffer[offset] = quoteChar;
+	}
+	++offset;
+	for (size_t charIndex = 0; charIndex < argumentLen; ++charIndex) {
+		char currentChar = argument[charIndex];
+		if (currentChar == quoteChar) {
+			const char quoteReplacement[] = { quoteChar, escapeChar, quoteChar, quoteChar };
+			for (size_t replacementIndex = 0; replacementIndex < fplArrayCount(quoteReplacement); ++replacementIndex) {
+				if (targetBuffer != fpl_null) {
+					targetBuffer[offset] = quoteReplacement[replacementIndex];
+				}
+				++offset;
+			}
+			continue;
+		}
+		if (targetBuffer != fpl_null) {
+			targetBuffer[offset] = currentChar;
+		}
+		++offset;
+	}
+	if (targetBuffer != fpl_null) {
+		targetBuffer[offset] = quoteChar;
+	}
+	++offset;
+	return(offset);
+}
+
+// Appends a text to the shell command line, without applying any quoting rule to it.
+// Pass null as the target buffer to just count the required number of characters.
+fpl_internal size_t fpl__PosixAppendShellText(const char *text, char *targetBuffer, const size_t targetOffset) {
+	size_t offset = targetOffset;
+	size_t textLen = fplGetStringLength(text);
+	for (size_t charIndex = 0; charIndex < textLen; ++charIndex) {
+		if (targetBuffer != fpl_null) {
+			targetBuffer[offset] = text[charIndex];
+		}
+		++offset;
+	}
+	return(offset);
+}
+
+// Builds the one command line a shell expects, because "sh -c" takes exactly one command string.
+// The name is taken over unchanged, so it can use shell syntax or be the source code of an interpreter,
+// and so is an argument line. Only the entries of an argument array are quoted, because those are data.
+// Pass null as the target buffer to just count the required number of characters.
+fpl_internal size_t fpl__PosixBuildShellCommandLine(const fplProcessContext *context, char *targetBuffer) {
+	size_t offset = fpl__PosixAppendShellText(context->name, targetBuffer, 0);
+	bool useArgumentArray = (context->arguments != fpl_null) && (context->argumentCount > 0);
+	if (useArgumentArray) {
+		for (size_t argumentIndex = 0; argumentIndex < context->argumentCount; ++argumentIndex) {
+			if (targetBuffer != fpl_null) {
+				targetBuffer[offset] = ' ';
+			}
+			++offset;
+			const char *argument = context->arguments[argumentIndex];
+			offset = fpl__PosixAppendShellQuotedArgument(argument, targetBuffer, offset);
+		}
+	} else if (context->argumentLine != fpl_null) {
+		size_t argumentLineLen = fplGetStringLength(context->argumentLine);
+		if (argumentLineLen > 0) {
+			if (targetBuffer != fpl_null) {
+				targetBuffer[offset] = ' ';
+			}
+			++offset;
+			offset = fpl__PosixAppendShellText(context->argumentLine, targetBuffer, offset);
+		}
+	}
+	if (targetBuffer != fpl_null) {
+		targetBuffer[offset] = 0;
+	}
+	return(offset);
+}
+
+// Builds the argument array for a shell start: the shell itself, the argument that tells it to execute a
+// command and the whole command line as one single string.
+fpl_internal bool fpl__PosixCreateProcessShellExecArgs(const fplProcessContext *context, fpl__PosixProcessExecArgs *outArgs) {
+	bool useCustomShell = (context->shellMode == fplProcessShellMode_Custom);
+	const char *shellPath = useCustomShell ? context->shellPath : FPL__POSIX_PROCESS_DEFAULT_SHELL_PATH;
+	// A shell looks at its own argv[0] to decide how it behaves, so the default shell is started as "sh"
+	const char *shellName = useCustomShell ? context->shellPath : FPL__POSIX_PROCESS_DEFAULT_SHELL_NAME;
+	const char *shellArgument = (context->shellArgument != fpl_null) ? context->shellArgument : FPL__POSIX_PROCESS_DEFAULT_SHELL_ARGUMENT;
+	size_t shellPathLen = fplGetStringLength(shellPath);
+	size_t shellNameLen = fplGetStringLength(shellName);
+	size_t shellArgumentLen = fplGetStringLength(shellArgument);
+	size_t commandLineLen = fpl__PosixBuildShellCommandLine(context, fpl_null);
+
+	// The array is [shell name][shell argument][command line] and must end with a null-entry
+	const size_t shellArgumentCount = 3;
+	size_t argvSize = sizeof(char *) * (shellArgumentCount + 1);
+	size_t shellPathBytes = shellPathLen + 1;
+	size_t shellNameBytes = shellNameLen + 1;
+	size_t shellArgumentBytes = shellArgumentLen + 1;
+	size_t commandLineBytes = commandLineLen + 1;
+	size_t totalSize = argvSize + shellPathBytes + shellNameBytes + shellArgumentBytes + commandLineBytes;
+	void *memory = fpl__AllocateDynamicMemory(totalSize, FPL__PROCESS_MEMORY_ALIGNMENT);
+	if (memory == fpl_null) {
+		return(false);
+	}
+
+	char **argv = (char **)memory;
+	char *shellPathString = (char *)memory + argvSize;
+	char *shellNameString = shellPathString + shellPathBytes;
+	char *shellArgumentString = shellNameString + shellNameBytes;
+	char *commandLineString = shellArgumentString + shellArgumentBytes;
+	fplCopyStringLen(shellPath, shellPathLen, shellPathString, shellPathBytes);
+	fplCopyStringLen(shellName, shellNameLen, shellNameString, shellNameBytes);
+	fplCopyStringLen(shellArgument, shellArgumentLen, shellArgumentString, shellArgumentBytes);
+	fpl__PosixBuildShellCommandLine(context, commandLineString);
+	argv[0] = shellNameString;
+	argv[1] = shellArgumentString;
+	argv[2] = commandLineString;
+	argv[shellArgumentCount] = fpl_null;
+
+	outArgs->memory = memory;
+	outArgs->argv = argv;
+	outArgs->executablePath = shellPathString;
+	outArgs->argumentCount = shellArgumentCount;
+	return(true);
+}
+
 // Builds the argument array for the exec call. This must happen before the fork, because the child is only
 // allowed to call async-signal-safe functions and allocating memory is not one of them.
 fpl_internal bool fpl__PosixCreateProcessExecArgs(const fplProcessContext *context, fpl__PosixProcessExecArgs *outArgs) {
+	if (context->shellMode != fplProcessShellMode_None) {
+		return(fpl__PosixCreateProcessShellExecArgs(context, outArgs));
+	}
 	const char *name = context->name;
 	size_t nameLen = fplGetStringLength(name);
 	bool useArgumentArray = (context->arguments != fpl_null) && (context->argumentCount > 0);
@@ -25668,6 +26089,7 @@ fpl_internal bool fpl__PosixCreateProcessExecArgs(const fplProcessContext *conte
 
 	outArgs->memory = memory;
 	outArgs->argv = argv;
+	outArgs->executablePath = nameString;
 	outArgs->argumentCount = totalArgumentCount;
 	return(true);
 }
@@ -26098,7 +26520,7 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 	}
 
 	// Everything the child needs is prepared here, because only async-signal-safe calls are allowed after the fork
-	const char *executablePath = execArgs.argv[0];
+	const char *executablePath = execArgs.executablePath;
 	bool hasPathSeparator = false;
 	for (const char *pathCursor = executablePath; *pathCursor != 0; ++pathCursor) {
 		if (*pathCursor == '/') {
@@ -26108,6 +26530,16 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 	}
 	const char *workDir = context->workDir;
 	bool useOwnProcessGroup = (context->flags & fplProcessFlags_KillProcessTree) == fplProcessFlags_KillProcessTree;
+	bool isDetached = (context->flags & fplProcessFlags_Detached) == fplProcessFlags_Detached;
+	bool killsOnParentExit = (context->flags & fplProcessFlags_KillOnParentExit) == fplProcessFlags_KillOnParentExit;
+#if defined(FPL_PLATFORM_LINUX)
+	// The child compares this against its parent id, to detect a parent that has exited between the fork and the prctl
+	pid_t parentProcessId = getpid();
+#else
+	if (killsOnParentExit) {
+		FPL__WARNING(FPL__MODULE_PROCESS, "The kill-on-parent-exit flag is not supported on this platform and is ignored for the process '%s'", context->name);
+	}
+#endif
 
 	pid_t childProcessId = fork();
 	if (childProcessId == -1) {
@@ -26164,9 +26596,22 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 			dup2(nullInputFd, STDIN_FILENO);
 			close(nullInputFd);
 		}
-		if (useOwnProcessGroup) {
+		if (isDetached) {
+			// A new session detaches the child from the terminal of the parent, so a Ctrl+C there does not
+			// reach it anymore. It makes the child a process group leader as well.
+			setsid();
+		} else if (useOwnProcessGroup) {
 			setpgid(0, 0);
 		}
+#if defined(FPL_PLATFORM_LINUX)
+		if (killsOnParentExit) {
+			prctl(PR_SET_PDEATHSIG, SIGKILL, 0, 0, 0);
+			// The signal is gone when the parent has exited before the prctl, so the child ends itself instead
+			if (getppid() != parentProcessId) {
+				_exit(FPL__POSIX_PROCESS_EXEC_FAILED_EXIT_CODE);
+			}
+		}
+#endif
 		if (workDir != fpl_null) {
 			if (chdir(workDir) != 0) {
 				childErrorCode = errno;
@@ -26207,8 +26652,9 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 		close(nullInputFd);
 		nullInputFd = -1;
 	}
-	if (useOwnProcessGroup) {
-		// Called in both processes on purpose, so the group exists no matter which process is scheduled first
+	if (useOwnProcessGroup && !isDetached) {
+		// Called in both processes on purpose, so the group exists no matter which process is scheduled first.
+		// A detached child gets its group from setsid() and that one cannot be repeated from here.
 		setpgid(childProcessId, childProcessId);
 	}
 
@@ -26253,7 +26699,7 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 
 	outHandle->streams = streams;
 	outHandle->internalHandle.posix.pid = (int32_t)childProcessId;
-	outHandle->internalHandle.posix.pgid = useOwnProcessGroup ? (int32_t)childProcessId : 0;
+	outHandle->internalHandle.posix.pgid = (useOwnProcessGroup || isDetached) ? (int32_t)childProcessId : 0;
 	outHandle->id = (uint64_t)childProcessId;
 	outHandle->flags = context->flags;
 	outHandle->isValid = true;

@@ -911,6 +911,8 @@ Mit Phase 3 sammeln die Warte-Szenarien die Kindausgabe selbst ein und geben sie
 
 Mit Phase 4 kamen zwei weitere Szenarien dazu: getrenntes Capture beider Streams und ein Redirect beider Streams in einen Callback mit `LineBuffered`. Beide starten die Demo mit `--write-streams`.
 
+Mit Phase 6 kamen drei Szenarien dazu: eine Kommandozeile durch die Default-Shell (mit verketteten Befehlen, also `&` bzw. `;`), dieselbe Kommandozeile durch einen ausdrücklich benannten Interpreter und ein detached gestartetes Kind, auf das die Demo bewusst **nicht** wartet — es läuft nach dem Ende der Demo weiter und beendet sich von selbst.
+
 **Bugfix beim ersten Windows-Lauf:** Das Argument-Array-Szenario startete auf Windows `cmd.exe` **ohne** `/c`. Das ist eine interaktive Shell, die auf dem geerbten stdin auf Eingabe wartet — die Demo hing in `WaitForSingleObject`, bis jemand `exit` tippte. Windows hat kein eigenstaendiges `echo`-Programm, deshalb startet das Szenario jetzt die Demo selbst mit `--print-args` und beweist damit gleich, dass jedes Argument unveraendert ankommt (inklusive eingebetteter Quotes).
 
 ### Tests — erledigt (aus Phase 7 vorgezogen)
@@ -936,7 +938,7 @@ Für Phase 4 dasselbe zweimal: mit abgeschalteter `\r\n`-Normalisierung bricht `
 | 3 (Capture merged) | **erledigt**: `--child-both` und `--child-spam <bytes>` ergänzt, Testgruppen `ProcessTestsCapture` (stdout, stderr, merged, 1 MB ohne Deadlock, Truncation, Pumpen von Hand, Close ohne Result) und `ProcessTestsCaptureFailures` (Stream ohne Ziel, Ziel ohne Stream, Callback-Flag ohne Callback) |
 | 4 (Capture separat) | **erledigt**: Kindmodus `--child-lines <n>` ergänzt, Testgruppen `ProcessTestsCaptureSeparate` und `ProcessTestsCallbacks` (getrennte Buffer, Callback-Modus, Buffer+Callback gleichzeitig, `LineBuffered`, Stream-Typ pro Aufruf, Null-Terminator-Vertrag) |
 | 5 (stdin) | **erledigt**: Kindmodus `--child-cat` ergänzt, Testgruppen `ProcessTestsInput` und `ProcessTestsInputFailures`, NotImplemented-Block für Input entfernt |
-| 6 (Shell/Flags) | Temporäres `.sh`/`.bat` mit `shellMode`, Custom-Interpreter, `NoWindow`, `KillProcessTree`; NotImplemented-Block für Shell entfernen |
+| 6 (Shell/Flags) | **erledigt**: Testgruppen `ProcessTestsShell`, `ProcessTestsShellScript`, `ProcessTestsCreationFlags` und `ProcessTestsFlagFailures`; die NotImplemented-Gruppe ist ersatzlos weg |
 
 ### Phase 5 — erledigt (Standard-Input)
 Alle vier Modi sind da: `None`, `Text`, `Callback` und `Stream`.
@@ -955,6 +957,26 @@ Alle vier Modi sind da: `None`, `Text`, `Callback` und `Stream`.
 **Gegenprobe:** Eine Kopie, die den Input erst vollstaendig schreibt und danach den Output leert, haengt exakt beim 256-KB-Test und laeuft ins Timeout — mit dem verschraenkten Pumpen ist derselbe Test in unter einer Sekunde durch.
 **Win32-Logik** mit einem Stub-Harness geprueft (WriteFile nachgebaut, 20 Checks: Text vollstaendig trotz 7-Byte-Kurzschreibvorgaengen, volle Pipe haelt den Input offen und der Rest geht beim naechsten Pump raus, Broken Pipe schliesst sauber, Callback bis 0, Stream-Modus wird nicht gepumpt, 256 KB ueber viele Kurzschreibvorgaenge). Die echten API-Aufrufe (`PIPE_NOWAIT`, Vererbungs-Flags) kann ein Stub nicht pruefen — die brauchen einen echten Windows-Lauf.
 
+### Phase 6 — erledigt (Shell und die restlichen Flags)
+Damit ist die Feature-Liste aus Abschnitt 2 vollständig, offen bleibt nur noch die Dokumentation aus Phase 7.
+
+**Shell (beide Plattformen):** Ein Shell-Modus baut aus `name`, `arguments`/`argumentLine` **eine** Kommandozeile und übergibt sie der Shell als ein einziges Argument.
+- POSIX: `execv("/bin/sh", {"sh", "-c", commandLine, NULL})` beim Default, `execv(shellPath, {shellPath, shellArgument ? shellArgument : "-c", commandLine, NULL})` beim Custom-Modus. Enthält `shellPath` keinen Slash, greift wie sonst auch `execvp` und damit die PATH-Suche.
+- Win32: `<shell> <shellArgument> "<commandLine>"`. Der Default-Shell-Pfad kommt aus der Umgebungsvariable `ComSpec` (Fallback `cmd.exe`, dann PATH-Suche) und bekommt `/s /c`, ein Custom-Interpreter bekommt `/c`. Das `/s` ist wichtig: nur damit entfernt `cmd.exe` **genau** das äußere Anführungszeichenpaar und lässt den Rest unangetastet.
+
+**Eine Abweichung vom Plan (6.5), bewusst:** `name` wird **nicht** gequotet, sondern unverändert übernommen — genau wie `argumentLine`. Gequotet werden nur die Einträge eines Argument-Arrays (POSIX in einfachen Anführungszeichen mit `'\''`-Escape, Win32 nach den CRT-Regeln). Grund ist der Custom-Interpreter aus dem Plan selbst: bei `python3 -c` ist `name` **Quelltext** und kein Programmname, ein Quoting würde ihn zerstören. Umgekehrt kostet die Entscheidung nur, dass ein Programmpfad mit Leerzeichen im Shell-Modus vom Aufrufer selbst gequotet werden muss — dasselbe, was man auf einer Kommandozeile auch tun würde. Steht als `@note` an `fplProcessStart()`.
+
+**Detached:** POSIX `setsid()` im Kind (eigene Session, kein kontrollierendes Terminal mehr, damit erreicht ein Ctrl+C des Terminals das Kind nicht mehr), Win32 `DETACHED_PROCESS`. Das Kind bekommt damit auch eine eigene Prozessgruppe, deshalb ruft der Parent sein `setpgid()` in dem Fall **nicht** mehr auf — nach dem `setsid()` würde es mit `EPERM` scheitern. `NoWindow` wird bei `Detached` nicht gesetzt, weil Windows es dann ohnehin ignoriert.
+
+**KillOnParentExit:** Linux `prctl(PR_SET_PDEATHSIG, SIGKILL)` im Kind, direkt gefolgt von einem `getppid()`-Vergleich — stirbt der Parent zwischen `fork()` und `prctl()`, ist das Signal weg und das Kind beendet sich stattdessen selbst. Auf anderen POSIX-Systemen gibt es das nicht, dort meldet der Parent eine Warnung und ignoriert das Flag. Win32 benutzt ein **prozessweites** Job-Objekt mit `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, das beim ersten Bedarf angelegt und von FPL nie geschlossen wird: das Betriebssystem schließt es beim Prozessende, und genau das killt die verbliebenen Kinder. Der Job für `KillProcessTree` bleibt davon getrennt (er darf ausdrücklich **kein** Kill-on-Close haben), ein Prozess kann seit Windows 8 in beiden gleichzeitig sein.
+`Detached` und `KillOnParentExit` zusammen sind jetzt `InvalidArguments` — das eine Flag lässt das Kind den Parent überleben, das andere killt es genau dann.
+
+**Handle-Liste (5.5, Win32):** `InitializeProcThreadAttributeList` + `PROC_THREAD_ATTRIBUTE_HANDLE_LIST` mit exakt den drei Standard-Handles, die das Kind bekommt, dazu `EXTENDED_STARTUPINFO_PRESENT`. Nicht vererbbare Handles fallen vorher raus, sonst schlägt `CreateProcessW` mit der Liste fehl. Und weil nicht jedes Handle in so eine Liste darf (Konsolen-Handles zum Beispiel), gibt es den im Plan vorgesehenen Rückfall: schlägt der Start **mit** Liste fehl, wird ohne sie wiederholt. Dafür hält `fpl__Win32ProcessStartArgs` jetzt eine unveränderte Kopie der Kommandozeile — `CreateProcessW` darf in das Original schreiben.
+
+**Verifiziert (POSIX):** Testsuite grün (auch die komplette `FPL_Test`-Suite), `-Wall -Wextra` ohne neue Warnung, ASan + UBSan ohne Fehler und ohne Leak (nur die bekannten, vorbestehenden UBSan-Meldungen in `fplMemoryCopy`). Neue Testgruppen `ProcessTestsShell` (Exit-Code durch die Default-Shell, Capture durch die Shell, Argument-Array durch die Shell mit `--child-checkargs`, Custom-Shell), `ProcessTestsShellScript` (Skript schreiben, auf POSIX per `chmod +x` durch die Shell ausführbar machen, starten, Ausgabe **und** Exit-Code prüfen), `ProcessTestsCreationFlags` (jedes Flag einzeln starten und sauber beenden, dazu `RequestStop` mit `KillProcessTree`) und `ProcessTestsFlagFailures`. Dazu ein Handlauf mit `/bin/bash`, `/usr/bin/python3 -c` und einer Pipe im `argumentLine`.
+**Gegenprobe zweimal:** Ohne das Quoting der Array-Argumente bricht `ProcessTestsShell` an der `--child-checkargs`-Assert ab, ohne die Detached/KillOnParentExit-Prüfung bricht `ProcessTestsFlagFailures` ab. Dass `PR_SET_PDEATHSIG` wirklich wirkt, zeigt ein eigener Handlauf: derselbe Testparent lässt `sleep 30` ohne das Flag weiterlaufen und mit dem Flag sofort sterben.
+**Win32-Seite** wie in den Phasen davor: der komplette Abschnitt übersetzt gegen ein Windows-Stub mit `-Wall -Wextra` ohne Warnung, und die Kommandozeilen-Erzeugung ist mit einem Harness geprüft (13 Checks: die sechs Quoting-Round-Trips von Phase 2 plus ComSpec, ComSpec mit Leerzeichen im Pfad, fehlendes ComSpec, Custom-Shell mit Default-Argument, Interpreter mit eigenem Argument und zwei Round-Trips, die den `cmd /s`-Schnitt nachbauen und das Ergebnis wieder mit dem CRT-Parser zerlegen). Job-Objekte, `DETACHED_PROCESS` und die Handle-Liste kann ein Stub nicht prüfen, die brauchen einen echten Windows-Lauf.
+
 ### Windows-Befunde (erster echter Lauf)
 1. **Demo-Haenger** im Argument-Array-Szenario — siehe Demo-Abschnitt oben.
 2. **`fplConsoleOut()`/`fplConsoleError()` schreiben unter Win32 gar nichts, sobald der Stream umgeleitet ist.** Beide benutzten `WriteConsoleW`, und das funktioniert ausschliesslich auf einem echten Console-Screen-Buffer — auf einer Pipe schlaegt es fehl, und der Rueckgabewert wurde nicht geprueft. Damit lieferte `ProcessTestsCapture` unter Windows ein leeres `output.text`, obwohl an der Prozess-API selbst nichts falsch war. Kurios: der Changelog von v0.7.1.0 sagt bereits "[Win32] fplConsole* uses ReadFile/WriteFile instead of ReadConsole/WriteConsole" — das ist irgendwann wieder zurueckgefallen.
@@ -964,9 +986,8 @@ Alle vier Modi sind da: `None`, `Text`, `Callback` und `Stream`.
    Der eigentliche Regressionstest ist `ProcessTestsCapture` selbst — er muss nur unter Windows laufen.
 
 ### Offen
-Phase 6 (shellMode, Detached, KillOnParentExit), 7 (`.docs`, Changelog, README).
-`fplProcessStart()` meldet für noch nicht implementierte Optionen (`shellMode`, `Detached`, `KillOnParentExit`) ausdrücklich `fplProcessResultType_NotImplemented`, statt sie still zu ignorieren.
-Ein echter Windows-Lauf steht weiterhin für alles ab Phase 2 aus; der Demo-Hänger oben war der erste Befund daraus.
+Phase 7 (`.docs`, Changelog, README). `fplProcessResultType_NotImplemented` wird von `fplProcessStart()` jetzt nirgends mehr gemeldet, die Option-Prüfung kennt nur noch echte Fehler (`InvalidArguments`).
+Ein echter Windows-Lauf steht weiterhin für alles ab Phase 2 aus; der Demo-Hänger oben war der erste Befund daraus. Neu dazugekommen sind dort die Job-Objekte, `DETACHED_PROCESS` und die Handle-Liste samt ihrem Rückfall.
 
 ---
 

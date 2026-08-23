@@ -8,12 +8,12 @@ Description:
 
 	The tests need a program to start. Instead of depending on any system tool,
 	the test executable starts itself with one of the "--child-" arguments and
-	uses the exit code of that child as the answer. This behaves identically on
-	every platform and needs no external files.
+	uses the exit code and the captured text of that child as the answer. This
+	behaves identically on every platform and needs no external files.
 
-	Because the capture/redirect support is not implemented yet, every child
-	reports its result through the exit code only. When capture lands, the
-	echo/error children can be verified through the captured text as well.
+	Only the shell tests write a file, because a script is the reason the shell
+	mode exists. That script is written next to the test executable and removed
+	afterwards.
 
 License:
 	Copyright (c) 2017-2026 Torsten Spaete
@@ -77,6 +77,18 @@ static const char *processTestInputText = "first input line\nsecond input line\n
 static const int32_t processTestBigInputSize = 262144;
 // Number of chunks the input callback provides before it ends the standard-input
 static const int32_t processTestInputChunkCount = 4;
+// Name of the script file the shell tests write next to the test executable
+#if defined(FPL_PLATFORM_WINDOWS)
+static const char *processTestScriptFileName = "fpl_test_shell_script.bat";
+#else
+static const char *processTestScriptFileName = "fpl_test_shell_script.sh";
+#endif
+// Text the script writes to the standard-output
+static const char *processTestScriptText = "text-from-the-script";
+// Exit code the script ends with, so the exit code of a script can be checked as well
+static const int32_t processTestScriptExitCode = 7;
+// Number of milliseconds we wait for a child that was asked to stop gracefully
+static const fplTimeoutValue processTestStopTimeout = 5000;
 
 // Arguments passed to the child, so it can verify that they arrived unchanged
 static const char *processTestArgumentValues[] = {
@@ -1345,19 +1357,239 @@ static void ProcessTestsCaptureFailures(const ProcessTestPaths *paths) {
 	}
 }
 
-// Every option that is not implemented yet must be reported instead of being ignored silently.
-// @TODO(final): Remove each block below, as soon as the matching phase is implemented.
-static void ProcessTestsNotImplemented(const ProcessTestPaths *paths) {
-	ftMsg("Test Process not implemented options\n");
+// Builds the command that starts the test executable through a shell. The path is put in quotes, because a
+// shell splits an unquoted command at every space and FPL never quotes the name of a shell command line.
+static void ProcessTestsBuildShellCommand(const ProcessTestPaths *paths, char *targetBuffer, const size_t maxTargetBufferLen) {
+	fplStringFormat(targetBuffer, maxTargetBufferLen, "\"%s\"", paths->executableFilePath);
+}
+
+// Writes the script the shell tests execute, in the syntax of the shell of the platform
+static bool ProcessTestsCreateScriptFile(const char *scriptFilePath) {
+	char scriptContent[FPL_MAX_BUFFER_LENGTH];
+#if defined(FPL_PLATFORM_WINDOWS)
+	fplStringFormat(scriptContent, fplArrayCount(scriptContent), "@echo off\r\necho %s\r\nexit /b %d\r\n", processTestScriptText, processTestScriptExitCode);
+#else
+	fplStringFormat(scriptContent, fplArrayCount(scriptContent), "#!/bin/sh\necho %s\nexit %d\n", processTestScriptText, processTestScriptExitCode);
+#endif
+	fplFileHandle scriptFile = fplZeroInit;
+	if (!fplFileCreateBinary(scriptFilePath, &scriptFile)) {
+		return(false);
+	}
+	size_t scriptContentLen = fplGetStringLength(scriptContent);
+	fplFileWriteBlock32(&scriptFile, scriptContent, (uint32_t)scriptContentLen);
+	fplFileClose(&scriptFile);
+	return(true);
+}
+
+// Starts a command through the default shell and waits for it, this is what the script tests need for
+// the preparation steps
+static bool ProcessTestsRunShellCommand(const char *command, fplProcessResult *outResult) {
+	fplProcessContext context = fplZeroInit;
+	context.name = command;
+	context.shellMode = fplProcessShellMode_Default;
+	context.flags = fplProcessFlags_AutoWait;
+	fplProcessHandle handle = fplZeroInit;
+	bool started = fplProcessStart(&context, &handle, outResult);
+	fplProcessClose(&handle);
+	return(started);
+}
+
+static void ProcessTestsShell(const ProcessTestPaths *paths) {
+	ftMsg("Test Process shell execution\n");
+	char shellCommand[FPL_MAX_PATH_LENGTH];
+	ProcessTestsBuildShellCommand(paths, shellCommand, fplArrayCount(shellCommand));
 	{
-		// Shell execution (Phase 6)
+		// The default shell must start the program and hand its exit code back unchanged
+		char argumentLine[FPL_MAX_BUFFER_LENGTH];
+		fplStringFormat(argumentLine, fplArrayCount(argumentLine), "%s %d", FPL_TEST_CHILD_ARGUMENT_EXIT, processTestCustomExitCode);
+		fplProcessContext context = fplZeroInit;
+		context.name = shellCommand;
+		context.argumentLine = argumentLine;
+		context.shellMode = fplProcessShellMode_Default;
+		context.flags = fplProcessFlags_AutoWait;
+		fplProcessHandle handle = fplZeroInit;
+		fplProcessResult result = fplZeroInit;
+		ftIsTrue(fplProcessStart(&context, &handle, &result));
+		ftAssert(result.type == fplProcessResultType_Success);
+		ftAssertS32Equals(processTestCustomExitCode, result.exitCode);
+		fplProcessFreeResult(&result);
+		fplProcessClose(&handle);
+	}
+	{
+		// Capturing works the same way through a shell, the shell itself must not add anything
+		char argumentLine[FPL_MAX_BUFFER_LENGTH];
+		fplStringFormat(argumentLine, fplArrayCount(argumentLine), "%s %s", FPL_TEST_CHILD_ARGUMENT_ECHO, processTestEchoText);
+		fplProcessContext context = fplZeroInit;
+		context.name = shellCommand;
+		context.argumentLine = argumentLine;
+		context.shellMode = fplProcessShellMode_Default;
+		context.captureFlags = fplProcessCaptureFlags_CaptureOutput;
+		context.flags = fplProcessFlags_AutoWait;
+		fplProcessHandle handle = fplZeroInit;
+		fplProcessResult result = fplZeroInit;
+		ftIsTrue(fplProcessStart(&context, &handle, &result));
+		ftIsNotNull(result.output.text);
+		size_t expectedLen = fplGetStringLength(processTestEchoText) + 1;
+		ftAssertSizeEquals(expectedLen, result.output.len);
+		fplProcessFreeResult(&result);
+		fplProcessClose(&handle);
+	}
+	{
+		// The entries of an argument array must survive the quoting of FPL and the parsing of the shell
+		const char *arguments[] = {
+			FPL_TEST_CHILD_ARGUMENT_CHECK_ARGS,
+			"3",
+			processTestArgumentValues[0],
+			processTestArgumentValues[1],
+			processTestArgumentValues[2],
+		};
+		fplProcessContext context = fplZeroInit;
+		context.name = shellCommand;
+		context.arguments = arguments;
+		context.argumentCount = fplArrayCount(arguments);
+		context.shellMode = fplProcessShellMode_Default;
+		context.flags = fplProcessFlags_AutoWait;
+		fplProcessHandle handle = fplZeroInit;
+		fplProcessResult result = fplZeroInit;
+		ftIsTrue(fplProcessStart(&context, &handle, &result));
+		ftAssertS32Equals(processTestChildSuccessExitCode, result.exitCode);
+		fplProcessFreeResult(&result);
+		fplProcessClose(&handle);
+	}
+	{
+		// A custom shell is used instead of the default one, the interpreter is named by the caller
+#if defined(FPL_PLATFORM_WINDOWS)
+		const char *customShellPath = "cmd.exe";
+#else
+		const char *customShellPath = "/bin/sh";
+#endif
+		char argumentLine[FPL_MAX_BUFFER_LENGTH];
+		fplStringFormat(argumentLine, fplArrayCount(argumentLine), "%s %d", FPL_TEST_CHILD_ARGUMENT_EXIT, processTestCustomExitCode);
+		fplProcessContext context = fplZeroInit;
+		context.name = shellCommand;
+		context.argumentLine = argumentLine;
+		context.shellMode = fplProcessShellMode_Custom;
+		context.shellPath = customShellPath;
+		context.flags = fplProcessFlags_AutoWait;
+		fplProcessHandle handle = fplZeroInit;
+		fplProcessResult result = fplZeroInit;
+		ftIsTrue(fplProcessStart(&context, &handle, &result));
+		ftAssert(result.type == fplProcessResultType_Success);
+		ftAssertS32Equals(processTestCustomExitCode, result.exitCode);
+		fplProcessFreeResult(&result);
+		fplProcessClose(&handle);
+	}
+}
+
+// Running a script is the reason the shell mode exists, so it gets its own group
+static void ProcessTestsShellScript(const ProcessTestPaths *paths) {
+	ftMsg("Test Process shell script\n");
+	char scriptFilePath[FPL_MAX_PATH_LENGTH];
+	fplPathCombine(scriptFilePath, fplArrayCount(scriptFilePath), 2, paths->executableDirectoryPath, processTestScriptFileName);
+	if (!ProcessTestsCreateScriptFile(scriptFilePath)) {
+		ftFail("Failed creating the script file '%s'", scriptFilePath);
+		return;
+	}
+	char scriptCommand[FPL_MAX_PATH_LENGTH];
+	fplStringFormat(scriptCommand, fplArrayCount(scriptCommand), "\"%s\"", scriptFilePath);
+#if !defined(FPL_PLATFORM_WINDOWS)
+	{
+		// A POSIX shell only executes a file that is marked as executable, a batch file needs nothing like that
+		char chmodCommand[FPL_MAX_PATH_LENGTH];
+		fplStringFormat(chmodCommand, fplArrayCount(chmodCommand), "chmod +x \"%s\"", scriptFilePath);
+		fplProcessResult chmodResult = fplZeroInit;
+		ftIsTrue(ProcessTestsRunShellCommand(chmodCommand, &chmodResult));
+		ftAssertS32Equals(0, chmodResult.exitCode);
+		fplProcessFreeResult(&chmodResult);
+	}
+#endif
+	{
+		// The captured text of a script starts with what it has written, the line ending is up to the shell
+		fplProcessContext context = fplZeroInit;
+		context.name = scriptCommand;
+		context.shellMode = fplProcessShellMode_Default;
+		context.captureFlags = fplProcessCaptureFlags_CaptureBoth;
+		context.flags = fplProcessFlags_AutoWait;
+		fplProcessHandle handle = fplZeroInit;
+		fplProcessResult result = fplZeroInit;
+		ftIsTrue(fplProcessStart(&context, &handle, &result));
+		ftAssertS32Equals(processTestScriptExitCode, result.exitCode);
+		ftIsNotNull(result.output.text);
+		size_t scriptTextLen = fplGetStringLength(processTestScriptText);
+		ftIsTrue(result.output.len >= scriptTextLen);
+		ftIsTrue(fplIsStringEqualLen(result.output.text, scriptTextLen, processTestScriptText, scriptTextLen));
+		fplProcessFreeResult(&result);
+		fplProcessClose(&handle);
+	}
+	fplFileDelete(scriptFilePath);
+}
+
+// The flags that change how a child is created must not change how it is started, waited for and reported
+static void ProcessTestsCreationFlags(const ProcessTestPaths *paths) {
+	ftMsg("Test Process creation flags\n");
+	char argumentLine[FPL_MAX_BUFFER_LENGTH];
+	fplStringFormat(argumentLine, fplArrayCount(argumentLine), "%s %d", FPL_TEST_CHILD_ARGUMENT_EXIT, processTestCustomExitCode);
+	fplProcessFlags flagVariants[] = {
+		fplProcessFlags_NoWindow,
+		fplProcessFlags_Detached,
+		fplProcessFlags_KillOnParentExit,
+		fplProcessFlags_KillProcessTree,
+	};
+	for (size_t variantIndex = 0; variantIndex < fplArrayCount(flagVariants); ++variantIndex) {
+		fplProcessResult result = fplZeroInit;
+		bool started = ProcessTestsRunChild(paths, argumentLine, fpl_null, 0, fpl_null, flagVariants[variantIndex], &result);
+		ftIsTrue(started);
+		ftAssert(result.type == fplProcessResultType_Success);
+		ftAssertS32Equals(processTestCustomExitCode, result.exitCode);
+		fplProcessFreeResult(&result);
+	}
+	{
+		// A graceful stop needs the process tree flag on Windows, because a console control event is
+		// sent to the process group instead of a signal
+		char sleepArgumentLine[FPL_MAX_BUFFER_LENGTH];
+		fplStringFormat(sleepArgumentLine, fplArrayCount(sleepArgumentLine), "%s %d", FPL_TEST_CHILD_ARGUMENT_SLEEP, processTestLongSleepInMilliseconds);
 		fplProcessContext context = fplZeroInit;
 		context.name = paths->executableFilePath;
-		context.shellMode = fplProcessShellMode_Default;
+		context.argumentLine = sleepArgumentLine;
+		context.flags = fplProcessFlags_KillProcessTree;
+		fplProcessHandle handle = fplZeroInit;
+		fplProcessResult startResult = fplZeroInit;
+		ftIsTrue(fplProcessStart(&context, &handle, &startResult));
+		ftIsTrue(fplProcessRequestStop(&handle));
+		fplProcessResult stopResult = fplZeroInit;
+		ftIsTrue(fplProcessWait(&handle, processTestStopTimeout, &stopResult));
+		ftIsTrue(stopResult.hasExited);
+#if !defined(FPL_PLATFORM_WINDOWS)
+		ftAssertS32Equals(SIGTERM, stopResult.terminationSignal);
+#endif
+		fplProcessFreeResult(&stopResult);
+		fplProcessClose(&handle);
+	}
+}
+
+// Options that contradict each other or miss something they need must be rejected instead of being guessed
+static void ProcessTestsFlagFailures(const ProcessTestPaths *paths) {
+	ftMsg("Test Process shell and flag failures\n");
+	{
+		// A custom shell without a shell path cannot be started
+		fplProcessContext context = fplZeroInit;
+		context.name = paths->executableFilePath;
+		context.shellMode = fplProcessShellMode_Custom;
 		fplProcessHandle handle = fplZeroInit;
 		fplProcessResult result = fplZeroInit;
 		ftIsFalse(fplProcessStart(&context, &handle, &result));
-		ftAssert(result.type == fplProcessResultType_NotImplemented);
+		ftAssert(result.type == fplProcessResultType_InvalidArguments);
+		fplProcessClose(&handle);
+	}
+	{
+		// One flag lets the child survive this process, the other one kills it exactly then
+		fplProcessContext context = fplZeroInit;
+		context.name = paths->executableFilePath;
+		context.flags = fplProcessFlags_Detached | fplProcessFlags_KillOnParentExit;
+		fplProcessHandle handle = fplZeroInit;
+		fplProcessResult result = fplZeroInit;
+		ftIsFalse(fplProcessStart(&context, &handle, &result));
+		ftAssert(result.type == fplProcessResultType_InvalidArguments);
 		fplProcessClose(&handle);
 	}
 	{
@@ -1397,6 +1629,9 @@ void FPLProcessTests_All(void) {
 	ProcessTestsCaptureFailures(&paths);
 	ProcessTestsInput(&paths);
 	ProcessTestsInputFailures(&paths);
+	ProcessTestsShell(&paths);
+	ProcessTestsShellScript(&paths);
+	ProcessTestsCreationFlags(&paths);
 	ProcessTestsHandleLifetime(&paths);
-	ProcessTestsNotImplemented(&paths);
+	ProcessTestsFlagFailures(&paths);
 }

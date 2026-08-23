@@ -15,6 +15,7 @@ Author:
 
 Changelog:
 	## 2026-08-23
+	- Added the shell and the detached scenarios
 	- Added the standard-input scenarios
 	- Added the separate capture and the output callback scenarios
 	- Fixed the argument array scenario, it started an interactive cmd.exe on Windows and hung there
@@ -48,6 +49,10 @@ License:
 #	define DemoExitCodeArgumentLine "/c exit 3"
 #	define DemoSleepProgram "cmd.exe"
 #	define DemoSleepArgumentLine "/c ping -n 6 127.0.0.1"
+#	define DemoShellCommandLine "echo Hello from the shell & echo the shell chains commands"
+#	define DemoCustomShellPath "cmd.exe"
+#	define DemoCustomShellArgument "/s /c"
+#	define DemoCustomShellCommandLine "echo Hello from the named interpreter"
 #else
 #	define DemoEchoProgram "echo"
 #	define DemoEchoArgumentLine "Hello from the child process"
@@ -58,6 +63,10 @@ License:
 #	define DemoExitCodeArgumentLine "-c \"exit 3\""
 #	define DemoSleepProgram "sleep"
 #	define DemoSleepArgumentLine "5"
+#	define DemoShellCommandLine "echo Hello from the shell; echo the shell chains commands"
+#	define DemoCustomShellPath "/bin/sh"
+#	define DemoCustomShellArgument "-c"
+#	define DemoCustomShellCommandLine "echo Hello from the named interpreter"
 #endif
 
 #define DemoMissingProgram "this_program_does_not_exist_xyz"
@@ -490,6 +499,49 @@ static void RunInputStreamScenario(void) {
 	fplProcessClose(&handle);
 }
 
+// A shell mode composes one command line, so everything the shell understands can be used - a pipe,
+// a chain of commands or a script file
+static void RunShellCommandScenario(void) {
+	fplProcessContext context = fplZeroInit;
+	context.name = DemoShellCommandLine;
+	context.shellMode = fplProcessShellMode_Default;
+	context.captureFlags = fplProcessCaptureFlags_CaptureBoth;
+	context.flags = fplProcessFlags_AutoWait;
+	RunAndWait("Run a command line through the default shell", &context);
+}
+
+static void RunCustomShellScenario(void) {
+	// Any interpreter can be named here, for example bash instead of sh, powershell or python
+	fplProcessContext context = fplZeroInit;
+	context.name = DemoCustomShellCommandLine;
+	context.shellMode = fplProcessShellMode_Custom;
+	context.shellPath = DemoCustomShellPath;
+	context.shellArgument = DemoCustomShellArgument;
+	context.captureFlags = fplProcessCaptureFlags_CaptureBoth;
+	context.flags = fplProcessFlags_AutoWait;
+	RunAndWait("Run a command line through a named interpreter", &context);
+}
+
+// A detached child is not tied to this process anymore, so it keeps running when the demo is done
+static void RunDetachedScenario(void) {
+	PrintScenarioHeader("Start a detached child that outlives this demo");
+	fplProcessContext context = fplZeroInit;
+	context.name = DemoSleepProgram;
+	context.argumentLine = DemoSleepArgumentLine;
+	context.flags = fplProcessFlags_Detached;
+	fplProcessHandle handle = fplZeroInit;
+	fplProcessResult result = fplZeroInit;
+	if (fplProcessStart(&context, &handle, &result)) {
+		fplConsoleFormatOut("  started '%s' with the process id %llu\n", context.name, (unsigned long long)handle.id);
+		fplConsoleOut("  -> it keeps running after this demo has ended and exits on its own a few seconds later\n");
+	} else {
+		PrintProcessResult(&result);
+	}
+	fplProcessFreeResult(&result);
+	// The handle is closed without waiting, that is the whole point of a detached child
+	fplProcessClose(&handle);
+}
+
 // Runs the program the user passed on the command line, so the demo can start anything
 static void RunUserProgram(const int argumentCount, char **arguments) {
 	const char *programName = arguments[0];
@@ -556,6 +608,9 @@ int main(int argc, char *args[]) {
 		RunInputTextScenario();
 		RunInputNoneScenario();
 		RunInputStreamScenario();
+		RunShellCommandScenario();
+		RunCustomShellScenario();
+		RunDetachedScenario();
 		RunTimeoutScenario();
 		RunAsyncScenario();
 		fplConsoleOut("\nPass a program and its arguments to this demo, to run it directly\n");
