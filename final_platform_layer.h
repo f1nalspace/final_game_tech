@@ -7485,8 +7485,8 @@ typedef struct fplProcessContext {
 	fplProcessShellMode shellMode;
 	//! The @ref fplProcessFlags used for creating/controlling the process.
 	fplProcessFlags flags;
-	//! The timeout in milliseconds for @ref fplProcessFlags_AutoWait or zero for waiting infinitely.
-	uint32_t waitTimeout;
+	//! The timeout in milliseconds for @ref fplProcessFlags_AutoWait. Use @ref FPL_TIMEOUT_INFINITE or zero for waiting indefinitely.
+	fplTimeoutValue waitTimeout;
 } fplProcessContext;
 
 /**
@@ -7589,6 +7589,8 @@ typedef struct fplProcessHandle {
 	fpl__ProcessStreams *streams;
 	//! The id of the process.
 	uint64_t id;
+	//! The @ref fplProcessFlags the process was started with.
+	fplProcessFlags flags;
 	//! The cached exit code, valid when the process has exited.
 	int32_t exitCode;
 	//! The cached signal number that has terminated the process or zero (POSIX only).
@@ -7621,11 +7623,12 @@ fpl_platform_api bool fplProcessUpdate(fplProcessHandle *handle);
 /**
 * @brief Waits for the specified process to be terminated, while pumping the redirected streams.
 * @param[in, out] handle Reference to the process handle @ref fplProcessHandle.
-* @param[in] timeout The timeout in milliseconds or zero for waiting infinitely.
+* @param[in] timeout The timeout in milliseconds. Use @ref FPL_TIMEOUT_INFINITE or zero for waiting indefinitely.
 * @param[out] outResult Reference to the process result @ref fplProcessResult or fpl_null when the result is not needed.
 * @return Returns true when the process has exited, false when the timeout was exceeded or the wait has failed.
+* @note Use @ref fplProcessIsRunning() when you just want to check the state without blocking.
 */
-fpl_platform_api bool fplProcessWait(fplProcessHandle *handle, const uint32_t timeout, fplProcessResult *outResult);
+fpl_platform_api bool fplProcessWait(fplProcessHandle *handle, const fplTimeoutValue timeout, fplProcessResult *outResult);
 
 /**
 * @brief Is the specified process still running?
@@ -7676,6 +7679,7 @@ fpl_platform_api bool fplProcessStop(const fplProcessHandle *handle);
 * @brief Releases all resources of the specified process handle and resets it to zero.
 * @param[in, out] handle Reference to the process handle @ref fplProcessHandle.
 * @note This does not stop the process, it just releases the resources of the handle.
+* @note On POSIX the exit status of a still running process cannot be collected anymore after this call.
 */
 fpl_platform_api void fplProcessClose(fplProcessHandle *handle);
 
@@ -17110,7 +17114,7 @@ fpl_common_api void fplDebugFormatOut(const char *format, ...) {
 //                              ^ fplProcessBuffer.text
 // The header must live ON that pointer and never before it, because the allocator owns everything in front of it.
 #define FPL__PROCESS_BUFFER_MAGIC 0x50524F4342554653ULL
-#define FPL__PROCESS_BUFFER_ALIGNMENT 16
+#define FPL__PROCESS_MEMORY_ALIGNMENT 16
 
 typedef struct fpl__ProcessBufferHeader {
 	//! Magic value, used to detect a foreign or already released buffer.
@@ -17172,6 +17176,28 @@ typedef struct fpl__ProcessStreams {
 	//! The capture was truncated.
 	fpl_b32 isTruncated;
 } fpl__ProcessStreams;
+
+fpl_internal void fpl__FillProcessResultFromHandle(const fplProcessHandle *handle, const bool hasExited, fplProcessResult *outResult) {
+	fplClearStruct(outResult);
+	outResult->exitCode = handle->exitCode;
+	outResult->terminationSignal = handle->terminationSignal;
+	outResult->hasExited = hasExited;
+	if (!hasExited) {
+		outResult->type = fplProcessResultType_Timeout;
+		return;
+	}
+	if (handle->terminationSignal != 0) {
+		outResult->type = fplProcessResultType_Terminated;
+		return;
+	}
+	// A non-zero exit code is not an error by default, because many programs use it to report a state
+	bool treatNonZeroExitAsError = (handle->flags & fplProcessFlags_TreatNonZeroExitAsError) == fplProcessFlags_TreatNonZeroExitAsError;
+	if (treatNonZeroExitAsError && (handle->exitCode != 0)) {
+		outResult->type = fplProcessResultType_FailedWithExitCode;
+		return;
+	}
+	outResult->type = fplProcessResultType_Success;
+}
 
 fpl_common_api void fplProcessFreeResult(fplProcessResult *result) {
 	FPL__CheckArgumentNullNoRet(result);
@@ -22053,7 +22079,7 @@ fpl_platform_api bool fplProcessUpdate(fplProcessHandle *handle) {
 	return(false);
 }
 
-fpl_platform_api bool fplProcessWait(fplProcessHandle *handle, const uint32_t timeout, fplProcessResult *outResult) {
+fpl_platform_api bool fplProcessWait(fplProcessHandle *handle, const fplTimeoutValue timeout, fplProcessResult *outResult) {
 	FPL__CheckArgumentNull(handle, false);
 	// @TODO(final/Win32): Implement fplProcessWait()
 	if (outResult != fpl_null) {
@@ -24349,85 +24375,491 @@ fpl_internal size_t fpl__PosixLocaleToISO639(const char *source, char *target, c
 // ############################################################################
 #if defined(FPL_SUBPLATFORM_POSIX)
 
+// Exit code the child reports when the exec has failed, the same value a POSIX shell uses for "command not found"
+#define FPL__POSIX_PROCESS_EXEC_FAILED_EXIT_CODE 127
+// Exit code base for processes terminated by a signal, the same convention a POSIX shell uses
+#define FPL__POSIX_PROCESS_SIGNAL_EXIT_CODE_BASE 128
+// Number of milliseconds slept between two non-blocking waitpid calls, when a timeout is used
+#define FPL__POSIX_PROCESS_WAIT_SLICE_MILLISECONDS 1
+
+typedef struct fpl__PosixProcessExecArgs {
+	//! Single memory block holding the argument array followed by all argument strings.
+	void *memory;
+	//! Null-terminated argument array, the first entry is the executable itself.
+	char **argv;
+	//! Number of arguments, without the terminating null-entry.
+	size_t argumentCount;
+} fpl__PosixProcessExecArgs;
+
+// Splits a command line into single arguments, honoring double quotes, single quotes and backslash escapes.
+// Pass null for the targets to just count the arguments and the number of string bytes required.
+fpl_internal size_t fpl__PosixSplitArgumentLine(const char *argumentLine, char **targetArgv, char *targetStringBuffer, size_t *outStringBytes) {
+	const char singleQuoteChar = '\'';
+	const char doubleQuoteChar = '"';
+	const char escapeChar = '\\';
+	bool hasTargets = (targetArgv != fpl_null) && (targetStringBuffer != fpl_null);
+	size_t argumentCount = 0;
+	size_t stringBytes = 0;
+	const char *cursor = argumentLine;
+	while (*cursor != 0) {
+		while ((*cursor == ' ') || (*cursor == '\t')) {
+			++cursor;
+		}
+		if (*cursor == 0) {
+			break;
+		}
+		if (hasTargets) {
+			targetArgv[argumentCount] = targetStringBuffer + stringBytes;
+		}
+		char activeQuoteChar = 0;
+		bool isInsideArgument = true;
+		while (isInsideArgument && (*cursor != 0)) {
+			char currentChar = *cursor;
+			if (activeQuoteChar != 0) {
+				if (currentChar == activeQuoteChar) {
+					activeQuoteChar = 0;
+					++cursor;
+					continue;
+				}
+			} else if ((currentChar == doubleQuoteChar) || (currentChar == singleQuoteChar)) {
+				activeQuoteChar = currentChar;
+				++cursor;
+				continue;
+			} else if ((currentChar == ' ') || (currentChar == '\t')) {
+				isInsideArgument = false;
+				continue;
+			}
+			// A backslash escapes the next character, except inside single quotes where everything is literal
+			if ((currentChar == escapeChar) && (activeQuoteChar != singleQuoteChar) && (*(cursor + 1) != 0)) {
+				++cursor;
+				currentChar = *cursor;
+			}
+			if (hasTargets) {
+				targetStringBuffer[stringBytes] = currentChar;
+			}
+			++stringBytes;
+			++cursor;
+		}
+		if (hasTargets) {
+			targetStringBuffer[stringBytes] = 0;
+		}
+		++stringBytes;
+		++argumentCount;
+	}
+	if (outStringBytes != fpl_null) {
+		*outStringBytes = stringBytes;
+	}
+	return(argumentCount);
+}
+
+// Builds the argument array for the exec call. This must happen before the fork, because the child is only
+// allowed to call async-signal-safe functions and allocating memory is not one of them.
+fpl_internal bool fpl__PosixCreateProcessExecArgs(const fplProcessContext *context, fpl__PosixProcessExecArgs *outArgs) {
+	const char *name = context->name;
+	size_t nameLen = fplGetStringLength(name);
+	bool useArgumentArray = (context->arguments != fpl_null) && (context->argumentCount > 0);
+	size_t argumentCount = 0;
+	size_t argumentStringBytes = 0;
+	if (useArgumentArray) {
+		argumentCount = context->argumentCount;
+		for (size_t argumentIndex = 0; argumentIndex < argumentCount; ++argumentIndex) {
+			const char *argument = context->arguments[argumentIndex];
+			size_t argumentLen = fplGetStringLength(argument);
+			argumentStringBytes += argumentLen + 1;
+		}
+	} else if (context->argumentLine != fpl_null) {
+		argumentCount = fpl__PosixSplitArgumentLine(context->argumentLine, fpl_null, fpl_null, &argumentStringBytes);
+	}
+
+	// The first entry is always the executable itself and the array must end with a null-entry
+	size_t totalArgumentCount = argumentCount + 1;
+	size_t argvSize = sizeof(char *) * (totalArgumentCount + 1);
+	size_t nameStringBytes = nameLen + 1;
+	size_t totalSize = argvSize + nameStringBytes + argumentStringBytes;
+	void *memory = fpl__AllocateDynamicMemory(totalSize, FPL__PROCESS_MEMORY_ALIGNMENT);
+	if (memory == fpl_null) {
+		return(false);
+	}
+
+	char **argv = (char **)memory;
+	char *nameString = (char *)memory + argvSize;
+	char *argumentStrings = nameString + nameStringBytes;
+	fplCopyStringLen(name, nameLen, nameString, nameStringBytes);
+	argv[0] = nameString;
+	if (useArgumentArray) {
+		size_t stringOffset = 0;
+		for (size_t argumentIndex = 0; argumentIndex < argumentCount; ++argumentIndex) {
+			const char *argument = context->arguments[argumentIndex];
+			size_t argumentLen = fplGetStringLength(argument);
+			char *targetString = argumentStrings + stringOffset;
+			fplCopyStringLen(argument, argumentLen, targetString, argumentLen + 1);
+			argv[argumentIndex + 1] = targetString;
+			stringOffset += argumentLen + 1;
+		}
+	} else if (context->argumentLine != fpl_null) {
+		fpl__PosixSplitArgumentLine(context->argumentLine, argv + 1, argumentStrings, fpl_null);
+	}
+	argv[totalArgumentCount] = fpl_null;
+
+	outArgs->memory = memory;
+	outArgs->argv = argv;
+	outArgs->argumentCount = totalArgumentCount;
+	return(true);
+}
+
+fpl_internal void fpl__PosixReleaseProcessExecArgs(fpl__PosixProcessExecArgs *args) {
+	if (args->memory != fpl_null) {
+		fpl__ReleaseDynamicMemory(args->memory);
+	}
+	fplClearStruct(args);
+}
+
+// Creates a pipe where both ends are closed automatically by a successful exec.
+// pipe2() would do this race-free, but it is not portable across all POSIX platforms.
+fpl_internal bool fpl__PosixCreateCloseOnExecPipe(int *outPipeFileDescriptors) {
+	if (pipe(outPipeFileDescriptors) != 0) {
+		return(false);
+	}
+	fcntl(outPipeFileDescriptors[0], F_SETFD, FD_CLOEXEC);
+	fcntl(outPipeFileDescriptors[1], F_SETFD, FD_CLOEXEC);
+	return(true);
+}
+
+fpl_internal fplProcessResultType fpl__PosixMapProcessStartError(const int errorCode) {
+	switch (errorCode) {
+		case ENOENT:
+			return(fplProcessResultType_NotFound);
+		case EACCES:
+		case EPERM:
+			return(fplProcessResultType_AccessDenied);
+		case ENOMEM:
+			return(fplProcessResultType_OutOfMemory);
+		default:
+			return(fplProcessResultType_FailedToStart);
+	}
+}
+
+fpl_internal void fpl__PosixApplyProcessExitStatus(fplProcessHandle *handle, const int status) {
+	handle->hasExited = true;
+	if (WIFEXITED(status)) {
+		handle->exitCode = (int32_t)WEXITSTATUS(status);
+		handle->terminationSignal = 0;
+	} else if (WIFSIGNALED(status)) {
+		int signalNumber = WTERMSIG(status);
+		handle->terminationSignal = (int32_t)signalNumber;
+		handle->exitCode = (int32_t)(FPL__POSIX_PROCESS_SIGNAL_EXIT_CODE_BASE + signalNumber);
+	} else {
+		handle->exitCode = 0;
+		handle->terminationSignal = 0;
+	}
+}
+
+// Collects the exit status of the child and caches it in the handle, because waitpid() reports it exactly once.
+fpl_internal bool fpl__PosixUpdateProcessExitState(fplProcessHandle *handle, const bool blocking) {
+	if (handle->hasExited) {
+		return(true);
+	}
+	pid_t processId = (pid_t)handle->internalHandle.posix.pid;
+	int waitFlags = blocking ? 0 : WNOHANG;
+	int status = 0;
+	pid_t waitResult = waitpid(processId, &status, waitFlags);
+	while ((waitResult == -1) && (errno == EINTR)) {
+		waitResult = waitpid(processId, &status, waitFlags);
+	}
+	if (waitResult == processId) {
+		fpl__PosixApplyProcessExitStatus(handle, status);
+		return(true);
+	}
+	if (waitResult == -1) {
+		// When the application ignores SIGCHLD, the kernel reaps the child on its own and the exit status is gone
+		if (errno == ECHILD) {
+			FPL__WARNING(FPL__MODULE_PROCESS, "The exit status of process '%llu' is not available, SIGCHLD may be ignored by the application", (unsigned long long)handle->id);
+			handle->hasExited = true;
+			handle->exitCode = 0;
+			handle->terminationSignal = 0;
+			return(true);
+		}
+		FPL__ERROR(FPL__MODULE_PROCESS, "Failed waiting for process '%llu' with code %d", (unsigned long long)handle->id, errno);
+	}
+	return(false);
+}
+
+fpl_internal bool fpl__PosixSendProcessSignal(const fplProcessHandle *handle, const int signalNumber) {
+	pid_t processId = (pid_t)handle->internalHandle.posix.pid;
+	pid_t processGroupId = (pid_t)handle->internalHandle.posix.pgid;
+	bool useProcessGroup = (processGroupId != 0) && ((handle->flags & fplProcessFlags_KillProcessTree) == fplProcessFlags_KillProcessTree);
+	int killResult;
+	if (useProcessGroup) {
+		killResult = kill(-processGroupId, signalNumber);
+	} else {
+		killResult = kill(processId, signalNumber);
+	}
+	if (killResult != 0) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "Failed sending signal %d to process '%llu' with code %d", signalNumber, (unsigned long long)handle->id, errno);
+		return(false);
+	}
+	return(true);
+}
+
 fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProcessHandle *outHandle, fplProcessResult *outResult) {
 	FPL__CheckArgumentNull(context, false);
 	FPL__CheckArgumentNull(outHandle, false);
 	FPL__CheckArgumentNull(context->name, false);
-	// @TODO(final/POSIX): Implement fplProcessStart()
+
 	fplClearStruct(outHandle);
-	if (outResult != fpl_null) {
-		fplClearStruct(outResult);
-		outResult->type = fplProcessResultType_NotImplemented;
+	fplProcessResult startResult = fplZeroInit;
+	startResult.type = fplProcessResultType_Success;
+
+	// @TODO(final/POSIX): Support fplProcessShellMode (Phase 6)
+	if (context->shellMode != fplProcessShellMode_None) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "The shell mode %d is not implemented yet", (int)context->shellMode);
+		startResult.type = fplProcessResultType_NotImplemented;
 	}
-	FPL__ERROR(FPL__MODULE_PROCESS, "fplProcessStart() is not implemented yet");
-	return(false);
+	// @TODO(final/POSIX): Support the capture/redirect modes (Phase 3/4)
+	if (context->captureFlags != fplProcessCaptureFlags_None) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "The capture flags %d are not implemented yet", (int)context->captureFlags);
+		startResult.type = fplProcessResultType_NotImplemented;
+	}
+	// @TODO(final/POSIX): Support the standard-input modes (Phase 5)
+	if (context->inputMode != fplProcessInputMode_Inherit) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "The input mode %d is not implemented yet", (int)context->inputMode);
+		startResult.type = fplProcessResultType_NotImplemented;
+	}
+	if (startResult.type == fplProcessResultType_NotImplemented) {
+		if (outResult != fpl_null) {
+			*outResult = startResult;
+		}
+		return(false);
+	}
+
+	fpl__PosixProcessExecArgs execArgs = fplZeroInit;
+	if (!fpl__PosixCreateProcessExecArgs(context, &execArgs)) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "Failed allocating the arguments for the process '%s'", context->name);
+		startResult.type = fplProcessResultType_OutOfMemory;
+		if (outResult != fpl_null) {
+			*outResult = startResult;
+		}
+		return(false);
+	}
+
+	int execErrorPipe[2] = { -1, -1 };
+	if (!fpl__PosixCreateCloseOnExecPipe(execErrorPipe)) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "Failed creating the exec error pipe for the process '%s' with code %d", context->name, errno);
+		startResult.type = fplProcessResultType_FailedToStart;
+		startResult.nativeErrorCode = (uint32_t)errno;
+		fpl__PosixReleaseProcessExecArgs(&execArgs);
+		if (outResult != fpl_null) {
+			*outResult = startResult;
+		}
+		return(false);
+	}
+
+	// Everything the child needs is prepared here, because only async-signal-safe calls are allowed after the fork
+	const char *executablePath = execArgs.argv[0];
+	bool hasPathSeparator = false;
+	for (const char *pathCursor = executablePath; *pathCursor != 0; ++pathCursor) {
+		if (*pathCursor == '/') {
+			hasPathSeparator = true;
+			break;
+		}
+	}
+	const char *workDir = context->workDir;
+	bool useOwnProcessGroup = (context->flags & fplProcessFlags_KillProcessTree) == fplProcessFlags_KillProcessTree;
+
+	pid_t childProcessId = fork();
+	if (childProcessId == -1) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "Failed forking the process '%s' with code %d", context->name, errno);
+		startResult.type = fplProcessResultType_FailedToStart;
+		startResult.nativeErrorCode = (uint32_t)errno;
+		close(execErrorPipe[0]);
+		close(execErrorPipe[1]);
+		fpl__PosixReleaseProcessExecArgs(&execArgs);
+		if (outResult != fpl_null) {
+			*outResult = startResult;
+		}
+		return(false);
+	}
+
+	if (childProcessId == 0) {
+		// Child process, only async-signal-safe calls are allowed from here on
+		close(execErrorPipe[0]);
+		int childErrorCode = 0;
+		if (useOwnProcessGroup) {
+			setpgid(0, 0);
+		}
+		if (workDir != fpl_null) {
+			if (chdir(workDir) != 0) {
+				childErrorCode = errno;
+			}
+		}
+		if (childErrorCode == 0) {
+			// A name without any path separator is looked up in PATH, the same way a shell does it
+			if (hasPathSeparator) {
+				execv(executablePath, execArgs.argv);
+			} else {
+				execvp(executablePath, execArgs.argv);
+			}
+			childErrorCode = errno;
+		}
+		// The exec has failed, so the parent is told why through the pipe that a successful exec would have closed
+		ssize_t writtenBytes = write(execErrorPipe[1], &childErrorCode, sizeof(childErrorCode));
+		(void)writtenBytes;
+		_exit(FPL__POSIX_PROCESS_EXEC_FAILED_EXIT_CODE);
+	}
+
+	// Parent process
+	close(execErrorPipe[1]);
+	if (useOwnProcessGroup) {
+		// Called in both processes on purpose, so the group exists no matter which process is scheduled first
+		setpgid(childProcessId, childProcessId);
+	}
+
+	int childErrorCode = 0;
+	ssize_t readBytes = read(execErrorPipe[0], &childErrorCode, sizeof(childErrorCode));
+	while ((readBytes == -1) && (errno == EINTR)) {
+		readBytes = read(execErrorPipe[0], &childErrorCode, sizeof(childErrorCode));
+	}
+	close(execErrorPipe[0]);
+	fpl__PosixReleaseProcessExecArgs(&execArgs);
+
+	if (readBytes > 0) {
+		// The child could not be replaced by the executable, so it is reaped right away
+		int status = 0;
+		pid_t reapResult = waitpid(childProcessId, &status, 0);
+		while ((reapResult == -1) && (errno == EINTR)) {
+			reapResult = waitpid(childProcessId, &status, 0);
+		}
+		FPL__ERROR(FPL__MODULE_PROCESS, "Failed starting the process '%s' with code %d", context->name, childErrorCode);
+		startResult.type = fpl__PosixMapProcessStartError(childErrorCode);
+		startResult.nativeErrorCode = (uint32_t)childErrorCode;
+		if (outResult != fpl_null) {
+			*outResult = startResult;
+		}
+		return(false);
+	}
+
+	outHandle->internalHandle.posix.pid = (int32_t)childProcessId;
+	outHandle->internalHandle.posix.pgid = useOwnProcessGroup ? (int32_t)childProcessId : 0;
+	outHandle->id = (uint64_t)childProcessId;
+	outHandle->flags = context->flags;
+	outHandle->isValid = true;
+
+	if ((context->flags & fplProcessFlags_AutoWait) == fplProcessFlags_AutoWait) {
+		fplProcessWait(outHandle, context->waitTimeout, outResult);
+		return(true);
+	}
+
+	if (outResult != fpl_null) {
+		*outResult = startResult;
+	}
+	return(true);
 }
 
 fpl_platform_api bool fplProcessUpdate(fplProcessHandle *handle) {
 	FPL__CheckArgumentNull(handle, false);
-	// @TODO(final/POSIX): Implement fplProcessUpdate()
+	if (handle->streams == fpl_null) {
+		return(false);
+	}
+	// @TODO(final/POSIX): Pump the redirected streams (Phase 3/4)
 	return(false);
 }
 
-fpl_platform_api bool fplProcessWait(fplProcessHandle *handle, const uint32_t timeout, fplProcessResult *outResult) {
+fpl_platform_api bool fplProcessWait(fplProcessHandle *handle, const fplTimeoutValue timeout, fplProcessResult *outResult) {
 	FPL__CheckArgumentNull(handle, false);
-	// @TODO(final/POSIX): Implement fplProcessWait()
-	if (outResult != fpl_null) {
-		fplClearStruct(outResult);
-		outResult->type = fplProcessResultType_NotImplemented;
+	FPL__CheckArgumentInvalid(handle, !handle->isValid, false);
+	bool waitInfinitely = (timeout == 0) || (timeout == FPL_TIMEOUT_INFINITE);
+	bool hasExited = false;
+	if (waitInfinitely) {
+		hasExited = fpl__PosixUpdateProcessExitState(handle, true);
+	} else {
+		fplMilliseconds waitStartTime = fplMillisecondsQuery();
+		for (;;) {
+			hasExited = fpl__PosixUpdateProcessExitState(handle, false);
+			if (hasExited) {
+				break;
+			}
+			fplMilliseconds elapsedTime = fplMillisecondsQuery() - waitStartTime;
+			if (elapsedTime >= (fplMilliseconds)timeout) {
+				break;
+			}
+			fplThreadSleep(FPL__POSIX_PROCESS_WAIT_SLICE_MILLISECONDS);
+		}
 	}
-	return(false);
+	if (outResult != fpl_null) {
+		fpl__FillProcessResultFromHandle(handle, hasExited, outResult);
+	}
+	return(hasExited);
 }
 
 fpl_platform_api bool fplProcessIsRunning(fplProcessHandle *handle) {
 	FPL__CheckArgumentNull(handle, false);
-	// @TODO(final/POSIX): Implement fplProcessIsRunning()
-	return(false);
+	if (!handle->isValid) {
+		return(false);
+	}
+	bool hasExited = fpl__PosixUpdateProcessExitState(handle, false);
+	return(!hasExited);
 }
 
 fpl_platform_api bool fplProcessTryGetExitCode(fplProcessHandle *handle, int32_t *outExitCode) {
 	FPL__CheckArgumentNull(handle, false);
 	FPL__CheckArgumentNull(outExitCode, false);
-	// @TODO(final/POSIX): Implement fplProcessTryGetExitCode()
-	return(false);
+	FPL__CheckArgumentInvalid(handle, !handle->isValid, false);
+	if (!fpl__PosixUpdateProcessExitState(handle, false)) {
+		return(false);
+	}
+	*outExitCode = handle->exitCode;
+	return(true);
 }
 
 fpl_platform_api size_t fplProcessWriteInput(fplProcessHandle *handle, const char *text, const size_t textLen) {
 	FPL__CheckArgumentNull(handle, 0);
 	FPL__CheckArgumentNull(text, 0);
-	// @TODO(final/POSIX): Implement fplProcessWriteInput()
+	// @TODO(final/POSIX): Implement fplProcessWriteInput() (Phase 5)
 	return(0);
 }
 
 fpl_platform_api void fplProcessCloseInput(fplProcessHandle *handle) {
 	FPL__CheckArgumentNullNoRet(handle);
-	// @TODO(final/POSIX): Implement fplProcessCloseInput()
+	// @TODO(final/POSIX): Implement fplProcessCloseInput() (Phase 5)
 }
 
 fpl_platform_api bool fplProcessRequestStop(const fplProcessHandle *handle) {
 	FPL__CheckArgumentNull(handle, false);
-	// @TODO(final/POSIX): Implement fplProcessRequestStop()
-	return(false);
+	FPL__CheckArgumentInvalid(handle, !handle->isValid, false);
+	if (handle->hasExited) {
+		return(false);
+	}
+	bool result = fpl__PosixSendProcessSignal(handle, SIGTERM);
+	return(result);
 }
 
 fpl_platform_api bool fplProcessStop(const fplProcessHandle *handle) {
 	FPL__CheckArgumentNull(handle, false);
-	// @TODO(final/POSIX): Implement fplProcessStop()
-	return(false);
+	FPL__CheckArgumentInvalid(handle, !handle->isValid, false);
+	if (handle->hasExited) {
+		return(false);
+	}
+	bool result = fpl__PosixSendProcessSignal(handle, SIGKILL);
+	return(result);
 }
 
 fpl_platform_api void fplProcessClose(fplProcessHandle *handle) {
 	FPL__CheckArgumentNullNoRet(handle);
-	// @TODO(final/POSIX): Implement fplProcessClose()
+	if (handle->isValid) {
+		// Collect the exit status when the process has ended already, so it does not stay a zombie in the process table
+		if (!handle->hasExited) {
+			fpl__PosixUpdateProcessExitState(handle, false);
+		}
+		// @TODO(final/POSIX): Release the stream state (Phase 3)
+	}
 	fplClearStruct(handle);
 }
 
 fpl_platform_api uint64_t fplProcessGetCurrentId(void) {
-	pid_t currentPid = getpid();
-	uint64_t result = (uint64_t)currentPid;
+	pid_t currentProcessId = getpid();
+	uint64_t result = (uint64_t)currentProcessId;
 	return(result);
 }
-
 #endif // FPL_SUBPLATFORM_POSIX
 
 // ############################################################################

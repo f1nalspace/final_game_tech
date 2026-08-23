@@ -283,8 +283,8 @@ typedef struct fplProcessContext {
 	fplProcessShellMode shellMode;
 	//! Process creation/control flags.
 	fplProcessFlags flags;
-	//! Timeout in milliseconds for @ref fplProcessFlags_AutoWait or zero for waiting infinitely.
-	uint32_t waitTimeout;
+	//! Timeout in milliseconds for @ref fplProcessFlags_AutoWait. Use @ref FPL_TIMEOUT_INFINITE or zero for waiting indefinitely.
+	fplTimeoutValue waitTimeout;
 } fplProcessContext;
 
 /**
@@ -385,6 +385,8 @@ typedef struct fplProcessHandle {
 	struct fpl__ProcessStreams *streams;
 	//! The id of the process.
 	uint64_t id;
+	//! The flags the process was started with.
+	fplProcessFlags flags;
 	//! The cached exit code, valid when the process has exited.
 	int32_t exitCode;
 	//! The process handle is valid.
@@ -404,7 +406,7 @@ fpl_platform_api bool fplProcessUpdate(fplProcessHandle *handle);
 /**
 * @brief Waits for the specified process to be terminated, while pumping the redirected streams.
 */
-fpl_platform_api bool fplProcessWait(fplProcessHandle *handle, const uint32_t timeout, fplProcessResult *outResult);
+fpl_platform_api bool fplProcessWait(fplProcessHandle *handle, const fplTimeoutValue timeout, fplProcessResult *outResult);
 /**
 * @brief Is the specified process still running?
 */
@@ -812,7 +814,33 @@ Phasen 1 und 2 sind unabhängig, 3–6 sollten pro Feature immer beide Plattform
 
 ---
 
-## 13. Entschieden (interaktiv geklärt, 2026-08-23)
+## 13. Umsetzungsstand
+
+### Phase 0 — erledigt
+Typen, Deklarationen und Doxygen-Doku im Header, Modul-Konstante `FPL__MODULE_PROCESS`, Sektionsmarker, interne Typen (`fpl__ProcessBufferHeader`, `fpl__ProcessStream`, `fpl__ProcessStreams`), fertiges `fplProcessFreeResult()` sowie `fplProcessGetCurrentId()` auf beiden Plattformen. Rest als Stubs.
+
+### Phase 1 — erledigt (POSIX-Kern)
+- `fplProcessStart()` mit `fork()` + `execv`/`execvp` (PATH-Suche nur ohne Pfadtrenner im Namen), argv-Aufbau **vor** dem Fork in **einem** Block, CLOEXEC-Fehlerpipe für die exec-Fehlermeldung, `chdir` im Kind.
+- Kommandozeilen-Splitter `fpl__PosixSplitArgumentLine()` mit doppelten/einfachen Anführungszeichen und Backslash-Escapes, Zwei-Pass (zählen, dann füllen), kein festes Argument-Limit.
+- Fehler-Mapping: `ENOENT` → `_NotFound`, `EACCES`/`EPERM` → `_AccessDenied`, `ENOMEM` → `_OutOfMemory`, sonst `_FailedToStart` mit `nativeErrorCode`.
+- `fplProcessWait()` (blockierend und mit Timeout-Scheiben), `fplProcessIsRunning()`, `fplProcessTryGetExitCode()` — alle über `fpl__PosixUpdateProcessExitState()` mit **Status-Caching** und `ECHILD`-Behandlung für den `SIGCHLD = SIG_IGN`-Fall.
+- `fplProcessRequestStop()` (SIGTERM) / `fplProcessStop()` (SIGKILL), Prozessgruppe per `setpgid` in Kind **und** Parent, aber nur bei `fplProcessFlags_KillProcessTree`.
+- `fplProcessClose()` reapt ein bereits beendetes Kind.
+- Signal-Ende wird als `_Terminated` mit `terminationSignal` und `exitCode = 128 + signal` gemeldet.
+
+**Zwei API-Angleichungen dabei:**
+1. `waitTimeout`/`fplProcessWait()` benutzen jetzt `fplTimeoutValue` statt `uint32_t` — das ist die FPL-Konvention (`fplThreadWaitForOne`, `fplSignalWaitForOne`). Null **und** `FPL_TIMEOUT_INFINITE` bedeuten beide "unendlich warten", damit ein `fplZeroInit`-Context mit `AutoWait` nicht versehentlich mit 0 ms Timeout wartet. Nicht-blockierendes Prüfen läuft über `fplProcessIsRunning()`.
+2. `fplProcessHandle` bekam ein Feld `flags`. Ohne das kann `fplProcessWait()` nicht wissen, ob `TreatNonZeroExitAsError` gilt, und `fplProcessStop()` nicht, ob die Prozessgruppe gemeint ist.
+
+**Verifiziert:** 12 Funktionstests grün (Start/AutoWait, PATH-Suche, argv-Array mit Leerzeichen, Quoting im Argument-String, `workDir`, NotFound, AccessDenied, Exit-Code-Semantik mit und ohne Opt-in, async + IsRunning + SIGKILL, SIGTERM, Wait-Timeout, TryGetExitCode, 50 Zyklen). Zombie-Check über `/proc/self/task/self/children` leer. ASan + UBSan sauber, keine Leaks. Kompiliert in C99/C17/C++11, mit `FPL_NO_RUNTIME_LINKING`, `FPL_NO_PLATFORM_INCLUDES` und ohne Window/Video/Audio, keine neue Warnung unter `-Wextra`.
+
+### Offen
+Phase 2 (Win32-Kern), 3 (Capture merged), 4 (Capture separat + Callbacks), 5 (stdin), 6 (shellMode, NoWindow, Detached, KillOnParentExit), 7 (Demo, Tests, .docs, Changelog).
+`fplProcessStart()` meldet für noch nicht implementierte Optionen (`shellMode`, `captureFlags`, `inputMode`) ausdrücklich `fplProcessResultType_NotImplemented`, statt sie still zu ignorieren.
+
+---
+
+## 14. Entschieden (interaktiv geklärt, 2026-08-23)
 
 | # | Frage | Entscheidung |
 |---|---|---|
